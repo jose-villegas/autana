@@ -8,6 +8,7 @@
 #ifdef DEVICE_BUILD
 #include <string.h>
 #include "apps/render_lab/baked_families.h"
+#include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/render_lab_dynres.h"
 #include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/scene_baked.h"
@@ -15,6 +16,7 @@
 #include "apps/render_lab/tests/render_lab_test.h"
 #include "lab/lab_scene.h"
 #include "lab/test/lab_perf_quarters.h"
+#include "lab/test/lab_test.h"
 
 #include "core/timing.h"
 #include "esp_log.h"
@@ -60,7 +62,7 @@ static const framegen_scenario_t scenarios[] = {
     {&scene_sponza[SCENE_BAKED_FITTED_FULL], SPONZA_SCENE, NULL},
 };
 
-static render_lab_test_t saved;
+static lab_test_t saved;
 static const framegen_scenario_t* scenario;
 static int ladder_step;
 static framegen_target_t target;
@@ -68,7 +70,7 @@ static framegen_target_t target;
 static void
 release_fixture(void) {
     framegen_target_free(&target);
-    render_lab_test_exit(&saved);
+    lab_test_exit(&saved);
 }
 
 /* The view through the camera at `t_ms` along its path, as the scene draws it. */
@@ -134,10 +136,10 @@ typedef struct {
 
 static scenario_path_t
 enter_path(void) {
-    render_lab_test_enter(&saved, scenario->scene->key);
+    lab_test_enter(&saved, &render_lab, scenario->scene->key);
     suite_set_test_cleanup(release_fixture);
     test_hold_quarter(lab_perf_quarters[0].quarter);
-    scenario_path_t path = {.scene = render_lab_test_loaded_scene(scenario->pack)};
+    scenario_path_t path = {.scene = lab_test_loaded_scene(scenario->pack)};
     TEST_ASSERT_FALSE(handle_is_none(path.scene));
     const char* camera_name = scenario->camera == NULL ? sponza_cameras[0] : scenario->camera;
     path.camera = entity_find(path.scene, name_hash(camera_name));
@@ -162,14 +164,14 @@ test_generated_frame_cost(void) {
     const resolution_config_t pinned = resolution_config(&size, 1, 1, RENDER_LAB_BUDGET_MAX_MS * MATH_US_PER_MS);
     render_context_set_dynamic_resolution(render_context_main(), &pinned, NULL, 0);
     TEST_ASSERT_TRUE(framegen_target_alloc(&target, size.width, size.height));
-    (void)render_lab_test_frame_dt(0, false, NULL); /* warm-up, not sampled */
+    (void)lab_test_frame_dt(0, false, NULL); /* warm-up, not sampled */
 
     sum = (totals_t){0};
     for (int i = 0; i < FRAMEGEN_POSES; i++) {
         const uint32_t t_ms = (uint32_t)(((uint64_t)(duration_ms - FRAMEGEN_AHEAD_MS) * (uint64_t)i) / FRAMEGEN_POSES);
         TEST_ASSERT_TRUE(animator_seek(camera, ANIMATOR_CURRENT, t_ms));
         const int64_t start = timing_now_us();
-        (void)render_lab_test_frame_dt(0, false, NULL);
+        (void)lab_test_frame_dt(0, false, NULL);
         sum.frame += timing_now_us() - start;
         sum.present += render_context_frame(render_context_main()).upscale_us;
         TEST_ASSERT_EQUAL_INT(size.width, render_context_main()->raster.width);
@@ -222,7 +224,7 @@ shown_frame(void* ctx, int64_t dt_us) {
     const int64_t step_us = p->carry_us + dt_us;
     p->carry_us = step_us % MATH_US_PER_MS;
     const int64_t began = timing_now_us();
-    (void)render_lab_test_frame_dt((uint32_t)(step_us / MATH_US_PER_MS), false, NULL);
+    (void)lab_test_frame_dt((uint32_t)(step_us / MATH_US_PER_MS), false, NULL);
     const int64_t took = timing_now_us() - began;
     const render_context_frame_t f = render_context_frame(render_context_main());
     if (!f.generated) {
@@ -238,7 +240,7 @@ test_mode(void) {
     const scenario_path_t path = enter_path();
     TEST_ASSERT_TRUE(render_lab_framegen_set_on(mode->generating));
     TEST_ASSERT_TRUE(render_lab_budget_set_ms(mode->budget_ms));
-    (void)render_lab_test_frame_dt(0, false, NULL); /* warm-up, not counted */
+    (void)lab_test_frame_dt(0, false, NULL); /* warm-up, not counted */
     const frame_profile_scenario_t playback = {scenario->scene->key, (int64_t)path.duration_ms * MATH_US_PER_MS};
     played_t played = {0};
     const frame_profile_t p = frame_profile_play(&playback, shown_frame, &played, NULL);

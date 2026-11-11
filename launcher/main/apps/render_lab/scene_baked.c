@@ -58,7 +58,7 @@ record_failure(const scene_failure_t* why) {
 static entity_t
 camera_entity(void) {
     return entity_find(loaded,
-                       name_hash(render_lab_start_camera == NULL ? shown_family->camera : render_lab_start_camera));
+                       name_hash(render_lab.start_camera == NULL ? shown_family->camera : render_lab.start_camera));
 }
 
 lab_path_t
@@ -104,8 +104,8 @@ scene_baked_enter(const lab_scene_t* self) {
         }
         entity_set_enabled(bake, i == (int)shown->variant);
     }
-    (void)camera_activate(render_lab_start_camera == NULL ? camera_first(loaded)
-                                                          : entity_find(loaded, name_hash(render_lab_start_camera)));
+    (void)camera_activate(render_lab.start_camera == NULL ? camera_first(loaded)
+                                                          : entity_find(loaded, name_hash(render_lab.start_camera)));
     (void)camera_set_skip_hidden(camera_entity(), family->skip_hidden);
     apply_settings();
 }

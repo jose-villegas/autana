@@ -13,7 +13,7 @@ TUNE_SETTING(render_lab, small_fill_ceiling, SMALL_FILL_CEILING_SMOOTH, 0, SMALL
 TUNE_SETTING(render_lab, small_fill_gate, SMALL_FILL_GATE_SMOOTH, 0, UINT8_MAX);
 TUNE_SETTING(render_lab, small_fill_style, SMALL_FILL_FLAT, SMALL_FILL_FLAT, SMALL_FILL_STYLE_COUNT - 1);
 TUNE_SETTING(render_lab, budget, 0, 0, RENDER_LAB_BUDGET_MAX_MS);
-TUNE(render_lab, layout, RENDER_LAB_LAYOUT_FULL, RENDER_LAB_LAYOUT_FULL, RENDER_LAB_LAYOUT_COUNT - 1);
+TUNE(render_lab, layout, LAB_LAYOUT_FULL, LAB_LAYOUT_FULL, LAB_LAYOUT_COUNT - 1);
 TUNE(render_lab, orbit_ms, 0, 0, RENDER_LAB_ORBIT_MAX_MS);
 TUNE_SETTING(render_lab, upscale, UPSCALE_FILTER_NEAREST, UPSCALE_FILTER_NEAREST, UPSCALE_FILTER_SURFACE);
 TUNE_SETTING(render_lab, framegen, 0, 0, 1);
@@ -33,9 +33,9 @@ render_lab_present(void) {
     return (camera_present_t)present;
 }
 
-render_lab_layout_t
+lab_layout_t
 render_lab_layout(void) {
-    return (render_lab_layout_t)layout;
+    return (lab_layout_t)layout;
 }
 
 small_fill_t

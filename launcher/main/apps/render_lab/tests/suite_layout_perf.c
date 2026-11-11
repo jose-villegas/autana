@@ -2,7 +2,6 @@
 #ifdef DEVICE_BUILD
 #include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/render_lab_view.h"
-#include "apps/render_lab/tests/render_lab_test.h"
 #include "asset/asset_pack.h"
 #include "core/memory.h"
 #include "core/timing.h"
@@ -12,6 +11,7 @@
 #include "gfx/gfx.h"
 #include "hash/crc32.h"
 #include "lab/test/lab_perf_quarters.h"
+#include "lab/test/lab_test.h"
 #include "perf_layout_labels.h"
 #include "render/context/render_context.h"
 #include "render/raster_split.h"
@@ -36,8 +36,8 @@ static const char* const scene_keys[] = {
 };
 #define SCENE_KEY_COUNT ((int)(sizeof scene_keys / sizeof scene_keys[0]))
 
-static const char* const layout_names[RENDER_LAB_LAYOUT_COUNT] = {PERF_LAYOUT_FULL_FB, PERF_LAYOUT_DOUBLE_FB,
-                                                                  PERF_LAYOUT_DOUBLE_FB_CLEAR_ON_SEND};
+static const char* const layout_names[LAB_LAYOUT_COUNT] = {PERF_LAYOUT_FULL_FB, PERF_LAYOUT_DOUBLE_FB,
+                                                           PERF_LAYOUT_DOUBLE_FB_CLEAR_ON_SEND};
 
 typedef enum { STAGE_FRAME, STAGE_WAIT, STAGE_SEND, STAGE_DRAW, STAGE_COMPOSE, STAGE_COUNT } stage_t;
 
@@ -45,7 +45,7 @@ static const char* const stage_names[STAGE_COUNT] = {"frame", "wait", "send", "d
 
 typedef struct {
     int32_t samples[STAGE_COUNT][LAYOUT_SAMPLES];
-    render_lab_test_t saved;
+    lab_test_t saved;
     int32_t saved_layout;
     gfx_band_overlay_fn saved_overlay;
     bool entered;
@@ -62,7 +62,7 @@ set_layout(int32_t layout) {
 static void
 leave_app(fixture_t* f) {
     if (f->entered) {
-        render_lab_test_exit(&f->saved);
+        lab_test_exit(&f->saved);
         f->entered = false;
     }
 }
@@ -92,7 +92,7 @@ fixture(void) {
 
 static void
 enter_app(fixture_t* f, const char* scene, int quarter) {
-    render_lab_test_enter(&f->saved, scene);
+    lab_test_enter(&f->saved, &render_lab, scene);
     f->entered = true;
     f->primed = false;
     test_hold_quarter(quarter);
@@ -202,7 +202,7 @@ test_layout_frame_cost(void) {
     fixture_t* f = fixture();
     for (int s = 0; s < SCENE_KEY_COUNT; s++) {
         for (size_t q = 0; q < LAB_PERF_QUARTER_COUNT; q++) {
-            for (int layout = 0; layout < RENDER_LAB_LAYOUT_COUNT; layout++) {
+            for (int layout = 0; layout < LAB_LAYOUT_COUNT; layout++) {
                 measure(f, scene_keys[s], layout, &lab_perf_quarters[q]);
             }
         }

@@ -1,4 +1,4 @@
-#include "lab_menu_screen.h"
+#include "lab/ui/lab_menu_screen.h"
 
 #include "ui/ui.h"
 

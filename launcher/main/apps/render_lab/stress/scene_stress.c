@@ -149,7 +149,7 @@ load(void) {
         fail("no stress camera");
         return false;
     }
-    viewer = render_lab_start_camera == NULL ? camera : entity_find(loaded, name_hash(render_lab_start_camera));
+    viewer = render_lab.start_camera == NULL ? camera : entity_find(loaded, name_hash(render_lab.start_camera));
     if (!find_pool() || !take_mesh()) {
         fail("no memory for stress");
         return false;
@@ -175,7 +175,7 @@ scene_stress_enter(const lab_scene_t* self) {
         return;
     }
     (void)camera_activate(
-        entity_find(loaded, name_hash(render_lab_start_camera == NULL ? STRESS_CAMERA : render_lab_start_camera)));
+        entity_find(loaded, name_hash(render_lab.start_camera == NULL ? STRESS_CAMERA : render_lab.start_camera)));
     place_copies();
     apply_settings();
 }

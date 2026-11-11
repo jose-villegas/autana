@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include "apps/render_lab/baked_families.h"
 #include "apps/render_lab/capybara_content.h"
+#include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/render_lab_dynres.h"
 #include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/scene_baked.h"
@@ -24,6 +25,7 @@
 #include "frame_profile.h"
 #include "lab/lab_scene.h"
 #include "lab/test/lab_perf_quarters.h"
+#include "lab/test/lab_test.h"
 #include "perf_budget.h"
 #include "profile/frame_cost.h"
 #include "render/context/render_context.h"
@@ -84,7 +86,7 @@ static const char* TAG = "render_lab_profile";
 #define DYNRES_STEPS_LINE_BYTES  (sizeof DYNRES_STEPS_LINE + 64)
 #define DYNRES_STEPS_FRAME_BYTES sizeof(" -2147483648:-2147483648:-2147483648:-2147483648")
 
-static render_lab_test_t saved;
+static lab_test_t saved;
 static frame_profile_trace_t played; /* the row playing now, freed with the fixture */
 
 /* The scene applies render_lab.view after it draws, so the view is also set here for the next draw. */
@@ -99,7 +101,7 @@ static void
 release_fixture(void) {
     frame_profile_trace_free(&played);
     show_view(RENDER_DEBUG_VIEW_SHADED);
-    render_lab_test_exit(&saved);
+    lab_test_exit(&saved);
 }
 
 static int64_t
@@ -109,7 +111,7 @@ whole_frame(void* ctx, int64_t dt_us) {
     const uint32_t dt_ms = (uint32_t)(step_us / MATH_US_PER_MS);
     *remainder_us = step_us % MATH_US_PER_MS;
     const int64_t start = timing_now_us();
-    (void)render_lab_test_frame_dt(dt_ms, false, NULL);
+    (void)lab_test_frame_dt(dt_ms, false, NULL);
     return timing_now_us() - start;
 }
 
@@ -143,13 +145,13 @@ replay_pose(entity_t scene, entity_t entity, uint32_t duration_ms, int32_t path_
             const char* quarter, pose_line_t* out) {
     TEST_ASSERT_TRUE(animator_seek(entity, ANIMATOR_CURRENT, (uint32_t)path_ms % duration_ms));
     show_view(render_context_debug_view_named("cull"));
-    (void)render_lab_test_frame_dt(0, false, NULL);
+    (void)lab_test_frame_dt(0, false, NULL);
     write_cull_counts(out);
     show_view(RENDER_DEBUG_VIEW_SHADED);
-    (void)render_lab_test_frame_dt(0, false, NULL);
+    (void)lab_test_frame_dt(0, false, NULL);
     (void)frame_cost_take_report(1, out->report, sizeof out->report);
     for (int i = 0; i < FRAME_PROFILE_REPLAY_DRAWS; i++) {
-        (void)render_lab_test_frame_dt(0, false, NULL);
+        (void)lab_test_frame_dt(0, false, NULL);
     }
     (void)frame_cost_take_report(FRAME_PROFILE_REPLAY_DRAWS, out->report, sizeof out->report);
     ESP_LOGI(TAG, FRAME_PROFILE_REPLAY LAB_PERF_QUARTER_FORMAT, row, (int)path_ms, out->counts, out->report, quarter);
@@ -232,10 +234,10 @@ send(const char* format, ...) {
 
 static scenario_path_t
 enter_scenario(void) {
-    render_lab_test_enter(&saved, scenario->scene->key);
+    lab_test_enter(&saved, &render_lab, scenario->scene->key);
     suite_set_test_cleanup(release_fixture);
     test_hold_quarter(lab_perf_quarters[quarter_index].quarter);
-    entity_t scene = render_lab_test_loaded_scene(scenario->pack == NULL ? SPONZA_SCENE : scenario->pack);
+    entity_t scene = lab_test_loaded_scene(scenario->pack == NULL ? SPONZA_SCENE : scenario->pack);
     TEST_ASSERT_FALSE(handle_is_none(scene));
     const entity_t entity =
         entity_find(scene, name_hash(scenario->entity == NULL ? sponza_cameras[0] : scenario->entity));
@@ -320,10 +322,10 @@ test_dynres_steps(void) {
     const resolution_step_t size = render_lab_ladder[ladder_step];
     const resolution_config_t pinned = resolution_config(&size, 1, 1, RENDER_LAB_BUDGET_MAX_MS * MATH_US_PER_MS);
     render_context_set_dynamic_resolution(render_context_main(), &pinned, NULL, 0);
-    (void)render_lab_test_frame_dt(0, false, NULL); /* warm-up, not sampled */
+    (void)lab_test_frame_dt(0, false, NULL); /* warm-up, not sampled */
     for (int i = 0; i < frames; i++) {
         const int64_t start = timing_now_us();
-        (void)render_lab_test_frame_dt(DYNRES_STEPS_FRAME_DT_MS, false, NULL);
+        (void)lab_test_frame_dt(DYNRES_STEPS_FRAME_DT_MS, false, NULL);
         const int32_t whole_us = (int32_t)(timing_now_us() - start);
         const render_context_frame_t f = render_context_frame(render_context_main());
         TEST_ASSERT_EQUAL_INT(0, f.step);

@@ -1,31 +1,20 @@
-/* render_lab: shared scene settings and status length. */
+/* render_lab: the app's lab (lab/lab.h) and its scenes. */
 #pragma once
 
 #include <stdbool.h>
-#include <stdint.h>
 
-#include "lab/lab_scene.h"
+#include "app/app.h"
+#include "lab/lab.h"
 
-extern const char* render_lab_start_scene_key;
-
-extern bool render_lab_show_hud;
-
-/* NULL selects the scene's first camera. */
-extern const char* render_lab_start_camera;
+/* Its start scene, start camera and HUD switch are the lab's fields:
+ * render_lab.start_key, .start_camera and .show_hud. */
+extern lab_t render_lab;
+extern app_t app_render_lab;
 
 /* The app's `render` console command, given the words after `render`, such
  * as "clip walk 400"; replies go to stdout. A host render calls it directly,
  * since a host build has no console. */
 bool render_lab_console(const char* args);
-
-/* The showing scene's path clip, as its `path` hook names it: its length in
- * ms, 0 when the scene has none, has not loaded or lacks that clip. */
-uint32_t render_lab_path_duration_ms(void);
-
-/* Places the showing scene's path at `t_ms`, wrapped to its length, cutting to
- * its clip first; a frame at dt 0 then draws that pose. False when the scene
- * has no path. */
-bool render_lab_seek_path(uint32_t t_ms);
 
 extern const lab_scene_t scene_capybara;
 extern const lab_scene_t scene_water;

@@ -445,7 +445,7 @@ def pmu_owner(root, path, text):
 # (launcher/packages/) sits under every row: PACKAGE-INCLUDE keeps it there.
 
 LAYER_BANDS = (
-    ("system", ("apps", "shell", "boot selftest", "app")),
+    ("system", ("apps", "shell", "boot selftest", "lab", "app")),
     ("engine", ("ui scene", "render", "draw anim sound", "asset")),
     ("platform", ("input audio", "power", "display", "gfx", "services", "profile", "console", "core", "board",
                   "build")),
@@ -524,10 +524,10 @@ def rule_include_direction(root, path, text):
                        "INCLUDE_DIRECTION_EXCEPTIONS entry citing the doc section that draws it")
 
 
-# RULE: an app (a folder of the top row, launcher/main/apps/) uses the engine, the platform and the app contract, and never the
-# rest of the system band: docs/plans/Engine-Layer-Design-Sketch.md's tier
-# rule. The app contract is the system band's lowest row, so the rule names
-# no folder. A shell app (shell/apps/) shares the apps tier for
+# RULE: an app (a folder of the top row, launcher/main/apps/) uses the engine, the platform, the lab shell and the app
+# contract, and never the rest of the system band: docs/plans/Engine-Layer-Design-Sketch.md's tier
+# rule. The lab shell and the app contract are the system band's lowest two
+# rows, so the rule names no folder. A shell app (shell/apps/) shares the apps tier for
 # INCLUDE-DIRECTION but ships with the shell, so it may reach the system
 # band. Both include rules below read C and C++ sources alike.
 
@@ -535,7 +535,8 @@ INCLUDE_RULE_SUFFIXES = SOURCE_EXTENSIONS
 
 SYSTEM_ROWS = dict(LAYER_BANDS)["system"]
 APPS_ROW = SYSTEM_ROWS[0].split()
-SYSTEM_BAND_REFUSED = {layer for row in SYSTEM_ROWS[1:-1] for layer in row.split()}
+APP_BASE_ROWS = 2  # the lab shell (lab/) and the app contract (app/)
+SYSTEM_BAND_REFUSED = {layer for row in SYSTEM_ROWS[1:-APP_BASE_ROWS] for layer in row.split()}
 
 
 @text_rule("SYSTEM-BAND")
@@ -551,7 +552,7 @@ def rule_system_band(root, path, text):
     for number, inc, target_layer in _main_include_layers(root, path, text):
         if target_layer in SYSTEM_BAND_REFUSED:
             yield number, (f'"{inc}" reaches into {target_layer}/, the system band - an app uses '
-                           "the engine, the platform and the app contract (app/)")
+                           "the engine, the platform, the lab shell (lab/) and the app contract (app/)")
 
 
 # RULE: the UI backend stays behind ui/'s face. A header is the backend's

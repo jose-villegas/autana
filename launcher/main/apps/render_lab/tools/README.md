@@ -489,7 +489,7 @@ of a scene pack's bake. The sheets use the poses named on the command line.
 
 ## Perf capture quarters
 
-The render perf suites use the shared `tests/lab_perf_quarters.h` table.
+The render perf suites use the shared lab table `lab/test/lab_perf_quarters.h`.
 Every timed render window runs with an explicit portrait or landscape
 viewport; full-frame windows hold the display quarter. Rows include
 `quarter=portrait` or `quarter=landscape`.

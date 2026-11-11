@@ -1,8 +1,7 @@
-#include "lab_hud_screen.h"
+#include "lab/ui/lab_hud_screen.h"
 
 #include <stdio.h>
 
-#include "apps/render_lab/render_lab.h"
 #include "draw/draw.h"
 #include "ui/ui.h"
 

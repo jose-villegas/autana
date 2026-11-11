@@ -3,8 +3,8 @@
 #include <stdio.h>
 #include <string.h>
 #include "apps/render_lab/capybara_content.h"
+#include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/render_lab_view.h"
-#include "apps/render_lab/tests/render_lab_test.h"
 #include "apps/render_lab/tests/skin_perf_log.h"
 #include "core/job.h"
 #include "core/memory.h"
@@ -15,6 +15,7 @@
 #include "gfx/gfx.h"
 #include "lab/lab_scene.h"
 #include "lab/test/lab_perf_quarters.h"
+#include "lab/test/lab_test.h"
 #include "perf_budget.h"
 #include "render/context/render_context.h"
 #include "render/r3d_span_internal.h"
@@ -30,7 +31,7 @@
 static const char* TAG = "capybara_perf";
 
 typedef struct {
-    render_lab_test_t saved;
+    lab_test_t saved;
     entity_t scene;
     entity_t subject;
     scene_t* columns;        /* the scene's columns, which the stage timings call into */
@@ -52,7 +53,7 @@ heap_report(const char* phase) {
 
 static void
 release_fixture(void) {
-    render_lab_test_exit(&active->saved);
+    lab_test_exit(&active->saved);
     memory_free(active->positions);
     memory_free(active);
     active = NULL;
@@ -64,9 +65,9 @@ fixture(void) {
     TEST_ASSERT_NOT_NULL(active);
     *active = (fixture_t){0};
     heap_report(SKIN_PERF_PHASE_BEFORE_ENTER);
-    render_lab_test_enter(&active->saved, scene_capybara.key);
+    lab_test_enter(&active->saved, &render_lab, scene_capybara.key);
     suite_set_test_cleanup(release_fixture);
-    active->scene = render_lab_test_loaded_scene(CAPYBARA_SCENE);
+    active->scene = lab_test_loaded_scene(CAPYBARA_SCENE);
     TEST_ASSERT_FALSE(handle_is_none(active->scene));
     active->subject = entity_find(active->scene, name_hash(CAPYBARA_SUBJECT));
     TEST_ASSERT_FALSE(handle_is_none(active->subject));
@@ -87,25 +88,25 @@ static void
 assert_skin_changes(fixture_t* f) {
     const r3d_lit_mesh_t* mesh = renderer_mesh(f->subject);
     memcpy(f->positions, mesh->positions, f->position_bytes);
-    render_lab_test_frame(false, NULL);
+    lab_test_frame(false, NULL);
     TEST_ASSERT_NOT_EQUAL(0, memcmp(f->positions, mesh->positions, f->position_bytes));
 }
 
 static void
 test_console_gallop_blends_and_skins(void) {
     fixture_t* f = fixture();
-    render_lab_test_frame(false, NULL);
+    lab_test_frame(false, NULL);
     char command[ASSET_NAME_MAX];
     TEST_ASSERT_TRUE(snprintf(command, sizeof command, CAPYBARA_CLIP_COMMAND, CAPYBARA_CLIP_BLEND_MS) >= 0);
     TEST_ASSERT_TRUE(app_render_lab.console->handle(command));
     const scene_animator_t* a = &f->columns->animators[f->subject_row];
     TEST_ASSERT_EQUAL_UINT32(CAPYBARA_CLIP_BLEND_MS, a->layer.blend_ms);
     TEST_ASSERT_EQUAL_STRING("gallop", animator_clip_name(f->subject, a->layer.current.clip));
-    render_lab_test_frame(false, NULL);
-    TEST_ASSERT_EQUAL_UINT32(RENDER_LAB_TEST_FRAME_MS, a->layer.blended_ms);
+    lab_test_frame(false, NULL);
+    TEST_ASSERT_EQUAL_UINT32(LAB_TEST_FRAME_MS, a->layer.blended_ms);
     TEST_ASSERT_LESS_THAN_UINT32(CAPYBARA_CLIP_BLEND_MS, a->layer.blended_ms);
-    for (int i = 0; i <= CAPYBARA_CLIP_BLEND_MS / RENDER_LAB_TEST_FRAME_MS; i++) {
-        render_lab_test_frame(false, NULL);
+    for (int i = 0; i <= CAPYBARA_CLIP_BLEND_MS / LAB_TEST_FRAME_MS; i++) {
+        lab_test_frame(false, NULL);
     }
     TEST_ASSERT_EQUAL_UINT32(CAPYBARA_CLIP_BLEND_MS, a->layer.blended_ms);
     TEST_ASSERT_EQUAL_STRING("gallop", animator_clip_name(f->subject, a->layer.current.clip));
@@ -127,13 +128,13 @@ skin_slice(void* ctx) {
 static void
 animate_slice(void* ctx) {
     const range_t* r = ctx;
-    scene_animate_range(r->scene, r->first, r->count, RENDER_LAB_TEST_FRAME_MS);
+    scene_animate_range(r->scene, r->first, r->count, LAB_TEST_FRAME_MS);
 }
 
 static void
 step(void* ctx) {
     const range_t* r = ctx;
-    scene_animation_step(r->scene, RENDER_LAB_TEST_FRAME_MS);
+    scene_animation_step(r->scene, LAB_TEST_FRAME_MS);
 }
 
 static void
@@ -144,7 +145,7 @@ report_stage(fixture_t* f, const char* stage, job_fn_t fn, int count, bool split
     _Static_assert(sizeof a <= JOB_CTX_MAX, "perf range fits worker context");
     int worker_samples = 0;
     for (int i = -1; i < PERF_SAMPLES; i++) {
-        scene_animation_step(f->columns, RENDER_LAB_TEST_FRAME_MS);
+        scene_animation_step(f->columns, LAB_TEST_FRAME_MS);
         const int64_t start_us = timing_now_us();
         const uint32_t start_cycles = esp_cpu_get_cycle_count();
         bool dispatched = false;
@@ -191,7 +192,7 @@ frame_cost(fixture_t* f, bool paused, bench_stats_t* render_stats, const char* q
     (void)animator_set_paused(f->subject, ANIMATOR_PREVIOUS, paused);
     for (int i = -1; i < PERF_SAMPLES; i++) {
         const int64_t start = timing_now_us();
-        const int64_t render_us = render_lab_test_frame(false, NULL);
+        const int64_t render_us = lab_test_frame(false, NULL);
         if (i >= 0) {
             f->render_us[i] = (int32_t)render_us;
             f->elapsed_us[i] = (int32_t)(timing_now_us() - start);
@@ -227,7 +228,7 @@ report_stage_split(fixture_t* f, const char* quarter) {
         r3d_span_stop_after = stop;
         for (int i = -1; i < PERF_SAMPLES; i++) {
             context->split = split;
-            const int64_t us = render_lab_test_frame(false, NULL);
+            const int64_t us = lab_test_frame(false, NULL);
             if (i >= 0) {
                 f->render_us[i] = (int32_t)us;
             }
