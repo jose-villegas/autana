@@ -15,7 +15,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | [input](#input) | 11 | 0 | 0 |
 | [kinematics](#kinematics) | 5 | 1 | 0 |
 | [math](#math) | 25 | 25 | 0 |
-| [overview](#overview) | 15 | 0 | 0 |
+| [overview](#overview) | 16 | 0 | 0 |
 | [physics](#physics) | 2 | 0 | 0 |
 | [power](#power) | 2 | 0 | 0 |
 | [render](#render) | 126 | 0 | 0 |
@@ -133,6 +133,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/overview/render-lab-capybara.gif"><img src="figure-thumbnails/overview/render-lab-capybara.gif" width="160" alt=""></a> | A skinned capybara on a meadow blending through each of its animation clips in turn, then back to the first | [README](../../README.md) | not declared yet |
 | <a href="../images/overview/render-lab-sponza.gif"><img src="figure-thumbnails/overview/render-lab-sponza.gif" width="160" alt=""></a> | A camera moving through the Crytek Sponza atrium with baked lighting on the fitted full mesh | [README](../../README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-big-tris.png"><img src="../images/overview/render-lab-stress-big-tris.png" width="160" alt=""></a> | Stress big tris: a few triangles over most of the picture | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
+| <a href="../images/overview/render-lab-stress-mix.png"><img src="../images/overview/render-lab-stress-mix.png" width="160" alt=""></a> | Stress mix: planes with several tessellations and colour modes | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-noisy-tiny.png"><img src="../images/overview/render-lab-stress-noisy-tiny.png" width="160" alt=""></a> | Stress noisy tiny: cylinders end on, their fans of slivers | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-open.png"><img src="../images/overview/render-lab-stress-open.png" width="160" alt=""></a> | Stress open: a wall of planes side by side | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-per-frame.png"><img src="../images/overview/render-lab-stress-per-frame.png" width="160" alt=""></a> | Stress per frame: one plane with a wave running over it | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |

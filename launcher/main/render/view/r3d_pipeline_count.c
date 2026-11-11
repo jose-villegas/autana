@@ -123,6 +123,19 @@ count_triangle(const r3d_pipeline_vertex_t* const v[3], int mode, bool double_si
     return true;
 }
 
+/* How r3d_span fills the triangle's colour: the face's, one colour from
+ * three equal corners, or stepped between corners that differ. */
+static int
+colour_mode(const r3d_lit_mesh_t* mesh, const uint16_t* tri) {
+    if (mesh->face_colors != NULL) {
+        return R3D_SIZES_FACE;
+    }
+    const bool uniform = mesh->colors != NULL
+                         && memcmp(mesh->colors[tri[0]], mesh->colors[tri[1]], sizeof mesh->colors[0]) == 0
+                         && memcmp(mesh->colors[tri[0]], mesh->colors[tri[2]], sizeof mesh->colors[0]) == 0;
+    return uniform ? R3D_SIZES_UNIFORM : R3D_SIZES_SHADED;
+}
+
 void
 r3d_pipeline_count_triangles(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
                              const r3d_pipeline_vertex_t* cs, r3d_pipeline_counts_t* counts, uint16_t* set_up) {
@@ -133,13 +146,7 @@ r3d_pipeline_count_triangles(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens,
         for (int t = c->triangle_first; t < c->triangle_first + c->triangle_count; t++) {
             const uint16_t* tri = mesh->triangles[t];
             const r3d_pipeline_vertex_t* const v[3] = {&cs[tri[0]], &cs[tri[1]], &cs[tri[2]]};
-            const bool uniform = mesh->colors != NULL
-                                 && memcmp(mesh->colors[tri[0]], mesh->colors[tri[1]], sizeof mesh->colors[0]) == 0
-                                 && memcmp(mesh->colors[tri[0]], mesh->colors[tri[2]], sizeof mesh->colors[0]) == 0;
-            const int mode = mesh->face_colors != NULL ? R3D_SIZES_FACE
-                             : uniform                 ? R3D_SIZES_UNIFORM
-                                                       : R3D_SIZES_SHADED;
-            reached += count_triangle(v, mode, c->double_sided, &screen, counts) ? 1 : 0;
+            reached += count_triangle(v, colour_mode(mesh, tri), c->double_sided, &screen, counts) ? 1 : 0;
         }
         if (set_up != NULL) {
             set_up[i] = (uint16_t)reached;
