@@ -14,6 +14,60 @@ host = "Linux x86_64"
 seeded = true
 
 [[bake]]
+output = "bistro.street.bundle"
+source = "launcher/demo/bistro/bistro.scene.toml"
+key = "72f20701726c20efca2def6d3c6927f17110e96d9c3c80b718bcfb662974ea46"
+sha256 = "388b8e989f9b925ce6de1f9c0558267b6214d315a306ea4220704a636d10977f"
+size = 749995
+run = 43062585156
+host = "Linux x86_64"
+
+[[bake]]
+output = "bistro.street_fitted.start.bundle"
+source = "launcher/demo/bistro/bistro.scene.toml"
+key = "d6a4ad4f40af5a742aea42c5e214496b0fff69df7dd52c12618a17102b93ece7"
+sha256 = "e9e09b7a4c784758be4e298dc05f062d30d0da90d6fe45108ff2326d9160905f"
+size = 313586
+run = 43062585156
+host = "Linux x86_64"
+
+[[bake]]
+output = "bistro.street_fitted_full.start.bundle"
+source = "launcher/demo/bistro/bistro.scene.toml"
+key = "d4b9d88e7adf11c19ea4a5c0a6945d0d18bc95007abde7b6057107cbf7c9c1d6"
+sha256 = "62a1f4c2df85940949ea206744eef07fa3b7c986152fd125193b076bc9201980"
+size = 672919
+run = 43062585156
+host = "Linux x86_64"
+
+[[bake]]
+output = "bistro.street_flat.bundle"
+source = "launcher/demo/bistro/bistro.scene.toml"
+key = "27a3b67faf2a7f478f441e16b1a11f1d414845c0a5b6fa937a09a6f25d36feaa"
+sha256 = "98b4f7a433a104465f805efa81740cc3d4bb56df09dd72996e542e5acf482937"
+size = 627488
+run = 43062585156
+host = "Linux x86_64"
+
+[[bake]]
+output = "bistro.street_flat_fitted.start.bundle"
+source = "launcher/demo/bistro/bistro.scene.toml"
+key = "a049adfc6751a9efe3e3168d9c4cd9e729ec8e2e8f33f39ed5c5558012976ed3"
+sha256 = "8d5235458c32c700bf7be4655716692164dd8285ee6c4f829e7853473edea28e"
+size = 532247
+run = 43062585156
+host = "Linux x86_64"
+
+[[bake]]
+output = "bistro.street_lite.bundle"
+source = "launcher/demo/bistro/bistro.scene.toml"
+key = "29bde2d76cec723ee66e7ae5325f6f32a55131120a3073fa04342d4053275a60"
+sha256 = "6901ce69c0d77446dc6e2d0dc71636f71607cbeb57b0f14f0443551d0c62b658"
+size = 377984
+run = 43062585156
+host = "Linux x86_64"
+
+[[bake]]
 output = "capybara.capybara.bundle"
 source = "launcher/demo/capybara/capybara.scene.toml"
 key = "49e184b161f3ccaaced373f72d874bcc3ac27083855113ae23d28f2598b6f426"
