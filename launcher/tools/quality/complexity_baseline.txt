@@ -168,7 +168,7 @@
 12	launcher/test/suites/suite_r3d_lit.c:704	assert_each_extreme_pixel_is_found
 12	launcher/test/suites/suite_r3d_lit.c:1905	test_the_nearest_depth_is_the_brightest_and_the_farthest_the_darkest
 12	launcher/tools/gen/draw_palette_gen.c:190	draw_palette_gen_build_dither16
-11	launcher/main/apps/render_lab/ui/render_lab_menu_screen.c:15	render_lab_menu_screen_draw
+11	launcher/main/lab/ui/lab_menu_screen.c:15	lab_menu_screen_draw
 11	launcher/main/apps/sand/material_palette.c:852	extended_colours
 11	launcher/main/apps/sand/sand.c:1113	compute_settled_bit
 11	launcher/main/apps/sand/sand_impulse.c:629	reacquire_liquid_by_material
@@ -976,7 +976,7 @@
 5	launcher/main/apps/input_lab/app_input_lab.c:190	track_touch
 5	launcher/main/apps/render_lab/tests/suite_sponza.c:74	check_the_tree_walk_keeps_exactly_what_a_flat_test_keeps
 5	launcher/main/apps/render_lab/tools/render_lab_render_host.c:38	option_value
-5	launcher/main/apps/render_lab/ui/render_lab_hud_screen.c:55	render_lab_hud_screen_draw
+5	launcher/main/lab/ui/lab_hud_screen.c:55	lab_hud_screen_draw
 5	launcher/main/apps/sand/app_sand.c:1057	mark_row_sends
 5	launcher/main/apps/sand/palette.c:99	palette_label_origin
 5	launcher/main/apps/sand/sand.c:1574	drive_chunk_pass_lanes
@@ -1458,7 +1458,7 @@
 3	launcher/main/apps/render_lab/tests/suite_sponza_perf.c:195	report_frame_cost
 3	launcher/main/apps/render_lab/tools/render_lab_render_host.c:88	apply_flags
 3	launcher/main/apps/render_lab/tools/render_lab_render_host.c:76	view_from_name
-3	launcher/main/apps/render_lab/ui/render_lab_hud_screen.c:34	draw_scene_title
+3	launcher/main/lab/ui/lab_hud_screen.c:34	draw_scene_title
 3	launcher/main/apps/sand/app_sand.c:1179	draw_emitter_markers
 3	launcher/main/apps/sand/app_sand.c:892	draw_one_row
 3	launcher/main/apps/sand/app_sand.c:1537	draw_options

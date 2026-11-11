@@ -4,34 +4,36 @@ root test_sponza_draw_stage_breakdown test
 root test_raster_stage_split_by_size test
 root test_the_flythrough_sees_mostly_building test
 root test_dynamic_resolution_policies_along_the_path test
-root render_lab_frame frame
+root app_render_lab.c:render_lab_frame frame
 
-indirect render_lab_frame : scene_baked_frame
-indirect render_lab_frame : scene_baked_enter scene_capybara_enter scene_baked_exit scene_capybara_exit
-indirect render_lab_enter : scene_baked_enter scene_capybara_enter
-indirect render_lab_exit : scene_baked_exit scene_capybara_exit
-indirect render_lab_frame : scene_baked_status
-indirect render_lab_frame : scene_capybara_frame capybara_status
-indirect render_lab_update : scene_capybara_steer
-indirect render_lab_console : scene_capybara_console
-indirect render_lab_path_duration_ms : scene_baked_path capybara_path
-indirect render_lab_seek_path : scene_baked_path capybara_path
-indirect render_lab_menu_screen_draw : scene_capybara_controls
+indirect lab_frame : scene_baked_frame
+indirect lab_frame : scene_baked_enter scene_capybara_enter scene_baked_exit scene_capybara_exit
+indirect lab_frame : render_lab_dynres_apply app_render_lab.c:frame_begin app_render_lab.c:leave_scene
+indirect lab_enter : scene_baked_enter scene_capybara_enter render_lab_dynres_apply
+indirect lab_exit : scene_baked_exit scene_capybara_exit app_render_lab.c:leave_scene
+indirect lab.c:enter_scene : scene_baked_enter scene_capybara_enter render_lab_dynres_apply
+indirect lab_frame : scene_baked_status
+indirect lab_frame : scene_capybara_frame capybara_status
+indirect lab_update : scene_capybara_steer render_lab_fly_frame
+indirect lab_console : scene_capybara_console render_lab_fly_console
+indirect lab_path_duration_ms : scene_baked_path capybara_path
+indirect lab_seek_path : scene_baked_path capybara_path
+indirect lab_menu_screen_draw : scene_capybara_controls render_lab_settings_draw
 indirect ui_toggle_id : measure_text_height
-indirect render_lab_test_enter : render_lab_enter
-indirect render_lab_test_frame_dt : render_lab_update render_lab_frame
+indirect lab_test_enter : app_render_lab.c:render_lab_enter
+indirect lab_test_frame_dt : app_render_lab.c:render_lab_update app_render_lab.c:render_lab_frame render_lab_apply_raster_settings
 indirect check_camera_paths : check_the_flythrough_keeps_clear_of_every_triangle check_the_flythrough_sees_mostly_building
 
 root test_console_scene_requests_survive_expanded_frames test
-indirect test_console_scene_requests_survive_expanded_frames : render_lab_enter render_lab_console render_lab_exit
+indirect test_console_scene_requests_survive_expanded_frames : app_render_lab.c:render_lab_enter render_lab_console app_render_lab.c:render_lab_exit
 
 root test_scene_console_dispatch_and_repeated_exit_release_heap test
 root test_cleanup_finishes_present_without_tripping_guard test
 indirect test_scene_console_dispatch_and_repeated_exit_release_heap : render_lab_console
-indirect render_lab_test_exit : render_lab_exit
-indirect render_lab_clips_reply : console_reply_stdio suite_render_lab_clips.c:capture_reply
-indirect scene_capybara_console : console_reply_stdio suite_render_lab_clips.c:capture_reply
-indirect render_lab_clips.c:reply_line : console_reply_stdio suite_render_lab_clips.c:capture_reply
+indirect lab_test_exit : app_render_lab.c:render_lab_exit
+indirect lab_clips_reply : console_reply_stdio suite_lab_clips.c:capture_reply
+indirect scene_capybara_console : console_reply_stdio suite_lab_clips.c:capture_reply
+indirect lab_clips.c:reply_line : console_reply_stdio suite_lab_clips.c:capture_reply
 
 root test_boot_menu_draws_controls_only_for_animated_scene test
 indirect render_context_draw : app_arena_take

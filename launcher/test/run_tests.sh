@@ -216,6 +216,12 @@ for suite_src in "$TEST_DIR"/suites/suite_*.c; do
 $suite_src"
 done
 
+# The lab shell every lab app hosts its scenes behind (main/lab/).
+for f in $(find "$MAIN_DIR/lab" -name '*.c' | sort); do
+    SOURCES="$SOURCES
+$f"
+done
+
 # App-owned sources, discovered rather than listed, so adding or deleting an
 # app needs no change here.
 #
