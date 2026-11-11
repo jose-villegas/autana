@@ -199,7 +199,7 @@ for every scene and stage, plus frame. Each row passes when the 95th percentile
 of `abs(predicted - measured) / abs(measured)` is at most 10%.
 
 With two stress arms, each scene pose's predicted delta is `B(x_A) - A(x_A)`.
-Measured deltas pair scene arms by row and path time. The delta tolerance is
+Measured deltas pair scene arms by row and path time; each arm's own peak poses drop. The delta tolerance is
 `max(10% * abs(measured delta), same-build noise)` per pose.
 
 `--noise-a` and `--noise-b` supply a same-build replay pair. Each stage's noise
@@ -222,7 +222,7 @@ python launcher/main/apps/render_lab/tools/stress_predict.py \
 
 `--scene KEY ...` selects scene rows; `--quarter` selects the stress captures'
 quarter and `--scene-quarter` the scenes', `--quarter`'s when omitted.
-Delta, noise and layout pairs require identical pose keys. A nonzero exit
+Delta, noise and layout pairs use the poses both captures replayed, by row and path time. A nonzero exit
 means a scoring row failed; missing fields or unmatched poses are errors.
 
 A scene that violates a dropped term's training relation fails with that term

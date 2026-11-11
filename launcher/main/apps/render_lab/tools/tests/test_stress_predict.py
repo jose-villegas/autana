@@ -64,8 +64,10 @@ class StressPredictTest(unittest.TestCase):
         rows = predict.layout_rows(a, a, {stage: 0.01 for stage in (*predict.STAGES, "frame")})
         self.assertTrue(all(row["seen"] == "not seen" for row in rows))
 
-    def test_pair_requires_identical_pose_keys(self):
-        with self.assertRaisesRegex(ValueError, "pose keys"):
+    def test_pair_keeps_shared_poses_and_rejects_none_shared(self):
+        left, right = predict.paired([pose(1), pose(2, t=1)], [pose(3), pose(4, t=2)])
+        self.assertEqual([(p["t_ms"], p["counts"]["x"]) for p in left + right], [(0, 1), (0, 3)])
+        with self.assertRaisesRegex(ValueError, "share no pose"):
             predict.paired([pose(1)], [pose(1, t=1)])
 
     def test_cli_scores_each_scene_stage_frame_delta_and_layout(self):

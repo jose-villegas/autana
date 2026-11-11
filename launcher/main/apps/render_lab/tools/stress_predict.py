@@ -93,14 +93,17 @@ def with_frame(values):
 
 
 def paired(a, b):
+    """The poses both captures replayed, by (scene, path time): a frame profile's
+    peak poses are each run's own, its path poses shared."""
     def keyed(poses):
         return {(p["row"], p["t_ms"]): p for p in poses}
     left, right = keyed(a), keyed(b)
     if len(left) != len(a) or len(right) != len(b):
         raise ValueError("paired captures require unique pose keys; supply one capture per arm")
-    if left.keys() != right.keys():
-        raise ValueError("capture pose keys differ (scene, path time)")
-    return [left[key] for key in sorted(left)], [right[key] for key in sorted(left)]
+    shared = sorted(left.keys() & right.keys())
+    if not shared:
+        raise ValueError("captures share no pose (scene, path time)")
+    return [left[key] for key in shared], [right[key] for key in shared]
 
 
 def noise_floor(a, b):
