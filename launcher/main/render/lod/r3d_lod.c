@@ -135,7 +135,8 @@ none_can_coarsen(const r3d_lit_mesh_t* mesh, const lod_view_t* v, float near_z, 
  * fine under a coarse parent. The ordering r3d_lit_mesh.h checks makes this
  * a pass that changes nothing, short of float rounding far off; then the cut
  * still never draws a group both coarse and fine. Only coarse clusters have
- * a group of their own, so levels laid out apart start at the first. */
+ * a group of their own; with levels laid out apart (lod_finest_root set) the
+ * finest come first, so the pass starts at lod_coarse_first. */
 static void
 close_coarse(const r3d_lit_mesh_t* mesh, uint32_t* coarse) {
     bool changed = true;

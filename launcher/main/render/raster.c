@@ -645,8 +645,9 @@ level_pick(const level_pick_t* pick, int index, const r3d_instance_t* instance, 
     return false;
 }
 
-/* A lap of the cull inside the bracket that times it: the draw's cull
- * (r3d.cull) is fitted, a census (r3d.census) is not. */
+/* A lap of the cull's `phase`, named under the bracket timing it:
+ * r3d.cull when the cull feeds a draw (its lens fitted to the size drawn),
+ * r3d.census when it only prices the frame (unfitted). */
 #define CULL_LAP(fitted, phase)                                                                                        \
     do {                                                                                                               \
         if (fitted) {                                                                                                  \
