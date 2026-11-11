@@ -20,7 +20,7 @@ def line(name, *values):
     return "I (1) water_perf: water_perf: " + (read_define(HEADER, name).replace("%ll", "%").replace("%l", "%") % values)
 
 
-def capture(configs, update_us, scale=1):
+def capture(configs, update_us, scale=1, tail=""):
     lines = ["BUILD_ID=0123456789ab-diag"]
     for config, remeshed in configs:
         for phase in (water_tables.BEFORE, water_tables.RUNNING, water_tables.AFTER):
@@ -31,7 +31,7 @@ def capture(configs, update_us, scale=1):
             lines.append(line("WATER_PERF_STAGE", config, phase, "pressure", 60000 * scale))
             lines.append(line("WATER_PERF_COST", config, phase,
                               "water.update 190.00/195.0  water.nets 12.00/13.0  r3d.draw 6.20/7.1  ui.paint 0.40/0.5 "
-                              "| total 208.60"))
+                              "| total 208.60" + tail))
     return lines
 
 
@@ -50,6 +50,11 @@ class WaterTables(unittest.TestCase):
             self.assertEqual(parse_report(table), {
                 f"water {phase} {part}": value for phase in PHASES
                 for part, value in (("frame", 400000), ("update", 200002), ("draw", 9000))})
+
+    def test_a_window_that_dropped_brackets_fails(self):
+        lines = capture((("base", 0),), 1000, tail=" +3 dropped")
+        with self.assertRaisesRegex(ValueError, "^base rest: its frame-cost window dropped 3 brackets"):
+            water_tables.parse(lines)
 
     def test_perf_table_without_base_fails(self):
         with tempfile.TemporaryDirectory() as directory:

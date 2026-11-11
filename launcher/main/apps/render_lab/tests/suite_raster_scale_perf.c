@@ -146,7 +146,7 @@ measure_size(raster_t* raster, gfx_color_t* destination, resolution_step_t size,
     size = raster_present_size(size, lab_view_present(&render_lab_view_tunables));
     raster->width = size.width;
     raster->height = size.height;
-    (void)frame_cost_take_report(1, report, FRAME_COST_REPORT_MAX); /* forget whatever ran before */
+    frame_cost_take_clear(); /* forget whatever ran before */
     const uint32_t period = animator_clip_duration_ms(camera_entity, 0);
     int poses = 0;
     int64_t triangles = 0;
