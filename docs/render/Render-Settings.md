@@ -44,6 +44,11 @@ that field's table in the asset.
 | `lod.coverage_permille` | `250` | basic | the thousandths of the picture's height a coarse group may span; smaller pops less |
 | `lod.pick_every` | `4` | advanced | the frames the pick is spread over, a scene's first frame picking all; more saves, switches later |
 | `lod.triangle_budget` | `0` | basic | the triangles a frame aims to draw, the tolerance rising past tolerance_px to keep within; 0 never rises |
+| `anim.mid_px` | `48.0` | basic | radius below which poses run at mid_every |
+| `anim.far_px` | `20.0` | basic | radius below which poses run at far_every |
+| `anim.mid_every` | `2` | basic | frames between mid-sized poses; 1 poses every frame |
+| `anim.far_every` | `4` | basic | frames between far poses; 1 poses every frame |
+| `anim.hysteresis_px` | `4.0` | advanced | pixels past a tier boundary before switching |
 <!-- /generated: render-settings -->
 
 ## cull
