@@ -22,6 +22,16 @@ run = 43016329421
 host = "Linux x86_64"
 
 [[bake]]
+output = "bistro.street_fitted.fit.bundle"
+source = "launcher/demo/bistro/bistro.scene.toml"
+key = "8fec67bbd98ab529e747bc12a6f64d95c1250ef4e009cdd9695de5e370d351e6"
+sha256 = "e3065e358091a9debc48cae937c765eda8e474ae0f00aba57f2ec3230a1dcad2"
+size = 214210
+run = 43073842112
+host = "Linux x86_64"
+gpu = "NVIDIA GeForce RTX 2060"
+
+[[bake]]
 output = "bistro.street_fitted.reference.tar.xz"
 source = "launcher/demo/bistro/bistro.scene.toml"
 key = "2c4702010c0a3f26edddafffdd2fdd9e00a98dd34f784e8d6543e95d8c9b178b"
@@ -40,6 +50,16 @@ run = 43016329421
 host = "Linux x86_64"
 
 [[bake]]
+output = "bistro.street_fitted_full.fit.bundle"
+source = "launcher/demo/bistro/bistro.scene.toml"
+key = "f63547f77e556d7b4badce79b0a82623129326e688e3ae3a7008ee22a1c39e8a"
+sha256 = "78670f7cfde251a31edb3f0cca29d9989dea994b9d201888dfaae9295d42502f"
+size = 424295
+run = 43073842112
+host = "Linux x86_64"
+gpu = "NVIDIA GeForce RTX 2060"
+
+[[bake]]
 output = "bistro.street_fitted_full.start.bundle"
 source = "launcher/demo/bistro/bistro.scene.toml"
 key = "7ba220d3f6b71dd93c35ecf1faa6f8d2c0b3ff68240e4e2bf6cf28aa584731e9"
@@ -56,6 +76,16 @@ sha256 = "b8d848067e79097d7b3fe9a420aafea7259ea3333a3dd9606bdf5bb143d6705e"
 size = 616528
 run = 43016329421
 host = "Linux x86_64"
+
+[[bake]]
+output = "bistro.street_flat_fitted.fit.bundle"
+source = "launcher/demo/bistro/bistro.scene.toml"
+key = "4d81e8f9b14f264a03e7be381623ab12d97b5ddc9a232cc2ae78b0af8755c797"
+sha256 = "b7ed6f3f0bd398b1d6ef0da1a4384c54f21a7d5ca02d6e21b57458fee4104b52"
+size = 328887
+run = 43073842112
+host = "Linux x86_64"
+gpu = "NVIDIA GeForce RTX 2060"
 
 [[bake]]
 output = "bistro.street_flat_fitted.start.bundle"
@@ -118,6 +148,15 @@ key = "9987c0406563233dd7f260d66efa519aad64d0781db0b38076f1324ba3cdc228"
 sha256 = "86408d419c292b42ca5c05f26cb546b0cac42bc3925ba7f447b0253bf8d44eeb"
 size = 503028
 run = 43016329421
+host = "Linux x86_64"
+
+[[bake]]
+output = "sponza.atrium_fitted.reference.tar.xz"
+source = "launcher/demo/sponza/sponza.scene.toml"
+key = "59f3e5eb91b720acc840b3b93fa6cd8900bf87e29271065016afc5e2c11ad0e5"
+sha256 = "47b59e1b59b22efa430075b9a6b5ca456273ba7c8b0db35e5e4e10477cf4720e"
+size = 16993664
+run = 43073836892
 host = "Linux x86_64"
 
 [[bake]]
