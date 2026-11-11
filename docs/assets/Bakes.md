@@ -17,9 +17,15 @@ signed in). **A build with a cold cache needs the network once**; offline, it
 fails naming every mesh it cannot get. Files land in the cache by rename, so
 builds running side by side never read half a file.
 
-A bake's code is everything its entry scripts import. A fit's reference set, the slowest bake, counts only the
-functions, classes and constants its entry functions reach (`bake/code_units.py`), so an edit to a helper it
-never runs keeps its renders.
+A mesh, a fit's reference set, its fit and its levels count only the functions, classes and constants their
+entry functions reach (`bake/code_units.py`), so an edit to a helper a stage never runs keeps its bake. The
+other stages count everything their entry scripts import.
+
+| Change to the tools | Re-keys |
+|---|---|
+| A helper the stage never reaches | nothing |
+| A reached line edited, renamed or moved | that stage, and the fit when it is the reference set (the fit names its key) |
+| A start's or fit's code, with the same bytes out | only that bake: the fit and levels keys name the bytes they read |
 
 A pull request that changes what a mesh is made from gets its bake from the
 Bakes workflow: its CPU job bakes the meshes the lock lacks and uploads them,
