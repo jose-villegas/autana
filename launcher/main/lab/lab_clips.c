@@ -1,4 +1,5 @@
 #include "lab/lab_clips.h"
+#include "lab/lab.h"
 
 #include <limits.h>
 #include <stdarg.h>
@@ -16,8 +17,8 @@ static int lab_clips_find(entity_t scene, entity_t subject, const char* name);
 static bool lab_clips_play(lab_clips_t* choice, int clip, int blend_ms);
 
 bool
-lab_clips_init(lab_clips_t* choice, entity_t scene, entity_t subject, const char* default_clip) {
-    *choice = (lab_clips_t){.scene = scene, .subject = subject, .blend_ms = LAB_CLIPS_BLEND_DEFAULT_MS};
+lab_clips_init(lab_clips_t* choice, const char* tag, entity_t scene, entity_t subject, const char* default_clip) {
+    *choice = (lab_clips_t){.tag = tag, .scene = scene, .subject = subject, .blend_ms = LAB_CLIPS_BLEND_DEFAULT_MS};
     const int count = handle_is_none(scene) ? 0 : animator_clip_count(subject);
     if (count == 0) {
         return true;
@@ -83,7 +84,7 @@ parse_blend(const char* text, int* blend_ms) {
 /* One formatted reply line, long enough for a clip name and its longest field. */
 static void
 reply_line(console_reply_fn reply, const char* format, ...) {
-    char line[ASSET_NAME_MAX + sizeof("RENDER clip= blend_ms=") + LAB_CLIPS_BLEND_TEXT_SIZE];
+    char line[LAB_WORD_MAX + ASSET_NAME_MAX + sizeof("_ERR unknown clip ''") + LAB_CLIPS_BLEND_TEXT_SIZE];
     va_list args;
     va_start(args, format);
     if (vsnprintf(line, sizeof line, format, args) < 0) {
@@ -99,27 +100,27 @@ play_request(lab_clips_t* choice, const char* args, console_reply_fn reply) {
     const size_t length = space == NULL ? strlen(args) : (size_t)(space - args);
     char name[ASSET_NAME_MAX];
     if (length == 0 || length >= sizeof name) {
-        reply("RENDER_ERR bad clip name");
+        reply_line(reply, "%s_ERR bad clip name", choice->tag);
         return;
     }
     memcpy(name, args, length);
     name[length] = '\0';
     int blend_ms = choice->blend_ms;
     if (space != NULL && !parse_blend(space + 1, &blend_ms)) {
-        reply("RENDER_ERR bad blend");
+        reply_line(reply, "%s_ERR bad blend", choice->tag);
         return;
     }
     const int clip = lab_clips_find(choice->scene, choice->subject, name);
     if (!lab_clips_play(choice, clip, blend_ms)) {
         if (clip < 0) {
-            reply_line(reply, "RENDER_ERR unknown clip '%s'", name);
+            reply_line(reply, "%s_ERR unknown clip '%s'", choice->tag, name);
         } else {
-            reply("RENDER_ERR bad blend");
+            reply_line(reply, "%s_ERR bad blend", choice->tag);
         }
         return;
     }
-    reply_line(reply, "RENDER clip=%s blend_ms=%d", name, blend_ms);
-    reply("RENDER_END");
+    reply_line(reply, "%s clip=%s blend_ms=%d", choice->tag, name, blend_ms);
+    reply_line(reply, "%s_END", choice->tag);
 }
 
 bool
@@ -132,12 +133,13 @@ lab_clips_reply(lab_clips_t* choice, const char* args, console_reply_fn reply) {
     entity_t scene = choice->scene;
     const entity_t subject = choice->subject;
     if (handle_is_none(scene) || animator_clip_count(subject) == 0) {
-        reply("RENDER_ERR no animated subject");
+        reply_line(reply, "%s_ERR no animated subject", choice->tag);
     } else if (listing) {
         for (int i = 0; i < animator_clip_count(subject); i++) {
-            reply_line(reply, "RENDER clip=%s current=%d", animator_clip_name(subject, i), i == choice->selected);
+            reply_line(reply, "%s clip=%s current=%d", choice->tag, animator_clip_name(subject, i),
+                       i == choice->selected);
         }
-        reply("RENDER_END");
+        reply_line(reply, "%s_END", choice->tag);
     } else {
         play_request(choice, rest, reply);
     }

@@ -81,7 +81,7 @@ fixture(void) {
     active = memory_alloc(sizeof *active, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(active);
     *active = (fixture_t){0};
-    active->saved_layout = (int32_t)render_lab_layout();
+    active->saved_layout = (int32_t)lab_view_layout(&render_lab_view_tunables);
     /* The shell's overlay adds what only its own pass draws in the other
      * layouts (the build mark); the app's UI alone keeps the look check fair. */
     active->saved_overlay = gfx_frame_overlay();
@@ -165,7 +165,7 @@ static void
 measure(fixture_t* f, const char* scene, int layout, const lab_perf_quarter_t* quarter) {
     set_layout(layout);
     enter_app(f, scene, quarter->quarter);
-    TEST_ASSERT_EQUAL_INT(layout, render_lab_layout());
+    TEST_ASSERT_EQUAL_INT(layout, lab_view_layout(&render_lab_view_tunables));
     for (int i = -LAYOUT_WARMUP; i < LAYOUT_SAMPLES; i++) {
         const pass_t took = pass(f);
         if (i < 0) {

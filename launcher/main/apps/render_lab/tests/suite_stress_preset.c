@@ -14,10 +14,10 @@
 #include "testkit/suite.h"
 #include "unity.h"
 
-#include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/stress/stress_preset.h"
 #include "gfx/gfx.h"
 #include "image/pixel/rgb565.h"
+#include "lab/lab_view.h"
 #include "math/scalar/math_const.h"
 #include "render/dynamic/r3d_dynamic_mesh.h"
 #include "render/r3d_span.h"
@@ -29,7 +29,7 @@ static const stress_framing_t framing = {10.0F, 0.5F};
 static const stress_framing_t other_framing = {3.0F, 1.25F};
 
 /* The picture's short side at render_lab's default render scale. */
-#define DEFAULT_SHORT_PX (GFX_WIDTH * RENDER_LAB_SCALE_UNIT / RENDER_LAB_SCALE_DEFAULT)
+#define DEFAULT_SHORT_PX (GFX_WIDTH * LAB_SCALE_UNIT / LAB_SCALE_DEFAULT)
 
 /* A per-frame wave's quarter period in: far enough along that every vertex moves. */
 #define WAVE_LATER_MS    500

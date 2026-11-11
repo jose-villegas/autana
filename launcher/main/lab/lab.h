@@ -4,8 +4,13 @@
  * between them from the menu or the console, gives each the app arena from
  * its entry on, and draws the scene title, fps and status over it.
  *
- * The app owns one lab_t, hands it its scenes and hooks, and forwards its
- * app_t callbacks to lab_enter(), lab_update(), lab_frame() and lab_exit().
+ * The app owns one lab_t, hands it its scenes and any hooks, registers it
+ * once (LAB_REGISTER()), and forwards its app_t callbacks to lab_enter(),
+ * lab_update(), lab_frame() and lab_exit(). Every hook is optional, so the
+ * least a lab needs is its name, its console word and its scenes:
+ *
+ *     lab_t my_lab = {.name = "my_lab", .console_word = "my", .scenes = scenes, .scene_count = 2};
+ *     LAB_REGISTER(my_lab);
  */
 #pragma once
 
@@ -16,14 +21,10 @@
 #include "app/app.h"
 #include "input/input.h"
 #include "lab/lab_scene.h"
+#include "lab/lab_view.h"
 
-/* The framebuffer layout a lab asks for when it enters a scene. */
-typedef enum {
-    LAB_LAYOUT_FULL,
-    LAB_LAYOUT_DOUBLE,
-    LAB_LAYOUT_DOUBLE_CLEAR, /* double, the sent frame filled by core 1 */
-    LAB_LAYOUT_COUNT,
-} lab_layout_t;
+/* The longest console word, its NUL included. */
+#define LAB_WORD_MAX 16
 
 /* What the app adds around the lab's own steps; every hook is optional. */
 typedef struct {
@@ -38,8 +39,6 @@ typedef struct {
     /* The words after the console word that the lab's own commands did not
      * take, before the scene's console; false passes them on. */
     bool (*console)(const char* args);
-    /* The layout a scene is entered with; NULL is LAB_LAYOUT_FULL. */
-    lab_layout_t (*layout)(void);
     /* Suites only: just before a test frame renders, so a setting a test
      * changed reaches that frame (lab_test.h). */
     void (*test_render)(void);
@@ -58,14 +57,15 @@ typedef struct {
     uint32_t fps_frames; /* frames in the fps window so far */
     uint32_t fps_window_ms;
     float fps;
+    char reply_tag[LAB_WORD_MAX]; /* the console word in capitals: "RENDER" */
 } lab_state_t;
 
 typedef struct {
-    const app_t* app;
+    /* Its tunables' prefix: "my_lab" owns my_lab.scale (lab_view.h). */
+    const char* name;
     /* The app's console word ("render"), named in lab_console()'s usage
-     * replies, and their prefix ("RENDER" answers "RENDER ..." lines). */
+     * replies; in capitals it prefixes them ("RENDER ..." lines). */
     const char* console_word;
-    const char* reply_tag;
     /* Index 0 is the scene a start with no key shows; a family's scenes keep
      * this order in its dropdown. */
     const lab_scene_t* const* scenes;
@@ -79,8 +79,23 @@ typedef struct {
     /* Draws the HUD. A host render pinned to the scene alone turns it off:
      * the fps line is a float, formatted alike on no two compilers. */
     bool show_hud;
+    /* The app the suites' fixtures enter (lab_test.h); NULL for a lab no suite enters. */
+    const app_t* app;
+    /* The view tunables. NULL takes the lab's own (LAB_REGISTER()); an app
+     * whose portable code reads them points this at a lab_view_t it
+     * registers itself (lab_view_register()). */
+    lab_view_t* view;
     lab_state_t state;
 } lab_t;
+
+/* Sets the lab's reply prefix and, when it names no view, gives it own_view
+ * and registers that, once, before the console runs. */
+void lab_register(lab_t* lab, lab_view_t* own_view);
+
+/* Registers a static lab_t before app_main(), like APP_REGISTER. */
+#define LAB_REGISTER(symbol)                                                                                           \
+    static lab_view_t symbol##_lab_view;                                                                               \
+    __attribute__((constructor)) static void symbol##_lab_register(void) { lab_register(&symbol, &symbol##_lab_view); }
 
 void lab_enter(lab_t* lab);
 void lab_update(lab_t* lab, uint32_t dt_ms, const input_t* input);
@@ -88,6 +103,13 @@ void lab_frame(lab_t* lab, uint32_t dt_ms, const input_t* input);
 void lab_exit(lab_t* lab);
 
 const lab_scene_t* lab_current(const lab_t* lab);
+
+/* Whether the BOOT menu shows in place of the scene. */
+bool lab_menu_open(const lab_t* lab);
+
+/* The console word in capitals, the prefix of the lab's replies and its
+ * scenes' ("RENDER"). */
+const char* lab_reply_tag(const lab_t* lab);
 
 /* "scenes" lists each scene's key and name and which one shows; "scene <key>"
  * switches to that exact key at the next frame. "pose <ms>" holds the showing

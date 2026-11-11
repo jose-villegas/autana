@@ -1,3 +1,4 @@
+#include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/render_lab_dynres.h"
 #include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/ui/render_lab_settings.h"
@@ -34,14 +35,14 @@ test_render_size_and_percent_follow_and_clamp(void) {
     resolution_step_t size = render_lab_render_size(GFX_WIDTH, GFX_HEIGHT);
     TEST_ASSERT_EQUAL_INT(184, size.width);
     TEST_ASSERT_EQUAL_INT(224, size.height);
-    TEST_ASSERT_EQUAL_INT(CAMERA_PRESENT_NEAREST, render_lab_present());
+    TEST_ASSERT_EQUAL_INT(CAMERA_PRESENT_NEAREST, lab_view_present(&render_lab_view_tunables));
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render_lab, present), 1));
     size = render_lab_render_size(GFX_WIDTH, GFX_HEIGHT);
     TEST_ASSERT_EQUAL_INT(184, size.width);
     TEST_ASSERT_EQUAL_INT(112, size.height);
-    TEST_ASSERT_EQUAL_INT(CAMERA_PRESENT_SCANLINE, render_lab_present());
+    TEST_ASSERT_EQUAL_INT(CAMERA_PRESENT_SCANLINE, lab_view_present(&render_lab_view_tunables));
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render_lab, present), 2));
-    TEST_ASSERT_EQUAL_INT(CAMERA_PRESENT_DOUBLE, render_lab_present());
+    TEST_ASSERT_EQUAL_INT(CAMERA_PRESENT_DOUBLE, lab_view_present(&render_lab_view_tunables));
     TEST_ASSERT_FALSE(tune_set(tune_shared(), TUNE_NAME(render_lab, present), 3));
     fixture();
 }

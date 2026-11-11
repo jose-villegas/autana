@@ -123,7 +123,7 @@ scene_capybara_enter(const lab_scene_t* self) {
     if (!frame_subject()) {
         return;
     }
-    if (!lab_clips_init(&choice, capybara, subject_entity, CAPYBARA_DEFAULT_CLIP)) {
+    if (!lab_clips_init(&choice, lab_reply_tag(&render_lab), capybara, subject_entity, CAPYBARA_DEFAULT_CLIP)) {
         ESP_LOGW(TAG, "clip picker allocation failed");
     }
     (void)camera_activate(entity_find(capybara, name_hash(CAPYBARA_CAMERA)));
@@ -148,7 +148,7 @@ scene_capybara_steer(uint32_t dt_ms, const input_t* input) {
     if (handle_is_none(capybara) || failure[0] != '\0') {
         return;
     }
-    lab_orbit_steer(&orbit, dt_ms, input, shell_home_edge(), render_lab_orbit_ms());
+    lab_orbit_steer(&orbit, dt_ms, input, shell_home_edge(), lab_view_orbit_ms(&render_lab_view_tunables));
 }
 
 /* Every frame already redraws the whole screen. */

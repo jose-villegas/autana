@@ -535,8 +535,8 @@ INCLUDE_RULE_SUFFIXES = SOURCE_EXTENSIONS
 
 SYSTEM_ROWS = dict(LAYER_BANDS)["system"]
 APPS_ROW = SYSTEM_ROWS[0].split()
-APP_BASE_ROWS = 2  # the lab shell (lab/) and the app contract (app/)
-SYSTEM_BAND_REFUSED = {layer for row in SYSTEM_ROWS[1:-APP_BASE_ROWS] for layer in row.split()}
+APP_BASE = {"lab", "app"}  # the lab shell and the app contract
+SYSTEM_BAND_REFUSED = {layer for row in SYSTEM_ROWS[1:] for layer in row.split()} - APP_BASE
 
 
 @text_rule("SYSTEM-BAND")

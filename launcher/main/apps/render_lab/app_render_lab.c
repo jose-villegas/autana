@@ -11,6 +11,9 @@
 #include "scene_baked.h"
 #include "stress/scene_stress.h"
 
+/* The console word: "render scenes", "render fly" ... */
+#define RENDER_LAB_WORD              "render"
+
 /* Each stress preset, in the order its table lists them. */
 #define STRESS_SCENE_ENTRY(id_, ...) &scene_stress[STRESS_##id_],
 
@@ -45,9 +48,10 @@ frame_begin(const lab_scene_t* scene) {
 }
 
 lab_t render_lab = {
+    .name = RENDER_LAB_NAME,
     .app = &app_render_lab,
-    .console_word = "render",
-    .reply_tag = "RENDER",
+    .console_word = RENDER_LAB_WORD,
+    .view = &render_lab_view_tunables,
     .scenes = scenes,
     .scene_count = SCENE_COUNT,
     .hooks =
@@ -57,12 +61,13 @@ lab_t render_lab = {
             .frame_begin = frame_begin,
             .update_end = render_lab_fly_frame,
             .console = render_lab_fly_console,
-            .layout = render_lab_layout,
             .test_render = render_lab_apply_raster_settings,
             .settings = render_lab_settings_draw,
         },
     .show_hud = true,
 };
+
+LAB_REGISTER(render_lab);
 
 static void
 render_lab_enter(void) {
@@ -92,14 +97,14 @@ render_lab_console(const char* args) {
     return lab_console(&render_lab, args);
 }
 
-APP_CONSOLE("render", render_lab_console);
+APP_CONSOLE(RENDER_LAB_WORD, render_lab_console);
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
 /* What a screenshot needs to say two captures measured the same thing. */
 static void
 render_lab_diagnostic_json(char* out, size_t len) {
     if (snprintf(out, len, "{\"scene\":\"%s\",\"menu\":%s,\"scale\":%d}", lab_current(&render_lab)->key,
-                 render_lab.state.menu_open ? "true" : "false", render_lab_scale())
+                 lab_menu_open(&render_lab) ? "true" : "false", lab_view_scale(&render_lab_view_tunables))
         < 0) {
         out[0] = '\0';
     }

@@ -24,6 +24,7 @@
 
 #include "esp_log.h"
 
+#include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/render_lab_dynres.h"
 #include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/sponza_content.h"
@@ -133,7 +134,7 @@ timed_pose(raster_t* raster, gfx_color_t* destination, int32_t* frame_us) {
         sponza_suite_view(lens, scene, camera_entity, (viewport_t){GFX_WIDTH, GFX_HEIGHT, perf_quarter->quarter});
     const int64_t start = timing_now_us();
     const raster_stats_t stats = raster_draw(raster, &view);
-    raster->present = render_lab_present();
+    raster->present = lab_view_present(&render_lab_view_tunables);
     const resolution_step_t composed = raster_compose_size(raster);
     raster_upscale(raster, destination, composed.width, composed.height);
     *frame_us = (int32_t)(timing_now_us() - start);
@@ -142,7 +143,7 @@ timed_pose(raster_t* raster, gfx_color_t* destination, int32_t* frame_us) {
 
 static int64_t
 measure_size(raster_t* raster, gfx_color_t* destination, resolution_step_t size, int32_t* frame_us, char* report) {
-    size = raster_present_size(size, render_lab_present());
+    size = raster_present_size(size, lab_view_present(&render_lab_view_tunables));
     raster->width = size.width;
     raster->height = size.height;
     (void)frame_cost_take_report(1, report, FRAME_COST_REPORT_MAX); /* forget whatever ran before */
@@ -252,7 +253,7 @@ count_along_path(raster_t* raster, gfx_color_t* destination, int bracket, const 
         const render_view_t view =
             sponza_suite_view(lens, scene, camera_entity, raster_viewport(raster, perf_quarter->quarter));
         (void)raster_draw(raster, &view);
-        raster->present = render_lab_present();
+        raster->present = lab_view_present(&render_lab_view_tunables);
         const resolution_step_t composed = raster_compose_size(raster);
         raster_upscale(raster, destination, composed.width, composed.height);
     }
@@ -278,8 +279,8 @@ test_raster_counters(void) {
                        .height = size.height,
                        .destination_width = GFX_WIDTH,
                        .destination_height = GFX_HEIGHT};
-    ESP_LOGI(TAG, "raster=%dx%d present=%d" LAB_PERF_QUARTER_FORMAT, raster.width, raster.height, render_lab_present(),
-             perf_quarter->name);
+    ESP_LOGI(TAG, "raster=%dx%d present=%d" LAB_PERF_QUARTER_FORMAT, raster.width, raster.height,
+             lab_view_present(&render_lab_view_tunables), perf_quarter->name);
     raster.scratch = memory_alloc(raster_scratch_bytes(&raster), MEMORY_APP);
     gfx_color_t* destination = memory_alloc(GFX_FRAMEBUFFER_BYTES, MEMORY_APP);
     int32_t* frame_us = malloc(sizeof(*frame_us) * POSES_MAX);
@@ -329,7 +330,7 @@ calibrate(const resolution_config_t* config, resolution_model_t* model) {
     raster->instances = &instance;
     raster->instance_count = 1;
     raster->upscaled = true;
-    raster->present = render_lab_present();
+    raster->present = lab_view_present(&render_lab_view_tunables);
     raster->width = config->steps[0].width;
     raster->height = config->steps[0].height;
     raster->destination_width = GFX_WIDTH;
@@ -346,7 +347,8 @@ calibrate(const resolution_config_t* config, resolution_model_t* model) {
         int count = 0;
         for (int step = 0; step < config->step_count; step++) {
             raster->width = config->steps[step].width;
-            raster->height = raster_present_size(config->steps[step], render_lab_present()).height;
+            raster->height =
+                raster_present_size(config->steps[step], lab_view_present(&render_lab_view_tunables)).height;
             for (uint32_t t_ms = 0; t_ms < period; t_ms += POSE_EVERY_MS) {
                 (void)animator_seek(camera_entity, ANIMATOR_CURRENT, t_ms);
                 *view = sponza_suite_view(lens, scene, camera_entity,

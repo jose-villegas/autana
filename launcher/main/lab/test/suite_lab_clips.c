@@ -15,6 +15,9 @@
 #include "ui_probe.h"
 #include "unity.h"
 
+/* The reply prefix the suite gives the picker, as a lab gives its own. */
+#define TEST_TAG        "RENDER"
+
 #define TEST_BLEND_MS   300
 #define TEST_CLIP_COUNT 2
 
@@ -55,7 +58,7 @@ fixture(void) {
     suite_set_test_cleanup(release_fixture);
     static const anim_clip_t times[TEST_CLIP_COUNT] = {{0}, {0}};
     *f = (clip_fixture_t){.clips = {{.id = "idle"}, {.id = "gallop"}},
-                          .choice = {.blend_ms = LAB_CLIPS_BLEND_DEFAULT_MS},
+                          .choice = {.tag = TEST_TAG, .blend_ms = LAB_CLIPS_BLEND_DEFAULT_MS},
                           .arena_mark = app_arena_mark()};
     f->animator = (scene_animator_t){.storage = f->clips, .clips = f->clips, .root = ANIM_ROOT_SKELETON};
     anim_layer_init(&f->animator.layer, times, TEST_CLIP_COUNT, (anim_pose_t){&f->shown_pose, 1},
@@ -104,12 +107,12 @@ reject(clip_fixture_t* f, const char* args, const char* expected) {
 static void
 test_listing_marks_default_and_fallback_playback(void) {
     clip_fixture_t* f = fixture();
-    TEST_ASSERT_TRUE(lab_clips_init(&f->choice, f->scene, f->subject, "gallop"));
+    TEST_ASSERT_TRUE(lab_clips_init(&f->choice, TEST_TAG, f->scene, f->subject, "gallop"));
     TEST_ASSERT_EQUAL_INT(1, f->animator.layer.current.clip);
     request(f, "clips");
     TEST_ASSERT_EQUAL_STRING("RENDER clip=idle current=0\nRENDER clip=gallop current=1\nRENDER_END\n", f->reply);
     lab_clips_destroy(&f->choice);
-    TEST_ASSERT_TRUE(lab_clips_init(&f->choice, f->scene, f->subject, "missing"));
+    TEST_ASSERT_TRUE(lab_clips_init(&f->choice, TEST_TAG, f->scene, f->subject, "missing"));
     TEST_ASSERT_EQUAL_INT(LAB_CLIPS_BLEND_DEFAULT_MS, f->choice.blend_ms);
     TEST_ASSERT_EQUAL_INT(0, f->animator.layer.current.clip);
     request(f, "clips");
@@ -136,7 +139,7 @@ test_console_success_reports_applied_blend_and_end(void) {
 static void
 test_init_plays_without_blend_and_console_uses_default(void) {
     clip_fixture_t* f = fixture();
-    TEST_ASSERT_TRUE(lab_clips_init(&f->choice, f->scene, f->subject, "idle"));
+    TEST_ASSERT_TRUE(lab_clips_init(&f->choice, TEST_TAG, f->scene, f->subject, "idle"));
     TEST_ASSERT_EQUAL_UINT32(0, f->animator.layer.blend_ms);
     request(f, "clip gallop");
     TEST_ASSERT_EQUAL_UINT32(LAB_CLIPS_BLEND_DEFAULT_MS, f->animator.layer.blend_ms);
@@ -220,7 +223,7 @@ static void
 test_picker_init_takes_items_from_the_arena(void) {
     clip_fixture_t* f = fixture();
     const size_t psram_before = memory_free_bytes(MEMORY_PSRAM);
-    TEST_ASSERT_TRUE(lab_clips_init(&f->choice, f->scene, f->subject, "idle"));
+    TEST_ASSERT_TRUE(lab_clips_init(&f->choice, TEST_TAG, f->scene, f->subject, "idle"));
     TEST_ASSERT_EQUAL_INT(TEST_CLIP_COUNT, f->choice.count);
     TEST_ASSERT_NOT_NULL(f->choice.items);
     for (int i = 0; i < TEST_CLIP_COUNT; i++) {
@@ -240,7 +243,7 @@ test_picker_init_reports_allocation_failure(void) {
     clip_fixture_t* f = fixture();
     ui_probe_widgets_start();
     test_arena_fill();
-    TEST_ASSERT_FALSE(lab_clips_init(&f->choice, f->scene, f->subject, "gallop"));
+    TEST_ASSERT_FALSE(lab_clips_init(&f->choice, TEST_TAG, f->scene, f->subject, "gallop"));
     TEST_ASSERT_EQUAL_INT(1, f->animator.layer.current.clip);
     request(f, "clips");
     TEST_ASSERT_EQUAL_STRING("RENDER clip=idle current=0\nRENDER clip=gallop current=1\nRENDER_END\n", f->reply);
@@ -353,7 +356,7 @@ slider_drag(int blend_ms) {
 static void
 test_menu_dropdown_plays_with_selected_blend(void) {
     clip_fixture_t* f = fixture();
-    TEST_ASSERT_TRUE(lab_clips_init(&f->choice, f->scene, f->subject, "idle"));
+    TEST_ASSERT_TRUE(lab_clips_init(&f->choice, TEST_TAG, f->scene, f->subject, "idle"));
     const char* const* items = f->choice.items;
     ui_probe_widgets_start();
     const size_t free_before = memory_free_bytes(MEMORY_APP);
@@ -376,7 +379,7 @@ test_menu_dropdown_plays_with_selected_blend(void) {
 static void
 test_draw_accepts_blend_boundaries_for_next_pick(void) {
     clip_fixture_t* f = fixture();
-    TEST_ASSERT_TRUE(lab_clips_init(&f->choice, f->scene, f->subject, "idle"));
+    TEST_ASSERT_TRUE(lab_clips_init(&f->choice, TEST_TAG, f->scene, f->subject, "idle"));
     ui_init();
     ui_probe_widgets_start();
     menu_frame(NULL);

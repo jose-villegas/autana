@@ -25,6 +25,7 @@
 
 #include "esp_log.h"
 
+#include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/sponza_content.h"
 #include "apps/render_lab/tests/one_core_draw.h"
@@ -125,14 +126,14 @@ bench_open(const r3d_instance_t* instance) {
         .destination_width = GFX_WIDTH,
         .destination_height = GFX_HEIGHT,
     };
-    b->raster.present = render_lab_present();
+    b->raster.present = lab_view_present(&render_lab_view_tunables);
     b->scratch = memory_alloc(raster_scratch_bytes(&b->raster), MEMORY_APP);
     TEST_ASSERT_NOT_NULL(b->scratch);
     TEST_ASSERT_NOT_NULL(b->panel);
     b->raster.scratch = b->scratch;
     b->buffers = raster_carve(&b->raster);
     ESP_LOGI(TAG, "raster=%dx%d present=%d" LAB_PERF_QUARTER_FORMAT, b->raster.width, b->raster.height,
-             render_lab_present(), perf_quarter->name);
+             lab_view_present(&render_lab_view_tunables), perf_quarter->name);
     ESP_LOGI(TAG, "heap after setup: internal free %u largest %u, psram free %u largest %u" LAB_PERF_QUARTER_FORMAT,
              (unsigned)memory_free_bytes(MEMORY_INTERNAL), (unsigned)memory_largest_block(MEMORY_INTERNAL),
              (unsigned)memory_free_bytes(MEMORY_APP), (unsigned)memory_largest_block(MEMORY_APP), perf_quarter->name);
@@ -327,7 +328,7 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
              "pose_every_ms=%u raster=%dx%d present=%d" LAB_PERF_QUARTER_FORMAT,
              build_id(), (unsigned)crc32_update(0, pack->base, pack->size), object_name, size,
              (long)raster_settings(&b->raster).cull, (unsigned)period, (unsigned)SPONZA_PERF_POSE_EVERY_MS,
-             b->raster.width, b->raster.height, render_lab_present(), perf_quarter->name);
+             b->raster.width, b->raster.height, lab_view_present(&render_lab_view_tunables), perf_quarter->name);
     b->report = memory_alloc(FRAME_COST_REPORT_MAX, MEMORY_INTERNAL);
     char* report = b->report;
     TEST_ASSERT_NOT_NULL(report);

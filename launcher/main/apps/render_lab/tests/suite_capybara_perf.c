@@ -264,8 +264,8 @@ test_animation_and_frame_cost(void) {
     for (size_t q = 0; q < LAB_PERF_QUARTER_COUNT; q++) {
         const lab_perf_quarter_t* quarter = &lab_perf_quarters[q];
         const resolution_step_t size = render_lab_render_size(GFX_WIDTH, GFX_HEIGHT);
-        ESP_LOGI(TAG, "raster=%dx%d present=%d" LAB_PERF_QUARTER_FORMAT, size.width, size.height, render_lab_present(),
-                 quarter->name);
+        ESP_LOGI(TAG, "raster=%dx%d present=%d" LAB_PERF_QUARTER_FORMAT, size.width, size.height,
+                 lab_view_present(&render_lab_view_tunables), quarter->name);
         test_hold_quarter(quarter->quarter);
         bench_stats_t playing_render;
         bench_stats_t paused_render;
