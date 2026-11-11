@@ -174,8 +174,9 @@ fit_inside(box3f_t box, const planef_t* planes, unsigned crossing, planef_t dept
 }
 
 /* Writes cluster `c` to `out` at `count` when the planes in `mask` keep it,
- * lowering `fit`, and returns the new count. */
-static inline int
+ * lowering `fit`, and returns the new count. Always inlined: the blending
+ * walk's copy would otherwise make GCC call it from the plain one. */
+static inline __attribute__((always_inline)) int
 cull_cluster(const r3d_lit_mesh_t* mesh, int c, unsigned mask, const planef_t* planes, planef_t depth, uint16_t* out,
              int count, r3d_depth_fit_t* fit) {
     const box3f_t box = box3f_from_box3s(mesh->clusters[c].bounds, 1.0F);
