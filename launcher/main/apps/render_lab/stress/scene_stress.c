@@ -26,9 +26,7 @@
 
 static const char* TAG = "stress";
 
-/* The scene's id and pack, its camera, and its copies' names, numbered from 0. */
-#define STRESS_SCENE          "stress"
-#define STRESS_CAMERA         "camera"
+/* Copies are named consecutively from zero. */
 #define STRESS_SLOT_FORMAT    "slot_%02d"
 
 /* The longest copy name STRESS_SLOT_FORMAT makes, with its terminator. */
@@ -137,7 +135,7 @@ static void
 place_copies(void) {
     (void)animator_seek(camera, ANIMATOR_CURRENT, 0);
     const vec3f_t eye = transform_world(camera).position;
-    const lens_t* lens = camera_lens(entity_find(loaded, name_hash(STRESS_CAMERA)));
+    const lens_t* lens = camera_lens(camera);
     const stress_framing_t seen = {sqrtf(vec3f_dot(eye, eye)), lens->half_fov_short_tan};
     transformf_t facing = transformf_identity();
     transformf_set_rotation(&facing, quatf_from_axis_angle(vec3f_unit_y(), atan2f(eye.x, eye.z)));
@@ -172,8 +170,8 @@ load(void) {
     if (handle_is_none(loaded)) {
         return false;
     }
-    camera = entity_find(loaded, name_hash(STRESS_CAMERA));
-    if (handle_is_none(camera) || camera_lens(entity_find(loaded, name_hash(STRESS_CAMERA))) == NULL) {
+    camera = entity_find(loaded, name_hash(shown->camera));
+    if (handle_is_none(camera) || camera_lens(camera) == NULL) {
         fail("no stress camera");
         return false;
     }
@@ -203,7 +201,7 @@ scene_stress_enter(const render_lab_scene_t* self) {
         return;
     }
     (void)camera_activate(
-        entity_find(loaded, name_hash(render_lab_start_camera == NULL ? STRESS_CAMERA : render_lab_start_camera)));
+        entity_find(loaded, name_hash(render_lab_start_camera == NULL ? shown->camera : render_lab_start_camera)));
     place_copies();
     apply_settings();
 }

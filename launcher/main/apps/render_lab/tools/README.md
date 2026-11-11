@@ -157,6 +157,33 @@ the presets vary the copies' geometry, layout and colour modes.
 | `stress-static-copies` | ![Static triangle copies](../../../../../docs/images/overview/render-lab-stress-static-copies.png) | the stress pack's LMSH triangle, retained in each renderer | static asset residency and small transform batches |
 | `stress-uniform-mid` | ![Uniform plane with intermediate coverage](../../../../../docs/images/overview/render-lab-stress-uniform-mid.png) | equal-colour large triangles | intermediate uniform fill without shaded pixels |
 | `stress-uniform-full` | ![Uniform plane covering the view](../../../../../docs/images/overview/render-lab-stress-uniform-full.png) | equal-colour large triangles spanning the view | uniform fill beyond the water workload at full-width render sizes |
+| `stress-card` | ![Card copies with ragged edges and sampled colours](../../../../../docs/images/overview/render-lab-stress-card.png) | static copies of a perforated quad with uneven tessellation and procedural texture samples at its corners | scene-like small triangles with irregular edges and colour steps |
+| `stress-culled` | ![Plane before the camera turns away](../../../../../docs/images/overview/render-lab-stress-culled.png) | a tessellated plane and a camera pitching beyond its edge | varying cluster rejection by the frustum |
+| `stress-near` | ![Spheres along the camera path](../../../../../docs/images/overview/render-lab-stress-near.png) | stacked spheres and a camera passing through their front surfaces | triangles behind and crossing the near plane |
+
+The card's holes, uneven cells and fixed procedural texture are generated in
+`stress_preset.c`. Its mesh is built once and shared by the copies. Procedural
+geometry keeps the stress bake independent of imported scene sources.
+
+The host renderer's path means compare its triangle-size mix with the scene
+means in [`scene-triangle-bins.json`](../../../../../docs/render/data/scene-triangle-bins.json).
+Regenerate the card means with:
+
+```sh
+python launcher/main/apps/render_lab/tools/scene_triangle_bins.py --scene stress-card 600 --out docs/render/data/stress-triangle-bins.json
+```
+
+| Path mean, share of set-up triangles | Zero pixels | One pixel | Two to four | More than four |
+|---|---:|---:|---:|---:|
+| `sponza` | 5.6% | 8.0% | 17.1% | 69.2% |
+| `sponza-fitted-full` | 7.1% | 10.5% | 23.2% | 59.1% |
+| `bistro-fitted-full` | 12.4% | 17.1% | 29.5% | 41.0% |
+| `stress-card` | 7.3% | 16.8% | 37.6% | 38.2% |
+
+[`stress-coverage.json`](../../../../../docs/render/data/stress-coverage.json)
+records the presets' paused replay counts in both quarters and selected
+frame-profile replay poses. The culled camera samples each quarter's frustum
+edge; the near camera traverses the stacked surfaces.
 
 | Part | Owner |
 |---|---|
@@ -164,7 +191,7 @@ the presets vary the copies' geometry, layout and colour modes.
 | Each preset's shape, copies and layout | `stress/stress_preset.c` `stress_presets` |
 | Each copy's shape | `math/geometry/primitive_mesh.h` |
 | Shared dynamic meshes for the copies | `render/dynamic/r3d_dynamic_mesh.h` |
-| The camera's swing, a still camera at its start, and a pool of copies | `launcher/demo/stress/` |
+| The camera tracks, a still camera, and a pool of copies | `launcher/demo/stress/` |
 | Each preset's sizes, by the renderer's own limits | [`tests/suite_stress_preset.c`](../tests/suite_stress_preset.c) |
 | Each preset's corner in a render, by the cull counts | [`tools/tests/test_stress_corners.py`](tests/test_stress_corners.py) |
 | Scene mean triangle bins | [`tools/scene_triangle_bins.py`](scene_triangle_bins.py), [`scene-triangle-bins.json`](../../../../../docs/render/data/scene-triangle-bins.json) |

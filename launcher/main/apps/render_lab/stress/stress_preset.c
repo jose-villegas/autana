@@ -5,6 +5,7 @@
 
 #include "math/geometry/primitive_mesh.h"
 #include "math/scalar/math_const.h"
+#include "math/scalar/rng.h"
 
 /* Each preset's surface, as STRESS_PRESETS names it. */
 #define STRESS_PRESET_SURFACE(id_, key_, surface_) STRESS_##id_##_SURFACE = STRESS_SURFACE_##surface_,
@@ -13,19 +14,32 @@ enum { STRESS_PRESETS(STRESS_PRESET_SURFACE) };
 
 #define STRESS_SURFACE_OF(id_) ((stress_surface_t)STRESS_##id_##_SURFACE)
 
-/* Shape, cuts, copies, layout, coverage percent, surface and replay poses. */
+/* Shape, cuts, copies, layout, coverage percent, surface, camera and replay poses. */
 const stress_params_t stress_presets[STRESS_PRESET_COUNT] = {
-    [STRESS_OPEN] = {STRESS_SHAPE_PLANE, 8, 16, STRESS_LAYOUT_WALL, 60, STRESS_SURFACE_OF(OPEN), 8},
-    [STRESS_STACK] = {STRESS_SHAPE_PLANE, 8, 8, STRESS_LAYOUT_STACK, 90, STRESS_SURFACE_OF(STACK), 8},
-    [STRESS_TINY_COPIES] = {STRESS_SHAPE_SPHERE, 4, 64, STRESS_LAYOUT_WALL, 40, STRESS_SURFACE_OF(TINY_COPIES), 8},
-    [STRESS_BIG_TRIS] = {STRESS_SHAPE_PLANE, 2, 1, STRESS_LAYOUT_WALL, 100, STRESS_SURFACE_OF(BIG_TRIS), 8},
-    [STRESS_PER_FRAME] = {STRESS_SHAPE_PLANE, 24, 1, STRESS_LAYOUT_WALL, 80, STRESS_SURFACE_OF(PER_FRAME), 8},
-    [STRESS_TWO_SIDED] = {STRESS_SHAPE_CUBE, 4, 16, STRESS_LAYOUT_WALL, 60, STRESS_SURFACE_OF(TWO_SIDED), 8},
-    [STRESS_MIX] = {STRESS_SHAPE_PLANE, 2, 16, STRESS_LAYOUT_WALL, 80, STRESS_SURFACE_OF(MIX), 8},
-    [STRESS_NOISY_TINY] = {STRESS_SHAPE_CYLINDER, 16, 36, STRESS_LAYOUT_WALL, 75, STRESS_SURFACE_OF(NOISY_TINY), 8},
-    [STRESS_STATIC_COPIES] = {STRESS_SHAPE_PLANE, 1, 64, STRESS_LAYOUT_WALL, 80, STRESS_SURFACE_OF(STATIC_COPIES), 8},
-    [STRESS_UNIFORM_MID] = {STRESS_SHAPE_PLANE, 2, 1, STRESS_LAYOUT_STACK, 70, STRESS_SURFACE_OF(UNIFORM_MID), 4},
-    [STRESS_UNIFORM_FULL] = {STRESS_SHAPE_PLANE, 2, 1, STRESS_LAYOUT_STACK, 160, STRESS_SURFACE_OF(UNIFORM_FULL), 4},
+    [STRESS_OPEN] = {STRESS_SHAPE_PLANE, 8, 16, STRESS_LAYOUT_WALL, 60, STRESS_SURFACE_OF(OPEN), STRESS_CAMERA, 6},
+    [STRESS_STACK] = {STRESS_SHAPE_PLANE, 8, 8, STRESS_LAYOUT_STACK, 90, STRESS_SURFACE_OF(STACK), STRESS_CAMERA, 6},
+    [STRESS_TINY_COPIES] = {STRESS_SHAPE_SPHERE, 4, 64, STRESS_LAYOUT_WALL, 40, STRESS_SURFACE_OF(TINY_COPIES),
+                            STRESS_CAMERA, 6},
+    [STRESS_BIG_TRIS] = {STRESS_SHAPE_PLANE, 2, 1, STRESS_LAYOUT_WALL, 100, STRESS_SURFACE_OF(BIG_TRIS), STRESS_CAMERA,
+                         6},
+    [STRESS_PER_FRAME] = {STRESS_SHAPE_PLANE, 24, 1, STRESS_LAYOUT_WALL, 80, STRESS_SURFACE_OF(PER_FRAME),
+                          STRESS_CAMERA, 6},
+    [STRESS_TWO_SIDED] = {STRESS_SHAPE_CUBE, 4, 16, STRESS_LAYOUT_WALL, 60, STRESS_SURFACE_OF(TWO_SIDED), STRESS_CAMERA,
+                          6},
+    [STRESS_MIX] = {STRESS_SHAPE_PLANE, 2, 16, STRESS_LAYOUT_WALL, 80, STRESS_SURFACE_OF(MIX), STRESS_CAMERA, 6},
+    [STRESS_NOISY_TINY] = {STRESS_SHAPE_CYLINDER, 16, 36, STRESS_LAYOUT_WALL, 75, STRESS_SURFACE_OF(NOISY_TINY),
+                           STRESS_CAMERA, 6},
+    [STRESS_STATIC_COPIES] = {STRESS_SHAPE_PLANE, 1, 64, STRESS_LAYOUT_WALL, 80, STRESS_SURFACE_OF(STATIC_COPIES),
+                              STRESS_CAMERA, 6},
+    [STRESS_UNIFORM_MID] = {STRESS_SHAPE_PLANE, 2, 1, STRESS_LAYOUT_STACK, 70, STRESS_SURFACE_OF(UNIFORM_MID),
+                            STRESS_CAMERA, 4},
+    [STRESS_UNIFORM_FULL] = {STRESS_SHAPE_PLANE, 2, 1, STRESS_LAYOUT_STACK, 160, STRESS_SURFACE_OF(UNIFORM_FULL),
+                             STRESS_CAMERA, 4},
+    [STRESS_CARD] = {STRESS_SHAPE_PLANE, 16, 16, STRESS_LAYOUT_WALL, 140, STRESS_SURFACE_OF(CARD), STRESS_CAMERA, 4},
+    [STRESS_CULLED] = {STRESS_SHAPE_PLANE, 16, 1, STRESS_LAYOUT_WALL, 80, STRESS_SURFACE_OF(CULLED),
+                       STRESS_CAMERA_CULLED, 8},
+    [STRESS_NEAR] = {STRESS_SHAPE_SPHERE, 24, 4, STRESS_LAYOUT_STACK, 80, STRESS_SURFACE_OF(NEAR), STRESS_CAMERA_NEAR,
+                     6},
 };
 
 stress_params_t
@@ -97,9 +111,82 @@ shapes_of(const stress_params_t* p) {
     };
 }
 
+/* The card's mask and texture are independent of any imported scene's bake closure. */
+#define STRESS_CARD_HOLE_PERIOD  5
+#define STRESS_CARD_TEXTURE_SEED 0xCA4D12U
+#define STRESS_CARD_TEXTURE_SIZE 64
+#define STRESS_CARD_COLOUR_BASE  32
+#define STRESS_CARD_COLOUR_RANGE 160
+#define STRESS_CARD_JITTER       0.3F
+
+static bool
+card_cell(int x, int y) {
+    return rng_hash(STRESS_CARD_TEXTURE_SEED, (uint32_t)x, (uint32_t)y, 0) % STRESS_CARD_HOLE_PERIOD != 0;
+}
+
+static int
+card_triangles(int cuts) {
+    int count = 0;
+    for (int y = 0; y < cuts; y++) {
+        for (int x = 0; x < cuts; x++) {
+            count += card_cell(x, y) ? 2 : 0;
+        }
+    }
+    return count;
+}
+
+static float
+card_coordinate(int at, int across, int cuts) {
+    const float jitter = at == 0 || at == cuts
+                             ? 0.0F
+                             : STRESS_CARD_JITTER
+                                   * ((float)(rng_hash(STRESS_CARD_TEXTURE_SEED, (uint32_t)at, (uint32_t)across, 0)
+                                              % STRESS_CARD_TEXTURE_SIZE)
+                                          / (float)(STRESS_CARD_TEXTURE_SIZE - 1)
+                                      - 0.5F);
+    const float u = 2.0F * ((float)at + jitter) / (float)cuts - 1.0F;
+    return 0.5F * u * fabsf(u);
+}
+
+static void
+card_corner(const stress_params_t* p, const stress_buffers_t* b, int v, int x, int y) {
+    const vec3f_t at = {card_coordinate(x, y, p->cuts), card_coordinate(y, x, p->cuts), 0.0F};
+    b->positions[v] = at;
+    const int tx = (int)floorf((at.x + 0.5F) * STRESS_CARD_TEXTURE_SIZE);
+    const int ty = (int)floorf((at.y + 0.5F) * STRESS_CARD_TEXTURE_SIZE);
+    for (int c = 0; c < 3; c++) {
+        b->colors[v][c] = (uint8_t)(STRESS_CARD_COLOUR_BASE
+                                    + rng_hash(STRESS_CARD_TEXTURE_SEED, (uint32_t)tx, (uint32_t)ty, (uint32_t)c)
+                                          % STRESS_CARD_COLOUR_RANGE);
+    }
+}
+
+static void
+make_card(const stress_params_t* p, const stress_buffers_t* b) {
+    static const uint8_t corners[6][2] = {{0, 0}, {1, 0}, {1, 1}, {0, 0}, {1, 1}, {0, 1}};
+    int t = 0;
+    for (int cell = 0; cell < p->cuts * p->cuts; cell++) {
+        const int x = cell % p->cuts;
+        const int y = cell / p->cuts;
+        if (!card_cell(x, y)) {
+            continue;
+        }
+        for (int k = 0; k < 6; k++) {
+            const int v = 3 * t + k;
+            card_corner(p, b, v, x + corners[k][0], y + corners[k][1]);
+            b->triangles[t + k / 3][k % 3] = (uint16_t)v;
+        }
+        t += 2;
+    }
+}
+
 /* The preset's shape's counts. */
 static primitive_counts_t
 counts_of(const stress_params_t* p) {
+    if (p->surface == STRESS_SURFACE_CARD) {
+        const int triangles = card_triangles(p->cuts);
+        return (primitive_counts_t){3 * triangles, triangles};
+    }
     if (p->surface == STRESS_SURFACE_MIXED) {
         const int triangles = 2 * p->cuts * p->cuts;
         return (primitive_counts_t){3 * triangles, triangles};
@@ -201,10 +288,14 @@ stress_source(const stress_params_t* p, uint32_t t_ms, const stress_buffers_t* b
         make_mixed(p, b);
         m.vertex_count = stress_vertex_count(p);
         m.triangle_count = stress_triangle_count(p);
+    } else if (p->surface == STRESS_SURFACE_CARD) {
+        make_card(p, b);
+        m.vertex_count = stress_vertex_count(p);
+        m.triangle_count = stress_triangle_count(p);
     } else if (!make(p, &m)) {
         return false;
     }
-    if (p->surface != STRESS_SURFACE_MIXED) {
+    if (p->surface != STRESS_SURFACE_MIXED && p->surface != STRESS_SURFACE_CARD) {
         colour_and_wave(p, t_ms, m.vertex_count, b);
     }
     *out = (r3d_dynamic_source_t){b->positions,     (const uint8_t (*)[3])b->colors,

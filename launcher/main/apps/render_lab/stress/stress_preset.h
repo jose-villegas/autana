@@ -20,6 +20,7 @@ typedef enum {
     STRESS_SURFACE_WAVE,   /* the bands run up it, pushing it out: the mesh made again every frame */
     STRESS_SURFACE_NOISY,  /* neighbouring vertices at opposite colours: every triangle's corners far apart */
     STRESS_SURFACE_MIXED,
+    STRESS_SURFACE_CARD,
     STRESS_SURFACE_UNIFORM,   /* one colour at every corner: zero colour steps, filled uniform */
     STRESS_SURFACE_STATIC,    /* the pack's own static mesh asset per copy, nothing generated */
     STRESS_SURFACE_TWO_SIDED, /* banded, and drawn from both sides: nothing faces away */
@@ -30,6 +31,12 @@ typedef enum {
     STRESS_LAYOUT_STACK, /* one behind another, each the arrangement's size: depth complexity = copies */
 } stress_layout_t;
 
+#define STRESS_SCENE         "stress"
+#define STRESS_CAMERA        "camera"
+#define STRESS_ORBIT_CLIP    "orbit"
+#define STRESS_CAMERA_CULLED "culled"
+#define STRESS_CAMERA_NEAR   "near"
+
 typedef struct {
     stress_shape_t shape;
     int cuts; /* the shape's tessellation: subdivisions, sphere rings or cylinder segments */
@@ -37,6 +44,7 @@ typedef struct {
     stress_layout_t layout;
     int coverage_percent; /* how much of the picture's short side the arrangement spans */
     stress_surface_t surface;
+    const char* camera;
     int perf_poses; /* poses the stress perf suite replays along the swing */
 } stress_params_t;
 
@@ -55,7 +63,10 @@ typedef struct {
     X(MIX, "mix", MIXED)                                                                                               \
     X(STATIC_COPIES, "static-copies", STATIC)                                                                          \
     X(UNIFORM_MID, "uniform-mid", UNIFORM)                                                                             \
-    X(UNIFORM_FULL, "uniform-full", UNIFORM)
+    X(UNIFORM_FULL, "uniform-full", UNIFORM)                                                                           \
+    X(CARD, "card", CARD)                                                                                              \
+    X(CULLED, "culled", BANDED)                                                                                        \
+    X(NEAR, "near", BANDED)
 
 #define STRESS_PRESET_ID(id_, ...) STRESS_##id_,
 

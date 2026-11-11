@@ -9,19 +9,26 @@
 #include <math.h>
 #include <string.h>
 
+#include "suites.h"
 #include "testkit/cleanup.h"
 #include "testkit/suite.h"
 #include "unity.h"
 
+#include "anim/anim_binding.h"
+#include "anim/anim_transform.h"
 #include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/stress/stress_preset.h"
+#include "apps/render_lab/tests/r3d_perf_quarters.h"
+#include "asset/asset_store.h"
 #include "core/memory.h"
 #include "gfx/gfx.h"
 #include "image/pixel/rgb565.h"
 #include "math/scalar/math_const.h"
 #include "render/dynamic/r3d_dynamic_mesh.h"
+#include "render/r3d_pipeline.h"
 #include "render/r3d_span.h"
 #include "render/r3d_span_internal.h"
+#include "render/view/r3d_pipeline_count.h"
 
 /* Any framing: a preset is laid out in proportion to it. */
 static const stress_framing_t framing = {10.0F, 0.5F};
@@ -29,19 +36,33 @@ static const stress_framing_t framing = {10.0F, 0.5F};
 static const stress_framing_t other_framing = {3.0F, 1.25F};
 
 /* The picture's short side at render_lab's default render scale. */
-#define DEFAULT_SHORT_PX (GFX_WIDTH * RENDER_LAB_SCALE_UNIT / RENDER_LAB_SCALE_DEFAULT)
+#define DEFAULT_SHORT_PX          (GFX_WIDTH * RENDER_LAB_SCALE_UNIT / RENDER_LAB_SCALE_DEFAULT)
 
 /* A per-frame wave's quarter period in: far enough along that every vertex moves. */
-#define WAVE_LATER_MS    500
+#define WAVE_LATER_MS             500
 /* Steps through a wave period and past its wrap, each a frame's time. */
-#define WAVE_STEP_MS     16
-#define WAVE_STEPS       160
+#define WAVE_STEP_MS              16
+#define WAVE_STEPS                160
 /* Buffer sets a test can hold: two builds of one copy to compare. */
-#define FIXTURE_SETS     2
+#define FIXTURE_SETS              2
+#define TEST_NEAR_Z               0.5F
+#define STRESS_TEST_MS_PER_SECOND 1000.0F
+#define CULLED_SWEEP_MIN          0.05F
+#define CULLED_SWEEP_MAX          0.85F
+#define NEAR_BEHIND_MIN           100
+#define NEAR_CLIPPED_MIN          100
 
 typedef struct {
     stress_buffers_t at[FIXTURE_SETS];
     void* mesh_block;
+    r3d_pipeline_vertex_t* projected;
+    uint16_t* clusters;
+    r3d_pipeline_count_walk_t* walk;
+    r3d_dynamic_mesh_t mesh;
+    handle_t pack;
+    bool pack_loaded;
+    anim_node_tracks_t path;
+    uint32_t duration_ms;
 } fixture_t;
 
 static fixture_t f;
@@ -54,6 +75,12 @@ fixture_end(void) {
         memory_free(f.at[i].triangles);
     }
     memory_free(f.mesh_block);
+    memory_free(f.projected);
+    memory_free(f.clusters);
+    memory_free(f.walk);
+    if (f.pack_loaded) {
+        asset_store_release(f.pack);
+    }
     memset(&f, 0, sizeof f);
 }
 
@@ -122,7 +149,7 @@ test_every_preset_mesh_is_whole_and_repeats(void) {
 
 /* One dynamic mesh holds a copy, in as many clusters as its triangles fill. */
 static void
-assert_mesh_fits(const stress_params_t* p) {
+mesh_fixture(const stress_params_t* p) {
     fixture_begin(p, 1);
     r3d_dynamic_source_t source;
     TEST_ASSERT_TRUE(stress_source(p, 0, &f.at[0], &source));
@@ -130,11 +157,16 @@ assert_mesh_fits(const stress_params_t* p) {
     const size_t bytes = r3d_dynamic_mesh_bytes(capacity);
     f.mesh_block = memory_alloc(bytes, MEMORY_PSRAM);
     TEST_ASSERT_NOT_NULL(f.mesh_block);
-    r3d_dynamic_mesh_t mesh;
-    TEST_ASSERT_TRUE(r3d_dynamic_mesh_init(&mesh, f.mesh_block, bytes, capacity, STRESS_TICKS_PER_UNIT));
-    TEST_ASSERT_TRUE(r3d_dynamic_mesh_build(&mesh, &source));
-    const int clusters = (source.triangle_count + R3D_DYNAMIC_CLUSTER_TRIANGLES - 1) / R3D_DYNAMIC_CLUSTER_TRIANGLES;
-    TEST_ASSERT_EQUAL_INT(clusters, mesh.built_clusters);
+    TEST_ASSERT_TRUE(r3d_dynamic_mesh_init(&f.mesh, f.mesh_block, bytes, capacity, STRESS_TICKS_PER_UNIT));
+    TEST_ASSERT_TRUE(r3d_dynamic_mesh_build(&f.mesh, &source));
+}
+
+static void
+assert_mesh_fits(const stress_params_t* p) {
+    mesh_fixture(p);
+    const int triangles = stress_triangle_count(p);
+    const int clusters = (triangles + R3D_DYNAMIC_CLUSTER_TRIANGLES - 1) / R3D_DYNAMIC_CLUSTER_TRIANGLES;
+    TEST_ASSERT_EQUAL_INT(clusters, f.mesh.built_clusters);
     release();
 }
 
@@ -378,8 +410,132 @@ test_uniform_presets_have_equal_corner_colours_and_large_coverage(void) {
                                  stress_presets[STRESS_UNIFORM_FULL].coverage_percent);
 }
 
+static void
+counted_fixture(const stress_params_t* p) {
+    mesh_fixture(p);
+    f.projected = memory_alloc(sizeof *f.projected * (size_t)f.mesh.mesh.vertex_count, MEMORY_PSRAM);
+    f.clusters = memory_alloc(sizeof *f.clusters * (size_t)f.mesh.mesh.cluster_count, MEMORY_PSRAM);
+    TEST_ASSERT_NOT_NULL(f.projected);
+    TEST_ASSERT_NOT_NULL(f.clusters);
+    f.walk = memory_alloc(sizeof *f.walk, MEMORY_PSRAM);
+    TEST_ASSERT_NOT_NULL(f.walk);
+}
+
+static r3d_pipeline_counts_t
+count_copies(const stress_params_t* p, const render_view_t* view) {
+    r3d_pipeline_counts_t counts = {0};
+    for (int copy = 0; copy < p->copies; copy++) {
+        transformf_t place = stress_copy_place(p, copy, framing);
+        const mat4f_t model = transformf_matrix(&place);
+        r3d_lens_t lens;
+        r3d_lens_init(&lens, view, STRESS_TICKS_PER_UNIT);
+        r3d_lens_place(&lens, &model, STRESS_TICKS_PER_UNIT);
+        const int kept = r3d_pipeline_cull_counted(&f.mesh.mesh, &lens, NULL, f.clusters, f.walk, &counts);
+        r3d_pipeline_transform(&f.mesh.mesh, &lens, f.clusters, kept, f.projected, NULL, false);
+        r3d_pipeline_count_triangles(&f.mesh.mesh, &lens, f.clusters, kept, f.projected, &counts, NULL);
+    }
+    return counts;
+}
+
+static void
+test_card_has_holes_colour_steps_and_scene_size_bins(void) {
+    const stress_params_t* p = &stress_presets[STRESS_CARD];
+    counted_fixture(p);
+    TEST_ASSERT_LESS_THAN_INT(2 * p->cuts * p->cuts, stress_triangle_count(p));
+    r3d_dynamic_source_t source;
+    TEST_ASSERT_TRUE(stress_source(p, 0, &f.at[0], &source));
+    int stepped = 0;
+    for (int t = 0; t < source.triangle_count; t++) {
+        stepped += corner_spread(&source, t) > SMALL_FILL_GATE_FAST;
+    }
+    TEST_ASSERT_GREATER_THAN_INT(source.triangle_count / 2, stepped);
+    const transformf_t pose =
+        transformf_looking((vec3f_t){0, 0, framing.distance}, (vec3f_t){0, 0, -1}, vec3f_unit_y());
+    const render_view_t view =
+        render_view_make(&pose, framing.half_fov_short_tan, TEST_NEAR_Z,
+                         (viewport_t){DEFAULT_SHORT_PX, GFX_HEIGHT * RENDER_LAB_SCALE_UNIT / RENDER_LAB_SCALE_DEFAULT,
+                                      DISPLAY_PORTRAIT});
+    const r3d_pipeline_counts_t counts = count_copies(p, &view);
+    for (int bin = 0; bin < R3D_SIZES_BINS; bin++) {
+        TEST_ASSERT_GREATER_THAN_INT(0, counts.triangles_sized[R3D_SIZES_SHADED][bin]);
+    }
+    release();
+}
+
+static void
+camera_fixture(const stress_params_t* p) {
+    counted_fixture(p);
+    f.pack = asset_store_load(STRESS_SCENE);
+    f.pack_loaded = !handle_is_none(f.pack);
+    TEST_ASSERT_TRUE(f.pack_loaded);
+    const asset_pack_t* pack = asset_store_loaded(f.pack);
+    TEST_ASSERT_NOT_NULL(pack);
+    const char* clip = strcmp(p->camera, STRESS_CAMERA) == 0 ? STRESS_ORBIT_CLIP : p->camera;
+    anim_tracks_t tracks;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_from_pack(pack, clip, &tracks));
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_find_node(&tracks, name_hash(ANIM_TARGET_SELF), &f.path));
+    f.duration_ms = tracks.clip.duration_ms;
+}
+
+static r3d_pipeline_counts_t
+count_pose(const stress_params_t* p, int pose_index, int quarter) {
+    const uint32_t t_ms = (uint32_t)((uint64_t)f.duration_ms * (uint32_t)pose_index / (uint32_t)p->perf_poses);
+    const float seconds = (float)t_ms / STRESS_TEST_MS_PER_SECOND;
+    const transformf_t pose = anim_transform_sample(&f.path, seconds);
+    const render_view_t view = render_view_make(
+        &pose, framing.half_fov_short_tan, TEST_NEAR_Z,
+        (viewport_t){DEFAULT_SHORT_PX, GFX_HEIGHT * RENDER_LAB_SCALE_UNIT / RENDER_LAB_SCALE_DEFAULT, quarter});
+    return count_copies(p, &view);
+}
+
+static void
+test_culled_fraction_sweeps_from_visible_to_mostly_off_frustum(void) {
+    const stress_params_t* p = &stress_presets[STRESS_CULLED];
+    camera_fixture(p);
+    for (int quarter = 0; quarter < (int)R3D_PERF_QUARTER_COUNT; quarter++) {
+        float low = 1.0F;
+        float high = 0.0F;
+        for (int i = 0; i < p->perf_poses; i++) {
+            const r3d_pipeline_counts_t counts = count_pose(p, i, r3d_perf_quarters[quarter].quarter);
+            if (counts.clusters_tested == 0) {
+                continue;
+            }
+            const float fraction = (float)counts.clusters_off_frustum / (float)counts.clusters_tested;
+            low = fminf(low, fraction);
+            high = fmaxf(high, fraction);
+        }
+        TEST_ASSERT_LESS_THAN_FLOAT(CULLED_SWEEP_MIN, low);
+        TEST_ASSERT_GREATER_THAN_FLOAT(CULLED_SWEEP_MAX, high);
+    }
+    release();
+}
+
+static void
+test_near_plane_sweeps_behind_and_clipped_triangles(void) {
+    const stress_params_t* p = &stress_presets[STRESS_NEAR];
+    camera_fixture(p);
+    for (int quarter = 0; quarter < (int)R3D_PERF_QUARTER_COUNT; quarter++) {
+        const r3d_pipeline_counts_t first = count_pose(p, 0, r3d_perf_quarters[quarter].quarter);
+        TEST_ASSERT_EQUAL_INT(0, first.triangles_behind);
+        TEST_ASSERT_EQUAL_INT(0, first.triangles_clipped);
+        int behind = 0;
+        int clipped = 0;
+        for (int i = 0; i < p->perf_poses; i++) {
+            const r3d_pipeline_counts_t counts = count_pose(p, i, r3d_perf_quarters[quarter].quarter);
+            behind = counts.triangles_behind > behind ? counts.triangles_behind : behind;
+            clipped = counts.triangles_clipped > clipped ? counts.triangles_clipped : clipped;
+        }
+        TEST_ASSERT_GREATER_OR_EQUAL_INT(NEAR_BEHIND_MIN, behind);
+        TEST_ASSERT_GREATER_OR_EQUAL_INT(NEAR_CLIPPED_MIN, clipped);
+    }
+    release();
+}
+
 void
 run_stress_preset_suite(void) {
+    RUN_TEST(test_culled_fraction_sweeps_from_visible_to_mostly_off_frustum);
+    RUN_TEST(test_near_plane_sweeps_behind_and_clipped_triangles);
+    RUN_TEST(test_card_has_holes_colour_steps_and_scene_size_bins);
     RUN_TEST(test_uniform_presets_have_equal_corner_colours_and_large_coverage);
     RUN_TEST(test_mixed_copies_split_colour_modes);
     RUN_TEST(test_every_preset_has_its_row);
@@ -398,3 +554,5 @@ run_stress_preset_suite(void) {
 }
 
 SUITE_REGISTER(run_stress_preset_suite);
+
+SUITE_READS(run_stress_preset_suite, STRESS_SCENE);
