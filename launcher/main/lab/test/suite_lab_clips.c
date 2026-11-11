@@ -16,7 +16,7 @@
 #include "unity.h"
 
 /* The reply prefix the suite gives the picker, as a lab gives its own. */
-#define TEST_TAG        "RENDER"
+#define TEST_TAG        "MY"
 
 #define TEST_BLEND_MS   300
 #define TEST_CLIP_COUNT 2
@@ -30,7 +30,7 @@ typedef struct {
     transformf_t shown_pose, frozen_pose;
     lab_clips_t choice;
     size_t arena_mark; /* the arena before the test, given back after it */
-    char reply[(TEST_CLIP_COUNT * (ASSET_NAME_MAX + sizeof("RENDER clip= current=1\n"))) + sizeof("RENDER_END\n")];
+    char reply[(TEST_CLIP_COUNT * (ASSET_NAME_MAX + sizeof("MY clip= current=1\n"))) + sizeof("MY_END\n")];
     char long_name[ASSET_NAME_MAX + 1];
 } clip_fixture_t;
 
@@ -110,27 +110,25 @@ test_listing_marks_default_and_fallback_playback(void) {
     TEST_ASSERT_TRUE(lab_clips_init(&f->choice, TEST_TAG, f->scene, f->subject, "gallop"));
     TEST_ASSERT_EQUAL_INT(1, f->animator.layer.current.clip);
     request(f, "clips");
-    TEST_ASSERT_EQUAL_STRING("RENDER clip=idle current=0\nRENDER clip=gallop current=1\nRENDER_END\n", f->reply);
+    TEST_ASSERT_EQUAL_STRING("MY clip=idle current=0\nMY clip=gallop current=1\nMY_END\n", f->reply);
     lab_clips_destroy(&f->choice);
     TEST_ASSERT_TRUE(lab_clips_init(&f->choice, TEST_TAG, f->scene, f->subject, "missing"));
     TEST_ASSERT_EQUAL_INT(LAB_CLIPS_BLEND_DEFAULT_MS, f->choice.blend_ms);
     TEST_ASSERT_EQUAL_INT(0, f->animator.layer.current.clip);
     request(f, "clips");
-    TEST_ASSERT_EQUAL_STRING("RENDER clip=idle current=1\nRENDER clip=gallop current=0\nRENDER_END\n", f->reply);
+    TEST_ASSERT_EQUAL_STRING("MY clip=idle current=1\nMY clip=gallop current=0\nMY_END\n", f->reply);
 }
 
 static void
 test_console_success_reports_applied_blend_and_end(void) {
     clip_fixture_t* f = fixture();
     char command[sizeof("clip gallop ") + LAB_CLIPS_BLEND_TEXT_SIZE];
-    char expected[ASSET_NAME_MAX + sizeof("RENDER clip= blend_ms=\nRENDER_END\n") + LAB_CLIPS_BLEND_TEXT_SIZE];
+    char expected[ASSET_NAME_MAX + sizeof("MY clip= blend_ms=\nMY_END\n") + LAB_CLIPS_BLEND_TEXT_SIZE];
     TEST_ASSERT_TRUE(snprintf(command, sizeof command, "clip gallop %d", TEST_BLEND_MS) >= 0);
-    TEST_ASSERT_TRUE(snprintf(expected, sizeof expected, "RENDER clip=gallop blend_ms=%d\nRENDER_END\n", TEST_BLEND_MS)
-                     >= 0);
+    TEST_ASSERT_TRUE(snprintf(expected, sizeof expected, "MY clip=gallop blend_ms=%d\nMY_END\n", TEST_BLEND_MS) >= 0);
     request(f, command);
     TEST_ASSERT_EQUAL_STRING(expected, f->reply);
-    TEST_ASSERT_TRUE(snprintf(expected, sizeof expected, "RENDER clip=idle blend_ms=%d\nRENDER_END\n", TEST_BLEND_MS)
-                     >= 0);
+    TEST_ASSERT_TRUE(snprintf(expected, sizeof expected, "MY clip=idle blend_ms=%d\nMY_END\n", TEST_BLEND_MS) >= 0);
     request(f, "clip idle");
     TEST_ASSERT_EQUAL_STRING(expected, f->reply);
     TEST_ASSERT_EQUAL_UINT32(TEST_BLEND_MS, f->animator.layer.blend_ms);
@@ -158,21 +156,21 @@ test_console_errors_leave_playback_unchanged(void) {
     char selection[sizeof("clip gallop ") + LAB_CLIPS_BLEND_TEXT_SIZE];
     TEST_ASSERT_TRUE(snprintf(selection, sizeof selection, "clip gallop %d", TEST_BLEND_MS) >= 0);
     request(f, selection);
-    reject(f, "clip missing", "RENDER_ERR unknown clip 'missing'\n");
-    reject(f, "clip", "RENDER_ERR bad clip name\n");
+    reject(f, "clip missing", "MY_ERR unknown clip 'missing'\n");
+    reject(f, "clip", "MY_ERR bad clip name\n");
     static const char* const bad_blends[] = {"-1", "12x", "999999999999999999999999", ""};
     char command[ASSET_NAME_MAX + sizeof("clip idle ")];
     for (size_t i = 0; i < sizeof bad_blends / sizeof bad_blends[0]; i++) {
         TEST_ASSERT_TRUE(snprintf(command, sizeof command, "clip idle %s", bad_blends[i]) >= 0);
-        reject(f, command, "RENDER_ERR bad blend\n");
+        reject(f, command, "MY_ERR bad blend\n");
     }
     TEST_ASSERT_TRUE(snprintf(command, sizeof command, "clip idle %d", LAB_CLIPS_BLEND_MAX_MS + 1) >= 0);
-    reject(f, command, "RENDER_ERR bad blend\n");
+    reject(f, command, "MY_ERR bad blend\n");
     f->choice.scene = ENTITY_NONE;
-    reject(f, "clips", "RENDER_ERR no animated subject\n");
+    reject(f, "clips", "MY_ERR no animated subject\n");
     f->choice.scene = f->scene;
     f->animator.storage = NULL;
-    reject(f, "clip idle", "RENDER_ERR no animated subject\n");
+    reject(f, "clip idle", "MY_ERR no animated subject\n");
     f->animator.storage = f->clips;
 }
 
@@ -195,7 +193,7 @@ test_console_accepts_name_and_blend_boundaries(void) {
     f->long_name[ASSET_NAME_MAX - 1] = 'x';
     f->long_name[ASSET_NAME_MAX] = '\0';
     TEST_ASSERT_TRUE(snprintf(command, sizeof command, "clip %s", f->long_name) >= 0);
-    reject(f, command, "RENDER_ERR bad clip name\n");
+    reject(f, command, "MY_ERR bad clip name\n");
 }
 
 static void
@@ -246,7 +244,7 @@ test_picker_init_reports_allocation_failure(void) {
     TEST_ASSERT_FALSE(lab_clips_init(&f->choice, TEST_TAG, f->scene, f->subject, "gallop"));
     TEST_ASSERT_EQUAL_INT(1, f->animator.layer.current.clip);
     request(f, "clips");
-    TEST_ASSERT_EQUAL_STRING("RENDER clip=idle current=0\nRENDER clip=gallop current=1\nRENDER_END\n", f->reply);
+    TEST_ASSERT_EQUAL_STRING("MY clip=idle current=0\nMY clip=gallop current=1\nMY_END\n", f->reply);
     request(f, "clip idle");
     TEST_ASSERT_EQUAL_INT(0, f->animator.layer.current.clip);
     ui_init();

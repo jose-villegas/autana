@@ -29,12 +29,7 @@ render_lab_small_fill(void) {
 /* A menu label is the preset name with each '_' shown as the separator; its buffer fits a name of only '_'. */
 #define SMALL_FILL_LABEL_SEPARATOR    " - "
 #define SMALL_FILL_PRESET_LABEL(name) char name[sizeof #name * (sizeof SMALL_FILL_LABEL_SEPARATOR - 1)];
-lab_view_t render_lab_view_tunables;
-
-__attribute__((constructor)) static void
-render_lab_view_register(void) {
-    lab_view_register(&render_lab_view_tunables, RENDER_LAB_NAME);
-}
+LAB_VIEW(render_lab_view_tunables, RENDER_LAB_NAME);
 
 static const small_fill_t small_fill_presets[] = {SMALL_FILL_PRESETS(SMALL_FILL_PRESET_ROW)};
 static const char* const small_fill_preset_names[] = {SMALL_FILL_PRESETS(SMALL_FILL_PRESET_NAME)};

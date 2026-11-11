@@ -30,22 +30,18 @@
 /* The longest scene list a menu frame holds: the static lists below. */
 #define LAB_SCENES_MAX      64
 
-/* "render pose <ms>": the words before the number. */
+/* "my pose <ms>": the words before the number. */
 #define POSE_WORD           "pose "
 #define SCENE_WORD          "scene "
 
 void
-lab_register(lab_t* lab, lab_view_t* own_view) {
-    if (lab->view == NULL) {
-        lab->view = own_view;
-        lab_view_register(own_view, lab->name);
-    }
+lab_register(lab_t* lab) {
     size_t i = 0;
-    for (; lab->console_word[i] != '\0' && i + 1 < sizeof lab->state.reply_tag; i++) {
-        lab->state.reply_tag[i] = (char)toupper((unsigned char)lab->console_word[i]);
+    for (; lab->console_word[i] != '\0' && i + 1 < sizeof lab->reply_tag; i++) {
+        lab->reply_tag[i] = (char)toupper((unsigned char)lab->console_word[i]);
     }
     assert(lab->console_word[i] == '\0');
-    lab->state.reply_tag[i] = '\0';
+    lab->reply_tag[i] = '\0';
 }
 
 bool
@@ -55,7 +51,7 @@ lab_menu_open(const lab_t* lab) {
 
 const char*
 lab_reply_tag(const lab_t* lab) {
-    return lab->state.reply_tag;
+    return lab->reply_tag;
 }
 
 const lab_scene_t*
@@ -136,12 +132,7 @@ enter_layout(const lab_t* lab) {
 void
 lab_enter(lab_t* lab) {
     assert(lab->scene_count <= LAB_SCENES_MAX);
-    lab->state.scene = scene_index_for_key(lab, lab->start_key);
-    lab->state.requested = -1;
-    lab->state.menu_open = false;
-    lab->state.fps_frames = 0;
-    lab->state.fps_window_ms = 0;
-    lab->state.fps = 0.0F;
+    lab->state = (lab_state_t){.scene = scene_index_for_key(lab, lab->start_key), .requested = -1};
     enter_layout(lab);
     enter_scene(lab);
     lab->state.layout_gen = ui_layout_generation();
@@ -404,7 +395,7 @@ lab_seek_path(const lab_t* lab, uint32_t t_ms) {
 /* "pose <ms> | play": the reply to the words after "pose ". */
 static void
 pose_console(const lab_t* lab, const char* rest) {
-    const char* tag = lab->state.reply_tag;
+    const char* tag = lab->reply_tag;
     const lab_path_t path = shown_path(lab);
     const bool play = strcmp(rest, "play") == 0;
     char* end;
@@ -426,10 +417,10 @@ pose_console(const lab_t* lab, const char* rest) {
 static void
 list_scenes(const lab_t* lab) {
     for (int i = 0; i < lab->scene_count; i++) {
-        (void)printf("%s scene=%s name=%s current=%d\n", lab->state.reply_tag, lab->scenes[i]->key,
-                     lab->scenes[i]->name, i == lab->state.scene);
+        (void)printf("%s scene=%s name=%s current=%d\n", lab->reply_tag, lab->scenes[i]->key, lab->scenes[i]->name,
+                     i == lab->state.scene);
     }
-    (void)printf("%s_END\n", lab->state.reply_tag);
+    (void)printf("%s_END\n", lab->reply_tag);
     (void)fflush(stdout);
 }
 
@@ -438,12 +429,12 @@ request_scene(lab_t* lab, const char* key) {
     for (int i = 0; i < lab->scene_count; i++) {
         if (strcmp(lab->scenes[i]->key, key) == 0) {
             lab->state.requested = i;
-            (void)printf("%s scene=%s\n%s_END\n", lab->state.reply_tag, lab->scenes[i]->key, lab->state.reply_tag);
+            (void)printf("%s scene=%s\n%s_END\n", lab->reply_tag, lab->scenes[i]->key, lab->reply_tag);
             (void)fflush(stdout);
             return;
         }
     }
-    (void)printf("%s_ERR unknown scene '%s'; `%s scenes` lists them\n", lab->state.reply_tag, key, lab->console_word);
+    (void)printf("%s_ERR unknown scene '%s'; `%s scenes` lists them\n", lab->reply_tag, key, lab->console_word);
     (void)fflush(stdout);
 }
 

@@ -11,7 +11,7 @@
 #define LAB_CLIPS_BLEND_TEXT_SIZE        sizeof(LAB_CLIPS_STRINGIFY(LAB_CLIPS_BLEND_MAX_MS))
 
 typedef struct {
-    const char* tag; /* the lab's reply prefix: "RENDER" answers "RENDER clip=..." */
+    const char* tag; /* the lab's reply prefix: "MY" answers "MY clip=..." */
     entity_t scene;
     entity_t subject;
     const char** items;

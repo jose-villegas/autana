@@ -48,7 +48,6 @@ frame_begin(const lab_scene_t* scene) {
 }
 
 lab_t render_lab = {
-    .name = RENDER_LAB_NAME,
     .app = &app_render_lab,
     .console_word = RENDER_LAB_WORD,
     .view = &render_lab_view_tunables,

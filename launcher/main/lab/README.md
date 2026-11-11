@@ -4,18 +4,19 @@ The shell a lab app hosts its scenes behind. A lab app shows one scene at a
 time: a BOOT-opened menu picks the scene, a HUD shows its title, fps and status
 line, and the serial console lists and switches scenes. The app owns one
 `lab_t`, registers it once with `LAB_REGISTER()`, lists its scenes and adds its
-own steps as hooks; the lab does the rest. A lab needs only its name, its
-console word and its scenes:
+own steps as hooks; the lab does the rest. A lab needs only its view
+tunables, its console word and its scenes:
 
 ```c fragment
-lab_t my_lab = {.name = "my_lab", .console_word = "my", .scenes = scenes, .scene_count = 2};
+LAB_VIEW(my_view, "my_lab");
+lab_t my_lab = {.view = &my_view, .console_word = "my", .scenes = scenes, .scene_count = 2};
 LAB_REGISTER(my_lab);
 ```
 
 | File | Owns |
 |---|---|
 | `lab.h` | `lab_t`: entering, switching and leaving scenes, the app arena from a scene's entry on, the menu and HUD, the `scenes` / `scene <key>` / `pose <ms>` console words |
-| `lab_view.h` | the view tunables every lab has, `<name>.scale`, `.present`, `.layout` and `.orbit_ms`, declared once and registered per lab |
+| `lab_view.h` | the view tunables every lab has, `<name>.scale`, `.present`, `.layout` and `.orbit_ms`, declared once; `LAB_VIEW()` defines and registers one lab's |
 | `lab_scene.h` | `lab_scene_t`, one scene: its hooks (enter, frame, exit, steer, update, status, controls, console, path) and loading helpers |
 | `lab_orbit.h` | a camera circling one subject, turned by one finger, fitted to the subject's sphere |
 | `lab_clips.h` | a scene's animation clip picker and blend slider, in the menu and the console |

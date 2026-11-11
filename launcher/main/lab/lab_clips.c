@@ -26,7 +26,7 @@ lab_clips_init(lab_clips_t* choice, const char* tag, entity_t scene, entity_t su
     choice->selected = lab_clips_find(scene, subject, default_clip);
     if (choice->selected < 0) {
         choice->selected = 0;
-        ESP_LOGW("render_clips", "default clip missing");
+        ESP_LOGW("lab_clips", "default clip missing");
     }
     (void)animator_play(subject, choice->selected, 0);
     const char** items = app_arena_take((size_t)count * sizeof *items, _Alignof(const char*));

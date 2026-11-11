@@ -46,9 +46,14 @@ typedef struct {
 } lab_view_t;
 
 /* Sets every tunable to its default and, where TUNE_ENABLED, registers them
- * as "<name>.<tunable>". A lab does this once, before the console runs
- * (LAB_REGISTER()). */
+ * as "<name>.<tunable>", once, before the console runs (LAB_VIEW()). */
 void lab_view_register(lab_view_t* view, const char* name);
+
+/* Defines a lab's view tunables and registers them as "<name>.<tunable>"
+ * before app_main(): LAB_VIEW(my_view, "my_lab") owns my_lab.scale ... */
+#define LAB_VIEW(symbol, name)                                                                                         \
+    lab_view_t symbol;                                                                                                 \
+    __attribute__((constructor)) static void symbol##_register(void) { lab_view_register(&symbol, name); }
 
 int lab_view_scale(const lab_view_t* view);
 camera_present_t lab_view_present(const lab_view_t* view);

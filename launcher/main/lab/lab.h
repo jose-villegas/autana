@@ -7,9 +7,10 @@
  * The app owns one lab_t, hands it its scenes and any hooks, registers it
  * once (LAB_REGISTER()), and forwards its app_t callbacks to lab_enter(),
  * lab_update(), lab_frame() and lab_exit(). Every hook is optional, so the
- * least a lab needs is its name, its console word and its scenes:
+ * least a lab needs is its view tunables, its console word and its scenes:
  *
- *     lab_t my_lab = {.name = "my_lab", .console_word = "my", .scenes = scenes, .scene_count = 2};
+ *     LAB_VIEW(my_view, "my_lab");
+ *     lab_t my_lab = {.view = &my_view, .console_word = "my", .scenes = scenes, .scene_count = 2};
  *     LAB_REGISTER(my_lab);
  */
 #pragma once
@@ -57,15 +58,14 @@ typedef struct {
     uint32_t fps_frames; /* frames in the fps window so far */
     uint32_t fps_window_ms;
     float fps;
-    char reply_tag[LAB_WORD_MAX]; /* the console word in capitals: "RENDER" */
 } lab_state_t;
 
 typedef struct {
-    /* Its tunables' prefix: "my_lab" owns my_lab.scale (lab_view.h). */
-    const char* name;
-    /* The app's console word ("render"), named in lab_console()'s usage
-     * replies; in capitals it prefixes them ("RENDER ..." lines). */
+    /* The app's console word ("my"), named in lab_console()'s usage
+     * replies; in capitals it prefixes them ("MY ..." lines). */
     const char* console_word;
+    /* console_word in capitals, set by LAB_REGISTER(). */
+    char reply_tag[LAB_WORD_MAX];
     /* Index 0 is the scene a start with no key shows; a family's scenes keep
      * this order in its dropdown. */
     const lab_scene_t* const* scenes;
@@ -81,21 +81,17 @@ typedef struct {
     bool show_hud;
     /* The app the suites' fixtures enter (lab_test.h); NULL for a lab no suite enters. */
     const app_t* app;
-    /* The view tunables. NULL takes the lab's own (LAB_REGISTER()); an app
-     * whose portable code reads them points this at a lab_view_t it
-     * registers itself (lab_view_register()). */
+    /* The view tunables (LAB_VIEW()). */
     lab_view_t* view;
     lab_state_t state;
 } lab_t;
 
-/* Sets the lab's reply prefix and, when it names no view, gives it own_view
- * and registers that, once, before the console runs. */
-void lab_register(lab_t* lab, lab_view_t* own_view);
+/* Sets the lab's reply prefix, once, before the console runs. */
+void lab_register(lab_t* lab);
 
 /* Registers a static lab_t before app_main(), like APP_REGISTER. */
 #define LAB_REGISTER(symbol)                                                                                           \
-    static lab_view_t symbol##_lab_view;                                                                               \
-    __attribute__((constructor)) static void symbol##_lab_register(void) { lab_register(&symbol, &symbol##_lab_view); }
+    __attribute__((constructor)) static void symbol##_lab_register(void) { lab_register(&symbol); }
 
 void lab_enter(lab_t* lab);
 void lab_update(lab_t* lab, uint32_t dt_ms, const input_t* input);
@@ -108,7 +104,7 @@ const lab_scene_t* lab_current(const lab_t* lab);
 bool lab_menu_open(const lab_t* lab);
 
 /* The console word in capitals, the prefix of the lab's replies and its
- * scenes' ("RENDER"). */
+ * scenes' ("MY"). */
 const char* lab_reply_tag(const lab_t* lab);
 
 /* "scenes" lists each scene's key and name and which one shows; "scene <key>"
