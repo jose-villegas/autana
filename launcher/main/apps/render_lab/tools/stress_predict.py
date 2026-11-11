@@ -4,6 +4,7 @@ import pathlib
 import sys
 
 import numpy as np
+from scipy.optimize import nnls
 
 ROOT = pathlib.Path(__file__).resolve().parents[5]
 sys.path[:0] = [str(ROOT / "launcher/tools/perf"), str(ROOT / "launcher/tools")]
@@ -13,9 +14,15 @@ from render.cull_counts import size_fields
 STAGES = ("r3d.cull", "r3d.transform", "r3d.draw", "r3d.upscale")
 FRAME = "frame"
 ALL_STAGES = (*STAGES, FRAME)
-TERMS = ("clusters_kept", "vertices_transformed", *size_fields(),
-         "pixels_face", "pixels_uniform", "pixels_shaded", "clusters_off_frustum", "nodes_cut",
-         "triangles_facing_away", "triangles_missed", "triangles_behind", "triangles_clipped")
+# Each stage's own work: what a stage does sets the counts it is fitted on.
+STAGE_INPUTS = {
+    "r3d.cull": ("nodes_visited", "nodes_cut", "clusters_tested", "clusters_off_frustum", "clusters_kept"),
+    "r3d.transform": ("clusters_kept", "vertices_transformed"),
+    "r3d.draw": (*size_fields(), "pixels_face", "pixels_uniform", "pixels_shaded", "triangles_facing_away",
+                 "triangles_missed", "triangles_behind", "triangles_clipped"),
+    "r3d.upscale": (),
+}
+TERMS = tuple(dict.fromkeys(name for names in STAGE_INPUTS.values() for name in names))
 PERCENTILE = 95
 ERROR_LIMIT = 0.10
 PERCENT = 100
@@ -48,40 +55,30 @@ def design(poses, names):
     return np.array([[1.0, *(p["counts"][name] for name in names)] for p in poses], dtype=float)
 
 
-def independent_columns(matrix, names):
-    kept, notes = [0], []
-    for col, name in enumerate(names, 1):
-        trial = matrix[:, [*kept, col]]
-        if np.linalg.matrix_rank(trial) == len(kept) + 1:
-            kept.append(col)
-        else:
-            reason = "empty" if not np.any(matrix[:, col]) else "constant/dependent"
-            notes.append(f"dropped {reason} term {name}")
-    return kept, notes
-
-
-def fit(poses, names=TERMS):
-    matrix = design(poses, names)
-    scales = np.maximum(np.max(np.abs(matrix), axis=0), 1)
-    normalized = matrix / scales
-    kept, notes = independent_columns(normalized, names)
-    basis = normalized[:, kept]
-    weights = {stage: np.linalg.lstsq(basis, [p["stages"][stage] for p in poses], rcond=None)[0]
-               / scales[kept] for stage in STAGES}
-    return {"names": names, "kept": kept, "weights": weights, "notes": notes, "scales": scales,
-            "relations": np.linalg.lstsq(basis, normalized, rcond=None)[0]}
+def fit(poses, inputs=STAGE_INPUTS):
+    """Per stage, stage_ms = c + sum(beta * count) over that stage's own inputs, by
+    non-negative least squares: no count makes a stage cheaper."""
+    weights, notes, untrained = {}, [], set()
+    for stage, names in inputs.items():
+        matrix = design(poses, names)
+        scales = np.maximum(np.max(np.abs(matrix), axis=0), 1)
+        solved, _ = nnls(matrix / scales, np.array([p["stages"][stage] for p in poses], dtype=float))
+        weights[stage] = solved / scales
+        flat = [name for col, name in enumerate(names, 1) if np.ptp(matrix[:, col]) == 0]
+        untrained.update(flat)
+        notes.extend(f"{stage}: {name} never varies in training" for name in flat)
+    return {"inputs": dict(inputs), "weights": weights, "notes": notes, "untrained": untrained,
+            "trained_values": {name: {p["counts"][name] for p in poses} for name in untrained}}
 
 
 def estimates(model, poses):
-    matrix = design(poses, model["names"])
-    return {stage: matrix[:, model["kept"]] @ model["weights"][stage] for stage in STAGES}
+    return {stage: design(poses, names) @ model["weights"][stage] for stage, names in model["inputs"].items()}
 
 
 def unsupported_terms(model, poses):
-    matrix = design(poses, model["names"]) / model["scales"]
-    residual = matrix - matrix[:, model["kept"]] @ model["relations"]
-    return [name for col, name in enumerate(model["names"], 1)
-            if np.any(np.abs(residual[:, col]) > SUPPORT_TOLERANCE)]
+    """Inputs the training never varied that these poses take another value of."""
+    return sorted(name for name in model["untrained"]
+                  if any(p["counts"][name] not in model["trained_values"][name] for p in poses))
 
 
 def stage_values(poses):
@@ -163,12 +160,11 @@ def layout_rows(a, b, floors):
 
 
 def model_lines(model, label):
-    lines = [f"Model {label}: stage_ms = c + sum(beta * count)", *model["notes"],
+    lines = [f"Model {label}: per stage, stage_ms = c + sum(beta * count), beta >= 0", *model["notes"],
              "stage term beta_ms"]
-    terms = ("intercept", *model["names"])
-    for stage in STAGES:
-        lines.extend(f"{stage} {terms[col]} {weight:.9g}"
-                     for col, weight in zip(model["kept"], model["weights"][stage]))
+    for stage, names in model["inputs"].items():
+        lines.extend(f"{stage} {term} {weight:.9g}"
+                     for term, weight in zip(("intercept", *names), model["weights"][stage]))
     return lines
 
 
@@ -178,7 +174,7 @@ def table_lines(rows, label):
                  f"{r['error']:.3f} {'PASS' if r['pass'] else 'FAIL'}" for r in rows)
     unsupported = sorted({name for r in rows for name in r["unsupported"]})
     if unsupported:
-        lines.append("Unfitted terms outside training relations: " + ", ".join(unsupported))
+        lines.append("Inputs outside training (never varied there): " + ", ".join(unsupported))
     frame_ok = all(r["pass"] for r in rows if r["stage"] == FRAME)
     lines.append(f"{label} frame rule: {'PASS' if frame_ok else 'FAIL'}")
     return lines

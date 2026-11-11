@@ -174,25 +174,25 @@ one quarter. Every line carries cull counts and r3d stage times.
 `STRESS_PERF_POSES` in the suite owns its sampling density.
 
 `stress_predict.py` fits `stage_ms = c + Σ β_k x_k` separately for cull,
-transform, draw and upscale, using each stress replay pose's counts and times.
-Frame predictions sum the stages; scene poses are held out of fitting.
+transform, draw and upscale, each on its own inputs below, with every `β_k ≥ 0`
+(non-negative least squares). Frame predictions sum the stages; scene poses
+are held out of fitting.
 
 Primitive and pixel work have distinct costs.<sup>[[117]](../../../../../docs/Citations.md#funkhouser-1993)</sup>
 Software rasterization also depends on triangle size and pixel work.<sup>[[118]](../../../../../docs/Citations.md#laine-2011)</sup>
 Separate task estimates follow the rendering-time framework of Wimmer and Wonka.<sup>[[119]](../../../../../docs/Citations.md#wimmer-2003)</sup>
 These sources motivate the inputs; this tool's additive fit and gate are local choices.
 
-| Input | Count fields |
+| Stage | Count fields (`STAGE_INPUTS`) |
 |---|---|
-| Kept geometry | `clusters_kept`, `vertices_transformed` |
-| Triangle setup | `sized_*`: size bin × FACE/UNIFORM/SHADED |
-| Pixel work | `pixels_face`, `pixels_uniform`, `pixels_shaded` |
-| Frustum rejection | `clusters_off_frustum`, `nodes_cut` |
-| Triangle rejection | `triangles_facing_away`, `triangles_missed`, `triangles_behind`, `triangles_clipped` |
+| r3d.cull | `nodes_visited`, `nodes_cut`, `clusters_tested`, `clusters_off_frustum`, `clusters_kept` |
+| r3d.transform | `clusters_kept`, `vertices_transformed` |
+| r3d.draw | `sized_*` (size bin × FACE/UNIFORM/SHADED), `pixels_face`, `pixels_uniform`, `pixels_shaded`, `triangles_facing_away`, `triangles_missed`, `triangles_behind`, `triangles_clipped` |
+| r3d.upscale | none: a constant |
 
-Least squares uses every replay pose in every supplied stress capture, keeping
-only the last duplicate pose within each capture. Empty, constant and dependent
-terms drop in field order after column scaling; the report names each one.
+The fit uses every replay pose in every supplied stress capture, keeping only
+the last duplicate pose within each capture. The report names each input the
+training never varies.
 
 The plain table lists measured and predicted means and pose-wise p95 errors
 for every scene and stage, plus frame. Each row passes when the 95th percentile
@@ -225,8 +225,8 @@ quarter and `--scene-quarter` the scenes', `--quarter`'s when omitted.
 Delta, noise and layout pairs use the poses both captures replayed, by row and path time. A nonzero exit
 means a scoring row failed; missing fields or unmatched poses are errors.
 
-A scene that violates a dropped term's training relation fails with that term
-named. Captures must include every model count and stage on each replay line.
+A scene that takes another value of an input the training never varied fails
+with that input named. Captures must include every model count and stage on each replay line.
 The offline `scene_triangle_bins.py` summary is separate from model fitting.
 
 `render_lab_render --view cull --counts FILE` writes every

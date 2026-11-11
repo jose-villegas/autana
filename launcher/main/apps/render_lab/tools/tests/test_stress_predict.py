@@ -17,30 +17,37 @@ def pose(x, y=0, row="scene", t=0):
             "stages": {stage: 2 + 3 * x + 5 * y for stage in predict.STAGES}}
 
 
+def every(*names):
+    return {stage: names for stage in predict.STAGES}
+
+
 class StressPredictTest(unittest.TestCase):
     def test_exact_model_recovers_intercept_and_coefficients_and_passes(self):
         training = [pose(x, y) for x, y in ((0, 0), (1, 0), (0, 1), (2, 3))]
-        model = predict.fit(training, ("x", "y"))
+        model = predict.fit(training, every("x", "y"))
         np.testing.assert_allclose(model["weights"]["r3d.draw"], [2, 3, 5])
         rows = predict.score(model, [pose(3, 4)])
         self.assertTrue(all(row["pass"] for row in rows))
         self.assertEqual(rows[-1]["stage"], "frame")
 
     def test_missing_term_fails_and_names_it(self):
-        model = predict.fit([pose(x) for x in range(4)], ("x", "y"))
+        model = predict.fit([pose(x) for x in range(4)], every("x", "y"))
         rows = predict.score(model, [pose(1, 8)])
         self.assertFalse(all(row["pass"] for row in rows))
         self.assertIn("y", " ".join(model["notes"]))
         self.assertIn("y", " ".join(rows[0]["unsupported"]))
 
-    def test_dependent_terms_drop_without_changing_identifiable_prediction(self):
-        model = predict.fit([pose(x, 2 * x) for x in range(4)], ("x", "y"))
-        self.assertTrue(any("dependent" in note for note in model["notes"]))
-        self.assertTrue(all(row["pass"] for row in predict.score(model, [pose(5, 10)])))
-        self.assertFalse(all(row["pass"] for row in predict.score(model, [pose(5, 9)])))
+    def test_weights_stay_non_negative_and_stage_uses_only_its_inputs(self):
+        training = [pose(x) for x in range(4)]
+        for item in training:
+            item["stages"]["r3d.cull"] = 4 - item["counts"]["x"]
+        model = predict.fit(training, {**every("x"), "r3d.upscale": ()})
+        self.assertTrue(all(np.all(w >= 0) for w in model["weights"].values()))
+        np.testing.assert_allclose(model["weights"]["r3d.upscale"], [2 + 3 * 1.5])
+        self.assertEqual(model["inputs"]["r3d.upscale"], ())
 
     def test_p95_uses_pose_errors_instead_of_error_of_means(self):
-        model = predict.fit([pose(x) for x in range(4)], ("x",))
+        model = predict.fit([pose(x) for x in range(4)], every("x"))
         scenes = [pose(1, t=t) for t in range(20)]
         for item in scenes[:2]:
             item["stages"]["r3d.draw"] *= 2
@@ -54,7 +61,7 @@ class StressPredictTest(unittest.TestCase):
             item["stages"] = {stage: value + item["counts"]["x"] for stage, value in item["stages"].items()}
         scene_a, scene_b = [pose(2)], [pose(99)]
         scene_b[0]["stages"] = {stage: 10 for stage in predict.STAGES}
-        rows = predict.score(predict.fit(a, ("x",)), scene_a, predict.fit(b, ("x",)), scene_b,
+        rows = predict.score(predict.fit(a, every("x")), scene_a, predict.fit(b, every("x")), scene_b,
                              {stage: 0.01 for stage in (*predict.STAGES, "frame")})
         self.assertTrue(all(row["pass"] for row in rows))
         self.assertAlmostEqual(rows[0]["predicted"], 2)
@@ -79,9 +86,12 @@ class StressPredictTest(unittest.TestCase):
                 lines = []
                 for t, (x, y) in enumerate(points):
                     counts = dict.fromkeys(predict.TERMS, 0)
-                    counts.update(clusters_kept=x, vertices_transformed=y)
+                    counts.update(clusters_kept=x, vertices_transformed=y, pixels_shaded=y)
                     fields = " ".join(f"{key}={value}" for key, value in counts.items())
-                    stages = "  ".join(f"{stage} {2 + 3*x + 5*y + change*x:.6f}/0.00" for stage in predict.STAGES)
+                    beta = {"clusters_kept": 3 + change, "vertices_transformed": 5, "pixels_shaded": 4}
+                    stages = "  ".join(
+                        f"{stage} {2 + sum(beta.get(n, 0) * counts[n] for n in names):.6f}/0.00"
+                        for stage, names in predict.STAGE_INPUTS.items())
                     lines.append(replay % (name, t, fields, stages + " | total 1.00") + f" quarter={quarter}")
                 path = pathlib.Path(folder) / f"{name}-{change}-{quarter}.log"
                 path.write_text("\n".join(lines))
