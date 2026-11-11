@@ -272,13 +272,15 @@ def keep_start(args):
     (out / raw.name).write_bytes(raw.read_bytes())
 
 
-def run_fit(directory, fit_main, lod=None, files=()):
+def run_fit(directory, fit_main, lod=None, files=(), shaping=None):
     """Runs the fit stage on the fixture's start with `fit_main` standing in for the fit, after writing each of
-    `files` empty into the work folder; returns the start's bytes, the job and the fitted bundle."""
+    `files` empty into the work folder and setting the import's fit `shaping` when given; returns the start's bytes, the job and the fitted bundle."""
     work = pathlib.Path(directory)
     data, _, _, job, scene = bundle_fixture(directory)
     if lod is not None:
         job.settings.lod = lod
+    if shaping is not None:
+        job.settings.fit = shaping
     start_path(work, job).write_bytes(data)
     for name in files:
         (work / name).write_text('')
@@ -289,6 +291,59 @@ def run_fit(directory, fit_main, lod=None, files=()):
     with mock.patch.dict(sys.modules, {'r3d.appearance_simplify': SimpleNamespace(main=fit_main)}):
         stage.fit(work / 'scene.scene.toml', scene, job, work, start=start_path(work, job), target=target)
     return data, job, target
+
+class FitCommandTests(unittest.TestCase):
+    """The command line the fit stage hands the fit: which sets, in which order, and the settle."""
+
+    def command(self, files=(), probes=None, budget=None):
+        asked = []
+        shaping = SimpleNamespace(probes=probes, budget=budget)
+        with tempfile.TemporaryDirectory() as directory:
+            run_fit(directory, lambda args: asked.append(args) or keep_start(args), files=files, shaping=shaping)
+            work = str(pathlib.Path(directory))
+        return [pathlib.Path(arg).name if arg.startswith(work) else arg for arg in asked[0]]
+
+    @staticmethod
+    def values(args, flag):
+        return [args[i + 1] for i, arg in enumerate(args) if arg == flag]
+
+    def test_the_path_sets_come_before_the_probe_sets(self):
+        files = ['train.txt', 'train_landscape.txt', 'probes.txt', 'coverage.txt']
+        args = self.command(files)
+        self.assertEqual(self.values(args, '--poses'), files[:3])
+        self.assertEqual(self.values(args, '--reference'), ['reference', 'reference_landscape', 'reference_probes'])
+        self.assertEqual(self.values(args, '--coverage-poses'), ['coverage.txt', 'probes.txt'])
+
+    def test_held_out_sets_pass_only_when_the_import_sets_probes_or_a_budget_and_pair_up(self):
+        files = ['held_out.txt', 'probes_held_out.txt']
+        for name, shaping in (('none', {}), ('probes', dict(probes=SimpleNamespace())),
+                              ('budget', dict(budget=SimpleNamespace(policy='settle', step=1, settle=0.1)))):
+            with self.subTest(shaping=name):
+                args = self.command(files, **shaping)
+                if name == 'none':
+                    self.assertNotIn('--held-out-poses', args)
+                    self.assertNotIn('--held-out-reference', args)
+                else:
+                    self.assertEqual(self.values(args, '--held-out-poses'), files)
+                    self.assertEqual(self.values(args, '--held-out-reference'),
+                                     ['reference_held_out', 'reference_probes_held_out'])
+
+    def test_settle_is_passed_only_for_the_settle_policy(self):
+        for policy, expected in (('settle', ['100', '0.05']), (None, None)):
+            with self.subTest(policy=policy):
+                budget = None if policy is None else SimpleNamespace(policy=policy, step=100, settle=0.05)
+                args = self.command(budget=budget)
+                if expected:
+                    self.assertEqual(args[args.index('--settle') + 1:args.index('--settle') + 3], expected)
+                else:
+                    self.assertNotIn('--settle', args)
+
+    def test_the_copy_gate_checks_the_path_held_out_set_unless_the_camera_has_no_path(self):
+        for files, expected in ((['held_out.txt', 'probes_held_out.txt'], 'held_out.txt'), ([], 'held_out.txt'),
+                                (['probes_held_out.txt'], 'probes_held_out.txt')):
+            with self.subTest(files=files):
+                self.assertEqual(self.values(self.command(files), '--copy-poses'), [expected])
+
 
 class FitCopiesTests(unittest.TestCase):
     """The fit draws a carved start's copies where the board does, and gates what the fit did to them."""
