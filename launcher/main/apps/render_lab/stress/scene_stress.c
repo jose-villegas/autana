@@ -44,17 +44,17 @@ static r3d_dynamic_mesh_t mesh;
 static uint32_t wave_ms;
 
 /* What the panel says in place of the triangle count when the scene could not load. */
-static char failure[RENDER_LAB_STATUS_LEN];
+static char failure[LAB_STATUS_LEN];
 
 static void
 fail(const char* what) {
-    render_lab_scene_fail(TAG, failure, sizeof failure, what);
+    lab_scene_fail(TAG, failure, sizeof failure, what);
 }
 
 /* The pool is every copy the pack names, from 0 up to the first it lacks. */
 static bool
 find_pool(void) {
-    slots = render_lab_scene_copies(loaded, STRESS_SLOT_FORMAT, &pool);
+    slots = lab_scene_copies(loaded, STRESS_SLOT_FORMAT, &pool);
     return slots != NULL;
 }
 
@@ -62,12 +62,12 @@ static bool
 take_mesh(void) {
     const int vertices = stress_vertex_count(shown);
     const int triangles = stress_triangle_count(shown);
-    buffers = (stress_buffers_t){render_lab_scene_take(sizeof(vec3f_t) * (size_t)vertices),
-                                 render_lab_scene_take(sizeof(uint8_t[3]) * (size_t)vertices),
-                                 render_lab_scene_take(sizeof(uint16_t[3]) * (size_t)triangles)};
+    buffers = (stress_buffers_t){lab_scene_take(sizeof(vec3f_t) * (size_t)vertices),
+                                 lab_scene_take(sizeof(uint8_t[3]) * (size_t)vertices),
+                                 lab_scene_take(sizeof(uint16_t[3]) * (size_t)triangles)};
     const r3d_dynamic_capacity_t capacity = r3d_dynamic_capacity_for(vertices, triangles);
     const size_t bytes = r3d_dynamic_mesh_bytes(capacity);
-    void* block = render_lab_scene_take(bytes);
+    void* block = lab_scene_take(bytes);
     return buffers.positions != NULL && buffers.colors != NULL && buffers.triangles != NULL && block != NULL
            && r3d_dynamic_mesh_init(&mesh, block, bytes, capacity, STRESS_TICKS_PER_UNIT);
 }
@@ -118,7 +118,7 @@ apply_settings(void) {
 
 static bool
 load(void) {
-    loaded = render_lab_scene_load(TAG, failure, sizeof failure, STRESS_SCENE, "stress");
+    loaded = lab_scene_load(TAG, failure, sizeof failure, STRESS_SCENE, "stress");
     if (handle_is_none(loaded)) {
         return false;
     }
@@ -127,7 +127,7 @@ load(void) {
         fail("no stress camera");
         return false;
     }
-    viewer = render_lab_start_camera == NULL ? camera : entity_find(loaded, name_hash(render_lab_start_camera));
+    viewer = render_lab.start_camera == NULL ? camera : entity_find(loaded, name_hash(render_lab.start_camera));
     if (!find_pool() || !take_mesh()) {
         fail("no memory for stress");
         return false;
@@ -144,7 +144,7 @@ load(void) {
 }
 
 static void
-scene_stress_enter(const render_lab_scene_t* self) {
+scene_stress_enter(const lab_scene_t* self) {
     shown = self->data;
     draw_clear(RGB565BE(UI_BACKGROUND));
     failure[0] = '\0';
@@ -153,7 +153,7 @@ scene_stress_enter(const render_lab_scene_t* self) {
         return;
     }
     (void)camera_activate(
-        entity_find(loaded, name_hash(render_lab_start_camera == NULL ? STRESS_CAMERA : render_lab_start_camera)));
+        entity_find(loaded, name_hash(render_lab.start_camera == NULL ? STRESS_CAMERA : render_lab.start_camera)));
     place_copies();
     apply_settings();
 }
@@ -188,13 +188,13 @@ scene_stress_frame(uint32_t dt_ms) {
 /* The size drawn at, the triangle count and the copies, or why the scene did not load. */
 static const char*
 scene_stress_status(void) {
-    return render_lab_scene_copies_status(failure, shown->copies);
+    return render_lab_copies_status(failure, shown->copies);
 }
 
 /* The camera shown: swinging, unless the start named a still one. */
-static render_lab_path_t
+static lab_path_t
 scene_stress_path(void) {
-    return (render_lab_path_t){loaded, handle_is_none(loaded) ? ENTITY_NONE : viewer, NULL};
+    return (lab_path_t){loaded, handle_is_none(loaded) ? ENTITY_NONE : viewer, NULL};
 }
 
 /* A still preset can have frames generated: only the camera moves. */
@@ -209,9 +209,9 @@ scene_stress_path(void) {
                 .frame = scene_stress_frame,                                                                           \
                 .exit = scene_stress_exit,                                                                             \
                 .update = scene_stress_update,                                                                         \
-                .status = RENDER_LAB_SCENE_DEV(scene_stress_status),                                                   \
+                .status = LAB_SCENE_DEV(scene_stress_status),                                                          \
                 .controls = STRESS_SURFACE_IS_PER_FRAME(STRESS_SURFACE_##surface_) ? NULL : scene_baked_controls,      \
                 .generates_frames = !STRESS_SURFACE_IS_PER_FRAME(STRESS_SURFACE_##surface_),                           \
                 .path = scene_stress_path},
 
-const render_lab_scene_t scene_stress[STRESS_PRESET_COUNT] = {STRESS_PRESETS(STRESS_SCENE_ROW)};
+const lab_scene_t scene_stress[STRESS_PRESET_COUNT] = {STRESS_PRESETS(STRESS_SCENE_ROW)};

@@ -90,7 +90,9 @@ for key in $(sed -n 's/^ *X([A-Z_]*, "\([^"]*\)".*/\1/p' launcher/main/apps/rend
     run "$PYTHON" launcher/tools/docs/figures.py png "$W/stress-$key.bmp" "$OUT/render-lab-stress-$key.png"
 done
 
-# The biggest herd over one lap of its camera, sped up.
-run "$W/render_lab_render" --quarter 1 --no-hud --scene herd-8 --frames 120 --dt 150 \
-    -o "$W/herd-motion.bmp" --video "$W/herd-motion.avi" 2> "$W/herd.log"
+# The biggest herd over one turn of its orbit, sped up.
+HERD_FRAMES=120
+HERD_DT=150
+run "$W/render_lab_render" --quarter 1 --no-hud --scene herd-8 --frames "$HERD_FRAMES" --dt "$HERD_DT" \
+    --set render_lab.orbit_ms="$((HERD_FRAMES * HERD_DT))" -o "$W/herd-motion.bmp" --video "$W/herd-motion.avi" 2> "$W/herd.log"
 run "$PYTHON" launcher/tools/docs/figures.py gif "$W/herd-motion.avi" "$OUT/render-lab-herd.gif" --fps 10

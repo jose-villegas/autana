@@ -10,7 +10,7 @@
 #include <stdint.h>
 
 #include "baked_families.h"
-#include "render_lab_scene.h"
+#include "lab/lab_scene.h"
 #include "render_lab_view.h"
 #include "ui/ui.h"
 
@@ -22,11 +22,11 @@ typedef struct {
 
 /* `self->data` is a scene_baked_shown_t. Loads its family's scene and enables
  * that bake alone. */
-void scene_baked_enter(const render_lab_scene_t* self);
+void scene_baked_enter(const lab_scene_t* self);
 void scene_baked_frame(uint32_t dt_ms);
 void scene_baked_exit(void);
 /* The camera the scene follows, flying its clip. */
-render_lab_path_t scene_baked_path(void);
+lab_path_t scene_baked_path(void);
 
 /* The menu rows of a baked scene: FRAME GEN, whose warp suits a scene whose
  * objects do not move on their own. */
@@ -55,7 +55,7 @@ scene_baked_controls(int width) {
                            .enter = scene_baked_enter,                                                                 \
                            .frame = scene_baked_frame,                                                                 \
                            .exit = scene_baked_exit,                                                                   \
-                           .status = RENDER_LAB_SCENE_DEV(scene_baked_status),                                         \
+                           .status = LAB_SCENE_DEV(scene_baked_status),                                                \
                            .controls = scene_baked_controls,                                                           \
                            .generates_frames = true,                                                                   \
                            .path = scene_baked_path},
@@ -66,9 +66,9 @@ scene_baked_controls(int width) {
 #define SCENE_BAKED_FAMILY(id, shown_, family_, name_, key_prefix_)                                                    \
     static const scene_baked_shown_t shown_[SCENE_BAKED_VARIANT_COUNT] = {                                             \
         SCENE_BAKED_VARIANTS(SCENE_BAKED_SHOWN, (shown_, family_, name_, key_prefix_))};                               \
-    const render_lab_scene_t id[SCENE_BAKED_VARIANT_COUNT] = {                                                         \
+    const lab_scene_t id[SCENE_BAKED_VARIANT_COUNT] = {                                                                \
         SCENE_BAKED_VARIANTS(SCENE_BAKED_SCENE, (shown_, family_, name_, key_prefix_))}
 
 /* The families render_lab shows, each a scene per variant. */
-extern const render_lab_scene_t scene_sponza[SCENE_BAKED_VARIANT_COUNT];
-extern const render_lab_scene_t scene_bistro[SCENE_BAKED_VARIANT_COUNT];
+extern const lab_scene_t scene_sponza[SCENE_BAKED_VARIANT_COUNT];
+extern const lab_scene_t scene_bistro[SCENE_BAKED_VARIANT_COUNT];

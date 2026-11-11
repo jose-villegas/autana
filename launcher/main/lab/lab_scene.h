@@ -1,23 +1,26 @@
-/* render_lab_scene: a mesh scene hosted behind the shared HUD and menu. */
+/* lab_scene: one scene of a lab (lab.h), behind its shared HUD and menu. */
 #pragma once
 
 #include <stddef.h>
 #include <stdint.h>
 
 #include "app/app_console.h"
-#include "apps/render_lab/ui/render_lab_menu_screen.h"
 #include "build/build_variant.h"
 #include "input/input.h"
+#include "lab/ui/lab_menu_screen.h"
 #include "scene/scene.h"
+
+/* The longest status line a scene's `status` hook returns, its NUL included. */
+#define LAB_STATUS_LEN 48
 
 /* What the scene plays along a clip: the entity animated, in its loaded scene. */
 typedef struct {
     entity_t scene; /* ENTITY_NONE when the scene has not loaded */
     entity_t entity;
     const char* clip; /* the clip a frame profile plays; NULL keeps the entity's current one */
-} render_lab_path_t;
+} lab_path_t;
 
-typedef struct render_lab_scene {
+typedef struct lab_scene {
     const char* name; /* the HUD title */
     const char* key;
     /* The Scene dropdown's entry; scenes of one family are listed together.
@@ -27,7 +30,7 @@ typedef struct render_lab_scene {
     const char* family;
     const char* variant;
     /* Receives its own scene, so one enter can serve several scenes through `data`. */
-    void (*enter)(const struct render_lab_scene* self);
+    void (*enter)(const struct lab_scene* self);
     void (*frame)(uint32_t dt_ms);
     void (*exit)(void);
     /* Optional. The HUD's line under the fps reading; development and host builds only. */
@@ -46,44 +49,34 @@ typedef struct render_lab_scene {
     void (*steer)(uint32_t dt_ms, const input_t* input);
     /* Optional. Drawn in the BOOT menu below the Scene row while the scene is
      * paused; may call public scene_* calls only. */
-    render_lab_controls_fn controls;
+    lab_controls_fn controls;
     /* Whether frame generation suits the scene: true where nothing moves on
-     * its own, so the camera's pose alone warps a frame. Render Lab turns it
-     * on for such a scene only, when render_lab.framegen asks. */
+     * its own, so the camera's pose alone warps a frame. A lab may turn it
+     * on for such a scene only. */
     bool generates_frames;
-    /* Optional. Handles `render <args>` that Render Lab's scene commands did not;
+    /* Optional. Handles `<word> <args>` that the lab's own commands did not;
      * false means the command is not this scene's. */
     bool (*console)(const char* args, console_reply_fn reply);
     /* Optional. The clip a frame profile plays: its camera's flight, or the subject's motion. */
-    render_lab_path_t (*path)(void);
-} render_lab_scene_t;
+    lab_path_t (*path)(void);
+} lab_scene_t;
 
 /* A scene that could not load: logs `what` under `tag` and keeps it in
  * `failure` (`size` bytes) for the status line, in place of its stats. */
-void render_lab_scene_fail(const char* tag, char* failure, size_t size, const char* what);
+void lab_scene_fail(const char* tag, char* failure, size_t size, const char* what);
 
 /* Loads the scene `id` and returns its READY root. Otherwise releases it,
- * fails as render_lab_scene_fail() with "no <label> pack: flash it" or
+ * fails as lab_scene_fail() with "no <label> pack: flash it" or
  * "<label> did not load", and returns ENTITY_NONE. */
-entity_t render_lab_scene_load(const char* tag, char* failure, size_t size, const char* id, const char* label);
+entity_t lab_scene_load(const char* tag, char* failure, size_t size, const char* id, const char* label);
 
-/* `bytes` from the app arena, which render_lab rewinds when the scene goes; NULL when it is spent. */
-void* render_lab_scene_take(size_t bytes);
-
-/* The longest copy name a render_lab_scene_copies() format makes, with its terminator. */
-#define RENDER_LAB_COPY_NAME_SIZE 16
+/* `bytes` from the app arena, which the lab rewinds when the scene goes; NULL when it is spent. */
+void* lab_scene_take(size_t bytes);
 
 /* A scene's numbered copies: each entity `format` (one %d, such as
  * "slot_%02d") names from 0 up to the first `scene` lacks, in order, in the
  * app arena, with their `count`; NULL when the arena is spent. */
-entity_t* render_lab_scene_copies(entity_t scene, const char* format, int* count);
-
-/* A scene of copies' status line: the size drawn at, the triangle count and
- * `copies`, or `failure` when it says why the scene did not load. */
-const char* render_lab_scene_copies_status(const char* failure, int copies);
-
-extern const render_lab_scene_t scene_capybara;
-extern const render_lab_scene_t scene_water;
+entity_t* lab_scene_copies(entity_t scene, const char* format, int* count);
 
 /* A scene's `.console` or `.status`: the hook in a development or host build,
  * NULL otherwise, as APP_CONSOLE_PTR() does, so a release links neither the
@@ -91,7 +84,7 @@ extern const render_lab_scene_t scene_water;
  * does. Declare the hook static inline so a release draws no unused-function
  * warning. */
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-#define RENDER_LAB_SCENE_DEV(hook) (hook)
+#define LAB_SCENE_DEV(hook) (hook)
 #else
-#define RENDER_LAB_SCENE_DEV(hook) NULL
+#define LAB_SCENE_DEV(hook) NULL
 #endif
