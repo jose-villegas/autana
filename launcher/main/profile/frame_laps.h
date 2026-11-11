@@ -27,7 +27,7 @@
 #include "collections/strbuf.h"
 
 /* Distinct lap names, across every core. */
-#define FRAME_LAPS_NAMES      16
+#define FRAME_LAPS_NAMES      20
 #define FRAME_LAPS_CORES      2
 #define FRAME_LAPS_NAME_MAX   24
 
