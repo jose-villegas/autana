@@ -116,6 +116,7 @@ test_herd_turn_cost(void) {
     TEST_ASSERT_NOT_NULL(active);
     *active = (fixture_t){0};
     const size_t internal_before = memory_free_bytes(MEMORY_INTERNAL);
+    const memory_fallbacks_t fell_before = memory_fast_fallbacks(); /* the scene takes its buffers from here on */
     lab_test_enter(&active->saved, &render_lab, herd->key);
     suite_set_test_cleanup(release_fixture);
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render_lab, orbit_ms), HERD_PERF_TURN_MS));
@@ -125,7 +126,6 @@ test_herd_turn_cost(void) {
     scene_t* scene = scene_entity_row(herd->path().entity, &row); /* a row of a copy: the root is not one */
     TEST_ASSERT_NOT_NULL(scene);
     const int copies = *(const int*)herd->data;
-    const memory_fallbacks_t fell_before = memory_fast_fallbacks();
     scene_animation_step(scene, 0); /* a shown copy takes its buffers on its first step */
     const memory_fallbacks_t fell = memory_fast_fallbacks();
     TEST_ASSERT_EQUAL_INT(copies, shown_copies(scene));
