@@ -232,6 +232,14 @@ jobs:
           npm ci --prefix scripts/gates
       - name: Tool tests
         run: sh scripts/run-tool-tests.sh
+      # The quiet run prints each failing suite's head; the whole log is what a fix is classified from.
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: tool-tests-windows-log
+          path: launcher/test/build/run-tool-tests.log
+          retention-days: 14
+          if-no-files-found: ignore
 
   # The generated-file sweep gets its own runner; banners define its inputs.
   generated-files:
