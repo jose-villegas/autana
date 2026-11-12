@@ -790,7 +790,7 @@ cull_begin(draw_work_t* work, const raster_t* raster, const render_view_t* view,
 /* Adds both cores' counts to `stats`, ORs their level changes into
  * `levels_changed`, and returns the nearer depth fit, or near_z when nothing
  * was kept. */
-static RENDER_IRAM_ATTR __attribute__((noinline)) float
+static __attribute__((noinline)) float
 cull_end(const cull_job_t* job, raster_stats_t* stats, bool* levels_changed, float near_z) {
     float depth_near = INFINITY;
     for (int h = 0; h < 2; h++) {
@@ -804,7 +804,7 @@ cull_end(const cull_job_t* job, raster_stats_t* stats, bool* levels_changed, flo
 
 /* Ends the frame's share of a steered pick's round: the round is done once
  * every instance has had its turn. */
-static RENDER_IRAM_ATTR __attribute__((noinline)) void
+static __attribute__((noinline)) void
 steer_end(const level_pick_t* pick, int drawn) {
     const int every = pick->lod.pick_every;
     const bool done = every <= 1 || pick->round == 0 || pick->steer->frames + 1 >= every;
