@@ -176,7 +176,7 @@ jobs:
 
       - name: Trace this shard
         run: |
-          python launcher/tools/bake/bake.py bake --kind reference --shard "${{ matrix.shard }}/${{ strategy.job-total }}"             --out "$RUNNER_TEMP/shard"
+          python launcher/tools/bake/bake.py bake --kind reference --shard "${{ matrix.shard }}/${{ strategy.job-total }}" --out "$RUNNER_TEMP/shard"
 
       # Not a bakes-* name: a shard is no bake, so a lock never reads it.
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -204,7 +204,7 @@ jobs:
 
       - name: Join the shards and pack each set
         run: |
-          python launcher/tools/bake/bake.py bake --kind reference --shards "$RUNNER_TEMP/shards"             --out "$RUNNER_TEMP/bakes"
+          python launcher/tools/bake/bake.py bake --kind reference --shards "$RUNNER_TEMP/shards" --out "$RUNNER_TEMP/bakes"
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
