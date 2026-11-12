@@ -1,0 +1,43 @@
+name: WinLibs
+description: >-
+  The MinGW-w64 toolchain the Windows dev machines build host code with
+  (docs/testing/Host-Tests.md): WinLibs GCC, POSIX threads, UCRT, with its
+  mingw32-make and CMake, put first on PATH. Pinned to one release and its
+  sha256, so the runner image's own MinGW never decides a result.
+
+inputs:
+  release:
+    description: The WinLibs release tag.
+    default: 16.1.0posix-14.0.0-ucrt-r4
+  archive:
+    description: The release asset to unpack.
+    default: winlibs-x86_64-posix-seh-gcc-16.1.0-mingw-w64ucrt-14.0.0-r4.7z
+  sha256:
+    description: The asset's sha256, as the release publishes it.
+    default: 08b46777f127b92f4ca9ca057b317331178133d028513d1c3632f9cdcfde9ae7
+
+runs:
+  using: composite
+  steps:
+    - id: cache
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: ${{ runner.temp }}/winlibs
+        key: winlibs-${{ inputs.archive }}-${{ inputs.sha256 }}
+    - if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        RELEASE: ${{ inputs.release }}
+        ARCHIVE: ${{ inputs.archive }}
+        SHA256: ${{ inputs.sha256 }}
+        DEST: ${{ runner.temp }}/winlibs
+      run: |
+        curl -fsSL --retry 3 -o "$RUNNER_TEMP/$ARCHIVE" \
+          "https://github.com/brechtsanders/winlibs_mingw/releases/download/$RELEASE/$ARCHIVE"
+        echo "$SHA256  $RUNNER_TEMP/$ARCHIVE" | sha256sum -c -
+        7z x -y -bd -o"$DEST" "$RUNNER_TEMP/$ARCHIVE" > /dev/null
+    - shell: bash
+      env:
+        DEST: ${{ runner.temp }}/winlibs
+      run: |
+        cygpath -w "$DEST/mingw64/bin" >> "$GITHUB_PATH"

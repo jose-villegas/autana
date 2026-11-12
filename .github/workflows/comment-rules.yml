@@ -206,6 +206,31 @@ jobs:
         if: ${{ !cancelled() }}
         with: {step: record}
 
+  # The same suites on Windows, built by the dev machines' MinGW, so a Windows-only break (a PE link,
+  # a CMake generator) goes red here rather than on a developer's desk.
+  tool-tests-windows:
+    needs: inputs
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.comment-rules == 'true') }}
+    name: Tool tests (Windows)
+    runs-on: windows-2025
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/host-tools
+      - uses: ./.github/actions/winlibs
+      - name: Tool test dependencies
+        run: |
+          pip install -r scripts/gates/requirements.txt -r launcher/tools/render/requirements.txt -r launcher/test/device/requirements.txt -r launcher/tools/audio/requirements.txt -r launcher/tools/audio/mic/requirements.txt -r launcher/tools/r3d/requirements.txt
+          git submodule update --init --depth 1 third_party/upstream/meshoptimizer third_party/upstream/ufbx
+          npm ci --prefix scripts/gates
+      - name: Tool tests
+        run: sh scripts/run-tool-tests.sh
+
   # The generated-file sweep gets its own runner; banners define its inputs.
   generated-files:
     needs: inputs
