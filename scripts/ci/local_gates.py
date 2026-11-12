@@ -46,6 +46,8 @@ OUT_OF_SCOPE = (
      ('workflow' in item or '.github/workflows/' in item['uses'])),
     ('reads the pull request', lambda item: 'github.event.pull_request' in
      str(item.get('if', '')) + str(item.get('env', {}))),
+    # Its values exist only once another job has run; locally the job that joins its parts does the whole.
+    ('computed matrix', lambda item: 'fromJSON(needs.' in str(item.get('strategy', {}).get('matrix', ''))),
     ('CI wiring', lambda item: bool(item.get('outputs')) and all(
         'GITHUB_OUTPUT' in step['run'] or 'job_inputs.py affected' in step['run']
         for step in item.get('steps', []) if 'run' in step)),
