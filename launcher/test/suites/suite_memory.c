@@ -159,6 +159,52 @@ test_the_psram_heap_gives_an_unrounded_request_exactly(void) {
     TEST_ASSERT_EQUAL_size_t(bytes, given);
 }
 
+/* At most this many on-chip blocks the reserve fits in; the board has a few. */
+#define RESERVE_SIZED_BLOCKS_MAX 16
+
+/* Holds every on-chip block the reserve fits in but the largest, so the
+ * largest is the only place MEMORY_FAST can leave the reserve; returns how
+ * many it holds. */
+static size_t
+hold_all_but_the_largest_reserve_block(void* held[RESERVE_SIZED_BLOCKS_MAX]) {
+    size_t count = 0;
+    for (;;) {
+        TEST_ASSERT_LESS_THAN_size_t(RESERVE_SIZED_BLOCKS_MAX, count);
+        held[count] = memory_alloc(memory_largest_block(MEMORY_INTERNAL), MEMORY_INTERNAL);
+        TEST_ASSERT_NOT_NULL(held[count]);
+        count++;
+        if (memory_largest_block(MEMORY_INTERNAL) < MEMORY_FAST_INTERNAL_RESERVE) {
+            memory_free(held[--count]);
+            return count;
+        }
+    }
+}
+
+/* A fast block lands on chip while the reserve still fits in what is left of
+ * the largest block, and goes to external RAM once it would not, though
+ * on-chip RAM could still give it: the reserve is kept as one block. */
+static void
+test_a_fast_block_keeps_the_reserve_as_one_block(void) {
+    void* held[RESERVE_SIZED_BLOCKS_MAX];
+    const size_t count = hold_all_but_the_largest_reserve_block(held);
+    const size_t largest = memory_largest_block(MEMORY_INTERNAL);
+    TEST_ASSERT_GREATER_OR_EQUAL_size_t(MEMORY_FAST_INTERNAL_RESERVE, largest);
+
+    /* Half the room, so the heap's rounding cannot reach the reserve. */
+    void* kept = memory_alloc((largest - MEMORY_FAST_INTERNAL_RESERVE) / 2, MEMORY_FAST);
+    const bool kept_on_chip = kept != NULL && !memory_in_psram(kept);
+    memory_free(kept);
+    void* spilled = memory_alloc(largest - MEMORY_FAST_INTERNAL_RESERVE + 1, MEMORY_FAST);
+    const bool spilled_external = spilled != NULL && memory_in_psram(spilled);
+    memory_free(spilled);
+
+    for (size_t i = 0; i < count; i++) {
+        memory_free(held[i]);
+    }
+    TEST_ASSERT_TRUE_MESSAGE(kept_on_chip, "a block that leaves the reserve stays on chip");
+    TEST_ASSERT_TRUE_MESSAGE(spilled_external, "a block that cuts into the reserve goes to external RAM");
+}
+
 void
 suite_memory(void) {
     RUN_TEST(test_app_allocations_and_queries_use_the_region);
@@ -167,6 +213,7 @@ suite_memory(void) {
     RUN_TEST(test_the_psram_heap_gives_an_unrounded_request_exactly);
     RUN_TEST(test_each_kinds_block_lands_in_the_memory_it_names);
     RUN_TEST(test_a_restarted_low_water_mark_forgets_the_low_before_it);
+    RUN_TEST(test_a_fast_block_keeps_the_reserve_as_one_block);
 }
 
 #else
@@ -263,20 +310,6 @@ test_a_fast_block_past_on_chip_ram_falls_back_and_is_counted(void) {
     memory_free(block);
     TEST_ASSERT_EQUAL_UINT32(before.count + 1, after.count);
     TEST_ASSERT_EQUAL_size_t(before.bytes + bytes, after.bytes);
-}
-
-/* A block that would leave less than MEMORY_FAST_INTERNAL_RESERVE free on
- * chip goes to external RAM, though on-chip RAM could still give it. */
-static void
-test_a_fast_block_that_would_eat_the_reserve_falls_back(void) {
-    const size_t free_on_chip = memory_free_bytes(MEMORY_INTERNAL);
-    TEST_ASSERT_GREATER_THAN_size_t(MEMORY_FAST_INTERNAL_RESERVE, free_on_chip);
-    const size_t bytes = free_on_chip - MEMORY_FAST_INTERNAL_RESERVE + 1;
-    TEST_ASSERT_GREATER_OR_EQUAL_size_t(bytes, memory_largest_block(MEMORY_INTERNAL));
-    void* block = memory_alloc(bytes, MEMORY_FAST);
-    TEST_ASSERT_NOT_NULL(block);
-    TEST_ASSERT_TRUE(memory_in_psram(block));
-    memory_free(block);
 }
 
 /* Fast fails only when neither RAM can give the block. */
@@ -423,7 +456,6 @@ suite_memory(void) {
     RUN_TEST(test_a_block_of_one_kind_leaves_the_other_pools_budget_alone);
     RUN_TEST(test_a_fast_block_that_fits_on_chip_lands_there);
     RUN_TEST(test_a_fast_block_past_on_chip_ram_falls_back_and_is_counted);
-    RUN_TEST(test_a_fast_block_that_would_eat_the_reserve_falls_back);
     RUN_TEST(test_a_fast_block_past_both_rams_fails_uncounted);
     RUN_TEST(test_every_kind_reports_a_total_no_smaller_than_its_free_space_or_largest_block);
     RUN_TEST(test_a_kinds_total_is_its_pools_capacity_while_a_block_is_held);
