@@ -80,6 +80,7 @@ stress-uniform-full|--quarter 1 --no-hud --scene stress-uniform-full --frames 2|
 stress-card|--quarter 1 --no-hud --scene stress-card --frames 2|448x368|nopin
 stress-culled|--quarter 1 --no-hud --scene stress-culled --frames 2|448x368|nopin
 stress-near|--quarter 1 --no-hud --scene stress-near --frames 2|448x368|nopin
+stress-few-copies|--quarter 1 --no-hud --scene stress-few-copies --frames 2|448x368|nopin
 stress-noisy-tiny|--quarter 1 --no-hud --scene stress-noisy-tiny --frames 2|448x368|nopin
 "
 

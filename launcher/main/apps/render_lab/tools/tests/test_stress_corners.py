@@ -80,7 +80,8 @@ class StressCorners(unittest.TestCase):
 
     def test_every_preset_is_held_here(self):
         self.assertEqual({"open", "stack", "tiny-copies", "big-tris", "per-frame", "two-sided", "noisy-tiny", "mix",
-                          "static-copies", "uniform-mid", "uniform-full", "card", "culled", "near"}, set(preset_copies()))
+                          "static-copies", "uniform-mid", "uniform-full", "card", "culled", "near",
+                          "few-copies"}, set(preset_copies()))
 
     def assert_all_in_view(self, c):
         """Nothing culled: every cluster tested is kept, and no node is cut."""
@@ -144,6 +145,13 @@ class StressCorners(unittest.TestCase):
     def test_tiny_copies_are_all_in_view(self):
         c = self.counts("tiny-copies")
         self.assertGreaterEqual(c["clusters_drawn"], preset_copies()["tiny-copies"])
+        self.assert_all_in_view(c)
+
+    def test_few_copies_give_each_core_one_dense_copy(self):
+        """Two copies, each many clusters: the cull's split puts one whole copy on each core."""
+        self.assertEqual(2, preset_copies()["few-copies"])
+        c = self.counts("few-copies")
+        self.assertGreater(c["clusters_kept"], 4 * preset_copies()["few-copies"])
         self.assert_all_in_view(c)
 
     def test_two_sided_skips_nothing_facing_away(self):

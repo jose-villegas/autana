@@ -160,6 +160,7 @@ the presets vary the copies' geometry, layout and colour modes.
 | `stress-card` | ![Card copies with ragged edges and sampled colours](../../../../../docs/images/overview/render-lab-stress-card.png) | copies sharing a generated perforated quad with uneven tessellation and procedural texture samples at its corners | scene-like small triangles with irregular edges and colour steps |
 | `stress-culled` | ![Plane before the camera turns away](../../../../../docs/images/overview/render-lab-stress-culled.png) | a tessellated plane and a camera pitching beyond its edge | varying cluster rejection by the frustum |
 | `stress-near` | ![Spheres along the camera path](../../../../../docs/images/overview/render-lab-stress-near.png) | stacked spheres and a camera passing through their front surfaces | triangles behind and crossing the near plane |
+| `stress-few-copies` | ![Stress few copies: two dense spheres](../../../../../docs/images/overview/render-lab-stress-few-copies.png) | two dense spheres side by side | the two-core cull split: with one instance a core, its fork and join cost more than the halved walk saves |
 
 The card's holes, uneven cells and fixed procedural texture are generated in
 `stress_preset.c`. Its mesh is built once and shared by the copies. Procedural

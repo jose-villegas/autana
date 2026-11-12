@@ -39,6 +39,8 @@ const stress_params_t stress_presets[STRESS_PRESET_COUNT] = {
                        STRESS_CAMERA_CULLED, 8},
     [STRESS_NEAR] = {STRESS_SHAPE_SPHERE, 24, 4, STRESS_LAYOUT_STACK, 80, STRESS_SURFACE_OF(NEAR), STRESS_CAMERA_NEAR,
                      6},
+    [STRESS_FEW_COPIES] = {STRESS_SHAPE_SPHERE, 24, 2, STRESS_LAYOUT_WALL, 70, STRESS_SURFACE_OF(FEW_COPIES),
+                           STRESS_CAMERA, 6},
 };
 
 stress_params_t
