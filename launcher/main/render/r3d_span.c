@@ -823,6 +823,25 @@ r3d_span_hidden(const r3d_span_target_t* target, int32_t bound, recti_t box) {
     return true;
 }
 
+static bool
+colour_steps_zero(const gradients_t* g) {
+    return (g->dx[1] | g->dy[1] | g->dx[2] | g->dy[2] | g->dx[3] | g->dy[3]) == 0;
+}
+
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+bool
+r3d_span_uniform(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c) {
+    const r3d_span_extent_t e = r3d_span_extent_limits(a, b, c, flat_max_rows, flat_max_width);
+    plane_t p;
+    gradients_t g = {0};
+    if (!plane_of(a, b, c, e.centres.x, e.centres.y, &p)) {
+        return true;
+    }
+    colour_gradients(&p, a, b, c, &g);
+    return colour_steps_zero(&g);
+}
+#endif
+
 /* The colour planes, unless a face colour stands in for them, and whether
  * every plane stays in range across the box so spans need no clamp. */
 static void
@@ -834,7 +853,7 @@ set_up_planes(fill_t* f, const r3d_span_vertex_t* const v[TRIANGLE_VERTICES], co
     }
     colour_gradients(p, v[0], v[1], v[2], g);
     /* Zero colour steps give every filled pixel the same base value. */
-    if ((g->dx[1] | g->dy[1] | g->dx[2] | g->dy[2] | g->dx[3] | g->dy[3]) == 0) {
+    if (colour_steps_zero(g)) {
         f->shading = FILL_FACE;
         f->flat_color =
             r3d_span_pack(mathi_clamp(g->base[1], 0, value_max[1]), mathi_clamp(g->base[2], 0, value_max[2]),

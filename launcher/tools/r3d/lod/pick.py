@@ -39,6 +39,7 @@ from render.settings import render_asset
 HERE = pathlib.Path(__file__).resolve().parent
 MAIN = HERE.parents[2] / "main"
 LOD_HEADER = MAIN / "render" / "lod" / "r3d_lod.h"
+BITS_HEADER = HERE.parents[2] / "packages" / "collections" / "include" / "collections" / "bits.h"
 PICK_HOST = HERE / "pick_host.c"
 SETTINGS = render_asset.load(render_asset.DEFAULT)
 TOLERANCE_PX = SETTINGS["lod.tolerance_px"]
@@ -47,7 +48,7 @@ COVERAGE_PERMILLE = SETTINGS["lod.coverage_permille"]
 PERMILLE = read_define(LOD_HEADER, "R3D_LOD_PERMILLE")
 # The most a tunable holds: no coverage cap.
 UNCAPPED = 2**31 - 1
-WORD_BITS = read_define(LOD_HEADER, "R3D_LOD_WORD_BITS")
+WORD_BITS = read_define(BITS_HEADER, "BITS32_WORD_BITS")
 
 # The device's steer: it never picks below lod.tolerance_px, and its
 # histogram's bin edges are half octaves up to 2^R3D_LOD_BIN_MOST_LOG2.
