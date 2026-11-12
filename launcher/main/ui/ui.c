@@ -644,7 +644,10 @@ command_rect(const mu_Command* cmd, mu_Rect* out) {
             const int tw = draw_font_text_width(fs.font, cmd->text.str, -1, fs.scale);
             const int th = draw_font_height(fs.font, fs.scale);
             const mu_Rect box = ui_transform_mu_rect(t, (mu_Rect){cmd->text.pos.x, cmd->text.pos.y, tw, th});
-            int x0 = box.x, y0 = box.y, x1 = box.x + box.w, y1 = box.y + box.h;
+            int x0 = box.x;
+            int y0 = box.y;
+            int x1 = box.x + box.w;
+            int y1 = box.y + box.h;
             if (cmd->text.color.a == 255) {
                 ui_text_pass_t passes[UI_TEXT_MAX_PASSES];
                 const int n = ui_text_passes(ui_text_style, passes, UI_TEXT_MAX_PASSES);
