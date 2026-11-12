@@ -606,8 +606,11 @@ class StageTests(unittest.TestCase):
 
         job, scene = fitted_job()
         inputs = reference_inputs(job, scene)
-        recipe = bake.reference_recipe(inputs, TOOL_KEYS, bake.Poses({}))
         fields = {field.name for field in dataclasses.fields(ReferenceInputs)}
+        unprobed = bake.reference_recipe(inputs, TOOL_KEYS, bake.Poses({}))
+        self.assertEqual(set(unprobed) - {"sources"}, fields - {"probes", "shaped"}, "an unshaped fit changed the key")
+        inputs = dataclasses.replace(inputs, probes=types.SimpleNamespace(spacing=None, face=8), shaped=True)
+        recipe = bake.reference_recipe(inputs, TOOL_KEYS, bake.Poses({}))
         self.assertEqual(set(recipe) - {"sources"}, fields)
         brighter = dataclasses.replace(inputs, tonemap_white=inputs.tonemap_white * 2)
         self.assertNotEqual(bake.digest(recipe), bake.digest(bake.reference_recipe(brighter, TOOL_KEYS, bake.Poses({}))))
@@ -754,7 +757,7 @@ class FittedBakeTests(FittedBakeCase):
         source.mkdir()
         expected = write_reference_tree(source)
         reference = self.root / self.reference.output
-        reference.write_bytes(reference_set.pack_references(source))
+        reference.write_bytes(reference_set.pack_references(source, reference_set.fit_sets(True, False, False)))
         start = self.root / self.start.output
         start.write_bytes(b"locked start bundle")
         lock = {item.key: produce.record(item, path, self.cache)
