@@ -1572,7 +1572,8 @@ class NightlyTests(unittest.TestCase):
         self.assertTrue((self.args.out / writes[-1]["selftest"]["report"]).is_file())
 
     def test_plan_waits_for_gpu_queue_to_finish(self):
-        for release_hour, release_minute in ((22, 30), (1, 30), (12, 45)):
+        # Each release falls inside GPU_PLAN_WAIT_SECONDS of the 18:00 plan.
+        for release_hour, release_minute in ((22, 30), (1, 30), (7, 45)):
             with self.subTest(release_hour=release_hour):
                 clock = ScheduleClock(18)
                 schedule.refresh_gpu_host("gpu-runner", clock)
@@ -1652,7 +1653,7 @@ class NightlyTests(unittest.TestCase):
                                from_sha=None, max_steps=None, selftest_board=None)
         started, polls = self.clock.now(), []
 
-        def pending(**_):
+        def pending(*_, **__):
             polls.append(1)
             # Well past the deadline, a wait without one would poll forever: fail instead.
             self.assertLess(len(polls), 2 * chain.GPU_PLAN_WAIT_SECONDS // QUEUE_POLL_SECONDS)
