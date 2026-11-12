@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "device"))
 from scripts.ci.github_api import PER_PAGE, call, pages
 from device_lock import LockStore, board_read_root, heavy_root, write_json
-from process_tree import launch_process_tree, stop_process_tree, close_process_tree
+from process_tree import STAGE_PROGRESS_ENV, launch_process_tree, stop_process_tree, close_process_tree
 from ci_step import output, summarize
 
 NIGHT_START = "01:00"
@@ -44,8 +44,9 @@ GPU_WORKFLOWS = (BAKES_WORKFLOW, DOC_IMAGES_WORKFLOW)
 # A GPU stage is hung once no task or bake has finished for this long: above the slowest single task (a
 # cold CPU reference set, about 2.5 h), so a slow stage that still progresses is never stopped.
 GPU_STAGE_PROGRESS_SECONDS = 4 * 60 * 60
-# Each stage's backstop, under NIGHT_STEP_HANG_SECONDS.
-GPU_STAGE_HANG_SECONDS = {DOC_IMAGES_WORKFLOW: 14 * 60 * 60, BAKES_WORKFLOW: 4 * 60 * 60}
+# Each stage's backstop, far above GPU_STAGE_PROGRESS_SECONDS so only a stage that never ends meets it, and
+# under its job's timeout-minutes (doc images 1380, bakes 600) so the guard, not GitHub, stops it.
+GPU_STAGE_HANG_SECONDS = {DOC_IMAGES_WORKFLOW: 14 * 60 * 60, BAKES_WORKFLOW: 9 * 60 * 60}
 # Doc images reserve WSL_MEMORY_REQUIRED_BYTES and render for hours: they wait for the boards and hold heavy.
 # A fit is one GPU-bound process: it runs beside builds and board jobs, on its CPU share.
 QUIET_HOST_WORKFLOWS = (DOC_IMAGES_WORKFLOW,)
@@ -169,20 +170,14 @@ def guard_stage(process, progress, started, clock, workflow):
         except subprocess.TimeoutExpired:
             pass
         now = clock.now()
-        idle = now.timestamp() - progress.stat().st_mtime
+        # A lost progress file counts as no progress since the start, never as a crash of the guard.
+        idle = now.timestamp() - (progress.stat().st_mtime if progress.exists() else started.timestamp())
         expired = ("GPU_STAGE_PROGRESS_SECONDS" if idle >= GPU_STAGE_PROGRESS_SECONDS else
                    "GPU_STAGE_HANG_SECONDS" if (now - started).total_seconds() >= GPU_STAGE_HANG_SECONDS[workflow] else None)
         if expired:
             print(f"{expired} expired for {workflow}: last progress {idle / 60:.0f} min ago", flush=True)
             stop_process_tree(process)
             return EXIT_HUNG
-
-
-def stage_progress_env():
-    """The variable naming the file a GPU stage's tools touch per finished task; its owner is the executor."""
-    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher/tools"))
-    from r3d.task_executor import STAGE_PROGRESS_ENV
-    return STAGE_PROGRESS_ENV
 
 
 def quiet_host(workflow):
@@ -250,7 +245,7 @@ def main():
     progress = steps / (workflow + ".progress")
     progress.parent.mkdir(parents=True, exist_ok=True)
     progress.touch()
-    os.environ[stage_progress_env()] = str(progress)
+    os.environ[STAGE_PROGRESS_ENV] = str(progress)
     process = None
     try:
         process = launch_process_tree(command)

@@ -215,7 +215,7 @@ class LocalScheduleTests(unittest.TestCase):
             self.assertEqual((result.returncode, result.stdout), (0, 'scripts/lib/local_schedule.py start -- fit\n'),
                              result.stderr)
 
-    def start(self, root, waits, clock=None, progressing=None):
+    def start(self, root, waits, clock=None, progressing=None, workflow=schedule.DOC_IMAGES_WORKFLOW):
         """Run `start` with a process whose wait() yields `waits` in turn; `progressing` touches the progress file."""
         marker = Clock(1, tzinfo=timezone.utc).now().isoformat()
         clock = clock or Clock(1, tzinfo=timezone.utc)
@@ -225,13 +225,13 @@ class LocalScheduleTests(unittest.TestCase):
             clock.sleep(timeout)
             if progressing:
                 stamp = progressing()
-                os.utime(os.environ[schedule.stage_progress_env()], (stamp, stamp))
+                os.utime(os.environ[schedule.STAGE_PROGRESS_ENV], (stamp, stamp))
             outcome = waits.pop(0)
             if isinstance(outcome, BaseException):
                 raise outcome
             return outcome
         process.wait.side_effect = wait
-        with patch.dict(os.environ, GPU_WORKFLOW=schedule.DOC_IMAGES_WORKFLOW,
+        with patch.dict(os.environ, GPU_WORKFLOW=workflow,
                         GITHUB_RUN_ID='42', MARKER=marker, _AUTANA_HEAVY_LOCK_ROOT=root), \
                  patch.object(sys, 'argv', ['schedule', 'start', '--', 'render']), \
                  patch.object(schedule, 'Clock', return_value=clock), \
@@ -240,10 +240,10 @@ class LocalScheduleTests(unittest.TestCase):
                  patch.object(schedule, 'close_process_tree'), \
                  contextlib.redirect_stdout(io.StringIO()) as output:
             code = schedule.main()
-            progress = os.environ[schedule.stage_progress_env()]
+            progress = os.environ[schedule.STAGE_PROGRESS_ENV]
         record = json.loads(next((Path(root) / 'night-steps').glob('*/*.json')).read_text())
         self.assertEqual((record['marker'], record['run'], record['workflow'], record['exit']),
-                         (marker, '42', schedule.DOC_IMAGES_WORKFLOW, code))
+                         (marker, '42', workflow, code))
         self.assertTrue(record['started'] <= record['ended'])
         self.assertFalse(Path(progress).exists())
         return code, stop.called, output.getvalue()
@@ -272,6 +272,17 @@ class LocalScheduleTests(unittest.TestCase):
         self.assertEqual((code, stopped), (schedule.EXIT_HUNG, True))
         self.assertIn('GPU_STAGE_HANG_SECONDS', said)
         self.assertNotIn('GPU_STAGE_PROGRESS_SECONDS', said)
+
+    def test_a_stage_that_keeps_progressing_outlives_several_progress_limits(self):
+        # A Bakes refit finishes a fit every hour or two for many hours; only a stage that never ends meets the
+        # backstop.
+        polls = 2 * schedule.GPU_STAGE_PROGRESS_SECONDS // schedule.QUEUE_POLL_SECONDS
+        for workflow in schedule.GPU_WORKFLOWS:
+            with self.subTest(workflow=workflow), tempfile.TemporaryDirectory() as root:
+                clock = Clock(1, tzinfo=timezone.utc)
+                code, stopped, _ = self.start(root, [subprocess.TimeoutExpired('render', 1)] * polls + [0], clock,
+                                              progressing=lambda: clock.now().timestamp(), workflow=workflow)
+                self.assertEqual((code, stopped), (0, False))
 
     def test_wait_idle_gives_up_at_its_deadline(self):
         clock = Clock(1)

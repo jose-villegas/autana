@@ -3,9 +3,12 @@ import concurrent.futures
 import ctypes
 import os
 import pathlib
+import sys
 import threading
 import time
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3] / "scripts/lib"))
+from process_tree import progressed  # noqa: E402  (the stage guard's progress contract)
 from r3d.process_budget import (FLOORS, GPU_QUERY_FAILURE_SECONDS,
                                 QueryFailures, TaskExecutor as _ProcessExecutor, _task, available_bytes,
                                 cores_available, function_name, projected_available,
@@ -14,9 +17,6 @@ from r3d.process_budget import (FLOORS, GPU_QUERY_FAILURE_SECONDS,
 # A worker that has sent its result is given this long to exit before it is killed: a join without a bound
 # under the executor's lock stalls every task behind it.
 WORKER_EXIT_SECONDS = 30
-# The environment variable naming the file a GPU stage's guard (scripts/lib/local_schedule.py) times progress
-# by; progressed() touches it each time a task or bake finishes.
-STAGE_PROGRESS_ENV = "AUTANA_STAGE_PROGRESS"
 _ADMISSION_POLL_SECONDS = 0.1
 _ADMISSION_LOG_SECONDS = 10
 GPU_QUERY_SAMPLE_SECONDS = 1
@@ -164,16 +164,6 @@ class _GpuSampler:
     def stop(self):
         self.stopped.set()
         self.thread.join(timeout=_GPU_QUERY_STOP_SECONDS)
-
-
-def progressed():
-    """Tell the stage's guard, when one runs this, that a task finished; a guard's lost file never fails the work."""
-    path = os.environ.get(STAGE_PROGRESS_ENV)
-    if path:
-        try:
-            pathlib.Path(path).touch()
-        except OSError:
-            pass
 
 
 def join_worker(process):

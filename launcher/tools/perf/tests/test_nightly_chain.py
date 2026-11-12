@@ -1572,15 +1572,15 @@ class NightlyTests(unittest.TestCase):
         self.assertTrue((self.args.out / writes[-1]["selftest"]["report"]).is_file())
 
     def test_plan_waits_for_gpu_queue_to_finish(self):
-        # Each release falls inside GPU_PLAN_WAIT_SECONDS of the 18:00 plan.
-        for release_hour, release_minute in ((22, 30), (1, 30), (7, 45)):
+        # Each release falls before the 01:00 night's BOARD_LAST_START.
+        for release_hour, release_minute in ((22, 30), (1, 30), (5, 45)):
             with self.subTest(release_hour=release_hour):
                 clock = ScheduleClock(18)
                 schedule.refresh_gpu_host("gpu-runner", clock)
                 day = 21 if release_hour > 12 else 22
                 released = datetime(2026, 10, day, release_hour, release_minute)
                 args = SimpleNamespace(repo=self.repo, tip="HEAD", boards=["20E8"],
-                    data=self.args.data, out=self.root / "plan.json", marker=self.clock.now().isoformat(),
+                    data=self.args.data, out=self.root / "plan.json", marker=datetime(2026, 10, 22, 1).isoformat(),
                     from_sha=None, max_steps=None, selftest_board="20E8")
                 asked = set()
                 def request(method, path):
@@ -1648,15 +1648,17 @@ class NightlyTests(unittest.TestCase):
         self.assertIn(call("SELFTEST_BOARD=2124"), said.call_args_list)
 
     def test_plan_stops_waiting_for_gpu_work_at_its_deadline(self):
+        marker = self.clock.now().replace(day=22, hour=1, minute=0)
         args = SimpleNamespace(repo=self.repo, tip="HEAD", boards=None, data=self.args.data,
-                               out=self.root / "plan.json", marker=self.clock.now().isoformat(),
+                               out=self.root / "plan.json", marker=marker.isoformat(),
                                from_sha=None, max_steps=None, selftest_board=None)
         started, polls = self.clock.now(), []
+        cutoff = chain.night_cutoff(marker)
 
         def pending(*_, **__):
             polls.append(1)
             # Well past the deadline, a wait without one would poll forever: fail instead.
-            self.assertLess(len(polls), 2 * chain.GPU_PLAN_WAIT_SECONDS // QUEUE_POLL_SECONDS)
+            self.assertLess(len(polls), 2 * (cutoff - started).total_seconds() // QUEUE_POLL_SECONDS)
             return True
         with patch.object(chain, "local_boards", return_value=[self.row("2124", port="COM4")]), \
                 patch.object(chain, "remote_boards", return_value=([], [])), \
@@ -1664,10 +1666,11 @@ class NightlyTests(unittest.TestCase):
                 patch.object(chain, "gpu_pending", side_effect=pending), \
                 patch.object(chain, "summarize") as summary, patch("builtins.print") as said:
             chain.plan(args, self.clock)
-        self.assertGreaterEqual(self.clock.now() - started, timedelta(seconds=chain.GPU_PLAN_WAIT_SECONDS))
+        self.assertGreaterEqual(self.clock.now(), cutoff)
         self.assertIn(call(chain.GPU_STILL_PENDING), summary.call_args_list)
         self.assertTrue(any(chain.GPU_STILL_PENDING in str(c.args[0]) for c in said.call_args_list))
-        self.assertEqual(list(json.loads(args.out.read_text())["lanes"]), ["2124"])
+        # The wait ends at the night's cutoff, where a discovered night starts no lane: the GPU took the night.
+        self.assertEqual(list(json.loads(args.out.read_text())["lanes"]), [])
 
     def test_plan_skips_a_gated_hosts_boards(self):
         args = SimpleNamespace(repo=self.repo, tip="HEAD", boards=None, data=self.args.data,

@@ -68,7 +68,8 @@ class WorkerTests(ProcessTests):
         import os
         import tempfile
         from unittest.mock import patch
-        from r3d.task_executor import STAGE_PROGRESS_ENV, TaskExecutor
+        from r3d.task_executor import TaskExecutor
+        from process_tree import STAGE_PROGRESS_ENV
         with tempfile.TemporaryDirectory() as folder:
             progress = pathlib.Path(folder) / "stage.progress"
             progress.touch()

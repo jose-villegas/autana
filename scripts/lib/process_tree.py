@@ -12,6 +12,21 @@ JOB_OBJECT_EXTENDED_LIMIT_INFORMATION = 9
 CREATE_SUSPENDED = 0x4
 PR_SET_PDEATHSIG = 1
 
+# The environment variable naming the file a stage's guard (local_schedule.guard_stage) times progress by; a
+# tool under the guard calls progressed() each time a task or bake finishes.
+STAGE_PROGRESS_ENV = "AUTANA_STAGE_PROGRESS"
+
+
+def progressed():
+    """Tell the stage's guard, when one runs this, that a task finished; a guard's lost file never fails the work."""
+    path = os.environ.get(STAGE_PROGRESS_ENV)
+    if path:
+        try:
+            with open(path, "a"):
+                os.utime(path)
+        except OSError:
+            pass
+
 
 def install_console_interrupt_handler():
     """Windows Ctrl-Break must unwind locks and ports through KeyboardInterrupt."""
