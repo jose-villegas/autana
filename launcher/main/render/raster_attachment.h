@@ -19,8 +19,9 @@ struct raster_attachment {
     /* Optional. Once per raster_draw(), before the first instance. */
     void (*begin)(const raster_attachment_t* self, const raster_t* raster, const render_view_t* view);
     /* Optional. Chooses `out->span`, `out->value` and `out->step` for
-     * this instance, or returns false to leave this attachment unwritten.
-     * Called once per instance in order, drawn or not, so it may count. */
+     * drawn-list entry `instance` (raster_drawn_at(): the instances, then
+     * kept copies), or returns false to leave this attachment unwritten.
+     * Called once per entry in order, drawn or not, so it may count. */
     bool (*writer)(const raster_attachment_t* self, int instance, r3d_span_writer_t* out);
     /* Optional. Development builds: paints `picture`'s colour from this
      * attachment. */
