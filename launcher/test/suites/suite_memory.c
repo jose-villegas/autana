@@ -159,14 +159,18 @@ test_the_psram_heap_gives_an_unrounded_request_exactly(void) {
     TEST_ASSERT_EQUAL_size_t(bytes, given);
 }
 
+/* A fast block small enough to fit beside the reserve in the self-test
+ * image, which has a few KB on chip past it. */
+#define FAST_BESIDE_RESERVE_BYTES 1024u
+
 /* A fast block lands on chip while the reserve stays free after it, and
  * goes to external RAM once it would cut into the reserve. */
 static void
 test_a_fast_block_leaves_the_reserve_free_on_chip(void) {
     const size_t free_on_chip = memory_free_bytes(MEMORY_INTERNAL);
-    TEST_ASSERT_GREATER_THAN_size_t(MEMORY_FAST_INTERNAL_RESERVE + TEST_BLOCK_BYTES, free_on_chip);
+    TEST_ASSERT_GREATER_THAN_size_t(MEMORY_FAST_INTERNAL_RESERVE + FAST_BESIDE_RESERVE_BYTES, free_on_chip);
 
-    void* kept = memory_alloc(TEST_BLOCK_BYTES, MEMORY_FAST);
+    void* kept = memory_alloc(FAST_BESIDE_RESERVE_BYTES, MEMORY_FAST);
     const bool kept_on_chip = kept != NULL && !memory_in_psram(kept);
     memory_free(kept);
     void* spilled = memory_alloc(free_on_chip - MEMORY_FAST_INTERNAL_RESERVE + 1, MEMORY_FAST);
