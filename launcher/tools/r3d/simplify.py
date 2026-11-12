@@ -166,7 +166,8 @@ def _run_pass(pos, rgb, tris, labels, budget, deviation, options, locks=None):
 
 
 def check_ceiling(total, ceiling):
-    """The scene ceiling caps emitted triangles, including every placed copy."""
+    """The scene ceiling caps the triangles the mesh stores: the rest, and each carved shape once however many
+    copies place it (a pooled copy is stored, so it counts)."""
     if ceiling is not None and total > ceiling:
         raise SettingsError(f"scene emitted triangles {total} exceeds ceiling {ceiling}")
     return total
@@ -209,6 +210,7 @@ def _mesh_passes(tris, labels, tri_o, triangles, reserved, selected, edges):
 def _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, locks, deviation, options, shade, shapes=None):
     from scipy.spatial import cKDTree
     from .objects.instances import place, source_objects
+    from .objects.detail import surface_error
     from .objects.stand_ins import best_stand_in
     from .objects.surface_match import JoinedInstance
 
@@ -256,7 +258,8 @@ def _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, loc
                                budget=budget, policy=('lock' if np.any(union) else policies[int(shape.instances[0].object_name)]),
                                locked_vertices=int(union.sum()), output_triangles=len(t),
                                stand_in=stand_in.kind, stand_ins=candidates,
-                               locked_border_excess=max(0, len(t) - budget) if np.any(union) else 0))
+                               locked_border_excess=max(0, len(t) - budget) if np.any(union) else 0,
+                               surface_error=surface_error(shape.positions, shape.triangles, p, t)))
             mat = stand_in.materials
             copies = []
             for instance, indices in placements:
@@ -343,6 +346,7 @@ def _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, reserved, allocat
         report['passes'].append(entry)
 
     def run_part(sel, budget):
+        from .objects.detail import surface_error
         from .objects.stand_ins import best_stand_in
 
         objects = np.unique(tri_o[sel])
@@ -364,7 +368,8 @@ def _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, reserved, allocat
                      output_triangles=len(result[2]), locked_vertices=int(locks[np.unique(tris[sel])].sum()),
                      locked_border_excess=max(0, len(result[2]) - budget) if np.any(locks[tris[sel]]) else 0)
         if candidates is not None:
-            entry.update(stand_in=stand_in.kind, stand_ins=candidates)
+            entry.update(stand_in=stand_in.kind, stand_ins=candidates,
+                         surface_error=surface_error(pos[used], local, result[0], result[2]))
         report['passes'].append(entry)
         for row in report['meshes']:
             if row.get('object') in entry['objects']:
@@ -380,12 +385,14 @@ def _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, reserved, allocat
             emitted.append(result)
         return len(result[2])
 
-    # Carved meshes are paid first, out of the ceiling, at what they emit (locked seams can overshoot their
-    # budget); the rest shares what is left. A weld group mixing carved and rest objects counts as rest.
+    # Carved meshes are paid first, out of the ceiling, at what they store, once per shape (locked seams can
+    # overshoot their budget); the rest shares what is left. A weld group mixing carved and rest objects counts as
+    # rest.
     waiting = [index for index in range(len(parts)) if index not in consumed]
     carved_first = [index for index in waiting if np.all(np.isin(tri_o[parts[index][0]], list(selected)))]
     rest = [index for index in waiting if index not in carved_first]
-    carved_total = sum(entry['output_triangles'] * entry['copies'] for entry in shared)
+    carved_total = sum(entry['output_triangles'] if allocation.shapes is not None else
+                       entry['output_triangles'] * entry['copies'] for entry in shared)
     carved_total += sum(run_part(*parts[index]) for index in carved_first)
     check_ceiling(carved_total + len(rest), allocation.ceiling)
     asked = sum(parts[index][1] for index in rest)
@@ -402,9 +409,11 @@ def _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, reserved, allocat
         base += len(p)
     report['scene_total'] = report['output_triangles'] = (sum(len(t) for t in out_t) +
         (sum(len(shape['copies'][0][1][2]) * len(shape['copies']) for shape in allocation.shapes) if allocation.shapes is not None else 0))
+    report['stored_total'] = (sum(len(t) for t in out_t) +
+        (sum(len(shape['tris']) for shape in allocation.shapes) if allocation.shapes is not None else 0))
     if allocation.report is not None:
         allocation.report.update(report)
-    check_ceiling(report['scene_total'], allocation.ceiling)
+    check_ceiling(report['stored_total'], allocation.ceiling)
     if not out_p:
         return pos[:0], rgb[:0], tris[:0], labels[:0]
     return np.concatenate(out_p), np.concatenate(out_c), np.concatenate(out_t), np.concatenate(out_m)

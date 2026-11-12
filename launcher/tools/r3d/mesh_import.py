@@ -44,6 +44,7 @@ from r3d.lod.bake_levels import bake_lit_mesh
 from r3d.lod.morph import morph_blob
 from r3d.lit_mesh import POSITION_SCALE, WELD_PER_TICK, bundle_entries, panel_colour, build_lit_mesh  # noqa: E402
 from r3d.mesh_source import load_source, load_glb_source, path_light_for, camera_path_poses
+from r3d.objects.carve import derived_budgets, detail_report, free_repeats, views
 from r3d.process_budget import NULL_RECORDER
 from r3d.ray_query import RayQuery  # noqa: E402
 from r3d.scene_name import SUFFIX  # noqa: E402
@@ -131,6 +132,22 @@ def thin_meshes(src, selected, thin, seed):
     return keep
 
 
+def carve_selection(src, tri_v, tri_m, selected, settings, job, scene):
+    """The rules' objects plus every free repeat, each carried by one rule per shape whose `triangles` is pinned
+    or derived (objects/carve.py), and the derived shapes for the report."""
+    position_scale = POSITION_SCALE if settings.position_scale is None else settings.position_scale
+    selected = selected | free_repeats(src.p, tri_v, tri_m, src.tri_o, src.object_names, selected, position_scale)
+    variant = job.renderer.variant
+    ceiling = getattr(variant, "ceiling", None)
+    room = None if ceiling is None else ceiling - variant.triangles
+    eyes, focal, near = views(scene, job.renderer)
+    budgets, shapes = derived_budgets(src.p, tri_v, tri_m, src.tri_o, selected, room, eyes, focal, near)
+    for shape in shapes:
+        rule = selected[shape["objects"][0]] | {"triangles": budgets[shape["objects"][0]]}
+        selected |= {obj: rule for obj in shape["objects"]}
+    return selected, SimpleNamespace(shapes=shapes, focal=focal)
+
+
 def bake_geometry(job, scene, recorder=None, *, carve=False):
     """Everything a mesh needs before its colours are final: the source, its
     ray intersector and the simplified geometry with the colours a smooth bake
@@ -151,6 +168,9 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
         step["triangles_out"] = len(tri_v)
     meshes = variant_meshes(settings.meshes, renderer.variant)
     selected = match_meshes(src.tri_o, tri_m, src.object_names, src.names, meshes) if meshes else {}
+    derived = None
+    if meshes:
+        selected, derived = carve_selection(src, tri_v, tri_m, selected, settings, job, scene)
     carved_keep = thin_meshes(src, selected, settings.thin, settings.seed) if selected else None
     with recorder.step("visibility", len(tri_v)) as step:
         intersector = None
@@ -235,6 +255,9 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
             tri_double = np.isin(tri_mat, [index for index, name in enumerate(src.names) if name in double_names]).astype(np.int64)
         step["triangles_out"] = len(tris)
     check_ceiling(len(tris), getattr(renderer.variant, 'ceiling', None))
+    if derived is not None and "passes" in mesh_report:
+        mesh_report["detail"], mesh_report["authoring"] = detail_report(derived.shapes, mesh_report["passes"],
+                                                                        src.object_names, derived.focal)
     return SimpleNamespace(src=src, intersector=intersector, positions=positions, rgb=rgb, tris=tris, tri_double=tri_double,
                            tri_mat=tri_mat, scale=scale, bounce=bounce, mesh_report=mesh_report, shapes=shapes)
 
