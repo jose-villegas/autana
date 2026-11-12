@@ -187,87 +187,88 @@ draw_text_command(const mu_Command* cmd, affine2x_t t) {
 }
 
 static void
+draw_rect_command(const mu_Command* cmd, affine2x_t t) {
+    const mu_Color c = cmd->rect.color;
+    /* Fully transparent rects are microui's way of drawing nothing; we
+     * have no blending, so skip them rather than paint black. */
+    if (c.a == 0) {
+        return;
+    }
+    const mu_Rect r = ui_transform_mu_rect(t, cmd->rect.rect);
+    draw_rect(r.x, r.y, r.w, r.h, mu_color_to_gfx(c));
+}
+
+static void
+draw_image_command(const mu_Command* cmd, affine2x_t t) {
+    const ui_image_command_t* image = (const ui_image_command_t*)cmd;
+    if (image->color.a != 0) {
+        icon_fill_ctx_t fc = {.color = mu_color_to_gfx(image->color)};
+        ui_transform_icon_blocks(t, image->image, ui_recti_from_mu(image->rect), icon_fill_emit, &fc);
+    }
+}
+
+/* Filled in panel rows after the turn, so a quarter turn costs no more
+ * spans than none. */
+static void
+draw_round_command(const mu_Command* cmd, affine2x_t t) {
+    const ui_round_command_t* face = (const ui_round_command_t*)cmd;
+    const mu_Rect r = ui_transform_mu_rect(t, face->rect);
+    /* An integer scale scales the corner with the face. */
+    const int radius = face->radius * (r.w + r.h) / (face->rect.w + face->rect.h);
+    const gfx_color_t color = mu_color_to_gfx(face->color);
+    for (int row = 0; row < radius; row++) {
+        const int inset = ui_round_inset(radius, r.h, row);
+        draw_rect(r.x + inset, r.y + row, r.w - (2 * inset), 1, color);
+        draw_rect(r.x + inset, r.y + r.h - 1 - row, r.w - (2 * inset), 1, color);
+    }
+    draw_rect(r.x, r.y + radius, r.w, r.h - (2 * radius), color);
+}
+
+static void
+draw_swatches_command(const mu_Command* cmd, affine2x_t t) {
+    const ui_swatch_command_t* grid = (const ui_swatch_command_t*)cmd;
+    for (int row = 0; row < grid->rows; row++) {
+        for (int col = 0; col < grid->cols; col++) {
+            const mu_Rect cell = ui_transform_mu_rect(t, ui_swatch_cell_rect(grid, col, row));
+            draw_rect(cell.x, cell.y, cell.w, cell.h, mu_color_to_gfx(ui_rgb(grid->rgb[(row * grid->cols) + col])));
+        }
+    }
+}
+
+/* microui's icons are close/check/collapsed/expanded. MU_ICON_CHECK is the
+ * system check icon because two callers need it: a checkbox toggle, and a
+ * per-tile selection badge. The other three, and the check without the
+ * engine pack, are a small centred square: nothing in this shell closes a
+ * window or collapses a tree yet to ask for them. */
+static void
+draw_icon_command(const mu_Command* cmd, affine2x_t t) {
+    const gfx_color_t color = mu_color_to_gfx(cmd->icon.color);
+    const image_t* check = cmd->icon.id == MU_ICON_CHECK ? ui_icon_image(UI_ICON_CHECK) : NULL;
+    if (check != NULL) {
+        icon_fill_ctx_t fc = {.color = color};
+        ui_transform_icon_blocks(t, check, ui_recti_from_mu(cmd->icon.rect), icon_fill_emit, &fc);
+        return;
+    }
+    const mu_Rect r = ui_transform_mu_rect(t, cmd->icon.rect);
+    draw_rect(r.x + (r.w / 3), r.y + (r.h / 3), r.w / 3, r.h / 3, color);
+}
+
+static void
 draw_command(const mu_Command* cmd) {
     const affine2x_t t = ui_effective_transform();
 
     switch (cmd->type) {
-
-        case MU_COMMAND_RECT: {
-            const mu_Color c = cmd->rect.color;
-            /* Fully transparent rects are microui's way of drawing nothing; we
-         * have no blending, so skip them rather than paint black. */
-            if (c.a == 0) {
-                break;
-            }
-            const mu_Rect r = ui_transform_mu_rect(t, cmd->rect.rect);
-            draw_rect(r.x, r.y, r.w, r.h, mu_color_to_gfx(c));
-            break;
-        }
-
-        case UI_COMMAND_IMAGE: {
-            const ui_image_command_t* image = (const ui_image_command_t*)cmd;
-            if (image->color.a != 0) {
-                icon_fill_ctx_t fc = {.color = mu_color_to_gfx(image->color)};
-                ui_transform_icon_blocks(t, image->image, ui_recti_from_mu(image->rect), icon_fill_emit, &fc);
-            }
-            break;
-        }
-
-        case UI_COMMAND_ROUND_RECT: {
-            const ui_round_command_t* face = (const ui_round_command_t*)cmd;
-            const mu_Rect r = ui_transform_mu_rect(t, face->rect);
-            /* An integer scale scales the corner with the face. */
-            const int radius = face->radius * (r.w + r.h) / (face->rect.w + face->rect.h);
-            const gfx_color_t color = mu_color_to_gfx(face->color);
-            for (int row = 0; row < radius; row++) {
-                const int inset = ui_round_inset(radius, r.h, row);
-                draw_rect(r.x + inset, r.y + row, r.w - (2 * inset), 1, color);
-                draw_rect(r.x + inset, r.y + r.h - 1 - row, r.w - (2 * inset), 1, color);
-            }
-            draw_rect(r.x, r.y + radius, r.w, r.h - (2 * radius), color);
-            break;
-        }
-
-        case UI_COMMAND_SWATCHES: {
-            const ui_swatch_command_t* grid = (const ui_swatch_command_t*)cmd;
-            for (int row = 0; row < grid->rows; row++) {
-                for (int col = 0; col < grid->cols; col++) {
-                    const mu_Rect cell = ui_transform_mu_rect(t, ui_swatch_cell_rect(grid, col, row));
-                    draw_rect(cell.x, cell.y, cell.w, cell.h,
-                              mu_color_to_gfx(ui_rgb(grid->rgb[(row * grid->cols) + col])));
-                }
-            }
-            break;
-        }
-
+        case MU_COMMAND_RECT: draw_rect_command(cmd, t); break;
+        case UI_COMMAND_IMAGE: draw_image_command(cmd, t); break;
+        case UI_COMMAND_ROUND_RECT: draw_round_command(cmd, t); break;
+        case UI_COMMAND_SWATCHES: draw_swatches_command(cmd, t); break;
         case MU_COMMAND_TEXT: draw_text_command(cmd, t); break;
-
-        case MU_COMMAND_ICON: {
-            /* microui's icons are close/check/collapsed/expanded. MU_ICON_CHECK
-             * is the system check icon because two callers need it: a
-             * checkbox toggle, and a per-tile selection badge. The other
-             * three, and the check without the engine pack, are a small
-             * centred square: nothing in this shell closes a window or
-             * collapses a tree yet to ask for them. */
-            const mu_Color c = cmd->icon.color;
-            const gfx_color_t color = mu_color_to_gfx(c);
-            const image_t* check = cmd->icon.id == MU_ICON_CHECK ? ui_icon_image(UI_ICON_CHECK) : NULL;
-            if (check != NULL) {
-                icon_fill_ctx_t fc = {.color = color};
-                ui_transform_icon_blocks(t, check, ui_recti_from_mu(cmd->icon.rect), icon_fill_emit, &fc);
-            } else {
-                const mu_Rect r = ui_transform_mu_rect(t, cmd->icon.rect);
-                draw_rect(r.x + (r.w / 3), r.y + (r.h / 3), r.w / 3, r.h / 3, color);
-            }
-            break;
-        }
-
+        case MU_COMMAND_ICON: draw_icon_command(cmd, t); break;
         case MU_COMMAND_CLIP: {
             const mu_Rect r = ui_transform_mu_rect(t, cmd->clip.rect);
             draw_set_clip(r.x, r.y, r.w, r.h);
             break;
         }
-
         default: break;
     }
 }

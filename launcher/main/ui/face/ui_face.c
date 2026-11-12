@@ -202,13 +202,17 @@ close_window(void) {
         return;
     }
     mu_Context* ctx = ui_context();
+    window_open = false;
+    if (!window_aligned) {
+        mu_end_window(ctx);
+        return;
+    }
     mu_Container* cnt = mu_get_current_container(ctx);
     mu_end_window(ctx);
-    window_open = false;
-    if (window_aligned && aligned_lead(cnt, window_align) != window_lead) {
+    window_aligned = false;
+    if (aligned_lead(cnt, window_align) != window_lead) {
         unsettled = true;
     }
-    window_aligned = false;
 }
 
 static void

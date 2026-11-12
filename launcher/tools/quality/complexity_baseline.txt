@@ -903,6 +903,7 @@
 6	launcher/main/gfx/present/gfx_debug.c:320	mark_indexed_strip_overlay
 6	launcher/main/gfx/present/gfx_debug.c:256	send_audit_scan_row
 6	launcher/main/gfx/present/gfx_mode.c:551	gfx_band_run
+6	launcher/main/render/r3d_pipeline.c:458	draw_split_row
 6	launcher/main/selftest/post.c:234	check_i2c_devices
 6	launcher/main/selftest/post.c:46	report
 6	launcher/main/selftest/post_ui.c:96	draw_entry
@@ -1123,7 +1124,6 @@
 5	launcher/main/main.c:917	console_find_app
 5	launcher/main/render/r3d_pipeline.c:374	clip_to_plane
 5	launcher/main/render/r3d_pipeline.c:290	draw_split_histogram
-5	launcher/main/render/r3d_pipeline.c:305	draw_split_row
 5	launcher/main/render/r3d_pipeline.c:146	push_children
 5	launcher/main/render/r3d_span.c:116	fill_span
 5	launcher/main/render/r3d_span.c:410	r3d_span_plane_in_range
