@@ -3,7 +3,8 @@
 
     python launcher/tools/bake/bake.py list [PATH ...] [--missing] [--kind mesh|reference|fit|levels|sound]
     python launcher/tools/bake/bake.py bake [PATH ...] [--kind KIND] [--only OUTPUT ...] [--again] [--out DIR]
-                                            [--from-run N ...]
+                                            [--from-run N ...] [--shard K/N | --shards DIR]
+    python launcher/tools/bake/bake.py shards [PATH ...]
     python launcher/tools/bake/bake.py lock [PATH ...] [--from-run N ... | --seed] [--cache DIR]
     python launcher/tools/bake/bake.py check [PATH ...]
     python launcher/tools/bake/bake.py fetch [PATH ...] [--cache DIR] [--offline]
@@ -143,6 +144,11 @@ GLB_SUFFIX = ".glb"
 KINDS = ("blend", "mesh", "reference", "fit", "levels", "sound")
 # The kinds that trace rays on the CPU, whose bytes differ between CPU vendors (LOCK's mesh_cpu_vendor).
 TRACED_KINDS = ("mesh", "reference")
+# A reference set is traced in REFERENCE_SHARDS jobs, each well under a hosted job's 6 h cap: the longest set, on
+# a hosted 4-CPU runner, split so each shard lands near REFERENCE_SHARD_SECONDS.
+REFERENCE_SHARD_SECONDS = 90 * 60
+LONGEST_REFERENCE_SECONDS = 5 * 60 * 60  # bistro.street_fitted, CPU Bakes run 43016329421
+REFERENCE_SHARDS = -(-LONGEST_REFERENCE_SECONDS // REFERENCE_SHARD_SECONDS)
 # What a fit whose key waits for its inputs asks for, when the same run would make it.
 BAKE_INPUTS_FIRST = "bake its start and reference set first: bake.py bake --kind mesh, then --kind reference"
 SOUND_SUFFIX = ".sond"
@@ -1278,7 +1284,7 @@ def _mesh_rows(found, cache, lock, blender, again, keep):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("command", choices=("list", "bake", "lock", "check", "fetch", "path", "publish", "tool"))
+    parser.add_argument("command", choices=("list", "bake", "shards", "lock", "check", "fetch", "path", "publish", "tool"))
     parser.add_argument("paths", nargs="*", help="what build_pack.py takes; launcher/main when omitted")
     parser.add_argument("--cache", help="the cache directory; the user cache when omitted")
     parser.add_argument("--seed", action="store_true", help="lock: lock the tree's own files")
@@ -1290,6 +1296,8 @@ def main(argv=None):
     parser.add_argument("--out", help="bake: also copy what was made here, for a CI run to upload")
     parser.add_argument("--only", action="append", metavar="OUTPUT", help="bake: only this output; repeatable")
     parser.add_argument("--again", action="store_true", help="bake: make them even when locked, and compare")
+    parser.add_argument("--shard", metavar="K/N", help="bake --kind reference: trace shard K of N of each set into --out")
+    parser.add_argument("--shards", metavar="DIR", help="bake --kind reference: join the shards in DIR, then pack")
     parser.add_argument("--offline", action="store_true", help="fetch: never download")
     args = parser.parse_intermixed_args(argv)  # paths may follow options, as a shell user types them
     from r3d.build_pack import DEFAULT_SEARCH
@@ -1309,7 +1317,11 @@ def main(argv=None):
         starts = locked_starts(lock, made)
         poses = Poses(held, resample=args.command == "lock")
         found = [] if args.command == "path" else bakes(paths, starts, poses)
-        if args.command == "list":
+        if args.command == "shards":
+            # The shard numbers a run traces its missing reference sets in, as a JSON list for a job matrix.
+            print(json.dumps(list(range(REFERENCE_SHARDS)) if any(
+                bake.kind == "reference" and bake.key not in lock for bake in found) else []))
+        elif args.command == "list":
             for bake in found:
                 if (args.missing and bake.key in lock) or args.kind not in (None, bake.kind):
                     continue
@@ -1342,6 +1354,21 @@ def main(argv=None):
                 if mesh_cpu_vendor and cpu != mesh_cpu_vendor and any(to_make(bake, kind) for bake in found
                                                                        for kind in TRACED_KINDS):
                     raise BakeMissing(f"this host's CPU is {cpu or 'not named'}, but {rerun_on(mesh_cpu_vendor)}")
+            if args.shard:
+                shard, count = (int(part) for part in args.shard.split("/"))
+                if args.kind != "reference" or not args.out or not 0 <= shard < count:
+                    parser.error("--shard K/N takes --kind reference, --out DIR and 0 <= K < N")
+                for bake in found:
+                    if to_make(bake, "reference"):
+                        produce.reference_shard(bake, pathlib.Path(args.out) / f"{bake.output}.shard-{shard}", shard, count)
+                        print(f"traced shard {shard}/{count} of {bake.output}", flush=True)
+                return 0
+            if args.shards:
+                for bake in found:
+                    parts = sorted(pathlib.Path(args.shards).glob(f"*/{bake.output}.shard-*"))
+                    if to_make(bake, "reference") and parts:
+                        produce.join_reference_shards(bake, cache, parts)
+                        print(f"joined {len(parts)} shards of {bake.output}", flush=True)
             for run in args.from_run or ():
                 # Each upload apart: two attempts of one run may have made one key on different hosts.
                 with tempfile.TemporaryDirectory() as folder:

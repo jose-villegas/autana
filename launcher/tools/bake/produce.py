@@ -26,6 +26,8 @@ from bake import bake as keys
 
 KEY_INDEX = "keys"
 REFERENCES = "reference"
+# How a poses file (reference_set.poses_text) starts each pose's line.
+POSE_LINE = "pose "
 DONE = "done"
 PRUNED = ".pruned"
 REFERENCE_KEEP_DAYS = 14
@@ -211,6 +213,72 @@ def reference_set(key, job, scene, cache, fresh=None):
     read_references(folder)
     print(f"reference {key}: {'reused' if reused else 'rendered'}", flush=True)
     return folder
+
+
+def shard_poses(text, shard, count):
+    """A poses file's text cut to shard `shard` of `count`: its header and every count-th pose from `shard`, as
+    lines, so no pose is formatted again."""
+    lines = text.splitlines(keepends=True)
+    poses = [line for line in lines if line.startswith(POSE_LINE)]
+    return "".join(line for line in lines if not line.startswith(POSE_LINE)) + "".join(poses[shard::count])
+
+
+def shard_renderer(render_sets, shard, count):
+    """render_sets for shard `shard` of `count`: each set's poses shard, shard + count, ... rendered by `render_sets`
+    and saved under their own indices. A pose's files depend on that pose alone, so shards join into the very files
+    one render makes."""
+    def render(inputs, sets, samples=4):
+        with tempfile.TemporaryDirectory() as work:
+            cut = [(pathlib.Path(work) / f"{number}.txt", pathlib.Path(work) / str(number)) for number in range(len(sets))]
+            for (poses, _), (subset, _) in zip(sets, cut):
+                subset.write_text(shard_poses(pathlib.Path(poses).read_text(), shard, count))
+            render_sets(inputs, cut, samples)
+            for (_, out), (_, rendered) in zip(sets, cut):
+                pathlib.Path(out).mkdir(parents=True, exist_ok=True)
+                for path in pathlib.Path(rendered).iterdir():
+                    index, rest = path.name.split(".", 1)
+                    os.replace(path, pathlib.Path(out) / f"{shard + int(index) * count:04d}.{rest}")
+    return render
+
+
+def reference_shard(bake, out, shard, count):
+    """Shard `shard` of `count` of `bake`'s reference set into the folder `out`: every poses file, and the
+    references of that shard's poses."""
+    from r3d import reference_render
+    from r3d.reference_set import prepare_references, reference_inputs
+
+    # prepare_references reads render_sets from its module when called; the swap keeps the reference stage's code,
+    # and so its key, as it is.
+    render_sets = reference_render.render_sets
+    reference_render.render_sets = shard_renderer(render_sets, shard, count)
+    try:
+        prepare_references(reference_inputs(bake.job, bake.scene), pathlib.Path(out))
+    finally:
+        reference_render.render_sets = render_sets
+
+
+def join_reference_shards(bake, cache, shards):
+    """`bake`'s reference set in this cache, joined from the folders `shards` (reference_shard). Files the shards share
+    must match, and each set must hold every pose of its poses file exactly once."""
+    from r3d.reference_set import HELD_OUT, TRAINING
+
+    def join(partial):
+        for shard in map(pathlib.Path, shards):
+            for path in sorted(item for item in shard.rglob("*") if item.is_file()):
+                target = partial / path.relative_to(shard)
+                if target.is_file():
+                    if target.read_bytes() != path.read_bytes():
+                        raise keys.BakeMissing(f"{bake.output}: shards disagree on {path.relative_to(shard)}")
+                    continue
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(path, target)
+        for poses, folder in TRAINING + (HELD_OUT,):
+            wanted = sum(line.startswith(POSE_LINE) for line in (partial / poses).read_text().splitlines())
+            found = {path.name.split(".", 1)[0] for path in (partial / folder).iterdir()} if (partial / folder).is_dir() else set()
+            if found != {f"{index:04d}" for index in range(wanted)}:
+                raise keys.BakeMissing(f"{bake.output}: the shards hold {len(found)} of {folder}'s {wanted} poses")
+
+    return keyed_folder(pathlib.Path(cache) / REFERENCES / bake.key, join)
 
 
 def input_file(bake, cache, lock, dependency=None):

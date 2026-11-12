@@ -1,8 +1,9 @@
 name: Bakes
 
 # The expensive bakes (launcher/tools/bake/bake.py). On a pull request the CPU
-# job bakes every mesh, fit's reference set, fit's levels and sound launcher/bakes.lock has no row for
-# and uploads the files; the lock job then fails until the author runs
+# job bakes every mesh, fit's levels and sound launcher/bakes.lock has no row for, and the reference
+# shard jobs trace each missing reference set in parts that the reference job joins and packs
+# (bake.py REFERENCE_SHARDS); both upload the files; the lock job then fails until the author runs
 # `bake.py lock --from-run N` with that run and commits the lock. A mesh's and a
 # reference set's bytes differ by CPU vendor, so on a runner of another vendor than the lock's
 # `mesh_cpu_vendor` the bake fails before making one: re-run the failed job.
@@ -70,7 +71,6 @@ jobs:
         run: |
           python launcher/tools/bake/bake.py list --missing --kind blend | tee "$RUNNER_TEMP/blend.txt"
           python launcher/tools/bake/bake.py list --missing --kind mesh | tee "$RUNNER_TEMP/mesh.txt"
-          python launcher/tools/bake/bake.py list --missing --kind reference | tee -a "$RUNNER_TEMP/mesh.txt"
           python launcher/tools/bake/bake.py list --missing --kind sound | tee "$RUNNER_TEMP/sound.txt"
           python launcher/tools/bake/bake.py list --missing --kind levels | tee "$RUNNER_TEMP/levels.txt"
           echo "mesh=$(cat "$RUNNER_TEMP/mesh.txt" "$RUNNER_TEMP/levels.txt" | wc -l)" >> "$GITHUB_OUTPUT"
@@ -118,7 +118,6 @@ jobs:
           if [ "$GITHUB_RUN_ATTEMPT" -gt 1 ]; then earlier=(--from-run "$GITHUB_RUN_ID"); fi
           python launcher/tools/bake/bake.py bake --kind blend --out "$RUNNER_TEMP/bakes" "${earlier[@]}"
           python launcher/tools/bake/bake.py bake --kind mesh --out "$RUNNER_TEMP/bakes"
-          python launcher/tools/bake/bake.py bake --kind reference --out "$RUNNER_TEMP/bakes"
           python launcher/tools/bake/bake.py bake --kind levels --out "$RUNNER_TEMP/bakes"
           python launcher/tools/bake/bake.py bake --kind sound --out "$RUNNER_TEMP/bakes"
 
@@ -133,10 +132,90 @@ jobs:
         if: ${{ !cancelled() }}
         with: {step: record}
 
+  reference-plan:
+    needs: inputs
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.cpu == 'true') }}
+    name: Plan the reference shards
+    runs-on: ubuntu-24.04
+    outputs:
+      shards: ${{ steps.plan.outputs.shards }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: ./.github/actions/host-tools
+
+      - name: The shards that trace the missing reference sets
+        id: plan
+        run: echo "shards=$(python launcher/tools/bake/bake.py shards)" >> "$GITHUB_OUTPUT"
+
+  # A reference set takes hours on one hosted runner; REFERENCE_SHARDS jobs trace a share of its poses each.
+  reference-shard:
+    needs: reference-plan
+    if: ${{ !cancelled() && needs.reference-plan.outputs.shards != '' && needs.reference-plan.outputs.shards != '[]' }}
+    name: Trace reference shard ${{ matrix.shard }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.reference-plan.outputs.shards) }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: ./.github/actions/host-tools
+
+      - name: Fetch source files
+        run: git lfs pull --exclude=""
+
+      - name: Initialize only meshoptimizer
+        run: git submodule update --init --depth 1 third_party/upstream/meshoptimizer
+
+      - name: Install the r3d requirements and LLVM
+        run: |
+          pip install -r launcher/tools/r3d/requirements.txt
+          sudo sh scripts/ci/apt_install.sh -y --no-install-recommends llvm
+
+      - name: Trace this shard
+        run: |
+          python launcher/tools/bake/bake.py bake --kind reference --shard "${{ matrix.shard }}/${{ strategy.job-total }}"             --out "$RUNNER_TEMP/shard"
+
+      # Not a bakes-* name: a shard is no bake, so a lock never reads it.
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: reference-shard-${{ matrix.shard }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/shard
+
+  reference:
+    needs: [reference-plan, reference-shard]
+    if: ${{ !cancelled() && needs.reference-shard.result == 'success' }}
+    name: Join and pack the reference sets
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: ./.github/actions/host-tools
+
+      - name: Install the r3d requirements
+        run: pip install -r launcher/tools/r3d/requirements.txt
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: reference-shard-*
+          path: ${{ runner.temp }}/shards
+
+      - name: Join the shards and pack each set
+        run: |
+          python launcher/tools/bake/bake.py bake --kind reference --shards "$RUNNER_TEMP/shards"             --out "$RUNNER_TEMP/bakes"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: bakes-reference-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/bakes
+          if-no-files-found: ignore
+
   lock:
     name: Lock is current
-    if: ${{ !cancelled() && needs.cpu.result != 'failure' && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.lock == 'true') }}
-    needs: [inputs, cpu]
+    if: ${{ !cancelled() && needs.cpu.result != 'failure' && needs.reference.result != 'failure' && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.lock == 'true') }}
+    needs: [inputs, cpu, reference]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
