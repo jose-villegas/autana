@@ -2,8 +2,8 @@
  * Device-only suite: draw_sprite() cost on a screen of nine-sliced,
  * translucent tiles (the sprite_test pack's tile), read from the mapped pack
  * in flash and from a resident copy in on-chip RAM. Each row is a whole
- * screen of tiles drawn into the framebuffer, not presented; run one test per
- * capture (--test flash, --test resident) to compare them.
+ * screen of tiles drawn into the framebuffer, not presented, upright and at a
+ * quarter turn.
  */
 #include "suites.h" /* portable: needed by SUITE_REGISTER() even on host */
 
@@ -42,25 +42,25 @@ enum {
 };
 
 static void
-draw_screen(const sprite_t* tile) {
+draw_screen(const sprite_t* tile, int turns) {
     draw_clear(BACKGROUND);
     for (int row = 0; row < TILE_ROWS; row++) {
         for (int column = 0; column < TILE_COLUMNS; column++) {
             const recti_t at = {TILE_GAP + (column * (TILE_W + TILE_GAP)), TILE_GAP + (row * (TILE_H + TILE_GAP)),
                                 TILE_W, TILE_H};
-            draw_sprite(tile, at, 0);
+            draw_sprite(tile, at, turns);
         }
     }
 }
 
 static void
-report(const char* row, const sprite_t* tile) {
+report(const char* row, const sprite_t* tile, int turns) {
     int32_t* micros = memory_alloc(SAMPLES * sizeof *micros, MEMORY_INTERNAL);
     TEST_ASSERT_NOT_NULL(micros);
-    draw_screen(tile); /* warm */
+    draw_screen(tile, turns); /* warm */
     for (int i = 0; i < SAMPLES; i++) {
         const int64_t start = timing_now_us();
-        draw_screen(tile);
+        draw_screen(tile, turns);
         micros[i] = (int32_t)(timing_now_us() - start);
     }
     const bench_stats_t stats = bench_stats_compute(micros, SAMPLES);
@@ -78,30 +78,54 @@ open_tile(sprite_t* tile) {
     return load;
 }
 
+/* `turns` 1 reads the source a column at a time, by stride: the case a
+ * baked quarter turn avoids for pictures, measured here for sprites. */
 static void
-test_sprite_screen_flash(void) {
+measure_flash(const char* row, int turns) {
     sprite_t tile;
     const handle_t load = open_tile(&tile);
-    report("sprite_screen_flash", &tile);
+    report(row, &tile, turns);
     asset_store_release(load);
 }
 
 static void
-test_sprite_screen_resident(void) {
+measure_resident(const char* row, int turns) {
     sprite_t tile;
     const handle_t load = open_tile(&tile);
     void* ram = memory_alloc(draw_sprite_bytes(&tile), MEMORY_INTERNAL);
     TEST_ASSERT_NOT_NULL(ram);
     draw_sprite_make_resident(&tile, ram);
     asset_store_release(load);
-    report("sprite_screen_resident", &tile);
+    report(row, &tile, turns);
     memory_free(ram);
+}
+
+static void
+test_sprite_screen_flash(void) {
+    measure_flash("sprite_screen_flash", 0);
+}
+
+static void
+test_sprite_screen_resident(void) {
+    measure_resident("sprite_screen_resident", 0);
+}
+
+static void
+test_sprite_screen_flash_turned(void) {
+    measure_flash("sprite_screen_flash_turned", 1);
+}
+
+static void
+test_sprite_screen_resident_turned(void) {
+    measure_resident("sprite_screen_resident_turned", 1);
 }
 
 void
 run_sprite_perf_suite(void) {
     RUN_TEST(test_sprite_screen_flash);
     RUN_TEST(test_sprite_screen_resident);
+    RUN_TEST(test_sprite_screen_flash_turned);
+    RUN_TEST(test_sprite_screen_resident_turned);
 }
 
 #else

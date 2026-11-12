@@ -42,6 +42,13 @@ image_format_bits(image_format_t format) {
 /* Constant expression so image views can be statically initialised. */
 #define IMAGE_PITCH(format, width) ((uint32_t)(((uint64_t)(width) * ((format) & UINT8_MAX) + CHAR_BIT - 1) / CHAR_BIT))
 
+/* Bytes from the first pixel to the end of the last: a packed view's last
+ * row may stop there, short of its pitch. */
+static inline size_t
+image_span_bytes(const image_t* image) {
+    return ((size_t)image->pitch * (image->height - 1U)) + IMAGE_PITCH(image->format, image->width);
+}
+
 static inline void*
 image_row(const image_t* image, int y) {
     return (char*)image->pixels + ((size_t)y * image->pitch);

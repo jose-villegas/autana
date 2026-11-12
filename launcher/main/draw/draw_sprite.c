@@ -1,5 +1,6 @@
 #include "draw/draw_sprite.h"
 
+#include <assert.h>
 #include <string.h>
 
 #include "asset/asset_bytes.h"
@@ -9,9 +10,9 @@
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
 #include "image/pixel/rgb565.h"
+#include "math/linear/affine2x.h"
+#include "math/scalar/mathi.h"
 
-/* The longest run of panel columns one draw maps: the panel's longer side. */
-#define SPRITE_SPAN_MAX     (GFX_WIDTH > GFX_HEIGHT ? GFX_WIDTH : GFX_HEIGHT)
 #define SPRITE_QUARTER_MASK 3
 #define SPRITE_COVER_FULL   UINT8_MAX
 
@@ -77,35 +78,25 @@ draw_sprite_open(const asset_pack_t* pack, const char* name, sprite_t* out) {
     return status;
 }
 
-/* A plane's bytes up to the end of its last pixel: a pack's last row may stop there. */
-static size_t
-plane_bytes(const image_t* plane) {
-    if (plane->pixels == NULL) {
-        return 0;
-    }
-    return ((size_t)plane->pitch * (plane->height - 1U)) + IMAGE_PITCH(plane->format, plane->width);
-}
-
 /* Where the alpha plane starts in resident RAM: after the colour plane, aligned. */
 static size_t
 alpha_offset(const sprite_t* s) {
-    const size_t align = DRAW_IMAGE_PIXEL_ALIGN;
-    return (plane_bytes(&s->color) + align - 1U) / align * align;
+    return mathi_size_ceil(image_span_bytes(&s->color), DRAW_IMAGE_PIXEL_ALIGN);
 }
 
 size_t
 draw_sprite_bytes(const sprite_t* s) {
-    return s->alpha.pixels == NULL ? plane_bytes(&s->color) : alpha_offset(s) + plane_bytes(&s->alpha);
+    return s->alpha.pixels == NULL ? image_span_bytes(&s->color) : alpha_offset(s) + image_span_bytes(&s->alpha);
 }
 
 void
 draw_sprite_make_resident(sprite_t* s, void* dst) {
     uint8_t* bytes = dst;
     if (s->alpha.pixels != NULL) {
-        memcpy(bytes + alpha_offset(s), s->alpha.pixels, plane_bytes(&s->alpha));
+        memcpy(bytes + alpha_offset(s), s->alpha.pixels, image_span_bytes(&s->alpha));
         s->alpha.pixels = bytes + alpha_offset(s);
     }
-    memcpy(bytes, s->color.pixels, plane_bytes(&s->color));
+    memcpy(bytes, s->color.pixels, image_span_bytes(&s->color));
     s->color.pixels = bytes;
 }
 
@@ -140,30 +131,16 @@ slice_source(const slice_axis_t* axis, int at) {
     return axis->lo + (((2 * (at - axis->out_lo)) + 1) * centre_src / (2 * centre_out));
 }
 
-/* The panel rectangle a sprite-frame rectangle `r` lands on, in a `w` x `h`
- * sprite frame turned clockwise by `turns`, placed at `at`. */
-static recti_t
-turned_rect(recti_t r, int w, int h, int turns, recti_t at) {
-    recti_t out;
-    switch (turns) {
-        case 1: out = (recti_t){h - recti_bottom(r), r.x, r.h, r.w}; break;
-        case 2: out = (recti_t){w - recti_right(r), h - recti_bottom(r), r.w, r.h}; break;
-        case 3: out = (recti_t){r.y, w - recti_right(r), r.h, r.w}; break;
-        default: out = r; break;
-    }
-    out.x += at.x;
-    out.y += at.y;
-    return out;
-}
-
-/* One panel row's pixels [x0, x1): source index `base + map[col] * step`. */
+/* One panel row's pixels [x0, x1): source pixel `base + map[col] * step`, the
+ * same index in both planes, which share one stride. */
 static inline void
-blend_span(gfx_color_t* row, int x0, int x1, const int16_t* map, const gfx_color_t* color, const uint8_t* alpha,
-           size_t color_base, size_t color_step, size_t alpha_base, size_t alpha_step) {
+blend_span(gfx_color_t* row, int x0, int x1, const int16_t* map, const sprite_t* s, size_t base, size_t step) {
+    const gfx_color_t* color = s->color.pixels;
+    const uint8_t* alpha = s->alpha.pixels;
     for (int col = x0; col < x1; col++) {
-        const size_t m = (size_t)map[col - x0];
-        const gfx_color_t pixel = color[color_base + (m * color_step)];
-        const uint8_t cover = alpha == NULL ? SPRITE_COVER_FULL : alpha[alpha_base + (m * alpha_step)];
+        const size_t at = base + ((size_t)map[col - x0] * step);
+        const gfx_color_t pixel = color[at];
+        const uint8_t cover = alpha == NULL ? SPRITE_COVER_FULL : alpha[at];
         if (cover == SPRITE_COVER_FULL) {
             row[col] = pixel;
         } else if (cover != 0) {
@@ -188,7 +165,10 @@ draw_sprite(const sprite_t* s, recti_t dst, int quarter_turns) {
     recti_t centre = recti_empty();
     if (s->flat_centre) {
         const recti_t inner = {sx.out_lo, sy.out_lo, w - sx.out_lo - sx.out_hi, h - sy.out_lo - sy.out_hi};
-        centre = turned_rect(inner, w, h, turns, dst);
+        const affine2x_t turn = affine2x_quarter_turn(turns, dst.w, dst.h);
+        centre = affine2x_map_recti(&turn, inner);
+        centre.x += dst.x;
+        centre.y += dst.y;
         draw_rect_blend(centre.x, centre.y, centre.w, centre.h, s->centre_color, s->centre_alpha);
     }
 
@@ -197,9 +177,10 @@ draw_sprite(const sprite_t* s, recti_t dst, int quarter_turns) {
         return;
     }
     const recti_t rect = gfx_target_clip_rect(state.target, state.clip, dst);
-    if (recti_is_empty(rect) || rect.w > SPRITE_SPAN_MAX) {
+    if (recti_is_empty(rect)) {
         return;
     }
+    assert(rect.w <= GFX_WIDTH); /* every target is the panel's width */
 
     /* Panel columns map to one sprite axis and panel rows to the other; a
      * mirrored axis counts from its far end. */
@@ -207,38 +188,32 @@ draw_sprite(const sprite_t* s, recti_t dst, int quarter_turns) {
     const slice_axis_t* row_axis = across ? &sx : &sy;
     const bool col_mirror = turns == 1 || turns == 2;
     const bool row_mirror = turns == 2 || turns == 3;
-    int16_t map[SPRITE_SPAN_MAX];
+    int16_t map[GFX_WIDTH];
     for (int col = rect.x; col < recti_right(rect); col++) {
         const int at = col - dst.x;
         map[col - rect.x] = (int16_t)slice_source(col_axis, col_mirror ? col_axis->out_len - 1 - at : at);
     }
 
-    const gfx_color_t* color = s->color.pixels;
-    const uint8_t* alpha = s->alpha.pixels;
-    const size_t color_pitch = s->color.pitch / sizeof(gfx_color_t);
-    const size_t alpha_pitch = s->alpha.pitch;
+    const size_t stride = s->color.pitch / sizeof(gfx_color_t);
     for (int row = rect.y; row < recti_bottom(rect); row++) {
         const int at = row - dst.y;
         const size_t fixed = (size_t)slice_source(row_axis, row_mirror ? row_axis->out_len - 1 - at : at);
         /* Upright, a panel row is a sprite row; turned, a sprite column. */
-        const size_t color_base = across ? fixed : fixed * color_pitch;
-        const size_t alpha_base = across ? fixed : fixed * alpha_pitch;
-        const size_t color_step = across ? color_pitch : 1;
-        const size_t alpha_step = across ? alpha_pitch : 1;
+        const size_t base = across ? fixed : fixed * stride;
+        const size_t step = across ? stride : 1;
         gfx_color_t* line = gfx_target_color(state.target, row);
         int x0 = rect.x;
         int x1 = recti_right(rect);
         if (s->flat_centre && row >= centre.y && row < recti_bottom(centre)) {
-            const int skip0 = centre.x > x0 ? centre.x : x0;
-            const int skip1 = recti_right(centre) < x1 ? recti_right(centre) : x1;
+            const int skip0 = mathi_max(centre.x, x0);
+            const int skip1 = mathi_min(recti_right(centre), x1);
             if (skip0 < skip1) {
-                blend_span(line, x0, skip0, map, color, alpha, color_base, color_step, alpha_base, alpha_step);
-                blend_span(line, skip1, x1, map + (skip1 - x0), color, alpha, color_base, color_step, alpha_base,
-                           alpha_step);
+                blend_span(line, x0, skip0, map, s, base, step);
+                blend_span(line, skip1, x1, map + (skip1 - x0), s, base, step);
                 continue;
             }
         }
-        blend_span(line, x0, x1, map, color, alpha, color_base, color_step, alpha_base, alpha_step);
+        blend_span(line, x0, x1, map, s, base, step);
     }
 
     if (state.marks) {
