@@ -96,6 +96,26 @@ class DerivedBudgetTest(unittest.TestCase):
 
 
 @unittest.skipIf(np is None, "needs the r3d environment")
+class CarveWithinTest(unittest.TestCase):
+    def test_the_carve_adds_triangles_until_its_measured_move_fits(self):
+        from r3d.meshopt import PERMISSIVE, REGULARIZE
+        from r3d.simplify import stand_in_within
+
+        positions, tris = sphere()
+        rgb = np.where(positions[:, :1] > 0, 255.0, 0.0).repeat(3, axis=1)
+        materials = np.zeros(len(tris), dtype=int)
+        options = REGULARIZE | PERMISSIVE
+        error = detail.object_error(2.0, FOCAL)
+        floor = len(detail.level(positions, tris, error))
+        _, _, kept, unbounded = stand_in_within(positions, rgb, tris, materials, floor, 2.0, options, None, None)
+        self.assertEqual(kept, floor)
+        self.assertGreater(unbounded, error)
+        _, _, budget, moved = stand_in_within(positions, rgb, tris, materials, floor, 2.0, options, None, error)
+        self.assertLessEqual(moved, error)
+        self.assertGreater(budget, floor)
+
+
+@unittest.skipIf(np is None, "needs the r3d environment")
 class DetailReportTest(unittest.TestCase):
     def test_each_shape_s_surface_move_is_reported_in_pixels_at_its_nearest_view(self):
         rungs = [detail.Rung(100, 2.0), detail.Rung(40, 4.0)]
