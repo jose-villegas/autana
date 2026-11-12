@@ -103,6 +103,9 @@ typedef struct {
     const int8_t (*morph_delta)[3];              /* one per vertex */
     const struct r3d_lit_landing* morph_landing; /* one per vertex, or NULL */
     int lod_finest_triangles;                    /* the finest level's, with cluster_lod set */
+    /* Textures over some clusters (render/texture/r3d_texture.h), or NULL:
+     * every cluster draws its vertex colours alone. */
+    const struct r3d_mesh_texturing* texturing;
 } r3d_lit_mesh_t;
 
 /* Where a vertex lands on the coarse level: triangle `triangle`'s corners

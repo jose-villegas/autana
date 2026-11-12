@@ -6,11 +6,13 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/render_lab_dynres.h"
 #include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/scene_baked.h"
+#include "core/memory.h"
 #include "core/tune.h"
 #include "draw/draw.h"
 #include "esp_log.h"
@@ -41,6 +43,14 @@ static int pool;
 static stress_buffers_t buffers[STRESS_MIX_LEVELS];
 static r3d_dynamic_mesh_t mesh[STRESS_MIX_LEVELS];
 static uint32_t wave_ms;
+
+/* The textured preset's brick, its texturing, and the internal-RAM copy of
+ * its entry when stress.texels_internal asks for one. */
+TUNE_OWNER(stress);
+TUNE(stress, texels_internal, 0, 0, 1);
+static r3d_texture_t* texture;
+static r3d_mesh_texturing_t texturing;
+static void* internal_texels;
 
 /* What the panel says in place of the triangle count when the scene could not load. */
 static char failure[LAB_STATUS_LEN];
@@ -99,6 +109,32 @@ take_mesh(void) {
     return true;
 }
 
+/* The brick's entry, in the scene's arena or, as asked, internal RAM, and a
+ * texturing of every cluster of the one mesh with it. */
+static bool
+take_texture(void) {
+    const size_t bytes = stress_texture_bytes();
+    uint8_t* ltex = texels_internal != 0 ? memory_alloc(bytes, MEMORY_INTERNAL) : lab_scene_take(bytes);
+    internal_texels = texels_internal != 0 ? ltex : NULL;
+    texture = lab_scene_take(sizeof *texture);
+    const r3d_lit_mesh_t* m = &mesh[0].mesh;
+    int16_t (*uvs)[2] = lab_scene_take(sizeof(int16_t[2]) * (size_t)m->vertex_count);
+    uint8_t* material = lab_scene_take((size_t)m->cluster_count);
+    int16_t (*origin)[2] = lab_scene_take(sizeof(int16_t[2]) * (size_t)m->cluster_count);
+    if (ltex == NULL || texture == NULL || uvs == NULL || material == NULL || origin == NULL) {
+        return false;
+    }
+    stress_texture_write(ltex);
+    const asset_view_t view = {ltex, (uint32_t)bytes};
+    if (r3d_texture_from_asset(&view, texture) != ASSET_OK) {
+        return false;
+    }
+    memset(material, 0, (size_t)m->cluster_count);
+    memset(origin, 0, sizeof(int16_t[2]) * (size_t)m->cluster_count);
+    texturing = (r3d_mesh_texturing_t){(const int16_t (*)[2])uvs, material, (const int16_t (*)[2])origin, texture, 1};
+    return true;
+}
+
 static bool
 build(void) {
     for (int i = 0; i < mesh_count(); i++) {
@@ -106,6 +142,10 @@ build(void) {
         r3d_dynamic_source_t source;
         if (!stress_source(&p, wave_ms, &buffers[i], &source) || !r3d_dynamic_mesh_build(&mesh[i], &source)) {
             return false;
+        }
+        if (shown->surface == STRESS_SURFACE_TEXTURED) {
+            stress_texture_uvs(&mesh[i].mesh, (int16_t (*)[2])texturing.uvs);
+            mesh[i].mesh.texturing = &texturing;
         }
     }
     for (int i = 0; i < shown->copies; i++) {
@@ -184,6 +224,10 @@ load(void) {
         fail("too few stress copies");
         return false;
     }
+    if (shown->surface == STRESS_SURFACE_TEXTURED && !take_texture()) {
+        fail("no memory for the stress texture");
+        return false;
+    }
     if (shown->surface != STRESS_SURFACE_STATIC && !build()) {
         fail("stress mesh did not fit");
         return false;
@@ -208,6 +252,8 @@ scene_stress_enter(const lab_scene_t* self) {
 
 static void
 scene_stress_exit(void) {
+    memory_free(internal_texels);
+    internal_texels = NULL;
     scene_release(loaded);
     loaded = ENTITY_NONE;
     slots = NULL;

@@ -1,4 +1,5 @@
 #include "render/r3d_pipeline.h"
+#include "render/texture/r3d_texture.h"
 
 #include "render/r3d_span_internal.h"
 
@@ -699,6 +700,7 @@ enum {
     DRAW_BOUNDED = 1U << 0,  /* every vertex passed the near and range tests: no iz tests */
     DRAW_WRITES = 1U << 1,   /* the target's writers follow each fill */
     DRAW_SKIPPING = 1U << 2, /* clusters behind drawn depth are skipped; fills cap depth */
+    DRAW_TEXTURED = 1U << 3, /* the mesh has textures: a bounded cluster with a material draws textured */
 };
 
 typedef unsigned draw_mode_t;
@@ -1065,6 +1067,9 @@ draw_reading_of(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16
         }
         const r3d_lit_cluster_t* c = &mesh->clusters[clusters[i]];
         const draw_mode_t bounded = rows != NULL && !rows[clusters[i]].unbounded ? DRAW_BOUNDED : 0U;
+        if ((mode & DRAW_TEXTURED) != 0 && bounded != 0U && r3d_texture_draw_cluster(mesh, clusters[i], cs, target)) {
+            continue;
+        }
         if (blend != BLEND_NONE) {
             draw_blended(mesh, lens, clusters[i], cs, &rows[clusters[i]], target, mode | bounded, work,
                          c->triangle_first, c->triangle_first + c->triangle_count, blend == BLEND_DITHER);
@@ -1090,14 +1095,26 @@ draw_reading_skipping(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const 
     draw_reading_of(mesh, lens, clusters, count, cs, rows, target, DRAW_SKIPPING, work, BLEND_NONE);
 }
 
-/* Chooses once per draw whether the target's writers follow each fill, and
- * whether clusters behind drawn depth are skipped. */
+/* The read-only draw of a textured mesh, out of the plain draws' code. */
+static __attribute__((noinline, cold)) void
+draw_reading_textured(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
+                      const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target,
+                      r3d_pipeline_work_t* work) {
+    draw_reading_of(mesh, lens, clusters, count, cs, rows, target,
+                    DRAW_TEXTURED | (target->skip_hidden ? DRAW_SKIPPING : 0U), work, BLEND_NONE);
+}
+
+/* Chooses once per draw whether the target's writers follow each fill,
+ * whether clusters behind drawn depth are skipped, and whether the mesh's
+ * textures are drawn: not under writers, which the textured fill lacks. */
 void
 r3d_pipeline_draw(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
                   const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target,
                   r3d_pipeline_work_t* work) {
     build_guard_planes(lens, work);
-    if (target->writer_count != 0) {
+    if (mesh->texturing != NULL && target->writer_count == 0) {
+        draw_reading_textured(mesh, lens, clusters, count, cs, rows, target, work);
+    } else if (target->writer_count != 0) {
         draw_writing(mesh, lens, clusters, count, cs, rows, target, work);
     } else if (target->skip_hidden) {
         draw_reading_skipping(mesh, lens, clusters, count, cs, rows, target, work);
