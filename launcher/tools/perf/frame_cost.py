@@ -23,13 +23,17 @@ NS_PER_MS = 1_000_000
 
 
 def frame_cost_window(line):
+    """One report line's brackets, total and external stages; None for another
+    line. A window that dropped brackets is refused: its brackets are not the
+    whole frame, so no reader may average it."""
     if REPORT_PREFIX not in line:
         return None
     frame, *external = line.split(REPORT_PREFIX, 1)[1].split("||")
     total = TOTAL.search(frame)
     dropped = DROPPED.search(frame)
-    return {"dropped": int(dropped[1]) if dropped else 0,
-            "brackets": {name: (float(avg), float(worst)) for name, avg, worst in BRACKET.findall(frame)},
+    if dropped:
+        raise ValueError(f"a frame-cost window dropped {dropped[1]} brackets: {line.strip()}")
+    return {"brackets": {name: (float(avg), float(worst)) for name, avg, worst in BRACKET.findall(frame)},
             "total": float(total[1]) if total else None,
             "external": {name: (float(avg), float(worst), int(n))
                          for section in external for name, avg, worst, n in EXTERNAL.findall(section)}}

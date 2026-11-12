@@ -18,10 +18,14 @@ class FrameCostTests(unittest.TestCase):
         self.assertEqual(window["external"], {"sound_mix": (0.004, 0.015, 260)})  # magic: the real report fixture stage.
         self.assertNotIn(next(iter(window["external"])), dict(frame_cost.frame_cost_windows(path)[0]))
 
-    def test_window_counts_the_brackets_it_dropped(self):
-        whole = frame_cost.frame_cost_window("ms/frame avg/worst: a 1/1 | total 1.00")
-        cut = frame_cost.frame_cost_window("ms/frame avg/worst: a 1/1 | total 1.00 +424 dropped || x 0.002/0.006 ms/block n=9")
-        self.assertEqual((whole["dropped"], cut["dropped"]), (0, 424))
+    def test_a_window_that_dropped_brackets_is_refused_by_every_reader(self):
+        whole = "ms/frame avg/worst: a 1/1 | total 1.00"
+        cut = "ms/frame avg/worst: a 1/1 | total 1.00 +424 dropped || x 0.002/0.006 ms/block n=9"
+        self.assertEqual(frame_cost.frame_cost_window(whole)["brackets"], {"a": (1.0, 1.0)})
+        for read in (frame_cost.frame_cost_window, lambda line: frame_cost.frame_cost_windows(None, line),
+                     lambda line: frame_cost.frame_cost_means(None, line)):
+            with self.assertRaisesRegex(ValueError, "dropped 424 brackets"):
+                read(cut)
 
     def test_order_new_bracket_and_missing_captures(self):
         with tempfile.TemporaryDirectory() as directory:
