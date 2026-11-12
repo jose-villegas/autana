@@ -25,7 +25,7 @@
 #include "render/lod/r3d_lod.h"
 #include "render/r3d_triangle_tests.h"
 
-void
+RENDER_IRAM_ATTR __attribute__((noinline)) void
 r3d_lens_init(r3d_lens_t* lens, const render_view_t* view, int position_scale) {
     const float ticks_to_units = 1.0F / (float)position_scale;
     const mat4f_t camera = mat4f_view_from_axes(view->screen_x, view->screen_y, view->forward, view->position);
@@ -41,7 +41,7 @@ r3d_lens_init(r3d_lens_t* lens, const render_view_t* view, int position_scale) {
     lens->height = view->viewport.height;
 }
 
-void
+RENDER_IRAM_ATTR __attribute__((noinline)) void
 r3d_lens_fit(r3d_lens_t* lens, int width, int height) {
     const float scale_x = (float)width / (float)lens->width;
     const float scale_y = (float)height / (float)lens->height;
