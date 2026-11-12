@@ -138,6 +138,10 @@ Source: `water-stages-board.log`
 
 ### Stress
 
+`stress_goals.py CAPTURE...` prints the goal table: worst per-capture pose mean
+from perf-scoped 5-seed runs on A308, 20E8 and 2124, +1% rounded up to 10 µs;
+the r3d ceiling is goal × 1.15 rounded up to 10 µs.
+
 The Stress family repeats a generated primitive or static pack mesh before a
 swinging camera. Each preset ties down one behaviour with its own pegged goal.
 Perf work targets the presets; the scene frame profile confirms before merge.

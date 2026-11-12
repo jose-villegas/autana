@@ -82,7 +82,7 @@ render_lab_test_write_counts(const int64_t sums[RENDER_LAB_TEST_COUNTS], int fra
 
 void
 render_lab_test_replay_pose(const char* tag, entity_t entity, uint32_t duration_ms, int32_t path_ms, const char* row,
-                            const char* quarter) {
+                            const char* quarter, int64_t stage_us[R3D_STAGE_COUNT]) {
     suite_add_test_cleanup(release_pose_line);
     if (pose_line == NULL) {
         pose_line = memory_alloc(sizeof *pose_line, MEMORY_INTERNAL);
@@ -101,6 +101,11 @@ render_lab_test_replay_pose(const char* tag, entity_t entity, uint32_t duration_
     frame_cost_take_clear(); /* forget whatever ran before */
     for (int i = 0; i < FRAME_PROFILE_REPLAY_DRAWS; i++) {
         (void)lab_test_frame_dt(0, false, NULL);
+    }
+    if (stage_us != NULL) {
+        for (int i = 0; i < R3D_STAGE_COUNT; i++) {
+            stage_us[i] = frame_cost_take_mean_us(r3d_stage_names[i], FRAME_PROFILE_REPLAY_DRAWS);
+        }
     }
     (void)frame_cost_take_report(FRAME_PROFILE_REPLAY_DRAWS, out->report, sizeof out->report);
     add_frame_counts(out->sums, &out->frame);

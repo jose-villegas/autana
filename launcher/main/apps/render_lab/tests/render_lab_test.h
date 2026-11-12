@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "lab/test/lab_test.h"
+#include "render/r3d_stages.h"
 #include "render/view/raster_cull_view.h"
 #include "scene/scene.h"
 
@@ -31,11 +32,10 @@ void render_lab_test_add_cull_counts(int64_t sums[RENDER_LAB_TEST_COUNTS]);
  * line into `out`. */
 void render_lab_test_write_counts(const int64_t sums[RENDER_LAB_TEST_COUNTS], int frames, char* out, size_t size);
 
-/* Draws the pose `path_ms` along `entity`'s current clip of `duration_ms`,
- * paused there (dt 0): one frame through the cull view for its counts, then
- * FRAME_PROFILE_REPLAY_DRAWS shaded frames for their frame-cost report, and
- * logs both as one FRAME_PROFILE_REPLAY line under `tag`. */
+/* Replays a paused pose: cull counts, then FRAME_PROFILE_REPLAY_DRAWS
+ * shaded frames, logged as FRAME_PROFILE_REPLAY under tag. Optional
+ * stage_us receives mean microseconds before the window clears. */
 void render_lab_test_replay_pose(const char* tag, entity_t entity, uint32_t duration_ms, int32_t path_ms,
-                                 const char* row, const char* quarter);
+                                 const char* row, const char* quarter, int64_t stage_us[R3D_STAGE_COUNT]);
 
 #endif
