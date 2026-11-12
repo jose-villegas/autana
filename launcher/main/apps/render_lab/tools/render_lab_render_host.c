@@ -162,7 +162,7 @@ static void
 apply_flags(int argc, char** argv) {
     for (int i = 0; i < argc; i++) {
         if (strcmp(argv[i], "--no-hud") == 0) {
-            render_lab_show_hud = false;
+            render_lab.show_hud = false;
         } else if (strcmp(argv[i], "--menu") == 0) {
             menu = true;
         }
@@ -199,7 +199,7 @@ size_option(const char* size) {
 }
 
 /* Which names are valid is app_render_lab.c's own knowledge (each scene's
- * .key, render_lab_scene.h) - this only hands the string through. */
+ * .key, lab/lab_scene.h) - this only hands the string through. */
 static bool
 options(int argc, char** argv) {
     const char* scene;
@@ -215,7 +215,7 @@ options(int argc, char** argv) {
         const char* name;
         const char** out;
     } values[] = {
-        {"--scene", &scene},   {"--view", &view},          {"--camera", &render_lab_start_camera},
+        {"--scene", &scene},   {"--view", &view},          {"--camera", &render_lab.start_camera},
         {"--scale", &scale},   {"--size", &size},          {"--small-fill", &small_fill},
         {"--dump", &dump_dir}, {"--counts", &counts_path},
     };
@@ -239,7 +239,7 @@ options(int argc, char** argv) {
     option_count = argc;
     option_args = argv;
     apply_flags(argc, argv);
-    render_lab_start_scene_key = scene;
+    render_lab.start_key = scene;
     return console_options(argc, argv) && (view == NULL || view_from_name(view))
            && (small_fill == NULL || small_fill_from_name(small_fill))
            && (scale == NULL || render_host_set_tunable("render_lab.scale", atoi(scale)))
@@ -270,8 +270,8 @@ setup(int quarter) {
     ui_set_transform(ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT));
     (void)scene_set_take(app_arena_take); /* as shell/scene_system.c does on the board */
     registered->enter();
-    if (render_lab_start_camera != NULL && !scene_has_active_camera()) {
-        (void)fprintf(stderr, "--camera: no camera %s in this scene\n", render_lab_start_camera);
+    if (render_lab.start_camera != NULL && !scene_has_active_camera()) {
+        (void)fprintf(stderr, "--camera: no camera %s in this scene\n", render_lab.start_camera);
         return false;
     }
     if (size_rect.w > 0) {

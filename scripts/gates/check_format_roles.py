@@ -17,6 +17,7 @@ box names):
 | padding | the label is `0`, `reserved` or `0 (reserved)` |
 | identity | it starts with `magic` or `version`, or is `crc32` |
 | offset | it ends in `_off` or is `offset` |
+| code | it ends in `flags`, a set of named bits |
 | count or size | it ends in `count`, `_size` or is `size`, or is one plural word |
 | code | the page's header names two or more of its values, `<PREFIX>_<LABEL>_<NAME>` |
 | value | anything else |
@@ -66,6 +67,8 @@ def role(label, defines):
         return "identity"
     if label.endswith("_off") or label == "offset":
         return "offset"
+    if label.endswith("flags"):
+        return "code"
     if label.endswith(("count", "_size")) or label == "size" or PLURAL.match(label):
         return "count"
     named = re.compile(rf"_{label.upper()}_[A-Z0-9_]+$")

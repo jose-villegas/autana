@@ -161,6 +161,10 @@ foreach(app_root IN LISTS app_roots)
     launcher_glob(root_apps "${app_root}/*.c")
     list(APPEND discovered_apps ${root_apps})
 endforeach()
+# The lab shell (lab/lab.h), the scene picker, HUD and fixtures every lab app
+# hosts its scenes behind, is split from its suites the same way.
+launcher_glob(lab_srcs "${CMAKE_CURRENT_LIST_DIR}/lab/*.c")
+list(APPEND discovered_apps ${lab_srcs})
 
 # apps/<name>/tools/ is an app's host-side tooling, not firmware. The glob
 # above is recursive and WHOLE_ARCHIVE force-links whatever it finds, so a
