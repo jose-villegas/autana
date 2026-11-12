@@ -345,7 +345,7 @@ view is the camera-path pose where those boxes show the most visible edge;
 | shapes.png | With `--surface-tolerance`: the shapes of 20 triangles or more saving the most, each copy drawn in its shape's frame from an angle |
 | error.csv / error.json / error.md, error.png | With `--held-out`: every object part's path pixels and held-out error, ranked |
 
-What levels of detail save along the camera path is measured on the fitted mesh by [`lod/lod_replay.py`](../../../launcher/tools/r3d/lod/lod_replay.py); see [plans/Cluster-LOD.md](../../plans/Cluster-LOD.md).
+What levels of detail save along the camera path is measured on the fitted mesh by [`lod/lod_replay.py`](../../../launcher/tools/r3d/lod/lod_replay.py); see [frame/Levels-of-Detail.md](../frame/Levels-of-Detail.md).
 
 ### Held-out error by object
 

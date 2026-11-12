@@ -16,16 +16,21 @@ render_settings_read(const asset_pack_t* pack, render_settings_t* out) {
         status = ASSET_ERR_FORMAT;
     }
     render_settings_t read = {0};
-    const int16_t* value = NULL;
+    const int16_t* encoded = NULL;
 #define FROM_bool(v)  ((v) != 0)
 #define FROM_float(v) ((float)(v) / (float)(1 << RENDER_SETTINGS_FRAC_BITS))
 #define FROM_int(v)   ((int)(v))
-#define READ_FIELD(field, type)                                                                                        \
+#define READ_FIELD(field, type, valid)                                                                                 \
     if (status == ASSET_OK) {                                                                                          \
-        status = asset_table_row(&table, #field, 1, &value) == ASSET_OK ? ASSET_OK : ASSET_ERR_FORMAT;                 \
+        status = asset_table_row(&table, #field, 1, &encoded) == ASSET_OK ? ASSET_OK : ASSET_ERR_FORMAT;               \
     }                                                                                                                  \
     if (status == ASSET_OK) {                                                                                          \
-        read.field = FROM_##type(*value);                                                                              \
+        read.field = FROM_##type(*encoded);                                                                            \
+        const type value = read.field;                                                                                 \
+        (void)value;                                                                                                   \
+        if (!(valid)) {                                                                                                \
+            status = ASSET_ERR_FORMAT;                                                                                 \
+        }                                                                                                              \
     }
     RENDER_SETTINGS_FIELDS(READ_FIELD)
     if (status == ASSET_OK) {

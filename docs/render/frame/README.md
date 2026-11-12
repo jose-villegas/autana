@@ -38,6 +38,7 @@ flowchart LR
 |---|---|
 | [Mesh-Rendering.md](../Mesh-Rendering.md) | The raster: one frame, the render context, both cores, memory |
 | [Culling.md](Culling.md) | Every cull stage in order, from the bake's visibility to the per-triangle tests, what each keeps and costs |
+| [Levels-of-Detail.md](Levels-of-Detail.md) | Which level of a mesh's clusters each instance draws: the baked levels, the pick, the budget and the blend that softens a switch |
 | [Coverage.md](Coverage.md) | Which pixels a triangle fills, and small fill: cheaper draws for triangles a few pixels wide |
 | [Attachments.md](Attachments.md) | The depth buffer, and the extra per-pixel maps a draw can write: meshlet IDs |
 | [Overdraw.md](Overdraw.md) | The overdraw view: how many triangles reach each pixel, how to read it and what a layer costs |

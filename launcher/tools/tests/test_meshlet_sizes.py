@@ -72,7 +72,7 @@ class MeshletSettingsTests(unittest.TestCase):
             root = pathlib.Path(directory)
             for size in (16, 64):
                 job = SimpleNamespace(renderer=SimpleNamespace(face_samples=None),
-                                      settings=SimpleNamespace(meshlet_triangles=size, lod=False))
+                                      settings=SimpleNamespace(meshlet_triangles=size, lod=False, morph=False))
                 mesh_import.write_baked(job, None, root, "tiny", geometry)
                 counts = [cluster[3] for cluster in read_lit_mesh(root / "tiny.bundle").clusters]
                 self.assertLessEqual(max(counts), size)
