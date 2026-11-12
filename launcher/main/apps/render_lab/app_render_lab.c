@@ -92,6 +92,7 @@ render_lab_diagnostic_json(char* out, size_t len) {
 
 app_t app_render_lab = {
     .name = "Render Lab",
+    .kind = APP_KIND_LAB,
     .summary = "Baked mesh flythroughs",
     LAB_APP_CALLBACKS(render_lab),
     .home_gesture = true,

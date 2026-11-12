@@ -230,11 +230,13 @@ for dir in $(app_directories launcher); do
     [ -f "${dir}development_only.cmake" ] && continue
     for source in "$dir"app_*.c; do
         names=$(sed -n 's/^ *\.name = "\(.*\)",\r\{0,1\}$/\1/p' "$source")
+        # The kind orders the home screen; none is an app.
+        kind=$(sed -n 's/^ *\.kind = APP_KIND_\([A-Z]*\),\r\{0,1\}$/\1/p' "$source" | tr 'A-Z' 'a-z')
         old_ifs=$IFS
         IFS='
 '
         for name in $names; do
-            set -- "$@" --row "$name"
+            set -- "$@" --row "$name${kind:+:$kind}"
         done
         IFS=$old_ifs
     done
