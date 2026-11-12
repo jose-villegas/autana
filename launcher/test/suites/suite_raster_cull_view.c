@@ -679,6 +679,68 @@ test_cull_view_frame_counts_clusters_by_fate(void) {
     TEST_ASSERT_EQUAL_INT(SCENE_QUADS, total);
 }
 
+/* Each scene quad's vertex_count: its four corners plus unused padding the
+ * transform still works through. All differ, so a sum cannot be mistaken
+ * for a count of clusters or for another cluster's vertices. */
+#define PADDED_VERTICES_MAX 8
+#define CORNERS_PER_QUAD    4
+#define QUAD_TRIANGLES      2
+
+static const int padded_vertex_count[SCENE_QUADS] = {
+    [SCENE_WALL] = 4, [SCENE_CARD] = 6, [SCENE_HIDDEN] = 5, [SCENE_AWAY] = 7, [SCENE_SIDE] = PADDED_VERTICES_MAX};
+static const uint16_t padded_face_colors[QUAD_TRIANGLES] = {UINT16_MAX, UINT16_MAX};
+
+/* Gives each quad of `s` its padded vertex_count, its corners first and the
+ * padding copies of the first corner, lit per face so no vertex colour is
+ * read. `positions` holds them while the scene draws. */
+static void
+pad_scene_vertices(scene_t* s, int16_t (*positions)[PADDED_VERTICES_MAX][3]) {
+    for (int i = 0; i < SCENE_QUADS; i++) {
+        for (int v = 0; v < PADDED_VERTICES_MAX; v++) {
+            const int16_t* corner = scene_corners[i][v < CORNERS_PER_QUAD ? v : 0];
+            positions[i][v][0] = corner[0];
+            positions[i][v][1] = corner[1];
+            positions[i][v][2] = corner[2];
+        }
+        s->quad[i].cluster.vertex_count = (uint16_t)padded_vertex_count[i];
+        s->quad[i].mesh.positions = (const int16_t (*)[3])positions[i];
+        s->quad[i].mesh.vertex_count = (uint16_t)padded_vertex_count[i];
+        s->quad[i].mesh.colors = NULL;
+        s->quad[i].mesh.face_colors = padded_face_colors;
+    }
+}
+
+static void
+assert_vertices_of_kept_clusters_only(const raster_cull_frame_t* frame) {
+    const int kept = padded_vertex_count[SCENE_WALL] + padded_vertex_count[SCENE_CARD]
+                     + padded_vertex_count[SCENE_HIDDEN] + padded_vertex_count[SCENE_AWAY];
+    TEST_ASSERT_EQUAL_INT(kept, frame->counts.vertices_transformed);
+    TEST_ASSERT_TRUE(frame->counts.vertices_transformed < kept + padded_vertex_count[SCENE_SIDE]);
+    /* No morph weight, dither band or stacked pixels in this scene. */
+    TEST_ASSERT_EQUAL_INT(0, frame->counts.vertices_blended);
+    TEST_ASSERT_EQUAL_INT(0, frame->counts.vertices_stacked);
+    TEST_ASSERT_EQUAL_INT(0, frame->counts.stacked_centipixels);
+}
+
+static void
+test_cull_view_frame_counts_the_vertices_of_kept_clusters_only(void) {
+    scene_t* s = scene_open();
+    int16_t positions[SCENE_QUADS][PADDED_VERTICES_MAX][3];
+    pad_scene_vertices(s, positions);
+    scene_draw(s);
+    raster_cull_frame_t camera_only;
+    raster_cull_frame(scene_state(s), &camera_only);
+    TEST_ASSERT_EQUAL_UINT8(RASTER_FATE_CULLED, scene_state(s)->fate[SCENE_SIDE]);
+    assert_vertices_of_kept_clusters_only(&camera_only);
+
+    /* From the top the culled cluster is drawn too, yet the count is the camera's. */
+    set_cull_from(RASTER_CULL_FROM_TOP);
+    scene_draw(s);
+    raster_cull_frame_t from_top;
+    raster_cull_frame(scene_state(s), &from_top);
+    assert_vertices_of_kept_clusters_only(&from_top);
+}
+
 static void
 test_cull_view_frame_counts_the_walk_and_the_sort_of_every_instance(void) {
     scene_t* s = scene_open();
@@ -1289,6 +1351,7 @@ run_raster_cull_view_suite(void) {
     RUN_TEST(test_per_triangle_writer_tags_the_triangle_that_won_each_pixel);
     RUN_TEST(test_cull_view_gives_each_cluster_its_fate);
     RUN_TEST(test_cull_view_frame_counts_clusters_by_fate);
+    RUN_TEST(test_cull_view_frame_counts_the_vertices_of_kept_clusters_only);
     RUN_TEST(test_cull_view_frame_counts_the_walk_and_the_sort_of_every_instance);
     RUN_TEST(test_cull_view_triangles_covering_counts_only_triangles_owning_pixels);
     RUN_TEST(test_cull_view_from_the_top_draws_again_with_every_cluster_and_the_same_counts);

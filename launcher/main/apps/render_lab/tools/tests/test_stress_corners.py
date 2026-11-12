@@ -31,7 +31,8 @@ TABLE = HERE.parents[1] / "stress" / "stress_preset.c"
 FRAMES = 2
 WATER_UNIFORM_PIXELS = 41700
 EXISTING_UNIFORM_PIXELS = 5300
-STATIC_COPY = HERE.parents[5] / "launcher/demo/stress/slot.obj"
+DENSE_FACTOR = 8  # a few-copies copy holds this many times a tiny-copies copy's clusters and triangles
+STATIC_COPY =HERE.parents[5] / "launcher/demo/stress/slot.obj"
 STATIC_VERTICES = sum(line.startswith("v ") for line in STATIC_COPY.read_text().splitlines())
 
 
@@ -149,10 +150,19 @@ class StressCorners(unittest.TestCase):
 
     def test_few_copies_give_each_core_one_dense_copy(self):
         """Two copies, each many clusters: the cull's split puts one whole copy on each core."""
-        self.assertEqual(2, preset_copies()["few-copies"])
+        copies = preset_copies()["few-copies"]
+        self.assertEqual(2, copies)
         c = self.counts("few-copies")
-        self.assertGreater(c["clusters_kept"], 4 * preset_copies()["few-copies"])
         self.assert_all_in_view(c)
+        tiny = self.counts("tiny-copies")
+        tiny_clusters_per_copy = tiny["clusters_kept"] / preset_copies()["tiny-copies"]
+        tiny_triangles_per_copy = tiny["triangles_submitted"] / preset_copies()["tiny-copies"]
+        # Dense: each copy holds a multiple of what a tiny copy does, in clusters and in triangles.
+        self.assertGreater(c["clusters_kept"] / copies, DENSE_FACTOR * tiny_clusters_per_copy)
+        self.assertGreater(c["triangles_submitted"] / copies, DENSE_FACTOR * tiny_triangles_per_copy)
+        # Equal weight: the same shape twice, so every total splits evenly between the two copies.
+        for name in ("clusters_kept", "triangles_submitted", "vertices_transformed"):
+            self.assertEqual(0, c[name] % copies, name)
 
     def test_two_sided_skips_nothing_facing_away(self):
         """A closed shape drawn from both sides: the one-sided spheres skip their far half, these cubes none."""
