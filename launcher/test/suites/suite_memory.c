@@ -196,7 +196,10 @@ suite_memory(void) {
 
 #include "heap_arena.h"
 
-#define SMALL_BYTES 64
+#define SMALL_BYTES             64
+
+/* A block big enough to show in a pool's free total, small enough for every pool. */
+#define POOL_BUDGET_BLOCK_BYTES (16 * 1024)
 
 typedef struct {
     memory_kind_t kind;
@@ -301,7 +304,7 @@ test_a_block_of_one_kind_leaves_the_other_pools_budget_alone(void) {
     for (size_t i = 0; i < sizeof SEPARATE_POOLS / sizeof SEPARATE_POOLS[0]; i++) {
         const size_t other_free = memory_free_bytes(SEPARATE_POOLS[i].other);
 
-        void* block = memory_alloc(16 * 1024, SEPARATE_POOLS[i].kind);
+        void* block = memory_alloc(POOL_BUDGET_BLOCK_BYTES, SEPARATE_POOLS[i].kind);
         TEST_ASSERT_NOT_NULL_MESSAGE(block, SEPARATE_POOLS[i].name);
         TEST_ASSERT_EQUAL_size_t_MESSAGE(other_free, memory_free_bytes(SEPARATE_POOLS[i].other),
                                          SEPARATE_POOLS[i].name);
