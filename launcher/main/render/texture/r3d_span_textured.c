@@ -1,7 +1,8 @@
 /*
  * r3d_span_textured: r3d_texture's span fill. A triangle's u, v and light
- * are planes set up in float once; each span starts from them and steps
- * fixed point, u and v packed in one word.
+ * level are planes set up in float once; each span starts from them and
+ * steps fixed point, u and v packed in one word. A pixel is one colormap
+ * load: the texel's colour at the vertex light's dithered level.
  */
 #include "render/texture/r3d_texture.h"
 
@@ -16,20 +17,14 @@
 #include "profile/frame_laps.h"
 #include "render/r3d_span_internal.h"
 
-/* The variants a board job times on one build. */
+/* The mappings a board job times on one build. */
 typedef enum {
     MAPPING_AFFINE,      /* u, v linear across the triangle, as the PS1 drew */
     MAPPING_PERSPECTIVE, /* exact at each span's ends and every SPAN_STEP pixels, linear between */
 } mapping_t;
 
-typedef enum {
-    LIGHT_RGB,      /* texel colour times the vertex colour: three multiplies a pixel */
-    LIGHT_COLORMAP, /* the vertex colour's luminance as a dithered level picking a colormap row: one load */
-} light_t;
-
 TUNE_OWNER(r3d_texture);
 TUNE(r3d_texture, mapping, MAPPING_AFFINE, MAPPING_AFFINE, MAPPING_PERSPECTIVE);
-TUNE(r3d_texture, light, LIGHT_RGB, LIGHT_RGB, LIGHT_COLORMAP);
 
 #define SPAN_STEP    16
 /* u and v walk as 8.8 texels, packed u high and v low in one word; a carry
@@ -44,23 +39,16 @@ TUNE(r3d_texture, light, LIGHT_RGB, LIGHT_RGB, LIGHT_COLORMAP);
 #define V_INT_SHIFT  UV_FRAC
 #define NIBBLE_BITS  4
 #define NIBBLE_MASK  0xFU
-/* Light walks as 8.8: channels 0..255 or the colormap level. */
+/* The light level walks as 8.8. */
 #define LIGHT_FRAC   8
-#define CHANNEL_MAX  0xFF00
 #define LEVEL_MAX    ((R3D_TEXTURE_LIGHT_LEVELS - 1) << LIGHT_FRAC)
 /* A Bayer threshold, 0..15, in 1/256 of a level. */
 #define DITHER_SHIFT (LIGHT_FRAC - 4)
 #define DEPTH_MAX    ((int32_t)R3D_DEPTH_NEAREST << R3D_DEPTH_SHIFT)
-#define CHANNELS     3
 #define CORNERS      3
 
 _Static_assert(BAYER4_LEVELS << DITHER_SHIFT == 1 << LIGHT_FRAC, "a threshold stays under one level");
 _Static_assert((1 << (UV_HALF_BITS - UV_FRAC)) == (int)UV_WRAP, "u and v wrap at their integer bits");
-
-/* Luminance in 1/256 (BT.601), as r3d_texture.c builds its colormap. */
-#define LUMA_R 77.0F
-#define LUMA_G 150.0F
-#define LUMA_B 29.0F
 
 /* A value across the screen: at the centre of the origin pixel, and its steps. */
 typedef struct {
@@ -97,7 +85,7 @@ typedef struct {
 typedef struct {
     int32_t z, dz;
     uint32_t uv, duv;
-    int32_t light[CHANNELS], dlight[CHANNELS];
+    int32_t level, dlevel;
 } carry_t;
 
 static inline __attribute__((always_inline)) uint32_t
@@ -106,51 +94,16 @@ texel(const sampler_t* s, uint32_t uv) {
     return (uint32_t)(s->texels[o >> 1] >> ((o & 1U) * NIBBLE_BITS)) & NIBBLE_MASK;
 }
 
-/* Texel colour times vertex colour, R3D_TEXTURE_ONE being 1.0. */
-static __attribute__((noinline)) void
-fill_rgb(uint16_t* depth, uint16_t* color, int count, carry_t* c, const sampler_t* s) {
-    int32_t z = c->z;
-    uint32_t uv = c->uv;
-    int32_t r = c->light[0];
-    int32_t g = c->light[1];
-    int32_t b = c->light[2];
-    const int32_t dz = c->dz;
-    const uint32_t duv = c->duv;
-    const uint8_t (*palette)[R3D_TEXTURE_PALETTE_STRIDE] = s->texture->palette;
-    for (int i = 0; i < count; i++) {
-        const uint16_t zq = (uint16_t)(z >> R3D_DEPTH_SHIFT);
-        if (zq > depth[i]) {
-            const uint8_t* p = palette[texel(s, uv)];
-            depth[i] = zq;
-            color[i] = r3d_span_pack(mathi_min((int32_t)(((uint32_t)p[0] * (uint32_t)r) >> 7), CHANNEL_MAX),
-                                     mathi_min((int32_t)(((uint32_t)p[1] * (uint32_t)g) >> 7), CHANNEL_MAX),
-                                     mathi_min((int32_t)(((uint32_t)p[2] * (uint32_t)b) >> 7), CHANNEL_MAX));
-        }
-        z += dz;
-        uv += duv;
-        r += c->dlight[0];
-        g += c->dlight[1];
-        b += c->dlight[2];
-    }
-    c->z = z;
-    c->uv = uv;
-    c->light[0] = r;
-    c->light[1] = g;
-    c->light[2] = b;
-}
-
-_Static_assert(R3D_TEXTURE_ONE == 1 << 7, "the multiply shifts out R3D_TEXTURE_ONE");
-
 /* The colormap row of the level, dithered between levels by the screen's
  * 4x4 Bayer threshold at absolute coordinates. */
 static __attribute__((noinline)) void
 fill_colormap(uint16_t* depth, uint16_t* color, int count, carry_t* c, const sampler_t* s, int x, int y) {
     int32_t z = c->z;
     uint32_t uv = c->uv;
-    int32_t level = c->light[0];
+    int32_t level = c->level;
     const int32_t dz = c->dz;
     const uint32_t duv = c->duv;
-    const int32_t dlevel = c->dlight[0];
+    const int32_t dlevel = c->dlevel;
     const uint8_t* threshold = bayer4x4[y & (BAYER4_SIDE - 1)];
     const uint16_t (*colormap)[R3D_TEXTURE_COLOURS] = s->texture->colormap;
     for (int i = 0; i < count; i++) {
@@ -166,20 +119,17 @@ fill_colormap(uint16_t* depth, uint16_t* color, int count, carry_t* c, const sam
     }
     c->z = z;
     c->uv = uv;
-    c->light[0] = level;
+    c->level = level;
 }
 
 /* What the set-up hands the row walk. */
 typedef struct {
     plane_t z;       /* 16.8 depth */
     plane_t s, t, q; /* affine: u, v and q = 1; perspective: u/z, v/z and 1/z, in the level's texels */
-    plane_t light[CHANNELS];
-    int channels; /* 3 for LIGHT_RGB, 1 for LIGHT_COLORMAP */
-    int32_t light_max;
+    plane_t level;   /* 8.8 light level */
     int32_t depth_max;
     int x0, y0; /* the origin pixel */
     mapping_t mapping;
-    light_t lighting;
     sampler_t sampler;
 } setup_t;
 
@@ -216,11 +166,7 @@ fill_segment(const setup_t* su, carry_t* c, uint16_t* depth, uint16_t* color, in
              float v0, float du, float dv) {
     c->uv = pack_uv(fixed_uv(u0), fixed_uv(v0));
     c->duv = pack_uv((int32_t)(du * (float)UV_ONE), 0) + (uint32_t)(int32_t)(dv * (float)UV_ONE);
-    if (su->lighting == LIGHT_RGB) {
-        fill_rgb(depth, color, count, c, &su->sampler);
-    } else {
-        fill_colormap(depth, color, count, c, &su->sampler, x, y);
-    }
+    fill_colormap(depth, color, count, c, &su->sampler, x, y);
 }
 
 static void
@@ -232,11 +178,9 @@ fill_span(const setup_t* su, const r3d_span_row_t* row, int y, int first, int la
     c.z = (int32_t)mathf_clamp(plane_at(&su->z, fx, fy), -2.0e9F, 2.0e9F);
     c.dz = (int32_t)su->z.dx;
     r3d_span_clamp_to(su->depth_max, steps, &c.z, &c.dz);
-    for (int k = 0; k < su->channels; k++) {
-        c.light[k] = (int32_t)mathf_clamp(plane_at(&su->light[k], fx, fy), -2.0e9F, 2.0e9F);
-        c.dlight[k] = (int32_t)su->light[k].dx;
-        r3d_span_clamp_to(su->light_max, steps, &c.light[k], &c.dlight[k]);
-    }
+    c.level = (int32_t)mathf_clamp(plane_at(&su->level, fx, fy), -2.0e9F, 2.0e9F);
+    c.dlevel = (int32_t)su->level.dx;
+    r3d_span_clamp_to(LEVEL_MAX, steps, &c.level, &c.dlevel);
     uint16_t* depth = row->depth + first;
     uint16_t* color = row->color + first;
     float u0, v0;
@@ -288,7 +232,9 @@ pixels_of(int32_t subpixels) {
 /* A vertex colour's luminance, 0..255, as an 8.8 level, 255 the last. */
 static inline float
 light_level(const r3d_span_vertex_t* v) {
-    const float luma = ((LUMA_R * v->r) + (LUMA_G * v->g) + (LUMA_B * v->b)) * (1.0F / 256.0F);
+    const float luma =
+        (((float)R3D_TEXTURE_LUMA_R * v->r) + ((float)R3D_TEXTURE_LUMA_G * v->g) + ((float)R3D_TEXTURE_LUMA_B * v->b))
+        * (1.0F / (float)(1 << R3D_TEXTURE_LUMA_SHIFT));
     return luma * ((float)LEVEL_MAX / (float)UINT8_MAX);
 }
 
@@ -309,7 +255,6 @@ set_up(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[CORNERS
     su->x0 = box.x;
     su->y0 = box.y;
     su->mapping = (mapping_t)mapping;
-    su->lighting = (light_t)light;
     const float depth_scale = (float)DEPTH_MAX;
     su->z = plane_of(&f, v[0]->z * depth_scale, v[1]->z * depth_scale, v[2]->z * depth_scale);
     const uint16_t cap =
@@ -328,18 +273,7 @@ set_up(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[CORNERS
     su->t = (plane_t){su->t.base * scale, su->t.dx * scale, su->t.dy * scale};
     const int side_log2 = texture->size_log2 - level;
     su->sampler = (sampler_t){texture->texels[level], (1U << side_log2) - 1U, (uint32_t)side_log2, texture};
-    if (su->lighting == LIGHT_RGB) {
-        su->channels = CHANNELS;
-        su->light_max = CHANNEL_MAX;
-        const float one = (float)(1 << LIGHT_FRAC);
-        su->light[0] = plane_of(&f, v[0]->r * one, v[1]->r * one, v[2]->r * one);
-        su->light[1] = plane_of(&f, v[0]->g * one, v[1]->g * one, v[2]->g * one);
-        su->light[2] = plane_of(&f, v[0]->b * one, v[1]->b * one, v[2]->b * one);
-    } else {
-        su->channels = 1;
-        su->light_max = LEVEL_MAX;
-        su->light[0] = plane_of(&f, light_level(v[0]), light_level(v[1]), light_level(v[2]));
-    }
+    su->level = plane_of(&f, light_level(v[0]), light_level(v[1]), light_level(v[2]));
     return true;
 }
 

@@ -19,7 +19,7 @@ from r3d.mesh_asset import checked_struct
 from r3d.texture import texture_asset
 
 OWNER = pathlib.Path(__file__).resolve().parents[3] / "main/render/texture/r3d_texture.h"
-TYPE = b"LUVS"
+TYPE = texture_asset.UVS_TYPE
 VERSION = read_define(OWNER, "R3D_TEXTURE_UVS_VERSION")
 NAME_SUFFIX = read_define(OWNER, "R3D_TEXTURE_UVS_NAME_SUFFIX")
 NONE = read_define(OWNER, "R3D_TEXTURE_NONE")

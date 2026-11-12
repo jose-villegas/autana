@@ -36,6 +36,12 @@
 #define R3D_TEXTURE_SIZE_LOG2_MIN  1   /* the smallest level's side, 2: one byte holds a row */
 #define R3D_TEXTURE_SIZE_LOG2_MAX  8   /* 256 texels a side: a span wraps u and v at 8 bits */
 #define R3D_TEXTURE_LEVELS_MAX     R3D_TEXTURE_SIZE_LOG2_MAX
+/* A vertex colour's luminance as the light level reads it: BT.601 weights
+ * in 1/256. */
+#define R3D_TEXTURE_LUMA_R         77
+#define R3D_TEXTURE_LUMA_G         150
+#define R3D_TEXTURE_LUMA_B         29
+#define R3D_TEXTURE_LUMA_SHIFT     8
 /* Light levels of the colormap light: level 0 is black, the last the
  * vertex light whose luminance is 255. */
 #define R3D_TEXTURE_LIGHT_LEVELS   32
@@ -44,8 +50,9 @@ typedef struct {
     const uint8_t* texels[R3D_TEXTURE_LEVELS_MAX]; /* each level, row-major, half its side's square in bytes */
     uint8_t size_log2;                             /* level 0's side */
     uint8_t levels;                                /* level 0 and its mips, each half the last */
-    uint8_t palette[R3D_TEXTURE_COLOURS][R3D_TEXTURE_PALETTE_STRIDE]; /* r, g, b in R3D_TEXTURE_ONE units */
-    /* Panel RGB565 of each colour's albedo at each light level. */
+    /* Panel RGB565 of each colour's albedo at each light level: a span
+     * reads one a pixel. A streamer may point `texels` elsewhere: the span
+     * fill reads them only through this struct, at a triangle's set-up. */
     uint16_t colormap[R3D_TEXTURE_LIGHT_LEVELS][R3D_TEXTURE_COLOURS];
 } r3d_texture_t;
 

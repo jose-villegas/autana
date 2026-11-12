@@ -17,6 +17,7 @@
 #include "image/pixel/rgb565.h"
 #include "math/scalar/mathi.h"
 #include "render/context/render_context.h"
+#include "render/texture/r3d_texture.h"
 #include "scene/scene_internal.h"
 
 #if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
@@ -270,6 +271,38 @@ open_batches(scene_t* scene, const asset_pack_t* pack) {
     return scene_failure_make(SCENE_OK, ASSET_OK, scene->root->id);
 }
 
+/* A renderer's textures (render/texture/): its mesh's LUVS sibling and the
+ * materials it names, in one block. */
+typedef struct {
+    r3d_mesh_texturing_t texturing;
+    r3d_texture_t materials[];
+} scene_texturing_t;
+
+/* Opens `r`'s textures when its mesh `mesh_id` has an LUVS sibling; a mesh
+ * without one draws plain. */
+static scene_failure_t
+open_texturing(scene_renderer_t* r, const asset_pack_t* pack, const char* mesh_id) {
+    asset_view_t uvs;
+    asset_status_t status =
+        r3d_lit_mesh_open_sibling(pack, mesh_id, R3D_TEXTURE_UVS_NAME_SUFFIX, R3D_TEXTURE_UVS_ASSET, false, &uvs);
+    if (status != ASSET_OK || uvs.data == NULL) {
+        return scene_failure_make(status == ASSET_OK ? SCENE_OK : SCENE_ERR_ASSET, status, mesh_id);
+    }
+    const int count = r3d_texture_uvs_material_count(&uvs);
+    scene_texturing_t* block = scene_allocate(sizeof *block + ((size_t)count * sizeof block->materials[0]), MEMORY_APP);
+    if (block == NULL) {
+        return scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, mesh_id);
+    }
+    r->texturing = block;
+    status =
+        r3d_texture_texturing_from_asset(&uvs, pack, mesh_id, &r->mesh, block->materials, count, &block->texturing);
+    if (status != ASSET_OK) {
+        return scene_failure_make(SCENE_ERR_ASSET, status, mesh_id);
+    }
+    r->mesh.texturing = &block->texturing;
+    return scene_failure_make(SCENE_OK, ASSET_OK, mesh_id);
+}
+
 /* Opens every renderer's mesh, then their coarse bits; stops at the first that fails. */
 static scene_failure_t
 open_meshes(scene_t* scene, const asset_pack_t* pack) {
@@ -290,6 +323,12 @@ open_meshes(scene_t* scene, const asset_pack_t* pack) {
         }
         if (status != ASSET_OK) {
             return scene_failure_make(SCENE_ERR_ASSET, status, mesh);
+        }
+        if (i < scene->asset.renderer_count) {
+            const scene_failure_t textures = open_texturing(&scene->renderers[i], pack, mesh);
+            if (textures.status != SCENE_OK) {
+                return textures;
+            }
         }
         scene->renderers[i].colour_sets = 1;
     }
@@ -428,6 +467,9 @@ free_columns(scene_t* scene) {
     memory_free(scene->light_transfer);
     memory_free(scene->lod_bits);
     memory_free(scene->chunks);
+    for (int i = 0; i < scene->renderer_count; i++) {
+        memory_free(scene->renderers[i].texturing);
+    }
     scene_hierarchy_release(scene);
     scene_free_kept(scene->resident);
     scene_free_kept(scene);

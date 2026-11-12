@@ -6,6 +6,7 @@
 
 #include "asset/asset_pack.h"
 #include "core/tune.h"
+#include "image/pixel/bayer.h"
 #include "image/pixel/rgb565.h"
 #include "math/scalar/mathi.h"
 #include "math/scalar/rng.h"
@@ -27,9 +28,8 @@
 #define RANDOM_TRIS    300
 #define MAPPING_AFFINE 0
 #define MAPPING_PERSP  1
-#define LIGHT_RGB      0
-#define LIGHT_MAP      1
 #define WHITE_INDEX    15
+#define MEAN_INDEX     8 /* i * 16 == R3D_TEXTURE_ONE */
 #define MEAN_GREY      128
 #define NEAR_DEPTH     0.5F
 #define DEPTH_SPREAD   64
@@ -41,7 +41,6 @@ static r3d_texture_t* texture;
 static void
 cleanup(void) {
     (void)tune_reset(tune_shared(), TUNE_NAME(r3d_texture, mapping));
-    (void)tune_reset(tune_shared(), TUNE_NAME(r3d_texture, light));
     free(buffers);
     free(ltex);
     free(texture);
@@ -137,31 +136,28 @@ random_triangle(rng_t* random, r3d_span_vertex_t v[3], r3d_span_uv_t uv[3]) {
 }
 
 /* Every pixel a plain fill draws a textured fill draws, and no other, under
- * both mappings and both lights: the same edges decide coverage. Depth
+ * both mappings: the same edges decide coverage. Depth
  * stays in a narrow band, as a sliver's steeper depth step is clamped by the
  * plain fill (its STEP_MAX) and can leave it writing depth 0. */
 static void
 test_textured_covers_what_plain_covers(void) {
     fixture();
     for (int mapping = MAPPING_AFFINE; mapping <= MAPPING_PERSP; mapping++) {
-        for (int light = LIGHT_RGB; light <= LIGHT_MAP; light++) {
-            TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(r3d_texture, mapping), mapping));
-            TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(r3d_texture, light), light));
-            rng_t random;
-            rng_seed(&random, RANDOM_SEED);
-            for (int t = 0; t < RANDOM_TRIS; t++) {
-                r3d_span_vertex_t v[3];
-                r3d_span_uv_t uv[3];
-                random_triangle(&random, v, uv);
-                clear();
-                const r3d_span_target_t plain = target_at(0);
-                const r3d_span_target_t textured = target_at(1);
-                r3d_span_triangle(&plain, &v[0], &v[1], &v[2]);
-                r3d_span_textured_triangle(&textured, &v[0], &v[1], &v[2], uv, texture);
-                for (int i = 0; i < PIXELS; i++) {
-                    TEST_ASSERT_EQUAL_MESSAGE(buffers[PIXELS + i] != R3D_DEPTH_EMPTY,
-                                              buffers[(3 * PIXELS) + i] != R3D_DEPTH_EMPTY, "coverage differs");
-                }
+        TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(r3d_texture, mapping), mapping));
+        rng_t random;
+        rng_seed(&random, RANDOM_SEED);
+        for (int t = 0; t < RANDOM_TRIS; t++) {
+            r3d_span_vertex_t v[3];
+            r3d_span_uv_t uv[3];
+            random_triangle(&random, v, uv);
+            clear();
+            const r3d_span_target_t plain = target_at(0);
+            const r3d_span_target_t textured = target_at(1);
+            r3d_span_triangle(&plain, &v[0], &v[1], &v[2]);
+            r3d_span_textured_triangle(&textured, &v[0], &v[1], &v[2], uv, texture);
+            for (int i = 0; i < PIXELS; i++) {
+                TEST_ASSERT_EQUAL_MESSAGE(buffers[PIXELS + i] != R3D_DEPTH_EMPTY,
+                                          buffers[(3 * PIXELS) + i] != R3D_DEPTH_EMPTY, "coverage differs");
             }
         }
     }
@@ -205,13 +201,13 @@ test_shared_edge_neither_cracks_nor_overlaps(void) {
     TEST_ASSERT_EQUAL(0, mismatched);
 }
 
-/* One texel a pixel along x, constant v: each pixel shows the texel under
- * its centre, its colour index times the vertex grey. */
+/* One texel a pixel along x, constant v, under the brightest light: each
+ * pixel shows the texel under its centre, its colour index times the mean
+ * grey's albedo, within the colormap's last level. */
 static void
 test_affine_samples_the_texel_under_each_centre(void) {
     fixture();
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(r3d_texture, mapping), MAPPING_AFFINE));
-    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(r3d_texture, light), LIGHT_RGB));
     const r3d_span_target_t target = target_at(0);
     const float grey = 255.0F;
     const r3d_span_vertex_t a = vertex(0, 0, 0.5F, grey), b = vertex(SIDE, 0, 0.5F, grey),
@@ -260,7 +256,6 @@ test_perspective_equals_affine_at_constant_depth(void) {
 static void
 test_minified_triangle_takes_the_matching_level(void) {
     fixture();
-    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(r3d_texture, light), LIGHT_RGB));
     const r3d_span_target_t target = target_at(0);
     const r3d_span_vertex_t a = vertex(0, 0, 0.5F, 255), b = vertex(SIDE, 0, 0.5F, 255), c = vertex(0, SIDE, 0.5F, 255);
     const r3d_span_uv_t uv[3] = {{0, 0}, {4 * SIDE, 0}, {0, 4 * SIDE}};
@@ -270,8 +265,8 @@ test_minified_triangle_takes_the_matching_level(void) {
     TEST_ASSERT_INT_WITHIN(1, expected >> 2, (int)rgb565_g6(rgb565_swap(buffers[(4 * SIDE) + 4])));
 }
 
-/* Over a 4x4 dither tile, the colormap light averages what the RGB light
- * draws for the same texel under a mid-grey vertex, within one level. */
+/* A texel at the material's mean (MEAN_INDEX) draws the vertex
+ * colour itself: averaged over a 4x4 dither tile, within one level. */
 static int
 tile_green(void) {
     int sum = 0;
@@ -284,21 +279,21 @@ tile_green(void) {
 }
 
 static void
-test_colormap_light_matches_rgb_light_on_average(void) {
+test_texel_at_the_mean_draws_the_vertex_colour(void) {
     fixture();
     const r3d_span_target_t target = target_at(0);
-    const r3d_span_vertex_t a = vertex(0, 0, 0.5F, MEAN_GREY), b = vertex(SIDE, 0, 0.5F, MEAN_GREY),
-                            c = vertex(0, SIDE, 0.5F, MEAN_GREY);
-    const r3d_span_uv_t uv[3] = {{7.5F, 0.5F}, {7.5F, 0.5F}, {7.5F, 0.5F}};
-    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(r3d_texture, light), LIGHT_RGB));
+    const float grey = 100.0F;
+    const r3d_span_vertex_t a = vertex(0, 0, 0.5F, grey), b = vertex(SIDE, 0, 0.5F, grey),
+                            c = vertex(0, SIDE, 0.5F, grey);
+    /* Texel (7, 1) holds MEAN_INDEX, whose colour is R3D_TEXTURE_ONE. */
+    const r3d_span_uv_t uv[3] = {{7.5F, 1.5F}, {7.5F, 1.5F}, {7.5F, 1.5F}};
     clear();
+    _Static_assert(MEAN_INDEX * 16 == R3D_TEXTURE_ONE, "MEAN_INDEX's colour is the mean");
     r3d_span_textured_triangle(&target, &a, &b, &c, uv, texture);
-    const int rgb = tile_green();
-    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(r3d_texture, light), LIGHT_MAP));
-    clear();
-    r3d_span_textured_triangle(&target, &a, &b, &c, uv, texture);
+    const int tile = BAYER4_SIDE * BAYER4_SIDE;
+    const int expected = ((int)grey * (int)RGB565_G6_MAX / UINT8_MAX) * tile;
     const int level_g6 = ((int)RGB565_G6_MAX / (R3D_TEXTURE_LIGHT_LEVELS - 1)) + 1;
-    TEST_ASSERT_INT_WITHIN(level_g6 * 16, rgb, tile_green());
+    TEST_ASSERT_INT_WITHIN(level_g6 * tile, expected, tile_green());
 }
 
 static void
@@ -326,7 +321,7 @@ run_r3d_texture_suite(void) {
     RUN_TEST(test_affine_samples_the_texel_under_each_centre);
     RUN_TEST(test_perspective_equals_affine_at_constant_depth);
     RUN_TEST(test_minified_triangle_takes_the_matching_level);
-    RUN_TEST(test_colormap_light_matches_rgb_light_on_average);
+    RUN_TEST(test_texel_at_the_mean_draws_the_vertex_colour);
     RUN_TEST(test_entry_rejects_bad_headers);
 }
 

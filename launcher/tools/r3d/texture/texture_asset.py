@@ -8,6 +8,7 @@ from r3d.mesh_asset import checked_struct
 
 OWNER = pathlib.Path(__file__).resolve().parents[3] / "main/render/texture/r3d_texture.h"
 TYPE = b"LTEX"
+UVS_TYPE = b"LUVS"  # a mesh's texturing, written by uv_transfer.py
 VERSION = read_define(OWNER, "R3D_TEXTURE_VERSION")
 INDEX4 = read_define(OWNER, "R3D_TEXTURE_INDEX4")
 COLOURS = read_define(OWNER, "R3D_TEXTURE_COLOURS")

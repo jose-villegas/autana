@@ -1,0 +1,7 @@
+# The renderers of bistro.scene.toml drawn textured (render/texture/), each by
+# its scene object; launcher/tools/r3d/texture/texture_settings.py reads it.
+# The beige brick is the facade material that covers most of the fitted street.
+[[renderers]]
+object = "street_fitted_full"
+materials = ["MASTER_Brick_Large_Beige_BLENDSHADER"]
+size = 64
