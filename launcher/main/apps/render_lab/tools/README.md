@@ -139,12 +139,13 @@ Source: `water-stages-board.log`
 ### Stress
 
 The Stress family repeats a generated primitive or static pack mesh before a
-swinging camera. Each preset exposes where a render option wins or loses.
+swinging camera. Each preset ties down one behaviour with its own pegged goal.
+Perf work targets the presets; the scene frame profile confirms before merge.
 
 Repeated geometry exercises hierarchical visibility<sup>[[112]](../../../../../docs/Citations.md#greene-1993)</sup>;
 the presets vary the copies' geometry, layout and colour modes.
 
-| Scene key | As the swing starts | Made of | Loss case of |
+| Scene key | As the swing starts | Made of | Ties down |
 |---|---|---|---|
 | `stress-open` | ![Stress open: a wall of planes side by side](../../../../../docs/images/overview/render-lab-stress-open.png) | a wall of planes side by side | hidden-cluster skip and cluster cull: nothing hides and nothing is off screen |
 | `stress-stack` | ![Stress stack: planes one behind another](../../../../../docs/images/overview/render-lab-stress-stack.png) | planes one behind another | the skip's win, and the depth cost of the debug views |
@@ -161,6 +162,29 @@ the presets vary the copies' geometry, layout and colour modes.
 | `stress-culled` | ![Plane before the camera turns away](../../../../../docs/images/overview/render-lab-stress-culled.png) | a tessellated plane and a camera pitching beyond its edge | varying cluster rejection by the frustum |
 | `stress-near` | ![Spheres along the camera path](../../../../../docs/images/overview/render-lab-stress-near.png) | stacked spheres and a camera passing through their front surfaces | triangles behind and crossing the near plane |
 | `stress-few-copies` | ![Stress few copies: two dense spheres](../../../../../docs/images/overview/render-lab-stress-few-copies.png) | two dense spheres side by side | the two-core cull split: with one instance a core, its fork and join cost more than the halved walk saves |
+
+A change is judged by each preset's own readout, stage by stage. The sum over
+presets is a summary line only. A draw change can win on two-sided and static
+copies and lose on card, noisy-tiny and per-frame: the sum says win, and a
+scene of small triangles follows the losing presets.
+
+A small preset still counts. Its behaviour may weigh little in a scene, and a
+win on it is still worth taking.
+
+The presets move with the scenes. Each change below was switched off in one
+build and timed against the build with it, presets and scenes alike:
+
+| Change | Switched off by | Presets against scenes |
+|---|---|---|
+| [Uniform solid fill](https://github.com/jose-villegas/autana/pull/1406) | its test made false | draw: the sum agrees on 4 of 5 scenes; the matching presets on all 5 |
+| [Two-core cull](https://github.com/jose-villegas/autana/pull/1475) | the cull on one core | cull: Sponza and Bistro agree; capybara's loss led to `few-copies` |
+| [Static residency](https://github.com/jose-villegas/autana/pull/1418) | not rebuilt | reverting it conflicts with later scene files |
+| [LOD blend](https://github.com/jose-villegas/autana/pull/1485) | not rebuilt | it re-keys bakes no lock holds, so the image does not build |
+| LOD bit words | not rebuilt | it sits on the LOD blend change, and alone conflicts in the LOD files |
+
+A comment-only control moved nothing beyond same-build noise. The rule: only
+an opposite sign beyond noise fails; a scene that moves with no preset moving
+is a coverage gap, closed by a new preset.
 
 The card's holes, uneven cells and fixed procedural texture are generated in
 `stress_preset.c`. Its mesh is built once and shared by the copies. Procedural
@@ -190,7 +214,7 @@ traverses the stacked surfaces. Their sweeps are claims of
 | Each preset's sizes, by the renderer's own limits | [`tests/suite_stress_preset.c`](../tests/suite_stress_preset.c) |
 | Each preset's corner in a render, by the cull counts | [`tools/tests/test_stress_corners.py`](tests/test_stress_corners.py) |
 | Scene mean triangle bins | [`tools/scene_triangle_bins.py`](scene_triangle_bins.py), [`scene-triangle-bins.json`](../../../../../docs/render/data/scene-triangle-bins.json) |
-| Each preset's stage times on the board | [`tests/suite_stress_perf.c`](../tests/suite_stress_perf.c) |
+| Each preset's stage times and goals on the board | [`tests/suite_stress_perf.c`](../tests/suite_stress_perf.c) |
 | Stage cost model and held-out scoring | [`tools/stress_predict.py`](stress_predict.py) |
 
 The `run_stress_perf_suite` suite replays both `lab_perf_quarters` along each
@@ -201,8 +225,8 @@ Every row uses `LAB_LAYOUT_FULL`, composing from the half picture when it fits.
 Double-buffer presentation runs asynchronously on core 1 and can delay the
 transform worker's fork/join.
 
-`transform_batches` counts the shaded draw's transform fork/joins in
-`draw_batch()`, including empty batches. Each pays the split, worker dispatch,
+`transform_batches` counts the shaded draw's transform fork/joins, read from
+the census by `raster_batch_count()`, including empty batches. Each pays the split, worker dispatch,
 cluster work and join; picture clearing belongs to `r3d.draw`.
 
 Each pose draws one counted frame, one warm frame and `FRAME_PROFILE_REPLAY_DRAWS`
@@ -213,12 +237,12 @@ Static copies retain the pack's mesh and its scene-owned PSRAM arrays.
 Dynamic copies also use PSRAM and the same packed-int16 transform loop;
 `vertices_transformed` therefore serves both without a storage-kind split.
 
-`stress_predict.py` is a diagnostic stage-delta reader. Its per-stage inputs
-are owned by `STAGE_INPUTS` in [stress_predict.py](stress_predict.py).
+`stress_predict.py` is a diagnostic: it fits stage costs to the counts and
+reads stage deltas between two arms. The goals are the bar, never the fit.
+Its per-stage inputs are owned by `STAGE_INPUTS` in [stress_predict.py](stress_predict.py).
 
-The fit does not predict scenes within the 10% rule. It under-predicts draw,
-misses cull's per-call cost and never trains the doubled, mapped or blocks
-upscale paths. The stress suite is a quick pre-check; scenes stay in every perf check.
+The fit under-predicts draw, misses cull's per-call cost and never trains the
+doubled, mapped or blocks upscale paths, so its frame estimate is no scene time.
 
 | Flags | Input or selection |
 |---|---|
