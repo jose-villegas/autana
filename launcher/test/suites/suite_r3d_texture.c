@@ -16,23 +16,21 @@
 #include "suites.h"
 #include "unity.h"
 
-#define SIDE           48
-#define PIXELS         (SIDE * SIDE)
-#define TEX_LOG2       3
-#define TEX_SIDE       (1 << TEX_LOG2)
-#define TEX_LEVELS     3
-#define PALETTE_OFF    R3D_TEXTURE_HEADER_SIZE
-#define TEXELS_OFF     (PALETTE_OFF + (R3D_TEXTURE_COLOURS * R3D_TEXTURE_PALETTE_STRIDE))
-#define TEX_BYTES      (TEXELS_OFF + 32 + 8 + 2)
-#define RANDOM_SEED    4111U
-#define RANDOM_TRIS    300
-#define MAPPING_AFFINE 0
-#define MAPPING_PERSP  1
-#define WHITE_INDEX    15
-#define MEAN_INDEX     8 /* i * 16 == R3D_TEXTURE_ONE */
-#define TINT_GREY      128
-#define NEAR_DEPTH     0.5F
-#define DEPTH_SPREAD   64
+#define SIDE         48
+#define PIXELS       (SIDE * SIDE)
+#define TEX_LOG2     3
+#define TEX_SIDE     (1 << TEX_LOG2)
+#define TEX_LEVELS   3
+#define PALETTE_OFF  R3D_TEXTURE_HEADER_SIZE
+#define TEXELS_OFF   (PALETTE_OFF + (R3D_TEXTURE_COLOURS * R3D_TEXTURE_PALETTE_STRIDE))
+#define TEX_BYTES    (TEXELS_OFF + 32 + 8 + 2)
+#define RANDOM_SEED  4111U
+#define RANDOM_TRIS  300
+#define WHITE_INDEX  15
+#define MEAN_INDEX   8 /* i * 16 == R3D_TEXTURE_ONE */
+#define TINT_GREY    128
+#define NEAR_DEPTH   0.5F
+#define DEPTH_SPREAD 64
 
 static uint16_t* buffers; /* colour then depth, twice */
 static uint8_t* ltex;
@@ -40,7 +38,6 @@ static r3d_texture_t* texture;
 
 static void
 cleanup(void) {
-    (void)tune_reset(tune_shared(), TUNE_NAME(r3d_texture, mapping));
     free(buffers);
     free(ltex);
     free(texture);
@@ -135,30 +132,27 @@ random_triangle(rng_t* random, r3d_span_vertex_t v[3], r3d_span_uv_t uv[3]) {
     }
 }
 
-/* Every pixel a plain fill draws a textured fill draws, and no other, under
- * both mappings: the same edges decide coverage. Depth
- * stays in a narrow band, as a sliver's steeper depth step is clamped by the
- * plain fill (its STEP_MAX) and can leave it writing depth 0. */
+/* Every pixel a plain fill draws a textured fill draws, and no other: the
+ * same edges decide coverage. Depth stays in a narrow band, as a sliver's
+ * steeper depth step is clamped by the plain fill (its STEP_MAX) and can
+ * leave it writing depth 0. */
 static void
 test_textured_covers_what_plain_covers(void) {
     fixture();
-    for (int mapping = MAPPING_AFFINE; mapping <= MAPPING_PERSP; mapping++) {
-        TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(r3d_texture, mapping), mapping));
-        rng_t random;
-        rng_seed(&random, RANDOM_SEED);
-        for (int t = 0; t < RANDOM_TRIS; t++) {
-            r3d_span_vertex_t v[3];
-            r3d_span_uv_t uv[3];
-            random_triangle(&random, v, uv);
-            clear();
-            const r3d_span_target_t plain = target_at(0);
-            const r3d_span_target_t textured = target_at(1);
-            r3d_span_triangle(&plain, &v[0], &v[1], &v[2]);
-            r3d_span_textured_triangle(&textured, &v[0], &v[1], &v[2], uv, texture);
-            for (int i = 0; i < PIXELS; i++) {
-                TEST_ASSERT_EQUAL_MESSAGE(buffers[PIXELS + i] != R3D_DEPTH_EMPTY,
-                                          buffers[(3 * PIXELS) + i] != R3D_DEPTH_EMPTY, "coverage differs");
-            }
+    rng_t random;
+    rng_seed(&random, RANDOM_SEED);
+    for (int t = 0; t < RANDOM_TRIS; t++) {
+        r3d_span_vertex_t v[3];
+        r3d_span_uv_t uv[3];
+        random_triangle(&random, v, uv);
+        clear();
+        const r3d_span_target_t plain = target_at(0);
+        const r3d_span_target_t textured = target_at(1);
+        r3d_span_triangle(&plain, &v[0], &v[1], &v[2]);
+        r3d_span_textured_triangle(&textured, &v[0], &v[1], &v[2], uv, texture);
+        for (int i = 0; i < PIXELS; i++) {
+            TEST_ASSERT_EQUAL_MESSAGE(buffers[PIXELS + i] != R3D_DEPTH_EMPTY,
+                                      buffers[(3 * PIXELS) + i] != R3D_DEPTH_EMPTY, "coverage differs");
         }
     }
 }
@@ -207,7 +201,6 @@ test_shared_edge_neither_cracks_nor_overlaps(void) {
 static void
 test_affine_samples_the_texel_under_each_centre(void) {
     fixture();
-    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(r3d_texture, mapping), MAPPING_AFFINE));
     const r3d_span_target_t target = target_at(0);
     const float grey = 255.0F;
     const r3d_span_vertex_t a = vertex(0, 0, 0.5F, grey), b = vertex(SIDE, 0, 0.5F, grey),
@@ -221,34 +214,6 @@ test_affine_samples_the_texel_under_each_centre(void) {
         const uint16_t native = rgb565_swap(buffers[x]);
         TEST_ASSERT_INT_WITHIN(1, expected >> 3, (int)rgb565_r5(native));
         TEST_ASSERT_INT_WITHIN(1, expected >> 2, (int)rgb565_g6(native));
-    }
-}
-
-/* Equal depth at every corner makes perspective the same as affine, but
- * for texel boundaries its per-segment steps round across. */
-static void
-test_perspective_equals_affine_at_constant_depth(void) {
-    fixture();
-    rng_t random;
-    rng_seed(&random, RANDOM_SEED + 1);
-    for (int t = 0; t < RANDOM_TRIS / 3; t++) {
-        r3d_span_vertex_t v[3];
-        r3d_span_uv_t uv[3];
-        random_triangle(&random, v, uv);
-        v[1].z = v[0].z;
-        v[2].z = v[0].z;
-        clear();
-        const r3d_span_target_t affine = target_at(0);
-        const r3d_span_target_t perspective = target_at(1);
-        TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(r3d_texture, mapping), MAPPING_AFFINE));
-        r3d_span_textured_triangle(&affine, &v[0], &v[1], &v[2], uv, texture);
-        TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(r3d_texture, mapping), MAPPING_PERSP));
-        r3d_span_textured_triangle(&perspective, &v[0], &v[1], &v[2], uv, texture);
-        int differ = 0;
-        for (int i = 0; i < PIXELS; i++) {
-            differ += buffers[i] != buffers[(2 * PIXELS) + i];
-        }
-        TEST_ASSERT_LESS_OR_EQUAL_MESSAGE(PIXELS / 25, differ, "perspective strays from affine");
     }
 }
 
@@ -319,7 +284,6 @@ run_r3d_texture_suite(void) {
     RUN_TEST(test_textured_covers_what_plain_covers);
     RUN_TEST(test_shared_edge_neither_cracks_nor_overlaps);
     RUN_TEST(test_affine_samples_the_texel_under_each_centre);
-    RUN_TEST(test_perspective_equals_affine_at_constant_depth);
     RUN_TEST(test_minified_triangle_takes_the_matching_level);
     RUN_TEST(test_texel_at_the_mean_draws_the_vertex_colour);
     RUN_TEST(test_entry_rejects_bad_headers);

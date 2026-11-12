@@ -1,8 +1,9 @@
 /*
  * r3d_span_textured: r3d_texture's span fill. A triangle's u, v and light
  * level are planes set up in float once; each span starts from them and
- * steps fixed point, u and v packed in one word. A pixel is one colormap
- * load: the texel's colour at the vertex light's dithered level.
+ * steps fixed point, u and v packed in one word, affine across the
+ * triangle as the PS1 drew them. A pixel is one colormap load: the texel's
+ * colour at the vertex light's dithered level.
  */
 #include "render/texture/r3d_texture.h"
 
@@ -17,14 +18,7 @@
 #include "profile/frame_laps.h"
 #include "render/r3d_span_internal.h"
 
-/* The mappings a board job times on one build. */
-typedef enum {
-    MAPPING_AFFINE,      /* u, v linear across the triangle, as the PS1 drew */
-    MAPPING_PERSPECTIVE, /* exact at each span's ends and every SPAN_STEP pixels, linear between */
-} mapping_t;
-
 TUNE_OWNER(r3d_texture);
-TUNE(r3d_texture, mapping, MAPPING_AFFINE, MAPPING_AFFINE, MAPPING_PERSPECTIVE);
 /* 0 draws textured meshes plain: one build times and shows both. */
 TUNE(r3d_texture, draw, 1, 0, 1);
 
@@ -33,7 +27,6 @@ r3d_texture_drawn(void) {
     return draw != 0;
 }
 
-#define SPAN_STEP    16
 /* u and v walk as 8.8 texels, packed u high and v low in one word; a carry
  * out of v moves u by 1/256 texel. 8 integer bits wrap at 256 texels, a
  * multiple of every level's side. */
@@ -131,12 +124,11 @@ fill_colormap(uint16_t* depth, uint16_t* color, int count, carry_t* c, const sam
 
 /* What the set-up hands the row walk. */
 typedef struct {
-    plane_t z;       /* 16.8 depth */
-    plane_t s, t, q; /* affine: u, v and q = 1; perspective: u/z, v/z and 1/z, in the level's texels */
-    plane_t level;   /* 8.8 light level */
+    plane_t z;     /* 16.8 depth */
+    plane_t s, t;  /* u, v in the level's texels */
+    plane_t level; /* 8.8 light level */
     int32_t depth_max;
     int x0, y0; /* the origin pixel */
-    mapping_t mapping;
     sampler_t sampler;
 } setup_t;
 
@@ -150,30 +142,6 @@ fixed_uv(float u) {
 static inline uint32_t
 pack_uv(int32_t u, int32_t v) {
     return ((uint32_t)u << UV_HALF_BITS) + (uint32_t)v;
-}
-
-/* u, v at pixel (x, y) as the mapping reads them. */
-static inline void
-uv_at(const setup_t* su, float x, float y, float* u, float* v) {
-    const float s = plane_at(&su->s, x, y);
-    const float t = plane_at(&su->t, x, y);
-    if (su->mapping == MAPPING_PERSPECTIVE) {
-        const float r = mathf_recip(plane_at(&su->q, x, y));
-        *u = s * r;
-        *v = t * r;
-    } else {
-        *u = s;
-        *v = t;
-    }
-}
-
-/* `count` pixels from x, starting at u0, v0 and stepping du, dv a pixel. */
-static void
-fill_segment(const setup_t* su, carry_t* c, uint16_t* depth, uint16_t* color, int x, int y, int count, float u0,
-             float v0, float du, float dv) {
-    c->uv = pack_uv(fixed_uv(u0), fixed_uv(v0));
-    c->duv = pack_uv((int32_t)(du * (float)UV_ONE), 0) + (uint32_t)(int32_t)(dv * (float)UV_ONE);
-    fill_colormap(depth, color, count, c, &su->sampler, x, y);
 }
 
 static void
@@ -190,39 +158,17 @@ fill_span(const setup_t* su, const r3d_span_row_t* row, int y, int first, int la
     r3d_span_clamp_to(LEVEL_MAX, steps, &c.level, &c.dlevel);
     uint16_t* depth = row->depth + first;
     uint16_t* color = row->color + first;
-    float u0, v0;
-    uv_at(su, fx, fy, &u0, &v0);
-    if (su->mapping == MAPPING_AFFINE) {
-        fill_segment(su, &c, depth, color, first, y, steps + 1, u0, v0, su->s.dx, su->t.dx);
-        return;
-    }
-    for (int x = first; x <= last; x += SPAN_STEP) {
-        const int n = mathi_min(SPAN_STEP, last - x + 1);
-        float u1, v1;
-        uv_at(su, (float)(x - su->x0 + n), fy, &u1, &v1);
-        const float inv = 1.0F / (float)n;
-        fill_segment(su, &c, depth + (x - first), color + (x - first), x, y, n, u0, v0, (u1 - u0) * inv,
-                     (v1 - v0) * inv);
-        u0 = u1;
-        v0 = v1;
-    }
+    c.uv = pack_uv(fixed_uv(plane_at(&su->s, fx, fy)), fixed_uv(plane_at(&su->t, fx, fy)));
+    c.duv = pack_uv((int32_t)(su->s.dx * (float)UV_ONE), 0) + (uint32_t)(int32_t)(su->t.dx * (float)UV_ONE);
+    fill_colormap(depth, color, steps + 1, &c, &su->sampler, first, y);
 }
 
 /* The level a pixel steps about one texel of: floor(log2) of the longest
- * texel step at the triangle's centroid, in level-0 texels, so the first
- * level whose next one would need a step of 2^(level + 1) or more. */
+ * texel step, in level-0 texels, so the first level whose next one would
+ * need a step of 2^(level + 1) or more. */
 static int
-pick_level(const setup_t* su, const r3d_texture_t* texture, float cx, float cy) {
-    float dudx = su->s.dx, dvdx = su->t.dx, dudy = su->s.dy, dvdy = su->t.dy;
-    if (su->mapping == MAPPING_PERSPECTIVE) {
-        const float r = mathf_recip(plane_at(&su->q, cx, cy));
-        const float u = plane_at(&su->s, cx, cy) * r;
-        const float v = plane_at(&su->t, cx, cy) * r;
-        dudx = (su->s.dx - (u * su->q.dx)) * r;
-        dvdx = (su->t.dx - (v * su->q.dx)) * r;
-        dudy = (su->s.dy - (u * su->q.dy)) * r;
-        dvdy = (su->t.dy - (v * su->q.dy)) * r;
-    }
+pick_level(const setup_t* su, const r3d_texture_t* texture) {
+    const float dudx = su->s.dx, dvdx = su->t.dx, dudy = su->s.dy, dvdy = su->t.dy;
     const float rho2 = mathf_max((dudx * dudx) + (dvdx * dvdx), (dudy * dudy) + (dvdy * dvdy));
     int level = 0;
     while (level + 1 < texture->levels && rho2 >= (float)(1U << (2 * (level + 1)))) {
@@ -261,20 +207,14 @@ set_up(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[CORNERS
     const frame_t f = {e1x, e1y, e2x, e2y, mathf_recip(area2), (float)box.x + 0.5F - ax, (float)box.y + 0.5F - ay};
     su->x0 = box.x;
     su->y0 = box.y;
-    su->mapping = (mapping_t)mapping;
     const float depth_scale = (float)DEPTH_MAX;
     su->z = plane_of(&f, v[0]->z * depth_scale, v[1]->z * depth_scale, v[2]->z * depth_scale);
     const uint16_t cap =
         target->skip_hidden ? r3d_span_depth_limit(mathf_max(v[0]->z, mathf_max(v[1]->z, v[2]->z))) : R3D_DEPTH_NEAREST;
     su->depth_max = cap == R3D_DEPTH_NEAREST ? DEPTH_MAX : (((int32_t)cap << R3D_DEPTH_SHIFT) | 0xFF);
-    const bool perspective = su->mapping == MAPPING_PERSPECTIVE;
-    const float q[CORNERS] = {perspective ? v[0]->z : 1.0F, perspective ? v[1]->z : 1.0F, perspective ? v[2]->z : 1.0F};
-    su->q = plane_of(&f, q[0], q[1], q[2]);
-    su->s = plane_of(&f, uv[0].u * q[0], uv[1].u * q[1], uv[2].u * q[2]);
-    su->t = plane_of(&f, uv[0].v * q[0], uv[1].v * q[1], uv[2].v * q[2]);
-    const float cx = ((ax + pixels_of(v[1]->x) + pixels_of(v[2]->x)) * (1.0F / 3.0F)) - ((float)box.x + 0.5F);
-    const float cy = ((ay + pixels_of(v[1]->y) + pixels_of(v[2]->y)) * (1.0F / 3.0F)) - ((float)box.y + 0.5F);
-    const int level = pick_level(su, texture, cx, cy);
+    su->s = plane_of(&f, uv[0].u, uv[1].u, uv[2].u);
+    su->t = plane_of(&f, uv[0].v, uv[1].v, uv[2].v);
+    const int level = pick_level(su, texture);
     const float scale = 1.0F / (float)(1U << level);
     su->s = (plane_t){su->s.base * scale, su->s.dx * scale, su->s.dy * scale};
     su->t = (plane_t){su->t.base * scale, su->t.dx * scale, su->t.dy * scale};
