@@ -63,12 +63,12 @@ settings_frame(const input_t* input, settings_state_t* s) {
 | A screen needs | Verbs |
 |---|---|
 | a frame | `ui_begin()`, then `ui_end()` or `ui_end_over()` |
-| a window | `ui_screen()`, `ui_window(r)`, `ui_scroll_window(r)` |
-| rows that flow down the window | `ui_row(h)` or `ui_row_centre(w, h)`, then `ui_next()` for the rect |
+| a window | `ui_screen()`, `ui_window(r)`, `ui_scroll_window(r)`, `ui_scroll_window_aligned(r, align)` |
+| rows that flow down the window | `ui_row(h)`, `ui_row_centre(w, h)` or `ui_row_cells(cols, h)`, then `ui_next()` for the rect |
 | controls | [`ui_button`](button.md), [`ui_button_icon`](button_icon.md), [`ui_tile`](tile.md), [`ui_tile_icon`](tile_icon.md), [`ui_toggle`](toggle.md), [`ui_slider`](slider.md), [`ui_dropdown`](dropdown.md), [`ui_dropdown_icons`](dropdown_icons.md) |
 | text | [`ui_text`, `ui_text_right`, `ui_text_centre`, `ui_caption`, `ui_caption_centre`](text.md), [`ui_header`](header.md) |
 | marks | [`ui_panel`](panel.md), `ui_fill`, `ui_outline`, `ui_bevel`, [`ui_icon`, `ui_check`](icon.md), [`ui_swatches`](swatches.md) |
-| a look for the screen | `ui_theme(&theme)` once per screen; `NULL` restores the shell look |
+| a look for the screen | `ui_theme(&theme)` once per screen; `NULL` restores the shell look; `ui_corner_radius(r)` for flat, rounded buttons |
 | a look for a few widgets | [scopes](scopes.md): `ui_color_begin/end`, `ui_scale_begin/end`, `ui_alpha_begin/end`, `ui_disabled_begin/end` |
 
 - **Rect first.** Every widget takes its rect. A screen with fixed geometry
@@ -204,7 +204,9 @@ so the scale) are free. Ask which kind you are adding before you add it.
 ### Text that must fit
 
 Measure it: `ui_measure_text()`, or `draw_font_text_width()` in a host test.
-Face text is one clipped line per rect. Fonts, scales and text styles are in
+Face text is one clipped line per rect; a button's label alone wraps to two
+lines at a space. `ui_clipped_text()` counts the strings a frame clipped, for a
+layout test to hold at zero. Fonts, scales and text styles are in
 [`Text-and-Fonts.md`](../gfx/Text-and-Fonts.md).
 
 ### A list of rows that may overflow
