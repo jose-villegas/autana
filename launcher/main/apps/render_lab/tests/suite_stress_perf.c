@@ -48,7 +48,8 @@ typedef struct {
  * which owns the margins: regenerate the rows rather than editing them. The
  * r3d ceiling bounds the mean over a row's poses, as its goal does.
  * uniform-full stays unpegged (--unpegged): its full-view uniform fill varies
- * more between runs than any step a change makes. */
+ * more between runs than any step a change makes. curves is unpegged until
+ * its first captures. */
 static const stress_goal_t stress_goals[] = {
     {"stress-open", "portrait", "default", {260, 800, 5450, 2250}, {8700, 10010}},
     {"stress-open", "landscape", "default", {260, 780, 5650, 2240}, {8870, 10210}},
@@ -88,6 +89,8 @@ static const stress_goal_t stress_goals[] = {
     {"stress-near", "landscape", "default", {410, 1580, 11130, 2440}, {15490, 17820}},
     {"stress-few-copies", "portrait", "default", {260, 1090, 5290, 1990}, {8600, 9890}},
     {"stress-few-copies", "landscape", "default", {260, 1080, 5720, 2050}, {9080, 10450}},
+    {"stress-curves", "portrait", "default", {0, 0, 0, 0}, {0, 0}},
+    {"stress-curves", "landscape", "default", {0, 0, 0, 0}, {0, 0}},
 };
 
 static const char*

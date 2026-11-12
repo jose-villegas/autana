@@ -1,9 +1,12 @@
 #include "apps/render_lab/stress/stress_preset.h"
 
 #include <math.h>
+#include <stddef.h>
 
+#include "image/pixel/rgb565.h"
 #include "math/geometry/primitive_mesh.h"
 #include "math/scalar/math_const.h"
+#include "math/scalar/mathi.h"
 #include "math/scalar/rng.h"
 
 /* Each preset's surface, as STRESS_PRESETS names it. */
@@ -41,6 +44,7 @@ const stress_params_t stress_presets[STRESS_PRESET_COUNT] = {
                      6},
     [STRESS_FEW_COPIES] = {STRESS_SHAPE_SPHERE, 24, 2, STRESS_LAYOUT_WALL, 70, STRESS_SURFACE_OF(FEW_COPIES),
                            STRESS_CAMERA, 6},
+    [STRESS_CURVES] = {STRESS_SHAPE_PLANE, 8, 1, STRESS_LAYOUT_WALL, 80, STRESS_SURFACE_OF(CURVES), STRESS_CAMERA, 6},
 };
 
 stress_params_t
@@ -368,4 +372,68 @@ stress_cut_px(const stress_params_t* p, int short_px) {
         case STRESS_SHAPE_CYLINDER: return 0.5F * width;
     }
     return 0.0F;
+}
+
+/* A cable's middle hangs this much of a unit below its ends. */
+#define STRESS_CURVE_SAG  0.05F
+/* The cables run down the plane between these heights, in units. */
+#define STRESS_CURVE_TOP  0.45F
+/* Far cables sit this far in front of the plane, off its depth; near ones
+ * up to STRESS_CURVE_NEAR, closer the further down the plane they run. */
+#define STRESS_CURVE_LIFT 0.01F
+#define STRESS_CURVE_NEAR 0.4F
+/* Radii cycle through these fractions of a unit: where the plane spans its
+ * coverage of a quarter picture, about a third of a pixel wide to three, so
+ * faded and opaque ribbons both draw. */
+static const float stress_curve_radius[] = {1.0F / 1024.0F, 1.0F / 512.0F, 1.0F / 256.0F, 1.0F / 128.0F};
+#define STRESS_CURVE_RADII ((int)(sizeof stress_curve_radius / sizeof stress_curve_radius[0]))
+/* Alternate cables' colours. */
+static const uint16_t stress_curve_colour[] = {RGB565BE(0x202830), RGB565BE(0xC0A070)};
+#define STRESS_CURVE_COLOURS ((int)(sizeof stress_curve_colour / sizeof stress_curve_colour[0]))
+
+size_t
+stress_curve_bytes(void) {
+    return (STRESS_CURVE_COUNT * sizeof(r3d_curve_t))
+           + (STRESS_CURVE_COUNT * STRESS_CURVE_KNOTS * sizeof(r3d_curve_knot_t));
+}
+
+static int16_t
+ticks(float units) {
+    return (int16_t)lroundf(units * (float)STRESS_TICKS_PER_UNIT);
+}
+
+/* Cable `c`'s knot `k`, and the row's box grown to hold it. */
+static r3d_curve_knot_t
+cable_knot(int c, int k, r3d_curve_t* row) {
+    const float down = (float)c / (float)(STRESS_CURVE_COUNT - 1);
+    const float along = (float)k / (float)(STRESS_CURVE_KNOTS - 1);
+    const bool near = c % 2 == 1;
+    const float radius = stress_curve_radius[(c / 2) % STRESS_CURVE_RADII];
+    const vec3f_t at = {along - 0.5F,
+                        STRESS_CURVE_TOP - (2.0F * STRESS_CURVE_TOP * down)
+                            - (4.0F * STRESS_CURVE_SAG * along * (1.0F - along)),
+                        STRESS_CURVE_LIFT + (near ? STRESS_CURVE_NEAR * down : 0.0F)};
+    const r3d_curve_knot_t knot = {ticks(at.x), ticks(at.y), ticks(at.z), (uint16_t)mathi_max(1, ticks(radius)),
+                                   stress_curve_colour[c % STRESS_CURVE_COLOURS]};
+    const int16_t xyz[3] = {knot.x, knot.y, knot.z};
+    for (int a = 0; a < 3; a++) {
+        const int lo = xyz[a] - (int)knot.radius;
+        const int hi = xyz[a] + (int)knot.radius;
+        row->lo[a] = (int16_t)(k == 0 ? lo : mathi_min(row->lo[a], lo));
+        row->hi[a] = (int16_t)(k == 0 ? hi : mathi_max(row->hi[a], hi));
+    }
+    return knot;
+}
+
+r3d_curve_set_t
+stress_curves(void* block) {
+    r3d_curve_t* rows = block;
+    r3d_curve_knot_t* knots = (r3d_curve_knot_t*)(void*)(rows + STRESS_CURVE_COUNT);
+    for (int c = 0; c < STRESS_CURVE_COUNT; c++) {
+        rows[c] = (r3d_curve_t){.first = (uint16_t)(c * STRESS_CURVE_KNOTS), .count = STRESS_CURVE_KNOTS};
+        for (int k = 0; k < STRESS_CURVE_KNOTS; k++) {
+            knots[(c * STRESS_CURVE_KNOTS) + k] = cable_knot(c, k, &rows[c]);
+        }
+    }
+    return r3d_curve_set_at(rows, STRESS_CURVE_COUNT);
 }

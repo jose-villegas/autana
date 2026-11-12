@@ -6,6 +6,7 @@
 
 #include "math/linear/transformf.h"
 #include "math/linear/vec3f.h"
+#include "render/curve/r3d_curve.h"
 #include "render/dynamic/r3d_dynamic_mesh.h"
 
 typedef enum {
@@ -26,6 +27,7 @@ typedef enum {
     STRESS_SURFACE_UNIFORM,   /* one colour at every corner: zero colour steps, filled uniform */
     STRESS_SURFACE_STATIC,    /* the pack's own static mesh asset per copy, nothing generated */
     STRESS_SURFACE_TWO_SIDED, /* banded, and drawn from both sides: nothing faces away */
+    STRESS_SURFACE_CURVES,    /* banded, carrying thin curves the view draws (stress_curves()) */
 } stress_surface_t;
 
 typedef enum {
@@ -69,7 +71,8 @@ typedef struct {
     X(CARD, "card", CARD)                                                                                              \
     X(CULLED, "culled", BANDED)                                                                                        \
     X(NEAR, "near", BANDED)                                                                                            \
-    X(FEW_COPIES, "few-copies", BANDED)
+    X(FEW_COPIES, "few-copies", BANDED)                                                                                \
+    X(CURVES, "curves", CURVES)
 
 #define STRESS_PRESET_ID(id_, ...) STRESS_##id_,
 
@@ -131,3 +134,22 @@ float stress_cut_px(const stress_params_t* p, int short_px);
 #define STRESS_MIX_LEVELS         4
 #define STRESS_MIX_UNIFORM_PERIOD 2
 stress_params_t stress_copy_params(const stress_params_t* p, int copy);
+
+/* The curves preset's thin curves: STRESS_CURVE_COUNT cables of
+ * STRESS_CURVE_KNOTS knots sagging across its plane, half on it and half
+ * toward the camera, from a sub-pixel width that fades to an opaque one. */
+#define STRESS_CURVE_COUNT 256
+#define STRESS_CURVE_KNOTS 4
+
+static inline bool
+stress_draws_curves(const stress_params_t* p) {
+    return p->surface == STRESS_SURFACE_CURVES;
+}
+
+/* The bytes stress_curves() writes: the rows, their knots right after them, as an LCRV entry holds them. */
+size_t stress_curve_bytes(void);
+
+/* Writes the curves into `block`, stress_curve_bytes() long and aligned for
+ * r3d_curve_t, in the mesh's position ticks; returns them as
+ * r3d_curve_draw() takes them. Equal calls give equal bytes. */
+r3d_curve_set_t stress_curves(void* block);
