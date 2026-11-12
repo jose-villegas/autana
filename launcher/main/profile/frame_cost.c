@@ -177,6 +177,11 @@ frame_cost_take_clear(void) {
     foreign_task_calls = 0;
 }
 
+int64_t
+frame_cost_take_mean_us(const char* name, uint32_t frames) {
+    return frame_cost_mean_us(&shared, name, frames);
+}
+
 int
 frame_cost_take_report(uint32_t frames, char* out, size_t out_size) {
     int length = frame_cost_report(&shared, frames, out, out_size);

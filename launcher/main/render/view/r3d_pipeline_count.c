@@ -1,6 +1,7 @@
 #include "render/view/r3d_pipeline_count.h"
 
 #include <assert.h>
+#include <string.h>
 
 #include "math/geometry/box3f.h"
 #include "math/geometry/planef.h"
@@ -21,14 +22,16 @@ keep_leaf(const r3d_lit_mesh_t* mesh, const r3d_lit_node_t* node, unsigned mask,
         if (!r3d_lod_drawn_blending(mesh, c, lod_coarse, blending)) {
             continue;
         }
+        counts->clusters_tested++;
         if (cluster_mask == 0
             || !box3f_outside_planes(box3f_from_box3s(mesh->clusters[c].bounds, 1.0F), planes, PLANE_FRUSTUM_COUNT,
                                      &cluster_mask)) {
             out[count++] = (uint16_t)c;
             counts->triangles_submitted += mesh->clusters[c].triangle_count;
+        } else {
+            counts->clusters_off_frustum++;
         }
     }
-    counts->clusters_tested += node->count;
     return count;
 }
 
@@ -69,6 +72,7 @@ r3d_pipeline_cull_counted(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, co
         count =
             r3d_pipeline_cull_cut(mesh, lod_coarse, blending, walk->planes, (planef_t){0}, out, count, NULL, &tested);
         counts->clusters_tested += tested;
+        counts->clusters_off_frustum += tested - (count - before);
         for (int i = before; i < count; i++) {
             counts->triangles_submitted += mesh->clusters[out[i]].triangle_count;
         }
@@ -87,14 +91,28 @@ r3d_pipeline_count_coarse(const r3d_lit_mesh_t* mesh, const uint16_t* clusters, 
     return coarse;
 }
 
+/* The fill's face colour or quantized planes, from the draw's lit mesh. */
+static int
+colour_mode(const r3d_lit_mesh_t* mesh, const uint16_t* tri, const r3d_pipeline_vertex_t* const v[3]) {
+    if (mesh->face_colors != NULL) {
+        return R3D_SIZES_FACE;
+    }
+    r3d_span_vertex_t corners[3];
+    for (int k = 0; k < 3; k++) {
+        const uint8_t* rgb = mesh->colors[tri[k]];
+        corners[k] = (r3d_span_vertex_t){v[k]->sx, v[k]->sy, v[k]->iz, rgb[0], rgb[1], rgb[2]};
+    }
+    return r3d_span_uniform(&corners[0], &corners[1], &corners[2]) ? R3D_SIZES_UNIFORM : R3D_SIZES_SHADED;
+}
+
 /* One triangle into its counter by the draw's own sort (r3d_pipeline.c,
  * draw_triangles and draw_in_front): every corner in front, then some corner
  * in front; one wholly in front is then missed, facing away or set up. True
  * when it reaches r3d_span. The cull-view suite holds the set-up count to
  * the triangles the draw fills. */
 static bool
-count_triangle(const r3d_pipeline_vertex_t* const v[3], bool double_sided, const r3d_span_target_t* screen,
-               r3d_pipeline_counts_t* counts) {
+count_triangle(const r3d_lit_mesh_t* mesh, const uint16_t* tri, const r3d_pipeline_vertex_t* const v[3],
+               bool double_sided, const r3d_span_target_t* screen, r3d_pipeline_counts_t* counts) {
     if (!(v[0]->iz > 0.0F && v[1]->iz > 0.0F && v[2]->iz > 0.0F)) {
         const bool clipped = v[0]->iz != 0.0F || v[1]->iz != 0.0F || v[2]->iz != 0.0F;
         *(clipped ? &counts->triangles_clipped : &counts->triangles_behind) += 1;
@@ -108,6 +126,16 @@ count_triangle(const r3d_pipeline_vertex_t* const v[3], bool double_sided, const
         counts->triangles_facing_away++;
         return false;
     }
+    const int mode = colour_mode(mesh, tri, v);
+    r3d_size_point_t points[3];
+    for (int k = 0; k < 3; k++) {
+        points[k] = (r3d_size_point_t){(float)v[k]->sx / (float)R3D_SUBPIXEL, (float)v[k]->sy / (float)R3D_SUBPIXEL};
+    }
+    const int covered = r3d_size_pixels(points, r3d_size_centre_box(points), screen->rows.attachment[0].width,
+                                        screen->rows.attachment[0].height);
+    const int bin = r3d_size_bin_of(covered);
+    counts->pixels[mode] += covered;
+    counts->triangles_sized[mode][bin]++;
     counts->triangles_set_up++;
     return true;
 }
@@ -122,7 +150,7 @@ r3d_pipeline_count_triangles(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens,
         for (int t = c->triangle_first; t < c->triangle_first + c->triangle_count; t++) {
             const uint16_t* tri = mesh->triangles[t];
             const r3d_pipeline_vertex_t* const v[3] = {&cs[tri[0]], &cs[tri[1]], &cs[tri[2]]};
-            reached += count_triangle(v, c->double_sided, &screen, counts) ? 1 : 0;
+            reached += count_triangle(mesh, tri, v, c->double_sided, &screen, counts) ? 1 : 0;
         }
         if (set_up != NULL) {
             set_up[i] = (uint16_t)reached;

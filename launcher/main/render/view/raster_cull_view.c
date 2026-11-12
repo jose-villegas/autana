@@ -212,7 +212,12 @@ count_frame(raster_cull_t* s, const raster_t* raster) {
     drawn_at_t w = {0};
     for (int i = 0; i < raster_drawn_count(raster); i++) {
         const r3d_instance_t* instance = raster_drawn_at(raster, i);
-        const r3d_lit_mesh_t* mesh = instance->mesh;
+        r3d_lit_mesh_t counted_mesh = *instance->mesh;
+        const r3d_batch_draw_t* copy = raster_drawn_copy(raster, i);
+        if (copy != NULL) {
+            r3d_batch_copy_mesh(copy->batch, instance->mesh, copy->copy, &counted_mesh);
+        }
+        const r3d_lit_mesh_t* mesh = &counted_mesh;
         r3d_lens_t lens;
         raster_lens(raster, &s->camera, mesh->position_scale, &lens);
         raster_drawn_place(raster, i, &lens);
@@ -740,7 +745,33 @@ raster_cull_overlay(void* state, int width, int height) {
     }
 }
 
-raster_cull_frame_t
-raster_cull_frame(const raster_cull_t* state) {
-    return state->frame;
+void
+raster_cull_frame_compose(raster_cull_frame_t* frame, const raster_t* raster, bool shaded_half_picture) {
+    const upscale_t* scale = &raster->upscale;
+    const resolution_step_t output = shaded_half_picture
+                                         ? raster_compose_size(raster)
+                                         : (resolution_step_t){scale->destination_width, scale->destination_height};
+    const upscale_path_t path = output.width == scale->destination_width && output.height == scale->destination_height
+                                    ? scale->path
+                                    : upscale_path_for(raster->width, raster->height, output.width, output.height);
+    frame->transform_batches = raster->scratch != NULL ? raster_batch_count(raster) : 0;
+    frame->render_width = raster->width;
+    frame->render_height = raster->height;
+    frame->output_width = output.width;
+    frame->output_height = output.height;
+    frame->upscale_path = path;
+    frame->upscale_surface =
+        path == UPSCALE_KEPT && scale->filter == UPSCALE_FILTER_SURFACE && raster->present != CAMERA_PRESENT_SCANLINE;
+}
+
+void
+raster_cull_frame(const raster_cull_t* state, raster_cull_frame_t* frame) {
+    *frame = state->frame;
+    if (state->raster != NULL && state->raster->width > 0 && state->raster->height > 0) {
+        const upscale_t* scale = &state->raster->upscale;
+        if (scale->destination_width > 0 && scale->destination_height > 0) {
+            raster_cull_frame_compose(frame, state->raster, false);
+        }
+        frame->quarter = state->camera.viewport.quarter;
+    }
 }
