@@ -8,13 +8,8 @@ the start's bytes and the reference set (training, held-out and pruning poses), 
 import pathlib
 
 from r3d import mesh_bundle, mesh_asset, log
+from r3d.reference_set import COVERAGE, HELD_OUT, TRAINING
 
-# The reference set's files the fit reads (fitted_variant.prepare_references writes them): the training
-# (poses, references) pairs, the poses the prune counts shown pixels over, and the held-out poses the
-# copy-coverage gate checks.
-TRAINING = (("train.txt", "reference"), ("train_landscape.txt", "reference_landscape"))
-COVERAGE = "coverage.txt"
-HELD_OUT = "held_out.txt"
 # A carved start's rest is fitted with the reference G-buffer terms (fit/gbuffer.py) at these weights: the front
 # term pushes it behind the copies, the depth term holds it to the source's surface. Picked on street_fitted: front
 # 1e4 cuts the hidden copy pixels about tenfold; depth 30 then lowers held-out dE, heavier depth raised it.
@@ -50,7 +45,7 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
                 "--object", job.object.name, "--surface-weight", str(recipe.surface_weight),
                 "--surface-margin", str(recipe.surface_margin)]
     if copies:
-        command += ["--copies", str(bundle), "--copy-poses", str(inputs / HELD_OUT),
+        command += ["--copies", str(bundle), "--copy-poses", str(inputs / HELD_OUT[0]),
                     "--front-weight", str(FRONT_WEIGHT), "--depth-weight", str(DEPTH_WEIGHT)]
     if cost_weight:
         command += ["--cost-model", str(pathlib.Path(__file__).parents[1] / "board_cost_weights.txt"),

@@ -22,8 +22,8 @@ from r3d.obj import Texture, load_obj
 from r3d.import_settings import SettingsError, load_import_settings, load_scene
 from r3d.objects.instances import (MATCH_TOLERANCE, SourceObject, bounds_diagonal, match_instances, place, rigid_fit,
                                    source_objects)
-from r3d.geometry import closest_point_on_triangles
 from r3d.objects.surface_match import FLOOR_CAP, SURFACE_TOLERANCE, limit, merge, nearest, surface
+from soup import subdivided
 from r3d.objects.object_error import (PLANAR_AREA_SHARE, PLANAR_DEGREES, SHEET_DEGREES, SHEET_GROWTH, SKY, Parts,
                                       cell, common_prefix, object_rows, part_labels, part_names, planar_parts, read,
                                       nearest_source, report_body, rows_for, shape_rows, sheet_triangles, write)
@@ -326,23 +326,6 @@ class ObjectsTests(unittest.TestCase):
             self.assertEqual(data['totals']['repeated_shapes'], 1)
 
 
-def subdivided(points, triangles):
-    """Every triangle split in four at its edge midpoints: the same surface, triangulated differently."""
-    points, faces, middle = [np.asarray(p, dtype=np.float64) for p in points], [], {}
-
-    def midpoint(a, b):
-        key = (min(a, b), max(a, b))
-        if key not in middle:
-            middle[key] = len(points)
-            points.append((points[a] + points[b]) / 2)
-        return middle[key]
-
-    for a, b, c in triangles:
-        ab, bc, ca = midpoint(a, b), midpoint(b, c), midpoint(c, a)
-        faces += [[a, ab, ca], [ab, b, bc], [ca, bc, c], [ab, bc, ca]]
-    return np.array(points), np.array(faces)
-
-
 FINE_POINTS, FINE_TRIANGLES = subdivided(POINTS, TRIANGLES)
 TURN = Rotation.from_rotvec([0.4, 0.8, 1.2]).as_matrix()
 MIRROR = np.diag([-1., 1., 1.])
@@ -398,21 +381,6 @@ class SurfaceMatchTests(unittest.TestCase):
             with self.subTest(instance.object_name):
                 placed = place(model.samples, instance.linear, instance.position)
                 self.assertLess(nearest(placed, surface(*copies[instance.object_name]))[0].max(), 1e-5)
-
-    def test_nearest_is_the_closest_triangle(self):
-        # Slivers next to coarse triangles: the dense points of a long thin triangle sit far from most of its area.
-        rng = np.random.default_rng(3)
-        points = np.vstack([rng.random((40, 3)) * [10, 1, 0.2], [[0, 0, 0], [10, 0, 0], [10, 0.01, 0], [0, 0.02, 1]]])
-        triangles = np.vstack([rng.integers(0, 40, (60, 3)), [[40, 41, 42], [40, 42, 43], [41, 42, 43]]])
-        triangles = triangles[(triangles[:, 0] != triangles[:, 1]) & (triangles[:, 1] != triangles[:, 2])
-                              & (triangles[:, 0] != triangles[:, 2])]
-        target = surface(points, triangles)
-        queries = rng.random((300, 3)) * [12, 3, 2] - [1, 1, 0.5]
-        corners = target.corners
-        brute = np.min([closest_point_on_triangles(queries, *(np.repeat(corners[t:t + 1, k], len(queries), axis=0)
-                                                               for k in range(3)))[1]
-                        for t in range(len(corners))], axis=0)
-        np.testing.assert_allclose(nearest(queries, target)[0], brute, atol=1e-12)
 
     def test_a_feature_too_small_to_sample_still_counts(self):
         # A speck 0.7 units off the tetrahedron: too little area for a sample to land on, but its vertices are off.

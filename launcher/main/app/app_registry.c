@@ -10,9 +10,25 @@
 
 static app_t* apps_head;
 
+/* Home order: each kind's rank, then the name. */
+static int
+kind_rank(app_kind_t kind) {
+    static const int RANK[] = {[APP_KIND_LAB] = 0, [APP_KIND_APP] = 1, [APP_KIND_SYSTEM] = 2};
+    assert((unsigned)kind < sizeof RANK / sizeof RANK[0]);
+    return RANK[kind];
+}
+
+static int
+home_order(const void* a, const void* b) {
+    const app_t* x = a;
+    const app_t* y = b;
+    const int by_kind = kind_rank(x->kind) - kind_rank(y->kind);
+    return by_kind != 0 ? by_kind : strcmp(x->name, y->name);
+}
+
 void
 app_register(app_t* app) {
-    static const registry_rule_t rule = REGISTRY_RULE(app_t, strcmp, NULL);
+    static const registry_rule_t rule = REGISTRY_RULE(app_t, strcmp, home_order);
     const registry_add_t result = registry_add(&apps_head, &rule, app);
     assert(result == REGISTRY_ADDED && "app registered twice or name taken");
     (void)result;

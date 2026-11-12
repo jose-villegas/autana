@@ -55,13 +55,17 @@ test_a_flight_crosses_its_scene_in_the_same_time_whatever_its_units(void) {
 #include <math.h>
 
 #include "apps/render_lab/render_lab.h"
-#include "apps/render_lab/tests/render_lab_test.h"
+#include "lab/test/lab_test.h"
 #include "math/scalar/units.h"
+#include "scene/animator/animator.h"
+#include "scene/camera/camera.h"
+#include "scene/scene.h"
+#include "scene/transform/transform.h"
 #include "testkit/cleanup.h"
 
 #define FLY_TOLERANCE 1.0E-3F
 /* Enough frames to pass the idle limit whatever the fixture's frame time. */
-#define IDLE_FRAMES   ((RENDER_LAB_FLY_IDLE_MS / RENDER_LAB_TEST_FRAME_MS) + 2)
+#define IDLE_FRAMES   ((RENDER_LAB_FLY_IDLE_MS / LAB_TEST_FRAME_MS) + 2)
 /* A drag sideways, as a steering line spells it; the camera may face up or
  * down, so a test asks only for at least half the yaw it asks for. */
 #define DRAG_PIXELS   200
@@ -77,12 +81,12 @@ test_a_flight_crosses_its_scene_in_the_same_time_whatever_its_units(void) {
 /* Frames for a playing clip to carry the camera off its pose. */
 #define PLAY_FRAMES   8
 
-static render_lab_test_t saved;
+static lab_test_t saved;
 
 static void
 release_fixture(void) {
     (void)app_render_lab.console->handle("fly release");
-    render_lab_test_exit(&saved);
+    lab_test_exit(&saved);
 }
 
 static bool
@@ -93,37 +97,31 @@ console(const char* line) {
 static void
 frames(int count) {
     for (int i = 0; i < count; i++) {
-        render_lab_test_frame(false, NULL);
+        lab_test_frame(false, NULL);
     }
 }
 
-static scene_t*
-drawn_scene(scene_entity_t* camera) {
-    scene_t* scene;
-    TEST_ASSERT_TRUE(scene_active_camera(&scene, camera));
-    return scene;
+static entity_t
+drawn_camera(void) {
+    const entity_t camera = camera_active();
+    TEST_ASSERT_FALSE(handle_is_none(camera));
+    return camera;
 }
 
 static transformf_t
 camera_now(void) {
-    scene_entity_t camera;
-    scene_t* scene = drawn_scene(&camera);
-    return scene_entity_world(scene, camera);
+    return transform_world(drawn_camera());
 }
 
 static bool
 clip_paused(void) {
-    scene_entity_t camera;
-    scene_t* scene = drawn_scene(&camera);
-    return scene_animator_paused(scene, camera, SCENE_ANIMATOR_CURRENT);
+    return animator_paused(drawn_camera(), ANIMATOR_CURRENT);
 }
 
 /* How far one fixture frame flies at the start speed. */
 static float
 stride(void) {
-    scene_entity_t camera;
-    scene_t* scene = drawn_scene(&camera);
-    return render_lab_fly_start_speed(scene_bounds(scene)) * (float)RENDER_LAB_TEST_FRAME_MS / (float)MATH_MS_PER_S;
+    return render_lab_fly_start_speed(scene_bounds(drawn_camera())) * (float)LAB_TEST_FRAME_MS / (float)MATH_MS_PER_S;
 }
 
 static float
@@ -134,9 +132,9 @@ distance(vec3f_t a, vec3f_t b) {
 /* Sponza, a frame drawn, and where its camera stands before any flight. */
 static transformf_t
 fixture(void) {
-    render_lab_test_enter(&saved, "sponza");
+    lab_test_enter(&saved, &render_lab, "sponza");
     suite_set_test_cleanup(release_fixture);
-    render_lab_test_frame(false, NULL);
+    lab_test_frame(false, NULL);
     return camera_now();
 }
 
@@ -147,7 +145,7 @@ held_fixture(void) {
     (void)fixture();
     TEST_ASSERT_TRUE(console("pose 0"));
     TEST_ASSERT_TRUE(clip_paused());
-    render_lab_test_frame(false, NULL);
+    lab_test_frame(false, NULL);
     return camera_now();
 }
 
@@ -162,14 +160,14 @@ static void
 test_forward_flies_the_drawn_camera_and_release_puts_it_back(void) {
     const transformf_t home = fixture();
     TEST_ASSERT_TRUE(console(FORWARD_LINE));
-    render_lab_test_frame(false, NULL);
+    lab_test_frame(false, NULL);
     const vec3f_t ahead = quatf_rotate(home.rotation, vec3f_forward());
     expect_at(vec3f_add(home.position, vec3f_scale(ahead, stride())), camera_now().position);
 
     /* The camera's clip is paused: a frame with the keys let go leaves it still. */
     TEST_ASSERT_TRUE(console(STILL_LINE));
     const vec3f_t flown = camera_now().position;
-    render_lab_test_frame(false, NULL);
+    lab_test_frame(false, NULL);
     expect_at(flown, camera_now().position);
 
     TEST_ASSERT_TRUE(console("fly release"));
@@ -191,12 +189,12 @@ test_a_drag_turns_the_drawn_camera_once(void) {
     const transformf_t home = held_fixture();
     const vec3f_t before = quatf_rotate(home.rotation, vec3f_forward());
     TEST_ASSERT_TRUE(console(DRAG_LINE));
-    render_lab_test_frame(false, NULL);
+    lab_test_frame(false, NULL);
     const quatf_t turned = camera_now().rotation;
     const vec3f_t after = quatf_rotate(turned, vec3f_forward());
     TEST_ASSERT_TRUE(vec3f_dot(before, after) < cosf(0.5F * DRAG_PIXELS * FLY_MOTION_TUNING_DEFAULT.radians_per_pixel));
     expect_at(home.position, camera_now().position);
-    render_lab_test_frame(false, NULL);
+    lab_test_frame(false, NULL);
     expect_at(after, quatf_rotate(camera_now().rotation, vec3f_forward()));
 }
 
@@ -207,7 +205,7 @@ test_drags_between_frames_add_up(void) {
     const vec3f_t before = quatf_rotate(home.rotation, vec3f_forward());
     TEST_ASSERT_TRUE(console(DRAG_LINE));
     TEST_ASSERT_TRUE(console(DRAG_LINE));
-    render_lab_test_frame(false, NULL);
+    lab_test_frame(false, NULL);
     const vec3f_t after = quatf_rotate(camera_now().rotation, vec3f_forward());
     /* A level yaw of twice the drag, whatever the pitch: the heading turns that far. */
     const float yaw = 2.0F * DRAG_PIXELS * FLY_MOTION_TUNING_DEFAULT.radians_per_pixel;
@@ -221,7 +219,7 @@ static void
 test_the_wheel_speeds_the_flight(void) {
     const transformf_t home = held_fixture();
     TEST_ASSERT_TRUE(console(FASTER_LINE));
-    render_lab_test_frame(false, NULL);
+    lab_test_frame(false, NULL);
     TEST_ASSERT_FLOAT_WITHIN(FLY_TOLERANCE, FLY_MOTION_TUNING_DEFAULT.speed_step * stride(),
                              distance(home.position, camera_now().position));
 }
@@ -232,7 +230,7 @@ static void
 test_a_flight_with_no_lines_ends_where_it_began(void) {
     const transformf_t home = held_fixture();
     TEST_ASSERT_TRUE(console(FORWARD_LINE));
-    render_lab_test_frame(false, NULL);
+    lab_test_frame(false, NULL);
     TEST_ASSERT_TRUE(distance(home.position, camera_now().position) > 0.5F * stride());
     frames(IDLE_FRAMES);
     expect_at(home.position, camera_now().position);
@@ -245,7 +243,7 @@ test_lines_keep_a_flight_past_the_idle_limit(void) {
     const transformf_t home = held_fixture();
     for (int i = 0; i < IDLE_FRAMES; i++) {
         TEST_ASSERT_TRUE(console(FORWARD_LINE));
-        render_lab_test_frame(false, NULL);
+        lab_test_frame(false, NULL);
     }
     TEST_ASSERT_FLOAT_WITHIN(FLY_TOLERANCE * IDLE_FRAMES, (float)IDLE_FRAMES * stride(),
                              distance(home.position, camera_now().position));
@@ -257,7 +255,7 @@ test_release_lets_a_playing_clip_move_the_camera_again(void) {
     const transformf_t home = fixture();
     TEST_ASSERT_FALSE(clip_paused());
     TEST_ASSERT_TRUE(console(FORWARD_LINE));
-    render_lab_test_frame(false, NULL);
+    lab_test_frame(false, NULL);
     TEST_ASSERT_TRUE(clip_paused());
     TEST_ASSERT_TRUE(console("fly release"));
     TEST_ASSERT_FALSE(clip_paused());
@@ -270,12 +268,12 @@ static void
 test_a_scene_switch_ends_the_flight(void) {
     (void)held_fixture();
     TEST_ASSERT_TRUE(console(FORWARD_LINE));
-    render_lab_test_frame(false, NULL);
+    lab_test_frame(false, NULL);
     TEST_ASSERT_TRUE(console("scene " OTHER_SCENE));
     frames(2);
-    TEST_ASSERT_EQUAL_STRING(OTHER_SCENE, render_lab_start_scene_key);
+    TEST_ASSERT_EQUAL_STRING(OTHER_SCENE, render_lab.start_key);
     const transformf_t there = camera_now();
-    render_lab_test_frame(false, NULL);
+    lab_test_frame(false, NULL);
     expect_at(there.position, camera_now().position);
 }
 

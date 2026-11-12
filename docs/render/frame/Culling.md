@@ -16,7 +16,7 @@ flowchart LR
     subgraph Offline["offline, at the bake"]
         Vis["visibility<br/><i>triangles no camera<br/>pose sees</i>"]
     end
-    subgraph Census["the cull, core 0"]
+    subgraph Census["the cull, both cores"]
         direction TB
         Inst["instance<br/><i>its world box, then<br/>its root box under its model</i>"] --> Node["node<br/><i>box against the planes<br/>its parent crossed</i>"]
         Node --> Cluster["cluster<br/><i>box against<br/>the leaf's planes</i>"]
@@ -98,8 +98,9 @@ with the walk's nodes visited and cut and its clusters tested and kept.
 ## The cull, seen
 
 The cull view ([raster_cull_view.h](../../../launcher/main/render/view/raster_cull_view.h))
-paints every cluster in the colour of its fate this frame. Seen from the camera
-only drawn clusters show, so it redraws from a spectator.
+paints every cluster in the colour of its fate this frame: of a mesh with
+levels, only the clusters its level pick chose. Seen from the camera only drawn
+clusters show, so it redraws from a spectator.
 
 | Fate | Colour | The cluster |
 |---|---|---|
@@ -137,6 +138,44 @@ flowchart LR
 The frame's own cull and draw count nothing; `r3d_pipeline_cull_counted()` and
 `r3d_pipeline_count_triangles()` count beside them. `scene_viewer.sh --view cull
 --counts FILE` writes the counts per frame.
+
+`RASTER_CULL_FRAME_FIELDS` owns the CSV and replay field names. Its
+`sized_*` fields count set-up triangles through `R3D_SIZES_FIELDS` in
+[r3d_triangle_size.h](../../../launcher/main/render/view/r3d_triangle_size.h).
+
+| Field component | Meaning |
+|---|---|
+| `face` | a mesh with per-face colours |
+| `uniform` | zero quantized colour-plane steps from the draw's lit corner colours |
+| `shaded` | nonzero colour-plane steps |
+| `zero`, `one`, `two_to_four`, `more` | pixel centres covered by the triangle under the top-left rule |
+
+The bins sum to `triangles_set_up`. They use the pipeline's snapped screen
+corners, wound positive, with pixel centres at i + 0.5. Clipped triangles
+remain in `triangles_clipped` and do not enter these bins.
+
+The counted pass reads the instance's lit mesh and each batch copy's selected
+colour set. `r3d_span_uniform()` uses the fill's own colour-plane calculation;
+small flat triangles still enter their size and colour-mode bins.
+
+| Field | Meaning |
+|---|---|
+| `pixels_face`, `pixels_uniform`, `pixels_shaded` | covered centres of set-up triangles in each mode, clipped to the screen, before depth tests; overlapping triangles each contribute |
+| `render_width`, `render_height` | render picture dimensions |
+| `output_width`, `output_height` | compose destination dimensions, including half-picture composition |
+| `quarter` | camera quarter in panel coordinates |
+| `upscale_path` | selected `upscale_path_t` value |
+| `upscale_surface` | whether the kept-width path uses surface filtering rather than scanlines |
+| `vertices_transformed` | sum of kept clusters' vertex ranges, including vertices their triangles do not use |
+| `clusters_off_frustum` | tested, drawn-level clusters rejected by their own frustum test |
+| `nodes_cut` | rejected subtrees, including leaf nodes; not a count of their descendants |
+| `triangles_facing_away` | backfacing rejection |
+| `triangles_missed` | sub-pixel or off-screen rejection |
+| `triangles_behind` + `triangles_clipped` | near/range rejection or rebuilding |
+
+Exact pixel counting scans each set-up triangle's clipped bounding box in the
+cull view: work scales with their summed box areas. It reads no framebuffer
+and allocates no pixel buffer. Shipping cull and draw perform none of this work.
 
 Bistro along its camera path:
 

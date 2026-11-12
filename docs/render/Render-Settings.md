@@ -16,7 +16,7 @@ flowchart LR
     Asset["the app's pack: entry render<br/>set by the shell at start"] --> Settings
     App["app<br/>render_context_set_settings()"] --> Settings["the context's settings<br/>render_context_settings() reads them back"]
     Settings --> Pick{"knob set?<br/>development builds only"}
-    Knob["TUNE render.cull, render.depth_fit,<br/>render.batched, render.lod_coverage_permille,<br/>render.lod_pick_every"] -->|SET| Pick
+    Knob["TUNE render.cull, render.depth_fit,<br/>render.batched, render.partial_redraw,<br/>render.lod_coverage_permille, render.lod_pick_every,<br/>render.lod_triangle_budget"] -->|SET| Pick
     Knob -->|RESET| Unset["unset"]
     Unset --> Pick
     Pick -->|"no"| Frame["the frame draws with<br/>raster_settings()"]
@@ -38,10 +38,14 @@ that field's table in the asset.
 | `cull` | `true` | basic | skips clusters and world boxes outside the picture |
 | `depth_fit` | `true` | advanced | depth steps go where the kept scene is, not to near_z; needs cull |
 | `batched` | `true` | advanced | one transform and one draw fork/join a batch, not an instance |
+| `partial_redraw` | `true` | basic | a still camera redraws only the rows that moved; the picture is the same |
 | `lod.tolerance_px` | `2.0` | basic | the projected error a group may have and still draw coarse; more saves, pops more |
 | `lod.hysteresis_px` | `0.5` | advanced | how far past the tolerance a coarse group's error goes before it turns fine |
 | `lod.coverage_permille` | `250` | basic | the thousandths of the picture's height a coarse group may span; smaller pops less |
 | `lod.pick_every` | `4` | advanced | the frames the pick is spread over, a scene's first frame picking all; more saves, switches later |
+| `lod.triangle_budget` | `0` | basic | the triangles a frame aims to draw, the tolerance rising past tolerance_px to keep within; 0 never rises |
+| `lod.blend` | `0` | basic | 0 switches at once; 1 blends each switch, by morph where a mesh was imported with geometry.morph, else by dither |
+| `lod.blend_px` | `0.25` | advanced | the error past a switch over which a blend fades out; longer is softer, moves more |
 <!-- /generated: render-settings -->
 
 ## cull
@@ -109,9 +113,16 @@ off ([the captures](data/batched-board.log)):
 
 Off is only for measuring.
 
+## partial_redraw
+
+While the camera holds still, a frame redraws only the rows the changed
+objects cover, and the picture is the one a full redraw gives
+([how](frame/Partial-Redraw.md)). It applies at the fixed scale with frame
+generation off, and costs nothing when it does not apply.
+
 ## lod
 
-The [LOD pick](../plans/Cluster-LOD.md), once a frame per instance, draws a group's coarser
+The [LOD pick](frame/Levels-of-Detail.md), once a frame per instance, draws a group's coarser
 level when its projected error is within `tolerance_px` and its radius spans at most
 `coverage_permille` thousandths of the picture's height.
 
@@ -121,7 +132,25 @@ fine one turns coarse only once it is that far under, so a still camera never fl
 ![The hysteresis band and the coverage cap, from the default values](../images/render/lod-settings.png)
 
 These change which clusters draw, so they change pixels. A larger tolerance saves triangles and
-pops more; [Cluster-LOD.md](../plans/Cluster-LOD.md) scores each coverage cap.
+pops more; [Levels-of-Detail.md](frame/Levels-of-Detail.md) scores each coverage cap.
+
+With `triangle_budget` set, the tolerance rises from `tolerance_px` until the frame fits
+([the steer](frame/Levels-of-Detail.md#the-budget)). The budget is in triangles, at most 32767.
+The coverage cap rises with it, in proportion: `coverage_permille` is the cap at
+`tolerance_px`, so a budget can turn coarse the large groups the cap holds fine there.
+
+**What the budget counts:** the triangles of every lit-mesh cluster the cull keeps, after the
+level cut and before any triangle is drawn. That is `raster_stats_t.triangles`, which the frame
+reports as its triangles.
+
+| Triangles | Counted |
+|---|---|
+| A kept cluster's, at the level the cut draws | yes |
+| A kept cluster's that face away or fall outside the picture | yes: the count comes before the span fill |
+| Clusters of a level the cut does not draw | no |
+| Clusters and instances the cull drops | no |
+| Anything drawn that is not a lit-mesh cluster | no |
+| The import's [`[[variants]].triangles`](offline/Mesh-Import.md#variants-triangles) | no: a ceiling on the detail a mesh holds, not a frame's cost |
 
 ## The render asset
 
@@ -157,8 +186,8 @@ flowchart LR
 ```
 
 The entry is a [TABL v1](../assets/formats/TABL.md) table with one row per
-`render_settings_t` field, named by it, one column and `frac` `RENDER_SETTINGS_FRAC_BITS` (4): a value is a multiple of 1/16, so a
-`bool` is 0 or 16:
+`render_settings_t` field, named by it, one column and `frac` `RENDER_SETTINGS_FRAC_BITS` (4): a `float` is held in 1/16 steps,
+a `bool` as 0 or 1 and an `int` as itself:
 
 ```mermaid
 ---

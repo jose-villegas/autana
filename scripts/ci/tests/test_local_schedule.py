@@ -206,6 +206,14 @@ class LocalScheduleTests(unittest.TestCase):
                     self.assertIn('start -- render', result.stdout)
                 else:
                     self.assertEqual(result.stdout, '')
+            # A fit takes no heavy: autana (exit 75 here) is never asked; the stage starts beside board work.
+            python.write_text('#!/bin/sh\nif [ "$2" = ready ]; then exit 0; fi\n'
+                              'if [ "$2" = start ]; then printf "%s\\n" "$*"; exit 0; fi\n'
+                              + f'exec "{sys.executable}" "$@"\n')
+            result = subprocess.run(['sh', str(root / 'scripts/ci/gpu_stage.sh'), 'fit'], cwd=fixture,
+                                    env=dict(env, GPU_WORKFLOW=schedule.BAKES_WORKFLOW), capture_output=True, text=True)
+            self.assertEqual((result.returncode, result.stdout), (0, 'scripts/lib/local_schedule.py start -- fit\n'),
+                             result.stderr)
 
     def start(self, root, waits, clock=None, progressing=None):
         """Run `start` with a process whose wait() yields `waits` in turn; `progressing` touches the progress file."""
@@ -224,7 +232,13 @@ class LocalScheduleTests(unittest.TestCase):
             return outcome
         process.wait.side_effect = wait
         with patch.dict(os.environ, GPU_WORKFLOW=schedule.DOC_IMAGES_WORKFLOW,
-                        GITHUB_RUN_ID='42', MARKER=marker, _AUTANA_HEAVY_LOCK_ROOT=root),                 patch.object(sys, 'argv', ['schedule', 'start', '--', 'render']),                 patch.object(schedule, 'Clock', return_value=clock),                 patch.object(schedule, 'launch_process_tree', return_value=process),                 patch.object(schedule, 'stop_process_tree') as stop,                 patch.object(schedule, 'close_process_tree'),                 contextlib.redirect_stdout(io.StringIO()) as output:
+                        GITHUB_RUN_ID='42', MARKER=marker, _AUTANA_HEAVY_LOCK_ROOT=root), \
+                 patch.object(sys, 'argv', ['schedule', 'start', '--', 'render']), \
+                 patch.object(schedule, 'Clock', return_value=clock), \
+                 patch.object(schedule, 'launch_process_tree', return_value=process), \
+                 patch.object(schedule, 'stop_process_tree') as stop, \
+                 patch.object(schedule, 'close_process_tree'), \
+                 contextlib.redirect_stdout(io.StringIO()) as output:
             code = schedule.main()
             progress = os.environ[schedule.STAGE_PROGRESS_ENV]
         record = json.loads(next((Path(root) / 'night-steps').glob('*/*.json')).read_text())
@@ -250,7 +264,7 @@ class LocalScheduleTests(unittest.TestCase):
         self.assertIn('GPU_STAGE_PROGRESS_SECONDS', said)
 
     def test_start_keeps_a_slow_stage_that_progresses_until_the_backstop(self):
-        polls = schedule.GPU_STAGE_HANG_SECONDS // schedule.QUEUE_POLL_SECONDS
+        polls = schedule.GPU_STAGE_HANG_SECONDS[schedule.DOC_IMAGES_WORKFLOW] // schedule.QUEUE_POLL_SECONDS
         with tempfile.TemporaryDirectory() as root:
             clock = Clock(1, tzinfo=timezone.utc)
             code, stopped, said = self.start(root, [subprocess.TimeoutExpired('render', 1)] * (polls + 1), clock,

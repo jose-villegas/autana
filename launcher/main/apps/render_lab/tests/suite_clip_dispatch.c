@@ -2,12 +2,13 @@
 #include "suites.h"
 #ifdef DEVICE_BUILD
 #include <stdio.h>
-#include "apps/render_lab/render_lab_clips.h"
-#include "apps/render_lab/tests/render_lab_test.h"
+#include "apps/render_lab/render_lab.h"
 #include "core/memory.h"
 #include "display/display.h"
 #include "frame/test_frame.h"
 #include "gfx_shared_state.h"
+#include "lab/lab_clips.h"
+#include "lab/test/lab_test.h"
 #include "scene/scene_internal.h"
 #include "testkit/cleanup.h"
 #include "ui/layout/ui_transform.h"
@@ -19,7 +20,7 @@
 #define DISPATCH_REPEATS  3
 
 typedef struct {
-    render_lab_test_t saved;
+    lab_test_t saved;
     bool entered;
 } dispatch_fixture_t;
 
@@ -28,7 +29,7 @@ static dispatch_fixture_t* active;
 static void
 release_fixture(void) {
     if (active->entered) {
-        render_lab_test_exit(&active->saved);
+        lab_test_exit(&active->saved);
     }
     memory_free(active);
     active = NULL;
@@ -43,15 +44,24 @@ fixture(void) {
     return active;
 }
 
+/* The animator's playback state, which the public calls only partly show. */
+static const scene_animator_t*
+animator_state(entity_t entity) {
+    scene_row_t row;
+    const scene_t* columns = scene_entity_row(entity, &row);
+    TEST_ASSERT_NOT_NULL(columns);
+    return &columns->animators[row];
+}
+
 static void
 enter(dispatch_fixture_t* f, const char* key) {
-    render_lab_test_enter(&f->saved, key);
+    lab_test_enter(&f->saved, &render_lab, key);
     f->entered = true;
 }
 
 static void
 leave(dispatch_fixture_t* f) {
-    render_lab_test_exit(&f->saved);
+    lab_test_exit(&f->saved);
     f->entered = false;
 }
 
@@ -64,31 +74,33 @@ test_scene_console_dispatch_and_repeated_exit_release_heap(void) {
     const size_t psram = memory_free_bytes(MEMORY_APP);
     for (int repeat = 0; repeat < DISPATCH_REPEATS; repeat++) {
         enter(f, "capybara");
-        scene_t* scene = render_lab_test_loaded_scene("capybara");
-        TEST_ASSERT_NOT_NULL(scene);
-        const scene_entity_t subject = scene_find(scene, name_hash("capybara"));
-        TEST_ASSERT_NOT_EQUAL(SCENE_ENTITY_NONE, subject);
-        const scene_animator_t* animator = &scene->animators[subject];
-        const char* playing = scene_animator_clip_name(scene, subject, animator->layer.current.clip);
+        entity_t scene = lab_test_loaded_scene("capybara");
+        TEST_ASSERT_FALSE(handle_is_none(scene));
+        const entity_t subject = entity_find(scene, name_hash("capybara"));
+        TEST_ASSERT_FALSE(handle_is_none(subject));
+        const scene_animator_t* animator = animator_state(subject);
+        const char* playing = animator_clip_name(subject, animator->layer.current.clip);
         TEST_ASSERT_EQUAL_STRING("idle", playing);
         TEST_ASSERT_TRUE(app_render_lab.console->handle("clips"));
-        char command[ASSET_NAME_MAX + sizeof("clip  ") + RENDER_LAB_BLEND_TEXT_SIZE];
+        char command[ASSET_NAME_MAX + sizeof("clip  ") + LAB_CLIPS_BLEND_TEXT_SIZE];
         TEST_ASSERT_TRUE(snprintf(command, sizeof command, "clip gallop %d", DISPATCH_BLEND_MS) >= 0);
         TEST_ASSERT_TRUE(app_render_lab.console->handle(command));
-        TEST_ASSERT_EQUAL_STRING("gallop", scene_animator_clip_name(scene, subject, animator->layer.current.clip));
+        TEST_ASSERT_EQUAL_STRING("gallop", animator_clip_name(subject, animator->layer.current.clip));
         TEST_ASSERT_EQUAL_UINT32(DISPATCH_BLEND_MS, animator->layer.blend_ms);
         leave(f);
         TEST_ASSERT_EQUAL_UINT(internal, memory_free_bytes(MEMORY_INTERNAL));
         TEST_ASSERT_EQUAL_UINT(psram, memory_free_bytes(MEMORY_APP));
     }
     enter(f, "sponza");
-    scene_t* plain = render_lab_test_loaded_scene("sponza");
-    TEST_ASSERT_NOT_NULL(plain);
-    const int animators = plain->animator_count;
+    entity_t plain = lab_test_loaded_scene("sponza");
+    TEST_ASSERT_FALSE(handle_is_none(plain));
+    const scene_t* plain_columns = scene_entity_lookup(plain, &(scene_row_t){0})->scene;
+    TEST_ASSERT_NOT_NULL(plain_columns);
+    const int animators = plain_columns->animator_count;
     const size_t free_before = memory_free_bytes(MEMORY_APP);
     TEST_ASSERT_FALSE(app_render_lab.console->handle("clip gallop 0"));
     TEST_ASSERT_FALSE(app_render_lab.console->handle("clips"));
-    TEST_ASSERT_EQUAL_INT(animators, plain->animator_count);
+    TEST_ASSERT_EQUAL_INT(animators, plain_columns->animator_count);
     TEST_ASSERT_EQUAL_UINT(free_before, memory_free_bytes(MEMORY_APP));
 }
 
@@ -98,12 +110,12 @@ test_boot_menu_draws_controls_only_for_animated_scene(void) {
     static const char* const keys[] = {"capybara", "sponza"};
     for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++) {
         enter(f, keys[i]);
-        render_lab_test_frame(false, NULL);
+        lab_test_frame(false, NULL);
         const input_t boot = {.boot = {.pressed = true}};
-        render_lab_test_frame(false, &boot);
-        render_lab_test_frame(false, NULL);
-        char blend[sizeof("BLEND:  ms") + RENDER_LAB_BLEND_TEXT_SIZE];
-        TEST_ASSERT_TRUE(snprintf(blend, sizeof blend, "BLEND: %d ms", RENDER_LAB_BLEND_DEFAULT_MS) >= 0);
+        lab_test_frame(false, &boot);
+        lab_test_frame(false, NULL);
+        char blend[sizeof("BLEND:  ms") + LAB_CLIPS_BLEND_TEXT_SIZE];
+        TEST_ASSERT_TRUE(snprintf(blend, sizeof blend, "BLEND: %d ms", LAB_CLIPS_BLEND_DEFAULT_MS) >= 0);
         recti_t drawn;
         TEST_ASSERT_TRUE(ui_probe_text("BOOT to close", &drawn));
         TEST_ASSERT_EQUAL_INT(i == 0, ui_probe_text("CLIP", &drawn));
@@ -125,58 +137,58 @@ test_boot_clip_opening_touch_does_not_select_overlay_row(void) {
         ui_set_transform(transform);
         TEST_ASSERT_EQUAL_INT(GFX_HEIGHT, ui_width());
         TEST_ASSERT_EQUAL_INT(GFX_WIDTH, ui_height());
-        render_lab_test_frame(false, NULL);
+        lab_test_frame(false, NULL);
         const input_t boot = {.boot = {.pressed = true}};
-        render_lab_test_frame(false, &boot);
-        render_lab_test_frame(false, NULL);
+        lab_test_frame(false, &boot);
+        lab_test_frame(false, NULL);
         input_t touch = {.down = true, .pressed = true};
         recti_t idle;
         TEST_ASSERT_TRUE(ui_probe_text("idle", &idle));
         const vec2i_t mapped_pixel = affine2x_map_pixel(&transform, (vec2i_t){idle.x, idle.y});
         touch.point = mapped_pixel;
-        render_lab_test_frame(false, &touch);
+        lab_test_frame(false, &touch);
         touch.pressed = false;
         for (int frame = 0; frame < HOLD_FRAMES; frame++) {
             touch.point.y += frame < motion;
-            render_lab_test_frame(false, &touch);
+            lab_test_frame(false, &touch);
         }
         touch.down = false;
         touch.released = true;
-        render_lab_test_frame(false, &touch);
+        lab_test_frame(false, &touch);
         recti_t rows;
         int scroll;
         TEST_ASSERT_TRUE(ui_probe_list(&rows, &scroll));
         TEST_ASSERT_EQUAL_INT(UI_MARGIN, rows.y);
         TEST_ASSERT_TRUE(idle.x >= rows.x && idle.x < recti_right(rows));
-        scene_t* scene = render_lab_test_loaded_scene("capybara");
-        const scene_entity_t subject = scene_find(scene, name_hash("capybara"));
-        const scene_animator_t* animator = &scene->animators[subject];
-        TEST_ASSERT_EQUAL_STRING_MESSAGE("idle", scene_animator_clip_name(scene, subject, animator->layer.current.clip),
+        entity_t scene = lab_test_loaded_scene("capybara");
+        const entity_t subject = entity_find(scene, name_hash("capybara"));
+        const scene_animator_t* animator = animator_state(subject);
+        TEST_ASSERT_EQUAL_STRING_MESSAGE("idle", animator_clip_name(subject, animator->layer.current.clip),
                                          "opening release must not play the overlay row under the finger");
         /* The finger rested on another clip's row; which one is the menu's layout. */
         const int covered_row = (idle.y - rows.y + scroll) / UI_ROW_HEIGHT;
-        TEST_ASSERT_TRUE(covered_row >= 0 && covered_row < scene_animator_clip_count(scene, subject));
+        TEST_ASSERT_TRUE(covered_row >= 0 && covered_row < animator_clip_count(subject));
         TEST_ASSERT_NOT_EQUAL_INT(animator->layer.current.clip, covered_row);
         for (int frame = 0; frame < UI_DROPDOWN_CLOSE_FRAMES; frame++) {
-            render_lab_test_frame(false, NULL);
+            lab_test_frame(false, NULL);
             TEST_ASSERT_TRUE(ui_probe_list(&rows, &scroll));
         }
         const int item = 1;
-        const char* expected = scene_animator_clip_name(scene, subject, item);
+        const char* expected = animator_clip_name(subject, item);
         touch = (input_t){.down = true, .pressed = true};
         const vec2i_t item_pixel =
             affine2x_map_pixel(&transform, (vec2i_t){rows.x + (rows.w / 2),
                                                      rows.y + (item * UI_ROW_HEIGHT) + (UI_ROW_HEIGHT / 2) - scroll});
         touch.point = item_pixel;
-        render_lab_test_frame(false, &touch);
+        lab_test_frame(false, &touch);
         touch.pressed = false;
         for (int frame = 0; frame < HOLD_FRAMES; frame++) {
-            render_lab_test_frame(false, &touch);
+            lab_test_frame(false, &touch);
         }
         touch.down = false;
         touch.released = true;
-        render_lab_test_frame(false, &touch);
-        TEST_ASSERT_EQUAL_STRING(expected, scene_animator_clip_name(scene, subject, animator->layer.current.clip));
+        lab_test_frame(false, &touch);
+        TEST_ASSERT_EQUAL_STRING(expected, animator_clip_name(subject, animator->layer.current.clip));
         leave(f);
     }
 }

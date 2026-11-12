@@ -72,7 +72,7 @@ class MeshletSettingsTests(unittest.TestCase):
             root = pathlib.Path(directory)
             for size in (16, 64):
                 job = SimpleNamespace(renderer=SimpleNamespace(face_samples=None),
-                                      settings=SimpleNamespace(meshlet_triangles=size, lod=False))
+                                      settings=SimpleNamespace(meshlet_triangles=size, lod=False, morph=False))
                 mesh_import.write_baked(job, None, root, "tiny", geometry)
                 counts = [cluster[3] for cluster in read_lit_mesh(root / "tiny.bundle").clusters]
                 self.assertLessEqual(max(counts), size)
@@ -142,7 +142,7 @@ class MeshletReportTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which("gcc"), "needs gcc")
     def test_assertion_after_cull_switch_restores_the_prior_setting(self):
         source = (TOOLS.parents[1] / "launcher/main/apps/render_lab/tests/suite_sponza_perf.c").read_text()
-        body = source[source.index("static int32_t saved_cull;"):source.index("static raster_motion_t* motion;")]
+        body = source[source.index("static int32_t saved_cull;"):source.index("/* The full bake placed by a model matrix")]
         content = (TOOLS.parents[1] / "launcher/main/apps/render_lab/scene_baked_variant.h").read_text()
         bakes = content.replace("#pragma once", "")
         with tempfile.TemporaryDirectory() as directory:
@@ -161,16 +161,17 @@ static void (*cleanup)(void);
 static void suite_add_test_cleanup(void (*fn)(void)) { cleanup = fn; }
 #define TEST_ASSERT_NOT_NULL(p) do { if ((p) == 0) longjmp(aborted, 1); } while (0)
 #define TEST_ASSERT_TRUE(c) TEST_ASSERT_NOT_NULL(c)
+#define TEST_ASSERT_EQUAL_INT_MESSAGE(e, a, m) TEST_ASSERT_TRUE((e) == (a))
 #define TEST_PASS() ((void)0)
 #define ESP_LOGI(...) ((void)0)
 ''' + bakes + '''
-enum { R3D_PERF_QUARTER_COUNT = 2 };
+enum { LAB_PERF_QUARTER_COUNT = 2 };
 typedef struct { int mean_goal_us, p95_ceiling_us; } perf_budget_t;
 static const int meshes[SCENE_BAKED_VARIANT_COUNT];
 static const char* const sponza_bakes[SCENE_BAKED_VARIANT_COUNT] = {[0 ... SCENE_BAKED_VARIANT_COUNT - 1] = "renderer"};
 typedef struct { const int* mesh; void* model; } r3d_instance_t;
 static void open_the_meshes(void) {}
-static int showcase_bake(void) { return 0; }
+static int showcase_bake(void) { return SCENE_BAKED_FITTED_FULL; }
 static void report_frame_cost(const char* label, const char* object_name, const r3d_instance_t* instance, ...) {
     /* An allocation assertion aborts the measured pass after culling is switched off. */
     TEST_ASSERT_NOT_NULL(strcmp(label, "cull_off") ? instance : 0);

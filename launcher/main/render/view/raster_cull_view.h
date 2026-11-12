@@ -6,7 +6,7 @@
  *
  * Seen from the camera only drawn clusters show, so the view can draw a
  * second time from a spectator, above the scene or behind the camera, and
- * paint the camera's fates there, every cluster drawn. Its overlay draws one
+ * paint the camera's fates there, every cluster the levels drew. Its overlay draws one
  * tree level's node boxes and, from a spectator, the camera's frustum.
  *
  * Tunables: cullview.from (raster_cull_from_t), cullview.paint
@@ -49,7 +49,9 @@ typedef enum {
  * kept, and the holes in its screen door show what is behind. */
 typedef enum { RASTER_CULL_PASS_CAMERA, RASTER_CULL_PASS_CULLED, RASTER_CULL_PASS_KEPT } raster_cull_pass_t;
 
-/* What the view holds room for, every instance together. */
+/* What the view holds room for, every instance together, counting only the
+ * level of each mesh the frame draws: a slot per drawn cluster and one per
+ * instance, and the drawn clusters' triangles. */
 #define RASTER_CULL_CLUSTERS_MAX  8192
 #define RASTER_CULL_TRIANGLES_MAX 131072
 /* The largest picture it layers: the panel's. */
@@ -58,17 +60,35 @@ typedef enum { RASTER_CULL_PASS_CAMERA, RASTER_CULL_PASS_CULLED, RASTER_CULL_PAS
 /* One frame's counts, every instance summed, from the camera. */
 typedef struct {
     r3d_pipeline_counts_t counts;
+    int transform_batches;
+    int render_width, render_height;
+    int output_width, output_height, quarter;
+    int upscale_path, upscale_surface;
     int triangles_covering; /* own at least one pixel of the picture */
     int clusters[RASTER_FATE_COUNT];
 } raster_cull_frame_t;
 
+#define RASTER_CULL_SIZE_FIELD(X, name, mode, bin) X(sized_##name, counts.triangles_sized[mode][bin])
+
 /* Each count by its name, X(name, member of raster_cull_frame_t): the one
  * order and spelling every listing of the counts uses. */
 #define RASTER_CULL_FRAME_FIELDS(X)                                                                                    \
+    X(transform_batches, transform_batches)                                                                            \
+    X(render_width, render_width)                                                                                      \
+    X(render_height, render_height)                                                                                    \
+    X(output_width, output_width)                                                                                      \
+    X(output_height, output_height)                                                                                    \
+    X(upscale_path, upscale_path)                                                                                      \
+    X(upscale_surface, upscale_surface)                                                                                \
+    X(quarter, quarter)                                                                                                \
     X(nodes_visited, counts.nodes_visited)                                                                             \
     X(nodes_cut, counts.nodes_cut)                                                                                     \
     X(clusters_tested, counts.clusters_tested)                                                                         \
     X(clusters_kept, counts.clusters_kept)                                                                             \
+    X(clusters_off_frustum, counts.clusters_off_frustum)                                                               \
+    X(pixels_face, counts.pixels[R3D_SIZES_FACE])                                                                      \
+    X(pixels_uniform, counts.pixels[R3D_SIZES_UNIFORM])                                                                \
+    X(pixels_shaded, counts.pixels[R3D_SIZES_SHADED])                                                                  \
     X(clusters_coarse, counts.clusters_coarse)                                                                         \
     X(clusters_not_set_up, clusters[RASTER_FATE_NOT_SET_UP])                                                           \
     X(clusters_hidden, clusters[RASTER_FATE_HIDDEN])                                                                   \
@@ -79,22 +99,37 @@ typedef struct {
     X(triangles_missed, counts.triangles_missed)                                                                       \
     X(triangles_facing_away, counts.triangles_facing_away)                                                             \
     X(triangles_set_up, counts.triangles_set_up)                                                                       \
-    X(triangles_covering, triangles_covering)
+    X(vertices_transformed, counts.vertices_transformed)                                                               \
+    X(vertices_blended, counts.vertices_blended)                                                                       \
+    X(vertices_stacked, counts.vertices_stacked)                                                                       \
+    X(stacked_centipixels, counts.stacked_centipixels)                                                                 \
+    X(triangles_covering, triangles_covering)                                                                          \
+    R3D_SIZES_FIELDS(RASTER_CULL_SIZE_FIELD, X, )
 
 typedef struct {
     raster_cull_from_t from;
-    bool spectating; /* drawing from the spectator */
-    bool spectated;  /* this frame drew from the spectator: an observer or cullview.from */
-    int pass;        /* raster_cull_pass_t: which of the frame's draws is next */
-    int clusters, triangles;
+    bool spectating;                 /* drawing from the spectator */
+    bool spectated;                  /* this frame drew from the spectator: an observer or cullview.from */
+    int pass;                        /* raster_cull_pass_t: which of the frame's draws is next */
+    int clusters, triangles;         /* drawn this frame, the level each instance drew */
     int next_cluster, next_triangle; /* the next instance's first IDs, as the draw reaches it */
     const raster_t* raster;
     render_view_t camera, spectator;
     transformf_t spectator_pose; /* what `spectator` was made from, exactly: render_view_pose() only to rounding */
     raster_cull_frame_t frame;
+    /* Each instance's drawn clusters: their count, then their mesh indices
+     * ascending. The k-th drawn cluster, counting across the instances, has
+     * slot k in the arrays below; a tag names a mesh index, which the list finds. */
+    uint16_t drawn[RASTER_CULL_CLUSTERS_MAX];
     uint8_t fate[RASTER_CULL_CLUSTERS_MAX];
-    uint16_t set_up[RASTER_CULL_CLUSTERS_MAX];
-    uint16_t node[RASTER_CULL_CLUSTERS_MAX]; /* each cluster's node at cullview.level */
+
+    /* One array for three steps of the frame, each done with it before the next. */
+    union {
+        uint16_t set_up[RASTER_CULL_CLUSTERS_MAX]; /* counting: an instance's kept clusters' set-up triangles */
+        uint32_t triangle_first[RASTER_CULL_CLUSTERS_MAX / 2]; /* tallying: each drawn pair's first drawn triangle */
+        uint16_t node[RASTER_CULL_CLUSTERS_MAX];               /* painting: each slot's node at cullview.level */
+    };
+
     r3d_pipeline_count_walk_t walk;
     /* The tree walks' pending nodes, here rather than on the drawing task's stack. */
     uint16_t walk_node[R3D_LIT_WALK_STACK_MAX], walk_shown[R3D_LIT_WALK_STACK_MAX];
@@ -117,5 +152,9 @@ bool raster_cull_second_view(void* state, const raster_t* raster, const transfor
 /* Lines over the composed picture, `width` by `height` from (0, 0). */
 void raster_cull_overlay(void* state, int width, int height);
 
-/* The last frame's counts. */
-raster_cull_frame_t raster_cull_frame(const raster_cull_t* state);
+/* A counted overlay can compose larger than the shaded picture being timed.
+ * shaded_half_picture requests that picture's destination when it fits. */
+void raster_cull_frame_compose(raster_cull_frame_t* frame, const raster_t* raster, bool shaded_half_picture);
+
+/* The last frame's counts, into caller-owned storage to keep large copies off the draw stack. */
+void raster_cull_frame(const raster_cull_t* state, raster_cull_frame_t* frame);

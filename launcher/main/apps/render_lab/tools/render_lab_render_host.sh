@@ -5,7 +5,7 @@
 #   ./launcher/main/apps/render_lab/tools/render_lab_render_host.sh [-o <dir>]
 #
 # Each declared render starts on one scene (--scene) via
-# render_lab_start_scene_key and steps 16 ms frames, full-framebuffer
+# render_lab.start_key and steps 16 ms frames, full-framebuffer
 # layout. Landscape is the shipping orientation, so it leads; a panel-native
 # render is the shape tools/render/render_diff.sh compares a device capture against.
 #
@@ -28,12 +28,12 @@ main/input/mapping/orbit_motion_touch.c
 main/input/motion/gravity.c
 main/apps/render_lab/tools/render_lab_render_host.c
 $(CDPATH= cd -- "$SCRIPT_DIR/../../../../" &&
-    find main/apps/render_lab \( -type d \( -name tools -o -name tests \) -prune \) -o \
+    find main/apps/render_lab main/lab \( -type d \( -name tools -o -name tests -o -name test \) -prune \) -o \
         \( -type f -name '*.c' ! -name 'suite_*.c' -print \) | LC_ALL=C sort)
 "
 scene_defines="-DCONFIG_LAUNCHER_DEVELOPMENT=0"
 
-# The lit-mesh scene's views (--view shaded|depth|tiles|motion|meshlets|cull|overdraw) are raster_show()
+# The lit-mesh scene's views (--view shaded|depth|tiles|meshlets|cull|overdraw) are raster_show()
 # over the same frame, so each is unpinned for the reason the shaded one is: its
 # camera path is float, so which pixels a triangle reaches is not identical on
 # every compiler. The tests in tools/tests compare the views with each other.
@@ -73,6 +73,14 @@ stress-tiny-copies|--quarter 1 --no-hud --scene stress-tiny-copies --frames 2|44
 stress-big-tris|--quarter 1 --no-hud --scene stress-big-tris --frames 2|448x368|nopin
 stress-per-frame|--quarter 1 --no-hud --scene stress-per-frame --frames 2|448x368|nopin
 stress-two-sided|--quarter 1 --no-hud --scene stress-two-sided --frames 2|448x368|nopin
+stress-mix|--quarter 1 --no-hud --scene stress-mix --frames 2|448x368|nopin
+stress-static-copies|--quarter 1 --no-hud --scene stress-static-copies --frames 2|448x368|nopin
+stress-uniform-mid|--quarter 1 --no-hud --scene stress-uniform-mid --frames 2|448x368|nopin
+stress-uniform-full|--quarter 1 --no-hud --scene stress-uniform-full --frames 2|448x368|nopin
+stress-card|--quarter 1 --no-hud --scene stress-card --frames 2|448x368|nopin
+stress-culled|--quarter 1 --no-hud --scene stress-culled --frames 2|448x368|nopin
+stress-near|--quarter 1 --no-hud --scene stress-near --frames 2|448x368|nopin
+stress-few-copies|--quarter 1 --no-hud --scene stress-few-copies --frames 2|448x368|nopin
 stress-noisy-tiny|--quarter 1 --no-hud --scene stress-noisy-tiny --frames 2|448x368|nopin
 "
 

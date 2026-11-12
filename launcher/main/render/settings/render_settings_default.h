@@ -3,7 +3,7 @@
  */
 #pragma once
 
-#define RENDER_SETTINGS_DEFAULT ((render_settings_t){.cull = true, .depth_fit = true, .batched = true, .lod = {.tolerance_px = 2.0F, .hysteresis_px = 0.5F, .coverage_permille = 250, .pick_every = 4}})
-/* X(field, type) for each field of render_settings_t, in order: `field` as a member path. */
-#define RENDER_SETTINGS_FIELDS(X) X(cull, bool) X(depth_fit, bool) X(batched, bool) X(lod.tolerance_px, float) X(lod.hysteresis_px, float) X(lod.coverage_permille, int) X(lod.pick_every, int)
-#define RENDER_SETTINGS_FIELD_COUNT 7
+#define RENDER_SETTINGS_DEFAULT ((render_settings_t){.cull = true, .depth_fit = true, .batched = true, .partial_redraw = true, .lod = {.tolerance_px = 2.0F, .hysteresis_px = 0.5F, .coverage_permille = 250, .pick_every = 4, .triangle_budget = 0, .blend = 0, .blend_px = 0.25F}})
+/* X(field, type, valid) in struct order; valid tests the typed field as `value`. */
+#define RENDER_SETTINGS_FIELDS(X) X(cull, bool, true) X(depth_fit, bool, true) X(batched, bool, true) X(partial_redraw, bool, true) X(lod.tolerance_px, float, true) X(lod.hysteresis_px, float, true) X(lod.coverage_permille, int, true) X(lod.pick_every, int, true) X(lod.triangle_budget, int, true) X(lod.blend, int, value >= 0 && value < RENDER_LOD_BLEND_COUNT) X(lod.blend_px, float, value > 0.0F && value <= RENDER_LOD_BLEND_PX_MAX)
+#define RENDER_SETTINGS_FIELD_COUNT 11

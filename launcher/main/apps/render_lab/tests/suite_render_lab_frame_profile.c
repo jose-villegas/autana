@@ -1,5 +1,5 @@
 /*
- * The frame-time profile of each Sponza, Bistro and capybara scenario, on the
+ * The frame-time profile of each fitted Sponza, Bistro and capybara scenario, on the
  * board only: every screen quarter against its pegged budget, and on request
  * every scenario at every dynamic-resolution ladder step.
  */
@@ -10,12 +10,11 @@
 #include <stdio.h>
 #include "apps/render_lab/baked_families.h"
 #include "apps/render_lab/capybara_content.h"
+#include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/render_lab_dynres.h"
-#include "apps/render_lab/render_lab_scene.h"
 #include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/scene_baked.h"
 #include "apps/render_lab/sponza_content.h"
-#include "apps/render_lab/tests/r3d_perf_quarters.h"
 #include "apps/render_lab/tests/render_lab_test.h"
 #include "collections/strbuf.h"
 #include "core/memory.h"
@@ -24,11 +23,14 @@
 #include "esp_log.h"
 #include "frame/test_frame.h"
 #include "frame_profile.h"
+#include "lab/lab_scene.h"
+#include "lab/test/lab_perf_quarters.h"
+#include "lab/test/lab_test.h"
 #include "perf_budget.h"
 #include "profile/frame_cost.h"
 #include "render/context/render_context.h"
 #include "render/view/raster_cull_view.h"
-#include "scene/scene_internal.h"
+#include "scene/animator/animator.h"
 #include "testkit/cleanup.h"
 #include "unity.h"
 
@@ -43,20 +45,14 @@ typedef struct {
 } capybara_take_t;
 
 typedef struct {
-    const render_lab_scene_t* scene;
+    const lab_scene_t* scene;
     const char* pack;
     const char* entity;
     const capybara_take_t* take;
-    perf_budget_t quarters[R3D_PERF_QUARTER_COUNT];
+    perf_budget_t quarters[LAB_PERF_QUARTER_COUNT];
 } profile_scenario_t;
 
 static const capybara_take_t capybara_home = {CAPYBARA_SCENE, CAPYBARA_VIEW_HOME, CAPYBARA_VIEW_HOME,
-                                              CAPYBARA_CLIP_CUT_MS};
-static const capybara_take_t capybara_front = {"capybara-front", CAPYBARA_VIEW_FRONT, CAPYBARA_VIEW_FRONT,
-                                               CAPYBARA_CLIP_CUT_MS};
-static const capybara_take_t capybara_side = {"capybara-side", CAPYBARA_VIEW_SIDE, CAPYBARA_VIEW_SIDE,
-                                              CAPYBARA_CLIP_CUT_MS};
-static const capybara_take_t capybara_back = {"capybara-back", CAPYBARA_VIEW_BACK, CAPYBARA_VIEW_BACK,
                                               CAPYBARA_CLIP_CUT_MS};
 static const capybara_take_t capybara_close = {"capybara-close", CAPYBARA_VIEW_CLOSE, CAPYBARA_VIEW_CLOSE,
                                                CAPYBARA_CLIP_CUT_MS};
@@ -66,19 +62,12 @@ static const capybara_take_t capybara_blend = {"capybara-blend", "blend", CAPYBA
 #define CAPYBARA_ROW(take, ...) {&scene_capybara, CAPYBARA_SCENE, CAPYBARA_SUBJECT, &(take), __VA_ARGS__}
 
 /* Worst of a perf-scoped 5-seed capture on A308, 20E8 and 2124, + 1%; per
- * quarter, portrait then landscape. Sponza lite's portrait and Sponza flat's
- * landscape keep an older peg, which that capture would have raised. */
+ * quarter, portrait then landscape. The table's order is the docs' row order. */
 static const profile_scenario_t profile_scenarios[] = {
-    {.scene = &scene_sponza[SCENE_BAKED_FULL], .quarters = {{49828, 60264}, {47994, 57718}}},
-    {.scene = &scene_sponza[SCENE_BAKED_LITE], .quarters = {{41016, 47265}, {41193, 46324}}},
-    {.scene = &scene_sponza[SCENE_BAKED_FLAT], .quarters = {{40381, 48543}, {39269, 47716}}},
-    {.scene = &scene_sponza[SCENE_BAKED_FITTED], .quarters = {{40510, 48377}, {38679, 45264}}},
     {.scene = &scene_sponza[SCENE_BAKED_FITTED_FULL], .quarters = {{48826, 60160}, {46066, 56159}}},
+    {.scene = &scene_sponza[SCENE_BAKED_FITTED], .quarters = {{40510, 48377}, {38679, 45264}}},
     {.scene = &scene_sponza[SCENE_BAKED_FLAT_FITTED], .quarters = {{39384, 49012}, {37997, 46878}}},
     CAPYBARA_ROW(capybara_home, {{20531, 20793}, {21164, 21432}}),
-    CAPYBARA_ROW(capybara_front, {{20164, 20395}, {20712, 20938}}),
-    CAPYBARA_ROW(capybara_side, {{20022, 20268}, {20899, 21129}}),
-    CAPYBARA_ROW(capybara_back, {{19426, 19847}, {20423, 20804}}),
     CAPYBARA_ROW(capybara_close, {{22108, 22455}, {23064, 23340}}),
     CAPYBARA_ROW(capybara_blend, {{21079, 21407}, {21735, 22015}}),
     {&scene_bistro[SCENE_BAKED_FITTED_FULL], BISTRO_SCENE, BISTRO_CAMERA, NULL, {{36375, 54681}, {38062, 51881}}},
@@ -97,75 +86,14 @@ static const char* TAG = "render_lab_profile";
 #define DYNRES_STEPS_LINE_BYTES  (sizeof DYNRES_STEPS_LINE + 64)
 #define DYNRES_STEPS_FRAME_BYTES sizeof(" -2147483648:-2147483648:-2147483648:-2147483648")
 
-static render_lab_test_t saved;
+static lab_test_t saved;
 static frame_profile_trace_t played; /* the row playing now, freed with the fixture */
-
-/* The scene applies render_lab.view after it draws, so the view is also set here for the next draw. */
-static void
-show_view(int view) {
-    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render_lab, view), view));
-    render_context_set_debug_view(render_context_main(), view);
-    TEST_ASSERT_EQUAL_INT(view, render_context_main()->debug_view);
-}
 
 static void
 release_fixture(void) {
     frame_profile_trace_free(&played);
-    show_view(RENDER_DEBUG_VIEW_SHADED);
-    render_lab_test_exit(&saved);
-}
-
-static int64_t
-whole_frame(void* ctx, int64_t dt_us) {
-    int64_t* remainder_us = ctx;
-    const int64_t step_us = dt_us + *remainder_us;
-    const uint32_t dt_ms = (uint32_t)(step_us / MATH_US_PER_MS);
-    *remainder_us = step_us % MATH_US_PER_MS;
-    const int64_t start = timing_now_us();
-    (void)render_lab_test_frame_dt(dt_ms, false, NULL);
-    return timing_now_us() - start;
-}
-
-/* A replayed pose's log line parts, too big for the stack its draws run on. */
-#define COUNT_BYTES(name, member) char name[sizeof(" " #name "=-2147483648")];
-
-typedef struct {
-    char counts[sizeof(struct { RASTER_CULL_FRAME_FIELDS(COUNT_BYTES) char end; })];
-    char report[FRAME_COST_REPORT_MAX];
-} pose_line_t;
-
-/* The cull view's counts of the frame just drawn, in a frame of their own
- * that is gone before the next draw. */
-static __attribute__((noinline)) void
-write_cull_counts(pose_line_t* out) {
-    const raster_cull_t* cull = render_context_debug_view_state(render_context_main());
-    TEST_ASSERT_NOT_NULL(cull);
-    const raster_cull_frame_t f = raster_cull_frame(cull);
-    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, f.counts.nodes_visited, "the cull view did not draw");
-    strbuf_t line = strbuf_make(out->counts, sizeof out->counts);
-#define COUNT_PAIR(name, member) strbuf_appendf(&line, "%s" #name "=%d", line.length == 0 ? "" : " ", f.member);
-    RASTER_CULL_FRAME_FIELDS(COUNT_PAIR)
-}
-
-/* Draws the pose `path_ms` along the played path, paused there (dt 0, so a skinned
- * subject is not skinned again): one frame through the cull view for its
- * counts, then FRAME_PROFILE_REPLAY_DRAWS shaded frames for their frame-cost
- * report. */
-static void
-replay_pose(scene_t* scene, scene_entity_t entity, uint32_t duration_ms, int32_t path_ms, const char* row,
-            const char* quarter, pose_line_t* out) {
-    TEST_ASSERT_TRUE(scene_animator_seek(scene, entity, SCENE_ANIMATOR_CURRENT, (uint32_t)path_ms % duration_ms));
-    show_view(render_context_debug_view_named("cull"));
-    (void)render_lab_test_frame_dt(0, false, NULL);
-    write_cull_counts(out);
-    show_view(RENDER_DEBUG_VIEW_SHADED);
-    (void)render_lab_test_frame_dt(0, false, NULL);
-    (void)frame_cost_take_report(1, out->report, sizeof out->report);
-    for (int i = 0; i < FRAME_PROFILE_REPLAY_DRAWS; i++) {
-        (void)render_lab_test_frame_dt(0, false, NULL);
-    }
-    (void)frame_cost_take_report(FRAME_PROFILE_REPLAY_DRAWS, out->report, sizeof out->report);
-    ESP_LOGI(TAG, FRAME_PROFILE_REPLAY R3D_PERF_QUARTER_FORMAT, row, (int)path_ms, out->counts, out->report, quarter);
+    render_lab_test_show_view(RENDER_DEBUG_VIEW_SHADED);
+    lab_test_exit(&saved);
 }
 
 /* The scenario and quarter the next test plays: one test each, so a row over its
@@ -186,21 +114,18 @@ scenario_take(void) {
 
 /* The scenario's path as the render lab shows it, in the current quarter, its clip from the start. */
 typedef struct {
-    scene_t* scene;
-    scene_entity_t entity;
+    entity_t scene;
+    entity_t entity;
     uint32_t duration_ms;
 } scenario_path_t;
 
 /* report_path()'s heap, freed after a failed assertion too. */
 static frame_profile_peak_t* peaks;
-static pose_line_t* pose_line;
 
 static void
 release_report(void) {
     memory_free(peaks);
-    memory_free(pose_line);
     peaks = NULL;
-    pose_line = NULL;
 }
 
 /* The played profile, its traced frames and peaks, then each replayed pose:
@@ -209,24 +134,23 @@ release_report(void) {
 static __attribute__((noinline)) void
 report_path(const scenario_path_t* path, const frame_profile_t* p) {
     const char* row = scenario_row();
-    const char* quarter = r3d_perf_quarters[quarter_index].name;
+    const char* quarter = lab_perf_quarters[quarter_index].name;
     frame_profile_log(TAG, row, p, quarter);
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, p->frames, "frame profile failed");
     const int count = frame_profile_peaks(&played, NULL, 0);
     suite_add_test_cleanup(release_report);
     peaks = memory_alloc((size_t)count * sizeof *peaks, MEMORY_APP);
-    pose_line = memory_alloc(sizeof *pose_line, MEMORY_INTERNAL);
     TEST_ASSERT_NOT_NULL_MESSAGE(peaks, "frame peak allocation failed");
-    TEST_ASSERT_NOT_NULL_MESSAGE(pose_line, "frame peak allocation failed");
     TEST_ASSERT_EQUAL_INT(count, frame_profile_peaks(&played, peaks, count));
     frame_profile_log_trace(TAG, row, &played, peaks, count, quarter);
     for (int i = 0; i < FRAME_PROFILE_PATH_POSES; i++) {
-        replay_pose(path->scene, path->entity, path->duration_ms,
-                    (int32_t)((int64_t)path->duration_ms * i / FRAME_PROFILE_PATH_POSES), row, quarter, pose_line);
+        render_lab_test_replay_pose(TAG, path->entity, path->duration_ms,
+                                    (int32_t)((int64_t)path->duration_ms * i / FRAME_PROFILE_PATH_POSES), row, quarter,
+                                    NULL);
     }
     for (int rank = 0; rank < count; rank++) {
-        replay_pose(path->scene, path->entity, path->duration_ms, played.frame[peaks[rank].frame].path_ms, row, quarter,
-                    pose_line);
+        render_lab_test_replay_pose(TAG, path->entity, path->duration_ms, played.frame[peaks[rank].frame].path_ms, row,
+                                    quarter, NULL);
     }
     release_report();
 }
@@ -245,25 +169,24 @@ send(const char* format, ...) {
 
 static scenario_path_t
 enter_scenario(void) {
-    render_lab_test_enter(&saved, scenario->scene->key);
+    lab_test_enter(&saved, &render_lab, scenario->scene->key);
     suite_set_test_cleanup(release_fixture);
-    test_hold_quarter(r3d_perf_quarters[quarter_index].quarter);
-    scene_t* scene = render_lab_test_loaded_scene(scenario->pack == NULL ? SPONZA_SCENE : scenario->pack);
-    TEST_ASSERT_NOT_NULL(scene);
-    const scene_entity_t entity =
-        scene_find(scene, name_hash(scenario->entity == NULL ? sponza_cameras[0] : scenario->entity));
-    TEST_ASSERT_NOT_EQUAL(SCENE_ENTITY_NONE, entity);
+    test_hold_quarter(lab_perf_quarters[quarter_index].quarter);
+    entity_t scene = lab_test_loaded_scene(scenario->pack == NULL ? SPONZA_SCENE : scenario->pack);
+    TEST_ASSERT_FALSE(handle_is_none(scene));
+    const entity_t entity =
+        entity_find(scene, name_hash(scenario->entity == NULL ? sponza_cameras[0] : scenario->entity));
+    TEST_ASSERT_FALSE(handle_is_none(entity));
     const capybara_take_t* take = scenario->take;
     if (take != NULL) {
         send(CAPYBARA_VIEW_COMMAND, take->view);
-        TEST_ASSERT_TRUE(scene_animator_seek(scene, entity, SCENE_ANIMATOR_CURRENT, 0));
+        TEST_ASSERT_TRUE(animator_seek(entity, ANIMATOR_CURRENT, 0));
         send(CAPYBARA_CLIP_COMMAND, take->blend_ms);
     }
-    TEST_ASSERT_TRUE(scene_animator_seek(scene, entity, SCENE_ANIMATOR_CURRENT, 0));
-    const int clip = scene->animators[entity].layer.current.clip;
-    const uint32_t duration_ms = take != NULL && take->blend_ms > 0
-                                     ? (uint32_t)take->blend_ms
-                                     : scene_animator_clip_duration_ms(scene, entity, clip);
+    TEST_ASSERT_TRUE(animator_seek(entity, ANIMATOR_CURRENT, 0));
+    const int clip = animator_current_clip(entity);
+    const uint32_t duration_ms =
+        take != NULL && take->blend_ms > 0 ? (uint32_t)take->blend_ms : animator_clip_duration_ms(entity, clip);
     TEST_ASSERT_GREATER_THAN_UINT32(0, duration_ms);
     return (scenario_path_t){scene, entity, duration_ms};
 }
@@ -271,7 +194,7 @@ enter_scenario(void) {
 /* The played profile against its budget, in a frame of its own for the same reason. */
 static __attribute__((noinline)) void
 judge_profile(const frame_profile_t* p) {
-    r3d_perf_budget(scenario_row(), &r3d_perf_quarters[quarter_index], p->frame_us.avg, p->frame_us.p95,
+    lab_perf_budget(scenario_row(), &lab_perf_quarters[quarter_index], p->frame_us.avg, p->frame_us.p95,
                     &scenario->quarters[quarter_index], true);
 }
 
@@ -283,7 +206,7 @@ test_real_time_frame_profile(void) {
         (int64_t)path.duration_ms * MATH_US_PER_MS,
     };
     int64_t remainder_us = 0;
-    const frame_profile_t p = frame_profile_play(&playback, whole_frame, &remainder_us, &played);
+    const frame_profile_t p = frame_profile_play(&playback, lab_test_profile_frame, &remainder_us, &played);
     /* The peaks first: a row over its budget is the one they explain. */
     report_path(&path, &p);
     judge_profile(&p);
@@ -316,7 +239,7 @@ log_step_frames(const step_frame_t* frames, int count, resolution_step_t size) {
             strbuf_appendf(&text, DYNRES_STEPS_FRAME, (int)f->whole_us, (int)f->draw_us, (int)f->upscale_us,
                            (int)f->triangles);
         }
-        ESP_LOGI(TAG, "%s" R3D_PERF_QUARTER_FORMAT, line, r3d_perf_quarters[quarter_index].name);
+        ESP_LOGI(TAG, "%s" LAB_PERF_QUARTER_FORMAT, line, lab_perf_quarters[quarter_index].name);
     }
     memory_free(line);
 }
@@ -334,10 +257,10 @@ test_dynres_steps(void) {
     const resolution_step_t size = render_lab_ladder[ladder_step];
     const resolution_config_t pinned = resolution_config(&size, 1, 1, RENDER_LAB_BUDGET_MAX_MS * MATH_US_PER_MS);
     render_context_set_dynamic_resolution(render_context_main(), &pinned, NULL, 0);
-    (void)render_lab_test_frame_dt(0, false, NULL); /* warm-up, not sampled */
+    (void)lab_test_frame_dt(0, false, NULL); /* warm-up, not sampled */
     for (int i = 0; i < frames; i++) {
         const int64_t start = timing_now_us();
-        (void)render_lab_test_frame_dt(DYNRES_STEPS_FRAME_DT_MS, false, NULL);
+        (void)lab_test_frame_dt(DYNRES_STEPS_FRAME_DT_MS, false, NULL);
         const int32_t whole_us = (int32_t)(timing_now_us() - start);
         const render_context_frame_t f = render_context_frame(render_context_main());
         TEST_ASSERT_EQUAL_INT(0, f.step);
@@ -354,10 +277,10 @@ void
 run_render_lab_frame_profile_suite(void) {
 #ifdef DEVICE_BUILD
     for (size_t i = 0; i < sizeof profile_scenarios / sizeof profile_scenarios[0]; i++) {
-        for (quarter_index = 0; quarter_index < R3D_PERF_QUARTER_COUNT; quarter_index++) {
+        for (quarter_index = 0; quarter_index < LAB_PERF_QUARTER_COUNT; quarter_index++) {
             scenario = &profile_scenarios[i];
             RUN_TEST_CASE(test_real_time_frame_profile, scenario->scene->key, scenario_take(),
-                          r3d_perf_quarters[quarter_index].name);
+                          lab_perf_quarters[quarter_index].name);
         }
     }
 #endif

@@ -1,0 +1,88 @@
+{
+  "quarter": 0,
+  "dt_ms": 16,
+  "frames": {
+    "sponza": 600,
+    "sponza-fitted-full": 600,
+    "bistro-fitted-full": 600,
+    "capybara": 600,
+    "water": 600
+  },
+  "console": {
+    "water": [
+      "0:water tour"
+    ]
+  },
+  "scenes": {
+    "sponza": {
+      "sized_face_zero": 0.0,
+      "sized_face_one": 0.0,
+      "sized_face_two_to_four": 0.0,
+      "sized_face_more": 0.0,
+      "sized_uniform_zero": 0.28833333333333333,
+      "sized_uniform_one": 0.5066666666666667,
+      "sized_uniform_two_to_four": 1.275,
+      "sized_uniform_more": 9.121666666666666,
+      "sized_shaded_zero": 265.745,
+      "sized_shaded_one": 378.7033333333333,
+      "sized_shaded_two_to_four": 805.875,
+      "sized_shaded_more": 3255.595
+    },
+    "sponza-fitted-full": {
+      "sized_face_zero": 0.0,
+      "sized_face_one": 0.0,
+      "sized_face_two_to_four": 0.0,
+      "sized_face_more": 0.0,
+      "sized_uniform_zero": 0.8583333333333333,
+      "sized_uniform_one": 1.8616666666666666,
+      "sized_uniform_two_to_four": 4.636666666666667,
+      "sized_uniform_more": 11.076666666666666,
+      "sized_shaded_zero": 413.305,
+      "sized_shaded_one": 608.6,
+      "sized_shaded_two_to_four": 1345.7533333333333,
+      "sized_shaded_more": 3425.6866666666665
+    },
+    "bistro-fitted-full": {
+      "sized_face_zero": 0.0,
+      "sized_face_one": 0.0,
+      "sized_face_two_to_four": 0.0,
+      "sized_face_more": 0.0,
+      "sized_uniform_zero": 0.9916666666666667,
+      "sized_uniform_one": 0.7616666666666667,
+      "sized_uniform_two_to_four": 2.4916666666666667,
+      "sized_uniform_more": 8.773333333333333,
+      "sized_shaded_zero": 729.395,
+      "sized_shaded_one": 1000.9366666666666,
+      "sized_shaded_two_to_four": 1727.5733333333333,
+      "sized_shaded_more": 2396.7383333333332
+    },
+    "capybara": {
+      "sized_face_zero": 0.0,
+      "sized_face_one": 0.0,
+      "sized_face_two_to_four": 0.0,
+      "sized_face_more": 0.0,
+      "sized_uniform_zero": 1.26,
+      "sized_uniform_one": 1.44,
+      "sized_uniform_two_to_four": 2.5483333333333333,
+      "sized_uniform_more": 2.2983333333333333,
+      "sized_shaded_zero": 17.368333333333332,
+      "sized_shaded_one": 29.901666666666667,
+      "sized_shaded_two_to_four": 98.15333333333334,
+      "sized_shaded_more": 271.8516666666667
+    },
+    "water": {
+      "sized_face_zero": 0.0,
+      "sized_face_one": 0.0,
+      "sized_face_two_to_four": 0.0,
+      "sized_face_more": 0.0,
+      "sized_uniform_zero": 0.7916666666666666,
+      "sized_uniform_one": 0.44,
+      "sized_uniform_two_to_four": 0.625,
+      "sized_uniform_more": 214.945,
+      "sized_shaded_zero": 12.926666666666666,
+      "sized_shaded_one": 11.44,
+      "sized_shaded_two_to_four": 32.85333333333333,
+      "sized_shaded_more": 516.3883333333333
+    }
+  }
+}

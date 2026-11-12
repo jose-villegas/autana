@@ -298,8 +298,8 @@ test_text_aligns_to_either_edge_or_the_centre(void) {
     const mu_Rect r = {20, 40, 200, 30};
     const int w = draw_font_text_width(draw_font_ui(), "ABC", -1, 2);
 
-    TEST_ASSERT_EQUAL_INT(r.x, text_pos_in(r, "ABC", UI_ALIGN_LEFT).x);
-    TEST_ASSERT_EQUAL_INT(r.x + r.w - w, text_pos_in(r, "ABC", UI_ALIGN_RIGHT).x);
+    TEST_ASSERT_EQUAL_INT(r.x, text_pos_in(r, "ABC", UI_ALIGN_START).x);
+    TEST_ASSERT_EQUAL_INT(r.x + r.w - w, text_pos_in(r, "ABC", UI_ALIGN_END).x);
     TEST_ASSERT_EQUAL_INT(r.x + (r.w - w) / 2, text_pos_in(r, "ABC", UI_ALIGN_CENTRE).x);
 }
 
@@ -860,6 +860,53 @@ test_open_list_stays_on_top_during_held_and_idle_band_frames(void) {
     menu_repaint_frames(true);
 }
 
+#define UNDER_FACE_RGB 0x2040A0
+#define UNDER_STALE    RGB565BE(0xFF00FF)
+#define UNDER_BACKDROP RGB565BE(0x00FF00)
+static const mu_Rect UNDER_LEFT = {20, 40, 60, 60};
+static const mu_Rect UNDER_RIGHT = {220, 40, 60, 60};
+
+static void
+under_frame(void) {
+    ui_begin(NULL);
+    if (ui_begin_screen(ui_context(), "Under", MU_OPT_NOTITLE | MU_OPT_NOFRAME)) {
+        mu_draw_rect(ui_context(), UNDER_LEFT, ui_rgb(UNDER_FACE_RGB));
+        mu_draw_rect(ui_context(), UNDER_RIGHT, ui_rgb(UNDER_FACE_RGB));
+        mu_end_window(ui_context());
+    }
+}
+
+static void
+no_backdrop(void) {}
+
+static gfx_color_t*
+pixel_in(mu_Rect r) {
+    return &gfx_framebuffer()[((r.y + (r.h / 2)) * GFX_WIDTH) + r.x + (r.w / 2)];
+}
+
+/* An unchanged UI drawn under in one place paints back only what covers
+ * that place: a face the backdrop never reached is left as it stands. */
+static void
+test_an_unchanged_ui_repaints_only_the_commands_drawn_under(void) {
+    TEST_ASSERT_TRUE(gfx_init());
+    fixture();
+    draw_clear(RGB565BE(UI_BACKGROUND));
+    under_frame();
+    (void)ui_end_over(no_backdrop);
+    gfx_present();
+
+    /* Stale pixels no draw marks: only a repaint would replace them. */
+    *pixel_in(UNDER_LEFT) = UNDER_STALE;
+    *pixel_in(UNDER_RIGHT) = UNDER_STALE;
+    draw_rect(UNDER_RIGHT.x, UNDER_RIGHT.y, UNDER_RIGHT.w / 4, UNDER_RIGHT.h / 4, UNDER_BACKDROP);
+    under_frame();
+    TEST_ASSERT_TRUE(ui_end_over(no_backdrop));
+
+    TEST_ASSERT_EQUAL_HEX16_MESSAGE(RGB565BE(UNDER_FACE_RGB), *pixel_in(UNDER_RIGHT), "the face drawn under repaints");
+    TEST_ASSERT_EQUAL_HEX16_MESSAGE(UNDER_STALE, *pixel_in(UNDER_LEFT), "the face not drawn under is left alone");
+    gfx_reset_for_test();
+}
+
 static void
 test_dense_bands_match_a_full_repaint(void) {
     TEST_ASSERT_TRUE(gfx_init());
@@ -924,6 +971,38 @@ test_ui_end_in_band_mode_is_replayed_over_each_band(void) {
     gfx_readback_end();
     TEST_ASSERT_EQUAL_HEX16(RGB565BE(MENU_INK), row[BUTTON.x + (BUTTON.w / 2)]);
     TEST_ASSERT_EQUAL_HEX16(UNDER_UI, row[BUTTON.x / 2]);
+    gfx_reset_for_test();
+}
+
+/* One frame of a text-only canvas over an expanded picture that changed
+ * no rows of its own. */
+static void
+expanded_text_frame(const char* text) {
+    gfx_expand_frame(false, 0, 0);
+    const input_t idle = {0};
+    ui_begin(&idle);
+    if (ui_begin_screen(ui_context(), "Hud", MU_OPT_NOTITLE | MU_OPT_NOFRAME)) {
+        mu_label(ui_context(), text);
+        mu_end_window(ui_context());
+    }
+    TEST_ASSERT_TRUE(ui_end(UI_NO_BACKGROUND));
+}
+
+/* Over an expanded picture that kept its rows, text that changed dirties
+ * its band and text that held does not. */
+static void
+test_changed_ui_over_a_held_expanded_picture_dirties_its_band(void) {
+    TEST_ASSERT_TRUE(gfx_init());
+    fixture();
+    TEST_ASSERT_NOT_NULL(gfx_half_picture());
+    expanded_text_frame("12");
+    gfx_present();
+    expanded_text_frame("12");
+    TEST_ASSERT_FALSE(gfx_region_dirty(0, 0, GFX_WIDTH, GFX_HEIGHT));
+    gfx_present();
+    expanded_text_frame("13");
+    TEST_ASSERT_TRUE(gfx_region_dirty(0, 0, GFX_WIDTH, GFX_HEIGHT));
+    gfx_present();
     gfx_reset_for_test();
 }
 
@@ -1541,8 +1620,10 @@ run_ui_widgets_suite(void) {
     RUN_TEST(test_menu_band_frame_cost);
     RUN_TEST(test_options_band_frame_cost);
     RUN_TEST(test_dense_bands_match_a_full_repaint);
+    RUN_TEST(test_an_unchanged_ui_repaints_only_the_commands_drawn_under);
     RUN_TEST(test_closing_the_list_restores_the_pixels_under_it);
     RUN_TEST(test_ui_end_in_band_mode_is_replayed_over_each_band);
+    RUN_TEST(test_changed_ui_over_a_held_expanded_picture_dirties_its_band);
     RUN_TEST(test_open_list_stays_on_top_during_held_and_idle_partial_frames);
     RUN_TEST(test_open_list_stays_on_top_during_held_and_idle_band_frames);
 #endif

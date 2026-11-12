@@ -1,0 +1,138 @@
+#include "render/partial/render_partial.h"
+
+#include <math.h>
+#include <string.h>
+
+#include "math/scalar/mathf.h"
+#include "math/scalar/mathi.h"
+#include "render/r3d_pipeline.h"
+#include "render/r3d_project.h"
+#include "render/raster_internal.h"
+
+/* Rows each side of a box's own, for a vertex snapped to the next row and a
+ * small fill's spill past its box. */
+#define RENDER_PARTIAL_ROW_MARGIN 2
+
+void
+render_partial_set_changed(render_partial_t* partial, const box3f_t* boxes, int count) {
+    if (count < 0 || count > RENDER_PARTIAL_CHANGES_MAX) {
+        partial->changed_count = -1;
+        return;
+    }
+    if (count > 0) { /* none may come as NULL */
+        memcpy(partial->changed, boxes, sizeof(*boxes) * (size_t)count);
+    }
+    partial->changed_count = count;
+}
+
+#define SAME_BYTES(field) (memcmp(&a->field, &b->field, sizeof a->field) == 0)
+
+/* Field by field: a view's padding is not part of what it shows. */
+static bool
+same_view(const render_view_t* a, const render_view_t* b) {
+    return SAME_BYTES(position) && SAME_BYTES(screen_x) && SAME_BYTES(screen_y) && SAME_BYTES(forward)
+           && SAME_BYTES(lens) && a->viewport.width == b->viewport.width && a->viewport.height == b->viewport.height
+           && a->viewport.quarter == b->viewport.quarter && a->present == b->present
+           && a->small_fill.ceiling == b->small_fill.ceiling && a->small_fill.gate == b->small_fill.gate
+           && a->small_fill.style == b->small_fill.style && a->skip_hidden == b->skip_hidden && SAME_BYTES(shift);
+}
+
+#define SAME_FIELD(field, type, valid) &&a.field == b.field
+
+static bool
+same_settings(render_settings_t a, render_settings_t b) {
+    return true RENDER_SETTINGS_FIELDS(SAME_FIELD);
+}
+
+/* Whether the kept picture is this one's but for the changed boxes. */
+static bool
+can_draw_over(const render_partial_t* p, const raster_t* raster, const render_view_t* view) {
+    return raster_settings(raster).partial_redraw && p->kept && p->composed && p->changed_count >= 0
+           && raster->attachment_count == 0 && raster->width == p->width && raster->height == p->height
+           && raster->instance_count == p->instance_count && raster->clear == p->clear
+           && raster->upscale.filter == p->filter && same_settings(raster_settings(raster), p->settings)
+           && same_view(view, &p->view) && raster_color(raster) == p->picture;
+}
+
+/* Rows [first, end) `box` covers in the raster, or false when a corner is
+ * at or behind the near plane. */
+static bool
+box_rows(const r3d_lens_t* lens, box3f_t box, int* first, int* end) {
+    float top = INFINITY;
+    float bottom = -INFINITY;
+    for (int k = 0; k < BOX3_CORNERS; k++) {
+        const vec3f_t l = mat4f_apply(&lens->m, box3f_corner(box, k));
+        if (!(l.z > lens->project.near_z)) {
+            return false;
+        }
+        const float y = lens->project.cy + (lens->project.fy * -l.y / l.z);
+        top = mathf_min(top, y);
+        bottom = mathf_max(bottom, y);
+    }
+    /* Held in an int's range before the cast: a corner near the eye's plane projects far. */
+    *first = (int)floorf(mathf_max(top, -R3D_PIXEL_LIMIT)) - RENDER_PARTIAL_ROW_MARGIN;
+    *end = (int)floorf(mathf_min(bottom, R3D_PIXEL_LIMIT)) + 1 + RENDER_PARTIAL_ROW_MARGIN;
+    return true;
+}
+
+render_rows_t
+render_partial_rows(render_partial_t* p, const raster_t* raster, const render_view_t* view) {
+    const render_rows_t every = {0, raster->height};
+    if (!can_draw_over(p, raster, view)) {
+        p->still_frames = 0;
+        return every;
+    }
+    r3d_lens_t lens;
+    raster_lens(raster, view, 1, &lens);
+    int first = raster->height;
+    int end = 0;
+    for (int i = 0; i < p->changed_count; i++) {
+        int box_first;
+        int box_end;
+        if (!box_rows(&lens, p->changed[i], &box_first, &box_end)) {
+            p->still_frames = 0;
+            return every;
+        }
+        first = mathi_min(first, mathi_max(box_first, 0));
+        end = mathi_max(end, mathi_min(box_end, raster->height));
+    }
+    if (first < end) {
+        p->still_frames = 0;
+        return (render_rows_t){first, end};
+    }
+    p->still_frames++;
+    return (render_rows_t){0, 0};
+}
+
+bool
+render_partial_picks_owed(const render_partial_t* p, int pick_every) {
+    return p->still_frames < pick_every;
+}
+
+void
+render_partial_kept(render_partial_t* p, const raster_t* raster, const render_view_t* view) {
+    /* A debug view drew its own colours. */
+    p->kept = raster_settings(raster).partial_redraw && raster->attachment_count == 0;
+    p->view = *view;
+    p->width = raster->width;
+    p->height = raster->height;
+    p->instance_count = raster->instance_count;
+    p->clear = raster->clear;
+    p->filter = raster->upscale.filter;
+    p->settings = raster_settings(raster);
+    p->picture = raster_color(raster);
+    p->composed = false;
+}
+
+bool
+render_partial_composed(render_partial_t* p, const uint16_t* destination) {
+    const bool there = destination == p->destination;
+    p->destination = destination;
+    p->composed = true;
+    return there;
+}
+
+void
+render_partial_forget(render_partial_t* p) {
+    p->kept = false;
+}

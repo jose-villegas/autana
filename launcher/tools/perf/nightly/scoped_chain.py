@@ -32,7 +32,7 @@ from device_capture import board_steps_completed
 from ci_step import output, summarize
 from process_tree import (launch_process_tree, stop_process_tree, close_process_tree, install_console_interrupt_handler,
                           terminate_unwinds)
-from local_schedule import (Clock, wait_idle, gpu_pending, gpu_on_host, GPU_NOT_ON_HOST,
+from local_schedule import (Clock, wait_idle, gpu_pending, gpu_on_host, GPU_NOT_ON_HOST, QUIET_HOST_WORKFLOWS,
                             NIGHT_STEP_HANG_SECONDS, MARKER_KEY_FORMAT, heavy_root, night_cutoff, night_end)
 from nightly.lnt import (lnt_report, night_manifest, night_ran, read_night, read_last_night,
                          manifests_since, night_record_path, read_last_night_record, VARIANT, BUILD_FLAGS,
@@ -741,7 +741,7 @@ def plan(args, clock=None, request=None):
     clock = clock or Clock()
     marker = datetime.fromisoformat(args.marker)
     if gpu_on_host(clock):
-        if not wait_idle(lambda: gpu_pending(request=request), clock, idle_polls=2,
+        if not wait_idle(lambda: gpu_pending(QUIET_HOST_WORKFLOWS, request=request), clock, idle_polls=2,
                          until=clock.now() + timedelta(seconds=GPU_PLAN_WAIT_SECONDS)):
             print(f"::warning::{GPU_STILL_PENDING}", file=sys.stderr)
             summarize(GPU_STILL_PENDING)

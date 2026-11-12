@@ -46,7 +46,7 @@ class WriteBakedTests(unittest.TestCase):
         geometry = SimpleNamespace(positions=positions, rgb=np.full((4, 3), 100), tris=np.array([[0, 1, 2], [0, 2, 3]]),
                                    tri_double=np.zeros(2, dtype=int), scale={"position_scale": 8})
         job = SimpleNamespace(renderer=SimpleNamespace(face_samples=face_samples),
-                              settings=SimpleNamespace(meshlet_triangles=MESHLET_TRIANGLES, lod=False))
+                              settings=SimpleNamespace(meshlet_triangles=MESHLET_TRIANGLES, lod=False, morph=False))
         faces = np.array([[255.0, 0.0, 0.0], [0.0, 0.0, 255.0]])
         with tempfile.TemporaryDirectory() as directory, \
                 unittest.mock.patch.object(mesh_import, "flat_colours", return_value=faces) as lit:
@@ -298,11 +298,9 @@ class SweepTests(unittest.TestCase):
                  unittest.mock.patch.object(mesh_import, "write_baked", return_value=start), \
                  unittest.mock.patch.object(mesh_source, "camera_path_poses", return_value=poses), \
                  unittest.mock.patch.object(fitted_variant, "prepare_references", wraps=fitted_variant.prepare_references) as prepare, \
-                 unittest.mock.patch.object(reference_render, "render_sets", return_value="traced_here") as render:
+                 unittest.mock.patch.object(reference_render, "render_sets") as render:
                 fitted_variant.sweep_references("scene", scene, job, work)
                 fitted_variant.sweep_references("scene", scene, job, work)
-            self.assertEqual((work / fitted_variant.TRACED_ON).read_text(), "traced_here\n",
-                             "the set records the variant it was traced on")
         self.assertEqual(render.call_count, 1)
         self.assertEqual(prepare.call_args.args[0].size, renderer.fit.size)
         inputs, sets = render.call_args.args

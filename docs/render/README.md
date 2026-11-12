@@ -45,8 +45,8 @@ each stage).
 | Folder | Pages |
 |---|---|
 | [offline/](offline/README.md) | [Mesh-Import](offline/Mesh-Import.md), [Bake-Method](offline/Bake-Method.md), [Appearance-Fit](offline/Appearance-Fit.md), [Bake-Quality](offline/Bake-Quality.md), [Baked-Mesh](offline/Baked-Mesh.md) |
-| [scene/](scene/README.md) | [Scene-Files](scene/Scene-Files.md), [Scene-Manager](scene/Scene-Manager.md), [Camera](scene/Camera.md) |
-| [frame/](frame/README.md) | [Culling](frame/Culling.md), [Coverage](frame/Coverage.md), [Attachments](frame/Attachments.md), [View-Modes](frame/View-Modes.md), [Overdraw](frame/Overdraw.md), [Dynamic-Resolution](frame/Dynamic-Resolution.md), [Frame-Generation](frame/Frame-Generation.md) |
+| [scene/](scene/README.md) | [Scene-Files](scene/Scene-Files.md), [Scene-Manager](scene/Scene-Manager.md), [Scene-Components](scene/Scene-Components.md), [Scene-Loading](scene/Scene-Loading.md), [Scene-Frame](scene/Scene-Frame.md), [Camera](scene/Camera.md) |
+| [frame/](frame/README.md) | [Culling](frame/Culling.md), [Levels-of-Detail](frame/Levels-of-Detail.md), [Coverage](frame/Coverage.md), [Attachments](frame/Attachments.md), [View-Modes](frame/View-Modes.md), [Overdraw](frame/Overdraw.md), [Dynamic-Resolution](frame/Dynamic-Resolution.md), [Frame-Generation](frame/Frame-Generation.md) |
 | [animation/](animation/README.md) | [Skinned-Meshes](animation/Skinned-Meshes.md), [Animation-Tracks](animation/Animation-Tracks.md), [Skeleton-and-Skin](animation/Skeleton-and-Skin.md), [Skinned-Lighting](animation/Skinned-Lighting.md) |
 | this folder | [Building-a-Scene](Building-a-Scene.md) (start here), [Mesh-Rendering](Mesh-Rendering.md) (the raster), [Rendering-Options](Rendering-Options.md) (every knob that trades work for speed or look), [Render-Settings](Render-Settings.md) (the render context's settings and their overrides) |
 

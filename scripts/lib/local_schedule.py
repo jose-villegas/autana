@@ -46,8 +46,14 @@ GPU_WORKFLOWS = (BAKES_WORKFLOW, DOC_IMAGES_WORKFLOW)
 # A GPU stage is hung once no task or bake has finished for this long: above the slowest single task (a
 # cold CPU reference set, about 2.5 h), so a slow stage that still progresses is never stopped.
 GPU_STAGE_PROGRESS_SECONDS = 4 * 60 * 60
-# The whole stage's backstop, under NIGHT_STEP_HANG_SECONDS.
-GPU_STAGE_HANG_SECONDS = 14 * 60 * 60
+# Each stage's backstop, under NIGHT_STEP_HANG_SECONDS.
+GPU_STAGE_HANG_SECONDS = {DOC_IMAGES_WORKFLOW: 14 * 60 * 60, BAKES_WORKFLOW: 4 * 60 * 60}
+# Doc images reserve WSL_MEMORY_REQUIRED_BYTES and render for hours: they wait for the boards and hold heavy.
+# A fit is one GPU-bound process: it runs beside builds and board jobs, on its CPU share.
+QUIET_HOST_WORKFLOWS = (DOC_IMAGES_WORKFLOW,)
+# A stage beside board work runs on the top 1/SHARED_CPU_DIVISOR of the host's CPUs; builds and board
+# tooling keep the rest.
+SHARED_CPU_DIVISOR = 2
 NIGHT_STEP_HANG_SECONDS = 23 * 60 * 60
 GPU_PENDING_STATUSES = ("queued", "waiting", "in_progress")
 DEFERRED = "GPU doc images deferred: bakes queued or running"
@@ -167,11 +173,21 @@ def guard_stage(process, progress, started, clock, workflow):
         now = clock.now()
         idle = now.timestamp() - progress.stat().st_mtime
         expired = ("GPU_STAGE_PROGRESS_SECONDS" if idle >= GPU_STAGE_PROGRESS_SECONDS else
-                   "GPU_STAGE_HANG_SECONDS" if (now - started).total_seconds() >= GPU_STAGE_HANG_SECONDS else None)
+                   "GPU_STAGE_HANG_SECONDS" if (now - started).total_seconds() >= GPU_STAGE_HANG_SECONDS[workflow] else None)
         if expired:
             print(f"{expired} expired for {workflow}: last progress {idle / 60:.0f} min ago", flush=True)
             stop_process_tree(process)
             return EXIT_HUNG
+
+
+def quiet_host(workflow):
+    return workflow in QUIET_HOST_WORKFLOWS
+
+
+def cpu_share(cpus):
+    """The CPUs a stage beside board work runs on: the highest-numbered 1/SHARED_CPU_DIVISOR, at least one."""
+    cpus = sorted(cpus)
+    return set(cpus[len(cpus) - max(1, len(cpus) // SHARED_CPU_DIVISOR):])
 
 
 def gpu_ready(clock=None, board_held=None):
@@ -212,12 +228,17 @@ def main():
             print(DEFERRED)
             summarize(DEFERRED)
             return EXIT_DEFERRED
-        gpu_ready(clock)
+        if quiet_host(workflow):
+            gpu_ready(clock)
         return 0
     command = args.command[1:] if args.command[:1] == ["--"] else args.command
     if not command:
         parser.error("start needs -- <command...>")
     output({"rendered": True})
+    if not quiet_host(workflow):
+        share = cpu_share(os.sched_getaffinity(0))
+        os.sched_setaffinity(0, share)
+        print(f"beside board work on CPUs {','.join(map(str, sorted(share)))}", flush=True)
     started, code = clock.now(), EXIT_HUNG
     marker = os.environ.get("MARKER") or started.isoformat()
     steps = heavy_root() / "night-steps" / datetime.fromisoformat(marker).strftime(MARKER_KEY_FORMAT)

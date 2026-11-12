@@ -33,7 +33,8 @@ and picture basis from `render_view_t`.
 | `render_view_t` | One frame: eye, picture axes and forward in world units, pixels per unit depth, centre, near plane and picture size |
 | `viewport_t` | The picture's size and the quarter turn the panel is read at; `render_view_make()` and `render_view_refit()` take one |
 | `r3d_instance_t` | One mesh and, optionally, its baked placement: a 3x3 (rotation times a positive scale) and a position. No placement draws the mesh as it is. An optional world box lets the cull drop it before its lens ([Culling.md](frame/Culling.md#the-tree-walk)) |
-| `raster_t` | The `r3d_instance_t` array it draws (one mesh is a count of one), at one size, into a scratch block the caller hands it. Its options are fields the caller sets: `clear`, and `upscaled` with a destination picture at least as large |
+| `r3d_batch_draw_t` | A batch: an instance whose placement and world box hold copies of its mesh drawn from packed rows ([SCNE batches](../assets/formats/SCNE.md#batches)) |
+| `raster_t` | The `r3d_instance_t` array it draws (one mesh is a count of one), then its `r3d_batch_draw_t` array, at one size, into a scratch block the caller hands it. Its options are fields the caller sets: `clear`, and `upscaled` with a destination picture at least as large |
 | `raster_draw()` | Takes a `const render_view_t*` and draws every instance through that frame view |
 | `raster_census()` | `raster_draw()`'s cull alone, into the scratch block's list: on an upscaled raster with unchanged destination dimensions it holds at any render size, so a caller can price sizes first ([Dynamic-Resolution.md](frame/Dynamic-Resolution.md)) |
 | `raster_draw_culled()` | `raster_draw()` from that list at the raster's size now, without culling again |
@@ -72,12 +73,11 @@ The importer bakes the placement from a position, a rotation and a scale
 | `raster.h` | An array of instances drawn on both cores, optionally upscaled into a destination picture |
 | `raster_show.h` | Development views paint colour from the raster maps |
 | `raster_attachment.h` | What a further attachment declares: its size per pixel, its clear, and the hooks it takes part in a picture with |
-| `raster_motion.h` | The motion-vector attachment: where each pixel's point was in the previous picture |
 | `context/render_context.h` | The render context: the size and quality a frame is drawn at, apart from what is drawn and from where |
 | `resolution/resolution.h` | Dynamic resolution: the steps, the stepped controller and the predictor a render context can opt into |
 | `viewport.h` | The viewport, and where a physical pixel lands in the upright picture |
 | `r3d_lit_mesh.h` | The baked mesh format: per-vertex or per-face colour, meshlet clusters, a node tree, optional levels of detail, and the view built from a pack entry |
-| `lod/r3d_lod.h` | The level pick: which groups an instance draws coarse at a tolerance in pixels ([Cluster-LOD.md](../plans/Cluster-LOD.md)) |
+| `lod/r3d_lod.h` | The level pick: which groups an instance draws coarse at a tolerance in pixels ([Levels-of-Detail.md](frame/Levels-of-Detail.md)) |
 | `dynamic/r3d_dynamic_mesh.h` | A lit mesh rebuilt from caller triangles each frame: clusters of `R3D_DYNAMIC_CLUSTER_TRIANGLES` in source order, a tree with at most `R3D_LIT_NODE_CHILDREN_MAX` children per inner node, and vertex and cluster counts held at their capacities so the raster sizes its scratch once |
 | `r3d_pipeline.h` | Internal: the raster's stages, lens, cull, transform, draw, and its scratch layout |
 | `r3d_span.h` | One depth-tested triangle filled into a window of rows, Gouraud-shaded or face-coloured, its coverage exact on 1/16-pixel positions, and the span writer a further attachment fills through |
@@ -98,7 +98,7 @@ from `math/linear/`, documented in [linear maths](../math/Linear.md) and
 | `math/projection/projectf.h` | The pinhole lens value, continuous float projection and float near clipping |
 | `projectx_t` | A Q16.16 lens; fixed near clipping accepts any common camera-space scale |
 | `render_view_t.lens` | The view's square-pixel pinhole |
-| `mat4f_t` | The raster's lens and motion maps: composed with `mat4f_mul_affine()`, inverted with `mat4f_invert_affine()`, applied to each vertex with `mat4f_apply()` |
+| `mat4f_t` | The raster's lens and the frame-generation warp's map: composed with `mat4f_mul_affine()`, inverted with `mat4f_invert_affine()`, applied to each vertex with `mat4f_apply()` |
 | render | Pixel snapping and fixed line units: its 32-bit quotient truncates toward zero before the pixel-scale multiply |
 | `render/r3d_project.h` | The float reference: biases pixel offsets slightly away from zero before truncating toward zero |
 
@@ -109,11 +109,12 @@ flowchart TB
     View["render_view_t<br/><i>basis, fit, picture</i>"] --> Census
     subgraph Census["raster_census()"]
         direction LR
-        Picture["r3d_lens_init()<br/><i>for the picture</i><br/>world box, r3d_lens_place()<br/><i>per instance</i>"] --> Cull
+        Expand["drawn list<br/><i>each instance, then each copy<br/>a batch's chunk and copy spheres keep</i>"] --> Picture
+        Picture["r3d_lens_init()<br/><i>for the picture</i><br/>world box, r3d_lens_place()<br/><i>per drawn instance</i>"] --> Cull
         Cull["r3d_pipeline_cull()<br/><i>walk the tree, nearest first;<br/>bound each kept box's depth</i>"] --> Scale
         Scale["inverse_depth_scale_fit()<br/><i>the depth scale</i>"]
     end
-    Census --> List["the scratch block's census<br/><i>depth scale, then culled list;<br/>fixed offset across render sizes</i>"]
+    Census --> List["the scratch block's census<br/><i>head, culled list, kept copies;<br/>fixed offset across render sizes</i>"]
     View --> Draw
     Size["the render size"] --> Draw
     List --> Draw
@@ -193,7 +194,10 @@ sequenceDiagram
     participant J as core 1 job worker
     participant P as present on core 1
     C0->>P: gfx_present_begin() sends frame N-1
-    Note over C0: update(), cull every cluster
+    Note over C0: update()
+    C0->>J: cull the instances past the cull share
+    Note over C0: cull the instances before it
+    J-->>C0: job_wait()
     C0->>J: transform the clusters past the instance's transform share
     Note over C0: transform the clusters before it
     J-->>C0: job_wait()
@@ -225,9 +229,12 @@ The layer allocates nothing. Raster draw work owns the resolved camera
 settings and per-side spread table, shared read-only by the row workers.
 
 Per-vertex and per-cluster buffers, the census list, picture
-[attachments](frame/Attachments.md#attachments) and upscale maps share one block. The census comes first, its depth scale then
-its list, at an offset independent of render size; storage is padded for
-picture attachments.
+[attachments](frame/Attachments.md#attachments) and upscale maps share one block. The census comes first, at an offset
+independent of render size: a head (depth scale, kept copy count, where the
+copies are), the culled list, then the copies the cull keeps. Storage is padded
+for picture attachments. Writers and views number instances in the drawn list,
+each instance then each kept copy (`raster_drawn_at()`), so a scene without
+batches reads its instances in place.
 
 `raster_carve()` in `raster_internal.h` states the layout once, and
 `raster_scratch_bytes()` sizes the block from it.

@@ -28,6 +28,7 @@ TOOLS = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(TOOLS))
 from docs.plot_style import FAINT, GIF_FPS, INK, LABEL_SIZE, MUTED, TITLE_SIZE, save, save_gif, subplots  # noqa: E402
 from r3d import mesh_asset, mesh_bundle  # noqa: E402
+from r3d.lit_mesh import read_bundle_mesh  # noqa: E402
 from r3d.meshopt import build_meshlets  # noqa: E402
 
 VIEW = TOOLS.parents[0] / "main/render/view/raster_meshlets.c"
@@ -253,7 +254,7 @@ def build(path):
 def read_baked_mesh(path, rest):
     """The named rest mesh of a baked bundle, with its levels sibling."""
     entries, _ = mesh_bundle.decode(path.read_bytes())
-    return mesh_bundle.read_mesh(entries, rest)
+    return read_bundle_mesh(entries, rest)
 
 
 def main(argv=None):

@@ -1,7 +1,7 @@
 /*
  * Portable suite: raster_attachment.h. Further attachments carved beside
- * colour and depth, their writers following the fill, and their begin and
- * resolve hooks around a picture. Every mesh is built inside the test.
+ * colour and depth, their writers following the fill, and their begin hook
+ * before a picture. Every mesh is built inside the test.
  */
 
 #include <stdbool.h>
@@ -24,9 +24,9 @@
 #include "render/context/render_context.h"
 #include "render/r3d_lit_mesh.h"
 #include "render/raster.h"
+#include "render/raster_internal.h"
 #include "render/view/raster_copies.h"
 #include "render/view/raster_meshlets.h"
-#include "render/view/raster_motion.h"
 #include "render/view/raster_overdraw.h"
 #include "render/view/raster_show.h"
 #ifdef HOST_HEAP_ARENA
@@ -52,10 +52,9 @@ cluster_writer(const raster_attachment_t* self, int instance, r3d_span_writer_t*
     return true;
 }
 
-/* Counts its begin calls and marks every row resolve passes. */
+/* Counts its begin calls. */
 typedef struct {
     int begins;
-    uint8_t resolved[H];
 } hooks_t;
 
 static void
@@ -63,15 +62,6 @@ hooks_begin(const raster_attachment_t* self, const raster_t* raster, const rende
     (void)raster;
     (void)view;
     ((hooks_t*)self->state)->begins++;
-}
-
-static void
-hooks_resolve(const raster_attachment_t* self, const raster_t* raster, const gfx_target_t* rows, int index) {
-    (void)raster;
-    (void)index;
-    for (int y = rows->first_row; y < gfx_target_end_row(rows); y++) {
-        ((hooks_t*)self->state)->resolved[y]++;
-    }
 }
 
 static raster_rig_t*
@@ -154,21 +144,15 @@ test_every_attachment_is_carved_at_the_drawn_size(void) {
 }
 
 static void
-test_begin_runs_once_and_resolve_covers_every_row_once(void) {
+test_begin_runs_once_per_draw(void) {
     hooks_t* hooks = calloc(1, sizeof(*hooks));
     TEST_ASSERT_NOT_NULL(hooks);
-    const raster_attachment_t a = {.format = IMAGE_U16,
-                                   .clear = raster_attachment_clear_u16,
-                                   .begin = hooks_begin,
-                                   .resolve = hooks_resolve,
-                                   .state = hooks};
+    const raster_attachment_t a = {
+        .format = IMAGE_U16, .clear = raster_attachment_clear_u16, .begin = hooks_begin, .state = hooks};
     const raster_attachment_t* const one[] = {&a};
     raster_rig_t* r = rig_open(one, 1);
     draw(r);
     TEST_ASSERT_EQUAL_INT(1, hooks->begins);
-    for (int y = 0; y < H; y++) {
-        TEST_ASSERT_EQUAL_UINT8(1, hooks->resolved[y]);
-    }
     free(hooks);
 }
 
@@ -352,10 +336,12 @@ test_cluster_values_and_constant_writers(void) {
     TEST_ASSERT_TRUE(seen[0] > 0 && seen[1] > 0);
     TEST_ASSERT_EQUAL_UINT32(17, base);
 
-    const raster_buffers_t buffers = raster_carve(&r->raster);
+    raster_buffers_t* const buffers = malloc(sizeof *buffers);
+    TEST_ASSERT_NOT_NULL(buffers);
+    *buffers = raster_carve(&r->raster);
     memset(raster_depth(&r->raster), 0, sizeof(uint16_t) * W * H);
     for (int k = 0; k < 2; k++) {
-        raster_attachment_clear_u16(both[k], &r->raster, buffers.picture.attachment[GFX_ATTACHMENT_FURTHER + k].pixels,
+        raster_attachment_clear_u16(both[k], &r->raster, buffers->picture.attachment[GFX_ATTACHMENT_FURTHER + k].pixels,
                                     W * H);
     }
     r3d_span_writer_t writers[2] = {0};
@@ -364,11 +350,11 @@ test_cluster_values_and_constant_writers(void) {
         writers[k].attachment = GFX_ATTACHMENT_FURTHER + k;
     }
     r3d_span_target_t target = {.writers = writers, .writer_count = 2, .small_fill = &r3d_span_small_fill_default};
-    gfx_target_window(&target.rows, &buffers.picture, 0, H);
+    gfx_target_window(&target.rows, &buffers->picture, 0, H);
     raster_lens(&r->raster, &r->view, 1, &r->lens);
     const uint16_t visible = 1;
-    r3d_pipeline_transform(&r->quad[0].mesh, &r->lens, &visible, 1, buffers.cs, buffers.rows, false);
-    r3d_pipeline_draw(&r->quad[0].mesh, &r->lens, &visible, 1, buffers.cs, buffers.rows, &target, buffers.work[0]);
+    r3d_pipeline_transform(&r->quad[0].mesh, &r->lens, &visible, 1, buffers->cs, buffers->rows, false);
+    r3d_pipeline_draw(&r->quad[0].mesh, &r->lens, &visible, 1, buffers->cs, buffers->rows, &target, buffers->work[0]);
     int drawn = 0;
     for (int p = 0; p < W * H; p++) {
         const bool won = raster_depth(&r->raster)[p] != 0;
@@ -379,6 +365,7 @@ test_cluster_values_and_constant_writers(void) {
     TEST_ASSERT_TRUE(drawn > 0);
     TEST_ASSERT_EQUAL_UINT32(17, writers[0].value);
     TEST_ASSERT_EQUAL_UINT32(17, writers[1].value);
+    free(buffers);
     free(clusters);
 }
 
@@ -436,11 +423,13 @@ test_copies_share_a_hue_and_a_shape_drawn_once_is_grey(void) {
         TEST_ASSERT_EQUAL_UINT16(RASTER_COPIES_UNIQUE, ids[p]);
     }
     static const uint8_t red[4][3] = {{255, 0, 0}, {255, 0, 0}, {255, 0, 0}, {255, 0, 0}};
-    r3d_lit_mesh_t copy = *r->instance[1].mesh;
-    copy.colors = red;
+    r3d_lit_mesh_t* const copy = malloc(sizeof *copy);
+    TEST_ASSERT_NOT_NULL(copy);
+    *copy = *r->instance[1].mesh;
+    copy->colors = red;
     mat4f_t shifted = mat4f_identity();
     shifted.m[0][MAT3F_AXES] = COPY_SHIFT;
-    const r3d_instance_t three[] = {r->instance[0], r->instance[1], {&copy, &shifted, NULL, NULL}};
+    const r3d_instance_t three[] = {r->instance[0], r->instance[1], {copy, &shifted, NULL, NULL}};
     r->raster.instances = three;
     r->raster.instance_count = 3;
     raster_rig_attach(r, one, 1);
@@ -466,6 +455,7 @@ test_copies_share_a_hue_and_a_shape_drawn_once_is_grey(void) {
     TEST_ASSERT_EQUAL_UINT16(0, ((const uint16_t*)raster_rig_attachment(r, 0))[0]);
     raster_show(&r->raster);
     TEST_ASSERT_EQUAL_UINT16(r->raster.clear, raster_color(&r->raster)[0]);
+    free(copy);
 }
 
 /* Each mesh its own view, as each renderer holds: a shape drawn once, a shape
@@ -482,7 +472,13 @@ test_copies_take_their_first_instance_and_each_shape_its_own_id(void) {
     for (int i = 0; i < MESHES; i++) {
         instances[i] = (r3d_instance_t){.mesh = &meshes[i]};
     }
-    const raster_t raster = {.instances = instances, .instance_count = MESHES};
+    /* The census's share of a scratch, holding the drawn list a census of
+     * these instances would: each in place, no copies kept. */
+    raster_t raster = {.instances = instances, .instance_count = MESHES};
+    raster.scratch = malloc(raster_culled_bytes(&raster));
+    TEST_ASSERT_NOT_NULL(raster.scratch);
+    (void)raster_census_place(&raster);
+    raster_census_head(&raster)->copy_count = 0;
     raster_copies_t state = {0};
     const raster_attachment_t view = raster_copies_view(&state);
     const render_view_t frame_view = render_view_fixture_at(&raster_rig_camera, (viewport_t){W, H, 0});
@@ -494,6 +490,7 @@ test_copies_take_their_first_instance_and_each_shape_its_own_id(void) {
         TEST_ASSERT_EQUAL_UINT32(expected[i], out.value);
     }
     TEST_ASSERT_TRUE(raster_meshlets_color(2) != raster_meshlets_color(3));
+    free(raster.scratch);
 }
 
 /* The wall alone covers the corner; the centre is covered by both quads, and
@@ -576,10 +573,10 @@ test_same_view_survives_frames_and_contexts_own_their_states(void) {
     render_context_t* b = &contexts[1];
     render_context_set_scale(a, 100);
     render_context_set_scale(b, 100);
-    const int view = render_context_debug_view_named("motion");
+    const int view = render_context_debug_view_named("meshlets");
     render_context_set_debug_view(a, view);
     render_context_set_debug_view(b, view);
-    raster_motion_t* state = a->debug_view_state;
+    const void* state = a->debug_view_state;
     TEST_ASSERT_TRUE(a->debug_view_state != b->debug_view_state);
     for (int frame = 0; frame < 3; frame++) {
 #ifdef HOST_HEAP_ARENA
@@ -588,7 +585,6 @@ test_same_view_survives_frames_and_contexts_own_their_states(void) {
 #endif
         render_context_set_debug_view(a, view);
         TEST_ASSERT_EQUAL_PTR(state, a->debug_view_state);
-        TEST_ASSERT_EQUAL_INT(frame > 0, state->has_previous);
 #ifdef HOST_HEAP_ARENA
         heap_arena_snapshot(&after_blocks, &after_bytes);
         TEST_ASSERT_EQUAL_size_t(blocks, after_blocks);
@@ -596,8 +592,9 @@ test_same_view_survives_frames_and_contexts_own_their_states(void) {
 #endif
         const render_view_t frame_view = render_view_fixture_at(&raster_rig_camera, (viewport_t){W, H, 0});
         TEST_ASSERT_TRUE(render_context_draw(a, r->instance, 2, &frame_view, 0));
-        TEST_ASSERT_TRUE(state->has_previous);
-        TEST_ASSERT_FALSE(((raster_motion_t*)b->debug_view_state)->has_previous);
+        TEST_ASSERT_EQUAL_PTR(state, a->debug_view_state);
+        TEST_ASSERT_TRUE(((const raster_meshlets_t*)state)->next > 1);
+        TEST_ASSERT_EQUAL_UINT32(0, ((const raster_meshlets_t*)b->debug_view_state)->next);
     }
     render_context_release(a);
     TEST_ASSERT_NOT_NULL(b->debug_view_state);
@@ -665,43 +662,12 @@ test_failed_view_allocation_leaves_shaded(void) {
     render_context_set_debug_view(c, render_context_debug_view_named("depth"));
     held_block_t* occupied = hold_app_heap();
     TEST_ASSERT_NOT_NULL(occupied);
-    render_context_set_debug_view(c, render_context_debug_view_named("motion"));
+    render_context_set_debug_view(c, render_context_debug_view_named("meshlets"));
     release_app_heap(occupied);
     TEST_ASSERT_EQUAL_INT(0, c->debug_view);
     TEST_ASSERT_NULL(c->debug_view_state);
     TEST_ASSERT_NULL(c->raster.attachments);
     TEST_ASSERT_EQUAL_INT(0, c->raster.attachment_count);
-    render_context_release(c);
-    free(c);
-}
-
-/* No room for a draw's instances detaches the view, and the frame draws shaded. */
-static void
-test_motion_without_room_detaches_and_draws_shaded(void) {
-    raster_rig_t* r = rig_open(NULL, 0);
-    render_context_t* c = calloc(1, sizeof(*c));
-    TEST_ASSERT_NOT_NULL(c);
-    render_context_set_scale(c, 100);
-    render_context_set_debug_view(c, render_context_debug_view_named("motion"));
-    const render_view_t frame_view = render_view_fixture_at(&raster_rig_camera, (viewport_t){W, H, 0});
-    TEST_ASSERT_TRUE(render_context_draw(c, r->instance, 1, &frame_view, 0));
-    TEST_ASSERT_EQUAL_INT(1, c->raster.attachment_count);
-    held_block_t* occupied = hold_app_heap();
-    TEST_ASSERT_NOT_NULL(occupied);
-    const bool drew = render_context_draw(c, r->instance, 2, &frame_view, 0);
-    release_app_heap(occupied);
-    TEST_ASSERT_TRUE(drew);
-    TEST_ASSERT_EQUAL_INT(RENDER_DEBUG_VIEW_SHADED, c->debug_view);
-    TEST_ASSERT_NULL(c->debug_view_state);
-    TEST_ASSERT_EQUAL_INT(0, c->raster.attachment_count);
-    /* Asked for every frame, it stays refused until another view is asked for. */
-    const int motion = render_context_debug_view_named("motion");
-    render_context_set_debug_view(c, motion);
-    TEST_ASSERT_EQUAL_INT(RENDER_DEBUG_VIEW_SHADED, c->debug_view);
-    TEST_ASSERT_NULL(c->debug_view_state);
-    render_context_set_debug_view(c, render_context_debug_view_named("depth"));
-    render_context_set_debug_view(c, motion);
-    TEST_ASSERT_EQUAL_INT(motion, c->debug_view);
     render_context_release(c);
     free(c);
 }
@@ -716,7 +682,7 @@ test_view_table_and_context_ownership(void) {
     heap_arena_snapshot(&before_blocks, &before_bytes);
     const size_t app_before = app_heap_blocks();
 #endif
-    static const char* const names[] = {"depth", "tiles", "motion", "meshlets", "cull", "boxes", "overdraw", "copies"};
+    static const char* const names[] = {"depth", "tiles", "meshlets", "cull", "boxes", "overdraw", "copies"};
     TEST_ASSERT_EQUAL_INT(sizeof names / sizeof names[0], RENDER_DEBUG_VIEW_COUNT);
     TEST_ASSERT_EQUAL_INT(RENDER_DEBUG_VIEW_SHADED, render_context_debug_view_named("shaded"));
     TEST_ASSERT_EQUAL_INT(RENDER_DEBUG_VIEW_UNKNOWN, render_context_debug_view_named("unknown"));
@@ -783,7 +749,7 @@ test_printed_views_match_the_declared_names(void) {
     char names[128] = {0};
     const size_t bytes = fread(names, 1, sizeof names - 1, out);
     fclose(out);
-    TEST_ASSERT_EQUAL_STRING("shaded, depth, tiles, motion, meshlets, cull, boxes, overdraw, copies", names);
+    TEST_ASSERT_EQUAL_STRING("shaded, depth, tiles, meshlets, cull, boxes, overdraw, copies", names);
     int count = 1;
     for (size_t i = 0; i < bytes; i++) {
         count += names[i] == ',';
@@ -928,13 +894,12 @@ test_split_state_forgets_every_share(void) {
         split.top_offset[i] = JOB_SHARE_MIN - JOB_SHARE_EVEN;
         split.transform_offset[i] = JOB_SHARE_MAX - JOB_SHARE_EVEN;
     }
-    split.resolve_offset = split.upscale_offset = JOB_SHARE_MIN - JOB_SHARE_EVEN;
+    split.upscale_offset = JOB_SHARE_MIN - JOB_SHARE_EVEN;
     raster_split_forget(&split);
     for (int i = 0; i < RASTER_SPLIT_INSTANCES; i++) {
         TEST_ASSERT_EQUAL_INT(0, split.top_offset[i]);
         TEST_ASSERT_EQUAL_INT(0, split.transform_offset[i]);
     }
-    TEST_ASSERT_EQUAL_INT(0, split.resolve_offset);
     TEST_ASSERT_EQUAL_INT(0, split.upscale_offset);
 }
 
@@ -1102,7 +1067,6 @@ run_raster_attachment_suite(void) {
     RUN_TEST(test_meshlet_writer_accepts_the_last_uint16_id);
 #ifdef HOST_HEAP_ARENA
     RUN_TEST(test_failed_view_allocation_leaves_shaded);
-    RUN_TEST(test_motion_without_room_detaches_and_draws_shaded);
 #endif
     RUN_TEST(test_cluster_values_and_constant_writers);
     RUN_TEST(test_a_culled_instance_in_the_middle_leaves_the_next_one_its_own_value);
@@ -1120,7 +1084,7 @@ run_raster_attachment_suite(void) {
     RUN_TEST(test_overdraw_counts_every_fill_and_each_win);
     RUN_TEST(test_attachments_leave_colour_and_depth_as_they_are);
     RUN_TEST(test_every_attachment_is_carved_at_the_drawn_size);
-    RUN_TEST(test_begin_runs_once_and_resolve_covers_every_row_once);
+    RUN_TEST(test_begin_runs_once_per_draw);
 }
 
 SUITE_REGISTER(run_raster_attachment_suite);

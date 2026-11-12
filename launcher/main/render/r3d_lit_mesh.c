@@ -6,18 +6,21 @@
 #include <string.h>
 #include "asset/asset_bytes.h"
 #include "asset/asset_entry.h"
+#include "math/scalar/mathi.h"
 #include "render/lcol_format.h"
 #include "render/llod_format.h"
+#include "render/lmor_format.h"
 
 /* The entry's bytes are the structs' own layout, written by lit_mesh.py. */
+_Static_assert(sizeof(r3d_lit_landing_t) == LMOR_LANDING_SIZE, "a landing point is LMOR_LANDING_SIZE bytes");
 _Static_assert(sizeof(r3d_lit_cluster_t) == 22 && offsetof(r3d_lit_cluster_t, bounds) == 8
                    && offsetof(r3d_lit_cluster_t, double_sided) == 20,
                "r3d_lit_cluster_t is not the layout lit_mesh.py writes");
 _Static_assert(sizeof(r3d_lit_node_t) == 16 && offsetof(r3d_lit_node_t, first) == 12
                    && offsetof(r3d_lit_node_t, leaf) == 15,
                "r3d_lit_node_t is not the layout lit_mesh.py writes");
-_Static_assert(sizeof(r3d_lit_cluster_lod_t) == 4 && sizeof(r3d_lit_lod_group_t) == 10
-                   && offsetof(r3d_lit_lod_group_t, error) == 8,
+_Static_assert(sizeof(r3d_lit_cluster_lod_t) == 4 && sizeof(r3d_lit_lod_group_t) == 12
+                   && offsetof(r3d_lit_lod_group_t, error) == 8 && offsetof(r3d_lit_lod_group_t, saves) == 10,
                "the LOD records are not the layout lit_mesh.py writes");
 
 enum {
@@ -143,10 +146,12 @@ lod_is_ordered(const r3d_lit_mesh_t* mesh) {
 }
 
 /* Whether every cluster under `node` is finest, or with `finest` false,
- * every one coarse. */
+ * every one coarse. A tree deeper than R3D_LIT_TREE_DEPTH_MAX is neither:
+ * the walk's stack holds R3D_LIT_WALK_DEEPEST, the least that walks a tree
+ * within it, so it stays small on the open's stack. */
 static bool
 subtree_is(const r3d_lit_mesh_t* mesh, int node, bool finest) {
-    uint16_t stack[R3D_LIT_WALK_STACK_MAX];
+    uint16_t stack[R3D_LIT_WALK_DEEPEST];
     int top = 0;
     stack[top++] = (uint16_t)node;
     while (top > 0) {
@@ -156,7 +161,7 @@ subtree_is(const r3d_lit_mesh_t* mesh, int node, bool finest) {
                 if ((mesh->cluster_lod[n->first + i].own == R3D_LOD_NONE) != finest) {
                     return false;
                 }
-            } else if (top < R3D_LIT_WALK_STACK_MAX) {
+            } else if (top < R3D_LIT_WALK_DEEPEST) {
                 stack[top++] = (uint16_t)(n->first + i);
             } else {
                 return false;
@@ -185,6 +190,12 @@ void
 r3d_lit_mesh_find_levels(r3d_lit_mesh_t* mesh) {
     mesh->lod_finest_root = 0;
     mesh->lod_coarse_first = 0;
+    mesh->lod_finest_triangles = 0;
+    for (int c = 0; mesh->cluster_lod != NULL && c < mesh->cluster_count; c++) {
+        if (mesh->cluster_lod[c].own == R3D_LOD_NONE) {
+            mesh->lod_finest_triangles += mesh->clusters[c].triangle_count;
+        }
+    }
     const r3d_lit_node_t* root = &mesh->nodes[0];
     const int first = mesh->cluster_lod == NULL ? -1 : coarse_run_first(mesh);
     if (first < 0 || root->leaf || root->count != 2 || !subtree_is(mesh, root->first, true)
@@ -203,6 +214,7 @@ r3d_lit_mesh_levels_from_asset(const asset_view_t* levels, r3d_lit_mesh_t* mesh)
     mesh->lod_error_least = 0;
     mesh->lod_finest_root = 0;
     mesh->lod_coarse_first = 0;
+    mesh->lod_finest_triangles = 0;
     const asset_status_t status =
         asset_entry_validate(*levels, LLOD_VERSION, LLOD_AT_VERSION, LLOD_HEADER_SIZE, ENTRY_ALIGNMENT);
     if (status != ASSET_OK) {
@@ -234,6 +246,49 @@ r3d_lit_mesh_levels_from_asset(const asset_view_t* levels, r3d_lit_mesh_t* mesh)
     }
     r3d_lit_mesh_find_levels(&built);
     *mesh = built;
+    return ASSET_OK;
+}
+
+asset_status_t
+r3d_lit_mesh_morph_from_asset(const asset_view_t* morph, r3d_lit_mesh_t* mesh) {
+    mesh->morph_shift = NULL;
+    mesh->morph_delta = NULL;
+    mesh->morph_landing = NULL;
+    const asset_status_t status =
+        asset_entry_validate(*morph, LMOR_VERSION, LMOR_AT_VERSION, LMOR_HEADER_SIZE, ENTRY_ALIGNMENT);
+    if (status != ASSET_OK) {
+        return status;
+    }
+    const uint16_t flags = asset_read_u16(morph->data + LMOR_AT_FLAGS);
+    const uint32_t clusters = asset_read_u32(morph->data + LMOR_AT_CLUSTER_COUNT);
+    const uint32_t vertices = asset_read_u32(morph->data + LMOR_AT_VERTEX_COUNT);
+    if (mesh->cluster_lod == NULL || clusters != (uint32_t)mesh->cluster_count
+        || vertices != (uint32_t)mesh->vertex_count || (flags & ~LMOR_LANDING) != 0
+        || ((flags & LMOR_LANDING) != 0 && mesh->face_colors != NULL)) {
+        return ASSET_ERR_FORMAT;
+    }
+    const uint64_t deltas_at = LMOR_HEADER_SIZE + mathi_size_ceil(clusters, ENTRY_ALIGNMENT);
+    const uint64_t landing_at = deltas_at + mathi_size_ceil((size_t)vertices * LMOR_AXES, ENTRY_ALIGNMENT);
+    const uint64_t end = landing_at + ((flags & LMOR_LANDING) != 0 ? (uint64_t)vertices * LMOR_LANDING_SIZE : 0U);
+    if (end != morph->size) {
+        return ASSET_ERR_BOUNDS;
+    }
+    const uint8_t* shift = morph->data + LMOR_HEADER_SIZE;
+    for (uint32_t c = 0; c < clusters; c++) {
+        if (shift[c] > LMOR_SHIFT_MAX) {
+            return ASSET_ERR_FORMAT;
+        }
+    }
+    const r3d_lit_landing_t* landing = (flags & LMOR_LANDING) != 0 ? (const void*)(morph->data + landing_at) : NULL;
+    for (uint32_t v = 0; landing != NULL && v < vertices; v++) {
+        if (landing[v].triangle >= mesh->triangle_count
+            || landing[v].weight[0] + landing[v].weight[1] > (int)LMOR_WEIGHT_WHOLE) {
+            return ASSET_ERR_FORMAT;
+        }
+    }
+    mesh->morph_shift = shift;
+    mesh->morph_delta = (const void*)(morph->data + deltas_at);
+    mesh->morph_landing = landing;
     return ASSET_OK;
 }
 
@@ -299,6 +354,20 @@ sibling_name(const char* mesh_id, const char* suffix, char out[ASSET_NAME_MAX]) 
     return ASSET_OK;
 }
 
+/* The mesh's sibling entry: its id with `suffix`, of `type`. One that is not `required` and is absent
+   leaves `entry` empty. */
+static asset_status_t
+open_sibling(const asset_pack_t* pack, const char* id, const char* suffix, uint32_t type, bool required,
+             asset_view_t* entry) {
+    *entry = (asset_view_t){0};
+    char name[ASSET_NAME_MAX];
+    asset_status_t status = sibling_name(id, suffix, name);
+    if (status == ASSET_OK) {
+        status = asset_pack_find(pack, name, type, entry);
+    }
+    return status == ASSET_ERR_NOT_FOUND && !required ? ASSET_OK : status;
+}
+
 asset_status_t
 r3d_lit_mesh_open(const asset_pack_t* pack, const char* id, r3d_lit_mesh_t* mesh) {
     *mesh = (r3d_lit_mesh_t){0};
@@ -308,18 +377,16 @@ r3d_lit_mesh_open(const asset_pack_t* pack, const char* id, r3d_lit_mesh_t* mesh
         return status;
     }
     status = r3d_lit_mesh_from_asset(&asset, mesh);
-    if (status != ASSET_OK) {
-        return status;
-    }
-    char name[ASSET_NAME_MAX];
-    status = sibling_name(id, LLOD_NAME_SUFFIX, name);
     if (status == ASSET_OK) {
-        status = asset_pack_find(pack, name, LLOD_ASSET, &asset);
-        if (status == ASSET_ERR_NOT_FOUND) {
-            return ASSET_OK;
-        }
+        status = open_sibling(pack, id, LLOD_NAME_SUFFIX, LLOD_ASSET, false, &asset);
+    }
+    if (status == ASSET_OK && asset.data != NULL) {
+        status = r3d_lit_mesh_levels_from_asset(&asset, mesh);
         if (status == ASSET_OK) {
-            status = r3d_lit_mesh_levels_from_asset(&asset, mesh);
+            status = open_sibling(pack, id, LMOR_NAME_SUFFIX, LMOR_ASSET, false, &asset);
+        }
+        if (status == ASSET_OK && asset.data != NULL) {
+            status = r3d_lit_mesh_morph_from_asset(&asset, mesh);
         }
     }
     if (status != ASSET_OK) {
@@ -330,14 +397,11 @@ r3d_lit_mesh_open(const asset_pack_t* pack, const char* id, r3d_lit_mesh_t* mesh
 
 asset_status_t
 r3d_lit_mesh_open_colours(const asset_pack_t* pack, const char* mesh_id, uint16_t set, r3d_lit_mesh_t* mesh) {
-    char name[ASSET_NAME_MAX];
-    asset_status_t status = sibling_name(mesh_id, LCOL_NAME_SUFFIX, name);
-    if (status != ASSET_OK) {
-        return status;
-    }
     asset_view_t view;
-    status = asset_entry_open(pack, name, LCOL_ASSET, LCOL_VERSION, LCOL_AT_VERSION, LCOL_HEADER_SIZE, ENTRY_ALIGNMENT,
-                              &view);
+    asset_status_t status = open_sibling(pack, mesh_id, LCOL_NAME_SUFFIX, LCOL_ASSET, true, &view);
+    if (status == ASSET_OK) {
+        status = asset_entry_validate(view, LCOL_VERSION, LCOL_AT_VERSION, LCOL_HEADER_SIZE, ENTRY_ALIGNMENT);
+    }
     if (status != ASSET_OK) {
         return status;
     }
@@ -379,7 +443,11 @@ r3d_lit_mesh_bounding_sphere(const r3d_lit_mesh_t* mesh) {
 
 box3f_t
 r3d_lit_mesh_world_bounds(const r3d_lit_mesh_t* mesh, const mat4f_t* model) {
-    const box3f_t box = box3f_from_box3s(mesh->nodes[0].bounds, 1.0F / (float)mesh->position_scale);
+    return r3d_box_placed(box3f_from_box3s(mesh->nodes[0].bounds, 1.0F / (float)mesh->position_scale), model);
+}
+
+box3f_t
+r3d_box_placed(box3f_t box, const mat4f_t* model) {
     if (model == NULL) {
         return box;
     }

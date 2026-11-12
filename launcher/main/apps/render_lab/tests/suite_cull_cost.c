@@ -24,15 +24,19 @@
 #include "apps/render_lab/baked_families.h"
 #include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/tests/one_core_draw.h"
-#include "apps/render_lab/tests/r3d_perf_quarters.h"
 #include "asset/asset_store.h"
 #include "core/memory.h"
 #include "core/timing.h"
 #include "gfx/gfx.h"
+#include "lab/test/lab_perf_quarters.h"
 #include "render/r3d_span_internal.h"
 #include "render/raster_internal.h"
 #include "render/view/r3d_pipeline_count.h"
+#include "scene/animator/animator.h"
+#include "scene/camera/camera.h"
+#include "scene/renderer/renderer.h"
 #include "scene/scene.h"
+#include "scene/transform/transform.h"
 
 static const char* TAG = "cull_cost";
 
@@ -84,7 +88,7 @@ report_pose(const char* scene, const char* bake, uint32_t t_ms, variant_t varian
     r3d_pipeline_counts_t n = {0};
     r3d_pipeline_count_walk_t* walk = memory_alloc(sizeof(*walk), MEMORY_APP);
     TEST_ASSERT_NOT_NULL(walk);
-    TEST_ASSERT_EQUAL_INT(visible, r3d_pipeline_cull_counted(mesh, lens, NULL, b.culled + 1, walk, &n));
+    TEST_ASSERT_EQUAL_INT(visible, r3d_pipeline_cull_counted(mesh, lens, NULL, NULL, b.culled + 1, walk, &n));
     memory_free(walk);
     r3d_pipeline_transform(mesh, lens, b.culled + 1, visible, b.cs, b.rows, false);
     r3d_pipeline_count_triangles(mesh, lens, b.culled + 1, visible, b.cs, &n, NULL);
@@ -95,30 +99,31 @@ report_pose(const char* scene, const char* bake, uint32_t t_ms, variant_t varian
     ESP_LOGI(TAG,
              "cull_cost: scene=%s bake=%s t_ms=%u variant=%s %dx%d nodes=%d cut=%d tested=%d clusters=%d vertices=%d "
              "submitted=%d behind=%d clipped=%d missed=%d facing_away=%d set_up=%d cull_us=%lld transform_us=%lld "
-             "setup_us=%lld draw_us=%lld" R3D_PERF_QUARTER_FORMAT,
+             "setup_us=%lld draw_us=%lld" LAB_PERF_QUARTER_FORMAT,
              scene, bake, (unsigned)t_ms, variant_names[variant], raster->width, raster->height, n.nodes_visited,
              n.nodes_cut, n.clusters_tested, n.clusters_kept, vertices, n.triangles_submitted, n.triangles_behind,
              n.triangles_clipped, n.triangles_missed, n.triangles_facing_away, n.triangles_set_up, (long long)us.cull,
-             (long long)us.transform, (long long)us.setup, (long long)us.draw, r3d_perf_quarters[0].name);
+             (long long)us.transform, (long long)us.setup, (long long)us.draw, lab_perf_quarters[0].name);
 }
 
 static void
 measure_family(const scene_baked_t* family) {
     const size_t mark = app_arena_mark();
-    scene_failure_t why;
-    scene_t* scene = scene_load(family->scene, &why);
-    TEST_ASSERT_NOT_NULL_MESSAGE(scene, why.what);
+    scene_failure_t why = {.status = SCENE_ERR_FULL}; /* what scene_load() leaves when it returns no root */
+    const entity_t scene = scene_load(family->scene);
+    (void)scene_failure(scene, &why);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(PENDING_READY, scene_state(scene), why.what);
     const handle_t load = asset_store_load(family->scene);
     const asset_pack_t* pack = asset_store_loaded(load);
     const char* bake = family->bakes[SCENE_BAKED_FITTED_FULL];
-    const scene_entity_t entity = scene_find(scene, name_hash(bake));
-    TEST_ASSERT_NOT_EQUAL_MESSAGE(SCENE_ENTITY_NONE, entity, bake);
+    const entity_t entity = entity_find(scene, name_hash(bake));
+    TEST_ASSERT_FALSE_MESSAGE(handle_is_none(entity), bake);
     r3d_lit_mesh_t mesh;
-    TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_open(pack, scene_entity_mesh_id(scene, entity), &mesh));
-    const scene_entity_t camera = scene_find(scene, name_hash(family->camera));
-    TEST_ASSERT_NOT_EQUAL(SCENE_ENTITY_NONE, camera);
-    const camera_t* lens_of = scene_camera_lens(scene, name_hash(family->camera));
-    (void)render_lab_apply_camera_settings(scene, camera);
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_open(pack, renderer_mesh_id(entity), &mesh));
+    const entity_t camera = entity_find(scene, name_hash(family->camera));
+    TEST_ASSERT_FALSE(handle_is_none(camera));
+    const lens_t* lens_of = camera_lens(entity_find(scene, name_hash(family->camera)));
+    (void)render_lab_apply_camera_settings(camera);
 
     /* The halved bake: the same clusters, each keeping its first half of triangles. */
     const size_t cluster_bytes = sizeof(r3d_lit_cluster_t) * (size_t)mesh.cluster_count;
@@ -143,12 +148,12 @@ measure_family(const scene_baked_t* family) {
     raster.scratch = memory_alloc(raster_scratch_bytes(&raster), MEMORY_APP);
     TEST_ASSERT_NOT_NULL(raster.scratch);
 
-    const uint32_t period = scene_animator_clip_duration_ms(scene, camera, 0);
+    const uint32_t period = animator_clip_duration_ms(camera, 0);
     for (uint32_t t_ms = 0; t_ms < period; t_ms += CULL_COST_POSE_EVERY_MS) {
-        (void)scene_animator_seek(scene, camera, SCENE_ANIMATOR_CURRENT, t_ms);
-        const transformf_t pose = scene_entity_world(scene, camera);
+        (void)animator_seek(camera, ANIMATOR_CURRENT, t_ms);
+        const transformf_t pose = transform_world(camera);
         const render_view_t view =
-            camera_view(lens_of, &pose, (viewport_t){size.width, size.height, r3d_perf_quarters[0].quarter});
+            lens_view(lens_of, &pose, (viewport_t){size.width, size.height, lab_perf_quarters[0].quarter});
         r3d_lens_t lens;
         r3d_lens_init(&lens, &view, mesh.position_scale);
         r3d_lens_t mirrored = lens;
@@ -163,7 +168,7 @@ measure_family(const scene_baked_t* family) {
     memory_free(raster.scratch);
     memory_free(halved_clusters);
     asset_store_release(load);
-    scene_unload(scene);
+    scene_release(scene);
     app_arena_rewind(mark);
 }
 

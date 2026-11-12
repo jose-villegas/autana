@@ -27,7 +27,7 @@ entry, so the frame hook changes the next frame without reloading the scene.
 ### Menu
 
 The BOOT menu has a SCENE dropdown of scene families (`family` in
-`render_lab_scene_t`), then a VARIANT dropdown when the family has several scenes (Sponza's
+`lab_scene_t`), then a VARIANT dropdown when the family has several scenes (Sponza's
 bakes, from `variant`), then the rows the showing scene declares in its
 `controls` (Capybara's CLIP and BLEND). Order in `scenes[]` is the order of every list, and
 index 0 (Sponza Fitted Full) is the scene a start with no key shows. Console
@@ -50,6 +50,7 @@ and shake. The menu's WATER FILL sets the share of the tank's volume, 10 to
 | `water.two_core` | 1 (default) runs part of the particle passes, the surface field, its meshing and the shading on core 1, each cut to balance the two cores' times (`job_run_range()`); 0 keeps them on one core |
 | `water.red_black` | 1 (default) solves the pressure in red-black order, each colour split across both cores; 0 in index order on one core |
 | `water.samples_pct` | the surface field's density samples per cell, in hundredths (100 to 200, default 150): fewer mesh, build and draw fewer triangles and lose the smallest ripples |
+| `water.show_speed_mm_s` | the speed, in mm/s, a particle outside the surface needs to show in it (default 50): slower ones rest on the surface and would each hold a one-sample spike; drops and splash fly faster; 0 shows every one |
 | `water.plane` | 1 draws a plane at the fill's volume instead of flip3, its tilt following gravity's like a damped pendulum (`water.slosh_decihz`, `water.slosh_damping_pct`); much cheaper, but no crests or splash; 0 (default) is flip3 |
 
 Each frame, while the last one goes out to the panel:
@@ -62,13 +63,16 @@ Each frame, while the last one goes out to the panel:
 | Its surface, as triangles | `math/geometry/iso_surface.h` `iso_surface_nets()` |
 | Shading per vertex, encoded through a table | the scene; `r3d_skin_light_encode()` |
 | Clusters and a tree the raster walks | `render/dynamic/r3d_dynamic_mesh.h` |
-| Drawn as the water entity | `scene_renderer_set_mesh()` |
+| Drawn as the water entity | `renderer_set_mesh()` |
 
 ![The water scene's swing](../../../../../docs/images/overview/render-lab-water.gif)
 
 `run_water_perf_suite` plays the tour ([`tests/suite_water_perf.c`](../tests/suite_water_perf.c))
 under each experiment's tunables and times every stage of the update, `flip3_step()`'s
 own stages and r3d's; [`tools/water_tables.py`](water_tables.py) turns its capture into tables.
+It then plays the base tour once more through the cull view, untimed, and logs one
+`frame_replay` line per phase: its mean counts and its timed report, so
+`stress_predict.py --scenes` scores water too (`--scene-quarter landscape`).
 
 <!-- generated: water-stages check: python launcher/main/apps/render_lab/tools/water_tables.py --check -->
 ### Measured stages
@@ -77,71 +81,71 @@ The scripted tour at 33 ms of water per frame, one row per phase, from a board c
 
 | Phase | Frames | Substeps/frame | Triangles | Particles | Frame mean / p95 ms | Update mean / p95 ms | Draw mean / p95 ms |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| rest | 46 | 2.0 | 1265 | 1093 | 77.0 / 78.6 | 50.5 / 52.3 | 13.5 / 14.0 |
-| tilt | 136 | 2.0 | 1352 | 1093 | 78.4 / 80.0 | 51.2 / 52.8 | 14.2 / 15.1 |
-| flat | 91 | 2.0 | 1565 | 1093 | 81.3 / 87.9 | 52.7 / 55.4 | 15.7 / 19.4 |
-| return | 46 | 2.0 | 1315 | 1093 | 77.4 / 78.8 | 51.0 / 52.2 | 13.5 / 13.9 |
-| settle | 45 | 2.0 | 1250 | 1093 | 76.8 / 78.4 | 50.2 / 51.7 | 13.7 / 14.0 |
-| shake | 60 | 2.0 | 1336 | 1093 | 78.0 / 79.6 | 51.0 / 52.5 | 14.1 / 14.6 |
+| rest | 46 | 2.0 | 1265 | 1093 | 76.0 / 78.1 | 50.7 / 52.6 | 12.5 / 12.9 |
+| tilt | 136 | 2.0 | 1352 | 1093 | 77.5 / 79.2 | 51.5 / 52.9 | 13.3 / 14.0 |
+| flat | 91 | 2.0 | 1594 | 1093 | 80.7 / 86.9 | 53.1 / 55.9 | 14.8 / 18.5 |
+| return | 46 | 2.0 | 1315 | 1093 | 76.4 / 78.0 | 51.1 / 52.7 | 12.5 / 13.0 |
+| settle | 45 | 2.0 | 1250 | 1093 | 75.8 / 77.6 | 50.4 / 52.1 | 12.7 / 12.9 |
+| shake | 60 | 2.0 | 1392 | 1093 | 77.7 / 80.0 | 51.6 / 53.2 | 13.4 / 14.2 |
 
 Where the `base` update and draw go, ms per frame:
 
 | Stage | rest | tilt | flat | return | settle | shake |
 |---|---:|---:|---:|---:|---:|---:|
-| water.field | 2.56 | 2.45 | 2.46 | 2.46 | 2.46 | 2.46 |
-| water.through | 0.50 | 0.49 | 0.52 | 0.49 | 0.47 | 0.48 |
-| water.nets | 4.83 | 4.76 | 5.32 | 4.72 | 4.56 | 4.85 |
-| water.shade | 1.25 | 1.28 | 1.47 | 1.25 | 1.19 | 1.26 |
-| water.build | 3.23 | 3.28 | 3.96 | 3.25 | 3.04 | 3.24 |
-| water.step | 38.62 | 38.91 | 38.86 | 38.74 | 38.36 | 38.59 |
-| step: p2g | 16.05 | 16.02 | 16.06 | 16.06 | 15.98 | 16.02 |
+| water.step | 38.30 | 38.61 | 38.59 | 38.40 | 38.08 | 38.28 |
+| water.field | 2.91 | 2.90 | 2.92 | 2.89 | 2.90 | 2.96 |
+| water.through | 0.48 | 0.49 | 0.52 | 0.49 | 0.47 | 0.48 |
+| water.nets | 4.62 | 4.78 | 5.40 | 4.74 | 4.58 | 4.98 |
+| water.shade | 1.19 | 1.28 | 1.50 | 1.24 | 1.18 | 1.31 |
+| water.build | 3.15 | 3.34 | 4.12 | 3.31 | 3.10 | 3.46 |
+| step: p2g | 15.94 | 15.94 | 15.97 | 15.96 | 15.91 | 15.95 |
 | step: accel | 0.38 | 0.38 | 0.38 | 0.38 | 0.38 | 0.38 |
-| step: pressure | 9.97 | 10.29 | 10.24 | 10.07 | 9.79 | 10.00 |
-| step: g2p | 11.02 | 11.01 | 10.98 | 11.03 | 11.02 | 10.99 |
-| step: advect | 0.14 | 0.14 | 0.15 | 0.14 | 0.14 | 0.15 |
-| step: collide | 0.55 | 0.55 | 0.55 | 0.55 | 0.55 | 0.55 |
-| r3d.cull | 0.05 | 0.10 | 0.10 | 0.10 | 0.09 | 0.10 |
-| r3d.transform | 0.36 | 0.71 | 0.85 | 0.72 | 0.69 | 0.70 |
-| r3d.draw | 6.38 | 13.18 | 14.48 | 12.43 | 12.66 | 13.03 |
-| r3d.upscale | 1.50 | 2.94 | 2.93 | 2.92 | 2.93 | 2.95 |
+| step: pressure | 9.95 | 10.24 | 10.20 | 10.03 | 9.77 | 9.93 |
+| step: g2p | 10.83 | 10.83 | 10.84 | 10.84 | 10.83 | 10.83 |
+| step: advect | 0.14 | 0.14 | 0.14 | 0.15 | 0.14 | 0.14 |
+| step: collide | 0.55 | 0.55 | 0.55 | 0.54 | 0.54 | 0.55 |
+| r3d.cull | 0.27 | 0.28 | 0.29 | 0.29 | 0.27 | 0.28 |
+| r3d.transform | 0.49 | 0.50 | 0.61 | 0.52 | 0.48 | 0.53 |
+| r3d.draw | 11.50 | 12.20 | 13.61 | 11.42 | 11.64 | 12.27 |
+| r3d.upscale | 2.86 | 2.85 | 2.85 | 2.83 | 2.85 | 2.85 |
 
 Each experiment against the base, update mean ms per frame:
 
 | Configuration | rest | tilt | flat | return | settle | shake |
 |---|---:|---:|---:|---:|---:|---:|
-| base | 50.5 | 51.2 | 52.7 | 51.0 | 50.2 | 51.0 |
-| one_core | 76.0 | 76.6 | 78.8 | 76.6 | 75.5 | 76.1 |
-| sub4 | 88.6 | 89.8 | 91.5 | 89.0 | 88.6 | 89.6 |
-| sub1 | 31.0 | 31.6 | 32.8 | 31.1 | 31.0 | 30.2 |
-| index_order | 54.0 | 54.1 | 55.9 | 53.9 | 53.5 | 53.5 |
-| samples2 | 58.9 | 60.1 | 62.6 | 59.6 | 58.7 | 60.0 |
-| plane | 21.1 | 22.4 | 25.1 | 22.0 | 21.1 | 21.5 |
+| base | 50.7 | 51.5 | 53.1 | 51.1 | 50.4 | 51.6 |
+| one_core | 76.6 | 77.2 | 79.6 | 77.2 | 76.1 | 77.2 |
+| sub4 | 88.6 | 89.7 | 91.5 | 89.0 | 88.5 | 89.7 |
+| sub1 | 31.4 | 32.1 | 33.6 | 31.6 | 31.4 | 31.2 |
+| index_order | 54.2 | 54.4 | 56.4 | 54.2 | 53.7 | 54.2 |
+| samples2 | 59.2 | 60.4 | 63.2 | 59.9 | 58.9 | 60.7 |
+| plane | 21.2 | 22.4 | 25.2 | 22.1 | 21.2 | 21.6 |
 
 Internal RAM around each configuration, KB free / largest block:
 
 | Configuration | before | running | after |
 |---|---:|---:|---:|
-| base | 62 / 31 | 58 / 31 | 59 / 31 |
-| one_core | 59 / 31 | 58 / 31 | 59 / 31 |
-| sub4 | 59 / 31 | 58 / 31 | 59 / 31 |
-| sub1 | 59 / 31 | 58 / 31 | 59 / 31 |
-| index_order | 59 / 31 | 58 / 31 | 59 / 31 |
-| samples2 | 59 / 31 | 58 / 31 | 59 / 31 |
-| plane | 59 / 31 | 58 / 31 | 59 / 31 |
+| base | 56 / 48 | 55 / 46 | 56 / 48 |
+| one_core | 56 / 48 | 55 / 46 | 56 / 48 |
+| sub4 | 56 / 48 | 55 / 46 | 56 / 48 |
+| sub1 | 56 / 48 | 55 / 46 | 56 / 48 |
+| index_order | 56 / 48 | 55 / 46 | 56 / 48 |
+| samples2 | 56 / 48 | 55 / 46 | 56 / 48 |
+| plane | 56 / 48 | 55 / 46 | 56 / 48 |
 
 Source: `water-stages-board.log`
 <!-- /generated: water-stages -->
 
 ### Stress
 
-The Stress family is one generated shape, shown in copies before a camera
-that swings round them. Each preset is the case where a render option should
-lose, beside one where it should win. Hierarchical Z-buffer visibility was
-tested on one module replicated on a grid<sup>[[112]](../../../../../docs/Citations.md#greene-1993)</sup>;
-here the copies are generated at run time, and what is judged is r3d's render
-options, each by where it stops paying.
+The Stress family repeats a generated primitive or static pack mesh before a
+swinging camera. Each preset ties down one behaviour with its own pegged goal.
+Perf work targets the presets; the scene frame profile confirms before merge.
 
-| Scene key | As the swing starts | Made of | Loss case of |
+Repeated geometry exercises hierarchical visibility<sup>[[112]](../../../../../docs/Citations.md#greene-1993)</sup>;
+the presets vary the copies' geometry, layout and colour modes.
+
+| Scene key | As the swing starts | Made of | Ties down |
 |---|---|---|---|
 | `stress-open` | ![Stress open: a wall of planes side by side](../../../../../docs/images/overview/render-lab-stress-open.png) | a wall of planes side by side | hidden-cluster skip and cluster cull: nothing hides and nothing is off screen |
 | `stress-stack` | ![Stress stack: planes one behind another](../../../../../docs/images/overview/render-lab-stress-stack.png) | planes one behind another | the skip's win, and the depth cost of the debug views |
@@ -150,20 +154,139 @@ options, each by where it stops paying.
 | `stress-per-frame` | ![Stress per frame: one plane with a wave running over it](../../../../../docs/images/overview/render-lab-stress-per-frame.png) | one plane made again every frame, a wave running over it | the mesh build, every frame |
 | `stress-two-sided` | ![Stress two-sided: a wall of cubes drawn from both sides](../../../../../docs/images/overview/render-lab-stress-two-sided.png) | a wall of closed cubes drawn from both sides | backface cull: half of each cube faces away and none of it is skipped |
 | `stress-noisy-tiny` | ![Stress noisy tiny: cylinders end on, their fans of slivers](../../../../../docs/images/overview/render-lab-stress-noisy-tiny.png) | many small cylinders end on, each end a fan of slivers whose corners are far apart in colour | the small-fill gate: every sliver is tested and none passes |
+| `stress-mix` | ![Stress mix: planes with several tessellations and colour modes](../../../../../docs/images/overview/render-lab-stress-mix.png) | copies cycling through tessellations; a named share of triangles has equal corner colours | a single triangle size or colour mode standing for a scene's draw cost |
+| `stress-static-copies` | ![Static triangle copies](../../../../../docs/images/overview/render-lab-stress-static-copies.png) | the stress pack's LMSH triangle, retained in each renderer | static asset residency and small transform batches |
+| `stress-uniform-mid` | ![Uniform plane with intermediate coverage](../../../../../docs/images/overview/render-lab-stress-uniform-mid.png) | equal-colour large triangles | intermediate uniform fill without shaded pixels |
+| `stress-uniform-full` | ![Uniform plane covering the view](../../../../../docs/images/overview/render-lab-stress-uniform-full.png) | equal-colour large triangles spanning the view | uniform fill beyond the water workload at full-width render sizes |
+| `stress-card` | ![Card copies with ragged edges and sampled colours](../../../../../docs/images/overview/render-lab-stress-card.png) | copies sharing a generated perforated quad with uneven tessellation and procedural texture samples at its corners | scene-like small triangles with irregular edges and colour steps |
+| `stress-culled` | ![Plane before the camera turns away](../../../../../docs/images/overview/render-lab-stress-culled.png) | a tessellated plane and a camera pitching beyond its edge | varying cluster rejection by the frustum |
+| `stress-near` | ![Spheres along the camera path](../../../../../docs/images/overview/render-lab-stress-near.png) | stacked spheres and a camera passing through their front surfaces | triangles behind and crossing the near plane |
+| `stress-few-copies` | ![Stress few copies: two dense spheres](../../../../../docs/images/overview/render-lab-stress-few-copies.png) | two dense spheres side by side | the two-core cull split: with one instance a core, its fork and join cost more than the halved walk saves |
+
+A change is judged by each preset's own readout, stage by stage. The sum over
+presets is a summary line only. A draw change can win on two-sided and static
+copies and lose on card, noisy-tiny and per-frame: the sum says win, and a
+scene of small triangles follows the losing presets.
+
+A small preset still counts. Its behaviour may weigh little in a scene, and a
+win on it is still worth taking.
+
+The presets move with the scenes. Each change below was switched off in one
+build and timed against the build with it, presets and scenes alike:
+
+| Change | Switched off by | Presets against scenes |
+|---|---|---|
+| [Uniform solid fill](https://github.com/jose-villegas/autana/pull/1406) | its test made false | draw: the sum agrees on 4 of 5 scenes; Sponza follows its small-triangle presets |
+| [Two-core cull](https://github.com/jose-villegas/autana/pull/1475) | the cull on one core | cull: Sponza and Bistro agree; capybara's one instance a core is the `few-copies` case |
+
+A comment-only control moved nothing beyond same-build noise. The rule: only
+an opposite sign beyond noise fails; a scene that moves with no preset moving
+is a coverage gap, closed by a new preset.
+
+The card's holes, uneven cells and fixed procedural texture are generated in
+`stress_preset.c`. Its mesh is built once and shared by the copies. Procedural
+geometry keeps the stress bake independent of imported scene sources.
+
+The host renderer's path means compare its triangle-size mix with the scene
+means in [`scene-triangle-bins.json`](../../../../../docs/render/data/scene-triangle-bins.json).
+Regenerate the card means with:
+
+```sh
+python launcher/main/apps/render_lab/tools/scene_triangle_bins.py --scene stress-card 600 --out docs/render/data/stress-triangle-bins.json
+```
+
+Card path means are in [`stress-triangle-bins.json`](../../../../../docs/render/data/stress-triangle-bins.json).
+
+The culled camera samples each quarter's frustum edge; the near camera
+traverses the stacked surfaces. Their sweeps are claims of
+[`tests/suite_stress_preset.c`](../tests/suite_stress_preset.c).
 
 | Part | Owner |
 |---|---|
 | Presets: each ID, key and surface | `stress/stress_preset.h` `STRESS_PRESETS` |
 | Each preset's shape, copies and layout | `stress/stress_preset.c` `stress_presets` |
-| Each copy's shape | `math/geometry/primitive_mesh.h` |
-| One mesh every copy draws | `render/dynamic/r3d_dynamic_mesh.h` |
-| The camera's swing, a still camera at its start, and a pool of copies | `launcher/demo/stress/` |
+| Primitive shapes | `math/geometry/primitive_mesh.h` |
+| Shared dynamic meshes for the copies | `render/dynamic/r3d_dynamic_mesh.h` |
+| The camera tracks, a still camera, and a pool of copies | `launcher/demo/stress/` |
 | Each preset's sizes, by the renderer's own limits | [`tests/suite_stress_preset.c`](../tests/suite_stress_preset.c) |
 | Each preset's corner in a render, by the cull counts | [`tools/tests/test_stress_corners.py`](tests/test_stress_corners.py) |
+| Scene mean triangle bins | [`tools/scene_triangle_bins.py`](scene_triangle_bins.py), [`scene-triangle-bins.json`](../../../../../docs/render/data/scene-triangle-bins.json) |
+| Each preset's stage times and goals on the board | [`tests/suite_stress_perf.c`](../tests/suite_stress_perf.c) |
+| Stage cost model and held-out scoring | [`tools/stress_predict.py`](stress_predict.py) |
 
-`render_lab_render --view cull --counts FILE` writes the cull view's counts
-(`raster_cull_frame_t`), one CSV row a frame; `--camera still` holds the
-camera, so a frame differs from the last only where the mesh moved.
+The `run_stress_perf_suite` suite replays both `lab_perf_quarters` along each
+preset's swing. `stress_presets[].perf_poses` owns sampling density.
+Uniform presets also replay the full and half-height render_lab ladder steps.
+
+Every row uses `LAB_LAYOUT_FULL`, composing from the half picture when it fits.
+Double-buffer presentation runs asynchronously on core 1 and can delay the
+transform worker's fork/join.
+
+`transform_batches` counts the shaded draw's transform fork/joins, empty ones
+included, read from the census by `raster_batch_count()`. Each pays the split,
+worker dispatch, cluster work and join; picture clearing belongs to `r3d.draw`.
+
+Each suite row (preset, quarter, size) has a goal per r3d stage, which reports
+its distance only, and a goal and board ceiling on the stages' sum, all on the
+mean over the row's poses. The suite's goal table says which preset stays unpegged.
+
+[`stress_goals.py`](stress_goals.py) prints that table from the suite's
+`PERF TARGET` lines: per row, the worst capture of five layout seeds on every
+perf board, plus the script's margins. Regenerate it with:
+
+```sh
+python launcher/main/apps/render_lab/tools/stress_goals.py --unpegged stress-uniform-full CAPTURE...
+```
+
+Each pose draws one counted frame, one warm frame and `FRAME_PROFILE_REPLAY_DRAWS`
+measured frames. The pose counts and size loops in the suite own its frame
+budget.
+
+Static copies retain the pack's mesh and its scene-owned PSRAM arrays.
+Dynamic copies also use PSRAM and the same packed-int16 transform loop;
+`vertices_transformed` therefore serves both without a storage-kind split.
+
+`stress_predict.py` is a diagnostic: it fits stage costs to the counts and
+reads stage deltas between two arms. The goals are the bar, never the fit.
+Its per-stage inputs are owned by `STAGE_INPUTS` in [stress_predict.py](stress_predict.py).
+
+The fit under-predicts draw, misses cull's per-call cost and never trains the
+doubled, mapped or blocks upscale paths, so its frame estimate is no scene time.
+
+| Flags | Input or selection |
+|---|---|
+| `--a`, `--scenes` | stress training capture and held-out scene capture |
+| `--b`, `--scenes-a`, `--scenes-b` | second stress arm and paired scene arms for stage deltas |
+| `--noise-a`, `--noise-b` | same-build pair for the measured noise floor |
+| `--layout-a`, `--layout-b` | matching poses with different layout seeds |
+| `--scene KEY ...` | selected scene rows |
+| `--quarter`, `--scene-quarter` | training and held-out quarters |
+
+Pairs require shared pose keys for every scene. Captures must contain every
+model count and stage; unsupported inputs and failed scoring rows fail the run.
+
+Replay counts describe the timed shaded compose. `render_width/height` and
+`output_width/height` give its sizes; `upscale_path` is `upscale_path_t`, and
+`upscale_surface` records surface filtering. The scorer derives pixel areas.
+
+```sh
+python launcher/main/apps/render_lab/tools/stress_predict.py --a stress-a.log \
+    --scenes scenes-a.log
+python launcher/main/apps/render_lab/tools/stress_predict.py \
+    --a stress-a.log --b stress-b.log \
+    --scenes-a scenes-a.log --scenes-b scenes-b.log \
+    --noise-a repeat-a.log --noise-b repeat-b.log \
+    --layout-a layout-a.log --layout-b layout-b.log
+```
+
+`render_lab_render --view cull --counts FILE` writes every
+`RASTER_CULL_FRAME_FIELDS` count per frame. The `sized_*` fields use
+`R3D_SIZES_FIELDS`: face, uniform and shaded modes, each split by covered
+pixel centres. Their sum is `triangles_set_up`; clipped triangles stay separate.
+
+`--camera still` holds the camera, so a frame differs from the last only
+where the mesh moved. Mixed copies share meshes by tessellation;
+`STRESS_MIX_UNIFORM_PERIOD` owns their equal-colour share.
 
 ### Small fill
 
@@ -244,7 +367,7 @@ engine page shows the [presentation GIFs](../../../../../docs/render/frame/Dynam
 
 ### Debug views
 
-`--view shaded|depth|tiles|motion|meshlets|cull|overdraw` selects the declared context view.
+`--view shaded|depth|tiles|meshlets|cull|overdraw` selects the declared context view.
 Depth and tiles show a lit-mesh scene's depth buffer, or that depth
 reduced to `RASTER_SHOW_TILE` squares. The depth is `raster_draw()`'s
 own buffer, unchanged; `raster_show()` only colours it and takes each
@@ -488,7 +611,7 @@ of a scene pack's bake. The sheets use the poses named on the command line.
 
 ## Perf capture quarters
 
-The render perf suites use the shared `tests/r3d_perf_quarters.h` table.
+The render perf suites use the shared lab table `lab/test/lab_perf_quarters.h`.
 Every timed render window runs with an explicit portrait or landscape
 viewport; full-frame windows hold the display quarter. Rows include
 `quarter=portrait` or `quarter=landscape`.
@@ -505,12 +628,13 @@ matching reference views.
 ## Frame timing profiles
 
 `run_sponza_perf_suite` measures fixed camera poses at the spacing in
-`SPONZA_PERF_POSE_EVERY_MS`. Each frame-cost row reports mean, worst,
-median and p95 before presentation, with stage splits at those same poses.
+`SPONZA_PERF_POSE_EVERY_MS`: the showcase bake with culling on and off, and
+the full bake placed by a moving model. Each frame-cost row reports mean,
+worst, median and p95 before presentation, with stage splits at those same poses.
 The pixel-equivalence checks in that suite and the camera checks in
 `suite_sponza.c` use `SPONZA_POSE_EVERY_MS`.
 
-`run_render_lab_frame_profile_suite` plays each Sponza scene's camera clip,
+`run_render_lab_frame_profile_suite` plays each fitted Sponza scene's camera clip,
 Bistro fitted-full's camera clip and the capybara gallop for one clip period in each perf quarter. It times
 update, render, compose and present with the HUD hidden.
 
@@ -534,40 +658,28 @@ Each suite owns a table of mean goals and p95 ceilings per row and quarter.
 Zero means unpegged: it logs without enforcing a budget. Board ceilings
 are reported without enforcement under QEMU.
 
-<!-- generated: frame-timing-profiles check: python launcher/main/apps/render_lab/tools/frame_profile_tables.py --peak-board 1 --scenes sponza-fitted-full,sponza-fitted,sponza,sponza-lite,sponza-flat,sponza-flat-fitted,capybara,capybara-front,capybara-side,capybara-back,capybara-close,capybara-blend,bistro-fitted-full --check -->
+<!-- generated: frame-timing-profiles check: python launcher/main/apps/render_lab/tools/frame_profile_tables.py --peak-board 1 --check -->
 ### Measured frame rate
 
-Cells list board 1 / board 2.
+Cells list board 1.
 Playback includes update, render, compose and present.
 
 | Scene | Quarter | Mean fps | p50 ms | p95 ms | Worst ms |
 |---|---|---:|---:|---:|---:|
-| sponza-fitted-full | portrait | 18.3 / 18.2 | 55.7 / 55.8 | 67.2 / 67.2 | 68.9 / 69.0 |
-| sponza-fitted-full | landscape | 19.0 / 19.0 | 53.7 / 53.7 | 63.9 / 63.9 | 65.4 / 65.5 |
-| sponza-fitted | portrait | 21.9 / 21.9 | 46.3 / 46.3 | 52.9 / 53.0 | 53.9 / 54.4 |
-| sponza-fitted | landscape | 22.8 / 22.8 | 44.3 / 44.5 | 50.1 / 50.2 | 51.1 / 51.2 |
-| sponza | portrait | 18.0 / 18.0 | 56.1 / 56.2 | 66.4 / 66.4 | 67.8 / 67.9 |
-| sponza | landscape | 18.6 / 18.6 | 54.2 / 54.3 | 63.8 / 64.0 | 65.0 / 65.1 |
-| sponza-lite | portrait | 21.1 / 21.1 | 47.9 / 48.0 | 52.8 / 52.9 | 53.9 / 54.0 |
-| sponza-lite | landscape | 21.6 / 21.6 | 46.8 / 46.9 | 51.4 / 51.5 | 52.3 / 52.4 |
-| sponza-flat | portrait | 21.7 / 21.7 | 46.6 / 46.7 | 54.4 / 54.5 | 55.5 / 55.5 |
-| sponza-flat | landscape | 22.1 / 22.0 | 45.8 / 45.8 | 53.8 / 53.9 | 54.4 / 54.6 |
-| sponza-flat-fitted | portrait | 22.1 / 22.1 | 45.6 / 45.8 | 55.2 / 55.3 | 56.4 / 56.6 |
-| sponza-flat-fitted | landscape | 22.7 / 22.7 | 44.4 / 44.5 | 53.5 / 53.6 | 54.8 / 54.9 |
-| capybara | portrait | 47.6 / 47.5 | 21.0 / 21.1 | 21.3 / 21.3 | 21.9 / 22.0 |
-| capybara | landscape | 46.3 / 46.3 | 21.6 / 21.6 | 21.8 / 21.9 | 21.8 / 21.9 |
-| capybara-front | portrait | 48.5 / 48.4 | 20.6 / 20.6 | 20.9 / 21.0 | 21.6 / 21.4 |
-| capybara-front | landscape | 47.5 / 47.4 | 21.0 / 21.1 | 21.3 / 21.3 | 21.3 / 21.3 |
-| capybara-side | portrait | 48.4 / 48.3 | 20.6 / 20.7 | 20.9 / 21.0 | 21.4 / 21.5 |
-| capybara-side | landscape | 46.9 / 46.9 | 21.3 / 21.3 | 21.6 / 21.5 | 21.6 / 21.6 |
-| capybara-back | portrait | 49.6 / 50.0 | 20.1 / 20.0 | 20.5 / 20.3 | 21.3 / 21.1 |
-| capybara-back | landscape | 48.2 / 48.1 | 20.7 / 20.8 | 21.1 / 21.0 | 21.2 / 21.1 |
-| capybara-close | portrait | 44.0 / 44.0 | 22.7 / 22.8 | 23.0 / 23.0 | 23.6 / 23.5 |
-| capybara-close | landscape | 42.5 / 42.4 | 23.5 / 23.6 | 23.7 / 23.8 | 23.8 / 23.9 |
-| capybara-blend | portrait | 46.4 / 46.4 | 21.5 / 21.6 | 22.3 / 22.4 | 22.3 / 22.4 |
-| capybara-blend | landscape | 45.1 / 45.1 | 22.2 / 22.2 | 22.5 / 22.4 | 22.5 / 22.4 |
-| bistro-fitted-full | portrait | 23.6 / 23.5 | 42.3 / 42.3 | 62.7 / 62.8 | 67.0 / 67.2 |
-| bistro-fitted-full | landscape | 22.7 / 22.6 | 44.6 / 44.6 | 60.7 / 60.8 | 63.8 / 63.9 |
+| sponza-fitted-full | portrait | 21.2 | 47.8 | 58.4 | 60.3 |
+| sponza-fitted-full | landscape | 22.5 | 45.2 | 54.0 | 56.2 |
+| sponza-fitted | portrait | 24.9 | 40.4 | 47.4 | 49.2 |
+| sponza-fitted | landscape | 26.1 | 38.5 | 44.6 | 46.7 |
+| sponza-flat-fitted | portrait | 26.1 | 38.6 | 47.4 | 49.5 |
+| sponza-flat-fitted | landscape | 26.9 | 37.4 | 45.1 | 46.5 |
+| capybara | portrait | 49.0 | 20.4 | 20.7 | 20.7 |
+| capybara | landscape | 47.3 | 21.1 | 21.3 | 21.3 |
+| capybara-close | portrait | 45.3 | 22.1 | 22.3 | 22.6 |
+| capybara-close | landscape | 43.5 | 23.0 | 23.2 | 23.3 |
+| capybara-blend | portrait | 47.5 | 21.1 | 21.5 | 21.5 |
+| capybara-blend | landscape | 46.0 | 21.8 | 21.9 | 21.9 |
+| bistro-fitted-full | portrait | 27.9 | 36.2 | 53.7 | 58.1 |
+| bistro-fitted-full | landscape | 26.6 | 38.9 | 50.8 | 56.4 |
 
 ### Frame peaks along the path
 
@@ -576,14 +688,8 @@ above what the cull counted at poses replayed paused along the path.
 
 ![sponza-fitted-full: frames along the path and the cull's counts](images/frame-peaks/sponza-fitted-full.png)
 ![sponza-fitted: frames along the path and the cull's counts](images/frame-peaks/sponza-fitted.png)
-![sponza: frames along the path and the cull's counts](images/frame-peaks/sponza.png)
-![sponza-lite: frames along the path and the cull's counts](images/frame-peaks/sponza-lite.png)
-![sponza-flat: frames along the path and the cull's counts](images/frame-peaks/sponza-flat.png)
 ![sponza-flat-fitted: frames along the path and the cull's counts](images/frame-peaks/sponza-flat-fitted.png)
 ![capybara: frames along the path and the cull's counts](images/frame-peaks/capybara.png)
-![capybara-front: frames along the path and the cull's counts](images/frame-peaks/capybara-front.png)
-![capybara-side: frames along the path and the cull's counts](images/frame-peaks/capybara-side.png)
-![capybara-back: frames along the path and the cull's counts](images/frame-peaks/capybara-back.png)
 ![capybara-close: frames along the path and the cull's counts](images/frame-peaks/capybara-close.png)
 ![capybara-blend: frames along the path and the cull's counts](images/frame-peaks/capybara-blend.png)
 ![bistro-fitted-full: frames along the path and the cull's counts](images/frame-peaks/bistro-fitted-full.png)
@@ -593,61 +699,45 @@ above what the cull counted at poses replayed paused along the path.
 One played frame per peak along the looping path, its slowest, ranked by wall time. A peak counts
 when it stands 8% of its height above the higher of its two saddles.
 Stage ms and counts come from replaying each pose paused;
-Why compares them with the median of the 64 poses spaced evenly along the path (1662 of 1664 read).
+Why compares them with the median of the 64 poses spaced evenly along the path (896 of 896 read).
 
 | Scene | Quarter | Rank | Path s | Frame ms | Prominence ms | r3d.cull ms | r3d.transform ms | r3d.draw ms | r3d.upscale ms | Clusters tested / kept / hidden / drawn | Triangles submitted / set up / cover / miss / away | Why |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|---|
-| sponza | portrait | 1 | 0.07 | 67.8 | 28.4 | 1.35 | 7.31 | 43.84 | 2.59 | 636 / 588 / 146 / 365 | 14153 / 7089 / 2638 / 3966 / 2808 | r3d.draw +7.5 ms; triangles missed ×1.76 median |
-| sponza | portrait | 2 | 17.68 | 62.5 | 21.8 | 1.32 | 5.72 | 41.69 | 2.61 | 477 / 400 / 97 / 271 | 10382 / 5464 / 2431 / 2405 / 2081 | r3d.draw +5.3 ms; triangles set up ×1.19 median |
-| sponza | landscape | 1 | 0.07 | 65.0 | 26.4 | 1.36 | 7.17 | 41.98 | 2.66 | 631 / 583 / 146 / 373 | 13913 / 7069 / 2612 / 3673 / 2834 | r3d.draw +7.7 ms; triangles facing away ×1.74 median |
-| sponza | landscape | 2 | 17.90 | 60.3 | 18.6 | 1.34 | 5.68 | 39.73 | 2.59 | 466 / 399 / 108 / 263 | 10384 / 5389 / 2322 / 2437 / 2063 | r3d.draw +5.5 ms; triangles facing away ×1.27 median |
-| sponza-lite | portrait | 1 | 2.33 | 53.9 | 18.4 | 1.11 | 4.30 | 34.25 | 2.64 | 324 / 297 / 48 / 229 | 6955 / 3543 / 1729 / 1434 / 1432 | r3d.draw +4.6 ms; triangles facing away ×1.52 median |
-| sponza-lite | portrait | 2 | 17.56 | 51.9 | 15.5 | 1.10 | 3.77 | 33.12 | 2.65 | 269 / 224 / 53 / 162 | 5778 / 2833 / 1476 / 1115 / 1139 | r3d.draw +3.4 ms; triangles facing away ×1.21 median |
-| sponza-lite | landscape | 1 | 0.06 | 52.3 | 17.0 | 1.09 | 4.48 | 32.18 | 2.62 | 331 / 317 / 54 / 242 | 7386 / 3884 / 1759 / 1588 / 1578 | r3d.draw +3.9 ms; triangles facing away ×1.78 median |
-| sponza-lite | landscape | 2 | 18.00 | 49.8 | 11.5 | 1.05 | 3.78 | 31.28 | 2.62 | 258 / 221 / 47 / 163 | 5677 / 2860 / 1466 / 1107 / 1060 | r3d.draw +3.0 ms; triangles facing away ×1.19 median |
-| sponza-flat | portrait | 1 | 2.40 | 55.5 | 21.9 | 1.32 | 5.60 | 34.36 | 2.59 | 529 / 469 / 109 / 330 | 12836 / 6523 / 2599 / 3206 / 2657 | r3d.draw +6.8 ms; clusters drawn ×1.53 median |
-| sponza-flat | portrait | 2 | 18.15 | 51.4 | 16.3 | 1.34 | 4.85 | 31.38 | 2.60 | 436 / 358 / 82 / 260 | 10350 / 5477 / 2399 / 2369 / 2101 | r3d.draw +3.8 ms; clusters drawn ×1.20 median |
-| sponza-flat | landscape | 1 | 0.06 | 54.4 | 21.6 | 1.32 | 5.80 | 32.91 | 2.60 | 544 / 498 / 114 / 342 | 13674 / 7076 / 2618 / 3512 / 2838 | r3d.draw +6.0 ms; triangles facing away ×1.74 median |
-| sponza-flat | landscape | 2 | 17.88 | 50.7 | 14.4 | 1.36 | 4.86 | 30.64 | 2.53 | 422 / 352 / 88 / 248 | 10233 / 5428 / 2343 / 2326 / 2082 | r3d.draw +3.8 ms; triangles facing away ×1.27 median |
-| sponza-fitted | portrait | 1 | 0.06 | 53.9 | 20.7 | 1.12 | 4.63 | 33.34 | 2.72 | 334 / 316 / 45 / 242 | 7059 / 4449 / 2177 / 1506 / 948 | r3d.draw +4.8 ms; triangles facing away ×1.87 median |
-| sponza-fitted | portrait | 2 | 17.58 | 50.5 | 14.1 | 1.08 | 4.06 | 31.94 | 2.71 | 277 / 228 / 43 / 172 | 5491 / 3366 / 2014 / 1101 / 632 | r3d.draw +3.4 ms; clusters hidden ×1.26 median |
-| sponza-fitted | landscape | 1 | 0.06 | 51.1 | 16.8 | 1.12 | 4.50 | 30.84 | 2.75 | 330 / 313 / 50 / 246 | 6959 / 4442 / 2148 / 1378 / 981 | r3d.draw +4.1 ms; triangles facing away ×1.97 median |
-| sponza-fitted | landscape | 2 | 17.89 | 47.4 | 12.9 | 1.07 | 3.96 | 28.62 | 2.70 | 274 / 223 / 36 / 174 | 5336 / 3322 / 1927 / 1103 / 604 | r3d.draw +1.9 ms; triangles facing away ×1.21 median |
-| sponza-fitted-full | portrait | 1 | 0.07 | 68.9 | 32.4 | 1.59 | 7.53 | 44.59 | 2.55 | 643 / 600 / 124 / 414 | 13710 / 8450 / 3615 / 3431 / 1714 | r3d.draw +8.2 ms; clusters hidden ×2.03 median |
-| sponza-fitted-full | portrait | 2 | 17.56 | 61.7 | 21.0 | 1.28 | 5.92 | 40.16 | 2.59 | 478 / 409 / 67 / 320 | 9993 / 6458 / 3499 / 2160 / 1163 | r3d.draw +3.8 ms; triangles facing away ×1.21 median |
-| sponza-fitted-full | landscape | 1 | 0.07 | 65.4 | 27.3 | 1.59 | 7.52 | 41.56 | 2.54 | 640 / 597 / 133 / 422 | 13553 / 8415 / 3555 / 3245 / 1769 | r3d.draw +7.2 ms; clusters hidden ×2.16 median |
-| sponza-fitted-full | landscape | 2 | 18.26 | 58.2 | 19.4 | 1.26 | 5.88 | 37.27 | 2.54 | 459 / 402 / 62 / 321 | 9831 / 6417 / 3454 / 2083 / 1098 | r3d.draw +2.9 ms; triangles covering ×1.21 median |
-| sponza-flat-fitted | portrait | 1 | 0.06 | 56.4 | 25.1 | 1.32 | 6.22 | 34.26 | 2.54 | 554 / 512 / 108 / 369 | 13889 / 8483 / 3583 / 3446 / 1752 | r3d.draw +7.0 ms; clusters hidden ×2.16 median |
-| sponza-flat-fitted | portrait | 2 | 17.82 | 51.7 | 18.0 | 1.31 | 5.26 | 31.21 | 2.61 | 419 / 360 / 60 / 285 | 10091 / 6591 / 3575 / 2093 / 1199 | r3d.draw +4.0 ms; triangles set up ×1.21 median |
-| sponza-flat-fitted | landscape | 1 | 0.11 | 54.8 | 22.2 | 1.33 | 6.22 | 32.96 | 2.58 | 544 / 515 / 115 / 366 | 13866 / 8516 / 3509 / 3358 / 1775 | r3d.draw +7.0 ms; clusters hidden ×2.32 median |
-| sponza-flat-fitted | landscape | 2 | 17.93 | 49.3 | 16.5 | 1.22 | 5.09 | 29.30 | 2.57 | 416 / 356 / 56 / 278 | 9953 / 6388 / 3367 / 2114 / 1196 | r3d.draw +3.3 ms; triangles facing away ×1.21 median |
-| capybara | portrait | 1 | 0.02 | 21.9 | 1.2 | 0.12 | 0.30 | 5.81 | 2.45 | 32 / 32 / 11 / 21 | 994 / 449 / 329 / 21 / 522 | r3d.cull +0.0 ms; triangles missed ×2.47 median |
-| capybara | landscape | 1 | 0.17 | 21.8 | 0.5 | 0.14 | 0.32 | 6.22 | 2.61 | 32 / 32 / 8 / 21 | 994 / 432 / 330 / 8 / 552 | r3d.cull +0.0 ms; triangles facing away ×1.03 median |
-| capybara-front | portrait | 1 | 0.02 | 21.6 | 1.1 | 0.12 | 0.30 | 5.39 | 2.49 | 32 / 32 / 9 / 22 | 994 / 495 / 285 / 46 / 451 | r3d.cull +0.0 ms; triangles missed ×1.21 median |
-| capybara-front | landscape | 1 | 0.26 | 21.3 | 0.5 | 0.13 | 0.29 | 5.97 | 2.73 | 32 / 32 / 11 / 21 | 994 / 493 / 307 / 39 / 460 | r3d.upscale +0.1 ms; clusters hidden ×1.10 median |
-| capybara-side | portrait | 1 | 0.02 | 21.4 | 1.1 | 0.12 | 0.30 | 5.51 | 2.55 | 32 / 32 / 8 / 22 | 994 / 415 / 303 / 12 / 565 | r3d.upscale +0.1 ms; clusters hidden ×1.14 median |
-| capybara-side | landscape | 1 | 0.02 | 21.6 | 0.5 | 0.12 | 0.29 | 6.18 | 2.77 | 32 / 32 / 8 / 22 | 994 / 415 / 302 / 12 / 565 | r3d.upscale +0.1 ms; clusters hidden ×1.14 median |
-| capybara-back | portrait | 1 | 0.02 | 21.3 | 1.5 | 0.12 | 0.30 | 5.01 | 2.47 | 32 / 32 / 10 / 18 | 994 / 294 / 156 / 12 / 686 | r3d.draw +0.1 ms; clusters hidden ×1.11 median |
-| capybara-back | landscape | 1 | 0.02 | 21.2 | 0.8 | 0.12 | 0.30 | 5.62 | 2.60 | 32 / 32 / 9 / 19 | 994 / 293 / 159 / 11 / 688 | r3d.cull +0.0 ms; triangles facing away ×1.02 median |
-| capybara-close | portrait | 1 | 0.03 | 23.6 | 1.2 | 0.14 | 0.29 | 7.31 | 2.55 | 32 / 31 / 10 / 19 | 962 / 349 / 235 / 109 / 502 | r3d.cull +0.0 ms; clusters hidden ×1.25 median |
-| capybara-close | landscape | 1 | 0.03 | 23.8 | 0.6 | 0.14 | 0.29 | 8.25 | 2.60 | 32 / 31 / 10 / 19 | 962 / 360 / 247 / 64 / 536 | r3d.draw +0.0 ms; clusters hidden ×1.25 median |
-| capybara-blend | portrait | 1 | 0.02 | 22.3 | 1.3 | 0.12 | 0.29 | 5.83 | 2.58 | 32 / 32 / 11 / 21 | 994 / 449 / 329 / 21 / 522 | r3d.upscale +0.1 ms; triangles missed ×2.33 median |
-| capybara-blend | landscape | 1 | 0.02 | 22.5 | 1.0 | 0.12 | 0.30 | 6.34 | 2.58 | 32 / 32 / 11 / 21 | 994 / 454 / 325 / 15 / 523 | r3d.draw +0.0 ms; triangles missed ×1.67 median |
-| bistro-fitted-full | portrait | 1 | 59.16 | 67.0 | 42.8 | 1.27 | 8.19 | 43.85 | 2.57 | 688 / 658 / 260 / 330 | 12662 / 6729 / 2710 / 3048 / 2839 | r3d.draw +18.2 ms; triangles set up ×1.94 median |
-| bistro-fitted-full | portrait | 2 | 46.94 | 63.5 | 9.0 | 1.62 | 8.76 | 38.89 | 2.52 | 846 / 700 / 219 / 355 | 13695 / 5515 / 2722 / 5197 / 2981 | r3d.draw +13.3 ms; triangles missed ×2.67 median |
-| bistro-fitted-full | portrait | 3 | 4.68 | 61.9 | 31.6 | 1.59 | 10.24 | 35.79 | 2.51 | 887 / 852 / 473 / 245 | 16585 / 6833 / 2125 / 5175 / 4516 | r3d.draw +10.2 ms; clusters hidden ×3.38 median |
-| bistro-fitted-full | portrait | 4 | 80.46 | 51.2 | 9.5 | 1.19 | 7.16 | 28.77 | 2.71 | 628 / 564 / 375 / 128 | 10885 / 5008 / 946 / 2854 / 2906 | r3d.draw +3.2 ms; clusters hidden ×2.68 median |
-| bistro-fitted-full | portrait | 5 | 92.28 | 50.0 | 9.5 | 1.22 | 6.48 | 28.65 | 2.60 | 632 / 500 / 244 / 179 | 9588 / 3901 / 1161 / 2800 / 2781 | r3d.draw +3.0 ms; triangles facing away ×1.85 median |
-| bistro-fitted-full | portrait | 6 | 99.17 | 44.3 | 14.0 | 0.97 | 4.51 | 24.66 | 2.43 | 329 / 295 / 25 / 244 | 6071 / 3475 / 2093 / 1692 / 612 | r3d.upscale -0.1 ms; triangles covering ×1.36 median |
-| bistro-fitted-full | portrait | 7 | 121.19 | 35.6 | 9.2 | 0.86 | 2.53 | 18.44 | 2.58 | 159 / 114 / 9 / 99 | 2332 / 1632 / 1392 / 527 / 50 | r3d.upscale +0.1 ms; triangles covering ×0.90 median |
-| bistro-fitted-full | landscape | 1 | 46.79 | 63.8 | 37.0 | 1.57 | 8.50 | 39.09 | 2.55 | 803 / 684 / 232 / 362 | 13336 / 5638 / 2863 / 4704 / 2992 | r3d.draw +11.5 ms; triangles missed ×2.25 median |
-| bistro-fitted-full | landscape | 2 | 61.18 | 63.2 | 9.8 | 1.34 | 8.62 | 39.14 | 2.53 | 790 / 696 / 298 / 315 | 13439 / 6785 / 2516 / 3674 / 2885 | r3d.draw +11.6 ms; clusters hidden ×1.92 median |
-| bistro-fitted-full | landscape | 3 | 4.23 | 61.7 | 29.5 | 1.50 | 10.40 | 35.58 | 2.55 | 887 / 854 / 493 / 241 | 16664 / 6788 / 1997 / 5250 / 4562 | r3d.draw +8.0 ms; clusters hidden ×3.17 median |
-| bistro-fitted-full | landscape | 4 | 54.17 | 60.6 | 4.9 | 1.54 | 7.42 | 38.32 | 2.53 | 746 / 584 / 229 / 285 | 11223 / 5060 / 2347 / 3737 / 2416 | r3d.draw +10.8 ms; triangles missed ×1.79 median |
-| bistro-fitted-full | landscape | 5 | 92.37 | 54.5 | 10.6 | 1.24 | 7.03 | 33.60 | 2.63 | 636 / 549 / 275 / 211 | 10533 / 4623 / 1525 / 2393 / 3412 | r3d.draw +6.1 ms; triangles facing away ×2.05 median |
-| bistro-fitted-full | landscape | 6 | 79.91 | 53.8 | 8.3 | 1.22 | 7.28 | 32.10 | 2.69 | 644 / 581 / 385 / 135 | 11182 / 5235 / 927 / 2769 / 3041 | r3d.draw +4.6 ms; clusters hidden ×2.48 median |
-| bistro-fitted-full | landscape | 7 | 98.95 | 45.1 | 12.8 | 0.93 | 4.45 | 25.68 | 2.48 | 329 / 293 / 30 / 249 | 6037 / 3620 / 2053 / 1417 / 712 | r3d.upscale -0.1 ms; clusters drawn ×1.30 median |
-| bistro-fitted-full | landscape | 8 | 119.35 | 36.2 | 7.2 | 0.78 | 2.63 | 19.22 | 2.59 | 148 / 119 / 6 / 102 | 2421 / 1545 / 1303 / 717 / 15 | r3d.upscale +0.0 ms; triangles covering ×0.79 median |
+| sponza-fitted-full | portrait | 1 | 0.07 | 60.3 | 29.5 | 1.43 | 3.35 | 40.74 | 2.54 | 676 / 498 / 96 / 361 | 12155 / 7793 / 3474 / 2705 / 1497 | r3d.draw +7.7 ms; clusters hidden ×2.21 median |
+| sponza-fitted-full | portrait | 2 | 17.89 | 54.3 | 18.9 | 1.22 | 2.48 | 37.40 | 2.57 | 518 / 359 / 47 / 292 | 9201 / 6146 / 3463 / 1927 / 907 | r3d.draw +4.4 ms; triangles set up ×1.27 median |
+| sponza-fitted-full | landscape | 1 | 0.06 | 56.2 | 23.6 | 1.44 | 3.30 | 37.28 | 2.54 | 672 / 493 / 102 / 366 | 11973 / 7736 / 3409 / 2561 / 1547 | r3d.draw +7.1 ms; clusters hidden ×2.27 median |
+| sponza-fitted-full | landscape | 2 | 17.81 | 50.7 | 17.5 | 1.17 | 2.47 | 34.04 | 2.52 | 499 / 355 / 49 / 280 | 9099 / 5877 / 3247 / 2042 / 926 | r3d.draw +3.9 ms; triangles submitted ×1.29 median |
+| sponza-fitted | portrait | 1 | 0.05 | 49.2 | 20.9 | 1.09 | 1.90 | 31.49 | 2.62 | 353 / 293 / 43 / 219 | 6568 / 4200 / 2134 / 1339 / 916 | r3d.draw +5.4 ms; triangles facing away ×1.86 median |
+| sponza-fitted | portrait | 2 | 17.92 | 44.6 | 14.8 | 0.94 | 1.47 | 28.69 | 2.64 | 291 / 222 / 39 / 172 | 5245 / 3338 / 1944 / 998 / 618 | r3d.draw +2.6 ms; triangles set up ×1.26 median |
+| sponza-fitted | landscape | 1 | 0.05 | 46.7 | 18.0 | 1.09 | 1.86 | 29.47 | 2.62 | 353 / 286 / 48 / 220 | 6394 / 4178 / 2104 / 1154 / 935 | r3d.draw +5.4 ms; triangles facing away ×1.91 median |
+| sponza-fitted | landscape | 2 | 17.90 | 41.8 | 11.8 | 0.94 | 1.50 | 26.50 | 2.64 | 289 / 219 / 33 / 174 | 5214 / 3248 / 1848 / 997 / 624 | r3d.draw +2.5 ms; triangles set up ×1.28 median |
+| sponza-flat-fitted | portrait | 1 | 0.05 | 49.5 | 23.9 | 1.48 | 2.90 | 30.36 | 2.53 | 572 / 455 / 86 / 333 | 12279 / 7766 / 3502 / 2798 / 1545 | r3d.draw +6.3 ms; clusters hidden ×2.10 median |
+| sponza-flat-fitted | portrait | 2 | 17.61 | 43.9 | 16.2 | 1.14 | 2.30 | 27.31 | 2.58 | 455 / 336 / 48 / 269 | 9326 / 6080 / 3335 / 2057 / 996 | r3d.draw +3.3 ms; triangles facing away ×1.28 median |
+| sponza-flat-fitted | landscape | 1 | 0.05 | 46.5 | 19.6 | 1.41 | 2.81 | 28.79 | 2.59 | 557 / 447 / 85 / 333 | 12026 / 7732 / 3456 / 2532 / 1597 | r3d.draw +5.9 ms; triangles facing away ×2.09 median |
+| sponza-flat-fitted | landscape | 2 | 18.16 | 42.4 | 14.9 | 1.15 | 2.20 | 26.34 | 2.58 | 449 / 332 / 46 / 270 | 9214 / 6058 / 3296 / 1962 / 956 | r3d.draw +3.4 ms; triangles submitted ×1.28 median |
+| capybara | portrait | 1 | 0.35 | 20.7 | 0.6 | 0.23 | 0.20 | 5.47 | 2.58 | 32 / 32 / 8 / 22 | 994 / 442 / 351 / 4 / 546 | r3d.upscale +0.1 ms; triangles covering ×1.04 median |
+| capybara | landscape | 1 | 0.47 | 21.3 | 0.4 | 0.22 | 0.20 | 6.11 | 2.63 | 32 / 32 / 8 / 22 | 994 / 442 / 333 / 9 / 541 | r3d.draw +0.2 ms; triangles facing away ×1.00 median |
+| capybara-close | portrait | 1 | 0.44 | 22.6 | 1.0 | 0.24 | 0.24 | 7.18 | 2.73 | 32 / 31 / 8 / 18 | 962 / 324 / 215 / 113 / 523 | r3d.upscale +0.1 ms; triangles missed ×1.07 median |
+| capybara-close | landscape | 1 | 0.62 | 23.3 | 0.5 | 0.24 | 0.20 | 7.93 | 2.73 | 32 / 31 / 9 / 19 | 962 / 379 / 261 / 67 / 514 | r3d.upscale +0.1 ms; clusters hidden ×1.12 median |
+| capybara-blend | portrait | 1 | 0.02 | 21.5 | 1.1 | 0.21 | 0.20 | 5.34 | 2.54 | 32 / 32 / 11 / 21 | 994 / 449 / 329 / 21 / 522 | r3d.upscale +0.1 ms; triangles missed ×2.33 median |
+| capybara-blend | landscape | 1 | 0.28 | 21.9 | 0.7 | 0.21 | 0.20 | 5.92 | 2.73 | 32 / 32 / 7 / 22 | 994 / 432 / 346 / 8 / 552 | r3d.upscale +0.1 ms; triangles covering ×1.05 median |
+| bistro-fitted-full | portrait | 1 | 54.79 | 58.1 | 37.6 | 1.83 | 4.39 | 39.92 | 2.49 | 896 / 567 / 200 / 309 | 11280 / 5805 / 2668 / 2976 / 2494 | r3d.draw +18.5 ms; clusters drawn ×1.80 median |
+| bistro-fitted-full | portrait | 2 | 47.25 | 55.3 | 8.3 | 1.91 | 4.51 | 35.73 | 2.48 | 932 / 576 / 133 / 356 | 11638 / 5152 / 2862 / 3955 / 2517 | r3d.draw +14.3 ms; triangles missed ×2.18 median |
+| bistro-fitted-full | portrait | 3 | 4.85 | 46.7 | 20.9 | 1.69 | 5.74 | 26.47 | 2.43 | 1009 / 734 / 385 / 239 | 14497 / 6261 / 2225 / 3891 / 4238 | r3d.draw +5.0 ms; clusters hidden ×3.41 median |
+| bistro-fitted-full | portrait | 4 | 20.05 | 44.6 | 6.4 | 1.28 | 3.39 | 26.77 | 2.42 | 583 / 429 / 98 / 292 | 8330 / 4440 / 2350 / 2240 / 1378 | r3d.draw +5.3 ms; clusters drawn ×1.70 median |
+| bistro-fitted-full | portrait | 5 | 83.86 | 40.8 | 6.3 | 1.56 | 3.31 | 23.25 | 2.61 | 719 / 422 / 212 / 157 | 8500 / 3498 / 1138 / 3297 / 1647 | r3d.draw +1.8 ms; clusters hidden ×1.88 median |
+| bistro-fitted-full | portrait | 6 | 91.02 | 40.8 | 5.9 | 1.45 | 3.29 | 23.80 | 2.48 | 705 / 432 / 224 / 161 | 8584 / 3463 / 1128 / 1972 / 3065 | r3d.draw +2.4 ms; triangles facing away ×2.18 median |
+| bistro-fitted-full | portrait | 7 | 98.40 | 38.1 | 12.7 | 0.85 | 2.19 | 21.72 | 2.30 | 369 / 280 / 50 / 210 | 5733 / 3037 / 1755 / 1872 / 581 | r3d.draw +0.3 ms; clusters drawn ×1.22 median |
+| bistro-fitted-full | portrait | 8 | 120.26 | 30.9 | 8.1 | 0.62 | 0.93 | 16.74 | 2.38 | 242 / 120 / 9 / 105 | 2407 / 1608 / 1378 / 629 / 17 | r3d.upscale -0.1 ms; triangles covering ×0.88 median |
+| bistro-fitted-full | landscape | 1 | 47.03 | 56.4 | 33.7 | 1.86 | 4.48 | 36.13 | 2.52 | 918 / 570 / 127 / 377 | 11402 / 5198 / 2972 / 3652 / 2537 | r3d.draw +12.8 ms; clusters drawn ×2.05 median |
+| bistro-fitted-full | landscape | 2 | 60.58 | 54.1 | 7.0 | 1.67 | 4.85 | 33.98 | 2.44 | 907 / 623 / 280 / 307 | 12355 / 6716 / 2563 / 2891 / 2684 | r3d.draw +10.6 ms; clusters hidden ×2.12 median |
+| bistro-fitted-full | landscape | 3 | 53.73 | 53.2 | 5.8 | 1.79 | 3.94 | 34.73 | 2.48 | 851 / 503 / 159 / 280 | 9956 / 4710 / 2349 / 3121 / 2123 | r3d.draw +11.4 ms; triangles missed ×1.63 median |
+| bistro-fitted-full | landscape | 4 | 6.11 | 47.3 | 19.6 | 1.86 | 5.67 | 27.08 | 2.42 | 997 / 736 / 396 / 238 | 14608 / 6210 / 2118 / 3937 / 4351 | r3d.draw +3.7 ms; clusters hidden ×3.00 median |
+| bistro-fitted-full | landscape | 5 | 91.83 | 46.2 | 7.7 | 1.55 | 3.77 | 28.79 | 2.50 | 717 / 487 / 237 / 206 | 9551 / 4301 / 1688 / 2058 / 3111 | r3d.draw +5.4 ms; triangles facing away ×2.10 median |
+| bistro-fitted-full | landscape | 6 | 20.47 | 46.1 | 7.7 | 1.35 | 3.40 | 28.21 | 2.51 | 623 / 445 / 109 / 302 | 8629 / 4617 / 2410 / 2305 / 1481 | r3d.draw +4.9 ms; clusters drawn ×1.64 median |
+| bistro-fitted-full | landscape | 7 | 83.97 | 45.1 | 6.0 | 1.56 | 3.55 | 26.99 | 2.54 | 778 / 459 / 228 / 167 | 9243 / 4046 / 1318 / 3310 / 1805 | r3d.draw +3.6 ms; triangles missed ×1.73 median |
+| bistro-fitted-full | landscape | 8 | 98.35 | 39.3 | 11.4 | 0.86 | 2.16 | 23.50 | 2.33 | 367 / 280 / 47 / 216 | 5714 / 3269 / 1765 / 1545 / 666 | r3d.draw +0.1 ms; clusters drawn ×1.17 median |
+| bistro-fitted-full | landscape | 9 | 120.49 | 31.6 | 6.2 | 0.65 | 0.87 | 17.32 | 2.34 | 259 / 114 / 8 / 102 | 2293 / 1629 / 1403 / 469 / 33 | r3d.upscale -0.1 ms; triangles covering ×0.86 median |
 
 ### Overdraw at the frame peaks
 
@@ -656,47 +746,37 @@ Path percentile places a peak's tested layers among the evenly spaced poses' (10
 
 | Scene | Quarter | Rank | Path s | Frame ms | Tested / px | Written / px | Most tested | Most written | Path percentile |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| sponza-fitted-full | portrait | 1 | 0.07 | 68.9 | 2.54 | 1.30 | 19 | 10 | 94 |
-| sponza-fitted-full | portrait | 2 | 17.56 | 61.7 | 2.42 | 1.37 | 16 | 8 | 77 |
-| sponza-fitted-full | landscape | 1 | 0.07 | 65.4 | 2.68 | 1.38 | 22 | 10 | 97 |
-| sponza-fitted-full | landscape | 2 | 18.26 | 58.2 | 2.35 | 1.37 | 16 | 9 | 36 |
-| sponza-fitted | portrait | 1 | 0.06 | 53.9 | 2.56 | 1.46 | 16 | 8 | 95 |
-| sponza-fitted | portrait | 2 | 17.58 | 50.5 | 2.56 | 1.37 | 13 | 7 | 92 |
-| sponza-fitted | landscape | 1 | 0.06 | 51.1 | 2.65 | 1.54 | 16 | 8 | 88 |
-| sponza-fitted | landscape | 2 | 17.89 | 47.4 | 2.53 | 1.36 | 14 | 6 | 41 |
-| sponza | portrait | 1 | 0.07 | 67.8 | 3.61 | 1.61 | 13 | 7 | 72 |
-| sponza | portrait | 2 | 17.68 | 62.5 | 3.98 | 1.58 | 14 | 7 | 89 |
-| sponza | landscape | 1 | 0.07 | 65.0 | 3.75 | 1.66 | 14 | 7 | 78 |
-| sponza | landscape | 2 | 17.90 | 60.3 | 3.86 | 1.58 | 12 | 7 | 88 |
-| sponza-lite | portrait | 1 | 2.33 | 53.9 | 3.38 | 1.50 | 12 | 6 | 42 |
-| sponza-lite | portrait | 2 | 17.56 | 51.9 | 3.87 | 1.73 | 12 | 6 | 91 |
-| sponza-lite | landscape | 1 | 0.06 | 52.3 | 3.56 | 1.51 | 14 | 7 | 72 |
-| sponza-lite | landscape | 2 | 18.00 | 49.8 | 3.73 | 1.60 | 11 | 7 | 88 |
-| sponza-flat | portrait | 1 | 2.40 | 55.5 | 3.56 | 1.66 | 14 | 9 | 58 |
-| sponza-flat | portrait | 2 | 18.15 | 51.4 | 3.86 | 1.47 | 12 | 6 | 88 |
-| sponza-flat | landscape | 1 | 0.06 | 54.4 | 3.75 | 1.80 | 14 | 7 | 78 |
-| sponza-flat | landscape | 2 | 17.88 | 50.7 | 3.87 | 1.44 | 12 | 6 | 87 |
-| sponza-flat-fitted | portrait | 1 | 0.06 | 56.4 | 2.61 | 1.28 | 17 | 8 | 94 |
-| sponza-flat-fitted | portrait | 2 | 17.82 | 51.7 | 2.44 | 1.32 | 16 | 6 | 72 |
-| sponza-flat-fitted | landscape | 1 | 0.11 | 54.8 | 2.71 | 1.35 | 18 | 8 | 89 |
-| sponza-flat-fitted | landscape | 2 | 17.93 | 49.3 | 2.42 | 1.31 | 20 | 7 | 41 |
-| capybara | portrait | 1 | 0.02 | 21.9 | 1.28 | 1.23 | 7 | 4 | 61 |
-| capybara | landscape | 1 | 0.17 | 21.8 | 1.26 | 1.23 | 7 | 3 | 11 |
-| bistro-fitted-full | portrait | 1 | 59.16 | 67.0 | 3.94 | 1.41 | 15 | 7 | 100 |
-| bistro-fitted-full | portrait | 2 | 46.94 | 63.5 | 3.23 | 1.28 | 24 | 6 | 81 |
-| bistro-fitted-full | portrait | 3 | 4.68 | 61.9 | 2.59 | 1.25 | 23 | 5 | 48 |
-| bistro-fitted-full | portrait | 4 | 80.46 | 51.2 | 3.42 | 1.39 | 19 | 7 | 89 |
-| bistro-fitted-full | portrait | 5 | 92.28 | 50.0 | 3.45 | 1.54 | 20 | 6 | 89 |
-| bistro-fitted-full | portrait | 6 | 99.17 | 44.3 | 2.55 | 1.30 | 12 | 6 | 45 |
-| bistro-fitted-full | portrait | 7 | 121.19 | 35.6 | 2.07 | 1.27 | 7 | 5 | 14 |
-| bistro-fitted-full | landscape | 1 | 46.79 | 63.8 | 3.25 | 1.31 | 21 | 6 | 77 |
-| bistro-fitted-full | landscape | 2 | 61.18 | 63.2 | 3.95 | 1.49 | 17 | 8 | 98 |
-| bistro-fitted-full | landscape | 3 | 4.23 | 61.7 | 2.62 | 1.27 | 22 | 5 | 45 |
-| bistro-fitted-full | landscape | 4 | 54.17 | 60.6 | 3.52 | 1.32 | 16 | 5 | 92 |
-| bistro-fitted-full | landscape | 5 | 92.37 | 54.5 | 3.42 | 1.51 | 17 | 6 | 86 |
-| bistro-fitted-full | landscape | 6 | 79.91 | 53.8 | 3.60 | 1.46 | 16 | 6 | 94 |
-| bistro-fitted-full | landscape | 7 | 98.95 | 45.1 | 2.76 | 1.35 | 12 | 5 | 53 |
-| bistro-fitted-full | landscape | 8 | 119.35 | 36.2 | 2.08 | 1.26 | 7 | 5 | 12 |
+| sponza-fitted-full | portrait | 1 | 0.07 | 60.3 | 2.44 | 1.31 | 22 | 8 | 81 |
+| sponza-fitted-full | portrait | 2 | 17.89 | 54.3 | 2.34 | 1.35 | 16 | 6 | 69 |
+| sponza-fitted-full | landscape | 1 | 0.06 | 56.2 | 2.63 | 1.43 | 19 | 10 | 95 |
+| sponza-fitted-full | landscape | 2 | 17.81 | 50.7 | 2.34 | 1.32 | 15 | 6 | 41 |
+| sponza-fitted | portrait | 1 | 0.05 | 49.2 | 2.50 | 1.49 | 15 | 6 | 70 |
+| sponza-fitted | portrait | 2 | 17.92 | 44.6 | 2.52 | 1.40 | 12 | 6 | 77 |
+| sponza-fitted | landscape | 1 | 0.05 | 46.7 | 2.64 | 1.61 | 15 | 9 | 86 |
+| sponza-fitted | landscape | 2 | 17.90 | 41.8 | 2.49 | 1.38 | 13 | 7 | 33 |
+| sponza-flat-fitted | portrait | 1 | 0.05 | 49.5 | 2.48 | 1.36 | 19 | 7 | 91 |
+| sponza-flat-fitted | portrait | 2 | 17.61 | 43.9 | 2.34 | 1.35 | 15 | 6 | 58 |
+| sponza-flat-fitted | landscape | 1 | 0.05 | 46.5 | 2.61 | 1.49 | 19 | 10 | 91 |
+| sponza-flat-fitted | landscape | 2 | 18.16 | 42.4 | 2.32 | 1.36 | 17 | 6 | 31 |
+| capybara | portrait | 1 | 0.35 | 20.7 | 1.28 | 1.25 | 7 | 4 | 91 |
+| capybara | landscape | 1 | 0.47 | 21.3 | 1.27 | 1.24 | 8 | 3 | 80 |
+| bistro-fitted-full | portrait | 1 | 54.79 | 58.1 | 3.46 | 1.27 | 14 | 5 | 94 |
+| bistro-fitted-full | portrait | 2 | 47.25 | 55.3 | 3.14 | 1.28 | 18 | 5 | 89 |
+| bistro-fitted-full | portrait | 3 | 4.85 | 46.7 | 2.27 | 1.21 | 14 | 6 | 42 |
+| bistro-fitted-full | portrait | 4 | 20.05 | 44.6 | 2.67 | 1.31 | 14 | 7 | 64 |
+| bistro-fitted-full | portrait | 5 | 83.86 | 40.8 | 2.89 | 1.54 | 15 | 7 | 75 |
+| bistro-fitted-full | portrait | 6 | 91.02 | 40.8 | 3.41 | 1.62 | 14 | 7 | 94 |
+| bistro-fitted-full | portrait | 7 | 98.40 | 38.1 | 2.62 | 1.39 | 12 | 7 | 64 |
+| bistro-fitted-full | portrait | 8 | 120.26 | 30.9 | 2.03 | 1.22 | 8 | 6 | 11 |
+| bistro-fitted-full | landscape | 1 | 47.03 | 56.4 | 3.22 | 1.34 | 17 | 7 | 89 |
+| bistro-fitted-full | landscape | 2 | 60.58 | 54.1 | 3.64 | 1.43 | 15 | 6 | 98 |
+| bistro-fitted-full | landscape | 3 | 53.73 | 53.2 | 3.37 | 1.30 | 15 | 5 | 94 |
+| bistro-fitted-full | landscape | 4 | 6.11 | 47.3 | 2.34 | 1.24 | 14 | 5 | 44 |
+| bistro-fitted-full | landscape | 5 | 91.83 | 46.2 | 3.26 | 1.60 | 13 | 7 | 91 |
+| bistro-fitted-full | landscape | 6 | 20.47 | 46.1 | 2.78 | 1.38 | 16 | 7 | 70 |
+| bistro-fitted-full | landscape | 7 | 83.97 | 45.1 | 2.89 | 1.54 | 15 | 7 | 73 |
+| bistro-fitted-full | landscape | 8 | 98.35 | 39.3 | 2.90 | 1.44 | 10 | 6 | 73 |
+| bistro-fitted-full | landscape | 9 | 120.49 | 31.6 | 2.02 | 1.22 | 7 | 5 | 11 |
 
 #### Is a frame peak overdraw-heavy?
 
@@ -704,26 +784,19 @@ Over the evenly spaced poses, ρ ranks each pose's replayed ms against its teste
 
 | Scene | Quarter | Path tested / px, median | Peak tested / px, median | Peak path percentile, median | ρ ms ~ layers | ρ ms ~ triangles set up | Follows |
 |---|---|---:|---:|---:|---:|---:|---|
-| sponza-fitted-full | portrait | 2.32 | 2.48 | 85 | +0.86 | +0.99 | triangles set up |
-| sponza-fitted-full | landscape | 2.45 | 2.51 | 66 | +0.83 | +0.99 | triangles set up |
-| sponza-fitted | portrait | 2.46 | 2.56 | 94 | +0.56 | +0.99 | triangles set up |
-| sponza-fitted | landscape | 2.57 | 2.59 | 64 | +0.53 | +0.99 | triangles set up |
-| sponza | portrait | 3.53 | 3.79 | 80 | +0.55 | +0.99 | triangles set up |
-| sponza | landscape | 3.61 | 3.81 | 83 | +0.67 | +0.98 | triangles set up |
-| sponza-lite | portrait | 3.40 | 3.63 | 66 | +0.44 | +0.96 | triangles set up |
-| sponza-lite | landscape | 3.48 | 3.64 | 80 | +0.55 | +0.97 | triangles set up |
-| sponza-flat | portrait | 3.53 | 3.71 | 73 | +0.56 | +0.98 | triangles set up |
-| sponza-flat | landscape | 3.61 | 3.81 | 83 | +0.67 | +0.98 | triangles set up |
-| sponza-flat-fitted | portrait | 2.38 | 2.53 | 83 | +0.83 | +1.00 | triangles set up |
-| sponza-flat-fitted | landscape | 2.52 | 2.57 | 65 | +0.81 | +1.00 | triangles set up |
-| capybara | portrait | 1.28 | 1.28 | 61 | +0.23 | +0.34 | triangles set up |
-| capybara | landscape | 1.26 | 1.26 | 11 | +0.54 | -0.19 | layers |
-| bistro-fitted-full | portrait | 2.60 | 3.23 | 81 | +0.81 | +0.97 | triangles set up |
-| bistro-fitted-full | landscape | 2.71 | 3.34 | 81 | +0.81 | +0.95 | triangles set up |
+| sponza-fitted-full | portrait | 2.27 | 2.39 | 75 | +0.82 | +1.00 | triangles set up |
+| sponza-fitted-full | landscape | 2.42 | 2.49 | 68 | +0.76 | +0.99 | triangles set up |
+| sponza-fitted | portrait | 2.42 | 2.51 | 73 | +0.67 | +0.99 | triangles set up |
+| sponza-fitted | landscape | 2.52 | 2.56 | 59 | +0.62 | +0.99 | triangles set up |
+| sponza-flat-fitted | portrait | 2.30 | 2.41 | 74 | +0.80 | +0.99 | triangles set up |
+| sponza-flat-fitted | landscape | 2.45 | 2.46 | 61 | +0.74 | +0.99 | triangles set up |
+| capybara | portrait | 1.28 | 1.28 | 91 | +0.24 | +0.22 | layers |
+| capybara | landscape | 1.26 | 1.27 | 80 | +0.32 | +0.01 | layers |
+| bistro-fitted-full | portrait | 2.37 | 2.78 | 70 | +0.77 | +0.94 | triangles set up |
+| bistro-fitted-full | landscape | 2.44 | 2.90 | 73 | +0.84 | +0.90 | triangles set up |
 
 Sources:
 
 - `frame-profile-1-board.log`
-- `frame-profile-2-board.log`
 - `frame-peak-overdraw.tsv`
 <!-- /generated: frame-timing-profiles -->

@@ -92,13 +92,9 @@ draw(render_context_t* c, raster_rig_t* r) {
 /* Field by field: the struct has padding, whose bytes mean nothing. */
 static void
 assert_settings(const render_settings_t* expected, const render_settings_t* actual) {
-    TEST_ASSERT_EQUAL(expected->cull, actual->cull);
-    TEST_ASSERT_EQUAL(expected->depth_fit, actual->depth_fit);
-    TEST_ASSERT_EQUAL(expected->batched, actual->batched);
-    TEST_ASSERT_EQUAL_FLOAT(expected->lod.tolerance_px, actual->lod.tolerance_px);
-    TEST_ASSERT_EQUAL_FLOAT(expected->lod.hysteresis_px, actual->lod.hysteresis_px);
-    TEST_ASSERT_EQUAL_INT(expected->lod.coverage_permille, actual->lod.coverage_permille);
-    TEST_ASSERT_EQUAL_INT(expected->lod.pick_every, actual->lod.pick_every);
+#define ASSERT_FIELD(field, type, valid) TEST_ASSERT_TRUE_MESSAGE(expected->field == actual->field, #field);
+    RENDER_SETTINGS_FIELDS(ASSERT_FIELD)
+#undef ASSERT_FIELD
 }
 
 static void
@@ -123,12 +119,19 @@ cull_off(void) {
 static void
 test_the_default_is_every_setting_on_as_the_raster_drew_before(void) {
     raster_rig_t* r = open_rig();
-    /* Before settings, the raster always culled, fitted depth and batched. */
-    const render_settings_t on = {
-        .cull = true,
-        .depth_fit = true,
-        .batched = true,
-        .lod = {.tolerance_px = 2.0F, .hysteresis_px = 0.5F, .coverage_permille = 250, .pick_every = 4}};
+    /* Before settings, the raster always culled, fitted depth and batched;
+     * partial redraw draws the same picture; LOD switches at once, as it did. */
+    const render_settings_t on = {.cull = true,
+                                  .depth_fit = true,
+                                  .batched = true,
+                                  .partial_redraw = true,
+                                  .lod = {.tolerance_px = 2.0F,
+                                          .hysteresis_px = 0.5F,
+                                          .coverage_permille = 250,
+                                          .pick_every = 4,
+                                          .triangle_budget = 0,
+                                          .blend = RENDER_LOD_BLEND_SWITCH,
+                                          .blend_px = 0.25F}};
     assert_settings(&on, &RENDER_SETTINGS_DEFAULT);
     const render_settings_t bare = raster_settings(&r->raster);
     assert_settings(&on, &bare);
@@ -216,13 +219,29 @@ test_a_release_build_carries_no_override(void) {
     TEST_ASSERT_EQUAL_INT(1, tune_override(knob, 1));
 }
 
+/* The partial redraw knob turns it on or off whatever the caller set, and a
+ * reset gives the caller's value back. */
+static void
+test_the_partial_redraw_knob_overrides_the_callers_value(void) {
+    raster_rig_t* r = open_rig();
+    render_settings_t set = RENDER_SETTINGS_DEFAULT;
+    r->raster.settings = &set;
+    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, partial_redraw), 1));
+    TEST_ASSERT_TRUE(raster_settings(&r->raster).partial_redraw);
+    set.partial_redraw = true;
+    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, partial_redraw), 0));
+    TEST_ASSERT_FALSE(raster_settings(&r->raster).partial_redraw);
+    TEST_ASSERT_TRUE(tune_reset(tune_shared(), TUNE_NAME(render, partial_redraw)));
+    TEST_ASSERT_TRUE(raster_settings(&r->raster).partial_redraw);
+}
+
 /* The coverage cap's knob changes that field of what a draw uses and no other, and a reset gives the caller's
  * value back. */
 static void
 test_the_coverage_knob_overrides_only_the_coverage_cap(void) {
     raster_rig_t* r = open_rig();
     render_settings_t set = RENDER_SETTINGS_DEFAULT;
-    set.lod = (render_lod_settings_t){3.0F, 0.25F, 100, 2};
+    set.lod = (render_lod_settings_t){3.0F, 0.25F, 100, 2, 7, RENDER_LOD_BLEND_ON, 0.5F};
     r->raster.settings = &set;
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, lod_coverage_permille), 500));
     render_settings_t used = raster_settings(&r->raster);
@@ -230,6 +249,7 @@ test_the_coverage_knob_overrides_only_the_coverage_cap(void) {
     TEST_ASSERT_EQUAL_FLOAT(3.0F, used.lod.tolerance_px);
     TEST_ASSERT_EQUAL_FLOAT(0.25F, used.lod.hysteresis_px);
     TEST_ASSERT_EQUAL_INT(2, used.lod.pick_every);
+    TEST_ASSERT_EQUAL_INT(7, used.lod.triangle_budget);
     TEST_ASSERT_EQUAL_INT(100, set.lod.coverage_permille);
     TEST_ASSERT_TRUE(tune_reset(tune_shared(), TUNE_NAME(render, lod_coverage_permille)));
     used = raster_settings(&r->raster);
@@ -238,9 +258,10 @@ test_the_coverage_knob_overrides_only_the_coverage_cap(void) {
 
 enum { FIELDS = RENDER_SETTINGS_FIELD_COUNT, ROW_BYTES = ASSET_TABLE_NAME_SIZE + sizeof(int16_t), PACK_BYTES = 512 };
 
-static const char* const field_names[FIELDS + 1] = {
-    "cull",           "depth_fit", "batched", "lod.tolerance_px", "lod.hysteresis_px", "lod.coverage_permille",
-    "lod.pick_every", "fog"};
+/* Every field's row name in struct order, then one no field has. */
+#define FIELD_NAME(field, type, valid) #field,
+static const char* const field_names[FIELDS + 1] = {RENDER_SETTINGS_FIELDS(FIELD_NAME) "fog"};
+#undef FIELD_NAME
 #define STEP (1 << RENDER_SETTINGS_FRAC_BITS)
 
 /* Opens into `opened` a pack whose render entry has the first `rows` of
@@ -279,16 +300,41 @@ read_entry(int rows, const int16_t* values, int frac, render_settings_t* out) {
 
 static void
 test_a_packs_render_entry_reads_every_field(void) {
-    static const int16_t values[FIELDS] = {0, STEP, 0, (3 * STEP) + (STEP / 2), STEP / 4, 100 * STEP, 2 * STEP};
+    static const int16_t values[FIELDS] = {
+        0, 1, 0, 1, (3 * STEP) + (STEP / 2), STEP / 4, 100, 2, 12000, RENDER_LOD_BLEND_ON, STEP / 2};
     render_settings_t read;
     TEST_ASSERT_EQUAL(ASSET_OK, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
     TEST_ASSERT_FALSE(read.cull);
     TEST_ASSERT_TRUE(read.depth_fit);
     TEST_ASSERT_FALSE(read.batched);
+    TEST_ASSERT_TRUE(read.partial_redraw);
     TEST_ASSERT_EQUAL_FLOAT(3.5F, read.lod.tolerance_px);
     TEST_ASSERT_EQUAL_FLOAT(0.25F, read.lod.hysteresis_px);
     TEST_ASSERT_EQUAL_INT(100, read.lod.coverage_permille);
     TEST_ASSERT_EQUAL_INT(2, read.lod.pick_every);
+    TEST_ASSERT_EQUAL_INT(12000, read.lod.triangle_budget); /* an int is held as itself, past 2047 */
+    TEST_ASSERT_EQUAL_INT(RENDER_LOD_BLEND_ON, read.lod.blend);
+    TEST_ASSERT_EQUAL_FLOAT(0.5F, read.lod.blend_px);
+}
+
+/* Row indexes of the LOD blend fields in field_names. */
+enum { BLEND_ROW = FIELDS - 2, BLEND_PX_ROW = FIELDS - 1 };
+
+static void
+test_a_blend_outside_its_values_or_range_is_refused_unread(void) {
+    int16_t values[FIELDS] = {0};
+    values[BLEND_PX_ROW] = (int16_t)(RENDER_LOD_BLEND_PX_MAX * STEP);
+    render_settings_t read;
+    TEST_ASSERT_EQUAL(ASSET_OK, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
+    values[BLEND_ROW] = RENDER_LOD_BLEND_COUNT;
+    TEST_ASSERT_EQUAL(ASSET_ERR_FORMAT, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
+    values[BLEND_ROW] = -1;
+    TEST_ASSERT_EQUAL(ASSET_ERR_FORMAT, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
+    values[BLEND_ROW] = 0;
+    values[BLEND_PX_ROW] = 0;
+    TEST_ASSERT_EQUAL(ASSET_ERR_FORMAT, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
+    values[BLEND_PX_ROW] = (int16_t)(RENDER_LOD_BLEND_PX_MAX * STEP) + 1;
+    TEST_ASSERT_EQUAL(ASSET_ERR_FORMAT, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
 }
 
 static void
@@ -334,8 +380,9 @@ render_system(void) {
 
 static void
 test_an_app_starts_with_its_packs_settings_and_without_one_the_default(void) {
-    static const int16_t values[FIELDS] = {0};
-    const render_settings_t off = {0};
+    int16_t values[FIELDS] = {0};
+    values[BLEND_PX_ROW] = STEP;
+    const render_settings_t off = {.lod.blend_px = 1.0F};
     void* raw = NULL;
     asset_pack_t opened;
     open_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &opened, &raw);
@@ -354,8 +401,10 @@ suite_render_settings(void) {
     RUN_TEST(test_an_override_beats_the_callers_value_until_a_reset_brings_it_back);
     RUN_TEST(test_each_field_and_each_knob_reach_only_their_own_slot);
     RUN_TEST(test_the_coverage_knob_overrides_only_the_coverage_cap);
+    RUN_TEST(test_the_partial_redraw_knob_overrides_the_callers_value);
     RUN_TEST(test_a_release_build_carries_no_override);
     RUN_TEST(test_a_packs_render_entry_reads_every_field);
+    RUN_TEST(test_a_blend_outside_its_values_or_range_is_refused_unread);
     RUN_TEST(test_an_entry_missing_a_field_with_another_or_fixed_point_is_refused_unread);
     RUN_TEST(test_a_pack_without_the_entry_reads_not_found);
     RUN_TEST(test_an_app_starts_with_its_packs_settings_and_without_one_the_default);

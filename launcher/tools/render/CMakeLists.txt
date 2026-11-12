@@ -55,7 +55,8 @@ target_link_libraries(render_engine INTERFACE ${launcher_packages})
 # Consumers of the renderer define display_quarter_now (display/display.h).
 add_library(render_host INTERFACE)
 add_library(autana::render_host ALIAS render_host)
-target_sources(render_host INTERFACE ${renderer_sources} "${CMAKE_CURRENT_LIST_DIR}/render_counts.c")
+target_sources(render_host INTERFACE ${renderer_sources} "${CMAKE_CURRENT_LIST_DIR}/render_counts.c"
+    "${CMAKE_CURRENT_LIST_DIR}/render_host_settings.c")
 target_link_libraries(render_host INTERFACE autana::render_host_core)
 
 # The scene-file provider, scene_provider (scene_viewer.c), for a consumer
