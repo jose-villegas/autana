@@ -1847,6 +1847,8 @@ class ProduceTests(unittest.TestCase):
                 pathlib.Path(out).mkdir(parents=True, exist_ok=True)
                 lines = [line for line in pathlib.Path(poses_path).read_text().splitlines()
                          if line.startswith(produce.POSE_LINE)]
+                if not lines:
+                    raise ValueError("workers must be positive")  # as reference_render.render_poses refuses
                 for index, line in enumerate(lines):
                     for suffix in (".png", ".normal.npy", ".linear.npy"):
                         (pathlib.Path(out) / f"{index:04d}{suffix}").write_bytes((line + suffix).encode())

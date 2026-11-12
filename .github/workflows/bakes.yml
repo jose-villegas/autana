@@ -75,9 +75,15 @@ jobs:
           python launcher/tools/bake/bake.py list --missing --kind sound | tee "$RUNNER_TEMP/sound.txt"
           python launcher/tools/bake/bake.py list --missing --kind levels | tee "$RUNNER_TEMP/levels.txt"
           echo "mesh=$(cat "$RUNNER_TEMP/mesh.txt" "$RUNNER_TEMP/levels.txt" | wc -l)" >> "$GITHUB_OUTPUT"
+          echo "traced=$(wc -l < "$RUNNER_TEMP/mesh.txt")" >> "$GITHUB_OUTPUT"
           echo "sound=$(wc -l < "$RUNNER_TEMP/sound.txt")" >> "$GITHUB_OUTPUT"
           echo "blend=$(wc -l < "$RUNNER_TEMP/blend.txt")" >> "$GITHUB_OUTPUT"
           echo "count=$(cat "$RUNNER_TEMP/blend.txt" "$RUNNER_TEMP/mesh.txt" "$RUNNER_TEMP/levels.txt" "$RUNNER_TEMP/sound.txt" | wc -l)" >> "$GITHUB_OUTPUT"
+
+      # Before any install: a runner of another CPU vendor than the lock's fails in seconds.
+      - name: This runner's CPU vendor is the lock's
+        if: steps.missing.outputs.traced != '0'
+        run: python3 scripts/ci/runner_vendor.py check
 
       # The exporter names the Blender it needs; the job installs that one.
       - name: Install Blender
@@ -219,8 +225,10 @@ jobs:
 
   lock:
     name: Lock is current
-    if: ${{ !cancelled() && needs.cpu.result != 'failure' && needs.reference.result != 'failure' && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.lock == 'true') }}
-    needs: [inputs, cpu, reference]
+    # Not after a failed shard: the reference row would be missing anyway, and the shard alone failing lets
+    # bakes-vendor-rerun.yml re-run a wrong-vendor one.
+    if: ${{ !cancelled() && needs.cpu.result != 'failure' && needs.reference-shard.result != 'failure' && needs.reference.result != 'failure' && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.lock == 'true') }}
+    needs: [inputs, cpu, reference-shard, reference]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0

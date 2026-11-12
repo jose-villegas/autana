@@ -1129,6 +1129,13 @@ def rerun_on(mesh_cpu_vendor):
             f"{mesh_cpu_vendor} runner")
 
 
+def wrong_vendor(mesh_cpu_vendor, cpu):
+    """Why a host whose CPU is `cpu` may not trace for a lock of `mesh_cpu_vendor`; None when it may."""
+    if mesh_cpu_vendor and cpu != mesh_cpu_vendor:
+        return f"this host's CPU is {cpu or 'not named'}, but {rerun_on(mesh_cpu_vendor)}"
+    return None
+
+
 def from_made(bake, lock, made):
     """Whether `bake`'s row comes from a run's make: the lock has none for it, or only a seeded one."""
     held = lock.get(bake.key)
@@ -1360,9 +1367,10 @@ def main(argv=None):
             if args.out:
                 print(f"this host's CPU vendor: {cpu or 'not named'}; "
                       f"the lock's meshes: {mesh_cpu_vendor or 'not named'}")
-                if mesh_cpu_vendor and cpu != mesh_cpu_vendor and any(to_make(bake, kind) and bake.output not in joined
-                                                                       for bake in found for kind in TRACED_KINDS):
-                    raise BakeMissing(f"this host's CPU is {cpu or 'not named'}, but {rerun_on(mesh_cpu_vendor)}")
+                refusal = wrong_vendor(mesh_cpu_vendor, cpu)
+                if refusal and any(to_make(bake, kind) and bake.output not in joined
+                                   for bake in found for kind in TRACED_KINDS):
+                    raise BakeMissing(refusal)
             if args.shard:
                 shard, count = (int(part) for part in args.shard.split("/"))
                 if args.kind != "reference" or not args.out or not 0 <= shard < count:

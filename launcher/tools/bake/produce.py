@@ -235,14 +235,20 @@ def shard_renderer(render_sets, shard, count, rendered_sets):
         for poses, out in sets:
             text = pathlib.Path(poses).read_text()
             rendered_sets[pathlib.Path(out).name] = sum(line.startswith(POSE_LINE) for line in text.splitlines())
-        with tempfile.TemporaryDirectory() as work:
+        # Beside the outputs, so a rendered file is renamed into place, never copied across filesystems.
+        beside = pathlib.Path(sets[0][1]).parent
+        beside.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=beside) as work:
             cut = [(pathlib.Path(work) / f"{number}.txt", pathlib.Path(work) / str(number)) for number in range(len(sets))]
             for (poses, _), (subset, _) in zip(sets, cut):
                 subset.write_text(shard_poses(pathlib.Path(poses).read_text(), shard, count))
-            render_sets(inputs, cut, samples)
+            # A set with fewer poses than shards leaves some shards none; the renderer takes no empty set.
+            kept = [(subset, rendered) for subset, rendered in cut
+                    if any(line.startswith(POSE_LINE) for line in subset.read_text().splitlines())]
+            render_sets(inputs, kept, samples)
             for (_, out), (_, rendered) in zip(sets, cut):
                 pathlib.Path(out).mkdir(parents=True, exist_ok=True)
-                for path in pathlib.Path(rendered).iterdir():
+                for path in (pathlib.Path(rendered).iterdir() if pathlib.Path(rendered).is_dir() else ()):
                     index, rest = path.name.split(".", 1)
                     os.replace(path, pathlib.Path(out) / f"{shard + int(index) * count:04d}.{rest}")
     return render
