@@ -162,7 +162,7 @@ small flat triangles still enter their size and colour-mode bins.
 |---|---|
 | `pixels_face`, `pixels_uniform`, `pixels_shaded` | covered centres of set-up triangles in each mode, clipped to the screen, before depth tests; overlapping triangles each contribute |
 | `render_width`, `render_height` | render picture dimensions |
-| `output_width`, `output_height` | last compose destination dimensions, including half-picture composition |
+| `output_width`, `output_height` | compose destination dimensions, including half-picture composition |
 | `quarter` | camera quarter in panel coordinates |
 | `upscale_path` | selected `upscale_path_t` value |
 | `upscale_surface` | whether the kept-width path uses surface filtering rather than scanlines |

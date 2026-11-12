@@ -9,6 +9,7 @@
 #include "esp_log.h"
 #include "frame/test_frame.h"
 #include "frame_profile.h"
+#include "gfx/gfx.h"
 #include "lab/test/lab_perf_quarters.h"
 #include "profile/frame_cost.h"
 #include "render/context/render_context.h"
@@ -51,7 +52,7 @@ release_pose_line(void) {
 static void
 add_frame_counts(int64_t sums[RENDER_LAB_TEST_COUNTS], raster_cull_frame_t* f) {
     const raster_t* raster = &render_context_main()->raster;
-    raster_cull_frame_compose(f, raster);
+    raster_cull_frame_compose(f, raster, gfx_half_picture() != NULL);
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, f->counts.nodes_visited, "the cull view did not draw");
     int i = 0;
 #define ADD_COUNT(name, member) sums[i++] += f->member;
@@ -63,7 +64,8 @@ __attribute__((noinline)) void
 render_lab_test_add_cull_counts(int64_t sums[RENDER_LAB_TEST_COUNTS]) {
     const raster_cull_t* cull = render_context_debug_view_state(render_context_main());
     TEST_ASSERT_NOT_NULL(cull);
-    raster_cull_frame_t frame = raster_cull_frame(cull);
+    raster_cull_frame_t frame;
+    raster_cull_frame(cull, &frame);
     add_frame_counts(sums, &frame);
 }
 
@@ -93,7 +95,7 @@ render_lab_test_replay_pose(const char* tag, entity_t entity, uint32_t duration_
     memset(out->sums, 0, sizeof out->sums);
     const raster_cull_t* cull = render_context_debug_view_state(render_context_main());
     TEST_ASSERT_NOT_NULL(cull);
-    out->frame = raster_cull_frame(cull);
+    raster_cull_frame(cull, &out->frame);
     render_lab_test_show_view(RENDER_DEBUG_VIEW_SHADED);
     (void)lab_test_frame_dt(0, false, NULL);
     frame_cost_take_clear(); /* forget whatever ran before */

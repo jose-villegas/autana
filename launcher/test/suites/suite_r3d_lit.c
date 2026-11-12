@@ -2366,7 +2366,7 @@ test_batched_copies_draw_what_one_instance_at_a_time_draws(void) {
     TEST_ASSERT_LESS_THAN_INT(1 + BATCH_COPIES, raster_batch_count(&raster));
     raster_draw(&raster, &view);
     raster_cull_frame_t frame = {0};
-    raster_cull_frame_compose(&frame, &raster);
+    raster_cull_frame_compose(&frame, &raster, false);
     TEST_ASSERT_EQUAL_INT(raster_batch_count(&raster), frame.transform_batches);
     TEST_ASSERT_EQUAL_HEX16_ARRAY(want, raster_color(&raster), W * H);
     TEST_ASSERT_EQUAL_HEX16_ARRAY(want + (W * H), raster_depth(&raster), W * H);

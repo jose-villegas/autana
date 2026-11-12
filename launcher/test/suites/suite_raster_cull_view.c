@@ -667,7 +667,8 @@ static void
 test_cull_view_frame_counts_clusters_by_fate(void) {
     scene_t* s = scene_open();
     scene_draw(s);
-    const raster_cull_frame_t frame = raster_cull_frame(scene_state(s));
+    raster_cull_frame_t frame;
+    raster_cull_frame(scene_state(s), &frame);
     TEST_ASSERT_EQUAL_INT(1, frame.clusters[RASTER_FATE_CULLED]);
     TEST_ASSERT_EQUAL_INT(1, frame.clusters[RASTER_FATE_NOT_SET_UP]);
     TEST_ASSERT_EQUAL_INT(1, frame.clusters[RASTER_FATE_HIDDEN]);
@@ -683,7 +684,9 @@ static void
 test_cull_view_frame_counts_the_walk_and_the_sort_of_every_instance(void) {
     scene_t* s = scene_open();
     scene_draw(s);
-    const r3d_pipeline_counts_t c = raster_cull_frame(scene_state(s)).counts;
+    raster_cull_frame_t frame;
+    raster_cull_frame(scene_state(s), &frame);
+    const r3d_pipeline_counts_t c = frame.counts;
     int sized = 0;
     for (int mode = 0; mode < R3D_SIZES_MODES; mode++) {
         for (int bin = 0; bin < R3D_SIZES_BINS; bin++) {
@@ -707,7 +710,8 @@ static void
 test_cull_view_triangles_covering_counts_only_triangles_owning_pixels(void) {
     scene_t* s = scene_open();
     scene_draw(s);
-    const raster_cull_frame_t frame = raster_cull_frame(scene_state(s));
+    raster_cull_frame_t frame;
+    raster_cull_frame(scene_state(s), &frame);
 
     TEST_ASSERT_EQUAL_INT(2 * TRIANGLES_PER_QUAD, frame.triangles_covering);
     TEST_ASSERT_TRUE(frame.triangles_covering < frame.counts.triangles_set_up);
@@ -718,7 +722,8 @@ static void
 test_cull_view_from_the_top_draws_again_with_every_cluster_and_the_same_counts(void) {
     scene_t* s = scene_open();
     scene_draw(s);
-    const raster_cull_frame_t camera_only = raster_cull_frame(scene_state(s));
+    raster_cull_frame_t camera_only;
+    raster_cull_frame(scene_state(s), &camera_only);
     TEST_ASSERT_TRUE(culling_on());
     TEST_ASSERT_EQUAL_INT(0, pixels_of(s, CULLED_RGB));
 
@@ -732,7 +737,9 @@ test_cull_view_from_the_top_draws_again_with_every_cluster_and_the_same_counts(v
     TEST_ASSERT_TRUE(state->spectator.position.y > state->camera.position.y);
     TEST_ASSERT_TRUE(pixels_of(s, CULLED_RGB) > 0);
 
-    const raster_cull_frame_t from_top = raster_cull_frame(state);
+    raster_cull_frame_t from_top;
+
+    raster_cull_frame(state, &from_top);
     TEST_ASSERT_EQUAL_MEMORY(&camera_only, &from_top, sizeof from_top);
     TEST_ASSERT_EQUAL_UINT8(RASTER_FATE_CULLED, state->fate[SCENE_SIDE]);
 }
@@ -925,7 +932,8 @@ test_cull_view_counts_only_the_level_drawn(void) {
     const raster_cull_t* state = lod_draw(l, 1);
     TEST_ASSERT_EQUAL_INT(LOD_FINEST, state->clusters);
     TEST_ASSERT_EQUAL_INT(LOD_FINEST * TRIANGLES_PER_QUAD, state->triangles);
-    const raster_cull_frame_t frame = raster_cull_frame(state);
+    raster_cull_frame_t frame;
+    raster_cull_frame(state, &frame);
     TEST_ASSERT_EQUAL_INT(LOD_FINEST, fates_total(&frame));
     TEST_ASSERT_EQUAL_INT(LOD_FINEST, frame.clusters[RASTER_FATE_DRAWN]);
     TEST_ASSERT_EQUAL_INT(LOD_FINEST * TRIANGLES_PER_QUAD, frame.triangles_covering);
@@ -948,7 +956,8 @@ test_cull_view_paints_the_coarse_level_picked_and_not_the_finest(void) {
     }
     TEST_ASSERT_EQUAL_INT(LOD_COARSE, state->clusters);
     TEST_ASSERT_EQUAL_INT(LOD_COARSE * LOD_COARSE_TRIS, state->triangles);
-    const raster_cull_frame_t frame = raster_cull_frame(state);
+    raster_cull_frame_t frame;
+    raster_cull_frame(state, &frame);
     TEST_ASSERT_EQUAL_INT(LOD_COARSE, fates_total(&frame));
     TEST_ASSERT_EQUAL_INT(frame.counts.clusters_tested, frame.counts.clusters_kept + frame.counts.clusters_off_frustum);
     TEST_ASSERT_EQUAL_INT(0, frame.clusters[RASTER_FATE_CULLED]);
@@ -984,7 +993,8 @@ test_cull_view_counts_each_drawn_triangle_once_after_an_odd_instance(void) {
     const int triangles = LOD_PAIR * ((LOD_MERGE * 2) + LOD_COARSE_TRIS);
     TEST_ASSERT_EQUAL_INT(clusters, state->clusters);
     TEST_ASSERT_EQUAL_INT(triangles, state->triangles);
-    const raster_cull_frame_t frame = raster_cull_frame(state);
+    raster_cull_frame_t frame;
+    raster_cull_frame(state, &frame);
     TEST_ASSERT_EQUAL_INT(clusters, fates_total(&frame));
     TEST_ASSERT_EQUAL_INT(clusters, frame.clusters[RASTER_FATE_DRAWN]);
     TEST_ASSERT_EQUAL_INT(triangles, frame.triangles_covering);
@@ -998,7 +1008,8 @@ test_cull_view_has_room_for_the_levels_drawn_not_every_level(void) {
     lod_scene_t* l = lod_open(LOD_CROWD);
     const raster_cull_t* state = lod_draw(l, LOD_CROWD);
     TEST_ASSERT_EQUAL_INT(LOD_CROWD * LOD_FINEST, state->clusters);
-    const raster_cull_frame_t frame = raster_cull_frame(state);
+    raster_cull_frame_t frame;
+    raster_cull_frame(state, &frame);
     TEST_ASSERT_EQUAL_INT(LOD_CROWD * LOD_FINEST, fates_total(&frame));
     TEST_ASSERT_TRUE(frame.clusters[RASTER_FATE_DRAWN] > 0);
 }
@@ -1237,12 +1248,14 @@ static void
 test_compose_counts_can_describe_the_shaded_half_picture(void) {
     raster_t raster = {.width = W / 2,
                        .height = H / 2,
-                       .upscale = {.destination_width = W / 2,
-                                   .destination_height = H / 2,
-                                   .path = UPSCALE_KEPT,
+                       .destination_width = W,
+                       .destination_height = H,
+                       .upscale = {.destination_width = W,
+                                   .destination_height = H,
+                                   .path = UPSCALE_DOUBLED,
                                    .filter = UPSCALE_FILTER_SURFACE}};
     raster_cull_frame_t frame = {0};
-    raster_cull_frame_compose(&frame, &raster);
+    raster_cull_frame_compose(&frame, &raster, true);
     TEST_ASSERT_EQUAL_INT(W / 2, frame.render_width);
     TEST_ASSERT_EQUAL_INT(H / 2, frame.render_height);
     TEST_ASSERT_EQUAL_INT(W / 2, frame.output_width);
@@ -1252,7 +1265,7 @@ test_compose_counts_can_describe_the_shaded_half_picture(void) {
     raster.upscale.destination_width = W;
     raster.upscale.destination_height = H;
     raster.upscale.path = UPSCALE_DOUBLED;
-    raster_cull_frame_compose(&frame, &raster);
+    raster_cull_frame_compose(&frame, &raster, false);
     TEST_ASSERT_EQUAL_INT(W, frame.output_width);
     TEST_ASSERT_EQUAL_INT(H, frame.output_height);
     TEST_ASSERT_EQUAL_INT(UPSCALE_DOUBLED, frame.upscale_path);

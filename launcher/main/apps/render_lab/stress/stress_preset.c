@@ -162,9 +162,9 @@ make_card(const stress_params_t* p, const stress_buffers_t* b) {
             continue;
         }
         for (int k = 0; k < 6; k++) {
-            const int v = 3 * t + k;
+            const int v = (3 * t) + k;
             card_corner(p, b, v, x + quad_corners[k][0], y + quad_corners[k][1]);
-            b->triangles[t + k / 3][k % 3] = (uint16_t)v;
+            b->triangles[t + (k / 3)][k % 3] = (uint16_t)v;
         }
         t += 2;
     }
@@ -264,8 +264,8 @@ colour_card(int vertex_count, const stress_buffers_t* b) {
         const int ty = (int)floorf((at.y + 0.5F) * STRESS_CARD_TEXTURE_SIZE);
         for (int c = 0; c < 3; c++) {
             b->colors[v][c] = (uint8_t)(STRESS_CARD_COLOUR_BASE
-                                        + rng_hash(STRESS_CARD_TEXTURE_SEED, (uint32_t)tx, (uint32_t)ty, (uint32_t)c)
-                                              % STRESS_CARD_COLOUR_RANGE);
+                                        + (rng_hash(STRESS_CARD_TEXTURE_SEED, (uint32_t)tx, (uint32_t)ty, (uint32_t)c)
+                                           % STRESS_CARD_COLOUR_RANGE));
         }
     }
 }

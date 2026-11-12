@@ -149,8 +149,9 @@ bool raster_cull_second_view(void* state, const raster_t* raster, const transfor
 /* Lines over the composed picture, `width` by `height` from (0, 0). */
 void raster_cull_overlay(void* state, int width, int height);
 
-/* Fill work from the last draw and its selected upscale maps. */
-void raster_cull_frame_compose(raster_cull_frame_t* frame, const raster_t* raster);
+/* A counted overlay can compose larger than the shaded picture being timed.
+ * shaded_half_picture requests that picture's destination when it fits. */
+void raster_cull_frame_compose(raster_cull_frame_t* frame, const raster_t* raster, bool shaded_half_picture);
 
-/* The last frame's counts. */
-raster_cull_frame_t raster_cull_frame(const raster_cull_t* state);
+/* The last frame's counts, into caller-owned storage to keep large copies off the draw stack. */
+void raster_cull_frame(const raster_cull_t* state, raster_cull_frame_t* frame);

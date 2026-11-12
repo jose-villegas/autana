@@ -183,7 +183,7 @@ traverses the stacked surfaces. Their sweeps are claims of
 |---|---|
 | Presets: each ID, key and surface | `stress/stress_preset.h` `STRESS_PRESETS` |
 | Each preset's shape, copies and layout | `stress/stress_preset.c` `stress_presets` |
-| Each copy's shape | `math/geometry/primitive_mesh.h` |
+| Primitive shapes | `math/geometry/primitive_mesh.h` |
 | Shared dynamic meshes for the copies | `render/dynamic/r3d_dynamic_mesh.h` |
 | The camera tracks, a still camera, and a pool of copies | `launcher/demo/stress/` |
 | Each preset's sizes, by the renderer's own limits | [`tests/suite_stress_preset.c`](../tests/suite_stress_preset.c) |
