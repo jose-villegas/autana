@@ -1,6 +1,7 @@
 # The stress scene: a camera swinging round the origin and a pool of copies.
 # render_lab generates one mesh at run time, shows it in as many copies as
 # the preset asks for and hides the rest; each copy starts as a stand-in.
+# The baked-tree preset shows the baked ring instead of any copy.
 [[objects]]
 name = "camera"
 position = [0.0, 1.0, 10.0]
@@ -40,6 +41,23 @@ position = [0.0, 1.0, 10.0]
 half_fov_short_tan = 0.5
 near_z = 0.5
 background = 0x0B0D12
+
+# The baked-tree preset's turn inside the ring.
+[[objects]]
+name = "sweep"
+
+[objects.camera]
+half_fov_short_tan = 0.5
+near_z = 0.05
+background = 0x0B0D12
+path = { animation = "sweep.anim.toml", node = "camera" }
+
+# The baked-tree preset's ring, about the origin as written; every other preset hides it.
+[[objects]]
+name = "ring"
+
+[objects.mesh_renderer]
+mesh = "ring.import.toml"
 
 [[objects]]
 name = "slot_00"
