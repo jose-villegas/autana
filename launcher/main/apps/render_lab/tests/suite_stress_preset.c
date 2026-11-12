@@ -74,6 +74,7 @@ fixture_end(void) {
         memory_free(f.at[i].positions);
         memory_free(f.at[i].colors);
         memory_free(f.at[i].triangles);
+        memory_free(f.at[i].mask_uvs);
     }
     memory_free(f.mesh_block);
     memory_free(f.projected);
@@ -94,9 +95,11 @@ fixture_begin(const stress_params_t* p, int sets) {
     const size_t vertices = (size_t)stress_vertex_count(p);
     const size_t triangles = (size_t)stress_triangle_count(p);
     for (int i = 0; i < sets; i++) {
-        f.at[i] = (stress_buffers_t){memory_alloc(sizeof(vec3f_t) * vertices, MEMORY_PSRAM),
-                                     memory_alloc(sizeof(uint8_t[3]) * vertices, MEMORY_PSRAM),
-                                     memory_alloc(sizeof(uint16_t[3]) * triangles, MEMORY_PSRAM)};
+        f.at[i] = (stress_buffers_t){
+            memory_alloc(sizeof(vec3f_t) * vertices, MEMORY_PSRAM),
+            memory_alloc(sizeof(uint8_t[3]) * vertices, MEMORY_PSRAM),
+            memory_alloc(sizeof(uint16_t[3]) * triangles, MEMORY_PSRAM),
+            p->surface == STRESS_SURFACE_MASKED ? memory_alloc(sizeof(uint16_t[2]) * vertices, MEMORY_PSRAM) : NULL};
         TEST_ASSERT_NOT_NULL(f.at[i].positions);
         TEST_ASSERT_NOT_NULL(f.at[i].colors);
         TEST_ASSERT_NOT_NULL(f.at[i].triangles);
@@ -154,7 +157,8 @@ mesh_fixture(const stress_params_t* p) {
     fixture_begin(p, 1);
     r3d_dynamic_source_t source;
     TEST_ASSERT_TRUE(stress_source(p, 0, &f.at[0], &source));
-    const r3d_dynamic_capacity_t capacity = r3d_dynamic_capacity_for(source.vertex_count, source.triangle_count);
+    r3d_dynamic_capacity_t capacity = r3d_dynamic_capacity_for(source.vertex_count, source.triangle_count);
+    capacity.masked = source.mask_uvs != NULL;
     const size_t bytes = r3d_dynamic_mesh_bytes(capacity);
     f.mesh_block = memory_alloc(bytes, MEMORY_PSRAM);
     TEST_ASSERT_NOT_NULL(f.mesh_block);
@@ -602,14 +606,12 @@ test_foliage_cards_overlap_and_are_masked_corner_to_corner(void) {
     TEST_ASSERT_GREATER_THAN_INT(0, covered);
     TEST_ASSERT_GREATER_OR_EQUAL_FLOAT(FOLIAGE_MEAN_DEPTH, (float)layers / (float)covered);
 
-    uint16_t (*uvs)[2] = memory_alloc(sizeof(uint16_t[2]) * (size_t)f.mesh.capacity.vertices, MEMORY_PSRAM);
-    TEST_ASSERT_NOT_NULL(uvs);
-    stress_mask(&source, &f.mesh, uvs);
+    const lmsk_atlas_t atlas = stress_mask_atlas();
     for (int c = 0; c < f.mesh.built_clusters; c++) {
         TEST_ASSERT_TRUE(f.mesh.clusters[c].masked);
     }
-    TEST_ASSERT_EQUAL_PTR(uvs, f.mesh.mesh.mask_uvs);
-    TEST_ASSERT_EQUAL_PTR(stress_mask_atlas.rows, f.mesh.mesh.mask.rows);
+    TEST_ASSERT_EQUAL_PTR(atlas.rows, f.mesh.mesh.mask.rows);
+    const uint16_t (*uvs)[2] = f.mesh.mesh.mask_uvs;
     /* A card's two triangles reach all four of the atlas's corners. */
     const int last = ((int)LMSK_MASK_WIDTH << LMSK_UV_FRACTION_BITS) - 1;
     for (int card = 0; card < p->cuts; card++) {
@@ -626,12 +628,11 @@ test_foliage_cards_overlap_and_are_masked_corner_to_corner(void) {
     }
     int kept = 0;
     for (int y = 0; y < STRESS_MASK_ROWS; y++) {
-        kept += __builtin_popcount(stress_mask_atlas.rows[y]);
+        kept += __builtin_popcount(atlas.rows[y]);
     }
     const float share = (float)kept / (float)((int)LMSK_MASK_WIDTH * STRESS_MASK_ROWS);
     TEST_ASSERT_GREATER_THAN_FLOAT(FOLIAGE_KEPT_LEAST, share);
     TEST_ASSERT_LESS_THAN_FLOAT(FOLIAGE_KEPT_MOST, share);
-    memory_free(uvs);
     release();
 }
 

@@ -591,9 +591,13 @@ rebuild_surface(void) {
         positions[i] = to_model(positions[i]);
         normals[i] = direction_to_model(normals[i]);
     }
-    const r3d_dynamic_source_t source = {positions,        (const uint8_t (*)[3])colors,
-                                         m.vertex_count,   (const uint16_t (*)[3])triangles,
-                                         m.triangle_count, false};
+    const r3d_dynamic_source_t source = {
+        .positions = positions,
+        .colors = (const uint8_t (*)[3])colors,
+        .vertex_count = m.vertex_count,
+        .triangles = (const uint16_t (*)[3])triangles,
+        .triangle_count = m.triangle_count,
+    };
     fitted = r3d_dynamic_mesh_build(&surface, &source) && fitted;
     if (!fitted && !truncated) {
         ESP_LOGW(TAG, "the surface outgrew its buffers and is cut");

@@ -28,7 +28,7 @@ typedef enum {
     STRESS_SURFACE_UNIFORM,   /* one colour at every corner: zero colour steps, filled uniform */
     STRESS_SURFACE_STATIC,    /* the pack's own static mesh asset per copy, nothing generated */
     STRESS_SURFACE_TWO_SIDED, /* banded, and drawn from both sides: nothing faces away */
-    STRESS_SURFACE_MASKED,    /* banded, each foliage card cut by a one-bit mask atlas (stress_mask()) */
+    STRESS_SURFACE_MASKED,    /* banded, each foliage card cut by a one-bit mask atlas (stress_mask_atlas()) */
 } stress_surface_t;
 
 typedef enum {
@@ -98,11 +98,13 @@ int stress_vertex_count(const stress_params_t* p);
 int stress_triangle_count(const stress_params_t* p);
 
 /* What stress_source() writes into: stress_vertex_count() positions and
- * colours, stress_triangle_count() triangles. */
+ * colours, stress_triangle_count() triangles, and for a masked preset
+ * stress_vertex_count() mask u, v (NULL otherwise). */
 typedef struct {
     vec3f_t* positions;
     uint8_t (*colors)[3];
     uint16_t (*triangles)[3];
+    uint16_t (*mask_uvs)[2];
 } stress_buffers_t;
 
 /* Positions are stored at this many ticks per unit: a unit shape and its
@@ -143,11 +145,4 @@ stress_params_t stress_copy_params(const stress_params_t* p, int copy);
  * with scattered single-texel holes, keeping about 0.7 of the card, so its
  * rows break into ragged runs as a leaf card's do. */
 #define STRESS_MASK_ROWS ((int)LMSK_MASK_WIDTH)
-extern const lmsk_atlas_t stress_mask_atlas;
-
-/* Cuts mesh `m`, built from `src` (a masked foliage preset's
- * stress_source()), by stress_mask_atlas: every built cluster masked, and
- * each built vertex's u, v in `uvs` (room for m's vertex capacity) its
- * card corner's, the card spanning the atlas. Run after every build, which
- * clears the cluster flags. */
-void stress_mask(const r3d_dynamic_source_t* src, r3d_dynamic_mesh_t* m, uint16_t (*uvs)[2]);
+lmsk_atlas_t stress_mask_atlas(void);

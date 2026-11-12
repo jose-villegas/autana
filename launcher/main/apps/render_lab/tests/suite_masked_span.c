@@ -90,7 +90,9 @@ fill_cards(void* ctx) {
                 if (c->mask < 0) {
                     r3d_span_fill_gouraud(drow + x, crow + x, c->side, value, ramp_step);
                 } else {
-                    r3d_span_fill_masked(drow + x, crow + x, c->side, value, ramp_step, masks[c->mask][v], du / 2U, du);
+                    const r3d_span_mask_walk_t walk = {masks[c->mask], du / 2U, du, (uint32_t)v << R3D_SPAN_MASK_SHIFT,
+                                                       0U};
+                    r3d_span_fill_masked(drow + x, crow + x, c->side, value, ramp_step, &walk);
                 }
                 c->spans++;
                 c->pixels += c->side;

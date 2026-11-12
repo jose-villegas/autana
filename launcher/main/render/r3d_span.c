@@ -374,14 +374,25 @@ r3d_span_fill_gouraud(uint16_t* depth, uint16_t* color, int count, const uint32_
     }
 }
 
+/* Whether the atlas keeps the texel at u, v (16.16, inside the atlas). */
+static inline __attribute__((always_inline)) bool
+mask_kept(const uint32_t* rows, uint32_t u, uint32_t v) {
+    return ((rows[v >> R3D_SPAN_MASK_SHIFT] >> ((u >> R3D_SPAN_MASK_SHIFT) % LMSK_MASK_WIDTH)) & 1U) != 0U;
+}
+
 RENDER_IRAM_ATTR __attribute__((noinline)) FILL_GOURAUD_ATTR void
 r3d_span_fill_masked(uint16_t* depth, uint16_t* color, int count, const uint32_t value[ATTRIBUTES],
-                     const int32_t step[ATTRIBUTES], uint32_t row_word, uint32_t u, uint32_t du) {
+                     const int32_t step[ATTRIBUTES], const r3d_span_mask_walk_t* walk) {
     SPAN_NOT_EMPTY(count);
     GOURAUD_VALUES(value, step);
+    const uint32_t* rows = walk->rows;
+    uint32_t u = walk->u;
+    uint32_t v = walk->v;
+    const uint32_t du = walk->du;
+    const uint32_t dv = walk->dv;
     for (int i = 0; i < count; i++) {
         const uint16_t zq = (uint16_t)(z >> R3D_DEPTH_SHIFT);
-        if (((row_word >> ((u >> R3D_SPAN_MASK_SHIFT) % LMSK_MASK_WIDTH)) & 1U) && zq > depth[i]) {
+        if (mask_kept(rows, u, v) && zq > depth[i]) {
             depth[i] = zq;
             color[i] = r3d_span_pack(r, g, b);
         }
@@ -390,6 +401,7 @@ r3d_span_fill_masked(uint16_t* depth, uint16_t* color, int count, const uint32_t
         g += dg;
         b += db;
         u += du;
+        v += dv;
     }
 }
 
@@ -447,63 +459,46 @@ fill_carried_span(const r3d_span_target_t* target, const fill_t* f, const uint32
     }
 }
 
-/* The mask's u at the span's first pixel and its step, both clamped so the last pixel stays inside the mask. */
+/* One mask axis at the span's first pixel and its step, both clamped so
+ * every pixel of the span stays inside [0, top]. */
 static void
-mask_u_range(const fill_t* f, int y, const row_span_t* span, int count, int32_t* u_first, int32_t* du) {
-    const mask_planes_t* uv = f->uv;
-    const int64_t x = span->first - uv->x_origin;
-    const int64_t dy = y - uv->y_origin;
-    const int64_t u_at = (int64_t)uv->u.base + (x * uv->u.dx) + (dy * uv->u.dy);
-    const int32_t u_max = (LMSK_MASK_WIDTH << R3D_SPAN_MASK_SHIFT) - 1;
-    const int32_t u = (int32_t)mathi_clamp_i64(u_at, 0, u_max);
-    const int64_t u_end = (int64_t)u + ((int64_t)uv->u.dx * count);
-    *u_first = u;
-    *du = uv->u.dx;
-    if (count > 0 && (u_end < 0 || u_end > u_max)) {
-        *du = ((int32_t)mathi_clamp_i64(u_end, 0, u_max) - u) / count;
+mask_axis(const mask_planes_t* uv, const plane_step_t* p, int y, const row_span_t* span, int count, int32_t top,
+          uint32_t* first, uint32_t* d) {
+    const int64_t at =
+        (int64_t)p->base + ((int64_t)(span->first - uv->x_origin) * p->dx) + ((int64_t)(y - uv->y_origin) * p->dy);
+    const int32_t start = (int32_t)mathi_clamp_i64(at, 0, top);
+    const int64_t end = (int64_t)start + ((int64_t)p->dx * count);
+    int32_t step = p->dx;
+    if (count > 0 && (end < 0 || end > top)) {
+        step = ((int32_t)mathi_clamp_i64(end, 0, top) - start) / count;
     }
+    *first = (uint32_t)start;
+    *d = (uint32_t)step;
 }
 
-/* The mask's v at the span's first pixel, 16.16 atlas rows. */
-static int64_t
-mask_v_first(const fill_t* f, int y, const row_span_t* span) {
+/* The span's walk over the atlas: u and v step along it together, so a card
+ * that turns or a picture on its side reads every row it crosses. */
+static r3d_span_mask_walk_t
+mask_walk(const fill_t* f, int y, const row_span_t* span, int count) {
     const mask_planes_t* uv = f->uv;
-    return (int64_t)uv->v.base + ((int64_t)(span->first - uv->x_origin) * uv->v.dx)
-           + ((int64_t)(y - uv->y_origin) * uv->v.dy);
-}
-
-/* Pixels from v, stepping dv, before v leaves its atlas row: at most `left`. */
-static int
-mask_row_pixels(int64_t v, int32_t dv, int left) {
-    const int64_t row = (int64_t)1 << R3D_SPAN_MASK_SHIFT;
-    const int64_t in_row = v & (row - 1);
-    const int64_t room = dv > 0 ? row - in_row : dv < 0 ? in_row + 1 : 0;
-    const int64_t step = dv > 0 ? dv : -(int64_t)dv;
-    if (step == 0) {
-        return left;
-    }
-    const int64_t pixels = (room + step - 1) / step;
-    return pixels < left ? (int)pixels : left;
-}
-
-/* The atlas row word for v, clamped to the atlas. */
-static uint32_t
-mask_row_word(const fill_t* f, int64_t v) {
-    const lmsk_atlas_t* atlas = f->uv->given->atlas;
-    const int64_t at = v >> R3D_SPAN_MASK_SHIFT;
-    return atlas->rows[at < 0 ? 0 : at >= atlas->row_count ? atlas->row_count - 1 : (int)at];
+    const lmsk_atlas_t* atlas = uv->given->atlas;
+    r3d_span_mask_walk_t walk = {.rows = atlas->rows};
+    mask_axis(uv, &uv->u, y, span, count, (LMSK_MASK_WIDTH << R3D_SPAN_MASK_SHIFT) - 1, &walk.u, &walk.du);
+    mask_axis(uv, &uv->v, y, span, count, (atlas->row_count << R3D_SPAN_MASK_SHIFT) - 1, &walk.v, &walk.dv);
+    return walk;
 }
 
 /* With span writers attached, each run of kept pixels is filled and then handed to the writers. */
 static void
 masked_runs(const r3d_span_target_t* target, int y, const row_span_t* span, int count, const uint32_t value[ATTRIBUTES],
-            const int32_t step[ATTRIBUTES], uint32_t row_word, int32_t u_first, int32_t du) {
+            const int32_t step[ATTRIBUTES], const r3d_span_mask_walk_t* walk) {
     int first = -1;
     int32_t z = (int32_t)value[0];
-    int32_t u = u_first;
+    uint32_t u = walk->u;
+    uint32_t v = walk->v;
     for (int i = 0; i <= count + 1; i++) {
-        const bool kept = i <= count && ((row_word >> (((uint32_t)u >> R3D_SPAN_MASK_SHIFT) % LMSK_MASK_WIDTH)) & 1U)
-                          && (uint16_t)(z >> R3D_DEPTH_SHIFT) > span->depth[i];
+        const bool kept =
+            i <= count && mask_kept(walk->rows, u, v) && (uint16_t)(z >> R3D_DEPTH_SHIFT) > span->depth[i];
         if (kept && first < 0) {
             first = i;
         } else if (!kept && first >= 0) {
@@ -511,19 +506,18 @@ masked_runs(const r3d_span_target_t* target, int y, const row_span_t* span, int 
             for (int k = 0; k < ATTRIBUTES; k++) {
                 run[k] = value[k] + ((uint32_t)step[k] * (uint32_t)first);
             }
-            r3d_span_fill_masked(span->depth + first, span->color + first, i - first, run, step, row_word,
-                                 (uint32_t)u_first + ((uint32_t)du * (uint32_t)first), (uint32_t)du);
+            const r3d_span_mask_walk_t from = {walk->rows, walk->u + (walk->du * (uint32_t)first), walk->du,
+                                               walk->v + (walk->dv * (uint32_t)first), walk->dv};
+            r3d_span_fill_masked(span->depth + first, span->color + first, i - first, run, step, &from);
             write_span(target, y, span->first + first, span->first + i - 1, (int32_t)run[0], step[0]);
             first = -1;
         }
         z += step[0];
-        u += du;
+        u += walk->du;
+        v += walk->dv;
     }
 }
 
-/* Each piece of the span inside one atlas row reads that row's word: v
- * steps along the span as u does, so a card that turns or a picture on its
- * side reads every row it crosses. */
 static RENDER_TAIL_ATTR void
 masked_span(const r3d_span_target_t* target, const fill_t* f, const uint32_t row[ATTRIBUTES], int y, int column,
             const row_span_t* span, bool capped) {
@@ -535,28 +529,11 @@ masked_span(const r3d_span_target_t* target, const fill_t* f, const uint32_t row
         span_start(f->g, row[k], k, column < 0 ? -column : 0, count, &start, &step[k], capped);
         value[k] = (uint32_t)start;
     }
-    int32_t u;
-    int32_t du;
-    mask_u_range(f, y, span, count, &u, &du);
-    const int32_t dv = f->uv->v.dx;
-    int64_t v = mask_v_first(f, y, span);
-    for (int at = 0; at <= count;) {
-        const int pixels = mask_row_pixels(v, dv, count + 1 - at);
-        const uint32_t word = mask_row_word(f, v);
-        uint32_t piece[ATTRIBUTES];
-        for (int k = 0; k < ATTRIBUTES; k++) {
-            piece[k] = value[k] + ((uint32_t)step[k] * (uint32_t)at);
-        }
-        const uint32_t u_at = (uint32_t)u + ((uint32_t)du * (uint32_t)at);
-        if (target->writer_count == 0) {
-            r3d_span_fill_masked(span->depth + at, span->color + at, pixels, piece, step, word, u_at, (uint32_t)du);
-        } else {
-            const row_span_t part = {span->first + at, span->first + at + pixels - 1, span->depth + at,
-                                     span->color + at};
-            masked_runs(target, y, &part, pixels - 1, piece, step, word, (int32_t)u_at, du);
-        }
-        at += pixels;
-        v += (int64_t)dv * pixels;
+    const r3d_span_mask_walk_t walk = mask_walk(f, y, span, count);
+    if (target->writer_count == 0) {
+        r3d_span_fill_masked(span->depth, span->color, count + 1, value, step, &walk);
+    } else {
+        masked_runs(target, y, span, count, value, step, &walk);
     }
 }
 

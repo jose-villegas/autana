@@ -1,8 +1,8 @@
 /*
  * Portable suite: render/dynamic/r3d_dynamic_mesh.h. A grid of quads built
  * at run time must come out as a lit mesh the pipeline can walk, carrying
- * each vertex's place and colour, and a source too big must leave a mesh
- * that is still whole.
+ * each vertex's place and colour (and a masked source's u, v), and a source
+ * too big must leave a mesh that is still whole.
  */
 #include <stdlib.h>
 #include <string.h>
@@ -25,6 +25,7 @@
 static vec3f_t* positions;
 static uint8_t (*colors)[3];
 static uint16_t (*triangles)[3];
+static uint16_t (*mask_uvs)[2];
 static void* block;
 static r3d_dynamic_mesh_t mesh;
 
@@ -33,17 +34,20 @@ fixture_end(void) {
     free(positions);
     free(colors);
     free(triangles);
+    free(mask_uvs);
     free(block);
     positions = NULL;
     colors = NULL;
     triangles = NULL;
+    mask_uvs = NULL;
     block = NULL;
 }
 
 static r3d_dynamic_source_t
 sheet(int quads) {
     return (r3d_dynamic_source_t){
-        positions, (const uint8_t (*)[3])colors, CORNERS, (const uint16_t (*)[3])triangles, 2 * quads, false};
+        positions, (const uint8_t (*)[3])colors, CORNERS, (const uint16_t (*)[3])triangles, 2 * quads, false, NULL,
+        {0}};
 }
 
 static bool
@@ -94,7 +98,27 @@ expect_valid(void) {
 }
 
 /* A sheet's clusters share most vertices: two a triangle is room enough. */
-static const r3d_dynamic_capacity_t ROOMY = {2 * 2 * QUADS, 2 * QUADS, CORNERS};
+static const r3d_dynamic_capacity_t ROOMY = {2 * 2 * QUADS, 2 * QUADS, CORNERS, false};
+static const r3d_dynamic_capacity_t ROOMY_MASKED = {2 * 2 * QUADS, 2 * QUADS, CORNERS, true};
+
+/* A masked mesh's atlas: any rows will do, the build only hands them on. */
+#define MASK_ROWS 4
+static const uint32_t mask_rows[MASK_ROWS] = {0x1U, 0x3U, 0x7U, 0xFU};
+
+/* The whole sheet with a u, v on every corner, each unlike the others. */
+static r3d_dynamic_source_t
+masked_sheet(void) {
+    mask_uvs = malloc(sizeof(uint16_t[2]) * CORNERS);
+    TEST_ASSERT_NOT_NULL(mask_uvs);
+    for (int i = 0; i < CORNERS; i++) {
+        mask_uvs[i][0] = (uint16_t)i;
+        mask_uvs[i][1] = (uint16_t)(CORNERS + i);
+    }
+    r3d_dynamic_source_t source = sheet(QUADS);
+    source.mask_uvs = (const uint16_t (*)[2])mask_uvs;
+    source.mask = (lmsk_atlas_t){mask_rows, MASK_ROWS};
+    return source;
+}
 
 /* Each output vertex is the source vertex it copies: in ticks, same colour,
  * at the corner the raster's winding puts it. */
@@ -130,6 +154,46 @@ test_a_sheet_builds_into_a_mesh_the_pipeline_can_walk(void) {
     }
 }
 
+/* A masked source's u, v travel with each vertex copy, every cluster is
+ * masked by its atlas, and an opaque rebuild clears both. */
+static void
+test_a_masked_sheet_carries_its_u_v_and_atlas_and_an_opaque_rebuild_drops_them(void) {
+    fixture_begin(ROOMY_MASKED);
+    const r3d_dynamic_source_t source = masked_sheet();
+    TEST_ASSERT_TRUE(r3d_dynamic_mesh_build(&mesh, &source));
+    expect_valid();
+    static const int TURNED[3] = {0, 2, 1};
+    for (int t = 0; t < mesh.mesh.triangle_count; t++) {
+        for (int k = 0; k < 3; k++) {
+            const int out = mesh.mesh.triangles[t][k] - mesh.mesh.mask_vertex_first;
+            TEST_ASSERT_EQUAL_MEMORY(mask_uvs[triangles[t][TURNED[k]]], mesh.mesh.mask_uvs[out], sizeof mask_uvs[0]);
+        }
+    }
+    for (int c = 0; c < mesh.built_clusters; c++) {
+        TEST_ASSERT_TRUE(mesh.mesh.clusters[c].masked);
+    }
+    TEST_ASSERT_EQUAL_PTR(mask_rows, mesh.mesh.mask.rows);
+    TEST_ASSERT_EQUAL_INT(MASK_ROWS, mesh.mesh.mask.row_count);
+
+    TEST_ASSERT_TRUE(build(QUADS));
+    for (int c = 0; c < mesh.built_clusters; c++) {
+        TEST_ASSERT_FALSE(mesh.mesh.clusters[c].masked);
+    }
+    TEST_ASSERT_NULL(mesh.mesh.mask.rows);
+}
+
+/* A masked source needs room for its u, v: an opaque capacity refuses it
+ * and leaves nothing masked. */
+static void
+test_a_masked_sheet_does_not_build_into_an_opaque_capacity(void) {
+    fixture_begin(ROOMY);
+    const r3d_dynamic_source_t source = masked_sheet();
+    TEST_ASSERT_FALSE(r3d_dynamic_mesh_build(&mesh, &source));
+    TEST_ASSERT_EQUAL_INT(0, mesh.built_clusters);
+    TEST_ASSERT_NULL(mesh.mesh.mask.rows);
+    TEST_ASSERT_NULL(mesh.mesh.mask_uvs);
+}
+
 /* A cluster copies only the vertices it uses and shares them among its
  * triangles: a sheet costs near one vertex a triangle, not three. */
 static void
@@ -141,7 +205,7 @@ test_clusters_share_vertices_within_themselves(void) {
 
 static void
 test_a_source_too_big_leaves_a_whole_mesh(void) {
-    const r3d_dynamic_capacity_t tight = {100, 2 * QUADS, CORNERS};
+    const r3d_dynamic_capacity_t tight = {100, 2 * QUADS, CORNERS, false};
     fixture_begin(tight);
     TEST_ASSERT_FALSE(build(QUADS));
     TEST_ASSERT_GREATER_THAN_INT(0, mesh.mesh.triangle_count);
@@ -185,8 +249,8 @@ static void
 test_a_bad_capacity_or_block_is_refused(void) {
     r3d_dynamic_mesh_t m;
     uint8_t small[16];
-    TEST_ASSERT_EQUAL_size_t(0, r3d_dynamic_mesh_bytes((r3d_dynamic_capacity_t){0, 10, 10}));
-    TEST_ASSERT_EQUAL_size_t(0, r3d_dynamic_mesh_bytes((r3d_dynamic_capacity_t){10, 10, INT16_MAX + 1}));
+    TEST_ASSERT_EQUAL_size_t(0, r3d_dynamic_mesh_bytes((r3d_dynamic_capacity_t){0, 10, 10, false}));
+    TEST_ASSERT_EQUAL_size_t(0, r3d_dynamic_mesh_bytes((r3d_dynamic_capacity_t){10, 10, INT16_MAX + 1, false}));
     TEST_ASSERT_FALSE(r3d_dynamic_mesh_init(&m, small, sizeof small, ROOMY, POSITION_SCALE));
     TEST_ASSERT_FALSE(r3d_dynamic_mesh_init(&m, NULL, SIZE_MAX, ROOMY, POSITION_SCALE));
 }
@@ -195,6 +259,8 @@ void
 suite_dynamic_mesh(void) {
     RUN_TEST(test_a_sheet_builds_into_a_mesh_the_pipeline_can_walk);
     RUN_TEST(test_clusters_share_vertices_within_themselves);
+    RUN_TEST(test_a_masked_sheet_carries_its_u_v_and_atlas_and_an_opaque_rebuild_drops_them);
+    RUN_TEST(test_a_masked_sheet_does_not_build_into_an_opaque_capacity);
     RUN_TEST(test_a_source_too_big_leaves_a_whole_mesh);
     RUN_TEST(test_a_rebuild_replaces_what_was_there);
     RUN_TEST(test_the_counts_a_raster_sizes_by_never_move);

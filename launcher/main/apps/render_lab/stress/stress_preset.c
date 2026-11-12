@@ -4,7 +4,6 @@
 
 #include "math/geometry/primitive_mesh.h"
 #include "math/scalar/math_const.h"
-#include "math/scalar/mathf_round.h"
 #include "math/scalar/rng.h"
 
 /* Each preset's surface, as STRESS_PRESETS names it. */
@@ -352,6 +351,60 @@ colour_and_wave(const stress_params_t* p, uint32_t t_ms, int vertex_count, const
     }
 }
 
+/* One texel in this many inside the disc is a hole: the disc keeps pi/4 of
+ * the square, so the mask keeps about 0.7 of a card. */
+#define STRESS_MASK_HOLE_PERIOD 10
+#define STRESS_MASK_SEED        0x1EAFU
+
+/* Texel (x, y) of the mask: inside the disc and not a hole. Doubled
+ * coordinates put the disc's centre between the middle texels. */
+static bool
+mask_kept(int x, int y) {
+    const int dx = (2 * x) + 1 - (int)LMSK_MASK_WIDTH;
+    const int dy = (2 * y) + 1 - (int)LMSK_MASK_WIDTH;
+    const bool in_disc = (dx * dx) + (dy * dy) < (int)(LMSK_MASK_WIDTH * LMSK_MASK_WIDTH);
+    return in_disc && rng_hash(STRESS_MASK_SEED, (uint32_t)x, (uint32_t)y, 0) % STRESS_MASK_HOLE_PERIOD != 0;
+}
+
+static uint32_t
+mask_row(int y) {
+    uint32_t row = 0;
+    for (int x = 0; x < (int)LMSK_MASK_WIDTH; x++) {
+        row |= mask_kept(x, y) ? 1U << x : 0U;
+    }
+    return row;
+}
+
+/* Made on first use: a pure function of the constants above. */
+lmsk_atlas_t
+stress_mask_atlas(void) {
+    static uint32_t rows[STRESS_MASK_ROWS];
+    static bool made;
+    if (!made) {
+        for (int y = 0; y < STRESS_MASK_ROWS; y++) {
+            rows[y] = mask_row(y);
+        }
+        made = true;
+    }
+    return (lmsk_atlas_t){rows, STRESS_MASK_ROWS};
+}
+
+/* A card corner's u or v across `texels` texels: 0 or the last. */
+static uint16_t
+mask_corner(uint8_t corner, int texels) {
+    return (uint16_t)(corner == 0 ? 0 : (texels << LMSK_UV_FRACTION_BITS) - 1);
+}
+
+/* Each card vertex's u, v at its corner of the atlas, the card spanning it. */
+static void
+mask_cards(int vertex_count, uint16_t (*uvs)[2]) {
+    for (int v = 0; v < vertex_count; v++) {
+        const uint8_t* corner = quad_corners[v % QUAD_VERTICES];
+        uvs[v][0] = mask_corner(corner[0], (int)LMSK_MASK_WIDTH);
+        uvs[v][1] = mask_corner(corner[1], STRESS_MASK_ROWS);
+    }
+}
+
 bool
 stress_source(const stress_params_t* p, uint32_t t_ms, const stress_buffers_t* b, r3d_dynamic_source_t* out) {
     primitive_mesh_t m = {b->positions, stress_vertex_count(p), b->triangles, stress_triangle_count(p), 0, 0};
@@ -359,9 +412,22 @@ stress_source(const stress_params_t* p, uint32_t t_ms, const stress_buffers_t* b
         return false;
     }
     colour_and_wave(p, t_ms, m.vertex_count, b);
-    *out = (r3d_dynamic_source_t){b->positions,     (const uint8_t (*)[3])b->colors,
-                                  m.vertex_count,   (const uint16_t (*)[3])b->triangles,
-                                  m.triangle_count, p->surface == STRESS_SURFACE_TWO_SIDED};
+    *out = (r3d_dynamic_source_t){
+        .positions = b->positions,
+        .colors = (const uint8_t (*)[3])b->colors,
+        .vertex_count = m.vertex_count,
+        .triangles = (const uint16_t (*)[3])b->triangles,
+        .triangle_count = m.triangle_count,
+        .double_sided = p->surface == STRESS_SURFACE_TWO_SIDED,
+    };
+    if (p->surface == STRESS_SURFACE_MASKED) {
+        if (b->mask_uvs == NULL) {
+            return false;
+        }
+        mask_cards(m.vertex_count, b->mask_uvs);
+        out->mask_uvs = (const uint16_t (*)[2])b->mask_uvs;
+        out->mask = stress_mask_atlas();
+    }
     return true;
 }
 
@@ -425,74 +491,4 @@ stress_cut_px(const stress_params_t* p, int short_px) {
         case STRESS_SHAPE_FOLIAGE: return STRESS_FOLIAGE_CARD_SIDE * width;
     }
     return 0.0F;
-}
-
-/* One texel in this many inside the disc is a hole: the disc keeps pi/4 of
- * the square, so the mask keeps about 0.7 of a card. */
-#define STRESS_MASK_HOLE_PERIOD 10
-#define STRESS_MASK_SEED        0x1EAFU
-
-/* Texel (x, y) of the mask: inside the disc and not a hole. Doubled
- * coordinates put the disc's centre between the middle texels. */
-static bool
-mask_kept(int x, int y) {
-    const int dx = (2 * x) + 1 - (int)LMSK_MASK_WIDTH;
-    const int dy = (2 * y) + 1 - (int)LMSK_MASK_WIDTH;
-    const bool in_disc = (dx * dx) + (dy * dy) < (int)(LMSK_MASK_WIDTH * LMSK_MASK_WIDTH);
-    return in_disc && rng_hash(STRESS_MASK_SEED, (uint32_t)x, (uint32_t)y, 0) % STRESS_MASK_HOLE_PERIOD != 0;
-}
-
-static uint32_t
-mask_row(int y) {
-    uint32_t row = 0;
-    for (int x = 0; x < (int)LMSK_MASK_WIDTH; x++) {
-        row |= mask_kept(x, y) ? 1U << x : 0U;
-    }
-    return row;
-}
-
-static uint32_t stress_mask_rows[STRESS_MASK_ROWS];
-const lmsk_atlas_t stress_mask_atlas = {stress_mask_rows, STRESS_MASK_ROWS};
-
-/* A card corner's u or v across `texels` texels: 0 or the last. */
-static uint16_t
-mask_corner(uint8_t corner, int texels) {
-    return (uint16_t)(corner == 0 ? 0 : (texels << LMSK_UV_FRACTION_BITS) - 1);
-}
-
-/* Which corner of source triangle `t` output vertex `at` copies: the build
- * keeps triangles in order but may turn their corners over, so it is the one
- * whose position rounds to the same ticks. */
-static int
-source_corner(const r3d_dynamic_source_t* src, const r3d_dynamic_mesh_t* m, int t, int at) {
-    const float scale = (float)m->mesh.position_scale;
-    for (int k = 0; k < 3; k++) {
-        const vec3f_t p = src->positions[src->triangles[t][k]];
-        if (mathf_round_i16(p.x * scale) == m->positions[at][0] && mathf_round_i16(p.y * scale) == m->positions[at][1]
-            && mathf_round_i16(p.z * scale) == m->positions[at][2]) {
-            return src->triangles[t][k];
-        }
-    }
-    return src->triangles[t][0];
-}
-
-void
-stress_mask(const r3d_dynamic_source_t* src, r3d_dynamic_mesh_t* m, uint16_t (*uvs)[2]) {
-    for (int y = 0; y < STRESS_MASK_ROWS; y++) {
-        stress_mask_rows[y] = mask_row(y);
-    }
-    for (int t = 0; t < m->mesh.triangle_count; t++) {
-        for (int k = 0; k < 3; k++) {
-            const int at = m->triangles[t][k];
-            const uint8_t* corner = quad_corners[source_corner(src, m, t, at) % QUAD_VERTICES];
-            uvs[at][0] = mask_corner(corner[0], (int)LMSK_MASK_WIDTH);
-            uvs[at][1] = mask_corner(corner[1], STRESS_MASK_ROWS);
-        }
-    }
-    for (int c = 0; c < m->built_clusters; c++) {
-        m->clusters[c].masked = true;
-    }
-    m->mesh.mask_uvs = (const uint16_t (*)[2])uvs;
-    m->mesh.mask_vertex_first = 0;
-    m->mesh.mask = stress_mask_atlas;
 }

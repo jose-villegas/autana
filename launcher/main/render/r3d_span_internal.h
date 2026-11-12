@@ -23,14 +23,21 @@
 /* A Gouraud span's carried values: depth 16.8, then r, g, b. */
 #define R3D_SPAN_ATTRIBUTES  4
 
+/* A masked fill's walk over its atlas: u and v in 16.16 texels at the first
+ * pixel, stepping du and dv a pixel. Every pixel's u, v stays inside `rows`. */
+typedef struct {
+    const uint32_t* rows;
+    uint32_t u, du, v, dv;
+} r3d_span_mask_walk_t;
+
 /* The span fills, `count` pixels from `value` stepping `step` a pixel: the
- * depth-tested Gouraud fill, and the same fill keeping only pixels whose bit
- * of `row_word` at (u >> R3D_SPAN_MASK_SHIFT) % LMSK_MASK_WIDTH is set, u stepping `du`. Shared
- * so the board suite times the fills the draw path runs. `count` is at least 1. */
+ * depth-tested Gouraud fill, and the same fill keeping only pixels whose
+ * atlas bit at the walk's u, v is set. Shared so the board suite times the
+ * fills the draw path runs. `count` is at least 1. */
 void r3d_span_fill_gouraud(uint16_t* depth, uint16_t* color, int count, const uint32_t value[R3D_SPAN_ATTRIBUTES],
                            const int32_t step[R3D_SPAN_ATTRIBUTES]);
 void r3d_span_fill_masked(uint16_t* depth, uint16_t* color, int count, const uint32_t value[R3D_SPAN_ATTRIBUTES],
-                          const int32_t step[R3D_SPAN_ATTRIBUTES], uint32_t row_word, uint32_t u, uint32_t du);
+                          const int32_t step[R3D_SPAN_ATTRIBUTES], const r3d_span_mask_walk_t* walk);
 
 /* An upper bound on the depth a triangle writes inside `box`, as the
  * 16-bit depth, from its depth plane in 16.8: `top` at the centre of pixel
