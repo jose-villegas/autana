@@ -10,19 +10,21 @@ ROOT = pathlib.Path(__file__).resolve().parents[5]
 sys.path[:0] = [str(ROOT / "launcher/tools/perf"), str(ROOT / "launcher/tools")]
 from frame_profile import replays
 from render.cull_counts import size_fields, upscale_counts
+from build.c_header import read_define
+from stress_goals import STAGE_HEADER, STAGES
 
-STAGES = ("r3d.cull", "r3d.transform", "r3d.draw", "r3d.upscale")
+UPSCALE = read_define(STAGE_HEADER, "R3D_STAGE_UPSCALE_NAME")
 FRAME = "frame"
 ALL_STAGES = (*STAGES, FRAME)
 # Each stage's own work: what a stage does sets the counts it is fitted on.
-STAGE_INPUTS = {
-    "r3d.cull": ("nodes_visited", "nodes_cut", "clusters_tested", "clusters_off_frustum", "clusters_kept"),
-    "r3d.transform": ("transform_batches", "clusters_kept", "vertices_transformed"),
-    "r3d.draw": (*size_fields(), "pixels_face", "pixels_uniform", "pixels_shaded", "triangles_facing_away",
-                 "triangles_missed", "triangles_behind", "triangles_clipped"),
-    "r3d.upscale": ("render_pixels", "output_pixels", "upscale_kept_pixels", "upscale_doubled_pixels",
-                    "upscale_mapped_pixels", "upscale_blocks_pixels", "upscale_surface_pixels"),
-}
+STAGE_INPUTS = dict(zip(STAGES, (
+    ("nodes_visited", "nodes_cut", "clusters_tested", "clusters_off_frustum", "clusters_kept"),
+    ("transform_batches", "clusters_kept", "vertices_transformed"),
+    (*size_fields(), "pixels_face", "pixels_uniform", "pixels_shaded", "triangles_facing_away",
+     "triangles_missed", "triangles_behind", "triangles_clipped"),
+    ("render_pixels", "output_pixels", "upscale_kept_pixels", "upscale_doubled_pixels",
+     "upscale_mapped_pixels", "upscale_blocks_pixels", "upscale_surface_pixels"),
+), strict=True))
 TERMS = tuple(dict.fromkeys(name for names in STAGE_INPUTS.values() for name in names))
 PERCENTILE = 95
 ERROR_LIMIT = 0.10
@@ -39,7 +41,7 @@ def load(paths, quarter, rows=(), names=TERMS, *, stress_only=False):
         for pose in kept:
             if stress_only and not pose["row"].startswith("stress-"):
                 raise ValueError(f"{path}: non-stress training row: {pose['row']}")
-            if set(names) & set(STAGE_INPUTS["r3d.upscale"]):
+            if set(names) & set(STAGE_INPUTS[UPSCALE]):
                 try:
                     pose["counts"].update(upscale_counts(pose["counts"]))
                 except KeyError as error:

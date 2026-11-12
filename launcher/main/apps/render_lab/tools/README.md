@@ -226,13 +226,17 @@ transform worker's fork/join.
 included, read from the census by `raster_batch_count()`. Each pays the split,
 worker dispatch, cluster work and join; picture clearing belongs to `r3d.draw`.
 
-Each suite row (preset, quarter, size) has a mean goal per r3d stage, which reports its distance only, and
-a goal and board ceiling on the four stages' sum. uniform-full stays unpegged:
-its full-view fill varies more between runs than a change moves it.
+Each suite row (preset, quarter, size) has a goal per r3d stage, which reports
+its distance only, and a goal and board ceiling on the stages' sum, all on the
+mean over the row's poses. The suite's goal table says which preset stays unpegged.
 
-[`stress_goals.py`](stress_goals.py) prints the goal table from captures: the
-worst pose mean of five layout seeds on every perf board, +1% rounded up to
-10 µs; the ceiling is the goal × 1.15.
+[`stress_goals.py`](stress_goals.py) prints that table from the suite's
+`PERF TARGET` lines: per row, the worst capture of five layout seeds on every
+perf board, plus the script's margins. Regenerate it with:
+
+```sh
+python launcher/main/apps/render_lab/tools/stress_goals.py --unpegged stress-uniform-full CAPTURE...
+```
 
 Each pose draws one counted frame, one warm frame and `FRAME_PROFILE_REPLAY_DRAWS`
 measured frames. The pose counts and size loops in the suite own its frame

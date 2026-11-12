@@ -114,14 +114,25 @@ frame_cost_note_name(frame_cost_t* cost, const char* name) {
     cost->names[cost->name_count++] = name;
 }
 
-/* Names are string literals: one is found again by its address first. With
- * every slot taken a new name is dropped rather than charged to another. */
+/* The named slot, or NULL. Names are string literals: one is found again by
+ * its address first. */
 static inline frame_cost_slot_t*
-frame_cost_slot(frame_cost_t* cost, const char* name) {
+frame_cost_find(const frame_cost_t* cost, const char* name) {
     for (int i = 0; i < cost->count; i++) {
         if (cost->slots[i].name == name || strcmp(cost->slots[i].name, name) == 0) {
-            return &cost->slots[i];
+            return (frame_cost_slot_t*)&cost->slots[i];
         }
+    }
+    return NULL;
+}
+
+/* The named slot, made when new. With every slot taken a new name is dropped
+ * rather than charged to another. */
+static inline frame_cost_slot_t*
+frame_cost_slot(frame_cost_t* cost, const char* name) {
+    frame_cost_slot_t* found = frame_cost_find(cost, name);
+    if (found != NULL) {
+        return found;
     }
     if (cost->count >= FRAME_COST_SLOTS) {
         cost->dropped++;
@@ -137,15 +148,8 @@ frame_cost_slot(frame_cost_t* cost, const char* name) {
  * intact; 0 when the bracket is absent or `frames` is 0. */
 static inline int64_t
 frame_cost_mean_us(const frame_cost_t* cost, const char* name, uint32_t frames) {
-    if (frames == 0) {
-        return 0;
-    }
-    for (int i = 0; i < cost->count; i++) {
-        if (cost->slots[i].name == name || strcmp(cost->slots[i].name, name) == 0) {
-            return cost->slots[i].total_us / frames;
-        }
-    }
-    return 0;
+    const frame_cost_slot_t* slot = frame_cost_find(cost, name);
+    return frames == 0 || slot == NULL ? 0 : slot->total_us / frames;
 }
 
 /* The index of a name the console may arm, or -1 for one never bracketed. */

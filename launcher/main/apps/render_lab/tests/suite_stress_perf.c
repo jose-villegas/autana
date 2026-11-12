@@ -8,6 +8,7 @@
 #include "suites.h"
 #ifdef DEVICE_BUILD
 #include <limits.h>
+#include <stdbool.h>
 #include <string.h>
 #include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/render_lab_dynres.h"
@@ -27,6 +28,10 @@ static const char* TAG = "stress_perf";
 static lab_test_t saved;
 static const lab_scene_t* preset;
 static const lab_perf_quarter_t* quarter;
+/* The row's own size, no ladder step: its goal rows' size name. */
+#define STRESS_PERF_NO_STEP      (-1)
+#define STRESS_PERF_DEFAULT_SIZE "default"
+
 static int size_step;
 static int saved_filter;
 static int saved_layout;
@@ -39,10 +44,11 @@ typedef struct {
     perf_budget_t r3d;
 } stress_goal_t;
 
-/* Printed by tools/stress_goals.py from perf-board captures, which owns the
- * margins: regenerate the rows rather than editing them.
- * uniform-full stays unpegged: its full-view uniform fill varies more
- * between runs than any step a change makes. */
+/* Printed by tools/stress_goals.py from perf-board captures of this suite,
+ * which owns the margins: regenerate the rows rather than editing them. The
+ * r3d ceiling bounds the mean over a row's poses, as its goal does.
+ * uniform-full stays unpegged (--unpegged): its full-view uniform fill varies
+ * more between runs than any step a change makes. */
 static const stress_goal_t stress_goals[] = {
     {"stress-open", "portrait", "default", {260, 780, 5420, 2240}, {8640, 9940}},
     {"stress-open", "landscape", "default", {260, 770, 5650, 2230}, {8860, 10190}},
@@ -84,9 +90,14 @@ static const stress_goal_t stress_goals[] = {
     {"stress-few-copies", "landscape", "default", {260, 1080, 5710, 2050}, {9060, 10420}},
 };
 
+static const char*
+size_name(void) {
+    return size_step == STRESS_PERF_NO_STEP ? STRESS_PERF_DEFAULT_SIZE : render_lab_test_step_name(size_step);
+}
+
 static const stress_goal_t*
 stress_goal(void) {
-    const char* size = size_step < 0 ? "default" : render_lab_test_step_name(size_step);
+    const char* size = size_name();
     for (size_t i = 0; i < sizeof stress_goals / sizeof stress_goals[0]; i++) {
         const stress_goal_t* goal = &stress_goals[i];
         if (strcmp(goal->key, preset->key) == 0 && strcmp(goal->quarter, quarter->name) == 0
@@ -101,8 +112,9 @@ stress_goal(void) {
 static void
 report_goals(const stress_goal_t* goal, const int64_t sums[R3D_STAGE_COUNT], int poses) {
     char row[LAB_PERF_ROW_NAME_SIZE];
-    int length = snprintf(row, sizeof row, "%s %s%s%s", goal->key, goal->quarter, size_step < 0 ? "" : " ",
-                          size_step < 0 ? "" : goal->size);
+    const bool own_size = size_step == STRESS_PERF_NO_STEP;
+    int length = snprintf(row, sizeof row, "%s %s%s%s", goal->key, goal->quarter, own_size ? "" : " ",
+                          own_size ? "" : goal->size);
     TEST_ASSERT_TRUE(length > 0 && (size_t)length < sizeof row);
     int64_t total = 0;
     for (int i = 0; i < R3D_STAGE_COUNT; i++) {
@@ -136,7 +148,7 @@ test_stress_stages(void) {
     suite_set_test_cleanup(release_fixture);
     test_hold_quarter(quarter->quarter);
     (void)lab_test_frame_dt(0, false, NULL);
-    if (size_step >= 0) {
+    if (size_step != STRESS_PERF_NO_STEP) {
         const resolution_step_t size = render_lab_ladder[size_step];
         const resolution_config_t one = resolution_config(&size, 1, 1, INT32_MAX);
         render_context_set_dynamic_resolution(render_context_main(), &one, NULL, 0);
@@ -170,14 +182,13 @@ run_stress_perf_suite(void) {
     for (int i = 0; i < STRESS_PRESET_COUNT; i++) {
         preset = &scene_stress[i];
         const stress_params_t* params = preset->data;
-        const int sizes[] = {-1, RENDER_LAB_STEP_FULL, RENDER_LAB_STEP_HALF_HEIGHT};
+        const int sizes[] = {STRESS_PERF_NO_STEP, RENDER_LAB_STEP_FULL, RENDER_LAB_STEP_HALF_HEIGHT};
         const int size_count = params->surface == STRESS_SURFACE_UNIFORM ? (int)(sizeof sizes / sizeof sizes[0]) : 1;
         for (int q = 0; q < (int)LAB_PERF_QUARTER_COUNT; q++) {
             quarter = &lab_perf_quarters[q];
             for (int s = 0; s < size_count; s++) {
                 size_step = sizes[s];
-                RUN_TEST_CASE(test_stress_stages, preset->key, quarter->name,
-                              size_step < 0 ? "default" : render_lab_test_step_name(size_step));
+                RUN_TEST_CASE(test_stress_stages, preset->key, quarter->name, size_name());
             }
         }
     }
