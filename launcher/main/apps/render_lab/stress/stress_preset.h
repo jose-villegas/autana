@@ -69,7 +69,8 @@ typedef struct {
     X(CARD, "card", CARD)                                                                                              \
     X(CULLED, "culled", BANDED)                                                                                        \
     X(NEAR, "near", BANDED)                                                                                            \
-    X(FEW_COPIES, "few-copies", BANDED)
+    X(FEW_COPIES, "few-copies", BANDED)                                                                                \
+    X(CULL_SETUP, "cull-setup", BANDED)
 
 #define STRESS_PRESET_ID(id_, ...) STRESS_##id_,
 
