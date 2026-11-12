@@ -40,6 +40,16 @@ build_colormap(r3d_texture_t* t, const uint8_t mean[3]) {
     }
 }
 
+static bool
+padding_is_zero(const uint8_t* bytes, uint32_t count) {
+    for (uint32_t i = 0; i < count; i++) {
+        if (bytes[i] != 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
 asset_status_t
 r3d_texture_from_asset(const asset_view_t* asset, r3d_texture_t* texture) {
     memset(texture, 0, sizeof *texture);
@@ -53,7 +63,8 @@ r3d_texture_from_asset(const asset_view_t* asset, r3d_texture_t* texture) {
     const int levels = data[R3D_TEXTURE_AT_LEVELS];
     if (asset_read_u16(data + R3D_TEXTURE_AT_FORMAT) != R3D_TEXTURE_INDEX4 || size_log2 < R3D_TEXTURE_SIZE_LOG2_MIN
         || size_log2 > R3D_TEXTURE_SIZE_LOG2_MAX || levels < 1 || size_log2 - (levels - 1) < R3D_TEXTURE_SIZE_LOG2_MIN
-        || data[R3D_TEXTURE_AT_MEAN + 3] != 0 || asset_read_u16(data + R3D_TEXTURE_AT_MEAN + 4) != 0) {
+        || !padding_is_zero(data + R3D_TEXTURE_AT_MEAN + R3D_TEXTURE_MEAN_RGB,
+                            R3D_TEXTURE_MEAN_BYTES - R3D_TEXTURE_MEAN_RGB)) {
         return ASSET_ERR_FORMAT;
     }
     const uint32_t palette_off = asset_read_u32(data + R3D_TEXTURE_AT_PALETTE_OFF);

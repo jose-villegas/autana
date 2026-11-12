@@ -142,6 +142,11 @@ asset_status_t r3d_lit_mesh_morph_from_asset(const asset_view_t* morph, r3d_lit_
 /* The same for the lit mesh entry named `id` in `pack`. */
 asset_status_t r3d_lit_mesh_open(const asset_pack_t* pack, const char* id, r3d_lit_mesh_t* mesh);
 
+/* The mesh's sibling entry: its id with `suffix`, of `type`. One that is not
+ * `required` and is absent leaves `entry` empty. */
+asset_status_t r3d_lit_mesh_open_sibling(const asset_pack_t* pack, const char* id, const char* suffix, uint32_t type,
+                                         bool required, asset_view_t* entry);
+
 /* Colour ownership: docs/assets/formats/LCOL.md. */
 asset_status_t r3d_lit_mesh_open_colours(const asset_pack_t* pack, const char* mesh_id, uint16_t set,
                                          r3d_lit_mesh_t* mesh);
