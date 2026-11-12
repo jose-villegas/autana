@@ -45,6 +45,7 @@ from r3d.lod.morph import morph_blob
 from r3d.lit_mesh import POSITION_SCALE, WELD_PER_TICK, bundle_entries, panel_colour, build_lit_mesh  # noqa: E402
 from r3d.mesh_source import load_source, load_glb_source, path_light_for, camera_path_poses
 from r3d.objects.carve import derived_budgets, detail_report, free_repeats, views
+from r3d.objects.detail import object_error
 from r3d.process_budget import NULL_RECORDER
 from r3d.ray_query import RayQuery  # noqa: E402
 from r3d.scene_name import SUFFIX  # noqa: E402
@@ -143,7 +144,9 @@ def carve_selection(src, tri_v, tri_m, selected, settings, job, scene):
     eyes, focal, near = views(scene, job.renderer)
     budgets, shapes = derived_budgets(src.p, tri_v, tri_m, src.tri_o, selected, room, eyes, focal, near)
     for shape in shapes:
-        rule = selected[shape["objects"][0]] | {"triangles": budgets[shape["objects"][0]]}
+        rung = shape["ladder"][shape["pick"]]
+        rule = selected[shape["objects"][0]] | {"triangles": budgets[shape["objects"][0]],
+                                                "near_error": object_error(shape["distance"], focal, rung.error_px)}
         selected |= {obj: rule for obj in shape["objects"]}
     return selected, SimpleNamespace(shapes=shapes, focal=focal)
 

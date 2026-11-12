@@ -5,6 +5,7 @@ share of the budget, so small detailed props are not starved by large
 surfaces a global pass prefers to keep."""
 
 from dataclasses import dataclass
+import math
 import pathlib
 import sys
 
@@ -210,8 +211,6 @@ def _mesh_passes(tris, labels, tri_o, triangles, reserved, selected, edges):
 def _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, locks, deviation, options, shade, shapes=None):
     from scipy.spatial import cKDTree
     from .objects.instances import place, source_objects
-    from .objects.detail import surface_error
-    from .objects.stand_ins import best_stand_in
     from .objects.surface_match import JoinedInstance
 
     single = {}
@@ -249,9 +248,9 @@ def _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, loc
                     first_indices = indices
                 placements.append((instance, indices))
                 consumed.add(single[obj])
-            stand_in, candidates = best_stand_in(shape.positions, rgb[first_indices], shape.triangles,
-                shape.materials, budget, colour_weight(shape.positions, shape.triangles, budget, deviation),
-                options, union if np.any(union) else None)
+            stand_in, candidates, budget, moved = stand_in_within(
+                shape.positions, rgb[first_indices], shape.triangles, shape.materials, budget, deviation, options,
+                union if np.any(union) else None, selected[int(shape.instances[0].object_name)].get('near_error'))
             p, c, t, kept = stand_in.positions, stand_in.rgb, stand_in.tris, stand_in.kept
             shared.append(dict(objects=[int(i.object_name) for i in shape.instances], copies=len(shape.instances),
                                joined=sum(isinstance(i, JoinedInstance) for i in shape.instances),
@@ -259,7 +258,7 @@ def _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, loc
                                locked_vertices=int(union.sum()), output_triangles=len(t),
                                stand_in=stand_in.kind, stand_ins=candidates,
                                locked_border_excess=max(0, len(t) - budget) if np.any(union) else 0,
-                               surface_error=surface_error(shape.positions, shape.triangles, p, t)))
+                               surface_error=moved))
             mat = stand_in.materials
             copies = []
             for instance, indices in placements:
@@ -284,6 +283,23 @@ def _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, loc
                 shapes.append(dict(positions=p, tris=t, materials=mat, rule=selected[int(shape.instances[0].object_name)],
                                    copies=copies))
     return emitted, consumed, shared
+
+
+def stand_in_within(positions, rgb, tris, materials, budget, deviation, options, lock, error):
+    """best_stand_in() at `budget`, raised until the stand-in's measured surface move is within `error` (model
+    units; None bounds nothing) or it keeps every triangle: the carve keeps colour as well as shape, so at the
+    count a shape-only simplifier needs for `error` it can move further. Returns (stand_in, candidates, budget,
+    move). Surfaces move about as the square root of their triangles, so each try asks (move / error)^2 more."""
+    from .objects.detail import surface_error
+    from .objects.stand_ins import best_stand_in
+
+    while True:
+        stand_in, candidates = best_stand_in(positions, rgb, tris, materials, budget,
+                                             colour_weight(positions, tris, budget, deviation), options, lock)
+        moved = surface_error(positions, tris, stand_in.positions, stand_in.tris)
+        if error is None or moved <= error or budget >= len(tris):
+            return stand_in, candidates, budget, moved
+        budget = min(len(tris), max(budget + 1, math.ceil(budget * (moved / error) ** 2)))
 
 
 def rule_shapes(candidates, rule, held):
@@ -346,8 +362,6 @@ def _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, reserved, allocat
         report['passes'].append(entry)
 
     def run_part(sel, budget):
-        from .objects.detail import surface_error
-        from .objects.stand_ins import best_stand_in
 
         objects = np.unique(tri_o[sel])
         carved = allocation.shapes is not None and len(objects) == 1 and objects[0] in selected
@@ -355,8 +369,9 @@ def _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, reserved, allocat
         if carved:
             used, local = np.unique(tris[sel], return_inverse=True)
             local = local.reshape(-1, 3)
-            stand_in, candidates = best_stand_in(pos[used], rgb[used], local, labels[sel], budget,
-                colour_weight(pos[used], local, budget, deviation), options, locks[used] if np.any(locks[used]) else None)
+            stand_in, candidates, budget, moved = stand_in_within(
+                pos[used], rgb[used], local, labels[sel], budget, deviation, options,
+                locks[used] if np.any(locks[used]) else None, selected[objects[0]].get('near_error'))
             result = stand_in.positions, stand_in.rgb, stand_in.tris, stand_in.materials
         else:
             result = _run_pass(pos, rgb, tris[sel], labels[sel], budget, deviation, options,
@@ -368,8 +383,7 @@ def _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, reserved, allocat
                      output_triangles=len(result[2]), locked_vertices=int(locks[np.unique(tris[sel])].sum()),
                      locked_border_excess=max(0, len(result[2]) - budget) if np.any(locks[tris[sel]]) else 0)
         if candidates is not None:
-            entry.update(stand_in=stand_in.kind, stand_ins=candidates,
-                         surface_error=surface_error(pos[used], local, result[0], result[2]))
+            entry.update(stand_in=stand_in.kind, stand_ins=candidates, surface_error=moved)
         report['passes'].append(entry)
         for row in report['meshes']:
             if row.get('object') in entry['objects']:
