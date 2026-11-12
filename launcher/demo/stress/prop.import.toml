@@ -6,3 +6,4 @@ credit = "A bumpy ball written for this scene by launcher/main/apps/render_lab/t
 
 [output]
 name = "stress_prop"
+position_scale = 8192    # ticks per unit: the ball reaches about 1.15, inside int16, and its pole rings stay apart
