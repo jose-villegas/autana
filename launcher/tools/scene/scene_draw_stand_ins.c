@@ -5,7 +5,10 @@
  * The render context scene.c lends its scratch to is stood in for the same reason: without drawing there is no
  * context, so scene.c's calls on it have nothing to set or drop.
  */
+#include <stdlib.h>
+
 #include "render/context/render_context.h"
+#include "render/r3d_pipeline.h"
 #include "scene/scene_internal.h"
 
 render_context_t*
@@ -46,3 +49,12 @@ scene_draw_activate(scene_t* scene, int camera) {
 
 void
 camera_deactivate(void) {}
+
+/* Called only by r3d_batch.c's drawing half, linked for the bounds the scene reads; nothing draws here. */
+void
+r3d_lens_place(r3d_lens_t* lens, const mat4f_t* model, int position_scale) {
+    (void)lens;
+    (void)model;
+    (void)position_scale;
+    abort();
+}
