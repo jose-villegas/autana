@@ -103,7 +103,7 @@ install_skin(scene_t* scene, scene_row_t row, const scene_skinned_renderer_t* ne
     scene->starved_count -= slot->starved;
     *slot = *next;
     scene_skin_show(scene, row);
-    scene->skins_pending |= next->internal_storage == NULL;
+    scene->skins_pending |= next->storage == NULL;
 }
 
 bool

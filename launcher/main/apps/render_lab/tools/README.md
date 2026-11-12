@@ -288,6 +288,29 @@ pixel centres. Their sum is `triangles_set_up`; clipped triangles stay separate.
 where the mesh moved. Mixed copies share meshes by tessellation;
 `STRESS_MIX_UNIFORM_PERIOD` owns their equal-colour share.
 
+### Herd
+
+The Herd family is N skinned capybaras on the capybara's meadow, each playing
+its own clip at its own phase. One finger orbits the camera round the copies
+shown, as in the Capybara scene; zoomed in, copies fall off the frame and
+behind the camera, so the per-copy costs of posing, skinning and culling all
+show.
+
+| Scene key | Copies shown |
+|---|---|
+| `herd-1` | the centre one |
+| `herd-4` | centre, near, far out and to the side |
+| `herd-8` | the whole pool |
+
+![Herd 8: eight capybaras over one turn of the camera](../../../../../docs/images/overview/render-lab-herd.gif)
+
+| Part | Owner |
+|---|---|
+| Sizes: each ID, key and copy count | `herd/scene_herd.h` `HERD_SIZES` |
+| The pool, and each copy's place and clip | `launcher/demo/capybara/herd.scene.toml` |
+| The camera, orbited round the copies shown | [`lab/lab_orbit.h`](../../../lab/lab_orbit.h) |
+| Each size's copies, and a turn's frame and animation-step cost | [`tests/suite_herd_perf.c`](../tests/suite_herd_perf.c) |
+
 ### Small fill
 
 `render_lab.small_fill_ceiling`, `render_lab.small_fill_gate` and

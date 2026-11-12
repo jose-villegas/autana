@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "asset/asset_id.h"
 #include "asset/asset_store.h"
 #include "audio/audio_out.h"
 #include "console/console_verbs.h"
@@ -74,22 +75,12 @@ console_sound_parse(const char* args, console_sound_args_t* out) {
             != strlen(words[1])) {
             return false;
         }
-        const char* name = words[1];
-        char* separator = strchr(words[1], '/');
-        if (separator) {
-            *separator = '\0';
-            name = separator + 1;
-            if (!*words[1] || strlen(words[1]) >= sizeof parsed.pack || strchr(name, '/')) {
-                return false;
-            }
-            (void)strcpy(parsed.pack, words[1]);
-        } else {
-            (void)strcpy(parsed.pack, ASSET_ENGINE_PACK);
-        }
-        if (!*name || strlen(name) >= sizeof parsed.name) {
+        asset_id_t id;
+        if (!asset_id_split(words[1], &id)) {
             return false;
         }
-        (void)strcpy(parsed.name, name);
+        asset_id_pack(words[1], id, ASSET_ENGINE_PACK, parsed.pack);
+        (void)strcpy(parsed.name, id.name);
         int next = 2;
         if (count > next && strcmp(words[next], "loop") == 0) {
             parsed.loop = true;
