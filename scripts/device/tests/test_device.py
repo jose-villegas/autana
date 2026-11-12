@@ -2545,9 +2545,11 @@ class ResetReconnectTests(unittest.TestCase):
             with self.assertRaises(FileNotFoundError):
                 probe.open(probe.port, False, False, at)
         self.usb.reset(self.now())
-        with device.reconnect_after_reset() as connection:
+        started = self.clock
+        with contextlib.redirect_stderr(io.StringIO()) as said, device.reconnect_after_reset() as connection:
             self.assertGreaterEqual(self.clock, self.usb.opens)
             self.assertEqual(connection.boot, self.usb.boot)
+        self.assertIn(device.RECONNECT_LINE.format(self.clock - started, device.PORT_REAPPEAR_SECONDS), said.getvalue())
 
     def test_a_reset_returns_the_live_handle_under_its_new_name(self):
         with device.reset() as connection:

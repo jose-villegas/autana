@@ -256,6 +256,8 @@ def board_for_lock(store, named=None, remembered=False, auto_pick=False, token=N
 RESET_LEAVE_SECONDS = 2
 USB_POLL_SECONDS = 0.05
 PORT_REAPPEAR_SECONDS = 20
+# Each reset's reconnect time, so a window too short for a board shows in its logs before it fails.
+RECONNECT_LINE = "reset_reconnect_seconds={:.2f} limit={:g}"
 
 
 def reconnect_after_reset(seconds=PORT_REAPPEAR_SECONDS, sleep=time.sleep, now=time.monotonic):
@@ -266,7 +268,8 @@ def reconnect_after_reset(seconds=PORT_REAPPEAR_SECONDS, sleep=time.sleep, now=t
     capture that follows loses as little of the boot as it can. Raises
     PortUnavailable at `seconds`."""
     board = ACTIVE_LOCK.held.board
-    deadline = now() + seconds
+    started = now()
+    deadline = started + seconds
     leave_by = min(now() + RESET_LEAVE_SECONDS, deadline)
 
     def listed():
@@ -280,8 +283,10 @@ def reconnect_after_reset(seconds=PORT_REAPPEAR_SECONDS, sleep=time.sleep, now=t
             raise PortUnavailable(f"board {board} did not come back on USB within "
                                   f"{seconds:g}s of its reset")
         sleep(min(USB_POLL_SECONDS, max(0, deadline - now())))
-    return open_when_free(max(0, deadline - now()), reason="re-enumerating after reset",
-                          sleep=sleep, now=now)
+    connection = open_when_free(max(0, deadline - now()), reason="re-enumerating after reset",
+                                sleep=sleep, now=now)
+    print(RECONNECT_LINE.format(now() - started, seconds), file=sys.stderr)
+    return connection
 
 
 FLUSH_POLL_SECONDS = 0.05
