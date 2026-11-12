@@ -1884,6 +1884,17 @@ class ProduceTests(unittest.TestCase):
                 self.assertEqual(hashlib.sha256(pack_references(joined)).hexdigest(),
                                  hashlib.sha256(pack_references(whole)).hexdigest())
 
+    def test_a_joined_set_is_recorded_as_traced_where_its_shards_ran(self):
+        reference = types.SimpleNamespace(output="x.reference.tar.xz", key="k" * 64, job="job", scene=None,
+                                          source=bake.REPO / "launcher/bakes.lock", suffix=".tar.xz", kind="reference")
+        with self.references():
+            with mock.patch.object(bake, "cpu_vendor", return_value="AuthenticAMD"):
+                parts = self.shards(reference, 2)
+            with mock.patch.object(bake, "cpu_vendor", return_value="GenuineIntel"):
+                produce.join_reference_shards(reference, self.cache, parts)
+                row = produce.produce_reference(reference, self.cache, None)
+        self.assertEqual(row["cpu_vendor"], "AuthenticAMD")
+
     def test_joining_refuses_a_missing_shard_or_shards_that_disagree(self):
         reference = types.SimpleNamespace(output="x.reference.tar.xz", key="k" * 64, job="job", scene=None)
         with self.references():

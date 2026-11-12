@@ -1346,13 +1346,22 @@ def main(argv=None):
                 return (bake.kind == kind and args.kind in (None, kind) and (args.again or bake.key not in lock)
                         and not (args.only and bake.output not in args.only))
 
+            # Joined shards are traced already, where the shards ran: packing them traces nothing here.
+            joined = set()
+            if args.shards:
+                for bake in found:
+                    parts = sorted(pathlib.Path(args.shards).glob(f"*/{bake.output}.shard-*"))
+                    if to_make(bake, "reference") and parts:
+                        produce.join_reference_shards(bake, cache, parts)
+                        joined.add(bake.output)
+                        print(f"joined {len(parts)} shards of {bake.output}", flush=True)
             # What is made for a run to upload must be lockable: a mesh only on the lock's CPU vendor.
             mesh_cpu_vendor, cpu = tables.get("mesh_cpu_vendor"), cpu_vendor()
             if args.out:
                 print(f"this host's CPU vendor: {cpu or 'not named'}; "
                       f"the lock's meshes: {mesh_cpu_vendor or 'not named'}")
-                if mesh_cpu_vendor and cpu != mesh_cpu_vendor and any(to_make(bake, kind) for bake in found
-                                                                       for kind in TRACED_KINDS):
+                if mesh_cpu_vendor and cpu != mesh_cpu_vendor and any(to_make(bake, kind) and bake.output not in joined
+                                                                       for bake in found for kind in TRACED_KINDS):
                     raise BakeMissing(f"this host's CPU is {cpu or 'not named'}, but {rerun_on(mesh_cpu_vendor)}")
             if args.shard:
                 shard, count = (int(part) for part in args.shard.split("/"))
@@ -1363,12 +1372,6 @@ def main(argv=None):
                         produce.reference_shard(bake, pathlib.Path(args.out) / f"{bake.output}.shard-{shard}", shard, count)
                         print(f"traced shard {shard}/{count} of {bake.output}", flush=True)
                 return 0
-            if args.shards:
-                for bake in found:
-                    parts = sorted(pathlib.Path(args.shards).glob(f"*/{bake.output}.shard-*"))
-                    if to_make(bake, "reference") and parts:
-                        produce.join_reference_shards(bake, cache, parts)
-                        print(f"joined {len(parts)} shards of {bake.output}", flush=True)
             for run in args.from_run or ():
                 # Each upload apart: two attempts of one run may have made one key on different hosts.
                 with tempfile.TemporaryDirectory() as folder:

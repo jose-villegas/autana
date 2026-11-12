@@ -28,7 +28,8 @@ KEY_INDEX = "keys"
 REFERENCES = "reference"
 # How a poses file (reference_set.poses_text) starts each pose's line.
 POSE_LINE = "pose "
-# A reference shard's record of the sets it rendered a share of: each set's folder and its pose count.
+# A reference shard's record: the CPU vendor that traced it, and each set it rendered a share of, by folder, with
+# its pose count. A joined set keeps it, so its row names the vendor that traced it, not the one that packed it.
 SHARD_MANIFEST = "shard.json"
 DONE = "done"
 PRUNED = ".pruned"
@@ -70,12 +71,13 @@ def maker(kind):
     return fields
 
 
-def record(bake, path, cache, run=None):
-    """Puts the file `path` made for `bake` in the cache and indexes it by key."""
+def record(bake, path, cache, run=None, traced_on=None):
+    """Puts the file `path` made for `bake` in the cache and indexes it by key; `traced_on` names the CPU vendor
+    that traced it when another host did."""
     data = pathlib.Path(path).read_bytes()
     row = {"output": bake.output, "source": keys.relative(bake.source), "key": bake.key,
            "sha256": keys.hashlib.sha256(data).hexdigest(), "size": len(data), "suffix": bake.suffix,
-           **maker(bake.kind)}
+           **maker(bake.kind), **({"cpu_vendor": traced_on} if traced_on else {})}
     if run is not None:
         row["run"] = run
     keys.store(path, row, bake.suffix, cache)
@@ -260,7 +262,8 @@ def reference_shard(bake, out, shard, count):
         prepare_references(reference_inputs(bake.job, bake.scene), pathlib.Path(out))
     finally:
         reference_render.render_sets = render_sets
-    (pathlib.Path(out) / SHARD_MANIFEST).write_text(json.dumps(rendered_sets, sort_keys=True))
+    manifest = {"cpu_vendor": keys.cpu_vendor(), "sets": rendered_sets}
+    (pathlib.Path(out) / SHARD_MANIFEST).write_text(json.dumps(manifest, sort_keys=True))
 
 
 def join_reference_shards(bake, cache, shards):
@@ -279,7 +282,9 @@ def join_reference_shards(bake, cache, shards):
         manifests = {(pathlib.Path(shard) / SHARD_MANIFEST).read_text() for shard in shards}
         if len(manifests) != 1:
             raise keys.BakeMissing(f"{bake.output}: shards disagree on {SHARD_MANIFEST}")
-        for folder, wanted in json.loads(manifests.pop()).items():
+        manifest = manifests.pop()
+        (partial / SHARD_MANIFEST).write_text(manifest)
+        for folder, wanted in json.loads(manifest)["sets"].items():
             found = {path.name.split(".", 1)[0] for path in (partial / folder).iterdir()} if (partial / folder).is_dir() else set()
             if found != {f"{index:04d}" for index in range(wanted)}:
                 raise keys.BakeMissing(f"{bake.output}: the shards hold {len(found)} of {folder}'s {wanted} poses")
@@ -304,10 +309,11 @@ def produce_reference(bake, cache, fresh_references):
     from r3d.reference_set import pack_references
 
     folder = reference_set(bake.key, bake.job, bake.scene, cache, fresh_references)
+    joined = folder / SHARD_MANIFEST
     with tempfile.TemporaryDirectory() as work:
         target = pathlib.Path(work) / bake.output
         target.write_bytes(pack_references(folder))
-        return record(bake, target, cache)
+        return record(bake, target, cache, traced_on=json.loads(joined.read_text())["cpu_vendor"] if joined.is_file() else None)
 
 
 def produce_fit(bake, cache, lock):
