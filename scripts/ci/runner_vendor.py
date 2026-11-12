@@ -8,7 +8,6 @@ finished run whose only failures are that check is run again, up to VENDOR_TRIES
 Reads GH_TOKEN and GITHUB_REPOSITORY for `rerun`. Standard library only.
 """
 import argparse
-import pathlib
 import sys
 from pathlib import Path
 
@@ -27,7 +26,7 @@ def check(lock_vendor, host_vendor):
     from bake import bake
     refusal = bake.wrong_vendor(lock_vendor, host_vendor)
     if refusal:
-        print(f"::error title={WRONG_VENDOR}::{refusal}; {pathlib.Path(__file__).name} re-runs it")
+        print(f"::error title={WRONG_VENDOR}::{refusal}; {Path(__file__).name} re-runs it")
         return 1
     print(f"CPU vendor {host_vendor or 'not named'}; the lock's: {lock_vendor or 'not named'}")
     return 0
