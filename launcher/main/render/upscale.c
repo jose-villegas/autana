@@ -18,8 +18,8 @@ nearest_source(int destination, int destination_size, int source_size) {
 
 /* The width decides: kept (on an even width, for 32-bit stores) or doubled
  * takes any row map; otherwise both axes by one integer, or the maps. */
-static upscale_path_t
-choose_path(int source_width, int source_height, int destination_width, int destination_height) {
+upscale_path_t
+upscale_path_for(int source_width, int source_height, int destination_width, int destination_height) {
     if (destination_width == source_width && destination_width % 2 == 0) {
         return UPSCALE_KEPT;
     }
@@ -44,7 +44,7 @@ upscale_init(upscale_t* scale, int source_width, int source_height, int destinat
     scale->destination_width = destination_width;
     scale->destination_height = destination_height;
     scale->factor = destination_width / source_width;
-    scale->path = choose_path(source_width, source_height, destination_width, destination_height);
+    scale->path = upscale_path_for(source_width, source_height, destination_width, destination_height);
     scale->columns = columns;
     scale->rows = rows;
     for (int x = 0; x < destination_width; x++) {

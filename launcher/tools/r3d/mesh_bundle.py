@@ -6,7 +6,7 @@ import struct
 
 from asset.asset_pack import NAME_BYTES, PackError, build_pack, parse_pack
 from build.name_hash import name_hash
-from r3d import lcol_asset, lod_asset, mesh_asset
+from r3d import lcol_asset, lod_asset, mesh_asset, morph_asset
 from r3d.lcol_asset import NAME_SUFFIX
 from r3d.thin import curve_format
 
@@ -136,6 +136,12 @@ def decode(data):
             if mesh is None or mesh[0] != mesh_asset.TYPE or not name.endswith(lod_asset.NAME_SUFFIX):
                 raise PackError("LLOD sibling has no LMSH")
             lod_asset.validate_mesh(blob, mesh[1])
+        if kind == morph_asset.TYPE:
+            mesh = entries.get(name.removesuffix(morph_asset.NAME_SUFFIX))
+            if (mesh is None or mesh[0] != mesh_asset.TYPE or not name.endswith(morph_asset.NAME_SUFFIX)
+                    or lod_asset.name_for_mesh(name.removesuffix(morph_asset.NAME_SUFFIX)) not in entries):
+                raise PackError("LMOR sibling has no LMSH with levels")
+            morph_asset.validate_mesh(blob, mesh[1])
     for row in copies:
         mesh = entries.get(row["mesh"])
         colours = entries.get(lcol_asset.name_for_mesh(row["mesh"]))
@@ -143,32 +149,6 @@ def decode(data):
             raise PackError("mesh bundle copy needs an LMSH and LCOL")
         lcol_asset.validate_mesh(colours[1], mesh[1], row["colour_set"])
     return [(name, kind, blob) for name, (kind, blob) in sorted(entries.items())], copies
-
-
-def mesh_entries(name, mesh):
-    """The LMSH and optional levels sibling of one assembled mesh."""
-    from r3d.lit_mesh import mesh_blob, lod_blob
-    entries = [(name, mesh_asset.TYPE, mesh_blob(mesh))]
-    levels = lod_blob(mesh)
-    if levels is not None:
-        entries.append((lod_asset.name_for_mesh(name), lod_asset.TYPE, levels))
-    return entries
-
-
-def read_mesh(entries, name):
-    """Read a bundle mesh together with its optional LLOD sibling."""
-    from r3d.lit_mesh import read_lit_mesh
-    blobs = {key: blob for key, _, blob in entries}
-    return read_lit_mesh(blobs[name], blobs.get(lod_asset.name_for_mesh(name)))
-
-
-def read_one_mesh(data, name):
-    """Mesh `name` of the bundle `data`, with its LLOD sibling if any, decoding no other entry: a fit's rest
-    beside the copies its start kept, which may hold an older LLOD."""
-    entries = parse_pack(data)
-    if name not in entries or entries[name][0] != mesh_asset.TYPE:
-        raise PackError(f"mesh bundle has no mesh {name}")
-    return read_mesh([(key, kind, blob) for key, (kind, blob) in entries.items()], name)
 
 
 def rest_name(entries, copies):
@@ -188,6 +168,6 @@ def rename_rest(entries, copies, name):
     names = {old: name}
     for key, _, _ in entries:
         if key.startswith(old) and key[len(old):] in (lcol_asset.NAME_SUFFIX, lod_asset.NAME_SUFFIX,
-                                                      curve_format.NAME_SUFFIX):
+                                                         morph_asset.NAME_SUFFIX, curve_format.NAME_SUFFIX):
             names[key] = lcol_asset.sibling_name(name, key[len(old):])
     return [(names.get(key, key), kind, blob) for key, kind, blob in entries]

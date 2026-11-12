@@ -45,14 +45,14 @@ renderer_set_mesh(entity_t entity, const r3d_lit_mesh_t* mesh) {
     }
     scene_renderer_t* r = &scene->renderers[i];
     /* A batch's colours, places and spheres are its mesh's. */
-    if (r->batch != NULL || (uint32_t)R3D_LOD_WORDS(mesh->lod_group_count) > r->lod_words) {
+    if (r->batch != NULL || (uint32_t)R3D_LOD_STATE_WORDS(mesh->lod_group_count) > r->lod_words) {
         return false;
     }
     r->mesh = *mesh;
     scene_renderer_bound(r);
     /* Another mesh's groups are not these bits': start it at its finest. */
     if (r->lod_coarse != NULL) {
-        memset(r->lod_coarse, 0, sizeof(uint32_t) * r->lod_words);
+        memset(r->lod_coarse, 0, sizeof(uint32_t) * R3D_LOD_STATE_WORDS(mesh->lod_group_count));
     }
     return true;
 }

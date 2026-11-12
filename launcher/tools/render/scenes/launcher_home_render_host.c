@@ -12,10 +12,10 @@
  * a press can land; a settled screen is never the first frame.
  *
  * The default list is a FIXTURE: three invented entries with no callbacks;
- * nothing drawn here came from a real app. `--row <label>`, repeatable,
- * registers the rows a caller states instead; what a comparison against a
- * real image's home screen needs, since only that image knows what it
- * registered.
+ * nothing drawn here came from a real app. `--row <label>[:lab|:system]`,
+ * repeatable, registers the apps a caller states instead, with the kind that
+ * orders them (none is an app); what a comparison against a real image's
+ * home screen needs, since only that image knows what it registered.
  */
 
 #include <math.h>

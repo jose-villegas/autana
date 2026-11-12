@@ -48,7 +48,7 @@ typedef struct {
     bool leaf;
 } r3d_lit_node_t;
 
-/* Levels of detail (docs/plans/Cluster-LOD.md): a mesh may carry coarser
+/* Levels of detail (docs/render/frame/Levels-of-Detail.md): a mesh may carry coarser
  * clusters beside its finest ones, each simplified from a group of finer
  * clusters with the group's border kept. A group is drawn coarse when its
  * error, projected, is small enough (render/r3d_lod.h); then its clusters
@@ -96,11 +96,25 @@ typedef struct {
      * (r3d_lit_mesh_find_levels()). */
     uint16_t lod_finest_root;
     uint16_t lod_coarse_first; /* the first coarse cluster, with lod_finest_root set */
-    int lod_finest_triangles;  /* the finest level's, with cluster_lod set */
+    /* Geomorph targets (render/lmor_format.h), or NULL: where each vertex
+     * lands on the coarse surface of its cluster's parent group, as
+     * delta << shift ticks; morph_landing, the coarse triangle and corner
+     * weights there, whose colours the vertex blends toward. */
+    const uint8_t* morph_shift;                  /* one per cluster */
+    const int8_t (*morph_delta)[3];              /* one per vertex */
+    const struct r3d_lit_landing* morph_landing; /* one per vertex, or NULL */
+    int lod_finest_triangles;                    /* the finest level's, with cluster_lod set */
     /* Its LCRV sibling's rows, their knots after them in the entry (r3d_lit_mesh_curves()); none: 0, NULL. */
     uint16_t curve_count;
     const r3d_curve_t* curves;
 } r3d_lit_mesh_t;
+
+/* Where a vertex lands on the coarse level: triangle `triangle`'s corners
+ * weighted weight[0], weight[1] and LMOR_WEIGHT_WHOLE minus both. */
+typedef struct r3d_lit_landing {
+    uint16_t triangle;
+    uint8_t weight[2];
+} r3d_lit_landing_t;
 
 /* A mesh's curves as r3d_curve_draw() takes them. */
 static inline r3d_curve_set_t
@@ -127,6 +141,10 @@ void r3d_lit_mesh_find_levels(r3d_lit_mesh_t* mesh);
 
 /* A failed sibling clears only the levels; the geometry remains loaded. */
 asset_status_t r3d_lit_mesh_levels_from_asset(const asset_view_t* levels, r3d_lit_mesh_t* mesh);
+
+/* Attaches validated morph targets to a mesh with levels; failure clears
+ * only the morph pointers. */
+asset_status_t r3d_lit_mesh_morph_from_asset(const asset_view_t* morph, r3d_lit_mesh_t* mesh);
 
 /* The same for the lit mesh entry named `id` in `pack`. */
 asset_status_t r3d_lit_mesh_open(const asset_pack_t* pack, const char* id, r3d_lit_mesh_t* mesh);

@@ -1,0 +1,24 @@
+{
+  "quarter": 0,
+  "dt_ms": 16,
+  "frames": {
+    "stress-card": 600
+  },
+  "console": {},
+  "scenes": {
+    "stress-card": {
+      "sized_face_zero": 0.0,
+      "sized_face_one": 0.0,
+      "sized_face_two_to_four": 0.0,
+      "sized_face_more": 0.0,
+      "sized_uniform_zero": 0.0,
+      "sized_uniform_one": 0.0,
+      "sized_uniform_two_to_four": 0.0,
+      "sized_uniform_more": 0.0,
+      "sized_shaded_zero": 286.13666666666666,
+      "sized_shaded_one": 655.7683333333333,
+      "sized_shaded_two_to_four": 1467.7233333333334,
+      "sized_shaded_more": 1490.14
+    }
+  }
+}

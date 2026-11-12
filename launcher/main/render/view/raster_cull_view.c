@@ -56,7 +56,8 @@ static const unsigned FATE_KEEP[RASTER_FATE_COUNT] = {
 #define BITS           (sizeof(uint32_t) * CHAR_BIT)
 
 /* Each instance's drawn clusters into s->drawn, the level each instance
- * drew this frame, and how many clusters and triangles that is. */
+ * drew this frame (both levels of a group it dithers), and how many
+ * clusters and triangles that is. */
 static void
 list_drawn(raster_cull_t* s, const raster_t* raster) {
     int at = 0;
@@ -67,7 +68,8 @@ list_drawn(raster_cull_t* s, const raster_t* raster) {
         const r3d_lit_mesh_t* mesh = instance->mesh;
         assert(at < RASTER_CULL_CLUSTERS_MAX);
         const int head = at++;
-        const int count = r3d_lod_list_drawn(mesh, instance->lod_coarse, &s->drawn[at], RASTER_CULL_CLUSTERS_MAX - at);
+        const int count = r3d_lod_list_drawn(mesh, instance->lod_coarse, raster_lod_dithering(raster, instance),
+                                             &s->drawn[at], RASTER_CULL_CLUSTERS_MAX - at);
         for (int k = 0; k < count; k++) {
             s->triangles += mesh->clusters[s->drawn[at + k]].triangle_count;
         }
@@ -137,11 +139,11 @@ begin(const raster_attachment_t* self, const raster_t* raster, const render_view
 }
 
 /* The camera's draw tags each pixel with its triangle, a spectator's with
- * its cluster; both count from 1 across the instances. */
+ * its cluster; both count from 1 across the drawn list. */
 static bool
-writer(const raster_attachment_t* self, int instance, r3d_span_writer_t* out) {
+writer(const raster_attachment_t* self, int entry, r3d_span_writer_t* out) {
     raster_cull_t* s = self->state;
-    const r3d_lit_mesh_t* mesh = raster_drawn_at(s->raster, instance)->mesh;
+    const r3d_lit_mesh_t* mesh = raster_drawn_at(s->raster, entry)->mesh;
     *out = (r3d_span_writer_t){.span = raster_attachment_tag};
     if (s->spectating) {
         out->step = R3D_SPAN_STEP_CLUSTER;
@@ -166,6 +168,35 @@ keep_drawn(const r3d_lit_mesh_t* mesh, const uint16_t* drawn, int count, r3d_pip
     counts->clusters_coarse += r3d_pipeline_count_coarse(mesh, drawn, count);
 }
 
+/* Hundredths: the unit the stacked-blend bound is counted in. */
+#define RASTER_CULL_CENTI 100.0F
+
+/* Kept cluster `cluster`'s vertices: transformed, and blended or stacked by `morph`. */
+static void
+count_vertices(r3d_pipeline_counts_t* counts, const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, int cluster) {
+    const int vertices = mesh->clusters[cluster].vertex_count;
+    counts->vertices_transformed += vertices;
+    const bool blended =
+        r3d_lod_morph_weight(morph, mesh, cluster) != 0 || r3d_lod_dither_band(morph, mesh, cluster) != 0;
+    counts->vertices_blended += blended ? vertices : 0;
+    const float stacked = r3d_pipeline_count_stacked_px(morph, mesh, cluster);
+    if (stacked > 0.0F) {
+        counts->vertices_stacked += vertices;
+        counts->stacked_centipixels = mathi_max(counts->stacked_centipixels, (int)(stacked * RASTER_CULL_CENTI));
+    }
+}
+
+/* The fates of the instance at `w`'s `count` kept clusters: hidden where set
+ * up, else not set up. */
+static void
+mark_set_up(raster_cull_t* s, const drawn_at_t* w, const uint16_t* kept, int count) {
+    for (int k = 0; k < count; k++) {
+        const int j = index_in(s, w->at, kept[k]);
+        assert(j >= 0);
+        s->fate[w->base + j] = s->set_up[k] != 0 ? RASTER_FATE_HIDDEN : RASTER_FATE_NOT_SET_UP;
+    }
+}
+
 /* After the camera's draw, which picked each instance's level, its drawn
  * clusters are listed, and its scratch lists and vertices are free: each
  * instance is culled, counted and transformed again into them, through the
@@ -181,7 +212,12 @@ count_frame(raster_cull_t* s, const raster_t* raster) {
     drawn_at_t w = {0};
     for (int i = 0; i < raster_drawn_count(raster); i++) {
         const r3d_instance_t* instance = raster_drawn_at(raster, i);
-        const r3d_lit_mesh_t* mesh = instance->mesh;
+        r3d_lit_mesh_t counted_mesh = *instance->mesh;
+        const r3d_batch_draw_t* copy = raster_drawn_copy(raster, i);
+        if (copy != NULL) {
+            r3d_batch_copy_mesh(copy->batch, instance->mesh, copy->copy, &counted_mesh);
+        }
+        const r3d_lit_mesh_t* mesh = &counted_mesh;
         r3d_lens_t lens;
         raster_lens(raster, &s->camera, mesh->position_scale, &lens);
         raster_drawn_place(raster, i, &lens);
@@ -189,17 +225,19 @@ count_frame(raster_cull_t* s, const raster_t* raster) {
         int count = s->drawn[w.at];
         if (culls) {
             kept = b.culled;
-            count = r3d_pipeline_cull_counted(mesh, &lens, instance->lod_coarse, b.culled, &s->walk, &s->frame.counts);
+            count = r3d_pipeline_cull_counted(mesh, &lens, instance->lod_coarse, raster_lod_dithering(raster, instance),
+                                              b.culled, &s->walk, &s->frame.counts);
         } else {
             keep_drawn(mesh, kept, count, &s->frame.counts);
         }
-        r3d_pipeline_transform(mesh, &lens, kept, count, b.cs, NULL, false);
-        r3d_pipeline_count_triangles(mesh, &lens, kept, count, b.cs, &s->frame.counts, s->set_up);
+        r3d_lod_morph_t morph;
+        raster_lod_morph(raster, &s->camera, instance, &lens, &morph);
+        r3d_pipeline_transform_morphed(mesh, &lens, &morph, kept, count, b.cs, NULL, false);
         for (int k = 0; k < count; k++) {
-            const int j = index_in(s, w.at, kept[k]);
-            assert(j >= 0);
-            s->fate[w.base + j] = s->set_up[k] != 0 ? RASTER_FATE_HIDDEN : RASTER_FATE_NOT_SET_UP;
+            count_vertices(&s->frame.counts, &morph, mesh, kept[k]);
         }
+        r3d_pipeline_count_triangles(mesh, &lens, kept, count, b.cs, &s->frame.counts, s->set_up);
+        mark_set_up(s, &w, kept, count);
         walk_next(s, &w);
     }
 }
@@ -707,7 +745,33 @@ raster_cull_overlay(void* state, int width, int height) {
     }
 }
 
-raster_cull_frame_t
-raster_cull_frame(const raster_cull_t* state) {
-    return state->frame;
+void
+raster_cull_frame_compose(raster_cull_frame_t* frame, const raster_t* raster, bool shaded_half_picture) {
+    const upscale_t* scale = &raster->upscale;
+    const resolution_step_t output = shaded_half_picture
+                                         ? raster_compose_size(raster)
+                                         : (resolution_step_t){scale->destination_width, scale->destination_height};
+    const upscale_path_t path = output.width == scale->destination_width && output.height == scale->destination_height
+                                    ? scale->path
+                                    : upscale_path_for(raster->width, raster->height, output.width, output.height);
+    frame->transform_batches = raster->scratch != NULL ? raster_batch_count(raster) : 0;
+    frame->render_width = raster->width;
+    frame->render_height = raster->height;
+    frame->output_width = output.width;
+    frame->output_height = output.height;
+    frame->upscale_path = path;
+    frame->upscale_surface =
+        path == UPSCALE_KEPT && scale->filter == UPSCALE_FILTER_SURFACE && raster->present != CAMERA_PRESENT_SCANLINE;
+}
+
+void
+raster_cull_frame(const raster_cull_t* state, raster_cull_frame_t* frame) {
+    *frame = state->frame;
+    if (state->raster != NULL && state->raster->width > 0 && state->raster->height > 0) {
+        const upscale_t* scale = &state->raster->upscale;
+        if (scale->destination_width > 0 && scale->destination_height > 0) {
+            raster_cull_frame_compose(frame, state->raster, false);
+        }
+        frame->quarter = state->camera.viewport.quarter;
+    }
 }

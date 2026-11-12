@@ -13,7 +13,11 @@
  * prices the raster from the triangles culling kept, so it carries to any
  * mesh; the live refit learns the rest. No step is recovery-only. */
 #define RENDER_LAB_LADDER_STEPS 8
-#define RENDER_LAB_LADDER_HALF  4
+
+/* Full-width render sizes used by replay measurements. */
+enum { RENDER_LAB_STEP_FULL = 0, RENDER_LAB_STEP_HALF_HEIGHT = 3 };
+
+#define RENDER_LAB_LADDER_HALF 4
 extern const resolution_step_t render_lab_ladder[RENDER_LAB_LADDER_STEPS];
 extern const resolution_model_t render_lab_ladder_model;
 

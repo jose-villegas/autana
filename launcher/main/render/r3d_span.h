@@ -10,7 +10,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "build/build_variant.h"
 #include "gfx/target/gfx_target.h"
+#include "image/pixel/bayer.h"
 #include "render/render_view.h"
 
 /* Largest bounding-box side, in pixel centres, always filled flat; the camera gate and style apply only above it. */
@@ -44,6 +46,11 @@ typedef struct r3d_span_target {
         GFX_TARGET_STORAGE(GFX_ATTACHMENTS_MAX) rows_storage;
     };
 } r3d_span_target_t;
+
+/* The screen mask's bit for pixel (x, y): its place in a 4x4 tile at absolute coordinates. */
+#define R3D_SPAN_SCREEN_SIDE BAYER4_SIDE
+#define R3D_SPAN_SCREEN_BIT(x, y)                                                                                      \
+    ((((y) & (R3D_SPAN_SCREEN_SIDE - 1)) * R3D_SPAN_SCREEN_SIDE) + ((x) & (R3D_SPAN_SCREEN_SIDE - 1)))
 
 /* Colour and depth alone, rows [row0, row1) `width` wide, each buffer
  * starting at row0. */
@@ -122,3 +129,14 @@ void r3d_span_triangle_write(const r3d_span_target_t* target, const r3d_span_ver
  * takes the mix over target->clear and the triangle's depth, so it is shown. */
 void r3d_span_triangle_cover(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                              const r3d_span_vertex_t* c, uint16_t color, unsigned coverage);
+/* Either fill, or with `write` the target's writers, through a screen mask:
+ * bit R3D_SPAN_SCREEN_BIT(x, y) set draws that pixel, a clear bit skips it.
+ * Capped as r3d_span_capped_triangle() when target->skip_hidden. The rarer
+ * path, for a level fading in over another; the fast fills test no mask. */
+void r3d_span_screen_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
+                              const r3d_span_vertex_t* c, const uint16_t* face, uint16_t mask, bool write);
+
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+/* Whether the fill's quantized colour planes have no steps. */
+bool r3d_span_uniform(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c);
+#endif
