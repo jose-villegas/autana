@@ -2545,11 +2545,24 @@ class ResetReconnectTests(unittest.TestCase):
             with self.assertRaises(FileNotFoundError):
                 probe.open(probe.port, False, False, at)
         self.usb.reset(self.now())
-        started = self.clock
         with contextlib.redirect_stderr(io.StringIO()) as said, device.reconnect_after_reset() as connection:
             self.assertGreaterEqual(self.clock, self.usb.opens)
             self.assertEqual(connection.boot, self.usb.boot)
-        self.assertIn(device.RECONNECT_LINE.format(self.clock - started, device.PORT_REAPPEAR_SECONDS), said.getvalue())
+        self.assertNotIn("reset_reconnect_seconds", said.getvalue(),
+                         "a reconnect well inside its window adds nothing to quiet output")
+
+    def test_a_slow_reconnect_is_logged_by_phase(self):
+        self.usb.reset(self.now())
+        started = self.clock
+        with mock.patch.object(device, "RECONNECT_REPORT_SHARE", 0), \
+                contextlib.redirect_stderr(io.StringIO()) as said, device.reconnect_after_reset():
+            pass
+        fields = dict(re.findall(r"(\w+)=([\d.]+)", said.getvalue().splitlines()[-1]))
+        self.assertAlmostEqual(float(fields["reset_reconnect_seconds"]), self.clock - started, places=2)
+        self.assertAlmostEqual(sum(float(fields[phase]) for phase in ("left", "listed", "opened")),
+                               float(fields["reset_reconnect_seconds"]), places=1)
+        self.assertGreater(float(fields["listed"]), 0)
+        self.assertEqual(float(fields["limit"]), device.PORT_REAPPEAR_SECONDS)
 
     def test_a_reset_returns_the_live_handle_under_its_new_name(self):
         with device.reset() as connection:
