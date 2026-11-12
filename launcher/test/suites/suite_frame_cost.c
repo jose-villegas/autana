@@ -52,6 +52,23 @@ leave_bracket(frame_cost_t* cost, const char* name, int64_t from_us, int64_t to_
 }
 
 static void
+test_named_mean_reads_without_forgetting_the_window(void) {
+    frame_cost_t* const cost = fixture();
+    char line[128];
+    char draw[] = "draw";
+    frame_cost_add(cost, "draw", 3001);
+    frame_cost_add(cost, "draw", 5000);
+    frame_cost_add(cost, "send", 12000);
+    TEST_ASSERT_EQUAL_INT64(4000, frame_cost_mean_us(cost, draw, 2));
+    TEST_ASSERT_EQUAL_INT64(0, frame_cost_mean_us(cost, "absent", 2));
+    TEST_ASSERT_EQUAL_INT64(0, frame_cost_mean_us(cost, "draw", 0));
+    TEST_ASSERT_EQUAL_INT64(8001, frame_cost_mean_us(cost, "draw", 1));
+    assert_report(cost, 2, line, sizeof line, "draw 4.00/5.0  send 6.00/12.0 | total 10.00");
+    TEST_ASSERT_EQUAL_INT64(0, frame_cost_mean_us(cost, "draw", 2));
+    free(cost);
+}
+
+static void
 test_charges_to_one_name_add_up_and_the_report_is_per_frame(void) {
     frame_cost_t* const cost = fixture();
     char line[128];
@@ -833,6 +850,7 @@ suite_frame_cost(void) {
     RUN_TEST(test_documented_bracket_runs_its_work);
     RUN_TEST(test_external_report_preserves_submillisecond_worst);
     RUN_TEST(test_external_report_exact_capacity_and_short_buffer);
+    RUN_TEST(test_named_mean_reads_without_forgetting_the_window);
     RUN_TEST(test_charges_to_one_name_add_up_and_the_report_is_per_frame);
     RUN_TEST(test_a_name_is_one_slot_whether_or_not_it_is_the_same_literal);
     RUN_TEST(test_a_report_forgets_so_the_next_window_starts_clean);

@@ -11,6 +11,7 @@
 #include "profile/frame_laps.h"
 #include "render/batch/r3d_batch.h"
 #include "render/lod/r3d_lod.h"
+#include "render/r3d_stages.h"
 #include "render/raster_internal.h"
 #include "render/upscale.h"
 
@@ -851,7 +852,7 @@ draw_batch(const raster_t* raster, int index, draw_work_t* work) {
     FRAME_LAP_END();
     job_run_steered(transform_share, transform_slice, mine, other, sizeof *mine);
     FRAME_LAP_SINCE("r3d.transform.wait");
-    FRAME_COST_END(transformed_from, "r3d.transform");
+    FRAME_COST_END(transformed_from, R3D_STAGE_TRANSFORM_NAME);
 
     FRAME_COST_BEGIN(drawn_from);
     FRAME_LAP("r3d.draw.split");
@@ -859,7 +860,7 @@ draw_batch(const raster_t* raster, int index, draw_work_t* work) {
     FRAME_LAP_END();
     job_run_steered(draw_share, draw_slice, mine, other, sizeof *mine);
     FRAME_LAP_SINCE("r3d.draw.wait");
-    FRAME_COST_END(drawn_from, "r3d.draw");
+    FRAME_COST_END(drawn_from, R3D_STAGE_DRAW_NAME);
 }
 
 /* Frame validation stays outside the inlined draw chain. */
@@ -935,7 +936,7 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
     if (stats != NULL) {
         FRAME_COST_BEGIN(culled_from);
         *work->buffers.depth_near = cull_instances(raster, view, true, stats, work);
-        FRAME_COST_END(culled_from, "r3d.cull");
+        FRAME_COST_END(culled_from, R3D_STAGE_CULL_NAME);
     }
     /* Kept rows hold depth at the last draw's scale and the cuts it drew: a
      * new scale, or a level pick that changed a cut, redraws them all. */
@@ -1119,5 +1120,5 @@ raster_upscale_picture(raster_t* raster, const gfx_target_t* picture, uint16_t* 
                                    .seams = seams,
                                    .picture = picture};
     job_run_steered(share, upscale_slice, &mine, &other, sizeof mine);
-    FRAME_COST_END(upscaled_from, "r3d.upscale");
+    FRAME_COST_END(upscaled_from, R3D_STAGE_UPSCALE_NAME);
 }

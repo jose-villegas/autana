@@ -133,6 +133,20 @@ frame_cost_slot(frame_cost_t* cost, const char* name) {
     return slot;
 }
 
+/* Reads one bracket's mean microseconds without forgetting the window. */
+static inline int64_t
+frame_cost_mean_us(const frame_cost_t* cost, const char* name, uint32_t frames) {
+    if (frames == 0) {
+        return 0;
+    }
+    for (int i = 0; i < cost->count; i++) {
+        if (cost->slots[i].name == name || strcmp(cost->slots[i].name, name) == 0) {
+            return cost->slots[i].total_us / frames;
+        }
+    }
+    return 0;
+}
+
 /* The index of a name the console may arm, or -1 for one never bracketed. */
 static inline int
 frame_cost_name_index(const frame_cost_t* cost, const char* name) {
@@ -385,6 +399,7 @@ frame_cost_external_report(frame_cost_external_t* slot, char* out, size_t capaci
 void frame_cost_external(const char* name, int64_t us);
 int frame_cost_begin(void);
 int64_t frame_cost_end(int mark, const char* name);
+int64_t frame_cost_take_mean_us(const char* name, uint32_t frames);
 int frame_cost_take_report(uint32_t frames, char* out, size_t out_size);
 /* Forgets everything since the last report: the brackets, the external
  * stage and the foreign-task count, so the next report holds only what
