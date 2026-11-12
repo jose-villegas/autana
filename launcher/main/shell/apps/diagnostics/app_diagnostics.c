@@ -128,7 +128,8 @@ static void
 diagnostics_exit(void) {}
 
 app_t app_diagnostics = {
-    .name = "Diagnostics",
+    .name = "Self Test",
+    .kind = APP_KIND_SYSTEM,
     .summary = "Hardware self-test report",
     .enter = diagnostics_enter,
     .frame = diagnostics_frame,

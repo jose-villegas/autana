@@ -61,6 +61,7 @@ settings_exit(void) {}
 
 app_t app_settings = {
     .name = "Settings",
+    .kind = APP_KIND_SYSTEM,
     .summary = "System settings",
     .enter = settings_enter,
     .frame = settings_frame,

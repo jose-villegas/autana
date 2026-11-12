@@ -114,14 +114,25 @@ frame_cost_note_name(frame_cost_t* cost, const char* name) {
     cost->names[cost->name_count++] = name;
 }
 
-/* Names are string literals: one is found again by its address first. With
- * every slot taken a new name is dropped rather than charged to another. */
+/* The named slot, or NULL. Names are string literals: one is found again by
+ * its address first. */
 static inline frame_cost_slot_t*
-frame_cost_slot(frame_cost_t* cost, const char* name) {
+frame_cost_find(const frame_cost_t* cost, const char* name) {
     for (int i = 0; i < cost->count; i++) {
         if (cost->slots[i].name == name || strcmp(cost->slots[i].name, name) == 0) {
-            return &cost->slots[i];
+            return (frame_cost_slot_t*)&cost->slots[i];
         }
+    }
+    return NULL;
+}
+
+/* The named slot, made when new. With every slot taken a new name is dropped
+ * rather than charged to another. */
+static inline frame_cost_slot_t*
+frame_cost_slot(frame_cost_t* cost, const char* name) {
+    frame_cost_slot_t* found = frame_cost_find(cost, name);
+    if (found != NULL) {
+        return found;
     }
     if (cost->count >= FRAME_COST_SLOTS) {
         cost->dropped++;
@@ -131,6 +142,14 @@ frame_cost_slot(frame_cost_t* cost, const char* name) {
     *slot = (frame_cost_slot_t){.name = name};
     frame_cost_note_name(cost, name);
     return slot;
+}
+
+/* The named bracket's mean microseconds over `frames` frames, the window left
+ * intact; 0 when the bracket is absent or `frames` is 0. */
+static inline int64_t
+frame_cost_mean_us(const frame_cost_t* cost, const char* name, uint32_t frames) {
+    const frame_cost_slot_t* slot = frame_cost_find(cost, name);
+    return frames == 0 || slot == NULL ? 0 : slot->total_us / frames;
 }
 
 /* The index of a name the console may arm, or -1 for one never bracketed. */
@@ -385,6 +404,8 @@ frame_cost_external_report(frame_cost_external_t* slot, char* out, size_t capaci
 void frame_cost_external(const char* name, int64_t us);
 int frame_cost_begin(void);
 int64_t frame_cost_end(int mark, const char* name);
+/* frame_cost_mean_us() of the shared window. */
+int64_t frame_cost_take_mean_us(const char* name, uint32_t frames);
 int frame_cost_take_report(uint32_t frames, char* out, size_t out_size);
 /* Forgets everything since the last report: the brackets, the external
  * stage and the foreign-task count, so the next report holds only what

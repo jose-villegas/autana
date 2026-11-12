@@ -1,7 +1,6 @@
 #include "render/view/raster_cull_view.h"
 
 #include <assert.h>
-#include <limits.h>
 #include <math.h>
 #include <string.h>
 
@@ -52,8 +51,6 @@ static const unsigned FATE_KEEP[RASTER_FATE_COUNT] = {
 #define CHASE_UP       0.15F
 /* A spectator's near plane: this share of the bounds' radius, or the camera's. */
 #define SPECTATOR_NEAR 0.001F
-
-#define BITS           (sizeof(uint32_t) * CHAR_BIT)
 
 /* Each instance's drawn clusters into s->drawn, the level each instance
  * drew this frame (both levels of a group it dithers), and how many
@@ -139,11 +136,11 @@ begin(const raster_attachment_t* self, const raster_t* raster, const render_view
 }
 
 /* The camera's draw tags each pixel with its triangle, a spectator's with
- * its cluster; both count from 1 across the instances. */
+ * its cluster; both count from 1 across the drawn list. */
 static bool
-writer(const raster_attachment_t* self, int instance, r3d_span_writer_t* out) {
+writer(const raster_attachment_t* self, int entry, r3d_span_writer_t* out) {
     raster_cull_t* s = self->state;
-    const r3d_lit_mesh_t* mesh = raster_drawn_at(s->raster, instance)->mesh;
+    const r3d_lit_mesh_t* mesh = raster_drawn_at(s->raster, entry)->mesh;
     *out = (r3d_span_writer_t){.span = raster_attachment_tag};
     if (s->spectating) {
         out->step = R3D_SPAN_STEP_CLUSTER;
@@ -212,7 +209,12 @@ count_frame(raster_cull_t* s, const raster_t* raster) {
     drawn_at_t w = {0};
     for (int i = 0; i < raster_drawn_count(raster); i++) {
         const r3d_instance_t* instance = raster_drawn_at(raster, i);
-        const r3d_lit_mesh_t* mesh = instance->mesh;
+        r3d_lit_mesh_t counted_mesh = *instance->mesh;
+        const r3d_batch_draw_t* copy = raster_drawn_copy(raster, i);
+        if (copy != NULL) {
+            r3d_batch_copy_mesh(copy->batch, instance->mesh, copy->copy, &counted_mesh);
+        }
+        const r3d_lit_mesh_t* mesh = &counted_mesh;
         r3d_lens_t lens;
         raster_lens(raster, &s->camera, mesh->position_scale, &lens);
         raster_drawn_place(raster, i, &lens);
@@ -307,7 +309,7 @@ place_tag(const raster_cull_t* s, const raster_t* raster, uint32_t tag, bool clu
 
 static bool
 covered(const raster_cull_t* s, uint32_t triangle) {
-    return (s->covered[triangle / BITS] >> (triangle % BITS) & 1U) != 0;
+    return bits32_get(s->covered, (size_t)triangle);
 }
 
 /* Each drawn pair's first drawn triangle, the drawn triangles counted across
@@ -354,7 +356,7 @@ mark_covered(raster_cull_t* s, const raster_t* raster) {
                 first += mesh->clusters[s->drawn[w.at + j]].triangle_count;
             }
             const uint32_t drawn = first + t - mesh->clusters[c].triangle_first;
-            s->covered[drawn / BITS] |= 1U << (drawn % BITS);
+            bits32_set(s->covered, (size_t)drawn);
         }
     }
 }
@@ -740,7 +742,33 @@ raster_cull_overlay(void* state, int width, int height) {
     }
 }
 
-raster_cull_frame_t
-raster_cull_frame(const raster_cull_t* state) {
-    return state->frame;
+void
+raster_cull_frame_compose(raster_cull_frame_t* frame, const raster_t* raster, bool shaded_half_picture) {
+    const upscale_t* scale = &raster->upscale;
+    const resolution_step_t output = shaded_half_picture
+                                         ? raster_compose_size(raster)
+                                         : (resolution_step_t){scale->destination_width, scale->destination_height};
+    const upscale_path_t path = output.width == scale->destination_width && output.height == scale->destination_height
+                                    ? scale->path
+                                    : upscale_path_for(raster->width, raster->height, output.width, output.height);
+    frame->transform_batches = raster->scratch != NULL ? raster_batch_count(raster) : 0;
+    frame->render_width = raster->width;
+    frame->render_height = raster->height;
+    frame->output_width = output.width;
+    frame->output_height = output.height;
+    frame->upscale_path = path;
+    frame->upscale_surface =
+        path == UPSCALE_KEPT && scale->filter == UPSCALE_FILTER_SURFACE && raster->present != CAMERA_PRESENT_SCANLINE;
+}
+
+void
+raster_cull_frame(const raster_cull_t* state, raster_cull_frame_t* frame) {
+    *frame = state->frame;
+    if (state->raster != NULL && state->raster->width > 0 && state->raster->height > 0) {
+        const upscale_t* scale = &state->raster->upscale;
+        if (scale->destination_width > 0 && scale->destination_height > 0) {
+            raster_cull_frame_compose(frame, state->raster, false);
+        }
+        frame->quarter = state->camera.viewport.quarter;
+    }
 }
