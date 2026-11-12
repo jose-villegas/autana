@@ -221,6 +221,15 @@ class NightlyTests(unittest.TestCase):
         self.assertEqual(ran, ["suite", "suite", "late"])
         self.assertEqual([result.outcome for result in results], ["measured", "measured"])
 
+    def test_an_anchor_older_than_a_suite_measures_without_it(self):
+        (self.repo / "launcher/test/suite_late.c").write_text("SUITE_REGISTER(late);")
+        chain.git(self.repo, "add", ".")
+        chain.git(self.repo, "commit", "-qm", "a late suite (#106)")
+        self.commits.append(chain.git(self.repo, "rev-parse", "HEAD"))
+        self.args.suite = [("suite", "-", "-"), ("late", "-", "-")]
+        results, _, _ = self.run_chain(self.steps((1, 6), anchor=True))
+        self.assertEqual([result.outcome for result in results], ["measured", "measured"])
+
     def test_the_newest_step_without_a_suite_fails_its_capture(self):
         self.args.suite = [("suite", "-", "-"), ("missing", "-", "-")]
         results, replay, _ = self.run_chain(self.steps((1, 5)))

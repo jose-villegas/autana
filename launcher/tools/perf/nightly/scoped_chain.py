@@ -148,7 +148,7 @@ def git(repo, *words):
 def registered_suites(worktree, suites):
     """The suites the checked-out commit registers (device_report.registration_re): a step older than a suite
     measures without it."""
-    found = subprocess.run(["git", "-C", str(worktree), "grep", "-h", "-F", "SUITE_REGISTER", "--", "launcher"],
+    found = subprocess.run(["git", "-C", str(worktree), "grep", "-h", "-F", "SUITE_REGISTER", "--", "launcher/*.c"],
                            capture_output=True, text=True)
     if found.returncode not in (0, 1):  # 1: no line matched
         raise RuntimeError(f"git grep for suite registrations failed: {found.stderr.strip()}")
@@ -156,8 +156,8 @@ def registered_suites(worktree, suites):
 
 
 def step_suites(worktree, suites, complete):
-    """The night's suites this step can run. Only an older step may lack one; a `complete` step (the anchor or
-    the newest) that lacks one, or a step that registers none, is a capture failure."""
+    """The night's suites this step can run. An older step, the anchor included, may predate one; the newest
+    (`complete`) lacking one, or a step that registers none, is a capture failure."""
     registered = registered_suites(worktree, suites)
     dropped = [suite[0] for suite in suites if suite not in registered]
     if not registered or (dropped and complete):
@@ -387,7 +387,7 @@ def run_chain(steps, args, runner=None, clock=None):
                     try:
                         capture_args = SimpleNamespace(project=worktree, out=output / f"{index:0{STEP_INDEX_DIGITS}}-capture",
                                                        suite=step_suites(worktree, args.suite,
-                                                                         step.role == "anchor" or index == len(steps) - 1),
+                                                                         index == len(steps) - 1),
                                                        runs=1,
                                                        timeout=CAPTURE_TIMEOUT_SECONDS,
                                                        wait=NIGHT_STEP_HANG_SECONDS)
