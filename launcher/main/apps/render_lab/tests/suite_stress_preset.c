@@ -530,6 +530,111 @@ test_near_plane_sweeps_behind_and_clipped_triangles(void) {
     release();
 }
 
+/* Foliage depth is sampled on this grid over the bush's unit square. */
+#define FOLIAGE_SAMPLES    32
+/* The cards overlap: where any covers a sample, this many on average. */
+#define FOLIAGE_MEAN_DEPTH 2.0F
+/* The mask keeps about 0.7 of a card: between these shares. */
+#define FOLIAGE_KEPT_LEAST 0.6F
+#define FOLIAGE_KEPT_MOST  0.8F
+
+/* Whether (x, y) is inside triangle t of `src`, seen down z, either winding. */
+static bool
+covers(const r3d_dynamic_source_t* src, int t, float x, float y) {
+    const vec3f_t* p[3];
+    for (int k = 0; k < 3; k++) {
+        p[k] = &src->positions[src->triangles[t][k]];
+    }
+    float sign = 0.0F;
+    for (int k = 0; k < 3; k++) {
+        const vec3f_t* u = p[k];
+        const vec3f_t* w = p[(k + 1) % 3];
+        const float side = ((w->x - u->x) * (y - u->y)) - ((w->y - u->y) * (x - u->x));
+        if (side * sign < 0.0F) {
+            return false;
+        }
+        sign = side != 0.0F ? side : sign;
+    }
+    return true;
+}
+
+/* Each foliage preset's twin differs only by its surface: their draw costs
+ * differ by the masked fill alone. */
+static void
+test_foliage_presets_differ_from_their_twins_by_the_mask_alone(void) {
+    const int pairs[][2] = {{STRESS_FOLIAGE_NEAR, STRESS_FOLIAGE_NEAR_OPAQUE},
+                            {STRESS_FOLIAGE_FAR, STRESS_FOLIAGE_FAR_OPAQUE}};
+    for (size_t i = 0; i < sizeof pairs / sizeof pairs[0]; i++) {
+        stress_params_t masked = stress_presets[pairs[i][0]];
+        TEST_ASSERT_EQUAL_INT(STRESS_SURFACE_MASKED, masked.surface);
+        TEST_ASSERT_EQUAL_INT(STRESS_SHAPE_FOLIAGE, masked.shape);
+        masked.surface = stress_presets[pairs[i][1]].surface;
+        TEST_ASSERT_EQUAL_MEMORY(&stress_presets[pairs[i][1]], &masked, sizeof masked);
+    }
+    /* Near cards fill more of the picture than far ones. */
+    const int short_px = DEFAULT_SHORT_PX;
+    TEST_ASSERT_GREATER_THAN_FLOAT(stress_cut_px(&stress_presets[STRESS_FOLIAGE_FAR], short_px),
+                                   stress_cut_px(&stress_presets[STRESS_FOLIAGE_NEAR], short_px));
+}
+
+/* A bush's cards overlap several deep, and the mask cuts each card from
+ * corner to corner, keeping about 0.7 of it. */
+static void
+test_foliage_cards_overlap_and_are_masked_corner_to_corner(void) {
+    const stress_params_t* p = &stress_presets[STRESS_FOLIAGE_NEAR];
+    mesh_fixture(p);
+    r3d_dynamic_source_t source;
+    TEST_ASSERT_TRUE(stress_source(p, 0, &f.at[0], &source));
+    int covered = 0;
+    int layers = 0;
+    for (int sy = 0; sy < FOLIAGE_SAMPLES; sy++) {
+        for (int sx = 0; sx < FOLIAGE_SAMPLES; sx++) {
+            const float x = (((float)sx + 0.5F) / FOLIAGE_SAMPLES) - 0.5F;
+            const float y = (((float)sy + 0.5F) / FOLIAGE_SAMPLES) - 0.5F;
+            int depth = 0;
+            for (int t = 0; t < source.triangle_count; t++) {
+                depth += covers(&source, t, x, y) ? 1 : 0;
+            }
+            covered += depth > 0 ? 1 : 0;
+            layers += depth;
+        }
+    }
+    TEST_ASSERT_GREATER_THAN_INT(0, covered);
+    TEST_ASSERT_GREATER_OR_EQUAL_FLOAT(FOLIAGE_MEAN_DEPTH, (float)layers / (float)covered);
+
+    uint16_t (*uvs)[2] = memory_alloc(sizeof(uint16_t[2]) * (size_t)f.mesh.capacity.vertices, MEMORY_PSRAM);
+    TEST_ASSERT_NOT_NULL(uvs);
+    stress_mask(&source, &f.mesh, uvs);
+    for (int c = 0; c < f.mesh.built_clusters; c++) {
+        TEST_ASSERT_TRUE(f.mesh.clusters[c].masked);
+    }
+    TEST_ASSERT_EQUAL_PTR(uvs, f.mesh.mesh.mask_uvs);
+    TEST_ASSERT_EQUAL_PTR(stress_mask_atlas.rows, f.mesh.mesh.mask.rows);
+    /* A card's two triangles reach all four of the atlas's corners. */
+    const int last = ((int)LMSK_MASK_WIDTH << LMSK_UV_FRACTION_BITS) - 1;
+    for (int card = 0; card < p->cuts; card++) {
+        int corners = 0;
+        for (int t = 2 * card; t < (2 * card) + 2; t++) {
+            for (int k = 0; k < 3; k++) {
+                const uint16_t* uv = uvs[f.mesh.mesh.triangles[t][k]];
+                TEST_ASSERT_TRUE(uv[0] == 0 || uv[0] == last);
+                TEST_ASSERT_TRUE(uv[1] == 0 || uv[1] == last);
+                corners |= 1 << ((uv[0] != 0 ? 1 : 0) + (uv[1] != 0 ? 2 : 0));
+            }
+        }
+        TEST_ASSERT_EQUAL_INT(0xF, corners);
+    }
+    int kept = 0;
+    for (int y = 0; y < STRESS_MASK_ROWS; y++) {
+        kept += __builtin_popcount(stress_mask_atlas.rows[y]);
+    }
+    const float share = (float)kept / (float)((int)LMSK_MASK_WIDTH * STRESS_MASK_ROWS);
+    TEST_ASSERT_GREATER_THAN_FLOAT(FOLIAGE_KEPT_LEAST, share);
+    TEST_ASSERT_LESS_THAN_FLOAT(FOLIAGE_KEPT_MOST, share);
+    memory_free(uvs);
+    release();
+}
+
 void
 run_stress_preset_suite(void) {
     RUN_TEST(test_culled_fraction_sweeps_from_visible_to_mostly_off_frustum);
@@ -550,6 +655,8 @@ run_stress_preset_suite(void) {
     RUN_TEST(test_big_tris_are_past_every_small_fill);
     RUN_TEST(test_two_sided_is_a_closed_shape_drawn_from_both_sides);
     RUN_TEST(test_noisy_tiny_slivers_are_gated_and_fail_the_gate);
+    RUN_TEST(test_foliage_presets_differ_from_their_twins_by_the_mask_alone);
+    RUN_TEST(test_foliage_cards_overlap_and_are_masked_corner_to_corner);
 }
 
 SUITE_REGISTER(run_stress_preset_suite);

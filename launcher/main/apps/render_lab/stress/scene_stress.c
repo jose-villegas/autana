@@ -40,6 +40,7 @@ static entity_t* slots; /* the pool's copies, in name order */
 static int pool;
 static stress_buffers_t buffers[STRESS_MIX_LEVELS];
 static r3d_dynamic_mesh_t mesh[STRESS_MIX_LEVELS];
+static uint16_t (*mask_uvs[STRESS_MIX_LEVELS])[2]; /* a masked preset's u, v, one per output vertex */
 static uint32_t wave_ms;
 
 /* What the panel says in place of the triangle count when the scene could not load. */
@@ -91,7 +92,11 @@ take_mesh(void) {
         const r3d_dynamic_capacity_t capacity = r3d_dynamic_capacity_for(vertices, triangles);
         const size_t bytes = r3d_dynamic_mesh_bytes(capacity);
         void* block = lab_scene_take(bytes);
-        if (buffers[i].positions == NULL || buffers[i].colors == NULL || buffers[i].triangles == NULL || block == NULL
+        mask_uvs[i] = shown->surface == STRESS_SURFACE_MASKED
+                          ? lab_scene_take(sizeof(uint16_t[2]) * (size_t)capacity.vertices)
+                          : NULL;
+        if ((shown->surface == STRESS_SURFACE_MASKED && mask_uvs[i] == NULL) || buffers[i].positions == NULL
+            || buffers[i].colors == NULL || buffers[i].triangles == NULL || block == NULL
             || !r3d_dynamic_mesh_init(&mesh[i], block, bytes, capacity, STRESS_TICKS_PER_UNIT)) {
             return false;
         }
@@ -106,6 +111,9 @@ build(void) {
         r3d_dynamic_source_t source;
         if (!stress_source(&p, wave_ms, &buffers[i], &source) || !r3d_dynamic_mesh_build(&mesh[i], &source)) {
             return false;
+        }
+        if (mask_uvs[i] != NULL) {
+            stress_mask(&source, &mesh[i], mask_uvs[i]);
         }
     }
     for (int i = 0; i < shown->copies; i++) {

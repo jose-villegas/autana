@@ -7,6 +7,7 @@
 #include "math/linear/transformf.h"
 #include "math/linear/vec3f.h"
 #include "render/dynamic/r3d_dynamic_mesh.h"
+#include "render/lmsk_format.h"
 
 typedef enum {
     STRESS_SHAPE_PLANE,    /* primitive_plane(): a square facing the camera */
@@ -15,6 +16,7 @@ typedef enum {
     STRESS_SHAPE_CYLINDER, /* primitive_cylinder(): its axis toward the camera, an end's fan of slivers in view */
     STRESS_SHAPE_GRID,     /* independent triangle corners on a tessellated square */
     STRESS_SHAPE_CARD,     /* perforated square with uneven tessellation */
+    STRESS_SHAPE_FOLIAGE,  /* a bush: `cuts` small square cards scattered, turned and overlapping several deep */
 } stress_shape_t;
 
 typedef enum {
@@ -26,6 +28,7 @@ typedef enum {
     STRESS_SURFACE_UNIFORM,   /* one colour at every corner: zero colour steps, filled uniform */
     STRESS_SURFACE_STATIC,    /* the pack's own static mesh asset per copy, nothing generated */
     STRESS_SURFACE_TWO_SIDED, /* banded, and drawn from both sides: nothing faces away */
+    STRESS_SURFACE_MASKED,    /* banded, each foliage card cut by a one-bit mask atlas (stress_mask()) */
 } stress_surface_t;
 
 typedef enum {
@@ -69,7 +72,11 @@ typedef struct {
     X(CARD, "card", CARD)                                                                                              \
     X(CULLED, "culled", BANDED)                                                                                        \
     X(NEAR, "near", BANDED)                                                                                            \
-    X(FEW_COPIES, "few-copies", BANDED)
+    X(FEW_COPIES, "few-copies", BANDED)                                                                                \
+    X(FOLIAGE_NEAR, "foliage-near", MASKED)                                                                            \
+    X(FOLIAGE_NEAR_OPAQUE, "foliage-near-opaque", BANDED)                                                              \
+    X(FOLIAGE_FAR, "foliage-far", MASKED)                                                                              \
+    X(FOLIAGE_FAR_OPAQUE, "foliage-far-opaque", BANDED)
 
 #define STRESS_PRESET_ID(id_, ...) STRESS_##id_,
 
@@ -131,3 +138,16 @@ float stress_cut_px(const stress_params_t* p, int short_px);
 #define STRESS_MIX_LEVELS         4
 #define STRESS_MIX_UNIFORM_PERIOD 2
 stress_params_t stress_copy_params(const stress_params_t* p, int copy);
+
+/* The mask atlas a foliage card is cut by: a disc of LMSK_MASK_WIDTH texels
+ * with scattered single-texel holes, keeping about 0.7 of the card, so its
+ * rows break into ragged runs as a leaf card's do. */
+#define STRESS_MASK_ROWS ((int)LMSK_MASK_WIDTH)
+extern const lmsk_atlas_t stress_mask_atlas;
+
+/* Cuts mesh `m`, built from `src` (a masked foliage preset's
+ * stress_source()), by stress_mask_atlas: every built cluster masked, and
+ * each built vertex's u, v in `uvs` (room for m's vertex capacity) its
+ * card corner's, the card spanning the atlas. Run after every build, which
+ * clears the cluster flags. */
+void stress_mask(const r3d_dynamic_source_t* src, r3d_dynamic_mesh_t* m, uint16_t (*uvs)[2]);

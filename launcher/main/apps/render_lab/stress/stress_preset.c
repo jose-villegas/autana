@@ -4,6 +4,7 @@
 
 #include "math/geometry/primitive_mesh.h"
 #include "math/scalar/math_const.h"
+#include "math/scalar/mathf_round.h"
 #include "math/scalar/rng.h"
 
 /* Each preset's surface, as STRESS_PRESETS names it. */
@@ -41,6 +42,16 @@ const stress_params_t stress_presets[STRESS_PRESET_COUNT] = {
                      6},
     [STRESS_FEW_COPIES] = {STRESS_SHAPE_SPHERE, 24, 2, STRESS_LAYOUT_WALL, 70, STRESS_SURFACE_OF(FEW_COPIES),
                            STRESS_CAMERA, 6},
+    /* Foliage cards near, a few bushes over the whole view, and far, many small
+     * ones; each beside its opaque twin, whose cards differ only by the mask. */
+    [STRESS_FOLIAGE_NEAR] = {STRESS_SHAPE_FOLIAGE, 24, 3, STRESS_LAYOUT_STACK, 120, STRESS_SURFACE_OF(FOLIAGE_NEAR),
+                             STRESS_CAMERA, 6},
+    [STRESS_FOLIAGE_NEAR_OPAQUE] = {STRESS_SHAPE_FOLIAGE, 24, 3, STRESS_LAYOUT_STACK, 120,
+                                    STRESS_SURFACE_OF(FOLIAGE_NEAR_OPAQUE), STRESS_CAMERA, 6},
+    [STRESS_FOLIAGE_FAR] = {STRESS_SHAPE_FOLIAGE, 24, 36, STRESS_LAYOUT_WALL, 70, STRESS_SURFACE_OF(FOLIAGE_FAR),
+                            STRESS_CAMERA, 6},
+    [STRESS_FOLIAGE_FAR_OPAQUE] = {STRESS_SHAPE_FOLIAGE, 24, 36, STRESS_LAYOUT_WALL, 70,
+                                   STRESS_SURFACE_OF(FOLIAGE_FAR_OPAQUE), STRESS_CAMERA, 6},
 };
 
 stress_params_t
@@ -153,6 +164,49 @@ card_corner(const stress_params_t* p, const stress_buffers_t* b, int v, int x, i
 }
 
 static const uint8_t quad_corners[6][2] = {{0, 0}, {1, 0}, {1, 1}, {0, 0}, {1, 1}, {0, 1}};
+#define QUAD_VERTICES            6
+
+/* A foliage card's side, as a share of the bush's unit square, and how deep
+ * the bush is: its cards' centres spread over this much of a unit in z. */
+#define STRESS_FOLIAGE_CARD_SIDE 0.35F
+#define STRESS_FOLIAGE_DEPTH     0.5F
+#define STRESS_FOLIAGE_SEED      0xF011A6EU
+/* How far a card turns about the vertical either way, radians: upright, as
+ * foliage cards stand, and never edge on. */
+#define STRESS_FOLIAGE_YAW       1.0F
+/* The hash's low bits as a share of [0, 1]. */
+#define STRESS_UNIT_BITS         0xFFFFU
+
+/* Card `card`'s draw `site`, a share of [0, 1]. */
+static float
+foliage_draw(int card, int site) {
+    return (float)(rng_hash(STRESS_FOLIAGE_SEED, (uint32_t)card, (uint32_t)site, 0) & STRESS_UNIT_BITS)
+           / (float)STRESS_UNIT_BITS;
+}
+
+/* Cards placed at random in the unit square, each turned about the vertical
+ * and set at a random depth, so they overlap several deep; every card is its
+ * own two triangles and six corners. */
+static void
+make_foliage(const stress_params_t* p, const stress_buffers_t* b) {
+    const float half = 0.5F * STRESS_FOLIAGE_CARD_SIDE;
+    const float reach = 0.5F - half;
+    for (int card = 0; card < p->cuts; card++) {
+        const vec3f_t centre = {reach * ((2.0F * foliage_draw(card, 0)) - 1.0F),
+                                reach * ((2.0F * foliage_draw(card, 1)) - 1.0F),
+                                STRESS_FOLIAGE_DEPTH * (foliage_draw(card, 2) - 0.5F)};
+        const float turn = STRESS_FOLIAGE_YAW * ((2.0F * foliage_draw(card, 3)) - 1.0F);
+        const float c = cosf(turn);
+        const float s = sinf(turn);
+        for (int k = 0; k < QUAD_VERTICES; k++) {
+            const int v = (QUAD_VERTICES * card) + k;
+            const float x = STRESS_FOLIAGE_CARD_SIDE * ((float)quad_corners[k][0] - 0.5F);
+            const float y = STRESS_FOLIAGE_CARD_SIDE * ((float)quad_corners[k][1] - 0.5F);
+            b->positions[v] = (vec3f_t){centre.x + (c * x), centre.y + y, centre.z - (s * x)};
+            b->triangles[(2 * card) + (k / 3)][k % 3] = (uint16_t)v;
+        }
+    }
+}
 
 static void
 make_card(const stress_params_t* p, const stress_buffers_t* b) {
@@ -185,6 +239,7 @@ counts_of(const stress_params_t* p) {
             const int triangles = 2 * p->cuts * p->cuts;
             return (primitive_counts_t){3 * triangles, triangles};
         }
+        case STRESS_SHAPE_FOLIAGE: return (primitive_counts_t){QUAD_VERTICES * p->cuts, 2 * p->cuts};
         case STRESS_SHAPE_PLANE: return primitive_plane_counts(&s.plane);
         case STRESS_SHAPE_SPHERE: return primitive_sphere_counts(&s.sphere);
         case STRESS_SHAPE_CUBE: return primitive_cube_counts(&s.cube);
@@ -223,6 +278,7 @@ make(const stress_params_t* p, const stress_buffers_t* b, primitive_mesh_t* m) {
     switch (p->shape) {
         case STRESS_SHAPE_GRID: make_mixed(p, b); break;
         case STRESS_SHAPE_CARD: make_card(p, b); break;
+        case STRESS_SHAPE_FOLIAGE: make_foliage(p, b); break;
         case STRESS_SHAPE_PLANE: return primitive_plane(&s.plane, m);
         case STRESS_SHAPE_SPHERE: return primitive_sphere(&s.sphere, m);
         case STRESS_SHAPE_CUBE: return primitive_cube(&s.cube, m);
@@ -366,6 +422,77 @@ stress_cut_px(const stress_params_t* p, int short_px) {
         case STRESS_SHAPE_CUBE: return width / (float)p->cuts;
         case STRESS_SHAPE_SPHERE: return MATH_PI * width / (float)sphere_segments(p->cuts);
         case STRESS_SHAPE_CYLINDER: return 0.5F * width;
+        case STRESS_SHAPE_FOLIAGE: return STRESS_FOLIAGE_CARD_SIDE * width;
     }
     return 0.0F;
+}
+
+/* One texel in this many inside the disc is a hole: the disc keeps pi/4 of
+ * the square, so the mask keeps about 0.7 of a card. */
+#define STRESS_MASK_HOLE_PERIOD 10
+#define STRESS_MASK_SEED        0x1EAFU
+
+/* Texel (x, y) of the mask: inside the disc and not a hole. Doubled
+ * coordinates put the disc's centre between the middle texels. */
+static bool
+mask_kept(int x, int y) {
+    const int dx = (2 * x) + 1 - (int)LMSK_MASK_WIDTH;
+    const int dy = (2 * y) + 1 - (int)LMSK_MASK_WIDTH;
+    const bool in_disc = (dx * dx) + (dy * dy) < (int)(LMSK_MASK_WIDTH * LMSK_MASK_WIDTH);
+    return in_disc && rng_hash(STRESS_MASK_SEED, (uint32_t)x, (uint32_t)y, 0) % STRESS_MASK_HOLE_PERIOD != 0;
+}
+
+static uint32_t
+mask_row(int y) {
+    uint32_t row = 0;
+    for (int x = 0; x < (int)LMSK_MASK_WIDTH; x++) {
+        row |= mask_kept(x, y) ? 1U << x : 0U;
+    }
+    return row;
+}
+
+static uint32_t stress_mask_rows[STRESS_MASK_ROWS];
+const lmsk_atlas_t stress_mask_atlas = {stress_mask_rows, STRESS_MASK_ROWS};
+
+/* A card corner's u or v across `texels` texels: 0 or the last. */
+static uint16_t
+mask_corner(uint8_t corner, int texels) {
+    return (uint16_t)(corner == 0 ? 0 : (texels << LMSK_UV_FRACTION_BITS) - 1);
+}
+
+/* Which corner of source triangle `t` output vertex `at` copies: the build
+ * keeps triangles in order but may turn their corners over, so it is the one
+ * whose position rounds to the same ticks. */
+static int
+source_corner(const r3d_dynamic_source_t* src, const r3d_dynamic_mesh_t* m, int t, int at) {
+    const float scale = (float)m->mesh.position_scale;
+    for (int k = 0; k < 3; k++) {
+        const vec3f_t p = src->positions[src->triangles[t][k]];
+        if (mathf_round_i16(p.x * scale) == m->positions[at][0] && mathf_round_i16(p.y * scale) == m->positions[at][1]
+            && mathf_round_i16(p.z * scale) == m->positions[at][2]) {
+            return src->triangles[t][k];
+        }
+    }
+    return src->triangles[t][0];
+}
+
+void
+stress_mask(const r3d_dynamic_source_t* src, r3d_dynamic_mesh_t* m, uint16_t (*uvs)[2]) {
+    for (int y = 0; y < STRESS_MASK_ROWS; y++) {
+        stress_mask_rows[y] = mask_row(y);
+    }
+    for (int t = 0; t < m->mesh.triangle_count; t++) {
+        for (int k = 0; k < 3; k++) {
+            const int at = m->triangles[t][k];
+            const uint8_t* corner = quad_corners[source_corner(src, m, t, at) % QUAD_VERTICES];
+            uvs[at][0] = mask_corner(corner[0], (int)LMSK_MASK_WIDTH);
+            uvs[at][1] = mask_corner(corner[1], STRESS_MASK_ROWS);
+        }
+    }
+    for (int c = 0; c < m->built_clusters; c++) {
+        m->clusters[c].masked = true;
+    }
+    m->mesh.mask_uvs = (const uint16_t (*)[2])uvs;
+    m->mesh.mask_vertex_first = 0;
+    m->mesh.mask = stress_mask_atlas;
 }
