@@ -17,6 +17,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "app/app_arena.h"
 #include "asset/asset_file.h"
 #include "math/linear/quatf.h"
 #include "math/scalar/math_const.h"
@@ -220,14 +221,21 @@ main(int argc, char** argv) {
     if (in == NULL || asset_file_open(argv[1], &pack, &buffer) != ASSET_OK) {
         return fail("cannot open the pack or the script");
     }
-    entity_t scene = scene_load_from(&pack, argv[2]);
-    if (scene_state(scene) != PENDING_READY) {
-        scene_release(scene);
-        return fail("the scene does not load");
+    /* The scene takes its blocks from the app heap, as on the board, where the shell enters it for each app visit. */
+    if (!app_arena_init()) {
+        return fail("the app region does not fit");
     }
-    const int status = play(in, entity_find(scene, name_hash(argv[3])), argv[4]);
+    app_arena_enter();
+    entity_t scene = scene_load_from(&pack, argv[2]);
+    int status;
+    if (scene_state(scene) != PENDING_READY) {
+        status = fail("the scene does not load");
+    } else {
+        status = play(in, entity_find(scene, name_hash(argv[3])), argv[4]);
+    }
     fclose(in);
     scene_release(scene);
+    app_arena_exit();
     asset_file_release(buffer);
     return status;
 }

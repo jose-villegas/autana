@@ -4,6 +4,7 @@ import pathlib
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import render_asset  # noqa: E402
@@ -22,7 +23,7 @@ class RenderAssetTests(unittest.TestCase):
         self.assertEqual(render_asset.load(self.settings("batched = false\n")),
                          {"cull": True, "depth_fit": True, "batched": False, "partial_redraw": True, "lod.tolerance_px": 2.0,
                           "lod.hysteresis_px": 0.5, "lod.coverage_permille": 250, "lod.pick_every": 4,
-                          "lod.triangle_budget": 0})
+                          "lod.triangle_budget": 0, "lod.blend": 0, "lod.blend_px": 0.25})
         lod = render_asset.load(self.settings("[lod]\ncoverage_permille = 100\n"))
         self.assertEqual(lod["lod.coverage_permille"], 100)
 
@@ -31,7 +32,8 @@ class RenderAssetTests(unittest.TestCase):
         self.assertEqual((list(rows.items()), frac), ([("cull", [0]), ("depth_fit", [1]), ("batched", [1]),
                                                   ("partial_redraw", [1]), ("lod.tolerance_px", [32]), ("lod.hysteresis_px", [8]),
                                                   ("lod.coverage_permille", [250]), ("lod.pick_every", [4]),
-                                                  ("lod.triangle_budget", [0])], 4))
+                                                  ("lod.triangle_budget", [0]), ("lod.blend", [0]), ("lod.blend_px", [4])],
+                                                 4))
 
     def test_an_int_bakes_as_itself_up_to_a_row_s_most(self):
         for budget in (12000, table_asset.VALUE_MAX):
@@ -58,6 +60,16 @@ class RenderAssetTests(unittest.TestCase):
         for body in ("bool cull, batched; /* basic: x */", "bool cull;"):
             with self.subTest(body=body), self.assertRaisesRegex(ValueError, "its own line"):
                 render_asset.fields(f"typedef struct {{\n    {body}\n}} render_settings_t;")
+
+    def test_generated_fields_carry_their_ranges(self):
+        header = render_asset.header()
+        self.assertIn("X(lod.blend, int, value >= 0 && value < RENDER_LOD_BLEND_COUNT)", header)
+        self.assertIn("X(lod.blend_px, float, value > 0.0F && value <= RENDER_LOD_BLEND_PX_MAX)", header)
+        self.assertIn("X(lod.tolerance_px, float, true)", header)
+        text = render_asset.DEFAULT.read_text(encoding="utf-8")
+        text += '\n[ranges."lod.tolerance_px"]\nmin = 1.0\nmax = 2.0\n'
+        with mock.patch.object(render_asset, "DEFAULT", self.settings(text)):
+            self.assertIn("X(lod.tolerance_px, float, value >= 1.0F && value <= 2.0F)", render_asset.header())
 
     def test_the_generated_default_matches_the_tree(self):
         header = render_asset.SETTINGS / "render_settings_default.h"

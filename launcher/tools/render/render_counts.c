@@ -23,7 +23,8 @@ render_counts_open(const char* path, const char* tool) {
 
 void
 render_counts_row(FILE** rows, const provider_frame_t* frame) {
-    const raster_cull_frame_t f = raster_cull_frame(render_context_debug_view_state(render_context_main()));
+    raster_cull_frame_t f;
+    raster_cull_frame(render_context_debug_view_state(render_context_main()), &f);
     fprintf(*rows, "%d,%u", frame->index, (unsigned)frame->elapsed_ms);
 #define COUNT_VALUE(name, member) fprintf(*rows, ",%d", f.member);
     RASTER_CULL_FRAME_FIELDS(COUNT_VALUE)

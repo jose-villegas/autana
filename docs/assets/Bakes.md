@@ -17,9 +17,15 @@ signed in). **A build with a cold cache needs the network once**; offline, it
 fails naming every mesh it cannot get. Files land in the cache by rename, so
 builds running side by side never read half a file.
 
-A bake's code is everything its entry scripts import. A fit's reference set, the slowest bake, counts only the
-functions, classes and constants its entry functions reach (`bake/code_units.py`), so an edit to a helper it
-never runs keeps its renders.
+A mesh, a fit's reference set, its fit and its levels count only the functions, classes and constants their
+entry functions reach (`bake/code_units.py`), so an edit to a helper a stage never runs keeps its bake. The
+other stages count everything their entry scripts import.
+
+| Change to the tools | Re-keys |
+|---|---|
+| A helper the stage never reaches | nothing |
+| A reached line edited, renamed or moved | that stage, and the fit when it is the reference set (the fit names its key) |
+| A start's or fit's code, with the same bytes out | only that bake: the fit and levels keys name the bytes they read |
 
 A pull request that changes what a mesh is made from gets its bake from the
 Bakes workflow: its CPU job bakes the meshes the lock lacks and uploads them,
@@ -29,8 +35,7 @@ workflow makes it, started by hand on the branch; no pull request reaches that
 runner. `--from-run` repeats, so the two runs lock together
 (`--from-run CPU --from-run GPU`); two runs that made one key with different
 bytes fail, naming both. Only a run's
-files can be locked, so every locked file can be published from main; a fit's
-reference frames stay on the machine that fitted. The exception is a seeded
+files can be locked, so every locked file can be published from main. The exception is a seeded
 row (`seeded = true`), written by `bake.py lock --seed` from the files the tree
 held: its bytes were carried over, not made by the code its key names, and
 `check` lists such rows until a run makes their keys again. A seed skips a
@@ -38,21 +43,25 @@ levels bake whose fit it has not locked yet; the CPU run makes it afterwards. A 
 names its `host`, the system and machine that made the bytes, since a bake
 repeats byte for byte only on one kind of host (a Linux and a Windows Blender
 export of the same `.blend` differ in the last bit of some animation keys).
-A mesh bake differs by CPU vendor too (an AMD and an Intel host trace a few
-rays an ulp apart), so the lock's `mesh_cpu_vendor` line names the vendor its
-meshes were made on. A run records its host's vendor; `lock --from-run` refuses
-a run that made a mesh on another vendor, naming both, and the CPU job fails
-before baking when the hosted runner it got is another vendor's. Either way,
-re-run the failed job until it lands on the lock's vendor.
+A bake that traces rays differs by CPU vendor too (an AMD and an Intel host
+trace a few rays an ulp apart), so the lock's `mesh_cpu_vendor` line names the
+vendor its meshes and reference sets were made on. A run records its host's
+vendor; `lock --from-run` refuses a run that made one on another vendor, naming
+both, and the CPU job fails before baking when the hosted runner it got is
+another vendor's. Either way, re-run the failed job until it lands on the
+lock's vendor.
 
 A fit's reference set is traced on the CPU, as a mesh is, since the GPU's ray
 tracing may build a different tree each time
 ([Reference on the CPU](../../launcher/tools/r3d/README.md#reference-on-the-cpu)).
+It is a bake of its own, made by the CPU job and locked like the start, since
+its bytes differ between CPU models, even two generations of one vendor.
 
-A fit repeats byte for byte only on one GPU model, so a fit's row also names
-its `gpu`. The Bakes GPU run's `runner` input picks the self-hosted runner by
-its label (default `gpu`). One attempt fits on one runner; a rerun attempt may land on
-another, and each fit's row names its own GPU.
+A fit reads only locked bytes, so it repeats exactly on any GPU model. Its row
+names the `gpu` that made it. The Bakes GPU run's `runner` input picks the
+self-hosted runner by its label (default `gpu`); with `again`, the run fails
+when a fit makes other bytes than its lock row, which checks a fit on a GPU
+other than the one that made it.
 
 A run keeps each bake it finishes: the bake goes to the cache and the upload as
 it is made, and the upload runs even when the job fails, so a failed run locks too.
@@ -70,7 +79,8 @@ and copies manifest, including when no shapes are carved.
 | Fitted renderer stage | Output | Input |
 |---|---|---|
 | CPU start | `<entry>.start.bundle` | Source and import recipe |
-| GPU fit | `<entry>.fit.bundle` | Locked start bytes and references; rest without levels |
+| CPU reference set | `<entry>.reference.tar.xz` | Source, scene light and camera, pose size and spacing |
+| GPU fit | `<entry>.fit.bundle` | Locked start and reference set bytes; rest without levels |
 | CPU levels | `<entry>.bundle` | Locked fit bytes, `lod` and meshlet size |
 
 The fit trains only the rest. Both later stages pass copy meshes, colour

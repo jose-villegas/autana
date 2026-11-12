@@ -70,6 +70,9 @@ Each frame, while the last one goes out to the panel:
 `run_water_perf_suite` plays the tour ([`tests/suite_water_perf.c`](../tests/suite_water_perf.c))
 under each experiment's tunables and times every stage of the update, `flip3_step()`'s
 own stages and r3d's; [`tools/water_tables.py`](water_tables.py) turns its capture into tables.
+It then plays the base tour once more through the cull view, untimed, and logs one
+`frame_replay` line per phase: its mean counts and its timed report, so
+`stress_predict.py --scenes` scores water too (`--scene-quarter landscape`).
 
 <!-- generated: water-stages check: python launcher/main/apps/render_lab/tools/water_tables.py --check -->
 ### Measured stages
@@ -78,71 +81,71 @@ The scripted tour at 33 ms of water per frame, one row per phase, from a board c
 
 | Phase | Frames | Substeps/frame | Triangles | Particles | Frame mean / p95 ms | Update mean / p95 ms | Draw mean / p95 ms |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| rest | 46 | 2.0 | 1265 | 1093 | 77.0 / 78.6 | 50.5 / 52.3 | 13.5 / 14.0 |
-| tilt | 136 | 2.0 | 1352 | 1093 | 78.4 / 80.0 | 51.2 / 52.8 | 14.2 / 15.1 |
-| flat | 91 | 2.0 | 1565 | 1093 | 81.3 / 87.9 | 52.7 / 55.4 | 15.7 / 19.4 |
-| return | 46 | 2.0 | 1315 | 1093 | 77.4 / 78.8 | 51.0 / 52.2 | 13.5 / 13.9 |
-| settle | 45 | 2.0 | 1250 | 1093 | 76.8 / 78.4 | 50.2 / 51.7 | 13.7 / 14.0 |
-| shake | 60 | 2.0 | 1336 | 1093 | 78.0 / 79.6 | 51.0 / 52.5 | 14.1 / 14.6 |
+| rest | 46 | 2.0 | 1265 | 1093 | 76.0 / 78.1 | 50.7 / 52.6 | 12.5 / 12.9 |
+| tilt | 136 | 2.0 | 1352 | 1093 | 77.5 / 79.2 | 51.5 / 52.9 | 13.3 / 14.0 |
+| flat | 91 | 2.0 | 1594 | 1093 | 80.7 / 86.9 | 53.1 / 55.9 | 14.8 / 18.5 |
+| return | 46 | 2.0 | 1315 | 1093 | 76.4 / 78.0 | 51.1 / 52.7 | 12.5 / 13.0 |
+| settle | 45 | 2.0 | 1250 | 1093 | 75.8 / 77.6 | 50.4 / 52.1 | 12.7 / 12.9 |
+| shake | 60 | 2.0 | 1392 | 1093 | 77.7 / 80.0 | 51.6 / 53.2 | 13.4 / 14.2 |
 
 Where the `base` update and draw go, ms per frame:
 
 | Stage | rest | tilt | flat | return | settle | shake |
 |---|---:|---:|---:|---:|---:|---:|
-| water.field | 2.56 | 2.45 | 2.46 | 2.46 | 2.46 | 2.46 |
-| water.through | 0.50 | 0.49 | 0.52 | 0.49 | 0.47 | 0.48 |
-| water.nets | 4.83 | 4.76 | 5.32 | 4.72 | 4.56 | 4.85 |
-| water.shade | 1.25 | 1.28 | 1.47 | 1.25 | 1.19 | 1.26 |
-| water.build | 3.23 | 3.28 | 3.96 | 3.25 | 3.04 | 3.24 |
-| water.step | 38.62 | 38.91 | 38.86 | 38.74 | 38.36 | 38.59 |
-| step: p2g | 16.05 | 16.02 | 16.06 | 16.06 | 15.98 | 16.02 |
+| water.step | 38.30 | 38.61 | 38.59 | 38.40 | 38.08 | 38.28 |
+| water.field | 2.91 | 2.90 | 2.92 | 2.89 | 2.90 | 2.96 |
+| water.through | 0.48 | 0.49 | 0.52 | 0.49 | 0.47 | 0.48 |
+| water.nets | 4.62 | 4.78 | 5.40 | 4.74 | 4.58 | 4.98 |
+| water.shade | 1.19 | 1.28 | 1.50 | 1.24 | 1.18 | 1.31 |
+| water.build | 3.15 | 3.34 | 4.12 | 3.31 | 3.10 | 3.46 |
+| step: p2g | 15.94 | 15.94 | 15.97 | 15.96 | 15.91 | 15.95 |
 | step: accel | 0.38 | 0.38 | 0.38 | 0.38 | 0.38 | 0.38 |
-| step: pressure | 9.97 | 10.29 | 10.24 | 10.07 | 9.79 | 10.00 |
-| step: g2p | 11.02 | 11.01 | 10.98 | 11.03 | 11.02 | 10.99 |
-| step: advect | 0.14 | 0.14 | 0.15 | 0.14 | 0.14 | 0.15 |
-| step: collide | 0.55 | 0.55 | 0.55 | 0.55 | 0.55 | 0.55 |
-| r3d.cull | 0.05 | 0.10 | 0.10 | 0.10 | 0.09 | 0.10 |
-| r3d.transform | 0.36 | 0.71 | 0.85 | 0.72 | 0.69 | 0.70 |
-| r3d.draw | 6.38 | 13.18 | 14.48 | 12.43 | 12.66 | 13.03 |
-| r3d.upscale | 1.50 | 2.94 | 2.93 | 2.92 | 2.93 | 2.95 |
+| step: pressure | 9.95 | 10.24 | 10.20 | 10.03 | 9.77 | 9.93 |
+| step: g2p | 10.83 | 10.83 | 10.84 | 10.84 | 10.83 | 10.83 |
+| step: advect | 0.14 | 0.14 | 0.14 | 0.15 | 0.14 | 0.14 |
+| step: collide | 0.55 | 0.55 | 0.55 | 0.54 | 0.54 | 0.55 |
+| r3d.cull | 0.27 | 0.28 | 0.29 | 0.29 | 0.27 | 0.28 |
+| r3d.transform | 0.49 | 0.50 | 0.61 | 0.52 | 0.48 | 0.53 |
+| r3d.draw | 11.50 | 12.20 | 13.61 | 11.42 | 11.64 | 12.27 |
+| r3d.upscale | 2.86 | 2.85 | 2.85 | 2.83 | 2.85 | 2.85 |
 
 Each experiment against the base, update mean ms per frame:
 
 | Configuration | rest | tilt | flat | return | settle | shake |
 |---|---:|---:|---:|---:|---:|---:|
-| base | 50.5 | 51.2 | 52.7 | 51.0 | 50.2 | 51.0 |
-| one_core | 76.0 | 76.6 | 78.8 | 76.6 | 75.5 | 76.1 |
-| sub4 | 88.6 | 89.8 | 91.5 | 89.0 | 88.6 | 89.6 |
-| sub1 | 31.0 | 31.6 | 32.8 | 31.1 | 31.0 | 30.2 |
-| index_order | 54.0 | 54.1 | 55.9 | 53.9 | 53.5 | 53.5 |
-| samples2 | 58.9 | 60.1 | 62.6 | 59.6 | 58.7 | 60.0 |
-| plane | 21.1 | 22.4 | 25.1 | 22.0 | 21.1 | 21.5 |
+| base | 50.7 | 51.5 | 53.1 | 51.1 | 50.4 | 51.6 |
+| one_core | 76.6 | 77.2 | 79.6 | 77.2 | 76.1 | 77.2 |
+| sub4 | 88.6 | 89.7 | 91.5 | 89.0 | 88.5 | 89.7 |
+| sub1 | 31.4 | 32.1 | 33.6 | 31.6 | 31.4 | 31.2 |
+| index_order | 54.2 | 54.4 | 56.4 | 54.2 | 53.7 | 54.2 |
+| samples2 | 59.2 | 60.4 | 63.2 | 59.9 | 58.9 | 60.7 |
+| plane | 21.2 | 22.4 | 25.2 | 22.1 | 21.2 | 21.6 |
 
 Internal RAM around each configuration, KB free / largest block:
 
 | Configuration | before | running | after |
 |---|---:|---:|---:|
-| base | 62 / 31 | 58 / 31 | 59 / 31 |
-| one_core | 59 / 31 | 58 / 31 | 59 / 31 |
-| sub4 | 59 / 31 | 58 / 31 | 59 / 31 |
-| sub1 | 59 / 31 | 58 / 31 | 59 / 31 |
-| index_order | 59 / 31 | 58 / 31 | 59 / 31 |
-| samples2 | 59 / 31 | 58 / 31 | 59 / 31 |
-| plane | 59 / 31 | 58 / 31 | 59 / 31 |
+| base | 56 / 48 | 55 / 46 | 56 / 48 |
+| one_core | 56 / 48 | 55 / 46 | 56 / 48 |
+| sub4 | 56 / 48 | 55 / 46 | 56 / 48 |
+| sub1 | 56 / 48 | 55 / 46 | 56 / 48 |
+| index_order | 56 / 48 | 55 / 46 | 56 / 48 |
+| samples2 | 56 / 48 | 55 / 46 | 56 / 48 |
+| plane | 56 / 48 | 55 / 46 | 56 / 48 |
 
 Source: `water-stages-board.log`
 <!-- /generated: water-stages -->
 
 ### Stress
 
-The Stress family is one generated shape, shown in copies before a camera
-that swings round them. Each preset is the case where a render option should
-lose, beside one where it should win. Hierarchical Z-buffer visibility was
-tested on one module replicated on a grid<sup>[[112]](../../../../../docs/Citations.md#greene-1993)</sup>;
-here the copies are generated at run time, and what is judged is r3d's render
-options, each by where it stops paying.
+The Stress family repeats a generated primitive or static pack mesh before a
+swinging camera. Each preset ties down one behaviour with its own pegged goal.
+Perf work targets the presets; the scene frame profile confirms before merge.
 
-| Scene key | As the swing starts | Made of | Loss case of |
+Repeated geometry exercises hierarchical visibility<sup>[[112]](../../../../../docs/Citations.md#greene-1993)</sup>;
+the presets vary the copies' geometry, layout and colour modes.
+
+| Scene key | As the swing starts | Made of | Ties down |
 |---|---|---|---|
 | `stress-open` | ![Stress open: a wall of planes side by side](../../../../../docs/images/overview/render-lab-stress-open.png) | a wall of planes side by side | hidden-cluster skip and cluster cull: nothing hides and nothing is off screen |
 | `stress-stack` | ![Stress stack: planes one behind another](../../../../../docs/images/overview/render-lab-stress-stack.png) | planes one behind another | the skip's win, and the depth cost of the debug views |
@@ -151,20 +154,139 @@ options, each by where it stops paying.
 | `stress-per-frame` | ![Stress per frame: one plane with a wave running over it](../../../../../docs/images/overview/render-lab-stress-per-frame.png) | one plane made again every frame, a wave running over it | the mesh build, every frame |
 | `stress-two-sided` | ![Stress two-sided: a wall of cubes drawn from both sides](../../../../../docs/images/overview/render-lab-stress-two-sided.png) | a wall of closed cubes drawn from both sides | backface cull: half of each cube faces away and none of it is skipped |
 | `stress-noisy-tiny` | ![Stress noisy tiny: cylinders end on, their fans of slivers](../../../../../docs/images/overview/render-lab-stress-noisy-tiny.png) | many small cylinders end on, each end a fan of slivers whose corners are far apart in colour | the small-fill gate: every sliver is tested and none passes |
+| `stress-mix` | ![Stress mix: planes with several tessellations and colour modes](../../../../../docs/images/overview/render-lab-stress-mix.png) | copies cycling through tessellations; a named share of triangles has equal corner colours | a single triangle size or colour mode standing for a scene's draw cost |
+| `stress-static-copies` | ![Static triangle copies](../../../../../docs/images/overview/render-lab-stress-static-copies.png) | the stress pack's LMSH triangle, retained in each renderer | static asset residency and small transform batches |
+| `stress-uniform-mid` | ![Uniform plane with intermediate coverage](../../../../../docs/images/overview/render-lab-stress-uniform-mid.png) | equal-colour large triangles | intermediate uniform fill without shaded pixels |
+| `stress-uniform-full` | ![Uniform plane covering the view](../../../../../docs/images/overview/render-lab-stress-uniform-full.png) | equal-colour large triangles spanning the view | uniform fill beyond the water workload at full-width render sizes |
+| `stress-card` | ![Card copies with ragged edges and sampled colours](../../../../../docs/images/overview/render-lab-stress-card.png) | copies sharing a generated perforated quad with uneven tessellation and procedural texture samples at its corners | scene-like small triangles with irregular edges and colour steps |
+| `stress-culled` | ![Plane before the camera turns away](../../../../../docs/images/overview/render-lab-stress-culled.png) | a tessellated plane and a camera pitching beyond its edge | varying cluster rejection by the frustum |
+| `stress-near` | ![Spheres along the camera path](../../../../../docs/images/overview/render-lab-stress-near.png) | stacked spheres and a camera passing through their front surfaces | triangles behind and crossing the near plane |
+| `stress-few-copies` | ![Stress few copies: two dense spheres](../../../../../docs/images/overview/render-lab-stress-few-copies.png) | two dense spheres side by side | the two-core cull split: with one instance a core, its fork and join cost more than the halved walk saves |
+
+A change is judged by each preset's own readout, stage by stage. The sum over
+presets is a summary line only. A draw change can win on two-sided and static
+copies and lose on card, noisy-tiny and per-frame: the sum says win, and a
+scene of small triangles follows the losing presets.
+
+A small preset still counts. Its behaviour may weigh little in a scene, and a
+win on it is still worth taking.
+
+The presets move with the scenes. Each change below was switched off in one
+build and timed against the build with it, presets and scenes alike:
+
+| Change | Switched off by | Presets against scenes |
+|---|---|---|
+| [Uniform solid fill](https://github.com/jose-villegas/autana/pull/1406) | its test made false | draw: the sum agrees on 4 of 5 scenes; Sponza follows its small-triangle presets |
+| [Two-core cull](https://github.com/jose-villegas/autana/pull/1475) | the cull on one core | cull: Sponza and Bistro agree; capybara's one instance a core is the `few-copies` case |
+
+A comment-only control moved nothing beyond same-build noise. The rule: only
+an opposite sign beyond noise fails; a scene that moves with no preset moving
+is a coverage gap, closed by a new preset.
+
+The card's holes, uneven cells and fixed procedural texture are generated in
+`stress_preset.c`. Its mesh is built once and shared by the copies. Procedural
+geometry keeps the stress bake independent of imported scene sources.
+
+The host renderer's path means compare its triangle-size mix with the scene
+means in [`scene-triangle-bins.json`](../../../../../docs/render/data/scene-triangle-bins.json).
+Regenerate the card means with:
+
+```sh
+python launcher/main/apps/render_lab/tools/scene_triangle_bins.py --scene stress-card 600 --out docs/render/data/stress-triangle-bins.json
+```
+
+Card path means are in [`stress-triangle-bins.json`](../../../../../docs/render/data/stress-triangle-bins.json).
+
+The culled camera samples each quarter's frustum edge; the near camera
+traverses the stacked surfaces. Their sweeps are claims of
+[`tests/suite_stress_preset.c`](../tests/suite_stress_preset.c).
 
 | Part | Owner |
 |---|---|
 | Presets: each ID, key and surface | `stress/stress_preset.h` `STRESS_PRESETS` |
 | Each preset's shape, copies and layout | `stress/stress_preset.c` `stress_presets` |
-| Each copy's shape | `math/geometry/primitive_mesh.h` |
-| One mesh every copy draws | `render/dynamic/r3d_dynamic_mesh.h` |
-| The camera's swing, a still camera at its start, and a pool of copies | `launcher/demo/stress/` |
+| Primitive shapes | `math/geometry/primitive_mesh.h` |
+| Shared dynamic meshes for the copies | `render/dynamic/r3d_dynamic_mesh.h` |
+| The camera tracks, a still camera, and a pool of copies | `launcher/demo/stress/` |
 | Each preset's sizes, by the renderer's own limits | [`tests/suite_stress_preset.c`](../tests/suite_stress_preset.c) |
 | Each preset's corner in a render, by the cull counts | [`tools/tests/test_stress_corners.py`](tests/test_stress_corners.py) |
+| Scene mean triangle bins | [`tools/scene_triangle_bins.py`](scene_triangle_bins.py), [`scene-triangle-bins.json`](../../../../../docs/render/data/scene-triangle-bins.json) |
+| Each preset's stage times and goals on the board | [`tests/suite_stress_perf.c`](../tests/suite_stress_perf.c) |
+| Stage cost model and held-out scoring | [`tools/stress_predict.py`](stress_predict.py) |
 
-`render_lab_render --view cull --counts FILE` writes the cull view's counts
-(`raster_cull_frame_t`), one CSV row a frame; `--camera still` holds the
-camera, so a frame differs from the last only where the mesh moved.
+The `run_stress_perf_suite` suite replays both `lab_perf_quarters` along each
+preset's swing. `stress_presets[].perf_poses` owns sampling density.
+Uniform presets also replay the full and half-height render_lab ladder steps.
+
+Every row uses `LAB_LAYOUT_FULL`, composing from the half picture when it fits.
+Double-buffer presentation runs asynchronously on core 1 and can delay the
+transform worker's fork/join.
+
+`transform_batches` counts the shaded draw's transform fork/joins, empty ones
+included, read from the census by `raster_batch_count()`. Each pays the split,
+worker dispatch, cluster work and join; picture clearing belongs to `r3d.draw`.
+
+Each suite row (preset, quarter, size) has a goal per r3d stage, which reports
+its distance only, and a goal and board ceiling on the stages' sum, all on the
+mean over the row's poses. The suite's goal table says which preset stays unpegged.
+
+[`stress_goals.py`](stress_goals.py) prints that table from the suite's
+`PERF TARGET` lines: per row, the worst capture of five layout seeds on every
+perf board, plus the script's margins. Regenerate it with:
+
+```sh
+python launcher/main/apps/render_lab/tools/stress_goals.py --unpegged stress-uniform-full CAPTURE...
+```
+
+Each pose draws one counted frame, one warm frame and `FRAME_PROFILE_REPLAY_DRAWS`
+measured frames. The pose counts and size loops in the suite own its frame
+budget.
+
+Static copies retain the pack's mesh and its scene-owned PSRAM arrays.
+Dynamic copies also use PSRAM and the same packed-int16 transform loop;
+`vertices_transformed` therefore serves both without a storage-kind split.
+
+`stress_predict.py` is a diagnostic: it fits stage costs to the counts and
+reads stage deltas between two arms. The goals are the bar, never the fit.
+Its per-stage inputs are owned by `STAGE_INPUTS` in [stress_predict.py](stress_predict.py).
+
+The fit under-predicts draw, misses cull's per-call cost and never trains the
+doubled, mapped or blocks upscale paths, so its frame estimate is no scene time.
+
+| Flags | Input or selection |
+|---|---|
+| `--a`, `--scenes` | stress training capture and held-out scene capture |
+| `--b`, `--scenes-a`, `--scenes-b` | second stress arm and paired scene arms for stage deltas |
+| `--noise-a`, `--noise-b` | same-build pair for the measured noise floor |
+| `--layout-a`, `--layout-b` | matching poses with different layout seeds |
+| `--scene KEY ...` | selected scene rows |
+| `--quarter`, `--scene-quarter` | training and held-out quarters |
+
+Pairs require shared pose keys for every scene. Captures must contain every
+model count and stage; unsupported inputs and failed scoring rows fail the run.
+
+Replay counts describe the timed shaded compose. `render_width/height` and
+`output_width/height` give its sizes; `upscale_path` is `upscale_path_t`, and
+`upscale_surface` records surface filtering. The scorer derives pixel areas.
+
+```sh
+python launcher/main/apps/render_lab/tools/stress_predict.py --a stress-a.log \
+    --scenes scenes-a.log
+python launcher/main/apps/render_lab/tools/stress_predict.py \
+    --a stress-a.log --b stress-b.log \
+    --scenes-a scenes-a.log --scenes-b scenes-b.log \
+    --noise-a repeat-a.log --noise-b repeat-b.log \
+    --layout-a layout-a.log --layout-b layout-b.log
+```
+
+`render_lab_render --view cull --counts FILE` writes every
+`RASTER_CULL_FRAME_FIELDS` count per frame. The `sized_*` fields use
+`R3D_SIZES_FIELDS`: face, uniform and shaded modes, each split by covered
+pixel centres. Their sum is `triangles_set_up`; clipped triangles stay separate.
+
+`--camera still` holds the camera, so a frame differs from the last only
+where the mesh moved. Mixed copies share meshes by tessellation;
+`STRESS_MIX_UNIFORM_PERIOD` owns their equal-colour share.
 
 ### Herd
 

@@ -44,9 +44,36 @@ test_apps_end_up_sorted_by_name_regardless_of_registration_order(void) {
     TEST_ASSERT_NULL(app->next);
 }
 
+static void
+register_kind(int slot, const char* name, app_kind_t kind) {
+    apps[slot] = (app_t){.name = name, .kind = kind};
+    app_register(&apps[slot]);
+}
+
+/* Home order: labs, then apps, then the system's own, by name within each,
+ * whatever order they registered in. */
+static void
+test_labs_come_first_then_apps_then_the_system(void) {
+    fixture();
+    register_kind(0, "Alpha", APP_KIND_SYSTEM);
+    register_kind(1, "Zulu", APP_KIND_LAB);
+    register_kind(2, "Bravo", APP_KIND_APP);
+    register_kind(3, "Mike", APP_KIND_LAB);
+
+    const char* const expected[] = {"Mike", "Zulu", "Bravo", "Alpha"};
+    const app_t* app = app_list();
+    for (size_t i = 0; i < sizeof expected / sizeof expected[0]; i++) {
+        TEST_ASSERT_NOT_NULL(app);
+        TEST_ASSERT_EQUAL_STRING(expected[i], app->name);
+        app = app->next;
+    }
+    TEST_ASSERT_NULL(app);
+}
+
 void
 run_app_registry_suite(void) {
     RUN_TEST(test_apps_end_up_sorted_by_name_regardless_of_registration_order);
+    RUN_TEST(test_labs_come_first_then_apps_then_the_system);
 }
 
 #else
