@@ -176,7 +176,7 @@ build and timed against the build with it, presets and scenes alike:
 
 | Change | Switched off by | Presets against scenes |
 |---|---|---|
-| [Uniform solid fill](https://github.com/jose-villegas/autana/pull/1406) | its test made false | draw: the sum agrees on 4 of 5 scenes; the matching presets on all 5 |
+| [Uniform solid fill](https://github.com/jose-villegas/autana/pull/1406) | its test made false | draw: the sum agrees on 4 of 5 scenes; Sponza follows its small-triangle presets |
 | [Two-core cull](https://github.com/jose-villegas/autana/pull/1475) | the cull on one core | cull: Sponza and Bistro agree; capybara's loss led to `few-copies` |
 | [Static residency](https://github.com/jose-villegas/autana/pull/1418) | not rebuilt | reverting it conflicts with later scene files |
 | [LOD blend](https://github.com/jose-villegas/autana/pull/1485) | not rebuilt | it re-keys bakes no lock holds, so the image does not build |
