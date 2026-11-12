@@ -46,7 +46,7 @@ and where it is now. A negative count means anything may have changed.
 | The last picture went to another destination, or none (no framebuffer) | the kept rows are not in this one; the compose writes every row |
 | The shell composed into the framebuffer, not the half picture | the app and its UI paint the framebuffer after the compose; the compose writes every row |
 
-Level picks ([Cluster-LOD](../../plans/Cluster-LOD.md)) are made in the
+Level picks ([Levels-of-Detail](Levels-of-Detail.md)) are made in the
 cull, before the rows are drawn, so a pick that changed any cut is known in
 time to draw every row.
 

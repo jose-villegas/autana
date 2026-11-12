@@ -102,6 +102,10 @@ bool render_host_set_tunable(const char* name, int32_t value);
 /* "owner.name=value", as --set takes it; false, said on stderr, for anything else. */
 bool render_host_set_tunable_text(const char* assignment);
 
+/* Hands the --set render.FIELD values to the main render context, after the
+ * provider's setup; false when the provider links no renderer. */
+bool render_host_apply_settings(const render_settings_t* settings);
+
 /* Parse options and prepare the provider, graphics and outputs for a run.
  * False means no run opened; exit_code is 0 for a successful query, nonzero
  * for an error. */

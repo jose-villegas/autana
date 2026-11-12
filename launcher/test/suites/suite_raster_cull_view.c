@@ -148,7 +148,7 @@ test_counted_cull_returns_the_list_cull_returns(void) {
     uint16_t counted[3] = {0};
     r3d_pipeline_counts_t counts = {0};
     const int expected = r3d_pipeline_cull(&mesh, &lens, NULL, plain, pipeline_work(), NULL);
-    const int actual = r3d_pipeline_cull_counted(&mesh, &lens, NULL, counted, count_walk(), &counts);
+    const int actual = r3d_pipeline_cull_counted(&mesh, &lens, NULL, NULL, counted, count_walk(), &counts);
     TEST_ASSERT_EQUAL_INT(2, expected);
     TEST_ASSERT_EQUAL_INT(expected, actual);
     assert_same_list(plain, counted, expected);
@@ -160,7 +160,7 @@ test_counted_cull_counts_agree_with_the_list(void) {
     const r3d_lens_t lens = lens_for(&looking_at_origin);
     uint16_t out[3];
     r3d_pipeline_counts_t counts = {0};
-    const int kept = r3d_pipeline_cull_counted(&mesh, &lens, NULL, out, count_walk(), &counts);
+    const int kept = r3d_pipeline_cull_counted(&mesh, &lens, NULL, NULL, out, count_walk(), &counts);
     int submitted = 0;
     for (int i = 0; i < kept; i++) {
         submitted += mesh.clusters[out[i]].triangle_count;
@@ -173,7 +173,7 @@ test_counted_cull_counts_agree_with_the_list(void) {
     TEST_ASSERT_EQUAL_INT(2, counts.clusters_tested);
 
     r3d_pipeline_counts_t twice = counts;
-    (void)r3d_pipeline_cull_counted(&mesh, &lens, NULL, out, count_walk(), &twice);
+    (void)r3d_pipeline_cull_counted(&mesh, &lens, NULL, NULL, out, count_walk(), &twice);
     TEST_ASSERT_EQUAL_INT(2 * counts.nodes_visited, twice.nodes_visited);
     TEST_ASSERT_EQUAL_INT(2 * counts.nodes_cut, twice.nodes_cut);
     TEST_ASSERT_EQUAL_INT(2 * counts.clusters_tested, twice.clusters_tested);
@@ -187,7 +187,7 @@ test_counted_cull_cuts_a_mesh_wholly_outside_the_frustum(void) {
     const r3d_lens_t lens = lens_for(&looking_away);
     uint16_t out[3];
     r3d_pipeline_counts_t counts = {0};
-    TEST_ASSERT_EQUAL_INT(0, r3d_pipeline_cull_counted(&mesh, &lens, NULL, out, count_walk(), &counts));
+    TEST_ASSERT_EQUAL_INT(0, r3d_pipeline_cull_counted(&mesh, &lens, NULL, NULL, out, count_walk(), &counts));
     TEST_ASSERT_TRUE(counts.nodes_cut >= 1);
     TEST_ASSERT_EQUAL_INT(1, counts.nodes_visited);
     TEST_ASSERT_EQUAL_INT(0, counts.clusters_tested);
@@ -698,7 +698,7 @@ typedef struct {
     r3d_lit_lod_group_t groups[LOD_COARSE];
     r3d_lit_mesh_t mesh;
     r3d_instance_t* instances;
-    uint32_t* coarse; /* each instance's coarse bits, R3D_LOD_WORDS(LOD_COARSE) words */
+    uint32_t* coarse; /* each instance's coarse bits, R3D_LOD_STATE_WORDS(LOD_COARSE) words */
     mat4f_t model[LOD_PAIR];
 } lod_scene_t;
 
@@ -787,10 +787,10 @@ lod_open(int count) {
     TEST_ASSERT_EQUAL_UINT16(LOD_FINEST, l->mesh.lod_coarse_first);
     l->instances = calloc((size_t)count, sizeof *l->instances);
     TEST_ASSERT_NOT_NULL(l->instances);
-    l->coarse = calloc((size_t)count * R3D_LOD_WORDS(LOD_COARSE), sizeof *l->coarse);
+    l->coarse = calloc((size_t)count * R3D_LOD_STATE_WORDS(LOD_COARSE), sizeof *l->coarse);
     TEST_ASSERT_NOT_NULL(l->coarse);
     for (int i = 0; i < count; i++) {
-        l->instances[i] = (r3d_instance_t){&l->mesh, NULL, NULL, &l->coarse[i * R3D_LOD_WORDS(LOD_COARSE)]};
+        l->instances[i] = (r3d_instance_t){&l->mesh, NULL, NULL, &l->coarse[i * R3D_LOD_STATE_WORDS(LOD_COARSE)]};
     }
     return l;
 }

@@ -33,3 +33,12 @@ static inline void
 bits32_set(uint32_t* bits, size_t index) {
     BITS32_SET(bits, index);
 }
+
+static inline bool
+bits32_put(uint32_t* bits, size_t index, bool on) {
+    const size_t word = index >> 5;
+    const uint32_t bit = UINT32_C(1) << (index & 31U);
+    const uint32_t before = bits[word];
+    bits[word] = on ? before | bit : before & ~bit;
+    return bits[word] != before;
+}
