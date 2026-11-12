@@ -40,8 +40,8 @@ TUNE_OVERRIDE(render, lod_pick_every, R3D_LOD_PICK_EVERY_MAX);
 TUNE_OVERRIDE(render, lod_triangle_budget, INT32_MAX);
 
 render_settings_t
-raster_settings(const raster_t* raster) {
-    const render_settings_t s = raster->settings != NULL ? *raster->settings : RENDER_SETTINGS_DEFAULT;
+render_settings_tuned(const render_settings_t* set) {
+    const render_settings_t s = *set;
     return (render_settings_t){
         tune_override(cull, s.cull) != 0,
         tune_override(depth_fit, s.depth_fit) != 0,
@@ -51,27 +51,6 @@ raster_settings(const raster_t* raster) {
          tune_override(lod_pick_every, s.lod.pick_every), tune_override(lod_triangle_budget, s.lod.triangle_budget),
          tune_override(lod_blend, s.lod.blend),
          lod_blend_centipixels == TUNE_UNSET ? s.lod.blend_px : (float)lod_blend_centipixels / LOD_BLEND_CENTI}};
-}
-
-bool
-raster_partial_redraw(const raster_t* raster) {
-    const bool set =
-        raster->settings != NULL ? raster->settings->partial_redraw : RENDER_SETTINGS_DEFAULT.partial_redraw;
-    return tune_override(partial_redraw, set) != 0;
-}
-
-int
-raster_pick_every(const raster_t* raster) {
-    const int set =
-        raster->settings != NULL ? raster->settings->lod.pick_every : RENDER_SETTINGS_DEFAULT.lod.pick_every;
-    return tune_override(lod_pick_every, set);
-}
-
-int
-raster_triangle_budget(const raster_t* raster) {
-    const int set =
-        raster->settings != NULL ? raster->settings->lod.triangle_budget : RENDER_SETTINGS_DEFAULT.lod.triangle_budget;
-    return tune_override(lod_triangle_budget, set);
 }
 
 /* One instance of a batch: its lens, the clusters culling kept, where its

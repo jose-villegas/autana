@@ -19,12 +19,13 @@ flowchart LR
     Knob["TUNE render.cull, render.depth_fit,<br/>render.batched, render.partial_redraw,<br/>render.lod_coverage_permille, render.lod_pick_every,<br/>render.lod_triangle_budget"] -->|SET| Pick
     Knob -->|RESET| Unset["unset"]
     Unset --> Pick
-    Pick -->|"no"| Frame["the frame draws with<br/>raster_settings()"]
+    Pick -->|"no"| Frame["the frame draws with them,<br/>resolved once (render_settings_tuned())"]
     Pick -->|"yes: the knob's value"| Frame
 ```
 
 A release build has no knobs, so it draws with the app's settings only. A raster
-drawn without a context uses `RENDER_SETTINGS_DEFAULT`.
+drawn without a context uses its own settings as they are, or
+`RENDER_SETTINGS_DEFAULT`, and no knob.
 
 ## The settings
 

@@ -16,7 +16,6 @@
 #include "unity.h"
 
 #include "core/memory.h"
-#include "core/tune.h"
 #include "display/viewport.h"
 #include "gfx/gfx.h"
 #include "gfx/target/gfx_color.h"
@@ -35,17 +34,11 @@ static gfx_color_t* color;
 static uint16_t* depth;
 static r3d_pipeline_work_t* work;
 
-static bool cull_changed;
-static bool batched_changed;
-
 /* The panel takes pixels big-endian: the byte swap back to the native 16 bits. */
 static uint16_t
 native_of(gfx_color_t stored) {
     return (uint16_t)((stored >> 8) | (stored << 8)); /* magic: swaps the two bytes of a 16-bit pixel */
 }
-
-static int32_t saved_cull;
-static int32_t saved_batched;
 
 /* The screen-door tests' own buffers, allocated per test and freed by release_fixture(). */
 typedef struct {
@@ -2466,13 +2459,10 @@ test_cull_off_keeps_every_cluster(void) {
     raster_t raster = census_raster(&instance, 1);
     const fixture_camera_t camera = camera_down_plus_z(10000.0f, -400, 1.0f);
     const render_view_t view = render_view_fixture(&camera, &raster, 0);
-    const tune_entry_t* entry = tune_find(tune_shared(), TUNE_NAME(render, cull));
-    TEST_ASSERT_NOT_NULL(entry);
-    saved_cull = *entry->value;
-    cull_changed = true;
-    (void)tune_reset(tune_shared(), TUNE_NAME(render, cull));
     const raster_stats_t on = raster_draw(&raster, &view);
-    (void)tune_set(tune_shared(), TUNE_NAME(render, cull), 0);
+    render_settings_t cull_off = RENDER_SETTINGS_DEFAULT;
+    cull_off.cull = false;
+    raster.settings = &cull_off;
     const raster_stats_t off = raster_draw(&raster, &view);
     TEST_ASSERT_LESS_THAN_INT(p->mesh.cluster_count, on.clusters);
     TEST_ASSERT_EQUAL_INT(p->mesh.cluster_count, off.clusters);
@@ -2618,15 +2608,15 @@ test_batched_copies_draw_what_one_instance_at_a_time_draws(void) {
     TEST_ASSERT_NOT_NULL(want);
     const fixture_camera_t camera = camera_down_plus_z(150.0f, -400, 1.0f);
     const render_view_t view = render_view_fixture(&camera, &raster, 0);
-    saved_batched = *tune_find(tune_shared(), TUNE_NAME(render, batched))->value;
-    batched_changed = true;
-    (void)tune_set(tune_shared(), TUNE_NAME(render, batched), 0);
+    render_settings_t one_at_a_time = RENDER_SETTINGS_DEFAULT;
+    one_at_a_time.batched = false;
+    raster.settings = &one_at_a_time;
     (void)raster_census(&raster, &view); /* batches run over its drawn list */
     TEST_ASSERT_EQUAL_INT(1 + BATCH_COPIES, raster_batch_count(&raster));
     raster_draw(&raster, &view);
     memcpy(want, raster_color(&raster), sizeof(*want) * W * H);
     memcpy(want + (W * H), raster_depth(&raster), sizeof(*want) * W * H);
-    (void)tune_reset(tune_shared(), TUNE_NAME(render, batched));
+    raster.settings = NULL;
     /* The large mesh alone, then as many copies a batch as its clusters hold. */
     const int per_batch = mathi_min(BATCH_COPIES, wall->mesh.cluster_count / card->mesh.cluster_count);
     TEST_ASSERT_EQUAL_INT(1 + per_batch, raster_batch_end(&raster, 1));
@@ -2647,9 +2637,9 @@ test_batch_count_keeps_empty_batches_and_the_clearing_draw(void) {
     raster_t raster = census_raster(instances, 2);
     const fixture_camera_t camera = camera_down_plus_z(10000.0F, -400, 1.0F);
     const render_view_t view = render_view_fixture(&camera, &raster, 0);
-    saved_batched = *tune_find(tune_shared(), TUNE_NAME(render, batched))->value;
-    batched_changed = true;
-    (void)tune_set(tune_shared(), TUNE_NAME(render, batched), 0);
+    render_settings_t one_at_a_time = RENDER_SETTINGS_DEFAULT;
+    one_at_a_time.batched = false;
+    raster.settings = &one_at_a_time;
     const raster_stats_t stats = raster_draw(&raster, &view);
     TEST_ASSERT_EQUAL_INT(0, stats.clusters);
     TEST_ASSERT_EQUAL_INT(2, raster_batch_count(&raster));
@@ -3064,14 +3054,6 @@ test_show_reads_the_depth_of_the_frame_just_rendered_and_leaves_it_alone(void) {
 
 static void
 release_fixture(void) {
-    if (cull_changed) {
-        (void)tune_set(tune_shared(), TUNE_NAME(render, cull), saved_cull);
-        cull_changed = false;
-    }
-    if (batched_changed) {
-        (void)tune_set(tune_shared(), TUNE_NAME(render, batched), saved_batched);
-        batched_changed = false;
-    }
     free(canvases);
     canvases = NULL;
     free(writer_hits_base);

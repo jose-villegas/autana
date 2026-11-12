@@ -56,7 +56,9 @@ struct raster {
     /* Drawn beside colour and depth, at most GFX_ATTACHMENTS_FURTHER_MAX. */
     const raster_attachment_t* const* attachments;
     int attachment_count;
-    const render_settings_t* settings; /* NULL draws with RENDER_SETTINGS_DEFAULT */
+    /* NULL draws with RENDER_SETTINGS_DEFAULT. Read as they are: an owner
+     * that honours the development overrides passes render_settings_tuned(). */
+    const render_settings_t* settings;
     /* Rows [first_row, end_row) a draw redraws over what the last one left,
      * and the destination rows they reach an upscale; equal is every row
      * (render/partial). A draw whose depth scale moved, or whose level picks
@@ -64,14 +66,15 @@ struct raster {
     int first_row, end_row;
 };
 
-/* What a draw uses: the raster's settings, under any development override. */
-render_settings_t raster_settings(const raster_t* raster);
+/* What a draw uses: the raster's settings. */
+static inline render_settings_t
+raster_settings(const raster_t* raster) {
+    return raster->settings != NULL ? *raster->settings : RENDER_SETTINGS_DEFAULT;
+}
 
-/* Two of raster_settings() alone, for callers deep in the draw's stack, where
- * the whole settings struct would cost a frame. */
-bool raster_partial_redraw(const raster_t* raster);
-int raster_pick_every(const raster_t* raster);
-int raster_triangle_budget(const raster_t* raster);
+/* `set` under every development override that is set; a release build's is
+ * `set`. Resolved once a frame, so a draw reads plain fields. */
+render_settings_t render_settings_tuned(const render_settings_t* set);
 
 /* The viewport a view frames: destination size when upscaled, otherwise drawn size. */
 static inline viewport_t
