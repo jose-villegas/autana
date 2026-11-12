@@ -29,7 +29,15 @@ class ShowTimerTests(unittest.TestCase):
 #include "render/raster.h"
 #include "render/view/raster_show.h"
 #include "r3d_quad_mesh.h"
+#include "core/app_heap.h"
+#include "draw/draw.h"
 int shows;
+/* The render sources reach these on paths the probe never takes. ELF --gc-sections drops those references; PE
+ * links them, so the probe stands in for their owners. */
+bool app_heap_contains(const void* pointer) { (void)pointer; return false; }
+void* app_heap_alloc(size_t bytes) { return malloc(bytes); }
+void app_heap_free(void* pointer) { free(pointer); }
+void draw_line(int x0, int y0, int x1, int y1, gfx_color_t color) { (void)x0; (void)y0; (void)x1; (void)y1; (void)color; abort(); }
 int main(void) {
     const int16_t positions[4][3] = {{-4, -4, 0}, {4, -4, 0}, {4, 4, 0}, {-4, 4, 0}};
     r3d_quad_t quad;
@@ -52,7 +60,7 @@ int main(void) {
 ''')
             binary = work / "probe.exe"
             main = ROOT / "launcher/main"
-            sources = [*sorted((main / "render").rglob("*.c")), *(main / name for name in ("core/job.c", "core/tune.c", "asset/asset_pack.c"))]
+            sources = [*sorted((main / "render").rglob("*.c")), *(main / name for name in ("core/job.c", "core/tune.c", "asset/asset_pack.c", "asset/asset_table.c"))]
             command = ["gcc", "-std=gnu11", "-ffunction-sections", "-fdata-sections",
                        "-I", str(work), *(arg for root in packages.include_roots() for arg in ("-I", str(root))),
                        "-I", str(ROOT / "launcher/test/stubs"), str(source),
