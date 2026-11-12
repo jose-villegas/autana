@@ -130,6 +130,15 @@ run = 43184150229
 host = "Linux x86_64"
 
 [[bake]]
+output = "sponza.atrium_fitted.reference.tar.xz"
+source = "launcher/demo/sponza/sponza.scene.toml"
+key = "80b8d5d3797c3f5bd44aed4ee79467f8fa7508429be3341150a1f2109471d53d"
+sha256 = "47b59e1b59b22efa430075b9a6b5ca456273ba7c8b0db35e5e4e10477cf4720e"
+size = 16993664
+run = 43239327041
+host = "Linux x86_64"
+
+[[bake]]
 output = "sponza.atrium_fitted.start.bundle"
 source = "launcher/demo/sponza/sponza.scene.toml"
 key = "d91db3f47c37f7c41b9c3b8f4716ea72606aa9990ac02b2f5a805427a2fc914a"
