@@ -52,23 +52,6 @@ leave_bracket(frame_cost_t* cost, const char* name, int64_t from_us, int64_t to_
 }
 
 static void
-test_named_mean_reads_without_forgetting_the_window(void) {
-    frame_cost_t* const cost = fixture();
-    char line[128];
-    char draw[] = "draw";
-    frame_cost_add(cost, "draw", 3001);
-    frame_cost_add(cost, "draw", 5000);
-    frame_cost_add(cost, "send", 12000);
-    TEST_ASSERT_EQUAL_INT64(4000, frame_cost_mean_us(cost, draw, 2));
-    TEST_ASSERT_EQUAL_INT64(0, frame_cost_mean_us(cost, "absent", 2));
-    TEST_ASSERT_EQUAL_INT64(0, frame_cost_mean_us(cost, "draw", 0));
-    TEST_ASSERT_EQUAL_INT64(8001, frame_cost_mean_us(cost, "draw", 1));
-    assert_report(cost, 2, line, sizeof line, "draw 4.00/5.0  send 6.00/12.0 | total 10.00");
-    TEST_ASSERT_EQUAL_INT64(0, frame_cost_mean_us(cost, "draw", 2));
-    free(cost);
-}
-
-static void
 test_charges_to_one_name_add_up_and_the_report_is_per_frame(void) {
     frame_cost_t* const cost = fixture();
     char line[128];
@@ -843,6 +826,23 @@ test_a_lap_report_forgets_the_window_but_not_the_running_lap(void) {
     TEST_ASSERT_EQUAL_STRING("lap 3000 ns | cpu0 fill 0.500/1", laps->line);
     TEST_ASSERT_EQUAL_INT(0, laps_report(laps, 1));
     free(laps);
+}
+
+static void
+test_named_mean_reads_without_forgetting_the_window(void) {
+    frame_cost_t* const cost = fixture();
+    char line[128];
+    char draw[] = "draw";
+    frame_cost_add(cost, "draw", 3001);
+    frame_cost_add(cost, "draw", 5000);
+    frame_cost_add(cost, "send", 12000);
+    TEST_ASSERT_EQUAL_INT64(4000, frame_cost_mean_us(cost, draw, 2));
+    TEST_ASSERT_EQUAL_INT64(0, frame_cost_mean_us(cost, "absent", 2));
+    TEST_ASSERT_EQUAL_INT64(0, frame_cost_mean_us(cost, "draw", 0));
+    TEST_ASSERT_EQUAL_INT64(8001, frame_cost_mean_us(cost, "draw", 1));
+    assert_report(cost, 2, line, sizeof line, "draw 4.00/5.0  send 6.00/12.0 | total 10.00");
+    TEST_ASSERT_EQUAL_INT64(0, frame_cost_mean_us(cost, "draw", 2));
+    free(cost);
 }
 
 void

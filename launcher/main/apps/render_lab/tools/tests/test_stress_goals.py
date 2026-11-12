@@ -7,8 +7,9 @@ import tempfile
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-if os.environ.get("STRESS_GOALS_MODULE"):
-    spec = importlib.util.spec_from_file_location("stress_goals", os.environ["STRESS_GOALS_MODULE"])
+SCRATCH_MODULE = os.environ.get("STRESS_GOALS_MODULE")
+if SCRATCH_MODULE:
+    spec = importlib.util.spec_from_file_location("stress_goals", SCRATCH_MODULE)
     goals = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(goals)
 else:

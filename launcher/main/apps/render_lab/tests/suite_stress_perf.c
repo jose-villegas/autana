@@ -1,8 +1,8 @@
 /*
- * Stress preset stage costs and r3d sums, replayed paused along each camera
- * swing in both quarters, with fixed sizes for uniform presets. Goals and
- * board regression ceilings are per preset and per stage, never summed
- * over presets. Zero means not yet pegged.
+ * Stress preset costs along each camera swing, paused in both quarters,
+ * with fixed sizes for uniform presets. Stage goals only log distances;
+ * each row's r3d sum has a board ceiling. Verdicts are per preset and
+ * stage, never summed over presets. Zero means not yet pegged.
  */
 
 #include "suites.h"
@@ -113,8 +113,7 @@ report_goals(const stress_goal_t* goal, const int64_t sums[R3D_STAGE_COUNT], int
         (void)perf_goal(stage, mean, goal->stage_us[i]);
         total += mean;
     }
-    (void)perf_goal(row, total, goal->r3d.mean_goal_us);
-    perf_guard(row, total, goal->r3d.p95_ceiling_us);
+    lab_perf_named_budget(row, total, total, &goal->r3d, true);
 }
 
 static void
