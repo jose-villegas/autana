@@ -91,9 +91,11 @@ typedef struct r3d_depth_fit {
  * group that belong to a fine group, or to none, written to `out` from
  * `count` where `planes` keep them, lowering `fit` as r3d_pipeline_cull()
  * does. Returns the new count and adds the clusters it box-tested to
- * `tested`. r3d_pipeline_cull() calls it after walking level 0. */
-int r3d_pipeline_cull_cut(const r3d_lit_mesh_t* mesh, const uint32_t* lod_coarse, const planef_t* planes,
-                          planef_t depth, uint16_t* out, int count, r3d_depth_fit_t* fit, int* tested);
+ * `tested`. r3d_pipeline_cull() calls it after walking level 0. With
+ * `blending` not NULL, those simplified from each blending group too. */
+int r3d_pipeline_cull_cut(const r3d_lit_mesh_t* mesh, const uint32_t* lod_coarse, const uint32_t* blending,
+                          const planef_t* planes, planef_t depth, uint16_t* out, int count, r3d_depth_fit_t* fit,
+                          int* tested);
 
 /* Walks the node tree and writes the clusters any part of which may be on
  * screen, roughly nearest first, returning how many. `out` holds
@@ -109,6 +111,11 @@ int r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const 
  * drawn after the clusters, stay inside the depth scale too. */
 void r3d_pipeline_fit_curves(r3d_curve_set_t set, const r3d_lens_t* lens, r3d_pipeline_work_t* work,
                              r3d_depth_fit_t* fit);
+/* r3d_pipeline_cull() keeping what r3d_lod_drawn_blending() draws: both
+ * levels of each group blending in `blending`, for the dither. */
+int r3d_pipeline_cull_blending(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint32_t* lod_coarse,
+                               const uint32_t* blending, uint16_t* out, r3d_pipeline_work_t* work,
+                               r3d_depth_fit_t* fit);
 
 /* The screen box a cluster's vertices span and the nearest depth its fill
  * can write, for a caller drawing only some rows, or over depth already
@@ -118,6 +125,10 @@ typedef struct {
     int16_t x0, y0, x1, y1; /* 1/R3D_SUBPIXEL pixels */
     uint16_t depth;         /* no depth its fill writes is nearer */
     bool unbounded;
+    /* 0 drawn plain; else in a blend: its dither band (r3d_lod_dither_band()) where
+     * the instance dithers, else the weight it was transformed with toward its
+     * morph targets, up to R3D_LOD_MORPH_ONE. */
+    uint8_t blend;
 } r3d_pipeline_rows_t;
 
 /* True when every pixel of `target` under a cluster's box already holds
@@ -131,11 +142,25 @@ bool r3d_pipeline_cluster_hidden(const r3d_pipeline_rows_t* rows, const r3d_span
 void r3d_pipeline_transform(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
                             r3d_pipeline_vertex_t* cs, r3d_pipeline_rows_t* rows, bool boxed);
 
+/* r3d_pipeline_transform() with each cluster blended toward its morph
+ * targets by r3d_lod_morph_weight() (render/lod/r3d_lod.h); NULL blends none. */
+struct r3d_lod_morph;
+void r3d_pipeline_transform_morphed(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens,
+                                    const struct r3d_lod_morph* morph, const uint16_t* clusters, int count,
+                                    r3d_pipeline_vertex_t* cs, r3d_pipeline_rows_t* rows, bool boxed);
+
 /* `rows` as r3d_pipeline_transform() filled it, boxed when
  * target->skip_hidden, or NULL to test every triangle. */
 void r3d_pipeline_draw(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
                        const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows,
                        const r3d_span_target_t* target, r3d_pipeline_work_t* work);
+
+/* r3d_pipeline_draw() for an instance in a blend: the clusters whose `rows`
+ * carry a dither band, with `dither`, or else a weight toward their morph
+ * targets are drawn so. Kept apart, so the plain draw tests no blend. */
+void r3d_pipeline_draw_blended(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
+                               const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows,
+                               const r3d_span_target_t* target, r3d_pipeline_work_t* work, bool dither);
 
 /* One mesh's visible clusters as the splits weigh them; several parts are
  * drawn as one, their clusters in part order. `rows` as transformed, or NULL

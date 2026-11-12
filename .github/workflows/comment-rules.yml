@@ -76,8 +76,7 @@ jobs:
       # pyserial among them: the exclusive-open tests drive the real serial library on a pty.
       - name: Workflow gate dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libportaudio2
+          sudo sh scripts/ci/apt_install.sh -y libportaudio2
           pip install -r scripts/gates/requirements.txt -r launcher/tools/render/requirements.txt -r launcher/test/device/requirements.txt -r launcher/tools/audio/requirements.txt -r launcher/tools/audio/mic/requirements.txt
 
       # test_r3d_bake.py skips itself without numpy and scipy, and builds
@@ -87,7 +86,7 @@ jobs:
       - name: r3d bake environment
         run: |
           pip install -r launcher/tools/r3d/requirements.txt
-          sudo apt-get install -y --no-install-recommends llvm
+          sudo sh scripts/ci/apt_install.sh -y --no-install-recommends llvm
           git submodule update --init --depth 1 third_party/upstream/meshoptimizer third_party/upstream/ufbx
 
       # test_check_math.mjs renders through GitHub's MathJax.

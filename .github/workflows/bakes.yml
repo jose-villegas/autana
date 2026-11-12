@@ -1,14 +1,14 @@
 name: Bakes
 
 # The expensive bakes (launcher/tools/bake/bake.py). On a pull request the CPU
-# job bakes every mesh, fit's levels and sound launcher/bakes.lock has no row for and uploads the
-# files; the lock job then fails until the author runs
-# `bake.py lock --from-run N` with that run and commits the lock. A mesh's
-# bytes differ by CPU vendor, so on a runner of another vendor than the lock's
-# `mesh_cpu_vendor` the bake fails before making a mesh: re-run the failed job.
+# job bakes every mesh, fit's reference set, fit's levels and sound launcher/bakes.lock has no row for
+# and uploads the files; the lock job then fails until the author runs
+# `bake.py lock --from-run N` with that run and commits the lock. A mesh's and a
+# reference set's bytes differ by CPU vendor, so on a runner of another vendor than the lock's
+# `mesh_cpu_vendor` the bake fails before making one: re-run the failed job.
 # A fit needs
-# the CUDA GPU, so the Bakes GPU workflow (bakes-gpu.yml) makes it, started by
-# hand on the branch; no pull request reaches that runner. On main, publish uploads each locked file the `bakes` release lacks,
+# the CUDA GPU, so the Bakes GPU workflow (bakes-gpu.yml) makes it from the locked
+# start and reference set, started by hand on the branch; no pull request reaches that runner. On main, publish uploads each locked file the `bakes` release lacks,
 # taking it from the run that made it. No branch writes the release.
 # Each bake is uploaded whatever fails after it; a rerun's attempt uploads under
 # its own name and first takes what its run's earlier attempts made on this CPU vendor.
@@ -70,6 +70,7 @@ jobs:
         run: |
           python launcher/tools/bake/bake.py list --missing --kind blend | tee "$RUNNER_TEMP/blend.txt"
           python launcher/tools/bake/bake.py list --missing --kind mesh | tee "$RUNNER_TEMP/mesh.txt"
+          python launcher/tools/bake/bake.py list --missing --kind reference | tee -a "$RUNNER_TEMP/mesh.txt"
           python launcher/tools/bake/bake.py list --missing --kind sound | tee "$RUNNER_TEMP/sound.txt"
           python launcher/tools/bake/bake.py list --missing --kind levels | tee "$RUNNER_TEMP/levels.txt"
           echo "mesh=$(cat "$RUNNER_TEMP/mesh.txt" "$RUNNER_TEMP/levels.txt" | wc -l)" >> "$GITHUB_OUTPUT"
@@ -83,8 +84,7 @@ jobs:
         run: |
           version=$(sed -n 's/^BLENDER_VERSION = (\(.*\))$/\1/p' launcher/tools/gltf/blend_skin_to_glb.py | tr -d ' ' | tr , .)
           series=${version%.*}
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libxi6 libxxf86vm1 libxfixes3 libxrender1 libgl1 libxkbcommon0 libsm6
+          sudo sh scripts/ci/apt_install.sh -y --no-install-recommends libxi6 libxxf86vm1 libxfixes3 libxrender1 libgl1 libxkbcommon0 libsm6
           curl -fsSL "https://download.blender.org/release/Blender$series/blender-$version-linux-x64.tar.xz" | tar -xJ -C "$RUNNER_TEMP"
           echo "$RUNNER_TEMP/blender-$version-linux-x64" >> "$GITHUB_PATH"
 
@@ -101,8 +101,7 @@ jobs:
         if: steps.missing.outputs.mesh != '0'
         run: |
           pip install -r launcher/tools/r3d/requirements.txt
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends llvm
+          sudo sh scripts/ci/apt_install.sh -y --no-install-recommends llvm
 
       - name: Install the sound requirements
         if: steps.missing.outputs.sound != '0'
@@ -119,6 +118,7 @@ jobs:
           if [ "$GITHUB_RUN_ATTEMPT" -gt 1 ]; then earlier=(--from-run "$GITHUB_RUN_ID"); fi
           python launcher/tools/bake/bake.py bake --kind blend --out "$RUNNER_TEMP/bakes" "${earlier[@]}"
           python launcher/tools/bake/bake.py bake --kind mesh --out "$RUNNER_TEMP/bakes"
+          python launcher/tools/bake/bake.py bake --kind reference --out "$RUNNER_TEMP/bakes"
           python launcher/tools/bake/bake.py bake --kind levels --out "$RUNNER_TEMP/bakes"
           python launcher/tools/bake/bake.py bake --kind sound --out "$RUNNER_TEMP/bakes"
 

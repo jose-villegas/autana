@@ -493,6 +493,35 @@ test_copies_take_their_first_instance_and_each_shape_its_own_id(void) {
     free(raster.scratch);
 }
 
+/* A kept copy is entry instance_count onward of the drawn list, past the
+ * instances: its meshlets number by its own mesh's clusters. The slot past
+ * the instances holds another mesh, so reading it instead shows. */
+static void
+test_a_kept_copy_numbers_its_meshlets_by_its_own_clusters(void) {
+    static const r3d_lit_mesh_t placed = {.cluster_count = 2};
+    static const r3d_lit_mesh_t copied = {.cluster_count = 3};
+    static const r3d_lit_mesh_t past = {.cluster_count = 7};
+    const r3d_instance_t instances[] = {{.mesh = &placed}, {.mesh = &past}};
+    raster_t raster = {.instances = instances, .instance_count = 1};
+    raster.scratch =
+        malloc(raster_culled_bytes_of((raster_lengths_t){.copies = 1, .culled = raster_lengths(&raster).culled}));
+    TEST_ASSERT_NOT_NULL(raster.scratch);
+    raster_census_place(&raster)[0] = (r3d_batch_draw_t){.instance = {.mesh = &copied}};
+    raster_census_head(&raster)->copy_count = 1;
+    raster_meshlets_t state = {0};
+    const raster_attachment_t view = raster_meshlets_view(&state);
+    const render_view_t frame_view = render_view_fixture_at(&raster_rig_camera, (viewport_t){W, H, 0});
+    view.begin(&view, &raster, &frame_view);
+    const uint32_t expected[] = {1, 1 + placed.cluster_count};
+    for (int i = 0; i < raster_drawn_count(&raster); i++) {
+        r3d_span_writer_t out = {0};
+        TEST_ASSERT_TRUE(view.writer(&view, i, &out));
+        TEST_ASSERT_EQUAL_UINT32(expected[i], out.value);
+    }
+    TEST_ASSERT_EQUAL_UINT32(1 + placed.cluster_count + copied.cluster_count, state.next);
+    free(raster.scratch);
+}
+
 /* The wall alone covers the corner; the centre is covered by both quads, and
  * the card in front wins its test in either order, while the wall wins it
  * only when drawn first. */
@@ -1075,6 +1104,7 @@ run_raster_attachment_suite(void) {
     RUN_TEST(test_meshlet_ranges_restart_each_draw_and_show_empty_as_clear);
     RUN_TEST(test_copies_share_a_hue_and_a_shape_drawn_once_is_grey);
     RUN_TEST(test_copies_take_their_first_instance_and_each_shape_its_own_id);
+    RUN_TEST(test_a_kept_copy_numbers_its_meshlets_by_its_own_clusters);
     RUN_TEST(test_depth_and_tiles_rows_use_no_scratch);
     RUN_TEST(test_writer_slot_is_zeroed_before_each_hook);
     RUN_TEST(test_same_view_survives_frames_and_contexts_own_their_states);

@@ -106,12 +106,14 @@ def tree_scenes():
 
 
 def fit_key(job, scene):
-    """A fit's bake key (bake/bake.py) with fixed tool digests: what its recipe alone decides."""
+    """A fit's bake key (bake/bake.py) with fixed tool digests: what its recipe alone decides. Its reference set's
+    bytes stand in as a digest of the reference key, as other inputs render other bytes."""
     from bake import bake
 
     tools = {stage: stage for stage in bake.STAGES}
-    start = bake.stage_keys(job, scene, tools)["start"]
-    return bake.stage_keys(job, scene, tools, {start: "5" * 64})["fit"]
+    keys = bake.stage_keys(job, scene, tools)
+    reference = hashlib.sha256(keys["reference"].encode()).hexdigest()
+    return bake.stage_keys(job, scene, tools, {keys["start"]: "5" * 64, keys["reference"]: reference})["fit"]
 
 
 class ImportTests(unittest.TestCase):
@@ -144,6 +146,13 @@ class ImportTests(unittest.TestCase):
     def test_a_copy_budget_names_a_variant(self):
         rule = '[[objects.meshes]]\nmatch = { material = "m" }\ntriangles = 4\nvariants = { other = 2 }\n'
         self.rejects(r"objects\.meshes\[0\]\.variants\.other names no variant", SIMPLIFY + rule + VARIANT)
+
+    def test_morph_targets_are_off_unless_asked_and_need_levels(self):
+        with tempfile.TemporaryDirectory() as directory:
+            plain = load_import_settings(write_import(directory))
+            asked = load_import_settings(write_import(directory, body='[geometry]\nmorph = true\n'))
+        self.assertEqual((plain.morph, asked.morph), (False, True))
+        self.rejects("geometry.morph needs geometry.lod", '[geometry]\nlod = false\nmorph = true\n')
 
     def test_a_seed_requires_the_geometry_step_that_draws_it(self):
         self.rejects("process.seed needs geometry.thin", '[process]\nseed = 3\n')

@@ -10,7 +10,7 @@ import numpy as np
 
 from r3d import lcol_asset, mesh_bundle, mesh_asset
 from r3d.fit.gbuffer import IN_FRONT, distance, reference_buffers
-from r3d.lit_mesh import finest, rgb888
+from r3d.lit_mesh import finest, read_bundle_mesh, rgb888
 
 # The copy-coverage gate: over the held-out poses, the fitted rest may hide more of the frame's copy pixels
 # than its start by at most HIDDEN_MEAN_GROWTH on the mean and HIDDEN_WORST_GROWTH on the worst pose. Set
@@ -44,7 +44,7 @@ def placed_copies(bundle, flat):
     points, rgb, tris, double, vertex_point = [], [], [], [], []
     point_count = vertex_count = 0
     for name in dict.fromkeys(row["mesh"] for row in rows):
-        mesh = mesh_bundle.read_mesh(entries, name)
+        mesh = read_bundle_mesh(entries, name)
         shown = [c for c, level0 in zip(mesh.clusters, finest(mesh)) if level0]
         vertices = np.concatenate([np.arange(vbase, vbase + vcount) for vbase, vcount, *_ in shown])
         faces = np.concatenate([np.arange(tbase, tbase + tcount) for _, _, tbase, tcount, *_ in shown])

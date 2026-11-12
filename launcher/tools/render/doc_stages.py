@@ -477,12 +477,15 @@ class Keeper:
         self.made = {}
         self.lock = threading.Lock()
 
-    def keys(self, job, scene, start=None):
-        """bake.stage_keys of `job`; with `start`, its made start mesh, its fit's key too."""
+    def keys(self, job, scene, start=None, references=None):
+        """bake.stage_keys of `job`; with its start and reference folder, its fit's key too."""
         from bake import bake
         keys = bake.stage_keys(job, scene, self.tools, poses=self.poses)
-        if start is not None:
-            keys = bake.stage_keys(job, scene, self.tools, {keys["start"]: bake.file_sha256(start)}, self.poses)
+        if start is not None and references is not None:
+            from r3d.reference_set import pack_references
+            starts = {keys["start"]: bake.file_sha256(start),
+                      keys["reference"]: hashlib.sha256(pack_references(references)).hexdigest()}
+            keys = bake.stage_keys(job, scene, self.tools, starts, self.poses)
         if keys.get("reason"):
             raise ValueError(keys["reason"])
         return keys
@@ -524,7 +527,7 @@ class Keeper:
         if point.get("budget") is not None:
             variant.renderer.fit.budget = point["budget"]
         cost = point.get("cost_weight", 0.0)
-        folder = self.doc("fit", self.keys(variant, scene, inputs / f"{job.renderer.variant.name}.bundle")["fit"],
+        folder = self.doc("fit", self.keys(variant, scene, inputs / f"{job.renderer.variant.name}.bundle", inputs)["fit"],
                           cost, content_checksum(WEIGHTS).decode() if cost else None, code_digest(fit_into))
         return self.keep(folder, make_kept, folder, fit_into, point, point_dir, scene_path, scene, job, inputs,
                          estimates=FIT_BYTES)

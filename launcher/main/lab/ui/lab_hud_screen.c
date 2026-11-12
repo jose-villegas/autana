@@ -1,8 +1,7 @@
-#include "render_lab_hud_screen.h"
+#include "lab/ui/lab_hud_screen.h"
 
 #include <stdio.h>
 
-#include "apps/render_lab/render_lab.h"
 #include "draw/draw.h"
 #include "ui/ui.h"
 
@@ -54,7 +53,7 @@ draw_scene_title(const char* title, uint8_t alpha, const int row_right[HUD_CORNE
 }
 
 void
-render_lab_hud_screen_draw(const render_lab_hud_screen_state_t* state) {
+lab_hud_screen_draw(const lab_hud_screen_state_t* state) {
     /* An outline keeps text readable over a changing scene. */
     ui_set_text_style(UI_TEXT_OUTLINED);
     ui_screen();

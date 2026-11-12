@@ -25,6 +25,7 @@
 #include "render/r3d_lit_mesh.h"
 #include "render/r3d_span_internal.h"
 #include "render/raster_internal.h"
+#include "render/view/raster_cull_view.h"
 #include "render/view/raster_show.h"
 
 #define W 64
@@ -45,6 +46,16 @@ native_of(gfx_color_t stored) {
 
 static int32_t saved_cull;
 static int32_t saved_batched;
+
+/* The screen-door tests' own buffers, allocated per test and freed by release_fixture(). */
+typedef struct {
+    gfx_color_t color[W * H];
+    uint16_t depth[W * H];
+} door_canvas_t;
+
+static door_canvas_t* canvases;
+static uint8_t* writer_hits_base;
+static uint8_t* writer_hits;
 
 static void release_fixture(void);
 
@@ -309,6 +320,263 @@ test_a_tiny_solid_triangle_takes_its_face_colour(void) {
         if (depth[i] != 0) {
             TEST_ASSERT_EQUAL_HEX16(face, color[i]);
         }
+    }
+}
+
+/* Screen mask (r3d_span_screen_triangle()), a door here: a door and its complement are two draws
+ * that must together be the plain draw, pixel for pixel, each pixel in one. */
+typedef enum {
+    DOOR_ENTRY_TRIANGLE,
+    DOOR_ENTRY_SOLID,
+    DOOR_ENTRY_CAPPED,
+    DOOR_ENTRY_CAPPED_SOLID,
+    DOOR_ENTRIES,
+} door_entry_t;
+
+enum {
+    /* The plain draw, then the door's and its complement's. */
+    CANVAS_PLAIN,
+    CANVAS_DOOR,
+    CANVAS_REST,
+    CANVASES,
+    /* The door's float planes against the walk's fixed point: codes of depth, levels of a channel. */
+    DOOR_DEPTH_SLACK = 2,
+    DOOR_CHANNEL_SLACK = 2,
+    /* A pixel well inside door_triangle(). */
+    DOOR_INSIDE_X = 20,
+    DOOR_INSIDE_Y = 20,
+};
+
+#define DOOR_ALL_OPEN ((uint16_t)UINT16_MAX)
+#define DOOR_FACE     RGB565BE(0x12AB34)
+
+/* Doors that close a checker, a half, one pixel's bit at each end of the tile, and all but one bit. */
+static const uint16_t DOORS[] = {0x5A5A, 0x00FF, 0x8001, 0xFFFE};
+
+/* A triangle large enough for the walk, its colours and depths all different. */
+static void
+door_triangle(r3d_span_vertex_t v[3]) {
+    v[0] = sv(4.3F, 4.1F, 0.2F, 255, 0, 0);
+    v[1] = sv(56.7F, 6.4F, 0.8F, 0, 255, 0);
+    v[2] = sv(10.2F, 42.6F, 0.5F, 0, 0, 255);
+}
+
+/* `entry` plain when `door` is 0, else through it, capped where the entry is. */
+static void
+draw_door_entry(door_entry_t entry, const r3d_span_target_t* target, const r3d_span_vertex_t v[3], uint16_t door) {
+    const uint16_t face = DOOR_FACE;
+    if (door != 0) {
+        r3d_span_target_t capped = *target;
+        capped.skip_hidden = entry == DOOR_ENTRY_CAPPED || entry == DOOR_ENTRY_CAPPED_SOLID;
+        const bool solid = entry == DOOR_ENTRY_SOLID || entry == DOOR_ENTRY_CAPPED_SOLID;
+        r3d_span_screen_triangle(&capped, &v[0], &v[1], &v[2], solid ? &face : NULL, door, false);
+        return;
+    }
+    switch (entry) {
+        case DOOR_ENTRY_TRIANGLE: r3d_span_triangle(target, &v[0], &v[1], &v[2]); break;
+        case DOOR_ENTRY_SOLID: r3d_span_triangle_solid(target, &v[0], &v[1], &v[2], face); break;
+        case DOOR_ENTRY_CAPPED: r3d_span_capped_triangle(target, &v[0], &v[1], &v[2], NULL); break;
+        case DOOR_ENTRY_CAPPED_SOLID: r3d_span_capped_triangle(target, &v[0], &v[1], &v[2], &face); break;
+        case DOOR_ENTRIES: break;
+    }
+}
+
+static r3d_span_target_t
+canvas_target(int which) {
+    TEST_ASSERT_NOT_NULL(canvases);
+    return r3d_span_target(canvases[which].color, canvases[which].depth, W, 0, H);
+}
+
+static void
+canvases_clear(void) {
+    free(canvases);
+    canvases = calloc(CANVASES, sizeof *canvases);
+    suite_set_test_cleanup(release_fixture);
+    TEST_ASSERT_NOT_NULL(canvases);
+}
+
+static unsigned
+channel_gap(unsigned a, unsigned b) {
+    return a > b ? a - b : b - a;
+}
+
+static void
+assert_colours_close(uint16_t want_be, uint16_t got_be) {
+    const uint16_t want = native_of(want_be);
+    const uint16_t got = native_of(got_be);
+    TEST_ASSERT_LESS_OR_EQUAL_UINT(DOOR_CHANNEL_SLACK, channel_gap(rgb565_r5(want), rgb565_r5(got)));
+    TEST_ASSERT_LESS_OR_EQUAL_UINT(DOOR_CHANNEL_SLACK, channel_gap(rgb565_g6(want), rgb565_g6(got)));
+    TEST_ASSERT_LESS_OR_EQUAL_UINT(DOOR_CHANNEL_SLACK, channel_gap(rgb565_b5(want), rgb565_b5(got)));
+}
+
+/* Pixel `i`, filled by a plain draw, as `from` filled it: the same depth, and
+ * the face colour or a close one. */
+static void
+check_door_pixel(door_entry_t entry, int i, const door_canvas_t* from) {
+    TEST_ASSERT_INT_WITHIN(DOOR_DEPTH_SLACK, canvases[CANVAS_PLAIN].depth[i], from->depth[i]);
+    if (entry == DOOR_ENTRY_SOLID || entry == DOOR_ENTRY_CAPPED_SOLID) {
+        TEST_ASSERT_EQUAL_HEX16(DOOR_FACE, from->color[i]);
+    } else {
+        assert_colours_close(canvases[CANVAS_PLAIN].color[i], from->color[i]);
+    }
+}
+
+/* A pixel fills through the door only where its bit is open, and through the complement only where it is not. */
+static void
+check_door_bit(bool bit_open, bool in_door, bool in_rest) {
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, in_door && !bit_open ? 1 : 0, "a door filled a pixel whose bit is set");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, in_rest && bit_open ? 1 : 0, "the complement filled an open pixel of the door");
+}
+
+/* Draws `entry` plain, through `door` and through its complement, and checks the
+ * pixels. Returns how many pixels the door itself filled. */
+static int
+check_door_partition(door_entry_t entry, uint16_t door) {
+    canvases_clear();
+    r3d_span_vertex_t v[3];
+    door_triangle(v);
+    const r3d_span_target_t plain = canvas_target(CANVAS_PLAIN);
+    const uint16_t rest_door = (uint16_t)~door;
+    draw_door_entry(entry, &plain, v, 0);
+    const r3d_span_target_t through = canvas_target(CANVAS_DOOR);
+    const r3d_span_target_t rest = canvas_target(CANVAS_REST);
+    draw_door_entry(entry, &through, v, door);
+    draw_door_entry(entry, &rest, v, rest_door);
+    int plain_covered = 0;
+    int door_covered = 0;
+    for (int y = 0; y < H; y++) {
+        for (int x = 0; x < W; x++) {
+            const int i = (y * W) + x;
+            const bool want = canvases[CANVAS_PLAIN].depth[i] != R3D_DEPTH_EMPTY;
+            const bool in_door = canvases[CANVAS_DOOR].depth[i] != R3D_DEPTH_EMPTY;
+            const bool in_rest = canvases[CANVAS_REST].depth[i] != R3D_DEPTH_EMPTY;
+            TEST_ASSERT_FALSE_MESSAGE(in_door && in_rest, "a pixel was filled through both a door and its complement");
+            TEST_ASSERT_EQUAL_INT_MESSAGE(want, in_door || in_rest,
+                                          "the two doors did not fill what a plain draw fills");
+            plain_covered += (int)want;
+            door_covered += (int)in_door;
+            check_door_bit(((door >> R3D_SPAN_SCREEN_BIT(x, y)) & 1U) != 0, in_door, in_rest);
+            if (want) {
+                check_door_pixel(entry, i, in_door ? &canvases[CANVAS_DOOR] : &canvases[CANVAS_REST]);
+            }
+        }
+    }
+    TEST_ASSERT_GREATER_THAN_INT(0, plain_covered);
+    return door_covered;
+}
+
+static void
+check_every_door_partitions(door_entry_t entry) {
+    for (size_t d = 0; d < sizeof DOORS / sizeof DOORS[0]; d++) {
+        (void)check_door_partition(entry, DOORS[d]);
+    }
+    TEST_ASSERT_GREATER_THAN_INT(0, check_door_partition(entry, DOORS[0]));
+    TEST_ASSERT_GREATER_THAN_INT(0, check_door_partition(entry, (uint16_t)~DOORS[0]));
+}
+
+static void
+test_a_door_and_its_complement_together_fill_what_a_plain_triangle_fills_once(void) {
+    check_every_door_partitions(DOOR_ENTRY_TRIANGLE);
+}
+
+static void
+test_a_door_and_its_complement_split_a_solid_triangle_in_its_face_colour(void) {
+    check_every_door_partitions(DOOR_ENTRY_SOLID);
+}
+
+static void
+test_a_door_and_its_complement_split_a_capped_triangle(void) {
+    check_every_door_partitions(DOOR_ENTRY_CAPPED);
+}
+
+static void
+test_a_door_and_its_complement_split_a_capped_solid_triangle(void) {
+    check_every_door_partitions(DOOR_ENTRY_CAPPED_SOLID);
+}
+
+static void
+test_a_mask_drawing_every_pixel_of_its_tile_fills_what_a_plain_triangle_fills(void) {
+    for (int entry = 0; entry < DOOR_ENTRIES; entry++) {
+        canvases_clear();
+        r3d_span_vertex_t v[3];
+        door_triangle(v);
+        const r3d_span_target_t plain = canvas_target(CANVAS_PLAIN);
+        const r3d_span_target_t open = canvas_target(CANVAS_DOOR);
+        draw_door_entry((door_entry_t)entry, &plain, v, 0);
+        draw_door_entry((door_entry_t)entry, &open, v, DOOR_ALL_OPEN);
+        for (int i = 0; i < W * H; i++) {
+            TEST_ASSERT_EQUAL_INT(canvases[CANVAS_PLAIN].depth[i] != R3D_DEPTH_EMPTY,
+                                  canvases[CANVAS_DOOR].depth[i] != R3D_DEPTH_EMPTY);
+        }
+        TEST_ASSERT_NOT_EQUAL_UINT16(R3D_DEPTH_EMPTY, canvases[CANVAS_DOOR].depth[(DOOR_INSIDE_Y * W) + DOOR_INSIDE_X]);
+    }
+}
+
+/* Nearest possible depth already there: the door's open pixels lose the depth test as a plain draw's do. */
+static void
+test_a_door_over_nearer_depth_leaves_that_depth_and_colour(void) {
+    canvases_clear();
+    r3d_span_vertex_t v[3];
+    door_triangle(v);
+    for (int i = 0; i < W * H; i++) {
+        canvases[CANVAS_DOOR].depth[i] = R3D_DEPTH_NEAREST;
+    }
+    const r3d_span_target_t target = canvas_target(CANVAS_DOOR);
+    draw_door_entry(DOOR_ENTRY_TRIANGLE, &target, v, DOORS[0]);
+    for (int i = 0; i < W * H; i++) {
+        TEST_ASSERT_EQUAL_HEX16(R3D_DEPTH_NEAREST, canvases[CANVAS_DOOR].depth[i]);
+        TEST_ASSERT_EQUAL_HEX16(0, canvases[CANVAS_DOOR].color[i]);
+    }
+}
+
+/* A writer that counts the pixels it is handed into the current hit buffer. */
+static void
+count_writer_span(const r3d_span_writer_t* writer, const gfx_target_t* rows, int y, int x_first, int x_last, int32_t z,
+                  int32_t dz) {
+    (void)writer;
+    (void)rows;
+    (void)z;
+    (void)dz;
+    for (int x = x_first; x <= x_last; x++) {
+        writer_hits[(y * W) + x]++;
+    }
+}
+
+static void
+test_writers_run_only_over_the_pixels_a_door_leaves_open(void) {
+    canvases_clear();
+    writer_hits_base = calloc(2, (size_t)W * H);
+    TEST_ASSERT_NOT_NULL(writer_hits_base);
+    r3d_span_vertex_t v[3];
+    door_triangle(v);
+    const r3d_span_writer_t writer = {
+        .span = count_writer_span, .attachment = 0, .step = R3D_SPAN_STEP_NONE, .value = 0};
+    r3d_span_target_t plain = canvas_target(CANVAS_PLAIN);
+    r3d_span_target_t through = canvas_target(CANVAS_DOOR);
+    plain.writers = through.writers = &writer;
+    plain.writer_count = through.writer_count = 1;
+    uint8_t* const plain_hits = writer_hits_base;
+    uint8_t* const door_hits = writer_hits_base + (W * H);
+    for (int solid = 0; solid <= 1; solid++) {
+        memset(writer_hits_base, 0, (size_t)2 * W * H);
+        writer_hits = plain_hits;
+        r3d_span_triangle_write(&plain, &v[0], &v[1], &v[2], solid != 0);
+        writer_hits = door_hits;
+        r3d_span_screen_triangle(&through, &v[0], &v[1], &v[2], NULL, DOORS[0], true);
+        int written = 0;
+        int skipped = 0;
+        for (int y = 0; y < H; y++) {
+            for (int x = 0; x < W; x++) {
+                const int i = (y * W) + x;
+                const bool open = ((DOORS[0] >> R3D_SPAN_SCREEN_BIT(x, y)) & 1U) != 0;
+                TEST_ASSERT_EQUAL_UINT8_MESSAGE(open ? plain_hits[i] : 0, door_hits[i],
+                                                "a writer ran over a pixel a door closes, or missed an open one");
+                written += door_hits[i];
+                skipped += (!open && plain_hits[i] != 0) ? 1 : 0;
+            }
+        }
+        TEST_ASSERT_GREATER_THAN_INT(0, written);
+        TEST_ASSERT_GREATER_THAN_INT(0, skipped);
     }
 }
 
@@ -2325,16 +2593,6 @@ test_a_census_list_steps_by_each_instances_own_mesh(void) {
 
 enum { BATCH_COPIES = 6 };
 
-/* The batches a draw of `raster` runs. */
-static int
-batch_count(const raster_t* raster) {
-    int batches = 0;
-    for (int first = 0; first < raster->instance_count; first = raster_batch_end(raster, first)) {
-        batches++;
-    }
-    return batches;
-}
-
 /* A large mesh and copies of a small one: the copies fit one batch beside
  * the buffers sized for the large mesh, and draw the same picture and depth
  * as one fork/join per instance (render.batched off). */
@@ -2364,7 +2622,7 @@ test_batched_copies_draw_what_one_instance_at_a_time_draws(void) {
     batched_changed = true;
     (void)tune_set(tune_shared(), TUNE_NAME(render, batched), 0);
     (void)raster_census(&raster, &view); /* batches run over its drawn list */
-    TEST_ASSERT_EQUAL_INT(1 + BATCH_COPIES, batch_count(&raster));
+    TEST_ASSERT_EQUAL_INT(1 + BATCH_COPIES, raster_batch_count(&raster));
     raster_draw(&raster, &view);
     memcpy(want, raster_color(&raster), sizeof(*want) * W * H);
     memcpy(want + (W * H), raster_depth(&raster), sizeof(*want) * W * H);
@@ -2372,10 +2630,36 @@ test_batched_copies_draw_what_one_instance_at_a_time_draws(void) {
     /* The large mesh alone, then as many copies a batch as its clusters hold. */
     const int per_batch = mathi_min(BATCH_COPIES, wall->mesh.cluster_count / card->mesh.cluster_count);
     TEST_ASSERT_EQUAL_INT(1 + per_batch, raster_batch_end(&raster, 1));
-    TEST_ASSERT_LESS_THAN_INT(1 + BATCH_COPIES, batch_count(&raster));
+    TEST_ASSERT_LESS_THAN_INT(1 + BATCH_COPIES, raster_batch_count(&raster));
     raster_draw(&raster, &view);
+    raster_cull_frame_t frame = {0};
+    raster_cull_frame_compose(&frame, &raster, false);
+    TEST_ASSERT_EQUAL_INT(raster_batch_count(&raster), frame.transform_batches);
     TEST_ASSERT_EQUAL_HEX16_ARRAY(want, raster_color(&raster), W * H);
     TEST_ASSERT_EQUAL_HEX16_ARRAY(want + (W * H), raster_depth(&raster), W * H);
+}
+
+static void
+test_batch_count_keeps_empty_batches_and_the_clearing_draw(void) {
+    parts_t* const p = parts_buffer(&shared_parts);
+    build_wall_and_stack(p);
+    const r3d_instance_t instances[] = {{.mesh = &p->mesh}, {.mesh = &p->mesh}};
+    raster_t raster = census_raster(instances, 2);
+    const fixture_camera_t camera = camera_down_plus_z(10000.0F, -400, 1.0F);
+    const render_view_t view = render_view_fixture(&camera, &raster, 0);
+    saved_batched = *tune_find(tune_shared(), TUNE_NAME(render, batched))->value;
+    batched_changed = true;
+    (void)tune_set(tune_shared(), TUNE_NAME(render, batched), 0);
+    const raster_stats_t stats = raster_draw(&raster, &view);
+    TEST_ASSERT_EQUAL_INT(0, stats.clusters);
+    TEST_ASSERT_EQUAL_INT(2, raster_batch_count(&raster));
+    const r3d_batch_t empty = {0};
+    const r3d_batch_draw_t batch = {.instance = {.mesh = &p->mesh}, .batch = &empty};
+    raster.instance_count = 0;
+    raster.batch_count = 1;
+    raster.batches = &batch;
+    (void)raster_draw(&raster, &view);
+    TEST_ASSERT_EQUAL_INT(1, raster_batch_count(&raster));
 }
 
 /* A destination the raster's own size is a copy of it, taking
@@ -2788,6 +3072,11 @@ release_fixture(void) {
         (void)tune_set(tune_shared(), TUNE_NAME(render, batched), saved_batched);
         batched_changed = false;
     }
+    free(canvases);
+    canvases = NULL;
+    free(writer_hits_base);
+    writer_hits_base = NULL;
+    writer_hits = NULL;
     free(work);
     work = NULL;
     free(shared_parts);
@@ -2933,6 +3222,13 @@ run_r3d_lit_suite(void) {
     RUN_TEST(test_a_capped_walked_uniform_triangle_matches_solid);
     RUN_TEST(test_a_walked_triangle_with_one_colour_level_difference_interpolates);
     RUN_TEST(test_a_tiny_solid_triangle_takes_its_face_colour);
+    RUN_TEST(test_a_door_and_its_complement_together_fill_what_a_plain_triangle_fills_once);
+    RUN_TEST(test_a_door_and_its_complement_split_a_solid_triangle_in_its_face_colour);
+    RUN_TEST(test_a_door_and_its_complement_split_a_capped_triangle);
+    RUN_TEST(test_a_door_and_its_complement_split_a_capped_solid_triangle);
+    RUN_TEST(test_a_mask_drawing_every_pixel_of_its_tile_fills_what_a_plain_triangle_fills);
+    RUN_TEST(test_a_door_over_nearer_depth_leaves_that_depth_and_colour);
+    RUN_TEST(test_writers_run_only_over_the_pixels_a_door_leaves_open);
     RUN_TEST(test_a_window_of_rows_matches_the_same_rows_of_a_full_draw);
     RUN_TEST(test_colours_stay_within_the_vertex_range_even_at_the_edges);
     RUN_TEST(test_an_axis_aligned_square_fills_exactly_the_centres_inside_it);
@@ -2984,6 +3280,7 @@ run_r3d_lit_suite(void) {
     RUN_TEST(test_a_census_list_draws_what_raster_draw_draws_at_any_size);
     RUN_TEST(test_a_census_list_steps_by_each_instances_own_mesh);
     RUN_TEST(test_batched_copies_draw_what_one_instance_at_a_time_draws);
+    RUN_TEST(test_batch_count_keeps_empty_batches_and_the_clearing_draw);
     RUN_TEST(test_a_destination_of_the_same_size_is_a_copy);
     RUN_TEST(test_a_fractional_destination_upscales_a_drawn_frame);
     RUN_TEST(test_a_tile_holds_its_minimum_depth_not_its_maximum);

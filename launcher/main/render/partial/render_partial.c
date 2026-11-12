@@ -38,7 +38,7 @@ same_view(const render_view_t* a, const render_view_t* b) {
            && SAME_BYTES(shift);
 }
 
-#define SAME_FIELD(field, type) &&a.field == b.field
+#define SAME_FIELD(field, type, valid) &&a.field == b.field
 
 static bool
 same_settings(render_settings_t a, render_settings_t b) {
