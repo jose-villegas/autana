@@ -3,7 +3,7 @@
 
     objects_report.py SCENE.scene.toml --object NAME --out DIR
         [--tolerance X] [--parts] [--surface-tolerance [X] [--surface-floor D]]
-        [--held-out [--fitted BUNDLE] [--cache DIR] [--docs]]
+        [--held-out [--fitted BUNDLE] [--cache DIR] [--docs]] [--authoring]
 
 Reads source geometry after alpha masking. Writes only to --out, which must
 be outside the repository.
@@ -23,9 +23,16 @@ splits the error by source object part (objects/object_error.py): error.csv,
 error.md and error.png. --docs keeps error.csv and error.json as
 docs/render/data/SCENE-OBJECT-object-error.*, which render_doc_images.sh makes the
 page's figure and generated block from.
+
+--authoring carves the renderer's mesh unlit (objects/carve.py) and writes
+detail.json, one row per shape whose detail was derived, and authoring.md:
+the shapes whose kept level still moves its surface more than
+lod.tolerance_px at the camera's closest view, with the reason
+(objects/detail.py).
 """
 
 import argparse
+import copy
 import json
 import pathlib
 import shutil
@@ -185,6 +192,7 @@ def main(argv=None):
     parser.add_argument('--fitted', type=pathlib.Path)
     parser.add_argument('--cache', type=pathlib.Path)
     parser.add_argument('--docs', action='store_true')
+    parser.add_argument('--authoring', action='store_true')
     args = parser.parse_args(argv)
     if args.surface_floor and args.surface_tolerance is None:
         parser.error('--surface-floor needs --surface-tolerance')
@@ -214,7 +222,26 @@ def main(argv=None):
         write_sheet(out / 'shapes.png', objects, shapes)
     if args.held_out:
         write_error_report(args, scene, job, out)
+    if args.authoring:
+        write_authoring(scene, job, out)
     return 0
+
+
+def write_authoring(scene, job, out):
+    """The --authoring report; see the module docstring."""
+    from r3d.lod.pick import TOLERANCE_PX
+    from r3d.mesh_import import bake_geometry
+
+    unlit = copy.copy(job)
+    unlit.bake = None
+    report = bake_geometry(unlit, scene, carve=True).mesh_report
+    rows, authoring = report.get('detail', []), report.get('authoring', [])
+    (out / 'detail.json').write_text(json.dumps(rows, indent=2) + '\n')
+    lines = [f'# {job.object.name}: shapes needing authoring (above {TOLERANCE_PX:g} px up close)', '',
+             '| Shape | Error px | Reason |', '|---|---:|---|']
+    lines += [f"| {row['shape']} | {row['error_px']:.2f} | {row['reason']} |" for row in authoring]
+    (out / 'authoring.md').write_text('\n'.join(lines) + '\n')
+    print(f'{len(rows)} derived shapes, {len(authoring)} need authoring')
 
 
 def write_error_report(args, scene, job, out):
