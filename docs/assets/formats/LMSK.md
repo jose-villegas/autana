@@ -63,7 +63,7 @@ title Atlas record, 4 bytes a row after the UV records
 | Size | Exactly header + UVs + atlas, with no trailing bytes (`ASSET_ERR_BOUNDS`); little-endian, 4-byte aligned entry |
 | Levels | With [LLOD](LLOD.md), every masked cluster has `own == parent == R3D_LOD_NONE` (`ASSET_ERR_FORMAT`) |
 | Texels | Bit `u` of atlas word `v` keeps texel `(u, v)` when set; cards stack by rows |
-| Sampling | UVs interpolate affinely in screen space. Each span selects the atlas row at its centre pixel and steps only `u`; discarded texels write neither colour nor depth |
+| Sampling | UVs interpolate affinely in screen space. Each span steps `u` and `v`, reading a new atlas row wherever `v` crosses into one; discarded texels write neither colour nor depth |
 
 `r3d_lit_mesh_open()` resolves the sibling into a borrowed view. Without an
 LMSK, the mask pointers and counts in `r3d_lit_mesh_t` are NULL and zero.

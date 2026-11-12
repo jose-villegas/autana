@@ -1,3 +1,4 @@
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -41,8 +42,10 @@ fixture(void) {
     return target;
 }
 
+/* The quad over the target, its u running along x and v along y, or with
+ * `turned` the other way round, as a card upright in a picture on its side. */
 static void
-draw_checker(const r3d_span_target_t* target, int shading) {
+draw_quad(const r3d_span_target_t* target, int shading, bool turned) {
     enum { SIDE_UV = MASK_SIDE << LMSK_UV_FRACTION_BITS };
 
     static const r3d_span_vertex_t quad[] = {
@@ -51,7 +54,9 @@ draw_checker(const r3d_span_target_t* target, int shading) {
         {MASK_SIDE * R3D_SUBPIXEL, MASK_SIDE * R3D_SUBPIXEL, 0.5F, UINT8_MAX, 0, 0},
         {0, MASK_SIDE * R3D_SUBPIXEL, 0.5F, UINT8_MAX, 0, 0},
     };
-    static const float quad_u[] = {0, SIDE_UV, SIDE_UV, 0}, quad_v[] = {0, 0, SIDE_UV, SIDE_UV};
+    static const float along_x[] = {0, SIDE_UV, SIDE_UV, 0}, along_y[] = {0, 0, SIDE_UV, SIDE_UV};
+    const float* quad_u = turned ? along_y : along_x;
+    const float* quad_v = turned ? along_x : along_y;
     static const int corners[][R3D_SPAN_TRIANGLE_VERTICES] = {{0, 1, 2}, {0, 2, 3}};
     for (int t = 0; t < (int)(sizeof corners / sizeof corners[0]); t++) {
         const r3d_span_vertex_t *a = &quad[corners[t][0]], *b = &quad[corners[t][1]], *c = &quad[corners[t][2]];
@@ -65,6 +70,11 @@ draw_checker(const r3d_span_target_t* target, int shading) {
         view.skip_hidden = shading == 2;
         r3d_span_masked_triangle(&view, &mask, a, b, c, shading == 1 ? &color : NULL);
     }
+}
+
+static void
+draw_checker(const r3d_span_target_t* target, int shading) {
+    draw_quad(target, shading, false);
 }
 
 static void
@@ -131,8 +141,27 @@ test_masked_writers_see_only_depth_winners(void) {
     }
 }
 
+/* A span reads every atlas row its v crosses: with v along x, row r keeping
+ * texels below r keeps pixel (x, y) where y < x, which no one row a span
+ * could give. */
+static void
+test_masked_span_reads_each_row_its_v_crosses(void) {
+    const r3d_span_target_t target = fixture();
+    uint32_t* rows = (uint32_t*)(uintptr_t)checker.rows;
+    for (int r = 0; r < MASK_SIDE; r++) {
+        rows[r] = (1U << r) - 1U;
+    }
+    draw_quad(&target, 0, true);
+    for (int y = 0; y < MASK_SIDE; y++) {
+        for (int x = 0; x < MASK_SIDE; x++) {
+            TEST_ASSERT_EQUAL_HEX16(y < x ? MASK_COLOR : 0, pixels[y * MASK_SIDE + x]);
+        }
+    }
+}
+
 void
 run_masked_mesh_suite(void) {
+    RUN_TEST(test_masked_span_reads_each_row_its_v_crosses);
     RUN_TEST(test_masked_quad_checker_texels_and_depth);
     RUN_TEST(test_masked_writers_see_only_depth_winners);
 }
