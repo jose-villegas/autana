@@ -20,6 +20,8 @@ static const lab_perf_quarter_t lab_perf_quarters[] = {
 
 #define LAB_PERF_ROW_NAME_SIZE  96
 
+/* Logs the mean's distance to its goal; with `enforce_ceiling`, fails when
+ * the p95 is over the ceiling. */
 static inline __attribute__((always_inline)) void
 lab_perf_named_budget(const char* name, int64_t mean_us, int64_t p95_us, const perf_budget_t* budget,
                       bool enforce_ceiling) {

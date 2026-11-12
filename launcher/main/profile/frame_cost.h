@@ -133,7 +133,8 @@ frame_cost_slot(frame_cost_t* cost, const char* name) {
     return slot;
 }
 
-/* Reads one bracket's mean microseconds without forgetting the window. */
+/* The named bracket's mean microseconds over `frames` frames, the window left
+ * intact; 0 when the bracket is absent or `frames` is 0. */
 static inline int64_t
 frame_cost_mean_us(const frame_cost_t* cost, const char* name, uint32_t frames) {
     if (frames == 0) {
@@ -399,6 +400,7 @@ frame_cost_external_report(frame_cost_external_t* slot, char* out, size_t capaci
 void frame_cost_external(const char* name, int64_t us);
 int frame_cost_begin(void);
 int64_t frame_cost_end(int mark, const char* name);
+/* frame_cost_mean_us() of the shared window. */
 int64_t frame_cost_take_mean_us(const char* name, uint32_t frames);
 int frame_cost_take_report(uint32_t frames, char* out, size_t out_size);
 /* Forgets everything since the last report: the brackets, the external

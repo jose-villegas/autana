@@ -2,7 +2,7 @@
  * Stress preset costs along each camera swing, paused in both quarters,
  * with fixed sizes for uniform presets. Stage goals only log distances;
  * each row's r3d sum has a board ceiling. Verdicts are per preset and
- * stage, never summed over presets. Zero means not yet pegged.
+ * stage, never summed over presets. Zero means unpegged (see the goal table).
  */
 
 #include "suites.h"
@@ -39,8 +39,8 @@ typedef struct {
     perf_budget_t r3d;
 } stress_goal_t;
 
-/* Worst of a perf-scoped 5-seed capture on A308, 20E8 and 2124, +1%, rounded
- * up to 10 us; ceiling = goal x 1.15, rounded up to 10 us.
+/* Printed by tools/stress_goals.py from perf-board captures, which owns the
+ * margins: regenerate the rows rather than editing them.
  * uniform-full stays unpegged: its full-view uniform fill varies more
  * between runs than any step a change makes. */
 static const stress_goal_t stress_goals[] = {

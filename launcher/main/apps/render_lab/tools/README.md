@@ -177,10 +177,7 @@ build and timed against the build with it, presets and scenes alike:
 | Change | Switched off by | Presets against scenes |
 |---|---|---|
 | [Uniform solid fill](https://github.com/jose-villegas/autana/pull/1406) | its test made false | draw: the sum agrees on 4 of 5 scenes; Sponza follows its small-triangle presets |
-| [Two-core cull](https://github.com/jose-villegas/autana/pull/1475) | the cull on one core | cull: Sponza and Bistro agree; capybara's loss led to `few-copies` |
-| [Static residency](https://github.com/jose-villegas/autana/pull/1418) | not rebuilt | reverting it conflicts with later scene files |
-| [LOD blend](https://github.com/jose-villegas/autana/pull/1485) | not rebuilt | it re-keys bakes no lock holds, so the image does not build |
-| LOD bit words | not rebuilt | it sits on the LOD blend change, and alone conflicts in the LOD files |
+| [Two-core cull](https://github.com/jose-villegas/autana/pull/1475) | the cull on one core | cull: Sponza and Bistro agree; capybara's one instance a core is the `few-copies` case |
 
 A comment-only control moved nothing beyond same-build noise. The rule: only
 an opposite sign beyond noise fails; a scene that moves with no preset moving
@@ -225,11 +222,11 @@ Every row uses `LAB_LAYOUT_FULL`, composing from the half picture when it fits.
 Double-buffer presentation runs asynchronously on core 1 and can delay the
 transform worker's fork/join.
 
-`transform_batches` counts the shaded draw's transform fork/joins, read from
-the census by `raster_batch_count()`, including empty batches. Each pays the split, worker dispatch,
-cluster work and join; picture clearing belongs to `r3d.draw`.
+`transform_batches` counts the shaded draw's transform fork/joins, empty ones
+included, read from the census by `raster_batch_count()`. Each pays the split,
+worker dispatch, cluster work and join; picture clearing belongs to `r3d.draw`.
 
-Each row has a mean goal per r3d stage, which reports its distance only, and
+Each suite row (preset, quarter, size) has a mean goal per r3d stage, which reports its distance only, and
 a goal and board ceiling on the four stages' sum. uniform-full stays unpegged:
 its full-view fill varies more between runs than a change moves it.
 
@@ -239,7 +236,7 @@ worst pose mean of five layout seeds on every perf board, +1% rounded up to
 
 Each pose draws one counted frame, one warm frame and `FRAME_PROFILE_REPLAY_DRAWS`
 measured frames. The pose counts and size loops in the suite own its frame
-budget; its warm runtime target is under a minute.
+budget.
 
 Static copies retain the pack's mesh and its scene-owned PSRAM arrays.
 Dynamic copies also use PSRAM and the same packed-int16 transform loop;
