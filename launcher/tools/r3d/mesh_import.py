@@ -322,7 +322,7 @@ def write_shape(job, scene, out_dir, name, geometry, shape, recorder):
     for (mirrored, _), copies in sorted(groups.items(), key=lambda group: group[0][0]):
         first, lit = copies[0]
         first_name = geometry.src.object_names[int(first.object_name)]
-        mesh_id = mesh_bundle.shape_id(name, shape['rule'], first_name)
+        mesh_id = mesh_bundle.shape_id(job.asset_name, shape['rule'], first_name)
         reflect = np.diag([-1 if mirrored else 1, 1, 1])
         p, _, t, labels = lit
         local = place(p[t].reshape(-1, 3) - first.position, first.linear.T, 0.0) * np.diag(reflect)
