@@ -39,12 +39,12 @@ typedef enum {
     MEMORY_DMA,      /* what the heap hands out as DMA-capable: internal only */
     MEMORY_APP,      /* the current app visit */
     MEMORY_PSRAM,    /* external RAM: large and slow */
-    MEMORY_FAST,     /* on-chip RAM while MEMORY_FAST_INTERNAL_RESERVE stays free as one block,
-                      * else external RAM, each fallback counted */
+    MEMORY_FAST,     /* on-chip RAM while MEMORY_FAST_INTERNAL_RESERVE stays free, else external RAM,
+                      * each fallback counted */
 } memory_kind_t;
 
-/* The largest block MEMORY_FAST leaves on chip: it takes on-chip RAM only
- * while a block this large stays free after it, for the strict requests that
+/* What MEMORY_FAST leaves free on chip: it takes on-chip RAM only while
+ * this much stays free after the block, for the strict requests that
  * come later (a DMA buffer, a task stack, an indexed picture), which have
  * nowhere else to go. Sized for the largest, an indexed picture at a
  * 2-pixel cell, (368 / 2) x (448 / 2) = 41216 bytes; gfx_indexed.c refuses
@@ -137,13 +137,12 @@ memory_alloc(size_t bytes, memory_kind_t kind) {
     if (kind != MEMORY_FAST) {
         return heap_caps_malloc(bytes, memory_caps(kind) | MALLOC_CAP_8BIT);
     }
-    /* The reserve is for one later request, so it has to stay one block. */
+    /* The free total, not the largest block: on the board the largest
+     * on-chip block is already below the reserve while an app runs, so a
+     * one-block rule would never take on-chip RAM at all. */
     const uint32_t on_chip = memory_caps(MEMORY_INTERNAL) | MALLOC_CAP_8BIT;
-    void* block = heap_caps_malloc(bytes, on_chip);
-    if (block != NULL && heap_caps_get_largest_free_block(on_chip) < MEMORY_FAST_INTERNAL_RESERVE) {
-        heap_caps_free(block);
-        block = NULL;
-    }
+    const bool leaves_reserve = heap_caps_get_free_size(on_chip) >= bytes + MEMORY_FAST_INTERNAL_RESERVE;
+    void* block = leaves_reserve ? heap_caps_malloc(bytes, on_chip) : NULL;
     return block != NULL ? block : memory_fast_fallback(bytes);
 #else
     (void)kind;
