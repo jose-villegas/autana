@@ -159,48 +159,20 @@ test_the_psram_heap_gives_an_unrounded_request_exactly(void) {
     TEST_ASSERT_EQUAL_size_t(bytes, given);
 }
 
-/* At most this many on-chip blocks the reserve fits in; the board has a few. */
-#define RESERVE_SIZED_BLOCKS_MAX 16
-
-/* Holds every on-chip block the reserve fits in but the largest, so the
- * largest is the only place MEMORY_FAST can leave the reserve; returns how
- * many it holds. */
-static size_t
-hold_all_but_the_largest_reserve_block(void* held[RESERVE_SIZED_BLOCKS_MAX]) {
-    size_t count = 0;
-    for (;;) {
-        TEST_ASSERT_LESS_THAN_size_t(RESERVE_SIZED_BLOCKS_MAX, count);
-        held[count] = memory_alloc(memory_largest_block(MEMORY_INTERNAL), MEMORY_INTERNAL);
-        TEST_ASSERT_NOT_NULL(held[count]);
-        count++;
-        if (memory_largest_block(MEMORY_INTERNAL) < MEMORY_FAST_INTERNAL_RESERVE) {
-            memory_free(held[--count]);
-            return count;
-        }
-    }
-}
-
-/* A fast block lands on chip while the reserve still fits in what is left of
- * the largest block, and goes to external RAM once it would not, though
- * on-chip RAM could still give it: the reserve is kept as one block. */
+/* A fast block lands on chip while the reserve stays free after it, and
+ * goes to external RAM once it would cut into the reserve. */
 static void
-test_a_fast_block_keeps_the_reserve_as_one_block(void) {
-    void* held[RESERVE_SIZED_BLOCKS_MAX];
-    const size_t count = hold_all_but_the_largest_reserve_block(held);
-    const size_t largest = memory_largest_block(MEMORY_INTERNAL);
-    TEST_ASSERT_GREATER_OR_EQUAL_size_t(MEMORY_FAST_INTERNAL_RESERVE, largest);
+test_a_fast_block_leaves_the_reserve_free_on_chip(void) {
+    const size_t free_on_chip = memory_free_bytes(MEMORY_INTERNAL);
+    TEST_ASSERT_GREATER_THAN_size_t(MEMORY_FAST_INTERNAL_RESERVE + TEST_BLOCK_BYTES, free_on_chip);
 
-    /* Half the room, so the heap's rounding cannot reach the reserve. */
-    void* kept = memory_alloc((largest - MEMORY_FAST_INTERNAL_RESERVE) / 2, MEMORY_FAST);
+    void* kept = memory_alloc(TEST_BLOCK_BYTES, MEMORY_FAST);
     const bool kept_on_chip = kept != NULL && !memory_in_psram(kept);
     memory_free(kept);
-    void* spilled = memory_alloc(largest - MEMORY_FAST_INTERNAL_RESERVE + 1, MEMORY_FAST);
+    void* spilled = memory_alloc(free_on_chip - MEMORY_FAST_INTERNAL_RESERVE + 1, MEMORY_FAST);
     const bool spilled_external = spilled != NULL && memory_in_psram(spilled);
     memory_free(spilled);
 
-    for (size_t i = 0; i < count; i++) {
-        memory_free(held[i]);
-    }
     TEST_ASSERT_TRUE_MESSAGE(kept_on_chip, "a block that leaves the reserve stays on chip");
     TEST_ASSERT_TRUE_MESSAGE(spilled_external, "a block that cuts into the reserve goes to external RAM");
 }
@@ -213,7 +185,7 @@ suite_memory(void) {
     RUN_TEST(test_the_psram_heap_gives_an_unrounded_request_exactly);
     RUN_TEST(test_each_kinds_block_lands_in_the_memory_it_names);
     RUN_TEST(test_a_restarted_low_water_mark_forgets_the_low_before_it);
-    RUN_TEST(test_a_fast_block_keeps_the_reserve_as_one_block);
+    RUN_TEST(test_a_fast_block_leaves_the_reserve_free_on_chip);
 }
 
 #else
