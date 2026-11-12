@@ -162,6 +162,8 @@ the presets vary the copies' geometry, layout and colour modes.
 | `stress-culled` | ![Plane before the camera turns away](../../../../../docs/images/overview/render-lab-stress-culled.png) | a tessellated plane and a camera pitching beyond its edge | varying cluster rejection by the frustum |
 | `stress-near` | ![Spheres along the camera path](../../../../../docs/images/overview/render-lab-stress-near.png) | stacked spheres and a camera passing through their front surfaces | triangles behind and crossing the near plane |
 | `stress-few-copies` | ![Stress few copies: two dense spheres](../../../../../docs/images/overview/render-lab-stress-few-copies.png) | two dense spheres side by side | the two-core cull split: with one instance a core, its fork and join cost more than the halved walk saves |
+| `stress-carved-near` | ![Stress carved near: a few bumpy balls close up](../../../../../docs/images/overview/render-lab-stress-carved-near.png) | a few copies of a banded bumpy ball, baked with levels of detail, close to the camera | the carve's finest levels: each copy draws near its full shape |
+| `stress-carved-far` | ![Stress carved far: a wall of bumpy balls in the distance](../../../../../docs/images/overview/render-lab-stress-carved-far.png) | many copies of the same ball, small in the distance | per-copy level picks: far copies draw their coarse levels |
 
 A change is judged by each preset's own readout, stage by stage. The sum over
 presets is a summary line only. A draw change can win on two-sided and static

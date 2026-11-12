@@ -82,7 +82,7 @@ class StressCorners(unittest.TestCase):
     def test_every_preset_is_held_here(self):
         self.assertEqual({"open", "stack", "tiny-copies", "big-tris", "per-frame", "two-sided", "noisy-tiny", "mix",
                           "static-copies", "uniform-mid", "uniform-full", "card", "culled", "near",
-                          "few-copies"}, set(preset_copies()))
+                          "few-copies", "carved-near", "carved-far"}, set(preset_copies()))
 
     def assert_all_in_view(self, c):
         """Nothing culled: every cluster tested is kept, and no node is cut."""
@@ -163,6 +163,16 @@ class StressCorners(unittest.TestCase):
         # Equal weight: the same shape twice, so every total splits evenly between the two copies.
         for name in ("clusters_kept", "triangles_submitted", "vertices_transformed"):
             self.assertEqual(0, c[name] % copies, name)
+
+    def test_carved_copies_draw_a_coarser_level_far_than_near(self):
+        """The carved prop's copies each pick a level: far copies draw fewer triangles apiece than near ones."""
+        near = self.counts("carved-near")
+        far = self.counts("carved-far")
+        for c in (near, far):
+            self.assertGreater(c["triangles_submitted"], 0)
+        per_copy = {key: c["triangles_submitted"] / preset_copies()[key]
+                    for key, c in (("carved-near", near), ("carved-far", far))}
+        self.assertLess(per_copy["carved-far"], per_copy["carved-near"])
 
     def test_two_sided_skips_nothing_facing_away(self):
         """A closed shape drawn from both sides: the one-sided spheres skip their far half, these cubes none."""
