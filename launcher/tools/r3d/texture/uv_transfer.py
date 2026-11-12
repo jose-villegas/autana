@@ -7,6 +7,7 @@ its UV from that triangle's plane, so a cluster's UVs agree at every vertex and 
 mapping exactly."""
 import dataclasses
 import fnmatch
+import pathlib
 import struct
 
 import numpy as np
@@ -17,7 +18,7 @@ from r3d.lcol_asset import sibling_name
 from r3d.mesh_asset import checked_struct
 from r3d.texture import texture_asset
 
-OWNER = texture_asset.OWNER
+OWNER = pathlib.Path(__file__).resolve().parents[3] / "main/render/texture/r3d_texture.h"
 TYPE = b"LUVS"
 VERSION = read_define(OWNER, "R3D_TEXTURE_UVS_VERSION")
 NAME_SUFFIX = read_define(OWNER, "R3D_TEXTURE_UVS_NAME_SUFFIX")
