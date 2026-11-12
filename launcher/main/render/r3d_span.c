@@ -696,7 +696,7 @@ small_visible(const r3d_span_edge_t edges[TRIANGLE_VERTICES], const r3d_span_row
  * Keep small-triangle temporaries off the row-walk call chain. */
 /* A covered pixel as cover_pixel(); an opaque one writes colour and depth. */
 static inline __attribute__((always_inline)) void
-small_put(const pixel_row_t* row, int x, const fill_t* f, unsigned coverage, uint16_t clear) {
+small_put(const r3d_span_row_t* row, int x, const fill_t* f, unsigned coverage, uint16_t clear) {
     if (coverage <= R3D_SPAN_COVERAGE_FULL) {
         cover_pixel(&row->depth[x], &row->color[x], f->flat_z, f->flat_color, coverage, clear);
     } else {
