@@ -96,17 +96,6 @@ release_fixture(void) {
     lab_test_exit(&saved);
 }
 
-static int64_t
-whole_frame(void* ctx, int64_t dt_us) {
-    int64_t* remainder_us = ctx;
-    const int64_t step_us = dt_us + *remainder_us;
-    const uint32_t dt_ms = (uint32_t)(step_us / MATH_US_PER_MS);
-    *remainder_us = step_us % MATH_US_PER_MS;
-    const int64_t start = timing_now_us();
-    (void)lab_test_frame_dt(dt_ms, false, NULL);
-    return timing_now_us() - start;
-}
-
 /* The scenario and quarter the next test plays: one test each, so a row over its
  * ceiling does not stop the rows after it. */
 static const profile_scenario_t* scenario;
@@ -217,7 +206,7 @@ test_real_time_frame_profile(void) {
         (int64_t)path.duration_ms * MATH_US_PER_MS,
     };
     int64_t remainder_us = 0;
-    const frame_profile_t p = frame_profile_play(&playback, whole_frame, &remainder_us, &played);
+    const frame_profile_t p = frame_profile_play(&playback, lab_test_profile_frame, &remainder_us, &played);
     /* The peaks first: a row over its budget is the one they explain. */
     report_path(&path, &p);
     judge_profile(&p);

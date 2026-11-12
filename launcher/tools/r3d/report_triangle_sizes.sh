@@ -96,6 +96,8 @@ CFLAGS="-std=c11 -Wall -Wextra -Werror -Wno-unused-parameter -O2"
     "$MAIN_DIR/render/r3d_lit_mesh.c" \
     "$BUILD_DIR/r3d_pipeline_counted.o" \
     "$MAIN_DIR/render/r3d_span.c" \
+    "$MAIN_DIR/render/r3d_span_screen.c" \
+    "$MAIN_DIR/render/lod/r3d_lod.c" \
     -lm -o "$OUT_BIN"
 [ -x "$OUT_BIN" ] || OUT_BIN="$OUT_BIN.exe"
 if [ "$build_only" -eq 1 ]; then

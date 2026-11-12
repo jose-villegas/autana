@@ -86,7 +86,6 @@ typedef struct {
     X(clusters_tested, counts.clusters_tested)                                                                         \
     X(clusters_kept, counts.clusters_kept)                                                                             \
     X(clusters_off_frustum, counts.clusters_off_frustum)                                                               \
-    X(vertices_transformed, counts.vertices_transformed)                                                               \
     X(pixels_face, counts.pixels[R3D_SIZES_FACE])                                                                      \
     X(pixels_uniform, counts.pixels[R3D_SIZES_UNIFORM])                                                                \
     X(pixels_shaded, counts.pixels[R3D_SIZES_SHADED])                                                                  \
@@ -100,6 +99,10 @@ typedef struct {
     X(triangles_missed, counts.triangles_missed)                                                                       \
     X(triangles_facing_away, counts.triangles_facing_away)                                                             \
     X(triangles_set_up, counts.triangles_set_up)                                                                       \
+    X(vertices_transformed, counts.vertices_transformed)                                                               \
+    X(vertices_blended, counts.vertices_blended)                                                                       \
+    X(vertices_stacked, counts.vertices_stacked)                                                                       \
+    X(stacked_centipixels, counts.stacked_centipixels)                                                                 \
     X(triangles_covering, triangles_covering)                                                                          \
     R3D_SIZES_FIELDS(RASTER_CULL_SIZE_FIELD, X, )
 

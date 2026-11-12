@@ -6,6 +6,7 @@
 #include "core/tune.h"
 #include "frame/test_frame.h"
 #include "gfx_shared_state.h"
+#include "math/scalar/units.h"
 #include "scene/scene_internal.h"
 #include "scene/scene_shell.h"
 #include "ui/ui.h"
@@ -83,6 +84,17 @@ lab_test_frame_dt(uint32_t dt_ms, bool switching, const input_t* input) {
     }
     test_present();
     return render_us;
+}
+
+int64_t
+lab_test_profile_frame(void* ctx, int64_t dt_us) {
+    int64_t* remainder_us = ctx;
+    const int64_t step_us = dt_us + *remainder_us;
+    const uint32_t dt_ms = (uint32_t)(step_us / MATH_US_PER_MS);
+    *remainder_us = step_us % MATH_US_PER_MS;
+    const int64_t start = timing_now_us();
+    (void)lab_test_frame_dt(dt_ms, false, NULL);
+    return timing_now_us() - start;
 }
 
 #endif

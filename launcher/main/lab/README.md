@@ -4,13 +4,15 @@ The shell a lab app hosts its scenes behind. A lab app shows one scene at a
 time: a BOOT-opened menu picks the scene, a HUD shows its title, fps and status
 line, and the serial console lists and switches scenes. The app owns one
 `lab_t`, registers it once with `LAB_REGISTER()`, lists its scenes and adds its
-own steps as hooks; the lab does the rest. A lab needs only its view
-tunables, its console word and its scenes:
+own steps as hooks. `LAB_APP_CALLBACKS()` puts the callbacks `LAB_REGISTER()`
+defines into its `app_t`. A lab needs only its view tunables, its console word
+and its scenes:
 
 ```c fragment
 LAB_VIEW(my_view, "my_lab");
 lab_t my_lab = {.view = &my_view, .console_word = "my", .scenes = scenes, .scene_count = 2};
 LAB_REGISTER(my_lab);
+app_t my_app = {.name = "My Lab", LAB_APP_CALLBACKS(my_lab)};
 ```
 
 | File | Owns |
