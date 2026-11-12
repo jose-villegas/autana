@@ -362,8 +362,9 @@ generate(render_context_t* c, const render_view_t* view) {
 static bool
 census_changed(render_context_t* c, const render_view_t* view) {
     raster_t* r = &c->raster;
-    const bool steering = raster_triangle_budget(r) > 0 && !c->steer.settled;
-    if (!steering && !render_partial_picks_owed(&c->partial, raster_pick_every(r))) {
+    const render_lod_settings_t lod = raster_settings(r).lod;
+    const bool steering = lod.triangle_budget > 0 && !c->steer.settled;
+    if (!steering && !render_partial_picks_owed(&c->partial, lod.pick_every)) {
         return false;
     }
     const float kept_near = raster_depth_near(r);
@@ -419,7 +420,8 @@ aim_raster(render_context_t* c, const r3d_instance_t* instances, int count, cons
     r->split = &c->split;
     r->steer = &c->steer;
     r->picks_levels = true;
-    r->settings = &c->settings;
+    c->drawn_settings = render_settings_tuned(&c->settings);
+    r->settings = &c->drawn_settings;
     r->instances = instances;
     r->instance_count = count;
     r->width = step < 0 ? view->viewport.width * c->scale_percent / 100 : c->ladder.steps[step].width;
@@ -437,7 +439,7 @@ aim_raster(render_context_t* c, const r3d_instance_t* instances, int count, cons
 static bool
 draw_fixed(render_context_t* c, const render_view_t* view) {
     raster_t* r = &c->raster;
-    const bool partial = raster_partial_redraw(r);
+    const bool partial = raster_settings(r).partial_redraw;
     if (partial && !draw_partial(c, view)) {
         return false;
     }
