@@ -431,7 +431,7 @@ count_copies(const stress_params_t* p, const render_view_t* view) {
         r3d_lens_t lens;
         r3d_lens_init(&lens, view, STRESS_TICKS_PER_UNIT);
         r3d_lens_place(&lens, &model, STRESS_TICKS_PER_UNIT);
-        const int kept = r3d_pipeline_cull_counted(&f.mesh.mesh, &lens, NULL, f.clusters, f.walk, &counts);
+        const int kept = r3d_pipeline_cull_counted(&f.mesh.mesh, &lens, NULL, NULL, f.clusters, f.walk, &counts);
         r3d_pipeline_transform(&f.mesh.mesh, &lens, f.clusters, kept, f.projected, NULL, false);
         r3d_pipeline_count_triangles(&f.mesh.mesh, &lens, f.clusters, kept, f.projected, &counts, NULL);
     }

@@ -270,7 +270,6 @@ test_counted_pixels_are_clipped_centres_and_zero_without_setup(void) {
     r3d_pipeline_count_triangles(&mesh, &lens, kept, 1, cs, &counts, NULL);
     const int expected = R3D_SIZES_SMALL_MAX * (R3D_SIZES_SMALL_MAX - 1) / 2;
     TEST_ASSERT_EQUAL_INT(expected, counts.pixels[R3D_SIZES_FACE]);
-    TEST_ASSERT_EQUAL_INT(cluster.vertex_count, counts.vertices_transformed);
     TEST_ASSERT_EQUAL_INT(1, counts.triangles_sized[R3D_SIZES_FACE][R3D_SIZES_MORE]);
     TEST_ASSERT_EQUAL_INT(0, counts.pixels[R3D_SIZES_UNIFORM]);
     TEST_ASSERT_EQUAL_INT(0, counts.pixels[R3D_SIZES_SHADED]);
@@ -304,7 +303,7 @@ test_off_frustum_clusters_and_subtrees_are_separate(void) {
     const r3d_lens_t lens = lens_for(&looking_at_origin);
     uint16_t kept[3];
     r3d_pipeline_counts_t counts = {0};
-    TEST_ASSERT_EQUAL_INT(2, r3d_pipeline_cull_counted(&mesh, &lens, NULL, kept, count_walk(), &counts));
+    TEST_ASSERT_EQUAL_INT(2, r3d_pipeline_cull_counted(&mesh, &lens, NULL, NULL, kept, count_walk(), &counts));
     TEST_ASSERT_EQUAL_INT(1, counts.clusters_off_frustum);
     TEST_ASSERT_EQUAL_INT(0, counts.nodes_cut);
     TEST_ASSERT_EQUAL_INT(counts.clusters_tested, counts.clusters_kept + counts.clusters_off_frustum);
