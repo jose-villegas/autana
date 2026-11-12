@@ -7,6 +7,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "math/scalar/mathi.h"
 #include "microui.h"
 #include "ui/ui.h"
 
@@ -123,6 +124,21 @@ ui_bezel_spans(mu_Rect r, mu_Color face, bool sunken, ui_span_t* out, int max) {
     const mu_Color lit = ui_shade(face, UI_BEZEL_HIGHLIGHT);
     const mu_Color shadow = ui_shade(face, -UI_BEZEL_SHADOW);
     return ui_frame_spans(r, face, UI_BEZEL_THICKNESS, sunken ? shadow : lit, sunken ? lit : shadow, out, max);
+}
+
+/* How far row `row` of a face `h` tall sits in from each side when its
+ * corners are rounded by `radius`: a quarter circle sampled at pixel
+ * centres in the first and last `radius` rows, 0 between. Symmetric, so it
+ * holds after any quarter turn. */
+static inline int
+ui_round_inset(int radius, int h, int row) {
+    const int from_edge = mu_min(row, h - 1 - row);
+    if (from_edge >= radius) {
+        return 0;
+    }
+    /* The row's centre sits d/2 above the circle's centre. */
+    const int d = (2 * (radius - from_edge)) - 1;
+    return radius - ((mathi_half_chord(2 * radius, d) + 1) / 2);
 }
 
 /*

@@ -17,9 +17,9 @@ begin(const raster_attachment_t* self, const raster_t* raster, const render_view
 }
 
 static bool
-writer(const raster_attachment_t* self, int instance, r3d_span_writer_t* out) {
+writer(const raster_attachment_t* self, int entry, r3d_span_writer_t* out) {
     raster_meshlets_t* state = self->state;
-    const uint32_t clusters = (uint32_t)state->raster->instances[instance].mesh->cluster_count;
+    const uint32_t clusters = (uint32_t)raster_drawn_at(state->raster, entry)->mesh->cluster_count;
     assert(state->next > 0 && state->next + clusters <= (uint32_t)UINT16_MAX + 1);
     *out = (r3d_span_writer_t){.span = raster_attachment_tag, .step = R3D_SPAN_STEP_CLUSTER, .value = state->next};
     state->next += clusters;

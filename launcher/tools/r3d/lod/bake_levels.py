@@ -1,6 +1,6 @@
 """A lit mesh's levels of detail as lit_mesh.py bakes them: every level's
 clusters with their colours, and the group records the device's pick reads
-(render/r3d_lit_mesh.h, docs/plans/Cluster-LOD.md).
+(render/r3d_lit_mesh.h, docs/render/frame/Levels-of-Detail.md).
 
 Each sidedness gets its own hierarchy (levels.py), welded and position-only,
 with the positions both share locked so the two never part. clusterlod's

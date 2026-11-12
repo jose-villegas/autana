@@ -1,9 +1,4 @@
-/*
- * scene_stress: loads the stress pack, makes the preset's mesh into one
- * dynamic mesh every copy draws, places the copies the preset asks for
- * before the camera's swing and hides the rest of the pool; see
- * scene_stress.h. A per-frame preset makes its mesh again each update.
- */
+/* scene_stress: static assets or shared generated meshes in a copy pool before a camera swing. */
 
 #include "apps/render_lab/stress/scene_stress.h"
 
@@ -18,6 +13,7 @@
 #include "draw/draw.h"
 #include "esp_log.h"
 #include "image/pixel/rgb565.h"
+#include "math/scalar/math_const.h"
 #include "render/context/render_context.h"
 #include "scene/animator/animator.h"
 #include "scene/camera/camera.h"
@@ -28,9 +24,7 @@
 
 static const char* TAG = "stress";
 
-/* The scene's id and pack, its camera, and its copies' names, numbered from 0. */
-#define STRESS_SCENE       "stress"
-#define STRESS_CAMERA      "camera"
+/* Copies are named consecutively from zero. */
 #define STRESS_SLOT_FORMAT "slot_%02d"
 
 static const stress_params_t* shown;
@@ -39,8 +33,8 @@ static entity_t camera; /* the swing the copies are placed for */
 static entity_t viewer; /* the camera shown: the one the start named, else the swing */
 static entity_t* slots; /* the pool's copies, in name order */
 static int pool;
-static stress_buffers_t buffers;
-static r3d_dynamic_mesh_t mesh;
+static stress_buffers_t buffers[STRESS_MIX_LEVELS];
+static r3d_dynamic_mesh_t mesh[STRESS_MIX_LEVELS];
 static uint32_t wave_ms;
 
 /* What the panel says in place of the triangle count when the scene could not load. */
@@ -58,31 +52,59 @@ find_pool(void) {
     return slots != NULL;
 }
 
-static bool
-take_mesh(void) {
-    const int vertices = stress_vertex_count(shown);
-    const int triangles = stress_triangle_count(shown);
-    buffers = (stress_buffers_t){lab_scene_take(sizeof(vec3f_t) * (size_t)vertices),
-                                 lab_scene_take(sizeof(uint8_t[3]) * (size_t)vertices),
-                                 lab_scene_take(sizeof(uint16_t[3]) * (size_t)triangles)};
-    const r3d_dynamic_capacity_t capacity = r3d_dynamic_capacity_for(vertices, triangles);
-    const size_t bytes = r3d_dynamic_mesh_bytes(capacity);
-    void* block = lab_scene_take(bytes);
-    return buffers.positions != NULL && buffers.colors != NULL && buffers.triangles != NULL && block != NULL
-           && r3d_dynamic_mesh_init(&mesh, block, bytes, capacity, STRESS_TICKS_PER_UNIT);
+static int
+mesh_count(void) {
+    return shown->shape == STRESS_SHAPE_GRID ? STRESS_MIX_LEVELS : 1;
 }
 
-/* Makes the mesh at `wave_ms` and hands it to every copy shown, which takes its bounds from it. */
 static bool
-build(void) {
-    r3d_dynamic_source_t source;
-    if (!stress_source(shown, wave_ms, &buffers, &source) || !r3d_dynamic_mesh_build(&mesh, &source)) {
-        return false;
-    }
-    for (int i = 0; i < shown->copies; i++) {
-        (void)renderer_set_mesh(slots[i], &mesh.mesh);
+take_mesh(void) {
+    for (int i = 0; i < mesh_count(); i++) {
+        const stress_params_t p = stress_copy_params(shown, i);
+        const int vertices = stress_vertex_count(&p);
+        const int triangles = stress_triangle_count(&p);
+        buffers[i] = (stress_buffers_t){lab_scene_take(sizeof(vec3f_t) * (size_t)vertices),
+                                        lab_scene_take(sizeof(uint8_t[3]) * (size_t)vertices),
+                                        lab_scene_take(sizeof(uint16_t[3]) * (size_t)triangles)};
+        const r3d_dynamic_capacity_t capacity = r3d_dynamic_capacity_for(vertices, triangles);
+        const size_t bytes = r3d_dynamic_mesh_bytes(capacity);
+        void* block = lab_scene_take(bytes);
+        if (buffers[i].positions == NULL || buffers[i].colors == NULL || buffers[i].triangles == NULL || block == NULL
+            || !r3d_dynamic_mesh_init(&mesh[i], block, bytes, capacity, STRESS_TICKS_PER_UNIT)) {
+            return false;
+        }
     }
     return true;
+}
+
+static bool
+build(void) {
+    for (int i = 0; i < mesh_count(); i++) {
+        const stress_params_t p = stress_copy_params(shown, i);
+        r3d_dynamic_source_t source;
+        if (!stress_source(&p, wave_ms, &buffers[i], &source) || !r3d_dynamic_mesh_build(&mesh[i], &source)) {
+            return false;
+        }
+    }
+    for (int i = 0; i < shown->copies; i++) {
+        (void)renderer_set_mesh(slots[i], &mesh[i % mesh_count()].mesh);
+    }
+    return true;
+}
+
+/* The asset's longest side becomes one unit, centred like a generated primitive. */
+static transformf_t
+static_shape(void) {
+    const r3d_lit_mesh_t* asset = renderer_mesh(slots[0]);
+    const box3f_t box = r3d_lit_mesh_world_bounds(asset, NULL);
+    const vec3f_t span = vec3f_sub(box.hi, box.lo);
+    const float width = fmaxf(span.x, fmaxf(span.y, span.z));
+    transformf_t shape = transformf_identity();
+    transformf_set_scale(&shape, (vec3f_t){1.0F / width, 1.0F / width, 1.0F / width});
+    transformf_set_rotation(&shape, quatf_from_axis_angle(vec3f_unit_y(), MATH_PI));
+    const vec3f_t centre = quatf_rotate(shape.rotation, vec3f_add(box.lo, box.hi));
+    transformf_set_position(&shape, vec3f_scale(centre, -0.5F / width));
+    return shape;
 }
 
 /* The arrangement is sized to where the camera's swing starts, and turned
@@ -91,15 +113,19 @@ static void
 place_copies(void) {
     (void)animator_seek(camera, ANIMATOR_CURRENT, 0);
     const vec3f_t eye = transform_world(camera).position;
-    const lens_t* lens = camera_lens(entity_find(loaded, name_hash(STRESS_CAMERA)));
+    const lens_t* lens = camera_lens(camera);
     const stress_framing_t seen = {sqrtf(vec3f_dot(eye, eye)), lens->half_fov_short_tan};
     transformf_t facing = transformf_identity();
     transformf_set_rotation(&facing, quatf_from_axis_angle(vec3f_unit_y(), atan2f(eye.x, eye.z)));
+    const transformf_t shape = shown->surface == STRESS_SURFACE_STATIC ? static_shape() : transformf_identity();
     for (int i = 0; i < pool; i++) {
         const bool used = i < shown->copies;
         entity_set_enabled(slots[i], used);
         if (used) {
-            const transformf_t place = stress_copy_place(shown, i, seen);
+            transformf_t place = stress_copy_place(shown, i, seen);
+            if (shown->surface == STRESS_SURFACE_STATIC) {
+                place = transformf_compose(&place, &shape);
+            }
             transform_set_local(slots[i], transformf_compose(&facing, &place));
         }
     }
@@ -122,13 +148,13 @@ load(void) {
     if (handle_is_none(loaded)) {
         return false;
     }
-    camera = entity_find(loaded, name_hash(STRESS_CAMERA));
-    if (handle_is_none(camera) || camera_lens(entity_find(loaded, name_hash(STRESS_CAMERA))) == NULL) {
+    camera = entity_find(loaded, name_hash(shown->camera));
+    if (handle_is_none(camera) || camera_lens(camera) == NULL) {
         fail("no stress camera");
         return false;
     }
     viewer = render_lab.start_camera == NULL ? camera : entity_find(loaded, name_hash(render_lab.start_camera));
-    if (!find_pool() || !take_mesh()) {
+    if (!find_pool() || (shown->surface != STRESS_SURFACE_STATIC && !take_mesh())) {
         fail("no memory for stress");
         return false;
     }
@@ -136,7 +162,7 @@ load(void) {
         fail("too few stress copies");
         return false;
     }
-    if (!build()) {
+    if (shown->surface != STRESS_SURFACE_STATIC && !build()) {
         fail("stress mesh did not fit");
         return false;
     }
@@ -153,7 +179,7 @@ scene_stress_enter(const lab_scene_t* self) {
         return;
     }
     (void)camera_activate(
-        entity_find(loaded, name_hash(render_lab.start_camera == NULL ? STRESS_CAMERA : render_lab.start_camera)));
+        entity_find(loaded, name_hash(render_lab.start_camera == NULL ? shown->camera : render_lab.start_camera)));
     place_copies();
     apply_settings();
 }

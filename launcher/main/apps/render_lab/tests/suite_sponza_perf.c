@@ -110,7 +110,7 @@ bench_open(const r3d_instance_t* instance) {
     b->instance = *instance;
     if (b->instance.lod_coarse == NULL && instance->mesh->lod_group_count > 0) {
         /* All clear, as a scene's renderer starts: the finest level until a draw picks. */
-        const size_t words = R3D_LOD_WORDS(instance->mesh->lod_group_count);
+        const size_t words = R3D_LOD_STATE_WORDS(instance->mesh->lod_group_count);
         b->coarse = memory_alloc(words * sizeof(*b->coarse), MEMORY_INTERNAL);
         TEST_ASSERT_NOT_NULL(b->coarse);
         memset(b->coarse, 0, words * sizeof(*b->coarse));
@@ -332,7 +332,7 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
     b->report = memory_alloc(FRAME_COST_REPORT_MAX, MEMORY_INTERNAL);
     char* report = b->report;
     TEST_ASSERT_NOT_NULL(report);
-    (void)frame_cost_take_report(1, report, FRAME_COST_REPORT_MAX);
+    frame_cost_take_clear();
     const int capacity = (int)((period + SPONZA_PERF_POSE_EVERY_MS - 1) / SPONZA_PERF_POSE_EVERY_MS);
     TEST_ASSERT_GREATER_THAN_INT(0, capacity);
     b->frame_us = memory_alloc((size_t)capacity * sizeof *b->frame_us, MEMORY_APP);

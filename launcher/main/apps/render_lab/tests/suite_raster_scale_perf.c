@@ -42,6 +42,7 @@
 #include "render/context/render_context.h"
 #include "render/r3d_lit_mesh.h"
 #include "render/r3d_span_internal.h"
+#include "render/r3d_stages.h"
 #include "render/raster_internal.h"
 #include "render/resolution/resolution.h"
 #include "scene/animator/animator.h"
@@ -146,7 +147,7 @@ measure_size(raster_t* raster, gfx_color_t* destination, resolution_step_t size,
     size = raster_present_size(size, lab_view_present(&render_lab_view_tunables));
     raster->width = size.width;
     raster->height = size.height;
-    (void)frame_cost_take_report(1, report, FRAME_COST_REPORT_MAX); /* forget whatever ran before */
+    frame_cost_take_clear(); /* forget whatever ran before */
     const uint32_t period = animator_clip_duration_ms(camera_entity, 0);
     int poses = 0;
     int64_t triangles = 0;
@@ -291,7 +292,7 @@ test_raster_counters(void) {
     TEST_ASSERT_NOT_NULL(report);
     const int64_t mean_us = measure_size(&raster, destination, size, frame_us, report);
     ESP_LOGI(TAG, "raster both cores: mean %lldus" LAB_PERF_QUARTER_FORMAT, (long long)mean_us, perf_quarter->name);
-    const int bracket = frame_cost_shared_name_index("r3d.draw");
+    const int bracket = frame_cost_shared_name_index(R3D_STAGE_DRAW_NAME);
     TEST_ASSERT_TRUE(bracket >= 0);
     /* Counters cover core 0's half of the draw. */
     for (size_t event = 0; event < sizeof counter_events / sizeof counter_events[0]; event++) {

@@ -145,9 +145,9 @@ typedef struct {
     box3f_t world_bounds; /* the mesh's root box through `model`, kept with it */
     box3f_t drawn_bounds; /* world_bounds when last drawn (render/partial) */
     scene_row_t entity;
-    bool placed;          /* false while the transform is the identity: drawn as it is */
-    bool changed;         /* its mesh or model changed since it was last drawn (render/partial) */
-    uint32_t lod_words;   /* the coarse bits held for the mesh opened: R3D_LOD_WORDS of its groups, a copy's each */
+    bool placed;        /* false while the transform is the identity: drawn as it is */
+    bool changed;       /* its mesh or model changed since it was last drawn (render/partial) */
+    uint32_t lod_words; /* the level state held for the mesh opened: R3D_LOD_STATE_WORDS of its groups, a copy's each */
     uint32_t* lod_coarse; /* into the scene's lod_bits, or NULL without levels; a batch's are its copies' */
     r3d_batch_t* batch;   /* its copies, or NULL: it draws its mesh once */
     uint16_t colour_sets; /* the sets its colour arrays hold from the one opened: 1, or its batch's highest plus one */

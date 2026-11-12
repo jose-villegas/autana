@@ -60,7 +60,7 @@ menu "Launcher"
         depends on LAUNCHER_DEVELOPMENT
         help
             Compiles the test suites into the firmware. They run on demand
-            from the Diagnostics app, or at boot with LAUNCHER_SELFTEST_AUTORUN.
+            from the Self Test app, or at boot with LAUNCHER_SELFTEST_AUTORUN.
 
             Off by default, so a normal build carries no test code at all.
             The suites draw to the framebuffer and drive the panel, which is
@@ -83,7 +83,7 @@ menu "Launcher"
         help
             LAUNCHER_SELFTEST above compiles the suites in; this decides
             whether they also RUN automatically at boot, versus sitting
-            compiled-in until triggered on demand from the Diagnostics app's
+            compiled-in until triggered on demand from the Self Test app's
             toggle screen.
 
             Off by default. The suite count has grown well past the "roughly

@@ -230,11 +230,13 @@ for dir in $(app_directories launcher); do
     [ -f "${dir}development_only.cmake" ] && continue
     for source in "$dir"app_*.c; do
         names=$(sed -n 's/^ *\.name = "\(.*\)",\r\{0,1\}$/\1/p' "$source")
+        # The kind orders the home screen; none is an app.
+        kind=$(sed -n 's/^ *\.kind = APP_KIND_\([A-Z]*\),\r\{0,1\}$/\1/p' "$source" | tr 'A-Z' 'a-z')
         old_ifs=$IFS
         IFS='
 '
         for name in $names; do
-            set -- "$@" --row "$name"
+            set -- "$@" --row "$name${kind:+:$kind}"
         done
         IFS=$old_ifs
     done
@@ -282,8 +284,9 @@ run "$PYTHON" launcher/tools/input/gravity_figures.py --cc "$cc" --out "$OUT/inp
 run "$PYTHON" launcher/tools/input/motion_axes_figures.py --cc "$cc" --out "$OUT/input" \
     > "$WORK/motion_axes_figures.log"
 # --orphans scans this runner: motion-axes.png, motion-rotation.gif
-# The producers that declare their images (launcher/tools/docs/producer.py), in parallel.
-run "$PYTHON" launcher/tools/docs/figures_runner.py build --needs host --into "$OUT" > "$WORK/figures.log"
+# The producers that declare their images (launcher/tools/docs/producer.py) and need only this machine and the
+# bake cache, in parallel.
+run "$PYTHON" launcher/tools/docs/figures_runner.py build --needs host,bakes --into "$OUT" > "$WORK/figures.log"
 run "$PYTHON" launcher/tools/physics/spring_figures.py --cc "$cc" --out "$OUT/physics" > "$WORK/spring_figures.log"
 # --orphans scans this runner: spring-line-wave.gif, spring-line-spacetime.png
 run "$PYTHON" launcher/tools/kinematics/orbit_figures.py --cc "$cc" --out "$OUT/kinematics" > "$WORK/orbit_figures.log"
