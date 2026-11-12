@@ -856,7 +856,7 @@ cull_instances(const raster_t* raster, const render_view_t* view, bool fitted, r
     return depth_near;
 }
 
-/* The writers of the attachments that write while instance `index` is
+/* The writers of the attachments that write while drawn-list entry `index` is
  * drawn; returns how many. */
 static int
 instance_writers(const raster_t* raster, int index, r3d_span_writer_t out[GFX_ATTACHMENTS_FURTHER_MAX]) {

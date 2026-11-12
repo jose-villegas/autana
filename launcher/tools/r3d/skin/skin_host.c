@@ -1,6 +1,7 @@
 /* Host bridge: scene entity APIs through the animation and skin systems, without drawing. */
 #include <stdio.h>
 #include <stdlib.h>
+#include "app/app_arena.h"
 #include "asset/asset_file.h"
 #include "scene/animator/animator.h"
 #include "scene/renderer/renderer.h"
@@ -41,12 +42,19 @@ main(int argc, char** argv) {
         fprintf(stderr, "skin_host PACK SCENE ENTITY SKELETON SKIN MESH CLIP TIME_MS\n");
         return EXIT_FAILURE;
     }
-    asset_pack_t pack;
-    void* buffer;
-    if (asset_file_open(argv[ARG_PACK], &pack, &buffer) != ASSET_OK) {
+    /* The scene takes its blocks from the app heap, as on the board, where the shell enters it for each app visit. */
+    if (!app_arena_init()) {
+        fprintf(stderr, "skin_host: the app region does not fit\n");
         return EXIT_FAILURE;
     }
-    const bool ok = sample(&pack, argv);
-    asset_file_release(buffer);
+    app_arena_enter();
+    asset_pack_t pack;
+    void* buffer;
+    bool ok = asset_file_open(argv[ARG_PACK], &pack, &buffer) == ASSET_OK;
+    if (ok) {
+        ok = sample(&pack, argv);
+        asset_file_release(buffer);
+    }
+    app_arena_exit();
     return ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }

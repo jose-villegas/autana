@@ -262,7 +262,7 @@ def main():
     with tempfile.TemporaryDirectory() as work:
         directory = pathlib.Path(work)
         pack, skeleton = model_pack(args.model, args.clips, directory)
-        probe = build_probe(args.cc, PROBE_SOURCES, directory)
+        probe = build_probe(args.cc, PROBE_SOURCES, directory, scene_host.FLAGS)
         runs = {name: play(probe, pack, skeleton, args.clips, wrap, events, PLAYHEAD_END_MS, directory)
                 for name, (wrap, events) in PLAYHEAD_RUNS.items()}
         blend = play(probe, pack, skeleton, args.clips, LOOP, BLEND_SCRIPT, BLEND_END_MS, directory)

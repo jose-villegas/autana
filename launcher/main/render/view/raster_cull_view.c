@@ -139,11 +139,11 @@ begin(const raster_attachment_t* self, const raster_t* raster, const render_view
 }
 
 /* The camera's draw tags each pixel with its triangle, a spectator's with
- * its cluster; both count from 1 across the instances. */
+ * its cluster; both count from 1 across the drawn list. */
 static bool
-writer(const raster_attachment_t* self, int instance, r3d_span_writer_t* out) {
+writer(const raster_attachment_t* self, int entry, r3d_span_writer_t* out) {
     raster_cull_t* s = self->state;
-    const r3d_lit_mesh_t* mesh = raster_drawn_at(s->raster, instance)->mesh;
+    const r3d_lit_mesh_t* mesh = raster_drawn_at(s->raster, entry)->mesh;
     *out = (r3d_span_writer_t){.span = raster_attachment_tag};
     if (s->spectating) {
         out->step = R3D_SPAN_STEP_CLUSTER;
