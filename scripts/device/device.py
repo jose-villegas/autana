@@ -259,7 +259,16 @@ PORT_REAPPEAR_SECONDS = 20
 # A reconnect slower than this share of its window is logged by phase (left the port list, listed again, opened),
 # so a window too short for a board, or a host holding the port, shows before it fails.
 RECONNECT_REPORT_SHARE = 0.25
-RECONNECT_LINE = "reset_reconnect_seconds={total:.2f} left={left:.2f} listed={listed:.2f} opened={opened:.2f} limit={limit:g}"
+# The phases a reconnect passes through, in order; a slow or failed one is reported by phase.
+RECONNECT_PHASES = ("left", "listed", "opened")
+
+
+def reconnect_line(marks, ended, limit):
+    """`marks` are the start and each finished phase's end; a phase still open at `ended` is the one that failed."""
+    phases = [f"{name}={end - begin:.2f}" for name, begin, end in zip(RECONNECT_PHASES, marks, marks[1:])]
+    if len(marks) <= len(RECONNECT_PHASES):
+        phases.append(f"{RECONNECT_PHASES[len(marks) - 1]}={ended - marks[-1]:.2f} failed=1")
+    return f"reset_reconnect_seconds={ended - marks[0]:.2f} {' '.join(phases)} limit={limit:g}"
 
 
 def reconnect_after_reset(seconds=PORT_REAPPEAR_SECONDS, sleep=time.sleep, now=time.monotonic):
@@ -270,29 +279,31 @@ def reconnect_after_reset(seconds=PORT_REAPPEAR_SECONDS, sleep=time.sleep, now=t
     capture that follows loses as little of the boot as it can. Raises
     PortUnavailable at `seconds`."""
     board = ACTIVE_LOCK.held.board
-    started = now()
-    deadline = started + seconds
-    leave_by = min(now() + RESET_LEAVE_SECONDS, deadline)
+    marks = [now()]
+    deadline = marks[0] + seconds
+    leave_by = min(marks[0] + RESET_LEAVE_SECONDS, deadline)
 
     def listed():
         require_live_lock()
         return any(found.serial == board for found in plugged_boards())
 
-    while now() < leave_by and listed():
-        sleep(min(USB_POLL_SECONDS, max(0, leave_by - now())))
-    left = now()
-    while not listed():
-        if now() >= deadline:
-            raise PortUnavailable(f"board {board} did not come back on USB within "
-                                  f"{seconds:g}s of its reset")
-        sleep(min(USB_POLL_SECONDS, max(0, deadline - now())))
-    back = now()
-    connection = open_when_free(max(0, deadline - now()), reason="re-enumerating after reset",
-                                sleep=sleep, now=now)
-    opened = now()
-    if opened - started > RECONNECT_REPORT_SHARE * seconds:
-        print(RECONNECT_LINE.format(total=opened - started, left=left - started, listed=back - left,
-                                    opened=opened - back, limit=seconds), file=sys.stderr)
+    try:
+        while now() < leave_by and listed():
+            sleep(min(USB_POLL_SECONDS, max(0, leave_by - now())))
+        marks.append(now())
+        while not listed():
+            if now() >= deadline:
+                raise PortUnavailable(f"board {board} did not come back on USB within "
+                                      f"{seconds:g}s of its reset")
+            sleep(min(USB_POLL_SECONDS, max(0, deadline - now())))
+        marks.append(now())
+        connection = open_when_free(max(0, deadline - now()), reason="re-enumerating after reset",
+                                    sleep=sleep, now=now)
+        marks.append(now())
+    finally:
+        ended = now()
+        if len(marks) <= len(RECONNECT_PHASES) or ended - marks[0] > RECONNECT_REPORT_SHARE * seconds:
+            print(reconnect_line(marks, ended, seconds), file=sys.stderr)
     return connection
 
 

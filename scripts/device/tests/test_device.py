@@ -2660,6 +2660,17 @@ class ResetReconnectTests(unittest.TestCase):
             device.reset()
         self.assertAlmostEqual(self.clock, 0.2 + device.PORT_REAPPEAR_SECONDS)
 
+    def test_a_failed_reconnect_is_logged_with_the_phase_it_failed_in(self):
+        self.usb.reset(self.now())
+        self.usb.returns = device.PORT_WAIT_SECONDS
+        with contextlib.redirect_stderr(io.StringIO()) as said, self.assertRaises(device.PortUnavailable):
+            device.reconnect_after_reset()
+        fields = dict(re.findall(r"(\w+)=([\d.]+)", said.getvalue().splitlines()[-1]))
+        self.assertEqual(fields["failed"], "1")
+        self.assertNotIn("opened", fields)
+        self.assertAlmostEqual(float(fields["left"]) + float(fields["listed"]),
+                               float(fields["reset_reconnect_seconds"]), places=1)
+
     def test_never_leaves_waits_only_the_default_leave_bound(self):
         self.usb.leaves = self.usb.returns = self.usb.opens = self.usb.busy_at = device.PORT_WAIT_SECONDS
         with device.reset():
