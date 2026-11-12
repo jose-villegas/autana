@@ -44,6 +44,8 @@ that field's table in the asset.
 | `lod.coverage_permille` | `250` | basic | the thousandths of the picture's height a coarse group may span; smaller pops less |
 | `lod.pick_every` | `4` | advanced | the frames the pick is spread over, a scene's first frame picking all; more saves, switches later |
 | `lod.triangle_budget` | `0` | basic | the triangles a frame aims to draw, the tolerance rising past tolerance_px to keep within; 0 never rises |
+| `lod.blend` | `0` | basic | 0 switches at once; 1 blends each switch, by morph where a mesh was imported with geometry.morph, else by dither |
+| `lod.blend_px` | `0.25` | advanced | the error past a switch over which a blend fades out; longer is softer, moves more |
 | `anim.mid_px` | `48.0` | basic | radius below which poses run at mid_every |
 | `anim.far_px` | `20.0` | basic | radius below which poses run at far_every |
 | `anim.mid_every` | `2` | basic | frames between mid-sized poses; 1 poses every frame |
@@ -125,7 +127,7 @@ generation off, and costs nothing when it does not apply.
 
 ## lod
 
-The [LOD pick](../plans/Cluster-LOD.md), once a frame per instance, draws a group's coarser
+The [LOD pick](frame/Levels-of-Detail.md), once a frame per instance, draws a group's coarser
 level when its projected error is within `tolerance_px` and its radius spans at most
 `coverage_permille` thousandths of the picture's height.
 
@@ -135,10 +137,10 @@ fine one turns coarse only once it is that far under, so a still camera never fl
 ![The hysteresis band and the coverage cap, from the default values](../images/render/lod-settings.png)
 
 These change which clusters draw, so they change pixels. A larger tolerance saves triangles and
-pops more; [Cluster-LOD.md](../plans/Cluster-LOD.md) scores each coverage cap.
+pops more; [Levels-of-Detail.md](frame/Levels-of-Detail.md) scores each coverage cap.
 
 With `triangle_budget` set, the tolerance rises from `tolerance_px` until the frame fits
-([the steer](../plans/Cluster-LOD.md)). The budget is in triangles, at most 32767.
+([the steer](frame/Levels-of-Detail.md#the-budget)). The budget is in triangles, at most 32767.
 The coverage cap rises with it, in proportion: `coverage_permille` is the cap at
 `tolerance_px`, so a budget can turn coarse the large groups the cap holds fine there.
 

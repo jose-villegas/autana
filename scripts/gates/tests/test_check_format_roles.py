@@ -38,11 +38,11 @@ class FormatRolesTests(unittest.TestCase):
         defines = ["THING_MODE_FAST", "THING_MODE_SLOW_SAFE", "THING_AT_FRAC_BITS"]
         roles = {label: check_format_roles.role(label, defines)
                  for label in ("0", "reserved", "magic APAK", "version = 2", "crc32", "items_off", "offset",
-                               "item_count", "strings_size", "size", "joints", "mode", "frac", "int16 x")}
+                               "item_count", "strings_size", "size", "joints", "flags", "mode", "frac", "int16 x")}
         self.assertEqual(roles, {"0": "padding", "reserved": "padding", "magic APAK": "identity",
                                  "version = 2": "identity", "crc32": "identity", "items_off": "offset",
                                  "offset": "offset", "item_count": "count", "strings_size": "count",
-                                 "size": "count", "joints": "count", "mode": "code", "frac": "value",
+                                 "size": "count", "joints": "count", "flags": "code", "mode": "code", "frac": "value",
                                  "int16 x": "value"})
 
     def test_write_fills_each_box_by_row_and_place_and_check_names_the_diagram(self):

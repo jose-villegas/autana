@@ -187,72 +187,88 @@ draw_text_command(const mu_Command* cmd, affine2x_t t) {
 }
 
 static void
+draw_rect_command(const mu_Command* cmd, affine2x_t t) {
+    const mu_Color c = cmd->rect.color;
+    /* Fully transparent rects are microui's way of drawing nothing; we
+     * have no blending, so skip them rather than paint black. */
+    if (c.a == 0) {
+        return;
+    }
+    const mu_Rect r = ui_transform_mu_rect(t, cmd->rect.rect);
+    draw_rect(r.x, r.y, r.w, r.h, mu_color_to_gfx(c));
+}
+
+static void
+draw_image_command(const mu_Command* cmd, affine2x_t t) {
+    const ui_image_command_t* image = (const ui_image_command_t*)cmd;
+    if (image->color.a != 0) {
+        icon_fill_ctx_t fc = {.color = mu_color_to_gfx(image->color)};
+        ui_transform_icon_blocks(t, image->image, ui_recti_from_mu(image->rect), icon_fill_emit, &fc);
+    }
+}
+
+/* Filled in panel rows after the turn, so a quarter turn costs no more
+ * spans than none. */
+static void
+draw_round_command(const mu_Command* cmd, affine2x_t t) {
+    const ui_round_command_t* face = (const ui_round_command_t*)cmd;
+    const mu_Rect r = ui_transform_mu_rect(t, face->rect);
+    /* An integer scale scales the corner with the face. */
+    const int radius = face->radius * (r.w + r.h) / (face->rect.w + face->rect.h);
+    const gfx_color_t color = mu_color_to_gfx(face->color);
+    for (int row = 0; row < radius; row++) {
+        const int inset = ui_round_inset(radius, r.h, row);
+        draw_rect(r.x + inset, r.y + row, r.w - (2 * inset), 1, color);
+        draw_rect(r.x + inset, r.y + r.h - 1 - row, r.w - (2 * inset), 1, color);
+    }
+    draw_rect(r.x, r.y + radius, r.w, r.h - (2 * radius), color);
+}
+
+static void
+draw_swatches_command(const mu_Command* cmd, affine2x_t t) {
+    const ui_swatch_command_t* grid = (const ui_swatch_command_t*)cmd;
+    for (int row = 0; row < grid->rows; row++) {
+        for (int col = 0; col < grid->cols; col++) {
+            const mu_Rect cell = ui_transform_mu_rect(t, ui_swatch_cell_rect(grid, col, row));
+            draw_rect(cell.x, cell.y, cell.w, cell.h, mu_color_to_gfx(ui_rgb(grid->rgb[(row * grid->cols) + col])));
+        }
+    }
+}
+
+/* microui's icons are close/check/collapsed/expanded. MU_ICON_CHECK is the
+ * system check icon because two callers need it: a checkbox toggle, and a
+ * per-tile selection badge. The other three, and the check without the
+ * engine pack, are a small centred square: nothing in this shell closes a
+ * window or collapses a tree yet to ask for them. */
+static void
+draw_icon_command(const mu_Command* cmd, affine2x_t t) {
+    const gfx_color_t color = mu_color_to_gfx(cmd->icon.color);
+    const image_t* check = cmd->icon.id == MU_ICON_CHECK ? ui_icon_image(UI_ICON_CHECK) : NULL;
+    if (check != NULL) {
+        icon_fill_ctx_t fc = {.color = color};
+        ui_transform_icon_blocks(t, check, ui_recti_from_mu(cmd->icon.rect), icon_fill_emit, &fc);
+        return;
+    }
+    const mu_Rect r = ui_transform_mu_rect(t, cmd->icon.rect);
+    draw_rect(r.x + (r.w / 3), r.y + (r.h / 3), r.w / 3, r.h / 3, color);
+}
+
+static void
 draw_command(const mu_Command* cmd) {
     const affine2x_t t = ui_effective_transform();
 
     switch (cmd->type) {
-
-        case MU_COMMAND_RECT: {
-            const mu_Color c = cmd->rect.color;
-            /* Fully transparent rects are microui's way of drawing nothing; we
-         * have no blending, so skip them rather than paint black. */
-            if (c.a == 0) {
-                break;
-            }
-            const mu_Rect r = ui_transform_mu_rect(t, cmd->rect.rect);
-            draw_rect(r.x, r.y, r.w, r.h, mu_color_to_gfx(c));
-            break;
-        }
-
-        case UI_COMMAND_IMAGE: {
-            const ui_image_command_t* image = (const ui_image_command_t*)cmd;
-            if (image->color.a != 0) {
-                icon_fill_ctx_t fc = {.color = mu_color_to_gfx(image->color)};
-                ui_transform_icon_blocks(t, image->image, ui_recti_from_mu(image->rect), icon_fill_emit, &fc);
-            }
-            break;
-        }
-
-        case UI_COMMAND_SWATCHES: {
-            const ui_swatch_command_t* grid = (const ui_swatch_command_t*)cmd;
-            for (int row = 0; row < grid->rows; row++) {
-                for (int col = 0; col < grid->cols; col++) {
-                    const mu_Rect cell = ui_transform_mu_rect(t, ui_swatch_cell_rect(grid, col, row));
-                    draw_rect(cell.x, cell.y, cell.w, cell.h,
-                              mu_color_to_gfx(ui_rgb(grid->rgb[(row * grid->cols) + col])));
-                }
-            }
-            break;
-        }
-
+        case MU_COMMAND_RECT: draw_rect_command(cmd, t); break;
+        case UI_COMMAND_IMAGE: draw_image_command(cmd, t); break;
+        case UI_COMMAND_ROUND_RECT: draw_round_command(cmd, t); break;
+        case UI_COMMAND_SWATCHES: draw_swatches_command(cmd, t); break;
         case MU_COMMAND_TEXT: draw_text_command(cmd, t); break;
-
-        case MU_COMMAND_ICON: {
-            /* microui's icons are close/check/collapsed/expanded. MU_ICON_CHECK
-             * is the system check icon because two callers need it: a
-             * checkbox toggle, and a per-tile selection badge. The other
-             * three, and the check without the engine pack, are a small
-             * centred square: nothing in this shell closes a window or
-             * collapses a tree yet to ask for them. */
-            const mu_Color c = cmd->icon.color;
-            const gfx_color_t color = mu_color_to_gfx(c);
-            const image_t* check = cmd->icon.id == MU_ICON_CHECK ? ui_icon_image(UI_ICON_CHECK) : NULL;
-            if (check != NULL) {
-                icon_fill_ctx_t fc = {.color = color};
-                ui_transform_icon_blocks(t, check, ui_recti_from_mu(cmd->icon.rect), icon_fill_emit, &fc);
-            } else {
-                const mu_Rect r = ui_transform_mu_rect(t, cmd->icon.rect);
-                draw_rect(r.x + (r.w / 3), r.y + (r.h / 3), r.w / 3, r.h / 3, color);
-            }
-            break;
-        }
-
+        case MU_COMMAND_ICON: draw_icon_command(cmd, t); break;
         case MU_COMMAND_CLIP: {
             const mu_Rect r = ui_transform_mu_rect(t, cmd->clip.rect);
             draw_set_clip(r.x, r.y, r.w, r.h);
             break;
         }
-
         default: break;
     }
 }
@@ -280,11 +296,25 @@ next_canvas_command(const mu_Container* cnt, mu_Command** cmd) {
 void (*ui_canvas_painted_for_test)(const mu_Container*);
 #endif
 
+static bool command_rect(const mu_Command* cmd, mu_Rect* out);
+
+/* `only_drawn_under`: an unchanged canvas whose pixels stand except where
+ * something drew under it this frame replays only the commands over those
+ * places. Painter's order keeps it whole: a command that repaints marks its
+ * own rect, so whatever is drawn over it then repaints too. */
+static bool
+skip_command(const mu_Command* cmd, bool only_drawn_under) {
+    mu_Rect r;
+    return only_drawn_under && command_rect(cmd, &r) && !gfx_region_dirty(r.x, r.y, r.w, r.h);
+}
+
 static void
-paint_canvas(const mu_Container* cnt) {
+paint_canvas(const mu_Container* cnt, bool only_drawn_under) {
     mu_Command* cmd = NULL;
     while (next_canvas_command(cnt, &cmd)) {
-        draw_command(cmd);
+        if (!skip_command(cmd, only_drawn_under)) {
+            draw_command(cmd);
+        }
     }
     draw_clear_clip();
 #ifndef ESP_PLATFORM
@@ -393,7 +423,7 @@ clear_vanished_canvases(uint32_t background_rgb) {
 }
 
 static bool
-repaint_marked_canvases(int n, const bool* repaint, uint32_t background_rgb) {
+repaint_marked_canvases(int n, const bool* repaint, uint32_t background_rgb, bool only_drawn_under) {
     bool drew = false;
 
     for (int i = 0; i < n && i < MU_ROOTLIST_SIZE; i++) {
@@ -409,7 +439,7 @@ repaint_marked_canvases(int n, const bool* repaint, uint32_t background_rgb) {
             draw_rect(phys.x, phys.y, phys.w, phys.h, RGB565BE(background_rgb));
         }
 
-        paint_canvas(cnt);
+        paint_canvas(cnt, only_drawn_under);
 
         const int slot = (int)(cnt - ui_ctx.containers);
         if (slot >= 0 && slot < MU_CONTAINERPOOL_SIZE) {
@@ -435,6 +465,15 @@ ui_end_commands(void) {
 }
 
 bool
+ui_end_if_unsettled(void) {
+    if (ui_face_settle()) {
+        return false;
+    }
+    ui_end_commands();
+    return true;
+}
+
+bool
 ui_end(uint32_t background_rgb) {
 #if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT
     finish_band_stats();
@@ -457,7 +496,7 @@ ui_end(uint32_t background_rgb) {
     clear_vanished_canvases(background_rgb);
     mark_changed_canvases(n, repaint);
     propagate_repaint_over_overlaps(n, repaint);
-    const bool drew = repaint_marked_canvases(n, repaint, background_rgb);
+    const bool drew = repaint_marked_canvases(n, repaint, background_rgb, false);
 
     ui_invalidated = false;
 #if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT
@@ -503,7 +542,7 @@ ui_end_over(ui_backdrop_fn paint_backdrop) {
         mark_changed_canvases(n, repaint);
         propagate_repaint_over_overlaps(n, repaint);
     }
-    const bool drew = repaint_marked_canvases(n, repaint, UI_NO_BACKGROUND);
+    const bool drew = repaint_marked_canvases(n, repaint, UI_NO_BACKGROUND, !ui_changed);
 
     ui_invalidated = false;
 #if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT
@@ -547,7 +586,7 @@ typedef struct {
     ui_band_entry_kind_t kind;
     int y0, y1;  /* this entry's own row range, ignored when always is true */
     bool always; /* replay regardless of a band's own range: UI_BAND_ENTRY_CLIP_RESET,
-                                and any command type command_row_range() does not
+                                and any command type command_rect() does not
                                 recognise (currently just MU_COMMAND_CLIP, whose
                                 effect is state for what follows, not pixels of
                                 its own) */
@@ -587,52 +626,39 @@ ui_queue_band_overlay_rect(int x, int y, int w, int h, uint32_t rgb) {
     }
 }
 
-/* The row range `cmd`'s own drawing would touch, after the transform:
- * geometry only, no colour or font-pass work, since binning only needs to
- * decide whether a band should bother calling draw_command() at all.
- * False means "no extent of its own" (MU_COMMAND_CLIP), which the caller
- * takes to mean "always replay". */
+/* The physical rect `cmd`'s own drawing would touch, after the transform:
+ * geometry only, no colour or font-pass work. False means "no extent of its
+ * own" (MU_COMMAND_CLIP), which callers take to mean "always replay". */
 static bool
-command_row_range(const mu_Command* cmd, int* y0, int* y1) {
+command_rect(const mu_Command* cmd, mu_Rect* out) {
     const affine2x_t t = ui_effective_transform();
 
     switch (cmd->type) {
-        case MU_COMMAND_RECT: {
-            const mu_Rect r = ui_transform_mu_rect(t, cmd->rect.rect);
-            *y0 = r.y;
-            *y1 = r.y + r.h;
-            return true;
-        }
-        case UI_COMMAND_IMAGE:
-        case UI_COMMAND_SWATCHES: {
-            const mu_Rect rect = cmd->type == UI_COMMAND_IMAGE ? ((const ui_image_command_t*)cmd)->rect
-                                                               : ((const ui_swatch_command_t*)cmd)->rect;
-            const mu_Rect r = ui_transform_mu_rect(t, rect);
-            *y0 = r.y;
-            *y1 = r.y + r.h;
-            return true;
-        }
+        case MU_COMMAND_RECT: *out = ui_transform_mu_rect(t, cmd->rect.rect); return true;
+        case UI_COMMAND_IMAGE: *out = ui_transform_mu_rect(t, ((const ui_image_command_t*)cmd)->rect); return true;
+        case UI_COMMAND_SWATCHES: *out = ui_transform_mu_rect(t, ((const ui_swatch_command_t*)cmd)->rect); return true;
+        case UI_COMMAND_ROUND_RECT: *out = ui_transform_mu_rect(t, ((const ui_round_command_t*)cmd)->rect); return true;
+        case MU_COMMAND_ICON: *out = ui_transform_mu_rect(t, cmd->icon.rect); return true;
         case MU_COMMAND_TEXT: {
             const ui_font_scaled_t fs = ui_resolve_font_scaled(cmd->text.font);
             const int tw = draw_font_text_width(fs.font, cmd->text.str, -1, fs.scale);
             const int th = draw_font_height(fs.font, fs.scale);
             const mu_Rect box = ui_transform_mu_rect(t, (mu_Rect){cmd->text.pos.x, cmd->text.pos.y, tw, th});
-            *y0 = box.y;
-            *y1 = box.y + box.h;
+            int x0 = box.x;
+            int y0 = box.y;
+            int x1 = box.x + box.w;
+            int y1 = box.y + box.h;
             if (cmd->text.color.a == 255) {
                 ui_text_pass_t passes[UI_TEXT_MAX_PASSES];
                 const int n = ui_text_passes(ui_text_style, passes, UI_TEXT_MAX_PASSES);
                 for (int i = 0; i < n; i++) {
-                    *y0 = mathi_min(*y0, box.y + passes[i].dy);
-                    *y1 = mathi_max(*y1, box.y + box.h + passes[i].dy);
+                    x0 = mathi_min(x0, box.x + passes[i].dx);
+                    y0 = mathi_min(y0, box.y + passes[i].dy);
+                    x1 = mathi_max(x1, box.x + box.w + passes[i].dx);
+                    y1 = mathi_max(y1, box.y + box.h + passes[i].dy);
                 }
             }
-            return true;
-        }
-        case MU_COMMAND_ICON: {
-            const mu_Rect r = ui_transform_mu_rect(t, cmd->icon.rect);
-            *y0 = r.y;
-            *y1 = r.y + r.h;
+            *out = (mu_Rect){x0, y0, x1 - x0, y1 - y0};
             return true;
         }
         default: return false;
@@ -760,7 +786,10 @@ ui_end_for_bands(uint32_t background_rgb) {
         mu_Command* cmd = NULL;
         while (next_canvas_command(cnt, &cmd)) {
             ui_band_entry_t entry = {.kind = UI_BAND_ENTRY_COMMAND, .cmd = cmd};
-            entry.always = !command_row_range(cmd, &entry.y0, &entry.y1);
+            mu_Rect rect;
+            entry.always = !command_rect(cmd, &rect);
+            entry.y0 = rect.y;
+            entry.y1 = rect.y + rect.h;
             (void)bin_entry(&entry);
         }
 
@@ -801,7 +830,7 @@ replay_full_band(void) {
             const mu_Rect r = canvas_physical_rect(cnt);
             draw_rect(r.x, r.y, r.w, r.h, RGB565BE(ui_band_background));
         }
-        paint_canvas(cnt);
+        paint_canvas(cnt, false);
     }
     for (int i = 0; i < replay_rect_count; i++) {
         const ui_extra_rect_t* r = &extra_rects[i];

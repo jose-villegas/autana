@@ -77,5 +77,15 @@ class SelfHostedWorkflowTests(unittest.TestCase):
                     self.assertEqual(self.check(self.concurrency(block, job_level)), [])
 
 
+    def test_a_step_installs_packages_only_through_the_apt_script(self):
+        steps = ("on: push\njobs:\n  run:\n    runs-on: ubuntu-latest\n    steps:\n"
+                 "      - name: deps\n        run: |\n")
+        for raw in ("sudo apt-get update", "sudo apt-get install -y llvm", "apt-get -qq update",
+                    "sudo apt install -y ffmpeg"):
+            with self.subTest(raw=raw):
+                self.assertTrue(self.check(steps + f"          {raw}\n"))
+        self.assertEqual(self.check(steps + f"          sudo sh {gate.APT_INSTALL} -y llvm\n"), [])
+
+
 if __name__ == "__main__":
     unittest.main()

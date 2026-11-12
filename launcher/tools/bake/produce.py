@@ -1,13 +1,13 @@
 """Making a bake (bake.py bake): runs its stage's tool into the cache and records which bytes the
-key got. Needs the tool's environment: the r3d requirements for a mesh, and for a fit also a CUDA
-GPU with requirements-gpu.txt (r3d/gpu_python.sh). Before it runs, every requirement pin the key
+key got. Needs the tool's environment: the r3d requirements for a mesh or a reference set, and for a fit
+also a CUDA GPU with requirements-gpu.txt (r3d/gpu_python.sh). Before it runs, every requirement pin the key
 counts must match what is installed, so a key never names bytes made with other packages.
 
-A fit's start is a mesh bake of its own; the fit reads the bytes its key names, from the lock or this
-cache. A fit's references are made once per reference key into the cache's reference/ folder, so fits
-that share their inputs share them, and never leave the machine that made them: only the fit stage reads
-them, and it runs there. A run made `again` renders each set it reads once more, in a folder of its own, so a repeat
-measures the whole chain; a set nothing has read for REFERENCE_KEEP_DAYS is deleted.
+A fit's start is a mesh bake of its own and its reference set a reference bake; the fit reads the bytes its key
+names, from the lock or this cache, so any GPU host fits from the same inputs. A reference bake renders its set
+once per reference key into the cache's reference/ folder, where the doc stages read the held-out references
+too, and packs what the fit reads. A run made `again` renders each set once more, in a folder of its own; a set
+nothing has read for REFERENCE_KEEP_DAYS is deleted.
 """
 
 import copy
@@ -213,24 +213,38 @@ def reference_set(key, job, scene, cache, fresh=None):
     return folder
 
 
-def start_file(bake, cache, lock):
-    """The start whose bytes the fit's key names, from the lock or, when this run made it, this cache."""
-    start = bake.start
-    dependency = "fit" if bake.kind == "levels" else "start"
+def input_file(bake, cache, lock, dependency=None):
+    """The input whose bytes `bake`'s key names (its start, or its reference set when `dependency` is "reference"),
+    from the lock or, when this run made it, this cache."""
+    dependency = dependency or ("fit" if bake.kind == "levels" else "start")
+    given = bake.reference if dependency == "reference" else bake.start
     sha256 = bake.stages[dependency + "_sha256"]
-    row = next((row for row in (lock.get(start.key), made(start.key, cache)) if row and row["sha256"] == sha256), None)
+    row = next((row for row in (lock.get(given.key), made(given.key, cache)) if row and row["sha256"] == sha256), None)
     if row is None:
-        raise keys.BakeMissing(f"{bake.output}: its {dependency} {start.key} with sha256 {sha256} is neither locked nor "
-                               f"made here; bake.py bake --kind {start.kind} first")
-    return keys.fetch_all([start], {start.key: row}, cache)[start]
+        raise keys.BakeMissing(f"{bake.output}: its {dependency} {given.key} with sha256 {sha256} is neither locked nor "
+                               f"made here; bake.py bake --kind {given.kind} first")
+    return keys.fetch_all([given], {given.key: row}, cache)[given]
 
 
-def produce_fit(bake, cache, lock, fresh_references):
-    from r3d.fit.stage import fit
+def produce_reference(bake, cache, fresh_references):
+    from r3d.reference_set import pack_references, reference_inputs
 
-    start = start_file(bake, cache, lock)
-    inputs = reference_set(bake.stages["reference"], bake.job, bake.scene, cache, fresh_references)
+    folder = reference_set(bake.key, bake.job, bake.scene, cache, fresh_references)
     with tempfile.TemporaryDirectory() as work:
+        target = pathlib.Path(work) / bake.output
+        target.write_bytes(pack_references(folder, reference_inputs(bake.job, bake.scene).sets()))
+        return record(bake, target, cache)
+
+
+def produce_fit(bake, cache, lock):
+    from r3d.fit.stage import fit
+    from r3d.reference_set import unpack_references
+
+    start = input_file(bake, cache, lock)
+    references = input_file(bake, cache, lock, "reference")
+    with tempfile.TemporaryDirectory() as work:
+        inputs = pathlib.Path(work) / "references"
+        unpack_references(references.read_bytes(), inputs)
         target = pathlib.Path(work) / bake.output
         fit(bake.scene.path, bake.scene, bake.job, pathlib.Path(work), target=target, inputs=inputs, start=start)
         return record(bake, target, cache)
@@ -249,8 +263,8 @@ def produce_sound(bake, cache):
 
 
 def produce(bake, cache, lock=None, blender=None, fresh_references=None):
-    """Makes `bake` into the cache and returns its row; the environment must match its pins. A fit given
-    `fresh_references`, a run's own folder, renders its reference set there (reference_set)."""
+    """Makes `bake` into the cache and returns its row; the environment must match its pins. A reference bake
+    given `fresh_references`, a run's own folder, renders its set there (reference_set)."""
     if bake.kind == "blend":
         return produce_blend(bake, cache, blender)
     if bake.kind == "sound":
@@ -261,14 +275,17 @@ def produce(bake, cache, lock=None, blender=None, fresh_references=None):
         from r3d.lod.levels_stage import levels
         with tempfile.TemporaryDirectory() as work:
             target = pathlib.Path(work) / bake.output
-            fit = start_file(bake, cache, lock or {})
-            start = start_file(bake.start, cache, lock or {})
+            fit = input_file(bake, cache, lock or {})
+            start = input_file(bake.start, cache, lock or {})
             target.write_bytes(levels(fit.read_bytes(), bake.job.asset_name, bake.job.settings.lod,
                                       bake.job.settings.meshlet_triangles, start=start.read_bytes()))
             return record(bake, target, cache)
-    check_environment(("mesh", "reference", "fit") if bake.kind == "fit" else ("mesh",))
+    if bake.kind == "reference":
+        check_environment(("mesh", "reference"))
+        return produce_reference(bake, cache, fresh_references)
+    check_environment(("mesh", "fit") if bake.kind == "fit" else ("mesh",))
     if bake.kind == "fit":
-        return produce_fit(bake, cache, lock or {}, fresh_references)
+        return produce_fit(bake, cache, lock or {})
     return produce_mesh(bake, cache, lock or {})
 
 

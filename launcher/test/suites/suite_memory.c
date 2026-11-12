@@ -159,6 +159,28 @@ test_the_psram_heap_gives_an_unrounded_request_exactly(void) {
     TEST_ASSERT_EQUAL_size_t(bytes, given);
 }
 
+/* A fast block small enough to fit beside the reserve in the self-test
+ * image, which has a few KB on chip past it. */
+#define FAST_BESIDE_RESERVE_BYTES 1024u
+
+/* A fast block lands on chip while the reserve stays free after it, and
+ * goes to external RAM once it would cut into the reserve. */
+static void
+test_a_fast_block_leaves_the_reserve_free_on_chip(void) {
+    const size_t free_on_chip = memory_free_bytes(MEMORY_INTERNAL);
+    TEST_ASSERT_GREATER_THAN_size_t(MEMORY_FAST_INTERNAL_RESERVE + FAST_BESIDE_RESERVE_BYTES, free_on_chip);
+
+    void* kept = memory_alloc(FAST_BESIDE_RESERVE_BYTES, MEMORY_FAST);
+    const bool kept_on_chip = kept != NULL && !memory_in_psram(kept);
+    memory_free(kept);
+    void* spilled = memory_alloc(free_on_chip - MEMORY_FAST_INTERNAL_RESERVE + 1, MEMORY_FAST);
+    const bool spilled_external = spilled != NULL && memory_in_psram(spilled);
+    memory_free(spilled);
+
+    TEST_ASSERT_TRUE_MESSAGE(kept_on_chip, "a block that leaves the reserve stays on chip");
+    TEST_ASSERT_TRUE_MESSAGE(spilled_external, "a block that cuts into the reserve goes to external RAM");
+}
+
 void
 suite_memory(void) {
     RUN_TEST(test_app_allocations_and_queries_use_the_region);
@@ -167,13 +189,17 @@ suite_memory(void) {
     RUN_TEST(test_the_psram_heap_gives_an_unrounded_request_exactly);
     RUN_TEST(test_each_kinds_block_lands_in_the_memory_it_names);
     RUN_TEST(test_a_restarted_low_water_mark_forgets_the_low_before_it);
+    RUN_TEST(test_a_fast_block_leaves_the_reserve_free_on_chip);
 }
 
 #else
 
 #include "heap_arena.h"
 
-#define SMALL_BYTES 64
+#define SMALL_BYTES             64
+
+/* A block big enough to show in a pool's free total, small enough for every pool. */
+#define POOL_BUDGET_BLOCK_BYTES (16 * 1024)
 
 typedef struct {
     memory_kind_t kind;
@@ -278,7 +304,7 @@ test_a_block_of_one_kind_leaves_the_other_pools_budget_alone(void) {
     for (size_t i = 0; i < sizeof SEPARATE_POOLS / sizeof SEPARATE_POOLS[0]; i++) {
         const size_t other_free = memory_free_bytes(SEPARATE_POOLS[i].other);
 
-        void* block = memory_alloc(16 * 1024, SEPARATE_POOLS[i].kind);
+        void* block = memory_alloc(POOL_BUDGET_BLOCK_BYTES, SEPARATE_POOLS[i].kind);
         TEST_ASSERT_NOT_NULL_MESSAGE(block, SEPARATE_POOLS[i].name);
         TEST_ASSERT_EQUAL_size_t_MESSAGE(other_free, memory_free_bytes(SEPARATE_POOLS[i].other),
                                          SEPARATE_POOLS[i].name);

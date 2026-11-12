@@ -447,7 +447,7 @@ void f(void) {
 
     def test_an_app_or_the_editor_including_the_system_band_is_flagged_but_not_the_app_contract(self):
         targets = ("shell/shell.h", "console/console_verbs.h", "selftest/post.h", "boot/boot_anim.h",
-                   "app/app.h", "ui/ui.h")
+                   "app/app.h", "lab/lab.h", "ui/ui.h")
         self.assert_include_cases("SYSTEM-BAND", {"launcher/main/" + t: "#pragma once\n" for t in targets}, flagged=(
             "launcher/main/apps/x/x.c shell/shell.h",
             "launcher/main/apps/x/x.h boot/boot_anim.h",
@@ -455,6 +455,7 @@ void f(void) {
             "launcher/main/apps/x/x.c <selftest/post.h>",
         ), allowed=(
             "launcher/main/apps/x/x.c app/app.h",
+            "launcher/main/apps/x/x.c lab/lab.h",
             "launcher/main/apps/x/x.c ui/ui.h",
             "launcher/main/apps/x/x.c console/console_verbs.h",
             "launcher/main/shell/apps/x/x.c selftest/post.h",
@@ -462,9 +463,11 @@ void f(void) {
 
     def test_the_system_band_refused_follows_the_layer_table(self):
         system = dict(check_style_audit.LAYER_BANDS)["system"]
-        between = {layer for row in system[1:-1] for layer in row.split()}
-        self.assertEqual(check_style_audit.SYSTEM_BAND_REFUSED, between)
-        self.assertNotIn(system[-1], between)
+        rows = {layer for row in system[1:] for layer in row.split()}
+        self.assertEqual(check_style_audit.SYSTEM_BAND_REFUSED, rows - check_style_audit.APP_BASE)
+        for base in check_style_audit.APP_BASE:
+            self.assertIn(base, rows)
+            self.assertNotIn(base, check_style_audit.SYSTEM_BAND_REFUSED)
 
     BACKEND = {"launcher/components/microui/include/microui.h": "#pragma once\n"}
 

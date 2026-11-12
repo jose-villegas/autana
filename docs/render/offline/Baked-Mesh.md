@@ -64,4 +64,4 @@ owns preparation, capture validation and refresh commands.
 
 Meshlets share vertices, so a frame transforms fewer than with octree-cut
 leaves. The draw order they set decides depth ties, a fraction of a percent of
-pixels. Levels of detail on them: [plans/Cluster-LOD.md](../../plans/Cluster-LOD.md).
+pixels. Levels of detail on them: [frame/Levels-of-Detail.md](../frame/Levels-of-Detail.md).

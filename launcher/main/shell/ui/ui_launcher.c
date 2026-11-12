@@ -21,6 +21,14 @@ ui_launcher_frame(const input_t* input, uint32_t dt_ms) {
     FRAME_COST_BEGIN(built_from);
     ui_begin(input);
     const app_t* chosen = ui_launcher_draw();
+    /* The grid centres from the frame before; on the first frame home, after
+     * an app or after a quarter turn that is not this one, so build again.
+     * A tap on the misplaced frame aimed at nothing there and is dropped. */
+    if (ui_end_if_unsettled()) {
+        ui_begin(NULL);
+        (void)ui_launcher_draw();
+        chosen = NULL;
+    }
     FRAME_COST_END(built_from, "ui.build");
     const input_t idle = {0};
     ui_ridge_step(input != NULL ? input : &idle, dt_ms);
