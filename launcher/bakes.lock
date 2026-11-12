@@ -41,15 +41,6 @@ host = "Linux x86_64"
 gpu = "NVIDIA GeForce RTX 2060"
 
 [[bake]]
-output = "bistro.street_fitted.reference.tar.xz"
-source = "launcher/demo/bistro/bistro.scene.toml"
-key = "2c4702010c0a3f26edddafffdd2fdd9e00a98dd34f784e8d6543e95d8c9b178b"
-sha256 = "25c3d153b192155c5ada4b21069dee0b0838c9bc948f50d734ef1e5dcbcba5cd"
-size = 70463888
-run = 43016329421
-host = "Linux x86_64"
-
-[[bake]]
 output = "bistro.street_fitted.start.bundle"
 source = "launcher/demo/bistro/bistro.scene.toml"
 key = "c0b16ff5e9002368954a56f1db6c6e56c604f30a829bd378f5eb9dfba07c0e51"
