@@ -138,10 +138,6 @@ Source: `water-stages-board.log`
 
 ### Stress
 
-`stress_goals.py CAPTURE...` prints the goal table: worst per-capture pose mean
-from perf-scoped 5-seed runs on A308, 20E8 and 2124, +1% rounded up to 10 µs;
-the r3d ceiling is goal × 1.15 rounded up to 10 µs.
-
 The Stress family repeats a generated primitive or static pack mesh before a
 swinging camera. Each preset ties down one behaviour with its own pegged goal.
 Perf work targets the presets; the scene frame profile confirms before merge.
@@ -232,6 +228,14 @@ transform worker's fork/join.
 `transform_batches` counts the shaded draw's transform fork/joins, read from
 the census by `raster_batch_count()`, including empty batches. Each pays the split, worker dispatch,
 cluster work and join; picture clearing belongs to `r3d.draw`.
+
+Each row has a mean goal per r3d stage, which reports its distance only, and
+a goal and board ceiling on the four stages' sum. uniform-full stays unpegged:
+its full-view fill varies more between runs than a change moves it.
+
+[`stress_goals.py`](stress_goals.py) prints the goal table from captures: the
+worst pose mean of five layout seeds on every perf board, +1% rounded up to
+10 µs; the ceiling is the goal × 1.15.
 
 Each pose draws one counted frame, one warm frame and `FRAME_PROFILE_REPLAY_DRAWS`
 measured frames. The pose counts and size loops in the suite own its frame

@@ -20,9 +20,8 @@ GOAL_MARGIN = Fraction("1.01")
 CEILING_MARGIN = Fraction("1.15")
 GOAL_QUANTUM_US = 10
 UNPEGGED_PRESET = "stress-uniform-full"
-DEFAULT_SIZE = "default"
 CASE_SEPARATOR = read_define(ROOT / "launcher/test/suites.h", "SUITE_TEST_SEPARATOR")
-CASE = re.compile(r"SUITE_TEST name=(\S+) selected=([01])")
+CASE = re.compile(r"^TEST_TIME name=(\S+)", re.MULTILINE)  # timing.c, after each test's lines
 TABLE_ROW = re.compile(r'\{"(stress-[^"]+)",\s*"([^"]+)",\s*"([^"]+)",\s*\{[^}]+\},\s*\{[^}]+\}\}')
 
 
@@ -41,23 +40,18 @@ def capture_means(path, rows):
     if not replays(text):
         raise ValueError(f"{path}: no FRAME_PROFILE_REPLAY lines")
     grouped = {}
-    markers = list(CASE.finditer(text))
-    spans = [(0, markers[0].start() if markers else len(text), None)]
-    spans.extend((marker.end(), markers[i + 1].start() if i + 1 < len(markers) else len(text), marker)
-                 for i, marker in enumerate(markers))
-    for start, end, marker in spans:
-        case = marker[1].split(CASE_SEPARATOR) if marker else ()
-        for pose in replays(text[start:end]):
-            if not pose["row"].startswith("stress-"):
-                continue
-            size = DEFAULT_SIZE
-            if case and case[0] == "test_stress_stages" and marker[2] == "1":
-                if len(case) != 4 or tuple(case[1:3]) != (pose["row"], pose["quarter"]):
-                    raise ValueError(f"{path}: replay differs from case {marker[1]}")
-                size = case[3]
-            elif any(key == pose["row"] and row_size != DEFAULT_SIZE for key, _, row_size in rows):
-                raise ValueError(f"{path}: {pose['row']}: uniform replay needs a SUITE_TEST size")
-            key = (pose["row"], pose["quarter"], size)
+    start = 0
+    for marker in CASE.finditer(text):
+        segment, start = text[start:marker.start()], marker.end()
+        case = marker[1].split(CASE_SEPARATOR)
+        if case[0] != "test_stress_stages":
+            continue
+        if len(case) != 4 or case[1] not in {key for key, _, _ in rows}:
+            raise ValueError(f"{path}: unknown case {marker[1]}")
+        for pose in replays(segment):
+            if (pose["row"], pose["quarter"]) != tuple(case[1:3]):
+                raise ValueError(f"{path}: replay {pose['row']} {pose['quarter']} inside case {marker[1]}")
+            key = tuple(case[1:])
             if key not in rows:
                 raise ValueError(f"{path}: unknown row {' '.join(key)}")
             missing = set(STAGES) - pose["stages"].keys()

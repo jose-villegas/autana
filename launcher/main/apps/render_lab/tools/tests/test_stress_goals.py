@@ -25,11 +25,12 @@ def capture(path, values, *, omit=None):
         if row == omit:
             continue
         key, quarter, size = row
-        lines.append(f"SUITE_TEST name=test_stress_stages/{key}/{quarter}/{size} selected=1")
         for index, stages in enumerate(values):
             report = "  ".join(f"{stage} {value}/0.00" for stage, value in zip(goals.STAGES, stages))
             lines.append(REPLAY % (key, index, "vertices_transformed=1", report + " | total 0.00")
                          + f" quarter={quarter}")
+        # A board run prints no SUITE_TEST line without --test: a test's replays end at its TEST_TIME.
+        lines.append(f"TEST_TIME name=test_stress_stages/{key}/{quarter}/{size} elapsed_ms=1 stack_free_bytes=1")
     path.write_text("\n".join(lines), encoding="utf-8")
     return path
 
@@ -85,13 +86,20 @@ class StressGoalsTest(unittest.TestCase):
     def test_fixed_sizes_have_their_own_measurements(self):
         a = self.make("sizes", [("1.00",) * len(goals.STAGES)])
         text = a.read_text(encoding="utf-8")
-        start = text.index("SUITE_TEST name=test_stress_stages/stress-uniform-mid/portrait/368x448")
-        end = text.index("SUITE_TEST", start + len("SUITE_TEST"))
+        end = text.index("TEST_TIME name=test_stress_stages/stress-uniform-mid/portrait/368x448")
+        start = text.rindex("TEST_TIME", 0, end)
         a.write_text(text[:start] + text[start:end].replace("1.00/0.00", "2.00/0.00") + text[end:], encoding="utf-8")
         result = goals.generate([a])
         self.assertIn('"stress-uniform-mid", "portrait", "368x448", {2020, 2020, 2020, 2020}', result)
         self.assertIn('"stress-uniform-mid", "portrait", "default", {1010, 1010, 1010, 1010}', result)
 
+    def test_replay_of_another_row_inside_a_case_is_refused(self):
+        path = self.make("swapped", [("1.00",) * len(goals.STAGES)])
+        text = path.read_text(encoding="utf-8")
+        marker = "TEST_TIME name=test_stress_stages/stress-open/portrait/default"
+        path.write_text(text.replace(marker, marker.replace("portrait", "landscape"), 1), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "swapped: replay stress-open portrait inside case"):
+            goals.generate([path])
 
 if __name__ == "__main__":
     unittest.main()
