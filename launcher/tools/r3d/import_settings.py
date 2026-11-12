@@ -22,8 +22,11 @@ from gltf.gltf_read import ASSET_SUFFIXES
 
 U16_MAX = (1 << 16) - 1
 MESHLET_TRIANGLES = 32
-# A baked mesh carries its levels of detail (docs/plans/Cluster-LOD.md) unless its geometry says lod = false.
+# A baked mesh carries its levels of detail (docs/render/frame/Levels-of-Detail.md) unless its geometry says lod = false.
 LOD = True
+# Morph targets (an LMOR sibling) only where geometry says morph = true: the
+# blend morphs those meshes and dithers the rest, which costs no bytes.
+MORPH = False
 SCENE_OWNER = pathlib.Path(__file__).resolve().parents[2] / "main/scene/scene_conventions.h"
 LIGHT_AXIS = read_define(SCENE_OWNER, "SCENE_LIGHT_AXIS")
 SKIN_LIGHTING = ("direct", "renormalised", "table")
@@ -268,10 +271,13 @@ def load_process(process, steps):
 
 def load_geometry(table, steps):
     """The optional steps that decide which source triangles remain."""
-    check_keys(table, (), "geometry", optional=("alpha_mask", "thin", "simplify", "meshlet_triangles", "lod", "probes",
-                                                "budget"))
+    check_keys(table, (), "geometry", optional=("alpha_mask", "thin", "simplify", "meshlet_triangles", "lod", "morph",
+                                                "probes", "budget"))
     steps.meshlet_triangles = count(table.get("meshlet_triangles", MESHLET_TRIANGLES), "geometry.meshlet_triangles")
     steps.lod = boolean(table.get("lod", LOD), "geometry.lod")
+    steps.morph = boolean(table.get("morph", MORPH), "geometry.morph")
+    if steps.morph and not steps.lod:
+        raise SettingsError("geometry.morph needs geometry.lod")
     if not 4 <= steps.meshlet_triangles <= 256:
         raise SettingsError("geometry.meshlet_triangles must be between 4 and 256")
     if "alpha_mask" in table:
@@ -461,7 +467,7 @@ def load_import_settings(path):
         double_sided=set(strings(materials.get("double_sided", []), "materials.double_sided")), seed=steps.seed,
         alpha_keep=steps.alpha_keep, thin=steps.thin, simplify=steps.simplify, named=("variants" in values),
         meshes=meshes,
-        meshlet_triangles=steps.meshlet_triangles, lod=steps.lod, fit=steps.fit,
+        meshlet_triangles=steps.meshlet_triangles, lod=steps.lod, morph=steps.morph, fit=steps.fit,
         variants=variants, skin_lighting=lighting)
 
 

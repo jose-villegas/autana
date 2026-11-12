@@ -41,7 +41,8 @@ from r3d.light import (  # noqa: E402
     visible_from_region,
 )
 from r3d.lod.bake_levels import bake_lit_mesh
-from r3d.lit_mesh import POSITION_SCALE, WELD_PER_TICK, panel_colour, build_lit_mesh  # noqa: E402
+from r3d.lod.morph import morph_blob
+from r3d.lit_mesh import POSITION_SCALE, WELD_PER_TICK, bundle_entries, panel_colour, build_lit_mesh  # noqa: E402
 from r3d.mesh_source import load_source, load_glb_source, path_light_for, camera_path_poses
 from r3d.process_budget import NULL_RECORDER
 from r3d.ray_query import RayQuery  # noqa: E402
@@ -297,7 +298,7 @@ def write_baked(job, scene, out_dir, name, geometry=None, recorder=None):
                               meshlet_triangles=job.settings.meshlet_triangles,
                               lod=job.settings.lod and getattr(renderer, "fit", None) is None,
                               **geometry.scale)
-    entries = mesh_bundle.mesh_entries(name, mesh) if len(mesh.tris) else []
+    entries = bundle_entries(name, mesh, morph_blob if job.settings.morph else None) if len(mesh.tris) else []
     copies = []
     for shape in getattr(geometry, "shapes", None) or ():
         products, placed = write_shape(job, scene, out_dir, name, geometry, shape, recorder)
@@ -346,7 +347,7 @@ def write_shape(job, scene, out_dir, name, geometry, shape, recorder):
         channels = lcol_asset.STRIDES[lcol_asset.RGB888]
         sets = [panel_colour(keys[:, k:k + channels]).tobytes() if job.renderer.face_samples
                 else keys[:, k:k + channels].astype('u1').tobytes() for k in range(0, keys.shape[1], channels)]
-        entries.extend(mesh_bundle.mesh_entries(mesh_id, mesh))
+        entries.extend(bundle_entries(mesh_id, mesh, morph_blob if job.settings.morph else None))
         entries.append((lcol_asset.name_for_mesh(mesh_id), lcol_asset.TYPE,
                         lcol_asset.encode(encoding, len(keys), sets)))
         for index, (instance, _) in enumerate(copies):

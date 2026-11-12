@@ -49,7 +49,7 @@ class WriteBakedTests(unittest.TestCase):
         geometry = SimpleNamespace(positions=positions, rgb=np.full((4, 3), 100), tris=np.array([[0, 1, 2], [0, 2, 3]]),
                                    tri_double=np.zeros(2, dtype=int), scale={"position_scale": 8})
         job = SimpleNamespace(renderer=SimpleNamespace(face_samples=face_samples),
-                              settings=SimpleNamespace(meshlet_triangles=MESHLET_TRIANGLES, lod=False))
+                              settings=SimpleNamespace(meshlet_triangles=MESHLET_TRIANGLES, lod=False, morph=False))
         faces = np.array([[255.0, 0.0, 0.0], [0.0, 0.0, 255.0]])
         with tempfile.TemporaryDirectory() as directory, \
                 unittest.mock.patch.object(mesh_import, "flat_colours", return_value=faces) as lit:

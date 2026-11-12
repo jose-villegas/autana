@@ -1,0 +1,10 @@
+root app_physics_lab.c:physics_lab_frame frame
+root test_stage_draws_background_and_releases_memory test
+root test_console_lists_stage_and_switches_without_leaking test
+indirect lab_enter : scene_stage.c:stage_enter
+indirect lab.c:enter_scene : scene_stage.c:stage_enter
+indirect lab_frame : scene_stage.c:stage_frame scene_stage.c:stage_enter scene_stage.c:stage_exit
+indirect lab_exit : scene_stage.c:stage_exit
+indirect lab_test_enter : app_physics_lab.c:physics_lab_enter
+indirect lab_test_frame_dt : app_physics_lab.c:physics_lab_update app_physics_lab.c:physics_lab_frame
+indirect lab_test_exit : app_physics_lab.c:physics_lab_exit

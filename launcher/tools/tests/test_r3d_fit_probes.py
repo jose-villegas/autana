@@ -223,7 +223,8 @@ class PrepareReferencesTests(unittest.TestCase):
         camera = SimpleNamespace(path=path, region=None, near_z=0.1)
         inputs = SimpleNamespace(scene=lambda: SimpleNamespace(camera=SimpleNamespace(component=camera)),
                                  poses=dict(train_every_ms=1, held_out_every_ms=2, coverage_every_ms=1), size=(4, 4),
-                                 probes=probes, job=lambda: None)
+                                 probes=probes, job=lambda: None,
+                                 sets=lambda: reference_set.fit_sets(path is not None, probes is not None, False))
         rendered = []
         with tempfile.TemporaryDirectory() as directory:
             work = pathlib.Path(directory) / "work"
@@ -248,7 +249,7 @@ class PrepareReferencesTests(unittest.TestCase):
         count, written, rendered = self.prepare(self.PROBES, path=object())
         self.assertEqual(count, 2 + 1)
         self.assertEqual([name for name, _ in rendered[0]],
-                         ["train.txt", "train_landscape.txt", "held_out.txt", "probes.txt", "probes_held_out.txt"])
+                         ["train.txt", "train_landscape.txt", "probes.txt", "held_out.txt", "probes_held_out.txt"])
 
 
 if __name__ == "__main__":

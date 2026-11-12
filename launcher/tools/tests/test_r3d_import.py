@@ -106,12 +106,14 @@ def tree_scenes():
 
 
 def fit_key(job, scene):
-    """A fit's bake key (bake/bake.py) with fixed tool digests: what its recipe alone decides."""
+    """A fit's bake key (bake/bake.py) with fixed tool digests: what its recipe alone decides. Its reference set's
+    bytes stand in as a digest of the reference key, as other inputs render other bytes."""
     from bake import bake
 
     tools = {stage: stage for stage in bake.STAGES}
-    start = bake.stage_keys(job, scene, tools)["start"]
-    return bake.stage_keys(job, scene, tools, {start: "5" * 64})["fit"]
+    keys = bake.stage_keys(job, scene, tools)
+    reference = hashlib.sha256(keys["reference"].encode()).hexdigest()
+    return bake.stage_keys(job, scene, tools, {keys["start"]: "5" * 64, keys["reference"]: reference})["fit"]
 
 
 class ImportTests(unittest.TestCase):
@@ -165,6 +167,13 @@ class ImportTests(unittest.TestCase):
             with self.subTest(shaping=shaping):
                 self.rejects(pattern, f"[geometry]\n{shaping}\n" + geometry + VARIANT)
         self.rejects("needs geometry.simplify", '[geometry]\nprobes = { spacing = 2.0 }\n')
+
+    def test_morph_targets_are_off_unless_asked_and_need_levels(self):
+        with tempfile.TemporaryDirectory() as directory:
+            plain = load_import_settings(write_import(directory))
+            asked = load_import_settings(write_import(directory, body='[geometry]\nmorph = true\n'))
+        self.assertEqual((plain.morph, asked.morph), (False, True))
+        self.rejects("geometry.morph needs geometry.lod", '[geometry]\nlod = false\nmorph = true\n')
 
     def test_a_seed_requires_the_geometry_step_that_draws_it(self):
         self.rejects("process.seed needs geometry.thin", '[process]\nseed = 3\n')
@@ -1066,8 +1075,12 @@ class LocalSourceTests(unittest.TestCase):
         self.assertNotEqual(probed[1], reference, "probes left the reference key alone")
         self.assertNotEqual(probed[2], fit)
         self.assertNotEqual(keys("probes = { spacing = 3.0 }\n")[1], probed[1], "the spacing is not in the key")
+        # A budget packs the held-out references its settle reads: the reference key moves once, not by value.
         settling = keys('budget = { step = 2, settle = 0.1 }\n')
-        self.assertEqual(settling[:2], (start, reference), "a budget moved the start or reference key")
+        self.assertEqual(settling[0], start, "a budget moved the start's key")
+        self.assertNotEqual(settling[1], reference, "the scored references are not in the reference key")
+        self.assertEqual(keys('budget = { step = 3, settle = 0.2 }\n')[1], settling[1],
+                         "the budget's value moved the reference key")
         self.assertNotEqual(settling[2], fit)
 
     def test_the_camera_clip_s_keys_and_nothing_else_of_its_file_stamp_recipe_and_reference(self):

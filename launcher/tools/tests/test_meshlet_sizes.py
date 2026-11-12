@@ -72,7 +72,7 @@ class MeshletSettingsTests(unittest.TestCase):
             root = pathlib.Path(directory)
             for size in (16, 64):
                 job = SimpleNamespace(renderer=SimpleNamespace(face_samples=None),
-                                      settings=SimpleNamespace(meshlet_triangles=size, lod=False))
+                                      settings=SimpleNamespace(meshlet_triangles=size, lod=False, morph=False))
                 mesh_import.write_baked(job, None, root, "tiny", geometry)
                 counts = [cluster[3] for cluster in read_lit_mesh(root / "tiny.bundle").clusters]
                 self.assertLessEqual(max(counts), size)
@@ -165,7 +165,7 @@ static void suite_add_test_cleanup(void (*fn)(void)) { cleanup = fn; }
 #define TEST_PASS() ((void)0)
 #define ESP_LOGI(...) ((void)0)
 ''' + bakes + '''
-enum { R3D_PERF_QUARTER_COUNT = 2 };
+enum { LAB_PERF_QUARTER_COUNT = 2 };
 typedef struct { int mean_goal_us, p95_ceiling_us; } perf_budget_t;
 static const int meshes[SCENE_BAKED_VARIANT_COUNT];
 static const char* const sponza_bakes[SCENE_BAKED_VARIANT_COUNT] = {[0 ... SCENE_BAKED_VARIANT_COUNT - 1] = "renderer"};

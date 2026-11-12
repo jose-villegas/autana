@@ -125,9 +125,9 @@ Every Geometry table opts its step in; without it the step does not run.
 `geometry.probes` adds fit views from probes, for a fitted renderer whose camera
 can leave its path. One jittered probe sits in every `spacing` cell of the scene
 camera's region, or of the source's bounds without one. Probes against a wall
-are moved off it, and those still inside geometry are dropped<sup>[[117]](../../Citations.md#majercik-2021)</sup>. Each probe has six 90 degree
+are moved off it, and those still inside geometry are dropped<sup>[[119]](../../Citations.md#majercik-2021)</sup>. Each probe has six 90 degree
 cube faces, `face` pixels square. A face is kept while it shows source triangles
-that the path and the faces kept before it do not<sup>[[118]](../../Citations.md#minoux-1978)</sup>.
+that the path and the faces kept before it do not<sup>[[120]](../../Citations.md#minoux-1978)</sup>.
 
 | Key | What it is | Default |
 |---|---|---|
@@ -374,7 +374,7 @@ view is the camera-path pose where those boxes show the most visible edge;
 | shapes.png | With `--surface-tolerance`: the shapes of 20 triangles or more saving the most, each copy drawn in its shape's frame from an angle |
 | error.csv / error.json / error.md, error.png | With `--held-out`: every object part's path pixels and held-out error, ranked |
 
-What levels of detail save along the camera path is measured on the fitted mesh by [`lod/lod_replay.py`](../../../launcher/tools/r3d/lod/lod_replay.py); see [plans/Cluster-LOD.md](../../plans/Cluster-LOD.md).
+What levels of detail save along the camera path is measured on the fitted mesh by [`lod/lod_replay.py`](../../../launcher/tools/r3d/lod/lod_replay.py); see [frame/Levels-of-Detail.md](../frame/Levels-of-Detail.md).
 
 ### Held-out error by object
 

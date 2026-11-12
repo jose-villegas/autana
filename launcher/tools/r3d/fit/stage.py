@@ -8,7 +8,7 @@ the start's bytes and the reference set (training, held-out and pruning poses), 
 import pathlib
 
 from r3d import mesh_bundle, mesh_asset, log
-from r3d.reference_set import PATH_COVERAGE, PATH_HELD_OUT, PATH_TRAINING, PROBE_HELD_OUT, PROBE_TRAINING
+from r3d.reference_set import fit_sets, shapes_fit
 
 # A carved start's rest is fitted with the reference G-buffer terms (fit/gbuffer.py) at these weights: the front
 # term pushes it behind the copies, the depth term holds it to the source's surface. Picked on street_fitted: front
@@ -38,20 +38,14 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
     steps = min(recipe.steps, 8) if smoke else recipe.steps
     shaping = job.settings.fit
     command = ["--scene", str(scene_path), "--start", str(start)]
-    # The path's sets when the camera has a path, then the probes' when the import sets them; the prune keeps
-    # what the path shows before what only a probe does.
-    path, probed = scene.camera.component.path is not None, shaping.probes is not None
-    training = (PATH_TRAINING if path else ()) + ((PROBE_TRAINING,) if probed else ())
-    coverage = ((PATH_COVERAGE,) if path else ()) + ((PROBE_TRAINING[0],) if probed else ())
-    held_out = ((PATH_HELD_OUT,) if path else ()) + ((PROBE_HELD_OUT,) if probed else ())
-    for poses, reference in training:
+    sets = fit_sets(scene.camera.component.path is not None, shaping.probes is not None, shapes_fit(shaping))
+    for poses, reference in sets.training:
         command += ["--poses", str(inputs / poses), "--reference", str(inputs / reference)]
-    for poses in coverage:
+    for poses in sets.coverage:
         command += ["--coverage-poses", str(inputs / poses)]
     # A fit shaped by the import counts its holes over the held-out views; settle picks its budget by them.
-    if probed or shaping.budget is not None:
-        for poses, reference in held_out:
-            command += ["--held-out-poses", str(inputs / poses), "--held-out-reference", str(inputs / reference)]
+    for poses, reference in sets.scored:
+        command += ["--held-out-poses", str(inputs / poses), "--held-out-reference", str(inputs / reference)]
     if shaping.budget is not None:
         command += ["--settle", str(shaping.budget.step), str(shaping.budget.settle)]
     command += ["--out", str(out), "--budget", str(recipe.budget if budget is None else budget),
@@ -61,7 +55,7 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
                 "--surface-margin", str(recipe.surface_margin)]
     if copies:
         # The copy gate checks the path's held-out views, or the probes' when the camera has no path.
-        command += ["--copies", str(bundle), "--copy-poses", str(inputs / held_out[0][0]),
+        command += ["--copies", str(bundle), "--copy-poses", str(inputs / sets.held_out[0][0]),
                     "--front-weight", str(FRONT_WEIGHT), "--depth-weight", str(DEPTH_WEIGHT)]
     if cost_weight:
         command += ["--cost-model", str(pathlib.Path(__file__).parents[1] / "board_cost_weights.txt"),
