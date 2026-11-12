@@ -208,7 +208,8 @@ def main():
     if not command:
         parser.error("start needs -- <command...>")
     output({"rendered": True})
-    if not quiet_host(workflow):
+    # Windows has no CPU affinity call in os; a stage there shares every CPU.
+    if not quiet_host(workflow) and hasattr(os, "sched_setaffinity"):
         share = cpu_share(os.sched_getaffinity(0))
         os.sched_setaffinity(0, share)
         print(f"beside board work on CPUs {','.join(map(str, sorted(share)))}", flush=True)
