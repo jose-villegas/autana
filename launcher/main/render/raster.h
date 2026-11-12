@@ -72,10 +72,6 @@ raster_settings(const raster_t* raster) {
     return raster->settings != NULL ? *raster->settings : RENDER_SETTINGS_DEFAULT;
 }
 
-/* `set` under every development override that is set; a release build's is
- * `set`. Resolved once a frame, so a draw reads plain fields. */
-render_settings_t render_settings_tuned(const render_settings_t* set);
-
 /* The viewport a view frames: destination size when upscaled, otherwise drawn size. */
 static inline viewport_t
 raster_viewport(const raster_t* raster, int quarter) {

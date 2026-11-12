@@ -16,8 +16,9 @@
 /* The draw path's entry functions run from IRAM: on a dense scene, flash
  * fetch stalls cost the drawing core about a tenth of its draw cycles. The
  * cull's serial setup (lens, planes, level pick) runs once a frame, so from
- * flash each of its calls missed the instruction cache. IRAM has no cache line to place a loop on, so the render sources' cache-line
- * function alignment would only waste IRAM; 4 bytes keeps entries aligned.
+ * flash each of its calls missed the instruction cache. IRAM has no cache
+ * line to place a loop on, so the render sources' cache-line function
+ * alignment would only waste IRAM; 4 bytes keeps entries aligned.
  * IRAM budget: release 8035 B, dev 8031 B, diag 8031 B */
 #define RENDER_IRAM_ATTR IRAM_ATTR __attribute__((aligned(4)))
 /* The draw path's copies for a view that skips clusters behind drawn depth
