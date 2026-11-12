@@ -17,6 +17,10 @@ CACHE = HERE / ".cache"
 
 UNLIMITED_ERROR = 1e9
 
+# meshoptimizer.h's meshopt_SimplifyErrorAbsolute (the error is in model units)
+# and meshopt_SimplifyPrune (a piece smaller than the error goes entirely).
+ERROR_ABSOLUTE = 1 << 2
+PRUNE = 1 << 3
 REGULARIZE = 1 << 4
 PERMISSIVE = 1 << 5
 REGULARIZE_LIGHT = 1 << 6
@@ -60,6 +64,21 @@ def simplify_with_update(pos, rgb, tris, target_triangles, colour_weight, option
     out = i[:n].reshape(-1, 3).astype(np.int64)
     kept, local = np.unique(out, return_inverse=True)
     return (p[kept].astype(np.float64), np.clip(a[kept] * 255.0, 0.0, 255.0), local.reshape(-1, 3), kept)
+
+
+def simplify_to_error(positions, triangles, error, options=ERROR_ABSOLUTE):
+    """The triangles that remain once no vertex can go without moving the surface more than `error` model units:
+    just enough triangles for that error, with no triangle target."""
+    fn = _library().meshopt_simplify
+    fn.restype = ctypes.c_size_t
+    p = np.ascontiguousarray(positions, dtype=np.float32)
+    i = np.ascontiguousarray(np.asarray(triangles).reshape(-1), dtype=np.uint32)
+    out = np.empty_like(i)
+    c = ctypes.c_void_p
+    n = fn(out.ctypes.data_as(c), i.ctypes.data_as(c), ctypes.c_size_t(len(i)), p.ctypes.data_as(c),
+           ctypes.c_size_t(len(p)), ctypes.c_size_t(12), ctypes.c_size_t(0), ctypes.c_float(error),
+           ctypes.c_uint(options), None)
+    return out[:n].reshape(-1, 3).astype(np.int64)
 
 
 class _Meshlet(ctypes.Structure):
