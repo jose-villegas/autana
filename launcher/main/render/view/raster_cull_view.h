@@ -17,6 +17,7 @@
 
 #include <stdint.h>
 
+#include "collections/bits.h"
 #include "gfx/gfx.h"
 #include "render/r3d_pipeline.h"
 #include "render/raster.h"
@@ -134,7 +135,7 @@ typedef struct {
     /* The tree walks' pending nodes, here rather than on the drawing task's stack. */
     uint16_t walk_node[R3D_LIT_WALK_STACK_MAX], walk_shown[R3D_LIT_WALK_STACK_MAX];
     uint8_t walk_depth[R3D_LIT_WALK_STACK_MAX];
-    uint32_t covered[RASTER_CULL_TRIANGLES_MAX / 32];
+    uint32_t covered[BITS32_WORDS(RASTER_CULL_TRIANGLES_MAX)];
     /* The culled clusters' picture, as painted, and its depth: R3D_DEPTH_EMPTY
      * where nothing of them shows. */
     gfx_color_t under_color[RASTER_CULL_PIXELS_MAX];

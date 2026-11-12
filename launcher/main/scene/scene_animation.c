@@ -62,7 +62,7 @@ scene_animate_range(scene_t* scene, int first, int count, uint32_t dt_ms) {
         }
         const anim_pose_t* pose = anim_layer_pose(&a->layer, &a->skeleton, a->joint_tables, a->counts);
         scene_skinned_renderer_t* skin = &scene->skinned_renderers[e];
-        if (skin->internal_storage != NULL) {
+        if (skin->storage != NULL) {
             anim_pose_model(&a->skeleton, pose, skin->model);
             r3d_skin_palette(&skin->skin, skin->model, skin->bind.position_scale, skin->palette);
         }
@@ -96,7 +96,7 @@ scene_skin_range(scene_t* scene, int first, int count) {
     for (int i = 0; i < scene->staged_count; i++) {
         const scene_row_t e = scene->staged[i];
         scene_skinned_renderer_t* skin = &scene->skinned_renderers[e];
-        if (skin->internal_storage == NULL || !scene->animators[e].posed) {
+        if (skin->storage == NULL || !scene->animators[e].posed) {
             continue;
         }
         const int clusters = skin->bind.cluster_count;
@@ -171,10 +171,10 @@ skin_stage_prepare(scene_t* scene, uint32_t dt_ms) {
         if (!(scene->flags[e] & SCENE_FLAG_ACTIVE)) {
             continue;
         }
-        if (skin->internal_storage != NULL && scene->light_transfer != NULL) {
+        if (skin->storage != NULL && scene->light_transfer != NULL) {
             animator->posed |= lights_dirty || (scene->flags[e] & SCENE_FLAG_SKIN_DIRTY);
         }
-        if (skin->internal_storage != NULL && animator->posed) {
+        if (skin->storage != NULL && animator->posed) {
             scene_skin_light_prepare(scene, e);
             clusters += skin->bind.cluster_count;
         }
@@ -201,7 +201,7 @@ scene_animation_repose(scene_t* scene, uint32_t dt_ms) {
     (void)job_run_range(&scene->skin_share, skin_slice, scene, clusters);
     for (int i = 0; i < scene->staged_count; i++) {
         const scene_row_t e = scene->staged[i];
-        if (scene->skinned_renderers[e].internal_storage != NULL && scene->animators[e].posed) {
+        if (scene->skinned_renderers[e].storage != NULL && scene->animators[e].posed) {
             r3d_skin_refit_nodes(&scene->skinned_renderers[e].output);
             scene_renderer_bound(&scene->renderers[scene_renderer_index(scene, e)]);
         }
@@ -227,14 +227,12 @@ scene_animation_checkpoint_capture(checkpoint_t* saved, scene_t* scene) {
         scene_skinned_renderer_t* skin = &scene->skinned_renderers[e];
         const size_t joints = skin->skin.joint_count;
         const size_t internal_bytes =
-            skin->internal_storage == NULL
-                ? 0
-                : (size_t)((uint8_t*)(skin->palette + joints) - (uint8_t*)skin->internal_storage);
+            skin->storage == NULL ? 0 : (size_t)((uint8_t*)(skin->palette + joints) - (uint8_t*)skin->storage);
         const size_t light_bytes =
             skin->light_storage == NULL
                 ? 0
                 : (size_t)((uint8_t*)(skin->normal_palette + joints) - (uint8_t*)skin->light_storage);
-        checkpoint_capture_at(saved, &skin->internal_storage, internal_bytes);
+        checkpoint_capture_at(saved, &skin->storage, internal_bytes);
         checkpoint_capture_at(saved, &skin->light_storage, light_bytes);
     }
 }
