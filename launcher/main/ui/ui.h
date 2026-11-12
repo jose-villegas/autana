@@ -252,6 +252,9 @@ void ui_row_centre(int w, int h);
 /* Flow in cells: ui_next() hands out cells `h` tall left to right, `cols` to
  * a row, the window's width shared out among them, until the next row verb. */
 void ui_row_cells(int cols, int h);
+/* The height that fits `rows` rows of cells, gaps between, in the open
+ * window's height; 0 with no window open. */
+int ui_cell_height(int rows);
 recti_t ui_next(void);
 
 bool ui_button(recti_t r, const char* label);

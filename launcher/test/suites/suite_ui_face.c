@@ -605,6 +605,29 @@ test_cells_share_the_window_width(void) {
     TEST_ASSERT_EQUAL_INT_MESSAGE(inner_w, after.w, "a row after the cells spans the window");
 }
 
+#define FILL_ROWS 3
+
+/* Rows of cells ui_cell_height() tall fill the window's height: the last
+ * ends within a row count of its bottom padding, never past it. */
+static void
+test_cell_height_fills_the_window_with_rows(void) {
+    fixture();
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, ui_cell_height(FILL_ROWS), "no window, no height");
+    begin_face();
+    ui_row_cells(1, ui_cell_height(FILL_ROWS));
+    recti_t last = recti_empty();
+    for (int i = 0; i < FILL_ROWS; i++) {
+        last = ui_next();
+    }
+    const int none = ui_cell_height(0);
+    end_face();
+
+    const int floor_y = ui_height() - UI_PADDING;
+    TEST_ASSERT_LESS_OR_EQUAL_INT(floor_y, recti_bottom(last));
+    TEST_ASSERT_GREATER_THAN_INT(floor_y - FILL_ROWS, recti_bottom(last));
+    TEST_ASSERT_EQUAL_INT(0, none);
+}
+
 /* A button's label too wide for one line splits at a space, line one above
  * line two; text that fits clips nothing, text that cannot is counted. */
 static void
@@ -1817,6 +1840,7 @@ run_ui_face_suite(void) {
     RUN_TEST(test_overflowing_flow_starts_at_the_top_whatever_the_alignment);
     RUN_TEST(test_an_aligned_window_is_unsettled_only_until_measured);
     RUN_TEST(test_cells_share_the_window_width);
+    RUN_TEST(test_cell_height_fills_the_window_with_rows);
     RUN_TEST(test_a_button_label_wraps_at_a_space_and_clipping_is_counted);
     RUN_TEST(test_identity_duplicate_label);
     RUN_TEST(test_identity_two_windows);

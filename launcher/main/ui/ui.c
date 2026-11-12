@@ -296,11 +296,25 @@ next_canvas_command(const mu_Container* cnt, mu_Command** cmd) {
 void (*ui_canvas_painted_for_test)(const mu_Container*);
 #endif
 
+static bool command_rect(const mu_Command* cmd, mu_Rect* out);
+
+/* `only_drawn_under`: an unchanged canvas whose pixels stand except where
+ * something drew under it this frame replays only the commands over those
+ * places. Painter's order keeps it whole: a command that repaints marks its
+ * own rect, so whatever is drawn over it then repaints too. */
+static bool
+skip_command(const mu_Command* cmd, bool only_drawn_under) {
+    mu_Rect r;
+    return only_drawn_under && command_rect(cmd, &r) && !gfx_region_dirty(r.x, r.y, r.w, r.h);
+}
+
 static void
-paint_canvas(const mu_Container* cnt) {
+paint_canvas(const mu_Container* cnt, bool only_drawn_under) {
     mu_Command* cmd = NULL;
     while (next_canvas_command(cnt, &cmd)) {
-        draw_command(cmd);
+        if (!skip_command(cmd, only_drawn_under)) {
+            draw_command(cmd);
+        }
     }
     draw_clear_clip();
 #ifndef ESP_PLATFORM
@@ -409,7 +423,7 @@ clear_vanished_canvases(uint32_t background_rgb) {
 }
 
 static bool
-repaint_marked_canvases(int n, const bool* repaint, uint32_t background_rgb) {
+repaint_marked_canvases(int n, const bool* repaint, uint32_t background_rgb, bool only_drawn_under) {
     bool drew = false;
 
     for (int i = 0; i < n && i < MU_ROOTLIST_SIZE; i++) {
@@ -425,7 +439,7 @@ repaint_marked_canvases(int n, const bool* repaint, uint32_t background_rgb) {
             draw_rect(phys.x, phys.y, phys.w, phys.h, RGB565BE(background_rgb));
         }
 
-        paint_canvas(cnt);
+        paint_canvas(cnt, only_drawn_under);
 
         const int slot = (int)(cnt - ui_ctx.containers);
         if (slot >= 0 && slot < MU_CONTAINERPOOL_SIZE) {
@@ -482,7 +496,7 @@ ui_end(uint32_t background_rgb) {
     clear_vanished_canvases(background_rgb);
     mark_changed_canvases(n, repaint);
     propagate_repaint_over_overlaps(n, repaint);
-    const bool drew = repaint_marked_canvases(n, repaint, background_rgb);
+    const bool drew = repaint_marked_canvases(n, repaint, background_rgb, false);
 
     ui_invalidated = false;
 #if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT
@@ -528,7 +542,7 @@ ui_end_over(ui_backdrop_fn paint_backdrop) {
         mark_changed_canvases(n, repaint);
         propagate_repaint_over_overlaps(n, repaint);
     }
-    const bool drew = repaint_marked_canvases(n, repaint, UI_NO_BACKGROUND);
+    const bool drew = repaint_marked_canvases(n, repaint, UI_NO_BACKGROUND, !ui_changed);
 
     ui_invalidated = false;
 #if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT
@@ -572,7 +586,7 @@ typedef struct {
     ui_band_entry_kind_t kind;
     int y0, y1;  /* this entry's own row range, ignored when always is true */
     bool always; /* replay regardless of a band's own range: UI_BAND_ENTRY_CLIP_RESET,
-                                and any command type command_row_range() does not
+                                and any command type command_rect() does not
                                 recognise (currently just MU_COMMAND_CLIP, whose
                                 effect is state for what follows, not pixels of
                                 its own) */
@@ -612,54 +626,36 @@ ui_queue_band_overlay_rect(int x, int y, int w, int h, uint32_t rgb) {
     }
 }
 
-/* The row range `cmd`'s own drawing would touch, after the transform:
- * geometry only, no colour or font-pass work, since binning only needs to
- * decide whether a band should bother calling draw_command() at all.
- * False means "no extent of its own" (MU_COMMAND_CLIP), which the caller
- * takes to mean "always replay". */
+/* The physical rect `cmd`'s own drawing would touch, after the transform:
+ * geometry only, no colour or font-pass work. False means "no extent of its
+ * own" (MU_COMMAND_CLIP), which callers take to mean "always replay". */
 static bool
-command_row_range(const mu_Command* cmd, int* y0, int* y1) {
+command_rect(const mu_Command* cmd, mu_Rect* out) {
     const affine2x_t t = ui_effective_transform();
 
     switch (cmd->type) {
-        case MU_COMMAND_RECT: {
-            const mu_Rect r = ui_transform_mu_rect(t, cmd->rect.rect);
-            *y0 = r.y;
-            *y1 = r.y + r.h;
-            return true;
-        }
-        case UI_COMMAND_IMAGE:
-        case UI_COMMAND_SWATCHES:
-        case UI_COMMAND_ROUND_RECT: {
-            const mu_Rect rect = cmd->type == UI_COMMAND_IMAGE      ? ((const ui_image_command_t*)cmd)->rect
-                                 : cmd->type == UI_COMMAND_SWATCHES ? ((const ui_swatch_command_t*)cmd)->rect
-                                                                    : ((const ui_round_command_t*)cmd)->rect;
-            const mu_Rect r = ui_transform_mu_rect(t, rect);
-            *y0 = r.y;
-            *y1 = r.y + r.h;
-            return true;
-        }
+        case MU_COMMAND_RECT: *out = ui_transform_mu_rect(t, cmd->rect.rect); return true;
+        case UI_COMMAND_IMAGE: *out = ui_transform_mu_rect(t, ((const ui_image_command_t*)cmd)->rect); return true;
+        case UI_COMMAND_SWATCHES: *out = ui_transform_mu_rect(t, ((const ui_swatch_command_t*)cmd)->rect); return true;
+        case UI_COMMAND_ROUND_RECT: *out = ui_transform_mu_rect(t, ((const ui_round_command_t*)cmd)->rect); return true;
+        case MU_COMMAND_ICON: *out = ui_transform_mu_rect(t, cmd->icon.rect); return true;
         case MU_COMMAND_TEXT: {
             const ui_font_scaled_t fs = ui_resolve_font_scaled(cmd->text.font);
             const int tw = draw_font_text_width(fs.font, cmd->text.str, -1, fs.scale);
             const int th = draw_font_height(fs.font, fs.scale);
             const mu_Rect box = ui_transform_mu_rect(t, (mu_Rect){cmd->text.pos.x, cmd->text.pos.y, tw, th});
-            *y0 = box.y;
-            *y1 = box.y + box.h;
+            int x0 = box.x, y0 = box.y, x1 = box.x + box.w, y1 = box.y + box.h;
             if (cmd->text.color.a == 255) {
                 ui_text_pass_t passes[UI_TEXT_MAX_PASSES];
                 const int n = ui_text_passes(ui_text_style, passes, UI_TEXT_MAX_PASSES);
                 for (int i = 0; i < n; i++) {
-                    *y0 = mathi_min(*y0, box.y + passes[i].dy);
-                    *y1 = mathi_max(*y1, box.y + box.h + passes[i].dy);
+                    x0 = mathi_min(x0, box.x + passes[i].dx);
+                    y0 = mathi_min(y0, box.y + passes[i].dy);
+                    x1 = mathi_max(x1, box.x + box.w + passes[i].dx);
+                    y1 = mathi_max(y1, box.y + box.h + passes[i].dy);
                 }
             }
-            return true;
-        }
-        case MU_COMMAND_ICON: {
-            const mu_Rect r = ui_transform_mu_rect(t, cmd->icon.rect);
-            *y0 = r.y;
-            *y1 = r.y + r.h;
+            *out = (mu_Rect){x0, y0, x1 - x0, y1 - y0};
             return true;
         }
         default: return false;
@@ -787,7 +783,10 @@ ui_end_for_bands(uint32_t background_rgb) {
         mu_Command* cmd = NULL;
         while (next_canvas_command(cnt, &cmd)) {
             ui_band_entry_t entry = {.kind = UI_BAND_ENTRY_COMMAND, .cmd = cmd};
-            entry.always = !command_row_range(cmd, &entry.y0, &entry.y1);
+            mu_Rect rect;
+            entry.always = !command_rect(cmd, &rect);
+            entry.y0 = rect.y;
+            entry.y1 = rect.y + rect.h;
             (void)bin_entry(&entry);
         }
 
@@ -828,7 +827,7 @@ replay_full_band(void) {
             const mu_Rect r = canvas_physical_rect(cnt);
             draw_rect(r.x, r.y, r.w, r.h, RGB565BE(ui_band_background));
         }
-        paint_canvas(cnt);
+        paint_canvas(cnt, false);
     }
     for (int i = 0; i < replay_rect_count; i++) {
         const ui_extra_rect_t* r = &extra_rects[i];

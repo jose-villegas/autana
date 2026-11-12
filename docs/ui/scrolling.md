@@ -69,8 +69,9 @@ there; build the second time without input, as above, to drop it.
 
 `ui_row_cells(cols, h)` flows cells `h` tall, `cols` to a row: the window's
 width is shared out among them, the rows centred across it, until the next
-row verb. A grid of choices is one `ui_row_cells()` and a `ui_next()` per
-choice.
+row verb. `ui_cell_height(rows)` is the height that fits `rows` of them in
+the window, so a grid that fills its window is
+`ui_row_cells(cols, ui_cell_height(rows))` and a `ui_next()` per choice.
 
 ## A drag or a press
 

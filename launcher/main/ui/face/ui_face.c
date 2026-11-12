@@ -190,10 +190,6 @@ visible_label_length(const char* label) {
     return end ? (int)(end - label) : -1;
 }
 
-/* `rows_only`: a window that scrolls down only, whose content is never
- * counted wider than the window, so microui never reserves a sideways bar.
- * One would narrow the body, overflowing content that just fit, and the two
- * bars would then hold each other up for good. */
 /* Ends the open window; an aligned one checks the lead it used against the
  * flow it has just measured. */
 static void
@@ -215,6 +211,10 @@ close_window(void) {
     }
 }
 
+/* `rows_only`: a window that scrolls down only, whose content is never
+ * counted wider than the window, so microui never reserves a sideways bar.
+ * One would narrow the body, overflowing content that just fit, and the two
+ * bars would then hold each other up for good. */
 static void
 open_window(recti_t r, bool rows_only) {
     char name[UI_FACE_NAME_MAX];
@@ -338,6 +338,16 @@ ui_row_cells(int cols, int h) {
         cells_x = (inner_w - ((cols * w) + gaps)) / 2;
     }
     UI_FACE_COST_END(face_from, "ui.face");
+}
+
+int
+ui_cell_height(int rows) {
+    if (!window_open || rows <= 0) {
+        return 0;
+    }
+    mu_Context* ctx = ui_context();
+    const int inner_h = mu_get_current_container(ctx)->body.h - (2 * ctx->style->padding);
+    return (inner_h - ((rows - 1) * ctx->style->spacing)) / rows;
 }
 
 recti_t

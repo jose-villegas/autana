@@ -18,10 +18,10 @@
 #               instrumentation (frame timings, the screenshot listener)
 #               plus the Self Test app, but no test suites. See below.
 #   --diag      build the DIAGNOSTICS image (build.diag/): everything --dev
-#               gets you, plus the on-device test suites and Diagnostics' own
-#               button for running them. See below.
+#               gets you, plus the on-device test suites and the Self Test
+#               app's own button for running them. See below.
 #   --autorun   with --diag only: layer sdkconfig.defaults.diag_autorun, so
-#               the suites run at boot instead of waiting for Diagnostics'
+#               the suites run at boot instead of waiting for Self Test's
 #               button. A serial capture of SELFTEST_COMPLETE needs this;
 #               interactive use does not, and pays a full suite run per boot
 #               for it. Without the flag AUTORUN must be ABSENT, so a build

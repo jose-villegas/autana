@@ -27,13 +27,7 @@ ui_launcher_init(void) {
     ui_init();
 }
 
-/* The strip across the top, reserved for status and left blank. */
-static void
-draw_banner(void) {
-    ui_window((recti_t){0, 0, ui_width(), UI_BANNER_HEIGHT});
-}
-
-/* The grid fills the window below the banner: its width shared out across
+/* The grid fills the window below the banner strip, which is left blank: its width shared out across
  * the columns, its height across the rows. Centred while it fits, scrolling
  * once it does not. Returns which app this frame's tap chose, or NULL. */
 static const app_t*
@@ -42,11 +36,10 @@ draw_app_grid(void) {
                             ui_height() - UI_BANNER_HEIGHT - LAUNCHER_GRID_INSET};
     const bool landscape = ui_width() > ui_height();
     const int rows = landscape ? LAUNCHER_ROWS_LANDSCAPE : LAUNCHER_ROWS_PORTRAIT;
-    const int cell_h = (window.h - (2 * UI_PADDING) - ((rows - 1) * UI_ROW_GAP)) / rows;
 
     ui_scroll_window_aligned(window, UI_ALIGN_CENTRE);
     ui_corner_radius(LAUNCHER_TILE_RADIUS);
-    ui_row_cells(landscape ? LAUNCHER_COLS_LANDSCAPE : LAUNCHER_COLS_PORTRAIT, cell_h);
+    ui_row_cells(landscape ? LAUNCHER_COLS_LANDSCAPE : LAUNCHER_COLS_PORTRAIT, ui_cell_height(rows));
     const app_t* chosen = NULL;
     for (const app_t* app = app_list(); app != NULL; app = app->next) {
         if (ui_button(ui_next(), app->name)) {
@@ -61,6 +54,5 @@ const app_t*
 ui_launcher_draw(void) {
     /* Sized from ui_width()/ui_height(), not GFX_WIDTH/GFX_HEIGHT, so it
      * still fits after a quarter turn swaps which one is larger. */
-    draw_banner();
     return draw_app_grid();
 }

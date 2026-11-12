@@ -14,6 +14,7 @@ static app_t* apps_head;
 static int
 kind_rank(app_kind_t kind) {
     static const int RANK[] = {[APP_KIND_LAB] = 0, [APP_KIND_APP] = 1, [APP_KIND_SYSTEM] = 2};
+    assert((unsigned)kind < sizeof RANK / sizeof RANK[0]);
     return RANK[kind];
 }
 

@@ -7,6 +7,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "math/scalar/mathi.h"
 #include "microui.h"
 #include "ui/ui.h"
 
@@ -137,12 +138,7 @@ ui_round_inset(int radius, int h, int row) {
     }
     /* The row's centre sits d/2 above the circle's centre. */
     const int d = (2 * (radius - from_edge)) - 1;
-    const int under = (4 * radius * radius) - (d * d);
-    int root = 0;
-    while ((root + 1) * (root + 1) <= under) {
-        root++;
-    }
-    return radius - ((root + 1) / 2);
+    return radius - ((mathi_half_chord(2 * radius, d) + 1) / 2);
 }
 
 /*
