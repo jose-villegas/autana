@@ -843,7 +843,7 @@ cull_instances(const raster_t* raster, const render_view_t* view, bool fitted, r
     CULL_LAP(FRAME_LAP, fitted, "split");
     cull_begin(work, raster, view, fitted);
     int16_t* share = raster->split != NULL ? &raster->split->cull_offset : NULL;
-    FRAME_LAP_END();
+    /* The split lap runs on into the fork: this core's slice ends it. */
     (void)job_run_range_in(share, cull_slice, &work->cull, work->cull.drawn_count, work->cull.ranges);
     CULL_LAP(FRAME_LAP_SINCE, fitted, "wait");
     CULL_LAP(FRAME_LAP, fitted, "split");
