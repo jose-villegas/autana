@@ -118,17 +118,19 @@ def derived_budgets(pos, tri_v, tri_m, tri_o, selected, room, eyes, focal, near)
 
 
 def detail_report(shapes, passes, object_names, focal):
-    """(rows, authoring): per derived shape its copies, nearest view, near and kept triangles, rung and the kept
-    level's measured surface move in pixels at that view; then the shapes needs_authoring() names."""
-    moved = {frozenset(entry["objects"]): entry["surface_error"] for entry in passes if "surface_error" in entry}
+    """(rows, authoring): per derived shape its copies, nearest view, source and near-level triangles, its rung
+    and that rung's triangles, the triangles the carve kept to fit the rung's error, and the carved level's
+    measured surface move in pixels at that view; then the shapes needs_authoring() names."""
+    carved = {frozenset(entry["objects"]): entry for entry in passes if "surface_error" in entry}
     rows = []
     for shape in shapes:
         names = [object_names[obj] for obj in shape["objects"]]
-        error = moved.get(frozenset(names))
+        entry = carved.get(frozenset(names), {})
         rows.append(dict(shape=names[0], copies=len(names), nearest=shape["distance"],
-                         near_triangles=shape["ladder"][0].triangles,
-                         kept_triangles=shape["ladder"][shape["pick"]].triangles, rung=shape["pick"],
-                         error_px=None if error is None else error * focal / shape["distance"]))
+                         source_triangles=len(shape["triangles"]), near_triangles=shape["ladder"][0].triangles,
+                         rung=shape["pick"], rung_triangles=shape["ladder"][shape["pick"]].triangles,
+                         carved_triangles=entry.get("output_triangles"),
+                         error_px=entry["surface_error"] * focal / shape["distance"] if entry else None))
     found = detail.needs_authoring([(row["shape"], row["error_px"], row["rung"] > 0) for row in rows
                                     if row["error_px"] is not None])
     return rows, [asdict(item) for item in found]
