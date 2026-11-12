@@ -119,10 +119,10 @@ class CarveWithinTest(unittest.TestCase):
 class DetailReportTest(unittest.TestCase):
     def test_each_shape_s_surface_move_is_reported_in_pixels_at_its_nearest_view(self):
         rungs = [detail.Rung(100, 2.0), detail.Rung(40, 4.0)]
-        shapes = [dict(objects=[0, 1], distance=2.0, ladder=rungs, pick=1)]
-        passes = [dict(objects=["b", "a"], surface_error=0.05)]
+        shapes = [dict(objects=[0, 1], distance=2.0, ladder=rungs, pick=1, triangles=np.zeros((120, 3)))]
+        passes = [dict(objects=["b", "a"], surface_error=0.05, output_triangles=48)]
         rows, authoring = carve.detail_report(shapes, passes, ["a", "b"], FOCAL)
-        self.assertEqual(rows[0]["kept_triangles"], 40)
+        self.assertEqual((rows[0]["rung_triangles"], rows[0]["carved_triangles"]), (40, 48))
         self.assertAlmostEqual(rows[0]["error_px"], 0.05 * FOCAL / 2.0)
         self.assertEqual(authoring, [dict(shape="a", error_px=rows[0]["error_px"], reason="ceiling")])
 
