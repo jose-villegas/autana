@@ -225,7 +225,7 @@ class LocalScheduleTests(unittest.TestCase):
             clock.sleep(timeout)
             if progressing:
                 stamp = progressing()
-                os.utime(os.environ[schedule.STAGE_PROGRESS_ENV], (stamp, stamp))
+                os.utime(os.environ[schedule.stage_progress_env()], (stamp, stamp))
             outcome = waits.pop(0)
             if isinstance(outcome, BaseException):
                 raise outcome
@@ -240,7 +240,7 @@ class LocalScheduleTests(unittest.TestCase):
                  patch.object(schedule, 'close_process_tree'), \
                  contextlib.redirect_stdout(io.StringIO()) as output:
             code = schedule.main()
-            progress = os.environ[schedule.STAGE_PROGRESS_ENV]
+            progress = os.environ[schedule.stage_progress_env()]
         record = json.loads(next((Path(root) / 'night-steps').glob('*/*.json')).read_text())
         self.assertEqual((record['marker'], record['run'], record['workflow'], record['exit']),
                          (marker, '42', schedule.DOC_IMAGES_WORKFLOW, code))

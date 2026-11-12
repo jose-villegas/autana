@@ -11,12 +11,10 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "device"))
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher/tools"))
 from scripts.ci.github_api import PER_PAGE, call, pages
 from device_lock import LockStore, board_read_root, heavy_root, write_json
 from process_tree import launch_process_tree, stop_process_tree, close_process_tree
 from ci_step import output, summarize
-from r3d.task_executor import STAGE_PROGRESS_ENV
 
 NIGHT_START = "01:00"
 # Boards start after the GPU's night work: two hours of day board time when no GPU work is queued.
@@ -180,6 +178,13 @@ def guard_stage(process, progress, started, clock, workflow):
             return EXIT_HUNG
 
 
+def stage_progress_env():
+    """The variable naming the file a GPU stage's tools touch per finished task; its owner is the executor."""
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher/tools"))
+    from r3d.task_executor import STAGE_PROGRESS_ENV
+    return STAGE_PROGRESS_ENV
+
+
 def quiet_host(workflow):
     return workflow in QUIET_HOST_WORKFLOWS
 
@@ -245,7 +250,7 @@ def main():
     progress = steps / (workflow + ".progress")
     progress.parent.mkdir(parents=True, exist_ok=True)
     progress.touch()
-    os.environ[STAGE_PROGRESS_ENV] = str(progress)
+    os.environ[stage_progress_env()] = str(progress)
     process = None
     try:
         process = launch_process_tree(command)
