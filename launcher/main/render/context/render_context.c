@@ -9,7 +9,6 @@
 #include "build/build_variant.h"
 #include "core/memory.h"
 #include "core/timing.h"
-#include "core/tune.h"
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 #include "render/view/raster_boxes.h"
@@ -270,9 +269,9 @@ draw_second_view(render_context_t* c) {
         return;
     }
     /* Its own views and clusters: none may steer the frame's core split, and
-     * the hook reads the override the frame drew with. */
-    const tune_entry_t* culling = tune_find(tune_shared(), TUNE_NAME(render, cull));
-    const int32_t culled = *culling->value;
+     * the hook reads the settings the frame drew with. */
+    render_settings_t unculled = c->drawn_settings;
+    unculled.cull = false;
     const transformf_t* observer = c->observing ? &c->observer : NULL;
     render_view_t* second = &c->second;
     bool listed = false;
@@ -285,9 +284,9 @@ draw_second_view(render_context_t* c) {
         if (listed) {
             raster_draw_culled(&c->raster, second);
         } else {
-            (void)tune_set(tune_shared(), TUNE_NAME(render, cull), 0);
+            c->raster.settings = &unculled;
             (void)raster_draw(&c->raster, second);
-            (void)tune_set(tune_shared(), TUNE_NAME(render, cull), culled);
+            c->raster.settings = &c->drawn_settings;
         }
         c->raster.split = &c->split;
         c->raster.picks_levels = true;

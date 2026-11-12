@@ -56,3 +56,7 @@ typedef struct {
  * RENDER_LOD_BLEND_PX_MAX (else ASSET_ERR_FORMAT). ASSET_ERR_NOT_FOUND when
  * the pack has none; `out` is written only on ASSET_OK. */
 asset_status_t render_settings_read(const asset_pack_t* pack, render_settings_t* out);
+
+/* `set` under every development override that is set; a release build's is
+ * `set`. A render context resolves it once a frame, so a draw reads plain fields. */
+render_settings_t render_settings_tuned(const render_settings_t* set);
