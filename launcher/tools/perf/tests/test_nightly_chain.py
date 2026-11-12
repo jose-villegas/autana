@@ -141,6 +141,7 @@ class NightlyTests(unittest.TestCase):
         header = self.repo / "launcher/test/suites.h"
         header.parent.mkdir(parents=True)
         header.write_text("#define SUITE_FILTER_LEN 24\n#define SUITE_FILTER_MAX 4\n")
+        (self.repo / "launcher/test/suite_fixture.c").write_text(chain.SUITE_REGISTRATION.format("suite"))
         for number in range(6):
             (self.repo / "code").write_text(str(number))
             chain.git(self.repo, "add", ".")
@@ -208,6 +209,17 @@ class NightlyTests(unittest.TestCase):
         def capture(*args, **kwargs):
             return dict(original(*args, **kwargs), **fields)
         return patch.object(chain, "run_flash", side_effect=capture)
+
+    def test_a_step_older_than_a_suite_measures_without_it(self):
+        (self.repo / "launcher/test/suite_late.c").write_text(chain.SUITE_REGISTRATION.format("late"))
+        chain.git(self.repo, "add", ".")
+        chain.git(self.repo, "commit", "-qm", "a late suite (#106)")
+        self.commits.append(chain.git(self.repo, "rev-parse", "HEAD"))
+        self.args.suite = [("suite", "-", "-"), ("late", "-", "-")]
+        results, replay, _ = self.run_chain(self.steps((1, 6)))
+        ran = [command[command.index("suite") + 1] for command in replay.calls if "suite" in command]
+        self.assertEqual(ran, ["suite", "suite", "late"])
+        self.assertEqual([result.outcome for result in results], ["measured", "measured"])
 
     def test_lane_timestamps_and_timeline(self):
         marker = self.clock.now().isoformat()

@@ -60,6 +60,8 @@ FAILED_SELFTEST = ("failed", "incomplete")
 LISTED_FAILURES = 10
 SELFTEST_ALLOWANCE_SECONDS = 120 * 60
 CAPTURE_TIMEOUT_SECONDS = 1800
+# How a device suite registers itself; a step's commit without it never runs that suite.
+SUITE_REGISTRATION = "SUITE_REGISTER({});"
 BUILD_TIMEOUT_SECONDS = 3600
 LANE_HANG_FACTOR = 2
 # A command that reaches the boards of other machines, POSIX-quoted with forward slashes; unset, the
@@ -143,6 +145,13 @@ def image_hash(build_dir):
 
 def git(repo, *words):
     return subprocess.check_output(["git", "-C", str(repo), "-c", "core.longpaths=true", *words], text=True, stderr=subprocess.STDOUT).strip()
+
+
+def registered_suites(worktree, suites):
+    """The suites the checked-out commit registers: a step older than a suite measures without it."""
+    return [suite for suite in suites
+            if subprocess.run(["git", "-C", str(worktree), "grep", "-q", "-F", SUITE_REGISTRATION.format(suite[0]),
+                               "--", "launcher"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0]
 
 
 def history_steps(repo, tip):
@@ -364,7 +373,8 @@ def run_chain(steps, args, runner=None, clock=None):
                     result.outcome = "capture_failed"
                     try:
                         capture_args = SimpleNamespace(project=worktree, out=output / f"{index:0{STEP_INDEX_DIGITS}}-capture",
-                                                       suite=args.suite, runs=1, timeout=CAPTURE_TIMEOUT_SECONDS,
+                                                       suite=registered_suites(worktree, args.suite), runs=1,
+                                                       timeout=CAPTURE_TIMEOUT_SECONDS,
                                                        wait=NIGHT_STEP_HANG_SECONDS)
                         record = run_flash(capture_args, seed=LAYOUT_SEED, runner=run_step)
                         actual = require_same_board({"previous": machine, "capture": record["board"]}

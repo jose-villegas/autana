@@ -29,6 +29,8 @@ env:
     run_sponza_perf_suite|-|-
     run_render_lab_frame_profile_suite|-|-
     run_capybara_perf_suite|-|python3 launcher/main/apps/render_lab/tools/report_performance.py @CAPTURE@ @TABLE@ --table
+    run_water_perf_suite|-|-
+    run_stress_perf_suite|-|-
   NIGHT_START: ${{ vars.NIGHT_START }}
   NIGHT_ZONE: ${{ vars.NIGHT_ZONE }}
   BOARD_LAST_START: ${{ vars.BOARD_LAST_START }}
