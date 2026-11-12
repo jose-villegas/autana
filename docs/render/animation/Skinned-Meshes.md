@@ -139,7 +139,29 @@ Build `ea49f9a0eaf7-diag`; 5 runs, 100 samples per stage,
 To repeat: `autana suite run_capybara_perf_suite --flash --perf-scope`.
 <!-- /generated: skinning-budget -->
 
-## 5. Current limits
+## 5. Update rate by size
+
+A small copy is posed less often, as shipped engines do for distant skeletal
+meshes.<sup>[[121]](../../Citations.md#epic-unreal-animation-optimization)</sup> Each copy's tier comes from its
+projected radius on the last frame, with
+[`anim.*`](../Render-Settings.md) thresholds and hysteresis.
+
+| Radius | Posed |
+|---|---|
+| at least `anim.mid_px` | every frame |
+| below `anim.mid_px` | every `anim.mid_every` frames |
+| below `anim.far_px`, or off screen | every `anim.far_every` frames |
+
+Copies are staggered by index, so the poses spread over frames. A skipped
+copy draws its last skinned positions; its next pose catches up the owed
+time. Skin, light or clip changes, seeks and shows pose at once.
+
+![Worst vertex behind its true pose, in pixels, for idle, walk and gallop at the widest mid and far sizes, posed every 2 and every 4 frames at 30 Hz](../../images/anim/anim-rate-lag.png)
+
+`launcher/tools/anim/playback/rate_figures.py` measures the lag above from
+the glTF clips and the default settings.
+
+## 6. Current limits
 
 - Loop or clamp is set per animator in the scene file, not per clip.
 - A skin whose colours are per face (no vertex colours) cannot be lit.
