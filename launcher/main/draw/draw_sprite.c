@@ -149,28 +149,78 @@ blend_span(gfx_color_t* row, int x0, int x1, const int16_t* map, const sprite_t*
     }
 }
 
+/* The output pixel's source along `axis`, counted from its far end when the
+ * turn mirrors that axis. */
+static int
+axis_source(const slice_axis_t* axis, bool mirror, int at) {
+    return slice_source(axis, mirror ? axis->out_len - 1 - at : at);
+}
+
+/* A flat centre as one blended rectangle; the panel rectangle it covers, or
+ * an empty one for a sprite without one. */
+static recti_t
+draw_flat_centre(const sprite_t* s, recti_t dst, int turns, const slice_axis_t* sx, const slice_axis_t* sy) {
+    if (!s->flat_centre) {
+        return recti_empty();
+    }
+    const recti_t inner = {sx->out_lo, sy->out_lo, sx->out_len - sx->out_lo - sx->out_hi,
+                           sy->out_len - sy->out_lo - sy->out_hi};
+    const affine2x_t turn = affine2x_quarter_turn(turns, dst.w, dst.h);
+    recti_t centre = affine2x_map_recti(&turn, inner);
+    centre.x += dst.x;
+    centre.y += dst.y;
+    draw_rect_blend(centre.x, centre.y, centre.w, centre.h, s->centre_color, s->centre_alpha);
+    return centre;
+}
+
+/* Panel row `row` across `rect`, leaving the columns `centre` already drew. */
+static void
+blend_row(gfx_color_t* line, int row, recti_t rect, recti_t centre, const int16_t* map, const sprite_t* s, size_t base,
+          size_t step) {
+    const int x1 = recti_right(rect);
+    const int skip0 = mathi_max(centre.x, rect.x);
+    const int skip1 = mathi_min(recti_right(centre), x1);
+    if (row >= centre.y && row < recti_bottom(centre) && skip0 < skip1) {
+        blend_span(line, rect.x, skip0, map, s, base, step);
+        blend_span(line, skip1, x1, map + (skip1 - rect.x), s, base, step);
+        return;
+    }
+    blend_span(line, rect.x, x1, map, s, base, step);
+}
+
+/* The clipped panel rectangle `rect` of a sprite filling `dst` at `turns`:
+ * panel columns walk `col_axis` and panel rows `row_axis`. */
+static void
+blit(const gfx_target_t* target, recti_t rect, recti_t dst, const sprite_t* s, int turns, const slice_axis_t* col_axis,
+     const slice_axis_t* row_axis, recti_t centre) {
+    const bool col_mirror = turns == 1 || turns == 2;
+    const bool row_mirror = turns == 2 || turns == 3;
+    int16_t map[GFX_WIDTH];
+    for (int col = rect.x; col < recti_right(rect); col++) {
+        map[col - rect.x] = (int16_t)axis_source(col_axis, col_mirror, col - dst.x);
+    }
+    /* Upright, a panel row is a sprite row; turned, a sprite column. */
+    const bool across = (turns & 1) != 0;
+    const size_t stride = s->color.pitch / sizeof(gfx_color_t);
+    const size_t step = across ? stride : 1;
+    const size_t row_step = across ? 1 : stride;
+    for (int row = rect.y; row < recti_bottom(rect); row++) {
+        const size_t base = (size_t)axis_source(row_axis, row_mirror, row - dst.y) * row_step;
+        blend_row(gfx_target_color(target, row), row, rect, centre, map, s, base, step);
+    }
+}
+
 void
 draw_sprite(const sprite_t* s, recti_t dst, int quarter_turns) {
     const int turns = quarter_turns & SPRITE_QUARTER_MASK;
     const bool across = (turns & 1) != 0; /* the sprite's x runs down the panel */
-    const int w = across ? dst.h : dst.w;
-    const int h = across ? dst.w : dst.h;
-    if (w <= 0 || h <= 0) {
+    const recti_t frame = across ? (recti_t){0, 0, dst.h, dst.w} : (recti_t){0, 0, dst.w, dst.h};
+    if (recti_is_empty(frame)) {
         return;
     }
-    const sprite_border_t b = s->border;
-    const slice_axis_t sx = slice_axis(w, s->color.width, b.left, b.right);
-    const slice_axis_t sy = slice_axis(h, s->color.height, b.top, b.bottom);
-
-    recti_t centre = recti_empty();
-    if (s->flat_centre) {
-        const recti_t inner = {sx.out_lo, sy.out_lo, w - sx.out_lo - sx.out_hi, h - sy.out_lo - sy.out_hi};
-        const affine2x_t turn = affine2x_quarter_turn(turns, dst.w, dst.h);
-        centre = affine2x_map_recti(&turn, inner);
-        centre.x += dst.x;
-        centre.y += dst.y;
-        draw_rect_blend(centre.x, centre.y, centre.w, centre.h, s->centre_color, s->centre_alpha);
-    }
+    const slice_axis_t sx = slice_axis(frame.w, s->color.width, s->border.left, s->border.right);
+    const slice_axis_t sy = slice_axis(frame.h, s->color.height, s->border.top, s->border.bottom);
+    const recti_t centre = draw_flat_centre(s, dst, turns, &sx, &sy);
 
     gfx_surface_t state;
     if (!gfx_draw_begin(&state)) {
@@ -181,41 +231,7 @@ draw_sprite(const sprite_t* s, recti_t dst, int quarter_turns) {
         return;
     }
     assert(rect.w <= GFX_WIDTH); /* every target is the panel's width */
-
-    /* Panel columns map to one sprite axis and panel rows to the other; a
-     * mirrored axis counts from its far end. */
-    const slice_axis_t* col_axis = across ? &sy : &sx;
-    const slice_axis_t* row_axis = across ? &sx : &sy;
-    const bool col_mirror = turns == 1 || turns == 2;
-    const bool row_mirror = turns == 2 || turns == 3;
-    int16_t map[GFX_WIDTH];
-    for (int col = rect.x; col < recti_right(rect); col++) {
-        const int at = col - dst.x;
-        map[col - rect.x] = (int16_t)slice_source(col_axis, col_mirror ? col_axis->out_len - 1 - at : at);
-    }
-
-    const size_t stride = s->color.pitch / sizeof(gfx_color_t);
-    for (int row = rect.y; row < recti_bottom(rect); row++) {
-        const int at = row - dst.y;
-        const size_t fixed = (size_t)slice_source(row_axis, row_mirror ? row_axis->out_len - 1 - at : at);
-        /* Upright, a panel row is a sprite row; turned, a sprite column. */
-        const size_t base = across ? fixed : fixed * stride;
-        const size_t step = across ? stride : 1;
-        gfx_color_t* line = gfx_target_color(state.target, row);
-        int x0 = rect.x;
-        int x1 = recti_right(rect);
-        if (s->flat_centre && row >= centre.y && row < recti_bottom(centre)) {
-            const int skip0 = mathi_max(centre.x, x0);
-            const int skip1 = mathi_min(recti_right(centre), x1);
-            if (skip0 < skip1) {
-                blend_span(line, x0, skip0, map, s, base, step);
-                blend_span(line, skip1, x1, map + (skip1 - x0), s, base, step);
-                continue;
-            }
-        }
-        blend_span(line, x0, x1, map, s, base, step);
-    }
-
+    blit(state.target, rect, dst, s, turns, across ? &sy : &sx, across ? &sx : &sy, centre);
     if (state.marks) {
         gfx_mark_drawn(rect.x, rect.y, rect.w, rect.h);
     }
