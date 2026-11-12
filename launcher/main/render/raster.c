@@ -10,6 +10,7 @@
 #include "profile/frame_cost.h"
 #include "profile/frame_laps.h"
 #include "render/batch/r3d_batch.h"
+#include "render/code_layout.h"
 #include "render/lod/r3d_lod.h"
 #include "render/r3d_stages.h"
 #include "render/raster_internal.h"
@@ -433,7 +434,7 @@ raster_scratch_bytes(const raster_t* raster) {
 
 /* The view's lens fitted to the size drawn at, so a render scaled more
  * in one axis than the other still shows the same view. */
-void
+RENDER_IRAM_ATTR __attribute__((noinline)) void
 raster_lens(const raster_t* raster, const render_view_t* view, int position_scale, r3d_lens_t* lens) {
     r3d_lens_init(lens, view, position_scale);
     r3d_lens_fit(lens, raster->width, raster->height);
@@ -546,7 +547,7 @@ world_bounds_outside(box3f_t box, const planef_t planes[PLANE_FRUSTUM_COUNT], fl
     return box3f_outside_planes(grown, planes, PLANE_FRUSTUM_COUNT, &mask);
 }
 
-static void
+static RENDER_IRAM_ATTR void
 world_cull_init(world_cull_t* world, picture_lens_t* picture, const render_view_t* view, bool cull) {
     world->cull = cull;
     r3d_lens_frustum(picture_lens_at(picture, 1), world->planes);
@@ -575,7 +576,7 @@ drawn_scale(const r3d_lens_t* lens, const render_view_t* view) {
 
 /* The picture uses the current pick's limits even when its completed round
  * has already steered the next pick. */
-static render_lod_settings_t
+static RENDER_IRAM_ATTR __attribute__((noinline)) render_lod_settings_t
 picture_lod_settings(const raster_t* raster, const render_lod_settings_t* configured, float drawn, bool picking) {
     render_lod_settings_t lod = *configured;
     if (raster->steer != NULL && lod.triangle_budget > 0) {
@@ -653,7 +654,7 @@ expand_batch(const world_cull_t* world, const r3d_batch_draw_t* draw, r3d_batch_
 /* Keeps, after the instances in the drawn list, each batch's copies its
  * spheres keep, none when its world box is outside. Not inlined: the
  * batches' locals stay off the cull's frame. */
-static __attribute__((noinline)) void
+static RENDER_IRAM_ATTR __attribute__((noinline)) void
 expand_batches(const raster_t* raster, const world_cull_t* world, const raster_buffers_t* buffers) {
     raster_census_head(raster)->copy_count = 0;
     if (raster->batch_count == 0) {
@@ -669,7 +670,7 @@ expand_batches(const raster_t* raster, const world_cull_t* world, const raster_b
     raster_census_head(raster)->copy_count = count;
 }
 
-static level_pick_t
+static RENDER_IRAM_ATTR level_pick_t
 level_pick_init(const raster_t* raster, picture_lens_t* picture, const render_view_t* view,
                 const render_lod_settings_t* lod) {
     const float drawn = drawn_scale(picture_lens_at(picture, 1), view);
@@ -767,7 +768,7 @@ cull_slice(void* ctx, int from, int to) {
 /* Sets up the cull's job in the draw's scratch: what both cores read, and
  * each one's empty counts and depth fit. Out of line, so none of it is on
  * the stack the steered cull runs from. */
-static __attribute__((noinline)) void
+static RENDER_IRAM_ATTR __attribute__((noinline)) void
 cull_begin(draw_work_t* work, const raster_t* raster, const render_view_t* view, bool fitted) {
     cull_job_t* job = &work->cull;
     job->raster = raster;
@@ -789,7 +790,7 @@ cull_begin(draw_work_t* work, const raster_t* raster, const render_view_t* view,
 /* Adds both cores' counts to `stats`, ORs their level changes into
  * `levels_changed`, and returns the nearer depth fit, or near_z when nothing
  * was kept. */
-static __attribute__((noinline)) float
+static RENDER_IRAM_ATTR __attribute__((noinline)) float
 cull_end(const cull_job_t* job, raster_stats_t* stats, bool* levels_changed, float near_z) {
     float depth_near = INFINITY;
     for (int h = 0; h < 2; h++) {
@@ -803,7 +804,7 @@ cull_end(const cull_job_t* job, raster_stats_t* stats, bool* levels_changed, flo
 
 /* Ends the frame's share of a steered pick's round: the round is done once
  * every instance has had its turn. */
-static __attribute__((noinline)) void
+static RENDER_IRAM_ATTR __attribute__((noinline)) void
 steer_end(const level_pick_t* pick, int drawn) {
     const int every = pick->lod.pick_every;
     const bool done = every <= 1 || pick->round == 0 || pick->steer->frames + 1 >= every;
