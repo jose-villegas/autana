@@ -27,6 +27,15 @@ class FrameCostTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "dropped 424 brackets"):
                 read(cut)
 
+    def test_a_lap_window_that_dropped_laps_is_refused(self):
+        whole = "ms/frame laps: lap 179 ns | cpu0 a.b 1.000/2"
+        self.assertEqual(set(frame_cost.frame_laps_window(whole)[0]), {"a.b"})
+        with tempfile.TemporaryDirectory() as directory:
+            capture = pathlib.Path(directory) / "laps.log"
+            capture.write_text(whole + "\n" + whole + " +3 dropped\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "dropped 3 laps"):
+                frame_cost.frame_laps_means(capture)
+
     def test_order_new_bracket_and_missing_captures(self):
         with tempfile.TemporaryDirectory() as directory:
             capture = pathlib.Path(directory) / "frame.log"
