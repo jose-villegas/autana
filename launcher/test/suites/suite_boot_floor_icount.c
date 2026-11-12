@@ -100,7 +100,7 @@ node_projects(uint32_t now_ms, int i, int j, int stride) {
 static __attribute__((noinline)) unsigned
 projected_nodes(uint32_t now_ms, uint8_t reveal) {
     const int half = BOOT_ANIM_MESH_CELLS / 2;
-    const int stride = bayer_level(reveal) >= BOOT_ANIM_DISSOLVE_COARSE_LEVEL ? 2 : 1;
+    const int stride = bayer_level(reveal, UINT8_MAX) >= BOOT_ANIM_DISSOLVE_COARSE_LEVEL ? 2 : 1;
     unsigned count = 0;
     for (int j = -half; j <= half; j += stride) {
         for (int i = -half; i <= half; i += stride) {

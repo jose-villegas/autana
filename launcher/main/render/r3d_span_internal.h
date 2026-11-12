@@ -1,14 +1,16 @@
 /*
  * r3d_span_internal: what r3d_span.c shares with the rest of render/ and its
- * tests: the snap and pack helpers, the measurement switch, and the tests
- * that drop a walked triangle before its colour planes and let its spans
- * skip their clamps. Not a public module; r3d_span.h is.
+ * tests: the snap and pack helpers, the edge and row helpers the screen fill
+ * (r3d_span_screen.c) also uses, the measurement switch, and the tests that
+ * drop a walked triangle before its colour planes and let its spans skip
+ * their clamps. Not a public module; r3d_span.h is.
  */
 #pragma once
 
 #include "math/geometry/recti.h"
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #include "math/scalar/mathf.h"
@@ -173,3 +175,49 @@ enum {
 };
 
 extern int r3d_span_stop_after;
+
+#define R3D_SPAN_HALF_PIXEL (R3D_SUBPIXEL / 2)
+
+typedef struct {
+    uint16_t* depth;
+    uint16_t* color;
+    int32_t centre;
+} r3d_span_row_t;
+
+static inline __attribute__((always_inline)) r3d_span_row_t
+r3d_span_row(const r3d_span_target_t* target, int y) {
+    const gfx_target_t* rows = &target->rows;
+    const size_t offset = (size_t)(y - rows->first_row) * rows->attachment[GFX_ATTACHMENT_COLOR].pitch;
+    return (r3d_span_row_t){(uint16_t*)((char*)rows->attachment[GFX_ATTACHMENT_DEPTH].pixels + offset),
+                            (uint16_t*)((char*)rows->attachment[GFX_ATTACHMENT_COLOR].pixels + offset),
+                            (y << R3D_SUBPIXEL_SHIFT) + R3D_SPAN_HALF_PIXEL};
+}
+
+/* Edge a-b of a triangle winding positive, where (b - a) x (p - a) is above
+ * zero inside; a centre exactly on it belongs to it only on a top or left
+ * edge, which is the walk's rule in the same integers. */
+typedef struct {
+    int32_t ax, ay, dx, dy, bias;
+} r3d_span_edge_t;
+
+static inline r3d_span_edge_t
+r3d_span_edge(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b) {
+    const int32_t dx = b->x - a->x;
+    const int32_t dy = b->y - a->y;
+    const bool top_left = dy < 0 || (dy == 0 && dx > 0);
+    return (r3d_span_edge_t){a->x, a->y, dx, dy, top_left ? 0 : 1};
+}
+
+/* Negative when the centre is outside. */
+static inline int32_t
+r3d_span_side(const r3d_span_edge_t* e, int32_t x, int32_t y) {
+    return (e->dx * (y - e->ay)) - (e->dy * (x - e->ax)) - e->bias;
+}
+
+/* Every writer of the target over one span. */
+static inline void
+r3d_span_write(const r3d_span_target_t* target, int y, int x_first, int x_last, int32_t z, int32_t dz) {
+    for (int i = 0; i < target->writer_count; i++) {
+        target->writers[i].span(&target->writers[i], &target->rows, y, x_first, x_last, z, dz);
+    }
+}

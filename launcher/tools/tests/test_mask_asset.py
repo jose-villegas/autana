@@ -27,15 +27,15 @@ class MaskAssetTests(unittest.TestCase):
 
     def test_bundle_round_trip_and_refusals(self):
         import numpy as np
-        from r3d.lit_mesh import bake_lit_mesh
+        from r3d.lit_mesh import bake_lit_mesh, bundle_entries, read_bundle_mesh
         mesh = bake_lit_mesh(np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]]), None,
                              np.array([[0, 1, 2]]), np.array([0]))
         mesh.masked = [True]
         mesh.mask_vertex_first = 0
         mesh.mask_uvs = [(0, 0)] * len(mesh.pos)
         mesh.mask_rows = [1]
-        entries = mesh_bundle.mesh_entries("cards", mesh)
-        read = mesh_bundle.read_mesh(entries, "cards")
+        entries = bundle_entries("cards", mesh)
+        read = read_bundle_mesh(entries, "cards")
         self.assertEqual(read.masked, mesh.masked)
         self.assertEqual(read.mask_uvs, mesh.mask_uvs)
         self.assertEqual(read.mask_rows, mesh.mask_rows)
@@ -48,9 +48,9 @@ class MaskAssetTests(unittest.TestCase):
         long_name = "m" * (NAME_BYTES - len(lod_asset.NAME_SUFFIX) - 1)
         uvs = mesh.mask_uvs
         mesh.mask_uvs = None
-        long_entries = mesh_bundle.mesh_entries(long_name, mesh)
+        long_entries = bundle_entries(long_name, mesh)
         mesh_bundle.decode(mesh_bundle.encode(long_entries, []))
-        self.assertIsNone(mesh_bundle.read_mesh(long_entries, long_name).mask_uvs)
+        self.assertIsNone(read_bundle_mesh(long_entries, long_name).mask_uvs)
         mesh.mask_uvs = uvs
         with self.assertRaises(ValueError):
-            mesh_bundle.mesh_entries("cards", mesh)
+            bundle_entries("cards", mesh)

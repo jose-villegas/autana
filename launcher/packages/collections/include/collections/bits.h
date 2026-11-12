@@ -6,7 +6,9 @@
 #include <stdint.h>
 
 #define BITS8_BYTES(count)  (((size_t)(count) + 7U) / 8U)
-#define BITS32_WORDS(count) (((size_t)(count) + 31U) / 32U)
+/* The bits one uint32_t word holds. */
+#define BITS32_WORD_BITS    32
+#define BITS32_WORDS(count) (((size_t)(count) + BITS32_WORD_BITS - 1U) / BITS32_WORD_BITS)
 
 static inline bool
 bits8_get(const uint8_t* bits, size_t index) {
@@ -21,8 +23,10 @@ bits8_set(uint8_t* bits, size_t index) {
 /* The same two forms as macros, for a caller whose words are a named array: a
  * store through the functions' pointer can keep the base live across a hot
  * loop and cost the caller registers. Each argument is read more than once. */
-#define BITS32_GET(words, index) ((((words)[(size_t)(index) >> 5] >> ((size_t)(index) & 31U)) & 1U) != 0U)
-#define BITS32_SET(words, index) ((words)[(size_t)(index) >> 5] |= UINT32_C(1) << ((size_t)(index) & 31U))
+#define BITS32_GET(words, index)                                                                                       \
+    ((((words)[(size_t)(index) / BITS32_WORD_BITS] >> ((size_t)(index) % BITS32_WORD_BITS)) & 1U) != 0U)
+#define BITS32_SET(words, index)                                                                                       \
+    ((words)[(size_t)(index) / BITS32_WORD_BITS] |= UINT32_C(1) << ((size_t)(index) % BITS32_WORD_BITS))
 
 static inline bool
 bits32_get(const uint32_t* bits, size_t index) {
@@ -32,4 +36,13 @@ bits32_get(const uint32_t* bits, size_t index) {
 static inline void
 bits32_set(uint32_t* bits, size_t index) {
     BITS32_SET(bits, index);
+}
+
+static inline bool
+bits32_put(uint32_t* bits, size_t index, bool on) {
+    const size_t word = index / BITS32_WORD_BITS;
+    const uint32_t bit = UINT32_C(1) << (index % BITS32_WORD_BITS);
+    const uint32_t before = bits[word];
+    bits[word] = on ? before | bit : before & ~bit;
+    return bits[word] != before;
 }

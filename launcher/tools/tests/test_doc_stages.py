@@ -644,6 +644,8 @@ class KeeperTests(unittest.TestCase):
         self.inputs = self.root / "inputs"
         self.inputs.mkdir()
         (self.inputs / f"{self.jobs[0].renderer.variant.name}.bundle").write_bytes(b"start")
+        from test_r3d_reference import write_reference_tree
+        write_reference_tree(self.inputs)
 
     def tearDown(self):
         self.directory.cleanup()
@@ -681,6 +683,7 @@ class KeeperTests(unittest.TestCase):
         import copy
         from r3d.fitted_variant import placed_variant
         from r3d.import_settings import load_scene
+        from r3d.reference_set import TRAINING
         folders = {"recipe": self.fit_folder()}
         normal = copy.deepcopy(self.jobs[0])
         normal.renderer.fit.normal_weight = 0.1
@@ -688,12 +691,24 @@ class KeeperTests(unittest.TestCase):
         folders["budget"] = self.fit_folder({"budget": 4000, "cost_weight": 0.0})
         folders["cost"] = self.fit_folder({"budget": 4000, "cost_weight": 0.1})
         look = load_scene(stages.write_look_scene(self.SCENE, "direct", self.root / "look"))
+        reference = self.inputs / TRAINING[0][1] / "frame.png"
+        original = reference.read_bytes()
+        reference.write_bytes(b"direct light picture")
         folders["look"] = self.fit_folder(job=placed_variant(look, self.jobs[0].renderer.variant.name), scene=look)
+        reference.write_bytes(original)
         self.assertEqual(len(set(folders.values())), len(folders), folders)
         self.assertEqual(self.fit_folder({"budget": self.jobs[0].renderer.fit.budget, "cost_weight": 0.0}),
                          folders["recipe"], "the recipe's budget given as a point is the recipe's fit")
         (self.inputs / f"{self.jobs[0].renderer.variant.name}.bundle").write_bytes(b"other start")
         self.assertNotEqual(self.fit_folder(), folders["recipe"], "a fit counts its start's bytes")
+
+    def test_a_fit_counts_the_reference_bytes_it_reads(self):
+        from r3d.reference_set import TRAINING
+
+        before = self.fit_folder()
+        reference = self.inputs / TRAINING[0][1] / "frame.png"
+        reference.write_bytes(b"different training picture")
+        self.assertNotEqual(self.fit_folder(), before)
 
     def test_a_cost_weighted_fit_counts_the_cost_model(self):
         weighted = {"budget": 4000, "cost_weight": 0.1}

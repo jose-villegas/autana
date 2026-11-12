@@ -11,6 +11,7 @@
 #include "profile/frame_laps.h"
 #include "render/batch/r3d_batch.h"
 #include "render/lod/r3d_lod.h"
+#include "render/r3d_stages.h"
 #include "render/raster_internal.h"
 #include "render/upscale.h"
 
@@ -28,6 +29,11 @@ TUNE_OVERRIDE(render, partial_redraw, 1);
 /* Overrides lod.coverage_permille (INT32_MAX lifts the cap); coverage_table.py
  * sets it once per cap. */
 TUNE_OVERRIDE(render, lod_coverage_permille, INT32_MAX);
+/* Overrides lod.blend; morph_table.py sets it once per arm. */
+TUNE_OVERRIDE(render, lod_blend, RENDER_LOD_BLEND_COUNT - 1);
+/* Overrides lod.blend_px in hundredths of a pixel; morph_table.py sweeps it. */
+#define LOD_BLEND_CENTI 100
+TUNE_OVERRIDE(render, lod_blend_centipixels, (int32_t)(RENDER_LOD_BLEND_PX_MAX * LOD_BLEND_CENTI));
 /* Overrides lod.pick_every; 1 picks every instance every frame. */
 TUNE_OVERRIDE(render, lod_pick_every, R3D_LOD_PICK_EVERY_MAX);
 /* Overrides lod.triangle_budget. */
@@ -42,7 +48,9 @@ raster_settings(const raster_t* raster) {
         tune_override(batched, s.batched) != 0,
         tune_override(partial_redraw, s.partial_redraw) != 0,
         {s.lod.tolerance_px, s.lod.hysteresis_px, tune_override(lod_coverage_permille, s.lod.coverage_permille),
-         tune_override(lod_pick_every, s.lod.pick_every), tune_override(lod_triangle_budget, s.lod.triangle_budget)}};
+         tune_override(lod_pick_every, s.lod.pick_every), tune_override(lod_triangle_budget, s.lod.triangle_budget),
+         tune_override(lod_blend, s.lod.blend),
+         lod_blend_centipixels == TUNE_UNSET ? s.lod.blend_px : (float)lod_blend_centipixels / LOD_BLEND_CENTI}};
 }
 
 bool
@@ -70,9 +78,12 @@ raster_triangle_budget(const raster_t* raster) {
  * vertices and cluster rows start in the shared buffers, and its writers. */
 typedef struct {
     const r3d_lit_mesh_t* mesh;
+    const r3d_instance_t* instance; /* whose blend batch_blend() sets up */
     r3d_lens_t lens;
-    const uint16_t* visible;
+    const r3d_lod_morph_t* morph; /* NULL: it blends nothing, the plain transform and draw */
+    uint16_t* visible;            /* reordered in place when it blends: the plain ones first */
     int visible_count;
+    int plain_count; /* visible's first, which blend nothing; those after take the blend's copies */
     int vertex_base, cluster_base;
     int writer_count;
     r3d_span_writer_t writers[GFX_ATTACHMENTS_FURTHER_MAX];
@@ -197,6 +208,7 @@ typedef struct {
     bool skip_hidden;         /* the view's */
     int first_row, end_row;   /* the rows this draw redraws */
     bool levels_changed;      /* a level pick this draw changed an instance's cut */
+    bool blends;              /* lod.blend is on: each instance's blend is set up */
     raster_buffers_t buffers; /* last: its picture storage's size varies */
 } draw_work_t;
 
@@ -209,6 +221,16 @@ copy_meshes(draw_work_t* work) {
 }
 
 _Static_assert(sizeof(draw_work_t) % _Alignof(r3d_lit_mesh_t) == 0, "copy meshes follow the draw's work");
+
+/* Each item's blend, RASTER_BATCH_INSTANCES of them, after the copy meshes:
+ * out of the draw's work, so its fields sit where a draw that blends nothing
+ * has them, and a frame that blends nothing never reads them. */
+static inline r3d_lod_morph_t*
+batch_morphs(draw_work_t* work) {
+    return (r3d_lod_morph_t*)(copy_meshes(work) + RASTER_BATCH_INSTANCES);
+}
+
+_Static_assert(sizeof(r3d_lit_mesh_t) % _Alignof(r3d_lod_morph_t) == 0, "the blends follow the copy meshes");
 
 _Static_assert(sizeof(slice_t) <= JOB_CTX_MAX, "slice_t must fit JOB_CTX_MAX");
 _Static_assert(sizeof(cull_job_t) <= sizeof(batch_t), "the cull's job takes no scratch beyond the batch's");
@@ -225,9 +247,15 @@ transform_slice(void* ctx) {
         const batch_item_t* item = &s->batch->items[k];
         const int lo = mathi_max(s->first, start) - start;
         const int hi = mathi_min(end, start + item->visible_count) - start;
-        if (lo < hi) {
-            r3d_pipeline_transform(item->mesh, &item->lens, item->visible + lo, hi - lo, b.cs + item->vertex_base,
-                                   b.rows + item->cluster_base, ((const draw_work_t*)b.draw)->skip_hidden);
+        const int split = mathi_clamp(item->plain_count, lo, hi);
+        const bool boxed = ((const draw_work_t*)b.draw)->skip_hidden;
+        if (lo < split) {
+            r3d_pipeline_transform(item->mesh, &item->lens, item->visible + lo, split - lo, b.cs + item->vertex_base,
+                                   b.rows + item->cluster_base, boxed);
+        }
+        if (split < hi) {
+            r3d_pipeline_transform_morphed(item->mesh, &item->lens, item->morph, item->visible + split, hi - split,
+                                           b.cs + item->vertex_base, b.rows + item->cluster_base, boxed);
         }
         start += item->visible_count;
     }
@@ -362,8 +390,16 @@ draw_slice(void* ctx) {
         const batch_item_t* item = &s->batch->items[k];
         target->writers = item->writers;
         target->writer_count = item->writer_count;
-        r3d_pipeline_draw(item->mesh, &item->lens, item->visible, item->visible_count, b->cs + item->vertex_base,
-                          b->rows + item->cluster_base, target, b->work[s->work_index]);
+        if (item->plain_count > 0) {
+            r3d_pipeline_draw(item->mesh, &item->lens, item->visible, item->plain_count, b->cs + item->vertex_base,
+                              b->rows + item->cluster_base, target, b->work[s->work_index]);
+        }
+        if (item->plain_count < item->visible_count) {
+            r3d_pipeline_draw_blended(item->mesh, &item->lens, item->visible + item->plain_count,
+                                      item->visible_count - item->plain_count, b->cs + item->vertex_base,
+                                      b->rows + item->cluster_base, target, b->work[s->work_index],
+                                      item->morph->dither);
+        }
     }
     FRAME_LAP_END();
 }
@@ -413,7 +449,7 @@ size_t
 raster_scratch_bytes(const raster_t* raster) {
     assert(raster->instance_count + raster->batch_count > 0); /* with nothing to draw it would clear nothing */
     return (size_t)((uintptr_t)raster_carve(raster).draw - (uintptr_t)raster->scratch) + sizeof(draw_work_t)
-           + (sizeof(r3d_lit_mesh_t) * RASTER_BATCH_INSTANCES);
+           + (sizeof(r3d_lit_mesh_t) * RASTER_BATCH_INSTANCES) + (sizeof(r3d_lod_morph_t) * RASTER_BATCH_INSTANCES);
 }
 
 /* The view's lens fitted to the size drawn at, so a render scaled more
@@ -456,6 +492,17 @@ place(const r3d_instance_t* instance, const r3d_batch_draw_t* copy, r3d_lens_t* 
     }
 }
 
+static const uint32_t*
+dither_blending(const r3d_instance_t* instance, int blend) {
+    if (blend != RENDER_LOD_BLEND_ON || instance->lod_coarse == NULL || !r3d_lod_dithers(instance->mesh, blend)) {
+        return NULL;
+    }
+    const int groups = instance->mesh->lod_group_count;
+    const uint32_t* blending = r3d_lod_blending(r3d_lod_arrived(instance->lod_coarse, groups), groups);
+    /* No group blending this frame: the plain cull, as with lod.blend off. */
+    return r3d_lod_any(blending, groups) ? blending : NULL;
+}
+
 /* The lens drawn `instance`, kept copy `copy` when not NULL, is drawn with:
  * the picture's at its mesh's scale, placed. */
 static void
@@ -478,14 +525,17 @@ copy_aim(picture_lens_t* picture, const r3d_batch_draw_t* copy, batch_item_t* it
  * batches call some of them too, and out of line they would cost the
  * instances' loop a call each. */
 static inline __attribute__((always_inline)) int
-cull_instance(const r3d_instance_t* instance, bool culls, const r3d_lens_t* lens, uint16_t* out, raster_stats_t* stats,
-              r3d_pipeline_work_t* work, r3d_depth_fit_t* fit) {
+cull_instance(const r3d_instance_t* instance, bool culls, const r3d_lens_t* lens, int blend, uint16_t* out,
+              raster_stats_t* stats, r3d_pipeline_work_t* work, r3d_depth_fit_t* fit) {
     const r3d_lit_mesh_t* mesh = instance->mesh;
+    const uint32_t* blending = dither_blending(instance, blend);
     int visible = 0;
-    if (culls) {
+    if (culls && blending == NULL) {
         visible = r3d_pipeline_cull(mesh, lens, instance->lod_coarse, out, work, fit);
+    } else if (culls) {
+        visible = r3d_pipeline_cull_blending(mesh, lens, instance->lod_coarse, blending, out, work, fit);
     } else {
-        visible = r3d_lod_list_drawn(mesh, instance->lod_coarse, out, mesh->cluster_count);
+        visible = r3d_lod_list_drawn(mesh, instance->lod_coarse, blending, out, mesh->cluster_count);
     }
     stats->clusters += visible;
     for (int i = 0; i < visible; i++) {
@@ -530,6 +580,48 @@ static inline __attribute__((always_inline)) bool
 world_cull_skips(const world_cull_t* world, const r3d_instance_t* instance) {
     return world->cull && instance->world_bounds != NULL
            && world_bounds_outside(*instance->world_bounds, world->planes, world->eye_reach);
+}
+
+const uint32_t*
+raster_lod_dithering(const raster_t* raster, const r3d_instance_t* instance) {
+    return dither_blending(instance, raster_settings(raster).lod.blend);
+}
+
+/* The settings measure in output pixels; `lens` draws at its fitted size:
+ * its pixels per output pixel. */
+static float
+drawn_scale(const r3d_lens_t* lens, const render_view_t* view) {
+    return mathf_max(lens->focal_x, lens->focal_y) / mathf_max(view->lens.fx, view->lens.fy);
+}
+
+/* The picture uses the current pick's limits even when its completed round
+ * has already steered the next pick. */
+static render_lod_settings_t
+picture_lod_settings(const raster_t* raster, const render_lod_settings_t* configured, float drawn, bool picking) {
+    render_lod_settings_t lod = *configured;
+    if (raster->steer != NULL && lod.triangle_budget > 0) {
+        r3d_lod_steer_t* steer = raster->steer;
+        if (picking) {
+            const float floor = mathf_max(lod.tolerance_px, r3d_lod_bin_edge(0));
+            steer->picked_tolerance_px = steer->tolerance_px;
+            steer->picked_coverage_permille = r3d_lod_steer_coverage(steer->tolerance_px, floor, lod.coverage_permille);
+        }
+        lod.tolerance_px = steer->picked_tolerance_px;
+        lod.coverage_permille = steer->picked_coverage_permille;
+    }
+    lod.tolerance_px *= drawn;
+    lod.hysteresis_px *= drawn;
+    lod.blend_px *= drawn;
+    return lod;
+}
+
+void
+raster_lod_morph(const raster_t* raster, const render_view_t* view, const r3d_instance_t* instance,
+                 const r3d_lens_t* lens, r3d_lod_morph_t* morph) {
+    const render_settings_t settings = raster_settings(raster);
+    const render_lod_settings_t lod = picture_lod_settings(raster, &settings.lod, drawn_scale(lens, view), false);
+    r3d_lod_morph_init(morph, instance->mesh, lens, &lod, instance->lod_coarse,
+                       instance->lod_coarse != NULL && settings.lod.blend == RENDER_LOD_BLEND_ON);
 }
 
 /* Whether culling skips a sphere, in world units, whole. */
@@ -601,8 +693,7 @@ expand_batches(const raster_t* raster, const world_cull_t* world, const raster_b
 static level_pick_t
 level_pick_init(const raster_t* raster, picture_lens_t* picture, const render_view_t* view,
                 const render_lod_settings_t* lod) {
-    const r3d_lens_t* lens = picture_lens_at(picture, 1);
-    const float drawn = mathf_max(lens->focal_x, lens->focal_y) / mathf_max(view->lens.fx, view->lens.fy);
+    const float drawn = drawn_scale(picture_lens_at(picture, 1), view);
     level_pick_t pick = {raster->picks_levels, raster->pick_round, *lod, lod->tolerance_px, NULL};
     if (pick.picks && raster->steer != NULL && lod->triangle_budget > 0) {
         pick.steer = raster->steer;
@@ -613,14 +704,10 @@ level_pick_init(const raster_t* raster, picture_lens_t* picture, const render_vi
         if (pick.round == 0 || pick.steer->tolerance_px < pick.floor_px) {
             r3d_lod_steer_reset(pick.steer, pick.floor_px);
         }
-        pick.lod.tolerance_px = pick.steer->tolerance_px;
-        pick.lod.coverage_permille =
-            r3d_lod_steer_coverage(pick.steer->tolerance_px, pick.floor_px, lod->coverage_permille);
         pick.steer->halves[0].unit = 1.0F / drawn;
         pick.steer->halves[1].unit = pick.steer->halves[0].unit;
     }
-    pick.lod.tolerance_px *= drawn;
-    pick.lod.hysteresis_px *= drawn;
+    pick.lod = picture_lod_settings(raster, lod, drawn, pick.steer != NULL);
     return pick;
 }
 
@@ -637,7 +724,8 @@ level_pick(const level_pick_t* pick, int index, const r3d_instance_t* instance, 
         return false;
     }
     if (instance->lod_coarse != NULL && instance->mesh->lod_group_count > 0) {
-        return r3d_lod_pick(instance->mesh, lens, &pick->lod, instance->lod_coarse, histogram);
+        return r3d_lod_pick(instance->mesh, lens, &pick->lod, instance->lod_coarse,
+                            pick->lod.blend == RENDER_LOD_BLEND_ON, histogram);
     }
     if (histogram != NULL) {
         histogram->finest += r3d_lod_finest_triangles(instance->mesh); /* drawn whatever the tolerance */
@@ -645,11 +733,24 @@ level_pick(const level_pick_t* pick, int index, const r3d_instance_t* instance, 
     return false;
 }
 
+/* Lap `lap` (FRAME_LAP or FRAME_LAP_SINCE) of the cull's `phase`, named
+ * under the bracket timing it: r3d.cull when the cull feeds a draw (its lens
+ * fitted to the size drawn), r3d.census when it only prices the frame. */
+#define CULL_LAP(lap, fitted, phase)                                                                                   \
+    do {                                                                                                               \
+        if (fitted) {                                                                                                  \
+            lap("r3d.cull." phase);                                                                                    \
+        } else {                                                                                                       \
+            lap("r3d.census." phase);                                                                                  \
+        }                                                                                                              \
+    } while (0)
+
 /* Culls instances [from, to) into their places in the census list: an
  * instance's list starts after every earlier one's count and clusters. */
 static void
 cull_slice(void* ctx, int from, int to) {
     cull_job_t* job = ctx;
+    CULL_LAP(FRAME_LAP, job->fitted, "walk");
     const raster_t* raster = job->raster;
     const int half = from == 0 ? 0 : 1;
     cull_half_t* mine = &job->halves[half];
@@ -671,13 +772,17 @@ cull_slice(void* ctx, int from, int to) {
         } else {
             r3d_lens_t lens;
             instance_lens(&picture, instance, copy, &lens);
+            CULL_LAP(FRAME_LAP, job->fitted, "pick");
             mine->levels_changed |= level_pick(&job->pick, i, instance, &lens,
                                                job->pick.steer != NULL ? &job->pick.steer->halves[half] : NULL);
-            culled[0] = (uint16_t)cull_instance(instance, job->settings.cull, &lens, culled + 1, &mine->stats, block,
-                                                job->settings.depth_fit ? &mine->fit : NULL);
+            CULL_LAP(FRAME_LAP, job->fitted, "walk");
+            culled[0] =
+                (uint16_t)cull_instance(instance, job->settings.cull, &lens, job->settings.lod.blend, culled + 1,
+                                        &mine->stats, block, job->settings.depth_fit ? &mine->fit : NULL);
         }
         culled += 1 + (size_t)instance->mesh->cluster_count;
     }
+    FRAME_LAP_END();
 }
 
 /* Sets up the cull's job in the draw's scratch: what both cores read, and
@@ -735,18 +840,23 @@ steer_end(const level_pick_t* pick, int drawn) {
 static inline __attribute__((always_inline)) float
 cull_instances(const raster_t* raster, const render_view_t* view, bool fitted, raster_stats_t* stats,
                draw_work_t* work) {
+    CULL_LAP(FRAME_LAP, fitted, "split");
     cull_begin(work, raster, view, fitted);
     int16_t* share = raster->split != NULL ? &raster->split->cull_offset : NULL;
+    FRAME_LAP_END();
     (void)job_run_range_in(share, cull_slice, &work->cull, work->cull.drawn_count, work->cull.ranges);
+    CULL_LAP(FRAME_LAP_SINCE, fitted, "wait");
+    CULL_LAP(FRAME_LAP, fitted, "split");
     work->levels_changed = false; /* a draw on this census reads it */
     const float depth_near = cull_end(&work->cull, stats, &work->levels_changed, view->lens.near_z);
     if (work->cull.pick.steer != NULL) {
         steer_end(&work->cull.pick, stats->triangles);
     }
+    FRAME_LAP_END();
     return depth_near;
 }
 
-/* The writers of the attachments that write while instance `index` is
+/* The writers of the attachments that write while drawn-list entry `index` is
  * drawn; returns how many. */
 static int
 instance_writers(const raster_t* raster, int index, r3d_span_writer_t out[GFX_ATTACHMENTS_FURTHER_MAX]) {
@@ -830,7 +940,7 @@ draw_batch(const raster_t* raster, int index, draw_work_t* work) {
     FRAME_LAP_END();
     job_run_steered(transform_share, transform_slice, mine, other, sizeof *mine);
     FRAME_LAP_SINCE("r3d.transform.wait");
-    FRAME_COST_END(transformed_from, "r3d.transform");
+    FRAME_COST_END(transformed_from, R3D_STAGE_TRANSFORM_NAME);
 
     FRAME_COST_BEGIN(drawn_from);
     FRAME_LAP("r3d.draw.split");
@@ -838,7 +948,7 @@ draw_batch(const raster_t* raster, int index, draw_work_t* work) {
     FRAME_LAP_END();
     job_run_steered(draw_share, draw_slice, mine, other, sizeof *mine);
     FRAME_LAP_SINCE("r3d.draw.wait");
-    FRAME_COST_END(drawn_from, "r3d.draw");
+    FRAME_COST_END(drawn_from, R3D_STAGE_DRAW_NAME);
 }
 
 /* Frame validation stays outside the inlined draw chain. */
@@ -847,6 +957,29 @@ assert_view_size(const raster_t* raster, const render_view_t* view) {
     const viewport_t picture = raster_viewport(raster, view->viewport.quarter);
     assert(view->viewport.width == picture.width);
     assert(view->viewport.height == picture.height);
+}
+
+/* Whether lod.blend is on, read apart so the settings stay off the draw's frame. */
+static __attribute__((noinline)) bool
+blend_on(const raster_t* raster) {
+    return raster_settings(raster).lod.blend == RENDER_LOD_BLEND_ON;
+}
+
+/* Each item's blend this frame, from the picture's raster and view: its
+ * morph state and, when it blends, its kept clusters with the plain ones
+ * first. Called once a batch, so the draw's frame on the stack chain is the
+ * same as with lod.blend off. */
+static __attribute__((noinline, cold)) void
+batch_blend(const picture_lens_t* picture, batch_t* batch, r3d_lod_morph_t* morphs) {
+    for (int k = 0; k < batch->count; k++) {
+        batch_item_t* item = &batch->items[k];
+        r3d_lod_morph_t* morph = &morphs[k];
+        raster_lod_morph(picture->raster, picture->view, item->instance, &item->lens, morph);
+        if (morph->enabled) {
+            item->morph = morph;
+            item->plain_count = r3d_lod_morph_partition(morph, item->mesh, item->visible, item->visible_count);
+        }
+    }
 }
 
 /* Adds drawn entry `first`, `instance`, kept copy `copy` when not NULL, to
@@ -872,8 +1005,11 @@ batch_add(const raster_t* raster, draw_work_t* work, int first, const r3d_instan
             copy_aim(&work->picture, copy, item, &copy_meshes(work)[batch->count - 1]);
         }
         r3d_lens_set_depth_near(&item->lens, *work->buffers.depth_near);
+        item->morph = NULL;
         item->visible = culled + 1;
         item->visible_count = culled[0];
+        item->plain_count = culled[0];
+        item->instance = instance;
         item->vertex_base = *vertices;
         item->cluster_base = *clusters;
     }
@@ -914,7 +1050,7 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
     if (stats != NULL) {
         FRAME_COST_BEGIN(culled_from);
         *work->buffers.depth_near = cull_instances(raster, view, true, stats, work);
-        FRAME_COST_END(culled_from, "r3d.cull");
+        FRAME_COST_END(culled_from, R3D_STAGE_CULL_NAME);
     }
     /* Kept rows hold depth at the last draw's scale and the cuts it drew: a
      * new scale, or a level pick that changed a cut, redraws them all. */
@@ -934,6 +1070,8 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
     assert(*work->buffers.depth_near >= view->lens.near_z);
     uint16_t* culled = work->buffers.culled;
     picture_lens_init(&work->picture, raster, view, true);
+    /* Off, no instance blends: the morph state is set up only when it may. */
+    work->blends = blend_on(raster);
     /* The first batch clears the picture, so it runs with nothing kept too.
      * The count is read where the census wrote it, held in no register. */
     int first = 0;
@@ -942,6 +1080,9 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
         const int end = raster_batch_end(raster, first);
         culled = batch_fill(raster, work, first, end, culled);
         first = end;
+        if (work->blends) {
+            batch_blend(&work->picture, &work->batch, batch_morphs(work));
+        }
         draw_batch(raster, index, work);
         index++;
     } while (first < raster_census_count(raster));
@@ -1098,5 +1239,5 @@ raster_upscale_picture(raster_t* raster, const gfx_target_t* picture, uint16_t* 
                                    .seams = seams,
                                    .picture = picture};
     job_run_steered(share, upscale_slice, &mine, &other, sizeof mine);
-    FRAME_COST_END(upscaled_from, "r3d.upscale");
+    FRAME_COST_END(upscaled_from, R3D_STAGE_UPSCALE_NAME);
 }
