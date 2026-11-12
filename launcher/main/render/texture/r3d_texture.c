@@ -14,20 +14,20 @@ luma(int r, int g, int b) {
     return ((R3D_TEXTURE_LUMA_R * r) + (R3D_TEXTURE_LUMA_G * g) + (R3D_TEXTURE_LUMA_B * b)) >> R3D_TEXTURE_LUMA_SHIFT;
 }
 
-/* Level l lights a colour as a vertex light of luminance l * 255 / (LEVELS - 1)
- * would light the material's mean: its albedo times that over the mean's
- * luminance. */
+/* Level l lights colour i as a vertex colour of the tint's hue and
+ * luminance l * 255 / (LEVELS - 1) would: the tint, scaled to that
+ * luminance, times the pattern. */
 static void
-build_colormap(r3d_texture_t* t, const uint8_t* palette, const uint8_t mean[3]) {
-    const int mean_luma = mathi_max(luma(mean[0], mean[1], mean[2]), 1);
+build_colormap(r3d_texture_t* t, const uint8_t* palette, const uint8_t tint[3]) {
+    const int tint_luma = mathi_max(luma(tint[0], tint[1], tint[2]), 1);
     for (int l = 0; l < R3D_TEXTURE_LIGHT_LEVELS; l++) {
         for (int i = 0; i < R3D_TEXTURE_COLOURS; i++) {
             int32_t channel[3];
             for (int k = 0; k < 3; k++) {
-                /* albedo (0..255) * light; light = l * 255 / (LEVELS - 1) / mean_luma */
-                const int64_t albedo = (int64_t)mean[k] * palette[(i * R3D_TEXTURE_PALETTE_STRIDE) + k];
+                /* tint (0..255) * pattern * l * 255 / (LEVELS - 1) / tint_luma */
+                const int64_t albedo = (int64_t)tint[k] * palette[(i * R3D_TEXTURE_PALETTE_STRIDE) + k];
                 const int64_t lit =
-                    (albedo * l * UINT8_MAX) / ((int64_t)R3D_TEXTURE_ONE * (R3D_TEXTURE_LIGHT_LEVELS - 1) * mean_luma);
+                    (albedo * l * UINT8_MAX) / ((int64_t)R3D_TEXTURE_ONE * (R3D_TEXTURE_LIGHT_LEVELS - 1) * tint_luma);
                 channel[k] = (int32_t)mathi_min((int)lit, UINT8_MAX) << 8;
             }
             t->colormap[l][i] = r3d_span_pack(channel[0], channel[1], channel[2]);
@@ -58,8 +58,8 @@ r3d_texture_from_asset(const asset_view_t* asset, r3d_texture_t* texture) {
     const int levels = data[R3D_TEXTURE_AT_LEVELS];
     if (asset_read_u16(data + R3D_TEXTURE_AT_FORMAT) != R3D_TEXTURE_INDEX4 || size_log2 < R3D_TEXTURE_SIZE_LOG2_MIN
         || size_log2 > R3D_TEXTURE_SIZE_LOG2_MAX || levels < 1 || size_log2 - (levels - 1) < R3D_TEXTURE_SIZE_LOG2_MIN
-        || !padding_is_zero(data + R3D_TEXTURE_AT_MEAN + R3D_TEXTURE_MEAN_RGB,
-                            R3D_TEXTURE_MEAN_BYTES - R3D_TEXTURE_MEAN_RGB)) {
+        || !padding_is_zero(data + R3D_TEXTURE_AT_TINT + R3D_TEXTURE_TINT_RGB,
+                            R3D_TEXTURE_TINT_BYTES - R3D_TEXTURE_TINT_RGB)) {
         return ASSET_ERR_FORMAT;
     }
     const uint32_t palette_off = asset_read_u32(data + R3D_TEXTURE_AT_PALETTE_OFF);
@@ -80,7 +80,7 @@ r3d_texture_from_asset(const asset_view_t* asset, r3d_texture_t* texture) {
     }
     texture->size_log2 = (uint8_t)size_log2;
     texture->levels = (uint8_t)levels;
-    build_colormap(texture, data + palette_off, data + R3D_TEXTURE_AT_MEAN);
+    build_colormap(texture, data + palette_off, data + R3D_TEXTURE_AT_TINT);
     return ASSET_OK;
 }
 

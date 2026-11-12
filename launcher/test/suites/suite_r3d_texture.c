@@ -30,7 +30,7 @@
 #define MAPPING_PERSP  1
 #define WHITE_INDEX    15
 #define MEAN_INDEX     8 /* i * 16 == R3D_TEXTURE_ONE */
-#define MEAN_GREY      128
+#define TINT_GREY      128
 #define NEAR_DEPTH     0.5F
 #define DEPTH_SPREAD   64
 
@@ -69,9 +69,9 @@ write_ltex(uint8_t* b) {
     put_u16(b + R3D_TEXTURE_AT_FORMAT, R3D_TEXTURE_INDEX4);
     b[R3D_TEXTURE_AT_SIZE_LOG2] = TEX_LOG2;
     b[R3D_TEXTURE_AT_LEVELS] = TEX_LEVELS;
-    b[R3D_TEXTURE_AT_MEAN] = MEAN_GREY;
-    b[R3D_TEXTURE_AT_MEAN + 1] = MEAN_GREY;
-    b[R3D_TEXTURE_AT_MEAN + 2] = MEAN_GREY;
+    b[R3D_TEXTURE_AT_TINT] = TINT_GREY;
+    b[R3D_TEXTURE_AT_TINT + 1] = TINT_GREY;
+    b[R3D_TEXTURE_AT_TINT + 2] = TINT_GREY;
     put_u32(b + R3D_TEXTURE_AT_PALETTE_OFF, PALETTE_OFF);
     put_u32(b + R3D_TEXTURE_AT_TEXELS_OFF, TEXELS_OFF);
     for (int i = 0; i < R3D_TEXTURE_COLOURS; i++) {

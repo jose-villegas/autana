@@ -382,7 +382,7 @@ stress_cut_px(const stress_params_t* p, int short_px) {
 #define STRESS_BRICK_SEED     0xB21C7U
 #define STRESS_MORTAR         0
 #define STRESS_BRICK_COLOURS  (R3D_TEXTURE_COLOURS - 1)
-#define STRESS_BRICK_MEAN     128
+#define STRESS_BRICK_TINT     128
 #define STRESS_MORTAR_LEVEL   176
 #define STRESS_BRICK_LOW      72
 #define STRESS_BRICK_STEP     8
@@ -431,7 +431,7 @@ stress_texture_write(uint8_t* ltex) {
     memcpy(ltex + R3D_TEXTURE_AT_FORMAT, &format, sizeof format);
     ltex[R3D_TEXTURE_AT_SIZE_LOG2] = STRESS_TEXTURE_SIZE_LOG2;
     ltex[R3D_TEXTURE_AT_LEVELS] = STRESS_TEXTURE_LEVELS;
-    memset(ltex + R3D_TEXTURE_AT_MEAN, STRESS_BRICK_MEAN, 3);
+    memset(ltex + R3D_TEXTURE_AT_TINT, STRESS_BRICK_TINT, R3D_TEXTURE_TINT_RGB);
     put_u32(ltex + R3D_TEXTURE_AT_PALETTE_OFF, R3D_TEXTURE_HEADER_SIZE);
     put_u32(ltex + R3D_TEXTURE_AT_TEXELS_OFF, R3D_TEXTURE_HEADER_SIZE + STRESS_PALETTE_BYTES);
     uint8_t* palette = ltex + R3D_TEXTURE_HEADER_SIZE;

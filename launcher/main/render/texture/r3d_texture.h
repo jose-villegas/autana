@@ -25,9 +25,9 @@
 #define R3D_TEXTURE_AT_FORMAT      2U
 #define R3D_TEXTURE_AT_SIZE_LOG2   4U
 #define R3D_TEXTURE_AT_LEVELS      5U
-#define R3D_TEXTURE_AT_MEAN        6U /* r, g, b: the material's mean albedo, 0..255; then 3 zero bytes */
-#define R3D_TEXTURE_MEAN_RGB       3U /* the mean's r, g, b */
-#define R3D_TEXTURE_MEAN_BYTES     6U /* the mean and its zero padding */
+#define R3D_TEXTURE_AT_TINT        6U /* r, g, b: the hue the colormap lights the pattern with; then 3 zero bytes */
+#define R3D_TEXTURE_TINT_RGB       3U /* the tint's r, g, b */
+#define R3D_TEXTURE_TINT_BYTES     6U /* the tint and its zero padding */
 #define R3D_TEXTURE_AT_PALETTE_OFF 12U
 #define R3D_TEXTURE_AT_TEXELS_OFF  16U
 #define R3D_TEXTURE_COLOURS        16
@@ -69,6 +69,10 @@ static inline uint32_t
 r3d_texture_level_bytes(int side_log2) {
     return (1U << (2 * side_log2)) / 2U;
 }
+
+/* Whether textured meshes draw textured; false when a development build's
+ * r3d_texture.draw knob is 0, so one build shows and times both. */
+bool r3d_texture_drawn(void);
 
 /* A triangle's corner in texels of level 0. */
 typedef struct {

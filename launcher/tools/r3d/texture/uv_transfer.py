@@ -156,10 +156,19 @@ def textured_entries(mesh, mesh_id, source, patterns, size):
     chosen = [i for i in matched(source.names, patterns) if source.textures[i] is not None]
     if not chosen:
         raise ValueError(f"no textured source material matches {patterns}")
-    names = [texture_name(mesh_id, k) for k in range(len(chosen))]
-    rows = [(name, texture_asset.TYPE,
-             texture_asset.pack_ltex(texture_asset.material_texture(source.textures[i].levels[0], size)))
-            for name, i in zip(names, chosen)]
     luvs = cluster_uvs(mesh, source, chosen, [size] * len(chosen))
+    rows = [(texture_name(mesh_id, k), texture_asset.TYPE,
+             texture_asset.pack_ltex(texture_asset.material_texture(source.textures[i].levels[0], size,
+                                                                    drawn_tint(mesh, luvs, k))))
+            for k, i in enumerate(chosen)]
     return rows + [(name_for_mesh(mesh_id), TYPE, pack_luvs(luvs))]
+
+
+def drawn_tint(mesh, luvs, material):
+    """The mean vertex colour of the clusters `luvs` gives `material`: the hue its colormap lights the pattern
+    with, so the light level keeps the fit's colour. None when no cluster takes it."""
+    vertices = [np.arange(vb, vb + vc) for (vb, vc, *_), m in zip(mesh.clusters, luvs.materials) if m == material]
+    if not vertices or mesh.rgb is None:
+        return None
+    return np.asarray(mesh.rgb, dtype=np.float64)[np.concatenate(vertices)].mean(axis=0)
 

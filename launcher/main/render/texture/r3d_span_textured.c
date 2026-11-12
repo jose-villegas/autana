@@ -25,6 +25,13 @@ typedef enum {
 
 TUNE_OWNER(r3d_texture);
 TUNE(r3d_texture, mapping, MAPPING_AFFINE, MAPPING_AFFINE, MAPPING_PERSPECTIVE);
+/* 0 draws textured meshes plain: one build times and shows both. */
+TUNE(r3d_texture, draw, 1, 0, 1);
+
+bool
+r3d_texture_drawn(void) {
+    return draw != 0;
+}
 
 #define SPAN_STEP    16
 /* u and v walk as 8.8 texels, packed u high and v low in one word; a carry
