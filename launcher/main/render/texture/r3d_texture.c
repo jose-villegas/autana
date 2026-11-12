@@ -1,5 +1,6 @@
 #include "render/texture/r3d_texture.h"
 
+#include <stdio.h>
 #include <string.h>
 
 #include "asset/asset_bytes.h"
@@ -137,4 +138,79 @@ r3d_texture_draw_cluster(const r3d_lit_mesh_t* mesh, int cluster, const r3d_pipe
         }
     }
     return true;
+}
+
+int
+r3d_texture_uvs_material_count(const asset_view_t* uvs) {
+    if (asset_entry_validate(*uvs, R3D_TEXTURE_UVS_VERSION, R3D_TEXTURE_UVS_AT_VERSION, R3D_TEXTURE_UVS_HEADER_SIZE,
+                             sizeof(int16_t))
+        != ASSET_OK) {
+        return 0;
+    }
+    return asset_read_u16(uvs->data + R3D_TEXTURE_UVS_AT_MATERIAL_COUNT);
+}
+
+/* Whether `count` records of `size` bytes at `offset` lie inside an entry of
+ * `entry_size` bytes, after its header and aligned to `alignment`. */
+static bool
+section_fits(uint32_t offset, uint32_t count, uint32_t size, uint32_t alignment, uint32_t entry_size) {
+    return offset >= R3D_TEXTURE_UVS_HEADER_SIZE && offset % alignment == 0
+           && (uint64_t)offset + ((uint64_t)count * size) <= entry_size;
+}
+
+static asset_status_t
+open_materials(const asset_pack_t* pack, const char* mesh_id, int count, r3d_texture_t* materials) {
+    for (int k = 0; k < count; k++) {
+        char suffix[ASSET_NAME_MAX];
+        (void)snprintf(suffix, sizeof suffix, "%s%d", R3D_TEXTURE_MATERIAL_SUFFIX, k);
+        asset_view_t view;
+        asset_status_t status = r3d_lit_mesh_open_sibling(pack, mesh_id, suffix, R3D_TEXTURE_ASSET, true, &view);
+        status = status == ASSET_OK ? r3d_texture_from_asset(&view, &materials[k]) : status;
+        if (status != ASSET_OK) {
+            return status;
+        }
+    }
+    return ASSET_OK;
+}
+
+asset_status_t
+r3d_texture_texturing_from_asset(const asset_view_t* uvs, const asset_pack_t* pack, const char* mesh_id,
+                                 const r3d_lit_mesh_t* mesh, r3d_texture_t* materials, int capacity,
+                                 r3d_mesh_texturing_t* texturing) {
+    *texturing = (r3d_mesh_texturing_t){0};
+    const int count = r3d_texture_uvs_material_count(uvs);
+    const uint8_t* data = uvs->data;
+    if (count == 0 || count > capacity) {
+        return ASSET_ERR_FORMAT;
+    }
+    const uint32_t vertices = asset_read_u32(data + R3D_TEXTURE_UVS_AT_VERTEX_COUNT);
+    const uint32_t clusters = asset_read_u32(data + R3D_TEXTURE_UVS_AT_CLUSTER_COUNT);
+    const uint32_t uvs_off = asset_read_u32(data + R3D_TEXTURE_UVS_AT_UVS_OFF);
+    const uint32_t origins_off = asset_read_u32(data + R3D_TEXTURE_UVS_AT_ORIGINS_OFF);
+    const uint32_t clusters_off = asset_read_u32(data + R3D_TEXTURE_UVS_AT_CLUSTERS_OFF);
+    if (vertices != (uint32_t)mesh->vertex_count || clusters != (uint32_t)mesh->cluster_count) {
+        return ASSET_ERR_FORMAT;
+    }
+    const uint32_t pair = 2U * sizeof(int16_t);
+    if (!section_fits(uvs_off, vertices, pair, sizeof(int16_t), uvs->size)
+        || !section_fits(origins_off, clusters, pair, sizeof(int16_t), uvs->size)
+        || !section_fits(clusters_off, clusters, 1U, 1U, uvs->size)) {
+        return ASSET_ERR_BOUNDS;
+    }
+    for (uint32_t c = 0; c < clusters; c++) {
+        const uint8_t material = data[clusters_off + c];
+        if (material != R3D_TEXTURE_NONE && material >= count) {
+            return ASSET_ERR_FORMAT;
+        }
+    }
+    const asset_status_t status = open_materials(pack, mesh_id, count, materials);
+    if (status != ASSET_OK) {
+        return status;
+    }
+    *texturing = (r3d_mesh_texturing_t){.uvs = (const int16_t (*)[2])(const void*)(data + uvs_off),
+                                        .cluster_material = data + clusters_off,
+                                        .cluster_origin = (const int16_t (*)[2])(const void*)(data + origins_off),
+                                        .materials = materials,
+                                        .material_count = count};
+    return ASSET_OK;
 }

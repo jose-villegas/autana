@@ -107,7 +107,3 @@ def decode(entry):
         raise ValueError("LTEX levels do not match the entry size")
     return Indexed(tuple(mean), palette, levels)
 
-
-def name_for_material(material):
-    return f"{material}.tex"
-

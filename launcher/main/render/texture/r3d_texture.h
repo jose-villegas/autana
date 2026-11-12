@@ -92,7 +92,8 @@ typedef struct r3d_mesh_texturing {
 
 /* A mesh's texturing is an LUVS pack entry beside its LMSH
  * (docs/assets/formats/LUVS.md): the UVs, each cluster's origin, then each
- * cluster's material and the pack ids of its materials' LTEX entries. */
+ * cluster's material. Material k is the mesh's LTEX sibling
+ * <mesh id>R3D_TEXTURE_MATERIAL_SUFFIX<k>. */
 #define R3D_TEXTURE_UVS_ASSET             ASSET_TYPE('L', 'U', 'V', 'S')
 #define R3D_TEXTURE_UVS_VERSION           1U
 #define R3D_TEXTURE_UVS_HEADER_SIZE       24U
@@ -102,18 +103,20 @@ typedef struct r3d_mesh_texturing {
 #define R3D_TEXTURE_UVS_AT_CLUSTER_COUNT  8U
 #define R3D_TEXTURE_UVS_AT_UVS_OFF        12U
 #define R3D_TEXTURE_UVS_AT_ORIGINS_OFF    16U
-#define R3D_TEXTURE_UVS_AT_CLUSTERS_OFF   20U /* the cluster materials, then the material ids */
+#define R3D_TEXTURE_UVS_AT_CLUSTERS_OFF   20U /* the cluster materials */
 #define R3D_TEXTURE_UVS_NAME_SUFFIX       ".uvs"
+#define R3D_TEXTURE_MATERIAL_SUFFIX       ".t"
 #define R3D_TEXTURE_MATERIALS_MAX         R3D_TEXTURE_NONE
 
 /* The materials LUVS entry `uvs` names, after checking its header; 0 when
  * the header is malformed. */
 int r3d_texture_uvs_material_count(const asset_view_t* uvs);
 
-/* Fills `texturing` from LUVS entry `uvs` for `mesh`, after checking it
- * against the mesh, opening each material's LTEX from `pack` into
- * `materials`, `capacity` long. On failure `texturing` is zeroed. */
-asset_status_t r3d_texture_texturing_from_asset(const asset_view_t* uvs, const asset_pack_t* pack,
+/* Fills `texturing` from LUVS entry `uvs` of mesh `mesh_id`, `mesh`, after
+ * checking it against the mesh, opening each material's LTEX sibling from
+ * `pack` into `materials`, `capacity` long. On failure `texturing` is
+ * zeroed. */
+asset_status_t r3d_texture_texturing_from_asset(const asset_view_t* uvs, const asset_pack_t* pack, const char* mesh_id,
                                                 const r3d_lit_mesh_t* mesh, r3d_texture_t* materials, int capacity,
                                                 r3d_mesh_texturing_t* texturing);
 
