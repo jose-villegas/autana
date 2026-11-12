@@ -6,7 +6,6 @@
 #include "asset/asset_bytes.h"
 #include "asset/asset_entry.h"
 #include "math/scalar/mathi.h"
-#include "render/r3d_pipeline.h"
 #include "render/r3d_span_internal.h"
 
 static int
@@ -95,42 +94,13 @@ r3d_texture_open(const asset_pack_t* pack, const char* id, r3d_texture_t* textur
     return r3d_texture_from_asset(&view, texture);
 }
 
-/* A corner of a cluster's triangle: its screen position and colour, and
- * its UV in level-0 texels from the cluster's origin. */
-static void
-corner(const r3d_lit_mesh_t* mesh, const r3d_pipeline_vertex_t* cs, int v, const float origin[2],
-       r3d_span_vertex_t* out, r3d_span_uv_t* uv) {
-    const uint8_t* rgb = mesh->colors[v];
-    *out = (r3d_span_vertex_t){cs[v].sx, cs[v].sy, cs[v].iz, rgb[0], rgb[1], rgb[2]};
-    const float unit = 1.0F / (float)(1 << R3D_TEXTURE_UV_SHIFT);
-    *uv = (r3d_span_uv_t){origin[0] + ((float)mesh->texturing->uvs[v][0] * unit),
-                          origin[1] + ((float)mesh->texturing->uvs[v][1] * unit)};
-}
-
-bool
-r3d_texture_draw_cluster(const r3d_lit_mesh_t* mesh, int cluster, const r3d_pipeline_vertex_t* cs,
-                         const r3d_span_target_t* target) {
-    const r3d_mesh_texturing_t* texturing = mesh->texturing;
-    const uint8_t material = texturing->cluster_material[cluster];
-    if (material == R3D_TEXTURE_NONE || mesh->colors == NULL) {
-        return false;
-    }
-    const r3d_texture_t* texture = &texturing->materials[material];
+r3d_span_uv_t
+r3d_texture_uv(const r3d_mesh_texturing_t* texturing, const r3d_texture_t* texture, int cluster, int vertex) {
     const float side = (float)(1U << texture->size_log2);
-    const float origin[2] = {(float)texturing->cluster_origin[cluster][0] * side,
-                             (float)texturing->cluster_origin[cluster][1] * side};
-    const r3d_lit_cluster_t* c = &mesh->clusters[cluster];
-    for (int t = c->triangle_first; t < c->triangle_first + c->triangle_count; t++) {
-        r3d_span_vertex_t s[3];
-        r3d_span_uv_t uv[3];
-        for (int k = 0; k < 3; k++) {
-            corner(mesh, cs, mesh->triangles[t][k], origin, &s[k], &uv[k]);
-        }
-        if (c->double_sided || r3d_span_area2(&s[0], &s[1], &s[2]) < 0) {
-            r3d_span_textured_triangle(target, &s[0], &s[1], &s[2], uv, texture);
-        }
-    }
-    return true;
+    const float unit = 1.0F / (float)(1 << R3D_TEXTURE_UV_SHIFT);
+    return (r3d_span_uv_t){
+        ((float)texturing->cluster_origin[cluster][0] * side) + ((float)texturing->uvs[vertex][0] * unit),
+        ((float)texturing->cluster_origin[cluster][1] * side) + ((float)texturing->uvs[vertex][1] * unit)};
 }
 
 int
@@ -178,16 +148,21 @@ r3d_texture_texturing_from_asset(const asset_view_t* uvs, const asset_pack_t* pa
     }
     const uint32_t vertices = asset_read_u32(data + R3D_TEXTURE_UVS_AT_VERTEX_COUNT);
     const uint32_t clusters = asset_read_u32(data + R3D_TEXTURE_UVS_AT_CLUSTER_COUNT);
+    const uint32_t triangles = asset_read_u32(data + R3D_TEXTURE_UVS_AT_TRIANGLE_COUNT);
     const uint32_t uvs_off = asset_read_u32(data + R3D_TEXTURE_UVS_AT_UVS_OFF);
     const uint32_t origins_off = asset_read_u32(data + R3D_TEXTURE_UVS_AT_ORIGINS_OFF);
     const uint32_t clusters_off = asset_read_u32(data + R3D_TEXTURE_UVS_AT_CLUSTERS_OFF);
-    if (vertices != (uint32_t)mesh->vertex_count || clusters != (uint32_t)mesh->cluster_count) {
+    const uint32_t triangles_off = asset_read_u32(data + R3D_TEXTURE_UVS_AT_TRIANGLES_OFF);
+    if (vertices != (uint32_t)mesh->vertex_count || clusters != (uint32_t)mesh->cluster_count
+        || triangles != (uint32_t)mesh->triangle_count) {
         return ASSET_ERR_FORMAT;
     }
     const uint32_t pair = 2U * sizeof(int16_t);
+    const uint32_t bits = (triangles + R3D_TEXTURE_UVS_TRIANGLES_PER_BYTE - 1U) / R3D_TEXTURE_UVS_TRIANGLES_PER_BYTE;
     if (!section_fits(uvs_off, vertices, pair, sizeof(int16_t), uvs->size)
         || !section_fits(origins_off, clusters, pair, sizeof(int16_t), uvs->size)
-        || !section_fits(clusters_off, clusters, 1U, 1U, uvs->size) || clusters_off + clusters != uvs->size) {
+        || !section_fits(clusters_off, clusters, 1U, 1U, uvs->size)
+        || !section_fits(triangles_off, bits, 1U, 1U, uvs->size) || triangles_off + bits != uvs->size) {
         return ASSET_ERR_BOUNDS;
     }
     for (uint32_t c = 0; c < clusters; c++) {
@@ -203,6 +178,7 @@ r3d_texture_texturing_from_asset(const asset_view_t* uvs, const asset_pack_t* pa
     *texturing = (r3d_mesh_texturing_t){.uvs = (const int16_t (*)[2])(const void*)(data + uvs_off),
                                         .cluster_material = data + clusters_off,
                                         .cluster_origin = (const int16_t (*)[2])(const void*)(data + origins_off),
+                                        .triangle_textured = data + triangles_off,
                                         .materials = materials,
                                         .material_count = count};
     return ASSET_OK;

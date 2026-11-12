@@ -1,10 +1,11 @@
 """LUVS v1 mesh texturing: a baked mesh's UVs, carried over from the source's, and each cluster's material.
 The layout constants belong to render/texture/r3d_texture.h.
 
-A cluster takes the material most of its area lies on, when that is at least TEXTURED_SHARE of it, and one planar
-chart: the source triangle under the largest of its triangles of that material. Every vertex of the cluster takes
-its UV from that triangle's plane, so a cluster's UVs agree at every vertex and a planar wall keeps the source's
-mapping exactly."""
+A cluster takes the textured material most of its area lies on and one planar chart: the source triangle under the
+largest of its triangles of that material. Every vertex of the cluster takes its UV from that triangle's plane, so a
+cluster's UVs agree at every vertex and a planar wall keeps the source's mapping exactly. A triangle is marked
+textured when it lies on that material and faces the chart's plane; the rest of the cluster draws plain, so the
+texture ends where its material does, not at a cluster's edge."""
 import dataclasses
 import fnmatch
 import pathlib
@@ -26,15 +27,16 @@ NONE = read_define(OWNER, "R3D_TEXTURE_NONE")
 UV_SHIFT = read_define(OWNER, "R3D_TEXTURE_UV_SHIFT")
 MATERIALS_MAX = NONE
 TEXTURE_SUFFIX = read_define(OWNER, "R3D_TEXTURE_MATERIAL_SUFFIX")
+TRIANGLES_PER_BYTE = read_define(OWNER, "R3D_TEXTURE_UVS_TRIANGLES_PER_BYTE")
 HEADER_FIELDS = (("VERSION", "H"), ("MATERIAL_COUNT", "H"), ("VERTEX_COUNT", "I"), ("CLUSTER_COUNT", "I"),
-                 ("UVS_OFF", "I"), ("ORIGINS_OFF", "I"), ("CLUSTERS_OFF", "I"))
+                 ("TRIANGLE_COUNT", "I"), ("UVS_OFF", "I"), ("ORIGINS_OFF", "I"), ("CLUSTERS_OFF", "I"),
+                 ("TRIANGLES_OFF", "I"))
 HEADER = checked_struct(OWNER, "R3D_TEXTURE_UVS", HEADER_FIELDS)
 PAIR = struct.Struct("<2h")
 INT16 = np.iinfo(np.int16)
-# A baked triangle takes its nearest source triangle's material when their normals agree within this.
+# A baked triangle takes its nearest source triangle's material, and draws textured on its cluster's chart, when
+# their normals agree within this.
 NORMAL_DEGREES = 10.0
-# A cluster is textured when this share of its area lies on one textured material.
-TEXTURED_SHARE = 0.5
 
 
 @dataclasses.dataclass
@@ -42,6 +44,7 @@ class Luvs:
     uvs: np.ndarray        # (vertices, 2) int16, 1/16 texel of level 0 from the vertex's cluster's origin
     origins: np.ndarray    # (clusters, 2) int16, whole texture sides
     materials: np.ndarray  # (clusters,) uint8, an index into names or NONE
+    textured: np.ndarray   # (triangles,) bool, drawn with its cluster's material
     material_count: int    # its materials' LTEX entries are the mesh's siblings texture_name(mesh, 0..count-1)
 
 
@@ -86,17 +89,19 @@ def cluster_uvs(mesh, source, material_ids, sizes):
     near, _bary, _distance = nearest_triangles(points[tris].mean(axis=1), triangle_search(source_corners))
     baked_normal, area = unit_normals(points[tris])
     source_normal, _ = unit_normals(source_corners)
-    facing = (baked_normal * source_normal[near]).sum(axis=1) >= np.cos(np.radians(NORMAL_DEGREES))
+    agree = np.cos(np.radians(NORMAL_DEGREES))
+    facing = (baked_normal * source_normal[near]).sum(axis=1) >= agree
     slot = np.full(len(source.names), NONE)
     slot[list(material_ids)] = np.arange(len(material_ids))
     material = np.where(facing, slot[np.asarray(source.tri_m)[near]], NONE)
     uvs = np.zeros((len(points), 2), dtype=np.int16)
     origins = np.zeros((len(mesh.clusters), 2), dtype=np.int16)
     materials = np.full(len(mesh.clusters), NONE, dtype=np.uint8)
+    textured = np.zeros(len(tris), dtype=bool)
     for c, (vb, vc, tb, tc, *_box) in enumerate(mesh.clusters):
         own, own_area = material[tb:tb + tc], area[tb:tb + tc]
         shares = np.bincount(own[own != NONE], own_area[own != NONE], minlength=len(material_ids))
-        if not len(shares) or shares.max() < TEXTURED_SHARE * own_area.sum():
+        if not len(shares) or shares.max() <= 0.0:
             continue
         k = int(shares.argmax())
         size = sizes[k]
@@ -113,31 +118,35 @@ def cluster_uvs(mesh, source, material_ids, sizes):
         if stored.min() < INT16.min or stored.max() > INT16.max or np.abs(origin).max() > INT16.max:
             raise ValueError(f"cluster {c} spans more texels than an int16 UV holds; lower the texture size")
         uvs[vb:vb + vc], origins[c], materials[c] = stored, origin, k
-    return Luvs(uvs, origins, materials, len(material_ids))
+        textured[tb:tb + tc] = (own == k) & (baked_normal[tb:tb + tc] @ source_normal[chart] >= agree)
+    return Luvs(uvs, origins, materials, textured, len(material_ids))
 
 
 def pack_luvs(luvs):
-    """The LUVS entry: header, UVs, origins, then cluster materials."""
+    """The LUVS entry: header, UVs, origins, cluster materials, then triangle bits, the low bit first."""
     uvs_off = HEADER.size
     origins_off = uvs_off + len(luvs.uvs) * PAIR.size
     clusters_off = origins_off + len(luvs.origins) * PAIR.size
-    return (HEADER.pack(VERSION, luvs.material_count, len(luvs.uvs), len(luvs.origins), uvs_off, origins_off,
-                        clusters_off)
+    triangles_off = clusters_off + len(luvs.materials)
+    return (HEADER.pack(VERSION, luvs.material_count, len(luvs.uvs), len(luvs.origins), len(luvs.textured), uvs_off,
+                        origins_off, clusters_off, triangles_off)
             + luvs.uvs.astype("<i2").tobytes() + luvs.origins.astype("<i2").tobytes()
-            + luvs.materials.astype(np.uint8).tobytes())
+            + luvs.materials.astype(np.uint8).tobytes() + np.packbits(luvs.textured, bitorder="little").tobytes())
 
 
 def decode(entry):
     """The Luvs an LUVS entry holds."""
-    version, count, vertices, clusters, uvs_off, origins_off, clusters_off = HEADER.unpack_from(entry)
+    version, count, vertices, clusters, triangles, uvs_off, origins_off, clusters_off, triangles_off =         HEADER.unpack_from(entry)
     if version != VERSION:
         raise ValueError("LUVS version is invalid")
     uvs = np.frombuffer(entry, "<i2", vertices * 2, uvs_off).reshape(-1, 2)
     origins = np.frombuffer(entry, "<i2", clusters * 2, origins_off).reshape(-1, 2)
     materials = np.frombuffer(entry, np.uint8, clusters, clusters_off)
-    if clusters_off + clusters != len(entry):
+    bits = -(-triangles // TRIANGLES_PER_BYTE)
+    if triangles_off + bits != len(entry):
         raise ValueError("LUVS sections do not match the entry size")
-    return Luvs(uvs.copy(), origins.copy(), materials.copy(), count)
+    textured = np.unpackbits(np.frombuffer(entry, np.uint8, bits, triangles_off), count=triangles, bitorder="little")
+    return Luvs(uvs.copy(), origins.copy(), materials.copy(), textured.astype(bool), count)
 
 
 def name_for_mesh(mesh):
@@ -153,9 +162,12 @@ def texture_name(mesh, index):
 def textured_entries(mesh, mesh_id, source, patterns, size):
     """The pack rows (name, type, bytes) texturing `mesh_id`: one LTEX per source material matching `patterns` that
     has a texture, and the mesh's LUVS."""
-    chosen = [i for i in matched(source.names, patterns) if source.textures[i] is not None]
-    if not chosen:
-        raise ValueError(f"no textured source material matches {patterns}")
+    textured = [i for i, texture in enumerate(source.textures) if texture is not None]
+    names = [source.names[i] for i in textured]
+    for pattern in patterns:
+        if not matched(names, [pattern]):
+            raise ValueError(f"no textured source material matches {pattern!r}")
+    chosen = [textured[k] for k in matched(names, patterns)]
     luvs = cluster_uvs(mesh, source, chosen, [size] * len(chosen))
     rows = [(texture_name(mesh_id, k), texture_asset.TYPE,
              texture_asset.pack_ltex(texture_asset.material_texture(source.textures[i].levels[0], size,
@@ -165,10 +177,13 @@ def textured_entries(mesh, mesh_id, source, patterns, size):
 
 
 def drawn_tint(mesh, luvs, material):
-    """The mean vertex colour of the clusters `luvs` gives `material`: the hue its colormap lights the pattern
-    with, so the light level keeps the fit's colour. None when no cluster takes it."""
-    vertices = [np.arange(vb, vb + vc) for (vb, vc, *_), m in zip(mesh.clusters, luvs.materials) if m == material]
-    if not vertices or mesh.rgb is None:
+    """The mean vertex colour of the triangles `luvs` draws with `material`: the hue its colormap lights the pattern
+    with, so the light level keeps the fit's colour. None when no triangle takes it."""
+    rows = [np.arange(tb, tb + tc) for (_vb, _vc, tb, tc, *_), m in zip(mesh.clusters, luvs.materials) if m == material]
+    if not rows or mesh.rgb is None:
         return None
-    return np.asarray(mesh.rgb, dtype=np.float64)[np.concatenate(vertices)].mean(axis=0)
-
+    drawn = np.concatenate(rows)
+    drawn = drawn[luvs.textured[drawn]]
+    if not len(drawn):
+        return None
+    return np.asarray(mesh.rgb, dtype=np.float64)[np.asarray(mesh.tris)[drawn].ravel()].mean(axis=0)

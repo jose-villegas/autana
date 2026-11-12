@@ -207,10 +207,10 @@ test_clipped_and_mixed_clusters_keep_the_target_style(void) {
     r3d_span_target_t* actual = &clipped->actual;
     *expected = r3d_span_target(pixels, pixels + TEST_PIXELS, TEST_SIDE, 0, TEST_SIDE);
     *actual = r3d_span_target(pixels + TEST_PIXELS * 2, pixels + TEST_PIXELS * 3, TEST_SIDE, 0, TEST_SIDE);
-    const clip_vertex_t polygon[4] = {{8.75F, 0.75F, 1, 191.25F, 63.75F, 0},
-                                      {32, 0, 4, 0, 255, 0},
-                                      {0, 32, 4, 0, 0, 255},
-                                      {0.75F, 8.75F, 1, 191.25F, 0, 63.75F}};
+    const clip_vertex_t polygon[4] = {{8.75F, 0.75F, 1, 191.25F, 63.75F, 0, 0, 0},
+                                      {32, 0, 4, 0, 255, 0, 0, 0},
+                                      {0, 32, 4, 0, 0, 255, 0, 0},
+                                      {0.75F, 8.75F, 1, 191.25F, 0, 63.75F, 0, 0}};
     uint32_t checksums[SMALL_FILL_STYLE_COUNT];
     for (small_fill_style_t style = SMALL_FILL_FLAT; style < SMALL_FILL_STYLE_COUNT; style++) {
         r3d_span_small_fill_t* resolved = &clipped->resolved;

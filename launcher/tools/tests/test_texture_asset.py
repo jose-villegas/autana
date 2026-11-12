@@ -138,16 +138,18 @@ class LuvsTests(unittest.TestCase):
     def test_round_trip(self):
         value = luvs.Luvs(np.array([[1, -2], [300, -400], [5, 6]], dtype=np.int16),
                           np.array([[0, 1], [-3, 2]], dtype=np.int16),
-                          np.array([0, luvs.NONE], dtype=np.uint8), 1)
+                          np.array([0, luvs.NONE], dtype=np.uint8),
+                          np.array([True, False, True, True, False, False, False, False, True]), 1)
         decoded = luvs.decode(luvs.pack_luvs(value))
         np.testing.assert_array_equal(decoded.uvs, value.uvs)
         np.testing.assert_array_equal(decoded.origins, value.origins)
         np.testing.assert_array_equal(decoded.materials, value.materials)
+        np.testing.assert_array_equal(decoded.textured, value.textured)
         self.assertEqual(decoded.material_count, 1)
 
     def test_decode_rejects_bad_entries(self):
         value = luvs.Luvs(np.zeros((3, 2), dtype=np.int16), np.zeros((1, 2), dtype=np.int16),
-                          np.zeros(1, dtype=np.uint8), 1)
+                          np.zeros(1, dtype=np.uint8), np.ones(2, dtype=bool), 1)
         entry = luvs.pack_luvs(value)
         fields = list(luvs.HEADER.unpack_from(entry))
         fields[0] = luvs.VERSION + 1
@@ -180,14 +182,15 @@ class PlaneUvTests(unittest.TestCase):
             self.assertIsNone(luvs.plane_uv(np.array([[0.5, 0.5, 0.0]]), corners, np.zeros((3, 2))))
 
 
-def fake_scene(textured=(True, False), names=("Brick_a", "Glass")):
-    """A unit quad in z = 0 (two triangles, material 0), mapped over the whole texture, and the same baked mesh."""
+def fake_scene(textured=(True, False), names=("Brick_a", "Glass"), materials=(0, 0)):
+    """A unit quad in z = 0 (two triangles, of `materials`), mapped over the whole texture, and the same baked
+    mesh."""
     corners = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]])
     tris = np.array([[0, 1, 2], [0, 2, 3]])
     texture = types.SimpleNamespace(levels=[checker_source(0.2, 0.8)])
     source = types.SimpleNamespace(
         names=list(names), textures=[texture if t else None for t in textured], p=corners, tri_v=tris,
-        tri_m=np.zeros(2, dtype=int), uv=corners[:, :2].copy(), tri_t=tris)
+        tri_m=np.array(materials), uv=corners[:, :2].copy(), tri_t=tris)
     scale = 100
     mesh = types.SimpleNamespace(
         pos=corners * scale, position_scale=scale, tris=tris, clusters=[(0, 4, 0, 2, 0, 0, 0, 0, 0, 0)],
@@ -213,7 +216,7 @@ class TexturedEntriesTests(unittest.TestCase):
                          [(luvs.texture_name("m", 0), ltex.TYPE), (luvs.name_for_mesh("m"), luvs.TYPE)])
         texture = ltex.decode(rows[0][2])
         self.assertEqual(len(texture.levels[0]), SIZE)
-        # The LTEX tint is the drawn clusters' mean vertex colour.
+        # The LTEX tint is the textured triangles' mean vertex colour.
         self.assertEqual(texture.tint, (90, 90, 90))
         decoded = luvs.decode(rows[1][2])
         self.assertEqual(decoded.material_count, 1)
@@ -229,6 +232,23 @@ class TexturedEntriesTests(unittest.TestCase):
         corners = source.p[:, :2]
         expected = np.stack([corners[:, 0] * SIZE, (1.0 - corners[:, 1]) * SIZE], axis=1)
         np.testing.assert_allclose(texels, expected, atol=1.0 / (1 << luvs.UV_SHIFT))
+
+    def test_triangles_on_another_material_draw_plain(self):
+        mesh, source = fake_scene(materials=(0, 1))
+        decoded = luvs.decode(luvs.textured_entries(mesh, "m", source, ["Brick_*"], SIZE)[-1][2])
+        self.assertEqual(list(decoded.materials), [0])
+        self.assertEqual(list(decoded.textured), [True, False])
+
+    def test_triangles_off_the_chart_plane_draw_plain(self):
+        mesh, source = fake_scene()
+        # The second triangle folded up out of the first's plane, in the baked mesh and the source alike, so both
+        # keep their material; the folded one is the larger, so its plane is the chart and the flat one draws plain.
+        mesh.pos = mesh.pos.copy()
+        mesh.pos[3] = [0.0, 0.0, 100.0]
+        source.p = source.p.copy()
+        source.p[3] = [0.0, 0.0, 1.0]
+        decoded = luvs.decode(luvs.textured_entries(mesh, "m", source, ["Brick_*"], SIZE)[-1][2])
+        self.assertEqual(list(decoded.textured), [False, True])
 
     def test_matched(self):
         names = ["Brick_a", "Brick_b", "Glass"]
