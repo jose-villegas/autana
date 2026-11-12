@@ -2,8 +2,9 @@ name: WinLibs
 description: >-
   The MinGW-w64 toolchain the Windows dev machines build host code with
   (docs/testing/Host-Tests.md): WinLibs GCC, POSIX threads, UCRT, with its
-  mingw32-make and CMake, put first on PATH. Pinned to one release and its
-  sha256, so the runner image's own MinGW never decides a result.
+  mingw32-make and CMake, put first on PATH and named as the job's CC. Pinned
+  to one release and its sha256, so the runner image's own MinGW never
+  decides a result: WinLibs has no cc.exe, and find_cc.sh tries `cc` first.
 
 inputs:
   release:
@@ -41,3 +42,4 @@ runs:
         DEST: ${{ runner.temp }}/winlibs
       run: |
         cygpath -w "$DEST/mingw64/bin" >> "$GITHUB_PATH"
+        echo "CC=$(cygpath -m "$DEST/mingw64/bin/gcc.exe")" >> "$GITHUB_ENV"
