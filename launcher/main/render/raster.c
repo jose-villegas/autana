@@ -613,14 +613,11 @@ expand_batch(const world_cull_t* world, const r3d_batch_draw_t* draw, r3d_batch_
 }
 
 /* Keeps, after the instances in the drawn list, each batch's copies its
- * spheres keep, none when its world box is outside. Not inlined: the
- * batches' locals stay off the cull's frame. */
-static RENDER_IRAM_ATTR __attribute__((noinline)) void
+ * spheres keep, none when its world box is outside; the caller has checked
+ * there are batches. Not inlined: the batches' locals stay off the cull's
+ * frame, and its code in flash, as a frame without batches never calls it. */
+static __attribute__((noinline)) void
 expand_batches(const raster_t* raster, const world_cull_t* world, const raster_buffers_t* buffers) {
-    raster_census_head(raster)->copy_count = 0;
-    if (raster->batch_count == 0) {
-        return; /* placing the copies walks every instance */
-    }
     r3d_batch_draw_t* copies = raster_census_place(raster);
     int count = 0;
     for (int i = 0; i < raster->batch_count; i++) {
@@ -740,7 +737,10 @@ cull_begin(draw_work_t* work, const raster_t* raster, const render_view_t* view,
     picture_lens_t* picture = &work->picture;
     picture_lens_init(picture, raster, view, fitted);
     world_cull_init(&job->world, picture, view, job->settings.cull);
-    expand_batches(raster, &job->world, &work->buffers);
+    raster_census_head(raster)->copy_count = 0;
+    if (raster->batch_count != 0) { /* placing the copies walks every instance */
+        expand_batches(raster, &job->world, &work->buffers);
+    }
     job->drawn_count = raster_census_count(raster);
     job->pick = level_pick_init(raster, picture, view, &job->settings.lod);
     for (int h = 0; h < 2; h++) {
