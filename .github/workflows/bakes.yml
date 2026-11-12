@@ -6,7 +6,8 @@ name: Bakes
 # (bake.py REFERENCE_SHARDS); both upload the files; the lock job then fails until the author runs
 # `bake.py lock --from-run N` with that run and commits the lock. A mesh's and a
 # reference set's bytes differ by CPU vendor, so on a runner of another vendor than the lock's
-# `mesh_cpu_vendor` the bake fails before making one: re-run the failed job.
+# `mesh_cpu_vendor` the bake fails before making one; a shard checks its runner first
+# (scripts/ci/runner_vendor.py), and bakes-vendor-rerun.yml re-runs a run failed only that way.
 # A fit needs
 # the CUDA GPU, so the Bakes GPU workflow (bakes-gpu.yml) makes it from the locked
 # start and reference set, started by hand on the branch; no pull request reaches that runner. On main, publish uploads each locked file the `bakes` release lacks,
@@ -160,6 +161,10 @@ jobs:
         shard: ${{ fromJSON(needs.reference-plan.outputs.shards) }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      # Before any install: a runner of another CPU vendor than the lock's fails in seconds.
+      - name: This runner's CPU vendor is the lock's
+        run: python3 scripts/ci/runner_vendor.py check
 
       - uses: ./.github/actions/host-tools
 
