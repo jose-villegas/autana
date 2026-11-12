@@ -26,6 +26,7 @@ typedef enum {
     STRESS_SURFACE_UNIFORM,   /* one colour at every corner: zero colour steps, filled uniform */
     STRESS_SURFACE_STATIC,    /* the pack's own static mesh asset per copy, nothing generated */
     STRESS_SURFACE_TWO_SIDED, /* banded, and drawn from both sides: nothing faces away */
+    STRESS_SURFACE_CARVED,    /* the pack's carved prop, baked with its levels of detail, each copy picking its own */
 } stress_surface_t;
 
 typedef enum {
@@ -69,7 +70,9 @@ typedef struct {
     X(CARD, "card", CARD)                                                                                              \
     X(CULLED, "culled", BANDED)                                                                                        \
     X(NEAR, "near", BANDED)                                                                                            \
-    X(FEW_COPIES, "few-copies", BANDED)
+    X(FEW_COPIES, "few-copies", BANDED)                                                                                \
+    X(CARVED_NEAR, "carved-near", CARVED)                                                                              \
+    X(CARVED_FAR, "carved-far", CARVED)
 
 #define STRESS_PRESET_ID(id_, ...) STRESS_##id_,
 
@@ -84,6 +87,12 @@ extern const stress_params_t stress_presets[STRESS_PRESET_COUNT];
 static inline bool
 stress_per_frame(const stress_params_t* p) {
     return STRESS_SURFACE_IS_PER_FRAME(p->surface);
+}
+
+/* Whether a preset shows a mesh baked into the pack rather than one it generates. */
+static inline bool
+stress_baked(const stress_params_t* p) {
+    return p->surface == STRESS_SURFACE_STATIC || p->surface == STRESS_SURFACE_CARVED;
 }
 
 /* A copy's mesh: the shape's vertex and triangle counts. */

@@ -82,6 +82,8 @@ stress-culled|--quarter 1 --no-hud --scene stress-culled --frames 2|448x368|nopi
 stress-near|--quarter 1 --no-hud --scene stress-near --frames 2|448x368|nopin
 stress-few-copies|--quarter 1 --no-hud --scene stress-few-copies --frames 2|448x368|nopin
 stress-noisy-tiny|--quarter 1 --no-hud --scene stress-noisy-tiny --frames 2|448x368|nopin
+stress-carved-near|--quarter 1 --no-hud --scene stress-carved-near --frames 2|448x368|nopin
+stress-carved-far|--quarter 1 --no-hud --scene stress-carved-far --frames 2|448x368|nopin
 "
 
 # The scenes read their meshes from asset packs of the baked meshes in the tree.

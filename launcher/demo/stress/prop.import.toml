@@ -1,0 +1,8 @@
+# The stress scene's carved prop: a bumpy ball baked with its levels of
+# detail, shown in the carved presets' copies, each picking its own level.
+[source]
+path = "prop.obj"
+credit = "A bumpy ball written for this scene by launcher/main/apps/render_lab/tools/bumpy_sphere.py (python bumpy_sphere.py launcher/demo/stress/prop.obj)."
+
+[output]
+name = "stress_prop"

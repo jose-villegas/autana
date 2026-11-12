@@ -26,8 +26,9 @@
 
 static const char* TAG = "stress";
 
-/* Copies are named consecutively from zero. */
+/* Copies are named consecutively from zero: the generated presets' slots, the carved presets' props. */
 #define STRESS_SLOT_FORMAT    "slot_%02d"
+#define STRESS_PROP_FORMAT    "prop_%02d"
 
 /* The longest copy name STRESS_SLOT_FORMAT makes, with its terminator. */
 #define STRESS_SLOT_NAME_SIZE 16
@@ -51,17 +52,27 @@ fail(const char* what) {
 }
 
 static entity_t
-find_slot(int index) {
+find_slot(const char* format, int index) {
     char name[STRESS_SLOT_NAME_SIZE];
-    const int length = snprintf(name, sizeof name, STRESS_SLOT_FORMAT, index);
+    const int length = snprintf(name, sizeof name, format, index);
     return length > 0 && (size_t)length < sizeof name ? entity_find(loaded, name_hash(name)) : ENTITY_NONE;
 }
 
-/* The pool is every copy the pack names, from 0 up to the first it lacks. */
+static const char*
+pool_format(bool carved) {
+    return carved ? STRESS_PROP_FORMAT : STRESS_SLOT_FORMAT;
+}
+
+/* The pool is every copy of the preset's kind the pack names, from 0 up to
+ * the first it lacks; every copy of the other kind is hidden. */
 static bool
 find_pool(void) {
+    const bool carved = shown->surface == STRESS_SURFACE_CARVED;
+    for (int i = 0; !handle_is_none(find_slot(pool_format(!carved), i)); i++) {
+        entity_set_enabled(find_slot(pool_format(!carved), i), false);
+    }
     pool = 0;
-    while (!handle_is_none(find_slot(pool))) {
+    while (!handle_is_none(find_slot(pool_format(carved), pool))) {
         pool++;
     }
     slots = lab_scene_take(sizeof *slots * (size_t)(pool > 0 ? pool : 1));
@@ -69,7 +80,7 @@ find_pool(void) {
         return false;
     }
     for (int i = 0; i < pool; i++) {
-        slots[i] = find_slot(i);
+        slots[i] = find_slot(pool_format(carved), i);
     }
     return true;
 }
@@ -139,13 +150,13 @@ place_copies(void) {
     const stress_framing_t seen = {sqrtf(vec3f_dot(eye, eye)), lens->half_fov_short_tan};
     transformf_t facing = transformf_identity();
     transformf_set_rotation(&facing, quatf_from_axis_angle(vec3f_unit_y(), atan2f(eye.x, eye.z)));
-    const transformf_t shape = shown->surface == STRESS_SURFACE_STATIC ? static_shape() : transformf_identity();
+    const transformf_t shape = stress_baked(shown) ? static_shape() : transformf_identity();
     for (int i = 0; i < pool; i++) {
         const bool used = i < shown->copies;
         entity_set_enabled(slots[i], used);
         if (used) {
             transformf_t place = stress_copy_place(shown, i, seen);
-            if (shown->surface == STRESS_SURFACE_STATIC) {
+            if (stress_baked(shown)) {
                 place = transformf_compose(&place, &shape);
             }
             transform_set_local(slots[i], transformf_compose(&facing, &place));
@@ -176,7 +187,7 @@ load(void) {
         return false;
     }
     viewer = render_lab.start_camera == NULL ? camera : entity_find(loaded, name_hash(render_lab.start_camera));
-    if (!find_pool() || (shown->surface != STRESS_SURFACE_STATIC && !take_mesh())) {
+    if (!find_pool() || (!stress_baked(shown) && !take_mesh())) {
         fail("no memory for stress");
         return false;
     }
@@ -184,7 +195,7 @@ load(void) {
         fail("too few stress copies");
         return false;
     }
-    if (shown->surface != STRESS_SURFACE_STATIC && !build()) {
+    if (!stress_baked(shown) && !build()) {
         fail("stress mesh did not fit");
         return false;
     }

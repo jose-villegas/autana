@@ -41,6 +41,10 @@ const stress_params_t stress_presets[STRESS_PRESET_COUNT] = {
                      6},
     [STRESS_FEW_COPIES] = {STRESS_SHAPE_SPHERE, 24, 2, STRESS_LAYOUT_WALL, 70, STRESS_SURFACE_OF(FEW_COPIES),
                            STRESS_CAMERA, 6},
+    [STRESS_CARVED_NEAR] = {STRESS_SHAPE_PLANE, 1, 9, STRESS_LAYOUT_WALL, 160, STRESS_SURFACE_OF(CARVED_NEAR),
+                            STRESS_CAMERA_NEAR, 6},
+    [STRESS_CARVED_FAR] = {STRESS_SHAPE_PLANE, 1, 64, STRESS_LAYOUT_WALL, 50, STRESS_SURFACE_OF(CARVED_FAR),
+                           STRESS_CAMERA, 6},
 };
 
 stress_params_t
