@@ -510,6 +510,8 @@ find_copy(entity_t scene, const char* format, int index) {
 
 entity_t*
 lab_scene_copies(entity_t scene, const char* format, int* count) {
+    assert(strchr(format, '%') != NULL); /* the copy's number */
+    *count = 0;
     int found = 0;
     while (!handle_is_none(find_copy(scene, format, found))) {
         found++;
