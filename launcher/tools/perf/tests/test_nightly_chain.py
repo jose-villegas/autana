@@ -141,7 +141,7 @@ class NightlyTests(unittest.TestCase):
         header = self.repo / "launcher/test/suites.h"
         header.parent.mkdir(parents=True)
         header.write_text("#define SUITE_FILTER_LEN 24\n#define SUITE_FILTER_MAX 4\n")
-        (self.repo / "launcher/test/suite_fixture.c").write_text(chain.SUITE_REGISTRATION.format("suite"))
+        (self.repo / "launcher/test/suite_fixture.c").write_text("SUITE_REGISTER(suite);")
         for number in range(6):
             (self.repo / "code").write_text(str(number))
             chain.git(self.repo, "add", ".")
@@ -211,7 +211,7 @@ class NightlyTests(unittest.TestCase):
         return patch.object(chain, "run_flash", side_effect=capture)
 
     def test_a_step_older_than_a_suite_measures_without_it(self):
-        (self.repo / "launcher/test/suite_late.c").write_text(chain.SUITE_REGISTRATION.format("late"))
+        (self.repo / "launcher/test/suite_late.c").write_text("SUITE_REGISTER_ON_REQUEST(late);")
         chain.git(self.repo, "add", ".")
         chain.git(self.repo, "commit", "-qm", "a late suite (#106)")
         self.commits.append(chain.git(self.repo, "rev-parse", "HEAD"))
@@ -220,6 +220,19 @@ class NightlyTests(unittest.TestCase):
         ran = [command[command.index("suite") + 1] for command in replay.calls if "suite" in command]
         self.assertEqual(ran, ["suite", "suite", "late"])
         self.assertEqual([result.outcome for result in results], ["measured", "measured"])
+
+    def test_the_newest_step_without_a_suite_fails_its_capture(self):
+        self.args.suite = [("suite", "-", "-"), ("missing", "-", "-")]
+        results, replay, _ = self.run_chain(self.steps((1, 5)))
+        ran = [command[command.index("suite") + 1] for command in replay.calls if "suite" in command]
+        self.assertEqual(ran, ["suite"])
+        self.assertEqual([result.outcome for result in results], ["measured", "capture_failed"])
+
+    def test_a_step_that_registers_none_of_the_suites_fails_its_capture(self):
+        self.args.suite = [("missing", "-", "-")]
+        results, replay, _ = self.run_chain(self.steps((1, 5)))
+        self.assertFalse([command for command in replay.calls if "suite" in command])
+        self.assertEqual([result.outcome for result in results], ["capture_failed", "capture_failed"])
 
     def test_lane_timestamps_and_timeline(self):
         marker = self.clock.now().isoformat()

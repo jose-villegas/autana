@@ -27,7 +27,7 @@ import autana_config
 from capture import require_same_board
 from device_lock import normalise_board, short_id, write_json
 from layout_measure import autana_command, capture_for, run_flash, run_stamped, REPORT_LINE, latest_build
-from device_report import parse_suite_results, read_capture_text
+from device_report import parse_suite_results, read_capture_text, registration_re
 from device_capture import board_steps_completed
 from ci_step import output, summarize
 from process_tree import (launch_process_tree, stop_process_tree, close_process_tree, install_console_interrupt_handler,
@@ -60,8 +60,6 @@ FAILED_SELFTEST = ("failed", "incomplete")
 LISTED_FAILURES = 10
 SELFTEST_ALLOWANCE_SECONDS = 120 * 60
 CAPTURE_TIMEOUT_SECONDS = 1800
-# How a device suite registers itself; a step's commit without it never runs that suite.
-SUITE_REGISTRATION = "SUITE_REGISTER({});"
 BUILD_TIMEOUT_SECONDS = 3600
 LANE_HANG_FACTOR = 2
 # A command that reaches the boards of other machines, POSIX-quoted with forward slashes; unset, the
@@ -148,10 +146,25 @@ def git(repo, *words):
 
 
 def registered_suites(worktree, suites):
-    """The suites the checked-out commit registers: a step older than a suite measures without it."""
-    return [suite for suite in suites
-            if subprocess.run(["git", "-C", str(worktree), "grep", "-q", "-F", SUITE_REGISTRATION.format(suite[0]),
-                               "--", "launcher"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0]
+    """The suites the checked-out commit registers (device_report.registration_re): a step older than a suite
+    measures without it."""
+    found = subprocess.run(["git", "-C", str(worktree), "grep", "-h", "-F", "SUITE_REGISTER", "--", "launcher"],
+                           capture_output=True, text=True)
+    if found.returncode not in (0, 1):  # 1: no line matched
+        raise RuntimeError(f"git grep for suite registrations failed: {found.stderr.strip()}")
+    return [suite for suite in suites if registration_re(suite[0]).search(found.stdout)]
+
+
+def step_suites(worktree, suites, complete):
+    """The night's suites this step can run. Only an older step may lack one; a `complete` step (the anchor or
+    the newest) that lacks one, or a step that registers none, is a capture failure."""
+    registered = registered_suites(worktree, suites)
+    dropped = [suite[0] for suite in suites if suite not in registered]
+    if not registered or (dropped and complete):
+        raise ValueError(f"commit does not register suite(s) {', '.join(dropped)}")
+    if dropped:
+        print(f"scoped_chain: step predates suite(s) {', '.join(dropped)}; measured without them", file=sys.stderr)
+    return registered
 
 
 def history_steps(repo, tip):
@@ -373,7 +386,9 @@ def run_chain(steps, args, runner=None, clock=None):
                     result.outcome = "capture_failed"
                     try:
                         capture_args = SimpleNamespace(project=worktree, out=output / f"{index:0{STEP_INDEX_DIGITS}}-capture",
-                                                       suite=registered_suites(worktree, args.suite), runs=1,
+                                                       suite=step_suites(worktree, args.suite,
+                                                                         step.role == "anchor" or index == len(steps) - 1),
+                                                       runs=1,
                                                        timeout=CAPTURE_TIMEOUT_SECONDS,
                                                        wait=NIGHT_STEP_HANG_SECONDS)
                         record = run_flash(capture_args, seed=LAYOUT_SEED, runner=run_step)

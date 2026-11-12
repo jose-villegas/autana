@@ -304,6 +304,11 @@ def looks_like_perf_capture(text):
     return bool(re.search(r"^PERF TARGET ", text, re.MULTILINE)) or "device_tests" in text
 
 
+def registration_re(suite):
+    """How a suite source registers `suite`: either macro of testkit/suite.h."""
+    return re.compile(r"SUITE_REGISTER(?:_ON_REQUEST)?\(\s*" + re.escape(suite) + r"\s*\)")
+
+
 def discover_reporters(worktree, suite):
     """Every app under `worktree` whose tools/report_performance.py exists
     AND whose own tests/suite_*.c registers `suite`. Reads only file names and
@@ -313,7 +318,7 @@ def discover_reporters(worktree, suite):
     apps_root = Path(worktree) / "launcher" / "main" / "apps"
     if not apps_root.is_dir():
         return matches
-    register_re = re.compile(r"SUITE_REGISTER\(\s*" + re.escape(suite) + r"\s*\)")
+    register_re = registration_re(suite)
     for reporter_path in sorted(apps_root.glob("*/tools/report_performance.py")):
         app_dir = reporter_path.parents[1]
         for source in sorted((app_dir / "tests").glob("suite_*.c")):
