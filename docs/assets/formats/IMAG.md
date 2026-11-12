@@ -1,6 +1,6 @@
 # IMAG v1 picture
 
-A picture, read in place ([Image-Entries.md](../Image-Entries.md)). Layout defines: [`draw/draw_image_format.h`](../../../launcher/main/draw/draw_image_format.h).
+A picture, read in place ([Image-Entries.md](../Image-Entries.md)); a [SPRT](SPRT.md) carries one after its border. Layout defines: [`draw/draw_image_format.h`](../../../launcher/main/draw/draw_image_format.h).
 
 ```mermaid
 ---
@@ -46,16 +46,31 @@ title Content: eight 1-bit pixels (format 2), 1 byte from pixels_off
 0: "bit 7 leftmost pixel, 1 = ink"
 ```
 
+```mermaid
+---
+config:
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #e3e3e3 !important; } .packetLabel { fill: #1b1b1b !important; }"
+  packet:
+    bitsPerRow: 2
+    bitWidth: 240
+---
+packet-beta
+title Content: one pixel's alpha (format 3), 1 byte from pixels_off + 2 * stride * height
+0: "coverage, 0 clear .. 255 solid"
+```
+
 | Part | At | Size |
 |---|---|---|
 | Header | 0 | 16 bytes |
-| Content: pixel rows | `pixels_off` | `stride * (height - 1) + width` pixels, top row first; 2 bytes each in format 1, one bit each in format 2 |
+| Content: pixel rows | `pixels_off` | `stride * (height - 1) + width` pixels, top row first; 2 bytes each in formats 1 and 3, one bit each in format 2 |
+| Content: alpha rows, format 3 | `pixels_off + 2 * stride * height` | `stride * (height - 1) + width` bytes, top row first: every colour row is whole before them (LVGL's RGB565A8) |
 
 | Rule | Detail |
 |---|---|
-| Owners | `DRAW_IMAGE_VERSION`, `_FORMAT_RGB565` (1), `_FORMAT_MONO1` (2, for [icons](../../tools/Icon-Baker.md)), `_HEADER_SIZE` (16), `_PIXEL_ALIGN` (4), `_MONO1_STRIDE_STEP` (8) in `draw_image_format.h` |
+| Owners | `DRAW_IMAGE_VERSION`, `_FORMAT_RGB565` (1), `_FORMAT_MONO1` (2, for [icons](../../tools/Icon-Baker.md)), `_FORMAT_RGB565A8` (3), `_HEADER_SIZE` (16), `_PIXEL_ALIGN` (4), `_MONO1_STRIDE_STEP` (8), `_RGB565A8_STRIDE_STEP` (4) in `draw_image_format.h` |
 | Size | `width` and `height` are 1 to 65535 |
-| Stride | pixels from one row's start to the next, at least `width`; a multiple of `DRAW_IMAGE_MONO1_STRIDE_STEP` in format 2, so a row is whole bytes |
-| Pixels | `pixels_off` at least the header size; 4-aligned in format 1 |
+| Stride | pixels from one row's start to the next, at least `width`; a multiple of `DRAW_IMAGE_MONO1_STRIDE_STEP` in format 2, so a row is whole bytes, and of `DRAW_IMAGE_RGB565A8_STRIDE_STEP` in format 3, so every row of both planes is 4-aligned |
+| Pixels | `pixels_off` at least the header size; 4-aligned in formats 1 and 3 |
+| Alpha | format 3 when the source has any alpha below 255, else format 1 |
 | Errors | `ASSET_ERR_VERSION` for another version; `ASSET_ERR_FORMAT` for an unknown format, an empty picture, a short stride, a stride off its step or `pixels_off` inside the header; `ASSET_ERR_BOUNDS` for rows that leave the entry or misaligned RGB565 rows |
-| View | the pixels `draw_image_open()` returns point into the entry |
+| View | the planes `draw_image_open_alpha()` returns point into the entry; `draw_image_open()` refuses format 3 with `ASSET_ERR_FORMAT` |
