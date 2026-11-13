@@ -160,6 +160,7 @@ the columns of `L = [a c; b d]` and its translation.
 | `P_map_rect(&t, r)` | bounding box in the scalar type | $`\mathrm{bbox}(t(\mathrm{corners}(r)))`$ |
 | `affine2f_map_pixel(&t, p)`, `affine2x_map_pixel(&t, p)` | vec2i result, nearest, ties away from zero | $`\mathrm{round}(L p + o)`$ |
 | `P_map_recti(&t, r)` | recti bounding box of mapped pixels | $`\mathrm{bbox}(\mathrm{round}(t(\mathrm{corners}(r))))`$ |
+| `affine2x_quarter_turn(k, w, h)` | `k` quarter turns clockwise onto a `w` x `h` frame, exact | $`k=1: (x, y) \mapsto (w - y, x)`$ |
 | `P_equal(a, b)` | exact comparison of axes and origin | $`L_a = L_b \land o_a = o_b`$ |
 
 ## mat3 (`f`)
