@@ -29,8 +29,8 @@ typedef struct {
     bool double_sided;
 } r3d_lit_cluster_t;
 
-/* The tree lit_mesh.py writes: an octree, so a node has at most eight
- * children, at most its MAX_DEPTH levels below the root. */
+/* The tree lit_mesh.py writes: a node has at most eight children, and a
+ * walk down it at most R3D_LIT_TREE_DEPTH_MAX levels. */
 #define R3D_LIT_NODE_CHILDREN_MAX 8
 #define R3D_LIT_TREE_DEPTH_MAX    10
 /* What a depth-first walk of a tree within R3D_LIT_TREE_DEPTH_MAX holds

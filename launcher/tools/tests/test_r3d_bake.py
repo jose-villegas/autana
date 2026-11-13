@@ -24,10 +24,10 @@ try:
     from r3d.geometry import closest_point_on_triangles, nearest_triangles, triangle_areas, triangle_search, weld
     from r3d.light import adaptive_sample_counts, face_colours, light, merge_matching_colours, to_srgb8
     from r3d import lit_mesh, rebake
-    from r3d.lit_mesh import (MESHLET_TRIANGLES, POSITION_SCALE, WELD_PER_TICK, bake_lit_mesh, read_lit_mesh, validate,
-                              weld_quantised, write_lit_mesh)
+    from r3d.lit_mesh import (MESHLET_TRIANGLES, POSITION_SCALE, TREE_DEPTH_MAX, WELD_PER_TICK, bake_lit_mesh,
+                              read_lit_mesh, validate, weld_quantised, write_lit_mesh)
     from r3d.meshopt import build_meshlets, simplify_with_update
-    from r3d.octree import build_octree, flatten_octree
+    from r3d.cluster_tree import build_tree, flatten_tree
     from r3d.repair import _weld_borders, repair
     from r3d import simplify as simplify_module
     from r3d.simplify import SEAM_COLOUR_TOLERANCE, _label_after, colour_weight, merge_close_colours, simplify
@@ -354,13 +354,58 @@ class ColourDeviationTests(unittest.TestCase):
 class ClusterTreeTests(unittest.TestCase):
     def setUp(self):
         p, tris = grid(8)
-        self.tris = tris
-        self.centres = (p[tris].mean(axis=1)) * 10.0
+        corners = p[tris] * 10.0
+        self.lo, self.hi = corners.min(axis=1), corners.max(axis=1)
         self.weights = np.arange(len(tris)) % 7 + 1
 
+    def tree(self, lo=None, hi=None, leaf_weight=12, max_items=255, fanout=8, max_depth=TREE_DEPTH_MAX):
+        lo = self.lo if lo is None else lo
+        hi = self.hi if hi is None else hi
+        weights = np.resize(self.weights, len(lo))
+        return flatten_tree(build_tree(lo, hi, weights, leaf_weight, max_items, fanout, max_depth))
+
+    def depth(self, nodes):
+        """Edges from the root to the deepest leaf."""
+        deepest, stack = 0, [(0, 0)]
+        while stack:
+            index, depth = stack.pop()
+            deepest = max(deepest, depth)
+            if not nodes[index]["leaf"]:
+                stack.extend((c, depth + 1) for c in range(nodes[index]["first"], nodes[index]["first"] + nodes[index]["count"]))
+        return deepest
+
+    def test_identical_boxes_split_in_halves_not_one_at_a_time(self):
+        """Every cut costs the same, so each takes the middle: the depth grows with the log of the count. The
+        bound is loose, so no median rebuild hides a chain."""
+        count = 400
+        lo, hi = np.zeros((count, 3)), np.ones((count, 3))
+        order, nodes = self.tree(lo, hi, leaf_weight=1, max_depth=count)
+        self.assertEqual(sorted(order), list(range(count)))
+        self.assertLessEqual(self.depth(nodes), int(np.ceil(np.log2(count))))
+
+    def test_the_median_tree_holds_as_many_items_as_its_depth_and_leaves_allow(self):
+        """Binary nodes and no leaf weight: the surface area tree needs one item a leaf, too deep, so the median
+        splits go to the bound with leaves of max_items, and one more item cannot fit."""
+        max_items, max_depth = 3, 2
+        count = max_items << max_depth
+        lo = np.arange(count, dtype=float)[:, None] * np.ones(3)
+        order, nodes = self.tree(lo, lo + 1.0, leaf_weight=0, max_items=max_items, fanout=2, max_depth=max_depth)
+        self.assertEqual(sorted(order), list(range(count)))
+        self.assertLessEqual(self.depth(nodes), max_depth)
+        self.assertEqual([max_items] * (1 << max_depth), [n["count"] for n in nodes if n["leaf"]])
+        lo = np.arange(count + 1, dtype=float)[:, None] * np.ones(3)
+        with self.assertRaisesRegex(AssertionError, "more items"):
+            self.tree(lo, lo + 1.0, leaf_weight=0, max_items=max_items, fanout=2, max_depth=max_depth)
+
+    def test_a_tree_too_deep_for_its_bound_is_built_by_median_splits_within_it(self):
+        _, unbound = self.tree(leaf_weight=1)
+        bound = self.depth(unbound) - 1
+        order, nodes = self.tree(leaf_weight=1, max_depth=bound)
+        self.assertLessEqual(self.depth(nodes), bound)
+        self.assertEqual(sorted(order), list(range(len(self.lo))))
+
     def test_children_sit_together_and_a_subtree_owns_a_run_of_items(self):
-        root = build_octree(self.centres, self.weights, 12, 6)
-        order, nodes = flatten_octree(root)
+        order, nodes = self.tree()
 
         def span(i):
             node = nodes[i]
@@ -374,20 +419,27 @@ class ClusterTreeTests(unittest.TestCase):
             return parts[0][0], parts[-1][1]
 
         self.assertEqual(span(0), (0, len(order)))
-        self.assertEqual(sorted(order), list(range(len(self.tris))))
+        self.assertEqual(sorted(order), list(range(len(self.lo))))
 
-    def test_a_leaf_holds_one_item_or_no_more_than_its_weight(self):
-        root = build_octree(self.centres, self.weights, 12, 6)
-        order, nodes = flatten_octree(root)
+    def test_a_leaf_holds_one_item_or_no_more_than_its_weight_and_count(self):
+        order, nodes = self.tree(max_items=3)
         for node in nodes:
             if node["leaf"]:
                 held = order[node["first"] : node["first"] + node["count"]]
-                self.assertTrue(len(held) == 1 or self.weights[held].sum() <= 12)
+                self.assertTrue(len(held) == 1 or (self.weights[held].sum() <= 12 and len(held) <= 3))
 
-    def test_a_depth_of_zero_keeps_everything_in_one_leaf(self):
-        order, nodes = flatten_octree(build_octree(self.centres, self.weights, 1, 0))
-        self.assertEqual(len(nodes), 1)
-        self.assertEqual(nodes[0]["count"], len(order))
+    def test_no_node_has_more_children_than_the_fanout(self):
+        _, nodes = self.tree(leaf_weight=1, fanout=4)
+        self.assertTrue(all(node["leaf"] or node["count"] <= 4 for node in nodes))
+        self.assertTrue(any(not node["leaf"] and node["count"] > 2 for node in nodes), "binary splits never merged")
+
+    def test_two_groups_far_apart_split_where_one_tight_group_stays_a_leaf(self):
+        group = np.array([[x, y, 0.0] for x in range(3) for y in range(3)])
+        tight = self.tree(group, group + 1.0, leaf_weight=100)[1]
+        apart = np.concatenate([group, group + 1000.0])
+        split = self.tree(apart, apart + 1.0, leaf_weight=100)[1]
+        self.assertEqual(len(tight), 1)
+        self.assertEqual([n["count"] for n in split if n["leaf"]], [9, 9])
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
@@ -484,7 +536,7 @@ class LitMeshTests(unittest.TestCase):
         rgb = np.full((len(p), 3), 128)
         with tempfile.TemporaryDirectory() as out:
             mesh = write_lit_mesh(out, "demo", p * 50.0, rgb, tris, np.zeros(len(tris), dtype=np.int64),
-                                  leaf_triangles=16, max_depth=4)
+                                  leaf_triangles=16)
             blob = parse_pack((pathlib.Path(out) / "demo.bundle").read_bytes())["demo"][1]
         vertices, triangles, clusters, nodes, scale, *at = lit_mesh.BLOB_HEADER.unpack_from(blob)
         self.assertEqual((vertices, triangles, clusters, nodes), (len(mesh.pos), len(tris), len(mesh.clusters), len(mesh.nodes)))
@@ -512,6 +564,20 @@ class LitMeshTests(unittest.TestCase):
         nodes = [{"leaf": True, "first": 0, "count": 2}]
         with self.assertRaises(AssertionError):
             validate(pos, np.zeros((6, 3)), tris, clusters, nodes)
+
+    def test_validation_refuses_a_tree_deeper_than_the_runtime_walks(self):
+        pos = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]])
+        tris = np.array([[0, 1, 2]])
+        clusters = [(0, 3, 0, 1, np.zeros(3), np.ones(3), False)]
+
+        def chain(depth):
+            """`depth` inner nodes of one child each above the one leaf."""
+            return [{"leaf": False, "first": i + 1, "count": 1} for i in range(depth)] + [
+                {"leaf": True, "first": 0, "count": 1}]
+
+        validate(pos, np.zeros((3, 3)), tris, clusters, chain(TREE_DEPTH_MAX))
+        with self.assertRaisesRegex(AssertionError, "deeper"):
+            validate(pos, np.zeros((3, 3)), tris, clusters, chain(TREE_DEPTH_MAX + 1))
 
     def test_validation_refuses_more_triangles_than_uint16_offsets_hold(self):
         pos = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]])

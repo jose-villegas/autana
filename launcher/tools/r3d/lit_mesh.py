@@ -2,7 +2,7 @@
 and reads such data back.
 
 The triangles are cut into meshlets, compact clusters of a few dozen
-triangles, under an octree over the meshlets' centres. Positions are
+triangles, under a tree over the meshlets' boxes. Positions are
 quantized to int16 ticks and the result is checked against the format's
 invariants before a byte is written. A mesh's triangles are put in a canonical
 order first, so the same triangles always bake to the same bytes. With levels
@@ -24,7 +24,7 @@ from r3d.process_budget import NULL_RECORDER
 from r3d.meshopt import build_meshlets  # noqa: E402
 from r3d import mesh_bundle
 from r3d.import_settings import MESHLET_TRIANGLES
-from r3d.octree import build_octree, flatten_octree, node_bounds  # noqa: E402
+from r3d.cluster_tree import build_tree, flatten_tree, node_bounds  # noqa: E402
 
 INT16_MAX = 32767
 MAX_VERTICES = 65535  # uint16 indices
@@ -35,9 +35,11 @@ MAX_NODE_CHILDREN = 255
 # Children of a node that is not a leaf, as the cull walk sorts them.
 NODE_FANOUT = read_define(pathlib.Path(__file__).resolve().parents[2] / "main/render/r3d_lit_mesh.h",
                           "R3D_LIT_NODE_CHILDREN_MAX")
+# Edges from the root to the deepest leaf the runtime's walk stack holds.
+TREE_DEPTH_MAX = read_define(pathlib.Path(__file__).resolve().parents[2] / "main/render/r3d_lit_mesh.h",
+                             "R3D_LIT_TREE_DEPTH_MAX")
 
 LEAF_TRIANGLES = 320
-MAX_DEPTH = 10
 POSITION_SCALE = 8
 
 # A bake welds positions closer than half an output tick (position_scale ticks per unit) into one vertex.
@@ -101,12 +103,12 @@ def local_vertices(tris):
 
 
 def bake_lit_mesh(positions, rgb, tris, double, position_scale=POSITION_SCALE, leaf_triangles=LEAF_TRIANGLES,
-                  max_depth=MAX_DEPTH, meshlet_triangles=MESHLET_TRIANGLES, face_rgb=None):
+                  meshlet_triangles=MESHLET_TRIANGLES, face_rgb=None):
     """Bakes positions (model units), rgb (0..255 per vertex) and tris
     (counter-clockwise seen from the front, `double` one flag per triangle)
     into a SimpleNamespace holding pos, rgb, tris, clusters, nodes, the
     position_scale and face_colors. A cluster holds at most meshlet_triangles
-    triangles of one sidedness; an octree leaf holds meshlets to leaf_triangles
+    triangles of one sidedness; a tree leaf holds meshlets to leaf_triangles
     triangles. Given face_rgb, one 0..255 colour per triangle, the mesh is
     flat: rgb is None, vertices weld by position alone and face_colors holds
     the colours; otherwise face_colors is None. With neither input colour
@@ -119,7 +121,7 @@ def bake_lit_mesh(positions, rgb, tris, double, position_scale=POSITION_SCALE, l
     q, col, tris, double, face = weld_quantised(q, col, np.asarray(tris, dtype=np.int64), double, face)
     tris, double, face = canonical_order(tris, double, face)
     return assemble(q, col, meshlet_entries(q, tris, double, face, meshlet_triangles), position_scale,
-                    leaf_triangles, max_depth)
+                    leaf_triangles)
 
 
 def meshlet_entries(q, tris, double, face, meshlet_triangles):
@@ -139,21 +141,26 @@ def meshlet_entries(q, tris, double, face, meshlet_triangles):
     return entries
 
 
-def assemble(q, col, entries, position_scale, leaf_triangles, max_depth, groups=None):
-    """The baked mesh of clusters cut by any means: an octree over their
-    centres, each cluster owning its vertices, checked against the format.
+def assemble(q, col, entries, position_scale, leaf_triangles, groups=None):
+    """The baked mesh of clusters cut by any means: a surface-area tree over
+    the finest clusters' boxes, the coarse ones in runs under their own nodes, each cluster owning its vertices, checked against the format.
     With `groups`, each entry's "own" and "parent" become the cluster's
-    group pair."""
+    group pair. `entry_order` names the entry each laid-out cluster came from."""
     for e in entries:
         e["box"] = box_of(q, e["tris"])
-    centres = np.array([(lo + hi) / 2.0 for lo, hi in (e["box"] for e in entries)])
+    lo = np.array([e["box"][0] for e in entries])
+    hi = np.array([e["box"][1] for e in entries])
     weights = np.array([len(e["tris"]) for e in entries])
 
+    coarse = np.array([groups is not None and e["own"] != LOD_NONE for e in entries], dtype=bool)
+
     def tree(items):
-        order, nodes = flatten_octree(build_octree(centres[items], weights[items], leaf_triangles, max_depth))
+        # two_trees() puts a root above the finest tree, a level of the depth limit.
+        root = build_tree(lo[items], hi[items], weights[items], leaf_triangles, MAX_NODE_CHILDREN, NODE_FANOUT,
+                          TREE_DEPTH_MAX - int(coarse.any()))
+        order, nodes = flatten_tree(root)
         return [int(items[i]) for i in order], nodes
 
-    coarse = np.array([groups is not None and e["own"] != LOD_NONE for e in entries], dtype=bool)
     if coarse.any():
         by_own = sorted(np.flatnonzero(coarse), key=lambda i: entries[i]["own"])
         order, nodes = two_trees(*tree(np.flatnonzero(~coarse)), *run_tree(by_own, weights, leaf_triangles))
@@ -165,6 +172,7 @@ def assemble(q, col, entries, position_scale, leaf_triangles, max_depth, groups=
     out.pos, out.rgb, out.tris, out.clusters, out.face_colors = lay_out(q, col, ordered)
     node_bounds(nodes, out.clusters)
     out.nodes = nodes
+    out.entry_order = order
     out.lod = None if groups is None else [(e["own"], e["parent"]) for e in ordered]
     out.groups = None if groups is None else with_saves(out.lod, np.asarray(groups, dtype=np.int64).reshape(-1, 5),
                                                          out.clusters)
@@ -272,14 +280,16 @@ def validate(pos, rgb, tris, clusters, nodes, face_colors=None):
         next_v, next_t = vbase + vcount, tbase + tcount
     assert next_v == len(pos) and next_t == len(tris)
     reached = np.zeros(len(clusters), dtype=np.int64)
-    stack = [0]
+    stack = [(0, 0)]
     while stack:
-        node = nodes[stack.pop()]
+        index, depth = stack.pop()
+        node = nodes[index]
         assert node["count"] <= MAX_NODE_CHILDREN
+        assert depth <= TREE_DEPTH_MAX, "the tree is deeper than the runtime walks"
         if node["leaf"]:
             reached[node["first"] : node["first"] + node["count"]] += 1
         else:
-            stack.extend(range(node["first"], node["first"] + node["count"]))
+            stack.extend((child, depth + 1) for child in range(node["first"], node["first"] + node["count"]))
     assert np.all(reached == 1), "every cluster must hang off exactly one leaf"
     assert len(nodes) <= MAX_NODES
 
@@ -383,7 +393,7 @@ def cover_targets(mesh, entry):
     """Grows `mesh`'s cluster and node boxes, in place, to hold the targets of
     LMOR `entry` too, so a cull by those boxes keeps every cluster however far
     it morphs. Returns whether a box grew."""
-    from r3d.octree import node_bounds
+    from r3d.cluster_tree import node_bounds
     target = morph_targets(mesh.pos, mesh.clusters, entry)
     grown = False
     for c, (first, count, tb, tc, lo, hi, double) in enumerate(mesh.clusters):
