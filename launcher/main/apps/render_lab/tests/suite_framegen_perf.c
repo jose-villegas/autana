@@ -8,6 +8,7 @@
 #ifdef DEVICE_BUILD
 #include <string.h>
 #include "apps/render_lab/baked_families.h"
+#include "apps/render_lab/capybara_content.h"
 #include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/render_lab_dynres.h"
 #include "apps/render_lab/render_lab_view.h"
@@ -55,11 +56,19 @@ typedef struct {
     const lab_scene_t* scene;
     const char* pack;
     const char* camera;
+    /* Not 0: the scene has no camera path, so its modes play this long with
+     * the camera still while it moves on its own; the cost suite skips it. */
+    uint32_t still_ms;
 } framegen_scenario_t;
 
+/* How long a scene with no camera path plays in each mode. */
+#define FRAMEGEN_STILL_MS 10000
+
 static const framegen_scenario_t scenarios[] = {
-    {&scene_bistro[SCENE_BAKED_FITTED_FULL], BISTRO_SCENE, BISTRO_CAMERA},
-    {&scene_sponza[SCENE_BAKED_FITTED_FULL], SPONZA_SCENE, NULL},
+    {&scene_bistro[SCENE_BAKED_FITTED_FULL], BISTRO_SCENE, BISTRO_CAMERA, 0},
+    {&scene_sponza[SCENE_BAKED_FITTED_FULL], SPONZA_SCENE, NULL, 0},
+    /* Cheap to draw: the engage rule keeps frame generation off. */
+    {&scene_capybara, CAPYBARA_SCENE, NULL, FRAMEGEN_STILL_MS},
 };
 
 static lab_test_t saved;
@@ -141,6 +150,10 @@ enter_path(void) {
     test_hold_quarter(lab_perf_quarters[0].quarter);
     scenario_path_t path = {.scene = lab_test_loaded_scene(scenario->pack)};
     TEST_ASSERT_FALSE(handle_is_none(path.scene));
+    if (scenario->still_ms != 0) {
+        path.duration_ms = scenario->still_ms;
+        return path;
+    }
     const char* camera_name = scenario->camera == NULL ? sponza_cameras[0] : scenario->camera;
     path.camera = entity_find(path.scene, name_hash(camera_name));
     TEST_ASSERT_FALSE(handle_is_none(path.camera));
@@ -260,7 +273,7 @@ run_framegen_perf_suite(void) {
 #ifdef DEVICE_BUILD
     for (size_t i = 0; i < sizeof scenarios / sizeof scenarios[0]; i++) {
         scenario = &scenarios[i];
-        for (ladder_step = 0; ladder_step < RENDER_LAB_LADDER_STEPS; ladder_step++) {
+        for (ladder_step = 0; scenario->still_ms == 0 && ladder_step < RENDER_LAB_LADDER_STEPS; ladder_step++) {
             if (render_lab_ladder[ladder_step].width * 2 == GFX_WIDTH) {
                 RUN_TEST_CASE(test_generated_frame_cost, scenario->scene->key, render_lab_test_step_name(ladder_step));
             }
