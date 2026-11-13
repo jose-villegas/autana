@@ -201,13 +201,14 @@ ranges. Job contexts are checked against `JOB_CTX_MAX` at compile time.
 |---|---|---|
 | Animate | skeleton animators exist | none exist |
 | Property clips | always, `anim_apply()` on core 0 after the sync | — |
-| Skin and node refit | the pose changed, or for a lit skin `SCENE_FLAG_SKIN_DIRTY` is set on it or a light | no posed clusters, or an unchanged pose |
+| Skin and node refit | the pose changed, or for a lit skin `SCENE_FLAG_SKIN_DIRTY` is set on it or a light, or `SCENE_FLAG_RELIGHT` on a light or on a skin no playing clip paces | no posed clusters, or an unchanged pose |
 | Placement | the active scene, for renderers with dirty entities | inactive scenes |
 
-Light setters, `transform_set_local()`, `entity_set_enabled()` and
-`renderer_set_skin()` set `SCENE_FLAG_SKIN_DIRTY`. The skin stage
-consumes it apart from the draw's `SCENE_FLAG_DIRTY`, inactive scenes
-included. What skinning costs on the board is in [Skinned
+Light setters, `entity_set_enabled()` and `renderer_set_skin()` set
+`SCENE_FLAG_SKIN_DIRTY`; `transform_set_local()` sets
+`SCENE_FLAG_RELIGHT`, which a skin whose playing clip paces it keeps
+until its next pose. The skin stage consumes both apart from the draw's
+`SCENE_FLAG_DIRTY`, inactive scenes included. What skinning costs on the board is in [Skinned
 lighting](Skinned-Lighting.md#lighting-modes) (the skin-only bar).
 
 ## Checking it
