@@ -5435,6 +5435,26 @@ test_light_transfer_allocation_refuses_without_changes(void) {
     scene_fail_allocation_after = -1;
 }
 
+/* A scene whose root is disabled costs nothing: while another scene's camera
+ * draws, it is neither resolved (its changes stay DIRTY) nor posed. */
+static void
+test_a_disabled_scene_is_not_resolved_or_posed(void) {
+    scene_fail_allocation_after = -1;
+    entity_t scene = rig_fixture("rig.skin2", NULL);
+    const entity_t entity = entity_find(scene, name_hash("red"));
+    entity_set_enabled(scene, false);
+    (void)show("test_sky");
+    transformf_t pose = transform_local(entity);
+    pose.rotation = quatf_from_euler((vec3f_t){MATH_PI, 0, 0});
+    transform_set_local(entity, pose);
+    for (int frame = 0; frame < FRAMES_TO_SETTLE; frame++) {
+        scene_render(0, 0, SIZE, SIZE);
+        TEST_ASSERT_FALSE(columns(scene)->animators[row_of(entity)].posed);
+    }
+    TEST_ASSERT_TRUE((columns(scene)->flags[row_of(entity)] & SCENE_FLAG_DIRTY) != 0);
+    release_fixture();
+}
+
 static void
 test_idle_lit_skin_skips_and_transform_changes_run(void) {
     scene_fail_allocation_after = -1;
@@ -7070,6 +7090,7 @@ run_scene_suite(void) {
     RUN_TEST(test_property_transform_relights_paused_skin);
     RUN_TEST(test_disabled_light_skin_and_two_object_rotations);
     RUN_TEST(test_light_transfer_allocation_refuses_without_changes);
+    RUN_TEST(test_a_disabled_scene_is_not_resolved_or_posed);
     RUN_TEST(test_idle_lit_skin_skips_and_transform_changes_run);
     RUN_TEST(test_light_attachment_defaults_refusals_and_capacity);
     RUN_TEST(test_scene_light_rotation_shades_only_skin_and_matches_kernel);
