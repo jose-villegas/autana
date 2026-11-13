@@ -141,7 +141,10 @@ fill_span(const setup_t* su, const r3d_span_row_t* row, int y, int first, int la
  * need a step of 2^(level + 1) or more. */
 static int
 pick_level(const setup_t* su, const r3d_texture_t* texture) {
-    const float dudx = su->s.dx, dvdx = su->t.dx, dudy = su->s.dy, dvdy = su->t.dy;
+    const float dudx = su->s.dx;
+    const float dvdx = su->t.dx;
+    const float dudy = su->s.dy;
+    const float dvdy = su->t.dy;
     const float rho2 = mathf_max((dudx * dudx) + (dvdx * dvdx), (dudy * dudy) + (dvdy * dvdy));
     int level = 0;
     while (level + 1 < texture->levels && rho2 >= (float)(1U << (2 * (level + 1)))) {

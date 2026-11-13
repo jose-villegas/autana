@@ -987,16 +987,18 @@ draw_textured_cut(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint
     }
 }
 
-/* Where a triangle lies against the near plane. */
-typedef enum { NEAR_WHOLE, NEAR_CUT, NEAR_BEHIND } near_side_t;
-
-static inline __attribute__((always_inline)) near_side_t
-near_side(const r3d_pipeline_vertex_t* const v[3], draw_mode_t mode) {
-    /* Cluster-owned vertices all passed near and range tests with DRAW_BOUNDED. */
-    if ((mode & DRAW_BOUNDED) != 0 || (v[0]->iz > 0.0F && v[1]->iz > 0.0F && v[2]->iz > 0.0F)) {
-        return NEAR_WHOLE;
+/* A textured triangle of chart `chart`: whole, cut by the near plane, or
+ * nothing when it lies behind it. Out of line, so the plain loop holds one
+ * call for it. */
+static __attribute__((noinline)) void
+draw_textured(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_pipeline_vertex_t* const v[3],
+              const uint16_t* tri, int cluster, int chart, bool double_sided, bool bounded,
+              const r3d_span_target_t* target, r3d_pipeline_work_t* work) {
+    if (bounded || (v[0]->iz > 0.0F && v[1]->iz > 0.0F && v[2]->iz > 0.0F)) {
+        draw_textured_whole(mesh, v, tri, cluster, chart, double_sided, target);
+    } else if (v[0]->iz != 0.0F || v[1]->iz != 0.0F || v[2]->iz != 0.0F) {
+        draw_textured_cut(mesh, lens, tri, cluster, chart, double_sided, target, work);
     }
-    return v[0]->iz != 0.0F || v[1]->iz != 0.0F || v[2]->iz != 0.0F ? NEAR_CUT : NEAR_BEHIND;
 }
 
 /* Triangles first to end - 1 of one cluster; with DRAW_TEXTURED, those
@@ -1011,24 +1013,16 @@ draw_triangles(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit
         const r3d_pipeline_vertex_t* const v[3] = {&cs[tri[0]], &cs[tri[1]], &cs[tri[2]]};
         const unsigned code =
             (mode & DRAW_TEXTURED) != 0 ? r3d_texture_triangle_code(mesh->texturing, t) : R3D_TEXTURE_PLAIN;
-        const int chart = (int)code - 1;
-        const int cluster = (int)(c - mesh->clusters);
-        switch (near_side(v, mode)) {
-            case NEAR_WHOLE:
-                if (code != R3D_TEXTURE_PLAIN) {
-                    draw_textured_whole(mesh, v, tri, cluster, chart, c->double_sided, target);
-                } else {
-                    draw_whole(mesh, v, tri, face_color, c->double_sided, target, mode, work, blends);
-                }
-                break;
-            case NEAR_CUT:
-                if (code != R3D_TEXTURE_PLAIN) {
-                    draw_textured_cut(mesh, lens, tri, cluster, chart, c->double_sided, target, work);
-                } else {
-                    draw_cut_by_near(mesh, lens, tri, face_color, c->double_sided, target, work, blends);
-                }
-                break;
-            case NEAR_BEHIND: break;
+        if (code != R3D_TEXTURE_PLAIN) {
+            draw_textured(mesh, lens, v, tri, (int)(c - mesh->clusters), (int)code - 1, c->double_sided,
+                          (mode & DRAW_BOUNDED) != 0, target, work);
+            continue;
+        }
+        /* Cluster-owned vertices all passed near and range tests with DRAW_BOUNDED. */
+        if ((mode & DRAW_BOUNDED) != 0 || (v[0]->iz > 0.0F && v[1]->iz > 0.0F && v[2]->iz > 0.0F)) {
+            draw_whole(mesh, v, tri, face_color, c->double_sided, target, mode, work, blends);
+        } else if (v[0]->iz != 0.0F || v[1]->iz != 0.0F || v[2]->iz != 0.0F) {
+            draw_cut_by_near(mesh, lens, tri, face_color, c->double_sided, target, work, blends);
         }
     }
 }
