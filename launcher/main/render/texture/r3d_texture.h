@@ -110,8 +110,9 @@ typedef struct r3d_mesh_texturing {
 } r3d_mesh_texturing_t;
 
 /* A mesh's texturing is an LUVS pack entry beside its LMSH
- * (docs/assets/formats/LUVS.md): the UVs, each cluster's chart 1 shift, each cluster's materials, then the triangle codes. Material k is
- * the mesh's LTEX sibling <mesh id>R3D_TEXTURE_MATERIAL_SUFFIX<k>. */
+ * (docs/assets/formats/LUVS.md): the UVs, each cluster's chart 1 shift,
+ * each cluster's materials, then the triangle codes. Material k is the
+ * mesh's LTEX sibling <mesh id>R3D_TEXTURE_MATERIAL_SUFFIX<k>. */
 #define R3D_TEXTURE_UVS_ASSET              ASSET_TYPE('L', 'U', 'V', 'S')
 #define R3D_TEXTURE_UVS_VERSION            2U
 #define R3D_TEXTURE_UVS_HEADER_SIZE        36U
