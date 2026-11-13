@@ -9,6 +9,7 @@
 #include <string.h>
 #include "apps/render_lab/baked_families.h"
 #include "apps/render_lab/capybara_content.h"
+#include "apps/render_lab/capybara_sponza/scene_capybara_sponza.h"
 #include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/render_lab_dynres.h"
 #include "apps/render_lab/render_lab_view.h"
@@ -76,6 +77,8 @@ static const framegen_scenario_t scenarios[] = {
     {&scene_capybara, CAPYBARA_SCENE, NULL, FRAMEGEN_STILL_MS},
     /* A drawn frame costs more than a generated one, and its front copy turns. */
     {&scene_stress[STRESS_MOVER], STRESS_SCENE, STRESS_CAMERA, 0},
+    /* A skinned capybara running through Sponza, its camera its own path's. */
+    {&scene_capybara_sponza, SPONZA_SCENE, NULL, 0},
 };
 
 static lab_test_t saved;
@@ -150,6 +153,13 @@ typedef struct {
     uint32_t duration_ms;
 } scenario_path_t;
 
+/* The scenario's scene plays a path of its own (lab_path_t.seek), with no
+ * camera clip to seek: the modes play it from its start, the cost suite skips it. */
+static lab_path_t
+own_path(void) {
+    return scenario->scene->path != NULL ? scenario->scene->path() : (lab_path_t){0};
+}
+
 static scenario_path_t
 enter_path(void) {
     lab_test_enter(&saved, &render_lab, scenario->scene->key);
@@ -159,6 +169,13 @@ enter_path(void) {
     TEST_ASSERT_FALSE(handle_is_none(path.scene));
     if (scenario->still_ms != 0) {
         path.duration_ms = scenario->still_ms;
+        return path;
+    }
+    const lab_path_t own = own_path();
+    if (own.seek != NULL) {
+        TEST_ASSERT_TRUE(own.seek(0));
+        own.play();
+        path.duration_ms = own.duration_ms;
         return path;
     }
     const char* camera_name = scenario->camera == NULL ? sponza_cameras[0] : scenario->camera;
@@ -292,7 +309,8 @@ run_framegen_perf_suite(void) {
 #ifdef DEVICE_BUILD
     for (size_t i = 0; i < sizeof scenarios / sizeof scenarios[0]; i++) {
         scenario = &scenarios[i];
-        for (ladder_step = 0; scenario->still_ms == 0 && ladder_step < RENDER_LAB_LADDER_STEPS; ladder_step++) {
+        const bool camera_path = scenario->still_ms == 0 && own_path().seek == NULL;
+        for (ladder_step = 0; camera_path && ladder_step < RENDER_LAB_LADDER_STEPS; ladder_step++) {
             if (render_lab_ladder[ladder_step].width * 2 == GFX_WIDTH) {
                 RUN_TEST_CASE(test_generated_frame_cost, scenario->scene->key, render_lab_test_step_name(ladder_step));
             }
