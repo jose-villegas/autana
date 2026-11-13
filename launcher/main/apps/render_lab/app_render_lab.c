@@ -49,6 +49,7 @@ leave_scene(void) {
 static void
 frame_begin(const lab_scene_t* scene) {
     render_context_set_frame_generation(render_context_main(), scene->generates_frames && render_lab_framegen_on());
+    render_context_set_framegen_moving(render_context_main(), render_lab_framegen_moving());
 }
 
 lab_t render_lab = {

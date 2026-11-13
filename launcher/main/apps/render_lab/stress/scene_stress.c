@@ -141,7 +141,7 @@ turn_moving(void) {
     transformf_t turn = transformf_identity();
     const float degrees = (float)STRESS_MOVING_DEGREES_PER_S * (float)turn_ms / (float)MATH_MS_PER_S;
     transformf_set_rotation(&turn, quatf_from_axis_angle(vec3f_unit_y(), degrees * MATH_RADIANS_PER_DEGREE));
-    for (int i = shown->copies - shown->moving; i < shown->copies; i++) {
+    for (int i = 0; i < shown->moving; i++) {
         const transformf_t place = stress_copy_place(shown, i, seen);
         const transformf_t turned = transformf_compose(&place, &turn);
         transform_set_local(slots[i], transformf_compose(&facing, &turned));

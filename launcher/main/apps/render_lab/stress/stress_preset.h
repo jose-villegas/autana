@@ -48,7 +48,7 @@ typedef struct {
     stress_surface_t surface;
     const char* camera;
     int perf_poses; /* poses the stress perf suite replays along the swing */
-    int moving;     /* the last copies, nearest the camera in a stack, turning on their own every frame */
+    int moving;     /* the first copies, the front of a stack, turning on their own every frame */
 } stress_params_t;
 
 /* How fast a moving copy turns about its up axis. */
