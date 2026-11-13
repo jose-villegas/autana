@@ -1,8 +1,8 @@
 /*
  * Portable suite: capybara_sponza/capybara_run.h. The run rests at both ends,
  * only ever moves forward, its place and speed have no jumps, a short run
- * lowers its cruise, and the camera faces the runner at both ends and turns
- * its reach, never further, half way.
+ * lowers its cruise, and the camera stands at its first angle at both ends
+ * and turns its reach, never further, half way.
  */
 #include "suites.h"
 #include "testkit/suite.h"
@@ -25,6 +25,7 @@ static const capybara_run_t RUN = {.start = -600.0F,
                                    .peak_speed = 300.0F,
                                    .idle_ms = 2000U,
                                    .ramp_ms = 2500U,
+                                   .camera_from = MATH_PI / 6.0F,
                                    .camera_reach = 0.75F * MATH_PI};
 
 static void
@@ -73,9 +74,9 @@ test_a_short_run_lowers_its_cruise_and_still_ends_at_its_end(void) {
 }
 
 static void
-test_the_camera_faces_the_runner_at_both_ends_and_turns_its_reach_half_way(void) {
-    TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, 0.0F, capybara_run_camera_angle(&RUN, RUN.start));
-    TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, 0.0F, capybara_run_camera_angle(&RUN, RUN.end));
+test_the_camera_stands_at_its_first_angle_at_both_ends_and_its_reach_half_way(void) {
+    TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, RUN.camera_from, capybara_run_camera_angle(&RUN, RUN.start));
+    TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, RUN.camera_from, capybara_run_camera_angle(&RUN, RUN.end));
     TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, RUN.camera_reach,
                              capybara_run_camera_angle(&RUN, 0.5F * (RUN.start + RUN.end)));
     for (uint32_t t = 0; t <= capybara_run_duration_ms(&RUN); t += STEP_MS) {
@@ -88,7 +89,7 @@ run_capybara_run_suite(void) {
     RUN_TEST(test_the_run_rests_at_its_start_through_the_idle_and_at_its_end_after);
     RUN_TEST(test_the_run_only_moves_forward_with_no_jump);
     RUN_TEST(test_a_short_run_lowers_its_cruise_and_still_ends_at_its_end);
-    RUN_TEST(test_the_camera_faces_the_runner_at_both_ends_and_turns_its_reach_half_way);
+    RUN_TEST(test_the_camera_stands_at_its_first_angle_at_both_ends_and_its_reach_half_way);
 }
 
 SUITE_REGISTER(run_capybara_run_suite);

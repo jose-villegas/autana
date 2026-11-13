@@ -73,5 +73,5 @@ float
 capybara_run_camera_angle(const capybara_run_t* run, float at) {
     const float share = mathf_clamp((at - run->start) / (run->end - run->start), 0.0F, 1.0F);
     const float s = sinf(MATH_PI * share);
-    return run->camera_reach * s * s;
+    return run->camera_from + ((run->camera_reach - run->camera_from) * s * s);
 }

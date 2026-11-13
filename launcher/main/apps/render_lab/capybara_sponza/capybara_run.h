@@ -1,9 +1,9 @@
 /*
  * capybara_run: a straight run as a function of time, for a character and a
  * third-person camera. It idles, eases up to its peak speed, holds it, eases
- * down to rest at the end and idles again; the camera starts at its face,
- * turns slowly round it toward its back as the run goes on, never reaching
- * it, and comes back the same way to its face at the end. Nothing is
+ * down to rest at the end and idles again; the camera starts a little round
+ * from its face, turns slowly round it toward its back as the run goes on,
+ * never reaching it, and comes back the same way at the end. Nothing is
  * integrated: any time is one call.
  */
 #pragma once
@@ -15,6 +15,7 @@ typedef struct {
     float peak_speed;   /* scene units per second the cruise holds */
     uint32_t idle_ms;   /* still, at each end */
     uint32_t ramp_ms;   /* easing up, and again easing down */
+    float camera_from;  /* radians round from the face the camera stands at both ends */
     float camera_reach; /* radians round from the face the camera turns at most, mid-run; below pi */
 } capybara_run_t;
 
@@ -35,6 +36,6 @@ uint32_t capybara_run_duration_ms(const capybara_run_t* run);
 capybara_run_at_t capybara_run_at(const capybara_run_t* run, uint32_t t_ms);
 
 /* The camera's angle round the runner from its face (0) toward its back
- * (pi) where the run is at `at`: 0 at both ends, camera_reach half way,
- * eased (sin^2 of the share of the run behind it). */
+ * (pi) where the run is at `at`: camera_from at both ends, camera_reach half
+ * way, eased between (sin^2 of the share of the run behind it). */
 float capybara_run_camera_angle(const capybara_run_t* run, float at);

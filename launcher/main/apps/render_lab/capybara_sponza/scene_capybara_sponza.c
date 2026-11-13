@@ -4,9 +4,9 @@
  * through Sponza's camera. The capybara idles between the first pair of
  * columns at the lion end, gallops down the centre line and comes to rest
  * between the last pair, its clip and rate from its ground speed (gait). A
- * third-person camera looks at its face while it idles, turns slowly round
- * toward its back as it runs, never all the way, and back to its face as it
- * comes to rest (capybara_run.h). Everything is a
+ * third-person camera sees it from a front three-quarter while it idles,
+ * turns slowly round toward its back as it runs, never all the way, and back
+ * as it comes to rest (capybara_run.h). Everything is a
  * function of the path's time, so a frame profile seeks it.
  */
 #include "apps/render_lab/capybara_sponza/scene_capybara_sponza.h"
@@ -57,10 +57,11 @@ static const char* TAG = "capybara_sponza";
 
 /* The third-person camera: this far from the capybara and this high, looking
  * at a point this high on it; inside the columns (225 cm off the centre line)
- * when it is at the capybara's side. Mid-run it has turned 135 degrees from
- * the face, short of the back. */
+ * when it is at the capybara's side. It stands 15 degrees round from the
+ * face at both ends and 135 mid-run, short of the back. */
 #define RUN_CAMERA_DISTANCE 220.0F
 #define RUN_CAMERA_HEIGHT   100.0F
+#define RUN_CAMERA_FROM     (MATH_PI / 12.0F)
 #define RUN_CAMERA_REACH    (0.75F * MATH_PI)
 #define RUN_CAMERA_LOOK_Y   35.0F
 
@@ -130,6 +131,7 @@ build_gait(void) {
                            .peak_speed = gallop * RUN_SCALE,
                            .idle_ms = RUN_IDLE_MS,
                            .ramp_ms = RUN_RAMP_MS,
+                           .camera_from = RUN_CAMERA_FROM,
                            .camera_reach = RUN_CAMERA_REACH};
     return true;
 }
