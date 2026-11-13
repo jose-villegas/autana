@@ -180,7 +180,7 @@ scene_herd_status(void) {
 /* The first copy, playing its clip. */
 static lab_path_t
 scene_herd_path(void) {
-    return (lab_path_t){loaded, copies == NULL ? ENTITY_NONE : copies[0], NULL};
+    return (lab_path_t){.scene = loaded, .entity = copies == NULL ? ENTITY_NONE : copies[0]};
 }
 
 #define HERD_COPIES(id_, key_, copies_) static const int herd_copies_##id_ = copies_;

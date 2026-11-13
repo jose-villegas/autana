@@ -118,17 +118,20 @@ const char* lab_reply_tag(const lab_t* lab);
 
 /* "scenes" lists each scene's key and name and which one shows; "scene <key>"
  * switches to that exact key at the next frame. "pose <ms>" holds the showing
- * scene's path there (lab_seek_path(), then paused), so a view can be
- * compared at one pose; "pose play" lets it move again. Replies are
+ * scene's path there (lab_seek_path(), then paused, or held by the path's
+ * own seek), so a view can be compared at one pose; "pose play" lets it move
+ * again. Replies are
  * "<TAG> ..." lines then "<TAG>_END", or "<TAG>_ERR <why>". Other words go to
  * hooks.console, then to the showing scene's console. */
 bool lab_console(lab_t* lab, const char* args);
 
-/* The showing scene's path clip, as its `path` hook names it: its length in
- * ms, 0 when the scene has none, has not loaded or lacks that clip. */
+/* The showing scene's path length in ms: its own duration_ms when the path
+ * seeks itself, else its clip's as its `path` hook names it; 0 when the scene
+ * has none, has not loaded or lacks that clip. */
 uint32_t lab_path_duration_ms(const lab_t* lab);
 
-/* Places the showing scene's path at `t_ms`, wrapped to its length, cutting to
- * its clip first; a frame at dt 0 then draws that pose. False when the scene
+/* Places the showing scene's path at `t_ms`, wrapped to its length, through
+ * the path's own seek or else cutting to its clip; a frame at dt 0 then draws
+ * that pose. False when the scene
  * has no path. */
 bool lab_seek_path(const lab_t* lab, uint32_t t_ms);

@@ -358,7 +358,7 @@ lab_update(lab_t* lab, uint32_t dt_ms, const input_t* input) {
 static lab_path_t
 shown_path(const lab_t* lab) {
     const lab_scene_t* scene = lab_current(lab);
-    return scene->path == NULL ? (lab_path_t){ENTITY_NONE, ENTITY_NONE, NULL} : scene->path();
+    return scene->path == NULL ? (lab_path_t){.scene = ENTITY_NONE, .entity = ENTITY_NONE} : scene->path();
 }
 
 /* The path's clip, -1 when the scene has none or lacks the clip it names. */
@@ -378,6 +378,9 @@ path_clip(const lab_path_t* path) {
 uint32_t
 lab_path_duration_ms(const lab_t* lab) {
     const lab_path_t path = shown_path(lab);
+    if (path.seek != NULL) {
+        return path.duration_ms;
+    }
     const int clip = path_clip(&path);
     return clip < 0 ? 0 : animator_clip_duration_ms(path.entity, clip);
 }
@@ -385,8 +388,11 @@ lab_path_duration_ms(const lab_t* lab) {
 bool
 lab_seek_path(const lab_t* lab, uint32_t t_ms) {
     const lab_path_t path = shown_path(lab);
-    const int clip = path_clip(&path);
     const uint32_t duration_ms = lab_path_duration_ms(lab);
+    if (path.seek != NULL) {
+        return duration_ms > 0 && path.seek(t_ms % duration_ms);
+    }
+    const int clip = path_clip(&path);
     if (duration_ms == 0 || (clip != animator_current_clip(path.entity) && !animator_play(path.entity, clip, 0))) {
         return false;
     }
@@ -404,10 +410,15 @@ pose_console(const lab_t* lab, const char* rest) {
     if (lab_path_duration_ms(lab) == 0) {
         (void)printf("%s_ERR scene %s has no path\n", tag, lab_current(lab)->key);
     } else if (play) {
-        (void)animator_set_paused(path.entity, ANIMATOR_CURRENT, false);
+        if (path.seek != NULL) {
+            path.play();
+        } else {
+            (void)animator_set_paused(path.entity, ANIMATOR_CURRENT, false);
+        }
         (void)printf("%s pose=play\n%s_END\n", tag, tag);
     } else if (!isdigit((unsigned char)rest[0]) || *end != '\0' || t_ms > UINT32_MAX
-               || !lab_seek_path(lab, (uint32_t)t_ms) || !animator_set_paused(path.entity, ANIMATOR_CURRENT, true)) {
+               || !lab_seek_path(lab, (uint32_t)t_ms)
+               || (path.seek == NULL && !animator_set_paused(path.entity, ANIMATOR_CURRENT, true))) {
         (void)printf("%s_ERR usage: %s pose <ms> | %s pose play\n", tag, lab->console_word, lab->console_word);
     } else {
         (void)printf("%s pose=%lu\n%s_END\n", tag, t_ms, tag);
