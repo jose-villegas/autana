@@ -16,5 +16,9 @@ extern app_t app_render_lab;
  * since a host build has no console. */
 bool render_lab_console(const char* args);
 
+/* A scene of copies' status line: the size drawn at, the triangle count and
+ * `copies`, or `failure` when it says why the scene did not load. */
+const char* render_lab_copies_status(const char* failure, int copies);
+
 extern const lab_scene_t scene_capybara;
 extern const lab_scene_t scene_water;

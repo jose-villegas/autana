@@ -619,9 +619,9 @@ def blend_key(settings, tools):
 
 def import_recipe(settings, tools):
     """An import's settings without paths and its sources by content: a credit line or a moved file does not
-    rebake, and a .blend counts by its export's key."""
+    rebake, and a .blend counts by its export's key. Its `fit` shapes only fits, so only fit keys count it."""
     recipe = {name: canonical(value) for name, value in vars(settings).items()
-              if name not in ("path", "source", "out_dir", "mesh_dir", "named", "variants")}
+              if name not in ("path", "source", "out_dir", "mesh_dir", "named", "variants", "fit")}
     return recipe, {"blend": blend_key(settings, tools)} if is_blend(settings) else source_digest(settings)
 
 
@@ -642,13 +642,19 @@ def mesh_recipe(job, scene, tools, poses=None, unavailable=None):
     return recipe
 
 
-def fit_recipe(fit):
-    return dict(vars(fit))
+def fit_recipe(fit, settle=None):
+    """The renderer's fit and the import's `settle` (geometry.budget), left out when unset so a mesh without it
+    keeps its key; geometry.probes reaches the fit through the reference key."""
+    recipe = dict(vars(fit))
+    if settle is not None:
+        recipe["settle"] = canonical(settle)
+    return recipe
 
 
 def reference_recipe(inputs, tools, poses=None, unavailable=None):
     """A fit's reference set by every field of its reference_set.ReferenceInputs: the import as a mesh counts
-    it, the camera by its lens and sampled poses, the rest as parsed."""
+    it, the camera by its lens and sampled poses (a camera without a path has none: its views are all probes),
+    probes and shaped only when set, the rest as parsed."""
     recipe = {}
     for field in dataclasses.fields(inputs):
         value = getattr(inputs, field.name)
@@ -657,10 +663,16 @@ def reference_recipe(inputs, tools, poses=None, unavailable=None):
         elif field.name == "camera":
             scene = inputs.scene()
             camera = camera_inputs(scene)
+            if scene.camera.component.path is None and inputs.probes is not None:
+                recipe["camera"] = camera
+                continue
             camera["poses"] = {name: poses.digest(scene.camera.component, inputs.poses[field], inputs.size, tools, unavailable)
                                for name, field in (("train", "train_every_ms"),
                                                    ("coverage", "coverage_every_ms"))}
             recipe["camera"] = camera
+        elif field.name in ("probes", "shaped"):
+            if value:
+                recipe[field.name] = canonical(value)
         else:
             recipe[field.name] = canonical(value)
     return recipe
@@ -683,7 +695,8 @@ def stage_keys(job, scene, tools, starts=None, poses=None):
         start_sha256 = None if starts is None else starts.get(start)
         reference_sha256 = None if starts is None or reference is None else starts.get(reference)
         fit = None if start_sha256 is None or reference_sha256 is None else digest(
-            ["fit", reference_sha256, start_sha256, fit_recipe(job.renderer.fit), tools["fit"]])
+            ["fit", reference_sha256, start_sha256, fit_recipe(job.renderer.fit, job.settings.fit.budget),
+             tools["fit"]])
         fit_sha256 = None if starts is None or fit is None else starts.get(fit)
         levels = None if fit_sha256 is None else digest(
             ["levels", fit_sha256, start_sha256, (job.settings.lod, job.settings.meshlet_triangles), tools["levels"]])
@@ -1008,6 +1021,10 @@ def seed(found, cache, lock=None, made=None):
     previous = {row["output"]: row for key, row in lock.items() if key not in needed}
     rows, missing = [], []
     for bake in found:
+        if bake.key is None and bake.kind == "levels":
+            # Its key names its fit's bytes: the CPU run makes the levels once this seed locks the fit.
+            print(f"skipped {bake.output}: {unlocked(bake)}")
+            continue
         if bake.key is None:
             missing.append(describe(bake, unlocked(bake), bake_again(bake)))
             continue

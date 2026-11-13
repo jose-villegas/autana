@@ -606,8 +606,11 @@ class StageTests(unittest.TestCase):
 
         job, scene = fitted_job()
         inputs = reference_inputs(job, scene)
-        recipe = bake.reference_recipe(inputs, TOOL_KEYS, bake.Poses({}))
         fields = {field.name for field in dataclasses.fields(ReferenceInputs)}
+        unprobed = bake.reference_recipe(inputs, TOOL_KEYS, bake.Poses({}))
+        self.assertEqual(set(unprobed) - {"sources"}, fields - {"probes", "shaped"}, "an unshaped fit changed the key")
+        inputs = dataclasses.replace(inputs, probes=types.SimpleNamespace(spacing=None, face=8), shaped=True)
+        recipe = bake.reference_recipe(inputs, TOOL_KEYS, bake.Poses({}))
         self.assertEqual(set(recipe) - {"sources"}, fields)
         brighter = dataclasses.replace(inputs, tonemap_white=inputs.tonemap_white * 2)
         self.assertNotEqual(bake.digest(recipe), bake.digest(bake.reference_recipe(brighter, TOOL_KEYS, bake.Poses({}))))
@@ -754,7 +757,7 @@ class FittedBakeTests(FittedBakeCase):
         source.mkdir()
         expected = write_reference_tree(source)
         reference = self.root / self.reference.output
-        reference.write_bytes(reference_set.pack_references(source))
+        reference.write_bytes(reference_set.pack_references(source, reference_set.fit_sets(True, False, False)))
         start = self.root / self.start.output
         start.write_bytes(b"locked start bundle")
         lock = {item.key: produce.record(item, path, self.cache)
@@ -1492,6 +1495,15 @@ class LockTests(unittest.TestCase):
     def test_a_waiting_fit_is_never_seeded(self):
         with self.assertRaisesRegex(bake.BakeMissing, "(?s)two.bundle.*is not locked"):
             bake.seed([self.waiting_fit()], self.cache, {"j" * 64: {**self.row, "output": "two.bundle", "key": "j" * 64}})
+
+    def test_seeding_skips_levels_whose_fit_it_is_seeding_and_locks_the_rest(self):
+        """A seed carries a re-keyed fit over; its levels' key names those bytes, so the CPU run makes them after."""
+        levels = bake.Bake(output="two.levels.bundle", source=self.tree, holder="two", kind="levels", key=None,
+                           suffix=bake.BUNDLE_SUFFIX, tree=self.root / "two.levels.bundle", stages={"fit": "f" * 64})
+        with contextlib.redirect_stdout(io.StringIO()) as said:
+            rows = bake.seed([bake_of("k" * 64, self.tree), levels], self.cache, {}, {"k" * 64: {**self.row, "run": 9}})
+        self.assertEqual([row["key"] for row in rows], ["k" * 64])
+        self.assertIn("skipped two.levels.bundle: its fit " + "f" * 64 + " is not locked", said.getvalue())
 
     def test_a_fits_start_takes_the_locked_bytes_over_a_runs(self):
         made = {"k" * 64: {**self.row, "sha256": "f" * 64}}

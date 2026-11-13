@@ -25,6 +25,13 @@ def principal_frame(points):
     return centre, axes[:, order], local[:, order]
 
 
+def face_normals(p, tris):
+    """Each triangle's unit normal and its area."""
+    normal = np.cross(p[tris[:, 1]] - p[tris[:, 0]], p[tris[:, 2]] - p[tris[:, 0]])
+    length = np.linalg.norm(normal, axis=1)
+    return normal / np.maximum(length, 1e-30)[:, None], 0.5 * length
+
+
 def compact(p, tris):
     used, inverse = np.unique(tris, return_inverse=True)
     return p[used], inverse.reshape(-1, 3)
