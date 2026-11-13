@@ -140,7 +140,9 @@ Source: `water-stages-board.log`
 
 The Stress family repeats a generated primitive or static pack mesh before a
 swinging camera. Each preset ties down one behaviour with its own pegged goal.
-Perf work targets the presets; the scene frame profile confirms before merge.
+The presets are the per-PR perf check for r3d work. Scenes run nightly, on
+request, and for bake and fit changes; a scene regression with no preset
+moving is a coverage gap and becomes a new preset.
 
 Repeated geometry exercises hierarchical visibility<sup>[[112]](../../../../../docs/Citations.md#greene-1993)</sup>;
 the presets vary the copies' geometry, layout and colour modes.
