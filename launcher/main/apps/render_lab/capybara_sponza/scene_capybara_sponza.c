@@ -49,8 +49,8 @@ static const char* TAG = "capybara_sponza";
 #define RUN_FLOOR_Y         0.0F
 #define RUN_START_X         (-616.0F)
 #define RUN_END_X           487.0F
-/* Still for 2 s at each end, 2.5 s easing to full gallop and as long back. */
-#define RUN_IDLE_MS         2000U
+/* Still for 3 s at each end, 2.5 s easing to full gallop and as long back. */
+#define RUN_IDLE_MS         3000U
 #define RUN_RAMP_MS         2500U
 /* The capybara faces -z; a quarter turn back about y faces it +x, down the run. */
 #define RUN_HEADING         (-0.25F * MATH_TAU)
@@ -152,10 +152,19 @@ place(capybara_run_at_t at) {
     transform_set_local(camera, eye);
 }
 
-/* The gait's pick at the run's speed, in the capybara's own units. */
+/* The gait's pick `t_ms` into the run, in the capybara's own units. A clip
+ * takes the gait's blend to come in, so the pick reads the speed that far
+ * ahead: the walk is in before the body moves, and the idle is in by the
+ * time it stops. Any speed at all walks, at the slowest moving step's
+ * slowest rate if need be, so the body never slides on the still clip. */
 static gait_pick_t
-pick_at(gait_pick_t current, float speed) {
-    return gait_pick(&gait, current, speed / RUN_SCALE);
+pick_at(gait_pick_t current, uint32_t t_ms) {
+    const float ahead = capybara_run_at(&run, t_ms + gait.blend_ms).speed / RUN_SCALE;
+    float walking = 0.0F;
+    for (int i = 0; i < gait.count && walking <= 0.0F; i++) {
+        walking = gait.steps[i].ground_mps * gait.rate_min;
+    }
+    return gait_pick(&gait, current, ahead > 0.0F ? fmaxf(ahead, walking) : 0.0F);
 }
 
 static void
@@ -163,7 +172,7 @@ advance(uint32_t dt_ms) {
     path_ms += dt_ms;
     const capybara_run_at_t at = capybara_run_at(&run, path_ms);
     place(at);
-    const gait_pick_t pick = pick_at(applied, at.speed);
+    const gait_pick_t pick = pick_at(applied, path_ms);
     gait_apply(runner, &gait, applied, pick);
     applied = pick;
 }
@@ -175,10 +184,10 @@ seek_run(uint32_t t_ms) {
     if (!ready()) {
         return false;
     }
-    gait_pick_t pick = pick_at((gait_pick_t){-1, 1.0F}, 0.0F);
+    gait_pick_t pick = pick_at((gait_pick_t){-1, 1.0F}, 0);
     float clip_s = 0.0F;
     for (uint32_t t = RUN_SEEK_STEP_MS; t <= t_ms; t += RUN_SEEK_STEP_MS) {
-        const gait_pick_t next = pick_at(pick, capybara_run_at(&run, t).speed);
+        const gait_pick_t next = pick_at(pick, t);
         const float dt = (float)RUN_SEEK_STEP_MS / (float)MATH_MS_PER_S;
         clip_s = next.step == pick.step ? clip_s + (next.rate * dt) : 0.0F;
         pick = next;
