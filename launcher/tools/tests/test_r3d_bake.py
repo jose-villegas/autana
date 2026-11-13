@@ -24,8 +24,8 @@ try:
     from r3d.geometry import closest_point_on_triangles, nearest_triangles, triangle_areas, triangle_search, weld
     from r3d.light import adaptive_sample_counts, face_colours, light, merge_matching_colours, to_srgb8
     from r3d import lit_mesh, rebake
-    from r3d.lit_mesh import (MESHLET_TRIANGLES, POSITION_SCALE, WELD_PER_TICK, bake_lit_mesh, read_lit_mesh, validate,
-                              weld_quantised, write_lit_mesh)
+    from r3d.lit_mesh import (MESHLET_TRIANGLES, POSITION_SCALE, TREE_DEPTH_MAX, WELD_PER_TICK, bake_lit_mesh,
+                              read_lit_mesh, validate, weld_quantised, write_lit_mesh)
     from r3d.meshopt import build_meshlets, simplify_with_update
     from r3d.cluster_tree import build_tree, flatten_tree
     from r3d.repair import _weld_borders, repair
@@ -523,6 +523,20 @@ class LitMeshTests(unittest.TestCase):
         nodes = [{"leaf": True, "first": 0, "count": 2}]
         with self.assertRaises(AssertionError):
             validate(pos, np.zeros((6, 3)), tris, clusters, nodes)
+
+    def test_validation_refuses_a_tree_deeper_than_the_runtime_walks(self):
+        pos = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]])
+        tris = np.array([[0, 1, 2]])
+        clusters = [(0, 3, 0, 1, np.zeros(3), np.ones(3), False)]
+
+        def chain(depth):
+            """`depth` inner nodes of one child each above the one leaf."""
+            return [{"leaf": False, "first": i + 1, "count": 1} for i in range(depth)] + [
+                {"leaf": True, "first": 0, "count": 1}]
+
+        validate(pos, np.zeros((3, 3)), tris, clusters, chain(TREE_DEPTH_MAX))
+        with self.assertRaisesRegex(AssertionError, "deeper"):
+            validate(pos, np.zeros((3, 3)), tris, clusters, chain(TREE_DEPTH_MAX + 1))
 
     def test_validation_refuses_more_triangles_than_uint16_offsets_hold(self):
         pos = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]])

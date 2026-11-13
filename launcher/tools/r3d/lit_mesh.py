@@ -35,6 +35,9 @@ MAX_NODE_CHILDREN = 255
 # Children of a node that is not a leaf, as the cull walk sorts them.
 NODE_FANOUT = read_define(pathlib.Path(__file__).resolve().parents[2] / "main/render/r3d_lit_mesh.h",
                           "R3D_LIT_NODE_CHILDREN_MAX")
+# Edges from the root to the deepest leaf the runtime's walk stack holds.
+TREE_DEPTH_MAX = read_define(pathlib.Path(__file__).resolve().parents[2] / "main/render/r3d_lit_mesh.h",
+                             "R3D_LIT_TREE_DEPTH_MAX")
 
 LEAF_TRIANGLES = 320
 POSITION_SCALE = 8
@@ -274,14 +277,16 @@ def validate(pos, rgb, tris, clusters, nodes, face_colors=None):
         next_v, next_t = vbase + vcount, tbase + tcount
     assert next_v == len(pos) and next_t == len(tris)
     reached = np.zeros(len(clusters), dtype=np.int64)
-    stack = [0]
+    stack = [(0, 0)]
     while stack:
-        node = nodes[stack.pop()]
+        index, depth = stack.pop()
+        node = nodes[index]
         assert node["count"] <= MAX_NODE_CHILDREN
+        assert depth <= TREE_DEPTH_MAX, "the tree is deeper than the runtime walks"
         if node["leaf"]:
             reached[node["first"] : node["first"] + node["count"]] += 1
         else:
-            stack.extend(range(node["first"], node["first"] + node["count"]))
+            stack.extend((child, depth + 1) for child in range(node["first"], node["first"] + node["count"]))
     assert np.all(reached == 1), "every cluster must hang off exactly one leaf"
     assert len(nodes) <= MAX_NODES
 
