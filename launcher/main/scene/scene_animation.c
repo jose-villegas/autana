@@ -43,7 +43,7 @@ animation_interval(scene_animator_t* a, const render_anim_settings_t* s) {
     const int every[] = {[SCENE_ANIM_TIER_NEAR] = RENDER_ANIM_EVERY_MIN,
                          [SCENE_ANIM_TIER_MID] = s->mid_every,
                          [SCENE_ANIM_TIER_FAR] = s->far_every};
-    a->interval = mathi_clamp(every[a->tier], RENDER_ANIM_EVERY_MIN, RENDER_ANIM_EVERY_MAX);
+    a->interval = every[a->tier];
     return a->interval;
 }
 
@@ -103,7 +103,7 @@ scene_animate_range(scene_t* scene, int first, int count, uint32_t dt_ms, const 
             a->owed_ms += dt_ms;
             continue;
         }
-        a->posed = advance_animator(a, dt_ms + a->owed_ms) || force;
+        a->posed = advance_animator(a, dt_ms + a->owed_ms);
         a->owed_ms = 0;
         if (!a->posed) {
             continue;
@@ -236,8 +236,7 @@ scene_animation_repose(scene_t* scene, uint32_t dt_ms) {
         scene_animator_t* animator = &scene->animators[e];
         if (animator->storage != NULL && animator->root == ANIM_ROOT_SCENE
             && animator->layer.current.clip != ANIM_LAYER_CLIP_NONE && (scene->flags[e] & SCENE_FLAG_ACTIVE)) {
-            apply_property(scene, animator, dt_ms + animator->owed_ms);
-            animator->owed_ms = 0;
+            apply_property(scene, animator, dt_ms);
         }
     }
     animate_entities(scene, dt_ms, animation_settings());

@@ -727,6 +727,7 @@ release_fixture(void) {
     free(fx.instances);
     free(fx.saved_skin[0]);
     free(fx.saved_skin[1]);
+    render_context_set_settings(render_context_main(), &RENDER_SETTINGS_DEFAULT);
     fx = (fixture_t){0};
 }
 
@@ -4879,6 +4880,33 @@ test_animation_rate_tier_hysteresis(void) {
     }
 }
 
+/* One step can cross both boundaries either way, and a copy never tiered has no
+ * band to hold it, so inside the mid band it takes the plain threshold. */
+static void
+test_animation_rate_tier_jumps_and_first_read(void) {
+    scene_t* scene = rate_fixture();
+    scene_animator_t* a = &scene->animators[0];
+    const render_anim_settings_t s = RENDER_SETTINGS_DEFAULT.anim;
+    const float near = s.mid_px + s.hysteresis_px * 2, far = s.far_px - s.hysteresis_px * 2;
+    a->drawn_radius_px = near;
+    scene_animation_step(scene, ANIM_RATE_DT_MS);
+    TEST_ASSERT_EQUAL_INT(SCENE_ANIM_TIER_NEAR, a->tier);
+    a->drawn_radius_px = far;
+    scene_animation_step(scene, ANIM_RATE_DT_MS);
+    TEST_ASSERT_EQUAL_INT(SCENE_ANIM_TIER_FAR, a->tier);
+    a->drawn_radius_px = near;
+    scene_animation_step(scene, ANIM_RATE_DT_MS);
+    TEST_ASSERT_EQUAL_INT(SCENE_ANIM_TIER_NEAR, a->tier);
+    a->drawn_radius_px = s.mid_px - s.hysteresis_px / 2;
+    scene_animation_step(scene, ANIM_RATE_DT_MS);
+    TEST_ASSERT_EQUAL_INT(SCENE_ANIM_TIER_NEAR, a->tier);
+    a->interval = 0;
+    a->drawn_radius_px = s.mid_px - s.hysteresis_px / 2;
+    scene_animation_step(scene, ANIM_RATE_DT_MS);
+    TEST_ASSERT_EQUAL_INT(SCENE_ANIM_TIER_MID, a->tier);
+    TEST_ASSERT_EQUAL_INT(s.mid_every, a->interval);
+}
+
 static void
 test_animation_rate_reads_last_drawn_bounds_and_rejects_offscreen(void) {
     entity_t root = rig_fixture("rig.skin2", NULL);
@@ -6948,6 +6976,7 @@ run_scene_suite(void) {
     RUN_TEST(test_animation_rate_controls_and_zero_dt_preserve_debt);
     RUN_TEST(test_animation_rate_motion_and_lights_reuse_palette);
     RUN_TEST(test_animation_rate_tier_hysteresis);
+    RUN_TEST(test_animation_rate_tier_jumps_and_first_read);
     RUN_TEST(test_animation_rate_first_placement_jump_and_debt);
     RUN_TEST(test_animation_rate_property_setters_settle_once_and_show_pays_debt);
     RUN_TEST(test_animation_rate_seek_preserves_other_copies_debt);
