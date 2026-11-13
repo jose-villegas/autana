@@ -152,7 +152,7 @@ projected radius on the last frame, with
 | below `anim.mid_px` | every `anim.mid_every` frames |
 | below `anim.far_px`, or off screen | every `anim.far_every` frames |
 
-Each threshold moves by `anim.hysteresis_px` once a copy is in the tier.
+Each threshold moves by `anim.hysteresis_px` away from the copy's current tier.
 
 Staggered copies spread poses across frames. Skipped copies keep their skin;
 their next pose pays owed time. Clip changes, seeks and shows pose at once.

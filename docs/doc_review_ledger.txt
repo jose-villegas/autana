@@ -1,2 +1,3 @@
 docs/render/offline/Mesh-Import.md	2026-11-11
 docs/render/offline/Appearance-Fit.md	2026-11-11
+docs/render/animation/Skinned-Meshes.md	2026-11-13
