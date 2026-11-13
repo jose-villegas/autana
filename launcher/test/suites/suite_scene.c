@@ -35,6 +35,7 @@
 #include "ui/ui.h"
 #endif
 #include "core/memory.h"
+#include "core/tune.h"
 #ifdef HOST_HEAP_ARENA
 #include "job_calls.h"
 #endif
@@ -726,6 +727,7 @@ release_fixture(void) {
     free(fx.instances);
     free(fx.saved_skin[0]);
     free(fx.saved_skin[1]);
+    render_context_set_settings(render_context_main(), &RENDER_SETTINGS_DEFAULT);
     fx = (fixture_t){0};
 }
 
@@ -3809,6 +3811,9 @@ static entity_t
 rig_fixture(const char* skin_id, const char* paired_skin) {
     fixture();
     entity_t scene = show("test_pair");
+    render_settings_t settings = RENDER_SETTINGS_DEFAULT;
+    settings.anim.mid_every = settings.anim.far_every = RENDER_ANIM_EVERY_MIN;
+    render_context_set_settings(render_context_main(), &settings);
     const entity_t entity = entity_find(scene, name_hash("red"));
     const int renderer = scene_renderer_index(columns(scene), row_of(entity));
     TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_open(&fx.pack, "rig.mesh", &columns(scene)->renderers[renderer].mesh));
@@ -4292,7 +4297,8 @@ static void
 test_skin_split_inside_an_entity_matches_full_range(void) {
     entity_t scene = rig_fixture("rig.skin4", "rig.quad");
     const entity_t red = entity_find(scene, name_hash("red")), green = entity_find(scene, name_hash("green"));
-    scene_animate_range(columns(scene), 0, columns(scene)->staged_count, RIG_DURATION_MS / 2);
+    scene_animate_range(columns(scene), 0, columns(scene)->staged_count, RIG_DURATION_MS / 2,
+                        &RENDER_SETTINGS_DEFAULT.anim);
     scene_skin_range(columns(scene), 0, 3);
     const entity_t entities[] = {red, green};
     for (size_t e = 0; e < sizeof entities / sizeof entities[0]; e++) {
@@ -4697,6 +4703,409 @@ test_translation_only_camera_clip_retains_rotation(void) {
     TEST_ASSERT_EQUAL_MEMORY(&wanted, &forward, sizeof wanted);
 }
 
+#define ANIM_RATE_DT_MS  (RIG_DURATION_MS / ((RENDER_SETTINGS_DEFAULT.anim.far_every) + 1))
+#define ANIM_RATE_ROUNDS 3
+
+static scene_t*
+rate_fixture(void) {
+    fixture();
+    render_settings_t settings = RENDER_SETTINGS_DEFAULT;
+    render_context_set_settings(render_context_main(), &settings);
+    scene_t* scene = columns(load("test_herd"));
+    scene_animation_step(scene, 0);
+    for (int e = 0; e < HERD_POOL; e++) {
+        scene->animators[e].wrap = ANIM_LOOP;
+        scene->animators[e].layer.current.playhead.wrap = ANIM_LOOP;
+    }
+    scene->animation_frame = 1;
+    return scene;
+}
+
+static void
+test_animation_rate_debt_matches_every_frame_across_loops_and_blends(void) {
+    scene_t* scene = rate_fixture();
+    scene_animator_t* a = &scene->animators[0];
+    const entity_t entity = scene_row_entity(scene, 0);
+    TEST_ASSERT_TRUE(animator_play(entity, 1, RIG_DURATION_MS));
+    scene_animation_step(scene, 0);
+    scene->animation_frame = 1;
+    anim_layer_t reference = a->layer;
+    for (int i = 0; i < (RENDER_SETTINGS_DEFAULT.anim.far_every) * ANIM_RATE_ROUNDS; i++) {
+        anim_layer_advance(&reference, ANIM_RATE_DT_MS);
+        scene_animation_step(scene, ANIM_RATE_DT_MS);
+        if (a->posed) {
+            TEST_ASSERT_EQUAL_UINT32(reference.current.playhead.t_ms, a->layer.current.playhead.t_ms);
+            if (reference.previous.clip != ANIM_LAYER_CLIP_NONE) {
+                TEST_ASSERT_EQUAL_UINT32(reference.previous.playhead.t_ms, a->layer.previous.playhead.t_ms);
+            }
+            TEST_ASSERT_EQUAL_UINT32(reference.blended_ms, a->layer.blended_ms);
+            TEST_ASSERT_EQUAL_UINT32(0, a->owed_ms);
+        }
+    }
+    TEST_ASSERT_TRUE(a->posed);
+    TEST_ASSERT_EQUAL_UINT32(reference.current.playhead.t_ms, a->layer.current.playhead.t_ms);
+}
+
+static void
+test_animation_rate_speed_and_pause_settle_previous_time(void) {
+    scene_t* scene = rate_fixture();
+    scene_animator_t* a = &scene->animators[0];
+    const entity_t entity = scene_row_entity(scene, 0);
+    anim_layer_t reference = a->layer;
+    anim_layer_advance(&reference, ANIM_RATE_DT_MS);
+    scene_animation_step(scene, ANIM_RATE_DT_MS);
+    TEST_ASSERT_FALSE(a->posed);
+    TEST_ASSERT_TRUE(animator_set_speed(entity, ANIMATOR_CURRENT, 2.0F));
+    TEST_ASSERT_TRUE(anim_playhead_set_speed(&reference.current.playhead, 2.0F));
+    TEST_ASSERT_EQUAL_UINT32(reference.current.playhead.t_ms, a->layer.current.playhead.t_ms);
+    scene_animation_step(scene, ANIM_RATE_DT_MS);
+    anim_layer_advance(&reference, ANIM_RATE_DT_MS);
+    TEST_ASSERT_TRUE(a->posed);
+    TEST_ASSERT_TRUE(animator_set_paused(entity, ANIMATOR_CURRENT, true));
+    TEST_ASSERT_EQUAL_UINT32(reference.current.playhead.t_ms, a->layer.current.playhead.t_ms);
+    scene_animation_step(scene, ANIM_RATE_DT_MS);
+    TEST_ASSERT_TRUE(animator_set_paused(entity, ANIMATOR_CURRENT, false));
+    TEST_ASSERT_EQUAL_UINT32(reference.current.playhead.t_ms, a->layer.current.playhead.t_ms);
+    scene_animation_step(scene, ANIM_RATE_DT_MS);
+    anim_layer_advance(&reference, ANIM_RATE_DT_MS);
+    TEST_ASSERT_EQUAL_UINT32(reference.current.playhead.t_ms, a->layer.current.playhead.t_ms);
+}
+
+static void
+test_animation_rate_staggers_eight_copies(void) {
+    scene_t* scene = rate_fixture();
+    int poses[HERD_POOL] = {0};
+    for (int step = 0; step < (RENDER_SETTINGS_DEFAULT.anim.far_every); step++) {
+        scene_animation_step(scene, ANIM_RATE_DT_MS);
+        int posed = 0;
+        for (int e = 0; e < HERD_POOL; e++) {
+            posed += scene->animators[e].posed;
+            poses[e] += scene->animators[e].posed;
+        }
+        TEST_ASSERT_EQUAL_INT(HERD_POOL / (RENDER_SETTINGS_DEFAULT.anim.far_every), posed);
+    }
+    for (int e = 0; e < HERD_POOL; e++) {
+        TEST_ASSERT_EQUAL_INT(1, poses[e]);
+    }
+}
+
+static void
+test_animation_rate_controls_and_zero_dt_preserve_debt(void) {
+    scene_t* scene = rate_fixture();
+    scene_animator_t* a = &scene->animators[0];
+    entity_t entity = scene_row_entity(scene, 0);
+    scene_animation_step(scene, ANIM_RATE_DT_MS);
+    TEST_ASSERT_FALSE(a->posed);
+    TEST_ASSERT_TRUE(animator_seek(entity, ANIMATOR_CURRENT, ANIM_RATE_DT_MS));
+    TEST_ASSERT_TRUE(a->posed);
+    TEST_ASSERT_EQUAL_UINT32(ANIM_RATE_DT_MS, a->layer.current.playhead.t_ms);
+    TEST_ASSERT_EQUAL_UINT32(0, a->owed_ms);
+    scene->animation_frame = 1;
+    scene_animation_step(scene, ANIM_RATE_DT_MS);
+    TEST_ASSERT_FALSE(a->posed);
+    TEST_ASSERT_TRUE(animator_play(entity, 0, 0));
+    scene_animation_step(scene, ANIM_RATE_DT_MS);
+    TEST_ASSERT_TRUE(a->posed);
+    TEST_ASSERT_EQUAL_UINT32(ANIM_RATE_DT_MS, a->layer.current.playhead.t_ms);
+    scene->animation_frame = 1;
+    scene_animation_step(scene, ANIM_RATE_DT_MS);
+    TEST_ASSERT_FALSE(a->posed);
+    const uint32_t owed = a->owed_ms;
+    scene_animation_step(scene, 0);
+    TEST_ASSERT_FALSE(a->posed);
+    TEST_ASSERT_EQUAL_UINT32(owed, a->owed_ms);
+}
+
+/* Motion still skins each frame, while the kept palette changes only on its slot. */
+static void
+test_animation_rate_motion_and_lights_reuse_palette(void) {
+    entity_t root = rig_fixture("rig.skin2", NULL);
+    scene_t* scene = columns(root);
+    render_context_set_settings(render_context_main(), &RENDER_SETTINGS_DEFAULT);
+    const entity_t red = entity_find(root, name_hash("red"));
+    const entity_t lamp = entity_find(root, name_hash("camera"));
+    TEST_ASSERT_TRUE(light_set_intensity(lamp, 1.0F));
+    scene_animation_step(scene, 0);
+    scene_animator_t* a = &scene->animators[row_of(red)];
+    scene->animation_frame = 1;
+    int poses = 0;
+    for (int i = 0; i < RENDER_SETTINGS_DEFAULT.anim.far_every; i++) {
+        transformf_t local = transform_local(red);
+        local.rotation = quatf_from_euler((vec3f_t){(float)(i + 1), 0, 0});
+        transform_set_local(red, local);
+        TEST_ASSERT_TRUE(light_set_intensity(lamp, (float)(i + 1)));
+        scene_animation_step(scene, ANIM_RATE_DT_MS);
+        TEST_ASSERT_TRUE(a->posed); /* re-skin for the changed transform and light */
+        poses += a->owed_ms == 0;
+        TEST_ASSERT_FLOAT_WITHIN(0.0001F, quatf_rotate(local.rotation, SCENE_LIGHT_AXIS).z,
+                                 skin_of(red)->normal_palette[0].m[2][1]);
+    }
+    TEST_ASSERT_EQUAL_INT(1, poses);
+}
+
+static void
+test_animation_rate_tier_hysteresis(void) {
+    scene_t* scene = rate_fixture();
+    scene_animator_t* a = &scene->animators[0];
+    const float band = (float)(RENDER_SETTINGS_DEFAULT.anim.hysteresis_px);
+    const float thresholds[] = {(RENDER_SETTINGS_DEFAULT.anim.far_px), (RENDER_SETTINGS_DEFAULT.anim.mid_px)};
+    const int tiers[] = {SCENE_ANIM_TIER_FAR, SCENE_ANIM_TIER_MID, SCENE_ANIM_TIER_NEAR};
+    const int intervals[] = {(RENDER_SETTINGS_DEFAULT.anim.far_every), (RENDER_SETTINGS_DEFAULT.anim.mid_every),
+                             RENDER_ANIM_EVERY_MIN};
+    for (int t = 0; t < (int)(sizeof thresholds / sizeof thresholds[0]); t++) {
+        for (int i = 0; i < ANIM_RATE_ROUNDS; i++) {
+            a->drawn_radius_px = thresholds[t] + band / 2;
+            scene_animation_step(scene, ANIM_RATE_DT_MS);
+            TEST_ASSERT_EQUAL_INT(intervals[t], a->interval);
+            TEST_ASSERT_EQUAL_INT(tiers[t], a->tier);
+            a->drawn_radius_px = thresholds[t] - band / 2;
+            scene_animation_step(scene, ANIM_RATE_DT_MS);
+            TEST_ASSERT_EQUAL_INT(intervals[t], a->interval);
+            TEST_ASSERT_EQUAL_INT(tiers[t], a->tier);
+        }
+        a->drawn_radius_px = thresholds[t] + band * 2;
+        scene_animation_step(scene, ANIM_RATE_DT_MS);
+        TEST_ASSERT_EQUAL_INT(intervals[t + 1], a->interval);
+        TEST_ASSERT_EQUAL_INT(tiers[t + 1], a->tier);
+    }
+    for (int t = (int)(sizeof thresholds / sizeof thresholds[0]) - 1; t >= 0; t--) {
+        a->drawn_radius_px = thresholds[t] - band / 2;
+        scene_animation_step(scene, ANIM_RATE_DT_MS);
+        TEST_ASSERT_EQUAL_INT(intervals[t + 1], a->interval);
+        TEST_ASSERT_EQUAL_INT(tiers[t + 1], a->tier);
+        a->drawn_radius_px = thresholds[t] - band * 2;
+        scene_animation_step(scene, ANIM_RATE_DT_MS);
+        TEST_ASSERT_EQUAL_INT(intervals[t], a->interval);
+        TEST_ASSERT_EQUAL_INT(tiers[t], a->tier);
+    }
+}
+
+/* One step can cross both boundaries either way, and a copy never tiered has no
+ * band to hold it, so inside the mid band it takes the plain threshold. */
+static void
+test_animation_rate_tier_jumps_and_first_read(void) {
+    scene_t* scene = rate_fixture();
+    scene_animator_t* a = &scene->animators[0];
+    const render_anim_settings_t s = RENDER_SETTINGS_DEFAULT.anim;
+    const float near = s.mid_px + s.hysteresis_px * 2, far = s.far_px - s.hysteresis_px * 2;
+    a->drawn_radius_px = near;
+    scene_animation_step(scene, ANIM_RATE_DT_MS);
+    TEST_ASSERT_EQUAL_INT(SCENE_ANIM_TIER_NEAR, a->tier);
+    a->drawn_radius_px = far;
+    scene_animation_step(scene, ANIM_RATE_DT_MS);
+    TEST_ASSERT_EQUAL_INT(SCENE_ANIM_TIER_FAR, a->tier);
+    a->drawn_radius_px = near;
+    scene_animation_step(scene, ANIM_RATE_DT_MS);
+    TEST_ASSERT_EQUAL_INT(SCENE_ANIM_TIER_NEAR, a->tier);
+    a->drawn_radius_px = s.mid_px - s.hysteresis_px / 2;
+    scene_animation_step(scene, ANIM_RATE_DT_MS);
+    TEST_ASSERT_EQUAL_INT(SCENE_ANIM_TIER_NEAR, a->tier);
+    a->interval = 0;
+    a->drawn_radius_px = s.mid_px - s.hysteresis_px / 2;
+    scene_animation_step(scene, ANIM_RATE_DT_MS);
+    TEST_ASSERT_EQUAL_INT(SCENE_ANIM_TIER_MID, a->tier);
+    TEST_ASSERT_EQUAL_INT(s.mid_every, a->interval);
+}
+
+static void
+test_animation_rate_reads_last_drawn_bounds_and_rejects_offscreen(void) {
+    entity_t root = rig_fixture("rig.skin2", NULL);
+    scene_t* scene = columns(root);
+    entity_t red = entity_find(root, name_hash("red"));
+    scene_animator_t* a = &scene->animators[row_of(red)];
+    render_settings_t settings = RENDER_SETTINGS_DEFAULT;
+    render_context_set_settings(render_context_main(), &settings);
+    frame(0);
+    TEST_ASSERT_EQUAL_INT((RENDER_SETTINGS_DEFAULT.anim.far_every), a->interval);
+    TEST_ASSERT_GREATER_THAN_FLOAT(0.0F, a->drawn_radius_px);
+    entity_t camera = camera_first(root);
+    transformf_t eye = transform_local(camera);
+    eye.position.z = -camera_lens(camera)->near_z;
+    transform_set_local(camera, eye);
+    scene->cameras[0].lens.half_fov_short_tan =
+        (float)SIZE / ((RENDER_SETTINGS_DEFAULT.anim.mid_px) * (RENDER_SETTINGS_DEFAULT.anim.far_every));
+    frame(0);
+    TEST_ASSERT_EQUAL_INT((RENDER_SETTINGS_DEFAULT.anim.far_every), a->interval);
+    TEST_ASSERT_GREATER_THAN_FLOAT((RENDER_SETTINGS_DEFAULT.anim.mid_px) + (RENDER_SETTINGS_DEFAULT.anim.hysteresis_px),
+                                   a->drawn_radius_px);
+    scene_animation_step(scene, 0);
+    TEST_ASSERT_EQUAL_INT(RENDER_ANIM_EVERY_MIN, a->interval);
+    transformf_t pose = transform_local(red);
+    pose.position.x = CAMERA_DISTANCE * SIZE;
+    transform_set_local(red, pose);
+    frame(0);
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, a->drawn_radius_px);
+    scene_animation_step(scene, 0);
+    TEST_ASSERT_EQUAL_INT((RENDER_SETTINGS_DEFAULT.anim.far_every), a->interval);
+}
+
+/* Defaults, overrides and reset must select the same tiers in both worker slices. */
+static void
+test_animation_rate_overrides_and_reset(void) {
+    scene_t* scene = rate_fixture();
+    scene_animator_t* a = &scene->animators[0];
+    render_settings_t settings = RENDER_SETTINGS_DEFAULT;
+    settings.anim.far_every = RENDER_ANIM_EVERY_MIN;
+    render_context_set_settings(render_context_main(), &settings);
+    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(anim, far_every), RENDER_ANIM_EVERY_MAX));
+    scene_animation_step(scene, ANIM_RATE_DT_MS);
+    TEST_ASSERT_EQUAL_INT(RENDER_ANIM_EVERY_MAX, a->interval);
+    TEST_ASSERT_FALSE(tune_set(tune_shared(), TUNE_NAME(anim, far_every), RENDER_ANIM_EVERY_MAX + 1));
+    scene_animation_step(scene, ANIM_RATE_DT_MS);
+    TEST_ASSERT_EQUAL_INT(RENDER_ANIM_EVERY_MAX, a->interval);
+    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(anim, far_every), 0));
+    scene_animation_step(scene, ANIM_RATE_DT_MS);
+    TEST_ASSERT_EQUAL_INT(RENDER_ANIM_EVERY_MIN, a->interval);
+    TEST_ASSERT_TRUE(tune_reset(tune_shared(), TUNE_NAME(anim, far_every)));
+    scene_animation_step(scene, ANIM_RATE_DT_MS);
+    TEST_ASSERT_EQUAL_INT(RENDER_ANIM_EVERY_MIN, a->interval);
+}
+
+static void
+test_animation_rate_undrawn_and_fractional_speed(void) {
+    scene_t* scene = rate_fixture();
+    scene_animator_t* a = &scene->animators[0];
+    const uint32_t dt_ms = ANIM_RATE_DT_MS + 1;
+    TEST_ASSERT_TRUE(animator_set_speed(scene_row_entity(scene, 0), ANIMATOR_CURRENT, 1.5F));
+    anim_layer_t reference = a->layer;
+    for (int i = 0; i < ANIM_RATE_ROUNDS * RENDER_SETTINGS_DEFAULT.anim.far_every; i++) {
+        anim_layer_advance(&reference, dt_ms);
+        scene_animation_step(scene, dt_ms);
+        TEST_ASSERT_EQUAL_INT(RENDER_SETTINGS_DEFAULT.anim.far_every, a->interval);
+        TEST_ASSERT_LESS_THAN_UINT32(dt_ms * (uint32_t)a->interval, a->owed_ms);
+        if (a->posed) {
+            TEST_ASSERT_EQUAL_UINT32(reference.current.playhead.t_ms, a->layer.current.playhead.t_ms);
+            TEST_ASSERT_EQUAL_UINT16(reference.current.playhead.fraction, a->layer.current.playhead.fraction);
+        }
+    }
+    a->drawn_radius_px = RENDER_SETTINGS_DEFAULT.anim.mid_px * 2;
+    scene_animation_step(scene, dt_ms);
+    TEST_ASSERT_EQUAL_INT(RENDER_ANIM_EVERY_MIN, a->interval);
+    scene_animation_step(scene, dt_ms);
+    TEST_ASSERT_EQUAL_INT(RENDER_SETTINGS_DEFAULT.anim.far_every, a->interval);
+}
+
+static void
+test_animation_rate_blend_debt_and_phase_rebind(void) {
+    scene_t* scene = rate_fixture();
+    scene_animator_t* a = &scene->animators[0];
+    const entity_t entity = scene_row_entity(scene, 0);
+    const uint32_t phase = a->phase;
+    TEST_ASSERT_NOT_EQUAL(a->phase, scene->animators[1].phase);
+    scene_animation_step(scene, ANIM_RATE_DT_MS);
+    anim_layer_t reference = a->layer;
+    anim_layer_advance(&reference, a->owed_ms);
+    TEST_ASSERT_TRUE(animator_play(entity, 1, RIG_DURATION_MS));
+    TEST_ASSERT_EQUAL_UINT32(reference.current.playhead.t_ms, a->layer.previous.playhead.t_ms);
+    TEST_ASSERT_EQUAL_UINT32(0, a->owed_ms);
+    scene_animation_step(scene, ANIM_RATE_DT_MS);
+    TEST_ASSERT_TRUE(a->posed);
+    TEST_ASSERT_EQUAL_UINT32(ANIM_RATE_DT_MS, a->layer.blended_ms);
+    const char* ids[] = {a->clips[0].id, a->clips[1].id};
+    TEST_ASSERT_TRUE(animator_set_clips(entity, "rig", ids, 2, NULL));
+    TEST_ASSERT_EQUAL_UINT32(phase, a->phase);
+}
+
+static void
+test_animation_rate_first_placement_jump_and_debt(void) {
+    scene_t* scene = rate_fixture();
+    scene_animator_t* a = &scene->animators[0];
+    const render_anim_settings_t settings = RENDER_SETTINGS_DEFAULT.anim;
+    const float pixels[] = {settings.mid_px, settings.far_px, settings.mid_px - settings.hysteresis_px / 2,
+                            settings.far_px - settings.hysteresis_px / 2};
+    const int tiers[] = {SCENE_ANIM_TIER_NEAR, SCENE_ANIM_TIER_MID, SCENE_ANIM_TIER_MID, SCENE_ANIM_TIER_FAR};
+    for (size_t i = 0; i < sizeof pixels / sizeof pixels[0]; i++) {
+        a->interval = 0;
+        a->drawn_radius_px = pixels[i];
+        scene->animation_frame = 1;
+        scene_animation_step(scene, ANIM_RATE_DT_MS);
+        TEST_ASSERT_EQUAL_INT(tiers[i], a->tier);
+        TEST_ASSERT_EQUAL_INT(a->interval == RENDER_ANIM_EVERY_MIN, a->posed);
+    }
+    TEST_ASSERT_GREATER_THAN_UINT32(0, a->owed_ms);
+    anim_layer_t reference = a->layer;
+    anim_layer_advance(&reference, a->owed_ms + ANIM_RATE_DT_MS);
+    a->drawn_radius_px = settings.mid_px + settings.hysteresis_px * 2;
+    scene_animation_step(scene, ANIM_RATE_DT_MS);
+    TEST_ASSERT_EQUAL_INT(SCENE_ANIM_TIER_NEAR, a->tier);
+    TEST_ASSERT_TRUE(a->posed);
+    TEST_ASSERT_EQUAL_UINT32(reference.current.playhead.t_ms, a->layer.current.playhead.t_ms);
+    TEST_ASSERT_EQUAL_UINT32(0, a->owed_ms);
+    a->drawn_radius_px = settings.mid_px + settings.hysteresis_px * 2;
+    scene_animation_step(scene, ANIM_RATE_DT_MS);
+    anim_layer_advance(&reference, ANIM_RATE_DT_MS);
+    TEST_ASSERT_EQUAL_UINT32(reference.current.playhead.t_ms, a->layer.current.playhead.t_ms);
+    a->drawn_radius_px = 0;
+    scene_animation_step(scene, ANIM_RATE_DT_MS);
+    TEST_ASSERT_EQUAL_INT(SCENE_ANIM_TIER_FAR, a->tier);
+}
+
+static void
+test_animation_rate_property_setters_settle_once_and_show_pays_debt(void) {
+    scene_t* scene = rate_fixture();
+    scene_animator_t* skin = &scene->animators[0];
+    scene_animation_step(scene, ANIM_RATE_DT_MS);
+    TEST_ASSERT_GREATER_THAN_UINT32(0, skin->owed_ms);
+    scene_skin_show(scene, 0);
+    scene_animation_step(scene, ANIM_RATE_DT_MS);
+    TEST_ASSERT_EQUAL_UINT32(0, skin->owed_ms);
+    TEST_ASSERT_TRUE(skin->posed);
+    release_fixture();
+    fixture();
+    const entity_t root = load("test_pair");
+    const entity_t entity = entity_find(root, name_hash("red"));
+    static const char* const clips[] = {"property.move"};
+    TEST_ASSERT_TRUE(animator_set_clips(entity, NULL, clips, 1, NULL));
+    TEST_ASSERT_TRUE(animator_play(entity, 0, 0));
+    scene = columns(root);
+    scene_animator_t* a = &scene->animators[row_of(entity)];
+    a->owed_ms = ANIM_RATE_DT_MS;
+    TEST_ASSERT_TRUE(animator_set_speed(entity, ANIMATOR_CURRENT, 1.5F));
+    TEST_ASSERT_EQUAL_UINT32(ANIM_RATE_DT_MS, a->layer.current.playhead.t_ms);
+    TEST_ASSERT_EQUAL_UINT32(0, a->owed_ms);
+    scene_animation_step(scene, 0);
+    TEST_ASSERT_EQUAL_UINT32(ANIM_RATE_DT_MS, a->layer.current.playhead.t_ms);
+    a->owed_ms = ANIM_RATE_DT_MS;
+    anim_layer_t reference = a->layer;
+    anim_layer_advance(&reference, ANIM_RATE_DT_MS);
+    TEST_ASSERT_TRUE(animator_set_paused(entity, ANIMATOR_CURRENT, true));
+    TEST_ASSERT_EQUAL_UINT32(reference.current.playhead.t_ms, a->layer.current.playhead.t_ms);
+    TEST_ASSERT_EQUAL_UINT32(0, a->owed_ms);
+    scene_animation_step(scene, ANIM_RATE_DT_MS);
+    TEST_ASSERT_EQUAL_UINT32(reference.current.playhead.t_ms, a->layer.current.playhead.t_ms);
+}
+
+static void
+test_animation_rate_seek_preserves_other_copies_debt(void) {
+    scene_t* scene = rate_fixture();
+    scene_animation_step(scene, ANIM_RATE_DT_MS);
+    uint32_t owed[HERD_POOL];
+    for (int e = 0; e < HERD_POOL; e++) {
+        owed[e] = scene->animators[e].owed_ms;
+    }
+    TEST_ASSERT_TRUE(animator_seek(scene_row_entity(scene, 0), ANIMATOR_CURRENT, ANIM_RATE_DT_MS));
+    TEST_ASSERT_TRUE(scene->animators[0].posed);
+    for (int e = 1; e < HERD_POOL; e++) {
+        TEST_ASSERT_FALSE(scene->animators[e].posed);
+        TEST_ASSERT_EQUAL_UINT32(owed[e], scene->animators[e].owed_ms);
+    }
+}
+
+static void
+test_animation_rate_one_one_disables_skips(void) {
+    scene_t* scene = rate_fixture();
+    render_settings_t settings = RENDER_SETTINGS_DEFAULT;
+    settings.anim.mid_every = settings.anim.far_every = RENDER_ANIM_EVERY_MIN;
+    render_context_set_settings(render_context_main(), &settings);
+    for (int step = 0; step < (RENDER_SETTINGS_DEFAULT.anim.far_every); step++) {
+        scene_animation_step(scene, ANIM_RATE_DT_MS);
+        for (int e = 0; e < HERD_POOL; e++) {
+            TEST_ASSERT_TRUE(scene->animators[e].posed);
+            TEST_ASSERT_EQUAL_UINT32((step + 1) * ANIM_RATE_DT_MS, scene->animators[e].layer.current.playhead.t_ms);
+        }
+    }
+}
+
 static void
 test_skin_step_skips_unposed_entities_before_posed_clusters(void) {
     entity_t scene = rig_fixture("rig.skin4", "rig.quad");
@@ -5086,12 +5495,13 @@ test_a_skin_holds_its_buffers_only_while_its_entity_is_active(void) {
         copies[i] = entity_at(herd, i);
         TEST_ASSERT_NULL(skin_of(copies[i])->storage);
     }
-    const size_t loaded = memory_free_bytes(MEMORY_INTERNAL);
+    /* Counted across both RAMs: MEMORY_FAST puts a copy's buffers off chip once the on-chip reserve is reached. */
+    const size_t loaded = memory_free_bytes(MEMORY_FAST);
     for (int i = 1; i < HERD_POOL; i++) {
         entity_set_enabled(copies[i], false);
     }
     scene_animation_step(columns(herd), 0);
-    const size_t one = loaded - memory_free_bytes(MEMORY_INTERNAL);
+    const size_t one = loaded - memory_free_bytes(MEMORY_FAST);
     TEST_ASSERT_GREATER_THAN_UINT(0, one);
     TEST_ASSERT_EQUAL_PTR(skin_of(copies[0])->output.positions, renderer_mesh(copies[0])->positions);
     for (int i = 1; i < HERD_POOL; i++) {
@@ -5108,13 +5518,13 @@ test_a_skin_holds_its_buffers_only_while_its_entity_is_active(void) {
     enum { SKIN_BLOCKS = 2, HEAP_BLOCK_ROUNDING = 8 };
 
     TEST_ASSERT_UINT_WITHIN(HERD_POOL * SKIN_BLOCKS * HEAP_BLOCK_ROUNDING, loaded - one * HERD_POOL,
-                            memory_free_bytes(MEMORY_INTERNAL));
+                            memory_free_bytes(MEMORY_FAST));
     for (int i = 1; i < HERD_POOL; i++) {
         entity_set_enabled(copies[i], false);
     }
-    TEST_ASSERT_EQUAL_UINT(loaded - one, memory_free_bytes(MEMORY_INTERNAL));
+    TEST_ASSERT_EQUAL_UINT(loaded - one, memory_free_bytes(MEMORY_FAST));
     entity_set_enabled(copies[0], false);
-    TEST_ASSERT_EQUAL_UINT(loaded, memory_free_bytes(MEMORY_INTERNAL));
+    TEST_ASSERT_EQUAL_UINT(loaded, memory_free_bytes(MEMORY_FAST));
 }
 
 /* A skin disabled and enabled again draws the frame it drew before: its first
@@ -6561,6 +6971,21 @@ run_scene_suite(void) {
     RUN_TEST(test_authored_skin_load_allocation_failures_release_lighting);
     RUN_TEST(test_translation_only_camera_clip_retains_rotation);
     RUN_TEST(test_a_camera_view_stands_at_its_pose_looking_down_the_rotated_plus_z);
+    RUN_TEST(test_animation_rate_debt_matches_every_frame_across_loops_and_blends);
+    RUN_TEST(test_animation_rate_staggers_eight_copies);
+    RUN_TEST(test_animation_rate_speed_and_pause_settle_previous_time);
+    RUN_TEST(test_animation_rate_controls_and_zero_dt_preserve_debt);
+    RUN_TEST(test_animation_rate_motion_and_lights_reuse_palette);
+    RUN_TEST(test_animation_rate_tier_hysteresis);
+    RUN_TEST(test_animation_rate_tier_jumps_and_first_read);
+    RUN_TEST(test_animation_rate_first_placement_jump_and_debt);
+    RUN_TEST(test_animation_rate_property_setters_settle_once_and_show_pays_debt);
+    RUN_TEST(test_animation_rate_seek_preserves_other_copies_debt);
+    RUN_TEST(test_animation_rate_overrides_and_reset);
+    RUN_TEST(test_animation_rate_undrawn_and_fractional_speed);
+    RUN_TEST(test_animation_rate_blend_debt_and_phase_rebind);
+    RUN_TEST(test_animation_rate_one_one_disables_skips);
+    RUN_TEST(test_animation_rate_reads_last_drawn_bounds_and_rejects_offscreen);
     RUN_TEST(test_skin_step_skips_unposed_entities_before_posed_clusters);
     RUN_TEST(test_failed_second_camera_releases_the_first_animator);
     RUN_TEST(test_replacing_skin_clips_drives_the_new_clip_after_one_step);

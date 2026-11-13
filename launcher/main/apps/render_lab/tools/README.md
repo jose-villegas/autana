@@ -312,6 +312,7 @@ show.
 | The pool, and each copy's place and clip | `launcher/demo/capybara/herd.scene.toml` |
 | The camera, orbited round the copies shown | [`lab/lab_orbit.h`](../../../lab/lab_orbit.h) |
 | Each size's copies, and a turn's frame and animation-step cost | [`tests/suite_herd_perf.c`](../tests/suite_herd_perf.c) |
+| The suite's timing table for `perf_compare.sh` | [`herd_tables.py`](herd_tables.py) `--perf-table CAPTURE TABLE` |
 
 ### Small fill
 

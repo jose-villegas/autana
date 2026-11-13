@@ -60,6 +60,8 @@ SKIN_BAKE=capybara.glb
 SKIN_CLIP=gallop
 # Three of its clips the playback figures blend: first to second to third, then back to the first.
 PLAYBACK_CLIPS="walk gallop idle"
+# The clips the update-rate figure measures, slowest to fastest.
+RATE_CLIPS="idle walk gallop"
 # The tree depth whose node boxes the cull figures draw.
 CULL_LEVEL=2
 # The cull chase GIFs play one path sample per frame at this rate.
@@ -335,6 +337,9 @@ run mkdir -p "$OUT/anim"
 run "$PYTHON" launcher/tools/anim/playback/playback_figures.py "$skin_asset" $PLAYBACK_CLIPS --cc "$cc" \
     --out "$OUT/anim" > "$WORK/playback_figures.log"
 # --orphans scans this runner: anim-playhead.png, anim-blend.png, anim-nlerp.png, anim-blend.gif
+# shellcheck disable=SC2086 # RATE_CLIPS is three words
+run "$PYTHON" launcher/tools/anim/playback/rate_figures.py "$skin_asset" $RATE_CLIPS --out "$OUT/anim/anim-rate-lag.png" > "$WORK/rate_figures.log"
+# --orphans scans this runner: anim-rate-lag.png
 
 # The bake method's figures: local occlusion and bounced light on a floor beside a wall, and the scores.
 R3D_PYTHON=$(run find_r3d_python "$PWD")

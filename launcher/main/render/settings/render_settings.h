@@ -35,12 +35,25 @@ typedef struct {
     float blend_px; /* advanced: the error past a switch over which a blend fades out; longer is softer, moves more */
 } render_lod_settings_t;
 
+#define RENDER_ANIM_EVERY_MIN  1
+#define RENDER_ANIM_EVERY_MAX  4
+#define RENDER_ANIM_PIXELS_MAX 4096
+
 typedef struct {
-    bool cull;                 /* basic: skips clusters and world boxes outside the picture */
-    bool depth_fit;            /* advanced: depth steps go where the kept scene is, not to near_z; needs cull */
-    bool batched;              /* advanced: one transform and one draw fork/join a batch, not an instance */
-    bool partial_redraw;       /* basic: a still camera redraws only the rows that moved; the picture is the same */
-    render_lod_settings_t lod; /* the level pick (docs/render/frame/Levels-of-Detail.md) */
+    float mid_px;        /* basic: projected radius in pixels below which a copy is posed every mid_every frames */
+    float far_px;        /* basic: projected radius in pixels below which a copy is posed every far_every frames */
+    int mid_every;       /* basic: frames between mid-sized poses; 1 poses every frame */
+    int far_every;       /* basic: frames between far poses; 1 poses every frame */
+    float hysteresis_px; /* advanced: pixels past a tier boundary before switching */
+} render_anim_settings_t;
+
+typedef struct {
+    bool cull;                   /* basic: skips clusters and world boxes outside the picture */
+    bool depth_fit;              /* advanced: depth steps go where the kept scene is, not to near_z; needs cull */
+    bool batched;                /* advanced: one transform and one draw fork/join a batch, not an instance */
+    bool partial_redraw;         /* basic: a still camera redraws only the rows that moved; the picture is the same */
+    render_lod_settings_t lod;   /* the level pick (docs/render/frame/Levels-of-Detail.md) */
+    render_anim_settings_t anim; /* pose rate by size (docs/render/animation/Skinned-Meshes.md) */
 } render_settings_t;
 
 /* RENDER_SETTINGS_DEFAULT, from default.render.toml beside this header. */
@@ -52,7 +65,8 @@ typedef struct {
 #define RENDER_SETTINGS_FRAC_BITS 4
 
 /* Reads `pack`'s RENDER_SETTINGS_ENTRY: a row for every field and no other,
- * lod.blend a render_lod_blend_t and lod.blend_px above 0 and at most
- * RENDER_LOD_BLEND_PX_MAX (else ASSET_ERR_FORMAT). ASSET_ERR_NOT_FOUND when
+ * lod.blend a render_lod_blend_t, lod.blend_px above 0 and at most
+ * RENDER_LOD_BLEND_PX_MAX, the anim intervals RENDER_ANIM_EVERY_MIN to _MAX
+ * and its pixels 0 to RENDER_ANIM_PIXELS_MAX (else ASSET_ERR_FORMAT). ASSET_ERR_NOT_FOUND when
  * the pack has none; `out` is written only on ASSET_OK. */
 asset_status_t render_settings_read(const asset_pack_t* pack, render_settings_t* out);
