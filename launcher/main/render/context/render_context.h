@@ -42,6 +42,15 @@ typedef struct checkpoint checkpoint_t;
  * its cost again: the view or the drawn size may have changed. */
 #define FRAMEGEN_RETRY_DRAWN                 30
 
+/* Experiment (autana-dzsqf): what a generated frame does with the instances
+ * that move on their own. */
+typedef enum {
+    RENDER_FRAMEGEN_MOVING_STILL,  /* drawn again over the warp of the still part, drawn without them */
+    RENDER_FRAMEGEN_MOVING_REDRAW, /* drawn again over the warp, which still carries their old copy */
+    RENDER_FRAMEGEN_MOVING_WARP,   /* warped with the rest, at the drawn frame's pose */
+    RENDER_FRAMEGEN_MOVING_COUNT,
+} render_framegen_moving_t;
+
 /* The last frame: its step (-1 at the fixed scale), the size it drew at,
  * what culling kept and, under dynamic resolution or frame generation only,
  * what its draw (with any census) and upscale cost: otherwise nothing is
@@ -112,8 +121,15 @@ typedef struct {
     bool paying;          /* the last verdict: a generated frame costs less than a drawn one */
     int32_t shown_us;     /* the caller's budget per shown frame; the ladder's is per drawn frame */
     render_view_t kept_view;
-    framegen_target_t framegen;
-    render_partial_t partial; /* render/partial: rows redrawn on a still camera */
+    framegen_target_t framegen; /* the warp's target */
+    /* The instances that move on their own (render_context_set_moving()):
+     * this frame's count, and the drawn frame's still part, before they drew
+     * over it, which the frames generated from it warp. Allocated while
+     * generating with some to draw. */
+    int moving_count;
+    framegen_target_t still;
+    render_framegen_moving_t moving_mode; /* experiment: what a generated frame does with them */
+    render_partial_t partial;             /* render/partial: rows redrawn on a still camera */
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
     /* Whether the last frame's debug view drew a second view, and from where. */
     bool observed;
@@ -174,6 +190,13 @@ void render_context_set_scale(render_context_t* context, int percent);
  * and one in FRAMEGEN_RETRY_DRAWN is generated to measure it again. A debug
  * view, a camera cut or a new viewport draws the next frame. */
 void render_context_set_frame_generation(render_context_t* context, bool on);
+
+/* The last `count` of the next draw's instances move on their own: a
+ * generated frame warps the picture drawn without them and draws them again
+ * over it, at their own pose. A frame whose count differs from the drawn
+ * frame's is drawn. Each frame sets it anew; 0 is none. */
+void render_context_set_moving(render_context_t* context, int count);
+void render_context_set_framegen_moving(render_context_t* context, render_framegen_moving_t mode);
 
 /* Partial redraw (render/partial, on with render_settings_t.partial_redraw):
  * the next frame's changed boxes, world units, each where an object was and

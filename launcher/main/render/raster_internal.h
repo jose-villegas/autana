@@ -123,8 +123,15 @@ raster_census_count(const raster_t* raster) {
 /* The end of the batch that starts at entry `first` of the last census's
  * drawn list (raster_drawn_at()): past each following
  * instance while their vertices and clusters fit those buffers, at most
- * RASTER_BATCH_INSTANCES, and one with render.batched off. */
+ * RASTER_BATCH_INSTANCES, and one with render.batched off; never across
+ * raster_moving_from(). */
 int raster_batch_end(const raster_t* raster, int first);
+
+/* The first moving instance (raster_t.moving_count): no batch spans it. */
+static inline int
+raster_moving_from(const raster_t* raster) {
+    return raster->instance_count - raster->moving_count;
+}
 
 /* Transform fork/joins for the census, including empty batches and the clearing draw. */
 static inline int

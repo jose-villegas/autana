@@ -28,6 +28,16 @@ struct raster {
      * census slot. */
     const r3d_instance_t* instances;
     int instance_count;
+    /* The last `moving_count` instances move on their own (render/framegen):
+     * a draw draws them after the batches' copies, first copying the
+     * picture's colour and depth to `still_colour` and `still_depth` when
+     * those are not NULL. With `moving_only` a draw culls and draws only
+     * them, over the picture as it is, at the depth scale it was drawn with;
+     * it keeps the instances and batches of the draw that made the picture. */
+    int moving_count;
+    bool moving_only;
+    uint16_t* still_colour;
+    uint16_t* still_depth;
     /* Drawn after the instances, each as the copies its cull keeps; none
      * with a count of 0. */
     const r3d_batch_draw_t* batches;

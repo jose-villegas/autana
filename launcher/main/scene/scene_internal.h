@@ -147,6 +147,7 @@ typedef struct {
     scene_row_t entity;
     bool placed;        /* false while the transform is the identity: drawn as it is */
     bool changed;       /* its mesh or model changed since it was last drawn (render/partial) */
+    bool moved;         /* `changed` when last drawn: it moves on its own until a frame after it stops */
     uint32_t lod_words; /* the level state held for the mesh opened: R3D_LOD_STATE_WORDS of its groups, a copy's each */
     uint32_t* lod_coarse; /* into the scene's lod_bits, or NULL without levels; a batch's are its copies' */
     r3d_batch_t* batch;   /* its copies, or NULL: it draws its mesh once */

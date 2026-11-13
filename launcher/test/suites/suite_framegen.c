@@ -14,6 +14,7 @@
 #include "suites.h"
 #include "unity.h"
 
+#include "math/linear/mat3f.h"
 #include "math/scalar/mathf.h"
 #include "render/context/render_context.h"
 #include "render/framegen/framegen.h"
@@ -66,7 +67,7 @@ test_a_warp_to_the_drawn_view_gives_the_frame_back(void) {
     raster_rig_t* r = open_rig();
     const render_view_t view = render_view_fixture(&raster_rig_camera, &r->raster, 0);
     (void)raster_draw(&r->raster, &view);
-    framegen_warp(&r->raster, &view, &view, &target);
+    framegen_warp(&r->raster, NULL, &view, &view, &target);
     /* The board's reciprocal keeps MATHF_RECIP_APPROX_BITS and the word truncates,
      * so a depth may come back that fraction of itself plus one word off. */
     const uint16_t* drawn = raster_depth(&r->raster);
@@ -75,7 +76,7 @@ test_a_warp_to_the_drawn_view_gives_the_frame_back(void) {
         TEST_ASSERT_UINT32_WITHIN(off, drawn[i], target.depth[i]);
     }
     TEST_ASSERT_EQUAL_UINT16_ARRAY(raster_color(&r->raster), target.colour, W * H);
-    TEST_ASSERT_EQUAL_INT(0, framegen_fill(&r->raster, &target));
+    TEST_ASSERT_EQUAL_INT(0, framegen_fill(&r->raster, NULL, &target));
 }
 
 /* The card is the nearer quad. Facing the camera, each quad has one depth,
@@ -111,7 +112,7 @@ test_a_warp_to_a_moved_camera_puts_the_card_where_a_draw_does(void) {
     TEST_ASSERT_NOT_NULL(truth);
     memcpy(truth, raster_depth(&r->raster), sizeof(uint16_t) * W * H);
     (void)raster_draw(&r->raster, &drawn);
-    framegen_warp(&r->raster, &drawn, &now, &target);
+    framegen_warp(&r->raster, NULL, &drawn, &now, &target);
     /* The wall is the farthest drawn depth. */
     uint16_t wall = 0;
     for (int i = 0; i < W * H; i++) {
@@ -133,44 +134,42 @@ test_a_warp_to_a_moved_camera_puts_the_card_where_a_draw_does(void) {
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, card, "the card is not in the picture");
     TEST_ASSERT_LESS_OR_EQUAL_INT(MOST_HOLES, holes);
     TEST_ASSERT_LESS_OR_EQUAL_INT(MOST_MISPLACED, misplaced);
-    TEST_ASSERT_EQUAL_INT(holes, framegen_fill(&r->raster, &target));
+    TEST_ASSERT_EQUAL_INT(holes, framegen_fill(&r->raster, NULL, &target));
 }
 
-/* The fill completes the target where nothing landed from the drawn frame,
- * which stays in the raster as it was drawn. */
+/* The fill writes the generated frame into the raster's own picture: the
+ * warped pixel where one landed, the drawn frame's where nothing did. */
 static void
-test_the_fill_completes_the_target_and_keeps_the_drawn_frame(void) {
+test_the_fill_writes_the_generated_frame_into_the_raster(void) {
     raster_rig_t* r = open_rig();
     const render_view_t drawn = render_view_fixture(&raster_rig_camera, &r->raster, 0);
     const render_view_t now = stepped_view(r);
     (void)raster_draw(&r->raster, &drawn);
-    framegen_warp(&r->raster, &drawn, &now, &target);
+    framegen_warp(&r->raster, NULL, &drawn, &now, &target);
     const size_t bytes = sizeof(uint16_t) * W * H;
     uint16_t* colour = malloc(bytes);
     uint16_t* depth = malloc(bytes);
-    uint16_t* landed = malloc(bytes);
-    TEST_ASSERT_TRUE(colour != NULL && depth != NULL && landed != NULL);
+    TEST_ASSERT_TRUE(colour != NULL && depth != NULL);
     memcpy(colour, raster_color(&r->raster), bytes);
     memcpy(depth, raster_depth(&r->raster), bytes);
-    memcpy(landed, target.depth, bytes);
-    const int holes = framegen_fill(&r->raster, &target);
-    const bool kept =
-        memcmp(colour, raster_color(&r->raster), bytes) == 0 && memcmp(depth, raster_depth(&r->raster), bytes) == 0;
+    const int holes = framegen_fill(&r->raster, NULL, &target);
+    const uint16_t* shown_colour = raster_color(&r->raster);
+    const uint16_t* shown_depth = raster_depth(&r->raster);
     int counted = 0;
-    int unfilled = 0;
+    int wrong = 0;
     for (int i = 0; i < W * H; i++) {
-        if (landed[i] == R3D_DEPTH_EMPTY) {
-            counted++;
-            unfilled += target.colour[i] != colour[i] || target.depth[i] != depth[i];
-        }
+        const bool hole = target.depth[i] == R3D_DEPTH_EMPTY;
+        counted += hole;
+        const uint16_t want_colour = hole ? colour[i] : target.colour[i];
+        const uint16_t landed = target.depth[i] == FRAMEGEN_DEPTH_SKY ? R3D_DEPTH_EMPTY : target.depth[i];
+        const uint16_t want_depth = hole ? depth[i] : landed;
+        wrong += shown_colour[i] != want_colour || shown_depth[i] != want_depth;
     }
     free(colour);
     free(depth);
-    free(landed);
-    TEST_ASSERT_TRUE_MESSAGE(kept, "the fill changed the drawn frame");
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, holes, "the moved camera opened no holes");
     TEST_ASSERT_EQUAL_INT(counted, holes);
-    TEST_ASSERT_EQUAL_INT(0, unfilled);
+    TEST_ASSERT_EQUAL_INT(0, wrong);
 }
 
 /* A context with frame generation and dynamic resolution on, its ladder one
@@ -215,28 +214,89 @@ play(render_context_t* c, raster_rig_t* r, const render_view_t* view, const show
     }
 }
 
-/* A generated frame composes from its own picture: the drawn frame the
- * raster keeps, overwritten here after the warp, does not show. */
-static void
-test_a_generated_frame_composes_from_its_own_picture(void) {
-    raster_rig_t* r = open_rig();
-    render_context_t* c = open_context();
-    const render_view_t drawn = render_view_fixture(&raster_rig_camera, &r->raster, 0);
-    const render_view_t now = stepped_view(r);
-    TEST_ASSERT_FALSE(show(c, r, &drawn, BUDGET_US));
-    const uint16_t overwritten = (uint16_t)~destination[0];
-    TEST_ASSERT_TRUE(render_context_draw(c, r->instance, RASTER_RIG_QUADS, &now, 0));
-    TEST_ASSERT_TRUE(framegen_example_generated(c));
-    uint16_t* kept = raster_color(&c->raster);
-    for (int i = 0; i < c->raster.width * c->raster.height; i++) {
-        kept[i] = overwritten;
-    }
-    (void)render_context_compose(c, destination, NULL, NULL);
-    int shown = 0;
+/* How far the card moves on its own between a drawn frame and the one
+ * generated from it, in the rig's units. */
+#define CARD_MOVE 24.0F
+
+/* A rig whose card (the last quad) is placed, at rest; a context generating. */
+static raster_rig_t*
+open_moving_rig(void) {
+    raster_rig_t* r = raster_rig_open(raster_rig_wall_and_card, RASTER_RIG_QUADS, 1U << 1U, W, H, 0);
+    suite_set_test_cleanup(release_target);
+    r->model[1] = mat4f_identity();
+    (void)open_context();
+    return r;
+}
+
+/* The pixels where the context's last picture puts the card and a plain
+ * draw of the rig as it is now does not, or the other way round: the frame
+ * a generated one stands in for. The quads share a colour; depth tells the
+ * card from the wall. */
+static int
+wrong_against_a_draw(raster_rig_t* r, const render_view_t* view) {
+    (void)raster_draw(&r->raster, view);
+    const uint16_t* truth = raster_depth(&r->raster);
+    const uint16_t* shown = raster_depth(&context->raster);
+    uint16_t wall = 0;
     for (int i = 0; i < W * H; i++) {
-        shown += destination[i] == overwritten;
+        wall = truth[i] != R3D_DEPTH_EMPTY && (wall == 0 || truth[i] < wall) ? truth[i] : wall;
     }
-    TEST_ASSERT_EQUAL_INT(0, shown);
+    const uint16_t card_depth = card_floor(wall);
+    int wrong = 0;
+    for (int i = 0; i < W * H; i++) {
+        wrong += on_card(truth[i], card_depth) != on_card(shown[i], card_depth);
+    }
+    return wrong;
+}
+
+/* A drawn frame with the card moving, then the card moved on and the frame
+ * after it generated under `mode`, the camera still. Returns the pixels it
+ * gets wrong. */
+static int
+card_moved_under(render_framegen_moving_t mode) {
+    raster_rig_t* r = open_moving_rig();
+    render_context_set_framegen_moving(context, mode);
+    const render_view_t view = render_view_fixture(&raster_rig_camera, &r->raster, 0);
+    render_context_set_moving(context, 1);
+    TEST_ASSERT_FALSE(show(context, r, &view, BUDGET_US));
+    r->model[1].m[0][MAT3F_AXES] = CARD_MOVE;
+    render_context_set_moving(context, 1);
+    TEST_ASSERT_TRUE(show(context, r, &view, BUDGET_US));
+    const int wrong = wrong_against_a_draw(r, &view);
+    release_target();
+    return wrong;
+}
+
+/* Drawn again over a warp of the picture drawn without it, a moving card is
+ * where a draw puts it, and the wall shows where it was. */
+static void
+test_a_moving_instance_is_drawn_again_over_the_still_part(void) {
+    TEST_ASSERT_EQUAL_INT(0, card_moved_under(RENDER_FRAMEGEN_MOVING_STILL));
+}
+
+/* Without the still part the warp carries the card's old copy: drawn again
+ * over it, the card is right but its old place still shows it; warped alone,
+ * it is wrong in both. */
+static void
+test_without_the_still_part_the_old_copy_shows(void) {
+    const int redrawn = card_moved_under(RENDER_FRAMEGEN_MOVING_REDRAW);
+    const int warped = card_moved_under(RENDER_FRAMEGEN_MOVING_WARP);
+    TEST_ASSERT_GREATER_THAN_INT(0, redrawn);
+    TEST_ASSERT_GREATER_THAN_INT(redrawn, warped);
+}
+
+/* A frame whose moving count is not the drawn frame's is drawn: the still
+ * part it would warp was split at another count. */
+static void
+test_a_frame_with_another_moving_count_is_drawn(void) {
+    raster_rig_t* r = open_moving_rig();
+    const render_view_t view = render_view_fixture(&raster_rig_camera, &r->raster, 0);
+    render_context_set_moving(context, 0);
+    TEST_ASSERT_FALSE(show(context, r, &view, BUDGET_US));
+    render_context_set_moving(context, 1);
+    TEST_ASSERT_FALSE(show(context, r, &view, BUDGET_US));
+    render_context_set_moving(context, 1);
+    TEST_ASSERT_TRUE(show(context, r, &view, BUDGET_US));
     release_target();
 }
 
@@ -323,8 +383,10 @@ void
 run_framegen_suite(void) {
     RUN_TEST(test_a_warp_to_the_drawn_view_gives_the_frame_back);
     RUN_TEST(test_a_warp_to_a_moved_camera_puts_the_card_where_a_draw_does);
-    RUN_TEST(test_the_fill_completes_the_target_and_keeps_the_drawn_frame);
-    RUN_TEST(test_a_generated_frame_composes_from_its_own_picture);
+    RUN_TEST(test_the_fill_writes_the_generated_frame_into_the_raster);
+    RUN_TEST(test_a_moving_instance_is_drawn_again_over_the_still_part);
+    RUN_TEST(test_without_the_still_part_the_old_copy_shows);
+    RUN_TEST(test_a_frame_with_another_moving_count_is_drawn);
     RUN_TEST(test_a_frame_drawn_after_generation_is_turned_off_recomposes_every_row);
     RUN_TEST(test_dynamic_resolution_prices_a_drawn_frame_with_the_one_generated_from_it);
     RUN_TEST(test_frames_are_generated_only_while_a_generated_one_costs_less);
