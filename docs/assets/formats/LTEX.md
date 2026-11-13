@@ -10,6 +10,8 @@ colour keeps its meaning (the surface's mean lit colour) and the texture only
 modulates it. A mesh names its textures through its [LUVS](LUVS.md) entry:
 texture k of mesh `<mesh_id>` is the entry `<mesh_id>.t<k>`.
 
+![Bistro's street on host: the source render, the vertex colours alone, and the cobblestones and beige brick textured, with each one's CIE76 error against the source](../../images/render/bistro-street-textured.png)
+
 ```mermaid
 ---
 config:
