@@ -24,6 +24,9 @@
 // limits here. noundefined is dropped on top, so an undefined macro, which GitHub
 // paints red, fails here.
 //
+// A code fence that never closes is refused too: GitHub shows the rest of the page as
+// code, formulas included.
+//
 // Dependencies are pinned in package.json beside this script: npm ci --prefix scripts/gates.
 // See docs/tools/Math-Formulas.md.
 
@@ -55,6 +58,10 @@ const GITHUB_RULES = { opener: OPENER_PRECEDER, closerForbidden: /[A-Za-z0-9_`]/
 // Reading the source, Markdown's own `*`, `_`, `~`, `[` and `>` may sit against a `$`
 // that GitHub, after removing them, accepts.
 const WRITTEN_RULES = { opener: /[\s(*_~[>]/, closerForbidden: /[A-Za-z0-9`]/ };
+// Columns past the opener at which a fence line becomes indented code (CommonMark 4.5).
+const FENCE_INDENT_LIMIT = 4;
+// Markdown's line ends, as markdown-it counts lines.
+const LINE_BREAK = /\r\n?|\n/;
 const FOOTNOTE_DEFINITION = /^\s{0,3}\[\^[^\]]+\]:/;
 
 export const INSTALL_HINT = 'npm ci --prefix scripts/gates';
@@ -286,23 +293,45 @@ function markdownParser() {
   return markdown;
 }
 
+// markdown-it marks no unclosed fence, so the last line a fence spans is read. Past the
+// markers of the blockquotes the fence sits in, it closes the fence when it is the fence's
+// own character, at least as long as the opener, indented under 4 columns past the opener.
+function closes(fence, lines, quoteDepth) {
+  const [first, end] = fence.map;
+  if (end - 1 <= first) {
+    return false;
+  }
+  const quotes = new RegExp(`^(?:[ \\t]*> ?){${quoteDepth}}`);
+  const opener = lines[first].replace(quotes, '').indexOf(fence.markup);
+  const closer = new RegExp(`^([ \\t]*)${fence.markup[0]}{${fence.markup.length},}[ \\t]*$`);
+  const found = lines[end - 1].replace(quotes, '').match(closer);
+  return found !== null && found[1].length < opener + FENCE_INDENT_LIMIT;
+}
+
 // Every formula GitHub hands to MathJax, in document order: [{ line, delimiter, source,
 // display }], `source` being what <math-renderer> receives. `blocks` are the paragraphs,
 // headings and table rows Markdown parses, as 1-based inclusive line ranges; `opaque` are
-// the lines of code and HTML blocks.
+// the lines of code and HTML blocks. `unclosedFences` are the code fences with no closing
+// fence, [{ line, markup }], which run to the end of their container and, at the top level,
+// swallow the rest of the page.
 export function extractFormulas(text) {
   const tokens = markdownParser().parse(text, {});
+  const lines = text.split(LINE_BREAK);
   const formulas = [];
   const blocks = new Map();
   const opaque = [];
   const nestedFences = [];
+  const unclosedFences = [];
   let line = 0;
   let footnote = false;
   let listDepth = 0;
+  let quoteDepth = 0;
 
   for (const token of tokens) {
     if (token.type === 'list_item_open' || token.type === 'list_item_close') {
       listDepth += token.nesting;
+    } else if (token.type === 'blockquote_open' || token.type === 'blockquote_close') {
+      quoteDepth += token.nesting;
     }
     if (token.map) {
       line = token.map[0] + 1;
@@ -312,10 +341,13 @@ export function extractFormulas(text) {
         opaque.push({ first: token.map[0] + 1, last: token.map[1] });
       }
     }
+    if (token.type === 'fence' && !closes(token, lines, quoteDepth)) {
+      unclosedFences.push({ line: token.map[0] + 1, markup: token.markup });
+    }
     if (token.type === 'fence' && token.info.trim().split(/\s+/)[0] === 'math') {
       const source = `$$${displayLines(token.content).trim()}$$`;
       formulas.push({ line: line + 1, delimiter: '```math', source, display: true });
-      if (listDepth > 0 || /^\s/.test(text.split(/\r?\n/, line)[line - 1])) {
+      if (listDepth > 0 || /^\s/.test(lines[line - 1])) {
         nestedFences.push(line);
       }
     } else if (token.type === 'html_block') {
@@ -331,7 +363,7 @@ export function extractFormulas(text) {
     }
   }
   formulas.sort((a, b) => a.line - b.line);
-  return { formulas, blocks: [...blocks.values()], opaque, nestedFences };
+  return { formulas, blocks: [...blocks.values()], opaque, nestedFences, unclosedFences };
 }
 
 // The formulas as written in some Markdown source, before Markdown touches it, by
@@ -368,6 +400,8 @@ const USE_CODE_FORM = 'Write it as $`...`$, which Markdown leaves alone.';
 const USE_FENCE = 'Write display maths as a ```math fence and inline maths as $`...`$.';
 const NESTED_FENCE =
   'GitHub shows a ```math fence that is indented or in a list item as code. Move it to column 0, outside the list.';
+const UNCLOSED_FENCE =
+  'This code fence never closes, so GitHub shows everything after it as code, formulas included. Close it.';
 
 // The forms Markdown can rewrite, refused as written, and formulas GitHub never hands to
 // MathJax because they sit in emphasis, a link, <b> or a footnote.
@@ -514,13 +548,12 @@ export function renderError(formula, pageBraces = 0) {
 
 // Every problem in one Markdown document: [{ line, delimiter, source, message }].
 export function checkDocument(text) {
-  const { formulas, blocks, opaque, nestedFences } = extractFormulas(text);
-  const problems = nestedFences.map((line) => ({
-    line,
-    delimiter: '```math',
-    source: text.split(/\r?\n/)[line - 1].trim(),
-    message: NESTED_FENCE,
-  }));
+  const { formulas, blocks, opaque, nestedFences, unclosedFences } = extractFormulas(text);
+  const lines = text.split(LINE_BREAK);
+  const problems = [
+    ...nestedFences.map((line) => ({ line, delimiter: '```math', message: NESTED_FENCE })),
+    ...unclosedFences.map(({ line, markup }) => ({ line, delimiter: markup, message: UNCLOSED_FENCE })),
+  ].map((problem) => ({ ...problem, source: lines[problem.line - 1].trim() }));
   let pageBraces = 0;
   for (const formula of formulas) {
     const message = renderError(formula, pageBraces);
