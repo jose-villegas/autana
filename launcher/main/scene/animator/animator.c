@@ -210,6 +210,15 @@ pose_at_rest(scene_animator_t* a, scene_skinned_renderer_t* skin) {
     }
 }
 
+/* Rebinding keeps the slot so copies do not converge onto one pose frame. */
+static uint32_t
+pose_phase(scene_t* scene, const scene_animator_t* old, uint8_t root) {
+    if (old->storage != NULL && old->root == ANIM_ROOT_SKELETON) {
+        return old->phase;
+    }
+    return root == ANIM_ROOT_SKELETON ? scene->animation_phase++ : 0;
+}
+
 bool
 animator_set_clips(entity_t entity, const char* skeleton_id, const char* const* ids, int count, scene_failure_t* why) {
     scene_row_t row;
@@ -252,10 +261,7 @@ animator_set_clips(entity_t entity, const char* skeleton_id, const char* const* 
     /* A taken block cannot be freed: rebinding a scene's clips abandons the
      * old storage to the lender until the scene's memory goes back. */
     scene_free_kept(old->storage);
-    /* Rebinding keeps the slot so copies do not converge onto one pose frame. */
-    a.phase = old->storage != NULL && old->root == ANIM_ROOT_SKELETON ? old->phase
-              : a.root == ANIM_ROOT_SKELETON                          ? scene->animation_phase++
-                                                                      : 0;
+    a.phase = pose_phase(scene, old, a.root);
     a.dirty = true;
     scene->animators[row] = a;
     scene_stage_add(scene, row);

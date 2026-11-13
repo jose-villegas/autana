@@ -31,29 +31,19 @@ animation_settings(void) {
     return s;
 }
 
-/* Keep a tier inside its band so camera jitter does not alternate pose rates. */
+/* Keep a tier inside its band so camera jitter does not alternate pose rates:
+ * each boundary moves away from the current tier by the band. */
 static int
 animation_interval(scene_animator_t* a, const render_anim_settings_t* s) {
-    const float mid = s->mid_px, far = s->far_px, band = s->hysteresis_px;
+    const float band = a->interval == 0 ? 0.0F : s->hysteresis_px;
+    const float mid = a->tier == SCENE_ANIM_TIER_NEAR ? s->mid_px - band : s->mid_px + band;
+    const float far = a->tier == SCENE_ANIM_TIER_FAR ? s->far_px + band : s->far_px - band;
     const float px = a->drawn_radius_px;
-    if (a->interval == 0) {
-        a->tier = px < far ? SCENE_ANIM_TIER_FAR : px < mid ? SCENE_ANIM_TIER_MID : SCENE_ANIM_TIER_NEAR;
-    } else {
-        if (a->tier == SCENE_ANIM_TIER_NEAR && px < mid - band) {
-            a->tier = SCENE_ANIM_TIER_MID;
-        } else if (a->tier != SCENE_ANIM_TIER_NEAR && px > mid + band) {
-            a->tier = SCENE_ANIM_TIER_NEAR;
-        }
-        if (a->tier == SCENE_ANIM_TIER_MID && px < far - band) {
-            a->tier = SCENE_ANIM_TIER_FAR;
-        } else if (a->tier == SCENE_ANIM_TIER_FAR && px > far + band) {
-            a->tier = SCENE_ANIM_TIER_MID;
-        }
-    }
-    const int every = a->tier == SCENE_ANIM_TIER_NEAR  ? RENDER_ANIM_EVERY_MIN
-                      : a->tier == SCENE_ANIM_TIER_MID ? s->mid_every
-                                                       : s->far_every;
-    a->interval = mathi_clamp(every, RENDER_ANIM_EVERY_MIN, RENDER_ANIM_EVERY_MAX);
+    a->tier = px < far ? SCENE_ANIM_TIER_FAR : px < mid ? SCENE_ANIM_TIER_MID : SCENE_ANIM_TIER_NEAR;
+    const int every[] = {[SCENE_ANIM_TIER_NEAR] = RENDER_ANIM_EVERY_MIN,
+                         [SCENE_ANIM_TIER_MID] = s->mid_every,
+                         [SCENE_ANIM_TIER_FAR] = s->far_every};
+    a->interval = mathi_clamp(every[a->tier], RENDER_ANIM_EVERY_MIN, RENDER_ANIM_EVERY_MAX);
     return a->interval;
 }
 
