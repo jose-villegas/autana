@@ -13,7 +13,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | [anim](#anim) | 5 | 0 | 0 |
 | [audio](#audio) | 32 | 0 | 0 |
 | [input](#input) | 11 | 0 | 0 |
-| [kinematics](#kinematics) | 5 | 1 | 0 |
+| [kinematics](#kinematics) | 6 | 2 | 0 |
 | [math](#math) | 25 | 25 | 0 |
 | [overview](#overview) | 24 | 0 | 0 |
 | [physics](#physics) | 2 | 0 | 0 |
@@ -93,6 +93,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/kinematics/orbit-fling-decay.png"><img src="../images/kinematics/orbit-fling-decay.png" width="160" alt=""></a> | Fling speed and covered angle at 16 and 50 millisecond frame steps, approaching the same limiting angle | [kinematics/Follow](../kinematics/Follow.md) | not declared yet |
 | <a href="../images/kinematics/orbit-fling.gif"><img src="figure-thumbnails/kinematics/orbit-fling.gif" width="160" alt=""></a> | 3D orbit with pose axes, a fading trail and pitch-limit circles through held steering, fling and reset to home; signed yaw and pitch speeds below | [kinematics/Orbit](../kinematics/Orbit.md) | not declared yet |
 | <a href="../images/kinematics/orbit-reset-spring.png"><img src="../images/kinematics/orbit-reset-spring.png" width="160" alt=""></a> | Reset from rest, moving away, and moving quickly toward home; the last crosses home, with dotted settle times | [kinematics/Follow](../kinematics/Follow.md) | not declared yet |
+| <a href="../images/kinematics/profile-move.png"><img src="../images/kinematics/profile-move.png" width="160" alt=""></a> | Place and speed against time for a 10-unit move that cruises at its peak and a 2-unit move whose ramps meet at half the peak | [kinematics/Profile](../kinematics/Profile.md) | [profile_figures.py](../../launcher/tools/kinematics/profile_figures.py) |
 
 ## math
 

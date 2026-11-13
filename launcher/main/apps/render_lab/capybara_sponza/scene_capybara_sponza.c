@@ -3,10 +3,10 @@
  * (its fitted full bake) and the capybara load as two scenes, both drawn
  * through Sponza's camera. The capybara idles between the first pair of
  * columns at the lion end, gallops down the centre line and comes to rest
- * between the last pair, its clip and rate from its ground speed (gait). A
- * third-person camera sees it from a front three-quarter while it idles,
- * turns slowly round toward its back as it runs, never all the way, and back
- * as it comes to rest (capybara_run.h). Everything is a
+ * between the last pair (a motion profile), its clip and rate from its
+ * ground speed (gait). A third-person camera sees it from a front
+ * three-quarter while it idles, turns slowly round toward its back as it
+ * runs, never all the way, and back as it comes to rest. Everything is a
  * function of the path's time, so a frame profile seeks it.
  */
 #include "apps/render_lab/capybara_sponza/scene_capybara_sponza.h"
@@ -17,13 +17,13 @@
 
 #include "apps/render_lab/baked_families.h"
 #include "apps/render_lab/capybara_content.h"
-#include "apps/render_lab/capybara_sponza/capybara_run.h"
 #include "apps/render_lab/locomotion/gait.h"
 #include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/render_lab_view.h"
 #include "core/tune.h"
 #include "draw/draw.h"
 #include "image/pixel/rgb565.h"
+#include "kinematics/profile/motion_profile.h"
 #include "lab/lab_scene.h"
 #include "math/linear/quatf.h"
 #include "math/scalar/math_const.h"
@@ -50,8 +50,8 @@ static const char* TAG = "capybara_sponza";
 #define RUN_START_X         (-616.0F)
 #define RUN_END_X           487.0F
 /* Still for 3 s at each end, 2.5 s easing to full gallop and as long back. */
-#define RUN_IDLE_MS         3000U
-#define RUN_RAMP_MS         2500U
+#define RUN_REST_S          3.0F
+#define RUN_RAMP_S          2.5F
 /* The capybara faces -z; a quarter turn back about y faces it +x, down the run. */
 #define RUN_HEADING         (-0.25F * MATH_TAU)
 
@@ -80,7 +80,7 @@ static entity_t sponza;
 static entity_t capybara;
 static entity_t runner; /* the capybara's skinned entity */
 static entity_t camera;
-static capybara_run_t run;
+static motion_profile_t run;
 static gait_step_t steps[RUN_GAIT_STEPS_MAX];
 static gait_t gait;
 static gait_pick_t applied; /* what the runner's animator was last given */
@@ -129,25 +129,38 @@ build_gait(void) {
                     .band = RUN_GAIT_BAND_MPS,
                     .stop_mps = RUN_GAIT_STOP_MPS,
                     .blend_ms = CAPYBARA_CLIP_BLEND_MS};
-    run = (capybara_run_t){.start = RUN_START_X,
-                           .end = RUN_END_X,
-                           .peak_speed = gallop * RUN_SCALE,
-                           .idle_ms = RUN_IDLE_MS,
-                           .ramp_ms = RUN_RAMP_MS,
-                           .camera_from = RUN_CAMERA_FROM,
-                           .camera_reach = RUN_CAMERA_REACH};
+    run = (motion_profile_t){.start = RUN_START_X,
+                             .end = RUN_END_X,
+                             .peak_speed = gallop * RUN_SCALE,
+                             .rest_s = RUN_REST_S,
+                             .ramp_s = RUN_RAMP_S};
     return true;
+}
+
+/* The run `t_ms` from its start. */
+static motion_profile_at_t
+run_at(uint32_t t_ms) {
+    return motion_profile_at(&run, (float)t_ms / (float)MATH_MS_PER_S);
+}
+
+/* The camera's angle round the capybara from its face (0) toward its back
+ * (pi) where the run is at `at`: RUN_CAMERA_FROM at both ends and
+ * RUN_CAMERA_REACH half way, eased between (sin^2 of the share run). */
+static float
+camera_angle(float at) {
+    const float s = sinf(MATH_PI * (at - run.start) / (run.end - run.start));
+    return RUN_CAMERA_FROM + ((RUN_CAMERA_REACH - RUN_CAMERA_FROM) * s * s);
 }
 
 /* The capybara where the run is at `at`, and the camera round it. */
 static void
-place(capybara_run_at_t at) {
+place(motion_profile_at_t at) {
     const transformf_t body = {.position = {at.at, RUN_FLOOR_Y, RUN_CENTRE_Z},
                                .rotation = quatf_from_axis_angle(vec3f_unit_y(), RUN_HEADING),
                                .scale = {RUN_SCALE, RUN_SCALE, RUN_SCALE}};
     transform_set_local(capybara, body);
     /* Ahead of it at angle 0, toward behind it at pi, round its +z side. */
-    const float angle = capybara_run_camera_angle(&run, at.at);
+    const float angle = camera_angle(at.at);
     transformf_t eye = transform_local(camera);
     eye.position = (vec3f_t){at.at + (RUN_CAMERA_DISTANCE * cosf(angle)), RUN_FLOOR_Y + RUN_CAMERA_HEIGHT,
                              RUN_CENTRE_Z + (RUN_CAMERA_DISTANCE * sinf(angle))};
@@ -161,14 +174,14 @@ place(capybara_run_at_t at) {
  * time it stops. */
 static gait_pick_t
 pick_at(gait_pick_t current, uint32_t t_ms) {
-    const float ahead = capybara_run_at(&run, t_ms + gait.blend_ms).speed / RUN_SCALE;
+    const float ahead = run_at(t_ms + gait.blend_ms).speed / RUN_SCALE;
     return gait_pick(&gait, current, ahead);
 }
 
 static void
 advance(uint32_t dt_ms) {
     path_ms += dt_ms;
-    const capybara_run_at_t at = capybara_run_at(&run, path_ms);
+    const motion_profile_at_t at = run_at(path_ms);
     place(at);
     const gait_pick_t pick = pick_at(applied, path_ms);
     gait_apply(runner, &gait, applied, pick);
@@ -191,7 +204,7 @@ seek_run(uint32_t t_ms) {
         pick = next;
     }
     path_ms = t_ms;
-    place(capybara_run_at(&run, t_ms));
+    place(run_at(t_ms));
     const int clip = gait.steps[pick.step].clip;
     const uint32_t duration_ms = animator_clip_duration_ms(runner, clip);
     (void)animator_play(runner, clip, CAPYBARA_CLIP_CUT_MS);
@@ -312,7 +325,8 @@ scene_capybara_sponza_path(void) {
                         .entity = runner,
                         .seek = seek_run,
                         .play = play_run,
-                        .duration_ms = ready() ? capybara_run_duration_ms(&run) : 0};
+                        .duration_ms =
+                            ready() ? (uint32_t)lroundf(motion_profile_duration_s(&run) * (float)MATH_MS_PER_S) : 0};
 }
 
 /* The capybara moves on its own: frame generation draws it again over a
