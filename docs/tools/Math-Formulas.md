@@ -41,7 +41,8 @@ node scripts/gates/check-math.mjs path/to/file.md # one file or directory
 
 It reports `file:line`, the formula, and why: a refused form, a TeX error
 (undefined control sequence, unbalanced braces, missing argument), a refused
-macro, a swallowed tag, or the brace budget. `scripts/gates/package.json`
+macro, a swallowed tag, or the brace budget. It also refuses a code fence
+that never closes, which turns the rest of the page into code. `scripts/gates/package.json`
 pins the exact versions, MathJax 3.2.0 being what GitHub serves; the script
 refuses to run on any other.
 

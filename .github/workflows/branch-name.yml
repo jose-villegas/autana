@@ -15,6 +15,8 @@ jobs:
           HEAD_REF: ${{ github.head_ref }}
         run: scripts/gates/check-branch-name.sh "$HEAD_REF"
 
+  # The description as GitHub holds it, so an edit made anywhere is checked; the
+  # `edited` event reruns it. Named for the ticket line it began with.
   pr-ticket:
     name: PR ticket
     # Workflow-opened PRs (generated doc refreshes) have no backlog ticket.
@@ -22,7 +24,22 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - name: Check PR description names its ticket
+      - uses: ./.github/actions/host-tools
+
+      - name: Install the pinned markdown-it and MathJax
+        run: npm ci --prefix scripts/gates
+
+      # Only a description that may hold a diagram pays for mermaid-cli and its Chrome.
+      - name: Install the pinned mermaid-cli
+        if: contains(github.event.pull_request.body, 'mermaid')
+        run: |
+          npm ci --prefix scripts/gates/mermaid
+          echo '{"args": ["--no-sandbox"]}' > "$RUNNER_TEMP/puppeteer-config.json"
+          echo "CHECK_MERMAID_MMDC_ARGS=-p $RUNNER_TEMP/puppeteer-config.json" >> "$GITHUB_ENV"
+
+      - name: Check the PR description
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
-        run: printf '%s\n' "$PR_BODY" | scripts/gates/check-pr-ticket.sh
+        run: |
+          printf '%s\n' "$PR_BODY" > "$RUNNER_TEMP/pr-body.md"
+          python3 scripts/pr/pr_body.py check "$RUNNER_TEMP/pr-body.md"
