@@ -474,15 +474,19 @@ aim_raster(render_context_t* c, const r3d_instance_t* instances, int count, cons
 }
 
 /* Where the drawn frame keeps its still part, for the frames generated from
- * it: while generating with moving instances, else nowhere and freed. */
+ * it: while generating with moving instances, else nowhere and freed. Sized
+ * like the scratch (fit_scratch()): dynamic resolution picks the size after
+ * this, so the finest step's, and a step never allocates. */
 static __attribute__((noinline)) void
 aim_still(render_context_t* c) {
     raster_t* r = &c->raster;
     const bool keeps = r->moving_count > 0 && c->moving_mode == RENDER_FRAMEGEN_MOVING_STILL;
-    if (!keeps || c->still.width != r->width || c->still.height != r->height) {
+    const int width = c->policy != RENDER_FIXED ? c->ladder.steps[0].width : r->width;
+    const int height = c->policy != RENDER_FIXED ? c->ladder.steps[0].height : r->height;
+    if (!keeps || c->still.width != width || c->still.height != height) {
         framegen_target_free(&c->still);
     }
-    if (keeps && c->still.colour == NULL && !framegen_target_alloc(&c->still, r->width, r->height)) {
+    if (keeps && c->still.colour == NULL && !framegen_target_alloc(&c->still, width, height)) {
         r->moving_count = 0; /* no memory: the next generated frame is drawn instead */
     }
     r->still_colour = c->still.colour;

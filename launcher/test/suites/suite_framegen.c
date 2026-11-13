@@ -300,6 +300,24 @@ test_a_frame_with_another_moving_count_is_drawn(void) {
     release_target();
 }
 
+/* Under dynamic resolution the still part is the finest step's size, drawn
+ * at a coarser one: the step is chosen after it is aimed, and a finer one
+ * must not copy past it. */
+static void
+test_the_still_part_fits_the_finest_step(void) {
+    raster_rig_t* r = open_moving_rig();
+    const resolution_step_t steps[] = {{W, H}, {W / 2, H / 2}};
+    const resolution_config_t ladder = resolution_config(steps, 2, 1, BUDGET_US);
+    render_context_set_dynamic_resolution(context, &ladder, NULL, 1);
+    const render_view_t view = render_view_fixture(&raster_rig_camera, &r->raster, 0);
+    render_context_set_moving(context, 1);
+    (void)show(context, r, &view, BUDGET_US);
+    TEST_ASSERT_EQUAL_INT(W / 2, context->raster.width);
+    TEST_ASSERT_EQUAL_INT(W, context->still.width);
+    TEST_ASSERT_EQUAL_INT(H, context->still.height);
+    release_target();
+}
+
 /* Frame generation turned off after a generated frame: the destination
  * holds the warped picture, so the next drawn frame, its view and its
  * objects held, recomposes every row. */
@@ -387,6 +405,7 @@ run_framegen_suite(void) {
     RUN_TEST(test_a_moving_instance_is_drawn_again_over_the_still_part);
     RUN_TEST(test_without_the_still_part_the_old_copy_shows);
     RUN_TEST(test_a_frame_with_another_moving_count_is_drawn);
+    RUN_TEST(test_the_still_part_fits_the_finest_step);
     RUN_TEST(test_a_frame_drawn_after_generation_is_turned_off_recomposes_every_row);
     RUN_TEST(test_dynamic_resolution_prices_a_drawn_frame_with_the_one_generated_from_it);
     RUN_TEST(test_frames_are_generated_only_while_a_generated_one_costs_less);
