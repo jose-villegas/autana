@@ -22,10 +22,11 @@ class FrameCostTests(unittest.TestCase):
         whole = "ms/frame avg/worst: a 1/1 | total 1.00"
         cut = "ms/frame avg/worst: a 1/1 | total 1.00 +424 dropped || x 0.002/0.006 ms/block n=9"
         self.assertEqual(frame_cost.frame_cost_window(whole)["brackets"], {"a": (1.0, 1.0)})
-        for read in (frame_cost.frame_cost_window, lambda line: frame_cost.frame_cost_windows(None, line),
-                     lambda line: frame_cost.frame_cost_means(None, line)):
+        with self.assertRaisesRegex(ValueError, "dropped 424 brackets"):
+            frame_cost.frame_cost_window(cut)
+        for read in (frame_cost.frame_cost_windows, frame_cost.frame_cost_means):
             with self.assertRaisesRegex(ValueError, "dropped 424 brackets"):
-                read(cut)
+                read(None, f"{whole}\n{cut}\n{whole}\n")
 
     def test_a_lap_window_that_dropped_laps_is_refused(self):
         whole = "ms/frame laps: lap 179 ns | cpu0 a.b 1.000/2"

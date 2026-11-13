@@ -313,7 +313,9 @@ def sub_stage_table(stages, windows, chart_name):
             f"cpu{FRAME_CORE}'s add up to the parent but for the untimed row, at most {UNTIMED_SHARE:.0%} of it. "
             f"The {LAPS_LABEL} row is what the laps cost themselves, one lap's measured cost times its starts, "
             "taken out of each sub-stage; the image runs them, so its parents are not the shipped bar's.")
-    return (f"![Inside transform and draw](../images/render/{chart_name})\n\n"
+    parents = [parent.rpartition(".")[2] for parent in stages]
+    inside = " and ".join([", ".join(parents[:-1]), parents[-1]] if len(parents) > 1 else parents)
+    return (f"![Inside {inside}](../images/render/{chart_name})\n\n"
             + collapsed("Sub-stages in milliseconds", "\n".join(rows) + "\n" + note + "\n"))
 
 

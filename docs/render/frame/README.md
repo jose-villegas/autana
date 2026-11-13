@@ -49,12 +49,15 @@ flowchart LR
 
 ## Where the time goes
 
-The first bar is the shipped frame. Under it, `r3d.transform` and `r3d.draw`
-are split into their sub-stages, the laps named after the code they time:
+The first bar is the shipped frame. Under it, `r3d.cull`, `r3d.transform` and
+`r3d.draw` are split into their sub-stages, the laps named after the code they
+time ([cull laps](../../tools/Frame-Cost.md)):
 
 | Sub-stage | What runs |
 |---|---|
-| `split` | the share of clusters or rows each core takes |
+| `split` | the frame core alone: setting up the stage, the share each core takes, and handing core 1 its half |
+| `walk` | cull: each instance's world-box test, lens and cluster cull |
+| `pick` | cull: each instance's level pick |
 | `apply` | transform: one vertex through the lens matrix, and its near-plane test |
 | `project` | transform: the vertex's divide, snap and screen-range test |
 | `clear` | draw: clearing this core's rows of each attachment |
@@ -139,8 +142,9 @@ Board ms per frame, mean of 78 to 79 report windows per capture; a view adds the
 
 The docs generator, `launcher/tools/render/render_doc_images.sh`, writes the
 `pipeline-frame-stages` chart and table from frame-cost report windows of one
-development build. Each capture runs with the measured scene open (`autana
-open`), and two minutes spans several passes of its camera path.
+development build. Each capture runs with the app that draws the measured
+scene open (`autana open <app>`); two minutes spans several passes of its
+camera path.
 
 | Capture | Build | Command | Into |
 |---|---|---|---|

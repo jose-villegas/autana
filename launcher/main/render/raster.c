@@ -843,7 +843,6 @@ cull_instances(const raster_t* raster, const render_view_t* view, bool fitted, r
     CULL_LAP(FRAME_LAP, fitted, "split");
     cull_begin(work, raster, view, fitted);
     int16_t* share = raster->split != NULL ? &raster->split->cull_offset : NULL;
-    /* The split lap runs on into the fork: this core's slice ends it. */
     (void)job_run_range_in(share, cull_slice, &work->cull, work->cull.drawn_count, work->cull.ranges);
     CULL_LAP(FRAME_LAP_SINCE, fitted, "wait");
     CULL_LAP(FRAME_LAP, fitted, "split");
@@ -937,7 +936,6 @@ draw_batch(const raster_t* raster, int index, draw_work_t* work) {
     *other = *mine;
     other->first = half;
     other->count = count - half;
-    FRAME_LAP_END();
     job_run_steered(transform_share, transform_slice, mine, other, sizeof *mine);
     FRAME_LAP_SINCE("r3d.transform.wait");
     FRAME_COST_END(transformed_from, R3D_STAGE_TRANSFORM_NAME);
@@ -945,7 +943,6 @@ draw_batch(const raster_t* raster, int index, draw_work_t* work) {
     FRAME_COST_BEGIN(drawn_from);
     FRAME_LAP("r3d.draw.split");
     draw_share = plan_draw_rows(raster, work, draw_share);
-    FRAME_LAP_END();
     job_run_steered(draw_share, draw_slice, mine, other, sizeof *mine);
     FRAME_LAP_SINCE("r3d.draw.wait");
     FRAME_COST_END(drawn_from, R3D_STAGE_DRAW_NAME);
