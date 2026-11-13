@@ -137,13 +137,16 @@ slice_source(const slice_axis_t* axis, int at) {
  * repeats one, so its run blends toward one colour at one share. */
 static inline void
 blend_run(gfx_color_t* dst, int count, gfx_color_t pixel, uint8_t cover) {
+    if (cover == 0) {
+        return;
+    }
     if (cover == SPRITE_COVER_FULL) {
         for (int i = 0; i < count; i++) {
             dst[i] = pixel;
         }
     } else if (count == 1) {
-        dst[0] = cover == 0 ? dst[0] : rgb565be_mix(dst[0], pixel, cover);
-    } else if (cover != 0) {
+        dst[0] = rgb565be_mix(dst[0], pixel, cover);
+    } else {
         const rgb565_mix_toward_t toward = rgb565be_mix_toward(pixel, cover);
         draw_blend_row(dst, &toward, (size_t)count);
     }

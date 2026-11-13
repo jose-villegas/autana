@@ -3,7 +3,8 @@
  * body, byte for byte. Every 16-bit pixel value is blended at every share,
  * from a start that walks the unaligned head through each offset, and rows
  * around the vector minimum cover the short path and the tail. It uses
- * EE.VADDS.S16, which Espressif's QEMU gets wrong, so the board is its check.
+ * EE.VADDS.S16, which Espressif's QEMU gets wrong, so the board is its check:
+ * `autana suite run_draw_blend_suite --flash`.
  */
 #include "suites.h" /* portable: needed by SUITE_REGISTER() even on host */
 

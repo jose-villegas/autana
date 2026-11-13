@@ -43,12 +43,24 @@ fixture(void) {
 
 #define RECTS_MAX 8
 
+/* Every rect a snapshot of the dirt now gives inside `area`; how many. */
+static int
+take_all(recti_t area, recti_t* rects) {
+    gfx_dirty_leaves_t left;
+    dirty_leaves(&left);
+    int n = 0;
+    while (n < RECTS_MAX && dirty_leaves_take(&left, area, &rects[n])) {
+        n++;
+    }
+    return n;
+}
+
 static void
-test_dirty_rects_are_the_leaves_a_mark_touched_clipped_to_the_area(void) {
+test_dirt_taken_is_the_leaves_a_mark_touched_clipped_to_the_area(void) {
     fixture();
     dirty_mark(LEAF_W + 1, LEAF_H + 1, 2, 2);
     recti_t rects[RECTS_MAX];
-    const int n = dirty_rects_in((recti_t){0, 0, LEAF_W * 2, LEAF_H + LEAF_H / 2}, rects, RECTS_MAX);
+    const int n = take_all((recti_t){0, 0, LEAF_W * 2, LEAF_H + LEAF_H / 2}, rects);
 
     TEST_ASSERT_EQUAL_INT(1, n);
     TEST_ASSERT_EQUAL_INT(LEAF_W, rects[0].x);
@@ -58,12 +70,12 @@ test_dirty_rects_are_the_leaves_a_mark_touched_clipped_to_the_area(void) {
 }
 
 static void
-test_dirty_rects_join_a_run_to_the_matching_run_above(void) {
+test_dirt_taken_grows_a_run_down_the_rows_holding_all_of_it(void) {
     fixture();
     dirty_mark(0, 0, LEAF_W * 2, LEAF_H * 3);
     dirty_mark(LEAF_W * 5, 0, 1, 1);
     recti_t rects[RECTS_MAX];
-    const int n = dirty_rects_in(GFX_SCREEN_RECT, rects, RECTS_MAX);
+    const int n = take_all(GFX_SCREEN_RECT, rects);
 
     TEST_ASSERT_EQUAL_INT(2, n);
     TEST_ASSERT_EQUAL_INT(LEAF_H * 3, rects[0].h);
@@ -71,13 +83,35 @@ test_dirty_rects_join_a_run_to_the_matching_run_above(void) {
     TEST_ASSERT_EQUAL_INT(LEAF_W * 5, rects[1].x);
 }
 
+/* An L of leaves, and a run wider than the one below it: the rects never
+ * overlap and cover exactly the leaves marked. */
 static void
-test_dirty_rects_count_every_leaf_of_a_cell_marked_whole(void) {
+test_dirt_taken_covers_every_leaf_once(void) {
+    fixture();
+    dirty_mark(0, 0, LEAF_W * 3, LEAF_H);
+    dirty_mark(0, LEAF_H, LEAF_W, LEAF_H * 2);
+    dirty_mark(LEAF_W * 2, LEAF_H * 2, LEAF_W * 2, LEAF_H);
+    const int leaves = 3 + 2 + 2;
+    recti_t rects[RECTS_MAX];
+    const int n = take_all(GFX_SCREEN_RECT, rects);
+
+    int area = 0;
+    for (int i = 0; i < n; i++) {
+        area += rects[i].w * rects[i].h;
+        for (int j = 0; j < i; j++) {
+            TEST_ASSERT_TRUE(recti_is_empty(recti_intersect(rects[i], rects[j])));
+        }
+    }
+    TEST_ASSERT_EQUAL_INT(leaves * LEAF_W * LEAF_H, area);
+}
+
+static void
+test_dirt_taken_counts_every_leaf_of_a_cell_marked_whole(void) {
     fixture();
     dirty_mark(0, 0, 1, 1);
     mark_band(0, 1);
     recti_t rects[RECTS_MAX];
-    const int n = dirty_rects_in((recti_t){0, 0, COL_WIDTH, STRIP_HEIGHT}, rects, RECTS_MAX);
+    const int n = take_all((recti_t){0, 0, COL_WIDTH, STRIP_HEIGHT}, rects);
 
     TEST_ASSERT_EQUAL_INT(1, n);
     TEST_ASSERT_EQUAL_INT(COL_WIDTH, rects[0].w);
@@ -85,30 +119,56 @@ test_dirty_rects_count_every_leaf_of_a_cell_marked_whole(void) {
 }
 
 static void
-test_dirty_rects_of_a_cell_grown_whole_by_marks_keep_its_leaves(void) {
+test_dirt_taken_from_a_cell_grown_whole_by_marks_keeps_its_leaves(void) {
     fixture();
     dirty_mark(0, 0, 1, 1);
     dirty_mark(COL_WIDTH - 1, STRIP_HEIGHT - 1, 1, 1);
     recti_t rects[RECTS_MAX];
-    const int n = dirty_rects_in((recti_t){0, 0, COL_WIDTH, STRIP_HEIGHT}, rects, RECTS_MAX);
+    const int n = take_all((recti_t){0, 0, COL_WIDTH, STRIP_HEIGHT}, rects);
 
     TEST_ASSERT_EQUAL_INT(2, n);
     TEST_ASSERT_EQUAL_INT(LEAF_W, rects[0].w);
     TEST_ASSERT_EQUAL_INT(LEAF_H, rects[0].h);
 }
 
+/* The snapshot holds the dirt it was taken at: marks after it add none. */
 static void
-test_dirty_rects_none_once_the_row_is_sent_and_too_many_report_minus_one(void) {
+test_a_dirt_snapshot_holds_what_was_marked_before_it(void) {
     fixture();
-    for (int col = 0; col < LEAF_COLS; col += 2) {
-        dirty_mark(col * LEAF_W, 0, 1, 1);
-    }
-    dirty_mark(LEAF_W, LEAF_H, 1, 1); /* one more than RECTS_MAX */
+    dirty_mark(0, 0, 1, 1);
+    gfx_dirty_leaves_t before;
+    dirty_leaves(&before);
+    dirty_mark(LEAF_W * 4, LEAF_H * 4, 1, 1);
+    recti_t r;
+    TEST_ASSERT_TRUE(dirty_leaves_take(&before, GFX_SCREEN_RECT, &r));
+    TEST_ASSERT_EQUAL_INT(0, r.x);
+    TEST_ASSERT_FALSE(dirty_leaves_take(&before, GFX_SCREEN_RECT, &r));
+}
+
+static void
+test_dirt_added_is_only_the_leaves_the_area_touches(void) {
+    fixture();
+    dirty_mark(0, 0, LEAF_W * 4, LEAF_H);
+    gfx_dirty_leaves_t all;
+    dirty_leaves(&all);
+    gfx_dirty_leaves_t under = {0};
+    dirty_leaves_add(&under, &all, (recti_t){LEAF_W + 1, 0, LEAF_W, 1});
+    recti_t r;
+    TEST_ASSERT_TRUE(dirty_leaves_take(&under, GFX_SCREEN_RECT, &r));
+    TEST_ASSERT_EQUAL_INT(LEAF_W, r.x);
+    TEST_ASSERT_EQUAL_INT(LEAF_W * 2, r.w);
+    TEST_ASSERT_FALSE(dirty_leaves_take(&under, GFX_SCREEN_RECT, &r));
+}
+
+static void
+test_no_dirt_and_no_whole_cells_once_every_row_is_sent(void) {
+    fixture();
+    dirty_mark(0, 0, 1, 1);
+    mark_band(STRIP_HEIGHT, STRIP_HEIGHT + 1);
+    dirty_all_rows_sent();
+    TEST_ASSERT_EQUAL_UINT32(0, cell_banded);
     recti_t rects[RECTS_MAX];
-    TEST_ASSERT_EQUAL_INT(-1, dirty_rects_in(GFX_SCREEN_RECT, rects, RECTS_MAX));
-    dirty_row_sent(0);
-    cell_dirty = 0;
-    TEST_ASSERT_EQUAL_INT(0, dirty_rects_in(GFX_SCREEN_RECT, rects, RECTS_MAX));
+    TEST_ASSERT_EQUAL_INT(0, take_all(GFX_SCREEN_RECT, rects));
 }
 
 /* leaf boundary math */
@@ -288,14 +348,26 @@ test_run_is_leaf_eligible_when_every_cell_is_tight(void) {
 static void
 test_run_is_leaf_eligible_false_if_any_cell_in_the_run_is_coarse(void) {
     fixture();
-    /* Cell 0's box exactly fills its own full extent, treated the same as
-     * a mark_band() touch, per dirty_mark()'s own documented invariant. */
-    dirty_mark(0, 0, COL_WIDTH, STRIP_HEIGHT);
+    /* Cell 0 claimed whole, its leaf bits not all its dirt; cell 1 marked
+     * by a box. */
+    dirty_mark(0, 0, 1, 1);
+    cell_banded = 1u;
     dirty_mark(COL_WIDTH + 5, 0, 10, 10);
 
     TEST_ASSERT_FALSE_MESSAGE(run_is_leaf_eligible(0, 0, 2),
                               "one coarse cell must disable refinement for the whole run, not "
                               "just that cell");
+}
+
+/* A cell filled by marks has a leaf bit for every pixel it holds, so its
+ * leaves stay trusted. */
+static void
+test_run_is_leaf_eligible_when_marks_fill_a_cell(void) {
+    fixture();
+    dirty_mark(0, 0, COL_WIDTH, STRIP_HEIGHT);
+    dirty_mark(COL_WIDTH + 5, 0, 10, 10);
+
+    TEST_ASSERT_TRUE(run_is_leaf_eligible(0, 0, 2));
 }
 
 /*
@@ -749,6 +821,7 @@ run_gfx_dirty_suite(void) {
 
     RUN_TEST(test_run_is_leaf_eligible_when_every_cell_is_tight);
     RUN_TEST(test_run_is_leaf_eligible_false_if_any_cell_in_the_run_is_coarse);
+    RUN_TEST(test_run_is_leaf_eligible_when_marks_fill_a_cell);
 
     RUN_TEST(test_collect_runs_from_mask_finds_nothing_in_an_empty_mask);
     RUN_TEST(test_collect_runs_from_mask_finds_one_contiguous_run);
@@ -775,11 +848,14 @@ run_gfx_dirty_suite(void) {
     RUN_TEST(test_band_extent_is_full_width_once_everything_is_marked);
     RUN_TEST(test_band_extent_follows_a_moving_box_across_several_frames);
 
-    RUN_TEST(test_dirty_rects_are_the_leaves_a_mark_touched_clipped_to_the_area);
-    RUN_TEST(test_dirty_rects_join_a_run_to_the_matching_run_above);
-    RUN_TEST(test_dirty_rects_count_every_leaf_of_a_cell_marked_whole);
-    RUN_TEST(test_dirty_rects_of_a_cell_grown_whole_by_marks_keep_its_leaves);
-    RUN_TEST(test_dirty_rects_none_once_the_row_is_sent_and_too_many_report_minus_one);
+    RUN_TEST(test_dirt_taken_is_the_leaves_a_mark_touched_clipped_to_the_area);
+    RUN_TEST(test_dirt_taken_grows_a_run_down_the_rows_holding_all_of_it);
+    RUN_TEST(test_dirt_taken_covers_every_leaf_once);
+    RUN_TEST(test_dirt_taken_counts_every_leaf_of_a_cell_marked_whole);
+    RUN_TEST(test_dirt_taken_from_a_cell_grown_whole_by_marks_keeps_its_leaves);
+    RUN_TEST(test_a_dirt_snapshot_holds_what_was_marked_before_it);
+    RUN_TEST(test_dirt_added_is_only_the_leaves_the_area_touches);
+    RUN_TEST(test_no_dirt_and_no_whole_cells_once_every_row_is_sent);
     gfx_shared_state_restore(&saved);
 }
 

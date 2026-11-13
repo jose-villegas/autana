@@ -423,10 +423,20 @@ gfx_region_dirty(int x, int y, int w, int h) {
     return dirty_region_dirty(x, y, w, h);
 }
 
-int
-gfx_dirty_rects(recti_t area, recti_t* out, int max) {
+void
+gfx_dirty_leaves(gfx_dirty_leaves_t* out) {
     GFX_PRESENT_GUARD();
-    return dirty_rects_in(area, out, max);
+    dirty_leaves(out);
+}
+
+void
+gfx_dirty_leaves_add(gfx_dirty_leaves_t* to, const gfx_dirty_leaves_t* from, recti_t area) {
+    dirty_leaves_add(to, from, area);
+}
+
+bool
+gfx_dirty_leaves_take(gfx_dirty_leaves_t* left, recti_t area, recti_t* out) {
+    return dirty_leaves_take(left, area, out);
 }
 
 /* Device-only path for QSPI panel send. Host build is no-op. */
@@ -949,7 +959,7 @@ gfx_present_wait(void) {
     drain_present();
 #ifndef ESP_PLATFORM
     if (!band_is_transient()) {
-        dirty_frame_sent();
+        dirty_all_rows_sent();
     }
 #endif
     gfx_present_guard_end();

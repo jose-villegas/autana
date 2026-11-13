@@ -98,25 +98,29 @@ reference_channel(unsigned a, unsigned b, unsigned t) {
     return ((a * (full - t)) + (b * t) + (full / 2)) / full;
 }
 
-/* Every share against the reference, with each channel's extremes and a
- * middle value on both sides, so no carry between packed channels hides. */
+/* Every share and every pair of values in every channel against the
+ * reference: each pair of greens picks its reds (their low five bits) and
+ * blues (the complement), so red and blue meet every pair too, and no carry
+ * between packed channels hides. */
 static void
 test_mix_matches_the_rounded_per_channel_blend_at_every_share(void) {
-    const unsigned r5[] = {0, 1, 15, 30, 31};
-    const unsigned g6[] = {0, 1, 32, 62, 63};
-    const int n = (int)(sizeof r5 / sizeof r5[0]);
+    const unsigned g6_values = RGB565_G6_MAX + 1;
     for (unsigned t = 0; t <= UINT8_MAX; t++) {
-        for (int i = 0; i < n * n * n; i++) {
-            const int j = (i * 7 + 3) % (n * n * n); /* the other side, a different mix of the same values */
-            const rgb565be_t a = rgb565be_pack((uint8_t)r5[i % n], (uint8_t)g6[(i / n) % n], (uint8_t)r5[i / (n * n)]);
-            const rgb565be_t b = rgb565be_pack((uint8_t)r5[j / (n * n)], (uint8_t)g6[j % n], (uint8_t)r5[(j / n) % n]);
-            const uint16_t na = rgb565_swap(a);
-            const uint16_t nb = rgb565_swap(b);
-            const rgb565be_t want = rgb565be_pack((uint8_t)reference_channel(rgb565_r5(na), rgb565_r5(nb), t),
-                                                  (uint8_t)reference_channel(rgb565_g6(na), rgb565_g6(nb), t),
-                                                  (uint8_t)reference_channel(rgb565_b5(na), rgb565_b5(nb), t));
-            if (rgb565be_mix(a, b, (uint8_t)t) != want) {
-                TEST_FAIL_MESSAGE("rgb565be_mix differs from the rounded per-channel blend");
+        for (unsigned ga = 0; ga < g6_values; ga++) {
+            for (unsigned gb = 0; gb < g6_values; gb++) {
+                const unsigned r5_max = rgb565_r5(RGB565_RED_MASK);
+                const unsigned ra = ga & r5_max;
+                const unsigned rb = gb & r5_max;
+                const unsigned ba = ~ga & r5_max;
+                const unsigned bb = ~gb & r5_max;
+                const rgb565be_t a = rgb565be_pack((uint8_t)ra, (uint8_t)ga, (uint8_t)ba);
+                const rgb565be_t b = rgb565be_pack((uint8_t)rb, (uint8_t)gb, (uint8_t)bb);
+                const rgb565be_t want =
+                    rgb565be_pack((uint8_t)reference_channel(ra, rb, t), (uint8_t)reference_channel(ga, gb, t),
+                                  (uint8_t)reference_channel(ba, bb, t));
+                if (rgb565be_mix(a, b, (uint8_t)t) != want) {
+                    TEST_FAIL_MESSAGE("rgb565be_mix differs from the rounded per-channel blend");
+                }
             }
         }
     }

@@ -27,6 +27,7 @@
 #include "draw/draw.h"
 #include "draw/draw_sprite.h"
 #include "gfx/gfx.h"
+#include "math/scalar/units.h"
 #include "simd/copy.h"
 #include "testkit/bench.h"
 
@@ -37,7 +38,6 @@ static const char* TAG = "sprite_perf";
 #define BACKGROUND       RGB565BE(0x204060)
 #define BLEND_COLOR      RGB565BE(0x4B4B4B)
 #define BLEND_ALPHA      128
-#define NS_PER_US        1000
 
 /* Three columns by four rows of tiles across the panel, a gap between them:
  * the launcher-home scale, every tile nine-sliced up from its 48 px art. */
@@ -91,7 +91,7 @@ static void
 report_per_pixel(const char* row, draw_fn draw, const sprite_t* tile, int64_t pixels) {
     const bench_stats_t stats = time_draws(draw, tile, 0);
     ESP_LOGI(TAG, "%s one core: mean %lldus over %lld px: %lld ns/px", row, (long long)stats.avg, (long long)pixels,
-             (long long)(stats.avg * NS_PER_US / pixels));
+             (long long)(stats.avg * MATH_NS_PER_US / pixels));
 }
 
 static void

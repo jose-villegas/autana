@@ -1143,7 +1143,7 @@ paint_pixels_in(gfx_color_t* framebuffer, recti_t area) {
 
 static void
 paint_pixels(gfx_color_t* framebuffer) {
-    paint_pixels_in(framebuffer, (recti_t){0, 0, GFX_WIDTH, GFX_HEIGHT});
+    paint_pixels_in(framebuffer, GFX_SCREEN_RECT);
 }
 
 static void
@@ -1361,7 +1361,7 @@ ui_ridge_paint(recti_t area) {
         return;
     }
     FRAME_COST_BEGIN(painted_from);
-    const recti_t screen = {0, 0, GFX_WIDTH, GFX_HEIGHT};
+    const recti_t screen = GFX_SCREEN_RECT;
     area = recti_intersect(area, screen);
     if (area.w == screen.w && area.h == screen.h) {
         paint_all();

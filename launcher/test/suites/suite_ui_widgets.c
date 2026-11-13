@@ -890,6 +890,40 @@ half_sprite(gfx_color_t* color, uint32_t rgb, uint8_t* cover) {
                       .border = {SKIN_BORDER, SKIN_BORDER, SKIN_BORDER, SKIN_BORDER}};
 }
 
+/* What the skinned-face tests hold, released by face_fixture_release()
+ * even when an assert ends the test early. */
+static half_skin_t* face_skin;
+static gfx_color_t* face_frame;
+
+static void
+face_fixture_release(void) {
+    memory_free(face_frame);
+    face_frame = NULL;
+    memory_free(face_skin);
+    face_skin = NULL;
+    gfx_reset_for_test();
+}
+
+/* gfx up, a half see-through skin, and a frame's worth of pixels to keep. */
+static void
+face_fixture(void) {
+    TEST_ASSERT_TRUE(gfx_init());
+    fixture();
+    suite_set_test_cleanup(face_fixture_release);
+    face_skin = memory_alloc(sizeof *face_skin, MEMORY_PSRAM);
+    face_frame = memory_alloc(GFX_FRAMEBUFFER_BYTES, MEMORY_PSRAM);
+    TEST_ASSERT_NOT_NULL(face_skin);
+    TEST_ASSERT_NOT_NULL(face_frame);
+    face_skin->normal = half_sprite(face_skin->rest, SKIN_REST_RGB, face_skin->cover);
+    face_skin->pressed = half_sprite(face_skin->held, SKIN_HELD_RGB, face_skin->cover);
+}
+
+static void
+face_fixture_end(void) {
+    suite_clear_test_cleanup();
+    face_fixture_release();
+}
+
 static void
 paint_under_backdrop(recti_t area) {
     draw_rect(area.x, area.y, area.w, area.h, UNDER_BACKDROP);
@@ -922,15 +956,10 @@ on_skinned_button(bool down, bool pressed, bool released) {
  * same pixels back. */
 static void
 test_a_translucent_face_put_back_over_its_backdrop_holds_its_pixels(void) {
-    TEST_ASSERT_TRUE(gfx_init());
-    fixture();
-    half_skin_t* skin = memory_alloc(sizeof *skin, MEMORY_PSRAM);
+    face_fixture();
+    const half_skin_t* skin = face_skin;
+    gfx_color_t* first = face_frame;
     const size_t frame_bytes = GFX_FRAMEBUFFER_BYTES;
-    gfx_color_t* first = memory_alloc(frame_bytes, MEMORY_PSRAM);
-    TEST_ASSERT_NOT_NULL(skin);
-    TEST_ASSERT_NOT_NULL(first);
-    skin->normal = half_sprite(skin->rest, SKIN_REST_RGB, skin->cover);
-    skin->pressed = half_sprite(skin->held, SKIN_HELD_RGB, skin->cover);
     const input_t idle = {0};
     skinned_frame(skin, &idle);
     memcpy(first, gfx_framebuffer(), frame_bytes);
@@ -949,9 +978,138 @@ test_a_translucent_face_put_back_over_its_backdrop_holds_its_pixels(void) {
     skinned_frame(skin, &release);
     skinned_frame(skin, &idle);
     TEST_ASSERT_EQUAL_MEMORY_MESSAGE(first, gfx_framebuffer(), frame_bytes, "the release gives the pixels back");
-    memory_free(first);
-    memory_free(skin);
-    gfx_reset_for_test();
+    face_fixture_end();
+}
+
+/* A backdrop that differs at every pixel, with a stripe across it that
+ * moves STRIPE_STEP rows a frame: the part a frame draws under the UI. */
+#define STRIPE_TOP       90
+#define STRIPE_H         23
+#define STRIPE_STEP      9
+#define STRIPE_FRAMES    12
+#define STRIPE_TINT      0xF81Fu
+#define BACKDROP_STEP_X  131
+#define BACKDROP_STEP_Y  7919
+#define OPAQUE_PANEL_RGB 0x305070
+static const recti_t OPAQUE_PANEL = {20, 80, 280, 120};
+static const recti_t OVER_BUTTON = {120, 120, 160, 70};
+static const recti_t NARROW_CLIP = {60, 90, 90, 90};
+static int stripe_phase;
+
+static recti_t
+stripe_rect(void) {
+    return (recti_t){0, STRIPE_TOP + (stripe_phase * STRIPE_STEP), GFX_WIDTH, STRIPE_H};
+}
+
+static void
+paint_stripe_backdrop(recti_t area) {
+    area = recti_intersect(area, GFX_SCREEN_RECT);
+    const recti_t stripe = stripe_rect();
+    gfx_surface_t surface;
+    TEST_ASSERT_TRUE(gfx_draw_begin(&surface));
+    for (int y = area.y; y < recti_bottom(area); y++) {
+        gfx_color_t* row = gfx_target_color(surface.target, y);
+        for (int x = area.x; x < recti_right(area); x++) {
+            const gfx_color_t base = (gfx_color_t)((x * BACKDROP_STEP_X) + (y * BACKDROP_STEP_Y));
+            row[x] = y >= stripe.y && y < recti_bottom(stripe) ? (gfx_color_t)(base ^ STRIPE_TINT) : base;
+        }
+    }
+    gfx_mark_drawn(area.x, area.y, area.w, area.h);
+}
+
+/* The stripe moves on: drawn where it was and where it is, as an animated
+ * backdrop draws only what changed; `whole_rows` marks the rows whole. */
+static void
+step_stripe(bool whole_rows) {
+    const recti_t was = stripe_rect();
+    stripe_phase++;
+    const recti_t now = stripe_rect();
+    paint_stripe_backdrop(was);
+    paint_stripe_backdrop(now);
+    if (whole_rows) {
+        gfx_mark_rows_dirty(was.y, recti_bottom(now));
+    }
+}
+
+typedef enum {
+    REPLAY_OPAQUE_UNDER, /* a translucent face over an opaque rect */
+    REPLAY_OVERLAP,      /* two translucent faces, one over the other */
+    REPLAY_NARROW_CLIP,  /* a face cut by a clip narrower than it */
+} replay_scene_t;
+
+static void
+replay_scene_frame(const half_skin_t* skin, replay_scene_t scene) {
+    const ui_skin_t faces = {.normal = &skin->normal, .pressed = &skin->pressed};
+    const input_t idle = {0};
+    mu_Context* ctx = ui_context();
+    ui_begin(&idle);
+    ui_screen();
+    ui_skin(&faces);
+    if (scene == REPLAY_OPAQUE_UNDER) {
+        mu_draw_rect(ctx, (mu_Rect){OPAQUE_PANEL.x, OPAQUE_PANEL.y, OPAQUE_PANEL.w, OPAQUE_PANEL.h},
+                     ui_rgb(OPAQUE_PANEL_RGB));
+    }
+    if (scene == REPLAY_NARROW_CLIP) {
+        mu_push_clip_rect(ctx, (mu_Rect){NARROW_CLIP.x, NARROW_CLIP.y, NARROW_CLIP.w, NARROW_CLIP.h});
+    }
+    (void)ui_button(UNDER_BUTTON, "GO");
+    if (scene == REPLAY_NARROW_CLIP) {
+        mu_pop_clip_rect(ctx);
+    }
+    if (scene == REPLAY_OVERLAP) {
+        (void)ui_button(OVER_BUTTON, "UP");
+    }
+    (void)ui_end_over(paint_stripe_backdrop);
+    gfx_present();
+}
+
+/* An unchanged UI replayed over a moving backdrop leaves every pixel as a
+ * whole repaint of the same frame would, frame after frame. */
+static void
+assert_replay_matches_a_whole_repaint(replay_scene_t scene, int turns, bool whole_rows) {
+    face_fixture();
+    ui_set_transform(ui_transform_quarter_turn(turns, GFX_WIDTH, GFX_HEIGHT));
+    stripe_phase = 0;
+    const half_skin_t* skin = face_skin;
+    gfx_color_t* replayed = face_frame;
+    const size_t frame_bytes = GFX_FRAMEBUFFER_BYTES;
+    replay_scene_frame(skin, scene);
+    for (int i = 0; i < STRIPE_FRAMES; i++) {
+        step_stripe(whole_rows);
+        replay_scene_frame(skin, scene);
+        memcpy(replayed, gfx_framebuffer(), frame_bytes);
+        ui_invalidate();
+        replay_scene_frame(skin, scene);
+        TEST_ASSERT_EQUAL_MEMORY_MESSAGE(gfx_framebuffer(), replayed, frame_bytes,
+                                         "a replay leaves what a whole repaint leaves");
+    }
+    face_fixture_end();
+}
+
+static void
+test_a_face_over_an_opaque_rect_replays_as_a_whole_repaint(void) {
+    assert_replay_matches_a_whole_repaint(REPLAY_OPAQUE_UNDER, 0, false);
+}
+
+static void
+test_overlapping_faces_replay_as_a_whole_repaint(void) {
+    assert_replay_matches_a_whole_repaint(REPLAY_OVERLAP, 0, false);
+}
+
+static void
+test_a_face_in_a_narrower_clip_replays_as_a_whole_repaint(void) {
+    assert_replay_matches_a_whole_repaint(REPLAY_NARROW_CLIP, 0, false);
+}
+
+static void
+test_a_quarter_turned_ui_replays_as_a_whole_repaint(void) {
+    assert_replay_matches_a_whole_repaint(REPLAY_OVERLAP, 1, false);
+    assert_replay_matches_a_whole_repaint(REPLAY_OPAQUE_UNDER, 1, false);
+}
+
+static void
+test_a_replay_over_rows_marked_whole_matches_a_whole_repaint(void) {
+    assert_replay_matches_a_whole_repaint(REPLAY_OPAQUE_UNDER, 0, true);
 }
 
 static void
@@ -1668,6 +1826,11 @@ run_ui_widgets_suite(void) {
     RUN_TEST(test_options_band_frame_cost);
     RUN_TEST(test_dense_bands_match_a_full_repaint);
     RUN_TEST(test_a_translucent_face_put_back_over_its_backdrop_holds_its_pixels);
+    RUN_TEST(test_a_face_over_an_opaque_rect_replays_as_a_whole_repaint);
+    RUN_TEST(test_overlapping_faces_replay_as_a_whole_repaint);
+    RUN_TEST(test_a_face_in_a_narrower_clip_replays_as_a_whole_repaint);
+    RUN_TEST(test_a_quarter_turned_ui_replays_as_a_whole_repaint);
+    RUN_TEST(test_a_replay_over_rows_marked_whole_matches_a_whole_repaint);
     RUN_TEST(test_closing_the_list_restores_the_pixels_under_it);
     RUN_TEST(test_ui_end_in_band_mode_is_replayed_over_each_band);
     RUN_TEST(test_changed_ui_over_a_held_expanded_picture_dirties_its_band);

@@ -289,32 +289,6 @@ void (*ui_canvas_painted_for_test)(const mu_Container*);
 
 static bool command_rect(const mu_Command* cmd, mu_Rect* out);
 
-/* A face the backdrop went back under this frame: its panel rects are
- * under[first, first + count) of the replay. */
-typedef struct {
-    const mu_Command* face;
-    int first, count;
-} ui_face_under_t;
-
-/* A partial replay: an unchanged UI drawn again only where something drew
- * under it this frame, each face blended only over its own rects. */
-typedef struct {
-    ui_face_under_t faces[UI_FACE_REPLAY_MAX];
-    int n;
-    recti_t under[UI_FACE_UNDER_MAX];
-    int under_n;
-} ui_face_replay_t;
-
-static ui_face_under_t*
-face_under(ui_face_replay_t* replay, const mu_Command* cmd) {
-    for (int i = 0; i < replay->n; i++) {
-        if (replay->faces[i].face == cmd) {
-            return &replay->faces[i];
-        }
-    }
-    return NULL;
-}
-
 /* A clip command's panel rect, as draw_command() sets it. */
 static recti_t
 command_clip(const mu_Command* cmd) {
@@ -322,48 +296,37 @@ command_clip(const mu_Command* cmd) {
                            GFX_SCREEN_RECT);
 }
 
-/* In a replay, a command over no dirty pixel stands as it is. Painter's
- * order keeps the rest whole: a command that repaints marks its own rect,
- * so whatever is drawn over it then repaints too. */
-static bool
-skip_command(const mu_Command* cmd, const ui_face_replay_t* replay) {
-    mu_Rect r;
-    return replay != NULL && command_rect(cmd, &r) && !gfx_region_dirty(r.x, r.y, r.w, r.h);
-}
-
-/* A face in a replay is blended only over the box the backdrop went back
- * under, and a face it did not go under is left as it stands: anywhere
- * else the face's last blend is still on screen, and blending again would
- * stack. */
+/* In a replay, a command is drawn again only over the dirt the frame had
+ * when the replay began. Anywhere else its last paint still stands, and a
+ * translucent one drawn there again would blend over itself. */
 static void
-replay_face(const mu_Command* cmd, ui_face_replay_t* replay, recti_t clip) {
-    const ui_face_under_t* under = face_under(replay, cmd);
-    if (under == NULL) {
+replay_command(const mu_Command* cmd, recti_t clip, const gfx_dirty_leaves_t* dirt) {
+    mu_Rect r;
+    if (!command_rect(cmd, &r)) {
         return;
     }
-    for (int i = under->first; i < under->first + under->count; i++) {
-        const recti_t r = recti_intersect(clip, replay->under[i]);
-        if (!recti_is_empty(r)) {
-            draw_set_clip(r.x, r.y, r.w, r.h);
-            draw_command(cmd);
-        }
+    gfx_dirty_leaves_t left = *dirt;
+    recti_t under;
+    while (gfx_dirty_leaves_take(&left, recti_intersect(clip, ui_recti_from_mu(r)), &under)) {
+        draw_set_clip(under.x, under.y, under.w, under.h);
+        draw_command(cmd);
     }
-    draw_set_clip(clip.x, clip.y, clip.w, clip.h);
 }
 
-/* `replay` NULL paints the whole canvas. */
+/* `dirt` NULL paints the whole canvas; otherwise it is replayed over that
+ * dirt alone. */
 static void
-paint_canvas(const mu_Container* cnt, ui_face_replay_t* replay) {
+paint_canvas(const mu_Container* cnt, const gfx_dirty_leaves_t* dirt) {
     recti_t clip = GFX_SCREEN_RECT;
     mu_Command* cmd = NULL;
     while (next_canvas_command(cnt, &cmd)) {
         if (cmd->type == MU_COMMAND_CLIP) {
             clip = command_clip(cmd);
         }
-        if (replay != NULL && cmd->type == UI_COMMAND_SPRITE) {
-            replay_face(cmd, replay, clip);
-        } else if (!skip_command(cmd, replay)) {
+        if (dirt == NULL || cmd->type == MU_COMMAND_CLIP) {
             draw_command(cmd);
+        } else {
+            replay_command(cmd, clip, dirt);
         }
     }
     draw_clear_clip();
@@ -473,7 +436,7 @@ clear_vanished_canvases(uint32_t background_rgb) {
 }
 
 static bool
-repaint_marked_canvases(int n, const bool* repaint, uint32_t background_rgb, ui_face_replay_t* replay) {
+repaint_marked_canvases(int n, const bool* repaint, uint32_t background_rgb, const gfx_dirty_leaves_t* dirt) {
     bool drew = false;
 
     for (int i = 0; i < n && i < MU_ROOTLIST_SIZE; i++) {
@@ -489,7 +452,7 @@ repaint_marked_canvases(int n, const bool* repaint, uint32_t background_rgb, ui_
             draw_rect(phys.x, phys.y, phys.w, phys.h, RGB565BE(background_rgb));
         }
 
-        paint_canvas(cnt, replay);
+        paint_canvas(cnt, dirt);
 
         const int slot = (int)(cnt - ui_ctx.containers);
         if (slot >= 0 && slot < MU_CONTAINERPOOL_SIZE) {
@@ -558,87 +521,34 @@ ui_end(uint32_t background_rgb) {
     return drew;
 }
 
-/* The pixels `n` rects at `rects` cover; they never overlap. */
-static long
-rects_area(const recti_t* rects, int n) {
-    long area = 0;
-    for (int i = 0; i < n; i++) {
-        area += (long)rects[i].w * rects[i].h;
-    }
-    return area;
-}
-
-/* Over `cnt`'s faces: with `paint_backdrop`, lists each face with dirt under
- * it and puts the backdrop back there; without, checks that the dirt under
- * every face is still exactly what was listed. False when the replay is full
- * or the check fails. */
-static bool
-backdrop_under_canvas_faces(const mu_Container* cnt, ui_backdrop_fn paint_backdrop, ui_face_replay_t* replay) {
-    recti_t clip = GFX_SCREEN_RECT;
-    mu_Command* cmd = NULL;
-    while (next_canvas_command(cnt, &cmd)) {
+/* Before an unchanged UI is replayed over the dirt, the backdrop goes back
+ * under every command there but an opaque rect, so each blends over the
+ * backdrop alone and the dirt ends as a whole repaint would leave it. */
+static void
+backdrop_under_replay(int n, ui_backdrop_fn paint_backdrop, const gfx_dirty_leaves_t* dirt) {
+    gfx_dirty_leaves_t under = {0};
+    for (int i = 0; i < n && i < MU_ROOTLIST_SIZE; i++) {
+        recti_t clip = GFX_SCREEN_RECT;
+        mu_Command* cmd = NULL;
         mu_Rect r;
-        if (cmd->type == MU_COMMAND_CLIP) {
-            clip = command_clip(cmd);
-            continue;
-        }
-        if (cmd->type != UI_COMMAND_SPRITE || !command_rect(cmd, &r)) {
-            continue;
-        }
-        recti_t* const rects = replay->under + replay->under_n;
-        const int found =
-            gfx_dirty_rects(recti_intersect(ui_recti_from_mu(r), clip), rects, UI_FACE_UNDER_MAX - replay->under_n);
-        if (found < 0) {
-            return false;
-        }
-        const ui_face_under_t* listed = face_under(replay, cmd);
-        if (paint_backdrop == NULL) {
-            const long was = listed == NULL ? 0 : rects_area(replay->under + listed->first, listed->count);
-            if (rects_area(rects, found) != was) {
-                return false;
-            }
-            continue;
-        }
-        if (found == 0) {
-            continue;
-        }
-        if (replay->n == UI_FACE_REPLAY_MAX) {
-            return false;
-        }
-        replay->faces[replay->n++] = (ui_face_under_t){.face = cmd, .first = replay->under_n, .count = found};
-        replay->under_n += found;
-        for (int i = 0; i < found; i++) {
-            paint_backdrop(rects[i]);
-        }
-    }
-    return true;
-}
-
-/* A face may be translucent: drawn again over its own last paint it would
- * blend over itself and darken frame by frame. So before an unchanged UI is
- * replayed over what was drawn under it, the backdrop goes back under each
- * face wherever dirt lies under it, and the face will be blended there
- * alone. Faces that overlap could put the backdrop under each other: a
- * second pass finds the dirt under every face unchanged, or the frame
- * repaints whole. */
-static bool
-backdrop_under_replayed_faces(int n, ui_backdrop_fn paint_backdrop, ui_face_replay_t* replay) {
-    replay->n = 0;
-    replay->under_n = 0;
-    for (int pass = 0; pass < 2; pass++) {
-        for (int i = 0; i < n && i < MU_ROOTLIST_SIZE; i++) {
-            if (!backdrop_under_canvas_faces(ui_ctx.root_list.items[i], pass == 0 ? paint_backdrop : NULL, replay)) {
-                return false;
+        while (next_canvas_command(ui_ctx.root_list.items[i], &cmd)) {
+            if (cmd->type == MU_COMMAND_CLIP) {
+                clip = command_clip(cmd);
+            } else if (cmd->type != MU_COMMAND_RECT && command_rect(cmd, &r)) {
+                gfx_dirty_leaves_add(&under, dirt, recti_intersect(clip, ui_recti_from_mu(r)));
             }
         }
     }
-    return true;
+    recti_t area;
+    while (gfx_dirty_leaves_take(&under, GFX_SCREEN_RECT, &area)) {
+        paint_backdrop(area);
+    }
 }
 
 /* A backdrop is shared by every canvas, so once the UI itself has changed
  * it is painted whole and every canvas goes over it. A UI that is unchanged
- * and only drawn under (the backdrop animating) is replayed over just those
- * places, the backdrop first put back under each face it replays. */
+ * and only drawn under (the backdrop animating) is replayed over just the
+ * dirt that left, the backdrop first put back under it. */
 bool
 ui_end_over(ui_backdrop_fn paint_backdrop) {
 #if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT
@@ -659,20 +569,20 @@ ui_end_over(ui_backdrop_fn paint_backdrop) {
     for (int i = 0; i < n && i < MU_ROOTLIST_SIZE; i++) {
         changed = changed || canvas_itself_changed(ui_ctx.root_list.items[i]);
     }
-    static ui_face_replay_t replay;
-    if (!changed && !backdrop_under_replayed_faces(n, paint_backdrop, &replay)) {
-        changed = true;
-    }
+    bool drew;
     if (changed) {
-        paint_backdrop((recti_t){0, 0, GFX_WIDTH, GFX_HEIGHT});
+        paint_backdrop(GFX_SCREEN_RECT);
         for (int i = 0; i < n && i < MU_ROOTLIST_SIZE; i++) {
             repaint[i] = true;
         }
+        drew = repaint_marked_canvases(n, repaint, UI_NO_BACKGROUND, NULL);
     } else {
+        gfx_dirty_leaves_t dirt;
+        gfx_dirty_leaves(&dirt);
         mark_changed_canvases(n, repaint);
-        propagate_repaint_over_overlaps(n, repaint);
+        backdrop_under_replay(n, paint_backdrop, &dirt);
+        drew = repaint_marked_canvases(n, repaint, UI_NO_BACKGROUND, &dirt);
     }
-    const bool drew = repaint_marked_canvases(n, repaint, UI_NO_BACKGROUND, changed ? NULL : &replay);
 
     ui_invalidated = false;
 #if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT
