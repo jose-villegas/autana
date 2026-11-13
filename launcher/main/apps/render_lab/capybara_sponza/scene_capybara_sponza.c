@@ -70,6 +70,8 @@ static const char* TAG = "capybara_sponza";
 #define RUN_GAIT_RATE_MIN   0.75F
 #define RUN_GAIT_RATE_MAX   1.4F
 #define RUN_GAIT_BAND_MPS   0.1F
+/* The run is scripted, so it stands at exactly 0: any motion walks. */
+#define RUN_GAIT_STOP_MPS   0.0F
 #define RUN_GAIT_STEPS_MAX  8
 /* A seek replays the gait in steps this long to find the clip's time. */
 #define RUN_SEEK_STEP_MS    10U
@@ -125,6 +127,7 @@ build_gait(void) {
                     .rate_min = RUN_GAIT_RATE_MIN,
                     .rate_max = RUN_GAIT_RATE_MAX,
                     .band = RUN_GAIT_BAND_MPS,
+                    .stop_mps = RUN_GAIT_STOP_MPS,
                     .blend_ms = CAPYBARA_CLIP_BLEND_MS};
     run = (capybara_run_t){.start = RUN_START_X,
                            .end = RUN_END_X,
@@ -155,16 +158,11 @@ place(capybara_run_at_t at) {
 /* The gait's pick `t_ms` into the run, in the capybara's own units. A clip
  * takes the gait's blend to come in, so the pick reads the speed that far
  * ahead: the walk is in before the body moves, and the idle is in by the
- * time it stops. Any speed at all walks, at the slowest moving step's
- * slowest rate if need be, so the body never slides on the still clip. */
+ * time it stops. */
 static gait_pick_t
 pick_at(gait_pick_t current, uint32_t t_ms) {
     const float ahead = capybara_run_at(&run, t_ms + gait.blend_ms).speed / RUN_SCALE;
-    float walking = 0.0F;
-    for (int i = 0; i < gait.count && walking <= 0.0F; i++) {
-        walking = gait.steps[i].ground_mps * gait.rate_min;
-    }
-    return gait_pick(&gait, current, ahead > 0.0F ? fmaxf(ahead, walking) : 0.0F);
+    return gait_pick(&gait, current, ahead);
 }
 
 static void
