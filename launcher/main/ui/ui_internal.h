@@ -61,6 +61,10 @@ ui_swatch_cell_rect(const ui_swatch_command_t* grid, int col, int row) {
 _Static_assert(sizeof(ui_image_command_t) == 32, "image command device budget");
 #endif
 
+/* The faces one partial replay puts the backdrop back under; past it the
+ * frame repaints whole. A stack list: one pointer a face. */
+#define UI_FACE_REPLAY_MAX 32
+
 /* Custom drawing commands share microui's icon clipping protocol. */
 void* ui_push_clipped_command(mu_Context* ctx, int type, int size, mu_Rect rect);
 

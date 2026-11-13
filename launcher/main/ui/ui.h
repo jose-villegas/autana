@@ -157,12 +157,13 @@ bool ui_end(uint32_t background_rgb);
 bool ui_end_if_unsettled(void);
 
 /* ui_end() over a backdrop that is drawn, not a colour. `paint_backdrop`
- * paints the whole screen, and is called whenever the UI must paint: it
- * changed, or something drew under it (a backdrop that animates draws its
- * own changes before this call). Every canvas then paints over it, so a
- * translucent face never blends over its own last paint. Full framebuffer
- * only. */
-typedef void (*ui_backdrop_fn)(void);
+ * paints the backdrop inside `area`, a panel rectangle, and marks it drawn.
+ * When the UI changed it is asked for the whole screen and every canvas goes
+ * over it. A backdrop that animates draws its own changes before this call;
+ * the unchanged UI is then replayed over just those places, the backdrop
+ * first put back under each face replayed, so a translucent face never
+ * blends over its own last paint. Full framebuffer only. */
+typedef void (*ui_backdrop_fn)(recti_t area);
 bool ui_end_over(ui_backdrop_fn paint_backdrop);
 
 /* Declare that the framebuffer no longer holds this UI's output, so the

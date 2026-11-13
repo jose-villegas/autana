@@ -1120,25 +1120,30 @@ gradient_due(void) {
     return drift >= gradient_steps || (drift > 0 && ridge->pose_still_ms >= GRADIENT_SETTLE_MS);
 }
 
-/* The pixels of a full paint at the ridge's state, into any buffer: no
+/* The pixels of a paint of `area` at the ridge's state, into any buffer: no
  * bookkeeping and no dirty marks, so a caller can compare against one. */
 static void
-paint_pixels(gfx_color_t* framebuffer) {
+paint_pixels_in(gfx_color_t* framebuffer, recti_t area) {
     if (!ridge->by_column && ridge->scanline_dither) {
-        for (int y = 0; y < GFX_HEIGHT; y++) {
-            paint_row_span(framebuffer, y, 0, GFX_WIDTH);
+        for (int y = area.y; y < recti_bottom(area); y++) {
+            paint_row_span(framebuffer, y, area.x, recti_right(area));
         }
     } else if (ridge->scanline_dither) {
-        for (int x = 0; x < GFX_WIDTH; x++) {
-            paint_column_span(framebuffer, x, 0, GFX_HEIGHT);
+        for (int x = area.x; x < recti_right(area); x++) {
+            paint_column_span(framebuffer, x, area.y, recti_bottom(area));
         }
     } else {
-        for (int y = 0; y < GFX_HEIGHT; y++) {
-            for (int x = 0; x < GFX_WIDTH; x++) {
+        for (int y = area.y; y < recti_bottom(area); y++) {
+            for (int x = area.x; x < recti_right(area); x++) {
                 framebuffer[(y * GFX_WIDTH) + x] = backdrop_pixel(x, y);
             }
         }
     }
+}
+
+static void
+paint_pixels(gfx_color_t* framebuffer) {
+    paint_pixels_in(framebuffer, (recti_t){0, 0, GFX_WIDTH, GFX_HEIGHT});
 }
 
 static void
@@ -1349,14 +1354,22 @@ ui_ridge_gradient_lag_for_test(void) {
 #endif
 
 void
-ui_ridge_paint(void) {
+ui_ridge_paint(recti_t area) {
     allocate_once();
     if (ridge == NULL) {
-        draw_rect(0, 0, GFX_WIDTH, GFX_HEIGHT, RGB565BE(0));
+        draw_rect(area.x, area.y, area.w, area.h, RGB565BE(0));
         return;
     }
     FRAME_COST_BEGIN(painted_from);
-    paint_all();
+    const recti_t screen = {0, 0, GFX_WIDTH, GFX_HEIGHT};
+    area = recti_intersect(area, screen);
+    if (area.w == screen.w && area.h == screen.h) {
+        paint_all();
+    } else {
+        /* The screen as it stands: what the step last painted. */
+        paint_pixels_in(gfx_framebuffer(), area);
+        gfx_mark_dirty(area.x, area.y, area.w, area.h);
+    }
     FRAME_COST_END(painted_from, "ridge.paint");
 }
 

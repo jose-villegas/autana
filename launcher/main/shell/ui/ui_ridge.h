@@ -8,6 +8,7 @@
 #include "gfx/gfx.h"
 #include "gfx/target/gfx_color.h"
 #include "input/input.h"
+#include "math/geometry/recti.h"
 
 #define RIDGE_CURVE_POINTS GFX_HEIGHT
 #define RIDGE_CURVE_VIEW_H GFX_WIDTH
@@ -41,8 +42,11 @@ void ui_ridge_settle(void);
  * untouched. */
 void ui_ridge_step(const input_t* input, uint32_t dt_ms);
 
-/* The whole layered backdrop and the ridge as it stands: a ui_backdrop_fn. */
-void ui_ridge_paint(void);
+/* The layered backdrop and the ridge as they stand, inside `area`: a
+ * ui_backdrop_fn. The whole screen also catches the screen up with the ridge
+ * (its gradient, a dissolve); a smaller area repaints what the step last
+ * painted there. */
+void ui_ridge_paint(recti_t area);
 
 #if BUILD_VARIANT_SELFTEST_OR_HOST
 #include "physics/spring/spring_line.h"

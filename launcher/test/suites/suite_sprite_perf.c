@@ -3,7 +3,9 @@
  * translucent tiles (the sprite_test pack's tile), read from the mapped pack
  * in flash and from a resident copy in on-chip RAM. Each row is a whole
  * screen of tiles drawn into the framebuffer, not presented, upright and at a
- * quarter turn.
+ * quarter turn. Then the blend alone, per framebuffer pixel: a flat colour
+ * at one alpha, and the sprite's own per-pixel path, against simd_copy over
+ * the same rows, the framebuffer's bandwidth floor.
  */
 #include "suites.h" /* portable: needed by SUITE_REGISTER() even on host */
 
@@ -23,6 +25,7 @@
 #include "draw/draw.h"
 #include "draw/draw_sprite.h"
 #include "gfx/gfx.h"
+#include "simd/copy.h"
 #include "testkit/bench.h"
 
 static const char* TAG = "sprite_perf";
@@ -30,6 +33,9 @@ static const char* TAG = "sprite_perf";
 #define SPRITE_PERF_TILE "tile"
 #define SAMPLES          50
 #define BACKGROUND       RGB565BE(0x204060)
+#define BLEND_COLOR      RGB565BE(0x4B4B4B)
+#define BLEND_ALPHA      128
+#define NS_PER_US        1000
 
 /* Three columns by four rows of tiles across the panel, a gap between them:
  * the launcher-home scale, every tile nine-sliced up from its 48 px art. */
@@ -53,20 +59,64 @@ draw_screen(const sprite_t* tile, int turns) {
     }
 }
 
-static void
-report(const char* row, const sprite_t* tile, int turns) {
+typedef void (*draw_fn)(const sprite_t* tile, int turns);
+
+/* SAMPLES timed calls of `draw`, after one to warm. */
+static bench_stats_t
+time_draws(draw_fn draw, const sprite_t* tile, int turns) {
     int32_t* micros = memory_alloc(SAMPLES * sizeof *micros, MEMORY_INTERNAL);
     TEST_ASSERT_NOT_NULL(micros);
-    draw_screen(tile, turns); /* warm */
+    draw(tile, turns);
     for (int i = 0; i < SAMPLES; i++) {
         const int64_t start = timing_now_us();
-        draw_screen(tile, turns);
+        draw(tile, turns);
         micros[i] = (int32_t)(timing_now_us() - start);
     }
     const bench_stats_t stats = bench_stats_compute(micros, SAMPLES);
     memory_free(micros);
+    return stats;
+}
+
+static void
+report(const char* row, const sprite_t* tile, int turns) {
+    const bench_stats_t stats = time_draws(draw_screen, tile, turns);
     ESP_LOGI(TAG, "%s one core: mean %lldus (min %lld, max %lld, %d tiles of %dx%d)", row, (long long)stats.avg,
              (long long)stats.min, (long long)stats.max, TILE_COLUMNS * TILE_ROWS, TILE_W, TILE_H);
+}
+
+/* The mean of `draw` over `pixels` framebuffer pixels, in ns a pixel. */
+static void
+report_per_pixel(const char* row, draw_fn draw, const sprite_t* tile, int64_t pixels) {
+    const bench_stats_t stats = time_draws(draw, tile, 0);
+    ESP_LOGI(TAG, "%s one core: mean %lldus over %lld px: %lld ns/px", row, (long long)stats.avg, (long long)pixels,
+             (long long)(stats.avg * NS_PER_US / pixels));
+}
+
+static void
+blend_flat_screen(const sprite_t* tile, int turns) {
+    (void)tile;
+    (void)turns;
+    draw_rect_blend(0, 0, GFX_WIDTH, GFX_HEIGHT, BLEND_COLOR, BLEND_ALPHA);
+}
+
+/* The sprite stretched over the screen with no flat centre: every pixel
+ * through the per-pixel blend. */
+static void
+blend_sprite_screen(const sprite_t* tile, int turns) {
+    sprite_t each_pixel = *tile;
+    each_pixel.flat_centre = false;
+    draw_sprite(&each_pixel, (recti_t){0, 0, GFX_WIDTH, GFX_HEIGHT}, turns);
+}
+
+/* Every framebuffer row read and written once, as a blend does. */
+static void
+copy_screen_rows(const sprite_t* tile, int turns) {
+    (void)tile;
+    (void)turns;
+    gfx_color_t* fb = gfx_framebuffer();
+    for (int y = 0; y + 1 < GFX_HEIGHT; y++) {
+        simd_copy(fb + ((size_t)y * GFX_WIDTH), fb + ((size_t)(y + 1) * GFX_WIDTH), GFX_WIDTH * sizeof *fb);
+    }
 }
 
 static handle_t
@@ -120,12 +170,24 @@ test_sprite_screen_resident_turned(void) {
     measure_resident("sprite_screen_resident_turned", 1);
 }
 
+static void
+test_blend_against_the_copy_floor(void) {
+    sprite_t tile;
+    const handle_t load = open_tile(&tile);
+    const int64_t screen = (int64_t)GFX_WIDTH * GFX_HEIGHT;
+    report_per_pixel("blend_flat", blend_flat_screen, &tile, screen);
+    report_per_pixel("blend_sprite_pixels", blend_sprite_screen, &tile, screen);
+    report_per_pixel("copy_floor", copy_screen_rows, &tile, (int64_t)GFX_WIDTH * (GFX_HEIGHT - 1));
+    asset_store_release(load);
+}
+
 void
 run_sprite_perf_suite(void) {
     RUN_TEST(test_sprite_screen_flash);
     RUN_TEST(test_sprite_screen_resident);
     RUN_TEST(test_sprite_screen_flash_turned);
     RUN_TEST(test_sprite_screen_resident_turned);
+    RUN_TEST(test_blend_against_the_copy_floor);
 }
 
 #else

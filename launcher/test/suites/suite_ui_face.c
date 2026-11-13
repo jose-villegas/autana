@@ -1447,7 +1447,9 @@ test_frame_state_reset(void) {
 }
 
 static void
-backdrop(void) {}
+backdrop(recti_t area) {
+    (void)area;
+}
 
 static void
 test_all_end_paths(void) {

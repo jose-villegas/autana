@@ -251,12 +251,14 @@ accumulators the pause built up.
 `ui_end_over(paint_backdrop)` is `ui_end()` for a backdrop that is a picture
 and not a colour; the launcher's ridge (`shell/ui/ui_ridge.c`) is the model.
 
-1. `paint_backdrop` paints the whole screen. It is called whenever the UI
-   must paint, and every window is then painted over it, so a translucent
-   face never blends over its own last paint.
+1. `paint_backdrop(area)` paints the backdrop inside a panel rectangle and
+   marks it drawn. When the UI itself changed it is asked for the whole
+   screen, and every window is painted over it.
 2. A backdrop that animates draws its own changed part **before**
-   `ui_end_over()`. That dirties the screen under an unchanged UI, which
-   then paints: the whole backdrop, then every window.
+   `ui_end_over()`. That dirties the screen under an unchanged UI, which is
+   replayed over just those places; the backdrop is first put back under
+   each face replayed, so a translucent face never blends over its own last
+   paint.
 3. At rest it must draw nothing. A backdrop that redraws an identical frame
    dirties the screen, and the launcher stops being free while idle.
 4. React to the raw `input_t`, not to the controls: a press is held back until it is known to be a tap and not a

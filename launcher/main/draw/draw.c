@@ -254,12 +254,13 @@ fill_rect_alpha(const gfx_surface_t* state, int x, int y, int w, int h, gfx_colo
     char* pixels = state->target->attachment[0].pixels;
     const size_t pitch = state->target->attachment[0].pitch;
     const int first = state->target->first_row;
+    const rgb565_mix_toward_t toward = rgb565be_mix_toward(color, alpha);
     for (int row = rect.y; row < recti_bottom(rect); row++) {
         gfx_color_t* dst = (gfx_color_t*)(pixels + ((size_t)(row - first) * pitch));
         for (int i = 0; i < rect.w; i++) {
             const int col = rect.x + i;
             if (blend) {
-                dst[col] = rgb565be_mix(dst[col], color, alpha);
+                dst[col] = rgb565be_mix_onto(dst[col], &toward);
             } else if (bayer_covers(col, row, alpha)) {
                 dst[col] = color;
             }

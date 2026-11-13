@@ -90,6 +90,38 @@ test_channels_blend_independently_green_stays_put(void) {
                                     "green must stay at zero while red and blue move independently");
 }
 
+/* The rounded per-channel blend rgb565be_mix() promises, worked one channel
+ * at a time: an independent reference for its packed two-word form. */
+static unsigned
+reference_channel(unsigned a, unsigned b, unsigned t) {
+    const unsigned full = 255;
+    return ((a * (full - t)) + (b * t) + (full / 2)) / full;
+}
+
+/* Every share against the reference, with each channel's extremes and a
+ * middle value on both sides, so no carry between packed channels hides. */
+static void
+test_mix_matches_the_rounded_per_channel_blend_at_every_share(void) {
+    const unsigned r5[] = {0, 1, 15, 30, 31};
+    const unsigned g6[] = {0, 1, 32, 62, 63};
+    const int n = (int)(sizeof r5 / sizeof r5[0]);
+    for (unsigned t = 0; t <= UINT8_MAX; t++) {
+        for (int i = 0; i < n * n * n; i++) {
+            const int j = (i * 7 + 3) % (n * n * n); /* the other side, a different mix of the same values */
+            const rgb565be_t a = rgb565be_pack((uint8_t)r5[i % n], (uint8_t)g6[(i / n) % n], (uint8_t)r5[i / (n * n)]);
+            const rgb565be_t b = rgb565be_pack((uint8_t)r5[j / (n * n)], (uint8_t)g6[j % n], (uint8_t)r5[(j / n) % n]);
+            const uint16_t na = rgb565_swap(a);
+            const uint16_t nb = rgb565_swap(b);
+            const rgb565be_t want = rgb565be_pack((uint8_t)reference_channel(rgb565_r5(na), rgb565_r5(nb), t),
+                                                  (uint8_t)reference_channel(rgb565_g6(na), rgb565_g6(nb), t),
+                                                  (uint8_t)reference_channel(rgb565_b5(na), rgb565_b5(nb), t));
+            if (rgb565be_mix(a, b, (uint8_t)t) != want) {
+                TEST_FAIL_MESSAGE("rgb565be_mix differs from the rounded per-channel blend");
+            }
+        }
+    }
+}
+
 /* rgb565be_add */
 
 static void
@@ -446,6 +478,7 @@ run_image_pixel_suite(void) {
     RUN_TEST(test_black_toward_white_at_half_gives_mid_grey);
     RUN_TEST(test_a_known_pair_blends_to_a_known_result);
     RUN_TEST(test_channels_blend_independently_green_stays_put);
+    RUN_TEST(test_mix_matches_the_rounded_per_channel_blend_at_every_share);
     RUN_TEST(test_mixing_toward_black_twice_is_darker_than_once);
     RUN_TEST(test_adding_black_changes_nothing);
     RUN_TEST(test_adding_two_primaries_gives_their_combination);

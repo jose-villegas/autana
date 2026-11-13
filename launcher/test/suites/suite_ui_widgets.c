@@ -891,8 +891,8 @@ half_sprite(gfx_color_t* color, uint32_t rgb, uint8_t* cover) {
 }
 
 static void
-paint_under_backdrop(void) {
-    draw_rect(0, 0, GFX_WIDTH, GFX_HEIGHT, UNDER_BACKDROP);
+paint_under_backdrop(recti_t area) {
+    draw_rect(area.x, area.y, area.w, area.h, UNDER_BACKDROP);
 }
 
 /* One frame of a skinned button with the finger as `in` says, painted over
