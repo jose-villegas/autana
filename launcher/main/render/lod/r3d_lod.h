@@ -25,6 +25,7 @@
 
 #include "collections/bits.h"
 #include "image/pixel/bayer.h"
+#include "math/geometry/box3f.h"
 #include "render/r3d_lit_mesh.h"
 #include "render/settings/render_settings.h"
 
@@ -169,6 +170,19 @@ typedef struct {
     float units_per_tick; /* at least the model's largest scale */
     float focal;          /* pixels a view unit spans at unit depth, the larger axis */
 } r3d_lod_view_t;
+
+/* Prepared once per lens so measuring copies does not rebuild its view or planes. */
+typedef struct {
+    r3d_lod_view_t view;
+    planef_t planes[PLANE_FRUSTUM_COUNT];
+    float near_z;
+} r3d_lod_measure_t;
+
+r3d_lod_measure_t r3d_lod_measure(const r3d_lens_t* lens);
+
+/* Pixel radius of the box's half diagonal through the lens, measured where
+ * it comes nearest, clamped at near, zero outside the frustum. */
+float r3d_lod_bounds_pixels(box3f_t bounds, const r3d_lod_measure_t* measure);
 
 /* One instance's blend through one lens; `enabled` false draws no blend. */
 typedef struct r3d_lod_morph {

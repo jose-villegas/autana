@@ -170,6 +170,8 @@ typedef struct {
     anim_bound_t* fields;
 } scene_animator_clip_t;
 
+enum { SCENE_ANIM_TIER_NEAR, SCENE_ANIM_TIER_MID, SCENE_ANIM_TIER_FAR };
+
 typedef struct {
     anim_layer_t layer;
     anim_skeleton_t skeleton;
@@ -179,6 +181,11 @@ typedef struct {
     int* counts;
     uint8_t root;
     anim_wrap_t wrap;
+    float drawn_radius_px; /* last draw's size; cleared each step so undrawn scenes use the far tier */
+    uint32_t owed_ms;      /* skipped time is charged at the next pose, before playback controls change */
+    uint32_t phase;        /* stable slot spreads copies' poses across frames */
+    int interval;          /* zero selects the first tier without a hysteresis history */
+    int tier;              /* retained inside the boundary band to avoid rate flicker */
     bool dirty, posed;
 } scene_animator_t;
 
@@ -188,12 +195,12 @@ typedef struct {
     r3d_skin_output_t output;
     mat4f_t* model;
     mat4f_t* palette;
-    void* internal_storage;
+    void* storage;
     uint8_t (*colors)[R3D_SKIN_LIGHT_CHANNELS];
     mat3f_t* normal_palette;
     void* light_storage;
     bool lighting_valid;
-    /* bound: a skin is attached. Its buffers (internal_storage, light_storage)
+    /* bound: a skin is attached. Its buffers (storage, light_storage)
      * exist only while its entity is ACTIVE; starved: they did not fit when it
      * became ACTIVE, so it is not drawn until it stops being ACTIVE. */
     bool bound, starved;
@@ -241,6 +248,8 @@ struct scene {
     scene_asset_t asset;
     scene_root_t* root;
     int renderer_count;
+    uint32_t animation_frame; /* scene-local clock makes the stagger independent of other scenes */
+    uint32_t animation_phase; /* next slot, assigned once so rebinding keeps the stagger */
     int animator_count, skeleton_animator_count;
     int16_t animate_share, skin_share; /* core 1's, as core/job.h steers them */
     int light_count;
@@ -363,7 +372,7 @@ void scene_animation_step(scene_t* scene, uint32_t dt_ms);
 /* The same without settling: a seek re-poses what is shown and takes no buffers. */
 void scene_animation_repose(scene_t* scene, uint32_t dt_ms);
 /* Animates staged[first, first + count). */
-void scene_animate_range(scene_t* scene, int first, int count, uint32_t dt_ms);
+void scene_animate_range(scene_t* scene, int first, int count, uint32_t dt_ms, const render_anim_settings_t* settings);
 bool scene_skin_light_apply_mode(scene_t* scene, scene_row_t entity, scene_skinned_renderer_t* skin,
                                  skin_light_mode_t mode);
 void scene_skin_light_table_release(scene_t* scene, const scene_skinned_renderer_t* skin);

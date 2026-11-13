@@ -231,6 +231,41 @@ levels_drawn(const r3d_lit_mesh_t* mesh, int f, const uint32_t* coarse) {
 }
 
 /* One pose's check on the groups picked there. */
+/* A world box uses the same projection measure as groups without changing the group path. */
+static void
+test_bounds_pixels_frustum_distance_focal_and_near_clamp(void) {
+    const r3d_lit_mesh_t* mesh = levelled_mesh();
+    r3d_lens_t lens = lens_at(WHOLE_IN_VIEW, NULL);
+    const float group_before = r3d_lod_group_pixels(mesh, &lens, 0);
+    r3d_lod_measure_t measure = r3d_lod_measure(&lens);
+    const float half = (float)FINEST_RADIUS;
+    const box3f_t box = {{-half, -half, -half}, {half, half, half}};
+    const float pixels = r3d_lod_bounds_pixels(box, &measure);
+    TEST_ASSERT_GREATER_THAN_FLOAT(0, pixels);
+    const box3f_t outside = {{FAR_EYE, -half, -half}, {FAR_EYE + half, half, half}};
+    TEST_ASSERT_EQUAL_FLOAT(0, r3d_lod_bounds_pixels(outside, &measure));
+    const box3f_t straddle = {{-FAR_EYE, -half, -half}, {half, half, half}};
+    TEST_ASSERT_GREATER_THAN_FLOAT(0, r3d_lod_bounds_pixels(straddle, &measure));
+    TEST_ASSERT_EQUAL_FLOAT(group_before, r3d_lod_group_pixels(mesh, &lens, 0));
+    lens = lens_at(WHOLE_IN_VIEW * 2, NULL);
+    measure = r3d_lod_measure(&lens);
+    TEST_ASSERT_LESS_THAN_FLOAT(pixels, r3d_lod_bounds_pixels(box, &measure));
+    lens = lens_at(WHOLE_IN_VIEW, NULL);
+    lens.focal_x *= 2;
+    lens.focal_y *= 2;
+    for (int row = 0; row < 2; row++) {
+        for (int col = 0; col < 4; col++) {
+            lens.m.m[row][col] *= 2;
+        }
+    }
+    measure = r3d_lod_measure(&lens);
+    TEST_ASSERT_FLOAT_WITHIN(0.0001F, pixels * 2, r3d_lod_bounds_pixels(box, &measure));
+    lens = lens_at(0, NULL);
+    measure = r3d_lod_measure(&lens);
+    TEST_ASSERT_FLOAT_WITHIN(0.0001F, sqrtf(3 * half * half) * measure.view.focal / NEAR_Z,
+                             r3d_lod_bounds_pixels(box, &measure));
+}
+
 typedef void (*pose_check_t)(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint32_t* coarse);
 
 /* Picks the groups at every pose along the path, there and back, runs the
@@ -2420,6 +2455,7 @@ test_a_steer_that_moved_owes_picks_while_the_camera_holds_still(void) {
 
 void
 suite_r3d_lod(void) {
+    RUN_TEST(test_bounds_pixels_frustum_distance_focal_and_near_clamp);
     RUN_TEST(test_a_coarse_group_keeps_every_group_simplified_into_it_coarse);
     RUN_TEST(test_every_finest_cluster_is_drawn_at_exactly_one_level_along_the_path);
     RUN_TEST(test_the_drawn_list_holds_what_each_cluster_s_test_draws);

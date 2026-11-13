@@ -3,6 +3,7 @@
 #include "asset/asset_table.h"
 #include "asset/asset_table_format.h"
 #include "core/tune.h"
+#include "math/scalar/mathi.h"
 #include "render/lod/r3d_lod.h"
 
 asset_status_t
@@ -65,6 +66,25 @@ TUNE_OVERRIDE(render, lod_pick_every, R3D_LOD_PICK_EVERY_MAX);
 /* Overrides lod.triangle_budget. */
 TUNE_OVERRIDE(render, lod_triangle_budget, INT32_MAX);
 
+TUNE_OWNER(anim);
+/* Override the pose-rate tiers in whole pixels and frames; an interval below
+ * the minimum poses every frame. */
+TUNE_OVERRIDE(anim, mid_px, RENDER_ANIM_PIXELS_MAX);
+TUNE_OVERRIDE(anim, far_px, RENDER_ANIM_PIXELS_MAX);
+TUNE_OVERRIDE(anim, mid_every, RENDER_ANIM_EVERY_MAX);
+TUNE_OVERRIDE(anim, far_every, RENDER_ANIM_EVERY_MAX);
+TUNE_OVERRIDE(anim, hysteresis_px, RENDER_ANIM_PIXELS_MAX);
+
+static float
+anim_pixels(int32_t knob, float value) {
+    return knob == TUNE_UNSET ? value : (float)mathi_clamp(knob, 0, RENDER_ANIM_PIXELS_MAX);
+}
+
+static int
+anim_every(int32_t knob, int value) {
+    return mathi_clamp(tune_override(knob, value), RENDER_ANIM_EVERY_MIN, RENDER_ANIM_EVERY_MAX);
+}
+
 render_settings_t
 render_settings_tuned(const render_settings_t* set) {
     const render_settings_t s = *set;
@@ -76,5 +96,8 @@ render_settings_tuned(const render_settings_t* set) {
         {s.lod.tolerance_px, s.lod.hysteresis_px, tune_override(lod_coverage_permille, s.lod.coverage_permille),
          tune_override(lod_pick_every, s.lod.pick_every), tune_override(lod_triangle_budget, s.lod.triangle_budget),
          tune_override(lod_blend, s.lod.blend),
-         lod_blend_centipixels == TUNE_UNSET ? s.lod.blend_px : (float)lod_blend_centipixels / LOD_BLEND_CENTI}};
+         lod_blend_centipixels == TUNE_UNSET ? s.lod.blend_px : (float)lod_blend_centipixels / LOD_BLEND_CENTI},
+        {anim_pixels(mid_px, s.anim.mid_px), anim_pixels(far_px, s.anim.far_px),
+         anim_every(mid_every, s.anim.mid_every), anim_every(far_every, s.anim.far_every),
+         anim_pixels(hysteresis_px, s.anim.hysteresis_px)}};
 }

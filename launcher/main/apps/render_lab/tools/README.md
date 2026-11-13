@@ -140,7 +140,9 @@ Source: `water-stages-board.log`
 
 The Stress family repeats a generated primitive or static pack mesh before a
 swinging camera. Each preset ties down one behaviour with its own pegged goal.
-Perf work targets the presets; the scene frame profile confirms before merge.
+The presets are the per-PR perf check for r3d work. Scenes run nightly, on
+request, and for bake and fit changes; a scene regression with no preset
+moving is a coverage gap and becomes a new preset.
 
 Repeated geometry exercises hierarchical visibility<sup>[[112]](../../../../../docs/Citations.md#greene-1993)</sup>;
 the presets vary the copies' geometry, layout and colour modes.
@@ -288,6 +290,30 @@ pixel centres. Their sum is `triangles_set_up`; clipped triangles stay separate.
 `--camera still` holds the camera, so a frame differs from the last only
 where the mesh moved. Mixed copies share meshes by tessellation;
 `STRESS_MIX_UNIFORM_PERIOD` owns their equal-colour share.
+
+### Herd
+
+The Herd family is N skinned capybaras on the capybara's meadow, each playing
+its own clip at its own phase. One finger orbits the camera round the copies
+shown, as in the Capybara scene; zoomed in, copies fall off the frame and
+behind the camera, so the per-copy costs of posing, skinning and culling all
+show.
+
+| Scene key | Copies shown |
+|---|---|
+| `herd-1` | the centre one |
+| `herd-4` | centre, near, far out and to the side |
+| `herd-8` | the whole pool |
+
+![Herd 8: eight capybaras over one turn of the camera](../../../../../docs/images/overview/render-lab-herd.gif)
+
+| Part | Owner |
+|---|---|
+| Sizes: each ID, key and copy count | `herd/scene_herd.h` `HERD_SIZES` |
+| The pool, and each copy's place and clip | `launcher/demo/capybara/herd.scene.toml` |
+| The camera, orbited round the copies shown | [`lab/lab_orbit.h`](../../../lab/lab_orbit.h) |
+| Each size's copies, and a turn's frame and animation-step cost | [`tests/suite_herd_perf.c`](../tests/suite_herd_perf.c) |
+| The suite's timing table for `perf_compare.sh` | [`herd_tables.py`](herd_tables.py) `--perf-table CAPTURE TABLE` |
 
 ### Small fill
 
