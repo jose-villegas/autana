@@ -9,7 +9,7 @@ from itertools import product
 import numpy as np
 from scipy.spatial import cKDTree
 
-from r3d.geometry import bounds_diagonal
+from r3d.geometry import bounds_diagonal, grouped_indices
 from r3d.lit_mesh import oriented
 
 # A 381-object OBJ scene measured a matching plateau between 1e-3 and 1e-2 of the bounds diagonal.
@@ -45,10 +45,8 @@ class Shape:
 def source_objects(positions, tri_v, tri_m, tri_o, object_names) -> list[SourceObject]:
     """Split triangles by source ownership, retaining vertices in first-use order."""
     positions, tri_v, tri_m, tri_o = map(np.asarray, (positions, tri_v, tri_m, tri_o))
-    order = np.argsort(tri_o, kind="stable")
-    owners, starts = np.unique(tri_o[order], return_index=True)
     objects = []
-    for index, selected in zip(owners, np.split(order, starts[1:])):
+    for index, selected in grouped_indices(tri_o).items():
         name = object_names[index]
         triangles = tri_v[selected]
         vertices, first, inverse = np.unique(triangles, return_index=True, return_inverse=True)

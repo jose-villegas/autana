@@ -1,7 +1,6 @@
 """Deterministic vertex-to-surface contacts with border vertices on both objects."""
 
 from dataclasses import dataclass
-from itertools import combinations
 
 import numpy as np
 from scipy.spatial import cKDTree
@@ -44,18 +43,33 @@ def _surface_border(pos, vertices, faces, tolerance):
     return source, target, unshared
 
 
-def contact_graph(pos, tris, tri_o, position_scale=POSITION_SCALE):
+def contact_pairs(pos, tris, tri_o, position_scale=POSITION_SCALE, among=None):
+    """Surface contacts after a KD bounds broad phase; `among` limits the incident objects."""
     tolerance = seal_tolerance(position_scale)
-    objects = {int(obj): tris[tri_o == obj] for obj in np.unique(tri_o)}
-    edges = []
-    for a, b in combinations(objects, 2):
-        ta, tb = objects[a], objects[b]
-        va, vb = np.unique(ta), np.unique(tb)
-        pa, pb = pos[va], pos[vb]
-        if np.any(pa.min(axis=0) > pb.max(axis=0) + tolerance) or np.any(pb.min(axis=0) > pa.max(axis=0) + tolerance):
+    owners = np.unique(tri_o)
+    objects = {int(obj): tris[tri_o == obj] for obj in owners}
+    vertices = {obj: np.unique(faces) for obj, faces in objects.items()}
+    if not len(owners):
+        return []
+    lows = np.array([pos[vertices[int(obj)]].min(axis=0) for obj in owners]) - tolerance
+    highs = np.array([pos[vertices[int(obj)]].max(axis=0) for obj in owners]) + tolerance
+    centres, reach = (lows + highs) / 2, np.linalg.norm(highs - lows, axis=1) / 2
+    tree = cKDTree(centres)
+    pairs = set()
+    for at, obj in enumerate(owners):
+        if among is not None and obj not in among:
             continue
-        sa, sb, unshared_a = _surface_border(pos, va, tb, tolerance)
-        rb, ra, unshared_b = _surface_border(pos, vb, ta, tolerance)
+        for other in tree.query_ball_point(centres[at], reach[at] + reach.max()):
+            if at != other and not (np.any(lows[at] > highs[other]) or np.any(lows[other] > highs[at])):
+                pairs.add(tuple(sorted((int(obj), int(owners[other])))))
+    edges = []
+    for a, b in sorted(pairs):
+        sa, sb, unshared_a = _surface_border(pos, vertices[a], objects[b], tolerance)
+        rb, ra, unshared_b = _surface_border(pos, vertices[b], objects[a], tolerance)
         if sa or rb:
             edges.append(Contact(a, b, np.array(sorted(sa | ra), dtype=int), np.array(sorted(sb | rb), dtype=int), unshared_a or unshared_b))
     return edges
+
+
+def contact_graph(pos, tris, tri_o, position_scale=POSITION_SCALE):
+    return contact_pairs(pos, tris, tri_o, position_scale)

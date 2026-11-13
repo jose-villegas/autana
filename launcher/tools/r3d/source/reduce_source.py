@@ -32,19 +32,16 @@ import sys
 import tempfile
 
 import numpy as np
-from scipy.sparse import coo_matrix
-from scipy.sparse.csgraph import connected_components
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from r3d.meshopt import ERROR_ABSOLUTE, PRUNE, simplify_to_error  # noqa: E402
 from r3d.obj import load_obj  # noqa: E402
-from r3d.objects.instances import match_instances, place, source_objects  # noqa: E402
+from r3d.geometry import bounds_diagonal, grouped_indices
+from r3d.objects.object_error import part_labels, part_names
+from r3d.objects.instances import MATCH_TOLERANCE, match_instances, place, source_objects  # noqa: E402
 
 HERE = pathlib.Path(__file__).resolve().parent
-# A part's place in its object's frame is compared at this many decimals of a source unit: copies placed alike
-# differ only by rounding far below it.
-PLACE_DECIMALS = 1
 
 
 def arguments():
@@ -100,27 +97,7 @@ def material_errors(names, error, error_for):
     return errors
 
 
-def grouped(keys):
-    """{key: the indices holding it, in order} for an integer array."""
-    order = np.argsort(keys, kind="stable")
-    found, starts = np.unique(keys[order], return_index=True)
-    return dict(zip(found.tolist(), np.split(order, starts[1:])))
-
-
-def object_parts(tri_v, tri_o):
-    """Each triangle's part, numbered in first-use order: one object's triangles joined through shared vertices."""
-    count = len(tri_v)
-    _, vertices = np.unique(np.stack([np.repeat(tri_o, 3), tri_v.reshape(-1)], axis=1), axis=0,
-                            return_inverse=True)
-    size = count + int(vertices.max()) + 1
-    graph = coo_matrix((np.ones(3 * count), (np.repeat(np.arange(count), 3), count + vertices.reshape(-1))),
-                       shape=(size, size))
-    _, labels = connected_components(graph, directed=False)
-    _, first, inverse = np.unique(labels[:count], return_index=True, return_inverse=True)
-    return np.argsort(np.argsort(first))[inverse]
-
-
-def part_ranks(shapes, index, owner):
+def part_ranks(shapes, index, owner, tolerance):
     """Each part's rank within its object: by shape, then by its place in the frame of the object's largest part,
     so objects assembled alike list their triangles alike and the import matches them whole."""
     placed = {index[copy.object_name]: (number, copy) for number, shape in enumerate(shapes)
@@ -135,7 +112,7 @@ def part_ranks(shapes, index, owner):
         number, copy = placed[part]
         anchor = anchors[owner[part]][1]
         local = (copy.position - anchor.position) @ anchor.linear
-        keys.append((int(owner[part]), number, *np.round(local, PLACE_DECIMALS).tolist()))
+        keys.append((int(owner[part]), number, *np.rint(local / tolerance).tolist()))
     ranks = np.empty(len(owner), dtype=np.int64)
     ranks[sorted(range(len(owner)), key=keys.__getitem__)] = np.arange(len(owner))
     return ranks
@@ -147,7 +124,7 @@ def place_copies(shapes, index, positions, uvs, kept, materials, parts):
     finds them again."""
     columns = [(positions, uvs, kept, materials, parts)]
     base = len(positions)
-    by_part = grouped(parts)
+    by_part = grouped_indices(parts)
     for shape in shapes:
         first = shape.instances[0]
         mine = by_part.get(index[first.object_name], np.zeros(0, dtype=np.int64))
@@ -170,10 +147,8 @@ def reduce(exported, name, out, error, error_for=()):
     p, uv, tri_v, tri_t, tri_m, names, tri_o, object_names = load_obj(str(obj_path))
     if len(uv) == 0:
         uv = np.zeros((1, 2))
-    tri_p = object_parts(tri_v, tri_o)
-    owner = np.zeros(int(tri_p.max()) + 1, dtype=np.int64)
-    owner[tri_p] = tri_o
-    part_names = [f"{object_names[obj]}#{part}" for part, obj in enumerate(owner)]
+    tri_p, _ = part_labels(p, tri_v, tri_o)
+    names_of_parts, owner, _ = part_names(tri_p, tri_o, object_names)
     # One vertex per (position, texture coordinate, material, part) corner:
     # a change in the first three is a seam the simplifier keeps on both
     # sides, and no vertex is shared between parts.
@@ -182,18 +157,18 @@ def reduce(exported, name, out, error, error_for=()):
     triangles = inverse.reshape(-1, 3)
     material_error = material_errors(names, error, error_for)
     positions, uvs = p[unique[:, 0]], uv[unique[:, 1]]
-    shapes = match_instances(source_objects(p, tri_v, tri_m, tri_p, part_names))
-    index = {name: i for i, name in enumerate(part_names)}
+    shapes = match_instances(source_objects(p, tri_v, tri_m, tri_p, names_of_parts))
+    index = {name: i for i, name in enumerate(names_of_parts)}
     firsts = {index[shape.instances[0].object_name] for shape in shapes}
     passes, which = np.unique(np.stack([tri_p, np.searchsorted(np.unique(material_error), material_error[tri_m])],
                                        axis=1), axis=0, return_inverse=True)
-    rows = grouped(which.reshape(-1))
+    rows = grouped_indices(which.reshape(-1))
     kept = np.concatenate([simplify(positions, triangles[rows[k]], material_error[tri_m[rows[k][0]]])
                            for k, (part, _) in enumerate(passes) if part in firsts])
     # Each kept triangle's material and part are its corners' own.
     materials, parts = unique[kept[:, 0], 2], unique[kept[:, 0], 3]
     positions, uvs, kept, materials, parts = place_copies(shapes, index, positions, uvs, kept, materials, parts)
-    order = np.lexsort((np.arange(len(kept)), part_ranks(shapes, index, owner)[parts]))
+    order = np.lexsort((np.arange(len(kept)), part_ranks(shapes, index, owner, MATCH_TOLERANCE * bounds_diagonal(p))[parts]))
     kept, materials, objects = kept[order], materials[order], owner[parts[order]]
     out.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(exported / f"{name}.mtl", out / f"{name}.mtl")

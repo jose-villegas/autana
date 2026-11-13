@@ -44,8 +44,8 @@ from r3d.lod.bake_levels import bake_lit_mesh
 from r3d.lod.morph import morph_blob
 from r3d.lit_mesh import POSITION_SCALE, WELD_PER_TICK, bundle_entries, panel_colour, build_lit_mesh  # noqa: E402
 from r3d.mesh_source import load_source, load_glb_source, path_light_for, camera_path_poses
+from r3d.objects.budget import ceiling_split, prototype_groups
 from r3d.objects.carve import derived_budgets, detail_report, free_repeats, views
-from r3d.objects.detail import object_error
 from r3d.process_budget import NULL_RECORDER
 from r3d.ray_query import RayQuery  # noqa: E402
 from r3d.scene_name import SUFFIX  # noqa: E402
@@ -134,20 +134,13 @@ def thin_meshes(src, selected, thin, seed):
 
 
 def start_ceiling(renderer):
-    """What caps the mesh the import bakes: the variant's ceiling, unless a fit follows, whose fitted bundle the
-    ceiling caps instead (fit/stage.py), so its start keeps the variant's triangles and the copies."""
-    return None if getattr(renderer, "fit", None) is not None else getattr(renderer.variant, "ceiling", None)
+    """The ceiling on the import's start mesh."""
+    return ceiling_split(renderer)[0]
 
 
 def carve_room(renderer):
-    """The triangles the derived copy shapes may take, each once: the ceiling less the variant's triangles, or,
-    when a fit prunes the rest, less the fit's budget, the least the rest keeps; the fit prunes to the ceiling
-    less what the copies took. None: no ceiling, no cap."""
-    ceiling = getattr(renderer.variant, "ceiling", None)
-    fit = getattr(renderer, "fit", None)
-    if ceiling is None:
-        return None
-    return ceiling - (renderer.variant.triangles if fit is None else fit.budget)
+    """The ceiling's room for stored copy prototypes."""
+    return ceiling_split(renderer)[1]
 
 
 def carve_selection(src, tri_v, tri_m, selected, settings, job, scene):
@@ -155,15 +148,15 @@ def carve_selection(src, tri_v, tri_m, selected, settings, job, scene):
     or derived (objects/carve.py), and the derived shapes for the report."""
     position_scale = POSITION_SCALE if settings.position_scale is None else settings.position_scale
     selected = selected | free_repeats(src.p, tri_v, tri_m, src.tri_o, src.object_names, selected, position_scale)
-    room = carve_room(job.renderer)
+    if not any("triangles" not in rule for rule in selected.values()):
+        return selected, None
     eyes, focal, near = views(scene, job.renderer)
-    budgets, shapes = derived_budgets(src.p, tri_v, tri_m, src.tri_o, selected, room, eyes, focal, near)
+    _, shapes = derived_budgets(src.p, tri_v, tri_m, src.tri_o, selected, eyes, focal, near)
+    per_object = {}
     for shape in shapes:
-        rung = shape["ladder"][shape["pick"]]
-        rule = selected[shape["objects"][0]] | {"triangles": budgets[shape["objects"][0]],
-                                                "near_error": object_error(shape["distance"], focal, rung.error_px)}
-        selected |= {obj: rule for obj in shape["objects"]}
-    return selected, SimpleNamespace(shapes=shapes, focal=focal)
+        for obj in shape["objects"]:
+            per_object[obj] = shape
+    return selected, SimpleNamespace(shapes=shapes, focal=focal, per_object=per_object)
 
 
 def bake_geometry(job, scene, recorder=None, *, carve=False):
@@ -185,9 +178,11 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
             src.tri_v, src.tri_t, src.tri_m = tri_v, tri_t, tri_m
         step["triangles_out"] = len(tri_v)
     meshes = variant_meshes(settings.meshes, renderer.variant)
+    if not carve or scene is None:
+        meshes = tuple(rule for rule in meshes if "triangles" in rule)
     selected = match_meshes(src.tri_o, tri_m, src.object_names, src.names, meshes) if meshes else {}
     derived = None
-    if meshes:
+    if carve and scene is not None:
         selected, derived = carve_selection(src, tri_v, tri_m, selected, settings, job, scene)
     carved_keep = thin_meshes(src, selected, settings.thin, settings.seed) if selected else None
     with recorder.step("visibility", len(tri_v)) as step:
@@ -211,7 +206,7 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
         step["triangles_out"] = int(seen.sum())
     shown_v, shown_m, shown_o = tri_v[seen], tri_m[seen], src.tri_o[seen]
     mesh_report = {}
-    shapes = [] if settings.meshes and carve else None
+    shapes = [] if carve else None
     with recorder.step("light", len(shown_v)) as step:
         bounce = path_light_for(src, job, scene)
         if settings.simplify:
@@ -259,6 +254,8 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
             positions, rgb, tris, tri_mat = simplify(positions, rgb.astype(np.float64), tris, tri_mat, renderer.variant.triangles,
                                                    allocation=Allocation(tri_o=np.concatenate(all_obj), object_names=src.object_names,
                                                                          material_names=src.names, meshes=meshes, selection=selected,
+                                                                         detail=derived, split=ceiling_split(renderer) if carve else None,
+                                                                         double_sided=tuple(i for i, name in enumerate(src.names) if name in double_names),
                                                                          ceiling=start_ceiling(renderer),
                                                                          shade=(lambda p, c, t, m, **kw: shade_placed(src, job, scene, p, c, t, m,
                                                                                                              intersector, bounce, **kw)) if job.bake else None,
@@ -356,9 +353,7 @@ def write_shape(job, scene, out_dir, name, geometry, shape, recorder):
     from r3d.objects.instances import place
 
     double_sided = [i for i, material in enumerate(geometry.src.names) if material in job.settings.double_sided]
-    groups = {}
-    for instance, lit in shape['copies']:
-        groups.setdefault((instance.mirrored, np.isin(lit[3], double_sided).tobytes()), []).append((instance, lit))
+    groups = prototype_groups(shape, double_sided)
     entries, rows = [], []
     for (mirrored, _), copies in sorted(groups.items(), key=lambda group: group[0][0]):
         first, lit = copies[0]

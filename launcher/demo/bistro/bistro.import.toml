@@ -16,40 +16,8 @@ alpha_mask = { keep_alpha = 0.5 }
 thin = { material = "Foliage_Paris_Flowers", keep = 0.3 }
 simplify = { dense_edge = 300.0, props = ["Streetlight_Metal"], props_share = 0.13, seal_seams = false, colour_deviation = 2.0 }
 
-# The free-standing props: one mesh per repeated shape. These rules name the
-# props carved before; any other repeated object that touches nothing is
-# carved without one. Each shape's detail is derived from the camera's
-# closest view.
-[[objects.meshes]]
-match = { material = "Paris_Chair_01" }
-seam = "free"
-
-[[objects.meshes]]
-match = { material = "Paris_Table_Terrace" }
-seam = "free"
-
-[[objects.meshes]]
-match = { material = "Trashcan" }
-seam = "free"
-
-[[objects.meshes]]
-match = { material = "Vespa" }
-seam = "free"
-
-[[objects.meshes]]
-match = { material = "Bollards" }
-seam = "free"
-
-[[objects.meshes]]
-match = { material = "Paris_TrafficSign_A" }
-seam = "free"
-
-[[objects.meshes]]
-match = { material = "Paris_StreetSign_01" }
-seam = "free"
-
 # Each variant's triangles budget the rest; its ceiling caps the rest plus
-# each carved shape once.
+# every stored copy prototype.
 [[variants]]
 name = "bistro"
 triangles = 18678

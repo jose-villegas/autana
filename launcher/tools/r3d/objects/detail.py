@@ -20,6 +20,7 @@ TOLERANCE_PX = render_asset.load(render_asset.DEFAULT)["lod.tolerance_px"]
 
 # Each rung of a shape's ladder allows this many times the screen error of the rung before.
 LADDER_STEP = 2.0
+MAX_ERROR_SHRINK = 0.5
 
 
 @dataclass(frozen=True)
@@ -66,13 +67,14 @@ def level(positions, triangles, error):
             return kept
         if asked == 0.0:
             return triangles
-        asked *= error / moved
+        asked *= min(error / moved, MAX_ERROR_SHRINK)
         asked = asked if asked >= floor else 0.0
 
 
 def ladder(positions, triangles, distance, focal, tolerance_px=TOLERANCE_PX):
     """The shape's rungs: the near level at tolerance_px, then each LADDER_STEP times coarser, while the triangle
     count still drops and the allowed move stays inside the shape."""
+    assert distance > 0
     rungs = [Rung(len(level(positions, triangles, object_error(distance, focal, tolerance_px))), tolerance_px)]
     error_px = tolerance_px * LADDER_STEP
     while object_error(distance, focal, error_px) < bounds_diagonal(positions):
@@ -81,22 +83,6 @@ def ladder(positions, triangles, distance, focal, tolerance_px=TOLERANCE_PX):
             rungs.append(Rung(count, error_px))
         error_px *= LADDER_STEP
     return rungs
-
-
-def balance(ladders, room):
-    """Each shape's rung: the first, unless their triangles exceed `room` (None: no cap); then, one step at a time,
-    the shape whose next rung removes the most triangles per pixel of error added. Stops at the last rungs."""
-    picks = [0] * len(ladders)
-    total = sum(rungs[0].triangles for rungs in ladders)
-    while room is not None and total > room:
-        steps = [((rungs[pick].triangles - rungs[pick + 1].triangles) / (rungs[pick + 1].error_px - rungs[pick].error_px),
-                  -index) for index, (rungs, pick) in enumerate(zip(ladders, picks)) if pick + 1 < len(rungs)]
-        if not steps:
-            break
-        index = -max(steps)[1]
-        total -= ladders[index][picks[index]].triangles - ladders[index][picks[index] + 1].triangles
-        picks[index] += 1
-    return picks
 
 
 def surface_error(source_positions, source_triangles, positions, triangles):

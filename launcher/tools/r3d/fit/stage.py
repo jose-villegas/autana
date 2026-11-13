@@ -6,6 +6,7 @@ the start's bytes and the reference set (training, held-out and pruning poses), 
 """
 
 import pathlib
+from types import SimpleNamespace
 
 from r3d import mesh_bundle, mesh_asset, log
 from r3d.reference_set import fit_sets, shapes_fit
@@ -18,10 +19,11 @@ DEPTH_WEIGHT = 30.0
 
 
 def prune_budget(ceiling, floor, copies):
-    """The triangles the fit prunes its rest to: the ceiling less the copy shapes' triangles (each once), never
-    below the recipe's budget `floor`, the room the carve left the rest (mesh_import.carve_room); the recipe's
-    budget when the variant has no ceiling."""
-    return floor if ceiling is None else max(floor, ceiling - copies)
+    """The fitted rest target for scalar budgets, using the renderer split's hard ceiling and soft floor."""
+    from r3d.objects.budget import ceiling_split, rest_target
+
+    renderer = SimpleNamespace(variant=SimpleNamespace(ceiling=ceiling), fit=SimpleNamespace(budget=floor))
+    return rest_target(ceiling_split(renderer), copies)
 
 
 def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False, target=None, inputs=None,
@@ -30,9 +32,9 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
     None) and write the renderer's mesh to `target`. A carved start bundle fits its rest with its copies drawn,
     and passes the copy-coverage gate over the held-out poses; its copies are written back unchanged. The
     variant's ceiling caps the fitted bundle, not the start: the rest is pruned to the ceiling less the copy
-    shapes (each once), or to the recipe's budget when the variant has no ceiling; `budget` overrides both."""
+    prototypes, or to the recipe's budget when the variant has no ceiling; `budget` overrides both."""
     from r3d.appearance_simplify import main as fit_main
-    from r3d.fit.copies import finest_triangles
+    from r3d.objects.budget import bundle_count, ceiling_split, rest_target
     from r3d.simplify import check_ceiling
 
     renderer = job.renderer
@@ -45,8 +47,9 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
     rest = next(data for name, kind, data in bundle_entries if name == job.asset_name)
     shapes = [row["mesh"] for row in copies]
     ceiling = getattr(variant, "ceiling", None)
+    target_budget = rest_target(ceiling_split(renderer), bundle_count(bundle_entries, shapes))
     if budget is None:
-        budget = prune_budget(ceiling, recipe.budget, finest_triangles(bundle_entries, shapes))
+        budget = target_budget
     start = pathlib.Path(work) / f"{job.asset_name}{mesh_bundle.SUFFIX}"
     start.write_bytes(mesh_bundle.encode([(job.asset_name, mesh_asset.TYPE, rest)], []))
     out = work / "fitted"
@@ -81,7 +84,7 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
     fitted_entries, _ = mesh_bundle.decode((out / start.name).read_bytes())
     fitted = next(data for name, kind, data in fitted_entries if name == job.asset_name)
     entries = [(name, kind, fitted if name == job.asset_name else data) for name, kind, data in bundle_entries]
-    check_ceiling(finest_triangles(entries, [*shapes, job.asset_name]), ceiling)
+    check_ceiling(bundle_count(entries, [*shapes, job.asset_name]), ceiling)
     target.write_bytes(mesh_bundle.encode(entries, copies))
     log(f"wrote {target}")
     return target

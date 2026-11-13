@@ -240,31 +240,31 @@ def write_authoring(scene, job, out):
     (out / 'detail.json').write_text(json.dumps(rows, indent=2) + '\n')
     split = budget_split(job.renderer, report, rows)
     lines = [f'# {job.object.name}: triangle budget', '',
-             '| Ceiling | Floor | Copies kept | Rest target | Stepped below near levels |', '|---:|---:|---:|---:|---|',
-             '| {ceiling} | {floor} | {copies} | {rest} | {stepped} shapes, {below} triangles |'.format(**split), '',
+             '| Ceiling | Floor | Copies kept | Rest target | Rest below floor | Stepped below near levels |', '|---:|---:|---:|---:|---:|---|',
+             '| {ceiling} | {floor} | {copies} | {rest} | {shortfall} | {stepped} shapes, {below} triangles |'.format(**split), '',
              f'# {job.object.name}: shapes needing authoring (above {TOLERANCE_PX:g} px up close)', '',
              '| Shape | Error px | Reason |', '|---|---:|---|']
     lines += [f"| {row['shape']} | {row['error_px']:.2f} | {row['reason']} |" for row in authoring]
+    lines += ['', '# Coarsest shapes', '', '| Shape |', '|---|']
+    lines += [f'| {name} |' for name in split['coarsest']] or ['| none |']
     (out / 'authoring.md').write_text('\n'.join(lines) + '\n')
     print(f'{len(rows)} derived shapes, {len(authoring)} need authoring')
 
 
 def budget_split(renderer, report, rows):
-    """How the variant's ceiling is split, as the carve measured it: the floor the rest keeps (the fit's budget,
-    or the variant's triangles), the carved shapes' kept triangles (each once), the rest's target (what the fit
-    prunes to, or what the import keeps) and the derived shapes the balance stepped below their near level."""
-    from r3d.fit.stage import prune_budget
+    """How the variant's ceiling is split, as the carve measured it: the rest's soft floor, stored copy
+    prototypes, the rest target and shortfall, and derived shapes stepped down or at their coarsest rung."""
+    from r3d.objects.budget import ceiling_split, rest_target
 
     ceiling = getattr(renderer.variant, 'ceiling', None)
-    fit = getattr(renderer, 'fit', None)
-    floor = renderer.variant.triangles if fit is None else fit.budget
-    copies = sum(entry['output_triangles'] for entry in report.get('passes', []) if 'stand_in' in entry)
-    if fit is not None:
-        rest = prune_budget(ceiling, floor, copies)
-    else:
-        rest = floor if ceiling is None else min(floor, ceiling - copies)
+    split = ceiling_split(renderer)
+    floor = split[2]
+    copies = sum(entry.get('stored_triangles', entry['output_triangles'])
+                 for entry in report.get('passes', []) if 'stand_in' in entry)
+    rest = rest_target(split, copies)
     stepped = [row for row in rows if row['rung'] > 0]
-    return dict(ceiling=ceiling, floor=floor, copies=copies, rest=rest, stepped=len(stepped),
+    return dict(ceiling=ceiling, floor=floor, copies=copies, rest=rest, shortfall=max(0, floor - rest),
+                coarsest=[row['shape'] for row in rows if row.get('coarsest', False)], stepped=len(stepped),
                 below=sum(row['near_triangles'] - row['carved_triangles'] for row in stepped))
 
 
