@@ -106,9 +106,6 @@ r3d_lod_drawn(const r3d_lit_mesh_t* mesh, int c, const uint32_t* coarse) {
 int r3d_lod_list_drawn(const r3d_lit_mesh_t* mesh, const uint32_t* coarse, const uint32_t* blending, uint16_t* out,
                        int room);
 
-/* Projected radius of world bounds, zero outside the lens frustum. */
-float r3d_lod_bounds_pixels(box3f_t bounds, const r3d_lens_t* lens);
-
 /* The pixels group `group`'s error spans seen through `lens` (placed with
  * the instance's model), measured where its bounds come nearest the eye and
  * no nearer than the near plane. Scale is the model's largest. */
@@ -173,6 +170,19 @@ typedef struct {
     float units_per_tick; /* at least the model's largest scale */
     float focal;          /* pixels a view unit spans at unit depth, the larger axis */
 } r3d_lod_view_t;
+
+/* Prepared once per lens so measuring copies does not rebuild its view or planes. */
+typedef struct {
+    r3d_lod_view_t view;
+    planef_t planes[PLANE_FRUSTUM_COUNT];
+    float near_z;
+} r3d_lod_measure_t;
+
+r3d_lod_measure_t r3d_lod_measure(const r3d_lens_t* lens);
+
+/* Pixel radius of the box's half diagonal through the lens, measured where
+ * it comes nearest, clamped at near, zero outside the frustum. */
+float r3d_lod_bounds_pixels(box3f_t bounds, const r3d_lod_measure_t* measure);
 
 /* One instance's blend through one lens; `enabled` false draws no blend. */
 typedef struct r3d_lod_morph {

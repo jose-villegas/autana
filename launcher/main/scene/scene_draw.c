@@ -113,9 +113,7 @@ fill_instances(scene_t* scene, int* batches) {
     int count = 0;
     r3d_lens_t lens;
     r3d_lens_init(&lens, &drawn_view, 1);
-    for (int i = 0; i < scene->renderer_count; i++) {
-        scene->renderers[i].drawn_radius_px = 0.0F;
-    }
+    const r3d_lod_measure_t measure = r3d_lod_measure(&lens);
     *batches = 0;
     for (int i = 0; i < scene->active_renderer_count; i++) {
         scene_renderer_t* r = &scene->renderers[scene->active_renderers[i]];
@@ -123,7 +121,7 @@ fill_instances(scene_t* scene, int* batches) {
             continue;
         }
         if (scene->skinned_renderers[r->entity].bound) {
-            r->drawn_radius_px = r3d_lod_bounds_pixels(r->world_bounds, &lens);
+            scene->animators[r->entity].drawn_radius_px = r3d_lod_bounds_pixels(r->world_bounds, &measure);
         }
         const r3d_instance_t instance = {&r->mesh, r->placed ? &r->model : NULL, &r->world_bounds, r->lod_coarse};
         if (r->batch != NULL) {
@@ -195,6 +193,7 @@ draw_active(int quarter, int width, int height) {
     scene_t* scene = active.scene;
     const scene_camera_t* camera = active_camera();
     scene_resolve(scene);
+    /* Size measurements must use this draw's lens, including its viewport. */
     active_view(scene, camera, (viewport_t){width, height, quarter});
     int batches;
     const int count = fill_instances(scene, &batches);

@@ -172,13 +172,23 @@ slot_playhead(scene_animator_t* a, animator_slot_t slot) {
                : NULL;
 }
 
+/* Setters must charge skipped time at the old playback controls, once. */
+static void
+scene_animator_settle(scene_animator_t* a) {
+    if (a->owed_ms != 0) {
+        anim_layer_advance(&a->layer, a->owed_ms);
+        a->owed_ms = 0;
+        a->dirty = true;
+    }
+}
+
 static anim_playhead_t*
 settled_playhead(entity_t entity, animator_slot_t slot) {
     scene_row_t row;
     scene_t* scene = scene_entity_row(entity, &row);
     scene_animator_t* a = scene == NULL ? NULL : animator_of(scene, row);
-    if (a != NULL && a->owed_ms != 0) {
-        scene_animation_repose(scene, 0);
+    if (a != NULL) {
+        scene_animator_settle(a);
     }
     return a == NULL ? NULL : slot_playhead(a, slot);
 }
@@ -242,6 +252,7 @@ animator_set_clips(entity_t entity, const char* skeleton_id, const char* const* 
     /* A taken block cannot be freed: rebinding a scene's clips abandons the
      * old storage to the lender until the scene's memory goes back. */
     scene_free_kept(old->storage);
+    /* Rebinding keeps the slot so copies do not converge onto one pose frame. */
     a.phase = old->storage != NULL && old->root == ANIM_ROOT_SKELETON ? old->phase
               : a.root == ANIM_ROOT_SKELETON                          ? scene->animation_phase++
                                                                       : 0;
@@ -262,9 +273,7 @@ animator_play(entity_t entity, int clip, uint32_t blend_ms) {
     if (a == NULL || clip < 0 || clip >= a->layer.clip_count || (a->root == ANIM_ROOT_SCENE && blend_ms != 0)) {
         return false;
     }
-    if (a->owed_ms != 0) {
-        scene_animation_repose(scene, 0);
-    }
+    scene_animator_settle(a);
     anim_layer_play(&a->layer, (uint8_t)clip, blend_ms);
     a->layer.current.playhead.wrap = a->wrap;
     a->dirty = true;
@@ -353,7 +362,7 @@ animator_seek(entity_t entity, animator_slot_t slot, uint32_t t_ms) {
         return false;
     }
     scene_draw_camera_cut(scene, row);
-    a->owed_ms = 0;
+    scene_animator_settle(a);
     p->t_ms = t_ms;
     p->fraction = 0;
     a->dirty = true;
