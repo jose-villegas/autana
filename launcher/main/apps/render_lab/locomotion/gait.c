@@ -15,10 +15,25 @@ gait_sort(gait_step_t* steps, int count) {
     gait_steps_sort(steps, (size_t)count);
 }
 
-/* Where step i's range ends and step i + 1's begins: halfway between their ground speeds. */
+static bool
+still(const gait_t* g, int i) {
+    return g->steps[i].ground_mps <= 0.0F;
+}
+
+/* Where step i's range ends and step i + 1's begins: the stop speed past a
+ * still step, else halfway between their ground speeds. */
 static float
 upper_edge(const gait_t* g, int i) {
-    return i + 1 < g->count ? 0.5F * (g->steps[i].ground_mps + g->steps[i + 1].ground_mps) : INFINITY;
+    if (i + 1 >= g->count) {
+        return INFINITY;
+    }
+    return still(g, i) ? g->stop_mps : 0.5F * (g->steps[i].ground_mps + g->steps[i + 1].ground_mps);
+}
+
+/* How far a held step reaches past the edge above step i: none at a still step's edge. */
+static float
+reach(const gait_t* g, int i) {
+    return still(g, i) ? 0.0F : g->band;
 }
 
 static float
@@ -29,8 +44,8 @@ lower_edge(const gait_t* g, int i) {
 gait_pick_t
 gait_pick(const gait_t* g, gait_pick_t current, float speed) {
     int step = current.step;
-    const bool held =
-        step >= 0 && step < g->count && speed >= lower_edge(g, step) - g->band && speed < upper_edge(g, step) + g->band;
+    const bool held = step >= 0 && step < g->count && (step == 0 || speed >= lower_edge(g, step) - reach(g, step - 1))
+                      && speed < upper_edge(g, step) + reach(g, step);
     if (!held) {
         step = 0;
         while (speed >= upper_edge(g, step)) {

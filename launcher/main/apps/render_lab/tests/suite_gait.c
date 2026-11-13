@@ -28,6 +28,7 @@ static const gait_t GAIT = {
     .rate_min = 0.75F,
     .rate_max = 1.4F,
     .band = 0.2F,
+    .stop_mps = 0.05F,
     .blend_ms = 300,
 };
 
@@ -36,10 +37,11 @@ fresh(float speed) {
     return gait_pick(&GAIT, (gait_pick_t){NO_STEP, 1.0F}, speed);
 }
 
-/* The speed halfway between two steps' ground speeds: where a fresh pick changes step. */
+/* Where a fresh pick changes step: the stop speed above the still step, else
+ * halfway between two steps' ground speeds. */
 static float
 boundary(int below) {
-    return 0.5F * (STEPS[below].ground_mps + STEPS[below + 1].ground_mps);
+    return below == 0 ? GAIT.stop_mps : 0.5F * (STEPS[below].ground_mps + STEPS[below + 1].ground_mps);
 }
 
 /* Steps listed in any order come out slowest first, each keeping its own clip. */
@@ -86,9 +88,18 @@ test_the_rate_matches_the_ground_speed_inside_the_clamp(void) {
 
 static void
 test_a_still_step_plays_at_rate_one(void) {
-    const gait_pick_t p = fresh(0.1F);
+    const gait_pick_t p = fresh(0.5F * GAIT.stop_mps);
     TEST_ASSERT_EQUAL_INT(0, p.step);
     TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, 1.0F, p.rate);
+}
+
+/* A walker moving at a fifth of the walk's ground speed walks, slowly; it does
+ * not stand in the still clip and slide. */
+static void
+test_a_slow_walker_walks(void) {
+    const gait_pick_t p = fresh(0.2F * STEPS[1].ground_mps);
+    TEST_ASSERT_EQUAL_INT(1, p.step);
+    TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, GAIT.rate_min, p.rate);
 }
 
 static void
@@ -109,6 +120,7 @@ run_gait_suite(void) {
     RUN_TEST(test_a_fresh_pick_changes_step_at_the_midpoint);
     RUN_TEST(test_the_rate_matches_the_ground_speed_inside_the_clamp);
     RUN_TEST(test_a_still_step_plays_at_rate_one);
+    RUN_TEST(test_a_slow_walker_walks);
     RUN_TEST(test_a_held_step_survives_inside_its_band_and_leaves_past_it);
 }
 
