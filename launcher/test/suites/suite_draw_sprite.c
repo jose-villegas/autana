@@ -206,6 +206,26 @@ enum {
 };
 
 static gfx_color_t geo_pixels[GEO_H][GEO_W];
+static uint8_t geo_cover[GEO_H][GEO_W];
+
+/* Every share somewhere in a translucent picture: none, whole, and between. */
+#define COVER_STEP_X      37
+#define COVER_STEP_Y      91
+/* A background that differs at every panel pixel, so each blend shows. */
+#define BACKGROUND_STEP_X 131
+#define BACKGROUND_STEP_Y 7919
+/* Edges long enough for their runs to take draw_blend_row()'s vector steps. */
+#define LONG_EDGE         (GEO_W * STRETCH * 5)
+
+static uint8_t
+cover_at(int x, int y) {
+    return (uint8_t)((x * COVER_STEP_X) + (y * COVER_STEP_Y));
+}
+
+static gfx_color_t
+background_at(int x, int y) {
+    return (gfx_color_t)((x * BACKGROUND_STEP_X) + (y * BACKGROUND_STEP_Y));
+}
 
 static gfx_color_t
 code(int x, int y) {
@@ -223,6 +243,20 @@ geometry_sprite(void) {
         .color = {geo_pixels, IMAGE_RGB565BE, GEO_W, GEO_H, GEO_W * sizeof(gfx_color_t)},
         .border = {GEO_LEFT, GEO_TOP, GEO_RIGHT, GEO_BOTTOM},
     };
+}
+
+/* The geometry picture with a share at every pixel, in a plane sharing its
+ * stride as a sprite's two planes do. */
+static sprite_t
+translucent_geometry_sprite(void) {
+    sprite_t s = geometry_sprite();
+    for (int y = 0; y < GEO_H; y++) {
+        for (int x = 0; x < GEO_W; x++) {
+            geo_cover[y][x] = cover_at(x, y);
+        }
+    }
+    s.alpha = (image_t){geo_cover, IMAGE_A8, GEO_W, GEO_H, GEO_W};
+    return s;
 }
 
 static void
@@ -262,14 +296,30 @@ expected_source(int at, int out, int src, int lo, int hi, int scale) {
     return lo + (int)((at - out_lo + 0.5) * centre);
 }
 
-/* Every panel pixel of `dst` against the turned, nine-sliced picture: the
- * sprite frame pixel a panel pixel shows, by the turn image_asset.turn() makes. */
+/* Under a translucent sprite, a background that differs at every pixel. */
 static void
-assert_geometry(int turns, int w, int h, int scale) {
-    const sprite_t s = geometry_sprite();
+paint_background(recti_t area) {
+    gfx_surface_t surface;
+    TEST_ASSERT_TRUE(gfx_draw_begin(&surface));
+    for (int y = area.y; y < recti_bottom(area); y++) {
+        for (int x = area.x; x < recti_right(area); x++) {
+            gfx_target_color(surface.target, y)[x] = background_at(x, y);
+        }
+    }
+}
+
+/* Every panel pixel of `dst` against the turned, nine-sliced picture: the
+ * sprite frame pixel a panel pixel shows, by the turn image_asset.turn()
+ * makes; translucent, that pixel blended one at a time over the background. */
+static void
+assert_geometry(int turns, int w, int h, int scale, bool translucent) {
+    const sprite_t s = translucent ? translucent_geometry_sprite() : geometry_sprite();
     const bool across = (turns & 1) != 0;
     const recti_t dst = {GEO_AT, GEO_AT, across ? h : w, across ? w : h};
     draw_clear(BACKGROUND);
+    if (translucent) {
+        paint_background(dst);
+    }
     draw_sprite_scaled(&s, dst, turns, scale);
     for (int py = 0; py < dst.h; py++) {
         for (int px = 0; px < dst.w; px++) {
@@ -277,7 +327,10 @@ assert_geometry(int turns, int w, int h, int scale) {
             const int ly[TURNS] = {py, h - 1 - px, h - 1 - py, px};
             const int sx = expected_source(lx[turns], w, GEO_W, GEO_LEFT, GEO_RIGHT, scale);
             const int sy = expected_source(ly[turns], h, GEO_H, GEO_TOP, GEO_BOTTOM, scale);
-            if (panel(dst.x + px, dst.y + py) != code(sx, sy)) {
+            const gfx_color_t expected =
+                translucent ? rgb565be_mix(background_at(dst.x + px, dst.y + py), code(sx, sy), cover_at(sx, sy))
+                            : code(sx, sy);
+            if (panel(dst.x + px, dst.y + py) != expected) {
                 char message[112];
                 (void)snprintf(message, sizeof message,
                                "turn %d size %dx%d scale %d panel (%d, %d) is not source (%d, %d)", turns, w, h, scale,
@@ -302,7 +355,7 @@ test_nine_slice_geometry_at_every_turn_and_size(void) {
     };
     for (int turns = 0; turns < TURNS; turns++) {
         for (size_t i = 0; i < sizeof sizes / sizeof sizes[0]; i++) {
-            assert_geometry(turns, sizes[i][0], sizes[i][1], UNSCALED);
+            assert_geometry(turns, sizes[i][0], sizes[i][1], UNSCALED, false);
         }
     }
 }
@@ -319,7 +372,25 @@ test_a_scaled_border_at_every_turn_and_size(void) {
     };
     for (int turns = 0; turns < TURNS; turns++) {
         for (size_t i = 0; i < sizeof sizes / sizeof sizes[0]; i++) {
-            assert_geometry(turns, sizes[i][0], sizes[i][1], ZOOM);
+            assert_geometry(turns, sizes[i][0], sizes[i][1], ZOOM, false);
+        }
+    }
+}
+
+/* A translucent picture, its edges long enough to blend as runs: every
+ * pixel the same as blending it alone, at every turn, size and scale. */
+static void
+test_translucent_edge_runs_blend_as_each_pixel_alone(void) {
+    fixture();
+    const int sizes[][3] = {
+        {LONG_EDGE, LONG_EDGE, UNSCALED},
+        {LONG_EDGE, GEO_H, UNSCALED},
+        {GEO_W * STRETCH, LONG_EDGE, UNSCALED},
+        {LONG_EDGE, LONG_EDGE, ZOOM},
+    };
+    for (int turns = 0; turns < TURNS; turns++) {
+        for (size_t i = 0; i < sizeof sizes / sizeof sizes[0]; i++) {
+            assert_geometry(turns, sizes[i][0], sizes[i][1], sizes[i][2], true);
         }
     }
 }
@@ -474,6 +545,7 @@ suite_draw_sprite(void) {
 #ifndef DEVICE_BUILD
     RUN_TEST(test_nine_slice_geometry_at_every_turn_and_size);
     RUN_TEST(test_a_scaled_border_at_every_turn_and_size);
+    RUN_TEST(test_translucent_edge_runs_blend_as_each_pixel_alone);
     RUN_TEST(test_a_stretched_corner_stays_1_to_1_and_an_edge_stretches_one_way);
     RUN_TEST(test_turned_the_top_border_lands_on_the_right);
     RUN_TEST(test_coverage_0_leaves_255_replaces_and_between_mixes);

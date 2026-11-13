@@ -5,6 +5,7 @@
 
 #include "asset/asset_bytes.h"
 #include "draw/draw.h"
+#include "draw/draw_blend.h"
 #include "draw/draw_image.h"
 #include "draw/draw_image_format.h"
 #include "gfx/gfx.h"
@@ -132,21 +133,38 @@ slice_source(const slice_axis_t* axis, int at) {
     return axis->lo + (((2 * (at - axis->out_lo)) + 1) * centre_src / (2 * centre_out));
 }
 
+/* `count` panel pixels that all show one source pixel: a stretched edge
+ * repeats one, so its run blends toward one colour at one share. */
+static inline void
+blend_run(gfx_color_t* dst, int count, gfx_color_t pixel, uint8_t cover) {
+    if (cover == SPRITE_COVER_FULL) {
+        for (int i = 0; i < count; i++) {
+            dst[i] = pixel;
+        }
+    } else if (count == 1) {
+        dst[0] = cover == 0 ? dst[0] : rgb565be_mix(dst[0], pixel, cover);
+    } else if (cover != 0) {
+        const rgb565_mix_toward_t toward = rgb565be_mix_toward(pixel, cover);
+        draw_blend_row(dst, &toward, (size_t)count);
+    }
+}
+
 /* One panel row's pixels [x0, x1): source pixel `base + map[col] * step`, the
  * same index in both planes, which share one stride. */
 static inline void
 blend_span(gfx_color_t* row, int x0, int x1, const int16_t* map, const sprite_t* s, size_t base, size_t step) {
     const gfx_color_t* color = s->color.pixels;
     const uint8_t* alpha = s->alpha.pixels;
-    for (int col = x0; col < x1; col++) {
-        const size_t at = base + ((size_t)map[col - x0] * step);
-        const gfx_color_t pixel = color[at];
-        const uint8_t cover = alpha == NULL ? SPRITE_COVER_FULL : alpha[at];
-        if (cover == SPRITE_COVER_FULL) {
-            row[col] = pixel;
-        } else if (cover != 0) {
-            row[col] = rgb565be_mix(row[col], pixel, cover);
+    int col = x0;
+    while (col < x1) {
+        const int16_t source = map[col - x0];
+        int end = col + 1;
+        while (end < x1 && map[end - x0] == source) {
+            end++;
         }
+        const size_t at = base + ((size_t)source * step);
+        blend_run(row + col, end - col, color[at], alpha == NULL ? SPRITE_COVER_FULL : alpha[at]);
+        col = end;
     }
 }
 
