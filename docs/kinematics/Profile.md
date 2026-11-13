@@ -18,16 +18,16 @@ rest at each end and the ramp's time, all in seconds and units of the line.
 | `motion_profile_cruise_speed` | The speed the cruise holds: the peak, or lower for a short move |
 | `motion_profile_duration_s` | From the first rest's start to the last rest's end |
 
-Each ramp's speed is a smoothstep of its time, $`u = t/T`$ through a ramp of
-$`T`$ seconds, so speed and place have no jumps. The place is the
+Each ramp's speed is a smoothstep of its time, *u* = *t*/*T* through a ramp
+of *T* seconds, so speed and place have no jumps. The place is the
 smoothstep's integral:
 
 ```math
-v(u)=v_c(3u^2-2u^3), \qquad x(u)=x_0+\frac{v_c T}{2}\,(2u^3-u^4)
+v(u)=v_c(3u^2-2u^3), \qquad x(u)=x_0+rac{v_c T}{2}\,(2u^3-u^4)
 ```
 
-A ramp covers $`v_c T/2`$. When two ramps at the peak would overrun the
-distance $`d`$, the cruise drops to $`v_c = d/T`$ and the ramps meet with no
-cruise between them.
+A ramp covers *v*<sub>c</sub>*T*/2. When two ramps at the peak would
+overrun the distance *d*, the cruise drops to *v*<sub>c</sub> = *d*/*T* and
+the ramps meet with no cruise between them.
 
 ![Place and speed against time for a 10-unit move that cruises at its peak and a 2-unit move whose ramps meet at half the peak](../images/kinematics/profile-move.png)
