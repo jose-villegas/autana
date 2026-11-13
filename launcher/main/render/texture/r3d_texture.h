@@ -64,6 +64,15 @@ asset_status_t r3d_texture_from_asset(const asset_view_t* asset, r3d_texture_t* 
 /* The same for the entry named `id` in `pack`. */
 asset_status_t r3d_texture_open(const asset_pack_t* pack, const char* id, r3d_texture_t* texture);
 
+/* The bytes of every level of `texture`. */
+size_t r3d_texture_texel_bytes(const r3d_texture_t* texture);
+
+/* Copies every level of `texture` to `to`, r3d_texture_texel_bytes() of
+ * them, and points the texture there: texels in the memory their owner
+ * chose rather than wherever the entry was read. Returns the byte after
+ * the copy. */
+uint8_t* r3d_texture_move_texels(r3d_texture_t* texture, uint8_t* to);
+
 /* Bytes of a level `side_log2` texels a side. */
 static inline uint32_t
 r3d_texture_level_bytes(int side_log2) {

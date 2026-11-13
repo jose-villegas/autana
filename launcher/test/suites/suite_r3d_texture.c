@@ -233,6 +233,26 @@ test_minified_triangle_takes_the_matching_level(void) {
     TEST_ASSERT_INT_WITHIN(1, expected >> 2, (int)rgb565_g6(rgb565_swap(buffers[(4 * SIDE) + 4])));
 }
 
+/* Moved texels draw what the entry's did, and the entry is no longer read:
+ * wiped after the move, the triangle still draws the same pixels. */
+static void
+test_moved_texels_draw_without_the_entry(void) {
+    fixture();
+    const r3d_span_vertex_t a = vertex(0, 0, 0.5F, 255), b = vertex(SIDE, 0, 0.5F, 255), c = vertex(0, SIDE, 0.5F, 255);
+    const r3d_span_uv_t uv[3] = {{0, 0}, {SIDE, 0}, {0, SIDE}};
+    const r3d_span_target_t from_entry = target_at(0), from_copy = target_at(1);
+    clear();
+    r3d_span_textured_triangle(&from_entry, &a, &b, &c, uv, texture);
+    const size_t bytes = r3d_texture_texel_bytes(texture);
+    uint8_t* moved = malloc(bytes);
+    TEST_ASSERT_NOT_NULL(moved);
+    TEST_ASSERT_EQUAL_PTR(moved + bytes, r3d_texture_move_texels(texture, moved));
+    memset(ltex, 0, TEX_BYTES);
+    r3d_span_textured_triangle(&from_copy, &a, &b, &c, uv, texture);
+    free(moved);
+    TEST_ASSERT_EQUAL_UINT16_ARRAY(buffers, buffers + (2 * PIXELS), 2 * PIXELS);
+}
+
 /* A texel at the material's mean (MEAN_INDEX) draws the vertex
  * colour itself: averaged over a 4x4 dither tile, within one level. */
 static int
@@ -672,6 +692,7 @@ run_r3d_texture_suite(void) {
     RUN_TEST(test_shared_edge_neither_cracks_nor_overlaps);
     RUN_TEST(test_affine_samples_the_texel_under_each_centre);
     RUN_TEST(test_minified_triangle_takes_the_matching_level);
+    RUN_TEST(test_moved_texels_draw_without_the_entry);
     RUN_TEST(test_texel_at_the_mean_draws_the_vertex_colour);
     RUN_TEST(test_entry_rejects_bad_headers);
     RUN_TEST(test_luvs_entry_opens_and_exposes_its_bits_and_uvs);

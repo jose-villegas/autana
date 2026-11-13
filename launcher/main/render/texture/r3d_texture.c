@@ -94,6 +94,26 @@ r3d_texture_open(const asset_pack_t* pack, const char* id, r3d_texture_t* textur
     return r3d_texture_from_asset(&view, texture);
 }
 
+size_t
+r3d_texture_texel_bytes(const r3d_texture_t* texture) {
+    size_t bytes = 0;
+    for (int l = 0; l < texture->levels; l++) {
+        bytes += r3d_texture_level_bytes(texture->size_log2 - l);
+    }
+    return bytes;
+}
+
+uint8_t*
+r3d_texture_move_texels(r3d_texture_t* texture, uint8_t* to) {
+    for (int l = 0; l < texture->levels; l++) {
+        const uint32_t bytes = r3d_texture_level_bytes(texture->size_log2 - l);
+        memcpy(to, texture->texels[l], bytes);
+        texture->texels[l] = to;
+        to += bytes;
+    }
+    return to;
+}
+
 r3d_span_uv_t
 r3d_texture_uv(const r3d_mesh_texturing_t* texturing, const r3d_texture_t* texture, int cluster, int vertex) {
     const float side = (float)(1U << texture->size_log2);

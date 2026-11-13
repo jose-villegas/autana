@@ -290,11 +290,31 @@ open_batches(scene_t* scene, const asset_pack_t* pack) {
 }
 
 /* A renderer's textures (render/texture/): its mesh's LUVS sibling and the
- * materials it names, in one block. */
+ * materials it names, in one block, and their texels copied out of the pack
+ * into a second. */
 typedef struct {
     r3d_mesh_texturing_t texturing;
+    uint8_t* texels;
     r3d_texture_t materials[];
 } scene_texturing_t;
+
+/* Copies the texels of `block`'s materials into one app-heap block. */
+static bool
+copy_texels(scene_texturing_t* block) {
+    size_t bytes = 0;
+    for (int k = 0; k < block->texturing.material_count; k++) {
+        bytes += r3d_texture_texel_bytes(&block->materials[k]);
+    }
+    block->texels = scene_allocate(bytes, MEMORY_APP);
+    if (block->texels == NULL) {
+        return false;
+    }
+    uint8_t* at = block->texels;
+    for (int k = 0; k < block->texturing.material_count; k++) {
+        at = r3d_texture_move_texels(&block->materials[k], at);
+    }
+    return true;
+}
 
 /* Opens `r`'s textures when they are opted into and its mesh `mesh_id` has
  * an LUVS sibling; otherwise the mesh draws plain. */
@@ -314,11 +334,15 @@ open_texturing(scene_renderer_t* r, const asset_pack_t* pack, const char* mesh_i
     if (block == NULL) {
         return scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, mesh_id);
     }
+    block->texels = NULL;
     r->texturing = block;
     status =
         r3d_texture_texturing_from_asset(&uvs, pack, mesh_id, &r->mesh, block->materials, count, &block->texturing);
     if (status != ASSET_OK) {
         return scene_failure_make(SCENE_ERR_ASSET, status, mesh_id);
+    }
+    if (!copy_texels(block)) {
+        return scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, mesh_id);
     }
     r->mesh.texturing = &block->texturing;
     return scene_failure_make(SCENE_OK, ASSET_OK, mesh_id);
@@ -489,7 +513,11 @@ free_columns(scene_t* scene) {
     memory_free(scene->lod_bits);
     memory_free(scene->chunks);
     for (int i = 0; i < scene->renderer_count; i++) {
-        memory_free(scene->renderers[i].texturing);
+        scene_texturing_t* textures = scene->renderers[i].texturing;
+        if (textures != NULL) {
+            memory_free(textures->texels);
+        }
+        memory_free(textures);
     }
     scene_hierarchy_release(scene);
     scene_free_kept(scene->resident);
