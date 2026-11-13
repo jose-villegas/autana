@@ -217,6 +217,15 @@ mathf_lerp(float a, float b, float t) {
     return a + (b - a) * t;
 }
 
+/* GLSL's smoothstep: 0 at or below `edge0`, 1 at or above `edge1`, and
+ * 3u^2 - 2u^3 between, u the place of `x` from one edge to the other; eases
+ * in and out, so a change it drives neither starts nor stops sharply. */
+static inline float
+mathf_smoothstep(float edge0, float edge1, float x) {
+    const float u = mathf_clamp((x - edge0) / (edge1 - edge0), 0.0F, 1.0F);
+    return u * u * (3.0F - (2.0F * u));
+}
+
 static inline float
 mathf_min(float a, float b) {
     return a < b ? a : b;

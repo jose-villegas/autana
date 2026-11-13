@@ -43,6 +43,7 @@ These take and return plain integers, not structs.
 | `mathf_zero()`, `mathf_half()`, `mathf_one()`, `mathf_two()`, `mathf_four()` | scalar constants | $`0, 1/2, 1, 2, 4`$ |
 | `mathf_abs(a)` | absolute value; negative zero becomes positive zero | $`\lvert a\rvert`$ |
 | `mathf_lerp(a, b, t)` | single-precision interpolation | $`a + (b - a)t`$ |
+| `mathf_smoothstep(e0, e1, x)` | GLSL smoothstep: eased 0 to 1 between two edges, flat past them | $`3u^2 - 2u^3`$, $`u = \mathrm{clamp}((x - e_0)/(e_1 - e_0), 0, 1)`$ |
 | `mathf_min(a, b)` | smaller value by comparison | $`\min(a,b)`$ |
 | `mathf_max(a, b)` | larger value by comparison | $`\max(a,b)`$ |
 | `mathf_clamp(v, lo, hi)` | inclusive bounds | $`\min(\max(v,lo),hi)`$ |
