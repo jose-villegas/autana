@@ -383,6 +383,20 @@ class ClusterTreeTests(unittest.TestCase):
         self.assertEqual(sorted(order), list(range(count)))
         self.assertLessEqual(self.depth(nodes), int(np.ceil(np.log2(count))))
 
+    def test_the_median_tree_holds_as_many_items_as_its_depth_and_leaves_allow(self):
+        """Binary nodes and no leaf weight: the surface area tree needs one item a leaf, too deep, so the median
+        splits go to the bound with leaves of max_items, and one more item cannot fit."""
+        max_items, max_depth = 3, 2
+        count = max_items << max_depth
+        lo = np.arange(count, dtype=float)[:, None] * np.ones(3)
+        order, nodes = self.tree(lo, lo + 1.0, leaf_weight=0, max_items=max_items, fanout=2, max_depth=max_depth)
+        self.assertEqual(sorted(order), list(range(count)))
+        self.assertLessEqual(self.depth(nodes), max_depth)
+        self.assertEqual([max_items] * (1 << max_depth), [n["count"] for n in nodes if n["leaf"]])
+        lo = np.arange(count + 1, dtype=float)[:, None] * np.ones(3)
+        with self.assertRaisesRegex(AssertionError, "more items"):
+            self.tree(lo, lo + 1.0, leaf_weight=0, max_items=max_items, fanout=2, max_depth=max_depth)
+
     def test_a_tree_too_deep_for_its_bound_is_built_by_median_splits_within_it(self):
         _, unbound = self.tree(leaf_weight=1)
         bound = self.depth(unbound) - 1

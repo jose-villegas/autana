@@ -23,7 +23,8 @@ def build_tree(lo, hi, weights, leaf_weight, max_items, fanout, max_depth, node_
     Each split is the cheapest cut of the items sorted by box centre along one axis, the one nearest the
     middle among equal costs; the binary splits then collapse into nodes of up to `fanout` children, the
     largest child opening first. A tree deeper than `max_depth` below its root is built again by median
-    splits, which reach a leaf of at most max_items items within it."""
+    splits, and says so: those reach a leaf of at most max_items items within it, its weights no longer held
+    to leaf_weight."""
     lo = np.asarray(lo, dtype=np.float64)
     hi = np.asarray(hi, dtype=np.float64)
     weights = np.asarray(weights)
@@ -51,7 +52,8 @@ def build_tree(lo, hi, weights, leaf_weight, max_items, fanout, max_depth, node_
         pass
 
     def by_area(members, depth):
-        # Folding at most fanout children into a node takes log2(fanout) binary levels off at best.
+        # A recursion cutoff only: the collapsed depth checked below is the bound, and the median tree takes
+        # over past either.
         if depth > max_depth * int(np.log2(fanout)):
             raise TooDeep
         if len(members) == 1:
@@ -101,8 +103,10 @@ def build_tree(lo, hi, weights, leaf_weight, max_items, fanout, max_depth, node_
         root = collapse(by_area(items, 0))
         if depth(root) <= max_depth:
             return root
+        found = f"depth {depth(root)}"
     except TooDeep:
-        pass
+        found = f"over {max_depth * int(np.log2(fanout))} binary levels"
+    print(f"cluster tree: {len(items)} items, surface area tree {found} past {max_depth}; built by median splits")
     return collapse(by_median(items, 0))
 
 

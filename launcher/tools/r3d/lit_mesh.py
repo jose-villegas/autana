@@ -152,14 +152,15 @@ def assemble(q, col, entries, position_scale, leaf_triangles, groups=None):
     hi = np.array([e["box"][1] for e in entries])
     weights = np.array([len(e["tris"]) for e in entries])
 
+    coarse = np.array([groups is not None and e["own"] != LOD_NONE for e in entries], dtype=bool)
+
     def tree(items):
-        # One level under the depth limit: two_trees() puts a root above the finest tree.
+        # two_trees() puts a root above the finest tree, a level of the depth limit.
         root = build_tree(lo[items], hi[items], weights[items], leaf_triangles, MAX_NODE_CHILDREN, NODE_FANOUT,
-                          TREE_DEPTH_MAX - 1)
+                          TREE_DEPTH_MAX - int(coarse.any()))
         order, nodes = flatten_tree(root)
         return [int(items[i]) for i in order], nodes
 
-    coarse = np.array([groups is not None and e["own"] != LOD_NONE for e in entries], dtype=bool)
     if coarse.any():
         by_own = sorted(np.flatnonzero(coarse), key=lambda i: entries[i]["own"])
         order, nodes = two_trees(*tree(np.flatnonzero(~coarse)), *run_tree(by_own, weights, leaf_triangles))
