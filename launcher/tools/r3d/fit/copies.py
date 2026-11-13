@@ -22,6 +22,13 @@ HIDDEN_MEAN_GROWTH = 0.0007
 HIDDEN_WORST_GROWTH = 0.010
 
 
+def finest_triangles(entries, names):
+    """The triangles the bundle meshes `names` store on their finest level, each mesh once: what the ceiling
+    counts, so a copy shape counts once however many copies place it."""
+    return sum(int(sum(tcount for (_, _, _, tcount, *_), level0 in zip(mesh.clusters, finest(mesh)) if level0))
+               for mesh in (read_bundle_mesh(entries, name) for name in sorted(set(names))))
+
+
 def placed_copies(bundle, flat):
     """Every copy in a start bundle placed under its transform, as one FitMesh in the rest's units: a copy
     mesh's finest clusters as the bundle stores them, their own vertices with positions welded, one colour per

@@ -133,14 +133,29 @@ def thin_meshes(src, selected, thin, seed):
     return keep
 
 
+def start_ceiling(renderer):
+    """What caps the mesh the import bakes: the variant's ceiling, unless a fit follows, whose fitted bundle the
+    ceiling caps instead (fit/stage.py), so its start keeps the variant's triangles and the copies."""
+    return None if getattr(renderer, "fit", None) is not None else getattr(renderer.variant, "ceiling", None)
+
+
+def carve_room(renderer):
+    """The triangles the derived copy shapes may take, each once: the ceiling less the variant's triangles, or,
+    when a fit prunes the rest, less the fit's budget, the least the rest keeps; the fit prunes to the ceiling
+    less what the copies took. None: no ceiling, no cap."""
+    ceiling = getattr(renderer.variant, "ceiling", None)
+    fit = getattr(renderer, "fit", None)
+    if ceiling is None:
+        return None
+    return ceiling - (renderer.variant.triangles if fit is None else fit.budget)
+
+
 def carve_selection(src, tri_v, tri_m, selected, settings, job, scene):
     """The rules' objects plus every free repeat, each carried by one rule per shape whose `triangles` is pinned
     or derived (objects/carve.py), and the derived shapes for the report."""
     position_scale = POSITION_SCALE if settings.position_scale is None else settings.position_scale
     selected = selected | free_repeats(src.p, tri_v, tri_m, src.tri_o, src.object_names, selected, position_scale)
-    variant = job.renderer.variant
-    ceiling = getattr(variant, "ceiling", None)
-    room = None if ceiling is None else ceiling - variant.triangles
+    room = carve_room(job.renderer)
     eyes, focal, near = views(scene, job.renderer)
     budgets, shapes = derived_budgets(src.p, tri_v, tri_m, src.tri_o, selected, room, eyes, focal, near)
     for shape in shapes:
@@ -244,7 +259,7 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
             positions, rgb, tris, tri_mat = simplify(positions, rgb.astype(np.float64), tris, tri_mat, renderer.variant.triangles,
                                                    allocation=Allocation(tri_o=np.concatenate(all_obj), object_names=src.object_names,
                                                                          material_names=src.names, meshes=meshes, selection=selected,
-                                                                         ceiling=getattr(renderer.variant, 'ceiling', None),
+                                                                         ceiling=start_ceiling(renderer),
                                                                          shade=(lambda p, c, t, m, **kw: shade_placed(src, job, scene, p, c, t, m,
                                                                                                              intersector, bounce, **kw)) if job.bake else None,
                                                                          shade_shared=(lambda p, c, t, m, **kw: shade_placed(src, job, scene, p, c, t, m,
@@ -257,7 +272,7 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
             rgb = np.clip(np.round(rgb), 0, 255).astype(np.int64)
             tri_double = np.isin(tri_mat, [index for index, name in enumerate(src.names) if name in double_names]).astype(np.int64)
         step["triangles_out"] = len(tris)
-    check_ceiling(len(tris), getattr(renderer.variant, 'ceiling', None))
+    check_ceiling(len(tris), start_ceiling(renderer))
     if derived is not None and "passes" in mesh_report:
         mesh_report["detail"], mesh_report["authoring"] = detail_report(derived.shapes, mesh_report["passes"],
                                                                         src.object_names, derived.focal)
