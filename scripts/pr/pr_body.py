@@ -229,7 +229,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     if args.command == 'check':
-        problems = check(args.body.read_text(encoding='utf-8'))
+        # utf-8-sig: Windows PowerShell 5.1 writes a byte order mark.
+        problems = check(args.body.read_text(encoding='utf-8-sig'))
         for problem in problems:
             print(problem, file=sys.stderr)
         return 1 if problems else 0

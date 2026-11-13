@@ -30,12 +30,8 @@ jobs:
         run: npm ci --prefix scripts/gates
 
       # Only a description that may hold a diagram pays for mermaid-cli and its Chrome.
-      - name: Install the pinned mermaid-cli
+      - uses: ./.github/actions/mermaid-cli
         if: contains(github.event.pull_request.body, 'mermaid')
-        run: |
-          npm ci --prefix scripts/gates/mermaid
-          echo '{"args": ["--no-sandbox"]}' > "$RUNNER_TEMP/puppeteer-config.json"
-          echo "CHECK_MERMAID_MMDC_ARGS=-p $RUNNER_TEMP/puppeteer-config.json" >> "$GITHUB_ENV"
 
       - name: Check the PR description
         env:

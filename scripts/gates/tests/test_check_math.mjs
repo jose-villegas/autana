@@ -106,6 +106,8 @@ test('a code fence that never closes is refused at its opening line', { skip }, 
     ['````\n```\nx', 1],
     ['```', 1],
     ['> ```\n> x', 1],
+    // A lone CR ends a line for markdown-it too.
+    ['a\rb\n\n```\nx\n```\n\n```\ny', 8],
     // A text replace that swallowed the closing fence and joined the next paragraph.
     ['```mermaid\nflowchart LR\n  a --> bHerd text.\n\n| A |\n|---|\n| 1 |', 1],
   ];

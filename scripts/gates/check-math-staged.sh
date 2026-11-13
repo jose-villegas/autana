@@ -1,7 +1,8 @@
 #!/bin/sh
 #
 # Validates the STAGED content of every staged Markdown file that has a `$`
-# or a ```math fence, so a formula GitHub cannot render never reaches a commit.
+# or a code fence, so neither a formula GitHub cannot render nor a fence that
+# never closes reaches a commit.
 #
 #   scripts/gates/check-math-staged.sh
 #
@@ -26,7 +27,7 @@ files=""
 IFS='
 '
 for file in $staged; do
-    if git show ":$file" | grep -q -e '\$' -e '^[[:space:]]*```[[:space:]]*math[[:space:]]*$'; then
+    if git show ":$file" | grep -q -e '\$' -e '^[[:space:]>]*```' -e '^[[:space:]>]*~~~'; then
         files="$files
 $file"
     fi

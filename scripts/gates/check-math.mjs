@@ -58,6 +58,8 @@ const GITHUB_RULES = { opener: OPENER_PRECEDER, closerForbidden: /[A-Za-z0-9_`]/
 // Reading the source, Markdown's own `*`, `_`, `~`, `[` and `>` may sit against a `$`
 // that GitHub, after removing them, accepts.
 const WRITTEN_RULES = { opener: /[\s(*_~[>]/, closerForbidden: /[A-Za-z0-9`]/ };
+// Markdown's line ends, as markdown-it counts lines.
+const LINE_BREAK = /\r\n?|\n/;
 const FOOTNOTE_DEFINITION = /^\s{0,3}\[\^[^\]]+\]:/;
 
 export const INSTALL_HINT = 'npm ci --prefix scripts/gates';
@@ -292,13 +294,25 @@ function markdownParser() {
 // Every formula GitHub hands to MathJax, in document order: [{ line, delimiter, source,
 // display }], `source` being what <math-renderer> receives. `blocks` are the paragraphs,
 // headings and table rows Markdown parses, as 1-based inclusive line ranges; `opaque` are
-// the lines of code and HTML blocks.
+// the lines of code and HTML blocks. `unclosedFences` are the code fences with no closing
+// fence, [{ line, markup }], which run to the end of their container and, at the top level,
+// swallow the rest of the page.
+// markdown-it marks no unclosed fence, so the last line a fence spans is read: a closer of
+// its own character, at least as long as the opener, after any blockquote markers.
+function closes(fence, lines) {
+  const [first, end] = fence.map;
+  const closer = new RegExp(`^[ \t>]*${fence.markup[0]}{${fence.markup.length},}[ \t]*$`);
+  return end - 1 > first && closer.test(lines[end - 1]);
+}
+
 export function extractFormulas(text) {
   const tokens = markdownParser().parse(text, {});
+  const lines = text.split(LINE_BREAK);
   const formulas = [];
   const blocks = new Map();
   const opaque = [];
   const nestedFences = [];
+  const unclosedFences = [];
   let line = 0;
   let footnote = false;
   let listDepth = 0;
@@ -315,10 +329,13 @@ export function extractFormulas(text) {
         opaque.push({ first: token.map[0] + 1, last: token.map[1] });
       }
     }
+    if (token.type === 'fence' && !closes(token, lines)) {
+      unclosedFences.push({ line: token.map[0] + 1, markup: token.markup });
+    }
     if (token.type === 'fence' && token.info.trim().split(/\s+/)[0] === 'math') {
       const source = `$$${displayLines(token.content).trim()}$$`;
       formulas.push({ line: line + 1, delimiter: '```math', source, display: true });
-      if (listDepth > 0 || /^\s/.test(text.split(/\r?\n/, line)[line - 1])) {
+      if (listDepth > 0 || /^\s/.test(lines[line - 1])) {
         nestedFences.push(line);
       }
     } else if (token.type === 'html_block') {
@@ -334,7 +351,7 @@ export function extractFormulas(text) {
     }
   }
   formulas.sort((a, b) => a.line - b.line);
-  return { formulas, blocks: [...blocks.values()], opaque, nestedFences };
+  return { formulas, blocks: [...blocks.values()], opaque, nestedFences, unclosedFences };
 }
 
 // The formulas as written in some Markdown source, before Markdown touches it, by
@@ -517,37 +534,14 @@ export function renderError(formula, pageBraces = 0) {
 // ---------------------------------------------------------------------------------------
 // Checking a document.
 
-// The code fences with no closing fence, [{ line, markup }] with 1-based lines, which run to the end of their
-// container and, at the top level, swallow the rest of the page. markdown-it marks no
-// unclosed fence, so the last line a fence spans is read: a closer of its own character,
-// at least as long as the opener, after any blockquote markers.
-export function unclosedFences(text) {
-  const lines = text.split(/\r?\n/);
-  return markdownParser()
-    .parse(text, {})
-    .filter((token) => {
-      if (token.type !== 'fence') {
-        return false;
-      }
-      const [first, end] = token.map;
-      const closer = new RegExp(`^[ \t>]*${token.markup[0]}{${token.markup.length},}[ \t]*$`);
-      return end - 1 <= first || !closer.test(lines[end - 1]);
-    })
-    .map((token) => ({ line: token.map[0] + 1, markup: token.markup }));
-}
-
 // Every problem in one Markdown document: [{ line, delimiter, source, message }].
 export function checkDocument(text) {
-  const { formulas, blocks, opaque, nestedFences } = extractFormulas(text);
-  const problems = nestedFences.map((line) => ({
-    line,
-    delimiter: '```math',
-    source: text.split(/\r?\n/)[line - 1].trim(),
-    message: NESTED_FENCE,
-  }));
-  for (const { line, markup } of unclosedFences(text)) {
-    problems.push({ line, delimiter: markup, source: text.split(/\r?\n/)[line - 1].trim(), message: UNCLOSED_FENCE });
-  }
+  const { formulas, blocks, opaque, nestedFences, unclosedFences } = extractFormulas(text);
+  const lines = text.split(LINE_BREAK);
+  const problems = [
+    ...nestedFences.map((line) => ({ line, delimiter: '```math', message: NESTED_FENCE })),
+    ...unclosedFences.map(({ line, markup }) => ({ line, delimiter: markup, message: UNCLOSED_FENCE })),
+  ].map((problem) => ({ ...problem, source: lines[problem.line - 1].trim() }));
   let pageBraces = 0;
   for (const formula of formulas) {
     const message = renderError(formula, pageBraces);
