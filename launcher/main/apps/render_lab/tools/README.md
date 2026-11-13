@@ -323,7 +323,7 @@ can differ slightly from an unbroken run, which steps clips by frame time.
 | The pool, and each copy's start | `launcher/demo/capybara/herd.scene.toml` |
 | The walk: area, legs, steering limits and gait rates | `herd/scene_herd.c` |
 | The camera, orbited round the area | [`lab/lab_orbit.h`](../../../lab/lab_orbit.h) |
-| Each size's copies, and a turn's frame and animation-step cost | [`tests/suite_herd_perf.c`](../tests/suite_herd_perf.c) |
+| Each size's copies, and a turn's frame and animation-step cost with their stages (`herd.wander`, `herd.gait`, the animation step's and r3d's); a paced row steps each frame by the last one's time | [`tests/suite_herd_perf.c`](../tests/suite_herd_perf.c) |
 | The suite's timing table for `perf_compare.sh` | [`herd_tables.py`](herd_tables.py) `--perf-table CAPTURE TABLE` |
 
 ### Small fill

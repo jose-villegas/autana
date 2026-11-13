@@ -146,6 +146,19 @@ test_step_holds_speed_and_turn_rate(void) {
     TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, 0.0F, angle_between(a.heading, MATH_PI));
 }
 
+/* Moving just past -pi from a heading just under pi: the turn takes the short
+ * way across the seam, and the heading stays in [-pi, pi]. */
+static void
+test_step_turns_the_short_way_across_the_seam(void) {
+    const float past = 0.1F;
+    const float travel = past - MATH_PI; /* just past -pi, so the short way to it crosses the seam */
+    steer2f_agent_t a = {{0.0F, 0.0F}, {cosf(travel), sinf(travel)}, MATH_PI - past};
+    steer2f_step(&a, vec2f_zero(), STEP_S, &LIMITS);
+    TEST_ASSERT_TRUE(a.heading >= -MATH_PI && a.heading <= MATH_PI);
+    TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, LIMITS.turn_rate * STEP_S, angle_between(a.heading, MATH_PI - past));
+    TEST_ASSERT_TRUE(angle_between(a.heading, travel) < angle_between(MATH_PI - past, travel));
+}
+
 static void
 test_step_moves_by_velocity_and_a_still_agent_keeps_its_heading(void) {
     steer2f_agent_t a = {{1.0F, 1.0F}, {0.0F, 0.0F}, 1.0F};
@@ -170,5 +183,6 @@ suite_steer2f(void) {
     RUN_TEST(test_contain_is_zero_inside_and_turns_back_outside);
     RUN_TEST(test_step_holds_speed_and_turn_rate);
     RUN_TEST(test_step_moves_by_velocity_and_a_still_agent_keeps_its_heading);
+    RUN_TEST(test_step_turns_the_short_way_across_the_seam);
 }
 SUITE_REGISTER(suite_steer2f)

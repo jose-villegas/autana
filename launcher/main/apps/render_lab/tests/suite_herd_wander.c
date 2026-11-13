@@ -28,7 +28,15 @@ static const gait_step_t STEPS[] = {
     {.clip = 2, .ground_mps = 1.6F},
     {.clip = 3, .ground_mps = 3.5F},
 };
-static const gait_t GAIT = {STEPS, 4, 0.75F, 1.4F, 0.2F, 300};
+static const gait_t GAIT = {
+    .steps = STEPS,
+    .count = 4,
+    .rate_min = 0.75F,
+    .rate_max = 1.4F,
+    .band = 0.2F,
+    .stop_mps = 0.05F,
+    .blend_ms = 300,
+};
 static const herd_wander_config_t CONFIG = {
     .limits = {.max_speed = 4.0F,
                .max_accel = 6.0F,
@@ -167,6 +175,21 @@ test_every_copy_walks_and_changes_gait(void) {
     }
 }
 
+/* A copy that moves faster than the stop speed plays a moving clip at every
+ * step, leg starts and arrivals included: none stands in its still clip and slides. */
+static void
+test_no_copy_stands_still_while_it_moves(void) {
+    begin(&a);
+    for (uint32_t t = 0; t < LONG_MS; t += HERD_WANDER_STEP_MS) {
+        herd_wander_advance(&a, HERD_WANDER_STEP_MS);
+        for (int i = 0; i < HERD_WANDER_MAX; i++) {
+            if (vec2f_length(a.walker[i].agent.velocity) > GAIT.stop_mps) {
+                TEST_ASSERT_TRUE(STEPS[a.walker[i].gait.step].ground_mps > 0.0F);
+            }
+        }
+    }
+}
+
 static void
 test_the_clip_time_follows_the_rate(void) {
     begin(&a);
@@ -190,6 +213,7 @@ run_herd_wander_suite(void) {
     RUN_TEST(test_a_copy_faces_its_heading_and_the_heading_reads_back);
     RUN_TEST(test_copies_keep_inside_the_area_and_apart);
     RUN_TEST(test_every_copy_walks_and_changes_gait);
+    RUN_TEST(test_no_copy_stands_still_while_it_moves);
     RUN_TEST(test_the_clip_time_follows_the_rate);
 }
 

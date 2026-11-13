@@ -25,6 +25,7 @@
 #include "math/linear/quatf.h"
 #include "math/scalar/math_const.h"
 #include "math/scalar/units.h"
+#include "profile/frame_cost.h"
 #include "render/context/render_context.h"
 #include "scene/animator/animator.h"
 #include "scene/camera/camera.h"
@@ -62,7 +63,7 @@ static int pool;
 #define HERD_SEPARATION_M    1.2F
 #define HERD_HORIZON_S       1.0F
 #define HERD_TURN_RATE       MATH_PI
-#define HERD_HEADING_SPEED   0.05F /* m/s below which a copy keeps its heading */
+#define HERD_STILL_MPS       0.05F /* m/s up to which a copy stands: keeps its heading, plays its still clip */
 /* A clip plays at 0.75 to 1.4 of its speed before the next one fits better;
  * a held clip reaches 0.1 m/s past its range. */
 #define HERD_GAIT_RATE_MIN   0.75F
@@ -140,6 +141,7 @@ build_walk(void) {
                     .rate_min = HERD_GAIT_RATE_MIN,
                     .rate_max = HERD_GAIT_RATE_MAX,
                     .band = HERD_GAIT_BAND_MPS,
+                    .stop_mps = HERD_STILL_MPS,
                     .blend_ms = CAPYBARA_CLIP_BLEND_MS};
     config = (herd_wander_config_t){
         .limits = {.max_speed = count > 0 ? steps[count - 1].ground_mps : 0.0F,
@@ -147,7 +149,7 @@ build_walk(void) {
                    .turn_rate = HERD_TURN_RATE,
                    .arrive_radius = HERD_ARRIVE_RADIUS_M,
                    .separation_radius = HERD_SEPARATION_M,
-                   .heading_speed = HERD_HEADING_SPEED,
+                   .heading_speed = HERD_STILL_MPS,
                    .horizon_s = HERD_HORIZON_S},
         .area_radius = HERD_AREA_RADIUS_M,
         .leg_min_m = HERD_LEG_MIN_M,
@@ -188,12 +190,16 @@ place_walkers(void) {
 /* Moves the herd on: places the copies and gives their animators any new clip and rate. */
 static void
 walk(uint32_t dt_ms) {
+    FRAME_COST_BEGIN(wandered_from);
     herd_wander_advance(&wander, dt_ms);
     place_walkers();
+    FRAME_COST_END(wandered_from, "herd.wander");
+    FRAME_COST_BEGIN(gaited_from);
     for (int i = 0; i < wander.count; i++) {
         gait_apply(copies[i], &gait, applied[i], wander.walker[i].gait);
         applied[i] = wander.walker[i].gait;
     }
+    FRAME_COST_END(gaited_from, "herd.gait");
 }
 
 /* The herd at t_ms from its start, held: every copy in its clip at the time

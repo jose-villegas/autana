@@ -1,9 +1,11 @@
 /*
  * gait: which clip a walking character plays at a ground speed, and how fast,
  * so its feet keep pace with the ground. Steps are clips by the ground speed
- * each shows at playback 1, slowest first (a still clip at 0). A speed between
- * two steps takes the nearer one; a step is held while the speed stays within
- * `band` of its range, so a speed near a boundary does not flip clips.
+ * each shows at playback 1, slowest first (a still clip at 0). A still step
+ * holds only up to `stop_mps`: any faster speed takes the slowest moving step,
+ * at a rate the clamp slows, so a slow walker walks instead of sliding. Between
+ * two moving steps a speed takes the nearer one, and a step is held while the
+ * speed stays within `band` of its range, so it does not flip clips.
  */
 #pragma once
 
@@ -20,7 +22,8 @@ typedef struct {
     const gait_step_t* steps; /* slowest first */
     int count;
     float rate_min, rate_max; /* playback rates a moving step keeps to */
-    float band;               /* metres per second a held step reaches past its range */
+    float band;               /* metres per second a held moving step reaches past its range */
+    float stop_mps;           /* the fastest speed a still step plays at */
     uint32_t blend_ms;        /* the cross-fade into a new step */
 } gait_t;
 
