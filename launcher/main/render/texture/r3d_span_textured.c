@@ -77,8 +77,9 @@ plane_of(const frame_t* f, float va, float vb, float vc) {
 /* What every span of one triangle reads. */
 typedef struct {
     const uint8_t* texels;
-    uint32_t mask;      /* the level's side less one */
-    uint32_t row_shift; /* log2 of the side */
+    uint32_t mask;     /* the level's side less one */
+    uint32_t row_mask; /* mask, moved up to v's place in a texel offset */
+    uint32_t v_shift;  /* what lands v's integer bits at that place */
     const r3d_texture_t* texture;
 } sampler_t;
 
@@ -91,7 +92,7 @@ typedef struct {
 
 static inline __attribute__((always_inline)) uint32_t
 texel(const sampler_t* s, uint32_t uv) {
-    const uint32_t o = ((((uv >> V_INT_SHIFT) & s->mask) << s->row_shift) | ((uv >> U_INT_SHIFT) & s->mask));
+    const uint32_t o = ((uv >> s->v_shift) & s->row_mask) | ((uv >> U_INT_SHIFT) & s->mask);
     return (uint32_t)(s->texels[o >> 1] >> ((o & 1U) * NIBBLE_BITS)) & NIBBLE_MASK;
 }
 
@@ -220,7 +221,9 @@ set_up(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[CORNERS
     su->s = (plane_t){su->s.base * scale, su->s.dx * scale, su->s.dy * scale};
     su->t = (plane_t){su->t.base * scale, su->t.dx * scale, su->t.dy * scale};
     const int side_log2 = texture->size_log2 - level;
-    su->sampler = (sampler_t){texture->texels[level], (1U << side_log2) - 1U, (uint32_t)side_log2, texture};
+    const uint32_t mask = (1U << side_log2) - 1U;
+    su->sampler =
+        (sampler_t){texture->texels[level], mask, mask << side_log2, (uint32_t)(V_INT_SHIFT - side_log2), texture};
     su->level = plane_of(&f, light_level(v[0]), light_level(v[1]), light_level(v[2]));
     return true;
 }
