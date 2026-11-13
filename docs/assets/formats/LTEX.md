@@ -12,6 +12,8 @@ texture k of mesh `<mesh_id>` is the entry `<mesh_id>.t<k>`.
 
 ![Bistro's street on host: the source render, the vertex colours alone, and the cobblestones and beige brick textured, with each one's CIE76 error against the source](../../images/render/bistro-street-textured.png)
 
+![The same frame's squares that differ most, zoomed: source, vertex colours and textured](../../images/render/bistro-street-textured.crops.png)
+
 ```mermaid
 ---
 config:

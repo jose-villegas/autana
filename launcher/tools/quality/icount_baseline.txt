@@ -59,7 +59,7 @@
 2494629	sand_water_step
 43534	span_gouraud
 15884	span_solid
-83321	span_textured
+80248	span_textured
 2160	ui_face_alpha
 3836	ui_face_button
 2687	ui_face_caption
