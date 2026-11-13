@@ -32,7 +32,7 @@
  * bake lock skips that suite rather than fail it. The host runner fails a run
  * in which a suite reads a pack it did not name, so no read goes unnamed.
  * At most SUITE_READS_MAX suites name packs; one past it fails the run. */
-#define SUITE_READS_MAX 17
+#define SUITE_READS_MAX 19
 void suite_reads(const char* name, const char* const* packs);
 
 #define SUITE_READS(fn, ...)                                                                                           \
