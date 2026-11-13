@@ -25,6 +25,7 @@
 #include "frame/test_frame.h"
 #include "frame_profile.h"
 #include "gfx/gfx.h"
+#include "profile/frame_cost.h"
 #include "render/context/render_context.h"
 #include "render/framegen/framegen.h"
 #include "scene/animator/animator.h"
@@ -37,13 +38,16 @@
 static const char* TAG = "framegen";
 
 /* How far ahead a generated frame looks: one displayed frame. */
-#define FRAMEGEN_AHEAD_MS RENDER_LAB_FRAME_TARGET_MS
+#define FRAMEGEN_AHEAD_MS    RENDER_LAB_FRAME_TARGET_MS
 /* Poses timed along each path. */
-#define FRAMEGEN_POSES    24
-#define FRAMEGEN_PERCENT  100
+#define FRAMEGEN_POSES       24
+#define FRAMEGEN_PERCENT     100
 /* A modes line: one scenario's path played in real time in one mode. */
+/* The raster's bracket round the still part's copy (raster.c keep_still()). */
+#define FRAMEGEN_STILL_STAGE "r3d.still"
 #define FRAMEGEN_MODES_LINE                                                                                            \
-    "framegen_modes: %s framegen=%d budget_ms=%d frames=%d drawn=%d mean_us=%d p95_us=%d mean_height=%d"
+    "framegen_modes: %s framegen=%d budget_ms=%d frames=%d drawn=%d mean_us=%d p95_us=%d mean_height=%d "              \
+    "still_us=%d"
 /* A profile line: per pose, the target's clear alone, the warp with every
  * splat off screen (clear, reads and maths), to the drawn view itself
  * (in-order writes) and to the next view (the real scatter). */
@@ -263,10 +267,13 @@ test_mode(void) {
     (void)lab_test_frame_dt(0, false, NULL); /* warm-up, not counted */
     const frame_profile_scenario_t playback = {scenario->scene->key, (int64_t)path.duration_ms * MATH_US_PER_MS};
     played_t played = {0};
+    frame_cost_take_clear(); /* the still part's copy, from this path alone */
     const frame_profile_t p = frame_profile_play(&playback, shown_frame, &played, NULL);
     TEST_ASSERT_GREATER_THAN_INT(0, played.drawn);
+    /* Per drawn frame: only a drawn frame keeps its still part. */
+    const int64_t still_us = frame_cost_take_mean_us(FRAMEGEN_STILL_STAGE, (uint32_t)played.drawn);
     ESP_LOGI(TAG, FRAMEGEN_MODES_LINE, scenario->scene->key, mode->generating, mode->budget_ms, p.frames, played.drawn,
-             (int)p.frame_us.avg, (int)p.frame_us.p95, (int)(played.height_sum / played.drawn));
+             (int)p.frame_us.avg, (int)p.frame_us.p95, (int)(played.height_sum / played.drawn), (int)still_us);
     TEST_ASSERT_TRUE(render_lab_framegen_set_on(false));
     TEST_ASSERT_TRUE(render_lab_framegen_set_moving(RENDER_FRAMEGEN_MOVING_STILL));
     TEST_ASSERT_TRUE(render_lab_budget_set_ms(0));
