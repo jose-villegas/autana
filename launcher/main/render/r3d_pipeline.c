@@ -1081,7 +1081,9 @@ draw_textured_whole(const r3d_lit_mesh_t* mesh, const r3d_pipeline_vertex_t* con
         s[k] = (r3d_span_vertex_t){v[k]->sx, v[k]->sy, v[k]->iz, rgb[0], rgb[1], rgb[2]};
         uv[k] = r3d_texture_uv(mesh->texturing, texture, cluster, tri[k]);
     }
+    FRAME_LAP("r3d.draw.set_up");
     r3d_span_textured_triangle(target, &s[0], &s[1], &s[2], uv, texture);
+    FRAME_LAP("r3d.draw.cluster");
 }
 
 /* A marked triangle the near plane cuts, rebuilt and clipped as a plain one
@@ -1101,7 +1103,9 @@ draw_textured_cut(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint
     const r3d_span_vertex_t* s = work->clip.projected;
     for (int i = 1; i + 1 < n; i++) {
         const r3d_span_uv_t uv[3] = {{poly[0].u, poly[0].v}, {poly[i].u, poly[i].v}, {poly[i + 1].u, poly[i + 1].v}};
+        FRAME_LAP("r3d.draw.set_up");
         r3d_span_textured_triangle(target, &s[0], &s[i], &s[i + 1], uv, texture);
+        FRAME_LAP("r3d.draw.cluster");
     }
 }
 
