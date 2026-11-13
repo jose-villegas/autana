@@ -26,10 +26,11 @@ steer2f_separation(const steer2f_agent_t* agents, int count, int self, const ste
             continue;
         }
         const vec2f_t away = vec2f_sub(agents[self].position, agents[j].position);
-        const float distance = vec2f_length(away);
-        if (distance >= l->separation_radius) {
+        const float squared = vec2f_dot(away, away);
+        if (squared >= l->separation_radius * l->separation_radius) {
             continue;
         }
+        const float distance = sqrtf(squared);
         /* Two agents on one spot part along x, the lower index to -x, so the push stays determined. */
         const vec2f_t direction =
             distance > 0.0F ? vec2f_scale(away, 1.0F / distance) : (vec2f_t){self < j ? -1.0F : 1.0F, 0.0F};
@@ -52,10 +53,11 @@ steer2f_avoid(const steer2f_agent_t* agents, int count, int self, const steer2f_
         if (closing <= 0.0F) {
             continue;
         }
-        const float t = -vec2f_dot(dp, dv) / closing;
-        if (t <= 0.0F || t > l->horizon_s) {
+        const float ahead = -vec2f_dot(dp, dv); /* t = ahead / closing */
+        if (ahead <= 0.0F || ahead > l->horizon_s * closing) {
             continue;
         }
+        const float t = ahead / closing;
         /* Our offset from the neighbour at the time the two paths come closest. */
         const vec2f_t miss = vec2f_scale(vec2f_add(dp, vec2f_scale(dv, t)), -1.0F);
         const float distance = vec2f_length(miss);
@@ -75,12 +77,22 @@ steer2f_avoid(const steer2f_agent_t* agents, int count, int self, const steer2f_
 vec2f_t
 steer2f_contain(const steer2f_agent_t* a, vec2f_t centre, float radius, const steer2f_limits_t* l) {
     const vec2f_t in = vec2f_sub(centre, a->position);
-    const float distance = vec2f_length(in);
-    const float past = distance - radius;
-    if (past <= 0.0F) {
+    const float squared = vec2f_dot(in, in);
+    if (squared <= radius * radius) {
         return vec2f_zero();
     }
+    const float distance = sqrtf(squared);
+    const float past = distance - radius;
     return vec2f_scale(in, l->max_accel * fminf(1.0F, past / l->arrive_radius) / distance);
+}
+
+/* `angle` in (-3 pi, 3 pi) brought into (-pi, pi]. */
+static float
+wrap_pi(float angle) {
+    if (angle > MATH_PI) {
+        return angle - MATH_TAU;
+    }
+    return angle <= -MATH_PI ? angle + MATH_TAU : angle;
 }
 
 void
@@ -91,7 +103,7 @@ steer2f_step(steer2f_agent_t* a, vec2f_t accel, float dt, const steer2f_limits_t
     if (vec2f_length(a->velocity) < l->heading_speed) {
         return;
     }
-    const float turn = remainderf(atan2f(a->velocity.y, a->velocity.x) - a->heading, MATH_TAU);
+    const float turn = wrap_pi(atan2f(a->velocity.y, a->velocity.x) - a->heading);
     const float most = l->turn_rate * dt;
-    a->heading = remainderf(a->heading + fmaxf(-most, fminf(most, turn)), MATH_TAU);
+    a->heading = wrap_pi(a->heading + fmaxf(-most, fminf(most, turn)));
 }
