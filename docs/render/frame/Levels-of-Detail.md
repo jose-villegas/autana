@@ -34,9 +34,9 @@ again until a group no longer simplifies<sup>[[54]](../../Citations.md#karis-202
 
 ```mermaid
 flowchart TB
-    Root[cluster tree root] --> Oct[cluster tree over level 0]
+    Root[tree root] --> Fine[level 0's tree]
     Root --> Runs[coarse clusters,<br/>one run per group]
-    Oct -. "cull walks it" .-> Cut[the cut]
+    Fine -. "cull walks it" .-> Cut[the cut]
     Runs -. "only the cut's groups" .-> Cut
 ```
 

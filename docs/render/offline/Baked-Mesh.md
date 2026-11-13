@@ -27,9 +27,10 @@ vertices weld by position alone.
 
 Clusters are meshoptimizer's **meshlets**<sup>[[11]](../../Citations.md#meshoptimizer)</sup>:
 at most `geometry.meshlet_triangles` (4 to 256, default 32) of one sidedness.
-The cluster tree is built over their boxes by the surface area heuristic<sup>[[121]](../../Citations.md#macdonald-1990)</sup>:
-a split is kept when the boxes' area-weighted cluster tests, plus a node test
-costing four cluster tests, come below testing the whole run as one leaf.
+The finest clusters' tree is built over their boxes by the surface area heuristic<sup>[[121]](../../Citations.md#macdonald-1990)</sup>:
+a split is kept when the boxes' area-weighted cluster tests, plus `NODE_TEST_COST`
+in [`cluster_tree.py`](../../../launcher/tools/r3d/cluster_tree.py), come below testing the run as one leaf.
+Coarse clusters hang in runs under nodes of their own.
 
 ![The clusterizer cutting a small flat patch into meshlets, one per step](../../images/render/meshlet-build.gif)
 

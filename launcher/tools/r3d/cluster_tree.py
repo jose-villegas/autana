@@ -1,11 +1,11 @@
-"""A cluster tree: clusters split by the surface area heuristic (MacDonald and Booth 1990) into a tree whose leaves
-hold runs of clusters."""
+"""A cluster tree: clusters split by the surface area heuristic (MacDonald and Booth 1990) into a tree
+whose leaves hold runs of clusters."""
 
 import numpy as np
 
 
 # One node test costs this many cluster tests: the box test, then the depth sort and the push of its children
-# (r3d_pipeline.c's push_children). The host count along the fitted scenes' paths is lowest here.
+# (r3d_pipeline.c's push_children).
 NODE_TEST_COST = 4.0
 
 
@@ -16,7 +16,7 @@ def surface_area(lo, hi):
 
 
 def build_tree(lo, hi, weights, leaf_weight, max_items, fanout, node_cost=NODE_TEST_COST):
-    """Splits items (boxes `lo`..`hi`, one row each) by the surface area heuristic (MacDonald and Booth):
+    """Splits items (boxes `lo`..`hi`, one row each) by the surface area heuristic (MacDonald and Booth 1990):
     a node's chance of being reached is its box's area over its parent's, so a split costs node_cost plus
     each side's items weighted by its area, and a node stays a leaf while testing all its items costs no
     more. A leaf holds at most max_items items and, unless it is one item, weights summing to leaf_weight.
