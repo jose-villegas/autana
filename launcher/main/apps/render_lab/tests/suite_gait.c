@@ -11,6 +11,8 @@
 
 #define TOLERANCE 1.0E-5F
 #define NO_STEP   (-1)
+/* A speed this far past a boundary is clearly on one side of it. */
+#define PAST      (TOLERANCE * 10.0F)
 
 static const gait_step_t STEPS[] = {
     {.clip = 10, .ground_mps = 0.0F}, /* still */
@@ -63,8 +65,8 @@ test_each_steps_own_speed_picks_it_at_rate_one(void) {
 static void
 test_a_fresh_pick_changes_step_at_the_midpoint(void) {
     for (int i = 0; i + 1 < STEP_COUNT; i++) {
-        TEST_ASSERT_EQUAL_INT(i, fresh(boundary(i) - TOLERANCE * 10).step);
-        TEST_ASSERT_EQUAL_INT(i + 1, fresh(boundary(i) + TOLERANCE * 10).step);
+        TEST_ASSERT_EQUAL_INT(i, fresh(boundary(i) - PAST).step);
+        TEST_ASSERT_EQUAL_INT(i + 1, fresh(boundary(i) + PAST).step);
     }
 }
 
@@ -77,7 +79,7 @@ test_the_rate_matches_the_ground_speed_inside_the_clamp(void) {
     const gait_pick_t fast = fresh(1000.0F);
     TEST_ASSERT_EQUAL_INT(STEP_COUNT - 1, fast.step);
     TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, GAIT.rate_max, fast.rate);
-    const gait_pick_t slow = fresh(boundary(0) + TOLERANCE * 10);
+    const gait_pick_t slow = fresh(boundary(0) + PAST);
     TEST_ASSERT_EQUAL_INT(1, slow.step);
     TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, GAIT.rate_min, slow.rate);
 }
