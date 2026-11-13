@@ -153,7 +153,9 @@ def assemble(q, col, entries, position_scale, leaf_triangles, groups=None):
     weights = np.array([len(e["tris"]) for e in entries])
 
     def tree(items):
-        root = build_tree(lo[items], hi[items], weights[items], leaf_triangles, MAX_NODE_CHILDREN, NODE_FANOUT)
+        # One level under the depth limit: two_trees() puts a root above the finest tree.
+        root = build_tree(lo[items], hi[items], weights[items], leaf_triangles, MAX_NODE_CHILDREN, NODE_FANOUT,
+                          TREE_DEPTH_MAX - 1)
         order, nodes = flatten_tree(root)
         return [int(items[i]) for i in order], nodes
 

@@ -15,17 +15,20 @@ def surface_area(lo, hi):
     return 2.0 * (e[..., 0] * e[..., 1] + e[..., 1] * e[..., 2] + e[..., 2] * e[..., 0])
 
 
-def build_tree(lo, hi, weights, leaf_weight, max_items, fanout, node_cost=NODE_TEST_COST):
+def build_tree(lo, hi, weights, leaf_weight, max_items, fanout, max_depth, node_cost=NODE_TEST_COST):
     """Splits items (boxes `lo`..`hi`, one row each) by the surface area heuristic (MacDonald and Booth 1990):
     a node's chance of being reached is its box's area over its parent's, so a split costs node_cost plus
     each side's items weighted by its area, and a node stays a leaf while testing all its items costs no
     more. A leaf holds at most max_items items and, unless it is one item, weights summing to leaf_weight.
-    Each split is the cheapest cut of the items sorted by box centre along one axis; the binary splits
-    then collapse into nodes of up to `fanout` children, the largest child opening first."""
+    Each split is the cheapest cut of the items sorted by box centre along one axis, the one nearest the
+    middle among equal costs; the binary splits then collapse into nodes of up to `fanout` children, the
+    largest child opening first. A tree deeper than `max_depth` below its root is built again by median
+    splits, which reach a leaf of at most max_items items within it."""
     lo = np.asarray(lo, dtype=np.float64)
     hi = np.asarray(hi, dtype=np.float64)
     weights = np.asarray(weights)
     centres = (lo + hi) / 2.0
+    assert len(lo) <= max_items << max_depth, "more items than a tree of max_depth holds"
 
     def cheapest_cut(members):
         best = None
@@ -38,19 +41,35 @@ def build_tree(lo, hi, weights, leaf_weight, max_items, fanout, node_cost=NODE_T
             right = surface_area(np.minimum.accumulate(lo[order][::-1])[::-1][1:],
                                  np.maximum.accumulate(hi[order][::-1])[::-1][1:])
             costs = node_cost + (left * sides + right * (n - sides)) / parent
-            k = int(np.argmin(costs))
+            ties = np.flatnonzero(costs == costs.min())
+            k = int(ties[np.argmin(np.abs(2 * sides[ties] - n))])
             if best is None or costs[k] < best[0]:
                 best = (float(costs[k]), order, k + 1)
         return best
 
-    def build(members):
+    class TooDeep(Exception):
+        pass
+
+    def by_area(members, depth):
+        # Folding at most fanout children into a node takes log2(fanout) binary levels off at best.
+        if depth > max_depth * int(np.log2(fanout)):
+            raise TooDeep
         if len(members) == 1:
             return {"leaf": members}
         cost, order, k = cheapest_cut(members)
         fits = len(members) <= max_items and weights[members].sum() <= leaf_weight
         if fits and len(members) <= cost:
             return {"leaf": members}
-        return {"children": [build(order[:k]), build(order[k:])]}
+        return {"children": [by_area(order[:k], depth + 1), by_area(order[k:], depth + 1)]}
+
+    def by_median(members, depth):
+        fits = len(members) <= max_items and weights[members].sum() <= leaf_weight
+        if len(members) == 1 or fits or depth == max_depth:
+            return {"leaf": members}
+        axis = int(np.argmax(np.ptp(centres[members], axis=0)))
+        order = members[np.argsort(centres[members, axis], kind="stable")]
+        half = len(order) // 2
+        return {"children": [by_median(order[:half], depth + 1), by_median(order[half:], depth + 1)]}
 
     def box(node):
         if "leaf" in node:
@@ -61,19 +80,30 @@ def build_tree(lo, hi, weights, leaf_weight, max_items, fanout, node_cost=NODE_T
         if "leaf" in node:
             return node
         children = [collapse(child) for child in node["children"]]
+        tried = set()
         while True:
-            inner = [child for child in children if "children" in child]
+            inner = [child for child in children if "children" in child and id(child) not in tried]
             if not inner:
                 break
             widest = max(inner, key=lambda child: surface_area(*box(child)))
-            if len(children) - 1 + len(widest["children"]) > fanout:
-                break
-            children = [child for child in children if child is not widest] + widest["children"]
+            tried.add(id(widest))
+            if len(children) - 1 + len(widest["children"]) <= fanout:
+                children = [child for child in children if child is not widest] + widest["children"]
         boxes = [box(child) for child in children]
         return {"children": children, "lo": np.min([b[0] for b in boxes], axis=0),
                 "hi": np.max([b[1] for b in boxes], axis=0)}
 
-    return collapse(build(np.arange(len(lo))))
+    def depth(node):
+        return 0 if "leaf" in node else 1 + max(depth(child) for child in node["children"])
+
+    items = np.arange(len(lo))
+    try:
+        root = collapse(by_area(items, 0))
+        if depth(root) <= max_depth:
+            return root
+    except TooDeep:
+        pass
+    return collapse(by_median(items, 0))
 
 
 def flatten_tree(root):

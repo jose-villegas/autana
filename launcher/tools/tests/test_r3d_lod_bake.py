@@ -79,6 +79,14 @@ class BakedLevelsTest(unittest.TestCase):
         cls.levelled = read_back(bake_lit_mesh(points, rgb, triangles, double, lod=True))
         cls.plain = read_back(lit_mesh.bake_lit_mesh(points, rgb, triangles, double))
 
+    def test_the_levels_do_not_depend_on_the_tree(self):
+        """A smaller leaf gives the finest clusters another tree; the levels group the same meshlets."""
+        points, rgb, triangles, double = wavy_grid()
+        other = read_back(bake_lit_mesh(points, rgb, triangles, double, leaf_triangles=lit_mesh.MESHLET_TRIANGLES,
+                                        lod=True))
+        self.assertNotEqual(len(other.nodes), len(self.levelled.nodes), "the leaf size did not change the tree")
+        np.testing.assert_array_equal(other.groups, self.levelled.groups)
+
     def test_level_zero_is_the_plain_bake_with_its_colours(self):
         self.assertEqual(corner_set(lit_mesh.finest_triangles(self.plain)),
                          corner_set(lit_mesh.finest_triangles(self.levelled)))

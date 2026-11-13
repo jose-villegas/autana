@@ -358,10 +358,37 @@ class ClusterTreeTests(unittest.TestCase):
         self.lo, self.hi = corners.min(axis=1), corners.max(axis=1)
         self.weights = np.arange(len(tris)) % 7 + 1
 
-    def tree(self, lo=None, hi=None, leaf_weight=12, max_items=255, fanout=8):
+    def tree(self, lo=None, hi=None, leaf_weight=12, max_items=255, fanout=8, max_depth=TREE_DEPTH_MAX):
         lo = self.lo if lo is None else lo
         hi = self.hi if hi is None else hi
-        return flatten_tree(build_tree(lo, hi, self.weights[: len(lo)], leaf_weight, max_items, fanout))
+        weights = np.resize(self.weights, len(lo))
+        return flatten_tree(build_tree(lo, hi, weights, leaf_weight, max_items, fanout, max_depth))
+
+    def depth(self, nodes):
+        """Edges from the root to the deepest leaf."""
+        deepest, stack = 0, [(0, 0)]
+        while stack:
+            index, depth = stack.pop()
+            deepest = max(deepest, depth)
+            if not nodes[index]["leaf"]:
+                stack.extend((c, depth + 1) for c in range(nodes[index]["first"], nodes[index]["first"] + nodes[index]["count"]))
+        return deepest
+
+    def test_identical_boxes_split_in_halves_not_one_at_a_time(self):
+        """Every cut costs the same, so each takes the middle: the depth grows with the log of the count. The
+        bound is loose, so no median rebuild hides a chain."""
+        count = 400
+        lo, hi = np.zeros((count, 3)), np.ones((count, 3))
+        order, nodes = self.tree(lo, hi, leaf_weight=1, max_depth=count)
+        self.assertEqual(sorted(order), list(range(count)))
+        self.assertLessEqual(self.depth(nodes), int(np.ceil(np.log2(count))))
+
+    def test_a_tree_too_deep_for_its_bound_is_built_by_median_splits_within_it(self):
+        _, unbound = self.tree(leaf_weight=1)
+        bound = self.depth(unbound) - 1
+        order, nodes = self.tree(leaf_weight=1, max_depth=bound)
+        self.assertLessEqual(self.depth(nodes), bound)
+        self.assertEqual(sorted(order), list(range(len(self.lo))))
 
     def test_children_sit_together_and_a_subtree_owns_a_run_of_items(self):
         order, nodes = self.tree()
