@@ -10,7 +10,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 <!-- generated: figure-index check: python launcher/tools/docs/figures_runner.py index --check -->
 | Area | Images | Declared by a producer | Shown nowhere |
 |---|---|---|---|
-| [anim](#anim) | 4 | 0 | 0 |
+| [anim](#anim) | 5 | 0 | 0 |
 | [audio](#audio) | 32 | 0 | 0 |
 | [input](#input) | 11 | 0 | 0 |
 | [kinematics](#kinematics) | 5 | 1 | 0 |
@@ -29,6 +29,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/anim/anim-blend.png"><img src="../images/anim/anim-blend.png" width="160" alt=""></a> | Blend weight against app time, ramping 0 to 1 after each play and restarting from the frozen pose at the interruption; below, one joint's turn as shown, as the current clip alone and in the previous slot | [render/animation/Animation-Tracks](../render/animation/Animation-Tracks.md) | not declared yet |
 | <a href="../images/anim/anim-nlerp.png"><img src="../images/anim/anim-nlerp.png" width="160" alt=""></a> | A 150 degree turn by blend weight: nlerp lags slerp early and leads it late; its angular speed peaks mid-blend while slerp's is constant | [render/animation/Animation-Tracks](../render/animation/Animation-Tracks.md) | not declared yet |
 | <a href="../images/anim/anim-playhead.png"><img src="../images/anim/anim-playhead.png" width="160" alt=""></a> | Clip time against app time: a loop wraps at the clip's duration and a clamp holds there; speed 0.5 halves the slope, a pause holds it flat and speed 2 doubles it | [render/animation/Animation-Tracks](../render/animation/Animation-Tracks.md) | not declared yet |
+| <a href="../images/anim/anim-rate-lag.png"><img src="../images/anim/anim-rate-lag.png" width="160" alt=""></a> | Worst vertex behind its true pose, in pixels, for idle, walk and gallop at the widest mid and far sizes, at the mid and far pose rates with a 16 ms frame | [render/animation/Skinned-Meshes](../render/animation/Skinned-Meshes.md) | not declared yet |
 
 ## audio
 
@@ -261,7 +262,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/render/pipeline-frame-stages.depth.png"><img src="../images/render/pipeline-frame-stages.depth.png" width="160" alt=""></a> | Frame stages with the depth view | [render/frame/README](../render/frame/README.md) | not declared yet |
 | <a href="../images/render/pipeline-frame-stages.meshlets.png"><img src="../images/render/pipeline-frame-stages.meshlets.png" width="160" alt=""></a> | Frame stages with the meshlets view | [render/frame/README](../render/frame/README.md) | not declared yet |
 | <a href="../images/render/pipeline-frame-stages.png"><img src="../images/render/pipeline-frame-stages.png" width="160" alt=""></a> | Frame stages as shipped | [render/frame/README](../render/frame/README.md) | not declared yet |
-| <a href="../images/render/pipeline-frame-stages.sub-stages.png"><img src="../images/render/pipeline-frame-stages.sub-stages.png" width="160" alt=""></a> | Inside transform and draw | [render/frame/README](../render/frame/README.md) | not declared yet |
+| <a href="../images/render/pipeline-frame-stages.sub-stages.png"><img src="../images/render/pipeline-frame-stages.sub-stages.png" width="160" alt=""></a> | Inside cull, transform and draw | [render/frame/README](../render/frame/README.md) | not declared yet |
 | <a href="../images/render/pipeline-frame-stages.tiles.png"><img src="../images/render/pipeline-frame-stages.tiles.png" width="160" alt=""></a> | Frame stages with the tiles view | [render/frame/README](../render/frame/README.md) | not declared yet |
 | <a href="../images/render/skin-influences.png"><img src="../images/render/skin-influences.png" width="160" alt=""></a> | The engine's skin at four and at two influences on the clip frame where they differ most, seen from below, whole and zoomed on the vertex that moves most; rings mark the moved vertices, red lines run from their four-influence to their two-influence positions | [render/animation/Skeleton-and-Skin](../render/animation/Skeleton-and-Skin.md) | not declared yet |
 | <a href="../images/render/skin-limb.png"><img src="../images/render/skin-limb.png" width="160" alt=""></a> | Weight bytes along a two-joint limb, the limb bent 90 degrees by linear blend and by one joint per vertex, with one hinge vertex carried by each joint and their weighted mix, and the hinge's thickness against the bend angle | [render/animation/Skeleton-and-Skin](../render/animation/Skeleton-and-Skin.md) | not declared yet |
