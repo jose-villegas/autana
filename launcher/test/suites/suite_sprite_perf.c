@@ -3,9 +3,11 @@
  * translucent tiles (the sprite_test pack's tile), read from the mapped pack
  * in flash and from a resident copy in on-chip RAM. Each row is a whole
  * screen of tiles drawn into the framebuffer, not presented, upright and at a
- * quarter turn. Then the blend alone, per framebuffer pixel: a flat colour
- * at one alpha, and the sprite's own per-pixel path, against simd_copy over
- * the same rows, the framebuffer's bandwidth floor.
+ * quarter turn. Then the blend alone, per framebuffer pixel, by region: a
+ * flat colour at one alpha (a flat centre), stretched edges (runs of one
+ * source pixel), corners (a source pixel each), and the sprite's own path
+ * over a whole screen, against simd_copy over the same rows, the
+ * framebuffer's bandwidth floor.
  */
 #include "suites.h" /* portable: needed by SUITE_REGISTER() even on host */
 
@@ -108,6 +110,44 @@ blend_sprite_screen(const sprite_t* tile, int turns) {
     draw_sprite(&each_pixel, (recti_t){0, 0, GFX_WIDTH, GFX_HEIGHT}, turns);
 }
 
+/* The tile at its corners alone: drawn the size of its two borders, again
+ * and again across the screen. */
+static int64_t
+corner_pixels(const sprite_t* tile) {
+    const int w = tile->border.left + tile->border.right;
+    const int h = tile->border.top + tile->border.bottom;
+    return (int64_t)(GFX_WIDTH / w) * w * (GFX_HEIGHT / h) * h;
+}
+
+static void
+blend_corners_screen(const sprite_t* tile, int turns) {
+    const int w = tile->border.left + tile->border.right;
+    const int h = tile->border.top + tile->border.bottom;
+    for (int y = 0; y + h <= GFX_HEIGHT; y += h) {
+        for (int x = 0; x + w <= GFX_WIDTH; x += w) {
+            draw_sprite(tile, (recti_t){x, y, w, h}, turns);
+        }
+    }
+}
+
+/* Strips the screen wide and two borders tall, clipped to their stretched
+ * top and bottom edges: every row a run of one source pixel. */
+static int64_t
+edge_run_pixels(const sprite_t* tile) {
+    const int h = tile->border.top + tile->border.bottom;
+    return (int64_t)(GFX_WIDTH - tile->border.left - tile->border.right) * (GFX_HEIGHT / h) * h;
+}
+
+static void
+blend_edge_runs_screen(const sprite_t* tile, int turns) {
+    const int h = tile->border.top + tile->border.bottom;
+    draw_set_clip(tile->border.left, 0, GFX_WIDTH - tile->border.left - tile->border.right, GFX_HEIGHT);
+    for (int y = 0; y + h <= GFX_HEIGHT; y += h) {
+        draw_sprite(tile, (recti_t){0, y, GFX_WIDTH, h}, turns);
+    }
+    draw_clear_clip();
+}
+
 /* Every framebuffer row read and written once, as a blend does. */
 static void
 copy_screen_rows(const sprite_t* tile, int turns) {
@@ -176,6 +216,8 @@ test_blend_against_the_copy_floor(void) {
     const handle_t load = open_tile(&tile);
     const int64_t screen = (int64_t)GFX_WIDTH * GFX_HEIGHT;
     report_per_pixel("blend_flat", blend_flat_screen, &tile, screen);
+    report_per_pixel("blend_edge_runs", blend_edge_runs_screen, &tile, edge_run_pixels(&tile));
+    report_per_pixel("blend_corners", blend_corners_screen, &tile, corner_pixels(&tile));
     report_per_pixel("blend_sprite_pixels", blend_sprite_screen, &tile, screen);
     report_per_pixel("copy_floor", copy_screen_rows, &tile, (int64_t)GFX_WIDTH * (GFX_HEIGHT - 1));
     asset_store_release(load);
