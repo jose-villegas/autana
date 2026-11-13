@@ -1,8 +1,8 @@
 # Scene manager
 
 Scenes are engine machinery the shell drives. An app loads a scene by name and
-activates a camera; the shell advances every loaded scene and draws through the
-active camera each frame, so an app never calls draw. The code is
+activates a camera; the shell advances every loaded scene and draws every
+ready one through the active camera each frame, so an app never calls draw. The code is
 `launcher/main/scene/`; [Building-a-Scene.md](../Building-a-Scene.md#6-draw-it)
 shows an app using it.
 
@@ -14,7 +14,9 @@ frame is [Scene-Frame.md](Scene-Frame.md).
 
 The engine has one world. Every loaded scene is a subtree in it under its
 **root entity**, which `scene_load()` returns; moving or disabling the root
-moves or hides the whole scene. `scene_bounds()` gives the world box around
+moves or hides the whole scene. One active camera decides the view, not
+which scenes are drawn: every ready scene with an enabled root draws through
+it, in one list the raster draws, the active camera's scene first. `scene_bounds()` gives the world box around
 what a scene draws now, from its root or any entity in it.
 
 An `entity_t` is a [handle](../../../launcher/main/core/handle.h): owner,
@@ -78,7 +80,6 @@ lit block transactionally; attachment failure preserves the scene.
 | `flags[]` | entity | enabled, active (enabled with every ancestor), moved since the last draw, world moved in this resolve, and changed since the last skin stage |
 | `renderers[]` | entity that draws | a view of its lit mesh in the asset pack, its entity id, and its world matrix |
 | `cameras[]` | camera | lens, clear color, its entity id (its pose is the entity's world) |
-| `instances[]` | renderer | the list the raster draws this frame, refilled from `renderers[]` |
 | `staged[]` | entity | the entities with an animator, a skin or a light, in entity order; the animation stage walks only these |
 | `active_renderers[]` | renderer | the renderers whose entity is active, in renderer order; rebuilt at the resolve after an active flag flips |
 | names | entity | the scene entry's, read in the pack with each name's hash; looked up only by `entity_find()` |

@@ -129,7 +129,7 @@ every mesh, skin, skeleton and clip it names. It flashes the pack with the app
 ## 6. Draw it
 
 An app loads the scene by name and activates its camera. The shell advances
-every loaded scene and draws through the active camera each frame, so the app
+every loaded scene and draws them all through the active camera each frame, so the app
 never calls draw; `frame()` runs after the scene is in the framebuffer and
 draws over it. Entities are found by name once the scene has loaded, so a
 misspelt one is found missing then:
@@ -161,8 +161,11 @@ hall_example_start(void) {
 
 Nothing else: the shell unloads what the app loaded when it exits. To move
 something, `transform_set_local(statue, where)`; to hide
-it, `entity_set_enabled()`. Several scenes may be loaded at once, and
-`camera_activate()` on another's camera changes what is drawn. How a frame is
+it, `entity_set_enabled()`. Several scenes may be loaded at once, and every
+one that is ready draws through the active camera: `camera_activate()` on
+another's camera changes the view, not which scenes are drawn, and
+`entity_set_enabled(root, false)` hides a whole scene. Each scene lights only
+its own renderers. How a frame is
 ordered against the panel send is in [Scene-Frame.md](scene/Scene-Frame.md),
 the storage behind it in [Scene-Loading.md](scene/Scene-Loading.md#ownership); how the raster draws each instance is in
 [Mesh-Rendering.md](Mesh-Rendering.md). To see the scene without a board, declare
