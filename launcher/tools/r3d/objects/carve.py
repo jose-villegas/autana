@@ -71,13 +71,14 @@ def free_repeats(pos, tri_v, tri_m, tri_o, object_names, selected, position_scal
 
 def views(scene, renderer):
     """(eyes, focal, near): the camera path's eye positions, sampled at the fit's coverage spacing or else the
-    renderer's visibility spacing, and the panel's focal length. A scene without a camera path has no eyes."""
+    renderer's camera_path visibility spacing, and the panel's focal length. A scene without a camera path, or a
+    renderer that samples none (its camera may stand anywhere in a region), has no eyes."""
     camera = getattr(getattr(scene, "camera", None), "component", None)
-    if camera is None or camera.path is None:
+    fit = getattr(renderer, "fit", None)
+    every_ms = fit.coverage_every_ms if fit is not None else getattr(renderer.visibility, "every_ms", None)
+    if camera is None or camera.path is None or every_ms is None:
         lens = 1.0 if camera is None else camera.half_fov_short_tan
         return np.zeros((0, 3)), focal_px(PANEL_WIDTH, PANEL_HEIGHT, lens), 0.0 if camera is None else camera.near_z
-    fit = getattr(renderer, "fit", None)
-    every_ms = fit.coverage_every_ms if fit is not None else renderer.visibility.every_ms
     width, height, lens, near, poses = camera_path_poses(
         scene, SimpleNamespace(size=(PANEL_WIDTH, PANEL_HEIGHT), every_ms=every_ms), either_way_up=False)
     return np.array([pose[:3] for pose in poses]), focal_px(width, height, lens), near
