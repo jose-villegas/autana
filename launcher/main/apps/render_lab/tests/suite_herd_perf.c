@@ -3,7 +3,8 @@
  * costs: the whole frame, and the animation step (posing and skinning every
  * copy shown) alone, with the internal heap the herd leaves, the copies whose
  * skin buffers MEMORY_FAST placed in external RAM, and the copies in view on
- * average.
+ * average. The fixed-tier still-herd case isolates pose throttling at held
+ * near, mid and far sizes with identical initial playback in each arm.
  * Logged per size and quarter, no budget yet; the slope over N is the cost of
  * one more skinned copy. */
 #include "suites.h"
@@ -32,9 +33,7 @@
 
 /* Frames sampled per turn of the camera, spread evenly round it. */
 #define HERD_PERF_SAMPLES        100
-/* The fixed-tier test: a host frame's step, and its copies in rows of three
- * columns, near, mid and far, this share of their depth apart. */
-#define HERD_RATE_DT_MS          16
+/* The fixed-tier copies occupy near, mid and far columns this share of their depth apart. */
 #define HERD_RATE_LAYOUT_COLUMNS 3
 #define HERD_RATE_COLUMN_SPACING 0.25F
 
@@ -44,7 +43,7 @@
 _Static_assert(HERD_PERF_TURN_MS <= LAB_ORBIT_MAX_MS, "a turn render_lab.orbit_ms can hold");
 
 static const char* TAG = "herd_perf";
-/* Every timing line starts with this; tools/herd_tables.py reads it. */
+/* Every timing line starts with this; launcher/main/apps/render_lab/tools/herd_tables.py reads it. */
 #define HERD_PERF_PREFIX "herd_perf: "
 
 typedef struct {
@@ -83,8 +82,16 @@ shown_copies(const scene_t* scene, int* external) {
 }
 
 static bench_stats_t
-sample_herd_steps(scene_t* scene, uint32_t dt_ms) {
+sample_herd_steps(scene_t* scene, uint32_t dt_ms, const r3d_lod_measure_t* measure) {
     for (int i = -1; i < HERD_PERF_SAMPLES; i++) {
+        /* Step-only samples have no draw to refresh the held camera's sizes. */
+        if (measure != NULL) {
+            for (int r = 0; r < scene->active_renderer_count; r++) {
+                const scene_renderer_t* renderer = &scene->renderers[scene->active_renderers[r]];
+                scene->animators[renderer->entity].drawn_radius_px =
+                    r3d_lod_bounds_pixels(renderer->world_bounds, measure);
+            }
+        }
         const int64_t start = timing_now_us();
         scene_animation_step(scene, dt_ms);
         if (i >= 0) {
@@ -153,7 +160,7 @@ test_herd_turn_cost(void) {
              (unsigned)memory_free_bytes(MEMORY_INTERNAL), (unsigned)memory_largest_block(MEMORY_INTERNAL));
     ESP_LOGI(TAG, HERD_PERF_PREFIX "n=%d copies_in_external_ram=%d", copies, external);
 
-    const bench_stats_t step = sample_herd_steps(scene, HERD_PERF_DT_MS);
+    const bench_stats_t step = sample_herd_steps(scene, HERD_PERF_DT_MS, NULL);
     TEST_ASSERT_GREATER_THAN_INT64(0, step.avg);
     ESP_LOGI(TAG, HERD_PERF_PREFIX "n=%d samples=%d step_mean_us=%lld step_p95_us=%lld", copies, HERD_PERF_SAMPLES,
              (long long)step.avg, (long long)step.p95);
@@ -191,8 +198,9 @@ static void
 place_rate_herd(scene_t* scene, entity_t camera) {
     const transformf_t eye = transform_world(camera);
     const render_view_t* view = &render_context_main()->kept_view;
-    const float radii[] = {RENDER_ANIM_MID_PX * 2.0F, (RENDER_ANIM_MID_PX + RENDER_ANIM_FAR_PX) / 2.0F,
-                           RENDER_ANIM_FAR_PX / 2.0F};
+    const float radii[] = {(RENDER_SETTINGS_DEFAULT.anim.mid_px) * 2.0F,
+                           ((RENDER_SETTINGS_DEFAULT.anim.mid_px) + (RENDER_SETTINGS_DEFAULT.anim.far_px)) / 2.0F,
+                           (RENDER_SETTINGS_DEFAULT.anim.far_px) / 2.0F};
     int copy = 0;
     for (int e = 0; e < scene->asset.entity_count; e++) {
         if (!scene->skinned_renderers[e].bound || !(scene->flags[e] & SCENE_FLAG_ACTIVE)) {
@@ -215,29 +223,31 @@ place_rate_herd(scene_t* scene, entity_t camera) {
     }
 }
 
+/* Still herd: held transforms and camera isolate throttling; each arm starts fresh. */
 static void
 test_herd_fixed_animation_rates(void) {
-    active = memory_alloc(sizeof *active, MEMORY_PSRAM);
-    TEST_ASSERT_NOT_NULL(active);
-    *active = (fixture_t){0};
-    lab_test_enter(&active->saved, &render_lab, scene_herd[HERD_EIGHT].key);
-    suite_set_test_cleanup(release_fixture);
-    const lab_path_t path = scene_herd[HERD_EIGHT].path();
-    scene_row_t row;
-    scene_t* scene = scene_entity_row(path.entity, &row); /* a row of a copy: the root is not one */
-    TEST_ASSERT_NOT_NULL(scene);
-    /* render_lab.orbit_ms stays 0, so the camera holds where the copies are placed for it. */
-    (void)lab_test_frame_dt(0, false, NULL);
-    place_rate_herd(scene, camera_active());
-    (void)lab_test_frame_dt(0, false, NULL);
     for (int arm = 0; arm < 2; arm++) {
+        active = memory_alloc(sizeof *active, MEMORY_PSRAM);
+        TEST_ASSERT_NOT_NULL(active);
+        *active = (fixture_t){0};
+        lab_test_enter(&active->saved, &render_lab, scene_herd[HERD_EIGHT].key);
+        suite_set_test_cleanup(release_fixture);
+        const lab_path_t path = scene_herd[HERD_EIGHT].path();
+        scene_row_t row;
+        scene_t* scene = scene_entity_row(path.entity, &row); /* a row of a copy: the root is not one */
+        TEST_ASSERT_NOT_NULL(scene);
+        /* render_lab.orbit_ms stays 0, so the camera holds where the copies are placed for it. */
+        (void)lab_test_frame_dt(0, false, NULL);
+        place_rate_herd(scene, camera_active());
+        (void)lab_test_frame_dt(0, false, NULL);
         const char* name = arm == 0 ? "off" : "tiered";
         TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(anim, mid_every),
-                                  arm == 0 ? RENDER_ANIM_EVERY_MIN : RENDER_ANIM_MID_EVERY));
+                                  arm == 0 ? RENDER_ANIM_EVERY_MIN : (RENDER_SETTINGS_DEFAULT.anim.mid_every)));
         TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(anim, far_every),
-                                  arm == 0 ? RENDER_ANIM_EVERY_MIN : RENDER_ANIM_FAR_EVERY));
+                                  arm == 0 ? RENDER_ANIM_EVERY_MIN : (RENDER_SETTINGS_DEFAULT.anim.far_every)));
         scene_animation_step(scene, 0);
-        const int intervals[] = {RENDER_ANIM_EVERY_MIN, RENDER_ANIM_MID_EVERY, RENDER_ANIM_FAR_EVERY};
+        const int intervals[] = {RENDER_ANIM_EVERY_MIN, (RENDER_SETTINGS_DEFAULT.anim.mid_every),
+                                 (RENDER_SETTINGS_DEFAULT.anim.far_every)};
         int copy = 0;
         for (int e = 0; e < scene->asset.entity_count; e++) {
             if (scene->skinned_renderers[e].bound && (scene->flags[e] & SCENE_FLAG_ACTIVE)) {
@@ -246,14 +256,17 @@ test_herd_fixed_animation_rates(void) {
                 copy++;
             }
         }
-        const bench_stats_t step = sample_herd_steps(scene, HERD_RATE_DT_MS);
+        r3d_lens_t lens;
+        r3d_lens_init(&lens, &render_context_main()->kept_view, 1);
+        const r3d_lod_measure_t measure = r3d_lod_measure(&lens);
+        const bench_stats_t step = sample_herd_steps(scene, LAB_TEST_FRAME_MS, &measure);
         ESP_LOGI(TAG, HERD_PERF_PREFIX "n=%d anim=%s samples=%d step_mean_us=%lld step_p95_us=%lld step_max_us=%lld",
                  *(const int*)scene_herd[HERD_EIGHT].data, name, HERD_PERF_SAMPLES, (long long)step.avg,
                  (long long)step.p95, (long long)step.max);
         for (size_t q = 0; q < LAB_PERF_QUARTER_COUNT; q++) {
             const lab_perf_quarter_t* quarter = &lab_perf_quarters[q];
             test_hold_quarter(quarter->quarter);
-            const bench_stats_t frame = sample_herd_frames(HERD_RATE_DT_MS);
+            const bench_stats_t frame = sample_herd_frames(LAB_TEST_FRAME_MS);
             TEST_ASSERT_EQUAL_INT(0, scene->starved_count);
             ESP_LOGI(TAG,
                      HERD_PERF_PREFIX
@@ -261,9 +274,9 @@ test_herd_fixed_animation_rates(void) {
                      *(const int*)scene_herd[HERD_EIGHT].data, name, HERD_PERF_SAMPLES, (long long)frame.avg,
                      (long long)frame.p95, quarter->name);
         }
+        suite_clear_test_cleanup();
+        release_fixture();
     }
-    suite_clear_test_cleanup();
-    release_fixture();
 }
 
 #endif

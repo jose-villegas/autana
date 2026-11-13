@@ -35,18 +35,13 @@ typedef struct {
     float blend_px; /* advanced: the error past a switch over which a blend fades out; longer is softer, moves more */
 } render_lod_settings_t;
 
-#define RENDER_ANIM_MID_PX        48
-#define RENDER_ANIM_FAR_PX        20
-#define RENDER_ANIM_MID_EVERY     2
-#define RENDER_ANIM_FAR_EVERY     4
-#define RENDER_ANIM_HYSTERESIS_PX 4
-#define RENDER_ANIM_EVERY_MIN     1
-#define RENDER_ANIM_EVERY_MAX     4
-#define RENDER_ANIM_PIXELS_MAX    4096
+#define RENDER_ANIM_EVERY_MIN  1
+#define RENDER_ANIM_EVERY_MAX  4
+#define RENDER_ANIM_PIXELS_MAX 4096
 
 typedef struct {
-    float mid_px;        /* basic: radius below which poses run at mid_every */
-    float far_px;        /* basic: radius below which poses run at far_every */
+    float mid_px;        /* basic: projected radius in pixels below which a copy is posed every mid_every frames */
+    float far_px;        /* basic: projected radius in pixels below which a copy is posed every far_every frames */
     int mid_every;       /* basic: frames between mid-sized poses; 1 poses every frame */
     int far_every;       /* basic: frames between far poses; 1 poses every frame */
     float hysteresis_px; /* advanced: pixels past a tier boundary before switching */
@@ -58,7 +53,7 @@ typedef struct {
     bool batched;                /* advanced: one transform and one draw fork/join a batch, not an instance */
     bool partial_redraw;         /* basic: a still camera redraws only the rows that moved; the picture is the same */
     render_lod_settings_t lod;   /* the level pick (docs/render/frame/Levels-of-Detail.md) */
-    render_anim_settings_t anim; /* how often skeleton poses follow projected radius */
+    render_anim_settings_t anim; /* pose rate by size (docs/render/animation/Skinned-Meshes.md) */
 } render_settings_t;
 
 /* RENDER_SETTINGS_DEFAULT, from default.render.toml beside this header. */
