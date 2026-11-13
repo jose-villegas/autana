@@ -152,13 +152,15 @@ projected radius on the last frame, with
 | below `anim.mid_px` | every `anim.mid_every` frames |
 | below `anim.far_px`, or off screen | every `anim.far_every` frames |
 
-Copies are staggered by index, so the poses spread over frames. A skipped
-copy draws its last skinned positions; its next pose catches up the owed
-time. Skin, light or clip changes, seeks and shows pose at once.
+Each threshold moves by `anim.hysteresis_px` once a copy is in the tier.
 
-![Worst vertex behind its true pose, in pixels, for idle, walk and gallop at the widest mid and far sizes, posed every 2 and every 4 frames at 30 Hz](../../images/anim/anim-rate-lag.png)
+Staggered copies spread poses across frames. Skipped copies keep their skin;
+their next pose pays owed time. Clip changes, seeks and shows pose at once.
+Transform and light changes re-skin with the kept palette.
 
-`launcher/tools/anim/playback/rate_figures.py` measures the lag above from
+![Worst vertex behind its true pose, in pixels, for idle, walk and gallop at the widest mid and far sizes, at the mid and far pose rates with a 16 ms frame](../../images/anim/anim-rate-lag.png)
+
+[`rate_figures.py`](../../../launcher/tools/anim/playback/rate_figures.py) measures the lag above from
 the glTF clips and the default settings.
 
 ## 6. Current limits

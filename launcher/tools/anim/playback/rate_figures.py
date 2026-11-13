@@ -8,7 +8,6 @@ Between poses a copy draws the pose of the last frame it was posed on, which cau
 lags by the clip's motion over up to N - 1 frames. The worst vertex's offset, in model units, is scaled to
 pixels as the LOD measures size: the bind pose's box, its half diagonal the radius, drawn at the tier's widest
 (its threshold plus the hysteresis). Prints each clip's worst and mean per tier.
-launcher/tools/render/render_doc_images.sh runs it.
 """
 
 import argparse
@@ -18,12 +17,13 @@ import sys
 
 TOOLS = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(TOOLS))
+from build.c_header import read_define  # noqa: E402
 from docs.plot_style import FAINT, LABEL_SIZE, MUTED, SLOTS, save, style_axes, subplots  # noqa: E402
 from r3d import gltf_skin  # noqa: E402
 from render.settings import render_asset  # noqa: E402
 
-# The frame the lag is measured at: a 30 Hz frame, the board's rate for a skinned scene.
-FRAME_MS = 33
+# The board still-herd comparison uses this same step.
+FRAME_MS = read_define(TOOLS.parent / "main/lab/test/lab_test.h", "LAB_TEST_FRAME_MS")
 MS_PER_S = 1000
 PANEL = (3.2, 2.6)  # inches per panel
 ONE_PIXEL = 1.0

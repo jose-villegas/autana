@@ -338,7 +338,7 @@ run "$PYTHON" launcher/tools/anim/playback/playback_figures.py "$skin_asset" $PL
     --out "$OUT/anim" > "$WORK/playback_figures.log"
 # --orphans scans this runner: anim-playhead.png, anim-blend.png, anim-nlerp.png, anim-blend.gif
 # shellcheck disable=SC2086 # RATE_CLIPS is three words
-run "$PYTHON" launcher/tools/anim/playback/rate_figures.py "$skin_asset" $RATE_CLIPS     --out "$OUT/anim/anim-rate-lag.png" > "$WORK/rate_figures.log"
+run "$PYTHON" launcher/tools/anim/playback/rate_figures.py "$skin_asset" $RATE_CLIPS --out "$OUT/anim/anim-rate-lag.png" > "$WORK/rate_figures.log"
 # --orphans scans this runner: anim-rate-lag.png
 
 # The bake method's figures: local occlusion and bounced light on a floor beside a wall, and the scores.
