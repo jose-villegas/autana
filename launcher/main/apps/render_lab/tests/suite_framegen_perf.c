@@ -47,7 +47,7 @@ static const char* TAG = "framegen";
 #define FRAMEGEN_STILL_STAGE "r3d.still"
 #define FRAMEGEN_MODES_LINE                                                                                            \
     "framegen_modes: %s framegen=%d budget_ms=%d frames=%d drawn=%d mean_us=%d p95_us=%d mean_height=%d "              \
-    "still_us=%d"
+    "still_us=%d still_rows=%d"
 /* A profile line: per pose, the target's clear alone, the warp with every
  * splat off screen (clear, reads and maths), to the drawn view itself
  * (in-order writes) and to the next view (the real scatter). */
@@ -118,15 +118,15 @@ time_warp(entity_t scene, entity_t camera, const lens_t* lens, uint32_t t_ms) {
     render_view_t away = next;
     render_view_set_shift(&away, (vec2f_t){FRAMEGEN_OFFSCREEN_SHIFT, 0.0F});
     const int64_t offscreen = timing_now_us();
-    framegen_warp(raster, &now, &away, &target);
+    framegen_warp(raster, NULL, &now, &away, &target);
     sum.offscreen += timing_now_us() - offscreen;
     const int64_t same = timing_now_us();
-    framegen_warp(raster, &now, &now, &target);
+    framegen_warp(raster, NULL, &now, &now, &target);
     sum.same_view += timing_now_us() - same;
     const int64_t start = timing_now_us();
-    framegen_warp(raster, &now, &next, &target);
+    framegen_warp(raster, NULL, &now, &next, &target);
     const int64_t warped = timing_now_us();
-    sum.holes += framegen_fill(raster, &target);
+    sum.holes += framegen_fill(raster, NULL, &target);
     const int64_t filled = timing_now_us();
     sum.fill += filled - warped;
     GFX_TARGET_STORAGE(GFX_ATTACHMENT_FURTHER) picture;
@@ -238,6 +238,7 @@ static const framegen_mode_t* mode;
 typedef struct {
     int64_t carry_us, height_sum;
     int drawn;
+    int64_t still_rows_sum; /* the rows each drawn frame kept of its still part */
 } played_t;
 
 /* One shown frame at the path's real pace: the time the last one took. */
@@ -251,8 +252,10 @@ shown_frame(void* ctx, int64_t dt_us) {
     const int64_t took = timing_now_us() - began;
     const render_context_frame_t f = render_context_frame(render_context_main());
     if (!f.generated) {
+        const raster_still_t* still = render_context_main()->raster.still;
         p->drawn++;
         p->height_sum += f.height;
+        p->still_rows_sum += still != NULL ? still->end_row - still->first_row : 0;
     }
     return took;
 }
@@ -273,7 +276,8 @@ test_mode(void) {
     /* Per drawn frame: only a drawn frame keeps its still part. */
     const int64_t still_us = frame_cost_take_mean_us(FRAMEGEN_STILL_STAGE, (uint32_t)played.drawn);
     ESP_LOGI(TAG, FRAMEGEN_MODES_LINE, scenario->scene->key, mode->generating, mode->budget_ms, p.frames, played.drawn,
-             (int)p.frame_us.avg, (int)p.frame_us.p95, (int)(played.height_sum / played.drawn), (int)still_us);
+             (int)p.frame_us.avg, (int)p.frame_us.p95, (int)(played.height_sum / played.drawn), (int)still_us,
+             (int)(played.still_rows_sum / played.drawn));
     TEST_ASSERT_TRUE(render_lab_framegen_set_on(false));
     TEST_ASSERT_TRUE(render_lab_framegen_set_moving(RENDER_FRAMEGEN_MOVING_STILL));
     TEST_ASSERT_TRUE(render_lab_budget_set_ms(0));

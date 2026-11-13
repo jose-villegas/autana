@@ -67,7 +67,7 @@ test_a_warp_to_the_drawn_view_gives_the_frame_back(void) {
     raster_rig_t* r = open_rig();
     const render_view_t view = render_view_fixture(&raster_rig_camera, &r->raster, 0);
     (void)raster_draw(&r->raster, &view);
-    framegen_warp(&r->raster, &view, &view, &target);
+    framegen_warp(&r->raster, NULL, &view, &view, &target);
     /* The board's reciprocal keeps MATHF_RECIP_APPROX_BITS and the word truncates,
      * so a depth may come back that fraction of itself plus one word off. */
     const uint16_t* drawn = raster_depth(&r->raster);
@@ -76,7 +76,7 @@ test_a_warp_to_the_drawn_view_gives_the_frame_back(void) {
         TEST_ASSERT_UINT32_WITHIN(off, drawn[i], target.depth[i]);
     }
     TEST_ASSERT_EQUAL_UINT16_ARRAY(raster_color(&r->raster), target.colour, W * H);
-    TEST_ASSERT_EQUAL_INT(0, framegen_fill(&r->raster, &target));
+    TEST_ASSERT_EQUAL_INT(0, framegen_fill(&r->raster, NULL, &target));
 }
 
 /* The card is the nearer quad. Facing the camera, each quad has one depth,
@@ -112,7 +112,7 @@ test_a_warp_to_a_moved_camera_puts_the_card_where_a_draw_does(void) {
     TEST_ASSERT_NOT_NULL(truth);
     memcpy(truth, raster_depth(&r->raster), sizeof(uint16_t) * W * H);
     (void)raster_draw(&r->raster, &drawn);
-    framegen_warp(&r->raster, &drawn, &now, &target);
+    framegen_warp(&r->raster, NULL, &drawn, &now, &target);
     /* The wall is the farthest drawn depth. */
     uint16_t wall = 0;
     for (int i = 0; i < W * H; i++) {
@@ -134,7 +134,7 @@ test_a_warp_to_a_moved_camera_puts_the_card_where_a_draw_does(void) {
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, card, "the card is not in the picture");
     TEST_ASSERT_LESS_OR_EQUAL_INT(MOST_HOLES, holes);
     TEST_ASSERT_LESS_OR_EQUAL_INT(MOST_MISPLACED, misplaced);
-    TEST_ASSERT_EQUAL_INT(holes, framegen_fill(&r->raster, &target));
+    TEST_ASSERT_EQUAL_INT(holes, framegen_fill(&r->raster, NULL, &target));
 }
 
 /* The fill writes the generated frame into the raster's own picture: the
@@ -145,14 +145,14 @@ test_the_fill_writes_the_generated_frame_into_the_raster(void) {
     const render_view_t drawn = render_view_fixture(&raster_rig_camera, &r->raster, 0);
     const render_view_t now = stepped_view(r);
     (void)raster_draw(&r->raster, &drawn);
-    framegen_warp(&r->raster, &drawn, &now, &target);
+    framegen_warp(&r->raster, NULL, &drawn, &now, &target);
     const size_t bytes = sizeof(uint16_t) * W * H;
     uint16_t* colour = malloc(bytes);
     uint16_t* depth = malloc(bytes);
     TEST_ASSERT_TRUE(colour != NULL && depth != NULL);
     memcpy(colour, raster_color(&r->raster), bytes);
     memcpy(depth, raster_depth(&r->raster), bytes);
-    const int holes = framegen_fill(&r->raster, &target);
+    const int holes = framegen_fill(&r->raster, NULL, &target);
     const uint16_t* shown_colour = raster_color(&r->raster);
     const uint16_t* shown_depth = raster_depth(&r->raster);
     int counted = 0;

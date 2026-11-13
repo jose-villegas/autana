@@ -376,18 +376,6 @@ draw_moving(render_context_t* c, const r3d_instance_t* instances, const render_v
     r->moving_only = false;
 }
 
-/* The still part's kept rows back into the raster's picture, over the moving
- * instances the drawn frame drew there, so the warp carries none of them. */
-static void
-put_back_still(render_context_t* c) {
-    const raster_t* r = &c->raster;
-    const raster_still_t* still = &c->still_rows;
-    const size_t from = (size_t)still->first_row * (size_t)r->width;
-    const size_t pixels = (size_t)(still->end_row - still->first_row) * (size_t)r->width;
-    memcpy(raster_color(r) + from, still->colour + from, pixels * sizeof(uint16_t));
-    memcpy(raster_depth(r) + from, still->depth + from, pixels * sizeof(uint16_t));
-}
-
 /* The kept frame warped to `view` into the raster's picture, which compose
  * shows: its still part when kept, and the moving instances drawn again over
  * it at their own pose. */
@@ -395,11 +383,8 @@ static void
 generate(render_context_t* c, const r3d_instance_t* instances, const render_view_t* view) {
     raster_t* r = &c->raster;
     const int64_t began_us = timing_now_us();
-    if (r->still != NULL) {
-        put_back_still(c);
-    }
-    framegen_warp(r, &c->kept_view, view, &c->framegen);
-    (void)framegen_fill(r, &c->framegen);
+    framegen_warp(r, r->still, &c->kept_view, view, &c->framegen);
+    (void)framegen_fill(r, r->still, &c->framegen);
     if (r->moving_count > 0 && c->moving_mode != RENDER_FRAMEGEN_MOVING_WARP) {
         draw_moving(c, instances, view);
     }

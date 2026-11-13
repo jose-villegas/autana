@@ -34,15 +34,17 @@ typedef struct {
 bool framegen_target_alloc(framegen_target_t* out, int width, int height);
 void framegen_target_free(framegen_target_t* target);
 
-/* Warps the raster's own picture, drawn through
+/* Warps the raster's own picture, the rows `still` kept (when not NULL)
+ * read from there instead, drawn through
  * `drawn` at the raster's depth scale, to `now`: each pixel lands on the
  * nearest target pixel, the nearer point winning; the sky only turns. Both
  * cores take half the source rows. */
-void framegen_warp(const raster_t* raster, const render_view_t* drawn, const render_view_t* now,
-                   framegen_target_t* out);
+void framegen_warp(const raster_t* raster, const raster_still_t* still, const render_view_t* drawn,
+                   const render_view_t* now, framegen_target_t* out);
 
 /* Completes the generated frame in the raster's own picture, so it composes
  * as a drawn frame does and moving instances can draw over it: `target`'s
- * pixel where one landed, the picture's own where nothing did. Returns the
- * pixels nothing landed on. */
-int framegen_fill(const raster_t* raster, const framegen_target_t* target);
+ * pixel where one landed, the picture's own where nothing did, or in the
+ * rows `still` kept (when not NULL) the kept one. Returns the pixels nothing
+ * landed on. */
+int framegen_fill(const raster_t* raster, const raster_still_t* still, const framegen_target_t* target);

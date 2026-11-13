@@ -124,8 +124,8 @@ typedef struct {
     framegen_target_t framegen; /* the warp's target */
     /* The instances that move on their own (render_context_set_moving()):
      * this frame's count, and the drawn frame's still part, before they drew
-     * over it: the rows they cover, put back before the frames generated from
-     * it warp the picture. Allocated while generating with some to draw. */
+     * over it: the rows they cover, which the frames generated from it warp in
+     * place of the picture's. Allocated while generating with some to draw. */
     int moving_count;
     framegen_target_t still;
     raster_still_t still_rows;            /* the rows of `still` the last drawn frame kept */

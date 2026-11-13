@@ -30,8 +30,9 @@ framegen_target_free(framegen_target_t* target) {
 
 /* One core's share of a warp: source rows [first, end) into the whole target. */
 typedef struct {
-    const uint16_t* colour;
+    const uint16_t* colour; /* the raster's picture */
     const uint16_t* depth;
+    const raster_still_t* still; /* its kept rows, read in their place; NULL for none */
     framegen_target_t* out;
     int first, end;
     const mat4f_t* map;
@@ -114,8 +115,10 @@ warp_rows(void* ctx) {
     for (int y = job->first; y < job->end; y++) {
         row_map_t r;
         row_map(job, y, to_w, &r);
-        const uint16_t* depth = job->depth + ((size_t)y * (size_t)width);
-        const uint16_t* colour = job->colour + ((size_t)y * (size_t)width);
+        const bool kept = job->still != NULL && y >= job->still->first_row && y < job->still->end_row;
+        const size_t at = (size_t)y * (size_t)width;
+        const uint16_t* depth = (kept ? job->still->depth : job->depth) + at;
+        const uint16_t* colour = (kept ? job->still->colour : job->colour) + at;
         int x = 0;
         /* Two pixels a step, so one's reciprocal overlaps the other's. */
         for (; x + 1 < width; x += 2) {
@@ -135,7 +138,8 @@ warp_rows(void* ctx) {
 }
 
 void
-framegen_warp(const raster_t* raster, const render_view_t* drawn, const render_view_t* now, framegen_target_t* out) {
+framegen_warp(const raster_t* raster, const raster_still_t* still, const render_view_t* drawn, const render_view_t* now,
+              framegen_target_t* out) {
     r3d_lens_t before;
     r3d_lens_t after;
     raster_lens(raster, drawn, 1, &before);
@@ -143,7 +147,7 @@ framegen_warp(const raster_t* raster, const render_view_t* drawn, const render_v
     const mat4f_t map = mat4f_mul_affine(after.m, mat4f_invert_affine(before.m));
     memset(out->depth, 0, (size_t)out->width * (size_t)out->height * sizeof(uint16_t));
     /* Two rows may race for one target pixel; either splat is a fair pick. */
-    warp_rows_t first = {raster_color(raster), raster_depth(raster),     out, 0, out->height / 2, &map,
+    warp_rows_t first = {raster_color(raster), raster_depth(raster),     still, out, 0, out->height / 2, &map,
                          before.project,       raster_depth_near(raster)};
     warp_rows_t second = first;
     second.first = first.end;
@@ -156,6 +160,8 @@ typedef struct {
     const framegen_target_t* target;
     uint16_t* colour; /* the raster's picture: a hole keeps its pixel */
     uint16_t* depth;
+    const raster_still_t* still; /* or, in its kept rows, takes the kept one; NULL for none */
+    size_t kept_from, kept_end;  /* the kept rows' pixels */
     size_t first, end;
     int* holes; /* the caller's: core 1 runs on a copy of this context */
 } fill_span_t;
@@ -168,6 +174,10 @@ fill_span(void* ctx) {
         const uint16_t d = job->target->depth[i];
         if (d == R3D_DEPTH_EMPTY) {
             holes++;
+            if (i >= job->kept_from && i < job->kept_end) {
+                job->colour[i] = job->still->colour[i];
+                job->depth[i] = job->still->depth[i];
+            }
         } else {
             job->colour[i] = job->target->colour[i];
             job->depth[i] = d == FRAMEGEN_DEPTH_SKY ? R3D_DEPTH_EMPTY : d;
@@ -177,10 +187,19 @@ fill_span(void* ctx) {
 }
 
 int
-framegen_fill(const raster_t* raster, const framegen_target_t* target) {
+framegen_fill(const raster_t* raster, const raster_still_t* still, const framegen_target_t* target) {
     const size_t pixels = (size_t)target->width * (size_t)target->height;
+    const size_t width = (size_t)target->width;
     int holes[2] = {0, 0};
-    fill_span_t first = {target, raster_color(raster), raster_depth(raster), 0, pixels / 2, &holes[0]};
+    fill_span_t first = {target,
+                         raster_color(raster),
+                         raster_depth(raster),
+                         still,
+                         still != NULL ? (size_t)still->first_row * width : 0,
+                         still != NULL ? (size_t)still->end_row * width : 0,
+                         0,
+                         pixels / 2,
+                         &holes[0]};
     fill_span_t second = first;
     second.first = first.end;
     second.end = pixels;

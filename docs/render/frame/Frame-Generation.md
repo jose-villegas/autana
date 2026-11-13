@@ -324,15 +324,14 @@ flowchart LR
     D["Drawn frame:<br/>still part"] --> K["Keep the rows<br/>the movers cover"]
     K --> M["Draw the movers"]
     M --> S["Show"]
-    S --> P["Put the kept<br/>rows back"]
-    P --> W["Warp to the<br/>next view"]
+    S --> W["Warp to the next view,<br/>kept rows in place"]
     W --> R["Draw the movers<br/>at their new pose"]
 ```
 
 | Step | What it does |
 |---|---|
 | Keep | Before the movers draw, the drawn frame copies the rows their world boxes cover (`r3d_lens_box_rows()`, as partial redraw finds rows) of colour and depth; the frame cost stage `r3d.still` times it |
-| Put back | The generated frame restores those rows, so the picture it warps holds the still part alone |
+| Warp | The generated frame warps and fills from the kept rows in place of the picture's, so it carries the still part alone |
 | Draw again | The movers draw over the warp at their own pose and the drawn frame's depth scale |
 
 A frame whose moving count differs from the drawn frame's is drawn instead.
