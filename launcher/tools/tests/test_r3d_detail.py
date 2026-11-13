@@ -76,6 +76,16 @@ class LadderTest(unittest.TestCase):
         self.assertLessEqual(moved * FOCAL / distance, detail.TOLERANCE_PX)
         self.assertLess(len(kept), len(tris))
 
+    def test_a_part_dropped_at_any_error_keeps_the_shape_whole(self):
+        # A flat grid, and apart from it a zero-area sliver meshoptimizer drops even at error 0.
+        grid = [[x, y, 0.0] for y in range(3) for x in range(3)]
+        cells = [(0, 1, 4, 3), (1, 2, 5, 4), (3, 4, 7, 6), (4, 5, 8, 7)]
+        positions = np.array(grid + [[5.0, 0, 0], [6.0, 0, 0], [7.0, 0, 0]])
+        tris = np.array([t for a, b, c, d in cells for t in ((a, b, c), (a, c, d))] + [(9, 10, 11)])
+        kept = detail.level(positions, tris, 1e-3)
+        self.assertEqual(detail.surface_error(positions, tris, positions, kept), 0.0)
+        self.assertEqual(len(kept), len(tris))
+
 
 @unittest.skipIf(np is None, "needs the r3d environment")
 class BalanceTest(unittest.TestCase):
