@@ -82,7 +82,12 @@ class StressCorners(unittest.TestCase):
     def test_every_preset_is_held_here(self):
         self.assertEqual({"open", "stack", "tiny-copies", "big-tris", "per-frame", "two-sided", "noisy-tiny", "mix",
                           "static-copies", "uniform-mid", "uniform-full", "card", "culled", "near",
-                          "few-copies"}, set(preset_copies()))
+                          "few-copies", "baked-tree"}, set(preset_copies()))
+
+    def test_the_baked_ring_is_culled_through_its_tree(self):
+        c = self.counts("baked-tree")
+        self.assertGreater(c["nodes_cut"], 0, "the turn starts with part of the ring behind the camera")
+        self.assertGreater(c["clusters_kept"], 0)
 
     def assert_all_in_view(self, c):
         """Nothing culled: every cluster tested is kept, and no node is cut."""

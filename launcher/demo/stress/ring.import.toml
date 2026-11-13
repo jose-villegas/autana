@@ -1,0 +1,9 @@
+# The baked-tree preset's ring: written by torus_obj.py, baked like any scene's mesh, so its
+# cluster tree is the one the bake tools build.
+[source]
+path = "ring.obj"
+credit = "A torus written for this scene by main/apps/render_lab/tools/torus_obj.py."
+
+[output]
+name = "stress_ring"
+position_scale = 4096   # ticks per unit: the ring reaches 4.6, inside int16

@@ -1,0 +1,49 @@
+# Standing at the ring's centre and turning half a turn and back, looking along its inner wall:
+# the cull walk reaches a different part of the ring's tree at every pose.
+node = "camera"
+animation = "sweep"
+
+[[keys]]
+t = 0
+eye = [0.0, 0.0, 0.0]
+look_at = [0.000000, -0.1, 1.000000]
+
+[[keys]]
+t = 1
+eye = [0.0, 0.0, 0.0]
+look_at = [0.707107, -0.1, 0.707107]
+
+[[keys]]
+t = 2
+eye = [0.0, 0.0, 0.0]
+look_at = [1.000000, -0.1, 0.000000]
+
+[[keys]]
+t = 3
+eye = [0.0, 0.0, 0.0]
+look_at = [0.707107, -0.1, -0.707107]
+
+[[keys]]
+t = 4
+eye = [0.0, 0.0, 0.0]
+look_at = [0.000000, -0.1, -1.000000]
+
+[[keys]]
+t = 5
+eye = [0.0, 0.0, 0.0]
+look_at = [0.707107, -0.1, -0.707107]
+
+[[keys]]
+t = 6
+eye = [0.0, 0.0, 0.0]
+look_at = [1.000000, -0.1, 0.000000]
+
+[[keys]]
+t = 7
+eye = [0.0, 0.0, 0.0]
+look_at = [0.707107, -0.1, 0.707107]
+
+[[keys]]
+t = 8
+eye = [0.0, 0.0, 0.0]
+look_at = [0.000000, -0.1, 1.000000]

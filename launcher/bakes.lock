@@ -307,6 +307,15 @@ run = 43184150229
 host = "Linux x86_64"
 
 [[bake]]
+output = "stress_ring.bundle"
+source = "launcher/demo/stress/stress.scene.toml"
+key = "8904e8560adaa087045c283d30a8cf668672a13852ed8acd74b3f1bab827c46b"
+sha256 = "5d33888a240cbd558bf21e84e43f4b6a64cc4030016d47a580603281cd244dfa"
+size = 458208
+run = 43330378872
+host = "Linux x86_64"
+
+[[bake]]
 output = "tank.bundle"
 source = "launcher/demo/water/water.scene.toml"
 key = "4cd2114a11f0e4a6a2100cb710b10c346afdd4d4d25488e8c07dbbeabcd8053b"
