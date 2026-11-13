@@ -116,10 +116,17 @@ class DerivedReviewTests(unittest.TestCase):
         self.assertLessEqual(len(out[2]) + paid, allocation.ceiling)
 
     def test_surface_rule_merges_different_triangulations_with_derived_detail(self):
-        p = np.array([[0., 0, 0], [2, 0, 0], [2, 2, 0], [0, 2, 0],
-                      [10, 0, 0], [12, 0, 0], [12, 2, 0], [10, 2, 0], [11, 1, 0]])
-        t = np.array([[0, 1, 2], [0, 2, 3], [4, 5, 8], [5, 6, 8], [6, 7, 8], [7, 4, 8]])
-        o, m = np.array([0, 0, 1, 1, 1, 1]), np.zeros(len(t), dtype=int)
+        from test_r3d_bake import grid
+        from r3d.tessellate import split_marked_edges
+
+        first, faces = grid(1)
+        first *= 2
+        diagonal = tuple(np.intersect1d(faces[0], faces[1]))
+        second, split, _, _ = split_marked_edges(first, faces, {diagonal})
+        p = np.concatenate([first, second + [10, 0, 0]])
+        t = np.concatenate([faces, split + len(first)])
+        o = np.repeat([0, 1], [len(faces), len(split)])
+        m = np.zeros(len(t), dtype=int)
         rule = {'match': {'object': '*'}, 'shape': 'surface', 'seam': 'free'}
         renderer = NS(variant=NS(triangles=1, ceiling=None), fit=None, visibility=None)
         camera = NS(component=NS(path=None, half_fov_short_tan=1, near_z=NEAR))
@@ -219,11 +226,13 @@ class SourcePlacementTests(unittest.TestCase):
 
 
 class MeasuredBalanceTests(unittest.TestCase):
-    def carve(self, room, counts):
+    GROWTH_EXCESS = 4
+
+    def carve(self, room, counts, fitted=True):
         p, t, m, o, names = odd_scene()
         rule = {'match': {'object': 'ball_*'}, 'seam': 'free'}
         ladder = [detail.Rung(count, detail.TOLERANCE_PX * 2 ** i) for i, count in enumerate(counts)]
-        renderer = NS(variant=NS(triangles=1, ceiling=room + 1), fit=NS(budget=1))
+        renderer = NS(variant=NS(triangles=1, ceiling=room + 1), fit=NS(budget=1) if fitted else None)
         with patch.object(mesh_import, 'views', return_value=([], FOCAL, NEAR)), \
                 patch.object(detail, 'ladder', return_value=ladder):
             selected, derived = mesh_import.carve_selection(NS(p=p, tri_o=o, object_names=names), t, m,
@@ -232,11 +241,12 @@ class MeasuredBalanceTests(unittest.TestCase):
         allocation = simplify.Allocation(tri_o=o, object_names=names, selection=selected, shapes=[],
                                         meshes=(rule,), report={})
         allocation.detail = derived
-        allocation.split = (None, room, 1)
+        allocation.ceiling = None if fitted else room + 1
+        allocation.split = (allocation.ceiling, room, 1)
         asks = []
         def stand(p, rgb, t, mat, budget, deviation, options, lock, error):
             asks.append(budget)
-            count = budget + 4 if budget == counts[0] else budget
+            count = budget + self.GROWTH_EXCESS if budget == counts[0] else budget
             return NS(positions=p, rgb=rgb, tris=t[:count], materials=mat[:count], kept=None,
                       kind='original'), [], budget, error
         with patch.object(simplify, 'stand_in_within', side_effect=stand):
@@ -248,6 +258,14 @@ class MeasuredBalanceTests(unittest.TestCase):
         self.assertEqual(info['pick'], 1)
         self.assertEqual(asks, [4, 2])
         self.assertEqual(allocation.report['passes'][0]['stored_triangles'], 2)
+
+    def test_no_fit_copy_growth_steps_down_before_the_hard_ceiling_check(self):
+        room, counts = 5, [4, 2]
+        allocation, info, asks = self.carve(room, counts, fitted=False)
+        self.assertGreater(counts[0] + self.GROWTH_EXCESS, allocation.ceiling)
+        self.assertEqual(info['pick'], 1)
+        self.assertEqual(asks, counts)
+        self.assertLessEqual(allocation.report['stored_total'], allocation.ceiling)
 
     def test_exhausted_rungs_allow_rest_below_floor_and_report_the_shortfall(self):
         allocation, info, _ = self.carve(2, [4, 3])
