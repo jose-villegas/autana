@@ -374,10 +374,10 @@ r3d_span_fill_gouraud(uint16_t* depth, uint16_t* color, int count, const uint32_
     }
 }
 
-/* Whether the atlas keeps the texel at u, v (16.16, inside the atlas). */
+/* Whether the atlas keeps the texel at u, v: 16.16, inside the atlas (mask_axis() clamps both). */
 static inline __attribute__((always_inline)) bool
 mask_kept(const uint32_t* rows, uint32_t u, uint32_t v) {
-    return ((rows[v >> R3D_SPAN_MASK_SHIFT] >> ((u >> R3D_SPAN_MASK_SHIFT) % LMSK_MASK_WIDTH)) & 1U) != 0U;
+    return ((rows[v >> R3D_SPAN_MASK_SHIFT] >> (u >> R3D_SPAN_MASK_SHIFT)) & 1U) != 0U;
 }
 
 RENDER_IRAM_ATTR __attribute__((noinline)) FILL_GOURAUD_ATTR void

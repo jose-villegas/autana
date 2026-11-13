@@ -43,7 +43,8 @@ locks the keys LOCK lacks, keeping every row it has: a new key takes the bytes
 of the stale row for the same output when there is one, else the tree's file,
 and each new row is marked `seeded`: its bytes
 were carried over, not made by the code its key names. Like `lock`, it locks
-what it can and names the rest: a key that waits for a stage's row seeds in the next round. `check` fails when LOCK lacks a
+what it can and names the rest: a fit that waits for its start's row seeds in the next round,
+and levels waiting for their fit are left to the CPU run. `check` fails when LOCK lacks a
 needed key or holds one nothing needs, and samples every needed poses row again, failing on one
 missing, unneeded or different, exactly.
 
@@ -1422,8 +1423,8 @@ def main(argv=None):
                 raise BakeMissing("made again with other bytes than the lock's:\n" + "\n".join(differ))
         elif args.command == "lock":
             mesh_cpu_vendor = runs_mesh_cpu_vendor(found, lock, made, tables.get("mesh_cpu_vendor"))
-            # A fit waits for its start's row, levels for their fit's: what can lock now does, and the
-            # rest is named for the next round.
+            # A fit waits for its start's row, levels for their fit's: what can lock now does. `lock`
+            # names the rest for the next round; a seed names waiting fits and skips waiting levels.
             missing = []
             rows = seed(found, cache, lock, made, missing) if args.seed else lock_rows(found, lock, made, missing)
             write_lock(rows, path=LOCK, poses=poses.used.values(), mesh_cpu_vendor=mesh_cpu_vendor)

@@ -157,8 +157,8 @@ mesh_fixture(const stress_params_t* p) {
     fixture_begin(p, 1);
     r3d_dynamic_source_t source;
     TEST_ASSERT_TRUE(stress_source(p, 0, &f.at[0], &source));
-    r3d_dynamic_capacity_t capacity = r3d_dynamic_capacity_for(source.vertex_count, source.triangle_count);
-    capacity.masked = source.mask_uvs != NULL;
+    const r3d_dynamic_capacity_t capacity =
+        r3d_dynamic_capacity_for(source.vertex_count, source.triangle_count, source.mask_uvs != NULL);
     const size_t bytes = r3d_dynamic_mesh_bytes(capacity);
     f.mesh_block = memory_alloc(bytes, MEMORY_PSRAM);
     TEST_ASSERT_NOT_NULL(f.mesh_block);
@@ -187,7 +187,8 @@ static void
 test_a_per_frame_mesh_fits_all_through_its_wave(void) {
     const stress_params_t* p = &stress_presets[STRESS_PER_FRAME];
     fixture_begin(p, 1);
-    const r3d_dynamic_capacity_t capacity = r3d_dynamic_capacity_for(stress_vertex_count(p), stress_triangle_count(p));
+    const r3d_dynamic_capacity_t capacity =
+        r3d_dynamic_capacity_for(stress_vertex_count(p), stress_triangle_count(p), false);
     const size_t bytes = r3d_dynamic_mesh_bytes(capacity);
     f.mesh_block = memory_alloc(bytes, MEMORY_PSRAM);
     TEST_ASSERT_NOT_NULL(f.mesh_block);

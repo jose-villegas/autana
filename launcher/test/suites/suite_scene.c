@@ -4370,6 +4370,25 @@ test_mask_rejects_size(void) {
     }
 }
 
+/* An atlas with more rows than a 12.4 v reaches is refused, one at the limit kept. */
+static void
+test_mask_rejects_more_rows_than_v_reaches(void) {
+    uint32_t mask[MASK_TEST_BYTES / sizeof(uint32_t)];
+    r3d_lit_mesh_t mesh = masked_quads(mask);
+    const size_t uv_end = LMSK_HEADER_SIZE + (QUAD_VERTICES * sizeof(uint16_t[2]));
+    for (uint32_t rows = LMSK_MAX_ROWS; rows <= LMSK_MAX_ROWS + 1U; rows++) {
+        const size_t bytes = uv_end + (rows * sizeof(uint32_t));
+        uint8_t* big = calloc(1, bytes);
+        TEST_ASSERT_NOT_NULL(big);
+        memcpy(big, mask, uv_end);
+        test_pack_put32(big + LMSK_AT_MASK_ROWS, rows);
+        const asset_view_t entry = {big, (uint32_t)bytes};
+        const asset_status_t status = r3d_lit_mesh_mask_from_asset(&entry, &mesh);
+        free(big);
+        TEST_ASSERT_EQUAL_INT(rows == LMSK_MAX_ROWS ? ASSET_OK : ASSET_ERR_BOUNDS, status);
+    }
+}
+
 static void
 test_mask_rejects_lod_groups(void) {
     uint32_t mask[MASK_TEST_BYTES / sizeof(uint32_t)];
@@ -6766,6 +6785,7 @@ run_scene_suite(void) {
     RUN_TEST(test_mask_rejects_version_and_width);
     RUN_TEST(test_mask_rejects_uv_bounds);
     RUN_TEST(test_mask_rejects_size);
+    RUN_TEST(test_mask_rejects_more_rows_than_v_reaches);
     RUN_TEST(test_mask_rejects_lod_groups);
     RUN_TEST(test_clip_bind_failure_names_the_first_rejected_clip);
     RUN_TEST(test_skinned_scene_draws_clip_output_and_reskins_from_bind);

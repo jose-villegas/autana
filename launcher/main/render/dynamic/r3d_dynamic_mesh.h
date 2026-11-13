@@ -42,7 +42,8 @@ typedef struct {
     int triangle_count;
     bool double_sided;
     /* LMSK 12.4 texels, one per vertex, and the atlas every cluster is cut
-     * by; NULL for an opaque mesh. Needs a masked capacity. */
+     * by (1 to LMSK_MAX_ROWS rows); NULL for an opaque mesh. Needs a masked
+     * capacity. */
     const uint16_t (*mask_uvs)[2];
     lmsk_atlas_t mask;
 } r3d_dynamic_source_t;
@@ -68,10 +69,10 @@ typedef struct {
     r3d_lit_mesh_t mesh;
 } r3d_dynamic_mesh_t;
 
-/* Room for any opaque mesh of up to `sources` vertices and `triangles`
- * triangles: at worst a cluster copies three vertices for each triangle it
- * holds. Set `masked` on the result for a masked one. */
-r3d_dynamic_capacity_t r3d_dynamic_capacity_for(int sources, int triangles);
+/* Room for any mesh of up to `sources` vertices and `triangles` triangles,
+ * with mask u, v when `masked`: at worst a cluster copies three vertices for
+ * each triangle it holds. */
+r3d_dynamic_capacity_t r3d_dynamic_capacity_for(int sources, int triangles, bool masked);
 
 size_t r3d_dynamic_mesh_bytes(r3d_dynamic_capacity_t capacity);
 
@@ -82,7 +83,8 @@ bool r3d_dynamic_mesh_init(r3d_dynamic_mesh_t* m, void* block, size_t bytes, r3d
                            int position_scale);
 
 /* Rebuilds the mesh from `src`, every cluster masked when it carries mask
- * u, v. False when it did not fit, or is masked and the capacity is not: the mesh then
+ * u, v. False when it did not fit, or is masked with no room for u, v or no
+ * usable atlas: the mesh then
  * holds the triangles that did, in order. Positions past int16 ticks clamp.
  * An empty source leaves no nodes: nothing to draw. */
 bool r3d_dynamic_mesh_build(r3d_dynamic_mesh_t* m, const r3d_dynamic_source_t* src);

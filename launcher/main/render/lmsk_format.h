@@ -13,6 +13,9 @@
 #define LMSK_AT_VERTEX_FIRST  4U
 #define LMSK_AT_MASK_ROWS     8U
 #define LMSK_NAME_SUFFIX      ".mask"
+/* The most atlas rows a 12.4 uint16 v reaches. */
+#define LMSK_MAX_ROWS         4096U
+_Static_assert((LMSK_MAX_ROWS << LMSK_UV_FRACTION_BITS) == UINT16_MAX + 1U, "a uint16 v reaches every row");
 
 /* The atlas as a fill reads it: one word of LMSK_MASK_WIDTH bits per row, a
  * pixel kept where its u bit is set in the row its v picks. */

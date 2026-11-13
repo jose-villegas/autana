@@ -390,7 +390,7 @@ r3d_lit_mesh_mask_from_asset(const asset_view_t* mask, r3d_lit_mesh_t* mesh) {
         return ASSET_ERR_FORMAT;
     }
     const uint64_t atlas_at = LMSK_HEADER_SIZE + ((uint64_t)(mesh->vertex_count - first) * sizeof(uint16_t[2]));
-    if (atlas_at + ((uint64_t)rows * sizeof(uint32_t)) != mask->size || rows > INT_MAX) {
+    if (atlas_at + ((uint64_t)rows * sizeof(uint32_t)) != mask->size || rows > LMSK_MAX_ROWS) {
         return ASSET_ERR_BOUNDS;
     }
     const uint16_t (*uvs)[2] = (const void*)(mask->data + LMSK_HEADER_SIZE);

@@ -11,6 +11,7 @@ TYPE = b"LMSK"
 VERSION = read_define(OWNER, "LMSK_VERSION")
 MASK_WIDTH = read_define(OWNER, "LMSK_MASK_WIDTH")
 UV_FRACTION_BITS = read_define(OWNER, "LMSK_UV_FRACTION_BITS")
+MAX_ROWS = read_define(OWNER, "LMSK_MAX_ROWS")
 NAME_SUFFIX = read_define(OWNER, "LMSK_NAME_SUFFIX")
 HEADER_FIELDS = (("VERSION", "H"), ("MASK_WIDTH", "H"), ("VERTEX_FIRST", "I"), ("MASK_ROWS", "I"))
 HEADER = checked_struct(OWNER, "LMSK", HEADER_FIELDS)
@@ -31,7 +32,7 @@ def decode(entry, vertex_count):
     if not 0 <= first <= vertex_count:
         raise ValueError("LMSK vertex_first is invalid")
     atlas_at = HEADER.size + (vertex_count - first) * UV.size
-    if atlas_at + rows * ROW.size != len(entry):
+    if rows > MAX_ROWS or atlas_at + rows * ROW.size != len(entry):
         raise ValueError("LMSK records do not match the entry size")
     uvs = list(UV.iter_unpack(entry[HEADER.size:atlas_at]))
     if any(u >= width << UV_FRACTION_BITS or v >= rows << UV_FRACTION_BITS for u, v in uvs):

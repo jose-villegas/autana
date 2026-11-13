@@ -194,6 +194,26 @@ test_a_masked_sheet_does_not_build_into_an_opaque_capacity(void) {
     TEST_ASSERT_NULL(mesh.mesh.mask_uvs);
 }
 
+/* An atlas the fill cannot index is refused: none, no rows, or more rows
+ * than a 12.4 v reaches. */
+static void
+test_a_masked_sheet_without_a_usable_atlas_does_not_build(void) {
+    fixture_begin(ROOMY_MASKED);
+    const r3d_dynamic_source_t good = masked_sheet();
+    const lmsk_atlas_t unusable[] = {
+        {NULL, MASK_ROWS},
+        {mask_rows, 0},
+        {mask_rows, (int)LMSK_MAX_ROWS + 1},
+    };
+    for (size_t i = 0; i < sizeof unusable / sizeof unusable[0]; i++) {
+        r3d_dynamic_source_t source = good;
+        source.mask = unusable[i];
+        TEST_ASSERT_FALSE(r3d_dynamic_mesh_build(&mesh, &source));
+        TEST_ASSERT_NULL(mesh.mesh.mask.rows);
+    }
+    TEST_ASSERT_TRUE(r3d_dynamic_mesh_build(&mesh, &good));
+}
+
 /* A cluster copies only the vertices it uses and shares them among its
  * triangles: a sheet costs near one vertex a triangle, not three. */
 static void
@@ -261,6 +281,7 @@ suite_dynamic_mesh(void) {
     RUN_TEST(test_clusters_share_vertices_within_themselves);
     RUN_TEST(test_a_masked_sheet_carries_its_u_v_and_atlas_and_an_opaque_rebuild_drops_them);
     RUN_TEST(test_a_masked_sheet_does_not_build_into_an_opaque_capacity);
+    RUN_TEST(test_a_masked_sheet_without_a_usable_atlas_does_not_build);
     RUN_TEST(test_a_source_too_big_leaves_a_whole_mesh);
     RUN_TEST(test_a_rebuild_replaces_what_was_there);
     RUN_TEST(test_the_counts_a_raster_sizes_by_never_move);

@@ -104,8 +104,8 @@ layout(r3d_dynamic_capacity_t c, size_t offsets[REGIONS]) {
 }
 
 r3d_dynamic_capacity_t
-r3d_dynamic_capacity_for(int sources, int triangles) {
-    return (r3d_dynamic_capacity_t){mathi_min(3 * triangles, INDEX_LIMIT), triangles, sources, false};
+r3d_dynamic_capacity_for(int sources, int triangles, bool masked) {
+    return (r3d_dynamic_capacity_t){mathi_min(3 * triangles, INDEX_LIMIT), triangles, sources, masked};
 }
 
 size_t
@@ -263,6 +263,13 @@ pad(r3d_dynamic_mesh_t* m) {
     m->mesh.cluster_count = m->cluster_capacity;
 }
 
+/* A masked source needs room for its u, v and an atlas the fill can index. */
+static bool
+mask_usable(const r3d_dynamic_mesh_t* m, const r3d_dynamic_source_t* src) {
+    return m->mask_uvs != NULL && src->mask.rows != NULL && src->mask.row_count >= 1
+           && src->mask.row_count <= (int)LMSK_MAX_ROWS;
+}
+
 bool
 r3d_dynamic_mesh_build(r3d_dynamic_mesh_t* m, const r3d_dynamic_source_t* src) {
     m->mesh.vertex_count = 0;
@@ -270,7 +277,7 @@ r3d_dynamic_mesh_build(r3d_dynamic_mesh_t* m, const r3d_dynamic_source_t* src) {
     m->mesh.cluster_count = 0;
     m->mesh.node_count = 0;
     m->mesh.mask = src->mask_uvs != NULL ? src->mask : (lmsk_atlas_t){0};
-    if (src->vertex_count > m->capacity.sources || (src->mask_uvs != NULL && m->mask_uvs == NULL)) {
+    if (src->vertex_count > m->capacity.sources || (src->mask_uvs != NULL && !mask_usable(m, src))) {
         m->mesh.mask = (lmsk_atlas_t){0};
         return false;
     }

@@ -68,8 +68,7 @@ take_mesh(void) {
                                         lab_scene_take(sizeof(uint8_t[3]) * (size_t)vertices),
                                         lab_scene_take(sizeof(uint16_t[3]) * (size_t)triangles),
                                         masked ? lab_scene_take(sizeof(uint16_t[2]) * (size_t)vertices) : NULL};
-        r3d_dynamic_capacity_t capacity = r3d_dynamic_capacity_for(vertices, triangles);
-        capacity.masked = masked;
+        const r3d_dynamic_capacity_t capacity = r3d_dynamic_capacity_for(vertices, triangles, masked);
         const size_t bytes = r3d_dynamic_mesh_bytes(capacity);
         void* block = lab_scene_take(bytes);
         if ((masked && buffers[i].mask_uvs == NULL) || buffers[i].positions == NULL || buffers[i].colors == NULL
