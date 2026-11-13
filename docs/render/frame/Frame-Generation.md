@@ -7,8 +7,9 @@ next update<sup>[[97]](../../Citations.md#mark-1997)</sup>. The warp
 extrapolates rather than interpolates, so it adds no frame of
 latency<sup>[[98]](../../Citations.md#meta-asw-2016)</sup>.
 
-The view is the camera's exact pose at that update, which is all a scene
-whose objects do not move on their own needs. `render/framegen/` holds the warp, and the render
+The view is the camera's exact pose at that update; objects that move on
+their own are drawn again over it ([Moving objects](#moving-objects)).
+`render/framegen/` holds the warp, and the render
 context runs it: `render_context_set_frame_generation()` turns it on.
 
 ```mermaid
@@ -306,15 +307,36 @@ framegen_example_generated(const render_context_t* context) {
 
 | Call | Use |
 |---|---|
-| `render_context_set_frame_generation(context, on)` | On for scenes whose objects do not move on their own; off costs nothing. The context generates a frame only [when it pays](#when-it-pays); a debug view, a camera cut or a new viewport draws the next frame instead |
+| `render_context_set_frame_generation(context, on)` | On for any scene; objects that move on their own are drawn again over each generated frame ([Moving objects](#moving-objects)); off costs nothing. The context generates a frame only [when it pays](#when-it-pays); a debug view, a camera cut or a new viewport draws the next frame instead |
 | `render_context_set_dynamic_resolution(context, config, model, step)` | `config->budget_us` stays the budget per shown frame; with generation on, the context prices each drawn frame for the pair |
 | `render_context_frame(context).generated` | Whether the last frame was generated rather than drawn |
 
 ## Moving objects
 
 The warp moves everything with the camera, so an object moving on its own
-lands where it was. A scene with such objects leaves frame generation off and
-draws every frame.
+would land where it was. A scene's renderers that changed since the last
+frame are its moving instances: the scene draws them last and passes their
+count with `render_context_set_moving()`. An app turns generation on as for a
+still scene; nothing else changes.
+
+```mermaid
+flowchart LR
+    D["Drawn frame:<br/>still part"] --> K["Keep the rows<br/>the movers cover"]
+    K --> M["Draw the movers"]
+    M --> S["Show"]
+    S --> P["Put the kept<br/>rows back"]
+    P --> W["Warp to the<br/>next view"]
+    W --> R["Draw the movers<br/>at their new pose"]
+```
+
+| Step | What it does |
+|---|---|
+| Keep | Before the movers draw, the drawn frame copies the rows their world boxes cover (`r3d_lens_box_rows()`, as partial redraw finds rows) of colour and depth; the frame cost stage `r3d.still` times it |
+| Put back | The generated frame restores those rows, so the picture it warps holds the still part alone |
+| Draw again | The movers draw over the warp at their own pose and the drawn frame's depth scale |
+
+A frame whose moving count differs from the drawn frame's is drawn instead.
+Each scene lights only its own renderers.
 
 ## Reproducing
 

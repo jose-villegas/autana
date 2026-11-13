@@ -47,7 +47,7 @@ leave_scene(void) {
     render_lab_fly_stop();
 }
 
-/* Frame generation for a scene where nothing moves on its own, when render_lab.framegen asks. */
+/* Frame generation for a scene that suits it (lab_scene_t.generates_frames), when render_lab.framegen asks. */
 static void
 frame_begin(const lab_scene_t* scene) {
     render_context_set_frame_generation(render_context_main(), scene->generates_frames && render_lab_framegen_on());

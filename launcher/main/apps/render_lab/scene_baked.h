@@ -28,8 +28,7 @@ void scene_baked_exit(void);
 /* The camera the scene follows, flying its clip. */
 lab_path_t scene_baked_path(void);
 
-/* The menu rows of a baked scene: FRAME GEN, whose warp suits a scene whose
- * objects do not move on their own. */
+/* The menu rows of a baked scene: FRAME GEN. */
 static inline void
 scene_baked_controls(int width) {
     bool generating = render_lab_framegen_on();
