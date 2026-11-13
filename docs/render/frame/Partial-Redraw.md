@@ -57,7 +57,7 @@ rows still culls, without drawing, and draws every row if a pick changed.
 ## Rows
 
 A box's rows are its eight corners projected through the frame's lens, plus
-`RENDER_PARTIAL_ROW_MARGIN` rows each side for a vertex snapped to the next
+`R3D_BOX_ROWS_MARGIN` rows each side (`r3d_lens_box_rows()`) for a vertex snapped to the next
 row and a small fill's spill. The draw splits only those rows between the two
 cores, and the upscale rewrites the destination rows they reach.
 

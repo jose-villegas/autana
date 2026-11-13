@@ -16,12 +16,15 @@
 #include <stdint.h>
 
 #include "display/viewport.h"
+#include "math/geometry/box3f.h"
 #include "math/geometry/planef.h"
 #include "math/linear/mat4f.h"
 #include "math/projection/projectf.h"
+#include "math/scalar/mathf.h"
 #include "math/scalar/mathi.h"
 #include "render/r3d_instance.h"
 #include "render/r3d_lit_mesh.h"
+#include "render/r3d_project.h"
 #include "render/r3d_span.h"
 #include "render/raster_split.h"
 #include "render/render_view.h"
@@ -66,6 +69,30 @@ void r3d_lens_fit(r3d_lens_t* lens, int width, int height);
  * model, so culling, transform and clipping see the mesh where it sits.
  * Call it after r3d_lens_init(), with the position scale of the mesh drawn. */
 void r3d_lens_place(r3d_lens_t* lens, const mat4f_t* model, int position_scale);
+
+/* Rows [first, end) a world box covers in the picture of `lens` (made at a
+ * position scale of 1), R3D_BOX_ROWS_MARGIN past its projected corners each
+ * way, unclamped; false when a corner is at or behind the near plane. */
+#define R3D_BOX_ROWS_MARGIN 2
+
+static inline bool
+r3d_lens_box_rows(const r3d_lens_t* lens, box3f_t box, int* first, int* end) {
+    float top = INFINITY;
+    float bottom = -INFINITY;
+    for (int k = 0; k < BOX3_CORNERS; k++) {
+        const vec3f_t l = mat4f_apply(&lens->m, box3f_corner(box, k));
+        if (!(l.z > lens->project.near_z)) {
+            return false;
+        }
+        const float y = lens->project.cy + (lens->project.fy * -l.y / l.z);
+        top = mathf_min(top, y);
+        bottom = mathf_max(bottom, y);
+    }
+    /* Held in an int's range before the cast: a corner near the eye's plane projects far. */
+    *first = (int)floorf(mathf_max(top, -R3D_PIXEL_LIMIT)) - R3D_BOX_ROWS_MARGIN;
+    *end = (int)floorf(mathf_min(bottom, R3D_PIXEL_LIMIT)) + 1 + R3D_BOX_ROWS_MARGIN;
+    return true;
+}
 
 /* Caller-owned workspace, reusable between culling and drawing. Concurrent
  * draws each need their own block, aligned as malloc provides. */

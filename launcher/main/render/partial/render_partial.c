@@ -11,7 +11,6 @@
 
 /* Rows each side of a box's own, for a vertex snapped to the next row and a
  * small fill's spill past its box. */
-#define RENDER_PARTIAL_ROW_MARGIN 2
 
 void
 render_partial_set_changed(render_partial_t* partial, const box3f_t* boxes, int count) {
@@ -54,27 +53,6 @@ can_draw_over(const render_partial_t* p, const raster_t* raster, const render_vi
            && same_view(view, &p->view) && raster_color(raster) == p->picture;
 }
 
-/* Rows [first, end) `box` covers in the raster, or false when a corner is
- * at or behind the near plane. */
-static bool
-box_rows(const r3d_lens_t* lens, box3f_t box, int* first, int* end) {
-    float top = INFINITY;
-    float bottom = -INFINITY;
-    for (int k = 0; k < BOX3_CORNERS; k++) {
-        const vec3f_t l = mat4f_apply(&lens->m, box3f_corner(box, k));
-        if (!(l.z > lens->project.near_z)) {
-            return false;
-        }
-        const float y = lens->project.cy + (lens->project.fy * -l.y / l.z);
-        top = mathf_min(top, y);
-        bottom = mathf_max(bottom, y);
-    }
-    /* Held in an int's range before the cast: a corner near the eye's plane projects far. */
-    *first = (int)floorf(mathf_max(top, -R3D_PIXEL_LIMIT)) - RENDER_PARTIAL_ROW_MARGIN;
-    *end = (int)floorf(mathf_min(bottom, R3D_PIXEL_LIMIT)) + 1 + RENDER_PARTIAL_ROW_MARGIN;
-    return true;
-}
-
 render_rows_t
 render_partial_rows(render_partial_t* p, const raster_t* raster, const render_view_t* view) {
     const render_rows_t every = {0, raster->height};
@@ -89,7 +67,7 @@ render_partial_rows(render_partial_t* p, const raster_t* raster, const render_vi
     for (int i = 0; i < p->changed_count; i++) {
         int box_first;
         int box_end;
-        if (!box_rows(&lens, p->changed[i], &box_first, &box_end)) {
+        if (!r3d_lens_box_rows(&lens, p->changed[i], &box_first, &box_end)) {
             p->still_frames = 0;
             return every;
         }

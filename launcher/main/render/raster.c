@@ -1077,14 +1077,35 @@ draw_entries(const raster_t* raster, draw_work_t* work, int first, int end, uint
     }
 }
 
-/* The picture's colour and depth as the still part left them, before the
- * moving instances draw over it (raster_t.still_colour). */
+/* The picture's colour and depth as the still part left them, in the rows
+ * the moving instances will draw over (raster_t.still): their world boxes',
+ * or every row when one has none or reaches behind the eye. */
 static __attribute__((noinline)) void
-keep_still(const raster_t* raster) {
-    const size_t pixels = (size_t)raster->width * (size_t)raster->height;
+keep_still(const raster_t* raster, const render_view_t* view) {
     FRAME_COST_BEGIN(kept_from);
-    memcpy(raster->still_colour, raster_color(raster), pixels * sizeof(uint16_t));
-    memcpy(raster->still_depth, raster_depth(raster), pixels * sizeof(uint16_t));
+    raster_still_t* still = raster->still;
+    r3d_lens_t lens;
+    raster_lens(raster, view, 1, &lens);
+    int first = raster->height;
+    int end = 0;
+    for (int i = raster_moving_from(raster); i < raster->instance_count; i++) {
+        const box3f_t* box = raster->instances[i].world_bounds;
+        int box_first;
+        int box_end;
+        if (box == NULL || !r3d_lens_box_rows(&lens, *box, &box_first, &box_end)) {
+            first = 0;
+            end = raster->height;
+            break;
+        }
+        first = mathi_min(first, box_first);
+        end = mathi_max(end, box_end);
+    }
+    still->first_row = mathi_max(first, 0);
+    still->end_row = mathi_max(still->first_row, mathi_min(end, raster->height));
+    const size_t from = (size_t)still->first_row * (size_t)raster->width;
+    const size_t pixels = (size_t)(still->end_row - still->first_row) * (size_t)raster->width;
+    memcpy(still->colour + from, raster_color(raster) + from, pixels * sizeof(uint16_t));
+    memcpy(still->depth + from, raster_depth(raster) + from, pixels * sizeof(uint16_t));
     FRAME_COST_END(kept_from, "r3d.still");
 }
 
@@ -1140,8 +1161,8 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
             draw_batch(raster, index, work);
             index++;
         }
-        if (raster->still_colour != NULL) {
-            keep_still(raster);
+        if (raster->still != NULL) {
+            keep_still(raster, view);
         }
     }
     draw_entries(raster, work, moving_from, raster->instance_count, moving_culled, &index);
