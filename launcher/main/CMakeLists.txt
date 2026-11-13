@@ -20,6 +20,7 @@ set(app_srcs
     "display/display_device.c"
     "display/panel_clock.c"
     "draw/draw.c"
+    "draw/draw_blend.c"
     "draw/draw_image.c"
     "draw/draw_sprite.c"
     "draw/icon.c"
