@@ -164,6 +164,7 @@ the presets vary the copies' geometry, layout and colour modes.
 | `stress-culled` | ![Plane before the camera turns away](../../../../../docs/images/overview/render-lab-stress-culled.png) | a tessellated plane and a camera pitching beyond its edge | varying cluster rejection by the frustum |
 | `stress-near` | ![Spheres along the camera path](../../../../../docs/images/overview/render-lab-stress-near.png) | stacked spheres and a camera passing through their front surfaces | triangles behind and crossing the near plane |
 | `stress-few-copies` | ![Stress few copies: two dense spheres](../../../../../docs/images/overview/render-lab-stress-few-copies.png) | two dense spheres side by side | the two-core cull split: with one instance a core, its fork and join cost more than the halved walk saves |
+| `stress-mover` | ![Stress mover: the front of a deep stack of banded planes](../../../../../docs/images/overview/render-lab-stress-mover.png) | a deep stack whose front copy turns on its own | frame generation over a moving object: the still part kept, put back and warped, the mover drawn again (`r3d.still`) |
 
 A change is judged by each preset's own readout, stage by stage. The sum over
 presets is a summary line only. A draw change can win on two-sided and static
@@ -325,6 +326,24 @@ can differ slightly from an unbroken run, which steps clips by frame time.
 | The camera, orbited round the area | [`lab/lab_orbit.h`](../../../lab/lab_orbit.h) |
 | Each size's copies, and a turn's frame and animation-step cost with their stages (`herd.wander`, `herd.gait`, the animation step's and r3d's); a paced row steps each frame by the last one's time | [`tests/suite_herd_perf.c`](../tests/suite_herd_perf.c) |
 | The suite's timing table for `perf_compare.sh` | [`herd_tables.py`](herd_tables.py) `--perf-table CAPTURE TABLE` |
+
+### Capybara in Sponza
+
+`capybara-sponza` loads Sponza's fitted full bake and the capybara as two
+scenes, both drawn through Sponza's camera. The capybara rests between the
+first pair of columns, gallops down the atrium and rests between the last
+pair; its clip and rate come from its ground speed. A third-person camera
+starts a little round from its face, turns slowly toward its back as it runs,
+never reaching it, and comes back as it stops. With frame generation on, the
+capybara is the moving object drawn again over each warp.
+
+![Capybara in Sponza: the capybara's run down the atrium, rest to rest, under a third-person camera](../../../../../docs/images/overview/render-lab-capybara-sponza.gif)
+
+| What | Owner |
+|---|---|
+| The run's place and speed in time | `kinematics/profile/motion_profile.h` ([Profile](../../../../../docs/kinematics/Profile.md)) |
+| The clip and rate for its speed, read a blend ahead | `scene/animator/gait.h` |
+| The run's ends, the camera and the scenes | `capybara_sponza/scene_capybara_sponza.c` |
 
 ### Small fill
 

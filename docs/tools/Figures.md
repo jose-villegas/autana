@@ -15,7 +15,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | [input](#input) | 11 | 0 | 0 |
 | [kinematics](#kinematics) | 6 | 2 | 0 |
 | [math](#math) | 25 | 25 | 0 |
-| [overview](#overview) | 24 | 0 | 0 |
+| [overview](#overview) | 26 | 0 | 0 |
 | [physics](#physics) | 2 | 0 | 0 |
 | [power](#power) | 2 | 0 | 0 |
 | [render](#render) | 130 | 4 | 0 |
@@ -132,6 +132,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/overview/boot-anim.gif"><img src="figure-thumbnails/overview/boot-anim.gif" width="160" alt=""></a> | The boot animation growing a grid and moving the camera through it before fading to black | [README](../../README.md) | not declared yet |
 | <a href="../images/overview/launcher-home.gif"><img src="figure-thumbnails/overview/launcher-home.gif" width="160" alt=""></a> | The launcher listing Falling Sand and Render Lab, its backdrop ridge levelling as the board rocks | [README](../../README.md) | not declared yet |
 | <a href="../images/overview/launcher-home.png"><img src="../images/overview/launcher-home.png" width="160" alt=""></a> | The launcher, rendered on a host with the release build's apps | [firmware/README](../firmware/README.md) | not declared yet |
+| <a href="../images/overview/render-lab-capybara-sponza.gif"><img src="figure-thumbnails/overview/render-lab-capybara-sponza.gif" width="160" alt=""></a> | Capybara in Sponza: the capybara's run down the atrium, rest to rest, under a third-person camera | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-capybara.gif"><img src="figure-thumbnails/overview/render-lab-capybara.gif" width="160" alt=""></a> | A skinned capybara on a meadow blending through each of its animation clips in turn, then back to the first | [README](../../README.md) | not declared yet |
 | <a href="../images/overview/render-lab-herd.gif"><img src="figure-thumbnails/overview/render-lab-herd.gif" width="160" alt=""></a> | Herd 8: eight capybaras walking, each clip at the pace of its ground speed | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-sponza.gif"><img src="figure-thumbnails/overview/render-lab-sponza.gif" width="160" alt=""></a> | A camera moving through the Crytek Sponza atrium with baked lighting on the fitted full mesh | [README](../../README.md) | not declared yet |
@@ -140,6 +141,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/overview/render-lab-stress-culled.png"><img src="../images/overview/render-lab-stress-culled.png" width="160" alt=""></a> | Plane before the camera turns away | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-few-copies.png"><img src="../images/overview/render-lab-stress-few-copies.png" width="160" alt=""></a> | Stress few copies: two dense spheres | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-mix.png"><img src="../images/overview/render-lab-stress-mix.png" width="160" alt=""></a> | Stress mix: planes with several tessellations and colour modes | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
+| <a href="../images/overview/render-lab-stress-mover.png"><img src="../images/overview/render-lab-stress-mover.png" width="160" alt=""></a> | Stress mover: the front of a deep stack of banded planes | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-near.png"><img src="../images/overview/render-lab-stress-near.png" width="160" alt=""></a> | Spheres along the camera path | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-noisy-tiny.png"><img src="../images/overview/render-lab-stress-noisy-tiny.png" width="160" alt=""></a> | Stress noisy tiny: cylinders end on, their fans of slivers | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-open.png"><img src="../images/overview/render-lab-stress-open.png" width="160" alt=""></a> | Stress open: a wall of planes side by side | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
