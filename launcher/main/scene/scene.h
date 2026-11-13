@@ -32,10 +32,13 @@ typedef struct {
     char what[ASSET_NAME_MAX];
 } scene_failure_t;
 
-/* Loads the scene `id` from the asset pack `id`, or for scene_load_from()
+/* Loads the scene `id` from the asset pack it names, or for scene_load_from()
  * from `pack`, which outlives it, beside any already loaded, and returns its
  * root: READY or FAILED, or ENTITY_NONE when as many scenes are held as the
- * world holds. A failure logs one reason. Release every root. */
+ * world holds. A failure logs one reason. Release every root.
+ * scene_load()'s and scene_load_async()'s id is an asset id (asset_id.h),
+ * "pack/scene", or a bare "scene" in the pack of its own name; an id it
+ * refuses fails with SCENE_ERR_ASSET and ASSET_ERR_FORMAT. */
 entity_t scene_load(const char* id);
 entity_t scene_load_from(const asset_pack_t* pack, const char* id);
 

@@ -32,6 +32,9 @@ try:
 except ImportError:
     Image = render_compare = None
 
+# An import that sets neither geometry.probes nor geometry.budget.
+UNSHAPED = SimpleNamespace(probes=None, budget=None)
+
 
 @unittest.skipIf(mesh_import is None, "needs the r3d environment")
 class WriteBakedTests(unittest.TestCase):
@@ -171,7 +174,8 @@ class SweepTests(unittest.TestCase):
         from unittest import mock
         import numpy as np
         scene = pathlib.Path("gallery.scene.toml").resolve()
-        job = SimpleNamespace(renderer=SimpleNamespace(variant=SimpleNamespace(name="paint", triangles=10)))
+        job = SimpleNamespace(renderer=SimpleNamespace(variant=SimpleNamespace(name="paint", triangles=10)),
+                              settings=SimpleNamespace(fit=UNSHAPED))
         def run_points(out, points, run_point):
             point_dir = out / "point"
             point_dir.mkdir(parents=True)
@@ -289,9 +293,10 @@ class SweepTests(unittest.TestCase):
         renderer = SimpleNamespace(variant=SimpleNamespace(name="tiny_fitted"),
                                    fit=SimpleNamespace(size=(2, 3), train_every_ms=1, held_out_every_ms=2, coverage_every_ms=1),
                                    visibility=SimpleNamespace(source="camera_path", size=(9, 7)))
-        job = SimpleNamespace(settings=SimpleNamespace(path="settings"), bake=SimpleNamespace(), renderer=renderer,
+        job = SimpleNamespace(settings=SimpleNamespace(path="settings", fit=UNSHAPED), bake=SimpleNamespace(), renderer=renderer,
                               object=SimpleNamespace(name="tiny"))
-        scene = SimpleNamespace(lights=[], indirect=None, tonemap_white=1.0, camera=SimpleNamespace(component=None))
+        scene = SimpleNamespace(lights=[], indirect=None, tonemap_white=1.0,
+                                camera=SimpleNamespace(component=SimpleNamespace(path="fly.anim.toml")))
         with tempfile.TemporaryDirectory() as directory:
             work = pathlib.Path(directory)
             with unittest.mock.patch.object(fitted_variant, "reference_digest", return_value="same"), \
@@ -325,7 +330,8 @@ class SweepTests(unittest.TestCase):
             (out / pathlib.Path(command[command.index("--start") + 1]).name).write_bytes(fitted_bytes)
 
         recipe = SimpleNamespace(steps=3, budget=2, batch=1, laplacian=0.5, normal_weight=0.25, surface_weight=10.0, surface_margin=0.25)
-        job = SimpleNamespace(asset_name="scene.entry", object=SimpleNamespace(name="entry"), renderer=SimpleNamespace(
+        job = SimpleNamespace(asset_name="scene.entry", object=SimpleNamespace(name="entry"),
+                              settings=SimpleNamespace(fit=UNSHAPED), renderer=SimpleNamespace(
             fit=recipe, variant=SimpleNamespace(name="variant_name")))
         with tempfile.TemporaryDirectory() as directory:
             work = pathlib.Path(directory) / "work"
@@ -333,7 +339,8 @@ class SweepTests(unittest.TestCase):
             target = work / "target.bundle"
             (work / start_name).write_bytes(fitted_bytes)
             with unittest.mock.patch.dict(sys.modules, {"r3d.appearance_simplify": SimpleNamespace(main=fitter)}):
-                stage.fit("scene.toml", None, job, work, target=target, inputs=work, start=work / start_name)
+                stage.fit("scene.toml", SimpleNamespace(camera=SimpleNamespace(component=SimpleNamespace(path="path"))),
+                          job, work, target=target, inputs=work, start=work / start_name)
             self.assertEqual(target.read_bytes(), fitted_bytes)
 
     def test_reference_inputs_read_fit_pose_size_for_any_visibility(self):
@@ -342,7 +349,8 @@ class SweepTests(unittest.TestCase):
         size = (8, 6)
         for source in ("camera_region", None):
             visibility = None if source is None else SimpleNamespace(source=source, size=size)
-            job = SimpleNamespace(settings=None, bake=None, renderer=SimpleNamespace(fit=fit, visibility=visibility))
+            job = SimpleNamespace(settings=SimpleNamespace(fit=UNSHAPED), bake=None,
+                                  renderer=SimpleNamespace(fit=fit, visibility=visibility))
             self.assertEqual(fitted_variant.reference_inputs(job, scene).size, size, source)
         job.renderer.visibility = SimpleNamespace(source="camera_path", size=(13, 11))
         self.assertEqual(fitted_variant.reference_inputs(job, scene).size, size)

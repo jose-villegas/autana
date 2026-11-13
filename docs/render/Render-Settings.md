@@ -47,6 +47,11 @@ that field's table in the asset.
 | `lod.triangle_budget` | `0` | basic | the triangles a frame aims to draw, the tolerance rising past tolerance_px to keep within; 0 never rises |
 | `lod.blend` | `0` | basic | 0 switches at once; 1 blends each switch, by morph where a mesh was imported with geometry.morph, else by dither |
 | `lod.blend_px` | `0.25` | advanced | the error past a switch over which a blend fades out; longer is softer, moves more |
+| `anim.mid_px` | `48.0` | basic | projected radius in pixels below which a copy is posed every mid_every frames |
+| `anim.far_px` | `20.0` | basic | projected radius in pixels below which a copy is posed every far_every frames |
+| `anim.mid_every` | `2` | basic | frames between mid-sized poses; 1 poses every frame |
+| `anim.far_every` | `4` | basic | frames between far poses; 1 poses every frame |
+| `anim.hysteresis_px` | `4.0` | advanced | pixels past a tier boundary before switching |
 <!-- /generated: render-settings -->
 
 ## cull

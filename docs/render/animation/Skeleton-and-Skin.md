@@ -225,4 +225,4 @@ runs both, with the model and clip it names, and rewrites the figures and tables
 ## Current limits
 
 Playback limits are in [Animation tracks](Animation-Tracks.md#scene-playback);
-authoring limits are in [Skinned Meshes](Skinned-Meshes.md#5-current-limits).
+authoring limits are in [Skinned Meshes](Skinned-Meshes.md#6-current-limits).

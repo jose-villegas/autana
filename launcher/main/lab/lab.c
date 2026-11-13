@@ -15,6 +15,7 @@
 #include "lab/ui/lab_menu_screen.h"
 #include "math/scalar/units.h"
 #include "scene/animator/animator.h"
+#include "scene/entity/entity.h"
 #include "ui/ui.h"
 
 /* How long a scene's name stays on screen after the scene is entered. The
@@ -494,4 +495,34 @@ lab_scene_load(const char* tag, char* failure, size_t size, const char* id, cons
 void*
 lab_scene_take(size_t bytes) {
     return app_arena_take(bytes, _Alignof(max_align_t));
+}
+
+/* The longest copy name a lab_scene_copies() format makes, with its terminator. */
+#define LAB_COPY_NAME_SIZE 16
+
+/* The copy `scene` names `format` with `index`, or ENTITY_NONE. */
+static entity_t
+find_copy(entity_t scene, const char* format, int index) {
+    char name[LAB_COPY_NAME_SIZE];
+    const int length = snprintf(name, sizeof name, format, index);
+    return length > 0 && (size_t)length < sizeof name ? entity_find(scene, name_hash(name)) : ENTITY_NONE;
+}
+
+entity_t*
+lab_scene_copies(entity_t scene, const char* format, int* count) {
+    assert(strchr(format, '%') != NULL); /* the copy's number */
+    *count = 0;
+    int found = 0;
+    while (!handle_is_none(find_copy(scene, format, found))) {
+        found++;
+    }
+    entity_t* copies = lab_scene_take(sizeof *copies * (size_t)(found > 0 ? found : 1));
+    if (copies == NULL) {
+        return NULL;
+    }
+    for (int i = 0; i < found; i++) {
+        copies[i] = find_copy(scene, format, i);
+    }
+    *count = found;
+    return copies;
 }
