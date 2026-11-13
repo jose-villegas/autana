@@ -73,44 +73,44 @@ time ([cull laps](../../tools/Frame-Cost.md)):
 The dropdown has each debug view's hatched bar, what it adds, and every stage
 in ms.
 
-<!-- generated: pipeline-frame-stages sha256=2162c3019a06ec65d9f2302aed314f1fd3f639882a1af43852efb785ce2485f5 -->
+<!-- generated: pipeline-frame-stages sha256=cd10aaf2ccf1df74cfb7d870130801ad945d7620e03fcb10ef4ebf70d55bc530 -->
 ![Frame stages as shipped](../../images/render/pipeline-frame-stages.png)
 
-![Inside transform and draw](../../images/render/pipeline-frame-stages.sub-stages.png)
+![Inside cull, transform and draw](../../images/render/pipeline-frame-stages.sub-stages.png)
 
 <details><summary>Sub-stages in milliseconds</summary>
 
 | Sub-stage | cpu0 | cpu1 | Share of the parent on cpu0 |
 |---|---|---|---|
-| r3d.cull.split | 0.37 | 0.00 | 23% |
-| r3d.cull.walk | 1.02 | 0.22 | 64% |
+| r3d.cull.split | 0.37 | 0.00 | 24% |
+| r3d.cull.walk | 1.00 | 0.22 | 64% |
 | r3d.cull.pick | 0.10 | 0.03 | 6% |
 | r3d.cull.wait | 0.08 | 0.00 | 5% |
 | r3d.cull laps | 0.01 | 0.00 | 1% |
 | r3d.cull untimed | 0.01 |  | 1% |
-| r3d.cull | 1.59 |  | 100% |
-| r3d.transform.split | 0.07 | 0.00 | 2% |
-| r3d.transform.cluster | 0.20 | 0.21 | 5% |
-| r3d.transform.apply | 0.90 | 0.98 | 24% |
-| r3d.transform.project | 1.48 | 1.51 | 39% |
+| r3d.cull | 1.57 |  | 100% |
+| r3d.transform.split | 0.10 | 0.00 | 3% |
+| r3d.transform.cluster | 0.20 | 0.20 | 5% |
+| r3d.transform.apply | 0.87 | 0.96 | 24% |
+| r3d.transform.project | 1.44 | 1.48 | 39% |
 | r3d.transform.wait | 0.12 | 0.00 | 3% |
-| r3d.transform laps | 0.98 | 0.59 | 26% |
-| r3d.transform untimed | 0.04 |  | 1% |
-| r3d.transform | 3.78 |  | 100% |
-| r3d.draw.split | 0.21 | 0.00 | 1% |
-| r3d.draw.clear | 0.77 | 1.28 | 2% |
-| r3d.draw.cluster | 1.59 | 1.48 | 5% |
-| r3d.draw.clip | 0.88 | 1.00 | 3% |
-| r3d.draw.set_up | 8.81 | 8.68 | 26% |
-| r3d.draw.tests | 1.81 | 1.73 | 5% |
-| r3d.draw.vertices | 1.31 | 1.25 | 4% |
-| r3d.draw.fill | 15.55 | 15.27 | 46% |
+| r3d.transform laps | 0.96 | 0.57 | 26% |
+| r3d.transform untimed | 0.01 |  | 0% |
+| r3d.transform | 3.69 |  | 100% |
+| r3d.draw.split | 0.23 | 0.00 | 1% |
+| r3d.draw.clear | 0.78 | 1.27 | 2% |
+| r3d.draw.cluster | 1.55 | 1.46 | 5% |
+| r3d.draw.clip | 0.86 | 0.98 | 3% |
+| r3d.draw.set_up | 8.67 | 8.53 | 26% |
+| r3d.draw.tests | 1.76 | 1.69 | 5% |
+| r3d.draw.vertices | 1.27 | 1.22 | 4% |
+| r3d.draw.fill | 15.47 | 15.17 | 46% |
 | r3d.draw.wait | 0.20 | 0.00 | 1% |
-| r3d.draw laps | 2.99 | 2.77 | 9% |
-| r3d.draw untimed | 0.04 |  | 0% |
-| r3d.draw | 34.15 |  | 100% |
+| r3d.draw laps | 2.92 | 2.71 | 9% |
+| r3d.draw untimed | 0.01 |  | 0% |
+| r3d.draw | 33.73 |  | 100% |
 
-Board ms per frame from a perf-scope image, mean of 80 lap windows. A parent is its frame-cost bracket on cpu0; its sub-stages are cycle-counter laps on each core, and cpu0's add up to the parent but for the untimed row, at most 2% of it. The laps row is what the laps cost themselves, one lap's measured cost times its starts, taken out of each sub-stage; the image runs them, so its parents are not the shipped bar's.
+Board ms per frame from a perf-scope image, mean of 79 lap windows. A parent is its frame-cost bracket on cpu0; its sub-stages are cycle-counter laps on each core, and cpu0's add up to the parent but for the untimed row, at most 2% of it. The laps row is what the laps cost themselves, one lap's measured cost times its starts, taken out of each sub-stage; the image runs them, so its parents are not the shipped bar's.
 
 </details>
 
@@ -143,8 +143,9 @@ Board ms per frame, mean of 78 to 79 report windows per capture; a view adds the
 The docs generator, `launcher/tools/render/render_doc_images.sh`, writes the
 `pipeline-frame-stages` chart and table from frame-cost report windows of one
 development build. Each capture runs with the app that draws the measured
-scene open (`autana open <app>`); two minutes spans several passes of its
-camera path.
+scene open (`autana open <app>`), from one report window after opening:
+the window that spans the switch drops brackets, and a dropped window fails
+the run. Two minutes spans several passes of the scene's camera path.
 
 | Capture | Build | Command | Into |
 |---|---|---|---|
