@@ -75,6 +75,7 @@ typedef struct {
     r3d_instance_t instance; /* the one drawn, with coarse bits when its mesh has levels */
     uint32_t* coarse;
     raster_t raster;
+    render_settings_t settings; /* the default under the overrides set when it opened */
     r3d_lens_t lens;
     char* report;
     int32_t* frame_us;
@@ -126,6 +127,8 @@ bench_open(const r3d_instance_t* instance) {
         .destination_width = GFX_WIDTH,
         .destination_height = GFX_HEIGHT,
     };
+    b->settings = render_settings_tuned(&RENDER_SETTINGS_DEFAULT);
+    b->raster.settings = &b->settings;
     b->raster.present = lab_view_present(&render_lab_view_tunables);
     b->scratch = memory_alloc(raster_scratch_bytes(&b->raster), MEMORY_APP);
     TEST_ASSERT_NOT_NULL(b->scratch);

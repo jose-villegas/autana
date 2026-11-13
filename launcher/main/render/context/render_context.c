@@ -9,7 +9,6 @@
 #include "build/build_variant.h"
 #include "core/memory.h"
 #include "core/timing.h"
-#include "core/tune.h"
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 #include "render/view/raster_boxes.h"
@@ -270,9 +269,9 @@ draw_second_view(render_context_t* c) {
         return;
     }
     /* Its own views and clusters: none may steer the frame's core split, and
-     * the hook reads the override the frame drew with. */
-    const tune_entry_t* culling = tune_find(tune_shared(), TUNE_NAME(render, cull));
-    const int32_t culled = *culling->value;
+     * the hook reads the settings the frame drew with. */
+    render_settings_t unculled = c->drawn_settings;
+    unculled.cull = false;
     const transformf_t* observer = c->observing ? &c->observer : NULL;
     render_view_t* second = &c->second;
     bool listed = false;
@@ -285,9 +284,9 @@ draw_second_view(render_context_t* c) {
         if (listed) {
             raster_draw_culled(&c->raster, second);
         } else {
-            (void)tune_set(tune_shared(), TUNE_NAME(render, cull), 0);
+            c->raster.settings = &unculled;
             (void)raster_draw(&c->raster, second);
-            (void)tune_set(tune_shared(), TUNE_NAME(render, cull), culled);
+            c->raster.settings = &c->drawn_settings;
         }
         c->raster.split = &c->split;
         c->raster.picks_levels = true;
@@ -362,8 +361,9 @@ generate(render_context_t* c, const render_view_t* view) {
 static bool
 census_changed(render_context_t* c, const render_view_t* view) {
     raster_t* r = &c->raster;
-    const bool steering = raster_triangle_budget(r) > 0 && !c->steer.settled;
-    if (!steering && !render_partial_picks_owed(&c->partial, raster_pick_every(r))) {
+    const render_lod_settings_t lod = raster_settings(r).lod;
+    const bool steering = lod.triangle_budget > 0 && !c->steer.settled;
+    if (!steering && !render_partial_picks_owed(&c->partial, lod.pick_every)) {
         return false;
     }
     const float kept_near = raster_depth_near(r);
@@ -419,7 +419,8 @@ aim_raster(render_context_t* c, const r3d_instance_t* instances, int count, cons
     r->split = &c->split;
     r->steer = &c->steer;
     r->picks_levels = true;
-    r->settings = &c->settings;
+    c->drawn_settings = render_settings_tuned(&c->settings);
+    r->settings = &c->drawn_settings;
     r->instances = instances;
     r->instance_count = count;
     r->width = step < 0 ? view->viewport.width * c->scale_percent / 100 : c->ladder.steps[step].width;
@@ -437,7 +438,7 @@ aim_raster(render_context_t* c, const r3d_instance_t* instances, int count, cons
 static bool
 draw_fixed(render_context_t* c, const render_view_t* view) {
     raster_t* r = &c->raster;
-    const bool partial = raster_partial_redraw(r);
+    const bool partial = raster_settings(r).partial_redraw;
     if (partial && !draw_partial(c, view)) {
         return false;
     }

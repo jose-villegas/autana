@@ -81,6 +81,7 @@ stress-card|--quarter 1 --no-hud --scene stress-card --frames 2|448x368|nopin
 stress-culled|--quarter 1 --no-hud --scene stress-culled --frames 2|448x368|nopin
 stress-near|--quarter 1 --no-hud --scene stress-near --frames 2|448x368|nopin
 stress-few-copies|--quarter 1 --no-hud --scene stress-few-copies --frames 2|448x368|nopin
+stress-cull-setup|--quarter 1 --no-hud --scene stress-cull-setup --frames 2|448x368|nopin
 stress-noisy-tiny|--quarter 1 --no-hud --scene stress-noisy-tiny --frames 2|448x368|nopin
 herd-1|--quarter 1 --no-hud --scene herd-1 --frames 60|448x368|nopin
 herd-4|--quarter 1 --no-hud --scene herd-4 --frames 60|448x368|nopin

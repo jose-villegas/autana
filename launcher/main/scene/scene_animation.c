@@ -6,30 +6,9 @@
 #include "anim/anim_tracks_format.h"
 #include "core/job.h"
 #include "core/memory.h"
-#include "core/tune.h"
 #include "math/scalar/mathi.h"
 #include "render/context/render_context.h"
 #include "scene/scene_internal.h"
-
-TUNE_OWNER(anim);
-TUNE_OVERRIDE(anim, mid_px, RENDER_ANIM_PIXELS_MAX);
-TUNE_OVERRIDE(anim, far_px, RENDER_ANIM_PIXELS_MAX);
-TUNE_OVERRIDE(anim, mid_every, RENDER_ANIM_EVERY_MAX);
-TUNE_OVERRIDE(anim, far_every, RENDER_ANIM_EVERY_MAX);
-TUNE_OVERRIDE(anim, hysteresis_px, RENDER_ANIM_PIXELS_MAX);
-
-/* Resolve overrides before the parallel slices so every copy sees one policy. */
-static render_anim_settings_t
-animation_settings(void) {
-    render_anim_settings_t s = render_context_settings(render_context_main())->anim;
-    s.mid_px = mid_px == TUNE_UNSET ? s.mid_px : (float)mathi_clamp(mid_px, 0, RENDER_ANIM_PIXELS_MAX);
-    s.far_px = far_px == TUNE_UNSET ? s.far_px : (float)mathi_clamp(far_px, 0, RENDER_ANIM_PIXELS_MAX);
-    s.hysteresis_px =
-        hysteresis_px == TUNE_UNSET ? s.hysteresis_px : (float)mathi_clamp(hysteresis_px, 0, RENDER_ANIM_PIXELS_MAX);
-    s.mid_every = mathi_clamp(tune_override(mid_every, s.mid_every), RENDER_ANIM_EVERY_MIN, RENDER_ANIM_EVERY_MAX);
-    s.far_every = mathi_clamp(tune_override(far_every, s.far_every), RENDER_ANIM_EVERY_MIN, RENDER_ANIM_EVERY_MAX);
-    return s;
-}
 
 /* Keep a tier inside its band so camera jitter does not alternate pose rates:
  * each boundary moves away from the current tier by the band. */
@@ -239,7 +218,8 @@ scene_animation_repose(scene_t* scene, uint32_t dt_ms) {
             apply_property(scene, animator, dt_ms);
         }
     }
-    animate_entities(scene, dt_ms, animation_settings());
+    /* Resolved before the parallel slices, so every copy sees one policy. */
+    animate_entities(scene, dt_ms, render_settings_tuned(render_context_settings(render_context_main())).anim);
     const int clusters = skin_stage_prepare(scene);
     if (clusters == 0) {
         return;
