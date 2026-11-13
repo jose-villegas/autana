@@ -6,7 +6,6 @@
 
 #include "asset/asset_bytes.h"
 #include "asset/asset_pack.h"
-#include "core/tune.h"
 #include "image/pixel/bayer.h"
 #include "image/pixel/rgb565.h"
 #include "math/scalar/mathi.h"
@@ -337,7 +336,6 @@ scene_cleanup(void) {
     }
     free(scene);
     scene = NULL;
-    (void)tune_reset(tune_shared(), TUNE_NAME(r3d_texture, draw));
     cleanup();
 }
 
@@ -454,14 +452,14 @@ scene_lens(void) {
                         1.0F};
 }
 
-/* Draws the scene into target `which`, textured unless the knob is 0. */
+/* Draws the scene into target `which`, with its texturing or plain. */
 static void
-draw_scene(scene_t* s, int which, int knob) {
+draw_scene(scene_t* s, int which, bool textured) {
     const r3d_lens_t lens = scene_lens();
     const uint16_t visible[1] = {0};
     const r3d_span_target_t target = target_at(which);
     r3d_pipeline_transform(&s->mesh, &lens, visible, 1, s->cs, s->rows, false);
-    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(r3d_texture, draw), knob));
+    s->mesh.texturing = textured ? &s->texturing : NULL;
     r3d_pipeline_draw(&s->mesh, &lens, visible, 1, s->cs, s->rows, &target, s->work);
 }
 
@@ -631,8 +629,8 @@ test_only_marked_triangles_of_a_cluster_draw_textured(void) {
         scene_t* s = scene_fixture();
         two_triangles(s, marks[m]);
         clear();
-        draw_scene(s, 0, 0);
-        draw_scene(s, 1, 1);
+        draw_scene(s, 0, false);
+        draw_scene(s, 1, true);
         int left, right;
         differing(&left, &right);
         expect_drawn_textured((marks[m] & 1U) != 0U, left, "the left triangle");
@@ -651,8 +649,8 @@ test_near_clipped_textured_triangle_keeps_its_coverage_and_its_pattern(void) {
     leg_uvs(s, 1);
     scene_mesh(s, 1, 1);
     clear();
-    draw_scene(s, 0, 0);
-    draw_scene(s, 1, 1);
+    draw_scene(s, 0, false);
+    draw_scene(s, 1, true);
     int covered = 0;
     int differs = 0;
     for (int i = 0; i < PIXELS; i++) {

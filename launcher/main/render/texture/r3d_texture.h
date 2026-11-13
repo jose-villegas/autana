@@ -70,8 +70,9 @@ r3d_texture_level_bytes(int side_log2) {
     return (1U << (2 * side_log2)) / 2U;
 }
 
-/* Whether textured meshes draw textured; false when a development build's
- * r3d_texture.draw knob is 0, so one build shows and times both. */
+/* Whether a scene opens its meshes' textures: textures are opt-in, set by a
+ * development build's r3d_texture.draw knob before the scene loads. A mesh
+ * given a texturing draws it either way. */
 bool r3d_texture_drawn(void);
 
 /* A triangle's corner in texels of level 0. */

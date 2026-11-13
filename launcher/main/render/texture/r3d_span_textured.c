@@ -19,8 +19,9 @@
 #include "render/r3d_span_internal.h"
 
 TUNE_OWNER(r3d_texture);
-/* 0 draws textured meshes plain: one build times and shows both. */
-TUNE(r3d_texture, draw, 1, 0, 1);
+/* 1 opens the textures of the meshes a scene loads; at 0, the default, a
+ * scene leaves them closed and its meshes draw plain. */
+TUNE(r3d_texture, draw, 0, 0, 1);
 
 bool
 r3d_texture_drawn(void) {

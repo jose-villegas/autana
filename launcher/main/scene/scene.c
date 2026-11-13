@@ -296,10 +296,13 @@ typedef struct {
     r3d_texture_t materials[];
 } scene_texturing_t;
 
-/* Opens `r`'s textures when its mesh `mesh_id` has an LUVS sibling; a mesh
- * without one draws plain. */
+/* Opens `r`'s textures when they are opted into and its mesh `mesh_id` has
+ * an LUVS sibling; otherwise the mesh draws plain. */
 static scene_failure_t
 open_texturing(scene_renderer_t* r, const asset_pack_t* pack, const char* mesh_id) {
+    if (!r3d_texture_drawn()) {
+        return scene_failure_make(SCENE_OK, ASSET_OK, mesh_id);
+    }
     asset_view_t uvs;
     asset_status_t status =
         r3d_lit_mesh_open_sibling(pack, mesh_id, R3D_TEXTURE_UVS_NAME_SUFFIX, R3D_TEXTURE_UVS_ASSET, false, &uvs);

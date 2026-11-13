@@ -1194,7 +1194,7 @@ r3d_pipeline_draw(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint
                   const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target,
                   r3d_pipeline_work_t* work) {
     build_guard_planes(lens, work);
-    if (mesh->texturing != NULL && target->writer_count == 0 && r3d_texture_drawn()) {
+    if (mesh->texturing != NULL && target->writer_count == 0) {
         draw_reading_textured(mesh, lens, clusters, count, cs, rows, target, work);
     } else if (target->writer_count != 0) {
         draw_writing(mesh, lens, clusters, count, cs, rows, target, work);

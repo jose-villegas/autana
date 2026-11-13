@@ -5,7 +5,9 @@ and each vertex's UV. Layout defines:
 [`render/texture/r3d_texture.h`](../../../launcher/main/render/texture/r3d_texture.h).
 
 The entry is the mesh's sibling `<mesh_id>.uvs`; its material k is the LTEX
-sibling `<mesh_id>.t<k>`. A mesh without one draws plain. The texture bake
+sibling `<mesh_id>.t<k>`. A mesh without one draws plain, and so does every
+mesh until textures are opted into (`r3d_texture.draw` set to 1 before the
+scene loads). The texture bake
 (`bake.py`'s `texture` kind) writes both from the packed mesh and its source,
 for the renderers a scene's `<scene>.textures.toml` names.
 
