@@ -92,15 +92,27 @@ class BalanceTest(unittest.TestCase):
     LADDERS = [[detail.Rung(100, 2.0), detail.Rung(40, 4.0), detail.Rung(30, 8.0)],
                [detail.Rung(100, 2.0), detail.Rung(90, 4.0)]]
 
+    def balance(self, room):
+        from r3d.objects.carve import measured_balance
+        jobs = []
+        for rungs in self.LADDERS:
+            def build(pick, rungs=rungs):
+                return [], set(), [dict(output_triangles=rungs[pick].triangles, copies=1)], []
+            jobs.append(dict(build=build, info=dict(ladder=rungs), pick=0))
+        measured_balance(jobs, (room, room, 0))
+        return [job['pick'] for job in jobs]
+
     def test_with_room_every_shape_keeps_its_near_level(self):
-        self.assertEqual(detail.balance(self.LADDERS, 200), [0, 0])
-        self.assertEqual(detail.balance(self.LADDERS, None), [0, 0])
+        self.assertEqual(self.balance(200), [0, 0])
+        self.assertEqual(self.balance(None), [0, 0])
 
     def test_the_step_that_removes_most_triangles_per_pixel_goes_first(self):
-        self.assertEqual(detail.balance(self.LADDERS, 150), [1, 0])
+        self.assertEqual(self.balance(150), [1, 0])
 
-    def test_it_stops_at_the_last_rungs_when_the_room_cannot_be_met(self):
-        self.assertEqual(detail.balance(self.LADDERS, 10), [2, 1])
+    def test_it_fails_after_the_last_rungs_when_the_ceiling_cannot_be_met(self):
+        from r3d.import_settings import SettingsError
+        with self.assertRaisesRegex(SettingsError, 'total 120 exceeds ceiling 10'):
+            self.balance(10)
 
 
 @unittest.skipIf(np is None, "needs the r3d environment")

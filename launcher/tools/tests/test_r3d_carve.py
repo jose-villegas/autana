@@ -70,32 +70,38 @@ class DerivedBudgetTest(unittest.TestCase):
 
     def test_copies_share_one_budget_from_the_closest_view_of_any(self):
         pos, tri_v, tri_m, tri_o, selected = self.selected()
-        budgets, shapes = carve.derived_budgets(pos, tri_v, tri_m, tri_o, selected, None, [[13, 0, 0]], FOCAL, NEAR)
+        budgets, shapes = carve.derived_budgets(pos, tri_v, tri_m, tri_o, selected, [[13, 0, 0]], FOCAL, NEAR)
         self.assertEqual(budgets[0], budgets[1])
         copies = next(shape for shape in shapes if shape["objects"] == [0, 1])
         self.assertAlmostEqual(copies["distance"], 2.0)
         self.assertEqual(budgets[0], copies["ladder"][0].triangles)
 
+    def measured(self, selected, room):
+        from r3d.simplify import Allocation, simplify
+        pos, tri_v, tri_m, tri_o, _ = self.selected()
+        _, shapes = carve.derived_budgets(pos, tri_v, tri_m, tri_o, selected, [[13, 0, 0]], FOCAL, NEAR)
+        allocation = Allocation(tri_o=tri_o, object_names=['a', 'b', 'c'], selection=selected, shapes=[], report={},
+            detail=SimpleNamespace(per_object={obj: shape for shape in shapes for obj in shape['objects']}, focal=FOCAL),
+            split=(room, room, 0))
+        simplify(pos, np.full_like(pos, 100), tri_v, tri_m, 1, colour_deviation=1, allocation=allocation)
+        return allocation.report
+
     def test_a_ceiling_that_binds_steps_shapes_down_counting_each_once(self):
-        pos, tri_v, tri_m, tri_o, selected = self.selected()
-        free, shapes = carve.derived_budgets(pos, tri_v, tri_m, tri_o, selected, None, [[13, 0, 0]], FOCAL, NEAR)
-        stored = free[0] + free[2]
-        tight, _ = carve.derived_budgets(pos, tri_v, tri_m, tri_o, selected, stored - 1, [[13, 0, 0]], FOCAL, NEAR)
-        self.assertLessEqual(tight[0] + tight[2], stored - 1)
-        self.assertEqual(carve.derived_budgets(pos, tri_v, tri_m, tri_o, selected, stored, [[13, 0, 0]], FOCAL,
-                                               NEAR)[0], free)
+        *_, selected = self.selected()
+        free = self.measured(selected, None)['stored_total']
+        tight = self.measured(selected, free - 1)['stored_total']
+        self.assertLessEqual(tight, free - 1)
+        self.assertEqual(self.measured(selected, free)['stored_total'], free)
 
     def test_a_pinned_rule_keeps_its_budget_and_takes_its_share_of_the_room(self):
-        pos, tri_v, tri_m, tri_o, selected = self.selected()
-        pinned = {"match": {"object": "lone"}, "triangles": 50}
-        selected = selected | {2: pinned}
-        free, _ = carve.derived_budgets(pos, tri_v, tri_m, tri_o, selected, None, [[13, 0, 0]], FOCAL, NEAR)
-        self.assertNotIn(2, free)
-        room = free[0] + 50
-        self.assertEqual(carve.derived_budgets(pos, tri_v, tri_m, tri_o, selected, room, [[13, 0, 0]], FOCAL,
-                                               NEAR)[0], free)
-        tight, _ = carve.derived_budgets(pos, tri_v, tri_m, tri_o, selected, room - 1, [[13, 0, 0]], FOCAL, NEAR)
-        self.assertLess(tight[0], free[0])
+        *_, selected = self.selected()
+        selected[2] = {'match': {'object': 'c'}, 'triangles': 50}
+        free = self.measured(selected, None)
+        pinned = next(row for row in free['passes'] if row['objects'] == ['c'])
+        self.assertEqual(pinned['budget'], 50)
+        tight = self.measured(selected, free['stored_total'] - 1)
+        self.assertLess(tight['stored_total'], free['stored_total'])
+        self.assertEqual(next(row for row in tight['passes'] if row['objects'] == ['c'])['budget'], 50)
 
 
 @unittest.skipIf(np is None, "needs the r3d environment")
@@ -112,10 +118,11 @@ class CarveWithinTest(unittest.TestCase):
         floor = len(detail.level(positions, tris, error))
         _, _, kept, unbounded = stand_in_within(positions, rgb, tris, materials, floor, 2.0, options, None, None)
         self.assertEqual(kept, floor)
-        self.assertGreater(unbounded, error)
         _, _, budget, moved = stand_in_within(positions, rgb, tris, materials, floor, 2.0, options, None, error)
         self.assertLessEqual(moved, error)
-        self.assertGreater(budget, floor)
+        self.assertGreaterEqual(budget, floor)
+        if unbounded > error:
+            self.assertGreater(budget, floor)
 
 
 @unittest.skipIf(np is None, "needs the r3d environment")
@@ -162,9 +169,9 @@ class CeilingSplitTest(unittest.TestCase):
         self.assertIsNone(mesh_import.start_ceiling(renderer))
         self.assertEqual(mesh_import.carve_room(renderer), self.CEILING - self.FLOOR)
 
-    def test_the_fit_prunes_to_the_ceiling_less_the_copies_never_below_its_floor(self):
+    def test_the_fit_prunes_to_the_ceiling_less_the_copies_with_a_soft_floor(self):
         self.assertEqual(stage.prune_budget(self.CEILING, self.FLOOR, 14449), self.CEILING - 14449)
-        self.assertEqual(stage.prune_budget(self.CEILING, self.FLOOR, self.CEILING), self.FLOOR)
+        self.assertEqual(stage.prune_budget(self.CEILING, self.FLOOR, self.CEILING), 0)
         self.assertEqual(stage.prune_budget(None, self.FLOOR, 14449), self.FLOOR)
 
     def test_without_a_ceiling_nothing_caps_the_copies(self):

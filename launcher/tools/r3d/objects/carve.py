@@ -1,9 +1,9 @@
 """Which objects an import carves, and how many triangles each carved shape keeps.
 
-An import that carves ([[objects.meshes]]) carves its rules' objects and every other object repeated as a rigid
+A carved bake selects its rules' objects and every other object repeated as a rigid
 copy whose copies touch nothing, so a free-standing prop needs no rule. A rule that pins `triangles` keeps that
 budget; every other shape's comes from detail.py: its near level for the camera's closest view, stepped down by
-the balance while the shapes, each counted once, would push the variant past its ceiling.
+the measured balance while the stored copy prototypes would exceed their room.
 """
 
 import sys
@@ -12,17 +12,15 @@ from dataclasses import asdict
 from types import SimpleNamespace
 
 import numpy as np
-from scipy.spatial import cKDTree
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "device"))
 
 from board import PANEL_HEIGHT, PANEL_WIDTH  # noqa: E402
 from r3d.mesh_source import camera_path_poses  # noqa: E402
 from r3d.objects import detail  # noqa: E402
-from r3d.objects.contact import _surface_border  # noqa: E402
+from r3d.objects.contact import contact_pairs  # noqa: E402
 from r3d.objects.instances import match_instances, source_objects  # noqa: E402
 from r3d.poses import focal_px  # noqa: E402
-from r3d.repair import seal_tolerance  # noqa: E402
 
 # The rule a free repeat is carved by: its seams free, since it touches nothing.
 FREE_REPEAT = {"match": {"repeat": "touches nothing"}, "seam": "free"}
@@ -33,26 +31,8 @@ MIN_COPIES = 2
 def touching(pos, tri_v, tri_o, candidates, position_scale):
     """The candidate objects that touch any other object: a vertex of either within the seal tolerance of the
     other's surface (contact.py's test)."""
-    tolerance = seal_tolerance(position_scale)
-    owners = np.unique(tri_o)
-    faces = {int(obj): tri_v[tri_o == obj] for obj in owners}
-    vertices = {obj: np.unique(t) for obj, t in faces.items()}
-    lows = np.array([pos[vertices[int(obj)]].min(axis=0) for obj in owners]) - tolerance
-    highs = np.array([pos[vertices[int(obj)]].max(axis=0) for obj in owners]) + tolerance
-    centres, reach = (lows + highs) / 2, np.linalg.norm(highs - lows, axis=1) / 2
-    tree = cKDTree(centres)
-    found = set()
-    for obj in sorted(candidates):
-        at = int(np.searchsorted(owners, obj))
-        for other in tree.query_ball_point(centres[at], reach[at] + reach.max()):
-            if other == at or np.any(lows[at] > highs[other]) or np.any(lows[other] > highs[at]):
-                continue
-            b = int(owners[other])
-            if (_surface_border(pos, vertices[obj], faces[b], tolerance)[0] or
-                    _surface_border(pos, vertices[b], faces[obj], tolerance)[0]):
-                found.add(obj)
-                break
-    return found
+    return {obj for edge in contact_pairs(pos, tri_v, tri_o, position_scale, among=candidates)
+            for obj in (edge.a, edge.b) if obj in candidates}
 
 
 def free_repeats(pos, tri_v, tri_m, tri_o, object_names, selected, position_scale):
@@ -74,32 +54,31 @@ def views(scene, renderer):
     renderer's camera_path visibility spacing, and the panel's focal length. A scene without a camera path, or a
     renderer that samples none (its camera may stand anywhere in a region), has no eyes."""
     camera = getattr(getattr(scene, "camera", None), "component", None)
+    if camera is None:
+        from r3d.import_settings import SettingsError
+        raise SettingsError("deriving carve budgets needs a scene camera")
     fit = getattr(renderer, "fit", None)
     every_ms = fit.coverage_every_ms if fit is not None else getattr(renderer.visibility, "every_ms", None)
-    if camera is None or camera.path is None or every_ms is None:
-        lens = 1.0 if camera is None else camera.half_fov_short_tan
-        return np.zeros((0, 3)), focal_px(PANEL_WIDTH, PANEL_HEIGHT, lens), 0.0 if camera is None else camera.near_z
+    if camera.path is None or every_ms is None:
+        lens = camera.half_fov_short_tan
+        return np.zeros((0, 3)), focal_px(PANEL_WIDTH, PANEL_HEIGHT, lens), camera.near_z
     width, height, lens, near, poses = camera_path_poses(
         scene, SimpleNamespace(size=(PANEL_WIDTH, PANEL_HEIGHT), every_ms=every_ms), either_way_up=False)
     return np.array([pose[:3] for pose in poses]), focal_px(width, height, lens), near
 
 
-def derived_budgets(pos, tri_v, tri_m, tri_o, selected, room, eyes, focal, near):
-    """(budgets, shapes): each carved object whose rule pins no `triangles` gets its shape's balanced rung, never
-    below the rule's min_triangles, within `room` less the pinned shapes' triangles, each shape counted once;
-    `shapes` describes each derived shape for the report: its objects, nearest view distance, ladder and pick.
-    Shapes are matched within each rule, as the carve matches them."""
+def derived_budgets(pos, tri_v, tri_m, tri_o, selected, eyes, focal, near):
+    """Near budgets and ladders per derived shape, grouped by rule as the carve groups them.
+    The measured carve chooses rungs within the copies' room after stand-in growth."""
     names = [str(i) for i in range(int(tri_o.max()) + 1)]
-    groups = {}
-    for obj, rule in selected.items():
-        groups.setdefault(id(rule), []).append(obj)
+    groups = rule_groups(selected)
     shapes = []
     for objects in groups.values():
         mine = np.isin(tri_o, objects)
         rule = selected[objects[0]]
-        for shape in match_instances(source_objects(pos, tri_v[mine], tri_m[mine], tri_o[mine], names)):
+        from r3d.simplify import rule_shapes
+        for shape in rule_shapes(source_objects(pos, tri_v[mine], tri_m[mine], tri_o[mine], names), rule, set()):
             if "triangles" in rule:
-                room = None if room is None else room - rule["triangles"]
                 continue
             members = [int(instance.object_name) for instance in shape.instances]
             used = [np.unique(tri_v[tri_o == obj]) for obj in members]
@@ -108,7 +87,7 @@ def derived_budgets(pos, tri_v, tri_m, tri_o, selected, room, eyes, focal, near)
             shapes.append(dict(objects=members, distance=distance, positions=shape.positions,
                                triangles=shape.triangles,
                                ladder=detail.ladder(shape.positions, shape.triangles, distance, focal)))
-    picks = detail.balance([shape["ladder"] for shape in shapes], room)
+    picks = [0] * len(shapes)
     budgets = {}
     for shape, pick in zip(shapes, picks):
         shape["pick"] = pick
@@ -130,8 +109,53 @@ def detail_report(shapes, passes, object_names, focal):
         rows.append(dict(shape=names[0], copies=len(names), nearest=shape["distance"],
                          source_triangles=len(shape["triangles"]), near_triangles=shape["ladder"][0].triangles,
                          rung=shape["pick"], rung_triangles=shape["ladder"][shape["pick"]].triangles,
+                         coarsest=shape["pick"] == len(shape["ladder"]) - 1,
                          carved_triangles=entry.get("output_triangles"),
                          error_px=entry["surface_error"] * focal / shape["distance"] if entry else None))
     found = detail.needs_authoring([(row["shape"], row["error_px"], row["rung"] > 0) for row in rows
                                     if row["error_px"] is not None])
     return rows, [asdict(item) for item in found]
+
+
+def rule_groups(selected):
+    """Object ids by rule index, preserving equal rules across derived shapes."""
+    rules, groups = [], {}
+    for obj, rule in selected.items():
+        if rule not in rules:
+            rules.append(rule)
+        groups.setdefault(rules.index(rule), []).append(obj)
+    return groups
+
+
+def measured_balance(jobs, split):
+    """Carve near levels, then pay the room using measured prototype counts at each coarser rung."""
+    def count(result):
+        return sum(row.get('stored_triangles', row['output_triangles'] * row['copies']) for row in result[2])
+
+    from r3d.objects.budget import rest_target
+
+    room = None if split is None else split[1]
+    results = [job['build'](0) for job in jobs]
+    total = sum(map(count, results))
+    trials = {}
+    while room is not None and total > room:
+        steps = []
+        for index, job in enumerate(jobs):
+            info, pick = job['info'], job['pick']
+            if info is None or pick + 1 >= len(info['ladder']):
+                continue
+            if index not in trials:
+                trials[index] = job['build'](pick + 1)
+            error = info['ladder'][pick + 1].error_px - info['ladder'][pick].error_px
+            steps.append(((count(results[index]) - count(trials[index])) / error, -index))
+        if not steps:
+            rest_target(split, total)
+            break
+        index = -max(steps)[1]
+        total += count(trials[index]) - count(results[index])
+        results[index] = trials.pop(index)
+        jobs[index]['pick'] += 1
+    for job in jobs:
+        if job['info'] is not None:
+            job['info']['pick'] = job['pick']
+    return results

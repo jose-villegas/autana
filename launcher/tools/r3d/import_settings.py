@@ -186,6 +186,8 @@ def load_fit(value, variant, where):
     fit = SimpleNamespace(**{key: values[key] for key in FIT_KEYS})
     for key in ("budget", "train_every_ms", "held_out_every_ms", "coverage_every_ms", "steps", "batch"):
         setattr(fit, key, count(values[key], f"{where}.{key}"))
+    if getattr(variant, "ceiling", None) is not None and fit.budget > variant.ceiling:
+        raise SettingsError(f"{where}.prune.budget {fit.budget} exceeds variant ceiling {variant.ceiling}")
     fit.size = pixel_size(values["size"], f"{where}.poses.size")
     fit.laplacian = number(values["laplacian"], f"{where}.laplacian")
     fit.normal_weight = number(values["normal_weight"], f"{where}.normal_weight")
