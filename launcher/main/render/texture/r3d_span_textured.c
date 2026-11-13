@@ -48,7 +48,6 @@ r3d_texture_drawn(void) {
 #define CORNERS      3
 
 _Static_assert(BAYER4_LEVELS << DITHER_SHIFT == 1 << LIGHT_FRAC, "a threshold stays under one level");
-_Static_assert(BAYER4_SIDE == 4, "the fill steps one dither row of four pixels at a time");
 _Static_assert((1 << (UV_HALF_BITS - UV_FRAC)) == (int)UV_WRAP, "u and v wrap at their integer bits");
 
 /* A value across the screen: at the centre of the origin pixel, and its steps. */
@@ -95,21 +94,8 @@ texel(const sampler_t* s, uint32_t uv) {
     return (uint32_t)(s->texels[o >> 1] >> ((o & 1U) * NIBBLE_BITS)) & NIBBLE_MASK;
 }
 
-/* One pixel: its depth test, then its texel's colour at the level the
- * vertex light reaches with the dither threshold `bias` added. */
-static inline __attribute__((always_inline)) void
-fill_pixel(uint16_t* depth, uint16_t* color, int32_t z, uint32_t uv, int32_t level, int32_t bias, const sampler_t* s,
-           const uint16_t (*colormap)[R3D_TEXTURE_COLOURS]) {
-    const uint16_t zq = (uint16_t)(z >> R3D_DEPTH_SHIFT);
-    if (zq > *depth) {
-        *depth = zq;
-        *color = colormap[(level + bias) >> LIGHT_FRAC][texel(s, uv)];
-    }
-}
-
 /* The colormap row of the level, dithered between levels by the screen's
- * 4x4 Bayer threshold at absolute coordinates. Four pixels a step, so each
- * of the four takes its column's threshold once a span. */
+ * 4x4 Bayer threshold at absolute coordinates. */
 static __attribute__((noinline)) void
 fill_colormap(uint16_t* depth, uint16_t* color, int count, carry_t* c, const sampler_t* s, int x, int y) {
     int32_t z = c->z;
@@ -120,23 +106,13 @@ fill_colormap(uint16_t* depth, uint16_t* color, int count, carry_t* c, const sam
     const int32_t dlevel = c->dlevel;
     const uint8_t* threshold = bayer4x4[y & (BAYER4_SIDE - 1)];
     const uint16_t (*colormap)[R3D_TEXTURE_COLOURS] = s->texture->colormap;
-    int32_t bias[BAYER4_SIDE];
-    for (int k = 0; k < BAYER4_SIDE; k++) {
-        bias[k] = (int32_t)threshold[(x + k) & (BAYER4_SIDE - 1)] << DITHER_SHIFT;
-    }
-    const int32_t b0 = bias[0], b1 = bias[1], b2 = bias[2], b3 = bias[3];
-    int i = 0;
-    for (; i + BAYER4_SIDE <= count; i += BAYER4_SIDE) {
-        fill_pixel(&depth[i], &color[i], z, uv, level, b0, s, colormap);
-        fill_pixel(&depth[i + 1], &color[i + 1], z + dz, uv + duv, level + dlevel, b1, s, colormap);
-        fill_pixel(&depth[i + 2], &color[i + 2], z + (2 * dz), uv + (2 * duv), level + (2 * dlevel), b2, s, colormap);
-        fill_pixel(&depth[i + 3], &color[i + 3], z + (3 * dz), uv + (3 * duv), level + (3 * dlevel), b3, s, colormap);
-        z += BAYER4_SIDE * dz;
-        uv += BAYER4_SIDE * duv;
-        level += BAYER4_SIDE * dlevel;
-    }
-    for (; i < count; i++) {
-        fill_pixel(&depth[i], &color[i], z, uv, level, bias[i & (BAYER4_SIDE - 1)], s, colormap);
+    for (int i = 0; i < count; i++) {
+        const uint16_t zq = (uint16_t)(z >> R3D_DEPTH_SHIFT);
+        if (zq > depth[i]) {
+            const int32_t l = (level + ((int32_t)threshold[(x + i) & (BAYER4_SIDE - 1)] << DITHER_SHIFT)) >> LIGHT_FRAC;
+            depth[i] = zq;
+            color[i] = colormap[l][texel(s, uv)];
+        }
         z += dz;
         uv += duv;
         level += dlevel;
