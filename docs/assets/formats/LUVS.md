@@ -9,7 +9,7 @@ sibling `<mesh_id>.t<k>`. A mesh without one draws plain, and so does every
 mesh until its renderer asks for its textures
 ([`renderer_set_textured()`](../../../launcher/main/scene/renderer/renderer.h)),
 which opens them then. The texture bake
-(`bake.py`'s `texture` kind) writes both from the packed mesh and its source,
+([`bake.py`](../../../launcher/tools/bake/bake.py)'s `texture` kind) writes both from the packed mesh and its source,
 for the renderers a scene's `<scene>.textures.toml` names.
 
 ```mermaid
@@ -51,9 +51,9 @@ title Header, 40 bytes at 0, one cell a byte
 
 | Rule | Detail |
 |---|---|
-| Owners | Layout constants in `render/texture/r3d_texture.h`; Python reads them with `read_define`. Writer: `r3d/texture/uv_transfer.py`; C opener: `r3d_texture_texturing_from_asset()` |
+| Owners | Layout constants in [`render/texture/r3d_texture.h`](../../../launcher/main/render/texture/r3d_texture.h); Python reads them with `read_define`. Writer: [`r3d/texture/uv_transfer.py`](../../../launcher/tools/r3d/texture/uv_transfer.py); C opener: `r3d_texture_texturing_from_asset()` |
 | Charts | Up to 2 a cluster, each a material and the plane of one source triangle. Chart 0 takes the material most of the cluster's area lies on; chart 1 the one most of what chart 0 left lies on, so a cluster across two materials or a fold textures both sides |
 | UVs | A chart's UVs cover all its cluster's vertices: a vertex's texel is `origin × side + uv / 16`; chart 0's sit at the vertex's index, chart 1's after every vertex's, only for the clusters with one; origins keep a wall many repeats long within int16 |
 | Triangles | A triangle draws with the first chart whose material it lies on and whose plane it faces; the rest of the cluster draws plain, so a texture ends where its material does, not at a cluster's edge |
 | Layout | Little-endian; the UV, origin and shift sections aligned to their element; no trailing bytes |
-| Refusals | Versions other than 2 return `ASSET_ERR_VERSION`; counts that differ from the mesh's, no materials, a material index past the count, a chart after one with no material, chart 1 UVs past `uv_count`, or a triangle code naming a chart its cluster lacks `ASSET_ERR_FORMAT`; a section outside the entry or misaligned `ASSET_ERR_BOUNDS`; a missing material `ASSET_ERR_NOT_FOUND` |
+| Refusals | Versions other than 2 return `ASSET_ERR_VERSION`; counts that differ from the mesh's, no materials, a UV count below the vertex count, a material index past the count, a chart after one with no material, chart 1 UVs past `uv_count`, or a triangle code naming a chart its cluster lacks `ASSET_ERR_FORMAT`; a section outside the entry or misaligned `ASSET_ERR_BOUNDS`; a missing material `ASSET_ERR_NOT_FOUND` |

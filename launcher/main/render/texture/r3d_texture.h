@@ -6,7 +6,9 @@
  *
  * A texture is an LTEX pack entry (docs/assets/formats/LTEX.md). Textured
  * spans fill with r3d_span's own edge walk, so a textured triangle covers
- * exactly the pixels a plain one would.
+ * exactly the pixels a plain one would. It also defines the LUVS entry
+ * (docs/assets/formats/LUVS.md) that marks a mesh's textured triangles, their
+ * charts and UVs.
  */
 #pragma once
 

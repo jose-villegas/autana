@@ -7,12 +7,14 @@ multiplies by a mesh's baked vertex light. Layout defines:
 
 The palette holds the pattern divided by its mean on screen, so a vertex
 colour keeps its meaning (the surface's mean lit colour) and the texture only
-modulates it. A mesh names its textures through its [LUVS](LUVS.md) entry:
-texture k of mesh `<mesh_id>` is the entry `<mesh_id>.t<k>`.
+modulates it. A mesh names its textures through its [LUVS](LUVS.md) entry.
 
 ![Bistro's street on host: the source render, the vertex colours alone, and the cobblestones and beige brick textured, with each one's CIE76 error against the source](../../images/render/bistro-street-textured.png)
 
 ![The same frame's squares that differ most, zoomed: source, vertex colours and textured](../../images/render/bistro-street-textured.crops.png)
+
+CIE76 is the distance between two colours in CIELAB; the error panels' scale
+runs from black (matches the source) through red to yellow.
 
 ```mermaid
 ---
@@ -47,8 +49,8 @@ title Header, 20 bytes at 0, one cell a byte
 
 | Rule | Detail |
 |---|---|
-| Owners | Layout constants in `render/texture/r3d_texture.h`; Python reads them with `read_define`. Writer: `r3d/texture/texture_asset.py`; C opener: `r3d_texture_from_asset()` |
+| Owners | Layout constants in [`render/texture/r3d_texture.h`](../../../launcher/main/render/texture/r3d_texture.h); Python reads them with `read_define`. Writer: [`r3d/texture/texture_asset.py`](../../../launcher/tools/r3d/texture/texture_asset.py); C opener: `r3d_texture_from_asset()` |
 | Texels | Row-major, two texels a byte, the low nibble the even column; a sampler wraps u and v by the level's side |
 | Sides | `size_log2` from 1 to 8; the last level is at least 2 texels a side |
-| Palette | A channel of 128 is the pattern's mean; up to 255, twice it, as the PS1's modulate. The device builds a 32-level colormap from the palette and the tint at open |
+| Palette | A channel of 128 is the pattern's mean; up to 255, twice it, as the PS1's modulate. The device builds a colormap of `R3D_TEXTURE_LIGHT_LEVELS` light levels from the palette and the tint at open |
 | Refusals | Versions other than 1 return `ASSET_ERR_VERSION`; another format, side or level count, or nonzero reserved bytes `ASSET_ERR_FORMAT`; a palette or level outside the entry `ASSET_ERR_BOUNDS` |
