@@ -201,6 +201,8 @@ enum {
     TINY = 2, /* a side shorter than its border pair */
     STRETCH = 3,
     CLIP_INSET = 3,
+    UNSCALED = 1,
+    ZOOM = 2, /* a border drawn twice its size */
 };
 
 static gfx_color_t geo_pixels[GEO_H][GEO_W];
@@ -239,21 +241,22 @@ panel(int x, int y) {
 }
 
 /* The nine-slice rule along one axis, from the design: output `at` of `out`
- * pixels shows: corners 1:1 from their own edge, a border pair longer than
- * the output shrunk in proportion, the centre by nearest pixel centre. */
+ * pixels shows: corners `scale` output pixels to a source pixel from their
+ * own edge, a border pair longer than the output shrunk in proportion, the
+ * centre by nearest pixel centre. */
 static int
-expected_source(int at, int out, int src, int lo, int hi) {
-    int out_lo = lo;
-    int out_hi = hi;
-    if (lo + hi > out) {
-        out_lo = lo * out / (lo + hi);
+expected_source(int at, int out, int src, int lo, int hi, int scale) {
+    int out_lo = lo * scale;
+    int out_hi = hi * scale;
+    if (out_lo + out_hi > out) {
+        out_lo = out_lo * out / ((lo + hi) * scale);
         out_hi = out - out_lo;
     }
     if (at < out_lo) {
-        return at;
+        return at / scale;
     }
     if (out - at <= out_hi) {
-        return src - (out - at);
+        return src - 1 - ((out - 1 - at) / scale);
     }
     const double centre = (double)(src - lo - hi) / (out - out_lo - out_hi);
     return lo + (int)((at - out_lo + 0.5) * centre);
@@ -262,22 +265,23 @@ expected_source(int at, int out, int src, int lo, int hi) {
 /* Every panel pixel of `dst` against the turned, nine-sliced picture: the
  * sprite frame pixel a panel pixel shows, by the turn image_asset.turn() makes. */
 static void
-assert_geometry(int turns, int w, int h) {
+assert_geometry(int turns, int w, int h, int scale) {
     const sprite_t s = geometry_sprite();
     const bool across = (turns & 1) != 0;
     const recti_t dst = {GEO_AT, GEO_AT, across ? h : w, across ? w : h};
     draw_clear(BACKGROUND);
-    draw_sprite(&s, dst, turns);
+    draw_sprite_scaled(&s, dst, turns, scale);
     for (int py = 0; py < dst.h; py++) {
         for (int px = 0; px < dst.w; px++) {
             const int lx[TURNS] = {px, py, w - 1 - px, w - 1 - py};
             const int ly[TURNS] = {py, h - 1 - px, h - 1 - py, px};
-            const int sx = expected_source(lx[turns], w, GEO_W, GEO_LEFT, GEO_RIGHT);
-            const int sy = expected_source(ly[turns], h, GEO_H, GEO_TOP, GEO_BOTTOM);
+            const int sx = expected_source(lx[turns], w, GEO_W, GEO_LEFT, GEO_RIGHT, scale);
+            const int sy = expected_source(ly[turns], h, GEO_H, GEO_TOP, GEO_BOTTOM, scale);
             if (panel(dst.x + px, dst.y + py) != code(sx, sy)) {
-                char message[96];
-                (void)snprintf(message, sizeof message, "turn %d size %dx%d panel (%d, %d) is not source (%d, %d)",
-                               turns, w, h, px, py, sx, sy);
+                char message[112];
+                (void)snprintf(message, sizeof message,
+                               "turn %d size %dx%d scale %d panel (%d, %d) is not source (%d, %d)", turns, w, h, scale,
+                               px, py, sx, sy);
                 TEST_FAIL_MESSAGE(message);
             }
         }
@@ -298,7 +302,24 @@ test_nine_slice_geometry_at_every_turn_and_size(void) {
     };
     for (int turns = 0; turns < TURNS; turns++) {
         for (size_t i = 0; i < sizeof sizes / sizeof sizes[0]; i++) {
-            assert_geometry(turns, sizes[i][0], sizes[i][1]);
+            assert_geometry(turns, sizes[i][0], sizes[i][1], UNSCALED);
+        }
+    }
+}
+
+/* draw_sprite_scaled(): the corners drawn ZOOM panel pixels to a sprite
+ * pixel, at every turn, whether the centre stretches, holds or vanishes. */
+static void
+test_a_scaled_border_at_every_turn_and_size(void) {
+    fixture();
+    const int sizes[][2] = {
+        {GEO_W * ZOOM, GEO_H * ZOOM},                     /* the whole picture at the zoom */
+        {GEO_W * ZOOM * STRETCH, GEO_H * ZOOM * STRETCH}, /* stretched past it */
+        {TINY * ZOOM, TINY * ZOOM},                       /* shorter than the scaled borders */
+    };
+    for (int turns = 0; turns < TURNS; turns++) {
+        for (size_t i = 0; i < sizeof sizes / sizeof sizes[0]; i++) {
+            assert_geometry(turns, sizes[i][0], sizes[i][1], ZOOM);
         }
     }
 }
@@ -452,6 +473,7 @@ suite_draw_sprite(void) {
     RUN_TEST(test_the_test_tile_opens_translucent_with_a_flat_centre);
 #ifndef DEVICE_BUILD
     RUN_TEST(test_nine_slice_geometry_at_every_turn_and_size);
+    RUN_TEST(test_a_scaled_border_at_every_turn_and_size);
     RUN_TEST(test_a_stretched_corner_stays_1_to_1_and_an_edge_stretches_one_way);
     RUN_TEST(test_turned_the_top_border_lands_on_the_right);
     RUN_TEST(test_coverage_0_leaves_255_replaces_and_between_mixes);

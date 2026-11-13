@@ -212,8 +212,7 @@ static void
 draw_sprite_command(const mu_Command* cmd, affine2x_t t) {
     const ui_sprite_command_t* face = (const ui_sprite_command_t*)cmd;
     const mu_Rect r = ui_transform_mu_rect(t, face->rect);
-    const int scale = mathi_max(1, (r.w + r.h) / mathi_max(1, face->rect.w + face->rect.h));
-    draw_sprite_scaled(face->sprite, ui_recti_from_mu(r), ui_transform_quarter(t), scale);
+    draw_sprite_scaled(face->sprite, ui_recti_from_mu(r), ui_transform_quarter(t), ui_transform_scale(t));
 }
 
 static void

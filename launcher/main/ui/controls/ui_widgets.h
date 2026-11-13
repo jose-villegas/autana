@@ -23,10 +23,13 @@ typedef struct {
     int text_scale;
     int icon_side;      /* beside a label; a tile sizes its own to fill it */
     bool native_toggle; /* retain the style's checkbox frame palette */
-    ui_skin_t skin;     /* normal NULL: the code-drawn bevelled face */
 } ui_mu_theme_t;
 
 ui_mu_theme_t ui_theme_from_style(const mu_Style* style);
+
+/* The faces buttons and tiles take this frame, set by ui_skin(); `normal`
+ * NULL draws the code-drawn bevelled face. */
+extern ui_skin_t ui_widget_skin;
 
 /* ui_theme_t `t` as an ui_mu_theme_t literal: assigned straight into its
  * destination, so ui_theme() builds the face's theme in place each frame. */

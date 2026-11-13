@@ -6,6 +6,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdlib.h>
 
 #include "draw/draw_font.h"
 #include "draw/icon.h"
@@ -68,6 +69,14 @@ static inline void
 ui_transform_icon_blocks(affine2x_t t, const image_t* icon, recti_t box, icon_emit_fn emit, void* ctx) {
     ui_transform_icon_ctx_t ic = {.t = t, .box_x = box.x, .box_y = box.y, .emit = emit, .ctx = ctx};
     icon_walk_blocks(icon, box.w, box.h, ui_transform_icon_emit, &ic);
+}
+
+/* The integer scale of an axis-preserving `t`: how many panel pixels one
+ * logical pixel spans. At least 1. */
+static inline int
+ui_transform_scale(affine2x_t t) {
+    const int32_t span = abs(t.x_axis.x) + abs(t.x_axis.y);
+    return span > MATHX_ONE ? (int)(span / MATHX_ONE) : 1;
 }
 
 /* Which of draw_text_turned()'s four quarters `t` represents, for a
