@@ -1143,13 +1143,12 @@ draw_reading_of(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16
         }
         const r3d_lit_cluster_t* c = &mesh->clusters[clusters[i]];
         const draw_mode_t bounded = rows != NULL && !rows[clusters[i]].unbounded ? DRAW_BOUNDED : 0U;
-        /* A cluster with no material, or a mesh without vertex colours to
-         * light it or with flat face colours, draws plain. */
-        const draw_mode_t plain = (mode & DRAW_TEXTURED) != 0
-                                          && (mesh->colors == NULL || mesh->face_colors != NULL
-                                              || mesh->texturing->cluster_material[clusters[i]][0] == R3D_TEXTURE_NONE)
-                                      ? DRAW_TEXTURED
-                                      : 0U;
+        /* A cluster with no material, or a mesh without vertex colours to light it, draws plain. */
+        const draw_mode_t plain =
+            (mode & DRAW_TEXTURED) != 0
+                    && (mesh->colors == NULL || mesh->texturing->cluster_material[clusters[i]][0] == R3D_TEXTURE_NONE)
+                ? DRAW_TEXTURED
+                : 0U;
         if (blend != BLEND_NONE) {
             draw_blended(mesh, lens, clusters[i], cs, &rows[clusters[i]], target, mode | bounded, work,
                          c->triangle_first, c->triangle_first + c->triangle_count, blend == BLEND_DITHER);

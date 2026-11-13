@@ -104,7 +104,8 @@ typedef struct {
     const struct r3d_lit_landing* morph_landing; /* one per vertex, or NULL */
     int lod_finest_triangles;                    /* the finest level's, with cluster_lod set */
     /* Textures over some clusters (render/texture/r3d_texture.h), or NULL:
-     * every cluster draws its vertex colours alone. */
+     * every cluster draws its vertex colours alone. Lit by vertex colours,
+     * so set only on a mesh without face colours. */
     const struct r3d_mesh_texturing* texturing;
 } r3d_lit_mesh_t;
 

@@ -212,7 +212,8 @@ renderer_set_textured(entity_t entity, bool on, scene_failure_t* why) {
         return false;
     }
     renderer_texturing_t* block = r->texturing;
-    r->mesh.texturing = on ? &block->texturing : NULL;
+    /* Textures are lit by vertex colours: a flat-shaded mesh draws plain. */
+    r->mesh.texturing = on && r->mesh.face_colors == NULL ? &block->texturing : NULL;
     r->changed = true;
     return scene_report(why, SCENE_OK, ASSET_OK, mesh_id);
 }

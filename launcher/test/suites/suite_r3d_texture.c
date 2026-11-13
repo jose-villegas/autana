@@ -328,7 +328,6 @@ test_entry_rejects_bad_headers(void) {
 #define LEFT_COLUMNS      (SIDE / 2)
 #define DISTINCT_MORE     3
 #define COVERED_MIN       100
-#define FACE_COLOUR       0x07E0 /* RGB565 green, not a colour the texture makes */
 
 typedef struct {
     int16_t positions[SCENE_VERTICES * SCENE_TRIANGLES][3];
@@ -507,15 +506,6 @@ colours_of(int which) {
 static const uint16_t*
 depths_of(int which) {
     return colours_of(which) + PIXELS;
-}
-
-static int
-covered_pixels(int which) {
-    int n = 0;
-    for (int i = 0; i < PIXELS; i++) {
-        n += depths_of(which)[i] != R3D_DEPTH_EMPTY;
-    }
-    return n;
 }
 
 static int
@@ -1009,28 +999,6 @@ test_near_clipped_textured_triangle_keeps_its_coverage_and_its_pattern(void) {
                                      "the clipped triangle's UVs do not vary across it");
 }
 
-/* A mesh with a flat colour per triangle draws plain whatever its codes say:
- * the textured draw covers and colours the pixels the plain one does. */
-static void
-test_a_mesh_with_face_colours_draws_its_textured_triangles_plain(void) {
-    const uint16_t faces[SCENE_TRIANGLES] = {FACE_COLOUR, FACE_COLOUR};
-    scene_t* s = scene_fixture();
-    two_triangles(s, code_at(0, 1) | code_at(1, 2), 1);
-    clear();
-    draw_scene(s, 0, false);
-    draw_scene(s, 1, true);
-    int left, right;
-    differing(&left, &right);
-    TEST_ASSERT_GREATER_THAN_MESSAGE(0, left + right, "the mesh without face colours does not draw textured");
-    s->mesh.face_colors = faces;
-    clear();
-    draw_scene(s, 0, false);
-    draw_scene(s, 1, true);
-    differing(&left, &right);
-    TEST_ASSERT_EQUAL_MESSAGE(0, left + right, "a triangle with a face colour drew textured");
-    TEST_ASSERT_GREATER_THAN_MESSAGE(COVERED_MIN, covered_pixels(1), "nothing was drawn");
-}
-
 void
 run_r3d_texture_suite(void) {
     RUN_TEST(test_textured_covers_what_plain_covers);
@@ -1073,7 +1041,6 @@ run_r3d_texture_suite(void) {
     RUN_TEST(test_only_triangles_on_a_chart_draw_textured);
     RUN_TEST(test_a_triangle_on_chart_1_draws_with_chart_1s_uvs);
     RUN_TEST(test_near_clipped_textured_triangle_keeps_its_coverage_and_its_pattern);
-    RUN_TEST(test_a_mesh_with_face_colours_draws_its_textured_triangles_plain);
 }
 
 SUITE_REGISTER(run_r3d_texture_suite);
