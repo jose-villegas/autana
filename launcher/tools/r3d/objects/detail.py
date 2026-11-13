@@ -53,14 +53,21 @@ def object_error(distance, focal, error_px=TOLERANCE_PX):
 
 def level(positions, triangles, error):
     """The fewest triangles meshoptimizer keeps whose surface, measured, moves at most `error`: its own error is an
-    estimate, so a level that measures over is simplified again at the error scaled by how far over it was."""
-    asked = error
+    estimate, so a level that measures over is simplified again at the error scaled by how far over it was. Once
+    that error falls below the positions' float32 resolution it is 0; meshoptimizer still drops some parts at 0
+    (a zero-area sliver), and when even that level measures over, the shape is kept whole."""
+    asked, floor = error, bounds_diagonal(positions) * np.finfo(np.float32).eps
     while True:
         kept = simplify_to_error(positions, triangles, asked)
-        moved = surface_error(positions, triangles, positions, kept)
-        if moved <= error or len(kept) == len(triangles):
+        if len(kept) == len(triangles):
             return kept
+        moved = surface_error(positions, triangles, positions, kept)
+        if moved <= error:
+            return kept
+        if asked == 0.0:
+            return triangles
         asked *= error / moved
+        asked = asked if asked >= floor else 0.0
 
 
 def ladder(positions, triangles, distance, focal, tolerance_px=TOLERANCE_PX):
