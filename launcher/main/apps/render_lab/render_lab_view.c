@@ -125,6 +125,11 @@ render_lab_framegen_moving(void) {
 }
 
 bool
+render_lab_framegen_set_moving(render_framegen_moving_t mode) {
+    return TUNE_SETTING_SET(framegen_moving, (int)mode);
+}
+
+bool
 render_lab_framegen_set_on(bool on) {
     return TUNE_SETTING_SET(framegen, on ? 1 : 0);
 }

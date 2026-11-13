@@ -14,6 +14,7 @@
 #include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/scene_baked.h"
 #include "apps/render_lab/sponza_content.h"
+#include "apps/render_lab/stress/scene_stress.h"
 #include "apps/render_lab/tests/render_lab_test.h"
 #include "lab/lab_scene.h"
 #include "lab/test/lab_perf_quarters.h"
@@ -69,6 +70,8 @@ static const framegen_scenario_t scenarios[] = {
     {&scene_sponza[SCENE_BAKED_FITTED_FULL], SPONZA_SCENE, NULL, 0},
     /* Cheap to draw: the engage rule keeps frame generation off. */
     {&scene_capybara, CAPYBARA_SCENE, NULL, FRAMEGEN_STILL_MS},
+    /* A drawn frame costs more than a generated one, and its front copy turns. */
+    {&scene_stress[STRESS_MOVER], STRESS_SCENE, STRESS_CAMERA, 0},
 };
 
 static lab_test_t saved;
@@ -210,15 +213,18 @@ typedef struct {
     const char* name;
     bool generating;
     int budget_ms;
+    render_framegen_moving_t moving; /* what a generated frame does with what moves on its own */
 } framegen_mode_t;
 
 static const framegen_mode_t modes[] = {
-    {"plain", false, 0},
-    {"framegen", true, 0},
-    {"dynres", false, RENDER_LAB_TARGET_MS},
-    {"framegen-dynres", true, RENDER_LAB_TARGET_MS},
-    {"framegen-dynres-3q", true, RENDER_LAB_TARGET_MS * 3 / 4},
-    {"framegen-dynres-half", true, RENDER_LAB_TARGET_MS / 2},
+    {"plain", false, 0, RENDER_FRAMEGEN_MOVING_STILL},
+    {"framegen", true, 0, RENDER_FRAMEGEN_MOVING_STILL},
+    {"framegen-redraw", true, 0, RENDER_FRAMEGEN_MOVING_REDRAW},
+    {"framegen-warp", true, 0, RENDER_FRAMEGEN_MOVING_WARP},
+    {"dynres", false, RENDER_LAB_TARGET_MS, RENDER_FRAMEGEN_MOVING_STILL},
+    {"framegen-dynres", true, RENDER_LAB_TARGET_MS, RENDER_FRAMEGEN_MOVING_STILL},
+    {"framegen-dynres-3q", true, RENDER_LAB_TARGET_MS * 3 / 4, RENDER_FRAMEGEN_MOVING_STILL},
+    {"framegen-dynres-half", true, RENDER_LAB_TARGET_MS / 2, RENDER_FRAMEGEN_MOVING_STILL},
 };
 
 static const framegen_mode_t* mode;
@@ -252,6 +258,7 @@ static void
 test_mode(void) {
     const scenario_path_t path = enter_path();
     TEST_ASSERT_TRUE(render_lab_framegen_set_on(mode->generating));
+    TEST_ASSERT_TRUE(render_lab_framegen_set_moving(mode->moving));
     TEST_ASSERT_TRUE(render_lab_budget_set_ms(mode->budget_ms));
     (void)lab_test_frame_dt(0, false, NULL); /* warm-up, not counted */
     const frame_profile_scenario_t playback = {scenario->scene->key, (int64_t)path.duration_ms * MATH_US_PER_MS};
@@ -261,6 +268,7 @@ test_mode(void) {
     ESP_LOGI(TAG, FRAMEGEN_MODES_LINE, scenario->scene->key, mode->generating, mode->budget_ms, p.frames, played.drawn,
              (int)p.frame_us.avg, (int)p.frame_us.p95, (int)(played.height_sum / played.drawn));
     TEST_ASSERT_TRUE(render_lab_framegen_set_on(false));
+    TEST_ASSERT_TRUE(render_lab_framegen_set_moving(RENDER_FRAMEGEN_MOVING_STILL));
     TEST_ASSERT_TRUE(render_lab_budget_set_ms(0));
     release_fixture();
     suite_clear_test_cleanup();
