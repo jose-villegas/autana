@@ -109,6 +109,20 @@ test_unknown_nonzero_component_opens(void) {
     test_free_aligned(f.raw);
 }
 
+/* The header's ground speed reaches the clip as written, up to the field's top. */
+static void
+test_the_ground_speed_reads_as_written(void) {
+    static const uint16_t SPEEDS_MM_S[] = {0, 800, UINT16_MAX};
+    for (size_t i = 0; i < sizeof SPEEDS_MM_S / sizeof SPEEDS_MM_S[0]; i++) {
+        fixture_t f = fixture();
+        test_pack_put16(f.entry + ANIM_TRACKS_AT_GROUND, SPEEDS_MM_S[i]);
+        anim_tracks_t tracks;
+        TEST_ASSERT_EQUAL_INT(ASSET_OK, open_fixture(&f, ENTRY_BYTES, &tracks));
+        TEST_ASSERT_EQUAL_UINT16(SPEEDS_MM_S[i], tracks.clip.ground_mm_s);
+        test_free_aligned(f.raw);
+    }
+}
+
 static void
 test_types_and_interpolations(void) {
     for (int type = ANIM_VALUE_FLOAT; type <= ANIM_VALUE_COLOUR; type++) {
@@ -153,8 +167,6 @@ test_invalid_fields_and_padding(void) {
     } CASES[] = {
         {ANIM_TRACKS_AT_ROOT, ANIM_ROOT_SKELETON + 1},
         {ANIM_TRACKS_AT_PAD, 1},
-        {ANIM_TRACKS_AT_PAD + 1, 1},
-        {ANIM_TRACKS_AT_PAD + 2, 1},
         {ROW0 + ANIM_TRACKS_ROW_TYPE, ANIM_VALUE_COLOUR + 1},
         {ROW0 + ANIM_TRACKS_ROW_INTERP, ANIM_CUBIC + 1},
         {ROW0 + ANIM_TRACKS_ROW_COMPONENT, 0},
@@ -484,6 +496,7 @@ suite_anim_tracks(void) {
     RUN_TEST(test_step_and_single_quaternion_keys_are_unit);
     RUN_TEST(test_changed_binding_strings_are_refused);
     RUN_TEST(test_unknown_nonzero_component_opens);
+    RUN_TEST(test_the_ground_speed_reads_as_written);
     RUN_TEST(test_types_and_interpolations);
     RUN_TEST(test_large_key_count_and_sized_cubic_values);
     RUN_TEST(test_find_node_required_parts_and_default_scale);

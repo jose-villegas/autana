@@ -246,7 +246,7 @@ scene_stress_status(void) {
 /* The camera shown: swinging, unless the start named a still one. */
 static lab_path_t
 scene_stress_path(void) {
-    return (lab_path_t){loaded, handle_is_none(loaded) ? ENTITY_NONE : viewer, NULL};
+    return (lab_path_t){.scene = loaded, .entity = handle_is_none(loaded) ? ENTITY_NONE : viewer};
 }
 
 /* A still preset can have frames generated: only the camera moves. */

@@ -1,9 +1,9 @@
 /* Device suite: each herd size shows its first N capybaras and hides the
  * rest, every one shown drawn, and what a turn of the camera round them
- * costs: the whole frame, and the animation step (posing and skinning every
+ * costs while they walk: the whole frame, and the animation step (posing and skinning every
  * copy shown) alone, with the internal heap the herd leaves, the copies whose
  * skin buffers MEMORY_FAST placed in external RAM, and the copies in view on
- * average. The fixed-tier still-herd case isolates pose throttling at held
+ * average. A sought herd holds until play. The fixed-tier still-herd case isolates pose throttling at held
  * near, mid and far sizes with identical initial playback in each arm.
  * Logged per size and quarter, no budget yet; the slope over N is the cost of
  * one more skinned copy. */
@@ -36,6 +36,8 @@
 /* The fixed-tier copies occupy near, mid and far columns this share of their depth apart. */
 #define HERD_RATE_LAYOUT_COLUMNS 3
 #define HERD_RATE_COLUMN_SPACING 0.25F
+/* Frames a sought herd is drawn for while it must hold still. */
+#define HERD_SEEK_FRAMES         5
 
 /* One turn of the camera (render_lab.orbit_ms), and so each sample's step. */
 #define HERD_PERF_TURN_MS        18000
@@ -61,6 +63,7 @@ release_fixture(void) {
     (void)tune_reset(tune_shared(), TUNE_NAME(anim, far_every));
     (void)tune_reset(tune_shared(), TUNE_NAME(render_lab, orbit_ms));
     lab_test_exit(&active->saved);
+    scene_herd_hold(false);
     memory_free(active);
     active = NULL;
 }
@@ -223,16 +226,18 @@ place_rate_herd(scene_t* scene, entity_t camera) {
     }
 }
 
-/* Still herd: held transforms and camera isolate throttling; each arm starts fresh. */
+/* Still herd (scene_herd_hold): held transforms and camera isolate throttling; each arm starts fresh. */
 static void
 test_herd_fixed_animation_rates(void) {
     for (int arm = 0; arm < 2; arm++) {
         active = memory_alloc(sizeof *active, MEMORY_PSRAM);
         TEST_ASSERT_NOT_NULL(active);
         *active = (fixture_t){0};
+        scene_herd_hold(true);
         lab_test_enter(&active->saved, &render_lab, scene_herd[HERD_EIGHT].key);
         suite_set_test_cleanup(release_fixture);
         const lab_path_t path = scene_herd[HERD_EIGHT].path();
+        TEST_ASSERT_NULL(path.seek); /* a held herd's path is its first copy's clip */
         scene_row_t row;
         scene_t* scene = scene_entity_row(path.entity, &row); /* a row of a copy: the root is not one */
         TEST_ASSERT_NOT_NULL(scene);
@@ -279,11 +284,44 @@ test_herd_fixed_animation_rates(void) {
     }
 }
 
+/* The walking herd sought to a time stays there, copies and clips, until
+ * play, then walks on from it; two seeks to one time place it alike. */
+static void
+test_a_sought_herd_holds_until_play(void) {
+    active = memory_alloc(sizeof *active, MEMORY_PSRAM);
+    TEST_ASSERT_NOT_NULL(active);
+    *active = (fixture_t){0};
+    lab_test_enter(&active->saved, &render_lab, scene_herd[HERD_EIGHT].key);
+    suite_set_test_cleanup(release_fixture);
+    const lab_path_t path = scene_herd[HERD_EIGHT].path();
+    TEST_ASSERT_NOT_NULL(path.seek);
+    TEST_ASSERT_TRUE(path.seek(HERD_PERF_TURN_MS / 2));
+    const vec3f_t sought = transform_world(path.entity).position;
+    for (int i = 0; i < HERD_SEEK_FRAMES; i++) {
+        (void)lab_test_frame_dt(LAB_TEST_FRAME_MS, false, NULL);
+    }
+    TEST_ASSERT_TRUE(vec3f_equal(sought, transform_world(path.entity).position));
+    TEST_ASSERT_TRUE(animator_paused(path.entity, ANIMATOR_CURRENT));
+    path.play();
+    TEST_ASSERT_FALSE(animator_paused(path.entity, ANIMATOR_CURRENT));
+    vec3f_t moved = sought;
+    for (int i = 0; i < HERD_SEEK_FRAMES * HERD_PERF_SAMPLES && vec3f_equal(moved, sought); i++) {
+        (void)lab_test_frame_dt(LAB_TEST_FRAME_MS, false, NULL);
+        moved = transform_world(path.entity).position;
+    }
+    TEST_ASSERT_FALSE(vec3f_equal(sought, moved));
+    TEST_ASSERT_TRUE(path.seek(HERD_PERF_TURN_MS / 2));
+    TEST_ASSERT_TRUE(vec3f_equal(sought, transform_world(path.entity).position));
+    suite_clear_test_cleanup();
+    release_fixture();
+}
+
 #endif
 
 void
 run_herd_perf_suite(void) {
 #ifdef DEVICE_BUILD
+    RUN_TEST(test_a_sought_herd_holds_until_play);
     RUN_TEST(test_herd_fixed_animation_rates);
     for (int i = 0; i < HERD_SIZE_COUNT; i++) {
         herd = &scene_herd[i];
