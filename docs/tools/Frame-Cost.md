@@ -50,7 +50,7 @@ The raster brackets are `r3d.census`, `r3d.cull`, `r3d.transform`,
 
 | Lap | What it times |
 |---|---|
-| `split` | the frame core alone: expanding batches into their kept copies and setting up the cull, then joining both cores' counts |
+| `split` | the frame core alone: expanding batches into their kept copies, setting up the cull and handing the other core its share, then joining both cores' counts |
 | `pick` | each instance's level pick |
 | `walk` | each instance's world-box test, lens and cluster cull |
 | `wait` | the frame core waiting for the other core's share |
@@ -74,8 +74,10 @@ FRAME_LAP_SINCE("r3d.draw.wait"); /* charge everything since the last boundary *
 
 Starting a lap closes the one running on that core, so laps tile the time
 between a core's first and last lap. A lap named `<bracket>.<phase>` splits
-that bracket. Laps compile only into a lapped perf-scope image
-(`autana flash diag --perf-scope --frame-laps`); elsewhere they are nothing. There the
+that bracket. A fork across the cores leaves the split lap running: the
+hand-off is the split's, and the caller's share opens its own first lap.
+Laps compile only into a lapped perf-scope image (`autana flash diag
+--perf-scope --frame-laps`); elsewhere they are nothing. There the
 shell prints them under the time line: one lap's own cost, measured on the
 board once, then per core each lap's ms and starts per frame (the numbers
 below show the line's shape and are not measurements):
