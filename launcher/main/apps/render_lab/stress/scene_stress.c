@@ -14,6 +14,7 @@
 #include "esp_log.h"
 #include "image/pixel/rgb565.h"
 #include "math/scalar/math_const.h"
+#include "math/scalar/units.h"
 #include "render/context/render_context.h"
 #include "scene/animator/animator.h"
 #include "scene/camera/camera.h"
@@ -36,6 +37,9 @@ static int pool;
 static stress_buffers_t buffers[STRESS_MIX_LEVELS];
 static r3d_dynamic_mesh_t mesh[STRESS_MIX_LEVELS];
 static uint32_t wave_ms;
+static uint32_t turn_ms;    /* how long the moving copies have turned */
+static transformf_t facing; /* the arrangement turned to face the swing's start */
+static stress_framing_t seen;
 
 /* What the panel says in place of the triangle count when the scene could not load. */
 static char failure[LAB_STATUS_LEN];
@@ -114,8 +118,8 @@ place_copies(void) {
     (void)animator_seek(camera, ANIMATOR_CURRENT, 0);
     const vec3f_t eye = transform_world(camera).position;
     const lens_t* lens = camera_lens(camera);
-    const stress_framing_t seen = {sqrtf(vec3f_dot(eye, eye)), lens->half_fov_short_tan};
-    transformf_t facing = transformf_identity();
+    seen = (stress_framing_t){sqrtf(vec3f_dot(eye, eye)), lens->half_fov_short_tan};
+    facing = transformf_identity();
     transformf_set_rotation(&facing, quatf_from_axis_angle(vec3f_unit_y(), atan2f(eye.x, eye.z)));
     const transformf_t shape = shown->surface == STRESS_SURFACE_STATIC ? static_shape() : transformf_identity();
     for (int i = 0; i < pool; i++) {
@@ -128,6 +132,19 @@ place_copies(void) {
             }
             transform_set_local(slots[i], transformf_compose(&facing, &place));
         }
+    }
+}
+
+/* The moving copies turned on by `turn_ms` about their own up axis. */
+static void
+turn_moving(void) {
+    transformf_t turn = transformf_identity();
+    const float degrees = (float)STRESS_MOVING_DEGREES_PER_S * (float)turn_ms / (float)MATH_MS_PER_S;
+    transformf_set_rotation(&turn, quatf_from_axis_angle(vec3f_unit_y(), degrees * MATH_RADIANS_PER_DEGREE));
+    for (int i = shown->copies - shown->moving; i < shown->copies; i++) {
+        const transformf_t place = stress_copy_place(shown, i, seen);
+        const transformf_t turned = transformf_compose(&place, &turn);
+        transform_set_local(slots[i], transformf_compose(&facing, &turned));
     }
 }
 
@@ -175,6 +192,7 @@ scene_stress_enter(const lab_scene_t* self) {
     draw_clear(RGB565BE(UI_BACKGROUND));
     failure[0] = '\0';
     wave_ms = 0;
+    turn_ms = 0;
     if (!load()) {
         return;
     }
@@ -192,10 +210,18 @@ scene_stress_exit(void) {
     pool = 0;
 }
 
-/* A per-frame preset's wave moves on by the frame's time, so a replay at the same steps draws the same frames. */
+/* A per-frame preset's wave, and a moving copy's turn, move on by the
+ * frame's time, so a replay at the same steps draws the same frames. */
 static void
 scene_stress_update(uint32_t dt_ms) {
-    if (handle_is_none(loaded) || failure[0] != '\0' || !stress_per_frame(shown)) {
+    if (handle_is_none(loaded) || failure[0] != '\0') {
+        return;
+    }
+    if (shown->moving > 0) {
+        turn_ms += dt_ms;
+        turn_moving();
+    }
+    if (!stress_per_frame(shown)) {
         return;
     }
     wave_ms += dt_ms;
