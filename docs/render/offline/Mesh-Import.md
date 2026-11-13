@@ -118,6 +118,35 @@ Every Geometry table opts its step in; without it the step does not run.
 | `geometry.thin` | `material`, `keep` | Keeps a share of one material's triangles. | Off. | None / fewer triangles. | [thin](#thin) |
 | `geometry.curves` | Boolean | Extracts long thin connected parts as lit curves before simplifying the start; requires a start triangle budget. | `false` | Surface sampling and lighting / ribbons. | [curves](#curves) |
 | `geometry.simplify` | `dense_edge`, `seal_seams`, `colour_deviation` | Splits long edges and simplifies each variant to its budget, colour steering the collapses; can seal seams. | Off. | Seconds / set by the budget. | [simplify](#simplify) |
+| `geometry.probes` | `spacing`, `face` | Adds fit views from probes spread through the camera's region, for surface the path never shows. | Off. | Minutes / more triangles kept. | [probes](#probes) |
+| `geometry.budget` | `step`, `settle` | Lets each fitted renderer settle on a prune budget below its own by held-out holes. | The renderer's `fit.prune.budget`. | A prune per step / fewer triangles. | [budget](#budget) |
+
+#### probes
+
+`geometry.probes` adds fit views from probes, for a fitted renderer whose camera
+can leave its path. One jittered probe sits in every `spacing` cell of the scene
+camera's region, or of the source's bounds without one. Probes against a wall
+are moved off it, and those still inside geometry are dropped<sup>[[119]](../../Citations.md#majercik-2021)</sup>. Each probe has six 90 degree
+cube faces, `face` pixels square. A face is kept while it shows source triangles
+that the path and the faces kept before it do not<sup>[[120]](../../Citations.md#minoux-1978)</sup>.
+
+| Key | What it is | Default |
+|---|---|---|
+| `spacing` | World units between probes. | `PROBE_SPACING_NEAR_PLANES` near planes of the scene camera, widened to at most `PROBE_COUNT_MAX` probes. |
+| `face` | A kept face's square size in pixels. | `PROBE_FACE`. |
+
+A camera without a path fits on probes alone. Probes reach surface seen from
+somewhere off the path, never surface seen from nowhere. The fit's prune keeps
+what the path shows before what only a probe shows; see
+[Appearance Fit](Appearance-Fit.md#probes-and-the-settle-budget).
+
+#### budget
+
+`geometry.budget` lets each fitted renderer prune to less than its
+`fit.prune.budget`, which it keeps without one. The fit tries `step`, 2 `step`,
+and so on up to that budget, counting hole pixels over the held-out views. It
+keeps the first budget whose holes fall by less than the `settle` share of its
+own to the next, or that has none.
 
 #### alpha_mask
 

@@ -229,13 +229,13 @@ static inline __attribute__((always_inline)) int
 cull_cut(const r3d_lit_mesh_t* mesh, const uint32_t* lod_coarse, const uint32_t* blending, const planef_t* planes,
          planef_t depth, uint16_t* out, int count, r3d_depth_fit_t* fit, int* tested) {
     int from = mesh->lod_coarse_first;
-    for (int w = 0; w < R3D_LOD_WORDS(mesh->lod_group_count); w++) {
+    for (int w = 0; w < (int)BITS32_WORDS(mesh->lod_group_count); w++) {
         for (uint32_t bits = lod_coarse[w] | (blending != NULL ? blending[w] : 0U); bits != 0; bits &= bits - 1U) {
-            const uint16_t g = (uint16_t)((w * R3D_LOD_WORD_BITS) + __builtin_ctz(bits));
+            const uint16_t g = (uint16_t)((w * BITS32_WORD_BITS) + __builtin_ctz(bits));
             int c = group_run(mesh, from, g);
             for (; c < mesh->cluster_count && mesh->cluster_lod[c].own == g; c++) {
                 const uint16_t parent = mesh->cluster_lod[c].parent;
-                if (parent == R3D_LOD_NONE || !r3d_lod_coarse(lod_coarse, parent)) {
+                if (parent == R3D_LOD_NONE || !bits32_get(lod_coarse, parent)) {
                     *tested += 1;
                     count = cull_cluster(mesh, c, PLANE_FRUSTUM_ALL, planes, depth, out, count, fit);
                 }

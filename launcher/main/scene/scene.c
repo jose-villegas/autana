@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "asset/asset_id.h"
 #include "asset/asset_store.h"
 #include "core/memory.h"
 #include "esp_log.h"
@@ -155,6 +156,23 @@ instantiate(const scene_asset_t* asset) {
     return scene;
 }
 
+/* Requests the pack `parts` names in `id`; a bare id names a pack of its own
+ * name. Kept out of line, as is request_pack_async(), so the copy of the name
+ * is off the stack while the scene opens. */
+static __attribute__((noinline)) handle_t
+request_pack(const char* id, asset_id_t parts) {
+    char pack[ASSET_NAME_MAX];
+    asset_id_pack(id, parts, id, pack);
+    return asset_store_load(pack);
+}
+
+static __attribute__((noinline)) handle_t
+request_pack_async(const char* id, asset_id_t parts, entity_t root) {
+    char pack[ASSET_NAME_MAX];
+    asset_id_pack(id, parts, id, pack);
+    return asset_store_load_async(pack, NULL, root);
+}
+
 /* `id`, cut to what a pack name holds: an id from the pack always fits, a
  * caller's may not. */
 static void
@@ -196,7 +214,7 @@ open_lod_bits(scene_t* scene) {
     size_t words = 0;
     for (int i = 0; i < scene->renderer_count; i++) {
         const scene_renderer_t* r = &scene->renderers[i];
-        words += (size_t)R3D_LOD_STATE_WORDS(r->mesh.lod_group_count) * drawn_copies(r);
+        words += R3D_LOD_STATE_WORDS(r->mesh.lod_group_count) * (size_t)drawn_copies(r);
     }
     if (words == 0) {
         return scene_failure_make(SCENE_OK, ASSET_OK, scene->root->id);
@@ -209,7 +227,7 @@ open_lod_bits(scene_t* scene) {
     uint32_t* next = scene->lod_bits;
     for (int i = 0; i < scene->renderer_count; i++) {
         scene_renderer_t* r = &scene->renderers[i];
-        const int copy_words = R3D_LOD_STATE_WORDS(r->mesh.lod_group_count);
+        const size_t copy_words = R3D_LOD_STATE_WORDS(r->mesh.lod_group_count);
         r->lod_words = (uint32_t)copy_words * (uint32_t)drawn_copies(r);
         r->lod_coarse = r->lod_words > 0 ? next : NULL;
         if (r->batch != NULL) {
@@ -572,11 +590,18 @@ scene_load_from(const asset_pack_t* pack, const char* id) {
 
 entity_t
 scene_load(const char* id) {
-    scene_root_t* record = claim(id);
+    asset_id_t parts;
+    const bool named = asset_id_split(id, &parts);
+    /* The record holds the scene's entry; its load holds the pack. */
+    scene_root_t* record = claim(named ? parts.name : id);
     if (record == NULL) {
         return ENTITY_NONE;
     }
-    record->load = asset_store_load(id);
+    if (!named) {
+        settle(record, scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_FORMAT, id));
+        return record->root;
+    }
+    record->load = request_pack(id, parts);
     settle(record, open_scene(record, asset_store_loaded(record->load)));
     return record->root;
 }
@@ -591,15 +616,21 @@ record_of(entity_t root) {
 
 entity_t
 scene_load_async(const char* id, pending_fn done, handle_t owner) {
-    scene_root_t* record = claim(id);
+    asset_id_t parts;
+    const bool named = asset_id_split(id, &parts);
+    scene_root_t* record = claim(named ? parts.name : id);
     if (record == NULL) {
         return ENTITY_NONE;
     }
     record->async = true;
     record->done = done;
     record->owner = owner;
+    if (!named) {
+        settle(record, scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_FORMAT, id));
+        return record->root;
+    }
     /* The root owns its pack request: releasing the root cancels it. */
-    record->load = asset_store_load_async(id, NULL, record->root);
+    record->load = request_pack_async(id, parts, record->root);
     if (!pending_owner_alive(owner)) {
         scene_cancel(record->root);
     }

@@ -56,6 +56,11 @@ SURFACE_REFERENCE_SAMPLES = 4_000_000
 SURFACE_TANGENTIAL_WEIGHT = 0.05
 # A start border point within this many capped local start edge scales of another part's triangle is held on it during the fit.
 SEAM_MARGIN = 0.25
+# CIE76 distance from the clear colour past which a reference pixel is surface, so a fit showing nothing there
+# shows a hole: well past the eye's just-noticeable difference, so dark surface near a dark clear is not counted.
+HOLE_DE = 10.0
+# The fit's record of the budgets it tried and their held-out holes, beside stretch.json.
+HOLES = "holes.json"
 CUBLAS_WORKSPACE_ENV = "CUBLAS_WORKSPACE_CONFIG"
 CUBLAS_WORKSPACE = ":4096:8"
 RASTER_EPSILON = 1.0 / 16.0
@@ -562,10 +567,17 @@ def coverage(mesh, views, size, device="cuda"):
 
 def prune(mesh, shown, budget):
     """Drop never-shown triangles first, then those showing fewest pixels to
-    meet `budget`. A flat mesh's colours go with their triangles. Return the
-    pruned mesh and the kept start indices."""
-    order = np.argsort(-np.asarray(shown), kind="stable")
-    keep = np.sort(order[: min(budget, int(np.count_nonzero(shown)))])
+    meet `budget`. `shown` is one row of pixels per triangle, or ranked rows:
+    a triangle an earlier row shows outranks every one it does not, and each
+    is ordered by the pixels of the first row that shows it. A flat mesh's
+    colours go with their triangles. Return the pruned mesh and the kept
+    start indices."""
+    shown = np.atleast_2d(np.asarray(shown))
+    seen = shown > 0
+    first = np.where(seen.any(axis=0), seen.argmax(axis=0), len(shown))
+    pixels = shown[np.minimum(first, len(shown) - 1), np.arange(shown.shape[1])] * (first < len(shown))
+    order = np.lexsort((-pixels, first))
+    keep = np.sort(order[: min(budget, int(np.count_nonzero(seen.any(axis=0))))])
     pruned = mesh._replace(rgb=mesh.rgb[keep] if mesh.flat else mesh.rgb, tris=mesh.tris[keep],
                            double=np.asarray(mesh.double)[keep])
     return pruned, keep
@@ -652,6 +664,51 @@ def normal_error(mesh, views, size, device="cuda", angle_dir=None):
                 pathlib.Path(angle_dir).mkdir(parents=True, exist_ok=True)
                 np.save(pathlib.Path(angle_dir) / f"{index:04d}.angle.npy", degrees.cpu().numpy())
     return float(torch.cat(angles).mean())
+
+
+def hole_pixels(mesh, views, size, clear, device="cuda"):
+    """Pixels, over every view, where the mesh shows nothing but the reference is more than HOLE_DE from the
+    clear colour: surface the mesh lost."""
+    import torch
+
+    render = Renderer(mesh.tris, mesh.double, mesh.vertex_point, size, device, clear, mesh.flat)
+    points = torch.as_tensor(mesh.points, dtype=torch.float32, device=device)
+    holes = 0
+    with torch.no_grad():
+        for matrix, target, *_rest in views:
+            ids = render.visible_ids(points, torch.as_tensor(matrix, dtype=torch.float32, device=device)).flip(0)
+            target = torch.as_tensor(target, device=device)
+            surface = delta_e76(target, render.clear.expand_as(target)) > HOLE_DE
+            holes += int(((ids < 0) & surface).sum())
+    return holes
+
+
+def settled(holes, share):
+    """The index of the budget the fit settles on, `holes` per budget in rising order: the first whose holes fall
+    by less than `share` of the holes before it to the next budget's, or that has none; the last otherwise."""
+    for index, count in enumerate(holes):
+        if count == 0 or index + 1 == len(holes) or count - holes[index + 1] < share * count:
+            return index
+    raise ValueError("no budgets to settle on")
+
+
+def settle(fitted, copies, shown, budget, steps, held_out, clear):
+    """(pruned mesh, kept indices, hole record): `fitted` pruned to `budget`, or with `steps` (STEP, SHARE) to the
+    budget `settled` picks from STEP, 2 STEP, ... up to `budget`, by the hole pixels over the `held_out` (views,
+    size) sets. The record holds each budget tried and its holes; it is empty without held-out views."""
+    budgets = [budget] if steps is None else [*range(int(steps[0]), budget, int(steps[0])), budget]
+    tried, holes = [], []
+    for candidate in budgets:
+        tried.append(prune(fitted, shown, candidate))
+        if not held_out:
+            break
+        holes.append(sum(hole_pixels(joined(tried[-1][0], copies), views, size, clear) for views, size in held_out))
+        log(f"budget {candidate}: {len(tried[-1][0].tris)} triangles, {holes[-1]} held-out hole pixels")
+        if steps is None or holes[-1] == 0 or settled(holes, steps[1]) < len(holes) - 1:
+            break
+    chosen = settled(holes, steps[1]) if steps is not None else len(tried) - 1
+    record = {"budgets": budgets[:len(holes)], "holes": holes, "budget": budgets[chosen]} if holes else {}
+    return (*tried[chosen], record)
 
 
 def triangle_error(mesh, views, size, clear, device="cuda"):
@@ -912,7 +969,14 @@ def main(argv=None):
     parser.add_argument("--lr-colour", type=float, default=0.01)
     parser.add_argument("--laplacian", type=float, default=10.0)
     parser.add_argument("--budget", type=int, help="prune to this many triangles, those that show least first")
-    parser.add_argument("--coverage-poses", help="a denser poses file to count shown pixels over; the training poses otherwise")
+    parser.add_argument("--coverage-poses", action="append",
+                        help="a poses file to count shown pixels over, the training poses otherwise; repeated, ranked: "
+                             "the prune keeps what an earlier file shows before what only a later one does")
+    parser.add_argument("--settle", nargs=2, type=float, metavar=("STEP", "SHARE"),
+                        help="with --budget as the most, prune to STEP, 2 STEP, ... and keep the first budget whose "
+                             "held-out holes fall by less than SHARE to the next")
+    parser.add_argument("--held-out-poses", action="append", default=[], help="poses whose holes settle the budget")
+    parser.add_argument("--held-out-reference", action="append", default=[], help="references for --held-out-poses")
     parser.add_argument("--cost-model", help="a cost_model.py weights file, such as board_cost_weights.txt")
     parser.add_argument("--cost-weight", type=float, default=0.0, help="dE76 per predicted millisecond")
     parser.add_argument("--object", help="the scene object whose source anchors the fit")
@@ -932,6 +996,11 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if len(args.poses) != len(args.reference):
         parser.error("give one --reference per --poses")
+    if len(args.held_out_poses) != len(args.held_out_reference):
+        parser.error("give one --held-out-reference per --held-out-poses")
+    if args.settle and (args.budget is None or not args.held_out_poses or args.settle[0] < 1
+                        or not 0 <= args.settle[1] < 1):
+        parser.error("--settle needs --budget, --held-out-poses, a STEP of at least 1 and a SHARE in [0, 1)")
     if any(not np.isfinite(value) or value < 0 for value in (args.surface_weight, args.surface_margin, args.seam_margin)):
         parser.error("surface weight, surface margin and seam margin must be finite and nonnegative")
     if args.surface_weight and not args.score and not args.object:
@@ -942,7 +1011,6 @@ def main(argv=None):
         parser.error("front and depth weights must be finite and nonnegative")
     if (args.front_weight or args.depth_weight) and not args.copies:
         parser.error("front and depth terms need --copies, whose source shows where the copies are")
-    coverage_views, coverage_size = pose_views(args.coverage_poses, args.scale) if args.coverage_poses else (None, None)
     scene = load_scene(args.scene)
     if scene.camera is None:
         parser.error("--scene needs a camera")
@@ -1001,10 +1069,17 @@ def main(argv=None):
         fitted = fitted._replace(points=points, rgb=rgb)
         kept = np.arange(len(fit_start.tris))
         if args.budget is not None:
-            shown = coverage(joined(fitted, copies), coverage_views if args.coverage_poses else views,
-                             coverage_size if args.coverage_poses else size)[:len(fitted.tris)]
-            pruned, kept = prune(fitted, shown, args.budget)
-            log(f"pruned {len(fitted.tris) - len(pruned.tris)} triangles: {np.count_nonzero(shown == 0)} never shown")
+            drawn = joined(fitted, copies)
+            rows = [coverage(drawn, *pose_views(poses, args.scale))[:len(fitted.tris)]
+                    for poses in args.coverage_poses] if args.coverage_poses else [coverage(drawn, views, size)[:len(fitted.tris)]]
+            shown = rows[0] if len(rows) == 1 else np.stack(rows)
+            held_out = [load_views([pair], args.scale) for pair in zip(args.held_out_poses, args.held_out_reference)]
+            pruned, kept, holes = settle(fitted, copies, shown, args.budget, args.settle, held_out, clear)
+            if holes:
+                out.mkdir(parents=True, exist_ok=True)
+                (out / HOLES).write_text(json.dumps(holes) + "\n", encoding="utf-8")
+            log(f"pruned {len(fitted.tris) - len(pruned.tris)} triangles: "
+                f"{np.count_nonzero(~(np.atleast_2d(shown) > 0).any(axis=0))} never shown")
             fitted = pruned
         if copies is not None:
             hidden = hidden_copy_pixels(source, carved, (fit_start, fitted), args.copy_poses)

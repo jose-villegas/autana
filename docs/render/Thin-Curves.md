@@ -35,7 +35,7 @@ stays in the mesh, and so does the material that
 | Coverage | Subpixel ribbons fade by true width / drawn width, depth-tested, mixing over what is behind; they write depth only over empty depth, mixed with the clear colour, so upscaling shows them. Solid ribbons write depth |
 
 The minimum width and coverage fade follow Persson's wire antialiasing
-[[119]](../Citations.md#persson-2012). Curve positions and radii share the
+[[121]](../Citations.md#persson-2012). Curve positions and radii share the
 mesh's position units and placed lens. Where the draw sits in the frame is in
 [Mesh-Rendering.md](Mesh-Rendering.md#one-frame).
 
