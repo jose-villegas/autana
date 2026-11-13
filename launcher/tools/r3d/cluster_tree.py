@@ -1,4 +1,5 @@
-"""A cluster tree: clusters split by the surface area heuristic into a tree whose leaves hold runs of clusters."""
+"""A cluster tree: clusters split by the surface area heuristic (MacDonald and Booth 1990) into a tree whose leaves
+hold runs of clusters."""
 
 import numpy as np
 

@@ -27,7 +27,9 @@ vertices weld by position alone.
 
 Clusters are meshoptimizer's **meshlets**<sup>[[11]](../../Citations.md#meshoptimizer)</sup>:
 at most `geometry.meshlet_triangles` (4 to 256, default 32) of one sidedness.
-The octree is built over their centres.
+The cluster tree is built over their boxes by the surface area heuristic<sup>[[121]](../../Citations.md#macdonald-1990)</sup>:
+a split is kept when the boxes' area-weighted cluster tests, plus a node test
+costing four cluster tests, come below testing the whole run as one leaf.
 
 ![The clusterizer cutting a small flat patch into meshlets, one per step](../../images/render/meshlet-build.gif)
 
@@ -62,6 +64,6 @@ The `meshlet-sizes` chart and rows are generated from each size's own suite capt
 regenerated bake. The [meshlet capture recipe](../../../launcher/tools/render/README.md#meshlet-size-captures)
 owns preparation, capture validation and refresh commands.
 
-Meshlets share vertices, so a frame transforms fewer than with octree-cut
+Meshlets share vertices, so a frame transforms fewer than with tree-cut
 leaves. The draw order they set decides depth ties, a fraction of a percent of
 pixels. Levels of detail on them: [frame/Levels-of-Detail.md](../frame/Levels-of-Detail.md).
