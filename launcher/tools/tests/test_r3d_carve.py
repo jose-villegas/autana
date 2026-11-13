@@ -3,6 +3,7 @@
 import pathlib
 import sys
 import unittest
+from types import SimpleNamespace
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
@@ -126,6 +127,17 @@ class DetailReportTest(unittest.TestCase):
         self.assertAlmostEqual(rows[0]["error_px"], 0.05 * FOCAL / 2.0)
         self.assertEqual(authoring, [dict(shape="a", error_px=rows[0]["error_px"], reason="ceiling")])
 
+
+
+@unittest.skipIf(np is None, "needs the r3d environment")
+class ViewsTest(unittest.TestCase):
+    def test_a_renderer_that_samples_no_camera_path_has_no_eyes_and_sees_from_the_near_plane(self):
+        camera = SimpleNamespace(path=object(), half_fov_short_tan=0.5, near_z=NEAR)
+        path_scene = SimpleNamespace(camera=SimpleNamespace(component=camera))
+        for visibility in (SimpleNamespace(source="camera_region", rounds=4), None):
+            eyes, focal, near = carve.views(path_scene, SimpleNamespace(visibility=visibility))
+            self.assertEqual((len(eyes), near), (0, NEAR))
+            self.assertGreater(focal, 0.0)
 
 if __name__ == "__main__":
     unittest.main()
