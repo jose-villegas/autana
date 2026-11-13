@@ -23,7 +23,7 @@ of *T* seconds, so speed and place have no jumps. The place is the
 smoothstep's integral:
 
 ```math
-v(u)=v_c(3u^2-2u^3), \qquad x(u)=x_0+rac{v_c T}{2}\,(2u^3-u^4)
+v(u)=v_c(3u^2-2u^3), \qquad x(u)=x_0+\frac{v_c T}{2}\,(2u^3-u^4)
 ```
 
 A ramp covers *v*<sub>c</sub>*T*/2. When two ramps at the peak would
