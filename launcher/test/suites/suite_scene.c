@@ -5495,12 +5495,13 @@ test_a_skin_holds_its_buffers_only_while_its_entity_is_active(void) {
         copies[i] = entity_at(herd, i);
         TEST_ASSERT_NULL(skin_of(copies[i])->storage);
     }
-    const size_t loaded = memory_free_bytes(MEMORY_INTERNAL);
+    /* Counted across both RAMs: MEMORY_FAST puts a copy's buffers off chip once the on-chip reserve is reached. */
+    const size_t loaded = memory_free_bytes(MEMORY_FAST);
     for (int i = 1; i < HERD_POOL; i++) {
         entity_set_enabled(copies[i], false);
     }
     scene_animation_step(columns(herd), 0);
-    const size_t one = loaded - memory_free_bytes(MEMORY_INTERNAL);
+    const size_t one = loaded - memory_free_bytes(MEMORY_FAST);
     TEST_ASSERT_GREATER_THAN_UINT(0, one);
     TEST_ASSERT_EQUAL_PTR(skin_of(copies[0])->output.positions, renderer_mesh(copies[0])->positions);
     for (int i = 1; i < HERD_POOL; i++) {
@@ -5517,13 +5518,13 @@ test_a_skin_holds_its_buffers_only_while_its_entity_is_active(void) {
     enum { SKIN_BLOCKS = 2, HEAP_BLOCK_ROUNDING = 8 };
 
     TEST_ASSERT_UINT_WITHIN(HERD_POOL * SKIN_BLOCKS * HEAP_BLOCK_ROUNDING, loaded - one * HERD_POOL,
-                            memory_free_bytes(MEMORY_INTERNAL));
+                            memory_free_bytes(MEMORY_FAST));
     for (int i = 1; i < HERD_POOL; i++) {
         entity_set_enabled(copies[i], false);
     }
-    TEST_ASSERT_EQUAL_UINT(loaded - one, memory_free_bytes(MEMORY_INTERNAL));
+    TEST_ASSERT_EQUAL_UINT(loaded - one, memory_free_bytes(MEMORY_FAST));
     entity_set_enabled(copies[0], false);
-    TEST_ASSERT_EQUAL_UINT(loaded, memory_free_bytes(MEMORY_INTERNAL));
+    TEST_ASSERT_EQUAL_UINT(loaded, memory_free_bytes(MEMORY_FAST));
 }
 
 /* A skin disabled and enabled again draws the frame it drew before: its first
