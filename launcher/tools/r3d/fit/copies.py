@@ -1,16 +1,14 @@
-"""The copies of a carved start bundle in the fit: drawn as constants beside the rest, so the rest is fitted
-against the same picture the board draws, and the copy-coverage gate on what the fit made of the rest.
+"""Frozen copies and curves beside the fitted rest, including the coverage gate.
 
-A copy mesh is local and colourless; each copy row places it under its own transform with its own colour
-set (mesh_import.write_shape). The fit draws every placed copy, frozen: copies are never moved, recoloured
-or pruned.
+They share the bundle's units and displayed colours, and never move, recolour
+or prune with the rest.
 """
 
 import pathlib
 
 import numpy as np
 
-from r3d import lcol_asset, mesh_bundle
+from r3d import lcol_asset, mesh_bundle, mesh_asset
 from r3d.fit.gbuffer import IN_FRONT, distance, reference_buffers
 from r3d.lit_mesh import finest, read_bundle_mesh, rgb888
 
@@ -25,13 +23,23 @@ HIDDEN_WORST_GROWTH = 0.010
 def placed_copies(bundle, flat):
     """Every copy in a start bundle placed under its transform, as one FitMesh in the rest's units: a copy
     mesh's finest clusters as the bundle stores them, their own vertices with positions welded, one colour per
-    vertex, or per triangle when `flat`. None when the bundle has no copies. No weld by value, so a copy's
+    vertex, or per triangle when `flat`. None when the bundle has neither copies nor curves. No weld by value, so a copy's
     vertices and triangles are the ones a mesh without levels holds."""
     from r3d.appearance_simplify import FitMesh
 
     entries, rows = mesh_bundle.decode(pathlib.Path(bundle).read_bytes())
+    from r3d.thin import curve_asset, curve_format
+
+    curves = None
+    for name, kind, blob in entries:
+        if kind == curve_asset.TYPE:
+            mesh_blob = next(data for mesh_name, mesh_kind, data in entries
+                             if mesh_name == name.removesuffix(curve_format.NAME_SUFFIX))
+            scale = mesh_asset.BLOB_HEADER.unpack_from(mesh_blob)[mesh_asset.POSITION_SCALE_INDEX]
+            tube = placed_curves(curve_asset.read_curves(blob, scale), flat)
+            curves = tube if curves is None else joined(curves, tube)
     if not rows:
-        return None
+        return curves
     data = {name: blob for name, _kind, blob in entries}
     points, rgb, tris, double, vertex_point = [], [], [], [], []
     point_count = vertex_count = 0
@@ -60,11 +68,12 @@ def placed_copies(bundle, flat):
             vertex_point.append(welded + point_count)
             point_count += len(local)
             vertex_count += len(welded)
-    return FitMesh(np.concatenate(points), np.concatenate(rgb), np.concatenate(tris), np.concatenate(double), 1,
+    copies = FitMesh(np.concatenate(points), np.concatenate(rgb), np.concatenate(tris), np.concatenate(double), 1,
                    np.concatenate(vertex_point), flat)
+    return joined(copies, curves)
 
 def joined(rest, copies):
-    """The rest and the copies as one mesh to raster, the rest's triangles first."""
+    """The rest and frozen geometry as one mesh to raster, the rest's triangles first."""
     if copies is None:
         return rest
     return rest._replace(points=np.concatenate([rest.points, copies.points]),
@@ -76,7 +85,7 @@ def joined(rest, copies):
 
 def hidden_copy_pixels(source, carved, meshes, poses_path, device="cuda"):
     """For each mesh of `meshes`, per pose of `poses_path`: the fraction of the frame where the source shows
-    a carved triangle (`carved`, one flag per source triangle) and the mesh stands in front of it."""
+    a frozen part (`carved`, one flag per source triangle) and the mesh stands in front of it."""
     import torch
 
     from r3d.appearance_simplify import Renderer, projection
@@ -98,7 +107,7 @@ def hidden_copy_pixels(source, carved, meshes, poses_path, device="cuda"):
 
 
 def check_hidden_copies(start, fitted):
-    """Raise when the fitted rest hides more copy pixels than its start beyond the gate's tolerances; `start`
+    """Raise when the fitted rest hides more frozen pixels than its start beyond the gate's tolerances; `start`
     and `fitted` are hidden_copy_pixels rows. Returns the log line."""
     mean, worst = fitted.mean() - start.mean(), fitted.max() - start.max()
     line = (f"hidden copy pixels: start {start.mean():.2%} mean, {start.max():.2%} worst pose; "
@@ -107,3 +116,37 @@ def check_hidden_copies(start, fitted):
         raise ValueError(f"the fitted rest hides the copies: {line} (growth allowed {HIDDEN_MEAN_GROWTH:.2%} mean, "
                          f"{HIDDEN_WORST_GROWTH:.2%} worst pose)")
     return line
+
+
+def placed_curves(curves, flat):
+    """Frozen six-sided tubes in model units, with displayed colour at each knot."""
+    from r3d.appearance_simplify import FitMesh
+    from r3d.light import encode_srgb8, tangent_frame
+    from r3d.thin.curve_fit import TUBE_SIDES
+
+    if not curves:
+        return None
+    points, colors, triangles = [], [], []
+    for curve in curves:
+        base = len(points)
+        for index, (knot, radius, color) in enumerate(zip(curve.knots, curve.radius, curve.color)):
+            tangent = curve.knots[min(index + 1, len(curve.knots) - 1)] - curve.knots[max(0, index - 1)]
+            tangent /= np.linalg.norm(tangent)
+            u, v = tangent_frame(tangent[None])
+            u, v = u[0], v[0]
+            for side in range(TUBE_SIDES):
+                angle = side * 2 * np.pi / TUBE_SIDES
+                points.append(knot + radius * (np.cos(angle) * u + np.sin(angle) * v))
+                colors.append(encode_srgb8(color) / 255.0)
+        for knot in range(len(curve.knots) - 1):
+            for side in range(TUBE_SIDES):
+                a = base + knot * TUBE_SIDES + side
+                b = base + knot * TUBE_SIDES + (side + 1) % TUBE_SIDES
+                triangles.extend(((a, b, a + TUBE_SIDES), (b, b + TUBE_SIDES, a + TUBE_SIDES)))
+        last = base + (len(curve.knots) - 1) * TUBE_SIDES
+        for side in range(1, TUBE_SIDES - 1):
+            triangles.extend(((base, base + side + 1, base + side), (last, last + side, last + side + 1)))
+    points, colors, triangles = np.asarray(points), np.asarray(colors), np.asarray(triangles)
+    if flat:
+        colors = colors[triangles].mean(axis=1)
+    return FitMesh(points, colors, triangles, np.ones(len(triangles), dtype=int), 1, np.arange(len(points)), flat)

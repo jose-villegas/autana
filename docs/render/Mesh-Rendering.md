@@ -111,7 +111,7 @@ flowchart TB
         direction LR
         Expand["drawn list<br/><i>each instance, then each copy<br/>a batch's chunk and copy spheres keep</i>"] --> Picture
         Picture["r3d_lens_init()<br/><i>for the picture</i><br/>world box, r3d_lens_place()<br/><i>per drawn instance</i>"] --> Cull
-        Cull["r3d_pipeline_cull()<br/><i>walk the tree, nearest first;<br/>bound each kept box's depth</i>"] --> Scale
+        Cull["r3d_pipeline_cull()<br/><i>walk the tree, nearest first;<br/>bound each kept box's depth</i><br/>r3d_pipeline_fit_curves()<br/><i>each kept curve box too</i>"] --> Scale
         Scale["inverse_depth_scale_fit()<br/><i>the depth scale</i>"]
     end
     Census --> List["the scratch block's census<br/><i>head, culled list, kept copies;<br/>fixed offset across render sizes</i>"]
@@ -122,6 +122,7 @@ flowchart TB
         direction LR
         Fit["r3d_lens_init(), r3d_lens_fit()<br/><i>once, fitted to the render size</i><br/>r3d_lens_place(), r3d_lens_set_depth_near()<br/><i>per kept instance</i>"] --> Transform["r3d_pipeline_transform()<br/><i>each vertex once</i>"]
         Transform --> DrawStage["r3d_pipeline_draw()<br/><i>near clip, r3d_span</i>"]
+        DrawStage --> Curves["r3d_curve_draw()<br/><i>last batch: opaque segments,<br/>then faded ones</i>"]
     end
     Draw --> Upscale["raster_upscale()<br/><i>into the destination</i>"]
 ```
@@ -204,6 +205,7 @@ sequenceDiagram
     Note over C0: pick the row at the instance's top share
     C0->>J: clear depth and draw the rows above it
     Note over C0: clear depth and draw the rows below it
+    Note over C0,J: the last batch then draws each half's curves in its rows
     J-->>C0: job_wait()
     Note over C0: job_share_update() steers each share by both halves' times
     C0->>P: gfx_present_wait()
@@ -245,6 +247,11 @@ The caller decides where it lives, so it need not consume internal RAM.
 A mesh with levels of detail is drawn through its instance's coarse bits, one
 bit a group, which persist between frames; the scene owns them, one block for
 all its renderers.
+
+## Thin curves
+
+Thin parts an import takes out of the mesh draw as lit ribbons after every
+triangle cluster: [Thin-Curves.md](Thin-Curves.md).
 
 ## Rules the layer keeps
 

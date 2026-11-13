@@ -107,6 +107,10 @@ int r3d_pipeline_cull_cut(const r3d_lit_mesh_t* mesh, const uint32_t* lod_coarse
 int r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint32_t* lod_coarse, uint16_t* out,
                       r3d_pipeline_work_t* work, r3d_depth_fit_t* fit);
 
+/* Lowers `fit` as r3d_pipeline_cull() does for each of a mesh's curve boxes the lens's frustum keeps, so curves,
+ * drawn after the clusters, stay inside the depth scale too. */
+void r3d_pipeline_fit_curves(r3d_curve_set_t set, const r3d_lens_t* lens, r3d_pipeline_work_t* work,
+                             r3d_depth_fit_t* fit);
 /* r3d_pipeline_cull() keeping what r3d_lod_drawn_blending() draws: both
  * levels of each group blending in `blending`, for the dither. */
 int r3d_pipeline_cull_blending(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint32_t* lod_coarse,

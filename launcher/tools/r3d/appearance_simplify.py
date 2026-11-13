@@ -39,7 +39,7 @@ from r3d import log  # noqa: E402
 from r3d.geometry import closest_point_on_triangles, triangle_areas  # noqa: E402
 from r3d.fit.copies import check_hidden_copies, hidden_copy_pixels, joined, placed_copies  # noqa: E402
 from r3d.fit import gbuffer  # noqa: E402
-from r3d.import_settings import load_scene, match_meshes  # noqa: E402
+from r3d.import_settings import load_scene, match_meshes, thinned_triangles  # noqa: E402
 from r3d.lit_mesh import finest_triangles, read_lit_mesh  # noqa: E402
 from r3d.cost_model import load as load_cost  # noqa: E402
 from r3d.poses import camera_basis, read_poses  # noqa: E402
@@ -778,7 +778,7 @@ def surface_loss(samples, centres, normals, scale, margin):
 def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian, seed=1, device="cuda", report=100,
              clear=(0.0, 0.0, 0.0), cost=None, cost_weight=0.0, scale=1, normal_weight=0.0, surface_weight=0.0,
              surface_margin=0.0, source=None, seam_margin=SEAM_MARGIN, copies=None, carved=None, front_weight=0.0,
-             depth_weight=0.0):
+             depth_weight=0.0, source_exclude=None):
     """Fit fixed triangles; return positions, colours and colour-only error history.
     Position steps use bounding diagonals and each vertex's capped local start scale.
     Laplacian drift and the source envelope use capped local start edge scales,
@@ -788,6 +788,7 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
     Seam holds pin border points that start near another part to its moving
     triangles by default; `seam_margin=0` turns them off.
     `copies` (a FitMesh, fit/copies.py) is drawn after the mesh, unchanged.
+    `source_exclude` flags source triangles absent from the surface envelope.
     The front and depth terms (fit/gbuffer.py) need the source and `carved`, one flag per source triangle drawn
     as a copy."""
     import torch
@@ -848,8 +849,8 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
         if source is None:
             raise ValueError("a surface term needs the alpha-masked source")
         surface_rng = np.random.default_rng(seed)
-        reference, face_normals = area_samples(source, np.arange(len(source.tri_v)),
-                                               SURFACE_REFERENCE_SAMPLES, surface_rng)
+        reference_triangles = np.arange(len(source.tri_v)) if source_exclude is None else np.flatnonzero(~source_exclude)
+        reference, face_normals = area_samples(source, reference_triangles, SURFACE_REFERENCE_SAMPLES, surface_rng)
         tree = cKDTree(reference)
         reference = torch.as_tensor(reference, dtype=start.dtype, device=device)
         face_normals = torch.as_tensor(face_normals, dtype=start.dtype, device=device)
@@ -1042,12 +1043,20 @@ def main(argv=None):
             from r3d.reference_render import source_for
 
             source, job = source_for(scene, args.object, lit=False)
+        source_exclude = None
+        if source is not None and job is not None and job.settings.curves:
+            from r3d.thin.thin_parts import thin_triangles
+
+            source_exclude = thin_triangles(source.p, source.tri_v, job.renderer.variant.triangles,
+                                            thinned_triangles(job.settings.thin, source.tri_m, source.names))
         carved = None
         if copies is not None:
             carved = np.zeros(len(source.object_names), dtype=bool)
             carved[list(match_meshes(source.tri_o, source.tri_m, source.object_names, source.names,
                                      job.settings.meshes))] = True
             carved = carved[source.tri_o]
+            if source_exclude is not None:
+                carved |= source_exclude
         fit_start = fitted
         cost = None if args.cost_model is None else load_cost(args.cost_model)[0]
         points, rgb, history = optimise(fitted, views, size, args.steps, args.batch, args.lr_position, args.lr_colour,
@@ -1055,7 +1064,8 @@ def main(argv=None):
                                         scale=args.scale, normal_weight=args.normal_weight, source=source,
                                         surface_weight=args.surface_weight, surface_margin=args.surface_margin,
                                         seam_margin=args.seam_margin, copies=copies, carved=carved,
-                                        front_weight=args.front_weight, depth_weight=args.depth_weight)
+                                        front_weight=args.front_weight, depth_weight=args.depth_weight,
+                                        source_exclude=source_exclude)
         fitted = fitted._replace(points=points, rgb=rgb)
         kept = np.arange(len(fit_start.tris))
         if args.budget is not None:

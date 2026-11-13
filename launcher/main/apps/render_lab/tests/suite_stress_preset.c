@@ -7,9 +7,11 @@
 
 #include <float.h>
 #include <math.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "suites.h"
+#include "test_pack.h"
 #include "testkit/cleanup.h"
 #include "testkit/suite.h"
 #include "unity.h"
@@ -25,6 +27,7 @@
 #include "lab/lab_view.h"
 #include "lab/test/lab_perf_quarters.h"
 #include "math/scalar/math_const.h"
+#include "render/curve/r3d_curve.h"
 #include "render/dynamic/r3d_dynamic_mesh.h"
 #include "render/r3d_pipeline.h"
 #include "render/r3d_span.h"
@@ -530,6 +533,42 @@ test_near_plane_sweeps_behind_and_clipped_triangles(void) {
     release();
 }
 
+/* Curves: the set an LCRV entry would carry, so r3d_curve_set_from_asset()
+ * takes it whole; on the plane and toward the camera; and at the default
+ * size some ribbons under R3D_CURVE_MIN_WIDTH_PX, which fade, and some over. */
+static void
+test_curves_are_a_whole_set_near_and_far_faded_and_opaque(void) {
+    const stress_params_t* p = &stress_presets[STRESS_CURVES];
+    TEST_ASSERT_TRUE(stress_draws_curves(p));
+    const size_t bytes = R3D_CURVE_HEADER_SIZE + stress_curve_bytes();
+    uint8_t* entry = calloc(1, bytes);
+    TEST_ASSERT_NOT_NULL(entry);
+    const r3d_curve_set_t made = stress_curves(entry + R3D_CURVE_HEADER_SIZE);
+    TEST_ASSERT_EQUAL_INT(STRESS_CURVE_COUNT, made.curve_count);
+    test_pack_put16(entry + R3D_CURVE_AT_COUNT, STRESS_CURVE_COUNT);
+    test_pack_put16(entry + R3D_CURVE_AT_KNOT_COUNT, STRESS_CURVE_COUNT * STRESS_CURVE_KNOTS);
+    test_pack_put16(entry + R3D_CURVE_AT_VERSION, R3D_CURVE_VERSION);
+    r3d_curve_set_t read;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_curve_set_from_asset((asset_view_t){entry, (uint32_t)bytes}, &read));
+    const float px_per_tick = stress_cut_px(p, DEFAULT_SHORT_PX) * (float)p->cuts / (float)STRESS_TICKS_PER_UNIT;
+    int z_lo = INT16_MAX;
+    int z_hi = INT16_MIN;
+    float width_lo = FLT_MAX;
+    float width_hi = 0.0F;
+    for (int k = 0; k < STRESS_CURVE_COUNT * STRESS_CURVE_KNOTS; k++) {
+        const r3d_curve_knot_t* knot = &read.knots[k];
+        z_lo = z_lo < knot->z ? z_lo : knot->z;
+        z_hi = z_hi > knot->z ? z_hi : knot->z;
+        width_lo = fminf(width_lo, 2.0F * (float)knot->radius * px_per_tick);
+        width_hi = fmaxf(width_hi, 2.0F * (float)knot->radius * px_per_tick);
+    }
+    free(entry);
+    TEST_ASSERT_GREATER_THAN_INT(0, z_lo);
+    TEST_ASSERT_GREATER_THAN_INT(STRESS_TICKS_PER_UNIT / 4, z_hi);
+    TEST_ASSERT_LESS_THAN_FLOAT(R3D_CURVE_MIN_WIDTH_PX, width_lo);
+    TEST_ASSERT_GREATER_THAN_FLOAT(R3D_CURVE_MIN_WIDTH_PX, width_hi);
+}
+
 void
 run_stress_preset_suite(void) {
     RUN_TEST(test_culled_fraction_sweeps_from_visible_to_mostly_off_frustum);
@@ -550,6 +589,7 @@ run_stress_preset_suite(void) {
     RUN_TEST(test_big_tris_are_past_every_small_fill);
     RUN_TEST(test_two_sided_is_a_closed_shape_drawn_from_both_sides);
     RUN_TEST(test_noisy_tiny_slivers_are_gated_and_fail_the_gate);
+    RUN_TEST(test_curves_are_a_whole_set_near_and_far_faded_and_opaque);
 }
 
 SUITE_REGISTER(run_stress_preset_suite);

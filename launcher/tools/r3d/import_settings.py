@@ -271,8 +271,9 @@ def load_process(process, steps):
 
 def load_geometry(table, steps):
     """The optional steps that decide which source triangles remain."""
-    check_keys(table, (), "geometry", optional=("alpha_mask", "thin", "simplify", "meshlet_triangles", "lod", "morph",
-                                                "probes", "budget"))
+    check_keys(table, (), "geometry", optional=("alpha_mask", "thin", "curves", "simplify", "meshlet_triangles", "lod",
+                                                "morph", "probes", "budget"))
+    steps.curves = boolean(table.get("curves", False), "geometry.curves")
     steps.meshlet_triangles = count(table.get("meshlet_triangles", MESHLET_TRIANGLES), "geometry.meshlet_triangles")
     steps.lod = boolean(table.get("lod", LOD), "geometry.lod")
     steps.morph = boolean(table.get("morph", MORPH), "geometry.morph")
@@ -378,6 +379,15 @@ def variant_meshes(rules, variant):
     return resolved
 
 
+def thinned_triangles(thin, labels, material_names):
+    """Which triangles `geometry.thin` thins: every one of its material, before the keep draw."""
+    import numpy as np
+
+    if not thin:
+        return np.zeros(len(labels), dtype=bool)
+    return np.isin(labels, [index for index, name in enumerate(material_names) if name == thin.material])
+
+
 def match_meshes(tri_o, labels, object_names, material_names, rules):
     """Resolve mesh rules once per source object; overlapping budgets are ambiguous."""
     selected = {}
@@ -454,6 +464,8 @@ def load_import_settings(path):
         if steps.simplify:
             raise SettingsError("geometry.simplify needs variants, each with its triangles budget")
         variants = [SimpleNamespace(name=text(output.get("name"), "output.name"), triangles=None)]
+    if steps.curves and any(variant.triangles is None for variant in variants):
+        raise SettingsError("geometry.curves needs a start triangle budget in every variant")
     meshes = load_object_meshes(values.get("objects", {}))
     if meshes and not steps.simplify:
         raise SettingsError("objects.meshes needs geometry.simplify")
@@ -465,7 +477,8 @@ def load_import_settings(path):
         path=path, source=source, mesh_dir=path.parent,
         position_scale=count(output["position_scale"], "output.position_scale") if "position_scale" in output else None,
         double_sided=set(strings(materials.get("double_sided", []), "materials.double_sided")), seed=steps.seed,
-        alpha_keep=steps.alpha_keep, thin=steps.thin, simplify=steps.simplify, named=("variants" in values),
+        alpha_keep=steps.alpha_keep, thin=steps.thin, curves=steps.curves, simplify=steps.simplify,
+        named=("variants" in values),
         meshes=meshes,
         meshlet_triangles=steps.meshlet_triangles, lod=steps.lod, morph=steps.morph, fit=steps.fit,
         variants=variants, skin_lighting=lighting)

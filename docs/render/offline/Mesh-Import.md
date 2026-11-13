@@ -116,6 +116,7 @@ Every Geometry table opts its step in; without it the step does not run.
 |---|---|---|---|---|---|
 | `geometry.alpha_mask` | `keep_alpha` | Drops alpha-tested triangles that are mostly transparent. | Off. | Seconds / fewer triangles. | [alpha_mask](#alpha_mask) |
 | `geometry.thin` | `material`, `keep` | Keeps a share of one material's triangles. | Off. | None / fewer triangles. | [thin](#thin) |
+| `geometry.curves` | Boolean | Extracts long thin connected parts as lit curves before simplifying the start; requires a start triangle budget. | `false` | Surface sampling and lighting / ribbons. | [curves](#curves) |
 | `geometry.simplify` | `dense_edge`, `seal_seams`, `colour_deviation` | Splits long edges and simplifies each variant to its budget, colour steering the collapses; can seal seams. | Off. | Seconds / set by the budget. | [simplify](#simplify) |
 | `geometry.probes` | `spacing`, `face` | Adds fit views from probes spread through the camera's region, for surface the path never shows. | Off. | Minutes / more triangles kept. | [probes](#probes) |
 | `geometry.budget` | `step`, `settle` | Lets each fitted renderer settle on a prune budget below its own by held-out holes. | The renderer's `fit.prune.budget`. | A prune per step / fewer triangles. | [budget](#budget) |
@@ -162,6 +163,27 @@ for material whose geometry occupies more of the budget than it shows. The
 share is random, so `process.seed` makes it repeatable.
 
 ![thin off against on](../images/import-thin.png)
+
+#### curves
+
+`geometry.curves` takes long, thin connected parts such as poles and cables
+out of the start and stores them as lit curves beside the mesh, so
+simplification cannot drop or thicken them. How parts are chosen and drawn is
+[Thin-Curves.md](../Thin-Curves.md).
+
+```toml
+[geometry]
+curves = true
+```
+
+![the same Bistro bake without its curves and with them: the cables over the street come back](../../images/render/import-curves.png)
+
+A view draws them only when its camera turns curves on; they are off by default.
+
+Detection measures parts against the start's triangle budget, so every
+variant needs `triangles`. The material that [`thin`](#thin) thins out is
+never searched, so its parts stay triangles. An object whose shown triangles
+are all thin is refused: its curves need a mesh to belong to.
 
 #### simplify
 

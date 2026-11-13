@@ -67,8 +67,6 @@ r3d_lens_place(r3d_lens_t* lens, const mat4f_t* model, int position_scale) {
     mat4f_post_mul_affine(&lens->m, &placed);
 }
 
-#define ALL_PLANES ((1u << PLANE_FRUSTUM_COUNT) - 1u)
-
 typedef struct {
     uint16_t node;
     uint8_t mask;
@@ -239,13 +237,27 @@ cull_cut(const r3d_lit_mesh_t* mesh, const uint32_t* lod_coarse, const uint32_t*
                 const uint16_t parent = mesh->cluster_lod[c].parent;
                 if (parent == R3D_LOD_NONE || !bits32_get(lod_coarse, parent)) {
                     *tested += 1;
-                    count = cull_cluster(mesh, c, ALL_PLANES, planes, depth, out, count, fit);
+                    count = cull_cluster(mesh, c, PLANE_FRUSTUM_ALL, planes, depth, out, count, fit);
                 }
             }
             from = c;
         }
     }
     return count;
+}
+
+void
+r3d_pipeline_fit_curves(r3d_curve_set_t set, const r3d_lens_t* lens, r3d_pipeline_work_t* work, r3d_depth_fit_t* fit) {
+    planef_t* planes = work->cull.planes;
+    r3d_lens_frustum(lens, planes);
+    const planef_t depth = lens_depth_plane(lens);
+    for (int i = 0; i < set.curve_count; i++) {
+        const box3f_t box = box3f_from_box3s(r3d_curve_box(&set.curves[i]), 1.0F);
+        unsigned mask = PLANE_FRUSTUM_ALL;
+        if (!box3f_outside_planes(box, planes, PLANE_FRUSTUM_COUNT, &mask)) {
+            fit_inside(box, planes, mask, depth, fit);
+        }
+    }
 }
 
 int
@@ -275,7 +287,7 @@ cull_walk(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint32_t* lo
                      && (r3d_lod_any(lod_coarse, mesh->lod_group_count)
                          || (blending != NULL && r3d_lod_any(blending, mesh->lod_group_count)));
     const bool every = r3d_lod_finest_untested(mesh, cut);
-    stack[top++] = (walk_entry_t){(uint16_t)start, ALL_PLANES};
+    stack[top++] = (walk_entry_t){(uint16_t)start, PLANE_FRUSTUM_ALL};
     int count = 0;
     while (top > 0) {
         const walk_entry_t entry = stack[--top];

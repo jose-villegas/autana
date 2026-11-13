@@ -16,6 +16,15 @@ def triangle_areas(p, tris):
     return 0.5 * np.linalg.norm(np.cross(p[tris[:, 1]] - p[tris[:, 0]], p[tris[:, 2]] - p[tris[:, 0]]), axis=1)
 
 
+def principal_frame(points):
+    """The centre of `points`, their principal axes as columns by rising extent, and the points in those axes."""
+    centre = points.mean(axis=0)
+    _, axes = np.linalg.eigh((points - centre).T @ (points - centre))
+    local = (points - centre) @ axes
+    order = np.argsort(np.ptp(local, axis=0))
+    return centre, axes[:, order], local[:, order]
+
+
 def face_normals(p, tris):
     """Each triangle's unit normal and its area."""
     normal = np.cross(p[tris[:, 1]] - p[tris[:, 0]], p[tris[:, 2]] - p[tris[:, 0]])
@@ -135,6 +144,21 @@ def triangle_search(corners):
     groups = (np.flatnonzero(size == i) for i in np.unique(size))
     return TriangleSearch(corners, cKDTree(centre), tuple((cKDTree(centre[chosen]), chosen, radius[chosen])
                                                           for chosen in groups))
+
+
+def triangles_within(search, point, reach):
+    """Indices of the triangles of `search` with a point within `reach` of `point`, in ascending order (exact): a
+    group's candidates are the centroids within its largest radius plus the reach, kept by their own radius."""
+    found = [chosen[near[distance <= radius[near] + reach]]
+             for tree, chosen, radius in search.groups
+             for near in [np.asarray(tree.query_ball_point(point, radius.max() + reach), dtype=int)] if len(near)
+             for distance in [np.linalg.norm(tree.data[near] - point, axis=1)]]
+    candidates = np.sort(np.concatenate(found)) if found else np.zeros(0, dtype=int)
+    if not len(candidates):
+        return candidates
+    tri = search.corners[candidates]
+    _, distance = closest_point_on_triangles(np.broadcast_to(point, (len(tri), 3)), *tri.transpose(1, 0, 2))
+    return candidates[distance <= reach]
 
 
 def nearest_triangles(points, search):

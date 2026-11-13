@@ -29,4 +29,9 @@ render_lab_settings_draw(int width) {
     if (ui_toggle(ui_next(), RENDER_LAB_DYNAMIC_RES_LABEL, &dynamic)) {
         (void)render_lab_dynres_set_on(dynamic);
     }
+    bool curves = render_lab_curves_on();
+    ui_row_centre(width, UI_ROW_HEIGHT);
+    if (ui_toggle(ui_next(), RENDER_LAB_CURVES_LABEL, &curves)) {
+        (void)render_lab_curves_set_on(curves);
+    }
 }

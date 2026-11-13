@@ -12,6 +12,7 @@ double_sided = ["Foliage_Bux_Hedges46.DoubleSided", "Foliage_Flowers.DoubleSided
 seed = 1
 
 [geometry]
+curves = true
 alpha_mask = { keep_alpha = 0.5 }
 thin = { material = "Foliage_Paris_Flowers", keep = 0.3 }
 simplify = { dense_edge = 300.0, props = ["Streetlight_Metal"], props_share = 0.13, seal_seams = false, colour_deviation = 2.0 }

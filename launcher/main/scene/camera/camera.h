@@ -32,6 +32,8 @@ bool camera_set_present(entity_t camera, camera_present_t present);
 bool camera_set_small_fill(entity_t camera, small_fill_t fill);
 /* render_view_t.skip_hidden for the camera's views. */
 bool camera_set_skip_hidden(entity_t camera, bool skip);
+/* render_view_t.curves for the camera's views. */
+bool camera_set_curves(entity_t camera, bool curves);
 /* The lens shift (render_view_t.shift): an off-axis view, as a window onto a
  * fixed rectangle needs. False also for a shift that is not finite. */
 bool camera_set_shift(entity_t camera, vec2f_t shift);

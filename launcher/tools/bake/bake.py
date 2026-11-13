@@ -119,6 +119,8 @@ CACHE_VARIABLE = "AUTANA_BAKE_CACHE"
 # A lock row's fields, in file order: "host" is the system and machine a run made the bytes on, since a
 # bake is reproducible only on one kind of host, and "gpu" the GPU a fit was made on; a seeded row has neither.
 ROW_FIELDS = ("output", "source", "key", "sha256", "size", "run", "host", "gpu", "seeded")
+# What a seeded row carries over from the row whose bytes it takes: the bytes and where they were made.
+CARRIED_FIELDS = ("output", "source", "sha256", "size", "run", "host", "gpu")
 POSE_FIELDS = ("key", "poses", "count", "clip", "host")
 CPUINFO = pathlib.Path("/proc/cpuinfo")
 NVIDIA_SMI_NAME = ("nvidia-smi", "--query-gpu=name", "--format=csv,noheader")
@@ -1011,7 +1013,8 @@ def seed(found, cache, lock=None, made=None):
     """Rows marked seeded, whose bytes are carried over, not made by the code their key names; a run
     that makes the key again writes a row without the mark. A key `lock` holds a made row for keeps
     it, as with a run's make. A re-keyed output carries the bytes of the row `lock` holds for it
-    under its old key, so what a run made outlives the re-key (its file fetched as any locked file).
+    under its old key, so what a run made outlives the re-key: it keeps the run that made the bytes,
+    whose uploads supply them until main publishes them.
     Otherwise the bytes are the tree's own file, or once the tree has none the seeded row's."""
     lock = lock or {}
     needed = {bake.key for bake in found}
@@ -1032,7 +1035,7 @@ def seed(found, cache, lock=None, made=None):
         carried = previous.get(bake.output) if held is None else (None if bake.tree.is_file() else held)
         if carried is not None:
             fetch_all([bake], {bake.key: carried}, cache)
-            rows.append({**{name: carried[name] for name in ("output", "source", "sha256", "size")},
+            rows.append({**{name: carried[name] for name in CARRIED_FIELDS if name in carried},
                          "key": bake.key, "seeded": True})
             continue
         if not bake.tree.is_file():
@@ -1046,6 +1049,18 @@ def seed(found, cache, lock=None, made=None):
     if missing:
         raise BakeMissing("cannot seed:\n" + "\n".join(missing))
     return rows
+
+
+def seed_chain(paths, starts, poses, cache, lock=None, made=None):
+    """seed() in rounds: a fit's key names its start's bytes and a levels bake's its fit's, so each round's
+    rows key the next. Fails as seed() does once a round keys nothing new."""
+    while True:
+        found = bakes(paths, starts, poses)
+        rows = seed([bake for bake in found if bake.key is not None], cache, lock, made)
+        keyed = {row["key"]: row["sha256"] for row in rows}
+        if all(bake.key is not None for bake in found) or keyed.keys() <= starts.keys():
+            return seed(found, cache, lock, made)
+        starts = {**starts, **keyed}
 
 
 def from_run(row, suffix, cache):
@@ -1413,7 +1428,7 @@ def main(argv=None):
         elif args.command == "lock":
             mesh_cpu_vendor = runs_mesh_cpu_vendor(found, lock, made, tables.get("mesh_cpu_vendor"))
             if args.seed:
-                rows = seed(found, cache, lock, made)
+                rows = seed_chain(paths, starts, poses, cache, lock, made)
             else:
                 # A fit waits for its start's row: what is made locks now, and the rest is named.
                 missing = []

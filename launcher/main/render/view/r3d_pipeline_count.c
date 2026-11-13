@@ -44,7 +44,7 @@ r3d_pipeline_cull_counted(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, co
     r3d_lens_frustum(lens, walk->planes);
     int top = 0;
     walk->node[top] = (uint16_t)mesh->lod_finest_root;
-    walk->mask[top++] = (uint8_t)ALL_PLANES;
+    walk->mask[top++] = (uint8_t)PLANE_FRUSTUM_ALL;
     int count = 0;
     while (top > 0) {
         top--;

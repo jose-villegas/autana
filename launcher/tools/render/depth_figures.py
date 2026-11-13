@@ -55,9 +55,9 @@ def flips(frames):
     return count
 
 
-def busiest(count):
-    """The top-left corner of the WINDOW holding the most flips."""
-    width, height = WINDOW
+def busiest(count, window=WINDOW):
+    """The top-left corner of the `window` (width, height) holding the most counted pixels."""
+    width, height = window
     total = count.cumsum(0).cumsum(1)
     total = np.pad(total, ((1, 0), (1, 0)))
     sums = total[height:, width:] - total[:-height, width:] - total[height:, :-width] + total[:-height, :-width]
@@ -65,14 +65,20 @@ def busiest(count):
     return int(x), int(y)
 
 
-def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+def scene_parser(doc):
+    """The options of a figure drawn from a scene's camera: --scene, --object (repeated), --camera, --out, --work."""
+    parser = argparse.ArgumentParser(description=doc.split("\n\n")[0])
     parser.add_argument("--scene", required=True, type=pathlib.Path)
     parser.add_argument("--object", required=True, action="append", help="a renderer to draw; repeat for more")
     parser.add_argument("--camera", required=True)
-    parser.add_argument("--at-ms", required=True, type=int, help="the first frame's time along the camera path")
     parser.add_argument("--out", required=True, type=pathlib.Path)
     parser.add_argument("--work", required=True, type=pathlib.Path)
+    return parser
+
+
+def main(argv=None):
+    parser = scene_parser(__doc__)
+    parser.add_argument("--at-ms", required=True, type=int, help="the first frame's time along the camera path")
     args = parser.parse_args(argv)
     args.work.mkdir(parents=True, exist_ok=True)
     args.out.parent.mkdir(parents=True, exist_ok=True)

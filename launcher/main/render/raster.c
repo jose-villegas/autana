@@ -138,6 +138,7 @@ typedef struct {
     const batch_t* batch;
     int first, count; /* clusters across the batch's items, or rows */
     bool clear;       /* the first batch of a picture clears it; later ones draw over it */
+    bool last;        /* the last batch's draw then draws the picture's curves in its rows */
     uint16_t* destination;
     int work_index;
     const raster_buffers_t* buffers;
@@ -206,6 +207,7 @@ typedef struct {
     r3d_span_target_t targets[2];
     r3d_span_small_fill_t small_fill;
     bool skip_hidden;         /* the view's */
+    bool curves;              /* the view's: draw the meshes' curves after their clusters */
     int first_row, end_row;   /* the rows this draw redraws */
     bool levels_changed;      /* a level pick this draw changed an instance's cut */
     bool blends;              /* lod.blend is on: each instance's blend is set up */
@@ -365,6 +367,8 @@ raster_depth_near(const raster_t* raster) {
     return *raster_carve(raster).depth_near;
 }
 
+static void curve_slice(const slice_t* s);
+
 static void
 draw_slice(void* ctx) {
     const slice_t* s = ctx;
@@ -402,6 +406,9 @@ draw_slice(void* ctx) {
         }
     }
     FRAME_LAP_END();
+    if (s->last && ((const draw_work_t*)b->draw)->curves) {
+        curve_slice(s);
+    }
 }
 
 /* An upscale job's rows: its own type, so the draw's slice_t stays small. */
@@ -469,14 +476,20 @@ picture_lens_init(picture_lens_t* picture, const raster_t* raster, const render_
     picture->position_scale = 0;
 }
 
+/* The picture's lens at `position_scale`, made into `lens`. */
+static void
+picture_lens_make(const picture_lens_t* picture, int position_scale, r3d_lens_t* lens) {
+    if (picture->fitted) {
+        raster_lens(picture->raster, picture->view, position_scale, lens);
+    } else {
+        r3d_lens_init(lens, picture->view, position_scale);
+    }
+}
+
 static const r3d_lens_t*
 picture_lens_at(picture_lens_t* picture, int position_scale) {
     if (picture->position_scale != position_scale) {
-        if (picture->fitted) {
-            raster_lens(picture->raster, picture->view, position_scale, &picture->lens);
-        } else {
-            r3d_lens_init(&picture->lens, picture->view, position_scale);
-        }
+        picture_lens_make(picture, position_scale, &picture->lens);
         picture->position_scale = position_scale;
     }
     return &picture->lens;
@@ -519,6 +532,35 @@ copy_aim(picture_lens_t* picture, const r3d_batch_draw_t* copy, batch_item_t* it
     r3d_batch_copy_mesh(copy->batch, copy->instance.mesh, copy->copy, copy_mesh);
     item->mesh = copy_mesh;
     instance_lens(picture, &copy->instance, copy, &item->lens);
+}
+
+/* The picture's curves in a slice's rows, after every cluster there. Its lens takes the slice's
+ * pipeline work block, free once the clusters are drawn, so no frame on the draw path holds it. */
+static __attribute__((noinline)) void
+curve_slice(const slice_t* s) {
+    const draw_work_t* work = s->buffers->draw;
+    assert(r3d_pipeline_work_bytes() >= sizeof(r3d_lens_t));
+    r3d_lens_t* lens = (r3d_lens_t*)(void*)s->buffers->work[s->work_index];
+    r3d_span_target_t* target = s->target;
+    FRAME_LAP("r3d.curve.setup");
+    target->skip_hidden = false;
+    target->writer_count = 0;
+    target->clear = s->raster->clear;
+    /* Every opaque segment before any faded one, which mixes over what is behind it without hiding it. */
+    for (int covered = 0; covered < 2; covered++) {
+        for (int i = 0; i < s->raster->instance_count; i++) {
+            const r3d_instance_t* instance = &s->raster->instances[i];
+            if (instance->mesh->curve_count > 0) {
+                picture_lens_make(&work->picture, instance->mesh->position_scale, lens);
+                if (instance->model != NULL) {
+                    r3d_lens_place(lens, instance->model, instance->mesh->position_scale);
+                }
+                r3d_lens_set_depth_near(lens, *s->buffers->depth_near);
+                r3d_curve_draw(r3d_lit_mesh_curves(instance->mesh), lens, target, covered != 0);
+            }
+        }
+    }
+    FRAME_LAP_END();
 }
 
 /* The cull's per-instance helpers below are inlined into each caller: the
@@ -745,6 +787,29 @@ level_pick(const level_pick_t* pick, int index, const r3d_instance_t* instance, 
         }                                                                                                              \
     } while (0)
 
+/* Picks drawn entry `i`'s level, `instance`, kept copy `copy` when not
+ * NULL, and culls it, seen through `picture`, into `kept` and core `half`'s
+ * counts and depth fit; returns how many it kept. */
+static inline __attribute__((always_inline)) uint16_t
+cull_seen(cull_job_t* job, picture_lens_t* picture, int half, int i, const r3d_instance_t* instance,
+          const r3d_batch_draw_t* copy, uint16_t* kept) {
+    cull_half_t* mine = &job->halves[half];
+    r3d_pipeline_work_t* block = job->buffers->work[half];
+    r3d_lens_t lens;
+    instance_lens(picture, instance, copy, &lens);
+    CULL_LAP(FRAME_LAP, job->fitted, "pick");
+    mine->levels_changed |=
+        level_pick(&job->pick, i, instance, &lens, job->pick.steer != NULL ? &job->pick.steer->halves[half] : NULL);
+    CULL_LAP(FRAME_LAP, job->fitted, "walk");
+    const uint16_t count = (uint16_t)cull_instance(instance, job->settings.cull, &lens, job->settings.lod.blend, kept,
+                                                   &mine->stats, block, job->settings.depth_fit ? &mine->fit : NULL);
+    /* Curves are drawn for instances only (curve_slice), so only theirs widen the fit. */
+    if (job->settings.depth_fit && job->view->curves && copy == NULL && instance->mesh->curve_count > 0) {
+        r3d_pipeline_fit_curves(r3d_lit_mesh_curves(instance->mesh), &lens, block, &mine->fit);
+    }
+    return count;
+}
+
 /* Culls instances [from, to) into their places in the census list: an
  * instance's list starts after every earlier one's count and clusters. */
 static void
@@ -753,8 +818,6 @@ cull_slice(void* ctx, int from, int to) {
     CULL_LAP(FRAME_LAP, job->fitted, "walk");
     const raster_t* raster = job->raster;
     const int half = from == 0 ? 0 : 1;
-    cull_half_t* mine = &job->halves[half];
-    r3d_pipeline_work_t* block = job->buffers->work[half];
     uint16_t* culled = job->buffers->culled;
     for (int i = 0; i < mathi_min(from, raster->instance_count); i++) {
         culled += 1 + (size_t)raster->instances[i].mesh->cluster_count;
@@ -770,15 +833,7 @@ cull_slice(void* ctx, int from, int to) {
         if (world_cull_skips(&job->world, instance)) {
             culled[0] = 0;
         } else {
-            r3d_lens_t lens;
-            instance_lens(&picture, instance, copy, &lens);
-            CULL_LAP(FRAME_LAP, job->fitted, "pick");
-            mine->levels_changed |= level_pick(&job->pick, i, instance, &lens,
-                                               job->pick.steer != NULL ? &job->pick.steer->halves[half] : NULL);
-            CULL_LAP(FRAME_LAP, job->fitted, "walk");
-            culled[0] =
-                (uint16_t)cull_instance(instance, job->settings.cull, &lens, job->settings.lod.blend, culled + 1,
-                                        &mine->stats, block, job->settings.depth_fit ? &mine->fit : NULL);
+            culled[0] = cull_seen(job, &picture, half, i, instance, copy, culled + 1);
         }
         culled += 1 + (size_t)instance->mesh->cluster_count;
     }
@@ -914,7 +969,7 @@ plan_draw_rows(const raster_t* raster, draw_work_t* work, int16_t* draw_share) {
 /* Draws batch `index`: one transform fork/join over every item's clusters,
  * then one draw fork/join in which each core draws every item in its rows. */
 static inline __attribute__((always_inline)) void
-draw_batch(const raster_t* raster, int index, draw_work_t* work) {
+draw_batch(const raster_t* raster, int index, bool last, draw_work_t* work) {
     batch_t* batch = &work->batch;
     int count = 0;
     for (int k = 0; k < batch->count; k++) {
@@ -933,7 +988,8 @@ draw_batch(const raster_t* raster, int index, draw_work_t* work) {
                                                   JOB_SHARE_PERMILLE - job_share_permille(transform_share));
     slice_t* mine = &work->mine;
     slice_t* other = &work->other;
-    *mine = (slice_t){.raster = raster, .batch = batch, .count = half, .clear = index == 0, .buffers = &work->buffers};
+    *mine = (slice_t){
+        .raster = raster, .batch = batch, .count = half, .clear = index == 0, .last = last, .buffers = &work->buffers};
     *other = *mine;
     other->first = half;
     other->count = count - half;
@@ -1066,6 +1122,7 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
     }
     r3d_span_small_fill_resolve(&work->small_fill, view->small_fill);
     work->skip_hidden = view->skip_hidden;
+    work->curves = view->curves;
     /* A list drawn with no census, or rewritten without its scale, fails here. */
     assert(*work->buffers.depth_near >= view->lens.near_z);
     uint16_t* culled = work->buffers.culled;
@@ -1083,7 +1140,7 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
         if (work->blends) {
             batch_blend(&work->picture, &work->batch, batch_morphs(work));
         }
-        draw_batch(raster, index, work);
+        draw_batch(raster, index, first >= raster_census_count(raster), work);
         index++;
     } while (first < raster_census_count(raster));
 }

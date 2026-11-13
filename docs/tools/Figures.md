@@ -18,7 +18,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | [overview](#overview) | 24 | 0 | 0 |
 | [physics](#physics) | 2 | 0 | 0 |
 | [power](#power) | 2 | 0 | 0 |
-| [render](#render) | 130 | 4 | 0 |
+| [render](#render) | 133 | 6 | 0 |
 | [ui](#ui) | 62 | 0 | 0 |
 
 ## anim
@@ -203,6 +203,8 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/render/cull-sponza-chase.gif"><img src="figure-thumbnails/render/cull-sponza-chase.gif" width="160" alt=""></a> | Sponza's fates from behind the camera | [render/frame/Culling](../render/frame/Culling.md) | not declared yet |
 | <a href="../images/render/cull-sponza-counts.png"><img src="../images/render/cull-sponza-counts.png" width="160" alt=""></a> | Sponza's counts along its path | [render/frame/Culling](../render/frame/Culling.md) | not declared yet |
 | <a href="../images/render/cull-sponza-sheet.png"><img src="../images/render/cull-sponza-sheet.png" width="160" alt=""></a> | Sponza's cull along its path | [render/frame/Culling](../render/frame/Culling.md) | not declared yet |
+| <a href="../images/render/curves-detection.gif"><img src="figure-thumbnails/render/curves-detection.gif" width="160" alt=""></a> | a small scene orbiting: the posts and the hanging cable are curves, the rail lying on the block stays mesh | [render/Thin-Curves](../render/Thin-Curves.md) | [thin_figures.py](../../launcher/tools/r3d/thin/thin_figures.py) |
+| <a href="../images/render/curves-ribbon.png"><img src="../images/render/curves-ribbon.png" width="160" alt=""></a> | four pictures drawn by the curve draw: a near ribbon, a far one fading, an end-on pole as a square, a far one over a wall and behind a pillar | [render/Thin-Curves](../render/Thin-Curves.md) | [thin_figures.py](../../launcher/tools/r3d/thin/thin_figures.py) |
 | <a href="../images/render/depth-fit-bistro-diff.crops.png"><img src="../images/render/depth-fit-bistro-diff.crops.png" width="160" alt=""></a> | The places the two settings differ most | [render/Render-Settings](../render/Render-Settings.md) | not declared yet |
 | <a href="../images/render/depth-fit-bistro-diff.png"><img src="../images/render/depth-fit-bistro-diff.png" width="160" alt=""></a> | One Bistro frame with depth scaled by near_z and by the fit, and their difference | [render/Render-Settings](../render/Render-Settings.md) | not declared yet |
 | <a href="../images/render/depth-fit-bistro.gif"><img src="figure-thumbnails/render/depth-fit-bistro.gif" width="160" alt=""></a> | Consecutive frames of one window, near_z on top and the fit below | [render/Render-Settings](../render/Render-Settings.md) | not declared yet |
@@ -243,6 +245,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/render/gpu/bake-indirect-compare.png"><img src="../images/render/gpu/bake-indirect-compare.png" width="160" alt=""></a> | Reference, direct-light bake and indirect bake, with error heatmaps | [render/offline/Bake-Quality](../render/offline/Bake-Quality.md) | not declared yet |
 | <a href="../images/render/gpu/bake-indirect-look.png"><img src="../images/render/gpu/bake-indirect-look.png" width="160" alt=""></a> | Physical reference and each look's own, with the bakes and their error heatmaps | [render/offline/Bake-Quality](../render/offline/Bake-Quality.md) | not declared yet |
 | <a href="../images/render/gpu/bake-steps.png"><img src="../images/render/gpu/bake-steps.png" width="160" alt=""></a> | Bake steps | [render/offline/README](../render/offline/README.md) | not declared yet |
+| <a href="../images/render/import-curves.png"><img src="../images/render/import-curves.png" width="160" alt=""></a> | the same Bistro bake without its curves and with them: the cables over the street come back | [render/offline/Mesh-Import](../render/offline/Mesh-Import.md) | not declared yet |
 | <a href="../images/render/import-face-samples.png"><img src="../images/render/import-face-samples.png" width="160" alt=""></a> | One fixed face sample against adaptive, then adaptive against the flat fit | [render/scene/Scene-Files](../render/scene/Scene-Files.md) | not declared yet |
 | <a href="../images/render/import-light.png"><img src="../images/render/import-light.png" width="160" alt=""></a> | Albedo against the fitted bake | [render/scene/Scene-Files](../render/scene/Scene-Files.md) | not declared yet |
 | <a href="../images/render/import-mesh-contact.png"><img src="../images/render/import-mesh-contact.png" width="160" alt=""></a> | A pillar's contact with the floor under weld, lock and free | [render/offline/Mesh-Import](../render/offline/Mesh-Import.md) | not declared yet |

@@ -416,6 +416,11 @@ run "$PYTHON" launcher/tools/render/depth_figures.py --scene launcher/demo/bistr
     --out "$OUT/render/depth-fit-bistro.png" --work "$WORK/depth" > "$WORK/depth.log"
 # --orphans scans this runner: depth-fit-bistro-diff.png, depth-fit-bistro-diff.crops.png, depth-fit-bistro.gif
 
+# The same locked bakes drawn with the view's curves off and on, cut where they add the most.
+run "$PYTHON" launcher/tools/render/curves_figures.py --scene launcher/demo/bistro/bistro.scene.toml \
+    --object street_fitted_full --object ground --camera camera \
+    --out "$OUT/render/import-curves.png" --work "$WORK/curves" > "$WORK/curves.log"
+
 # Each fitted scene's held-out error by source object part, from the rows
 # objects_report.py --held-out --docs keeps beside the page.
 for data in docs/render/data/*-object-error.csv; do

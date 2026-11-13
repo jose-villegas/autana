@@ -77,6 +77,20 @@ take_mesh(void) {
     return true;
 }
 
+/* The curves preset's curves, on its one shared mesh; a rebuild keeps them. */
+static bool
+take_curves(void) {
+    void* block = lab_scene_take(stress_curve_bytes());
+    if (block == NULL) {
+        fail("no memory for stress curves");
+        return false;
+    }
+    const r3d_curve_set_t set = stress_curves(block);
+    mesh[0].mesh.curves = set.curves;
+    mesh[0].mesh.curve_count = (uint16_t)set.curve_count;
+    return true;
+}
+
 static bool
 build(void) {
     for (int i = 0; i < mesh_count(); i++) {
@@ -136,6 +150,10 @@ apply_settings(void) {
     render_lab_apply_raster_settings();
     if (!handle_is_none(loaded)) {
         (void)render_lab_apply_camera_settings(viewer);
+        /* The curves preset draws its curves whatever the CURVES toggle says. */
+        if (stress_draws_curves(shown)) {
+            (void)camera_set_curves(viewer, true);
+        }
     }
 #if TUNE_ENABLED
     render_context_set_debug_view(render_context_main(), render_lab_debug_view());
@@ -166,7 +184,7 @@ load(void) {
         fail("stress mesh did not fit");
         return false;
     }
-    return true;
+    return !stress_draws_curves(shown) || take_curves();
 }
 
 static void

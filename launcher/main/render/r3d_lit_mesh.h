@@ -21,6 +21,7 @@
 #include "math/geometry/spheref.h"
 #include "math/geometry/spheres.h"
 #include "math/linear/mat4f.h"
+#include "render/curve/r3d_curve.h"
 
 typedef struct {
     uint16_t vertex_first, vertex_count;
@@ -103,6 +104,9 @@ typedef struct {
     const int8_t (*morph_delta)[3];              /* one per vertex */
     const struct r3d_lit_landing* morph_landing; /* one per vertex, or NULL */
     int lod_finest_triangles;                    /* the finest level's, with cluster_lod set */
+    /* Its LCRV sibling's rows, their knots after them in the entry (r3d_lit_mesh_curves()); none: 0, NULL. */
+    uint16_t curve_count;
+    const r3d_curve_t* curves;
 } r3d_lit_mesh_t;
 
 /* Where a vertex lands on the coarse level: triangle `triangle`'s corners
@@ -111,6 +115,12 @@ typedef struct r3d_lit_landing {
     uint16_t triangle;
     uint8_t weight[2];
 } r3d_lit_landing_t;
+
+/* A mesh's curves as r3d_curve_draw() takes them. */
+static inline r3d_curve_set_t
+r3d_lit_mesh_curves(const r3d_lit_mesh_t* mesh) {
+    return r3d_curve_set_at(mesh->curves, mesh->curve_count);
+}
 
 /* The asset type of a lit mesh entry, and the bytes of its header. */
 #define R3D_LIT_MESH_ASSET        ASSET_TYPE('L', 'M', 'S', 'H')
@@ -157,12 +167,12 @@ r3d_lit_mesh_refit_nodes(r3d_lit_node_t* nodes, int node_count, const r3d_lit_cl
     }
 }
 
-/* A sphere holding every vertex, in model units: centred on the box of them
- * (the root node's bounds), its radius the furthest vertex from that centre. */
+/* A sphere holding the vertices and curve boxes in model units, centred on
+ * their union's box, reaching the furthest vertex or curve-box corner. */
 spheref_t r3d_lit_mesh_bounding_sphere(const r3d_lit_mesh_t* mesh);
 
-/* The box of the root node's bounds carried through `model` (NULL: as it is),
- * in world units: it holds every vertex where the instance sits. */
+/* The root node and curve bounds carried through `model` (NULL: as they are),
+ * in world units, holding the instance's complete geometry. */
 box3f_t r3d_lit_mesh_world_bounds(const r3d_lit_mesh_t* mesh, const mat4f_t* model);
 
 /* The box that holds `box` carried through `model` (NULL: as it is). */

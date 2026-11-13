@@ -42,6 +42,7 @@ static const int32_t value_max[ATTRIBUTES] = {DEPTH_MAX, 65280, 65280, 65280};
 #define SMALL_GRAIN_MIDPOINT   (((2 * SMALL_GRAIN_GREEN_STEP * SMALL_GRAIN_RB_MAX) + (int)RGB565_G6_MAX + 1) / 2)
 #define SMALL_FILL_WALK        (-1)
 #define TRIANGLE_VERTICES      3
+#define COVERAGE_OPAQUE        (R3D_SPAN_COVERAGE_FULL + 1U)
 
 TUNE_OWNER(r3d_span);
 TUNE_HOT(r3d_span, flat_max_rows, R3D_SPAN_FLAT_MAX_ROWS, 0, 8);
@@ -309,6 +310,26 @@ fill_solid(uint16_t* depth, uint16_t* color, int count, int32_t z, int32_t dz, u
     }
 }
 
+/* A covered pixel mixes over what is behind it and keeps its depth; over empty depth, nothing is behind but the
+ * clear colour, and the pixel takes the depth so that it is shown. */
+static inline __attribute__((always_inline)) void
+cover_pixel(uint16_t* depth, uint16_t* color, uint16_t z, uint16_t face, unsigned coverage, uint16_t clear) {
+    if (*depth == R3D_DEPTH_EMPTY) {
+        *color = rgb565be_mix(clear, face, (uint8_t)coverage);
+        *depth = z;
+    } else if (z > *depth) {
+        *color = rgb565be_mix(*color, face, (uint8_t)coverage);
+    }
+}
+
+static void
+fill_cover(uint16_t* depth, uint16_t* color, int count, int32_t z, int32_t dz, uint16_t face, unsigned coverage,
+           uint16_t clear) {
+    for (int i = 0; i < count; i++, z += dz) {
+        cover_pixel(&depth[i], &color[i], (uint16_t)(z >> R3D_DEPTH_SHIFT), face, coverage, clear);
+    }
+}
+
 #if defined(__XTENSA__) && __has_attribute(optimize)
 #define FILL_GOURAUD_ATTR __attribute__((optimize("no-schedule-insns")))
 #else
@@ -358,7 +379,8 @@ fill_clipped_gouraud(const gradients_t* g, const uint32_t row[ATTRIBUTES], int c
 static void write_span(const r3d_span_target_t* target, int y, int x_first, int x_last, int32_t z, int32_t dz);
 
 static inline __attribute__((always_inline)) void
-flat_rows(const r3d_span_target_t* target, const fill_t* f, int y0, int y1, edge_t* left, edge_t* right, bool writing) {
+flat_rows(const r3d_span_target_t* target, const fill_t* f, int y0, int y1, edge_t* left, edge_t* right, bool writing,
+          unsigned coverage) {
     const size_t pitch = target->rows.attachment[GFX_ATTACHMENT_COLOR].pitch;
     size_t offset = (size_t)(y0 - target->rows.first_row) * pitch;
     for (int remaining = y1 - y0; remaining > 0; remaining--) {
@@ -367,7 +389,12 @@ flat_rows(const r3d_span_target_t* target, const fill_t* f, int y0, int y1, edge
             if (writing) {
                 write_span(target, y1 - remaining, span.first, span.last, (int32_t)f->flat_z << R3D_DEPTH_SHIFT, 0);
             } else {
-                fill_flat(span.depth, span.color, span.last - span.first + 1, f->flat_z, f->flat_color);
+                if (coverage <= R3D_SPAN_COVERAGE_FULL) {
+                    fill_cover(span.depth, span.color, span.last - span.first + 1,
+                               (int32_t)f->flat_z << R3D_DEPTH_SHIFT, 0, f->flat_color, coverage, target->clear);
+                } else {
+                    fill_flat(span.depth, span.color, span.last - span.first + 1, f->flat_z, f->flat_color);
+                }
             }
         }
         step_edge(left);
@@ -378,7 +405,7 @@ flat_rows(const r3d_span_target_t* target, const fill_t* f, int y0, int y1, edge
 
 static inline __attribute__((always_inline)) void
 fill_carried_span(const r3d_span_target_t* target, const fill_t* f, const uint32_t row[ATTRIBUTES], int y, int column,
-                  const row_span_t* span, int n, bool writing, bool capped) {
+                  const row_span_t* span, int n, bool writing, bool capped, unsigned coverage) {
     const gradients_t* g = f->g;
     if (n == 1) {
         int32_t z;
@@ -387,7 +414,12 @@ fill_carried_span(const r3d_span_target_t* target, const fill_t* f, const uint32
         if (writing) {
             write_span(target, y, span->first, span->last, z, dz);
         } else {
-            fill_solid(span->depth, span->color, span->last - span->first + 1, z, dz, f->flat_color);
+            if (coverage <= R3D_SPAN_COVERAGE_FULL) {
+                fill_cover(span->depth, span->color, span->last - span->first + 1, z, dz, f->flat_color, coverage,
+                           target->clear);
+            } else {
+                fill_solid(span->depth, span->color, span->last - span->first + 1, z, dz, f->flat_color);
+            }
         }
     } else if (g->in_range && column >= 0) {
         fill_gouraud(span->depth, span->color, span->last - span->first + 1, row, g->dx);
@@ -398,7 +430,7 @@ fill_carried_span(const r3d_span_target_t* target, const fill_t* f, const uint32
 
 static inline __attribute__((always_inline)) void
 carried_rows(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTRIBUTES], int y0, int y1, edge_t* left,
-             edge_t* right, int n, bool writing, bool capped) {
+             edge_t* right, int n, bool writing, bool capped, unsigned coverage) {
     const gradients_t* g = f->g;
     uint32_t increment[ATTRIBUTES];
     uint32_t extra_increment[ATTRIBUTES];
@@ -412,7 +444,7 @@ carried_rows(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTR
         const int y = y1 - remaining;
         row_span_t span;
         if (clip_row(target, f->last_column, offset, left, right, &span)) {
-            fill_carried_span(target, f, row, y, left->q, &span, n, writing, capped);
+            fill_carried_span(target, f, row, y, left->q, &span, n, writing, capped, coverage);
         }
         const uint32_t* advance = increment;
         if (step_edge(left)) {
@@ -434,7 +466,7 @@ carried_rows(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTR
 /* Unsigned carries preserve extrapolated planes until a visible start. */
 static inline __attribute__((always_inline)) void
 walk_rows_of(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTRIBUTES], int y0, int y1,
-             edge_t* left_edge, edge_t* right_edge, bool capped) {
+             edge_t* left_edge, edge_t* right_edge, bool capped, unsigned coverage) {
     edge_t left = *left_edge;
     edge_t right = *right_edge;
     if (r3d_span_stop_after == 2) {
@@ -443,11 +475,11 @@ walk_rows_of(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTR
             step_edge(&right);
         }
     } else if (f->shading == FILL_FLAT) {
-        flat_rows(target, f, y0, y1, &left, &right, false);
+        flat_rows(target, f, y0, y1, &left, &right, false, coverage);
     } else if (f->shading == FILL_FACE) {
-        carried_rows(target, f, row, y0, y1, &left, &right, 1, false, capped);
+        carried_rows(target, f, row, y0, y1, &left, &right, 1, false, capped, coverage);
     } else {
-        carried_rows(target, f, row, y0, y1, &left, &right, ATTRIBUTES, false, capped);
+        carried_rows(target, f, row, y0, y1, &left, &right, ATTRIBUTES, false, capped, COVERAGE_OPAQUE);
     }
     *left_edge = left;
     *right_edge = right;
@@ -456,14 +488,21 @@ walk_rows_of(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTR
 static RENDER_IRAM_ATTR void
 walk_rows(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTRIBUTES], int y0, int y1, edge_t* left_edge,
           edge_t* right_edge) {
-    walk_rows_of(target, f, row, y0, y1, left_edge, right_edge, false);
+    walk_rows_of(target, f, row, y0, y1, left_edge, right_edge, false, COVERAGE_OPAQUE);
 }
 
 /* The walk of a scene that skips hidden clusters, its depth capped. */
 static RENDER_SKIP_ATTR void
 walk_capped_rows(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTRIBUTES], int y0, int y1,
                  edge_t* left_edge, edge_t* right_edge) {
-    walk_rows_of(target, f, row, y0, y1, left_edge, right_edge, true);
+    walk_rows_of(target, f, row, y0, y1, left_edge, right_edge, true, COVERAGE_OPAQUE);
+}
+
+/* The walk of a coverage-mixed fill: off the draw path's IRAM, so the opaque walks carry no coverage test. */
+static void
+walk_covered_rows(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTRIBUTES], int y0, int y1,
+                  edge_t* left_edge, edge_t* right_edge, unsigned coverage) {
+    walk_rows_of(target, f, row, y0, y1, left_edge, right_edge, false, coverage);
 }
 
 /* Every writer of the target over one span. */
@@ -478,9 +517,9 @@ static __attribute__((noinline)) void
 writer_rows(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTRIBUTES], int y0, int y1, edge_t* left,
             edge_t* right, bool capped) {
     if (f->shading == FILL_FLAT) {
-        flat_rows(target, f, y0, y1, left, right, true);
+        flat_rows(target, f, y0, y1, left, right, true, COVERAGE_OPAQUE);
     } else {
-        carried_rows(target, f, row, y0, y1, left, right, 1, true, capped);
+        carried_rows(target, f, row, y0, y1, left, right, 1, true, capped, COVERAGE_OPAQUE);
     }
 }
 
@@ -494,11 +533,13 @@ typedef struct {
  * target's writers when `writing`. */
 static inline __attribute__((always_inline)) void
 rows_between(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTRIBUTES], int y0, int y1,
-             edge_t* long_edge, edge_t* short_edge, bool writing, bool long_on_left, bool capped) {
+             edge_t* long_edge, edge_t* short_edge, bool writing, bool long_on_left, bool capped, unsigned coverage) {
     edge_t* left = long_on_left ? long_edge : short_edge;
     edge_t* right = long_on_left ? short_edge : long_edge;
     if (writing) {
         writer_rows(target, f, row, y0, y1, left, right, capped);
+    } else if (coverage <= R3D_SPAN_COVERAGE_FULL) {
+        walk_covered_rows(target, f, row, y0, y1, left, right, coverage);
     } else if (capped) {
         walk_capped_rows(target, f, row, y0, y1, left, right);
     } else {
@@ -524,7 +565,7 @@ shift_carry(const fill_t* f, uint32_t carry[ATTRIBUTES], int attributes, int col
 /* The long edge v0-v2 runs the whole height on one side; the short side is
  * v0-v1 above the split and v1-v2 below it. */
 static inline __attribute__((always_inline)) void
-walk(const r3d_span_target_t* target, const fill_t* f, const walk_t* w, bool writing, bool capped) {
+walk(const r3d_span_target_t* target, const fill_t* f, const walk_t* w, bool writing, bool capped, unsigned coverage) {
     edge_t long_edge = edge_at(w->v0, w->v2, w->y_first);
     uint32_t* carry = (uint32_t*)f->g->base;
     const int attributes = carried_attributes(f, writing);
@@ -532,7 +573,8 @@ walk(const r3d_span_target_t* target, const fill_t* f, const walk_t* w, bool wri
     int carry_column = w->long_on_left ? long_edge.q : short_edge.q;
     shift_carry(f, carry, attributes, carry_column - f->g->x_origin);
     if (w->y_first < w->split) {
-        rows_between(target, f, carry, w->y_first, w->split, &long_edge, &short_edge, writing, w->long_on_left, capped);
+        rows_between(target, f, carry, w->y_first, w->split, &long_edge, &short_edge, writing, w->long_on_left, capped,
+                     coverage);
         if (w->split == w->y_end) {
             return;
         }
@@ -541,7 +583,8 @@ walk(const r3d_span_target_t* target, const fill_t* f, const walk_t* w, bool wri
         const int lower_column = w->long_on_left ? long_edge.q : short_edge.q;
         shift_carry(f, carry, attributes, lower_column - carry_column);
     }
-    rows_between(target, f, carry, w->split, w->y_end, &long_edge, &short_edge, writing, w->long_on_left, capped);
+    rows_between(target, f, carry, w->split, w->y_end, &long_edge, &short_edge, writing, w->long_on_left, capped,
+                 coverage);
 }
 
 /* Returns true when the sort swapped an odd number of times, which turns
@@ -651,9 +694,20 @@ small_visible(const r3d_span_edge_t edges[TRIANGLE_VERTICES], const r3d_span_row
 
 /* Pineda 1988 [32]: test pixel centres against three edge functions.
  * Keep small-triangle temporaries off the row-walk call chain. */
-static __attribute__((noinline)) void
-fill_small(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
-           const r3d_span_vertex_t* c, bool positive, recti_t box, const uint16_t* face) {
+/* A covered pixel as cover_pixel(); an opaque one writes colour and depth. */
+static inline __attribute__((always_inline)) void
+small_put(const r3d_span_row_t* row, int x, const fill_t* f, unsigned coverage, uint16_t clear) {
+    if (coverage <= R3D_SPAN_COVERAGE_FULL) {
+        cover_pixel(&row->depth[x], &row->color[x], f->flat_z, f->flat_color, coverage, clear);
+    } else {
+        row->depth[x] = f->flat_z;
+        row->color[x] = f->flat_color;
+    }
+}
+
+static inline __attribute__((always_inline)) void
+fill_small_of(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
+              const r3d_span_vertex_t* c, bool positive, recti_t box, const uint16_t* face, unsigned coverage) {
     fill_t f;
     set_flat(&f, a, b, c);
     if (face != NULL) {
@@ -673,11 +727,22 @@ fill_small(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3
                  | r3d_span_side(&e[2], cx, row.centre))
                     >= 0
                 && f.flat_z > row.depth[x]) {
-                row.depth[x] = f.flat_z;
-                row.color[x] = f.flat_color;
+                small_put(&row, x, &f, coverage, target->clear);
             }
         }
     }
+}
+
+static __attribute__((noinline)) void
+fill_small(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
+           const r3d_span_vertex_t* c, bool positive, recti_t box, const uint16_t* face) {
+    fill_small_of(target, a, b, c, positive, box, face, COVERAGE_OPAQUE);
+}
+
+static __attribute__((noinline)) void
+fill_small_covered(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
+                   const r3d_span_vertex_t* c, bool positive, recti_t box, const uint16_t* face, unsigned coverage) {
+    fill_small_of(target, a, b, c, positive, box, face, coverage);
 }
 
 /* A shared channel step preserves hue; mixed endpoints may have no safe step. */
@@ -913,7 +978,7 @@ set_up_capped_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* con
 
 static inline __attribute__((always_inline)) void
 triangle_of(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
-            const r3d_span_vertex_t* c, const uint16_t* face, bool capped) {
+            const r3d_span_vertex_t* c, const uint16_t* face, bool capped, unsigned coverage) {
     const r3d_span_extent_t e = r3d_span_extent_limits(a, b, c, flat_max_rows, flat_max_width);
     const recti_t box = r3d_span_window_box(target, e.centres);
     if (recti_is_empty(box)) {
@@ -929,6 +994,8 @@ triangle_of(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r
         FRAME_LAP("r3d.draw.fill");
         if (style == SMALL_FILL_GRAIN || style == SMALL_FILL_DITHER) {
             fill_small_styled(target, a, b, c, area2 > 0, box, style);
+        } else if (coverage <= R3D_SPAN_COVERAGE_FULL) {
+            fill_small_covered(target, a, b, c, area2 > 0, box, face, coverage);
         } else {
             fill_small(target, a, b, c, area2 > 0, box, face);
         }
@@ -964,13 +1031,13 @@ triangle_of(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r
                       recti_bottom(box),
                       (area2 > 0) != odd};
     FRAME_LAP("r3d.draw.fill");
-    walk(target, &f, &w, false, capped);
+    walk(target, &f, &w, false, capped, coverage);
 }
 
 static RENDER_IRAM_ATTR void
 r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                        const r3d_span_vertex_t* c, const uint16_t* face) {
-    triangle_of(target, a, b, c, face, false);
+    triangle_of(target, a, b, c, face, false, COVERAGE_OPAQUE);
 }
 
 /* The fill of a view that skips hidden clusters, its depth capped. Noinline:
@@ -979,7 +1046,7 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
 static RENDER_SKIP_ATTR __attribute__((noinline)) void
 r3d_span_capped_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                               const r3d_span_vertex_t* c, const uint16_t* face) {
-    triangle_of(target, a, b, c, face, true);
+    triangle_of(target, a, b, c, face, true, COVERAGE_OPAQUE);
 }
 
 /* The fill's own setup, depth plane only: the same path, box, plane and
@@ -1031,7 +1098,7 @@ triangle_write_of(const r3d_span_target_t* target, const r3d_span_vertex_t* a, c
                       mathi_clamp(r3d_span_first_centre(v1->y), box.y, recti_bottom(box)),
                       recti_bottom(box),
                       (area2 > 0) != odd};
-    walk(target, &f, &w, true, capped);
+    walk(target, &f, &w, true, capped, COVERAGE_OPAQUE);
 }
 
 void
@@ -1060,4 +1127,13 @@ void
 r3d_span_capped_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                          const r3d_span_vertex_t* c, const uint16_t* face) {
     r3d_span_capped_triangle_impl(target, a, b, c, face);
+}
+
+void
+r3d_span_triangle_cover(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
+                        const r3d_span_vertex_t* c, uint16_t color, unsigned coverage) {
+    if (coverage > R3D_SPAN_COVERAGE_FULL) {
+        coverage = R3D_SPAN_COVERAGE_FULL;
+    }
+    triangle_of(target, a, b, c, &color, false, coverage);
 }

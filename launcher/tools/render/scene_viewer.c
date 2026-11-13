@@ -22,6 +22,7 @@ static int shell_quarter;
 static recti_t size_rect;
 static camera_present_t present;
 static small_fill_t small_fill = SMALL_FILL_SMOOTH;
+static bool curves;
 static int view = RENDER_DEBUG_VIEW_SHADED;
 static const char* counts_path;
 static FILE* counts;
@@ -40,6 +41,7 @@ reset_options(void) {
     size_rect = recti_empty();
     present = CAMERA_PRESENT_NEAREST;
     small_fill = SMALL_FILL_SMOOTH;
+    curves = false;
     view = RENDER_DEBUG_VIEW_SHADED;
     counts_path = NULL;
     poses_path = NULL;
@@ -78,6 +80,12 @@ options(int argc, char** argv) {
                 return false;
             }
             small_fill = (small_fill_t){(uint8_t)ceiling, (uint8_t)gate, (small_fill_style_t)style};
+        } else if (strcmp(flag, "--curves") == 0) {
+            if (strcmp(value, "on") != 0 && strcmp(value, "off") != 0) {
+                fprintf(stderr, "scene_viewer: --curves is on or off\n");
+                return false;
+            }
+            curves = strcmp(value, "on") == 0;
         } else if (strcmp(flag, "--present") == 0) {
             if (strcmp(value, "nearest") == 0) {
                 present = CAMERA_PRESENT_NEAREST;
@@ -199,6 +207,7 @@ setup(int quarter) {
     for (entity_t e = entity_next(scene, ENTITY_NONE); !handle_is_none(e); e = entity_next(scene, e)) {
         (void)camera_set_present(e, present);
         (void)camera_set_small_fill(e, small_fill);
+        (void)camera_set_curves(e, curves);
     }
     shown = scene;
     camera = chosen_camera(scene);

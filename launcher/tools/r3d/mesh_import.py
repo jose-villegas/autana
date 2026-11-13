@@ -27,7 +27,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from r3d import lcol_asset, mesh_bundle, mesh_asset, log  # noqa: E402
 from r3d.geometry import compact, corner_normals, weld_keeping  # noqa: E402
 from r3d.import_settings import (  # noqa: E402
-    SettingsError, albedo_jobs, match_meshes, variant_meshes, load_import_settings, load_scene,
+    SettingsError, albedo_jobs, match_meshes, thinned_triangles, variant_meshes, load_import_settings, load_scene,
 )
 from r3d.light import (  # noqa: E402
     drop_masked,
@@ -47,6 +47,9 @@ from r3d.mesh_source import load_source, load_glb_source, path_light_for, camera
 from r3d.process_budget import NULL_RECORDER
 from r3d.ray_query import RayQuery  # noqa: E402
 from r3d.scene_name import SUFFIX  # noqa: E402
+from r3d.thin.thin_parts import thin_parts_at
+from r3d.thin.curve_fit import fit_curve, light_curve
+from r3d.thin import curve_asset, curve_format
 from r3d.simplify import Allocation, check_ceiling, densify, simplify  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
@@ -149,6 +152,11 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
             src.tri_o = src.tri_o[keep]
             src.tri_v, src.tri_t, src.tri_m = tri_v, tri_t, tri_m
         step["triangles_out"] = len(tri_v)
+    thinned = thinned_triangles(settings.thin, tri_m, src.names)
+    curve_parts = thin_parts_at(src.p, tri_v, renderer.variant.triangles, thinned) if settings.curves else []
+    excluded = np.zeros(len(tri_v), dtype=bool)
+    for part in curve_parts:
+        excluded[part.triangles] = True
     meshes = variant_meshes(settings.meshes, renderer.variant)
     selected = match_meshes(src.tri_o, tri_m, src.object_names, src.names, meshes) if meshes else {}
     carved_keep = thin_meshes(src, selected, settings.thin, settings.seed) if selected else None
@@ -165,17 +173,31 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
         step["triangles_out"] = int(seen.sum())
     with recorder.step("thin", int(seen.sum())) as step:
         if settings.thin:
-            thin = np.isin(tri_m, [index for index, name in enumerate(src.names) if name == settings.thin.material])
-            seen &= ~thin | (rng.random(len(tri_v)) < settings.thin.keep)
+            seen &= ~thinned | (rng.random(len(tri_v)) < settings.thin.keep)
         if selected:
             carved = np.isin(src.tri_o, list(selected))
             seen[carved] = carved_keep[carved]
+        seen &= ~excluded
+        if curve_parts and not seen.any():
+            raise ValueError(f"{job.asset_name}: every shown triangle is thin; its curves need a mesh to belong to")
         step["triangles_out"] = int(seen.sum())
     shown_v, shown_m, shown_o = tri_v[seen], tri_m[seen], src.tri_o[seen]
     mesh_report = {}
     shapes = [] if settings.meshes and carve else None
     with recorder.step("light", len(shown_v)) as step:
         bounce = path_light_for(src, job, scene)
+        curves = []
+        for part in curve_parts:
+            curve = fit_curve(src.p, tri_v, part)
+            if job.bake:
+                curve = light_curve(curve, src, part, intersector, scene.lights, job.bake.ray_offset, bounce,
+                                    ao=job.bake.ao, bounce_intensity=scene.indirect.intensity,
+                                    double_sided=np.isin(src.tri_m[part.triangles],
+                                                          [i for i, name in enumerate(src.names) if name in double_names]))
+            else:
+                curve = light_curve(curve, src, part, None,
+                                    [dict(type="ambient", color=[1, 1, 1], intensity=1)], 0)
+            curves.append(curve)
         if settings.simplify:
             log("splitting evenly")
             wp, wt = weld_keeping(src.p, shown_v)
@@ -236,7 +258,7 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
         step["triangles_out"] = len(tris)
     check_ceiling(len(tris), getattr(renderer.variant, 'ceiling', None))
     return SimpleNamespace(src=src, intersector=intersector, positions=positions, rgb=rgb, tris=tris, tri_double=tri_double,
-                           tri_mat=tri_mat, scale=scale, bounce=bounce, mesh_report=mesh_report, shapes=shapes)
+                           tri_mat=tri_mat, scale=scale, bounce=bounce, mesh_report=mesh_report, shapes=shapes, curves=curves)
 
 
 def shade_placed(src, job, scene, positions, rgb, tris, labels, intersector, bounce, *, preserve_corners=False,
@@ -300,6 +322,11 @@ def write_baked(job, scene, out_dir, name, geometry=None, recorder=None):
                               **geometry.scale)
     entries = bundle_entries(name, mesh, morph_blob if job.settings.morph else None) if len(mesh.tris) else []
     copies = []
+    curves = getattr(geometry, "curves", None)
+    if curves:
+        entries.append((lcol_asset.sibling_name(name, curve_format.NAME_SUFFIX), curve_asset.TYPE,
+                        curve_asset.write_curves(curves, mesh.position_scale,
+                                                 scene.tonemap_white if job.bake else 0.0)))
     for shape in getattr(geometry, "shapes", None) or ():
         products, placed = write_shape(job, scene, out_dir, name, geometry, shape, recorder)
         entries.extend(products)

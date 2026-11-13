@@ -3,6 +3,7 @@
 #define r3d_span_small_fill_default    constant_default
 #define r3d_span_triangle              constant_r3d_span_triangle
 #define r3d_span_triangle_solid        constant_r3d_span_triangle_solid
+#define r3d_span_triangle_cover        constant_r3d_span_triangle_cover
 #define r3d_span_triangle_write        constant_r3d_span_triangle_write
 #define r3d_span_capped_triangle       constant_r3d_span_capped_triangle
 #define r3d_span_hidden                constant_r3d_span_hidden
@@ -17,6 +18,7 @@
 #define r3d_pipeline_cull              constant_r3d_pipeline_cull
 #define r3d_pipeline_cull_cut          constant_r3d_pipeline_cull_cut
 #define r3d_pipeline_cull_blending     constant_r3d_pipeline_cull_blending
+#define r3d_pipeline_fit_curves        constant_r3d_pipeline_fit_curves
 #define r3d_pipeline_transform         constant_r3d_pipeline_transform
 #define r3d_pipeline_transform_morphed constant_r3d_pipeline_transform_morphed
 #define r3d_pipeline_transform_split   constant_r3d_pipeline_transform_split

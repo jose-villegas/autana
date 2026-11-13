@@ -1565,6 +1565,40 @@ class LockTests(unittest.TestCase):
         self.assertNotIn("seeded", rows["k" * 64])
         self.assertIs(rows["n" * 64]["seeded"], True)
 
+    def seed_chain(self, lock):
+        """`lock --seed` over a start, its fit and the fit's levels, each keyed once the one before is known."""
+        names = ("one.bundle", "two.bundle", "three.bundle")
+
+        def found(paths, starts, poses):
+            chain, before = [], None
+            for kind, key, name in zip(("mesh", "fit", "levels"), ("k" * 64, "n" * 64, "m" * 64), names):
+                known = before is None or before in starts
+                chain.append(bake.Bake(output=name, source=self.tree, holder=name, kind=kind, key=key if known else None,
+                                       suffix=bake.BUNDLE_SUFFIX, tree=self.root / name))
+                before = key if known else None
+            return chain
+
+        written, errors = [], io.StringIO()
+        with mock.patch.object(bake, "bakes", side_effect=found),                 mock.patch.object(bake, "read_lock_tables", return_value={"bake": lock, "poses": {}}),                 mock.patch.object(bake, "write_lock", side_effect=lambda rows, **kwargs: written.append(rows)),                 contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(errors):
+            status = bake.main(["lock", "--seed", "--cache", str(self.cache)])
+        return status, {row["key"]: row for rows in written for row in rows}, errors.getvalue()
+
+    def test_one_seed_carries_a_rekeyed_start_its_fit_and_its_levels(self):
+        stale = {}
+        for old, name in zip(("o" * 64, "p" * 64, "q" * 64), ("one.bundle", "two.bundle", "three.bundle")):
+            stale[old] = {**self.row, "output": name, "key": old}
+            bake.store(self.tree, stale[old], bake.BUNDLE_SUFFIX, self.cache)
+        status, rows, _ = self.seed_chain(stale)
+        self.assertEqual(status, 0)
+        self.assertEqual(sorted(rows), ["k" * 64, "m" * 64, "n" * 64])
+        self.assertTrue(all(row["seeded"] for row in rows.values()))
+
+    def test_a_seed_with_no_bytes_to_carry_names_the_bake_and_writes_nothing(self):
+        status, rows, errors = self.seed_chain({})
+        self.assertNotEqual(status, 0)
+        self.assertEqual(rows, {})
+        self.assertRegex(errors, "(?s)cannot seed.*three.bundle  key")
+
     def test_a_file_not_yet_published_comes_from_the_run_that_made_it(self):
         upload = self.root / "upload"
         (upload / "bakes-cpu" / "files").mkdir(parents=True)
@@ -1614,7 +1648,7 @@ class LockTests(unittest.TestCase):
         with mock.patch.dict("os.environ", {bake.CACHE_VARIABLE: str(self.cache)}):
             self.assertEqual(bake.default_cache(), self.cache)
 
-    def test_a_rekeyed_output_keeps_the_bytes_its_stale_row_locked(self):
+    def test_a_rekeyed_output_keeps_the_bytes_its_stale_row_locked_and_the_run_that_made_them(self):
         refit = b"LMSH refit"
         stale = {**self.row, "key": "o" * 64, "sha256": hashlib.sha256(refit).hexdigest(), "size": len(refit), "run": 5}
         bake.place(refit, bake.cached(stale, bake.BUNDLE_SUFFIX, self.cache))
@@ -1627,7 +1661,7 @@ class LockTests(unittest.TestCase):
             self.assertEqual(bake.main(["lock", "--seed", "--cache", str(self.cache)]), 0)
         network.assert_not_called()
         self.assertEqual(written[0], [{"output": "one.bundle", "source": "a.scene.toml", "key": "k" * 64,
-                                       "sha256": stale["sha256"], "size": len(refit), "seeded": True}])
+                                       "sha256": stale["sha256"], "size": len(refit), "run": 5, "seeded": True}])
 
     def test_check_says_which_rows_are_seeded(self):
         found = [bake_of("k" * 64, self.tree)]
