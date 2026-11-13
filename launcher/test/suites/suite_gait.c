@@ -1,5 +1,5 @@
 /*
- * Portable suite: locomotion/gait.h. A speed picks the step whose range holds
+ * Portable suite: scene/animator/gait.h. A speed picks the step whose range holds
  * it, the rate keeps the feet on the ground inside the clamp, and a held step
  * survives a speed inside its band.
  */
@@ -7,7 +7,7 @@
 #include "testkit/suite.h"
 #include "unity.h"
 
-#include "apps/render_lab/locomotion/gait.h"
+#include "scene/animator/gait.h"
 
 #define TOLERANCE 1.0E-5F
 #define NO_STEP   (-1)

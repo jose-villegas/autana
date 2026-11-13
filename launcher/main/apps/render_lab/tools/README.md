@@ -303,7 +303,7 @@ camera, so the per-copy costs of posing, skinning and culling all show.
 |---|---|
 | Each copy's leg: a target and speed, or a graze | `herd/herd_wander.h` |
 | Keep apart, look ahead, stay inside; then arrive with what acceleration is left | `math/motion/steer2f.h` ([Motion](../../../../../docs/math/Motion.md)) |
-| The clip and rate for the copy's speed | `locomotion/gait.h`, from each clip's `ground_mm_s` ([TRCK](../../../../../docs/assets/formats/TRCK.md)) |
+| The clip and rate for the copy's speed | `scene/animator/gait.h`, from each clip's `ground_mm_s` ([TRCK](../../../../../docs/assets/formats/TRCK.md)) |
 
 `pose <ms>` seeks the whole herd: it walks again from its seed to that time,
 so two seeks to one time draw the same frame. Played on from there, clip phases

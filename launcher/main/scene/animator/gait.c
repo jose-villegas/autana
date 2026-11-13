@@ -1,5 +1,5 @@
 /* gait: see gait.h. */
-#include "apps/render_lab/locomotion/gait.h"
+#include "scene/animator/gait.h"
 
 #include <math.h>
 

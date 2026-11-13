@@ -17,7 +17,6 @@
 
 #include "apps/render_lab/baked_families.h"
 #include "apps/render_lab/capybara_content.h"
-#include "apps/render_lab/locomotion/gait.h"
 #include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/render_lab_view.h"
 #include "core/tune.h"
@@ -30,6 +29,7 @@
 #include "math/scalar/units.h"
 #include "render/context/render_context.h"
 #include "scene/animator/animator.h"
+#include "scene/animator/gait.h"
 #include "scene/camera/camera.h"
 #include "scene/entity/entity.h"
 #include "scene/scene.h"
