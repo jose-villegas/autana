@@ -207,6 +207,47 @@ def fake_scene(textured=(True, False), names=("Brick_a", "Glass"), materials=(0,
     return mesh, source
 
 
+CLUSTER_SPAN = 8.0
+
+
+def assert_opener_accepts(test, decoded, mesh):
+    """`decoded` satisfies every rule the C opener's charts_valid() enforces over `mesh`'s clusters."""
+    for c, (vb, vc, tb, tc, *_box) in enumerate(mesh.clusters):
+        row = decoded.materials[c].tolist()
+        charts = sum(1 for m in row if m != luvs.NONE)
+        test.assertEqual(row[:charts], [m for m in row if m != luvs.NONE], f"cluster {c}: NONE not last")
+        test.assertTrue(all(m < decoded.material_count for m in row[:charts]), f"cluster {c}: material range")
+        test.assertTrue(all(int(code) <= charts for code in decoded.codes[tb:tb + tc]), f"cluster {c}: code")
+        if charts > 1:
+            first = vb + int(decoded.shifts[c])
+            test.assertTrue(0 <= first and first + vc <= len(decoded.uvs), f"cluster {c}: chart 1 UVs")
+
+
+def three_cluster_scene():
+    """Three separate quads along x, four vertices and two triangles each: A folded with both triangles on material 0
+    (two charts), B flat on material 1 (one chart), C folded, its folded triangle on material 1 and its flat one on
+    material 0 (two charts). Source UVs run u = x / CLUSTER_SPAN, v = y."""
+    quad = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]])
+    base = np.array([[2.0 * k, 0.0, 0.0] for k in range(3)])
+    corners = np.concatenate([quad + b for b in base])
+    tris = np.concatenate([np.array([[0, 1, 2], [0, 2, 3]]) + 4 * k for k in range(3)])
+    baked = corners.copy()
+    lifted = corners.copy()
+    for k in (0, 2):
+        baked[4 * k + 3, 2] = 1.0
+        lifted[4 * k + 3, 2] = 1.0
+    texture = types.SimpleNamespace(levels=[checker_source(0.2, 0.8)])
+    uv = np.stack([corners[:, 0] / CLUSTER_SPAN, corners[:, 1]], axis=1)
+    source = types.SimpleNamespace(
+        names=["Brick_a", "Brick_b"], textures=[texture, texture], p=lifted, tri_v=tris,
+        tri_m=np.array([0, 0, 1, 1, 0, 1]), uv=uv, tri_t=tris)
+    scale = 100
+    mesh = types.SimpleNamespace(
+        pos=baked * scale, position_scale=scale, tris=tris,
+        clusters=[(4 * k, 4, 2 * k, 2, 0, 0, 0, 0, 0, 0) for k in range(3)], rgb=np.full((12, 3), 90.0))
+    return mesh, source
+
+
 class TexturedEntriesTests(unittest.TestCase):
     def test_unmatched_pattern_names_it(self):
         mesh, source = fake_scene()
@@ -272,6 +313,34 @@ class TexturedEntriesTests(unittest.TestCase):
         self.assertEqual(list(decoded.codes), [1, luvs.PLAIN])
         self.assertEqual(decoded.materials.tolist(), [[0, luvs.NONE]])
         self.assertEqual(len(decoded.uvs), 4)
+
+    def test_baked_single_cluster_cases_satisfy_the_openers_rules(self):
+        folded, folded_source = fake_scene()
+        folded.pos = folded.pos.copy()
+        folded.pos[3] = [0.0, 0.0, 100.0]
+        folded_source.p = folded_source.p.copy()
+        folded_source.p[3] = [0.0, 0.0, 1.0]
+        for case in (fake_scene(), (folded, folded_source), fake_scene(materials=(0, 1))):
+            decoded = luvs.decode(luvs.textured_entries(case[0], "m", case[1], ["Brick_*"], SIZE)[-1][2])
+            assert_opener_accepts(self, decoded, case[0])
+
+    def test_each_clusters_shift_points_at_its_own_chart_1_uvs(self):
+        mesh, source = three_cluster_scene()
+        decoded = luvs.decode(luvs.textured_entries(mesh, "m", source, ["Brick_*"], SIZE)[-1][2])
+        assert_opener_accepts(self, decoded, mesh)
+        self.assertEqual(decoded.materials.tolist(), [[0, 0], [1, luvs.NONE], [1, 0]])
+        self.assertEqual(list(decoded.codes), [2, 1, 1, 1, 2, 1])
+        # Chart 1 UVs follow chart 0's 12 vertices, A's then C's: B has none.
+        self.assertEqual((len(decoded.uvs), decoded.shifts[0], decoded.shifts[2]), (20, 12, 8))
+        for c in (0, 2):
+            first = 4 * c + int(decoded.shifts[c])
+            flat = source.p[4 * c:4 * c + 4]
+            expected = np.stack([flat[:, 0] / CLUSTER_SPAN * SIZE, (1.0 - flat[:, 1]) * SIZE], axis=1)
+            assert_same_mapping(decoded.uvs[first:first + 4], expected)
+        # B's one chart is on chart 0's UVs.
+        flat = source.p[4:8]
+        assert_same_mapping(decoded.uvs[4:8], np.stack([flat[:, 0] / CLUSTER_SPAN * SIZE,
+                                                         (1.0 - flat[:, 1]) * SIZE], axis=1))
 
     def test_matched(self):
         names = ["Brick_a", "Brick_b", "Glass"]
