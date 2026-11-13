@@ -328,6 +328,7 @@ test_entry_rejects_bad_headers(void) {
 #define LEFT_COLUMNS      (SIDE / 2)
 #define DISTINCT_MORE     3
 #define COVERED_MIN       100
+#define FACE_COLOUR       0x07E0 /* RGB565 green, not a colour the texture makes */
 
 typedef struct {
     int16_t positions[SCENE_VERTICES * SCENE_TRIANGLES][3];
@@ -509,6 +510,15 @@ depths_of(int which) {
 }
 
 static int
+covered_pixels(int which) {
+    int n = 0;
+    for (int i = 0; i < PIXELS; i++) {
+        n += depths_of(which)[i] != R3D_DEPTH_EMPTY;
+    }
+    return n;
+}
+
+static int
 distinct_colours(int which) {
     bool* seen = calloc((size_t)UINT16_MAX + 1, sizeof *seen);
     TEST_ASSERT_NOT_NULL(seen);
@@ -624,24 +634,258 @@ test_luvs_cluster_material_past_the_count_is_refused(void) {
     expect_refused(s, size, &mesh, ASSET_ERR_FORMAT, "material index");
 }
 
+/* Where each section of the read entry starts, and the bytes a test edits. */
+static uint32_t
+header_word(const scene_t* s, uint32_t at) {
+    return asset_read_u32(s->luvs + at);
+}
+
 static void
-test_luvs_charts_the_entry_does_not_hold_are_refused(void) {
+test_luvs_code_naming_chart_1_of_a_one_chart_cluster_is_refused(void) {
     scene_t* s = scene_fixture();
     const r3d_lit_mesh_t mesh = read_mesh();
     const uint32_t size = write_read_entry(s);
-    const uint32_t clusters_off = asset_read_u32(s->luvs + R3D_TEXTURE_UVS_AT_CLUSTERS_OFF);
-    const uint32_t shifts_off = asset_read_u32(s->luvs + R3D_TEXTURE_UVS_AT_SHIFTS_OFF);
-    const uint32_t codes_off = asset_read_u32(s->luvs + R3D_TEXTURE_UVS_AT_TRIANGLES_OFF);
-    s->luvs[codes_off] = (uint8_t)code_at(0, 2);
+    s->luvs[header_word(s, R3D_TEXTURE_UVS_AT_TRIANGLES_OFF)] = code_at(0, 2);
     expect_refused(s, size, &mesh, ASSET_ERR_FORMAT, "a code naming chart 1 of a cluster with one chart");
-    (void)write_read_entry(s);
-    s->luvs[clusters_off + R3D_TEXTURE_CHARTS] = R3D_TEXTURE_NONE;
+}
+
+static void
+test_luvs_chart_1_after_a_chart_with_no_material_is_refused(void) {
+    scene_t* s = scene_fixture();
+    const r3d_lit_mesh_t mesh = read_mesh();
+    const uint32_t size = write_read_entry(s);
+    s->luvs[header_word(s, R3D_TEXTURE_UVS_AT_CLUSTERS_OFF) + R3D_TEXTURE_CHARTS] = R3D_TEXTURE_NONE;
     expect_refused(s, size, &mesh, ASSET_ERR_FORMAT, "chart 1 after a chart with no material");
-    (void)write_read_entry(s);
-    put_u32(s->luvs + shifts_off + sizeof(int32_t), READ_CHART_OFFSET + 1);
-    expect_refused(s, size, &mesh, ASSET_ERR_FORMAT, "chart 1's UVs past the entry's");
-    (void)write_read_entry(s);
+}
+
+static void
+test_luvs_chart_1_uvs_past_the_entrys_are_refused(void) {
+    scene_t* s = scene_fixture();
+    const r3d_lit_mesh_t mesh = read_mesh();
+    const uint32_t size = write_read_entry(s);
+    put_u32(s->luvs + header_word(s, R3D_TEXTURE_UVS_AT_SHIFTS_OFF) + sizeof(int32_t), READ_CHART_OFFSET + 1);
+    expect_refused(s, size, &mesh, ASSET_ERR_FORMAT, "chart 1's UVs one past the entry's");
+}
+
+/* The shift that puts the second cluster's chart 1 `moved` UVs from where the
+ * entry has them. */
+static void
+shift_cluster_1(scene_t* s, int32_t moved) {
+    put_u32(s->luvs + header_word(s, R3D_TEXTURE_UVS_AT_SHIFTS_OFF) + sizeof(int32_t),
+            (uint32_t)(int32_t)(READ_CHART_OFFSET + moved));
+}
+
+static void
+test_luvs_negative_shift_of_a_two_chart_cluster_is_refused(void) {
+    scene_t* s = scene_fixture();
+    const r3d_lit_mesh_t mesh = read_mesh();
+    const uint32_t size = write_read_entry(s);
+    shift_cluster_1(s, -(int32_t)(read_clusters[1].vertex_first + READ_CHART_OFFSET + 1));
+    expect_refused(s, size, &mesh, ASSET_ERR_FORMAT, "chart 1's UVs one before the entry's");
+}
+
+static void
+test_luvs_chart_1_uvs_fitting_the_entry_exactly_at_each_end_open(void) {
+    scene_t* s = scene_fixture();
+    const r3d_lit_mesh_t mesh = read_mesh();
+    const uint32_t size = write_read_entry(s);
+    TEST_ASSERT_EQUAL_UINT32(READ_UVS,
+                             read_clusters[1].vertex_first + READ_CHART_OFFSET + read_clusters[1].vertex_count);
     TEST_ASSERT_EQUAL(ASSET_OK, open_texturing(s, size, &mesh));
+    shift_cluster_1(s, -(int32_t)(read_clusters[1].vertex_first + READ_CHART_OFFSET));
+    TEST_ASSERT_EQUAL(ASSET_OK, open_texturing(s, size, &mesh));
+}
+
+static void
+test_luvs_one_chart_cluster_opens_with_a_shift_out_of_range(void) {
+    scene_t* s = scene_fixture();
+    const r3d_lit_mesh_t mesh = read_mesh();
+    const uint32_t size = write_read_entry(s);
+    const int32_t far = 1000;
+    put_u32(s->luvs + header_word(s, R3D_TEXTURE_UVS_AT_SHIFTS_OFF), (uint32_t)far);
+    TEST_ASSERT_EQUAL(ASSET_OK, open_texturing(s, size, &mesh));
+    put_u32(s->luvs + header_word(s, R3D_TEXTURE_UVS_AT_SHIFTS_OFF), (uint32_t)-far);
+    TEST_ASSERT_EQUAL(ASSET_OK, open_texturing(s, size, &mesh));
+}
+
+/* Triangle `t`'s code byte, set to `code` with its neighbours' bits cleared. */
+static void
+set_code(scene_t* s, int t, unsigned code) {
+    uint8_t* byte =
+        s->luvs + header_word(s, R3D_TEXTURE_UVS_AT_TRIANGLES_OFF) + (t / R3D_TEXTURE_UVS_TRIANGLES_PER_BYTE);
+    *byte = code_at(t, code);
+}
+
+/* The read entry with no triangle on a chart, to set one code in. */
+static uint32_t
+write_plain_entry(scene_t* s) {
+    const uint32_t size = write_read_entry(s);
+    for (int t = 0; t < READ_TRIANGLES; t += R3D_TEXTURE_UVS_TRIANGLES_PER_BYTE) {
+        set_code(s, t, R3D_TEXTURE_PLAIN);
+    }
+    return size;
+}
+
+static void
+test_luvs_code_3_in_a_two_chart_cluster_is_refused(void) {
+    scene_t* s = scene_fixture();
+    const r3d_lit_mesh_t mesh = read_mesh();
+    const uint32_t size = write_plain_entry(s);
+    set_code(s, 7, R3D_TEXTURE_CHARTS + 1);
+    expect_refused(s, size, &mesh, ASSET_ERR_FORMAT, "code 3 in a cluster with two charts");
+}
+
+static void
+test_luvs_bad_code_in_the_second_cluster_is_refused(void) {
+    scene_t* s = scene_fixture();
+    const r3d_lit_mesh_t mesh = read_mesh();
+    const uint32_t size = write_plain_entry(s);
+    set_code(s, read_clusters[1].triangle_first, R3D_TEXTURE_CHARTS + 1);
+    expect_refused(s, size, &mesh, ASSET_ERR_FORMAT, "a bad code in cluster 1");
+}
+
+static void
+test_luvs_bad_code_on_the_last_partly_packed_triangle_is_refused(void) {
+    scene_t* s = scene_fixture();
+    const r3d_lit_mesh_t mesh = read_mesh();
+    TEST_ASSERT_NOT_EQUAL(0, READ_TRIANGLES % R3D_TEXTURE_UVS_TRIANGLES_PER_BYTE);
+    const uint32_t size = write_plain_entry(s);
+    set_code(s, READ_TRIANGLES - 1, R3D_TEXTURE_CHARTS + 1);
+    expect_refused(s, size, &mesh, ASSET_ERR_FORMAT, "a bad code on the last triangle");
+}
+
+static void
+test_luvs_codes_up_to_the_clusters_last_chart_open(void) {
+    scene_t* s = scene_fixture();
+    const r3d_lit_mesh_t mesh = read_mesh();
+    const uint32_t size = write_plain_entry(s);
+    set_code(s, 0, 1);
+    set_code(s, read_clusters[1].triangle_first, R3D_TEXTURE_CHARTS);
+    TEST_ASSERT_EQUAL(ASSET_OK, open_texturing(s, size, &mesh));
+}
+
+/* The read entry with chart `chart` of cluster `c` naming material `k`. */
+static uint32_t
+write_naming(scene_t* s, int c, int chart, uint8_t k) {
+    const uint32_t size = write_read_entry(s);
+    s->luvs[header_word(s, R3D_TEXTURE_UVS_AT_CLUSTERS_OFF) + (c * R3D_TEXTURE_CHARTS) + chart] = k;
+    return size;
+}
+
+static void
+test_luvs_chart_0_naming_the_material_count_is_refused(void) {
+    scene_t* s = scene_fixture();
+    const r3d_lit_mesh_t mesh = read_mesh();
+    const uint32_t size = write_naming(s, 0, 0, 1);
+    expect_refused(s, size, &mesh, ASSET_ERR_FORMAT, "chart 0 of cluster 0 naming material 1 of 1");
+}
+
+static void
+test_luvs_second_clusters_chart_0_naming_the_material_count_is_refused(void) {
+    scene_t* s = scene_fixture();
+    const r3d_lit_mesh_t mesh = read_mesh();
+    const uint32_t size = write_naming(s, 1, 0, 1);
+    expect_refused(s, size, &mesh, ASSET_ERR_FORMAT, "chart 0 of cluster 1 naming material 1 of 1");
+}
+
+static void
+test_luvs_second_clusters_chart_1_naming_the_material_count_is_refused(void) {
+    scene_t* s = scene_fixture();
+    const r3d_lit_mesh_t mesh = read_mesh();
+    const uint32_t size = write_naming(s, 1, 1, 1);
+    expect_refused(s, size, &mesh, ASSET_ERR_FORMAT, "chart 1 of cluster 1 naming material 1 of 1");
+}
+
+static void
+test_luvs_material_one_below_the_count_opens_on_every_chart(void) {
+    scene_t* s = scene_fixture();
+    const r3d_lit_mesh_t mesh = read_mesh();
+    const uint32_t size = write_naming(s, 1, 1, 0);
+    TEST_ASSERT_EQUAL(ASSET_OK, open_texturing(s, size, &mesh));
+    TEST_ASSERT_EQUAL_UINT8(0, s->texturing.cluster_material[0][0]);
+    TEST_ASSERT_EQUAL_UINT8(0, s->texturing.cluster_material[1][0]);
+    TEST_ASSERT_EQUAL_UINT8(0, s->texturing.cluster_material[1][1]);
+}
+
+static void
+test_luvs_with_fewer_uvs_than_vertices_is_refused(void) {
+    scene_t* s = scene_fixture();
+    const r3d_lit_mesh_t mesh = read_mesh();
+    const uint32_t size = write_plain_entry(s);
+    s->luvs[header_word(s, R3D_TEXTURE_UVS_AT_CLUSTERS_OFF) + R3D_TEXTURE_CHARTS + 1] = R3D_TEXTURE_NONE;
+    TEST_ASSERT_EQUAL(ASSET_OK, open_texturing(s, size, &mesh));
+    put_u32(s->luvs + R3D_TEXTURE_UVS_AT_UV_COUNT, READ_VERTICES - 1);
+    expect_refused(s, size, &mesh, ASSET_ERR_FORMAT, "one UV fewer than vertices");
+}
+
+/* The read entry with the section offset at `at` set to `value`. */
+static void
+expect_offset_refused(scene_t* s, uint32_t at, uint32_t value, const char* why) {
+    const r3d_lit_mesh_t mesh = read_mesh();
+    const uint32_t size = write_read_entry(s);
+    put_u32(s->luvs + at, value);
+    expect_refused(s, size, &mesh, ASSET_ERR_BOUNDS, why);
+}
+
+/* Past the written entry, aligned for every section. */
+#define PAST_ENTRY 76U
+
+static void
+test_luvs_misaligned_uvs_offset_is_refused(void) {
+    scene_t* s = scene_fixture();
+    (void)write_read_entry(s);
+    expect_offset_refused(s, R3D_TEXTURE_UVS_AT_UVS_OFF, header_word(s, R3D_TEXTURE_UVS_AT_UVS_OFF) + 1,
+                          "UVs at an odd byte");
+}
+
+static void
+test_luvs_misaligned_shifts_offset_is_refused(void) {
+    scene_t* s = scene_fixture();
+    (void)write_read_entry(s);
+    expect_offset_refused(s, R3D_TEXTURE_UVS_AT_SHIFTS_OFF, header_word(s, R3D_TEXTURE_UVS_AT_SHIFTS_OFF) + 2,
+                          "shifts off a 4-byte boundary");
+}
+
+static void
+test_luvs_uvs_offset_inside_the_header_is_refused(void) {
+    expect_offset_refused(scene_fixture(), R3D_TEXTURE_UVS_AT_UVS_OFF, 0, "UVs over the header");
+}
+
+static void
+test_luvs_shifts_offset_inside_the_header_is_refused(void) {
+    expect_offset_refused(scene_fixture(), R3D_TEXTURE_UVS_AT_SHIFTS_OFF, 0, "shifts over the header");
+}
+
+static void
+test_luvs_clusters_offset_inside_the_header_is_refused(void) {
+    expect_offset_refused(scene_fixture(), R3D_TEXTURE_UVS_AT_CLUSTERS_OFF, 0, "cluster materials over the header");
+}
+
+static void
+test_luvs_triangles_offset_inside_the_header_is_refused(void) {
+    expect_offset_refused(scene_fixture(), R3D_TEXTURE_UVS_AT_TRIANGLES_OFF, 0, "triangle codes over the header");
+}
+
+static void
+test_luvs_uvs_running_past_the_entry_are_refused(void) {
+    expect_offset_refused(scene_fixture(), R3D_TEXTURE_UVS_AT_UVS_OFF, PAST_ENTRY, "UVs past the entry");
+}
+
+static void
+test_luvs_shifts_running_past_the_entry_are_refused(void) {
+    expect_offset_refused(scene_fixture(), R3D_TEXTURE_UVS_AT_SHIFTS_OFF, PAST_ENTRY, "shifts past the entry");
+}
+
+static void
+test_luvs_cluster_materials_running_past_the_entry_are_refused(void) {
+    expect_offset_refused(scene_fixture(), R3D_TEXTURE_UVS_AT_CLUSTERS_OFF, PAST_ENTRY,
+                          "cluster materials past the entry");
+}
+
+static void
+test_luvs_triangle_codes_running_past_the_entry_are_refused(void) {
+    expect_offset_refused(scene_fixture(), R3D_TEXTURE_UVS_AT_TRIANGLES_OFF, PAST_ENTRY,
+                          "triangle codes past the entry");
 }
 
 static void
@@ -765,6 +1009,28 @@ test_near_clipped_textured_triangle_keeps_its_coverage_and_its_pattern(void) {
                                      "the clipped triangle's UVs do not vary across it");
 }
 
+/* A mesh with a flat colour per triangle draws plain whatever its codes say:
+ * the textured draw covers and colours the pixels the plain one does. */
+static void
+test_a_mesh_with_face_colours_draws_its_textured_triangles_plain(void) {
+    const uint16_t faces[SCENE_TRIANGLES] = {FACE_COLOUR, FACE_COLOUR};
+    scene_t* s = scene_fixture();
+    two_triangles(s, code_at(0, 1) | code_at(1, 2), 1);
+    clear();
+    draw_scene(s, 0, false);
+    draw_scene(s, 1, true);
+    int left, right;
+    differing(&left, &right);
+    TEST_ASSERT_GREATER_THAN_MESSAGE(0, left + right, "the mesh without face colours does not draw textured");
+    s->mesh.face_colors = faces;
+    clear();
+    draw_scene(s, 0, false);
+    draw_scene(s, 1, true);
+    differing(&left, &right);
+    TEST_ASSERT_EQUAL_MESSAGE(0, left + right, "a triangle with a face colour drew textured");
+    TEST_ASSERT_GREATER_THAN_MESSAGE(COVERED_MIN, covered_pixels(1), "nothing was drawn");
+}
+
 void
 run_r3d_texture_suite(void) {
     RUN_TEST(test_textured_covers_what_plain_covers);
@@ -778,11 +1044,36 @@ run_r3d_texture_suite(void) {
     RUN_TEST(test_luvs_entry_is_refused_when_its_counts_do_not_match_the_mesh);
     RUN_TEST(test_luvs_entry_must_end_exactly_after_its_triangle_codes);
     RUN_TEST(test_luvs_cluster_material_past_the_count_is_refused);
-    RUN_TEST(test_luvs_charts_the_entry_does_not_hold_are_refused);
+    RUN_TEST(test_luvs_code_naming_chart_1_of_a_one_chart_cluster_is_refused);
+    RUN_TEST(test_luvs_chart_1_after_a_chart_with_no_material_is_refused);
+    RUN_TEST(test_luvs_chart_1_uvs_past_the_entrys_are_refused);
+    RUN_TEST(test_luvs_negative_shift_of_a_two_chart_cluster_is_refused);
+    RUN_TEST(test_luvs_chart_1_uvs_fitting_the_entry_exactly_at_each_end_open);
+    RUN_TEST(test_luvs_one_chart_cluster_opens_with_a_shift_out_of_range);
+    RUN_TEST(test_luvs_code_3_in_a_two_chart_cluster_is_refused);
+    RUN_TEST(test_luvs_bad_code_in_the_second_cluster_is_refused);
+    RUN_TEST(test_luvs_bad_code_on_the_last_partly_packed_triangle_is_refused);
+    RUN_TEST(test_luvs_codes_up_to_the_clusters_last_chart_open);
+    RUN_TEST(test_luvs_chart_0_naming_the_material_count_is_refused);
+    RUN_TEST(test_luvs_second_clusters_chart_0_naming_the_material_count_is_refused);
+    RUN_TEST(test_luvs_second_clusters_chart_1_naming_the_material_count_is_refused);
+    RUN_TEST(test_luvs_material_one_below_the_count_opens_on_every_chart);
+    RUN_TEST(test_luvs_with_fewer_uvs_than_vertices_is_refused);
+    RUN_TEST(test_luvs_misaligned_uvs_offset_is_refused);
+    RUN_TEST(test_luvs_misaligned_shifts_offset_is_refused);
+    RUN_TEST(test_luvs_uvs_offset_inside_the_header_is_refused);
+    RUN_TEST(test_luvs_shifts_offset_inside_the_header_is_refused);
+    RUN_TEST(test_luvs_clusters_offset_inside_the_header_is_refused);
+    RUN_TEST(test_luvs_triangles_offset_inside_the_header_is_refused);
+    RUN_TEST(test_luvs_uvs_running_past_the_entry_are_refused);
+    RUN_TEST(test_luvs_shifts_running_past_the_entry_are_refused);
+    RUN_TEST(test_luvs_cluster_materials_running_past_the_entry_are_refused);
+    RUN_TEST(test_luvs_triangle_codes_running_past_the_entry_are_refused);
     RUN_TEST(test_luvs_names_a_material_the_pack_lacks);
     RUN_TEST(test_only_triangles_on_a_chart_draw_textured);
     RUN_TEST(test_a_triangle_on_chart_1_draws_with_chart_1s_uvs);
     RUN_TEST(test_near_clipped_textured_triangle_keeps_its_coverage_and_its_pattern);
+    RUN_TEST(test_a_mesh_with_face_colours_draws_its_textured_triangles_plain);
 }
 
 SUITE_REGISTER(run_r3d_texture_suite);

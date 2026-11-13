@@ -47,6 +47,7 @@
 #include "render/lcol_format.h"
 #include "render/llod_format.h"
 #include "render/lmor_format.h"
+#include "render/texture/r3d_texture.h"
 #include "scene/animator/animator.h"
 #include "scene/camera/camera.h"
 #include "scene/light/light.h"
@@ -6937,12 +6938,204 @@ test_a_request_made_in_a_callback_into_a_lower_record_waits_for_the_next_pass(vo
 }
 #endif
 
+/* A textured red quad: its LUVS and the one LTEX it names beside it, in a pack
+ * of the pair of quads and their scene. The texture is index (x + y) & 15 in
+ * grey, so it never draws the quad's flat red. */
+enum {
+    TEXTURED_TEX_LOG2 = 3,
+    TEXTURED_TEX_LEVELS = 3,
+    TEXTURED_PALETTE_AT = R3D_TEXTURE_HEADER_SIZE,
+    TEXTURED_TEXELS_AT = TEXTURED_PALETTE_AT + (R3D_TEXTURE_COLOURS * R3D_TEXTURE_PALETTE_STRIDE),
+    TEXTURED_TEXEL_BYTES = 32 + 8 + 2, /* an 8, a 4 and a 2 texel side at two texels a byte */
+    TEXTURED_LTEX_BYTES = TEXTURED_TEXELS_AT + TEXTURED_TEXEL_BYTES,
+    TEXTURED_UV_SPAN = (1 << TEXTURED_TEX_LOG2) << R3D_TEXTURE_UV_SHIFT,
+    TEXTURED_LUVS_BYTES =
+        R3D_TEXTURE_UVS_HEADER_SIZE + QUAD_VERTICES * sizeof(int16_t[2]) + sizeof(int32_t) + R3D_TEXTURE_CHARTS + 1,
+    TEXTURED_TRIANGLES_ON_CHART_0 = 1 | (1 << R3D_TEXTURE_UVS_CODE_BITS),
+    TEXTURED_PACK_ENTRIES = 5
+};
+
+static void
+make_textured_ltex(uint8_t* b) {
+    test_pack_put16(b + R3D_TEXTURE_AT_VERSION, R3D_TEXTURE_VERSION);
+    test_pack_put16(b + R3D_TEXTURE_AT_FORMAT, R3D_TEXTURE_INDEX4);
+    b[R3D_TEXTURE_AT_SIZE_LOG2] = TEXTURED_TEX_LOG2;
+    b[R3D_TEXTURE_AT_LEVELS] = TEXTURED_TEX_LEVELS;
+    memset(b + R3D_TEXTURE_AT_TINT, R3D_TEXTURE_ONE, R3D_TEXTURE_TINT_RGB);
+    test_pack_put32(b + R3D_TEXTURE_AT_PALETTE_OFF, TEXTURED_PALETTE_AT);
+    test_pack_put32(b + R3D_TEXTURE_AT_TEXELS_OFF, TEXTURED_TEXELS_AT);
+    for (int i = 0; i < R3D_TEXTURE_COLOURS; i++) {
+        memset(b + TEXTURED_PALETTE_AT + (i * R3D_TEXTURE_PALETTE_STRIDE), i * R3D_TEXTURE_COLOURS,
+               R3D_TEXTURE_TINT_RGB);
+    }
+    uint8_t* at = b + TEXTURED_TEXELS_AT;
+    for (int level = 0; level < TEXTURED_TEX_LEVELS; level++) {
+        const int side = (1 << TEXTURED_TEX_LOG2) >> level;
+        for (int o = 0; o < side * side; o++) {
+            const int index = level == 0 ? ((o % side) + (o / side)) % R3D_TEXTURE_COLOURS : level;
+            at[o / 2] |= (uint8_t)(index << ((o % 2) * 4));
+        }
+        at += side * side / 2;
+    }
+}
+
+static void
+make_textured_luvs(uint8_t* b) {
+    const uint32_t uvs_at = R3D_TEXTURE_UVS_HEADER_SIZE;
+    const uint32_t shifts_at = uvs_at + (QUAD_VERTICES * sizeof(int16_t[2]));
+    const uint32_t clusters_at = shifts_at + sizeof(int32_t);
+    const uint32_t codes_at = clusters_at + R3D_TEXTURE_CHARTS;
+    const uint32_t words[][2] = {{R3D_TEXTURE_UVS_AT_VERTEX_COUNT, QUAD_VERTICES},
+                                 {R3D_TEXTURE_UVS_AT_CLUSTER_COUNT, 1},
+                                 {R3D_TEXTURE_UVS_AT_TRIANGLE_COUNT, QUAD_TRIANGLES},
+                                 {R3D_TEXTURE_UVS_AT_UV_COUNT, QUAD_VERTICES},
+                                 {R3D_TEXTURE_UVS_AT_UVS_OFF, uvs_at},
+                                 {R3D_TEXTURE_UVS_AT_SHIFTS_OFF, shifts_at},
+                                 {R3D_TEXTURE_UVS_AT_CLUSTERS_OFF, clusters_at},
+                                 {R3D_TEXTURE_UVS_AT_TRIANGLES_OFF, codes_at}};
+    test_pack_put16(b + R3D_TEXTURE_UVS_AT_VERSION, R3D_TEXTURE_UVS_VERSION);
+    test_pack_put16(b + R3D_TEXTURE_UVS_AT_MATERIAL_COUNT, 1);
+    for (size_t i = 0; i < sizeof words / sizeof words[0]; i++) {
+        test_pack_put32(b + words[i][0], words[i][1]);
+    }
+    const int16_t corners[QUAD_VERTICES][2] = {
+        {0, 0}, {TEXTURED_UV_SPAN, 0}, {TEXTURED_UV_SPAN, TEXTURED_UV_SPAN}, {0, TEXTURED_UV_SPAN}};
+    memcpy(b + uvs_at, corners, sizeof corners);
+    b[clusters_at + 1] = R3D_TEXTURE_NONE;
+    b[codes_at] = TEXTURED_TRIANGLES_ON_CHART_0;
+}
+
+/* The pair scene's pack with "red" textured, in place of the fixture's. */
+static void
+make_textured_pack(void) {
+    test_pack_t pack = test_pack_begin(fx.bytes, PACK_MAX, TEXTURED_PACK_ENTRIES);
+    make_quad_entry(test_pack_add(&pack, "red", R3D_LIT_MESH_ASSET, QUAD_BYTES), UINT8_MAX, 0, 0, 1);
+    make_quad_entry(test_pack_add(&pack, "green", R3D_LIT_MESH_ASSET, QUAD_BYTES), 0, UINT8_MAX, 0, 1);
+    make_scene_entry(test_pack_add(&pack, "test_pair", SCENE_ASSET, scene_entry_size(&SCENES[0])), &SCENES[0]);
+    make_textured_luvs(
+        test_pack_add(&pack, "red" R3D_TEXTURE_UVS_NAME_SUFFIX, R3D_TEXTURE_UVS_ASSET, TEXTURED_LUVS_BYTES));
+    make_textured_ltex(
+        test_pack_add(&pack, "red" R3D_TEXTURE_MATERIAL_SUFFIX "0", R3D_TEXTURE_ASSET, TEXTURED_LTEX_BYTES));
+    const uint32_t total = test_pack_finish(&pack);
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_open(&fx.pack, fx.bytes, total));
+}
+
+/* The raster the scene last rendered into, which keeps what a frame leaves unchanged. */
+static const uint16_t*
+rendered_picture(void) {
+    return raster_color(&render_context_main()->raster);
+}
+
+/* Two renders: the first after a change draws only what changed. */
+static void
+render_textured_pair(void) {
+    scene_render(0, 0, SIZE, SIZE);
+    scene_render(0, 0, SIZE, SIZE);
+}
+
+/* Pixels of the last render that differ from the picture `than`. */
+static int
+pixels_differing_from(const uint16_t* than) {
+    int n = 0;
+    for (int i = 0; i < SIZE * SIZE; i++) {
+        n += rendered_picture()[i] != than[i];
+    }
+    return n;
+}
+
+/* Shows the pair scene with its red quad `red` textured-capable, and keeps
+ * the picture of it drawn plain in fx.held. */
+static void
+show_textured_pair(entity_t* red) {
+    fixture();
+    make_textured_pack();
+    const entity_t scene = show("test_pair");
+    *red = entity_find(scene, name_hash("red"));
+    render_textured_pair();
+    memcpy(fx.held, rendered_picture(), sizeof(uint16_t) * SIZE * SIZE);
+}
+
+static void
+test_textures_draw_the_quad_other_than_plain(void) {
+    entity_t red;
+    show_textured_pair(&red);
+    TEST_ASSERT_TRUE(renderer_set_textured(red, true, NULL));
+    render_textured_pair();
+    TEST_ASSERT_GREATER_THAN(0, pixels_differing_from(fx.held));
+    TEST_ASSERT_TRUE(renderer_set_textured(red, false, NULL));
+    render_textured_pair();
+    TEST_ASSERT_EQUAL_INT(0, pixels_differing_from(fx.held));
+}
+
+/* Another mesh does not draw or keep the textures opened for the one it
+ * replaced: with other counts the LUVS no longer fits and asking again is
+ * refused, still drawing plain. */
+static void
+test_a_mesh_of_other_counts_is_not_drawn_with_the_old_meshs_textures(void) {
+    entity_t red;
+    show_textured_pair(&red);
+    r3d_lit_mesh_t other = *renderer_mesh(red);
+    other.triangle_count = QUAD_TRIANGLES - 1;
+    TEST_ASSERT_TRUE(renderer_set_textured(red, true, NULL));
+    TEST_ASSERT_TRUE(renderer_set_mesh(red, &other));
+    TEST_ASSERT_NULL(renderer_mesh(red)->texturing);
+    render_textured_pair();
+    TEST_ASSERT_EQUAL_INT(0, pixels_differing_from(fx.held));
+    scene_failure_t why = {0};
+    TEST_ASSERT_FALSE(renderer_set_textured(red, true, &why));
+    TEST_ASSERT_NULL(renderer_mesh(red)->texturing);
+    render_textured_pair();
+    TEST_ASSERT_EQUAL_INT(0, pixels_differing_from(fx.held));
+}
+
+static void
+test_a_mesh_of_the_same_counts_opens_its_textures_again_after_the_swap(void) {
+    entity_t red;
+    show_textured_pair(&red);
+    r3d_lit_mesh_t other = *renderer_mesh(red);
+    TEST_ASSERT_TRUE(renderer_set_textured(red, true, NULL));
+    render_textured_pair();
+    TEST_ASSERT_GREATER_THAN(0, pixels_differing_from(fx.held));
+    uint16_t* textured = malloc(sizeof(uint16_t) * SIZE * SIZE);
+    TEST_ASSERT_NOT_NULL(textured);
+    memcpy(textured, rendered_picture(), sizeof(uint16_t) * SIZE * SIZE);
+    TEST_ASSERT_TRUE(renderer_set_mesh(red, &other));
+    TEST_ASSERT_NULL(renderer_mesh(red)->texturing);
+    render_textured_pair();
+    TEST_ASSERT_EQUAL_INT(0, pixels_differing_from(fx.held));
+    TEST_ASSERT_TRUE(renderer_set_textured(red, true, NULL));
+    render_textured_pair();
+    const int differing = pixels_differing_from(textured);
+    free(textured);
+    TEST_ASSERT_EQUAL_INT(0, differing);
+}
+
+static void
+test_a_mesh_with_face_colours_draws_textured_triangles_plain(void) {
+    const uint16_t faces[QUAD_TRIANGLES] = {RGB565BE(0x00FF00), RGB565BE(0x0000FF)};
+    entity_t red;
+    show_textured_pair(&red);
+    r3d_lit_mesh_t flat = *renderer_mesh(red);
+    flat.face_colors = faces;
+    TEST_ASSERT_TRUE(renderer_set_mesh(red, &flat));
+    render_textured_pair();
+    TEST_ASSERT_GREATER_THAN(0, pixels_differing_from(fx.held));
+    memcpy(fx.held, rendered_picture(), sizeof(uint16_t) * SIZE * SIZE);
+    TEST_ASSERT_TRUE(renderer_set_textured(red, true, NULL));
+    render_textured_pair();
+    TEST_ASSERT_EQUAL_INT(0, pixels_differing_from(fx.held));
+}
+
 void
 run_scene_suite(void) {
     /* The tests count the heap, so they run on it; the board lends the app
      * arena, put back once they are done. */
     scene_unload_all();
     const memory_take_fn lender = scene_set_take(NULL);
+    RUN_TEST(test_textures_draw_the_quad_other_than_plain);
+    RUN_TEST(test_a_mesh_of_other_counts_is_not_drawn_with_the_old_meshs_textures);
+    RUN_TEST(test_a_mesh_of_the_same_counts_opens_its_textures_again_after_the_swap);
+    RUN_TEST(test_a_mesh_with_face_colours_draws_textured_triangles_plain);
     RUN_TEST(test_static_mesh_arrays_are_resident_and_equal_the_pack);
     RUN_TEST(test_static_face_colours_are_resident_and_equal_the_pack);
     RUN_TEST(test_only_static_mesh_arrays_are_made_resident);
