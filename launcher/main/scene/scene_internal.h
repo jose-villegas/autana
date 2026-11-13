@@ -49,6 +49,11 @@ typedef struct {
 #define SCENE_FLAG_CHANGED         (SCENE_FLAG_DIRTY | SCENE_FLAG_SKIN_DIRTY)
 #define SCENE_FLAG_ACTIVE          8U  /* enabled, and every ancestor enabled */
 #define SCENE_FLAG_MOVED           16U /* its world changed in this resolve */
+/* Its transform was set since its skin was last lit: a copy whose playing
+ * clip paces it relights at its next pose, any other at once; a moved light
+ * relights every skin at once. */
+#define SCENE_FLAG_RELIGHT         32U
+#define SCENE_FLAG_PLACED          (SCENE_FLAG_DIRTY | SCENE_FLAG_RELIGHT)
 #define SCENE_WORLD_SLOT_NONE      0xFFFFU
 #define SCENE_LIGHT_FAILURE_ALBEDO "skin vertex colors required"
 #define SCENE_LIGHT_FAILURE_NORMAL "skin normal transform invalid"
