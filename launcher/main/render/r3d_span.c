@@ -63,52 +63,19 @@ to_step(float step) {
     return (int32_t)mathf_clamp(step, -STEP_MAX, STEP_MAX);
 }
 
-static inline float
-pixels_of(int32_t subpixels) {
-    return (float)subpixels * (1.0F / (float)R3D_SUBPIXEL);
-}
-
-/* What every attribute's plane shares: the edges from corner a, the
- * reciprocal of twice the area, and the origin pixel's centre from a. */
-typedef struct {
-    float e1x, e1y, e2x, e2y, inv, ox, oy;
-} plane_t;
-
-static inline __attribute__((always_inline)) bool
-plane_of(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c, int x_origin, int y_anchor,
-         plane_t* p) {
-    const float ax = pixels_of(a->x);
-    const float ay = pixels_of(a->y);
-    p->e1x = pixels_of(b->x) - ax;
-    p->e1y = pixels_of(b->y) - ay;
-    p->e2x = pixels_of(c->x) - ax;
-    p->e2y = pixels_of(c->y) - ay;
-    const float area2 = (p->e1x * p->e2y) - (p->e2x * p->e1y);
-    if (area2 > -1e-6F && area2 < 1e-6F) {
-        return false;
-    }
-    p->inv = mathf_recip(area2);
-    p->ox = (float)x_origin + 0.5F - ax;
-    p->oy = (float)y_anchor + 0.5F - ay;
-    return true;
-}
-
 static inline __attribute__((always_inline)) void
-gradient(const plane_t* p, float va, float vb, float vc, int k, gradients_t* out) {
-    const float d1 = vb - va;
-    const float d2 = vc - va;
-    const float ddx = (d1 * p->e2y - d2 * p->e1y) * p->inv;
-    const float ddy = (d2 * p->e1x - d1 * p->e2x) * p->inv;
-    out->dx[k] = to_step(ddx);
-    out->dy[k] = to_step(ddy);
-    out->base[k] = (int32_t)mathf_clamp(va + (ddx * p->ox) + (ddy * p->oy), -2.0e9F, 2.0e9F);
+gradient(const r3d_span_frame_t* p, float va, float vb, float vc, int k, gradients_t* out) {
+    const r3d_span_plane_t q = r3d_span_plane_of(p, va, vb, vc);
+    out->dx[k] = to_step(q.dx);
+    out->dy[k] = to_step(q.dy);
+    out->base[k] = (int32_t)mathf_clamp(q.base, -2.0e9F, 2.0e9F);
 }
 
 /* The colour planes, left until the depth plane has shown the triangle is
  * not hidden. */
 static void
-colour_gradients(const plane_t* p, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c,
-                 gradients_t* out) {
+colour_gradients(const r3d_span_frame_t* p, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
+                 const r3d_span_vertex_t* c, gradients_t* out) {
     gradient(p, a->r * R3D_SPAN_COLOR_SCALE, b->r * R3D_SPAN_COLOR_SCALE, c->r * R3D_SPAN_COLOR_SCALE, 1, out);
     gradient(p, a->g * R3D_SPAN_COLOR_SCALE, b->g * R3D_SPAN_COLOR_SCALE, c->g * R3D_SPAN_COLOR_SCALE, 2, out);
     gradient(p, a->b * R3D_SPAN_COLOR_SCALE, b->b * R3D_SPAN_COLOR_SCALE, c->b * R3D_SPAN_COLOR_SCALE, 3, out);
@@ -757,9 +724,9 @@ colour_steps_zero(const gradients_t* g) {
 bool
 r3d_span_uniform(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c) {
     const r3d_span_extent_t e = r3d_span_extent_limits(a, b, c, flat_max_rows, flat_max_width);
-    plane_t p;
+    r3d_span_frame_t p;
     gradients_t g = {0};
-    if (!plane_of(a, b, c, e.centres.x, e.centres.y, &p)) {
+    if (!r3d_span_frame_of(a, b, c, e.centres.x, e.centres.y, &p)) {
         return true;
     }
     colour_gradients(&p, a, b, c, &g);
@@ -770,7 +737,7 @@ r3d_span_uniform(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r
 /* The colour planes, unless a face colour stands in for them, and whether
  * every plane stays in range across the box so spans need no clamp. */
 static void
-set_up_planes(fill_t* f, const r3d_span_vertex_t* const v[TRIANGLE_VERTICES], const plane_t* p, recti_t box,
+set_up_planes(fill_t* f, const r3d_span_vertex_t* const v[TRIANGLE_VERTICES], const r3d_span_frame_t* p, recti_t box,
               int y_anchor, gradients_t* g) {
     g->in_range = r3d_span_plane_in_range(g->base[0], g->dx[0], g->dy[0], value_max[0], box);
     if (f->shading == FILL_FACE) {
@@ -797,12 +764,12 @@ set_up_planes(fill_t* f, const r3d_span_vertex_t* const v[TRIANGLE_VERTICES], co
 static __attribute__((noinline)) bool
 set_up_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[TRIANGLE_VERTICES], recti_t box,
             int y_anchor, const uint16_t* face, fill_t* f, gradients_t* g) {
-    plane_t p;
+    r3d_span_frame_t p;
     g->x_origin = box.x;
     if (f->shading == FILL_FLAT) {
-        p = (plane_t){0};
+        p = (r3d_span_frame_t){0};
         set_flat(f, v[0], v[1], v[2]);
-    } else if (plane_of(v[0], v[1], v[2], box.x, y_anchor, &p)) {
+    } else if (r3d_span_frame_of(v[0], v[1], v[2], box.x, y_anchor, &p)) {
         gradient(&p, v[0]->z * DEPTH_SCALE, v[1]->z * DEPTH_SCALE, v[2]->z * DEPTH_SCALE, 0, g);
         g->base[0] = first_row_value(g, 0, box.y, y_anchor);
     } else {
@@ -934,12 +901,12 @@ triangle_write_of(const r3d_span_target_t* target, const r3d_span_vertex_t* a, c
     }
     const int y_anchor = mathi_clamp(e.centres.y, -1, gfx_target_end_row(&target->rows) + 1);
     gradients_t g = {0};
-    plane_t p;
+    r3d_span_frame_t p;
     f.g = &g;
     g.x_origin = box.x;
     if (f.shading == FILL_FLAT) {
         set_flat(&f, a, b, c);
-    } else if (plane_of(a, b, c, box.x, y_anchor, &p)) {
+    } else if (r3d_span_frame_of(a, b, c, box.x, y_anchor, &p)) {
         gradient(&p, a->z * DEPTH_SCALE, b->z * DEPTH_SCALE, c->z * DEPTH_SCALE, 0, &g);
         g.base[0] = first_row_value(&g, 0, box.y, y_anchor);
         g.in_range = r3d_span_plane_in_range(g.base[0], g.dx[0], g.dy[0], value_max[0], box);

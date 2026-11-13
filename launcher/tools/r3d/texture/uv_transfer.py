@@ -15,7 +15,7 @@ import struct
 import numpy as np
 
 from build.c_header import read_define
-from r3d.geometry import nearest_triangles, triangle_search
+from r3d.geometry import face_normals, nearest_triangles, triangle_search
 from r3d.lcol_asset import sibling_name
 from r3d.mesh_asset import checked_struct
 from r3d.texture import texture_asset
@@ -33,7 +33,7 @@ PLAIN = read_define(OWNER, "R3D_TEXTURE_PLAIN")
 TRIANGLES_PER_BYTE = read_define(OWNER, "R3D_TEXTURE_UVS_TRIANGLES_PER_BYTE")
 CODE_BITS = read_define(OWNER, "R3D_TEXTURE_UVS_CODE_BITS")
 HEADER_FIELDS = (("VERSION", "H"), ("MATERIAL_COUNT", "H"), ("VERTEX_COUNT", "I"), ("CLUSTER_COUNT", "I"),
-                 ("TRIANGLE_COUNT", "I"), ("UV_COUNT", "I"), ("UVS_OFF", "I"), ("ORIGINS_OFF", "I"),
+                 ("TRIANGLE_COUNT", "I"), ("UV_COUNT", "I"), ("UVS_OFF", "I"),
                  ("SHIFTS_OFF", "I"), ("CLUSTERS_OFF", "I"), ("TRIANGLES_OFF", "I"))
 HEADER = checked_struct(OWNER, "R3D_TEXTURE_UVS", HEADER_FIELDS)
 PAIR = struct.Struct("<2h")
@@ -46,9 +46,8 @@ NORMAL_DEGREES = 10.0
 
 @dataclasses.dataclass
 class Luvs:
-    uvs: np.ndarray        # (uv count, 2) int16, 1/16 texel of level 0 from its chart's origin: each vertex's on
+    uvs: np.ndarray        # (uv count, 2) int16, 1/16 texel of level 0, whole sides dropped: each vertex's on
                            # chart 0, then each cluster's vertices' on chart 1 for the clusters with one
-    origins: np.ndarray    # (clusters, CHARTS, 2) int16, whole texture sides
     shifts: np.ndarray     # (clusters,) int32, a vertex's UV on its cluster's chart 1 is uvs[vertex + shift]
     materials: np.ndarray  # (clusters, CHARTS) uint8, an index into the materials or NONE; a NONE chart has none after
     codes: np.ndarray      # (triangles,) uint8, PLAIN or 1 + the chart it draws with
@@ -59,12 +58,6 @@ class Luvs:
 def matched(names, patterns):
     """The indices of `names` matching any of `patterns`, as import tables match objects."""
     return [i for i, name in enumerate(names) if any(fnmatch.fnmatchcase(name, pattern) for pattern in patterns)]
-
-
-def unit_normals(corners):
-    normal = np.cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0])
-    length = np.linalg.norm(normal, axis=1)
-    return normal / np.maximum(length, np.finfo(np.float64).tiny)[:, None], 0.5 * length
 
 
 def texel_uvs(source, size):
@@ -95,8 +88,8 @@ def cluster_uvs(mesh, source, material_ids, sizes):
     tris = np.asarray(mesh.tris)
     source_corners = np.asarray(source.p, dtype=np.float64)[np.asarray(source.tri_v)]
     near, _bary, _distance = nearest_triangles(points[tris].mean(axis=1), triangle_search(source_corners))
-    baked_normal, area = unit_normals(points[tris])
-    source_normal, _ = unit_normals(source_corners)
+    baked_normal, area = face_normals(points, tris)
+    source_normal, _ = face_normals(np.asarray(source.p, dtype=np.float64), np.asarray(source.tri_v))
     agree = np.cos(np.radians(NORMAL_DEGREES))
     facing = (baked_normal * source_normal[near]).sum(axis=1) >= agree
     slot = np.full(len(source.names), NONE)
@@ -104,7 +97,6 @@ def cluster_uvs(mesh, source, material_ids, sizes):
     material = np.where(facing, slot[np.asarray(source.tri_m)[near]], NONE)
     uvs = [np.zeros((len(points), 2), dtype=np.int16)]
     uv_count = len(points)
-    origins = np.zeros((len(mesh.clusters), CHARTS, 2), dtype=np.int16)
     shifts = np.zeros(len(mesh.clusters), dtype=np.int32)
     materials = np.full((len(mesh.clusters), CHARTS), NONE, dtype=np.uint8)
     codes = np.full(len(tris), PLAIN, dtype=np.uint8)
@@ -117,9 +109,10 @@ def cluster_uvs(mesh, source, material_ids, sizes):
                 break
             k, plane, uv = found
             size = sizes[k]
-            origin = np.floor(uv.mean(axis=0) / size)
-            stored = np.rint((uv - origin * size) * (1 << UV_SHIFT))
-            if stored.min() < INT16.min or stored.max() > INT16.max or np.abs(origin).max() > INT16.max:
+            # The texture repeats every side, so dropping the whole sides under the cluster's mean draws the same.
+            repeats = np.floor(uv.mean(axis=0) / size)
+            stored = np.rint((uv - repeats * size) * (1 << UV_SHIFT))
+            if stored.min() < INT16.min or stored.max() > INT16.max:
                 raise ValueError(f"cluster {c} spans more texels than an int16 UV holds; lower the texture size")
             if chart == 0:
                 uvs[0][vb:vb + vc] = stored
@@ -127,10 +120,10 @@ def cluster_uvs(mesh, source, material_ids, sizes):
                 shifts[c] = uv_count - vb
                 uvs.append(stored.astype(np.int16))
                 uv_count += vc
-            origins[c, chart], materials[c, chart] = origin, k
+            materials[c, chart] = k
             on_plane = baked_normal[tb:tb + tc] @ source_normal[plane] >= agree
             own_code[(own_code == PLAIN) & (own == k) & on_plane] = chart + 1
-    return Luvs(np.concatenate(uvs), origins, shifts, materials, codes, len(points), len(material_ids))
+    return Luvs(np.concatenate(uvs), shifts, materials, codes, len(points), len(material_ids))
 
 
 def cluster_chart(points, own, own_area, left, near, source_corners, source, sizes):
@@ -166,34 +159,32 @@ def unpack_codes(packed, count):
 
 
 def pack_luvs(luvs):
-    """The LUVS entry: header, UVs, origins, shifts, cluster materials, then triangle codes."""
+    """The LUVS entry: header, UVs, shifts, cluster materials, then triangle codes."""
     uvs_off = HEADER.size
-    origins_off = uvs_off + len(luvs.uvs) * PAIR.size
-    shifts_off = origins_off + luvs.origins.size * INT16.bits // 8
+    shifts_off = uvs_off + len(luvs.uvs) * PAIR.size
     clusters_off = shifts_off + luvs.shifts.size * SHIFT.itemsize
     triangles_off = clusters_off + luvs.materials.size
-    return (HEADER.pack(VERSION, luvs.material_count, luvs.vertex_count, len(luvs.origins), len(luvs.codes),
-                        len(luvs.uvs), uvs_off, origins_off, shifts_off, clusters_off, triangles_off)
-            + luvs.uvs.astype("<i2").tobytes() + luvs.origins.astype("<i2").tobytes()
+    return (HEADER.pack(VERSION, luvs.material_count, luvs.vertex_count, len(luvs.materials), len(luvs.codes),
+                        len(luvs.uvs), uvs_off, shifts_off, clusters_off, triangles_off)
+            + luvs.uvs.astype("<i2").tobytes()
             + luvs.shifts.astype(SHIFT).tobytes() + luvs.materials.astype(np.uint8).tobytes()
             + pack_codes(luvs.codes).tobytes())
 
 
 def decode(entry):
     """The Luvs an LUVS entry holds."""
-    (version, count, vertices, clusters, triangles, uv_count, uvs_off, origins_off, shifts_off, clusters_off,
+    (version, count, vertices, clusters, triangles, uv_count, uvs_off, shifts_off, clusters_off,
      triangles_off) = HEADER.unpack_from(entry)
     if version != VERSION:
         raise ValueError("LUVS version is invalid")
     uvs = np.frombuffer(entry, "<i2", uv_count * 2, uvs_off).reshape(-1, 2)
-    origins = np.frombuffer(entry, "<i2", clusters * CHARTS * 2, origins_off).reshape(-1, CHARTS, 2)
     shifts = np.frombuffer(entry, SHIFT, clusters, shifts_off)
     materials = np.frombuffer(entry, np.uint8, clusters * CHARTS, clusters_off).reshape(-1, CHARTS)
     size = -(-triangles // TRIANGLES_PER_BYTE)
     if triangles_off + size != len(entry):
         raise ValueError("LUVS sections do not match the entry size")
     codes = unpack_codes(np.frombuffer(entry, np.uint8, size, triangles_off), triangles)
-    return Luvs(uvs.copy(), origins.copy(), shifts.astype(np.int32), materials.copy(), codes, vertices, count)
+    return Luvs(uvs.copy(), shifts.astype(np.int32), materials.copy(), codes, vertices, count)
 
 
 def name_for_mesh(mesh):

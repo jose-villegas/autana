@@ -50,6 +50,9 @@ renderer_set_mesh(entity_t entity, const r3d_lit_mesh_t* mesh) {
         return false;
     }
     r->mesh = *mesh;
+    /* The textures opened were the pack mesh's: another mesh opens its own,
+     * checked against it, when textures are next asked for. */
+    scene_renderer_texturing_free(r);
     scene_renderer_bound(r);
     /* Another mesh's groups are not these bits': start it at its finest. */
     if (r->lod_coarse != NULL) {

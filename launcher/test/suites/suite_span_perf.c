@@ -28,7 +28,7 @@
 #define SPAN_TEXTURE_BYTES                                                                                             \
     (R3D_TEXTURE_HEADER_SIZE + SPAN_TEXTURE_PALETTE + r3d_texture_level_bytes(SPAN_TEXTURE_SIZE_LOG2))
 /* One texel a pixel along both edges of the triangle. */
-static const r3d_span_uv_t triangle_uv[] = {{0, 0}, {SPAN_WIDTH, 0}, {0, SPAN_HEIGHT}};
+static const vec2f_t triangle_uv[] = {{0, 0}, {SPAN_WIDTH, 0}, {0, SPAN_HEIGHT}};
 
 static const r3d_span_vertex_t triangle[] = {
     {0, 0, 0.25F, 255, 32, 64},

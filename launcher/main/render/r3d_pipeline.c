@@ -953,11 +953,11 @@ draw_textured_whole(const r3d_lit_mesh_t* mesh, const r3d_pipeline_vertex_t* con
     }
     const r3d_texture_t* texture = r3d_texture_chart_material(mesh->texturing, cluster, chart);
     r3d_span_vertex_t s[3];
-    r3d_span_uv_t uv[3];
+    vec2f_t uv[3];
     for (int k = 0; k < 3; k++) {
         const uint8_t* rgb = mesh->colors[tri[k]];
         s[k] = span_corner(v[k], rgb);
-        uv[k] = r3d_texture_uv(mesh->texturing, texture, cluster, chart, tri[k]);
+        uv[k] = r3d_texture_uv(mesh->texturing, cluster, chart, tri[k]);
     }
     FRAME_LAP("r3d.draw.set_up");
     r3d_span_textured_triangle(target, &s[0], &s[1], &s[2], uv, texture);
@@ -973,14 +973,14 @@ draw_textured_cut(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint
     rebuilt_corners(mesh, lens, tri, NULL, work, 0, 0);
     clip_vertex_t* poly = work->clip.poly;
     for (int k = 0; k < 3; k++) {
-        const r3d_span_uv_t uv = r3d_texture_uv(mesh->texturing, texture, cluster, chart, tri[k]);
-        poly[k].u = uv.u;
-        poly[k].v = uv.v;
+        const vec2f_t uv = r3d_texture_uv(mesh->texturing, cluster, chart, tri[k]);
+        poly[k].u = uv.x;
+        poly[k].v = uv.y;
     }
     const int n = projected_polygon(lens, double_sided, work);
     const r3d_span_vertex_t* s = work->clip.projected;
     for (int i = 1; i + 1 < n; i++) {
-        const r3d_span_uv_t uv[3] = {{poly[0].u, poly[0].v}, {poly[i].u, poly[i].v}, {poly[i + 1].u, poly[i + 1].v}};
+        const vec2f_t uv[3] = {{poly[0].u, poly[0].v}, {poly[i].u, poly[i].v}, {poly[i + 1].u, poly[i + 1].v}};
         FRAME_LAP("r3d.draw.set_up");
         r3d_span_textured_triangle(target, &s[0], &s[i], &s[i + 1], uv, texture);
         FRAME_LAP("r3d.draw.cluster");
@@ -1133,12 +1133,13 @@ draw_reading_of(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16
         }
         const r3d_lit_cluster_t* c = &mesh->clusters[clusters[i]];
         const draw_mode_t bounded = rows != NULL && !rows[clusters[i]].unbounded ? DRAW_BOUNDED : 0U;
-        /* A cluster with no material, or a mesh without vertex colours to light it, draws plain. */
-        const draw_mode_t plain =
-            (mode & DRAW_TEXTURED) != 0
-                    && (mesh->colors == NULL || mesh->texturing->cluster_material[clusters[i]][0] == R3D_TEXTURE_NONE)
-                ? DRAW_TEXTURED
-                : 0U;
+        /* A cluster with no material, or a mesh without vertex colours to
+         * light it or with flat face colours, draws plain. */
+        const draw_mode_t plain = (mode & DRAW_TEXTURED) != 0
+                                          && (mesh->colors == NULL || mesh->face_colors != NULL
+                                              || mesh->texturing->cluster_material[clusters[i]][0] == R3D_TEXTURE_NONE)
+                                      ? DRAW_TEXTURED
+                                      : 0U;
         if (blend != BLEND_NONE) {
             draw_blended(mesh, lens, clusters[i], cs, &rows[clusters[i]], target, mode | bounded, work,
                          c->triangle_first, c->triangle_first + c->triangle_count, blend == BLEND_DITHER);

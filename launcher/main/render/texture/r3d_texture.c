@@ -34,16 +34,6 @@ build_colormap(r3d_texture_t* t, const uint8_t* palette, const uint8_t tint[3]) 
     }
 }
 
-static bool
-padding_is_zero(const uint8_t* bytes, uint32_t count) {
-    for (uint32_t i = 0; i < count; i++) {
-        if (bytes[i] != 0) {
-            return false;
-        }
-    }
-    return true;
-}
-
 asset_status_t
 r3d_texture_from_asset(const asset_view_t* asset, r3d_texture_t* texture) {
     memset(texture, 0, sizeof *texture);
@@ -57,8 +47,8 @@ r3d_texture_from_asset(const asset_view_t* asset, r3d_texture_t* texture) {
     const int levels = data[R3D_TEXTURE_AT_LEVELS];
     if (asset_read_u16(data + R3D_TEXTURE_AT_FORMAT) != R3D_TEXTURE_INDEX4 || size_log2 < R3D_TEXTURE_SIZE_LOG2_MIN
         || size_log2 > R3D_TEXTURE_SIZE_LOG2_MAX || levels < 1 || size_log2 - (levels - 1) < R3D_TEXTURE_SIZE_LOG2_MIN
-        || !padding_is_zero(data + R3D_TEXTURE_AT_TINT + R3D_TEXTURE_TINT_RGB,
-                            R3D_TEXTURE_TINT_BYTES - R3D_TEXTURE_TINT_RGB)) {
+        || !asset_entry_zero(*asset, R3D_TEXTURE_AT_TINT + R3D_TEXTURE_TINT_RGB,
+                             R3D_TEXTURE_AT_TINT + R3D_TEXTURE_TINT_BYTES)) {
         return ASSET_ERR_FORMAT;
     }
     const uint32_t palette_off = asset_read_u32(data + R3D_TEXTURE_AT_PALETTE_OFF);
@@ -114,21 +104,17 @@ r3d_texture_move_texels(r3d_texture_t* texture, uint8_t* to) {
     return to;
 }
 
-r3d_span_uv_t
-r3d_texture_uv(const r3d_mesh_texturing_t* texturing, const r3d_texture_t* texture, int cluster, int chart,
-               int vertex) {
-    const float side = (float)(1U << texture->size_log2);
+vec2f_t
+r3d_texture_uv(const r3d_mesh_texturing_t* texturing, int cluster, int chart, int vertex) {
     const float unit = 1.0F / (float)(1 << R3D_TEXTURE_UV_SHIFT);
-    const int16_t* origin = texturing->cluster_origin[cluster][chart];
     const int16_t* uv = texturing->uvs[chart == 0 ? vertex : vertex + texturing->cluster_shift[cluster]];
-    return (r3d_span_uv_t){((float)origin[0] * side) + ((float)uv[0] * unit),
-                           ((float)origin[1] * side) + ((float)uv[1] * unit)};
+    return (vec2f_t){(float)uv[0] * unit, (float)uv[1] * unit};
 }
 
 int
 r3d_texture_uvs_material_count(const asset_view_t* uvs) {
     if (asset_entry_validate(*uvs, R3D_TEXTURE_UVS_VERSION, R3D_TEXTURE_UVS_AT_VERSION, R3D_TEXTURE_UVS_HEADER_SIZE,
-                             sizeof(int16_t))
+                             sizeof(int32_t))
         != ASSET_OK) {
         return 0;
     }
@@ -213,7 +199,6 @@ r3d_texture_texturing_from_asset(const asset_view_t* uvs, const asset_pack_t* pa
     const uint32_t triangles = asset_read_u32(data + R3D_TEXTURE_UVS_AT_TRIANGLE_COUNT);
     const uint32_t uv_count = asset_read_u32(data + R3D_TEXTURE_UVS_AT_UV_COUNT);
     const uint32_t uvs_off = asset_read_u32(data + R3D_TEXTURE_UVS_AT_UVS_OFF);
-    const uint32_t origins_off = asset_read_u32(data + R3D_TEXTURE_UVS_AT_ORIGINS_OFF);
     const uint32_t shifts_off = asset_read_u32(data + R3D_TEXTURE_UVS_AT_SHIFTS_OFF);
     const uint32_t clusters_off = asset_read_u32(data + R3D_TEXTURE_UVS_AT_CLUSTERS_OFF);
     const uint32_t triangles_off = asset_read_u32(data + R3D_TEXTURE_UVS_AT_TRIANGLES_OFF);
@@ -224,20 +209,18 @@ r3d_texture_texturing_from_asset(const asset_view_t* uvs, const asset_pack_t* pa
     const uint32_t pair = 2U * sizeof(int16_t);
     const uint32_t codes = (triangles + R3D_TEXTURE_UVS_TRIANGLES_PER_BYTE - 1U) / R3D_TEXTURE_UVS_TRIANGLES_PER_BYTE;
     if (!section_fits(uvs_off, uv_count, pair, sizeof(int16_t), uvs->size)
-        || !section_fits(origins_off, clusters * R3D_TEXTURE_CHARTS, pair, sizeof(int16_t), uvs->size)
         || !section_fits(shifts_off, clusters, sizeof(int32_t), sizeof(int32_t), uvs->size)
         || !section_fits(clusters_off, clusters * R3D_TEXTURE_CHARTS, 1U, 1U, uvs->size)
         || !section_fits(triangles_off, codes, 1U, 1U, uvs->size) || triangles_off + codes != uvs->size) {
         return ASSET_ERR_BOUNDS;
     }
-    const r3d_mesh_texturing_t read = {
-        .uvs = (const int16_t (*)[2])(const void*)(data + uvs_off),
-        .cluster_material = (const uint8_t (*)[R3D_TEXTURE_CHARTS])(const void*)(data + clusters_off),
-        .cluster_origin = (const int16_t (*)[R3D_TEXTURE_CHARTS][2])(const void*)(data + origins_off),
-        .cluster_shift = (const int32_t*)(const void*)(data + shifts_off),
-        .triangle_code = data + triangles_off,
-        .materials = materials,
-        .material_count = count};
+    const r3d_mesh_texturing_t read = {.uvs = (const int16_t (*)[2])(const void*)(data + uvs_off),
+                                       .cluster_material =
+                                           (const uint8_t (*)[R3D_TEXTURE_CHARTS])(const void*)(data + clusters_off),
+                                       .cluster_shift = (const int32_t*)(const void*)(data + shifts_off),
+                                       .triangle_code = data + triangles_off,
+                                       .materials = materials,
+                                       .material_count = count};
     if (!charts_valid(mesh, count, uv_count, &read)) {
         return ASSET_ERR_FORMAT;
     }

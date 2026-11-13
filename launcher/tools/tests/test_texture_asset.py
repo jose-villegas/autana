@@ -47,6 +47,15 @@ def level_palette_values(indexed, level):
     return palette[np.asarray(indexed.levels[level])]
 
 
+def assert_same_mapping(stored, expected):
+    """Stored UVs (1/16 texel) map as `expected` (texels) do: off by one whole number of texture sides, the same at
+    every vertex, so the repeating texture draws the same."""
+    texels = stored.astype(np.float64) / (1 << luvs.UV_SHIFT)
+    drop = (expected - texels)[0]
+    np.testing.assert_allclose(drop / SIZE, np.round(drop / SIZE))
+    np.testing.assert_allclose(texels + drop, expected, atol=1.0 / (1 << luvs.UV_SHIFT))
+
+
 class LtexTests(unittest.TestCase):
     def test_round_trip(self):
         indexed = simple_indexed()
@@ -138,17 +147,16 @@ class LuvsTests(unittest.TestCase):
     def test_round_trip(self):
         # Three vertices, then the first cluster's two again on chart 1.
         value = luvs.Luvs(np.array([[1, -2], [300, -400], [5, 6], [7, 8], [-9, 10]], dtype=np.int16),
-                          np.array([[[0, 1], [4, -5]], [[-3, 2], [0, 0]]], dtype=np.int16),
                           np.array([3, 0], dtype=np.int32),
                           np.array([[0, 1], [1, luvs.NONE]], dtype=np.uint8),
                           np.array([1, 0, 2, 1, 0, 0, 0, 0, 2], dtype=np.uint8), 3, 2)
         decoded = luvs.decode(luvs.pack_luvs(value))
-        for field in ("uvs", "origins", "shifts", "materials", "codes"):
+        for field in ("uvs", "shifts", "materials", "codes"):
             np.testing.assert_array_equal(getattr(decoded, field), getattr(value, field), field)
         self.assertEqual((decoded.vertex_count, decoded.material_count), (3, 2))
 
     def test_decode_rejects_bad_entries(self):
-        value = luvs.Luvs(np.zeros((3, 2), dtype=np.int16), np.zeros((1, luvs.CHARTS, 2), dtype=np.int16),
+        value = luvs.Luvs(np.zeros((3, 2), dtype=np.int16),
                           np.zeros(1, dtype=np.int32), np.zeros((1, luvs.CHARTS), dtype=np.uint8),
                           np.ones(2, dtype=np.uint8), 3, 1)
         entry = luvs.pack_luvs(value)
@@ -228,11 +236,9 @@ class TexturedEntriesTests(unittest.TestCase):
         mesh, source = fake_scene()
         rows = luvs.textured_entries(mesh, "m", source, ["Brick_*"], SIZE)
         decoded = luvs.decode(rows[-1][2])
-        origin = decoded.origins[0, 0].astype(np.int64)
-        texels = (decoded.uvs.astype(np.float64) / (1 << luvs.UV_SHIFT)) + origin * SIZE
         corners = source.p[:, :2]
         expected = np.stack([corners[:, 0] * SIZE, (1.0 - corners[:, 1]) * SIZE], axis=1)
-        np.testing.assert_allclose(texels, expected, atol=1.0 / (1 << luvs.UV_SHIFT))
+        assert_same_mapping(decoded.uvs, expected)
 
     def test_triangles_on_another_material_draw_plain(self):
         mesh, source = fake_scene(materials=(0, 1))
@@ -253,10 +259,8 @@ class TexturedEntriesTests(unittest.TestCase):
         self.assertEqual(list(decoded.codes), [2, 1])
         self.assertEqual(decoded.materials.tolist(), [[0, 0]])
         self.assertEqual((len(decoded.uvs), int(decoded.shifts[0])), (8, 4))
-        on_1 = decoded.uvs[4:].astype(np.float64) / (1 << luvs.UV_SHIFT) + decoded.origins[0, 1] * SIZE
         flat = source.p[:3, :2]
-        np.testing.assert_allclose(on_1[:3], np.stack([flat[:, 0] * SIZE, (1.0 - flat[:, 1]) * SIZE], axis=1),
-                                   atol=1.0 / (1 << luvs.UV_SHIFT))
+        assert_same_mapping(decoded.uvs[4:7], np.stack([flat[:, 0] * SIZE, (1.0 - flat[:, 1]) * SIZE], axis=1))
 
     def test_a_cluster_takes_at_most_its_charts(self):
         mesh, source = fake_scene()

@@ -40,27 +40,9 @@
 _Static_assert(BAYER4_LEVELS << DITHER_SHIFT == 1 << LIGHT_FRAC, "a threshold stays under one level");
 _Static_assert((1 << (UV_HALF_BITS - UV_FRAC)) == (int)UV_WRAP, "u and v wrap at their integer bits");
 
-/* A value across the screen: at the centre of the origin pixel, and its steps. */
-typedef struct {
-    float base, dx, dy;
-} plane_t;
-
 static inline float
-plane_at(const plane_t* p, float x, float y) {
+plane_at(const r3d_span_plane_t* p, float x, float y) {
     return p->base + (p->dx * x) + (p->dy * y);
-}
-
-typedef struct {
-    float e1x, e1y, e2x, e2y, inv, ox, oy;
-} frame_t;
-
-static inline plane_t
-plane_of(const frame_t* f, float va, float vb, float vc) {
-    const float d1 = vb - va;
-    const float d2 = vc - va;
-    const float ddx = ((d1 * f->e2y) - (d2 * f->e1y)) * f->inv;
-    const float ddy = ((d2 * f->e1x) - (d1 * f->e2x)) * f->inv;
-    return (plane_t){va + (ddx * f->ox) + (ddy * f->oy), ddx, ddy};
 }
 
 /* What every span of one triangle reads. */
@@ -115,9 +97,9 @@ fill_colormap(uint16_t* depth, uint16_t* color, int count, carry_t* c, const sam
 
 /* What the set-up hands the row walk. */
 typedef struct {
-    plane_t z;     /* 16.8 depth */
-    plane_t s, t;  /* u, v in the level's texels */
-    plane_t level; /* 8.8 light level */
+    r3d_span_plane_t z;     /* 16.8 depth */
+    r3d_span_plane_t s, t;  /* u, v in the level's texels */
+    r3d_span_plane_t level; /* 8.8 light level */
     int32_t depth_max;
     int x0, y0; /* the origin pixel */
     sampler_t sampler;
@@ -168,11 +150,6 @@ pick_level(const setup_t* su, const r3d_texture_t* texture) {
     return level;
 }
 
-static inline float
-pixels_of(int32_t subpixels) {
-    return (float)subpixels * (1.0F / (float)R3D_SUBPIXEL);
-}
-
 /* A vertex colour's luminance, 0..255, as an 8.8 level, 255 the last. */
 static inline float
 light_level(const r3d_span_vertex_t* v) {
@@ -183,37 +160,30 @@ light_level(const r3d_span_vertex_t* v) {
 }
 
 static bool
-set_up(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[CORNERS], const r3d_span_uv_t uv[CORNERS],
+set_up(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[CORNERS], const vec2f_t uv[CORNERS],
        const r3d_texture_t* texture, recti_t box, setup_t* su) {
-    const float ax = pixels_of(v[0]->x);
-    const float ay = pixels_of(v[0]->y);
-    const float e1x = pixels_of(v[1]->x) - ax;
-    const float e1y = pixels_of(v[1]->y) - ay;
-    const float e2x = pixels_of(v[2]->x) - ax;
-    const float e2y = pixels_of(v[2]->y) - ay;
-    const float area2 = (e1x * e2y) - (e2x * e1y);
-    if (area2 > -1e-6F && area2 < 1e-6F) {
+    r3d_span_frame_t f;
+    if (!r3d_span_frame_of(v[0], v[1], v[2], box.x, box.y, &f)) {
         return false;
     }
-    const frame_t f = {e1x, e1y, e2x, e2y, mathf_recip(area2), (float)box.x + 0.5F - ax, (float)box.y + 0.5F - ay};
     su->x0 = box.x;
     su->y0 = box.y;
     const float depth_scale = (float)DEPTH_MAX;
-    su->z = plane_of(&f, v[0]->z * depth_scale, v[1]->z * depth_scale, v[2]->z * depth_scale);
+    su->z = r3d_span_plane_of(&f, v[0]->z * depth_scale, v[1]->z * depth_scale, v[2]->z * depth_scale);
     const uint16_t cap =
         target->skip_hidden ? r3d_span_depth_limit(mathf_max(v[0]->z, mathf_max(v[1]->z, v[2]->z))) : R3D_DEPTH_NEAREST;
     su->depth_max = cap == R3D_DEPTH_NEAREST ? DEPTH_MAX : (((int32_t)cap << R3D_DEPTH_SHIFT) | 0xFF);
-    su->s = plane_of(&f, uv[0].u, uv[1].u, uv[2].u);
-    su->t = plane_of(&f, uv[0].v, uv[1].v, uv[2].v);
+    su->s = r3d_span_plane_of(&f, uv[0].x, uv[1].x, uv[2].x);
+    su->t = r3d_span_plane_of(&f, uv[0].y, uv[1].y, uv[2].y);
     const int level = pick_level(su, texture);
     const float scale = 1.0F / (float)(1U << level);
-    su->s = (plane_t){su->s.base * scale, su->s.dx * scale, su->s.dy * scale};
-    su->t = (plane_t){su->t.base * scale, su->t.dx * scale, su->t.dy * scale};
+    su->s = (r3d_span_plane_t){su->s.base * scale, su->s.dx * scale, su->s.dy * scale};
+    su->t = (r3d_span_plane_t){su->t.base * scale, su->t.dx * scale, su->t.dy * scale};
     const int side_log2 = texture->size_log2 - level;
     const uint32_t mask = (1U << side_log2) - 1U;
     su->sampler =
         (sampler_t){texture->texels[level], mask, mask << side_log2, (uint32_t)(V_INT_SHIFT - side_log2), texture};
-    su->level = plane_of(&f, light_level(v[0]), light_level(v[1]), light_level(v[2]));
+    su->level = r3d_span_plane_of(&f, light_level(v[0]), light_level(v[1]), light_level(v[2]));
     return true;
 }
 
@@ -222,7 +192,7 @@ set_up(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[CORNERS
  * v1's row and v1-v2 from it. */
 void
 r3d_span_textured_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
-                           const r3d_span_vertex_t* c, const r3d_span_uv_t uv[CORNERS], const r3d_texture_t* texture) {
+                           const r3d_span_vertex_t* c, const vec2f_t uv[CORNERS], const r3d_texture_t* texture) {
     const recti_t box = r3d_span_window_box(target, r3d_span_extent_limits(a, b, c, 0, 0).centres);
     const int32_t area2 = r3d_span_area2(a, b, c);
     if (recti_is_empty(box) || area2 == 0 || r3d_span_stop_after != 0) {

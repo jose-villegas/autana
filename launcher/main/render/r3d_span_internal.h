@@ -20,6 +20,55 @@
 #define R3D_SPAN_COLOR_FRAC_BITS 8
 #define R3D_SPAN_COLOR_SCALE     ((float)(1 << R3D_SPAN_COLOR_FRAC_BITS))
 
+/* A position's pixels from its subpixels. */
+static inline float
+r3d_span_pixels(int32_t subpixels) {
+    return (float)subpixels * (1.0F / (float)R3D_SUBPIXEL);
+}
+
+/* What every attribute's plane over a triangle shares: the edges from corner
+ * a, the reciprocal of twice the area, and the origin pixel's centre from a. */
+typedef struct {
+    float e1x, e1y, e2x, e2y, inv, ox, oy;
+} r3d_span_frame_t;
+
+/* An attribute across the screen: its value at the origin pixel's centre and
+ * its steps a column and a row. */
+typedef struct {
+    float base, dx, dy;
+} r3d_span_plane_t;
+
+/* The frame of triangle a, b, c from origin pixel (x_origin, y_anchor);
+ * false for a triangle with no area. */
+static inline __attribute__((always_inline)) bool
+r3d_span_frame_of(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c, int x_origin,
+                  int y_anchor, r3d_span_frame_t* f) {
+    const float ax = r3d_span_pixels(a->x);
+    const float ay = r3d_span_pixels(a->y);
+    f->e1x = r3d_span_pixels(b->x) - ax;
+    f->e1y = r3d_span_pixels(b->y) - ay;
+    f->e2x = r3d_span_pixels(c->x) - ax;
+    f->e2y = r3d_span_pixels(c->y) - ay;
+    const float area2 = (f->e1x * f->e2y) - (f->e2x * f->e1y);
+    if (area2 > -1e-6F && area2 < 1e-6F) {
+        return false;
+    }
+    f->inv = mathf_recip(area2);
+    f->ox = (float)x_origin + 0.5F - ax;
+    f->oy = (float)y_anchor + 0.5F - ay;
+    return true;
+}
+
+/* The plane of an attribute worth va, vb, vc at the frame's corners. */
+static inline __attribute__((always_inline)) r3d_span_plane_t
+r3d_span_plane_of(const r3d_span_frame_t* f, float va, float vb, float vc) {
+    const float d1 = vb - va;
+    const float d2 = vc - va;
+    const float ddx = ((d1 * f->e2y) - (d2 * f->e1y)) * f->inv;
+    const float ddy = ((d2 * f->e1x) - (d1 * f->e2x)) * f->inv;
+    return (r3d_span_plane_t){va + (ddx * f->ox) + (ddy * f->oy), ddx, ddy};
+}
+
 /* An upper bound on the depth a triangle writes inside `box`, as the
  * 16-bit depth, from its depth plane in 16.8: `top` at the centre of pixel
  * (box.x, box.y), stepping `dx` a column and `dy` a row. */

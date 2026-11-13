@@ -92,14 +92,12 @@ take_texture(void) {
     const r3d_lit_mesh_t* m = &mesh[0].mesh;
     int16_t (*uvs)[2] = lab_scene_take(sizeof(int16_t[2]) * (size_t)m->vertex_count);
     uint8_t (*material)[R3D_TEXTURE_CHARTS] = lab_scene_take(sizeof *material * (size_t)m->cluster_count);
-    int16_t (*origin)[R3D_TEXTURE_CHARTS][2] = lab_scene_take(sizeof *origin * (size_t)m->cluster_count);
     int32_t* shift = lab_scene_take(sizeof *shift * (size_t)m->cluster_count);
     /* The mesh is built later: its codes cover every triangle it can hold. */
     const size_t codes = ((size_t)mesh[0].capacity.triangles + R3D_TEXTURE_UVS_TRIANGLES_PER_BYTE - 1U)
                          / R3D_TEXTURE_UVS_TRIANGLES_PER_BYTE;
     uint8_t* code = lab_scene_take(codes);
-    if (ltex == NULL || texture == NULL || uvs == NULL || material == NULL || origin == NULL || shift == NULL
-        || code == NULL) {
+    if (ltex == NULL || texture == NULL || uvs == NULL || material == NULL || shift == NULL || code == NULL) {
         return false;
     }
     stress_texture_write(ltex);
@@ -112,7 +110,6 @@ take_texture(void) {
     for (int c = 0; c < m->cluster_count; c++) {
         material[c][0] = 0;
     }
-    memset(origin, 0, sizeof *origin * (size_t)m->cluster_count);
     memset(shift, 0, sizeof *shift * (size_t)m->cluster_count);
     uint8_t chart_0 = 0;
     for (unsigned k = 0; k < R3D_TEXTURE_UVS_TRIANGLES_PER_BYTE; k++) {
@@ -121,7 +118,6 @@ take_texture(void) {
     memset(code, chart_0, codes);
     texturing = (r3d_mesh_texturing_t){.uvs = (const int16_t (*)[2])uvs,
                                        .cluster_material = (const uint8_t (*)[R3D_TEXTURE_CHARTS])material,
-                                       .cluster_origin = (const int16_t (*)[R3D_TEXTURE_CHARTS][2])origin,
                                        .cluster_shift = shift,
                                        .triangle_code = code,
                                        .materials = texture,

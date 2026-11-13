@@ -16,6 +16,7 @@
 #include <stdint.h>
 
 #include "asset/asset_pack.h"
+#include "math/linear/vec2f.h"
 #include "render/r3d_lit_mesh.h"
 #include "render/r3d_span.h"
 
@@ -81,49 +82,39 @@ r3d_texture_level_bytes(int side_log2) {
     return (1U << (2 * side_log2)) / 2U;
 }
 
-/* A triangle's corner in texels of level 0. */
-typedef struct {
-    float u, v;
-} r3d_span_uv_t;
-
 /* r3d_span_triangle() with a texture: the same coverage, the same depth
  * test, capped as r3d_span_capped_triangle() when target->skip_hidden. The
  * level is chosen once per triangle from the texels a pixel steps. A target
  * with writers is not supported: its caller draws such a triangle plain. */
 void r3d_span_textured_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
-                                const r3d_span_vertex_t* c, const r3d_span_uv_t uv[3], const r3d_texture_t* texture);
+                                const r3d_span_vertex_t* c, const vec2f_t uv[3], const r3d_texture_t* texture);
 
-/* A mesh's textures: up to R3D_TEXTURE_CHARTS charts per cluster, each a
- * material and an origin, a UV per vertex per chart, and a code per
- * triangle, set on r3d_lit_mesh_t.texturing. A chart's UVs count from its
- * origin, whole texture sides, so a wall many repeats long still fits int16
- * at its vertices. A triangle draws with the chart its code names: it lies
- * on that chart's material and in the plane its UVs map; the rest of the
- * cluster draws plain, so a texture ends where its material does. */
+/* A mesh's textures, set on r3d_lit_mesh_t.texturing: up to
+ * R3D_TEXTURE_CHARTS charts per cluster, each a material, a UV per vertex
+ * per chart, and a code per triangle naming the chart it draws with. The
+ * rest of the cluster draws plain, as does a cluster in an LOD blend. */
 #define R3D_TEXTURE_NONE     0xFFU /* a chart with no material: it and every later chart of its cluster unused */
 #define R3D_TEXTURE_UV_SHIFT 4     /* a stored UV is 1/16 texel */
 #define R3D_TEXTURE_CHARTS   2
 #define R3D_TEXTURE_PLAIN    0U /* a triangle's code drawn with its vertex colours alone; else 1 + its chart */
 
 typedef struct r3d_mesh_texturing {
-    /* In 1/16 texel of level 0 from the chart's origin: each vertex's on
+    /* In 1/16 texel of level 0, whole sides dropped: each vertex's on
      * chart 0 at its index, a cluster's chart 1 ones at vertex + its shift. */
     const int16_t (*uvs)[2];
-    const uint8_t (*cluster_material)[R3D_TEXTURE_CHARTS];  /* an index into `materials`, or R3D_TEXTURE_NONE */
-    const int16_t (*cluster_origin)[R3D_TEXTURE_CHARTS][2]; /* in texture sides */
-    const int32_t* cluster_shift;                           /* where chart 1's UVs sit from the vertex index */
-    const uint8_t* triangle_code;                           /* R3D_TEXTURE_UVS_CODE_BITS per triangle */
+    const uint8_t (*cluster_material)[R3D_TEXTURE_CHARTS]; /* an index into `materials`, or R3D_TEXTURE_NONE */
+    const int32_t* cluster_shift;                          /* where chart 1's UVs sit from the vertex index */
+    const uint8_t* triangle_code;                          /* R3D_TEXTURE_UVS_CODE_BITS per triangle */
     const r3d_texture_t* materials;
     int material_count;
 } r3d_mesh_texturing_t;
 
 /* A mesh's texturing is an LUVS pack entry beside its LMSH
- * (docs/assets/formats/LUVS.md): the UVs, each cluster's origins and chart
- * 1 shift, each cluster's materials, then the triangle codes. Material k is
+ * (docs/assets/formats/LUVS.md): the UVs, each cluster's chart 1 shift, each cluster's materials, then the triangle codes. Material k is
  * the mesh's LTEX sibling <mesh id>R3D_TEXTURE_MATERIAL_SUFFIX<k>. */
 #define R3D_TEXTURE_UVS_ASSET              ASSET_TYPE('L', 'U', 'V', 'S')
 #define R3D_TEXTURE_UVS_VERSION            2U
-#define R3D_TEXTURE_UVS_HEADER_SIZE        40U
+#define R3D_TEXTURE_UVS_HEADER_SIZE        36U
 #define R3D_TEXTURE_UVS_AT_VERSION         0U
 #define R3D_TEXTURE_UVS_AT_MATERIAL_COUNT  2U
 #define R3D_TEXTURE_UVS_AT_VERTEX_COUNT    4U
@@ -131,10 +122,9 @@ typedef struct r3d_mesh_texturing {
 #define R3D_TEXTURE_UVS_AT_TRIANGLE_COUNT  12U
 #define R3D_TEXTURE_UVS_AT_UV_COUNT        16U /* the vertices' and the chart 1 UVs after them */
 #define R3D_TEXTURE_UVS_AT_UVS_OFF         20U
-#define R3D_TEXTURE_UVS_AT_ORIGINS_OFF     24U
-#define R3D_TEXTURE_UVS_AT_SHIFTS_OFF      28U
-#define R3D_TEXTURE_UVS_AT_CLUSTERS_OFF    32U /* the cluster materials */
-#define R3D_TEXTURE_UVS_AT_TRIANGLES_OFF   36U /* the triangle codes */
+#define R3D_TEXTURE_UVS_AT_SHIFTS_OFF      24U
+#define R3D_TEXTURE_UVS_AT_CLUSTERS_OFF    28U /* the cluster materials */
+#define R3D_TEXTURE_UVS_AT_TRIANGLES_OFF   32U /* the triangle codes */
 #define R3D_TEXTURE_UVS_CODE_BITS          2U
 #define R3D_TEXTURE_UVS_TRIANGLES_PER_BYTE 4U
 #define R3D_TEXTURE_UVS_NAME_SUFFIX        ".uvs"
@@ -169,6 +159,5 @@ r3d_texture_chart_material(const r3d_mesh_texturing_t* texturing, int cluster, i
 }
 
 /* Vertex `vertex`'s UV in level-0 texels of chart `chart` of its cluster
- * `cluster`, whose material is `texture`. */
-r3d_span_uv_t r3d_texture_uv(const r3d_mesh_texturing_t* texturing, const r3d_texture_t* texture, int cluster,
-                             int chart, int vertex);
+ * `cluster`. */
+vec2f_t r3d_texture_uv(const r3d_mesh_texturing_t* texturing, int cluster, int chart, int vertex);

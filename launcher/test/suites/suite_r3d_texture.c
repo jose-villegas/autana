@@ -127,7 +127,7 @@ vertex(float x, float y, float z, float grey) {
 /* The triangle over the target's top-left half, every corner `grey`, drawn
  * into target `which` with the corners' `uv`. */
 static void
-draw_corner(int which, float grey, const r3d_span_uv_t uv[3]) {
+draw_corner(int which, float grey, const vec2f_t uv[3]) {
     const r3d_span_target_t target = target_at(which);
     const r3d_span_vertex_t a = vertex(0, 0, 0.5F, grey), b = vertex(SIDE, 0, 0.5F, grey),
                             c = vertex(0, SIDE, 0.5F, grey);
@@ -135,7 +135,7 @@ draw_corner(int which, float grey, const r3d_span_uv_t uv[3]) {
 }
 
 static void
-random_triangle(rng_t* random, r3d_span_vertex_t v[3], r3d_span_uv_t uv[3]) {
+random_triangle(rng_t* random, r3d_span_vertex_t v[3], vec2f_t uv[3]) {
     for (int k = 0; k < 3; k++) {
         v[k] = (r3d_span_vertex_t){(int32_t)rng_below(random, (SIDE + 16) * R3D_SUBPIXEL) - (8 * R3D_SUBPIXEL),
                                    (int32_t)rng_below(random, (SIDE + 16) * R3D_SUBPIXEL) - (8 * R3D_SUBPIXEL),
@@ -143,7 +143,7 @@ random_triangle(rng_t* random, r3d_span_vertex_t v[3], r3d_span_uv_t uv[3]) {
                                    (float)rng_below(random, 256),
                                    (float)rng_below(random, 256),
                                    (float)rng_below(random, 256)};
-        uv[k] = (r3d_span_uv_t){(float)rng_below(random, 64) - 32.0F, (float)rng_below(random, 64) - 32.0F};
+        uv[k] = (vec2f_t){(float)rng_below(random, 64) - 32.0F, (float)rng_below(random, 64) - 32.0F};
     }
 }
 
@@ -158,7 +158,7 @@ test_textured_covers_what_plain_covers(void) {
     rng_seed(&random, RANDOM_SEED);
     for (int t = 0; t < RANDOM_TRIS; t++) {
         r3d_span_vertex_t v[3];
-        r3d_span_uv_t uv[3];
+        vec2f_t uv[3];
         random_triangle(&random, v, uv);
         clear();
         const r3d_span_target_t plain = target_at(0);
@@ -177,7 +177,7 @@ test_textured_covers_what_plain_covers(void) {
 static void
 test_shared_edge_neither_cracks_nor_overlaps(void) {
     fixture();
-    const r3d_span_uv_t uv[3] = {{0, 0}, {8, 0}, {8, 8}};
+    const vec2f_t uv[3] = {{0, 0}, {8, 0}, {8, 8}};
     const r3d_span_vertex_t a = vertex(3.3F, 2.7F, 0.5F, 100), b = vertex(41.1F, 5.2F, 0.5F, 100),
                             c = vertex(38.6F, 44.9F, 0.5F, 100), d = vertex(1.4F, 40.3F, 0.5F, 100);
     clear();
@@ -217,7 +217,7 @@ static void
 test_affine_samples_the_texel_under_each_centre(void) {
     fixture();
     const float grey = 255.0F;
-    const r3d_span_uv_t uv[3] = {{0, 0.5F}, {SIDE, 0.5F}, {0, 0.5F}};
+    const vec2f_t uv[3] = {{0, 0.5F}, {SIDE, 0.5F}, {0, 0.5F}};
     clear();
     draw_corner(0, grey, uv);
     for (int x = 0; x < SIDE / 2; x++) {
@@ -233,7 +233,7 @@ test_affine_samples_the_texel_under_each_centre(void) {
 static void
 test_minified_triangle_takes_the_matching_level(void) {
     fixture();
-    const r3d_span_uv_t uv[3] = {{0, 0}, {4 * SIDE, 0}, {0, 4 * SIDE}};
+    const vec2f_t uv[3] = {{0, 0}, {4 * SIDE, 0}, {0, 4 * SIDE}};
     clear();
     draw_corner(0, UINT8_MAX, uv);
     const int expected = (2 * 16 * 255) / R3D_TEXTURE_ONE;
@@ -245,7 +245,7 @@ test_minified_triangle_takes_the_matching_level(void) {
 static void
 test_moved_texels_draw_without_the_entry(void) {
     fixture();
-    const r3d_span_uv_t uv[3] = {{0, 0}, {SIDE, 0}, {0, SIDE}};
+    const vec2f_t uv[3] = {{0, 0}, {SIDE, 0}, {0, SIDE}};
     clear();
     draw_corner(0, UINT8_MAX, uv);
     const size_t bytes = r3d_texture_texel_bytes(texture);
@@ -276,7 +276,7 @@ test_texel_at_the_mean_draws_the_vertex_colour(void) {
     fixture();
     const float grey = 100.0F;
     /* Texel (7, 1) holds MEAN_INDEX, whose colour is R3D_TEXTURE_ONE. */
-    const r3d_span_uv_t uv[3] = {{7.5F, 1.5F}, {7.5F, 1.5F}, {7.5F, 1.5F}};
+    const vec2f_t uv[3] = {{7.5F, 1.5F}, {7.5F, 1.5F}, {7.5F, 1.5F}};
     clear();
     _Static_assert(MEAN_INDEX * 16 == R3D_TEXTURE_ONE, "MEAN_INDEX's colour is the mean");
     draw_corner(0, grey, uv);
@@ -317,9 +317,7 @@ test_entry_rejects_bad_headers(void) {
 #define READ_TRIANGLES    10 /* three bytes of triangle codes, the last one part full */
 #define READ_LAST         9  /* the second cluster's last triangle, the one on a chart */
 #define READ_CHART_OFFSET 2  /* the second cluster's first vertex, 2, reads chart 1 at 4 */
-#define ORIGIN_U          1
-#define ORIGIN_V          2
-#define UV_U_UNITS        3 /* 1/16 texel */
+#define UV_U_UNITS        3  /* 1/16 texel */
 #define UV_V_UNITS        5
 #define SCENE_VERTICES    3
 #define SCENE_TRIANGLES   2
@@ -367,7 +365,6 @@ scene_cleanup(void) {
 typedef struct {
     uint32_t vertices, uv_count, clusters, triangles;
     const int16_t (*uvs)[2];
-    const int16_t (*origins)[R3D_TEXTURE_CHARTS][2];
     const int32_t* shifts;
     const uint8_t (*materials)[R3D_TEXTURE_CHARTS];
     const uint8_t* codes;
@@ -378,8 +375,7 @@ typedef struct {
 static uint32_t
 write_luvs(uint8_t* b, const luvs_parts_t* in) {
     const uint32_t uvs_off = R3D_TEXTURE_UVS_HEADER_SIZE;
-    const uint32_t origins_off = uvs_off + (in->uv_count * UV_PAIR_BYTES);
-    const uint32_t shifts_off = origins_off + (in->clusters * R3D_TEXTURE_CHARTS * UV_PAIR_BYTES);
+    const uint32_t shifts_off = uvs_off + (in->uv_count * UV_PAIR_BYTES);
     const uint32_t clusters_off = shifts_off + (in->clusters * sizeof(int32_t));
     const uint32_t triangles_off = clusters_off + (in->clusters * R3D_TEXTURE_CHARTS);
     const uint32_t code_bytes =
@@ -392,12 +388,10 @@ write_luvs(uint8_t* b, const luvs_parts_t* in) {
     put_u32(b + R3D_TEXTURE_UVS_AT_TRIANGLE_COUNT, in->triangles);
     put_u32(b + R3D_TEXTURE_UVS_AT_UV_COUNT, in->uv_count);
     put_u32(b + R3D_TEXTURE_UVS_AT_UVS_OFF, uvs_off);
-    put_u32(b + R3D_TEXTURE_UVS_AT_ORIGINS_OFF, origins_off);
     put_u32(b + R3D_TEXTURE_UVS_AT_SHIFTS_OFF, shifts_off);
     put_u32(b + R3D_TEXTURE_UVS_AT_CLUSTERS_OFF, clusters_off);
     put_u32(b + R3D_TEXTURE_UVS_AT_TRIANGLES_OFF, triangles_off);
     memcpy(b + uvs_off, in->uvs, in->uv_count * UV_PAIR_BYTES);
-    memcpy(b + origins_off, in->origins, in->clusters * R3D_TEXTURE_CHARTS * UV_PAIR_BYTES);
     memcpy(b + shifts_off, in->shifts, in->clusters * sizeof(int32_t));
     memcpy(b + clusters_off, in->materials, in->clusters * R3D_TEXTURE_CHARTS);
     memcpy(b + triangles_off, in->codes, code_bytes);
@@ -478,7 +472,6 @@ scene_mesh(scene_t* s, int triangles, uint8_t codes, int charts) {
                                .cluster_count = 1,
                                .node_count = 1,
                                .position_scale = 1};
-    const int16_t origins[1][R3D_TEXTURE_CHARTS][2] = {{{0, 0}, {0, 0}}};
     const int32_t shifts[1] = {vertices};
     const uint8_t materials[1][R3D_TEXTURE_CHARTS] = {{0, charts > 1 ? 0 : R3D_TEXTURE_NONE}};
     const luvs_parts_t parts = {(uint32_t)vertices,
@@ -486,7 +479,6 @@ scene_mesh(scene_t* s, int triangles, uint8_t codes, int charts) {
                                 1,
                                 (uint32_t)triangles,
                                 s->uvs,
-                                origins,
                                 shifts,
                                 materials,
                                 &codes};
@@ -544,13 +536,11 @@ static const r3d_lit_cluster_t read_clusters[READ_CLUSTERS] = {
 static uint32_t
 write_read_entry(scene_t* s) {
     const int16_t uvs[READ_UVS][2] = {{0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {UV_U_UNITS, UV_V_UNITS}};
-    const int16_t origins[READ_CLUSTERS][R3D_TEXTURE_CHARTS][2] = {{{0, 0}, {0, 0}}, {{0, 0}, {ORIGIN_U, ORIGIN_V}}};
     const int32_t shifts[READ_CLUSTERS] = {0, READ_CHART_OFFSET};
     const uint8_t materials[READ_CLUSTERS][R3D_TEXTURE_CHARTS] = {{0, R3D_TEXTURE_NONE}, {0, 0}};
     uint8_t codes[3] = {0};
     codes[READ_LAST / R3D_TEXTURE_UVS_TRIANGLES_PER_BYTE] = code_at(READ_LAST, 2);
-    const luvs_parts_t parts = {READ_VERTICES, READ_UVS, READ_CLUSTERS, READ_TRIANGLES, uvs,
-                                origins,       shifts,   materials,     codes};
+    const luvs_parts_t parts = {READ_VERTICES, READ_UVS, READ_CLUSTERS, READ_TRIANGLES, uvs, shifts, materials, codes};
     return write_luvs(s->luvs, &parts);
 }
 
@@ -577,14 +567,14 @@ test_luvs_entry_opens_and_exposes_its_codes_and_uvs(void) {
         TEST_ASSERT_EQUAL_MESSAGE(t == READ_LAST ? 2U : R3D_TEXTURE_PLAIN, r3d_texture_triangle_code(&s->texturing, t),
                                   "a triangle code");
     }
-    /* Chart 1's origin counts in texture sides, the vertex's UV past its
-     * shift in 1/16 texel; chart 0 reads the vertex's own. */
-    const r3d_span_uv_t on_1 = r3d_texture_uv(&s->texturing, &s->material, 1, 1, READ_VERTICES - 1);
-    TEST_ASSERT_EQUAL_FLOAT((float)(ORIGIN_U * TEX_SIDE) + ((float)UV_U_UNITS / (1 << R3D_TEXTURE_UV_SHIFT)), on_1.u);
-    TEST_ASSERT_EQUAL_FLOAT((float)(ORIGIN_V * TEX_SIDE) + ((float)UV_V_UNITS / (1 << R3D_TEXTURE_UV_SHIFT)), on_1.v);
-    const r3d_span_uv_t on_0 = r3d_texture_uv(&s->texturing, &s->material, 1, 0, READ_VERTICES - 1);
-    TEST_ASSERT_EQUAL_FLOAT(0.0F, on_0.u);
-    TEST_ASSERT_EQUAL_FLOAT(0.0F, on_0.v);
+    /* Chart 1 reads the vertex's UV past its shift, in 1/16 texel; chart 0
+     * reads the vertex's own. */
+    const vec2f_t on_1 = r3d_texture_uv(&s->texturing, 1, 1, READ_VERTICES - 1);
+    TEST_ASSERT_EQUAL_FLOAT((float)UV_U_UNITS / (1 << R3D_TEXTURE_UV_SHIFT), on_1.x);
+    TEST_ASSERT_EQUAL_FLOAT((float)UV_V_UNITS / (1 << R3D_TEXTURE_UV_SHIFT), on_1.y);
+    const vec2f_t on_0 = r3d_texture_uv(&s->texturing, 1, 0, READ_VERTICES - 1);
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, on_0.x);
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, on_0.y);
 }
 
 static void
@@ -593,7 +583,6 @@ expect_refused(scene_t* s, uint32_t size, const r3d_lit_mesh_t* mesh, asset_stat
     TEST_ASSERT_EQUAL_MESSAGE(expected, open_texturing(s, size, mesh), why);
     TEST_ASSERT_NULL_MESSAGE(s->texturing.uvs, why);
     TEST_ASSERT_NULL_MESSAGE(s->texturing.cluster_material, why);
-    TEST_ASSERT_NULL_MESSAGE(s->texturing.cluster_origin, why);
     TEST_ASSERT_NULL_MESSAGE(s->texturing.cluster_shift, why);
     TEST_ASSERT_NULL_MESSAGE(s->texturing.triangle_code, why);
     TEST_ASSERT_NULL_MESSAGE(s->texturing.materials, why);
