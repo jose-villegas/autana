@@ -54,7 +54,8 @@ SUB_STAGE_FIGURE_SIZE = (10, 4)
 SUB_STAGE_SUFFIX = "sub-stages"
 TINT = 0.5  # the second round of sub-stage colours: each slot colour this far towards white
 SUB_STAGE_LEGEND_ANCHOR = (0, 1)  # above the bar, left, under its title
-SUB_STAGE_TITLE_PAD = 20  # points between a title and the bar, room for the legend
+SUB_STAGE_TITLE_PAD = 20  # points between a title and the bar, room for one legend row
+SUB_STAGE_LEGEND_COLUMNS = 7  # legend entries a row holds inside the figure's width
 
 
 def view_names(source=VIEW_TABLE):
@@ -283,13 +284,18 @@ def sub_stage_chart(stages, path):
             left += value
         axis.annotate(f"{total:.1f} ms", (total, 0), xytext=(6, 0), textcoords="offset points", va="center")
         axis.set_xlim(0, total * (1 + AXIS_HEADROOM))
-        axis.set_title(parent, loc="left", pad=SUB_STAGE_TITLE_PAD)
+        rows = -(-len(drawn) // SUB_STAGE_LEGEND_COLUMNS)
+        columns = min(len(drawn), SUB_STAGE_LEGEND_COLUMNS)
+        # The legend fills column by column; this order makes each row read in the bar's order.
+        legend = [drawn[row * columns + column] for column in range(columns) for row in range(rows)
+                  if row * columns + column < len(drawn)]
+        axis.set_title(parent, loc="left", pad=SUB_STAGE_TITLE_PAD * rows)
         axis.set_yticks([])
         axis.set_ylim(BAR_HEIGHT, -BAR_HEIGHT)
         for side in ("top", "right", "left"):
             axis.spines[side].set_visible(False)
-        axis.legend(handles=drawn, loc="lower left", bbox_to_anchor=SUB_STAGE_LEGEND_ANCHOR, borderaxespad=0, ncol=len(drawn),
-                    frameon=False, fontsize=8)
+        axis.legend(handles=legend, loc="lower left", bbox_to_anchor=SUB_STAGE_LEGEND_ANCHOR, borderaxespad=0,
+                    ncol=columns, frameon=False, fontsize=8)
     axes[-1].set_xlabel(f"board ms per frame on cpu{FRAME_CORE}")
     save(figure, path)
 
