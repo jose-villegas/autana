@@ -1,24 +1,25 @@
-# TRCK v3 animation tracks
+# TRCK v4 animation tracks
 
 One animation clip: keyed fields bound by object path ([Animation-Tracks.md](../../render/animation/Animation-Tracks.md)). Layout defines: [`anim/anim_tracks_format.h`](../../../launcher/main/anim/anim_tracks_format.h).
 
 ```mermaid
 ---
 config:
-  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #8fb3ee !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #e3e3e3 !important; } g:nth-of-type(3) rect:nth-of-type(1) { fill: #f4a885 !important; } g:nth-of-type(3) rect:nth-of-type(2) { fill: #93d6b0 !important; } g:nth-of-type(4) rect:nth-of-type(1) { fill: #c7aaee !important; } g:nth-of-type(4) rect:nth-of-type(2) { fill: #ffffff !important; stroke-dasharray: 4 3 !important; } .packetLabel { fill: #1b1b1b !important; }"
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #8fb3ee !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #e3e3e3 !important; } g:nth-of-type(3) rect:nth-of-type(1) { fill: #f4a885 !important; } g:nth-of-type(3) rect:nth-of-type(2) { fill: #93d6b0 !important; } g:nth-of-type(4) rect:nth-of-type(1) { fill: #c7aaee !important; } g:nth-of-type(4) rect:nth-of-type(2) { fill: #ffffff !important; stroke-dasharray: 4 3 !important; } g:nth-of-type(4) rect:nth-of-type(3) { fill: #f4a885 !important; } .packetLabel { fill: #1b1b1b !important; }"
   packet:
     bitsPerRow: 8
     bitWidth: 110
 ---
 packet-beta
 title Header, 20 bytes at 0, one cell a byte
-0-1: "version = 3"
+0-1: "version = 4"
 2-3: "binding_count"
 4-7: "duration_ms"
 8-11: "strings_off"
 12-15: "strings_size"
 16: "root"
-17-19: "0"
+17: "0"
+18-19: "ground_mm_s"
 ```
 
 ```mermaid
@@ -52,8 +53,9 @@ title Binding registry, one 28-byte row a binding from byte 20
 
 | Rule | Detail |
 |---|---|
-| Owners | `ANIM_TRACKS_VERSION`, `_HEADER_SIZE` (20), `_ROW_SIZE` (28), `_ALIGNMENT` (4), `_CUBIC_RUNS` (3), `ANIM_BINDING_STRING_MAX` (255), `ANIM_ROOT_SCENE` (0), `ANIM_ROOT_SKELETON` (1) in `anim_tracks_format.h` |
-| Header | `root` is `ANIM_ROOT_SCENE` or `ANIM_ROOT_SKELETON`; the 3 pad bytes are zero; `binding_count` at most 65535 |
+| Owners | `ANIM_TRACKS_VERSION`, `_HEADER_SIZE` (20), `_GROUND_PER_M` (1000), `_ROW_SIZE` (28), `_ALIGNMENT` (4), `_CUBIC_RUNS` (3), `ANIM_BINDING_STRING_MAX` (255), `ANIM_ROOT_SCENE` (0), `ANIM_ROOT_SKELETON` (1) in `anim_tracks_format.h` |
+| Header | `root` is `ANIM_ROOT_SCENE` or `ANIM_ROOT_SKELETON`; the pad byte is zero; `binding_count` at most 65535 |
+| Ground speed | `ground_mm_s` (`u16`, mm/s): how fast the clip's planted foot slides back under its root joints at playback 1, so a character moving at that speed plays it at rate 1. The bake measures it: the median, over the clip sampled `GROUND_SAMPLES_PER_S` times a second, of the lowest leaf joint's horizontal speed against the root joints' mean. 0 for a clip that drives no skeleton. |
 | Strings | `strings_off` a multiple of 4, at or after the registry's end; a path or field is nonempty, at most `ANIM_BINDING_STRING_MAX` bytes, with no NUL, and ends inside the table, which fits a 16-bit offset |
 | Hashes | FNV-1a 32 of each string's bytes via `name_hash`; stored equals computed and is nonzero, else `ASSET_ERR_FORMAT`. The bake refuses collisions among a clip's paths or among its fields. |
 | Component | `u32` code, nonzero; written as `ASSET_TYPE` tags such as `ANIM_COMPONENT_TRANSFORM` (`TRNS`); the writer allows one binding per path, component and field |

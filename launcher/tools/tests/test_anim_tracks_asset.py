@@ -49,10 +49,10 @@ IDENTITY = (1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1)
 
 
 class RoundTripTests(unittest.TestCase):
-    def test_version_three_bindings_have_scene_root_and_string_table(self):
-        self.assertEqual(tracks_asset.VERSION, 3)
+    def test_version_four_bindings_have_scene_root_and_string_table(self):
+        self.assertEqual(tracks_asset.VERSION, 4)
         entry = probe_entry()
-        version, count, duration, strings, size, root = HEADER.unpack_from(entry)
+        version, count, duration, strings, size, root, ground = HEADER.unpack_from(entry)
         self.assertEqual(root, tracks_asset.ROOT_SCENE)
         self.assertGreaterEqual(strings, HEADER.size + count * ROW.size)
         self.assertLessEqual(strings + size, len(entry))
@@ -61,7 +61,7 @@ class RoundTripTests(unittest.TestCase):
         self.assertEqual(tracks[0]["field"], "position")
 
     def test_every_track_reads_back_as_baked_in_single_precision(self):
-        tracks, duration_ms, root = probe_tracks()
+        tracks, duration_ms, root, _ = probe_tracks()
         decoded, decoded_ms = tracks_asset.decode(tracks_asset.encode(tracks, duration_ms))
         self.assertEqual(decoded_ms, 3000)
         self.assertEqual([t["name"] for t in decoded], [t["name"] for t in tracks])
@@ -72,7 +72,7 @@ class RoundTripTests(unittest.TestCase):
             self.assertEqual(got["values"], [tuple(single(x) for x in row) for row in want["values"]], want["name"])
 
     def test_encoding_reuses_each_rows_name_hashes(self):
-        tracks, duration, root = probe_tracks()
+        tracks, duration, root, _ = probe_tracks()
         with mock.patch.object(tracks_asset, "name_hash", wraps=tracks_asset.name_hash) as hashed:
             with mock.patch.object(tracks_asset, "decode"):
                 entry = tracks_asset.encode(tracks, duration, root)
@@ -87,7 +87,7 @@ class RoundTripTests(unittest.TestCase):
 
     def test_the_rows_name_4_aligned_arrays_after_the_table(self):
         entry = probe_entry()
-        version, count, duration_ms, strings, size, root = HEADER.unpack_from(entry)
+        version, count, duration_ms, strings, size, root, ground = HEADER.unpack_from(entry)
         self.assertEqual((version, count, duration_ms), (tracks_asset.VERSION, 8, 3000))
         for index in range(count):
             _, _, _, _, _, times_at, values_at, _, _, _ = ROW.unpack_from(entry, row_at(index))
@@ -96,7 +96,7 @@ class RoundTripTests(unittest.TestCase):
                 self.assertGreaterEqual(offset, row_at(count))
 
     def test_a_channel_that_never_changes_is_one_key(self):
-        tracks, _, _ = probe_tracks()
+        tracks, _, _, _ = probe_tracks()
         held = next(t for t in tracks if t["name"] == "hand:TRNS.position")
         self.assertEqual(held["times"], [0.0])
 
@@ -105,20 +105,20 @@ class RoundTripTests(unittest.TestCase):
         for first, second in (("costarring", "liquid"), ("declinate", "macallums")):
             self.assertEqual(name_hash(first), name_hash(second))
             for part in ("path", "field"):
-                tracks, duration, _ = probe_tracks()
+                tracks, duration, _, _ = probe_tracks()
                 pair = [dict(tracks[0], **{part: name}) for name in (first, second)]
                 with self.subTest(part=part, first=first):
                     with self.assertRaisesRegex(TracksError, first + ".*" + second):
                         tracks_asset.encode(pair, duration)
 
-        tracks, duration, _ = probe_tracks()
+        tracks, duration, _, _ = probe_tracks()
         with mock.patch.object(tracks_asset, "name_hash", return_value=tracks_asset.NONE):
             with self.assertRaisesRegex(TracksError, "NONE"):
                 tracks_asset.encode(tracks, duration)
 
     def test_changed_binding_strings_are_refused(self):
         entry = probe_entry()
-        _, _, _, strings, _, _ = HEADER.unpack_from(entry)
+        _, _, _, strings, _, _, _ = HEADER.unpack_from(entry)
         path, field, *_ = ROW.unpack_from(entry, row_at(0))
         for offset in (strings + path, strings + field,
                        row_at(0) + tracks_asset.ROW_PATH_HASH, row_at(0) + tracks_asset.ROW_FIELD_HASH):
@@ -128,7 +128,7 @@ class RoundTripTests(unittest.TestCase):
                 tracks_asset.decode(changed)
 
     def test_a_name_holding_a_nul_is_refused(self):
-        tracks, duration_ms, root = probe_tracks()
+        tracks, duration_ms, root, _ = probe_tracks()
         tracks[0] = dict(tracks[0], path="a\0b")
         with self.assertRaises(TracksError):
             tracks_asset.encode(tracks, duration_ms)
@@ -175,9 +175,9 @@ class RefusalTests(unittest.TestCase):
             (tracks_asset.AT_VERSION, "<H", 1),
         ):
             self.assert_refused(edited(entry, offset, fmt, value))
-        for offset in range(tracks_asset.AT_PAD, HEADER.size):
+        for offset in range(tracks_asset.AT_PAD, tracks_asset.AT_PAD + tracks_asset.HEADER_PAD_SIZE):
             self.assert_refused(edited(entry, offset, "<B", 1))
-        _, _, _, strings, size, _ = HEADER.unpack_from(entry)
+        _, _, _, strings, size, _, _ = HEADER.unpack_from(entry)
         unterminated = bytearray(entry)
         unterminated[strings:strings + size] = b"x" * size
         self.assert_refused(bytes(unterminated))
@@ -205,7 +205,7 @@ class CheckTests(unittest.TestCase):
         self.assert_refused(channel(0, "rotation", [0.0, 1.0], [(0, 0, 0)] * 2))
 
     def test_two_tracks_with_one_name_are_refused(self):
-        tracks, duration_ms, root = probe_tracks()
+        tracks, duration_ms, root, _ = probe_tracks()
         with self.assertRaisesRegex(TracksError, "camera:TRNS.position"):
             tracks_asset.encode(tracks + [tracks[0]], duration_ms)
 
@@ -246,9 +246,9 @@ class BindingMappingTests(unittest.TestCase):
                         [channel(0, "translation", [0], [(1, 2, 3)])])
 
     def test_string_table_interns_repeated_path_and_field(self):
-        tracks, duration, root = probe_tracks()
+        tracks, duration, root, _ = probe_tracks()
         entry = tracks_asset.encode(tracks, duration)
-        _, count, _, strings, size, _ = HEADER.unpack_from(entry)
+        _, count, _, strings, size, _, _ = HEADER.unpack_from(entry)
         names = entry[strings:strings + size].split(b"\0")[:-1]
         self.assertEqual(len(names), len(set(names)))
         self.assertEqual(count, len(tracks))
@@ -258,17 +258,17 @@ class BindingMappingTests(unittest.TestCase):
         nodes = [{"name": "root", "children": [1]}, {"name": "child"}, {"name": "camera"}]
         skin = [{"joints": [0, 1], "inverse_binds": [identity, identity]}]
         channels = [channel(0, "translation", [0], [(1, 2, 3)]), channel(1, "scale", [0], [(1, 1, 1)])]
-        skeleton, _, root = self.tracks(nodes, channels, skins=skin)
+        skeleton, _, root, _ = self.tracks(nodes, channels, skins=skin)
         self.assertEqual([t["path"] for t in skeleton], ["root", "root/child"])
         self.assertEqual(root, tracks_asset.ROOT_SKELETON)
-        mixed, _, root = self.tracks(nodes, channels + [channel(2, "translation", [0], [(1, 2, 3)])], skins=skin)
+        mixed, _, root, _ = self.tracks(nodes, channels + [channel(2, "translation", [0], [(1, 2, 3)])], skins=skin)
         self.assertEqual([t["path"] for t in mixed], ["root", "child", "camera"])
         self.assertEqual(root, tracks_asset.ROOT_SCENE)
 
     def test_a_skin_with_two_root_joints_bakes_a_skeleton_clip(self):
         nodes = [{"name": "rig", "children": [1, 2]}, {"name": "hips", "children": [3]}, {"name": "spine"},
                  {"name": "leg"}]
-        tracks, _, root = self.skinned(nodes, [1, 2, 3])
+        tracks, _, root, _ = self.skinned(nodes, [1, 2, 3])
         self.assertEqual([t["path"] for t in tracks], ["hips", "spine", "hips/leg"])
         self.assertEqual(root, tracks_asset.ROOT_SKELETON)
 
@@ -278,7 +278,7 @@ class BindingMappingTests(unittest.TestCase):
             self.skinned(nodes, [1, 2])
 
     def test_every_value_type_and_interpolation_round_trips(self):
-        tracks, _, _ = probe_tracks()
+        tracks, _, _, _ = probe_tracks()
         for value_type, width in enumerate(tracks_asset.WIDTHS):
             for interp in tracks_asset.INTERPOLATIONS:
                 runs = tracks_asset.CUBIC_RUNS if interp == "CUBICSPLINE" else 1
@@ -287,6 +287,67 @@ class BindingMappingTests(unittest.TestCase):
                 decoded, _ = tracks_asset.decode(tracks_asset.encode([track], 1000))
                 self.assertEqual(decoded[0]["type"], value_type)
                 self.assertEqual(decoded[0]["values"], track["values"])
+
+
+STRIDE_M = 0.4   # metres a stance foot slides back under the hips in one stance
+STANCE_S = 0.5   # seconds of one foot's stance, half the stride cycle
+LIFT_M = 0.1     # how high a swinging foot rises above the ground
+HIPS_M_S = 0.5   # the hips' own travel, root motion the stance foot's speed is measured against
+
+
+def walker(slide_m=STRIDE_M):
+    """A skin of hips over two feet: each foot planted for half a second while
+    it slides `slide_m` back under the hips, then lifted and swung forward,
+    the two out of step. The hips travel forward too, so the planted foot's
+    speed holds only measured against them."""
+    nodes = [{"name": "rig", "children": [1]}, {"name": "hips", "children": [2, 3]}, {"name": "foot.l"},
+             {"name": "foot.r"}]
+    half, front, back, low, high = STANCE_S / 2, slide_m / 2, -slide_m / 2, -LIFT_M, 0.0
+    cycle = 2 * STANCE_S
+    channels = [
+        channel(1, "translation", [0.0, cycle], [(0.0, LIFT_M, 0.0), (HIPS_M_S * cycle, LIFT_M, 0.0)]),
+        channel(2, "translation", [0.0, STANCE_S, STANCE_S + half, cycle],
+                [(front, low, 0.0), (back, low, 0.0), (0.0, high, 0.0), (front, low, 0.0)]),
+        channel(3, "translation", [0.0, half, STANCE_S, cycle],
+                [(back, low, 0.0), (0.0, high, 0.0), (front, low, 0.0), (back, low, 0.0)]),
+    ]
+    return nodes, channels
+
+
+class GroundSpeedTests(unittest.TestCase):
+    """A skeleton clip records the speed its planted foot slides back under the
+    hips, the ground speed it shows at playback 1; any other clip records 0."""
+
+    def ground_mm_s(self, nodes, channels, skins=None):
+        glb = gltf_write.build_glb(nodes, [{"name": "clip", "channels": channels}], **({"skins": skins} if skins else {}))
+        document, binary = gltf_read.parse_glb(glb)
+        return tracks_asset.clip_tracks(document, binary, document["animations"][0])[3]
+
+    def skin(self):
+        return [{"joints": [1, 2, 3], "inverse_binds": [IDENTITY] * 3}]
+
+    def test_the_planted_foot_sliding_under_the_hips_is_the_ground_speed(self):
+        nodes, channels = walker()
+        self.assertEqual(self.ground_mm_s(nodes, channels, self.skin()), round(STRIDE_M / STANCE_S * 1000))
+
+    def test_feet_that_stay_under_the_hips_show_no_ground_speed(self):
+        nodes, channels = walker(slide_m=0.0)
+        self.assertEqual(self.ground_mm_s(nodes, channels, self.skin()), 0)
+
+    def test_a_clip_with_no_skeleton_shows_no_ground_speed(self):
+        self.assertEqual(probe_tracks()[3], 0)
+
+    def test_the_ground_speed_is_written_in_the_header(self):
+        tracks, duration, root, _ = probe_tracks()
+        entry = tracks_asset.encode(tracks, duration, root, 800)
+        self.assertEqual(struct.unpack_from("<H", entry, tracks_asset.AT_GROUND)[0], 800)
+        self.assertEqual(HEADER.unpack_from(entry)[-1], 800)
+        tracks_asset.decode(entry)
+
+    def test_a_ground_speed_past_the_field_is_refused(self):
+        tracks, duration, root, _ = probe_tracks()
+        with self.assertRaises(TracksError):
+            tracks_asset.encode(tracks, duration, root, tracks_asset.GROUND_MAX + 1)
 
 
 class SamplerTests(unittest.TestCase):

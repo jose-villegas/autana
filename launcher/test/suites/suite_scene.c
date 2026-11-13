@@ -103,6 +103,7 @@ enum {
     RIG_MESH_BYTES = R3D_LIT_MESH_HEADER_BYTES + 156,
     RIG_VERTICES = 2 * QUAD_VERTICES,
     RIG_DURATION_MS = 1000,
+    RIG_GROUND_MM_S = 300,
     RIG_TRAVEL = 4
 };
 
@@ -645,6 +646,7 @@ make_rig_clip(test_pack_t* pack, const char* id, const char* target, uint8_t roo
 
     uint8_t* entry = test_pack_add(pack, id, ANIM_TRACKS_ASSET, BYTES);
     test_tracks_header(entry, 1, RIG_DURATION_MS);
+    test_pack_put16(entry + ANIM_TRACKS_AT_GROUND, RIG_GROUND_MM_S);
     entry[ANIM_TRACKS_AT_ROOT] = root;
     const test_track_t track = {target, "position", ANIM_COMPONENT_TRANSFORM, ANIM_VALUE_VEC3, TIMES, VALUES,
                                 KEYS,   ANIM_LINEAR};
@@ -4480,9 +4482,12 @@ test_animator_queries_and_controls_refuse_missing_or_out_of_range(void) {
     TEST_ASSERT_EQUAL_INT(2, animator_clip_count(entity));
     TEST_ASSERT_EQUAL_STRING("rig.move", animator_clip_name(entity, 0));
     TEST_ASSERT_EQUAL_UINT32(RIG_DURATION_MS, animator_clip_duration_ms(entity, 0));
+    TEST_ASSERT_EQUAL_FLOAT((float)RIG_GROUND_MM_S / (float)ANIM_TRACKS_GROUND_PER_M,
+                            animator_clip_ground_mps(entity, 0));
     TEST_ASSERT_EQUAL_INT(0, animator_clip_count(empty));
     TEST_ASSERT_NULL(animator_clip_name(empty, 0));
     TEST_ASSERT_EQUAL_UINT32(0, animator_clip_duration_ms(empty, 0));
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, animator_clip_ground_mps(empty, 0));
     TEST_ASSERT_FALSE(animator_play(empty, 0, 0));
     TEST_ASSERT_FALSE(animator_seek(empty, ANIMATOR_CURRENT, 0));
     TEST_ASSERT_FALSE(animator_set_paused(empty, ANIMATOR_CURRENT, true));
@@ -4490,6 +4495,7 @@ test_animator_queries_and_controls_refuse_missing_or_out_of_range(void) {
     for (int clip = -1; clip <= 2; clip += 3) {
         TEST_ASSERT_NULL(animator_clip_name(entity, clip));
         TEST_ASSERT_EQUAL_UINT32(0, animator_clip_duration_ms(entity, clip));
+        TEST_ASSERT_EQUAL_FLOAT(0.0F, animator_clip_ground_mps(entity, clip));
         TEST_ASSERT_FALSE(animator_play(entity, clip, 0));
     }
 }
