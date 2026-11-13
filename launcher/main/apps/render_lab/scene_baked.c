@@ -64,7 +64,7 @@ camera_entity(void) {
 
 lab_path_t
 scene_baked_path(void) {
-    return (lab_path_t){loaded, handle_is_none(loaded) ? ENTITY_NONE : camera_entity(), NULL};
+    return (lab_path_t){.scene = loaded, .entity = handle_is_none(loaded) ? ENTITY_NONE : camera_entity()};
 }
 
 static void

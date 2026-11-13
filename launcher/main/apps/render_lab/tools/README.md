@@ -293,11 +293,22 @@ where the mesh moved. Mixed copies share meshes by tessellation;
 
 ### Herd
 
-The Herd family is N skinned capybaras on the capybara's meadow, each playing
-its own clip at its own phase. One finger orbits the camera round the copies
-shown, as in the Capybara scene; zoomed in, copies fall off the frame and
-behind the camera, so the per-copy costs of posing, skinning and culling all
-show.
+The Herd family is N skinned capybaras walking the capybara's meadow. Each
+takes legs to seeded points in a 6 m circle, at the speed of one of its clips
+or grazing in place, keeps apart from the others and plays the clip and rate
+its ground speed calls for. One finger orbits the camera round that circle, as
+in the Capybara scene; zoomed in, copies fall off the frame and behind the
+camera, so the per-copy costs of posing, skinning and culling all show.
+
+| Step, every 20 ms | Owner |
+|---|---|
+| Each copy's leg: a target and speed, or a graze | `herd/herd_wander.h` |
+| Keep apart, look ahead, stay inside; then arrive with what acceleration is left | `math/motion/steer2f.h` ([Motion](../../../../../docs/math/Motion.md)) |
+| The clip and rate for the copy's speed | `locomotion/gait.h`, from each clip's `ground_mm_s` ([TRCK](../../../../../docs/assets/formats/TRCK.md)) |
+
+`pose <ms>` seeks the whole herd: it walks again from its seed to that time,
+so two seeks to one time draw the same frame. Played on from there, clip phases
+can differ slightly from an unbroken run, which steps clips by frame time.
 
 | Scene key | Copies shown |
 |---|---|
@@ -305,14 +316,15 @@ show.
 | `herd-4` | centre, near, far out and to the side |
 | `herd-8` | the whole pool |
 
-![Herd 8: eight capybaras over one turn of the camera](../../../../../docs/images/overview/render-lab-herd.gif)
+![Herd 8: eight capybaras walking, each clip at the pace of its ground speed](../../../../../docs/images/overview/render-lab-herd.gif)
 
 | Part | Owner |
 |---|---|
 | Sizes: each ID, key and copy count | `herd/scene_herd.h` `HERD_SIZES` |
-| The pool, and each copy's place and clip | `launcher/demo/capybara/herd.scene.toml` |
-| The camera, orbited round the copies shown | [`lab/lab_orbit.h`](../../../lab/lab_orbit.h) |
-| Each size's copies, and a turn's frame and animation-step cost | [`tests/suite_herd_perf.c`](../tests/suite_herd_perf.c) |
+| The pool, and each copy's start | `launcher/demo/capybara/herd.scene.toml` |
+| The walk: area, legs, steering limits and gait rates | `herd/scene_herd.c` |
+| The camera, orbited round the area | [`lab/lab_orbit.h`](../../../lab/lab_orbit.h) |
+| Each size's copies, and a turn's frame and animation-step cost with their stages (`herd.wander`, `herd.gait`, the animation step's and r3d's); a paced row steps each frame by the last one's time | [`tests/suite_herd_perf.c`](../tests/suite_herd_perf.c) |
 | The suite's timing table for `perf_compare.sh` | [`herd_tables.py`](herd_tables.py) `--perf-table CAPTURE TABLE` |
 
 ### Small fill

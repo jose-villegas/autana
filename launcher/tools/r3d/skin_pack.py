@@ -84,8 +84,7 @@ def entries(meshes, jobs, cache, offline, influences=skin_asset.DEFAULT_INFLUENC
         clips = list(dict.fromkeys([*settings.source.get('clips', []), *(animator.clips if animator else [])]))
         for clip in clips:
             animation = tracks_asset.find_animation(document, clip, origin)
-            tracks, duration, clip_root = tracks_asset.clip_tracks(document, binary, animation)
-            result.append((clip, tracks_asset.TYPE, tracks_asset.encode(tracks, duration, clip_root),
+            result.append((clip, tracks_asset.TYPE, tracks_asset.encode(*tracks_asset.clip_tracks(document, binary, animation)),
                            (origin, 'clip', clip)))
     return result
 
