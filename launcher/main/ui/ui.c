@@ -289,18 +289,20 @@ void (*ui_canvas_painted_for_test)(const mu_Container*);
 
 static bool command_rect(const mu_Command* cmd, mu_Rect* out);
 
-/* A face the backdrop went back under this frame, and the panel box it went
- * back under. */
+/* A face the backdrop went back under this frame: its panel rects are
+ * under[first, first + count) of the replay. */
 typedef struct {
     const mu_Command* face;
-    recti_t under;
+    int first, count;
 } ui_face_under_t;
 
 /* A partial replay: an unchanged UI drawn again only where something drew
- * under it this frame, each face blended only over its own `under`. */
+ * under it this frame, each face blended only over its own rects. */
 typedef struct {
     ui_face_under_t faces[UI_FACE_REPLAY_MAX];
     int n;
+    recti_t under[UI_FACE_UNDER_MAX];
+    int under_n;
 } ui_face_replay_t;
 
 static ui_face_under_t*
@@ -339,9 +341,13 @@ replay_face(const mu_Command* cmd, ui_face_replay_t* replay, recti_t clip) {
     if (under == NULL) {
         return;
     }
-    const recti_t r = recti_intersect(clip, under->under);
-    draw_set_clip(r.x, r.y, r.w, r.h);
-    draw_command(cmd);
+    for (int i = under->first; i < under->first + under->count; i++) {
+        const recti_t r = recti_intersect(clip, replay->under[i]);
+        if (!recti_is_empty(r)) {
+            draw_set_clip(r.x, r.y, r.w, r.h);
+            draw_command(cmd);
+        }
+    }
     draw_set_clip(clip.x, clip.y, clip.w, clip.h);
 }
 
@@ -552,19 +558,23 @@ ui_end(uint32_t background_rgb) {
     return drew;
 }
 
-static bool
-rect_holds(recti_t outer, recti_t inner) {
-    const recti_t joined = recti_union(outer, inner);
-    return joined.x == outer.x && joined.y == outer.y && joined.w == outer.w && joined.h == outer.h;
+/* The pixels `n` rects at `rects` cover; they never overlap. */
+static long
+rects_area(const recti_t* rects, int n) {
+    long area = 0;
+    for (int i = 0; i < n; i++) {
+        area += (long)rects[i].w * rects[i].h;
+    }
+    return area;
 }
 
-/* Puts the backdrop back under `cnt`'s faces wherever dirt lies under them
- * and it has not yet gone back; returns how many faces it grew, or -1 once
- * `replay` is full. */
-static int
+/* Over `cnt`'s faces: with `paint_backdrop`, lists each face with dirt under
+ * it and puts the backdrop back there; without, checks that the dirt under
+ * every face is still exactly what was listed. False when the replay is full
+ * or the check fails. */
+static bool
 backdrop_under_canvas_faces(const mu_Container* cnt, ui_backdrop_fn paint_backdrop, ui_face_replay_t* replay) {
     recti_t clip = GFX_SCREEN_RECT;
-    int grew = 0;
     mu_Command* cmd = NULL;
     while (next_canvas_command(cnt, &cmd)) {
         mu_Rect r;
@@ -575,43 +585,51 @@ backdrop_under_canvas_faces(const mu_Container* cnt, ui_backdrop_fn paint_backdr
         if (cmd->type != UI_COMMAND_SPRITE || !command_rect(cmd, &r)) {
             continue;
         }
-        const recti_t dirt = gfx_dirty_bounds(recti_intersect(ui_recti_from_mu(r), clip));
-        ui_face_under_t* under = face_under(replay, cmd);
-        if (recti_is_empty(dirt) || (under != NULL && rect_holds(under->under, dirt))) {
+        recti_t* const rects = replay->under + replay->under_n;
+        const int found =
+            gfx_dirty_rects(recti_intersect(ui_recti_from_mu(r), clip), rects, UI_FACE_UNDER_MAX - replay->under_n);
+        if (found < 0) {
+            return false;
+        }
+        const ui_face_under_t* listed = face_under(replay, cmd);
+        if (paint_backdrop == NULL) {
+            const long was = listed == NULL ? 0 : rects_area(replay->under + listed->first, listed->count);
+            if (rects_area(rects, found) != was) {
+                return false;
+            }
             continue;
         }
-        if (under == NULL) {
-            if (replay->n == UI_FACE_REPLAY_MAX) {
-                return -1;
-            }
-            under = &replay->faces[replay->n++];
-            *under = (ui_face_under_t){.face = cmd, .under = dirt};
-        } else {
-            under->under = recti_union(under->under, dirt);
+        if (found == 0) {
+            continue;
         }
-        paint_backdrop(under->under);
-        grew++;
+        if (replay->n == UI_FACE_REPLAY_MAX) {
+            return false;
+        }
+        replay->faces[replay->n++] = (ui_face_under_t){.face = cmd, .first = replay->under_n, .count = found};
+        replay->under_n += found;
+        for (int i = 0; i < found; i++) {
+            paint_backdrop(rects[i]);
+        }
     }
-    return grew;
+    return true;
 }
 
 /* A face may be translucent: drawn again over its own last paint it would
  * blend over itself and darken frame by frame. So before an unchanged UI is
  * replayed over what was drawn under it, the backdrop goes back under each
- * face over the dirt there, again for any face that repaint then dirties,
- * until none grows. False when more faces need it than UI_FACE_REPLAY_MAX. */
+ * face wherever dirt lies under it, and the face will be blended there
+ * alone. Faces that overlap could put the backdrop under each other: a
+ * second pass finds the dirt under every face unchanged, or the frame
+ * repaints whole. */
 static bool
 backdrop_under_replayed_faces(int n, ui_backdrop_fn paint_backdrop, ui_face_replay_t* replay) {
     replay->n = 0;
-    int grew = 1;
-    while (grew > 0) {
-        grew = 0;
+    replay->under_n = 0;
+    for (int pass = 0; pass < 2; pass++) {
         for (int i = 0; i < n && i < MU_ROOTLIST_SIZE; i++) {
-            const int more = backdrop_under_canvas_faces(ui_ctx.root_list.items[i], paint_backdrop, replay);
-            if (more < 0) {
+            if (!backdrop_under_canvas_faces(ui_ctx.root_list.items[i], pass == 0 ? paint_backdrop : NULL, replay)) {
                 return false;
             }
-            grew += more;
         }
     }
     return true;

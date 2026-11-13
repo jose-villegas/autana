@@ -24,6 +24,7 @@
 static void
 fixture(void) {
     cell_dirty = 0;
+    cell_banded = 0;
     all_dirty = false;
     for (int i = 0; i < CELL_COUNT; i++) {
         const int col = i % GRID_COLS;
@@ -36,6 +37,78 @@ fixture(void) {
     for (int i = 0; i < STRIP_COUNT * LEAF_SUB; i++) {
         leaf_dirty[i] = 0;
     }
+}
+
+/* dirt as rects */
+
+#define RECTS_MAX 8
+
+static void
+test_dirty_rects_are_the_leaves_a_mark_touched_clipped_to_the_area(void) {
+    fixture();
+    dirty_mark(LEAF_W + 1, LEAF_H + 1, 2, 2);
+    recti_t rects[RECTS_MAX];
+    const int n = dirty_rects_in((recti_t){0, 0, LEAF_W * 2, LEAF_H + LEAF_H / 2}, rects, RECTS_MAX);
+
+    TEST_ASSERT_EQUAL_INT(1, n);
+    TEST_ASSERT_EQUAL_INT(LEAF_W, rects[0].x);
+    TEST_ASSERT_EQUAL_INT(LEAF_H, rects[0].y);
+    TEST_ASSERT_EQUAL_INT(LEAF_W, rects[0].w);
+    TEST_ASSERT_EQUAL_INT(LEAF_H / 2, rects[0].h);
+}
+
+static void
+test_dirty_rects_join_a_run_to_the_matching_run_above(void) {
+    fixture();
+    dirty_mark(0, 0, LEAF_W * 2, LEAF_H * 3);
+    dirty_mark(LEAF_W * 5, 0, 1, 1);
+    recti_t rects[RECTS_MAX];
+    const int n = dirty_rects_in(GFX_SCREEN_RECT, rects, RECTS_MAX);
+
+    TEST_ASSERT_EQUAL_INT(2, n);
+    TEST_ASSERT_EQUAL_INT(LEAF_H * 3, rects[0].h);
+    TEST_ASSERT_EQUAL_INT(LEAF_W * 2, rects[0].w);
+    TEST_ASSERT_EQUAL_INT(LEAF_W * 5, rects[1].x);
+}
+
+static void
+test_dirty_rects_count_every_leaf_of_a_cell_marked_whole(void) {
+    fixture();
+    dirty_mark(0, 0, 1, 1);
+    mark_band(0, 1);
+    recti_t rects[RECTS_MAX];
+    const int n = dirty_rects_in((recti_t){0, 0, COL_WIDTH, STRIP_HEIGHT}, rects, RECTS_MAX);
+
+    TEST_ASSERT_EQUAL_INT(1, n);
+    TEST_ASSERT_EQUAL_INT(COL_WIDTH, rects[0].w);
+    TEST_ASSERT_EQUAL_INT(STRIP_HEIGHT, rects[0].h);
+}
+
+static void
+test_dirty_rects_of_a_cell_grown_whole_by_marks_keep_its_leaves(void) {
+    fixture();
+    dirty_mark(0, 0, 1, 1);
+    dirty_mark(COL_WIDTH - 1, STRIP_HEIGHT - 1, 1, 1);
+    recti_t rects[RECTS_MAX];
+    const int n = dirty_rects_in((recti_t){0, 0, COL_WIDTH, STRIP_HEIGHT}, rects, RECTS_MAX);
+
+    TEST_ASSERT_EQUAL_INT(2, n);
+    TEST_ASSERT_EQUAL_INT(LEAF_W, rects[0].w);
+    TEST_ASSERT_EQUAL_INT(LEAF_H, rects[0].h);
+}
+
+static void
+test_dirty_rects_none_once_the_row_is_sent_and_too_many_report_minus_one(void) {
+    fixture();
+    for (int col = 0; col < LEAF_COLS; col += 2) {
+        dirty_mark(col * LEAF_W, 0, 1, 1);
+    }
+    dirty_mark(LEAF_W, LEAF_H, 1, 1); /* one more than RECTS_MAX */
+    recti_t rects[RECTS_MAX];
+    TEST_ASSERT_EQUAL_INT(-1, dirty_rects_in(GFX_SCREEN_RECT, rects, RECTS_MAX));
+    dirty_row_sent(0);
+    cell_dirty = 0;
+    TEST_ASSERT_EQUAL_INT(0, dirty_rects_in(GFX_SCREEN_RECT, rects, RECTS_MAX));
 }
 
 /* leaf boundary math */
@@ -701,6 +774,12 @@ run_gfx_dirty_suite(void) {
     RUN_TEST(test_band_extent_only_sees_the_part_of_a_strip_its_own_range_covers);
     RUN_TEST(test_band_extent_is_full_width_once_everything_is_marked);
     RUN_TEST(test_band_extent_follows_a_moving_box_across_several_frames);
+
+    RUN_TEST(test_dirty_rects_are_the_leaves_a_mark_touched_clipped_to_the_area);
+    RUN_TEST(test_dirty_rects_join_a_run_to_the_matching_run_above);
+    RUN_TEST(test_dirty_rects_count_every_leaf_of_a_cell_marked_whole);
+    RUN_TEST(test_dirty_rects_of_a_cell_grown_whole_by_marks_keep_its_leaves);
+    RUN_TEST(test_dirty_rects_none_once_the_row_is_sent_and_too_many_report_minus_one);
     gfx_shared_state_restore(&saved);
 }
 

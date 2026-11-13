@@ -97,9 +97,9 @@ void gfx_full_redraw_clear_pending(void);
  * leaf-sized regions for precise marks and full cells for band marks. */
 bool gfx_region_dirty(int x, int y, int w, int h);
 
-/* The box around the dirt recorded inside `area`, at the tracker's cell
- * precision; empty when there is none. */
-recti_t gfx_dirty_bounds(recti_t area);
+/* The dirt recorded inside `area` as up to `max` rects, at the tracker's
+ * leaf precision; how many, or -1 when more would be needed. */
+int gfx_dirty_rects(recti_t area, recti_t* out, int max);
 
 /* Exactly gfx_present_begin() followed by gfx_present_wait(). In
  * GFX_LAYOUT_DOUBLE_FB this drains the previous send, swaps front and back,

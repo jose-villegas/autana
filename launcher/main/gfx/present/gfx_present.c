@@ -46,6 +46,7 @@ static const char* TAG = "gfx";
 /* The one instance of the state gfx_dirty.h, gfx_full_redraw.h and
  * gfx_present_guard.h declare. */
 uint32_t cell_dirty;
+uint32_t cell_banded;
 bool all_dirty;
 int cell_x0[CELL_COUNT];
 int cell_x1[CELL_COUNT];
@@ -422,10 +423,10 @@ gfx_region_dirty(int x, int y, int w, int h) {
     return dirty_region_dirty(x, y, w, h);
 }
 
-recti_t
-gfx_dirty_bounds(recti_t area) {
+int
+gfx_dirty_rects(recti_t area, recti_t* out, int max) {
     GFX_PRESENT_GUARD();
-    return dirty_bounds_in(area);
+    return dirty_rects_in(area, out, max);
 }
 
 /* Device-only path for QSPI panel send. Host build is no-op. */
@@ -1037,6 +1038,7 @@ gfx_checkpoint_capture(checkpoint_t* saved) {
     CHECKPOINT_CAPTURE(saved, panel_clock_requested_hz);
     const checkpoint_field_t fields[] = {
         {(void*)&cell_dirty, sizeof cell_dirty},
+        {(void*)&cell_banded, sizeof cell_banded},
         {(void*)&all_dirty, sizeof all_dirty},
         {(void*)&cell_x0, sizeof cell_x0},
         {(void*)&cell_x1, sizeof cell_x1},

@@ -42,6 +42,11 @@
 #define CELL_COUNT   (STRIP_COUNT * GRID_COLS)
 extern uint32_t cell_dirty;
 
+/* The cells marked whole (mark_band(), dirty_mark_all()), which carry no
+ * leaf bits for what they claim. Cleared with the row's boxes once sent;
+ * a bit left on a clean cell only ever claims more. */
+extern uint32_t cell_banded;
+
 /* Set once dirty_mark_all() has run this frame, cleared alongside
  * cell_dirty by dirty_frame_sent(). Every cell is already claimed at
  * that point, so any further mark_band()/dirty_mark() call this frame
@@ -177,6 +182,7 @@ mark_band(int y0, int y1) {
         for (int col = 0; col < GRID_COLS; col++) {
             const int idx = row * GRID_COLS + col;
             cell_dirty |= (1u << idx);
+            cell_banded |= (1u << idx);
             set_cell_full_extent(idx, row, col);
         }
     }
@@ -192,6 +198,7 @@ dirty_mark_all(void) {
     }
     all_dirty = true;
     cell_dirty = (CELL_COUNT >= 32) ? 0xFFFFFFFFu : (1u << CELL_COUNT) - 1u;
+    cell_banded = cell_dirty;
     for (int row = 0; row < STRIP_COUNT; row++) {
         for (int col = 0; col < GRID_COLS; col++) {
             set_cell_full_extent(row * GRID_COLS + col, row, col);
@@ -341,29 +348,69 @@ dirty_region_dirty(int x, int y, int w, int h) {
     return false;
 }
 
-/* The box around the dirt tracked inside `area`: each dirty cell's own box
- * clipped to `area`, joined; empty when none. Cell boxes are what
- * dirty_mark() narrowed them to, so a mark in one corner of a cell does not
- * claim the rest of it. */
-static inline recti_t
-dirty_bounds_in(recti_t area) {
-    area = recti_intersect(area, GFX_SCREEN_RECT);
-    recti_t bounds = recti_empty();
-    if (recti_is_empty(area)) {
-        return bounds;
+/* Leaf row `leaf_row`'s dirty leaves, one bit a leaf column. A cell marked
+ * whole counts every leaf; a clean cell counts none. */
+static inline uint16_t
+dirty_leaf_row(int leaf_row) {
+    const int row = leaf_row / LEAF_SUB;
+    const uint16_t cell_leaves = (uint16_t)((1u << LEAF_SUB) - 1u);
+    uint16_t bits = leaf_dirty[leaf_row];
+    for (int col = 0; col < GRID_COLS; col++) {
+        const int idx = (row * GRID_COLS) + col;
+        const uint16_t leaves = (uint16_t)(cell_leaves << (col * LEAF_SUB));
+        if (!(cell_dirty & (1u << idx))) {
+            bits &= (uint16_t)~leaves;
+        } else if (cell_banded & (1u << idx)) {
+            bits |= leaves;
+        }
     }
-    const int row_last = (recti_bottom(area) - 1) / STRIP_HEIGHT;
-    const int col_last = (recti_right(area) - 1) / COL_WIDTH;
-    for (int row = area.y / STRIP_HEIGHT; row <= row_last; row++) {
-        for (int col = area.x / COL_WIDTH; col <= col_last; col++) {
-            const int idx = (row * GRID_COLS) + col;
-            if (cell_dirty & (1u << idx)) {
-                const recti_t cell = recti_from_edges(cell_x0[idx], cell_y0[idx], cell_x1[idx], cell_y1[idx]);
-                bounds = recti_union(bounds, recti_intersect(cell, area));
+    return bits;
+}
+
+/* The dirt inside `area` as rects: each leaf row's runs of dirty leaves,
+ * clipped to `area`, a run joined to the one above it when they match.
+ * Returns how many, or -1 when more than `max` would be needed. */
+static inline int
+dirty_rects_in(recti_t area, recti_t* out, int max) {
+    area = recti_intersect(area, GFX_SCREEN_RECT);
+    if (recti_is_empty(area)) {
+        return 0;
+    }
+    int n = 0;
+    const int leaf_row_last = (recti_bottom(area) - 1) / LEAF_H;
+    for (int leaf_row = area.y / LEAF_H; leaf_row <= leaf_row_last; leaf_row++) {
+        const uint16_t bits = dirty_leaf_row(leaf_row);
+        int col = 0;
+        while (col < LEAF_COLS) {
+            if (!(bits & (1u << col))) {
+                col++;
+                continue;
+            }
+            const int first = col;
+            while (col < LEAF_COLS && (bits & (1u << col))) {
+                col++;
+            }
+            const recti_t run = recti_intersect(
+                recti_from_edges(first * LEAF_W, leaf_row * LEAF_H, col * LEAF_W, (leaf_row + 1) * LEAF_H), area);
+            if (recti_is_empty(run)) {
+                continue;
+            }
+            bool joined = false;
+            for (int i = n - 1; i >= 0 && !joined; i--) {
+                if (out[i].x == run.x && out[i].w == run.w && recti_bottom(out[i]) == run.y) {
+                    out[i].h += run.h;
+                    joined = true;
+                }
+            }
+            if (!joined) {
+                if (n == max) {
+                    return -1;
+                }
+                out[n++] = run;
             }
         }
     }
-    return bounds;
+    return n;
 }
 
 /* True if any cell in `row` is dirty, what gfx_present() checks before
@@ -582,6 +629,7 @@ dirty_row_sent(int row) {
         cell_x1[idx] = col * COL_WIDTH;
         cell_y0[idx] = row * STRIP_HEIGHT + STRIP_HEIGHT;
         cell_y1[idx] = row * STRIP_HEIGHT;
+        cell_banded &= ~(1u << idx);
     }
     for (int sub = 0; sub < LEAF_SUB; sub++) {
         leaf_dirty[row * LEAF_SUB + sub] = 0;
