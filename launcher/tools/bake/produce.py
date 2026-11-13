@@ -227,12 +227,12 @@ def input_file(bake, cache, lock, dependency=None):
 
 
 def produce_reference(bake, cache, fresh_references):
-    from r3d.reference_set import pack_references
+    from r3d.reference_set import pack_references, reference_inputs
 
     folder = reference_set(bake.key, bake.job, bake.scene, cache, fresh_references)
     with tempfile.TemporaryDirectory() as work:
         target = pathlib.Path(work) / bake.output
-        target.write_bytes(pack_references(folder))
+        target.write_bytes(pack_references(folder, reference_inputs(bake.job, bake.scene).sets()))
         return record(bake, target, cache)
 
 

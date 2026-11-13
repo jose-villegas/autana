@@ -5,11 +5,9 @@
 #include <math.h>
 #include <stdbool.h>
 #include <stddef.h>
-#include <stdio.h>
 #include <string.h>
 
 #include "apps/render_lab/render_lab.h"
-#include "apps/render_lab/render_lab_dynres.h"
 #include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/scene_baked.h"
 #include "core/tune.h"
@@ -28,10 +26,7 @@
 static const char* TAG = "stress";
 
 /* Copies are named consecutively from zero. */
-#define STRESS_SLOT_FORMAT    "slot_%02d"
-
-/* The longest copy name STRESS_SLOT_FORMAT makes, with its terminator. */
-#define STRESS_SLOT_NAME_SIZE 16
+#define STRESS_SLOT_FORMAT "slot_%02d"
 
 static const stress_params_t* shown;
 static entity_t loaded;
@@ -55,28 +50,11 @@ fail(const char* what) {
     lab_scene_fail(TAG, failure, sizeof failure, what);
 }
 
-static entity_t
-find_slot(int index) {
-    char name[STRESS_SLOT_NAME_SIZE];
-    const int length = snprintf(name, sizeof name, STRESS_SLOT_FORMAT, index);
-    return length > 0 && (size_t)length < sizeof name ? entity_find(loaded, name_hash(name)) : ENTITY_NONE;
-}
-
 /* The pool is every copy the pack names, from 0 up to the first it lacks. */
 static bool
 find_pool(void) {
-    pool = 0;
-    while (!handle_is_none(find_slot(pool))) {
-        pool++;
-    }
-    slots = lab_scene_take(sizeof *slots * (size_t)(pool > 0 ? pool : 1));
-    if (slots == NULL) {
-        return false;
-    }
-    for (int i = 0; i < pool; i++) {
-        slots[i] = find_slot(i);
-    }
-    return true;
+    slots = lab_scene_copies(loaded, STRESS_SLOT_FORMAT, &pool);
+    return slots != NULL;
 }
 
 static int
@@ -284,16 +262,7 @@ scene_stress_frame(uint32_t dt_ms) {
 /* The size drawn at, the triangle count and the copies, or why the scene did not load. */
 static const char*
 scene_stress_status(void) {
-    static char buf[LAB_STATUS_LEN];
-    if (failure[0] != '\0') {
-        return failure;
-    }
-    if (snprintf(buf, sizeof buf, "%s%5d tris x%d", render_lab_dynres_size(),
-                 render_context_frame(render_context_main()).stats.triangles, shown->copies)
-        < 0) {
-        buf[0] = '\0';
-    }
-    return buf;
+    return render_lab_copies_status(failure, shown->copies);
 }
 
 /* The camera shown: swinging, unless the start named a still one. */
