@@ -290,26 +290,28 @@ class BindingMappingTests(unittest.TestCase):
 
 
 STRIDE_M = 0.4   # metres a stance foot slides back under the hips in one stance
-STANCE_S = 0.5   # seconds of one foot's stance, half the stride cycle
+STANCE_S = 0.5   # seconds a foot is planted: half the stride, so one foot is always down
+REACH_M = 0.4    # how far past its landing a swinging foot reaches before it sets down
 LIFT_M = 0.1     # how high a swinging foot rises above the ground
 HIPS_M_S = 0.5   # the hips' own travel, root motion the stance foot's speed is measured against
 
 
 def walker(slide_m=STRIDE_M):
-    """A skin of hips over two feet: each foot planted for half a second while
-    it slides `slide_m` back under the hips, then lifted and swung forward,
-    the two out of step. The hips travel forward too, so the planted foot's
-    speed holds only measured against them."""
+    """A skin of hips over two feet, half a stride apart: each foot planted
+    for STANCE_S while it slides `slide_m` back under the hips, then lifted,
+    reached REACH_M past its landing and set down, never at the planted
+    foot's speed, so a measure of the wrong foot fails. The hips travel
+    forward too, so the planted foot's speed holds only against them."""
     nodes = [{"name": "rig", "children": [1]}, {"name": "hips", "children": [2, 3]}, {"name": "foot.l"},
              {"name": "foot.r"}]
-    half, front, back, low, high = STANCE_S / 2, slide_m / 2, -slide_m / 2, -LIFT_M, 0.0
-    cycle = 2 * STANCE_S
+    front, back, low, high = slide_m / 2, -slide_m / 2, -LIFT_M, 0.0
+    reach, cycle, mid = slide_m / 2 + REACH_M, 2 * STANCE_S, STANCE_S / 2
     channels = [
         channel(1, "translation", [0.0, cycle], [(0.0, LIFT_M, 0.0), (HIPS_M_S * cycle, LIFT_M, 0.0)]),
-        channel(2, "translation", [0.0, STANCE_S, STANCE_S + half, cycle],
-                [(front, low, 0.0), (back, low, 0.0), (0.0, high, 0.0), (front, low, 0.0)]),
-        channel(3, "translation", [0.0, half, STANCE_S, cycle],
-                [(back, low, 0.0), (0.0, high, 0.0), (front, low, 0.0), (back, low, 0.0)]),
+        channel(2, "translation", [0.0, STANCE_S, STANCE_S + mid, cycle],
+                [(front, low, 0.0), (back, low, 0.0), (reach, high, 0.0), (front, low, 0.0)]),
+        channel(3, "translation", [0.0, mid, STANCE_S, cycle],
+                [(back, low, 0.0), (reach, high, 0.0), (front, low, 0.0), (back, low, 0.0)]),
     ]
     return nodes, channels
 
@@ -328,7 +330,7 @@ class GroundSpeedTests(unittest.TestCase):
 
     def test_the_planted_foot_sliding_under_the_hips_is_the_ground_speed(self):
         nodes, channels = walker()
-        self.assertEqual(self.ground_mm_s(nodes, channels, self.skin()), round(STRIDE_M / STANCE_S * 1000))
+        self.assertEqual(self.ground_mm_s(nodes, channels, self.skin()), round(STRIDE_M / STANCE_S * tracks_asset.GROUND_PER_M))
 
     def test_feet_that_stay_under_the_hips_show_no_ground_speed(self):
         nodes, channels = walker(slide_m=0.0)
@@ -343,6 +345,11 @@ class GroundSpeedTests(unittest.TestCase):
         self.assertEqual(struct.unpack_from("<H", entry, tracks_asset.AT_GROUND)[0], 800)
         self.assertEqual(HEADER.unpack_from(entry)[-1], 800)
         tracks_asset.decode(entry)
+
+    def test_a_version_three_entry_is_refused(self):
+        entry = edited(probe_entry(), tracks_asset.AT_VERSION, "<H", tracks_asset.VERSION - 1)
+        with self.assertRaisesRegex(TracksError, "version 3"):
+            tracks_asset.decode(entry)
 
     def test_a_ground_speed_past_the_field_is_refused(self):
         tracks, duration, root, _ = probe_tracks()
