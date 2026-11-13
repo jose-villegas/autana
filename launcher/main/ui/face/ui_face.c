@@ -124,18 +124,16 @@ ui_face_end(void) {
 void
 ui_theme(const ui_theme_t* t) {
     UI_FACE_COST_BEGIN(face_from);
-    if (!t) {
-        theme = ui_theme_from_style(ui_context()->style);
-        UI_FACE_COST_END(face_from, "ui.face");
-        return;
-    }
-    theme = UI_THEME_FROM_FACE(t);
+    const ui_skin_t skin = theme.skin;
+    theme = t != NULL ? UI_THEME_FROM_FACE(t) : ui_theme_from_style(ui_context()->style);
+    theme.skin = skin;
     UI_FACE_COST_END(face_from, "ui.face");
 }
 
 void
-ui_corner_radius(int radius) {
-    theme.corner_radius = radius > 0 ? radius : 0;
+ui_skin(const ui_skin_t* skin) {
+    assert(skin == NULL || (skin->normal != NULL && skin->pressed != NULL));
+    theme.skin = skin != NULL ? *skin : (ui_skin_t){0};
 }
 
 /* The innermost recorded slot of a scope `depth` deep, or -1 with none open;

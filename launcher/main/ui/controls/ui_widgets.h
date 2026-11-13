@@ -23,7 +23,7 @@ typedef struct {
     int text_scale;
     int icon_side;      /* beside a label; a tile sizes its own to fill it */
     bool native_toggle; /* retain the style's checkbox frame palette */
-    int corner_radius;  /* 0: a bevelled face; above: a flat face, corners rounded */
+    ui_skin_t skin;     /* normal NULL: the code-drawn bevelled face */
 } ui_mu_theme_t;
 
 ui_mu_theme_t ui_theme_from_style(const mu_Style* style);

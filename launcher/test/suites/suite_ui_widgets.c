@@ -860,50 +860,97 @@ test_open_list_stays_on_top_during_held_and_idle_band_frames(void) {
     menu_repaint_frames(true);
 }
 
-#define UNDER_FACE_RGB 0x2040A0
-#define UNDER_STALE    RGB565BE(0xFF00FF)
-#define UNDER_BACKDROP RGB565BE(0x00FF00)
-static const mu_Rect UNDER_LEFT = {20, 40, 60, 60};
-static const mu_Rect UNDER_RIGHT = {220, 40, 60, 60};
+/* A half see-through skin, SKIN_SIDE square with a one-pixel border, one
+ * colour at rest and another held. */
+#define SKIN_SIDE       3
+#define SKIN_BORDER     1
+#define SKIN_HALF_COVER 128
+#define SKIN_REST_RGB   0xF0F0F0
+#define SKIN_HELD_RGB   0x2040A0
+#define UNDER_BACKDROP  RGB565BE(0x00A040)
+/* Frames an unchanged skinned UI is put back over a backdrop drawn under it. */
+#define UNDER_FRAMES    8
+static const recti_t UNDER_BUTTON = {40, 100, 240, 60};
 
-static void
-under_frame(void) {
-    ui_begin(NULL);
-    if (ui_begin_screen(ui_context(), "Under", MU_OPT_NOTITLE | MU_OPT_NOFRAME)) {
-        mu_draw_rect(ui_context(), UNDER_LEFT, ui_rgb(UNDER_FACE_RGB));
-        mu_draw_rect(ui_context(), UNDER_RIGHT, ui_rgb(UNDER_FACE_RGB));
-        mu_end_window(ui_context());
+typedef struct {
+    gfx_color_t rest[SKIN_SIDE * SKIN_SIDE], held[SKIN_SIDE * SKIN_SIDE];
+    uint8_t cover[SKIN_SIDE * SKIN_SIDE];
+    sprite_t normal, pressed;
+} half_skin_t;
+
+static sprite_t
+half_sprite(gfx_color_t* color, uint32_t rgb, uint8_t* cover) {
+    for (int i = 0; i < SKIN_SIDE * SKIN_SIDE; i++) {
+        color[i] = RGB565BE(rgb);
+        cover[i] = SKIN_HALF_COVER;
     }
+    const uint32_t pitch = SKIN_SIDE * sizeof *color;
+    return (sprite_t){.color = {color, IMAGE_RGB565BE, SKIN_SIDE, SKIN_SIDE, pitch},
+                      .alpha = {cover, IMAGE_A8, SKIN_SIDE, SKIN_SIDE, SKIN_SIDE},
+                      .border = {SKIN_BORDER, SKIN_BORDER, SKIN_BORDER, SKIN_BORDER}};
 }
 
 static void
-no_backdrop(void) {}
-
-static gfx_color_t*
-pixel_in(mu_Rect r) {
-    return &gfx_framebuffer()[((r.y + (r.h / 2)) * GFX_WIDTH) + r.x + (r.w / 2)];
+paint_under_backdrop(void) {
+    draw_rect(0, 0, GFX_WIDTH, GFX_HEIGHT, UNDER_BACKDROP);
 }
 
-/* An unchanged UI drawn under in one place paints back only what covers
- * that place: a face the backdrop never reached is left as it stands. */
+/* One frame of a skinned button with the finger as `in` says, painted over
+ * the backdrop, then sent. */
 static void
-test_an_unchanged_ui_repaints_only_the_commands_drawn_under(void) {
+skinned_frame(const half_skin_t* skin, const input_t* in) {
+    const ui_skin_t faces = {.normal = &skin->normal, .pressed = &skin->pressed};
+    ui_begin(in);
+    ui_screen();
+    ui_skin(&faces);
+    (void)ui_button(UNDER_BUTTON, "GO");
+    (void)ui_end_over(paint_under_backdrop);
+    gfx_present();
+}
+
+static input_t
+on_skinned_button(bool down, bool pressed, bool released) {
+    return (input_t){.down = down,
+                     .pressed = pressed,
+                     .released = released,
+                     .point = {UNDER_BUTTON.x + UNDER_BUTTON.w / 2, UNDER_BUTTON.y + UNDER_BUTTON.h / 2}};
+}
+
+/* A translucent face put back over a backdrop that drew under part of it
+ * blends over the backdrop each time, never over its own last paint: the
+ * picture holds frame after frame, and a press and its release give the
+ * same pixels back. */
+static void
+test_a_translucent_face_put_back_over_its_backdrop_holds_its_pixels(void) {
     TEST_ASSERT_TRUE(gfx_init());
     fixture();
-    draw_clear(RGB565BE(UI_BACKGROUND));
-    under_frame();
-    (void)ui_end_over(no_backdrop);
-    gfx_present();
+    half_skin_t* skin = memory_alloc(sizeof *skin, MEMORY_PSRAM);
+    const size_t frame_bytes = GFX_FRAMEBUFFER_BYTES;
+    gfx_color_t* first = memory_alloc(frame_bytes, MEMORY_PSRAM);
+    TEST_ASSERT_NOT_NULL(skin);
+    TEST_ASSERT_NOT_NULL(first);
+    skin->normal = half_sprite(skin->rest, SKIN_REST_RGB, skin->cover);
+    skin->pressed = half_sprite(skin->held, SKIN_HELD_RGB, skin->cover);
+    const input_t idle = {0};
+    skinned_frame(skin, &idle);
+    memcpy(first, gfx_framebuffer(), frame_bytes);
 
-    /* Stale pixels no draw marks: only a repaint would replace them. */
-    *pixel_in(UNDER_LEFT) = UNDER_STALE;
-    *pixel_in(UNDER_RIGHT) = UNDER_STALE;
-    draw_rect(UNDER_RIGHT.x, UNDER_RIGHT.y, UNDER_RIGHT.w / 4, UNDER_RIGHT.h / 4, UNDER_BACKDROP);
-    under_frame();
-    TEST_ASSERT_TRUE(ui_end_over(no_backdrop));
+    for (int i = 0; i < UNDER_FRAMES; i++) {
+        /* The backdrop moving under the button's left half only. */
+        draw_rect(UNDER_BUTTON.x, UNDER_BUTTON.y, UNDER_BUTTON.w / 2, UNDER_BUTTON.h, UNDER_BACKDROP);
+        skinned_frame(skin, &idle);
+        TEST_ASSERT_EQUAL_MEMORY_MESSAGE(first, gfx_framebuffer(), frame_bytes, "an unchanged frame holds its pixels");
+    }
 
-    TEST_ASSERT_EQUAL_HEX16_MESSAGE(RGB565BE(UNDER_FACE_RGB), *pixel_in(UNDER_RIGHT), "the face drawn under repaints");
-    TEST_ASSERT_EQUAL_HEX16_MESSAGE(UNDER_STALE, *pixel_in(UNDER_LEFT), "the face not drawn under is left alone");
+    const input_t press = on_skinned_button(true, true, false);
+    const input_t release = on_skinned_button(false, false, true);
+    skinned_frame(skin, &press);
+    TEST_ASSERT_TRUE_MESSAGE(memcmp(first, gfx_framebuffer(), frame_bytes) != 0, "the held face shows");
+    skinned_frame(skin, &release);
+    skinned_frame(skin, &idle);
+    TEST_ASSERT_EQUAL_MEMORY_MESSAGE(first, gfx_framebuffer(), frame_bytes, "the release gives the pixels back");
+    memory_free(first);
+    memory_free(skin);
     gfx_reset_for_test();
 }
 
@@ -1620,7 +1667,7 @@ run_ui_widgets_suite(void) {
     RUN_TEST(test_menu_band_frame_cost);
     RUN_TEST(test_options_band_frame_cost);
     RUN_TEST(test_dense_bands_match_a_full_repaint);
-    RUN_TEST(test_an_unchanged_ui_repaints_only_the_commands_drawn_under);
+    RUN_TEST(test_a_translucent_face_put_back_over_its_backdrop_holds_its_pixels);
     RUN_TEST(test_closing_the_list_restores_the_pixels_under_it);
     RUN_TEST(test_ui_end_in_band_mode_is_replayed_over_each_band);
     RUN_TEST(test_changed_ui_over_a_held_expanded_picture_dirties_its_band);

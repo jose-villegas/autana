@@ -207,21 +207,13 @@ draw_image_command(const mu_Command* cmd, affine2x_t t) {
     }
 }
 
-/* Filled in panel rows after the turn, so a quarter turn costs no more
- * spans than none. */
+/* An integer UI scale scales the border with the face. */
 static void
-draw_round_command(const mu_Command* cmd, affine2x_t t) {
-    const ui_round_command_t* face = (const ui_round_command_t*)cmd;
+draw_sprite_command(const mu_Command* cmd, affine2x_t t) {
+    const ui_sprite_command_t* face = (const ui_sprite_command_t*)cmd;
     const mu_Rect r = ui_transform_mu_rect(t, face->rect);
-    /* An integer scale scales the corner with the face. */
-    const int radius = face->radius * (r.w + r.h) / (face->rect.w + face->rect.h);
-    const gfx_color_t color = mu_color_to_gfx(face->color);
-    for (int row = 0; row < radius; row++) {
-        const int inset = ui_round_inset(radius, r.h, row);
-        draw_rect(r.x + inset, r.y + row, r.w - (2 * inset), 1, color);
-        draw_rect(r.x + inset, r.y + r.h - 1 - row, r.w - (2 * inset), 1, color);
-    }
-    draw_rect(r.x, r.y + radius, r.w, r.h - (2 * radius), color);
+    const int scale = mathi_max(1, (r.w + r.h) / mathi_max(1, face->rect.w + face->rect.h));
+    draw_sprite_scaled(face->sprite, ui_recti_from_mu(r), ui_transform_quarter(t), scale);
 }
 
 static void
@@ -260,7 +252,7 @@ draw_command(const mu_Command* cmd) {
     switch (cmd->type) {
         case MU_COMMAND_RECT: draw_rect_command(cmd, t); break;
         case UI_COMMAND_IMAGE: draw_image_command(cmd, t); break;
-        case UI_COMMAND_ROUND_RECT: draw_round_command(cmd, t); break;
+        case UI_COMMAND_SPRITE: draw_sprite_command(cmd, t); break;
         case UI_COMMAND_SWATCHES: draw_swatches_command(cmd, t); break;
         case MU_COMMAND_TEXT: draw_text_command(cmd, t); break;
         case MU_COMMAND_ICON: draw_icon_command(cmd, t); break;
@@ -296,25 +288,11 @@ next_canvas_command(const mu_Container* cnt, mu_Command** cmd) {
 void (*ui_canvas_painted_for_test)(const mu_Container*);
 #endif
 
-static bool command_rect(const mu_Command* cmd, mu_Rect* out);
-
-/* `only_drawn_under`: an unchanged canvas whose pixels stand except where
- * something drew under it this frame replays only the commands over those
- * places. Painter's order keeps it whole: a command that repaints marks its
- * own rect, so whatever is drawn over it then repaints too. */
-static bool
-skip_command(const mu_Command* cmd, bool only_drawn_under) {
-    mu_Rect r;
-    return only_drawn_under && command_rect(cmd, &r) && !gfx_region_dirty(r.x, r.y, r.w, r.h);
-}
-
 static void
-paint_canvas(const mu_Container* cnt, bool only_drawn_under) {
+paint_canvas(const mu_Container* cnt) {
     mu_Command* cmd = NULL;
     while (next_canvas_command(cnt, &cmd)) {
-        if (!skip_command(cmd, only_drawn_under)) {
-            draw_command(cmd);
-        }
+        draw_command(cmd);
     }
     draw_clear_clip();
 #ifndef ESP_PLATFORM
@@ -352,24 +330,24 @@ canvas_physical_rect(const mu_Container* cnt) {
     return ui_transform_mu_rect(ui_effective_transform(), cnt->rect);
 }
 
-/* Which canvases changed. Also repaint one whose bands are already dirty:
- * something has drawn underneath it this frame, so its pixels are gone
- * however unchanged its own description is. */
 static bool
 canvas_itself_changed(const mu_Container* cnt) {
     const int slot = (int)(cnt - ui_ctx.containers);
     return ui_invalidated || slot < 0 || slot >= MU_CONTAINERPOOL_SIZE || hash_canvas(cnt) != ui_canvas_hash[slot];
 }
 
+/* Whether the canvas changed, or something drew underneath it this frame, so
+ * its pixels are gone however unchanged its own description is. */
+static bool
+canvas_needs_paint(const mu_Container* cnt) {
+    const mu_Rect phys = canvas_physical_rect(cnt);
+    return canvas_itself_changed(cnt) || gfx_region_dirty(phys.x, phys.y, phys.w, phys.h);
+}
+
 static void
 mark_changed_canvases(int n, bool* repaint) {
     for (int i = 0; i < n && i < MU_ROOTLIST_SIZE; i++) {
-        const mu_Container* cnt = ui_ctx.root_list.items[i];
-        const mu_Rect phys = canvas_physical_rect(cnt);
-
-        if (canvas_itself_changed(cnt) || gfx_region_dirty(phys.x, phys.y, phys.w, phys.h)) {
-            repaint[i] = true;
-        }
+        repaint[i] = canvas_needs_paint(ui_ctx.root_list.items[i]);
     }
 }
 
@@ -423,7 +401,7 @@ clear_vanished_canvases(uint32_t background_rgb) {
 }
 
 static bool
-repaint_marked_canvases(int n, const bool* repaint, uint32_t background_rgb, bool only_drawn_under) {
+repaint_marked_canvases(int n, const bool* repaint, uint32_t background_rgb) {
     bool drew = false;
 
     for (int i = 0; i < n && i < MU_ROOTLIST_SIZE; i++) {
@@ -439,7 +417,7 @@ repaint_marked_canvases(int n, const bool* repaint, uint32_t background_rgb, boo
             draw_rect(phys.x, phys.y, phys.w, phys.h, RGB565BE(background_rgb));
         }
 
-        paint_canvas(cnt, only_drawn_under);
+        paint_canvas(cnt);
 
         const int slot = (int)(cnt - ui_ctx.containers);
         if (slot >= 0 && slot < MU_CONTAINERPOOL_SIZE) {
@@ -496,7 +474,7 @@ ui_end(uint32_t background_rgb) {
     clear_vanished_canvases(background_rgb);
     mark_changed_canvases(n, repaint);
     propagate_repaint_over_overlaps(n, repaint);
-    const bool drew = repaint_marked_canvases(n, repaint, background_rgb, false);
+    const bool drew = repaint_marked_canvases(n, repaint, background_rgb);
 
     ui_invalidated = false;
 #if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT
@@ -508,10 +486,11 @@ ui_end(uint32_t background_rgb) {
     return drew;
 }
 
-/* A backdrop is shared by every canvas, so once the UI itself has changed
- * it is painted once and every canvas goes over it. A UI that is unchanged
- * and only drawn under (the backdrop animating) is painted back on top
- * with no backdrop call: whoever drew under it has already drawn that part. */
+/* A backdrop is shared by every canvas, so whenever any canvas must paint (it
+ * changed, or something drew under it) the whole backdrop is painted once and
+ * every canvas goes over it. A face may be translucent, so none is ever drawn
+ * again over its own last paint: that would blend it over itself and darken
+ * it frame by frame. */
 bool
 ui_end_over(ui_backdrop_fn paint_backdrop) {
 #if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT
@@ -528,21 +507,17 @@ ui_end_over(ui_backdrop_fn paint_backdrop) {
     const int n = ui_ctx.root_list.idx;
     bool repaint[MU_ROOTLIST_SIZE] = {false};
     mu_Rect vanished[MU_CONTAINERPOOL_SIZE];
-    bool ui_changed = take_vanished_canvases(vanished) > 0;
+    bool paint = take_vanished_canvases(vanished) > 0;
     for (int i = 0; i < n && i < MU_ROOTLIST_SIZE; i++) {
-        ui_changed = ui_changed || canvas_itself_changed(ui_ctx.root_list.items[i]);
+        paint = paint || canvas_needs_paint(ui_ctx.root_list.items[i]);
     }
-
-    if (ui_changed) {
+    if (paint) {
         paint_backdrop();
         for (int i = 0; i < n && i < MU_ROOTLIST_SIZE; i++) {
             repaint[i] = true;
         }
-    } else {
-        mark_changed_canvases(n, repaint);
-        propagate_repaint_over_overlaps(n, repaint);
     }
-    const bool drew = repaint_marked_canvases(n, repaint, UI_NO_BACKGROUND, !ui_changed);
+    const bool drew = repaint_marked_canvases(n, repaint, UI_NO_BACKGROUND);
 
     ui_invalidated = false;
 #if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT
@@ -637,7 +612,7 @@ command_rect(const mu_Command* cmd, mu_Rect* out) {
         case MU_COMMAND_RECT: *out = ui_transform_mu_rect(t, cmd->rect.rect); return true;
         case UI_COMMAND_IMAGE: *out = ui_transform_mu_rect(t, ((const ui_image_command_t*)cmd)->rect); return true;
         case UI_COMMAND_SWATCHES: *out = ui_transform_mu_rect(t, ((const ui_swatch_command_t*)cmd)->rect); return true;
-        case UI_COMMAND_ROUND_RECT: *out = ui_transform_mu_rect(t, ((const ui_round_command_t*)cmd)->rect); return true;
+        case UI_COMMAND_SPRITE: *out = ui_transform_mu_rect(t, ((const ui_sprite_command_t*)cmd)->rect); return true;
         case MU_COMMAND_ICON: *out = ui_transform_mu_rect(t, cmd->icon.rect); return true;
         case MU_COMMAND_TEXT: {
             const ui_font_scaled_t fs = ui_resolve_font_scaled(cmd->text.font);
@@ -786,7 +761,7 @@ ui_end_for_bands(uint32_t background_rgb) {
         mu_Command* cmd = NULL;
         while (next_canvas_command(cnt, &cmd)) {
             ui_band_entry_t entry = {.kind = UI_BAND_ENTRY_COMMAND, .cmd = cmd};
-            mu_Rect rect;
+            mu_Rect rect = {0};
             entry.always = !command_rect(cmd, &rect);
             entry.y0 = rect.y;
             entry.y1 = rect.y + rect.h;
@@ -830,7 +805,7 @@ replay_full_band(void) {
             const mu_Rect r = canvas_physical_rect(cnt);
             draw_rect(r.x, r.y, r.w, r.h, RGB565BE(ui_band_background));
         }
-        paint_canvas(cnt, false);
+        paint_canvas(cnt);
     }
     for (int i = 0; i < replay_rect_count; i++) {
         const ui_extra_rect_t* r = &extra_rects[i];

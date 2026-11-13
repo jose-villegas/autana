@@ -28,6 +28,7 @@
 #include <stdint.h>
 
 #include "draw/draw_font.h"
+#include "draw/draw_sprite.h"
 #include "draw/icon.h"
 #include "input/input.h"
 #include "math/geometry/recti.h"
@@ -156,9 +157,11 @@ bool ui_end(uint32_t background_rgb);
 bool ui_end_if_unsettled(void);
 
 /* ui_end() over a backdrop that is drawn, not a colour. `paint_backdrop`
- * paints the whole screen and is called only when the UI itself changed; a
- * backdrop that animates draws its own changes before this call, and the
- * unchanged UI is put back over them. Full framebuffer only. */
+ * paints the whole screen, and is called whenever the UI must paint: it
+ * changed, or something drew under it (a backdrop that animates draws its
+ * own changes before this call). Every canvas then paints over it, so a
+ * translucent face never blends over its own last paint. Full framebuffer
+ * only. */
 typedef void (*ui_backdrop_fn)(void);
 bool ui_end_over(ui_backdrop_fn paint_backdrop);
 
@@ -212,9 +215,20 @@ typedef struct {
 
 /* The palette for the rest of the frame; NULL restores the shell look. */
 void ui_theme(const ui_theme_t* theme);
-/* Buttons and tiles for the rest of the frame: flat faces with corners
- * rounded by `radius`; 0, the default, is the bevelled face. */
-void ui_corner_radius(int radius);
+
+/* Faces drawn from sprites, nine-sliced to each control, the border scaled
+ * with the UI's integer scale. `normal` and `pressed` are required; a NULL
+ * `selected` or `disabled` falls back to `normal`. A translucent face needs
+ * a background under it every paint: ui_end() with a colour, or
+ * ui_end_over(). */
+typedef struct {
+    const sprite_t *normal, *pressed, *selected, *disabled;
+} ui_skin_t;
+
+/* Buttons and tiles for the rest of the frame take their faces from `skin`,
+ * copied; NULL, the default, restores the code-drawn faces. The skin sets
+ * the faces and ui_theme() the ink, each independent of the other. */
+void ui_skin(const ui_skin_t* skin);
 
 /* A rect `w` wide and `h` tall at `y`, centred in a canvas `canvas_w` wide:
  * fixed-width content, where ui_row() spans the canvas. `w` is not clamped;

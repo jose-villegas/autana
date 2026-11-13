@@ -68,7 +68,7 @@ settings_frame(const input_t* input, settings_state_t* s) {
 | controls | [`ui_button`](button.md), [`ui_button_icon`](button_icon.md), [`ui_tile`](tile.md), [`ui_tile_icon`](tile_icon.md), [`ui_toggle`](toggle.md), [`ui_slider`](slider.md), [`ui_dropdown`](dropdown.md), [`ui_dropdown_icons`](dropdown_icons.md) |
 | text | [`ui_text`, `ui_text_right`, `ui_text_centre`, `ui_caption`, `ui_caption_centre`](text.md), [`ui_header`](header.md) |
 | marks | [`ui_panel`](panel.md), `ui_fill`, `ui_outline`, `ui_bevel`, [`ui_icon`, `ui_check`](icon.md), [`ui_swatches`](swatches.md) |
-| a look for the screen | `ui_theme(&theme)` once per screen; `NULL` restores the shell look; `ui_corner_radius(r)` for flat, rounded buttons |
+| a look for the screen | `ui_theme(&theme)` once per screen for the ink; `ui_skin(&skin)` for button and tile faces drawn from [sprites](../assets/Image-Entries.md#sprites); `NULL` restores either |
 | a look for a few widgets | [scopes](scopes.md): `ui_color_begin/end`, `ui_scale_begin/end`, `ui_alpha_begin/end`, `ui_disabled_begin/end` |
 
 - **Rect first.** Every widget takes its rect. A screen with fixed geometry
@@ -251,11 +251,12 @@ accumulators the pause built up.
 `ui_end_over(paint_backdrop)` is `ui_end()` for a backdrop that is a picture
 and not a colour; the launcher's ridge (`shell/ui/ui_ridge.c`) is the model.
 
-1. `paint_backdrop` paints the whole screen. It is called only when the UI
-   itself changed, and every window is then painted over it.
+1. `paint_backdrop` paints the whole screen. It is called whenever the UI
+   must paint, and every window is then painted over it, so a translucent
+   face never blends over its own last paint.
 2. A backdrop that animates draws its own changed part **before**
-   `ui_end_over()`. That dirties the screen under an unchanged UI, which is
-   put back on top with no backdrop call.
+   `ui_end_over()`. That dirties the screen under an unchanged UI, which
+   then paints: the whole backdrop, then every window.
 3. At rest it must draw nothing. A backdrop that redraws an identical frame
    dirties the screen, and the launcher stops being free while idle.
 4. React to the raw `input_t`, not to the controls: a press is held back until it is known to be a tap and not a

@@ -100,31 +100,32 @@ draw_sprite_make_resident(sprite_t* s, void* dst) {
     s->color.pixels = bytes;
 }
 
-/* One axis of the nine-slice: the border pair shrunk in proportion when the
- * output is shorter than both. */
+/* One axis of the nine-slice: the border pair drawn `scale` times its size,
+ * shrunk in proportion when the output is shorter than both. */
 typedef struct {
-    int out_len, src_len, lo, hi, out_lo, out_hi;
+    int out_len, src_len, lo, hi, out_lo, out_hi, scale;
 } slice_axis_t;
 
 static slice_axis_t
-slice_axis(int out_len, int src_len, int lo, int hi) {
-    slice_axis_t axis = {out_len, src_len, lo, hi, lo, hi};
-    if (lo + hi > out_len) {
-        axis.out_lo = lo * out_len / (lo + hi);
+slice_axis(int out_len, int src_len, int lo, int hi, int scale) {
+    slice_axis_t axis = {out_len, src_len, lo, hi, lo * scale, hi * scale, scale};
+    if (axis.out_lo + axis.out_hi > out_len) {
+        axis.out_lo = axis.out_lo * out_len / (axis.out_lo + axis.out_hi);
         axis.out_hi = out_len - axis.out_lo;
     }
     return axis;
 }
 
-/* The source pixel along the axis for output pixel `at`: corners 1:1, the
- * centre stretched by nearest pixel centre. */
+/* The source pixel along the axis for output pixel `at`: corners `scale`
+ * output pixels to a source pixel, the centre stretched by nearest pixel
+ * centre. */
 static int
 slice_source(const slice_axis_t* axis, int at) {
     if (at < axis->out_lo) {
-        return at;
+        return at / axis->scale;
     }
     if (at >= axis->out_len - axis->out_hi) {
-        return axis->src_len - (axis->out_len - at);
+        return axis->src_len - 1 - ((axis->out_len - 1 - at) / axis->scale);
     }
     const int centre_src = axis->src_len - axis->lo - axis->hi;
     const int centre_out = axis->out_len - axis->out_lo - axis->out_hi;
@@ -212,14 +213,20 @@ blit(const gfx_target_t* target, recti_t rect, recti_t dst, const sprite_t* s, i
 
 void
 draw_sprite(const sprite_t* s, recti_t dst, int quarter_turns) {
+    draw_sprite_scaled(s, dst, quarter_turns, 1);
+}
+
+void
+draw_sprite_scaled(const sprite_t* s, recti_t dst, int quarter_turns, int scale) {
+    assert(scale >= 1);
     const int turns = quarter_turns & SPRITE_QUARTER_MASK;
     const bool across = (turns & 1) != 0; /* the sprite's x runs down the panel */
     const recti_t frame = across ? (recti_t){0, 0, dst.h, dst.w} : (recti_t){0, 0, dst.w, dst.h};
     if (recti_is_empty(frame)) {
         return;
     }
-    const slice_axis_t sx = slice_axis(frame.w, s->color.width, s->border.left, s->border.right);
-    const slice_axis_t sy = slice_axis(frame.h, s->color.height, s->border.top, s->border.bottom);
+    const slice_axis_t sx = slice_axis(frame.w, s->color.width, s->border.left, s->border.right, scale);
+    const slice_axis_t sy = slice_axis(frame.h, s->color.height, s->border.top, s->border.bottom, scale);
     const recti_t centre = draw_flat_centre(s, dst, turns, &sx, &sy);
 
     gfx_surface_t state;

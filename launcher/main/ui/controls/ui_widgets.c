@@ -106,15 +106,29 @@ typedef struct {
     mu_Color ink;
 } control_t;
 
-/* A rounded face is flat, lighter while held; a square one is bevelled. */
+/* The skin's sprite for a control's state; a missing one falls back to
+ * `normal`. */
+static const sprite_t*
+skin_face(const ui_skin_t* skin, bool enabled, bool selected, bool pressed) {
+    const sprite_t* face = NULL;
+    if (!enabled) {
+        face = skin->disabled;
+    } else if (pressed) {
+        face = skin->pressed;
+    } else if (selected) {
+        face = skin->selected;
+    }
+    return face != NULL ? face : skin->normal;
+}
+
+/* A skinned face is its sprite; otherwise the face is bevelled. */
 static void
-draw_face(mu_Context* ctx, mu_Rect r, mu_Color face, bool pressed, int corner_radius) {
-    if (corner_radius > 0) {
-        ui_round_command_t* cmd = ui_push_clipped_command(ctx, UI_COMMAND_ROUND_RECT, sizeof *cmd, r);
+draw_face(mu_Context* ctx, mu_Rect r, mu_Color face, bool pressed, const ui_skin_t* skin, bool enabled, bool selected) {
+    if (skin->normal != NULL) {
+        ui_sprite_command_t* cmd = ui_push_clipped_command(ctx, UI_COMMAND_SPRITE, sizeof *cmd, r);
         if (cmd != NULL) {
             cmd->rect = r;
-            cmd->color = pressed ? ui_shade(face, UI_BEZEL_HIGHLIGHT) : face;
-            cmd->radius = mu_min(corner_radius, mu_min(r.w, r.h) / 2);
+            cmd->sprite = skin_face(skin, enabled, selected, pressed);
         }
         return;
     }
@@ -135,7 +149,7 @@ begin_control(mu_Context* ctx, mu_Id mid, mu_Rect r, bool enabled, bool selected
     }
 
     const bool on_accent = enabled && selected;
-    draw_face(ctx, r, on_accent ? theme->accent_face : theme->button_face, c.pressed, theme->corner_radius);
+    draw_face(ctx, r, on_accent ? theme->accent_face : theme->button_face, c.pressed, &theme->skin, enabled, on_accent);
 
     if (!enabled) {
         c.ink = theme->muted;
