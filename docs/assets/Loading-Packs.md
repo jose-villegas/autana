@@ -109,7 +109,9 @@ mounted packs; `ASSET_STORE_MOUNTS_MAX` bounds their table.
 
 `scene_load(id)` and `scene_load_async()` load a scene the same way
 ([Loading scenes](../render/scene/Scene-Loading.md#loading)); `scene_release()`
-releases its pack.
+releases its pack. The id is `pack/scene`, or a bare `scene` in the pack of its
+own name: a folder pack (`NAME.pack.toml`) holding several scenes is read as
+`NAME/scene`.
 
 ## The device
 

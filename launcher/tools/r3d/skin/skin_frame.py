@@ -39,7 +39,7 @@ SOURCES = [pathlib.Path(__file__).with_name("skin_host.c"), *scene_host.SOURCES]
 
 def program(directory):
     target = directory / ("skin_host.exe" if sys.platform == "win32" else "skin_host")
-    includes = [arg for root in packages.include_roots() for arg in ("-I", str(root))]
+    includes = [*(arg for root in packages.include_roots() for arg in ("-I", str(root))), *scene_host.FLAGS]
     subprocess.run([track_host.compiler(), "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror",
                     "-Werror=double-promotion", "-ffp-contract=off", "-ffunction-sections", "-fdata-sections", "-Wl,--gc-sections", *includes, *map(str, SOURCES),
                     "-lm", "-o", str(target)], check=True)
