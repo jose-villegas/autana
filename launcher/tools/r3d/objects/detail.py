@@ -12,8 +12,11 @@ from dataclasses import dataclass
 import numpy as np
 
 from r3d.geometry import bounds_diagonal, nearest_triangles, triangle_search
-from r3d.lod.pick import TOLERANCE_PX
 from r3d.meshopt import simplify_to_error
+from render.settings import render_asset
+
+# The screen error the level pick allows, in pixels: the render asset's, as r3d.lod.pick reads it.
+TOLERANCE_PX = render_asset.load(render_asset.DEFAULT)["lod.tolerance_px"]
 
 # Each rung of a shape's ladder allows this many times the screen error of the rung before.
 LADDER_STEP = 2.0

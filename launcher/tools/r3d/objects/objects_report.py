@@ -229,8 +229,8 @@ def main(argv=None):
 
 def write_authoring(scene, job, out):
     """The --authoring report; see the module docstring."""
-    from r3d.lod.pick import TOLERANCE_PX
     from r3d.mesh_import import bake_geometry
+    from r3d.objects.detail import TOLERANCE_PX
 
     unlit = copy.copy(job)
     unlit.bake = None
