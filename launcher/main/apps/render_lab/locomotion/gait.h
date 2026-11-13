@@ -29,6 +29,9 @@ typedef struct {
     float rate; /* playback rate */
 } gait_pick_t;
 
+/* Orders `count` steps slowest first, as gait_t takes them. */
+void gait_sort(gait_step_t* steps, int count);
+
 /* The step for `speed` (metres per second), holding `current` inside its band,
  * and the rate that matches the step's ground speed to `speed`, clamped;
  * a still step plays at 1. current.step < 0 picks without holding. */

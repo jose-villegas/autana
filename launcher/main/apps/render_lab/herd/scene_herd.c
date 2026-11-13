@@ -71,12 +71,11 @@ static int pool;
 /* The most clips a copy's gait chooses among. */
 #define HERD_GAIT_STEPS_MAX  8
 #define HERD_SEED            0x4E5Du
-/* The path a frame profile plays: 18 s of walking, one turn of a profile's orbit. */
+/* The path "pose <ms>" seeks along: 18 s of walking. */
 #define HERD_PATH_MS         18000u
 
-/* The walk and its parts; config points into gait and legs. */
+/* The walk and its parts; config points into gait. */
 static gait_step_t steps[HERD_GAIT_STEPS_MAX];
-static float legs[HERD_GAIT_STEPS_MAX];
 static gait_t gait;
 static herd_wander_config_t config;
 static herd_wander_t wander;
@@ -125,39 +124,17 @@ show_copies(void) {
     }
 }
 
-/* The copy facing along `heading` (radians from +x toward +z on the ground):
- * the mesh looks down -z, so it turns -(heading + a quarter turn) about +y. */
-static quatf_t
-facing(float heading) {
-    return quatf_from_axis_angle(vec3f_unit_y(), -(heading + (MATH_PI / 2.0F)));
-}
-
-/* The heading the authored rotation faces. */
-static float
-heading_of(quatf_t rotation) {
-    const vec3f_t forward = quatf_rotate(rotation, vec3f_scale(vec3f_unit_z(), -1.0F));
-    return atan2f(forward.z, forward.x);
-}
-
 /* The walk's gait from the copies' clips, slowest first, each at the ground
- * speed its import measured times the copies' scale; a leg goes at each
- * step's speed, so the still one grazes. */
+ * speed its import measured times the copies' scale. */
 static void
 build_walk(void) {
     const transformf_t placed = transform_local(copies[0]);
     const int clips = animator_clip_count(copies[0]);
     const int count = clips < HERD_GAIT_STEPS_MAX ? clips : HERD_GAIT_STEPS_MAX;
     for (int i = 0; i < count; i++) {
-        const gait_step_t step = {.clip = i, .ground_mps = animator_clip_ground_mps(copies[0], i) * placed.scale.x};
-        int at = i;
-        for (; at > 0 && steps[at - 1].ground_mps > step.ground_mps; at--) {
-            steps[at] = steps[at - 1];
-        }
-        steps[at] = step;
+        steps[i] = (gait_step_t){.clip = i, .ground_mps = animator_clip_ground_mps(copies[0], i) * placed.scale.x};
     }
-    for (int i = 0; i < count; i++) {
-        legs[i] = steps[i].ground_mps;
-    }
+    gait_sort(steps, count);
     gait = (gait_t){.steps = steps,
                     .count = count,
                     .rate_min = HERD_GAIT_RATE_MIN,
@@ -174,8 +151,6 @@ build_walk(void) {
                    .horizon_s = HERD_HORIZON_S},
         .area_radius = HERD_AREA_RADIUS_M,
         .leg_min_m = HERD_LEG_MIN_M,
-        .leg_speeds = legs,
-        .leg_count = count,
         .graze_min_ms = HERD_GRAZE_MIN_MS,
         .graze_max_ms = HERD_GRAZE_MAX_MS,
         .gait = &gait,
@@ -188,7 +163,8 @@ start_walk(void) {
     steer2f_agent_t start[HERD_WANDER_MAX];
     for (int i = 0; i < *shown; i++) {
         const transformf_t placed = transform_local(copies[i]);
-        start[i] = (steer2f_agent_t){{placed.position.x, placed.position.z}, vec2f_zero(), heading_of(placed.rotation)};
+        start[i] = (steer2f_agent_t){
+            {placed.position.x, placed.position.z}, vec2f_zero(), herd_wander_heading(placed.rotation)};
     }
     herd_wander_start(&wander, &config, HERD_SEED, start, *shown);
     for (int i = 0; i < *shown; i++) {
@@ -204,7 +180,7 @@ place_walkers(void) {
         transformf_t placed = transform_local(copies[i]);
         placed.position.x = walker->agent.position.x;
         placed.position.z = walker->agent.position.y;
-        placed.rotation = facing(walker->agent.heading);
+        placed.rotation = herd_wander_facing(walker->agent.heading);
         transform_set_local(copies[i], placed);
     }
 }
@@ -390,7 +366,9 @@ scene_herd_path(void) {
                         .duration_ms = HERD_PATH_MS};
 }
 
-#define HERD_COPIES(id_, key_, copies_) static const int herd_copies_##id_ = copies_;
+#define HERD_COPIES(id_, key_, copies_)                                                                                \
+    static const int herd_copies_##id_ = copies_;                                                                      \
+    _Static_assert((copies_) <= HERD_WANDER_MAX, "a herd size herd_wander can walk");
 HERD_SIZES(HERD_COPIES)
 
 /* The copies move, so no frame is generated from the camera's pose alone. */

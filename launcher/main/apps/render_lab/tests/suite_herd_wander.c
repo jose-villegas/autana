@@ -13,13 +13,14 @@
 #include "apps/render_lab/herd/herd_wander.h"
 #include "math/scalar/math_const.h"
 
-#define SEED         0x5EEDu
-#define LONG_MS      120000u /* two minutes of walking */
-#define SETTLE_MS    2000u   /* the starts may be close; separation has this long to part them */
-#define CLOSEST_M    0.5F    /* settled copies never nearer than this (half a body length) */
-#define MOVED_M      10.0F   /* every copy walks at least this far in LONG_MS */
-#define GAITS_MIN    3       /* every copy goes through at least this many gait steps in LONG_MS */
-#define AREA_SLACK_M 1.0F    /* a copy may overshoot the area by an arrive and a push */
+#define SEED             0x5EEDu
+#define LONG_MS          120000u /* two minutes of walking */
+#define SETTLE_MS        2000u   /* the starts may be close; separation has this long to part them */
+#define CLOSEST_M        0.5F    /* settled copies never nearer than this (half a body length) */
+#define MOVED_M          10.0F   /* every copy walks at least this far in LONG_MS */
+#define GAITS_MIN        3       /* every copy goes through at least this many gait steps in LONG_MS */
+#define AREA_SLACK_M     1.0F    /* a copy may overshoot the area by an arrive and a push */
+#define FACING_TOLERANCE 1.0E-5F
 
 static const gait_step_t STEPS[] = {
     {.clip = 0, .ground_mps = 0.0F},
@@ -28,7 +29,6 @@ static const gait_step_t STEPS[] = {
     {.clip = 3, .ground_mps = 3.5F},
 };
 static const gait_t GAIT = {STEPS, 4, 0.75F, 1.4F, 0.2F, 300};
-static const float LEGS[] = {0.0F, 0.8F, 1.6F, 3.5F};
 static const herd_wander_config_t CONFIG = {
     .limits = {.max_speed = 4.0F,
                .max_accel = 6.0F,
@@ -39,8 +39,6 @@ static const herd_wander_config_t CONFIG = {
                .horizon_s = 1.0F},
     .area_radius = 6.0F,
     .leg_min_m = 2.0F,
-    .leg_speeds = LEGS,
-    .leg_count = 4,
     .graze_min_ms = 1000,
     .graze_max_ms = 4000,
     .gait = &GAIT,
@@ -103,10 +101,26 @@ test_a_seek_lands_where_advancing_does_both_ways(void) {
     assert_same_walkers(&a, &b);
 }
 
+/* A copy turned to a heading looks along it on the ground (its mesh looks down
+ * -z), and the heading reads back from the turn; each quarter apart, so a
+ * negated heading or a quarter turn the wrong way fails. */
+static void
+test_a_copy_faces_its_heading_and_the_heading_reads_back(void) {
+    static const float HEADINGS[] = {0.0F, MATH_PI / 2.0F, MATH_PI - 0.25F, -MATH_PI / 2.0F};
+    for (size_t i = 0; i < sizeof HEADINGS / sizeof HEADINGS[0]; i++) {
+        const quatf_t turn = herd_wander_facing(HEADINGS[i]);
+        const vec3f_t forward = quatf_rotate(turn, vec3f_scale(vec3f_unit_z(), -1.0F));
+        TEST_ASSERT_FLOAT_WITHIN(FACING_TOLERANCE, cosf(HEADINGS[i]), forward.x);
+        TEST_ASSERT_FLOAT_WITHIN(FACING_TOLERANCE, 0.0F, forward.y);
+        TEST_ASSERT_FLOAT_WITHIN(FACING_TOLERANCE, sinf(HEADINGS[i]), forward.z);
+        TEST_ASSERT_FLOAT_WITHIN(FACING_TOLERANCE, HEADINGS[i], herd_wander_heading(turn));
+    }
+}
+
 static float
 gap(const herd_wander_t* w, int i, int j) {
     const vec2f_t d = vec2f_sub(w->walker[i].agent.position, w->walker[j].agent.position);
-    return sqrtf(vec2f_dot(d, d));
+    return vec2f_length(d);
 }
 
 static void
@@ -117,7 +131,7 @@ test_copies_keep_inside_the_area_and_apart(void) {
         herd_wander_advance(&a, HERD_WANDER_STEP_MS);
         for (int i = 0; i < HERD_WANDER_MAX; i++) {
             const vec2f_t p = a.walker[i].agent.position;
-            TEST_ASSERT_TRUE(sqrtf(vec2f_dot(p, p)) <= CONFIG.area_radius + AREA_SLACK_M);
+            TEST_ASSERT_TRUE(vec2f_length(p) <= CONFIG.area_radius + AREA_SLACK_M);
             for (int j = i + 1; j < HERD_WANDER_MAX; j++) {
                 TEST_ASSERT_TRUE(gap(&a, i, j) >= CLOSEST_M);
             }
@@ -138,7 +152,7 @@ test_every_copy_walks_and_changes_gait(void) {
         herd_wander_advance(&a, HERD_WANDER_STEP_MS);
         for (int i = 0; i < HERD_WANDER_MAX; i++) {
             const vec2f_t d = vec2f_sub(a.walker[i].agent.position, before[i]);
-            moved[i] += sqrtf(vec2f_dot(d, d));
+            moved[i] += vec2f_length(d);
             TEST_ASSERT_TRUE(a.walker[i].gait.step >= 0 && a.walker[i].gait.step < GAIT.count);
             seen[i][a.walker[i].gait.step] = true;
         }
@@ -173,6 +187,7 @@ void
 run_herd_wander_suite(void) {
     RUN_TEST(test_one_seed_walks_one_way_at_any_step_size);
     RUN_TEST(test_a_seek_lands_where_advancing_does_both_ways);
+    RUN_TEST(test_a_copy_faces_its_heading_and_the_heading_reads_back);
     RUN_TEST(test_copies_keep_inside_the_area_and_apart);
     RUN_TEST(test_every_copy_walks_and_changes_gait);
     RUN_TEST(test_the_clip_time_follows_the_rate);

@@ -11,7 +11,7 @@
 typedef struct {
     vec2f_t position; /* metres on the ground plane */
     vec2f_t velocity; /* metres per second */
-    float heading;    /* radians from +x toward +y, in [-pi, pi) */
+    float heading;    /* radians from +x toward +y, in [-pi, pi] */
 } steer2f_agent_t;
 
 typedef struct {

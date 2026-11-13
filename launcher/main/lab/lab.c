@@ -390,35 +390,41 @@ lab_seek_path(const lab_t* lab, uint32_t t_ms) {
     const lab_path_t path = shown_path(lab);
     const uint32_t duration_ms = lab_path_duration_ms(lab);
     if (path.seek != NULL) {
+        assert(path.play != NULL);
         return duration_ms > 0 && path.seek(t_ms % duration_ms);
     }
     const int clip = path_clip(&path);
     if (duration_ms == 0 || (clip != animator_current_clip(path.entity) && !animator_play(path.entity, clip, 0))) {
         return false;
     }
-    return animator_seek(path.entity, ANIMATOR_CURRENT, t_ms % duration_ms);
+    return animator_seek(path.entity, ANIMATOR_CURRENT, t_ms % duration_ms)
+           && animator_set_paused(path.entity, ANIMATOR_CURRENT, true);
+}
+
+void
+lab_play_path(const lab_t* lab) {
+    const lab_path_t path = shown_path(lab);
+    if (path.seek != NULL) {
+        path.play();
+    } else {
+        (void)animator_set_paused(path.entity, ANIMATOR_CURRENT, false);
+    }
 }
 
 /* "pose <ms> | play": the reply to the words after "pose ". */
 static void
 pose_console(const lab_t* lab, const char* rest) {
     const char* tag = lab->reply_tag;
-    const lab_path_t path = shown_path(lab);
     const bool play = strcmp(rest, "play") == 0;
     char* end;
     const unsigned long t_ms = strtoul(rest, &end, 10);
     if (lab_path_duration_ms(lab) == 0) {
         (void)printf("%s_ERR scene %s has no path\n", tag, lab_current(lab)->key);
     } else if (play) {
-        if (path.seek != NULL) {
-            path.play();
-        } else {
-            (void)animator_set_paused(path.entity, ANIMATOR_CURRENT, false);
-        }
+        lab_play_path(lab);
         (void)printf("%s pose=play\n%s_END\n", tag, tag);
     } else if (!isdigit((unsigned char)rest[0]) || *end != '\0' || t_ms > UINT32_MAX
-               || !lab_seek_path(lab, (uint32_t)t_ms)
-               || (path.seek == NULL && !animator_set_paused(path.entity, ANIMATOR_CURRENT, true))) {
+               || !lab_seek_path(lab, (uint32_t)t_ms)) {
         (void)printf("%s_ERR usage: %s pose <ms> | %s pose play\n", tag, lab->console_word, lab->console_word);
     } else {
         (void)printf("%s pose=%lu\n%s_END\n", tag, t_ms, tag);

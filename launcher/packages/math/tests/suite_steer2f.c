@@ -22,11 +22,6 @@ static const steer2f_limits_t LIMITS = {
 };
 
 static float
-length(vec2f_t v) {
-    return sqrtf(vec2f_dot(v, v));
-}
-
-static float
 angle_between(float a, float b) {
     return fabsf(remainderf(a - b, MATH_TAU));
 }
@@ -54,8 +49,8 @@ test_arrive_stops_on_the_target(void) {
     for (int i = 0; i < SETTLE_STEPS; i++) {
         steer2f_step(&a, steer2f_arrive(&a, target, LIMITS.max_speed, &LIMITS), STEP_S, &LIMITS);
     }
-    TEST_ASSERT_TRUE(length(vec2f_sub(a.position, target)) < ARRIVED_SHARE * LIMITS.arrive_radius);
-    TEST_ASSERT_TRUE(length(a.velocity) < ARRIVED_SHARE * LIMITS.max_speed);
+    TEST_ASSERT_TRUE(vec2f_length(vec2f_sub(a.position, target)) < ARRIVED_SHARE * LIMITS.arrive_radius);
+    TEST_ASSERT_TRUE(vec2f_length(a.velocity) < ARRIVED_SHARE * LIMITS.max_speed);
 }
 
 static void
@@ -70,16 +65,17 @@ test_separation_pushes_near_agents_apart_and_ignores_far_ones(void) {
     TEST_ASSERT_TRUE(first.x < 0.0F);
     TEST_ASSERT_TRUE(second.x > 0.0F);
     TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, 0.0F, first.y);
-    TEST_ASSERT_TRUE(length(first) <= LIMITS.max_accel + TOLERANCE);
+    TEST_ASSERT_TRUE(vec2f_length(first) <= LIMITS.max_accel + TOLERANCE);
     const vec2f_t lone = steer2f_separation(agents, 3, 2, &LIMITS);
-    TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, 0.0F, length(lone));
+    TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, 0.0F, vec2f_length(lone));
 }
 
 static void
 test_separation_is_stronger_the_nearer_the_neighbour(void) {
     const steer2f_agent_t near[] = {{{0.0F, 0.0F}, {0.0F, 0.0F}, 0.0F}, {{0.3F, 0.0F}, {0.0F, 0.0F}, 0.0F}};
     const steer2f_agent_t far[] = {{{0.0F, 0.0F}, {0.0F, 0.0F}, 0.0F}, {{0.9F, 0.0F}, {0.0F, 0.0F}, 0.0F}};
-    TEST_ASSERT_TRUE(length(steer2f_separation(near, 2, 0, &LIMITS)) > length(steer2f_separation(far, 2, 0, &LIMITS)));
+    TEST_ASSERT_TRUE(vec2f_length(steer2f_separation(near, 2, 0, &LIMITS))
+                     > vec2f_length(steer2f_separation(far, 2, 0, &LIMITS)));
 }
 
 static void
@@ -89,23 +85,23 @@ test_avoid_pushes_closing_agents_apart_before_they_meet(void) {
         {{-1.5F, 0.2F}, {2.0F, 0.0F}, 0.0F},
         {{1.5F, -0.2F}, {-2.0F, 0.0F}, MATH_PI},
     };
-    TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, 0.0F, length(steer2f_separation(agents, 2, 0, &LIMITS)));
+    TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, 0.0F, vec2f_length(steer2f_separation(agents, 2, 0, &LIMITS)));
     const vec2f_t first = steer2f_avoid(agents, 2, 0, &LIMITS);
     const vec2f_t second = steer2f_avoid(agents, 2, 1, &LIMITS);
     TEST_ASSERT_TRUE(first.y > 0.0F);
     TEST_ASSERT_TRUE(second.y < 0.0F);
-    TEST_ASSERT_TRUE(length(first) <= LIMITS.max_accel + TOLERANCE);
+    TEST_ASSERT_TRUE(vec2f_length(first) <= LIMITS.max_accel + TOLERANCE);
 }
 
 static void
 test_avoid_ignores_parting_far_and_late_agents(void) {
     const steer2f_agent_t parting[] = {{{0.0F, 0.0F}, {-1.0F, 0.0F}, 0.0F}, {{1.0F, 0.0F}, {1.0F, 0.0F}, 0.0F}};
-    TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, 0.0F, length(steer2f_avoid(parting, 2, 0, &LIMITS)));
+    TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, 0.0F, vec2f_length(steer2f_avoid(parting, 2, 0, &LIMITS)));
     const steer2f_agent_t wide[] = {{{-2.0F, 0.0F}, {1.0F, 0.0F}, 0.0F}, {{2.0F, 3.0F}, {-1.0F, 0.0F}, 0.0F}};
-    TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, 0.0F, length(steer2f_avoid(wide, 2, 0, &LIMITS)));
+    TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, 0.0F, vec2f_length(steer2f_avoid(wide, 2, 0, &LIMITS)));
     /* Would meet, but past the horizon. */
     const steer2f_agent_t late[] = {{{-5.0F, 0.0F}, {1.0F, 0.0F}, 0.0F}, {{5.0F, 0.0F}, {-1.0F, 0.0F}, 0.0F}};
-    TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, 0.0F, length(steer2f_avoid(late, 2, 0, &LIMITS)));
+    TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, 0.0F, vec2f_length(steer2f_avoid(late, 2, 0, &LIMITS)));
 }
 
 static void
@@ -113,7 +109,7 @@ test_contain_is_zero_inside_and_turns_back_outside(void) {
     const vec2f_t centre = vec2f_one();
     const float radius = 4.0F;
     const steer2f_agent_t inside = {{3.0F, 1.0F}, {0.0F, 0.0F}, 0.0F};
-    TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, 0.0F, length(steer2f_contain(&inside, centre, radius, &LIMITS)));
+    TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, 0.0F, vec2f_length(steer2f_contain(&inside, centre, radius, &LIMITS)));
     const steer2f_agent_t just_out = {{1.0F + radius + (0.5F * LIMITS.arrive_radius), 1.0F}, {0.0F, 0.0F}, 0.0F};
     const vec2f_t back = steer2f_contain(&just_out, centre, radius, &LIMITS);
     TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, -0.5F * LIMITS.max_accel, back.x);
@@ -130,10 +126,10 @@ test_step_holds_speed_and_turn_rate(void) {
     for (int i = 0; i < SETTLE_STEPS; i++) {
         const float before = a.heading;
         steer2f_step(&a, push, STEP_S, &LIMITS);
-        TEST_ASSERT_TRUE(length(a.velocity) <= LIMITS.max_speed + TOLERANCE);
+        TEST_ASSERT_TRUE(vec2f_length(a.velocity) <= LIMITS.max_speed + TOLERANCE);
         TEST_ASSERT_TRUE(angle_between(a.heading, before) <= LIMITS.turn_rate * STEP_S + TOLERANCE);
     }
-    TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, LIMITS.max_speed, length(a.velocity));
+    TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, LIMITS.max_speed, vec2f_length(a.velocity));
     TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, 0.0F, angle_between(a.heading, MATH_PI));
 }
 

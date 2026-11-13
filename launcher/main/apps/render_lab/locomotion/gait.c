@@ -3,7 +3,17 @@
 
 #include <math.h>
 
+#include "collections/sort.h"
+#include "math/scalar/mathf.h"
 #include "scene/animator/animator.h"
+
+#define SLOWER(a, b) ((a).ground_mps < (b).ground_mps)
+SORT_DEFINE_INSERTION(gait_steps, gait_step_t, SLOWER)
+
+void
+gait_sort(gait_step_t* steps, int count) {
+    gait_steps_sort(steps, (size_t)count);
+}
 
 /* Where step i's range ends and step i + 1's begins: halfway between their ground speeds. */
 static float
@@ -28,7 +38,7 @@ gait_pick(const gait_t* g, gait_pick_t current, float speed) {
         }
     }
     const float ground = g->steps[step].ground_mps;
-    const float rate = ground > 0.0F ? fminf(g->rate_max, fmaxf(g->rate_min, speed / ground)) : 1.0F;
+    const float rate = ground > 0.0F ? mathf_clamp(speed / ground, g->rate_min, g->rate_max) : 1.0F;
     return (gait_pick_t){step, rate};
 }
 

@@ -40,6 +40,17 @@ boundary(int below) {
     return 0.5F * (STEPS[below].ground_mps + STEPS[below + 1].ground_mps);
 }
 
+/* Steps listed in any order come out slowest first, each keeping its own clip. */
+static void
+test_sorting_puts_steps_slowest_first_with_their_clips(void) {
+    gait_step_t steps[] = {STEPS[2], STEPS[0], STEPS[3], STEPS[1]};
+    gait_sort(steps, STEP_COUNT);
+    for (int i = 0; i < STEP_COUNT; i++) {
+        TEST_ASSERT_EQUAL_INT(STEPS[i].clip, steps[i].clip);
+        TEST_ASSERT_EQUAL_FLOAT(STEPS[i].ground_mps, steps[i].ground_mps);
+    }
+}
+
 static void
 test_each_steps_own_speed_picks_it_at_rate_one(void) {
     for (int i = 0; i < STEP_COUNT; i++) {
@@ -91,6 +102,7 @@ test_a_held_step_survives_inside_its_band_and_leaves_past_it(void) {
 
 void
 run_gait_suite(void) {
+    RUN_TEST(test_sorting_puts_steps_slowest_first_with_their_clips);
     RUN_TEST(test_each_steps_own_speed_picks_it_at_rate_one);
     RUN_TEST(test_a_fresh_pick_changes_step_at_the_midpoint);
     RUN_TEST(test_the_rate_matches_the_ground_speed_inside_the_clamp);

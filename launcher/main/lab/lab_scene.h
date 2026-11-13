@@ -21,7 +21,8 @@ typedef struct {
     const char* clip; /* the clip a frame profile plays; NULL keeps the entity's current one */
     /* Optional, for a path no one animator plays, such as copies walking: puts
      * the whole scene at t_ms (below duration_ms) and holds it there until
-     * play() lets it move again. With it, entity and clip are not read. */
+     * play() lets it move again; a path with seek has play too. With it,
+     * entity and clip are not read. */
     bool (*seek)(uint32_t t_ms);
     void (*play)(void);
     uint32_t duration_ms; /* the seek path's length */

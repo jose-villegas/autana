@@ -305,8 +305,9 @@ camera, so the per-copy costs of posing, skinning and culling all show.
 | Keep apart, look ahead, stay inside; then arrive with what acceleration is left | `math/motion/steer2f.h` ([Motion](../../../../../docs/math/Motion.md)) |
 | The clip and rate for the copy's speed | `locomotion/gait.h`, from each clip's `ground_mm_s` ([TRCK](../../../../../docs/assets/formats/TRCK.md)) |
 
-A frame profile or `pose <ms>` seeks the whole herd: it walks again from its
-seed to that time, so a frame repeats exactly.
+`pose <ms>` seeks the whole herd: it walks again from its seed to that time,
+so two seeks to one time draw the same frame. Played on from there, clip phases
+can differ slightly from an unbroken run, which steps clips by frame time.
 
 | Scene key | Copies shown |
 |---|---|
