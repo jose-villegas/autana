@@ -11,22 +11,11 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "core/tune.h"
 #include "image/pixel/bayer.h"
 #include "math/scalar/mathf.h"
 #include "math/scalar/mathi.h"
 #include "profile/frame_laps.h"
 #include "render/r3d_span_internal.h"
-
-TUNE_OWNER(r3d_texture);
-/* 1 opens the textures of the meshes a scene loads; at 0, the default, a
- * scene leaves them closed and its meshes draw plain. */
-TUNE(r3d_texture, draw, 0, 0, 1);
-
-bool
-r3d_texture_drawn(void) {
-    return draw != 0;
-}
 
 /* u and v walk as 8.8 texels, packed u high and v low in one word; a carry
  * out of v moves u by 1/256 texel. 8 integer bits wrap at 256 texels, a

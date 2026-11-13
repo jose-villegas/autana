@@ -702,7 +702,7 @@ enum {
     DRAW_BOUNDED = 1U << 0,  /* every vertex passed the near and range tests: no iz tests */
     DRAW_WRITES = 1U << 1,   /* the target's writers follow each fill */
     DRAW_SKIPPING = 1U << 2, /* clusters behind drawn depth are skipped; fills cap depth */
-    DRAW_TEXTURED = 1U << 3, /* the mesh has textures: a cluster with a material draws its marked triangles textured */
+    DRAW_TEXTURED = 1U << 3, /* the mesh's marked triangles of a cluster with a material draw textured */
 };
 
 typedef unsigned draw_mode_t;
@@ -886,7 +886,7 @@ morphed_vertices(const r3d_lit_mesh_t* mesh, const r3d_pipeline_vertex_t* const 
     for (int k = 0; k < 3; k++) {
         uint8_t rgb[3];
         morphed_colour(mesh, tri[k], weight, rgb);
-        out[k] = (r3d_span_vertex_t){v[k]->sx, v[k]->sy, v[k]->iz, rgb[0], rgb[1], rgb[2]};
+        out[k] = span_corner(v[k], rgb);
     }
 }
 
@@ -914,7 +914,7 @@ draw_in_front(const r3d_lit_mesh_t* mesh, const r3d_pipeline_vertex_t* const v[3
     } else {
         for (int k = 0; k < 3; k++) {
             const uint8_t* rgb = face_color == NULL ? mesh->colors[tri[k]] : (const uint8_t[3]){0, 0, 0};
-            s[k] = (r3d_span_vertex_t){v[k]->sx, v[k]->sy, v[k]->iz, rgb[0], rgb[1], rgb[2]};
+            s[k] = span_corner(v[k], rgb);
         }
     }
     fill_triangle(target, &s[0], &s[1], &s[2], face_color, mode, screen);
@@ -942,7 +942,58 @@ draw_cut_by_near(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint1
     }
 }
 
-/* Triangles first to end - 1 of one cluster. */
+/* A marked triangle wholly in front of the near plane, textured. */
+static void
+draw_textured_whole(const r3d_lit_mesh_t* mesh, const r3d_pipeline_vertex_t* const v[3], const uint16_t* tri,
+                    int cluster, const r3d_texture_t* texture, bool double_sided, const r3d_span_target_t* target) {
+    if (misses_every_centre(v[0], v[1], v[2], target)
+        || facing_away(signed_area2(v[0]->sx, v[0]->sy, v[1]->sx, v[1]->sy, v[2]->sx, v[2]->sy), double_sided)) {
+        return;
+    }
+    r3d_span_vertex_t s[3];
+    r3d_span_uv_t uv[3];
+    for (int k = 0; k < 3; k++) {
+        const uint8_t* rgb = mesh->colors[tri[k]];
+        s[k] = span_corner(v[k], rgb);
+        uv[k] = r3d_texture_uv(mesh->texturing, texture, cluster, tri[k]);
+    }
+    FRAME_LAP("r3d.draw.set_up");
+    r3d_span_textured_triangle(target, &s[0], &s[1], &s[2], uv, texture);
+    FRAME_LAP("r3d.draw.cluster");
+}
+
+/* A marked triangle the near plane cuts, rebuilt and clipped as a plain one
+ * is, its UVs cut with it. */
+static __attribute__((noinline, cold)) void
+draw_textured_cut(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* tri, int cluster,
+                  const r3d_texture_t* texture, bool double_sided, const r3d_span_target_t* target,
+                  r3d_pipeline_work_t* work) {
+    rebuilt_corners(mesh, lens, tri, NULL, work, 0, 0);
+    clip_vertex_t* poly = work->clip.poly;
+    for (int k = 0; k < 3; k++) {
+        const r3d_span_uv_t uv = r3d_texture_uv(mesh->texturing, texture, cluster, tri[k]);
+        poly[k].u = uv.u;
+        poly[k].v = uv.v;
+    }
+    const int n = projected_polygon(lens, double_sided, work);
+    const r3d_span_vertex_t* s = work->clip.projected;
+    for (int i = 1; i + 1 < n; i++) {
+        const r3d_span_uv_t uv[3] = {{poly[0].u, poly[0].v}, {poly[i].u, poly[i].v}, {poly[i + 1].u, poly[i + 1].v}};
+        FRAME_LAP("r3d.draw.set_up");
+        r3d_span_textured_triangle(target, &s[0], &s[i], &s[i + 1], uv, texture);
+        FRAME_LAP("r3d.draw.cluster");
+    }
+}
+
+/* The texture of cluster `c`, whose triangles a DRAW_TEXTURED draw marks. */
+static inline const r3d_texture_t*
+cluster_texture(const r3d_lit_mesh_t* mesh, const r3d_lit_cluster_t* c) {
+    const r3d_mesh_texturing_t* texturing = mesh->texturing;
+    return &texturing->materials[texturing->cluster_material[c - mesh->clusters]];
+}
+
+/* Triangles first to end - 1 of one cluster; with DRAW_TEXTURED, its marked
+ * ones textured. */
 static inline __attribute__((always_inline)) void
 draw_triangles(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit_cluster_t* c, int first, int end,
                const r3d_pipeline_vertex_t* cs, const r3d_span_target_t* target, draw_mode_t mode,
@@ -951,11 +1002,22 @@ draw_triangles(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit
         const uint16_t* tri = mesh->triangles[t];
         const uint16_t* face_color = mesh->face_colors == NULL ? NULL : &mesh->face_colors[t];
         const r3d_pipeline_vertex_t* const v[3] = {&cs[tri[0]], &cs[tri[1]], &cs[tri[2]]};
+        const bool textured = (mode & DRAW_TEXTURED) != 0 && r3d_texture_triangle_textured(mesh->texturing, t);
         /* Cluster-owned vertices all passed near and range tests with DRAW_BOUNDED. */
         if ((mode & DRAW_BOUNDED) != 0 || (v[0]->iz > 0.0F && v[1]->iz > 0.0F && v[2]->iz > 0.0F)) {
-            draw_whole(mesh, v, tri, face_color, c->double_sided, target, mode, work, blends);
+            if (textured) {
+                draw_textured_whole(mesh, v, tri, (int)(c - mesh->clusters), cluster_texture(mesh, c), c->double_sided,
+                                    target);
+            } else {
+                draw_whole(mesh, v, tri, face_color, c->double_sided, target, mode, work, blends);
+            }
         } else if (v[0]->iz != 0.0F || v[1]->iz != 0.0F || v[2]->iz != 0.0F) {
-            draw_cut_by_near(mesh, lens, tri, face_color, c->double_sided, target, work, blends);
+            if (textured) {
+                draw_textured_cut(mesh, lens, tri, (int)(c - mesh->clusters), cluster_texture(mesh, c), c->double_sided,
+                                  target, work);
+            } else {
+                draw_cut_by_near(mesh, lens, tri, face_color, c->double_sided, target, work, blends);
+            }
         }
     }
 }
@@ -1066,78 +1128,6 @@ build_guard_planes(const r3d_lens_t* lens, r3d_pipeline_work_t* work) {
     planef_frustum(&LENS_SPACE, &lens->project, rectf_from_edges(-g, -g, g, g), work->clip.planes);
 }
 
-/* A marked triangle wholly in front of the near plane, textured. */
-static void
-draw_textured_whole(const r3d_lit_mesh_t* mesh, const r3d_pipeline_vertex_t* const v[3], const uint16_t* tri,
-                    int cluster, const r3d_texture_t* texture, bool double_sided, const r3d_span_target_t* target) {
-    if (misses_every_centre(v[0], v[1], v[2], target)
-        || facing_away(signed_area2(v[0]->sx, v[0]->sy, v[1]->sx, v[1]->sy, v[2]->sx, v[2]->sy), double_sided)) {
-        return;
-    }
-    r3d_span_vertex_t s[3];
-    r3d_span_uv_t uv[3];
-    for (int k = 0; k < 3; k++) {
-        const uint8_t* rgb = mesh->colors[tri[k]];
-        s[k] = (r3d_span_vertex_t){v[k]->sx, v[k]->sy, v[k]->iz, rgb[0], rgb[1], rgb[2]};
-        uv[k] = r3d_texture_uv(mesh->texturing, texture, cluster, tri[k]);
-    }
-    FRAME_LAP("r3d.draw.set_up");
-    r3d_span_textured_triangle(target, &s[0], &s[1], &s[2], uv, texture);
-    FRAME_LAP("r3d.draw.cluster");
-}
-
-/* A marked triangle the near plane cuts, rebuilt and clipped as a plain one
- * is, its UVs cut with it. */
-static __attribute__((noinline, cold)) void
-draw_textured_cut(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* tri, int cluster,
-                  const r3d_texture_t* texture, bool double_sided, const r3d_span_target_t* target,
-                  r3d_pipeline_work_t* work) {
-    rebuilt_corners(mesh, lens, tri, NULL, work, 0, 0);
-    clip_vertex_t* poly = work->clip.poly;
-    for (int k = 0; k < 3; k++) {
-        const r3d_span_uv_t uv = r3d_texture_uv(mesh->texturing, texture, cluster, tri[k]);
-        poly[k].u = uv.u;
-        poly[k].v = uv.v;
-    }
-    const int n = projected_polygon(lens, double_sided, work);
-    const r3d_span_vertex_t* s = work->clip.projected;
-    for (int i = 1; i + 1 < n; i++) {
-        const r3d_span_uv_t uv[3] = {{poly[0].u, poly[0].v}, {poly[i].u, poly[i].v}, {poly[i + 1].u, poly[i + 1].v}};
-        FRAME_LAP("r3d.draw.set_up");
-        r3d_span_textured_triangle(target, &s[0], &s[i], &s[i + 1], uv, texture);
-        FRAME_LAP("r3d.draw.cluster");
-    }
-}
-
-/* A cluster of a textured mesh: its marked triangles textured, near plane
- * or not, and the rest as the plain draw draws them. False for a cluster
- * with no material, which the caller draws plain. */
-static __attribute__((noinline)) bool
-draw_textured_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, int cluster, const r3d_pipeline_vertex_t* cs,
-                      const r3d_span_target_t* target, draw_mode_t mode, r3d_pipeline_work_t* work) {
-    const r3d_mesh_texturing_t* texturing = mesh->texturing;
-    const uint8_t material = texturing->cluster_material[cluster];
-    if (material == R3D_TEXTURE_NONE || mesh->colors == NULL) {
-        return false;
-    }
-    const r3d_texture_t* texture = &texturing->materials[material];
-    const r3d_lit_cluster_t* c = &mesh->clusters[cluster];
-    for (int t = c->triangle_first; t < c->triangle_first + c->triangle_count; t++) {
-        if (!r3d_texture_triangle_textured(texturing, t)) {
-            draw_triangles(mesh, lens, c, t, t + 1, cs, target, mode, work, false);
-            continue;
-        }
-        const uint16_t* tri = mesh->triangles[t];
-        const r3d_pipeline_vertex_t* const v[3] = {&cs[tri[0]], &cs[tri[1]], &cs[tri[2]]};
-        if ((mode & DRAW_BOUNDED) != 0 || (v[0]->iz > 0.0F && v[1]->iz > 0.0F && v[2]->iz > 0.0F)) {
-            draw_textured_whole(mesh, v, tri, cluster, texture, c->double_sided, target);
-        } else if (v[0]->iz != 0.0F || v[1]->iz != 0.0F || v[2]->iz != 0.0F) {
-            draw_textured_cut(mesh, lens, tri, cluster, texture, c->double_sided, target, work);
-        }
-    }
-    return true;
-}
-
 static inline __attribute__((always_inline)) void
 draw_reading_of(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
                 const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target,
@@ -1148,17 +1138,19 @@ draw_reading_of(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16
         }
         const r3d_lit_cluster_t* c = &mesh->clusters[clusters[i]];
         const draw_mode_t bounded = rows != NULL && !rows[clusters[i]].unbounded ? DRAW_BOUNDED : 0U;
-        if ((mode & DRAW_TEXTURED) != 0
-            && draw_textured_cluster(mesh, lens, clusters[i], cs, target, mode | bounded, work)) {
-            continue;
-        }
+        /* A cluster with no material, or a mesh without vertex colours to light it, draws plain. */
+        const draw_mode_t plain =
+            (mode & DRAW_TEXTURED) != 0
+                    && (mesh->colors == NULL || mesh->texturing->cluster_material[clusters[i]] == R3D_TEXTURE_NONE)
+                ? DRAW_TEXTURED
+                : 0U;
         if (blend != BLEND_NONE) {
             draw_blended(mesh, lens, clusters[i], cs, &rows[clusters[i]], target, mode | bounded, work,
                          c->triangle_first, c->triangle_first + c->triangle_count, blend == BLEND_DITHER);
             continue;
         }
         draw_triangles(mesh, lens, c, c->triangle_first, c->triangle_first + c->triangle_count, cs, target,
-                       mode | bounded, work, false);
+                       (mode | bounded) & ~plain, work, false);
     }
 }
 
@@ -1177,13 +1169,13 @@ draw_reading_skipping(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const 
     draw_reading_of(mesh, lens, clusters, count, cs, rows, target, DRAW_SKIPPING, work, BLEND_NONE);
 }
 
-/* The read-only draw of a textured mesh, out of the plain draws' code. */
+/* The read-only draw of a textured mesh, out of the plain draws' code;
+ * `skipping` is DRAW_SKIPPING or 0. */
 static __attribute__((noinline, cold)) void
 draw_reading_textured(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
                       const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target,
-                      r3d_pipeline_work_t* work) {
-    draw_reading_of(mesh, lens, clusters, count, cs, rows, target,
-                    DRAW_TEXTURED | (target->skip_hidden ? DRAW_SKIPPING : 0U), work, BLEND_NONE);
+                      draw_mode_t skipping, r3d_pipeline_work_t* work) {
+    draw_reading_of(mesh, lens, clusters, count, cs, rows, target, DRAW_TEXTURED | skipping, work, BLEND_NONE);
 }
 
 /* Chooses once per draw whether the target's writers follow each fill,
@@ -1195,7 +1187,8 @@ r3d_pipeline_draw(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint
                   r3d_pipeline_work_t* work) {
     build_guard_planes(lens, work);
     if (mesh->texturing != NULL && target->writer_count == 0) {
-        draw_reading_textured(mesh, lens, clusters, count, cs, rows, target, work);
+        draw_reading_textured(mesh, lens, clusters, count, cs, rows, target, target->skip_hidden ? DRAW_SKIPPING : 0U,
+                              work);
     } else if (target->writer_count != 0) {
         draw_writing(mesh, lens, clusters, count, cs, rows, target, work);
     } else if (target->skip_hidden) {

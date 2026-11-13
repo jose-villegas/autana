@@ -3,10 +3,10 @@
     python launcher/tools/r3d/texture/texture_figures.py --scene SCENE.scene.toml --object NAME --reference BAKE
         --frame N --dt MS --title TEXT --image NAME.png --out DIR
 
-Renders frame N of the object's path on host (scene_viewer.sh) with r3d_texture.draw at 0 and at 1, takes the same
-frame from the reference bake BAKE (a .reference.tar.xz, bake.py path), scaled to the render's size, and lays the
-three out with render_compare.py: the source, the plain draw, the textured draw and each one's error against the
-source.
+Renders frame N of the object's path on host (scene_viewer.sh) plain and with the object's textures (--textured),
+takes the same frame from the reference bake BAKE (a .reference.tar.xz, bake.py path), scaled to the render's size,
+and lays the three out with render_compare.py: the source, the plain draw, the textured draw and each one's error
+against the source.
 """
 import argparse
 import pathlib
@@ -23,8 +23,8 @@ COMPARE = ROOT / "launcher/tools/render/render_compare.py"
 BAKE = ROOT / "launcher/tools/bake/bake.py"
 # The reference archive's portrait frames, one PNG per path frame.
 REFERENCE_FRAME = "reference/{frame:04d}.png"
-# The draws compared: the knob's value and its label.
-DRAWS = ((0, "vertex colours"), (1, "textured"))
+# The draws compared: whether textured, and its label.
+DRAWS = ((False, "vertex colours"), (True, "textured"))
 # Squares render_compare.py zooms on.
 CROPS = 3
 # The quarter turn the frame is drawn at: portrait, as the reference.
@@ -39,10 +39,10 @@ def run(command):
 
 
 def draw(args, value, work):
-    """Frame args.frame of the object's path, r3d_texture.draw at `value`, as a PNG."""
+    """Frame args.frame of the object's path, textured when `value`, as a PNG."""
     bmp = work / f"draw{value}.bmp"
     run(["sh", VIEWER, args.scene, "--object", args.object, "--quarter", PORTRAIT, "--frames", args.frame + 1,
-         "--dt", args.dt, "--set", f"r3d_texture.draw={value}", "-o", bmp])
+         "--dt", args.dt, *(["--textured", args.object] if value else []), "-o", bmp])
     png = work / f"draw{value}.png"
     Image.open(bmp).convert("RGB").save(png)
     return png

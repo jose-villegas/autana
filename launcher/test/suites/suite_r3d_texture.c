@@ -10,6 +10,7 @@
 #include "image/pixel/rgb565.h"
 #include "math/scalar/mathi.h"
 #include "math/scalar/rng.h"
+#include "r3d_pixel_lens.h"
 #include "render/r3d_pipeline.h"
 #include "render/r3d_span.h"
 #include "render/r3d_span_internal.h"
@@ -122,6 +123,16 @@ vertex(float x, float y, float z, float grey) {
     return (r3d_span_vertex_t){r3d_span_snap(x), r3d_span_snap(y), z, grey, grey, grey};
 }
 
+/* The triangle over the target's top-left half, every corner `grey`, drawn
+ * into target `which` with the corners' `uv`. */
+static void
+draw_corner(int which, float grey, const r3d_span_uv_t uv[3]) {
+    const r3d_span_target_t target = target_at(which);
+    const r3d_span_vertex_t a = vertex(0, 0, 0.5F, grey), b = vertex(SIDE, 0, 0.5F, grey),
+                            c = vertex(0, SIDE, 0.5F, grey);
+    r3d_span_textured_triangle(&target, &a, &b, &c, uv, texture);
+}
+
 static void
 random_triangle(rng_t* random, r3d_span_vertex_t v[3], r3d_span_uv_t uv[3]) {
     for (int k = 0; k < 3; k++) {
@@ -204,13 +215,10 @@ test_shared_edge_neither_cracks_nor_overlaps(void) {
 static void
 test_affine_samples_the_texel_under_each_centre(void) {
     fixture();
-    const r3d_span_target_t target = target_at(0);
     const float grey = 255.0F;
-    const r3d_span_vertex_t a = vertex(0, 0, 0.5F, grey), b = vertex(SIDE, 0, 0.5F, grey),
-                            c = vertex(0, SIDE, 0.5F, grey);
     const r3d_span_uv_t uv[3] = {{0, 0.5F}, {SIDE, 0.5F}, {0, 0.5F}};
     clear();
-    r3d_span_textured_triangle(&target, &a, &b, &c, uv, texture);
+    draw_corner(0, grey, uv);
     for (int x = 0; x < SIDE / 2; x++) {
         const int index = x & (TEX_SIDE - 1);
         const int expected = index == WHITE_INDEX ? 255 : mathi_min((index * 16 * 255) / R3D_TEXTURE_ONE, 255);
@@ -224,11 +232,9 @@ test_affine_samples_the_texel_under_each_centre(void) {
 static void
 test_minified_triangle_takes_the_matching_level(void) {
     fixture();
-    const r3d_span_target_t target = target_at(0);
-    const r3d_span_vertex_t a = vertex(0, 0, 0.5F, 255), b = vertex(SIDE, 0, 0.5F, 255), c = vertex(0, SIDE, 0.5F, 255);
     const r3d_span_uv_t uv[3] = {{0, 0}, {4 * SIDE, 0}, {0, 4 * SIDE}};
     clear();
-    r3d_span_textured_triangle(&target, &a, &b, &c, uv, texture);
+    draw_corner(0, UINT8_MAX, uv);
     const int expected = (2 * 16 * 255) / R3D_TEXTURE_ONE;
     TEST_ASSERT_INT_WITHIN(1, expected >> 2, (int)rgb565_g6(rgb565_swap(buffers[(4 * SIDE) + 4])));
 }
@@ -238,17 +244,15 @@ test_minified_triangle_takes_the_matching_level(void) {
 static void
 test_moved_texels_draw_without_the_entry(void) {
     fixture();
-    const r3d_span_vertex_t a = vertex(0, 0, 0.5F, 255), b = vertex(SIDE, 0, 0.5F, 255), c = vertex(0, SIDE, 0.5F, 255);
     const r3d_span_uv_t uv[3] = {{0, 0}, {SIDE, 0}, {0, SIDE}};
-    const r3d_span_target_t from_entry = target_at(0), from_copy = target_at(1);
     clear();
-    r3d_span_textured_triangle(&from_entry, &a, &b, &c, uv, texture);
+    draw_corner(0, UINT8_MAX, uv);
     const size_t bytes = r3d_texture_texel_bytes(texture);
     uint8_t* moved = malloc(bytes);
     TEST_ASSERT_NOT_NULL(moved);
     TEST_ASSERT_EQUAL_PTR(moved + bytes, r3d_texture_move_texels(texture, moved));
     memset(ltex, 0, TEX_BYTES);
-    r3d_span_textured_triangle(&from_copy, &a, &b, &c, uv, texture);
+    draw_corner(1, UINT8_MAX, uv);
     free(moved);
     TEST_ASSERT_EQUAL_UINT16_ARRAY(buffers, buffers + (2 * PIXELS), 2 * PIXELS);
 }
@@ -269,15 +273,12 @@ tile_green(void) {
 static void
 test_texel_at_the_mean_draws_the_vertex_colour(void) {
     fixture();
-    const r3d_span_target_t target = target_at(0);
     const float grey = 100.0F;
-    const r3d_span_vertex_t a = vertex(0, 0, 0.5F, grey), b = vertex(SIDE, 0, 0.5F, grey),
-                            c = vertex(0, SIDE, 0.5F, grey);
     /* Texel (7, 1) holds MEAN_INDEX, whose colour is R3D_TEXTURE_ONE. */
     const r3d_span_uv_t uv[3] = {{7.5F, 1.5F}, {7.5F, 1.5F}, {7.5F, 1.5F}};
     clear();
     _Static_assert(MEAN_INDEX * 16 == R3D_TEXTURE_ONE, "MEAN_INDEX's colour is the mean");
-    r3d_span_textured_triangle(&target, &a, &b, &c, uv, texture);
+    draw_corner(0, grey, uv);
     const int tile = BAYER4_SIDE * BAYER4_SIDE;
     const int expected = ((int)grey * (int)RGB565_G6_MAX / UINT8_MAX) * tile;
     const int level_g6 = ((int)RGB565_G6_MAX / (R3D_TEXTURE_LIGHT_LEVELS - 1)) + 1;
@@ -458,24 +459,10 @@ scene_mesh(scene_t* s, int triangles, uint8_t bits) {
     s->mesh.texturing = &s->texturing;
 }
 
-static r3d_lens_t
-scene_lens(void) {
-    const float s = 1.0F / (float)R3D_SUBPIXEL;
-    return (r3d_lens_t){{{{s, 0, 0, 0}, {0, s, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}},
-                        {1.0F, -1.0F, 0.0F, 0.0F, 0.5F},
-                        SIDE,
-                        SIDE,
-                        R3D_SNAP_BIAS,
-                        R3D_SNAP_BIAS,
-                        0.5F / (float)R3D_SUBPIXEL,
-                        1.0F,
-                        1.0F};
-}
-
 /* Draws the scene into target `which`, with its texturing or plain. */
 static void
 draw_scene(scene_t* s, int which, bool textured) {
-    const r3d_lens_t lens = scene_lens();
+    const r3d_lens_t lens = r3d_pixel_lens(SIDE, SIDE);
     const uint16_t visible[1] = {0};
     const r3d_span_target_t target = target_at(which);
     r3d_pipeline_transform(&s->mesh, &lens, visible, 1, s->cs, s->rows, false);
