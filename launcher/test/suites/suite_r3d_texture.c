@@ -22,6 +22,7 @@
 
 #define SIDE         48
 #define PIXELS       (SIDE * SIDE)
+#define TARGETS      3 /* each a colour and a depth buffer */
 #define TEX_LOG2     3
 #define TEX_SIDE     (1 << TEX_LOG2)
 #define TEX_LEVELS   3
@@ -95,7 +96,7 @@ write_ltex(uint8_t* b) {
 
 static void
 fixture(void) {
-    buffers = calloc(PIXELS * 4, sizeof *buffers);
+    buffers = calloc((size_t)PIXELS * 2 * TARGETS, sizeof *buffers);
     ltex = malloc(TEX_BYTES);
     texture = malloc(sizeof *texture);
     suite_set_test_cleanup(cleanup);
@@ -115,7 +116,7 @@ target_at(int which) {
 
 static void
 clear(void) {
-    memset(buffers, 0, sizeof(*buffers) * PIXELS * 4);
+    memset(buffers, 0, sizeof(*buffers) * PIXELS * 2 * TARGETS);
 }
 
 static r3d_span_vertex_t
@@ -311,9 +312,11 @@ test_entry_rejects_bad_headers(void) {
 #define PACK_BYTES      512
 #define UV_PAIR_BYTES   (2 * sizeof(int16_t))
 #define READ_VERTICES   4
+#define READ_UVS        6 /* the vertices', then the second cluster's two on chart 1 */
 #define READ_CLUSTERS   2
-#define READ_TRIANGLES  10 /* two bytes of triangle bits */
-#define READ_LAST_BIT   9  /* bit 1 of byte 1 */
+#define READ_TRIANGLES  10 /* three bytes of triangle codes, the last one part full */
+#define READ_LAST       9  /* the second cluster's last triangle, the one on a chart */
+#define READ_SHIFT      2  /* the second cluster's first vertex, 2, reads chart 1 at 4 */
 #define ORIGIN_U        1
 #define ORIGIN_V        2
 #define UV_U_UNITS      3 /* 1/16 texel */
@@ -332,7 +335,7 @@ typedef struct {
     int16_t positions[SCENE_VERTICES * SCENE_TRIANGLES][3];
     uint8_t colors[SCENE_VERTICES * SCENE_TRIANGLES][3];
     uint16_t triangles[SCENE_TRIANGLES][3];
-    int16_t uvs[SCENE_VERTICES * SCENE_TRIANGLES][2];
+    int16_t uvs[R3D_TEXTURE_CHARTS * SCENE_VERTICES * SCENE_TRIANGLES][2]; /* chart 0's, then chart 1's */
     r3d_lit_cluster_t cluster;
     r3d_lit_node_t node;
     r3d_pipeline_vertex_t cs[SCENE_VERTICES * SCENE_TRIANGLES];
@@ -360,32 +363,51 @@ scene_cleanup(void) {
     cleanup();
 }
 
+/* An LUVS entry's sections, each as the reader exposes it. */
+typedef struct {
+    uint32_t vertices, uv_count, clusters, triangles;
+    const int16_t (*uvs)[2];
+    const int16_t (*origins)[R3D_TEXTURE_CHARTS][2];
+    const int32_t* shifts;
+    const uint8_t (*materials)[R3D_TEXTURE_CHARTS];
+    const uint8_t* codes;
+} luvs_parts_t;
+
 /* The LUVS entry of one material: the layout docs/assets/formats/LUVS.md
  * gives, the sections packed one after another; returns its size. */
 static uint32_t
-write_luvs(uint8_t* b, uint32_t vertices, uint32_t clusters, uint32_t triangles, const int16_t (*uvs)[2],
-           const int16_t (*origins)[2], const uint8_t* materials, const uint8_t* bits) {
+write_luvs(uint8_t* b, const luvs_parts_t* in) {
     const uint32_t uvs_off = R3D_TEXTURE_UVS_HEADER_SIZE;
-    const uint32_t origins_off = uvs_off + (vertices * UV_PAIR_BYTES);
-    const uint32_t clusters_off = origins_off + (clusters * UV_PAIR_BYTES);
-    const uint32_t triangles_off = clusters_off + clusters;
-    const uint32_t bit_bytes =
-        (triangles + R3D_TEXTURE_UVS_TRIANGLES_PER_BYTE - 1U) / R3D_TEXTURE_UVS_TRIANGLES_PER_BYTE;
+    const uint32_t origins_off = uvs_off + (in->uv_count * UV_PAIR_BYTES);
+    const uint32_t shifts_off = origins_off + (in->clusters * R3D_TEXTURE_CHARTS * UV_PAIR_BYTES);
+    const uint32_t clusters_off = shifts_off + (in->clusters * sizeof(int32_t));
+    const uint32_t triangles_off = clusters_off + (in->clusters * R3D_TEXTURE_CHARTS);
+    const uint32_t code_bytes =
+        (in->triangles + R3D_TEXTURE_UVS_TRIANGLES_PER_BYTE - 1U) / R3D_TEXTURE_UVS_TRIANGLES_PER_BYTE;
     memset(b, 0, LUVS_BYTES_MAX);
     put_u16(b + R3D_TEXTURE_UVS_AT_VERSION, R3D_TEXTURE_UVS_VERSION);
     put_u16(b + R3D_TEXTURE_UVS_AT_MATERIAL_COUNT, 1);
-    put_u32(b + R3D_TEXTURE_UVS_AT_VERTEX_COUNT, vertices);
-    put_u32(b + R3D_TEXTURE_UVS_AT_CLUSTER_COUNT, clusters);
-    put_u32(b + R3D_TEXTURE_UVS_AT_TRIANGLE_COUNT, triangles);
+    put_u32(b + R3D_TEXTURE_UVS_AT_VERTEX_COUNT, in->vertices);
+    put_u32(b + R3D_TEXTURE_UVS_AT_CLUSTER_COUNT, in->clusters);
+    put_u32(b + R3D_TEXTURE_UVS_AT_TRIANGLE_COUNT, in->triangles);
+    put_u32(b + R3D_TEXTURE_UVS_AT_UV_COUNT, in->uv_count);
     put_u32(b + R3D_TEXTURE_UVS_AT_UVS_OFF, uvs_off);
     put_u32(b + R3D_TEXTURE_UVS_AT_ORIGINS_OFF, origins_off);
+    put_u32(b + R3D_TEXTURE_UVS_AT_SHIFTS_OFF, shifts_off);
     put_u32(b + R3D_TEXTURE_UVS_AT_CLUSTERS_OFF, clusters_off);
     put_u32(b + R3D_TEXTURE_UVS_AT_TRIANGLES_OFF, triangles_off);
-    memcpy(b + uvs_off, uvs, vertices * UV_PAIR_BYTES);
-    memcpy(b + origins_off, origins, clusters * UV_PAIR_BYTES);
-    memcpy(b + clusters_off, materials, clusters);
-    memcpy(b + triangles_off, bits, bit_bytes);
-    return triangles_off + bit_bytes;
+    memcpy(b + uvs_off, in->uvs, in->uv_count * UV_PAIR_BYTES);
+    memcpy(b + origins_off, in->origins, in->clusters * R3D_TEXTURE_CHARTS * UV_PAIR_BYTES);
+    memcpy(b + shifts_off, in->shifts, in->clusters * sizeof(int32_t));
+    memcpy(b + clusters_off, in->materials, in->clusters * R3D_TEXTURE_CHARTS);
+    memcpy(b + triangles_off, in->codes, code_bytes);
+    return triangles_off + code_bytes;
+}
+
+/* Triangle `t`'s `code` placed in a code byte. */
+static uint8_t
+code_at(int t, unsigned code) {
+    return (uint8_t)(code << (((unsigned)t % R3D_TEXTURE_UVS_TRIANGLES_PER_BYTE) * R3D_TEXTURE_UVS_CODE_BITS));
 }
 
 /* The scene and a pack of the one LTEX the mesh "m" names. */
@@ -421,12 +443,16 @@ corner(scene_t* s, int k, float x, float y, float z) {
     memset(s->colors[k], SCENE_LIGHT, sizeof s->colors[k]);
 }
 
-/* The mesh's UVs: the texture's first side along each triangle's legs. */
+/* The mesh's UVs: on chart 0 the texture's first side along each
+ * triangle's legs, on chart 1 `chart_1_sides` of them. */
 static void
-leg_uvs(scene_t* s, int triangles) {
+leg_uvs(scene_t* s, int triangles, int chart_1_sides) {
     for (int t = 0; t < triangles; t++) {
-        const int16_t uv[SCENE_VERTICES][2] = {{0, 0}, {UV_SPAN_UNITS, 0}, {0, UV_SPAN_UNITS}};
-        memcpy(s->uvs[t * SCENE_VERTICES], uv, sizeof uv);
+        for (int chart = 0; chart < R3D_TEXTURE_CHARTS; chart++) {
+            const int16_t span = (int16_t)(chart == 0 ? UV_SPAN_UNITS : UV_SPAN_UNITS * chart_1_sides);
+            const int16_t uv[SCENE_VERTICES][2] = {{0, 0}, {span, 0}, {0, span}};
+            memcpy(s->uvs[(chart * triangles * SCENE_VERTICES) + (t * SCENE_VERTICES)], uv, sizeof uv);
+        }
         for (int k = 0; k < SCENE_VERTICES; k++) {
             s->triangles[t][k] = (uint16_t)((t * SCENE_VERTICES) + k);
         }
@@ -434,9 +460,10 @@ leg_uvs(scene_t* s, int triangles) {
 }
 
 /* Builds the one-cluster mesh of `triangles` triangles whose corners are set,
- * with its texturing read from an LUVS entry marking `bits`. */
+ * with its texturing read from an LUVS entry of triangle codes `codes`; the
+ * cluster has chart 1 when `charts` is 2. */
 static void
-scene_mesh(scene_t* s, int triangles, uint8_t bits) {
+scene_mesh(scene_t* s, int triangles, uint8_t codes, int charts) {
     const int vertices = triangles * SCENE_VERTICES;
     const box3s_t reach = {{-INT16_MAX, -INT16_MAX, -8}, {INT16_MAX, INT16_MAX, 8}};
     s->cluster = (r3d_lit_cluster_t){0, (uint16_t)vertices, 0, (uint16_t)triangles, reach, true};
@@ -451,10 +478,19 @@ scene_mesh(scene_t* s, int triangles, uint8_t bits) {
                                .cluster_count = 1,
                                .node_count = 1,
                                .position_scale = 1};
-    const int16_t origin[1][2] = {{0, 0}};
-    const uint8_t material[1] = {0};
-    const uint32_t size =
-        write_luvs(s->luvs, (uint32_t)vertices, 1, (uint32_t)triangles, s->uvs, origin, material, &bits);
+    const int16_t origins[1][R3D_TEXTURE_CHARTS][2] = {{{0, 0}, {0, 0}}};
+    const int32_t shifts[1] = {vertices};
+    const uint8_t materials[1][R3D_TEXTURE_CHARTS] = {{0, charts > 1 ? 0 : R3D_TEXTURE_NONE}};
+    const luvs_parts_t parts = {(uint32_t)vertices,
+                                (uint32_t)(R3D_TEXTURE_CHARTS * vertices),
+                                1,
+                                (uint32_t)triangles,
+                                s->uvs,
+                                origins,
+                                shifts,
+                                materials,
+                                &codes};
+    const uint32_t size = write_luvs(s->luvs, &parts);
     TEST_ASSERT_EQUAL(ASSET_OK, open_texturing(s, size, &s->mesh));
     s->mesh.texturing = &s->texturing;
 }
@@ -497,41 +533,58 @@ distinct_colours(int which) {
 }
 
 /* An entry for READ_VERTICES vertices in READ_CLUSTERS clusters and
- * READ_TRIANGLES triangles, the last triangle marked and the second
- * cluster without a material. */
+ * READ_TRIANGLES triangles: the first cluster, vertices 0-1 and triangles
+ * 0-4, on chart 0 alone; the second, vertices 2-3 and triangles 5-9, on two
+ * charts; every triangle plain but READ_LAST, on the second cluster's chart
+ * 1. */
+static const r3d_lit_cluster_t read_clusters[READ_CLUSTERS] = {
+    {.vertex_first = 0, .vertex_count = 2, .triangle_first = 0, .triangle_count = 5},
+    {.vertex_first = 2, .vertex_count = 2, .triangle_first = 5, .triangle_count = 5}};
+
 static uint32_t
 write_read_entry(scene_t* s) {
-    const int16_t uvs[READ_VERTICES][2] = {{0, 0}, {0, 0}, {0, 0}, {UV_U_UNITS, UV_V_UNITS}};
-    const int16_t origins[READ_CLUSTERS][2] = {{0, 0}, {ORIGIN_U, ORIGIN_V}};
-    const uint8_t materials[READ_CLUSTERS] = {0, R3D_TEXTURE_NONE};
-    const uint8_t bits[2] = {0, (uint8_t)(1U << (READ_LAST_BIT % R3D_TEXTURE_UVS_TRIANGLES_PER_BYTE))};
-    return write_luvs(s->luvs, READ_VERTICES, READ_CLUSTERS, READ_TRIANGLES, uvs, origins, materials, bits);
+    const int16_t uvs[READ_UVS][2] = {{0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {UV_U_UNITS, UV_V_UNITS}};
+    const int16_t origins[READ_CLUSTERS][R3D_TEXTURE_CHARTS][2] = {{{0, 0}, {0, 0}}, {{0, 0}, {ORIGIN_U, ORIGIN_V}}};
+    const int32_t shifts[READ_CLUSTERS] = {0, READ_SHIFT};
+    const uint8_t materials[READ_CLUSTERS][R3D_TEXTURE_CHARTS] = {{0, R3D_TEXTURE_NONE}, {0, 0}};
+    uint8_t codes[3] = {0};
+    codes[READ_LAST / R3D_TEXTURE_UVS_TRIANGLES_PER_BYTE] = code_at(READ_LAST, 2);
+    const luvs_parts_t parts = {READ_VERTICES, READ_UVS, READ_CLUSTERS, READ_TRIANGLES, uvs,
+                                origins,       shifts,   materials,     codes};
+    return write_luvs(s->luvs, &parts);
 }
 
 static r3d_lit_mesh_t
 read_mesh(void) {
-    return (r3d_lit_mesh_t){
-        .vertex_count = READ_VERTICES, .cluster_count = READ_CLUSTERS, .triangle_count = READ_TRIANGLES};
+    return (r3d_lit_mesh_t){.clusters = read_clusters,
+                            .vertex_count = READ_VERTICES,
+                            .cluster_count = READ_CLUSTERS,
+                            .triangle_count = READ_TRIANGLES};
 }
 
 static void
-test_luvs_entry_opens_and_exposes_its_bits_and_uvs(void) {
+test_luvs_entry_opens_and_exposes_its_codes_and_uvs(void) {
     scene_t* s = scene_fixture();
     const r3d_lit_mesh_t mesh = read_mesh();
     const uint32_t size = write_read_entry(s);
     TEST_ASSERT_EQUAL(ASSET_OK, open_texturing(s, size, &mesh));
     TEST_ASSERT_EQUAL(1, s->texturing.material_count);
     TEST_ASSERT_EQUAL_PTR(&s->material, s->texturing.materials);
-    TEST_ASSERT_EQUAL_UINT8(0, s->texturing.cluster_material[0]);
-    TEST_ASSERT_EQUAL_UINT8(R3D_TEXTURE_NONE, s->texturing.cluster_material[1]);
+    TEST_ASSERT_EQUAL_UINT8(0, s->texturing.cluster_material[0][0]);
+    TEST_ASSERT_EQUAL_UINT8(R3D_TEXTURE_NONE, s->texturing.cluster_material[0][1]);
+    TEST_ASSERT_EQUAL_UINT8(0, s->texturing.cluster_material[1][1]);
     for (int t = 0; t < READ_TRIANGLES; t++) {
-        TEST_ASSERT_EQUAL_MESSAGE(t == READ_LAST_BIT, r3d_texture_triangle_textured(&s->texturing, t),
-                                  "a triangle bit");
+        TEST_ASSERT_EQUAL_MESSAGE(t == READ_LAST ? 2U : R3D_TEXTURE_PLAIN, r3d_texture_triangle_code(&s->texturing, t),
+                                  "a triangle code");
     }
-    /* The origin counts in texture sides, the vertex's UV in 1/16 texel. */
-    const r3d_span_uv_t uv = r3d_texture_uv(&s->texturing, &s->material, 1, READ_VERTICES - 1);
-    TEST_ASSERT_EQUAL_FLOAT((float)(ORIGIN_U * TEX_SIDE) + ((float)UV_U_UNITS / (1 << R3D_TEXTURE_UV_SHIFT)), uv.u);
-    TEST_ASSERT_EQUAL_FLOAT((float)(ORIGIN_V * TEX_SIDE) + ((float)UV_V_UNITS / (1 << R3D_TEXTURE_UV_SHIFT)), uv.v);
+    /* Chart 1's origin counts in texture sides, the vertex's UV past its
+     * shift in 1/16 texel; chart 0 reads the vertex's own. */
+    const r3d_span_uv_t on_1 = r3d_texture_uv(&s->texturing, &s->material, 1, 1, READ_VERTICES - 1);
+    TEST_ASSERT_EQUAL_FLOAT((float)(ORIGIN_U * TEX_SIDE) + ((float)UV_U_UNITS / (1 << R3D_TEXTURE_UV_SHIFT)), on_1.u);
+    TEST_ASSERT_EQUAL_FLOAT((float)(ORIGIN_V * TEX_SIDE) + ((float)UV_V_UNITS / (1 << R3D_TEXTURE_UV_SHIFT)), on_1.v);
+    const r3d_span_uv_t on_0 = r3d_texture_uv(&s->texturing, &s->material, 1, 0, READ_VERTICES - 1);
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, on_0.u);
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, on_0.v);
 }
 
 static void
@@ -541,7 +594,8 @@ expect_refused(scene_t* s, uint32_t size, const r3d_lit_mesh_t* mesh, asset_stat
     TEST_ASSERT_NULL_MESSAGE(s->texturing.uvs, why);
     TEST_ASSERT_NULL_MESSAGE(s->texturing.cluster_material, why);
     TEST_ASSERT_NULL_MESSAGE(s->texturing.cluster_origin, why);
-    TEST_ASSERT_NULL_MESSAGE(s->texturing.triangle_textured, why);
+    TEST_ASSERT_NULL_MESSAGE(s->texturing.cluster_shift, why);
+    TEST_ASSERT_NULL_MESSAGE(s->texturing.triangle_code, why);
     TEST_ASSERT_NULL_MESSAGE(s->texturing.materials, why);
     TEST_ASSERT_EQUAL_MESSAGE(0, s->texturing.material_count, why);
 }
@@ -562,7 +616,7 @@ test_luvs_entry_is_refused_when_its_counts_do_not_match_the_mesh(void) {
 }
 
 static void
-test_luvs_entry_must_end_exactly_after_its_triangle_bits(void) {
+test_luvs_entry_must_end_exactly_after_its_triangle_codes(void) {
     scene_t* s = scene_fixture();
     const r3d_lit_mesh_t mesh = read_mesh();
     const uint32_t size = write_read_entry(s);
@@ -582,6 +636,26 @@ test_luvs_cluster_material_past_the_count_is_refused(void) {
 }
 
 static void
+test_luvs_charts_the_entry_does_not_hold_are_refused(void) {
+    scene_t* s = scene_fixture();
+    const r3d_lit_mesh_t mesh = read_mesh();
+    const uint32_t size = write_read_entry(s);
+    const uint32_t clusters_off = asset_read_u32(s->luvs + R3D_TEXTURE_UVS_AT_CLUSTERS_OFF);
+    const uint32_t shifts_off = asset_read_u32(s->luvs + R3D_TEXTURE_UVS_AT_SHIFTS_OFF);
+    const uint32_t codes_off = asset_read_u32(s->luvs + R3D_TEXTURE_UVS_AT_TRIANGLES_OFF);
+    s->luvs[codes_off] = (uint8_t)code_at(0, 2);
+    expect_refused(s, size, &mesh, ASSET_ERR_FORMAT, "a code naming chart 1 of a cluster with one chart");
+    (void)write_read_entry(s);
+    s->luvs[clusters_off + R3D_TEXTURE_CHARTS] = R3D_TEXTURE_NONE;
+    expect_refused(s, size, &mesh, ASSET_ERR_FORMAT, "chart 1 after a chart with no material");
+    (void)write_read_entry(s);
+    put_u32(s->luvs + shifts_off + sizeof(int32_t), READ_SHIFT + 1);
+    expect_refused(s, size, &mesh, ASSET_ERR_FORMAT, "chart 1's UVs past the entry's");
+    (void)write_read_entry(s);
+    TEST_ASSERT_EQUAL(ASSET_OK, open_texturing(s, size, &mesh));
+}
+
+static void
 test_luvs_names_a_material_the_pack_lacks(void) {
     scene_t* s = scene_fixture();
     const r3d_lit_mesh_t mesh = read_mesh();
@@ -591,20 +665,22 @@ test_luvs_names_a_material_the_pack_lacks(void) {
     TEST_ASSERT_EQUAL(ASSET_ERR_NOT_FOUND, r3d_texture_texturing_from_asset(&view, &s->pack, "other", &mesh,
                                                                             &s->material, 1, &s->texturing));
     TEST_ASSERT_NULL(s->texturing.uvs);
-    TEST_ASSERT_NULL(s->texturing.triangle_textured);
+    TEST_ASSERT_NULL(s->texturing.triangle_code);
 }
 
-/* One cluster of two disjoint triangles, the left one in the left half. */
+/* One cluster of two disjoint triangles, the left one in the left half,
+ * each drawn as its code in `codes` says; chart 1 maps `chart_1_sides`
+ * texture sides along the legs. */
 static void
-two_triangles(scene_t* s, uint8_t bits) {
+two_triangles(scene_t* s, uint8_t codes, int chart_1_sides) {
     const float left[3][2] = {{2, 4}, {22, 4}, {12, 40}};
     const float right[3][2] = {{26, 4}, {46, 4}, {36, 40}};
     for (int k = 0; k < SCENE_VERTICES; k++) {
         corner(s, k, left[k][0], left[k][1], SCENE_Z);
         corner(s, SCENE_VERTICES + k, right[k][0], right[k][1], SCENE_Z);
     }
-    leg_uvs(s, SCENE_TRIANGLES);
-    scene_mesh(s, SCENE_TRIANGLES, bits);
+    leg_uvs(s, SCENE_TRIANGLES, chart_1_sides);
+    scene_mesh(s, SCENE_TRIANGLES, codes, R3D_TEXTURE_CHARTS);
 }
 
 /* Pixels of target 1 that differ from target 0's plain draw, in the left
@@ -630,20 +706,47 @@ expect_drawn_textured(bool marked, int differing_pixels, const char* which) {
 }
 
 static void
-test_only_marked_triangles_of_a_cluster_draw_textured(void) {
-    const uint8_t marks[] = {0x01, 0x02, 0x00};
-    for (size_t m = 0; m < sizeof marks; m++) {
+test_only_triangles_on_a_chart_draw_textured(void) {
+    const unsigned codes[][SCENE_TRIANGLES] = {
+        {1, R3D_TEXTURE_PLAIN}, {R3D_TEXTURE_PLAIN, 2}, {R3D_TEXTURE_PLAIN, R3D_TEXTURE_PLAIN}};
+    for (size_t m = 0; m < sizeof codes / sizeof codes[0]; m++) {
         scene_t* s = scene_fixture();
-        two_triangles(s, marks[m]);
+        two_triangles(s, code_at(0, codes[m][0]) | code_at(1, codes[m][1]), 1);
         clear();
         draw_scene(s, 0, false);
         draw_scene(s, 1, true);
         int left, right;
         differing(&left, &right);
-        expect_drawn_textured((marks[m] & 1U) != 0U, left, "the left triangle");
-        expect_drawn_textured((marks[m] & 2U) != 0U, right, "the right triangle");
+        expect_drawn_textured(codes[m][0] != R3D_TEXTURE_PLAIN, left, "the left triangle");
+        expect_drawn_textured(codes[m][1] != R3D_TEXTURE_PLAIN, right, "the right triangle");
         scene_cleanup();
     }
+}
+
+/* A triangle on chart 1 reads chart 1's UVs: drawn on chart 1 it matches
+ * itself drawn on chart 0 with the same UVs, and not chart 0's own. */
+static void
+test_a_triangle_on_chart_1_draws_with_chart_1s_uvs(void) {
+    const int sides = 2;
+    scene_t* s = scene_fixture();
+    two_triangles(s, code_at(0, 2), sides);
+    clear();
+    draw_scene(s, 0, true);
+    scene_mesh(s, SCENE_TRIANGLES, code_at(0, 1), R3D_TEXTURE_CHARTS);
+    draw_scene(s, 1, true);
+    for (int k = 0; k < SCENE_TRIANGLES * SCENE_VERTICES; k++) {
+        for (int i = 0; i < 2; i++) {
+            s->uvs[k][i] = (int16_t)(s->uvs[k][i] * sides);
+        }
+    }
+    scene_mesh(s, SCENE_TRIANGLES, code_at(0, 1), R3D_TEXTURE_CHARTS);
+    draw_scene(s, 2, true);
+    int differs_from_chart_0 = 0;
+    for (int i = 0; i < PIXELS; i++) {
+        TEST_ASSERT_EQUAL_HEX16_MESSAGE(colours_of(2)[i], colours_of(0)[i], "chart 1 against the same UVs on chart 0");
+        differs_from_chart_0 += colours_of(0)[i] != colours_of(1)[i];
+    }
+    TEST_ASSERT_GREATER_THAN_MESSAGE(0, differs_from_chart_0, "chart 1 drew chart 0's UVs");
 }
 
 static void
@@ -653,8 +756,8 @@ test_near_clipped_textured_triangle_keeps_its_coverage_and_its_pattern(void) {
     corner(s, 0, 8, 20, SCENE_Z);
     corner(s, 1, 40, 20, SCENE_Z);
     corner(s, 2, 0, 0, BEHIND_Z);
-    leg_uvs(s, 1);
-    scene_mesh(s, 1, 1);
+    leg_uvs(s, 1, 1);
+    scene_mesh(s, 1, 1, 1);
     clear();
     draw_scene(s, 0, false);
     draw_scene(s, 1, true);
@@ -682,12 +785,14 @@ run_r3d_texture_suite(void) {
     RUN_TEST(test_moved_texels_draw_without_the_entry);
     RUN_TEST(test_texel_at_the_mean_draws_the_vertex_colour);
     RUN_TEST(test_entry_rejects_bad_headers);
-    RUN_TEST(test_luvs_entry_opens_and_exposes_its_bits_and_uvs);
+    RUN_TEST(test_luvs_entry_opens_and_exposes_its_codes_and_uvs);
     RUN_TEST(test_luvs_entry_is_refused_when_its_counts_do_not_match_the_mesh);
-    RUN_TEST(test_luvs_entry_must_end_exactly_after_its_triangle_bits);
+    RUN_TEST(test_luvs_entry_must_end_exactly_after_its_triangle_codes);
     RUN_TEST(test_luvs_cluster_material_past_the_count_is_refused);
+    RUN_TEST(test_luvs_charts_the_entry_does_not_hold_are_refused);
     RUN_TEST(test_luvs_names_a_material_the_pack_lacks);
-    RUN_TEST(test_only_marked_triangles_of_a_cluster_draw_textured);
+    RUN_TEST(test_only_triangles_on_a_chart_draw_textured);
+    RUN_TEST(test_a_triangle_on_chart_1_draws_with_chart_1s_uvs);
     RUN_TEST(test_near_clipped_textured_triangle_keeps_its_coverage_and_its_pattern);
 }
 
