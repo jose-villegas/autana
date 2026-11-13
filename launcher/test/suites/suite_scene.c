@@ -4834,27 +4834,55 @@ test_animation_rate_controls_and_zero_dt_preserve_debt(void) {
     TEST_ASSERT_EQUAL_UINT32(owed, a->owed_ms);
 }
 
+/* The two-column rig lit by its camera light, posed once at frame 1's slot;
+ * its scene, its "red" copy and the light. */
+typedef struct {
+    scene_t* scene;
+    entity_t red;
+    entity_t lamp;
+} lit_rig_t;
+
+static lit_rig_t
+lit_rig(void) {
+    const entity_t root = rig_fixture("rig.skin2", NULL);
+    const lit_rig_t rig = {columns(root), entity_find(root, name_hash("red")), entity_find(root, name_hash("camera"))};
+    render_context_set_settings(render_context_main(), &RENDER_SETTINGS_DEFAULT);
+    TEST_ASSERT_TRUE(light_set_intensity(rig.lamp, 1.0F));
+    scene_animation_step(rig.scene, 0);
+    rig.scene->animation_frame = 1;
+    return rig;
+}
+
+/* `red`'s lit normal for the light axis, as its skin holds it. */
+static float
+lit_normal(entity_t red) {
+    return skin_of(red)->normal_palette[0].m[2][1];
+}
+
+/* `red` turned to frame `i`'s angle and stepped; whether it was relit. Its lit
+ * normal follows the turn when relit and keeps its old value otherwise. */
+static bool
+step_turned(lit_rig_t rig, int i) {
+    const float before = lit_normal(rig.red);
+    const transformf_t local = turned(rig.red, i);
+    scene_animation_step(rig.scene, ANIM_RATE_DT_MS);
+    const bool relit = rig.scene->animators[row_of(rig.red)].posed;
+    TEST_ASSERT_FLOAT_WITHIN(0.0001F, relit ? quatf_rotate(local.rotation, SCENE_LIGHT_AXIS).z : before,
+                             lit_normal(rig.red));
+    return relit;
+}
+
 /* A lit far copy turned every frame, its light still: the copy and its lit
  * normals turn on its pose slots only, so a move costs no extra skinning. */
 static void
 test_a_moving_copy_relights_on_its_pose_slot(void) {
-    entity_t root = rig_fixture("rig.skin2", NULL);
-    scene_t* scene = columns(root);
-    render_context_set_settings(render_context_main(), &RENDER_SETTINGS_DEFAULT);
-    const entity_t red = entity_find(root, name_hash("red"));
-    TEST_ASSERT_TRUE(light_set_intensity(entity_find(root, name_hash("camera")), 1.0F));
-    scene_animation_step(scene, 0);
-    scene_animator_t* a = &scene->animators[row_of(red)];
-    scene->animation_frame = 1;
+    const lit_rig_t rig = lit_rig();
+    const scene_animator_t* a = &rig.scene->animators[row_of(rig.red)];
     int poses = 0;
     for (int i = 0; i < RENDER_SETTINGS_DEFAULT.anim.far_every; i++) {
-        const float lit_before = skin_of(red)->normal_palette[0].m[2][1];
-        const transformf_t local = turned(red, i);
-        scene_animation_step(scene, ANIM_RATE_DT_MS);
-        TEST_ASSERT_EQUAL(a->owed_ms == 0, a->posed); /* posed on its slot, and only there */
-        poses += a->posed;
-        TEST_ASSERT_FLOAT_WITHIN(0.0001F, a->posed ? quatf_rotate(local.rotation, SCENE_LIGHT_AXIS).z : lit_before,
-                                 skin_of(red)->normal_palette[0].m[2][1]);
+        const bool relit = step_turned(rig, i);
+        TEST_ASSERT_EQUAL(a->owed_ms == 0, relit); /* relit on its slot, and only there */
+        poses += relit;
     }
     TEST_ASSERT_EQUAL_INT(1, poses);
 }
@@ -4862,18 +4890,11 @@ test_a_moving_copy_relights_on_its_pose_slot(void) {
 /* A light change relights every lit copy at once, whatever its tier. */
 static void
 test_a_light_change_relights_at_once(void) {
-    entity_t root = rig_fixture("rig.skin2", NULL);
-    scene_t* scene = columns(root);
-    render_context_set_settings(render_context_main(), &RENDER_SETTINGS_DEFAULT);
-    const entity_t red = entity_find(root, name_hash("red"));
-    const entity_t lamp = entity_find(root, name_hash("camera"));
-    TEST_ASSERT_TRUE(light_set_intensity(lamp, 1.0F));
-    scene_animation_step(scene, 0);
-    scene->animation_frame = 1;
+    const lit_rig_t rig = lit_rig();
     for (int i = 0; i < RENDER_SETTINGS_DEFAULT.anim.far_every; i++) {
-        TEST_ASSERT_TRUE(light_set_intensity(lamp, (float)(i + 2)));
-        scene_animation_step(scene, ANIM_RATE_DT_MS);
-        TEST_ASSERT_TRUE(scene->animators[row_of(red)].posed);
+        TEST_ASSERT_TRUE(light_set_intensity(rig.lamp, (float)(i + 2)));
+        scene_animation_step(rig.scene, ANIM_RATE_DT_MS);
+        TEST_ASSERT_TRUE(rig.scene->animators[row_of(rig.red)].posed);
     }
 }
 
@@ -4881,43 +4902,22 @@ test_a_light_change_relights_at_once(void) {
  * close to the camera lags its move. */
 static void
 test_a_moving_near_copy_relights_every_frame(void) {
-    entity_t root = rig_fixture("rig.skin2", NULL);
-    scene_t* scene = columns(root);
-    render_context_set_settings(render_context_main(), &RENDER_SETTINGS_DEFAULT);
-    const entity_t red = entity_find(root, name_hash("red"));
-    TEST_ASSERT_TRUE(light_set_intensity(entity_find(root, name_hash("camera")), 1.0F));
-    scene_animation_step(scene, 0);
-    scene_animator_t* a = &scene->animators[row_of(red)];
-    scene->animation_frame = 1;
+    const lit_rig_t rig = lit_rig();
+    scene_animator_t* a = &rig.scene->animators[row_of(rig.red)];
     for (int i = 0; i < RENDER_SETTINGS_DEFAULT.anim.far_every; i++) {
         a->drawn_radius_px = NEAR_DRAWN_PX;
-        const transformf_t local = turned(red, i);
-        scene_animation_step(scene, ANIM_RATE_DT_MS);
+        TEST_ASSERT_TRUE(step_turned(rig, i));
         TEST_ASSERT_EQUAL_INT(SCENE_ANIM_TIER_NEAR, a->tier);
-        TEST_ASSERT_TRUE(a->posed);
-        TEST_ASSERT_FLOAT_WITHIN(0.0001F, quatf_rotate(local.rotation, SCENE_LIGHT_AXIS).z,
-                                 skin_of(red)->normal_palette[0].m[2][1]);
     }
 }
 
 /* A copy with no clip has no pose slot to wait for: a move relights it at once. */
 static void
 test_a_moving_copy_with_no_clip_relights_at_once(void) {
-    entity_t root = rig_fixture("rig.skin2", NULL);
-    scene_t* scene = columns(root);
-    render_context_set_settings(render_context_main(), &RENDER_SETTINGS_DEFAULT);
-    const entity_t red = entity_find(root, name_hash("red"));
-    TEST_ASSERT_TRUE(light_set_intensity(entity_find(root, name_hash("camera")), 1.0F));
-    scene_animation_step(scene, 0);
-    scene_animator_t* a = &scene->animators[row_of(red)];
-    a->layer.current.clip = ANIM_LAYER_CLIP_NONE;
-    scene->animation_frame = 1;
+    const lit_rig_t rig = lit_rig();
+    rig.scene->animators[row_of(rig.red)].layer.current.clip = ANIM_LAYER_CLIP_NONE;
     for (int i = 0; i < RENDER_SETTINGS_DEFAULT.anim.far_every; i++) {
-        const transformf_t local = turned(red, i);
-        scene_animation_step(scene, ANIM_RATE_DT_MS);
-        TEST_ASSERT_TRUE(a->posed);
-        TEST_ASSERT_FLOAT_WITHIN(0.0001F, quatf_rotate(local.rotation, SCENE_LIGHT_AXIS).z,
-                                 skin_of(red)->normal_palette[0].m[2][1]);
+        TEST_ASSERT_TRUE(step_turned(rig, i));
     }
 }
 
