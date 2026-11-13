@@ -27,7 +27,7 @@ build_colormap(r3d_texture_t* t, const uint8_t* palette, const uint8_t tint[3]) 
                 const int64_t albedo = (int64_t)tint[k] * palette[(i * R3D_TEXTURE_PALETTE_STRIDE) + k];
                 const int64_t lit =
                     (albedo * l * UINT8_MAX) / ((int64_t)R3D_TEXTURE_ONE * (R3D_TEXTURE_LIGHT_LEVELS - 1) * tint_luma);
-                channel[k] = (int32_t)mathi_min((int)lit, UINT8_MAX) << 8;
+                channel[k] = (int32_t)mathi_min((int)lit, UINT8_MAX) << R3D_SPAN_COLOR_FRAC_BITS;
             }
             t->colormap[l][i] = r3d_span_pack(channel[0], channel[1], channel[2]);
         }
@@ -158,6 +158,25 @@ open_materials(const asset_pack_t* pack, const char* mesh_id, int count, r3d_tex
     return ASSET_OK;
 }
 
+/* How many charts cluster `c` has, or -1 when one names a material at or
+ * past `count` or a NONE chart has one after it. */
+static int
+cluster_charts(const r3d_mesh_texturing_t* t, int c, int count) {
+    int charts = 0;
+    while (charts < R3D_TEXTURE_CHARTS && t->cluster_material[c][charts] != R3D_TEXTURE_NONE) {
+        if (t->cluster_material[c][charts] >= count) {
+            return -1;
+        }
+        charts++;
+    }
+    for (int k = charts; k < R3D_TEXTURE_CHARTS; k++) {
+        if (t->cluster_material[c][k] != R3D_TEXTURE_NONE) {
+            return -1;
+        }
+    }
+    return charts;
+}
+
 /* Whether every cluster's charts name materials below `count`, NONE ones
  * last; chart 1's UVs lie inside `uv_count`; and every triangle's code names
  * a chart its cluster has. */
@@ -165,20 +184,9 @@ static bool
 charts_valid(const r3d_lit_mesh_t* mesh, int count, uint32_t uv_count, const r3d_mesh_texturing_t* t) {
     for (int c = 0; c < mesh->cluster_count; c++) {
         const r3d_lit_cluster_t* cluster = &mesh->clusters[c];
-        int charts = 0;
-        while (charts < R3D_TEXTURE_CHARTS && t->cluster_material[c][charts] != R3D_TEXTURE_NONE) {
-            if (t->cluster_material[c][charts] >= count) {
-                return false;
-            }
-            charts++;
-        }
-        for (int k = charts; k < R3D_TEXTURE_CHARTS; k++) {
-            if (t->cluster_material[c][k] != R3D_TEXTURE_NONE) {
-                return false;
-            }
-        }
+        const int charts = cluster_charts(t, c, count);
         const int64_t shifted = (int64_t)cluster->vertex_first + t->cluster_shift[c];
-        if (charts > 1 && (shifted < 0 || shifted + cluster->vertex_count > (int64_t)uv_count)) {
+        if (charts < 0 || (charts > 1 && (shifted < 0 || shifted + cluster->vertex_count > (int64_t)uv_count))) {
             return false;
         }
         for (int i = 0; i < cluster->triangle_count; i++) {

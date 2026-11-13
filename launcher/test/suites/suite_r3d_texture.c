@@ -307,29 +307,29 @@ test_entry_rejects_bad_headers(void) {
 /* A mesh's texturing: the LUVS entry, the pack holding its LTEX sibling, and
  * a scene of flat triangles seen at their own pixels, drawn through the
  * pipeline. */
-#define MESH_ID         "m"
-#define LUVS_BYTES_MAX  160
-#define PACK_BYTES      512
-#define UV_PAIR_BYTES   (2 * sizeof(int16_t))
-#define READ_VERTICES   4
-#define READ_UVS        6 /* the vertices', then the second cluster's two on chart 1 */
-#define READ_CLUSTERS   2
-#define READ_TRIANGLES  10 /* three bytes of triangle codes, the last one part full */
-#define READ_LAST       9  /* the second cluster's last triangle, the one on a chart */
-#define READ_SHIFT      2  /* the second cluster's first vertex, 2, reads chart 1 at 4 */
-#define ORIGIN_U        1
-#define ORIGIN_V        2
-#define UV_U_UNITS      3 /* 1/16 texel */
-#define UV_V_UNITS      5
-#define SCENE_VERTICES  3
-#define SCENE_TRIANGLES 2
-#define SCENE_LIGHT     200
-#define SCENE_Z         2.0F
-#define BEHIND_Z        (-2.0F)
-#define UV_SPAN_UNITS   (TEX_SIDE << R3D_TEXTURE_UV_SHIFT) /* one texture side along a triangle's legs */
-#define LEFT_COLUMNS    (SIDE / 2)
-#define DISTINCT_MORE   3
-#define COVERED_MIN     100
+#define MESH_ID           "m"
+#define LUVS_BYTES_MAX    160
+#define PACK_BYTES        512
+#define UV_PAIR_BYTES     (2 * sizeof(int16_t))
+#define READ_VERTICES     4
+#define READ_UVS          6 /* the vertices', then the second cluster's two on chart 1 */
+#define READ_CLUSTERS     2
+#define READ_TRIANGLES    10 /* three bytes of triangle codes, the last one part full */
+#define READ_LAST         9  /* the second cluster's last triangle, the one on a chart */
+#define READ_CHART_OFFSET 2  /* the second cluster's first vertex, 2, reads chart 1 at 4 */
+#define ORIGIN_U          1
+#define ORIGIN_V          2
+#define UV_U_UNITS        3 /* 1/16 texel */
+#define UV_V_UNITS        5
+#define SCENE_VERTICES    3
+#define SCENE_TRIANGLES   2
+#define SCENE_LIGHT       200
+#define SCENE_Z           2.0F
+#define BEHIND_Z          (-2.0F)
+#define UV_SPAN_UNITS     (TEX_SIDE << R3D_TEXTURE_UV_SHIFT) /* one texture side along a triangle's legs */
+#define LEFT_COLUMNS      (SIDE / 2)
+#define DISTINCT_MORE     3
+#define COVERED_MIN       100
 
 typedef struct {
     int16_t positions[SCENE_VERTICES * SCENE_TRIANGLES][3];
@@ -545,7 +545,7 @@ static uint32_t
 write_read_entry(scene_t* s) {
     const int16_t uvs[READ_UVS][2] = {{0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {UV_U_UNITS, UV_V_UNITS}};
     const int16_t origins[READ_CLUSTERS][R3D_TEXTURE_CHARTS][2] = {{{0, 0}, {0, 0}}, {{0, 0}, {ORIGIN_U, ORIGIN_V}}};
-    const int32_t shifts[READ_CLUSTERS] = {0, READ_SHIFT};
+    const int32_t shifts[READ_CLUSTERS] = {0, READ_CHART_OFFSET};
     const uint8_t materials[READ_CLUSTERS][R3D_TEXTURE_CHARTS] = {{0, R3D_TEXTURE_NONE}, {0, 0}};
     uint8_t codes[3] = {0};
     codes[READ_LAST / R3D_TEXTURE_UVS_TRIANGLES_PER_BYTE] = code_at(READ_LAST, 2);
@@ -649,7 +649,7 @@ test_luvs_charts_the_entry_does_not_hold_are_refused(void) {
     s->luvs[clusters_off + R3D_TEXTURE_CHARTS] = R3D_TEXTURE_NONE;
     expect_refused(s, size, &mesh, ASSET_ERR_FORMAT, "chart 1 after a chart with no material");
     (void)write_read_entry(s);
-    put_u32(s->luvs + shifts_off + sizeof(int32_t), READ_SHIFT + 1);
+    put_u32(s->luvs + shifts_off + sizeof(int32_t), READ_CHART_OFFSET + 1);
     expect_refused(s, size, &mesh, ASSET_ERR_FORMAT, "chart 1's UVs past the entry's");
     (void)write_read_entry(s);
     TEST_ASSERT_EQUAL(ASSET_OK, open_texturing(s, size, &mesh));

@@ -16,7 +16,9 @@
 #include "math/scalar/mathf.h"
 #include "render/r3d_span.h"
 
-#define R3D_SPAN_COLOR_SCALE 256.0F
+/* Span colour channels are fixed point with this many fraction bits (8.8). */
+#define R3D_SPAN_COLOR_FRAC_BITS 8
+#define R3D_SPAN_COLOR_SCALE     ((float)(1 << R3D_SPAN_COLOR_FRAC_BITS))
 
 /* An upper bound on the depth a triangle writes inside `box`, as the
  * 16-bit depth, from its depth plane in 16.8: `top` at the centre of pixel
