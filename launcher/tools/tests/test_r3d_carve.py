@@ -10,6 +10,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 try:
     import numpy as np
 
+    from r3d import mesh_import
+    from r3d.fit import stage
     from r3d.objects import carve, detail
     from test_r3d_detail import FOCAL, NEAR, sphere
 except ImportError:
@@ -138,6 +140,37 @@ class ViewsTest(unittest.TestCase):
             eyes, focal, near = carve.views(path_scene, SimpleNamespace(visibility=visibility))
             self.assertEqual((len(eyes), near), (0, NEAR))
             self.assertGreater(focal, 0.0)
+
+
+@unittest.skipIf(np is None, "needs the r3d environment")
+class CeilingSplitTest(unittest.TestCase):
+    """The variant ceiling is one budget: without a fit it caps the baked mesh; with one, the fitted bundle, and
+    the fit's budget is the least its rest keeps."""
+    CEILING, TRIANGLES, FLOOR = 34500, 33178, 18678
+
+    def renderer(self, fit):
+        variant = SimpleNamespace(ceiling=self.CEILING, triangles=self.TRIANGLES)
+        return SimpleNamespace(variant=variant, fit=SimpleNamespace(budget=self.FLOOR) if fit else None)
+
+    def test_without_a_fit_the_ceiling_caps_the_bake_and_the_copies_get_what_the_variant_leaves(self):
+        renderer = self.renderer(fit=False)
+        self.assertEqual(mesh_import.start_ceiling(renderer), self.CEILING)
+        self.assertEqual(mesh_import.carve_room(renderer), self.CEILING - self.TRIANGLES)
+
+    def test_with_a_fit_the_start_is_uncapped_and_the_copies_get_what_the_floor_leaves(self):
+        renderer = self.renderer(fit=True)
+        self.assertIsNone(mesh_import.start_ceiling(renderer))
+        self.assertEqual(mesh_import.carve_room(renderer), self.CEILING - self.FLOOR)
+
+    def test_the_fit_prunes_to_the_ceiling_less_the_copies_never_below_its_floor(self):
+        self.assertEqual(stage.prune_budget(self.CEILING, self.FLOOR, 14449), self.CEILING - 14449)
+        self.assertEqual(stage.prune_budget(self.CEILING, self.FLOOR, self.CEILING), self.FLOOR)
+        self.assertEqual(stage.prune_budget(None, self.FLOOR, 14449), self.FLOOR)
+
+    def test_without_a_ceiling_nothing_caps_the_copies(self):
+        renderer = self.renderer(fit=True)
+        renderer.variant.ceiling = None
+        self.assertIsNone(mesh_import.carve_room(renderer))
 
 if __name__ == "__main__":
     unittest.main()

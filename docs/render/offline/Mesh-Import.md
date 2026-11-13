@@ -195,9 +195,14 @@ Each `[[objects.meshes]]` rule carves out matching source objects:
 A variant draws each copy with its entry in `variants`, or else
 round(`triangles` x its `objects_scale`), never below `min_triangles`;
 `import_settings.variant_meshes()` owns this rule. The variant's `triangles`
-budgets the rest, retaining `props` shares and the global pass. Its optional `ceiling` caps emitted
-triangles, including copies, and is at least `triangles`. Carved meshes are paid first, at what they emit;
-the rest shares what is left. `simplify.check_ceiling` raises when the copies alone leave no room.
+budgets the rest, retaining `props` shares and the global pass. Its optional `ceiling` caps the triangles
+the board draws, each carved shape once, and is at least `triangles`. Carved meshes are paid first, at what
+they emit; the rest shares what is left. `simplify.check_ceiling` raises when the copies alone leave no room.
+
+| Renderer | The ceiling caps | Room for derived shapes | The rest |
+|---|---|---|---|
+| no `fit` | the baked mesh | `ceiling` − `triangles` | what the copies leave, at most `triangles` |
+| with a `fit` | the fitted bundle (`fit/stage.py`); the start keeps `triangles` and the copies | `ceiling` − `fit.prune.budget` | pruned to `ceiling` − the copies, never below `fit.prune.budget` |
 Overlapping rules are rejected.
 
 Objects touch when a vertex lies within `repair.seal_tolerance` of the other's
