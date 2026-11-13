@@ -62,8 +62,9 @@ steer2f_avoid(const steer2f_agent_t* agents, int count, int self, const steer2f_
         if (distance >= l->separation_radius) {
             continue;
         }
-        /* Dead on, part across the closing line, the lower index to its left. */
-        const vec2f_t across = vec2f_scale((vec2f_t){-dv.y, dv.x}, (self < j ? 1.0F : -1.0F) / sqrtf(closing));
+        /* Dead on, part across the closing line: dv flips sign between the two,
+         * so each turns to its own left and they part opposite ways. */
+        const vec2f_t across = vec2f_scale((vec2f_t){-dv.y, dv.x}, 1.0F / sqrtf(closing));
         const vec2f_t direction = distance > 0.0F ? vec2f_scale(miss, 1.0F / distance) : across;
         const float weight = (1.0F - (distance / l->separation_radius)) * (1.0F - (t / l->horizon_s));
         push = vec2f_add(push, vec2f_scale(direction, weight));

@@ -93,6 +93,19 @@ test_avoid_pushes_closing_agents_apart_before_they_meet(void) {
     TEST_ASSERT_TRUE(vec2f_length(first) <= LIMITS.max_accel + TOLERANCE);
 }
 
+/* Exactly head on, nothing tells them which way to go: they still part opposite ways. */
+static void
+test_avoid_parts_a_dead_on_pair_opposite_ways(void) {
+    const steer2f_agent_t agents[] = {
+        {{-1.5F, 0.0F}, {2.0F, 0.0F}, 0.0F},
+        {{1.5F, 0.0F}, {-2.0F, 0.0F}, MATH_PI},
+    };
+    const vec2f_t first = steer2f_avoid(agents, 2, 0, &LIMITS);
+    const vec2f_t second = steer2f_avoid(agents, 2, 1, &LIMITS);
+    TEST_ASSERT_TRUE(vec2f_length(first) > TOLERANCE);
+    TEST_ASSERT_TRUE(vec2f_dot(first, second) < 0.0F);
+}
+
 static void
 test_avoid_ignores_parting_far_and_late_agents(void) {
     const steer2f_agent_t parting[] = {{{0.0F, 0.0F}, {-1.0F, 0.0F}, 0.0F}, {{1.0F, 0.0F}, {1.0F, 0.0F}, 0.0F}};
@@ -152,6 +165,7 @@ suite_steer2f(void) {
     RUN_TEST(test_separation_pushes_near_agents_apart_and_ignores_far_ones);
     RUN_TEST(test_separation_is_stronger_the_nearer_the_neighbour);
     RUN_TEST(test_avoid_pushes_closing_agents_apart_before_they_meet);
+    RUN_TEST(test_avoid_parts_a_dead_on_pair_opposite_ways);
     RUN_TEST(test_avoid_ignores_parting_far_and_late_agents);
     RUN_TEST(test_contain_is_zero_inside_and_turns_back_outside);
     RUN_TEST(test_step_holds_speed_and_turn_rate);
