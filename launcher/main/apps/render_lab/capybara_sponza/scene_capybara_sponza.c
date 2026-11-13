@@ -4,8 +4,9 @@
  * through Sponza's camera. The capybara idles between the first pair of
  * columns at the lion end, gallops down the centre line and comes to rest
  * between the last pair, its clip and rate from its ground speed (gait). A
- * third-person camera looks at its face while it idles, swings round behind
- * it as it speeds up and back as it slows (capybara_run.h). Everything is a
+ * third-person camera looks at its face while it idles, turns slowly round
+ * toward its back as it runs, never all the way, and back to its face as it
+ * comes to rest (capybara_run.h). Everything is a
  * function of the path's time, so a frame profile seeks it.
  */
 #include "apps/render_lab/capybara_sponza/scene_capybara_sponza.h"
@@ -56,9 +57,11 @@ static const char* TAG = "capybara_sponza";
 
 /* The third-person camera: this far from the capybara and this high, looking
  * at a point this high on it; inside the columns (225 cm off the centre line)
- * when it is at the capybara's side. */
-#define RUN_CAMERA_DISTANCE 180.0F
-#define RUN_CAMERA_HEIGHT   80.0F
+ * when it is at the capybara's side. Mid-run it has turned 135 degrees from
+ * the face, short of the back. */
+#define RUN_CAMERA_DISTANCE 220.0F
+#define RUN_CAMERA_HEIGHT   100.0F
+#define RUN_CAMERA_REACH    (0.75F * MATH_PI)
 #define RUN_CAMERA_LOOK_Y   35.0F
 
 /* A clip plays at 0.75 to 1.4 of its speed before the next fits better; a
@@ -126,7 +129,8 @@ build_gait(void) {
                            .end = RUN_END_X,
                            .peak_speed = gallop * RUN_SCALE,
                            .idle_ms = RUN_IDLE_MS,
-                           .ramp_ms = RUN_RAMP_MS};
+                           .ramp_ms = RUN_RAMP_MS,
+                           .camera_reach = RUN_CAMERA_REACH};
     return true;
 }
 
@@ -137,8 +141,8 @@ place(capybara_run_at_t at) {
                                .rotation = quatf_from_axis_angle(vec3f_unit_y(), RUN_HEADING),
                                .scale = {RUN_SCALE, RUN_SCALE, RUN_SCALE}};
     transform_set_local(capybara, body);
-    /* Ahead of it at angle 0, behind it at pi, round its +z side between. */
-    const float angle = capybara_run_camera_angle(&run, at.speed);
+    /* Ahead of it at angle 0, toward behind it at pi, round its +z side. */
+    const float angle = capybara_run_camera_angle(&run, at.at);
     transformf_t eye = transform_local(camera);
     eye.position = (vec3f_t){at.at + (RUN_CAMERA_DISTANCE * cosf(angle)), RUN_FLOOR_Y + RUN_CAMERA_HEIGHT,
                              RUN_CENTRE_Z + (RUN_CAMERA_DISTANCE * sinf(angle))};

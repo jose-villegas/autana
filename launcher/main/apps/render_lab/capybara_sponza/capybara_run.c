@@ -2,6 +2,8 @@
  * its time, so its distance is the smoothstep's integral. */
 #include "apps/render_lab/capybara_sponza/capybara_run.h"
 
+#include <math.h>
+
 #include "math/scalar/math_const.h"
 #include "math/scalar/mathf.h"
 #include "math/scalar/units.h"
@@ -68,7 +70,8 @@ capybara_run_at(const capybara_run_t* run, uint32_t t_ms) {
 }
 
 float
-capybara_run_camera_angle(const capybara_run_t* run, float speed) {
-    const float cruise = capybara_run_cruise_speed(run);
-    return cruise > 0.0F ? MATH_PI * mathf_smoothstep(0.0F, cruise, speed) : 0.0F;
+capybara_run_camera_angle(const capybara_run_t* run, float at) {
+    const float share = mathf_clamp((at - run->start) / (run->end - run->start), 0.0F, 1.0F);
+    const float s = sinf(MATH_PI * share);
+    return run->camera_reach * s * s;
 }
