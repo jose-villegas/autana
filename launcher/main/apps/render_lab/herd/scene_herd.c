@@ -72,7 +72,7 @@ static int pool;
 #define HERD_GAIT_STEPS_MAX  8
 #define HERD_SEED            0x4E5Du
 /* The path "pose <ms>" seeks along: 18 s of walking. */
-#define HERD_PATH_MS         18000u
+#define HERD_PATH_MS         18000U
 
 /* The walk and its parts; config points into gait. */
 static gait_step_t steps[HERD_GAIT_STEPS_MAX];

@@ -13,9 +13,9 @@
 #include "apps/render_lab/herd/herd_wander.h"
 #include "math/scalar/math_const.h"
 
-#define SEED             0x5EEDu
-#define LONG_MS          120000u /* two minutes of walking */
-#define SETTLE_MS        2000u   /* the starts may be close; separation has this long to part them */
+#define SEED             0x5EEDU
+#define LONG_MS          120000U /* two minutes of walking */
+#define SETTLE_MS        2000U   /* the starts may be close; separation has this long to part them */
 #define CLOSEST_M        0.5F    /* settled copies never nearer than this (half a body length) */
 #define MOVED_M          10.0F   /* every copy walks at least this far in LONG_MS */
 #define GAITS_MIN        3       /* every copy goes through at least this many gait steps in LONG_MS */
