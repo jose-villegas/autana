@@ -1,4 +1,4 @@
-"""Regression checks for derived carving, stored prototypes and fitted ceilings."""
+"""Checks the derived carve budgets, the stored prototypes they pay for and the fitted ceiling split."""
 
 import json
 import pathlib
@@ -22,7 +22,7 @@ from test_r3d_carve import odd_scene
 from test_r3d_detail import FOCAL, NEAR, sphere
 
 
-class DerivedReviewTests(unittest.TestCase):
+class DerivedDetailTests(unittest.TestCase):
     def test_missing_camera_is_an_actionable_error(self):
         with self.assertRaisesRegex(SettingsError, 'deriving carve budgets needs a scene camera'):
             carve.views(None, NS(visibility=None))
@@ -152,7 +152,7 @@ class DerivedReviewTests(unittest.TestCase):
             self.assertEqual(json.loads((out / 'detail.json').read_text()), [])
 
 
-class FitCeilingReviewTests(unittest.TestCase):
+class FitCeilingTests(unittest.TestCase):
     def run_fit(self, ceiling, output_extra=False):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
@@ -195,11 +195,13 @@ class FitCeilingReviewTests(unittest.TestCase):
         calls = self.run_fit(3)
         self.assertEqual(calls[0][calls[0].index('--budget') + 1], '1')
 
-    def test_copies_alone_over_ceiling_fail_before_the_gpu_fit(self):
-        with patch('r3d.appearance_simplify.main') as gpu:
-            with self.assertRaisesRegex(SettingsError, 'copies total 2 exceeds ceiling 1'):
-                self.run_fit(1)
-            gpu.assert_not_called()
+    def test_copies_that_leave_the_rest_no_triangle_fail_before_the_gpu_fit(self):
+        for ceiling, message in ((1, 'copies total 2 exceeds ceiling 1'),  # copies over the ceiling
+                                 (2, 'copies total 2 leave the fitted rest no triangle under ceiling 2')):  # at it
+            with patch('r3d.appearance_simplify.main') as gpu:
+                with self.assertRaisesRegex(SettingsError, message):
+                    self.run_fit(ceiling)
+                gpu.assert_not_called()
 
     def test_fitted_bundle_is_checked_against_the_ceiling(self):
         with self.assertRaisesRegex(SettingsError, 'ceiling'):
