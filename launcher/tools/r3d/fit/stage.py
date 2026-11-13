@@ -18,14 +18,6 @@ FRONT_WEIGHT = 1.0e4
 DEPTH_WEIGHT = 30.0
 
 
-def prune_budget(ceiling, floor, copies):
-    """The fitted rest target for scalar budgets, using the renderer split's hard ceiling and soft floor."""
-    from r3d.objects.budget import ceiling_split, rest_target
-
-    renderer = SimpleNamespace(variant=SimpleNamespace(ceiling=ceiling), fit=SimpleNamespace(budget=floor))
-    return rest_target(ceiling_split(renderer), copies)
-
-
 def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False, target=None, inputs=None,
         start=None):
     """Fit `start` (the variant's start in `inputs` when None) to the reference set in `inputs` (`work` when
@@ -35,6 +27,7 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
     prototypes, or to the recipe's budget when the variant has no ceiling; `budget` overrides both."""
     from r3d.appearance_simplify import main as fit_main
     from r3d.objects.budget import bundle_count, ceiling_split, rest_target
+    from r3d.import_settings import SettingsError
     from r3d.simplify import check_ceiling
 
     renderer = job.renderer
@@ -47,9 +40,11 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
     rest = next(data for name, kind, data in bundle_entries if name == job.asset_name)
     shapes = [row["mesh"] for row in copies]
     ceiling = getattr(variant, "ceiling", None)
-    target_budget = rest_target(ceiling_split(renderer), bundle_count(bundle_entries, shapes))
+    copied = bundle_count(bundle_entries, shapes)
     if budget is None:
-        budget = target_budget
+        budget = rest_target(ceiling_split(renderer), copied)
+    if budget < 1:
+        raise SettingsError(f"copies total {copied} leave the fitted rest no triangle under ceiling {ceiling}")
     start = pathlib.Path(work) / f"{job.asset_name}{mesh_bundle.SUFFIX}"
     start.write_bytes(mesh_bundle.encode([(job.asset_name, mesh_asset.TYPE, rest)], []))
     out = work / "fitted"

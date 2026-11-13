@@ -217,8 +217,8 @@ uses neither free repeats nor camera-derived budgets.
 |---|---|
 | Near level | At the closest camera view of any copy, measured surface movement stays within `lod.tolerance_px`. A scene camera is required. |
 | Balance | Measured stand-ins pay for every emitted prototype. The shape whose next rung removes most triangles per pixel steps down first. |
-| Ceiling | After the last rungs, the rest may shrink below its floor. Copies alone exceeding the ceiling fail with the room, total and ceiling. |
-| Authoring | `objects_report.py SCENE --object NAME --out DIR --authoring` writes `detail.json` and `authoring.md`: the split, rest shortfall below its floor, coarsest shapes and shapes above the near-view tolerance. |
+| Ceiling | After the last rungs, the rest may shrink below its floor. Copies that leave the rest no triangle fail with the room, total and ceiling. |
+| Authoring | `objects_report.py SCENE --object NAME --out DIR --authoring` writes the derived rows and an authoring table: the split, the rest's shortfall below its floor, the coarsest shapes and the shapes above the near-view tolerance. |
 
 Objects touch when a vertex lies within `repair.seal_tolerance` of the other's
 surface. `objects/contact.py` owns the graph and both sides' border vertices.

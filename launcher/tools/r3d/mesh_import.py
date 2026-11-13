@@ -133,16 +133,6 @@ def thin_meshes(src, selected, thin, seed):
     return keep
 
 
-def start_ceiling(renderer):
-    """The ceiling on the import's start mesh."""
-    return ceiling_split(renderer)[0]
-
-
-def carve_room(renderer):
-    """The ceiling's room for stored copy prototypes."""
-    return ceiling_split(renderer)[1]
-
-
 def carve_selection(src, tri_v, tri_m, selected, settings, job, scene):
     """The rules' objects plus every free repeat, each carried by one rule per shape whose `triangles` is pinned
     or derived (objects/carve.py), and the derived shapes for the report."""
@@ -256,7 +246,7 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
                                                                          material_names=src.names, meshes=meshes, selection=selected,
                                                                          detail=derived, split=ceiling_split(renderer) if carve else None,
                                                                          double_sided=tuple(i for i, name in enumerate(src.names) if name in double_names),
-                                                                         ceiling=start_ceiling(renderer),
+                                                                         ceiling=ceiling_split(renderer)[0],
                                                                          shade=(lambda p, c, t, m, **kw: shade_placed(src, job, scene, p, c, t, m,
                                                                                                              intersector, bounce, **kw)) if job.bake else None,
                                                                          shade_shared=(lambda p, c, t, m, **kw: shade_placed(src, job, scene, p, c, t, m,
@@ -269,7 +259,7 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
             rgb = np.clip(np.round(rgb), 0, 255).astype(np.int64)
             tri_double = np.isin(tri_mat, [index for index, name in enumerate(src.names) if name in double_names]).astype(np.int64)
         step["triangles_out"] = len(tris)
-    check_ceiling(len(tris), start_ceiling(renderer))
+    check_ceiling(len(tris), ceiling_split(renderer)[0])
     if derived is not None and "passes" in mesh_report:
         mesh_report["detail"], mesh_report["authoring"] = detail_report(derived.shapes, mesh_report["passes"],
                                                                         src.object_names, derived.focal)
