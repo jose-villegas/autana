@@ -1,6 +1,6 @@
 /* Device suite: each herd size shows its first N capybaras and hides the
  * rest, every one shown drawn, and what a turn of the camera round them
- * costs: the whole frame, and the animation step (posing and skinning every
+ * costs while they walk: the whole frame, and the animation step (posing and skinning every
  * copy shown) alone, with the internal heap the herd leaves, the copies whose
  * skin buffers MEMORY_FAST placed in external RAM, and the copies in view on
  * average. The fixed-tier still-herd case isolates pose throttling at held
@@ -61,6 +61,7 @@ release_fixture(void) {
     (void)tune_reset(tune_shared(), TUNE_NAME(anim, far_every));
     (void)tune_reset(tune_shared(), TUNE_NAME(render_lab, orbit_ms));
     lab_test_exit(&active->saved);
+    scene_herd_hold(false);
     memory_free(active);
     active = NULL;
 }
@@ -223,13 +224,14 @@ place_rate_herd(scene_t* scene, entity_t camera) {
     }
 }
 
-/* Still herd: held transforms and camera isolate throttling; each arm starts fresh. */
+/* Still herd (scene_herd_hold): held transforms and camera isolate throttling; each arm starts fresh. */
 static void
 test_herd_fixed_animation_rates(void) {
     for (int arm = 0; arm < 2; arm++) {
         active = memory_alloc(sizeof *active, MEMORY_PSRAM);
         TEST_ASSERT_NOT_NULL(active);
         *active = (fixture_t){0};
+        scene_herd_hold(true);
         lab_test_enter(&active->saved, &render_lab, scene_herd[HERD_EIGHT].key);
         suite_set_test_cleanup(release_fixture);
         const lab_path_t path = scene_herd[HERD_EIGHT].path();
