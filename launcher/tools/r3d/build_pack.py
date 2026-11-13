@@ -411,7 +411,7 @@ def pack_entry(key, source, engine_frame=True, camera_node=None, cache=None, off
         if source.name.endswith(render_asset.SUFFIX):
             return key, render_asset.TYPE, render_asset.bake(source)
         if source.name.endswith(IMAGE):
-            return key, image_asset.TYPE, image_asset.bake(source)
+            return key, *image_asset.bake(source)
         if source.name.endswith(ICONS):
             return key, image_asset.TYPE, icons_asset.bake(source, key)
         if source.name.endswith(SCENE):

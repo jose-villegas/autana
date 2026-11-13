@@ -72,6 +72,7 @@ list in code. Writers are under `launcher/tools/`, readers and headers under
 | [SCNE](SCNE.md) scene | 5 | [`scene/scene_format.h`](../../../launcher/main/scene/scene_format.h) | [`r3d/scene_asset.py`](../../../launcher/tools/r3d/scene_asset.py) | [`scene/scene_asset.c`](../../../launcher/main/scene/scene_asset.c) |
 | [SOND](SOND.md) sound | 1 | [`sound/sound_format.h`](../../../launcher/main/sound/sound_format.h) | [`audio/sound_asset.py`](../../../launcher/tools/audio/sound_asset.py) | [`sound/sound.c`](../../../launcher/main/sound/sound.c) |
 | [IMAG](IMAG.md) picture | 1 | [`draw/draw_image_format.h`](../../../launcher/main/draw/draw_image_format.h) | [`gfx/image_asset.py`](../../../launcher/tools/gfx/image_asset.py) | [`draw/draw_image.c`](../../../launcher/main/draw/draw_image.c) |
+| [SPRT](SPRT.md) sprite: border and picture | 1 | [`draw/draw_image_format.h`](../../../launcher/main/draw/draw_image_format.h) | [`gfx/image_asset.py`](../../../launcher/tools/gfx/image_asset.py) | [`draw/draw_sprite.c`](../../../launcher/main/draw/draw_sprite.c) |
 | [TABL](TABL.md) named int16 rows | 1 | [`asset/asset_table_format.h`](../../../launcher/main/asset/asset_table_format.h) | [`asset/table_asset.py`](../../../launcher/tools/asset/table_asset.py) | [`asset/asset_table.c`](../../../launcher/main/asset/asset_table.c) |
 | [MCOP](MCOP.md) copy manifest, host bundles only | 1 | — | [`r3d/mesh_bundle.py`](../../../launcher/tools/r3d/mesh_bundle.py) | [`r3d/mesh_bundle.py`](../../../launcher/tools/r3d/mesh_bundle.py) |
 
