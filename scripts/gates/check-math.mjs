@@ -58,6 +58,8 @@ const GITHUB_RULES = { opener: OPENER_PRECEDER, closerForbidden: /[A-Za-z0-9_`]/
 // Reading the source, Markdown's own `*`, `_`, `~`, `[` and `>` may sit against a `$`
 // that GitHub, after removing them, accepts.
 const WRITTEN_RULES = { opener: /[\s(*_~[>]/, closerForbidden: /[A-Za-z0-9`]/ };
+// Columns past the opener at which a fence line becomes indented code (CommonMark 4.5).
+const FENCE_INDENT_LIMIT = 4;
 // Markdown's line ends, as markdown-it counts lines.
 const LINE_BREAK = /\r\n?|\n/;
 const FOOTNOTE_DEFINITION = /^\s{0,3}\[\^[^\]]+\]:/;
@@ -291,20 +293,27 @@ function markdownParser() {
   return markdown;
 }
 
+// markdown-it marks no unclosed fence, so the last line a fence spans is read. Past the
+// markers of the blockquotes the fence sits in, it closes the fence when it is the fence's
+// own character, at least as long as the opener, indented under 4 columns past the opener.
+function closes(fence, lines, quoteDepth) {
+  const [first, end] = fence.map;
+  if (end - 1 <= first) {
+    return false;
+  }
+  const quotes = new RegExp(`^(?:[ \\t]*> ?){${quoteDepth}}`);
+  const opener = lines[first].replace(quotes, '').indexOf(fence.markup);
+  const closer = new RegExp(`^([ \\t]*)${fence.markup[0]}{${fence.markup.length},}[ \\t]*$`);
+  const found = lines[end - 1].replace(quotes, '').match(closer);
+  return found !== null && found[1].length < opener + FENCE_INDENT_LIMIT;
+}
+
 // Every formula GitHub hands to MathJax, in document order: [{ line, delimiter, source,
 // display }], `source` being what <math-renderer> receives. `blocks` are the paragraphs,
 // headings and table rows Markdown parses, as 1-based inclusive line ranges; `opaque` are
 // the lines of code and HTML blocks. `unclosedFences` are the code fences with no closing
 // fence, [{ line, markup }], which run to the end of their container and, at the top level,
 // swallow the rest of the page.
-// markdown-it marks no unclosed fence, so the last line a fence spans is read: a closer of
-// its own character, at least as long as the opener, after any blockquote markers.
-function closes(fence, lines) {
-  const [first, end] = fence.map;
-  const closer = new RegExp(`^[ \t>]*${fence.markup[0]}{${fence.markup.length},}[ \t]*$`);
-  return end - 1 > first && closer.test(lines[end - 1]);
-}
-
 export function extractFormulas(text) {
   const tokens = markdownParser().parse(text, {});
   const lines = text.split(LINE_BREAK);
@@ -316,10 +325,13 @@ export function extractFormulas(text) {
   let line = 0;
   let footnote = false;
   let listDepth = 0;
+  let quoteDepth = 0;
 
   for (const token of tokens) {
     if (token.type === 'list_item_open' || token.type === 'list_item_close') {
       listDepth += token.nesting;
+    } else if (token.type === 'blockquote_open' || token.type === 'blockquote_close') {
+      quoteDepth += token.nesting;
     }
     if (token.map) {
       line = token.map[0] + 1;
@@ -329,7 +341,7 @@ export function extractFormulas(text) {
         opaque.push({ first: token.map[0] + 1, last: token.map[1] });
       }
     }
-    if (token.type === 'fence' && !closes(token, lines)) {
+    if (token.type === 'fence' && !closes(token, lines, quoteDepth)) {
       unclosedFences.push({ line: token.map[0] + 1, markup: token.markup });
     }
     if (token.type === 'fence' && token.info.trim().split(/\s+/)[0] === 'math') {

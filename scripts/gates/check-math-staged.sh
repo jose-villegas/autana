@@ -27,7 +27,7 @@ files=""
 IFS='
 '
 for file in $staged; do
-    if git show ":$file" | grep -q -e '\$' -e '^[[:space:]>]*```' -e '^[[:space:]>]*~~~'; then
+    if git show ":$file" | grep -q -e '\$' -e '```' -e '~~~'; then
         files="$files
 $file"
     fi

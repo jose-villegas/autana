@@ -106,6 +106,10 @@ test('a code fence that never closes is refused at its opening line', { skip }, 
     ['````\n```\nx', 1],
     ['```', 1],
     ['> ```\n> x', 1],
+    // Content, not closers: indented 4 past the opener, or a `>` outside a quote.
+    ['```text\nx\n    ```', 1],
+    ['```text\nx\n> ```', 1],
+    ['- ```c\n  x\n      ```', 1],
     // A lone CR ends a line for markdown-it too.
     ['a\rb\n\n```\nx\n```\n\n```\ny', 8],
     // A text replace that swallowed the closing fence and joined the next paragraph.
