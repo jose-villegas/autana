@@ -115,8 +115,9 @@ take_texture(void) {
     int16_t (*uvs)[2] = lab_scene_take(sizeof(int16_t[2]) * (size_t)m->vertex_count);
     uint8_t* material = lab_scene_take((size_t)m->cluster_count);
     int16_t (*origin)[2] = lab_scene_take(sizeof(int16_t[2]) * (size_t)m->cluster_count);
-    const size_t bits =
-        ((size_t)m->triangle_count + R3D_TEXTURE_UVS_TRIANGLES_PER_BYTE - 1U) / R3D_TEXTURE_UVS_TRIANGLES_PER_BYTE;
+    /* The mesh is built later: its bits cover every triangle it can hold. */
+    const size_t bits = ((size_t)mesh[0].capacity.triangles + R3D_TEXTURE_UVS_TRIANGLES_PER_BYTE - 1U)
+                        / R3D_TEXTURE_UVS_TRIANGLES_PER_BYTE;
     uint8_t* textured = lab_scene_take(bits);
     if (ltex == NULL || texture == NULL || uvs == NULL || material == NULL || origin == NULL || textured == NULL) {
         return false;
