@@ -393,7 +393,8 @@ test_anim_pixel_ranges_refuse_negative_and_above_max(void) {
     /* The TABL encoding cannot represent the upper limit; exercise its typed predicate. */
     const float value = (float)RENDER_ANIM_PIXELS_MAX + 1.0F / STEP;
 #define CHECK_MAX(field, type, valid)                                                                                  \
-    if (strncmp(#field, "anim.", sizeof "anim." - 1) == 0 && strstr(#field, "_px") != NULL) {                          \
+    if (strcmp(#field, field_names[MID_PX_ROW]) == 0 || strcmp(#field, field_names[FAR_PX_ROW]) == 0                   \
+        || strcmp(#field, field_names[HYSTERESIS_PX_ROW]) == 0) {                                                      \
         TEST_ASSERT_FALSE(valid);                                                                                      \
     }
     RENDER_SETTINGS_FIELDS(CHECK_MAX)
