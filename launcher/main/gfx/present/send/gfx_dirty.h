@@ -341,6 +341,31 @@ dirty_region_dirty(int x, int y, int w, int h) {
     return false;
 }
 
+/* The box around the dirt tracked inside `area`: each dirty cell's own box
+ * clipped to `area`, joined; empty when none. Cell boxes are what
+ * dirty_mark() narrowed them to, so a mark in one corner of a cell does not
+ * claim the rest of it. */
+static inline recti_t
+dirty_bounds_in(recti_t area) {
+    area = recti_intersect(area, GFX_SCREEN_RECT);
+    recti_t bounds = recti_empty();
+    if (recti_is_empty(area)) {
+        return bounds;
+    }
+    const int row_last = (recti_bottom(area) - 1) / STRIP_HEIGHT;
+    const int col_last = (recti_right(area) - 1) / COL_WIDTH;
+    for (int row = area.y / STRIP_HEIGHT; row <= row_last; row++) {
+        for (int col = area.x / COL_WIDTH; col <= col_last; col++) {
+            const int idx = (row * GRID_COLS) + col;
+            if (cell_dirty & (1u << idx)) {
+                const recti_t cell = recti_from_edges(cell_x0[idx], cell_y0[idx], cell_x1[idx], cell_y1[idx]);
+                bounds = recti_union(bounds, recti_intersect(cell, area));
+            }
+        }
+    }
+    return bounds;
+}
+
 /* True if any cell in `row` is dirty, what gfx_present() checks before
  * bothering to send anything for it at all. */
 static inline bool

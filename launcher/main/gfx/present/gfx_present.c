@@ -422,6 +422,12 @@ gfx_region_dirty(int x, int y, int w, int h) {
     return dirty_region_dirty(x, y, w, h);
 }
 
+recti_t
+gfx_dirty_bounds(recti_t area) {
+    GFX_PRESENT_GUARD();
+    return dirty_bounds_in(area);
+}
+
 /* Device-only path for QSPI panel send. Host build is no-op. */
 #ifdef ESP_PLATFORM
 
