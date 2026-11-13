@@ -50,7 +50,7 @@ lod_view(const r3d_lens_t* lens) {
 static float
 bounds_nearest(const lod_view_t* v, vec3f_t centre, float radius, float near_z) {
     centre = mat4f_apply(&v->view, centre);
-    return mathf_max(mathf_sqrt(vec3f_dot(centre, centre)) - radius * v->units_per_tick, near_z);
+    return mathf_max(mathf_sqrt(vec3f_dot(centre, centre)) - (radius * v->units_per_tick), near_z);
 }
 
 r3d_lod_measure_t

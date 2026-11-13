@@ -214,8 +214,8 @@ place_rate_herd(scene_t* scene, entity_t camera) {
         const vec3f_t extent = box3f_half_extent(bounds);
         const float radius = mathf_sqrt(vec3f_dot(extent, extent));
         const float depth = radius * (1.0F + view->lens.fx / radii[copy % HERD_RATE_LAYOUT_COLUMNS]);
-        const float column = (float)(copy % HERD_RATE_LAYOUT_COLUMNS - 1) * HERD_RATE_COLUMN_SPACING;
-        const float row = (float)(copy / HERD_RATE_LAYOUT_COLUMNS - 1) * HERD_RATE_COLUMN_SPACING;
+        const float column = (float)((copy % HERD_RATE_LAYOUT_COLUMNS) - 1) * HERD_RATE_COLUMN_SPACING;
+        const float row = (float)((copy / HERD_RATE_LAYOUT_COLUMNS) - 1) * HERD_RATE_COLUMN_SPACING;
         const vec3f_t offset = quatf_rotate(eye.rotation, (vec3f_t){depth * column, depth * row, depth});
         pose.position = vec3f_sub(vec3f_add(eye.position, offset), vec3f_sub(box3f_centre(bounds), pose.position));
         transform_set_world(entity, pose);
