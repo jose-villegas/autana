@@ -21,6 +21,7 @@
 
 #include "anim/anim_tracks.h"
 #include "asset/asset_pack.h"
+#include "asset/asset_store.h"
 #include "gfx/target/gfx_color.h"
 #ifndef DEVICE_BUILD
 #include "display/display.h"
@@ -1941,7 +1942,10 @@ test_authored_rows_and_refusals(void) {
     TEST_ASSERT_EQUAL_INT(2, asset->animator_count);
     TEST_ASSERT_EQUAL_FLOAT(1.5F, asset->lights[0].intensity);
     TEST_ASSERT_EQUAL_FLOAT(0.5F, asset->settings->tonemap_white);
-    TEST_ASSERT_EQUAL_STRING("authored.first.skin", asset->skinned_renderers[0].skin);
+    /* Two skinned renderers of one import share its mesh and skin. */
+    TEST_ASSERT_EQUAL_STRING("mesh.skin", asset->skinned_renderers[0].skin);
+    TEST_ASSERT_EQUAL_STRING("mesh.skin", asset->skinned_renderers[1].skin);
+    TEST_ASSERT_EQUAL_STRING("mesh", asset->skinned_renderers[1].mesh);
     TEST_ASSERT_EQUAL_STRING("walk", asset->clips[1]);
     TEST_ASSERT_EQUAL_STRING("first", asset->names[1].name);
     TEST_ASSERT_EQUAL_HEX32(name_hash("first"), asset->names[1].hash); /* the tools' hash is the device's */
@@ -2025,10 +2029,10 @@ test_encoder_authored_components_load_and_reach_runtime(void) {
     TEST_ASSERT_EQUAL_INT(2, columns_of->light_count);
     const entity_t entity = entity_find(loaded, name_hash("first"));
     TEST_ASSERT_EQUAL_INT(1, row_of(entity));
-    TEST_ASSERT_EQUAL_STRING("authored.first", renderer_mesh_id(entity));
-    TEST_ASSERT_NULL(skin_of(entity)->internal_storage); /* its buffers wait for its first step */
+    TEST_ASSERT_EQUAL_STRING("mesh", renderer_mesh_id(entity));
+    TEST_ASSERT_NULL(skin_of(entity)->storage); /* its buffers wait for its first step */
     scene_animation_step(columns(loaded), 0);
-    TEST_ASSERT_NOT_NULL(skin_of(entity)->internal_storage);
+    TEST_ASSERT_NOT_NULL(skin_of(entity)->storage);
     TEST_ASSERT_NOT_NULL(columns_of->light_transfer);
     assert_light(entity_find(loaded, name_hash("sun")), (vec3f_t){0.8F, 0.7F, 0.6F}, 1.5F);
     scene_release(loaded);
@@ -2243,6 +2247,54 @@ test_scene_load_holds_its_pack_until_the_last_scene_from_it_unloads(void) {
     TEST_ASSERT_EQUAL_INT(SCENE_ERR_ASSET, why.status);
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_NO_PACK, why.asset);
     remove_pack("test_pair");
+}
+
+/* A "pack/scene" id loads the scene from the pack it names, whatever the pack is called; two scenes
+ * of one pack share its one mount, which goes when the last of them is released. */
+static void
+test_scene_load_reads_a_scene_from_the_pack_its_id_names(void) {
+    fixture();
+    test_asset_dir_use(".");
+    write_pack("test_folder", false);
+    const int mounted = asset_store_mounted();
+    entity_t pair = scene_load("test_folder/test_pair");
+    entity_t tree = scene_load("test_folder/test_tree");
+    remove_pack("test_folder");
+    TEST_ASSERT_EQUAL_INT(PENDING_READY, scene_state(pair));
+    TEST_ASSERT_EQUAL_INT(PENDING_READY, scene_state(tree));
+    scene_row_t row;
+    TEST_ASSERT_EQUAL_STRING("test_pair", scene_entity_peek(pair, &row)->id);
+    TEST_ASSERT_EQUAL_STRING("test_tree", scene_entity_peek(tree, &row)->id);
+    TEST_ASSERT_EQUAL_INT(mounted + 1, asset_store_mounted());
+    scene_release(pair);
+    TEST_ASSERT_EQUAL_INT(mounted + 1, asset_store_mounted());
+    scene_release(tree);
+    TEST_ASSERT_EQUAL_INT(mounted, asset_store_mounted());
+}
+
+/* An id with an empty part, a part longer than a pack name holds, or a second separator is refused before
+ * any pack is read, by either load. */
+static void
+test_scene_load_refuses_a_malformed_id(void) {
+    fixture();
+    test_asset_dir_use(".");
+    char long_part[ASSET_NAME_MAX + 2];
+    (void)memset(long_part, 'a', ASSET_NAME_MAX);
+    long_part[ASSET_NAME_MAX] = '\0';
+    const char* const malformed[] = {"", "/test_pair", "test_folder/", "/", "a/b/c", long_part};
+    const int mounted = asset_store_mounted();
+    for (size_t i = 0; i < sizeof malformed / sizeof malformed[0]; i++) {
+        for (int async = 0; async <= 1; async++) {
+            scene_failure_t why = {0};
+            const entity_t root = async ? scene_load_async(malformed[i], NULL, HANDLE_NONE) : scene_load(malformed[i]);
+            TEST_ASSERT_TRUE_MESSAGE(fails(root, &why), malformed[i]);
+            TEST_ASSERT_EQUAL_INT_MESSAGE(SCENE_ERR_ASSET, why.status, malformed[i]);
+            TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_ERR_FORMAT, why.asset, malformed[i]);
+            TEST_ASSERT_EQUAL_INT_MESSAGE(0, strncmp(malformed[i], why.what, ASSET_NAME_MAX - 1),
+                                          malformed[i]); /* cut to fit */
+        }
+    }
+    TEST_ASSERT_EQUAL_INT(mounted, asset_store_mounted());
 }
 
 /* A load that fails gives its use of the pack back. */
@@ -4423,16 +4475,16 @@ test_skin_split_inside_an_entity_matches_full_range(void) {
         const size_t bytes = r3d_skin_output_bytes(&skin->bind);
         fx.saved_skin[e] = malloc(bytes);
         TEST_ASSERT_NOT_NULL(fx.saved_skin[e]);
-        memcpy(fx.saved_skin[e], skin->internal_storage, bytes);
-        memset(skin->internal_storage, 0, bytes);
-        TEST_ASSERT_TRUE(r3d_skin_output_init(&skin->bind, skin->internal_storage, bytes, &skin->output));
+        memcpy(fx.saved_skin[e], skin->storage, bytes);
+        memset(skin->storage, 0, bytes);
+        TEST_ASSERT_TRUE(r3d_skin_output_init(&skin->bind, skin->storage, bytes, &skin->output));
     }
     scene_skin_range(columns(scene), 0, 1);
     scene_skin_range(columns(scene), 1, 2);
     for (size_t e = 0; e < sizeof entities / sizeof entities[0]; e++) {
         scene_skinned_renderer_t* skin = skin_of(entities[e]);
         r3d_skin_refit_nodes(&skin->output);
-        TEST_ASSERT_EQUAL_MEMORY(fx.saved_skin[e], skin->internal_storage, r3d_skin_output_bytes(&skin->bind));
+        TEST_ASSERT_EQUAL_MEMORY(fx.saved_skin[e], skin->storage, r3d_skin_output_bytes(&skin->bind));
     }
 }
 
@@ -4441,7 +4493,7 @@ test_attachment_count_mismatches_preserve_previous_components(void) {
     entity_t scene = rig_fixture("rig.skin2", NULL);
     const entity_t entity = entity_find(scene, name_hash("red"));
     const void* animator = columns(scene)->animators[row_of(entity)].storage;
-    const void* skin = skin_of(entity)->internal_storage;
+    const void* skin = skin_of(entity)->storage;
     static const char* const clips[] = {"rig.move"};
     scene_failure_t why;
     TEST_ASSERT_FALSE(animator_set_clips(entity, "rig.short", clips, 1, &why));
@@ -4451,7 +4503,7 @@ test_attachment_count_mismatches_preserve_previous_components(void) {
     for (size_t i = 0; i < sizeof mismatches / sizeof mismatches[0]; i++) {
         TEST_ASSERT_FALSE(renderer_set_skin(entity, mismatches[i], &why));
         TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, why.asset);
-        TEST_ASSERT_EQUAL_PTR(skin, skin_of(entity)->internal_storage);
+        TEST_ASSERT_EQUAL_PTR(skin, skin_of(entity)->storage);
         TEST_ASSERT_EQUAL_PTR(animator, columns(scene)->animators[row_of(entity)].storage);
     }
     TEST_ASSERT_TRUE(animator_set_clips(entity, "rig", clips, 1, &why));
@@ -5140,7 +5192,7 @@ test_first_light_storage_rollback_and_lit_skin_allocation_failure(void) {
         TEST_ASSERT_EQUAL_UINT(free_before, memory_free_bytes(MEMORY_INTERNAL));
     }
     TEST_ASSERT_TRUE(light_set_intensity(light, 1));
-    const void* storage = a->internal_storage;
+    const void* storage = a->storage;
     const void* light_storage = a->light_storage;
     const void* colors = renderer_mesh(red)->colors;
     const size_t lit_free = memory_free_bytes(MEMORY_INTERNAL);
@@ -5148,7 +5200,7 @@ test_first_light_storage_rollback_and_lit_skin_allocation_failure(void) {
     scene_failure_t why;
     TEST_ASSERT_FALSE(renderer_set_skin(red, "rig.skin4", &why));
     TEST_ASSERT_EQUAL_INT(SCENE_ERR_MEMORY, why.status);
-    TEST_ASSERT_EQUAL_PTR(storage, a->internal_storage);
+    TEST_ASSERT_EQUAL_PTR(storage, a->storage);
     TEST_ASSERT_EQUAL_PTR(light_storage, a->light_storage);
     TEST_ASSERT_EQUAL_PTR(colors, renderer_mesh(red)->colors);
     TEST_ASSERT_EQUAL_UINT(lit_free, memory_free_bytes(MEMORY_INTERNAL));
@@ -5206,7 +5258,7 @@ test_a_skin_holds_its_buffers_only_while_its_entity_is_active(void) {
     entity_t copies[HERD_POOL];
     for (int i = 0; i < HERD_POOL; i++) {
         copies[i] = entity_at(herd, i);
-        TEST_ASSERT_NULL(skin_of(copies[i])->internal_storage);
+        TEST_ASSERT_NULL(skin_of(copies[i])->storage);
     }
     const size_t loaded = memory_free_bytes(MEMORY_INTERNAL);
     for (int i = 1; i < HERD_POOL; i++) {
@@ -5217,7 +5269,7 @@ test_a_skin_holds_its_buffers_only_while_its_entity_is_active(void) {
     TEST_ASSERT_GREATER_THAN_UINT(0, one);
     TEST_ASSERT_EQUAL_PTR(skin_of(copies[0])->output.positions, renderer_mesh(copies[0])->positions);
     for (int i = 1; i < HERD_POOL; i++) {
-        TEST_ASSERT_NULL(skin_of(copies[i])->internal_storage);
+        TEST_ASSERT_NULL(skin_of(copies[i])->storage);
         TEST_ASSERT_NULL(skin_of(copies[i])->light_storage);
         TEST_ASSERT_EQUAL_PTR(skin_of(copies[i])->bind.positions, renderer_mesh(copies[i])->positions);
     }
@@ -5287,12 +5339,12 @@ test_a_skin_whose_buffers_do_not_fit_is_not_drawn_and_is_reported(void) {
     scene_resolve(columns(herd));
     TEST_ASSERT_EQUAL_INT(1, columns(herd)->active_renderer_count);
     scene_animation_step(columns(herd), 0);
-    TEST_ASSERT_NULL(skin_of(second)->internal_storage);
+    TEST_ASSERT_NULL(skin_of(second)->storage);
     entity_set_enabled(second, false);
     TEST_ASSERT_FALSE(scene_failure(herd, &why));
     entity_set_enabled(second, true);
     scene_animation_step(columns(herd), 0);
-    TEST_ASSERT_NOT_NULL(skin_of(second)->internal_storage);
+    TEST_ASSERT_NOT_NULL(skin_of(second)->storage);
     scene_resolve(columns(herd));
     TEST_ASSERT_EQUAL_INT(2, columns(herd)->active_renderer_count);
 }
@@ -5359,11 +5411,11 @@ test_face_color_skin_refuses_lights_and_lit_attachment(void) {
     TEST_ASSERT_NULL(columns(scene)->light_transfer);
     skin->bind.colors = colors;
     TEST_ASSERT_TRUE(light_set_intensity(light, 1));
-    const void* storage = skin->internal_storage;
+    const void* storage = skin->storage;
     skin->bind.colors = NULL;
     scene_failure_t why;
     TEST_ASSERT_FALSE(renderer_set_skin(entity, "rig.skin4", &why));
-    TEST_ASSERT_EQUAL_PTR(storage, skin->internal_storage);
+    TEST_ASSERT_EQUAL_PTR(storage, skin->storage);
     TEST_ASSERT_EQUAL_INT(SCENE_ERR_ASSET, why.status);
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, why.asset);
     TEST_ASSERT_EQUAL_STRING(SCENE_LIGHT_FAILURE_ALBEDO, why.what);
@@ -6774,6 +6826,8 @@ run_scene_suite(void) {
     RUN_TEST(test_doc_small_fill_reaches_camera);
     RUN_TEST(test_scene_load_holds_its_pack_until_the_last_scene_from_it_unloads);
     RUN_TEST(test_a_scene_that_fails_to_load_does_not_hold_its_pack);
+    RUN_TEST(test_scene_load_reads_a_scene_from_the_pack_its_id_names);
+    RUN_TEST(test_scene_load_refuses_a_malformed_id);
 #endif
     RUN_TEST(test_a_load_with_no_memory_left_says_so_and_takes_nothing);
     RUN_TEST(test_a_full_manager_refuses_another_scene_until_one_is_unloaded);

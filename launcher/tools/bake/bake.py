@@ -618,9 +618,9 @@ def blend_key(settings, tools):
 
 def import_recipe(settings, tools):
     """An import's settings without paths and its sources by content: a credit line or a moved file does not
-    rebake, and a .blend counts by its export's key."""
+    rebake, and a .blend counts by its export's key. Its `fit` shapes only fits, so only fit keys count it."""
     recipe = {name: canonical(value) for name, value in vars(settings).items()
-              if name not in ("path", "source", "out_dir", "mesh_dir", "named", "variants")}
+              if name not in ("path", "source", "out_dir", "mesh_dir", "named", "variants", "fit")}
     return recipe, {"blend": blend_key(settings, tools)} if is_blend(settings) else source_digest(settings)
 
 
@@ -641,13 +641,19 @@ def mesh_recipe(job, scene, tools, poses=None, unavailable=None):
     return recipe
 
 
-def fit_recipe(fit):
-    return dict(vars(fit))
+def fit_recipe(fit, settle=None):
+    """The renderer's fit and the import's `settle` (geometry.budget), left out when unset so a mesh without it
+    keeps its key; geometry.probes reaches the fit through the reference key."""
+    recipe = dict(vars(fit))
+    if settle is not None:
+        recipe["settle"] = canonical(settle)
+    return recipe
 
 
 def reference_recipe(inputs, tools, poses=None, unavailable=None):
     """A fit's reference set by every field of its reference_set.ReferenceInputs: the import as a mesh counts
-    it, the camera by its lens and sampled poses, the rest as parsed."""
+    it, the camera by its lens and sampled poses (a camera without a path has none: its views are all probes),
+    probes and shaped only when set, the rest as parsed."""
     recipe = {}
     for field in dataclasses.fields(inputs):
         value = getattr(inputs, field.name)
@@ -656,10 +662,16 @@ def reference_recipe(inputs, tools, poses=None, unavailable=None):
         elif field.name == "camera":
             scene = inputs.scene()
             camera = camera_inputs(scene)
+            if scene.camera.component.path is None and inputs.probes is not None:
+                recipe["camera"] = camera
+                continue
             camera["poses"] = {name: poses.digest(scene.camera.component, inputs.poses[field], inputs.size, tools, unavailable)
                                for name, field in (("train", "train_every_ms"),
                                                    ("coverage", "coverage_every_ms"))}
             recipe["camera"] = camera
+        elif field.name in ("probes", "shaped"):
+            if value:
+                recipe[field.name] = canonical(value)
         else:
             recipe[field.name] = canonical(value)
     return recipe
@@ -682,7 +694,8 @@ def stage_keys(job, scene, tools, starts=None, poses=None):
         start_sha256 = None if starts is None else starts.get(start)
         reference_sha256 = None if starts is None or reference is None else starts.get(reference)
         fit = None if start_sha256 is None or reference_sha256 is None else digest(
-            ["fit", reference_sha256, start_sha256, fit_recipe(job.renderer.fit), tools["fit"]])
+            ["fit", reference_sha256, start_sha256, fit_recipe(job.renderer.fit, job.settings.fit.budget),
+             tools["fit"]])
         fit_sha256 = None if starts is None or fit is None else starts.get(fit)
         levels = None if fit_sha256 is None else digest(
             ["levels", fit_sha256, start_sha256, (job.settings.lod, job.settings.meshlet_triangles), tools["levels"]])
@@ -997,9 +1010,9 @@ def check_poses(found, held):
 
 def seed(found, cache, lock=None, made=None, missing=None):
     """Rows marked seeded, whose bytes are carried over, not made by the code their key names; a run
-    that makes the key again writes a row without the mark. A bake whose key waits for a stage's row
-    (a fit's start, levels' fit) is named in `missing` and seeds in the next round; with no `missing`
-    list, any such bake fails the seed. A key `lock` holds a made row for keeps
+    that makes the key again writes a row without the mark. A fit whose key waits for its start's row
+    is named in `missing` and seeds in the next round; with no `missing` list, it fails the seed.
+    Levels waiting for their fit are skipped: the CPU run makes them. A key `lock` holds a made row for keeps
     it, as with a run's make. A re-keyed output carries the bytes of the row `lock` holds for it
     under its old key, so what a run made outlives the re-key (its file fetched as any locked file).
     Otherwise the bytes are the tree's own file, or once the tree has none the seeded row's."""
@@ -1008,6 +1021,10 @@ def seed(found, cache, lock=None, made=None, missing=None):
     previous = {row["output"]: row for key, row in lock.items() if key not in needed}
     rows, waiting = [], []
     for bake in found:
+        if bake.key is None and bake.kind == "levels":
+            # Its key names its fit's bytes: the CPU run makes the levels once this seed locks the fit.
+            print(f"skipped {bake.output}: {unlocked(bake)}")
+            continue
         if bake.key is None:
             waiting.append(describe(bake, unlocked(bake), bake_again(bake)))
             previous_row = next((row for row in lock.values() if row["output"] == bake.output), None)

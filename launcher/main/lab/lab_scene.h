@@ -73,6 +73,11 @@ entity_t lab_scene_load(const char* tag, char* failure, size_t size, const char*
 /* `bytes` from the app arena, which the lab rewinds when the scene goes; NULL when it is spent. */
 void* lab_scene_take(size_t bytes);
 
+/* A scene's numbered copies: each entity `format` (one %d, such as
+ * "slot_%02d") names from 0 up to the first `scene` lacks, in order, in the
+ * app arena, with their `count`; NULL when the arena is spent. */
+entity_t* lab_scene_copies(entity_t scene, const char* format, int* count);
+
 /* A scene's `.console` or `.status`: the hook in a development or host build,
  * NULL otherwise, as APP_CONSOLE_PTR() does, so a release links neither the
  * console nor the HUD's status line; a host render drives them as a device

@@ -99,9 +99,16 @@ free_indexed_image(void) {
 }
 #endif
 
+/* The picture is a strict on-chip request, so it fits in the block MEMORY_FAST leaves free. */
+static bool
+picture_fits_reserve(int grid_w, int grid_h) {
+    return (size_t)grid_w * (size_t)grid_h <= MEMORY_FAST_INTERNAL_RESERVE;
+}
+
 bool
 indexed_begin(const gfx_mode_t* granted) {
     if (granted->index_grid_w <= 0 || granted->index_grid_h <= 0 || granted->cell_size <= 0
+        || !picture_fits_reserve(granted->index_grid_w, granted->index_grid_h)
         || !alloc_indexed_image(granted->index_grid_w, granted->index_grid_h)) {
         return false;
     }
