@@ -16,6 +16,12 @@ modulates it. A mesh names its textures through its [LUVS](LUVS.md) entry.
 CIE76 is the distance between two colours in CIELAB; the error panels' scale
 runs from black (matches the source) through red to yellow.
 
+A span divides u and v by depth every `r3d_texture.divide_pixels` pixels and
+steps them affine between, so the floor near the camera keeps its rows
+straight; stepped affine across a whole span, they bend.
+
+![The near floor's squares where affine differs most from a divide every pixel: the true divide, affine, a divide every 16 and every 8 pixels, each with its CIE76 dE against the true divide over the frame's lowest third](../../images/render/bistro-street-divide.png)
+
 ```mermaid
 ---
 config:

@@ -18,7 +18,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | [overview](#overview) | 25 | 0 | 0 |
 | [physics](#physics) | 2 | 0 | 0 |
 | [power](#power) | 2 | 0 | 0 |
-| [render](#render) | 132 | 6 | 0 |
+| [render](#render) | 133 | 7 | 0 |
 | [ui](#ui) | 62 | 0 | 0 |
 
 ## anim
@@ -185,6 +185,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/render/bake-scores.png"><img src="../images/render/bake-scores.png" width="160" alt=""></a> | A test picture made brighter, blurred and blocky, each with its heatmap and five scores | [render/offline/Bake-Method](../render/offline/Bake-Method.md) | not declared yet |
 | <a href="../images/render/baked-mesh-ranges.png"><img src="../images/render/baked-mesh-ranges.png" width="160" alt=""></a> | The first leaves' clusters as runs of the triangle and vertex arrays | [render/offline/Baked-Mesh](../render/offline/Baked-Mesh.md) | not declared yet |
 | <a href="../images/render/baked-mesh-tree.gif"><img src="figure-thumbnails/render/baked-mesh-tree.gif" width="160" alt=""></a> | A baked mesh's clusters, then the tree level by level with one root-to-leaf path bold | [render/offline/Baked-Mesh](../render/offline/Baked-Mesh.md) | not declared yet |
+| <a href="../images/render/bistro-street-divide.png"><img src="../images/render/bistro-street-divide.png" width="160" alt=""></a> | The near floor's squares where affine differs most from a divide every pixel: the true divide, affine, a divide every 16 and every 8 pixels, each with its CIE76 dE against the true divide over the frame's lowest third | [assets/formats/LTEX](../assets/formats/LTEX.md) | [bistro_figures.py](../../launcher/demo/bistro/bistro_figures.py) |
 | <a href="../images/render/bistro-street-fitted-full-object-error.png"><img src="../images/render/bistro-street-fitted-full-object-error.png" width="160" alt=""></a> | Bistro error share against pixel share for parts, objects and shapes | [render/offline/Mesh-Import](../render/offline/Mesh-Import.md) | not declared yet |
 | <a href="../images/render/bistro-street-textured.crops.png"><img src="../images/render/bistro-street-textured.crops.png" width="160" alt=""></a> | The same frame's squares that differ most, zoomed: source, vertex colours and textured | [assets/formats/LTEX](../assets/formats/LTEX.md) | [bistro_figures.py](../../launcher/demo/bistro/bistro_figures.py) |
 | <a href="../images/render/bistro-street-textured.png"><img src="../images/render/bistro-street-textured.png" width="160" alt=""></a> | Bistro's street on host: the source render, the vertex colours alone, and the cobblestones and beige brick textured, with each one's CIE76 error against the source | [assets/formats/LTEX](../assets/formats/LTEX.md) | [bistro_figures.py](../../launcher/demo/bistro/bistro_figures.py) |
