@@ -469,6 +469,15 @@ background(int which) {
     }
 }
 
+/* The corner triangle drawn plain, into target `which`. */
+static void
+plain_corner(int which) {
+    const r3d_span_target_t plain = target_at(which);
+    const r3d_span_vertex_t a = vertex(0, 0, 0.5F, BRIGHTEST), b = vertex(SIDE, 0, 0.5F, BRIGHTEST),
+                            c = vertex(0, SIDE, 0.5F, BRIGHTEST);
+    r3d_span_triangle(&plain, &a, &b, &c);
+}
+
 /* The corner triangle of draw_corner(), filled with `tex`, uv in pixels so a
  * texel is a pixel. */
 static void
@@ -495,10 +504,7 @@ test_mask1_holes_keep_the_pixel_and_kept_texels_draw_colour_1(void) {
     background(0);
     const r3d_span_target_t masked = target_at(0);
     draw_masked(&masked);
-    const r3d_span_target_t plain = target_at(1);
-    const r3d_span_vertex_t a = vertex(0, 0, 0.5F, BRIGHTEST), b = vertex(SIDE, 0, 0.5F, BRIGHTEST),
-                            c = vertex(0, SIDE, 0.5F, BRIGHTEST);
-    r3d_span_triangle(&plain, &a, &b, &c);
+    plain_corner(1);
     const uint16_t lit = mask_texture->colormap[R3D_TEXTURE_LIGHT_LEVELS - 1][1];
     TEST_ASSERT_NOT_EQUAL(BG_COLOUR, lit);
     int kept = 0;
@@ -584,10 +590,7 @@ test_writers_follow_a_mask1_triangle_over_its_kept_pixels_only(void) {
     r3d_span_writer_t writer;
     with_marking_writer(&target, &writer);
     draw_masked(&target);
-    const r3d_span_target_t plain = target_at(1);
-    const r3d_span_vertex_t a = vertex(0, 0, 0.5F, BRIGHTEST), b = vertex(SIDE, 0, 0.5F, BRIGHTEST),
-                            c = vertex(0, SIDE, 0.5F, BRIGHTEST);
-    r3d_span_triangle(&plain, &a, &b, &c);
+    plain_corner(1);
     int covered = 0;
     for (int y = 0; y < SIDE; y++) {
         for (int x = 0; x < SIDE; x++) {
@@ -605,15 +608,6 @@ test_writers_follow_a_mask1_triangle_over_its_kept_pixels_only(void) {
 static uint16_t
 depth_of(int which, int i) {
     return buffers[(which * 2 * PIXELS) + PIXELS + i];
-}
-
-/* The corner triangle drawn plain, into target `which`. */
-static void
-plain_corner(int which) {
-    const r3d_span_target_t plain = target_at(which);
-    const r3d_span_vertex_t a = vertex(0, 0, 0.5F, BRIGHTEST), b = vertex(SIDE, 0, 0.5F, BRIGHTEST),
-                            c = vertex(0, SIDE, 0.5F, BRIGHTEST);
-    r3d_span_triangle(&plain, &a, &b, &c);
 }
 
 /* At a texel a pixel each pixel shows the texel at (x, y): the pattern is
@@ -1627,6 +1621,27 @@ test_under_a_writer_a_mask1_triangle_is_cut_and_an_index4_one_is_plain(void) {
     TEST_ASSERT_EQUAL_INT(drawn_in_columns(0, 0, LEFT_COLUMNS), marked_in_columns(0, LEFT_COLUMNS));
 }
 
+/* `s` drawn with a writer, textured, marks and draws what it marks and draws
+ * plain: target 0 plain, target 1 textured, `message` when they differ. */
+static void
+expect_writer_pass_draws_plain(scene_t* s, const char* message) {
+    background(0);
+    r3d_span_target_t plain = target_at(0);
+    r3d_span_writer_t plain_writer;
+    with_marking_writer(&plain, &plain_writer);
+    draw_scene_into(s, &plain, false);
+    const int plain_marks = marked_pixels();
+    memset(marks, 0, PIXELS * sizeof *marks);
+    background(1);
+    r3d_span_target_t textured = target_at(1);
+    textured.writers = &plain_writer;
+    textured.writer_count = 1;
+    draw_scene_into(s, &textured, true);
+    TEST_ASSERT_GREATER_THAN_MESSAGE(COVERED_MIN, plain_marks, "the plain draw covers too little to tell");
+    TEST_ASSERT_EQUAL_INT(plain_marks, marked_pixels());
+    expect_columns_equal(1, 0, 0, SIDE, message);
+}
+
 /* A cluster that names no material draws plain even where a triangle's code
  * names a chart: the material it would read is a MASK1 decoy that would cut. */
 static void
@@ -1643,21 +1658,7 @@ test_under_a_writer_a_cluster_with_no_material_draws_plain(void) {
     memset(s->decoy, 0, ((size_t)R3D_TEXTURE_NONE + 1) * sizeof *s->decoy);
     s->decoy[R3D_TEXTURE_NONE] = s->material[1];
     s->texturing.materials = s->decoy;
-    background(0);
-    r3d_span_target_t plain = target_at(0);
-    r3d_span_writer_t plain_writer;
-    with_marking_writer(&plain, &plain_writer);
-    draw_scene_into(s, &plain, false);
-    const int plain_marks = marked_pixels();
-    memset(marks, 0, PIXELS * sizeof *marks);
-    background(1);
-    r3d_span_target_t textured = target_at(1);
-    textured.writers = &plain_writer;
-    textured.writer_count = 1;
-    draw_scene_into(s, &textured, true);
-    TEST_ASSERT_GREATER_THAN_MESSAGE(COVERED_MIN, plain_marks, "the plain draw covers too little to tell");
-    TEST_ASSERT_EQUAL_INT(plain_marks, marked_pixels());
-    expect_columns_equal(1, 0, 0, SIDE, "a cluster with no material did not draw plain");
+    expect_writer_pass_draws_plain(s, "a cluster with no material did not draw plain");
 }
 
 /* A mesh with no vertex colours has nothing to light a texture with: its
@@ -1672,21 +1673,7 @@ test_under_a_writer_a_mesh_with_no_vertex_colours_draws_plain(void) {
     s->face_colors[0] = FACE_COLOUR_LEFT;
     s->face_colors[1] = FACE_COLOUR_RIGHT;
     s->mesh.face_colors = s->face_colors;
-    background(0);
-    r3d_span_target_t plain = target_at(0);
-    r3d_span_writer_t plain_writer;
-    with_marking_writer(&plain, &plain_writer);
-    draw_scene_into(s, &plain, false);
-    const int plain_marks = marked_pixels();
-    memset(marks, 0, PIXELS * sizeof *marks);
-    background(1);
-    r3d_span_target_t textured = target_at(1);
-    textured.writers = &plain_writer;
-    textured.writer_count = 1;
-    draw_scene_into(s, &textured, true);
-    TEST_ASSERT_GREATER_THAN_MESSAGE(COVERED_MIN, plain_marks, "the plain draw covers too little to tell");
-    TEST_ASSERT_EQUAL_INT(plain_marks, marked_pixels());
-    expect_columns_equal(1, 0, 0, SIDE, "a mesh with no vertex colours did not draw plain");
+    expect_writer_pass_draws_plain(s, "a mesh with no vertex colours did not draw plain");
 }
 
 void
