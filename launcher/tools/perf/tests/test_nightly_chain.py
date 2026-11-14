@@ -141,6 +141,7 @@ class NightlyTests(unittest.TestCase):
         header = self.repo / "launcher/test/suites.h"
         header.parent.mkdir(parents=True)
         header.write_text("#define SUITE_FILTER_LEN 24\n#define SUITE_FILTER_MAX 4\n")
+        (self.repo / "launcher/test/suite_fixture.c").write_text("SUITE_REGISTER(suite);")
         for number in range(6):
             (self.repo / "code").write_text(str(number))
             chain.git(self.repo, "add", ".")
@@ -208,6 +209,31 @@ class NightlyTests(unittest.TestCase):
         def capture(*args, **kwargs):
             return dict(original(*args, **kwargs), **fields)
         return patch.object(chain, "run_flash", side_effect=capture)
+
+    def night_suites(self, suites, steps):
+        """The suites each capture asked for, in order, and each step's outcome, for a night of `suites`."""
+        self.args.suite = [(suite, "-", "-") for suite in suites]
+        results, replay, _ = self.run_chain(steps)
+        ran = [command[command.index("suite") + 1] for command in replay.calls if "suite" in command]
+        return ran, [result.outcome for result in results]
+
+    def test_a_step_older_than_a_suite_measures_without_it(self):
+        (self.repo / "launcher/test/suite_late.c").write_text("SUITE_REGISTER_ON_REQUEST(late);")
+        chain.git(self.repo, "add", ".")
+        chain.git(self.repo, "commit", "-qm", "a late suite (#106)")
+        self.commits.append(chain.git(self.repo, "rev-parse", "HEAD"))
+        # The anchor, last night's commit, predates a suite added since as any older step does.
+        for anchor in (False, True):
+            with self.subTest(anchor=anchor):
+                self.assertEqual(self.night_suites(("suite", "late"), self.steps((1, 6), anchor=anchor)),
+                                 (["suite", "suite", "late"], ["measured", "measured"]))
+
+    def test_the_newest_step_without_a_suite_fails_its_capture(self):
+        self.assertEqual(self.night_suites(("suite", "missing"), self.steps((1, 5))),
+                         (["suite"], ["measured", "capture_failed"]))
+
+    def test_a_step_that_registers_none_of_the_suites_fails_its_capture(self):
+        self.assertEqual(self.night_suites(("missing",), self.steps((1, 5))), ([], ["capture_failed", "capture_failed"]))
 
     def test_lane_timestamps_and_timeline(self):
         marker = self.clock.now().isoformat()
