@@ -22,6 +22,7 @@
 #include "gfx/target/gfx_color.h"
 #include "image/pixel/rgb565.h"
 #include "math/linear/transformf.h"
+#include "r3d_pixel_lens.h"
 #include "render/r3d_lit_mesh.h"
 #include "render/r3d_span_internal.h"
 #include "render/raster_internal.h"
@@ -1372,20 +1373,6 @@ typedef struct {
     r3d_lit_node_t node;
 } screen_mesh_t;
 
-static r3d_lens_t
-subpixel_view(void) {
-    const float s = 1.0f / (float)R3D_SUBPIXEL;
-    return (r3d_lens_t){{{{s, 0, 0, 0}, {0, s, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}},
-                        {1.0F, -1.0F, 0.0F, 0.0F, 0.5F},
-                        W,
-                        H,
-                        R3D_SNAP_BIAS,
-                        R3D_SNAP_BIAS,
-                        0.5f / (float)R3D_SUBPIXEL,
-                        1.0F,
-                        1.0F};
-}
-
 static r3d_lit_mesh_t
 screen_mesh(screen_mesh_t* m, int vertices, int triangles) {
     for (int v = 0; v < vertices; v++) {
@@ -1409,7 +1396,7 @@ screen_mesh(screen_mesh_t* m, int vertices, int triangles) {
 /* Transforms the mesh with cluster rows and draws it as two windows. */
 static void
 draw_screen_mesh(const r3d_lit_mesh_t* mesh, int split) {
-    const r3d_lens_t lens = subpixel_view();
+    const r3d_lens_t lens = r3d_pixel_lens(W, H);
     const uint16_t visible[1] = {0};
     r3d_pipeline_vertex_t cs[9];
     r3d_pipeline_rows_t rows[1];
@@ -1499,7 +1486,7 @@ test_a_triangle_whose_only_centre_is_at_a_window_edge_is_drawn(void) {
             m.triangles[0][k] = (uint16_t)k;
         }
         const r3d_lit_mesh_t mesh = screen_mesh(&m, 3, 1);
-        const r3d_lens_t lens = subpixel_view();
+        const r3d_lens_t lens = r3d_pixel_lens(W, H);
         const uint16_t visible[1] = {0};
         r3d_pipeline_vertex_t cs[3];
         r3d_pipeline_rows_t rows[1];
@@ -1527,7 +1514,7 @@ slanted_quad(screen_mesh_t* m, r3d_pipeline_vertex_t cs[4], r3d_pipeline_rows_t*
     }
     memcpy(m->triangles, corners, sizeof corners);
     const r3d_lit_mesh_t mesh = screen_mesh(m, 4, 2);
-    const r3d_lens_t lens = subpixel_view();
+    const r3d_lens_t lens = r3d_pixel_lens(W, H);
     const uint16_t visible[1] = {0};
     r3d_pipeline_transform(&mesh, &lens, visible, 1, cs, rows, true);
     return mesh;
@@ -1542,7 +1529,7 @@ test_a_cluster_writes_no_depth_nearer_than_its_limit(void) {
     const r3d_lit_mesh_t mesh = slanted_quad(&m, cs, &rows);
     const r3d_span_target_t target = fixture();
     const uint16_t visible[1] = {0};
-    const r3d_lens_t lens = subpixel_view();
+    const r3d_lens_t lens = r3d_pixel_lens(W, H);
     r3d_pipeline_draw(&mesh, &lens, visible, 1, cs, &rows, &target, pipeline_work());
     int nearest = R3D_DEPTH_EMPTY;
     for (int i = 0; i < W * H; i++) {
@@ -1568,7 +1555,7 @@ test_a_cluster_behind_drawn_depth_is_hidden_and_draws_nothing(void) {
     depth[0] = R3D_DEPTH_EMPTY; /* outside the quad's box */
     TEST_ASSERT_TRUE(r3d_pipeline_cluster_hidden(&rows, &target));
     const uint16_t visible[1] = {0};
-    const r3d_lens_t lens = subpixel_view();
+    const r3d_lens_t lens = r3d_pixel_lens(W, H);
     r3d_pipeline_draw(&mesh, &lens, visible, 1, cs, &rows, &target, pipeline_work());
     for (int i = 0; i < W * H; i++) {
         TEST_ASSERT_EQUAL_MESSAGE(0, color[i], "a hidden cluster drew a pixel");
@@ -1587,7 +1574,7 @@ test_an_unbounded_cluster_is_never_hidden(void) {
     r3d_pipeline_rows_t rows;
     const r3d_lit_mesh_t mesh = slanted_quad(&m, cs, &rows);
     m.positions[3][2] = -1; /* behind the near plane */
-    const r3d_lens_t lens = subpixel_view();
+    const r3d_lens_t lens = r3d_pixel_lens(W, H);
     const uint16_t visible[1] = {0};
     r3d_pipeline_transform(&mesh, &lens, visible, 1, cs, &rows, true);
     TEST_ASSERT_TRUE(rows.unbounded);

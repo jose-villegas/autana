@@ -1,0 +1,8 @@
+# The renderers of bistro.scene.toml drawn textured (render/texture/), each by
+# its scene object; launcher/tools/r3d/texture/texture_settings.py reads it.
+# The pavements' and the road's cobblestones and the beige brick are the
+# floor and facade materials that cover most of the fitted street.
+[[renderers]]
+object = "street_fitted_full"
+materials = ["Pavement_Cobblestone_*", "MASTER_Brick_Large_Beige_BLENDSHADER"]
+size = 64

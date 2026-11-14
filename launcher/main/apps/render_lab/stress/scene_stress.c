@@ -5,10 +5,9 @@
 #include <math.h>
 #include <stdbool.h>
 #include <stddef.h>
-#include <stdio.h>
+#include <string.h>
 
 #include "apps/render_lab/render_lab.h"
-#include "apps/render_lab/render_lab_dynres.h"
 #include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/scene_baked.h"
 #include "core/tune.h"
@@ -27,10 +26,7 @@
 static const char* TAG = "stress";
 
 /* Copies are named consecutively from zero. */
-#define STRESS_SLOT_FORMAT    "slot_%02d"
-
-/* The longest copy name STRESS_SLOT_FORMAT makes, with its terminator. */
-#define STRESS_SLOT_NAME_SIZE 16
+#define STRESS_SLOT_FORMAT "slot_%02d"
 
 static const stress_params_t* shown;
 static entity_t loaded;
@@ -42,6 +38,10 @@ static stress_buffers_t buffers[STRESS_MIX_LEVELS];
 static r3d_dynamic_mesh_t mesh[STRESS_MIX_LEVELS];
 static uint32_t wave_ms;
 
+/* The textured preset's brick and its texturing. */
+static r3d_texture_t* texture;
+static r3d_mesh_texturing_t texturing;
+
 /* What the panel says in place of the triangle count when the scene could not load. */
 static char failure[LAB_STATUS_LEN];
 
@@ -50,28 +50,11 @@ fail(const char* what) {
     lab_scene_fail(TAG, failure, sizeof failure, what);
 }
 
-static entity_t
-find_slot(int index) {
-    char name[STRESS_SLOT_NAME_SIZE];
-    const int length = snprintf(name, sizeof name, STRESS_SLOT_FORMAT, index);
-    return length > 0 && (size_t)length < sizeof name ? entity_find(loaded, name_hash(name)) : ENTITY_NONE;
-}
-
 /* The pool is every copy the pack names, from 0 up to the first it lacks. */
 static bool
 find_pool(void) {
-    pool = 0;
-    while (!handle_is_none(find_slot(pool))) {
-        pool++;
-    }
-    slots = lab_scene_take(sizeof *slots * (size_t)(pool > 0 ? pool : 1));
-    if (slots == NULL) {
-        return false;
-    }
-    for (int i = 0; i < pool; i++) {
-        slots[i] = find_slot(i);
-    }
-    return true;
+    slots = lab_scene_copies(loaded, STRESS_SLOT_FORMAT, &pool);
+    return slots != NULL;
 }
 
 static int
@@ -99,6 +82,49 @@ take_mesh(void) {
     return true;
 }
 
+/* The brick's entry, in the scene's arena, and a texturing of every
+ * triangle of the one mesh with it. */
+static bool
+take_texture(void) {
+    const size_t bytes = stress_texture_bytes();
+    uint8_t* ltex = lab_scene_take(bytes);
+    texture = lab_scene_take(sizeof *texture);
+    const r3d_lit_mesh_t* m = &mesh[0].mesh;
+    int16_t (*uvs)[2] = lab_scene_take(sizeof(int16_t[2]) * (size_t)m->vertex_count);
+    uint8_t (*material)[R3D_TEXTURE_CHARTS] = lab_scene_take(sizeof *material * (size_t)m->cluster_count);
+    int32_t* shift = lab_scene_take(sizeof *shift * (size_t)m->cluster_count);
+    /* The mesh is built later: its codes cover every triangle it can hold. */
+    const size_t codes = ((size_t)mesh[0].capacity.triangles + R3D_TEXTURE_UVS_TRIANGLES_PER_BYTE - 1U)
+                         / R3D_TEXTURE_UVS_TRIANGLES_PER_BYTE;
+    uint8_t* code = lab_scene_take(codes);
+    if (ltex == NULL || texture == NULL || uvs == NULL || material == NULL || shift == NULL || code == NULL) {
+        return false;
+    }
+    stress_texture_write(ltex);
+    const asset_view_t view = {ltex, (uint32_t)bytes};
+    if (r3d_texture_from_asset(&view, texture) != ASSET_OK) {
+        return false;
+    }
+    /* One chart, the brick, under every triangle. */
+    memset(material, R3D_TEXTURE_NONE, sizeof *material * (size_t)m->cluster_count);
+    for (int c = 0; c < m->cluster_count; c++) {
+        material[c][0] = 0;
+    }
+    memset(shift, 0, sizeof *shift * (size_t)m->cluster_count);
+    uint8_t chart_0 = 0;
+    for (unsigned k = 0; k < R3D_TEXTURE_UVS_TRIANGLES_PER_BYTE; k++) {
+        chart_0 |= (uint8_t)(1U << (k * R3D_TEXTURE_UVS_CODE_BITS));
+    }
+    memset(code, chart_0, codes);
+    texturing = (r3d_mesh_texturing_t){.uvs = (const int16_t (*)[2])uvs,
+                                       .cluster_material = (const uint8_t (*)[R3D_TEXTURE_CHARTS])material,
+                                       .cluster_shift = shift,
+                                       .triangle_code = code,
+                                       .materials = texture,
+                                       .material_count = 1};
+    return true;
+}
+
 static bool
 build(void) {
     for (int i = 0; i < mesh_count(); i++) {
@@ -106,6 +132,10 @@ build(void) {
         r3d_dynamic_source_t source;
         if (!stress_source(&p, wave_ms, &buffers[i], &source) || !r3d_dynamic_mesh_build(&mesh[i], &source)) {
             return false;
+        }
+        if (shown->surface == STRESS_SURFACE_TEXTURED) {
+            stress_texture_uvs(&mesh[i].mesh, (int16_t (*)[2])texturing.uvs);
+            mesh[i].mesh.texturing = &texturing;
         }
     }
     for (int i = 0; i < shown->copies; i++) {
@@ -184,6 +214,10 @@ load(void) {
         fail("too few stress copies");
         return false;
     }
+    if (shown->surface == STRESS_SURFACE_TEXTURED && !take_texture()) {
+        fail("no memory for the stress texture");
+        return false;
+    }
     if (shown->surface != STRESS_SURFACE_STATIC && !build()) {
         fail("stress mesh did not fit");
         return false;
@@ -236,22 +270,13 @@ scene_stress_frame(uint32_t dt_ms) {
 /* The size drawn at, the triangle count and the copies, or why the scene did not load. */
 static const char*
 scene_stress_status(void) {
-    static char buf[LAB_STATUS_LEN];
-    if (failure[0] != '\0') {
-        return failure;
-    }
-    if (snprintf(buf, sizeof buf, "%s%5d tris x%d", render_lab_dynres_size(),
-                 render_context_frame(render_context_main()).stats.triangles, shown->copies)
-        < 0) {
-        buf[0] = '\0';
-    }
-    return buf;
+    return render_lab_copies_status(failure, shown->copies);
 }
 
 /* The camera shown: swinging, unless the start named a still one. */
 static lab_path_t
 scene_stress_path(void) {
-    return (lab_path_t){loaded, handle_is_none(loaded) ? ENTITY_NONE : viewer, NULL};
+    return (lab_path_t){.scene = loaded, .entity = handle_is_none(loaded) ? ENTITY_NONE : viewer};
 }
 
 /* A still preset can have frames generated: only the camera moves. */

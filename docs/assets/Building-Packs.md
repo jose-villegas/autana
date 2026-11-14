@@ -13,7 +13,7 @@ searching, so no list is kept:
 | `NAME.import.toml` that no scene places | `NAME` | its variants' meshes |
 | `NAME.anim.toml` that no scene names | `NAME` | its one clip, baked from its source |
 | `NAME.sound.toml` | `NAME` | its one [sound](../audio/Sound-Assets.md), fetched as a locked `sound` bake of its WAV, FLAC, OGG or MP3 source |
-| `NAME.image.toml` | `NAME` | its one picture, baked from the PNG it names |
+| `NAME.image.toml` | `NAME` | its one picture, baked from the PNG it names; a [sprite](Image-Entries.md#sprites) when it names a border |
 | `NAME.icons.toml` | `NAME` | an image entry per [icon](../tools/Icon-Baker.md), named by the icon, baked from the set's atlas and SVGs |
 
 A `NAME.pack.toml` makes its folder one pack, `NAME`: every root under that
@@ -57,9 +57,9 @@ entry.
 `launcher/tools/asset/asset_directory.py` the directory,
 `launcher/tools/r3d/mesh_asset.py` and `lit_mesh.py` the mesh
 entry, `launcher/tools/anim/tracks_asset.py` of the clip entry,
-`launcher/tools/gfx/image_asset.py` of the image entry, and
+`launcher/tools/gfx/image_asset.py` of the image and sprite entries, and
 `launcher/tools/audio/sound_asset.py` of the [sound entry](../audio/Sound-Assets.md); `asset_pack.c`,
-`asset_directory.c`, `r3d_lit_mesh.c`, `anim_tracks.c`, `draw_image.c` and
+`asset_directory.c`, `r3d_lit_mesh.c`, `anim_tracks.c`, `draw_image.c`, `draw_sprite.c` and
 `sound.c` are the respective readers.
 
 Meshes and sounds are bake products, fetched by their lock rows; a clip

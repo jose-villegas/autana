@@ -4,6 +4,7 @@
 #include "app/app.h"
 #include "apps/render_lab/ui/render_lab_settings.h"
 #include "console/render_lab_fly.h"
+#include "herd/scene_herd.h"
 #include "render/context/render_context.h"
 #include "render_lab.h"
 #include "render_lab_dynres.h"
@@ -17,6 +18,9 @@
 /* Each stress preset, in the order its table lists them. */
 #define STRESS_SCENE_ENTRY(id_, ...) &scene_stress[STRESS_##id_],
 
+/* Each herd size, smallest first. */
+#define HERD_SCENE_ENTRY(id_, ...)   &scene_herd[HERD_##id_],
+
 /* Index 0 is the scene a start with no key shows; a family's scenes keep this order in its dropdown. */
 static const lab_scene_t* const scenes[] = {&scene_sponza[SCENE_BAKED_FITTED_FULL],
                                             &scene_sponza[SCENE_BAKED_FITTED],
@@ -27,12 +31,13 @@ static const lab_scene_t* const scenes[] = {&scene_sponza[SCENE_BAKED_FITTED_FUL
                                             &scene_capybara,
                                             &scene_water,
                                             &scene_bistro[SCENE_BAKED_FITTED_FULL],
+                                            &scene_bistro_textured,
                                             &scene_bistro[SCENE_BAKED_FITTED],
                                             &scene_bistro[SCENE_BAKED_FULL],
                                             &scene_bistro[SCENE_BAKED_LITE],
                                             &scene_bistro[SCENE_BAKED_FLAT],
                                             &scene_bistro[SCENE_BAKED_FLAT_FITTED],
-                                            STRESS_PRESETS(STRESS_SCENE_ENTRY)};
+                                            STRESS_PRESETS(STRESS_SCENE_ENTRY) HERD_SIZES(HERD_SCENE_ENTRY)};
 #define SCENE_COUNT ((int)(sizeof(scenes) / sizeof(scenes[0])))
 
 static void
@@ -77,6 +82,20 @@ render_lab_console(const char* args) {
 }
 
 APP_CONSOLE(RENDER_LAB_WORD, render_lab_console);
+
+const char*
+render_lab_copies_status(const char* failure, int copies) {
+    static char buf[LAB_STATUS_LEN];
+    if (failure[0] != '\0') {
+        return failure;
+    }
+    if (snprintf(buf, sizeof buf, "%s%5d tris x%d", render_lab_dynres_size(),
+                 render_context_frame(render_context_main()).stats.triangles, copies)
+        < 0) {
+        buf[0] = '\0';
+    }
+    return buf;
+}
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
 /* What a screenshot needs to say two captures measured the same thing. */

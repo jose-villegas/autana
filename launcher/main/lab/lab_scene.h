@@ -1,6 +1,7 @@
 /* lab_scene: one scene of a lab (lab.h), behind its shared HUD and menu. */
 #pragma once
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -18,6 +19,13 @@ typedef struct {
     entity_t scene; /* ENTITY_NONE when the scene has not loaded */
     entity_t entity;
     const char* clip; /* the clip a frame profile plays; NULL keeps the entity's current one */
+    /* Optional, for a path no one animator plays, such as copies walking: puts
+     * the whole scene at t_ms (below duration_ms) and holds it there until
+     * play() lets it move again; a path with seek has play too. With it,
+     * entity and clip are not read. */
+    bool (*seek)(uint32_t t_ms);
+    void (*play)(void);
+    uint32_t duration_ms; /* the seek path's length */
 } lab_path_t;
 
 typedef struct lab_scene {
@@ -72,6 +80,11 @@ entity_t lab_scene_load(const char* tag, char* failure, size_t size, const char*
 
 /* `bytes` from the app arena, which the lab rewinds when the scene goes; NULL when it is spent. */
 void* lab_scene_take(size_t bytes);
+
+/* A scene's numbered copies: each entity `format` (one %d, such as
+ * "slot_%02d") names from 0 up to the first `scene` lacks, in order, in the
+ * app arena, with their `count`; NULL when the arena is spent. */
+entity_t* lab_scene_copies(entity_t scene, const char* format, int* count);
 
 /* A scene's `.console` or `.status`: the hook in a development or host build,
  * NULL otherwise, as APP_CONSOLE_PTR() does, so a release links neither the
