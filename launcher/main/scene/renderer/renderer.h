@@ -16,7 +16,7 @@ const char* renderer_mesh_id(entity_t entity);
  * mesh with no nodes draws nothing. False when the entity has no renderer or
  * a skinned one, whose mesh its animator writes, or when `mesh` has more
  * levels of detail than the coarse bits the scene opened for the loaded mesh
- * hold. The loaded mesh's textures close. */
+ * hold. Its own textures draw; the loaded mesh's close. */
 bool renderer_set_mesh(entity_t entity, const r3d_lit_mesh_t* mesh);
 
 /* A cut (a MASK1 material) never draws plain: a mesh whose textures cut opens

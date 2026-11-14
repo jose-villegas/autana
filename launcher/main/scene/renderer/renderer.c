@@ -66,16 +66,21 @@ renderer_set_mesh(entity_t entity, const r3d_lit_mesh_t* mesh) {
     if (r->batch != NULL || (uint32_t)R3D_LOD_STATE_WORDS(mesh->lod_group_count) > r->lod_words) {
         return false;
     }
-    /* The textures opened were the pack mesh's: another mesh opens its own,
-     * checked against it, when textures are next asked for; at once when
-     * they cut, which never draw plain, the swap refused when they do not fit. */
-    const bool cuts = renderer_cuts(r);
+    /* Textures `mesh` brings, the caller's, draw as given. The ones opened
+     * here were the pack mesh's and close, a copy's pointer to them too:
+     * another mesh opens its own when textures are next asked for; at once
+     * when they cut, which never draw plain, the swap refused when they do not fit. */
+    const renderer_texturing_t* opened = r->texturing;
+    const bool given = mesh->texturing != NULL && (opened == NULL || mesh->texturing != &opened->texturing);
+    const bool reopen = !given && renderer_cuts(r);
     const r3d_lit_mesh_t old = r->mesh;
     scene_renderer_texturing_free(r);
     r->mesh = *mesh;
-    r->mesh.texturing = NULL;
+    if (!given) {
+        r->mesh.texturing = NULL;
+    }
     const char* mesh_id = scene->asset.renderers[i].mesh;
-    if (cuts && (r->mesh.face_colors != NULL || !open_texturing(scene, r, mesh_id, NULL))) {
+    if (reopen && (r->mesh.face_colors != NULL || !open_texturing(scene, r, mesh_id, NULL))) {
         r->mesh = old;
         r->mesh.texturing = NULL;
         if (open_texturing(scene, r, mesh_id, NULL)) {
@@ -83,7 +88,7 @@ renderer_set_mesh(entity_t entity, const r3d_lit_mesh_t* mesh) {
         }
         return false;
     }
-    if (cuts) {
+    if (reopen) {
         draw_textured(r);
     }
     scene_renderer_bound(r);

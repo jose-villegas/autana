@@ -7325,6 +7325,20 @@ test_a_textured_mesh_set_back_holds_no_closed_textures(void) {
     TEST_ASSERT_EQUAL_INT(0, pixels_differing_from(fx.held));
 }
 
+/* Textures a run-time mesh brings, the caller's, are the ones it draws with;
+ * only a pointer to the renderer's own closes. */
+static void
+test_a_mesh_drawn_with_its_own_textures_keeps_them(void) {
+    static const r3d_mesh_texturing_t callers = {0};
+    entity_t red;
+    show_textured_pair(&red);
+    TEST_ASSERT_TRUE(renderer_set_textured(red, true, NULL));
+    r3d_lit_mesh_t own = *renderer_mesh(red);
+    own.texturing = &callers;
+    TEST_ASSERT_TRUE(renderer_set_mesh(red, &own));
+    TEST_ASSERT_EQUAL_PTR(&callers, renderer_mesh(red)->texturing);
+}
+
 /* The batch scene drawn, its red quad plain or cut by `kind`. */
 static void
 draw_batch(texture_kind_t kind) {
@@ -7413,6 +7427,7 @@ run_scene_suite(void) {
     RUN_TEST(test_textures_that_cut_never_turn_off);
     RUN_TEST(test_a_mesh_that_cannot_take_the_cut_is_refused_and_one_that_can_takes_it);
     RUN_TEST(test_a_textured_mesh_set_back_holds_no_closed_textures);
+    RUN_TEST(test_a_mesh_drawn_with_its_own_textures_keeps_them);
     RUN_TEST(test_every_copy_of_a_batch_draws_its_renderers_cut);
     RUN_TEST(test_a_scene_with_a_flat_shaded_mesh_whose_textures_cut_fails_to_load);
     RUN_TEST(test_static_mesh_arrays_are_resident_and_equal_the_pack);
