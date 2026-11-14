@@ -2,7 +2,9 @@
  * Portable suite: what LAB_REGISTER() and LAB_APP_CALLBACKS() give an app.
  * Each app_t callback reaches its own lab step, so a scene sees enter, frame,
  * update and exit in the slot it was called through, and the console word
- * comes back in capitals as the reply tag.
+ * comes back in capitals as the reply tag. A path with its own seek
+ * (lab_path_t.seek) gives the lab its length, takes a seek wrapped to it, and
+ * gets "pose <ms>" and "pose play" instead of an animator.
  */
 
 #include "suites.h"
@@ -14,6 +16,8 @@
 
 #define FRAME_DT_MS  16
 #define UPDATE_DT_MS 33
+#define PATH_MS      18000U
+#define LATER_MS     5000U
 
 typedef struct {
     int enters;
@@ -22,6 +26,9 @@ typedef struct {
     int exits;
     uint32_t frame_dt_ms;
     uint32_t update_dt_ms;
+    int seeks;
+    uint32_t seek_ms;
+    int plays;
 } calls_t;
 
 static calls_t calls;
@@ -49,6 +56,24 @@ probe_exit(void) {
     calls.exits++;
 }
 
+static bool
+probe_seek(uint32_t t_ms) {
+    calls.seeks++;
+    calls.seek_ms = t_ms;
+    return true;
+}
+
+static void
+probe_play(void) {
+    calls.plays++;
+}
+
+static lab_path_t
+probe_path(void) {
+    return (lab_path_t){
+        .scene = ENTITY_NONE, .entity = ENTITY_NONE, .seek = probe_seek, .play = probe_play, .duration_ms = PATH_MS};
+}
+
 static const lab_scene_t probe_scene = {
     .key = "probe",
     .name = "Probe",
@@ -56,6 +81,7 @@ static const lab_scene_t probe_scene = {
     .frame = probe_frame,
     .update = probe_update,
     .exit = probe_exit,
+    .path = probe_path,
 };
 
 static const lab_scene_t* const probe_scenes[] = {&probe_scene};
@@ -101,10 +127,36 @@ test_registration_sets_the_reply_tag(void) {
     TEST_ASSERT_EQUAL_STRING("PROBE", lab_reply_tag(&probe_lab));
 }
 
+static void
+test_a_seek_path_has_its_own_length(void) {
+    TEST_ASSERT_EQUAL_UINT32(PATH_MS, lab_path_duration_ms(&probe_lab));
+}
+
+static void
+test_a_seek_wraps_to_the_path_and_reaches_the_scene(void) {
+    calls = (calls_t){0};
+    TEST_ASSERT_TRUE(lab_seek_path(&probe_lab, PATH_MS + LATER_MS));
+    TEST_ASSERT_EQUAL_INT(1, calls.seeks);
+    TEST_ASSERT_EQUAL_UINT32(LATER_MS, calls.seek_ms);
+}
+
+static void
+test_pose_and_play_reach_the_scene(void) {
+    calls = (calls_t){0};
+    TEST_ASSERT_TRUE(lab_console(&probe_lab, "pose 5000"));
+    TEST_ASSERT_EQUAL_INT(1, calls.seeks);
+    TEST_ASSERT_EQUAL_UINT32(LATER_MS, calls.seek_ms);
+    TEST_ASSERT_TRUE(lab_console(&probe_lab, "pose play"));
+    TEST_ASSERT_EQUAL_INT(1, calls.plays);
+}
+
 void
 run_lab_register_suite(void) {
     RUN_TEST(test_registration_sets_the_reply_tag);
     RUN_TEST(test_each_callback_reaches_its_own_step);
+    RUN_TEST(test_a_seek_path_has_its_own_length);
+    RUN_TEST(test_a_seek_wraps_to_the_path_and_reaches_the_scene);
+    RUN_TEST(test_pose_and_play_reach_the_scene);
 }
 
 SUITE_REGISTER(run_lab_register_suite);

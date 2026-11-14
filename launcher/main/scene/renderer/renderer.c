@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "core/memory.h"
+#include "render/texture/r3d_texture.h"
 #include "scene/scene_internal.h"
 
 /* The index of the entity's renderer in its scene `*scene`, or -1. */
@@ -49,6 +50,9 @@ renderer_set_mesh(entity_t entity, const r3d_lit_mesh_t* mesh) {
         return false;
     }
     r->mesh = *mesh;
+    /* The textures opened were the pack mesh's: another mesh opens its own,
+     * checked against it, when textures are next asked for. */
+    scene_renderer_texturing_free(r);
     scene_renderer_bound(r);
     /* Another mesh's groups are not these bits': start it at its finest. */
     if (r->lod_coarse != NULL) {
@@ -140,4 +144,86 @@ renderer_set_skin(entity_t entity, const char* id, scene_failure_t* why) {
         return scene_report(why, SCENE_ERR_ASSET, ASSET_ERR_NOT_FOUND, id);
     }
     return scene_renderer_bind_skin(scene, row, id, true, why);
+}
+
+/* A renderer's textures: its mesh's LUVS sibling and the materials it names,
+ * in one block, and their texels copied out of the pack into a second. */
+typedef struct {
+    r3d_mesh_texturing_t texturing;
+    uint8_t* texels;
+    r3d_texture_t materials[];
+} renderer_texturing_t;
+
+/* Copies the texels of `block`'s materials into one app-heap block. */
+static bool
+copy_texels(renderer_texturing_t* block) {
+    size_t bytes = 0;
+    for (int k = 0; k < block->texturing.material_count; k++) {
+        bytes += r3d_texture_texel_bytes(&block->materials[k]);
+    }
+    block->texels = scene_allocate(bytes, MEMORY_APP);
+    if (block->texels == NULL) {
+        return false;
+    }
+    uint8_t* at = block->texels;
+    for (int k = 0; k < block->texturing.material_count; k++) {
+        at = r3d_texture_move_texels(&block->materials[k], at);
+    }
+    return true;
+}
+
+/* Opens the textures of `r`, whose mesh is the pack's `mesh_id`, into r->texturing. */
+static bool
+open_texturing(const scene_t* scene, scene_renderer_t* r, const char* mesh_id, scene_failure_t* why) {
+    asset_view_t uvs;
+    asset_status_t status = r3d_lit_mesh_open_sibling(scene->pack, mesh_id, R3D_TEXTURE_UVS_NAME_SUFFIX,
+                                                      R3D_TEXTURE_UVS_ASSET, false, &uvs);
+    if (status != ASSET_OK || uvs.data == NULL) {
+        return scene_report(why, SCENE_ERR_ASSET, status == ASSET_OK ? ASSET_ERR_NOT_FOUND : status, mesh_id);
+    }
+    const int count = r3d_texture_uvs_material_count(&uvs);
+    renderer_texturing_t* block =
+        scene_allocate(sizeof *block + ((size_t)count * sizeof block->materials[0]), MEMORY_APP);
+    if (block == NULL) {
+        return scene_report(why, SCENE_ERR_MEMORY, ASSET_OK, mesh_id);
+    }
+    block->texels = NULL;
+    status = r3d_texture_texturing_from_asset(&uvs, scene->pack, mesh_id, &r->mesh, block->materials, count,
+                                              &block->texturing);
+    if (status != ASSET_OK || !copy_texels(block)) {
+        memory_free(block->texels);
+        memory_free(block);
+        return scene_report(why, status != ASSET_OK ? SCENE_ERR_ASSET : SCENE_ERR_MEMORY, status, mesh_id);
+    }
+    r->texturing = block;
+    return scene_report(why, SCENE_OK, ASSET_OK, mesh_id);
+}
+
+bool
+renderer_set_textured(entity_t entity, bool on, scene_failure_t* why) {
+    scene_t* scene;
+    const int i = renderer_of(entity, &scene);
+    if (i < 0 || i >= scene->asset.renderer_count) {
+        return scene_report(why, SCENE_ERR_ASSET, ASSET_ERR_NOT_FOUND, "");
+    }
+    scene_renderer_t* r = &scene->renderers[i];
+    const char* mesh_id = scene->asset.renderers[i].mesh;
+    if (on && r->texturing == NULL && !open_texturing(scene, r, mesh_id, why)) {
+        return false;
+    }
+    renderer_texturing_t* block = r->texturing;
+    /* Textures are lit by vertex colours: a flat-shaded mesh draws plain. */
+    r->mesh.texturing = on && r->mesh.face_colors == NULL ? &block->texturing : NULL;
+    r->changed = true;
+    return scene_report(why, SCENE_OK, ASSET_OK, mesh_id);
+}
+
+void
+scene_renderer_texturing_free(scene_renderer_t* r) {
+    renderer_texturing_t* block = r->texturing;
+    if (block != NULL) {
+        memory_free(block->texels);
+    }
+    memory_free(block);
+    r->texturing = NULL;
 }

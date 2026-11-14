@@ -354,11 +354,9 @@ sibling_name(const char* mesh_id, const char* suffix, char out[ASSET_NAME_MAX]) 
     return ASSET_OK;
 }
 
-/* The mesh's sibling entry: its id with `suffix`, of `type`. One that is not `required` and is absent
-   leaves `entry` empty. */
-static asset_status_t
-open_sibling(const asset_pack_t* pack, const char* id, const char* suffix, uint32_t type, bool required,
-             asset_view_t* entry) {
+asset_status_t
+r3d_lit_mesh_open_sibling(const asset_pack_t* pack, const char* id, const char* suffix, uint32_t type, bool required,
+                          asset_view_t* entry) {
     *entry = (asset_view_t){0};
     char name[ASSET_NAME_MAX];
     asset_status_t status = sibling_name(id, suffix, name);
@@ -378,12 +376,12 @@ r3d_lit_mesh_open(const asset_pack_t* pack, const char* id, r3d_lit_mesh_t* mesh
     }
     status = r3d_lit_mesh_from_asset(&asset, mesh);
     if (status == ASSET_OK) {
-        status = open_sibling(pack, id, LLOD_NAME_SUFFIX, LLOD_ASSET, false, &asset);
+        status = r3d_lit_mesh_open_sibling(pack, id, LLOD_NAME_SUFFIX, LLOD_ASSET, false, &asset);
     }
     if (status == ASSET_OK && asset.data != NULL) {
         status = r3d_lit_mesh_levels_from_asset(&asset, mesh);
         if (status == ASSET_OK) {
-            status = open_sibling(pack, id, LMOR_NAME_SUFFIX, LMOR_ASSET, false, &asset);
+            status = r3d_lit_mesh_open_sibling(pack, id, LMOR_NAME_SUFFIX, LMOR_ASSET, false, &asset);
         }
         if (status == ASSET_OK && asset.data != NULL) {
             status = r3d_lit_mesh_morph_from_asset(&asset, mesh);
@@ -398,7 +396,7 @@ r3d_lit_mesh_open(const asset_pack_t* pack, const char* id, r3d_lit_mesh_t* mesh
 asset_status_t
 r3d_lit_mesh_open_colours(const asset_pack_t* pack, const char* mesh_id, uint16_t set, r3d_lit_mesh_t* mesh) {
     asset_view_t view;
-    asset_status_t status = open_sibling(pack, mesh_id, LCOL_NAME_SUFFIX, LCOL_ASSET, true, &view);
+    asset_status_t status = r3d_lit_mesh_open_sibling(pack, mesh_id, LCOL_NAME_SUFFIX, LCOL_ASSET, true, &view);
     if (status == ASSET_OK) {
         status = asset_entry_validate(view, LCOL_VERSION, LCOL_AT_VERSION, LCOL_HEADER_SIZE, ENTRY_ALIGNMENT);
     }

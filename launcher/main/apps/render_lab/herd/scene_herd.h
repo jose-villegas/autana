@@ -1,11 +1,13 @@
 /*
  * scene_herd: the Herd family, keyed "herd-" and its size: N skinned
- * capybaras on a meadow, each playing its own clip at its own phase, while
- * one finger orbits the camera round the copies shown. The pack holds a pool
- * of copies on rings out from the centre; a size shows the first N and hides
- * the rest, so zoomed in, copies fall off the frame and behind the camera.
+ * capybaras walking a meadow, keeping apart, each playing the clip and rate
+ * its ground speed calls for, while one finger orbits the camera round the
+ * area they walk. The pack holds a pool of copies on rings out from the
+ * centre, where they start; a size shows the first N and hides the rest.
  */
 #pragma once
+
+#include <stdbool.h>
 
 #include "lab/lab_scene.h"
 
@@ -20,3 +22,8 @@
 typedef enum { HERD_SIZES(HERD_SIZE_ID) HERD_SIZE_COUNT } herd_size_t;
 
 extern const lab_scene_t scene_herd[HERD_SIZE_COUNT];
+
+/* Whether the next enter holds the copies still where the pack places them,
+ * each in its own clip at its own phase, and fits the orbit to them: for a
+ * test that places them itself. Off until set. */
+void scene_herd_hold(bool hold);
