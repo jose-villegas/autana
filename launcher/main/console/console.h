@@ -46,8 +46,7 @@ void console_emit_line(const char* prefix, const char* payload);
 #define CONSOLE_TX_RING_BYTES    4096
 /* A packet whole, its line and its bytes: half the TX ring. */
 #define CONSOLE_PACKET_MAX       (CONSOLE_TX_RING_BYTES / 2)
-/* Room for "<tag>_BIN <count> <crc32 hex>
-" with a tag of up to 16 characters. */
+/* Room for "<tag>_BIN <count> <crc32 hex>\n" with a tag of up to 16 characters. */
 #define CONSOLE_PACKET_HEAD_MAX  48
 #define CONSOLE_PACKET_BYTES_MAX (CONSOLE_PACKET_MAX - CONSOLE_PACKET_HEAD_MAX)
 

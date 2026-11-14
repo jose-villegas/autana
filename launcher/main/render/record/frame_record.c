@@ -59,9 +59,15 @@ typedef struct {
     bool placed;
 } recorded_slot_t;
 
-static noted_skin_t skins[FRAME_RECORD_NOTED_SKINS_MAX];
-static noted_built_t built[FRAME_RECORD_NOTED_BUILT_MAX];
-static uint32_t notes_made;
+typedef struct {
+    noted_skin_t skins[FRAME_RECORD_NOTED_SKINS_MAX];
+    noted_built_t built[FRAME_RECORD_NOTED_BUILT_MAX];
+    uint32_t made;
+} notes_t;
+
+/* In external RAM, taken once and kept: on-chip RAM is what a skin's own
+ * buffers want. */
+static notes_t* notes;
 
 typedef struct {
     frame_record_out_t out;
@@ -101,18 +107,39 @@ note_slot(void* table, size_t stride, int count, const void* key) {
     return slot;
 }
 
+bool
+frame_record_take_notes(void) {
+    if (notes == NULL) {
+        notes = memory_alloc(sizeof *notes, MEMORY_PSRAM);
+        if (notes != NULL) {
+            memset(notes, 0, sizeof *notes);
+        }
+    }
+    return notes != NULL;
+}
+
 void
 frame_record_note_skin(const r3d_lit_mesh_t* posed, const r3d_lit_mesh_t* bind, const mat4f_t* palette, int joints) {
-    noted_skin_t* slot = note_slot(skins, sizeof skins[0], FRAME_RECORD_NOTED_SKINS_MAX, posed->positions);
+    notes_t* table = notes;
+    if (table == NULL) {
+        return;
+    }
+    noted_skin_t* slot =
+        note_slot(table->skins, sizeof table->skins[0], FRAME_RECORD_NOTED_SKINS_MAX, posed->positions);
     *slot = (noted_skin_t){
-        {posed->positions, ++notes_made}, bind->positions, bind->vertex_count, palette, (uint16_t)joints, true};
+        {posed->positions, ++table->made}, bind->positions, bind->vertex_count, palette, (uint16_t)joints, true};
 }
 
 void
 frame_record_note_built(const r3d_lit_mesh_t* mesh, const r3d_dynamic_source_t* source, bool fitted) {
-    noted_built_t* slot = note_slot(built, sizeof built[0], FRAME_RECORD_NOTED_BUILT_MAX, mesh->positions);
+    notes_t* table = notes;
+    if (table == NULL) {
+        return;
+    }
+    noted_built_t* slot =
+        note_slot(table->built, sizeof table->built[0], FRAME_RECORD_NOTED_BUILT_MAX, mesh->positions);
     *slot = (noted_built_t){
-        {mesh->positions, ++notes_made}, mesh->vertex_count, mesh->position_scale, *source, fitted, true};
+        {mesh->positions, ++table->made}, mesh->vertex_count, mesh->position_scale, *source, fitted, true};
 }
 
 static bool
@@ -122,14 +149,18 @@ inside(const void* address, const void* block, size_t bytes) {
 
 void
 frame_record_forget(const void* block, size_t bytes) {
+    notes_t* table = notes;
+    if (table == NULL) {
+        return;
+    }
     for (int i = 0; i < FRAME_RECORD_NOTED_SKINS_MAX; i++) {
-        if (inside(skins[i].head.key, block, bytes)) {
-            skins[i] = (noted_skin_t){0};
+        if (inside(table->skins[i].head.key, block, bytes)) {
+            table->skins[i] = (noted_skin_t){0};
         }
     }
     for (int i = 0; i < FRAME_RECORD_NOTED_BUILT_MAX; i++) {
-        if (inside(built[i].head.key, block, bytes)) {
-            built[i] = (noted_built_t){0};
+        if (inside(table->built[i].head.key, block, bytes)) {
+            table->built[i] = (noted_built_t){0};
         }
     }
 }
@@ -137,16 +168,19 @@ frame_record_forget(const void* block, size_t bytes) {
 #if BUILD_VARIANT_SELFTEST_OR_HOST
 void
 frame_record_forget_notes(void) {
-    memset(skins, 0, sizeof skins);
-    memset(built, 0, sizeof built);
+    if (notes != NULL) {
+        memset(notes, 0, sizeof *notes);
+    }
 }
 #endif
 
 static noted_skin_t*
 skin_of(const r3d_lit_mesh_t* mesh) {
-    for (int i = 0; i < FRAME_RECORD_NOTED_SKINS_MAX; i++) {
-        if (skins[i].head.key == mesh->positions && skins[i].vertex_count == mesh->vertex_count) {
-            return &skins[i];
+    notes_t* table = notes;
+    for (int i = 0; table != NULL && i < FRAME_RECORD_NOTED_SKINS_MAX; i++) {
+        noted_skin_t* note = &table->skins[i];
+        if (note->head.key == mesh->positions && note->vertex_count == mesh->vertex_count) {
+            return note;
         }
     }
     return NULL;
@@ -154,9 +188,11 @@ skin_of(const r3d_lit_mesh_t* mesh) {
 
 static noted_built_t*
 built_of(const r3d_lit_mesh_t* mesh) {
-    for (int i = 0; i < FRAME_RECORD_NOTED_BUILT_MAX; i++) {
-        if (built[i].head.key == mesh->positions && built[i].vertex_count == mesh->vertex_count) {
-            return &built[i];
+    notes_t* table = notes;
+    for (int i = 0; table != NULL && i < FRAME_RECORD_NOTED_BUILT_MAX; i++) {
+        noted_built_t* note = &table->built[i];
+        if (note->head.key == mesh->positions && note->vertex_count == mesh->vertex_count) {
+            return note;
         }
     }
     return NULL;
@@ -270,12 +306,38 @@ record_built(int index, noted_built_t* b, bool keyframe) {
 /* After a frame: every instance drawing a fresh mesh has carried it. */
 static void
 clear_fresh(void) {
-    for (int i = 0; i < FRAME_RECORD_NOTED_SKINS_MAX; i++) {
-        skins[i].fresh = false;
+    notes_t* table = notes;
+    for (int i = 0; table != NULL && i < FRAME_RECORD_NOTED_SKINS_MAX; i++) {
+        table->skins[i].fresh = false;
     }
-    for (int i = 0; i < FRAME_RECORD_NOTED_BUILT_MAX; i++) {
-        built[i].fresh = false;
+    for (int i = 0; table != NULL && i < FRAME_RECORD_NOTED_BUILT_MAX; i++) {
+        table->built[i].fresh = false;
     }
+}
+
+/* A MESH record: where instance `index`'s mesh, colours and batch come from, and its place. */
+static void
+record_mesh_place(int index, const r3d_instance_t* instance, const r3d_batch_t* batch, frame_record_kind_t kind,
+                  const void* positions) {
+    const r3d_lit_mesh_t* mesh = instance->mesh;
+    frame_record_mesh_t m = {.index = (uint16_t)index, .kind = (uint8_t)kind, .placed = instance->model != NULL};
+    m.positions = where(positions);
+    m.colours = where(mesh->colors);
+    m.batch = where(batch != NULL ? (const void*)batch->places : NULL);
+    const mat4f_t model = instance->model != NULL ? *instance->model : mat4f_identity();
+    memcpy(m.model, &model, sizeof m.model);
+    record(FRAME_RECORD_MESH, &m, sizeof m);
+}
+
+static frame_record_kind_t
+mesh_kind(bool batched, bool skinned, bool built_here) {
+    if (batched) {
+        return FRAME_RECORD_BATCH;
+    }
+    if (skinned) {
+        return FRAME_RECORD_SKINNED;
+    }
+    return built_here ? FRAME_RECORD_BUILT : FRAME_RECORD_STATIC;
 }
 
 static void
@@ -283,19 +345,9 @@ record_mesh(int index, const r3d_instance_t* instance, const r3d_batch_t* batch,
     const r3d_lit_mesh_t* mesh = instance->mesh;
     noted_skin_t* skin = skin_of(mesh);
     noted_built_t* b = skin == NULL ? built_of(mesh) : NULL;
-    const bool changed = moved(index, mesh, batch, instance->model);
-    if (keyframe || changed) {
-        frame_record_mesh_t m = {.index = (uint16_t)index, .placed = instance->model != NULL};
-        m.kind = batch != NULL  ? FRAME_RECORD_BATCH
-                 : skin != NULL ? FRAME_RECORD_SKINNED
-                 : b != NULL    ? FRAME_RECORD_BUILT
-                                : FRAME_RECORD_STATIC;
-        m.positions = where(skin != NULL ? skin->bind_positions : (const void*)mesh->positions);
-        m.colours = where(mesh->colors);
-        m.batch = where(batch != NULL ? (const void*)batch->places : NULL);
-        const mat4f_t model = instance->model != NULL ? *instance->model : mat4f_identity();
-        memcpy(m.model, &model, sizeof m.model);
-        record(FRAME_RECORD_MESH, &m, sizeof m);
+    if (moved(index, mesh, batch, instance->model) || keyframe) {
+        record_mesh_place(index, instance, batch, mesh_kind(batch != NULL, skin != NULL, b != NULL),
+                          skin != NULL ? skin->bind_positions : (const void*)mesh->positions);
     }
     if (skin != NULL) {
         record_pose(index, skin, keyframe);
@@ -400,21 +452,10 @@ frame_record_counts(void) {
     return rec != NULL ? rec->counts : (frame_record_counts_t){0};
 }
 
-void
-frame_record_frame(const render_context_t* context, const raster_t* raster, uint32_t dt_ms) {
-    if (rec == NULL) {
-        return;
-    }
-    FRAME_COST_BEGIN(recorded_from);
+/* The frame's own records: FRAME, VIEW, CHOICE, a pending CHECK, the tunables. */
+static void
+record_frame_head(const render_context_t* context, const raster_t* raster, uint32_t dt_ms, bool keyframe) {
     const bool generated = context->frame.generated;
-    const bool keyframe_due = rec->keyframe_next || rec->index % rec->keyframe_every == 0;
-    /* A generated frame draws no meshes, so it cannot be a keyframe: the next drawn frame is. */
-    const bool keyframe = keyframe_due && !generated;
-    rec->size = 0;
-    rec->overflowed = false;
-    if (keyframe) {
-        rec->packs_named = 0;
-    }
     const frame_record_frame_t frame = {
         .index = rec->index,
         .dt_ms = dt_ms,
@@ -432,28 +473,57 @@ frame_record_frame(const render_context_t* context, const raster_t* raster, uint
         record(FRAME_RECORD_CHECK, &rec->check, sizeof rec->check);
     }
     record_tunables(keyframe);
-    if (!generated) {
-        for (int i = 0; i < raster->instance_count; i++) {
-            record_mesh(i, &raster->instances[i], NULL, keyframe);
-        }
-        for (int i = 0; i < raster->batch_count; i++) {
-            record_mesh(raster->instance_count + i, &raster->batches[i].instance, raster->batches[i].batch, keyframe);
-        }
+}
+
+static void
+record_meshes(const raster_t* raster, bool keyframe) {
+    for (int i = 0; i < raster->instance_count; i++) {
+        record_mesh(i, &raster->instances[i], NULL, keyframe);
     }
-    rec->index++;
-    const bool taken = !rec->overflowed && rec->out.write(rec->out.sink, rec->bytes, rec->size);
+    for (int i = 0; i < raster->batch_count; i++) {
+        record_mesh(raster->instance_count + i, &raster->batches[i].instance, raster->batches[i].batch, keyframe);
+    }
+}
+
+/* After the sink took the frame or not: what the next frame owes. */
+static void
+settle(bool taken, bool keyframe_due, bool keyframe) {
     if (taken) {
         rec->counts.frames++;
     } else {
         rec->counts.dropped++;
     }
-    if (!generated) {
-        clear_fresh(); /* a generated frame carried no pose or build: the next drawn one does */
-    }
     rec->checked = rec->checked && !taken;
     rec->keyframe_next = !taken || (keyframe_due && !keyframe);
     rec->after_drop = !taken;
     rec->check_due = taken && keyframe;
+}
+
+void
+frame_record_frame(const render_context_t* context, const raster_t* raster, uint32_t dt_ms) {
+    if (rec == NULL) {
+        return;
+    }
+    FRAME_COST_BEGIN(recorded_from);
+    const bool generated = context->frame.generated;
+    const bool keyframe_due = rec->keyframe_next || rec->index % rec->keyframe_every == 0;
+    /* A generated frame draws no meshes, so it cannot be a keyframe: the next drawn frame is. */
+    const bool keyframe = keyframe_due && !generated;
+    rec->size = 0;
+    rec->overflowed = false;
+    if (keyframe) {
+        rec->packs_named = 0;
+    }
+    record_frame_head(context, raster, dt_ms, keyframe);
+    if (!generated) {
+        record_meshes(raster, keyframe);
+    }
+    rec->index++;
+    const bool taken = !rec->overflowed && rec->out.write(rec->out.sink, rec->bytes, rec->size);
+    if (!generated) {
+        clear_fresh(); /* a generated frame carried no pose or build: the next drawn one does */
+    }
+    settle(taken, keyframe_due, keyframe);
     FRAME_COST_END(recorded_from, FRAME_RECORD_STAGE_NAME);
 }
 

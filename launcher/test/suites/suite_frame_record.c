@@ -50,7 +50,7 @@ typedef struct {
 static sink_t* sink;
 static render_context_t* context;
 static raster_rig_t* rig;
-static found_t found[RECORDS_MAX];
+static found_t* found; /* RECORDS_MAX, taken per test: on-chip RAM is scarce */
 static int found_count;
 
 static bool
@@ -74,6 +74,9 @@ release(void) {
     }
     free(sink);
     sink = NULL;
+    free(found);
+    found = NULL;
+    found_count = 0;
     if (context != NULL) {
         render_context_release(context);
     }
@@ -97,6 +100,8 @@ open_recording(int refused) {
     TEST_ASSERT_NOT_NULL(sink);
     sink->bytes = malloc(SINK_BYTES);
     TEST_ASSERT_NOT_NULL(sink->bytes);
+    found = calloc(RECORDS_MAX, sizeof(*found));
+    TEST_ASSERT_NOT_NULL(found);
     sink->refused = refused;
     render_context_set_scale(context, 100);
     const frame_record_out_t out = {take, sink};
@@ -240,6 +245,27 @@ reset_knob(void) {
     release();
 }
 
+/* How many TUNE records in the k-th frame name `name`, the last one's value in `value`. Other tunables may be
+ * off their initial values already, as a booted board's settings leave them. */
+static int
+tunes_named(int k, const char* name, int32_t* value) {
+    const int at = frame_at(k);
+    TEST_ASSERT_TRUE(at >= 0);
+    int count = 0;
+    for (int i = at + 1; i < found_count && found[i].type != FRAME_RECORD_FRAME; i++) {
+        frame_record_tune_t tune;
+        if (found[i].type != FRAME_RECORD_TUNE) {
+            continue;
+        }
+        memcpy(&tune, found[i].body, sizeof tune);
+        if (strncmp(tune.name, name, sizeof tune.name) == 0) {
+            *value = tune.value;
+            count++;
+        }
+    }
+    return count;
+}
+
 static void
 test_a_changed_tunable_rides_in_the_next_frame_and_every_keyframe_while_off_its_initial(void) {
     knob = tune_find(tune_shared(), TUNE_NAME(render, cull));
@@ -254,14 +280,15 @@ test_a_changed_tunable_rides_in_the_next_frame_and_every_keyframe_while_off_its_
         draw_frame();
     }
     find_records();
-    TEST_ASSERT_EQUAL_INT(0, count_in_frame(0, FRAME_RECORD_TUNE));
+    int32_t recorded = 0;
+    TEST_ASSERT_EQUAL_INT(0, tunes_named(0, knob->name, &recorded));
     TEST_ASSERT_EQUAL_INT(1, count_in_frame(1, FRAME_RECORD_TUNE));
-    frame_record_tune_t tune;
-    memcpy(&tune, first_in_frame(1, FRAME_RECORD_TUNE)->body, sizeof tune);
-    TEST_ASSERT_EQUAL_STRING_LEN(knob->name, tune.name, strlen(knob->name));
-    TEST_ASSERT_EQUAL_INT32(value, tune.value);
+    TEST_ASSERT_EQUAL_INT(1, tunes_named(1, knob->name, &recorded));
+    TEST_ASSERT_EQUAL_INT32(value, recorded);
     TEST_ASSERT_EQUAL_INT(0, count_in_frame(2, FRAME_RECORD_TUNE));
-    TEST_ASSERT_EQUAL_INT(1, count_in_frame(KEYFRAME_EVERY, FRAME_RECORD_TUNE));
+    recorded = 0;
+    TEST_ASSERT_EQUAL_INT(1, tunes_named(KEYFRAME_EVERY, knob->name, &recorded));
+    TEST_ASSERT_EQUAL_INT32(value, recorded);
 }
 
 static void

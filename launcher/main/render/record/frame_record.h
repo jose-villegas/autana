@@ -61,6 +61,11 @@ frame_record_counts_t frame_record_counts(void);
  * draw after render_context_draw(), which has made its choices. */
 void frame_record_frame(const render_context_t* context, const raster_t* raster, uint32_t dt_ms);
 
+/* Takes the table of notes below in external RAM, kept for the run; until
+ * then nothing is noted. A development boot takes it before any scene
+ * loads. False when it does not fit; true when already taken. */
+bool frame_record_take_notes(void);
+
 /* `posed` is `bind` posed by `palette`, `joints` matrices kept by the caller. */
 void frame_record_note_skin(const r3d_lit_mesh_t* posed, const r3d_lit_mesh_t* bind, const mat4f_t* palette,
                             int joints);
@@ -72,7 +77,8 @@ void frame_record_forget(const void* block, size_t bytes);
  * a CHECK when that frame was a keyframe, which the next frame carries. */
 void frame_record_note_shown(const uint16_t* pixels, int width, int height);
 #if BUILD_VARIANT_SELFTEST_OR_HOST
-/* Forgets every noted skin and built mesh: a test's notes outlive its meshes. */
+/* Forgets every noted skin and built mesh: a test's notes outlive its
+ * meshes. The table stays taken. */
 void frame_record_forget_notes(void);
 #endif
 #else
@@ -116,6 +122,11 @@ frame_record_note_built(const r3d_lit_mesh_t* built, const r3d_dynamic_source_t*
     (void)built;
     (void)source;
     (void)fitted;
+}
+
+static inline bool
+frame_record_take_notes(void) {
+    return true; /* nothing to take: a release build notes nothing */
 }
 
 static inline void

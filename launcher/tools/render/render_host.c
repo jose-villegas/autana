@@ -504,6 +504,11 @@ render_host_open(const frame_provider_t* provider, int argc, char** argv, int* e
         return false;
     }
     app_arena_enter();
+    if (host.record_path != NULL && !frame_record_take_notes()) {
+        app_arena_exit();
+        fprintf(stderr, "%s: no memory for the frame record notes\n", host.provider->name);
+        return false;
+    }
     if (!gfx_init()) {
         app_arena_exit();
         fprintf(stderr, "gfx_init failed\n");
