@@ -9,6 +9,7 @@
 #include "gfx/target/gfx_color.h"
 #include "input/input.h"
 #include "math/geometry/recti.h"
+#include "ui/ui.h"
 
 #define RIDGE_CURVE_POINTS GFX_HEIGHT
 #define RIDGE_CURVE_VIEW_H GFX_WIDTH
@@ -47,6 +48,10 @@ void ui_ridge_step(const input_t* input, uint32_t dt_ms);
  * (its gradient, a dissolve); a smaller area repaints what the step last
  * painted there. */
 void ui_ridge_paint(recti_t area);
+
+/* Where the last ui_ridge_step() painted, for ui_end_over(); NULL with no
+ * ridge. */
+const ui_fresh_t* ui_ridge_fresh(void);
 
 #if BUILD_VARIANT_SELFTEST_OR_HOST
 #include "physics/spring/spring_line.h"

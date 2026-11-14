@@ -938,7 +938,7 @@ skinned_frame(const half_skin_t* skin, const input_t* in) {
     ui_screen();
     ui_skin(&faces);
     (void)ui_button(UNDER_BUTTON, "GO");
-    (void)ui_end_over(paint_under_backdrop);
+    (void)ui_end_over(paint_under_backdrop, NULL);
     gfx_present();
 }
 
@@ -1000,6 +1000,9 @@ static const recti_t NARROW_CLIP = {60, 90, 90, 90};
 static const recti_t SMALL_WINDOW = {50, 100, 100, 60};
 static const recti_t BESIDE_WINDOW = {47, 110, 1, 1};
 static int stripe_phase;
+/* Where the step painted, given to ui_end_over() when `stripe_says_fresh`. */
+static ui_fresh_t stripe_fresh;
+static bool stripe_says_fresh;
 
 static recti_t
 stripe_rect(void) {
@@ -1023,17 +1026,31 @@ paint_stripe_backdrop(recti_t area) {
 }
 
 typedef enum {
-    STEP_STRIPE,        /* the stripe moves */
-    STEP_STRIPE_ROWS,   /* the stripe moves, its rows marked whole */
-    STEP_BESIDE_WINDOW, /* one pixel beside SMALL_WINDOW drawn again */
+    STEP_STRIPE,            /* the stripe moves */
+    STEP_STRIPE_ROWS,       /* the stripe moves, its rows marked whole */
+    STEP_BESIDE_WINDOW,     /* one pixel beside SMALL_WINDOW drawn again */
+    STEP_FRESH_PAST_MAX,    /* the stripe moves, said in more pieces than fit */
+    STEP_FRESH_OVERLAPPING, /* the stripe moves, said in two pieces sharing a row */
 } backdrop_step_t;
 
+/* The rows [y0, y1) said fresh in pieces half a row wide: two a row. */
+static void
+add_half_rows(int y0, int y1) {
+    for (int y = y0; y < y1; y++) {
+        ui_fresh_add(&stripe_fresh, (recti_t){0, y, GFX_WIDTH / 2, 1});
+        ui_fresh_add(&stripe_fresh, (recti_t){GFX_WIDTH / 2, y, GFX_WIDTH - (GFX_WIDTH / 2), 1});
+    }
+}
+
 /* What the backdrop draws before a frame, as an animated backdrop draws
- * only what changed: a moving stripe where it was and where it is. */
+ * only what changed: a moving stripe where it was and where it is. It says
+ * where in `stripe_fresh`. */
 static void
 step_backdrop(backdrop_step_t step) {
+    ui_fresh_clear(&stripe_fresh);
     if (step == STEP_BESIDE_WINDOW) {
         paint_stripe_backdrop(BESIDE_WINDOW);
+        ui_fresh_add(&stripe_fresh, BESIDE_WINDOW);
         return;
     }
     const recti_t was = stripe_rect();
@@ -1044,6 +1061,23 @@ step_backdrop(backdrop_step_t step) {
     if (step == STEP_STRIPE_ROWS) {
         gfx_mark_rows_dirty(was.y, recti_bottom(now));
     }
+    const recti_t moved = recti_union(was, now);
+    if (step == STEP_FRESH_PAST_MAX) {
+        add_half_rows(moved.y, recti_bottom(moved));
+        TEST_ASSERT_TRUE(stripe_fresh.overflow);
+    } else if (step == STEP_FRESH_OVERLAPPING) {
+        const int shared = moved.y + (moved.h / 2);
+        ui_fresh_add(&stripe_fresh, recti_from_edges(0, moved.y, GFX_WIDTH, shared + 1));
+        ui_fresh_add(&stripe_fresh, recti_from_edges(0, shared, GFX_WIDTH, recti_bottom(moved)));
+        TEST_ASSERT_TRUE(stripe_fresh.overflow);
+    } else {
+        ui_fresh_add(&stripe_fresh, moved);
+    }
+}
+
+static const ui_fresh_t*
+stripe_fresh_given(void) {
+    return stripe_says_fresh ? &stripe_fresh : NULL;
 }
 
 typedef enum {
@@ -1063,7 +1097,7 @@ replay_scene_frame(const half_skin_t* skin, replay_scene_t scene) {
         ui_window(SMALL_WINDOW);
         ui_skin(&faces);
         (void)ui_button(SMALL_WINDOW, "IN");
-        (void)ui_end_over(paint_stripe_backdrop);
+        (void)ui_end_over(paint_stripe_backdrop, stripe_fresh_given());
         gfx_present();
         return;
     }
@@ -1083,14 +1117,16 @@ replay_scene_frame(const half_skin_t* skin, replay_scene_t scene) {
     if (scene == REPLAY_OVERLAP) {
         (void)ui_button(OVER_BUTTON, "UP");
     }
-    (void)ui_end_over(paint_stripe_backdrop);
+    (void)ui_end_over(paint_stripe_backdrop, stripe_fresh_given());
     gfx_present();
 }
 
 /* An unchanged UI replayed over a moving backdrop leaves every pixel as a
- * whole repaint of the same frame would, frame after frame. */
+ * whole repaint of the same frame would, frame after frame: over the dirt,
+ * and over the places the backdrop says it painted. */
 static void
-assert_replay_matches_a_whole_repaint(replay_scene_t scene, int turns, backdrop_step_t step) {
+assert_replay_matches_a_whole_repaint_given(replay_scene_t scene, int turns, backdrop_step_t step, bool says_fresh) {
+    stripe_says_fresh = says_fresh;
     face_fixture();
     ui_set_transform(ui_transform_quarter_turn(turns, GFX_WIDTH, GFX_HEIGHT));
     stripe_phase = 0;
@@ -1108,6 +1144,12 @@ assert_replay_matches_a_whole_repaint(replay_scene_t scene, int turns, backdrop_
                                          "a replay leaves what a whole repaint leaves");
     }
     face_fixture_end();
+}
+
+static void
+assert_replay_matches_a_whole_repaint(replay_scene_t scene, int turns, backdrop_step_t step) {
+    assert_replay_matches_a_whole_repaint_given(scene, turns, step, false);
+    assert_replay_matches_a_whole_repaint_given(scene, turns, step, true);
 }
 
 static void
@@ -1141,6 +1183,43 @@ test_a_replay_over_rows_marked_whole_matches_a_whole_repaint(void) {
 static void
 test_dirt_beside_a_window_replays_its_face_as_a_whole_repaint(void) {
     assert_replay_matches_a_whole_repaint(REPLAY_SMALL_WINDOW, 0, STEP_BESIDE_WINDOW);
+}
+
+/* Said in more pieces than the list holds, or in pieces that overlap, the
+ * places are not used: the replay goes over the dirt. */
+static void
+test_fresh_places_past_the_max_replay_as_a_whole_repaint(void) {
+    assert_replay_matches_a_whole_repaint_given(REPLAY_OVERLAP, 0, STEP_FRESH_PAST_MAX, true);
+}
+
+static void
+test_fresh_places_sharing_a_row_replay_as_a_whole_repaint(void) {
+    assert_replay_matches_a_whole_repaint_given(REPLAY_OVERLAP, 0, STEP_FRESH_OVERLAPPING, true);
+}
+
+/* Places that touch along an edge share no pixel and stay; one more than
+ * the list holds, or one sharing a pixel, overflows it; an empty one is no
+ * place. */
+static void
+test_the_fresh_list_keeps_disjoint_places_only(void) {
+    ui_fresh_t fresh;
+    ui_fresh_clear(&fresh);
+    ui_fresh_add(&fresh, (recti_t){0, 0, 10, 10});
+    ui_fresh_add(&fresh, (recti_t){10, 0, 10, 10});
+    ui_fresh_add(&fresh, (recti_t){0, 10, 20, 10});
+    ui_fresh_add(&fresh, (recti_t){5, 5, 0, 10});
+    TEST_ASSERT_FALSE(fresh.overflow);
+    TEST_ASSERT_EQUAL_INT(3, fresh.count);
+    ui_fresh_add(&fresh, (recti_t){19, 19, 1, 1});
+    TEST_ASSERT_TRUE(fresh.overflow);
+
+    ui_fresh_clear(&fresh);
+    for (int i = 0; i < UI_FRESH_MAX; i++) {
+        ui_fresh_add(&fresh, (recti_t){i, 0, 1, 1});
+    }
+    TEST_ASSERT_FALSE(fresh.overflow);
+    ui_fresh_add(&fresh, (recti_t){UI_FRESH_MAX, 0, 1, 1});
+    TEST_ASSERT_TRUE(fresh.overflow);
 }
 
 static void
@@ -1863,6 +1942,9 @@ run_ui_widgets_suite(void) {
     RUN_TEST(test_a_quarter_turned_ui_replays_as_a_whole_repaint);
     RUN_TEST(test_a_replay_over_rows_marked_whole_matches_a_whole_repaint);
     RUN_TEST(test_dirt_beside_a_window_replays_its_face_as_a_whole_repaint);
+    RUN_TEST(test_fresh_places_past_the_max_replay_as_a_whole_repaint);
+    RUN_TEST(test_fresh_places_sharing_a_row_replay_as_a_whole_repaint);
+    RUN_TEST(test_the_fresh_list_keeps_disjoint_places_only);
     RUN_TEST(test_closing_the_list_restores_the_pixels_under_it);
     RUN_TEST(test_ui_end_in_band_mode_is_replayed_over_each_band);
     RUN_TEST(test_changed_ui_over_a_held_expanded_picture_dirties_its_band);

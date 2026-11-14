@@ -164,7 +164,26 @@ bool ui_end_if_unsettled(void);
  * put back under all but opaque rects there, so nothing translucent blends
  * over itself. Full framebuffer only. */
 typedef void (*ui_backdrop_fn)(recti_t area);
-bool ui_end_over(ui_backdrop_fn paint_backdrop);
+
+/* The places a backdrop painted fresh this frame: disjoint, each pixel the
+ * backdrop alone, together holding every pixel it changed. One added past
+ * UI_FRESH_MAX, or one overlapping another, overflows the list. */
+#define UI_FRESH_MAX 32
+
+typedef struct {
+    recti_t rects[UI_FRESH_MAX];
+    int count;
+    bool overflow;
+} ui_fresh_t;
+
+void ui_fresh_clear(ui_fresh_t* fresh);
+void ui_fresh_add(ui_fresh_t* fresh, recti_t rect);
+void ui_fresh_whole(ui_fresh_t* fresh);
+
+/* `fresh`, when the backdrop alone drew this frame, says where: the unchanged
+ * UI is replayed over just those places and nothing is put back. NULL, or
+ * one overflowed, replays over the frame's dirt as above. */
+bool ui_end_over(ui_backdrop_fn paint_backdrop, const ui_fresh_t* fresh);
 
 /* Declare that the framebuffer no longer holds this UI's output, so the
  * next ui_end() must repaint even if the UI is unchanged. Needed

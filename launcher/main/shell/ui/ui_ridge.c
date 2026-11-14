@@ -146,6 +146,7 @@ typedef struct {
     int dissolve_restarts;
 #endif
     edge_lines_t was_lines, now_lines;
+    ui_fresh_t fresh; /* where this frame's step painted */
     uint8_t lip_alpha[RIDGE_LAYER_COUNT][RIDGE_MAX_LIP_PX];
     uint32_t theme_seed, tuned_at, alive_ms, wave_ms, shake_seed;
     float shake;
@@ -159,6 +160,9 @@ typedef struct {
 #define RIDGE_LEVEL_HEIGHT (RIDGE_CURVE_VIEW_H / 2)
 
 #define TAG                "ui_ridge"
+_Static_assert((((GFX_WIDTH > GFX_HEIGHT) ? GFX_WIDTH : GFX_HEIGHT) + RIDGE_COLUMN_GROUP - 1) / RIDGE_COLUMN_GROUP
+                   <= UI_FRESH_MAX,
+               "a step's bands fit the fresh list");
 static const int16_t level_height = RIDGE_LEVEL_HEIGHT * RIDGE_SUBPIXEL_ONE;
 static const int16_t* curve;
 static ridge_t* ridge;
@@ -800,8 +804,10 @@ repaint_group_row(gfx_color_t* row, const int16_t* lo, const int16_t* hi, int x0
     }
 }
 
+/* The group's box, every row any of its columns needs across all of them,
+ * is repainted whole, so the ridge can say it is fresh. */
 static void
-repaint_column_group(const int16_t* lo, const int16_t* hi, int x0) {
+repaint_column_group(int16_t* lo, int16_t* hi, int x0) {
     const int x1 = x0 + RIDGE_COLUMN_GROUP < GFX_WIDTH ? x0 + RIDGE_COLUMN_GROUP : GFX_WIDTH;
     int y0;
     int y1;
@@ -809,6 +815,11 @@ repaint_column_group(const int16_t* lo, const int16_t* hi, int x0) {
     if (y0 >= y1) {
         return;
     }
+    for (int x = 0; x < x1 - x0; x++) {
+        lo[x] = (int16_t)y0;
+        hi[x] = (int16_t)y1;
+    }
+    ui_fresh_add(&ridge->fresh, recti_from_edges(x0, y0, x1, y1));
     gfx_color_t* const framebuffer = gfx_framebuffer();
     int left = x1;
     int right = x0;
@@ -823,20 +834,18 @@ repaint_column_group(const int16_t* lo, const int16_t* hi, int x0) {
     }
 }
 
-/* The rows of column `x` that layer `layer`'s move needs repainted; the
- * move is then what the screen shows. */
+/* Widens [*lo, *hi) by what strip `strip`'s layers' moves need repainted;
+ * the moves are then what the screen shows. */
 static void
-column_repaint_rows(int layer, int x, int16_t* lo, int16_t* hi) {
-    const int was = ridge->shown[layer][x];
-    const int now = ridge->boundary[layer][x];
-    int first = INT_MAX;
-    int last = INT_MIN;
-    if (was != now) {
-        extend_repaint_range(was, now, &first, &last);
+extend_strip_repaint(int strip, int* lo, int* hi) {
+    for (int layer = 0; layer < RIDGE_LAYER_COUNT; layer++) {
+        const int was = ridge->shown[layer][strip];
+        const int now = ridge->boundary[layer][strip];
+        if (was != now) {
+            extend_repaint_range(was, now, lo, hi);
+        }
+        ridge->shown[layer][strip] = (int16_t)now;
     }
-    *lo = (int16_t)mathi_clamp(first, 0, GFX_HEIGHT);
-    *hi = (int16_t)mathi_clamp(last, 0, GFX_HEIGHT);
-    ridge->shown[layer][x] = (int16_t)now;
 }
 
 /* Portrait: a column's pixels are a row apart in the framebuffer, so paint
@@ -845,36 +854,48 @@ static void
 repaint_changed_columns(void) {
     int16_t lo[RIDGE_COLUMN_GROUP];
     int16_t hi[RIDGE_COLUMN_GROUP];
-    for (int layer = 0; layer < RIDGE_LAYER_COUNT; layer++) {
-        for (int x0 = 0; x0 < GFX_WIDTH; x0 += RIDGE_COLUMN_GROUP) {
-            const int x1 = x0 + RIDGE_COLUMN_GROUP < GFX_WIDTH ? x0 + RIDGE_COLUMN_GROUP : GFX_WIDTH;
-            for (int x = x0; x < x1; x++) {
-                column_repaint_rows(layer, x, &lo[x - x0], &hi[x - x0]);
-            }
-            repaint_column_group(lo, hi, x0);
+    for (int x0 = 0; x0 < GFX_WIDTH; x0 += RIDGE_COLUMN_GROUP) {
+        const int x1 = x0 + RIDGE_COLUMN_GROUP < GFX_WIDTH ? x0 + RIDGE_COLUMN_GROUP : GFX_WIDTH;
+        for (int x = x0; x < x1; x++) {
+            int first = INT_MAX;
+            int last = INT_MIN;
+            extend_strip_repaint(x, &first, &last);
+            lo[x - x0] = (int16_t)mathi_clamp(first, 0, GFX_HEIGHT);
+            hi[x - x0] = (int16_t)mathi_clamp(last, 0, GFX_HEIGHT);
         }
+        repaint_column_group(lo, hi, x0);
     }
 }
 
+/* Strips go in bands of RIDGE_COLUMN_GROUP, each band's span repainted
+ * across all of its strips, so the band is one fresh box. */
 static void
 repaint_changed(void) {
+    if (dissolving()) {
+        ridge->fresh.overflow = true; /* a dissolve leaves pixels undissolved */
+    }
     if (ridge->by_column && ridge->scanline_dither) {
         repaint_changed_columns();
         return;
     }
-    for (int strip = 0; strip < ridge->strips; strip++) {
-        for (int layer = 0; layer < RIDGE_LAYER_COUNT; layer++) {
-            const int was = ridge->shown[layer][strip];
-            const int now = ridge->boundary[layer][strip];
-            if (was == now) {
-                continue;
-            }
-            int lo = INT_MAX;
-            int hi = INT_MIN;
-            extend_repaint_range(was, now, &lo, &hi);
-            ridge->shown[layer][strip] = (int16_t)now;
+    const int along = ridge->by_column ? GFX_HEIGHT : GFX_WIDTH;
+    for (int s0 = 0; s0 < ridge->strips; s0 += RIDGE_COLUMN_GROUP) {
+        const int s1 = s0 + RIDGE_COLUMN_GROUP < ridge->strips ? s0 + RIDGE_COLUMN_GROUP : ridge->strips;
+        int lo = INT_MAX;
+        int hi = INT_MIN;
+        for (int strip = s0; strip < s1; strip++) {
+            extend_strip_repaint(strip, &lo, &hi);
+        }
+        lo = mathi_clamp(lo, 0, along);
+        hi = mathi_clamp(hi, lo, along);
+        if (lo >= hi) {
+            continue;
+        }
+        for (int strip = s0; strip < s1; strip++) {
             repaint_strip(strip, lo, hi);
         }
+        ui_fresh_add(&ridge->fresh,
+                     ridge->by_column ? recti_from_edges(s0, lo, s1, hi) : recti_from_edges(lo, s0, hi, s1));
     }
 }
 
@@ -1007,6 +1028,7 @@ repaint_swept_row(int y) {
  * between each shade edge's old and new line. */
 static void
 repaint_gradient_turn(ridge_vector_t was) {
+    ridge->fresh.overflow = true; /* a row each, more than the list holds */
     edge_lines(&ridge->was_lines, was);
     edge_lines(&ridge->now_lines, ridge->gradient_pose);
     for (int y = 0; y < GFX_HEIGHT; y++) {
@@ -1040,6 +1062,7 @@ paint_dissolve_row(int y, int c) {
 
 static void
 paint_dissolve_level(int level) {
+    ridge->fresh.overflow = true;
     for (int cell = 0; cell < DISSOLVE_LEVELS; cell++) {
         if (bayer4x4[cell / 4][cell % 4] == level) {
             for (int y = cell / 4; y < GFX_HEIGHT; y += 4) {
@@ -1153,6 +1176,7 @@ paint_all(void) {
     }
     paint_pixels(gfx_framebuffer());
     gfx_mark_all_dirty();
+    ui_fresh_whole(&ridge->fresh);
     memcpy(ridge->shown, ridge->boundary, sizeof ridge->shown);
     finish_dissolve();
     ridge->painted = true;
@@ -1496,6 +1520,12 @@ ui_ridge_step(const input_t* input, uint32_t dt_ms) {
     raster_boundaries();
     FRAME_COST_END(layers_from, "ridge.layers");
     FRAME_COST_BEGIN(painted_from);
+    ui_fresh_clear(&ridge->fresh);
     paint_this_frame(retuned, dt_ms);
     FRAME_COST_END(painted_from, "ridge.paint");
+}
+
+const ui_fresh_t*
+ui_ridge_fresh(void) {
+    return ridge != NULL ? &ridge->fresh : NULL;
 }

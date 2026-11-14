@@ -26,6 +26,7 @@ typedef struct {
     int frames, dissolved;
     int unsent_px, first_unsent_frame;
     int unlike_px, first_unlike_frame;
+    int unfresh_px, first_unfresh_frame, fresh_frames;
 } audit_t;
 
 /* What a frame is compared with: the frame before it, and a full paint that
@@ -60,7 +61,7 @@ prime(void) {
 
 static void
 rig_open(rig_t* rig) {
-    *rig = (rig_t){.audit = {.first_unsent_frame = -1, .first_unlike_frame = -1}};
+    *rig = (rig_t){.audit = {.first_unsent_frame = -1, .first_unlike_frame = -1, .first_unfresh_frame = -1}};
     rig->before = memory_alloc(FB_BYTES, MEMORY_APP);
     rig->reference = memory_alloc(FB_BYTES, MEMORY_APP);
     if (rig->before == NULL || rig->reference == NULL) {
@@ -102,6 +103,31 @@ unlike_a_full_paint(gfx_color_t* reference) {
     return unlike;
 }
 
+static bool
+in_fresh(const ui_fresh_t* fresh, int x, int y) {
+    for (int i = 0; i < fresh->count; i++) {
+        if (recti_contains(fresh->rects[i], x, y)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Where the step says it painted fresh, each pixel is a full paint's, and
+ * it changed nothing outside: what ui_end_over() replays the UI over alone.
+ * `reference` holds the full paint. */
+static int
+unfresh(const gfx_color_t* before, const gfx_color_t* reference) {
+    const ui_fresh_t* const fresh = ui_ridge_fresh();
+    const gfx_color_t* const now = gfx_framebuffer();
+    int wrong = 0;
+    for (size_t i = 0; i < FB_PIXELS; i++) {
+        const bool inside = in_fresh(fresh, (int)(i % GFX_WIDTH), (int)(i / GFX_WIDTH));
+        wrong += inside ? now[i] != reference[i] : now[i] != before[i];
+    }
+    return wrong;
+}
+
 /* A strip switch still dissolving in is by design unlike a full paint, but
  * what it changed must still be sent. */
 static void
@@ -111,7 +137,14 @@ rig_frame(rig_t* rig, const input_t* input) {
     const int unsent = unsent_changes(rig->before);
     const bool dissolving = ui_ridge_dissolving_for_test();
     const int unlike = dissolving ? 0 : unlike_a_full_paint(rig->reference);
+    const bool fresh = !dissolving && !ui_ridge_fresh()->overflow;
+    const int wrong = fresh ? unfresh(rig->before, rig->reference) : 0;
     gfx_present();
+    if (wrong > 0 && audit->first_unfresh_frame < 0) {
+        audit->first_unfresh_frame = audit->frames;
+    }
+    audit->unfresh_px += wrong;
+    audit->fresh_frames += fresh;
     if (unsent > 0 && audit->first_unsent_frame < 0) {
         audit->first_unsent_frame = audit->frames;
     }
@@ -135,8 +168,13 @@ assert_audit(const char* name, const audit_t* audit) {
         printf("ridge repaint %s: %d px unlike a full paint, first at frame %d\n", name, audit->unlike_px,
                audit->first_unlike_frame);
     }
+    if (audit->unfresh_px > 0) {
+        printf("ridge repaint %s: %d px wrong for the fresh places, first at frame %d\n", name, audit->unfresh_px,
+               audit->first_unfresh_frame);
+    }
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, audit->unsent_px, name);
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, audit->unlike_px, name);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, audit->unfresh_px, name);
 }
 
 static void
@@ -169,6 +207,7 @@ test_a_pluck_and_strum_repaint_as_a_full_paint_and_are_sent(void) {
     fixture();
     const audit_t audit = audit_arm(ARM_PLUCK_STRUM, 90);
     assert_audit("pluck and strum", &audit);
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, audit.fresh_frames, "the step said where it painted");
 }
 
 static void
@@ -190,6 +229,7 @@ test_the_ambient_ridge_repaints_as_a_full_paint_and_is_sent(void) {
     fixture();
     const audit_t audit = audit_arm(ARM_AMBIENT, 200);
     assert_audit("ambient landscape", &audit);
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, audit.fresh_frames, "the step said where it painted");
 }
 
 static void
@@ -197,6 +237,7 @@ test_the_ambient_ridge_held_upright_repaints_as_a_full_paint_and_is_sent(void) {
     fixture();
     const audit_t audit = audit_arm(ARM_AMBIENT_PORTRAIT, 300);
     assert_audit("ambient portrait", &audit);
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, audit.fresh_frames, "the step said where it painted");
 }
 
 static void

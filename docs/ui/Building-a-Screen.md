@@ -248,7 +248,7 @@ accumulators the pause built up.
 
 ### A screen over a backdrop that is drawn
 
-`ui_end_over(paint_backdrop)` is `ui_end()` for a backdrop that is a picture
+`ui_end_over(paint_backdrop, fresh)` is `ui_end()` for a backdrop that is a picture
 and not a colour; the launcher's ridge (`shell/ui/ui_ridge.c`) is the model.
 
 1. `paint_backdrop(area)` paints the backdrop inside a panel rectangle and
@@ -259,9 +259,13 @@ and not a colour; the launcher's ridge (`shell/ui/ui_ridge.c`) is the model.
    replayed over just those places; the backdrop is first put back there
    under every command but an opaque rect, so nothing translucent blends
    over its own last paint.
-3. At rest it must draw nothing. A backdrop that redraws an identical frame
+3. A backdrop that can say where it painted, as up to `UI_FRESH_MAX`
+   disjoint rects, each painted whole and together holding every pixel it
+   changed, passes them as `fresh` (`ui_fresh_add()`). The UI is then replayed over just those, and nothing
+   is put back. With `NULL`, or a list that overflowed, step 2 holds.
+4. At rest it must draw nothing. A backdrop that redraws an identical frame
    dirties the screen, and the launcher stops being free while idle.
-4. React to the raw `input_t`, not to the controls: a press is held back until it is known to be a tap and not a
+5. React to the raw `input_t`, not to the controls: a press is held back until it is known to be a tap and not a
    scroll, which is a frame or two too late for feedback.
 
 ### Knowing what a screen costs

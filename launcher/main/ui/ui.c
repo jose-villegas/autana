@@ -309,34 +309,81 @@ next_clipped_command(const mu_Container* cnt, mu_Command** cmd, recti_t* clip) {
     return true;
 }
 
-/* In a replay, a command is drawn again only over the dirt the frame had
- * when the replay began. Anywhere else its last paint still stands, and a
- * translucent one drawn there again would blend over itself. */
+void
+ui_fresh_clear(ui_fresh_t* fresh) {
+    fresh->count = 0;
+    fresh->overflow = false;
+}
+
+void
+ui_fresh_add(ui_fresh_t* fresh, recti_t rect) {
+    if (recti_is_empty(rect) || fresh->overflow) {
+        return;
+    }
+    for (int i = 0; i < fresh->count; i++) {
+        if (!recti_is_empty(recti_intersect(fresh->rects[i], rect))) {
+            fresh->overflow = true;
+            return;
+        }
+    }
+    if (fresh->count == UI_FRESH_MAX) {
+        fresh->overflow = true;
+        return;
+    }
+    fresh->rects[fresh->count++] = rect;
+}
+
+void
+ui_fresh_whole(ui_fresh_t* fresh) {
+    ui_fresh_clear(fresh);
+    ui_fresh_add(fresh, GFX_SCREEN_RECT);
+}
+
+/* Where a replay draws: a backdrop's fresh places when it gave them, else
+ * the dirt the frame had when the replay began. */
+typedef struct {
+    const ui_fresh_t* fresh;
+    gfx_dirty_leaves_t dirt;
+} replay_area_t;
+
+/* In a replay, a command is drawn again only over the replay's area.
+ * Anywhere else its last paint still stands, and a translucent one drawn
+ * there again would blend over itself. */
 static void
-replay_command(const mu_Command* cmd, recti_t clip, const gfx_dirty_leaves_t* dirt) {
+replay_command(const mu_Command* cmd, recti_t clip, const replay_area_t* area) {
     mu_Rect r;
     if (!command_rect(cmd, &r)) {
         return;
     }
-    gfx_dirty_leaves_t left = *dirt;
+    const recti_t drawn = recti_intersect(clip, ui_recti_from_mu(r));
     recti_t under;
-    while (gfx_dirty_leaves_take(&left, recti_intersect(clip, ui_recti_from_mu(r)), &under)) {
+    if (area->fresh != NULL) {
+        for (int i = 0; i < area->fresh->count; i++) {
+            under = recti_intersect(drawn, area->fresh->rects[i]);
+            if (!recti_is_empty(under)) {
+                draw_set_clip(under.x, under.y, under.w, under.h);
+                draw_command(cmd);
+            }
+        }
+        return;
+    }
+    gfx_dirty_leaves_t left = area->dirt;
+    while (gfx_dirty_leaves_take(&left, drawn, &under)) {
         draw_set_clip(under.x, under.y, under.w, under.h);
         draw_command(cmd);
     }
 }
 
-/* `dirt` NULL paints the whole canvas; otherwise it is replayed over that
- * dirt alone. */
+/* `area` NULL paints the whole canvas; otherwise it is replayed there. */
 static void
-paint_canvas(const mu_Container* cnt, const gfx_dirty_leaves_t* dirt) {
+paint_canvas(const mu_Container* cnt, const replay_area_t* area) {
     recti_t clip = GFX_SCREEN_RECT;
     mu_Command* cmd = NULL;
     while (next_clipped_command(cnt, &cmd, &clip)) {
-        if (dirt == NULL || cmd->type == MU_COMMAND_CLIP) {
+        if (area == NULL || cmd->type == MU_COMMAND_CLIP) {
             draw_command(cmd);
         } else {
-            replay_command(cmd, clip, dirt);
+            replay_command(cmd, clip, area);
         }
     }
     draw_clear_clip();
@@ -446,7 +493,7 @@ clear_vanished_canvases(uint32_t background_rgb) {
 }
 
 static bool
-repaint_marked_canvases(int n, const bool* repaint, uint32_t background_rgb, const gfx_dirty_leaves_t* dirt) {
+repaint_marked_canvases(int n, const bool* repaint, uint32_t background_rgb, const replay_area_t* area) {
     bool drew = false;
 
     for (int i = 0; i < n && i < MU_ROOTLIST_SIZE; i++) {
@@ -462,7 +509,7 @@ repaint_marked_canvases(int n, const bool* repaint, uint32_t background_rgb, con
             draw_rect(phys.x, phys.y, phys.w, phys.h, RGB565BE(background_rgb));
         }
 
-        paint_canvas(cnt, dirt);
+        paint_canvas(cnt, area);
 
         const int slot = (int)(cnt - ui_ctx.containers);
         if (slot >= 0 && slot < MU_CONTAINERPOOL_SIZE) {
@@ -575,9 +622,10 @@ backdrop_under_replay(int n, ui_backdrop_fn paint_backdrop, const gfx_dirty_leav
 /* A backdrop is shared by every canvas, so once the UI itself has changed
  * it is painted whole and every canvas goes over it. A UI that is unchanged
  * and only drawn under (the backdrop animating) is replayed over just the
- * dirt that left, the backdrop first put back under it. */
+ * places the backdrop painted fresh, or, without them, over the dirt that
+ * left, the backdrop first put back under it. */
 bool
-ui_end_over(ui_backdrop_fn paint_backdrop) {
+ui_end_over(ui_backdrop_fn paint_backdrop, const ui_fresh_t* fresh) {
 #if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT
     finish_band_stats();
 #endif
@@ -596,19 +644,19 @@ ui_end_over(ui_backdrop_fn paint_backdrop) {
     for (int i = 0; i < n && i < MU_ROOTLIST_SIZE; i++) {
         changed = changed || canvas_itself_changed(ui_ctx.root_list.items[i]);
     }
-    /* Every canvas goes again: a replay draws nothing where there is no
-     * dirt, and only the snapshot says where the backdrop went back. */
-    gfx_dirty_leaves_t dirt;
+    /* Every canvas goes again: a replay draws nothing outside its area, and
+     * only the area says where the backdrop is fresh. */
+    replay_area_t area = {.fresh = fresh != NULL && !fresh->overflow ? fresh : NULL};
     if (changed) {
         paint_backdrop(GFX_SCREEN_RECT);
-    } else {
-        gfx_dirty_leaves(&dirt);
-        backdrop_under_replay(n, paint_backdrop, &dirt);
+    } else if (area.fresh == NULL) {
+        gfx_dirty_leaves(&area.dirt);
+        backdrop_under_replay(n, paint_backdrop, &area.dirt);
     }
     for (int i = 0; i < n && i < MU_ROOTLIST_SIZE; i++) {
         repaint[i] = true;
     }
-    const bool drew = repaint_marked_canvases(n, repaint, UI_NO_BACKGROUND, changed ? NULL : &dirt);
+    const bool drew = repaint_marked_canvases(n, repaint, UI_NO_BACKGROUND, changed ? NULL : &area);
 
     ui_invalidated = false;
 #if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT
