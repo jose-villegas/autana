@@ -13,12 +13,12 @@ is stale, so rerun it after changing an image or the pages that show one.
 | [anim](#anim) | 5 | 0 | 0 |
 | [audio](#audio) | 40 | 0 | 0 |
 | [input](#input) | 11 | 0 | 0 |
-| [kinematics](#kinematics) | 5 | 1 | 0 |
+| [kinematics](#kinematics) | 6 | 2 | 0 |
 | [math](#math) | 25 | 25 | 0 |
-| [overview](#overview) | 29 | 0 | 0 |
+| [overview](#overview) | 30 | 0 | 0 |
 | [physics](#physics) | 2 | 0 | 0 |
 | [power](#power) | 2 | 0 | 0 |
-| [render](#render) | 132 | 6 | 0 |
+| [render](#render) | 130 | 6 | 0 |
 | [ui](#ui) | 62 | 0 | 0 |
 
 ## anim
@@ -101,6 +101,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/kinematics/orbit-fling-decay.png"><img src="../images/kinematics/orbit-fling-decay.png" width="160" alt=""></a> | Fling speed and covered angle at 16 and 50 millisecond frame steps, approaching the same limiting angle | [kinematics/Follow](../kinematics/Follow.md) | not declared yet |
 | <a href="../images/kinematics/orbit-fling.gif"><img src="figure-thumbnails/kinematics/orbit-fling.gif" width="160" alt=""></a> | 3D orbit with pose axes, a fading trail and pitch-limit circles through held steering, fling and reset to home; signed yaw and pitch speeds below | [kinematics/Orbit](../kinematics/Orbit.md) | not declared yet |
 | <a href="../images/kinematics/orbit-reset-spring.png"><img src="../images/kinematics/orbit-reset-spring.png" width="160" alt=""></a> | Reset from rest, moving away, and moving quickly toward home; the last crosses home, with dotted settle times | [kinematics/Follow](../kinematics/Follow.md) | not declared yet |
+| <a href="../images/kinematics/profile-move.png"><img src="../images/kinematics/profile-move.png" width="160" alt=""></a> | Place and speed against time for a 10-unit move that cruises at its peak and a 2-unit move whose ramps meet at half the peak | [kinematics/Profile](../kinematics/Profile.md) | [profile_figures.py](../../launcher/tools/kinematics/profile_figures.py) |
 
 ## math
 
@@ -139,6 +140,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/overview/boot-anim.gif"><img src="figure-thumbnails/overview/boot-anim.gif" width="160" alt=""></a> | The boot animation growing a grid and moving the camera through it before fading to black | [README](../../README.md) | not declared yet |
 | <a href="../images/overview/launcher-home.gif"><img src="figure-thumbnails/overview/launcher-home.gif" width="160" alt=""></a> | The launcher listing Falling Sand and Render Lab, its backdrop ridge levelling as the board rocks | [README](../../README.md) | not declared yet |
 | <a href="../images/overview/launcher-home.png"><img src="../images/overview/launcher-home.png" width="160" alt=""></a> | The launcher, rendered on a host with the release build's apps | [firmware/README](../firmware/README.md) | not declared yet |
+| <a href="../images/overview/render-lab-capybara-sponza.gif"><img src="figure-thumbnails/overview/render-lab-capybara-sponza.gif" width="160" alt=""></a> | Capybara in Sponza: the capybara's run down the atrium, rest to rest, under a third-person camera | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-capybara.gif"><img src="figure-thumbnails/overview/render-lab-capybara.gif" width="160" alt=""></a> | A skinned capybara on a meadow blending through each of its animation clips in turn, then back to the first | [README](../../README.md) | not declared yet |
 | <a href="../images/overview/render-lab-herd.gif"><img src="figure-thumbnails/overview/render-lab-herd.gif" width="160" alt=""></a> | Herd 8: eight capybaras walking, each clip at the pace of its ground speed | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-sponza.gif"><img src="figure-thumbnails/overview/render-lab-sponza.gif" width="160" alt=""></a> | A camera moving through the Crytek Sponza atrium with baked lighting on the fitted full mesh | [README](../../README.md) | not declared yet |
@@ -238,8 +240,6 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/render/framegen-bistro-sheet.crops.png"><img src="../images/render/framegen-bistro-sheet.crops.png" width="160" alt=""></a> | Bistro: the places the generated frame differs most, enlarged | [render/frame/Frame-Generation](../render/frame/Frame-Generation.md) | not declared yet |
 | <a href="../images/render/framegen-bistro-sheet.png"><img src="../images/render/framegen-bistro-sheet.png" width="160" alt=""></a> | Bistro: true and generated frames with their difference | [render/frame/Frame-Generation](../render/frame/Frame-Generation.md) | not declared yet |
 | <a href="../images/render/framegen-bistro.gif"><img src="figure-thumbnails/render/framegen-bistro.gif" width="160" alt=""></a> | Bistro: the generated frames around the one with the most holes | [render/frame/Frame-Generation](../render/frame/Frame-Generation.md) | not declared yet |
-| <a href="../images/render/framegen-pricing-dark.png"><img src="../images/render/framegen-pricing-dark.png" width="160" alt=""></a> | — | [render/frame/Frame-Generation](../render/frame/Frame-Generation.md) | not declared yet |
-| <a href="../images/render/framegen-pricing.png"><img src="../images/render/framegen-pricing.png" width="160" alt=""></a> | — | [render/frame/Frame-Generation](../render/frame/Frame-Generation.md) | not declared yet |
 | <a href="../images/render/framegen-sponza-holes.png"><img src="../images/render/framegen-sponza-holes.png" width="160" alt=""></a> | Sponza: true frame, generated frame and its holes | [render/frame/Frame-Generation](../render/frame/Frame-Generation.md) | not declared yet |
 | <a href="../images/render/gfx-layout-costs.png"><img src="../images/render/gfx-layout-costs.png" width="160" alt=""></a> | Frame cost by framebuffer layout | [gfx/Targets-and-Modes](../gfx/Targets-and-Modes.md) | not declared yet |
 | <a href="../images/render/gpu/appearance-indirect-flat.crops.png"><img src="../images/render/gpu/appearance-indirect-flat.crops.png" width="160" alt=""></a> | Flat bake, lite fit and flat fit.crops | [render/offline/Bake-Quality](../render/offline/Bake-Quality.md) | not declared yet |
