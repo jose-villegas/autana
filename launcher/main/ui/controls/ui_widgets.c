@@ -121,17 +121,17 @@ skin_face(const ui_skin_t* skin, bool enabled, bool selected, bool pressed) {
     return face != NULL ? face : skin->normal;
 }
 
-/* A skinned face is its sprite; otherwise the face is bevelled. */
 static void
-draw_face(mu_Context* ctx, mu_Rect r, mu_Color face, bool pressed, const ui_skin_t* skin, bool enabled, bool selected) {
-    if (skin->normal != NULL) {
-        ui_sprite_command_t* cmd = ui_push_clipped_command(ctx, UI_COMMAND_SPRITE, sizeof *cmd, r);
-        if (cmd != NULL) {
-            cmd->rect = r;
-            cmd->sprite = skin_face(skin, enabled, selected, pressed);
-        }
-        return;
+draw_sprite_face(mu_Context* ctx, mu_Rect r, const sprite_t* sprite) {
+    ui_sprite_command_t* cmd = ui_push_clipped_command(ctx, UI_COMMAND_SPRITE, sizeof *cmd, r);
+    if (cmd != NULL) {
+        cmd->rect = r;
+        cmd->sprite = sprite;
     }
+}
+
+static void
+draw_bevel_face(mu_Context* ctx, mu_Rect r, mu_Color face, bool pressed) {
     ui_span_t spans[UI_BEZEL_MAX_SPANS];
     draw_spans(ctx, spans, ui_bezel_spans(r, face, pressed, spans, UI_BEZEL_MAX_SPANS));
 }
@@ -149,7 +149,12 @@ begin_control(mu_Context* ctx, mu_Id mid, mu_Rect r, bool enabled, bool selected
     }
 
     const bool on_accent = enabled && selected;
-    draw_face(ctx, r, on_accent ? theme->accent_face : theme->button_face, c.pressed, &theme->skin, enabled, on_accent);
+    /* A skinned face is its sprite; otherwise the face is bevelled. */
+    if (theme->skin != NULL) {
+        draw_sprite_face(ctx, r, skin_face(theme->skin, enabled, on_accent, c.pressed));
+    } else {
+        draw_bevel_face(ctx, r, on_accent ? theme->accent_face : theme->button_face, c.pressed);
+    }
 
     if (!enabled) {
         c.ink = theme->muted;
