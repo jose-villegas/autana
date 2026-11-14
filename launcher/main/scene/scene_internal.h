@@ -156,7 +156,11 @@ typedef struct {
     uint32_t* lod_coarse; /* into the scene's lod_bits, or NULL without levels; a batch's are its copies' */
     r3d_batch_t* batch;   /* its copies, or NULL: it draws its mesh once */
     uint16_t colour_sets; /* the sets its colour arrays hold from the one opened: 1, or its batch's highest plus one */
+    void* texturing;      /* its textures once renderer_set_textured() opened them (render/texture/), or NULL */
 } scene_renderer_t;
+
+/* Frees what renderer_set_textured() opened for `r`; at the scene's close. */
+void scene_renderer_texturing_free(scene_renderer_t* r);
 
 /* Sets `r`'s world box from its mesh and model; call after either changes,
  * a skinned mesh's refit included. */

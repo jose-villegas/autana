@@ -18,6 +18,7 @@ static const char* scene_id;
 static const char* camera_name;
 static char** object_names;
 static int object_count;
+static const char* textured_name; /* the renderer drawn with its textures, or NULL */
 static int shell_quarter;
 static recti_t size_rect;
 static camera_present_t present;
@@ -37,6 +38,7 @@ reset_options(void) {
     camera_name = NULL;
     object_names = NULL;
     object_count = 0;
+    textured_name = NULL;
     size_rect = recti_empty();
     present = CAMERA_PRESENT_NEAREST;
     small_fill = SMALL_FILL_SMOOTH;
@@ -62,6 +64,8 @@ options(int argc, char** argv) {
             camera_name = value;
         } else if (strcmp(flag, "--object") == 0) {
             object_names[object_count++] = argv[i + 1];
+        } else if (strcmp(flag, "--textured") == 0) {
+            textured_name = value;
         } else if (strcmp(flag, "--size") == 0) {
             if (!recti_parse(value, NULL, &size_rect) || size_rect.x != 0 || size_rect.y != 0 || size_rect.w <= 0
                 || size_rect.h <= 0 || size_rect.w > GFX_WIDTH || size_rect.h > GFX_HEIGHT) {
@@ -152,6 +156,21 @@ select_objects(entity_t scene) {
     return true;
 }
 
+/* Draws the renderer --textured names with its textures. */
+static bool
+texture_object(entity_t scene) {
+    if (textured_name == NULL) {
+        return true;
+    }
+    scene_failure_t why;
+    if (renderer_set_textured(entity_find(scene, name_hash(textured_name)), true, &why)) {
+        return true;
+    }
+    fprintf(stderr, "scene_viewer: renderer '%s' has no textures to draw (status %d, asset %s)\n", textured_name,
+            (int)why.status, asset_status_text(why.asset));
+    return false;
+}
+
 /* The camera entity to activate: the named one, or the scene's first. */
 static entity_t
 chosen_camera(entity_t scene) {
@@ -175,7 +194,7 @@ setup(int quarter) {
         scene_release(scene);
         return false;
     }
-    const bool selected = select_objects(scene);
+    const bool selected = select_objects(scene) && texture_object(scene);
     object_names = NULL;
     if (!selected || !camera_activate(chosen_camera(scene))) {
         if (selected) {
