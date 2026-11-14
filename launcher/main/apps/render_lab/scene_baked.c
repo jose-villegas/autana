@@ -23,6 +23,7 @@
 #include "render_lab_dynres.h"
 #include "render_lab_view.h"
 #include "scene/camera/camera.h"
+#include "scene/renderer/renderer.h"
 #include "scene/scene.h"
 #include "ui/ui.h"
 
@@ -103,6 +104,9 @@ scene_baked_enter(const lab_scene_t* self) {
             continue;
         }
         entity_set_enabled(bake, i == (int)shown->variant);
+        if (i == (int)shown->variant && shown->textured && !renderer_set_textured(bake, true, &why)) {
+            record_failure(&why);
+        }
     }
     (void)camera_activate(render_lab.start_camera == NULL ? camera_first(loaded)
                                                           : entity_find(loaded, name_hash(render_lab.start_camera)));
@@ -140,3 +144,8 @@ scene_baked_status(void) {
 
 SCENE_BAKED_FAMILY(scene_sponza, sponza_shown, &baked_sponza, "Sponza", "sponza");
 SCENE_BAKED_FAMILY(scene_bistro, bistro_shown, &baked_bistro, "Bistro", "bistro");
+
+static const scene_baked_shown_t bistro_textured_shown = {&baked_bistro, SCENE_BAKED_FITTED_FULL, true};
+const lab_scene_t scene_bistro_textured =
+    SCENE_BAKED_ENTRY("Bistro Fitted Full Textured", "bistro-fitted-full-textured", "Bistro", "Fitted Full Textured",
+                      &bistro_textured_shown);
