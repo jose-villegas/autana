@@ -7,6 +7,7 @@ list(APPEND perf_scope_srcs
     "${CMAKE_CURRENT_LIST_DIR}/tests/suite_layout_perf.c"
     "${CMAKE_CURRENT_LIST_DIR}/tests/suite_cull_cost.c"
     "${CMAKE_CURRENT_LIST_DIR}/tests/suite_water_perf.c"
+    "${CMAKE_CURRENT_LIST_DIR}/tests/suite_herd_perf.c"
     "${CMAKE_CURRENT_LIST_DIR}/tests/suite_partial_perf.c"
     "${CMAKE_CURRENT_LIST_DIR}/tests/suite_stress_perf.c"
 )

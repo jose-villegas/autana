@@ -219,7 +219,7 @@ scene_capybara_controls(int width) {
 /* The subject, galloping. */
 static lab_path_t
 capybara_path(void) {
-    return (lab_path_t){capybara, subject_entity, CAPYBARA_GALLOP};
+    return (lab_path_t){.scene = capybara, .entity = subject_entity, .clip = CAPYBARA_GALLOP};
 }
 
 const lab_scene_t scene_capybara = {.name = "Capybara",

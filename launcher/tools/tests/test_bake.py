@@ -606,8 +606,11 @@ class StageTests(unittest.TestCase):
 
         job, scene = fitted_job()
         inputs = reference_inputs(job, scene)
-        recipe = bake.reference_recipe(inputs, TOOL_KEYS, bake.Poses({}))
         fields = {field.name for field in dataclasses.fields(ReferenceInputs)}
+        unprobed = bake.reference_recipe(inputs, TOOL_KEYS, bake.Poses({}))
+        self.assertEqual(set(unprobed) - {"sources"}, fields - {"probes", "shaped"}, "an unshaped fit changed the key")
+        inputs = dataclasses.replace(inputs, probes=types.SimpleNamespace(spacing=None, face=8), shaped=True)
+        recipe = bake.reference_recipe(inputs, TOOL_KEYS, bake.Poses({}))
         self.assertEqual(set(recipe) - {"sources"}, fields)
         brighter = dataclasses.replace(inputs, tonemap_white=inputs.tonemap_white * 2)
         self.assertNotEqual(bake.digest(recipe), bake.digest(bake.reference_recipe(brighter, TOOL_KEYS, bake.Poses({}))))
@@ -754,7 +757,7 @@ class FittedBakeTests(FittedBakeCase):
         source.mkdir()
         expected = write_reference_tree(source)
         reference = self.root / self.reference.output
-        reference.write_bytes(reference_set.pack_references(source))
+        reference.write_bytes(reference_set.pack_references(source, reference_set.fit_sets(True, False, False)))
         start = self.root / self.start.output
         start.write_bytes(b"locked start bundle")
         lock = {item.key: produce.record(item, path, self.cache)
@@ -1493,6 +1496,15 @@ class LockTests(unittest.TestCase):
         with self.assertRaisesRegex(bake.BakeMissing, "(?s)two.bundle.*is not locked"):
             bake.seed([self.waiting_fit()], self.cache, {"j" * 64: {**self.row, "output": "two.bundle", "key": "j" * 64}})
 
+    def test_seeding_skips_levels_whose_fit_it_is_seeding_and_locks_the_rest(self):
+        """A seed carries a re-keyed fit over; its levels' key names those bytes, so the CPU run makes them after."""
+        levels = bake.Bake(output="two.levels.bundle", source=self.tree, holder="two", kind="levels", key=None,
+                           suffix=bake.BUNDLE_SUFFIX, tree=self.root / "two.levels.bundle", stages={"fit": "f" * 64})
+        with contextlib.redirect_stdout(io.StringIO()) as said:
+            rows = bake.seed([bake_of("k" * 64, self.tree), levels], self.cache, {}, {"k" * 64: {**self.row, "run": 9}})
+        self.assertEqual([row["key"] for row in rows], ["k" * 64])
+        self.assertIn("skipped two.levels.bundle: its fit " + "f" * 64 + " is not locked", said.getvalue())
+
     def test_a_fits_start_takes_the_locked_bytes_over_a_runs(self):
         made = {"k" * 64: {**self.row, "sha256": "f" * 64}}
         self.assertEqual(bake.locked_starts({"k" * 64: self.row}, made), {"k" * 64: self.row["sha256"]})
@@ -1840,7 +1852,10 @@ class ProduceTests(unittest.TestCase):
         """prepare_references and render_sets stand-ins: every set gets `poses` poses, and a pose's files hold its
         line alone, as a traced pose's depend on that pose alone."""
         from r3d import reference_render
-        from r3d.reference_set import COVERAGE, HELD_OUT, TRAINING
+        from r3d.reference_set import fit_sets
+
+        # A camera path, probes and a shaped fit: every set a reference bake can hold.
+        self.inputs = types.SimpleNamespace(sets=lambda: fit_sets(True, True, True))
 
         def render_sets(inputs, sets, samples=4):
             for poses_path, out in sets:
@@ -1855,14 +1870,18 @@ class ProduceTests(unittest.TestCase):
 
         def prepare(inputs, work):
             work.mkdir(parents=True, exist_ok=True)
-            for number, (name, _) in enumerate(TRAINING + (HELD_OUT,)):
+            sets = inputs.sets()
+            for number, (name, _) in enumerate(sets.training + sets.held_out):
                 (work / name).write_text("size 4 2\nlens 1.0 0.1\n" + "".join(
                     f"pose {number} {index} 0 0 0 0\n" for index in range(poses)))
-            (work / COVERAGE).write_text("size 4 2\nlens 1.0 0.1\npose 9 9 9 9 9 9\n")
-            reference_render.render_sets(inputs, [(work / name, work / folder) for name, folder in TRAINING + (HELD_OUT,)])
+            for name in sets.coverage:
+                if not (work / name).exists():
+                    (work / name).write_text("size 4 2\nlens 1.0 0.1\npose 9 9 9 9 9 9\n")
+            reference_render.render_sets(inputs, [(work / name, work / folder)
+                                                  for name, folder in sets.training + sets.held_out])
 
         with mock.patch.object(reference_render, "render_sets", side_effect=render_sets), \
-             mock.patch("r3d.reference_set.reference_inputs", side_effect=lambda job, scene: job), \
+             mock.patch("r3d.reference_set.reference_inputs", side_effect=lambda job, scene: self.inputs), \
              mock.patch("r3d.reference_set.prepare_references", side_effect=prepare):
             yield prepare
 
@@ -1881,10 +1900,11 @@ class ProduceTests(unittest.TestCase):
                 shutil.rmtree(self.root / "shards", ignore_errors=True)
                 shutil.rmtree(self.cache / produce.REFERENCES, ignore_errors=True)
                 whole = self.root / f"whole-{count}"
-                prepare("job", whole)
+                prepare(self.inputs, whole)
                 joined = produce.join_reference_shards(bake, self.cache, self.shards(bake, count))
-                self.assertEqual(hashlib.sha256(pack_references(joined)).hexdigest(),
-                                 hashlib.sha256(pack_references(whole)).hexdigest())
+                sets = self.inputs.sets()
+                self.assertEqual(hashlib.sha256(pack_references(joined, sets)).hexdigest(),
+                                 hashlib.sha256(pack_references(whole, sets)).hexdigest())
 
     def test_a_joined_set_is_recorded_as_traced_where_its_shards_ran(self):
         reference = types.SimpleNamespace(output="x.reference.tar.xz", key="k" * 64, job="job", scene=None,
@@ -2056,9 +2076,14 @@ def current_lock(path):
     """Writes the lock the tree's own keys need to `path`, every row with a placeholder digest: what the
     key tests read instead of the repo's lock, which a re-keying change leaves stale until it is re-locked."""
     poses = bake.Poses({}, resample=True)
-    starts = {item.key: "0" * 64 for item in bake.bakes([build_pack.DEFAULT_SEARCH], {}, poses) if item.key}
-    starts.update({item.key: "0" * 64 for item in bake.bakes([build_pack.DEFAULT_SEARCH], starts, poses) if item.key})
-    found = bake.bakes([build_pack.DEFAULT_SEARCH], starts, poses)
+    # A bake keys only once the bakes it follows are locked: placeholder rows, one pass per link of the chain.
+    starts = {}
+    while True:
+        found = bake.bakes([build_pack.DEFAULT_SEARCH], starts, poses)
+        keyed = {item.key: "0" * 64 for item in found if item.key}
+        if keyed.keys() <= starts.keys():
+            break
+        starts.update(keyed)
     made = {item.key: {"output": item.output, "source": bake.relative(item.source), "key": item.key,
                        "sha256": "0" * 64, "size": 0, "run": 1} for item in found}
     bake.write_lock(bake.lock_rows(found, {}, made), path, poses=poses.used.values())

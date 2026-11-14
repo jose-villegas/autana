@@ -50,7 +50,8 @@ raster_settings(const raster_t* raster) {
         {s.lod.tolerance_px, s.lod.hysteresis_px, tune_override(lod_coverage_permille, s.lod.coverage_permille),
          tune_override(lod_pick_every, s.lod.pick_every), tune_override(lod_triangle_budget, s.lod.triangle_budget),
          tune_override(lod_blend, s.lod.blend),
-         lod_blend_centipixels == TUNE_UNSET ? s.lod.blend_px : (float)lod_blend_centipixels / LOD_BLEND_CENTI}};
+         lod_blend_centipixels == TUNE_UNSET ? s.lod.blend_px : (float)lod_blend_centipixels / LOD_BLEND_CENTI},
+        s.anim};
 }
 
 bool
@@ -843,7 +844,6 @@ cull_instances(const raster_t* raster, const render_view_t* view, bool fitted, r
     CULL_LAP(FRAME_LAP, fitted, "split");
     cull_begin(work, raster, view, fitted);
     int16_t* share = raster->split != NULL ? &raster->split->cull_offset : NULL;
-    FRAME_LAP_END();
     (void)job_run_range_in(share, cull_slice, &work->cull, work->cull.drawn_count, work->cull.ranges);
     CULL_LAP(FRAME_LAP_SINCE, fitted, "wait");
     CULL_LAP(FRAME_LAP, fitted, "split");
@@ -856,7 +856,7 @@ cull_instances(const raster_t* raster, const render_view_t* view, bool fitted, r
     return depth_near;
 }
 
-/* The writers of the attachments that write while instance `index` is
+/* The writers of the attachments that write while drawn-list entry `index` is
  * drawn; returns how many. */
 static int
 instance_writers(const raster_t* raster, int index, r3d_span_writer_t out[GFX_ATTACHMENTS_FURTHER_MAX]) {
@@ -937,7 +937,6 @@ draw_batch(const raster_t* raster, int index, draw_work_t* work) {
     *other = *mine;
     other->first = half;
     other->count = count - half;
-    FRAME_LAP_END();
     job_run_steered(transform_share, transform_slice, mine, other, sizeof *mine);
     FRAME_LAP_SINCE("r3d.transform.wait");
     FRAME_COST_END(transformed_from, R3D_STAGE_TRANSFORM_NAME);
@@ -945,7 +944,6 @@ draw_batch(const raster_t* raster, int index, draw_work_t* work) {
     FRAME_COST_BEGIN(drawn_from);
     FRAME_LAP("r3d.draw.split");
     draw_share = plan_draw_rows(raster, work, draw_share);
-    FRAME_LAP_END();
     job_run_steered(draw_share, draw_slice, mine, other, sizeof *mine);
     FRAME_LAP_SINCE("r3d.draw.wait");
     FRAME_COST_END(drawn_from, R3D_STAGE_DRAW_NAME);

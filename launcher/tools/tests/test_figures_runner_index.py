@@ -90,6 +90,17 @@ class IndexCommandTests(unittest.TestCase):
         status, out, _ = self.run_main("--check")
         self.assertEqual((status, out), (1, "shown nowhere docs/images/math/loose.png\n"))
 
+    def test_check_exits_1_while_a_page_shows_a_picture_that_is_not_a_file(self):
+        (self.root / "docs/math/One.md").write_text(
+            "![A](../images/math/claimed.png)\n![B](../images/math/loose.png)\n"
+            '<picture><source srcset="../images/math/gone-dark.png"><img src="../images/math/gone.png"></picture>\n'
+            "![C](../elsewhere/gone.png)\n![D](https://example.com/remote.png)\n", encoding="utf-8")
+        self.run_main()
+        status, out, _ = self.run_main("--check")
+        self.assertEqual((status, out), (1, "missing docs/elsewhere/gone.png, shown in docs/math/One.md\n"
+                                            "missing docs/images/math/gone-dark.png, shown in docs/math/One.md\n"
+                                            "missing docs/images/math/gone.png, shown in docs/math/One.md\n"))
+
     def test_the_page_names_the_script_that_declares_an_image_and_says_so_when_none_does(self):
         self.run_main()
         rows = {line.split('href="')[1].split('"')[0]: line for line in self.page().splitlines() if 'href="' in line}

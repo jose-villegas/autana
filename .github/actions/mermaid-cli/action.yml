@@ -1,0 +1,19 @@
+name: Mermaid CLI
+description: >-
+  The mermaid-cli scripts/gates/mermaid/package.json pins, and the Chrome
+  arguments CI needs, so check-mermaid.mjs renders in later steps.
+
+runs:
+  using: composite
+  steps:
+    - name: Install the pinned mermaid-cli
+      shell: bash
+      run: npm ci --prefix scripts/gates/mermaid
+
+    # The CI container has no unprivileged user namespace for Chrome's own sandbox;
+    # --no-sandbox is standard for a CI-only Puppeteer run, never for a developer machine.
+    - name: Write a sandboxed Puppeteer config for CI's Chrome
+      shell: bash
+      run: |
+        echo '{"args": ["--no-sandbox"]}' > "$RUNNER_TEMP/puppeteer-config.json"
+        echo "CHECK_MERMAID_MMDC_ARGS=-p $RUNNER_TEMP/puppeteer-config.json" >> "$GITHUB_ENV"

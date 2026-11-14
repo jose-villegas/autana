@@ -18,7 +18,7 @@ scene_skin_light_allocate(scene_skinned_renderer_t* skin) {
 
     SCENE_STORAGE_RESERVE(layout, end, colors, uint8_t, skin->bind.vertex_count* R3D_SKIN_LIGHT_CHANNELS);
     SCENE_STORAGE_RESERVE(layout, end, normals, mat3f_t, skin->skin.joint_count);
-    void* storage = scene_allocate(end, MEMORY_INTERNAL);
+    void* storage = scene_allocate(end, MEMORY_FAST);
     if (storage == NULL) {
         return false;
     }
@@ -68,7 +68,7 @@ scene_skin_light_apply_mode(scene_t* scene, scene_row_t entity, scene_skinned_re
     if (skin->light_mode == mode) {
         return true;
     }
-    if (skin->internal_storage != NULL) {
+    if (skin->storage != NULL) {
         if (mode == SKIN_LIGHT_TABLE && !light_table_join(scene)) {
             return false;
         }
@@ -81,7 +81,7 @@ scene_skin_light_apply_mode(scene_t* scene, scene_row_t entity, scene_skinned_re
 
 void
 scene_skin_light_table_release(scene_t* scene, const scene_skinned_renderer_t* skin) {
-    if (skin->internal_storage == NULL || skin->light_mode != SKIN_LIGHT_TABLE) {
+    if (skin->storage == NULL || skin->light_mode != SKIN_LIGHT_TABLE) {
         return;
     }
     scene->light_table_users--;
@@ -103,7 +103,7 @@ scene_skin_take(scene_t* scene, scene_row_t entity, scene_skinned_renderer_t* sk
 
     SCENE_STORAGE_RESERVE(layout, end, model, mat4f_t, skin->skin.joint_count);
     SCENE_STORAGE_RESERVE(layout, end, palette, mat4f_t, skin->skin.joint_count);
-    void* storage = memory_alloc(end, MEMORY_INTERNAL);
+    void* storage = memory_alloc(end, MEMORY_FAST);
     if (storage == NULL) {
         return false;
     }
@@ -117,7 +117,7 @@ scene_skin_take(scene_t* scene, scene_row_t entity, scene_skinned_renderer_t* sk
         memory_free(storage);
         return false;
     }
-    skin->internal_storage = storage;
+    skin->storage = storage;
     (void)r3d_skin_output_init(&skin->bind, storage, size, &skin->output);
     skin->model = (mat4f_t*)(void*)((uint8_t*)storage + layout.model);
     skin->palette = (mat4f_t*)(void*)((uint8_t*)storage + layout.palette);
@@ -136,9 +136,9 @@ void
 scene_skin_give(scene_t* scene, scene_skinned_renderer_t* skin) {
     scene_skin_light_table_release(scene, skin);
     memory_free(skin->light_storage);
-    memory_free(skin->internal_storage);
+    memory_free(skin->storage);
     skin->light_storage = NULL;
-    skin->internal_storage = NULL;
+    skin->storage = NULL;
     skin->colors = NULL;
     skin->normal_palette = NULL;
     skin->model = NULL;
@@ -150,8 +150,9 @@ void
 scene_skin_show(scene_t* scene, scene_row_t entity) {
     const scene_skinned_renderer_t* skin = &scene->skinned_renderers[entity];
     scene_renderer_t* r = &scene->renderers[scene_renderer_index(scene, entity)];
-    r->mesh = skin->internal_storage != NULL ? skin->output.mesh : skin->bind;
+    r->mesh = skin->storage != NULL ? skin->output.mesh : skin->bind;
     scene_renderer_bound(r);
+    scene->animators[entity].dirty = true;
     scene->flags[entity] |= SCENE_FLAG_SKIN_DIRTY;
     scene->active_renderers_stale = true;
 }
@@ -174,7 +175,7 @@ scene_skins_settle(scene_t* scene) {
     for (int i = 0; i < scene->staged_count; i++) {
         const scene_row_t e = scene->staged[i];
         scene_skinned_renderer_t* skin = &scene->skinned_renderers[e];
-        if (!skin->bound || skin->internal_storage != NULL || skin->starved || !(scene->flags[e] & SCENE_FLAG_ACTIVE)) {
+        if (!skin->bound || skin->storage != NULL || skin->starved || !(scene->flags[e] & SCENE_FLAG_ACTIVE)) {
             continue;
         }
         if (scene_skin_take(scene, e, skin)) {
@@ -192,7 +193,7 @@ scene_skin_deactivate(scene_t* scene, scene_row_t entity) {
         skin->starved = false;
         scene->starved_count--;
     }
-    if (skin->internal_storage != NULL) {
+    if (skin->storage != NULL) {
         scene_skin_give(scene, skin);
         scene_skin_show(scene, entity);
     }

@@ -16,8 +16,9 @@ indirect lab_frame : scene_baked_status
 indirect lab_frame : scene_capybara_frame capybara_status
 indirect lab_update : scene_capybara_steer render_lab_fly_frame
 indirect lab_console : scene_capybara_console render_lab_fly_console
-indirect lab_path_duration_ms : scene_baked_path capybara_path
-indirect lab_seek_path : scene_baked_path capybara_path
+indirect lab_path_duration_ms : scene_baked_path capybara_path scene_herd.c:scene_herd_path
+indirect lab_seek_path : scene_baked_path capybara_path scene_herd.c:scene_herd_path scene_herd.c:seek_walk
+indirect lab_play_path : scene_baked_path capybara_path scene_herd.c:scene_herd_path scene_herd.c:play_walk
 indirect lab_menu_screen_draw : scene_capybara_controls render_lab_settings_draw
 indirect ui_toggle_id : measure_text_height
 indirect lab_test_enter : app_render_lab.c:render_lab_enter

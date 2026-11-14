@@ -60,6 +60,8 @@ SKIN_BAKE=capybara.glb
 SKIN_CLIP=gallop
 # Three of its clips the playback figures blend: first to second to third, then back to the first.
 PLAYBACK_CLIPS="walk gallop idle"
+# The clips the update-rate figure measures, slowest to fastest.
+RATE_CLIPS="idle walk gallop"
 # The tree depth whose node boxes the cull figures draw.
 CULL_LEVEL=2
 # The cull chase GIFs play one path sample per frame at this rate.
@@ -284,8 +286,9 @@ run "$PYTHON" launcher/tools/input/gravity_figures.py --cc "$cc" --out "$OUT/inp
 run "$PYTHON" launcher/tools/input/motion_axes_figures.py --cc "$cc" --out "$OUT/input" \
     > "$WORK/motion_axes_figures.log"
 # --orphans scans this runner: motion-axes.png, motion-rotation.gif
-# The producers that declare their images (launcher/tools/docs/producer.py), in parallel.
-run "$PYTHON" launcher/tools/docs/figures_runner.py build --needs host --into "$OUT" > "$WORK/figures.log"
+# The producers that declare their images (launcher/tools/docs/producer.py) and need only this machine and the
+# bake cache, in parallel.
+run "$PYTHON" launcher/tools/docs/figures_runner.py build --needs host,bakes --into "$OUT" > "$WORK/figures.log"
 run "$PYTHON" launcher/tools/physics/spring_figures.py --cc "$cc" --out "$OUT/physics" > "$WORK/spring_figures.log"
 # --orphans scans this runner: spring-line-wave.gif, spring-line-spacetime.png
 run "$PYTHON" launcher/tools/kinematics/orbit_figures.py --cc "$cc" --out "$OUT/kinematics" > "$WORK/orbit_figures.log"
@@ -298,6 +301,13 @@ if [ -f docs/audio/data/mic_eq_probe_capture.txt ]; then
 fi
 # --orphans scans this runner: mic-eq-probe-adc.png, mic-eq-probe-adc-dark.png,
 # mic-eq-probe-dac.png, mic-eq-probe-dac-dark.png, mic-eq-probe-hpf.png, mic-eq-probe-hpf-dark.png
+if [ -f docs/audio/data/mic_eq_slots_capture.txt ]; then
+    run "$PYTHON" launcher/tools/audio/mic/mic_eq_probe_figures.py --capture docs/audio/data/mic_eq_slots_capture.txt \
+        --out "$OUT/audio" > "$WORK/mic_eq_slots_figures.log"
+fi
+# --orphans scans this runner: mic-eq-slots-adc.png, mic-eq-slots-adc-dark.png, mic-eq-slots-dac.png,
+# mic-eq-slots-dac-dark.png, mic-eq-scale-adc.png, mic-eq-scale-adc-dark.png, mic-eq-scale-dac.png,
+# mic-eq-scale-dac-dark.png
 if [ -f docs/audio/data/audio_mic_dsp_capture.txt ]; then
     run "$PYTHON" launcher/tools/audio/audio_mic_dsp_figures.py --out "$OUT/audio" > "$WORK/audio_mic_dsp_figures.log"
 fi
@@ -334,6 +344,9 @@ run mkdir -p "$OUT/anim"
 run "$PYTHON" launcher/tools/anim/playback/playback_figures.py "$skin_asset" $PLAYBACK_CLIPS --cc "$cc" \
     --out "$OUT/anim" > "$WORK/playback_figures.log"
 # --orphans scans this runner: anim-playhead.png, anim-blend.png, anim-nlerp.png, anim-blend.gif
+# shellcheck disable=SC2086 # RATE_CLIPS is three words
+run "$PYTHON" launcher/tools/anim/playback/rate_figures.py "$skin_asset" $RATE_CLIPS --out "$OUT/anim/anim-rate-lag.png" > "$WORK/rate_figures.log"
+# --orphans scans this runner: anim-rate-lag.png
 
 # The bake method's figures: local occlusion and bounced light on a floor beside a wall, and the scores.
 R3D_PYTHON=$(run find_r3d_python "$PWD")
@@ -381,7 +394,7 @@ run "$PYTHON" launcher/tools/r3d/dynres_replay.py docs/render/data/dynamic-resol
 run sh launcher/tools/r3d/framegen/framegen_docs.sh --out "$OUT/render" "$OUT/tables" > "$WORK/framegen.log" 2>&1
 # --orphans scans this runner: framegen-bistro-holes.png, framegen-bistro-path.png, framegen-bistro-path-dark.png, framegen-bistro.gif, framegen-sponza-holes.png, framegen-pricing.png, framegen-pricing-dark.png, framegen-bistro-sheet.png, framegen-bistro-sheet.crops.png
 
-# The frame stages as shipped, what is inside transform and draw, and what
+# The frame stages as shipped, what is inside the lapped stages, and what
 # each debug view adds, from the pipeline captures beside the page.
 run "$PYTHON" launcher/tools/render/frame_stages.py --present docs/render/data/pipeline-present-board.log \
     --laps docs/render/data/pipeline-laps-board.log \
