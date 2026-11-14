@@ -478,6 +478,40 @@ test_a_flat_centre_blends_its_one_colour_and_the_border_stays_per_pixel(void) {
     TEST_ASSERT_EQUAL_HEX16(code(GEO_LEFT, 0), panel(dst.x + GEO_LEFT, dst.y));
 }
 
+/* A flat centre wide enough that a band of mapped columns lies wholly
+ * inside it: the border rows above and below still draw, as a sprite with
+ * no flat centre draws them, and the centre is its colour blended once. */
+static void
+test_a_band_inside_the_flat_centre_still_draws_the_border_rows(void) {
+    fixture();
+    sprite_t s = geometry_sprite();
+    const recti_t dst = {GEO_AT, GEO_AT, (DRAW_SPRITE_MAP_COLUMNS * 2) + GEO_W, GEO_H * STRETCH};
+    gfx_color_t* plain = malloc((size_t)dst.w * (size_t)dst.h * sizeof *plain);
+    TEST_ASSERT_NOT_NULL(plain);
+    draw_clear(BACKGROUND);
+    draw_sprite(&s, dst, 0);
+    for (int y = 0; y < dst.h; y++) {
+        for (int x = 0; x < dst.w; x++) {
+            plain[(y * dst.w) + x] = panel(dst.x + x, dst.y + y);
+        }
+    }
+    s.flat_centre = true;
+    s.centre_color = FLAT_COLOR;
+    s.centre_alpha = UINT8_MAX / 2;
+    draw_clear(BACKGROUND);
+    draw_sprite(&s, dst, 0);
+    const recti_t inner = {dst.x + GEO_LEFT, dst.y + GEO_TOP, dst.w - GEO_LEFT - GEO_RIGHT,
+                           dst.h - GEO_TOP - GEO_BOTTOM};
+    const gfx_color_t centre = rgb565be_mix(BACKGROUND, FLAT_COLOR, UINT8_MAX / 2);
+    for (int y = 0; y < dst.h; y++) {
+        for (int x = 0; x < dst.w; x++) {
+            const bool in_centre = recti_contains(inner, dst.x + x, dst.y + y);
+            TEST_ASSERT_EQUAL_HEX16(in_centre ? centre : plain[(y * dst.w) + x], panel(dst.x + x, dst.y + y));
+        }
+    }
+    free(plain);
+}
+
 /* Drawn under a clip, every pixel inside it matches the unclipped draw and
  * every pixel outside keeps the background, flat centre or not. */
 static void
@@ -572,6 +606,7 @@ suite_draw_sprite(void) {
     RUN_TEST(test_turned_the_top_border_lands_on_the_right);
     RUN_TEST(test_coverage_0_leaves_255_replaces_and_between_mixes);
     RUN_TEST(test_a_flat_centre_blends_its_one_colour_and_the_border_stays_per_pixel);
+    RUN_TEST(test_a_band_inside_the_flat_centre_still_draws_the_border_rows);
     RUN_TEST(test_a_clip_limits_every_pixel_of_the_blit);
     RUN_TEST(test_the_tile_draws_the_same_from_ram_as_from_its_pack);
 #endif

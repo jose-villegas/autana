@@ -244,7 +244,14 @@ blit(const gfx_target_t* target, const recti_t* clipped, const recti_t* dst, con
         for (int col = band.x; col < recti_right(band); col++) {
             map[col - band.x] = (int16_t)axis_source(col_axis, col_mirror, col - dst->x);
         }
+        /* A band inside the flat centre's columns has nothing to draw in
+         * its rows. */
+        const bool in_centre = band.x >= centre->x && recti_right(band) <= recti_right(*centre);
         for (int row = band.y; row < recti_bottom(band); row++) {
+            if (in_centre && row >= centre->y && row < recti_bottom(*centre)) {
+                row = recti_bottom(*centre) - 1;
+                continue;
+            }
             const size_t base = (size_t)axis_source(row_axis, row_mirror, row - dst->y) * row_step;
             blend_row(gfx_target_color(target, row), row, band, *centre, map, s, base, step);
         }

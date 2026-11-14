@@ -842,7 +842,9 @@ merge_spans(int16_t* lo, int16_t* hi, int count) {
     int kept = 0;
     for (int i = 0; i < left; i++) {
         if (kept > 0 && lo[i] < hi[kept - 1]) {
-            hi[kept - 1] = hi[i] > hi[kept - 1] ? hi[i] : hi[kept - 1];
+            if (hi[i] > hi[kept - 1]) {
+                hi[kept - 1] = hi[i];
+            }
         } else {
             lo[kept] = lo[i];
             hi[kept] = hi[i];
