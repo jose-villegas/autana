@@ -1033,12 +1033,16 @@ typedef enum {
     STEP_FRESH_OVERLAPPING, /* the stripe moves, said in two pieces sharing a row */
 } backdrop_step_t;
 
-/* The rows [y0, y1) said fresh in pieces half a row wide: two a row. */
+/* The rows [y0, y1) said fresh in enough pieces a row that together they
+ * pass UI_FRESH_MAX. */
 static void
-add_half_rows(int y0, int y1) {
+add_row_pieces(int y0, int y1) {
+    const int pieces = (UI_FRESH_MAX / (y1 - y0)) + 1;
     for (int y = y0; y < y1; y++) {
-        ui_fresh_add(&stripe_fresh, (recti_t){0, y, GFX_WIDTH / 2, 1});
-        ui_fresh_add(&stripe_fresh, (recti_t){GFX_WIDTH / 2, y, GFX_WIDTH - (GFX_WIDTH / 2), 1});
+        for (int i = 0; i < pieces; i++) {
+            const int x0 = GFX_WIDTH * i / pieces;
+            ui_fresh_add(&stripe_fresh, recti_from_edges(x0, y, GFX_WIDTH * (i + 1) / pieces, y + 1));
+        }
     }
 }
 
@@ -1063,7 +1067,7 @@ step_backdrop(backdrop_step_t step) {
     }
     const recti_t moved = recti_union(was, now);
     if (step == STEP_FRESH_PAST_MAX) {
-        add_half_rows(moved.y, recti_bottom(moved));
+        add_row_pieces(moved.y, recti_bottom(moved));
         TEST_ASSERT_TRUE(stripe_fresh.overflow);
     } else if (step == STEP_FRESH_OVERLAPPING) {
         const int shared = moved.y + (moved.h / 2);
@@ -1202,24 +1206,26 @@ test_fresh_places_sharing_a_row_replay_as_a_whole_repaint(void) {
  * place. */
 static void
 test_the_fresh_list_keeps_disjoint_places_only(void) {
-    ui_fresh_t fresh;
-    ui_fresh_clear(&fresh);
-    ui_fresh_add(&fresh, (recti_t){0, 0, 10, 10});
-    ui_fresh_add(&fresh, (recti_t){10, 0, 10, 10});
-    ui_fresh_add(&fresh, (recti_t){0, 10, 20, 10});
-    ui_fresh_add(&fresh, (recti_t){5, 5, 0, 10});
-    TEST_ASSERT_FALSE(fresh.overflow);
-    TEST_ASSERT_EQUAL_INT(3, fresh.count);
-    ui_fresh_add(&fresh, (recti_t){19, 19, 1, 1});
-    TEST_ASSERT_TRUE(fresh.overflow);
+    ui_fresh_t* fresh = memory_alloc(sizeof *fresh, MEMORY_APP);
+    TEST_ASSERT_NOT_NULL(fresh);
+    ui_fresh_clear(fresh);
+    ui_fresh_add(fresh, (recti_t){0, 0, 10, 10});
+    ui_fresh_add(fresh, (recti_t){10, 0, 10, 10});
+    ui_fresh_add(fresh, (recti_t){0, 10, 20, 10});
+    ui_fresh_add(fresh, (recti_t){5, 5, 0, 10});
+    TEST_ASSERT_FALSE(fresh->overflow);
+    TEST_ASSERT_EQUAL_INT(3, fresh->count);
+    ui_fresh_add(fresh, (recti_t){19, 19, 1, 1});
+    TEST_ASSERT_TRUE(fresh->overflow);
 
-    ui_fresh_clear(&fresh);
+    ui_fresh_clear(fresh);
     for (int i = 0; i < UI_FRESH_MAX; i++) {
-        ui_fresh_add(&fresh, (recti_t){i, 0, 1, 1});
+        ui_fresh_add(fresh, (recti_t){i, 0, 1, 1});
     }
-    TEST_ASSERT_FALSE(fresh.overflow);
-    ui_fresh_add(&fresh, (recti_t){UI_FRESH_MAX, 0, 1, 1});
-    TEST_ASSERT_TRUE(fresh.overflow);
+    TEST_ASSERT_FALSE(fresh->overflow);
+    ui_fresh_add(fresh, (recti_t){UI_FRESH_MAX, 0, 1, 1});
+    TEST_ASSERT_TRUE(fresh->overflow);
+    memory_free(fresh);
 }
 
 static void

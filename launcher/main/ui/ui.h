@@ -168,7 +168,7 @@ typedef void (*ui_backdrop_fn)(recti_t area);
 /* The places a backdrop painted fresh this frame: disjoint, each pixel the
  * backdrop alone, together holding every pixel it changed. One added past
  * UI_FRESH_MAX, or one overlapping another, overflows the list. */
-#define UI_FRESH_MAX 32
+#define UI_FRESH_MAX 72
 
 typedef struct {
     recti_t rects[UI_FRESH_MAX];

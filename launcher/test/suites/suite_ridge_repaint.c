@@ -376,6 +376,40 @@ holds(recti_t outer, recti_t inner) {
            || recti_intersect(outer, inner).w * recti_intersect(outer, inner).h == inner.w * inner.h;
 }
 
+/* A layer's box per column group, merged where boxes overlap: a merge can
+ * reach a third box the first never touched, so merging goes on until none
+ * overlap. Boxes that only touch, and empty ones, stay apart or go. */
+static void
+assert_spans_merge(const int16_t* lo_in, const int16_t* hi_in, int count, int want_count, const int16_t* want_lo,
+                   const int16_t* want_hi) {
+    int16_t lo[3];
+    int16_t hi[3];
+    memcpy(lo, lo_in, (size_t)count * sizeof *lo);
+    memcpy(hi, hi_in, (size_t)count * sizeof *hi);
+    const int left = ui_ridge_merge_spans_for_test(lo, hi, count);
+    TEST_ASSERT_EQUAL_INT(want_count, left);
+    for (int i = 0; i < want_count; i++) {
+        bool found = false;
+        for (int j = 0; j < left; j++) {
+            found = found || (lo[j] == want_lo[i] && hi[j] == want_hi[i]);
+        }
+        TEST_ASSERT_TRUE_MESSAGE(found, "a span the merge should leave");
+    }
+}
+
+static void
+test_layer_boxes_merge_until_none_overlap(void) {
+    /* The first and last meet only once the middle one joins the first. */
+    assert_spans_merge((const int16_t[]){0, 9, 19}, (const int16_t[]){10, 20, 30}, 3, 1, (const int16_t[]){0},
+                       (const int16_t[]){30});
+    /* Scanned the other way: the first takes the last, then reaches the middle. */
+    assert_spans_merge((const int16_t[]){0, 19, 9}, (const int16_t[]){10, 30, 20}, 3, 1, (const int16_t[]){0},
+                       (const int16_t[]){30});
+    /* Touching boxes share no row and stay; an empty one goes. */
+    assert_spans_merge((const int16_t[]){0, 10, 40}, (const int16_t[]){10, 20, 40}, 3, 2, (const int16_t[]){0, 10},
+                       (const int16_t[]){10, 20});
+}
+
 /* A column group's mark must reach every changed pixel and stop at their
  * bounding box: the audit above passes a box that is too big. Each cell's
  * box is held between the box of its changed pixels and the most the marks
@@ -433,6 +467,7 @@ suite_ridge_repaint(void) {
     RUN_TEST(test_a_strip_switch_inside_a_running_dissolve_is_sent_and_ends_on_a_full_paint);
     RUN_TEST(test_the_gradient_catches_up_once_the_tilt_stops);
     RUN_TEST(test_a_column_groups_dirty_box_covers_what_changed_and_no_more);
+    RUN_TEST(test_layer_boxes_merge_until_none_overlap);
 }
 
 #else
