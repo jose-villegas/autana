@@ -24,7 +24,7 @@ hysteresis_px = 4.0
 
 [texture]
 divide_px = 16
-affine_bend = 0.5
+affine_bend = 1.0
 
 [ranges."lod.blend"]
 min = 0
