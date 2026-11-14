@@ -78,68 +78,28 @@ texel(const sampler_t* s, uint32_t uv) {
     return (uint32_t)(s->texels[o >> 1] >> ((o & 1U) * NIBBLE_BITS)) & NIBBLE_MASK;
 }
 
-static inline uint32_t
-pack_uv(int32_t u, int32_t v) {
-    return ((uint32_t)u << UV_HALF_BITS) + (uint32_t)v;
-}
-
-/* A dividing span's u q, v q and q, which it divides at each segment's end
- * to aim the segment's u and v steps. */
-typedef struct {
-    float s, t, q;       /* at the segment's start */
-    float ds, dt, dq;    /* their steps a pixel */
-    int32_t u_at, v_at;  /* u and v as 8.8, unwrapped, where the steps reached */
-    int pixels;          /* a whole segment */
-    float whole_inverse; /* 1 over pixels */
-} divider_t;
-
-/* The packed u and v step over the next `n` pixels, and d moved past them. */
-static inline __attribute__((always_inline)) uint32_t
-aim(divider_t* d, int n) {
-    const float steps = (float)n;
-    d->s += d->ds * steps;
-    d->t += d->dt * steps;
-    d->q += d->dq * steps;
-    const float r = mathf_recip(d->q);
-    const float inverse = n == d->pixels ? d->whole_inverse : mathf_recip(steps);
-    const int32_t du = (int32_t)(((d->s * r * (float)UV_ONE) - (float)d->u_at) * inverse);
-    const int32_t dv = (int32_t)(((d->t * r * (float)UV_ONE) - (float)d->v_at) * inverse);
-    d->u_at += du * n;
-    d->v_at += dv * n;
-    return pack_uv(du, 0) + (uint32_t)dv;
-}
-
 /* The colormap row of the level, dithered between levels by the screen's
- * 4x4 Bayer threshold at absolute coordinates. With a divider, u and v
- * re-aim every d->pixels; without, they step c->duv the whole way. */
+ * 4x4 Bayer threshold at absolute coordinates. */
 static __attribute__((noinline)) void
-fill_colormap(uint16_t* depth, uint16_t* color, int count, carry_t* c, const sampler_t* s, int x, int y, divider_t* d) {
+fill_colormap(uint16_t* depth, uint16_t* color, int count, carry_t* c, const sampler_t* s, int x, int y) {
     int32_t z = c->z;
     uint32_t uv = c->uv;
     int32_t level = c->level;
     const int32_t dz = c->dz;
-    uint32_t duv = c->duv;
+    const uint32_t duv = c->duv;
     const int32_t dlevel = c->dlevel;
     const uint8_t* threshold = bayer4x4[y & (BAYER4_SIDE - 1)];
     const uint16_t (*colormap)[R3D_TEXTURE_COLOURS] = s->texture->colormap;
-    for (int start = 0; start < count;) {
-        const int end = d == NULL ? count : mathi_min(start + d->pixels, count);
-        if (d != NULL) {
-            duv = aim(d, end - start);
+    for (int i = 0; i < count; i++) {
+        const uint16_t zq = (uint16_t)(z >> R3D_DEPTH_SHIFT);
+        if (zq > depth[i]) {
+            const int32_t l = (level + ((int32_t)threshold[(x + i) & (BAYER4_SIDE - 1)] << DITHER_SHIFT)) >> LIGHT_FRAC;
+            depth[i] = zq;
+            color[i] = colormap[l][texel(s, uv)];
         }
-        for (int i = start; i < end; i++) {
-            const uint16_t zq = (uint16_t)(z >> R3D_DEPTH_SHIFT);
-            if (zq > depth[i]) {
-                const int32_t l =
-                    (level + ((int32_t)threshold[(x + i) & (BAYER4_SIDE - 1)] << DITHER_SHIFT)) >> LIGHT_FRAC;
-                depth[i] = zq;
-                color[i] = colormap[l][texel(s, uv)];
-            }
-            z += dz;
-            uv += duv;
-            level += dlevel;
-        }
-        start = end;
+        z += dz;
+        uv += duv;
+        level += dlevel;
     }
     c->z = z;
     c->uv = uv;
@@ -153,9 +113,8 @@ typedef struct {
     r3d_span_plane_t q;     /* inverse depth, which u and v divide by */
     r3d_span_plane_t level; /* 8.8 light level */
     int32_t depth_max;
-    int x0, y0;          /* the origin pixel */
-    int divide;          /* pixels between divides, 0 when the triangle steps affine */
-    float whole_inverse; /* 1 over divide */
+    int x0, y0; /* the origin pixel */
+    int divide; /* pixels between divides, 0 when the triangle steps affine */
     sampler_t sampler;
 } setup_t;
 
@@ -164,6 +123,11 @@ static inline int32_t
 fixed_uv(float u) {
     const float wrapped = u - (floorf(u * (1.0F / UV_WRAP)) * UV_WRAP);
     return (int32_t)(wrapped * (float)UV_ONE) & (int32_t)UV_LOW_MASK;
+}
+
+static inline uint32_t
+pack_uv(int32_t u, int32_t v) {
+    return ((uint32_t)u << UV_HALF_BITS) + (uint32_t)v;
 }
 
 static void
@@ -185,24 +149,31 @@ fill_span(const setup_t* su, const r3d_span_row_t* row, int y, int first, int la
     if (su->divide == 0) {
         c.uv = pack_uv(fixed_uv(s), fixed_uv(t));
         c.duv = pack_uv((int32_t)(su->s.dx * (float)UV_ONE), 0) + (uint32_t)(int32_t)(su->t.dx * (float)UV_ONE);
-        fill_colormap(depth, color, steps + 1, &c, &su->sampler, first, y, NULL);
+        fill_colormap(depth, color, steps + 1, &c, &su->sampler, first, y);
         return;
     }
-    /* u and v wrap once at the span's start and then step in fixed point. */
-    const float q = plane_at(&su->q, fx, fy);
-    const float r = mathf_recip(q);
-    divider_t d = {s,
-                   t,
-                   q,
-                   su->s.dx,
-                   su->t.dx,
-                   su->q.dx,
-                   (int32_t)(s * r * (float)UV_ONE),
-                   (int32_t)(t * r * (float)UV_ONE),
-                   su->divide,
-                   su->whole_inverse};
+    /* u and v wrap once at the span's start and then step in fixed point;
+     * each divide aims the next segment's step at the true u and v, unwrapped,
+     * from where the steps so far reached. */
+    float q = plane_at(&su->q, fx, fy);
+    float r = mathf_recip(q);
+    int32_t u_at = (int32_t)(s * r * (float)UV_ONE);
+    int32_t v_at = (int32_t)(t * r * (float)UV_ONE);
     c.uv = pack_uv(fixed_uv(s * r), fixed_uv(t * r));
-    fill_colormap(depth, color, steps + 1, &c, &su->sampler, first, y, &d);
+    for (int x = first; x <= last; x += su->divide) {
+        const int count = mathi_min(su->divide, last + 1 - x);
+        const float n = (float)count;
+        s += su->s.dx * n;
+        t += su->t.dx * n;
+        q += su->q.dx * n;
+        r = mathf_recip(q);
+        const int32_t du = ((int32_t)(s * r * (float)UV_ONE) - u_at) / count;
+        const int32_t dv = ((int32_t)(t * r * (float)UV_ONE) - v_at) / count;
+        c.duv = pack_uv(du, 0) + (uint32_t)dv;
+        fill_colormap(depth + (x - first), color + (x - first), count, &c, &su->sampler, x, y);
+        u_at += du * count;
+        v_at += dv * count;
+    }
 }
 
 /* The level a pixel steps about one texel of: floor(log2) of the longest
@@ -259,7 +230,6 @@ set_up(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[CORNERS
                          * (float)mathi_max(box.w, box.h);
     const bool bends = extent * (z_near - z_far) * SIXTEENTHS > (float)affine_sixteenths * 4.0F * z_far;
     su->divide = bends ? (int)divide_pixels : 0;
-    su->whole_inverse = bends ? 1.0F / (float)divide_pixels : 0.0F;
     if (su->divide != 0) {
         /* The level stays the affine planes' pick; u and v become u q and v q. */
         su->q = r3d_span_plane_of(&f, v[0]->z, v[1]->z, v[2]->z);
