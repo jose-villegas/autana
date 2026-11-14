@@ -266,10 +266,9 @@ test_a_frame_drawn_after_generation_is_turned_off_recomposes_every_row(void) {
     release_target();
 }
 
-/* While generation pays, a drawn frame is still priced at one shown frame's
- * budget, however little the generated one cost: the slowest drawn frames
- * stay at the rows a frame without generation gets, so frames are paced
- * evenly. */
+/* While generation pays, however little the generated frame cost, the ladder
+ * both policies price a drawn frame against keeps the caller's budget per
+ * shown frame: a drawn frame gets no more than a frame without generation. */
 static void
 test_dynamic_resolution_prices_a_drawn_frame_at_one_shown_frame(void) {
     raster_rig_t* r = open_rig();
@@ -290,7 +289,7 @@ test_dynamic_resolution_prices_a_drawn_frame_at_one_shown_frame(void) {
 
 /* Frames are generated once a generated one costs under
  * (100 - FRAMEGEN_GAIN_PERCENT)% of a drawn one, and then while it costs less:
- * one that saves less stops it, the drawn frames are priced alone, and after
+ * one that saves less stops it, and after
  * FRAMEGEN_RETRY_DRAWN drawn frames, or a forgotten view, one is generated to
  * measure it again. */
 static void
@@ -311,7 +310,6 @@ test_frames_are_generated_only_while_a_generated_one_costs_less(void) {
     play(c, r, &view, before, sizeof before / sizeof before[0]);
     for (int i = 0; i < FRAMEGEN_RETRY_DRAWN; i++) {
         TEST_ASSERT_FALSE(show(c, r, &view, drawn_us));
-        TEST_ASSERT_EQUAL_INT32(BUDGET_US, c->ladder.budget_us);
     }
     play(c, r, &view, after, sizeof after / sizeof after[0]);
     render_context_forget(c); /* measured again, as at the start */

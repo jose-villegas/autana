@@ -199,7 +199,7 @@ on, so the render context times both and decides each frame:
 | No generated frame yet | Generated |
 | The generated frame cost under (100 − `FRAMEGEN_GAIN_PERCENT`)% of the drawn one | Generated |
 | Already generating, and it still costs less than the drawn one | Generated |
-| It saved less | Drawn, priced alone at one frame's budget |
+| It saved less | Drawn |
 | `FRAMEGEN_RETRY_DRAWN` drawn frames in a row | Generated, to measure it again |
 
 The margin keeps a generated frame, which shows the scene less exactly than
@@ -208,15 +208,13 @@ a drawn one, from being shown for a saving too small to see.
 ## With dynamic resolution
 
 A [dynamic-resolution](Dynamic-Resolution.md) budget is the cost of a shown
-frame. With frame generation on, the render context still prices each drawn
-frame at one shown frame's budget, as it does without generation. A
-generated frame is not priced: its cost only decides whether generation pays.
+frame. With frame generation on, the render context prices each drawn frame
+at one shown frame's budget, as without it. A generated frame is not priced;
+its cost only decides whether generation pays.
 
-Pricing a drawn frame for the pair it shows would give it more rows, but its
-slowest drawn frames would take longer than a frame without generation. Priced
-alone, they draw at the rows a frame without generation gets: generation
-trades some sharpness for frames, and the slowest frames stay as fast. The
-budget sets the rate: a tighter one draws coarser and shows more frames.
+A drawn frame draws at the rows a frame without generation gets, so the
+slowest frames are as fast with generation as without. The budget sets the
+rate: a tighter one draws coarser and shows more frames.
 
 Each scene's path played in real time on the board, per mode:
 
@@ -286,7 +284,7 @@ framegen_example_generated(const render_context_t* context) {
 | Call | Use |
 |---|---|
 | `render_context_set_frame_generation(context, on)` | On for any scene; objects that move on their own show one drawn frame behind ([Moving objects](#moving-objects)); off costs nothing. The context generates a frame only [when it pays](#when-it-pays); a debug view, a camera cut or a new viewport draws the next frame instead |
-| `render_context_set_dynamic_resolution(context, config, model, step)` | `config->budget_us` is the budget per shown frame; with generation on, each drawn frame is still priced at it |
+| `render_context_set_dynamic_resolution(context, config, model, step)` | `config->budget_us` is the budget per shown frame; with generation on, each drawn frame is priced at it |
 | `render_context_frame(context).generated` | Whether the last frame was generated rather than drawn |
 
 ## Moving objects

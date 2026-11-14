@@ -308,8 +308,8 @@ generation_pays(const render_context_t* c) {
 
 /* Whether this frame can be warped from the kept one: generation on, a drawn
  * frame kept, no debug view, the same viewport, and a target; and it pays
- * (the verdict the drawn frame is then priced by), has not been measured, or
- * is due to be measured again. */
+ * (the last verdict, kept in `paying`), has not been measured, or is due to
+ * be measured again. */
 static bool
 can_generate(render_context_t* c, const render_view_t* view) {
     const raster_t* r = &c->raster;
