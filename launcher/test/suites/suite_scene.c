@@ -7311,9 +7311,9 @@ test_a_mesh_that_cannot_take_the_cut_is_refused_and_one_that_can_takes_it(void) 
 }
 
 /* A copy of a textured renderer's mesh set back draws plain until textures
- * are asked for again, never through the closed ones. */
+ * are asked for again. */
 static void
-test_a_textured_mesh_set_back_holds_no_closed_textures(void) {
+test_a_textured_mesh_set_back_draws_plain_until_asked_again(void) {
     entity_t red;
     show_textured_pair(&red);
     TEST_ASSERT_TRUE(renderer_set_textured(red, true, NULL));
@@ -7337,6 +7337,42 @@ test_a_mesh_drawn_with_its_own_textures_keeps_them(void) {
     own.texturing = &callers;
     TEST_ASSERT_TRUE(renderer_set_mesh(red, &own));
     TEST_ASSERT_EQUAL_PTR(&callers, renderer_mesh(red)->texturing);
+}
+
+/* The pair scene with both quads the cut "red", in place of the fixture's pack. */
+static void
+make_twin_cut_pack(void) {
+    scene_spec_t twins = SCENES[0];
+    twins.renderers[1].mesh = "red";
+    test_pack_t pack = test_pack_begin(fx.bytes, PACK_MAX, TEXTURED_PACK_ENTRIES - 1);
+    make_quad_entry(test_pack_add(&pack, "red", R3D_LIT_MESH_ASSET, QUAD_BYTES), UINT8_MAX, 0, 0, 1);
+    make_scene_entry(test_pack_add(&pack, "test_pair", SCENE_ASSET, scene_entry_size(&twins)), &twins);
+    make_textured_luvs(
+        test_pack_add(&pack, "red" R3D_TEXTURE_UVS_NAME_SUFFIX, R3D_TEXTURE_UVS_ASSET, TEXTURED_LUVS_BYTES));
+    add_red_material(&pack, TEXTURE_CUT);
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_open(&fx.pack, fx.bytes, test_pack_finish(&pack)));
+}
+
+/* Renderers of one cut mesh share its textures, opened once and open for
+ * the scene's life: a copy of one's mesh set on the other still draws them
+ * after the first swaps its own mesh. */
+static void
+test_renderers_of_one_cut_mesh_share_its_textures_for_the_scenes_life(void) {
+    fixture();
+    make_twin_cut_pack();
+    const entity_t scene = show("test_pair");
+    const entity_t first = entity_find(scene, name_hash("red"));
+    const entity_t second = entity_find(scene, name_hash("green"));
+    const r3d_mesh_texturing_t* shared = renderer_mesh(first)->texturing;
+    TEST_ASSERT_NOT_NULL(shared);
+    TEST_ASSERT_EQUAL_PTR(shared, renderer_mesh(second)->texturing);
+    const r3d_lit_mesh_t copy = *renderer_mesh(first);
+    TEST_ASSERT_TRUE(renderer_set_mesh(second, &copy));
+    r3d_lit_mesh_t bare = copy;
+    bare.texturing = NULL;
+    TEST_ASSERT_TRUE(renderer_set_mesh(first, &bare));
+    TEST_ASSERT_EQUAL_PTR(shared, renderer_mesh(first)->texturing);
+    TEST_ASSERT_EQUAL_PTR(shared, renderer_mesh(second)->texturing);
 }
 
 /* The batch scene drawn, its red quad plain or cut by `kind`. */
@@ -7426,8 +7462,9 @@ run_scene_suite(void) {
     RUN_TEST(test_a_mesh_whose_textures_cut_draws_them_as_it_loads);
     RUN_TEST(test_textures_that_cut_never_turn_off);
     RUN_TEST(test_a_mesh_that_cannot_take_the_cut_is_refused_and_one_that_can_takes_it);
-    RUN_TEST(test_a_textured_mesh_set_back_holds_no_closed_textures);
+    RUN_TEST(test_a_textured_mesh_set_back_draws_plain_until_asked_again);
     RUN_TEST(test_a_mesh_drawn_with_its_own_textures_keeps_them);
+    RUN_TEST(test_renderers_of_one_cut_mesh_share_its_textures_for_the_scenes_life);
     RUN_TEST(test_every_copy_of_a_batch_draws_its_renderers_cut);
     RUN_TEST(test_a_scene_with_a_flat_shaded_mesh_whose_textures_cut_fails_to_load);
     RUN_TEST(test_static_mesh_arrays_are_resident_and_equal_the_pack);

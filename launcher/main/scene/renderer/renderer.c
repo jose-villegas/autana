@@ -7,22 +7,16 @@
 #include "render/texture/r3d_texture.h"
 #include "scene/scene_internal.h"
 
-/* A renderer's textures: its mesh's LUVS sibling and the materials it names,
- * in one block, and their texels copied out of the pack into a second. */
+/* A pack mesh's textures: its LUVS sibling and the materials it names, in
+ * one block, and their texels copied out of the pack into a second. The
+ * scene holds one per mesh id, shared by its renderers, until it unloads. */
 typedef struct {
     r3d_mesh_texturing_t texturing;
     uint8_t* texels;
     r3d_texture_t materials[];
 } renderer_texturing_t;
 
-static bool open_texturing(const scene_t* scene, scene_renderer_t* r, const char* mesh_id, scene_failure_t* why);
 static bool renderer_cuts(const scene_renderer_t* r);
-
-/* Draws `r` with the textures opened for it. */
-static void
-draw_textured(scene_renderer_t* r) {
-    r->mesh.texturing = &((renderer_texturing_t*)r->texturing)->texturing;
-}
 
 /* The index of the entity's renderer in its scene `*scene`, or -1. */
 static int
@@ -66,30 +60,18 @@ renderer_set_mesh(entity_t entity, const r3d_lit_mesh_t* mesh) {
     if (r->batch != NULL || (uint32_t)R3D_LOD_STATE_WORDS(mesh->lod_group_count) > r->lod_words) {
         return false;
     }
-    /* Textures `mesh` brings, the caller's, draw as given. The ones opened
-     * here were the pack mesh's and close, a copy's pointer to them too:
-     * another mesh opens its own when textures are next asked for; at once
-     * when they cut, which never draw plain, the swap refused when they do not fit. */
-    const renderer_texturing_t* opened = r->texturing;
-    const bool given = mesh->texturing != NULL && (opened == NULL || mesh->texturing != &opened->texturing);
-    const bool reopen = !given && renderer_cuts(r);
-    const r3d_lit_mesh_t old = r->mesh;
-    scene_renderer_texturing_free(r);
-    r->mesh = *mesh;
-    if (!given) {
-        r->mesh.texturing = NULL;
-    }
-    const char* mesh_id = scene->asset.renderers[i].mesh;
-    if (reopen && (r->mesh.face_colors != NULL || !open_texturing(scene, r, mesh_id, NULL))) {
-        r->mesh = old;
-        r->mesh.texturing = NULL;
-        if (open_texturing(scene, r, mesh_id, NULL)) {
-            draw_textured(r);
-        }
+    /* Textures `mesh` brings, the caller's, draw as given. The scene's stay
+     * open: a cut draws on, the swap refused when it does not fit the mesh
+     * or the mesh has face colours; others wait to be asked for again. */
+    renderer_texturing_t* block = r->texturing;
+    const bool given = mesh->texturing != NULL && (block == NULL || mesh->texturing != &block->texturing);
+    const bool cuts = !given && renderer_cuts(r);
+    if (cuts && (mesh->face_colors != NULL || !r3d_texture_texturing_fits(&block->texturing, mesh))) {
         return false;
     }
-    if (reopen) {
-        draw_textured(r);
+    r->mesh = *mesh;
+    if (!given) {
+        r->mesh.texturing = cuts ? &block->texturing : NULL;
     }
     scene_renderer_bound(r);
     /* Another mesh's groups are not these bits': start it at its finest. */
@@ -202,9 +184,32 @@ copy_texels(renderer_texturing_t* block) {
     return true;
 }
 
-/* Opens the textures of `r`, whose mesh is the pack's `mesh_id`, into r->texturing. */
+/* The textures another renderer of `scene` opened for renderer `i`'s pack mesh, or NULL. */
+static renderer_texturing_t*
+shared_texturing(const scene_t* scene, int i) {
+    const char* mesh_id = scene->asset.renderers[i].mesh;
+    for (int j = 0; j < scene->asset.renderer_count; j++) {
+        if (j != i && scene->renderers[j].texturing_owner && strcmp(scene->asset.renderers[j].mesh, mesh_id) == 0) {
+            return scene->renderers[j].texturing;
+        }
+    }
+    return NULL;
+}
+
+/* Gives renderer `i` of `scene` its pack mesh's textures, opened once per
+ * mesh id, checked against its mesh. */
 static bool
-open_texturing(const scene_t* scene, scene_renderer_t* r, const char* mesh_id, scene_failure_t* why) {
+open_texturing(scene_t* scene, int i, scene_failure_t* why) {
+    scene_renderer_t* r = &scene->renderers[i];
+    const char* mesh_id = scene->asset.renderers[i].mesh;
+    renderer_texturing_t* shared = shared_texturing(scene, i);
+    if (shared != NULL) {
+        if (!r3d_texture_texturing_fits(&shared->texturing, &r->mesh)) {
+            return scene_report(why, SCENE_ERR_ASSET, ASSET_ERR_FORMAT, mesh_id);
+        }
+        r->texturing = shared;
+        return scene_report(why, SCENE_OK, ASSET_OK, mesh_id);
+    }
     asset_view_t uvs;
     asset_status_t status = r3d_lit_mesh_open_sibling(scene->pack, mesh_id, R3D_TEXTURE_UVS_NAME_SUFFIX,
                                                       R3D_TEXTURE_UVS_ASSET, false, &uvs);
@@ -226,6 +231,7 @@ open_texturing(const scene_t* scene, scene_renderer_t* r, const char* mesh_id, s
         return scene_report(why, status != ASSET_OK ? SCENE_ERR_ASSET : SCENE_ERR_MEMORY, status, mesh_id);
     }
     r->texturing = block;
+    r->texturing_owner = true;
     return scene_report(why, SCENE_OK, ASSET_OK, mesh_id);
 }
 
@@ -238,13 +244,15 @@ renderer_set_textured(entity_t entity, bool on, scene_failure_t* why) {
     }
     scene_renderer_t* r = &scene->renderers[i];
     const char* mesh_id = scene->asset.renderers[i].mesh;
-    if (on && r->texturing == NULL && !open_texturing(scene, r, mesh_id, why)) {
+    if (on && r->texturing == NULL && !open_texturing(scene, i, why)) {
         return false;
     }
     renderer_texturing_t* block = r->texturing;
     /* A cut (MASK1) is coverage: drawn plain it fills the whole card, so it
-     * never turns off, and a flat-shaded mesh, which draws plain, cannot take one. */
-    if (renderer_cuts(r) && (!on || r->mesh.face_colors != NULL)) {
+     * never turns off, and a flat-shaded mesh, which draws plain, cannot take
+     * one. Opened before a mesh swap, they must still fit the mesh. */
+    if ((renderer_cuts(r) && (!on || r->mesh.face_colors != NULL))
+        || (on && !r3d_texture_texturing_fits(&block->texturing, &r->mesh))) {
         return scene_report(why, SCENE_ERR_ASSET, ASSET_ERR_FORMAT, mesh_id);
     }
     /* Textures are lit by vertex colours: a flat-shaded mesh draws plain. */
@@ -265,8 +273,9 @@ scene_renderer_open_cuts(scene_t* scene) {
     for (int i = 0; i < scene->asset.renderer_count; i++) {
         scene_renderer_t* r = &scene->renderers[i];
         const char* mesh_id = scene->asset.renderers[i].mesh;
-        bool cuts;
-        const asset_status_t status = r3d_texture_mesh_cuts(scene->pack, mesh_id, &cuts);
+        /* Only cuts are open yet: a mesh id with textures open cuts. */
+        bool cuts = shared_texturing(scene, i) != NULL;
+        const asset_status_t status = cuts ? ASSET_OK : r3d_texture_mesh_cuts(scene->pack, mesh_id, &cuts);
         if (status != ASSET_OK) {
             return scene_failure_make(SCENE_ERR_ASSET, status, mesh_id);
         }
@@ -277,10 +286,10 @@ scene_renderer_open_cuts(scene_t* scene) {
         if (r->mesh.face_colors != NULL) {
             return scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_FORMAT, mesh_id);
         }
-        if (!open_texturing(scene, r, mesh_id, &why)) {
+        if (!open_texturing(scene, i, &why)) {
             return why;
         }
-        draw_textured(r);
+        r->mesh.texturing = &((renderer_texturing_t*)r->texturing)->texturing;
     }
     return scene_failure_make(SCENE_OK, ASSET_OK, scene->root->id);
 }
@@ -288,9 +297,10 @@ scene_renderer_open_cuts(scene_t* scene) {
 void
 scene_renderer_texturing_free(scene_renderer_t* r) {
     renderer_texturing_t* block = r->texturing;
-    if (block != NULL) {
+    if (r->texturing_owner) {
         memory_free(block->texels);
+        memory_free(block);
     }
-    memory_free(block);
     r->texturing = NULL;
+    r->texturing_owner = false;
 }

@@ -128,6 +128,8 @@ typedef struct r3d_mesh_texturing {
     const uint8_t* triangle_code;                          /* R3D_TEXTURE_UVS_CODE_BITS per triangle */
     const r3d_texture_t* materials;
     int material_count;
+    /* The counts of the mesh it was made for, and of its UVs. */
+    uint32_t vertex_count, cluster_count, triangle_count, uv_count;
 } r3d_mesh_texturing_t;
 
 /* A mesh's texturing is an LUVS pack entry beside its LMSH
@@ -165,6 +167,10 @@ asset_status_t r3d_texture_mesh_cuts(const asset_pack_t* pack, const char* mesh_
 
 /* Whether any of `texturing`'s materials is MASK1. */
 bool r3d_texture_texturing_cuts(const r3d_mesh_texturing_t* texturing);
+
+/* Whether `texturing` fits `mesh`: the counts it was made for, and every
+ * triangle's chart and UVs inside them. */
+bool r3d_texture_texturing_fits(const r3d_mesh_texturing_t* texturing, const r3d_lit_mesh_t* mesh);
 
 /* Fills `texturing` from LUVS entry `uvs` of mesh `mesh_id`, `mesh`, after
  * checking it against the mesh, opening each material's LTEX sibling from
