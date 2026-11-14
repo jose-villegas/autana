@@ -106,6 +106,12 @@ class MeshPolicyTests(unittest.TestCase):
         for a, b in zip(edges, contact_graph(*args)):
             np.testing.assert_array_equal(a.vertices_a, b.vertices_a)
             np.testing.assert_array_equal(a.vertices_b, b.vertices_b)
+        # One candidate pair per batch finds the same contacts as one batch for all.
+        with patch('r3d.objects.contact.PAIR_BATCH', 1):
+            for a, b in zip(edges, contact_graph(*args), strict=True):
+                self.assertEqual((a.a, a.b, a.unshared), (b.a, b.b, b.unshared))
+                np.testing.assert_array_equal(a.vertices_a, b.vertices_a)
+                np.testing.assert_array_equal(a.vertices_b, b.vertices_b)
 
     def test_weld_adds_to_touched_rest_pass(self):
         report = {}
