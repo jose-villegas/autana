@@ -315,9 +315,9 @@ framegen_example_generated(const render_context_t* context) {
 
 The warp moves everything with the camera, so an object moving on its own
 shows where the last drawn frame put it until the next drawn frame: one
-drawn frame behind. An app turns generation on as for a still scene. The
-modes suite's `capybara-sponza` scenario, a skinned capybara running through
-Sponza, measures it with the camera following the runner.
+drawn frame behind. An app turns generation on as for any scene. The modes
+suite measures a scene with a skinned runner and a camera that follows it,
+with each mode's slowest frames by stage.
 
 ## Reproducing
 

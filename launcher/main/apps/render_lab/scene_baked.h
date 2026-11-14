@@ -7,6 +7,7 @@
  */
 #pragma once
 
+#include <stddef.h>
 #include <stdint.h>
 
 #include "baked_families.h"
@@ -24,6 +25,10 @@ typedef struct {
 
 /* `self->data` is a scene_baked_shown_t. Loads its family's scene and enables
  * that bake alone. */
+/* Enables `family`'s `shown` bake under `root` and disables the others;
+ * false, with `failure` saying which, when a bake is missing. */
+bool scene_baked_show(entity_t root, const scene_baked_t* family, scene_baked_variant_t shown, char* failure,
+                      size_t size);
 void scene_baked_enter(const lab_scene_t* self);
 void scene_baked_frame(uint32_t dt_ms);
 void scene_baked_exit(void);

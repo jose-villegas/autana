@@ -103,5 +103,8 @@ run "$PYTHON" launcher/tools/docs/figures.py gif "$W/herd-motion.avi" "$OUT/rend
 # The capybara's whole run down Sponza's atrium, rest to rest.
 CAPYBARA_SPONZA_FRAMES=120
 CAPYBARA_SPONZA_DT=150
-run "$W/render_lab_render" --quarter 1 --no-hud --scene capybara-sponza --frames "$CAPYBARA_SPONZA_FRAMES"     --dt "$CAPYBARA_SPONZA_DT" -o "$W/capybara-sponza-motion.bmp" --video "$W/capybara-sponza-motion.avi"     2> "$W/capybara-sponza.log"
-run "$PYTHON" launcher/tools/docs/figures.py gif "$W/capybara-sponza-motion.avi" "$OUT/render-lab-capybara-sponza.gif"     --fps "1000/$CAPYBARA_SPONZA_DT"
+run "$W/render_lab_render" --quarter 1 --no-hud --scene capybara-sponza --frames "$CAPYBARA_SPONZA_FRAMES" \
+    --dt "$CAPYBARA_SPONZA_DT" -o "$W/capybara-sponza-motion.bmp" --video "$W/capybara-sponza-motion.avi" \
+    2> "$W/capybara-sponza.log"
+run "$PYTHON" launcher/tools/docs/figures.py gif "$W/capybara-sponza-motion.avi" "$OUT/render-lab-capybara-sponza.gif" \
+    --fps "1000/$CAPYBARA_SPONZA_DT"

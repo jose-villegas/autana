@@ -19,6 +19,7 @@
 #include "apps/render_lab/capybara_content.h"
 #include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/render_lab_view.h"
+#include "apps/render_lab/scene_baked.h"
 #include "core/tune.h"
 #include "draw/draw.h"
 #include "image/pixel/rgb565.h"
@@ -114,14 +115,7 @@ build_gait(void) {
     if (gallop <= 0.0F) {
         return false;
     }
-    int count = 0;
-    for (int i = 0; i < clips && count < RUN_GAIT_STEPS_MAX; i++) {
-        const float ground = animator_clip_ground_mps(runner, i);
-        if (ground <= gallop) {
-            steps[count++] = (gait_step_t){.clip = i, .ground_mps = ground};
-        }
-    }
-    gait_sort(steps, count);
+    const int count = gait_steps_from_clips(runner, 1.0F, gallop, steps, RUN_GAIT_STEPS_MAX);
     gait = (gait_t){.steps = steps,
                     .count = count,
                     .rate_min = RUN_GAIT_RATE_MIN,
@@ -205,14 +199,7 @@ seek_run(uint32_t t_ms) {
     }
     path_ms = t_ms;
     place(run_at(t_ms));
-    const int clip = gait.steps[pick.step].clip;
-    const uint32_t duration_ms = animator_clip_duration_ms(runner, clip);
-    (void)animator_play(runner, clip, CAPYBARA_CLIP_CUT_MS);
-    (void)animator_set_speed(runner, ANIMATOR_CURRENT, pick.rate);
-    if (duration_ms > 0) {
-        (void)animator_seek(runner, ANIMATOR_CURRENT, (uint32_t)lroundf(clip_s * (float)MATH_MS_PER_S) % duration_ms);
-    }
-    (void)animator_set_paused(runner, ANIMATOR_CURRENT, true);
+    gait_hold(runner, &gait, pick, clip_s, CAPYBARA_CLIP_CUT_MS);
     applied = pick;
     held = true;
     return true;
@@ -244,8 +231,8 @@ load_sponza(void) {
     if (handle_is_none(sponza)) {
         return false;
     }
-    for (int i = 0; i < (int)SCENE_BAKED_VARIANT_COUNT; i++) {
-        entity_set_enabled(entity_find(sponza, name_hash(family->bakes[i])), i == (int)SCENE_BAKED_FITTED_FULL);
+    if (!scene_baked_show(sponza, family, SCENE_BAKED_FITTED_FULL, failure, sizeof failure)) {
+        return false;
     }
     camera = entity_find(sponza, name_hash(family->camera));
     if (handle_is_none(camera)) {
@@ -329,8 +316,6 @@ scene_capybara_sponza_path(void) {
                             ready() ? (uint32_t)lroundf(motion_profile_duration_s(&run) * (float)MATH_MS_PER_S) : 0};
 }
 
-/* The capybara moves on its own: frame generation draws it again over a
- * warp of the picture drawn without it. */
 const lab_scene_t scene_capybara_sponza = {.name = "Capybara in Sponza",
                                            .key = RUN_KEY,
                                            .family = "Capybara in Sponza",

@@ -6,10 +6,10 @@
  * own compose. */
 #include "suites.h"
 #ifdef DEVICE_BUILD
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "apps/render_lab/baked_families.h"
-#include "apps/render_lab/capybara_content.h"
 #include "apps/render_lab/capybara_sponza/scene_capybara_sponza.h"
 #include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/render_lab_dynres.h"
@@ -33,6 +33,7 @@
 #include "scene/animator/animator.h"
 #include "scene/camera/camera.h"
 #include "scene/camera/lens.h"
+#include "scene/scene_anim_stages.h"
 #include "scene/transform/transform.h"
 #include "testkit/cleanup.h"
 #include "unity.h"
@@ -68,21 +69,13 @@ typedef struct {
     const lab_scene_t* scene;
     const char* pack;
     const char* camera;
-    /* Not 0: the scene has no camera path, so its modes play this long with
-     * the camera still while it moves on its own; the cost suite skips it. */
-    uint32_t still_ms;
 } framegen_scenario_t;
 
-/* How long a scene with no camera path plays in each mode. */
-#define FRAMEGEN_STILL_MS 10000
-
 static const framegen_scenario_t scenarios[] = {
-    {&scene_bistro[SCENE_BAKED_FITTED_FULL], BISTRO_SCENE, BISTRO_CAMERA, 0},
-    {&scene_sponza[SCENE_BAKED_FITTED_FULL], SPONZA_SCENE, NULL, 0},
-    /* Cheap to draw: the engage rule keeps frame generation off. */
-    {&scene_capybara, CAPYBARA_SCENE, NULL, FRAMEGEN_STILL_MS},
+    {&scene_bistro[SCENE_BAKED_FITTED_FULL], BISTRO_SCENE, BISTRO_CAMERA},
+    {&scene_sponza[SCENE_BAKED_FITTED_FULL], SPONZA_SCENE, NULL},
     /* A skinned capybara running through Sponza, its camera its own path's. */
-    {&scene_capybara_sponza, SPONZA_SCENE, NULL, 0},
+    {&scene_capybara_sponza, SPONZA_SCENE, NULL},
 };
 
 static lab_test_t saved;
@@ -171,10 +164,6 @@ enter_path(void) {
     test_hold_quarter(lab_perf_quarters[0].quarter);
     scenario_path_t path = {.scene = lab_test_loaded_scene(scenario->pack)};
     TEST_ASSERT_FALSE(handle_is_none(path.scene));
-    if (scenario->still_ms != 0) {
-        path.duration_ms = scenario->still_ms;
-        return path;
-    }
     const lab_path_t own = own_path();
     if (own.seek != NULL) {
         TEST_ASSERT_TRUE(own.seek(0));
@@ -252,7 +241,7 @@ static const framegen_mode_t modes[] = {
 static const framegen_mode_t* mode;
 
 /* A scenario's goals in one mode: its shown frames' mean goal and p95
- * ceiling. Pegged from perf-board captures of this suite: the goal the worst
+ * ceiling. Pegged by hand from perf-board captures of this suite: the goal the worst
  * run's mean + 1%, the ceiling the worst run's p95 x 1.15. A scenario or mode
  * with no row is unpegged. */
 typedef struct {
@@ -303,7 +292,8 @@ static const char* const stage_names[STAGES][FRAMEGEN_STAGE_PARTS] = {
     [STAGE_TRANSFORM] = {R3D_STAGE_TRANSFORM_NAME},
     [STAGE_DRAW] = {R3D_STAGE_DRAW_NAME},
     [STAGE_UPSCALE] = {R3D_STAGE_UPSCALE_NAME},
-    [STAGE_ANIM] = {"anim.pose", "anim.skin", "anim.light", "anim.refit"},
+    [STAGE_ANIM] = {SCENE_ANIM_STAGE_POSE_NAME, SCENE_ANIM_STAGE_SKIN_NAME, SCENE_ANIM_STAGE_LIGHT_NAME,
+                    SCENE_ANIM_STAGE_REFIT_NAME},
 };
 
 struct shown_stages {
@@ -371,7 +361,9 @@ log_worst_frames(played_t* p) {
     log_worst("all", p->shown, p->count);
     qsort(p->shown, (size_t)p->count, sizeof p->shown[0], slower_first);
     const int worst = (p->count * FRAMEGEN_WORST_PERCENT + 99) / 100;
-    log_worst("worst5", p->shown, worst);
+    char share[sizeof "worst100"];
+    (void)snprintf(share, sizeof share, "worst%d", FRAMEGEN_WORST_PERCENT);
+    log_worst(share, p->shown, worst);
 }
 
 /* One shown frame at the path's real pace: the time the last one took. */
@@ -384,13 +376,16 @@ shown_frame(void* ctx, int64_t dt_us) {
     (void)lab_test_frame_dt((uint32_t)(step_us / MATH_US_PER_MS), false, NULL);
     const int64_t took = timing_now_us() - began;
     const render_context_frame_t f = render_context_frame(render_context_main());
-    if (p->count < p->capacity) {
-        struct shown_stages* s = &p->shown[p->count++];
-        s->frame_us = (int32_t)took;
-        s->height = f.height;
-        s->generated = f.generated;
-        take_stages(s);
+    if (dt_us == 0) { /* frame_profile_play()'s warm-up: not a sample */
+        frame_cost_take_clear();
+        return took;
     }
+    TEST_ASSERT_LESS_THAN_INT_MESSAGE(p->capacity, p->count, "more shown frames than FRAMEGEN_SHOWN_MAX");
+    struct shown_stages* s = &p->shown[p->count++];
+    s->frame_us = (int32_t)took;
+    s->height = f.height;
+    s->generated = f.generated;
+    take_stages(s);
     if (!f.generated) {
         p->drawn++;
         p->height_sum += f.height;
@@ -412,6 +407,7 @@ test_mode(void) {
     frame_cost_take_clear(); /* each frame's stages, from this path alone */
     const frame_profile_t p = frame_profile_play(&playback, shown_frame, &played, NULL);
     TEST_ASSERT_GREATER_THAN_INT(0, played.drawn);
+    TEST_ASSERT_EQUAL_INT(p.frames, played.count);
     ESP_LOGI(TAG, FRAMEGEN_MODES_LINE, scenario->scene->key, mode->generating, mode->budget_ms, p.frames, played.drawn,
              (int)p.frame_us.avg, (int)p.frame_us.p95, (int)(played.height_sum / played.drawn));
     log_worst_frames(&played);
@@ -434,7 +430,7 @@ run_framegen_perf_suite(void) {
 #ifdef DEVICE_BUILD
     for (size_t i = 0; i < sizeof scenarios / sizeof scenarios[0]; i++) {
         scenario = &scenarios[i];
-        const bool camera_path = scenario->still_ms == 0 && own_path().seek == NULL;
+        const bool camera_path = own_path().seek == NULL;
         for (ladder_step = 0; camera_path && ladder_step < RENDER_LAB_LADDER_STEPS; ladder_step++) {
             if (render_lab_ladder[ladder_step].width * 2 == GFX_WIDTH) {
                 RUN_TEST_CASE(test_generated_frame_cost, scenario->scene->key, render_lab_test_step_name(ladder_step));

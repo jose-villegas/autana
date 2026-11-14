@@ -10,6 +10,7 @@
 #include "math/scalar/mathi.h"
 #include "profile/frame_cost.h"
 #include "render/context/render_context.h"
+#include "scene/scene_anim_stages.h"
 #include "scene/scene_internal.h"
 
 TUNE_OWNER(anim);
@@ -257,19 +258,19 @@ scene_animation_repose(scene_t* scene, uint32_t dt_ms) {
         }
     }
     animate_entities(scene, dt_ms, animation_settings());
-    FRAME_COST_END(posed_from, "anim.pose");
+    FRAME_COST_END(posed_from, SCENE_ANIM_STAGE_POSE_NAME);
     FRAME_COST_BEGIN(lit_from);
     const int clusters = skin_stage_prepare(scene);
     if (clusters > 0 && scene->light_transfer != NULL) {
         scene_lights_prepare(scene);
     }
-    FRAME_COST_END(lit_from, "anim.light");
+    FRAME_COST_END(lit_from, SCENE_ANIM_STAGE_LIGHT_NAME);
     if (clusters == 0) {
         return;
     }
     FRAME_COST_BEGIN(skinned_from);
     (void)job_run_range(&scene->skin_share, skin_slice, scene, clusters);
-    FRAME_COST_END(skinned_from, "anim.skin");
+    FRAME_COST_END(skinned_from, SCENE_ANIM_STAGE_SKIN_NAME);
     FRAME_COST_BEGIN(refit_from);
     for (int i = 0; i < scene->staged_count; i++) {
         const scene_row_t e = scene->staged[i];
@@ -278,7 +279,7 @@ scene_animation_repose(scene_t* scene, uint32_t dt_ms) {
             scene_renderer_bound(&scene->renderers[scene_renderer_index(scene, e)]);
         }
     }
-    FRAME_COST_END(refit_from, "anim.refit");
+    FRAME_COST_END(refit_from, SCENE_ANIM_STAGE_REFIT_NAME);
 }
 
 void

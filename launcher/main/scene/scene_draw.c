@@ -43,7 +43,9 @@ static int drawn_scene_count;
  * instances then the batch draws, sized to the drawn scenes' renderers and
  * batches summed and only ever grown while they stay. From the scenes' own
  * memory (scene_allocate_kept()), so a lent scene's comes from its lender:
- * dropped when any scene goes, before its lender can take it back. */
+ * dropped when any scene goes, before its lender can take it back. A lender
+ * does not free, so a block outgrown while the scenes stay waits in its arena
+ * until then. */
 static struct {
     void* block;
     r3d_instance_t* instances;
@@ -289,13 +291,12 @@ draw_active(int quarter, int width, int height) {
     }
     /* Size measurements must use this draw's lens, including its viewport. */
     active_view(scene, camera, (viewport_t){width, height, quarter});
-    int batches = 0;
-    /* -1: no memory for the list. */
-    const int count = fit_drawn() ? fill_instances(&batches) : -1;
-    if (count + batches == 0) {
-        return;
-    }
-    if (count >= 0) {
+    if (fit_drawn()) {
+        int batches = 0;
+        const int count = fill_instances(&batches);
+        if (count + batches == 0) {
+            return;
+        }
         render_context_set_changed(render_context_main(), changed, fill_changed());
         render_context_set_batches(render_context_main(), drawn.batch_draws, batches);
         rendered = render_context_draw(render_context_main(), drawn.instances, count, &drawn_view, camera->clear);
