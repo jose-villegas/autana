@@ -15,6 +15,9 @@ from audio.mic.mic_eq_probe_tables import (
 from audio.mic.eq_design import ORDER_HZ, eq_order_response
 from docs.plot_style import FIGURE_SIZE, SLOTS, subplots, save_themed_plot
 
+CHECK_MARKER_SIZE = 10  # the first coefficient check's marker; each later check's is smaller
+CHECK_LINE_WIDTH = 3
+
 
 def render(capture, output):
     _, records, _ = read_capture(capture)
@@ -56,7 +59,9 @@ def render_slots(data, output):
             cases.setdefault(case, []).append((hz, measured, expected))
         for index, (case, rows) in enumerate(cases.items()):
             color = SLOTS[index % len(SLOTS)]
-            axis.plot([hz for hz, _, _ in rows], [measured for _, measured, _ in rows], 'o-', color=color, label=case)
+            # Each case's markers sit inside the last's, so cases that measure alike stay visible.
+            axis.plot([hz for hz, _, _ in rows], [measured for _, measured, _ in rows], 'o-', color=color, label=case,
+                      markersize=CHECK_MARKER_SIZE / (index + 1), linewidth=CHECK_LINE_WIDTH / (index + 1))
             expected = [(hz, value) for hz, _, value in rows if not isinstance(value, str)]
             if expected:
                 axis.plot(*zip(*expected), '--', color=color, label=case + ' expected')

@@ -105,8 +105,12 @@ read from the tracked pages and the producer declarations.
 | a still | the image itself, at most the thumbnail width |
 | a GIF | a copy at that width under `docs/tools/figure-thumbnails/`, made from the GIF on the global palette by `shrink_gif`, with fewer frames and the same length |
 
-The page's generated-block check runs `index --check`, which fails when the
-page or a copy no longer matches the images, or a copy's GIF is gone. Rerun
-`index` after changing an image or a page that shows one; the doc-images
+The page's generated-block check runs `index --check`, which fails when:
+
+- the page or a copy no longer matches the images, or a copy's GIF is gone;
+- an image under `docs/images/` is shown by no page;
+- a tracked page shows a picture that is not a tracked file.
+
+Rerun `index` after changing an image or a page that shows one; the doc-images
 refresh ([`refresh_branch.py`](../../scripts/ci/refresh_branch.py)) does this
-itself. An image no page shows is printed as a warning.
+itself.

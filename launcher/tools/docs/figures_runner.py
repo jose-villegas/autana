@@ -47,7 +47,7 @@ it shows (figure_index.py); --check says what differs instead, and an image
 no page shows, or a picture a page shows that is not a tracked file, fails it.
 
 Exit status: 0 done (check: nothing changed), 1 check or index --check found a
-change or an orphan, 2 the images could not be made or compared.
+change, an orphan or a missing picture, 2 the images could not be made or compared.
 """
 import argparse
 import concurrent.futures

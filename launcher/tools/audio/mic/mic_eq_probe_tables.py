@@ -164,7 +164,7 @@ def render_slots(path, records, caption, picture, details, markdown, regenerate)
                 for reg, values in points.items() for value in SLOT_VALUES
                 for levels in (values.get(value, {}),) for hz in SLOT_HZ]
         body += details(markdown(['Register', 'Value', 'Hz', 'Relative (dB)', 'Numerator (dB)', 'Decision'], rows)) + '\n'
-        body += picture('audio/mic-eq-scale-' + owner, owner.upper() + ' coefficient scale')
+        body += picture('audio/mic-eq-scale-' + owner, owner.upper() + ' coefficient checks')
         checks = [(case, hz, number(measured), expected if isinstance(expected, str) else number(expected))
                   for case, hz, measured, expected in scale_checks(data, owner)]
         body += details(markdown(['Check', 'Hz', 'Relative (dB)', 'Expected (dB)'], checks)) + '\n'

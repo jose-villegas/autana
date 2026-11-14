@@ -60,8 +60,8 @@ def embedded(page, text):
 
 
 def showings(root):
-    """{image: [(page, alt), ...]} over every tracked page but the index itself, for every picture a page
-    shows, under docs/images/ or not."""
+    """{image: [(page, alt), ...]} over every tracked page but the index itself; images outside docs/images/
+    are included."""
     shown, seen = {}, set()
     for page in tracked_files(root, ["*.md"]):
         if page == PAGE:
