@@ -1,0 +1,29 @@
+name: Bakes vendor rerun
+
+# Hosted runners mix CPU vendors and GitHub cannot be asked for one, while a traced bake is
+# byte-identical only on the lock's. When a Bakes run finishes with every failed job failed by
+# scripts/ci/runner_vendor.py's vendor check, this re-runs those jobs, up to its VENDOR_TRIES attempts.
+# A job is re-run only once its run has finished, so this waits for the run's slowest job.
+
+on:
+  workflow_run:
+    workflows: [Bakes]
+    types: [completed]
+
+permissions:
+  actions: write
+  checks: read
+  contents: read
+
+jobs:
+  rerun:
+    if: github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Re-run the jobs a wrong-vendor runner failed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: python3 scripts/ci/runner_vendor.py rerun "$RUN_ID"
