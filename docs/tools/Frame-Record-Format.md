@@ -48,7 +48,7 @@ title Record head, 6 bytes before every body
 | `CHOICE` | 5 | the resolution step, whether the frame was generated, the scale, the clear colour |
 | `MESH` | 6 | a drawn mesh: kind, where its arrays live, model matrix |
 | `POSE` | 7 | a skinned mesh's palette: one `float[16]` per joint |
-| `DYNMESH` | 8 | a mesh built this frame: then `float[3]` + `u8[3]` per vertex, `u16[3]` per triangle |
+| `DYNMESH` | 8 | a mesh built this frame: then `float[3]` + `u8[3]` per vertex, `u16[3]` per triangle, and a textured mesh's `i16[2]` UV per vertex |
 | `TUNE` | 9 | a tunable's value: on a keyframe each off its initial, else each that changed |
 | `CHECK` | 10 | the crc32 of a keyframe's composed picture, carried by the next frame the sink takes |
 
@@ -142,13 +142,13 @@ title MESH content, 83 bytes after the head: 19, then the model matrix
 ```mermaid
 ---
 config:
-  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(4) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(5) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(6) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(7) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(1) { fill: #93d6b0 !important; } .packetLabel { fill: #1b1b1b !important; }"
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(4) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(5) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(6) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(7) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(1) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(2) { fill: #e3e3e3 !important; } .packetLabel { fill: #1b1b1b !important; }"
   packet:
     bitsPerRow: 16
     bitWidth: 50
 ---
 packet-beta
-title POSE and DYNMESH content heads, 4 and 16 bytes after the record head
+title POSE and DYNMESH content heads, 4 and 17 bytes after the record head
 0-1: "index"
 2-3: "joints"
 4-5: "index"
@@ -157,6 +157,7 @@ title POSE and DYNMESH content heads, 4 and 16 bytes after the record head
 8-11: "position_scale"
 12-15: "vertices"
 16-19: "triangles"
+20-20: "textured"
 ```
 
 ```mermaid

@@ -35,7 +35,8 @@ typedef enum {
     FRAME_RECORD_CHOICE = 5,
     FRAME_RECORD_MESH = 6,
     FRAME_RECORD_POSE = 7,    /* frame_record_pose_t, then float[16] per joint */
-    FRAME_RECORD_DYNMESH = 8, /* frame_record_dynmesh_t, then float[3] and u8[3] per vertex, u16[3] per triangle */
+    FRAME_RECORD_DYNMESH = 8, /* frame_record_dynmesh_t, then float[3] and u8[3] per vertex, u16[3] per triangle,
+                               * then a textured mesh's i16[2] UV per vertex */
     FRAME_RECORD_TUNE = 9,    /* a tunable's value: on a keyframe each off its initial, else each that changed */
     FRAME_RECORD_CHECK = 10,  /* the crc32 of a keyframe's composed picture, in a later frame's records */
 } frame_record_type_t;
@@ -99,6 +100,7 @@ typedef struct __attribute__((packed)) {
     uint8_t fitted, double_sided;
     int32_t position_scale;
     uint32_t vertices, triangles;
+    uint8_t textured; /* its UVs follow the triangles, in LUVS's form */
 } frame_record_dynmesh_t;
 
 typedef struct __attribute__((packed)) {

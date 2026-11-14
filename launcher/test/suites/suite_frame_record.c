@@ -393,7 +393,11 @@ test_a_posed_mesh_names_its_bind_and_its_palette_rides_each_keyframe_and_each_ne
 static const vec3f_t triangle_positions[3] = {{0, 0, 0}, {1, 0, 0}, {0, 1, 0}};
 static const uint8_t triangle_colours[3][3] = {{1, 2, 3}, {4, 5, 6}, {7, 8, 9}};
 static const uint16_t triangle_indices[1][3] = {{0, 1, 2}};
-static const r3d_dynamic_source_t triangle = {triangle_positions, triangle_colours, 3, triangle_indices, 1, true};
+static const r3d_dynamic_source_t triangle = {triangle_positions, triangle_colours, 3, triangle_indices, 1, true, NULL};
+/* The same triangle textured: its UVs in LUVS's form. */
+static const int16_t triangle_uvs[3][2] = {{0, 0}, {256, 0}, {0, 256}};
+static const r3d_dynamic_source_t textured_triangle = {
+    triangle_positions, triangle_colours, 3, triangle_indices, 1, false, triangle_uvs};
 
 static void
 test_a_built_mesh_carries_its_source_whole_each_keyframe_and_each_build(void) {
@@ -410,6 +414,7 @@ test_a_built_mesh_carries_its_source_whole_each_keyframe_and_each_build(void) {
     TEST_ASSERT_EQUAL_UINT32(1, head.triangles);
     TEST_ASSERT_EQUAL_UINT8(1, head.fitted);
     TEST_ASSERT_EQUAL_UINT8(1, head.double_sided);
+    TEST_ASSERT_EQUAL_UINT8(0, head.textured);
     TEST_ASSERT_EQUAL_UINT32(
         sizeof head + sizeof triangle_positions + sizeof triangle_colours + sizeof triangle_indices, dyn->length);
     const uint8_t* at = dyn->body + sizeof head;
@@ -418,6 +423,24 @@ test_a_built_mesh_carries_its_source_whole_each_keyframe_and_each_build(void) {
     TEST_ASSERT_EQUAL_MEMORY(triangle_indices, at + sizeof triangle_positions + sizeof triangle_colours,
                              sizeof triangle_indices);
     TEST_ASSERT_NULL(mesh_record(1, FRAME_RECORD_DYNMESH, 1));
+}
+
+static void
+test_a_textured_built_mesh_carries_its_uvs_after_its_triangles(void) {
+    open_recording(-1);
+    suite_set_test_cleanup(forget_notes);
+    frame_record_note_built(&rig->quad[1].mesh, &textured_triangle, false);
+    draw_frame();
+    find_records();
+    const found_t* dyn = carried(1, FRAME_RECORD_BUILT, FRAME_RECORD_DYNMESH);
+    frame_record_dynmesh_t head;
+    memcpy(&head, dyn->body, sizeof head);
+    TEST_ASSERT_EQUAL_UINT8(1, head.textured);
+    TEST_ASSERT_EQUAL_UINT8(0, head.double_sided);
+    const size_t before_uvs =
+        sizeof head + sizeof triangle_positions + sizeof triangle_colours + sizeof triangle_indices;
+    TEST_ASSERT_EQUAL_UINT32(before_uvs + sizeof triangle_uvs, dyn->length);
+    TEST_ASSERT_EQUAL_MEMORY(triangle_uvs, dyn->body + before_uvs, sizeof triangle_uvs);
 }
 
 /* The frame the context just drew, recorded as a generated one: it reuses the
@@ -572,6 +595,7 @@ run_frame_record_suite(void) {
     RUN_TEST(test_a_mesh_in_no_pack_is_named_by_no_pack_and_no_pack_is_named);
     RUN_TEST(test_a_posed_mesh_names_its_bind_and_its_palette_rides_each_keyframe_and_each_new_pose);
     RUN_TEST(test_a_built_mesh_carries_its_source_whole_each_keyframe_and_each_build);
+    RUN_TEST(test_a_textured_built_mesh_carries_its_uvs_after_its_triangles);
     RUN_TEST(test_a_generated_frame_on_a_keyframes_turn_hands_the_keyframe_to_the_next_drawn_frame);
     RUN_TEST(test_a_generated_frame_after_a_drop_is_no_keyframe_and_the_next_drawn_frame_is);
     RUN_TEST(test_a_hash_whose_frame_is_dropped_rides_the_next_frame_taken);

@@ -104,6 +104,14 @@ static const stress_goal_t stress_goals[] = {
     {"stress-textured", "landscape", "default", {0, 0, 0, 0, 0}, {0, 0}},
     {"stress-record", "portrait", "default", {290, 1070, 9790, 2420, 1330}, {14810, 17040}},
     {"stress-record", "landscape", "default", {290, 1070, 10620, 2420, 1320}, {15650, 18000}},
+    {"stress-foliage-near", "portrait", "default", {200, 200, 24720, 2430, 0}, {27520, 31650}},
+    {"stress-foliage-near", "landscape", "default", {200, 190, 22430, 2410, 0}, {25200, 28980}},
+    {"stress-foliage-near-opaque", "portrait", "default", {190, 200, 26280, 2420, 0}, {29070, 33440}},
+    {"stress-foliage-near-opaque", "landscape", "default", {200, 190, 24100, 2370, 0}, {26830, 30860}},
+    {"stress-foliage-far", "portrait", "default", {340, 1800, 18370, 2250, 0}, {22710, 26120}},
+    {"stress-foliage-far", "landscape", "default", {350, 1790, 15260, 2250, 0}, {19610, 22560}},
+    {"stress-foliage-far-opaque", "portrait", "default", {340, 1800, 18230, 2260, 0}, {22610, 26010}},
+    {"stress-foliage-far-opaque", "landscape", "default", {340, 1790, 15130, 2260, 0}, {19510, 22440}},
 };
 
 static const char*

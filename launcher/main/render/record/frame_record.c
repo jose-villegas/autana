@@ -294,14 +294,22 @@ record_built(int index, noted_built_t* b, bool keyframe) {
     const size_t positions = (size_t)s->vertex_count * sizeof s->positions[0];
     const size_t colours = (size_t)s->vertex_count * sizeof s->colors[0];
     const size_t triangles = (size_t)s->triangle_count * sizeof s->triangles[0];
-    const frame_record_dynmesh_t mesh = {(uint16_t)index,           b->fitted,
-                                         s->double_sided,           b->position_scale,
-                                         (uint32_t)s->vertex_count, (uint32_t)s->triangle_count};
-    head(FRAME_RECORD_DYNMESH, sizeof mesh + positions + colours + triangles);
+    const size_t uvs = s->uvs != NULL ? (size_t)s->vertex_count * sizeof s->uvs[0] : 0;
+    const frame_record_dynmesh_t mesh = {.index = (uint16_t)index,
+                                         .fitted = b->fitted,
+                                         .double_sided = s->double_sided,
+                                         .position_scale = b->position_scale,
+                                         .vertices = (uint32_t)s->vertex_count,
+                                         .triangles = (uint32_t)s->triangle_count,
+                                         .textured = s->uvs != NULL};
+    head(FRAME_RECORD_DYNMESH, sizeof mesh + positions + colours + triangles + uvs);
     put(&mesh, sizeof mesh);
     put(s->positions, positions);
     put(s->colors, colours);
     put(s->triangles, triangles);
+    if (uvs > 0) {
+        put(s->uvs, uvs);
+    }
 }
 
 /* After a frame: every instance drawing a fresh mesh has carried it. */

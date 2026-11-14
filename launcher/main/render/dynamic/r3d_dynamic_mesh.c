@@ -73,18 +73,31 @@ align_up(size_t n) {
     return mathi_size_ceil(n, _Alignof(max_align_t));
 }
 
+/* The block's regions, in this order. */
+enum {
+    REGION_POSITIONS,
+    REGION_COLORS,
+    REGION_UVS,
+    REGION_TRIANGLES,
+    REGION_CLUSTERS,
+    REGION_NODES,
+    REGION_REMAP,
+    REGIONS
+};
+
 static size_t
-layout(r3d_dynamic_capacity_t c, size_t offsets[6]) {
-    const size_t sizes[6] = {
+layout(r3d_dynamic_capacity_t c, size_t offsets[REGIONS]) {
+    const size_t sizes[REGIONS] = {
         (size_t)c.vertices * sizeof(int16_t[3]),
         (size_t)c.vertices * sizeof(uint8_t[3]),
+        c.textured ? (size_t)c.vertices * sizeof(int16_t[2]) : 0,
         (size_t)c.triangles * sizeof(uint16_t[3]),
         (size_t)cluster_capacity_for(c.triangles) * sizeof(r3d_lit_cluster_t),
         (size_t)nodes_for(cluster_capacity_for(c.triangles)) * sizeof(r3d_lit_node_t),
         (size_t)c.sources * sizeof(int16_t),
     };
     size_t at = 0;
-    for (int i = 0; i < 6; i++) {
+    for (int i = 0; i < REGIONS; i++) {
         offsets[i] = at;
         at += align_up(sizes[i]);
     }
@@ -93,12 +106,12 @@ layout(r3d_dynamic_capacity_t c, size_t offsets[6]) {
 
 r3d_dynamic_capacity_t
 r3d_dynamic_capacity_for(int sources, int triangles) {
-    return (r3d_dynamic_capacity_t){mathi_min(3 * triangles, INDEX_LIMIT), triangles, sources};
+    return (r3d_dynamic_capacity_t){mathi_min(3 * triangles, INDEX_LIMIT), triangles, sources, false};
 }
 
 size_t
 r3d_dynamic_mesh_bytes(r3d_dynamic_capacity_t capacity) {
-    size_t offsets[6];
+    size_t offsets[REGIONS];
     return capacity_ok(capacity) ? layout(capacity, offsets) : 0;
 }
 
@@ -106,18 +119,19 @@ bool
 r3d_dynamic_mesh_init(r3d_dynamic_mesh_t* m, void* block, size_t bytes, r3d_dynamic_capacity_t capacity,
                       int position_scale) {
     memset(m, 0, sizeof *m);
-    size_t at[6];
+    size_t at[REGIONS];
     if (!capacity_ok(capacity) || block == NULL || position_scale <= 0 || bytes < layout(capacity, at)) {
         return false;
     }
     frame_record_forget(block, bytes);
     uint8_t* p = block;
-    m->positions = (int16_t (*)[3])(void*)(p + at[0]);
-    m->colors = (uint8_t (*)[3])(void*)(p + at[1]);
-    m->triangles = (uint16_t (*)[3])(void*)(p + at[2]);
-    m->clusters = (r3d_lit_cluster_t*)(void*)(p + at[3]);
-    m->nodes = (r3d_lit_node_t*)(void*)(p + at[4]);
-    m->remap = (int16_t*)(void*)(p + at[5]);
+    m->positions = (int16_t (*)[3])(void*)(p + at[REGION_POSITIONS]);
+    m->colors = (uint8_t (*)[3])(void*)(p + at[REGION_COLORS]);
+    m->uvs = capacity.textured ? (int16_t (*)[2])(void*)(p + at[REGION_UVS]) : NULL;
+    m->triangles = (uint16_t (*)[3])(void*)(p + at[REGION_TRIANGLES]);
+    m->clusters = (r3d_lit_cluster_t*)(void*)(p + at[REGION_CLUSTERS]);
+    m->nodes = (r3d_lit_node_t*)(void*)(p + at[REGION_NODES]);
+    m->remap = (int16_t*)(void*)(p + at[REGION_REMAP]);
     m->capacity = capacity;
     m->cluster_capacity = cluster_capacity_for(capacity.triangles);
     m->node_capacity = nodes_for(m->cluster_capacity);
@@ -178,6 +192,9 @@ vertex_for(builder_t* b, int s) {
         const vec3s_t ticks = {mathf_round_i16(p.x), mathf_round_i16(p.y), mathf_round_i16(p.z)};
         memcpy(m->positions[at], &ticks, sizeof m->positions[at]);
         memcpy(m->colors[at], b->src->colors[s], sizeof m->colors[at]);
+        if (b->src->uvs != NULL) {
+            memcpy(m->uvs[at], b->src->uvs[s], sizeof m->uvs[at]);
+        }
         b->open->bounds = box3s_extend(b->open->bounds, ticks);
         b->sources[b->open->vertex_count] = s;
         m->remap[s] = (int16_t)(at - b->open->vertex_first);
@@ -252,7 +269,7 @@ r3d_dynamic_mesh_build(r3d_dynamic_mesh_t* m, const r3d_dynamic_source_t* src) {
     m->mesh.triangle_count = 0;
     m->mesh.cluster_count = 0;
     m->mesh.node_count = 0;
-    if (src->vertex_count > m->capacity.sources) {
+    if (src->vertex_count > m->capacity.sources || (src->uvs != NULL && m->uvs == NULL)) {
         return false;
     }
     builder_t b = {.m = m, .src = src, .scale = (float)m->mesh.position_scale};

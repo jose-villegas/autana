@@ -11,11 +11,11 @@ is stale, so rerun it after changing an image or the pages that show one.
 | Area | Images | Declared by a producer | Shown nowhere |
 |---|---|---|---|
 | [anim](#anim) | 5 | 0 | 0 |
-| [audio](#audio) | 32 | 0 | 0 |
+| [audio](#audio) | 40 | 0 | 0 |
 | [input](#input) | 11 | 0 | 0 |
 | [kinematics](#kinematics) | 5 | 1 | 0 |
 | [math](#math) | 25 | 25 | 0 |
-| [overview](#overview) | 26 | 0 | 0 |
+| [overview](#overview) | 30 | 0 | 0 |
 | [physics](#physics) | 2 | 0 | 0 |
 | [power](#power) | 2 | 0 | 0 |
 | [render](#render) | 132 | 6 | 0 |
@@ -59,6 +59,14 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/audio/mic-eq-probe-dac.png"><img src="../images/audio/mic-eq-probe-dac.png" width="160" alt=""></a> | — | [audio/Audio-Path](../audio/Audio-Path.md) | not declared yet |
 | <a href="../images/audio/mic-eq-probe-hpf-dark.png"><img src="../images/audio/mic-eq-probe-hpf-dark.png" width="160" alt=""></a> | — | [audio/Audio-Path](../audio/Audio-Path.md) | not declared yet |
 | <a href="../images/audio/mic-eq-probe-hpf.png"><img src="../images/audio/mic-eq-probe-hpf.png" width="160" alt=""></a> | — | [audio/Audio-Path](../audio/Audio-Path.md) | not declared yet |
+| <a href="../images/audio/mic-eq-scale-adc-dark.png"><img src="../images/audio/mic-eq-scale-adc-dark.png" width="160" alt=""></a> | — | [audio/Audio-Path](../audio/Audio-Path.md) | not declared yet |
+| <a href="../images/audio/mic-eq-scale-adc.png"><img src="../images/audio/mic-eq-scale-adc.png" width="160" alt=""></a> | — | [audio/Audio-Path](../audio/Audio-Path.md) | not declared yet |
+| <a href="../images/audio/mic-eq-scale-dac-dark.png"><img src="../images/audio/mic-eq-scale-dac-dark.png" width="160" alt=""></a> | — | [audio/Audio-Path](../audio/Audio-Path.md) | not declared yet |
+| <a href="../images/audio/mic-eq-scale-dac.png"><img src="../images/audio/mic-eq-scale-dac.png" width="160" alt=""></a> | — | [audio/Audio-Path](../audio/Audio-Path.md) | not declared yet |
+| <a href="../images/audio/mic-eq-slots-adc-dark.png"><img src="../images/audio/mic-eq-slots-adc-dark.png" width="160" alt=""></a> | — | [audio/Audio-Path](../audio/Audio-Path.md) | not declared yet |
+| <a href="../images/audio/mic-eq-slots-adc.png"><img src="../images/audio/mic-eq-slots-adc.png" width="160" alt=""></a> | — | [audio/Audio-Path](../audio/Audio-Path.md) | not declared yet |
+| <a href="../images/audio/mic-eq-slots-dac-dark.png"><img src="../images/audio/mic-eq-slots-dac-dark.png" width="160" alt=""></a> | — | [audio/Audio-Path](../audio/Audio-Path.md) | not declared yet |
+| <a href="../images/audio/mic-eq-slots-dac.png"><img src="../images/audio/mic-eq-slots-dac.png" width="160" alt=""></a> | — | [audio/Audio-Path](../audio/Audio-Path.md) | not declared yet |
 | <a href="../images/audio/sound-onset-dark.png"><img src="../images/audio/sound-onset-dark.png" width="160" alt=""></a> | — | [audio/Clicks](../audio/Clicks.md) | not declared yet |
 | <a href="../images/audio/sound-onset.png"><img src="../images/audio/sound-onset.png" width="160" alt=""></a> | — | [audio/Clicks](../audio/Clicks.md) | not declared yet |
 | <a href="../images/audio/sound_mix_capture_long-dark.png"><img src="../images/audio/sound_mix_capture_long-dark.png" width="160" alt=""></a> | — | [audio/Mixer-Cost](../audio/Mixer-Cost.md) | not declared yet |
@@ -138,6 +146,10 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/overview/render-lab-stress-card.png"><img src="../images/overview/render-lab-stress-card.png" width="160" alt=""></a> | Card copies with ragged edges and sampled colours | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-culled.png"><img src="../images/overview/render-lab-stress-culled.png" width="160" alt=""></a> | Plane before the camera turns away | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-few-copies.png"><img src="../images/overview/render-lab-stress-few-copies.png" width="160" alt=""></a> | Stress few copies: two dense spheres | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
+| <a href="../images/overview/render-lab-stress-foliage-far-opaque.png"><img src="../images/overview/render-lab-stress-foliage-far-opaque.png" width="160" alt=""></a> | Stress foliage far opaque: the same cards under the brick | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
+| <a href="../images/overview/render-lab-stress-foliage-far.png"><img src="../images/overview/render-lab-stress-foliage-far.png" width="160" alt=""></a> | Stress foliage far: a wall of small bushes of masked cards | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
+| <a href="../images/overview/render-lab-stress-foliage-near-opaque.png"><img src="../images/overview/render-lab-stress-foliage-near-opaque.png" width="160" alt=""></a> | Stress foliage near opaque: the same cards under the brick | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
+| <a href="../images/overview/render-lab-stress-foliage-near.png"><img src="../images/overview/render-lab-stress-foliage-near.png" width="160" alt=""></a> | Stress foliage near: three bushes of masked cards over the view | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-mix.png"><img src="../images/overview/render-lab-stress-mix.png" width="160" alt=""></a> | Stress mix: planes with several tessellations and colour modes | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-near.png"><img src="../images/overview/render-lab-stress-near.png" width="160" alt=""></a> | Spheres along the camera path | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-noisy-tiny.png"><img src="../images/overview/render-lab-stress-noisy-tiny.png" width="160" alt=""></a> | Stress noisy tiny: cylinders end on, their fans of slivers | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
