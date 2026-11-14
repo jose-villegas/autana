@@ -225,6 +225,13 @@ jobs:
           fetch-depth: 0
       - uses: ./.github/actions/host-tools
       - uses: ./.github/actions/winlibs
+      # The hosted runner's TEMP is an 8.3 short name (RUNNER~1), which resolve() expands, so a temp path and its
+      # resolved form differ; a Windows profile's TEMP is the long form.
+      - name: Long temp path
+        run: |
+          long=$(cygpath -w -l "$TEMP")
+          echo "TEMP=$long" >> "$GITHUB_ENV"
+          echo "TMP=$long" >> "$GITHUB_ENV"
       - name: Tool test dependencies
         run: |
           pip install -r scripts/gates/requirements.txt -r launcher/tools/render/requirements.txt -r launcher/test/device/requirements.txt -r launcher/tools/audio/requirements.txt -r launcher/tools/audio/mic/requirements.txt -r launcher/tools/r3d/requirements.txt
