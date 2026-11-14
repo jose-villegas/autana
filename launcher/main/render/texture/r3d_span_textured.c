@@ -151,8 +151,11 @@ pack_uv(int32_t u, int32_t v) {
     return ((uint32_t)u << UV_HALF_BITS) + (uint32_t)v;
 }
 
-static void
-fill_span(const r3d_span_target_t* target, const setup_t* su, const r3d_span_row_t* row, int y, int first, int last) {
+/* `cut`: the texture may be MASK1 or the target may have writers; without
+ * it the span is an INDEX4 fill alone, with no test of either. */
+static inline __attribute__((always_inline)) void
+fill_span(const r3d_span_target_t* target, const setup_t* su, const r3d_span_row_t* row, int y, int first, int last,
+          bool cut) {
     const float fx = (float)(first - su->x0);
     const float fy = (float)(y - su->y0);
     const int steps = last - first;
@@ -167,6 +170,10 @@ fill_span(const r3d_span_target_t* target, const setup_t* su, const r3d_span_row
     uint16_t* color = row->color + first;
     c.uv = pack_uv(fixed_uv(plane_at(&su->s, fx, fy)), fixed_uv(plane_at(&su->t, fx, fy)));
     c.duv = pack_uv((int32_t)(su->s.dx * (float)UV_ONE), 0) + (uint32_t)(int32_t)(su->t.dx * (float)UV_ONE);
+    if (!cut) {
+        fill_colormap(depth, color, steps + 1, &c, &su->sampler, first, y);
+        return;
+    }
     const int32_t z = c.z;
     if (su->sampler.texture->format == R3D_TEXTURE_MASK1) {
         fill_masked(depth, color, steps + 1, &c, &su->sampler, first, y);
@@ -234,7 +241,48 @@ set_up(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[CORNERS
 
 /* r3d_span's walk: the long edge v0-v2 runs the whole height, and v1 lies
  * right of it when v0-v1-v2 winds positive; the short edge is v0-v1 above
- * v1's row and v1-v2 from it. */
+ * v1's row and v1-v2 from it. `cut` as fill_span(). */
+static inline __attribute__((always_inline)) void
+walk_rows(const r3d_span_target_t* target, const setup_t* su, recti_t box, const r3d_span_vertex_t* v0,
+          const r3d_span_vertex_t* v1, const r3d_span_vertex_t* v2, bool long_on_left, bool cut) {
+    const int end = recti_bottom(box);
+    const int split = mathi_clamp(r3d_span_first_centre(v1->y), box.y, end);
+    const int last_column = target->rows.attachment[GFX_ATTACHMENT_COLOR].width - 1;
+    r3d_span_walk_edge_t long_edge = r3d_span_walk_edge_at(v0, v2, box.y);
+    r3d_span_walk_edge_t short_edge =
+        box.y < split ? r3d_span_walk_edge_at(v0, v1, box.y) : r3d_span_walk_edge_at(v1, v2, box.y);
+    for (int y = box.y; y < end; y++) {
+        if (y == split && box.y < split) {
+            short_edge = r3d_span_walk_edge_at(v1, v2, y);
+        }
+        const r3d_span_walk_edge_t* left = long_on_left ? &long_edge : &short_edge;
+        const r3d_span_walk_edge_t* right = long_on_left ? &short_edge : &long_edge;
+        const int first = mathi_max(left->q, 0);
+        const int last = mathi_min(right->q - 1, last_column);
+        if (first <= last) {
+            const r3d_span_row_t row = r3d_span_row(target, y);
+            fill_span(target, su, &row, y, first, last, cut);
+        }
+        r3d_span_walk_edge_step(&long_edge);
+        r3d_span_walk_edge_step(&short_edge);
+    }
+}
+
+static __attribute__((noinline)) void
+walk_plain(const r3d_span_target_t* target, const setup_t* su, recti_t box, const r3d_span_vertex_t* v0,
+           const r3d_span_vertex_t* v1, const r3d_span_vertex_t* v2, bool long_on_left) {
+    walk_rows(target, su, box, v0, v1, v2, long_on_left, false);
+}
+
+/* At the flash tail, as fill_masked(). */
+static RENDER_TAIL_ATTR __attribute__((noinline)) void
+walk_cut(const r3d_span_target_t* target, const setup_t* su, recti_t box, const r3d_span_vertex_t* v0,
+         const r3d_span_vertex_t* v1, const r3d_span_vertex_t* v2, bool long_on_left) {
+    walk_rows(target, su, box, v0, v1, v2, long_on_left, true);
+}
+
+/* Sets up `texture` over the triangle, then walks its rows: an INDEX4 fill
+ * alone, or with MASK1's cut and the target's writers. */
 void
 r3d_span_textured_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                            const r3d_span_vertex_t* c, const vec2f_t uv[CORNERS], const r3d_texture_t* texture) {
@@ -251,26 +299,10 @@ r3d_span_textured_triangle(const r3d_span_target_t* target, const r3d_span_verte
     const r3d_span_vertex_t* v1 = b;
     const r3d_span_vertex_t* v2 = c;
     const bool long_on_left = (area2 > 0) != r3d_span_sort_by_y(&v0, &v1, &v2);
-    const int end = recti_bottom(box);
-    const int split = mathi_clamp(r3d_span_first_centre(v1->y), box.y, end);
-    const int last_column = target->rows.attachment[GFX_ATTACHMENT_COLOR].width - 1;
-    r3d_span_walk_edge_t long_edge = r3d_span_walk_edge_at(v0, v2, box.y);
-    r3d_span_walk_edge_t short_edge =
-        box.y < split ? r3d_span_walk_edge_at(v0, v1, box.y) : r3d_span_walk_edge_at(v1, v2, box.y);
     FRAME_LAP("r3d.draw.fill");
-    for (int y = box.y; y < end; y++) {
-        if (y == split && box.y < split) {
-            short_edge = r3d_span_walk_edge_at(v1, v2, y);
-        }
-        const r3d_span_walk_edge_t* left = long_on_left ? &long_edge : &short_edge;
-        const r3d_span_walk_edge_t* right = long_on_left ? &short_edge : &long_edge;
-        const int first = mathi_max(left->q, 0);
-        const int last = mathi_min(right->q - 1, last_column);
-        if (first <= last) {
-            const r3d_span_row_t row = r3d_span_row(target, y);
-            fill_span(target, &su, &row, y, first, last);
-        }
-        r3d_span_walk_edge_step(&long_edge);
-        r3d_span_walk_edge_step(&short_edge);
+    if (texture->format == R3D_TEXTURE_MASK1 || target->writer_count != 0) {
+        walk_cut(target, &su, box, v0, v1, v2, long_on_left);
+    } else {
+        walk_plain(target, &su, box, v0, v1, v2, long_on_left);
     }
 }
