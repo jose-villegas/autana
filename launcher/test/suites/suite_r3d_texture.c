@@ -11,6 +11,7 @@
 #include "math/scalar/mathi.h"
 #include "math/scalar/rng.h"
 #include "r3d_pixel_lens.h"
+#include "raster_rig.h"
 #include "render/r3d_pipeline.h"
 #include "render/r3d_span.h"
 #include "render/r3d_span_internal.h"
@@ -999,6 +1000,374 @@ test_near_clipped_textured_triangle_keeps_its_coverage_and_its_pattern(void) {
                                      "the clipped triangle's UVs do not vary across it");
 }
 
+/* The perspective-divided fill. A floor triangle, its apex far at the top
+ * and its base near, carries UVs that are the per-pixel truth only when u and
+ * v divide by depth: divide_px 1 with no bend allowed is that truth. */
+#define FLOOR_Z_NEAR      0.9F
+#define FLOOR_Z_STEEP     0.2F  /* a depth ratio of 4.5 */
+#define FLOOR_U_TEXELS    16.0F /* across the base, level 0's texels */
+#define FLOOR_V_TEXELS    64.0F /* down the floor: 1.5 texels a row, still level 0 */
+#define TRUTH_DIVIDE_PX   1
+#define TRUTH_BEND        0.0F
+#define DIVIDED_MISS_DIV  10    /* the dividing fill misses at most 1/10 of the floor's pixels */
+#define AFFINE_MISS_TIMES 3     /* and affine misses over 3 times what it does */
+#define TILES_FAR         60000 /* whole tiles of the test texture; 1/16 texel still exact in a float */
+
+static render_texture_settings_t
+settings_of(int divide_px, float bend) {
+    return (render_texture_settings_t){divide_px, bend};
+}
+
+static void
+floor_triangle(r3d_span_vertex_t v[3], vec2f_t uv[3], float z_far, vec2f_t shift) {
+    v[0] = vertex(24, 2, z_far, UINT8_MAX);
+    v[1] = vertex(46, 46, FLOOR_Z_NEAR, UINT8_MAX);
+    v[2] = vertex(2, 46, FLOOR_Z_NEAR, UINT8_MAX);
+    uv[0] = (vec2f_t){(FLOOR_U_TEXELS / 2) + shift.x, shift.y};
+    uv[1] = (vec2f_t){FLOOR_U_TEXELS + shift.x, FLOOR_V_TEXELS + shift.y};
+    uv[2] = (vec2f_t){shift.x, FLOOR_V_TEXELS + shift.y};
+}
+
+/* The floor, its apex at depth z_far, drawn into target `which` with `settings`. */
+static void
+draw_floor(int which, render_texture_settings_t settings, float z_far, vec2f_t shift) {
+    r3d_span_vertex_t v[3];
+    vec2f_t uv[3];
+    floor_triangle(v, uv, z_far, shift);
+    r3d_span_target_t target = target_at(which);
+    r3d_span_set_texture(&target, &settings);
+    r3d_span_textured_triangle(&target, &v[0], &v[1], &v[2], uv, texture);
+}
+
+static int
+colours_differing(int a, int b) {
+    int n = 0;
+    for (int i = 0; i < PIXELS; i++) {
+        n += colours_of(a)[i] != colours_of(b)[i];
+    }
+    return n;
+}
+
+static int
+covered_by(int which) {
+    int n = 0;
+    for (int i = 0; i < PIXELS; i++) {
+        n += depths_of(which)[i] != R3D_DEPTH_EMPTY;
+    }
+    return n;
+}
+
+static void
+test_a_steep_floor_dividing_samples_near_the_per_pixel_truth_and_affine_does_not(void) {
+    fixture();
+    clear();
+    const vec2f_t none = vec2f_zero();
+    draw_floor(0, settings_of(TRUTH_DIVIDE_PX, TRUTH_BEND), FLOOR_Z_STEEP, none);
+    draw_floor(1, RENDER_SETTINGS_DEFAULT.texture, FLOOR_Z_STEEP, none);
+    draw_floor(2, settings_of(0, RENDER_SETTINGS_DEFAULT.texture.affine_bend), FLOOR_Z_STEEP, none);
+    const int covered = covered_by(0);
+    const int divided = colours_differing(0, 1);
+    const int affine = colours_differing(0, 2);
+    TEST_ASSERT_GREATER_THAN_MESSAGE(COVERED_MIN, covered, "the floor covers too little to tell");
+    TEST_ASSERT_LESS_OR_EQUAL_MESSAGE(covered / DIVIDED_MISS_DIV, divided, "dividing strays from the truth");
+    TEST_ASSERT_GREATER_THAN_MESSAGE(AFFINE_MISS_TIMES * divided, affine, "affine is not measurably farther");
+}
+
+/* One footprint, the bend estimate's two sides. The estimate is the texels
+ * the triangle spans times its depth spread, against the bend allowed times
+ * 4 times the far depth: with the base spanning about FLOOR_V_TEXELS texels
+ * and 8 texels allowed it passes where z_far is about FLOOR_Z_NEAR / 1.5. */
+#define LIMIT_BEND   8.0F
+#define Z_FAR_MILD   0.66F /* just over the limit: bends too little to divide */
+#define Z_FAR_BENT   0.54F /* just under it: divides */
+#define DIVIDE_PX_16 16
+
+static void
+test_a_floor_divides_only_past_the_bend_the_setting_allows(void) {
+    fixture();
+    clear();
+    const vec2f_t none = vec2f_zero();
+    draw_floor(0, settings_of(0, LIMIT_BEND), Z_FAR_MILD, none);
+    draw_floor(1, settings_of(DIVIDE_PX_16, LIMIT_BEND), Z_FAR_MILD, none);
+    draw_floor(2, settings_of(0, LIMIT_BEND), Z_FAR_BENT, none);
+    TEST_ASSERT_GREATER_THAN_MESSAGE(COVERED_MIN, covered_by(0), "the floor covers too little to tell");
+    TEST_ASSERT_EQUAL_MESSAGE(0, colours_differing(0, 1), "a bend under the allowance divided");
+    clear();
+    draw_floor(0, settings_of(0, LIMIT_BEND), Z_FAR_BENT, none);
+    draw_floor(1, settings_of(DIVIDE_PX_16, LIMIT_BEND), Z_FAR_BENT, none);
+    TEST_ASSERT_GREATER_THAN_MESSAGE(0, colours_differing(0, 1), "a bend over the allowance stepped affine");
+}
+
+/* divide_px 0 steps affine, whatever the depth: the colours are what the
+ * same UVs give with no depth spread at all. */
+static void
+test_divide_px_0_draws_the_same_at_any_depth(void) {
+    fixture();
+    clear();
+    const vec2f_t none = vec2f_zero();
+    draw_floor(0, settings_of(0, 0.0F), FLOOR_Z_STEEP, none);
+    draw_floor(1, settings_of(0, 0.0F), FLOOR_Z_NEAR, none);
+    draw_floor(2, settings_of(DIVIDE_PX_16, 0.0F), FLOOR_Z_STEEP, none);
+    TEST_ASSERT_GREATER_THAN_MESSAGE(COVERED_MIN, covered_by(0), "the floor covers too little to tell");
+    TEST_ASSERT_EQUAL(0, colours_differing(0, 1));
+    TEST_ASSERT_GREATER_THAN_MESSAGE(0, colours_differing(0, 2), "the same floor does not divide when asked");
+}
+
+/* What r3d_texture_segment_px() returns as the bend grows by doubling,
+ * for a triangle of `side` pixels: affine first, then the longest segments,
+ * shortening to divide_px for a strong bend. */
+#define SEG_BEND_ALLOWED 1.0F
+#define SEG_Z_NEAR       2.0F
+#define SEG_Z_FAR        1.0F
+#define SEG_EXTENT_FIRST (1.0F / 16.0F)
+#define SEG_EXTENT_LAST  16384.0F
+#define SEG_DIVIDE_PX    4
+#define SEG_SIDE_WIDE    (4.0F * RENDER_TEXTURE_DIVIDE_PX_MAX)
+
+static void
+test_the_segment_grows_past_divide_px_for_a_mild_bend_and_no_further_than_the_max(void) {
+    int last = 0;
+    bool affine = false, grown = false, capped = false, held = false;
+    for (float e = SEG_EXTENT_FIRST; e <= SEG_EXTENT_LAST; e *= 2.0F) {
+        const int px = r3d_texture_segment_px(SEG_DIVIDE_PX, SEG_BEND_ALLOWED, e, SEG_Z_NEAR, SEG_Z_FAR, SEG_SIDE_WIDE);
+        TEST_ASSERT_LESS_OR_EQUAL(RENDER_TEXTURE_DIVIDE_PX_MAX, px);
+        if (px == 0) {
+            TEST_ASSERT_FALSE_MESSAGE(grown || held, "affine again after a bend that divided");
+            affine = true;
+        } else {
+            TEST_ASSERT_GREATER_OR_EQUAL(SEG_DIVIDE_PX, px);
+            TEST_ASSERT_TRUE_MESSAGE(last == 0 || px <= last, "a stronger bend took a longer segment");
+            grown |= px > SEG_DIVIDE_PX && px < RENDER_TEXTURE_DIVIDE_PX_MAX;
+            capped |= px == RENDER_TEXTURE_DIVIDE_PX_MAX;
+            held |= px == SEG_DIVIDE_PX;
+        }
+        last = px != 0 ? px : last;
+    }
+    TEST_ASSERT_TRUE_MESSAGE(affine, "no bend was small enough to step affine");
+    TEST_ASSERT_TRUE_MESSAGE(grown, "no mild bend grew the segment");
+    TEST_ASSERT_TRUE_MESSAGE(capped, "a mild bend did not reach the max");
+    TEST_ASSERT_TRUE_MESSAGE(held, "a strong bend left divide_px");
+}
+
+/* A divide_px that cannot double within the max stays, and 0 is affine at any bend. */
+static void
+test_the_segment_stays_put_when_it_cannot_double_and_divide_px_0_is_affine(void) {
+    const int stays = (RENDER_TEXTURE_DIVIDE_PX_MAX / 2) + 1;
+    for (float e = SEG_EXTENT_FIRST; e <= SEG_EXTENT_LAST; e *= 2.0F) {
+        TEST_ASSERT_EQUAL(0, r3d_texture_segment_px(0, SEG_BEND_ALLOWED, e, SEG_Z_NEAR, SEG_Z_FAR, SEG_SIDE_WIDE));
+        const int px = r3d_texture_segment_px(stays, SEG_BEND_ALLOWED, e, SEG_Z_NEAR, SEG_Z_FAR, SEG_SIDE_WIDE);
+        TEST_ASSERT_TRUE(px == 0 || px == stays);
+    }
+}
+
+/* A span of exactly n pixels, so its last segment is n mod divide long: a
+ * target n wide under a triangle that covers it, the span's last pixel
+ * against the per-pixel truth. */
+#define SPAN_ROWS          24
+#define SPAN_DIVIDE_PX     8
+#define SPAN_LAST_MISS_DIV 8 /* of the rows' last pixels, at most 1/8 stray from the truth */
+
+static void
+span_triangle(r3d_span_vertex_t v[3], vec2f_t uv[3]) {
+    v[0] = vertex(-50, -40, 0.1F, UINT8_MAX);
+    v[1] = vertex(150, -40, 0.5F, UINT8_MAX);
+    v[2] = vertex(20, 80, FLOOR_Z_NEAR, UINT8_MAX);
+    uv[0] = (vec2f_t){-60, -20};
+    uv[1] = (vec2f_t){180, -20};
+    uv[2] = (vec2f_t){24, 40};
+}
+
+static int
+last_pixels_straying(int n, int divide_px) {
+    const size_t pixels = (size_t)n * SPAN_ROWS;
+    uint16_t* both = calloc(pixels * 4, sizeof *both); /* colour and depth, truth and dividing */
+    TEST_ASSERT_NOT_NULL(both);
+    r3d_span_vertex_t v[3];
+    vec2f_t uv[3];
+    span_triangle(v, uv);
+    for (int k = 0; k < 2; k++) {
+        uint16_t* color = both + (k * 2 * pixels);
+        r3d_span_target_t target = r3d_span_target(color, color + pixels, n, 0, SPAN_ROWS);
+        r3d_span_set_texture(&target, &(render_texture_settings_t){k == 0 ? TRUTH_DIVIDE_PX : divide_px, TRUTH_BEND});
+        r3d_span_textured_triangle(&target, &v[0], &v[1], &v[2], uv, texture);
+    }
+    int straying = 0;
+    for (int y = 0; y < SPAN_ROWS; y++) {
+        const size_t last = ((size_t)y * (size_t)n) + (size_t)n - 1;
+        TEST_ASSERT_NOT_EQUAL(R3D_DEPTH_EMPTY, both[pixels + last]);
+        straying += both[last] != both[(2 * pixels) + last];
+    }
+    free(both);
+    return straying;
+}
+
+static void
+test_a_spans_last_pixel_matches_the_truth_at_every_length_around_a_segment(void) {
+    fixture();
+    const int lengths[] = {1, SPAN_DIVIDE_PX, SPAN_DIVIDE_PX + 1, (2 * SPAN_DIVIDE_PX) - 1};
+    for (size_t i = 0; i < sizeof lengths / sizeof lengths[0]; i++) {
+        TEST_ASSERT_LESS_OR_EQUAL_MESSAGE(SPAN_ROWS / SPAN_LAST_MISS_DIV,
+                                          last_pixels_straying(lengths[i], SPAN_DIVIDE_PX),
+                                          "a span's last pixel strays from the truth");
+    }
+}
+
+/* A narrow steep triangle drawn whole, and again through row windows as
+ * draw_slice cuts them: the bend estimate is judged on the whole triangle, so
+ * every pixel agrees. WINDOW_BEND allows what a window seeing only a few
+ * rows would take for affine, had it judged by its own box. */
+#define WINDOW_Z_FAR      0.05F
+#define WINDOW_Z_NEAR     0.95F
+#define WINDOW_Z_SIDE     0.5F /* the base slants in depth too, so a span bends along its row */
+#define WINDOW_V_TEXELS   12.0F
+#define WINDOW_BEND       12.0F
+#define WINDOW_DIVIDE_PX  4
+#define WINDOWS_MAX       3
+#define WINDOW_NARROW_ROW 40 /* the last window: few rows of a triangle some 45 tall */
+
+static void
+window_triangle(r3d_span_vertex_t v[3], vec2f_t uv[3]) {
+    v[0] = vertex(13.2F, 1.1F, WINDOW_Z_FAR, UINT8_MAX);
+    v[1] = vertex(20.3F, 46.7F, WINDOW_Z_NEAR, UINT8_MAX);
+    v[2] = vertex(14.0F, 46.7F, WINDOW_Z_SIDE, UINT8_MAX);
+    uv[0] = vec2f_zero();
+    uv[1] = (vec2f_t){0.75F, WINDOW_V_TEXELS};
+    uv[2] = (vec2f_t){0.0625F, WINDOW_V_TEXELS};
+}
+
+static void
+test_row_windows_draw_the_pixels_the_whole_target_does(void) {
+    fixture();
+    clear();
+    r3d_span_vertex_t v[3];
+    vec2f_t uv[3];
+    window_triangle(v, uv);
+    const render_texture_settings_t settings = settings_of(WINDOW_DIVIDE_PX, WINDOW_BEND);
+    r3d_span_target_t whole = target_at(0);
+    r3d_span_set_texture(&whole, &settings);
+    r3d_span_textured_triangle(&whole, &v[0], &v[1], &v[2], uv, texture);
+    const int cuts[][WINDOWS_MAX + 1] = {{0, SIDE / 2, SIDE, SIDE}, {0, 4, WINDOW_NARROW_ROW, SIDE}};
+    for (size_t c = 0; c < sizeof cuts / sizeof cuts[0]; c++) {
+        memset(buffers + (2 * PIXELS), 0, sizeof(*buffers) * 2 * PIXELS);
+        for (int w = 0; w < WINDOWS_MAX; w++) {
+            const int row0 = cuts[c][w];
+            const int row1 = cuts[c][w + 1];
+            if (row0 == row1) {
+                continue;
+            }
+            uint16_t* color = buffers + (2 * PIXELS) + ((size_t)row0 * SIDE);
+            r3d_span_target_t window = r3d_span_target(color, color + PIXELS, SIDE, row0, row1);
+            r3d_span_set_texture(&window, &settings);
+            r3d_span_textured_triangle(&window, &v[0], &v[1], &v[2], uv, texture);
+        }
+        TEST_ASSERT_GREATER_THAN_MESSAGE(0, covered_by(0), "the triangle draws nothing");
+        TEST_ASSERT_EQUAL_UINT16_ARRAY_MESSAGE(buffers, buffers + (2 * PIXELS), PIXELS, "a window's colour differs");
+        TEST_ASSERT_EQUAL_UINT16_ARRAY_MESSAGE(depths_of(0), depths_of(1), PIXELS, "a window's depth differs");
+    }
+}
+
+/* The texture repeats: the same triangle a whole number of tiles away, either
+ * way, draws the same pixels, affine and dividing. */
+static void
+test_a_triangle_whole_tiles_away_draws_the_same_pixels(void) {
+    fixture();
+    const float tile = (float)TEX_SIDE;
+    const vec2f_t shifts[] = {
+        {tile * TILES_FAR, tile * TILES_FAR}, {-tile * TILES_FAR, -tile * TILES_FAR}, {tile * TILES_FAR, -tile}};
+    const int divides[] = {0, RENDER_SETTINGS_DEFAULT.texture.divide_px};
+    for (size_t d = 0; d < sizeof divides / sizeof divides[0]; d++) {
+        for (size_t s = 0; s < sizeof shifts / sizeof shifts[0]; s++) {
+            clear();
+            const render_texture_settings_t settings =
+                settings_of(divides[d], RENDER_SETTINGS_DEFAULT.texture.affine_bend);
+            draw_floor(0, settings, FLOOR_Z_STEEP, vec2f_zero());
+            draw_floor(1, settings, FLOOR_Z_STEEP, shifts[s]);
+            TEST_ASSERT_GREATER_THAN_MESSAGE(COVERED_MIN, covered_by(0), "the floor covers too little to tell");
+            TEST_ASSERT_EQUAL_MESSAGE(0, colours_differing(0, 1), "a far tile draws other pixels");
+        }
+    }
+}
+
+/* A textured floor drawn through the raster: its settings reach every
+ * slice's fill. The floor runs from 100 to 900 in front of the camera. */
+#define RIG_W         48
+#define RIG_H         32
+#define RIG_FLOOR_Y   (-40)
+#define RIG_FLOOR_X   60
+#define RIG_Z_NEAR    (-200)
+#define RIG_Z_FAR     600
+#define RIG_U_UNITS   (12 << R3D_TEXTURE_UV_SHIFT) /* texels across, in 1/16 */
+#define RIG_V_UNITS   (16 << R3D_TEXTURE_UV_SHIFT)
+#define RIG_CODE_BOTH 0x5U /* both triangles on chart 0: code 1 in each 2-bit place */
+static const int16_t rig_floor[4][3] = {{-RIG_FLOOR_X, RIG_FLOOR_Y, RIG_Z_NEAR},
+                                        {RIG_FLOOR_X, RIG_FLOOR_Y, RIG_Z_NEAR},
+                                        {RIG_FLOOR_X, RIG_FLOOR_Y, RIG_Z_FAR},
+                                        {-RIG_FLOOR_X, RIG_FLOOR_Y, RIG_Z_FAR}};
+static const int16_t (*const rig_floors[1])[3] = {rig_floor};
+
+/* What the rig's one quad is textured with, held in the rig's own room. */
+typedef struct {
+    r3d_mesh_texturing_t texturing;
+    int16_t uvs[4][2];
+    uint8_t cluster_material[1][R3D_TEXTURE_CHARTS];
+    int32_t cluster_shift[1];
+    uint8_t codes[1];
+} rig_texturing_t;
+
+static void
+rig_cleanup(void) {
+    raster_rig_release();
+    cleanup();
+}
+
+static void
+test_the_rasters_texture_settings_reach_the_fill(void) {
+    fixture();
+    raster_rig_t* r = raster_rig_open(rig_floors, 1, 0, RIG_W, RIG_H, sizeof(rig_texturing_t));
+    suite_set_test_cleanup(rig_cleanup);
+    rig_texturing_t* t = (rig_texturing_t*)r->own;
+    const int16_t uvs[4][2] = {{0, 0}, {RIG_U_UNITS, 0}, {RIG_U_UNITS, RIG_V_UNITS}, {0, RIG_V_UNITS}};
+    memcpy(t->uvs, uvs, sizeof uvs);
+    t->cluster_material[0][0] = 0;
+    t->cluster_material[0][1] = R3D_TEXTURE_NONE;
+    t->codes[0] = RIG_CODE_BOTH;
+    t->texturing = (r3d_mesh_texturing_t){t->uvs, t->cluster_material, t->cluster_shift, t->codes, texture, 1};
+    r->quad[0].mesh.texturing = &t->texturing;
+    const size_t pixels = (size_t)RIG_W * RIG_H;
+    gfx_color_t* drawn[2];
+    render_settings_t set = RENDER_SETTINGS_DEFAULT;
+    r->raster.settings = &set;
+    for (int k = 0; k < 2; k++) {
+        set.texture = settings_of(k == 0 ? 0 : DIVIDE_PX_16, RENDER_SETTINGS_DEFAULT.texture.affine_bend);
+        const render_view_t view = render_view_fixture(&raster_rig_camera, &r->raster, 0);
+        (void)raster_draw(&r->raster, &view);
+        drawn[k] = malloc(pixels * sizeof *drawn[k]);
+        TEST_ASSERT_NOT_NULL(drawn[k]);
+        memcpy(drawn[k], raster_color(&r->raster), pixels * sizeof *drawn[k]);
+    }
+    int differing = 0;
+    for (size_t i = 0; i < pixels; i++) {
+        differing += drawn[0][i] != drawn[1][i];
+    }
+    free(drawn[0]);
+    free(drawn[1]);
+    TEST_ASSERT_GREATER_THAN_MESSAGE(0, differing, "the raster's divide_px does not reach the textured fill");
+}
+
+/* r3d_span_set_texture() keeps the settings' exact values in its bytes. */
+static void
+test_set_texture_keeps_divide_px_and_the_bend_in_steps_and_rounds_a_fine_bend_up(void) {
+    r3d_span_target_t t = {0};
+    r3d_span_set_texture(&t, &(render_texture_settings_t){RENDER_TEXTURE_DIVIDE_PX_MAX, RENDER_TEXTURE_BEND_MAX});
+    TEST_ASSERT_EQUAL_UINT8(RENDER_TEXTURE_DIVIDE_PX_MAX, t.texture_divide_px);
+    TEST_ASSERT_EQUAL_UINT8((int)(RENDER_TEXTURE_BEND_MAX * R3D_SPAN_BEND_STEPS), t.texture_bend_steps);
+    r3d_span_set_texture(&t, &(render_texture_settings_t){1, 1.0F / (2.0F * R3D_SPAN_BEND_STEPS)});
+    TEST_ASSERT_EQUAL_UINT8(1, t.texture_bend_steps);
+    r3d_span_set_texture(&t, &(render_texture_settings_t){0, 1.0F / (4.0F * R3D_SPAN_BEND_STEPS)});
+    TEST_ASSERT_EQUAL_UINT8(0, t.texture_bend_steps);
+    TEST_ASSERT_EQUAL_UINT8(0, t.texture_divide_px);
+}
+
 void
 run_r3d_texture_suite(void) {
     RUN_TEST(test_textured_covers_what_plain_covers);
@@ -1041,6 +1410,16 @@ run_r3d_texture_suite(void) {
     RUN_TEST(test_only_triangles_on_a_chart_draw_textured);
     RUN_TEST(test_a_triangle_on_chart_1_draws_with_chart_1s_uvs);
     RUN_TEST(test_near_clipped_textured_triangle_keeps_its_coverage_and_its_pattern);
+    RUN_TEST(test_a_steep_floor_dividing_samples_near_the_per_pixel_truth_and_affine_does_not);
+    RUN_TEST(test_a_floor_divides_only_past_the_bend_the_setting_allows);
+    RUN_TEST(test_divide_px_0_draws_the_same_at_any_depth);
+    RUN_TEST(test_the_segment_grows_past_divide_px_for_a_mild_bend_and_no_further_than_the_max);
+    RUN_TEST(test_the_segment_stays_put_when_it_cannot_double_and_divide_px_0_is_affine);
+    RUN_TEST(test_a_spans_last_pixel_matches_the_truth_at_every_length_around_a_segment);
+    RUN_TEST(test_row_windows_draw_the_pixels_the_whole_target_does);
+    RUN_TEST(test_a_triangle_whole_tiles_away_draws_the_same_pixels);
+    RUN_TEST(test_the_rasters_texture_settings_reach_the_fill);
+    RUN_TEST(test_set_texture_keeps_divide_px_and_the_bend_in_steps_and_rounds_a_fine_bend_up);
 }
 
 SUITE_REGISTER(run_r3d_texture_suite);
