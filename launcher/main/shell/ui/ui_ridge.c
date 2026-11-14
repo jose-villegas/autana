@@ -812,9 +812,23 @@ repaint_group_row(gfx_color_t* row, const int16_t* lo, const int16_t* hi, int x0
     }
 }
 
-/* The spans [lo[i], hi[i]) merged wherever two overlap, again until none
- * do, since a merged span can reach a third; empty ones dropped. Returns
- * how many are left, at the front. */
+/* Span `i` moved down until no span before it starts later. */
+static void
+sink_span(int16_t* lo, int16_t* hi, int i) {
+    for (; i > 0 && lo[i - 1] > lo[i]; i--) {
+        const int16_t l = lo[i];
+        const int16_t h = hi[i];
+        lo[i] = lo[i - 1];
+        hi[i] = hi[i - 1];
+        lo[i - 1] = l;
+        hi[i - 1] = h;
+    }
+}
+
+/* The spans [lo[i], hi[i]) merged wherever two overlap, empty ones dropped:
+ * sorted by start, one sweep folds each span into the last kept one it
+ * overlaps, so a merge that reaches a third span takes it too. Returns how
+ * many are left, at the front. */
 static int
 merge_spans(int16_t* lo, int16_t* hi, int count) {
     int left = 0;
@@ -822,26 +836,20 @@ merge_spans(int16_t* lo, int16_t* hi, int count) {
         if (lo[i] < hi[i]) {
             lo[left] = lo[i];
             hi[left] = hi[i];
-            left++;
+            sink_span(lo, hi, left++);
         }
     }
-    bool merged = true;
-    while (merged) {
-        merged = false;
-        for (int i = 0; i < left && !merged; i++) {
-            for (int j = i + 1; j < left && !merged; j++) {
-                if (lo[i] < hi[j] && lo[j] < hi[i]) {
-                    lo[i] = lo[i] < lo[j] ? lo[i] : lo[j];
-                    hi[i] = hi[i] > hi[j] ? hi[i] : hi[j];
-                    left--;
-                    lo[j] = lo[left];
-                    hi[j] = hi[left];
-                    merged = true;
-                }
-            }
+    int kept = 0;
+    for (int i = 0; i < left; i++) {
+        if (kept > 0 && lo[i] < hi[kept - 1]) {
+            hi[kept - 1] = hi[i] > hi[kept - 1] ? hi[i] : hi[kept - 1];
+        } else {
+            lo[kept] = lo[i];
+            hi[kept] = hi[i];
+            kept++;
         }
     }
-    return left;
+    return kept;
 }
 
 /* Rows [y0, y1) of the group of columns from `x0` repainted whole, so the

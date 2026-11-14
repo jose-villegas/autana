@@ -36,7 +36,7 @@ _Static_assert(GFX_WIDTH == BOARD_PANEL_WIDTH && GFX_HEIGHT == BOARD_PANEL_HEIGH
  * places it: clones inherit the attribute; a mapping names only the original.
  * run_present is noinline so flash callers cannot inline its body out of IRAM.
  * Development overlays and send auditing make dev and diag larger.
- * IRAM budget: release 2418 B, dev 3242 B, diag 3242 B */
+ * IRAM budget: release 2378 B, dev 3221 B, diag 3221 B */
 #define GFX_PRESENT_IRAM_ATTR IRAM_ATTR
 static const char* TAG = "gfx";
 #else

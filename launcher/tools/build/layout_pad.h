@@ -8,7 +8,8 @@
  * The code pad opens with one L32R of a literal of its own: the Xtensa linker
  * moves code that loads no literal behind all other code of its link rule,
  * where a pad would shift nothing. layout_pad.py --check proves the placement
- * after every seeded link. */
+ * after every seeded link. An assembly source takes the same pads as
+ * directives. */
 #define LAYOUT_PAD_STR2(x) #x
 #define LAYOUT_PAD_STR(x)  LAYOUT_PAD_STR2(x)
 #define LAYOUT_PAD_SECTION(name, flags, align, body)                                                                   \
@@ -17,6 +18,24 @@
 /* An L32R is three bytes; the pad is a whole number of cache lines. */
 #define LAYOUT_PAD_L32R_BYTES 3
 
+#ifdef __ASSEMBLER__
+/* clang-format off */
+#if LAYOUT_PAD_TEXT > 0
+    .pushsection .text.layout_pad, "axR", @progbits
+    .balign LAYOUT_PAD_TEXT_ALIGN
+    .literal .Llayout_pad_literal, 0
+    l32r a2, .Llayout_pad_literal
+    .space LAYOUT_PAD_TEXT - LAYOUT_PAD_L32R_BYTES
+    .popsection
+#endif
+#if LAYOUT_PAD_RODATA > 0
+    .pushsection .rodata.layout_pad, "aR", @progbits
+    .balign LAYOUT_PAD_RODATA_ALIGN
+    .space LAYOUT_PAD_RODATA
+    .popsection
+#endif
+/* clang-format on */
+#else
 #if LAYOUT_PAD_TEXT > 0
 __asm__(LAYOUT_PAD_SECTION(".text.layout_pad", "axR", LAYOUT_PAD_TEXT_ALIGN,
                            ".literal .Llayout_pad_literal, 0\nl32r a2, .Llayout_pad_literal\n.space " LAYOUT_PAD_STR(
@@ -26,4 +45,5 @@ __asm__(LAYOUT_PAD_SECTION(".text.layout_pad", "axR", LAYOUT_PAD_TEXT_ALIGN,
 #if LAYOUT_PAD_RODATA > 0
 __asm__(LAYOUT_PAD_SECTION(".rodata.layout_pad", "aR", LAYOUT_PAD_RODATA_ALIGN,
                            ".space " LAYOUT_PAD_STR(LAYOUT_PAD_RODATA) "\n"));
+#endif
 #endif

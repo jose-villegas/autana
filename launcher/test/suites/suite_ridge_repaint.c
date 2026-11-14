@@ -182,6 +182,15 @@ assert_audit(const char* name, const audit_t* audit) {
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, audit->unfresh_px, name);
 }
 
+/* assert_audit, and the step said where it painted, overflowing its places
+ * on no frame but a turn's or a dissolve's. */
+static void
+assert_fresh_audit(const char* name, const audit_t* audit) {
+    assert_audit(name, audit);
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, audit->fresh_frames, "the step said where it painted");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, audit->overflowed, "a step with no turn or dissolve overflowed its places");
+}
+
 static void
 start_arm(arm_t arm) {
     ui_ridge_set_ambient(arm >= ARM_AMBIENT);
@@ -211,9 +220,7 @@ static void
 test_a_pluck_and_strum_repaint_as_a_full_paint_and_are_sent(void) {
     fixture();
     const audit_t audit = audit_arm(ARM_PLUCK_STRUM, 90);
-    assert_audit("pluck and strum", &audit);
-    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, audit.fresh_frames, "the step said where it painted");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(0, audit.overflowed, "a step with no turn or dissolve overflowed its places");
+    assert_fresh_audit("pluck and strum", &audit);
 }
 
 static void
@@ -234,18 +241,14 @@ static void
 test_the_ambient_ridge_repaints_as_a_full_paint_and_is_sent(void) {
     fixture();
     const audit_t audit = audit_arm(ARM_AMBIENT, 200);
-    assert_audit("ambient landscape", &audit);
-    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, audit.fresh_frames, "the step said where it painted");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(0, audit.overflowed, "a step with no turn or dissolve overflowed its places");
+    assert_fresh_audit("ambient landscape", &audit);
 }
 
 static void
 test_the_ambient_ridge_held_upright_repaints_as_a_full_paint_and_is_sent(void) {
     fixture();
     const audit_t audit = audit_arm(ARM_AMBIENT_PORTRAIT, 300);
-    assert_audit("ambient portrait", &audit);
-    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, audit.fresh_frames, "the step said where it painted");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(0, audit.overflowed, "a step with no turn or dissolve overflowed its places");
+    assert_fresh_audit("ambient portrait", &audit);
 }
 
 static void
