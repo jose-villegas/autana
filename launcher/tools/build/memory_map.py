@@ -446,7 +446,16 @@ def preprocessed_lines(build, root, paths=None):
         if not source.resolve().is_relative_to(root) or (paths is not None and source.resolve() not in paths):
             continue
         command = compile_flags(entry)
-        output = subprocess.run([*command, "-E", entry["file"]], cwd=entry["directory"], check=True, capture_output=True, text=True).stdout
+        # No stdin: one inherited from a parent without a usable handle fails the start on Windows.
+        done = subprocess.run([*command, "-E", entry["file"]], cwd=entry["directory"], stdin=subprocess.DEVNULL,
+                              capture_output=True, text=True)
+        if done.returncode != 0:
+            # The caller reports stderr's last line: name the file and the exit code there, as a
+            # compiler that dies without a word (seen on Windows) would leave nothing to go on.
+            said = (done.stderr.strip().splitlines() or ["no stderr"])[-1]
+            raise subprocess.CalledProcessError(done.returncode, done.args, done.stdout,
+                                                f"{entry['file']}: preprocessor exit {done.returncode:#x}: {said}")
+        output = done.stdout
         path, number = None, 0
         for line in output.splitlines():
             marker = re.match(r'^# (\d+) "([^"]+)"', line)
