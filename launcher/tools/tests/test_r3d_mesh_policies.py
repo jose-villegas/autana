@@ -87,6 +87,18 @@ class MeshPolicyTests(unittest.TestCase):
         np.testing.assert_array_equal(edges[0].vertices_b, [3])
         np.testing.assert_array_equal(edges[0].vertices_a, [0, 1, 2])
 
+    def test_a_vertex_on_one_face_corner_is_shared_whatever_else_it_touches(self):
+        from r3d.objects.contact import contact_graph
+        # Object 0's corner at the origin is a corner of object 1's first face and lies inside its upright second face.
+        p = np.array([[0., 0, 0], [-3, 0, 0], [0, -3, 0],
+                      [0., 0, 0], [2, 0, 1], [0, 2, 1],
+                      [-1., 0, -1], [1, 0, -1], [0, 0, 1]])
+        tris, owners = np.array([[0, 1, 2], [3, 4, 5], [6, 7, 8]]), np.array([0, 1, 1])
+        for batch in (1, 1 << 20):
+            with self.subTest(batch=batch), patch('r3d.objects.contact.PAIR_BATCH', batch):
+                edges = contact_graph(p, tris, owners)
+                self.assertEqual([(e.a, e.b, e.unshared) for e in edges], [(0, 1, False)])
+
     def test_arch_columns_floor_and_free_vase(self):
         from itertools import product
         from r3d.objects.contact import contact_graph
