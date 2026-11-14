@@ -215,6 +215,9 @@ jobs:
     name: Tool tests (Windows)
     runs-on: windows-2025
     timeout-minutes: 90
+    # A suite that crashes prints each thread's Python stack, so the log names where.
+    env:
+      PYTHONFAULTHANDLER: "1"
     defaults:
       run:
         shell: bash
