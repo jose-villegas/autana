@@ -28,13 +28,13 @@
  * in a block forgets the notes inside it (frame_record_forget). */
 typedef struct {
     const void* key;
+    int vertex_count;
     uint32_t noted_at;
 } note_head_t;
 
 typedef struct {
     note_head_t head; /* the posed positions */
     const void* bind_positions;
-    int vertex_count;
     const mat4f_t* palette;
     uint16_t joints;
     bool fresh; /* posed since the last recorded frame */
@@ -42,7 +42,6 @@ typedef struct {
 
 typedef struct {
     note_head_t head; /* the built positions */
-    int vertex_count;
     int position_scale;
     r3d_dynamic_source_t source;
     bool fitted;
@@ -69,6 +68,9 @@ typedef struct {
  * buffers want. */
 static notes_t* notes;
 
+/* A table of notes as the helpers below take it: its first note, stride and length. */
+#define NOTE_TABLE(field) notes->field, sizeof notes->field[0], (int)(sizeof notes->field / sizeof notes->field[0])
+
 typedef struct {
     frame_record_out_t out;
     uint32_t keyframe_every;
@@ -91,20 +93,50 @@ typedef struct {
 static recording_t* rec;
 
 /* The note keyed `key` in a table of `count` notes `stride` apart, else an
- * empty one, else the oldest. */
+ * empty one, else the oldest, stamped for `key` and `vertex_count`. */
 static void*
-note_slot(void* table, size_t stride, int count, const void* key) {
+note_stamp(void* table, size_t stride, int count, const void* key, int vertex_count) {
     note_head_t* slot = table;
     for (int i = 0; i < count; i++) {
         note_head_t* note = (note_head_t*)((uint8_t*)table + ((size_t)i * stride));
         if (note->key == key) {
-            return note;
+            slot = note;
+            break;
         }
         if (slot->key != NULL && (note->key == NULL || note->noted_at < slot->noted_at)) {
             slot = note;
         }
     }
+    memset(slot, 0, stride);
+    *slot = (note_head_t){key, vertex_count, ++notes->made};
     return slot;
+}
+
+/* The note a mesh drawn from `key` with `vertex_count` vertices matches, else NULL. */
+static void*
+note_find(void* table, size_t stride, int count, const void* key, int vertex_count) {
+    for (int i = 0; i < count; i++) {
+        note_head_t* note = (note_head_t*)((uint8_t*)table + ((size_t)i * stride));
+        if (note->key == key && note->vertex_count == vertex_count) {
+            return note;
+        }
+    }
+    return NULL;
+}
+
+static bool
+inside(const void* address, const void* block, size_t bytes) {
+    return (const uint8_t*)address >= (const uint8_t*)block && (const uint8_t*)address < (const uint8_t*)block + bytes;
+}
+
+static void
+note_forget(void* table, size_t stride, int count, const void* block, size_t bytes) {
+    for (int i = 0; i < count; i++) {
+        note_head_t* note = (note_head_t*)((uint8_t*)table + ((size_t)i * stride));
+        if (inside(note->key, block, bytes)) {
+            memset(note, 0, stride);
+        }
+    }
 }
 
 bool
@@ -120,48 +152,31 @@ frame_record_take_notes(void) {
 
 void
 frame_record_note_skin(const r3d_lit_mesh_t* posed, const r3d_lit_mesh_t* bind, const mat4f_t* palette, int joints) {
-    notes_t* table = notes;
-    if (table == NULL) {
-        return;
+    if (notes != NULL) {
+        noted_skin_t* note = note_stamp(NOTE_TABLE(skins), posed->positions, bind->vertex_count);
+        note->bind_positions = bind->positions;
+        note->palette = palette;
+        note->joints = (uint16_t)joints;
+        note->fresh = true;
     }
-    noted_skin_t* slot =
-        note_slot(table->skins, sizeof table->skins[0], FRAME_RECORD_NOTED_SKINS_MAX, posed->positions);
-    *slot = (noted_skin_t){
-        {posed->positions, ++table->made}, bind->positions, bind->vertex_count, palette, (uint16_t)joints, true};
 }
 
 void
 frame_record_note_built(const r3d_lit_mesh_t* mesh, const r3d_dynamic_source_t* source, bool fitted) {
-    notes_t* table = notes;
-    if (table == NULL) {
-        return;
+    if (notes != NULL) {
+        noted_built_t* note = note_stamp(NOTE_TABLE(built), mesh->positions, mesh->vertex_count);
+        note->position_scale = mesh->position_scale;
+        note->source = *source;
+        note->fitted = fitted;
+        note->fresh = true;
     }
-    noted_built_t* slot =
-        note_slot(table->built, sizeof table->built[0], FRAME_RECORD_NOTED_BUILT_MAX, mesh->positions);
-    *slot = (noted_built_t){
-        {mesh->positions, ++table->made}, mesh->vertex_count, mesh->position_scale, *source, fitted, true};
-}
-
-static bool
-inside(const void* address, const void* block, size_t bytes) {
-    return (const uint8_t*)address >= (const uint8_t*)block && (const uint8_t*)address < (const uint8_t*)block + bytes;
 }
 
 void
 frame_record_forget(const void* block, size_t bytes) {
-    notes_t* table = notes;
-    if (table == NULL) {
-        return;
-    }
-    for (int i = 0; i < FRAME_RECORD_NOTED_SKINS_MAX; i++) {
-        if (inside(table->skins[i].head.key, block, bytes)) {
-            table->skins[i] = (noted_skin_t){0};
-        }
-    }
-    for (int i = 0; i < FRAME_RECORD_NOTED_BUILT_MAX; i++) {
-        if (inside(table->built[i].head.key, block, bytes)) {
-            table->built[i] = (noted_built_t){0};
-        }
+    if (notes != NULL) {
+        note_forget(NOTE_TABLE(skins), block, bytes);
+        note_forget(NOTE_TABLE(built), block, bytes);
     }
 }
 
@@ -176,26 +191,12 @@ frame_record_forget_notes(void) {
 
 static noted_skin_t*
 skin_of(const r3d_lit_mesh_t* mesh) {
-    notes_t* table = notes;
-    for (int i = 0; table != NULL && i < FRAME_RECORD_NOTED_SKINS_MAX; i++) {
-        noted_skin_t* note = &table->skins[i];
-        if (note->head.key == mesh->positions && note->vertex_count == mesh->vertex_count) {
-            return note;
-        }
-    }
-    return NULL;
+    return notes != NULL ? note_find(NOTE_TABLE(skins), mesh->positions, mesh->vertex_count) : NULL;
 }
 
 static noted_built_t*
 built_of(const r3d_lit_mesh_t* mesh) {
-    notes_t* table = notes;
-    for (int i = 0; table != NULL && i < FRAME_RECORD_NOTED_BUILT_MAX; i++) {
-        noted_built_t* note = &table->built[i];
-        if (note->head.key == mesh->positions && note->vertex_count == mesh->vertex_count) {
-            return note;
-        }
-    }
-    return NULL;
+    return notes != NULL ? note_find(NOTE_TABLE(built), mesh->positions, mesh->vertex_count) : NULL;
 }
 
 static bool

@@ -353,6 +353,17 @@ mesh_record(int k, uint16_t type, uint16_t index) {
     return NULL;
 }
 
+/* Frame 0's record of `type` for mesh `index`, whose MESH record names it `kind`. */
+static const found_t*
+carried(uint16_t index, uint8_t kind, uint16_t type) {
+    frame_record_mesh_t mesh;
+    memcpy(&mesh, mesh_record(0, FRAME_RECORD_MESH, index)->body, sizeof mesh);
+    TEST_ASSERT_EQUAL_UINT8(kind, mesh.kind);
+    const found_t* found_record = mesh_record(0, type, index);
+    TEST_ASSERT_NOT_NULL(found_record);
+    return found_record;
+}
+
 static void
 test_a_posed_mesh_names_its_bind_and_its_palette_rides_each_keyframe_and_each_new_pose(void) {
     open_recording(-1);
@@ -367,11 +378,7 @@ test_a_posed_mesh_names_its_bind_and_its_palette_rides_each_keyframe_and_each_ne
     frame_record_note_skin(posed, bind, palette, 2);
     draw_frame();
     find_records();
-    frame_record_mesh_t mesh;
-    memcpy(&mesh, mesh_record(0, FRAME_RECORD_MESH, 0)->body, sizeof mesh);
-    TEST_ASSERT_EQUAL_UINT8(FRAME_RECORD_SKINNED, mesh.kind);
-    const found_t* pose = mesh_record(0, FRAME_RECORD_POSE, 0);
-    TEST_ASSERT_NOT_NULL(pose);
+    const found_t* pose = carried(0, FRAME_RECORD_SKINNED, FRAME_RECORD_POSE);
     frame_record_pose_t head;
     memcpy(&head, pose->body, sizeof head);
     TEST_ASSERT_EQUAL_UINT16(2, head.joints);
@@ -396,11 +403,7 @@ test_a_built_mesh_carries_its_source_whole_each_keyframe_and_each_build(void) {
     draw_frame();
     draw_frame();
     find_records();
-    frame_record_mesh_t mesh;
-    memcpy(&mesh, mesh_record(0, FRAME_RECORD_MESH, 1)->body, sizeof mesh);
-    TEST_ASSERT_EQUAL_UINT8(FRAME_RECORD_BUILT, mesh.kind);
-    const found_t* dyn = mesh_record(0, FRAME_RECORD_DYNMESH, 1);
-    TEST_ASSERT_NOT_NULL(dyn);
+    const found_t* dyn = carried(1, FRAME_RECORD_BUILT, FRAME_RECORD_DYNMESH);
     frame_record_dynmesh_t head;
     memcpy(&head, dyn->body, sizeof head);
     TEST_ASSERT_EQUAL_UINT32(3, head.vertices);
