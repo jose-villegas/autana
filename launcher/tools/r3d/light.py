@@ -16,13 +16,23 @@ from .geometry import distinct_corners, nearest_triangles, triangle_areas, trian
 from .import_settings import LIGHT_FIELDS
 
 
+# A texture whose every texel's alpha is above this is opaque: nothing of it is cut away.
+ALPHA_OPAQUE = 0.99
+
+
+def alpha_tested(textures):
+    """Per material: does its texture cut pixels away (leaves, chains, glass panes)?"""
+    return np.array([tex is not None and tex.levels[0][..., 3].min() <= ALPHA_OPAQUE for tex in textures], dtype=bool)
+
+
 def drop_masked(p, uv, tri_v, tri_t, tri_m, textures, keep_alpha=0.5):
     """Alpha-tested cards (leaves, chains) keep only triangles mostly opaque."""
     keep = np.ones(len(tri_v), dtype=bool)
     bary = np.array([[1 / 3, 1 / 3, 1 / 3], [0.6, 0.2, 0.2], [0.2, 0.6, 0.2], [0.2, 0.2, 0.6]])
+    tested = alpha_tested(textures)
     for m, tex in enumerate(textures):
         sel = np.nonzero(tri_m == m)[0]
-        if tex is None or len(sel) == 0 or tex.levels[0][..., 3].min() > 0.99:
+        if not tested[m] or len(sel) == 0:
             continue
         alpha = np.zeros(len(sel))
         for b in bary:

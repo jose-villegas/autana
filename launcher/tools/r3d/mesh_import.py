@@ -30,6 +30,7 @@ from r3d.import_settings import (  # noqa: E402
     SettingsError, albedo_jobs, match_meshes, variant_meshes, load_import_settings, load_scene,
 )
 from r3d.light import (  # noqa: E402
+    alpha_tested,
     drop_masked,
     encode_srgb8,
     face_colours,
@@ -137,7 +138,9 @@ def carve_selection(src, tri_v, tri_m, selected, settings, job, scene):
     """The rules' objects plus every free repeat, each carried by one rule per shape whose `triangles` is pinned
     or derived (objects/carve.py), and the derived shapes for the report."""
     position_scale = POSITION_SCALE if settings.position_scale is None else settings.position_scale
-    selected = selected | free_repeats(src.p, tri_v, tri_m, src.tri_o, src.object_names, selected, position_scale)
+    masked = np.flatnonzero(alpha_tested(src.textures))
+    selected = selected | free_repeats(src.p, tri_v, tri_m, src.tri_o, src.object_names, selected, position_scale,
+                                       masked)
     if not any("triangles" not in rule for rule in selected.values()):
         return selected, None
     eyes, focal, near = views(scene, job.renderer)
