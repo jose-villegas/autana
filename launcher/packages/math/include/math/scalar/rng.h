@@ -64,6 +64,15 @@ rng_below(rng_t* r, int bound) {
     return (int)(rng_next(r) % (uint32_t)bound);
 }
 
+/* The bits of a draw rng_unit() keeps: a float's significand holds 24 exactly. */
+#define RNG_UNIT_BITS 24
+
+/* A uniform float in [0, 1): the draw's top RNG_UNIT_BITS bits, scaled. */
+static inline float
+rng_unit(rng_t* r) {
+    return (float)(rng_next(r) >> (32 - RNG_UNIT_BITS)) * (1.0F / (float)(1u << RNG_UNIT_BITS));
+}
+
 /* True with probability `chance` in 256.
  *
  * The boundaries are handled without consuming a draw, and that is deliberate

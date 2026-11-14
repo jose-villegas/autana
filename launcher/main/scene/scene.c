@@ -288,28 +288,35 @@ open_batches(scene_t* scene, const asset_pack_t* pack) {
     return scene_failure_make(SCENE_OK, ASSET_OK, scene->root->id);
 }
 
+/* Opens renderer `i`'s mesh and its colours. */
+static scene_failure_t
+open_mesh(scene_t* scene, const asset_pack_t* pack, int i) {
+    const bool lit = i < scene->asset.renderer_count;
+    const char* mesh =
+        lit ? scene->asset.renderers[i].mesh : scene->asset.skinned_renderers[i - scene->asset.renderer_count].mesh;
+    r3d_lit_mesh_t* view = &scene->renderers[i].mesh;
+    asset_status_t status = r3d_lit_mesh_open(pack, mesh, view);
+    if (status == ASSET_OK && lit && scene->asset.renderers[i].colour_set != SCENE_ASSET_COLOUR_SET_OWN) {
+        status = r3d_lit_mesh_open_colours(pack, mesh, scene->asset.renderers[i].colour_set, view);
+    }
+    if (status == ASSET_OK && view->colors == NULL && view->face_colors == NULL) {
+        status = ASSET_ERR_FORMAT;
+    }
+    if (status != ASSET_OK) {
+        return scene_failure_make(SCENE_ERR_ASSET, status, mesh);
+    }
+    scene->renderers[i].colour_sets = 1;
+    return scene_failure_make(SCENE_OK, ASSET_OK, mesh);
+}
+
 /* Opens every renderer's mesh, then their coarse bits; stops at the first that fails. */
 static scene_failure_t
 open_meshes(scene_t* scene, const asset_pack_t* pack) {
     for (int i = 0; i < scene->renderer_count; i++) {
-        const char* mesh = i < scene->asset.renderer_count
-                               ? scene->asset.renderers[i].mesh
-                               : scene->asset.skinned_renderers[i - scene->asset.renderer_count].mesh;
-        r3d_lit_mesh_t* view = &scene->renderers[i].mesh;
-        asset_status_t status = r3d_lit_mesh_open(pack, mesh, view);
-        if (status == ASSET_OK && i < scene->asset.renderer_count) {
-            const uint16_t set = scene->asset.renderers[i].colour_set;
-            if (set != SCENE_ASSET_COLOUR_SET_OWN) {
-                status = r3d_lit_mesh_open_colours(pack, mesh, set, view);
-            }
+        const scene_failure_t opened = open_mesh(scene, pack, i);
+        if (opened.status != SCENE_OK) {
+            return opened;
         }
-        if (status == ASSET_OK && view->colors == NULL && view->face_colors == NULL) {
-            status = ASSET_ERR_FORMAT;
-        }
-        if (status != ASSET_OK) {
-            return scene_failure_make(SCENE_ERR_ASSET, status, mesh);
-        }
-        scene->renderers[i].colour_sets = 1;
     }
     const scene_failure_t batches = open_batches(scene, pack);
     return batches.status != SCENE_OK ? batches : open_lod_bits(scene);
@@ -446,6 +453,9 @@ free_columns(scene_t* scene) {
     memory_free(scene->light_transfer);
     memory_free(scene->lod_bits);
     memory_free(scene->chunks);
+    for (int i = 0; i < scene->renderer_count; i++) {
+        scene_renderer_texturing_free(&scene->renderers[i]);
+    }
     scene_hierarchy_release(scene);
     scene_free_kept(scene->resident);
     scene_free_kept(scene);

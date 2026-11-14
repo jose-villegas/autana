@@ -47,6 +47,7 @@
 #include "render/lcol_format.h"
 #include "render/llod_format.h"
 #include "render/lmor_format.h"
+#include "render/texture/r3d_texture.h"
 #include "scene/animator/animator.h"
 #include "scene/camera/camera.h"
 #include "scene/light/light.h"
@@ -103,6 +104,7 @@ enum {
     RIG_MESH_BYTES = R3D_LIT_MESH_HEADER_BYTES + 156,
     RIG_VERTICES = 2 * QUAD_VERTICES,
     RIG_DURATION_MS = 1000,
+    RIG_GROUND_MM_S = 300,
     RIG_TRAVEL = 4
 };
 
@@ -645,6 +647,7 @@ make_rig_clip(test_pack_t* pack, const char* id, const char* target, uint8_t roo
 
     uint8_t* entry = test_pack_add(pack, id, ANIM_TRACKS_ASSET, BYTES);
     test_tracks_header(entry, 1, RIG_DURATION_MS);
+    test_pack_put16(entry + ANIM_TRACKS_AT_GROUND, RIG_GROUND_MM_S);
     entry[ANIM_TRACKS_AT_ROOT] = root;
     const test_track_t track = {target, "position", ANIM_COMPONENT_TRANSFORM, ANIM_VALUE_VEC3, TIMES, VALUES,
                                 KEYS,   ANIM_LINEAR};
@@ -4480,9 +4483,12 @@ test_animator_queries_and_controls_refuse_missing_or_out_of_range(void) {
     TEST_ASSERT_EQUAL_INT(2, animator_clip_count(entity));
     TEST_ASSERT_EQUAL_STRING("rig.move", animator_clip_name(entity, 0));
     TEST_ASSERT_EQUAL_UINT32(RIG_DURATION_MS, animator_clip_duration_ms(entity, 0));
+    TEST_ASSERT_EQUAL_FLOAT((float)RIG_GROUND_MM_S / (float)ANIM_TRACKS_GROUND_PER_M,
+                            animator_clip_ground_mps(entity, 0));
     TEST_ASSERT_EQUAL_INT(0, animator_clip_count(empty));
     TEST_ASSERT_NULL(animator_clip_name(empty, 0));
     TEST_ASSERT_EQUAL_UINT32(0, animator_clip_duration_ms(empty, 0));
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, animator_clip_ground_mps(empty, 0));
     TEST_ASSERT_FALSE(animator_play(empty, 0, 0));
     TEST_ASSERT_FALSE(animator_seek(empty, ANIMATOR_CURRENT, 0));
     TEST_ASSERT_FALSE(animator_set_paused(empty, ANIMATOR_CURRENT, true));
@@ -4490,6 +4496,7 @@ test_animator_queries_and_controls_refuse_missing_or_out_of_range(void) {
     for (int clip = -1; clip <= 2; clip += 3) {
         TEST_ASSERT_NULL(animator_clip_name(entity, clip));
         TEST_ASSERT_EQUAL_UINT32(0, animator_clip_duration_ms(entity, clip));
+        TEST_ASSERT_EQUAL_FLOAT(0.0F, animator_clip_ground_mps(entity, clip));
         TEST_ASSERT_FALSE(animator_play(entity, clip, 0));
     }
 }
@@ -4703,7 +4710,19 @@ test_translation_only_camera_clip_retains_rotation(void) {
     TEST_ASSERT_EQUAL_MEMORY(&wanted, &forward, sizeof wanted);
 }
 
-#define ANIM_RATE_DT_MS  (RIG_DURATION_MS / ((RENDER_SETTINGS_DEFAULT.anim.far_every) + 1))
+#define ANIM_RATE_DT_MS (RIG_DURATION_MS / ((RENDER_SETTINGS_DEFAULT.anim.far_every) + 1))
+/* A drawn radius past the mid band: the near tier, which poses every frame. */
+#define NEAR_DRAWN_PX   ((RENDER_SETTINGS_DEFAULT.anim.mid_px) + (RENDER_SETTINGS_DEFAULT.anim.hysteresis_px) + 1.0F)
+
+/* `entity` turned about x to frame `i`'s angle, one radian a frame; its new local. */
+static transformf_t
+turned(entity_t entity, int i) {
+    transformf_t local = transform_local(entity);
+    local.rotation = quatf_from_euler((vec3f_t){(float)(i + 1), 0, 0});
+    transform_set_local(entity, local);
+    return local;
+}
+
 #define ANIM_RATE_ROUNDS 3
 
 static scene_t*
@@ -4816,31 +4835,91 @@ test_animation_rate_controls_and_zero_dt_preserve_debt(void) {
     TEST_ASSERT_EQUAL_UINT32(owed, a->owed_ms);
 }
 
-/* Motion still skins each frame, while the kept palette changes only on its slot. */
-static void
-test_animation_rate_motion_and_lights_reuse_palette(void) {
-    entity_t root = rig_fixture("rig.skin2", NULL);
-    scene_t* scene = columns(root);
+/* The two-column rig lit by its camera light, posed once at frame 1's slot;
+ * its scene, its "red" copy and the light. */
+typedef struct {
+    scene_t* scene;
+    entity_t red;
+    entity_t lamp;
+} lit_rig_t;
+
+static lit_rig_t
+lit_rig(void) {
+    const entity_t root = rig_fixture("rig.skin2", NULL);
+    const lit_rig_t rig = {columns(root), entity_find(root, name_hash("red")), entity_find(root, name_hash("camera"))};
     render_context_set_settings(render_context_main(), &RENDER_SETTINGS_DEFAULT);
-    const entity_t red = entity_find(root, name_hash("red"));
-    const entity_t lamp = entity_find(root, name_hash("camera"));
-    TEST_ASSERT_TRUE(light_set_intensity(lamp, 1.0F));
-    scene_animation_step(scene, 0);
-    scene_animator_t* a = &scene->animators[row_of(red)];
-    scene->animation_frame = 1;
+    TEST_ASSERT_TRUE(light_set_intensity(rig.lamp, 1.0F));
+    scene_animation_step(rig.scene, 0);
+    rig.scene->animation_frame = 1;
+    return rig;
+}
+
+/* `red`'s lit normal for the light axis, as its skin holds it. */
+static float
+lit_normal(entity_t red) {
+    return skin_of(red)->normal_palette[0].m[2][1];
+}
+
+/* `red` turned to frame `i`'s angle and stepped; whether it was relit. Its lit
+ * normal follows the turn when relit and keeps its old value otherwise. */
+static bool
+step_turned(lit_rig_t rig, int i) {
+    const float before = lit_normal(rig.red);
+    const transformf_t local = turned(rig.red, i);
+    scene_animation_step(rig.scene, ANIM_RATE_DT_MS);
+    const bool relit = rig.scene->animators[row_of(rig.red)].posed;
+    TEST_ASSERT_FLOAT_WITHIN(0.0001F, relit ? quatf_rotate(local.rotation, SCENE_LIGHT_AXIS).z : before,
+                             lit_normal(rig.red));
+    return relit;
+}
+
+/* A lit far copy turned every frame, its light still: the copy and its lit
+ * normals turn on its pose slots only, so a move costs no extra skinning. */
+static void
+test_a_moving_copy_relights_on_its_pose_slot(void) {
+    const lit_rig_t rig = lit_rig();
+    const scene_animator_t* a = &rig.scene->animators[row_of(rig.red)];
     int poses = 0;
     for (int i = 0; i < RENDER_SETTINGS_DEFAULT.anim.far_every; i++) {
-        transformf_t local = transform_local(red);
-        local.rotation = quatf_from_euler((vec3f_t){(float)(i + 1), 0, 0});
-        transform_set_local(red, local);
-        TEST_ASSERT_TRUE(light_set_intensity(lamp, (float)(i + 1)));
-        scene_animation_step(scene, ANIM_RATE_DT_MS);
-        TEST_ASSERT_TRUE(a->posed); /* re-skin for the changed transform and light */
-        poses += a->owed_ms == 0;
-        TEST_ASSERT_FLOAT_WITHIN(0.0001F, quatf_rotate(local.rotation, SCENE_LIGHT_AXIS).z,
-                                 skin_of(red)->normal_palette[0].m[2][1]);
+        const bool relit = step_turned(rig, i);
+        TEST_ASSERT_EQUAL(a->owed_ms == 0, relit); /* relit on its slot, and only there */
+        poses += relit;
     }
     TEST_ASSERT_EQUAL_INT(1, poses);
+}
+
+/* A light change relights every lit copy at once, whatever its tier. */
+static void
+test_a_light_change_relights_at_once(void) {
+    const lit_rig_t rig = lit_rig();
+    for (int i = 0; i < RENDER_SETTINGS_DEFAULT.anim.far_every; i++) {
+        TEST_ASSERT_TRUE(light_set_intensity(rig.lamp, (float)(i + 2)));
+        scene_animation_step(rig.scene, ANIM_RATE_DT_MS);
+        TEST_ASSERT_TRUE(rig.scene->animators[row_of(rig.red)].posed);
+    }
+}
+
+/* A near copy poses every frame, so moving it relights it every frame: nothing
+ * close to the camera lags its move. */
+static void
+test_a_moving_near_copy_relights_every_frame(void) {
+    const lit_rig_t rig = lit_rig();
+    scene_animator_t* a = &rig.scene->animators[row_of(rig.red)];
+    for (int i = 0; i < RENDER_SETTINGS_DEFAULT.anim.far_every; i++) {
+        a->drawn_radius_px = NEAR_DRAWN_PX;
+        TEST_ASSERT_TRUE(step_turned(rig, i));
+        TEST_ASSERT_EQUAL_INT(SCENE_ANIM_TIER_NEAR, a->tier);
+    }
+}
+
+/* A copy with no clip has no pose slot to wait for: a move relights it at once. */
+static void
+test_a_moving_copy_with_no_clip_relights_at_once(void) {
+    const lit_rig_t rig = lit_rig();
+    rig.scene->animators[row_of(rig.red)].layer.current.clip = ANIM_LAYER_CLIP_NONE;
+    for (int i = 0; i < RENDER_SETTINGS_DEFAULT.anim.far_every; i++) {
+        TEST_ASSERT_TRUE(step_turned(rig, i));
+    }
 }
 
 static void
@@ -6937,12 +7016,204 @@ test_a_request_made_in_a_callback_into_a_lower_record_waits_for_the_next_pass(vo
 }
 #endif
 
+/* A textured red quad: its LUVS and the one LTEX it names beside it, in a pack
+ * of the pair of quads and their scene. The texture is index (x + y) & 15 in
+ * grey, so it never draws the quad's flat red. */
+enum {
+    TEXTURED_TEX_LOG2 = 3,
+    TEXTURED_TEX_LEVELS = 3,
+    TEXTURED_PALETTE_AT = R3D_TEXTURE_HEADER_SIZE,
+    TEXTURED_TEXELS_AT = TEXTURED_PALETTE_AT + (R3D_TEXTURE_COLOURS * R3D_TEXTURE_PALETTE_STRIDE),
+    TEXTURED_TEXEL_BYTES = 32 + 8 + 2, /* an 8, a 4 and a 2 texel side at two texels a byte */
+    TEXTURED_LTEX_BYTES = TEXTURED_TEXELS_AT + TEXTURED_TEXEL_BYTES,
+    TEXTURED_UV_SPAN = (1 << TEXTURED_TEX_LOG2) << R3D_TEXTURE_UV_SHIFT,
+    TEXTURED_LUVS_BYTES =
+        R3D_TEXTURE_UVS_HEADER_SIZE + QUAD_VERTICES * sizeof(int16_t[2]) + sizeof(int32_t) + R3D_TEXTURE_CHARTS + 1,
+    TEXTURED_TRIANGLES_ON_CHART_0 = 1 | (1 << R3D_TEXTURE_UVS_CODE_BITS),
+    TEXTURED_PACK_ENTRIES = 5
+};
+
+static void
+make_textured_ltex(uint8_t* b) {
+    test_pack_put16(b + R3D_TEXTURE_AT_VERSION, R3D_TEXTURE_VERSION);
+    test_pack_put16(b + R3D_TEXTURE_AT_FORMAT, R3D_TEXTURE_INDEX4);
+    b[R3D_TEXTURE_AT_SIZE_LOG2] = TEXTURED_TEX_LOG2;
+    b[R3D_TEXTURE_AT_LEVELS] = TEXTURED_TEX_LEVELS;
+    memset(b + R3D_TEXTURE_AT_TINT, R3D_TEXTURE_ONE, R3D_TEXTURE_TINT_RGB);
+    test_pack_put32(b + R3D_TEXTURE_AT_PALETTE_OFF, TEXTURED_PALETTE_AT);
+    test_pack_put32(b + R3D_TEXTURE_AT_TEXELS_OFF, TEXTURED_TEXELS_AT);
+    for (int i = 0; i < R3D_TEXTURE_COLOURS; i++) {
+        memset(b + TEXTURED_PALETTE_AT + (i * R3D_TEXTURE_PALETTE_STRIDE), i * R3D_TEXTURE_COLOURS,
+               R3D_TEXTURE_TINT_RGB);
+    }
+    uint8_t* at = b + TEXTURED_TEXELS_AT;
+    for (int level = 0; level < TEXTURED_TEX_LEVELS; level++) {
+        const int side = (1 << TEXTURED_TEX_LOG2) >> level;
+        for (int o = 0; o < side * side; o++) {
+            const int index = level == 0 ? ((o % side) + (o / side)) % R3D_TEXTURE_COLOURS : level;
+            at[o / 2] |= (uint8_t)(index << ((o % 2) * 4));
+        }
+        at += side * side / 2;
+    }
+}
+
+static void
+make_textured_luvs(uint8_t* b) {
+    const uint32_t uvs_at = R3D_TEXTURE_UVS_HEADER_SIZE;
+    const uint32_t shifts_at = uvs_at + (QUAD_VERTICES * sizeof(int16_t[2]));
+    const uint32_t clusters_at = shifts_at + sizeof(int32_t);
+    const uint32_t codes_at = clusters_at + R3D_TEXTURE_CHARTS;
+    const uint32_t words[][2] = {{R3D_TEXTURE_UVS_AT_VERTEX_COUNT, QUAD_VERTICES},
+                                 {R3D_TEXTURE_UVS_AT_CLUSTER_COUNT, 1},
+                                 {R3D_TEXTURE_UVS_AT_TRIANGLE_COUNT, QUAD_TRIANGLES},
+                                 {R3D_TEXTURE_UVS_AT_UV_COUNT, QUAD_VERTICES},
+                                 {R3D_TEXTURE_UVS_AT_UVS_OFF, uvs_at},
+                                 {R3D_TEXTURE_UVS_AT_SHIFTS_OFF, shifts_at},
+                                 {R3D_TEXTURE_UVS_AT_CLUSTERS_OFF, clusters_at},
+                                 {R3D_TEXTURE_UVS_AT_TRIANGLES_OFF, codes_at}};
+    test_pack_put16(b + R3D_TEXTURE_UVS_AT_VERSION, R3D_TEXTURE_UVS_VERSION);
+    test_pack_put16(b + R3D_TEXTURE_UVS_AT_MATERIAL_COUNT, 1);
+    for (size_t i = 0; i < sizeof words / sizeof words[0]; i++) {
+        test_pack_put32(b + words[i][0], words[i][1]);
+    }
+    const int16_t corners[QUAD_VERTICES][2] = {
+        {0, 0}, {TEXTURED_UV_SPAN, 0}, {TEXTURED_UV_SPAN, TEXTURED_UV_SPAN}, {0, TEXTURED_UV_SPAN}};
+    memcpy(b + uvs_at, corners, sizeof corners);
+    b[clusters_at + 1] = R3D_TEXTURE_NONE;
+    b[codes_at] = TEXTURED_TRIANGLES_ON_CHART_0;
+}
+
+/* The pair scene's pack with "red" textured, in place of the fixture's. */
+static void
+make_textured_pack(void) {
+    test_pack_t pack = test_pack_begin(fx.bytes, PACK_MAX, TEXTURED_PACK_ENTRIES);
+    make_quad_entry(test_pack_add(&pack, "red", R3D_LIT_MESH_ASSET, QUAD_BYTES), UINT8_MAX, 0, 0, 1);
+    make_quad_entry(test_pack_add(&pack, "green", R3D_LIT_MESH_ASSET, QUAD_BYTES), 0, UINT8_MAX, 0, 1);
+    make_scene_entry(test_pack_add(&pack, "test_pair", SCENE_ASSET, scene_entry_size(&SCENES[0])), &SCENES[0]);
+    make_textured_luvs(
+        test_pack_add(&pack, "red" R3D_TEXTURE_UVS_NAME_SUFFIX, R3D_TEXTURE_UVS_ASSET, TEXTURED_LUVS_BYTES));
+    make_textured_ltex(
+        test_pack_add(&pack, "red" R3D_TEXTURE_MATERIAL_SUFFIX "0", R3D_TEXTURE_ASSET, TEXTURED_LTEX_BYTES));
+    const uint32_t total = test_pack_finish(&pack);
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_open(&fx.pack, fx.bytes, total));
+}
+
+/* The raster the scene last rendered into, which keeps what a frame leaves unchanged. */
+static const uint16_t*
+rendered_picture(void) {
+    return raster_color(&render_context_main()->raster);
+}
+
+/* Two renders: the first after a change draws only what changed. */
+static void
+render_textured_pair(void) {
+    scene_render(0, 0, SIZE, SIZE);
+    scene_render(0, 0, SIZE, SIZE);
+}
+
+/* Pixels of the last render that differ from the picture `than`. */
+static int
+pixels_differing_from(const uint16_t* than) {
+    int n = 0;
+    for (int i = 0; i < SIZE * SIZE; i++) {
+        n += rendered_picture()[i] != than[i];
+    }
+    return n;
+}
+
+/* Shows the pair scene with its red quad `red` textured-capable, and keeps
+ * the picture of it drawn plain in fx.held. */
+static void
+show_textured_pair(entity_t* red) {
+    fixture();
+    make_textured_pack();
+    const entity_t scene = show("test_pair");
+    *red = entity_find(scene, name_hash("red"));
+    render_textured_pair();
+    memcpy(fx.held, rendered_picture(), sizeof(uint16_t) * SIZE * SIZE);
+}
+
+static void
+test_textures_draw_the_quad_other_than_plain(void) {
+    entity_t red;
+    show_textured_pair(&red);
+    TEST_ASSERT_TRUE(renderer_set_textured(red, true, NULL));
+    render_textured_pair();
+    TEST_ASSERT_GREATER_THAN(0, pixels_differing_from(fx.held));
+    TEST_ASSERT_TRUE(renderer_set_textured(red, false, NULL));
+    render_textured_pair();
+    TEST_ASSERT_EQUAL_INT(0, pixels_differing_from(fx.held));
+}
+
+/* Another mesh does not draw or keep the textures opened for the one it
+ * replaced: with other counts the LUVS no longer fits and asking again is
+ * refused, still drawing plain. */
+static void
+test_a_mesh_of_other_counts_is_not_drawn_with_the_old_meshs_textures(void) {
+    entity_t red;
+    show_textured_pair(&red);
+    r3d_lit_mesh_t other = *renderer_mesh(red);
+    other.triangle_count = QUAD_TRIANGLES - 1;
+    TEST_ASSERT_TRUE(renderer_set_textured(red, true, NULL));
+    TEST_ASSERT_TRUE(renderer_set_mesh(red, &other));
+    TEST_ASSERT_NULL(renderer_mesh(red)->texturing);
+    render_textured_pair();
+    TEST_ASSERT_EQUAL_INT(0, pixels_differing_from(fx.held));
+    scene_failure_t why = {0};
+    TEST_ASSERT_FALSE(renderer_set_textured(red, true, &why));
+    TEST_ASSERT_NULL(renderer_mesh(red)->texturing);
+    render_textured_pair();
+    TEST_ASSERT_EQUAL_INT(0, pixels_differing_from(fx.held));
+}
+
+static void
+test_a_mesh_of_the_same_counts_opens_its_textures_again_after_the_swap(void) {
+    entity_t red;
+    show_textured_pair(&red);
+    r3d_lit_mesh_t other = *renderer_mesh(red);
+    TEST_ASSERT_TRUE(renderer_set_textured(red, true, NULL));
+    render_textured_pair();
+    TEST_ASSERT_GREATER_THAN(0, pixels_differing_from(fx.held));
+    uint16_t* textured = malloc(sizeof(uint16_t) * SIZE * SIZE);
+    TEST_ASSERT_NOT_NULL(textured);
+    memcpy(textured, rendered_picture(), sizeof(uint16_t) * SIZE * SIZE);
+    TEST_ASSERT_TRUE(renderer_set_mesh(red, &other));
+    TEST_ASSERT_NULL(renderer_mesh(red)->texturing);
+    render_textured_pair();
+    TEST_ASSERT_EQUAL_INT(0, pixels_differing_from(fx.held));
+    TEST_ASSERT_TRUE(renderer_set_textured(red, true, NULL));
+    render_textured_pair();
+    const int differing = pixels_differing_from(textured);
+    free(textured);
+    TEST_ASSERT_EQUAL_INT(0, differing);
+}
+
+static void
+test_a_mesh_with_face_colours_draws_textured_triangles_plain(void) {
+    const uint16_t faces[QUAD_TRIANGLES] = {RGB565BE(0x00FF00), RGB565BE(0x0000FF)};
+    entity_t red;
+    show_textured_pair(&red);
+    r3d_lit_mesh_t flat = *renderer_mesh(red);
+    flat.face_colors = faces;
+    TEST_ASSERT_TRUE(renderer_set_mesh(red, &flat));
+    render_textured_pair();
+    TEST_ASSERT_GREATER_THAN(0, pixels_differing_from(fx.held));
+    memcpy(fx.held, rendered_picture(), sizeof(uint16_t) * SIZE * SIZE);
+    TEST_ASSERT_TRUE(renderer_set_textured(red, true, NULL));
+    render_textured_pair();
+    TEST_ASSERT_EQUAL_INT(0, pixels_differing_from(fx.held));
+}
+
 void
 run_scene_suite(void) {
     /* The tests count the heap, so they run on it; the board lends the app
      * arena, put back once they are done. */
     scene_unload_all();
     const memory_take_fn lender = scene_set_take(NULL);
+    RUN_TEST(test_textures_draw_the_quad_other_than_plain);
+    RUN_TEST(test_a_mesh_of_other_counts_is_not_drawn_with_the_old_meshs_textures);
+    RUN_TEST(test_a_mesh_of_the_same_counts_opens_its_textures_again_after_the_swap);
+    RUN_TEST(test_a_mesh_with_face_colours_draws_textured_triangles_plain);
     RUN_TEST(test_static_mesh_arrays_are_resident_and_equal_the_pack);
     RUN_TEST(test_static_face_colours_are_resident_and_equal_the_pack);
     RUN_TEST(test_only_static_mesh_arrays_are_made_resident);
@@ -6975,7 +7246,10 @@ run_scene_suite(void) {
     RUN_TEST(test_animation_rate_staggers_eight_copies);
     RUN_TEST(test_animation_rate_speed_and_pause_settle_previous_time);
     RUN_TEST(test_animation_rate_controls_and_zero_dt_preserve_debt);
-    RUN_TEST(test_animation_rate_motion_and_lights_reuse_palette);
+    RUN_TEST(test_a_moving_copy_relights_on_its_pose_slot);
+    RUN_TEST(test_a_light_change_relights_at_once);
+    RUN_TEST(test_a_moving_near_copy_relights_every_frame);
+    RUN_TEST(test_a_moving_copy_with_no_clip_relights_at_once);
     RUN_TEST(test_animation_rate_tier_hysteresis);
     RUN_TEST(test_animation_rate_tier_jumps_and_first_read);
     RUN_TEST(test_animation_rate_first_placement_jump_and_debt);

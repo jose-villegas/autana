@@ -355,6 +355,16 @@ animator_clip_duration_ms(entity_t entity, int clip) {
     return clip < 0 || clip >= clip_count(scene, row) ? 0 : scene->animators[row].clips[clip].tracks.clip.duration_ms;
 }
 
+float
+animator_clip_ground_mps(entity_t entity, int clip) {
+    scene_row_t row;
+    const scene_t* scene = scene_entity_row(entity, &row);
+    if (scene == NULL || clip < 0 || clip >= clip_count(scene, row)) {
+        return 0.0F;
+    }
+    return (float)scene->animators[row].clips[clip].tracks.clip.ground_mm_s / (float)ANIM_TRACKS_GROUND_PER_M;
+}
+
 bool
 animator_seek(entity_t entity, animator_slot_t slot, uint32_t t_ms) {
     scene_row_t row;

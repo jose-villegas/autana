@@ -8,6 +8,7 @@
 #include "core/memory.h"
 #include "core/tune.h"
 #include "math/scalar/mathi.h"
+#include "profile/frame_cost.h"
 #include "render/context/render_context.h"
 #include "scene/scene_internal.h"
 
@@ -84,14 +85,21 @@ advance_animator(scene_animator_t* a, uint32_t dt_ms) {
     return changed;
 }
 
+/* A copy whose clip poses it on its tier's slots: its move relights it there. */
+static bool
+paced(const scene_t* scene, scene_row_t e) {
+    const scene_animator_t* a = &scene->animators[e];
+    return a->storage != NULL && a->root == ANIM_ROOT_SKELETON && a->layer.current.clip != ANIM_LAYER_CLIP_NONE
+           && (scene->flags[e] & SCENE_FLAG_ACTIVE);
+}
+
 void
 scene_animate_range(scene_t* scene, int first, int count, uint32_t dt_ms, const render_anim_settings_t* settings) {
     for (int i = first; i < first + count; i++) {
         const scene_row_t e = scene->staged[i];
         scene_animator_t* a = &scene->animators[e];
         a->posed = false;
-        if (a->storage == NULL || a->root != ANIM_ROOT_SKELETON || a->layer.current.clip == ANIM_LAYER_CLIP_NONE
-            || !(scene->flags[e] & SCENE_FLAG_ACTIVE)) {
+        if (!paced(scene, e)) {
             continue;
         }
         const int interval =
@@ -103,9 +111,10 @@ scene_animate_range(scene_t* scene, int first, int count, uint32_t dt_ms, const 
             a->owed_ms += dt_ms;
             continue;
         }
-        a->posed = advance_animator(a, dt_ms + a->owed_ms);
+        const bool advanced = advance_animator(a, dt_ms + a->owed_ms);
         a->owed_ms = 0;
-        if (!a->posed) {
+        a->posed = advanced || (scene->flags[e] & SCENE_FLAG_RELIGHT);
+        if (!advanced) {
             continue;
         }
         const anim_pose_t* pose = anim_layer_pose(&a->layer, &a->skeleton, a->joint_tables, a->counts);
@@ -194,7 +203,8 @@ skin_lights_changed(const scene_t* scene) {
     bool lights_dirty = false;
     for (int i = 0; i < scene->staged_count; i++) {
         const scene_row_t e = scene->staged[i];
-        lights_dirty |= scene->lights[e].kind != SCENE_LIGHT_NONE && (scene->flags[e] & SCENE_FLAG_SKIN_DIRTY);
+        lights_dirty |= scene->lights[e].kind != SCENE_LIGHT_NONE
+                        && (scene->flags[e] & (SCENE_FLAG_SKIN_DIRTY | SCENE_FLAG_RELIGHT));
     }
     return lights_dirty;
 }
@@ -213,7 +223,10 @@ skin_stage_prepare(scene_t* scene) {
             continue;
         }
         if (skin->storage != NULL && scene->light_transfer != NULL) {
-            animator->posed |= lights_dirty || (scene->flags[e] & SCENE_FLAG_SKIN_DIRTY);
+            /* A paused clip reaches no slot, so its copy relights at once, as one with no clip. */
+            const bool moved_unpaced =
+                (scene->flags[e] & SCENE_FLAG_RELIGHT) && (!paced(scene, e) || animator->layer.current.playhead.paused);
+            animator->posed |= lights_dirty || (scene->flags[e] & SCENE_FLAG_SKIN_DIRTY) || moved_unpaced;
         }
         if (skin->storage != NULL && animator->posed) {
             scene_skin_light_prepare(scene, e);
@@ -221,7 +234,10 @@ skin_stage_prepare(scene_t* scene) {
         }
     }
     for (int e = 0; e < entities; e++) {
-        scene->flags[e] &= (uint8_t)~SCENE_FLAG_SKIN_DIRTY;
+        /* A lit copy not relit this step keeps its move for its next pose. */
+        const bool waits =
+            scene->skinned_renderers[e].storage != NULL && scene->light_transfer != NULL && !scene->animators[e].posed;
+        scene->flags[e] &= (uint8_t)~(SCENE_FLAG_SKIN_DIRTY | (waits ? 0U : SCENE_FLAG_RELIGHT));
     }
     return clusters;
 }
@@ -231,6 +247,7 @@ scene_animation_repose(scene_t* scene, uint32_t dt_ms) {
     if (scene->animator_count == 0) {
         return;
     }
+    FRAME_COST_BEGIN(posed_from);
     for (int i = 0; i < scene->staged_count; i++) {
         const scene_row_t e = scene->staged[i];
         scene_animator_t* animator = &scene->animators[e];
@@ -240,14 +257,20 @@ scene_animation_repose(scene_t* scene, uint32_t dt_ms) {
         }
     }
     animate_entities(scene, dt_ms, animation_settings());
+    FRAME_COST_END(posed_from, "anim.pose");
+    FRAME_COST_BEGIN(lit_from);
     const int clusters = skin_stage_prepare(scene);
+    if (clusters > 0 && scene->light_transfer != NULL) {
+        scene_lights_prepare(scene);
+    }
+    FRAME_COST_END(lit_from, "anim.light");
     if (clusters == 0) {
         return;
     }
-    if (scene->light_transfer != NULL) {
-        scene_lights_prepare(scene);
-    }
+    FRAME_COST_BEGIN(skinned_from);
     (void)job_run_range(&scene->skin_share, skin_slice, scene, clusters);
+    FRAME_COST_END(skinned_from, "anim.skin");
+    FRAME_COST_BEGIN(refit_from);
     for (int i = 0; i < scene->staged_count; i++) {
         const scene_row_t e = scene->staged[i];
         if (scene->skinned_renderers[e].storage != NULL && scene->animators[e].posed) {
@@ -255,6 +278,7 @@ scene_animation_repose(scene_t* scene, uint32_t dt_ms) {
             scene_renderer_bound(&scene->renderers[scene_renderer_index(scene, e)]);
         }
     }
+    FRAME_COST_END(refit_from, "anim.refit");
 }
 
 void
