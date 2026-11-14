@@ -11,7 +11,7 @@ from render.colour_maths import lab
 from r3d import log
 from r3d.geometry import bounds_diagonal, closest_point_on_triangles
 from r3d.meshopt import simplify_with_update
-from r3d.objects.contact import contact_pairs
+from r3d.objects.contact import _surface_border
 from r3d.ray_query import RayQuery
 from r3d.simplify import _label_after, object_groups
 
@@ -76,9 +76,6 @@ def plane(positions, rgb, tris, materials, budget, weight, options, lock):
     links = []
     diagonal = bounds_diagonal(positions)
     tolerance = TOUCH_SHARE * diagonal
-    faces = np.concatenate([tris[rows] for rows, *_ in plates]) if plates else tris[:0]
-    owners = np.repeat(np.arange(len(plates)), [len(rows) for rows, *_ in plates])
-    contacts = {(edge.a, edge.b) for edge in contact_pairs(positions, faces, owners, 1 / tolerance)} if tolerance else set()
     for a, (fa, va, ca, na) in enumerate(plates):
         for b in range(a):
             fb, vb, cb, nb = plates[b]
@@ -86,7 +83,9 @@ def plane(positions, rgb, tris, materials, budget, weight, options, lock):
                 continue
             if max(abs((ca - cb) @ na), abs((ca - cb) @ nb)) > PLANE_SHARE * diagonal:
                 continue
-            if (b, a) in contacts:
+            # Contact last: only plate pairs already parallel and coplanar pay for the surface test.
+            if (_surface_border(positions, va, tris[fb], tolerance)[0] or
+                    _surface_border(positions, vb, tris[fa], tolerance)[0]):
                 links.append((a, b))
     a, b = np.asarray(links, dtype=int).reshape(-1, 2).T
     graph = coo_matrix((np.ones(len(a)), (a, b)), shape=(len(plates), len(plates)))
