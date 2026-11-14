@@ -186,6 +186,8 @@ def load_fit(value, variant, where):
     fit = SimpleNamespace(**{key: values[key] for key in FIT_KEYS})
     for key in ("budget", "train_every_ms", "held_out_every_ms", "coverage_every_ms", "steps", "batch"):
         setattr(fit, key, count(values[key], f"{where}.{key}"))
+    if getattr(variant, "ceiling", None) is not None and fit.budget > variant.ceiling:
+        raise SettingsError(f"{where}.prune.budget {fit.budget} exceeds variant ceiling {variant.ceiling}")
     fit.size = pixel_size(values["size"], f"{where}.poses.size")
     fit.laplacian = number(values["laplacian"], f"{where}.laplacian")
     fit.normal_weight = number(values["normal_weight"], f"{where}.normal_weight")
@@ -336,7 +338,8 @@ SHAPE_MATCHES = ("exact", "surface")
 
 
 def load_object_meshes(table):
-    """Closed mesh selectors and their per-copy budgets."""
+    """Closed mesh selectors and the overrides of their derived detail: `triangles` pins a shape's near level
+    (scaled by each variant's objects_scale), `min_triangles` floors it."""
     if "overrides" in table:
         raise SettingsError("[objects] overrides is unsupported; use [[objects.meshes]]")
     check_keys(table, (), "objects", optional=("meshes",))
@@ -345,19 +348,20 @@ def load_object_meshes(table):
         raise SettingsError("objects.meshes must be an array of tables")
     for index, rule in enumerate(rules):
         where = f"objects.meshes[{index}]"
-        check_keys(rule, ("match", "triangles"), where, optional=("seam", "variants", "min_triangles", "shape"))
+        check_keys(rule, ("match",), where, optional=("triangles", "seam", "variants", "min_triangles", "shape"))
         match = rule["match"]
         check_keys(match, (), f"{where}.match", optional=("material", "object"))
         if len(match) != 1:
             raise SettingsError(f"{where}.match needs exactly one of material/object")
         for selector, pattern in match.items():
             text(pattern, f"{where}.match.{selector}")
-        count(rule["triangles"], f"{where}.triangles")
+        if "triangles" in rule:
+            count(rule["triangles"], f"{where}.triangles")
         if not isinstance(rule.get("variants", {}), dict):
             raise SettingsError(f"{where}.variants must be a table of variant budgets")
         for name, triangles in rule.get("variants", {}).items():
             count(triangles, f"{where}.variants.{name}")
-        if "min_triangles" in rule and count(rule["min_triangles"], f"{where}.min_triangles") > rule["triangles"]:
+        if "min_triangles" in rule and count(rule["min_triangles"], f"{where}.min_triangles") > rule.get("triangles", math.inf):
             raise SettingsError(f"{where}.min_triangles cannot exceed its triangles")
         if "seam" in rule and rule["seam"] not in SEAM_POLICIES:
             raise SettingsError(f"{where}.seam must be one of {', '.join(SEAM_POLICIES)}")
@@ -367,14 +371,15 @@ def load_object_meshes(table):
 
 
 def variant_meshes(rules, variant):
-    """The rules with `triangles` as `variant` draws each copy: its own override, else
-    round(triangles x objects_scale), never below `min_triangles`."""
+    """The rules with a pinned `triangles` as `variant` draws each copy: its own override, else
+    round(triangles x objects_scale), never below `min_triangles`. A rule pinning neither keeps none: its
+    shapes' detail is derived (objects/detail.py)."""
     resolved = []
     for rule in rules:
         triangles = rule.get("variants", {}).get(variant.name)
-        if triangles is None:
+        if triangles is None and "triangles" in rule:
             triangles = max(rule.get("min_triangles", 1), round(rule["triangles"] * variant.objects_scale))
-        resolved.append(rule | {"triangles": triangles})
+        resolved.append(rule if triangles is None else rule | {"triangles": triangles})
     return resolved
 
 

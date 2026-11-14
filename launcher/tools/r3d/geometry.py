@@ -7,6 +7,14 @@ import numpy as np
 from scipy.spatial import cKDTree
 
 
+def grouped_indices(keys):
+    """Indices for each integer key, preserving input order within each group."""
+    keys = np.asarray(keys)
+    order = np.argsort(keys, kind="stable")
+    found, starts = np.unique(keys[order], return_index=True)
+    return dict(zip(found.tolist(), np.split(order, starts[1:])))
+
+
 def bounds_diagonal(positions):
     """Length of the axis-aligned bounds diagonal, including degenerate objects."""
     return float(np.linalg.norm(np.ptp(positions, axis=0)))

@@ -1,7 +1,6 @@
 """Deterministic vertex-to-surface contacts with border vertices on both objects."""
 
 from dataclasses import dataclass
-from itertools import combinations
 
 import numpy as np
 from scipy.spatial import cKDTree
@@ -20,42 +19,78 @@ class Contact:
     unshared: bool = False
 
 
-def _surface_border(pos, vertices, faces, tolerance):
+# Candidate (vertex, face) pairs queried and tested in one batch. It bounds the work in flight, not the result;
+# the bytes per pair are not measured.
+PAIR_BATCH = 1 << 20
+
+
+def surface_border(pos, vertices, faces, tolerance):
+    """(vertices within `tolerance` of a face, every corner of those faces, whether a touching vertex sits on no
+    face corner); vertices are queried and tested PAIR_BATCH candidate pairs at a time."""
+    vertices = np.asarray(vertices, dtype=int)
+    if not len(vertices) or not len(faces):
+        return set(), set(), False
     corners = pos[faces]
     centres = corners.mean(axis=1)
     radii = np.linalg.norm(corners - centres[:, None], axis=2).max(axis=1)
     tree = cKDTree(centres)
-    source, target, unshared = set(), set(), False
-    for vertex, candidates in zip(vertices, tree.query_ball_point(pos[vertices], radii.max() + tolerance)):
-        candidates = np.asarray(candidates, dtype=int)
-        candidates = candidates[np.linalg.norm(centres[candidates] - pos[vertex], axis=1) <= radii[candidates] + tolerance]
-        if not len(candidates):
-            continue
-        tri = corners[candidates]
-        _, distance = closest_point_on_triangles(np.broadcast_to(pos[vertex], (len(tri), 3)), *tri.transpose(1, 0, 2))
-        near = candidates[distance <= tolerance]
-        if len(near):
-            source.add(int(vertex))
-            shared = np.any(np.all(pos[faces[near]].astype(np.float32) == pos[vertex].astype(np.float32), axis=2))
-            unshared |= not shared
-            # All corners of a touched face must stay fixed: locking just the
-            # incoming point would let the supporting surface move away from it.
-            target.update(faces[near].ravel().tolist())
-    return source, target, unshared
+    points = pos[vertices]
+    reach = radii.max() + tolerance
+    sizes = np.asarray(tree.query_ball_point(points, reach, return_length=True), dtype=np.int64).reshape(-1)
+    ends = np.cumsum(sizes)
+    touched, shared = np.zeros(len(vertices), bool), np.zeros(len(vertices), bool)
+    # All corners of a touched face must stay fixed: locking just the
+    # incoming point would let the supporting surface move away from it.
+    fixed = np.zeros(len(pos), bool)
+    begin = 0
+    while begin < len(vertices):
+        before = ends[begin - 1] if begin else 0
+        stop = max(begin + 1, int(np.searchsorted(ends, before + PAIR_BATCH, side='right')))
+        if ends[stop - 1] > before:
+            owner = np.repeat(np.arange(begin, stop), sizes[begin:stop])
+            candidate = np.concatenate(tree.query_ball_point(points[begin:stop], reach)).astype(np.int64)
+            keep = np.linalg.norm(centres[candidate] - points[owner], axis=1) <= radii[candidate] + tolerance
+            owner, candidate = owner[keep], candidate[keep]
+            if len(owner):
+                _, distance = closest_point_on_triangles(points[owner], *corners[candidate].transpose(1, 0, 2))
+                near = distance <= tolerance
+                owner, candidate = owner[near], candidate[near]
+                touched[owner] = True
+                on_corner = np.any(np.all(pos[faces[candidate]].astype(np.float32) ==
+                                          points[owner, None].astype(np.float32), axis=2), axis=1)
+                shared[owner[on_corner]] = True
+                fixed[faces[candidate]] = True
+        begin = stop
+    return set(vertices[touched].tolist()), set(np.flatnonzero(fixed).tolist()), bool(np.any(touched & ~shared))
 
 
-def contact_graph(pos, tris, tri_o, position_scale=POSITION_SCALE):
+def contact_pairs(pos, tris, tri_o, position_scale=POSITION_SCALE, among=None):
+    """Surface contacts after a KD bounds broad phase; `among` limits the incident objects."""
     tolerance = seal_tolerance(position_scale)
-    objects = {int(obj): tris[tri_o == obj] for obj in np.unique(tri_o)}
-    edges = []
-    for a, b in combinations(objects, 2):
-        ta, tb = objects[a], objects[b]
-        va, vb = np.unique(ta), np.unique(tb)
-        pa, pb = pos[va], pos[vb]
-        if np.any(pa.min(axis=0) > pb.max(axis=0) + tolerance) or np.any(pb.min(axis=0) > pa.max(axis=0) + tolerance):
+    owners = np.unique(tri_o)
+    objects = {int(obj): tris[tri_o == obj] for obj in owners}
+    vertices = {obj: np.unique(faces) for obj, faces in objects.items()}
+    if not len(owners):
+        return []
+    lows = np.array([pos[vertices[int(obj)]].min(axis=0) for obj in owners]) - tolerance
+    highs = np.array([pos[vertices[int(obj)]].max(axis=0) for obj in owners]) + tolerance
+    centres, reach = (lows + highs) / 2, np.linalg.norm(highs - lows, axis=1) / 2
+    tree = cKDTree(centres)
+    pairs = set()
+    for at, obj in enumerate(owners):
+        if among is not None and obj not in among:
             continue
-        sa, sb, unshared_a = _surface_border(pos, va, tb, tolerance)
-        rb, ra, unshared_b = _surface_border(pos, vb, ta, tolerance)
+        for other in tree.query_ball_point(centres[at], reach[at] + reach.max()):
+            if at != other and not (np.any(lows[at] > highs[other]) or np.any(lows[other] > highs[at])):
+                pairs.add(tuple(sorted((int(obj), int(owners[other])))))
+    edges = []
+    for a, b in sorted(pairs):
+        sa, sb, unshared_a = surface_border(pos, vertices[a], objects[b], tolerance)
+        rb, ra, unshared_b = surface_border(pos, vertices[b], objects[a], tolerance)
         if sa or rb:
             edges.append(Contact(a, b, np.array(sorted(sa | ra), dtype=int), np.array(sorted(sb | rb), dtype=int), unshared_a or unshared_b))
     return edges
+
+
+def contact_graph(pos, tris, tri_o, position_scale=POSITION_SCALE):
+    return contact_pairs(pos, tris, tri_o, position_scale)

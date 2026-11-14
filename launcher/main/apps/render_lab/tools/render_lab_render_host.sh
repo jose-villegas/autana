@@ -86,6 +86,8 @@ stress-foliage-near-opaque|--quarter 1 --no-hud --scene stress-foliage-near-opaq
 stress-foliage-far|--quarter 1 --no-hud --scene stress-foliage-far --frames 2|448x368|nopin
 stress-foliage-far-opaque|--quarter 1 --no-hud --scene stress-foliage-far-opaque --frames 2|448x368|nopin
 stress-noisy-tiny|--quarter 1 --no-hud --scene stress-noisy-tiny --frames 2|448x368|nopin
+stress-carved-near|--quarter 1 --no-hud --scene stress-carved-near --frames 2|448x368|nopin
+stress-carved-far|--quarter 1 --no-hud --scene stress-carved-far --frames 2|448x368|nopin
 stress-textured|--quarter 1 --no-hud --scene stress-textured --frames 2|448x368|nopin
 herd-1|--quarter 1 --no-hud --scene herd-1 --frames 60|448x368|nopin
 herd-4|--quarter 1 --no-hud --scene herd-4 --frames 60|448x368|nopin

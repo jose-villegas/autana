@@ -15,7 +15,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | [input](#input) | 11 | 0 | 0 |
 | [kinematics](#kinematics) | 5 | 1 | 0 |
 | [math](#math) | 25 | 25 | 0 |
-| [overview](#overview) | 29 | 0 | 0 |
+| [overview](#overview) | 31 | 0 | 0 |
 | [physics](#physics) | 2 | 0 | 0 |
 | [power](#power) | 2 | 0 | 0 |
 | [render](#render) | 132 | 6 | 0 |
@@ -144,6 +144,8 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/overview/render-lab-sponza.gif"><img src="figure-thumbnails/overview/render-lab-sponza.gif" width="160" alt=""></a> | A camera moving through the Crytek Sponza atrium with baked lighting on the fitted full mesh | [README](../../README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-big-tris.png"><img src="../images/overview/render-lab-stress-big-tris.png" width="160" alt=""></a> | Stress big tris: a few triangles over most of the picture | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-card.png"><img src="../images/overview/render-lab-stress-card.png" width="160" alt=""></a> | Card copies with ragged edges and sampled colours | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
+| <a href="../images/overview/render-lab-stress-carved-far.png"><img src="../images/overview/render-lab-stress-carved-far.png" width="160" alt=""></a> | Stress carved far: a wall of bumpy balls in the distance | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
+| <a href="../images/overview/render-lab-stress-carved-near.png"><img src="../images/overview/render-lab-stress-carved-near.png" width="160" alt=""></a> | Stress carved near: a few bumpy balls close up | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-culled.png"><img src="../images/overview/render-lab-stress-culled.png" width="160" alt=""></a> | Plane before the camera turns away | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-few-copies.png"><img src="../images/overview/render-lab-stress-few-copies.png" width="160" alt=""></a> | Stress few copies: two dense spheres | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-foliage-far-opaque.png"><img src="../images/overview/render-lab-stress-foliage-far-opaque.png" width="160" alt=""></a> | Stress foliage far opaque: the same cards under the brick | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |

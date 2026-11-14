@@ -29,6 +29,7 @@ typedef enum {
     STRESS_SURFACE_UNIFORM,   /* one colour at every corner: zero colour steps, filled uniform */
     STRESS_SURFACE_STATIC,    /* the pack's own static mesh asset per copy, nothing generated */
     STRESS_SURFACE_TWO_SIDED, /* banded, and drawn from both sides: nothing faces away */
+    STRESS_SURFACE_CARVED,    /* the pack's carved prop, baked with its levels of detail, each copy picking its own */
     STRESS_SURFACE_TEXTURED,  /* banded light under a generated INDEX4 brick texture (render/texture) */
     STRESS_SURFACE_MASKED,    /* banded light, each foliage card cut by a generated MASK1 texture */
 } stress_surface_t;
@@ -75,6 +76,8 @@ typedef struct {
     X(CULLED, "culled", BANDED)                                                                                        \
     X(NEAR, "near", BANDED)                                                                                            \
     X(FEW_COPIES, "few-copies", BANDED)                                                                                \
+    X(CARVED_NEAR, "carved-near", CARVED)                                                                              \
+    X(CARVED_FAR, "carved-far", CARVED)                                                                                \
     X(TEXTURED, "textured", TEXTURED)                                                                                  \
     X(FOLIAGE_NEAR, "foliage-near", MASKED)                                                                            \
     X(FOLIAGE_NEAR_OPAQUE, "foliage-near-opaque", TEXTURED)                                                            \
@@ -94,6 +97,12 @@ extern const stress_params_t stress_presets[STRESS_PRESET_COUNT];
 static inline bool
 stress_per_frame(const stress_params_t* p) {
     return STRESS_SURFACE_IS_PER_FRAME(p->surface);
+}
+
+/* Whether a preset shows a mesh baked into the pack rather than one it generates. */
+static inline bool
+stress_baked(const stress_params_t* p) {
+    return p->surface == STRESS_SURFACE_STATIC || p->surface == STRESS_SURFACE_CARVED;
 }
 
 /* A copy's mesh: the shape's vertex and triangle counts. */

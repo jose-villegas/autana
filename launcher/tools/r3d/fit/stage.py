@@ -6,6 +6,7 @@ the start's bytes and the reference set (training, held-out and pruning poses), 
 """
 
 import pathlib
+from types import SimpleNamespace
 
 from r3d import mesh_bundle, mesh_asset, log
 from r3d.reference_set import fit_sets, shapes_fit
@@ -21,8 +22,13 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
         start=None):
     """Fit `start` (the variant's start in `inputs` when None) to the reference set in `inputs` (`work` when
     None) and write the renderer's mesh to `target`. A carved start bundle fits its rest with its copies drawn,
-    and passes the copy-coverage gate over the held-out poses; its copies are written back unchanged."""
+    and passes the copy-coverage gate over the held-out poses; its copies are written back unchanged. The
+    variant's ceiling caps the fitted bundle, not the start: the rest is pruned to the ceiling less the copy
+    prototypes, or to the recipe's budget when the variant has no ceiling; `budget` overrides both."""
     from r3d.appearance_simplify import main as fit_main
+    from r3d.objects.budget import bundle_count, ceiling_split, rest_target
+    from r3d.import_settings import SettingsError
+    from r3d.simplify import check_ceiling
 
     renderer = job.renderer
     variant, recipe = renderer.variant, renderer.fit
@@ -32,6 +38,13 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
     bundle_entries, copies = mesh_bundle.decode(start.read_bytes())
     bundle_entries = mesh_bundle.rename_rest(bundle_entries, copies, job.asset_name)
     rest = next(data for name, kind, data in bundle_entries if name == job.asset_name)
+    shapes = [row["mesh"] for row in copies]
+    ceiling = getattr(variant, "ceiling", None)
+    copied = bundle_count(bundle_entries, shapes)
+    if budget is None:
+        budget = rest_target(ceiling_split(renderer), copied)
+    if budget < 1:
+        raise SettingsError(f"copies total {copied} leave the fitted rest no triangle under ceiling {ceiling}")
     start = pathlib.Path(work) / f"{job.asset_name}{mesh_bundle.SUFFIX}"
     start.write_bytes(mesh_bundle.encode([(job.asset_name, mesh_asset.TYPE, rest)], []))
     out = work / "fitted"
@@ -48,7 +61,7 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
         command += ["--held-out-poses", str(inputs / poses), "--held-out-reference", str(inputs / reference)]
     if shaping.budget is not None:
         command += ["--settle", str(shaping.budget.step), str(shaping.budget.settle)]
-    command += ["--out", str(out), "--budget", str(recipe.budget if budget is None else budget),
+    command += ["--out", str(out), "--budget", str(budget),
                 "--steps", str(steps), "--batch", str(recipe.batch),
                 "--laplacian", str(recipe.laplacian), "--normal-weight", str(recipe.normal_weight),
                 "--object", job.object.name, "--surface-weight", str(recipe.surface_weight),
@@ -65,8 +78,9 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
         target = pathlib.Path(work) / f"{job.asset_name}.bundle"
     fitted_entries, _ = mesh_bundle.decode((out / start.name).read_bytes())
     fitted = next(data for name, kind, data in fitted_entries if name == job.asset_name)
-    target.write_bytes(mesh_bundle.encode([(name, kind, fitted if name == job.asset_name else data)
-                                           for name, kind, data in bundle_entries], copies))
+    entries = [(name, kind, fitted if name == job.asset_name else data) for name, kind, data in bundle_entries]
+    check_ceiling(bundle_count(entries, [*shapes, job.asset_name]), ceiling)
+    target.write_bytes(mesh_bundle.encode(entries, copies))
     log(f"wrote {target}")
     return target
 

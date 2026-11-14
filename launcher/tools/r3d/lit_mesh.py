@@ -503,6 +503,11 @@ def finest(mesh):
     return np.array([own == LOD_NONE for own, _ in mesh.lod], dtype=bool)
 
 
+def finest_count(mesh):
+    """The triangle count of a read mesh's finest clusters."""
+    return int(sum(cluster[3] for cluster, shown in zip(mesh.clusters, finest(mesh)) if shown))
+
+
 def finest_triangles(mesh):
     """(pos, rgb, tris, double, face) of a read mesh's finest level with the
     per-cluster vertex copies welded back together: one vertex per position
