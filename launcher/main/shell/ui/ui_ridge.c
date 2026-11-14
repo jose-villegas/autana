@@ -147,6 +147,7 @@ typedef struct {
 #endif
     edge_lines_t was_lines, now_lines;
     ui_fresh_t fresh; /* where this frame's step painted */
+    int gradient_turns;
     uint8_t lip_alpha[RIDGE_LAYER_COUNT][RIDGE_MAX_LIP_PX];
     uint32_t theme_seed, tuned_at, alive_ms, wave_ms, shake_seed;
     float shake;
@@ -154,17 +155,21 @@ typedef struct {
     bool by_column, axis_on_screen, ambient, painted, scanline_dither;
 } ridge_t;
 
-#define RIDGE_ENTRY        "ridge"
-#define RIDGE_ROW          "y"
+#define RIDGE_ENTRY            "ridge"
+#define RIDGE_ROW              "y"
 /* A level fallback crosses the middle of the landscape frame. */
-#define RIDGE_LEVEL_HEIGHT (RIDGE_CURVE_VIEW_H / 2)
+#define RIDGE_LEVEL_HEIGHT     (RIDGE_CURVE_VIEW_H / 2)
 
-#define TAG                "ui_ridge"
+#define TAG                    "ui_ridge"
+/* Strips a band of row or column strips holds: one fresh box each. */
+#define RIDGE_STRIP_BAND       16
 /* A step's fresh boxes: a box per layer per column group in portrait, one
  * per band of strips otherwise. */
-#define RIDGE_GROUPS(len)  (((len) + RIDGE_COLUMN_GROUP - 1) / RIDGE_COLUMN_GROUP)
-_Static_assert(RIDGE_LAYER_COUNT* RIDGE_GROUPS(GFX_WIDTH) <= UI_FRESH_MAX, "a step's column boxes fit the fresh list");
-_Static_assert(RIDGE_GROUPS(GFX_WIDTH) <= UI_FRESH_MAX && RIDGE_GROUPS(GFX_HEIGHT) <= UI_FRESH_MAX,
+#define RIDGE_GROUPS(len, per) (((len) + (per) - 1) / (per))
+_Static_assert(RIDGE_LAYER_COUNT* RIDGE_GROUPS(GFX_WIDTH, RIDGE_COLUMN_GROUP) <= UI_FRESH_MAX,
+               "a step's column boxes fit the fresh list");
+_Static_assert(RIDGE_GROUPS(GFX_WIDTH, RIDGE_STRIP_BAND) <= UI_FRESH_MAX
+                   && RIDGE_GROUPS(GFX_HEIGHT, RIDGE_STRIP_BAND) <= UI_FRESH_MAX,
                "a step's bands fit the fresh list");
 static const int16_t level_height = RIDGE_LEVEL_HEIGHT * RIDGE_SUBPIXEL_ONE;
 static const int16_t* curve;
@@ -924,7 +929,7 @@ repaint_changed_columns(void) {
     }
 }
 
-/* Strips go in bands of RIDGE_COLUMN_GROUP, each band's span repainted
+/* Strips go in bands of RIDGE_STRIP_BAND, each band's span repainted
  * across all of its strips, so the band is one fresh box. */
 static void
 repaint_changed(void) {
@@ -936,8 +941,8 @@ repaint_changed(void) {
         return;
     }
     const int along = ridge->by_column ? GFX_HEIGHT : GFX_WIDTH;
-    for (int s0 = 0; s0 < ridge->strips; s0 += RIDGE_COLUMN_GROUP) {
-        const int s1 = s0 + RIDGE_COLUMN_GROUP < ridge->strips ? s0 + RIDGE_COLUMN_GROUP : ridge->strips;
+    for (int s0 = 0; s0 < ridge->strips; s0 += RIDGE_STRIP_BAND) {
+        const int s1 = s0 + RIDGE_STRIP_BAND < ridge->strips ? s0 + RIDGE_STRIP_BAND : ridge->strips;
         int lo = INT_MAX;
         int hi = INT_MIN;
         for (int strip = s0; strip < s1; strip++) {
@@ -1086,6 +1091,7 @@ repaint_swept_row(int y) {
 static void
 repaint_gradient_turn(ridge_vector_t was) {
     ridge->fresh.overflow = true; /* a row each, more than the list holds */
+    ridge->gradient_turns++;
     edge_lines(&ridge->was_lines, was);
     edge_lines(&ridge->now_lines, ridge->gradient_pose);
     for (int y = 0; y < GFX_HEIGHT; y++) {
@@ -1425,6 +1431,11 @@ ui_ridge_dissolve_restarts_for_test(void) {
 }
 
 int
+ui_ridge_gradient_turns_for_test(void) {
+    return ridge != NULL ? ridge->gradient_turns : 0;
+}
+
+int
 ui_ridge_merge_spans_for_test(int16_t* lo, int16_t* hi, int count) {
     return merge_spans(lo, hi, count);
 }
@@ -1449,7 +1460,9 @@ ui_ridge_paint(recti_t area) {
     FRAME_COST_BEGIN(painted_from);
     const recti_t screen = GFX_SCREEN_RECT;
     area = recti_intersect(area, screen);
-    if (area.w == screen.w && area.h == screen.h) {
+    if ((area.w == screen.w && area.h == screen.h) || dissolving()) {
+        /* Mid-dissolve the screen mixes two pictures, which a part cannot
+         * paint back: the dissolve ends here instead. */
         paint_all();
     } else {
         /* The screen as it stands: what the step last painted. */

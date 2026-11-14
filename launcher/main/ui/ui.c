@@ -422,6 +422,24 @@ canvas_physical_rect(const mu_Container* cnt) {
     return ui_transform_mu_rect(ui_effective_transform(), cnt->rect);
 }
 
+/* Whether any of the replay's area lies over the canvas: one that it misses
+ * keeps its pixels and is not walked. */
+static bool
+canvas_in_area(const mu_Container* cnt, const replay_area_t* area) {
+    const recti_t phys = ui_recti_from_mu(canvas_physical_rect(cnt));
+    if (area->fresh != NULL) {
+        for (int i = 0; i < area->fresh->count; i++) {
+            if (!recti_is_empty(recti_intersect(phys, area->fresh->rects[i]))) {
+                return true;
+            }
+        }
+        return false;
+    }
+    gfx_dirty_leaves_t left = area->dirt;
+    recti_t under;
+    return gfx_dirty_leaves_take(&left, phys, &under);
+}
+
 static bool
 canvas_itself_changed(const mu_Container* cnt) {
     const int slot = (int)(cnt - ui_ctx.containers);
@@ -644,8 +662,9 @@ ui_end_over(ui_backdrop_fn paint_backdrop, const ui_fresh_t* fresh) {
     for (int i = 0; i < n && i < MU_ROOTLIST_SIZE; i++) {
         changed = changed || canvas_itself_changed(ui_ctx.root_list.items[i]);
     }
-    /* Every canvas goes again: a replay draws nothing outside its area, and
-     * only the area says where the backdrop is fresh. */
+    /* A replay draws nothing outside its area, so a canvas goes again only
+     * where the area reaches it; above it, a canvas the area misses keeps
+     * its pixels. */
     replay_area_t area = {.fresh = fresh != NULL && !fresh->overflow ? fresh : NULL};
     if (changed) {
         paint_backdrop(GFX_SCREEN_RECT);
@@ -654,7 +673,7 @@ ui_end_over(ui_backdrop_fn paint_backdrop, const ui_fresh_t* fresh) {
         backdrop_under_replay(n, paint_backdrop, &area.dirt);
     }
     for (int i = 0; i < n && i < MU_ROOTLIST_SIZE; i++) {
-        repaint[i] = true;
+        repaint[i] = changed || canvas_in_area(ui_ctx.root_list.items[i], &area);
     }
     const bool drew = repaint_marked_canvases(n, repaint, UI_NO_BACKGROUND, changed ? NULL : &area);
 

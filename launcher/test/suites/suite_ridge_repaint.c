@@ -19,14 +19,16 @@
 #include "ridge_arms.h"
 #include "shell/ui/ui_ridge.h"
 
-#define FB_PIXELS ((size_t)GFX_WIDTH * GFX_HEIGHT)
-#define FB_BYTES  (FB_PIXELS * sizeof(gfx_color_t))
+#define FB_PIXELS    ((size_t)GFX_WIDTH * GFX_HEIGHT)
+#define FB_BYTES     (FB_PIXELS * sizeof(gfx_color_t))
+/* The tilt sweep crosses the diagonal within these. */
+#define SWEEP_FRAMES 150
 
 typedef struct {
     int frames, dissolved;
     int unsent_px, first_unsent_frame;
     int unlike_px, first_unlike_frame;
-    int unfresh_px, first_unfresh_frame, fresh_frames;
+    int unfresh_px, first_unfresh_frame, fresh_frames, overflowed;
 } audit_t;
 
 /* What a frame is compared with: the frame before it, and a full paint that
@@ -133,7 +135,9 @@ unfresh(const gfx_color_t* before, const gfx_color_t* reference) {
 static void
 rig_frame(rig_t* rig, const input_t* input) {
     audit_t* const audit = &rig->audit;
+    const int turns_before = ui_ridge_gradient_turns_for_test();
     ui_ridge_step(input, RIDGE_ARM_FRAME_DT_MS);
+    const bool turned = ui_ridge_gradient_turns_for_test() != turns_before;
     const int unsent = unsent_changes(rig->before);
     const bool dissolving = ui_ridge_dissolving_for_test();
     const int unlike = dissolving ? 0 : unlike_a_full_paint(rig->reference);
@@ -145,6 +149,7 @@ rig_frame(rig_t* rig, const input_t* input) {
     }
     audit->unfresh_px += wrong;
     audit->fresh_frames += fresh;
+    audit->overflowed += !dissolving && !turned && ui_ridge_fresh()->overflow;
     if (unsent > 0 && audit->first_unsent_frame < 0) {
         audit->first_unsent_frame = audit->frames;
     }
@@ -208,12 +213,13 @@ test_a_pluck_and_strum_repaint_as_a_full_paint_and_are_sent(void) {
     const audit_t audit = audit_arm(ARM_PLUCK_STRUM, 90);
     assert_audit("pluck and strum", &audit);
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, audit.fresh_frames, "the step said where it painted");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, audit.overflowed, "a step with no turn or dissolve overflowed its places");
 }
 
 static void
 test_a_tilt_sweep_repaints_as_a_full_paint_and_is_sent(void) {
     fixture();
-    const audit_t audit = audit_arm(ARM_TILT_SWEEP, 150);
+    const audit_t audit = audit_arm(ARM_TILT_SWEEP, SWEEP_FRAMES);
     assert_audit("tilt sweep", &audit);
 }
 
@@ -230,6 +236,7 @@ test_the_ambient_ridge_repaints_as_a_full_paint_and_is_sent(void) {
     const audit_t audit = audit_arm(ARM_AMBIENT, 200);
     assert_audit("ambient landscape", &audit);
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, audit.fresh_frames, "the step said where it painted");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, audit.overflowed, "a step with no turn or dissolve overflowed its places");
 }
 
 static void
@@ -238,6 +245,7 @@ test_the_ambient_ridge_held_upright_repaints_as_a_full_paint_and_is_sent(void) {
     const audit_t audit = audit_arm(ARM_AMBIENT_PORTRAIT, 300);
     assert_audit("ambient portrait", &audit);
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, audit.fresh_frames, "the step said where it painted");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, audit.overflowed, "a step with no turn or dissolve overflowed its places");
 }
 
 static void
@@ -261,10 +269,35 @@ static void
 test_a_dissolved_strip_switch_is_sent_and_ends_on_a_full_paint(void) {
     fixture();
     (void)tune_set(tune_shared(), TUNE_NAME(ridge, axis_dissolve_ms), 400);
-    const audit_t audit = audit_arm(ARM_TILT_SWEEP, 150);
+    const audit_t audit = audit_arm(ARM_TILT_SWEEP, SWEEP_FRAMES);
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, audit.dissolved, "the sweep never dissolved a strip switch");
     TEST_ASSERT_FALSE_MESSAGE(ui_ridge_dissolving_for_test(), "the strip switch never finished dissolving in");
     assert_audit("dissolved switch", &audit);
+}
+
+/* A part of the backdrop asked for mid-dissolve (ui_end_over() putting it
+ * back under the UI) cannot be painted as the screen mixes it, so the
+ * dissolve ends: the whole screen a full paint. */
+static void
+test_a_part_painted_mid_dissolve_ends_the_dissolve(void) {
+    fixture();
+    (void)tune_set(tune_shared(), TUNE_NAME(ridge, axis_dissolve_ms), 400);
+    start_arm(ARM_TILT_SWEEP);
+    int frame = 0;
+    while (!ui_ridge_dissolving_for_test() && frame < SWEEP_FRAMES) {
+        input_t input;
+        ridge_arm_drive(ARM_TILT_SWEEP, frame++, &input);
+        ui_ridge_step(&input, RIDGE_ARM_FRAME_DT_MS);
+        gfx_present();
+    }
+    TEST_ASSERT_TRUE_MESSAGE(ui_ridge_dissolving_for_test(), "the sweep never started a dissolve");
+    ui_ridge_paint((recti_t){0, 0, GFX_WIDTH / 2, GFX_HEIGHT / 2});
+    TEST_ASSERT_FALSE(ui_ridge_dissolving_for_test());
+    gfx_color_t* reference = memory_alloc(FB_BYTES, MEMORY_APP);
+    TEST_ASSERT_NOT_NULL(reference);
+    const int unlike = unlike_a_full_paint(reference);
+    memory_free(reference);
+    TEST_ASSERT_EQUAL_INT(0, unlike);
 }
 
 /* Crossing the diagonal again before the first dissolve is over restarts
@@ -464,6 +497,7 @@ suite_ridge_repaint(void) {
     RUN_TEST(test_shaking_plucks_repaint_as_a_full_paint_and_are_sent);
     RUN_TEST(test_the_boot_hold_and_ease_in_repaint_as_a_full_paint_and_are_sent);
     RUN_TEST(test_a_dissolved_strip_switch_is_sent_and_ends_on_a_full_paint);
+    RUN_TEST(test_a_part_painted_mid_dissolve_ends_the_dissolve);
     RUN_TEST(test_a_strip_switch_inside_a_running_dissolve_is_sent_and_ends_on_a_full_paint);
     RUN_TEST(test_the_gradient_catches_up_once_the_tilt_stops);
     RUN_TEST(test_a_column_groups_dirty_box_covers_what_changed_and_no_more);
