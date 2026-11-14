@@ -1817,6 +1817,74 @@ test_row_windows_draw_the_pixels_the_whole_target_does(void) {
     }
 }
 
+/* A triangle far taller than a narrow target, its depth bending mildly:
+ * judged on its whole box the segments grow to the max, judged on a short
+ * window's box they stop shorter, so a window that took its own box would
+ * step its pixels apart from the whole's. Its u and v run half a texel a
+ * pixel, so the bend estimate's extent is half the side. */
+#define WIDE_COLUMNS    16
+#define WIDE_ROWS_ALL   96
+#define WIDE_X_LEFT     (-10)
+#define WIDE_X_RIGHT    42
+#define WIDE_Y_TOP      (-20)
+#define WIDE_Y_BOTTOM   140
+#define WIDE_SIDE       (WIDE_Y_BOTTOM - WIDE_Y_TOP) /* the whole box's longer side */
+#define WIDE_Z_FAR      0.1F
+#define WIDE_Z_NEAR     0.9F
+#define WIDE_Z_MID      0.5F
+#define WIDE_TEXEL_STEP 0.5F
+#define WIDE_BEND       8.0F
+#define WIDE_WINDOW     4 /* a window's rows, the few a slice of a two-core draw holds */
+
+static void
+wide_triangle(r3d_span_vertex_t v[3], vec2f_t uv[3]) {
+    v[0] = vertex(WIDE_X_LEFT, WIDE_Y_TOP, WIDE_Z_FAR, UINT8_MAX);
+    v[1] = vertex(WIDE_X_RIGHT, WIDE_Y_BOTTOM, WIDE_Z_NEAR, UINT8_MAX);
+    v[2] = vertex(WIDE_X_LEFT, WIDE_Y_BOTTOM, WIDE_Z_MID, UINT8_MAX);
+    const vec2f_t corner[3] = {{WIDE_X_LEFT, WIDE_Y_TOP}, {WIDE_X_RIGHT, WIDE_Y_BOTTOM}, {WIDE_X_LEFT, WIDE_Y_BOTTOM}};
+    for (int i = 0; i < 3; i++) {
+        uv[i] = (vec2f_t){corner[i].x * WIDE_TEXEL_STEP, corner[i].y * WIDE_TEXEL_STEP};
+    }
+}
+
+static int
+wide_segment_px(float side) {
+    return r3d_texture_segment_px(WINDOW_DIVIDE_PX, WIDE_BEND, WIDE_TEXEL_STEP * side, WIDE_Z_NEAR, WIDE_Z_FAR, side);
+}
+
+static void
+test_short_windows_of_a_tall_mildly_bent_triangle_draw_the_whole_ones_pixels(void) {
+    /* The whole's side and a short window's take other segments, or the draws could not tell. */
+    TEST_ASSERT_EQUAL(RENDER_TEXTURE_DIVIDE_PX_MAX, wide_segment_px((float)WIDE_SIDE));
+    TEST_ASSERT_NOT_EQUAL(wide_segment_px((float)WIDE_SIDE), wide_segment_px((float)WIDE_COLUMNS));
+    fixture();
+    const size_t pixels = (size_t)WIDE_COLUMNS * WIDE_ROWS_ALL;
+    uint16_t* both = calloc(pixels * 4, sizeof *both); /* colour and depth, whole then windows */
+    TEST_ASSERT_NOT_NULL(both);
+    r3d_span_vertex_t v[3];
+    vec2f_t uv[3];
+    wide_triangle(v, uv);
+    const render_texture_settings_t settings = settings_of(WINDOW_DIVIDE_PX, WIDE_BEND);
+    r3d_span_target_t whole = r3d_span_target(both, both + pixels, WIDE_COLUMNS, 0, WIDE_ROWS_ALL);
+    r3d_span_set_texture(&whole, &settings);
+    r3d_span_textured_triangle(&whole, &v[0], &v[1], &v[2], uv, texture);
+    uint16_t* windows = both + (2 * pixels);
+    for (int row0 = 0; row0 < WIDE_ROWS_ALL; row0 += WIDE_WINDOW) {
+        uint16_t* color = windows + ((size_t)row0 * WIDE_COLUMNS);
+        r3d_span_target_t window = r3d_span_target(color, color + pixels, WIDE_COLUMNS, row0, row0 + WIDE_WINDOW);
+        r3d_span_set_texture(&window, &settings);
+        r3d_span_textured_triangle(&window, &v[0], &v[1], &v[2], uv, texture);
+    }
+    int covered = 0;
+    for (size_t i = 0; i < pixels; i++) {
+        covered += both[pixels + i] != R3D_DEPTH_EMPTY;
+    }
+    TEST_ASSERT_GREATER_THAN_MESSAGE(COVERED_MIN, covered, "the triangle covers too little to tell");
+    TEST_ASSERT_EQUAL_UINT16_ARRAY_MESSAGE(both, windows, pixels, "a window's colour differs");
+    TEST_ASSERT_EQUAL_UINT16_ARRAY_MESSAGE(both + pixels, windows + pixels, pixels, "a window's depth differs");
+    free(both);
+}
+
 /* The texture repeats: the same triangle a whole number of tiles away, either
  * way, draws the same pixels, affine and dividing. */
 static void
@@ -2170,6 +2238,7 @@ run_r3d_texture_suite(void) {
     RUN_TEST(test_the_segment_stays_put_when_it_cannot_double_and_divide_px_0_is_affine);
     RUN_TEST(test_a_spans_last_pixel_matches_the_truth_at_every_length_around_a_segment);
     RUN_TEST(test_row_windows_draw_the_pixels_the_whole_target_does);
+    RUN_TEST(test_short_windows_of_a_tall_mildly_bent_triangle_draw_the_whole_ones_pixels);
     RUN_TEST(test_a_triangle_whole_tiles_away_draws_the_same_pixels);
     RUN_TEST(test_the_rasters_texture_settings_reach_the_fill);
     RUN_TEST(test_set_texture_keeps_divide_px_and_the_bend_in_steps_and_rounds_a_fine_bend_up);
