@@ -7,6 +7,23 @@
 #include "render/texture/r3d_texture.h"
 #include "scene/scene_internal.h"
 
+/* A renderer's textures: its mesh's LUVS sibling and the materials it names,
+ * in one block, and their texels copied out of the pack into a second. */
+typedef struct {
+    r3d_mesh_texturing_t texturing;
+    uint8_t* texels;
+    r3d_texture_t materials[];
+} renderer_texturing_t;
+
+static bool open_texturing(const scene_t* scene, scene_renderer_t* r, const char* mesh_id, scene_failure_t* why);
+static bool renderer_cuts(const scene_renderer_t* r);
+
+/* Draws `r` with the textures opened for it. */
+static void
+draw_textured(scene_renderer_t* r) {
+    r->mesh.texturing = &((renderer_texturing_t*)r->texturing)->texturing;
+}
+
 /* The index of the entity's renderer in its scene `*scene`, or -1. */
 static int
 renderer_of(entity_t entity, scene_t** scene) {
@@ -49,10 +66,26 @@ renderer_set_mesh(entity_t entity, const r3d_lit_mesh_t* mesh) {
     if (r->batch != NULL || (uint32_t)R3D_LOD_STATE_WORDS(mesh->lod_group_count) > r->lod_words) {
         return false;
     }
-    r->mesh = *mesh;
     /* The textures opened were the pack mesh's: another mesh opens its own,
-     * checked against it, when textures are next asked for. */
+     * checked against it, when textures are next asked for; at once when
+     * they cut, which never draw plain, the swap refused when they do not fit. */
+    const bool cuts = renderer_cuts(r);
+    const r3d_lit_mesh_t old = r->mesh;
     scene_renderer_texturing_free(r);
+    r->mesh = *mesh;
+    r->mesh.texturing = NULL;
+    const char* mesh_id = scene->asset.renderers[i].mesh;
+    if (cuts && (r->mesh.face_colors != NULL || !open_texturing(scene, r, mesh_id, NULL))) {
+        r->mesh = old;
+        r->mesh.texturing = NULL;
+        if (open_texturing(scene, r, mesh_id, NULL)) {
+            draw_textured(r);
+        }
+        return false;
+    }
+    if (cuts) {
+        draw_textured(r);
+    }
     scene_renderer_bound(r);
     /* Another mesh's groups are not these bits': start it at its finest. */
     if (r->lod_coarse != NULL) {
@@ -146,14 +179,6 @@ renderer_set_skin(entity_t entity, const char* id, scene_failure_t* why) {
     return scene_renderer_bind_skin(scene, row, id, true, why);
 }
 
-/* A renderer's textures: its mesh's LUVS sibling and the materials it names,
- * in one block, and their texels copied out of the pack into a second. */
-typedef struct {
-    r3d_mesh_texturing_t texturing;
-    uint8_t* texels;
-    r3d_texture_t materials[];
-} renderer_texturing_t;
-
 /* Copies the texels of `block`'s materials into one app-heap block. */
 static bool
 copy_texels(renderer_texturing_t* block) {
@@ -212,10 +237,47 @@ renderer_set_textured(entity_t entity, bool on, scene_failure_t* why) {
         return false;
     }
     renderer_texturing_t* block = r->texturing;
+    /* A cut (MASK1) is coverage: drawn plain it fills the whole card, so it
+     * never turns off, and a flat-shaded mesh, which draws plain, cannot take one. */
+    if (renderer_cuts(r) && (!on || r->mesh.face_colors != NULL)) {
+        return scene_report(why, SCENE_ERR_ASSET, ASSET_ERR_FORMAT, mesh_id);
+    }
     /* Textures are lit by vertex colours: a flat-shaded mesh draws plain. */
     r->mesh.texturing = on && r->mesh.face_colors == NULL ? &block->texturing : NULL;
     r->changed = true;
     return scene_report(why, SCENE_OK, ASSET_OK, mesh_id);
+}
+
+/* Whether `r`'s opened textures cut. */
+static bool
+renderer_cuts(const scene_renderer_t* r) {
+    const renderer_texturing_t* block = r->texturing;
+    return block != NULL && r3d_texture_texturing_cuts(&block->texturing);
+}
+
+scene_failure_t
+scene_renderer_open_cuts(scene_t* scene) {
+    for (int i = 0; i < scene->asset.renderer_count; i++) {
+        scene_renderer_t* r = &scene->renderers[i];
+        const char* mesh_id = scene->asset.renderers[i].mesh;
+        bool cuts;
+        const asset_status_t status = r3d_texture_mesh_cuts(scene->pack, mesh_id, &cuts);
+        if (status != ASSET_OK) {
+            return scene_failure_make(SCENE_ERR_ASSET, status, mesh_id);
+        }
+        if (!cuts) {
+            continue;
+        }
+        scene_failure_t why;
+        if (r->mesh.face_colors != NULL) {
+            return scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_FORMAT, mesh_id);
+        }
+        if (!open_texturing(scene, r, mesh_id, &why)) {
+            return why;
+        }
+        draw_textured(r);
+    }
+    return scene_failure_make(SCENE_OK, ASSET_OK, scene->root->id);
 }
 
 void

@@ -162,6 +162,12 @@ typedef struct {
 /* Frees what renderer_set_textured() opened for `r`; at the scene's close. */
 void scene_renderer_texturing_free(scene_renderer_t* r);
 
+/* Opens, at load, the textures of every static renderer whose mesh cuts
+ * (r3d_texture_mesh_cuts()), so a MASK1 chart never draws plain. Fails with
+ * SCENE_ERR_ASSET when they cannot open, or ASSET_ERR_FORMAT for a flat-shaded
+ * mesh, which has no vertex colours to light them. */
+scene_failure_t scene_renderer_open_cuts(scene_t* scene);
+
 /* Sets `r`'s world box from its mesh and model; call after either changes,
  * a skinned mesh's refit included. */
 void scene_renderer_bound(scene_renderer_t* r);

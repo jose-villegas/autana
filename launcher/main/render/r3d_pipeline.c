@@ -1002,15 +1002,17 @@ draw_textured(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_pipe
 }
 
 /* Triangle `t`'s code with DRAW_TEXTURED, else R3D_TEXTURE_PLAIN. Under
- * the target's writers only a MASK1 chart draws textured: an INDEX4 one
- * draws plain there, as it did before the textured fill took writers. */
+ * the target's writers, and in a blend (`blends`), only a MASK1 chart draws
+ * textured: an INDEX4 one draws plain there. A cut is coverage, so a MASK1
+ * chart never draws plain; in a blend it draws whole, without the dither band
+ * or the morph's colours. */
 static inline __attribute__((always_inline)) unsigned
-texture_code(const r3d_lit_mesh_t* mesh, int cluster, int t, draw_mode_t mode) {
+texture_code(const r3d_lit_mesh_t* mesh, int cluster, int t, draw_mode_t mode, bool blends) {
     if ((mode & DRAW_TEXTURED) == 0) {
         return R3D_TEXTURE_PLAIN;
     }
     const unsigned code = r3d_texture_triangle_code(mesh->texturing, t);
-    return code != R3D_TEXTURE_PLAIN && (mode & DRAW_WRITES) != 0
+    return code != R3D_TEXTURE_PLAIN && ((mode & DRAW_WRITES) != 0 || blends)
                    && r3d_texture_chart_material(mesh->texturing, cluster, (int)code - 1)->format != R3D_TEXTURE_MASK1
                ? R3D_TEXTURE_PLAIN
                : code;
@@ -1026,7 +1028,7 @@ draw_triangles(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit
         const uint16_t* tri = mesh->triangles[t];
         const uint16_t* face_color = mesh->face_colors == NULL ? NULL : &mesh->face_colors[t];
         const r3d_pipeline_vertex_t* const v[3] = {&cs[tri[0]], &cs[tri[1]], &cs[tri[2]]};
-        const unsigned code = texture_code(mesh, (int)(c - mesh->clusters), t, mode);
+        const unsigned code = texture_code(mesh, (int)(c - mesh->clusters), t, mode, blends);
         if (code != R3D_TEXTURE_PLAIN) {
             draw_textured(mesh, lens, v, tri, (int)(c - mesh->clusters), (int)code - 1, c->double_sided,
                           (mode & DRAW_BOUNDED) != 0, target, work);
@@ -1133,8 +1135,8 @@ draw_writing_of(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16
         for (int t = c->triangle_first; t < end; t += step) {
             retag(writers, target->writers, target->writer_count, clusters[i], (uint32_t)t);
             if (blend != BLEND_NONE) {
-                draw_blended(mesh, lens, clusters[i], cs, &rows[clusters[i]], writing, mode, work, t, t + step,
-                             blend == BLEND_DITHER);
+                draw_blended(mesh, lens, clusters[i], cs, &rows[clusters[i]], writing,
+                             mode & ~untextured(mesh, clusters[i], mode), work, t, t + step, blend == BLEND_DITHER);
                 continue;
             }
             /* No DRAW_BOUNDED: one more live value puts this frame over stack_chain_gate. */
@@ -1173,7 +1175,7 @@ draw_reading_of(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16
         const draw_mode_t bounded = rows != NULL && !rows[clusters[i]].unbounded ? DRAW_BOUNDED : 0U;
         const draw_mode_t plain = untextured(mesh, clusters[i], mode);
         if (blend != BLEND_NONE) {
-            draw_blended(mesh, lens, clusters[i], cs, &rows[clusters[i]], target, mode | bounded, work,
+            draw_blended(mesh, lens, clusters[i], cs, &rows[clusters[i]], target, (mode | bounded) & ~plain, work,
                          c->triangle_first, c->triangle_first + c->triangle_count, blend == BLEND_DITHER);
             continue;
         }
@@ -1231,14 +1233,17 @@ draw_writing_blended(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const u
                      const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target,
                      r3d_pipeline_work_t* work, blend_t blend) {
     draw_writing_of(mesh, lens, clusters, count, cs, rows, target,
-                    DRAW_WRITES | (target->skip_hidden ? DRAW_SKIPPING : 0U), work, blend);
+                    DRAW_WRITES | (target->skip_hidden ? DRAW_SKIPPING : 0U)
+                        | (mesh->texturing != NULL ? DRAW_TEXTURED : 0U),
+                    work, blend);
 }
 
 static __attribute__((noinline, cold)) void
 draw_reading_blended(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
                      const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target,
                      r3d_pipeline_work_t* work, blend_t blend) {
-    draw_reading_of(mesh, lens, clusters, count, cs, rows, target, target->skip_hidden ? DRAW_SKIPPING : 0U, work,
+    draw_reading_of(mesh, lens, clusters, count, cs, rows, target,
+                    (target->skip_hidden ? DRAW_SKIPPING : 0U) | (mesh->texturing != NULL ? DRAW_TEXTURED : 0U), work,
                     blend);
 }
 

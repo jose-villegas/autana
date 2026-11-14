@@ -13,6 +13,7 @@
 #include "math/scalar/mathi.h"
 #include "math/scalar/rng.h"
 #include "r3d_pixel_lens.h"
+#include "render/lod/r3d_lod.h"
 #include "render/r3d_pipeline.h"
 #include "render/r3d_span.h"
 #include "render/r3d_span_internal.h"
@@ -1746,6 +1747,111 @@ test_under_a_writer_a_mesh_with_no_vertex_colours_draws_plain(void) {
     expect_writer_pass_draws_plain(s, "a mesh with no vertex colours did not draw plain");
 }
 
+/* A band that draws half of each 4x4 tile, and a morph weight halfway to the
+ * targets: a blend that changes a plain draw. */
+#define HALF_BAND   ((uint8_t)((R3D_LOD_DITHER_LEVELS / 2) << R3D_LOD_DITHER_SHIFT))
+#define HALF_WEIGHT ((uint8_t)(R3D_LOD_MORPH_ONE / 2))
+
+/* `s` drawn textured into target `which` as a cluster in a blend: `blend` its
+ * dither band with `dither`, else its morph weight. */
+static void
+draw_blended_into(scene_t* s, int which, uint8_t blend, bool dither) {
+    const r3d_lens_t lens = r3d_pixel_lens(SIDE, SIDE);
+    const uint16_t visible[1] = {0};
+    const r3d_span_target_t target = target_at(which);
+    r3d_pipeline_transform(&s->mesh, &lens, visible, 1, s->cs, s->rows, false);
+    s->rows[0].blend = blend;
+    s->mesh.texturing = &s->texturing;
+    r3d_pipeline_draw_blended(&s->mesh, &lens, visible, 1, s->cs, s->rows, &target, s->work, dither);
+}
+
+/* The mixed mesh: the left triangle on an INDEX4 chart, the right on a MASK1
+ * one; target 0 drawn plain, target 1 textured, outside a blend. */
+static scene_t*
+mixed_scene_drawn(void) {
+    scene_t* s = scene_fixture_pair();
+    place_two_triangles(s, 1);
+    const uint8_t chart_materials[R3D_TEXTURE_CHARTS] = {0, 1};
+    scene_mesh_with(s, SCENE_TRIANGLES, (uint8_t)(code_at(0, 1) | code_at(1, 2)), chart_materials, 2);
+    background(0);
+    draw_scene(s, 0, false);
+    background(1);
+    draw_scene(s, 1, true);
+    return s;
+}
+
+/* A cut is coverage: in a morph a MASK1 chart draws textured and whole, never
+ * as a solid quad; an INDEX4 chart draws plain until the blend ends. */
+static void
+test_in_a_morph_a_mask1_chart_is_cut_and_an_index4_one_is_plain(void) {
+    scene_t* s = mixed_scene_drawn();
+    background(2);
+    draw_blended_into(s, 2, HALF_WEIGHT, false);
+    expect_columns_equal(2, 0, 0, LEFT_COLUMNS, "the INDEX4 triangle in a morph is not the plain one");
+    expect_columns_equal(2, 1, LEFT_COLUMNS, SIDE, "the MASK1 triangle in a morph is not the textured one");
+    TEST_ASSERT_LESS_THAN_MESSAGE(drawn_in_columns(0, LEFT_COLUMNS, SIDE), drawn_in_columns(2, LEFT_COLUMNS, SIDE),
+                                  "the MASK1 triangle in a morph is not cut");
+}
+
+/* In a dither band the MASK1 chart still draws whole and cut, its band not
+ * applied; the INDEX4 one draws plain through the band, some of its pixels. */
+static void
+test_in_a_dither_band_a_mask1_chart_draws_whole_and_cut(void) {
+    scene_t* s = mixed_scene_drawn();
+    background(2);
+    draw_blended_into(s, 2, HALF_BAND, true);
+    expect_columns_equal(2, 1, LEFT_COLUMNS, SIDE, "the MASK1 triangle in a band is not the whole textured one");
+    TEST_ASSERT_LESS_THAN_MESSAGE(drawn_in_columns(0, LEFT_COLUMNS, SIDE), drawn_in_columns(2, LEFT_COLUMNS, SIDE),
+                                  "the MASK1 triangle in a band is not cut");
+    int banded = 0;
+    for (int y = 0; y < SIDE; y++) {
+        for (int x = 0; x < LEFT_COLUMNS; x++) {
+            const int i = (y * SIDE) + x;
+            if (depths_of(2)[i] != BG_DEPTH) {
+                TEST_ASSERT_EQUAL_HEX16_MESSAGE(colours_of(0)[i], colours_of(2)[i],
+                                                "the INDEX4 triangle in a band is not plain");
+                banded++;
+            }
+        }
+    }
+    TEST_ASSERT_GREATER_THAN_MESSAGE(0, banded, "the INDEX4 triangle's band drew nothing");
+    TEST_ASSERT_LESS_THAN_MESSAGE(drawn_in_columns(0, 0, LEFT_COLUMNS), banded,
+                                  "the INDEX4 triangle drew past its band");
+}
+
+/* Whether mesh MESH_ID cuts follows its materials' formats; a mesh with no
+ * LUVS does not, and a material whose header is malformed is reported. */
+static void
+test_a_mesh_cuts_when_its_luvs_names_a_mask1_material(void) {
+    fixture();
+    const uint32_t mask_bytes = mask_texture_open();
+    const uint32_t uvs_bytes = R3D_TEXTURE_UVS_HEADER_SIZE;
+    for (int material = 0; material <= 2; material++) {
+        void* raw;
+        uint8_t* base = test_alloc_aligned(PACK_BYTES, ASSET_PACK_BASE_ALIGN, &raw);
+        TEST_ASSERT_NOT_NULL(base);
+        test_pack_t built = test_pack_begin(base, PACK_BYTES, 2);
+        uint8_t* uvs = test_pack_add(&built, MESH_ID R3D_TEXTURE_UVS_NAME_SUFFIX, R3D_TEXTURE_UVS_ASSET, uvs_bytes);
+        put_u16(uvs + R3D_TEXTURE_UVS_AT_VERSION, R3D_TEXTURE_UVS_VERSION);
+        put_u16(uvs + R3D_TEXTURE_UVS_AT_MATERIAL_COUNT, 1);
+        const bool cut = material == 1;
+        uint8_t* entry = test_pack_add(&built, MESH_ID R3D_TEXTURE_MATERIAL_SUFFIX "0", R3D_TEXTURE_ASSET,
+                                       cut ? mask_bytes : TEX_BYTES);
+        memcpy(entry, cut ? mask_ltex : ltex, cut ? mask_bytes : TEX_BYTES);
+        if (material == 2) {
+            put_u16(entry + R3D_TEXTURE_AT_VERSION, R3D_TEXTURE_VERSION + 1);
+        }
+        asset_pack_t pack;
+        TEST_ASSERT_EQUAL(ASSET_OK, asset_pack_open(&pack, base, test_pack_finish(&built)));
+        bool cuts = true;
+        TEST_ASSERT_EQUAL(material == 2 ? ASSET_ERR_VERSION : ASSET_OK, r3d_texture_mesh_cuts(&pack, MESH_ID, &cuts));
+        TEST_ASSERT_EQUAL(cut, cuts);
+        TEST_ASSERT_EQUAL(ASSET_OK, r3d_texture_mesh_cuts(&pack, "other", &cuts));
+        TEST_ASSERT_FALSE(cuts);
+        test_free_aligned(raw);
+    }
+}
+
 void
 run_r3d_texture_suite(void) {
     RUN_TEST(test_textured_covers_what_plain_covers);
@@ -1808,6 +1914,9 @@ run_r3d_texture_suite(void) {
     RUN_TEST(test_under_a_writer_a_mask1_triangle_is_cut_and_an_index4_one_is_plain);
     RUN_TEST(test_under_a_writer_a_cluster_with_no_material_draws_plain);
     RUN_TEST(test_under_a_writer_a_mesh_with_no_vertex_colours_draws_plain);
+    RUN_TEST(test_in_a_morph_a_mask1_chart_is_cut_and_an_index4_one_is_plain);
+    RUN_TEST(test_in_a_dither_band_a_mask1_chart_draws_whole_and_cut);
+    RUN_TEST(test_a_mesh_cuts_when_its_luvs_names_a_mask1_material);
 }
 
 SUITE_REGISTER(run_r3d_texture_suite);

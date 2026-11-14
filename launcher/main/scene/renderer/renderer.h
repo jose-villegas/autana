@@ -16,8 +16,13 @@ const char* renderer_mesh_id(entity_t entity);
  * mesh with no nodes draws nothing. False when the entity has no renderer or
  * a skinned one, whose mesh its animator writes, or when `mesh` has more
  * levels of detail than the coarse bits the scene opened for the loaded mesh
- * hold. */
+ * hold. The loaded mesh's textures close. */
 bool renderer_set_mesh(entity_t entity, const r3d_lit_mesh_t* mesh);
+
+/* A cut (a MASK1 material) never draws plain: a mesh whose textures cut opens
+ * them as the scene loads, renderer_set_textured() refuses to turn them off,
+ * and renderer_set_mesh() opens them again for its mesh at once, refusing one
+ * they do not fit or one with face colours. */
 
 /* Skins the entity's renderer with the pack's skin `skin_id`, posed by its
  * skeleton animator (animator_set_clips()). False, and `why`, which may be
@@ -27,7 +32,8 @@ bool renderer_set_skin(entity_t entity, const char* skin_id, scene_failure_t* wh
 /* Draws the entity's static renderer with its mesh's textures
  * (render/texture/) when `on`, else plain, as it loads. The first `on` opens
  * them from the mesh's LUVS sibling in the scene's pack and copies their
- * texels to the app heap; they stay open until the scene unloads. False, and
- * `why`, which may be NULL, says why, when the entity has no static renderer,
- * its mesh has no textures, or they could not be opened. */
+ * texels to the app heap; they stay open until the scene unloads. False,
+ * and `why`, which may be NULL, says why, when the entity has no static
+ * renderer, its mesh has no textures, they could not be opened, or it would
+ * draw a cut plain. */
 bool renderer_set_textured(entity_t entity, bool on, scene_failure_t* why);

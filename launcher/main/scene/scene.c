@@ -495,6 +495,9 @@ open_scene(scene_root_t* record, const asset_pack_t* pack) {
         done = scene_mesh_make_resident(scene);
     }
     if (done.status == SCENE_OK) {
+        done = scene_renderer_open_cuts(scene);
+    }
+    if (done.status == SCENE_OK) {
         done = open_transforms(scene);
     }
     if (done.status == SCENE_OK) {

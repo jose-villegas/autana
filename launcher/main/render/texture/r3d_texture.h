@@ -113,7 +113,7 @@ void r3d_span_textured_triangle(const r3d_span_target_t* target, const r3d_span_
 /* A mesh's textures, set on r3d_lit_mesh_t.texturing: up to
  * R3D_TEXTURE_CHARTS charts per cluster, each a material, a UV per vertex
  * per chart, and a code per triangle naming the chart it draws with. The
- * rest of the cluster draws plain, as does a cluster in an LOD blend. */
+ * rest of the cluster draws plain, as do a blended cluster's INDEX4 charts. */
 #define R3D_TEXTURE_NONE     0xFFU /* a chart with no material: it and every later chart of its cluster unused */
 #define R3D_TEXTURE_UV_SHIFT 4     /* a stored UV is 1/16 texel */
 #define R3D_TEXTURE_CHARTS   2
@@ -156,6 +156,15 @@ typedef struct r3d_mesh_texturing {
 /* The materials LUVS entry `uvs` names, after checking its header; 0 when
  * the header is malformed. */
 int r3d_texture_uvs_material_count(const asset_view_t* uvs);
+
+/* Whether mesh `mesh_id` in `pack` has an LUVS sibling naming a MASK1
+ * material, in `cuts`; false without one. A cut is coverage, not shading, so
+ * such a mesh never draws plain. Opens only the material headers. Any status
+ * but ASSET_OK leaves `cuts` false and says which sibling is malformed. */
+asset_status_t r3d_texture_mesh_cuts(const asset_pack_t* pack, const char* mesh_id, bool* cuts);
+
+/* Whether any of `texturing`'s materials is MASK1. */
+bool r3d_texture_texturing_cuts(const r3d_mesh_texturing_t* texturing);
 
 /* Fills `texturing` from LUVS entry `uvs` of mesh `mesh_id`, `mesh`, after
  * checking it against the mesh, opening each material's LTEX sibling from

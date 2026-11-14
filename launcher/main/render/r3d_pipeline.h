@@ -153,7 +153,8 @@ void r3d_pipeline_draw(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const
 
 /* r3d_pipeline_draw() for an instance in a blend: the clusters whose `rows`
  * carry a dither band, with `dither`, or else a weight toward their morph
- * targets are drawn so. Kept apart, so the plain draw tests no blend. */
+ * targets are drawn so. A mesh's MASK1 charts draw textured, whole; its
+ * INDEX4 ones plain. Kept apart, so the plain draw tests no blend. */
 void r3d_pipeline_draw_blended(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
                                const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows,
                                const r3d_span_target_t* target, r3d_pipeline_work_t* work, bool dither);
