@@ -88,6 +88,7 @@ console_write(const char* bytes, size_t len) {
 static esp_err_t
 console_driver_install(void) {
     usb_serial_jtag_driver_config_t cfg = USB_SERIAL_JTAG_DRIVER_CONFIG_DEFAULT();
+    cfg.tx_buffer_size = CONSOLE_TX_RING_BYTES;
     const esp_err_t err = usb_serial_jtag_driver_install(&cfg);
     if (err == ESP_OK) {
         usb_serial_jtag_vfs_use_driver();
@@ -119,6 +120,13 @@ emit_bytes(const char* bytes, size_t len) {
         console_write(bytes, n);
         bytes += n;
         len -= n;
+    }
+}
+
+void
+console_emit_bytes(const void* bytes, size_t count) {
+    if (count > 0 && count <= CONSOLE_EMIT_BYTES_MAX) {
+        console_write(bytes, count);
     }
 }
 

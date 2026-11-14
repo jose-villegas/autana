@@ -5,6 +5,7 @@
 #include "math/scalar/mathf_round.h"
 #include "math/scalar/mathi.h"
 #include "render/r3d_skin_format.h"
+#include "render/record/frame_record.h"
 #include "render/skin/r3d_skin_light_internal.h"
 
 static inline __attribute__((always_inline)) void
@@ -221,10 +222,20 @@ skin_four(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4f_t* pal
     skin_range(skin, bind, palette, first, count, out, R3D_SKIN_INFLUENCES_MAX);
 }
 
+/* The range from the first cluster tells the recorder once per pose. */
+static void
+note_pose(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4f_t* palette, int first,
+          const r3d_skin_output_t* out) {
+    if (first == 0) {
+        frame_record_note_skin(&out->mesh, bind, palette, skin->joint_count);
+    }
+}
+
 void
 r3d_skin_clusters(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4f_t* palette, int first, int count,
                   r3d_skin_output_t* out) {
     check_range(skin, bind, first, count);
+    note_pose(skin, bind, palette, first, out);
     if (skin->influences == R3D_SKIN_INFLUENCES_MIN) {
         skin_two(skin, bind, palette, first, count, out);
     } else {
@@ -239,6 +250,7 @@ r3d_skin_clusters(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4
         assert(lights->count >= 0 && lights->count <= R3D_SKIN_LIGHT_MAX);                                             \
         const r3d_skin_lights_t prepared = *lights;                                                                    \
         check_range(skin, bind, first, count);                                                                         \
+        note_pose(skin, bind, palette, first, out);                                                                    \
         if (skin->influences == R3D_SKIN_INFLUENCES_MIN) {                                                             \
             skin_lit_range(skin, bind, palette, first, count, out, normals, &prepared, light, R3D_SKIN_INFLUENCES_MIN, \
                            mode);                                                                                      \

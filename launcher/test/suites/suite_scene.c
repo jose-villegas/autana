@@ -964,6 +964,22 @@ resident_mesh_bytes(const r3d_lit_mesh_t* mesh) {
     return bytes;
 }
 
+/* The scene told the asset store `copy` holds `size` bytes of `source`, so
+ * a frame record names the copy by the pack entry it copies. */
+static void
+assert_told(const scene_t* scene, const void* copy, const void* source, size_t size) {
+    TEST_ASSERT_NOT_NULL(scene->copies);
+    for (int i = 0; i < scene->copies->count; i++) {
+        const asset_copy_t* told = &scene->copies->copies[i];
+        if (told->copy == copy) {
+            TEST_ASSERT_EQUAL_PTR(source, told->source);
+            TEST_ASSERT_EQUAL_size_t(size, told->bytes);
+            return;
+        }
+    }
+    TEST_FAIL_MESSAGE("a resident copy the scene did not tell");
+}
+
 static void
 assert_resident_mesh_arrays(const scene_t* scene, size_t bytes) {
     TEST_ASSERT_NOT_NULL(scene->resident);
@@ -1005,6 +1021,7 @@ assert_resident_mesh_arrays(const scene_t* scene, size_t bytes) {
             TEST_ASSERT_TRUE(at + arrays[j].size <= begin + bytes);
             TEST_ASSERT_EQUAL_size_t(0, at % arrays[j].alignment);
             TEST_ASSERT_EQUAL_MEMORY(arrays[j].source, arrays[j].copy, arrays[j].size);
+            assert_told(scene, arrays[j].copy, arrays[j].source, arrays[j].size);
         }
     }
 }

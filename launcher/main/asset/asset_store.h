@@ -3,6 +3,7 @@
 #pragma once
 
 #include "asset/asset_pack.h"
+#include "build/build_variant.h"
 #include "core/pending.h"
 
 #define ASSET_ENGINE_PACK      "engine"
@@ -39,6 +40,47 @@ void asset_store_cancel(handle_t load);
 /* How many packs are mounted now: a pack kept for the whole run, such as the
  * engine's artwork, holds its slot for good. */
 int asset_store_mounted(void);
+
+/* Which mounted pack, and which of its entries, holds `address`. */
+typedef struct {
+    int slot; /* 0 .. ASSET_STORE_MOUNTS_MAX - 1, steady while the pack stays mounted */
+    uint32_t entry;
+    const char* pack_name;
+    uint32_t pack_crc;
+} asset_location_t;
+
+/* False when no mounted pack's entry holds it, nor a copy told below: memory the app made. */
+bool asset_store_locate(const void* address, asset_location_t* out);
+
+/* Pack bytes copied elsewhere, as a scene keeps its meshes resident: told
+ * here, asset_store_locate finds a copy's address in its source's entry.
+ * The caller owns both and removes them before freeing either. */
+typedef struct {
+    const void* copy;
+    const void* source;
+    size_t bytes;
+} asset_copy_t;
+
+typedef struct asset_copies {
+    struct asset_copies* next; /* the store's */
+    const asset_copy_t* copies;
+    int count;
+} asset_copies_t;
+
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+void asset_store_copies_add(asset_copies_t* copies);
+void asset_store_copies_remove(asset_copies_t* copies);
+#else
+static inline void
+asset_store_copies_add(asset_copies_t* copies) {
+    (void)copies;
+}
+
+static inline void
+asset_store_copies_remove(asset_copies_t* copies) {
+    (void)copies;
+}
+#endif
 
 /* Retires this handle, cancelling WAIT or dropping its READY use. Stale handles are harmless. */
 void asset_store_release(handle_t load);

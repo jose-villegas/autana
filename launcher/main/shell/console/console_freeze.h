@@ -25,3 +25,7 @@
 /* True to run this pass as usual, false to hold: no app step, nothing
  * sent. Once per pass: a true return spends one STEP's credit. */
 bool console_freeze_frame_allowed(void);
+
+/* True from FREEZE or STEP until RESUME: the loop runs only the frames a
+ * STEP lets past, so whatever they produce is waited for, never dropped. */
+bool console_freeze_held(void);

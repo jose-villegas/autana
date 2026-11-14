@@ -1,4 +1,5 @@
 #include "render/dynamic/r3d_dynamic_mesh.h"
+#include "render/record/frame_record.h"
 
 #include <assert.h>
 #include <string.h>
@@ -278,5 +279,6 @@ r3d_dynamic_mesh_build(r3d_dynamic_mesh_t* m, const r3d_dynamic_source_t* src) {
     close_cluster(&b);
     build_tree(m);
     pad(m);
+    frame_record_note_built(&m->mesh, src, fitted);
     return fitted;
 }

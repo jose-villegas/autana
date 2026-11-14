@@ -40,5 +40,15 @@ void console_start(void);
  * such as SCREENSHOT's framebuffer stream (console_screenshot.c). */
 void console_emit_line(const char* prefix, const char* payload);
 
+/* The driver's TX ring. Packets of half of it go out at the link's full
+ * rate; a write as large as the ring waits for it to drain first. */
+#define CONSOLE_TX_RING_BYTES  4096
+#define CONSOLE_EMIT_BYTES_MAX (CONSOLE_TX_RING_BYTES / 2)
+
+/* Sends `count` bytes, at most CONSOLE_EMIT_BYTES_MAX, in one driver write,
+ * so no other task's output lands inside them; nothing for a larger count.
+ * For a binary packet whose header line says how many bytes follow. */
+void console_emit_bytes(const void* bytes, size_t count);
+
 /* True once per unclaimed line, `out` filled; false with `out` untouched. */
 bool console_take_unclaimed_line(char* out, size_t out_size);

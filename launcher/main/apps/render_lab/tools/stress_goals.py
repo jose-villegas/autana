@@ -16,7 +16,8 @@ from build.c_header import read_define
 from device_report import parse_perf_targets, parse_unpegged_targets
 
 SUITE = ROOT / "launcher/main/apps/render_lab/tests/suite_stress_perf.c"
-STAGE_HEADER = ROOT / "launcher/main/render/r3d_stages.h"
+# The headers that define the suite's stage names.
+STAGE_HEADERS = (ROOT / "launcher/main/render/r3d_stages.h", ROOT / "launcher/main/render/record/frame_record.h")
 GOAL_MARGIN = Fraction("1.01")
 CEILING_MARGIN = Fraction("1.15")
 GOAL_QUANTUM_US = 10
@@ -24,11 +25,24 @@ DEFAULT_SIZE = read_define(SUITE, "STRESS_PERF_DEFAULT_SIZE")
 TABLE_ROW = re.compile(r'\{"(stress-[^"]+)",\s*"([^"]+)",\s*"([^"]+)",\s*\{([^}]+)\},\s*\{[^}]+\}\}')
 
 
+def define_in(header, name):
+    """`name`'s value in `header`, None when the header does not define it."""
+    try:
+        return read_define(header, name)
+    except RuntimeError:
+        return None
+
+
 def stage_names():
-    """The bracket names in the stage enum's order, which indexes a row's goals."""
-    enum = re.search(r"enum\s*\{([^}]+)\}", STAGE_HEADER.read_text(encoding="utf-8"))[1]
-    ids = [name.strip() for name in enum.split(",") if name.strip() != "R3D_STAGE_COUNT"]
-    return tuple(read_define(STAGE_HEADER, f"{name}_NAME") for name in ids)
+    """The bracket names in the suite's stress_perf_stages order, which indexes a row's goals."""
+    listed = re.search(r"stress_perf_stages\[\w+\]\s*=\s*\{([^}]+)\}", SUITE.read_text(encoding="utf-8"))[1]
+    names = []
+    for define in (name.strip() for name in listed.split(",") if name.strip()):
+        found = [define_in(header, define) for header in STAGE_HEADERS if define_in(header, define) is not None]
+        if len(found) != 1:
+            raise ValueError(f"{SUITE}: stage {define} is defined in {len(found)} of {[h.name for h in STAGE_HEADERS]}")
+        names.append(found[0])
+    return tuple(names)
 
 
 STAGES = stage_names()

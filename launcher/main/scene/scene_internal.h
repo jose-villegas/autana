@@ -8,6 +8,8 @@
 
 #include "anim/anim_tracks.h"
 #include "anim/playback/anim_layer.h"
+#include "asset/asset_store.h"
+#include "build/build_variant.h"
 #include "core/checkpoint.h"
 #include "core/handle.h"
 #include "core/memory.h"
@@ -266,6 +268,9 @@ struct scene {
     uint8_t* flags;     /* one per entity: SCENE_FLAG_* */
     scene_renderer_t* renderers;
     void* resident; /* mesh arrays (positions, triangles, colours), deduplicated; NULL when absent */
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+    asset_copies_t* copies; /* resident's arrays' sources, told to the asset store; NULL when none */
+#endif
     scene_camera_t* cameras;
     const asset_pack_t* pack;
     transformf_t* locals;
@@ -300,6 +305,9 @@ void* scene_allocate(size_t bytes, memory_kind_t kind);
  * scene_set_take() installed, else the heap. scene_free_kept() frees it only
  * when it came from the heap; a taken one goes back with its lender. */
 void* scene_allocate_kept(size_t bytes);
+/* As scene_allocate_kept(), for what a load does without when refused: no
+ * injected failure lands on it. */
+void* scene_allocate_kept_optional(size_t bytes);
 void scene_free_kept(void* block);
 
 /* Copies static mesh arrays (positions, triangles, colours) into one block from scene_allocate_kept(),

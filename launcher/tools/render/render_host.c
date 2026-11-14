@@ -27,6 +27,7 @@
 #include "ui/layout/ui_transform.h"
 
 #include "render/context/render_context.h"
+#include "render/record/frame_record.h"
 #include "scene/scene_shell.h"
 
 #if defined(_WIN32)
@@ -274,7 +275,7 @@ apply_input(const frame_provider_t* provider, int index, input_t* state) {
 static int
 usage(const char* argv0) {
     fprintf(stderr,
-            "usage: %s [--quarter N] [--panel] [--frames N] [--dt N] [-o PATH] [--video PATH]\n"
+            "usage: %s [--quarter N] [--panel] [--frames N] [--dt N] [-o PATH] [--video PATH] [--record PATH]\n"
             "       [--set owner.name=value ...] [--set render.FIELD=value ...] [--tunables] [--crop]\n"
             "       docs/tools/Render-Harness.md lists options; the scene may take more.\n",
             argv0);
@@ -291,7 +292,8 @@ refuse(int* exit_code, const char* argv0) {
 static struct {
     const frame_provider_t* provider;
     bool panel, crop, video_ok;
-    const char *out_path, *video_path;
+    const char *out_path, *video_path, *record_path;
+    FILE* record;
     int out_w, out_h;
     affine2x_t t;
     int32_t stride;
@@ -384,6 +386,42 @@ release(void) {
     app_arena_exit();
 }
 
+static bool
+record_write(void* sink, const uint8_t* bytes, size_t count) {
+    return fwrite(bytes, 1, count, sink) == count;
+}
+
+/* --record PATH: each frame's render input from the first, as a board's
+ * FRAMEREC sends it (render/record/frame_record_format.h). */
+static bool
+record_start(void) {
+    host.record = fopen(host.record_path, "wb");
+    const frame_record_out_t out = {record_write, host.record};
+    if (host.record == NULL || !frame_record_start(&out, FRAME_RECORD_KEYFRAME_EVERY)) {
+        fprintf(stderr, "%s: cannot record to %s\n", host.provider->name, host.record_path);
+        if (host.record != NULL) {
+            fclose(host.record);
+        }
+        return false;
+    }
+    return true;
+}
+
+/* Before the frames the watch draws past --frames, which no image shows. */
+static bool
+record_stop(void) {
+    if (host.record == NULL) {
+        return true;
+    }
+    const frame_record_counts_t counts = frame_record_counts();
+    frame_record_stop();
+    const bool closed = fclose(host.record) == 0;
+    host.record = NULL;
+    fprintf(stderr, "RECORD %s frames=%lu dropped=%lu\n", host.record_path, (unsigned long)counts.frames,
+            (unsigned long)counts.dropped);
+    return closed && counts.dropped == 0;
+}
+
 bool
 render_host_open(const frame_provider_t* provider, int argc, char** argv, int* exit_code) {
     memset(&host, 0, sizeof host);
@@ -417,6 +455,8 @@ render_host_open(const frame_provider_t* provider, int argc, char** argv, int* e
             host.out_path = argv[++i];
         } else if (strcmp(a, "--video") == 0 && has_value) {
             host.video_path = argv[++i];
+        } else if (strcmp(a, "--record") == 0 && has_value) {
+            host.record_path = argv[++i];
         } else if (strcmp(a, "--crop") == 0) {
             host.crop = true;
         } else if (rest_count < (int)(sizeof(rest) / sizeof(rest[0]))) {
@@ -522,6 +562,13 @@ render_host_open(const frame_provider_t* provider, int argc, char** argv, int* e
         return false;
     }
 
+    if (host.record_path != NULL && !record_start()) {
+        free(host.console_path);
+        free(host.frame_buf);
+        release();
+        return false;
+    }
+
     /* The drawn box in output coordinates, and the map that turns a
      * --panel output's box back into the canvas a provider lays out in. */
     host.canvas_from_panel = affine2x_identity();
@@ -567,6 +614,7 @@ render_host_step(uint32_t dt_ms, const input_t* input) {
 
 bool
 render_host_close(void) {
+    const bool recorded = record_stop();
     /* However few frames the image needed, the provider goes on drawing until
      * the watch has judged a whole window of it at rest. Nothing of these
      * reaches the image. */
@@ -627,7 +675,7 @@ render_host_close(void) {
         fprintf(stderr, "%s: the frame watch had no room for %lu events, so it may have missed one\n",
                 host.provider->name, (unsigned long)verdict.dropped);
     }
-    return ok && frame_watch_verdict_clean(verdict);
+    return ok && recorded && frame_watch_verdict_clean(verdict);
 }
 
 /* Selecting a provider builds the CLI; without it this file is a library. */

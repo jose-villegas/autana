@@ -486,6 +486,7 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
                     uint16_t clear) {
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
     c->observed = false;
+    c->frame_view = *view;
 #endif
     if (!c->batches_set) {
         c->raster.batches = NULL; /* none set for this draw */

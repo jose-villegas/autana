@@ -245,7 +245,7 @@ Worst bin: mantissa 1.97-2.00 at 6.1e-5; every other bin <= 3.2e-5.
 
 Contract and build choices: [hash package](../../launcher/packages/hash/README.md).
 
-Callers: `asset`.
+Callers: `asset`, `render`, `shell`.
 
 Correctness: [hash tests](../../launcher/packages/hash/tests); sweep.
 <!-- /generated: package-fast-paths -->
