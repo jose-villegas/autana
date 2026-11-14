@@ -73,6 +73,7 @@ jobs:
           python launcher/tools/bake/bake.py list --missing --kind reference | tee -a "$RUNNER_TEMP/mesh.txt"
           python launcher/tools/bake/bake.py list --missing --kind sound | tee "$RUNNER_TEMP/sound.txt"
           python launcher/tools/bake/bake.py list --missing --kind levels | tee "$RUNNER_TEMP/levels.txt"
+          python launcher/tools/bake/bake.py list --missing --kind texture | tee -a "$RUNNER_TEMP/levels.txt"
           echo "mesh=$(cat "$RUNNER_TEMP/mesh.txt" "$RUNNER_TEMP/levels.txt" | wc -l)" >> "$GITHUB_OUTPUT"
           echo "sound=$(wc -l < "$RUNNER_TEMP/sound.txt")" >> "$GITHUB_OUTPUT"
           echo "blend=$(wc -l < "$RUNNER_TEMP/blend.txt")" >> "$GITHUB_OUTPUT"
@@ -120,6 +121,7 @@ jobs:
           python launcher/tools/bake/bake.py bake --kind mesh --out "$RUNNER_TEMP/bakes"
           python launcher/tools/bake/bake.py bake --kind reference --out "$RUNNER_TEMP/bakes"
           python launcher/tools/bake/bake.py bake --kind levels --out "$RUNNER_TEMP/bakes"
+          python launcher/tools/bake/bake.py bake --kind texture --out "$RUNNER_TEMP/bakes"
           python launcher/tools/bake/bake.py bake --kind sound --out "$RUNNER_TEMP/bakes"
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

@@ -33,6 +33,7 @@ static const lab_scene_t* const scenes[] = {&scene_sponza[SCENE_BAKED_FITTED_FUL
                                             &scene_capybara_sponza,
                                             &scene_water,
                                             &scene_bistro[SCENE_BAKED_FITTED_FULL],
+                                            &scene_bistro_textured,
                                             &scene_bistro[SCENE_BAKED_FITTED],
                                             &scene_bistro[SCENE_BAKED_FULL],
                                             &scene_bistro[SCENE_BAKED_LITE],

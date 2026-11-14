@@ -18,6 +18,12 @@ facing_away(int32_t area2, bool double_sided) {
     return !double_sided && area2 >= 0;
 }
 
+/* A transformed corner `v` as a span vertex lit `rgb`. */
+static inline r3d_span_vertex_t
+span_corner(const r3d_pipeline_vertex_t* v, const uint8_t rgb[3]) {
+    return (r3d_span_vertex_t){v->sx, v->sy, v->iz, rgb[0], rgb[1], rgb[2]};
+}
+
 /* Twice the signed area; with coordinates inside R3D_SPAN_RANGE each
  * product is under 2^30. */
 static inline int32_t
