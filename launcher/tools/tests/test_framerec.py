@@ -1,11 +1,10 @@
-"""launcher/tools/device/framerec.py: the FRAMEREC packet framing and the record reader.
+"""launcher/tools/device/framerec.py: the record reader.
 
     python -m unittest discover -s launcher/tools/tests
 
-Packets split from log lines however the reads cut them, a damaged one
-refused; records walked by their head, a type the reader does not know
-passed through, a record cut short or of the wrong size refused; and the
-reader's type numbers and flags held to frame_record_format.h. The record
+Records walked by their head, a type the reader does not know passed
+through, a record cut short or of the wrong size refused; and the reader's
+type numbers and flags held to frame_record_format.h. The record
 sizes are held to the firmware by a real recording (the render lab's
 tools/tests/test_record_host.py), whose every fixed-size record the reader
 measures.
@@ -14,7 +13,6 @@ import re
 import struct
 import sys
 import unittest
-import zlib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -25,10 +23,6 @@ import framerec  # noqa: E402
 from build.c_header import read_define  # noqa: E402
 
 FORMAT_HEADER = ROOT / "launcher/main/render/record/frame_record_format.h"
-
-
-def packet(data):
-    return b"FRAMEREC_BIN %d %08x\n" % (len(data), zlib.crc32(data)) + data
 
 
 def record(name, body):
@@ -53,29 +47,6 @@ class FormatTests(unittest.TestCase):
         for name in ("KEYFRAME", "AFTER_DROP", "GENERATED"):
             with self.subTest(flag=name):
                 self.assertEqual(getattr(framerec, name), read_define(FORMAT_HEADER, "FRAME_RECORD_" + name))
-
-
-class PacketTests(unittest.TestCase):
-    def test_packets_and_lines_come_out_in_order_however_the_reads_cut_them(self):
-        wire = b"I (1) app: hello\n" + packet(b"\x00\n\x01FRAMEREC") + b"FRAMEREC_END frames=1\n" + packet(b"x" * 9)
-        for cut in range(1, len(wire)):
-            with self.subTest(cut=cut):
-                packets = framerec.Packets()
-                events = packets.feed(wire[:cut]) + packets.feed(wire[cut:])
-                self.assertEqual(events, [("line", b"I (1) app: hello"), ("data", b"\x00\n\x01FRAMEREC"),
-                                          ("line", b"FRAMEREC_END frames=1"), ("data", b"x" * 9)])
-                self.assertEqual(packets.rest(), b"")
-
-    def test_a_packet_waits_for_all_its_bytes(self):
-        packets = framerec.Packets()
-        self.assertEqual(packets.feed(packet(b"abcdef")[:-1]), [])
-        self.assertEqual(packets.feed(b"f"), [("data", b"abcdef")])
-
-    def test_a_damaged_packet_is_refused(self):
-        damaged = bytearray(packet(b"abcdef"))
-        damaged[-1] ^= 1
-        with self.assertRaisesRegex(framerec.StreamError, "damaged"):
-            framerec.Packets().feed(bytes(damaged))
 
 
 class RecordTests(unittest.TestCase):

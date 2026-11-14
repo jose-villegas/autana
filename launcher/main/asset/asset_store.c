@@ -327,12 +327,6 @@ source_of(const uint8_t* at) {
     }
     return at;
 }
-#else
-static const uint8_t*
-source_of(const uint8_t* at) {
-    return at;
-}
-#endif
 
 bool
 asset_store_locate(const void* address, asset_location_t* out) {
@@ -354,6 +348,7 @@ asset_store_locate(const void* address, asset_location_t* out) {
     }
     return false;
 }
+#endif
 
 void
 asset_store_release(handle_t load) {

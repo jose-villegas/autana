@@ -12,10 +12,9 @@ sys.path[:0] = [str(ROOT / "launcher/tools/perf"), str(ROOT / "launcher/tools")]
 from frame_profile import replays
 from render.cull_counts import size_fields, upscale_counts
 from build.c_header import read_define
-from stress_goals import STAGE_HEADERS
 
 # r3d's stages, the ones scene counts predict: the recorder's is not fitted.
-STAGE_HEADER = STAGE_HEADERS[0]
+STAGE_HEADER = ROOT / "launcher/main/render/r3d_stages.h"
 
 
 def r3d_stage_names():

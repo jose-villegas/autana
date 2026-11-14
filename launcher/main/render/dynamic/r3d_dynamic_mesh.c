@@ -110,6 +110,7 @@ r3d_dynamic_mesh_init(r3d_dynamic_mesh_t* m, void* block, size_t bytes, r3d_dyna
     if (!capacity_ok(capacity) || block == NULL || position_scale <= 0 || bytes < layout(capacity, at)) {
         return false;
     }
+    frame_record_forget(block, bytes);
     uint8_t* p = block;
     m->positions = (int16_t (*)[3])(void*)(p + at[0]);
     m->colors = (uint8_t (*)[3])(void*)(p + at[1]);

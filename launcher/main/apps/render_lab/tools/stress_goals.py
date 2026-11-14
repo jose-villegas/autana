@@ -16,8 +16,8 @@ from build.c_header import read_define
 from device_report import parse_perf_targets, parse_unpegged_targets
 
 SUITE = ROOT / "launcher/main/apps/render_lab/tests/suite_stress_perf.c"
-# The headers that define the suite's stage names.
-STAGE_HEADERS = (ROOT / "launcher/main/render/r3d_stages.h", ROOT / "launcher/main/render/record/frame_record.h")
+MAIN = ROOT / "launcher/main"
+INCLUDE = re.compile(r'^#include "([^"]+)"', re.M)
 GOAL_MARGIN = Fraction("1.01")
 CEILING_MARGIN = Fraction("1.15")
 GOAL_QUANTUM_US = 10
@@ -33,14 +33,27 @@ def define_in(header, name):
         return None
 
 
+def included_headers(source):
+    """The engine headers `source` includes, directly or through another, in the order met."""
+    seen, queue = [], [source]
+    while queue:
+        for name in INCLUDE.findall(queue.pop(0).read_text(encoding="utf-8")):
+            header = MAIN / name
+            if header.is_file() and header not in seen:
+                seen.append(header)
+                queue.append(header)
+    return seen
+
+
 def stage_names():
     """The bracket names in the suite's stress_perf_stages order, which indexes a row's goals."""
     listed = re.search(r"stress_perf_stages\[\w+\]\s*=\s*\{([^}]+)\}", SUITE.read_text(encoding="utf-8"))[1]
+    headers = included_headers(SUITE)
     names = []
     for define in (name.strip() for name in listed.split(",") if name.strip()):
-        found = [define_in(header, define) for header in STAGE_HEADERS if define_in(header, define) is not None]
+        found = [value for value in (define_in(header, define) for header in headers) if value is not None]
         if len(found) != 1:
-            raise ValueError(f"{SUITE}: stage {define} is defined in {len(found)} of {[h.name for h in STAGE_HEADERS]}")
+            raise ValueError(f"{SUITE}: stage {define} is defined {len(found)} times in the headers it includes")
         names.append(found[0])
     return tuple(names)
 

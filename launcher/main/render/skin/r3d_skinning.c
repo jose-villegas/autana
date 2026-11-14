@@ -38,6 +38,7 @@ r3d_skin_output_init(const r3d_lit_mesh_t* bind, void* block, size_t bytes, r3d_
     if (block == NULL || bytes < r3d_skin_output_bytes(bind)) {
         return false;
     }
+    frame_record_forget(block, bytes);
     uint8_t* p = block;
     out->positions = (int16_t (*)[3])(void*)p;
     out->clusters = (r3d_lit_cluster_t*)(void*)(p + cluster_offset(bind));

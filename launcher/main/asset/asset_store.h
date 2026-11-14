@@ -49,9 +49,6 @@ typedef struct {
     uint32_t pack_crc;
 } asset_location_t;
 
-/* False when no mounted pack's entry holds it, nor a copy told below: memory the app made. */
-bool asset_store_locate(const void* address, asset_location_t* out);
-
 /* Pack bytes copied elsewhere, as a scene keeps its meshes resident: told
  * here, asset_store_locate finds a copy's address in its source's entry.
  * The caller owns both and removes them before freeing either. */
@@ -70,6 +67,8 @@ typedef struct asset_copies {
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 void asset_store_copies_add(asset_copies_t* copies);
 void asset_store_copies_remove(asset_copies_t* copies);
+/* False when no mounted pack's entry holds it, nor a told copy: memory the app made. */
+bool asset_store_locate(const void* address, asset_location_t* out);
 #else
 static inline void
 asset_store_copies_add(asset_copies_t* copies) {
@@ -79,6 +78,13 @@ asset_store_copies_add(asset_copies_t* copies) {
 static inline void
 asset_store_copies_remove(asset_copies_t* copies) {
     (void)copies;
+}
+
+static inline bool
+asset_store_locate(const void* address, asset_location_t* out) {
+    (void)address;
+    (void)out;
+    return false;
 }
 #endif
 

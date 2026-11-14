@@ -15,6 +15,7 @@
  */
 #include "console/console.h"
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -30,6 +31,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
+#include "hash/crc32.h"
 
 #include "collections/strbuf.h"
 #include "core/timing.h"
@@ -109,14 +111,12 @@ console_write(const char* bytes, size_t len) {
  * which lost rows mid-stream on the S3. The driver call below waits
  * instead. */
 /* No single write may exceed the driver's TX ring (tx_buffer_size in
- * console_start()): a byte ringbuffer refuses a larger item outright,
- * however long it is told to wait. */
-#define EMIT_CHUNK_BYTES 128
-
+ * console_driver_install()): a byte ringbuffer refuses a larger item
+ * outright, however long it is told to wait. */
 static void
 emit_bytes(const char* bytes, size_t len) {
     while (len > 0) {
-        const size_t n = len < EMIT_CHUNK_BYTES ? len : EMIT_CHUNK_BYTES;
+        const size_t n = len < CONSOLE_PACKET_MAX ? len : CONSOLE_PACKET_MAX;
         console_write(bytes, n);
         bytes += n;
         len -= n;
@@ -124,10 +124,13 @@ emit_bytes(const char* bytes, size_t len) {
 }
 
 void
-console_emit_bytes(const void* bytes, size_t count) {
-    if (count > 0 && count <= CONSOLE_EMIT_BYTES_MAX) {
-        console_write(bytes, count);
-    }
+console_emit_packet(const char* tag, const void* bytes, size_t count, uint8_t* scratch) {
+    assert(count <= CONSOLE_PACKET_BYTES_MAX);
+    const int head = snprintf((char*)scratch, CONSOLE_PACKET_HEAD_MAX, "%s_BIN %u %08lx\n", tag, (unsigned)count,
+                              (unsigned long)crc32_update(0, bytes, count));
+    assert(head > 0 && head < CONSOLE_PACKET_HEAD_MAX);
+    memcpy(scratch + head, bytes, count);
+    console_write((const char*)scratch, (size_t)head + count);
 }
 
 void

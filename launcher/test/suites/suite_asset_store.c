@@ -251,8 +251,20 @@ test_an_entry_and_a_told_copy_of_it_locate_to_the_entry(void) {
     TEST_ASSERT_EQUAL_INT(at.slot, copied.slot);
     TEST_ASSERT_EQUAL_UINT32(at.entry, copied.entry);
     TEST_ASSERT_FALSE(asset_store_locate(copy + sizeof copy, &copied));
+    /* A second block told after it stays when the first is taken back, and
+     * taking back one never told changes nothing. */
+    char other[NOTE_BYTES];
+    const asset_copy_t told_other = {other, note, sizeof other};
+    asset_copies_t others = {.copies = &told_other, .count = 1};
+    asset_copies_t never = {.copies = &told_other, .count = 1};
+    asset_store_copies_add(&others);
     asset_store_copies_remove(&copies);
+    asset_store_copies_remove(&never);
     TEST_ASSERT_FALSE(asset_store_locate(copy + 1, &copied));
+    TEST_ASSERT_TRUE(asset_store_locate(other + 1, &copied));
+    TEST_ASSERT_EQUAL_UINT32(at.entry, copied.entry);
+    asset_store_copies_remove(&others);
+    TEST_ASSERT_FALSE(asset_store_locate(other + 1, &copied));
     asset_store_release(load);
     TEST_ASSERT_FALSE(asset_store_locate(note + 1, &at));
     remove_pack("suite_pack_a");

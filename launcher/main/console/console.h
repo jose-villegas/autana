@@ -23,6 +23,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #include "console/console_verbs.h"
 
@@ -40,15 +41,21 @@ void console_start(void);
  * such as SCREENSHOT's framebuffer stream (console_screenshot.c). */
 void console_emit_line(const char* prefix, const char* payload);
 
-/* The driver's TX ring. Packets of half of it go out at the link's full
- * rate; a write as large as the ring waits for it to drain first. */
-#define CONSOLE_TX_RING_BYTES  4096
-#define CONSOLE_EMIT_BYTES_MAX (CONSOLE_TX_RING_BYTES / 2)
+/* The driver's TX ring. A write of half of it goes out at the link's full
+ * rate; one as large as the ring waits for it to drain first. */
+#define CONSOLE_TX_RING_BYTES    4096
+/* A packet whole, its line and its bytes: half the TX ring. */
+#define CONSOLE_PACKET_MAX       (CONSOLE_TX_RING_BYTES / 2)
+/* Room for "<tag>_BIN <count> <crc32 hex>
+" with a tag of up to 16 characters. */
+#define CONSOLE_PACKET_HEAD_MAX  48
+#define CONSOLE_PACKET_BYTES_MAX (CONSOLE_PACKET_MAX - CONSOLE_PACKET_HEAD_MAX)
 
-/* Sends `count` bytes, at most CONSOLE_EMIT_BYTES_MAX, in one driver write,
- * so no other task's output lands inside them; nothing for a larger count.
- * For a binary packet whose header line says how many bytes follow. */
-void console_emit_bytes(const void* bytes, size_t count);
+/* Sends `count` raw bytes, at most CONSOLE_PACKET_BYTES_MAX, as one packet:
+ * the line "<tag>_BIN <count> <crc32 hex>" then the bytes, composed in
+ * `scratch` (CONSOLE_PACKET_MAX bytes) and sent in one driver write, so no
+ * other task's output lands inside it. docs/tools/Console-Framing.md. */
+void console_emit_packet(const char* tag, const void* bytes, size_t count, uint8_t* scratch);
 
 /* True once per unclaimed line, `out` filled; false with `out` untouched. */
 bool console_take_unclaimed_line(char* out, size_t out_size);

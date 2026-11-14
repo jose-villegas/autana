@@ -3627,6 +3627,164 @@ class ScreenshotCommandTests(unittest.TestCase):
                 device.screenshot(args, store, BOARD)
 
 
+def framerec_packet(data, crc=None):
+    """One FRAMEREC_BIN packet as the board writes it: the line, then the bytes."""
+    crc = zlib.crc32(data) if crc is None else crc
+    return b"FRAMEREC_BIN %d %08x\n" % (len(data), crc) + data
+
+
+class RecordingBoard(FakeConnection):
+    """A board running FRAMEREC: reads `chunks` as given, and answers a written
+    FRAMEREC STOP with `after_stop`, the way the board drains its ring and ends."""
+
+    def __init__(self, chunks, after_stop=(b"FRAMEREC_END frames=2\n",)):
+        super().__init__(chunks)
+        self.after_stop = list(after_stop)
+
+    def read(self, unused_size):
+        chunk = super().read(unused_size)
+        if not chunk:
+            time.sleep(0.001)
+        return chunk
+
+    def write(self, data):
+        super().write(data)
+        if data == b"FRAMEREC STOP\n":
+            self.chunks.extend(self.after_stop)
+
+
+class RecordFramesTests(unittest.TestCase):
+    """device.py record (record_frames) against a scripted board."""
+
+    FIRST = bytes(range(1, 40))
+    SECOND = b"\n" * 5 + b"FRAMEREC_BIN 3 0\n" + bytes(range(200, 230))  # bytes that look like protocol
+
+    def record(self, connection, lines=None, seconds=None, store=None):
+        out, log = io.BytesIO(), io.StringIO()
+        store = mock_store() if store is None else store
+        args = Namespace(owner="agent", wait=0, out=None, seconds=seconds)
+        with mock.patch.object(device, "open_when_free", return_value=connection):
+            status = device.record_frames(args, store, BOARD, [] if lines is None else lines, out, log)
+        return status, out.getvalue(), log.getvalue()
+
+    @staticmethod
+    def cut(data, size):
+        return [data[at:at + size] for at in range(0, len(data), size)]
+
+    def test_the_file_gets_the_packet_bytes_in_order_however_the_reads_are_cut_and_the_log_lines_go_to_the_log(self):
+        wire = (b"boot: starting\n" + framerec_packet(self.FIRST) + b"W (12) render: slow frame\r\n"
+                + framerec_packet(self.SECOND) + b"I (13) shell: done\n")
+        header_end = wire.index(b"FRAMEREC_BIN") + 8
+        body_end = wire.index(self.FIRST) + 10
+        cuts = [[wire[:header_end], wire[header_end:body_end], wire[body_end:]]]
+        cuts += [self.cut(wire, size) for size in (1, 2, 7)]
+        for chunks in cuts:
+            with self.subTest(reads=len(chunks)):
+                status, written, log = self.record(RecordingBoard(chunks))
+                self.assertEqual(status, 0)
+                self.assertEqual(written, self.FIRST + self.SECOND)
+                self.assertEqual(log.splitlines(), ["boot: starting", "W (12) render: slow frame",
+                                                    "I (13) shell: done", "FRAMEREC_END frames=2"])
+
+    def test_start_is_written_first_and_stop_when_stdin_ends_and_the_bytes_drained_after_stop_are_kept(self):
+        store = mock_store()
+        connection = RecordingBoard([framerec_packet(self.FIRST)],
+                                    after_stop=[framerec_packet(self.SECOND), b"FRAMEREC_END frames=2\n"])
+        status, written, log = self.record(connection, ["render fly pose\n"], store=store)
+        self.assertEqual(status, 0)
+        self.assertEqual(connection.writes, [b"FRAMEREC START\n", b"render fly pose\n", b"FRAMEREC STOP\n"])
+        self.assertEqual(written, self.FIRST + self.SECOND)
+        self.assertIn("FRAMEREC_END", log)
+        store.release.assert_called_once_with(BOARD, "token")
+
+    def test_stop_is_written_when_the_seconds_elapse(self):
+        connection = RecordingBoard([framerec_packet(self.FIRST)])
+        started = time.monotonic()
+        with mock.patch.object(sys, "stdin", mock.Mock(side_effect=AssertionError("stdin is not read when timed"))):
+            out, log = io.BytesIO(), io.StringIO()
+            args = Namespace(owner="agent", wait=0, out=None, seconds=0.2)
+            with mock.patch.object(device, "open_when_free", return_value=connection):
+                status = device.record_frames(args, mock_store(), BOARD, None, out, log)
+        self.assertEqual(status, 0)
+        self.assertEqual(connection.writes, [b"FRAMEREC START\n", b"FRAMEREC STOP\n"])
+        self.assertEqual(out.getvalue(), self.FIRST)
+        self.assertGreaterEqual(time.monotonic() - started, 0.2)
+
+    def test_stop_is_written_when_interrupted(self):
+        class Interrupted:
+            Empty = device.queue.Empty
+
+            class Queue:
+                def get(self, timeout=None):
+                    raise KeyboardInterrupt
+
+                def put(self, item):
+                    pass
+
+        connection = RecordingBoard([framerec_packet(self.FIRST)])
+        with mock.patch.object(device, "queue", Interrupted):
+            try:
+                status, written, _ = self.record(connection, ["unused\n"])
+            except KeyboardInterrupt:
+                self.fail("Ctrl+C escaped the record instead of ending it")
+        self.assertEqual(status, 0)
+        self.assertEqual(connection.writes, [b"FRAMEREC START\n", b"FRAMEREC STOP\n"])
+        self.assertEqual(written, self.FIRST)
+
+    def test_it_waits_for_the_end_the_board_answers_stop_with(self):
+        connection = RecordingBoard([], after_stop=[b"", b"", framerec_packet(self.FIRST), b"FRAMEREC_EN", b"D\n"])
+        with mock.patch.object(device, "STREAM_CHECK_SECONDS", 0.01):
+            status, written, log = self.record(connection)
+        self.assertEqual(status, 0)
+        self.assertEqual(written, self.FIRST)
+        self.assertEqual(log, "FRAMEREC_END\n")
+
+    def test_a_board_that_never_ends_fails_after_the_wait_and_releases_the_lock(self):
+        store = mock_store()
+        with mock.patch.object(device, "RECORD_END_SECONDS", 0.05), \
+                mock.patch.object(device, "STREAM_CHECK_SECONDS", 0.01):
+            with self.assertRaisesRegex(RuntimeError, "no FRAMEREC_END"):
+                self.record(RecordingBoard([], after_stop=[]), store=store)
+        store.release.assert_called_once_with(BOARD, "token")
+
+    def test_a_refusal_fails_the_record_and_is_logged(self):
+        store = mock_store()
+        connection = RecordingBoard([b"FRAMEREC_REFUSED: no room in PSRAM\n"])
+        status, written, log = self.record(connection, store=store)
+        self.assertEqual(status, 1)
+        self.assertEqual(written, b"")
+        self.assertIn("FRAMEREC_REFUSED: no room in PSRAM", log)
+        store.release.assert_called_once_with(BOARD, "token")
+
+    def test_a_refusal_after_a_wait_for_quiet_stdin_still_fails(self):
+        quiet = threading.Event()
+
+        def lines():
+            quiet.wait(STREAM_WAIT_SECONDS)
+            yield "unused\n"
+
+        try:
+            status, written, _ = self.record(RecordingBoard([b"FRAMEREC_REFUSED: busy\n"]), lines())
+        finally:
+            quiet.set()
+        self.assertEqual(status, 1)
+        self.assertEqual(written, b"")
+
+    def test_a_packet_with_the_wrong_crc_fails_naming_the_damage_and_releases_the_lock(self):
+        damaged = bytearray(framerec_packet(self.SECOND))
+        damaged[-1] ^= 0xFF
+        store = mock_store()
+        connection = RecordingBoard([framerec_packet(self.FIRST), bytes(damaged)])
+        with self.assertRaisesRegex(RuntimeError, r"reading the board failed: a \d+-byte packet arrived damaged"):
+            self.record(connection, store=store)
+        store.release.assert_called_once_with(BOARD, "token")
+        # The board is still recording: STOP is written before the port goes.
+        self.assertEqual(connection.writes[-1], b"FRAMEREC STOP\n")
+
+    def test_a_crc_given_wrong_for_intact_bytes_fails_the_same(self):
+        connection = RecordingBoard([framerec_packet(self.FIRST, crc=zlib.crc32(self.FIRST) ^ 1)])
+        with self.assertRaisesRegex(RuntimeError, "arrived damaged"):
+            self.record(connection)
 
 
 if __name__ == "__main__":

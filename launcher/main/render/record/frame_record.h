@@ -33,11 +33,16 @@ typedef struct {
 
 /* A keyframe every this many frames: the most a reader seeking a frame
  * decodes before it. */
-#define FRAME_RECORD_KEYFRAME_EVERY 30
+#define FRAME_RECORD_KEYFRAME_EVERY  30
 
 /* The frame-cost bracket a recorded frame's records are composed and
  * handed to the sink in. */
-#define FRAME_RECORD_STAGE_NAME     "frame.record"
+#define FRAME_RECORD_STAGE_NAME      "frame.record"
+
+/* Meshes the app made that a frame may draw, noted at once; past these the
+ * oldest note gives way. */
+#define FRAME_RECORD_NOTED_SKINS_MAX 64
+#define FRAME_RECORD_NOTED_BUILT_MAX 4
 
 typedef struct {
     uint32_t frames;  /* written */
@@ -61,9 +66,15 @@ void frame_record_note_skin(const r3d_lit_mesh_t* posed, const r3d_lit_mesh_t* b
                             int joints);
 /* `built` was built from `source`, whose arrays stay until the next build. */
 void frame_record_note_built(const r3d_lit_mesh_t* built, const r3d_dynamic_source_t* source, bool fitted);
+/* A mesh is being made in `block`: notes of meshes that lived there are stale. */
+void frame_record_forget(const void* block, size_t bytes);
 /* The picture the last frame composed into, `width` by `height`: hashed into
  * a CHECK when that frame was a keyframe, which the next frame carries. */
 void frame_record_note_shown(const uint16_t* pixels, int width, int height);
+#if BUILD_VARIANT_SELFTEST_OR_HOST
+/* Forgets every noted skin and built mesh: a test's notes outlive its meshes. */
+void frame_record_forget_notes(void);
+#endif
 #else
 static inline bool
 frame_record_start(const frame_record_out_t* out, uint32_t keyframe_every) {
@@ -105,6 +116,12 @@ frame_record_note_built(const r3d_lit_mesh_t* built, const r3d_dynamic_source_t*
     (void)built;
     (void)source;
     (void)fitted;
+}
+
+static inline void
+frame_record_forget(const void* block, size_t bytes) {
+    (void)block;
+    (void)bytes;
 }
 
 static inline void

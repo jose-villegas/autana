@@ -50,7 +50,7 @@ title Record head, 6 bytes before every body
 | `POSE` | 7 | a skinned mesh's palette: one `float[16]` per joint |
 | `DYNMESH` | 8 | a mesh built this frame: then `float[3]` + `u8[3]` per vertex, `u16[3]` per triangle |
 | `TUNE` | 9 | a tunable's value: on a keyframe each off its initial, else each that changed |
-| `CHECK` | 10 | the crc32 of a keyframe's composed picture, carried by a later frame |
+| `CHECK` | 10 | the crc32 of a keyframe's composed picture, carried by the next frame the sink takes |
 
 ```mermaid
 ---
@@ -193,7 +193,7 @@ the same frame's `POSE` or `DYNMESH`.
 
 | Rule | Detail |
 |---|---|
-| Keyframes | every `FRAME_RECORD_KEYFRAME_EVERY` frames, and the frame after a drop: a `MESH` for every drawn mesh and every pack named again; between them only a `MESH` whose mesh or matrix changed |
+| Keyframes | every `FRAME_RECORD_KEYFRAME_EVERY` frames, and the frame after a drop: a `MESH` for every drawn mesh and every pack named again; between them only a `MESH` whose mesh, its arrays or matrix changed. A generated frame due one passes it to the next drawn frame |
 | A frame is whole or absent | the sink takes a frame's bytes in one write or drops the frame; the next `FRAME` sets `FRAME_RECORD_AFTER_DROP` |
 | Pack identity | a `PACK`'s crc32 is the one its pack header states: a reader loads the same pack bytes and checks them against it |
 | Resident copies | a scene that copies pack meshes into its own memory tells the asset store (`asset_store_copies_add()`), so the copies are named by the entries they copy |

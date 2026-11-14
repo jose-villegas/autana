@@ -2,7 +2,11 @@
  * opens with its header, keyframes carry every mesh and the frames between
  * only what moved, a frame the sink refuses is dropped whole and counted
  * with the next one a keyframe, a changed tunable rides in the next frame,
- * and a keyframe's composed picture is hashed into a CHECK. */
+ * a keyframe's composed picture is hashed into a CHECK that waits for a
+ * frame the sink takes, a generated frame is never a keyframe, and a mesh
+ * the app made carries what it was made from (a pose's palette, a build's
+ * source) in every instance drawing it, its note giving way when full or
+ * when its block is made over. */
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -290,6 +294,219 @@ test_a_keyframes_picture_is_hashed_into_the_next_frame_and_the_last_one_at_stop(
 }
 
 static void
+test_a_mesh_in_no_pack_is_named_by_no_pack_and_no_pack_is_named(void) {
+    open_recording(-1);
+    draw_frame();
+    find_records();
+    TEST_ASSERT_EQUAL_INT(0, count_in_frame(0, FRAME_RECORD_PACK));
+    frame_record_mesh_t mesh;
+    memcpy(&mesh, first_in_frame(0, FRAME_RECORD_MESH)->body, sizeof mesh);
+    TEST_ASSERT_EQUAL_UINT8(FRAME_RECORD_STATIC, mesh.kind);
+    TEST_ASSERT_EQUAL_UINT8(FRAME_RECORD_NO_PACK, mesh.positions.pack);
+    TEST_ASSERT_EQUAL_HEX32(FRAME_RECORD_NO_ENTRY, mesh.positions.entry);
+    TEST_ASSERT_EQUAL_UINT8(FRAME_RECORD_NO_PACK, mesh.batch.pack);
+}
+
+static void
+forget_notes(void) {
+    frame_record_forget_notes();
+    release();
+}
+
+/* The k-th frame's record of `type` for mesh `index`, the index its first field. */
+static const found_t*
+mesh_record(int k, uint16_t type, uint16_t index) {
+    for (int i = frame_at(k) + 1; i < found_count && found[i].type != FRAME_RECORD_FRAME; i++) {
+        uint16_t at;
+        memcpy(&at, found[i].body, sizeof at);
+        if (found[i].type == type && at == index) {
+            return &found[i];
+        }
+    }
+    return NULL;
+}
+
+static void
+test_a_posed_mesh_names_its_bind_and_its_palette_rides_each_keyframe_and_each_new_pose(void) {
+    open_recording(-1);
+    suite_set_test_cleanup(forget_notes);
+    mat4f_t palette[2] = {mat4f_identity(), mat4f_identity()};
+    palette[1].m[3][0] = 0.25F;
+    const r3d_lit_mesh_t* posed = &rig->quad[0].mesh;
+    const r3d_lit_mesh_t* bind = &rig->quad[1].mesh; /* the same vertex count, elsewhere */
+    frame_record_note_skin(posed, bind, palette, 2);
+    draw_frame();
+    draw_frame();
+    frame_record_note_skin(posed, bind, palette, 2);
+    draw_frame();
+    find_records();
+    frame_record_mesh_t mesh;
+    memcpy(&mesh, mesh_record(0, FRAME_RECORD_MESH, 0)->body, sizeof mesh);
+    TEST_ASSERT_EQUAL_UINT8(FRAME_RECORD_SKINNED, mesh.kind);
+    const found_t* pose = mesh_record(0, FRAME_RECORD_POSE, 0);
+    TEST_ASSERT_NOT_NULL(pose);
+    frame_record_pose_t head;
+    memcpy(&head, pose->body, sizeof head);
+    TEST_ASSERT_EQUAL_UINT16(2, head.joints);
+    TEST_ASSERT_EQUAL_UINT32(sizeof head + sizeof palette, pose->length);
+    TEST_ASSERT_EQUAL_MEMORY(palette, pose->body + sizeof head, sizeof palette);
+    TEST_ASSERT_NULL(mesh_record(1, FRAME_RECORD_POSE, 0));
+    TEST_ASSERT_NOT_NULL(mesh_record(2, FRAME_RECORD_POSE, 0));
+    TEST_ASSERT_NULL(mesh_record(0, FRAME_RECORD_POSE, 1));
+}
+
+/* One built mesh's source: a triangle. */
+static const vec3f_t triangle_positions[3] = {{0, 0, 0}, {1, 0, 0}, {0, 1, 0}};
+static const uint8_t triangle_colours[3][3] = {{1, 2, 3}, {4, 5, 6}, {7, 8, 9}};
+static const uint16_t triangle_indices[1][3] = {{0, 1, 2}};
+static const r3d_dynamic_source_t triangle = {triangle_positions, triangle_colours, 3, triangle_indices, 1, true};
+
+static void
+test_a_built_mesh_carries_its_source_whole_each_keyframe_and_each_build(void) {
+    open_recording(-1);
+    suite_set_test_cleanup(forget_notes);
+    frame_record_note_built(&rig->quad[1].mesh, &triangle, true);
+    draw_frame();
+    draw_frame();
+    find_records();
+    frame_record_mesh_t mesh;
+    memcpy(&mesh, mesh_record(0, FRAME_RECORD_MESH, 1)->body, sizeof mesh);
+    TEST_ASSERT_EQUAL_UINT8(FRAME_RECORD_BUILT, mesh.kind);
+    const found_t* dyn = mesh_record(0, FRAME_RECORD_DYNMESH, 1);
+    TEST_ASSERT_NOT_NULL(dyn);
+    frame_record_dynmesh_t head;
+    memcpy(&head, dyn->body, sizeof head);
+    TEST_ASSERT_EQUAL_UINT32(3, head.vertices);
+    TEST_ASSERT_EQUAL_UINT32(1, head.triangles);
+    TEST_ASSERT_EQUAL_UINT8(1, head.fitted);
+    TEST_ASSERT_EQUAL_UINT8(1, head.double_sided);
+    TEST_ASSERT_EQUAL_UINT32(
+        sizeof head + sizeof triangle_positions + sizeof triangle_colours + sizeof triangle_indices, dyn->length);
+    const uint8_t* at = dyn->body + sizeof head;
+    TEST_ASSERT_EQUAL_MEMORY(triangle_positions, at, sizeof triangle_positions);
+    TEST_ASSERT_EQUAL_MEMORY(triangle_colours, at + sizeof triangle_positions, sizeof triangle_colours);
+    TEST_ASSERT_EQUAL_MEMORY(triangle_indices, at + sizeof triangle_positions + sizeof triangle_colours,
+                             sizeof triangle_indices);
+    TEST_ASSERT_NULL(mesh_record(1, FRAME_RECORD_DYNMESH, 1));
+}
+
+/* The frame the context just drew, recorded as a generated one: it reuses the
+ * last drawn frame's picture and draws no meshes. */
+static void
+generate_frame(void) {
+    context->frame.generated = true;
+    frame_record_frame(context, &context->raster, DT_MS);
+    context->frame.generated = false;
+}
+
+static void
+test_a_generated_frame_on_a_keyframes_turn_hands_the_keyframe_to_the_next_drawn_frame(void) {
+    open_recording(-1);
+    for (int i = 0; i < KEYFRAME_EVERY; i++) {
+        draw_frame();
+    }
+    generate_frame();
+    draw_frame();
+    find_records();
+    TEST_ASSERT_EQUAL_UINT8(FRAME_RECORD_GENERATED, frame_of(KEYFRAME_EVERY).flags);
+    TEST_ASSERT_EQUAL_UINT8(FRAME_RECORD_KEYFRAME, frame_of(KEYFRAME_EVERY + 1).flags);
+    TEST_ASSERT_EQUAL_INT(RASTER_RIG_QUADS, count_in_frame(KEYFRAME_EVERY + 1, FRAME_RECORD_MESH));
+}
+
+static void
+test_a_generated_frame_after_a_drop_is_no_keyframe_and_the_next_drawn_frame_is(void) {
+    open_recording(2); /* the header, frame 0, then frame 1 */
+    draw_frame();
+    draw_frame();
+    generate_frame();
+    draw_frame();
+    find_records();
+    TEST_ASSERT_EQUAL_UINT8(FRAME_RECORD_AFTER_DROP | FRAME_RECORD_GENERATED, frame_of(1).flags);
+    TEST_ASSERT_EQUAL_UINT8(FRAME_RECORD_KEYFRAME, frame_of(2).flags);
+    TEST_ASSERT_EQUAL_INT(RASTER_RIG_QUADS, count_in_frame(2, FRAME_RECORD_MESH));
+}
+
+static void
+test_a_hash_whose_frame_is_dropped_rides_the_next_frame_taken(void) {
+    open_recording(2); /* the header, frame 0, then frame 1, which carries frame 0's hash */
+    static const uint16_t picture[W * H];
+    draw_frame();
+    frame_record_note_shown(picture, W, H);
+    draw_frame();
+    draw_frame();
+    find_records();
+    TEST_ASSERT_EQUAL_UINT32(2, frame_of(1).index);
+    TEST_ASSERT_EQUAL_INT(1, count_in_frame(1, FRAME_RECORD_CHECK));
+    frame_record_check_t check;
+    memcpy(&check, first_in_frame(1, FRAME_RECORD_CHECK)->body, sizeof check);
+    TEST_ASSERT_EQUAL_UINT32(0, check.index);
+}
+
+static void
+test_a_mesh_struct_rewritten_in_place_with_new_arrays_is_recorded_again(void) {
+    open_recording(-1);
+    draw_frame();
+    rig->quad[1].mesh.positions = rig->quad[0].mesh.positions; /* the same struct, another array */
+    draw_frame();
+    find_records();
+    TEST_ASSERT_EQUAL_INT(1, count_in_frame(1, FRAME_RECORD_MESH));
+    TEST_ASSERT_NOT_NULL(mesh_record(1, FRAME_RECORD_MESH, 1));
+}
+
+static void
+test_each_instance_drawing_a_rebuilt_mesh_carries_the_build(void) {
+    open_recording(-1);
+    suite_set_test_cleanup(forget_notes);
+    rig->instance[1].mesh = rig->instance[0].mesh;
+    frame_record_note_built(rig->instance[0].mesh, &triangle, true);
+    draw_frame();
+    draw_frame();
+    frame_record_note_built(rig->instance[0].mesh, &triangle, true);
+    draw_frame();
+    find_records();
+    TEST_ASSERT_EQUAL_INT(0, count_in_frame(1, FRAME_RECORD_DYNMESH));
+    TEST_ASSERT_NOT_NULL(mesh_record(2, FRAME_RECORD_DYNMESH, 0));
+    TEST_ASSERT_NOT_NULL(mesh_record(2, FRAME_RECORD_DYNMESH, 1));
+}
+
+static uint8_t
+kind_of(int k, uint16_t index) {
+    frame_record_mesh_t mesh;
+    memcpy(&mesh, mesh_record(k, FRAME_RECORD_MESH, index)->body, sizeof mesh);
+    return mesh.kind;
+}
+
+static void
+test_a_full_note_table_gives_its_oldest_note_to_a_new_build(void) {
+    open_recording(-1);
+    suite_set_test_cleanup(forget_notes);
+    static int16_t elsewhere[FRAME_RECORD_NOTED_BUILT_MAX][3];
+    for (int i = 0; i < FRAME_RECORD_NOTED_BUILT_MAX; i++) {
+        const r3d_lit_mesh_t gone = {.positions = &elsewhere[i], .vertex_count = 3};
+        frame_record_note_built(&gone, &triangle, true);
+    }
+    frame_record_note_built(&rig->quad[1].mesh, &triangle, true);
+    draw_frame();
+    find_records();
+    TEST_ASSERT_EQUAL_UINT8(FRAME_RECORD_BUILT, kind_of(0, 1));
+}
+
+static void
+test_a_mesh_made_in_a_block_forgets_the_notes_of_meshes_that_lived_there(void) {
+    open_recording(-1);
+    suite_set_test_cleanup(forget_notes);
+    const r3d_lit_mesh_t* mesh = &rig->quad[1].mesh;
+    frame_record_note_built(mesh, &triangle, true);
+    frame_record_note_skin(&rig->quad[0].mesh, mesh, NULL, 0);
+    frame_record_forget(mesh->positions, sizeof mesh->positions[0]);
+    frame_record_forget(rig->quad[0].mesh.positions, sizeof mesh->positions[0]);
+    draw_frame();
+    find_records();
+    TEST_ASSERT_EQUAL_UINT8(FRAME_RECORD_STATIC, kind_of(0, 0));
+    TEST_ASSERT_EQUAL_UINT8(FRAME_RECORD_STATIC, kind_of(0, 1));
+}
+
+static void
 test_a_second_start_is_refused_while_recording(void) {
     open_recording(-1);
     const frame_record_out_t out = {take, sink};
@@ -307,6 +524,16 @@ run_frame_record_suite(void) {
     RUN_TEST(test_a_changed_tunable_rides_in_the_next_frame_and_every_keyframe_while_off_its_initial);
     RUN_TEST(test_a_keyframes_picture_is_hashed_into_the_next_frame_and_the_last_one_at_stop);
     RUN_TEST(test_a_second_start_is_refused_while_recording);
+    RUN_TEST(test_a_mesh_in_no_pack_is_named_by_no_pack_and_no_pack_is_named);
+    RUN_TEST(test_a_posed_mesh_names_its_bind_and_its_palette_rides_each_keyframe_and_each_new_pose);
+    RUN_TEST(test_a_built_mesh_carries_its_source_whole_each_keyframe_and_each_build);
+    RUN_TEST(test_a_generated_frame_on_a_keyframes_turn_hands_the_keyframe_to_the_next_drawn_frame);
+    RUN_TEST(test_a_generated_frame_after_a_drop_is_no_keyframe_and_the_next_drawn_frame_is);
+    RUN_TEST(test_a_hash_whose_frame_is_dropped_rides_the_next_frame_taken);
+    RUN_TEST(test_a_mesh_struct_rewritten_in_place_with_new_arrays_is_recorded_again);
+    RUN_TEST(test_each_instance_drawing_a_rebuilt_mesh_carries_the_build);
+    RUN_TEST(test_a_full_note_table_gives_its_oldest_note_to_a_new_build);
+    RUN_TEST(test_a_mesh_made_in_a_block_forgets_the_notes_of_meshes_that_lived_there);
 }
 
 SUITE_REGISTER(run_frame_record_suite);

@@ -2037,7 +2037,7 @@ def record_frames(args, store, board, lines=None, out=None, log=None):
         lines = [] if timed else sys.stdin
     if timed:
         lines = until_seconds(lines, args.seconds)
-    packets = framerec.Packets()
+    packets = framerec.packets()
     ended = threading.Event()
     answer = []
 
@@ -2059,15 +2059,16 @@ def record_frames(args, store, board, lines=None, out=None, log=None):
             ended.set()
 
     def closing(connection, failed):
-        if not ended.is_set():
+        # Unless the board ended it: a failed read leaves the board recording.
+        if not answer:
             connection.write(b"FRAMEREC STOP\n")
+        if failed:
+            raise RuntimeError(f"reading the board failed: {failed[0]}") from failed[0]
         deadline = time.monotonic() + RECORD_END_SECONDS
         while not ended.wait(STREAM_CHECK_SECONDS):
             require_unlost()
             if time.monotonic() > deadline:
                 raise RuntimeError(f"no FRAMEREC_END within {RECORD_END_SECONDS} s of FRAMEREC STOP")
-        if failed:
-            raise RuntimeError(f"reading the board failed: {failed[0]}") from failed[0]
 
     with contextlib.ExitStack() as files:
         sink = files.enter_context(open(args.out, "wb")) if args.out else (out or sys.stdout.buffer)

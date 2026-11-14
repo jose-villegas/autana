@@ -73,15 +73,18 @@ sequenceDiagram
 
 | Rule | Why | Where |
 |---|---|---|
-| A packet's line and bytes go out in one `console_emit_bytes()` write of at most `CONSOLE_EMIT_BYTES_MAX` | no other task's output lands inside a packet | [`console_framerec.c`](../../launcher/main/shell/console/console_framerec.c) |
+| A packet's line and bytes go out in one `console_emit_packet()` write of at most `CONSOLE_PACKET_MAX` | no other task's output lands inside a packet | [`console.c`](../../launcher/main/console/console.c) |
+| The drain task starts with FRAMEREC START and ends itself after `FRAMEREC_END` | a STOP drains the ring before the totals; a second START waits for the end | [`console_framerec.c`](../../launcher/main/shell/console/console_framerec.c) |
 | A frame goes into the ring whole or not at all; a full ring drops it and counts it | a dropped frame never leaves half a record; the next frame is a keyframe | same file |
 | While FREEZE holds the picture, a frame waits up to `FRAMEREC_HELD_WAIT_MS` for room | a STEP's frame is sent, never dropped | same file |
 | Development builds only | the verb and the recorder are not in a release image | [`frame_record.h`](../../launcher/main/render/record/frame_record.h) |
 
-The host side is [`framerec.py`](../../launcher/tools/device/framerec.py): its
-`Packets` splits lines from packets however the reads cut them and refuses a
-packet whose crc32 differs. `autana record` holds the port and writes the
-joined stream to a file or stdout ([Watch](../cli/Watch.md)).
+On the host, [`console_packets.py`](../../launcher/tools/device/console_packets.py)
+splits lines from packets however the reads cut them. It joins a line that a
+packet landed inside, and refuses a packet whose crc32 differs.
+[`framerec.py`](../../launcher/tools/device/framerec.py) reads the records.
+`autana record` holds the port and writes the joined stream to a file or
+stdout ([Watch](../cli/Watch.md)).
 
 ## Other verbs
 

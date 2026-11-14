@@ -5,14 +5,10 @@ the tests; run as a script it summarises a saved stream:
 
     python framerec.py summary FILE [--json]
 
-The board writes each packet as one line and its bytes in one console write
-(main/shell/console/console_framerec.c):
-
-    FRAMEREC_BIN <bytes> <crc32 hex>\\n<bytes>
-
-Log lines from other tasks land between packets, never inside one. The
-bytes, joined in order, are the record stream, the same bytes a host render
-writes with --record; its layout is main/render/record/frame_record_format.h,
+The board sends the stream as FRAMEREC_BIN packets
+(main/shell/console/console_framerec.c), which console_packets.py splits
+from the board's other lines. The bytes, joined in order, are the record
+stream, the same bytes a host render writes with --record; its layout is main/render/record/frame_record_format.h,
 which RECORD_TYPES and the struct formats below follow, a test holding them
 to that header. Standard library only, as screenshot.py, for the same
 reason: it runs under ESP-IDF's Python.
@@ -22,11 +18,12 @@ import argparse
 import json
 import struct
 import sys
-import zlib
 from collections import Counter
 from dataclasses import dataclass, field
 
-BIN_PREFIX = b"FRAMEREC_BIN "
+import console_packets
+
+TAG = "FRAMEREC"
 
 # frame_record_type_t
 RECORD_TYPES = {
@@ -58,48 +55,12 @@ FIXED = {"HEADER": HEADER, "PACK": PACK, "FRAME": FRAME, "CHOICE": CHOICE, "MESH
 
 
 class StreamError(ValueError):
-    """Bytes that are not a frame record stream, or a packet that arrived damaged."""
+    """Bytes that are not a frame record stream."""
 
 
-class Packets:
-    """Splits what a board writes into its text lines and the stream bytes the
-    FRAMEREC_BIN packets carry. feed() takes any chunk as it was read and
-    returns ("line", bytes) and ("data", bytes) in arrival order; a line is
-    returned once its newline has arrived, a packet once all its bytes have.
-    A packet whose bytes do not match its crc32 raises StreamError."""
-
-    def __init__(self):
-        self.pending = bytearray()
-
-    def feed(self, chunk):
-        self.pending.extend(chunk)
-        out = []
-        while True:
-            end = self.pending.find(b"\n")
-            if end < 0:
-                return out
-            line = bytes(self.pending[:end]).rstrip(b"\r")
-            if not line.startswith(BIN_PREFIX):
-                del self.pending[:end + 1]
-                out.append(("line", line))
-                continue
-            try:
-                _, count, crc = line.split()
-                count, crc = int(count), int(crc, 16)
-            except ValueError as error:
-                raise StreamError(f"not a packet line: {line!r}") from error
-            if len(self.pending) < end + 1 + count:
-                return out
-            data = bytes(self.pending[end + 1:end + 1 + count])
-            del self.pending[:end + 1 + count]
-            if zlib.crc32(data) != crc:
-                raise StreamError(f"a {count}-byte packet arrived damaged: crc32 {zlib.crc32(data):08x}, "
-                                  f"the board sent {crc:08x}")
-            out.append(("data", data))
-
-    def rest(self):
-        """What is left after the last whole line or packet: a line cut off at the end."""
-        return bytes(self.pending)
+def packets():
+    """A reader of the FRAMEREC packets in what a board writes."""
+    return console_packets.Packets(TAG)
 
 
 @dataclass
