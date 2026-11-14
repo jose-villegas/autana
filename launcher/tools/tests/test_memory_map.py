@@ -685,6 +685,21 @@ print(m.render(builds))
             inputs=[memory.Input("libmain.a","foo.c.obj",expected,4)]
             self.assertEqual([size for _,size,_ in self.check(sites,inputs,active=active)].count(4),1)
 
+    def test_a_silent_preprocessor_failure_names_its_file_and_exit_code(self):
+        source = self.root / "launcher/main/foo.c"
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_text("int foo;\n")
+        silent = self.root / "silent_compiler.py"
+        silent.write_text("import sys\nsys.exit(3)\n")
+        command = {"file": str(source), "directory": str(self.root), "arguments": [sys.executable, str(silent), "-c", str(source)]}
+        (self.root / "compile_commands.json").write_text(json.dumps([command]))
+        with self.assertRaises(subprocess.CalledProcessError) as failed:
+            memory.preprocessed_lines(self.root, self.root)
+        said = failed.exception.stderr.strip().splitlines()[-1]
+        self.assertIn(str(source), said)
+        self.assertIn("exit 0x3", said)
+        self.assertIn("no stderr", said)
+
     def test_fragment_conditionals(self):
         sites=self.source("# Cache latency. IRAM budget: 4 B\n[mapping:hot]\narchive: libmain.a\nentries:\n    if FEATURE = y:\n        foo:foo (noflash)\n    if FEATURE = n:\n        bar:bar (noflash)\n", "launcher/main/linker.lf")
         self.assertEqual(memory.fragment_entries(sites[0],self.root,{}),[("bar","bar")])
