@@ -55,7 +55,7 @@ void draw_sprite_make_resident(sprite_t* s, void* dst);
 /* Panel columns a blit maps to their source at a time: a panel row's worth
  * would hold GFX_WIDTH entries on the stack, too deep under a UI repaint. A
  * run of one colour and share breaks at each band's edge. */
-#define DRAW_SPRITE_MAP_COLUMNS 128
+#define DRAW_SPRITE_MAP_COLUMNS 64
 
 /* Fills `dst`, a panel rectangle, with the sprite turned clockwise by
  * `quarter_turns` and nine-sliced to fit (nearest pixel when stretched; a

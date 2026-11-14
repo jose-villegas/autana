@@ -118,7 +118,7 @@ mu_color_to_gfx(mu_Color c) {
     return RGB565BE(ui_rgb_value(c));
 }
 
-static void
+static __attribute__((noinline)) void
 draw_text_command(const mu_Command* cmd, affine2x_t t) {
     const mu_Color ink = cmd->text.color;
     const mu_Color halo = ui_text_halo(ink);
@@ -186,7 +186,7 @@ draw_text_command(const mu_Command* cmd, affine2x_t t) {
     }
 }
 
-static void
+static __attribute__((noinline)) void
 draw_rect_command(const mu_Command* cmd, affine2x_t t) {
     const mu_Color c = cmd->rect.color;
     /* Fully transparent rects are microui's way of drawing nothing; we
@@ -198,7 +198,7 @@ draw_rect_command(const mu_Command* cmd, affine2x_t t) {
     draw_rect(r.x, r.y, r.w, r.h, mu_color_to_gfx(c));
 }
 
-static void
+static __attribute__((noinline)) void
 draw_image_command(const mu_Command* cmd, affine2x_t t) {
     const ui_image_command_t* image = (const ui_image_command_t*)cmd;
     if (image->color.a != 0) {
@@ -208,14 +208,14 @@ draw_image_command(const mu_Command* cmd, affine2x_t t) {
 }
 
 /* An integer UI scale scales the border with the face. */
-static void
+static __attribute__((noinline)) void
 draw_sprite_command(const mu_Command* cmd, affine2x_t t) {
     const ui_sprite_command_t* face = (const ui_sprite_command_t*)cmd;
     const mu_Rect r = ui_transform_mu_rect(t, face->rect);
     draw_sprite_scaled(face->sprite, ui_recti_from_mu(r), ui_transform_quarter(t), ui_transform_scale(t));
 }
 
-static void
+static __attribute__((noinline)) void
 draw_swatches_command(const mu_Command* cmd, affine2x_t t) {
     const ui_swatch_command_t* grid = (const ui_swatch_command_t*)cmd;
     for (int row = 0; row < grid->rows; row++) {
@@ -231,7 +231,7 @@ draw_swatches_command(const mu_Command* cmd, affine2x_t t) {
  * per-tile selection badge. The other three, and the check without the
  * engine pack, are a small centred square: nothing in this shell closes a
  * window or collapses a tree yet to ask for them. */
-static void
+static __attribute__((noinline)) void
 draw_icon_command(const mu_Command* cmd, affine2x_t t) {
     const gfx_color_t color = mu_color_to_gfx(cmd->icon.color);
     const image_t* check = cmd->icon.id == MU_ICON_CHECK ? ui_icon_image(UI_ICON_CHECK) : NULL;
@@ -251,6 +251,9 @@ command_clip(const mu_Command* cmd) {
                            GFX_SCREEN_RECT);
 }
 
+/* Each command's drawer stays out of line (noinline): inlined, this
+ * frame would hold the largest drawer's locals under every other drawer,
+ * and a UI paint's stack carries it. */
 static void
 draw_command(const mu_Command* cmd) {
     const affine2x_t t = ui_effective_transform();
@@ -340,17 +343,20 @@ ui_fresh_whole(ui_fresh_t* fresh) {
 }
 
 /* Where a replay draws: a backdrop's fresh places when it gave them, else
- * the dirt the frame had when the replay began. */
+ * the dirt the frame had when the replay began. `left` is the dirt a
+ * command has yet to be drawn over, kept here so no frame under the
+ * command walk holds a copy. */
 typedef struct {
     const ui_fresh_t* fresh;
     gfx_dirty_leaves_t dirt;
+    gfx_dirty_leaves_t left;
 } replay_area_t;
 
 /* In a replay, a command is drawn again only over the replay's area.
  * Anywhere else its last paint still stands, and a translucent one drawn
  * there again would blend over itself. */
 static void
-replay_command(const mu_Command* cmd, recti_t clip, const replay_area_t* area) {
+replay_command(const mu_Command* cmd, recti_t clip, replay_area_t* area) {
     mu_Rect r;
     if (!command_rect(cmd, &r)) {
         return;
@@ -367,8 +373,8 @@ replay_command(const mu_Command* cmd, recti_t clip, const replay_area_t* area) {
         }
         return;
     }
-    gfx_dirty_leaves_t left = area->dirt;
-    while (gfx_dirty_leaves_take(&left, drawn, &under)) {
+    area->left = area->dirt;
+    while (gfx_dirty_leaves_take(&area->left, drawn, &under)) {
         draw_set_clip(under.x, under.y, under.w, under.h);
         draw_command(cmd);
     }
@@ -376,7 +382,7 @@ replay_command(const mu_Command* cmd, recti_t clip, const replay_area_t* area) {
 
 /* `area` NULL paints the whole canvas; otherwise it is replayed there. */
 static void
-paint_canvas(const mu_Container* cnt, const replay_area_t* area) {
+paint_canvas(const mu_Container* cnt, replay_area_t* area) {
     recti_t clip = GFX_SCREEN_RECT;
     mu_Command* cmd = NULL;
     while (next_clipped_command(cnt, &cmd, &clip)) {
@@ -454,7 +460,9 @@ canvas_needs_paint(const mu_Container* cnt) {
     return canvas_itself_changed(cnt) || gfx_region_dirty(phys.x, phys.y, phys.w, phys.h);
 }
 
-static void
+/* This and propagate_repaint_over_overlaps() stay out of line: ui_end() is
+ * their one caller, and inlined, their frames ride under every paint. */
+static __attribute__((noinline)) void
 mark_changed_canvases(int n, bool* repaint) {
     for (int i = 0; i < n && i < MU_ROOTLIST_SIZE; i++) {
         repaint[i] = canvas_needs_paint(ui_ctx.root_list.items[i]);
@@ -464,7 +472,7 @@ mark_changed_canvases(int n, bool* repaint) {
 /* Painter's order: repainting a canvas erases whatever was drawn on top of
  * it, so everything above it that overlaps has to go again too. root_list is
  * sorted back to front by mu_end(). */
-static void
+static __attribute__((noinline)) void
 propagate_repaint_over_overlaps(int n, bool* repaint) {
     for (int i = 0; i < n && i < MU_ROOTLIST_SIZE; i++) {
         if (!repaint[i]) {
@@ -511,7 +519,7 @@ clear_vanished_canvases(uint32_t background_rgb) {
 }
 
 static bool
-repaint_marked_canvases(int n, const bool* repaint, uint32_t background_rgb, const replay_area_t* area) {
+repaint_marked_canvases(int n, const bool* repaint, uint32_t background_rgb, replay_area_t* area) {
     bool drew = false;
 
     for (int i = 0; i < n && i < MU_ROOTLIST_SIZE; i++) {
@@ -563,9 +571,10 @@ ui_end_if_unsettled(void) {
 
 /* Whether any canvas holds a face that lets what is under it show: with no
  * background to clear to, ui_end() would blend it over its own last paint
- * (ui_end_over() puts a backdrop back first). */
+ * (ui_end_over() puts a backdrop back first). Out of line, so its walk
+ * stays off ui_end()'s frame. */
 #ifndef NDEBUG
-static bool
+static __attribute__((noinline)) bool
 any_translucent_face(int n) {
     for (int i = 0; i < n && i < MU_ROOTLIST_SIZE; i++) {
         mu_Command* cmd = NULL;
