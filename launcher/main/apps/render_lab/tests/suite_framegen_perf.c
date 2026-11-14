@@ -277,8 +277,8 @@ mode_goal(void) {
 typedef struct {
     int64_t carry_us, height_sum;
     int drawn;
-    struct shown_stages* shown; /* each shown frame's stages; grows as the path plays */
-    int count, capacity;
+    struct shown_chunk *first, *last; /* each shown frame's stages, in order */
+    int count;
 } played_t;
 
 /* The stages a shown frame is split into, microseconds. */
@@ -305,15 +305,26 @@ struct shown_stages {
     int32_t stage_us[STAGES];
 };
 
-/* Room for the first shown frames; doubled whenever it fills. */
-#define FRAMEGEN_SHOWN_FIRST 1024
+/* Shown frames are kept in chunks of this many: a long path never needs one
+ * large block, nor a copy to grow, beside a loaded scene. */
+#define FRAMEGEN_CHUNK_FRAMES 256
+
+struct shown_chunk {
+    struct shown_chunk* next;
+    int count;
+    struct shown_stages frames[FRAMEGEN_CHUNK_FRAMES];
+};
 
 /* The path being played; freed by the fixture, so a failed mode leaks nothing. */
 static played_t played;
 
 static void
 release_played(void) {
-    free(played.shown);
+    while (played.first != NULL) {
+        struct shown_chunk* next = played.first->next;
+        free(played.first);
+        played.first = next;
+    }
     played = (played_t){0};
 }
 
@@ -331,24 +342,31 @@ take_stages(struct shown_stages* s) {
 
 static int
 slower_first(const void* a, const void* b) {
-    const struct shown_stages* x = a;
-    const struct shown_stages* y = b;
-    return (y->frame_us > x->frame_us) - (y->frame_us < x->frame_us);
+    const int32_t x = *(const int32_t*)a;
+    const int32_t y = *(const int32_t*)b;
+    return (y > x) - (y < x);
 }
 
-/* One worst line over `count` frames from `from`. */
+/* One worst line over the frames slower than `above_us`, plus the first
+ * `ties` frames at exactly it: `count` frames in all. */
 static void
-log_worst(const char* share, const struct shown_stages* from, int count) {
+log_worst(const char* share, const played_t* p, int32_t above_us, int ties, int count) {
     int64_t frame = 0;
     int64_t height = 0;
     int generated = 0;
     int64_t stage[STAGES] = {0};
-    for (int i = 0; i < count; i++) {
-        frame += from[i].frame_us;
-        height += from[i].height;
-        generated += from[i].generated;
-        for (int k = 0; k < STAGES; k++) {
-            stage[k] += from[i].stage_us[k];
+    for (const struct shown_chunk* c = p->first; c != NULL; c = c->next) {
+        for (int i = 0; i < c->count; i++) {
+            const struct shown_stages* s = &c->frames[i];
+            if (s->frame_us < above_us || (s->frame_us == above_us && ties-- <= 0)) {
+                continue;
+            }
+            frame += s->frame_us;
+            height += s->height;
+            generated += s->generated;
+            for (int k = 0; k < STAGES; k++) {
+                stage[k] += s->stage_us[k];
+            }
         }
     }
     int64_t held = 0;
@@ -369,12 +387,26 @@ log_worst_frames(played_t* p) {
     if (p->count == 0) {
         return;
     }
-    log_worst("all", p->shown, p->count);
-    qsort(p->shown, (size_t)p->count, sizeof p->shown[0], slower_first);
+    log_worst("all", p, INT32_MIN, p->count, p->count);
+    int32_t* times = malloc((size_t)p->count * sizeof(*times));
+    TEST_ASSERT_NOT_NULL(times);
+    int n = 0;
+    for (const struct shown_chunk* c = p->first; c != NULL; c = c->next) {
+        for (int i = 0; i < c->count; i++) {
+            times[n++] = c->frames[i].frame_us;
+        }
+    }
+    qsort(times, (size_t)n, sizeof(*times), slower_first);
     const int worst = (p->count * FRAMEGEN_WORST_PERCENT + 99) / 100;
+    const int32_t threshold = times[worst - 1];
+    int slower = 0;
+    while (times[slower] > threshold) {
+        slower++;
+    }
+    free(times);
     char share[sizeof "worst100"];
     (void)snprintf(share, sizeof share, "worst%d", FRAMEGEN_WORST_PERCENT);
-    log_worst(share, p->shown, worst);
+    log_worst(share, p, threshold, worst - slower, worst);
 }
 
 /* One shown frame at the path's real pace: the time the last one took. */
@@ -391,14 +423,16 @@ shown_frame(void* ctx, int64_t dt_us) {
         frame_cost_take_clear();
         return took;
     }
-    if (p->count == p->capacity) { /* outside the frame's time: the path advances by `took` */
-        const int capacity = p->capacity == 0 ? FRAMEGEN_SHOWN_FIRST : 2 * p->capacity;
-        struct shown_stages* grown = realloc(p->shown, (size_t)capacity * sizeof(*grown));
-        TEST_ASSERT_NOT_NULL(grown);
-        p->shown = grown;
-        p->capacity = capacity;
+    if (p->last == NULL || p->last->count == FRAMEGEN_CHUNK_FRAMES) { /* outside `took`, which paces the path */
+        struct shown_chunk* chunk = malloc(sizeof(*chunk));
+        TEST_ASSERT_NOT_NULL(chunk);
+        chunk->next = NULL;
+        chunk->count = 0;
+        *(p->last == NULL ? &p->first : &p->last->next) = chunk;
+        p->last = chunk;
     }
-    struct shown_stages* s = &p->shown[p->count++];
+    struct shown_stages* s = &p->last->frames[p->last->count++];
+    p->count++;
     s->frame_us = (int32_t)took;
     s->height = f.height;
     s->generated = f.generated;
