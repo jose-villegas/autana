@@ -4,8 +4,9 @@
 
 Packets and lines come out in order however the reads cut them; a packet
 that lands inside another task's line leaves that line whole; text that
-only looks like a packet head inside a line stays text; a damaged packet
-is refused.
+only looks like a packet head inside a line stays text; what a stream cut
+short leaves is the cut line and the packet's bytes so far; a damaged
+packet is refused.
 """
 import sys
 import unittest
@@ -50,6 +51,19 @@ class PacketTests(unittest.TestCase):
         wire = b"W (5) log: saw FRAMEREC_BIN twice\n" + packet(b"z")
         self.assertEqual(split(wire, len(wire)),
                          ([("line", b"W (5) log: saw FRAMEREC_BIN twice"), ("data", b"z")], b""))
+
+    def test_two_packets_inside_one_line_both_come_out_and_the_line_is_whole(self):
+        wire = b"I (9) a" + packet(b"one") + b"pp: hel" + packet(b"") + b"lo\r\n"
+        for cut in range(1, len(wire)):
+            with self.subTest(cut=cut):
+                self.assertEqual(split(wire, cut),
+                                 ([("data", b"one"), ("data", b""), ("line", b"I (9) app: hello")], b""))
+
+    def test_what_is_left_is_the_cut_line_and_a_packet_cut_short_is_not_data(self):
+        wire = b"I (1) cut" + packet(b"whole") + b" off" + packet(b"short")[:-2]
+        events, rest = split(wire, len(wire))
+        self.assertEqual(events, [("data", b"whole")])
+        self.assertEqual(rest, b"I (1) cut off" + packet(b"short")[:-2])
 
     def test_a_packet_waits_for_all_its_bytes(self):
         packets = console_packets.Packets(TAG)

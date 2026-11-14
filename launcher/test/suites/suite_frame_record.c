@@ -469,6 +469,21 @@ test_each_instance_drawing_a_rebuilt_mesh_carries_the_build(void) {
     TEST_ASSERT_NOT_NULL(mesh_record(2, FRAME_RECORD_DYNMESH, 1));
 }
 
+static void
+test_a_build_before_a_generated_frame_rides_the_next_drawn_frame(void) {
+    open_recording(-1);
+    suite_set_test_cleanup(forget_notes);
+    frame_record_note_built(&rig->quad[1].mesh, &triangle, true);
+    draw_frame();
+    draw_frame();
+    frame_record_note_built(&rig->quad[1].mesh, &triangle, true);
+    generate_frame();
+    draw_frame();
+    find_records();
+    TEST_ASSERT_EQUAL_INT(0, count_in_frame(2, FRAME_RECORD_DYNMESH));
+    TEST_ASSERT_NOT_NULL(mesh_record(3, FRAME_RECORD_DYNMESH, 1));
+}
+
 static uint8_t
 kind_of(int k, uint16_t index) {
     frame_record_mesh_t mesh;
@@ -532,6 +547,7 @@ run_frame_record_suite(void) {
     RUN_TEST(test_a_hash_whose_frame_is_dropped_rides_the_next_frame_taken);
     RUN_TEST(test_a_mesh_struct_rewritten_in_place_with_new_arrays_is_recorded_again);
     RUN_TEST(test_each_instance_drawing_a_rebuilt_mesh_carries_the_build);
+    RUN_TEST(test_a_build_before_a_generated_frame_rides_the_next_drawn_frame);
     RUN_TEST(test_a_full_note_table_gives_its_oldest_note_to_a_new_build);
     RUN_TEST(test_a_mesh_made_in_a_block_forgets_the_notes_of_meshes_that_lived_there);
 }

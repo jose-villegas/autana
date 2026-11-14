@@ -121,8 +121,9 @@ start(void) {
     }
     if (task == NULL) {
         char why[96];
-        (void)snprintf(why, sizeof why, "FRAMEREC_REFUSED: no memory: ring=%d packet=%d task=%d psram largest=%u",
-                       sink.ring != NULL, sink.packet != NULL, sink.ring != NULL && sink.packet != NULL,
+        (void)snprintf(why, sizeof why, "FRAMEREC_REFUSED: no memory: ring=%d packet=%d task=%s psram largest=%u",
+                       sink.ring != NULL, sink.packet != NULL,
+                       sink.ring != NULL && sink.packet != NULL ? "failed" : "not tried",
                        (unsigned)memory_largest_block(MEMORY_PSRAM));
         console_emit_line(why, "");
         frame_record_stop();

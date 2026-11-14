@@ -62,7 +62,7 @@ class Packets:
         if start < 0:
             return None
         try:
-            count, crc = bytes(self.pending[start + len(self.prefix):end]).rstrip(b"\r").split()
+            count, crc = bytes(self.pending[start + len(self.prefix):end]).split()
             return int(count), int(crc, 16)
         except ValueError as error:
             if start > 0 or self.partial:

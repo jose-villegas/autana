@@ -113,10 +113,12 @@ console_write(const char* bytes, size_t len) {
 /* No single write may exceed the driver's TX ring (tx_buffer_size in
  * console_driver_install()): a byte ringbuffer refuses a larger item
  * outright, however long it is told to wait. */
+#define EMIT_CHUNK_BYTES 128
+
 static void
 emit_bytes(const char* bytes, size_t len) {
     while (len > 0) {
-        const size_t n = len < CONSOLE_PACKET_MAX ? len : CONSOLE_PACKET_MAX;
+        const size_t n = len < EMIT_CHUNK_BYTES ? len : EMIT_CHUNK_BYTES;
         console_write(bytes, n);
         bytes += n;
         len -= n;

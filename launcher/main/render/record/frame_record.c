@@ -447,7 +447,9 @@ frame_record_frame(const render_context_t* context, const raster_t* raster, uint
     } else {
         rec->counts.dropped++;
     }
-    clear_fresh();
+    if (!generated) {
+        clear_fresh(); /* a generated frame carried no pose or build: the next drawn one does */
+    }
     rec->checked = rec->checked && !taken;
     rec->keyframe_next = !taken || (keyframe_due && !keyframe);
     rec->after_drop = !taken;
