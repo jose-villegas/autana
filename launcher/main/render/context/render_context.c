@@ -10,6 +10,7 @@
 #include "core/memory.h"
 #include "core/timing.h"
 #include "core/tune.h"
+#include "profile/frame_cost.h"
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 #include "render/view/raster_boxes.h"
@@ -383,8 +384,12 @@ static void
 generate(render_context_t* c, const r3d_instance_t* instances, const render_view_t* view) {
     raster_t* r = &c->raster;
     const int64_t began_us = timing_now_us();
+    FRAME_COST_BEGIN(warped_from);
     framegen_warp(r, r->still, &c->kept_view, view, &c->framegen);
+    FRAME_COST_END(warped_from, FRAMEGEN_STAGE_WARP_NAME);
+    FRAME_COST_BEGIN(filled_from);
     (void)framegen_fill(r, r->still, &c->framegen);
+    FRAME_COST_END(filled_from, FRAMEGEN_STAGE_FILL_NAME);
     if (r->moving_count > 0 && c->moving_mode != RENDER_FRAMEGEN_MOVING_WARP) {
         draw_moving(c, instances, view);
     }

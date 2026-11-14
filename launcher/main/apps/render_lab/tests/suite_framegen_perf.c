@@ -6,6 +6,7 @@
  * own compose. */
 #include "suites.h"
 #ifdef DEVICE_BUILD
+#include <stdlib.h>
 #include <string.h>
 #include "apps/render_lab/baked_families.h"
 #include "apps/render_lab/capybara_content.h"
@@ -29,6 +30,7 @@
 #include "profile/frame_cost.h"
 #include "render/context/render_context.h"
 #include "render/framegen/framegen.h"
+#include "render/r3d_stages.h"
 #include "scene/animator/animator.h"
 #include "scene/camera/camera.h"
 #include "scene/camera/lens.h"
@@ -39,13 +41,21 @@
 static const char* TAG = "framegen";
 
 /* How far ahead a generated frame looks: one displayed frame. */
-#define FRAMEGEN_AHEAD_MS    RENDER_LAB_FRAME_TARGET_MS
+#define FRAMEGEN_AHEAD_MS RENDER_LAB_FRAME_TARGET_MS
 /* Poses timed along each path. */
-#define FRAMEGEN_POSES       24
-#define FRAMEGEN_PERCENT     100
+#define FRAMEGEN_POSES    24
+#define FRAMEGEN_PERCENT  100
+/* A worst line: one mode's slowest FRAMEGEN_WORST_PERCENT of shown frames
+ * (or all of them), each stage's mean over them; other is the frame's time no
+ * stage holds (scene, compose, present). */
+#define FRAMEGEN_WORST_LINE                                                                                            \
+    "framegen_worst: %s framegen=%d budget_ms=%d share=%s frames=%d generated=%d frame_us=%d still=%d warp=%d "        \
+    "fill=%d cull=%d transform=%d draw=%d upscale=%d anim=%d other=%d"
+#define FRAMEGEN_WORST_PERCENT 5
+
 /* A modes line: one scenario's path played in real time in one mode. */
 /* The raster's bracket round the still part's copy (raster.c keep_still()). */
-#define FRAMEGEN_STILL_STAGE "r3d.still"
+#define FRAMEGEN_STILL_STAGE   "r3d.still"
 #define FRAMEGEN_MODES_LINE                                                                                            \
     "framegen_modes: %s framegen=%d budget_ms=%d frames=%d drawn=%d mean_us=%d p95_us=%d mean_height=%d "              \
     "still_us=%d still_rows=%d"
@@ -255,8 +265,103 @@ static const framegen_mode_t* mode;
 typedef struct {
     int64_t carry_us, height_sum;
     int drawn;
-    int64_t still_rows_sum; /* the rows each drawn frame kept of its still part */
+    int64_t still_rows_sum;     /* the rows each drawn frame kept of its still part */
+    int64_t still_us_sum;       /* and the time its copy took */
+    struct shown_stages* shown; /* each shown frame's stages, up to `capacity` */
+    int count, capacity;
 } played_t;
+
+/* The stages a shown frame is split into, microseconds. */
+enum {
+    STAGE_STILL,
+    STAGE_WARP,
+    STAGE_FILL,
+    STAGE_CULL,
+    STAGE_TRANSFORM,
+    STAGE_DRAW,
+    STAGE_UPSCALE,
+    STAGE_ANIM,
+    STAGES
+};
+
+/* A stage times as up to this many frame cost names, summed. */
+#define FRAMEGEN_STAGE_PARTS 4
+
+static const char* const stage_names[STAGES][FRAMEGEN_STAGE_PARTS] = {
+    [STAGE_STILL] = {FRAMEGEN_STILL_STAGE},
+    [STAGE_WARP] = {FRAMEGEN_STAGE_WARP_NAME},
+    [STAGE_FILL] = {FRAMEGEN_STAGE_FILL_NAME},
+    [STAGE_CULL] = {R3D_STAGE_CULL_NAME},
+    [STAGE_TRANSFORM] = {R3D_STAGE_TRANSFORM_NAME},
+    [STAGE_DRAW] = {R3D_STAGE_DRAW_NAME},
+    [STAGE_UPSCALE] = {R3D_STAGE_UPSCALE_NAME},
+    [STAGE_ANIM] = {"anim.pose", "anim.skin", "anim.light", "anim.refit"},
+};
+
+struct shown_stages {
+    int32_t frame_us;
+    bool generated;
+    int32_t stage_us[STAGES];
+};
+
+/* Room for every shown frame of the longest path, at the fastest frame a mode shows. */
+#define FRAMEGEN_SHOWN_MAX 2048
+
+/* The stages the frame just shown spent, then the window cleared for the next. */
+static void
+take_stages(struct shown_stages* s) {
+    for (int k = 0; k < STAGES; k++) {
+        s->stage_us[k] = 0;
+        for (int n = 0; n < FRAMEGEN_STAGE_PARTS && stage_names[k][n] != NULL; n++) {
+            s->stage_us[k] += (int32_t)frame_cost_take_mean_us(stage_names[k][n], 1);
+        }
+    }
+    frame_cost_take_clear();
+}
+
+static int
+slower_first(const void* a, const void* b) {
+    const struct shown_stages* x = a;
+    const struct shown_stages* y = b;
+    return (y->frame_us > x->frame_us) - (y->frame_us < x->frame_us);
+}
+
+/* One worst line over `count` frames from `from`. */
+static void
+log_worst(const char* share, const struct shown_stages* from, int count) {
+    int64_t frame = 0;
+    int generated = 0;
+    int64_t stage[STAGES] = {0};
+    for (int i = 0; i < count; i++) {
+        frame += from[i].frame_us;
+        generated += from[i].generated;
+        for (int k = 0; k < STAGES; k++) {
+            stage[k] += from[i].stage_us[k];
+        }
+    }
+    int64_t held = 0;
+    for (int k = 0; k < STAGES; k++) {
+        stage[k] /= count;
+        held += stage[k];
+    }
+    frame /= count;
+    ESP_LOGI(TAG, FRAMEGEN_WORST_LINE, scenario->scene->key, mode->generating, mode->budget_ms, share, count, generated,
+             (int)frame, (int)stage[STAGE_STILL], (int)stage[STAGE_WARP], (int)stage[STAGE_FILL],
+             (int)stage[STAGE_CULL], (int)stage[STAGE_TRANSFORM], (int)stage[STAGE_DRAW], (int)stage[STAGE_UPSCALE],
+             (int)stage[STAGE_ANIM], (int)(frame - held));
+}
+
+/* Every shown frame's stages, then the slowest share's. */
+static void
+log_worst_frames(played_t* p) {
+    if (p->count == 0) {
+        return;
+    }
+    log_worst("all", p->shown, p->count);
+    qsort(p->shown, (size_t)p->count, sizeof p->shown[0], slower_first);
+    const int worst = (p->count * FRAMEGEN_WORST_PERCENT + 99) / 100;
+    log_worst("worst5", p->shown, worst);
+}
 
 /* One shown frame at the path's real pace: the time the last one took. */
 static int64_t
@@ -268,11 +373,18 @@ shown_frame(void* ctx, int64_t dt_us) {
     (void)lab_test_frame_dt((uint32_t)(step_us / MATH_US_PER_MS), false, NULL);
     const int64_t took = timing_now_us() - began;
     const render_context_frame_t f = render_context_frame(render_context_main());
+    if (p->count < p->capacity) {
+        struct shown_stages* s = &p->shown[p->count++];
+        s->frame_us = (int32_t)took;
+        s->generated = f.generated;
+        take_stages(s);
+    }
     if (!f.generated) {
         const raster_still_t* still = render_context_main()->raster.still;
         p->drawn++;
         p->height_sum += f.height;
         p->still_rows_sum += still != NULL ? still->end_row - still->first_row : 0;
+        p->still_us_sum += p->count > 0 ? p->shown[p->count - 1].stage_us[STAGE_STILL] : 0;
     }
     return took;
 }
@@ -286,15 +398,19 @@ test_mode(void) {
     TEST_ASSERT_TRUE(render_lab_budget_set_ms(mode->budget_ms));
     (void)lab_test_frame_dt(0, false, NULL); /* warm-up, not counted */
     const frame_profile_scenario_t playback = {scenario->scene->key, (int64_t)path.duration_ms * MATH_US_PER_MS};
-    played_t played = {0};
-    frame_cost_take_clear(); /* the still part's copy, from this path alone */
+    played_t played = {.shown = malloc(FRAMEGEN_SHOWN_MAX * sizeof(struct shown_stages)),
+                       .capacity = FRAMEGEN_SHOWN_MAX};
+    TEST_ASSERT_NOT_NULL(played.shown);
+    frame_cost_take_clear(); /* each frame's stages, from this path alone */
     const frame_profile_t p = frame_profile_play(&playback, shown_frame, &played, NULL);
     TEST_ASSERT_GREATER_THAN_INT(0, played.drawn);
     /* Per drawn frame: only a drawn frame keeps its still part. */
-    const int64_t still_us = frame_cost_take_mean_us(FRAMEGEN_STILL_STAGE, (uint32_t)played.drawn);
+    const int64_t still_us = played.still_us_sum / played.drawn;
     ESP_LOGI(TAG, FRAMEGEN_MODES_LINE, scenario->scene->key, mode->generating, mode->budget_ms, p.frames, played.drawn,
              (int)p.frame_us.avg, (int)p.frame_us.p95, (int)(played.height_sum / played.drawn), (int)still_us,
              (int)(played.still_rows_sum / played.drawn));
+    log_worst_frames(&played);
+    free(played.shown);
     TEST_ASSERT_TRUE(render_lab_framegen_set_on(false));
     TEST_ASSERT_TRUE(render_lab_framegen_set_moving(RENDER_FRAMEGEN_MOVING_STILL));
     TEST_ASSERT_TRUE(render_lab_budget_set_ms(0));

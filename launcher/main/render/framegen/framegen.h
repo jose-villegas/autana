@@ -15,6 +15,10 @@
  * generated from it. */
 #define FRAMEGEN_SHOWN_PER_DRAWN 2
 
+/* The frame cost stages a generated frame's warp and fill are timed as. */
+#define FRAMEGEN_STAGE_WARP_NAME "framegen.warp"
+#define FRAMEGEN_STAGE_FILL_NAME "framegen.fill"
+
 /* A warped sky pixel in the target: farther than anything drawn, yet not a
  * hole; the fill shows it as the sky (R3D_DEPTH_EMPTY). */
 #define FRAMEGEN_DEPTH_SKY       1U
