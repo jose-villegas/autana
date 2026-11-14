@@ -3756,6 +3756,15 @@ class RecordFramesTests(unittest.TestCase):
         self.assertIn("FRAMEREC_REFUSED: no room in PSRAM", log)
         store.release.assert_called_once_with(BOARD, "token")
 
+    def test_a_refusal_after_begin_answers_a_typed_line_and_the_record_goes_on(self):
+        connection = RecordingBoard([b"FRAMEREC_BEGIN ring=98304 keyframe_every=30\n", framerec_packet(self.FIRST),
+                                     b"FRAMEREC_REFUSED: already recording\n", framerec_packet(self.SECOND)])
+        status, written, log = self.record(connection, ["FRAMEREC START\n"])
+        self.assertEqual(status, 0)
+        self.assertEqual(written, self.FIRST + self.SECOND)
+        self.assertEqual(connection.writes[-1], b"FRAMEREC STOP\n")
+        self.assertIn("FRAMEREC_REFUSED: already recording", log)
+
     def test_a_refusal_after_a_wait_for_quiet_stdin_still_fails(self):
         quiet = threading.Event()
 

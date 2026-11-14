@@ -2040,6 +2040,7 @@ def record_frames(args, store, board, lines=None, out=None, log=None):
     packets = framerec.packets()
     ended = threading.Event()
     answer = []
+    began = threading.Event()
 
     def read(connection, stop, failed):
         try:
@@ -2051,7 +2052,10 @@ def record_frames(args, store, board, lines=None, out=None, log=None):
                         continue
                     text = data.decode("utf-8", errors="replace")
                     print(text, file=log, flush=True)
-                    if text.startswith(("FRAMEREC_END", "FRAMEREC_REFUSED")):
+                    if text.startswith("FRAMEREC_BEGIN"):
+                        began.set()
+                    # A refusal ends the record only as START's answer: after BEGIN it answers a typed line.
+                    if text.startswith("FRAMEREC_END") or (text.startswith("FRAMEREC_REFUSED") and not began.is_set()):
                         answer.append(text)
                         ended.set()
         except Exception as error:  # noqa: BLE001  (any read failure ends the record, raised by its owner)
