@@ -20,7 +20,7 @@ static void
 build_colormap(r3d_texture_t* t, const uint8_t* palette, const uint8_t tint[3]) {
     const int tint_luma = mathi_max(luma(tint[0], tint[1], tint[2]), 1);
     for (int l = 0; l < R3D_TEXTURE_LIGHT_LEVELS; l++) {
-        for (int i = 0; i < R3D_TEXTURE_COLOURS; i++) {
+        for (int i = 0; i < r3d_texture_colours(t->format); i++) {
             int32_t channel[3];
             for (int k = 0; k < 3; k++) {
                 /* tint (0..255) * pattern * l * 255 / (LEVELS - 1) / tint_luma */
@@ -43,10 +43,12 @@ r3d_texture_from_asset(const asset_view_t* asset, r3d_texture_t* texture) {
         return status;
     }
     const uint8_t* data = asset->data;
+    const unsigned format = asset_read_u16(data + R3D_TEXTURE_AT_FORMAT);
     const int size_log2 = data[R3D_TEXTURE_AT_SIZE_LOG2];
     const int levels = data[R3D_TEXTURE_AT_LEVELS];
-    if (asset_read_u16(data + R3D_TEXTURE_AT_FORMAT) != R3D_TEXTURE_INDEX4 || size_log2 < R3D_TEXTURE_SIZE_LOG2_MIN
-        || size_log2 > R3D_TEXTURE_SIZE_LOG2_MAX || levels < 1 || size_log2 - (levels - 1) < R3D_TEXTURE_SIZE_LOG2_MIN
+    const int smallest = format == R3D_TEXTURE_MASK1 ? R3D_TEXTURE_MASK1_SIZE_LOG2_MIN : R3D_TEXTURE_SIZE_LOG2_MIN;
+    if ((format != R3D_TEXTURE_INDEX4 && format != R3D_TEXTURE_MASK1) || size_log2 < smallest
+        || size_log2 > R3D_TEXTURE_SIZE_LOG2_MAX || levels < 1 || size_log2 - (levels - 1) < smallest
         || !asset_entry_zero(*asset, R3D_TEXTURE_AT_TINT + R3D_TEXTURE_TINT_RGB,
                              R3D_TEXTURE_AT_TINT + R3D_TEXTURE_TINT_BYTES)) {
         return ASSET_ERR_FORMAT;
@@ -55,9 +57,9 @@ r3d_texture_from_asset(const asset_view_t* asset, r3d_texture_t* texture) {
     const uint32_t texels_off = asset_read_u32(data + R3D_TEXTURE_AT_TEXELS_OFF);
     uint64_t texel_bytes = 0;
     for (int l = 0; l < levels; l++) {
-        texel_bytes += r3d_texture_level_bytes(size_log2 - l);
+        texel_bytes += r3d_texture_level_bytes(format, size_log2 - l);
     }
-    const uint64_t palette_bytes = (uint64_t)R3D_TEXTURE_COLOURS * R3D_TEXTURE_PALETTE_STRIDE;
+    const uint64_t palette_bytes = (uint64_t)r3d_texture_colours(format) * R3D_TEXTURE_PALETTE_STRIDE;
     if (palette_off < R3D_TEXTURE_HEADER_SIZE || texels_off < R3D_TEXTURE_HEADER_SIZE
         || palette_off + palette_bytes > asset->size || texels_off + texel_bytes > asset->size) {
         return ASSET_ERR_BOUNDS;
@@ -65,8 +67,9 @@ r3d_texture_from_asset(const asset_view_t* asset, r3d_texture_t* texture) {
     uint32_t at = texels_off;
     for (int l = 0; l < levels; l++) {
         texture->texels[l] = data + at;
-        at += r3d_texture_level_bytes(size_log2 - l);
+        at += r3d_texture_level_bytes(format, size_log2 - l);
     }
+    texture->format = (uint8_t)format;
     texture->size_log2 = (uint8_t)size_log2;
     texture->levels = (uint8_t)levels;
     build_colormap(texture, data + palette_off, data + R3D_TEXTURE_AT_TINT);
@@ -88,7 +91,7 @@ size_t
 r3d_texture_texel_bytes(const r3d_texture_t* texture) {
     size_t bytes = 0;
     for (int l = 0; l < texture->levels; l++) {
-        bytes += r3d_texture_level_bytes(texture->size_log2 - l);
+        bytes += r3d_texture_level_bytes(texture->format, texture->size_log2 - l);
     }
     return bytes;
 }
@@ -96,7 +99,7 @@ r3d_texture_texel_bytes(const r3d_texture_t* texture) {
 uint8_t*
 r3d_texture_move_texels(r3d_texture_t* texture, uint8_t* to) {
     for (int l = 0; l < texture->levels; l++) {
-        const uint32_t bytes = r3d_texture_level_bytes(texture->size_log2 - l);
+        const uint32_t bytes = r3d_texture_level_bytes(texture->format, texture->size_log2 - l);
         memcpy(to, texture->texels[l], bytes);
         texture->texels[l] = to;
         to += bytes;

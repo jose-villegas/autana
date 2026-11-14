@@ -1001,6 +1001,21 @@ draw_textured(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_pipe
     }
 }
 
+/* Triangle `t`'s code with DRAW_TEXTURED, else R3D_TEXTURE_PLAIN. Under
+ * the target's writers only a MASK1 chart draws textured: an INDEX4 one
+ * draws plain there, as it did before the textured fill took writers. */
+static inline __attribute__((always_inline)) unsigned
+texture_code(const r3d_lit_mesh_t* mesh, int cluster, int t, draw_mode_t mode) {
+    if ((mode & DRAW_TEXTURED) == 0) {
+        return R3D_TEXTURE_PLAIN;
+    }
+    const unsigned code = r3d_texture_triangle_code(mesh->texturing, t);
+    return code != R3D_TEXTURE_PLAIN && (mode & DRAW_WRITES) != 0
+                   && r3d_texture_chart_material(mesh->texturing, cluster, (int)code - 1)->format != R3D_TEXTURE_MASK1
+               ? R3D_TEXTURE_PLAIN
+               : code;
+}
+
 /* Triangles first to end - 1 of one cluster; with DRAW_TEXTURED, those
  * whose code names a chart textured with it. */
 static inline __attribute__((always_inline)) void
@@ -1011,8 +1026,7 @@ draw_triangles(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit
         const uint16_t* tri = mesh->triangles[t];
         const uint16_t* face_color = mesh->face_colors == NULL ? NULL : &mesh->face_colors[t];
         const r3d_pipeline_vertex_t* const v[3] = {&cs[tri[0]], &cs[tri[1]], &cs[tri[2]]};
-        const unsigned code =
-            (mode & DRAW_TEXTURED) != 0 ? r3d_texture_triangle_code(mesh->texturing, t) : R3D_TEXTURE_PLAIN;
+        const unsigned code = texture_code(mesh, (int)(c - mesh->clusters), t, mode);
         if (code != R3D_TEXTURE_PLAIN) {
             draw_textured(mesh, lens, v, tri, (int)(c - mesh->clusters), (int)code - 1, c->double_sided,
                           (mode & DRAW_BOUNDED) != 0, target, work);
@@ -1080,6 +1094,17 @@ retag(r3d_span_writer_t* writers, const r3d_span_writer_t* given, int count, uin
     }
 }
 
+/* DRAW_TEXTURED when `mode` has it and cluster `cluster` draws plain: it has
+ * no material, or the mesh no vertex colours to light one. A draw clears
+ * what this returns from its mode. */
+static inline __attribute__((always_inline)) draw_mode_t
+untextured(const r3d_lit_mesh_t* mesh, int cluster, draw_mode_t mode) {
+    return (mode & DRAW_TEXTURED) != 0
+                   && (mesh->colors == NULL || mesh->texturing->cluster_material[cluster][0] == R3D_TEXTURE_NONE)
+               ? DRAW_TEXTURED
+               : 0U;
+}
+
 /* The draw for a target with writers, kept out of the hot one's code. */
 static inline __attribute__((always_inline)) void
 draw_writing_of(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
@@ -1113,7 +1138,8 @@ draw_writing_of(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16
                 continue;
             }
             /* No DRAW_BOUNDED: one more live value puts this frame over stack_chain_gate. */
-            draw_triangles(mesh, lens, c, t, t + step, cs, writing, mode, work, false);
+            draw_triangles(mesh, lens, c, t, t + step, cs, writing, mode & ~untextured(mesh, clusters[i], mode), work,
+                           false);
         }
     }
 }
@@ -1123,7 +1149,9 @@ draw_writing(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t*
              const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target,
              r3d_pipeline_work_t* work) {
     draw_writing_of(mesh, lens, clusters, count, cs, rows, target,
-                    DRAW_WRITES | (target->skip_hidden ? DRAW_SKIPPING : 0U), work, BLEND_NONE);
+                    DRAW_WRITES | (target->skip_hidden ? DRAW_SKIPPING : 0U)
+                        | (mesh->texturing != NULL ? DRAW_TEXTURED : 0U),
+                    work, BLEND_NONE);
 }
 
 /* Keep once-per-draw plane setup in flash to preserve the hot-path IRAM budget. */
@@ -1143,12 +1171,7 @@ draw_reading_of(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16
         }
         const r3d_lit_cluster_t* c = &mesh->clusters[clusters[i]];
         const draw_mode_t bounded = rows != NULL && !rows[clusters[i]].unbounded ? DRAW_BOUNDED : 0U;
-        /* A cluster with no material, or a mesh without vertex colours to light it, draws plain. */
-        const draw_mode_t plain =
-            (mode & DRAW_TEXTURED) != 0
-                    && (mesh->colors == NULL || mesh->texturing->cluster_material[clusters[i]][0] == R3D_TEXTURE_NONE)
-                ? DRAW_TEXTURED
-                : 0U;
+        const draw_mode_t plain = untextured(mesh, clusters[i], mode);
         if (blend != BLEND_NONE) {
             draw_blended(mesh, lens, clusters[i], cs, &rows[clusters[i]], target, mode | bounded, work,
                          c->triangle_first, c->triangle_first + c->triangle_count, blend == BLEND_DITHER);
@@ -1185,7 +1208,7 @@ draw_reading_textured(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const 
 
 /* Chooses once per draw whether the target's writers follow each fill,
  * whether clusters behind drawn depth are skipped, and whether the mesh's
- * textures are drawn: not under writers, which the textured fill lacks. */
+ * textures are drawn: under writers, only its MASK1 ones (texture_code()). */
 void
 r3d_pipeline_draw(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
                   const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target,
