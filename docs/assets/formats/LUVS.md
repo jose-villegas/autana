@@ -54,5 +54,6 @@ title Header, 36 bytes at 0, one cell a byte
 | UVs | A chart's UVs cover all its cluster's vertices: a vertex's texel is `uv / 16`; chart 0's sit at the vertex's index, chart 1's after every vertex's, only for the clusters with one. The texture repeats, so the bake drops the whole sides under a chart's mean: a wall many repeats long stays within int16 |
 | Triangles | A triangle draws with the first chart whose material it lies on and whose plane it faces; the rest of the cluster draws plain, so a texture ends where its material does, not at a cluster's edge |
 | Blends | A cluster in an LOD blend, a morph or a dither band, draws plain until its blend ends |
+| Writers | A pass with writers draws MASK1 charts textured, the writers following each span, and INDEX4 charts plain |
 | Layout | Little-endian; the UV and shift sections aligned to their element; no trailing bytes |
 | Refusals | Versions other than 2 return `ASSET_ERR_VERSION`; counts that differ from the mesh's, no materials, a UV count below the vertex count, a material index past the count, a chart after one with no material, chart 1 UVs past `uv_count`, or a triangle code naming a chart its cluster lacks `ASSET_ERR_FORMAT`; a section outside the entry or misaligned `ASSET_ERR_BOUNDS`; a missing material `ASSET_ERR_NOT_FOUND` |
