@@ -102,8 +102,8 @@ static const stress_goal_t stress_goals[] = {
     {"stress-few-copies", "landscape", "default", {260, 1080, 5720, 2050, 0}, {9080, 10450}},
     {"stress-textured", "portrait", "default", {0, 0, 0, 0, 0}, {0, 0}},
     {"stress-textured", "landscape", "default", {0, 0, 0, 0, 0}, {0, 0}},
-    {"stress-record", "portrait", "default", {0, 0, 0, 0, 0}, {0, 0}},
-    {"stress-record", "landscape", "default", {0, 0, 0, 0, 0}, {0, 0}},
+    {"stress-record", "portrait", "default", {290, 1080, 9790, 2420, 1290}, {14800, 17020}},
+    {"stress-record", "landscape", "default", {290, 1070, 10620, 2420, 1290}, {15600, 17940}},
 };
 
 static const char*
