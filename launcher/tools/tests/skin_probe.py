@@ -51,9 +51,8 @@ def mesh_entry():
 def entries(influences=4):
     document, binary = rig()
     name, skeleton, skin = skin_asset.bake(document, binary, 5, mesh_entry(), influences)
-    tracks, duration, root = tracks_asset.clip_tracks(document, binary, document['animations'][0])
-    return [(name, b'SKEL', skeleton), ('probe.skin', b'SKIN', skin),
-            ('move', b'TRCK', tracks_asset.encode(tracks, duration, root))]
+    clip = tracks_asset.encode(*tracks_asset.clip_tracks(document, binary, document['animations'][0]))
+    return [(name, b'SKEL', skeleton), ('probe.skin', b'SKIN', skin), ('move', b'TRCK', clip)]
 
 
 if __name__ == '__main__':

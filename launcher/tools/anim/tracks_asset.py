@@ -14,6 +14,7 @@ collapses to one key. Standard library only.
 import math
 import pathlib
 import re
+import statistics
 import struct
 from build.c_header import read_define
 from build.name_hash import name_hash, NONE
@@ -23,31 +24,36 @@ import tomllib
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from gltf import gltf_read  # noqa: E402
+from r3d import gltf_skin  # noqa: E402
 from anim.clip_name import SUFFIX, clip_id  # noqa: E402
 
 TYPE = b"TRCK"
 OWNER = pathlib.Path(__file__).resolve().parents[2] / "main/anim/anim_tracks_format.h"
 VERSION = read_define(OWNER, "ANIM_TRACKS_VERSION")
-HEADER = struct.Struct("<HHIIIB3x")
+HEADER = struct.Struct("<HHIIIBxH")
 ROW = struct.Struct("<HHIIIIIHBB")
 BINDING_OWNER = pathlib.Path(__file__).resolve().parents[2] / "main/anim/anim_binding.h"
 TARGET_SELF = read_define(BINDING_OWNER, "ANIM_TARGET_SELF")
-HEADER_SIZE, ROW_SIZE, AT_VERSION, AT_ROOT, AT_PAD, HEADER_PAD_SIZE = [
+HEADER_SIZE, ROW_SIZE, AT_VERSION, AT_ROOT, AT_PAD, HEADER_PAD_SIZE, AT_GROUND, GROUND_PER_M = [
     read_define(OWNER, "ANIM_TRACKS_" + name)
-    for name in ("HEADER_SIZE", "ROW_SIZE", "AT_VERSION", "AT_ROOT", "AT_PAD", "HEADER_PAD_SIZE")]
+    for name in ("HEADER_SIZE", "ROW_SIZE", "AT_VERSION", "AT_ROOT", "AT_PAD", "HEADER_PAD_SIZE", "AT_GROUND",
+                 "GROUND_PER_M")]
 ROW_PATH, ROW_FIELD, ROW_COMPONENT, ROW_PATH_HASH, ROW_FIELD_HASH, ROW_TIMES, ROW_VALUES, ROW_KEYS, ROW_TYPE, ROW_INTERP = [
     read_define(OWNER, "ANIM_TRACKS_ROW_" + name)
     for name in ("PATH", "FIELD", "COMPONENT", "PATH_HASH", "FIELD_HASH", "TIMES", "VALUES", "KEYS", "TYPE", "INTERP")]
 ALIGNMENT, CUBIC_RUNS = [read_define(OWNER, "ANIM_TRACKS_" + name) for name in ("ALIGNMENT", "CUBIC_RUNS")]
 STRING_MAX = read_define(OWNER, "ANIM_BINDING_STRING_MAX")
-STRINGS_MAX, COUNT_MAX, DURATION_MAX = 65535, 65535, 0xFFFFFFFF
+STRINGS_MAX, COUNT_MAX, DURATION_MAX, GROUND_MAX = 65535, 65535, 0xFFFFFFFF, 65535
+# Poses a second the ground speed is measured at: fine enough that a stance's
+# slide reads as a straight line between samples.
+GROUND_SAMPLES_PER_S = 120
 ROOT_SCENE, ROOT_SKELETON = [read_define(OWNER, "ANIM_ROOT_" + name) for name in ("SCENE", "SKELETON")]
 VALUE_FLOAT, VALUE_VEC2, VALUE_VEC3, VALUE_QUAT, VALUE_COLOUR = range(5)
 WIDTHS = (1, 2, 3, 4, 3)
 TRANSFORM, CAMERA = (int.from_bytes(tag, "little") for tag in (b"TRNS", b"CAMR"))
 FIELDS = {"translation": ("position", VALUE_VEC3), "rotation": ("rotation", VALUE_QUAT),
           "scale": ("scale", VALUE_VEC3)}
-assert HEADER.size == HEADER_SIZE == AT_PAD + HEADER_PAD_SIZE
+assert AT_PAD + HEADER_PAD_SIZE == AT_GROUND and HEADER.size == HEADER_SIZE == AT_GROUND + struct.calcsize("<H")
 assert ROW.size == ROW_SIZE == ROW_INTERP + struct.calcsize("<B")
 # glTF's interpolation names, in anim_interp_t's order.
 INTERPOLATIONS = ("STEP", "LINEAR", "CUBICSPLINE")
@@ -132,8 +138,46 @@ def collapse_constant(channel):
     return dict(channel, times=channel["times"][:1], values=keep)
 
 
+def ground_mm_s(document, channels, joints):
+    """The ground speed a skeleton clip shows at playback 1, in the field's units:
+    the median speed at which the planted foot (the lowest joint with no joint
+    child) slides horizontally against the root joints (their mean), sampled
+    GROUND_SAMPLES_PER_S times a second; 0 for a clip of one instant. Model
+    units are metres and +y is up."""
+    nodes = document["nodes"]
+    parents = gltf_skin.node_parents(nodes)
+    rest = [gltf_skin.node_trs(node) for node in nodes]
+    skin = set(joints)
+    feet = [j for j in joints if not skin.intersection(nodes[j].get("children", []))]
+    roots = [j for j in joints if parents[j] not in skin]
+    driven = [c for c in channels if c["node"] is not None and c["path"] in FIELDS]
+
+    def place(seconds):
+        pose = list(rest)
+        for c in driven:
+            value = gltf_read.sample_keys(c["times"], c["values"], seconds, c["interpolation"], c["path"] == "rotation")
+            pose[c["node"]] = dict(pose[c["node"]], **{c["path"]: value})
+        world = gltf_skin.world_matrices(parents, pose)
+        at = {j: gltf_skin.transform_point(world[j], (0.0, 0.0, 0.0)) for j in feet + roots}
+        root = [sum(at[j][axis] for j in roots) / len(roots) for axis in range(3)]
+        return {j: (at[j][0] - root[0], at[j][1], at[j][2] - root[2]) for j in feet}
+
+    duration = gltf_read.animation_duration(channels)
+    if duration <= 0:
+        return 0
+    steps = max(1, round(duration * GROUND_SAMPLES_PER_S))
+    poses = [place(duration * k / steps) for k in range(steps + 1)]
+    speeds = []
+    for was, now in zip(poses, poses[1:]):
+        foot = min(feet, key=lambda j: was[j][1])
+        speeds.append(math.hypot(now[foot][0] - was[foot][0], now[foot][2] - was[foot][2]) * steps / duration)
+    return round(statistics.median(speeds) * GROUND_PER_M)
+
+
 def clip_tracks(document, binary, animation):
-    """Bindings and duration of a glTF clip, in each target field's units."""
+    """Bindings, duration, root and ground speed (ground_mm_s()) of a glTF
+    clip, each binding in its target field's units; a clip that drives no
+    skeleton shows no ground speed."""
     try:
         channels = gltf_read.read_animation(document, binary, animation)
         if not channels:
@@ -143,6 +187,7 @@ def clip_tracks(document, binary, animation):
         for skin in document.get("skins", []):
             if driven <= set(skin["joints"]):
                 joint_paths = gltf_read.skin_joint_paths(document, skin)
+                joints = skin["joints"]
                 break
         tracks = []
         for channel in channels:
@@ -163,7 +208,10 @@ def clip_tracks(document, binary, animation):
             tracks.append({"path": path, "component": component, "field": field, "type": value_type,
                            "name": name, "times": list(channel["times"]), "values": list(channel["values"]),
                            "interpolation": channel["interpolation"], "quaternion": value_type == VALUE_QUAT})
-        return tracks, round(gltf_read.animation_duration(channels) * 1000), ROOT_SKELETON if joint_paths else ROOT_SCENE
+        if joint_paths:
+            return tracks, round(gltf_read.animation_duration(channels) * 1000), ROOT_SKELETON, ground_mm_s(
+                document, channels, joints)
+        return tracks, round(gltf_read.animation_duration(channels) * 1000), ROOT_SCENE, 0
     except (ValueError, OverflowError) as error:
         raise TracksError("clip %r: %s" % (animation.get("name", ""), error)) from error
 
@@ -175,8 +223,9 @@ def find_animation(document, name, where):
     return found[0]
 
 
-def encode(tracks, duration_ms, root=ROOT_SCENE):
-    """TRCK bytes for bindings from clip_tracks()."""
+def encode(tracks, duration_ms, root=ROOT_SCENE, ground=0):
+    """TRCK bytes for bindings from clip_tracks(), with its ground speed in
+    the field's units."""
     strings, offsets, bindings = bytearray(), {}, set()
     hashes = {"path": {}, "field": {}}
     binding_hashes = []
@@ -208,6 +257,8 @@ def encode(tracks, duration_ms, root=ROOT_SCENE):
         raise TracksError("%d bindings over %d ms do not fit the entry" % (len(tracks), duration_ms))
     if root not in (ROOT_SCENE, ROOT_SKELETON):
         raise TracksError("unknown root")
+    if not 0 <= ground <= GROUND_MAX:
+        raise TracksError("ground speed %d does not fit the entry" % ground)
     strings_off = HEADER.size + ROW.size * len(tracks)
     padding = bytes(-(strings_off + len(strings)) % ALIGNMENT)
     offset = strings_off + len(strings) + len(padding)
@@ -226,7 +277,7 @@ def encode(tracks, duration_ms, root=ROOT_SCENE):
                              INTERPOLATIONS.index(track["interpolation"])))
         data += times + values
         offset += len(times) + len(values)
-    entry = HEADER.pack(VERSION, len(tracks), duration_ms, strings_off, len(strings), root) + b"".join(rows) + strings + padding + data
+    entry = HEADER.pack(VERSION, len(tracks), duration_ms, strings_off, len(strings), root, ground) + b"".join(rows) + strings + padding + data
     decode(entry)
     return bytes(entry)
 
@@ -246,12 +297,12 @@ def decode(entry):
         raise TracksError("version %d, this reads %d" % (version, VERSION))
     if len(entry) < HEADER.size:
         raise TracksError("shorter than a header")
-    _, count, duration_ms, strings_off, strings_size, root = HEADER.unpack_from(entry)
+    _, count, duration_ms, strings_off, strings_size, root, _ = HEADER.unpack_from(entry)
     table_end = HEADER.size + ROW.size * count
     strings_end = strings_off + strings_size
     if table_end > len(entry) or strings_off < table_end or strings_off % ALIGNMENT or strings_end > len(entry):
         raise TracksError("table leaves the entry or is misaligned")
-    if root not in (ROOT_SCENE, ROOT_SKELETON) or any(entry[AT_PAD:HEADER_SIZE]):
+    if root not in (ROOT_SCENE, ROOT_SKELETON) or any(entry[AT_PAD:AT_GROUND]):
         raise TracksError("unknown root or nonzero header padding")
     def string_at(offset):
         if offset >= strings_size:
@@ -312,12 +363,12 @@ def bake(path, node=None):
         document, binary = gltf_read.load_asset(source)
     except (OSError, ValueError) as error:
         raise TracksError("%s: source %s: %s" % (path, source, error)) from error
-    tracks, duration_ms, root = clip_tracks(document, binary, find_animation(document, animation, source))
+    tracks, duration_ms, root, ground = clip_tracks(document, binary, find_animation(document, animation, source))
     if node is not None:
         tracks = [dict(track, path=TARGET_SELF) for track in tracks if track["path"] == node]
         if not tracks or root != ROOT_SCENE:
             raise TracksError(f"{path}: camera node {node!r} has no property tracks")
     try:
-        return encode(tracks, duration_ms, root)
+        return encode(tracks, duration_ms, root, ground)
     except (ValueError, OverflowError) as error:
         raise TracksError("clip %r: %s" % (animation, error)) from error

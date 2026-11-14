@@ -2,11 +2,13 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #include "math/linear/transformf.h"
 #include "math/linear/vec3f.h"
 #include "render/dynamic/r3d_dynamic_mesh.h"
+#include "render/texture/r3d_texture.h"
 
 typedef enum {
     STRESS_SHAPE_PLANE,    /* primitive_plane(): a square facing the camera */
@@ -26,6 +28,7 @@ typedef enum {
     STRESS_SURFACE_UNIFORM,   /* one colour at every corner: zero colour steps, filled uniform */
     STRESS_SURFACE_STATIC,    /* the pack's own static mesh asset per copy, nothing generated */
     STRESS_SURFACE_TWO_SIDED, /* banded, and drawn from both sides: nothing faces away */
+    STRESS_SURFACE_TEXTURED,  /* banded light under a generated brick texture (render/texture) */
 } stress_surface_t;
 
 typedef enum {
@@ -71,6 +74,7 @@ typedef struct {
     X(CULLED, "culled", BANDED)                                                                                        \
     X(NEAR, "near", BANDED)                                                                                            \
     X(FEW_COPIES, "few-copies", BANDED)                                                                                \
+    X(TEXTURED, "textured", TEXTURED)                                                                                  \
     X(RECORD, "record", WAVE)
 
 #define STRESS_PRESET_ID(id_, ...) STRESS_##id_,
@@ -133,3 +137,17 @@ float stress_cut_px(const stress_params_t* p, int short_px);
 #define STRESS_MIX_LEVELS         4
 #define STRESS_MIX_UNIFORM_PERIOD 2
 stress_params_t stress_copy_params(const stress_params_t* p, int copy);
+
+/* The textured preset's brick: an LTEX entry 2^STRESS_TEXTURE_SIZE_LOG2
+ * texels a side and its mips, repeated STRESS_TEXTURE_REPEATS times across
+ * the plane. */
+#define STRESS_TEXTURE_SIZE_LOG2 6
+#define STRESS_TEXTURE_REPEATS   3
+
+/* The entry's bytes, and the entry written into `ltex`, that many long. */
+size_t stress_texture_bytes(void);
+void stress_texture_write(uint8_t* ltex);
+
+/* A UV for each of `mesh`'s vertices, from where it lies on the unit plane,
+ * in 1/16 texel (R3D_TEXTURE_UV_SHIFT) from origin 0. */
+void stress_texture_uvs(const r3d_lit_mesh_t* mesh, int16_t (*uvs)[2]);

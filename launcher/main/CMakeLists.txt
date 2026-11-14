@@ -21,6 +21,7 @@ set(app_srcs
     "display/panel_clock.c"
     "draw/draw.c"
     "draw/draw_image.c"
+    "draw/draw_sprite.c"
     "draw/icon.c"
     "gfx/present/gfx_debug.c"
     "gfx/present/expand/gfx_expand.c"

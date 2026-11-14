@@ -18,7 +18,7 @@ pixels: what reached `render_context_draw()` is all a redraw needs.
 Every record is a head, then `length` bytes of body, little-endian. A reader
 skips a type it does not know by its length. The type + length framing and
 the keyframe as a state snapshot follow GFXReconstruct's capture files and
-trimmed captures<sup>[[122]](../Citations.md#lunarg-gfxreconstruct)</sup>.
+trimmed captures<sup>[[123]](../Citations.md#lunarg-gfxreconstruct)</sup>.
 
 ```mermaid
 ---
@@ -198,8 +198,8 @@ the same frame's `POSE` or `DYNMESH`.
 | Pack identity | a `PACK`'s crc32 is the one its pack header states: a reader loads the same pack bytes and checks them against it |
 | Resident copies | a scene that copies pack meshes into its own memory tells the asset store (`asset_store_copies_add()`), so the copies are named by the entries they copy |
 | Generated frames | a `FRAME` flagged `FRAME_RECORD_GENERATED` was warped from the last drawn frame and has no `MESH` |
-| Picture check | `CHECK` hashes the half picture or the framebuffer, whichever the compose wrote, rows top to bottom; a host redraw is compared against it, as apitrace compares replayed images with references<sup>[[123]](../Citations.md#apitrace-usage)</sup> |
-| Live drops | a board drops whole frames when its send ring is full and counts them, as target tracers count what their buffer lost<sup>[[124]](../Citations.md#segger-systemview)</sup>; while FREEZE holds the picture it waits instead |
+| Picture check | `CHECK` hashes the half picture or the framebuffer, whichever the compose wrote, rows top to bottom; a host redraw is compared against it, as apitrace compares replayed images with references<sup>[[124]](../Citations.md#apitrace-usage)</sup> |
+| Live drops | a board drops whole frames when its send ring is full and counts them, as target tracers count what their buffer lost<sup>[[125]](../Citations.md#segger-systemview)</sup>; while FREEZE holds the picture it waits instead |
 | Builds | development and host builds only: in a release build every `frame_record_*` call is an empty inline |
 | Owners | type numbers, flags and sizes: [`frame_record_format.h`](../../launcher/main/render/record/frame_record_format.h); the interval and stage name: [`frame_record.h`](../../launcher/main/render/record/frame_record.h) |
 

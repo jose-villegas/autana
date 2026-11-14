@@ -98,6 +98,7 @@ header's opening comment; `--check` verifies it.
 | [include/math/linear/vec_convert.h](include/math/linear/vec_convert.h) | vec_convert: explicit vector conversions; narrowing saturates, rounding ties away from zero. |
 | [include/math/linear/vec_ops_template.h](include/math/linear/vec_ops_template.h) | vec_ops_template: component-wise arithmetic and lerp for vectors of every dimension and number type. |
 | [include/math/linear/vec_swizzle_template.h](include/math/linear/vec_swizzle_template.h) | vec_swizzle_template: swizzles, a new vector made of named components of another (vec3f_zyx, vec2f_yx), for every number type. |
+| [include/math/motion/steer2f.h](include/math/motion/steer2f.h) | steer2f: steering behaviours for agents on a ground plane (Reynolds 1999): arrive at a point, keep apart from neighbours, and integrate one fixed step with an acceleration, speed and turn-rate limit. |
 | [include/math/projection/inverse_depth.h](include/math/projection/inverse_depth.h) | inverse_depth: depth stored as code = scale / z * code_max, for z &gt;= scale, which steps linearly across the screen. |
 | [include/math/projection/project_template.h](include/math/projection/project_template.h) | project_template: shared near-plane endpoint selection for pinhole clipping. |
 | [include/math/projection/projectf.h](include/math/projection/projectf.h) | projectf: pinhole projection in pixels with camera +y up and picture y down. |

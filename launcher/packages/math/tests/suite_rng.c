@@ -138,6 +138,24 @@ test_a_chance_lands_near_its_stated_odds(void) {
                                    "time, or every probability tuned against it is meaningless");
 }
 
+static void
+test_unit_stays_in_zero_to_one_and_fills_it(void) {
+    rng_t r;
+    rng_seed(&r, 77u);
+
+    enum { TRIALS = 20000, BINS = 4 };
+
+    int bins[BINS] = {0};
+    for (int i = 0; i < TRIALS; i++) {
+        const float u = rng_unit(&r);
+        TEST_ASSERT_TRUE_MESSAGE(u >= 0.0F && u < 1.0F, "a unit draw is in [0, 1): 1 itself would overrun a range");
+        bins[(int)(u * BINS)]++;
+    }
+    for (int b = 0; b < BINS; b++) {
+        TEST_ASSERT_INT_WITHIN(TRIALS / 40, TRIALS / BINS, bins[b]);
+    }
+}
+
 void
 run_rng_suite(void) {
     RUN_TEST(test_the_same_seed_replays_exactly);
@@ -149,6 +167,7 @@ run_rng_suite(void) {
     RUN_TEST(test_below_handles_a_useless_bound);
     RUN_TEST(test_never_and_always_are_exact);
     RUN_TEST(test_a_chance_lands_near_its_stated_odds);
+    RUN_TEST(test_unit_stays_in_zero_to_one_and_fills_it);
 }
 
 SUITE_REGISTER(run_rng_suite);

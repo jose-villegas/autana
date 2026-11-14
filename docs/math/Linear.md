@@ -34,6 +34,8 @@ integer coordinates have y down.
 | `P_scale(a, s)` | every component times the scalar `s` | $`s\,a = (s\,a_x,\ s\,a_y)`$ |
 | `P_dot(a, b)` | dot product, in the wide type of the number type | $`a \cdot b = a_x b_x + a_y b_y`$ |
 | `P_equal(a, b)` | exact component equality | $`a_x = b_x \land a_y = b_y`$ |
+| `P_length(a)` | length; `f` only | $`\lVert a\rVert = \sqrt{a \cdot a}`$ |
+| `P_clamp_length(a, m)` | `a` cut to length `m` when longer, direction kept; `f` only | $`a \min(1, m / \lVert a\rVert)`$ |
 | `P_<c1><c2>(v)` | swizzle, each `c` one of `x y`: `vec2f_yx(v)` swaps | $`(v_{c_1},\ v_{c_2})`$ |
 | `P_<c1><c2><c3>(v)` | swizzle to the vec3 of the same number type, each `c` one of `x y` | $`(v_{c_1},\ v_{c_2},\ v_{c_3})`$ |
 
@@ -160,6 +162,7 @@ the columns of `L = [a c; b d]` and its translation.
 | `P_map_rect(&t, r)` | bounding box in the scalar type | $`\mathrm{bbox}(t(\mathrm{corners}(r)))`$ |
 | `affine2f_map_pixel(&t, p)`, `affine2x_map_pixel(&t, p)` | vec2i result, nearest, ties away from zero | $`\mathrm{round}(L p + o)`$ |
 | `P_map_recti(&t, r)` | recti bounding box of mapped pixels | $`\mathrm{bbox}(\mathrm{round}(t(\mathrm{corners}(r))))`$ |
+| `affine2x_quarter_turn(k, w, h)` | `k` quarter turns clockwise onto a `w` x `h` frame, exact | $`k=1: (x, y) \mapsto (w - y, x)`$ |
 | `P_equal(a, b)` | exact comparison of axes and origin | $`L_a = L_b \land o_a = o_b`$ |
 
 ## mat3 (`f`)
