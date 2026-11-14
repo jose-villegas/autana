@@ -129,6 +129,28 @@ write_span(const r3d_span_target_t* target, int y, int first, int last, int32_t 
     r3d_span_write(target, y, first, last, z, dz);
 }
 
+/* The writers over each run of kept MASK1 texels in a span from `first` to
+ * `last`, its first pixel's depth `z` and texel `uv`: a hole leaves its
+ * pixel, so no writer sees it, even where the stored depth ties the card's. */
+static __attribute__((noinline, cold)) void
+write_kept_runs(const r3d_span_target_t* target, const sampler_t* s, int y, int first, int last, int32_t z, int32_t dz,
+                uint32_t uv, uint32_t duv) {
+    int start = first;
+    bool in_run = false;
+    for (int x = first; x <= last; x++, uv += duv) {
+        const bool k = kept(s, uv);
+        if (k && !in_run) {
+            start = x;
+        } else if (!k && in_run) {
+            write_span(target, y, start, x - 1, z + (dz * (start - first)), dz);
+        }
+        in_run = k;
+    }
+    if (in_run) {
+        write_span(target, y, start, last, z + (dz * (start - first)), dz);
+    }
+}
+
 /* What the set-up hands the row walk. */
 typedef struct {
     r3d_span_plane_t z;     /* 16.8 depth */
@@ -175,12 +197,19 @@ fill_span(const r3d_span_target_t* target, const setup_t* su, const r3d_span_row
         return;
     }
     const int32_t z = c.z;
-    if (su->sampler.texture->format == R3D_TEXTURE_MASK1) {
+    const uint32_t uv = c.uv;
+    const bool masked = su->sampler.texture->format == R3D_TEXTURE_MASK1;
+    if (masked) {
         fill_masked(depth, color, steps + 1, &c, &su->sampler, first, y);
     } else {
         fill_colormap(depth, color, steps + 1, &c, &su->sampler, first, y);
     }
-    if (target->writer_count != 0) {
+    if (target->writer_count == 0) {
+        return;
+    }
+    if (masked) {
+        write_kept_runs(target, &su->sampler, y, first, last, z, c.dz, uv, c.duv);
+    } else {
         write_span(target, y, first, last, z, c.dz);
     }
 }
