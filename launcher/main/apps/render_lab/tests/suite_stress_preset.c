@@ -587,6 +587,34 @@ test_foliage_presets_differ_from_their_twins_by_the_mask_alone(void) {
                                    stress_cut_px(&stress_presets[STRESS_FOLIAGE_NEAR], short_px));
 }
 
+/* Cards of `source` over sample (sx, sy) of a FOLIAGE_SAMPLES grid on the unit square. */
+static int
+cards_over(const r3d_dynamic_source_t* source, int sx, int sy) {
+    const float x = (((float)sx + 0.5F) / FOLIAGE_SAMPLES) - 0.5F;
+    const float y = (((float)sy + 0.5F) / FOLIAGE_SAMPLES) - 0.5F;
+    int depth = 0;
+    for (int t = 0; t < source->triangle_count; t++) {
+        depth += covers(source, t, x, y) ? 1 : 0;
+    }
+    return depth;
+}
+
+/* The corners of the texture, `side` in UV units, that card `card`'s two
+ * triangles reach, one bit each; every UV is at a corner. */
+static int
+card_corners(int card, int side) {
+    int corners = 0;
+    for (int t = 2 * card; t < (2 * card) + 2; t++) {
+        for (int k = 0; k < 3; k++) {
+            const int16_t* uv = f.mesh.uvs[f.mesh.mesh.triangles[t][k]];
+            TEST_ASSERT_TRUE(uv[0] == 0 || uv[0] == side);
+            TEST_ASSERT_TRUE(uv[1] == 0 || uv[1] == side);
+            corners |= 1 << ((uv[0] != 0 ? 1 : 0) + (uv[1] != 0 ? 2 : 0));
+        }
+    }
+    return corners;
+}
+
 /* A bush's cards overlap several deep, and each card's UVs span its
  * texture from corner to corner. */
 static void
@@ -599,12 +627,7 @@ test_foliage_cards_overlap_and_span_their_texture_corner_to_corner(void) {
     int layers = 0;
     for (int sy = 0; sy < FOLIAGE_SAMPLES; sy++) {
         for (int sx = 0; sx < FOLIAGE_SAMPLES; sx++) {
-            const float x = (((float)sx + 0.5F) / FOLIAGE_SAMPLES) - 0.5F;
-            const float y = (((float)sy + 0.5F) / FOLIAGE_SAMPLES) - 0.5F;
-            int depth = 0;
-            for (int t = 0; t < source.triangle_count; t++) {
-                depth += covers(&source, t, x, y) ? 1 : 0;
-            }
+            const int depth = cards_over(&source, sx, sy);
             covered += depth > 0 ? 1 : 0;
             layers += depth;
         }
@@ -617,16 +640,7 @@ test_foliage_cards_overlap_and_span_their_texture_corner_to_corner(void) {
     const int side = (1 << STRESS_MASK_SIZE_LOG2) << R3D_TEXTURE_UV_SHIFT;
     TEST_ASSERT_NOT_NULL(f.mesh.uvs);
     for (int card = 0; card < p->cuts; card++) {
-        int corners = 0;
-        for (int t = 2 * card; t < (2 * card) + 2; t++) {
-            for (int k = 0; k < 3; k++) {
-                const int16_t* uv = f.mesh.uvs[f.mesh.mesh.triangles[t][k]];
-                TEST_ASSERT_TRUE(uv[0] == 0 || uv[0] == side);
-                TEST_ASSERT_TRUE(uv[1] == 0 || uv[1] == side);
-                corners |= 1 << ((uv[0] != 0 ? 1 : 0) + (uv[1] != 0 ? 2 : 0));
-            }
-        }
-        TEST_ASSERT_EQUAL_INT(0xF, corners);
+        TEST_ASSERT_EQUAL_INT(0xF, card_corners(card, side));
     }
     release();
 }
