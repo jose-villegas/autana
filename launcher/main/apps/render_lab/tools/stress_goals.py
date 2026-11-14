@@ -82,11 +82,15 @@ def ceil_goal(value):
     return max(GOAL_QUANTUM_US, math.ceil(value / GOAL_QUANTUM_US) * GOAL_QUANTUM_US)
 
 
-def generate(paths, unpegged=()):
+def generate(paths, unpegged=(), presets=()):
+    """The goal rows from `paths`; only `presets`' rows when given, from captures of those alone."""
     rows = table_rows()
-    unknown = set(unpegged) - {key for key, _, _ in rows}
-    if unknown:
-        raise ValueError(f"--unpegged {', '.join(sorted(unknown))}: no such preset in {SUITE.name}")
+    for flag, keys in (("--unpegged", unpegged), ("--preset", presets)):
+        unknown = set(keys) - {key for key, _, _ in rows}
+        if unknown:
+            raise ValueError(f"{flag} {', '.join(sorted(unknown))}: no such preset in {SUITE.name}")
+    if presets:
+        rows = [row for row in rows if row[0] in presets]
     if not paths:
         raise ValueError("no captures")
     names = {row: [row_name(row)] + [f"{row_name(row)} {stage}" for stage in STAGES] for row in rows}
@@ -112,9 +116,11 @@ def main():
     parser.add_argument("captures", type=pathlib.Path, nargs="+")
     parser.add_argument("--unpegged", action="append", default=[], metavar="PRESET",
                         help="a preset whose rows stay at zero; repeatable")
+    parser.add_argument("--preset", action="append", default=[], metavar="PRESET",
+                        help="print only this preset's rows, from captures of it alone (--test); repeatable")
     args = parser.parse_args()
     try:
-        print(generate(args.captures, args.unpegged))
+        print(generate(args.captures, args.unpegged, args.preset))
     except (OSError, ValueError) as error:
         parser.exit(1, f"{error}\n")
 

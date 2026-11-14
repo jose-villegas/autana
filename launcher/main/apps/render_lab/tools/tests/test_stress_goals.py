@@ -104,6 +104,19 @@ class StressGoalsTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "--unpegged stress-nope: no such preset"):
             goals.generate([self.write("c", capture_text())], ["stress-nope"])
 
+    def test_a_preset_s_rows_come_from_captures_of_it_alone(self):
+        key = self.first[0]
+        whole = capture_text()
+        alone = "".join(line + "\n" for line in whole.splitlines() if f"PERF TARGET {key} " in line)
+        output = goals.generate([self.write("alone", alone)], presets=[key])
+        expected = [line for line in goals.generate([self.write("whole", whole)]).splitlines()
+                    if line.startswith('    {"%s",' % key)]
+        self.assertEqual(expected, output.splitlines())
+
+    def test_unknown_preset_is_refused(self):
+        with self.assertRaisesRegex(ValueError, "--preset stress-nope: no such preset"):
+            goals.generate([self.write("c", capture_text())], presets=["stress-nope"])
+
     def test_missing_target_names_the_capture_and_the_target(self):
         missing = names(goals.table_rows()[-1])[2]
         a = self.write("complete", capture_text())
