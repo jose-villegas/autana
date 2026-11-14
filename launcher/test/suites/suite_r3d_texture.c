@@ -6,6 +6,8 @@
 
 #include "asset/asset_bytes.h"
 #include "asset/asset_pack.h"
+#include "collections/bits.h"
+#include "core/memory.h"
 #include "image/pixel/bayer.h"
 #include "image/pixel/rgb565.h"
 #include "math/scalar/mathi.h"
@@ -43,6 +45,7 @@ static r3d_texture_t* texture;
 static uint8_t* mask_ltex;          /* a MASK1 entry, when a test builds one */
 static r3d_texture_t* mask_texture; /* ... and what it opens to */
 static bool* marks;                 /* the pixels mark_won() saw won, SIDE a row */
+static uint8_t* spare;              /* a test's scratch bytes */
 
 static void
 cleanup(void) {
@@ -52,12 +55,14 @@ cleanup(void) {
     free(mask_ltex);
     free(mask_texture);
     free(marks);
+    free(spare);
     buffers = NULL;
     ltex = NULL;
     texture = NULL;
     mask_ltex = NULL;
     mask_texture = NULL;
     marks = NULL;
+    spare = NULL;
 }
 
 static void
@@ -313,15 +318,23 @@ test_entry_rejects_bad_headers(void) {
     TEST_ASSERT_EQUAL(ASSET_ERR_VERSION, r3d_texture_from_asset(&view, t));
 }
 
-#define MASK_LOG2            4
-#define MASK_SIDE            (1 << MASK_LOG2)
-#define MASK_PERIOD          3 /* texel (x, y) is kept unless (x + y) % MASK_PERIOD is 0 */
-#define MASK_PALETTE_BYTES   (R3D_TEXTURE_MASK1_COLOURS * R3D_TEXTURE_PALETTE_STRIDE)
-#define MASK_TEXELS_PER_BYTE 8U
-#define MASK_BIG_LOG2        5 /* a two-level texture: 32 texels a side, then 16 */
-#define BG_COLOUR            0x1234
-#define BG_DEPTH             100 /* far behind any drawn pixel */
-#define BRIGHTEST            255.0F
+#define MASK_LOG2          4
+#define MASK_SIDE          (1 << MASK_LOG2)
+#define MASK_X_STEP        5 /* texel (x, y) is kept when (5x + 3y) % 7 < 4: unlike its transpose */
+#define MASK_Y_STEP        3
+#define MASK_MODULUS       7
+#define MASK_KEPT_BELOW    4
+#define MASK_PALETTE_BYTES (R3D_TEXTURE_MASK1_COLOURS * R3D_TEXTURE_PALETTE_STRIDE)
+#define MASK_BIG_LOG2      5 /* a two-level texture: 32 texels a side, then 16 */
+#define BG_COLOUR          0x1234
+#define BG_DEPTH           100 /* far behind any drawn pixel */
+#define BRIGHTEST          255.0F
+#define COVERED_MIN        100  /* pixels a test needs covered to tell its draws apart */
+#define MASK_LEVEL_1_STEP  2.5F /* texels a pixel steps: level 1 at 2 to under 4 */
+#define MASK_FILL_STEP     7    /* texel byte i of a moved texture holds i * 7 + 1 */
+#define MASK_GUARD         0xA5
+#define FACE_COLOUR_LEFT   0x07E0 /* a face colour a scene triangle draws, panel-order green */
+#define FACE_COLOUR_RIGHT  0x001F
 
 /* A MASK1 entry sized to fit exactly: the header, a palette whose colour 1 is
  * the mean, and zeroed texels of `levels` levels from a side of 1 << `log2`.
@@ -363,8 +376,8 @@ test_mask1_entry_opens_with_its_format_levels_and_texels(void) {
     uint32_t size;
     (void)mask_entry(MASK_BIG_LOG2, 2, false, &size);
     TEST_ASSERT_EQUAL(ASSET_OK, mask_open(size));
-    const uint32_t first = (1U << (2 * MASK_BIG_LOG2)) / MASK_TEXELS_PER_BYTE;
-    const uint32_t second = (1U << (2 * (MASK_BIG_LOG2 - 1))) / MASK_TEXELS_PER_BYTE;
+    const uint32_t first = (1U << (2 * MASK_BIG_LOG2)) / R3D_TEXTURE_MASK1_PER_BYTE;
+    const uint32_t second = (1U << (2 * (MASK_BIG_LOG2 - 1))) / R3D_TEXTURE_MASK1_PER_BYTE;
     TEST_ASSERT_EQUAL_UINT8(R3D_TEXTURE_MASK1, mask_texture->format);
     TEST_ASSERT_EQUAL_UINT8(MASK_BIG_LOG2, mask_texture->size_log2);
     TEST_ASSERT_EQUAL_UINT8(2, mask_texture->levels);
@@ -425,7 +438,7 @@ test_mask1_palette_of_two_entries_fitting_exactly_opens(void) {
 
 static bool
 mask_kept(int x, int y) {
-    return ((x + y) % MASK_PERIOD) != 0;
+    return ((x * MASK_X_STEP) + (y * MASK_Y_STEP)) % MASK_MODULUS < MASK_KEPT_BELOW;
 }
 
 /* The MASK1 texture of one MASK_SIDE level whose texel (x, y) is mask_kept(),
@@ -438,8 +451,9 @@ mask_texture_open(void) {
     for (int y = 0; y < MASK_SIDE; y++) {
         for (int x = 0; x < MASK_SIDE; x++) {
             const int o = (y * MASK_SIDE) + x;
-            texels[o / (int)MASK_TEXELS_PER_BYTE] |=
-                (uint8_t)((mask_kept(x, y) ? 1U : 0U) << (o % MASK_TEXELS_PER_BYTE));
+            if (mask_kept(x, y)) {
+                bits8_set(texels, (size_t)o);
+            }
         }
     }
     TEST_ASSERT_EQUAL(ASSET_OK, mask_open(size));
@@ -458,11 +472,17 @@ background(int which) {
 /* The corner triangle of draw_corner(), filled with `tex`, uv in pixels so a
  * texel is a pixel. */
 static void
-draw_masked(const r3d_span_target_t* target) {
-    const vec2f_t uv[3] = {{0, 0}, {SIDE, 0}, {0, SIDE}};
+draw_masked_stepping(const r3d_span_target_t* target, float texels_a_pixel) {
+    const float reach = texels_a_pixel * SIDE;
+    const vec2f_t uv[3] = {{0, 0}, {reach, 0}, {0, reach}};
     const r3d_span_vertex_t a = vertex(0, 0, 0.5F, BRIGHTEST), b = vertex(SIDE, 0, 0.5F, BRIGHTEST),
                             c = vertex(0, SIDE, 0.5F, BRIGHTEST);
     r3d_span_textured_triangle(target, &a, &b, &c, uv, mask_texture);
+}
+
+static void
+draw_masked(const r3d_span_target_t* target) {
+    draw_masked_stepping(target, 1.0F);
 }
 
 /* Over a pixel a texel, a hole keeps its pixel's colour and depth; a kept
@@ -582,12 +602,148 @@ test_writers_follow_a_mask1_triangle_over_its_kept_pixels_only(void) {
     TEST_ASSERT_LESS_THAN_MESSAGE(covered, marked_pixels(), "the holes were marked");
 }
 
+static uint16_t
+depth_of(int which, int i) {
+    return buffers[(which * 2 * PIXELS) + PIXELS + i];
+}
+
+/* The corner triangle drawn plain, into target `which`. */
+static void
+plain_corner(int which) {
+    const r3d_span_target_t plain = target_at(which);
+    const r3d_span_vertex_t a = vertex(0, 0, 0.5F, BRIGHTEST), b = vertex(SIDE, 0, 0.5F, BRIGHTEST),
+                            c = vertex(0, SIDE, 0.5F, BRIGHTEST);
+    r3d_span_triangle(&plain, &a, &b, &c);
+}
+
+/* At a texel a pixel each pixel shows the texel at (x, y): the pattern is
+ * not its own transpose, and no covered pixel may follow (y, x). */
+static void
+test_mask1_pixel_shows_the_pattern_at_x_y_not_y_x(void) {
+    fixture();
+    mask_texture_open();
+    background(0);
+    const r3d_span_target_t masked = target_at(0);
+    draw_masked(&masked);
+    plain_corner(1);
+    int told_apart = 0;
+    for (int y = 0; y < SIDE; y++) {
+        for (int x = 0; x < SIDE; x++) {
+            if (depth_of(1, (y * SIDE) + x) == R3D_DEPTH_EMPTY) {
+                continue;
+            }
+            const int u = x % MASK_SIDE;
+            const int v = y % MASK_SIDE;
+            TEST_ASSERT_EQUAL_MESSAGE(mask_kept(u, v), depth_of(0, (y * SIDE) + x) != BG_DEPTH,
+                                      "a pixel against the texel at (x, y)");
+            told_apart += mask_kept(u, v) != mask_kept(v, u);
+        }
+    }
+    TEST_ASSERT_GREATER_THAN_MESSAGE(COVERED_MIN, told_apart, "the pattern is too like its transpose to tell");
+}
+
+/* Level 0 keeps every texel, level 1 cuts every one: a pixel a texel draws
+ * the whole triangle, two and a half draw none, as the level it steps picks. */
+static void
+test_mask1_each_level_draws_its_own_texels(void) {
+    fixture();
+    uint32_t size;
+    uint8_t* b = mask_entry(MASK_LOG2, 2, false, &size);
+    memset(b + R3D_TEXTURE_HEADER_SIZE + MASK_PALETTE_BYTES, UINT8_MAX,
+           (MASK_SIDE * MASK_SIDE) / R3D_TEXTURE_MASK1_PER_BYTE);
+    TEST_ASSERT_EQUAL(ASSET_OK, mask_open(size));
+    background(0);
+    background(1);
+    const r3d_span_target_t one = target_at(0);
+    const r3d_span_target_t two_and_a_half = target_at(1);
+    draw_masked_stepping(&one, 1.0F);
+    draw_masked_stepping(&two_and_a_half, MASK_LEVEL_1_STEP);
+    plain_corner(2);
+    int covered = 0;
+    for (int i = 0; i < PIXELS; i++) {
+        const bool in_triangle = depth_of(2, i) != R3D_DEPTH_EMPTY;
+        covered += in_triangle;
+        TEST_ASSERT_EQUAL_MESSAGE(in_triangle, depth_of(0, i) != BG_DEPTH, "at a texel a pixel: level 0 keeps all");
+        TEST_ASSERT_EQUAL_MESSAGE(false, depth_of(1, i) != BG_DEPTH, "at 2.5 texels a pixel: level 1 cuts all");
+    }
+    TEST_ASSERT_GREATER_THAN_MESSAGE(COVERED_MIN, covered, "the triangle covers too little to tell");
+}
+
+/* A kept texel draws palette colour 1 at the light level, its channels the
+ * tint times the palette's, scaled to the tint's luminance. */
+static void
+test_mask1_kept_colour_is_palette_colour_1_lit_by_the_tint(void) {
+    fixture();
+    uint32_t size;
+    uint8_t* b = mask_entry(MASK_LOG2, 1, false, &size);
+    const uint8_t tint[R3D_TEXTURE_TINT_RGB] = {200, 120, 40};
+    const uint8_t albedo[R3D_TEXTURE_TINT_RGB] = {64, 128, 192};
+    memcpy(b + R3D_TEXTURE_AT_TINT, tint, sizeof tint);
+    memcpy(b + R3D_TEXTURE_HEADER_SIZE + R3D_TEXTURE_PALETTE_STRIDE, albedo, sizeof albedo);
+    memset(b + R3D_TEXTURE_HEADER_SIZE + MASK_PALETTE_BYTES, UINT8_MAX,
+           (MASK_SIDE * MASK_SIDE) / R3D_TEXTURE_MASK1_PER_BYTE);
+    TEST_ASSERT_EQUAL(ASSET_OK, mask_open(size));
+    const int tint_luma =
+        ((R3D_TEXTURE_LUMA_R * tint[0]) + (R3D_TEXTURE_LUMA_G * tint[1]) + (R3D_TEXTURE_LUMA_B * tint[2]))
+        >> R3D_TEXTURE_LUMA_SHIFT;
+    const int levels[] = {0, R3D_TEXTURE_LIGHT_LEVELS / 2, R3D_TEXTURE_LIGHT_LEVELS - 1};
+    for (size_t k = 0; k < sizeof levels / sizeof levels[0]; k++) {
+        int want[R3D_TEXTURE_TINT_RGB];
+        for (int c = 0; c < (int)R3D_TEXTURE_TINT_RGB; c++) {
+            want[c] = mathi_min((tint[c] * albedo[c] * levels[k] * UINT8_MAX)
+                                    / (R3D_TEXTURE_ONE * (R3D_TEXTURE_LIGHT_LEVELS - 1) * tint_luma),
+                                UINT8_MAX);
+        }
+        const uint16_t native = rgb565_swap(mask_texture->colormap[levels[k]][1]);
+        TEST_ASSERT_INT_WITHIN_MESSAGE(1, want[0] >> 3, (int)rgb565_r5(native), "red of colour 1");
+        TEST_ASSERT_INT_WITHIN_MESSAGE(1, want[1] >> 2, (int)rgb565_g6(native), "green of colour 1");
+        TEST_ASSERT_INT_WITHIN_MESSAGE(1, want[2] >> 3, (int)rgb565_b5(native), "blue of colour 1");
+    }
+    background(0);
+    const r3d_span_target_t target = target_at(0);
+    draw_masked(&target);
+    int drawn = 0;
+    for (int i = 0; i < PIXELS; i++) {
+        if (depth_of(0, i) != BG_DEPTH) {
+            drawn++;
+            TEST_ASSERT_EQUAL_HEX16(mask_texture->colormap[R3D_TEXTURE_LIGHT_LEVELS - 1][1], buffers[i]);
+        }
+    }
+    TEST_ASSERT_GREATER_THAN(COVERED_MIN, drawn);
+}
+
+/* Each level's texels are copied whole, back to back, and the texture points
+ * at the copy. */
+static void
+test_mask1_moved_texels_copy_every_level_exactly(void) {
+    uint32_t size;
+    uint8_t* b = mask_entry(MASK_BIG_LOG2, 2, false, &size);
+    uint8_t* texels = b + R3D_TEXTURE_HEADER_SIZE + MASK_PALETTE_BYTES;
+    const size_t first = ((size_t)1 << (2 * MASK_BIG_LOG2)) / R3D_TEXTURE_MASK1_PER_BYTE;
+    const size_t total = first + (first / 4);
+    for (size_t i = 0; i < total; i++) {
+        texels[i] = (uint8_t)((i * MASK_FILL_STEP) + 1);
+    }
+    TEST_ASSERT_EQUAL(ASSET_OK, mask_open(size));
+    TEST_ASSERT_EQUAL_UINT32(total, (uint32_t)r3d_texture_texel_bytes(mask_texture));
+    spare = malloc((2 * total) + 1);
+    TEST_ASSERT_NOT_NULL(spare);
+    memcpy(spare, texels, total);
+    uint8_t* moved = spare + total;
+    moved[total] = MASK_GUARD;
+    TEST_ASSERT_EQUAL_PTR(moved + total, r3d_texture_move_texels(mask_texture, moved));
+    TEST_ASSERT_EQUAL_PTR(moved, mask_texture->texels[0]);
+    TEST_ASSERT_EQUAL_PTR(moved + first, mask_texture->texels[1]);
+    TEST_ASSERT_EQUAL_MEMORY(spare, moved, total);
+    TEST_ASSERT_EQUAL_UINT8(MASK_GUARD, moved[total]);
+}
+
 /* A mesh's texturing: the LUVS entry, the pack holding its LTEX sibling, and
  * a scene of flat triangles seen at their own pixels, drawn through the
  * pipeline. */
 #define MESH_ID           "m"
 #define LUVS_BYTES_MAX    160
-#define PACK_BYTES        512
+#define PACK_BYTES        1024
 #define UV_PAIR_BYTES     (2 * sizeof(int16_t))
 #define READ_VERTICES     4
 #define READ_UVS          6 /* the vertices', then the second cluster's two on chart 1 */
@@ -605,7 +761,6 @@ test_writers_follow_a_mask1_triangle_over_its_kept_pixels_only(void) {
 #define UV_SPAN_UNITS     (TEX_SIDE << R3D_TEXTURE_UV_SHIFT) /* one texture side along a triangle's legs */
 #define LEFT_COLUMNS      (SIDE / 2)
 #define DISTINCT_MORE     3
-#define COVERED_MIN       100
 
 typedef struct {
     int16_t positions[SCENE_VERTICES * SCENE_TRIANGLES][3];
@@ -617,7 +772,9 @@ typedef struct {
     r3d_pipeline_vertex_t cs[SCENE_VERTICES * SCENE_TRIANGLES];
     r3d_pipeline_rows_t rows[1];
     r3d_lit_mesh_t mesh;
-    r3d_texture_t material;
+    r3d_texture_t material[R3D_TEXTURE_CHARTS]; /* one a chart at most, as a mesh here has no more */
+    r3d_texture_t* decoy;                       /* R3D_TEXTURE_NONE + 1 textures, for a draw that wrongly reads one */
+    uint16_t face_colors[SCENE_TRIANGLES];
     r3d_mesh_texturing_t texturing;
     uint8_t luvs[LUVS_BYTES_MAX];
     uint8_t* pack_base;
@@ -632,6 +789,9 @@ static void
 scene_cleanup(void) {
     if (scene != NULL) {
         free(scene->work);
+        if (scene->decoy != NULL) {
+            memory_free(scene->decoy);
+        }
         test_free_aligned(scene->pack_raw);
     }
     free(scene);
@@ -646,6 +806,7 @@ typedef struct {
     const int32_t* shifts;
     const uint8_t (*materials)[R3D_TEXTURE_CHARTS];
     const uint8_t* codes;
+    uint16_t material_count; /* 0 reads as one */
 } luvs_parts_t;
 
 /* The LUVS entry of one material: the layout docs/assets/formats/LUVS.md
@@ -660,7 +821,7 @@ write_luvs(uint8_t* b, const luvs_parts_t* in) {
         (in->triangles + R3D_TEXTURE_UVS_TRIANGLES_PER_BYTE - 1U) / R3D_TEXTURE_UVS_TRIANGLES_PER_BYTE;
     memset(b, 0, LUVS_BYTES_MAX);
     put_u16(b + R3D_TEXTURE_UVS_AT_VERSION, R3D_TEXTURE_UVS_VERSION);
-    put_u16(b + R3D_TEXTURE_UVS_AT_MATERIAL_COUNT, 1);
+    put_u16(b + R3D_TEXTURE_UVS_AT_MATERIAL_COUNT, in->material_count != 0 ? in->material_count : 1);
     put_u32(b + R3D_TEXTURE_UVS_AT_VERTEX_COUNT, in->vertices);
     put_u32(b + R3D_TEXTURE_UVS_AT_CLUSTER_COUNT, in->clusters);
     put_u32(b + R3D_TEXTURE_UVS_AT_TRIANGLE_COUNT, in->triangles);
@@ -684,7 +845,7 @@ code_at(int t, unsigned code) {
 
 /* The scene and a pack of the one LTEX the mesh "m" names. */
 static scene_t*
-scene_fixture_of(const uint8_t* entry, uint32_t entry_bytes) {
+scene_fixture_of(const uint8_t* entry, uint32_t entry_bytes, const uint8_t* second, uint32_t second_bytes) {
     scene = calloc(1, sizeof *scene);
     suite_set_test_cleanup(scene_cleanup);
     TEST_ASSERT_NOT_NULL(scene);
@@ -692,9 +853,13 @@ scene_fixture_of(const uint8_t* entry, uint32_t entry_bytes) {
     TEST_ASSERT_NOT_NULL(scene->work);
     scene->pack_base = test_alloc_aligned(PACK_BYTES, ASSET_PACK_BASE_ALIGN, &scene->pack_raw);
     TEST_ASSERT_NOT_NULL(scene->pack_base);
-    test_pack_t built = test_pack_begin(scene->pack_base, PACK_BYTES, 1);
+    test_pack_t built = test_pack_begin(scene->pack_base, PACK_BYTES, second == NULL ? 1 : 2);
     memcpy(test_pack_add(&built, MESH_ID R3D_TEXTURE_MATERIAL_SUFFIX "0", R3D_TEXTURE_ASSET, entry_bytes), entry,
            entry_bytes);
+    if (second != NULL) {
+        memcpy(test_pack_add(&built, MESH_ID R3D_TEXTURE_MATERIAL_SUFFIX "1", R3D_TEXTURE_ASSET, second_bytes), second,
+               second_bytes);
+    }
     const uint32_t total = test_pack_finish(&built);
     TEST_ASSERT_EQUAL(ASSET_OK, asset_pack_open(&scene->pack, scene->pack_base, total));
     return scene;
@@ -703,7 +868,16 @@ scene_fixture_of(const uint8_t* entry, uint32_t entry_bytes) {
 static scene_t*
 scene_fixture(void) {
     fixture();
-    return scene_fixture_of(ltex, TEX_BYTES);
+    return scene_fixture_of(ltex, TEX_BYTES, NULL, 0);
+}
+
+/* The scene whose material 0 is the INDEX4 texture and material 1 the MASK1
+ * one of mask_texture_open(). */
+static scene_t*
+scene_fixture_pair(void) {
+    fixture();
+    const uint32_t size = mask_texture_open();
+    return scene_fixture_of(ltex, TEX_BYTES, mask_ltex, size);
 }
 
 /* The same scene whose material is the MASK1 texture of mask_texture_open(). */
@@ -711,13 +885,14 @@ static scene_t*
 scene_fixture_mask(void) {
     fixture();
     const uint32_t size = mask_texture_open();
-    return scene_fixture_of(mask_ltex, size);
+    return scene_fixture_of(mask_ltex, size, NULL, 0);
 }
 
 static asset_status_t
 open_texturing(scene_t* s, uint32_t size, const r3d_lit_mesh_t* mesh) {
     const asset_view_t view = {s->luvs, size};
-    return r3d_texture_texturing_from_asset(&view, &s->pack, MESH_ID, mesh, &s->material, 1, &s->texturing);
+    return r3d_texture_texturing_from_asset(&view, &s->pack, MESH_ID, mesh, s->material, R3D_TEXTURE_CHARTS,
+                                            &s->texturing);
 }
 
 static void
@@ -746,9 +921,10 @@ leg_uvs(scene_t* s, int triangles, int chart_1_sides) {
 
 /* Builds the one-cluster mesh of `triangles` triangles whose corners are set,
  * with its texturing read from an LUVS entry of triangle codes `codes`; the
- * cluster has chart 1 when `charts` is 2. */
+ * cluster's charts name the materials `chart_materials`, of `material_count`. */
 static void
-scene_mesh(scene_t* s, int triangles, uint8_t codes, int charts) {
+scene_mesh_with(scene_t* s, int triangles, uint8_t codes, const uint8_t chart_materials[R3D_TEXTURE_CHARTS],
+                uint16_t material_count) {
     const int vertices = triangles * SCENE_VERTICES;
     const box3s_t reach = {{-INT16_MAX, -INT16_MAX, -8}, {INT16_MAX, INT16_MAX, 8}};
     s->cluster = (r3d_lit_cluster_t){0, (uint16_t)vertices, 0, (uint16_t)triangles, reach, true};
@@ -764,7 +940,8 @@ scene_mesh(scene_t* s, int triangles, uint8_t codes, int charts) {
                                .node_count = 1,
                                .position_scale = 1};
     const int32_t shifts[1] = {vertices};
-    const uint8_t materials[1][R3D_TEXTURE_CHARTS] = {{0, charts > 1 ? 0 : R3D_TEXTURE_NONE}};
+    uint8_t materials[1][R3D_TEXTURE_CHARTS];
+    memcpy(materials[0], chart_materials, R3D_TEXTURE_CHARTS);
     const luvs_parts_t parts = {(uint32_t)vertices,
                                 (uint32_t)(R3D_TEXTURE_CHARTS * vertices),
                                 1,
@@ -772,10 +949,17 @@ scene_mesh(scene_t* s, int triangles, uint8_t codes, int charts) {
                                 s->uvs,
                                 shifts,
                                 materials,
-                                &codes};
+                                &codes,
+                                material_count};
     const uint32_t size = write_luvs(s->luvs, &parts);
     TEST_ASSERT_EQUAL(ASSET_OK, open_texturing(s, size, &s->mesh));
     s->mesh.texturing = &s->texturing;
+}
+
+static void
+scene_mesh(scene_t* s, int triangles, uint8_t codes, int charts) {
+    const uint8_t chart_materials[R3D_TEXTURE_CHARTS] = {0, charts > 1 ? 0 : R3D_TEXTURE_NONE};
+    scene_mesh_with(s, triangles, codes, chart_materials, 1);
 }
 
 /* Draws the scene into target `which`, with its texturing or plain. */
@@ -836,7 +1020,8 @@ write_read_entry(scene_t* s) {
     const uint8_t materials[READ_CLUSTERS][R3D_TEXTURE_CHARTS] = {{0, R3D_TEXTURE_NONE}, {0, 0}};
     uint8_t codes[3] = {0};
     codes[READ_LAST / R3D_TEXTURE_UVS_TRIANGLES_PER_BYTE] = code_at(READ_LAST, 2);
-    const luvs_parts_t parts = {READ_VERTICES, READ_UVS, READ_CLUSTERS, READ_TRIANGLES, uvs, shifts, materials, codes};
+    const luvs_parts_t parts = {READ_VERTICES, READ_UVS, READ_CLUSTERS, READ_TRIANGLES, uvs, shifts, materials,
+                                codes,         0};
     return write_luvs(s->luvs, &parts);
 }
 
@@ -855,7 +1040,7 @@ test_luvs_entry_opens_and_exposes_its_codes_and_uvs(void) {
     const uint32_t size = write_read_entry(s);
     TEST_ASSERT_EQUAL(ASSET_OK, open_texturing(s, size, &mesh));
     TEST_ASSERT_EQUAL(1, s->texturing.material_count);
-    TEST_ASSERT_EQUAL_PTR(&s->material, s->texturing.materials);
+    TEST_ASSERT_EQUAL_PTR(s->material, s->texturing.materials);
     TEST_ASSERT_EQUAL_UINT8(0, s->texturing.cluster_material[0][0]);
     TEST_ASSERT_EQUAL_UINT8(R3D_TEXTURE_NONE, s->texturing.cluster_material[0][1]);
     TEST_ASSERT_EQUAL_UINT8(0, s->texturing.cluster_material[1][1]);
@@ -1181,8 +1366,9 @@ test_luvs_names_a_material_the_pack_lacks(void) {
     const uint32_t size = write_read_entry(s);
     const asset_view_t view = {s->luvs, size};
     memset(&s->texturing, 0xFF, sizeof s->texturing);
-    TEST_ASSERT_EQUAL(ASSET_ERR_NOT_FOUND, r3d_texture_texturing_from_asset(&view, &s->pack, "other", &mesh,
-                                                                            &s->material, 1, &s->texturing));
+    TEST_ASSERT_EQUAL(ASSET_ERR_NOT_FOUND,
+                      r3d_texture_texturing_from_asset(&view, &s->pack, "other", &mesh, s->material, R3D_TEXTURE_CHARTS,
+                                                       &s->texturing));
     TEST_ASSERT_NULL(s->texturing.uvs);
     TEST_ASSERT_NULL(s->texturing.triangle_code);
 }
@@ -1191,7 +1377,7 @@ test_luvs_names_a_material_the_pack_lacks(void) {
  * each drawn as its code in `codes` says; chart 1 maps `chart_1_sides`
  * texture sides along the legs. */
 static void
-two_triangles(scene_t* s, uint8_t codes, int chart_1_sides) {
+place_two_triangles(scene_t* s, int chart_1_sides) {
     const float left[3][2] = {{2, 4}, {22, 4}, {12, 40}};
     const float right[3][2] = {{26, 4}, {46, 4}, {36, 40}};
     for (int k = 0; k < SCENE_VERTICES; k++) {
@@ -1199,6 +1385,11 @@ two_triangles(scene_t* s, uint8_t codes, int chart_1_sides) {
         corner(s, SCENE_VERTICES + k, right[k][0], right[k][1], SCENE_Z);
     }
     leg_uvs(s, SCENE_TRIANGLES, chart_1_sides);
+}
+
+static void
+two_triangles(scene_t* s, uint8_t codes, int chart_1_sides) {
+    place_two_triangles(s, chart_1_sides);
     scene_mesh(s, SCENE_TRIANGLES, codes, R3D_TEXTURE_CHARTS);
 }
 
@@ -1368,6 +1559,136 @@ test_an_index4_chart_under_a_writer_draws_exactly_as_plain(void) {
                                      "the writerless draw is not textured: the test tells nothing");
 }
 
+/* Whether target `a` and `b` hold the same colour and depth in columns
+ * [from, to). */
+static void
+expect_columns_equal(int a, int b, int from, int to, const char* why) {
+    for (int y = 0; y < SIDE; y++) {
+        for (int x = from; x < to; x++) {
+            const int i = (y * SIDE) + x;
+            TEST_ASSERT_EQUAL_HEX16_MESSAGE(colours_of(a)[i], colours_of(b)[i], why);
+            TEST_ASSERT_EQUAL_HEX16_MESSAGE(depths_of(a)[i], depths_of(b)[i], why);
+        }
+    }
+}
+
+/* Pixels of columns [from, to) of target `which` that differ from the background. */
+static int
+drawn_in_columns(int which, int from, int to) {
+    int n = 0;
+    for (int y = 0; y < SIDE; y++) {
+        for (int x = from; x < to; x++) {
+            n += depths_of(which)[(y * SIDE) + x] != BG_DEPTH;
+        }
+    }
+    return n;
+}
+
+static int
+marked_in_columns(int from, int to) {
+    int n = 0;
+    for (int y = 0; y < SIDE; y++) {
+        for (int x = from; x < to; x++) {
+            n += marks[(y * SIDE) + x];
+        }
+    }
+    return n;
+}
+
+/* The left triangle on chart 0, an INDEX4 material; the right on chart 1, a
+ * MASK1 one. Under a writer the left draws exactly as plain and the right
+ * as the textured, cut draw, the writer marking only its kept pixels. */
+static void
+test_under_a_writer_a_mask1_triangle_is_cut_and_an_index4_one_is_plain(void) {
+    scene_t* s = scene_fixture_pair();
+    place_two_triangles(s, 1);
+    const uint8_t chart_materials[R3D_TEXTURE_CHARTS] = {0, 1};
+    scene_mesh_with(s, SCENE_TRIANGLES, (uint8_t)(code_at(0, 1) | code_at(1, 2)), chart_materials, 2);
+    background(0);
+    draw_scene(s, 0, false);
+    background(1);
+    draw_scene(s, 1, true);
+    background(2);
+    r3d_span_target_t target = target_at(2);
+    r3d_span_writer_t writer;
+    with_marking_writer(&target, &writer);
+    draw_scene_into(s, &target, true);
+    expect_columns_equal(2, 0, 0, LEFT_COLUMNS, "the INDEX4 triangle is not the plain one");
+    expect_columns_equal(2, 1, LEFT_COLUMNS, SIDE, "the MASK1 triangle is not the textured one");
+    int left_textured = 0;
+    for (int i = 0; i < PIXELS; i++) {
+        left_textured += (i % SIDE) < LEFT_COLUMNS && colours_of(1)[i] != colours_of(0)[i];
+        TEST_ASSERT_EQUAL_MESSAGE(depths_of(2)[i] != BG_DEPTH, marks[i], "a pixel's mark against what was drawn");
+    }
+    TEST_ASSERT_GREATER_THAN_MESSAGE(0, left_textured, "the INDEX4 chart is not textured without a writer");
+    const int right_plain = drawn_in_columns(0, LEFT_COLUMNS, SIDE);
+    TEST_ASSERT_GREATER_THAN_MESSAGE(0, marked_in_columns(LEFT_COLUMNS, SIDE), "the MASK1 triangle drew nothing");
+    TEST_ASSERT_LESS_THAN_MESSAGE(right_plain, marked_in_columns(LEFT_COLUMNS, SIDE), "the MASK1 triangle is not cut");
+    TEST_ASSERT_EQUAL_INT(drawn_in_columns(0, 0, LEFT_COLUMNS), marked_in_columns(0, LEFT_COLUMNS));
+}
+
+/* A cluster that names no material draws plain even where a triangle's code
+ * names a chart: the material it would read is a MASK1 decoy that would cut. */
+static void
+test_under_a_writer_a_cluster_with_no_material_draws_plain(void) {
+    scene_t* s = scene_fixture_pair();
+    place_two_triangles(s, 1);
+    const uint8_t chart_materials[R3D_TEXTURE_CHARTS] = {0, 1};
+    scene_mesh_with(s, SCENE_TRIANGLES, (uint8_t)(code_at(0, 2) | code_at(1, 2)), chart_materials, 2);
+    const uint32_t at = header_word(s, R3D_TEXTURE_UVS_AT_CLUSTERS_OFF);
+    s->luvs[at] = R3D_TEXTURE_NONE;
+    s->luvs[at + 1] = R3D_TEXTURE_NONE;
+    s->decoy = memory_alloc(((size_t)R3D_TEXTURE_NONE + 1) * sizeof *s->decoy, MEMORY_PSRAM);
+    TEST_ASSERT_NOT_NULL(s->decoy);
+    memset(s->decoy, 0, ((size_t)R3D_TEXTURE_NONE + 1) * sizeof *s->decoy);
+    s->decoy[R3D_TEXTURE_NONE] = s->material[1];
+    s->texturing.materials = s->decoy;
+    background(0);
+    r3d_span_target_t plain = target_at(0);
+    r3d_span_writer_t plain_writer;
+    with_marking_writer(&plain, &plain_writer);
+    draw_scene_into(s, &plain, false);
+    const int plain_marks = marked_pixels();
+    memset(marks, 0, PIXELS * sizeof *marks);
+    background(1);
+    r3d_span_target_t textured = target_at(1);
+    textured.writers = &plain_writer;
+    textured.writer_count = 1;
+    draw_scene_into(s, &textured, true);
+    TEST_ASSERT_GREATER_THAN_MESSAGE(COVERED_MIN, plain_marks, "the plain draw covers too little to tell");
+    TEST_ASSERT_EQUAL_INT(plain_marks, marked_pixels());
+    expect_columns_equal(1, 0, 0, SIDE, "a cluster with no material did not draw plain");
+}
+
+/* A mesh with no vertex colours has nothing to light a texture with: its
+ * triangles on a MASK1 chart draw as the plain face-coloured ones. */
+static void
+test_under_a_writer_a_mesh_with_no_vertex_colours_draws_plain(void) {
+    scene_t* s = scene_fixture_pair();
+    place_two_triangles(s, 1);
+    const uint8_t chart_materials[R3D_TEXTURE_CHARTS] = {0, 1};
+    scene_mesh_with(s, SCENE_TRIANGLES, (uint8_t)(code_at(0, 2) | code_at(1, 2)), chart_materials, 2);
+    s->mesh.colors = NULL;
+    s->face_colors[0] = FACE_COLOUR_LEFT;
+    s->face_colors[1] = FACE_COLOUR_RIGHT;
+    s->mesh.face_colors = s->face_colors;
+    background(0);
+    r3d_span_target_t plain = target_at(0);
+    r3d_span_writer_t plain_writer;
+    with_marking_writer(&plain, &plain_writer);
+    draw_scene_into(s, &plain, false);
+    const int plain_marks = marked_pixels();
+    memset(marks, 0, PIXELS * sizeof *marks);
+    background(1);
+    r3d_span_target_t textured = target_at(1);
+    textured.writers = &plain_writer;
+    textured.writer_count = 1;
+    draw_scene_into(s, &textured, true);
+    TEST_ASSERT_GREATER_THAN_MESSAGE(COVERED_MIN, plain_marks, "the plain draw covers too little to tell");
+    TEST_ASSERT_EQUAL_INT(plain_marks, marked_pixels());
+    expect_columns_equal(1, 0, 0, SIDE, "a mesh with no vertex colours did not draw plain");
+}
+
 void
 run_r3d_texture_suite(void) {
     RUN_TEST(test_textured_covers_what_plain_covers);
@@ -1385,6 +1706,10 @@ run_r3d_texture_suite(void) {
     RUN_TEST(test_mask1_holes_keep_the_pixel_and_kept_texels_draw_colour_1);
     RUN_TEST(test_writers_follow_an_index4_textured_triangle_over_what_it_filled);
     RUN_TEST(test_writers_follow_a_mask1_triangle_over_its_kept_pixels_only);
+    RUN_TEST(test_mask1_pixel_shows_the_pattern_at_x_y_not_y_x);
+    RUN_TEST(test_mask1_each_level_draws_its_own_texels);
+    RUN_TEST(test_mask1_kept_colour_is_palette_colour_1_lit_by_the_tint);
+    RUN_TEST(test_mask1_moved_texels_copy_every_level_exactly);
     RUN_TEST(test_luvs_entry_opens_and_exposes_its_codes_and_uvs);
     RUN_TEST(test_luvs_entry_is_refused_when_its_counts_do_not_match_the_mesh);
     RUN_TEST(test_luvs_entry_must_end_exactly_after_its_triangle_codes);
@@ -1420,6 +1745,9 @@ run_r3d_texture_suite(void) {
     RUN_TEST(test_near_clipped_textured_triangle_keeps_its_coverage_and_its_pattern);
     RUN_TEST(test_a_mask1_chart_draws_textured_under_a_writer_marking_only_kept_pixels);
     RUN_TEST(test_an_index4_chart_under_a_writer_draws_exactly_as_plain);
+    RUN_TEST(test_under_a_writer_a_mask1_triangle_is_cut_and_an_index4_one_is_plain);
+    RUN_TEST(test_under_a_writer_a_cluster_with_no_material_draws_plain);
+    RUN_TEST(test_under_a_writer_a_mesh_with_no_vertex_colours_draws_plain);
 }
 
 SUITE_REGISTER(run_r3d_texture_suite);

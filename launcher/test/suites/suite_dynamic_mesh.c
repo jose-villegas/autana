@@ -179,6 +179,23 @@ test_a_textured_sheet_does_not_build_into_an_untextured_capacity(void) {
     TEST_ASSERT_NULL(mesh.uvs);
 }
 
+/* A textured capacity holds a UV pair a vertex more, and init refuses a block
+ * sized for the untextured layout; the block sized for it, it opens. */
+static void
+test_a_textured_capacity_needs_more_bytes_than_an_untextured_one(void) {
+    suite_add_test_cleanup(fixture_end);
+    const size_t plain = r3d_dynamic_mesh_bytes(ROOMY);
+    const size_t textured = r3d_dynamic_mesh_bytes(ROOMY_TEXTURED);
+    TEST_ASSERT_GREATER_OR_EQUAL_UINT32((uint32_t)(plain + ((size_t)ROOMY.vertices * sizeof(int16_t[2]))),
+                                        (uint32_t)textured);
+    block = malloc(textured);
+    TEST_ASSERT_NOT_NULL(block);
+    TEST_ASSERT_FALSE(r3d_dynamic_mesh_init(&mesh, block, plain, ROOMY_TEXTURED, POSITION_SCALE));
+    TEST_ASSERT_NULL(mesh.uvs);
+    TEST_ASSERT_TRUE(r3d_dynamic_mesh_init(&mesh, block, textured, ROOMY_TEXTURED, POSITION_SCALE));
+    TEST_ASSERT_NOT_NULL(mesh.uvs);
+}
+
 /* A cluster copies only the vertices it uses and shares them among its
  * triangles: a sheet costs near one vertex a triangle, not three. */
 static void
@@ -246,6 +263,7 @@ suite_dynamic_mesh(void) {
     RUN_TEST(test_clusters_share_vertices_within_themselves);
     RUN_TEST(test_a_textured_sheet_carries_each_vertexs_uv_into_its_copies);
     RUN_TEST(test_a_textured_sheet_does_not_build_into_an_untextured_capacity);
+    RUN_TEST(test_a_textured_capacity_needs_more_bytes_than_an_untextured_one);
     RUN_TEST(test_a_source_too_big_leaves_a_whole_mesh);
     RUN_TEST(test_a_rebuild_replaces_what_was_there);
     RUN_TEST(test_the_counts_a_raster_sizes_by_never_move);

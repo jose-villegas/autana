@@ -19,6 +19,7 @@
 #include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/stress/stress_preset.h"
 #include "asset/asset_store.h"
+#include "collections/bits.h"
 #include "core/memory.h"
 #include "gfx/gfx.h"
 #include "image/pixel/rgb565.h"
@@ -541,6 +542,10 @@ test_near_plane_sweeps_behind_and_clipped_triangles(void) {
 /* The mask keeps about 0.7 of a card: between these shares. */
 #define FOLIAGE_KEPT_LEAST 0.6F
 #define FOLIAGE_KEPT_MOST  0.8F
+/* A mip texel covers MIP_COVERS texels of the level above and is kept when
+ * MIP_KEPT_SHARE of them are: the rule stated here, not read from the code. */
+#define MIP_COVERS         4
+#define MIP_KEPT_SHARE     0.5F
 
 /* Whether (x, y) is inside triangle t of `src`, seen down z, either winding. */
 static bool
@@ -631,7 +636,7 @@ static int
 kept_texels(const r3d_texture_t* t, int level, int side) {
     int kept = 0;
     for (int o = 0; o < side * side; o++) {
-        kept += (t->texels[level][o >> 3] >> (o & 7)) & 1;
+        kept += bits8_get(t->texels[level], (size_t)o) ? 1 : 0;
     }
     return kept;
 }
@@ -662,10 +667,11 @@ test_foliage_mask_opens_as_mask1_and_keeps_about_0_7_of_a_card(void) {
                 int under = 0;
                 for (int k = 0; k < 4; k++) {
                     const int o = (((2 * y) + (k / 2)) * (2 * s)) + (2 * x) + (k % 2);
-                    under += (t->texels[l - 1][o >> 3] >> (o & 7)) & 1;
+                    under += bits8_get(t->texels[l - 1], (size_t)o) ? 1 : 0;
                 }
                 const int o = (y * s) + x;
-                TEST_ASSERT_EQUAL_INT(under >= STRESS_MASK_MIP_KEPT ? 1 : 0, (t->texels[l][o >> 3] >> (o & 7)) & 1);
+                const bool half_or_more = (float)under / (float)MIP_COVERS >= MIP_KEPT_SHARE;
+                TEST_ASSERT_EQUAL_INT(half_or_more ? 1 : 0, bits8_get(t->texels[l], (size_t)o) ? 1 : 0);
             }
         }
     }
