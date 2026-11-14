@@ -3,6 +3,7 @@
 #include <math.h>
 #include <string.h>
 
+#include "collections/bits.h"
 #include "math/geometry/primitive_mesh.h"
 #include "math/scalar/math_const.h"
 #include "math/scalar/mathi.h"
@@ -49,6 +50,17 @@ const stress_params_t stress_presets[STRESS_PRESET_COUNT] = {
                            STRESS_CAMERA, 6},
     [STRESS_TEXTURED] = {STRESS_SHAPE_PLANE, 2, 1, STRESS_LAYOUT_WALL, 100, STRESS_SURFACE_OF(TEXTURED), STRESS_CAMERA,
                          6},
+    /* Foliage cards near, a few bushes over the whole view, and far, many small
+     * ones; each cut by a MASK1 texture beside its twin, whose cards draw the
+     * INDEX4 brick whole: the same cards, under a cut against a whole fill. */
+    [STRESS_FOLIAGE_NEAR] = {STRESS_SHAPE_FOLIAGE, 24, 3, STRESS_LAYOUT_STACK, 120, STRESS_SURFACE_OF(FOLIAGE_NEAR),
+                             STRESS_CAMERA, 6},
+    [STRESS_FOLIAGE_NEAR_OPAQUE] = {STRESS_SHAPE_FOLIAGE, 24, 3, STRESS_LAYOUT_STACK, 120,
+                                    STRESS_SURFACE_OF(FOLIAGE_NEAR_OPAQUE), STRESS_CAMERA, 6},
+    [STRESS_FOLIAGE_FAR] = {STRESS_SHAPE_FOLIAGE, 24, 36, STRESS_LAYOUT_WALL, 70, STRESS_SURFACE_OF(FOLIAGE_FAR),
+                            STRESS_CAMERA, 6},
+    [STRESS_FOLIAGE_FAR_OPAQUE] = {STRESS_SHAPE_FOLIAGE, 24, 36, STRESS_LAYOUT_WALL, 70,
+                                   STRESS_SURFACE_OF(FOLIAGE_FAR_OPAQUE), STRESS_CAMERA, 6},
 };
 
 stress_params_t
@@ -161,6 +173,49 @@ card_corner(const stress_params_t* p, const stress_buffers_t* b, int v, int x, i
 }
 
 static const uint8_t quad_corners[6][2] = {{0, 0}, {1, 0}, {1, 1}, {0, 0}, {1, 1}, {0, 1}};
+#define QUAD_VERTICES            6
+
+/* A foliage card's side, as a share of the bush's unit square, and how deep
+ * the bush is: its cards' centres spread over this much of a unit in z. */
+#define STRESS_FOLIAGE_CARD_SIDE 0.35F
+#define STRESS_FOLIAGE_DEPTH     0.5F
+#define STRESS_FOLIAGE_SEED      0xF011A6EU
+/* How far a card turns about the vertical either way, radians: upright, as
+ * foliage cards stand, and never edge on. */
+#define STRESS_FOLIAGE_YAW       1.0F
+/* The hash's low bits as a share of [0, 1]. */
+#define STRESS_UNIT_BITS         0xFFFFU
+
+/* Card `card`'s draw `site`, a share of [0, 1]. */
+static float
+foliage_draw(int card, int site) {
+    return (float)(rng_hash(STRESS_FOLIAGE_SEED, (uint32_t)card, (uint32_t)site, 0) & STRESS_UNIT_BITS)
+           / (float)STRESS_UNIT_BITS;
+}
+
+/* Cards placed at random in the unit square, each turned about the vertical
+ * and set at a random depth, so they overlap several deep; every card is its
+ * own two triangles and six corners. */
+static void
+make_foliage(const stress_params_t* p, const stress_buffers_t* b) {
+    const float half = 0.5F * STRESS_FOLIAGE_CARD_SIDE;
+    const float reach = 0.5F - half;
+    for (int card = 0; card < p->cuts; card++) {
+        const vec3f_t centre = {reach * ((2.0F * foliage_draw(card, 0)) - 1.0F),
+                                reach * ((2.0F * foliage_draw(card, 1)) - 1.0F),
+                                STRESS_FOLIAGE_DEPTH * (foliage_draw(card, 2) - 0.5F)};
+        const float turn = STRESS_FOLIAGE_YAW * ((2.0F * foliage_draw(card, 3)) - 1.0F);
+        const float c = cosf(turn);
+        const float s = sinf(turn);
+        for (int k = 0; k < QUAD_VERTICES; k++) {
+            const int v = (QUAD_VERTICES * card) + k;
+            const float x = STRESS_FOLIAGE_CARD_SIDE * ((float)quad_corners[k][0] - 0.5F);
+            const float y = STRESS_FOLIAGE_CARD_SIDE * ((float)quad_corners[k][1] - 0.5F);
+            b->positions[v] = (vec3f_t){centre.x + (c * x), centre.y + y, centre.z - (s * x)};
+            b->triangles[(2 * card) + (k / 3)][k % 3] = (uint16_t)v;
+        }
+    }
+}
 
 static void
 make_card(const stress_params_t* p, const stress_buffers_t* b) {
@@ -193,6 +248,7 @@ counts_of(const stress_params_t* p) {
             const int triangles = 2 * p->cuts * p->cuts;
             return (primitive_counts_t){3 * triangles, triangles};
         }
+        case STRESS_SHAPE_FOLIAGE: return (primitive_counts_t){QUAD_VERTICES * p->cuts, 2 * p->cuts};
         case STRESS_SHAPE_PLANE: return primitive_plane_counts(&s.plane);
         case STRESS_SHAPE_SPHERE: return primitive_sphere_counts(&s.sphere);
         case STRESS_SHAPE_CUBE: return primitive_cube_counts(&s.cube);
@@ -231,6 +287,7 @@ make(const stress_params_t* p, const stress_buffers_t* b, primitive_mesh_t* m) {
     switch (p->shape) {
         case STRESS_SHAPE_GRID: make_mixed(p, b); break;
         case STRESS_SHAPE_CARD: make_card(p, b); break;
+        case STRESS_SHAPE_FOLIAGE: make_foliage(p, b); break;
         case STRESS_SHAPE_PLANE: return primitive_plane(&s.plane, m);
         case STRESS_SHAPE_SPHERE: return primitive_sphere(&s.sphere, m);
         case STRESS_SHAPE_CUBE: return primitive_cube(&s.cube, m);
@@ -304,6 +361,8 @@ colour_and_wave(const stress_params_t* p, uint32_t t_ms, int vertex_count, const
     }
 }
 
+static void texture_uvs(const stress_params_t* p, int vertex_count, const stress_buffers_t* b);
+
 bool
 stress_source(const stress_params_t* p, uint32_t t_ms, const stress_buffers_t* b, r3d_dynamic_source_t* out) {
     primitive_mesh_t m = {b->positions, stress_vertex_count(p), b->triangles, stress_triangle_count(p), 0, 0};
@@ -311,9 +370,21 @@ stress_source(const stress_params_t* p, uint32_t t_ms, const stress_buffers_t* b
         return false;
     }
     colour_and_wave(p, t_ms, m.vertex_count, b);
-    *out = (r3d_dynamic_source_t){b->positions,     (const uint8_t (*)[3])b->colors,
-                                  m.vertex_count,   (const uint16_t (*)[3])b->triangles,
-                                  m.triangle_count, p->surface == STRESS_SURFACE_TWO_SIDED};
+    if (stress_textured(p)) {
+        if (b->uvs == NULL) {
+            return false;
+        }
+        texture_uvs(p, m.vertex_count, b);
+    }
+    *out = (r3d_dynamic_source_t){
+        .positions = b->positions,
+        .colors = (const uint8_t (*)[3])b->colors,
+        .vertex_count = m.vertex_count,
+        .triangles = (const uint16_t (*)[3])b->triangles,
+        .triangle_count = m.triangle_count,
+        .double_sided = p->surface == STRESS_SURFACE_TWO_SIDED,
+        .uvs = (const int16_t (*)[2])b->uvs,
+    };
     return true;
 }
 
@@ -374,6 +445,7 @@ stress_cut_px(const stress_params_t* p, int short_px) {
         case STRESS_SHAPE_CUBE: return width / (float)p->cuts;
         case STRESS_SHAPE_SPHERE: return MATH_PI * width / (float)sphere_segments(p->cuts);
         case STRESS_SHAPE_CYLINDER: return 0.5F * width;
+        case STRESS_SHAPE_FOLIAGE: return STRESS_FOLIAGE_CARD_SIDE * width;
     }
     return 0.0F;
 }
@@ -381,18 +453,24 @@ stress_cut_px(const stress_params_t* p, int short_px) {
 /* The brick: courses STRESS_BRICK_TALL texels tall of bricks STRESS_BRICK_LONG
  * long, every other course shifted half a brick, a texel of mortar under and
  * after each; each brick takes one of the brick colours by hash. */
-#define STRESS_BRICK_LONG     16
-#define STRESS_BRICK_TALL     8
-#define STRESS_BRICK_SEED     0xB21C7U
-#define STRESS_MORTAR         0
-#define STRESS_BRICK_COLOURS  (R3D_TEXTURE_COLOURS - 1)
-#define STRESS_BRICK_TINT     128
-#define STRESS_MORTAR_LEVEL   176
-#define STRESS_BRICK_LOW      72
-#define STRESS_BRICK_STEP     8
-#define STRESS_TEXTURE_SIDE   (1 << STRESS_TEXTURE_SIZE_LOG2)
-#define STRESS_TEXTURE_LEVELS (STRESS_TEXTURE_SIZE_LOG2 - R3D_TEXTURE_SIZE_LOG2_MIN + 1)
-#define STRESS_PALETTE_BYTES  (R3D_TEXTURE_COLOURS * R3D_TEXTURE_PALETTE_STRIDE)
+#define STRESS_BRICK_LONG       16
+#define STRESS_BRICK_TALL       8
+#define STRESS_BRICK_SEED       0xB21C7U
+#define STRESS_MORTAR           0
+#define STRESS_BRICK_COLOURS    (R3D_TEXTURE_COLOURS - 1)
+#define STRESS_BRICK_TINT       128
+#define STRESS_MORTAR_LEVEL     176
+#define STRESS_BRICK_LOW        72
+#define STRESS_BRICK_STEP       8
+#define STRESS_TEXTURE_SIDE     (1 << STRESS_TEXTURE_SIZE_LOG2)
+#define STRESS_TEXTURE_LEVELS   (STRESS_TEXTURE_SIZE_LOG2 - R3D_TEXTURE_SIZE_LOG2_MIN + 1)
+#define STRESS_MASK_SIDE        (1 << STRESS_MASK_SIZE_LOG2)
+#define STRESS_MASK_LEVELS      (STRESS_MASK_SIZE_LOG2 - R3D_TEXTURE_MASK1_SIZE_LOG2_MIN + 1)
+/* One texel in this many inside the disc is a hole: the disc keeps pi/4 of
+ * the square, so the mask keeps about 0.7 of a card. */
+#define STRESS_MASK_HOLE_PERIOD 10
+#define STRESS_MASK_SEED        0x1EAFU
+#define STRESS_MASK_TINT        128
 
 static int
 brick_index(int x, int y) {
@@ -405,18 +483,34 @@ brick_index(int x, int y) {
     return 1 + (int)(rng_hash(STRESS_BRICK_SEED, brick, (uint32_t)course, 0) % STRESS_BRICK_COLOURS);
 }
 
+/* A textured surface's entry: its format, level 0's side, its levels and tint. */
+typedef struct {
+    uint16_t format;
+    int size_log2, levels;
+    uint8_t tint;
+} stress_entry_t;
+
+static stress_entry_t
+entry_of(stress_surface_t surface) {
+    return surface == STRESS_SURFACE_MASKED
+               ? (stress_entry_t){R3D_TEXTURE_MASK1, STRESS_MASK_SIZE_LOG2, STRESS_MASK_LEVELS, STRESS_MASK_TINT}
+               : (stress_entry_t){R3D_TEXTURE_INDEX4, STRESS_TEXTURE_SIZE_LOG2, STRESS_TEXTURE_LEVELS,
+                                  STRESS_BRICK_TINT};
+}
+
 static size_t
-texel_bytes(void) {
-    size_t bytes = 0;
-    for (int l = 0; l < STRESS_TEXTURE_LEVELS; l++) {
-        bytes += r3d_texture_level_bytes(STRESS_TEXTURE_SIZE_LOG2 - l);
-    }
-    return bytes;
+palette_bytes(stress_entry_t e) {
+    return (size_t)r3d_texture_colours(e.format) * R3D_TEXTURE_PALETTE_STRIDE;
 }
 
 size_t
-stress_texture_bytes(void) {
-    return R3D_TEXTURE_HEADER_SIZE + STRESS_PALETTE_BYTES + texel_bytes();
+stress_texture_bytes(stress_surface_t surface) {
+    const stress_entry_t e = entry_of(surface);
+    size_t bytes = R3D_TEXTURE_HEADER_SIZE + palette_bytes(e);
+    for (int l = 0; l < e.levels; l++) {
+        bytes += r3d_texture_level_bytes(e.format, e.size_log2 - l);
+    }
+    return bytes;
 }
 
 static void
@@ -424,21 +518,53 @@ put_u32(uint8_t* at, uint32_t value) {
     memcpy(at, &value, sizeof value);
 }
 
+/* Texel (x, y) of the mask's level 0: inside the disc and not a hole.
+ * Doubled coordinates put the disc's centre between the middle texels. */
+static bool
+mask_kept(int x, int y) {
+    const int dx = (2 * x) + 1 - STRESS_MASK_SIDE;
+    const int dy = (2 * y) + 1 - STRESS_MASK_SIDE;
+    const bool in_disc = (dx * dx) + (dy * dy) < STRESS_MASK_SIDE * STRESS_MASK_SIDE;
+    return in_disc && rng_hash(STRESS_MASK_SEED, (uint32_t)x, (uint32_t)y, 0) % STRESS_MASK_HOLE_PERIOD != 0;
+}
+
+/* Kept texels among the 2x2 of a level `side` wide whose top-left is (x, y). */
+static int
+kept_under(const uint8_t* level, int side, int x, int y) {
+    int count = 0;
+    for (int k = 0; k < 4; k++) {
+        count += bits8_get(level, (size_t)((y + (k / 2)) * side) + (size_t)x + (size_t)(k % 2)) ? 1 : 0;
+    }
+    return count;
+}
+
+/* The mask's colour 1 is the mean, so a kept texel draws the vertex light;
+ * level 0 from mask_kept(), each mip from the level above. */
+static void
+write_mask(uint8_t* palette, uint8_t* texels) {
+    memset(palette + R3D_TEXTURE_PALETTE_STRIDE, R3D_TEXTURE_ONE, R3D_TEXTURE_TINT_RGB);
+    const uint8_t* above = NULL;
+    for (int l = 0; l < STRESS_MASK_LEVELS; l++) {
+        const int side = STRESS_MASK_SIDE >> l;
+        for (int y = 0; y < side; y++) {
+            for (int x = 0; x < side; x++) {
+                const bool kept = above == NULL
+                                      ? mask_kept(x, y)
+                                      : kept_under(above, 2 * side, 2 * x, 2 * y) >= R3D_TEXTURE_MASK1_MIP_KEPT;
+                if (kept) {
+                    bits8_set(texels, (size_t)(y * side) + (size_t)x);
+                }
+            }
+        }
+        above = texels;
+        texels += r3d_texture_level_bytes(R3D_TEXTURE_MASK1, STRESS_MASK_SIZE_LOG2 - l);
+    }
+}
+
 /* Mortar is pale; bricks run a warm ramp. A level's texel is its 2x2
  * block's top-left in the level above, sampled from level 0. */
-void
-stress_texture_write(uint8_t* ltex) {
-    memset(ltex, 0, stress_texture_bytes());
-    const uint16_t version = R3D_TEXTURE_VERSION;
-    const uint16_t format = R3D_TEXTURE_INDEX4;
-    memcpy(ltex + R3D_TEXTURE_AT_VERSION, &version, sizeof version);
-    memcpy(ltex + R3D_TEXTURE_AT_FORMAT, &format, sizeof format);
-    ltex[R3D_TEXTURE_AT_SIZE_LOG2] = STRESS_TEXTURE_SIZE_LOG2;
-    ltex[R3D_TEXTURE_AT_LEVELS] = STRESS_TEXTURE_LEVELS;
-    memset(ltex + R3D_TEXTURE_AT_TINT, STRESS_BRICK_TINT, R3D_TEXTURE_TINT_RGB);
-    put_u32(ltex + R3D_TEXTURE_AT_PALETTE_OFF, R3D_TEXTURE_HEADER_SIZE);
-    put_u32(ltex + R3D_TEXTURE_AT_TEXELS_OFF, R3D_TEXTURE_HEADER_SIZE + STRESS_PALETTE_BYTES);
-    uint8_t* palette = ltex + R3D_TEXTURE_HEADER_SIZE;
+static void
+write_brick(uint8_t* palette, uint8_t* texels) {
     for (int i = 0; i < R3D_TEXTURE_COLOURS; i++) {
         const int level = i == STRESS_MORTAR ? STRESS_MORTAR_LEVEL : STRESS_BRICK_LOW + (STRESS_BRICK_STEP * i);
         uint8_t* entry = palette + (i * R3D_TEXTURE_PALETTE_STRIDE);
@@ -446,7 +572,6 @@ stress_texture_write(uint8_t* ltex) {
         entry[1] = (uint8_t)level;
         entry[2] = (uint8_t)(level - (level / 4));
     }
-    uint8_t* texels = palette + STRESS_PALETTE_BYTES;
     for (int l = 0; l < STRESS_TEXTURE_LEVELS; l++) {
         const int side = STRESS_TEXTURE_SIDE >> l;
         for (int y = 0; y < side; y++) {
@@ -455,17 +580,48 @@ stress_texture_write(uint8_t* ltex) {
                 texels[o >> 1] |= (uint8_t)(brick_index(x << l, y << l) << ((o & 1) * 4));
             }
         }
-        texels += r3d_texture_level_bytes(STRESS_TEXTURE_SIZE_LOG2 - l);
+        texels += r3d_texture_level_bytes(R3D_TEXTURE_INDEX4, STRESS_TEXTURE_SIZE_LOG2 - l);
     }
 }
 
 void
-stress_texture_uvs(const r3d_lit_mesh_t* mesh, int16_t (*uvs)[2]) {
-    const float to_texels = (float)(STRESS_TEXTURE_SIDE * STRESS_TEXTURE_REPEATS * (1 << R3D_TEXTURE_UV_SHIFT))
-                            / (float)mesh->position_scale;
-    const float half = 0.5F * (float)mesh->position_scale;
-    for (int v = 0; v < mesh->vertex_count; v++) {
-        uvs[v][0] = (int16_t)lroundf(((float)mesh->positions[v][0] + half) * to_texels);
-        uvs[v][1] = (int16_t)lroundf((half - (float)mesh->positions[v][1]) * to_texels);
+stress_texture_write(stress_surface_t surface, uint8_t* ltex) {
+    const stress_entry_t e = entry_of(surface);
+    memset(ltex, 0, stress_texture_bytes(surface));
+    const uint16_t version = R3D_TEXTURE_VERSION;
+    memcpy(ltex + R3D_TEXTURE_AT_VERSION, &version, sizeof version);
+    memcpy(ltex + R3D_TEXTURE_AT_FORMAT, &e.format, sizeof e.format);
+    ltex[R3D_TEXTURE_AT_SIZE_LOG2] = (uint8_t)e.size_log2;
+    ltex[R3D_TEXTURE_AT_LEVELS] = (uint8_t)e.levels;
+    memset(ltex + R3D_TEXTURE_AT_TINT, e.tint, R3D_TEXTURE_TINT_RGB);
+    put_u32(ltex + R3D_TEXTURE_AT_PALETTE_OFF, R3D_TEXTURE_HEADER_SIZE);
+    put_u32(ltex + R3D_TEXTURE_AT_TEXELS_OFF, R3D_TEXTURE_HEADER_SIZE + (uint32_t)palette_bytes(e));
+    uint8_t* palette = ltex + R3D_TEXTURE_HEADER_SIZE;
+    if (surface == STRESS_SURFACE_MASKED) {
+        write_mask(palette, palette + palette_bytes(e));
+    } else {
+        write_brick(palette, palette + palette_bytes(e));
+    }
+}
+
+/* Each vertex's UV in 1/16 texel (R3D_TEXTURE_UV_SHIFT) from origin 0: a
+ * foliage card's corners span its texture once, a plane's spans the brick
+ * STRESS_TEXTURE_REPEATS times from where each vertex lies on it. */
+static void
+texture_uvs(const stress_params_t* p, int vertex_count, const stress_buffers_t* b) {
+    const int one = 1 << R3D_TEXTURE_UV_SHIFT;
+    if (p->shape == STRESS_SHAPE_FOLIAGE) {
+        const int side = (1 << entry_of(p->surface).size_log2) * one;
+        for (int v = 0; v < vertex_count; v++) {
+            const uint8_t* corner = quad_corners[v % QUAD_VERTICES];
+            b->uvs[v][0] = (int16_t)(corner[0] * side);
+            b->uvs[v][1] = (int16_t)(corner[1] * side);
+        }
+        return;
+    }
+    const float to_texels = (float)(STRESS_TEXTURE_SIDE * STRESS_TEXTURE_REPEATS * one);
+    for (int v = 0; v < vertex_count; v++) {
+        b->uvs[v][0] = (int16_t)lroundf((b->positions[v].x + 0.5F) * to_texels);
+        b->uvs[v][1] = (int16_t)lroundf((0.5F - b->positions[v].y) * to_texels);
     }
 }
