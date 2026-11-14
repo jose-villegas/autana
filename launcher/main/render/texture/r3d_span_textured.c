@@ -22,25 +22,27 @@
 /* u and v walk as 8.8 texels, packed u high and v low in one word; a carry
  * out of v moves u by 1/256 texel. 8 integer bits wrap at 256 texels, a
  * multiple of every level's side. */
-#define UV_FRAC      8
-#define UV_ONE       (1 << UV_FRAC)
-#define UV_WRAP      256.0F
-#define UV_HALF_BITS 16
-#define UV_LOW_MASK  0xFFFFU
-#define U_INT_SHIFT  (UV_HALF_BITS + UV_FRAC)
-#define V_INT_SHIFT  UV_FRAC
-#define NIBBLE_BITS  4
-#define NIBBLE_MASK  0xFU
+#define UV_FRAC        8
+#define UV_ONE         (1 << UV_FRAC)
+#define UV_WRAP        256.0F
+#define UV_HALF_BITS   16
+#define UV_LOW_MASK    0xFFFFU
+#define U_INT_SHIFT    (UV_HALF_BITS + UV_FRAC)
+#define V_INT_SHIFT    UV_FRAC
+#define NIBBLE_BITS    4
+#define NIBBLE_MASK    0xFU
 /* The light level walks as 8.8. */
-#define LIGHT_FRAC   8
-#define LEVEL_MAX    ((R3D_TEXTURE_LIGHT_LEVELS - 1) << LIGHT_FRAC)
+#define LIGHT_FRAC     8
+#define LEVEL_MAX      ((R3D_TEXTURE_LIGHT_LEVELS - 1) << LIGHT_FRAC)
 /* A Bayer threshold, 0..15, in 1/256 of a level. */
-#define DITHER_SHIFT (LIGHT_FRAC - 4)
-#define DEPTH_MAX    ((int32_t)R3D_DEPTH_NEAREST << R3D_DEPTH_SHIFT)
-#define CORNERS      3
+#define DITHER_SHIFT   (LIGHT_FRAC - 4)
+#define DEPTH_MAX      ((int32_t)R3D_DEPTH_NEAREST << R3D_DEPTH_SHIFT)
+#define CORNERS        3
 /* Affine bends a texel most at a triangle's middle, by about its texel
  * extent times the share its inverse depth varies, over this. */
-#define BEND_SPREAD  4.0F
+#define BEND_SPREAD    4.0F
+/* A segment grows no longer: its 8.8 step drifts under an eighth of a texel. */
+#define SEGMENT_PX_MAX 32
 
 _Static_assert(BAYER4_LEVELS << DITHER_SHIFT == 1 << LIGHT_FRAC, "a threshold stays under one level");
 _Static_assert((1 << (UV_HALF_BITS - UV_FRAC)) == (int)UV_WRAP, "u and v wrap at their integer bits");
@@ -236,9 +238,16 @@ set_up(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[CORNERS
     const float z_far = mathf_min(v[0]->z, mathf_min(v[1]->z, v[2]->z));
     const float extent = mathf_max(mathf_abs(su->s.dx) + mathf_abs(su->t.dx), mathf_abs(su->s.dy) + mathf_abs(su->t.dy))
                          * (float)mathi_max(box.w, box.h);
-    const int divide = target->texture_divide_px;
+    int divide = target->texture_divide_px;
     const float bend = (float)target->texture_bend_steps * (1.0F / (float)R3D_SPAN_BEND_STEPS);
-    const bool bends = divide > 0 && extent * (z_near - z_far) > bend * BEND_SPREAD * z_far;
+    const float bent = extent * (z_near - z_far);
+    const float allowed = bend * BEND_SPREAD * z_far;
+    const bool bends = divide > 0 && bent > allowed;
+    /* A segment of n pixels bends by (n / side)^2 of the whole: double n while that stays allowed. */
+    const float side = (float)mathi_max(box.w, box.h);
+    while (bends && divide * 2 <= SEGMENT_PX_MAX && bent * (float)(4 * divide * divide) <= allowed * side * side) {
+        divide *= 2;
+    }
     su->divide = bends ? divide : 0;
     su->whole_inverse = bends ? 1.0F / (float)divide : 0.0F;
     if (su->divide != 0) {
