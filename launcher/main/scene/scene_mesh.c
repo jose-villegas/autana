@@ -123,7 +123,7 @@ scene_mesh_make_resident(scene_t* scene) {
     /* The copies' sources, so a frame record names a resident mesh by the
      * pack entry it copies; without the memory, it names none. Taken first,
      * so the copies themselves are the scene's last take. */
-    scene->copies = scene_allocate_kept_optional(sizeof *scene->copies + sizeof *told * (size_t)count);
+    scene->copies = scene_allocate_kept_optional(sizeof *scene->copies + (sizeof *told * (size_t)count));
     if (scene->copies != NULL) {
         told = (asset_copy_t*)(void*)(scene->copies + 1);
         *scene->copies = (asset_copies_t){.copies = told, .count = count};

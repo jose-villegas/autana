@@ -20,10 +20,15 @@ import struct
 import sys
 from collections import Counter
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import console_packets
 
-TAG = "FRAMEREC"
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from build.c_header import read_define  # noqa: E402
+
+# The packets' tag, as the verb sends them.
+TAG = read_define(Path(__file__).resolve().parents[2] / "main/shell/console/console_framerec.c", "FRAMEREC_TAG")
 
 # frame_record_type_t
 RECORD_TYPES = {
