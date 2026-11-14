@@ -30,7 +30,6 @@ from r3d.import_settings import (  # noqa: E402
     SettingsError, albedo_jobs, match_meshes, variant_meshes, load_import_settings, load_scene,
 )
 from r3d.light import (  # noqa: E402
-    alpha_tested,
     drop_masked,
     encode_srgb8,
     face_colours,
@@ -45,6 +44,7 @@ from r3d.lod.bake_levels import bake_lit_mesh
 from r3d.lod.morph import morph_blob
 from r3d.lit_mesh import POSITION_SCALE, WELD_PER_TICK, bundle_entries, panel_colour, build_lit_mesh  # noqa: E402
 from r3d.mesh_source import load_source, load_glb_source, path_light_for, camera_path_poses
+from r3d.obj import alpha_tested
 from r3d.objects.budget import ceiling_split, prototype_groups
 from r3d.objects.carve import derived_budgets, detail_report, free_repeats, views
 from r3d.process_budget import NULL_RECORDER
