@@ -7686,11 +7686,14 @@ test_a_mesh_drawn_with_its_own_textures_keeps_them(void) {
 /* The pair scene with both quads the cut "red", in place of the fixture's pack. */
 static void
 make_twin_cut_pack(void) {
-    scene_spec_t twins = SCENES[0];
-    twins.renderers[1].mesh = "red";
+    scene_spec_t* twins = malloc(sizeof *twins);
+    TEST_ASSERT_NOT_NULL(twins);
+    *twins = SCENES[0];
+    twins->renderers[1].mesh = "red";
     test_pack_t pack = test_pack_begin(fx.bytes, PACK_MAX, TEXTURED_PACK_ENTRIES - 1);
     make_quad_entry(test_pack_add(&pack, "red", R3D_LIT_MESH_ASSET, QUAD_BYTES), UINT8_MAX, 0, 0, 1);
-    make_scene_entry(test_pack_add(&pack, "test_pair", SCENE_ASSET, scene_entry_size(&twins)), &twins);
+    make_scene_entry(test_pack_add(&pack, "test_pair", SCENE_ASSET, scene_entry_size(twins)), twins);
+    free(twins);
     make_textured_luvs(
         test_pack_add(&pack, "red" R3D_TEXTURE_UVS_NAME_SUFFIX, R3D_TEXTURE_UVS_ASSET, TEXTURED_LUVS_BYTES));
     add_red_material(&pack, TEXTURE_CUT);
@@ -7710,11 +7713,14 @@ test_renderers_of_one_cut_mesh_share_its_textures_for_the_scenes_life(void) {
     const r3d_mesh_texturing_t* shared = renderer_mesh(first)->texturing;
     TEST_ASSERT_NOT_NULL(shared);
     TEST_ASSERT_EQUAL_PTR(shared, renderer_mesh(second)->texturing);
-    const r3d_lit_mesh_t copy = *renderer_mesh(first);
-    TEST_ASSERT_TRUE(renderer_set_mesh(second, &copy));
-    r3d_lit_mesh_t bare = copy;
-    bare.texturing = NULL;
-    TEST_ASSERT_TRUE(renderer_set_mesh(first, &bare));
+    TEST_ASSERT_TRUE(renderer_set_mesh(second, renderer_mesh(first)));
+    r3d_lit_mesh_t* bare = malloc(sizeof *bare);
+    TEST_ASSERT_NOT_NULL(bare);
+    *bare = *renderer_mesh(first);
+    bare->texturing = NULL;
+    const bool swapped = renderer_set_mesh(first, bare);
+    free(bare);
+    TEST_ASSERT_TRUE(swapped);
     TEST_ASSERT_EQUAL_PTR(shared, renderer_mesh(first)->texturing);
     TEST_ASSERT_EQUAL_PTR(shared, renderer_mesh(second)->texturing);
 }
