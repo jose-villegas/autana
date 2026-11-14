@@ -62,7 +62,7 @@ class DerivedDetailTests(unittest.TestCase):
         rule = {'match': {'object': '*'}, 'shape': 'surface'}
         renderer = NS(variant=NS(triangles=1, ceiling=None), fit=None, visibility=None)
         camera = NS(component=NS(path=None, half_fov_short_tan=1, near_z=NEAR))
-        selected, derived = mesh_import.carve_selection(NS(p=p, tri_o=o, object_names=names), t, m,
+        selected, derived = mesh_import.carve_selection(NS(p=p, tri_o=o, textures=[], object_names=names), t, m,
             {i: rule for i in range(3)}, NS(position_scale=4), NS(renderer=renderer), NS(camera=camera))
         self.assertTrue(all(value is rule for value in selected.values()))
 
@@ -130,7 +130,7 @@ class DerivedDetailTests(unittest.TestCase):
         rule = {'match': {'object': '*'}, 'shape': 'surface', 'seam': 'free'}
         renderer = NS(variant=NS(triangles=1, ceiling=None), fit=None, visibility=None)
         camera = NS(component=NS(path=None, half_fov_short_tan=1, near_z=NEAR))
-        selected, derived = mesh_import.carve_selection(NS(p=p, tri_o=o, object_names=['a', 'b']), t, m,
+        selected, derived = mesh_import.carve_selection(NS(p=p, tri_o=o, textures=[], object_names=['a', 'b']), t, m,
             {0: rule, 1: rule}, NS(position_scale=4), NS(renderer=renderer), NS(camera=camera))
         allocation = simplify.Allocation(tri_o=o, object_names=['a', 'b'], meshes=(rule,), selection=selected,
                                         shapes=[], report={})
@@ -237,7 +237,7 @@ class MeasuredBalanceTests(unittest.TestCase):
         renderer = NS(variant=NS(triangles=1, ceiling=room + 1), fit=NS(budget=1) if fitted else None)
         with patch.object(mesh_import, 'views', return_value=([], FOCAL, NEAR)), \
                 patch.object(detail, 'ladder', return_value=ladder):
-            selected, derived = mesh_import.carve_selection(NS(p=p, tri_o=o, object_names=names), t, m,
+            selected, derived = mesh_import.carve_selection(NS(p=p, tri_o=o, textures=[], object_names=names), t, m,
                 {0: rule, 1: rule}, NS(position_scale=4), NS(renderer=renderer), object())
         info = derived.shapes[0]
         allocation = simplify.Allocation(tri_o=o, object_names=names, selection=selected, shapes=[],

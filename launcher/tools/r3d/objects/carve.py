@@ -1,7 +1,9 @@
 """Which objects an import carves, and how many triangles each carved shape keeps.
 
 A carved bake selects its rules' objects and every other object repeated as a rigid
-copy whose copies touch nothing, so a free-standing prop needs no rule. A rule that pins `triangles` keeps that
+copy whose copies touch nothing and cut no pixels away, so a free-standing prop needs no rule. An object with an
+alpha-tested material (foliage, chains, glass panes) stays in the rest, where the textured pass cuts its mask; a
+carved copy is solid geometry and carries none. A rule that pins `triangles` keeps that
 budget; every other shape's comes from detail.py: its near level for the camera's closest view, stepped down by
 the measured balance while the stored copy prototypes would exceed their room.
 """
@@ -35,11 +37,12 @@ def touching(pos, tri_v, tri_o, candidates, position_scale):
             for obj in (edge.a, edge.b) if obj in candidates}
 
 
-def free_repeats(pos, tri_v, tri_m, tri_o, object_names, selected, position_scale):
-    """{object: FREE_REPEAT} for every object outside `selected` that is a rigid copy of another and whose shape's
-    copies all touch nothing."""
+def free_repeats(pos, tri_v, tri_m, tri_o, object_names, selected, position_scale, masked=()):
+    """{object: FREE_REPEAT} for every object outside `selected` that is a rigid copy of another, has no triangle
+    of a `masked` (alpha-tested) material, and whose shape's copies all touch nothing."""
     names = [str(i) for i in range(len(object_names))]
-    rest = ~np.isin(tri_o, list(selected))
+    cut = np.unique(tri_o[np.isin(tri_m, list(masked))])
+    rest = ~np.isin(tri_o, list(selected)) & ~np.isin(tri_o, cut)
     shapes = [shape for shape in match_instances(source_objects(pos, tri_v[rest], tri_m[rest], tri_o[rest], names))
               if len(shape.instances) >= MIN_COPIES]
     copies = {int(instance.object_name) for shape in shapes for instance in shape.instances}
