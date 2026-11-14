@@ -58,7 +58,7 @@
 1595941	sand_falling_step
 2494629	sand_water_step
 43534	span_gouraud
-63873	span_masked
+63120	span_masked
 15884	span_solid
 78529	span_textured
 2160	ui_face_alpha

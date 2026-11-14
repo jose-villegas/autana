@@ -122,35 +122,6 @@ fill_masked(uint16_t* depth, uint16_t* color, int count, carry_t* c, const sampl
     fill_with(depth, color, count, c, s, x, y, true);
 }
 
-/* The target's writers over a span the fill just drew, from its first
- * pixel's depth: each writes where the fill left that depth. */
-static __attribute__((noinline, cold)) void
-write_span(const r3d_span_target_t* target, int y, int first, int last, int32_t z, int32_t dz) {
-    r3d_span_write(target, y, first, last, z, dz);
-}
-
-/* The writers over each run of kept MASK1 texels in a span from `first` to
- * `last`, its first pixel's depth `z` and texel `uv`: a hole leaves its
- * pixel, so no writer sees it, even where the stored depth ties the card's. */
-static __attribute__((noinline, cold)) void
-write_kept_runs(const r3d_span_target_t* target, const sampler_t* s, int y, int first, int last, int32_t z, int32_t dz,
-                uint32_t uv, uint32_t duv) {
-    int start = first;
-    bool in_run = false;
-    for (int x = first; x <= last; x++, uv += duv) {
-        const bool k = kept(s, uv);
-        if (k && !in_run) {
-            start = x;
-        } else if (!k && in_run) {
-            write_span(target, y, start, x - 1, z + (dz * (start - first)), dz);
-        }
-        in_run = k;
-    }
-    if (in_run) {
-        write_span(target, y, start, last, z + (dz * (start - first)), dz);
-    }
-}
-
 /* What the set-up hands the row walk. */
 typedef struct {
     r3d_span_plane_t z;     /* 16.8 depth */
@@ -173,44 +144,68 @@ pack_uv(int32_t u, int32_t v) {
     return ((uint32_t)u << UV_HALF_BITS) + (uint32_t)v;
 }
 
-/* `cut`: the texture may be MASK1 or the target may have writers; without
- * it the span is an INDEX4 fill alone, with no test of either. */
+/* The carry at a span's first pixel, `first` to `last` on row `y`. */
 static inline __attribute__((always_inline)) void
-fill_span(const r3d_span_target_t* target, const setup_t* su, const r3d_span_row_t* row, int y, int first, int last,
-          bool cut) {
+span_carry(const setup_t* su, int y, int first, int last, carry_t* c) {
     const float fx = (float)(first - su->x0);
     const float fy = (float)(y - su->y0);
     const int steps = last - first;
+    c->z = (int32_t)mathf_clamp(plane_at(&su->z, fx, fy), -2.0e9F, 2.0e9F);
+    c->dz = (int32_t)su->z.dx;
+    r3d_span_clamp_to(su->depth_max, steps, &c->z, &c->dz);
+    c->level = (int32_t)mathf_clamp(plane_at(&su->level, fx, fy), -2.0e9F, 2.0e9F);
+    c->dlevel = (int32_t)su->level.dx;
+    r3d_span_clamp_to(LEVEL_MAX, steps, &c->level, &c->dlevel);
+    c->uv = pack_uv(fixed_uv(plane_at(&su->s, fx, fy)), fixed_uv(plane_at(&su->t, fx, fy)));
+    c->duv = pack_uv((int32_t)(su->s.dx * (float)UV_ONE), 0) + (uint32_t)(int32_t)(su->t.dx * (float)UV_ONE);
+}
+
+/* The target's writers over each run of kept MASK1 texels in the span the
+ * carry `c` starts: a hole leaves its pixel, so no writer sees it, even
+ * where the stored depth ties the card's. */
+static inline __attribute__((always_inline)) void
+write_kept_runs(const r3d_span_target_t* target, const sampler_t* s, int y, int first, int last, const carry_t* c) {
+    uint32_t uv = c->uv;
+    int start = first;
+    bool in_run = false;
+    for (int x = first; x <= last; x++, uv += c->duv) {
+        const bool k = kept(s, uv);
+        if (k && !in_run) {
+            start = x;
+        } else if (!k && in_run) {
+            r3d_span_write(target, y, start, x - 1, c->z + (c->dz * (start - first)), c->dz);
+        }
+        in_run = k;
+    }
+    if (in_run) {
+        r3d_span_write(target, y, start, last, c->z + (c->dz * (start - first)), c->dz);
+    }
+}
+
+/* What a row walk does with each span. */
+typedef enum {
+    WALK_FILL,  /* the INDEX4 fill */
+    WALK_CUT,   /* the MASK1 fill: kept texels only */
+    WALK_WRITE, /* the target's writers over what a fill walk drew */
+} walk_t;
+
+static inline __attribute__((always_inline)) void
+walk_span(const r3d_span_target_t* target, const setup_t* su, int y, int first, int last, walk_t walk) {
     carry_t c;
-    c.z = (int32_t)mathf_clamp(plane_at(&su->z, fx, fy), -2.0e9F, 2.0e9F);
-    c.dz = (int32_t)su->z.dx;
-    r3d_span_clamp_to(su->depth_max, steps, &c.z, &c.dz);
-    c.level = (int32_t)mathf_clamp(plane_at(&su->level, fx, fy), -2.0e9F, 2.0e9F);
-    c.dlevel = (int32_t)su->level.dx;
-    r3d_span_clamp_to(LEVEL_MAX, steps, &c.level, &c.dlevel);
-    uint16_t* depth = row->depth + first;
-    uint16_t* color = row->color + first;
-    c.uv = pack_uv(fixed_uv(plane_at(&su->s, fx, fy)), fixed_uv(plane_at(&su->t, fx, fy)));
-    c.duv = pack_uv((int32_t)(su->s.dx * (float)UV_ONE), 0) + (uint32_t)(int32_t)(su->t.dx * (float)UV_ONE);
-    if (!cut) {
-        fill_colormap(depth, color, steps + 1, &c, &su->sampler, first, y);
+    span_carry(su, y, first, last, &c);
+    if (walk == WALK_WRITE) {
+        if (su->sampler.texture->format == R3D_TEXTURE_MASK1) {
+            write_kept_runs(target, &su->sampler, y, first, last, &c);
+        } else {
+            r3d_span_write(target, y, first, last, c.z, c.dz);
+        }
         return;
     }
-    const int32_t z = c.z;
-    const uint32_t uv = c.uv;
-    const bool masked = su->sampler.texture->format == R3D_TEXTURE_MASK1;
-    if (masked) {
-        fill_masked(depth, color, steps + 1, &c, &su->sampler, first, y);
+    const r3d_span_row_t row = r3d_span_row(target, y);
+    if (walk == WALK_CUT) {
+        fill_masked(row.depth + first, row.color + first, last - first + 1, &c, &su->sampler, first, y);
     } else {
-        fill_colormap(depth, color, steps + 1, &c, &su->sampler, first, y);
-    }
-    if (target->writer_count == 0) {
-        return;
-    }
-    if (masked) {
-        write_kept_runs(target, &su->sampler, y, first, last, z, c.dz, uv, c.duv);
-    } else {
-        write_span(target, y, first, last, z, c.dz);
+        fill_colormap(row.depth + first, row.color + first, last - first + 1, &c, &su->sampler, first, y);
     }
 }
 
@@ -240,7 +235,8 @@ light_level(const r3d_span_vertex_t* v) {
     return luma * ((float)LEVEL_MAX / (float)UINT8_MAX);
 }
 
-static bool
+/* Off the row walks' stack chain: the frame lives only here. */
+static __attribute__((noinline)) bool
 set_up(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[CORNERS], const vec2f_t uv[CORNERS],
        const r3d_texture_t* texture, recti_t box, setup_t* su) {
     r3d_span_frame_t f;
@@ -270,10 +266,10 @@ set_up(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[CORNERS
 
 /* r3d_span's walk: the long edge v0-v2 runs the whole height, and v1 lies
  * right of it when v0-v1-v2 winds positive; the short edge is v0-v1 above
- * v1's row and v1-v2 from it. `cut` as fill_span(). */
+ * v1's row and v1-v2 from it. */
 static inline __attribute__((always_inline)) void
 walk_rows(const r3d_span_target_t* target, const setup_t* su, recti_t box, const r3d_span_vertex_t* v0,
-          const r3d_span_vertex_t* v1, const r3d_span_vertex_t* v2, bool long_on_left, bool cut) {
+          const r3d_span_vertex_t* v1, const r3d_span_vertex_t* v2, bool long_on_left, walk_t walk) {
     const int end = recti_bottom(box);
     const int split = mathi_clamp(r3d_span_first_centre(v1->y), box.y, end);
     const int last_column = target->rows.attachment[GFX_ATTACHMENT_COLOR].width - 1;
@@ -289,8 +285,7 @@ walk_rows(const r3d_span_target_t* target, const setup_t* su, recti_t box, const
         const int first = mathi_max(left->q, 0);
         const int last = mathi_min(right->q - 1, last_column);
         if (first <= last) {
-            const r3d_span_row_t row = r3d_span_row(target, y);
-            fill_span(target, su, &row, y, first, last, cut);
+            walk_span(target, su, y, first, last, walk);
         }
         r3d_span_walk_edge_step(&long_edge);
         r3d_span_walk_edge_step(&short_edge);
@@ -300,18 +295,26 @@ walk_rows(const r3d_span_target_t* target, const setup_t* su, recti_t box, const
 static __attribute__((noinline)) void
 walk_plain(const r3d_span_target_t* target, const setup_t* su, recti_t box, const r3d_span_vertex_t* v0,
            const r3d_span_vertex_t* v1, const r3d_span_vertex_t* v2, bool long_on_left) {
-    walk_rows(target, su, box, v0, v1, v2, long_on_left, false);
+    walk_rows(target, su, box, v0, v1, v2, long_on_left, WALK_FILL);
 }
 
 /* At the flash tail, as fill_masked(). */
 static RENDER_TAIL_ATTR __attribute__((noinline)) void
 walk_cut(const r3d_span_target_t* target, const setup_t* su, recti_t box, const r3d_span_vertex_t* v0,
          const r3d_span_vertex_t* v1, const r3d_span_vertex_t* v2, bool long_on_left) {
-    walk_rows(target, su, box, v0, v1, v2, long_on_left, true);
+    walk_rows(target, su, box, v0, v1, v2, long_on_left, WALK_CUT);
 }
 
-/* Sets up `texture` over the triangle, then walks its rows: an INDEX4 fill
- * alone, or with MASK1's cut and the target's writers. */
+/* After the fill, as r3d_span's writers: each pixel's depth is then the
+ * triangle's where it drew. At the flash tail: only debug views write. */
+static RENDER_TAIL_ATTR __attribute__((noinline, cold)) void
+walk_writers(const r3d_span_target_t* target, const setup_t* su, recti_t box, const r3d_span_vertex_t* v0,
+             const r3d_span_vertex_t* v1, const r3d_span_vertex_t* v2, bool long_on_left) {
+    walk_rows(target, su, box, v0, v1, v2, long_on_left, WALK_WRITE);
+}
+
+/* Sets up `texture` over the triangle, then walks its rows: the INDEX4
+ * fill or MASK1's cut, then the target's writers over what it drew. */
 void
 r3d_span_textured_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                            const r3d_span_vertex_t* c, const vec2f_t uv[CORNERS], const r3d_texture_t* texture) {
@@ -329,9 +332,12 @@ r3d_span_textured_triangle(const r3d_span_target_t* target, const r3d_span_verte
     const r3d_span_vertex_t* v2 = c;
     const bool long_on_left = (area2 > 0) != r3d_span_sort_by_y(&v0, &v1, &v2);
     FRAME_LAP("r3d.draw.fill");
-    if (texture->format == R3D_TEXTURE_MASK1 || target->writer_count != 0) {
+    if (texture->format == R3D_TEXTURE_MASK1) {
         walk_cut(target, &su, box, v0, v1, v2, long_on_left);
     } else {
         walk_plain(target, &su, box, v0, v1, v2, long_on_left);
+    }
+    if (target->writer_count != 0) {
+        walk_writers(target, &su, box, v0, v1, v2, long_on_left);
     }
 }
