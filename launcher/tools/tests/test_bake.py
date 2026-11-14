@@ -1148,7 +1148,7 @@ class CpuVendorTests(FittedBakeCase):
         done = self.lock(self.made(self.INTEL), self.AMD)
         self.assertEqual(done.code, 1)
         self.assertFalse(done.written, "a refused run writes no lock")
-        for named in (f"run {RUN}", self.start.output, self.INTEL, self.AMD, "re-run the failed Bakes CPU job"):
+        for named in (f"run {RUN}", self.start.output, self.INTEL, self.AMD, "re-run the failed Bakes job"):
             self.assertIn(named, done.err)
 
     def test_a_run_whose_reference_was_made_on_another_vendor_is_refused_naming_it(self):
@@ -1191,7 +1191,7 @@ class CpuVendorTests(FittedBakeCase):
         done = self.command(["bake", "--kind", "mesh", "--out", out], {}, mesh_cpu_vendor=self.AMD, cpu=self.INTEL)
         self.assertEqual(done.code, 1)
         self.assertEqual(done.produced, [])
-        for named in (self.INTEL, self.AMD, "re-run the failed Bakes CPU job"):
+        for named in (self.INTEL, self.AMD, "re-run the failed Bakes job"):
             self.assertIn(named, done.err)
         for argv, cpu in ((["bake", "--kind", "mesh"], self.INTEL), (["bake", "--kind", "mesh", "--out", out], self.AMD)):
             with self.subTest(argv=argv, cpu=cpu):

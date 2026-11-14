@@ -1170,7 +1170,7 @@ def gpu_name():
 
 
 def rerun_on(mesh_cpu_vendor):
-    return (f"the lock's meshes are {mesh_cpu_vendor}'s: re-run the failed Bakes CPU job until it lands on a "
+    return (f"the lock's meshes are {mesh_cpu_vendor}'s: re-run the failed Bakes job until it lands on a "
             f"{mesh_cpu_vendor} runner")
 
 
