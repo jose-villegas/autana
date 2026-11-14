@@ -153,20 +153,32 @@ blend_run(gfx_color_t* dst, int count, gfx_color_t pixel, uint8_t cover) {
 }
 
 /* One panel row's pixels [x0, x1): source pixel `base + map[col] * step`, the
- * same index in both planes, which share one stride. */
+ * same index in both planes, which share one stride. Neighbours of one
+ * colour and share blend as one run, across slice edges: a skin's face row
+ * runs from rim to rim. */
 static inline void
 blend_span(gfx_color_t* row, int x0, int x1, const int16_t* map, const sprite_t* s, size_t base, size_t step) {
     const gfx_color_t* color = s->color.pixels;
     const uint8_t* alpha = s->alpha.pixels;
     int col = x0;
     while (col < x1) {
-        const int16_t source = map[col - x0];
+        int16_t source = map[col - x0];
+        const size_t at = base + ((size_t)source * step);
+        const gfx_color_t pixel = color[at];
+        const uint8_t cover = alpha == NULL ? SPRITE_COVER_FULL : alpha[at];
         int end = col + 1;
-        while (end < x1 && map[end - x0] == source) {
+        while (end < x1) {
+            const int16_t next = map[end - x0];
+            if (next != source) {
+                const size_t next_at = base + ((size_t)next * step);
+                if (color[next_at] != pixel || (alpha != NULL && alpha[next_at] != cover)) {
+                    break;
+                }
+                source = next;
+            }
             end++;
         }
-        const size_t at = base + ((size_t)source * step);
-        blend_run(row + col, end - col, color[at], alpha == NULL ? SPRITE_COVER_FULL : alpha[at]);
+        blend_run(row + col, end - col, pixel, cover);
         col = end;
     }
 }

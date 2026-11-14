@@ -259,6 +259,24 @@ translucent_geometry_sprite(void) {
     return s;
 }
 
+/* A face like a skin's: a rim of the geometry picture's own pixels and
+ * shares round one colour at one share, so a panel row runs through edge,
+ * centre and edge as one. */
+#define FACE_COLOR 0x5A5Au
+#define FACE_COVER 128
+
+static sprite_t
+face_geometry_sprite(void) {
+    sprite_t s = translucent_geometry_sprite();
+    for (int y = 1; y < GEO_H - 1; y++) {
+        for (int x = 1; x < GEO_W - 1; x++) {
+            geo_pixels[y][x] = FACE_COLOR;
+            geo_cover[y][x] = FACE_COVER;
+        }
+    }
+    return s;
+}
+
 static void
 fixture(void) {
     TEST_ASSERT_TRUE(gfx_init());
@@ -308,12 +326,14 @@ paint_background(recti_t area) {
     }
 }
 
-/* Every panel pixel of `dst` against the turned, nine-sliced picture: the
- * sprite frame pixel a panel pixel shows, by the turn image_asset.turn()
- * makes; translucent, that pixel blended one at a time over the background. */
+/* Every panel pixel of `dst` against the turned, nine-sliced picture `art`
+ * draws: the sprite frame pixel a panel pixel shows, by the turn
+ * image_asset.turn() makes; translucent, that pixel blended one at a time
+ * over the background. */
 static void
-assert_geometry(int turns, int w, int h, int scale, bool translucent) {
-    const sprite_t s = translucent ? translucent_geometry_sprite() : geometry_sprite();
+assert_geometry(int turns, int w, int h, int scale, sprite_t (*art)(void)) {
+    const sprite_t s = art();
+    const bool translucent = s.alpha.pixels != NULL;
     const bool across = (turns & 1) != 0;
     const recti_t dst = {GEO_AT, GEO_AT, across ? h : w, across ? w : h};
     draw_clear(BACKGROUND);
@@ -328,8 +348,8 @@ assert_geometry(int turns, int w, int h, int scale, bool translucent) {
             const int sx = expected_source(lx[turns], w, GEO_W, GEO_LEFT, GEO_RIGHT, scale);
             const int sy = expected_source(ly[turns], h, GEO_H, GEO_TOP, GEO_BOTTOM, scale);
             const gfx_color_t expected =
-                translucent ? rgb565be_mix(background_at(dst.x + px, dst.y + py), code(sx, sy), cover_at(sx, sy))
-                            : code(sx, sy);
+                translucent ? rgb565be_mix(background_at(dst.x + px, dst.y + py), geo_pixels[sy][sx], geo_cover[sy][sx])
+                            : geo_pixels[sy][sx];
             if (panel(dst.x + px, dst.y + py) != expected) {
                 char message[112];
                 (void)snprintf(message, sizeof message,
@@ -345,10 +365,10 @@ assert_geometry(int turns, int w, int h, int scale, bool translucent) {
 
 /* assert_geometry() at every turn for each {w, h, scale} of `sizes`. */
 static void
-assert_geometry_at_every_turn(const int (*sizes)[3], size_t n, bool translucent) {
+assert_geometry_at_every_turn(const int (*sizes)[3], size_t n, sprite_t (*art)(void)) {
     for (int turns = 0; turns < TURNS; turns++) {
         for (size_t i = 0; i < n; i++) {
-            assert_geometry(turns, sizes[i][0], sizes[i][1], sizes[i][2], translucent);
+            assert_geometry(turns, sizes[i][0], sizes[i][1], sizes[i][2], art);
         }
     }
 }
@@ -363,7 +383,7 @@ test_nine_slice_geometry_at_every_turn_and_size(void) {
         {GEO_LEFT + GEO_RIGHT + 1, GEO_H + 1, UNSCALED}, /* one centre column */
         {TINY, TINY, UNSCALED},                          /* shorter than the borders */
     };
-    assert_geometry_at_every_turn(sizes, sizeof sizes / sizeof sizes[0], false);
+    assert_geometry_at_every_turn(sizes, sizeof sizes / sizeof sizes[0], geometry_sprite);
 }
 
 /* draw_sprite_scaled(): the corners drawn ZOOM panel pixels to a sprite
@@ -376,11 +396,12 @@ test_a_scaled_border_at_every_turn_and_size(void) {
         {GEO_W * ZOOM * STRETCH, GEO_H * ZOOM * STRETCH, ZOOM}, /* stretched past it */
         {TINY * ZOOM, TINY * ZOOM, ZOOM},                       /* shorter than the scaled borders */
     };
-    assert_geometry_at_every_turn(sizes, sizeof sizes / sizeof sizes[0], false);
+    assert_geometry_at_every_turn(sizes, sizeof sizes / sizeof sizes[0], geometry_sprite);
 }
 
-/* A translucent picture, its edges long enough to blend as runs: every
- * pixel the same as blending it alone, at every turn, size and scale. */
+/* A translucent picture, and a face of one colour and share inside its rim,
+ * long enough to blend as runs: every pixel the same as blending it alone,
+ * at every turn, size and scale. */
 static void
 test_translucent_edge_runs_blend_as_each_pixel_alone(void) {
     fixture();
@@ -390,7 +411,8 @@ test_translucent_edge_runs_blend_as_each_pixel_alone(void) {
         {GEO_W * STRETCH, LONG_EDGE, UNSCALED},
         {LONG_EDGE, LONG_EDGE, ZOOM},
     };
-    assert_geometry_at_every_turn(sizes, sizeof sizes / sizeof sizes[0], true);
+    assert_geometry_at_every_turn(sizes, sizeof sizes / sizeof sizes[0], translucent_geometry_sprite);
+    assert_geometry_at_every_turn(sizes, sizeof sizes / sizeof sizes[0], face_geometry_sprite);
 }
 
 static void
