@@ -174,22 +174,13 @@ scene_drawn_instances(void) {
     return drawn.instances;
 }
 
-/* Whether a renderer moves on its own, for frame generation: it changed
- * this frame or the last, so the frame after it stops still draws it again
- * over a warp of the picture drawn without it. */
-static bool
-renderer_moving(const scene_renderer_t* r) {
-    return r->batch == NULL && (r->changed || r->moved);
-}
-
-/* `scene`'s active renderers of one pass, the still ones (0) or the moving
- * ones (1), appended to `drawn` from `*count` instances and `*batches` batch
- * draws. */
+/* `scene`'s active renderers, appended to `drawn` from `*count` instances
+ * and `*batches` batch draws. */
 static void
-fill_scene(scene_t* scene, const r3d_lod_measure_t* measure, int pass, int* count, int* batches) {
+fill_scene(scene_t* scene, const r3d_lod_measure_t* measure, int* count, int* batches) {
     for (int i = 0; i < scene->active_renderer_count; i++) {
         scene_renderer_t* r = &scene->renderers[scene->active_renderers[i]];
-        if (r->mesh.node_count == 0 || renderer_moving(r) != (pass == 1)) {
+        if (r->mesh.node_count == 0) {
             continue;
         }
         if (scene->skinned_renderers[r->entity].bound) {
@@ -205,24 +196,18 @@ fill_scene(scene_t* scene, const r3d_lod_measure_t* measure, int pass, int* coun
 }
 
 /* Every drawn scene's active renderers with something to draw, as the raster
- * draws them, into `drawn`: the instances, returning their count, the moving
- * ones last, `*moving` of them; and the batches, `*batches` of them.
- * scene_resolve() has listed them. */
+ * draws them, into `drawn`: the instances, returning their count, and the
+ * batches, `*batches` of them. scene_resolve() has listed them. */
 static int
-fill_instances(int* batches, int* moving) {
+fill_instances(int* batches) {
     r3d_lens_t lens;
     r3d_lens_init(&lens, &drawn_view, 1);
     const r3d_lod_measure_t measure = r3d_lod_measure(&lens);
     int count = 0;
     *batches = 0;
     for (int k = 0; k < drawn_scene_count; k++) {
-        fill_scene(drawn_scenes[k], &measure, 0, &count, batches);
+        fill_scene(drawn_scenes[k], &measure, &count, batches);
     }
-    const int still = count;
-    for (int k = 0; k < drawn_scene_count; k++) {
-        fill_scene(drawn_scenes[k], &measure, 1, &count, batches);
-    }
-    *moving = count - still;
     return count;
 }
 
@@ -245,7 +230,6 @@ fill_scene_changed(scene_t* scene, int changes, name_hash64_t* set) {
                 changed[changes++] = box3f_union(r->drawn_bounds, r->world_bounds);
             }
         }
-        r->moved = r->changed;
         r->changed = false;
         r->drawn_bounds = r->world_bounds;
     }
@@ -306,14 +290,12 @@ draw_active(int quarter, int width, int height) {
     /* Size measurements must use this draw's lens, including its viewport. */
     active_view(scene, camera, (viewport_t){width, height, quarter});
     int batches = 0;
-    int moving = 0;
     /* -1: no memory for the list. */
-    const int count = fit_drawn() ? fill_instances(&batches, &moving) : -1;
+    const int count = fit_drawn() ? fill_instances(&batches) : -1;
     if (count + batches == 0) {
         return;
     }
     if (count >= 0) {
-        render_context_set_moving(render_context_main(), moving);
         render_context_set_changed(render_context_main(), changed, fill_changed());
         render_context_set_batches(render_context_main(), drawn.batch_draws, batches);
         rendered = render_context_draw(render_context_main(), drawn.instances, count, &drawn_view, camera->clear);

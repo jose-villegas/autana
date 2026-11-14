@@ -113,9 +113,7 @@ raster_batch_end(const raster_t* raster, int first) {
     int end = first;
     /* A batch holds instances or kept copies, never both. */
     if (first < raster->instance_count) {
-        const int moving_from = raster_moving_from(raster);
-        const int last = first < moving_from ? moving_from : raster->instance_count;
-        while (end < last && end - first < most
+        while (end < raster->instance_count && end - first < most
                && batch_fits(raster->instances[end].mesh, vertex_capacity, cluster_capacity, &vertices, &clusters)) {
             end++;
         }
@@ -193,8 +191,7 @@ typedef struct {
     world_cull_t world;
     level_pick_t pick;
     const raster_buffers_t* buffers;
-    int first;             /* the drawn list's entry the cull starts at: the first moving one when moving_only */
-    int drawn_count;       /* the entries from `first` on, which both cores cull a range of */
+    int drawn_count;       /* the drawn list's, which both cores cull a range of */
     cull_half_t halves[2]; /* [0] this core's first instances, [1] core 1's last */
     job_range_t ranges[2]; /* job_run_range_in()'s */
 } cull_job_t;
@@ -757,8 +754,6 @@ cull_slice(void* ctx, int from, int to) {
     CULL_LAP(FRAME_LAP, job->fitted, "walk");
     const raster_t* raster = job->raster;
     const int half = from == 0 ? 0 : 1;
-    from += job->first;
-    to += job->first;
     cull_half_t* mine = &job->halves[half];
     r3d_pipeline_work_t* block = job->buffers->work[half];
     uint16_t* culled = job->buffers->culled;
@@ -805,15 +800,8 @@ cull_begin(draw_work_t* work, const raster_t* raster, const render_view_t* view,
     picture_lens_t* picture = &work->picture;
     picture_lens_init(picture, raster, view, fitted);
     world_cull_init(&job->world, picture, view, job->settings.cull);
-    job->first = 0;
-    if (raster->moving_only) {
-        /* The copies the picture's own draw kept stay in the census, undrawn. */
-        job->first = raster_moving_from(raster);
-        job->drawn_count = raster->moving_count;
-    } else {
-        expand_batches(raster, &job->world, &work->buffers);
-        job->drawn_count = raster_census_count(raster);
-    }
+    expand_batches(raster, &job->world, &work->buffers);
+    job->drawn_count = raster_census_count(raster);
     job->pick = level_pick_init(raster, picture, view, &job->settings.lod);
     for (int h = 0; h < 2; h++) {
         job->halves[h] = (cull_half_t){{0}, {view->lens.near_z, INFINITY}, false};
@@ -945,11 +933,7 @@ draw_batch(const raster_t* raster, int index, draw_work_t* work) {
                                                   JOB_SHARE_PERMILLE - job_share_permille(transform_share));
     slice_t* mine = &work->mine;
     slice_t* other = &work->other;
-    *mine = (slice_t){.raster = raster,
-                      .batch = batch,
-                      .count = half,
-                      .clear = index == 0 && !raster->moving_only,
-                      .buffers = &work->buffers};
+    *mine = (slice_t){.raster = raster, .batch = batch, .count = half, .clear = index == 0, .buffers = &work->buffers};
     *other = *mine;
     other->first = half;
     other->count = count - half;
@@ -1052,78 +1036,18 @@ batch_fill(const raster_t* raster, draw_work_t* work, int first, int end, uint16
     return culled;
 }
 
-/* The census list past drawn-list entries [first, end), from `culled`, theirs. */
-static __attribute__((noinline)) uint16_t*
-culled_past(const raster_t* raster, int first, int end, uint16_t* culled) {
-    for (int i = first; i < end; i++) {
-        culled += 1 + (size_t)raster_census_entry(raster, i)->mesh->cluster_count;
-    }
-    return culled;
-}
-
-/* Draws drawn-list entries [first, end), their census list at `culled`, a
- * batch at a time, numbering batches on from `*index`. */
-static inline __attribute__((always_inline)) void
-draw_entries(const raster_t* raster, draw_work_t* work, int first, int end, uint16_t* culled, int* index) {
-    while (first < end) {
-        const int batch_end = mathi_min(raster_batch_end(raster, first), end);
-        culled = batch_fill(raster, work, first, batch_end, culled);
-        first = batch_end;
-        if (work->blends) {
-            batch_blend(&work->picture, &work->batch, batch_morphs(work));
-        }
-        draw_batch(raster, *index, work);
-        (*index)++;
-    }
-}
-
-/* The picture's colour and depth as the still part left them, in the rows
- * the moving instances will draw over (raster_t.still): their world boxes',
- * or every row when one has none or reaches behind the eye. */
-static __attribute__((noinline)) void
-keep_still(const raster_t* raster, const render_view_t* view) {
-    FRAME_COST_BEGIN(kept_from);
-    raster_still_t* still = raster->still;
-    r3d_lens_t lens;
-    raster_lens(raster, view, 1, &lens);
-    int first = raster->height;
-    int end = 0;
-    for (int i = raster_moving_from(raster); i < raster->instance_count; i++) {
-        const box3f_t* box = raster->instances[i].world_bounds;
-        int box_first;
-        int box_end;
-        if (box == NULL || !r3d_lens_box_rows(&lens, *box, &box_first, &box_end)) {
-            first = 0;
-            end = raster->height;
-            break;
-        }
-        first = mathi_min(first, box_first);
-        end = mathi_max(end, box_end);
-    }
-    still->first_row = mathi_max(first, 0);
-    still->end_row = mathi_max(still->first_row, mathi_min(end, raster->height));
-    const size_t from = (size_t)still->first_row * (size_t)raster->width;
-    const size_t pixels = (size_t)(still->end_row - still->first_row) * (size_t)raster->width;
-    memcpy(still->colour + from, raster_color(raster) + from, pixels * sizeof(uint16_t));
-    memcpy(still->depth + from, raster_depth(raster) + from, pixels * sizeof(uint16_t));
-    FRAME_COST_END(kept_from, "r3d.still");
-}
-
 /* A NULL stats pointer uses the census list; otherwise each instance is
  * culled. Inlining keeps the draw chain to one entry's stack frame. */
 static inline __attribute__((always_inline)) void
 draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t* stats) {
     assert(raster->instance_count + raster->batch_count > 0);
-    assert(!raster->moving_only || raster->moving_count > 0);
     assert_view_size(raster, view);
     draw_work_t* work = scratch_draw(raster);
-    /* Every instance is culled before any is drawn: they share one depth
-     * scale. The moving instances drawn alone keep the picture's. */
+    /* Every instance is culled before any is drawn: they share one depth scale. */
     const float kept_near = *work->buffers.depth_near;
     if (stats != NULL) {
         FRAME_COST_BEGIN(culled_from);
-        const float fit = cull_instances(raster, view, true, stats, work);
-        *work->buffers.depth_near = raster->moving_only ? kept_near : fit;
+        *work->buffers.depth_near = cull_instances(raster, view, true, stats, work);
         FRAME_COST_END(culled_from, R3D_STAGE_CULL_NAME);
     }
     /* Kept rows hold depth at the last draw's scale and the cuts it drew: a
@@ -1146,26 +1070,20 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
     picture_lens_init(&work->picture, raster, view, true);
     /* Off, no instance blends: the morph state is set up only when it may. */
     work->blends = blend_on(raster);
-    /* The still part first: the instances before the moving ones, then the
-     * copies. The count is read where the census wrote it, held in no register. */
-    const int moving_from = raster_moving_from(raster);
-    uint16_t* moving_culled = culled_past(raster, 0, moving_from, culled);
+    /* The first batch clears the picture, so it runs with nothing kept too.
+     * The count is read where the census wrote it, held in no register. */
+    int first = 0;
     int index = 0;
-    if (!raster->moving_only) {
-        draw_entries(raster, work, 0, moving_from, culled, &index);
-        draw_entries(raster, work, raster->instance_count, raster_census_count(raster),
-                     culled_past(raster, moving_from, raster->instance_count, moving_culled), &index);
-        if (index == 0) {
-            /* The first batch clears the picture, so it runs with nothing kept too. */
-            work->batch.count = 0;
-            draw_batch(raster, index, work);
-            index++;
+    do {
+        const int end = raster_batch_end(raster, first);
+        culled = batch_fill(raster, work, first, end, culled);
+        first = end;
+        if (work->blends) {
+            batch_blend(&work->picture, &work->batch, batch_morphs(work));
         }
-        if (raster->still != NULL) {
-            keep_still(raster, view);
-        }
-    }
-    draw_entries(raster, work, moving_from, raster->instance_count, moving_culled, &index);
+        draw_batch(raster, index, work);
+        index++;
+    } while (first < raster_census_count(raster));
 }
 
 raster_stats_t

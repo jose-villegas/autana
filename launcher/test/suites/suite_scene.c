@@ -921,35 +921,6 @@ test_a_scaled_context_preserves_the_non_square_views_destination(void) {
     }
 }
 
-/* Frames shown until no renderer moves: a scene's first frames change every
- * renderer, and each stays moving one frame after. */
-#define FRAMES_TO_SETTLE 3
-
-/* The renderers that moved draw last, counted for frame generation; one
- * that stops moving stays among them one more frame, then drops out. */
-static void
-test_a_renderer_that_stops_moving_drops_out_of_the_moving_ones_a_frame_later(void) {
-    fixture();
-    const entity_t scene = show("test_pair");
-    const render_context_t* c = render_context_main();
-    for (int i = 0; i < FRAMES_TO_SETTLE; i++) {
-        frame(0);
-    }
-    TEST_ASSERT_EQUAL_INT(0, c->moving_count);
-    const entity_t green = entity_find(scene, name_hash("green"));
-    transformf_t moved = transform_local(green);
-    moved.position.y += 1.0F;
-    transform_set_local(green, moved);
-    const int expected[] = {1, 1, 0}; /* moved, moved last frame, still */
-    for (size_t i = 0; i < sizeof expected / sizeof expected[0]; i++) {
-        frame(0);
-        TEST_ASSERT_EQUAL_INT(expected[i], c->moving_count);
-        if (expected[i] > 0) {
-            TEST_ASSERT_EQUAL_PTR(renderer_mesh(green), c->raster.instances[c->raster.instance_count - 1].mesh);
-        }
-    }
-}
-
 static uint16_t
 pixel_at(float right_units, float down_units) {
     return fx.pixels[((CENTER + (int)(down_units * PIXELS_PER_UNIT)) * SIZE) + CENTER
@@ -3031,6 +3002,9 @@ test_a_scene_without_the_active_camera_draws_its_copies(void) {
 /* Moved down past a quad's height, so the twins share no rows: a partial
  * redraw of one leaves the other's rows alone. */
 #define SWAPPED_SCENE_DROP 3.0F
+
+/* Frames shown until a scene's first frames have drawn every renderer where it is. */
+#define FRAMES_TO_SETTLE   3
 
 /* A renderer that leaves one scene as its twin, with the same index, joins
  * another is a changed drawn set: the frame is drawn whole, as a forgotten
@@ -7312,7 +7286,6 @@ run_scene_suite(void) {
     RUN_TEST(test_leaving_the_app_unloads_every_scene_and_frees_the_scratch);
     RUN_TEST(test_a_turned_non_square_scene_places_the_coloured_instance);
     RUN_TEST(test_a_scaled_context_preserves_the_non_square_views_destination);
-    RUN_TEST(test_a_renderer_that_stops_moving_drops_out_of_the_moving_ones_a_frame_later);
     RUN_TEST(test_scene_render_draws_into_scratch_and_leaves_the_framebuffer_alone);
     RUN_TEST(test_a_compose_with_no_framebuffer_writes_nothing);
     RUN_TEST(test_leaving_an_app_while_paused_lifts_the_pause);

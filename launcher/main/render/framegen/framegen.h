@@ -19,14 +19,8 @@
 #define FRAMEGEN_STAGE_WARP_NAME "framegen.warp"
 #define FRAMEGEN_STAGE_FILL_NAME "framegen.fill"
 
-/* A warped sky pixel in the target: farther than anything drawn, yet not a
- * hole; the fill shows it as the sky (R3D_DEPTH_EMPTY). */
-#define FRAMEGEN_DEPTH_SKY       1U
-
-/* A picture at the raster's size, in PSRAM: the warp's target, its colour
- * and the depth its splats test, R3D_DEPTH_EMPTY where nothing landed; or the
- * still part of a drawn frame, before its moving instances drew
- * (raster_t.still). */
+/* The warp's own picture at the raster's size, in PSRAM: the warped colour,
+ * and the depth its splats test, R3D_DEPTH_EMPTY where nothing landed. */
 typedef struct {
     uint16_t* colour;
     uint16_t* depth;
@@ -38,17 +32,13 @@ typedef struct {
 bool framegen_target_alloc(framegen_target_t* out, int width, int height);
 void framegen_target_free(framegen_target_t* target);
 
-/* Warps the raster's own picture, the rows `still` kept (when not NULL)
- * read from there instead, drawn through
- * `drawn` at the raster's depth scale, to `now`: each pixel lands on the
- * nearest target pixel, the nearer point winning; the sky only turns. Both
- * cores take half the source rows. */
-void framegen_warp(const raster_t* raster, const raster_still_t* still, const render_view_t* drawn,
-                   const render_view_t* now, framegen_target_t* out);
+/* Warps `raster`'s colour and depth, drawn through `drawn`, to `now`: each
+ * pixel lands on the nearest target pixel, the nearer point winning; the sky
+ * only turns. Both cores take half the source rows. */
+void framegen_warp(const raster_t* raster, const render_view_t* drawn, const render_view_t* now,
+                   framegen_target_t* out);
 
-/* Completes the generated frame in the raster's own picture, so it composes
- * as a drawn frame does and moving instances can draw over it: `target`'s
- * pixel where one landed, the picture's own where nothing did, or in the
- * rows `still` kept (when not NULL) the kept one. Returns the pixels nothing
- * landed on. */
-int framegen_fill(const raster_t* raster, const raster_still_t* still, const framegen_target_t* target);
+/* Completes the generated frame in `target`, so its picture composes as a
+ * drawn frame does: the drawn frame's pixel where nothing landed. `raster`
+ * keeps the drawn frame. Returns the pixels nothing landed on. */
+int framegen_fill(const raster_t* raster, const framegen_target_t* target);

@@ -15,7 +15,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | [input](#input) | 11 | 0 | 0 |
 | [kinematics](#kinematics) | 6 | 2 | 0 |
 | [math](#math) | 25 | 25 | 0 |
-| [overview](#overview) | 26 | 0 | 0 |
+| [overview](#overview) | 25 | 0 | 0 |
 | [physics](#physics) | 2 | 0 | 0 |
 | [power](#power) | 2 | 0 | 0 |
 | [render](#render) | 130 | 4 | 0 |
@@ -141,7 +141,6 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/overview/render-lab-stress-culled.png"><img src="../images/overview/render-lab-stress-culled.png" width="160" alt=""></a> | Plane before the camera turns away | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-few-copies.png"><img src="../images/overview/render-lab-stress-few-copies.png" width="160" alt=""></a> | Stress few copies: two dense spheres | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-mix.png"><img src="../images/overview/render-lab-stress-mix.png" width="160" alt=""></a> | Stress mix: planes with several tessellations and colour modes | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
-| <a href="../images/overview/render-lab-stress-mover.png"><img src="../images/overview/render-lab-stress-mover.png" width="160" alt=""></a> | Stress mover: the front of a deep stack of banded planes | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-near.png"><img src="../images/overview/render-lab-stress-near.png" width="160" alt=""></a> | Spheres along the camera path | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-noisy-tiny.png"><img src="../images/overview/render-lab-stress-noisy-tiny.png" width="160" alt=""></a> | Stress noisy tiny: cylinders end on, their fans of slivers | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-open.png"><img src="../images/overview/render-lab-stress-open.png" width="160" alt=""></a> | Stress open: a wall of planes side by side | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |

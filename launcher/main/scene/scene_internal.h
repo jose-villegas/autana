@@ -152,7 +152,6 @@ typedef struct {
     scene_row_t entity;
     bool placed;        /* false while the transform is the identity: drawn as it is */
     bool changed;       /* its mesh or model changed since it was last drawn (render/partial) */
-    bool moved;         /* `changed` when last drawn: it moves on its own until a frame after it stops */
     uint32_t lod_words; /* the level state held for the mesh opened: R3D_LOD_STATE_WORDS of its groups, a copy's each */
     uint32_t* lod_coarse; /* into the scene's lod_bits, or NULL without levels; a batch's are its copies' */
     r3d_batch_t* batch;   /* its copies, or NULL: it draws its mesh once */
@@ -326,8 +325,8 @@ void scene_draw_activate(scene_t* scene, int camera);
 /* A scene is going away: the draw drops it if its camera is active. */
 void scene_draw_forget(const scene_t* scene);
 void scene_draw_release(void);
-/* What the last draw gave the raster: every drawn scene's instances, still
- * ones first, then the moving ones; valid until the next draw. */
+/* What the last draw gave the raster: every drawn scene's instances, in
+ * the order the scenes are drawn; valid until the next draw. */
 const r3d_instance_t* scene_drawn_instances(void);
 
 /* Rebuilds the world of every parent and active renderer whose own transform

@@ -16,7 +16,6 @@
 #include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/scene_baked.h"
 #include "apps/render_lab/sponza_content.h"
-#include "apps/render_lab/stress/scene_stress.h"
 #include "apps/render_lab/tests/render_lab_test.h"
 #include "lab/lab_scene.h"
 #include "lab/test/lab_perf_quarters.h"
@@ -49,16 +48,13 @@ static const char* TAG = "framegen";
  * (or all of them), each stage's mean over them; other is the frame's time no
  * stage holds (scene, compose, present). */
 #define FRAMEGEN_WORST_LINE                                                                                            \
-    "framegen_worst: %s framegen=%d budget_ms=%d share=%s frames=%d generated=%d frame_us=%d still=%d warp=%d "        \
-    "fill=%d cull=%d transform=%d draw=%d upscale=%d anim=%d other=%d"
+    "framegen_worst: %s framegen=%d budget_ms=%d share=%s frames=%d generated=%d frame_us=%d warp=%d fill=%d "         \
+    "cull=%d transform=%d draw=%d upscale=%d anim=%d other=%d"
 #define FRAMEGEN_WORST_PERCENT 5
 
 /* A modes line: one scenario's path played in real time in one mode. */
-/* The raster's bracket round the still part's copy (raster.c keep_still()). */
-#define FRAMEGEN_STILL_STAGE   "r3d.still"
 #define FRAMEGEN_MODES_LINE                                                                                            \
-    "framegen_modes: %s framegen=%d budget_ms=%d frames=%d drawn=%d mean_us=%d p95_us=%d mean_height=%d "              \
-    "still_us=%d still_rows=%d"
+    "framegen_modes: %s framegen=%d budget_ms=%d frames=%d drawn=%d mean_us=%d p95_us=%d mean_height=%d"
 /* A profile line: per pose, the target's clear alone, the warp with every
  * splat off screen (clear, reads and maths), to the drawn view itself
  * (in-order writes) and to the next view (the real scatter). */
@@ -85,8 +81,6 @@ static const framegen_scenario_t scenarios[] = {
     {&scene_sponza[SCENE_BAKED_FITTED_FULL], SPONZA_SCENE, NULL, 0},
     /* Cheap to draw: the engage rule keeps frame generation off. */
     {&scene_capybara, CAPYBARA_SCENE, NULL, FRAMEGEN_STILL_MS},
-    /* A drawn frame costs more than a generated one, and its front copy turns. */
-    {&scene_stress[STRESS_MOVER], STRESS_SCENE, STRESS_CAMERA, 0},
     /* A skinned capybara running through Sponza, its camera its own path's. */
     {&scene_capybara_sponza, SPONZA_SCENE, NULL, 0},
 };
@@ -244,18 +238,15 @@ typedef struct {
     const char* name;
     bool generating;
     int budget_ms;
-    render_framegen_moving_t moving; /* what a generated frame does with what moves on its own */
 } framegen_mode_t;
 
 static const framegen_mode_t modes[] = {
-    {"plain", false, 0, RENDER_FRAMEGEN_MOVING_STILL},
-    {"framegen", true, 0, RENDER_FRAMEGEN_MOVING_STILL},
-    {"framegen-redraw", true, 0, RENDER_FRAMEGEN_MOVING_REDRAW},
-    {"framegen-warp", true, 0, RENDER_FRAMEGEN_MOVING_WARP},
-    {"dynres", false, RENDER_LAB_TARGET_MS, RENDER_FRAMEGEN_MOVING_STILL},
-    {"framegen-dynres", true, RENDER_LAB_TARGET_MS, RENDER_FRAMEGEN_MOVING_STILL},
-    {"framegen-dynres-3q", true, RENDER_LAB_TARGET_MS * 3 / 4, RENDER_FRAMEGEN_MOVING_STILL},
-    {"framegen-dynres-half", true, RENDER_LAB_TARGET_MS / 2, RENDER_FRAMEGEN_MOVING_STILL},
+    {"plain", false, 0},
+    {"framegen", true, 0},
+    {"dynres", false, RENDER_LAB_TARGET_MS},
+    {"framegen-dynres", true, RENDER_LAB_TARGET_MS},
+    {"framegen-dynres-3q", true, RENDER_LAB_TARGET_MS * 3 / 4},
+    {"framegen-dynres-half", true, RENDER_LAB_TARGET_MS / 2},
 };
 
 static const framegen_mode_t* mode;
@@ -265,30 +256,17 @@ static const framegen_mode_t* mode;
 typedef struct {
     int64_t carry_us, height_sum;
     int drawn;
-    int64_t still_rows_sum;     /* the rows each drawn frame kept of its still part */
-    int64_t still_us_sum;       /* and the time its copy took */
     struct shown_stages* shown; /* each shown frame's stages, up to `capacity` */
     int count, capacity;
 } played_t;
 
 /* The stages a shown frame is split into, microseconds. */
-enum {
-    STAGE_STILL,
-    STAGE_WARP,
-    STAGE_FILL,
-    STAGE_CULL,
-    STAGE_TRANSFORM,
-    STAGE_DRAW,
-    STAGE_UPSCALE,
-    STAGE_ANIM,
-    STAGES
-};
+enum { STAGE_WARP, STAGE_FILL, STAGE_CULL, STAGE_TRANSFORM, STAGE_DRAW, STAGE_UPSCALE, STAGE_ANIM, STAGES };
 
 /* A stage times as up to this many frame cost names, summed. */
 #define FRAMEGEN_STAGE_PARTS 4
 
 static const char* const stage_names[STAGES][FRAMEGEN_STAGE_PARTS] = {
-    [STAGE_STILL] = {FRAMEGEN_STILL_STAGE},
     [STAGE_WARP] = {FRAMEGEN_STAGE_WARP_NAME},
     [STAGE_FILL] = {FRAMEGEN_STAGE_FILL_NAME},
     [STAGE_CULL] = {R3D_STAGE_CULL_NAME},
@@ -346,9 +324,9 @@ log_worst(const char* share, const struct shown_stages* from, int count) {
     }
     frame /= count;
     ESP_LOGI(TAG, FRAMEGEN_WORST_LINE, scenario->scene->key, mode->generating, mode->budget_ms, share, count, generated,
-             (int)frame, (int)stage[STAGE_STILL], (int)stage[STAGE_WARP], (int)stage[STAGE_FILL],
-             (int)stage[STAGE_CULL], (int)stage[STAGE_TRANSFORM], (int)stage[STAGE_DRAW], (int)stage[STAGE_UPSCALE],
-             (int)stage[STAGE_ANIM], (int)(frame - held));
+             (int)frame, (int)stage[STAGE_WARP], (int)stage[STAGE_FILL], (int)stage[STAGE_CULL],
+             (int)stage[STAGE_TRANSFORM], (int)stage[STAGE_DRAW], (int)stage[STAGE_UPSCALE], (int)stage[STAGE_ANIM],
+             (int)(frame - held));
 }
 
 /* Every shown frame's stages, then the slowest share's. */
@@ -380,11 +358,8 @@ shown_frame(void* ctx, int64_t dt_us) {
         take_stages(s);
     }
     if (!f.generated) {
-        const raster_still_t* still = render_context_main()->raster.still;
         p->drawn++;
         p->height_sum += f.height;
-        p->still_rows_sum += still != NULL ? still->end_row - still->first_row : 0;
-        p->still_us_sum += p->count > 0 ? p->shown[p->count - 1].stage_us[STAGE_STILL] : 0;
     }
     return took;
 }
@@ -394,7 +369,6 @@ static void
 test_mode(void) {
     const scenario_path_t path = enter_path();
     TEST_ASSERT_TRUE(render_lab_framegen_set_on(mode->generating));
-    TEST_ASSERT_TRUE(render_lab_framegen_set_moving(mode->moving));
     TEST_ASSERT_TRUE(render_lab_budget_set_ms(mode->budget_ms));
     (void)lab_test_frame_dt(0, false, NULL); /* warm-up, not counted */
     const frame_profile_scenario_t playback = {scenario->scene->key, (int64_t)path.duration_ms * MATH_US_PER_MS};
@@ -404,15 +378,11 @@ test_mode(void) {
     frame_cost_take_clear(); /* each frame's stages, from this path alone */
     const frame_profile_t p = frame_profile_play(&playback, shown_frame, &played, NULL);
     TEST_ASSERT_GREATER_THAN_INT(0, played.drawn);
-    /* Per drawn frame: only a drawn frame keeps its still part. */
-    const int64_t still_us = played.still_us_sum / played.drawn;
     ESP_LOGI(TAG, FRAMEGEN_MODES_LINE, scenario->scene->key, mode->generating, mode->budget_ms, p.frames, played.drawn,
-             (int)p.frame_us.avg, (int)p.frame_us.p95, (int)(played.height_sum / played.drawn), (int)still_us,
-             (int)(played.still_rows_sum / played.drawn));
+             (int)p.frame_us.avg, (int)p.frame_us.p95, (int)(played.height_sum / played.drawn));
     log_worst_frames(&played);
     free(played.shown);
     TEST_ASSERT_TRUE(render_lab_framegen_set_on(false));
-    TEST_ASSERT_TRUE(render_lab_framegen_set_moving(RENDER_FRAMEGEN_MOVING_STILL));
     TEST_ASSERT_TRUE(render_lab_budget_set_ms(0));
     release_fixture();
     suite_clear_test_cleanup();

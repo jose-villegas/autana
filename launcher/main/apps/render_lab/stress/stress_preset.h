@@ -48,11 +48,7 @@ typedef struct {
     stress_surface_t surface;
     const char* camera;
     int perf_poses; /* poses the stress perf suite replays along the swing */
-    int moving;     /* the first copies, the front of a stack, turning on their own every frame */
 } stress_params_t;
-
-/* How fast a moving copy turns about its up axis. */
-#define STRESS_MOVING_DEGREES_PER_S 90
 
 /* X(ID, key, surface): each preset, its key the scene key's suffix and its
  * menu label. stress_presets gives each its shape and layout, one row per
@@ -73,8 +69,7 @@ typedef struct {
     X(CARD, "card", CARD)                                                                                              \
     X(CULLED, "culled", BANDED)                                                                                        \
     X(NEAR, "near", BANDED)                                                                                            \
-    X(FEW_COPIES, "few-copies", BANDED)                                                                                \
-    X(MOVER, "mover", BANDED)
+    X(FEW_COPIES, "few-copies", BANDED)
 
 #define STRESS_PRESET_ID(id_, ...) STRESS_##id_,
 

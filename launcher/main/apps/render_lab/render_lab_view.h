@@ -53,6 +53,3 @@ bool render_lab_budget_set_ms(int budget_ms);
  * generates_frames, 0 draws every frame. */
 bool render_lab_framegen_on(void);
 bool render_lab_framegen_set_on(bool on);
-/* The tunable render_lab.framegen_moving (experiment). */
-render_framegen_moving_t render_lab_framegen_moving(void);
-bool render_lab_framegen_set_moving(render_framegen_moving_t mode);

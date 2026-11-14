@@ -59,8 +59,8 @@ typedef struct lab_scene {
      * paused; may call public scene_* calls only. */
     lab_controls_fn controls;
     /* Whether frame generation suits the scene: true where a warp to the
-     * camera's pose, with what moves on its own drawn again over it, shows
-     * it. A lab may turn it on for such a scene only. */
+     * camera's pose shows it, what moves on its own one drawn frame behind.
+     * A lab may turn it on for such a scene only. */
     bool generates_frames;
     /* Optional. Handles `<word> <args>` that the lab's own commands did not;
      * false means the command is not this scene's. */

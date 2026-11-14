@@ -13,7 +13,7 @@ enum { STRESS_PRESETS(STRESS_PRESET_SURFACE) };
 
 #define STRESS_SURFACE_OF(id_) ((stress_surface_t)STRESS_##id_##_SURFACE)
 
-/* Shape, cuts, copies, layout, coverage percent, surface, camera, replay poses and moving copies. */
+/* Shape, cuts, copies, layout, coverage percent, surface, camera and replay poses. */
 const stress_params_t stress_presets[STRESS_PRESET_COUNT] = {
     [STRESS_OPEN] = {STRESS_SHAPE_PLANE, 8, 16, STRESS_LAYOUT_WALL, 60, STRESS_SURFACE_OF(OPEN), STRESS_CAMERA, 6},
     [STRESS_STACK] = {STRESS_SHAPE_PLANE, 8, 8, STRESS_LAYOUT_STACK, 90, STRESS_SURFACE_OF(STACK), STRESS_CAMERA, 6},
@@ -41,10 +41,6 @@ const stress_params_t stress_presets[STRESS_PRESET_COUNT] = {
                      6},
     [STRESS_FEW_COPIES] = {STRESS_SHAPE_SPHERE, 24, 2, STRESS_LAYOUT_WALL, 70, STRESS_SURFACE_OF(FEW_COPIES),
                            STRESS_CAMERA, 6},
-    /* A stack deep enough that a drawn frame costs more than a generated
-     * one, its front copy turning: frame generation over a moving object. */
-    [STRESS_MOVER] = {STRESS_SHAPE_PLANE, 8, 32, STRESS_LAYOUT_STACK, 90, STRESS_SURFACE_OF(MOVER), STRESS_CAMERA, 6,
-                      1},
 };
 
 stress_params_t

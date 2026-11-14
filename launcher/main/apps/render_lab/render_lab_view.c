@@ -13,9 +13,6 @@ TUNE_SETTING(render_lab, small_fill_style, SMALL_FILL_FLAT, SMALL_FILL_FLAT, SMA
 TUNE_SETTING(render_lab, budget, 0, 0, RENDER_LAB_BUDGET_MAX_MS);
 TUNE_SETTING(render_lab, upscale, UPSCALE_FILTER_NEAREST, UPSCALE_FILTER_NEAREST, UPSCALE_FILTER_SURFACE);
 TUNE_SETTING(render_lab, framegen, 0, 0, 1);
-/* Experiment (autana-dzsqf): render_framegen_moving_t, what a generated frame
- * does with the instances that move on their own. */
-TUNE_SETTING(render_lab, framegen_moving, RENDER_FRAMEGEN_MOVING_STILL, 0, RENDER_FRAMEGEN_MOVING_COUNT - 1);
 
 int
 render_lab_debug_view(void) {
@@ -117,16 +114,6 @@ render_lab_apply_raster_settings(void) {
 bool
 render_lab_framegen_on(void) {
     return framegen != 0;
-}
-
-render_framegen_moving_t
-render_lab_framegen_moving(void) {
-    return (render_framegen_moving_t)framegen_moving;
-}
-
-bool
-render_lab_framegen_set_moving(render_framegen_moving_t mode) {
-    return TUNE_SETTING_SET(framegen_moving, (int)mode);
 }
 
 bool

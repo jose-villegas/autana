@@ -108,7 +108,6 @@ void
 render_context_release(render_context_t* c) {
     render_context_drop_scratch(c);
     framegen_target_free(&c->framegen);
-    framegen_target_free(&c->still);
     free_view_state(c);
     const memory_take_fn take = c->take;
     *c = RENDER_CONTEXT_DEFAULT;
@@ -148,18 +147,7 @@ render_context_set_frame_generation(render_context_t* c, bool on) {
     forget_costs(c);
     if (!on) {
         framegen_target_free(&c->framegen);
-        framegen_target_free(&c->still);
     }
-}
-
-void
-render_context_set_moving(render_context_t* c, int count) {
-    c->moving_count = count;
-}
-
-void
-render_context_set_framegen_moving(render_context_t* c, render_framegen_moving_t mode) {
-    c->moving_mode = mode;
 }
 
 void
@@ -339,7 +327,7 @@ policy_config(render_context_t* c) {
  * (the verdict the drawn frame is then priced by), has not been measured, or
  * is due to be measured again. */
 static bool
-can_generate(render_context_t* c, int count, const render_view_t* view) {
+can_generate(render_context_t* c, const render_view_t* view) {
     const raster_t* r = &c->raster;
     const viewport_t a = c->kept_view.viewport;
     const viewport_t b = view->viewport;
@@ -349,11 +337,6 @@ can_generate(render_context_t* c, int count, const render_view_t* view) {
         || a.quarter != b.quarter) {
         return false;
     }
-    /* The moving instances draw again in the drawn frame's raster: the same
-     * list, so its scratch keeps the picture where it is. */
-    if (count != r->instance_count || c->moving_count != r->moving_count) {
-        return false;
-    }
     if (c->framegen.width != r->width || c->framegen.height != r->height) {
         framegen_target_free(&c->framegen);
         return framegen_target_alloc(&c->framegen, r->width, r->height);
@@ -361,38 +344,16 @@ can_generate(render_context_t* c, int count, const render_view_t* view) {
     return true;
 }
 
-/* The moving instances alone, at this frame's pose, over the raster's
- * picture at its depth scale. Out of the draw's split and steering: their
- * feedback is the whole frame's. */
-static __attribute__((noinline)) void
-draw_moving(render_context_t* c, const r3d_instance_t* instances, const render_view_t* view) {
-    raster_t* r = &c->raster;
-    r->instances = instances;
-    r->moving_only = true;
-    r->split = NULL;
-    r->steer = NULL;
-    r->first_row = 0;
-    r->end_row = 0;
-    (void)raster_draw(r, view);
-    r->moving_only = false;
-}
-
-/* The kept frame warped to `view` into the raster's picture, which compose
- * shows: its still part when kept, and the moving instances drawn again over
- * it at their own pose. */
+/* The kept frame warped to `view` into the framegen target, which compose shows. */
 static void
-generate(render_context_t* c, const r3d_instance_t* instances, const render_view_t* view) {
-    raster_t* r = &c->raster;
+generate(render_context_t* c, const render_view_t* view) {
     const int64_t began_us = timing_now_us();
     FRAME_COST_BEGIN(warped_from);
-    framegen_warp(r, r->still, &c->kept_view, view, &c->framegen);
+    framegen_warp(&c->raster, &c->kept_view, view, &c->framegen);
     FRAME_COST_END(warped_from, FRAMEGEN_STAGE_WARP_NAME);
     FRAME_COST_BEGIN(filled_from);
-    (void)framegen_fill(r, r->still, &c->framegen);
+    (void)framegen_fill(&c->raster, &c->framegen);
     FRAME_COST_END(filled_from, FRAMEGEN_STAGE_FILL_NAME);
-    if (r->moving_count > 0 && c->moving_mode != RENDER_FRAMEGEN_MOVING_WARP) {
-        draw_moving(c, instances, view);
-    }
     c->frame.draw_us = (int32_t)(timing_now_us() - began_us);
     c->frame.generated = true;
     c->kept = false; /* FRAMEGEN_SHOWN_PER_DRAWN: the next frame is drawn */
@@ -466,7 +427,6 @@ aim_raster(render_context_t* c, const r3d_instance_t* instances, int count, cons
     r->settings = &c->settings;
     r->instances = instances;
     r->instance_count = count;
-    r->moving_count = c->generating ? c->moving_count : 0;
     r->width = step < 0 ? view->viewport.width * c->scale_percent / 100 : c->ladder.steps[step].width;
     r->height = step < 0 ? view->viewport.height * c->scale_percent / 100 : c->ladder.steps[step].height;
     r->present = view->present;
@@ -475,26 +435,6 @@ aim_raster(render_context_t* c, const r3d_instance_t* instances, int count, cons
     r->upscaled = true; /* render_context_compose() names the picture */
     r->destination_width = view->viewport.width;
     r->destination_height = view->viewport.height;
-}
-
-/* Where the drawn frame keeps its still part, for the frames generated from
- * it: while generating with moving instances, else nowhere and freed. Sized
- * like the scratch (fit_scratch()): dynamic resolution picks the size after
- * this, so the finest step's, and a step never allocates. */
-static __attribute__((noinline)) void
-aim_still(render_context_t* c) {
-    raster_t* r = &c->raster;
-    const bool keeps = r->moving_count > 0 && c->moving_mode == RENDER_FRAMEGEN_MOVING_STILL;
-    const int width = c->policy != RENDER_FIXED ? c->ladder.steps[0].width : r->width;
-    const int height = c->policy != RENDER_FIXED ? c->ladder.steps[0].height : r->height;
-    if (!keeps || c->still.width != width || c->still.height != height) {
-        framegen_target_free(&c->still);
-    }
-    if (keeps && c->still.colour == NULL && !framegen_target_alloc(&c->still, width, height)) {
-        r->moving_count = 0; /* no memory: the next generated frame is drawn instead */
-    }
-    c->still_rows = (raster_still_t){c->still.colour, c->still.depth, 0, 0};
-    r->still = c->still.colour != NULL ? &c->still_rows : NULL;
 }
 
 /* Off: the plain draw, nothing timed or chosen, unless frame generation needs the drawn cost.
@@ -557,8 +497,8 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
         c->raster.batch_count = 0;
     }
     c->batches_set = false;
-    if (can_generate(c, count, view)) {
-        generate(c, instances, view);
+    if (can_generate(c, view)) {
+        generate(c, view);
         return true;
     }
     begin_draw(c);
@@ -568,7 +508,6 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
         return false;
     }
     raster_t* r = &c->raster;
-    aim_still(c);
     c->frame.width = r->width;
     c->frame.height = r->height;
     r->first_row = 0;
@@ -657,7 +596,11 @@ render_context_compose(render_context_t* c, uint16_t* destination, uint16_t* hal
     c->frame.rows_first = 0;
     c->frame.rows_end = r->destination_height;
     const int64_t began_us = timing_now_us();
-    raster_upscale_picture(&c->raster, NULL, destination, seams, size.width, size.height);
+    GFX_TARGET_STORAGE(GFX_ATTACHMENT_FURTHER) generated;
+    gfx_target_of_color_depth(&generated.target, c->framegen.colour, c->framegen.depth, c->framegen.width,
+                              c->framegen.height, 0);
+    const gfx_target_t* picture = c->frame.generated ? &generated.target : NULL;
+    raster_upscale_picture(&c->raster, picture, destination, seams, size.width, size.height);
     c->frame.upscale_us = (int32_t)(timing_now_us() - began_us);
     if (c->frame.generated) {
         /* Not priced itself: its cost sets what the next drawn frame may spend. */
@@ -751,9 +694,6 @@ render_context_checkpoint_capture(checkpoint_t* saved, render_context_t* context
     const size_t bytes = (size_t)context->framegen.width * context->framegen.height * sizeof(uint16_t);
     checkpoint_capture_at(saved, &context->framegen.colour, bytes);
     checkpoint_capture_at(saved, &context->framegen.depth, bytes);
-    const size_t still_bytes = (size_t)context->still.width * context->still.height * sizeof(uint16_t);
-    checkpoint_capture_at(saved, &context->still.colour, still_bytes);
-    checkpoint_capture_at(saved, &context->still.depth, still_bytes);
 }
 
 static uint16_t*

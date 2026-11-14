@@ -20,15 +20,6 @@
 #include "render/settings/render_settings.h"
 #include "render/upscale.h"
 
-/* The still part of a drawn picture, before its moving instances drew over
- * it (raster_t.still): the rows they cover, at their own offsets in buffers
- * of the picture's size. */
-typedef struct {
-    uint16_t* colour;
-    uint16_t* depth;
-    int first_row, end_row; /* what the last draw kept; none when equal */
-} raster_still_t;
-
 /* The caller's options; the scratch block holds everything else. */
 struct raster {
     /* What is drawn: each instance in turn into the one picture, nearer ones
@@ -37,15 +28,6 @@ struct raster {
      * census slot. */
     const r3d_instance_t* instances;
     int instance_count;
-    /* The last `moving_count` instances move on their own (render/framegen):
-     * a draw draws them after the batches' copies, first copying the rows
-     * they cover (their world boxes') of the picture's colour and depth to
-     * `still` when it is not NULL. With `moving_only` a draw culls and draws only
-     * them, over the picture as it is, at the depth scale it was drawn with;
-     * it keeps the instances and batches of the draw that made the picture. */
-    int moving_count;
-    bool moving_only;
-    raster_still_t* still;
     /* Drawn after the instances, each as the copies its cull keeps; none
      * with a count of 0. */
     const r3d_batch_draw_t* batches;
