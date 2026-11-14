@@ -45,11 +45,11 @@ static const char* TAG = "framegen";
 #define FRAMEGEN_POSES    24
 #define FRAMEGEN_PERCENT  100
 /* A worst line: one mode's slowest FRAMEGEN_WORST_PERCENT of shown frames
- * (or all of them), each stage's mean over them; other is the frame's time no
- * stage holds (scene, compose, present). */
+ * (or all of them), each stage's mean over them; height is the drawn rows'
+ * mean, other the frame's time no stage holds (scene, compose, present). */
 #define FRAMEGEN_WORST_LINE                                                                                            \
-    "framegen_worst: %s framegen=%d budget_ms=%d share=%s frames=%d generated=%d frame_us=%d warp=%d fill=%d "         \
-    "cull=%d transform=%d draw=%d upscale=%d anim=%d other=%d"
+    "framegen_worst: %s framegen=%d budget_ms=%d share=%s frames=%d generated=%d frame_us=%d height=%d "               \
+    "warp=%d fill=%d cull=%d transform=%d draw=%d upscale=%d anim=%d other=%d"
 #define FRAMEGEN_WORST_PERCENT 5
 
 /* A modes line: one scenario's path played in real time in one mode. */
@@ -278,6 +278,7 @@ static const char* const stage_names[STAGES][FRAMEGEN_STAGE_PARTS] = {
 
 struct shown_stages {
     int32_t frame_us;
+    int32_t height; /* the rows the frame was drawn at */
     bool generated;
     int32_t stage_us[STAGES];
 };
@@ -308,10 +309,12 @@ slower_first(const void* a, const void* b) {
 static void
 log_worst(const char* share, const struct shown_stages* from, int count) {
     int64_t frame = 0;
+    int64_t height = 0;
     int generated = 0;
     int64_t stage[STAGES] = {0};
     for (int i = 0; i < count; i++) {
         frame += from[i].frame_us;
+        height += from[i].height;
         generated += from[i].generated;
         for (int k = 0; k < STAGES; k++) {
             stage[k] += from[i].stage_us[k];
@@ -324,7 +327,7 @@ log_worst(const char* share, const struct shown_stages* from, int count) {
     }
     frame /= count;
     ESP_LOGI(TAG, FRAMEGEN_WORST_LINE, scenario->scene->key, mode->generating, mode->budget_ms, share, count, generated,
-             (int)frame, (int)stage[STAGE_WARP], (int)stage[STAGE_FILL], (int)stage[STAGE_CULL],
+             (int)frame, (int)(height / count), (int)stage[STAGE_WARP], (int)stage[STAGE_FILL], (int)stage[STAGE_CULL],
              (int)stage[STAGE_TRANSFORM], (int)stage[STAGE_DRAW], (int)stage[STAGE_UPSCALE], (int)stage[STAGE_ANIM],
              (int)(frame - held));
 }
@@ -354,6 +357,7 @@ shown_frame(void* ctx, int64_t dt_us) {
     if (p->count < p->capacity) {
         struct shown_stages* s = &p->shown[p->count++];
         s->frame_us = (int32_t)took;
+        s->height = f.height;
         s->generated = f.generated;
         take_stages(s);
     }
