@@ -2545,9 +2545,24 @@ class ResetReconnectTests(unittest.TestCase):
             with self.assertRaises(FileNotFoundError):
                 probe.open(probe.port, False, False, at)
         self.usb.reset(self.now())
-        with device.reconnect_after_reset() as connection:
+        with contextlib.redirect_stderr(io.StringIO()) as said, device.reconnect_after_reset() as connection:
             self.assertGreaterEqual(self.clock, self.usb.opens)
             self.assertEqual(connection.boot, self.usb.boot)
+        self.assertNotIn("reset_reconnect_seconds", said.getvalue(),
+                         "a reconnect well inside its window adds nothing to quiet output")
+
+    def test_a_slow_reconnect_is_logged_by_phase(self):
+        self.usb.reset(self.now())
+        started = self.clock
+        with mock.patch.object(device, "RECONNECT_REPORT_SHARE", 0), \
+                contextlib.redirect_stderr(io.StringIO()) as said, device.reconnect_after_reset():
+            pass
+        fields = dict(re.findall(r"(\w+)=([\d.]+)", said.getvalue().splitlines()[-1]))
+        self.assertAlmostEqual(float(fields["reset_reconnect_seconds"]), self.clock - started, places=2)
+        self.assertAlmostEqual(sum(float(fields[phase]) for phase in ("left", "listed", "opened")),
+                               float(fields["reset_reconnect_seconds"]), places=1)
+        self.assertGreater(float(fields["listed"]), 0)
+        self.assertEqual(float(fields["limit"]), device.PORT_REAPPEAR_SECONDS)
 
     def test_a_reset_returns_the_live_handle_under_its_new_name(self):
         with device.reset() as connection:
@@ -2644,6 +2659,17 @@ class ResetReconnectTests(unittest.TestCase):
         with self.assertRaises(device.PortUnavailable):
             device.reset()
         self.assertAlmostEqual(self.clock, 0.2 + device.PORT_REAPPEAR_SECONDS)
+
+    def test_a_failed_reconnect_is_logged_with_the_phase_it_failed_in(self):
+        self.usb.reset(self.now())
+        self.usb.returns = device.PORT_WAIT_SECONDS
+        with contextlib.redirect_stderr(io.StringIO()) as said, self.assertRaises(device.PortUnavailable):
+            device.reconnect_after_reset()
+        fields = dict(re.findall(r"(\w+)=([\d.]+)", said.getvalue().splitlines()[-1]))
+        self.assertEqual(fields["failed"], "1")
+        self.assertNotIn("opened", fields)
+        self.assertAlmostEqual(float(fields["left"]) + float(fields["listed"]),
+                               float(fields["reset_reconnect_seconds"]), places=1)
 
     def test_never_leaves_waits_only_the_default_leave_bound(self):
         self.usb.leaves = self.usb.returns = self.usb.opens = self.usb.busy_at = device.PORT_WAIT_SECONDS
