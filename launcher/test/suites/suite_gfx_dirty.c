@@ -55,18 +55,22 @@ take_all(recti_t area, recti_t* rects) {
     return n;
 }
 
+/* `count` rects taken inside `area`, the first of them `first`. */
+static void
+assert_taken(recti_t area, int count, recti_t first) {
+    recti_t rects[RECTS_MAX];
+    TEST_ASSERT_EQUAL_INT(count, take_all(area, rects));
+    TEST_ASSERT_EQUAL_INT(first.x, rects[0].x);
+    TEST_ASSERT_EQUAL_INT(first.y, rects[0].y);
+    TEST_ASSERT_EQUAL_INT(first.w, rects[0].w);
+    TEST_ASSERT_EQUAL_INT(first.h, rects[0].h);
+}
+
 static void
 test_dirt_taken_is_the_leaves_a_mark_touched_clipped_to_the_area(void) {
     fixture();
     dirty_mark(LEAF_W + 1, LEAF_H + 1, 2, 2);
-    recti_t rects[RECTS_MAX];
-    const int n = take_all((recti_t){0, 0, LEAF_W * 2, LEAF_H + LEAF_H / 2}, rects);
-
-    TEST_ASSERT_EQUAL_INT(1, n);
-    TEST_ASSERT_EQUAL_INT(LEAF_W, rects[0].x);
-    TEST_ASSERT_EQUAL_INT(LEAF_H, rects[0].y);
-    TEST_ASSERT_EQUAL_INT(LEAF_W, rects[0].w);
-    TEST_ASSERT_EQUAL_INT(LEAF_H / 2, rects[0].h);
+    assert_taken((recti_t){0, 0, LEAF_W * 2, LEAF_H + LEAF_H / 2}, 1, (recti_t){LEAF_W, LEAF_H, LEAF_W, LEAF_H / 2});
 }
 
 static void
@@ -74,13 +78,7 @@ test_dirt_taken_grows_a_run_down_the_rows_holding_all_of_it(void) {
     fixture();
     dirty_mark(0, 0, LEAF_W * 2, LEAF_H * 3);
     dirty_mark(LEAF_W * 5, 0, 1, 1);
-    recti_t rects[RECTS_MAX];
-    const int n = take_all(GFX_SCREEN_RECT, rects);
-
-    TEST_ASSERT_EQUAL_INT(2, n);
-    TEST_ASSERT_EQUAL_INT(LEAF_H * 3, rects[0].h);
-    TEST_ASSERT_EQUAL_INT(LEAF_W * 2, rects[0].w);
-    TEST_ASSERT_EQUAL_INT(LEAF_W * 5, rects[1].x);
+    assert_taken(GFX_SCREEN_RECT, 2, (recti_t){0, 0, LEAF_W * 2, LEAF_H * 3});
 }
 
 /* An L of leaves, and a run wider than the one below it: the rects never
@@ -110,12 +108,8 @@ test_dirt_taken_counts_every_leaf_of_a_cell_marked_whole(void) {
     fixture();
     dirty_mark(0, 0, 1, 1);
     mark_band(0, 1);
-    recti_t rects[RECTS_MAX];
-    const int n = take_all((recti_t){0, 0, COL_WIDTH, STRIP_HEIGHT}, rects);
-
-    TEST_ASSERT_EQUAL_INT(1, n);
-    TEST_ASSERT_EQUAL_INT(COL_WIDTH, rects[0].w);
-    TEST_ASSERT_EQUAL_INT(STRIP_HEIGHT, rects[0].h);
+    const recti_t cell = {0, 0, COL_WIDTH, STRIP_HEIGHT};
+    assert_taken(cell, 1, cell);
 }
 
 static void
@@ -123,12 +117,7 @@ test_dirt_taken_from_a_cell_grown_whole_by_marks_keeps_its_leaves(void) {
     fixture();
     dirty_mark(0, 0, 1, 1);
     dirty_mark(COL_WIDTH - 1, STRIP_HEIGHT - 1, 1, 1);
-    recti_t rects[RECTS_MAX];
-    const int n = take_all((recti_t){0, 0, COL_WIDTH, STRIP_HEIGHT}, rects);
-
-    TEST_ASSERT_EQUAL_INT(2, n);
-    TEST_ASSERT_EQUAL_INT(LEAF_W, rects[0].w);
-    TEST_ASSERT_EQUAL_INT(LEAF_H, rects[0].h);
+    assert_taken((recti_t){0, 0, COL_WIDTH, STRIP_HEIGHT}, 2, (recti_t){0, 0, LEAF_W, LEAF_H});
 }
 
 /* The snapshot holds the dirt it was taken at: marks after it add none. */

@@ -6,17 +6,9 @@
 /* RGB565 with its two bytes swapped (high byte first in memory); rgb565_swap() converts to native. */
 typedef uint16_t rgb565be_t;
 
-/* Where each channel lies in a native colour. */
-#define RGB565_RED_MASK   0xF800u
-#define RGB565_GREEN_MASK 0x07E0u
-#define RGB565_BLUE_MASK  0x001Fu
-#define RGB565_RED_AT     11
-#define RGB565_GREEN_AT   5
-
 /* 0xRRGGBB to RGB565. */
 #define RGB565(rgb)                                                                                                    \
-    ((((uint32_t)(rgb) >> 8) & RGB565_RED_MASK) | (((uint32_t)(rgb) >> 5) & RGB565_GREEN_MASK)                         \
-     | (((uint32_t)(rgb) >> 3) & RGB565_BLUE_MASK))
+    ((((uint32_t)(rgb) >> 8) & 0xF800u) | (((uint32_t)(rgb) >> 5) & 0x07E0u) | (((uint32_t)(rgb) >> 3) & 0x001Fu))
 
 /* Usable in a constant expression, so colour tables built from it live in flash, not RAM. */
 #define RGB565BE(rgb) ((rgb565be_t)((RGB565(rgb) >> 8) | (RGB565(rgb) << 8)))
@@ -30,19 +22,19 @@ rgb565_swap(uint16_t c) {
 /* Native RGB565 channels: swap a high-byte-first colour before extracting them. */
 static inline unsigned
 rgb565_r5(uint16_t native) {
-    return (native & RGB565_RED_MASK) >> RGB565_RED_AT;
+    return (native >> 11) & 0x1Fu;
 }
 
 #define RGB565_G6_MAX 0x3Fu
 
 static inline unsigned
 rgb565_g6(uint16_t native) {
-    return (native & RGB565_GREEN_MASK) >> RGB565_GREEN_AT;
+    return (native >> 5) & RGB565_G6_MAX;
 }
 
 static inline unsigned
 rgb565_b5(uint16_t native) {
-    return native & RGB565_BLUE_MASK;
+    return native & 0x1Fu;
 }
 
 /* Pack already-quantised channels (5, 6, 5 bits) in high-byte-first order. */
@@ -126,18 +118,16 @@ rgb565be_to_rgb888(rgb565be_t c) {
 /* Native red and blue in one word, red moved up to bit RGB565_RB_RED_AT, so
  * a product of each by up to 255 stays clear of the other; rgb565be_spread()
  * packs all three closer, for a product by up to RGB565_SCALE_UNIT. */
-#define RGB565_RB_RED_AT    16
-#define RGB565_RB_RED_SHIFT (RGB565_RB_RED_AT - RGB565_RED_AT)
+#define RGB565_RB_RED_AT 16
 /* One in each of the two channels, and their rounded-divide masks. */
-#define RGB565_RB_ONES      0x00010001u
-#define RGB565_RB_LOW5      0x001F001Fu
-#define RGB565_MIX_FULL     255u
-#define RGB565_MIX_HALF     127u
-#define RGB565_MIX_SHIFT    8
+#define RGB565_RB_ONES   0x00010001u
+#define RGB565_RB_LOW5   0x001F001Fu
+#define RGB565_MIX_FULL  255u
+#define RGB565_MIX_HALF  127u
 
 static inline uint32_t
 rgb565_rb_apart(uint16_t native) {
-    return ((native & RGB565_RED_MASK) << RGB565_RB_RED_SHIFT) | (native & RGB565_BLUE_MASK);
+    return ((uint32_t)rgb565_r5(native) << RGB565_RB_RED_AT) | rgb565_b5(native);
 }
 
 /* rgb565be_mix() toward one colour at one share, worked out once: that
@@ -162,7 +152,7 @@ static inline rgb565be_t
 rgb565be_mix_onto(rgb565be_t a, const rgb565_mix_toward_t* m) {
     const uint16_t na = rgb565_swap(a);
     uint32_t rb = (rgb565_rb_apart(na) * m->keep) + m->rb;
-    rb = (rb + ((rb >> RGB565_MIX_SHIFT) & RGB565_RB_LOW5) + RGB565_RB_ONES) >> RGB565_MIX_SHIFT;
+    rb = (rb + ((rb >> 8) & RGB565_RB_LOW5) + RGB565_RB_ONES) >> 8;
     const uint32_t g = rgb565_div255((rgb565_g6(na) * m->keep) + m->g);
     return rgb565be_pack((uint8_t)((rb >> RGB565_RB_RED_AT) & 0x1Fu), (uint8_t)g, (uint8_t)(rb & 0x1Fu));
 }

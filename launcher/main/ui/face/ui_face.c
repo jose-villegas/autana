@@ -95,7 +95,6 @@ ui_face_begin(const input_t* input) {
         tap_id = 0;
     }
     theme = ui_theme_from_style(ui_context()->style);
-    ui_widget_skin = (ui_skin_t){0};
     window_ordinal = 0;
     window_open = false;
     window_aligned = false;
@@ -125,14 +124,16 @@ ui_face_end(void) {
 void
 ui_theme(const ui_theme_t* t) {
     UI_FACE_COST_BEGIN(face_from);
+    const ui_skin_t skin = theme.skin;
     theme = t != NULL ? UI_THEME_FROM_FACE(t) : ui_theme_from_style(ui_context()->style);
+    theme.skin = skin;
     UI_FACE_COST_END(face_from, "ui.face");
 }
 
 void
 ui_skin(const ui_skin_t* skin) {
     assert(skin == NULL || (skin->normal != NULL && skin->pressed != NULL));
-    ui_widget_skin = skin != NULL ? *skin : (ui_skin_t){0};
+    theme.skin = skin != NULL ? *skin : (ui_skin_t){0};
 }
 
 /* The innermost recorded slot of a scope `depth` deep, or -1 with none open;

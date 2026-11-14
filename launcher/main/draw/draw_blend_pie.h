@@ -2,7 +2,7 @@
  * draw_blend_pie: what the PIE blend kernel (draw_blend_pie.S) and its
  * caller (draw_blend.c) share: the constants it blends with and where each
  * sits in the lanes the caller fills. Preprocessor only, so the assembly
- * includes it too.
+ * includes it too (it reads only the shifts and lane offsets).
  */
 #pragma once
 
@@ -19,8 +19,10 @@
  * rgb565_div255(sum - 1) for every sum a blend makes (at most 63 * 255 + 128).
  * Shifting by 16 - at leaves the quotient at `at`, the fraction below it
  * dropped by the mask. Every sum stays below 0x8000: no saturation. */
-/* rgb565.h's RGB565_RED_AT and RGB565_GREEN_AT, checked in draw_blend.c:
- * that header is C, and the assembly reads these. */
+/* Where each channel lies in a native RGB565 pixel. */
+#define BLEND_RED_MASK       0xF800u
+#define BLEND_GREEN_MASK     0x07E0u
+#define BLEND_BLUE_MASK      0x001Fu
 #define BLEND_RED_AT         11
 #define BLEND_GREEN_AT       5
 #define BLEND_BLUE_AT        0

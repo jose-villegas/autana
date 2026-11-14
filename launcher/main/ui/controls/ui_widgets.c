@@ -21,8 +21,6 @@
 #define CHEVRON_SIDE    24
 #define LIST_GAP        4
 
-ui_skin_t ui_widget_skin;
-
 ui_mu_theme_t
 ui_theme_from_style(const mu_Style* style) {
     return (ui_mu_theme_t){.panel_face = UI_RGB(UI_SHELL_PANEL_FACE),
@@ -151,8 +149,7 @@ begin_control(mu_Context* ctx, mu_Id mid, mu_Rect r, bool enabled, bool selected
     }
 
     const bool on_accent = enabled && selected;
-    draw_face(ctx, r, on_accent ? theme->accent_face : theme->button_face, c.pressed, &ui_widget_skin, enabled,
-              on_accent);
+    draw_face(ctx, r, on_accent ? theme->accent_face : theme->button_face, c.pressed, &theme->skin, enabled, on_accent);
 
     if (!enabled) {
         c.ink = theme->muted;

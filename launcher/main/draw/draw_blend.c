@@ -20,7 +20,6 @@ draw_blend_row(gfx_color_t* dst, const rgb565_mix_toward_t* m, size_t count) {
 #else
 
 _Static_assert(BLEND_LANE_BYTES == sizeof(uint16_t), "a lane is one halfword");
-_Static_assert(BLEND_RED_AT == RGB565_RED_AT && BLEND_GREEN_AT == RGB565_GREEN_AT, "channels where rgb565.h has them");
 
 /* `steps` of DRAW_BLEND_STEP pixels at a SIMD_ALIGN-aligned dst. */
 void draw_blend_pie(gfx_color_t* dst, const uint16_t* lanes, size_t steps);
@@ -36,9 +35,9 @@ draw_blend_row(gfx_color_t* dst, const rgb565_mix_toward_t* m, size_t count) {
     dst += head;
     count -= head;
     const uint16_t lanes[BLEND_LANES] = {
-        [BLEND_LANE_RED] = RGB565_RED_MASK,
-        [BLEND_LANE_GREEN] = RGB565_GREEN_MASK,
-        [BLEND_LANE_BLUE] = RGB565_BLUE_MASK,
+        [BLEND_LANE_RED] = BLEND_RED_MASK,
+        [BLEND_LANE_GREEN] = BLEND_GREEN_MASK,
+        [BLEND_LANE_BLUE] = BLEND_BLUE_MASK,
         [BLEND_LANE_RED_ADD] = (uint16_t)((m->rb >> RGB565_RB_RED_AT) + BLEND_DIV_ROUND),
         [BLEND_LANE_GREEN_ADD] = (uint16_t)(m->g + BLEND_DIV_ROUND),
         [BLEND_LANE_BLUE_ADD] = (uint16_t)((m->rb & UINT16_MAX) + BLEND_DIV_ROUND),

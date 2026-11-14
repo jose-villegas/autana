@@ -343,21 +343,27 @@ assert_geometry(int turns, int w, int h, int scale, bool translucent) {
     TEST_ASSERT_EQUAL_HEX16(BACKGROUND, panel(recti_right(dst), recti_bottom(dst) - 1));
 }
 
+/* assert_geometry() at every turn for each {w, h, scale} of `sizes`. */
+static void
+assert_geometry_at_every_turn(const int (*sizes)[3], size_t n, bool translucent) {
+    for (int turns = 0; turns < TURNS; turns++) {
+        for (size_t i = 0; i < n; i++) {
+            assert_geometry(turns, sizes[i][0], sizes[i][1], sizes[i][2], translucent);
+        }
+    }
+}
+
 static void
 test_nine_slice_geometry_at_every_turn_and_size(void) {
     fixture();
-    const int sizes[][2] = {
-        {GEO_W, GEO_H},                        /* 1:1 */
-        {GEO_W * STRETCH, GEO_H * STRETCH},    /* stretched both ways */
-        {GEO_W + STRETCH + 1, GEO_H},          /* one axis only, odd */
-        {GEO_LEFT + GEO_RIGHT + 1, GEO_H + 1}, /* one centre column */
-        {TINY, TINY},                          /* shorter than the borders */
+    const int sizes[][3] = {
+        {GEO_W, GEO_H, UNSCALED},                        /* 1:1 */
+        {GEO_W * STRETCH, GEO_H * STRETCH, UNSCALED},    /* stretched both ways */
+        {GEO_W + STRETCH + 1, GEO_H, UNSCALED},          /* one axis only, odd */
+        {GEO_LEFT + GEO_RIGHT + 1, GEO_H + 1, UNSCALED}, /* one centre column */
+        {TINY, TINY, UNSCALED},                          /* shorter than the borders */
     };
-    for (int turns = 0; turns < TURNS; turns++) {
-        for (size_t i = 0; i < sizeof sizes / sizeof sizes[0]; i++) {
-            assert_geometry(turns, sizes[i][0], sizes[i][1], UNSCALED, false);
-        }
-    }
+    assert_geometry_at_every_turn(sizes, sizeof sizes / sizeof sizes[0], false);
 }
 
 /* draw_sprite_scaled(): the corners drawn ZOOM panel pixels to a sprite
@@ -365,16 +371,12 @@ test_nine_slice_geometry_at_every_turn_and_size(void) {
 static void
 test_a_scaled_border_at_every_turn_and_size(void) {
     fixture();
-    const int sizes[][2] = {
-        {GEO_W * ZOOM, GEO_H * ZOOM},                     /* the whole picture at the zoom */
-        {GEO_W * ZOOM * STRETCH, GEO_H * ZOOM * STRETCH}, /* stretched past it */
-        {TINY * ZOOM, TINY * ZOOM},                       /* shorter than the scaled borders */
+    const int sizes[][3] = {
+        {GEO_W * ZOOM, GEO_H * ZOOM, ZOOM},                     /* the whole picture at the zoom */
+        {GEO_W * ZOOM * STRETCH, GEO_H * ZOOM * STRETCH, ZOOM}, /* stretched past it */
+        {TINY * ZOOM, TINY * ZOOM, ZOOM},                       /* shorter than the scaled borders */
     };
-    for (int turns = 0; turns < TURNS; turns++) {
-        for (size_t i = 0; i < sizeof sizes / sizeof sizes[0]; i++) {
-            assert_geometry(turns, sizes[i][0], sizes[i][1], ZOOM, false);
-        }
-    }
+    assert_geometry_at_every_turn(sizes, sizeof sizes / sizeof sizes[0], false);
 }
 
 /* A translucent picture, its edges long enough to blend as runs: every
@@ -388,11 +390,7 @@ test_translucent_edge_runs_blend_as_each_pixel_alone(void) {
         {GEO_W * STRETCH, LONG_EDGE, UNSCALED},
         {LONG_EDGE, LONG_EDGE, ZOOM},
     };
-    for (int turns = 0; turns < TURNS; turns++) {
-        for (size_t i = 0; i < sizeof sizes / sizeof sizes[0]; i++) {
-            assert_geometry(turns, sizes[i][0], sizes[i][1], sizes[i][2], true);
-        }
-    }
+    assert_geometry_at_every_turn(sizes, sizeof sizes / sizeof sizes[0], true);
 }
 
 static void

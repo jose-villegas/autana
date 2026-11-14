@@ -108,7 +108,7 @@ test_mix_matches_the_rounded_per_channel_blend_at_every_share(void) {
     for (unsigned t = 0; t <= UINT8_MAX; t++) {
         for (unsigned ga = 0; ga < g6_values; ga++) {
             for (unsigned gb = 0; gb < g6_values; gb++) {
-                const unsigned r5_max = rgb565_r5(RGB565_RED_MASK);
+                const unsigned r5_max = rgb565_r5(UINT16_MAX);
                 const unsigned ra = ga & r5_max;
                 const unsigned rb = gb & r5_max;
                 const unsigned ba = ~ga & r5_max;

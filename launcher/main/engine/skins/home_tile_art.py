@@ -2,12 +2,15 @@
 
 Usage: python home_tile_art.py OUT_DIR    writes OUT_DIR/home_tile.png and OUT_DIR/home_tile_pressed.png
 """
+import pathlib
 import sys
+import tomllib
 
 from PIL import Image, ImageDraw
 
 SIDE = 48                       # sprite side, px
-RADIUS = 16                     # corner radius, px: the nine-slice border in the .image.toml files
+# Corner radius, px: the nine-slice border home_tile.image.toml gives the importer.
+RADIUS = tomllib.loads((pathlib.Path(__file__).with_name("home_tile.image.toml")).read_text())["border"][0]
 SUPERSAMPLE = 8                 # coverage drawn this many times larger, then reduced
 FACE, FACE_ALPHA = (75, 75, 75), 128            # shell button face, half see-through
 RIM, RIM_ALPHA = (171, 171, 171), 200           # face lit by the bezel highlight, a 1 px edge

@@ -244,6 +244,13 @@ draw_icon_command(const mu_Command* cmd, affine2x_t t) {
     draw_rect(r.x + (r.w / 3), r.y + (r.h / 3), r.w / 3, r.h / 3, color);
 }
 
+/* A clip command's panel rect. */
+static recti_t
+command_clip(const mu_Command* cmd) {
+    return recti_intersect(ui_transform_rect(ui_effective_transform(), ui_recti_from_mu(cmd->clip.rect)),
+                           GFX_SCREEN_RECT);
+}
+
 static void
 draw_command(const mu_Command* cmd) {
     const affine2x_t t = ui_effective_transform();
@@ -256,7 +263,7 @@ draw_command(const mu_Command* cmd) {
         case MU_COMMAND_TEXT: draw_text_command(cmd, t); break;
         case MU_COMMAND_ICON: draw_icon_command(cmd, t); break;
         case MU_COMMAND_CLIP: {
-            const mu_Rect r = ui_transform_mu_rect(t, cmd->clip.rect);
+            const recti_t r = command_clip(cmd);
             draw_set_clip(r.x, r.y, r.w, r.h);
             break;
         }
@@ -289,11 +296,17 @@ void (*ui_canvas_painted_for_test)(const mu_Container*);
 
 static bool command_rect(const mu_Command* cmd, mu_Rect* out);
 
-/* A clip command's panel rect, as draw_command() sets it. */
-static recti_t
-command_clip(const mu_Command* cmd) {
-    return recti_intersect(ui_transform_rect(ui_effective_transform(), ui_recti_from_mu(cmd->clip.rect)),
-                           GFX_SCREEN_RECT);
+/* next_canvas_command(), `clip` (the screen to start) following the
+ * canvas's clip commands. */
+static bool
+next_clipped_command(const mu_Container* cnt, mu_Command** cmd, recti_t* clip) {
+    if (!next_canvas_command(cnt, cmd)) {
+        return false;
+    }
+    if ((*cmd)->type == MU_COMMAND_CLIP) {
+        *clip = command_clip(*cmd);
+    }
+    return true;
 }
 
 /* In a replay, a command is drawn again only over the dirt the frame had
@@ -319,10 +332,7 @@ static void
 paint_canvas(const mu_Container* cnt, const gfx_dirty_leaves_t* dirt) {
     recti_t clip = GFX_SCREEN_RECT;
     mu_Command* cmd = NULL;
-    while (next_canvas_command(cnt, &cmd)) {
-        if (cmd->type == MU_COMMAND_CLIP) {
-            clip = command_clip(cmd);
-        }
+    while (next_clipped_command(cnt, &cmd, &clip)) {
         if (dirt == NULL || cmd->type == MU_COMMAND_CLIP) {
             draw_command(cmd);
         } else {
@@ -486,6 +496,24 @@ ui_end_if_unsettled(void) {
     return true;
 }
 
+/* Whether any canvas holds a face that lets what is under it show: with no
+ * background to clear to, ui_end() would blend it over its own last paint
+ * (ui_end_over() puts a backdrop back first). */
+#ifndef NDEBUG
+static bool
+any_translucent_face(int n) {
+    for (int i = 0; i < n && i < MU_ROOTLIST_SIZE; i++) {
+        mu_Command* cmd = NULL;
+        while (next_canvas_command(ui_ctx.root_list.items[i], &cmd)) {
+            if (cmd->type == UI_COMMAND_SPRITE && ((const ui_sprite_command_t*)cmd)->sprite->alpha.pixels != NULL) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+#endif
+
 bool
 ui_end(uint32_t background_rgb) {
 #if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT
@@ -508,6 +536,7 @@ ui_end(uint32_t background_rgb) {
 
     clear_vanished_canvases(background_rgb);
     mark_changed_canvases(n, repaint);
+    assert(background_rgb != UI_NO_BACKGROUND || !any_translucent_face(n));
     propagate_repaint_over_overlaps(n, repaint);
     const bool drew = repaint_marked_canvases(n, repaint, background_rgb, NULL);
 
@@ -531,10 +560,8 @@ backdrop_under_replay(int n, ui_backdrop_fn paint_backdrop, const gfx_dirty_leav
         recti_t clip = GFX_SCREEN_RECT;
         mu_Command* cmd = NULL;
         mu_Rect r;
-        while (next_canvas_command(ui_ctx.root_list.items[i], &cmd)) {
-            if (cmd->type == MU_COMMAND_CLIP) {
-                clip = command_clip(cmd);
-            } else if (cmd->type != MU_COMMAND_RECT && command_rect(cmd, &r)) {
+        while (next_clipped_command(ui_ctx.root_list.items[i], &cmd, &clip)) {
+            if (cmd->type != MU_COMMAND_CLIP && cmd->type != MU_COMMAND_RECT && command_rect(cmd, &r)) {
                 gfx_dirty_leaves_add(&under, dirt, recti_intersect(clip, ui_recti_from_mu(r)));
             }
         }
@@ -569,20 +596,19 @@ ui_end_over(ui_backdrop_fn paint_backdrop) {
     for (int i = 0; i < n && i < MU_ROOTLIST_SIZE; i++) {
         changed = changed || canvas_itself_changed(ui_ctx.root_list.items[i]);
     }
-    bool drew;
+    /* Every canvas goes again: a replay draws nothing where there is no
+     * dirt, and only the snapshot says where the backdrop went back. */
+    gfx_dirty_leaves_t dirt;
     if (changed) {
         paint_backdrop(GFX_SCREEN_RECT);
-        for (int i = 0; i < n && i < MU_ROOTLIST_SIZE; i++) {
-            repaint[i] = true;
-        }
-        drew = repaint_marked_canvases(n, repaint, UI_NO_BACKGROUND, NULL);
     } else {
-        gfx_dirty_leaves_t dirt;
         gfx_dirty_leaves(&dirt);
-        mark_changed_canvases(n, repaint);
         backdrop_under_replay(n, paint_backdrop, &dirt);
-        drew = repaint_marked_canvases(n, repaint, UI_NO_BACKGROUND, &dirt);
     }
+    for (int i = 0; i < n && i < MU_ROOTLIST_SIZE; i++) {
+        repaint[i] = true;
+    }
+    const bool drew = repaint_marked_canvases(n, repaint, UI_NO_BACKGROUND, changed ? NULL : &dirt);
 
     ui_invalidated = false;
 #if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT

@@ -160,9 +160,9 @@ bool ui_end_if_unsettled(void);
  * paints the backdrop inside `area`, a panel rectangle, and marks it drawn.
  * When the UI changed it is asked for the whole screen and every canvas goes
  * over it. A backdrop that animates draws its own changes before this call;
- * the unchanged UI is then replayed over just those places, the backdrop
- * first put back under each face replayed, so a translucent face never
- * blends over its own last paint. Full framebuffer only. */
+ * the unchanged UI is replayed over just those places, the backdrop first
+ * put back under all but opaque rects there, so nothing translucent blends
+ * over itself. Full framebuffer only. */
 typedef void (*ui_backdrop_fn)(recti_t area);
 bool ui_end_over(ui_backdrop_fn paint_backdrop);
 

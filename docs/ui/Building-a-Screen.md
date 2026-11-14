@@ -256,9 +256,9 @@ and not a colour; the launcher's ridge (`shell/ui/ui_ridge.c`) is the model.
    screen, and every window is painted over it.
 2. A backdrop that animates draws its own changed part **before**
    `ui_end_over()`. That dirties the screen under an unchanged UI, which is
-   replayed over just those places; the backdrop is first put back under
-   each face replayed, so a translucent face never blends over its own last
-   paint.
+   replayed over just those places; the backdrop is first put back there
+   under every command but an opaque rect, so nothing translucent blends
+   over its own last paint.
 3. At rest it must draw nothing. A backdrop that redraws an identical frame
    dirties the screen, and the launcher stops being free while idle.
 4. React to the raw `input_t`, not to the controls: a press is held back until it is known to be a tap and not a

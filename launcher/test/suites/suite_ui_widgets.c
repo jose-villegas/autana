@@ -994,6 +994,11 @@ test_a_translucent_face_put_back_over_its_backdrop_holds_its_pixels(void) {
 static const recti_t OPAQUE_PANEL = {20, 80, 280, 120};
 static const recti_t OVER_BUTTON = {120, 120, 160, 70};
 static const recti_t NARROW_CLIP = {60, 90, 90, 90};
+/* A window short of the screen, and a pixel just left of it: outside the
+ * window, inside the dirt tracker's leaf its left edge lies in (leaves are
+ * GFX_WIDTH / 16 = 23 wide, so 46 to 69). */
+static const recti_t SMALL_WINDOW = {50, 100, 100, 60};
+static const recti_t BESIDE_WINDOW = {47, 110, 1, 1};
 static int stripe_phase;
 
 static recti_t
@@ -1017,16 +1022,26 @@ paint_stripe_backdrop(recti_t area) {
     gfx_mark_drawn(area.x, area.y, area.w, area.h);
 }
 
-/* The stripe moves on: drawn where it was and where it is, as an animated
- * backdrop draws only what changed; `whole_rows` marks the rows whole. */
+typedef enum {
+    STEP_STRIPE,        /* the stripe moves */
+    STEP_STRIPE_ROWS,   /* the stripe moves, its rows marked whole */
+    STEP_BESIDE_WINDOW, /* one pixel beside SMALL_WINDOW drawn again */
+} backdrop_step_t;
+
+/* What the backdrop draws before a frame, as an animated backdrop draws
+ * only what changed: a moving stripe where it was and where it is. */
 static void
-step_stripe(bool whole_rows) {
+step_backdrop(backdrop_step_t step) {
+    if (step == STEP_BESIDE_WINDOW) {
+        paint_stripe_backdrop(BESIDE_WINDOW);
+        return;
+    }
     const recti_t was = stripe_rect();
     stripe_phase++;
     const recti_t now = stripe_rect();
     paint_stripe_backdrop(was);
     paint_stripe_backdrop(now);
-    if (whole_rows) {
+    if (step == STEP_STRIPE_ROWS) {
         gfx_mark_rows_dirty(was.y, recti_bottom(now));
     }
 }
@@ -1035,6 +1050,7 @@ typedef enum {
     REPLAY_OPAQUE_UNDER, /* a translucent face over an opaque rect */
     REPLAY_OVERLAP,      /* two translucent faces, one over the other */
     REPLAY_NARROW_CLIP,  /* a face cut by a clip narrower than it */
+    REPLAY_SMALL_WINDOW, /* a face filling a window short of the screen */
 } replay_scene_t;
 
 static void
@@ -1043,6 +1059,14 @@ replay_scene_frame(const half_skin_t* skin, replay_scene_t scene) {
     const input_t idle = {0};
     mu_Context* ctx = ui_context();
     ui_begin(&idle);
+    if (scene == REPLAY_SMALL_WINDOW) {
+        ui_window(SMALL_WINDOW);
+        ui_skin(&faces);
+        (void)ui_button(SMALL_WINDOW, "IN");
+        (void)ui_end_over(paint_stripe_backdrop);
+        gfx_present();
+        return;
+    }
     ui_screen();
     ui_skin(&faces);
     if (scene == REPLAY_OPAQUE_UNDER) {
@@ -1066,7 +1090,7 @@ replay_scene_frame(const half_skin_t* skin, replay_scene_t scene) {
 /* An unchanged UI replayed over a moving backdrop leaves every pixel as a
  * whole repaint of the same frame would, frame after frame. */
 static void
-assert_replay_matches_a_whole_repaint(replay_scene_t scene, int turns, bool whole_rows) {
+assert_replay_matches_a_whole_repaint(replay_scene_t scene, int turns, backdrop_step_t step) {
     face_fixture();
     ui_set_transform(ui_transform_quarter_turn(turns, GFX_WIDTH, GFX_HEIGHT));
     stripe_phase = 0;
@@ -1075,7 +1099,7 @@ assert_replay_matches_a_whole_repaint(replay_scene_t scene, int turns, bool whol
     const size_t frame_bytes = GFX_FRAMEBUFFER_BYTES;
     replay_scene_frame(skin, scene);
     for (int i = 0; i < STRIPE_FRAMES; i++) {
-        step_stripe(whole_rows);
+        step_backdrop(step);
         replay_scene_frame(skin, scene);
         memcpy(replayed, gfx_framebuffer(), frame_bytes);
         ui_invalidate();
@@ -1088,28 +1112,35 @@ assert_replay_matches_a_whole_repaint(replay_scene_t scene, int turns, bool whol
 
 static void
 test_a_face_over_an_opaque_rect_replays_as_a_whole_repaint(void) {
-    assert_replay_matches_a_whole_repaint(REPLAY_OPAQUE_UNDER, 0, false);
+    assert_replay_matches_a_whole_repaint(REPLAY_OPAQUE_UNDER, 0, STEP_STRIPE);
 }
 
 static void
 test_overlapping_faces_replay_as_a_whole_repaint(void) {
-    assert_replay_matches_a_whole_repaint(REPLAY_OVERLAP, 0, false);
+    assert_replay_matches_a_whole_repaint(REPLAY_OVERLAP, 0, STEP_STRIPE);
 }
 
 static void
 test_a_face_in_a_narrower_clip_replays_as_a_whole_repaint(void) {
-    assert_replay_matches_a_whole_repaint(REPLAY_NARROW_CLIP, 0, false);
+    assert_replay_matches_a_whole_repaint(REPLAY_NARROW_CLIP, 0, STEP_STRIPE);
 }
 
 static void
 test_a_quarter_turned_ui_replays_as_a_whole_repaint(void) {
-    assert_replay_matches_a_whole_repaint(REPLAY_OVERLAP, 1, false);
-    assert_replay_matches_a_whole_repaint(REPLAY_OPAQUE_UNDER, 1, false);
+    assert_replay_matches_a_whole_repaint(REPLAY_OVERLAP, 1, STEP_STRIPE);
+    assert_replay_matches_a_whole_repaint(REPLAY_OPAQUE_UNDER, 1, STEP_STRIPE);
 }
 
 static void
 test_a_replay_over_rows_marked_whole_matches_a_whole_repaint(void) {
-    assert_replay_matches_a_whole_repaint(REPLAY_OPAQUE_UNDER, 0, true);
+    assert_replay_matches_a_whole_repaint(REPLAY_OPAQUE_UNDER, 0, STEP_STRIPE_ROWS);
+}
+
+/* Dirt in a leaf a window shares, outside the window: the backdrop goes
+ * back over that whole leaf, so the window's face there is drawn again. */
+static void
+test_dirt_beside_a_window_replays_its_face_as_a_whole_repaint(void) {
+    assert_replay_matches_a_whole_repaint(REPLAY_SMALL_WINDOW, 0, STEP_BESIDE_WINDOW);
 }
 
 static void
@@ -1831,6 +1862,7 @@ run_ui_widgets_suite(void) {
     RUN_TEST(test_a_face_in_a_narrower_clip_replays_as_a_whole_repaint);
     RUN_TEST(test_a_quarter_turned_ui_replays_as_a_whole_repaint);
     RUN_TEST(test_a_replay_over_rows_marked_whole_matches_a_whole_repaint);
+    RUN_TEST(test_dirt_beside_a_window_replays_its_face_as_a_whole_repaint);
     RUN_TEST(test_closing_the_list_restores_the_pixels_under_it);
     RUN_TEST(test_ui_end_in_band_mode_is_replayed_over_each_band);
     RUN_TEST(test_changed_ui_over_a_held_expanded_picture_dirties_its_band);
