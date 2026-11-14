@@ -19,28 +19,45 @@ class Contact:
     unshared: bool = False
 
 
+# Candidate (vertex, face) pairs tested in one batch: bounds the batch's memory, not its result.
+PAIR_BATCH = 1 << 20
+
+
 def _surface_border(pos, vertices, faces, tolerance):
+    """(vertices within `tolerance` of a face, every corner of those faces, whether a touching vertex sits on no
+    face corner); one batched closest-point test per PAIR_BATCH candidate pairs."""
+    vertices = np.asarray(vertices, dtype=int)
     corners = pos[faces]
     centres = corners.mean(axis=1)
     radii = np.linalg.norm(corners - centres[:, None], axis=2).max(axis=1)
     tree = cKDTree(centres)
-    source, target, unshared = set(), set(), False
-    for vertex, candidates in zip(vertices, tree.query_ball_point(pos[vertices], radii.max() + tolerance)):
-        candidates = np.asarray(candidates, dtype=int)
-        candidates = candidates[np.linalg.norm(centres[candidates] - pos[vertex], axis=1) <= radii[candidates] + tolerance]
-        if not len(candidates):
-            continue
-        tri = corners[candidates]
-        _, distance = closest_point_on_triangles(np.broadcast_to(pos[vertex], (len(tri), 3)), *tri.transpose(1, 0, 2))
-        near = candidates[distance <= tolerance]
-        if len(near):
-            source.add(int(vertex))
-            shared = np.any(np.all(pos[faces[near]].astype(np.float32) == pos[vertex].astype(np.float32), axis=2))
-            unshared |= not shared
-            # All corners of a touched face must stay fixed: locking just the
-            # incoming point would let the supporting surface move away from it.
-            target.update(faces[near].ravel().tolist())
-    return source, target, unshared
+    points = pos[vertices]
+    lists = tree.query_ball_point(points, radii.max() + tolerance)
+    sizes = np.fromiter(map(len, lists), dtype=np.int64, count=len(lists))
+    touched, shared, near_faces = np.zeros(len(vertices), bool), np.zeros(len(vertices), bool), []
+    ends = np.cumsum(sizes)
+    begin = 0
+    while begin < len(vertices):
+        before = ends[begin - 1] if begin else 0
+        stop = max(begin + 1, int(np.searchsorted(ends, before + PAIR_BATCH, side='right')))
+        owner = np.repeat(np.arange(begin, stop), sizes[begin:stop])
+        candidate = np.fromiter((c for row in lists[begin:stop] for c in row), dtype=np.int64, count=len(owner))
+        keep = np.linalg.norm(centres[candidate] - points[owner], axis=1) <= radii[candidate] + tolerance
+        owner, candidate = owner[keep], candidate[keep]
+        if len(owner):
+            _, distance = closest_point_on_triangles(points[owner], *corners[candidate].transpose(1, 0, 2))
+            near = distance <= tolerance
+            owner, candidate = owner[near], candidate[near]
+            touched[owner] = True
+            on_corner = np.any(np.all(pos[faces[candidate]].astype(np.float32) ==
+                                      points[owner, None].astype(np.float32), axis=2), axis=1)
+            shared[owner[on_corner]] = True
+            near_faces.append(faces[candidate].ravel())
+        begin = stop
+    # All corners of a touched face must stay fixed: locking just the
+    # incoming point would let the supporting surface move away from it.
+    target = set(np.concatenate(near_faces).tolist()) if near_faces else set()
+    return set(vertices[touched].tolist()), target, bool(np.any(touched & ~shared))
 
 
 def contact_pairs(pos, tris, tri_o, position_scale=POSITION_SCALE, among=None):
