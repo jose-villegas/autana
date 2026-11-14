@@ -19,8 +19,9 @@ class Contact:
     unshared: bool = False
 
 
-# Candidate (vertex, face) pairs queried and tested in one batch. It bounds the work in flight, not the result;
-# the bytes per pair are not measured.
+# Candidate (vertex, face) pairs queried and tested in one batch. It bounds the work in flight, not the result,
+# except that a batch takes at least one vertex: one with more candidates runs alone, as every vertex did before
+# batching. The bytes per pair are not measured.
 PAIR_BATCH = 1 << 20
 
 
@@ -41,7 +42,7 @@ def surface_border(pos, vertices, faces, tolerance):
     touched, shared = np.zeros(len(vertices), bool), np.zeros(len(vertices), bool)
     # All corners of a touched face must stay fixed: locking just the
     # incoming point would let the supporting surface move away from it.
-    fixed = np.zeros(len(pos), bool)
+    hit = np.zeros(len(faces), bool)
     begin = 0
     while begin < len(vertices):
         before = ends[begin - 1] if begin else 0
@@ -59,9 +60,9 @@ def surface_border(pos, vertices, faces, tolerance):
                 on_corner = np.any(np.all(pos[faces[candidate]].astype(np.float32) ==
                                           points[owner, None].astype(np.float32), axis=2), axis=1)
                 shared[owner[on_corner]] = True
-                fixed[faces[candidate]] = True
+                hit[candidate] = True
         begin = stop
-    return set(vertices[touched].tolist()), set(np.flatnonzero(fixed).tolist()), bool(np.any(touched & ~shared))
+    return set(vertices[touched].tolist()), set(np.unique(faces[hit]).tolist()), bool(np.any(touched & ~shared))
 
 
 def contact_pairs(pos, tris, tri_o, position_scale=POSITION_SCALE, among=None):

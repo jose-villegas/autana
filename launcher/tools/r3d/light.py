@@ -14,15 +14,7 @@ import numpy as np
 from . import log
 from .geometry import distinct_corners, nearest_triangles, triangle_areas, triangle_search
 from .import_settings import LIGHT_FIELDS
-
-
-# A texture whose every texel's alpha is above this is opaque: nothing of it is cut away.
-ALPHA_OPAQUE = 0.99
-
-
-def alpha_tested(textures):
-    """Per material: does its texture cut pixels away (leaves, chains, glass panes)?"""
-    return np.array([tex is not None and tex.levels[0][..., 3].min() <= ALPHA_OPAQUE for tex in textures], dtype=bool)
+from .obj import alpha_tested
 
 
 def drop_masked(p, uv, tri_v, tri_t, tri_m, textures, keep_alpha=0.5):
