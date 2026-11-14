@@ -1,3 +1,4 @@
 PyYAML==6.0.3
 pyserial==3.5
 pyelftools==0.33
+tzdata==2026.6
