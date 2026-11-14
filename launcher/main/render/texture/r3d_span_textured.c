@@ -44,6 +44,17 @@
 /* A segment grows no longer: its 8.8 step drifts under an eighth of a texel. */
 #define SEGMENT_PX_MAX 32
 
+/* 1 / n for every segment length n, so a span's short last segment costs no divide. */
+#define INVERSE_1(n)   (1.0F / (float)(n)),
+#define INVERSE_8(n)                                                                                                   \
+    INVERSE_1(n)                                                                                                       \
+    INVERSE_1((n) + 1)                                                                                                 \
+    INVERSE_1((n) + 2) INVERSE_1((n) + 3) INVERSE_1((n) + 4) INVERSE_1((n) + 5) INVERSE_1((n) + 6) INVERSE_1((n) + 7)
+static const float segment_inverse[] = {0.0F, INVERSE_8(1) INVERSE_8(9) INVERSE_8(17) INVERSE_8(25) INVERSE_8(33)
+                                                  INVERSE_8(41) INVERSE_8(49) INVERSE_8(57)};
+_Static_assert(sizeof segment_inverse / sizeof segment_inverse[0] == RENDER_TEXTURE_DIVIDE_PX_MAX + 1,
+               "an inverse for every segment length");
+
 _Static_assert(BAYER4_LEVELS << DITHER_SHIFT == 1 << LIGHT_FRAC, "a threshold stays under one level");
 _Static_assert((1 << (UV_HALF_BITS - UV_FRAC)) == (int)UV_WRAP, "u and v wrap at their integer bits");
 
@@ -127,9 +138,8 @@ typedef struct {
     r3d_span_plane_t q;     /* inverse depth, which u and v divide by */
     r3d_span_plane_t level; /* 8.8 light level */
     int32_t depth_max;
-    int x0, y0;          /* the origin pixel */
-    int divide;          /* pixels between divides, 0 when the triangle steps affine */
-    float whole_inverse; /* 1 / divide */
+    int x0, y0; /* the origin pixel */
+    int divide; /* pixels between divides, 0 when the triangle steps affine */
     sampler_t sampler;
 } setup_t;
 
@@ -148,7 +158,7 @@ fill_divided(const setup_t* su, uint16_t* depth, uint16_t* color, int count, car
     for (int done = 0; done < count;) {
         const int n = mathi_min(su->divide, count - done);
         const float steps = (float)n;
-        const float inverse = n == su->divide ? su->whole_inverse : mathf_recip_approx(steps);
+        const float inverse = segment_inverse[n];
         s += su->s.dx * steps;
         t += su->t.dx * steps;
         q += su->q.dx * steps;
@@ -249,7 +259,6 @@ set_up(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[CORNERS
         divide *= 2;
     }
     su->divide = bends ? divide : 0;
-    su->whole_inverse = bends ? 1.0F / (float)divide : 0.0F;
     if (su->divide != 0) {
         /* The level stays the affine planes' pick; u and v become u q and v q. */
         su->q = r3d_span_plane_of(&f, v[0]->z, v[1]->z, v[2]->z);
