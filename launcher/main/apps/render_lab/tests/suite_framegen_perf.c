@@ -251,6 +251,36 @@ static const framegen_mode_t modes[] = {
 
 static const framegen_mode_t* mode;
 
+/* A scenario's goals in one mode: its shown frames' mean goal and p95
+ * ceiling. Pegged from perf-board captures of this suite: the goal the worst
+ * run's mean + 1%, the ceiling the worst run's p95 x 1.15. A scenario or mode
+ * with no row is unpegged. */
+typedef struct {
+    const char* key;
+    const char* mode;
+    perf_budget_t budget;
+} framegen_goal_t;
+
+static const framegen_goal_t goals[] = {
+    {"capybara-sponza", "plain", {35240, 52620}},
+    {"capybara-sponza", "framegen", {31420, 52510}},
+    {"capybara-sponza", "dynres", {33340, 42090}},
+    {"capybara-sponza", "framegen-dynres", {30750, 48390}},
+    {"capybara-sponza", "framegen-dynres-3q", {27690, 41890}},
+    {"capybara-sponza", "framegen-dynres-half", {24560, 41870}},
+};
+
+/* The current scenario's goals in the current mode; zero when unpegged. */
+static perf_budget_t
+mode_goal(void) {
+    for (size_t i = 0; i < sizeof goals / sizeof goals[0]; i++) {
+        if (strcmp(goals[i].key, scenario->scene->key) == 0 && strcmp(goals[i].mode, mode->name) == 0) {
+            return goals[i].budget;
+        }
+    }
+    return (perf_budget_t){0};
+}
+
 /* What a played path drew: frames shown, how many were drawn rather than
  * generated, and the drawn rows summed; `carry_us` keeps the frame steps whole. */
 typedef struct {
@@ -386,6 +416,11 @@ test_mode(void) {
              (int)p.frame_us.avg, (int)p.frame_us.p95, (int)(played.height_sum / played.drawn));
     log_worst_frames(&played);
     free(played.shown);
+    char row[LAB_PERF_ROW_NAME_SIZE];
+    const int length = snprintf(row, sizeof row, "framegen %s %s", scenario->scene->key, mode->name);
+    TEST_ASSERT_TRUE(length > 0 && (size_t)length < sizeof row);
+    const perf_budget_t goal = mode_goal();
+    lab_perf_named_budget(row, p.frame_us.avg, p.frame_us.p95, &goal, true);
     TEST_ASSERT_TRUE(render_lab_framegen_set_on(false));
     TEST_ASSERT_TRUE(render_lab_budget_set_ms(0));
     release_fixture();
