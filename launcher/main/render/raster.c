@@ -38,6 +38,10 @@ TUNE_OVERRIDE(render, lod_blend_centipixels, (int32_t)(RENDER_LOD_BLEND_PX_MAX *
 TUNE_OVERRIDE(render, lod_pick_every, R3D_LOD_PICK_EVERY_MAX);
 /* Overrides lod.triangle_budget. */
 TUNE_OVERRIDE(render, lod_triangle_budget, INT32_MAX);
+/* Override texture.divide_px, and texture.affine_bend in 1/R3D_SPAN_BEND_STEPS
+ * texel; texture_figures.py sets both for its true divide. */
+TUNE_OVERRIDE(render, texture_divide_px, RENDER_TEXTURE_DIVIDE_PX_MAX);
+TUNE_OVERRIDE(render, texture_bend_steps, (int32_t)(RENDER_TEXTURE_BEND_MAX * R3D_SPAN_BEND_STEPS));
 
 render_settings_t
 raster_settings(const raster_t* raster) {
@@ -51,7 +55,9 @@ raster_settings(const raster_t* raster) {
          tune_override(lod_pick_every, s.lod.pick_every), tune_override(lod_triangle_budget, s.lod.triangle_budget),
          tune_override(lod_blend, s.lod.blend),
          lod_blend_centipixels == TUNE_UNSET ? s.lod.blend_px : (float)lod_blend_centipixels / LOD_BLEND_CENTI},
-        s.anim};
+        s.anim,
+        {tune_override(texture_divide_px, s.texture.divide_px),
+         texture_bend_steps == TUNE_UNSET ? s.texture.affine_bend : (float)texture_bend_steps / R3D_SPAN_BEND_STEPS}};
 }
 
 bool
@@ -206,7 +212,8 @@ typedef struct {
     slice_t mine, other;
     r3d_span_target_t targets[2];
     r3d_span_small_fill_t small_fill;
-    bool skip_hidden;         /* the view's */
+    bool skip_hidden; /* the view's */
+    render_texture_settings_t texture;
     int first_row, end_row;   /* the rows this draw redraws */
     bool levels_changed;      /* a level pick this draw changed an instance's cut */
     bool blends;              /* lod.blend is on: each instance's blend is set up */
@@ -376,6 +383,7 @@ draw_slice(void* ctx) {
     gfx_target_window(&target->rows, &b->picture, s->first, s->first + s->count);
     target->small_fill = &((const draw_work_t*)b->draw)->small_fill;
     target->skip_hidden = ((const draw_work_t*)b->draw)->skip_hidden;
+    r3d_span_set_texture(target, &((const draw_work_t*)b->draw)->texture);
 
     if (s->clear) {
         const size_t pixels = (size_t)s->count * (size_t)r->width;
@@ -1064,6 +1072,7 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
     }
     r3d_span_small_fill_resolve(&work->small_fill, view->small_fill);
     work->skip_hidden = view->skip_hidden;
+    work->texture = raster_settings(raster).texture;
     /* A list drawn with no census, or rewritten without its scale, fails here. */
     assert(*work->buffers.depth_near >= view->lens.near_z);
     uint16_t* culled = work->buffers.culled;

@@ -51,6 +51,8 @@ that field's table in the asset.
 | `anim.mid_every` | `2` | basic | frames between mid-sized poses; 1 poses every frame |
 | `anim.far_every` | `4` | basic | frames between far poses; 1 poses every frame |
 | `anim.hysteresis_px` | `4.0` | advanced | pixels past a tier boundary before switching |
+| `texture.divide_px` | `16` | basic | pixels between u and v's divides by depth; 0 is affine, near floors bend; fewer cost more |
+| `texture.affine_bend` | `0.5` | advanced | texels a triangle may bend and still step affine; more saves, bends more |
 <!-- /generated: render-settings -->
 
 ## cull

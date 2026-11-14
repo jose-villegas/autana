@@ -8,7 +8,7 @@ takes the same frame from the reference bake BAKE (a .reference.tar.xz, bake.py 
 and lays the three out with render_compare.py: the source, the plain draw, the textured draw and each one's error
 against the source.
 
---divides draws the textured frame again at each r3d_texture.divide_pixels value, the first the truth (1, a divide
+--divides draws the textured frame again at each texture.divide_px value (render settings), the first the truth (1, a divide
 every pixel on every triangle), and --divide-image writes the squares of the near floor (the frame's lowest
 NEAR_SHARE) where the second differs most from it: a row per square, a column per value, each headed with its CIE76
 dE against the truth over the near floor.
@@ -41,8 +41,8 @@ PORTRAIT = 0
 NEAR_SHARE = 1 / 3
 # The tunables the divide sheet sets: the divide spacing, and the bend under which a triangle steps affine, 0 for
 # the truth so every triangle divides.
-DIVIDE_TUNABLE = "r3d_texture.divide_pixels"
-AFFINE_TUNABLE = "r3d_texture.affine_sixteenths"
+DIVIDE_TUNABLE = "render.texture_divide_px"
+AFFINE_TUNABLE = "render.texture_bend_steps"
 TRUTH = 1
 # Squares the divide sheet zooms on.
 DIVIDE_CROPS = 4
@@ -135,7 +135,7 @@ def main():
     parser.add_argument("--dt", type=int, required=True, help="milliseconds a path frame")
     parser.add_argument("--title", required=True)
     parser.add_argument("--image", required=True, help="the sheet's file name")
-    parser.add_argument("--divides", help="divide_pixels values, comma-separated, the truth first")
+    parser.add_argument("--divides", help="texture.divide_px values, comma-separated, the truth first")
     parser.add_argument("--divide-image", help="the divide sheet's file name")
     parser.add_argument("--out", required=True, type=pathlib.Path)
     args = parser.parse_args()

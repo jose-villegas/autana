@@ -47,6 +47,16 @@ typedef struct {
     float hysteresis_px; /* advanced: pixels past a tier boundary before switching */
 } render_anim_settings_t;
 
+/* The longest texture.divide_px a pack may set. */
+#define RENDER_TEXTURE_DIVIDE_PX_MAX 64
+/* The largest texture.affine_bend a pack may set, in texels. */
+#define RENDER_TEXTURE_BEND_MAX      15.0F
+
+typedef struct {
+    int divide_px; /* basic: pixels between u and v's divides by depth; 0 is affine, near floors bend; fewer cost more */
+    float affine_bend; /* advanced: texels a triangle may bend and still step affine; more saves, bends more */
+} render_texture_settings_t;
+
 typedef struct {
     bool cull;                   /* basic: skips clusters and world boxes outside the picture */
     bool depth_fit;              /* advanced: depth steps go where the kept scene is, not to near_z; needs cull */
@@ -54,6 +64,7 @@ typedef struct {
     bool partial_redraw;         /* basic: a still camera redraws only the rows that moved; the picture is the same */
     render_lod_settings_t lod;   /* the level pick (docs/render/frame/Levels-of-Detail.md) */
     render_anim_settings_t anim; /* pose rate by size (docs/render/animation/Skinned-Meshes.md) */
+    render_texture_settings_t texture; /* the textured span fill (docs/assets/formats/LTEX.md) */
 } render_settings_t;
 
 /* RENDER_SETTINGS_DEFAULT, from default.render.toml beside this header. */
