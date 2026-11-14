@@ -605,6 +605,76 @@ test_writers_follow_a_mask1_triangle_over_its_kept_pixels_only(void) {
     TEST_ASSERT_LESS_THAN_MESSAGE(covered, marked_pixels(), "the holes were marked");
 }
 
+/* Where the pixel's stored depth already equals the card's quantised depth, a
+ * hole is still not handed to a writer: the plain fill leaves the very depths
+ * the card then writes, and only the kept covered pixels are marked. */
+static void
+test_writers_skip_mask1_holes_where_the_depth_ties(void) {
+    fixture();
+    mask_texture_open();
+    background(0);
+    plain_corner(0);
+    r3d_span_target_t target = target_at(0);
+    r3d_span_writer_t writer;
+    with_marking_writer(&target, &writer);
+    draw_masked(&target);
+    int kept = 0;
+    int holes = 0;
+    for (int y = 0; y < SIDE; y++) {
+        for (int x = 0; x < SIDE; x++) {
+            const int i = (y * SIDE) + x;
+            const bool in_triangle = buffers[PIXELS + i] != BG_DEPTH;
+            const bool is_kept = mask_kept(x % MASK_SIDE, y % MASK_SIDE);
+            kept += in_triangle && is_kept;
+            holes += in_triangle && !is_kept;
+            TEST_ASSERT_EQUAL_MESSAGE(in_triangle && is_kept, marks[i], "a pixel's mark against the pattern");
+        }
+    }
+    TEST_ASSERT_GREATER_THAN_MESSAGE(0, kept, "no kept pixel: the pattern tells nothing");
+    TEST_ASSERT_GREATER_THAN_MESSAGE(0, holes, "no covered hole: the pattern tells nothing");
+}
+
+/* Depth falling along x and rising down y, a triangle reaching past every
+ * side of the target so its spans are clipped: the writer's depth step and
+ * each run's first depth must be the fill's own, for the marks to match what
+ * the fill wrote. */
+#define SLOPE_NEAR  0.25F
+#define SLOPE_FAR   0.75F
+#define SLOPE_REACH 16
+
+static void
+sloped_triangle_marks_what_it_wrote(const r3d_texture_t* tex) {
+    background(0);
+    r3d_span_target_t target = target_at(0);
+    r3d_span_writer_t writer;
+    with_marking_writer(&target, &writer);
+    const r3d_span_vertex_t a = vertex(-SLOPE_REACH, -SLOPE_REACH, SLOPE_NEAR, BRIGHTEST),
+                            b = vertex(SIDE + SLOPE_REACH, 0, SLOPE_FAR, BRIGHTEST),
+                            c = vertex(0, SIDE + SLOPE_REACH, SLOPE_FAR, BRIGHTEST);
+    const vec2f_t uv[3] = {{0, 0}, {SIDE, 0}, {0, SIDE}};
+    r3d_span_textured_triangle(&target, &a, &b, &c, uv, tex);
+    int drawn = 0;
+    for (int i = 0; i < PIXELS; i++) {
+        const bool wrote = buffers[PIXELS + i] != BG_DEPTH;
+        drawn += wrote;
+        TEST_ASSERT_EQUAL_MESSAGE(wrote, marks[i], "a pixel's mark against what the fill wrote");
+    }
+    TEST_ASSERT_GREATER_THAN_MESSAGE(PIXELS / 8, drawn, "too little drawn: the slope tells nothing");
+}
+
+static void
+test_writers_follow_a_sloped_clipped_index4_triangle(void) {
+    fixture();
+    sloped_triangle_marks_what_it_wrote(texture);
+}
+
+static void
+test_writers_follow_a_sloped_clipped_mask1_triangle(void) {
+    fixture();
+    mask_texture_open();
+    sloped_triangle_marks_what_it_wrote(mask_texture);
+}
+
 static uint16_t
 depth_of(int which, int i) {
     return buffers[(which * 2 * PIXELS) + PIXELS + i];
@@ -1693,6 +1763,9 @@ run_r3d_texture_suite(void) {
     RUN_TEST(test_mask1_holes_keep_the_pixel_and_kept_texels_draw_colour_1);
     RUN_TEST(test_writers_follow_an_index4_textured_triangle_over_what_it_filled);
     RUN_TEST(test_writers_follow_a_mask1_triangle_over_its_kept_pixels_only);
+    RUN_TEST(test_writers_skip_mask1_holes_where_the_depth_ties);
+    RUN_TEST(test_writers_follow_a_sloped_clipped_index4_triangle);
+    RUN_TEST(test_writers_follow_a_sloped_clipped_mask1_triangle);
     RUN_TEST(test_mask1_pixel_shows_the_pattern_at_x_y_not_y_x);
     RUN_TEST(test_mask1_each_level_draws_its_own_texels);
     RUN_TEST(test_mask1_kept_colour_is_palette_colour_1_lit_by_the_tint);
