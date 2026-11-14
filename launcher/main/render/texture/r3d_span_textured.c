@@ -1,8 +1,10 @@
 /*
  * r3d_span_textured: r3d_texture's span fill. A triangle's u, v and light
  * level are planes set up in float once; each span starts from them and
- * steps fixed point, u and v packed in one word, affine across the
- * triangle as the PS1 drew them. A pixel is one colormap load: the texel's
+ * steps fixed point, u and v packed in one word. u and v divide by depth
+ * every divide_pixels and step affine between, as Quake drew
+ * them, or step affine across the whole span, as the PS1 did, when that is
+ * 0. A pixel is one colormap load: the texel's
  * colour at the vertex light's dithered level.
  */
 #include "render/texture/r3d_texture.h"
@@ -11,6 +13,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "core/tune.h"
 #include "image/pixel/bayer.h"
 #include "math/scalar/mathf.h"
 #include "math/scalar/mathi.h"
@@ -38,6 +41,10 @@
 #define CORNERS      3
 
 _Static_assert(BAYER4_LEVELS << DITHER_SHIFT == 1 << LIGHT_FRAC, "a threshold stays under one level");
+/* Pixels between a span's true perspective divides; 0 is affine. */
+TUNE_OWNER(r3d_texture);
+TUNE(r3d_texture, divide_pixels, 16, 0, 64);
+
 _Static_assert((1 << (UV_HALF_BITS - UV_FRAC)) == (int)UV_WRAP, "u and v wrap at their integer bits");
 
 static inline float
@@ -98,7 +105,8 @@ fill_colormap(uint16_t* depth, uint16_t* color, int count, carry_t* c, const sam
 /* What the set-up hands the row walk. */
 typedef struct {
     r3d_span_plane_t z;     /* 16.8 depth */
-    r3d_span_plane_t s, t;  /* u, v in the level's texels */
+    r3d_span_plane_t s, t;  /* u, v in the level's texels, times q when dividing */
+    r3d_span_plane_t q;     /* inverse depth, which u and v divide by */
     r3d_span_plane_t level; /* 8.8 light level */
     int32_t depth_max;
     int x0, y0; /* the origin pixel */
@@ -131,9 +139,34 @@ fill_span(const setup_t* su, const r3d_span_row_t* row, int y, int first, int la
     r3d_span_clamp_to(LEVEL_MAX, steps, &c.level, &c.dlevel);
     uint16_t* depth = row->depth + first;
     uint16_t* color = row->color + first;
-    c.uv = pack_uv(fixed_uv(plane_at(&su->s, fx, fy)), fixed_uv(plane_at(&su->t, fx, fy)));
-    c.duv = pack_uv((int32_t)(su->s.dx * (float)UV_ONE), 0) + (uint32_t)(int32_t)(su->t.dx * (float)UV_ONE);
-    fill_colormap(depth, color, steps + 1, &c, &su->sampler, first, y);
+    float s = plane_at(&su->s, fx, fy);
+    float t = plane_at(&su->t, fx, fy);
+    if (divide_pixels == 0) {
+        c.uv = pack_uv(fixed_uv(s), fixed_uv(t));
+        c.duv = pack_uv((int32_t)(su->s.dx * (float)UV_ONE), 0) + (uint32_t)(int32_t)(su->t.dx * (float)UV_ONE);
+        fill_colormap(depth, color, steps + 1, &c, &su->sampler, first, y);
+        return;
+    }
+    float q = plane_at(&su->q, fx, fy);
+    float r = mathf_recip(q);
+    float u = s * r;
+    float v = t * r;
+    for (int x = first; x <= last; x += divide_pixels) {
+        const int count = mathi_min(divide_pixels, last + 1 - x);
+        const float n = (float)count;
+        s += su->s.dx * n;
+        t += su->t.dx * n;
+        q += su->q.dx * n;
+        r = mathf_recip(q);
+        const float u_end = s * r;
+        const float v_end = t * r;
+        const float per_pixel = (float)UV_ONE / n;
+        c.uv = pack_uv(fixed_uv(u), fixed_uv(v));
+        c.duv = pack_uv((int32_t)((u_end - u) * per_pixel), 0) + (uint32_t)(int32_t)((v_end - v) * per_pixel);
+        fill_colormap(depth + (x - first), color + (x - first), count, &c, &su->sampler, x, y);
+        u = u_end;
+        v = v_end;
+    }
 }
 
 /* The level a pixel steps about one texel of: floor(log2) of the longest
@@ -182,6 +215,12 @@ set_up(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[CORNERS
     const float scale = 1.0F / (float)(1U << level);
     su->s = (r3d_span_plane_t){su->s.base * scale, su->s.dx * scale, su->s.dy * scale};
     su->t = (r3d_span_plane_t){su->t.base * scale, su->t.dx * scale, su->t.dy * scale};
+    if (divide_pixels != 0) {
+        /* The level stays the affine planes' pick; u and v become u q and v q. */
+        su->q = r3d_span_plane_of(&f, v[0]->z, v[1]->z, v[2]->z);
+        su->s = r3d_span_plane_of(&f, uv[0].x * scale * v[0]->z, uv[1].x * scale * v[1]->z, uv[2].x * scale * v[2]->z);
+        su->t = r3d_span_plane_of(&f, uv[0].y * scale * v[0]->z, uv[1].y * scale * v[1]->z, uv[2].y * scale * v[2]->z);
+    }
     const int side_log2 = texture->size_log2 - level;
     const uint32_t mask = (1U << side_log2) - 1U;
     su->sampler =
