@@ -9,9 +9,9 @@ and lays the three out with render_compare.py: the source, the plain draw, the t
 against the source.
 
 --divides draws the textured frame again at each r3d_texture.divide_pixels value, the first the truth (1, a divide
-every pixel), and --divide-image writes the squares of the near floor (the frame's lowest NEAR_SHARE) where the
-second differs most from it: a row per square, a column per value, each headed with its CIE76 dE against the truth
-over the near floor.
+every pixel on every triangle), and --divide-image writes the squares of the near floor (the frame's lowest
+NEAR_SHARE) where the second differs most from it: a row per square, a column per value, each headed with its CIE76
+dE against the truth over the near floor.
 """
 import argparse
 import pathlib
@@ -39,8 +39,11 @@ CROPS = 3
 PORTRAIT = 0
 # The share of the frame's height, from the bottom, the divide sheet measures: the floor nearest the camera.
 NEAR_SHARE = 1 / 3
-# The tunable the divide sheet sets.
+# The tunables the divide sheet sets: the divide spacing, and the bend under which a triangle steps affine, 0 for
+# the truth so every triangle divides.
 DIVIDE_TUNABLE = "r3d_texture.divide_pixels"
+AFFINE_TUNABLE = "r3d_texture.affine_sixteenths"
+TRUTH = 1
 # Squares the divide sheet zooms on.
 DIVIDE_CROPS = 4
 # The divide sheet's square side in pixels and the gap between squares.
@@ -61,6 +64,8 @@ def draw(args, value, work, divide=None):
     name = f"draw{value}" if divide is None else f"divide{divide}"
     bmp = work / f"{name}.bmp"
     tune = [] if divide is None else ["--set", f"{DIVIDE_TUNABLE}={divide}"]
+    if divide == TRUTH:
+        tune += ["--set", f"{AFFINE_TUNABLE}=0"]
     run(["sh", VIEWER, args.scene, "--object", args.object, "--quarter", PORTRAIT, "--frames", args.frame + 1,
          "--dt", args.dt, *(["--textured", args.object] if value else []), *tune, "-o", bmp])
     png = work / f"{name}.png"
@@ -83,7 +88,7 @@ def reference(args, size, work):
 
 
 def divide_label(divide):
-    return "affine" if divide == 0 else "true" if divide == 1 else f"N{divide}"
+    return "affine" if divide == 0 else "true" if divide == TRUTH else f"N{divide}"
 
 
 def divide_sheet(args, work):

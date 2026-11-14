@@ -44,6 +44,10 @@ _Static_assert(BAYER4_LEVELS << DITHER_SHIFT == 1 << LIGHT_FRAC, "a threshold st
 /* Pixels between a span's true perspective divides; 0 is affine. */
 TUNE_OWNER(r3d_texture);
 TUNE(r3d_texture, divide_pixels, 16, 0, 64);
+/* A triangle steps affine when that bends its texels by less than this, in
+ * 1/16 texel, at its widest. */
+TUNE(r3d_texture, affine_sixteenths, 8, 0, 1024);
+#define SIXTEENTHS 16.0F
 
 _Static_assert((1 << (UV_HALF_BITS - UV_FRAC)) == (int)UV_WRAP, "u and v wrap at their integer bits");
 
@@ -110,6 +114,7 @@ typedef struct {
     r3d_span_plane_t level; /* 8.8 light level */
     int32_t depth_max;
     int x0, y0; /* the origin pixel */
+    int divide; /* pixels between divides, 0 when the triangle steps affine */
     sampler_t sampler;
 } setup_t;
 
@@ -141,31 +146,33 @@ fill_span(const setup_t* su, const r3d_span_row_t* row, int y, int first, int la
     uint16_t* color = row->color + first;
     float s = plane_at(&su->s, fx, fy);
     float t = plane_at(&su->t, fx, fy);
-    if (divide_pixels == 0) {
+    if (su->divide == 0) {
         c.uv = pack_uv(fixed_uv(s), fixed_uv(t));
         c.duv = pack_uv((int32_t)(su->s.dx * (float)UV_ONE), 0) + (uint32_t)(int32_t)(su->t.dx * (float)UV_ONE);
         fill_colormap(depth, color, steps + 1, &c, &su->sampler, first, y);
         return;
     }
+    /* u and v wrap once at the span's start and then step in fixed point;
+     * each divide aims the next segment's step at the true u and v, unwrapped,
+     * from where the steps so far reached. */
     float q = plane_at(&su->q, fx, fy);
     float r = mathf_recip(q);
-    float u = s * r;
-    float v = t * r;
-    for (int x = first; x <= last; x += divide_pixels) {
-        const int count = mathi_min(divide_pixels, last + 1 - x);
+    int32_t u_at = (int32_t)(s * r * (float)UV_ONE);
+    int32_t v_at = (int32_t)(t * r * (float)UV_ONE);
+    c.uv = pack_uv(fixed_uv(s * r), fixed_uv(t * r));
+    for (int x = first; x <= last; x += su->divide) {
+        const int count = mathi_min(su->divide, last + 1 - x);
         const float n = (float)count;
         s += su->s.dx * n;
         t += su->t.dx * n;
         q += su->q.dx * n;
         r = mathf_recip(q);
-        const float u_end = s * r;
-        const float v_end = t * r;
-        const float per_pixel = (float)UV_ONE / n;
-        c.uv = pack_uv(fixed_uv(u), fixed_uv(v));
-        c.duv = pack_uv((int32_t)((u_end - u) * per_pixel), 0) + (uint32_t)(int32_t)((v_end - v) * per_pixel);
+        const int32_t du = ((int32_t)(s * r * (float)UV_ONE) - u_at) / count;
+        const int32_t dv = ((int32_t)(t * r * (float)UV_ONE) - v_at) / count;
+        c.duv = pack_uv(du, 0) + (uint32_t)dv;
         fill_colormap(depth + (x - first), color + (x - first), count, &c, &su->sampler, x, y);
-        u = u_end;
-        v = v_end;
+        u_at += du * count;
+        v_at += dv * count;
     }
 }
 
@@ -215,7 +222,15 @@ set_up(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[CORNERS
     const float scale = 1.0F / (float)(1U << level);
     su->s = (r3d_span_plane_t){su->s.base * scale, su->s.dx * scale, su->s.dy * scale};
     su->t = (r3d_span_plane_t){su->t.base * scale, su->t.dx * scale, su->t.dy * scale};
-    if (divide_pixels != 0) {
+    /* Affine bends a texel most at the triangle's middle, by about its
+     * texel extent times the share its inverse depth varies, over 4. */
+    const float z_near = mathf_max(v[0]->z, mathf_max(v[1]->z, v[2]->z));
+    const float z_far = mathf_min(v[0]->z, mathf_min(v[1]->z, v[2]->z));
+    const float extent = mathf_max(mathf_abs(su->s.dx) + mathf_abs(su->t.dx), mathf_abs(su->s.dy) + mathf_abs(su->t.dy))
+                         * (float)mathi_max(box.w, box.h);
+    const bool bends = extent * (z_near - z_far) * SIXTEENTHS > (float)affine_sixteenths * 4.0F * z_far;
+    su->divide = bends ? (int)divide_pixels : 0;
+    if (su->divide != 0) {
         /* The level stays the affine planes' pick; u and v become u q and v q. */
         su->q = r3d_span_plane_of(&f, v[0]->z, v[1]->z, v[2]->z);
         su->s = r3d_span_plane_of(&f, uv[0].x * scale * v[0]->z, uv[1].x * scale * v[1]->z, uv[2].x * scale * v[2]->z);
