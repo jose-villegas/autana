@@ -38,7 +38,7 @@ static stress_buffers_t buffers[STRESS_MIX_LEVELS];
 static r3d_dynamic_mesh_t mesh[STRESS_MIX_LEVELS];
 static uint32_t wave_ms;
 
-/* The textured preset's brick and its texturing. */
+/* A textured preset's texture and its texturing of the one mesh. */
 static r3d_texture_t* texture;
 static r3d_mesh_texturing_t texturing;
 
@@ -68,15 +68,16 @@ take_mesh(void) {
         const stress_params_t p = stress_copy_params(shown, i);
         const int vertices = stress_vertex_count(&p);
         const int triangles = stress_triangle_count(&p);
-        const bool masked = shown->surface == STRESS_SURFACE_MASKED;
+        const bool textured = stress_textured(shown);
         buffers[i] = (stress_buffers_t){lab_scene_take(sizeof(vec3f_t) * (size_t)vertices),
                                         lab_scene_take(sizeof(uint8_t[3]) * (size_t)vertices),
                                         lab_scene_take(sizeof(uint16_t[3]) * (size_t)triangles),
-                                        masked ? lab_scene_take(sizeof(uint16_t[2]) * (size_t)vertices) : NULL};
-        const r3d_dynamic_capacity_t capacity = r3d_dynamic_capacity_for(vertices, triangles, masked);
+                                        textured ? lab_scene_take(sizeof(int16_t[2]) * (size_t)vertices) : NULL};
+        r3d_dynamic_capacity_t capacity = r3d_dynamic_capacity_for(vertices, triangles);
+        capacity.textured = textured;
         const size_t bytes = r3d_dynamic_mesh_bytes(capacity);
         void* block = lab_scene_take(bytes);
-        if ((masked && buffers[i].mask_uvs == NULL) || buffers[i].positions == NULL || buffers[i].colors == NULL
+        if ((textured && buffers[i].uvs == NULL) || buffers[i].positions == NULL || buffers[i].colors == NULL
             || buffers[i].triangles == NULL || block == NULL
             || !r3d_dynamic_mesh_init(&mesh[i], block, bytes, capacity, STRESS_TICKS_PER_UNIT)) {
             return false;
@@ -85,30 +86,29 @@ take_mesh(void) {
     return true;
 }
 
-/* The brick's entry, in the scene's arena, and a texturing of every
- * triangle of the one mesh with it. */
+/* The surface's entry, in the scene's arena, and a texturing of every
+ * triangle of the one mesh with it, on the UVs the build copies. */
 static bool
 take_texture(void) {
-    const size_t bytes = stress_texture_bytes();
+    const size_t bytes = stress_texture_bytes(shown->surface);
     uint8_t* ltex = lab_scene_take(bytes);
     texture = lab_scene_take(sizeof *texture);
     const r3d_lit_mesh_t* m = &mesh[0].mesh;
-    int16_t (*uvs)[2] = lab_scene_take(sizeof(int16_t[2]) * (size_t)m->vertex_count);
     uint8_t (*material)[R3D_TEXTURE_CHARTS] = lab_scene_take(sizeof *material * (size_t)m->cluster_count);
     int32_t* shift = lab_scene_take(sizeof *shift * (size_t)m->cluster_count);
     /* The mesh is built later: its codes cover every triangle it can hold. */
     const size_t codes = ((size_t)mesh[0].capacity.triangles + R3D_TEXTURE_UVS_TRIANGLES_PER_BYTE - 1U)
                          / R3D_TEXTURE_UVS_TRIANGLES_PER_BYTE;
     uint8_t* code = lab_scene_take(codes);
-    if (ltex == NULL || texture == NULL || uvs == NULL || material == NULL || shift == NULL || code == NULL) {
+    if (ltex == NULL || texture == NULL || material == NULL || shift == NULL || code == NULL) {
         return false;
     }
-    stress_texture_write(ltex);
+    stress_texture_write(shown->surface, ltex);
     const asset_view_t view = {ltex, (uint32_t)bytes};
     if (r3d_texture_from_asset(&view, texture) != ASSET_OK) {
         return false;
     }
-    /* One chart, the brick, under every triangle. */
+    /* One chart, the texture, under every triangle. */
     memset(material, R3D_TEXTURE_NONE, sizeof *material * (size_t)m->cluster_count);
     for (int c = 0; c < m->cluster_count; c++) {
         material[c][0] = 0;
@@ -119,7 +119,7 @@ take_texture(void) {
         chart_0 |= (uint8_t)(1U << (k * R3D_TEXTURE_UVS_CODE_BITS));
     }
     memset(code, chart_0, codes);
-    texturing = (r3d_mesh_texturing_t){.uvs = (const int16_t (*)[2])uvs,
+    texturing = (r3d_mesh_texturing_t){.uvs = (const int16_t (*)[2])mesh[0].uvs,
                                        .cluster_material = (const uint8_t (*)[R3D_TEXTURE_CHARTS])material,
                                        .cluster_shift = shift,
                                        .triangle_code = code,
@@ -136,8 +136,7 @@ build(void) {
         if (!stress_source(&p, wave_ms, &buffers[i], &source) || !r3d_dynamic_mesh_build(&mesh[i], &source)) {
             return false;
         }
-        if (shown->surface == STRESS_SURFACE_TEXTURED) {
-            stress_texture_uvs(&mesh[i].mesh, (int16_t (*)[2])texturing.uvs);
+        if (stress_textured(shown)) {
             mesh[i].mesh.texturing = &texturing;
         }
     }
@@ -217,7 +216,7 @@ load(void) {
         fail("too few stress copies");
         return false;
     }
-    if (shown->surface == STRESS_SURFACE_TEXTURED && !take_texture()) {
+    if (stress_textured(shown) && !take_texture()) {
         fail("no memory for the stress texture");
         return false;
     }

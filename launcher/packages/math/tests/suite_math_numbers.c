@@ -1180,18 +1180,6 @@ test_unsigned_64_clamp_covers_extremes_and_crosses_the_word_boundary(void) {
     TEST_ASSERT_EQUAL_UINT64(UINT64_MAX - 1, mathi_clamp_u64(UINT64_MAX, UINT64_MAX - 1, UINT64_MAX - 1));
 }
 
-static void
-test_signed_64_clamp_covers_extremes_and_crosses_zero(void) {
-    const int64_t lo = -(int64_t)UINT32_MAX - MATH_MS_PER_S, hi = (int64_t)UINT32_MAX + MATH_MS_PER_S;
-    TEST_ASSERT_EQUAL_INT64(lo, mathi_clamp_i64(INT64_MIN, lo, hi));
-    TEST_ASSERT_EQUAL_INT64(lo, mathi_clamp_i64(lo - 1, lo, hi));
-    TEST_ASSERT_EQUAL_INT64(0, mathi_clamp_i64(0, lo, hi));
-    TEST_ASSERT_EQUAL_INT64(hi, mathi_clamp_i64(hi, lo, hi));
-    TEST_ASSERT_EQUAL_INT64(hi, mathi_clamp_i64(INT64_MAX, lo, hi));
-    TEST_ASSERT_EQUAL_INT64(INT64_MIN, mathi_clamp_i64(INT64_MIN, INT64_MIN, INT64_MAX));
-    TEST_ASSERT_EQUAL_INT64(INT64_MAX, mathi_clamp_i64(INT64_MAX, INT64_MIN, INT64_MAX));
-}
-
 /* mathi_lerp_u8() */
 
 static void
@@ -2188,7 +2176,6 @@ suite_math_numbers(void) {
 
     RUN_TEST(test_unsigned_64_repeat_preserves_high_clock_bits_and_wide_periods);
     RUN_TEST(test_unsigned_64_clamp_covers_extremes_and_crosses_the_word_boundary);
-    RUN_TEST(test_signed_64_clamp_covers_extremes_and_crosses_zero);
     RUN_TEST(test_scalar_clamp_maps_nonfinite_values_to_bounds);
     RUN_TEST(test_scalar_rounding_preserves_large_integers_and_half_away_ties);
     RUN_TEST(test_scalar_int16_rounding_saturates_and_preserves_half_neighbors);

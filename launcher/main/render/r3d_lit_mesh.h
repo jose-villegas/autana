@@ -21,14 +21,12 @@
 #include "math/geometry/spheref.h"
 #include "math/geometry/spheres.h"
 #include "math/linear/mat4f.h"
-#include "render/lmsk_format.h"
 
 typedef struct {
     uint16_t vertex_first, vertex_count;
     uint16_t triangle_first, triangle_count;
     box3s_t bounds; /* bounds of its vertices, position ticks */
     bool double_sided;
-    bool masked;
 } r3d_lit_cluster_t;
 
 /* The tree lit_mesh.py writes: an octree, so a node has at most eight
@@ -87,9 +85,6 @@ typedef struct {
     const r3d_lit_cluster_lod_t* cluster_lod; /* one per cluster, or NULL: every cluster is finest */
     const r3d_lit_lod_group_t* lod_groups;
     int lod_group_count;
-    const uint16_t (*mask_uvs)[2];
-    int mask_vertex_first;
-    lmsk_atlas_t mask; /* rows NULL: no cluster is masked */
     /* Position ticks: the least error of any group, which bounds when the
      * pick can skip a pose (render/lod/r3d_lod.h); 0 never skips. */
     uint16_t lod_error_least;
@@ -141,8 +136,6 @@ void r3d_lit_mesh_find_levels(r3d_lit_mesh_t* mesh);
 /* A failed sibling clears only the levels; the geometry remains loaded. */
 asset_status_t r3d_lit_mesh_levels_from_asset(const asset_view_t* levels, r3d_lit_mesh_t* mesh);
 
-/* A failed sibling clears only the mask view. */
-asset_status_t r3d_lit_mesh_mask_from_asset(const asset_view_t* mask, r3d_lit_mesh_t* mesh);
 /* Attaches validated morph targets to a mesh with levels; failure clears
  * only the morph pointers. */
 asset_status_t r3d_lit_mesh_morph_from_asset(const asset_view_t* morph, r3d_lit_mesh_t* mesh);

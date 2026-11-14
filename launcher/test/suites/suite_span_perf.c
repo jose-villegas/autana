@@ -26,7 +26,8 @@
 #define SPAN_TEXTURE_LEVELS    1
 #define SPAN_TEXTURE_PALETTE   (R3D_TEXTURE_COLOURS * R3D_TEXTURE_PALETTE_STRIDE)
 #define SPAN_TEXTURE_BYTES                                                                                             \
-    (R3D_TEXTURE_HEADER_SIZE + SPAN_TEXTURE_PALETTE + r3d_texture_level_bytes(SPAN_TEXTURE_SIZE_LOG2))
+    (R3D_TEXTURE_HEADER_SIZE + SPAN_TEXTURE_PALETTE                                                                    \
+     + r3d_texture_level_bytes(R3D_TEXTURE_INDEX4, SPAN_TEXTURE_SIZE_LOG2))
 /* One texel a pixel along both edges of the triangle. */
 static const vec2f_t triangle_uv[] = {{0, 0}, {SPAN_WIDTH, 0}, {0, SPAN_HEIGHT}};
 
@@ -63,7 +64,7 @@ write_texture(uint8_t* ltex) {
                R3D_TEXTURE_TINT_RGB);
     }
     uint8_t* texels = ltex + R3D_TEXTURE_HEADER_SIZE + SPAN_TEXTURE_PALETTE;
-    for (uint32_t i = 0; i < r3d_texture_level_bytes(SPAN_TEXTURE_SIZE_LOG2); i++) {
+    for (uint32_t i = 0; i < r3d_texture_level_bytes(R3D_TEXTURE_INDEX4, SPAN_TEXTURE_SIZE_LOG2); i++) {
         texels[i] = (uint8_t)i;
     }
 }

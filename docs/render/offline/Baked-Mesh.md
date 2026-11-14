@@ -5,10 +5,6 @@ meshlets the clusters are. Its entry is [LMSH](../../assets/formats/LMSH.md); a 
 colours are [LCOL](../../assets/formats/LCOL.md) sets. How a mesh is made is
 [Mesh-Import.md](Mesh-Import.md); drawing it is [Mesh-Rendering.md](../Mesh-Rendering.md).
 
-Optional [LLOD](../../assets/formats/LLOD.md) supplies mesh levels. Masked
-clusters require [LMSK](../../assets/formats/LMSK.md): a one-bit atlas and
-per-vertex UVs. A card has four vertices and two triangles in a masked cluster.
-
 ## Clusters and the tree
 
 Triangles group into **clusters**, the leaves of a tree rooted at `nodes[0]`:

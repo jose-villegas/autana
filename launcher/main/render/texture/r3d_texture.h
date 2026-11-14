@@ -2,7 +2,8 @@
  * r3d_texture: a tiled 4-bit indexed material texture multiplied by a
  * mesh's baked vertex light. The texture holds its material's albedo pattern
  * around its mean, so a vertex colour keeps its meaning, the surface's mean
- * lit colour, and the pattern only modulates it.
+ * lit colour, and the pattern only modulates it. A 1-bit mask texture cuts
+ * a triangle instead: its texel 0 draws nothing, as a foliage card's holes.
  *
  * A texture is an LTEX pack entry (docs/assets/formats/LTEX.md). Textured
  * spans fill with r3d_span's own edge walk, so a textured triangle covers
@@ -20,37 +21,41 @@
 #include "render/r3d_lit_mesh.h"
 #include "render/r3d_span.h"
 
-#define R3D_TEXTURE_ASSET          ASSET_TYPE('L', 'T', 'E', 'X')
-#define R3D_TEXTURE_VERSION        1U
-#define R3D_TEXTURE_INDEX4         1U /* the one format: 16 colours, two texels a byte, low nibble the even column */
-#define R3D_TEXTURE_HEADER_SIZE    20U
-#define R3D_TEXTURE_AT_VERSION     0U
-#define R3D_TEXTURE_AT_FORMAT      2U
-#define R3D_TEXTURE_AT_SIZE_LOG2   4U
-#define R3D_TEXTURE_AT_LEVELS      5U
-#define R3D_TEXTURE_AT_TINT        6U /* r, g, b: the hue the colormap lights the pattern with; then 3 zero bytes */
-#define R3D_TEXTURE_TINT_RGB       3U /* the tint's r, g, b */
-#define R3D_TEXTURE_TINT_BYTES     6U /* the tint and its zero padding */
-#define R3D_TEXTURE_AT_PALETTE_OFF 12U
-#define R3D_TEXTURE_AT_TEXELS_OFF  16U
-#define R3D_TEXTURE_COLOURS        16
-#define R3D_TEXTURE_PALETTE_STRIDE 4   /* r, g, b, 0 */
-#define R3D_TEXTURE_ONE            128 /* a palette channel of 1.0: the pattern may brighten its mean up to twice */
-#define R3D_TEXTURE_SIZE_LOG2_MIN  1   /* the smallest level's side, 2: one byte holds a row */
-#define R3D_TEXTURE_SIZE_LOG2_MAX  8   /* 256 texels a side: a span wraps u and v at 8 bits */
-#define R3D_TEXTURE_LEVELS_MAX     R3D_TEXTURE_SIZE_LOG2_MAX
+#define R3D_TEXTURE_ASSET               ASSET_TYPE('L', 'T', 'E', 'X')
+#define R3D_TEXTURE_VERSION             1U
+#define R3D_TEXTURE_INDEX4              1U /* 16 colours, two texels a byte, low nibble the even column */
+#define R3D_TEXTURE_MASK1               2U /* 2 colours, eight texels a byte, low bit the first; texel 0 draws nothing */
+#define R3D_TEXTURE_HEADER_SIZE         20U
+#define R3D_TEXTURE_AT_VERSION          0U
+#define R3D_TEXTURE_AT_FORMAT           2U
+#define R3D_TEXTURE_AT_SIZE_LOG2        4U
+#define R3D_TEXTURE_AT_LEVELS           5U
+#define R3D_TEXTURE_AT_TINT             6U /* r, g, b: the hue the colormap lights the pattern with; then 3 zero bytes */
+#define R3D_TEXTURE_TINT_RGB            3U /* the tint's r, g, b */
+#define R3D_TEXTURE_TINT_BYTES          6U /* the tint and its zero padding */
+#define R3D_TEXTURE_AT_PALETTE_OFF      12U
+#define R3D_TEXTURE_AT_TEXELS_OFF       16U
+#define R3D_TEXTURE_COLOURS             16  /* INDEX4's palette, and every texture's colormap row */
+#define R3D_TEXTURE_MASK1_COLOURS       2   /* colour 0 is never drawn, colour 1 every kept texel */
+#define R3D_TEXTURE_PALETTE_STRIDE      4   /* r, g, b, 0 */
+#define R3D_TEXTURE_ONE                 128 /* a palette channel of 1.0: the pattern may brighten its mean up to twice */
+#define R3D_TEXTURE_SIZE_LOG2_MIN       1   /* INDEX4's smallest level's side, 2: one byte holds a row */
+#define R3D_TEXTURE_MASK1_SIZE_LOG2_MIN 2   /* MASK1's smallest level's side, 4: a level is whole bytes */
+#define R3D_TEXTURE_SIZE_LOG2_MAX       8   /* 256 texels a side: a span wraps u and v at 8 bits */
+#define R3D_TEXTURE_LEVELS_MAX          R3D_TEXTURE_SIZE_LOG2_MAX
 /* A vertex colour's luminance as the light level reads it: BT.601 weights
  * in 1/256. */
-#define R3D_TEXTURE_LUMA_R         77
-#define R3D_TEXTURE_LUMA_G         150
-#define R3D_TEXTURE_LUMA_B         29
-#define R3D_TEXTURE_LUMA_SHIFT     8
+#define R3D_TEXTURE_LUMA_R              77
+#define R3D_TEXTURE_LUMA_G              150
+#define R3D_TEXTURE_LUMA_B              29
+#define R3D_TEXTURE_LUMA_SHIFT          8
 /* Light levels of the colormap light: level 0 is black, the last the
  * vertex light whose luminance is 255. */
-#define R3D_TEXTURE_LIGHT_LEVELS   32
+#define R3D_TEXTURE_LIGHT_LEVELS        32
 
 typedef struct {
-    const uint8_t* texels[R3D_TEXTURE_LEVELS_MAX]; /* each level, row-major, half its side's square in bytes */
+    const uint8_t* texels[R3D_TEXTURE_LEVELS_MAX]; /* each level, row-major, r3d_texture_level_bytes() long */
+    uint8_t format;                                /* R3D_TEXTURE_INDEX4 or R3D_TEXTURE_MASK1 */
     uint8_t size_log2;                             /* level 0's side */
     uint8_t levels;                                /* level 0 and its mips, each half the last */
     /* Panel RGB565 of each colour's albedo at each light level: a span
@@ -76,16 +81,29 @@ size_t r3d_texture_texel_bytes(const r3d_texture_t* texture);
  * the copy. */
 uint8_t* r3d_texture_move_texels(r3d_texture_t* texture, uint8_t* to);
 
-/* Bytes of a level `side_log2` texels a side. */
+/* Texels a byte of `format`. */
 static inline uint32_t
-r3d_texture_level_bytes(int side_log2) {
-    return (1U << (2 * side_log2)) / 2U;
+r3d_texture_texels_per_byte(unsigned format) {
+    return format == R3D_TEXTURE_MASK1 ? 8U : 2U;
+}
+
+/* Palette colours of `format`. */
+static inline int
+r3d_texture_colours(unsigned format) {
+    return format == R3D_TEXTURE_MASK1 ? R3D_TEXTURE_MASK1_COLOURS : R3D_TEXTURE_COLOURS;
+}
+
+/* Bytes of a `format` level `side_log2` texels a side. */
+static inline uint32_t
+r3d_texture_level_bytes(unsigned format, int side_log2) {
+    return (1U << (2 * side_log2)) / r3d_texture_texels_per_byte(format);
 }
 
 /* r3d_span_triangle() with a texture: the same coverage, the same depth
  * test, capped as r3d_span_capped_triangle() when target->skip_hidden. The
- * level is chosen once per triangle from the texels a pixel steps. A target
- * with writers is not supported: its caller draws such a triangle plain. */
+ * level is chosen once per triangle from the texels a pixel steps. A MASK1
+ * texel 0 leaves its pixel as it was. The target's writers follow each span
+ * over the pixels it drew, as after r3d_span_triangle_write(). */
 void r3d_span_textured_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                                 const r3d_span_vertex_t* c, const vec2f_t uv[3], const r3d_texture_t* texture);
 

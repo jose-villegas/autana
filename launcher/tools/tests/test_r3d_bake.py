@@ -409,7 +409,7 @@ class LitMeshTests(unittest.TestCase):
         p = np.array([[0., 0, 0], [1, 0, 0], [0, 1, 0]])
         positions = p.astype(int) * scale
         arrays = [struct.pack('<9h', *positions.ravel()), struct.pack('<3H', 0, 1, 2),
-                  CLUSTER.pack(0, 3, 0, 1, 0, 0, 0, scale, scale, 0, 0, 0),
+                  CLUSTER.pack(0, 3, 0, 1, 0, 0, 0, scale, scale, 0, 0),
                   NODE.pack(0, 0, 0, scale, scale, 0, 0, 1, 1)]
         offsets, at = [], BLOB_HEADER.size
         for array in arrays:

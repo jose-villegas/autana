@@ -102,9 +102,9 @@ static const int16_t tree_positions[][3] = {
 static const uint16_t tree_triangles[][3] = {{0, 1, 2}, {3, 4, 5}, {6, 7, 8}};
 static const uint16_t tree_colors[] = {UINT16_MAX, UINT16_MAX, UINT16_MAX};
 static const r3d_lit_cluster_t tree_clusters[] = {
-    {0, TRIANGLE_CORNERS, 0, 1, {{-HALF, -HALF, 0}, {HALF, HALF, 0}}, true, false},
-    {3, TRIANGLE_CORNERS, 1, 1, {{-HALF, -HALF, DEEPER_Z}, {HALF, HALF, DEEPER_Z}}, true, false},
-    {6, TRIANGLE_CORNERS, 2, 1, {{FAR_X, -HALF, 0}, {FAR_X + HALF, HALF, 0}}, true, false},
+    {0, TRIANGLE_CORNERS, 0, 1, {{-HALF, -HALF, 0}, {HALF, HALF, 0}}, true},
+    {3, TRIANGLE_CORNERS, 1, 1, {{-HALF, -HALF, DEEPER_Z}, {HALF, HALF, DEEPER_Z}}, true},
+    {6, TRIANGLE_CORNERS, 2, 1, {{FAR_X, -HALF, 0}, {FAR_X + HALF, HALF, 0}}, true},
 };
 static const r3d_lit_node_t tree_nodes[] = {
     {{{-HALF, -HALF, 0}, {FAR_X + HALF, HALF, DEEPER_Z}}, 1, 3, false},
@@ -209,8 +209,8 @@ static const int16_t sort_positions[SORT_VERTICES][3] = {
 static const uint16_t sort_triangles[][3] = {{0, 1, 2}, {3, 4, 5}, {6, 7, 8}, {9, 10, 11}, {12, 13, 14}};
 static const uint16_t sort_colors[] = {UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX};
 static const r3d_lit_cluster_t sort_clusters[] = {
-    {0, 9, 0, 3, {{-HALF, -HALF, 0}, {FAR_X + HALF, HALF, 0}}, false, false},
-    {9, 6, 3, 2, {{-HALF, -HALF, BEHIND_EYE}, {HALF, HALF, 0}}, false, false},
+    {0, 9, 0, 3, {{-HALF, -HALF, 0}, {FAR_X + HALF, HALF, 0}}, false},
+    {9, 6, 3, 2, {{-HALF, -HALF, BEHIND_EYE}, {HALF, HALF, 0}}, false},
 };
 static const r3d_lit_node_t sort_nodes[] = {
     {{{-HALF, -HALF, BEHIND_EYE}, {FAR_X + HALF, HALF, 0}}, 0, 2, true},
@@ -910,7 +910,7 @@ lod_strip(lod_scene_t* l, int c, int x0, int x1, int t, int triangles) {
         l->triangles[t + k][1] = (uint16_t)(first + 1 + k);
         l->triangles[t + k][2] = (uint16_t)(first + 2 + k);
     }
-    l->clusters[c] = (r3d_lit_cluster_t){first, QUAD_CORNERS, (uint16_t)t, (uint16_t)triangles, bounds, true, false};
+    l->clusters[c] = (r3d_lit_cluster_t){first, QUAD_CORNERS, (uint16_t)t, (uint16_t)triangles, bounds, true};
 }
 
 /* The cull view open, and `count` instances of the levelled mesh, each drawing its finest level. */

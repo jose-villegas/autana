@@ -5,14 +5,11 @@
 #define r3d_span_triangle_solid        constant_r3d_span_triangle_solid
 #define r3d_span_triangle_write        constant_r3d_span_triangle_write
 #define r3d_span_capped_triangle       constant_r3d_span_capped_triangle
-#define r3d_span_masked_triangle       constant_r3d_span_masked_triangle
 #define r3d_span_hidden                constant_r3d_span_hidden
 #define r3d_span_plane_bound           constant_r3d_span_plane_bound
 #define r3d_span_plane_in_range        constant_r3d_span_plane_in_range
 #define r3d_span_uniform               constant_uniform
 #define r3d_span_stop_after            constant_r3d_span_stop_after
-#define r3d_span_fill_gouraud          constant_r3d_span_fill_gouraud
-#define r3d_span_fill_masked           constant_r3d_span_fill_masked
 #define r3d_lens_init                  constant_r3d_lens_init
 #define r3d_lens_fit                   constant_r3d_lens_fit
 #define r3d_lens_place                 constant_r3d_lens_place
@@ -173,8 +170,7 @@ test_styles_match_pipeline_colours(void) {
         expected.small_fill = actual.small_fill = &resolved;
         memset(pixels, 0, TEST_PIXELS * 4 * sizeof(*pixels));
         r3d_span_triangle(&expected, reference, reference + 1, reference + 2);
-        r3d_span_vertex_t spans[3];
-        draw_in_front(&mesh, vertices, triangle, NULL, true, &actual, 0U, 0, 0, NULL, spans);
+        draw_in_front(&mesh, vertices, triangle, NULL, true, &actual, 0U, 0, 0);
         TEST_ASSERT_EQUAL_MEMORY(pixels, pixels + TEST_PIXELS * 2, TEST_PIXELS * 2 * sizeof(*pixels));
         int coloured = 0;
         for (int i = 0; i < TEST_PIXELS; i++) {
@@ -834,44 +830,6 @@ test_transform_fast_range_bits(void) {
     }
 }
 
-/* Largest u, v error of a clipped corner, in LMSK 12.4 units: float rounding only. */
-#define FAN_UV_TOLERANCE 1.0e-2F
-
-/* A clipped masked fan's corners take the u, v the source triangle has
- * where they lie: a source corner keeps its own, an edge midpoint the
- * average, an inside point its weighted mix. */
-static void
-test_a_clipped_masked_fan_takes_the_source_u_v_where_each_corner_lies(void) {
-    work = malloc(r3d_pipeline_work_bytes());
-    suite_set_test_cleanup(cleanup);
-    TEST_ASSERT_NOT_NULL(work);
-    static const vec3f_t source[R3D_SPAN_TRIANGLE_VERTICES] = {{1, 2, 3}, {9, 2, 5}, {1, 8, 7}};
-    static const float source_u[] = {0, 160, 32}, source_v[] = {16, 48, 400};
-    static const float weights[][R3D_SPAN_TRIANGLE_VERTICES] = {{1, 0, 0}, {0.5F, 0.5F, 0}, {0.25F, 0.25F, 0.5F}};
-    for (int k = 0; k < R3D_SPAN_TRIANGLE_VERTICES; k++) {
-        work->clip.source[k] = source[k];
-        work->clip.source_u[k] = source_u[k];
-        work->clip.source_v[k] = source_v[k];
-        vec3f_t at = vec3f_zero();
-        for (int j = 0; j < R3D_SPAN_TRIANGLE_VERTICES; j++) {
-            at = vec3f_add(at, vec3f_scale(source[j], weights[k][j]));
-        }
-        work->clip.poly[k] = (clip_vertex_t){at.x, at.y, at.z, 0, 0, 0};
-    }
-    const r3d_span_mask_t* mask = fan_mask(work, 1);
-    TEST_ASSERT_EQUAL_PTR(&work->clip.mask, mask);
-    for (int k = 0; k < R3D_SPAN_TRIANGLE_VERTICES; k++) {
-        float u = 0;
-        float v = 0;
-        for (int j = 0; j < R3D_SPAN_TRIANGLE_VERTICES; j++) {
-            u += weights[k][j] * source_u[j];
-            v += weights[k][j] * source_v[j];
-        }
-        TEST_ASSERT_FLOAT_WITHIN(FAN_UV_TOLERANCE, u, mask->u[k]);
-        TEST_ASSERT_FLOAT_WITHIN(FAN_UV_TOLERANCE, v, mask->v[k]);
-    }
-}
-
 void
 run_r3d_style_pipeline_suite(void) {
     RUN_TEST(test_transform_matches_lens_projection_bits);
@@ -888,7 +846,6 @@ run_r3d_style_pipeline_suite(void) {
     RUN_TEST(test_a_writing_draw_reaches_no_fill_for_a_hidden_cluster_only_when_skipping);
     RUN_TEST(test_skipping_selects_the_capped_fill_in_front_and_clipped);
     RUN_TEST(test_bounded_rows_skip_the_per_triangle_depth_test);
-    RUN_TEST(test_a_clipped_masked_fan_takes_the_source_u_v_where_each_corner_lies);
 }
 
 SUITE_REGISTER(run_r3d_style_pipeline_suite);

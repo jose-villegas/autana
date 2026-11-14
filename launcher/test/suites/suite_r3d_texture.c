@@ -291,7 +291,7 @@ test_entry_rejects_bad_headers(void) {
     fixture();
     r3d_texture_t* t = texture;
     const asset_view_t view = {ltex, TEX_BYTES};
-    ltex[R3D_TEXTURE_AT_FORMAT] = 2;
+    ltex[R3D_TEXTURE_AT_FORMAT] = R3D_TEXTURE_MASK1 + 1;
     TEST_ASSERT_EQUAL(ASSET_ERR_FORMAT, r3d_texture_from_asset(&view, t));
     write_ltex(ltex);
     ltex[R3D_TEXTURE_AT_LEVELS] = TEX_LOG2 + 1;

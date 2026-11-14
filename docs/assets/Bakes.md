@@ -38,11 +38,8 @@ bytes fail, naming both. Only a run's
 files can be locked, so every locked file can be published from main. The exception is a seeded
 row (`seeded = true`), written by `bake.py lock --seed` from the files the tree
 held: its bytes were carried over, not made by the code its key names, and
-`check` lists such rows until a run makes their keys again. A seed runs in
-rounds, like `lock`: a fit's key waits for its start's row, so each round
-locks what it can, keeps the waiting outputs' old rows to carry from, and
-names the rest. A seed skips a levels bake whose fit it has not locked yet;
-the CPU run makes it afterwards. A row a run wrote
+`check` lists such rows until a run makes their keys again. A seed skips a
+levels bake whose fit it has not locked yet; the CPU run makes it afterwards. A row a run wrote
 names its `host`, the system and machine that made the bytes, since a bake
 repeats byte for byte only on one kind of host (a Linux and a Windows Blender
 export of the same `.blend` differ in the last bit of some animation keys).

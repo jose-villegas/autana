@@ -838,25 +838,23 @@ test_small_shaded_triangles_keep_their_planes_in_range_in_any_window(void) {
     int shaded = 0;
     gfx_color_t* whole_color = malloc(sizeof(*whole_color) * W * H);
     uint16_t* whole_depth = malloc(sizeof(*whole_depth) * W * H);
-    r3d_span_target_t* windows = malloc(2 * sizeof(*windows));
     TEST_ASSERT_NOT_NULL(whole_color);
     TEST_ASSERT_NOT_NULL(whole_depth);
-    TEST_ASSERT_NOT_NULL(windows);
     for (int i = 0; i < 1000; i++) {
         const float size = 0.5f + (2.0f * (float)(next_random(&state) % 1000u) / 1000.0f);
         const float cx = 4.0f + (float)(next_random(&state) % (unsigned)(W - 8));
         const float cy = 4.0f + (float)(next_random(&state) % (unsigned)(H - 8));
         const shaded_t tri = random_shaded(&state, cx, cy, size);
         const int split = (int)cy + (int)(next_random(&state) % 5u) - 2;
-        windows[0] = fixture();
-        draw_shaded(&windows[0], &tri);
+        r3d_span_target_t t = fixture();
+        draw_shaded(&t, &tri);
         memcpy(whole_color, color, sizeof(*color) * W * H);
         memcpy(whole_depth, depth, sizeof(*depth) * W * H);
-        (void)fixture();
-        windows[0] = fixture_rows(0, split);
-        windows[1] = fixture_rows(split, H);
-        draw_shaded(&windows[0], &tri);
-        draw_shaded(&windows[1], &tri);
+        t = fixture();
+        const r3d_span_target_t top = fixture_rows(0, split);
+        const r3d_span_target_t bottom = fixture_rows(split, H);
+        draw_shaded(&top, &tri);
+        draw_shaded(&bottom, &tri);
         shaded += !r3d_span_extent(&tri.v[0], &tri.v[1], &tri.v[2]).flat && covered() > 0;
         TEST_ASSERT_EQUAL_MEMORY_MESSAGE(whole_depth, depth, sizeof(*depth) * W * H, "a window drew another depth");
         TEST_ASSERT_EQUAL_MEMORY_MESSAGE(whole_color, color, sizeof(*color) * W * H, "a window drew another colour");
@@ -867,7 +865,6 @@ test_small_shaded_triangles_keep_their_planes_in_range_in_any_window(void) {
     }
     free(whole_color);
     free(whole_depth);
-    free(windows);
     TEST_ASSERT_GREATER_THAN_INT(100, shaded);
 }
 
@@ -1381,13 +1378,8 @@ screen_mesh(screen_mesh_t* m, int vertices, int triangles) {
     for (int v = 0; v < vertices; v++) {
         m->colors[v][0] = m->colors[v][1] = m->colors[v][2] = 200;
     }
-    m->cluster = (r3d_lit_cluster_t){0,
-                                     (uint16_t)vertices,
-                                     0,
-                                     (uint16_t)triangles,
-                                     {{-INT16_MAX, -INT16_MAX, -8}, {INT16_MAX, INT16_MAX, 8}},
-                                     true,
-                                     false};
+    m->cluster = (r3d_lit_cluster_t){
+        0, (uint16_t)vertices, 0, (uint16_t)triangles, {{-INT16_MAX, -INT16_MAX, -8}, {INT16_MAX, INT16_MAX, 8}}, true};
     m->node = (r3d_lit_node_t){{{-INT16_MAX, -INT16_MAX, -8}, {INT16_MAX, INT16_MAX, 8}}, 0, 1, true};
     return (r3d_lit_mesh_t){.positions = m->positions,
                             .colors = m->colors,
@@ -1835,7 +1827,7 @@ static const r3d_lit_node_t quad_node = {{{-100, -100, 0}, {100, 100, 0}}, 0, 1,
 /* A mesh lit by its vertices, or by `face_colors` alone when given. */
 static r3d_lit_mesh_t
 quad_mesh(const uint16_t (*triangles)[3], bool double_sided, const uint16_t* face_colors, r3d_lit_cluster_t* cluster) {
-    *cluster = (r3d_lit_cluster_t){0, 4, 0, 2, {{-100, -100, 0}, {100, 100, 0}}, double_sided, false};
+    *cluster = (r3d_lit_cluster_t){0, 4, 0, 2, {{-100, -100, 0}, {100, 100, 0}}, double_sided};
     return r3d_quad_mesh(quad_positions, triangles, face_colors, cluster, &quad_node);
 }
 
@@ -1926,7 +1918,7 @@ static void
 draw_floor(const uint16_t* face_colors) {
     static const int16_t floor_positions[][3] = {
         {-1000, 0, -1000}, {1000, 0, -1000}, {1000, 0, 3000}, {-1000, 0, 3000}};
-    r3d_lit_cluster_t cluster = {0, 4, 0, 2, {{-1000, 0, -1000}, {1000, 0, 3000}}, false, false};
+    r3d_lit_cluster_t cluster = {0, 4, 0, 2, {{-1000, 0, -1000}, {1000, 0, 3000}}, false};
     static const r3d_lit_node_t floor_node = {{{-1000, 0, -1000}, {1000, 0, 3000}}, 0, 1, true};
     const r3d_lit_mesh_t mesh = r3d_quad_mesh(floor_positions, NULL, face_colors, &cluster, &floor_node);
 
@@ -2063,8 +2055,8 @@ parts_add(parts_t* p, const int16_t corners[][3], int n, const uint8_t rgb[][3],
     TEST_ASSERT_TRUE(m->cluster_count < PARTS_MAX && (n == 3 || n == 4));
     const uint16_t first = (uint16_t)m->vertex_count;
     r3d_lit_cluster_t* c = &p->clusters[m->cluster_count++];
-    *c = (r3d_lit_cluster_t){first,        (uint16_t)n, (uint16_t)m->triangle_count, (uint16_t)(n - 2), box3s_empty(),
-                             double_sided, false};
+    *c = (r3d_lit_cluster_t){first,         (uint16_t)n, (uint16_t)m->triangle_count, (uint16_t)(n - 2),
+                             box3s_empty(), double_sided};
     for (int i = 0; i < n; i++) {
         memcpy(p->positions[first + i], corners[i], sizeof p->positions[0]);
         memcpy(p->colors[first + i], rgb[i], sizeof p->colors[0]);

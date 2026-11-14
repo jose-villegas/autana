@@ -76,7 +76,7 @@ align_up(size_t n) {
 enum {
     REGION_POSITIONS,
     REGION_COLORS,
-    REGION_MASK_UVS,
+    REGION_UVS,
     REGION_TRIANGLES,
     REGION_CLUSTERS,
     REGION_NODES,
@@ -89,7 +89,7 @@ layout(r3d_dynamic_capacity_t c, size_t offsets[REGIONS]) {
     const size_t sizes[REGIONS] = {
         (size_t)c.vertices * sizeof(int16_t[3]),
         (size_t)c.vertices * sizeof(uint8_t[3]),
-        c.masked ? (size_t)c.vertices * sizeof(uint16_t[2]) : 0,
+        c.textured ? (size_t)c.vertices * sizeof(int16_t[2]) : 0,
         (size_t)c.triangles * sizeof(uint16_t[3]),
         (size_t)cluster_capacity_for(c.triangles) * sizeof(r3d_lit_cluster_t),
         (size_t)nodes_for(cluster_capacity_for(c.triangles)) * sizeof(r3d_lit_node_t),
@@ -104,8 +104,8 @@ layout(r3d_dynamic_capacity_t c, size_t offsets[REGIONS]) {
 }
 
 r3d_dynamic_capacity_t
-r3d_dynamic_capacity_for(int sources, int triangles, bool masked) {
-    return (r3d_dynamic_capacity_t){mathi_min(3 * triangles, INDEX_LIMIT), triangles, sources, masked};
+r3d_dynamic_capacity_for(int sources, int triangles) {
+    return (r3d_dynamic_capacity_t){mathi_min(3 * triangles, INDEX_LIMIT), triangles, sources, false};
 }
 
 size_t
@@ -125,7 +125,7 @@ r3d_dynamic_mesh_init(r3d_dynamic_mesh_t* m, void* block, size_t bytes, r3d_dyna
     uint8_t* p = block;
     m->positions = (int16_t (*)[3])(void*)(p + at[REGION_POSITIONS]);
     m->colors = (uint8_t (*)[3])(void*)(p + at[REGION_COLORS]);
-    m->mask_uvs = capacity.masked ? (uint16_t (*)[2])(void*)(p + at[REGION_MASK_UVS]) : NULL;
+    m->uvs = capacity.textured ? (int16_t (*)[2])(void*)(p + at[REGION_UVS]) : NULL;
     m->triangles = (uint16_t (*)[3])(void*)(p + at[REGION_TRIANGLES]);
     m->clusters = (r3d_lit_cluster_t*)(void*)(p + at[REGION_CLUSTERS]);
     m->nodes = (r3d_lit_node_t*)(void*)(p + at[REGION_NODES]);
@@ -139,7 +139,6 @@ r3d_dynamic_mesh_init(r3d_dynamic_mesh_t* m, void* block, size_t bytes, r3d_dyna
     m->mesh = (r3d_lit_mesh_t){
         .positions = (const int16_t (*)[3])m->positions,
         .colors = (const uint8_t (*)[3])m->colors,
-        .mask_uvs = (const uint16_t (*)[2])m->mask_uvs,
         .triangles = (const uint16_t (*)[3])m->triangles,
         .clusters = m->clusters,
         .nodes = m->nodes,
@@ -178,7 +177,6 @@ open_cluster(builder_t* b) {
         .triangle_first = (uint16_t)m->mesh.triangle_count,
         .bounds = box3s_empty(),
         .double_sided = b->src->double_sided,
-        .masked = b->src->mask_uvs != NULL,
     };
 }
 
@@ -192,8 +190,8 @@ vertex_for(builder_t* b, int s) {
         const vec3s_t ticks = {mathf_round_i16(p.x), mathf_round_i16(p.y), mathf_round_i16(p.z)};
         memcpy(m->positions[at], &ticks, sizeof m->positions[at]);
         memcpy(m->colors[at], b->src->colors[s], sizeof m->colors[at]);
-        if (b->src->mask_uvs != NULL) {
-            memcpy(m->mask_uvs[at], b->src->mask_uvs[s], sizeof m->mask_uvs[at]);
+        if (b->src->uvs != NULL) {
+            memcpy(m->uvs[at], b->src->uvs[s], sizeof m->uvs[at]);
         }
         b->open->bounds = box3s_extend(b->open->bounds, ticks);
         b->sources[b->open->vertex_count] = s;
@@ -263,22 +261,13 @@ pad(r3d_dynamic_mesh_t* m) {
     m->mesh.cluster_count = m->cluster_capacity;
 }
 
-/* A masked source needs room for its u, v and an atlas the fill can index. */
-static bool
-mask_usable(const r3d_dynamic_mesh_t* m, const r3d_dynamic_source_t* src) {
-    return m->mask_uvs != NULL && src->mask.rows != NULL && src->mask.row_count >= 1
-           && src->mask.row_count <= (int)LMSK_MAX_ROWS;
-}
-
 bool
 r3d_dynamic_mesh_build(r3d_dynamic_mesh_t* m, const r3d_dynamic_source_t* src) {
     m->mesh.vertex_count = 0;
     m->mesh.triangle_count = 0;
     m->mesh.cluster_count = 0;
     m->mesh.node_count = 0;
-    m->mesh.mask = src->mask_uvs != NULL ? src->mask : (lmsk_atlas_t){0};
-    if (src->vertex_count > m->capacity.sources || (src->mask_uvs != NULL && !mask_usable(m, src))) {
-        m->mesh.mask = (lmsk_atlas_t){0};
+    if (src->vertex_count > m->capacity.sources || (src->uvs != NULL && m->uvs == NULL)) {
         return false;
     }
     builder_t b = {.m = m, .src = src, .scale = (float)m->mesh.position_scale};

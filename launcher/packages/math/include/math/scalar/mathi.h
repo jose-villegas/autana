@@ -155,12 +155,6 @@ mathi_clamp_u64(uint64_t v, uint64_t lo, uint64_t hi) {
     return v < lo ? lo : (v > hi ? hi : v);
 }
 
-/* Inclusive clamp over the full int64_t range. */
-static inline int64_t
-mathi_clamp_i64(int64_t v, int64_t lo, int64_t hi) {
-    return v < lo ? lo : (v > hi ? hi : v);
-}
-
 #define MATHI_DEFINE_ISQRT(name, type, bits, clz, attributes)                                                          \
     static attributes uint32_t name(type value) {                                                                      \
         enum { VALUE_BITS = bits, DIGIT_BITS = 2 };                                                                    \

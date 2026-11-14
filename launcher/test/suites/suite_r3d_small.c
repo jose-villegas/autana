@@ -8,14 +8,11 @@
 #define r3d_span_triangle_solid  hot_triangle_solid
 #define r3d_span_triangle_write  hot_triangle_write
 #define r3d_span_capped_triangle hot_capped_triangle
-#define r3d_span_masked_triangle hot_masked_triangle
 #define r3d_span_hidden          hot_hidden
 #define r3d_span_plane_bound     hot_plane_bound
 #define r3d_span_plane_in_range  hot_plane_in_range
 #define r3d_span_uniform         hot_uniform
 #define r3d_span_stop_after      hot_stop_after
-#define r3d_span_fill_gouraud    hot_fill_gouraud
-#define r3d_span_fill_masked     hot_fill_masked
 #include "render/r3d_span.c"
 #undef r3d_span_triangle
 #undef r3d_span_triangle_solid

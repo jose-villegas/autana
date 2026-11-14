@@ -3,7 +3,8 @@
  * level are planes set up in float once; each span starts from them and
  * steps fixed point, u and v packed in one word, affine across the
  * triangle as the PS1 drew them. A pixel is one colormap load: the texel's
- * colour at the vertex light's dithered level.
+ * colour at the vertex light's dithered level. A MASK1 texture's span skips
+ * the pixels whose texel is 0 and draws the rest in its one colour.
  */
 #include "render/texture/r3d_texture.h"
 
@@ -15,6 +16,7 @@
 #include "math/scalar/mathf.h"
 #include "math/scalar/mathi.h"
 #include "profile/frame_laps.h"
+#include "render/code_layout.h"
 #include "render/r3d_span_internal.h"
 
 /* u and v walk as 8.8 texels, packed u high and v low in one word; a carry
@@ -29,6 +31,9 @@
 #define V_INT_SHIFT  UV_FRAC
 #define NIBBLE_BITS  4
 #define NIBBLE_MASK  0xFU
+#define BIT_SHIFT    3 /* a MASK1 texel's byte: its offset over 8 */
+#define BIT_MASK     7U
+#define MASK1_KEPT   1 /* the colour a kept MASK1 texel draws */
 /* The light level walks as 8.8. */
 #define LIGHT_FRAC   8
 #define LEVEL_MAX    ((R3D_TEXTURE_LIGHT_LEVELS - 1) << LIGHT_FRAC)
@@ -61,16 +66,29 @@ typedef struct {
     int32_t level, dlevel;
 } carry_t;
 
+/* The texel under `uv`, counted row-major across the level. */
+static inline __attribute__((always_inline)) uint32_t
+texel_offset(const sampler_t* s, uint32_t uv) {
+    return ((uv >> s->v_shift) & s->row_mask) | ((uv >> U_INT_SHIFT) & s->mask);
+}
+
 static inline __attribute__((always_inline)) uint32_t
 texel(const sampler_t* s, uint32_t uv) {
-    const uint32_t o = ((uv >> s->v_shift) & s->row_mask) | ((uv >> U_INT_SHIFT) & s->mask);
+    const uint32_t o = texel_offset(s, uv);
     return (uint32_t)(s->texels[o >> 1] >> ((o & 1U) * NIBBLE_BITS)) & NIBBLE_MASK;
 }
 
+static inline __attribute__((always_inline)) bool
+kept(const sampler_t* s, uint32_t uv) {
+    const uint32_t o = texel_offset(s, uv);
+    return ((s->texels[o >> BIT_SHIFT] >> (o & BIT_MASK)) & 1U) != 0U;
+}
+
 /* The colormap row of the level, dithered between levels by the screen's
- * 4x4 Bayer threshold at absolute coordinates. */
-static __attribute__((noinline)) void
-fill_colormap(uint16_t* depth, uint16_t* color, int count, carry_t* c, const sampler_t* s, int x, int y) {
+ * 4x4 Bayer threshold at absolute coordinates; `masked`, only the pixels
+ * whose MASK1 texel is kept. */
+static inline __attribute__((always_inline)) void
+fill_with(uint16_t* depth, uint16_t* color, int count, carry_t* c, const sampler_t* s, int x, int y, bool masked) {
     int32_t z = c->z;
     uint32_t uv = c->uv;
     int32_t level = c->level;
@@ -81,10 +99,10 @@ fill_colormap(uint16_t* depth, uint16_t* color, int count, carry_t* c, const sam
     const uint16_t (*colormap)[R3D_TEXTURE_COLOURS] = s->texture->colormap;
     for (int i = 0; i < count; i++) {
         const uint16_t zq = (uint16_t)(z >> R3D_DEPTH_SHIFT);
-        if (zq > depth[i]) {
+        if (zq > depth[i] && (!masked || kept(s, uv))) {
             const int32_t l = (level + ((int32_t)threshold[(x + i) & (BAYER4_SIDE - 1)] << DITHER_SHIFT)) >> LIGHT_FRAC;
             depth[i] = zq;
-            color[i] = colormap[l][texel(s, uv)];
+            color[i] = colormap[l][masked ? MASK1_KEPT : texel(s, uv)];
         }
         z += dz;
         uv += duv;
@@ -93,6 +111,27 @@ fill_colormap(uint16_t* depth, uint16_t* color, int count, carry_t* c, const sam
     c->z = z;
     c->uv = uv;
     c->level = level;
+}
+
+static __attribute__((noinline)) void
+fill_colormap(uint16_t* depth, uint16_t* color, int count, carry_t* c, const sampler_t* s, int x, int y) {
+    fill_with(depth, color, count, c, s, x, y, false);
+}
+
+/* At the flash tail: a cut texture is rare beside a plain one. */
+static RENDER_TAIL_ATTR __attribute__((noinline)) void
+fill_masked(uint16_t* depth, uint16_t* color, int count, carry_t* c, const sampler_t* s, int x, int y) {
+    fill_with(depth, color, count, c, s, x, y, true);
+}
+
+/* The target's writers over a span the fill just drew, from its first
+ * pixel's depth: each writes where the fill left that depth. */
+static __attribute__((noinline, cold)) void
+write_span(const r3d_span_target_t* target, int y, int first, int last, int32_t z, int32_t dz) {
+    for (int k = 0; k < target->writer_count; k++) {
+        const r3d_span_writer_t* w = &target->writers[k];
+        w->span(w, &target->rows, y, first, last, z, dz);
+    }
 }
 
 /* What the set-up hands the row walk. */
@@ -118,7 +157,7 @@ pack_uv(int32_t u, int32_t v) {
 }
 
 static void
-fill_span(const setup_t* su, const r3d_span_row_t* row, int y, int first, int last) {
+fill_span(const r3d_span_target_t* target, const setup_t* su, const r3d_span_row_t* row, int y, int first, int last) {
     const float fx = (float)(first - su->x0);
     const float fy = (float)(y - su->y0);
     const int steps = last - first;
@@ -133,7 +172,15 @@ fill_span(const setup_t* su, const r3d_span_row_t* row, int y, int first, int la
     uint16_t* color = row->color + first;
     c.uv = pack_uv(fixed_uv(plane_at(&su->s, fx, fy)), fixed_uv(plane_at(&su->t, fx, fy)));
     c.duv = pack_uv((int32_t)(su->s.dx * (float)UV_ONE), 0) + (uint32_t)(int32_t)(su->t.dx * (float)UV_ONE);
-    fill_colormap(depth, color, steps + 1, &c, &su->sampler, first, y);
+    const int32_t z = c.z;
+    if (su->sampler.texture->format == R3D_TEXTURE_MASK1) {
+        fill_masked(depth, color, steps + 1, &c, &su->sampler, first, y);
+    } else {
+        fill_colormap(depth, color, steps + 1, &c, &su->sampler, first, y);
+    }
+    if (target->writer_count != 0) {
+        write_span(target, y, first, last, z, c.dz);
+    }
 }
 
 /* The level a pixel steps about one texel of: floor(log2) of the longest
@@ -226,7 +273,7 @@ r3d_span_textured_triangle(const r3d_span_target_t* target, const r3d_span_verte
         const int last = mathi_min(right->q - 1, last_column);
         if (first <= last) {
             const r3d_span_row_t row = r3d_span_row(target, y);
-            fill_span(&su, &row, y, first, last);
+            fill_span(target, &su, &row, y, first, last);
         }
         r3d_span_walk_edge_step(&long_edge);
         r3d_span_walk_edge_step(&short_edge);

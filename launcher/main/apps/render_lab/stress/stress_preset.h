@@ -8,7 +8,6 @@
 #include "math/linear/transformf.h"
 #include "math/linear/vec3f.h"
 #include "render/dynamic/r3d_dynamic_mesh.h"
-#include "render/lmsk_format.h"
 #include "render/texture/r3d_texture.h"
 
 typedef enum {
@@ -30,8 +29,8 @@ typedef enum {
     STRESS_SURFACE_UNIFORM,   /* one colour at every corner: zero colour steps, filled uniform */
     STRESS_SURFACE_STATIC,    /* the pack's own static mesh asset per copy, nothing generated */
     STRESS_SURFACE_TWO_SIDED, /* banded, and drawn from both sides: nothing faces away */
-    STRESS_SURFACE_TEXTURED,  /* banded light under a generated brick texture (render/texture) */
-    STRESS_SURFACE_MASKED,    /* banded, each foliage card cut by a one-bit mask atlas (stress_mask_atlas()) */
+    STRESS_SURFACE_TEXTURED,  /* banded light under a generated INDEX4 brick texture (render/texture) */
+    STRESS_SURFACE_MASKED,    /* banded light, each foliage card cut by a generated MASK1 texture */
 } stress_surface_t;
 
 typedef enum {
@@ -78,9 +77,9 @@ typedef struct {
     X(FEW_COPIES, "few-copies", BANDED)                                                                                \
     X(TEXTURED, "textured", TEXTURED)                                                                                  \
     X(FOLIAGE_NEAR, "foliage-near", MASKED)                                                                            \
-    X(FOLIAGE_NEAR_OPAQUE, "foliage-near-opaque", BANDED)                                                              \
+    X(FOLIAGE_NEAR_OPAQUE, "foliage-near-opaque", TEXTURED)                                                            \
     X(FOLIAGE_FAR, "foliage-far", MASKED)                                                                              \
-    X(FOLIAGE_FAR_OPAQUE, "foliage-far-opaque", BANDED)
+    X(FOLIAGE_FAR_OPAQUE, "foliage-far-opaque", TEXTURED)
 
 #define STRESS_PRESET_ID(id_, ...) STRESS_##id_,
 
@@ -101,14 +100,20 @@ stress_per_frame(const stress_params_t* p) {
 int stress_vertex_count(const stress_params_t* p);
 int stress_triangle_count(const stress_params_t* p);
 
+/* Whether a preset draws its triangles textured. */
+static inline bool
+stress_textured(const stress_params_t* p) {
+    return p->surface == STRESS_SURFACE_TEXTURED || p->surface == STRESS_SURFACE_MASKED;
+}
+
 /* What stress_source() writes into: stress_vertex_count() positions and
- * colours, stress_triangle_count() triangles, and for a masked preset
- * stress_vertex_count() mask u, v (NULL otherwise). */
+ * colours, stress_triangle_count() triangles, and for a textured preset
+ * stress_vertex_count() UVs (NULL otherwise). */
 typedef struct {
     vec3f_t* positions;
     uint8_t (*colors)[3];
     uint16_t (*triangles)[3];
-    uint16_t (*mask_uvs)[2];
+    int16_t (*uvs)[2];
 } stress_buffers_t;
 
 /* Positions are stored at this many ticks per unit: a unit shape and its
@@ -145,21 +150,19 @@ float stress_cut_px(const stress_params_t* p, int short_px);
 #define STRESS_MIX_UNIFORM_PERIOD 2
 stress_params_t stress_copy_params(const stress_params_t* p, int copy);
 
-/* The textured preset's brick: an LTEX entry 2^STRESS_TEXTURE_SIZE_LOG2
- * texels a side and its mips, repeated STRESS_TEXTURE_REPEATS times across
- * the plane. */
+/* A textured preset's LTEX entry. TEXTURED: a brick 2^STRESS_TEXTURE_SIZE_LOG2
+ * texels a side and its mips, repeated STRESS_TEXTURE_REPEATS times across a
+ * plane and once across a foliage card. MASKED: a MASK1 disc
+ * 2^STRESS_MASK_SIZE_LOG2 texels a side with scattered one-texel holes,
+ * keeping about 0.7 of a card, so its rows break into ragged runs as a leaf
+ * card's do; each mip keeps a texel where half or more of the four it
+ * covers are kept. A card's UVs span its texture once. */
 #define STRESS_TEXTURE_SIZE_LOG2 6
 #define STRESS_TEXTURE_REPEATS   3
+#define STRESS_MASK_SIZE_LOG2    5
+/* A mask mip texel covers 2x2 texels of the level above: kept when this many are. */
+#define STRESS_MASK_MIP_KEPT     2
 
 /* The entry's bytes, and the entry written into `ltex`, that many long. */
-size_t stress_texture_bytes(void);
-void stress_texture_write(uint8_t* ltex);
-
-/* A UV for each of `mesh`'s vertices, from where it lies on the unit plane,
- * in 1/16 texel (R3D_TEXTURE_UV_SHIFT) from origin 0. */
-void stress_texture_uvs(const r3d_lit_mesh_t* mesh, int16_t (*uvs)[2]);
-/* The mask atlas a foliage card is cut by: a disc of LMSK_MASK_WIDTH texels
- * with scattered single-texel holes, keeping about 0.7 of the card, so its
- * rows break into ragged runs as a leaf card's do. */
-#define STRESS_MASK_ROWS ((int)LMSK_MASK_WIDTH)
-lmsk_atlas_t stress_mask_atlas(void);
+size_t stress_texture_bytes(stress_surface_t surface);
+void stress_texture_write(stress_surface_t surface, uint8_t* ltex);

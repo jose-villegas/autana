@@ -1496,16 +1496,6 @@ class LockTests(unittest.TestCase):
         with self.assertRaisesRegex(bake.BakeMissing, "(?s)two.bundle.*is not locked"):
             bake.seed([self.waiting_fit()], self.cache, {"j" * 64: {**self.row, "output": "two.bundle", "key": "j" * 64}})
 
-    def test_a_seed_round_locks_the_start_and_keeps_the_waiting_fits_old_row(self):
-        start = bake_of("k" * 64, self.tree)
-        old_fit = {**self.row, "output": "two.bundle", "key": "j" * 64}
-        missing = []
-        rows = bake.seed([start, self.waiting_fit()], self.cache, {"j" * 64: old_fit},
-                         {"k" * 64: {**self.row, "run": 9}}, missing)
-        self.assertEqual([row["key"] for row in rows], ["k" * 64, "j" * 64])
-        self.assertEqual(len(missing), 1)
-        self.assertIn("two.bundle", missing[0])
-
     def test_seeding_skips_levels_whose_fit_it_is_seeding_and_locks_the_rest(self):
         """A seed carries a re-keyed fit over; its levels' key names those bytes, so the CPU run makes them after."""
         levels = bake.Bake(output="two.levels.bundle", source=self.tree, holder="two", kind="levels", key=None,
@@ -1549,12 +1539,6 @@ class LockTests(unittest.TestCase):
         fit = self.fit_of_start_made_here("e" * 64)
         with self.assertRaisesRegex(bake.BakeMissing, "two.bundle: its start k+ with sha256 e+ is neither locked"):
             produce.input_file(fit, self.cache, {})
-
-    def test_a_run_that_makes_a_seeded_key_clears_its_mark(self):
-        seeded = {**self.row, "key": "k" * 64, "seeded": True}
-        made = {**self.row, "key": "k" * 64, "run": 9}
-        rows = bake.seed([bake_of("k" * 64, self.tree)], self.cache, {"k" * 64: seeded}, {"k" * 64: made})
-        self.assertEqual([(row.get("run"), row.get("seeded", False)) for row in rows], [(9, False)])
 
     def test_one_seed_from_a_run_locks_the_start_and_carries_the_fits_bytes(self):
         start = bake_of("k" * 64, self.tree)

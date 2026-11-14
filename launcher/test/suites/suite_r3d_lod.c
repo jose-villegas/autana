@@ -92,13 +92,8 @@ group_box(const r3d_lit_lod_group_t* g) {
     const vec3s_t c = g->bounds.centre;
     const int16_t r = g->bounds.radius;
     return (r3d_lit_cluster_t){
-        0,
-        0,
-        0,
-        0,
-        {{(int16_t)(c.x - r), (int16_t)(c.y - r), c.z}, {(int16_t)(c.x + r), (int16_t)(c.y + r), c.z}},
-        true,
-        false};
+        0,   0, 0, 0, {{(int16_t)(c.x - r), (int16_t)(c.y - r), c.z}, {(int16_t)(c.x + r), (int16_t)(c.y + r), c.z}},
+        true};
 }
 
 /* A group holding `count` groups from `first`: their centres' mean, a radius
@@ -1708,7 +1703,7 @@ morphing_mesh(void) {
     }
     for (int c = 0; c < MORPH_CLUSTERS; c++) {
         morphing->clusters[c] =
-            (r3d_lit_cluster_t){(uint32_t)(c * MORPH_FIRST_VERTICES), MORPH_FIRST_VERTICES, 0, 0, bounds, true, false};
+            (r3d_lit_cluster_t){(uint32_t)(c * MORPH_FIRST_VERTICES), MORPH_FIRST_VERTICES, 0, 0, bounds, true};
     }
     morphing->nodes[0] = (r3d_lit_node_t){bounds, 0, MORPH_CLUSTERS, true};
     morphing->lod[0] = (r3d_lit_cluster_lod_t){R3D_LOD_NONE, 0};
@@ -1909,7 +1904,7 @@ drawn_blend(bool morph_targets) {
         drawn->shift[c] = MORPH_SHIFT;
     }
     for (int c = 0; c < DRAWN_CLUSTERS; c++) {
-        drawn->clusters[c] = (r3d_lit_cluster_t){(uint16_t)(c * 3), 3, (uint16_t)c, 1, bounds, true, false};
+        drawn->clusters[c] = (r3d_lit_cluster_t){(uint16_t)(c * 3), 3, (uint16_t)c, 1, bounds, true};
     }
     drawn->nodes[0] = (r3d_lit_node_t){bounds, 0, DRAWN_CLUSTERS, true};
     drawn->lod[0] = (r3d_lit_cluster_lod_t){R3D_LOD_NONE, 0};

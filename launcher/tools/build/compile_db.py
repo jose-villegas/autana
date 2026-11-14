@@ -54,8 +54,7 @@ def dependencies(entry):
     """Files the entry's source depends on: its own command run with -M -MG."""
     directory = entry.get("directory", "")
     try:
-        scan = subprocess.run([*compile_flags(entry), "-M", "-MG", "-MT", "deps", entry["file"]], cwd=directory or None, stdin=subprocess.DEVNULL,
-                              capture_output=True, text=True)
+        scan = subprocess.run([*compile_flags(entry), "-M", "-MG", "-MT", "deps", entry["file"]], cwd=directory or None, capture_output=True, text=True)
     except (OSError, KeyError, ValueError) as error:
         raise RuntimeError(f"dependency scan failed for {entry.get('file')}: {error}") from error
     if scan.returncode:

@@ -287,7 +287,7 @@ allocate(void) {
     if (transfer != NULL) {
         r3d_skin_light_transfer_build(WATER_TONEMAP_NONE, transfer);
     }
-    const r3d_dynamic_capacity_t capacity = r3d_dynamic_capacity_for(WATER_MAX_VERTICES, WATER_MAX_TRIANGLES, false);
+    const r3d_dynamic_capacity_t capacity = r3d_dynamic_capacity_for(WATER_MAX_VERTICES, WATER_MAX_TRIANGLES);
     const size_t mesh_bytes = r3d_dynamic_mesh_bytes(capacity);
     void* mesh_block = lab_scene_take(mesh_bytes);
     return through != NULL && transfer != NULL && batch != NULL && positions != NULL && normals != NULL
@@ -591,13 +591,11 @@ rebuild_surface(void) {
         positions[i] = to_model(positions[i]);
         normals[i] = direction_to_model(normals[i]);
     }
-    const r3d_dynamic_source_t source = {
-        .positions = positions,
-        .colors = (const uint8_t (*)[3])colors,
-        .vertex_count = m.vertex_count,
-        .triangles = (const uint16_t (*)[3])triangles,
-        .triangle_count = m.triangle_count,
-    };
+    const r3d_dynamic_source_t source = {.positions = positions,
+                                         .colors = (const uint8_t (*)[3])colors,
+                                         .vertex_count = m.vertex_count,
+                                         .triangles = (const uint16_t (*)[3])triangles,
+                                         .triangle_count = m.triangle_count};
     fitted = r3d_dynamic_mesh_build(&surface, &source) && fitted;
     if (!fitted && !truncated) {
         ESP_LOGW(TAG, "the surface outgrew its buffers and is cut");

@@ -6,7 +6,7 @@ import struct
 
 from asset.asset_pack import NAME_BYTES, PackError, build_pack, parse_pack
 from build.name_hash import name_hash
-from r3d import lcol_asset, lod_asset, mask_asset, mesh_asset, morph_asset
+from r3d import lcol_asset, lod_asset, mesh_asset, morph_asset
 from r3d.lcol_asset import NAME_SUFFIX
 
 SUFFIX = ".bundle"
@@ -135,24 +135,6 @@ def decode(data):
             if mesh is None or mesh[0] != mesh_asset.TYPE or not name.endswith(lod_asset.NAME_SUFFIX):
                 raise PackError("LLOD sibling has no LMSH")
             lod_asset.validate_mesh(blob, mesh[1])
-        if kind == mask_asset.TYPE:
-            mesh = entries.get(name.removesuffix(mask_asset.NAME_SUFFIX))
-            if mesh is None or mesh[0] != mesh_asset.TYPE or not name.endswith(mask_asset.NAME_SUFFIX):
-                raise PackError("LMSK sibling has no LMSH")
-            levels = entries.get(lod_asset.name_for_mesh(name.removesuffix(mask_asset.NAME_SUFFIX)))
-            mask_asset.validate_mesh(blob, mesh[1], None if levels is None else levels[1])
-        if kind == mesh_asset.TYPE:
-            try:
-                mask = entries.get(mask_asset.name_for_mesh(name))
-            except PackError:
-                mask = None
-            if mask is not None and mask[0] != mask_asset.TYPE:
-                raise PackError("LMSK sibling has the wrong type")
-            if mask is None:
-                header = mesh_asset.BLOB_HEADER.unpack_from(blob)
-                if any(mesh_asset.CLUSTER.unpack_from(blob, header[8] + i * mesh_asset.CLUSTER.size)[-1]
-                       for i in range(header[2])):
-                    raise PackError("masked LMSH has no LMSK")
         if kind == morph_asset.TYPE:
             mesh = entries.get(name.removesuffix(morph_asset.NAME_SUFFIX))
             if (mesh is None or mesh[0] != mesh_asset.TYPE or not name.endswith(morph_asset.NAME_SUFFIX)
@@ -185,6 +167,6 @@ def rename_rest(entries, copies, name):
     names = {old: name}
     for key, _, _ in entries:
         if key.startswith(old) and key[len(old):] in (lcol_asset.NAME_SUFFIX, lod_asset.NAME_SUFFIX,
-                                                         mask_asset.NAME_SUFFIX, morph_asset.NAME_SUFFIX):
+                                                         morph_asset.NAME_SUFFIX):
             names[key] = lcol_asset.sibling_name(name, key[len(old):])
     return [(names.get(key, key), kind, blob) for key, kind, blob in entries]
