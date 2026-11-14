@@ -82,9 +82,11 @@ static lab_test_t saved;
 static const framegen_scenario_t* scenario;
 static int ladder_step;
 static framegen_target_t target;
+static void release_played(void);
 
 static void
 release_fixture(void) {
+    release_played();
     framegen_target_free(&target);
     lab_test_exit(&saved);
 }
@@ -275,7 +277,7 @@ mode_goal(void) {
 typedef struct {
     int64_t carry_us, height_sum;
     int drawn;
-    struct shown_stages* shown; /* each shown frame's stages, up to `capacity` */
+    struct shown_stages* shown; /* each shown frame's stages; grows as the path plays */
     int count, capacity;
 } played_t;
 
@@ -303,8 +305,17 @@ struct shown_stages {
     int32_t stage_us[STAGES];
 };
 
-/* Room for every shown frame of the longest path, at the fastest frame a mode shows. */
-#define FRAMEGEN_SHOWN_MAX 2048
+/* Room for the first shown frames; doubled whenever it fills. */
+#define FRAMEGEN_SHOWN_FIRST 1024
+
+/* The path being played; freed by the fixture, so a failed mode leaks nothing. */
+static played_t played;
+
+static void
+release_played(void) {
+    free(played.shown);
+    played = (played_t){0};
+}
 
 /* The stages the frame just shown spent, then the window cleared for the next. */
 static void
@@ -380,7 +391,13 @@ shown_frame(void* ctx, int64_t dt_us) {
         frame_cost_take_clear();
         return took;
     }
-    TEST_ASSERT_LESS_THAN_INT_MESSAGE(p->capacity, p->count, "more shown frames than FRAMEGEN_SHOWN_MAX");
+    if (p->count == p->capacity) { /* outside the frame's time: the path advances by `took` */
+        const int capacity = p->capacity == 0 ? FRAMEGEN_SHOWN_FIRST : 2 * p->capacity;
+        struct shown_stages* grown = realloc(p->shown, (size_t)capacity * sizeof(*grown));
+        TEST_ASSERT_NOT_NULL(grown);
+        p->shown = grown;
+        p->capacity = capacity;
+    }
     struct shown_stages* s = &p->shown[p->count++];
     s->frame_us = (int32_t)took;
     s->height = f.height;
@@ -401,9 +418,6 @@ test_mode(void) {
     TEST_ASSERT_TRUE(render_lab_budget_set_ms(mode->budget_ms));
     (void)lab_test_frame_dt(0, false, NULL); /* warm-up, not counted */
     const frame_profile_scenario_t playback = {scenario->scene->key, (int64_t)path.duration_ms * MATH_US_PER_MS};
-    played_t played = {.shown = malloc(FRAMEGEN_SHOWN_MAX * sizeof(struct shown_stages)),
-                       .capacity = FRAMEGEN_SHOWN_MAX};
-    TEST_ASSERT_NOT_NULL(played.shown);
     frame_cost_take_clear(); /* each frame's stages, from this path alone */
     const frame_profile_t p = frame_profile_play(&playback, shown_frame, &played, NULL);
     TEST_ASSERT_GREATER_THAN_INT(0, played.drawn);
@@ -411,7 +425,6 @@ test_mode(void) {
     ESP_LOGI(TAG, FRAMEGEN_MODES_LINE, scenario->scene->key, mode->generating, mode->budget_ms, p.frames, played.drawn,
              (int)p.frame_us.avg, (int)p.frame_us.p95, (int)(played.height_sum / played.drawn));
     log_worst_frames(&played);
-    free(played.shown);
     char row[LAB_PERF_ROW_NAME_SIZE];
     const int length = snprintf(row, sizeof row, "framegen %s %s", scenario->scene->key, mode->name);
     TEST_ASSERT_TRUE(length > 0 && (size_t)length < sizeof row);
