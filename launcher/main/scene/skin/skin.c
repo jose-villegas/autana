@@ -152,6 +152,7 @@ scene_skin_show(scene_t* scene, scene_row_t entity) {
     scene_renderer_t* r = &scene->renderers[scene_renderer_index(scene, entity)];
     r->mesh = skin->storage != NULL ? skin->output.mesh : skin->bind;
     scene_renderer_bound(r);
+    scene->animators[entity].dirty = true;
     scene->flags[entity] |= SCENE_FLAG_SKIN_DIRTY;
     scene->active_renderers_stale = true;
 }

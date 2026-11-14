@@ -166,7 +166,7 @@ class EngineFrameTests(unittest.TestCase):
         entry = tracks_asset.encode([transform_track("scale", tracks_asset.ROOT_SCENE)], 1000)
         self.assertEqual(build_pack.to_engine(tracks_asset.TYPE, entry), entry)
 
-    def test_skeleton_clip_joint_transforms_are_mirrored_and_root_kept(self):
+    def test_skeleton_clip_joint_transforms_are_mirrored_and_root_and_ground_speed_kept(self):
         tracks = []
         for field, kind, values, signs in (
                 ("position", tracks_asset.VALUE_VEC3, [(2.0, 3.0, 4.0), (5.0, 6.0, 7.0)], MIRROR[:3]),
@@ -174,10 +174,12 @@ class EngineFrameTests(unittest.TestCase):
             tracks.append(dict(path="joint/child", component=tracks_asset.TRANSFORM, field=field, type=kind,
                                name=f"joint/child:TRNS.{field}", root=tracks_asset.ROOT_SKELETON, times=[0.0, 1.0], values=values,
                                interpolation="LINEAR", quaternion=field == "rotation"))
-        entry = tracks_asset.encode(tracks, 1000, tracks_asset.ROOT_SKELETON)
+        ground_mm_s = 800
+        entry = tracks_asset.encode(tracks, 1000, tracks_asset.ROOT_SKELETON, ground_mm_s)
         converted = build_pack.to_engine(tracks_asset.TYPE, entry)
         actual, duration = tracks_asset.decode(converted)
         self.assertEqual(duration, 1000)
+        self.assertEqual(tracks_asset.HEADER.unpack_from(converted)[-1], ground_mm_s)
         for before, after, signs in zip(tracks, actual, (MIRROR[:3], (-1, -1, 1, 1))):
             self.assertEqual(after["root"], tracks_asset.ROOT_SKELETON)
             self.assertEqual(after["path"], before["path"])

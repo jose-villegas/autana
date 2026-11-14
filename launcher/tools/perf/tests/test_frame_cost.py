@@ -18,10 +18,24 @@ class FrameCostTests(unittest.TestCase):
         self.assertEqual(window["external"], {"sound_mix": (0.004, 0.015, 260)})  # magic: the real report fixture stage.
         self.assertNotIn(next(iter(window["external"])), dict(frame_cost.frame_cost_windows(path)[0]))
 
-    def test_window_counts_the_brackets_it_dropped(self):
-        whole = frame_cost.frame_cost_window("ms/frame avg/worst: a 1/1 | total 1.00")
-        cut = frame_cost.frame_cost_window("ms/frame avg/worst: a 1/1 | total 1.00 +424 dropped || x 0.002/0.006 ms/block n=9")
-        self.assertEqual((whole["dropped"], cut["dropped"]), (0, 424))
+    def test_a_window_that_dropped_brackets_is_refused_by_every_reader(self):
+        whole = "ms/frame avg/worst: a 1/1 | total 1.00"
+        cut = "ms/frame avg/worst: a 1/1 | total 1.00 +424 dropped || x 0.002/0.006 ms/block n=9"
+        self.assertEqual(frame_cost.frame_cost_window(whole)["brackets"], {"a": (1.0, 1.0)})
+        with self.assertRaisesRegex(ValueError, "dropped 424 brackets"):
+            frame_cost.frame_cost_window(cut)
+        for read in (frame_cost.frame_cost_windows, frame_cost.frame_cost_means):
+            with self.assertRaisesRegex(ValueError, "dropped 424 brackets"):
+                read(None, f"{whole}\n{cut}\n{whole}\n")
+
+    def test_a_lap_window_that_dropped_laps_is_refused(self):
+        whole = "ms/frame laps: lap 179 ns | cpu0 a.b 1.000/2"
+        self.assertEqual(set(frame_cost.frame_laps_window(whole)[0]), {"a.b"})
+        with tempfile.TemporaryDirectory() as directory:
+            capture = pathlib.Path(directory) / "laps.log"
+            capture.write_text(whole + "\n" + whole + " +3 dropped\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "dropped 3 laps"):
+                frame_cost.frame_laps_means(capture)
 
     def test_order_new_bracket_and_missing_captures(self):
         with tempfile.TemporaryDirectory() as directory:

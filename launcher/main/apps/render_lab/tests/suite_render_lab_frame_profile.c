@@ -71,6 +71,7 @@ static const profile_scenario_t profile_scenarios[] = {
     CAPYBARA_ROW(capybara_close, {{22108, 22455}, {23064, 23340}}),
     CAPYBARA_ROW(capybara_blend, {{21079, 21407}, {21735, 22015}}),
     {&scene_bistro[SCENE_BAKED_FITTED_FULL], BISTRO_SCENE, BISTRO_CAMERA, NULL, {{36375, 54681}, {38062, 51881}}},
+    {&scene_bistro_textured, BISTRO_SCENE, BISTRO_CAMERA, NULL, {{38825, 58151}, {41246, 54763}}},
 };
 
 static const char* TAG = "render_lab_profile";

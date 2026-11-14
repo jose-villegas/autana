@@ -92,6 +92,8 @@ static const stress_goal_t stress_goals[] = {
     {"stress-carved-near", "landscape", "default", {0, 0, 0, 0}, {0, 0}},
     {"stress-carved-far", "portrait", "default", {0, 0, 0, 0}, {0, 0}},
     {"stress-carved-far", "landscape", "default", {0, 0, 0, 0}, {0, 0}},
+    {"stress-textured", "portrait", "default", {0, 0, 0, 0}, {0, 0}},
+    {"stress-textured", "landscape", "default", {0, 0, 0, 0}, {0, 0}},
 };
 
 static const char*
