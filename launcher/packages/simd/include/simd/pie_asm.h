@@ -33,5 +33,12 @@
     retw.n
     .size \name, . - \name
 .endm
+
+/* The bytes of every 16-bit lane of a pair swapped: b gets a's, a gets
+ * b's. */
+.macro SIMD_PIE_SWAP16 a, b
+    ee.vunzip.8 \a, \b
+    ee.vzip.8 \b, \a
+.endm
 /* clang-format on */
 #endif

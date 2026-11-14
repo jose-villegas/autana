@@ -28,6 +28,7 @@
 #include <stdint.h>
 
 #include "draw/draw_font.h"
+#include "draw/draw_sprite.h"
 #include "draw/icon.h"
 #include "input/input.h"
 #include "math/geometry/recti.h"
@@ -156,11 +157,34 @@ bool ui_end(uint32_t background_rgb);
 bool ui_end_if_unsettled(void);
 
 /* ui_end() over a backdrop that is drawn, not a colour. `paint_backdrop`
- * paints the whole screen and is called only when the UI itself changed; a
- * backdrop that animates draws its own changes before this call, and the
- * unchanged UI is put back over them. Full framebuffer only. */
-typedef void (*ui_backdrop_fn)(void);
-bool ui_end_over(ui_backdrop_fn paint_backdrop);
+ * paints the backdrop inside `area`, a panel rectangle, and marks it drawn.
+ * When the UI changed it is asked for the whole screen and every canvas goes
+ * over it. A backdrop that animates draws its own changes before this call;
+ * the unchanged UI is replayed over just those places, the backdrop first
+ * put back under all but opaque rects there, so nothing translucent blends
+ * over itself. Full framebuffer only. */
+typedef void (*ui_backdrop_fn)(recti_t area);
+
+/* The places a backdrop painted fresh this frame: disjoint, each pixel the
+ * backdrop alone, together holding every pixel it changed. One added past
+ * UI_FRESH_MAX, or one overlapping another, overflows the list. The max
+ * holds a few boxes per 16-pixel column across the screen. */
+#define UI_FRESH_MAX 72
+
+typedef struct {
+    recti_t rects[UI_FRESH_MAX];
+    int count;
+    bool overflow;
+} ui_fresh_t;
+
+void ui_fresh_clear(ui_fresh_t* fresh);
+void ui_fresh_add(ui_fresh_t* fresh, recti_t rect);
+void ui_fresh_whole(ui_fresh_t* fresh);
+
+/* `fresh`, when the backdrop alone drew this frame, says where: the unchanged
+ * UI is replayed over just those places and nothing is put back. NULL, or
+ * one overflowed, replays over the frame's dirt as above. */
+bool ui_end_over(ui_backdrop_fn paint_backdrop, const ui_fresh_t* fresh);
 
 /* Declare that the framebuffer no longer holds this UI's output, so the
  * next ui_end() must repaint even if the UI is unchanged. Needed
@@ -212,9 +236,20 @@ typedef struct {
 
 /* The palette for the rest of the frame; NULL restores the shell look. */
 void ui_theme(const ui_theme_t* theme);
-/* Buttons and tiles for the rest of the frame: flat faces with corners
- * rounded by `radius`; 0, the default, is the bevelled face. */
-void ui_corner_radius(int radius);
+
+/* Faces drawn from sprites, nine-sliced to each control, the border scaled
+ * with the UI's integer scale. `normal` and `pressed` are required; a NULL
+ * `selected` or `disabled` falls back to `normal`. A translucent face needs
+ * a background under it every paint: ui_end() with a colour, or
+ * ui_end_over(). */
+typedef struct {
+    const sprite_t *normal, *pressed, *selected, *disabled;
+} ui_skin_t;
+
+/* Buttons and tiles for the rest of the frame take their faces from `skin`,
+ * copied; NULL, the default, restores the code-drawn faces. The skin sets
+ * the faces and ui_theme() the ink, each independent of the other. */
+void ui_skin(const ui_skin_t* skin);
 
 /* A rect `w` wide and `h` tall at `y`, centred in a canvas `canvas_w` wide:
  * fixed-width content, where ui_row() spans the canvas. `w` is not clamped;

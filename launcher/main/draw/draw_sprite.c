@@ -5,6 +5,7 @@
 
 #include "asset/asset_bytes.h"
 #include "draw/draw.h"
+#include "draw/draw_blend.h"
 #include "draw/draw_image.h"
 #include "draw/draw_image_format.h"
 #include "gfx/gfx.h"
@@ -100,52 +101,85 @@ draw_sprite_make_resident(sprite_t* s, void* dst) {
     s->color.pixels = bytes;
 }
 
-/* One axis of the nine-slice: the border pair shrunk in proportion when the
- * output is shorter than both. */
+/* One axis of the nine-slice: the border pair drawn `scale` times its size,
+ * shrunk in proportion when the output is shorter than both. */
 typedef struct {
-    int out_len, src_len, lo, hi, out_lo, out_hi;
+    int out_len, src_len, lo, hi, out_lo, out_hi, scale;
 } slice_axis_t;
 
 static slice_axis_t
-slice_axis(int out_len, int src_len, int lo, int hi) {
-    slice_axis_t axis = {out_len, src_len, lo, hi, lo, hi};
-    if (lo + hi > out_len) {
-        axis.out_lo = lo * out_len / (lo + hi);
+slice_axis(int out_len, int src_len, int lo, int hi, int scale) {
+    slice_axis_t axis = {out_len, src_len, lo, hi, lo * scale, hi * scale, scale};
+    if (axis.out_lo + axis.out_hi > out_len) {
+        axis.out_lo = axis.out_lo * out_len / (axis.out_lo + axis.out_hi);
         axis.out_hi = out_len - axis.out_lo;
     }
     return axis;
 }
 
-/* The source pixel along the axis for output pixel `at`: corners 1:1, the
- * centre stretched by nearest pixel centre. */
+/* The source pixel along the axis for output pixel `at`: corners `scale`
+ * output pixels to a source pixel, the centre stretched by nearest pixel
+ * centre. */
 static int
 slice_source(const slice_axis_t* axis, int at) {
     if (at < axis->out_lo) {
-        return at;
+        return at / axis->scale;
     }
     if (at >= axis->out_len - axis->out_hi) {
-        return axis->src_len - (axis->out_len - at);
+        return axis->src_len - 1 - ((axis->out_len - 1 - at) / axis->scale);
     }
     const int centre_src = axis->src_len - axis->lo - axis->hi;
     const int centre_out = axis->out_len - axis->out_lo - axis->out_hi;
     return axis->lo + (((2 * (at - axis->out_lo)) + 1) * centre_src / (2 * centre_out));
 }
 
+/* `count` panel pixels that all show one source pixel: a stretched edge
+ * repeats one, so its run blends toward one colour at one share. */
+static inline __attribute__((always_inline)) void
+blend_run(gfx_color_t* dst, int count, gfx_color_t pixel, uint8_t cover) {
+    if (cover == 0) {
+        return;
+    }
+    if (cover == SPRITE_COVER_FULL) {
+        for (int i = 0; i < count; i++) {
+            dst[i] = pixel;
+        }
+    } else if (count == 1) {
+        dst[0] = rgb565be_mix(dst[0], pixel, cover);
+    } else {
+        const rgb565_mix_toward_t toward = rgb565be_mix_toward(pixel, cover);
+        draw_blend_row(dst, &toward, (size_t)count);
+    }
+}
+
 /* One panel row's pixels [x0, x1): source pixel `base + map[col] * step`, the
- * same index in both planes, which share one stride. */
-static inline void
+ * same index in both planes, which share one stride. Neighbours of one
+ * colour and share blend as one run, across slice edges: a skin's face row
+ * runs from rim to rim. */
+static inline __attribute__((always_inline)) void
 blend_span(gfx_color_t* row, int x0, int x1, const int16_t* map, const sprite_t* s, size_t base, size_t step) {
     const gfx_color_t* color = s->color.pixels;
     const uint8_t* alpha = s->alpha.pixels;
-    for (int col = x0; col < x1; col++) {
-        const size_t at = base + ((size_t)map[col - x0] * step);
+    int col = x0;
+    while (col < x1) {
+        int16_t source = map[col - x0];
+        const size_t at = base + ((size_t)source * step);
         const gfx_color_t pixel = color[at];
         const uint8_t cover = alpha == NULL ? SPRITE_COVER_FULL : alpha[at];
-        if (cover == SPRITE_COVER_FULL) {
-            row[col] = pixel;
-        } else if (cover != 0) {
-            row[col] = rgb565be_mix(row[col], pixel, cover);
+        int end = col + 1;
+        while (end < x1) {
+            const int16_t next = map[end - x0];
+            if (next != source) {
+                const size_t next_at = base + ((size_t)next * step);
+                if (color[next_at] != pixel || (alpha != NULL && alpha[next_at] != cover)) {
+                    break;
+                }
+                source = next;
+            }
+            end++;
         }
+        blend_run(row + col, end - col, pixel, cover);
+        col = end;
     }
 }
 
@@ -158,7 +192,7 @@ axis_source(const slice_axis_t* axis, bool mirror, int at) {
 
 /* A flat centre as one blended rectangle; the panel rectangle it covers, or
  * an empty one for a sprite without one. */
-static recti_t
+static __attribute__((noinline)) recti_t
 draw_flat_centre(const sprite_t* s, recti_t dst, int turns, const slice_axis_t* sx, const slice_axis_t* sy) {
     if (!s->flat_centre) {
         return recti_empty();
@@ -188,38 +222,58 @@ blend_row(gfx_color_t* line, int row, recti_t rect, recti_t centre, const int16_
     blend_span(line, rect.x, x1, map, s, base, step);
 }
 
-/* The clipped panel rectangle `rect` of a sprite filling `dst` at `turns`:
- * panel columns walk `col_axis` and panel rows `row_axis`. */
-static void
-blit(const gfx_target_t* target, recti_t rect, recti_t dst, const sprite_t* s, int turns, const slice_axis_t* col_axis,
-     const slice_axis_t* row_axis, recti_t centre) {
+/* The clipped panel rectangle `clipped` of a sprite filling `dst` at `turns`:
+ * panel columns walk `col_axis` and panel rows `row_axis`, a band of
+ * DRAW_SPRITE_MAP_COLUMNS columns at a time. Out of line, with the row
+ * blends inlined into it, so the map is off the stack while the flat
+ * centre draws and a UI paint through a skinned face stays shallow. */
+static __attribute__((noinline)) void
+blit(const gfx_target_t* target, const recti_t* clipped, const recti_t* dst, const sprite_t* s, int turns,
+     const slice_axis_t* col_axis, const slice_axis_t* row_axis, const recti_t* centre) {
+    const recti_t rect = *clipped;
     const bool col_mirror = turns == 1 || turns == 2;
     const bool row_mirror = turns == 2 || turns == 3;
-    int16_t map[GFX_WIDTH];
-    for (int col = rect.x; col < recti_right(rect); col++) {
-        map[col - rect.x] = (int16_t)axis_source(col_axis, col_mirror, col - dst.x);
-    }
     /* Upright, a panel row is a sprite row; turned, a sprite column. */
     const bool across = (turns & 1) != 0;
     const size_t stride = s->color.pitch / sizeof(gfx_color_t);
     const size_t step = across ? stride : 1;
     const size_t row_step = across ? 1 : stride;
-    for (int row = rect.y; row < recti_bottom(rect); row++) {
-        const size_t base = (size_t)axis_source(row_axis, row_mirror, row - dst.y) * row_step;
-        blend_row(gfx_target_color(target, row), row, rect, centre, map, s, base, step);
+    int16_t map[DRAW_SPRITE_MAP_COLUMNS];
+    for (int x0 = rect.x; x0 < recti_right(rect); x0 += DRAW_SPRITE_MAP_COLUMNS) {
+        const recti_t band = {x0, rect.y, mathi_min(DRAW_SPRITE_MAP_COLUMNS, recti_right(rect) - x0), rect.h};
+        for (int col = band.x; col < recti_right(band); col++) {
+            map[col - band.x] = (int16_t)axis_source(col_axis, col_mirror, col - dst->x);
+        }
+        /* A band inside the flat centre's columns has nothing to draw in
+         * its rows. */
+        const bool in_centre = band.x >= centre->x && recti_right(band) <= recti_right(*centre);
+        for (int row = band.y; row < recti_bottom(band); row++) {
+            if (in_centre && row >= centre->y && row < recti_bottom(*centre)) {
+                row = recti_bottom(*centre) - 1;
+                continue;
+            }
+            const size_t base = (size_t)axis_source(row_axis, row_mirror, row - dst->y) * row_step;
+            blend_row(gfx_target_color(target, row), row, band, *centre, map, s, base, step);
+        }
     }
 }
 
 void
 draw_sprite(const sprite_t* s, recti_t dst, int quarter_turns) {
+    draw_sprite_scaled(s, dst, quarter_turns, 1);
+}
+
+void
+draw_sprite_scaled(const sprite_t* s, recti_t dst, int quarter_turns, int scale) {
+    assert(scale >= 1);
     const int turns = quarter_turns & SPRITE_QUARTER_MASK;
     const bool across = (turns & 1) != 0; /* the sprite's x runs down the panel */
     const recti_t frame = across ? (recti_t){0, 0, dst.h, dst.w} : (recti_t){0, 0, dst.w, dst.h};
     if (recti_is_empty(frame)) {
         return;
     }
-    const slice_axis_t sx = slice_axis(frame.w, s->color.width, s->border.left, s->border.right);
-    const slice_axis_t sy = slice_axis(frame.h, s->color.height, s->border.top, s->border.bottom);
+    const slice_axis_t sx = slice_axis(frame.w, s->color.width, s->border.left, s->border.right, scale);
+    const slice_axis_t sy = slice_axis(frame.h, s->color.height, s->border.top, s->border.bottom, scale);
     const recti_t centre = draw_flat_centre(s, dst, turns, &sx, &sy);
 
     gfx_surface_t state;
@@ -230,8 +284,7 @@ draw_sprite(const sprite_t* s, recti_t dst, int quarter_turns) {
     if (recti_is_empty(rect)) {
         return;
     }
-    assert(rect.w <= GFX_WIDTH); /* every target is the panel's width */
-    blit(state.target, rect, dst, s, turns, across ? &sy : &sx, across ? &sx : &sy, centre);
+    blit(state.target, &rect, &dst, s, turns, across ? &sy : &sx, across ? &sx : &sy, &centre);
     if (state.marks) {
         gfx_mark_drawn(rect.x, rect.y, rect.w, rect.h);
     }

@@ -68,7 +68,7 @@ settings_frame(const input_t* input, settings_state_t* s) {
 | controls | [`ui_button`](button.md), [`ui_button_icon`](button_icon.md), [`ui_tile`](tile.md), [`ui_tile_icon`](tile_icon.md), [`ui_toggle`](toggle.md), [`ui_slider`](slider.md), [`ui_dropdown`](dropdown.md), [`ui_dropdown_icons`](dropdown_icons.md) |
 | text | [`ui_text`, `ui_text_right`, `ui_text_centre`, `ui_caption`, `ui_caption_centre`](text.md), [`ui_header`](header.md) |
 | marks | [`ui_panel`](panel.md), `ui_fill`, `ui_outline`, `ui_bevel`, [`ui_icon`, `ui_check`](icon.md), [`ui_swatches`](swatches.md) |
-| a look for the screen | `ui_theme(&theme)` once per screen; `NULL` restores the shell look; `ui_corner_radius(r)` for flat, rounded buttons |
+| a look for the screen | `ui_theme(&theme)` once per screen for the ink; `ui_skin(&skin)` for button and tile faces drawn from [sprites](../assets/Image-Entries.md#sprites); `NULL` restores either |
 | a look for a few widgets | [scopes](scopes.md): `ui_color_begin/end`, `ui_scale_begin/end`, `ui_alpha_begin/end`, `ui_disabled_begin/end` |
 
 - **Rect first.** Every widget takes its rect. A screen with fixed geometry
@@ -248,17 +248,24 @@ accumulators the pause built up.
 
 ### A screen over a backdrop that is drawn
 
-`ui_end_over(paint_backdrop)` is `ui_end()` for a backdrop that is a picture
+`ui_end_over(paint_backdrop, fresh)` is `ui_end()` for a backdrop that is a picture
 and not a colour; the launcher's ridge (`shell/ui/ui_ridge.c`) is the model.
 
-1. `paint_backdrop` paints the whole screen. It is called only when the UI
-   itself changed, and every window is then painted over it.
+1. `paint_backdrop(area)` paints the backdrop inside a panel rectangle and
+   marks it drawn. When the UI itself changed it is asked for the whole
+   screen, and every window is painted over it.
 2. A backdrop that animates draws its own changed part **before**
    `ui_end_over()`. That dirties the screen under an unchanged UI, which is
-   put back on top with no backdrop call.
-3. At rest it must draw nothing. A backdrop that redraws an identical frame
+   replayed over just those places; the backdrop is first put back there
+   under every command but an opaque rect, so nothing translucent blends
+   over its own last paint.
+3. A backdrop that can say where it painted, as up to `UI_FRESH_MAX`
+   disjoint rects, each painted whole and together holding every pixel it
+   changed, passes them as `fresh` (`ui_fresh_add()`). The UI is then replayed over just those, and nothing
+   is put back. With `NULL`, or a list that overflowed, step 2 holds.
+4. At rest it must draw nothing. A backdrop that redraws an identical frame
    dirties the screen, and the launcher stops being free while idle.
-4. React to the raw `input_t`, not to the controls: a press is held back until it is known to be a tap and not a
+5. React to the raw `input_t`, not to the controls: a press is held back until it is known to be a tap and not a
    scroll, which is a frame or two too late for feedback.
 
 ### Knowing what a screen costs

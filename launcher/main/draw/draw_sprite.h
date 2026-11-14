@@ -52,9 +52,18 @@ size_t draw_sprite_bytes(const sprite_t* s);
  * them, so drawing reads RAM instead of the mapped pack. */
 void draw_sprite_make_resident(sprite_t* s, void* dst);
 
+/* Panel columns a blit maps to their source at a time: a panel row's worth
+ * would hold GFX_WIDTH entries on the stack, too deep under a UI repaint. A
+ * run of one colour and share breaks at each band's edge. */
+#define DRAW_SPRITE_MAP_COLUMNS 64
+
 /* Fills `dst`, a panel rectangle, with the sprite turned clockwise by
  * `quarter_turns` and nine-sliced to fit (nearest pixel when stretched; a
  * border wider than `dst` shrinks in proportion). Coverage 0 leaves the
  * panel, 255 replaces it and anything between mixes with rgb565be_mix().
  * Clipped by draw_set_clip(). */
 void draw_sprite(const sprite_t* s, recti_t dst, int quarter_turns);
+
+/* draw_sprite() with the border drawn `scale` (1 or more) panel pixels to a
+ * sprite pixel, for a picture drawn at an integer zoom. */
+void draw_sprite_scaled(const sprite_t* s, recti_t dst, int quarter_turns, int scale);

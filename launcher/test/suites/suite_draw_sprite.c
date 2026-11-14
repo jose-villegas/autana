@@ -201,9 +201,31 @@ enum {
     TINY = 2, /* a side shorter than its border pair */
     STRETCH = 3,
     CLIP_INSET = 3,
+    UNSCALED = 1,
+    ZOOM = 2, /* a border drawn twice its size */
 };
 
 static gfx_color_t geo_pixels[GEO_H][GEO_W];
+static uint8_t geo_cover[GEO_H][GEO_W];
+
+/* Every share somewhere in a translucent picture: none, whole, and between. */
+#define COVER_STEP_X      37
+#define COVER_STEP_Y      91
+/* A background that differs at every panel pixel, so each blend shows. */
+#define BACKGROUND_STEP_X 131
+#define BACKGROUND_STEP_Y 7919
+/* Edges long enough for their runs to take draw_blend_row()'s vector steps. */
+#define LONG_EDGE         (GEO_W * STRETCH * 5)
+
+static uint8_t
+cover_at(int x, int y) {
+    return (uint8_t)((x * COVER_STEP_X) + (y * COVER_STEP_Y));
+}
+
+static gfx_color_t
+background_at(int x, int y) {
+    return (gfx_color_t)((x * BACKGROUND_STEP_X) + (y * BACKGROUND_STEP_Y));
+}
 
 static gfx_color_t
 code(int x, int y) {
@@ -223,6 +245,38 @@ geometry_sprite(void) {
     };
 }
 
+/* The geometry picture with a share at every pixel, in a plane sharing its
+ * stride as a sprite's two planes do. */
+static sprite_t
+translucent_geometry_sprite(void) {
+    sprite_t s = geometry_sprite();
+    for (int y = 0; y < GEO_H; y++) {
+        for (int x = 0; x < GEO_W; x++) {
+            geo_cover[y][x] = cover_at(x, y);
+        }
+    }
+    s.alpha = (image_t){geo_cover, IMAGE_A8, GEO_W, GEO_H, GEO_W};
+    return s;
+}
+
+/* A face like a skin's: a rim of the geometry picture's own pixels and
+ * shares round one colour at one share, so a panel row runs through edge,
+ * centre and edge as one. */
+#define FACE_COLOR 0x5A5Au
+#define FACE_COVER 128
+
+static sprite_t
+face_geometry_sprite(void) {
+    sprite_t s = translucent_geometry_sprite();
+    for (int y = 1; y < GEO_H - 1; y++) {
+        for (int x = 1; x < GEO_W - 1; x++) {
+            geo_pixels[y][x] = FACE_COLOR;
+            geo_cover[y][x] = FACE_COVER;
+        }
+    }
+    return s;
+}
+
 static void
 fixture(void) {
     TEST_ASSERT_TRUE(gfx_init());
@@ -239,45 +293,68 @@ panel(int x, int y) {
 }
 
 /* The nine-slice rule along one axis, from the design: output `at` of `out`
- * pixels shows: corners 1:1 from their own edge, a border pair longer than
- * the output shrunk in proportion, the centre by nearest pixel centre. */
+ * pixels shows: corners `scale` output pixels to a source pixel from their
+ * own edge, a border pair longer than the output shrunk in proportion, the
+ * centre by nearest pixel centre. */
 static int
-expected_source(int at, int out, int src, int lo, int hi) {
-    int out_lo = lo;
-    int out_hi = hi;
-    if (lo + hi > out) {
-        out_lo = lo * out / (lo + hi);
+expected_source(int at, int out, int src, int lo, int hi, int scale) {
+    int out_lo = lo * scale;
+    int out_hi = hi * scale;
+    if (out_lo + out_hi > out) {
+        out_lo = out_lo * out / ((lo + hi) * scale);
         out_hi = out - out_lo;
     }
     if (at < out_lo) {
-        return at;
+        return at / scale;
     }
     if (out - at <= out_hi) {
-        return src - (out - at);
+        return src - 1 - ((out - 1 - at) / scale);
     }
     const double centre = (double)(src - lo - hi) / (out - out_lo - out_hi);
     return lo + (int)((at - out_lo + 0.5) * centre);
 }
 
-/* Every panel pixel of `dst` against the turned, nine-sliced picture: the
- * sprite frame pixel a panel pixel shows, by the turn image_asset.turn() makes. */
+/* Under a translucent sprite, a background that differs at every pixel. */
 static void
-assert_geometry(int turns, int w, int h) {
-    const sprite_t s = geometry_sprite();
+paint_background(recti_t area) {
+    gfx_surface_t surface;
+    TEST_ASSERT_TRUE(gfx_draw_begin(&surface));
+    for (int y = area.y; y < recti_bottom(area); y++) {
+        for (int x = area.x; x < recti_right(area); x++) {
+            gfx_target_color(surface.target, y)[x] = background_at(x, y);
+        }
+    }
+}
+
+/* Every panel pixel of `dst` against the turned, nine-sliced picture `art`
+ * draws: the sprite frame pixel a panel pixel shows, by the turn
+ * image_asset.turn() makes; translucent, that pixel blended one at a time
+ * over the background. */
+static void
+assert_geometry(int turns, int w, int h, int scale, sprite_t (*art)(void)) {
+    const sprite_t s = art();
+    const bool translucent = s.alpha.pixels != NULL;
     const bool across = (turns & 1) != 0;
     const recti_t dst = {GEO_AT, GEO_AT, across ? h : w, across ? w : h};
     draw_clear(BACKGROUND);
-    draw_sprite(&s, dst, turns);
+    if (translucent) {
+        paint_background(dst);
+    }
+    draw_sprite_scaled(&s, dst, turns, scale);
     for (int py = 0; py < dst.h; py++) {
         for (int px = 0; px < dst.w; px++) {
             const int lx[TURNS] = {px, py, w - 1 - px, w - 1 - py};
             const int ly[TURNS] = {py, h - 1 - px, h - 1 - py, px};
-            const int sx = expected_source(lx[turns], w, GEO_W, GEO_LEFT, GEO_RIGHT);
-            const int sy = expected_source(ly[turns], h, GEO_H, GEO_TOP, GEO_BOTTOM);
-            if (panel(dst.x + px, dst.y + py) != code(sx, sy)) {
-                char message[96];
-                (void)snprintf(message, sizeof message, "turn %d size %dx%d panel (%d, %d) is not source (%d, %d)",
-                               turns, w, h, px, py, sx, sy);
+            const int sx = expected_source(lx[turns], w, GEO_W, GEO_LEFT, GEO_RIGHT, scale);
+            const int sy = expected_source(ly[turns], h, GEO_H, GEO_TOP, GEO_BOTTOM, scale);
+            const gfx_color_t expected =
+                translucent ? rgb565be_mix(background_at(dst.x + px, dst.y + py), geo_pixels[sy][sx], geo_cover[sy][sx])
+                            : geo_pixels[sy][sx];
+            if (panel(dst.x + px, dst.y + py) != expected) {
+                char message[112];
+                (void)snprintf(message, sizeof message,
+                               "turn %d size %dx%d scale %d panel (%d, %d) is not source (%d, %d)", turns, w, h, scale,
+                               px, py, sx, sy);
                 TEST_FAIL_MESSAGE(message);
             }
         }
@@ -286,21 +363,58 @@ assert_geometry(int turns, int w, int h) {
     TEST_ASSERT_EQUAL_HEX16(BACKGROUND, panel(recti_right(dst), recti_bottom(dst) - 1));
 }
 
+/* assert_geometry() at every turn for each {w, h, scale} of `sizes`. */
+static void
+assert_geometry_at_every_turn(const int (*sizes)[3], size_t n, sprite_t (*art)(void)) {
+    for (int turns = 0; turns < TURNS; turns++) {
+        for (size_t i = 0; i < n; i++) {
+            assert_geometry(turns, sizes[i][0], sizes[i][1], sizes[i][2], art);
+        }
+    }
+}
+
 static void
 test_nine_slice_geometry_at_every_turn_and_size(void) {
     fixture();
-    const int sizes[][2] = {
-        {GEO_W, GEO_H},                        /* 1:1 */
-        {GEO_W * STRETCH, GEO_H * STRETCH},    /* stretched both ways */
-        {GEO_W + STRETCH + 1, GEO_H},          /* one axis only, odd */
-        {GEO_LEFT + GEO_RIGHT + 1, GEO_H + 1}, /* one centre column */
-        {TINY, TINY},                          /* shorter than the borders */
+    const int sizes[][3] = {
+        {GEO_W, GEO_H, UNSCALED},                           /* 1:1 */
+        {GEO_W * STRETCH, GEO_H * STRETCH, UNSCALED},       /* stretched both ways */
+        {GEO_W + STRETCH + 1, GEO_H, UNSCALED},             /* one axis only, odd */
+        {GEO_LEFT + GEO_RIGHT + 1, GEO_H + 1, UNSCALED},    /* one centre column */
+        {TINY, TINY, UNSCALED},                             /* shorter than the borders */
+        {DRAW_SPRITE_MAP_COLUMNS + GEO_W, GEO_H, UNSCALED}, /* across a band of mapped columns */
     };
-    for (int turns = 0; turns < TURNS; turns++) {
-        for (size_t i = 0; i < sizeof sizes / sizeof sizes[0]; i++) {
-            assert_geometry(turns, sizes[i][0], sizes[i][1]);
-        }
-    }
+    assert_geometry_at_every_turn(sizes, sizeof sizes / sizeof sizes[0], geometry_sprite);
+}
+
+/* draw_sprite_scaled(): the corners drawn ZOOM panel pixels to a sprite
+ * pixel, at every turn, whether the centre stretches, holds or vanishes. */
+static void
+test_a_scaled_border_at_every_turn_and_size(void) {
+    fixture();
+    const int sizes[][3] = {
+        {GEO_W * ZOOM, GEO_H * ZOOM, ZOOM},                     /* the whole picture at the zoom */
+        {GEO_W * ZOOM * STRETCH, GEO_H * ZOOM * STRETCH, ZOOM}, /* stretched past it */
+        {TINY * ZOOM, TINY * ZOOM, ZOOM},                       /* shorter than the scaled borders */
+    };
+    assert_geometry_at_every_turn(sizes, sizeof sizes / sizeof sizes[0], geometry_sprite);
+}
+
+/* A translucent picture, and a face of one colour and share inside its rim,
+ * long enough to blend as runs: every pixel the same as blending it alone,
+ * at every turn, size and scale. */
+static void
+test_translucent_edge_runs_blend_as_each_pixel_alone(void) {
+    fixture();
+    const int sizes[][3] = {
+        {LONG_EDGE, LONG_EDGE, UNSCALED},
+        {LONG_EDGE, GEO_H, UNSCALED},
+        {GEO_W * STRETCH, LONG_EDGE, UNSCALED},
+        {LONG_EDGE, LONG_EDGE, ZOOM},
+        {DRAW_SPRITE_MAP_COLUMNS + GEO_W, GEO_H, UNSCALED}, /* a run across a band's edge */
+    };
+    assert_geometry_at_every_turn(sizes, sizeof sizes / sizeof sizes[0], translucent_geometry_sprite);
+    assert_geometry_at_every_turn(sizes, sizeof sizes / sizeof sizes[0], face_geometry_sprite);
 }
 
 static void
@@ -362,6 +476,40 @@ test_a_flat_centre_blends_its_one_colour_and_the_border_stays_per_pixel(void) {
     TEST_ASSERT_EQUAL_HEX16(centre, panel(recti_right(dst) - GEO_RIGHT - 1, recti_bottom(dst) - GEO_BOTTOM - 1));
     TEST_ASSERT_EQUAL_HEX16(code(0, GEO_TOP), panel(dst.x, dst.y + GEO_TOP));
     TEST_ASSERT_EQUAL_HEX16(code(GEO_LEFT, 0), panel(dst.x + GEO_LEFT, dst.y));
+}
+
+/* A flat centre wide enough that a band of mapped columns lies wholly
+ * inside it: the border rows above and below still draw, as a sprite with
+ * no flat centre draws them, and the centre is its colour blended once. */
+static void
+test_a_band_inside_the_flat_centre_still_draws_the_border_rows(void) {
+    fixture();
+    sprite_t s = geometry_sprite();
+    const recti_t dst = {GEO_AT, GEO_AT, (DRAW_SPRITE_MAP_COLUMNS * 2) + GEO_W, GEO_H * STRETCH};
+    gfx_color_t* plain = malloc((size_t)dst.w * (size_t)dst.h * sizeof *plain);
+    TEST_ASSERT_NOT_NULL(plain);
+    draw_clear(BACKGROUND);
+    draw_sprite(&s, dst, 0);
+    for (int y = 0; y < dst.h; y++) {
+        for (int x = 0; x < dst.w; x++) {
+            plain[(y * dst.w) + x] = panel(dst.x + x, dst.y + y);
+        }
+    }
+    s.flat_centre = true;
+    s.centre_color = FLAT_COLOR;
+    s.centre_alpha = UINT8_MAX / 2;
+    draw_clear(BACKGROUND);
+    draw_sprite(&s, dst, 0);
+    const recti_t inner = {dst.x + GEO_LEFT, dst.y + GEO_TOP, dst.w - GEO_LEFT - GEO_RIGHT,
+                           dst.h - GEO_TOP - GEO_BOTTOM};
+    const gfx_color_t centre = rgb565be_mix(BACKGROUND, FLAT_COLOR, UINT8_MAX / 2);
+    for (int y = 0; y < dst.h; y++) {
+        for (int x = 0; x < dst.w; x++) {
+            const bool in_centre = recti_contains(inner, dst.x + x, dst.y + y);
+            TEST_ASSERT_EQUAL_HEX16(in_centre ? centre : plain[(y * dst.w) + x], panel(dst.x + x, dst.y + y));
+        }
+    }
+    free(plain);
 }
 
 /* Drawn under a clip, every pixel inside it matches the unclipped draw and
@@ -452,10 +600,13 @@ suite_draw_sprite(void) {
     RUN_TEST(test_the_test_tile_opens_translucent_with_a_flat_centre);
 #ifndef DEVICE_BUILD
     RUN_TEST(test_nine_slice_geometry_at_every_turn_and_size);
+    RUN_TEST(test_a_scaled_border_at_every_turn_and_size);
+    RUN_TEST(test_translucent_edge_runs_blend_as_each_pixel_alone);
     RUN_TEST(test_a_stretched_corner_stays_1_to_1_and_an_edge_stretches_one_way);
     RUN_TEST(test_turned_the_top_border_lands_on_the_right);
     RUN_TEST(test_coverage_0_leaves_255_replaces_and_between_mixes);
     RUN_TEST(test_a_flat_centre_blends_its_one_colour_and_the_border_stays_per_pixel);
+    RUN_TEST(test_a_band_inside_the_flat_centre_still_draws_the_border_rows);
     RUN_TEST(test_a_clip_limits_every_pixel_of_the_blit);
     RUN_TEST(test_the_tile_draws_the_same_from_ram_as_from_its_pack);
 #endif

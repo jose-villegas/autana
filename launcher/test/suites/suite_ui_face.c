@@ -1447,7 +1447,9 @@ test_frame_state_reset(void) {
 }
 
 static void
-backdrop(void) {}
+backdrop(recti_t area) {
+    (void)area;
+}
 
 static void
 test_all_end_paths(void) {
@@ -1461,7 +1463,7 @@ test_all_end_paths(void) {
                 ui_color_end();
             }
             if (over) {
-                (void)ui_end_over(backdrop);
+                (void)ui_end_over(backdrop, NULL);
             } else {
                 ui_end_for_bands(UI_NO_BACKGROUND);
             }

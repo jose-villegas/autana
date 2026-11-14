@@ -36,7 +36,7 @@ _Static_assert(GFX_WIDTH == BOARD_PANEL_WIDTH && GFX_HEIGHT == BOARD_PANEL_HEIGH
  * places it: clones inherit the attribute; a mapping names only the original.
  * run_present is noinline so flash callers cannot inline its body out of IRAM.
  * Development overlays and send auditing make dev and diag larger.
- * IRAM budget: release 2418 B, dev 3242 B, diag 3242 B */
+ * IRAM budget: release 2378 B, dev 3221 B, diag 3221 B */
 #define GFX_PRESENT_IRAM_ATTR IRAM_ATTR
 static const char* TAG = "gfx";
 #else
@@ -46,6 +46,7 @@ static const char* TAG = "gfx";
 /* The one instance of the state gfx_dirty.h, gfx_full_redraw.h and
  * gfx_present_guard.h declare. */
 uint32_t cell_dirty;
+uint32_t cell_banded;
 bool all_dirty;
 int cell_x0[CELL_COUNT];
 int cell_x1[CELL_COUNT];
@@ -420,6 +421,22 @@ bool
 gfx_region_dirty(int x, int y, int w, int h) {
     GFX_PRESENT_GUARD();
     return dirty_region_dirty(x, y, w, h);
+}
+
+void
+gfx_dirty_leaves(gfx_dirty_leaves_t* out) {
+    GFX_PRESENT_GUARD();
+    dirty_leaves(out);
+}
+
+void
+gfx_dirty_leaves_add(gfx_dirty_leaves_t* to, const gfx_dirty_leaves_t* from, recti_t area) {
+    dirty_leaves_add(to, from, area);
+}
+
+bool
+gfx_dirty_leaves_take(gfx_dirty_leaves_t* left, recti_t area, recti_t* out) {
+    return dirty_leaves_take(left, area, out);
 }
 
 /* Device-only path for QSPI panel send. Host build is no-op. */
@@ -942,7 +959,7 @@ gfx_present_wait(void) {
     drain_present();
 #ifndef ESP_PLATFORM
     if (!band_is_transient()) {
-        dirty_frame_sent();
+        dirty_all_rows_sent();
     }
 #endif
     gfx_present_guard_end();
@@ -1031,6 +1048,7 @@ gfx_checkpoint_capture(checkpoint_t* saved) {
     CHECKPOINT_CAPTURE(saved, panel_clock_requested_hz);
     const checkpoint_field_t fields[] = {
         {(void*)&cell_dirty, sizeof cell_dirty},
+        {(void*)&cell_banded, sizeof cell_banded},
         {(void*)&all_dirty, sizeof all_dirty},
         {(void*)&cell_x0, sizeof cell_x0},
         {(void*)&cell_x1, sizeof cell_x1},

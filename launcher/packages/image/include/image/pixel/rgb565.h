@@ -47,7 +47,8 @@ rgb565be_pack(uint8_t r5, uint8_t g6, uint8_t b5) {
 #define RGB565_SCALE_UNIT      32
 
 /* A native colour spread over 32 bits: green in the high half, red and blue in
- * the low, each with room above it for a product by up to RGB565_SCALE_UNIT. */
+ * the low, each with room above it for a product by up to RGB565_SCALE_UNIT.
+ * rgb565_rb_apart() spreads red and blue wider, for a product by up to 255. */
 #define RGB565_SPREAD_CHANNELS 0x07e0f81fU
 /* The lowest bit of each spread channel. */
 #define RGB565_SPREAD_ONES     0x00200801U
@@ -114,28 +115,56 @@ rgb565be_to_rgb888(rgb565be_t c) {
     return ((uint32_t)r8 << 16) | ((uint32_t)g8 << 8) | b8;
 }
 
+/* Native red and blue in one word, red moved up to bit RGB565_RB_RED_AT, so
+ * a product of each by up to 255 stays clear of the other; rgb565be_spread()
+ * packs all three closer, for a product by up to RGB565_SCALE_UNIT. */
+#define RGB565_RB_RED_AT 16
+/* One in each of the two channels, and their rounded-divide masks. */
+#define RGB565_RB_ONES   0x00010001u
+#define RGB565_RB_LOW5   0x001F001Fu
+#define RGB565_MIX_FULL  255u
+#define RGB565_MIX_HALF  127u
+
+static inline uint32_t
+rgb565_rb_apart(uint16_t native) {
+    return ((uint32_t)rgb565_r5(native) << RGB565_RB_RED_AT) | rgb565_b5(native);
+}
+
+/* rgb565be_mix() toward one colour at one share, worked out once: that
+ * colour's products and the rounding, and what is kept of the other. */
+typedef struct {
+    uint32_t rb, g;
+    unsigned keep;
+} rgb565_mix_toward_t;
+
+static inline rgb565_mix_toward_t
+rgb565be_mix_toward(rgb565be_t b, uint8_t t) {
+    const uint16_t nb = rgb565_swap(b);
+    return (rgb565_mix_toward_t){.rb = (rgb565_rb_apart(nb) * t) + (RGB565_MIX_HALF * RGB565_RB_ONES),
+                                 .g = (rgb565_g6(nb) * t) + RGB565_MIX_HALF,
+                                 .keep = RGB565_MIX_FULL - t};
+}
+
+/* `a` blended toward the colour of `m`: the same pixel rgb565be_mix() makes,
+ * with two multiplies. Red and blue divide by 255 together, each with
+ * rgb565_div255()'s exact identity. */
+static inline rgb565be_t
+rgb565be_mix_onto(rgb565be_t a, const rgb565_mix_toward_t* m) {
+    const uint16_t na = rgb565_swap(a);
+    uint32_t rb = (rgb565_rb_apart(na) * m->keep) + m->rb;
+    rb = (rb + ((rb >> 8) & RGB565_RB_LOW5) + RGB565_RB_ONES) >> 8;
+    const uint32_t g = rgb565_div255((rgb565_g6(na) * m->keep) + m->g);
+    return rgb565be_pack((uint8_t)((rb >> RGB565_RB_RED_AT) & 0x1Fu), (uint8_t)g, (uint8_t)(rb & 0x1Fu));
+}
+
 /* Blend a toward b: t=0 keeps a, t=255 gives b. Red/blue have five bits,
- * green six; mixing in native channel widths preserves the hue. */
+ * green six; mixing in native channel widths preserves the hue. Each channel
+ * is (a * (255 - t) + b * t) / 255, rounded, so t=255 lands exactly on `b`
+ * and t=0 exactly on `a`. */
 static inline rgb565be_t
 rgb565be_mix(rgb565be_t a, rgb565be_t b, uint8_t t) {
-    const uint16_t na = rgb565_swap(a);
-    const uint16_t nb = rgb565_swap(b);
-    const uint8_t ar = (uint8_t)rgb565_r5(na);
-    const uint8_t ag = (uint8_t)rgb565_g6(na);
-    const uint8_t ab = (uint8_t)rgb565_b5(na);
-    const uint8_t br = (uint8_t)rgb565_r5(nb);
-    const uint8_t bg = (uint8_t)rgb565_g6(nb);
-    const uint8_t bb = (uint8_t)rgb565_b5(nb);
-
-    /* (channel * (255 - t) + channel * t) / 255, rounded rather than
-     * truncated so t=255 lands exactly on `b` and t=0 exactly on `a`.
-     * The divide is done as rgb565_div255(), not an approximation, an exact
-     * identity over the range these numerators can reach. */
-    const uint8_t mr = (uint8_t)rgb565_div255(ar * (255 - t) + br * t + 127);
-    const uint8_t mg = (uint8_t)rgb565_div255(ag * (255 - t) + bg * t + 127);
-    const uint8_t mb = (uint8_t)rgb565_div255(ab * (255 - t) + bb * t + 127);
-
-    return rgb565_swap((uint16_t)((mr << 11) | (mg << 5) | mb));
+    const rgb565_mix_toward_t m = rgb565be_mix_toward(b, t);
+    return rgb565be_mix_onto(a, &m);
 }
 
 /* Saturate each channel at its own maximum: unequal channel widths mean

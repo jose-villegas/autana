@@ -26,7 +26,7 @@
 /* The frame is sent in full-width bands. Full width matters: it makes each
  * band a contiguous run inside the framebuffer, so one memcpy moves it into
  * a DMA bounce slot with no packing. 448 / 64 = 7 bands exactly. */
-#define STRIP_HEIGHT 64
+#define STRIP_HEIGHT GFX_DIRTY_STRIP_HEIGHT
 #define STRIP_COUNT  (GFX_HEIGHT / STRIP_HEIGHT)
 
 /* The screen as a fixed grid of cells, ROWS tall bands x COLS wide
@@ -41,6 +41,11 @@
 #define COL_WIDTH    (GFX_WIDTH / GRID_COLS)
 #define CELL_COUNT   (STRIP_COUNT * GRID_COLS)
 extern uint32_t cell_dirty;
+
+/* The cells marked whole (mark_band(), dirty_mark_all()), which carry no
+ * leaf bits for what they claim. Cleared with the row's boxes once sent;
+ * a bit left on a clean cell only ever claims more. */
+extern uint32_t cell_banded;
 
 /* Set once dirty_mark_all() has run this frame, cleared alongside
  * cell_dirty by dirty_frame_sent(). Every cell is already claimed at
@@ -69,11 +74,19 @@ extern int cell_y1[CELL_COUNT];
  * tighter box inside one buys nothing. LEAF_COLS is 16, so one row of
  * leaves fits exactly in one uint16_t; no further indexing math is
  * needed. */
-#define LEAF_SUB  4
+#define LEAF_SUB  GFX_DIRTY_LEAF_SUB
 #define LEAF_W    (COL_WIDTH / LEAF_SUB)
 #define LEAF_H    (STRIP_HEIGHT / LEAF_SUB)
 #define LEAF_COLS (GRID_COLS * LEAF_SUB)
 extern uint16_t leaf_dirty[STRIP_COUNT * LEAF_SUB];
+_Static_assert(STRIP_COUNT* LEAF_SUB == GFX_DIRTY_LEAF_ROWS, "a snapshot holds every leaf row");
+
+/* Whether cell `idx`'s leaf bits hold all its dirt: a cell marked whole
+ * (mark_band(), dirty_mark_all()) has none for what it claims. */
+static inline bool
+cell_leaves_trusted(int idx) {
+    return !(cell_banded & (1u << idx));
+}
 
 /* Bounds gather_buf, the scratch space gfx_present.c packs one gathered run's box
  * into edge-to-edge before sending it as one esp_lcd_panel_draw_bitmap()
@@ -177,6 +190,7 @@ mark_band(int y0, int y1) {
         for (int col = 0; col < GRID_COLS; col++) {
             const int idx = row * GRID_COLS + col;
             cell_dirty |= (1u << idx);
+            cell_banded |= (1u << idx);
             set_cell_full_extent(idx, row, col);
         }
     }
@@ -192,6 +206,7 @@ dirty_mark_all(void) {
     }
     all_dirty = true;
     cell_dirty = (CELL_COUNT >= 32) ? 0xFFFFFFFFu : (1u << CELL_COUNT) - 1u;
+    cell_banded = cell_dirty;
     for (int row = 0; row < STRIP_COUNT; row++) {
         for (int col = 0; col < GRID_COLS; col++) {
             set_cell_full_extent(row * GRID_COLS + col, row, col);
@@ -234,11 +249,9 @@ union_cell_y(int idx, int y0, int y1, int row) {
 
 /* gfx_mark_dirty()'s implementation. Unlike mark_band(), this knows a
  * real box, so gfx_present() may send only what changed. The only place
- * that ever narrows leaf_dirty (see mark_leaves()): mark_band() always
- * claims a cell at its full COL_WIDTH x STRIP_HEIGHT extent, this union
- * can only shrink that toward a real box, and whenever it does, it
- * narrows the matching leaves too. So a cell strictly smaller than its
- * full extent always has trustworthy leaf bits. */
+ * that ever sets leaf_dirty (see mark_leaves()): every pixel it marks sets
+ * its leaf, so a cell never marked whole (cell_leaves_trusted()) has leaf
+ * bits holding all its dirt. */
 static inline void
 dirty_mark(int x, int y, int w, int h) {
     if (all_dirty) {
@@ -283,8 +296,8 @@ dirty_mark(int x, int y, int w, int h) {
     mark_leaves(x0, y0, x1, y1);
 }
 
-/* Reports any tracked dirt overlapping the clipped box. A full cell can
- * come from mark_band(), which has no leaf bits to query. */
+/* Reports any tracked dirt overlapping the clipped box. A cell marked
+ * whole has no leaf bits to query. */
 static inline bool
 dirty_region_dirty(int x, int y, int w, int h) {
     int x0 = x;
@@ -322,7 +335,7 @@ dirty_region_dirty(int x, int y, int w, int h) {
             if (cell_x1[idx] <= x0 || cell_x0[idx] >= x1 || cell_y1[idx] <= y0 || cell_y0[idx] >= y1) {
                 continue;
             }
-            if (cell_x1[idx] - cell_x0[idx] >= COL_WIDTH && cell_y1[idx] - cell_y0[idx] >= STRIP_HEIGHT) {
+            if (!cell_leaves_trusted(idx)) {
                 return true;
             }
 
@@ -337,6 +350,84 @@ dirty_region_dirty(int x, int y, int w, int h) {
                 }
             }
         }
+    }
+    return false;
+}
+
+/* Leaf row `leaf_row`'s dirty leaves, one bit a leaf column. A cell marked
+ * whole counts every leaf; a clean cell counts none. */
+static inline uint16_t
+dirty_leaf_row(int leaf_row) {
+    const int row = leaf_row / LEAF_SUB;
+    const uint16_t cell_leaves = (uint16_t)((1u << LEAF_SUB) - 1u);
+    uint16_t bits = leaf_dirty[leaf_row];
+    for (int col = 0; col < GRID_COLS; col++) {
+        const int idx = (row * GRID_COLS) + col;
+        const uint16_t leaves = (uint16_t)(cell_leaves << (col * LEAF_SUB));
+        if (!(cell_dirty & (1u << idx))) {
+            bits &= (uint16_t)~leaves;
+        } else if (!cell_leaves_trusted(idx)) {
+            bits |= leaves;
+        }
+    }
+    return bits;
+}
+
+static inline void
+dirty_leaves(gfx_dirty_leaves_t* out) {
+    for (int leaf_row = 0; leaf_row < GFX_DIRTY_LEAF_ROWS; leaf_row++) {
+        out->rows[leaf_row] = dirty_leaf_row(leaf_row);
+    }
+}
+
+/* The leaf columns `area`, already on the screen, touches. */
+static inline uint16_t
+leaf_columns_of(recti_t area) {
+    const int first = area.x / LEAF_W;
+    const int last = (recti_right(area) - 1) / LEAF_W;
+    return (uint16_t)(((1u << (last - first + 1)) - 1u) << first);
+}
+
+static inline void
+dirty_leaves_add(gfx_dirty_leaves_t* to, const gfx_dirty_leaves_t* from, recti_t area) {
+    area = recti_intersect(area, GFX_SCREEN_RECT);
+    if (recti_is_empty(area)) {
+        return;
+    }
+    const uint16_t columns = leaf_columns_of(area);
+    for (int leaf_row = area.y / LEAF_H; leaf_row <= (recti_bottom(area) - 1) / LEAF_H; leaf_row++) {
+        to->rows[leaf_row] |= from->rows[leaf_row] & columns;
+    }
+}
+
+/* The first run of leaves in the top-most leaf row holding any inside
+ * `area`, grown down while the rows below hold the whole run. */
+static inline bool
+dirty_leaves_take(gfx_dirty_leaves_t* left, recti_t area, recti_t* out) {
+    area = recti_intersect(area, GFX_SCREEN_RECT);
+    if (recti_is_empty(area)) {
+        return false;
+    }
+    const uint16_t columns = leaf_columns_of(area);
+    const int last = (recti_bottom(area) - 1) / LEAF_H;
+    for (int top = area.y / LEAF_H; top <= last; top++) {
+        const uint32_t bits = left->rows[top] & columns;
+        if (bits == 0) {
+            continue;
+        }
+        const int first = __builtin_ctz(bits);
+        const int count = __builtin_ctz(~(bits >> first));
+        const uint16_t run = (uint16_t)(((1u << count) - 1u) << first);
+        int bottom = top;
+        while (bottom < last && (left->rows[bottom + 1] & run) == run) {
+            bottom++;
+        }
+        for (int leaf_row = top; leaf_row <= bottom; leaf_row++) {
+            left->rows[leaf_row] &= (uint16_t)~run;
+        }
+        *out = recti_intersect(
+            recti_from_edges(first * LEAF_W, top * LEAF_H, (first + count) * LEAF_W, (bottom + 1) * LEAF_H), area);
+        return true;
     }
     return false;
 }
@@ -435,18 +526,15 @@ collect_dirty_runs(int row, int* run_start, int* run_end) {
     return (n < 0) ? 0 : n;
 }
 
-/* True only if no cell in [col_first,col_last) of `row` is at its own
- * full COL_WIDTH x STRIP_HEIGHT extent; see dirty_mark()'s comment for
- * why that is both necessary and sufficient to know the leaf bits under
- * this run are trustworthy. Deliberately conservative: one coarse cell
+/* True only if every cell in [col_first,col_last) of `row` has leaf bits
+ * holding all its dirt. Deliberately conservative: one coarse cell
  * in the run disables refinement for the whole run; a run mixing coarse
  * and tight cells is rare, and getting this simple and always-correct
  * matters more than squeezing out that case. */
 static inline bool
 run_is_leaf_eligible(int row, int col_first, int col_last) {
     for (int col = col_first; col < col_last; col++) {
-        const int idx = row * GRID_COLS + col;
-        if (cell_x1[idx] - cell_x0[idx] >= COL_WIDTH && cell_y1[idx] - cell_y0[idx] >= STRIP_HEIGHT) {
+        if (!cell_leaves_trusted(row * GRID_COLS + col)) {
             return false;
         }
     }
@@ -557,6 +645,7 @@ dirty_row_sent(int row) {
         cell_x1[idx] = col * COL_WIDTH;
         cell_y0[idx] = row * STRIP_HEIGHT + STRIP_HEIGHT;
         cell_y1[idx] = row * STRIP_HEIGHT;
+        cell_banded &= ~(1u << idx);
     }
     for (int sub = 0; sub < LEAF_SUB; sub++) {
         leaf_dirty[row * LEAF_SUB + sub] = 0;
@@ -569,4 +658,13 @@ static inline void
 dirty_frame_sent(void) {
     cell_dirty = 0;
     all_dirty = false;
+}
+
+/* What a present that sends every row leaves behind. */
+static inline void
+dirty_all_rows_sent(void) {
+    for (int row = 0; row < STRIP_COUNT; row++) {
+        dirty_row_sent(row);
+    }
+    dirty_frame_sent();
 }
