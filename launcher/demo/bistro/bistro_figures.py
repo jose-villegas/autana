@@ -1,4 +1,5 @@
-"""LTEX.md's sheet of Bistro's street with and without its textures, drawn by r3d/texture/texture_figures.py.
+"""LTEX.md's sheets of Bistro's street with and without its textures, and of its near floor at each perspective
+divide spacing, drawn by r3d/texture/texture_figures.py.
 
     python launcher/demo/bistro/bistro_figures.py --scene ... --object ... --reference ... --out DIR
 """
@@ -15,8 +16,10 @@ PRODUCER = Producer(area="render", needs=("host", "bakes"),
                     run=("--scene", "launcher/demo/bistro/bistro.scene.toml", "--object", "street_fitted_full",
                          "--reference", "bistro.street_fitted.reference.tar.xz", "--frame", "10", "--dt", "1000",
                          "--title", "Bistro street, fitted full: cobblestones and beige brick textured",
-                         "--image", "bistro-street-textured.png", "--out", "{out}"),
-                    outputs=("bistro-street-textured.png", "bistro-street-textured.crops.png"))
+                         "--image", "bistro-street-textured.png", "--divides", "1,0,16,8",
+                         "--divide-image", "bistro-street-divide.png", "--out", "{out}"),
+                    outputs=("bistro-street-textured.png", "bistro-street-textured.crops.png",
+                             "bistro-street-divide.png"))
 
 if __name__ == "__main__":
     main()
