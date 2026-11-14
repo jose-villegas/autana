@@ -7325,6 +7325,59 @@ test_a_textured_mesh_set_back_holds_no_closed_textures(void) {
     TEST_ASSERT_EQUAL_INT(0, pixels_differing_from(fx.held));
 }
 
+/* The batch scene drawn, its red quad plain or cut by `kind`. */
+static void
+draw_batch(texture_kind_t kind) {
+    scene_unload_all();
+    const batch_case_t spec = {.id = "valid", .at = SIZE_MAX, .turns = BATCH_COPIES};
+
+    enum { PLAIN_ENTRIES = 3, CUT_ENTRIES = PLAIN_ENTRIES + 2 }; /* + the LUVS and the material */
+
+    test_pack_t pack = test_pack_begin(fx.bytes, PACK_MAX, kind == TEXTURE_CUT ? CUT_ENTRIES : PLAIN_ENTRIES);
+    uint8_t* mesh = test_pack_add(&pack, "red", R3D_LIT_MESH_ASSET, QUAD_BYTES);
+    make_quad_entry(mesh, UINT8_MAX, 0, 0, 1);
+    test_pack_put32(mesh + MESH_COLOURS_WORD * sizeof(uint32_t), 0);
+    make_batch_entry(&pack, &spec);
+    const lcol_case_t colours = {0};
+    make_lcol_entry(&pack, &colours, LCOL_ENCODING_RGB888);
+    if (kind == TEXTURE_CUT) {
+        make_textured_luvs(
+            test_pack_add(&pack, "red" R3D_TEXTURE_UVS_NAME_SUFFIX, R3D_TEXTURE_UVS_ASSET, TEXTURED_LUVS_BYTES));
+        add_red_material(&pack, kind);
+    }
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_open(&fx.pack, fx.bytes, test_pack_finish(&pack)));
+    const entity_t root = load("test_batch");
+    TEST_ASSERT_EQUAL(kind == TEXTURE_CUT, columns(root)->renderers[0].mesh.texturing != NULL);
+    TEST_ASSERT_TRUE(camera_activate(camera_first(root)));
+    render_context_set_scale(render_context_main(), 100);
+    frame(16);
+}
+
+/* Pixels of fx.pixels in columns [from, to) that differ from fx.held. */
+static int
+columns_differing(int from, int to) {
+    int n = 0;
+    for (int y = 0; y < SIZE; y++) {
+        for (int x = from; x < to; x++) {
+            n += fx.pixels[(y * SIZE) + x] != fx.held[(y * SIZE) + x];
+        }
+    }
+    return n;
+}
+
+/* A batch's copies share their renderer's mesh, its cut included: each copy
+ * shows holes where the plain batch drew its whole quad. */
+static void
+test_every_copy_of_a_batch_draws_its_renderers_cut(void) {
+    fixture();
+    draw_batch(TEXTURE_PATTERN);
+    memcpy(fx.held, fx.pixels, sizeof(uint16_t) * SIZE * SIZE);
+    draw_batch(TEXTURE_CUT);
+    const int between = CENTER + (int)(BATCH_REACH * PIXELS_PER_UNIT);
+    TEST_ASSERT_GREATER_THAN_MESSAGE(0, columns_differing(0, between), "the first copy is not cut");
+    TEST_ASSERT_GREATER_THAN_MESSAGE(0, columns_differing(between, SIZE), "the second copy is not cut");
+}
+
 /* A packed flat-shaded mesh whose textures cut fails its scene's load. */
 static void
 test_a_scene_with_a_flat_shaded_mesh_whose_textures_cut_fails_to_load(void) {
@@ -7360,6 +7413,7 @@ run_scene_suite(void) {
     RUN_TEST(test_textures_that_cut_never_turn_off);
     RUN_TEST(test_a_mesh_that_cannot_take_the_cut_is_refused_and_one_that_can_takes_it);
     RUN_TEST(test_a_textured_mesh_set_back_holds_no_closed_textures);
+    RUN_TEST(test_every_copy_of_a_batch_draws_its_renderers_cut);
     RUN_TEST(test_a_scene_with_a_flat_shaded_mesh_whose_textures_cut_fails_to_load);
     RUN_TEST(test_static_mesh_arrays_are_resident_and_equal_the_pack);
     RUN_TEST(test_static_face_colours_are_resident_and_equal_the_pack);
