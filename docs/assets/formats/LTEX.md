@@ -18,12 +18,13 @@ runs from black (matches the source) through red to yellow.
 
 A span divides u and v by depth every `texture.divide_px` pixels, a
 [render setting](../../render/Render-Settings.md), and steps them affine
-between, so the floor near the camera keeps its rows straight; stepped
-affine across a whole span, they bend. A triangle that would bend less than
-`texture.affine_bend` texels steps affine throughout, and a dividing one
-doubles its segments, up to 32 pixels, while one segment would bend less.
+between, so rows on a floor near the camera stay straight; stepped affine
+across the whole span they bend. A triangle estimated to bend less than
+`texture.affine_bend` texels steps affine throughout; a dividing one lengthens
+its segments, up to the setting's maximum, while one segment would still bend
+less than that.
 
-![The near floor's squares where affine differs most from a divide every pixel: the true divide, affine, a divide every 16 and every 8 pixels, each with its CIE76 dE against the true divide over the frame's lowest third](../../images/render/bistro-street-divide.png)
+![The near floor's squares where affine differs most from a divide every pixel, with each column's CIE76 dE against that divide](../../images/render/bistro-street-divide.png)
 
 ```mermaid
 ---

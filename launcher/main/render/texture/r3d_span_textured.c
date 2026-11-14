@@ -1,11 +1,10 @@
 /*
  * r3d_span_textured: r3d_texture's span fill. A triangle's u, v and light
- * level are planes set up in float once; each span starts from them and
- * steps fixed point, u and v packed in one word. u and v divide by depth
- * every texture.divide_px (render settings) and step affine between, as Quake drew
- * them, or step affine across the whole span, as the PS1 did, when that is
- * 0. A pixel is one colormap load: the texel's
- * colour at the vertex light's dithered level.
+ * level are planes set up in float once; each span steps them in fixed point,
+ * u and v packed in one word. u and v divide by depth every texture.divide_px
+ * pixels or more (render settings) and step affine between; 0 steps affine
+ * across the span. A pixel is one colormap load: the texel's colour at the
+ * vertex light's dithered level.
  */
 #include "render/texture/r3d_texture.h"
 
@@ -22,36 +21,33 @@
 /* u and v walk as 8.8 texels, packed u high and v low in one word; a carry
  * out of v moves u by 1/256 texel. 8 integer bits wrap at 256 texels, a
  * multiple of every level's side. */
-#define UV_FRAC        8
-#define UV_ONE         (1 << UV_FRAC)
-#define UV_WRAP        256.0F
-#define UV_HALF_BITS   16
-#define UV_LOW_MASK    0xFFFFU
-#define U_INT_SHIFT    (UV_HALF_BITS + UV_FRAC)
-#define V_INT_SHIFT    UV_FRAC
-#define NIBBLE_BITS    4
-#define NIBBLE_MASK    0xFU
+#define UV_FRAC      8
+#define UV_ONE       (1 << UV_FRAC)
+#define UV_WRAP      256.0F
+#define UV_HALF_BITS 16
+#define UV_LOW_MASK  0xFFFFU
+#define U_INT_SHIFT  (UV_HALF_BITS + UV_FRAC)
+#define V_INT_SHIFT  UV_FRAC
+#define NIBBLE_BITS  4
+#define NIBBLE_MASK  0xFU
 /* The light level walks as 8.8. */
-#define LIGHT_FRAC     8
-#define LEVEL_MAX      ((R3D_TEXTURE_LIGHT_LEVELS - 1) << LIGHT_FRAC)
+#define LIGHT_FRAC   8
+#define LEVEL_MAX    ((R3D_TEXTURE_LIGHT_LEVELS - 1) << LIGHT_FRAC)
 /* A Bayer threshold, 0..15, in 1/256 of a level. */
-#define DITHER_SHIFT   (LIGHT_FRAC - 4)
-#define DEPTH_MAX      ((int32_t)R3D_DEPTH_NEAREST << R3D_DEPTH_SHIFT)
-#define CORNERS        3
-/* Affine bends a texel most at a triangle's middle, by about its texel
- * extent times the share its inverse depth varies, over this. */
-#define BEND_SPREAD    4.0F
-/* A segment grows no longer: its 8.8 step drifts under an eighth of a texel. */
-#define SEGMENT_PX_MAX 32
+#define DITHER_SHIFT (LIGHT_FRAC - 4)
+#define DEPTH_MAX    ((int32_t)R3D_DEPTH_NEAREST << R3D_DEPTH_SHIFT)
+#define CORNERS      3
+/* Affine bends u and v by about the triangle's texel extent times the
+ * relative spread of its inverse depth, divided by this. */
+#define BEND_SPREAD  4.0F
 
 /* 1 / n for every segment length n, so a span's short last segment costs no divide. */
-#define INVERSE_1(n)   (1.0F / (float)(n)),
+#define INVERSE_1(n) (1.0F / (float)(n)),
 #define INVERSE_8(n)                                                                                                   \
     INVERSE_1(n)                                                                                                       \
     INVERSE_1((n) + 1)                                                                                                 \
     INVERSE_1((n) + 2) INVERSE_1((n) + 3) INVERSE_1((n) + 4) INVERSE_1((n) + 5) INVERSE_1((n) + 6) INVERSE_1((n) + 7)
-static const float segment_inverse[] = {0.0F, INVERSE_8(1) INVERSE_8(9) INVERSE_8(17) INVERSE_8(25) INVERSE_8(33)
-                                                  INVERSE_8(41) INVERSE_8(49) INVERSE_8(57)};
+static const float segment_inverse[] = {0.0F, INVERSE_8(1) INVERSE_8(9) INVERSE_8(17) INVERSE_8(25)};
 _Static_assert(sizeof segment_inverse / sizeof segment_inverse[0] == RENDER_TEXTURE_DIVIDE_PX_MAX + 1,
                "an inverse for every segment length");
 
@@ -224,9 +220,27 @@ light_level(const r3d_span_vertex_t* v) {
     return luma * ((float)LEVEL_MAX / (float)UINT8_MAX);
 }
 
+int
+r3d_texture_segment_px(int divide_px, float affine_bend, float extent, float z_near, float z_far, float side) {
+    const float bent = extent * (z_near - z_far);
+    const float allowed = affine_bend * BEND_SPREAD * z_far;
+    if (divide_px <= 0 || bent <= allowed) {
+        return 0;
+    }
+    /* A segment of n pixels bends by (n / side)^2 of the whole: double n while that stays allowed. */
+    int divide = divide_px;
+    while (divide * 2 <= RENDER_TEXTURE_DIVIDE_PX_MAX && bent * (float)(4 * divide * divide) <= allowed * side * side) {
+        divide *= 2;
+    }
+    return divide;
+}
+
+/* Sets `su` up to fill the triangle's part in window box `box`. Whether it
+ * divides, and how far apart, are judged on `whole`, its unclipped box, so
+ * every window that draws a part of it maps u and v alike. */
 static bool
 set_up(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[CORNERS], const vec2f_t uv[CORNERS],
-       const r3d_texture_t* texture, recti_t box, setup_t* su) {
+       const r3d_texture_t* texture, recti_t box, recti_t whole, setup_t* su) {
     r3d_span_frame_t f;
     if (!r3d_span_frame_of(v[0], v[1], v[2], box.x, box.y, &f)) {
         return false;
@@ -238,8 +252,16 @@ set_up(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[CORNERS
     const uint16_t cap =
         target->skip_hidden ? r3d_span_depth_limit(mathf_max(v[0]->z, mathf_max(v[1]->z, v[2]->z))) : R3D_DEPTH_NEAREST;
     su->depth_max = cap == R3D_DEPTH_NEAREST ? DEPTH_MAX : (((int32_t)cap << R3D_DEPTH_SHIFT) | 0xFF);
-    su->s = r3d_span_plane_of(&f, uv[0].x, uv[1].x, uv[2].x);
-    su->t = r3d_span_plane_of(&f, uv[0].y, uv[1].y, uv[2].y);
+    /* u and v from the texture's tile holding vertex 0, so a far tile's
+     * large u keeps its fraction through the float planes and divides. */
+    const float tile = (float)(1U << texture->size_log2);
+    const vec2f_t origin = {floorf(uv[0].x / tile) * tile, floorf(uv[0].y / tile) * tile};
+    vec2f_t local[CORNERS];
+    for (int i = 0; i < CORNERS; i++) {
+        local[i] = (vec2f_t){uv[i].x - origin.x, uv[i].y - origin.y};
+    }
+    su->s = r3d_span_plane_of(&f, local[0].x, local[1].x, local[2].x);
+    su->t = r3d_span_plane_of(&f, local[0].y, local[1].y, local[2].y);
     const int level = pick_level(su, texture);
     const float scale = 1.0F / (float)(1U << level);
     su->s = (r3d_span_plane_t){su->s.base * scale, su->s.dx * scale, su->s.dy * scale};
@@ -247,23 +269,17 @@ set_up(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[CORNERS
     const float z_near = mathf_max(v[0]->z, mathf_max(v[1]->z, v[2]->z));
     const float z_far = mathf_min(v[0]->z, mathf_min(v[1]->z, v[2]->z));
     const float extent = mathf_max(mathf_abs(su->s.dx) + mathf_abs(su->t.dx), mathf_abs(su->s.dy) + mathf_abs(su->t.dy))
-                         * (float)mathi_max(box.w, box.h);
-    int divide = target->texture_divide_px;
-    const float bend = (float)target->texture_bend_steps * (1.0F / (float)R3D_SPAN_BEND_STEPS);
-    const float bent = extent * (z_near - z_far);
-    const float allowed = bend * BEND_SPREAD * z_far;
-    const bool bends = divide > 0 && bent > allowed;
-    /* A segment of n pixels bends by (n / side)^2 of the whole: double n while that stays allowed. */
-    const float side = (float)mathi_max(box.w, box.h);
-    while (bends && divide * 2 <= SEGMENT_PX_MAX && bent * (float)(4 * divide * divide) <= allowed * side * side) {
-        divide *= 2;
-    }
-    su->divide = bends ? divide : 0;
+                         * (float)mathi_max(whole.w, whole.h);
+    su->divide = r3d_texture_segment_px(target->texture_divide_px,
+                                        (float)target->texture_bend_steps * (1.0F / (float)R3D_SPAN_BEND_STEPS), extent,
+                                        z_near, z_far, (float)mathi_max(whole.w, whole.h));
     if (su->divide != 0) {
         /* The level stays the affine planes' pick; u and v become u q and v q. */
         su->q = r3d_span_plane_of(&f, v[0]->z, v[1]->z, v[2]->z);
-        su->s = r3d_span_plane_of(&f, uv[0].x * scale * v[0]->z, uv[1].x * scale * v[1]->z, uv[2].x * scale * v[2]->z);
-        su->t = r3d_span_plane_of(&f, uv[0].y * scale * v[0]->z, uv[1].y * scale * v[1]->z, uv[2].y * scale * v[2]->z);
+        su->s = r3d_span_plane_of(&f, local[0].x * scale * v[0]->z, local[1].x * scale * v[1]->z,
+                                  local[2].x * scale * v[2]->z);
+        su->t = r3d_span_plane_of(&f, local[0].y * scale * v[0]->z, local[1].y * scale * v[1]->z,
+                                  local[2].y * scale * v[2]->z);
     }
     const int side_log2 = texture->size_log2 - level;
     const uint32_t mask = (1U << side_log2) - 1U;
@@ -279,13 +295,14 @@ set_up(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[CORNERS
 void
 r3d_span_textured_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                            const r3d_span_vertex_t* c, const vec2f_t uv[CORNERS], const r3d_texture_t* texture) {
-    const recti_t box = r3d_span_window_box(target, r3d_span_extent_limits(a, b, c, 0, 0).centres);
+    const recti_t whole = r3d_span_extent_limits(a, b, c, 0, 0).centres;
+    const recti_t box = r3d_span_window_box(target, whole);
     const int32_t area2 = r3d_span_area2(a, b, c);
     if (recti_is_empty(box) || area2 == 0 || r3d_span_stop_after != 0) {
         return;
     }
     setup_t su;
-    if (!set_up(target, (const r3d_span_vertex_t* const[CORNERS]){a, b, c}, uv, texture, box, &su)) {
+    if (!set_up(target, (const r3d_span_vertex_t* const[CORNERS]){a, b, c}, uv, texture, box, whole, &su)) {
         return;
     }
     const r3d_span_vertex_t* v0 = a;
