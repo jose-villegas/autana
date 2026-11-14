@@ -102,6 +102,22 @@ test_a_slow_walker_walks(void) {
     TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, GAIT.rate_min, p.rate);
 }
 
+/* A speed at the stop speed itself stands, fresh or out of a walk, and just
+ * past it walks; a scripted stop of exactly 0 with a stop speed of 0 too. */
+static void
+test_the_stop_speed_itself_stands(void) {
+    const gait_pick_t walking = fresh(STEPS[1].ground_mps);
+    TEST_ASSERT_EQUAL_INT(0, fresh(GAIT.stop_mps).step);
+    TEST_ASSERT_EQUAL_INT(0, gait_pick(&GAIT, walking, GAIT.stop_mps).step);
+    TEST_ASSERT_EQUAL_INT(1, fresh(GAIT.stop_mps + PAST).step);
+    gait_t scripted = GAIT;
+    scripted.stop_mps = 0.0F;
+    const gait_pick_t none = {NO_STEP, 1.0F};
+    TEST_ASSERT_EQUAL_INT(0, gait_pick(&scripted, none, 0.0F).step);
+    TEST_ASSERT_EQUAL_INT(0, gait_pick(&scripted, walking, 0.0F).step);
+    TEST_ASSERT_EQUAL_INT(1, gait_pick(&scripted, none, PAST).step);
+}
+
 static void
 test_a_held_step_survives_inside_its_band_and_leaves_past_it(void) {
     const gait_pick_t walking = fresh(STEPS[1].ground_mps);
@@ -121,6 +137,7 @@ run_gait_suite(void) {
     RUN_TEST(test_the_rate_matches_the_ground_speed_inside_the_clamp);
     RUN_TEST(test_a_still_step_plays_at_rate_one);
     RUN_TEST(test_a_slow_walker_walks);
+    RUN_TEST(test_the_stop_speed_itself_stands);
     RUN_TEST(test_a_held_step_survives_inside_its_band_and_leaves_past_it);
 }
 

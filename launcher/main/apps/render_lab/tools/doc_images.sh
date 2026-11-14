@@ -100,9 +100,10 @@ run "$W/render_lab_render" --quarter 1 --no-hud --scene herd-8 --frames "$HERD_F
     --video "$W/herd-motion.avi" 2> "$W/herd.log"
 run "$PYTHON" launcher/tools/docs/figures.py gif "$W/herd-motion.avi" "$OUT/render-lab-herd.gif" --fps "1000/$HERD_DT"
 
-# The capybara's whole run down Sponza's atrium, rest to rest.
-CAPYBARA_SPONZA_FRAMES=120
-CAPYBARA_SPONZA_DT=150
+# The capybara's whole run down Sponza's atrium, rest to rest, at 10 frames a
+# second: a coarser step samples a gallop stride too few times to read.
+CAPYBARA_SPONZA_DT=100
+CAPYBARA_SPONZA_FRAMES=185
 run "$W/render_lab_render" --quarter 1 --no-hud --scene capybara-sponza --frames "$CAPYBARA_SPONZA_FRAMES" \
     --dt "$CAPYBARA_SPONZA_DT" -o "$W/capybara-sponza-motion.bmp" --video "$W/capybara-sponza-motion.avi" \
     2> "$W/capybara-sponza.log"
