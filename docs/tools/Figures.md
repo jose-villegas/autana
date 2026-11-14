@@ -11,7 +11,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | Area | Images | Declared by a producer | Shown nowhere |
 |---|---|---|---|
 | [anim](#anim) | 5 | 0 | 0 |
-| [audio](#audio) | 32 | 0 | 0 |
+| [audio](#audio) | 40 | 0 | 0 |
 | [input](#input) | 11 | 0 | 0 |
 | [kinematics](#kinematics) | 6 | 2 | 0 |
 | [math](#math) | 25 | 25 | 0 |
@@ -59,6 +59,14 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/audio/mic-eq-probe-dac.png"><img src="../images/audio/mic-eq-probe-dac.png" width="160" alt=""></a> | — | [audio/Audio-Path](../audio/Audio-Path.md) | not declared yet |
 | <a href="../images/audio/mic-eq-probe-hpf-dark.png"><img src="../images/audio/mic-eq-probe-hpf-dark.png" width="160" alt=""></a> | — | [audio/Audio-Path](../audio/Audio-Path.md) | not declared yet |
 | <a href="../images/audio/mic-eq-probe-hpf.png"><img src="../images/audio/mic-eq-probe-hpf.png" width="160" alt=""></a> | — | [audio/Audio-Path](../audio/Audio-Path.md) | not declared yet |
+| <a href="../images/audio/mic-eq-scale-adc-dark.png"><img src="../images/audio/mic-eq-scale-adc-dark.png" width="160" alt=""></a> | — | [audio/Audio-Path](../audio/Audio-Path.md) | not declared yet |
+| <a href="../images/audio/mic-eq-scale-adc.png"><img src="../images/audio/mic-eq-scale-adc.png" width="160" alt=""></a> | — | [audio/Audio-Path](../audio/Audio-Path.md) | not declared yet |
+| <a href="../images/audio/mic-eq-scale-dac-dark.png"><img src="../images/audio/mic-eq-scale-dac-dark.png" width="160" alt=""></a> | — | [audio/Audio-Path](../audio/Audio-Path.md) | not declared yet |
+| <a href="../images/audio/mic-eq-scale-dac.png"><img src="../images/audio/mic-eq-scale-dac.png" width="160" alt=""></a> | — | [audio/Audio-Path](../audio/Audio-Path.md) | not declared yet |
+| <a href="../images/audio/mic-eq-slots-adc-dark.png"><img src="../images/audio/mic-eq-slots-adc-dark.png" width="160" alt=""></a> | — | [audio/Audio-Path](../audio/Audio-Path.md) | not declared yet |
+| <a href="../images/audio/mic-eq-slots-adc.png"><img src="../images/audio/mic-eq-slots-adc.png" width="160" alt=""></a> | — | [audio/Audio-Path](../audio/Audio-Path.md) | not declared yet |
+| <a href="../images/audio/mic-eq-slots-dac-dark.png"><img src="../images/audio/mic-eq-slots-dac-dark.png" width="160" alt=""></a> | — | [audio/Audio-Path](../audio/Audio-Path.md) | not declared yet |
+| <a href="../images/audio/mic-eq-slots-dac.png"><img src="../images/audio/mic-eq-slots-dac.png" width="160" alt=""></a> | — | [audio/Audio-Path](../audio/Audio-Path.md) | not declared yet |
 | <a href="../images/audio/sound-onset-dark.png"><img src="../images/audio/sound-onset-dark.png" width="160" alt=""></a> | — | [audio/Clicks](../audio/Clicks.md) | not declared yet |
 | <a href="../images/audio/sound-onset.png"><img src="../images/audio/sound-onset.png" width="160" alt=""></a> | — | [audio/Clicks](../audio/Clicks.md) | not declared yet |
 | <a href="../images/audio/sound_mix_capture_long-dark.png"><img src="../images/audio/sound_mix_capture_long-dark.png" width="160" alt=""></a> | — | [audio/Mixer-Cost](../audio/Mixer-Cost.md) | not declared yet |

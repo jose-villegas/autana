@@ -164,17 +164,9 @@ def render_slots(path, records, caption, picture, details, markdown, regenerate)
                 for reg, values in points.items() for value in SLOT_VALUES
                 for levels in (values.get(value, {}),) for hz in SLOT_HZ]
         body += details(markdown(['Register', 'Value', 'Hz', 'Relative (dB)', 'Numerator (dB)', 'Decision'], rows)) + '\n'
-        body += picture('audio/mic-eq-scale-' + owner, owner.upper() + ' coefficient scale')
-        checks = []
-        for (kind, case, path_name), tones in data.items():
-            if kind != owner or case == 'bypass' or case.startswith('slot-') or order_case(case):
-                continue
-            for hz, measured in sorted(tones.items()):
-                match = slot_case(case)
-                expected = (AMPLITUDE_DB * math.log10(float(match[3])) if match else
-                            0.0 if case == 'unity' else 'silence' if case == 'zero' else
-                            float(response(owner, case, [hz])[0]))
-                checks.append((case, hz, number(measured), expected if isinstance(expected, str) else number(expected)))
+        body += picture('audio/mic-eq-scale-' + owner, owner.upper() + ' coefficient checks')
+        checks = [(case, hz, number(measured), expected if isinstance(expected, str) else number(expected))
+                  for case, hz, measured, expected in scale_checks(data, owner)]
         body += details(markdown(['Check', 'Hz', 'Relative (dB)', 'Expected (dB)'], checks)) + '\n'
         layout = decided_layout(data, owner)
         if any(kind == owner and order_case(case) for kind, case, path in data):
@@ -207,6 +199,22 @@ def render_slots(path, records, caption, picture, details, markdown, regenerate)
             body += details(markdown(['Scale slot', 'Slope (dB/octave)', 'Unity offset (dB)'],
                                      [(f'0x{scale[0]:02X}', *map(number, scale[1:]))])) + '\n'
     return body
+
+
+def scale_checks(data, owner):
+    """(case, hz, measured dB, expected dB or 'silence') for each of `owner`'s coefficient checks: every
+    case but bypass, the isolated slots and the order probes; the scale figure draws these rows."""
+    checks = []
+    for (kind, case, path_name), tones in data.items():
+        if kind != owner or case == 'bypass' or case.startswith('slot-') or order_case(case):
+            continue
+        for hz, measured in sorted(tones.items()):
+            match = slot_case(case)
+            expected = (AMPLITUDE_DB * math.log10(float(match[3])) if match else
+                        0.0 if case == 'unity' else 'silence' if case == 'zero' else
+                        float(response(owner, case, [hz])[0]))
+            checks.append((case, hz, measured, expected))
+    return checks
 
 
 def scale_result(data, owner):
