@@ -47,14 +47,15 @@ typedef struct {
     float hysteresis_px; /* advanced: pixels past a tier boundary before switching */
 } render_anim_settings_t;
 
-/* The longest texture.divide_px a pack may set. */
-#define RENDER_TEXTURE_DIVIDE_PX_MAX 64
+/* The longest texture.divide_px a pack may set, and the longest a segment
+ * grows to: an 8.8 step across it drifts under an eighth of a texel. */
+#define RENDER_TEXTURE_DIVIDE_PX_MAX 32
 /* The largest texture.affine_bend a pack may set, in texels. */
 #define RENDER_TEXTURE_BEND_MAX      15.0F
 
 typedef struct {
-    int divide_px; /* basic: pixels between u and v's divides by depth; 0 is affine, near floors bend; fewer cost more */
-    float affine_bend; /* advanced: texels a triangle may bend and still step affine; more saves, bends more */
+    int divide_px; /* basic: fewest pixels between divides by depth, fewer cost more; 0 is affine, near surfaces bend */
+    float affine_bend; /* advanced: texels a triangle may bend and still step affine; larger is faster, bends more */
 } render_texture_settings_t;
 
 typedef struct {

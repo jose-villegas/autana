@@ -8,10 +8,9 @@ takes the same frame from the reference bake BAKE (a .reference.tar.xz, bake.py 
 and lays the three out with render_compare.py: the source, the plain draw, the textured draw and each one's error
 against the source.
 
---divides draws the textured frame again at each texture.divide_px value (render settings), the first the truth (1, a divide
-every pixel on every triangle), and --divide-image writes the squares of the near floor (the frame's lowest
-NEAR_SHARE) where the second differs most from it: a row per square, a column per value, each headed with its CIE76
-dE against the truth over the near floor.
+--divides draws the textured frame at each texture.divide_px value, the first the truth (1, with affine_bend 0, so
+every triangle divides). --divide-image writes the squares of the frame's lowest third where the second value differs
+most from it: a row per square, a column per value, each headed with its CIE76 dE against the truth over that third.
 """
 import argparse
 import pathlib
@@ -46,9 +45,8 @@ AFFINE_TUNABLE = "render.texture_bend_steps"
 TRUTH = 1
 # Squares the divide sheet zooms on.
 DIVIDE_CROPS = 4
-# The divide sheet's square side in pixels and the gap between squares.
+# The divide sheet's square side in pixels.
 DIVIDE_CELL = 240
-DIVIDE_GAP = 6
 
 
 def run(command):
@@ -112,17 +110,8 @@ def divide_sheet(args, work):
         scale = DIVIDE_CELL / max(cluster.x1 - cluster.x0, cluster.y1 - cluster.y0)
         size = (round((cluster.x1 - cluster.x0) * scale), round((cluster.y1 - cluster.y0) * scale))
         crops = [picture.crop(box).resize(size, Image.NEAREST) for picture in pictures]
-        rows.append([render_compare.captioned(crop, label, DIVIDE_CELL) for crop, label in zip(crops, labels)])
-    width = max(sum(cell.width + DIVIDE_GAP for cell in row) for row in rows)
-    height = sum(max(cell.height for cell in row) + DIVIDE_GAP for row in rows)
-    sheet = Image.new("RGB", (width, height), (24, 24, 24))
-    y = 0
-    for row in rows:
-        x = 0
-        for cell in row:
-            sheet.paste(cell, (x, y))
-            x += cell.width + DIVIDE_GAP
-        y += max(cell.height for cell in row) + DIVIDE_GAP
+        rows.append(list(zip(labels, crops)))
+    sheet = render_compare.still_sheet(rows)
     sheet.save(args.out / args.divide_image, optimize=True)
 
 

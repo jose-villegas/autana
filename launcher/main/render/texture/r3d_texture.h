@@ -89,6 +89,13 @@ r3d_texture_level_bytes(int side_log2) {
 void r3d_span_textured_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                                 const r3d_span_vertex_t* c, const vec2f_t uv[3], const r3d_texture_t* texture);
 
+/* The pixels between u and v's divides by depth that r3d_span_textured_triangle()
+ * uses for a triangle `side` pixels across its longest side, `extent` texels
+ * across it, inverse depth z_far..z_near: 0 to step affine, when divide_px is 0
+ * or the bend stays under affine_bend texels; else divide_px, doubled up to
+ * RENDER_TEXTURE_DIVIDE_PX_MAX while one segment's own bend would stay under it. */
+int r3d_texture_segment_px(int divide_px, float affine_bend, float extent, float z_near, float z_far, float side);
+
 /* A mesh's textures, set on r3d_lit_mesh_t.texturing: up to
  * R3D_TEXTURE_CHARTS charts per cluster, each a material, a UV per vertex
  * per chart, and a code per triangle naming the chart it draws with. The
