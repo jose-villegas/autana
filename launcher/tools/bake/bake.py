@@ -1338,6 +1338,7 @@ def main(argv=None):
     parser.add_argument("--offline", action="store_true", help="fetch: never download")
     args = parser.parse_intermixed_args(argv)  # paths may follow options, as a shell user types them
     from r3d.build_pack import DEFAULT_SEARCH
+    from process_tree import progressed
 
     cache = pathlib.Path(args.cache) if args.cache else default_cache()
     try:
@@ -1398,6 +1399,7 @@ def main(argv=None):
             def keep(row):
                 if args.out:
                     produce.export(row, cache, pathlib.Path(args.out))
+                progressed()
                 return row
 
             rows, made_starts = [], {}

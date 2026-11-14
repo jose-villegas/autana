@@ -215,27 +215,78 @@ class LocalScheduleTests(unittest.TestCase):
             self.assertEqual((result.returncode, result.stdout), (0, 'scripts/lib/local_schedule.py start -- fit\n'),
                              result.stderr)
 
-    def test_start_records_result_and_stops_tree_on_guard(self):
-        for expired in (False, True):
-            with tempfile.TemporaryDirectory() as root:
-                marker = Clock(1, tzinfo=timezone.utc).now().isoformat()
-                process = Mock()
-                process.wait.side_effect = subprocess.TimeoutExpired('render', 1) if expired else None
-                process.wait.return_value = 7
-                with patch.dict(os.environ, GPU_WORKFLOW=schedule.DOC_IMAGES_WORKFLOW,
-                                GITHUB_RUN_ID='42', MARKER=marker, _AUTANA_HEAVY_LOCK_ROOT=root), \
-                        patch.object(sys, 'argv', ['schedule', 'start', '--', 'render']), \
-                        patch.object(schedule, 'launch_process_tree', return_value=process), \
-                        patch.object(schedule, 'stop_process_tree') as stop, \
-                        patch.object(schedule, 'close_process_tree'), \
-                        contextlib.redirect_stdout(io.StringIO()) as output:
-                    self.assertNotEqual(schedule.main(), 0)
-                process.wait.assert_called_once_with(timeout=schedule.GPU_STAGE_HANG_SECONDS[schedule.DOC_IMAGES_WORKFLOW])
-                self.assertEqual(stop.called, expired)
-                if expired:
-                    self.assertIn('GPU_STAGE_HANG_SECONDS', output.getvalue())
-                record = json.loads(next((Path(root) / 'night-steps').glob('*/*.json')).read_text())
-                self.assertEqual((record['marker'], record['run'], record['workflow']),
-                                 (marker, '42', schedule.DOC_IMAGES_WORKFLOW))
-                self.assertTrue(record['started'] <= record['ended'])
-                self.assertNotEqual(record['exit'], 0)
+    def start(self, root, waits, clock=None, progressing=None, workflow=schedule.DOC_IMAGES_WORKFLOW):
+        """Run `start` with a process whose wait() yields `waits` in turn; `progressing` touches the progress file."""
+        marker = Clock(1, tzinfo=timezone.utc).now().isoformat()
+        clock = clock or Clock(1, tzinfo=timezone.utc)
+        process = Mock()
+
+        def wait(timeout):
+            clock.sleep(timeout)
+            if progressing:
+                stamp = progressing()
+                os.utime(os.environ[schedule.STAGE_PROGRESS_ENV], (stamp, stamp))
+            outcome = waits.pop(0)
+            if isinstance(outcome, BaseException):
+                raise outcome
+            return outcome
+        process.wait.side_effect = wait
+        with patch.dict(os.environ, GPU_WORKFLOW=workflow,
+                        GITHUB_RUN_ID='42', MARKER=marker, _AUTANA_HEAVY_LOCK_ROOT=root), \
+                 patch.object(sys, 'argv', ['schedule', 'start', '--', 'render']), \
+                 patch.object(schedule, 'Clock', return_value=clock), \
+                 patch.object(schedule, 'launch_process_tree', return_value=process), \
+                 patch.object(schedule, 'stop_process_tree') as stop, \
+                 patch.object(schedule, 'close_process_tree'), \
+                 contextlib.redirect_stdout(io.StringIO()) as output:
+            code = schedule.main()
+            progress = os.environ[schedule.STAGE_PROGRESS_ENV]
+        record = json.loads(next((Path(root) / 'night-steps').glob('*/*.json')).read_text())
+        self.assertEqual((record['marker'], record['run'], record['workflow'], record['exit']),
+                         (marker, '42', workflow, code))
+        self.assertTrue(record['started'] <= record['ended'])
+        self.assertFalse(Path(progress).exists())
+        return code, stop.called, output.getvalue()
+
+    def test_start_returns_the_stage_exit_and_names_a_progress_file(self):
+        with tempfile.TemporaryDirectory() as root:
+            timeout = subprocess.TimeoutExpired('render', 1)
+            self.assertEqual(self.start(root, [timeout, timeout, 7])[:2], (7, False))
+
+    def test_start_stops_a_stage_that_stops_progressing(self):
+        polls = schedule.GPU_STAGE_PROGRESS_SECONDS // schedule.QUEUE_POLL_SECONDS
+        with tempfile.TemporaryDirectory() as root:
+            clock = Clock(1, tzinfo=timezone.utc)
+            touched = clock.now().timestamp()
+            code, stopped, said = self.start(root, [subprocess.TimeoutExpired('render', 1)] * (polls + 1), clock,
+                                             progressing=lambda: touched)
+        self.assertEqual((code, stopped), (schedule.EXIT_HUNG, True))
+        self.assertIn('GPU_STAGE_PROGRESS_SECONDS', said)
+
+    def test_start_keeps_a_slow_stage_that_progresses_until_the_backstop(self):
+        polls = schedule.GPU_STAGE_HANG_SECONDS[schedule.DOC_IMAGES_WORKFLOW] // schedule.QUEUE_POLL_SECONDS
+        with tempfile.TemporaryDirectory() as root:
+            clock = Clock(1, tzinfo=timezone.utc)
+            code, stopped, said = self.start(root, [subprocess.TimeoutExpired('render', 1)] * (polls + 1), clock,
+                                             progressing=lambda: clock.now().timestamp())
+        self.assertEqual((code, stopped), (schedule.EXIT_HUNG, True))
+        self.assertIn('GPU_STAGE_HANG_SECONDS', said)
+        self.assertNotIn('GPU_STAGE_PROGRESS_SECONDS', said)
+
+    def test_a_stage_that_keeps_progressing_outlives_several_progress_limits(self):
+        # A Bakes refit finishes a fit every hour or two for many hours; only a stage that never ends meets the
+        # backstop.
+        polls = 2 * schedule.GPU_STAGE_PROGRESS_SECONDS // schedule.QUEUE_POLL_SECONDS
+        for workflow in schedule.GPU_WORKFLOWS:
+            with self.subTest(workflow=workflow), tempfile.TemporaryDirectory() as root:
+                clock = Clock(1, tzinfo=timezone.utc)
+                code, stopped, _ = self.start(root, [subprocess.TimeoutExpired('render', 1)] * polls + [0], clock,
+                                              progressing=lambda: clock.now().timestamp(), workflow=workflow)
+                self.assertEqual((code, stopped), (0, False))
+
+    def test_wait_idle_gives_up_at_its_deadline(self):
+        clock = Clock(1)
+        until = clock.now() + timedelta(seconds=3 * schedule.QUEUE_POLL_SECONDS)
+        self.assertFalse(schedule.wait_idle(lambda: True, clock, until=until))
+        self.assertEqual(clock.now(), until)
+        self.assertTrue(schedule.wait_idle(lambda: False, Clock(1), until=until))

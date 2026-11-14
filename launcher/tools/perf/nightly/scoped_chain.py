@@ -33,7 +33,8 @@ from ci_step import output, summarize
 from process_tree import (launch_process_tree, stop_process_tree, close_process_tree, install_console_interrupt_handler,
                           terminate_unwinds)
 from local_schedule import (Clock, wait_idle, gpu_pending, gpu_on_host, GPU_NOT_ON_HOST, QUIET_HOST_WORKFLOWS,
-                            NIGHT_STEP_HANG_SECONDS, MARKER_KEY_FORMAT, heavy_root, night_cutoff, night_end)
+                            NIGHT_STEP_HANG_SECONDS, MARKER_KEY_FORMAT, QUEUE_POLL_SECONDS, heavy_root, night_cutoff,
+                            night_end)
 from nightly.lnt import (lnt_report, night_manifest, night_ran, read_night, read_last_night,
                          manifests_since, night_record_path, read_last_night_record, VARIANT, BUILD_FLAGS,
                          LAYOUT_SEED)
@@ -59,6 +60,9 @@ FAILED_SELFTEST = ("failed", "incomplete")
 # How many of a self-test's failed tests a lane's failure names; its capture holds them all.
 LISTED_FAILURES = 10
 SELFTEST_ALLOWANCE_SECONDS = 120 * 60
+# The plan waits for quiet-host GPU work at most as long as such a stage may run, then plans without it: a
+# stuck run must not hold the board night (its builds still wait for the heavy lock the GPU stage holds).
+GPU_STILL_PENDING = "GPU work still pending at the night's BOARD_LAST_START; the night plans without waiting"
 CAPTURE_TIMEOUT_SECONDS = 1800
 BUILD_TIMEOUT_SECONDS = 3600
 LANE_HANG_FACTOR = 2
@@ -737,7 +741,11 @@ def plan(args, clock=None, request=None):
     clock = clock or Clock()
     marker = datetime.fromisoformat(args.marker)
     if gpu_on_host(clock):
-        wait_idle(lambda: gpu_pending(QUIET_HOST_WORKFLOWS, request=request), clock, idle_polls=2)
+        if not wait_idle(lambda: gpu_pending(QUIET_HOST_WORKFLOWS, request=request), clock, idle_polls=2,
+                         # Past the cutoff (a daytime override) one more poll still tells idle from pending.
+                         until=max(night_cutoff(marker), clock.now() + timedelta(seconds=QUEUE_POLL_SECONDS))):
+            print(f"::warning::{GPU_STILL_PENDING}", file=sys.stderr)
+            summarize(GPU_STILL_PENDING)
     else:
         print(GPU_NOT_ON_HOST, file=sys.stderr)
         summarize(GPU_NOT_ON_HOST)
