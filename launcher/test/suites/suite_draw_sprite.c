@@ -377,11 +377,12 @@ static void
 test_nine_slice_geometry_at_every_turn_and_size(void) {
     fixture();
     const int sizes[][3] = {
-        {GEO_W, GEO_H, UNSCALED},                        /* 1:1 */
-        {GEO_W * STRETCH, GEO_H * STRETCH, UNSCALED},    /* stretched both ways */
-        {GEO_W + STRETCH + 1, GEO_H, UNSCALED},          /* one axis only, odd */
-        {GEO_LEFT + GEO_RIGHT + 1, GEO_H + 1, UNSCALED}, /* one centre column */
-        {TINY, TINY, UNSCALED},                          /* shorter than the borders */
+        {GEO_W, GEO_H, UNSCALED},                           /* 1:1 */
+        {GEO_W * STRETCH, GEO_H * STRETCH, UNSCALED},       /* stretched both ways */
+        {GEO_W + STRETCH + 1, GEO_H, UNSCALED},             /* one axis only, odd */
+        {GEO_LEFT + GEO_RIGHT + 1, GEO_H + 1, UNSCALED},    /* one centre column */
+        {TINY, TINY, UNSCALED},                             /* shorter than the borders */
+        {DRAW_SPRITE_MAP_COLUMNS + GEO_W, GEO_H, UNSCALED}, /* across a band of mapped columns */
     };
     assert_geometry_at_every_turn(sizes, sizeof sizes / sizeof sizes[0], geometry_sprite);
 }
@@ -410,6 +411,7 @@ test_translucent_edge_runs_blend_as_each_pixel_alone(void) {
         {LONG_EDGE, GEO_H, UNSCALED},
         {GEO_W * STRETCH, LONG_EDGE, UNSCALED},
         {LONG_EDGE, LONG_EDGE, ZOOM},
+        {DRAW_SPRITE_MAP_COLUMNS + GEO_W, GEO_H, UNSCALED}, /* a run across a band's edge */
     };
     assert_geometry_at_every_turn(sizes, sizeof sizes / sizeof sizes[0], translucent_geometry_sprite);
     assert_geometry_at_every_turn(sizes, sizeof sizes / sizeof sizes[0], face_geometry_sprite);

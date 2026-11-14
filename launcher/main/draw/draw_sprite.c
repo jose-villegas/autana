@@ -223,24 +223,28 @@ blend_row(gfx_color_t* line, int row, recti_t rect, recti_t centre, const int16_
 }
 
 /* The clipped panel rectangle `rect` of a sprite filling `dst` at `turns`:
- * panel columns walk `col_axis` and panel rows `row_axis`. */
+ * panel columns walk `col_axis` and panel rows `row_axis`, a band of
+ * DRAW_SPRITE_MAP_COLUMNS columns at a time. */
 static void
 blit(const gfx_target_t* target, recti_t rect, recti_t dst, const sprite_t* s, int turns, const slice_axis_t* col_axis,
      const slice_axis_t* row_axis, recti_t centre) {
     const bool col_mirror = turns == 1 || turns == 2;
     const bool row_mirror = turns == 2 || turns == 3;
-    int16_t map[GFX_WIDTH];
-    for (int col = rect.x; col < recti_right(rect); col++) {
-        map[col - rect.x] = (int16_t)axis_source(col_axis, col_mirror, col - dst.x);
-    }
     /* Upright, a panel row is a sprite row; turned, a sprite column. */
     const bool across = (turns & 1) != 0;
     const size_t stride = s->color.pitch / sizeof(gfx_color_t);
     const size_t step = across ? stride : 1;
     const size_t row_step = across ? 1 : stride;
-    for (int row = rect.y; row < recti_bottom(rect); row++) {
-        const size_t base = (size_t)axis_source(row_axis, row_mirror, row - dst.y) * row_step;
-        blend_row(gfx_target_color(target, row), row, rect, centre, map, s, base, step);
+    int16_t map[DRAW_SPRITE_MAP_COLUMNS];
+    for (int x0 = rect.x; x0 < recti_right(rect); x0 += DRAW_SPRITE_MAP_COLUMNS) {
+        const recti_t band = {x0, rect.y, mathi_min(DRAW_SPRITE_MAP_COLUMNS, recti_right(rect) - x0), rect.h};
+        for (int col = band.x; col < recti_right(band); col++) {
+            map[col - band.x] = (int16_t)axis_source(col_axis, col_mirror, col - dst.x);
+        }
+        for (int row = band.y; row < recti_bottom(band); row++) {
+            const size_t base = (size_t)axis_source(row_axis, row_mirror, row - dst.y) * row_step;
+            blend_row(gfx_target_color(target, row), row, band, centre, map, s, base, step);
+        }
     }
 }
 
@@ -270,7 +274,6 @@ draw_sprite_scaled(const sprite_t* s, recti_t dst, int quarter_turns, int scale)
     if (recti_is_empty(rect)) {
         return;
     }
-    assert(rect.w <= GFX_WIDTH); /* every target is the panel's width */
     blit(state.target, rect, dst, s, turns, across ? &sy : &sx, across ? &sx : &sy, centre);
     if (state.marks) {
         gfx_mark_drawn(rect.x, rect.y, rect.w, rect.h);
