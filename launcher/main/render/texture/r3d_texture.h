@@ -41,6 +41,9 @@
 #define R3D_TEXTURE_ONE                 128 /* a palette channel of 1.0: the pattern may brighten its mean up to twice */
 #define R3D_TEXTURE_SIZE_LOG2_MIN       1   /* INDEX4's smallest level's side, 2: one byte holds a row */
 #define R3D_TEXTURE_MASK1_SIZE_LOG2_MIN 2   /* MASK1's smallest level's side, 4: a level is whole bytes */
+#define R3D_TEXTURE_MASK1_MIP_KEPT      2   /* a MASK1 mip texel is kept when this many of the 2x2 above are */
+#define R3D_TEXTURE_INDEX4_PER_BYTE     2U  /* INDEX4 texels a byte */
+#define R3D_TEXTURE_MASK1_PER_BYTE      8U  /* MASK1 texels a byte */
 #define R3D_TEXTURE_SIZE_LOG2_MAX       8   /* 256 texels a side: a span wraps u and v at 8 bits */
 #define R3D_TEXTURE_LEVELS_MAX          R3D_TEXTURE_SIZE_LOG2_MAX
 /* A vertex colour's luminance as the light level reads it: BT.601 weights
@@ -84,7 +87,7 @@ uint8_t* r3d_texture_move_texels(r3d_texture_t* texture, uint8_t* to);
 /* Texels a byte of `format`. */
 static inline uint32_t
 r3d_texture_texels_per_byte(unsigned format) {
-    return format == R3D_TEXTURE_MASK1 ? 8U : 2U;
+    return format == R3D_TEXTURE_MASK1 ? R3D_TEXTURE_MASK1_PER_BYTE : R3D_TEXTURE_INDEX4_PER_BYTE;
 }
 
 /* Palette colours of `format`. */

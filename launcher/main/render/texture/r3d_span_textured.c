@@ -12,6 +12,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "collections/bits.h"
 #include "image/pixel/bayer.h"
 #include "math/scalar/mathf.h"
 #include "math/scalar/mathi.h"
@@ -31,8 +32,6 @@
 #define V_INT_SHIFT  UV_FRAC
 #define NIBBLE_BITS  4
 #define NIBBLE_MASK  0xFU
-#define BIT_SHIFT    3 /* a MASK1 texel's byte: its offset over 8 */
-#define BIT_MASK     7U
 #define MASK1_KEPT   1 /* the colour a kept MASK1 texel draws */
 /* The light level walks as 8.8. */
 #define LIGHT_FRAC   8
@@ -80,8 +79,7 @@ texel(const sampler_t* s, uint32_t uv) {
 
 static inline __attribute__((always_inline)) bool
 kept(const sampler_t* s, uint32_t uv) {
-    const uint32_t o = texel_offset(s, uv);
-    return ((s->texels[o >> BIT_SHIFT] >> (o & BIT_MASK)) & 1U) != 0U;
+    return bits8_get(s->texels, texel_offset(s, uv));
 }
 
 /* The colormap row of the level, dithered between levels by the screen's
@@ -128,10 +126,7 @@ fill_masked(uint16_t* depth, uint16_t* color, int count, carry_t* c, const sampl
  * pixel's depth: each writes where the fill left that depth. */
 static __attribute__((noinline, cold)) void
 write_span(const r3d_span_target_t* target, int y, int first, int last, int32_t z, int32_t dz) {
-    for (int k = 0; k < target->writer_count; k++) {
-        const r3d_span_writer_t* w = &target->writers[k];
-        w->span(w, &target->rows, y, first, last, z, dz);
-    }
+    r3d_span_write(target, y, first, last, z, dz);
 }
 
 /* What the set-up hands the row walk. */

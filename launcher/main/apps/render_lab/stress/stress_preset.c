@@ -3,6 +3,7 @@
 #include <math.h>
 #include <string.h>
 
+#include "collections/bits.h"
 #include "math/geometry/primitive_mesh.h"
 #include "math/scalar/math_const.h"
 #include "math/scalar/mathi.h"
@@ -47,7 +48,7 @@ const stress_params_t stress_presets[STRESS_PRESET_COUNT] = {
                          6},
     /* Foliage cards near, a few bushes over the whole view, and far, many small
      * ones; each cut by a MASK1 texture beside its twin, whose cards draw the
-     * INDEX4 brick whole: they differ only by the texture's format. */
+     * INDEX4 brick whole: the same cards, under a cut against a whole fill. */
     [STRESS_FOLIAGE_NEAR] = {STRESS_SHAPE_FOLIAGE, 24, 3, STRESS_LAYOUT_STACK, 120, STRESS_SURFACE_OF(FOLIAGE_NEAR),
                              STRESS_CAMERA, 6},
     [STRESS_FOLIAGE_NEAR_OPAQUE] = {STRESS_SHAPE_FOLIAGE, 24, 3, STRESS_LAYOUT_STACK, 120,
@@ -528,8 +529,7 @@ static int
 kept_under(const uint8_t* level, int side, int x, int y) {
     int count = 0;
     for (int k = 0; k < 4; k++) {
-        const int o = ((y + (k / 2)) * side) + x + (k % 2);
-        count += (level[o >> 3] >> (o & 7)) & 1;
+        count += bits8_get(level, (size_t)((y + (k / 2)) * side) + (size_t)x + (size_t)(k % 2)) ? 1 : 0;
     }
     return count;
 }
@@ -544,10 +544,12 @@ write_mask(uint8_t* palette, uint8_t* texels) {
         const int side = STRESS_MASK_SIDE >> l;
         for (int y = 0; y < side; y++) {
             for (int x = 0; x < side; x++) {
-                const bool kept =
-                    above == NULL ? mask_kept(x, y) : kept_under(above, 2 * side, 2 * x, 2 * y) >= STRESS_MASK_MIP_KEPT;
-                const int o = (y * side) + x;
-                texels[o >> 3] |= (uint8_t)((kept ? 1U : 0U) << (o & 7));
+                const bool kept = above == NULL
+                                      ? mask_kept(x, y)
+                                      : kept_under(above, 2 * side, 2 * x, 2 * y) >= R3D_TEXTURE_MASK1_MIP_KEPT;
+                if (kept) {
+                    bits8_set(texels, (size_t)(y * side) + (size_t)x);
+                }
             }
         }
         above = texels;

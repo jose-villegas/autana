@@ -56,5 +56,6 @@ title Header, 20 bytes at 0, one cell a byte
 | Owners | Layout constants in [`render/texture/r3d_texture.h`](../../../launcher/main/render/texture/r3d_texture.h); Python reads them with `read_define`. INDEX4 writer: [`r3d/texture/texture_asset.py`](../../../launcher/tools/r3d/texture/texture_asset.py); C opener: `r3d_texture_from_asset()` |
 | Texels | Row-major. INDEX4: two texels a byte, the low nibble the even column. MASK1: eight a byte, the low bit the first; 0 draws nothing. A sampler wraps u and v by the level's side |
 | Sides | `size_log2` up to 8; the last level is at least 2 texels a side for INDEX4, 4 for MASK1, so every level is whole bytes |
+| MASK1 mips | A mip texel covers 2x2 texels of the level above and is kept when 2 or more of them are (`R3D_TEXTURE_MASK1_MIP_KEPT`) |
 | Palette | A channel of 128 is the pattern's mean; up to 255, twice it, as the PS1's modulate. The device builds a colormap of `R3D_TEXTURE_LIGHT_LEVELS` light levels from the palette and the tint at open |
 | Refusals | Versions other than 1 return `ASSET_ERR_VERSION`; another format, side or level count, or nonzero reserved bytes `ASSET_ERR_FORMAT`; a palette or level outside the entry `ASSET_ERR_BOUNDS` |

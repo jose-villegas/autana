@@ -160,8 +160,6 @@ stress_params_t stress_copy_params(const stress_params_t* p, int copy);
 #define STRESS_TEXTURE_SIZE_LOG2 6
 #define STRESS_TEXTURE_REPEATS   3
 #define STRESS_MASK_SIZE_LOG2    5
-/* A mask mip texel covers 2x2 texels of the level above: kept when this many are. */
-#define STRESS_MASK_MIP_KEPT     2
 
 /* The entry's bytes, and the entry written into `ltex`, that many long. */
 size_t stress_texture_bytes(stress_surface_t surface);
