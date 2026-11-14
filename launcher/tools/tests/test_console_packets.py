@@ -18,11 +18,11 @@ sys.path.insert(0, str(ROOT / "launcher/tools/device"))
 
 import console_packets  # noqa: E402
 
-TAG = "PROBE"
+TAG = "SAMPLETAG"
 
 
 def packet(data):
-    return b"PROBE_BIN %d %08x\n" % (len(data), zlib.crc32(data)) + data
+    return b"SAMPLETAG_BIN %d %08x\n" % (len(data), zlib.crc32(data)) + data
 
 
 def split(wire, cut):
@@ -33,24 +33,24 @@ def split(wire, cut):
 
 class PacketTests(unittest.TestCase):
     def test_packets_and_lines_come_out_in_order_however_the_reads_cut_them(self):
-        wire = b"I (1) app: hello\n" + packet(b"\x00\n\x01PROBE") + b"PROBE_END frames=1\n" + packet(b"x" * 9)
+        wire = b"I (1) app: hello\n" + packet(b"\x00\n\x01SAMPLETAG") + b"SAMPLETAG_END frames=1\n" + packet(b"x" * 9)
         for cut in range(1, len(wire)):
             with self.subTest(cut=cut):
-                self.assertEqual(split(wire, cut), ([("line", b"I (1) app: hello"), ("data", b"\x00\n\x01PROBE"),
-                                                     ("line", b"PROBE_END frames=1"), ("data", b"x" * 9)], b""))
+                self.assertEqual(split(wire, cut), ([("line", b"I (1) app: hello"), ("data", b"\x00\n\x01SAMPLETAG"),
+                                                     ("line", b"SAMPLETAG_END frames=1"), ("data", b"x" * 9)], b""))
 
     def test_a_packet_inside_a_line_written_in_parts_leaves_the_line_whole(self):
         # console_emit_line() writes prefix, payload and newline apart: a packet can land between them.
-        wire = b"PROBE_" + packet(b"\x00\n\x01") + b"END frames=1\n" + packet(b"abc")
+        wire = b"SAMPLETAG_" + packet(b"\x00\n\x01") + b"END frames=1\n" + packet(b"abc")
         for cut in range(1, len(wire)):
             with self.subTest(cut=cut):
-                self.assertEqual(split(wire, cut), ([("data", b"\x00\n\x01"), ("line", b"PROBE_END frames=1"),
+                self.assertEqual(split(wire, cut), ([("data", b"\x00\n\x01"), ("line", b"SAMPLETAG_END frames=1"),
                                                      ("data", b"abc")], b""))
 
     def test_text_inside_a_line_that_only_looks_like_a_head_stays_text(self):
-        wire = b"W (5) log: saw PROBE_BIN twice\n" + packet(b"z")
+        wire = b"W (5) log: saw SAMPLETAG_BIN twice\n" + packet(b"z")
         self.assertEqual(split(wire, len(wire)),
-                         ([("line", b"W (5) log: saw PROBE_BIN twice"), ("data", b"z")], b""))
+                         ([("line", b"W (5) log: saw SAMPLETAG_BIN twice"), ("data", b"z")], b""))
 
     def test_two_packets_inside_one_line_both_come_out_and_the_line_is_whole(self):
         wire = b"I (9) a" + packet(b"one") + b"pp: hel" + packet(b"") + b"lo\r\n"
@@ -82,7 +82,7 @@ class PacketTests(unittest.TestCase):
 
     def test_a_head_opening_a_line_that_does_not_parse_is_refused(self):
         with self.assertRaisesRegex(console_packets.PacketError, "not a packet line"):
-            console_packets.Packets(TAG).feed(b"PROBE_BIN twelve\n")
+            console_packets.Packets(TAG).feed(b"SAMPLETAG_BIN twelve\n")
 
 
 if __name__ == "__main__":
