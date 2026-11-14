@@ -7,7 +7,7 @@
 #
 #   ./launcher/tools/r3d/framegen/framegen_docs.sh [-j JOBS] [--out IMAGES TABLES]
 #
-# The board's tables and the pricing figure come from the render lab's
+# The board's tables come from the render lab's
 # framegen_perf and framegen_modes captures beside the page,
 # docs/render/data/framegen-board.log.
 #
@@ -73,6 +73,6 @@ for scene in $SCENES; do
 done
 # shellcheck disable=SC2086
 "$PYTHON" launcher/tools/r3d/framegen/framegen_report.py --tables "${TABLES:-$WORK/tables}" \
-    --path-plot "$IMAGES/framegen-bistro-path.png" --pricing-plot "$IMAGES/framegen-pricing.png" \
+    --path-plot "$IMAGES/framegen-bistro-path.png" \
     --plot-scene "$LEAD" --plot-size "$SHOWN_SIZE" --board docs/render/data/framegen-board.log $csvs
 [ -n "$TABLES" ] || "$PYTHON" launcher/tools/render/generated_blocks.py --tables "$WORK/tables"

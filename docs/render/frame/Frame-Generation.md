@@ -208,38 +208,16 @@ a drawn one, from being shown for a saving too small to see.
 ## With dynamic resolution
 
 A [dynamic-resolution](Dynamic-Resolution.md) budget is the cost of a shown
-frame. With frame generation on, a drawn frame and the one generated from it
-are shown in the time of two, so the render context prices each drawn frame
-against what the pair may spend. With B the budget per shown frame, g the
-last generated frame's cost and N = `FRAMEGEN_SHOWN_PER_DRAWN` frames shown
-per drawn one, while generation pays:
+frame. With frame generation on, the render context still prices each drawn
+frame at one shown frame's budget, as it does without generation. A
+generated frame is not priced: its cost only decides whether generation pays.
 
-| Quantity | Value |
-|---|---|
-| A drawn frame's budget | max(N B − (N − 1) g, B) |
-| The pair's cost when the policy holds it | N B: B per shown frame |
-| A generated frame's own cost | not priced: it only sets g |
+Pricing a drawn frame for the pair it shows would give it more rows, but its
+slowest drawn frames would take longer than a frame without generation. Priced
+alone, they draw at the rows a frame without generation gets: generation
+trades some sharpness for frames, and the slowest frames stay as fast. The
+budget sets the rate: a tighter one draws coarser and shows more frames.
 
-```mermaid
-flowchart LR
-    G["Generated frame<br/>costs g"] -->|"g"| P["Policy prices the next<br/>drawn frame against<br/>N B - (N - 1) g, never below B"]
-    P --> S["Drawn frame at the<br/>step that fits"]
-    S --> G2["Generated frame"]
-```
-
-The floor of one frame's budget keeps a slow generated frame from starving
-the drawn one. The drawn frame's budget against the generated frame's cost,
-with this board's generated frames marked:
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="../../images/render/framegen-pricing-dark.png">
-  <source media="(prefers-color-scheme: light)" srcset="../../images/render/framegen-pricing.png">
-  <img alt="A drawn frame's budget against the generated frame's cost" src="../../images/render/framegen-pricing.png">
-</picture>
-
-The budget sets the trade. At the same budget the saving buys resolution: the
-drawn frame gets more than one frame's time and draws a finer step. At a
-tighter budget it buys rate: the pair still fits, at more frames per second.
 Each scene's path played in real time on the board, per mode:
 
 <!-- generated: framegen-modes sha256=c171204d7caa76807d8c6b3aca076e88ea65c958261997295e2f4fa8996e9cf1 -->
@@ -287,8 +265,8 @@ loop applies.
 <!-- generated: render-framegen-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
 /* Frame generation with dynamic resolution: while it pays, every second frame
- * is warped from the one drawn before it, and each drawn frame is priced for
- * the pair. */
+ * is warped from the one drawn before it, and each drawn frame is priced at
+ * one shown frame's budget. */
 #include "render/context/render_context.h"
 
 static void
@@ -308,7 +286,7 @@ framegen_example_generated(const render_context_t* context) {
 | Call | Use |
 |---|---|
 | `render_context_set_frame_generation(context, on)` | On for any scene; objects that move on their own show one drawn frame behind ([Moving objects](#moving-objects)); off costs nothing. The context generates a frame only [when it pays](#when-it-pays); a debug view, a camera cut or a new viewport draws the next frame instead |
-| `render_context_set_dynamic_resolution(context, config, model, step)` | `config->budget_us` stays the budget per shown frame; with generation on, the context prices each drawn frame for the pair |
+| `render_context_set_dynamic_resolution(context, config, model, step)` | `config->budget_us` is the budget per shown frame; with generation on, each drawn frame is still priced at it |
 | `render_context_frame(context).generated` | Whether the last frame was generated rather than drawn |
 
 ## Moving objects

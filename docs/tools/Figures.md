@@ -18,7 +18,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | [overview](#overview) | 26 | 0 | 0 |
 | [physics](#physics) | 2 | 0 | 0 |
 | [power](#power) | 2 | 0 | 0 |
-| [render](#render) | 132 | 6 | 0 |
+| [render](#render) | 130 | 6 | 0 |
 | [ui](#ui) | 62 | 0 | 0 |
 
 ## anim
@@ -228,8 +228,6 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/render/framegen-bistro-sheet.crops.png"><img src="../images/render/framegen-bistro-sheet.crops.png" width="160" alt=""></a> | Bistro: the places the generated frame differs most, enlarged | [render/frame/Frame-Generation](../render/frame/Frame-Generation.md) | not declared yet |
 | <a href="../images/render/framegen-bistro-sheet.png"><img src="../images/render/framegen-bistro-sheet.png" width="160" alt=""></a> | Bistro: true and generated frames with their difference | [render/frame/Frame-Generation](../render/frame/Frame-Generation.md) | not declared yet |
 | <a href="../images/render/framegen-bistro.gif"><img src="figure-thumbnails/render/framegen-bistro.gif" width="160" alt=""></a> | Bistro: the generated frames around the one with the most holes | [render/frame/Frame-Generation](../render/frame/Frame-Generation.md) | not declared yet |
-| <a href="../images/render/framegen-pricing-dark.png"><img src="../images/render/framegen-pricing-dark.png" width="160" alt=""></a> | — | [render/frame/Frame-Generation](../render/frame/Frame-Generation.md) | not declared yet |
-| <a href="../images/render/framegen-pricing.png"><img src="../images/render/framegen-pricing.png" width="160" alt=""></a> | — | [render/frame/Frame-Generation](../render/frame/Frame-Generation.md) | not declared yet |
 | <a href="../images/render/framegen-sponza-holes.png"><img src="../images/render/framegen-sponza-holes.png" width="160" alt=""></a> | Sponza: true frame, generated frame and its holes | [render/frame/Frame-Generation](../render/frame/Frame-Generation.md) | not declared yet |
 | <a href="../images/render/gfx-layout-costs.png"><img src="../images/render/gfx-layout-costs.png" width="160" alt=""></a> | Frame cost by framebuffer layout | [gfx/Targets-and-Modes](../gfx/Targets-and-Modes.md) | not declared yet |
 | <a href="../images/render/gpu/appearance-indirect-flat.crops.png"><img src="../images/render/gpu/appearance-indirect-flat.crops.png" width="160" alt=""></a> | Flat bake, lite fit and flat fit.crops | [render/offline/Bake-Quality](../render/offline/Bake-Quality.md) | not declared yet |

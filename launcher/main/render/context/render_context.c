@@ -176,7 +176,6 @@ render_context_set_dynamic_resolution(render_context_t* c, const resolution_conf
         return;
     }
     c->ladder = *config;
-    c->shown_us = config->budget_us;
     c->chose_at_us = 0;
     c->policy = model == NULL ? RENDER_STEPPED : RENDER_PREDICTED;
     if (c->policy == RENDER_STEPPED) {
@@ -305,21 +304,6 @@ static bool
 generation_pays(const render_context_t* c) {
     const int share = c->paying ? 100 : 100 - FRAMEGEN_GAIN_PERCENT;
     return c->generating && c->generated_us != 0 && (int64_t)c->generated_us * 100 < (int64_t)c->drawn_us * share;
-}
-
-/* The ladder the policies price a drawn frame against. While generation
- * pays, a drawn frame and the frames generated from it share their budgets:
- * the drawn one gets what the generated ones leave, never less than one
- * frame's. */
-static const resolution_config_t*
-policy_config(render_context_t* c) {
-    c->ladder.budget_us = c->shown_us;
-    if (c->paying) {
-        const int32_t shared_us =
-            (FRAMEGEN_SHOWN_PER_DRAWN * c->shown_us) - ((FRAMEGEN_SHOWN_PER_DRAWN - 1) * c->generated_us);
-        c->ladder.budget_us = shared_us > c->shown_us ? shared_us : c->shown_us;
-    }
-    return &c->ladder;
 }
 
 /* Whether this frame can be warped from the kept one: generation on, a drawn
@@ -463,8 +447,7 @@ draw_timed(render_context_t* c, const render_view_t* view) {
         c->frame.stats = raster_census(r, view);
         const int32_t elapsed_us = c->chose_at_us == 0 ? 0 : (int32_t)(began_us - c->chose_at_us);
         c->chose_at_us = began_us;
-        const int chosen =
-            resolution_predict_choose(&c->predict, policy_config(c), c->frame.stats.triangles, elapsed_us);
+        const int chosen = resolution_predict_choose(&c->predict, &c->ladder, c->frame.stats.triangles, elapsed_us);
         c->frame.predicted_us = (int32_t)c->predict.chosen_us;
         r->width = c->ladder.steps[chosen].width;
         r->height = raster_present_size(c->ladder.steps[chosen], r->present).height;
@@ -603,15 +586,15 @@ render_context_compose(render_context_t* c, uint16_t* destination, uint16_t* hal
     raster_upscale_picture(&c->raster, picture, destination, seams, size.width, size.height);
     c->frame.upscale_us = (int32_t)(timing_now_us() - began_us);
     if (c->frame.generated) {
-        /* Not priced itself: its cost sets what the next drawn frame may spend. */
+        /* Not priced: its cost only decides whether generation pays. */
         c->generated_us = c->frame.draw_us + c->frame.upscale_us;
         return expanded;
     }
     const int32_t cost_us = c->frame.draw_us + c->frame.upscale_us;
     if (c->policy == RENDER_STEPPED) {
-        (void)resolution_control_update(&c->control, policy_config(c), cost_us);
+        (void)resolution_control_update(&c->control, &c->ladder, cost_us);
     } else if (c->policy == RENDER_PREDICTED) {
-        resolution_predict_measured(&c->predict, policy_config(c), c->frame.stats.triangles, cost_us);
+        resolution_predict_measured(&c->predict, &c->ladder, c->frame.stats.triangles, cost_us);
     }
     c->drawn_us = cost_us; /* after pricing: this frame was drawn as the last one decided */
     return expanded;

@@ -266,24 +266,24 @@ test_a_frame_drawn_after_generation_is_turned_off_recomposes_every_row(void) {
     release_target();
 }
 
-/* A drawn frame's budget with frame generation on: the shown frames' budgets
- * less what the generated ones cost, and never less than one frame's. */
+/* While generation pays, a drawn frame is still priced at one shown frame's
+ * budget, however little the generated one cost: the slowest drawn frames
+ * stay at the rows a frame without generation gets, so frames are paced
+ * evenly. */
 static void
-test_dynamic_resolution_prices_a_drawn_frame_with_the_one_generated_from_it(void) {
+test_dynamic_resolution_prices_a_drawn_frame_at_one_shown_frame(void) {
     raster_rig_t* r = open_rig();
     render_context_t* c = open_context();
     const render_view_t view = render_view_fixture(&raster_rig_camera, &r->raster, 0);
-    const int32_t shown_us = BUDGET_US;
-    const int32_t drawn_us = FRAMEGEN_SHOWN_PER_DRAWN * shown_us; /* a drawn frame that spent its pair's budget */
-    const int32_t generated[] = {shown_us / 4, shown_us + shown_us / 2};
+    const int32_t drawn_us = FRAMEGEN_SHOWN_PER_DRAWN * BUDGET_US; /* a drawn frame that spent a pair's budget */
+    const int32_t generated[] = {BUDGET_US / 4, BUDGET_US + (BUDGET_US / 2)};
     TEST_ASSERT_FALSE(show(c, r, &view, drawn_us));
     for (size_t i = 0; i < sizeof generated / sizeof generated[0]; i++) {
         TEST_ASSERT_TRUE(show(c, r, &view, generated[i]));
         render_context_set_frame_generation(c, true); /* as an app re-applying its settings each frame */
         TEST_ASSERT_FALSE(show(c, r, &view, drawn_us));
-        const int32_t shared_us =
-            (FRAMEGEN_SHOWN_PER_DRAWN * shown_us) - ((FRAMEGEN_SHOWN_PER_DRAWN - 1) * generated[i]);
-        TEST_ASSERT_EQUAL_INT32(shared_us > shown_us ? shared_us : shown_us, c->ladder.budget_us);
+        TEST_ASSERT_TRUE(c->paying);
+        TEST_ASSERT_EQUAL_INT32(BUDGET_US, c->ladder.budget_us);
     }
     release_target();
 }
@@ -326,7 +326,7 @@ run_framegen_suite(void) {
     RUN_TEST(test_the_fill_completes_the_target_and_keeps_the_drawn_frame);
     RUN_TEST(test_a_generated_frame_composes_from_its_own_picture);
     RUN_TEST(test_a_frame_drawn_after_generation_is_turned_off_recomposes_every_row);
-    RUN_TEST(test_dynamic_resolution_prices_a_drawn_frame_with_the_one_generated_from_it);
+    RUN_TEST(test_dynamic_resolution_prices_a_drawn_frame_at_one_shown_frame);
     RUN_TEST(test_frames_are_generated_only_while_a_generated_one_costs_less);
 }
 
