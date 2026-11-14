@@ -301,6 +301,12 @@ if [ -f docs/audio/data/mic_eq_probe_capture.txt ]; then
 fi
 # --orphans scans this runner: mic-eq-probe-adc.png, mic-eq-probe-adc-dark.png,
 # mic-eq-probe-dac.png, mic-eq-probe-dac-dark.png, mic-eq-probe-hpf.png, mic-eq-probe-hpf-dark.png
+if [ -f docs/audio/data/mic_eq_slots_capture.txt ]; then
+    run "$PYTHON" launcher/tools/audio/mic/mic_eq_probe_figures.py --capture docs/audio/data/mic_eq_slots_capture.txt         --out "$OUT/audio" > "$WORK/mic_eq_slots_figures.log"
+fi
+# --orphans scans this runner: mic-eq-slots-adc.png, mic-eq-slots-adc-dark.png, mic-eq-slots-dac.png,
+# mic-eq-slots-dac-dark.png, mic-eq-scale-adc.png, mic-eq-scale-adc-dark.png, mic-eq-scale-dac.png,
+# mic-eq-scale-dac-dark.png
 if [ -f docs/audio/data/audio_mic_dsp_capture.txt ]; then
     run "$PYTHON" launcher/tools/audio/audio_mic_dsp_figures.py --out "$OUT/audio" > "$WORK/audio_mic_dsp_figures.log"
 fi

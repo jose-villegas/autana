@@ -44,7 +44,7 @@ fails records nothing. The order is drawn in docs/tools/Doc-Figures.md.
 index writes docs/tools/Figures.md, every image under docs/images/ with its
 picture, the pages that show it and its producer, and the small GIF copies
 it shows (figure_index.py); --check says what differs instead, and an image
-no page shows fails it.
+no page shows, or a picture a page shows that is not a tracked file, fails it.
 
 Exit status: 0 done (check: nothing changed), 1 check or index --check found a
 change or an orphan, 2 the images could not be made or compared.
