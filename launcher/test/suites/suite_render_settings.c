@@ -136,7 +136,8 @@ test_the_default_is_every_setting_on_as_the_raster_drew_before(void) {
                                            .far_px = (RENDER_SETTINGS_DEFAULT.anim.far_px),
                                            .mid_every = (RENDER_SETTINGS_DEFAULT.anim.mid_every),
                                            .far_every = (RENDER_SETTINGS_DEFAULT.anim.far_every),
-                                           .hysteresis_px = (RENDER_SETTINGS_DEFAULT.anim.hysteresis_px)}};
+                                           .hysteresis_px = (RENDER_SETTINGS_DEFAULT.anim.hysteresis_px)},
+                                  .texture = RENDER_SETTINGS_DEFAULT.texture};
     assert_settings(&on, &RENDER_SETTINGS_DEFAULT);
     const render_settings_t bare = raster_settings(&r->raster);
     assert_settings(&on, &bare);
@@ -320,7 +321,9 @@ test_a_packs_render_entry_reads_every_field(void) {
                                     (int16_t)(RENDER_SETTINGS_DEFAULT.anim.far_px * STEP),
                                     (RENDER_SETTINGS_DEFAULT.anim.mid_every),
                                     (RENDER_SETTINGS_DEFAULT.anim.far_every),
-                                    (int16_t)(RENDER_SETTINGS_DEFAULT.anim.hysteresis_px * STEP)};
+                                    (int16_t)(RENDER_SETTINGS_DEFAULT.anim.hysteresis_px * STEP),
+                                    RENDER_TEXTURE_DIVIDE_PX_MAX,
+                                    STEP / 4};
     render_settings_t read;
     TEST_ASSERT_EQUAL(ASSET_OK, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
     TEST_ASSERT_FALSE(read.cull);
@@ -334,19 +337,24 @@ test_a_packs_render_entry_reads_every_field(void) {
     TEST_ASSERT_EQUAL_INT(12000, read.lod.triangle_budget); /* an int is held as itself, past 2047 */
     TEST_ASSERT_EQUAL_INT(RENDER_LOD_BLEND_ON, read.lod.blend);
     TEST_ASSERT_EQUAL_FLOAT(0.5F, read.lod.blend_px);
+    TEST_ASSERT_EQUAL_INT(RENDER_TEXTURE_DIVIDE_PX_MAX, read.texture.divide_px);
+    TEST_ASSERT_EQUAL_FLOAT(0.25F, read.texture.affine_bend);
 }
 
-/* Row indexes of the LOD blend fields in field_names. */
-/* Rows by place: the lod blend pair, then the anim fields (mid_px, far_px, mid_every, far_every, hysteresis_px). */
+/* Rows by place: the lod blend pair, then the anim fields (mid_px, far_px, mid_every, far_every, hysteresis_px),
+ * then the texture pair (divide_px, affine_bend). */
 enum {
+    TEXTURE_ROWS = 2,
     ANIM_ROWS = 5,
-    BLEND_ROW = FIELDS - ANIM_ROWS - 2,
+    BLEND_ROW = FIELDS - TEXTURE_ROWS - ANIM_ROWS - 2,
     BLEND_PX_ROW,
-    MID_PX_ROW = FIELDS - ANIM_ROWS,
+    MID_PX_ROW = FIELDS - TEXTURE_ROWS - ANIM_ROWS,
     FAR_PX_ROW,
     MID_EVERY_ROW,
     FAR_EVERY_ROW,
     HYSTERESIS_PX_ROW,
+    DIVIDE_PX_ROW,
+    AFFINE_BEND_ROW,
 };
 
 /* Rows of zeros but for the anim intervals, whose least is RENDER_ANIM_EVERY_MIN. */
@@ -417,6 +425,27 @@ test_an_anim_interval_outside_its_range_is_refused_unread(void) {
         values[row] = RENDER_ANIM_EVERY_MAX;
     }
     TEST_ASSERT_EQUAL(ASSET_OK, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
+}
+
+/* A divide spacing or affine bend below none or past its max is refused; each limit itself reads. */
+static void
+test_a_texture_setting_outside_its_range_is_refused_unread(void) {
+    int16_t values[FIELDS];
+    zero_rows(values);
+    values[BLEND_PX_ROW] = STEP;
+    values[DIVIDE_PX_ROW] = RENDER_TEXTURE_DIVIDE_PX_MAX;
+    values[AFFINE_BEND_ROW] = (int16_t)(RENDER_TEXTURE_BEND_MAX * STEP);
+    render_settings_t read;
+    TEST_ASSERT_EQUAL(ASSET_OK, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
+    const int rows[] = {DIVIDE_PX_ROW, AFFINE_BEND_ROW};
+    for (size_t i = 0; i < sizeof rows / sizeof rows[0]; i++) {
+        const int16_t kept = values[rows[i]];
+        values[rows[i]] = -1;
+        TEST_ASSERT_EQUAL(ASSET_ERR_FORMAT, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
+        values[rows[i]] = (int16_t)(kept + 1);
+        TEST_ASSERT_EQUAL(ASSET_ERR_FORMAT, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
+        values[rows[i]] = kept;
+    }
 }
 
 static void
@@ -491,6 +520,7 @@ suite_render_settings(void) {
     RUN_TEST(test_a_packs_render_entry_reads_every_field);
     RUN_TEST(test_a_blend_outside_its_values_or_range_is_refused_unread);
     RUN_TEST(test_an_anim_interval_outside_its_range_is_refused_unread);
+    RUN_TEST(test_a_texture_setting_outside_its_range_is_refused_unread);
     RUN_TEST(test_an_entry_missing_a_field_with_another_or_fixed_point_is_refused_unread);
     RUN_TEST(test_a_pack_without_the_entry_reads_not_found);
     RUN_TEST(test_an_app_starts_with_its_packs_settings_and_without_one_the_default);

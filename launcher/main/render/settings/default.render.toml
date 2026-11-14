@@ -22,6 +22,10 @@ mid_every = 2
 far_every = 4
 hysteresis_px = 4.0
 
+[texture]
+divide_px = 16
+affine_bend = 0.5
+
 [ranges."lod.blend"]
 min = 0
 max = "RENDER_LOD_BLEND_COUNT"
@@ -51,3 +55,11 @@ max = "RENDER_ANIM_EVERY_MAX"
 [ranges."anim.hysteresis_px"]
 min = 0.0
 max = "RENDER_ANIM_PIXELS_MAX"
+
+[ranges."texture.divide_px"]
+min = 0
+max = "RENDER_TEXTURE_DIVIDE_PX_MAX"
+
+[ranges."texture.affine_bend"]
+min = 0.0
+max = "RENDER_TEXTURE_BEND_MAX"
