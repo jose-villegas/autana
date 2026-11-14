@@ -221,7 +221,7 @@ endif()
 set(app_reqs esp_codec_dev esp_driver_i2s math simd kinematics physics image hash collections microui esp32_s3_touch_amoled_1_8 esp_lcd heap esp_timer
              esp_driver_i2c esp_driver_tsens esp_hw_support esp_psram spi_flash esp_partition
              fatfs esp_driver_sdmmc sdmmc
-             esp_driver_usb_serial_jtag esp_driver_uart vfs nvs_flash esp_app_format espcoredump
+             esp_driver_usb_serial_jtag esp_driver_uart esp_ringbuf vfs nvs_flash esp_app_format espcoredump
              waveshare__esp_lcd_sh8601 espressif__esp_lcd_touch espressif__esp_lcd_co5300
              # perfmon, unity, testkit and esp_mm (a perf suite's cache control) are
              # listed unconditionally, NOT inside the block below: ESP-IDF

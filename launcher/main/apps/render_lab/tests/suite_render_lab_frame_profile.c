@@ -147,11 +147,11 @@ report_path(const scenario_path_t* path, const frame_profile_t* p) {
     for (int i = 0; i < FRAME_PROFILE_PATH_POSES; i++) {
         render_lab_test_replay_pose(TAG, path->entity, path->duration_ms,
                                     (int32_t)((int64_t)path->duration_ms * i / FRAME_PROFILE_PATH_POSES), row, quarter,
-                                    NULL);
+                                    NULL, 0, NULL);
     }
     for (int rank = 0; rank < count; rank++) {
         render_lab_test_replay_pose(TAG, path->entity, path->duration_ms, played.frame[peaks[rank].frame].path_ms, row,
-                                    quarter, NULL);
+                                    quarter, NULL, 0, NULL);
     }
     release_report();
 }

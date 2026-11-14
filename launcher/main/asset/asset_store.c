@@ -295,6 +295,61 @@ asset_store_mounted(void) {
     return count;
 }
 
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+static asset_copies_t* copied;
+
+void
+asset_store_copies_add(asset_copies_t* copies) {
+    copies->next = copied;
+    copied = copies;
+}
+
+void
+asset_store_copies_remove(asset_copies_t* copies) {
+    for (asset_copies_t** link = &copied; *link != NULL; link = &(*link)->next) {
+        if (*link == copies) {
+            *link = copies->next;
+            return;
+        }
+    }
+}
+
+/* `at`'s source when a told copy holds it, else `at`. */
+static const uint8_t*
+source_of(const uint8_t* at) {
+    for (const asset_copies_t* block = copied; block != NULL; block = block->next) {
+        for (int i = 0; i < block->count; i++) {
+            const uint8_t* copy = block->copies[i].copy;
+            if (at >= copy && at < copy + block->copies[i].bytes) {
+                return (const uint8_t*)block->copies[i].source + (at - copy);
+            }
+        }
+    }
+    return at;
+}
+
+bool
+asset_store_locate(const void* address, asset_location_t* out) {
+    const uint8_t* at = source_of(address);
+    for (int i = 0; i < ASSET_STORE_MOUNTS_MAX; i++) {
+        const asset_pack_t* pack = &mounts[i].pack;
+        if (!mounts[i].opened || mounts[i].status != ASSET_OK || pack->base == NULL || at < pack->base
+            || at >= pack->base + pack->size) {
+            continue;
+        }
+        for (uint32_t e = 0; e < pack->count; e++) {
+            asset_entry_t entry;
+            if (asset_pack_entry(pack, e, &entry) == ASSET_OK && at >= entry.view.data
+                && at < entry.view.data + entry.view.size) {
+                *out = (asset_location_t){i, e, mounts[i].name, asset_pack_checksum(pack)};
+                return true;
+            }
+        }
+    }
+    return false;
+}
+#endif
+
 void
 asset_store_release(handle_t load) {
     asset_store_request_t* request = asset_store_request_find(load);

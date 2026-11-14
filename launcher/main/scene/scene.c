@@ -98,11 +98,13 @@ scene_allocate(size_t bytes, memory_kind_t kind) {
 }
 
 void*
-scene_allocate_kept(size_t bytes) {
-    if (injected_failure()) {
-        return NULL;
-    }
+scene_allocate_kept_optional(size_t bytes) {
     return kept_take != NULL ? kept_take(bytes, _Alignof(max_align_t)) : memory_alloc(bytes, MEMORY_APP);
+}
+
+void*
+scene_allocate_kept(size_t bytes) {
+    return injected_failure() ? NULL : scene_allocate_kept_optional(bytes);
 }
 
 void
@@ -457,6 +459,12 @@ free_columns(scene_t* scene) {
         scene_renderer_texturing_free(&scene->renderers[i]);
     }
     scene_hierarchy_release(scene);
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+    if (scene->copies != NULL) {
+        asset_store_copies_remove(scene->copies);
+        scene_free_kept(scene->copies);
+    }
+#endif
     scene_free_kept(scene->resident);
     scene_free_kept(scene);
 }

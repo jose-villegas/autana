@@ -11,6 +11,7 @@
 #include "render/context/render_context.h"
 #include "render/lod/r3d_lod.h"
 #include "render/r3d_pipeline.h"
+#include "render/record/frame_record.h"
 #include "scene/camera/camera.h"
 #include "scene/scene_internal.h"
 
@@ -189,7 +190,7 @@ scene_bounds(entity_t entity) {
 }
 
 static void
-draw_active(int quarter, int width, int height) {
+draw_active(uint32_t dt_ms, int quarter, int width, int height) {
     scene_t* scene = active.scene;
     const scene_camera_t* camera = active_camera();
     scene_resolve(scene);
@@ -203,6 +204,9 @@ draw_active(int quarter, int width, int height) {
     render_context_set_changed(render_context_main(), changed, fill_changed(scene));
     render_context_set_batches(render_context_main(), scene->batch_draws, batches);
     rendered = render_context_draw(render_context_main(), scene->instances, count, &drawn_view, camera->clear);
+    if (rendered) {
+        frame_record_frame(render_context_main(), &render_context_main()->raster, dt_ms);
+    }
     if (!rendered && !refused) {
         ESP_LOGE("scene", "no memory to draw '%s'; it stays blank", scene->root->id);
         refused = true;
@@ -222,7 +226,7 @@ scene_render(uint32_t dt_ms, int quarter, int width, int height) {
         }
     }
     if (active.scene != NULL) {
-        draw_active(quarter, width, height);
+        draw_active(dt_ms, quarter, width, height);
     }
 }
 

@@ -51,6 +51,7 @@ typedef struct {
     stress_surface_t surface;
     const char* camera;
     int perf_poses; /* poses the stress perf suite replays along the swing */
+    bool record;    /* the stress perf suite runs the frame recorder over it: its stage too */
 } stress_params_t;
 
 /* X(ID, key, surface): each preset, its key the scene key's suffix and its
@@ -73,7 +74,8 @@ typedef struct {
     X(CULLED, "culled", BANDED)                                                                                        \
     X(NEAR, "near", BANDED)                                                                                            \
     X(FEW_COPIES, "few-copies", BANDED)                                                                                \
-    X(TEXTURED, "textured", TEXTURED)
+    X(TEXTURED, "textured", TEXTURED)                                                                                  \
+    X(RECORD, "record", WAVE)
 
 #define STRESS_PRESET_ID(id_, ...) STRESS_##id_,
 

@@ -82,7 +82,7 @@ class StressCorners(unittest.TestCase):
     def test_every_preset_is_held_here(self):
         self.assertEqual({"open", "stack", "tiny-copies", "big-tris", "per-frame", "two-sided", "noisy-tiny", "mix",
                           "static-copies", "uniform-mid", "uniform-full", "card", "culled", "near",
-                          "few-copies", "textured"}, set(preset_copies()))
+                          "few-copies", "textured", "record"}, set(preset_copies()))
 
     def assert_all_in_view(self, c):
         """Nothing culled: every cluster tested is kept, and no node is cut."""

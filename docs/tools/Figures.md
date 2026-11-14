@@ -15,7 +15,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | [input](#input) | 11 | 0 | 0 |
 | [kinematics](#kinematics) | 5 | 1 | 0 |
 | [math](#math) | 25 | 25 | 0 |
-| [overview](#overview) | 25 | 0 | 0 |
+| [overview](#overview) | 26 | 0 | 0 |
 | [physics](#physics) | 2 | 0 | 0 |
 | [power](#power) | 2 | 0 | 0 |
 | [render](#render) | 132 | 6 | 0 |
@@ -151,6 +151,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/overview/render-lab-stress-noisy-tiny.png"><img src="../images/overview/render-lab-stress-noisy-tiny.png" width="160" alt=""></a> | Stress noisy tiny: cylinders end on, their fans of slivers | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-open.png"><img src="../images/overview/render-lab-stress-open.png" width="160" alt=""></a> | Stress open: a wall of planes side by side | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-per-frame.png"><img src="../images/overview/render-lab-stress-per-frame.png" width="160" alt=""></a> | Stress per frame: one plane with a wave running over it | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
+| <a href="../images/overview/render-lab-stress-record.png"><img src="../images/overview/render-lab-stress-record.png" width="160" alt=""></a> | Stress record: four planes with a wave running over them | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-stack.png"><img src="../images/overview/render-lab-stress-stack.png" width="160" alt=""></a> | Stress stack: planes one behind another | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-static-copies.png"><img src="../images/overview/render-lab-stress-static-copies.png" width="160" alt=""></a> | Static triangle copies | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-textured.png"><img src="../images/overview/render-lab-stress-textured.png" width="160" alt=""></a> | Stress textured: big triangles under a brick texture | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |

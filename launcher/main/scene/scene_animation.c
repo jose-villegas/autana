@@ -10,6 +10,7 @@
 #include "math/scalar/mathi.h"
 #include "profile/frame_cost.h"
 #include "render/context/render_context.h"
+#include "render/record/frame_record.h"
 #include "scene/scene_internal.h"
 
 TUNE_OWNER(anim);
@@ -164,6 +165,9 @@ scene_skin_range(scene_t* scene, int first, int count) {
                                             skin->normal_palette, &scene->world_lights, skin->colors);
         } else {
             r3d_skin_clusters(&skin->skin, &skin->bind, skin->palette, start, end - start, &skin->output);
+        }
+        if (start == 0 && end > 0) { /* the range from the first cluster tells the recorder once per pose */
+            frame_record_note_skin(&skin->output.mesh, &skin->bind, skin->palette, skin->skin.joint_count);
         }
         offset += clusters;
     }

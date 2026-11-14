@@ -7,6 +7,7 @@
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
 #include "render/context/render_context.h"
+#include "render/record/frame_record.h"
 
 void
 scene_shell_render(uint32_t dt_ms) {
@@ -43,6 +44,16 @@ finish_compose(bool expanded, const scene_target_t* target) {
     }
 }
 
+/* The whole picture the compose wrote, before any overlay paints on it. */
+static void
+note_shown(bool expanded, const scene_target_t* target) {
+    if (expanded) {
+        frame_record_note_shown(target->half_pixels, GFX_WIDTH / 2, GFX_HEIGHT / 2);
+    } else {
+        frame_record_note_shown(target->pixels, target->width, target->height);
+    }
+}
+
 void
 scene_shell_compose(uint32_t dt_ms) {
     if (!scene_has_active_camera()) {
@@ -51,7 +62,9 @@ scene_shell_compose(uint32_t dt_ms) {
     scene_target_t target;
     fill_target(&target);
     /* Partial redraw rewrites some rows only; otherwise these are all of them. */
-    finish_compose(scene_compose(dt_ms, display_quarter_now(), &target), &target);
+    const bool expanded = scene_compose(dt_ms, display_quarter_now(), &target);
+    note_shown(expanded, &target);
+    finish_compose(expanded, &target);
 }
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST

@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "core/memory.h"
+#include "render/record/frame_record.h"
 #include "scene/scene_internal.h"
 
 bool
@@ -118,6 +119,7 @@ scene_skin_take(scene_t* scene, scene_row_t entity, scene_skinned_renderer_t* sk
         return false;
     }
     skin->storage = storage;
+    frame_record_forget(storage, size);
     (void)r3d_skin_output_init(&skin->bind, storage, size, &skin->output);
     skin->model = (mat4f_t*)(void*)((uint8_t*)storage + layout.model);
     skin->palette = (mat4f_t*)(void*)((uint8_t*)storage + layout.palette);
@@ -125,6 +127,7 @@ scene_skin_take(scene_t* scene, scene_row_t entity, scene_skinned_renderer_t* sk
     anim_pose_model(&animator->skeleton, &animator->layer.shown, skin->model);
     r3d_skin_palette(&skin->skin, skin->model, skin->bind.position_scale, skin->palette);
     r3d_skin_clusters(&skin->skin, &skin->bind, skin->palette, 0, skin->bind.cluster_count, &skin->output);
+    frame_record_note_skin(&skin->output.mesh, &skin->bind, skin->palette, skin->skin.joint_count);
     r3d_skin_refit_nodes(&skin->output);
     if (skin->light_storage != NULL) {
         skin->output.mesh.colors = skin->colors;
