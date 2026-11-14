@@ -47,20 +47,28 @@ test_the_move_rests_at_its_start_through_the_rest_and_at_its_end_after(void) {
     }
 }
 
-/* Each step covers about its speed times its time: no jump in place or speed. */
-static void
-test_the_move_only_goes_forward_with_no_jump(void) {
-    const float cruise = motion_profile_cruise_speed(&PROFILE);
+/* Scans `move` from 0 to its end: each step goes forward, covers about its
+ * speed times its time and stays under the cruise, with no jump in place or
+ * speed. Returns the place at the last step. */
+static float
+scan_forward_with_no_jump(const motion_profile_t* move) {
+    const float cruise = motion_profile_cruise_speed(move);
     const float max_step = cruise * STEP_S;
-    motion_profile_at_t was = motion_profile_at(&PROFILE, 0.0F);
-    for (float t = STEP_S; t <= motion_profile_duration_s(&PROFILE); t += STEP_S) {
-        const motion_profile_at_t at = motion_profile_at(&PROFILE, t);
+    motion_profile_at_t was = motion_profile_at(move, 0.0F);
+    for (float t = STEP_S; t <= motion_profile_duration_s(move); t += STEP_S) {
+        const motion_profile_at_t at = motion_profile_at(move, t);
         TEST_ASSERT_TRUE(at.at >= was.at);
         TEST_ASSERT_TRUE(at.at - was.at <= max_step + TOLERANCE);
         TEST_ASSERT_FLOAT_WITHIN(cruise * SPEED_STEP_SHARE, was.speed, at.speed);
         TEST_ASSERT_TRUE(at.speed <= cruise + TOLERANCE);
         was = at;
     }
+    return was.at;
+}
+
+static void
+test_the_move_only_goes_forward_with_no_jump(void) {
+    TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, PROFILE.end, scan_forward_with_no_jump(&PROFILE));
 }
 
 /* Too short to reach the peak in two ramps: the cruise is the speed whose two
@@ -86,14 +94,14 @@ test_place_over_each_ramp_is_the_area_under_the_reported_speed(void) {
     const float down_from = motion_profile_duration_s(&PROFILE) - PROFILE.rest_s - PROFILE.ramp_s;
     const float from[] = {up_from, down_from};
     for (int ramp = 0; ramp < 2; ramp++) {
-        const double dt = (double)PROFILE.ramp_s / RAMP_STEPS;
-        const double place_from = (double)motion_profile_at(&PROFILE, from[ramp]).at;
-        double area = 0.0;
+        const float dt = PROFILE.ramp_s / (float)RAMP_STEPS;
+        const float place_from = motion_profile_at(&PROFILE, from[ramp]).at;
+        float area = 0.0F;
         for (int i = 0; i < RAMP_STEPS; i++) {
-            const double middle = (double)from[ramp] + (((double)i + 0.5) * dt);
-            area += (double)motion_profile_at(&PROFILE, (float)middle).speed * dt;
-            const float t = (float)((double)from[ramp] + (((double)i + 1.0) * dt));
-            TEST_ASSERT_FLOAT_WITHIN(AREA_TOLERANCE, (float)(place_from + area), motion_profile_at(&PROFILE, t).at);
+            const float middle = from[ramp] + (((float)i + 0.5F) * dt);
+            area += motion_profile_at(&PROFILE, middle).speed * dt;
+            const float t = from[ramp] + ((float)(i + 1) * dt);
+            TEST_ASSERT_FLOAT_WITHIN(AREA_TOLERANCE, place_from + area, motion_profile_at(&PROFILE, t).at);
         }
     }
 }
@@ -161,18 +169,7 @@ static void
 test_a_short_move_goes_only_forward_with_no_jump(void) {
     motion_profile_t short_move = PROFILE;
     short_move.end = short_move.start + SHORT_MOVE;
-    const float cruise = motion_profile_cruise_speed(&short_move);
-    const float max_step = cruise * STEP_S;
-    motion_profile_at_t was = motion_profile_at(&short_move, 0.0F);
-    for (float t = STEP_S; t <= motion_profile_duration_s(&short_move); t += STEP_S) {
-        const motion_profile_at_t at = motion_profile_at(&short_move, t);
-        TEST_ASSERT_TRUE(at.at >= was.at);
-        TEST_ASSERT_TRUE(at.at - was.at <= max_step + TOLERANCE);
-        TEST_ASSERT_FLOAT_WITHIN(cruise * SPEED_STEP_SHARE, was.speed, at.speed);
-        TEST_ASSERT_TRUE(at.speed <= cruise + TOLERANCE);
-        was = at;
-    }
-    TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, short_move.end, was.at);
+    TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, short_move.end, scan_forward_with_no_jump(&short_move));
 }
 
 void
