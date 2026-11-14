@@ -39,18 +39,27 @@ BMP_HEADER_SIZE = 54
 
 
 class Image:
-    """Rows of (r, g, b) bytes, top row first; `opaque` is False when a
-    source alpha below 255 was dropped."""
+    """Rows of (r, g, b) bytes, top row first; `alpha`, when the source had
+    an alpha channel, rows of one coverage byte a pixel (0 clear, 255 solid)."""
 
-    def __init__(self, width, height, rows, opaque=True):
+    def __init__(self, width, height, rows, alpha=None):
         self.width = width
         self.height = height
         self.rows = rows
-        self.opaque = opaque
+        self.alpha = alpha
+
+    @property
+    def opaque(self):
+        """True when no pixel's alpha is below 255."""
+        return self.alpha is None or all(min(row) == 255 for row in self.alpha)
 
     def pixel(self, x, y):
         row = self.rows[y]
         return row[x * 3], row[x * 3 + 1], row[x * 3 + 2]
+
+    def coverage(self, x, y):
+        """The pixel's alpha, 255 for a source without one."""
+        return 255 if self.alpha is None else self.alpha[y][x]
 
 
 def read_bmp(data):
@@ -72,7 +81,7 @@ def read_bmp(data):
         rgb = bytearray(len(bgr))
         rgb[0::3], rgb[1::3], rgb[2::3] = bgr[2::3], bgr[1::3], bgr[0::3]
         rows.append(bytes(rgb))
-    return Image(width, height, rows, opaque)
+    return Image(width, height, rows)
 
 
 def _unfilter(raw, width, height, bpp):
@@ -149,10 +158,10 @@ def read_png(data):
     lines = _unfilter(zlib.decompress(b"".join(idat)), width, height, samples)
 
     rows = []
-    opaque = True
+    alpha = [] if colour == 6 else None
     for line in lines:
         if colour == 6:
-            opaque = opaque and min(line[3::4]) == 255
+            alpha.append(bytes(line[3::4]))
         if colour == 2:
             rows.append(line)
             continue
@@ -166,7 +175,7 @@ def read_png(data):
             else:
                 rgb[x * 3:x * 3 + 3] = line[x * 4:x * 4 + 3]
         rows.append(bytes(rgb))
-    return Image(width, height, rows, opaque)
+    return Image(width, height, rows, alpha)
 
 
 def load(path):

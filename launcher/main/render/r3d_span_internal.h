@@ -14,30 +14,60 @@
 #include <stdint.h>
 
 #include "math/scalar/mathf.h"
-#include "render/lmsk_format.h"
 #include "render/r3d_span.h"
 
-#define R3D_SPAN_COLOR_SCALE 256.0F
-#define R3D_SPAN_MASK_SHIFT  16
-#define R3D_SPAN_MASK_SCALE  (1U << (R3D_SPAN_MASK_SHIFT - LMSK_UV_FRACTION_BITS))
-/* A Gouraud span's carried values: depth 16.8, then r, g, b. */
-#define R3D_SPAN_ATTRIBUTES  4
+/* Span colour channels are fixed point with this many fraction bits (8.8). */
+#define R3D_SPAN_COLOR_FRAC_BITS 8
+#define R3D_SPAN_COLOR_SCALE     ((float)(1 << R3D_SPAN_COLOR_FRAC_BITS))
 
-/* A masked fill's walk over its atlas: u and v in 16.16 texels at the first
- * pixel, stepping du and dv a pixel. Every pixel's u, v stays inside `rows`. */
+/* A position's pixels from its subpixels. */
+static inline float
+r3d_span_pixels(int32_t subpixels) {
+    return (float)subpixels * (1.0F / (float)R3D_SUBPIXEL);
+}
+
+/* What every attribute's plane over a triangle shares: the edges from corner
+ * a, the reciprocal of twice the area, and the origin pixel's centre from a. */
 typedef struct {
-    const uint32_t* rows;
-    uint32_t u, du, v, dv;
-} r3d_span_mask_walk_t;
+    float e1x, e1y, e2x, e2y, inv, ox, oy;
+} r3d_span_frame_t;
 
-/* The span fills, `count` pixels from `value` stepping `step` a pixel: the
- * depth-tested Gouraud fill, and the same fill keeping only pixels whose
- * atlas bit at the walk's u, v is set. Shared so the board suite times the
- * fills the draw path runs. `count` is at least 1. */
-void r3d_span_fill_gouraud(uint16_t* depth, uint16_t* color, int count, const uint32_t value[R3D_SPAN_ATTRIBUTES],
-                           const int32_t step[R3D_SPAN_ATTRIBUTES]);
-void r3d_span_fill_masked(uint16_t* depth, uint16_t* color, int count, const uint32_t value[R3D_SPAN_ATTRIBUTES],
-                          const int32_t step[R3D_SPAN_ATTRIBUTES], const r3d_span_mask_walk_t* walk);
+/* An attribute across the screen: its value at the origin pixel's centre and
+ * its steps a column and a row. */
+typedef struct {
+    float base, dx, dy;
+} r3d_span_plane_t;
+
+/* The frame of triangle a, b, c from origin pixel (x_origin, y_anchor);
+ * false for a triangle with no area. */
+static inline __attribute__((always_inline)) bool
+r3d_span_frame_of(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c, int x_origin,
+                  int y_anchor, r3d_span_frame_t* f) {
+    const float ax = r3d_span_pixels(a->x);
+    const float ay = r3d_span_pixels(a->y);
+    f->e1x = r3d_span_pixels(b->x) - ax;
+    f->e1y = r3d_span_pixels(b->y) - ay;
+    f->e2x = r3d_span_pixels(c->x) - ax;
+    f->e2y = r3d_span_pixels(c->y) - ay;
+    const float area2 = (f->e1x * f->e2y) - (f->e2x * f->e1y);
+    if (area2 > -1e-6F && area2 < 1e-6F) {
+        return false;
+    }
+    f->inv = mathf_recip(area2);
+    f->ox = (float)x_origin + 0.5F - ax;
+    f->oy = (float)y_anchor + 0.5F - ay;
+    return true;
+}
+
+/* The plane of an attribute worth va, vb, vc at the frame's corners. */
+static inline __attribute__((always_inline)) r3d_span_plane_t
+r3d_span_plane_of(const r3d_span_frame_t* f, float va, float vb, float vc) {
+    const float d1 = vb - va;
+    const float d2 = vc - va;
+    const float ddx = ((d1 * f->e2y) - (d2 * f->e1y)) * f->inv;
+    const float ddy = ((d2 * f->e1x) - (d1 * f->e2x)) * f->inv;
+    return (r3d_span_plane_t){va + (ddx * f->ox) + (ddy * f->oy), ddx, ddy};
+}
 
 /* An upper bound on the depth a triangle writes inside `box`, as the
  * 16-bit depth, from its depth plane in 16.8: `top` at the centre of pixel
@@ -219,6 +249,84 @@ r3d_span_edge(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b) {
 static inline int32_t
 r3d_span_side(const r3d_span_edge_t* e, int32_t x, int32_t y) {
     return (e->dx * (y - e->ay)) - (e->dy * (x - e->ax)) - e->bias;
+}
+
+/* An edge's first column at or right of it, row by row, exactly: ceil(n /
+ * d) for an n growing a fixed step per row, held as quotient q and
+ * remainder r in [0, d). Two triangles sharing the edge get the same column
+ * on every row in any window, so one fills up to it and the other from it. */
+typedef struct {
+    int32_t q, r, qs, rs, d;
+} r3d_span_walk_edge_t;
+
+static inline void
+r3d_span_floor_div(int32_t n, int32_t d, int32_t* q, int32_t* r) {
+    *q = n / d;
+    *r = n - (*q * d);
+    if (*r < 0) {
+        *q -= 1;
+        *r += d;
+    }
+}
+
+/* Row y's centre line crosses the edge at x = top.x + (16 y + 8 - top.y)
+ * dx / dy, and the first centre at or right of it is ceil((x - 8) / 16).
+ * With every coordinate inside R3D_SPAN_RANGE the numerator stays under
+ * 2^31 for any row of the edge. */
+static __attribute__((unused)) r3d_span_walk_edge_t
+r3d_span_walk_edge_at(const r3d_span_vertex_t* top, const r3d_span_vertex_t* bottom, int y) {
+    const int32_t dx = bottom->x - top->x;
+    const int32_t dy = bottom->y - top->y;
+    const int32_t row_offset = (y << R3D_SUBPIXEL_SHIFT) + R3D_SPAN_HALF_PIXEL - top->y;
+    r3d_span_walk_edge_t e = {0, 0, 0, 0, dy << R3D_SUBPIXEL_SHIFT};
+    r3d_span_floor_div(((top->x - R3D_SPAN_HALF_PIXEL) * dy) + (row_offset * dx) + e.d - 1, e.d, &e.q, &e.r);
+    r3d_span_floor_div(dx, dy, &e.qs, &e.rs);
+    e.rs <<= R3D_SUBPIXEL_SHIFT;
+    return e;
+}
+
+static inline __attribute__((always_inline)) bool
+r3d_span_walk_edge_step(r3d_span_walk_edge_t* e) {
+    e->q += e->qs;
+    e->r += e->rs;
+    if (e->r >= e->d) {
+        e->r -= e->d;
+        e->q++;
+        return true;
+    }
+    return false;
+}
+
+/* Returns true when the sort swapped an odd number of times, which turns
+ * the triangle's winding over. */
+static inline bool
+r3d_span_sort_by_y(const r3d_span_vertex_t** v0, const r3d_span_vertex_t** v1, const r3d_span_vertex_t** v2) {
+    const r3d_span_vertex_t* t;
+    bool odd = false;
+    if ((*v1)->y < (*v0)->y) {
+        t = *v0, *v0 = *v1, *v1 = t, odd = !odd;
+    }
+    if ((*v2)->y < (*v1)->y) {
+        t = *v1, *v1 = *v2, *v2 = t, odd = !odd;
+    }
+    if ((*v1)->y < (*v0)->y) {
+        t = *v0, *v0 = *v1, *v1 = t, odd = !odd;
+    }
+    return odd;
+}
+
+/* A pixel centre just outside the triangle extrapolates past the vertex
+ * range, and a wrapped channel would be a wrong-coloured pixel. Each span's
+ * start is clamped; only a span whose end would still leave the range pays
+ * for a step recomputed from both clamped ends. */
+static inline void
+r3d_span_clamp_to(int32_t max, int count, int32_t* value, int32_t* step) {
+    const int32_t start = mathi_clamp(*value, 0, max);
+    const int32_t end = start + (*step * count);
+    *value = start;
+    if (count > 0 && (end < 0 || end > max)) {
+        *step = (mathi_clamp(end, 0, max) - start) / count;
+    }
 }
 
 /* Every writer of the target over one span. */

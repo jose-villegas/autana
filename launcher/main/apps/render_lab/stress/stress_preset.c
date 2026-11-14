@@ -1,9 +1,11 @@
 #include "apps/render_lab/stress/stress_preset.h"
 
 #include <math.h>
+#include <string.h>
 
 #include "math/geometry/primitive_mesh.h"
 #include "math/scalar/math_const.h"
+#include "math/scalar/mathi.h"
 #include "math/scalar/rng.h"
 
 /* Each preset's surface, as STRESS_PRESETS names it. */
@@ -41,6 +43,8 @@ const stress_params_t stress_presets[STRESS_PRESET_COUNT] = {
                      6},
     [STRESS_FEW_COPIES] = {STRESS_SHAPE_SPHERE, 24, 2, STRESS_LAYOUT_WALL, 70, STRESS_SURFACE_OF(FEW_COPIES),
                            STRESS_CAMERA, 6},
+    [STRESS_TEXTURED] = {STRESS_SHAPE_PLANE, 2, 1, STRESS_LAYOUT_WALL, 100, STRESS_SURFACE_OF(TEXTURED), STRESS_CAMERA,
+                         6},
     /* Foliage cards near, a few bushes over the whole view, and far, many small
      * ones; each beside its opaque twin, whose cards differ only by the mask. */
     [STRESS_FOLIAGE_NEAR] = {STRESS_SHAPE_FOLIAGE, 24, 3, STRESS_LAYOUT_STACK, 120, STRESS_SURFACE_OF(FOLIAGE_NEAR),
@@ -491,4 +495,96 @@ stress_cut_px(const stress_params_t* p, int short_px) {
         case STRESS_SHAPE_FOLIAGE: return STRESS_FOLIAGE_CARD_SIDE * width;
     }
     return 0.0F;
+}
+
+/* The brick: courses STRESS_BRICK_TALL texels tall of bricks STRESS_BRICK_LONG
+ * long, every other course shifted half a brick, a texel of mortar under and
+ * after each; each brick takes one of the brick colours by hash. */
+#define STRESS_BRICK_LONG     16
+#define STRESS_BRICK_TALL     8
+#define STRESS_BRICK_SEED     0xB21C7U
+#define STRESS_MORTAR         0
+#define STRESS_BRICK_COLOURS  (R3D_TEXTURE_COLOURS - 1)
+#define STRESS_BRICK_TINT     128
+#define STRESS_MORTAR_LEVEL   176
+#define STRESS_BRICK_LOW      72
+#define STRESS_BRICK_STEP     8
+#define STRESS_TEXTURE_SIDE   (1 << STRESS_TEXTURE_SIZE_LOG2)
+#define STRESS_TEXTURE_LEVELS (STRESS_TEXTURE_SIZE_LOG2 - R3D_TEXTURE_SIZE_LOG2_MIN + 1)
+#define STRESS_PALETTE_BYTES  (R3D_TEXTURE_COLOURS * R3D_TEXTURE_PALETTE_STRIDE)
+
+static int
+brick_index(int x, int y) {
+    const int course = y / STRESS_BRICK_TALL;
+    const int along = x + ((course % 2) * (STRESS_BRICK_LONG / 2));
+    if (y % STRESS_BRICK_TALL == STRESS_BRICK_TALL - 1 || along % STRESS_BRICK_LONG == STRESS_BRICK_LONG - 1) {
+        return STRESS_MORTAR;
+    }
+    const uint32_t brick = (uint32_t)((along / STRESS_BRICK_LONG) % (STRESS_TEXTURE_SIDE / STRESS_BRICK_LONG));
+    return 1 + (int)(rng_hash(STRESS_BRICK_SEED, brick, (uint32_t)course, 0) % STRESS_BRICK_COLOURS);
+}
+
+static size_t
+texel_bytes(void) {
+    size_t bytes = 0;
+    for (int l = 0; l < STRESS_TEXTURE_LEVELS; l++) {
+        bytes += r3d_texture_level_bytes(STRESS_TEXTURE_SIZE_LOG2 - l);
+    }
+    return bytes;
+}
+
+size_t
+stress_texture_bytes(void) {
+    return R3D_TEXTURE_HEADER_SIZE + STRESS_PALETTE_BYTES + texel_bytes();
+}
+
+static void
+put_u32(uint8_t* at, uint32_t value) {
+    memcpy(at, &value, sizeof value);
+}
+
+/* Mortar is pale; bricks run a warm ramp. A level's texel is its 2x2
+ * block's top-left in the level above, sampled from level 0. */
+void
+stress_texture_write(uint8_t* ltex) {
+    memset(ltex, 0, stress_texture_bytes());
+    const uint16_t version = R3D_TEXTURE_VERSION;
+    const uint16_t format = R3D_TEXTURE_INDEX4;
+    memcpy(ltex + R3D_TEXTURE_AT_VERSION, &version, sizeof version);
+    memcpy(ltex + R3D_TEXTURE_AT_FORMAT, &format, sizeof format);
+    ltex[R3D_TEXTURE_AT_SIZE_LOG2] = STRESS_TEXTURE_SIZE_LOG2;
+    ltex[R3D_TEXTURE_AT_LEVELS] = STRESS_TEXTURE_LEVELS;
+    memset(ltex + R3D_TEXTURE_AT_TINT, STRESS_BRICK_TINT, R3D_TEXTURE_TINT_RGB);
+    put_u32(ltex + R3D_TEXTURE_AT_PALETTE_OFF, R3D_TEXTURE_HEADER_SIZE);
+    put_u32(ltex + R3D_TEXTURE_AT_TEXELS_OFF, R3D_TEXTURE_HEADER_SIZE + STRESS_PALETTE_BYTES);
+    uint8_t* palette = ltex + R3D_TEXTURE_HEADER_SIZE;
+    for (int i = 0; i < R3D_TEXTURE_COLOURS; i++) {
+        const int level = i == STRESS_MORTAR ? STRESS_MORTAR_LEVEL : STRESS_BRICK_LOW + (STRESS_BRICK_STEP * i);
+        uint8_t* entry = palette + (i * R3D_TEXTURE_PALETTE_STRIDE);
+        entry[0] = (uint8_t)mathi_min(level + (level / 4), UINT8_MAX);
+        entry[1] = (uint8_t)level;
+        entry[2] = (uint8_t)(level - (level / 4));
+    }
+    uint8_t* texels = palette + STRESS_PALETTE_BYTES;
+    for (int l = 0; l < STRESS_TEXTURE_LEVELS; l++) {
+        const int side = STRESS_TEXTURE_SIDE >> l;
+        for (int y = 0; y < side; y++) {
+            for (int x = 0; x < side; x++) {
+                const int o = (y * side) + x;
+                texels[o >> 1] |= (uint8_t)(brick_index(x << l, y << l) << ((o & 1) * 4));
+            }
+        }
+        texels += r3d_texture_level_bytes(STRESS_TEXTURE_SIZE_LOG2 - l);
+    }
+}
+
+void
+stress_texture_uvs(const r3d_lit_mesh_t* mesh, int16_t (*uvs)[2]) {
+    const float to_texels = (float)(STRESS_TEXTURE_SIDE * STRESS_TEXTURE_REPEATS * (1 << R3D_TEXTURE_UV_SHIFT))
+                            / (float)mesh->position_scale;
+    const float half = 0.5F * (float)mesh->position_scale;
+    for (int v = 0; v < mesh->vertex_count; v++) {
+        uvs[v][0] = (int16_t)lroundf(((float)mesh->positions[v][0] + half) * to_texels);
+        uvs[v][1] = (int16_t)lroundf((half - (float)mesh->positions[v][1]) * to_texels);
+    }
 }

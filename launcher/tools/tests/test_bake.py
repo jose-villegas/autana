@@ -2011,9 +2011,14 @@ def current_lock(path):
     """Writes the lock the tree's own keys need to `path`, every row with a placeholder digest: what the
     key tests read instead of the repo's lock, which a re-keying change leaves stale until it is re-locked."""
     poses = bake.Poses({}, resample=True)
-    starts = {item.key: "0" * 64 for item in bake.bakes([build_pack.DEFAULT_SEARCH], {}, poses) if item.key}
-    starts.update({item.key: "0" * 64 for item in bake.bakes([build_pack.DEFAULT_SEARCH], starts, poses) if item.key})
-    found = bake.bakes([build_pack.DEFAULT_SEARCH], starts, poses)
+    # A bake keys only once the bakes it follows are locked: placeholder rows, one pass per link of the chain.
+    starts = {}
+    while True:
+        found = bake.bakes([build_pack.DEFAULT_SEARCH], starts, poses)
+        keyed = {item.key: "0" * 64 for item in found if item.key}
+        if keyed.keys() <= starts.keys():
+            break
+        starts.update(keyed)
     made = {item.key: {"output": item.output, "source": bake.relative(item.source), "key": item.key,
                        "sha256": "0" * 64, "size": 0, "run": 1} for item in found}
     bake.write_lock(bake.lock_rows(found, {}, made), path, poses=poses.used.values())

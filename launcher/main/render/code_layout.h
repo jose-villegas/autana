@@ -17,21 +17,16 @@
  * fetch stalls cost the drawing core about a tenth of its draw cycles. IRAM
  * has no cache line to place a loop on, so the render sources' cache-line
  * function alignment would only waste IRAM; 4 bytes keeps entries aligned.
- * IRAM budget: release 5716 B, dev 5759 B, diag 5759 B */
+ * IRAM budget: release 5574 B, dev 5570 B, diag 5570 B */
 #define RENDER_IRAM_ATTR IRAM_ATTR __attribute__((aligned(4)))
 /* The draw path's copies for a view that skips clusters behind drawn depth
  * (render_view_t.skip_hidden), placed with the draw path. IRAM is granted per
  * measured ms saved per KB, the largest free internal block noted with it.
- * IRAM budget: release 4479 B, dev 4526 B, diag 4526 B */
+ * IRAM budget: release 4475 B, dev 4479 B, diag 4479 B */
 #define RENDER_SKIP_ATTR RENDER_IRAM_ATTR
-/* Flash code off the hot draw (a masked fill's): linker.lf places it after
- * all other flash text, so it never sits between the per-triangle flash
- * functions and moves their cache placement. */
-#define RENDER_TAIL_ATTR __attribute__((section(".render_tail.text")))
 #else
 /* A host build has no instruction cache to place code in. */
 #define CODE_ENTRY_OFFSET(slots)
 #define RENDER_IRAM_ATTR
 #define RENDER_SKIP_ATTR
-#define RENDER_TAIL_ATTR
 #endif

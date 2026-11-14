@@ -77,6 +77,7 @@ counted_capped_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t
 #define r3d_span_triangle        constant_r3d_span_triangle
 #define r3d_span_triangle_solid  constant_r3d_span_triangle_solid
 #define r3d_span_capped_triangle constant_r3d_span_capped_triangle
+#include "r3d_pixel_lens.h"
 #include "render/r3d_span.c"
 #include "suites.h"
 #include "unity.h"
@@ -211,10 +212,10 @@ test_clipped_and_mixed_clusters_keep_the_target_style(void) {
     r3d_span_target_t* actual = &clipped->actual;
     *expected = r3d_span_target(pixels, pixels + TEST_PIXELS, TEST_SIDE, 0, TEST_SIDE);
     *actual = r3d_span_target(pixels + TEST_PIXELS * 2, pixels + TEST_PIXELS * 3, TEST_SIDE, 0, TEST_SIDE);
-    const clip_vertex_t polygon[4] = {{8.75F, 0.75F, 1, 191.25F, 63.75F, 0},
-                                      {32, 0, 4, 0, 255, 0},
-                                      {0, 32, 4, 0, 0, 255},
-                                      {0.75F, 8.75F, 1, 191.25F, 0, 63.75F}};
+    const clip_vertex_t polygon[4] = {{8.75F, 0.75F, 1, 191.25F, 63.75F, 0, 0, 0},
+                                      {32, 0, 4, 0, 255, 0, 0, 0},
+                                      {0, 32, 4, 0, 0, 255, 0, 0},
+                                      {0.75F, 8.75F, 1, 191.25F, 0, 63.75F, 0, 0}};
     uint32_t checksums[SMALL_FILL_STYLE_COUNT];
     for (small_fill_style_t style = SMALL_FILL_FLAT; style < SMALL_FILL_STYLE_COUNT; style++) {
         r3d_span_small_fill_t* resolved = &clipped->resolved;
@@ -251,21 +252,6 @@ test_clipped_and_mixed_clusters_keep_the_target_style(void) {
             TEST_ASSERT_NOT_EQUAL(checksums[previous], checksums[style]);
         }
     }
-}
-
-/* Positions are pixel * R3D_SUBPIXEL * z ticks, so the lens maps them back to the pixel. */
-static r3d_lens_t
-pixel_lens(void) {
-    const float s = 1.0F / (float)R3D_SUBPIXEL;
-    return (r3d_lens_t){{{{s, 0, 0, 0}, {0, s, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}},
-                        {1.0F, -1.0F, 0.0F, 0.0F, 0.5F},
-                        SCENE_W,
-                        SCENE_H,
-                        R3D_SNAP_BIAS,
-                        R3D_SNAP_BIAS,
-                        0.5F / (float)R3D_SUBPIXEL,
-                        1.0F,
-                        1.0F};
 }
 
 /* One cluster: a fan over `count` pixel corners at `z` ticks, all one colour. */
@@ -529,7 +515,7 @@ scene_draws_alike_with_the_hidden_test_on_and_off(bool writes) {
     scene_open();
     build_wall_scene();
     const r3d_lit_mesh_t mesh = scene_mesh();
-    const r3d_lens_t lens = pixel_lens();
+    const r3d_lens_t lens = r3d_pixel_lens(SCENE_W, SCENE_H);
     r3d_pipeline_transform(&mesh, &lens, NEAREST_FIRST, SCENE_CLUSTERS, scene->cs, scene->rows, true);
     r3d_span_writer_t writers[2];
     for (int run = 0; run < 2; run++) {
@@ -612,7 +598,7 @@ test_rows_change_no_pixel_of_a_draw(void) {
             scene_open();
             build_bounded_scene();
             const r3d_lit_mesh_t mesh = scene_mesh();
-            const r3d_lens_t lens = pixel_lens();
+            const r3d_lens_t lens = r3d_pixel_lens(SCENE_W, SCENE_H);
             r3d_pipeline_transform(&mesh, &lens, BOUNDED_SCENE_ORDER, BOUNDED_SCENE_CLUSTERS, scene->cs, scene->rows,
                                    true);
             TEST_ASSERT_FALSE(scene->rows[BOUNDED_QUAD].unbounded);
@@ -666,7 +652,7 @@ hidden_clusters_reach_no_fill(bool writes) {
         scene_open();
         build_wall_scene();
         const r3d_lit_mesh_t mesh = scene_mesh();
-        const r3d_lens_t lens = pixel_lens();
+        const r3d_lens_t lens = r3d_pixel_lens(SCENE_W, SCENE_H);
         r3d_pipeline_transform(&mesh, &lens, NEAREST_FIRST, SCENE_CLUSTERS, scene->cs, scene->rows, true);
         r3d_span_writer_t writer;
         r3d_span_target_t target = scene_target(0, SCENE_H, writes ? &writer : NULL);
@@ -701,7 +687,7 @@ draw_one_cluster_counting_fills(int cluster, bool writes, bool skipping) {
     scene_open();
     build_bounded_scene();
     const r3d_lit_mesh_t mesh = scene_mesh();
-    const r3d_lens_t lens = pixel_lens();
+    const r3d_lens_t lens = r3d_pixel_lens(SCENE_W, SCENE_H);
     const uint16_t only = (uint16_t)cluster;
     r3d_pipeline_transform(&mesh, &lens, &only, 1, scene->cs, scene->rows, true);
     r3d_span_writer_t writer;
@@ -743,7 +729,7 @@ test_bounded_rows_skip_the_per_triangle_depth_test(void) {
             scene_open();
             build_bounded_scene();
             const r3d_lit_mesh_t mesh = scene_mesh();
-            const r3d_lens_t lens = pixel_lens();
+            const r3d_lens_t lens = r3d_pixel_lens(SCENE_W, SCENE_H);
             const uint16_t only = BOUNDED_QUAD;
             r3d_pipeline_transform(&mesh, &lens, &only, 1, scene->cs, scene->rows, true);
             TEST_ASSERT_FALSE(scene->rows[BOUNDED_QUAD].unbounded);
@@ -771,7 +757,7 @@ test_infinite_depth_bounded_cluster_draws_nothing(void) {
     static const uint8_t white[3] = {255, 255, 255};
     scene_add(triangle, 3, 2, white);
     const r3d_lit_mesh_t mesh = scene_mesh();
-    r3d_lens_t lens = pixel_lens();
+    r3d_lens_t lens = r3d_pixel_lens(SCENE_W, SCENE_H);
     lens.m.m[2][MAT3F_AXES] = INFINITY;
     const uint16_t only = 0;
     r3d_pipeline_transform(&mesh, &lens, &only, 1, scene->cs, scene->rows, true);

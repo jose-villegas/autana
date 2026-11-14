@@ -10,9 +10,11 @@ from audio import sound_asset
 from gfx import image_asset
 from asset import table_asset
 from anim import tracks_asset, skeleton_asset
-from r3d import mesh_asset, scene_asset, skin_asset, lcol_asset, lod_asset, mask_asset, morph_asset
+from r3d import mesh_asset, scene_asset, skin_asset, lcol_asset, lod_asset, morph_asset
+from r3d.texture import texture_asset
 
-FRAMELESS = frozenset((image_asset.TYPE, table_asset.TYPE, sound_asset.TYPE, lcol_asset.TYPE, mask_asset.TYPE))
+FRAMELESS = frozenset((image_asset.TYPE, image_asset.SPRITE_TYPE, table_asset.TYPE, sound_asset.TYPE, lcol_asset.TYPE,
+                       texture_asset.TYPE, texture_asset.UVS_TYPE))
 
 AXIS_SIGNS = (1, 1, -1)
 ROTATION_SIGNS = (-1, -1, 1, 1)
@@ -70,7 +72,7 @@ def _mirror_point(*point):
 
 
 def to_engine(kind, entry):
-    """A source entry mirrored once into the engine frame, preserving its layout; an image, table or sound entry has no frame and comes back as it is."""
+    """A source entry mirrored once into the engine frame, preserving its layout; an image, sprite, table or sound entry has no frame and comes back as it is."""
     if kind in FRAMELESS:
         return entry
     out = bytearray(entry)
@@ -81,8 +83,8 @@ def to_engine(kind, entry):
             POSITION.pack_into(out, at, *_mirror_position(POSITION.unpack_from(entry, at)))
         for index in range(clusters):
             at = cl_at + index * mesh_asset.CLUSTER.size
-            vb, vc, tb, tc, *box, double, masked = mesh_asset.CLUSTER.unpack_from(entry, at)
-            mesh_asset.CLUSTER.pack_into(out, at, vb, vc, tb, tc, *_mirror_box(box), double, masked)
+            vb, vc, tb, tc, *box, double = mesh_asset.CLUSTER.unpack_from(entry, at)
+            mesh_asset.CLUSTER.pack_into(out, at, vb, vc, tb, tc, *_mirror_box(box), double)
         for index in range(nodes):
             at = node_at + index * mesh_asset.NODE.size
             *box, first, count, leaf = mesh_asset.NODE.unpack_from(entry, at)
@@ -136,7 +138,8 @@ def to_engine(kind, entry):
                 if len(track["values"][0]) != len(signs):
                     raise ValueError("coordinate track has an invalid width")
                 track["values"] = [tuple(value * sign for value, sign in zip(row, signs)) for row in track["values"]]
-        return tracks_asset.encode(tracks, duration_ms, tracks[0]["root"] if tracks else tracks_asset.ROOT_SCENE)
+        ground = tracks_asset.HEADER.unpack_from(entry)[-1]  # a speed, the same in either frame
+        return tracks_asset.encode(tracks, duration_ms, tracks[0]["root"] if tracks else tracks_asset.ROOT_SCENE, ground)
     else:
         raise ValueError("entry has no source-to-engine conversion")
     return bytes(out)

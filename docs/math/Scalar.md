@@ -202,6 +202,7 @@ Fixed-point multiplication, division and rounding at a caller-selected shift:
 | `rng_next` | advances the state |
 | `rng_below` | a draw below a positive bound, by modulo: slightly biased when the bound does not divide the range |
 | `rng_chance` | never and always consume no draw |
+| `rng_unit` | a uniform float in [0, 1) from the draw's top `RNG_UNIT_BITS` (24) bits, which a float holds exactly |
 | `rng_hash` | a counter-based draw with no state, mixed by `rng_avalanche32` |
 
 ## trig.h

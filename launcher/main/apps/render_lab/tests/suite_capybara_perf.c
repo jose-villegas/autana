@@ -128,7 +128,8 @@ skin_slice(void* ctx) {
 static void
 animate_slice(void* ctx) {
     const range_t* r = ctx;
-    scene_animate_range(r->scene, r->first, r->count, LAB_TEST_FRAME_MS);
+    scene_animate_range(r->scene, r->first, r->count, LAB_TEST_FRAME_MS,
+                        &render_context_settings(render_context_main())->anim);
 }
 
 static void

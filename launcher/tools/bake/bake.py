@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Cached bakes: the content a pack needs, named by a digest of what makes them.
 
-    python launcher/tools/bake/bake.py list [PATH ...] [--missing] [--kind mesh|reference|fit|levels|sound]
+    python launcher/tools/bake/bake.py list [PATH ...] [--missing] [--kind mesh|reference|fit|levels|texture|sound]
     python launcher/tools/bake/bake.py bake [PATH ...] [--kind KIND] [--only OUTPUT ...] [--again] [--out DIR]
                                             [--from-run N ...]
     python launcher/tools/bake/bake.py lock [PATH ...] [--from-run N ... | --seed] [--cache DIR]
@@ -28,6 +28,8 @@ A fitted renderer has a CPU start (`<entry>.start.bundle`), a CPU reference set
 bytes; only the final bundle enters a pack. The reference set is keyed on what it reads
 (reference_set.ReferenceInputs), not on the start, so fits that share those inputs share it. A fit reads
 only locked bytes, so it makes the same bytes on any GPU in the pinned environment.
+A renderer with `textures` adds a CPU texture bake (`<entry>.texture.pack`, r3d/texture/) whose key
+names its packed mesh's locked bytes; its entries join that mesh's pack.
 
 `list` prints every bake with its key, or with `--missing` those LOCK lacks. `bake` makes each bake LOCK has no
 row for into the cache (produce.py), and with `--out` also copies each one there as it is made, the folder a CI
@@ -138,11 +140,17 @@ STAGES = {
     "levels": ("r3d/lod/levels_stage.py:levels",),
     "blend": ("gltf/blend_skin_to_glb.py",),
     "sound": ("audio/sound_import.py",),
+    "texture": ("r3d/texture/texture_stage.py:texture",),
 }
 BLEND_EXPORT = "gltf/blend_skin_to_glb.py"
 GLB_SUFFIX = ".glb"
 # The order kinds are made in: a mesh reads the export of its .blend, a fit its start and reference set.
-KINDS = ("blend", "mesh", "reference", "fit", "levels", "sound")
+KINDS = ("blend", "mesh", "reference", "fit", "levels", "texture", "sound")
+# The kinds whose key names the locked bytes of a packed bake before them, so a run makes them after it.
+FOLLOWING_KINDS = ("levels", "texture")
+# A textured renderer's texture bake: its materials' LTEX entries and its mesh's LUVS (r3d/texture/), as a pack.
+TEXTURE_SUFFIX = ".texture.pack"
+WAITS = {"levels": "waits for its fit", "texture": "waits for its mesh"}
 # The kinds that trace rays on the CPU, whose bytes differ between CPU vendors (LOCK's mesh_cpu_vendor).
 TRACED_KINDS = ("mesh", "reference")
 # What a fit whose key waits for its inputs asks for, when the same run would make it.
@@ -736,11 +744,26 @@ def locked_starts(lock, *made):
     return starts
 
 
+def texture_bake(mesh, entry, textures, starts, tools):
+    """The texture bake of packed mesh bake `mesh`, entry `entry`, drawing `textures` (r3d/texture/texture_settings):
+    its key names the mesh's locked bytes, the textures and the import's sources."""
+    job = mesh.job
+    mesh_sha256 = None if mesh.key is None else starts.get(mesh.key)
+    _settings, sources = import_recipe(job.settings, tools)
+    key = None if mesh_sha256 is None else digest(
+        ["texture", mesh_sha256, canonical(textures), sources, tools["texture"]])
+    return Bake(output=f"{entry}{TEXTURE_SUFFIX}", source=mesh.source, holder=mesh.holder, kind="texture", key=key,
+                suffix=TEXTURE_SUFFIX, tree=mesh.tree.with_name(f"{entry}{TEXTURE_SUFFIX}"), job=job,
+                scene=mesh.scene, stages={"start": mesh.key, "start_sha256": mesh_sha256, "texture": key, "textures": textures},
+                start=mesh)
+
+
 def bakes_in(packs, jobs, starts=None, poses=None):
     """The bakes of build_pack.pack_jobs()'s packs. A fit's start is a mesh bake of its own and its reference set
     a reference bake, which no pack holds; the fit's key reads their bytes from `starts` ({key: sha256}, the
     lock's when None)."""
     from audio import sound_asset
+    from r3d.texture.texture_settings import renderer_textures
 
     if starts is None or poses is None:
         tables = read_lock_tables()
@@ -793,6 +816,9 @@ def bakes_in(packs, jobs, starts=None, poses=None):
                 kind = "levels"
             found.append(Bake(output=f"{entry}{suffix}", source=asker, holder=holder, kind=kind, key=keys[kind],
                               suffix=suffix, tree=source, job=job, scene=scene, stages=keys, start=start))
+            textures = renderer_textures(asker, holder) if job.object is not None else None
+            if textures is not None:
+                found.append(texture_bake(found[-1], entry, textures, starts, tools))
     return list(exports.values()) + list(fit_starts.values()) + list(references.values()) + found
 
 
@@ -893,7 +919,7 @@ def unlocked(bake):
     if bake.stages and bake.stages.get("reason"):
         return bake.stages["reason"]
     if bake.key is None:
-        names = ("fit",) if bake.kind == "levels" else ("start", "reference")
+        names = {"levels": ("fit",), "texture": ("start",)}.get(bake.kind, ("start", "reference"))
         waiting = " and ".join(f"{name} {bake.stages[name]}" for name in names
                                if bake.stages.get(f"{name}_sha256") is None)
         verb = "is" if " and " not in waiting else "are"
@@ -907,6 +933,8 @@ def bake_again(bake):
                 "or the CI Bakes check")
     if bake.key is None and bake.kind == "levels":
         return "lock its fit first: bake.py lock --from-run N with the Bakes GPU run that made it"
+    if bake.key is None and bake.kind == "texture":
+        return "lock its mesh first: bake.py lock --from-run N with the run that made it"
     if bake.key is None:
         return ("lock its start and reference set first: bake.py lock --from-run N with the Bakes run that made "
                 "them, then run the Bakes GPU workflow on this branch")
@@ -1341,7 +1369,7 @@ def main(argv=None):
             for bake in found:
                 if (args.missing and bake.key in lock) or args.kind not in (None, bake.kind):
                     continue
-                print(f"{bake.output}\t{bake.kind}\t{bake.key or ('waits for its fit' if bake.kind == 'levels' else 'waits for its start and reference set')}\t{relative(bake.source)}")
+                print(f"{bake.output}\t{bake.kind}\t{bake.key or WAITS.get(bake.kind, 'waits for its start and reference set')}\t{relative(bake.source)}")
         elif args.command == "bake":
             from bake import produce
 
@@ -1387,7 +1415,7 @@ def main(argv=None):
             for kind in KINDS:
                 if args.kind not in (None, kind):
                     continue
-                if kind in ("fit", "levels") and made_starts:
+                if kind in ("fit", *FOLLOWING_KINDS) and made_starts:
                     # A fit's key names its start's bytes: the lock's, else those this run just made, which
                     # also replace a seeded row's carried-over bytes (locked_starts).
                     found = bakes(paths, locked_starts(lock, made_starts), poses)
@@ -1398,8 +1426,8 @@ def main(argv=None):
                     rows.extend(made_rows)
                 else:
                     for bake in selected:
-                        if bake.key is None and bake.kind == "levels":
-                            # Its fit comes from a GPU run: the CPU run makes the levels once the fit is locked.
+                        if bake.key is None and bake.kind in FOLLOWING_KINDS:
+                            # Its input comes from another run (levels: a GPU fit): this run makes it once that is locked.
                             print(f"skipped {bake.output}: {unlocked(bake)}")
                             continue
                         if bake.key is None:

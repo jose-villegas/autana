@@ -252,6 +252,19 @@ test_length_is_the_root_of_the_self_dot(void) {
     TEST_ASSERT_FLOAT_WITHIN(FLT_EPSILON, 1.0F, vec3f_length(vec3f_normalize(A)));
 }
 
+/* A vec2's length, and a clamp that shortens only what is longer, keeping its direction. */
+static void
+test_vec2_length_and_clamp_length(void) {
+    static const vec2f_t three_four = {3.0F, 4.0F};
+    TEST_ASSERT_EQUAL_FLOAT(5.0F, vec2f_length(three_four));
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, vec2f_length(vec2f_zero()));
+    const vec2f_t cut = vec2f_clamp_length(three_four, 2.5F);
+    TEST_ASSERT_EQUAL_FLOAT(1.5F, cut.x);
+    TEST_ASSERT_EQUAL_FLOAT(2.0F, cut.y);
+    TEST_ASSERT_TRUE(vec2f_equal(three_four, vec2f_clamp_length(three_four, 5.0F)));
+    TEST_ASSERT_TRUE(vec2f_equal(vec2f_zero(), vec2f_clamp_length(vec2f_zero(), 0.0F)));
+}
+
 /* The double-precision reference runs on the host only: the device's FPU is single precision. */
 #ifndef ESP_PLATFORM
 static void
@@ -2187,6 +2200,7 @@ suite_math_numbers(void) {
     RUN_TEST(test_vec2_ops_agree_across_every_number_type);
     RUN_TEST(test_normalize_divide_zero_and_float);
     RUN_TEST(test_length_is_the_root_of_the_self_dot);
+    RUN_TEST(test_vec2_length_and_clamp_length);
 #ifndef ESP_PLATFORM
     RUN_TEST(test_fixed_normalize_saturation_edges);
 #endif

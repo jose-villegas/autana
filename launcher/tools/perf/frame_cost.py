@@ -13,7 +13,7 @@ US_PER_MS = 1000
 US_PER_SECOND = US_PER_MS * MS_PER_SECOND
 BRACKET = re.compile(r"(\S+) ([\d.]+)/([\d.]+)")
 TOTAL = re.compile(r"\| total ([\d.]+)")
-DROPPED = re.compile(r"\+(\d+) dropped")  # brackets frame_cost_report() refused a slot
+DROPPED = re.compile(r"\+(\d+) dropped")  # brackets or laps a report refused a slot
 EXTERNAL = re.compile(r"(\S+) ([\d.]+)/([\d.]+) ms/block n=(\d+)")
 LAPS_PREFIX = "ms/frame laps:"
 LAP_COST = re.compile(r"lap (\d+) ns")
@@ -23,13 +23,17 @@ NS_PER_MS = 1_000_000
 
 
 def frame_cost_window(line):
+    """One report line's brackets, total and external stages; None for another
+    line. A window that dropped brackets is refused: its brackets are not the
+    whole frame, so no reader may average it."""
     if REPORT_PREFIX not in line:
         return None
     frame, *external = line.split(REPORT_PREFIX, 1)[1].split("||")
     total = TOTAL.search(frame)
     dropped = DROPPED.search(frame)
-    return {"dropped": int(dropped[1]) if dropped else 0,
-            "brackets": {name: (float(avg), float(worst)) for name, avg, worst in BRACKET.findall(frame)},
+    if dropped:
+        raise ValueError(f"a frame-cost window dropped {dropped[1]} brackets: {line.strip()}")
+    return {"brackets": {name: (float(avg), float(worst)) for name, avg, worst in BRACKET.findall(frame)},
             "total": float(total[1]) if total else None,
             "external": {name: (float(avg), float(worst), int(n))
                          for section in external for name, avg, worst, n in EXTERNAL.findall(section)}}
@@ -62,10 +66,14 @@ def frame_cost_means(path, text=None):
 def frame_laps_window(line):
     """{core: {lap: (ms, laps' own ms)}} per frame of one lap line, None for
     another line: each lap's time with its starts' own cost taken out, and
-    that cost apart."""
+    that cost apart. A window that dropped laps is refused, as a bracket
+    window is."""
     if LAPS_PREFIX not in line:
         return None
     laps = line.split(LAPS_PREFIX, 1)[1]
+    dropped = DROPPED.search(laps)
+    if dropped:
+        raise ValueError(f"a lap window dropped {dropped[1]} laps: {line.strip()}")
     cost = LAP_COST.search(laps)
     if cost is None:
         raise ValueError(f"a lap line without its lap cost: {line.strip()}")

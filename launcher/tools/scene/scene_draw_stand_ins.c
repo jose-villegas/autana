@@ -27,6 +27,14 @@ render_context_drop_scratch(render_context_t* context) {
     (void)context;
 }
 
+/* No context, so the animation tiers read the shipped defaults. */
+const render_settings_t*
+render_context_settings(const render_context_t* context) {
+    (void)context;
+    static const render_settings_t defaults = RENDER_SETTINGS_DEFAULT;
+    return &defaults;
+}
+
 void
 scene_draw_forget(const scene_t* scene) {
     (void)scene;

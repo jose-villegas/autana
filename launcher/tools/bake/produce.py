@@ -280,6 +280,13 @@ def produce(bake, cache, lock=None, blender=None, fresh_references=None):
             target.write_bytes(levels(fit.read_bytes(), bake.job.asset_name, bake.job.settings.lod,
                                       bake.job.settings.meshlet_triangles, start=start.read_bytes()))
             return record(bake, target, cache)
+    if bake.kind == "texture":
+        check_environment(("texture",))
+        from r3d.texture.texture_stage import texture
+        with tempfile.TemporaryDirectory() as work:
+            target = pathlib.Path(work) / bake.output
+            target.write_bytes(texture(input_file(bake, cache, lock or {}).read_bytes(), bake.job, bake.stages["textures"]))
+            return record(bake, target, cache)
     if bake.kind == "reference":
         check_environment(("mesh", "reference"))
         return produce_reference(bake, cache, fresh_references)
