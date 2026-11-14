@@ -15,6 +15,10 @@
  * generated from it. */
 #define FRAMEGEN_SHOWN_PER_DRAWN 2
 
+/* The frame cost stages a generated frame's warp and fill are timed as. */
+#define FRAMEGEN_STAGE_WARP_NAME "framegen.warp"
+#define FRAMEGEN_STAGE_FILL_NAME "framegen.fill"
+
 /* The warp's own picture at the raster's size, in PSRAM: the warped colour,
  * and the depth its splats test, R3D_DEPTH_EMPTY where nothing landed. */
 typedef struct {

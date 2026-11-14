@@ -78,6 +78,24 @@ apply_settings(void) {
 #endif
 }
 
+bool
+scene_baked_show(entity_t root, const scene_baked_t* family, scene_baked_variant_t shown, char* failure, size_t size) {
+    bool all = true;
+    for (int i = 0; i < (int)SCENE_BAKED_VARIANT_COUNT; i++) {
+        const entity_t bake = entity_find(root, name_hash(family->bakes[i]));
+        if (handle_is_none(bake)) {
+            ESP_LOGE(TAG, "the scene has no entity '%s'", family->bakes[i]);
+            if (snprintf(failure, size, "no bake '%s'", family->bakes[i]) < 0) {
+                failure[0] = '\0';
+            }
+            all = false;
+            continue;
+        }
+        entity_set_enabled(bake, i == (int)shown);
+    }
+    return all;
+}
+
 void
 scene_baked_enter(const lab_scene_t* self) {
     const scene_baked_shown_t* shown = self->data;
@@ -94,19 +112,10 @@ scene_baked_enter(const lab_scene_t* self) {
         loaded = ENTITY_NONE;
         return;
     }
-    for (int i = 0; i < (int)SCENE_BAKED_VARIANT_COUNT; i++) {
-        const entity_t bake = entity_find(loaded, name_hash(family->bakes[i]));
-        if (handle_is_none(bake)) {
-            ESP_LOGE(TAG, "the scene has no entity '%s'", family->bakes[i]);
-            if (snprintf(failure, sizeof failure, "no bake '%s'", family->bakes[i]) < 0) {
-                failure[0] = '\0';
-            }
-            continue;
-        }
-        entity_set_enabled(bake, i == (int)shown->variant);
-        if (i == (int)shown->variant && shown->textured && !renderer_set_textured(bake, true, &why)) {
-            record_failure(&why);
-        }
+    (void)scene_baked_show(loaded, family, shown->variant, failure, sizeof failure);
+    const entity_t bake = entity_find(loaded, name_hash(family->bakes[shown->variant]));
+    if (shown->textured && !handle_is_none(bake) && !renderer_set_textured(bake, true, &why)) {
+        record_failure(&why);
     }
     (void)camera_activate(render_lab.start_camera == NULL ? camera_first(loaded)
                                                           : entity_find(loaded, name_hash(render_lab.start_camera)));
