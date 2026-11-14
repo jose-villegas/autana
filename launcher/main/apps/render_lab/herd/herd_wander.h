@@ -9,10 +9,10 @@
 
 #include <stdint.h>
 
-#include "apps/render_lab/locomotion/gait.h"
 #include "math/linear/quatf.h"
 #include "math/motion/steer2f.h"
 #include "math/scalar/rng.h"
+#include "scene/animator/gait.h"
 
 /* The simulation's step; time between steps is carried. */
 #define HERD_WANDER_STEP_MS 20

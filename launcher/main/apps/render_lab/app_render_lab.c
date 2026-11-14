@@ -3,6 +3,7 @@
 
 #include "app/app.h"
 #include "apps/render_lab/ui/render_lab_settings.h"
+#include "capybara_sponza/scene_capybara_sponza.h"
 #include "console/render_lab_fly.h"
 #include "herd/scene_herd.h"
 #include "render/context/render_context.h"
@@ -29,6 +30,7 @@ static const lab_scene_t* const scenes[] = {&scene_sponza[SCENE_BAKED_FITTED_FUL
                                             &scene_sponza[SCENE_BAKED_FLAT],
                                             &scene_sponza[SCENE_BAKED_FLAT_FITTED],
                                             &scene_capybara,
+                                            &scene_capybara_sponza,
                                             &scene_water,
                                             &scene_bistro[SCENE_BAKED_FITTED_FULL],
                                             &scene_bistro_textured,
@@ -46,7 +48,7 @@ leave_scene(void) {
     render_lab_fly_stop();
 }
 
-/* Frame generation for a scene where nothing moves on its own, when render_lab.framegen asks. */
+/* Frame generation for a scene that suits it (lab_scene_t.generates_frames), when render_lab.framegen asks. */
 static void
 frame_begin(const lab_scene_t* scene) {
     render_context_set_frame_generation(render_context_main(), scene->generates_frames && render_lab_framegen_on());

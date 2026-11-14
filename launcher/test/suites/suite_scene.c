@@ -86,8 +86,11 @@
 #define PIXELS_PER_UNIT    ((float)CENTER / CAMERA_DISTANCE)
 #define CLEAR_RGB          0x336699
 #define QUAD_BYTES         (R3D_LIT_MESH_HEADER_BYTES + 88)
-#define PACK_MAX           16384
+#define PACK_MAX           32768
 #define SENTINEL           0x5A5A
+
+/* Takes of a test's lender whose place and size are kept. */
+#define LENT_TAKES_MAX     32
 
 /* Copies of one mesh a test draws, to make a culled list worth measuring. */
 #define INSTANCES_MAX      64
@@ -204,11 +207,16 @@ make_clip_entry(uint8_t* entry, anim_value_t position_type, int track_count) {
     {                                                                                                                  \
         {{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}}, { x, y, z }                                                               \
     }
-#define CAMERA_AT(x) AT(x, 0, -CAMERA_DISTANCE) /* a camera's pose, x across */
-#define MIRRORED     {{{{-1, 0, 0}, {0, 1, 0}, {0, 0, 1}}}, {0, 0, 0}}
+#define CAMERA_AT(x)   AT(x, 0, -CAMERA_DISTANCE) /* a camera's pose, x across */
+#define MIRRORED       {{{{-1, 0, 0}, {0, 1, 0}, {0, 0, 1}}}, {0, 0, 0}}
 
 /* The herd's pool: skinned copies of one mesh, all but the first hidden. */
-#define HERD_POOL    8
+#define HERD_POOL      8
+
+/* The crowd: a camera and CROWD_QUADS red quads in a row, more renderers than
+ * one partial redraw's changed boxes hold when two crowds move together. */
+#define CROWD_QUADS    9
+#define CROWD_ENTITIES (CROWD_QUADS + 1)
 
 /* What a scene entry holds, written out as tools/r3d/scene_asset.py would.
  * Every camera has a half field of view and a near plane of 1. */
@@ -219,12 +227,12 @@ typedef struct {
     struct {
         const char* name;
         scene_asset_transform_t at;
-    } entities[HERD_POOL];
+    } entities[CROWD_ENTITIES];
 
     struct {
         int entity;
         const char* mesh;
-    } renderers[2];
+    } renderers[CROWD_QUADS];
 
     struct {
         int entity;
@@ -397,6 +405,24 @@ static const scene_spec_t SCENES[] = {
      .renderer_count = 1,
      .entities = {{"mirror", MIRRORED}},
      .renderers = {{0, "red"}}},
+    /* its own camera and nine red quads side by side, a unit apart, centred */
+    {.id = "test_crowd",
+     .entity_count = CROWD_ENTITIES,
+     .renderer_count = CROWD_QUADS,
+     .camera_count = 1,
+     .entities = {{"camera", CAMERA_AT(0)},
+                  {"q0", AT(-4, 0, 0)},
+                  {"q1", AT(-3, 0, 0)},
+                  {"q2", AT(-2, 0, 0)},
+                  {"q3", AT(-1, 0, 0)},
+                  {"q4", AT(0, 0, 0)},
+                  {"q5", AT(1, 0, 0)},
+                  {"q6", AT(2, 0, 0)},
+                  {"q7", AT(3, 0, 0)},
+                  {"q8", AT(4, 0, 0)}},
+     .renderers =
+         {{1, "red"}, {2, "red"}, {3, "red"}, {4, "red"}, {5, "red"}, {6, "red"}, {7, "red"}, {8, "red"}, {9, "red"}},
+     .cameras = {{0, CLEAR_RGB, ""}}},
     {"hall",
      2,
      1,
@@ -712,6 +738,12 @@ typedef struct {
     void* lent_last;
     size_t lent_last_size;
     size_t lent_calls;
+
+    /* Where the first LENT_TAKES_MAX takes lie and how big they are. */
+    struct {
+        const uint8_t* at;
+        size_t size;
+    } lent_takes[LENT_TAKES_MAX];
 } fixture_t;
 
 static fixture_t fx;
@@ -909,7 +941,7 @@ test_a_scaled_context_preserves_the_non_square_views_destination(void) {
     render_context_t* c = render_context_main();
     for (int scale = 100; scale >= 50; scale -= 50) {
         render_context_set_scale(c, scale);
-        TEST_ASSERT_TRUE(render_context_draw(c, columns(scene)->instances, 2, &view, RGB565BE(CLEAR_RGB)));
+        TEST_ASSERT_TRUE(render_context_draw(c, scene_drawn_instances(), 2, &view, RGB565BE(CLEAR_RGB)));
         TEST_ASSERT_EQUAL_INT(SIZE, c->raster.destination_width);
         TEST_ASSERT_EQUAL_INT(SIZE / 2, c->raster.destination_height);
         TEST_ASSERT_EQUAL_INT(SIZE * scale / 100, c->raster.width);
@@ -945,6 +977,9 @@ lend(size_t size, size_t align) {
         return NULL;
     }
     fx.lent_used = at + size;
+    if (fx.lent_calls < LENT_TAKES_MAX) {
+        fx.lent_takes[fx.lent_calls] = (__typeof__(fx.lent_takes[0])){fx.lent + at, size};
+    }
     fx.lent_calls++;
     fx.lent_last = fx.lent + at;
     fx.lent_last_size = size;
@@ -1669,27 +1704,38 @@ test_enabling_carries_down_every_level_and_stops_at_a_disabled_middle(void) {
     TEST_ASSERT_FALSE(entity_is_within(cup, root));
 }
 
-/* The instances `scene` drew last, as renderer indices, so two scenes compare. */
+/* Instance `instance` of the last draw, as `scene`'s renderer index. */
 static int
 drawn_renderer(const scene_t* scene, int instance) {
-    const scene_renderer_t* r = (const scene_renderer_t*)(const void*)((const uint8_t*)scene->instances[instance].mesh
-                                                                       - offsetof(scene_renderer_t, mesh));
+    const r3d_instance_t* drawn = &scene_drawn_instances()[instance];
+    const scene_renderer_t* r =
+        (const scene_renderer_t*)(const void*)((const uint8_t*)drawn->mesh - offsetof(scene_renderer_t, mesh));
     return (int)(r - scene->renderers);
 }
 
-/* `scene`'s last frame and instances equal a fresh load put in the same state:
- * every renderer CHANGED, so the reference walks them all. */
+/* Renderers of test_family. */
+#define FAMILY_RENDERERS_MAX 4
+
+/* `scene`'s last frame and instances equal a fresh load put in the same state,
+ * drawn with `root` hidden: every renderer CHANGED, so the reference walks
+ * them all. */
 static void
 assert_draws_as_fresh(entity_t root, int drawn) {
     memcpy(fx.held, fx.pixels, sizeof(*fx.pixels) * SIZE * SIZE);
-    const entity_t fresh_root = show("test_family");
     const scene_t* scene = columns(root);
+    TEST_ASSERT_TRUE(drawn <= FAMILY_RENDERERS_MAX);
+    int held[FAMILY_RENDERERS_MAX];
+    for (int i = 0; i < drawn; i++) {
+        held[i] = drawn_renderer(scene, i);
+    }
+    const entity_t fresh_root = show("test_family");
     const scene_t* fresh = columns(fresh_root);
     for (int e = 0; e < scene->asset.entity_count; e++) {
         const entity_t from = entity_at(root, e), to = entity_at(fresh_root, e);
         transform_set_local(to, transform_local(from));
         entity_set_enabled(to, entity_enabled(from));
     }
+    entity_set_enabled(root, false);
     frame(0);
     TEST_ASSERT_EQUAL_HEX16_ARRAY(fx.pixels, fx.held, SIZE * SIZE);
     int count = 0;
@@ -1698,12 +1744,13 @@ assert_draws_as_fresh(entity_t root, int drawn) {
     }
     TEST_ASSERT_EQUAL_INT(drawn, count);
     for (int i = 0; i < count; i++) {
-        const int r = drawn_renderer(scene, i);
+        const int r = held[i];
         TEST_ASSERT_EQUAL_INT(drawn_renderer(fresh, i), r);
         TEST_ASSERT_EQUAL_MEMORY(&fresh->renderers[r].model, &scene->renderers[r].model, sizeof(mat4f_t));
         TEST_ASSERT_EQUAL_MEMORY(&fresh->renderers[r].world_bounds, &scene->renderers[r].world_bounds, sizeof(box3f_t));
     }
     scene_release(fresh_root);
+    entity_set_enabled(root, true);
     TEST_ASSERT_TRUE(camera_activate(camera_first(root)));
 }
 
@@ -2941,8 +2988,10 @@ test_with_nothing_enabled_the_picture_is_left_alone(void) {
     TEST_ASSERT_EQUAL_HEX16(SENTINEL, pixel(0.0F));
 }
 
+/* Every ready scene draws through the active camera: switching cameras changes
+ * the view, not which scenes are drawn, and a disabled root hides its scene. */
 static void
-test_two_scenes_are_held_at_once_and_the_active_camera_decides_which_is_seen(void) {
+test_two_scenes_are_held_at_once_and_both_draw_through_the_active_camera(void) {
     fixture();
     entity_t pair = show("test_pair");
     entity_t solo = load("test_solo");
@@ -2954,12 +3003,286 @@ test_two_scenes_are_held_at_once_and_the_active_camera_decides_which_is_seen(voi
     render_context_set_scale(render_context_main(), 100);
     frame(16);
     TEST_ASSERT_EQUAL_HEX16(RGB565BE(0x0000FF), pixel(0.0F));
-    TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(4.0F)); /* the other scene's quads are not drawn */
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0x00FF00), pixel(4.0F)); /* the other scene's quad */
+    entity_set_enabled(pair, false);
+    frame(16);
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0x0000FF), pixel(0.0F));
+    TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(4.0F)); /* its root disabled, the scene is hidden */
+    entity_set_enabled(pair, true);
     entity_set_enabled(entity_find(pair, name_hash("red")), false);
     TEST_ASSERT_TRUE(camera_activate(camera_first(pair)));
     render_context_set_scale(render_context_main(), 100);
     frame(16);
-    TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(0.0F)); /* each scene kept its own state */
+    /* Each scene kept its own state: red stays disabled, and the other
+     * scene's quad behind it shows. */
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0x0000FF), pixel(0.0F));
+}
+
+/* Copies draw from every drawn scene, not the active camera's alone. */
+static void
+test_a_scene_without_the_active_camera_draws_its_copies(void) {
+    fixture();
+    const batch_case_t spec = {.id = "valid", .at = SIZE_MAX, .turns = BATCH_COPIES};
+    make_batch_pack(&spec);
+    const entity_t seen = load("test_batch");
+    const entity_t other = load("test_batch");
+    TEST_ASSERT_TRUE(camera_activate(camera_first(seen)));
+    render_context_set_scale(render_context_main(), 100);
+    frame(16);
+    TEST_ASSERT_EQUAL_INT(2, render_context_main()->raster.batch_count);
+    entity_set_enabled(other, false);
+    frame(16);
+    TEST_ASSERT_EQUAL_INT(1, render_context_main()->raster.batch_count);
+}
+
+/* Moved down past a quad's height, so the twins share no rows: a partial
+ * redraw of one leaves the other's rows alone. */
+#define SWAPPED_SCENE_DROP 3.0F
+
+/* Frames shown until a scene's first frames have drawn every renderer where it is. */
+#define FRAMES_TO_SETTLE   3
+
+/* A renderer that leaves one scene as its twin, with the same index, joins
+ * another is a changed drawn set: the frame is drawn whole, as a forgotten
+ * context draws it. */
+static void
+test_a_renderer_swapped_for_its_twin_in_another_scene_redraws_the_frame(void) {
+    fixture();
+    const entity_t pair = show("test_pair"); /* its camera; its quads hidden, so the twins show */
+    entity_set_enabled(entity_find(pair, name_hash("red")), false);
+    entity_set_enabled(entity_find(pair, name_hash("green")), false);
+    const entity_t first = load("test_solo");
+    const entity_t second = load("test_solo");
+    transformf_t dropped = transform_local(second);
+    transformf_set_position(&dropped, vec3f_add(dropped.position, (vec3f_t){0, -SWAPPED_SCENE_DROP, 0}));
+    transform_set_local(second, dropped);
+    /* Each drawn alone first, so each was last drawn where it is. */
+    for (int shown = 0; shown < 2; shown++) {
+        entity_set_enabled(first, shown == 1);
+        entity_set_enabled(second, shown == 0);
+        for (int i = 0; i < FRAMES_TO_SETTLE; i++) {
+            frame(0);
+        }
+    }
+    entity_set_enabled(first, false);
+    entity_set_enabled(second, true);
+    frame(0);
+    memcpy(fx.held, fx.pixels, sizeof(*fx.pixels) * SIZE * SIZE);
+    render_context_forget(render_context_main());
+    frame(0);
+    TEST_ASSERT_EQUAL_HEX16_ARRAY(fx.pixels, fx.held, SIZE * SIZE);
+}
+
+/* A frame drawn over the picture the last left, as a screen is: nothing is
+ * cleared first, so rows a partial redraw leaves alone keep what they held. */
+static void
+frame_over_the_last(void) {
+    scene_compose(0, 0, &fx.target);
+}
+
+/* Draws every renderer where it is, for the frames after to be partial ones. */
+static void
+settle_the_picture(void) {
+    for (int i = 0; i < SIZE * SIZE; i++) {
+        fx.pixels[i] = SENTINEL;
+    }
+    for (int i = 0; i < FRAMES_TO_SETTLE; i++) {
+        frame_over_the_last();
+    }
+}
+
+/* Whether the picture a partial redraw left is the one a whole draw makes. */
+static void
+assert_the_picture_is_the_whole_draw(void) {
+    memcpy(fx.held, fx.pixels, sizeof(*fx.pixels) * SIZE * SIZE);
+    render_context_forget(render_context_main());
+    frame_over_the_last();
+    TEST_ASSERT_EQUAL_HEX16_ARRAY(fx.held, fx.pixels, SIZE * SIZE);
+}
+
+static int
+rows_the_last_frame_drew(void) {
+    const render_context_frame_t drawn = render_context_frame(render_context_main());
+    return drawn.unchanged ? 0 : drawn.rows_end - drawn.rows_first;
+}
+
+static void
+put_at(entity_t entity, float x, float y) {
+    transformf_t at = transform_local(entity);
+    transformf_set_position(&at, (vec3f_t){x, y, at.position.z});
+    transform_set_local(entity, at);
+}
+
+/* How far up a mover goes, a unit a frame. */
+#define MOVER_STEPS 4
+
+/* Two scenes whose quads share rows, drawn through the first's camera; the
+ * second is moved back so the two never tie in depth. One quad moves over
+ * frames, and each frame is the whole draw's picture from fewer rows. */
+static void
+assert_partial_frames_of_a_mover_match_the_whole_draw(bool in_second_scene) {
+    fixture();
+    const entity_t first = show("test_pair");
+    const entity_t second = load("test_solo");
+    transformf_t behind = transform_local(second);
+    transformf_set_position(&behind, vec3f_add(behind.position, vec3f_unit_z()));
+    transform_set_local(second, behind);
+    const entity_t mover = entity_find(in_second_scene ? second : first, name_hash(in_second_scene ? "blue" : "red"));
+    settle_the_picture();
+    for (int step = 1; step <= MOVER_STEPS; step++) {
+        put_at(mover, 0.0F, (float)step);
+        frame_over_the_last();
+        const int rows = rows_the_last_frame_drew();
+        TEST_ASSERT_GREATER_THAN_INT(0, rows);
+        TEST_ASSERT_LESS_THAN_INT(SIZE, rows);
+        assert_the_picture_is_the_whole_draw();
+    }
+}
+
+/* A renderer of a scene that is not the active camera's moves over frames,
+ * over rows the first scene's renderer also covers: the rows it changes are
+ * redrawn, and the picture is a whole draw's. */
+static void
+test_a_renderer_moving_in_a_second_scene_redraws_its_rows_as_a_whole_draw_does(void) {
+    assert_partial_frames_of_a_mover_match_the_whole_draw(true);
+}
+
+static void
+test_a_renderer_moving_in_the_cameras_scene_redraws_its_rows_as_a_whole_draw_does(void) {
+    assert_partial_frames_of_a_mover_match_the_whole_draw(false);
+}
+
+/* Two crowds, the second drawn through the first's camera, settled, then
+ * `in_first` quads of the first and `in_second` of the second moved up. */
+static void
+move_crowds_up(int in_first, int in_second) {
+    fixture();
+    const entity_t first = show("test_crowd");
+    const entity_t second = load("test_crowd");
+    settle_the_picture();
+    const entity_t crowds[] = {first, second};
+    const int moved[] = {in_first, in_second};
+    for (int c = 0; c < 2; c++) {
+        for (int q = 0; q < moved[c]; q++) {
+            put_at(entity_at(crowds[c], 1 + q), (float)(q - (CROWD_QUADS / 2)), 1.0F);
+        }
+    }
+    frame_over_the_last();
+}
+
+/* The changed renderers of every drawn scene count together against the
+ * cap, though neither scene's alone is over it: the frame is drawn whole. */
+static void
+test_more_changed_renderers_than_the_cap_over_two_scenes_draws_every_row(void) {
+    TEST_ASSERT_TRUE(CROWD_QUADS <= RENDER_PARTIAL_CHANGES_MAX);
+    move_crowds_up(CROWD_QUADS, RENDER_PARTIAL_CHANGES_MAX - CROWD_QUADS + 1);
+    TEST_ASSERT_EQUAL_INT(SIZE, rows_the_last_frame_drew());
+    assert_the_picture_is_the_whole_draw();
+}
+
+/* Exactly the cap changed, over two scenes: still a partial redraw. */
+static void
+test_as_many_changed_renderers_as_the_cap_over_two_scenes_redraws_only_their_rows(void) {
+    move_crowds_up(CROWD_QUADS, RENDER_PARTIAL_CHANGES_MAX - CROWD_QUADS);
+    const int rows = rows_the_last_frame_drew();
+    TEST_ASSERT_GREATER_THAN_INT(0, rows);
+    TEST_ASSERT_LESS_THAN_INT(SIZE, rows);
+    assert_the_picture_is_the_whole_draw();
+}
+
+/* Across, in units from the centre: the pair's red at 0 and green at 4, and
+ * the family's red at -2 and green at 2. */
+static void
+assert_the_pair_alone(void) {
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(0.0F));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0x00FF00), pixel(4.0F));
+    TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(-2.0F));
+    TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(2.0F));
+}
+
+static void
+assert_the_pair_and_the_family(void) {
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(0.0F));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0x00FF00), pixel(4.0F));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(-2.0F));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0x00FF00), pixel(2.0F));
+}
+
+/* Bytes from the drawn list to the end of the lender's take it lies in. */
+static size_t
+drawn_list_room(void) {
+    const uint8_t* list = (const uint8_t*)scene_drawn_instances();
+    for (size_t i = 0; i < fx.lent_calls && i < LENT_TAKES_MAX; i++) {
+        const uint8_t* end = fx.lent_takes[i].at + fx.lent_takes[i].size;
+        if (list >= fx.lent_takes[i].at && list < end) {
+            return (size_t)(end - list);
+        }
+    }
+    return 0;
+}
+
+/* The one list the raster draws holds every drawn scene's renderers: it grows
+ * when a scene joins after a frame, drops when one goes while the other
+ * draws, and is made again for the next frame. A lender hands it out, so the
+ * take the list lies in is room for every instance drawn. */
+static void
+test_the_drawn_list_follows_the_scenes_that_join_and_leave(void) {
+    fixture();
+    fx.lent = memory_alloc(LENT_BYTES, MEMORY_APP);
+    TEST_ASSERT_NOT_NULL(fx.lent);
+    (void)scene_set_take(lend);
+    show("test_pair");
+    frame(16);
+    assert_the_pair_alone();
+    TEST_ASSERT_EQUAL_INT(2, render_context_main()->raster.instance_count);
+    TEST_ASSERT_TRUE(drawn_list_room() >= 2 * sizeof(r3d_instance_t));
+    for (int round = 0; round < 2; round++) {
+        const entity_t family = load("test_family");
+        frame(16);
+        assert_the_pair_and_the_family();
+        TEST_ASSERT_EQUAL_INT(4, render_context_main()->raster.instance_count);
+        TEST_ASSERT_TRUE(drawn_list_room() >= 4 * sizeof(r3d_instance_t));
+        scene_release(family);
+        frame(16);
+        assert_the_pair_alone();
+        TEST_ASSERT_EQUAL_INT(2, render_context_main()->raster.instance_count);
+        TEST_ASSERT_TRUE(drawn_list_room() >= 2 * sizeof(r3d_instance_t));
+    }
+}
+
+/* No memory for the list: the frame is left blank and logged, nothing is
+ * drawn into the picture, and the next frame that finds memory draws. */
+static void
+test_a_drawn_list_with_no_memory_leaves_the_frame_blank_and_the_next_draws(void) {
+    fixture();
+    show("test_pair");
+    scene_fail_allocation_after = 0;
+    frame(16);
+    scene_fail_allocation_after = -1;
+    TEST_ASSERT_EQUAL_HEX16(SENTINEL, pixel(0.0F));
+    TEST_ASSERT_EQUAL_HEX16(SENTINEL, pixel(4.0F));
+    frame(16);
+    assert_the_pair_alone();
+}
+
+/* The same when a second scene's renderers outgrow a list already drawn. */
+static void
+test_a_drawn_list_that_cannot_grow_leaves_the_frame_blank_and_the_next_draws(void) {
+    fixture();
+    show("test_pair");
+    frame(16);
+    assert_the_pair_alone();
+    const entity_t family = load("test_family");
+    scene_fail_allocation_after = 0;
+    frame(16);
+    scene_fail_allocation_after = -1;
+    TEST_ASSERT_EQUAL_HEX16(SENTINEL, pixel(0.0F));
+    TEST_ASSERT_EQUAL_HEX16(SENTINEL, pixel(-2.0F));
+    frame(16);
+    assert_the_pair_and_the_family();
+    scene_release(family);
+    frame(16);
+    assert_the_pair_alone();
 }
 
 static void
@@ -4268,7 +4591,7 @@ test_skinned_scene_draws_clip_output_and_reskins_from_bind(void) {
             TEST_ASSERT_EQUAL_INT16(step - 1, drawn->nodes[0].bounds.lo.x);
             TEST_ASSERT_EQUAL_INT16(step + 1, drawn->nodes[0].bounds.hi.x);
             frame(0);
-            TEST_ASSERT_EQUAL_PTR(drawn, columns(scene)->instances[0].mesh);
+            TEST_ASSERT_EQUAL_PTR(drawn, scene_drawn_instances()[0].mesh);
             const int shifted = CENTER + step * SIZE / 20;
             TEST_ASSERT_EQUAL_HEX16(red, fx.pixels[CENTER * SIZE + shifted]);
         }
@@ -4292,7 +4615,7 @@ test_a_skinned_renderer_s_world_box_follows_its_refit(void) {
         TEST_ASSERT_FLOAT_WITHIN(1e-5F, (float)(step - 1), row->world_bounds.lo.x);
         TEST_ASSERT_FLOAT_WITHIN(1e-5F, (float)(step + 1), row->world_bounds.hi.x);
         frame(0);
-        TEST_ASSERT_EQUAL_PTR(&row->world_bounds, columns(scene)->instances[0].world_bounds);
+        TEST_ASSERT_EQUAL_PTR(&row->world_bounds, scene_drawn_instances()[0].world_bounds);
     }
 }
 
@@ -4390,7 +4713,7 @@ test_property_animation_moves_a_drawn_entity(void) {
     TEST_ASSERT_EQUAL_FLOAT(RIG_TRAVEL / 2, transform_local(entity).position.x);
     TEST_ASSERT_EQUAL_HEX16(RGB565BE(CLEAR_RGB), fx.pixels[CENTER * SIZE + CENTER]);
     TEST_ASSERT_EQUAL_HEX16(red, fx.pixels[CENTER * SIZE + CENTER + GREEN_PIXEL_OFFSET]);
-    TEST_ASSERT_EQUAL_FLOAT(RIG_TRAVEL / 2, columns(scene)->instances[0].model->m[0][3]);
+    TEST_ASSERT_EQUAL_FLOAT(RIG_TRAVEL / 2, scene_drawn_instances()[0].model->m[0][3]);
 }
 
 static void
@@ -4516,7 +4839,7 @@ test_set_transform_reads_back_exactly_and_drives_placement(void) {
     TEST_ASSERT_EQUAL_MEMORY(&pose, &stored, sizeof pose);
     const mat4f_t want = transformf_compute_matrix(&pose);
     frame(0);
-    const mat4f_t* model = columns(scene)->instances[0].model;
+    const mat4f_t* model = scene_drawn_instances()[0].model;
     TEST_ASSERT_EQUAL_MEMORY(&want, model, sizeof want);
 }
 
@@ -5406,6 +5729,26 @@ test_light_transfer_allocation_refuses_without_changes(void) {
     scene_fail_allocation_after = -1;
 }
 
+/* A scene whose root is disabled costs nothing: while another scene's camera
+ * draws, it is neither resolved (its changes stay DIRTY) nor posed. */
+static void
+test_a_disabled_scene_is_not_resolved_or_posed(void) {
+    scene_fail_allocation_after = -1;
+    entity_t scene = rig_fixture("rig.skin2", NULL);
+    const entity_t entity = entity_find(scene, name_hash("red"));
+    entity_set_enabled(scene, false);
+    (void)show("test_sky");
+    transformf_t pose = transform_local(entity);
+    pose.rotation = quatf_from_euler((vec3f_t){MATH_PI, 0, 0});
+    transform_set_local(entity, pose);
+    for (int frame = 0; frame < FRAMES_TO_SETTLE; frame++) {
+        scene_render(0, 0, SIZE, SIZE);
+        TEST_ASSERT_FALSE(columns(scene)->animators[row_of(entity)].posed);
+    }
+    TEST_ASSERT_TRUE((columns(scene)->flags[row_of(entity)] & SCENE_FLAG_DIRTY) != 0);
+    release_fixture();
+}
+
 static void
 test_idle_lit_skin_skips_and_transform_changes_run(void) {
     scene_fail_allocation_after = -1;
@@ -5421,7 +5764,8 @@ test_idle_lit_skin_skips_and_transform_changes_run(void) {
         scene_render(0, 0, SIZE, SIZE);
         TEST_ASSERT_FALSE(columns(scene)->animators[row_of(entity)].posed);
     }
-    TEST_ASSERT_TRUE((columns(scene)->flags[row_of(entity)] & SCENE_FLAG_DIRTY) != 0);
+    /* Drawn through the other scene's camera, the rig is resolved: nothing is left DIRTY. */
+    TEST_ASSERT_TRUE((columns(scene)->flags[row_of(entity)] & SCENE_FLAG_DIRTY) == 0);
     transformf_t pose = transform_local(light);
     pose.rotation = quatf_from_euler((vec3f_t){MATH_PI, 0, 0});
     transform_set_local(light, pose);
@@ -7232,6 +7576,7 @@ run_scene_suite(void) {
     RUN_TEST(test_property_transform_relights_paused_skin);
     RUN_TEST(test_disabled_light_skin_and_two_object_rotations);
     RUN_TEST(test_light_transfer_allocation_refuses_without_changes);
+    RUN_TEST(test_a_disabled_scene_is_not_resolved_or_posed);
     RUN_TEST(test_idle_lit_skin_skips_and_transform_changes_run);
     RUN_TEST(test_light_attachment_defaults_refusals_and_capacity);
     RUN_TEST(test_scene_light_rotation_shades_only_skin_and_matches_kernel);
@@ -7366,7 +7711,16 @@ run_scene_suite(void) {
     RUN_TEST(test_a_parent_move_updates_its_child_s_world_box);
     RUN_TEST(test_a_camera_rolled_about_its_view_axis_draws_the_picture_turned);
     RUN_TEST(test_with_nothing_enabled_the_picture_is_left_alone);
-    RUN_TEST(test_two_scenes_are_held_at_once_and_the_active_camera_decides_which_is_seen);
+    RUN_TEST(test_two_scenes_are_held_at_once_and_both_draw_through_the_active_camera);
+    RUN_TEST(test_a_scene_without_the_active_camera_draws_its_copies);
+    RUN_TEST(test_a_renderer_swapped_for_its_twin_in_another_scene_redraws_the_frame);
+    RUN_TEST(test_a_renderer_moving_in_a_second_scene_redraws_its_rows_as_a_whole_draw_does);
+    RUN_TEST(test_a_renderer_moving_in_the_cameras_scene_redraws_its_rows_as_a_whole_draw_does);
+    RUN_TEST(test_more_changed_renderers_than_the_cap_over_two_scenes_draws_every_row);
+    RUN_TEST(test_as_many_changed_renderers_as_the_cap_over_two_scenes_redraws_only_their_rows);
+    RUN_TEST(test_the_drawn_list_follows_the_scenes_that_join_and_leave);
+    RUN_TEST(test_a_drawn_list_with_no_memory_leaves_the_frame_blank_and_the_next_draws);
+    RUN_TEST(test_a_drawn_list_that_cannot_grow_leaves_the_frame_blank_and_the_next_draws);
     RUN_TEST(test_unloading_the_active_scene_stops_drawing_and_leaves_the_other_alone);
     RUN_TEST(test_activating_a_camera_the_scene_does_not_have_changes_nothing);
     RUN_TEST(test_the_active_camera_flies_its_path_by_the_time_the_shell_gives_it);
