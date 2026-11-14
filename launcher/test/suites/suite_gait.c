@@ -1,5 +1,5 @@
 /*
- * Portable suite: locomotion/gait.h. A speed picks the step whose range holds
+ * Portable suite: scene/animator/gait.h. A speed picks the step whose range holds
  * it, the rate keeps the feet on the ground inside the clamp, and a held step
  * survives a speed inside its band.
  */
@@ -7,7 +7,7 @@
 #include "testkit/suite.h"
 #include "unity.h"
 
-#include "apps/render_lab/locomotion/gait.h"
+#include "scene/animator/gait.h"
 
 #define TOLERANCE 1.0E-5F
 #define NO_STEP   (-1)
@@ -102,6 +102,32 @@ test_a_slow_walker_walks(void) {
     TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, GAIT.rate_min, p.rate);
 }
 
+/* A speed at the stop speed itself stands, fresh or out of a walk, and just
+ * past it walks; a scripted stop of exactly 0 with a stop speed of 0 too. */
+static void
+test_the_stop_speed_itself_stands(void) {
+    const gait_pick_t walking = fresh(STEPS[1].ground_mps);
+    TEST_ASSERT_EQUAL_INT(0, fresh(GAIT.stop_mps).step);
+    TEST_ASSERT_EQUAL_INT(0, gait_pick(&GAIT, walking, GAIT.stop_mps).step);
+    TEST_ASSERT_EQUAL_INT(1, fresh(GAIT.stop_mps + PAST).step);
+    gait_t scripted = GAIT;
+    scripted.stop_mps = 0.0F;
+    const gait_pick_t none = {NO_STEP, 1.0F};
+    TEST_ASSERT_EQUAL_INT(0, gait_pick(&scripted, none, 0.0F).step);
+    TEST_ASSERT_EQUAL_INT(0, gait_pick(&scripted, walking, 0.0F).step);
+    TEST_ASSERT_EQUAL_INT(1, gait_pick(&scripted, none, PAST).step);
+}
+
+/* A gait of one still step, as an entity with only an idle clip, stands at
+ * any speed, and so does any gait at a speed that is not a number. */
+static void
+test_a_pick_never_leaves_the_steps(void) {
+    const gait_t idle = {.steps = STEPS, .count = 1, .rate_min = 0.75F, .rate_max = 1.4F, .stop_mps = 0.05F};
+    const gait_pick_t none = {NO_STEP, 1.0F};
+    TEST_ASSERT_EQUAL_INT(0, gait_pick(&idle, none, idle.stop_mps + PAST).step);
+    TEST_ASSERT_LESS_THAN_INT(STEP_COUNT, gait_pick(&GAIT, none, NAN).step);
+}
+
 static void
 test_a_held_step_survives_inside_its_band_and_leaves_past_it(void) {
     const gait_pick_t walking = fresh(STEPS[1].ground_mps);
@@ -121,6 +147,8 @@ run_gait_suite(void) {
     RUN_TEST(test_the_rate_matches_the_ground_speed_inside_the_clamp);
     RUN_TEST(test_a_still_step_plays_at_rate_one);
     RUN_TEST(test_a_slow_walker_walks);
+    RUN_TEST(test_the_stop_speed_itself_stands);
+    RUN_TEST(test_a_pick_never_leaves_the_steps);
     RUN_TEST(test_a_held_step_survives_inside_its_band_and_leaves_past_it);
 }
 

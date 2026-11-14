@@ -5,10 +5,9 @@ holes the warp leaves and the reference scorer's numbers for the warp (each
 hole fill) against repeating the last frame, and one scene's frames along its
 path. From the board captures (the render lab's framegen_perf and
 framegen_modes suites): what a generated frame costs, where the warp's time
-goes, each scene played in every mode, and the pricing rule drawn over the
-measured generated frames.
+goes, and each scene played in every mode.
 
-    framegen_report.py --tables DIR --path-plot PNG --pricing-plot PNG --plot-scene KEY --plot-size WxH
+    framegen_report.py --tables DIR --path-plot PNG --plot-scene KEY --plot-size WxH
         --board LOG [--board LOG ...] CSV [CSV ...]
 
 Needs matplotlib, Pillow and numpy (tools/r3d/requirements.txt).
@@ -25,12 +24,9 @@ import numpy as np
 TOOLS = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(TOOLS))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from build.c_header import read_define  # noqa: E402
 from docs.plot_style import FIGURE_SIZE, SLOTS, figure, save_themed_plot  # noqa: E402
 from framegen_score import DISPLAY_STEP_MS  # noqa: E402
 
-FRAMEGEN_HEADER = TOOLS.parent / "main/render/framegen/framegen.h"
-SHOWN_PER_DRAWN = read_define(FRAMEGEN_HEADER, "FRAMEGEN_SHOWN_PER_DRAWN")
 # The worst frames are the ones a viewer sees; the mean hides them.
 WORST_PERCENTILE = 95
 US_PER_MS = 1000
@@ -38,9 +34,6 @@ MS_PER_SECOND = 1000
 # A board line: its kind, the scene, an optional size, then name=value fields (a/b is mean/worst).
 BOARD_LINE = re.compile(r"(?P<kind>framegen|framegen_profile|framegen_modes): (?P<scene>\S+)"
                         r"(?: (?P<size>\d+x\d+))? (?P<fields>\S+=.*)$")
-# The pricing figure: generated frame costs up to this share of the shown frame's budget.
-PRICING_SPAN = 1.5
-PRICING_SAMPLES = 100
 
 
 def read_rows(paths):
@@ -157,37 +150,10 @@ def modes_table(rows):
     return "\n".join(lines) + "\n"
 
 
-def drawn_budget(shown_ms, generated):
-    """The pricing rule: what a drawn frame may spend, never less than one shown frame's budget."""
-    return np.maximum(SHOWN_PER_DRAWN * shown_ms - (SHOWN_PER_DRAWN - 1) * generated, shown_ms)
-
-
-def pricing_plot(rows, scene, budgets_ms, path):
-    """The drawn frame's budget against the generated frame's cost, per shown
-    budget, with `scene`'s measured generated frames marked."""
-    fig = figure(FIGURE_SIZE)
-    axis = fig.add_subplot()
-    for slot, shown_ms in enumerate(budgets_ms):
-        g = np.linspace(0, PRICING_SPAN * shown_ms, PRICING_SAMPLES)
-        axis.plot(g, drawn_budget(shown_ms, g), color=SLOTS[slot], label="budget %d ms per shown frame" % shown_ms)
-    for (row_scene, size), f in rows.items():
-        if row_scene != scene:
-            continue
-        g = generated_ms(f)
-        axis.axvline(g, color=SLOTS[len(budgets_ms)], linewidth=0.8)
-        axis.annotate(size, (g, 0), rotation=90, va="bottom", ha="right", fontsize="x-small")
-    axis.set_ylim(bottom=0)
-    axis.set_xlim(left=0)
-    axis.set_xlabel("generated frame cost (ms)")
-    axis.set_ylabel("budget of each drawn frame (ms)")
-    save_themed_plot(fig, axis, path, "a drawn frame gets what its generated frame leaves")
-
-
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--tables", type=pathlib.Path, required=True)
     parser.add_argument("--path-plot", type=pathlib.Path, required=True)
-    parser.add_argument("--pricing-plot", type=pathlib.Path, required=True)
     parser.add_argument("--plot-scene", required=True)
     parser.add_argument("--plot-size", required=True)
     parser.add_argument("--board", action="append", default=[])
@@ -201,8 +167,6 @@ def main():
     for name, text in tables.items():
         (args.tables / (name + ".md")).write_text(text, newline="\n")
     path_plot(groups, args.plot_scene, args.plot_size, args.path_plot)
-    budgets = sorted({int(f["budget_ms"]) for f in board["framegen_modes"].values() if f["budget_ms"]}, reverse=True)
-    pricing_plot(board["framegen"], args.plot_scene, budgets, args.pricing_plot)
 
 
 if __name__ == "__main__":

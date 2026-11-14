@@ -7,6 +7,7 @@
  */
 #pragma once
 
+#include <stddef.h>
 #include <stdint.h>
 
 #include "baked_families.h"
@@ -22,6 +23,10 @@ typedef struct {
     bool textured;
 } scene_baked_shown_t;
 
+/* Enables `family`'s `shown` bake under `root` and disables the others;
+ * false, with `failure` saying which, when a bake is missing. */
+bool scene_baked_show(entity_t root, const scene_baked_t* family, scene_baked_variant_t shown, char* failure,
+                      size_t size);
 /* `self->data` is a scene_baked_shown_t. Loads its family's scene and enables
  * that bake alone. */
 void scene_baked_enter(const lab_scene_t* self);
@@ -30,8 +35,7 @@ void scene_baked_exit(void);
 /* The camera the scene follows, flying its clip. */
 lab_path_t scene_baked_path(void);
 
-/* The menu rows of a baked scene: FRAME GEN, whose warp suits a scene whose
- * objects do not move on their own. */
+/* The menu rows of a baked scene: FRAME GEN. */
 static inline void
 scene_baked_controls(int width) {
     bool generating = render_lab_framegen_on();

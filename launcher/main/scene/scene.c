@@ -48,14 +48,12 @@ static const struct {
              PART(flags, PER_ENTITY),
              PART(locals, PER_ENTITY),
              PART(world_slots, PER_ENTITY),
-             PART(instances, PER_RENDERER),
              PART(animators, PER_ENTITY),
              PART(skinned_renderers, PER_ENTITY),
              PART(lights, PER_ENTITY),
              PART(staged, PER_ENTITY),
              PART(active_renderers, PER_RENDERER),
-             PART(batches, PER_BATCH),
-             PART(batch_draws, PER_BATCH)};
+             PART(batches, PER_BATCH)};
 
 /* Carves the scene's arrays after its header, each on its own alignment, and
  * points them into `scene`'s block; a NULL scene only measures. Returns the

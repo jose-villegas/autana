@@ -123,9 +123,8 @@ The code is `launcher/main/render/resolution/`. Resolution selection is a settin
 
 An app opts in with `render_context_set_dynamic_resolution()` ([Mesh-Rendering.md](../Mesh-Rendering.md#the-render-context)); with no call every frame draws at the context's fixed scale.
 
-With [frame generation](Frame-Generation.md#with-dynamic-resolution) on, the
-budget stays the cost of a shown frame, and each drawn frame is priced for
-itself and the frame generated from it.
+With [frame generation](Frame-Generation.md#with-dynamic-resolution) on, a
+drawn frame is priced at the shown-frame budget, as without it.
 
 | Policy | Chooses | From | Guards against flapping |
 |---|---|---|---|

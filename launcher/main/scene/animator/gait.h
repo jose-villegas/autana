@@ -35,6 +35,11 @@ typedef struct {
 /* Orders `count` steps slowest first, as gait_t takes them. */
 void gait_sort(gait_step_t* steps, int count);
 
+/* The entity's clips as steps into `out`, up to `capacity`, slowest first:
+ * each at the ground speed its import measured times `scale`, those faster
+ * than `max_mps` left out. Returns the count. */
+int gait_steps_from_clips(entity_t entity, float scale, float max_mps, gait_step_t* out, int capacity);
+
 /* The step for `speed` (metres per second), holding `current` inside its band,
  * and the rate that matches the step's ground speed to `speed`, clamped;
  * a still step plays at 1. current.step < 0 picks without holding. */
@@ -43,3 +48,8 @@ gait_pick_t gait_pick(const gait_t* g, gait_pick_t current, float speed);
 /* Puts `now` on the entity's animator: a cross-fade into its clip when the
  * step changed from `was`, and its rate always. */
 void gait_apply(entity_t entity, const gait_t* g, gait_pick_t was, gait_pick_t now);
+
+/* Puts `pick` on the entity's animator held: its clip cut in over `cut_ms`
+ * at its rate, `clip_s` seconds in (wrapped to the clip), and paused, for a
+ * seek; unpausing plays on from there. */
+void gait_hold(entity_t entity, const gait_t* g, gait_pick_t pick, float clip_s, uint32_t cut_ms);

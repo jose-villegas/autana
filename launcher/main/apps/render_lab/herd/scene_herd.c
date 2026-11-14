@@ -14,7 +14,6 @@
 #include "app/app.h"
 #include "apps/render_lab/capybara_content.h"
 #include "apps/render_lab/herd/herd_wander.h"
-#include "apps/render_lab/locomotion/gait.h"
 #include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/render_lab_view.h"
 #include "core/tune.h"
@@ -28,6 +27,7 @@
 #include "profile/frame_cost.h"
 #include "render/context/render_context.h"
 #include "scene/animator/animator.h"
+#include "scene/animator/gait.h"
 #include "scene/camera/camera.h"
 #include "scene/entity/entity.h"
 #include "scene/renderer/renderer.h"
@@ -130,12 +130,7 @@ show_copies(void) {
 static void
 build_walk(void) {
     const transformf_t placed = transform_local(copies[0]);
-    const int clips = animator_clip_count(copies[0]);
-    const int count = clips < HERD_GAIT_STEPS_MAX ? clips : HERD_GAIT_STEPS_MAX;
-    for (int i = 0; i < count; i++) {
-        steps[i] = (gait_step_t){.clip = i, .ground_mps = animator_clip_ground_mps(copies[0], i) * placed.scale.x};
-    }
-    gait_sort(steps, count);
+    const int count = gait_steps_from_clips(copies[0], placed.scale.x, INFINITY, steps, HERD_GAIT_STEPS_MAX);
     gait = (gait_t){.steps = steps,
                     .count = count,
                     .rate_min = HERD_GAIT_RATE_MIN,
@@ -213,15 +208,7 @@ seek_walk(uint32_t t_ms) {
     place_walkers();
     for (int i = 0; i < wander.count; i++) {
         const herd_walker_t* walker = &wander.walker[i];
-        const int clip = gait.steps[walker->gait.step].clip;
-        const uint32_t duration_ms = animator_clip_duration_ms(copies[i], clip);
-        (void)animator_play(copies[i], clip, CAPYBARA_CLIP_CUT_MS);
-        (void)animator_set_speed(copies[i], ANIMATOR_CURRENT, walker->gait.rate);
-        if (duration_ms > 0) {
-            (void)animator_seek(copies[i], ANIMATOR_CURRENT,
-                                (uint32_t)lroundf(walker->clip_s * (float)MATH_MS_PER_S) % duration_ms);
-        }
-        (void)animator_set_paused(copies[i], ANIMATOR_CURRENT, true);
+        gait_hold(copies[i], &gait, walker->gait, walker->clip_s, CAPYBARA_CLIP_CUT_MS);
         applied[i] = walker->gait;
     }
     held = true;

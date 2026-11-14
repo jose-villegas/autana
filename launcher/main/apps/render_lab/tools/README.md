@@ -308,7 +308,7 @@ camera, so the per-copy costs of posing, skinning and culling all show.
 |---|---|
 | Each copy's leg: a target and speed, or a graze | `herd/herd_wander.h` |
 | Keep apart, look ahead, stay inside; then arrive with what acceleration is left | `math/motion/steer2f.h` ([Motion](../../../../../docs/math/Motion.md)) |
-| The clip and rate for the copy's speed | `locomotion/gait.h`, from each clip's `ground_mm_s` ([TRCK](../../../../../docs/assets/formats/TRCK.md)) |
+| The clip and rate for the copy's speed | `scene/animator/gait.h`, from each clip's `ground_mm_s` ([TRCK](../../../../../docs/assets/formats/TRCK.md)) |
 
 `pose <ms>` seeks the whole herd: it walks again from its seed to that time,
 so two seeks to one time draw the same frame. Played on from there, clip phases
@@ -330,6 +330,24 @@ can differ slightly from an unbroken run, which steps clips by frame time.
 | The camera, orbited round the area | [`lab/lab_orbit.h`](../../../lab/lab_orbit.h) |
 | Each size's copies, and a turn's frame and animation-step cost with their stages (`herd.wander`, `herd.gait`, the animation step's and r3d's); a paced row steps each frame by the last one's time | [`tests/suite_herd_perf.c`](../tests/suite_herd_perf.c) |
 | The suite's timing table for `perf_compare.sh` | [`herd_tables.py`](herd_tables.py) `--perf-table CAPTURE TABLE` |
+
+### Capybara in Sponza
+
+`capybara-sponza` loads Sponza's fitted full bake and the capybara as two
+scenes, both drawn through Sponza's camera. The capybara rests between the
+first pair of columns, gallops down the atrium and rests between the last
+pair; its clip and rate come from its ground speed. A third-person camera
+starts a little round from its face, turns slowly toward its back as it runs,
+never reaching it, and comes back as it stops. With frame generation on, a
+generated frame shows the capybara where the last drawn frame put it.
+
+![Capybara in Sponza: the capybara's run down the atrium, rest to rest, under a third-person camera](../../../../../docs/images/overview/render-lab-capybara-sponza.gif)
+
+| What | Owner |
+|---|---|
+| The run's place and speed in time | `kinematics/profile/motion_profile.h` ([Profile](../../../../../docs/kinematics/Profile.md)) |
+| The clip and rate for its speed, read a blend ahead | `scene/animator/gait.h` |
+| The run's ends, the camera and the scenes | `capybara_sponza/scene_capybara_sponza.c` |
 
 ### Small fill
 

@@ -6,8 +6,11 @@
  * own compose. */
 #include "suites.h"
 #ifdef DEVICE_BUILD
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "apps/render_lab/baked_families.h"
+#include "apps/render_lab/capybara_sponza/scene_capybara_sponza.h"
 #include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/render_lab_dynres.h"
 #include "apps/render_lab/render_lab_view.h"
@@ -23,11 +26,14 @@
 #include "frame/test_frame.h"
 #include "frame_profile.h"
 #include "gfx/gfx.h"
+#include "profile/frame_cost.h"
 #include "render/context/render_context.h"
 #include "render/framegen/framegen.h"
+#include "render/r3d_stages.h"
 #include "scene/animator/animator.h"
 #include "scene/camera/camera.h"
 #include "scene/camera/lens.h"
+#include "scene/scene_anim_stages.h"
 #include "scene/transform/transform.h"
 #include "testkit/cleanup.h"
 #include "unity.h"
@@ -39,6 +45,14 @@ static const char* TAG = "framegen";
 /* Poses timed along each path. */
 #define FRAMEGEN_POSES    24
 #define FRAMEGEN_PERCENT  100
+/* A worst line: one mode's slowest FRAMEGEN_WORST_PERCENT of shown frames
+ * (or all of them), each stage's mean over them; height is the drawn rows'
+ * mean, other the frame's time no stage holds (scene, compose, present). */
+#define FRAMEGEN_WORST_LINE                                                                                            \
+    "framegen_worst: %s framegen=%d budget_ms=%d share=%s frames=%d generated=%d frame_us=%d height=%d "               \
+    "warp=%d fill=%d cull=%d transform=%d draw=%d upscale=%d anim=%d other=%d"
+#define FRAMEGEN_WORST_PERCENT 5
+
 /* A modes line: one scenario's path played in real time in one mode. */
 #define FRAMEGEN_MODES_LINE                                                                                            \
     "framegen_modes: %s framegen=%d budget_ms=%d frames=%d drawn=%d mean_us=%d p95_us=%d mean_height=%d"
@@ -60,15 +74,19 @@ typedef struct {
 static const framegen_scenario_t scenarios[] = {
     {&scene_bistro[SCENE_BAKED_FITTED_FULL], BISTRO_SCENE, BISTRO_CAMERA},
     {&scene_sponza[SCENE_BAKED_FITTED_FULL], SPONZA_SCENE, NULL},
+    /* A skinned capybara running through Sponza, its camera its own path's. */
+    {&scene_capybara_sponza, SPONZA_SCENE, NULL},
 };
 
 static lab_test_t saved;
 static const framegen_scenario_t* scenario;
 static int ladder_step;
 static framegen_target_t target;
+static void release_played(void);
 
 static void
 release_fixture(void) {
+    release_played();
     framegen_target_free(&target);
     lab_test_exit(&saved);
 }
@@ -134,6 +152,13 @@ typedef struct {
     uint32_t duration_ms;
 } scenario_path_t;
 
+/* The scenario's scene plays a path of its own (lab_path_t.seek), with no
+ * camera clip to seek: the modes play it from its start, the cost suite skips it. */
+static lab_path_t
+own_path(void) {
+    return scenario->scene->path != NULL ? scenario->scene->path() : (lab_path_t){0};
+}
+
 static scenario_path_t
 enter_path(void) {
     lab_test_enter(&saved, &render_lab, scenario->scene->key);
@@ -141,6 +166,13 @@ enter_path(void) {
     test_hold_quarter(lab_perf_quarters[0].quarter);
     scenario_path_t path = {.scene = lab_test_loaded_scene(scenario->pack)};
     TEST_ASSERT_FALSE(handle_is_none(path.scene));
+    const lab_path_t own = own_path();
+    if (own.seek != NULL) {
+        TEST_ASSERT_TRUE(own.seek(0));
+        own.play();
+        path.duration_ms = own.duration_ms;
+        return path;
+    }
     const char* camera_name = scenario->camera == NULL ? sponza_cameras[0] : scenario->camera;
     path.camera = entity_find(path.scene, name_hash(camera_name));
     TEST_ASSERT_FALSE(handle_is_none(path.camera));
@@ -210,12 +242,172 @@ static const framegen_mode_t modes[] = {
 
 static const framegen_mode_t* mode;
 
+/* A scenario's goals in one mode: its shown frames' mean goal and p95
+ * ceiling. Pegged by hand from perf-board captures of this suite: the goal the worst
+ * run's mean + 1%, the ceiling the worst run's p95 x 1.15. A scenario or mode
+ * with no row is unpegged. */
+typedef struct {
+    const char* key;
+    const char* mode;
+    perf_budget_t budget;
+} framegen_goal_t;
+
+static const framegen_goal_t goals[] = {
+    {"capybara-sponza", "plain", {35370, 52840}},
+    {"capybara-sponza", "framegen", {31590, 52700}},
+    {"capybara-sponza", "dynres", {33450, 42280}},
+    {"capybara-sponza", "framegen-dynres", {29360, 42090}},
+    {"capybara-sponza", "framegen-dynres-3q", {26060, 42050}},
+    {"capybara-sponza", "framegen-dynres-half", {24710, 42060}},
+};
+
+/* The current scenario's goals in the current mode; zero when unpegged. */
+static perf_budget_t
+mode_goal(void) {
+    for (size_t i = 0; i < sizeof goals / sizeof goals[0]; i++) {
+        if (strcmp(goals[i].key, scenario->scene->key) == 0 && strcmp(goals[i].mode, mode->name) == 0) {
+            return goals[i].budget;
+        }
+    }
+    return (perf_budget_t){0};
+}
+
 /* What a played path drew: frames shown, how many were drawn rather than
  * generated, and the drawn rows summed; `carry_us` keeps the frame steps whole. */
 typedef struct {
     int64_t carry_us, height_sum;
     int drawn;
+    struct shown_chunk *first, *last; /* each shown frame's stages, in order */
+    int count;
 } played_t;
+
+/* The stages a shown frame is split into, microseconds. */
+enum { STAGE_WARP, STAGE_FILL, STAGE_CULL, STAGE_TRANSFORM, STAGE_DRAW, STAGE_UPSCALE, STAGE_ANIM, STAGES };
+
+/* A stage times as up to this many frame cost names, summed. */
+#define FRAMEGEN_STAGE_PARTS 4
+
+static const char* const stage_names[STAGES][FRAMEGEN_STAGE_PARTS] = {
+    [STAGE_WARP] = {FRAMEGEN_STAGE_WARP_NAME},
+    [STAGE_FILL] = {FRAMEGEN_STAGE_FILL_NAME},
+    [STAGE_CULL] = {R3D_STAGE_CULL_NAME},
+    [STAGE_TRANSFORM] = {R3D_STAGE_TRANSFORM_NAME},
+    [STAGE_DRAW] = {R3D_STAGE_DRAW_NAME},
+    [STAGE_UPSCALE] = {R3D_STAGE_UPSCALE_NAME},
+    [STAGE_ANIM] = {SCENE_ANIM_STAGE_POSE_NAME, SCENE_ANIM_STAGE_SKIN_NAME, SCENE_ANIM_STAGE_LIGHT_NAME,
+                    SCENE_ANIM_STAGE_REFIT_NAME},
+};
+
+struct shown_stages {
+    int32_t frame_us;
+    int32_t height; /* the rows the frame was drawn at */
+    bool generated;
+    int32_t stage_us[STAGES];
+};
+
+/* Shown frames are kept in chunks of this many: a long path never needs one
+ * large block, nor a copy to grow, beside a loaded scene. */
+#define FRAMEGEN_CHUNK_FRAMES 256
+
+struct shown_chunk {
+    struct shown_chunk* next;
+    int count;
+    struct shown_stages frames[FRAMEGEN_CHUNK_FRAMES];
+};
+
+/* The path being played; freed by the fixture, so a failed mode leaks nothing. */
+static played_t played;
+
+static void
+release_played(void) {
+    while (played.first != NULL) {
+        struct shown_chunk* next = played.first->next;
+        free(played.first);
+        played.first = next;
+    }
+    played = (played_t){0};
+}
+
+/* The stages the frame just shown spent, then the window cleared for the next. */
+static void
+take_stages(struct shown_stages* s) {
+    for (int k = 0; k < STAGES; k++) {
+        s->stage_us[k] = 0;
+        for (int n = 0; n < FRAMEGEN_STAGE_PARTS && stage_names[k][n] != NULL; n++) {
+            s->stage_us[k] += (int32_t)frame_cost_take_mean_us(stage_names[k][n], 1);
+        }
+    }
+    frame_cost_take_clear();
+}
+
+static int
+slower_first(const void* a, const void* b) {
+    const int32_t x = *(const int32_t*)a;
+    const int32_t y = *(const int32_t*)b;
+    return (y > x) - (y < x);
+}
+
+/* One worst line over the frames slower than `above_us`, plus the first
+ * `ties` frames at exactly it: `count` frames in all. */
+static void
+log_worst(const char* share, const played_t* p, int32_t above_us, int ties, int count) {
+    int64_t frame = 0;
+    int64_t height = 0;
+    int generated = 0;
+    int64_t stage[STAGES] = {0};
+    for (const struct shown_chunk* c = p->first; c != NULL; c = c->next) {
+        for (int i = 0; i < c->count; i++) {
+            const struct shown_stages* s = &c->frames[i];
+            if (s->frame_us < above_us || (s->frame_us == above_us && ties-- <= 0)) {
+                continue;
+            }
+            frame += s->frame_us;
+            height += s->height;
+            generated += s->generated;
+            for (int k = 0; k < STAGES; k++) {
+                stage[k] += s->stage_us[k];
+            }
+        }
+    }
+    int64_t held = 0;
+    for (int k = 0; k < STAGES; k++) {
+        stage[k] /= count;
+        held += stage[k];
+    }
+    frame /= count;
+    ESP_LOGI(TAG, FRAMEGEN_WORST_LINE, scenario->scene->key, mode->generating, mode->budget_ms, share, count, generated,
+             (int)frame, (int)(height / count), (int)stage[STAGE_WARP], (int)stage[STAGE_FILL], (int)stage[STAGE_CULL],
+             (int)stage[STAGE_TRANSFORM], (int)stage[STAGE_DRAW], (int)stage[STAGE_UPSCALE], (int)stage[STAGE_ANIM],
+             (int)(frame - held));
+}
+
+/* Every shown frame's stages, then the slowest share's. */
+static void
+log_worst_frames(played_t* p) {
+    if (p->count == 0) {
+        return;
+    }
+    log_worst("all", p, INT32_MIN, p->count, p->count);
+    int32_t* times = malloc((size_t)p->count * sizeof(*times));
+    TEST_ASSERT_NOT_NULL(times);
+    int n = 0;
+    for (const struct shown_chunk* c = p->first; c != NULL; c = c->next) {
+        for (int i = 0; i < c->count; i++) {
+            times[n++] = c->frames[i].frame_us;
+        }
+    }
+    qsort(times, (size_t)n, sizeof(*times), slower_first);
+    const int worst = (p->count * FRAMEGEN_WORST_PERCENT + 99) / 100;
+    const int32_t threshold = times[worst - 1];
+    int slower = 0;
+    while (times[slower] > threshold) {
+        slower++;
+    }
+    free(times);
+    char share[sizeof "worst100"];
+    (void)snprintf(share, sizeof share, "worst%d", FRAMEGEN_WORST_PERCENT);
+    log_worst(share, p, threshold, worst - slower, worst);
+}
 
 /* One shown frame at the path's real pace: the time the last one took. */
 static int64_t
@@ -227,6 +419,24 @@ shown_frame(void* ctx, int64_t dt_us) {
     (void)lab_test_frame_dt((uint32_t)(step_us / MATH_US_PER_MS), false, NULL);
     const int64_t took = timing_now_us() - began;
     const render_context_frame_t f = render_context_frame(render_context_main());
+    if (dt_us == 0) { /* frame_profile_play()'s warm-up: not a sample */
+        frame_cost_take_clear();
+        return took;
+    }
+    if (p->last == NULL || p->last->count == FRAMEGEN_CHUNK_FRAMES) { /* outside `took`, which paces the path */
+        struct shown_chunk* chunk = malloc(sizeof(*chunk));
+        TEST_ASSERT_NOT_NULL(chunk);
+        chunk->next = NULL;
+        chunk->count = 0;
+        *(p->last == NULL ? &p->first : &p->last->next) = chunk;
+        p->last = chunk;
+    }
+    struct shown_stages* s = &p->last->frames[p->last->count++];
+    p->count++;
+    s->frame_us = (int32_t)took;
+    s->height = f.height;
+    s->generated = f.generated;
+    take_stages(s);
     if (!f.generated) {
         p->drawn++;
         p->height_sum += f.height;
@@ -242,11 +452,18 @@ test_mode(void) {
     TEST_ASSERT_TRUE(render_lab_budget_set_ms(mode->budget_ms));
     (void)lab_test_frame_dt(0, false, NULL); /* warm-up, not counted */
     const frame_profile_scenario_t playback = {scenario->scene->key, (int64_t)path.duration_ms * MATH_US_PER_MS};
-    played_t played = {0};
+    frame_cost_take_clear(); /* each frame's stages, from this path alone */
     const frame_profile_t p = frame_profile_play(&playback, shown_frame, &played, NULL);
     TEST_ASSERT_GREATER_THAN_INT(0, played.drawn);
+    TEST_ASSERT_EQUAL_INT(p.frames, played.count);
     ESP_LOGI(TAG, FRAMEGEN_MODES_LINE, scenario->scene->key, mode->generating, mode->budget_ms, p.frames, played.drawn,
              (int)p.frame_us.avg, (int)p.frame_us.p95, (int)(played.height_sum / played.drawn));
+    log_worst_frames(&played);
+    char row[LAB_PERF_ROW_NAME_SIZE];
+    const int length = snprintf(row, sizeof row, "framegen %s %s", scenario->scene->key, mode->name);
+    TEST_ASSERT_TRUE(length > 0 && (size_t)length < sizeof row);
+    const perf_budget_t goal = mode_goal();
+    lab_perf_named_budget(row, p.frame_us.avg, p.frame_us.p95, &goal, true);
     TEST_ASSERT_TRUE(render_lab_framegen_set_on(false));
     TEST_ASSERT_TRUE(render_lab_budget_set_ms(0));
     release_fixture();
@@ -260,7 +477,8 @@ run_framegen_perf_suite(void) {
 #ifdef DEVICE_BUILD
     for (size_t i = 0; i < sizeof scenarios / sizeof scenarios[0]; i++) {
         scenario = &scenarios[i];
-        for (ladder_step = 0; ladder_step < RENDER_LAB_LADDER_STEPS; ladder_step++) {
+        const bool camera_path = own_path().seek == NULL;
+        for (ladder_step = 0; camera_path && ladder_step < RENDER_LAB_LADDER_STEPS; ladder_step++) {
             if (render_lab_ladder[ladder_step].width * 2 == GFX_WIDTH) {
                 RUN_TEST_CASE(test_generated_frame_cost, scenario->scene->key, render_lab_test_step_name(ladder_step));
             }

@@ -28,6 +28,7 @@
 #include "math/linear/transformf.h"
 #include "math/linear/transformx.h"
 #include "math/linear/vec_convert.h"
+#include "math/scalar/ease.h"
 #include "math/scalar/float_bits.h"
 #include "math/scalar/math_const.h"
 #include "math/scalar/mathf.h"
@@ -1230,6 +1231,21 @@ test_mathf_lerp(void) {
     TEST_ASSERT_EQUAL_FLOAT(6.0F, mathf_lerp(8.0F, 0.0F, 0.25F));
 }
 
+/* Flat past each edge, half way at the middle, and level at both edges:
+ * its slope there is 0. */
+static void
+test_ease_smoothstep(void) {
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, ease_smoothstep(2.0F, 6.0F, 1.0F));
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, ease_smoothstep(2.0F, 6.0F, 2.0F));
+    TEST_ASSERT_EQUAL_FLOAT(0.5F, ease_smoothstep(2.0F, 6.0F, 4.0F));
+    TEST_ASSERT_EQUAL_FLOAT(1.0F, ease_smoothstep(2.0F, 6.0F, 6.0F));
+    TEST_ASSERT_EQUAL_FLOAT(1.0F, ease_smoothstep(2.0F, 6.0F, 7.0F));
+    TEST_ASSERT_EQUAL_FLOAT(0.15625F, ease_smoothstep(0.0F, 1.0F, 0.25F)); /* 3/16 - 2/64 */
+    const float step = 1.0e-3F;
+    TEST_ASSERT_FLOAT_WITHIN(1.0e-5F, 0.0F, ease_smoothstep(0.0F, 1.0F, step));
+    TEST_ASSERT_FLOAT_WITHIN(1.0e-5F, 1.0F, ease_smoothstep(0.0F, 1.0F, 1.0F - step));
+}
+
 static void
 test_mathi_lerp(void) {
     static const int32_t endpoints[][2] = {
@@ -2143,6 +2159,7 @@ suite_math_numbers(void) {
     RUN_TEST(test_rsqrt_normalize_and_nlerp_component_sweeps);
 #endif
     RUN_TEST(test_mathf_lerp);
+    RUN_TEST(test_ease_smoothstep);
     RUN_TEST(test_mathi_lerp);
     RUN_TEST(test_mathi_lerp_u8);
     RUN_TEST(test_maths_lerp);
