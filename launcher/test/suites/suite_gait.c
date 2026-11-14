@@ -118,6 +118,16 @@ test_the_stop_speed_itself_stands(void) {
     TEST_ASSERT_EQUAL_INT(1, gait_pick(&scripted, none, PAST).step);
 }
 
+/* A gait of one still step, as an entity with only an idle clip, stands at
+ * any speed, and so does any gait at a speed that is not a number. */
+static void
+test_a_pick_never_leaves_the_steps(void) {
+    const gait_t idle = {.steps = STEPS, .count = 1, .rate_min = 0.75F, .rate_max = 1.4F, .stop_mps = 0.05F};
+    const gait_pick_t none = {NO_STEP, 1.0F};
+    TEST_ASSERT_EQUAL_INT(0, gait_pick(&idle, none, idle.stop_mps + PAST).step);
+    TEST_ASSERT_LESS_THAN_INT(STEP_COUNT, gait_pick(&GAIT, none, NAN).step);
+}
+
 static void
 test_a_held_step_survives_inside_its_band_and_leaves_past_it(void) {
     const gait_pick_t walking = fresh(STEPS[1].ground_mps);
@@ -138,6 +148,7 @@ run_gait_suite(void) {
     RUN_TEST(test_a_still_step_plays_at_rate_one);
     RUN_TEST(test_a_slow_walker_walks);
     RUN_TEST(test_the_stop_speed_itself_stands);
+    RUN_TEST(test_a_pick_never_leaves_the_steps);
     RUN_TEST(test_a_held_step_survives_inside_its_band_and_leaves_past_it);
 }
 

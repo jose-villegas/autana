@@ -166,7 +166,8 @@ using the twice-rounded `1 / sqrtf` as a reference. The suite prints
 ## ease.h
 
 Timeline ramps and easing curves. Time is milliseconds; the `_u8` functions work
-on a byte fraction, 0 to 255, that only ever scales a value.
+on a byte fraction, 0 to 255, that only ever scales a value; `ease_smoothstep`
+is the float curve.
 
 | Function | Purpose | Formula |
 |---|---|---|

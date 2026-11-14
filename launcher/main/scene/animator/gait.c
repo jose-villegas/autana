@@ -45,12 +45,12 @@ upper_edge(const gait_t* g, int i) {
     return still(g, i) ? g->stop_mps : 0.5F * (g->steps[i].ground_mps + g->steps[i + 1].ground_mps);
 }
 
-/* Whether `speed` is at or under step i's top edge, a moving step's reaching
- * `band` past it: a still step keeps the stop speed itself, so a scripted
- * stop at exactly 0 with a stop speed of 0 stands. */
+/* Whether `speed` is under step i's top edge, a moving step's reaching `band`
+ * past it; a still step keeps the stop speed itself (speed <= stop_mps), so a
+ * scripted stop at exactly 0 with a stop speed of 0 stands. */
 static bool
 under_top(const gait_t* g, int i, float speed, float band) {
-    return still(g, i) ? speed <= g->stop_mps : speed < upper_edge(g, i) + band;
+    return still(g, i) ? speed <= upper_edge(g, i) : speed < upper_edge(g, i) + band;
 }
 
 gait_pick_t
@@ -60,7 +60,7 @@ gait_pick(const gait_t* g, gait_pick_t current, float speed) {
                       && under_top(g, step, speed, g->band);
     if (!held) {
         step = 0;
-        while (!under_top(g, step, speed, 0.0F)) {
+        while (step + 1 < g->count && !under_top(g, step, speed, 0.0F)) {
             step++;
         }
     }
