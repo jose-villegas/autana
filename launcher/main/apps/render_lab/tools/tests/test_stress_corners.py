@@ -165,9 +165,9 @@ class StressCorners(unittest.TestCase):
     def test_cull_setup_walks_almost_nothing(self):
         """One copy of a few clusters: the cull's walk is a few nodes, so what it costs is its setup."""
         self.assertEqual(1, preset_copies()["cull-setup"])
-        c = self.counts("cull-setup")
+        c = self.last_counts("cull-setup")
         self.assert_all_in_view(c)
-        tiny = self.counts("tiny-copies")
+        tiny = self.last_counts("tiny-copies")
         self.assertLessEqual(c["clusters_kept"], tiny["clusters_kept"] / preset_copies()["tiny-copies"])
 
     def test_few_copies_give_each_core_one_dense_copy(self):
