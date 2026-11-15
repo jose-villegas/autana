@@ -1,15 +1,4 @@
-/* stream_provider: a frame_provider_t that draws a frame record stream
- * (render/record/frame_record_format.h) again with the same renderer: from a
- * file (--stream PATH), or from bytes handed in as they arrive
- * (stream_feed()). Each frame's meshes are opened from the packs the stream
- * names, which must hold the same bytes (their crc32), posed, built and
- * drawn through the frame's own view, settings and size. A frame is drawn
- * whole, so any frame is drawn by decoding forward from the keyframe before
- * it, with no draws between.
- *
- * Options: --stream PATH, and --check, which fails the run when a drawn
- * frame's picture differs from the CHECK the stream carries for it. Packs
- * are read from the folder ASSET_STORE_DIR_ENV names (asset/asset_store.h). */
+/* stream_provider: replays recorded render inputs from files or live bytes using validated packs. */
 #ifndef STREAM_PROVIDER_H
 #define STREAM_PROVIDER_H
 
@@ -19,6 +8,8 @@
 
 #include "render_host.h"
 
+/* A caller that steps a live stream uses stream_seek(), stream_next(),
+ * stream_frame_info() and the provider's frame_count hook as bytes arrive. */
 extern const frame_provider_t stream_provider;
 
 /* The stream's bytes as they arrive, in any pieces; a frame counts once it

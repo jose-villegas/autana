@@ -7,7 +7,7 @@
 
 int
 main(int argc, char** argv) {
-    if (argc != 4) {
+    if (argc != 4 && argc != 5) {
         return 2;
     }
     FILE* file = fopen(argv[1], "rb");
@@ -40,8 +40,14 @@ main(int argc, char** argv) {
             return 2;
         }
     }
+    if (argc == 5 && !stream_seek(atoi(argv[4]))) {
+        return 2;
+    }
     while (render_host_frame()->index < render_host_frame()->count) {
         render_host_step(render_host_frame()->dt_ms, &render_host_frame()->input);
+        if (argc == 5) {
+            break;
+        }
     }
     const render_host_image_t image = render_host_image();
     const uint32_t crc = crc32_update(0, image.bgr, image.stride * (size_t)image.height);

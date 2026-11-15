@@ -81,6 +81,8 @@ typedef struct {
     uint8_t* bytes;
     size_t size, capacity;
     bool overflowed;
+    uint8_t* lod_state;
+    size_t lod_size, lod_capacity;
     recorded_slot_t* slots;
     uint32_t packs_named; /* bit per asset_store slot, since the last keyframe */
     int32_t* tuned;       /* each tunable's value as last recorded, in registry order */
@@ -461,6 +463,7 @@ frame_record_stop(void) {
         record(FRAME_RECORD_CHECK, &rec->check, sizeof rec->check);
         (void)rec->out.write(rec->out.sink, rec->bytes, rec->size);
     }
+    memory_free(rec->lod_state);
     memory_free(rec->tuned);
     memory_free(rec->bytes);
     memory_free(rec->slots);
@@ -531,6 +534,67 @@ settle(bool taken, bool keyframe_due, bool keyframe) {
     rec->check_due = taken && keyframe;
 }
 
+static size_t
+snapshot_lod_mesh(uint8_t* out, const r3d_instance_t* instance, const r3d_batch_t* batch) {
+    const uint32_t words =
+        R3D_LOD_STATE_WORDS(instance->mesh->lod_group_count) * (batch != NULL ? batch->copy_count : 1);
+    if (out != NULL) {
+        const uint32_t* coarse = batch != NULL ? batch->lod_coarse : instance->lod_coarse;
+        memcpy(out, &words, sizeof words);
+        if (coarse != NULL) {
+            memcpy(out + sizeof words, coarse, (size_t)words * sizeof *coarse);
+        } else {
+            memset(out + sizeof words, 0, (size_t)words * sizeof(uint32_t));
+        }
+    }
+    return sizeof words + (size_t)words * sizeof(uint32_t);
+}
+
+void
+frame_record_before_draw(const render_context_t* context, const r3d_instance_t* instances, int count) {
+    if (rec == NULL || !(rec->keyframe_next || rec->index % rec->keyframe_every == 0)) {
+        return;
+    }
+    const raster_t* raster = &context->raster;
+    size_t bytes = sizeof(frame_record_lodstate_t);
+    for (int i = 0; i < count + raster->batch_count; i++) {
+        const r3d_batch_t* batch = i < count ? NULL : raster->batches[i - count].batch;
+        const r3d_instance_t* instance = i < count ? &instances[i] : &raster->batches[i - count].instance;
+        bytes += snapshot_lod_mesh(NULL, instance, batch);
+    }
+    rec->lod_size = 0;
+    if (bytes > rec->lod_capacity) {
+        memory_free(rec->lod_state);
+        rec->lod_state = memory_alloc(bytes, MEMORY_PSRAM);
+        rec->lod_capacity = rec->lod_state != NULL ? bytes : 0;
+    }
+    if (rec->lod_state == NULL) {
+        return;
+    }
+    const r3d_lod_steer_t* steer = &context->steer;
+    frame_record_lodstate_t state = {.pick_round = raster->pick_round,
+                                     .tolerance_px = steer->tolerance_px,
+                                     .picked_tolerance_px = steer->picked_tolerance_px,
+                                     .picked_coverage_permille = steer->picked_coverage_permille,
+                                     .bin = steer->bin,
+                                     .drawn = steer->drawn,
+                                     .frames = steer->frames,
+                                     .settled = steer->settled};
+    for (size_t i = 0; i < sizeof steer->halves / sizeof steer->halves[0]; i++) {
+        memcpy(state.saves[i], steer->halves[i].saves, sizeof state.saves[i]);
+        state.finest[i] = steer->halves[i].finest;
+        state.unit[i] = steer->halves[i].unit;
+    }
+    memcpy(rec->lod_state, &state, sizeof state);
+    size_t at = sizeof state;
+    for (int i = 0; i < count + raster->batch_count; i++) {
+        const r3d_batch_t* batch = i < count ? NULL : raster->batches[i - count].batch;
+        const r3d_instance_t* instance = i < count ? &instances[i] : &raster->batches[i - count].instance;
+        at += snapshot_lod_mesh(rec->lod_state + at, instance, batch);
+    }
+    rec->lod_size = at;
+}
+
 void
 frame_record_frame(const render_context_t* context, const raster_t* raster, uint32_t dt_ms) {
     if (rec == NULL) {
@@ -549,6 +613,13 @@ frame_record_frame(const render_context_t* context, const raster_t* raster, uint
     record_frame_head(context, raster, dt_ms, keyframe);
     if (!generated) {
         record_meshes(raster, keyframe);
+        if (keyframe) {
+            if (rec->lod_size == 0) {
+                rec->overflowed = true;
+            } else {
+                record(FRAME_RECORD_LODSTATE, rec->lod_state, rec->lod_size);
+            }
+        }
     }
     rec->index++;
     /* The FRAME record leads the bytes: its count of what follows it. */

@@ -443,6 +443,9 @@ Byte comparisons use frame generation off and a fixed or declared size.
 with packs from `AUTANA_ASSET_DIR`. It reports each drawn CHECK and fails on
 a differing picture. Without `--frames`, it draws the whole recorded stream.
 The `autana::stream_provider` library also accepts live bytes through `stream_feed()`.
+A host recording accepts `--record-keyframe-every N` to set its restart interval.
+Replay draws forward from a full keyframe snapshot and warps generated frames
+through their recorded views.
 
 Each draw receives a `provider_frame_t`. The optional `frame_count` hook
 sets the default count after provider options. Optional `path_ms` and `seek` hooks

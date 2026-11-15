@@ -274,14 +274,7 @@ open_batches(scene_t* scene, const asset_pack_t* pack) {
             return scene_failure_make(SCENE_ERR_ASSET, status, mesh);
         }
         r3d_batch_t* batch = &scene->batches[i];
-        *batch = (r3d_batch_t){.chunks = scene->chunks + row->first_chunk,
-                               .places = asset->places + row->first_copy,
-                               .turns = asset->turns + row->first_copy,
-                               .colour_stride =
-                                   (uint32_t)(r->mesh.colors != NULL ? r->mesh.vertex_count : r->mesh.triangle_count),
-                               .copy_radius = r3d_batch_copy_radius(&r->mesh),
-                               .copy_count = row->copy_count,
-                               .chunk_count = (uint16_t)r3d_batch_chunks(row->copy_count)};
+        *batch = scene_asset_batch(asset, i, &r->mesh, scene->chunks);
         r->batch = batch;
         r->colour_sets = sets;
     }

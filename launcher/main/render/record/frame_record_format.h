@@ -14,6 +14,8 @@
 
 #include <stdint.h>
 
+#include "render/lod/r3d_lod.h"
+
 #define FRAME_RECORD_VERSION        2
 #define FRAME_RECORD_BUILD_ID_BYTES 32
 #define FRAME_RECORD_PACK_NAME      32
@@ -40,6 +42,7 @@ typedef enum {
     FRAME_RECORD_TUNE = 9,      /* a tunable's value: on a keyframe each off its initial, else each that changed */
     FRAME_RECORD_CHECK = 10,    /* the crc32 of a keyframe's composed picture, in a later frame's records */
     FRAME_RECORD_SETTINGS = 11, /* the context's render_settings_t, as the engine holds it: each keyframe and change */
+    FRAME_RECORD_LODSTATE = 12, /* pre-draw pick phase and steering, then coarse word counts and words */
 } frame_record_type_t;
 
 /* Where a drawn mesh came from. */
@@ -123,3 +126,16 @@ typedef struct __attribute__((packed)) {
     uint16_t width, height;
     uint32_t crc32;
 } frame_record_check_t;
+
+/* Each mesh in FRAME order follows with u32 word_count, then that many u32 words. */
+typedef struct __attribute__((packed)) {
+    uint32_t pick_round;
+    float tolerance_px, picked_tolerance_px;
+    int32_t picked_coverage_permille, bin;
+    int32_t saves[2][R3D_LOD_BINS];
+    int32_t finest[2];
+    float unit[2];
+    int64_t drawn;
+    int32_t frames;
+    uint8_t settled;
+} frame_record_lodstate_t;
