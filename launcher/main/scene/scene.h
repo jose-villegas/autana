@@ -14,6 +14,8 @@
 #include "asset/asset_pack.h"
 #include "core/pending.h"
 #include "math/geometry/box3f.h"
+#include "render/probe/sh_probes.h"
+#include "render/raster.h"
 #include "scene/entity/entity.h"
 
 typedef enum {
@@ -67,3 +69,9 @@ box3f_t scene_bounds(entity_t entity);
 /* While paused nothing advances or draws, as if no camera were active, and
  * the camera stays where it was; for an app drawing its own full screen. */
 void scene_set_paused(bool paused);
+
+/* Borrowed until changed or unloaded; NULL restores flat ambient. Only a loaded root accepts it. */
+void scene_set_probes(entity_t root, const sh_probes_t* probes);
+
+/* Called after all geometry, before composition, for the rows drawn; user outlives the scene. */
+void scene_set_post_draw(entity_t root, raster_post_draw_fn draw, void* user);

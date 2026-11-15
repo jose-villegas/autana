@@ -29,10 +29,12 @@ r3d_skin_light_transfer_build(float tonemap_white, r3d_skin_light_transfer_t* ou
 /* Normal-indexed illumination (Miller and Hoffman 1984), octahedral directions (Cigolle et al. 2014). */
 float
 r3d_skin_light_table_build(const r3d_skin_lights_t* lights, r3d_skin_light_table_t* out) {
+    r3d_skin_lights_t direct = *lights;
+    direct.ambient = (sh1_irradiance_t){0};
     /* Light-change builds use two passes to avoid a large scratch buffer and an allocation failure path. */
     float maximum = 0.0F;
     for (int cell = 0; cell < R3D_SKIN_LIGHT_TABLE_CELLS; cell++) {
-        const vec3f_t sum = light_irradiance(light_table_directions[cell], lights);
+        const vec3f_t sum = light_irradiance(light_table_directions[cell], &direct);
         if (sum.x > maximum) {
             maximum = sum.x;
         }
@@ -51,7 +53,7 @@ r3d_skin_light_table_build(const r3d_skin_lights_t* lights, r3d_skin_light_table
     const float scale = maximum / R3D_SKIN_LIGHT_TABLE_MASK;
     const float encode = R3D_SKIN_LIGHT_TABLE_MASK / maximum;
     for (int cell = 0; cell < R3D_SKIN_LIGHT_TABLE_CELLS; cell++) {
-        const vec3f_t sum = light_irradiance(light_table_directions[cell], lights);
+        const vec3f_t sum = light_irradiance(light_table_directions[cell], &direct);
         const float channels[] = {sum.x, sum.y, sum.z};
         uint32_t packed = 0;
 #pragma GCC unroll R3D_SKIN_LIGHT_CHANNELS
@@ -67,7 +69,7 @@ r3d_skin_light_table_build(const r3d_skin_lights_t* lights, r3d_skin_light_table
 vec3f_t
 r3d_skin_light_table_sample(vec3f_t normal, const r3d_skin_lights_t* lights) {
     if (normal.x == 0.0F && normal.y == 0.0F && normal.z == 0.0F) {
-        return lights->ambient;
+        return lights->ambient.constant;
     }
     const vec2f_t point = vec3f_octahedral(normal);
     const float half = 0.5F * (R3D_SKIN_LIGHT_TABLE_SIDE - 1);
@@ -91,10 +93,15 @@ r3d_skin_light_table_sample(vec3f_t normal, const r3d_skin_lights_t* lights) {
         const int bottom = (c * R3D_SKIN_LIGHT_TABLE_WEIGHT_ONE) + (wx * (d - c));
         channels[k] = (float)((top * R3D_SKIN_LIGHT_TABLE_WEIGHT_ONE) + (wy * (bottom - top))) * scale;
     }
-    return (vec3f_t){channels[0], channels[1], channels[2]};
+    return vec3f_add((vec3f_t){channels[0], channels[1], channels[2]}, sh1_irradiance_eval(&lights->ambient, normal));
 }
 
 uint8_t
 r3d_skin_light_encode(float radiance, const r3d_skin_light_transfer_t* transfer) {
     return light_encode(radiance, transfer);
+}
+
+void
+r3d_skin_light_set_ambient_sh(r3d_skin_lights_t* lights, const sh1_rgb_t* radiance) {
+    lights->ambient = sh1_rgb_irradiance(radiance);
 }

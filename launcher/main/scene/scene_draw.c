@@ -93,6 +93,8 @@ drop_drawn(void) {
 
 void
 scene_draw_forget(const scene_t* scene) {
+    render_context_main()->raster.post_draw = NULL;
+    drawn_scene_count = 0;
     drop_drawn();
     if (active.scene == scene) {
         camera_deactivate();
@@ -282,6 +284,29 @@ scene_bounds(entity_t entity) {
     return bounds;
 }
 
+void
+scene_set_post_draw(entity_t root, raster_post_draw_fn draw, void* user) {
+    scene_row_t row;
+    scene_root_t* record = scene_entity_lookup(root, &row);
+    if (record == NULL || row != SCENE_ROW_ROOT || record->scene == NULL) {
+        return;
+    }
+    record->scene->post_draw = draw;
+    record->scene->post_draw_user = user;
+    render_context_forget(render_context_main());
+}
+
+static void
+post_draw(const r3d_span_target_t* target, const r3d_lens_t* lens, void* user) {
+    (void)user;
+    for (int k = 0; k < drawn_scene_count; k++) {
+        const scene_t* scene = drawn_scenes[k];
+        if (scene->post_draw != NULL) {
+            scene->post_draw(target, lens, scene->post_draw_user);
+        }
+    }
+}
+
 static void
 draw_active(uint32_t dt_ms, int quarter, int width, int height) {
     scene_t* scene = active.scene;
@@ -299,6 +324,13 @@ draw_active(uint32_t dt_ms, int quarter, int width, int height) {
             return;
         }
         render_context_set_changed(render_context_main(), changed, fill_changed());
+        raster_t* raster = &render_context_main()->raster;
+        raster->post_draw = NULL;
+        for (int k = 0; k < drawn_scene_count; k++) {
+            if (drawn_scenes[k]->post_draw != NULL) {
+                raster->post_draw = post_draw;
+            }
+        }
         render_context_set_batches(render_context_main(), drawn.batch_draws, batches);
         rendered = render_context_draw(render_context_main(), drawn.instances, count, &drawn_view, camera->clear);
         if (rendered) {

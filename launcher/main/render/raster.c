@@ -1084,6 +1084,16 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
         draw_batch(raster, index, work);
         index++;
     } while (first < raster_census_count(raster));
+    if (raster->post_draw != NULL) {
+        FRAME_COST_BEGIN(post_from);
+        r3d_lens_t lens;
+        raster_lens(raster, view, 1, &lens);
+        r3d_lens_set_depth_near(&lens, *work->buffers.depth_near);
+        r3d_span_target_t target = {0};
+        gfx_target_window(&target.rows, &work->buffers.picture, work->first_row, work->end_row);
+        raster->post_draw(&target, &lens, raster->post_draw_user);
+        FRAME_COST_END(post_from, R3D_STAGE_DRAW_NAME);
+    }
 }
 
 raster_stats_t

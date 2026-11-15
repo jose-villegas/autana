@@ -34,7 +34,7 @@ light_decode(uint8_t albedo, const r3d_skin_light_transfer_t* transfer) {
 
 static inline __attribute__((always_inline)) vec3f_t
 light_irradiance(vec3f_t normal, const r3d_skin_lights_t* lights) {
-    vec3f_t sum = lights->ambient;
+    vec3f_t sum = sh1_irradiance_eval(&lights->ambient, normal);
     for (int i = 0; i < lights->count; i++) {
         const float facing = vec3f_dot(normal, lights->direction[i]);
         if (facing > 0.0F) {

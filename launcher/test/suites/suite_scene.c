@@ -4861,6 +4861,42 @@ test_set_transform_reads_back_exactly_and_drives_placement(void) {
 }
 
 static void
+test_scene_probe_lighting_and_restore(void) {
+    for (int ambient = 0; ambient < 2; ambient++) {
+        skin_fixture_options_t options = SKIN_OPTIONS;
+        if (ambient == 0) {
+            options.intensity = 0;
+        }
+        fixture_with_skin(&options);
+        entity_t root = load("test_skin");
+        const entity_t skin = entity_find(root, name_hash("red"));
+        scene_animation_step(columns(root), 0);
+        const uint8_t before = renderer_mesh(skin)->colors[0][0];
+        const int16_t data[2][SH_PROBES_COMPONENTS] = {{0}, {4, 4, 4}};
+        const vec3f_t centre =
+            box3f_centre(columns(root)->renderers[scene_renderer_index(columns(root), row_of(skin))].world_bounds);
+        const sh_probes_t probes = {
+            .origin = centre, .spacing = {RIG_TRAVEL, 1, 1}, .dims = {2, 1, 1}, .scale = 1, .coefficients = data};
+        scene_set_probes(root, &probes);
+        scene_animation_step(columns(root), 0);
+        const uint8_t dark = renderer_mesh(skin)->colors[0][0];
+        TEST_ASSERT_LESS_THAN(before, dark);
+        transformf_t moved = transform_local(root);
+        moved.position.x += RIG_TRAVEL;
+        transform_set_local(root, moved);
+        scene_animation_step(columns(root), 0);
+        TEST_ASSERT_EQUAL_UINT8(dark, renderer_mesh(skin)->colors[0][0]);
+        TEST_ASSERT_TRUE(animator_set_paused(skin, ANIMATOR_CURRENT, true));
+        scene_animation_step(columns(root), 0);
+        TEST_ASSERT_GREATER_THAN(dark, renderer_mesh(skin)->colors[0][0]);
+        scene_set_probes(root, NULL);
+        scene_animation_step(columns(root), 0);
+        TEST_ASSERT_EQUAL_UINT8(before, renderer_mesh(skin)->colors[0][0]);
+        release_fixture();
+    }
+}
+
+static void
 test_authored_skin_modes_animation_and_ambient(void) {
     const size_t before = memory_free_bytes(MEMORY_INTERNAL);
     static const uint8_t modes[] = {R3D_SKIN_LIGHT_DIRECT, R3D_SKIN_LIGHT_RENORMALISED, R3D_SKIN_LIGHT_TABLE};
@@ -7856,6 +7892,7 @@ run_scene_suite(void) {
     RUN_TEST(test_idle_lit_skin_skips_and_transform_changes_run);
     RUN_TEST(test_light_attachment_defaults_refusals_and_capacity);
     RUN_TEST(test_scene_light_rotation_shades_only_skin_and_matches_kernel);
+    RUN_TEST(test_scene_probe_lighting_and_restore);
     RUN_TEST(test_authored_skin_modes_animation_and_ambient);
     RUN_TEST(test_authored_light_preserves_static_mesh_colors);
     RUN_TEST(test_authored_tonemap_changes_skin_colors_in_both_attachment_orders);

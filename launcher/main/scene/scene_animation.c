@@ -162,8 +162,10 @@ scene_skin_range(scene_t* scene, int first, int count) {
         const int start = mathi_clamp(first - offset, 0, clusters);
         const int end = mathi_clamp(first + count - offset, 0, clusters);
         if (scene->light_transfer != NULL && skin->lighting_valid) {
+            r3d_skin_lights_t lights = scene->world_lights;
+            lights.ambient = skin->ambient;
             LIGHT_KERNELS[skin->light_mode](&skin->skin, &skin->bind, skin->palette, start, end - start, &skin->output,
-                                            skin->normal_palette, &scene->world_lights, skin->colors);
+                                            skin->normal_palette, &lights, skin->colors);
         } else {
             r3d_skin_clusters(&skin->skin, &skin->bind, skin->palette, start, end - start, &skin->output);
         }
