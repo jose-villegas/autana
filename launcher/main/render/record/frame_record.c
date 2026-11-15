@@ -550,27 +550,31 @@ snapshot_lod_mesh(uint8_t* out, const r3d_instance_t* instance, const r3d_batch_
     return sizeof words + (size_t)words * sizeof(uint32_t);
 }
 
-void
-frame_record_before_draw(const render_context_t* context, const r3d_instance_t* instances, int count) {
-    if (rec == NULL || !(rec->keyframe_next || rec->index % rec->keyframe_every == 0)) {
-        return;
-    }
-    const raster_t* raster = &context->raster;
-    size_t bytes = sizeof(frame_record_lodstate_t);
+static size_t
+snapshot_lod_meshes(uint8_t* out, const raster_t* raster, const r3d_instance_t* instances, int count) {
+    size_t bytes = 0;
     for (int i = 0; i < count + raster->batch_count; i++) {
         const r3d_batch_t* batch = i < count ? NULL : raster->batches[i - count].batch;
         const r3d_instance_t* instance = i < count ? &instances[i] : &raster->batches[i - count].instance;
-        bytes += snapshot_lod_mesh(NULL, instance, batch);
+        bytes += snapshot_lod_mesh(out != NULL ? out + bytes : NULL, instance, batch);
     }
+    return bytes;
+}
+
+static bool
+reserve_lod_state(size_t bytes) {
     rec->lod_size = 0;
     if (bytes > rec->lod_capacity) {
         memory_free(rec->lod_state);
         rec->lod_state = memory_alloc(bytes, MEMORY_PSRAM);
         rec->lod_capacity = rec->lod_state != NULL ? bytes : 0;
     }
-    if (rec->lod_state == NULL) {
-        return;
-    }
+    return rec->lod_state != NULL;
+}
+
+static void
+snapshot_lod_state(const render_context_t* context) {
+    const raster_t* raster = &context->raster;
     const r3d_lod_steer_t* steer = &context->steer;
     frame_record_lodstate_t state = {.pick_round = raster->pick_round,
                                      .tolerance_px = steer->tolerance_px,
@@ -586,13 +590,21 @@ frame_record_before_draw(const render_context_t* context, const r3d_instance_t* 
         state.unit[i] = steer->halves[i].unit;
     }
     memcpy(rec->lod_state, &state, sizeof state);
-    size_t at = sizeof state;
-    for (int i = 0; i < count + raster->batch_count; i++) {
-        const r3d_batch_t* batch = i < count ? NULL : raster->batches[i - count].batch;
-        const r3d_instance_t* instance = i < count ? &instances[i] : &raster->batches[i - count].instance;
-        at += snapshot_lod_mesh(rec->lod_state + at, instance, batch);
+}
+
+void
+frame_record_before_draw(const render_context_t* context, const r3d_instance_t* instances, int count) {
+    if (rec == NULL || !(rec->keyframe_next || rec->index % rec->keyframe_every == 0)) {
+        return;
     }
-    rec->lod_size = at;
+    const raster_t* raster = &context->raster;
+    const size_t header_bytes = sizeof(frame_record_lodstate_t);
+    const size_t bytes = header_bytes + snapshot_lod_meshes(NULL, raster, instances, count);
+    if (!reserve_lod_state(bytes)) {
+        return;
+    }
+    snapshot_lod_state(context);
+    rec->lod_size = header_bytes + snapshot_lod_meshes(rec->lod_state + header_bytes, raster, instances, count);
 }
 
 void
