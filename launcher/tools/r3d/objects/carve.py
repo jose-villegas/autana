@@ -1,10 +1,11 @@
 """Which objects an import carves, and how many triangles each carved shape keeps.
 
-A carved bake selects its rules' objects and every other object repeated as a rigid
-copy whose copies touch nothing and cut no pixels away, so a free-standing prop needs no rule. An object with an
-alpha-tested material (foliage, chains, glass panes) stays in the rest: a carved shape is simplified alone, which
-does not keep its cards, while the rest is pruned against the reference. That holds for free repeats only: an
-import rule that names such an object still carves it, as its author asked. A rule that pins `triangles` keeps that
+A carved bake selects its rules' objects and every other object repeated as a rigid copy that cuts no pixels
+away, so a repeated prop needs no rule. A shape whose copies touch nothing has free seams; one with a copy that
+touches other geometry keeps its contact border locked through its near level, so no crack opens along the joint.
+An object with an alpha-tested material (foliage, chains, glass panes) stays in the rest: a carved shape is
+simplified alone, which does not keep its cards, while the rest is pruned against the reference. That holds for
+repeats only: an import rule that names such an object still carves it, as its author asked. A rule that pins `triangles` keeps that
 budget; every other shape's comes from detail.py: its near level for the camera's closest view, stepped down by
 the measured balance while the stored copy prototypes would exceed their room. A renderer whose visibility follows
 the camera path counts a view only where it looks at a copy. A derived shape's coincident vertices are welded first, so
@@ -30,15 +31,10 @@ from r3d.poses import focal_px  # noqa: E402
 
 # The rule a free repeat is carved by: its seams free, since it touches nothing.
 FREE_REPEAT = {"match": {"repeat": "touches nothing"}, "seam": "free"}
+# The rule a repeat with a copy touching other geometry is carved by: its contact border locked.
+TOUCHING_REPEAT = {"match": {"repeat": "touches other geometry"}, "seam": "lock"}
 # A rigid copy needs a second object to be one.
 MIN_COPIES = 2
-
-
-def touching(pos, tri_v, tri_o, candidates, position_scale):
-    """The candidate objects that touch any other object: a vertex of either within the seal tolerance of the
-    other's surface (contact.py's test)."""
-    return {obj for edge in contact_pairs(pos, tri_v, tri_o, position_scale, among=candidates)
-            for obj in (edge.a, edge.b) if obj in candidates}
 
 
 def contact_locks(vertex_count, edges, policies, selected):
@@ -57,19 +53,31 @@ def contact_locks(vertex_count, edges, policies, selected):
     return locks
 
 
-def free_repeats(pos, tri_v, tri_m, tri_o, object_names, selected, position_scale, masked=()):
-    """{object: FREE_REPEAT} for every object outside `selected` that is a rigid copy of another, has no triangle
-    of a `masked` (alpha-tested) material, and whose shape's copies all touch nothing."""
+def repeats(pos, tri_v, tri_m, tri_o, object_names, selected, position_scale, masked=()):
+    """({object: rule}, contacts) for every object outside `selected` that is a rigid copy of another and has no
+    triangle of a `masked` (alpha-tested) material: FREE_REPEAT when its shape's copies all touch nothing, else
+    TOUCHING_REPEAT. The contacts (contact.py's test: a vertex within the seal tolerance of the other's surface)
+    are those of these copies and of `selected`'s objects, for contact_locks."""
     names = [str(i) for i in range(len(object_names))]
     cut = tri_o[np.isin(tri_m, masked)]
     rest = ~np.isin(tri_o, [*selected, *cut])
     shapes = [shape for shape in match_instances(source_objects(pos, tri_v[rest], tri_m[rest], tri_o[rest], names))
               if len(shape.instances) >= MIN_COPIES]
     copies = {int(instance.object_name) for shape in shapes for instance in shape.instances}
-    touched = touching(pos, tri_v, tri_o, copies, position_scale)
-    return {int(instance.object_name): FREE_REPEAT for shape in shapes
-            if not any(int(instance.object_name) in touched for instance in shape.instances)
-            for instance in shape.instances}
+    edges = contact_pairs(pos, tri_v, tri_o, position_scale, among=copies | set(selected))
+    touched = {obj for edge in edges for obj in (edge.a, edge.b)}
+    rules = {}
+    for shape in shapes:
+        members = [int(instance.object_name) for instance in shape.instances]
+        rules.update(dict.fromkeys(members, TOUCHING_REPEAT if touched.intersection(members) else FREE_REPEAT))
+    return rules, edges
+
+
+def seam_policies(selected, edges):
+    """Each selected object's seam: its rule's, else locked where it touches anything and free where not, as the
+    simplify passes decide it."""
+    touched = {obj for edge in edges for obj in (edge.a, edge.b)}
+    return {obj: rule.get('seam', 'lock' if obj in touched else 'free') for obj, rule in selected.items()}
 
 
 def views(scene, renderer):

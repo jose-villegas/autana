@@ -46,7 +46,7 @@ from r3d.lit_mesh import POSITION_SCALE, WELD_PER_TICK, bundle_entries, panel_co
 from r3d.mesh_source import load_source, load_glb_source, path_light_for, camera_path_poses
 from r3d.obj import alpha_tested
 from r3d.objects.budget import ceiling_split, prototype_groups
-from r3d.objects.carve import derived_budgets, detail_report, free_repeats, views
+from r3d.objects.carve import contact_locks, derived_budgets, detail_report, repeats, seam_policies, views
 from r3d.process_budget import NULL_RECORDER
 from r3d.ray_query import RayQuery  # noqa: E402
 from r3d.scene_name import SUFFIX  # noqa: E402
@@ -135,16 +135,18 @@ def thin_meshes(src, selected, thin, seed):
 
 
 def carve_selection(src, tri_v, tri_m, selected, settings, job, scene):
-    """The rules' objects plus every free repeat, each carried by one rule per shape whose `triangles` is pinned
-    or derived (objects/carve.py), and the derived shapes for the report."""
+    """The rules' objects plus every repeat, each carried by one rule per shape whose `triangles` is pinned or
+    derived (objects/carve.py), and the derived shapes for the report. A derived shape's ladder keeps the contact
+    border its seam locks."""
     position_scale = POSITION_SCALE if settings.position_scale is None else settings.position_scale
     masked = np.flatnonzero(alpha_tested(src.textures))
-    selected = selected | free_repeats(src.p, tri_v, tri_m, src.tri_o, src.object_names, selected, position_scale,
-                                       masked)
+    found, edges = repeats(src.p, tri_v, tri_m, src.tri_o, src.object_names, selected, position_scale, masked)
+    selected = selected | found
     if not any("triangles" not in rule for rule in selected.values()):
         return selected, None
     eyes, focal, near, sight = views(scene, job.renderer)
-    _, shapes = derived_budgets(src.p, tri_v, tri_m, src.tri_o, selected, eyes, focal, near, sight)
+    locks = contact_locks(len(src.p), edges, seam_policies(selected, edges), selected)
+    _, shapes = derived_budgets(src.p, tri_v, tri_m, src.tri_o, selected, eyes, focal, near, sight, locks)
     per_object = {}
     for shape in shapes:
         for obj in shape["objects"]:

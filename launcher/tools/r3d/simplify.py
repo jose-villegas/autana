@@ -195,8 +195,8 @@ def _mesh_passes(tris, labels, tri_o, triangles, reserved, selected, edges, budg
     pass_ids = {obj: [i for i, (sel, _) in enumerate(parts) if np.any(sel & (tri_o == obj))]
                 for obj in np.unique(tri_o)}
     links = []
-    touching = {obj for edge in edges for obj in (edge.a, edge.b)}
-    policies = {obj: rule.get('seam', 'lock' if obj in touching else 'free') for obj, rule in selected.items()}
+    from .objects.carve import seam_policies
+    policies = seam_policies(selected, edges)
     for edge in edges:
         if any(policies.get(obj) == 'weld' for obj in (edge.a, edge.b)):
             links.extend((a, b) for a in pass_ids[edge.a] for b in pass_ids[edge.b])
