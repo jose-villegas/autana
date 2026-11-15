@@ -77,6 +77,27 @@ class FreeRepeatTest(unittest.TestCase):
 
 
 @unittest.skipIf(np is None, "needs the r3d environment")
+class ContactLockTest(unittest.TestCase):
+    def edge(self, unshared=False):
+        from r3d.objects.contact import Contact
+        return Contact(0, 1, np.array([0, 1]), np.array([5]), unshared)  # object 0's vertices 0, 1 touch 1's 5
+
+    def test_a_locked_mesh_locks_both_sides_of_its_contact(self):
+        locks = carve.contact_locks(8, [self.edge()], {0: "lock"}, {0: {}})
+        self.assertEqual(np.flatnonzero(locks).tolist(), [0, 1, 5])
+
+    def test_a_free_mesh_frees_its_own_side_and_the_rest_keeps_its_border(self):
+        self.assertEqual(np.flatnonzero(carve.contact_locks(8, [self.edge()], {0: "free"}, {0: {}})).tolist(), [5])
+        both = {0: "free", 1: "free"}
+        self.assertEqual(carve.contact_locks(8, [self.edge()], both, {0: {}, 1: {}}).sum(), 0)
+
+    def test_a_welded_mesh_locks_only_a_contact_inside_a_face(self):
+        self.assertEqual(carve.contact_locks(8, [self.edge()], {0: "weld"}, {0: {}}).sum(), 0)
+        self.assertEqual(np.flatnonzero(carve.contact_locks(8, [self.edge(True)], {0: "weld"}, {0: {}})).tolist(),
+                         [0, 1, 5])
+
+
+@unittest.skipIf(np is None, "needs the r3d environment")
 class DerivedBudgetTest(unittest.TestCase):
     def selected(self):
         pos, tri_v, tri_m, tri_o, names = odd_scene()
@@ -104,6 +125,22 @@ class DerivedBudgetTest(unittest.TestCase):
         unwelded = len(detail.level(split, faces, detail.object_error(19.0, FOCAL)))
         self.assertLess(welded, unwelded)
         self.assertLess(welded, len(tris) // 2)
+
+    def test_a_copy_locked_border_is_kept_by_its_shape_ladder(self):
+        pos, tri_v, tri_m, tri_o, _ = scene([0, 0, 0], [10, 0, 0])
+        rule = {"match": {"material": "m"}}
+        selected = {0: rule, 1: rule}
+        top = np.flatnonzero(tri_o == 1)
+        top = np.unique(tri_v[top])[np.argmax(pos[np.unique(tri_v[top]), 1])]  # copy 1's pole
+        locks = np.zeros(len(pos), bool)
+        locks[top] = True
+        _, free = carve.derived_budgets(pos, tri_v, tri_m, tri_o, selected, [[-20, 0, 0]], FOCAL, NEAR)
+        _, held = carve.derived_budgets(pos, tri_v, tri_m, tri_o, selected, [[-20, 0, 0]], FOCAL, NEAR, locks=locks)
+        self.assertEqual(free[0]["locked"].sum(), 0)
+        locked = held[0]["locked"]
+        self.assertEqual(np.flatnonzero(locked).tolist(), [int(np.argmax(held[0]["positions"][:, 1]))])
+        kept = detail.level(held[0]["positions"], held[0]["triangles"], detail.object_error(19.0, FOCAL), locked)
+        self.assertIn(np.flatnonzero(locked)[0], kept)
 
     def measured(self, selected, room):
         from r3d.simplify import Allocation, simplify

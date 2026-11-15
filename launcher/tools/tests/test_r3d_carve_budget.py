@@ -36,7 +36,7 @@ class DerivedDetailTests(unittest.TestCase):
     def test_level_halves_the_requested_error_even_when_measurement_barely_misses(self):
         p, t = sphere()
         asked = []
-        def keep(p, t, error):
+        def keep(p, t, error, vertex_lock=None):
             asked.append(error)
             if len(asked) > 40:
                 self.fail('shrink did not reach float32 resolution')

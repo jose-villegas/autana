@@ -73,14 +73,15 @@ def object_error(distance, focal, error_px=TOLERANCE_PX):
     return error_px * distance / focal
 
 
-def level(positions, triangles, error):
+def level(positions, triangles, error, lock=None):
     """The fewest triangles meshoptimizer keeps whose surface, measured, moves at most `error`: its own error is an
     estimate, so a level that measures over is simplified again at the error scaled by how far over it was. Once
     that error falls below the positions' float32 resolution it is 0; meshoptimizer still drops some parts at 0
-    (a zero-area sliver), and when even that level measures over, the shape is kept whole."""
+    (a zero-area sliver), and when even that level measures over, the shape is kept whole. A vertex flagged in
+    `lock` (a contact border) neither moves nor goes."""
     asked, floor = error, bounds_diagonal(positions) * np.finfo(np.float32).eps
     while True:
-        kept = simplify_to_error(positions, triangles, asked)
+        kept = simplify_to_error(positions, triangles, asked, vertex_lock=lock)
         if len(kept) == len(triangles):
             return kept
         moved = surface_error(positions, triangles, positions, kept)
@@ -92,14 +93,14 @@ def level(positions, triangles, error):
         asked = asked if asked >= floor else 0.0
 
 
-def ladder(positions, triangles, distance, focal, tolerance_px=TOLERANCE_PX):
+def ladder(positions, triangles, distance, focal, tolerance_px=TOLERANCE_PX, lock=None):
     """The shape's rungs: the near level at tolerance_px, then each LADDER_STEP times coarser, while the triangle
-    count still drops and the allowed move stays inside the shape."""
+    count still drops and the allowed move stays inside the shape. Every rung keeps the `lock`ed vertices."""
     assert distance > 0
-    rungs = [Rung(len(level(positions, triangles, object_error(distance, focal, tolerance_px))), tolerance_px)]
+    rungs = [Rung(len(level(positions, triangles, object_error(distance, focal, tolerance_px), lock)), tolerance_px)]
     error_px = tolerance_px * LADDER_STEP
     while object_error(distance, focal, error_px) < bounds_diagonal(positions):
-        count = len(level(positions, triangles, object_error(distance, focal, error_px)))
+        count = len(level(positions, triangles, object_error(distance, focal, error_px), lock))
         if count < rungs[-1].triangles:
             rungs.append(Rung(count, error_px))
         error_px *= LADDER_STEP
