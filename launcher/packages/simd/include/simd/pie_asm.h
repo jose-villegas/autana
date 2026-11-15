@@ -1,6 +1,6 @@
 /*
- * pie_asm: the frame every PIE kernel (a .S file under src/pie/) opens and
- * closes, so no kernel picks its own stack offsets. Its macros exist for
+ * pie_asm: the frame every PIE kernel (a .S file) opens and closes, so no
+ * kernel picks its own stack offsets, and the macros kernels share. Its macros exist for
  * assembly only; a C file that includes it sees SIMD_PIE_FRAME_BYTES alone.
  *
  * Under the windowed ABI the top 16 bytes of a frame opened by `entry a1, N`

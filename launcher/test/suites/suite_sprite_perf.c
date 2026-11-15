@@ -7,7 +7,9 @@
  * flat colour at one alpha (a flat centre), stretched edges (runs of one
  * source pixel), corners (a source pixel each), and the sprite's own path
  * over a whole screen, against simd_copy over the same rows, the
- * framebuffer's bandwidth floor.
+ * framebuffer's bandwidth floor. Last, a row of each length blended a pixel
+ * at a time and by the vector body: where the vector starts to win is what
+ * DRAW_BLEND_MIN should be.
  */
 #include "suites.h" /* portable: needed by SUITE_REGISTER() even on host */
 
@@ -25,6 +27,7 @@
 #include "core/memory.h"
 #include "core/timing.h"
 #include "draw/draw.h"
+#include "draw/draw_blend.h"
 #include "draw/draw_sprite.h"
 #include "gfx/gfx.h"
 #include "math/scalar/units.h"
@@ -190,6 +193,42 @@ measure_resident(const char* row, int turns) {
     memory_free(ram);
 }
 
+/* Row lengths around DRAW_BLEND_MIN, each blended down every framebuffer
+ * row BLEND_ROW_REPS times from an unaligned column, as a run mostly
+ * starts. */
+static const int BLEND_ROW_LENGTHS[] = {8, 16, 24, 32, 48, 64, 96, 128};
+#define BLEND_ROW_REPS 8
+#define BLEND_ROW_AT   5
+
+typedef void (*blend_row_fn)(gfx_color_t* dst, const rgb565_mix_toward_t* m, size_t count);
+
+/* Nanoseconds a row of `count` takes through `blend`, after one pass to warm. */
+static int64_t
+row_ns(blend_row_fn blend, const rgb565_mix_toward_t* m, int count) {
+    gfx_color_t* fb = gfx_framebuffer();
+    int64_t start = 0;
+    for (int pass = 0; pass <= BLEND_ROW_REPS; pass++) {
+        if (pass == 1) {
+            start = timing_now_us();
+        }
+        for (int y = 0; y < GFX_HEIGHT; y++) {
+            blend(fb + ((size_t)y * GFX_WIDTH) + BLEND_ROW_AT, m, (size_t)count);
+        }
+    }
+    return (timing_now_us() - start) * MATH_NS_PER_US / ((int64_t)BLEND_ROW_REPS * GFX_HEIGHT);
+}
+
+static void
+test_blend_rows_scalar_against_vector(void) {
+    const rgb565_mix_toward_t m = rgb565be_mix_toward(BLEND_COLOR, BLEND_ALPHA);
+    for (size_t i = 0; i < sizeof BLEND_ROW_LENGTHS / sizeof BLEND_ROW_LENGTHS[0]; i++) {
+        const int count = BLEND_ROW_LENGTHS[i];
+        ESP_LOGI(TAG, "blend_row %d px: scalar %lld ns, vector %lld ns (DRAW_BLEND_MIN %d)", count,
+                 (long long)row_ns(draw_blend_row_scalar, &m, count),
+                 (long long)row_ns(draw_blend_row_vector, &m, count), DRAW_BLEND_MIN);
+    }
+}
+
 static void
 test_sprite_screen_flash(void) {
     measure_flash("sprite_screen_flash", 0);
@@ -230,6 +269,7 @@ run_sprite_perf_suite(void) {
     RUN_TEST(test_sprite_screen_flash_turned);
     RUN_TEST(test_sprite_screen_resident_turned);
     RUN_TEST(test_blend_against_the_copy_floor);
+    RUN_TEST(test_blend_rows_scalar_against_vector);
 }
 
 #else

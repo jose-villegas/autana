@@ -28,6 +28,7 @@ set(app_srcs
     "gfx/present/gfx_debug.c"
     "gfx/present/expand/gfx_expand.c"
     "gfx/present/expand/gfx_quarter_select.c"
+    "gfx/present/expand/gfx_quarter_select_pie.S"
     "gfx/present/gfx_mode.c"
     "gfx/present/modes/indexed/gfx_indexed.c"
     "gfx/present/gfx_present.c"

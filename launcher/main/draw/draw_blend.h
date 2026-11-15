@@ -24,3 +24,7 @@ void draw_blend_row(gfx_color_t* dst, const rgb565_mix_toward_t* m, size_t count
 
 /* The plain C body: short rows, the host, and what the device is checked against. */
 void draw_blend_row_scalar(gfx_color_t* dst, const rgb565_mix_toward_t* m, size_t count);
+
+/* The vector body at any length, the unaligned head and the tail a pixel at
+ * a time: what DRAW_BLEND_MIN is measured against. The host's is the C body. */
+void draw_blend_row_vector(gfx_color_t* dst, const rgb565_mix_toward_t* m, size_t count);

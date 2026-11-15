@@ -81,8 +81,12 @@ test_every_pixel_at_every_share_matches_the_scalar_blend(void) {
     rows_free(&rows);
 }
 
+typedef void (*blend_row_fn)(gfx_color_t* dst, const rgb565_mix_toward_t* m, size_t count);
+
+/* `blend` over every row length up to past the vector minimum, from each
+ * head offset, against the C body. */
 static void
-test_short_rows_and_tails_match_the_scalar_blend(void) {
+assert_short_rows_match_the_scalar_blend(blend_row_fn blend) {
     rows_t rows = rows_alloc();
     srand(2);
     for (int check = 0; check < SHORT_CHECKS; check++) {
@@ -94,17 +98,30 @@ test_short_rows_and_tails_match_the_scalar_blend(void) {
             memcpy(rows.pie, rows.scalar, SHORT_SPAN * sizeof(gfx_color_t));
             const rgb565_mix_toward_t m = rgb565be_mix_toward((gfx_color_t)rand(), (uint8_t)rand());
             draw_blend_row_scalar(rows.scalar + head, &m, (size_t)count);
-            draw_blend_row(rows.pie + head, &m, (size_t)count);
+            blend(rows.pie + head, &m, (size_t)count);
             TEST_ASSERT_EQUAL_HEX16_ARRAY(rows.scalar, rows.pie, SHORT_SPAN);
         }
     }
     rows_free(&rows);
 }
 
+static void
+test_short_rows_and_tails_match_the_scalar_blend(void) {
+    assert_short_rows_match_the_scalar_blend(draw_blend_row);
+}
+
+/* The vector body below the minimum too, where it is measured: a row
+ * shorter than its unaligned head included. */
+static void
+test_the_vector_body_at_any_length_matches_the_scalar_blend(void) {
+    assert_short_rows_match_the_scalar_blend(draw_blend_row_vector);
+}
+
 void
 run_draw_blend_suite(void) {
     RUN_TEST(test_every_pixel_at_every_share_matches_the_scalar_blend);
     RUN_TEST(test_short_rows_and_tails_match_the_scalar_blend);
+    RUN_TEST(test_the_vector_body_at_any_length_matches_the_scalar_blend);
 }
 
 #else

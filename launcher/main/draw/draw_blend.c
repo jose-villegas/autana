@@ -12,9 +12,18 @@ draw_blend_row_scalar(gfx_color_t* dst, const rgb565_mix_toward_t* m, size_t cou
     }
 }
 
-#if !SIMD_PIE
 void
 draw_blend_row(gfx_color_t* dst, const rgb565_mix_toward_t* m, size_t count) {
+    if (count < DRAW_BLEND_MIN) {
+        draw_blend_row_scalar(dst, m, count);
+        return;
+    }
+    draw_blend_row_vector(dst, m, count);
+}
+
+#if !SIMD_PIE
+void
+draw_blend_row_vector(gfx_color_t* dst, const rgb565_mix_toward_t* m, size_t count) {
     draw_blend_row_scalar(dst, m, count);
 }
 #else
@@ -25,12 +34,9 @@ _Static_assert(BLEND_LANE_BYTES == sizeof(uint16_t), "a lane is one halfword");
 void draw_blend_pie(gfx_color_t* dst, const uint16_t* lanes, size_t steps);
 
 void
-draw_blend_row(gfx_color_t* dst, const rgb565_mix_toward_t* m, size_t count) {
-    if (count < DRAW_BLEND_MIN) {
-        draw_blend_row_scalar(dst, m, count);
-        return;
-    }
-    const size_t head = simd_head_bytes(dst) / sizeof *dst;
+draw_blend_row_vector(gfx_color_t* dst, const rgb565_mix_toward_t* m, size_t count) {
+    const size_t aligned_at = simd_head_bytes(dst) / sizeof *dst;
+    const size_t head = aligned_at < count ? aligned_at : count;
     draw_blend_row_scalar(dst, m, head);
     dst += head;
     count -= head;

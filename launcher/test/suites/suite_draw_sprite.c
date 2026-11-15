@@ -310,8 +310,11 @@ expected_source(int at, int out, int src, int lo, int hi, int scale) {
     if (out - at <= out_hi) {
         return src - 1 - ((out - 1 - at) / scale);
     }
-    const double centre = (double)(src - lo - hi) / (out - out_lo - out_hi);
-    return lo + (int)((at - out_lo + 0.5) * centre);
+    /* The pixel centre at - out_lo + 1/2, scaled exactly: a double can land
+     * a hair under a whole source pixel on a tie. */
+    const int centre_src = src - lo - hi;
+    const int centre_out = out - out_lo - out_hi;
+    return lo + ((((2 * (at - out_lo)) + 1) * centre_src) / (2 * centre_out));
 }
 
 /* Under a translucent sprite, a background that differs at every pixel. */
@@ -377,12 +380,12 @@ static void
 test_nine_slice_geometry_at_every_turn_and_size(void) {
     fixture();
     const int sizes[][3] = {
-        {GEO_W, GEO_H, UNSCALED},                           /* 1:1 */
-        {GEO_W * STRETCH, GEO_H * STRETCH, UNSCALED},       /* stretched both ways */
-        {GEO_W + STRETCH + 1, GEO_H, UNSCALED},             /* one axis only, odd */
-        {GEO_LEFT + GEO_RIGHT + 1, GEO_H + 1, UNSCALED},    /* one centre column */
-        {TINY, TINY, UNSCALED},                             /* shorter than the borders */
-        {DRAW_SPRITE_MAP_COLUMNS + GEO_W, GEO_H, UNSCALED}, /* across a band of mapped columns */
+        {GEO_W, GEO_H, UNSCALED},                        /* 1:1 */
+        {GEO_W * STRETCH, GEO_H * STRETCH, UNSCALED},    /* stretched both ways */
+        {GEO_W + STRETCH + 1, GEO_H, UNSCALED},          /* one axis only, odd */
+        {GEO_LEFT + GEO_RIGHT + 1, GEO_H + 1, UNSCALED}, /* one centre column */
+        {TINY, TINY, UNSCALED},                          /* shorter than the borders */
+        {LONG_EDGE + 1, GEO_H, UNSCALED},                /* a long stretch, odd */
     };
     assert_geometry_at_every_turn(sizes, sizeof sizes / sizeof sizes[0], geometry_sprite);
 }
@@ -411,7 +414,6 @@ test_translucent_edge_runs_blend_as_each_pixel_alone(void) {
         {LONG_EDGE, GEO_H, UNSCALED},
         {GEO_W * STRETCH, LONG_EDGE, UNSCALED},
         {LONG_EDGE, LONG_EDGE, ZOOM},
-        {DRAW_SPRITE_MAP_COLUMNS + GEO_W, GEO_H, UNSCALED}, /* a run across a band's edge */
     };
     assert_geometry_at_every_turn(sizes, sizeof sizes / sizeof sizes[0], translucent_geometry_sprite);
     assert_geometry_at_every_turn(sizes, sizeof sizes / sizeof sizes[0], face_geometry_sprite);
@@ -478,14 +480,14 @@ test_a_flat_centre_blends_its_one_colour_and_the_border_stays_per_pixel(void) {
     TEST_ASSERT_EQUAL_HEX16(code(GEO_LEFT, 0), panel(dst.x + GEO_LEFT, dst.y));
 }
 
-/* A flat centre wide enough that a band of mapped columns lies wholly
- * inside it: the border rows above and below still draw, as a sprite with
- * no flat centre draws them, and the centre is its colour blended once. */
+/* A long flat centre: the border rows above and below still draw, as a
+ * sprite with no flat centre draws them, and the centre is its colour
+ * blended once. */
 static void
-test_a_band_inside_the_flat_centre_still_draws_the_border_rows(void) {
+test_a_long_flat_centre_still_draws_the_border_rows(void) {
     fixture();
     sprite_t s = geometry_sprite();
-    const recti_t dst = {GEO_AT, GEO_AT, (DRAW_SPRITE_MAP_COLUMNS * 2) + GEO_W, GEO_H * STRETCH};
+    const recti_t dst = {GEO_AT, GEO_AT, LONG_EDGE, GEO_H * STRETCH};
     gfx_color_t* plain = malloc((size_t)dst.w * (size_t)dst.h * sizeof *plain);
     TEST_ASSERT_NOT_NULL(plain);
     draw_clear(BACKGROUND);
@@ -606,7 +608,7 @@ suite_draw_sprite(void) {
     RUN_TEST(test_turned_the_top_border_lands_on_the_right);
     RUN_TEST(test_coverage_0_leaves_255_replaces_and_between_mixes);
     RUN_TEST(test_a_flat_centre_blends_its_one_colour_and_the_border_stays_per_pixel);
-    RUN_TEST(test_a_band_inside_the_flat_centre_still_draws_the_border_rows);
+    RUN_TEST(test_a_long_flat_centre_still_draws_the_border_rows);
     RUN_TEST(test_a_clip_limits_every_pixel_of_the_blit);
     RUN_TEST(test_the_tile_draws_the_same_from_ram_as_from_its_pack);
 #endif

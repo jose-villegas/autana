@@ -152,42 +152,73 @@ blend_run(gfx_color_t* dst, int count, gfx_color_t pixel, uint8_t cover) {
     }
 }
 
-/* One panel row's pixels [x0, x1): source pixel `base + map[col] * step`, the
- * same index in both planes, which share one stride. Neighbours of one
- * colour and share blend as one run, across slice edges: a skin's face row
- * runs from rim to rim. */
-static inline __attribute__((always_inline)) void
-blend_span(gfx_color_t* row, int x0, int x1, const int16_t* map, const sprite_t* s, size_t base, size_t step) {
-    const gfx_color_t* color = s->color.pixels;
-    const uint8_t* alpha = s->alpha.pixels;
-    int col = x0;
-    while (col < x1) {
-        int16_t source = map[col - x0];
-        const size_t at = base + ((size_t)source * step);
-        const gfx_color_t pixel = color[at];
-        const uint8_t cover = alpha == NULL ? SPRITE_COVER_FULL : alpha[at];
-        int end = col + 1;
-        while (end < x1) {
-            const int16_t next = map[end - x0];
-            if (next != source) {
-                const size_t next_at = base + ((size_t)next * step);
-                if (color[next_at] != pixel || (alpha != NULL && alpha[next_at] != cover)) {
-                    break;
-                }
-                source = next;
-            }
-            end++;
-        }
-        blend_run(row + col, end - col, pixel, cover);
-        col = end;
-    }
-}
-
 /* The output pixel's source along `axis`, counted from its far end when the
  * turn mirrors that axis. */
 static int
 axis_source(const slice_axis_t* axis, bool mirror, int at) {
     return slice_source(axis, mirror ? axis->out_len - 1 - at : at);
+}
+
+/* How many output pixels from `at` on show the source pixel `at` shows,
+ * walking up the axis, or down it when `down`: `scale` a border pixel, or a
+ * stretched centre pixel's span, ending where its slice does. */
+static int
+slice_run(const slice_axis_t* axis, int at, bool down) {
+    const int centre_at = axis->out_lo;
+    const int hi_at = axis->out_len - axis->out_hi;
+    if (at < centre_at) {
+        const int first = (at / axis->scale) * axis->scale;
+        return down ? at - first + 1 : mathi_min(first + axis->scale, centre_at) - at;
+    }
+    if (at >= hi_at) {
+        const int from_end = axis->out_len - 1 - at;
+        const int last = axis->out_len - 1 - ((from_end / axis->scale) * axis->scale);
+        return down ? at - mathi_max(last - axis->scale + 1, hi_at) + 1 : last - at + 1;
+    }
+    /* Centre output pixel k shows lo + q, q = (2k + 1) * centre_src / (2 *
+     * centre_out): the k showing q start at ceil(q * 2 * centre_out /
+     * centre_src) / 2, so a run is found with two divides, not one a pixel. */
+    const int centre_src = axis->src_len - axis->lo - axis->hi;
+    const int twice_out = 2 * (hi_at - centre_at);
+    const int k = at - centre_at;
+    const int q = ((2 * k) + 1) * centre_src / twice_out;
+    if (down) {
+        return k - (mathi_ceil_div(q * twice_out, centre_src) / 2) + 1;
+    }
+    return mathi_min(mathi_ceil_div((q + 1) * twice_out, centre_src) / 2, hi_at - centre_at) - k;
+}
+
+/* One panel row's pixels [x0, x1) of a sprite whose column axis is `axis`
+ * from panel column `origin`, mirrored or not: its source pixels are `base +
+ * source * step`, the same index in both planes, which share one stride.
+ * Each source pixel is read once, for the run of panel pixels that shows
+ * it; neighbouring runs of one colour and share blend as one, across slice
+ * edges, so a row of one colour from border to border blends once. */
+static inline __attribute__((always_inline)) void
+blend_span(gfx_color_t* row, int x0, int x1, const slice_axis_t* axis, bool mirror, int origin, const sprite_t* s,
+           size_t base, size_t step) {
+    const gfx_color_t* color = s->color.pixels;
+    const uint8_t* alpha = s->alpha.pixels;
+    int start = x0;
+    gfx_color_t pixel = 0;
+    uint8_t cover = 0;
+    for (int col = x0; col < x1;) {
+        const int at = mirror ? axis->out_len - 1 - (col - origin) : col - origin;
+        const int count = mathi_min(slice_run(axis, at, mirror), x1 - col);
+        const size_t source = base + ((size_t)slice_source(axis, at) * step);
+        const gfx_color_t next = color[source];
+        const uint8_t next_cover = alpha == NULL ? SPRITE_COVER_FULL : alpha[source];
+        if (col > start && (next != pixel || next_cover != cover)) {
+            blend_run(row + start, col - start, pixel, cover);
+            start = col;
+        }
+        pixel = next;
+        cover = next_cover;
+        col += count;
+    }
+    if (x1 > start) {
+        blend_run(row + start, x1 - start, pixel, cover);
+    }
 }
 
 /* A flat centre as one blended rectangle; the panel rectangle it covers, or
@@ -207,54 +238,48 @@ draw_flat_centre(const sprite_t* s, recti_t dst, int turns, const slice_axis_t* 
     return centre;
 }
 
-/* Panel row `row` across `rect`, leaving the columns `centre` already drew. */
+/* The columns of a sprite row: its axis, whether a turn mirrors it, the
+ * panel column it starts at, and the step between its source pixels. */
+typedef struct {
+    const slice_axis_t* axis;
+    bool mirror;
+    int origin;
+    size_t step;
+} span_axis_t;
+
+/* Panel row `row` across `rect`, leaving the columns `centre` already drew:
+ * the sprite row at `base` along `cols`. */
 static void
-blend_row(gfx_color_t* line, int row, recti_t rect, recti_t centre, const int16_t* map, const sprite_t* s, size_t base,
-          size_t step) {
+blend_row(gfx_color_t* line, int row, recti_t rect, recti_t centre, const span_axis_t* cols, const sprite_t* s,
+          size_t base) {
     const int x1 = recti_right(rect);
     const int skip0 = mathi_max(centre.x, rect.x);
     const int skip1 = mathi_min(recti_right(centre), x1);
     if (row >= centre.y && row < recti_bottom(centre) && skip0 < skip1) {
-        blend_span(line, rect.x, skip0, map, s, base, step);
-        blend_span(line, skip1, x1, map + (skip1 - rect.x), s, base, step);
+        blend_span(line, rect.x, skip0, cols->axis, cols->mirror, cols->origin, s, base, cols->step);
+        blend_span(line, skip1, x1, cols->axis, cols->mirror, cols->origin, s, base, cols->step);
         return;
     }
-    blend_span(line, rect.x, x1, map, s, base, step);
+    blend_span(line, rect.x, x1, cols->axis, cols->mirror, cols->origin, s, base, cols->step);
 }
 
 /* The clipped panel rectangle `clipped` of a sprite filling `dst` at `turns`:
- * panel columns walk `col_axis` and panel rows `row_axis`, a band of
- * DRAW_SPRITE_MAP_COLUMNS columns at a time. Out of line, with the row
- * blends inlined into it, so the map is off the stack while the flat
- * centre draws and a UI paint through a skinned face stays shallow. */
+ * panel columns walk `col_axis` and panel rows `row_axis`. Out of line, so
+ * its locals are off the stack while the flat centre draws: a draw stays
+ * shallow under a caller already deep in its own stack. */
 static __attribute__((noinline)) void
 blit(const gfx_target_t* target, const recti_t* clipped, const recti_t* dst, const sprite_t* s, int turns,
      const slice_axis_t* col_axis, const slice_axis_t* row_axis, const recti_t* centre) {
     const recti_t rect = *clipped;
-    const bool col_mirror = turns == 1 || turns == 2;
     const bool row_mirror = turns == 2 || turns == 3;
     /* Upright, a panel row is a sprite row; turned, a sprite column. */
     const bool across = (turns & 1) != 0;
     const size_t stride = s->color.pitch / sizeof(gfx_color_t);
-    const size_t step = across ? stride : 1;
     const size_t row_step = across ? 1 : stride;
-    int16_t map[DRAW_SPRITE_MAP_COLUMNS];
-    for (int x0 = rect.x; x0 < recti_right(rect); x0 += DRAW_SPRITE_MAP_COLUMNS) {
-        const recti_t band = {x0, rect.y, mathi_min(DRAW_SPRITE_MAP_COLUMNS, recti_right(rect) - x0), rect.h};
-        for (int col = band.x; col < recti_right(band); col++) {
-            map[col - band.x] = (int16_t)axis_source(col_axis, col_mirror, col - dst->x);
-        }
-        /* A band inside the flat centre's columns has nothing to draw in
-         * its rows. */
-        const bool in_centre = band.x >= centre->x && recti_right(band) <= recti_right(*centre);
-        for (int row = band.y; row < recti_bottom(band); row++) {
-            if (in_centre && row >= centre->y && row < recti_bottom(*centre)) {
-                row = recti_bottom(*centre) - 1;
-                continue;
-            }
-            const size_t base = (size_t)axis_source(row_axis, row_mirror, row - dst->y) * row_step;
-            blend_row(gfx_target_color(target, row), row, band, *centre, map, s, base, step);
-        }
+    const span_axis_t cols = {col_axis, turns == 1 || turns == 2, dst->x, across ? stride : 1};
+    for (int row = rect.y; row < recti_bottom(rect); row++) {
+        const size_t base = (size_t)axis_source(row_axis, row_mirror, row - dst->y) * row_step;
+        blend_row(gfx_target_color(target, row), row, rect, *centre, &cols, s, base);
     }
 }
 

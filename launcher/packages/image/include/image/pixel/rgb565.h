@@ -125,6 +125,15 @@ rgb565be_to_rgb888(rgb565be_t c) {
 #define RGB565_MIX_FULL  255u
 #define RGB565_MIX_HALF  127u
 
+/* rgb565_div255() of both channels of a red-blue word at once. Each
+ * channel's v >> 8 fits five bits, so the mask keeps red's from carrying
+ * into blue; the quotients sit at bits 0 and RGB565_RB_RED_AT, with red's
+ * low bits shifted in above blue's. */
+static inline uint32_t
+rgb565_div255_pair(uint32_t v) {
+    return (v + ((v >> 8) & RGB565_RB_LOW5) + RGB565_RB_ONES) >> 8;
+}
+
 static inline uint32_t
 rgb565_rb_apart(uint16_t native) {
     return ((uint32_t)rgb565_r5(native) << RGB565_RB_RED_AT) | rgb565_b5(native);
@@ -146,15 +155,14 @@ rgb565be_mix_toward(rgb565be_t b, uint8_t t) {
 }
 
 /* `a` blended toward the colour of `m`: the same pixel rgb565be_mix() makes,
- * with two multiplies. Red and blue divide by 255 together, each with
- * rgb565_div255()'s exact identity. */
+ * with two multiplies. Red and blue divide by 255 together, in
+ * rgb565_div255_pair(). */
 static inline rgb565be_t
 rgb565be_mix_onto(rgb565be_t a, const rgb565_mix_toward_t* m) {
     const uint16_t na = rgb565_swap(a);
-    uint32_t rb = (rgb565_rb_apart(na) * m->keep) + m->rb;
-    rb = (rb + ((rb >> 8) & RGB565_RB_LOW5) + RGB565_RB_ONES) >> 8;
+    const uint32_t rb = rgb565_div255_pair((rgb565_rb_apart(na) * m->keep) + m->rb) & RGB565_RB_LOW5;
     const uint32_t g = rgb565_div255((rgb565_g6(na) * m->keep) + m->g);
-    return rgb565be_pack((uint8_t)((rb >> RGB565_RB_RED_AT) & 0x1Fu), (uint8_t)g, (uint8_t)(rb & 0x1Fu));
+    return rgb565be_pack((uint8_t)(rb >> RGB565_RB_RED_AT), (uint8_t)g, (uint8_t)rb);
 }
 
 /* Blend a toward b: t=0 keeps a, t=255 gives b. Red/blue have five bits,
