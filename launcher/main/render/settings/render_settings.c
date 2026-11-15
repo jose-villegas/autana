@@ -88,7 +88,7 @@ anim_every(int32_t knob, int value) {
 render_settings_t
 render_settings_tuned(const render_settings_t* set) {
     const render_settings_t s = *set;
-    return (render_settings_t){
+    render_settings_t tuned = {
         tune_override(cull, s.cull) != 0,
         tune_override(depth_fit, s.depth_fit) != 0,
         tune_override(batched, s.batched) != 0,
@@ -97,7 +97,16 @@ render_settings_tuned(const render_settings_t* set) {
          tune_override(lod_pick_every, s.lod.pick_every), tune_override(lod_triangle_budget, s.lod.triangle_budget),
          tune_override(lod_blend, s.lod.blend),
          lod_blend_centipixels == TUNE_UNSET ? s.lod.blend_px : (float)lod_blend_centipixels / LOD_BLEND_CENTI},
-        {anim_pixels(mid_px, s.anim.mid_px), anim_pixels(far_px, s.anim.far_px),
-         anim_every(mid_every, s.anim.mid_every), anim_every(far_every, s.anim.far_every),
-         anim_pixels(hysteresis_px, s.anim.hysteresis_px)}};
+        s.anim};
+    render_anim_settings_tune(&tuned.anim);
+    return tuned;
+}
+
+void
+render_anim_settings_tune(render_anim_settings_t* anim) {
+    anim->mid_px = anim_pixels(mid_px, anim->mid_px);
+    anim->far_px = anim_pixels(far_px, anim->far_px);
+    anim->mid_every = anim_every(mid_every, anim->mid_every);
+    anim->far_every = anim_every(far_every, anim->far_every);
+    anim->hysteresis_px = anim_pixels(hysteresis_px, anim->hysteresis_px);
 }

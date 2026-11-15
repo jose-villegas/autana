@@ -170,12 +170,16 @@ skin_slice(void* ctx, int from, int to) {
     scene_skin_range(ctx, from, to - from);
 }
 
+/* The tiers resolve under the overrides before the parallel slices, so every
+ * copy sees one policy; in place, so no second copy shares the repose's frame,
+ * which the skin and draw slices run beneath. */
 static void
-animate_entities(scene_t* scene, uint32_t dt_ms, render_anim_settings_t settings) {
+animate_entities(scene_t* scene, uint32_t dt_ms) {
     if (scene->skeleton_animator_count == 0) {
         return;
     }
-    animate_work_t w = {scene, dt_ms, settings};
+    animate_work_t w = {scene, dt_ms, render_context_settings(render_context_main())->anim};
+    render_anim_settings_tune(&w.settings);
     (void)job_run_range(&scene->animate_share, animate_slice, &w, scene->staged_count);
 }
 
@@ -240,8 +244,7 @@ scene_animation_repose(scene_t* scene, uint32_t dt_ms) {
             apply_property(scene, animator, dt_ms);
         }
     }
-    /* Resolved before the parallel slices, so every copy sees one policy. */
-    animate_entities(scene, dt_ms, render_settings_tuned(render_context_settings(render_context_main())).anim);
+    animate_entities(scene, dt_ms);
     FRAME_COST_END(posed_from, SCENE_ANIM_STAGE_POSE_NAME);
     FRAME_COST_BEGIN(lit_from);
     const int clusters = skin_stage_prepare(scene);
