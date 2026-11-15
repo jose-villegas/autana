@@ -20,15 +20,8 @@ colour 1.
 CIE76 is the distance between two colours in CIELAB; the error panels' scale
 runs from black (matches the source) through red to yellow.
 
-A span divides u and v by depth every `texture.divide_px` pixels, a
-[render setting](../../render/Render-Settings.md), and steps them affine
-between, so rows on a floor near the camera stay straight; stepped affine
-across the whole span they bend. A triangle no wider than one segment, or
-estimated to bend less than `texture.affine_bend` texels, steps affine
-throughout; a dividing one lengthens its segments, up to the setting's
-maximum, while one segment would still bend less than that.
-
-![The near floor's squares where affine differs most from a divide every pixel, with each column's CIE76 dE against that divide](../../images/render/bistro-street-divide.png)
+How the span fill maps these texels onto a triangle, picks a level and
+divides by depth: [Texture-Mapping.md](../../render/frame/Texture-Mapping.md).
 
 ```mermaid
 ---

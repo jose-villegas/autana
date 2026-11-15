@@ -1,5 +1,5 @@
-"""LTEX.md's sheets of Bistro's street with and without its textures, and of its near floor at each perspective
-divide spacing, drawn by r3d/texture/texture_figures.py.
+"""LTEX.md's sheets of Bistro's street with and without its textures, and Texture-Mapping.md's of its near floor at
+each perspective divide spacing, drawn by r3d/texture/texture_figures.py.
 
     python launcher/demo/bistro/bistro_figures.py --scene ... --object ... --reference ... --out DIR
 """
