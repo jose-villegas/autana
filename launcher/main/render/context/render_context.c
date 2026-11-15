@@ -11,6 +11,7 @@
 #include "core/timing.h"
 #include "core/tune.h"
 #include "profile/frame_cost.h"
+#include "render/record/frame_record.h"
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 #include "render/view/raster_boxes.h"
@@ -307,7 +308,7 @@ generation_pays(const render_context_t* c) {
 }
 
 /* Whether this frame can be warped from the kept one: generation on, a drawn
- * frame kept, no debug view, the same viewport, and a target; and it pays
+ * frame kept, no debug view, and the same viewport; and it pays
  * (the last verdict, kept in `paying`), has not been measured, or is due to
  * be measured again. */
 static bool
@@ -321,16 +322,25 @@ can_generate(render_context_t* c, const render_view_t* view) {
         || a.quarter != b.quarter) {
         return false;
     }
-    if (c->framegen.width != r->width || c->framegen.height != r->height) {
-        framegen_target_free(&c->framegen);
-        return framegen_target_alloc(&c->framegen, r->width, r->height);
-    }
     return true;
 }
 
 /* The kept frame warped to `view` into the framegen target, which compose shows. */
-static void
-generate(render_context_t* c, const render_view_t* view) {
+bool
+render_context_generate(render_context_t* c, const render_view_t* view) {
+    if (!c->kept) {
+        return false;
+    }
+    if (c->framegen.width != c->raster.width || c->framegen.height != c->raster.height) {
+        framegen_target_free(&c->framegen);
+        if (!framegen_target_alloc(&c->framegen, c->raster.width, c->raster.height)) {
+            return false;
+        }
+    }
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+    c->observed = false;
+    c->frame_view = *view;
+#endif
     const int64_t began_us = timing_now_us();
     FRAME_COST_BEGIN(warped_from);
     framegen_warp(&c->raster, &c->kept_view, view, &c->framegen);
@@ -340,8 +350,11 @@ generate(render_context_t* c, const render_view_t* view) {
     FRAME_COST_END(filled_from, FRAMEGEN_STAGE_FILL_NAME);
     c->frame.draw_us = (int32_t)(timing_now_us() - began_us);
     c->frame.generated = true;
+    c->frame.unchanged = false;
+    c->raster.first_row = c->raster.end_row = 0;
     c->kept = false; /* FRAMEGEN_SHOWN_PER_DRAWN: the next frame is drawn */
     c->drawn_in_row = 0;
+    return true;
 }
 
 /* No row changed, but picks are owed (render_partial_picks_owed(), or a
@@ -481,10 +494,10 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
         c->raster.batch_count = 0;
     }
     c->batches_set = false;
-    if (can_generate(c, view)) {
-        generate(c, view);
+    if (can_generate(c, view) && render_context_generate(c, view)) {
         return true;
     }
+    frame_record_before_draw(c, instances, count);
     begin_draw(c);
     aim_raster(c, instances, count, view, clear);
     fit_scratch(c);
@@ -569,7 +582,7 @@ render_context_compose(render_context_t* c, uint16_t* destination, uint16_t* hal
         c->raster.first_row = 0;
         c->raster.end_row = 0;
     }
-    if (c->policy == RENDER_FIXED && !c->generating) {
+    if (c->policy == RENDER_FIXED && !c->generating && !c->frame.generated) {
         compose_rows(c, size.height);
         if (!c->frame.unchanged) {
             raster_upscale_picture(&c->raster, NULL, destination, seams, size.width, size.height);

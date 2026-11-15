@@ -52,6 +52,7 @@ title Record head, 6 bytes before every body
 | `TUNE` | 9 | a tunable's value: on a keyframe each off its initial, else each that changed |
 | `CHECK` | 10 | the crc32 of a keyframe's composed picture, carried by the next frame the sink takes |
 | `SETTINGS` | 11 | the context's `render_settings_t`, on keyframes and changes |
+| `LODSTATE` | 12 | pre-draw pick phase, triangle-budget steering and coarse LOD words for every instance and every batch copy |
 
 ```mermaid
 ---
@@ -216,11 +217,37 @@ carry the engine structs; writer and reader must share their layout.
 | `SKINNED` | 2 | a pack mesh posed by the `POSE` of the same index |
 | `BUILT` | 3 | built at run time from the `DYNMESH` of the same index |
 
+## LODSTATE
+
+A keyframe is a full restart point. `LODSTATE` captures what picking reads
+before that frame draws, because picking updates the coarse words and
+advances the context's phase and triangle-budget steering.
+
+```mermaid
+flowchart LR
+    Phase["Pick phase and steering"] --> Count["Mesh word count"]
+    Count --> Words["Coarse words"]
+    Words --> Next{"More meshes?"}
+    Next -->|yes| Count
+    Next -->|no| Draw["Draw keyframe"]
+```
+
+| Field | Encoding |
+|---|---|
+| Pick phase | `u32 raster.pick_round` |
+| Steering | `f32` tolerances, `i32` picked coverage and bin, histogram halves (`i32` saves/finest and `f32` unit), `i64` drawn triangles, `i32` frames, `u8` settled; see `frame_record_lodstate_t` |
+| Mesh word count | `u32`, one for each mesh in FRAME order |
+| Coarse words | `u32[word_count]`; a batch holds every copy's words in copy order |
+
+The record follows the keyframe's meshes. Replay resolves those meshes,
+then restores the snapshot before drawing. Seeking draws forward from the
+keyframe; a generated frame warps the preceding drawn frame through its VIEW.
+
 ## Rules
 
 | Rule | Detail |
 |---|---|
-| Keyframes | every `FRAME_RECORD_KEYFRAME_EVERY` frames, and the frame after a drop: a `MESH` for every drawn mesh and every pack named again; between them only a `MESH` whose mesh, its arrays or matrix changed. A generated frame due one passes it to the next drawn frame |
+| Keyframes | a full restart point, including pre-draw `LODSTATE`; every `FRAME_RECORD_KEYFRAME_EVERY` frames, and the frame after a drop: a `MESH` for every drawn mesh and every pack named again; between them only a `MESH` whose mesh, its arrays or matrix changed. A generated frame due one passes it to the next drawn frame |
 | A frame is whole or absent | the sink takes a frame's bytes in one write or drops the frame; the next `FRAME` sets `FRAME_RECORD_AFTER_DROP` |
 | Pack identity | a `PACK`'s crc32 is the one its pack header states: a reader loads the same pack bytes and checks them against it |
 | Resident copies | a scene that copies pack meshes into its own memory tells the asset store (`asset_store_copies_add()`), so the copies are named by the entries they copy |

@@ -61,6 +61,8 @@ frame_record_counts_t frame_record_counts(void);
 /* The frame just drawn or generated through `context`. Called by the scene's
  * draw after render_context_draw(), which has made its choices. */
 void frame_record_frame(const render_context_t* context, const raster_t* raster, uint32_t dt_ms);
+/* Captures the state a keyframe's pick will read, before drawing mutates it. */
+void frame_record_before_draw(const render_context_t* context, const r3d_instance_t* instances, int count);
 
 /* Takes the table of notes below in external RAM, kept for the run; until
  * then nothing is noted. A development boot takes it before any scene
@@ -102,6 +104,13 @@ frame_record_active(void) {
 static inline frame_record_counts_t
 frame_record_counts(void) {
     return (frame_record_counts_t){0};
+}
+
+static inline void
+frame_record_before_draw(const render_context_t* context, const r3d_instance_t* instances, int count) {
+    (void)context;
+    (void)instances;
+    (void)count;
 }
 
 static inline void

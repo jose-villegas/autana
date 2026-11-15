@@ -169,6 +169,9 @@ void render_context_forget(render_context_t* context);
  * way out; it holds while dynamic resolution is off. */
 void render_context_set_scale(render_context_t* context, int percent);
 
+/* Warps the kept draw to this view; false without a kept frame or warp storage. */
+bool render_context_generate(render_context_t* c, const render_view_t* view);
+
 /* Frame generation: after each drawn frame, the next one is warped from it
  * to its own view instead of drawn, while a generated frame costs less than a
  * drawn one (FRAMEGEN_GAIN_PERCENT less to start); otherwise frames are drawn,

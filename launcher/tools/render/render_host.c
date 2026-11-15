@@ -294,6 +294,7 @@ static struct {
     bool panel, crop, video_ok, failed;
     const char *out_path, *video_path, *record_path;
     FILE* record;
+    uint32_t record_keyframe_every;
     int out_w, out_h;
     affine2x_t t;
     int32_t stride;
@@ -397,7 +398,7 @@ static bool
 record_start(void) {
     host.record = fopen(host.record_path, "wb");
     const frame_record_out_t out = {record_write, host.record};
-    if (host.record == NULL || !frame_record_start(&out, FRAME_RECORD_KEYFRAME_EVERY)) {
+    if (host.record == NULL || !frame_record_start(&out, host.record_keyframe_every)) {
         fprintf(stderr, "%s: cannot record to %s\n", host.provider->name, host.record_path);
         if (host.record != NULL) {
             fclose(host.record);
@@ -427,6 +428,7 @@ render_host_open(const frame_provider_t* provider, int argc, char** argv, int* e
     memset(&host, 0, sizeof host);
     *exit_code = 1;
     host.provider = provider;
+    host.record_keyframe_every = FRAME_RECORD_KEYFRAME_EVERY;
     host.frame.quarter = host.provider->quarter;
     host.frame.count = host.provider->frames > 0 ? host.provider->frames : 1;
     host.frame.dt_ms = host.provider->dt_ms > 0 ? host.provider->dt_ms : DEFAULT_DT_MS;
@@ -457,6 +459,11 @@ render_host_open(const frame_provider_t* provider, int argc, char** argv, int* e
             host.out_path = argv[++i];
         } else if (strcmp(a, "--video") == 0 && has_value) {
             host.video_path = argv[++i];
+        } else if (strcmp(a, "--record-keyframe-every") == 0 && has_value) {
+            host.record_keyframe_every = (uint32_t)strtoul(argv[++i], NULL, 10);
+            if (host.record_keyframe_every == 0 || host.record_keyframe_every > UINT16_MAX) {
+                return refuse(exit_code, argv[0]);
+            }
         } else if (strcmp(a, "--record") == 0 && has_value) {
             host.record_path = argv[++i];
         } else if (strcmp(a, "--crop") == 0) {

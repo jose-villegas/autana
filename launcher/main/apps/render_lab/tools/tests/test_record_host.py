@@ -10,11 +10,13 @@ for each keyframe, POSE between keyframes while the herd animates, and a
 DYNMESH every frame the water rebuilds its surface.
 """
 import math
+import hashlib
 import os
 import pathlib
 import re
 import shutil
 import subprocess
+import struct
 import sys
 import tempfile
 import unittest
@@ -27,10 +29,16 @@ import host_render  # noqa: E402
 
 # Two keyframe intervals and one frame: the third keyframe is the last frame.
 FRAMES = 61
+SHORT_FRAMES = 10
+SHORT_KEYFRAME_EVERY = 3
+GENERATED_FRAMES = 2
+FUTURE_RECORD_TYPE = 0xFFFF
+BUDGET_TRIANGLES = 1200
 RECORDED = {
     "herd": ["--scene", "herd-8"],
     "water": ["--quarter", "0", "--scene", "water", "--console", "0:water tour"],
     "sponza": ["--scene", "sponza-fitted-full"],
+    "budget": ["--scene", "sponza-fitted-full", "--set", f"render.lod_triangle_budget={BUDGET_TRIANGLES}"],
 }
 
 
@@ -45,7 +53,8 @@ def build(out):
 class RecordHost(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.out = pathlib.Path(tempfile.mkdtemp(prefix="record_host_"))
+        cls.out = pathlib.Path(os.environ.get("AUTANA_RECORD_TEST_OUT") or tempfile.mkdtemp(prefix="record_host_"))
+        cls.out.mkdir(parents=True, exist_ok=True)
         run, cls.binary = build(cls.out)
         cls.failure = None if cls.binary else (run.stdout + run.stderr)[-2000:]
         cls.streams, cls.logs = {}, {}
@@ -60,7 +69,8 @@ class RecordHost(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        shutil.rmtree(cls.out, ignore_errors=True)
+        if not os.environ.get("AUTANA_RECORD_TEST_OUT"):
+            shutil.rmtree(cls.out, ignore_errors=True)
 
     def stream(self, name):
         self.assertIsNone(self.failure, self.failure)
@@ -106,15 +116,22 @@ class RecordHost(unittest.TestCase):
         self.assertNotEqual(run.returncode, 0)
         self.assertIn("CHECK 0 DIFFERS", run.stderr)
 
-    def test_piecewise_feed_and_pack_identity(self):
-        self.assertIsNone(self.failure, self.failure)
+    @classmethod
+    def build_probe(cls):
+        if hasattr(cls, "probe"):
+            return cls.probe
         project = ROOT / "launcher/tools/render/stream/tests"
-        build_dir = self.out / "feed-build"
+        build_dir = cls.out / "feed-build"
         for command in (["cmake", "-S", str(project), "-B", str(build_dir)],
                         ["cmake", "--build", str(build_dir), "--target", "stream_feed_probe", "--parallel"]):
             run = subprocess.run(command, capture_output=True, text=True, timeout=900)
-            self.assertEqual(run.returncode, 0, (run.stdout + run.stderr)[-2000:])
-        probe = build_dir / ("stream_feed_probe.exe" if os.name == "nt" else "stream_feed_probe")
+            assert run.returncode == 0, (run.stdout + run.stderr)[-2000:]
+        cls.probe = build_dir / ("stream_feed_probe.exe" if os.name == "nt" else "stream_feed_probe")
+        return cls.probe
+
+    def test_piecewise_feed_and_pack_identity(self):
+        self.assertIsNone(self.failure, self.failure)
+        probe = self.build_probe()
         env = dict(os.environ, AUTANA_ASSET_DIR=str(self.out / "assets"))
         path = self.out / "herd.frec"
         results = []
@@ -147,6 +164,99 @@ class RecordHost(unittest.TestCase):
         self.assertNotEqual(run.returncode, 0)
         self.assertIn(pack_name, run.stderr)
         self.assertIn("crc32 stream=", run.stderr)
+
+    def replay_probe(self, path, target=None):
+        args = [str(self.build_probe()), str(path), "7", str(self.out / "probe.bmp")]
+        if target is not None:
+            args.append(str(target))
+        return subprocess.run(args, capture_output=True, text=True, timeout=600,
+                              env=dict(os.environ, AUTANA_ASSET_DIR=str(self.out / "assets")))
+
+    def test_seek_each_keyframe_from_fresh_decode(self):
+        for name in ("herd", "sponza", "budget"):
+            for frame in self.stream(name).frames:
+                if not frame.keyframe:
+                    continue
+                with self.subTest(scene=name, keyframe=frame.index):
+                    run = self.replay_probe(self.out / (name + ".frec"), frame.index)
+                    self.assertEqual(run.returncode, 0, run.stderr[-4000:])
+                    self.assertIn(f"CHECK {frame.index} SAME", run.stderr)
+
+    def test_unknown_record_between_frames(self):
+        data = (self.out / "herd.frec").read_bytes()
+        header_end = framerec.HEAD.size + framerec.HEADER.size
+        path = self.out / "unknown.frec"
+        payload = b"new"
+        path.write_bytes(data[:header_end] + framerec.HEAD.pack(FUTURE_RECORD_TYPE, len(payload))
+                         + payload + data[header_end:])
+        run = self.replay_probe(path)
+        self.assertEqual(run.returncode, 0, run.stderr[-4000:])
+
+    def test_pack_slot_renamed_between_frames(self):
+        first = (self.out / "herd.frec").read_bytes()
+        second = bytearray((self.out / "sponza.frec").read_bytes())
+        at = framerec.HEAD.size + framerec.HEADER.size
+        while at < len(second):
+            kind, length = framerec.HEAD.unpack_from(second, at)
+            body = at + framerec.HEAD.size
+            if kind in (framerec.RECORD_TYPES["FRAME"], framerec.RECORD_TYPES["CHECK"]):
+                index, = struct.unpack_from("<I", second, body)
+                struct.pack_into("<I", second, body, index + FRAMES)
+            at = body + length
+        path = self.out / "renamed.frec"
+        path.write_bytes(first + second[framerec.HEAD.size + framerec.HEADER.size:])
+        run = self.replay_probe(path)
+        self.assertEqual(run.returncode, 0, run.stderr[-4000:])
+        self.assertIn(f"RESULT {len(self.stream('herd').checks) + len(self.stream('sponza').checks)} 0 ", run.stdout)
+
+    def test_generated_picture_and_seek(self):
+        path = self.out / "generated.frec"
+        picture = self.out / "generated.bmp"
+        run = subprocess.run([str(self.binary), "--no-hud", "--scene", "stress-open", "--frames", str(GENERATED_FRAMES),
+                              "--set", "render_lab.framegen=1", "--record", str(path), "-o", str(picture)],
+                             capture_output=True, text=True, timeout=600, cwd=self.out)
+        self.assertEqual(run.returncode, 0, run.stderr[-4000:])
+        stream = framerec.parse(path.read_bytes())
+        self.assertTrue(stream.frames[-1].flags & framerec.GENERATED)
+        for target in (None, GENERATED_FRAMES - 1):
+            run = self.replay_probe(path, target)
+            self.assertEqual(run.returncode, 0, run.stderr[-4000:])
+            def picture_hash(path):
+                bmp = path.read_bytes()
+                offset, = struct.unpack_from("<I", bmp, 10)
+                return hashlib.sha256(bmp[offset:]).hexdigest()
+            recorded_hash = picture_hash(picture)
+            replay_hash = picture_hash(self.out / "probe.bmp")
+            print(f"GENERATED seek={target} recorded={recorded_hash} replay={replay_hash}")
+            self.assertEqual(recorded_hash, replay_hash)
+
+    def test_short_keyframe_interval(self):
+        for name in ("herd", "sponza", "budget"):
+            path = self.out / (name + "-short.frec")
+            run = subprocess.run([str(self.binary), "--no-hud", *RECORDED[name], "--frames", str(SHORT_FRAMES),
+                                  "--record-keyframe-every", str(SHORT_KEYFRAME_EVERY), "--record", str(path),
+                                  "-o", str(self.out / "short.bmp")],
+                                 capture_output=True, text=True, timeout=600, cwd=self.out)
+            self.assertEqual(run.returncode, 0, run.stderr[-4000:])
+            stream = framerec.parse(path.read_bytes())
+            self.assertEqual([f.index for f in stream.frames if f.keyframe], list(range(0, SHORT_FRAMES, SHORT_KEYFRAME_EVERY)))
+            for frame in stream.frames:
+                if frame.keyframe:
+                    run = self.replay_probe(path, frame.index)
+                    self.assertEqual(run.returncode, 0, run.stderr[-4000:])
+                    self.assertIn(f"CHECK {frame.index} SAME", run.stderr)
+
+    def test_keyframe_carries_pre_draw_lod_state(self):
+        for name in ("herd", "sponza", "budget"):
+            for frame in self.stream(name).frames:
+                if frame.keyframe:
+                    records = [body for kind, body in frame.records if kind == "LODSTATE"]
+                    self.assertEqual(len(records), 1, (name, frame.index))
+                    phase, tolerance = struct.unpack_from("<If", records[0])
+                    self.assertEqual(phase, frame.index, (name, frame.index))
+                    if name == "budget" and frame.index > 0:
+                        self.assertGreater(tolerance, 0)
+                    print(f"LODSTATE scene={name} keyframe={frame.index} bytes={framerec.HEAD.size + len(records[0])}")
 
     def test_each_drawn_frame_is_recorded_and_none_dropped(self):
         for name in RECORDED:

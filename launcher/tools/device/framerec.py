@@ -33,7 +33,7 @@ TAG = read_define(Path(__file__).resolve().parents[2] / "main/shell/console/cons
 # frame_record_type_t
 RECORD_TYPES = {
     "HEADER": 1, "PACK": 2, "FRAME": 3, "VIEW": 4, "CHOICE": 5,
-    "MESH": 6, "POSE": 7, "DYNMESH": 8, "TUNE": 9, "CHECK": 10, "SETTINGS": 11,
+    "MESH": 6, "POSE": 7, "DYNMESH": 8, "TUNE": 9, "CHECK": 10, "SETTINGS": 11, "LODSTATE": 12,
 }
 RECORD_NAMES = {number: name for name, number in RECORD_TYPES.items()}
 # frame_record_kind_t: where a MESH's mesh came from

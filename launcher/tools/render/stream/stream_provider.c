@@ -16,8 +16,10 @@
 #include "render/dynamic/r3d_dynamic_mesh.h"
 #include "render/record/frame_record_format.h"
 #include "render/skin/r3d_skinning.h"
-#include "scene/scene_internal.h"
+#include "scene/scene_asset.h"
 #include "scene/scene_shell.h"
+
+#define STREAM_FILE_CHUNK_BYTES (16U * 1024U)
 
 typedef enum {
     STREAM_SOURCE_POSITIONS,
@@ -47,12 +49,20 @@ typedef struct {
     size_t output_bytes, colour_bytes;
     void* palette;
     size_t palette_bytes;
-    void* source[STREAM_SOURCE_ARRAYS];
-    size_t source_bytes[STREAM_SOURCE_ARRAYS];
+    void* source;
+    size_t source_bytes;
+    frame_record_where_t identity;
+    handle_t identity_pack;
     uint32_t* lod;
     size_t lod_words;
     bool dirty, placed;
 } stream_mesh_t;
+
+typedef struct {
+    handle_t handle;
+    uint32_t crc32;
+    char name[FRAME_RECORD_PACK_NAME + 1];
+} stream_pack_t;
 
 static struct {
     uint8_t* bytes;
@@ -61,8 +71,9 @@ static struct {
     stream_status_t status;
     stream_frame_t* frames;
     int frame_capacity, next, decoded;
-    handle_t packs[FRAME_RECORD_NO_PACK];
-    char pack_names[FRAME_RECORD_NO_PACK][FRAME_RECORD_PACK_NAME + 1];
+    stream_pack_t* packs;
+    size_t pack_count;
+    handle_t slots[FRAME_RECORD_NO_PACK];
     stream_mesh_t* meshes;
     int mesh_count, instances, batches;
     r3d_instance_t* draws;
@@ -71,6 +82,7 @@ static struct {
     frame_record_choice_t choice;
     render_settings_t settings;
     int quarter;
+    size_t lod_at, lod_bytes;
 } stream;
 
 static bool
@@ -93,9 +105,7 @@ free_meshes(void) {
         free(stream.meshes[i].colours);
         free(stream.meshes[i].lod);
         free(stream.meshes[i].palette);
-        for (size_t j = 0; j < sizeof stream.meshes[i].source / sizeof stream.meshes[i].source[0]; j++) {
-            free(stream.meshes[i].source[j]);
-        }
+        free(stream.meshes[i].source);
     }
     free(stream.meshes);
     free(stream.draws);
@@ -109,9 +119,10 @@ free_meshes(void) {
 void
 stream_forget(void) {
     free_meshes();
-    for (unsigned i = 0; i < FRAME_RECORD_NO_PACK; i++) {
-        asset_store_release(stream.packs[i]);
+    for (size_t i = 0; i < stream.pack_count; i++) {
+        asset_store_release(stream.packs[i].handle);
     }
+    free(stream.packs);
     free(stream.bytes);
     free(stream.frames);
     memset(&stream, 0, sizeof stream);
@@ -139,7 +150,7 @@ stream_next(void) {
 }
 
 static bool
-load_pack(const uint8_t* body, size_t length) {
+load_pack(const uint8_t* body, size_t length, bool map_slot) {
     frame_record_pack_t row;
     if (length != sizeof row) {
         return refuse("invalid PACK length");
@@ -151,18 +162,38 @@ load_pack(const uint8_t* body, size_t length) {
     if (row.slot == FRAME_RECORD_NO_PACK) {
         return refuse("invalid pack slot for %s", name);
     }
-    const asset_pack_t* pack = asset_store_loaded(stream.packs[row.slot]);
-    if (pack == NULL || strcmp(stream.pack_names[row.slot], name) != 0 || asset_pack_checksum(pack) != row.crc32) {
-        asset_store_release(stream.packs[row.slot]);
-        stream.packs[row.slot] = asset_store_load(name);
-        memcpy(stream.pack_names[row.slot], name, sizeof name);
-        pack = asset_store_loaded(stream.packs[row.slot]);
+    for (size_t i = 0; i < stream.pack_count; i++) {
+        const stream_pack_t* pack = &stream.packs[i];
+        if (pack->crc32 == row.crc32 && strcmp(pack->name, name) == 0) {
+            if (map_slot) {
+                stream.slots[row.slot] = pack->handle;
+            }
+            return true;
+        }
     }
+    const handle_t handle = asset_store_load(name);
+    const asset_pack_t* pack = asset_store_loaded(handle);
     if (pack == NULL) {
         return refuse("missing pack %s", name);
     }
     const uint32_t actual = asset_pack_checksum(pack);
-    return actual == row.crc32 || refuse("pack %s crc32 stream=%08x pack=%08x", name, row.crc32, actual);
+    if (actual != row.crc32) {
+        asset_store_release(handle);
+        return refuse("pack %s crc32 stream=%08x pack=%08x", name, row.crc32, actual);
+    }
+    void* grown = realloc(stream.packs, (stream.pack_count + 1) * sizeof *stream.packs);
+    if (grown == NULL) {
+        asset_store_release(handle);
+        return refuse("no memory for pack table");
+    }
+    stream.packs = grown;
+    stream_pack_t* stored = &stream.packs[stream.pack_count++];
+    *stored = (stream_pack_t){.handle = handle, .crc32 = row.crc32};
+    memcpy(stored->name, name, sizeof name);
+    if (map_slot) {
+        stream.slots[row.slot] = handle;
+    }
+    return true;
 }
 
 static void
@@ -197,7 +228,7 @@ index_records(size_t begin, size_t end) {
         if (head.length > end - begin) {
             return refuse("record leaves its frame");
         }
-        if (head.type == FRAME_RECORD_PACK && !load_pack(stream.bytes + begin, head.length)) {
+        if (head.type == FRAME_RECORD_PACK && !load_pack(stream.bytes + begin, head.length, false)) {
             return false;
         }
         if (head.type == FRAME_RECORD_CHECK) {
@@ -206,13 +237,20 @@ index_records(size_t begin, size_t end) {
                 return refuse("invalid CHECK length");
             }
             memcpy(&check, stream.bytes + begin, sizeof check);
-            for (int i = 0; i < stream.status.frames; i++) {
-                stream_frame_t* f = &stream.frames[i];
-                if (f->record.index == check.index) {
-                    f->expected = check;
-                    f->checked = true;
-                    judge(f);
+            int lo = 0, hi = stream.status.frames;
+            while (lo < hi) {
+                const int mid = lo + (hi - lo) / 2;
+                if (stream.frames[mid].record.index < check.index) {
+                    lo = mid + 1;
+                } else {
+                    hi = mid;
                 }
+            }
+            if (lo < stream.status.frames && stream.frames[lo].record.index == check.index) {
+                stream_frame_t* f = &stream.frames[lo];
+                f->expected = check;
+                f->checked = true;
+                judge(f);
             }
         }
         begin += head.length;
@@ -285,13 +323,14 @@ stream_feed(const uint8_t* bytes, size_t count) {
                 stream.frames = grown;
                 stream.frame_capacity = capacity;
             }
+            if (stream.status.frames > 0 && stream.frames[stream.status.frames - 1].record.index >= row.index) {
+                return refuse("frame indices must increase");
+            }
             stream.frames[stream.status.frames++] = (stream_frame_t){.begin = begin, .end = end, .record = row};
             stream.status.dropped += (row.flags & FRAME_RECORD_AFTER_DROP) != 0;
             if (!index_records(begin, end)) {
                 return false;
             }
-        } else if (head.type != FRAME_RECORD_CHECK) {
-            return refuse("expected FRAME or final CHECK");
         } else if (!index_records(stream.scanned, end)) {
             return false;
         }
@@ -302,7 +341,7 @@ stream_feed(const uint8_t* bytes, size_t count) {
 
 static const asset_pack_t*
 where_pack(frame_record_where_t where) {
-    return where.pack != FRAME_RECORD_NO_PACK ? asset_store_loaded(stream.packs[where.pack]) : NULL;
+    return where.pack != FRAME_RECORD_NO_PACK ? asset_store_loaded(stream.slots[where.pack]) : NULL;
 }
 
 static bool
@@ -325,14 +364,7 @@ open_batch(stream_mesh_t* m, frame_record_where_t where) {
     for (int i = 0; i < asset.batch_count; i++) {
         const scene_asset_batch_t* row = &asset.batches[i];
         if (asset.places + row->first_copy == address) {
-            m->batch = (r3d_batch_t){
-                .chunks = asset.chunks + row->first_chunk,
-                .places = asset.places + row->first_copy,
-                .turns = asset.turns + row->first_copy,
-                .colour_stride = (uint32_t)(m->mesh.colors != NULL ? m->mesh.vertex_count : m->mesh.triangle_count),
-                .copy_radius = r3d_batch_copy_radius(&m->mesh),
-                .copy_count = row->copy_count,
-                .chunk_count = (uint16_t)r3d_batch_chunks(row->copy_count)};
+            m->batch = scene_asset_batch(&asset, i, &m->mesh, asset.chunks);
             return true;
         }
     }
@@ -414,17 +446,21 @@ build_mesh(stream_mesh_t* m) {
     const size_t colours = (size_t)row.vertices * sizeof(uint8_t[3]);
     const size_t triangles = (size_t)row.triangles * sizeof(uint16_t[3]);
     const size_t uvs = row.textured ? (size_t)row.vertices * sizeof(int16_t[2]) : 0;
-    /* Each source array needs its own alignment: the preceding colours have byte alignment. */
+    const size_t alignment = _Alignof(vec3f_t);
     const size_t sizes[] = {positions, colours, triangles, uvs};
-    for (size_t i = 0; i < sizeof sizes / sizeof sizes[0]; i++) {
-        if (!reserve(&m->source[i], &m->source_bytes[i], sizes[i])) {
-            return false;
-        }
+    size_t offsets[STREAM_SOURCE_ARRAYS];
+    size_t source_bytes = 0;
+    for (size_t i = 0; i < STREAM_SOURCE_ARRAYS; i++) {
+        offsets[i] = source_bytes;
+        source_bytes += (sizes[i] + alignment - 1) / alignment * alignment;
     }
-    void* p = m->source[STREAM_SOURCE_POSITIONS];
-    void* c = m->source[STREAM_SOURCE_COLOURS];
-    void* t = m->source[STREAM_SOURCE_TRIANGLES];
-    void* u = m->source[STREAM_SOURCE_UVS];
+    if (!reserve(&m->source, &m->source_bytes, source_bytes)) {
+        return false;
+    }
+    void* p = (uint8_t*)m->source + offsets[STREAM_SOURCE_POSITIONS];
+    void* c = (uint8_t*)m->source + offsets[STREAM_SOURCE_COLOURS];
+    void* t = (uint8_t*)m->source + offsets[STREAM_SOURCE_TRIANGLES];
+    void* u = (uint8_t*)m->source + offsets[STREAM_SOURCE_UVS];
     const uint8_t* source = stream.bytes + m->built_at + sizeof row;
     memcpy(p, source, positions);
     memcpy(c, source + positions, colours);
@@ -489,6 +525,16 @@ resolve_mesh(stream_mesh_t* m) {
             return refuse("no memory for LOD state");
         }
     }
+    const handle_t identity_pack =
+        row.positions.pack == FRAME_RECORD_NO_PACK ? HANDLE_NONE : stream.slots[row.positions.pack];
+    if (memcmp(&m->identity, &row.positions, sizeof m->identity) != 0
+        || !handle_equal(m->identity_pack, identity_pack)) {
+        if (m->lod_words > 0) {
+            memset(m->lod, 0, m->lod_words * sizeof *m->lod);
+        }
+        m->identity = row.positions;
+        m->identity_pack = identity_pack;
+    }
     m->batch.lod_coarse = m->lod;
     m->batch.lod_words = (uint16_t)words;
     m->dirty = false;
@@ -518,8 +564,14 @@ static bool
 decode_record(uint16_t type, size_t at, size_t length, int count) {
     const uint8_t* body = stream.bytes + at;
     size_t expected = length;
-    if (type == FRAME_RECORD_PACK) {
-        return load_pack(body, length);
+    if (type == FRAME_RECORD_LODSTATE) {
+        if (length < sizeof(frame_record_lodstate_t)) {
+            return refuse("short LODSTATE");
+        }
+        stream.lod_at = at;
+        stream.lod_bytes = length;
+    } else if (type == FRAME_RECORD_PACK) {
+        return load_pack(body, length, true);
     } else if (type == FRAME_RECORD_VIEW) {
         expected = sizeof stream.view;
         if (length == expected) {
@@ -586,6 +638,48 @@ decode_record(uint16_t type, size_t at, size_t length, int count) {
 }
 
 static bool
+restore_lod(int count) {
+    if (stream.lod_at == 0) {
+        return true;
+    }
+    frame_record_lodstate_t state;
+    const uint8_t* body = stream.bytes + stream.lod_at;
+    memcpy(&state, body, sizeof state);
+    render_context_t* context = render_context_main();
+    context->raster.pick_round = state.pick_round;
+    context->steer = (r3d_lod_steer_t){.tolerance_px = state.tolerance_px,
+                                       .picked_tolerance_px = state.picked_tolerance_px,
+                                       .picked_coverage_permille = state.picked_coverage_permille,
+                                       .bin = state.bin,
+                                       .drawn = state.drawn,
+                                       .frames = state.frames,
+                                       .settled = state.settled != 0};
+    for (size_t i = 0; i < sizeof context->steer.halves / sizeof context->steer.halves[0]; i++) {
+        memcpy(context->steer.halves[i].saves, state.saves[i], sizeof state.saves[i]);
+        context->steer.halves[i].finest = state.finest[i];
+        context->steer.halves[i].unit = state.unit[i];
+    }
+    size_t at = sizeof state;
+    for (int i = 0; i < count; i++) {
+        uint32_t words;
+        if (stream.lod_bytes - at < sizeof words) {
+            return refuse("short LODSTATE mesh");
+        }
+        memcpy(&words, body + at, sizeof words);
+        at += sizeof words;
+        stream_mesh_t* mesh = &stream.meshes[i];
+        if (words != mesh->lod_words || words > (stream.lod_bytes - at) / sizeof(uint32_t)) {
+            return refuse("LODSTATE mesh size differs");
+        }
+        if (words > 0) {
+            memcpy(mesh->lod, body + at, (size_t)words * sizeof(uint32_t));
+        }
+        at += (size_t)words * sizeof(uint32_t);
+    }
+    return at == stream.lod_bytes || refuse("invalid LODSTATE length");
+}
+
+static bool
 decode(int index) {
     const stream_frame_t* f = &stream.frames[index];
     if (!(f->record.flags & FRAME_RECORD_GENERATED)) {
@@ -596,6 +690,7 @@ decode(int index) {
     if (!mesh_slots(count)) {
         return false;
     }
+    stream.lod_at = 0;
     for (size_t at = f->begin; at < f->end;) {
         frame_record_head_t head;
         memcpy(&head, stream.bytes + at, sizeof head);
@@ -610,9 +705,14 @@ decode(int index) {
             return false;
         }
     }
+    if (!restore_lod(count)) {
+        return false;
+    }
     stream.decoded = index;
     return true;
 }
+
+static void draw(const provider_frame_t* frame);
 
 bool
 stream_seek(int index) {
@@ -633,10 +733,20 @@ stream_seek(int index) {
     for (const tune_entry_t* t = tune_shared()->first; t != NULL; t = t->next) {
         (void)tune_reset(tune_shared(), t->name);
     }
-    for (int i = key; i <= index; i++) {
-        if (!decode(i)) {
+    memset(stream.slots, 0, sizeof stream.slots);
+    stream.decoded = -1;
+    stream.next = key;
+    if (!decode(key)) {
+        return false;
+    }
+    while (stream.next < index) {
+        draw(NULL);
+        if (stream.status.refused) {
             return false;
         }
+    }
+    if (stream.decoded != index && !decode(index)) {
+        return false;
     }
     stream.next = index;
     return true;
@@ -661,16 +771,14 @@ options(int argc, char** argv) {
         if (file == NULL) {
             return refuse("cannot read stream %s", path);
         }
-        bool ok = fseek(file, 0, SEEK_END) == 0;
-        const long size = ok ? ftell(file) : -1;
-        ok = size >= 0 && fseek(file, 0, SEEK_SET) == 0;
-        uint8_t* bytes = ok ? malloc((size_t)size + 1) : NULL;
-        ok = bytes != NULL && fread(bytes, 1, (size_t)size, file) == (size_t)size;
-        fclose(file);
-        if (ok) {
-            ok = stream_feed(bytes, (size_t)size);
+        uint8_t bytes[STREAM_FILE_CHUNK_BYTES];
+        bool ok = true;
+        size_t count;
+        while (ok && (count = fread(bytes, 1, sizeof bytes, file)) > 0) {
+            ok = stream_feed(bytes, count);
         }
-        free(bytes);
+        ok = ok && !ferror(file);
+        fclose(file);
         if (!ok || !stream.header || stream.scanned != stream.size) {
             return refuse("incomplete stream file %s", path);
         }
@@ -724,7 +832,11 @@ draw(const provider_frame_t* frame) {
         }
     }
     render_context_set_batches(context, stream.batch_draws, stream.batches);
-    if (!render_context_draw(context, stream.draws, stream.instances, &stream.view, stream.choice.clear)) {
+    const bool generated = (stream.frames[index].record.flags & FRAME_RECORD_GENERATED) != 0;
+    const bool rendered =
+        generated ? render_context_generate(context, &stream.view)
+                  : render_context_draw(context, stream.draws, stream.instances, &stream.view, stream.choice.clear);
+    if (!rendered) {
         refuse("render failed at frame %d", index);
         render_host_fail();
         return;
@@ -757,10 +869,13 @@ teardown(void) {
         render_host_fail();
     }
     free_meshes();
-    for (unsigned i = 0; i < FRAME_RECORD_NO_PACK; i++) {
-        asset_store_release(stream.packs[i]);
-        stream.packs[i] = HANDLE_NONE;
+    for (size_t i = 0; i < stream.pack_count; i++) {
+        asset_store_release(stream.packs[i].handle);
     }
+    free(stream.packs);
+    stream.packs = NULL;
+    stream.pack_count = 0;
+    memset(stream.slots, 0, sizeof stream.slots);
 }
 
 const frame_provider_t stream_provider = {
