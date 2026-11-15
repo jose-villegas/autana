@@ -63,6 +63,7 @@ typedef struct {
 typedef struct {
     handle_t handle;
     uint32_t crc32;
+    bool needed;
     char name[FRAME_RECORD_PACK_NAME + 1];
 } stream_pack_t;
 
@@ -75,7 +76,7 @@ static struct {
     int frame_capacity, next, decoded;
     stream_pack_t* packs;
     size_t pack_count;
-    handle_t slots[FRAME_RECORD_NO_PACK];
+    size_t slots[FRAME_RECORD_NO_PACK];
     stream_mesh_t* meshes;
     int mesh_count, instances, batches;
     r3d_instance_t* draws;
@@ -151,6 +152,49 @@ stream_next(void) {
     return stream.next;
 }
 
+static handle_t
+checked_pack(const char* name, uint32_t crc) {
+    const handle_t handle = asset_store_load(name);
+    const asset_pack_t* pack = asset_store_loaded(handle);
+    if (pack == NULL) {
+        asset_store_release(handle);
+        refuse("missing pack %s", name);
+        return HANDLE_NONE;
+    }
+    const uint32_t actual = asset_pack_checksum(pack);
+    if (actual != crc) {
+        asset_store_release(handle);
+        refuse("pack %s crc32 stream=%08x pack=%08x", name, crc, actual);
+        return HANDLE_NONE;
+    }
+    return handle;
+}
+
+static size_t
+pack_identity(const char* name, uint32_t crc) {
+    for (size_t i = 0; i < stream.pack_count; i++) {
+        const stream_pack_t* pack = &stream.packs[i];
+        if (pack->crc32 == crc && strcmp(pack->name, name) == 0) {
+            return i + 1;
+        }
+    }
+    const handle_t handle = checked_pack(name, crc);
+    if (handle_equal(handle, HANDLE_NONE)) {
+        return 0;
+    }
+    asset_store_release(handle);
+    void* grown = realloc(stream.packs, (stream.pack_count + 1) * sizeof *stream.packs);
+    if (grown == NULL) {
+        refuse("no memory for pack table");
+        return 0;
+    }
+    stream.packs = grown;
+    stream_pack_t* stored = &stream.packs[stream.pack_count++];
+    *stored = (stream_pack_t){.crc32 = crc};
+    memcpy(stored->name, name, sizeof stored->name);
+    return stream.pack_count;
+}
+
 static bool
 load_pack(const uint8_t* body, size_t length, bool map_slot) {
     frame_record_pack_t row;
@@ -158,42 +202,20 @@ load_pack(const uint8_t* body, size_t length, bool map_slot) {
         return refuse("invalid PACK length");
     }
     memcpy(&row, body, sizeof row);
-    char name[FRAME_RECORD_PACK_NAME + 1];
+    char name[FRAME_RECORD_PACK_NAME + 1] = {0};
     memcpy(name, row.name, sizeof row.name);
-    name[sizeof row.name] = '\0';
     if (row.slot == FRAME_RECORD_NO_PACK) {
         return refuse("invalid pack slot for %s", name);
     }
-    for (size_t i = 0; i < stream.pack_count; i++) {
-        const stream_pack_t* pack = &stream.packs[i];
-        if (pack->crc32 == row.crc32 && strcmp(pack->name, name) == 0) {
-            if (map_slot) {
-                stream.slots[row.slot] = pack->handle;
-            }
-            return true;
+    const size_t identity = pack_identity(name, row.crc32);
+    if (identity == 0) {
+        return false;
+    }
+    if (map_slot && stream.slots[row.slot] != identity) {
+        stream.slots[row.slot] = identity;
+        for (int i = 0; i < stream.mesh_count; i++) {
+            stream.meshes[i].dirty = true;
         }
-    }
-    const handle_t handle = asset_store_load(name);
-    const asset_pack_t* pack = asset_store_loaded(handle);
-    if (pack == NULL) {
-        return refuse("missing pack %s", name);
-    }
-    const uint32_t actual = asset_pack_checksum(pack);
-    if (actual != row.crc32) {
-        asset_store_release(handle);
-        return refuse("pack %s crc32 stream=%08x pack=%08x", name, row.crc32, actual);
-    }
-    void* grown = realloc(stream.packs, (stream.pack_count + 1) * sizeof *stream.packs);
-    if (grown == NULL) {
-        asset_store_release(handle);
-        return refuse("no memory for pack table");
-    }
-    stream.packs = grown;
-    stream_pack_t* stored = &stream.packs[stream.pack_count++];
-    *stored = (stream_pack_t){.handle = handle, .crc32 = row.crc32};
-    memcpy(stored->name, name, sizeof name);
-    if (map_slot) {
-        stream.slots[row.slot] = handle;
     }
     return true;
 }
@@ -219,6 +241,31 @@ judge(stream_frame_t* f) {
 }
 
 static bool
+index_check(size_t at, size_t length) {
+    frame_record_check_t check;
+    if (length != sizeof check) {
+        return refuse("invalid CHECK length");
+    }
+    memcpy(&check, stream.bytes + at, sizeof check);
+    int lo = 0, hi = stream.status.frames;
+    while (lo < hi) {
+        const int mid = lo + (hi - lo) / 2;
+        if (stream.frames[mid].record.index < check.index) {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    if (lo < stream.status.frames && stream.frames[lo].record.index == check.index) {
+        stream_frame_t* f = &stream.frames[lo];
+        f->expected = check;
+        f->checked = true;
+        judge(f);
+    }
+    return true;
+}
+
+static bool
 index_records(size_t begin, size_t end) {
     while (begin < end) {
         frame_record_head_t head;
@@ -233,38 +280,54 @@ index_records(size_t begin, size_t end) {
         if (head.type == FRAME_RECORD_PACK && !load_pack(stream.bytes + begin, head.length, false)) {
             return false;
         }
-        if (head.type == FRAME_RECORD_CHECK) {
-            frame_record_check_t check;
-            if (head.length != sizeof check) {
-                return refuse("invalid CHECK length");
-            }
-            memcpy(&check, stream.bytes + begin, sizeof check);
-            int lo = 0, hi = stream.status.frames;
-            while (lo < hi) {
-                const int mid = lo + (hi - lo) / 2;
-                if (stream.frames[mid].record.index < check.index) {
-                    lo = mid + 1;
-                } else {
-                    hi = mid;
-                }
-            }
-            if (lo < stream.status.frames && stream.frames[lo].record.index == check.index) {
-                stream_frame_t* f = &stream.frames[lo];
-                f->expected = check;
-                f->checked = true;
-                judge(f);
-            }
+        if (head.type == FRAME_RECORD_CHECK && !index_check(begin, head.length)) {
+            return false;
         }
         begin += head.length;
     }
     return true;
 }
 
-bool
-stream_feed(const uint8_t* bytes, size_t count) {
-    if (stream.status.refused) {
-        return false;
+static bool
+index_header(frame_record_head_t head, size_t at) {
+    frame_record_header_t header;
+    if (head.type != FRAME_RECORD_HEADER || head.length != sizeof header) {
+        return refuse("HEADER must be first");
     }
+    memcpy(&header, stream.bytes + at, sizeof header);
+    if (header.version != FRAME_RECORD_VERSION) {
+        return refuse("frame record version %u, expected %u", header.version, FRAME_RECORD_VERSION);
+    }
+    memcpy(stream.status.build_id, header.build_id, sizeof header.build_id);
+    stream.header = true;
+    stream.decoded = -1;
+    return true;
+}
+
+static bool
+index_frame(frame_record_frame_t row, size_t begin, size_t end) {
+    if (stream.status.frames == INT_MAX) {
+        return refuse("too many frames");
+    }
+    if (stream.status.frames == stream.frame_capacity) {
+        const int capacity = stream.frame_capacity < INT_MAX / 2 ? (stream.frame_capacity + 1) * 2 : INT_MAX;
+        void* grown = realloc(stream.frames, (size_t)capacity * sizeof *stream.frames);
+        if (grown == NULL) {
+            return refuse("no memory for frame index");
+        }
+        stream.frames = grown;
+        stream.frame_capacity = capacity;
+    }
+    if (stream.status.frames > 0 && stream.frames[stream.status.frames - 1].record.index >= row.index) {
+        return refuse("frame indices must increase");
+    }
+    stream.frames[stream.status.frames++] = (stream_frame_t){.begin = begin, .end = end, .record = row};
+    stream.status.dropped += (row.flags & FRAME_RECORD_AFTER_DROP) != 0;
+    return index_records(begin, end);
+}
+
+static bool
+append_bytes(const uint8_t* bytes, size_t count) {
     if (count > SIZE_MAX - stream.size || (count > 0 && bytes == NULL)) {
         return refuse("invalid stream size");
     }
@@ -282,68 +345,58 @@ stream_feed(const uint8_t* bytes, size_t count) {
         memcpy(stream.bytes + stream.size, bytes, count);
     }
     stream.size = needed;
+    return true;
+}
+
+static bool
+scan_record(frame_record_head_t head, size_t body, size_t* out_end) {
+    size_t end = body + head.length;
+    if (!stream.header) {
+        if (!index_header(head, body)) {
+            return false;
+        }
+    } else if (head.type == FRAME_RECORD_FRAME) {
+        frame_record_frame_t row;
+        if (head.length != sizeof row) {
+            return refuse("invalid FRAME length");
+        }
+        memcpy(&row, stream.bytes + body, sizeof row);
+        if (row.bytes > stream.size - end) {
+            return false;
+        }
+        if (!index_frame(row, end, end + row.bytes)) {
+            return false;
+        }
+        end += row.bytes;
+    } else if (!index_records(stream.scanned, end)) {
+        return false;
+    }
+    *out_end = end;
+    return true;
+}
+
+bool
+stream_feed(const uint8_t* bytes, size_t count) {
+    if (stream.status.refused || !append_bytes(bytes, count)) {
+        return false;
+    }
     while (stream.size - stream.scanned >= sizeof(frame_record_head_t)) {
         frame_record_head_t head;
         memcpy(&head, stream.bytes + stream.scanned, sizeof head);
         const size_t body = stream.scanned + sizeof head;
-        if (head.length > stream.size - body) {
+        if (head.length > stream.size - body || !scan_record(head, body, &stream.scanned)) {
             break;
         }
-        size_t end = body + head.length;
-        if (!stream.header) {
-            frame_record_header_t header;
-            if (head.type != FRAME_RECORD_HEADER || head.length != sizeof header) {
-                return refuse("HEADER must be first");
-            }
-            memcpy(&header, stream.bytes + body, sizeof header);
-            if (header.version != FRAME_RECORD_VERSION) {
-                return refuse("frame record version %u, expected %u", header.version, FRAME_RECORD_VERSION);
-            }
-            memcpy(stream.status.build_id, header.build_id, sizeof header.build_id);
-            stream.header = true;
-            stream.decoded = -1;
-        } else if (head.type == FRAME_RECORD_FRAME) {
-            frame_record_frame_t row;
-            if (head.length != sizeof row) {
-                return refuse("invalid FRAME length");
-            }
-            memcpy(&row, stream.bytes + body, sizeof row);
-            if (row.bytes > stream.size - end) {
-                break;
-            }
-            const size_t begin = end;
-            end += row.bytes;
-            if (stream.status.frames == INT_MAX) {
-                return refuse("too many frames");
-            }
-            if (stream.status.frames == stream.frame_capacity) {
-                const int capacity = stream.frame_capacity < INT_MAX / 2 ? (stream.frame_capacity + 1) * 2 : INT_MAX;
-                void* grown = realloc(stream.frames, (size_t)capacity * sizeof *stream.frames);
-                if (grown == NULL) {
-                    return refuse("no memory for frame index");
-                }
-                stream.frames = grown;
-                stream.frame_capacity = capacity;
-            }
-            if (stream.status.frames > 0 && stream.frames[stream.status.frames - 1].record.index >= row.index) {
-                return refuse("frame indices must increase");
-            }
-            stream.frames[stream.status.frames++] = (stream_frame_t){.begin = begin, .end = end, .record = row};
-            stream.status.dropped += (row.flags & FRAME_RECORD_AFTER_DROP) != 0;
-            if (!index_records(begin, end)) {
-                return false;
-            }
-        } else if (!index_records(stream.scanned, end)) {
-            return false;
-        }
-        stream.scanned = end;
     }
-    return true;
+    return !stream.status.refused;
 }
 
 static const asset_pack_t*
 where_pack(frame_record_where_t where) {
-    return where.pack != FRAME_RECORD_NO_PACK ? asset_store_loaded(stream.slots[where.pack]) : NULL;
+    if (where.pack == FRAME_RECORD_NO_PACK || stream.slots[where.pack] == 0) {
+        return NULL;
+    }
+    return asset_store_loaded(stream.packs[stream.slots[where.pack] - 1].handle);
 }
 
 static bool
@@ -480,42 +533,33 @@ build_mesh(stream_mesh_t* m) {
 }
 
 static bool
-resolve_mesh(stream_mesh_t* m) {
-    if (m->mesh_at == 0) {
-        return refuse("missing MESH");
+open_mesh(stream_mesh_t* m, const frame_record_mesh_t* row) {
+    asset_entry_t entry;
+    if (!where_entry(row->positions, &entry, 0)
+        || r3d_lit_mesh_open(where_pack(row->positions), entry.name, &m->mesh) != ASSET_OK) {
+        return refuse("cannot open mesh at %u:%u", row->positions.pack, row->positions.entry);
     }
-    frame_record_mesh_t row;
-    memcpy(&row, stream.bytes + m->mesh_at, sizeof row);
-    m->batch = (r3d_batch_t){0};
-    memcpy(&m->model, row.model, sizeof m->model);
-    m->placed = row.placed != 0;
-    if (row.kind == FRAME_RECORD_BUILT) {
-        if (!build_mesh(m)) {
+    if (row->colours.pack != FRAME_RECORD_NO_PACK) {
+        asset_entry_t colours;
+        if (!where_entry(row->colours, &colours, (size_t)m->mesh.vertex_count * sizeof m->mesh.colors[0])) {
             return false;
         }
-    } else {
-        asset_entry_t entry;
-        if (!where_entry(row.positions, &entry, 0)
-            || r3d_lit_mesh_open(where_pack(row.positions), entry.name, &m->mesh) != ASSET_OK) {
-            return refuse("cannot open mesh at %u:%u", row.positions.pack, row.positions.entry);
-        }
-        if (row.colours.pack != FRAME_RECORD_NO_PACK) {
-            asset_entry_t colours;
-            if (!where_entry(row.colours, &colours, (size_t)m->mesh.vertex_count * sizeof m->mesh.colors[0])) {
-                return false;
-            }
-            m->mesh.colors = (const uint8_t (*)[3])(colours.view.data + row.colours.offset);
-        }
-        if (row.kind == FRAME_RECORD_SKINNED && !pose_mesh(m)) {
-            return false;
-        }
-        if (row.kind == FRAME_RECORD_BATCH && !open_batch(m, row.batch)) {
-            return false;
-        }
-        if (row.kind > FRAME_RECORD_BUILT) {
-            return refuse("unknown mesh kind %u", row.kind);
-        }
+        m->mesh.colors = (const uint8_t (*)[3])(colours.view.data + row->colours.offset);
     }
+    if (row->kind == FRAME_RECORD_SKINNED && !pose_mesh(m)) {
+        return false;
+    }
+    if (row->kind == FRAME_RECORD_BATCH && !open_batch(m, row->batch)) {
+        return false;
+    }
+    if (row->kind > FRAME_RECORD_BUILT) {
+        return refuse("unknown mesh kind %u", row->kind);
+    }
+    return true;
+}
+
+static bool
+mesh_lod(stream_mesh_t* m, const frame_record_mesh_t* row) {
     const size_t words = R3D_LOD_STATE_WORDS(m->mesh.lod_group_count);
     const size_t total = words * (m->batch.copy_count > 0 ? m->batch.copy_count : 1);
     if (total != m->lod_words) {
@@ -526,18 +570,35 @@ resolve_mesh(stream_mesh_t* m) {
             return refuse("no memory for LOD state");
         }
     }
-    const handle_t identity_pack =
-        row.positions.pack == FRAME_RECORD_NO_PACK ? HANDLE_NONE : stream.slots[row.positions.pack];
-    if (memcmp(&m->identity, &row.positions, sizeof m->identity) != 0
+    const handle_t identity_pack = row->positions.pack == FRAME_RECORD_NO_PACK || stream.slots[row->positions.pack] == 0
+                                       ? HANDLE_NONE
+                                       : stream.packs[stream.slots[row->positions.pack] - 1].handle;
+    if (memcmp(&m->identity, &row->positions, sizeof m->identity) != 0
         || !handle_equal(m->identity_pack, identity_pack)) {
         if (m->lod_words > 0) {
             memset(m->lod, 0, m->lod_words * sizeof *m->lod);
         }
-        m->identity = row.positions;
+        m->identity = row->positions;
         m->identity_pack = identity_pack;
     }
     m->batch.lod_coarse = m->lod;
     m->batch.lod_words = (uint16_t)words;
+    return true;
+}
+
+static bool
+resolve_mesh(stream_mesh_t* m) {
+    if (m->mesh_at == 0) {
+        return refuse("missing MESH");
+    }
+    frame_record_mesh_t row;
+    memcpy(&row, stream.bytes + m->mesh_at, sizeof row);
+    m->batch = (r3d_batch_t){0};
+    memcpy(&m->model, row.model, sizeof m->model);
+    m->placed = row.placed != 0;
+    if (!(row.kind == FRAME_RECORD_BUILT ? build_mesh(m) : open_mesh(m, &row)) || !mesh_lod(m, &row)) {
+        return false;
+    }
     m->dirty = false;
     return true;
 }
@@ -562,56 +623,89 @@ mesh_slots(int count) {
 }
 
 static bool
-decode_record(uint16_t type, size_t at, size_t length, int count) {
-    const uint8_t* body = stream.bytes + at;
-    size_t expected = length;
-    if (type == FRAME_RECORD_LODSTATE) {
-        if (length < sizeof(frame_record_lodstate_t)) {
-            return refuse("short LODSTATE");
-        }
-        stream.lod_at = at;
-        stream.lod_bytes = length;
-    } else if (type == FRAME_RECORD_PACK) {
-        return load_pack(body, length, true);
-    } else if (type == FRAME_RECORD_VIEW) {
-        expected = sizeof stream.view;
-        if (length == expected) {
-            memcpy(&stream.view, body, expected);
-        }
-    } else if (type == FRAME_RECORD_CHOICE) {
-        expected = sizeof stream.choice;
-        if (length == expected) {
-            memcpy(&stream.choice, body, expected);
-        }
-    } else if (type == FRAME_RECORD_SETTINGS) {
-        expected = sizeof stream.settings;
-        if (length == expected) {
-            memcpy(&stream.settings, body, expected);
-        }
-    } else if (type == FRAME_RECORD_TUNE) {
-        frame_record_tune_t tune;
-        expected = sizeof tune;
-        if (length == expected) {
-            memcpy(&tune, body, expected);
-            char name[FRAME_RECORD_TUNE_NAME + 1];
-            memcpy(name, tune.name, sizeof tune.name);
-            name[sizeof tune.name] = '\0';
-            (void)tune_set(tune_shared(), name, tune.value);
-        }
-    } else if (type == FRAME_RECORD_MESH || type == FRAME_RECORD_POSE || type == FRAME_RECORD_DYNMESH) {
+read_view(const uint8_t* body, size_t length) {
+    if (length != sizeof stream.view) {
+        return refuse("invalid VIEW length");
+    }
+    memcpy(&stream.view, body, length);
+    const viewport_t v = stream.view.viewport;
+    if (v.width <= 0 || v.width > GFX_WIDTH || v.height <= 0 || v.height > GFX_HEIGHT) {
+        return refuse("VIEW size outside compose buffers");
+    }
+    return (stream.view.present >= CAMERA_PRESENT_NEAREST && stream.view.present <= CAMERA_PRESENT_DOUBLE)
+           || refuse("invalid VIEW presentation");
+}
+
+static bool
+read_choice(const uint8_t* body, size_t length) {
+    if (length != sizeof stream.choice) {
+        return refuse("invalid CHOICE length");
+    }
+    memcpy(&stream.choice, body, length);
+    return (stream.choice.width > 0 && stream.choice.width <= GFX_WIDTH && stream.choice.height > 0
+            && stream.choice.height <= GFX_HEIGHT)
+           || refuse("CHOICE size outside compose buffers");
+}
+
+static bool
+read_tune(const uint8_t* body, size_t length) {
+    frame_record_tune_t tune;
+    if (length != sizeof tune) {
+        return refuse("invalid TUNE length");
+    }
+    memcpy(&tune, body, sizeof tune);
+    char name[FRAME_RECORD_TUNE_NAME + 1] = {0};
+    memcpy(name, tune.name, sizeof tune.name);
+    (void)tune_set(tune_shared(), name, tune.value);
+    return true;
+}
+
+static bool
+read_dynamic(size_t at, size_t length) {
+    frame_record_dynmesh_t row;
+    if (length < sizeof row) {
+        return refuse("short DYNMESH");
+    }
+    memcpy(&row, stream.bytes + at, sizeof row);
+    if (row.vertices > INT16_MAX || row.triangles > UINT16_MAX) {
+        return refuse("dynamic source counts out of range");
+    }
+    const size_t vertices = (size_t)row.vertices * (sizeof(vec3f_t) + sizeof(uint8_t[3]));
+    const size_t triangles = (size_t)row.triangles * sizeof(uint16_t[3]);
+    const size_t uvs = row.textured ? (size_t)row.vertices * sizeof(int16_t[2]) : 0;
+    if (length != sizeof row + vertices + triangles + uvs) {
+        return refuse("invalid DYNMESH length");
+    }
+    const uint8_t* indices = stream.bytes + at + sizeof row + vertices;
+    for (size_t i = 0; i < triangles; i += sizeof(uint16_t)) {
         uint16_t index;
-        if (length < sizeof index) {
-            return refuse("short mesh record");
+        memcpy(&index, indices + i, sizeof index);
+        if (index >= row.vertices) {
+            return refuse("dynamic triangle index outside vertices");
         }
-        memcpy(&index, body, sizeof index);
-        if (index >= count) {
-            return refuse("mesh index %u outside frame", index);
-        }
-        stream_mesh_t* m = &stream.meshes[index];
-        if (type == FRAME_RECORD_MESH) {
+    }
+    return true;
+}
+
+static bool
+read_mesh(uint16_t type, size_t at, size_t length, int count) {
+    const uint8_t* body = stream.bytes + at;
+    uint16_t index;
+    if (length < sizeof index) {
+        return refuse("short mesh record");
+    }
+    memcpy(&index, body, sizeof index);
+    if (index >= count) {
+        return refuse("mesh index %u outside frame", index);
+    }
+    stream_mesh_t* m = &stream.meshes[index];
+    size_t expected = length;
+    switch (type) {
+        case FRAME_RECORD_MESH:
             expected = sizeof(frame_record_mesh_t);
             m->mesh_at = at;
-        } else if (type == FRAME_RECORD_POSE) {
+            break;
+        case FRAME_RECORD_POSE: {
             frame_record_pose_t pose;
             if (length < sizeof pose) {
                 return refuse("short POSE");
@@ -619,23 +713,123 @@ decode_record(uint16_t type, size_t at, size_t length, int count) {
             memcpy(&pose, body, sizeof pose);
             expected = sizeof pose + (size_t)pose.joints * sizeof(mat4f_t) + (size_t)pose.lit * sizeof(uint8_t[3]);
             m->pose_at = at;
-        } else {
-            frame_record_dynmesh_t row;
-            if (length < sizeof row) {
-                return refuse("short DYNMESH");
-            }
-            memcpy(&row, body, sizeof row);
-            if (row.vertices > INT_MAX || row.triangles > INT_MAX) {
-                return refuse("dynamic source counts out of range");
-            }
-            expected = sizeof row + (size_t)row.vertices * (sizeof(vec3f_t) + sizeof(uint8_t[3]))
-                       + (size_t)row.triangles * sizeof(uint16_t[3])
-                       + (row.textured ? (size_t)row.vertices * sizeof(int16_t[2]) : 0);
-            m->built_at = at;
+            break;
         }
-        m->dirty = true;
+        case FRAME_RECORD_DYNMESH:
+            if (!read_dynamic(at, length)) {
+                return false;
+            }
+            m->built_at = at;
+            break;
     }
-    return length == expected || refuse("invalid record %u length", type);
+    m->dirty = true;
+    return length == expected || refuse("invalid mesh record length");
+}
+
+static bool
+decode_record(uint16_t type, size_t at, size_t length, int count) {
+    const uint8_t* body = stream.bytes + at;
+    switch (type) {
+        case FRAME_RECORD_LODSTATE:
+            if (length < sizeof(frame_record_lodstate_t)) {
+                return refuse("short LODSTATE");
+            }
+            stream.lod_at = at;
+            stream.lod_bytes = length;
+            return true;
+        case FRAME_RECORD_PACK: return load_pack(body, length, true);
+        case FRAME_RECORD_VIEW: return read_view(body, length);
+        case FRAME_RECORD_CHOICE: return read_choice(body, length);
+        case FRAME_RECORD_TUNE: return read_tune(body, length);
+        case FRAME_RECORD_MESH:
+        case FRAME_RECORD_POSE:
+        case FRAME_RECORD_DYNMESH: return read_mesh(type, at, length, count);
+        case FRAME_RECORD_SETTINGS:
+            if (length != sizeof stream.settings) {
+                return refuse("invalid SETTINGS length");
+            }
+            memcpy(&stream.settings, body, length);
+            return true;
+        default: return true;
+    }
+}
+
+static bool
+need_pack(frame_record_where_t where) {
+    if (where.pack == FRAME_RECORD_NO_PACK) {
+        return true;
+    }
+    const size_t identity = stream.slots[where.pack];
+    if (identity == 0) {
+        return refuse("unnamed pack slot %u", where.pack);
+    }
+    stream.packs[identity - 1].needed = true;
+    return true;
+}
+
+static bool
+mesh_packs(const stream_mesh_t* mesh) {
+    if (mesh->mesh_at == 0) {
+        return refuse("missing MESH");
+    }
+    frame_record_mesh_t row;
+    memcpy(&row, stream.bytes + mesh->mesh_at, sizeof row);
+    if (row.kind == FRAME_RECORD_BUILT) {
+        return true;
+    }
+    if (!need_pack(row.positions) || !need_pack(row.colours)) {
+        return false;
+    }
+    if (row.kind == FRAME_RECORD_BATCH && !need_pack(row.batch)) {
+        return false;
+    }
+    if (row.kind == FRAME_RECORD_SKINNED && mesh->pose_at != 0) {
+        frame_record_pose_t pose;
+        memcpy(&pose, stream.bytes + mesh->pose_at, sizeof pose);
+        return need_pack(pose.skin);
+    }
+    return true;
+}
+
+static bool
+mount_packs(int count) {
+    for (size_t i = 0; i < stream.pack_count; i++) {
+        stream.packs[i].needed = false;
+    }
+    for (int i = 0; i < count; i++) {
+        if (!mesh_packs(&stream.meshes[i])) {
+            return false;
+        }
+    }
+    for (size_t i = 0; i < stream.pack_count; i++) {
+        stream_pack_t* pack = &stream.packs[i];
+        if (!pack->needed) {
+            asset_store_release(pack->handle);
+            pack->handle = HANDLE_NONE;
+        }
+    }
+    for (size_t i = 0; i < stream.pack_count; i++) {
+        stream_pack_t* pack = &stream.packs[i];
+        if (pack->needed && handle_equal(pack->handle, HANDLE_NONE)) {
+            pack->handle = checked_pack(pack->name, pack->crc32);
+            if (handle_equal(pack->handle, HANDLE_NONE)) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+static void
+begin_keyframe(void) {
+    for (const tune_entry_t* t = tune_shared()->first; t != NULL; t = t->next) {
+        (void)tune_reset(tune_shared(), t->name);
+    }
+    free_meshes();
+    memset(stream.slots, 0, sizeof stream.slots);
+    stream.view = (render_view_t){0};
+    stream.choice = (frame_record_choice_t){0};
+    stream.settings = (render_settings_t)RENDER_SETTINGS_DEFAULT;
 }
 
 static bool
@@ -670,8 +864,37 @@ restore_lod(int count) {
 }
 
 static bool
+frame_size_ok(void) {
+    if (stream.choice.width == 0 || stream.choice.height == 0 || stream.view.viewport.width <= 0
+        || stream.view.viewport.height <= 0) {
+        return refuse("missing VIEW or CHOICE size");
+    }
+    return (stream.choice.width <= stream.view.viewport.width && stream.choice.height <= stream.view.viewport.height)
+           || refuse("CHOICE size exceeds VIEW");
+}
+
+static bool
+resolve_frame(int count, bool generated) {
+    if (!generated && count == 0) {
+        return refuse("empty drawn frame");
+    }
+    if (!mount_packs(count)) {
+        return false;
+    }
+    for (int i = 0; i < count; i++) {
+        if (stream.meshes[i].dirty && !resolve_mesh(&stream.meshes[i])) {
+            return false;
+        }
+    }
+    return restore_lod(count);
+}
+
+static bool
 decode(int index) {
     const stream_frame_t* f = &stream.frames[index];
+    if (f->record.flags & FRAME_RECORD_KEYFRAME) {
+        begin_keyframe();
+    }
     if (!(f->record.flags & FRAME_RECORD_GENERATED)) {
         stream.instances = f->record.instances;
         stream.batches = f->record.batches;
@@ -690,12 +913,7 @@ decode(int index) {
         }
         at += head.length;
     }
-    for (int i = 0; i < count; i++) {
-        if (stream.meshes[i].dirty && !resolve_mesh(&stream.meshes[i])) {
-            return false;
-        }
-    }
-    if (!restore_lod(count)) {
+    if (!frame_size_ok() || !resolve_frame(count, (f->record.flags & FRAME_RECORD_GENERATED) != 0)) {
         return false;
     }
     stream.decoded = index;
@@ -713,16 +931,13 @@ stream_seek(int index) {
     while (key > 0 && !(stream.frames[key].record.flags & FRAME_RECORD_KEYFRAME)) {
         key--;
     }
-    if (!(stream.frames[key].record.flags & FRAME_RECORD_KEYFRAME)) {
+    if (!(stream.frames[key].record.flags & (FRAME_RECORD_KEYFRAME | FRAME_RECORD_GENERATED))) {
         return refuse("no keyframe before frame %d", index);
     }
     free_meshes();
     render_context_forget(render_context_main());
     stream.instances = stream.batches = 0;
     stream.settings = (render_settings_t)RENDER_SETTINGS_DEFAULT;
-    for (const tune_entry_t* t = tune_shared()->first; t != NULL; t = t->next) {
-        (void)tune_reset(tune_shared(), t->name);
-    }
     memset(stream.slots, 0, sizeof stream.slots);
     stream.decoded = -1;
     stream.next = key;
@@ -743,6 +958,27 @@ stream_seek(int index) {
 }
 
 static bool
+read_file(const char* path) {
+    stream_forget();
+    FILE* file = fopen(path, "rb");
+    if (file == NULL) {
+        return refuse("cannot read stream %s", path);
+    }
+    uint8_t bytes[STREAM_FILE_CHUNK_BYTES];
+    bool ok = true;
+    size_t count;
+    while (ok && (count = fread(bytes, 1, sizeof bytes, file)) > 0) {
+        ok = stream_feed(bytes, count);
+    }
+    ok = ok && !ferror(file);
+    fclose(file);
+    if (!ok || !stream.header || stream.scanned != stream.size) {
+        return refuse("incomplete stream file %s", path);
+    }
+    return true;
+}
+
+static bool
 options(int argc, char** argv) {
     const char* path = NULL;
     bool checking = false;
@@ -755,23 +991,8 @@ options(int argc, char** argv) {
             return refuse("unknown option %s", argv[i]);
         }
     }
-    if (path != NULL) {
-        stream_forget();
-        FILE* file = fopen(path, "rb");
-        if (file == NULL) {
-            return refuse("cannot read stream %s", path);
-        }
-        uint8_t bytes[STREAM_FILE_CHUNK_BYTES];
-        bool ok = true;
-        size_t count;
-        while (ok && (count = fread(bytes, 1, sizeof bytes, file)) > 0) {
-            ok = stream_feed(bytes, count);
-        }
-        ok = ok && !ferror(file);
-        fclose(file);
-        if (!ok || !stream.header || stream.scanned != stream.size) {
-            return refuse("incomplete stream file %s", path);
-        }
+    if (path != NULL && !read_file(path)) {
+        return false;
     }
     stream.checking = checking;
     return !stream.status.refused;
@@ -796,6 +1017,20 @@ setup(int quarter) {
 }
 
 static void
+draw_lists(render_context_t* context) {
+    for (int i = 0; i < stream.instances + stream.batches; i++) {
+        stream_mesh_t* m = &stream.meshes[i];
+        const r3d_instance_t instance = {&m->mesh, m->placed ? &m->model : NULL, NULL, m->lod};
+        if (i < stream.instances) {
+            stream.draws[i] = instance;
+        } else {
+            stream.batch_draws[i - stream.instances] = (r3d_batch_draw_t){instance, &m->batch, 0};
+        }
+    }
+    render_context_set_batches(context, stream.batch_draws, stream.batches);
+}
+
+static void
 draw(const provider_frame_t* frame) {
     (void)frame;
     const int index = stream.next;
@@ -809,20 +1044,14 @@ draw(const provider_frame_t* frame) {
     render_context_t* context = render_context_main();
     render_context_set_settings(context, &stream.settings);
     const resolution_step_t size = {stream.choice.width, stream.choice.height};
-    const resolution_config_t one = resolution_config(&size, 1, 1, INT32_MAX);
-    render_context_set_dynamic_resolution(context, &one, NULL, 0);
+    render_context_set_raster_size(context, size);
     render_context_set_changed(context, NULL, -1);
-    for (int i = 0; i < stream.instances + stream.batches; i++) {
-        stream_mesh_t* m = &stream.meshes[i];
-        const r3d_instance_t instance = {&m->mesh, m->placed ? &m->model : NULL, NULL, m->lod};
-        if (i < stream.instances) {
-            stream.draws[i] = instance;
-        } else {
-            stream.batch_draws[i - stream.instances] = (r3d_batch_draw_t){instance, &m->batch, 0};
-        }
-    }
-    render_context_set_batches(context, stream.batch_draws, stream.batches);
+    draw_lists(context);
     const bool generated = (stream.frames[index].record.flags & FRAME_RECORD_GENERATED) != 0;
+    if (generated && !context->kept) {
+        stream.next++;
+        return;
+    }
     const bool rendered =
         generated ? render_context_generate(context, &stream.view)
                   : render_context_draw(context, stream.draws, stream.instances, &stream.view, stream.choice.clear);

@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "core/tune.h"
 #include "hash/crc32.h"
 #include "stream/stream_provider.h"
 
@@ -51,6 +52,8 @@ main(int argc, char** argv) {
     }
     const render_host_image_t image = render_host_image();
     const uint32_t crc = crc32_update(0, image.bgr, image.stride * (size_t)image.height);
+    const tune_entry_t* cull = tune_find(tune_shared(), "render.cull");
+    printf("TUNE %s %d\n", cull->name, (int)*cull->value);
     const bool closed = render_host_close();
     status = stream_status();
     printf("RESULT %d %d %08x\n", status.checks_same, status.checks_differ, crc);

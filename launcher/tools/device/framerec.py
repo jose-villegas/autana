@@ -133,11 +133,37 @@ def decode_mesh(body):
             "batch": where[2], "model": list(fields[12:])}
 
 
+def framed_records(data):
+    """Yield whole frames only, validating their records within the declared bytes."""
+    at = 0
+    while at < len(data):
+        if len(data) - at < HEAD.size:
+            raise StreamError(f"a record head cut short at byte {at}")
+        _, length = HEAD.unpack_from(data, at)
+        end = at + HEAD.size + length
+        name, body = next(records(data[at:end]))
+        at = end
+        if name != "FRAME":
+            yield name, body
+            continue
+        frame = Frame(*FRAME.unpack(body))
+        end += frame.bytes
+        if end > len(data):
+            return
+        try:
+            rows = list(records(data[at:end]))
+        except StreamError as error:
+            raise StreamError(f"frame {frame.index}: {error}") from error
+        yield name, body
+        yield from rows
+        at = end
+
+
 def parse(data):
     """The stream in `data`: its header, packs, frames with their records, and
     the CHECK hashes by the frame they hash."""
     stream = None
-    for name, body in records(data):
+    for name, body in framed_records(data):
         if stream is None:
             if name != "HEADER":
                 raise StreamError(f"a stream opens with HEADER, not {name}")

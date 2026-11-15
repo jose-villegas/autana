@@ -18,6 +18,7 @@ sys.path.insert(0, str(ROOT / "launcher/tools/device"))
 import framerec  # noqa: E402
 sys.path.insert(0, str(ROOT / "launcher/tools/render"))
 import showcase  # noqa: E402
+from build.c_header import read_define  # noqa: E402
 
 FRAMES = 61
 SHORT_FRAMES = 10
@@ -31,6 +32,23 @@ RECORDED = {
     "sponza": ["--scene", "sponza", "--object", SHOWCASE],
     "budget": ["--scene", "sponza", "--object", SHOWCASE, "--set", f"render.lod_triangle_budget={BUDGET_TRIANGLES}"],
 }
+
+FORMAT_HEADER = ROOT / "launcher/main/render/record/frame_record_format.h"
+NO_PACK = read_define(FORMAT_HEADER, "FRAME_RECORD_NO_PACK")
+NO_ENTRY = read_define(FORMAT_HEADER, "FRAME_RECORD_NO_ENTRY")
+MATRIX_ELEMENTS = read_define(FORMAT_HEADER, "FRAME_RECORD_MATRIX")
+GFX_HEADER = ROOT / "launcher/main/gfx/gfx.h"
+PANEL = tuple(read_define(GFX_HEADER, name) for name in ("GFX_WIDTH", "GFX_HEIGHT"))
+VIEW_BASIS = struct.Struct("<" + "3f" * 4 + "5f")
+VIEWPORT = struct.Struct("<iii")
+
+
+def frame_bytes(frame, rows=None, index=None, flags=None):
+    payload = b"".join(framerec.HEAD.pack(framerec.RECORD_TYPES[name], len(body)) + body
+                       for name, body in (frame.records if rows is None else rows))
+    body = framerec.FRAME.pack(frame.index if index is None else index, frame.dt_ms,
+                              frame.flags if flags is None else flags, frame.instances, frame.batches, len(payload))
+    return framerec.HEAD.pack(framerec.RECORD_TYPES["FRAME"], len(body)) + body + payload
 
 
 class StreamProvider(unittest.TestCase):
@@ -178,6 +196,119 @@ class StreamProvider(unittest.TestCase):
             recorded_hash = picture_hash(picture)
             replay_hash = picture_hash(self.out / "probe.bmp")
             self.assertEqual(recorded_hash, replay_hash)
+
+    def write_frames(self, name, *frames):
+        path = self.out / (name + ".frec")
+        header_end = framerec.HEAD.size + framerec.HEADER.size
+        path.write_bytes((self.out / "herd.frec").read_bytes()[:header_end] + b"".join(frames))
+        return path
+
+    def test_invalid_dynamic_indices_are_refused(self):
+        frame = self.stream("herd").frames[0]
+        no_place = (NO_PACK, NO_ENTRY, 0)
+        mesh = framerec.MESH.pack(0, framerec.MESH_KINDS["BUILT"], 0, *no_place, *no_place, *no_place,
+                                 *([0.0] * MATRIX_ELEMENTS))
+        source = framerec.DYNMESH.pack(0, 1, 0, 1, 1, 1, 0)
+        source += struct.pack("<3f3B3H", 0, 0, 1, 255, 255, 255, 65535, 65535, 65535)
+        rows = [(name, body) for name, body in frame.records if name not in ("MESH", "POSE", "LODSTATE")]
+        rows += [("MESH", mesh), ("DYNMESH", source)]
+        run = self.replay_probe(self.write_frames("bad-index", frame_bytes(frame, rows)))
+        self.assertNotEqual(run.returncode, 0)
+        self.assertIn("dynamic triangle index", run.stderr)
+
+    def test_oversized_view_and_choice_are_refused(self):
+        frame = self.stream("herd").frames[0]
+        for kind in ("VIEW", "CHOICE"):
+            for axis in range(len(PANEL)):
+                with self.subTest(kind=kind, axis=axis):
+                    rows = []
+                    for name, body in frame.records:
+                        if name == kind:
+                            if name == "VIEW":
+                                body = bytearray(body)
+                                viewport = list(VIEWPORT.unpack_from(body, VIEW_BASIS.size))
+                                viewport[axis] = PANEL[axis] * 2
+                                VIEWPORT.pack_into(body, VIEW_BASIS.size, *viewport)
+                            else:
+                                choice = list(framerec.CHOICE.unpack(body))
+                                choice[-2 + axis] = PANEL[axis] * 2
+                                body = framerec.CHOICE.pack(*choice)
+                        rows.append((name, body))
+                    run = self.replay_probe(self.write_frames("bad-size", frame_bytes(frame, rows)))
+                    self.assertNotEqual(run.returncode, 0)
+                    self.assertIn(kind + " size", run.stderr)
+
+    def test_presentation_recordings_check_same(self):
+        for present in ("scanline", "double"):
+            with self.subTest(present=present):
+                path = self.out / (present + ".frec")
+                run = subprocess.run([str(self.binary), *RECORDED["sponza"], "--frames", "1",
+                                      "--present", present, "--record", str(path),
+                                      "-o", str(self.out / "present.bmp")],
+                                     capture_output=True, text=True, timeout=600, cwd=self.out)
+                self.assertEqual(run.returncode, 0, run.stderr[-4000:])
+                run = self.replay_probe(path)
+                self.assertEqual(run.returncode, 0, run.stderr[-4000:])
+                self.assertIn("CHECK 0 SAME", run.stderr)
+
+    def test_keyframe_resets_tunables_during_sequential_play(self):
+        frame = self.stream("herd").frames[0]
+        tune = ("TUNE", framerec.TUNE.pack(b"render.cull", 0))
+        path = self.write_frames("tune-reset", frame_bytes(frame, [*frame.records, tune]),
+                                 frame_bytes(frame, index=1))
+        run = self.replay_probe(path)
+        self.assertEqual(run.returncode, 0, run.stderr[-4000:])
+        self.assertIn("TUNE render.cull -1", run.stdout)
+
+    def test_generated_frame_without_kept_draw_is_skipped(self):
+        frame = self.stream("herd").frames[0]
+        generated = frame_bytes(frame, [(n, b) for n, b in frame.records if n in ("VIEW", "CHOICE")],
+                                index=1, flags=framerec.GENERATED)
+        path = self.write_frames("unkept", frame_bytes(frame), generated,
+                                 frame_bytes(frame, [], index=2, flags=framerec.GENERATED))
+        run = self.replay_probe(path)
+        self.assertEqual(run.returncode, 0, run.stderr[-4000:])
+
+    def test_generated_frame_before_first_keyframe_is_skipped(self):
+        frame = self.stream("herd").frames[0]
+        rows = [(name, body) for name, body in frame.records if name in ("VIEW", "CHOICE")]
+        path = self.write_frames("initial-generated", frame_bytes(frame, rows, flags=framerec.GENERATED),
+                                 frame_bytes(frame, index=1))
+        run = self.replay_probe(path)
+        self.assertEqual(run.returncode, 0, run.stderr[-4000:])
+
+    def test_invalid_frame_state_is_refused(self):
+        frame = self.stream("herd").frames[0]
+        for missing in ("VIEW", "CHOICE"):
+            with self.subTest(missing=missing):
+                rows = [(name, body) for name, body in frame.records if name != missing]
+                run = self.replay_probe(self.write_frames("missing-size", frame_bytes(frame, rows)))
+                self.assertNotEqual(run.returncode, 0)
+                self.assertIn("missing VIEW or CHOICE", run.stderr)
+        empty = framerec.Frame(frame.index, frame.dt_ms, frame.flags, 0, 0, 0)
+        rows = [(name, body) for name, body in frame.records if name in ("VIEW", "CHOICE")]
+        run = self.replay_probe(self.write_frames("empty-draw", frame_bytes(empty, rows)))
+        self.assertNotEqual(run.returncode, 0)
+        self.assertIn("empty drawn frame", run.stderr)
+
+    def test_more_distinct_packs_than_mounts(self):
+        frame = self.stream("herd").frames[0]
+        pack = next(body for name, body in frame.records if name == "PACK")
+        slot, crc, original = framerec.PACK.unpack(pack)
+        mounts = read_define(ROOT / "launcher/main/asset/asset_store.h", "ASSET_STORE_MOUNTS_MAX")
+        frames = []
+        for index in range(mounts + 1):
+            name = f"turn-{index}"
+            shutil.copy(self.out / "assets" / (framerec.text(original) + ".apak"),
+                        self.out / "assets" / (name + ".apak"))
+            rows = [(n, framerec.PACK.pack(slot, crc, name.encode()) if n == "PACK" else b)
+                    for n, b in frame.records]
+            check = self.stream("herd").checks[frame.index]
+            rows.append(("CHECK", framerec.CHECK.pack(index, check["width"], check["height"], check["crc32"])))
+            frames.append(frame_bytes(frame, rows, index=index))
+        run = self.replay_probe(self.write_frames("many-packs", *frames))
+        self.assertEqual(run.returncode, 0, run.stderr[-4000:])
+        self.assertIn(f"RESULT {len(frames)} 0 ", run.stdout)
 
     def test_short_keyframe_interval(self):
         for name in ("herd", "sponza", "budget"):
