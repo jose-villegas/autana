@@ -71,6 +71,7 @@ import functools
 import hashlib
 import io
 import json
+import math
 import multiprocessing
 import os
 import pathlib
@@ -152,14 +153,21 @@ TEXTURE_SUFFIX = ".texture.pack"
 WAITS = {"levels": "waits for its fit", "texture": "waits for its mesh"}
 # The kinds that trace rays on the CPU, whose bytes differ between CPU vendors (LOCK's mesh_cpu_vendor).
 TRACED_KINDS = ("mesh", "reference")
-# A reference set is traced in REFERENCE_SHARDS jobs, each well under a hosted job's 6 h cap: the longest set, on
-# a hosted 4-CPU runner, split so each shard lands near REFERENCE_SHARD_SECONDS.
+# A run traces its missing reference sets in shards that each take a share of every set's poses, as many as keep a
+# shard near REFERENCE_SHARD_SECONDS on a hosted 4-CPU runner: a quarter of the 6 h cap, room for a scene whose rays
+# cost more than the calibration's. The rate is bistro.street_fitted's primary rays over its hosted trace time.
 REFERENCE_SHARD_SECONDS = 90 * 60
-LONGEST_REFERENCE_SECONDS = 5 * 60 * 60  # bistro.street_fitted, CPU Bakes run 43016329421
-REFERENCE_SHARDS = -(-LONGEST_REFERENCE_SECONDS // REFERENCE_SHARD_SECONDS)
+CALIBRATION_RAYS = 158_269_440  # bistro.street_fitted: 240 poses at 184 x 224, 4 x 4 samples (produce.reference_rays)
+CALIBRATION_SECONDS = 5 * 60 * 60  # the same set on one hosted 4-CPU runner, CPU Bakes run 43016329421
 # What a fit whose key waits for its inputs asks for, when the same run would make it.
 BAKE_INPUTS_FIRST = "bake its start and reference set first: bake.py bake --kind mesh, then --kind reference"
 SOUND_SUFFIX = ".sond"
+def reference_shards(rays):
+    """The shards that trace `rays` primary rays, each near REFERENCE_SHARD_SECONDS on a hosted runner; at least one."""
+    seconds = rays * CALIBRATION_SECONDS / CALIBRATION_RAYS
+    return max(1, math.ceil(seconds / REFERENCE_SHARD_SECONDS))
+
+
 def entry_file(entry):
     return (TOOLS / entry.partition(":")[0]).resolve()
 
@@ -1372,8 +1380,10 @@ def main(argv=None):
         found = [] if args.command == "path" else bakes(paths, starts, poses)
         if args.command == "shards":
             # The shard numbers a run traces its missing reference sets in, as a JSON list for a job matrix.
-            print(json.dumps(list(range(REFERENCE_SHARDS)) if any(
-                bake.kind == "reference" and bake.key not in lock for bake in found) else []))
+            from bake import produce
+
+            rays = [produce.reference_rays(bake) for bake in found if bake.kind == "reference" and bake.key not in lock]
+            print(json.dumps(list(range(reference_shards(sum(rays)))) if rays else []))
         elif args.command == "list":
             for bake in found:
                 if (args.missing and bake.key in lock) or args.kind not in (None, bake.kind):

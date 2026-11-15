@@ -3,7 +3,7 @@ name: Bakes
 # The expensive bakes (launcher/tools/bake/bake.py). On a pull request the CPU
 # job bakes every mesh, fit's levels and sound launcher/bakes.lock has no row for, and the reference
 # shard jobs trace each missing reference set in parts that the reference job joins and packs
-# (bake.py REFERENCE_SHARDS); both upload the files; the lock job then fails until the author runs
+# (as many as bake.py reference_shards sizes from their rays); both upload the files; the lock job then fails until the author runs
 # `bake.py lock --from-run N` with that run and commits the lock. A mesh's and a
 # reference set's bytes differ by CPU vendor, so on a runner of another vendor than the lock's
 # `mesh_cpu_vendor` the bake fails before making one; a shard checks its runner first
@@ -153,11 +153,31 @@ jobs:
 
       - uses: ./.github/actions/host-tools
 
+      - name: Whether a reference set is missing
+        id: missing
+        run: echo "any=$(python launcher/tools/bake/bake.py list --missing --kind reference | grep -q . && echo true)" >> "$GITHUB_OUTPUT"
+
+      # Counting a set's rays writes its poses, and choosing probe faces traces visibility: a shard's inputs.
+      - name: Fetch source files
+        if: ${{ steps.missing.outputs.any == 'true' }}
+        run: git lfs pull --exclude=""
+
+      - name: Initialize only meshoptimizer
+        if: ${{ steps.missing.outputs.any == 'true' }}
+        run: git submodule update --init --depth 1 third_party/upstream/meshoptimizer
+
+      - name: Install the r3d requirements and LLVM
+        if: ${{ steps.missing.outputs.any == 'true' }}
+        run: |
+          pip install -r launcher/tools/r3d/requirements.txt
+          sudo sh scripts/ci/apt_install.sh -y --no-install-recommends llvm
+
       - name: The shards that trace the missing reference sets
         id: plan
+        if: ${{ steps.missing.outputs.any == 'true' }}
         run: echo "shards=$(python launcher/tools/bake/bake.py shards)" >> "$GITHUB_OUTPUT"
 
-  # A reference set takes hours on one hosted runner; REFERENCE_SHARDS jobs trace a share of its poses each.
+  # A reference set takes hours on one hosted runner; each shard traces a share of every missing set's poses.
   reference-shard:
     needs: reference-plan
     if: ${{ !cancelled() && needs.reference-plan.outputs.shards != '' && needs.reference-plan.outputs.shards != '[]' }}

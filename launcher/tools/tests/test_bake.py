@@ -8,6 +8,7 @@ import dataclasses
 import hashlib
 import io
 import json
+import math
 import os
 import pathlib
 import platform
@@ -1916,6 +1917,28 @@ class ProduceTests(unittest.TestCase):
                 produce.join_reference_shards(reference, self.cache, parts)
                 row = produce.produce_reference(reference, self.cache, None)
         self.assertEqual(row["cpu_vendor"], "AuthenticAMD")
+
+    def test_a_sets_rays_are_its_poses_pixels_and_samples_and_trace_nothing(self):
+        reference = types.SimpleNamespace(output="x.reference.tar.xz", key="k" * 64, job="job", scene=None)
+        with self.references():
+            from r3d import reference_render
+
+            sets = self.inputs.sets()
+            rays = produce.reference_rays(reference)
+            reference_render.render_sets.assert_not_called()
+        # The stand-in's sets: 7 poses each at 4 x 2, traced at render_sets' default 4 x 4 samples.
+        self.assertEqual(rays, len(sets.training + sets.held_out) * 7 * 4 * 2 * 4 * 4)
+
+    def test_shards_keep_each_near_the_shard_time_on_a_hosted_runner(self):
+        self.assertEqual(bake.reference_shards(0), 1)
+        self.assertEqual(bake.reference_shards(bake.CALIBRATION_RAYS),
+                         math.ceil(bake.CALIBRATION_SECONDS / bake.REFERENCE_SHARD_SECONDS))
+        for rays in (bake.CALIBRATION_RAYS, 3 * bake.CALIBRATION_RAYS + 1, 40 * bake.CALIBRATION_RAYS):
+            with self.subTest(rays=rays):
+                count = bake.reference_shards(rays)
+                seconds = rays * bake.CALIBRATION_SECONDS / bake.CALIBRATION_RAYS
+                self.assertLessEqual(seconds / count, bake.REFERENCE_SHARD_SECONDS)
+                self.assertGreater(seconds / (count - 1), bake.REFERENCE_SHARD_SECONDS, "one shard fewer runs over")
 
     def test_joining_refuses_a_missing_shard_or_shards_that_disagree(self):
         reference = types.SimpleNamespace(output="x.reference.tar.xz", key="k" * 64, job="job", scene=None)
