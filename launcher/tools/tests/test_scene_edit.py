@@ -12,20 +12,23 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from scene import scene_edit  # noqa: E402
-from test_r3d_import import HEAD, camera, renderer, sun_object, write_import, write_scene  # noqa: E402
+from test_r3d_import import HEAD, NO_LEVELS, camera, renderer, sun_object, write_import, write_scene  # noqa: E402
 
 SUN_LINE = "rotation = [40.0, 30.0, 0.0]   # toward the front: above and to the right\n"
 BOX_POSITION = "position = [1.0, 2.0, 3.0]  # on the table\n"
+SHELF_POSITION = "position = [\n    1.0,  # along the wall\n    2.0,\n    3.0,\n]\n"
 
 
 def scene_text():
-    """A baked ground, a sun whose rotation carries a comment, a camera, and two renderers that are not baked:
-    a box with a commented position and a lid under it."""
+    """A baked ground, a sun whose rotation carries a comment, a camera, and renderers that are not baked: a box
+    with a commented position, a lid under it, a shelf whose position spans lines, and a skinned pet."""
     sun = sun_object().replace("rotation = [0.0, 0.0, 0.0]\n", SUN_LINE)
     box = renderer(name="box", transform=BOX_POSITION)
     lid = renderer(name="lid", transform='parent = "box"\n')
-    return ("# A scene the editor writes.\n" + renderer(name="ground", extra="bake = true\n") + "\n" + sun + "\n"
-            + camera(region=False) + "\n" + box + "\n" + lid)
+    shelf = renderer(name="shelf", transform=SHELF_POSITION)
+    pet = renderer("pet.import.toml", name="pet").replace("mesh_renderer", "skinned_renderer")
+    return ("# A scene with placements to edit.\n" + renderer(name="ground", extra="bake = true\n") + "\n" + sun
+            + "\n" + camera(region=False) + "\n" + box + "\n" + lid + "\n" + shelf + "\n" + pet)
 
 
 def run(*argv):
@@ -42,6 +45,7 @@ class SceneEditTests(unittest.TestCase):
         self.addCleanup(directory.cleanup)
         self.folder = pathlib.Path(directory.name)
         write_import(self.folder)
+        write_import(self.folder, "pet.import.toml", output='[output]\nname = "pet"\n', body=NO_LEVELS)
         self.scene = write_scene(self.folder, scene_text(), HEAD)
         self.before = self.scene.read_bytes()
 
@@ -61,7 +65,7 @@ class SceneEditTests(unittest.TestCase):
         code, out, _ = run("read", self.scene)
         self.assertEqual(code, 0)
         objects = {item["name"]: item for item in json.loads(out)["objects"]}
-        self.assertEqual(list(objects), ["ground", "sun", "camera", "box", "lid"])
+        self.assertEqual(list(objects), ["ground", "sun", "camera", "box", "lid", "shelf", "pet"])
         self.assertEqual(objects["box"], dict(name="box", parent=None, kind="mesh_renderer", baked=False,
                                               position=[1.0, 2.0, 3.0], rotation=[0.0] * 3, scale=[1.0] * 3))
         self.assertEqual(objects["lid"]["parent"], "box")
@@ -75,6 +79,23 @@ class SceneEditTests(unittest.TestCase):
         changed = [(old, new) for old, new in zip(before, after) if old != new]
         self.assertEqual(len(after), len(before))
         self.assertEqual(changed, [(BOX_POSITION, "position = [0.5, -2.0, 4.25]  # on the table\n")])
+
+    def test_a_value_over_several_lines_keeps_its_layout(self):
+        self.assertEqual(run("set", self.scene, "--set", "shelf.position=4,5,6")[0], 0)
+        self.assertIn(SHELF_POSITION.replace("1.0", "4.0").replace("2.0", "5.0").replace("3.0", "6.0"), self.scene.read_text())
+
+    def test_a_skinned_renderer_is_placed(self):
+        self.assertEqual(run("set", self.scene, "--set", "pet.position=0.5,0,-0.25", "--set", "pet.scale=2,2,2")[0], 0)
+        pet = {item["name"]: item for item in json.loads(run("read", self.scene)[1])["objects"]}["pet"]
+        self.assertEqual((pet["kind"], pet["baked"]), ("skinned_renderer", False))
+        self.assertEqual((pet["position"], pet["scale"]), ([0.5, 0.0, -0.25], [2.0, 2.0, 2.0]))
+
+    def test_the_last_of_two_values_for_one_field_stays(self):
+        self.assertEqual(run("set", self.scene, "--set", "lid.position=1,1,1", "--set", "lid.position=2,2,2")[0], 0)
+        text = self.scene.read_text()
+        self.assertIn("position = [2.0, 2.0, 2.0]" + chr(10), text)
+        self.assertNotIn("position = [1.0, 1.0, 1.0]", text)
+        self.assertEqual(text.count("position = [2.0, 2.0, 2.0]"), 1)
 
     def test_a_missing_value_is_one_added_line_in_its_object(self):
         before = self.lines()
@@ -121,6 +142,7 @@ class SceneEditTests(unittest.TestCase):
         self.assert_refused("chair.position=0,0,0", why="no object 'chair'")
         self.assert_refused("box.colour=0,0,0", why="FIELD is one of position, rotation, scale")
         self.assert_refused("box.position=0,0", why="3 numbers")
+        self.assert_refused("box.position=0,0,0,0", why="3 numbers")
         self.assert_refused("box.position=0,x,0", why="could not convert")
         self.assert_refused("box=0,0,0", why="expected NAME.FIELD=X,Y,Z")
 
@@ -130,6 +152,21 @@ class SceneEditTests(unittest.TestCase):
         code, _, err = run("set", mesh, "--set", "mesh.position=0,0,0")
         self.assertEqual((code, mesh.read_bytes()), (1, before))
         self.assertIn("only a .scene.toml is written", err)
+        backup = self.folder / "scene.scene.toml.bak"
+        backup.write_bytes(self.before)
+        self.assertEqual(run("set", backup, "--set", "box.position=0,0,0")[0], 1)
+        self.assertEqual(backup.read_bytes(), self.before)
+
+    def test_a_missing_or_invalid_scene_is_refused_without_a_traceback(self):
+        absent = self.folder / "absent.scene.toml"
+        for command in (["read", absent], ["set", absent, "--set", "box.position=0,0,0"]):
+            code, out, err = run(*command)
+            self.assertEqual((code, out), (1, ""))
+            self.assertIn("absent.scene.toml", err)
+        self.scene.write_bytes(self.before.replace(b'name = "lid"', b'name = "box"'))
+        code, out, err = run("read", self.scene)
+        self.assertEqual((code, out), (1, ""))
+        self.assertIn("names must be unique", err)
 
 
 if __name__ == "__main__":

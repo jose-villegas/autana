@@ -7,10 +7,10 @@ the file's own formatting: only the values named change.
 `read` prints the objects as JSON, each with its name, parent, component kind, whether it is a baked renderer, and its
 position, rotation (Euler degrees) and scale as authored, defaults filled in. `set` changes FIELD (position, rotation
 or scale) of the object NAME; a key the object lacks is added. It writes .scene.toml files only, and places only
-renderers that are not baked: a baked renderer is traced where it sits, at identity, and a light or a camera moves what
-every bake row reads. It never adds, removes or reorders objects, so the cameras keep their order. The scene is
-written only when import_settings.load_scene accepts the result; otherwise it exits 1, says why on stderr, and the
-file is left as it was.
+renderers that are not baked: a baked renderer is traced where it sits, at identity, and a light or a camera changes
+the lighting every bake traces. It never adds, removes or reorders objects, so the cameras keep their order. The
+result stays only when import_settings.load_scene accepts it; otherwise the file's bytes are put back, and it exits 1
+and says why on stderr.
 """
 
 import argparse
@@ -111,15 +111,23 @@ def apply(path, assignments):
             raise Refused(f"{path}: no object {name!r}")
         check_placeable(objects[name], path)
         set_value(tables[name], field, vector)
-    # Checked from a sibling file, so the scene's imports resolve as they will; then it takes the scene's place.
-    handle, temporary = tempfile.mkstemp(suffix=SCENE_SUFFIX, dir=path.parent)
+    original = path.read_bytes()
+    replace(path, tomlkit.dumps(document).encode("utf-8"))
+    # Checked in place: the scene's id is its file name, and its asset names are checked against the pack's limit.
     try:
-        with os.fdopen(handle, "w", encoding="utf-8", newline="") as target:
-            target.write(tomlkit.dumps(document))
-        try:
-            import_settings.load_scene(temporary)
-        except (import_settings.SettingsError, ValueError) as error:
-            raise Refused(f"{path}: {error}") from error
+        import_settings.load_scene(path)
+    except (import_settings.SettingsError, ValueError) as error:
+        replace(path, original)
+        raise Refused(f"{path}: {error}") from error
+
+
+def replace(path, data):
+    """`path` holds `data`, all of it or none: written beside it, then moved over it. The partial file is not a
+    .scene.toml, so nothing that lists scenes picks it up."""
+    handle, temporary = tempfile.mkstemp(prefix=f"{path.name}.", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(handle, "wb") as target:
+            target.write(data)
         os.replace(temporary, path)
     except BaseException:
         os.unlink(temporary)

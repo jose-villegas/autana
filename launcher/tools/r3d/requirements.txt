@@ -4,4 +4,3 @@ mitsuba==3.9.1
 numpy==2.4.6
 pillow==12.3.0
 scipy==1.17.1
-tomlkit==0.15.2
