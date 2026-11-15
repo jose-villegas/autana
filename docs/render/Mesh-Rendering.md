@@ -223,6 +223,34 @@ present counts against it.
 What the cull drops, stage by stage, what it keeps along two camera paths and
 what each stage costs: [Culling.md](frame/Culling.md).
 
+## Textured triangles
+
+A mesh whose [LUVS](../assets/formats/LUVS.md) entry names textures draws
+those triangles through `render/texture/r3d_texture.h`. Each pixel takes an
+[LTEX](../assets/formats/LTEX.md) texel at the vertex light's dithered level.
+
+| Format | A pixel | Steps |
+|---|---|---|
+| INDEX4 | one colormap load: the texel's colour at that level | affine, or dividing by depth (below) |
+| MASK1 | texel 0 leaves the pixel; texel 1 draws palette colour 1 | affine |
+
+Stepped affine, u and v bend across a triangle that recedes. An INDEX4
+triangle divides them by depth every few pixels when all of these hold,
+judged on its unclipped box so every row slice draws it alike:
+
+| Test | Setting ([Render-Settings.md](Render-Settings.md)) |
+|---|---|
+| Dividing is on | `texture.divide_px` is not 0 |
+| It is wider than one segment | its box's longer side exceeds `texture.divide_px` |
+| Affine would bend it too far | its estimated bend exceeds `texture.affine_bend` texels |
+
+A dividing triangle starts from segments of `texture.divide_px` pixels. It
+doubles them, up to `RENDER_TEXTURE_DIVIDE_PX_MAX`, while one segment would
+still bend less than `texture.affine_bend`.
+
+The affine and MASK1 paths keep their own row walks; the divide's set-up, walk
+and fill sit at the end of flash code, apart from them.
+
 ## Memory
 
 The layer allocates nothing. Raster draw work owns the resolved camera
@@ -261,5 +289,6 @@ all its renderers.
 ## Related
 
 - [firmware/README.md](../firmware/README.md): the layers and the frame loop
+- [LTEX.md](../assets/formats/LTEX.md), [LUVS.md](../assets/formats/LUVS.md): a textured mesh's textures and UVs
 - [gfx/Present.md](../gfx/Present.md#present-who-runs-it): the split present `update()` overlaps
 - [Building-an-App.md](../firmware/Building-an-App.md#app-memory): the app arena, one place a frame's scratch block can come from
