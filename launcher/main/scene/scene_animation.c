@@ -34,6 +34,15 @@ animation_settings(void) {
     return s;
 }
 
+/* The pose interval of tier `tier` under `s`. */
+static int
+tier_every(int tier, const render_anim_settings_t* s) {
+    const int every[] = {[SCENE_ANIM_TIER_NEAR] = RENDER_ANIM_EVERY_MIN,
+                         [SCENE_ANIM_TIER_MID] = s->mid_every,
+                         [SCENE_ANIM_TIER_FAR] = s->far_every};
+    return every[tier];
+}
+
 /* Keep a tier inside its band so camera jitter does not alternate pose rates:
  * each boundary moves away from the current tier by the band. */
 static int
@@ -43,10 +52,7 @@ animation_interval(scene_animator_t* a, const render_anim_settings_t* s) {
     const float far = a->tier == SCENE_ANIM_TIER_FAR ? s->far_px + band : s->far_px - band;
     const float px = a->drawn_radius_px;
     a->tier = px < far ? SCENE_ANIM_TIER_FAR : px < mid ? SCENE_ANIM_TIER_MID : SCENE_ANIM_TIER_NEAR;
-    const int every[] = {[SCENE_ANIM_TIER_NEAR] = RENDER_ANIM_EVERY_MIN,
-                         [SCENE_ANIM_TIER_MID] = s->mid_every,
-                         [SCENE_ANIM_TIER_FAR] = s->far_every};
-    a->interval = every[a->tier];
+    a->interval = tier_every(a->tier, s);
     return a->interval;
 }
 
@@ -104,10 +110,14 @@ scene_animate_range(scene_t* scene, int first, int count, uint32_t dt_ms, const 
         if (!paced(scene, e)) {
             continue;
         }
-        /* The tier changes only on the frames the draw measured it for. */
-        const int interval = !scene->skinned_renderers[e].bound ? RENDER_ANIM_EVERY_MIN
-                             : scene_animator_due(scene, a)     ? animation_interval(a, settings)
-                                                                : a->interval;
+        /* The tier changes only on the frames the draw measured it for; its
+         * interval follows the settings every step. */
+        int interval = RENDER_ANIM_EVERY_MIN;
+        if (scene->skinned_renderers[e].bound && scene_animator_due(scene, a)) {
+            interval = animation_interval(a, settings);
+        } else if (scene->skinned_renderers[e].bound) {
+            interval = a->interval = tier_every(a->tier, settings);
+        }
         const bool force = a->dirty;
         const bool due = (scene->animation_frame + a->phase) % (uint32_t)interval == 0;
         /* A zero-time repose belongs to its dirty copy; others keep their debt. */

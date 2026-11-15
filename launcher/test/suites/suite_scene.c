@@ -5065,6 +5065,22 @@ turned(entity_t entity, int i) {
 
 #define ANIM_RATE_ROUNDS 3
 
+/* Steps `scene` until `a` is due: a copy picks its tier only on its due frames. */
+static void
+until_due(scene_t* scene, const scene_animator_t* a) {
+    while (!scene_animator_due(scene, a)) {
+        scene_animation_step(scene, ANIM_RATE_DT_MS);
+    }
+}
+
+/* One step of a due `a` drawn `px` pixels wide: the step that picks its tier from it. */
+static void
+step_due_at(scene_t* scene, scene_animator_t* a, float px) {
+    until_due(scene, a);
+    a->drawn_radius_px = px;
+    scene_animation_step(scene, ANIM_RATE_DT_MS);
+}
+
 static scene_t*
 rate_fixture(void) {
     fixture();
@@ -5245,6 +5261,7 @@ static void
 test_a_moving_near_copy_relights_every_frame(void) {
     const lit_rig_t rig = lit_rig();
     scene_animator_t* a = &rig.scene->animators[row_of(rig.red)];
+    step_due_at(rig.scene, a, NEAR_DRAWN_PX);
     for (int i = 0; i < RENDER_SETTINGS_DEFAULT.anim.far_every; i++) {
         a->drawn_radius_px = NEAR_DRAWN_PX;
         TEST_ASSERT_TRUE(step_turned(rig, i));
@@ -5262,6 +5279,25 @@ test_a_moving_copy_with_no_clip_relights_at_once(void) {
     }
 }
 
+/* A copy between its due frames keeps its tier however large it is drawn:
+ * the draw measures it, and the step re-picks its tier, only when it is due. */
+static void
+test_a_copy_holds_its_tier_between_its_due_frames(void) {
+    scene_t* scene = rate_fixture();
+    scene_animator_t* a = &scene->animators[0];
+    const render_anim_settings_t s = RENDER_SETTINGS_DEFAULT.anim;
+    step_due_at(scene, a, 0.0F);
+    TEST_ASSERT_EQUAL_INT(SCENE_ANIM_TIER_FAR, a->tier);
+    for (int i = 1; i < s.far_every; i++) {
+        TEST_ASSERT_FALSE(scene_animator_due(scene, a));
+        a->drawn_radius_px = s.mid_px + s.hysteresis_px * 2;
+        scene_animation_step(scene, ANIM_RATE_DT_MS);
+        TEST_ASSERT_EQUAL_INT(SCENE_ANIM_TIER_FAR, a->tier);
+    }
+    step_due_at(scene, a, s.mid_px + s.hysteresis_px * 2);
+    TEST_ASSERT_EQUAL_INT(SCENE_ANIM_TIER_NEAR, a->tier);
+}
+
 static void
 test_animation_rate_tier_hysteresis(void) {
     scene_t* scene = rate_fixture();
@@ -5273,27 +5309,22 @@ test_animation_rate_tier_hysteresis(void) {
                              RENDER_ANIM_EVERY_MIN};
     for (int t = 0; t < (int)(sizeof thresholds / sizeof thresholds[0]); t++) {
         for (int i = 0; i < ANIM_RATE_ROUNDS; i++) {
-            a->drawn_radius_px = thresholds[t] + band / 2;
-            scene_animation_step(scene, ANIM_RATE_DT_MS);
+            step_due_at(scene, a, thresholds[t] + band / 2);
             TEST_ASSERT_EQUAL_INT(intervals[t], a->interval);
             TEST_ASSERT_EQUAL_INT(tiers[t], a->tier);
-            a->drawn_radius_px = thresholds[t] - band / 2;
-            scene_animation_step(scene, ANIM_RATE_DT_MS);
+            step_due_at(scene, a, thresholds[t] - band / 2);
             TEST_ASSERT_EQUAL_INT(intervals[t], a->interval);
             TEST_ASSERT_EQUAL_INT(tiers[t], a->tier);
         }
-        a->drawn_radius_px = thresholds[t] + band * 2;
-        scene_animation_step(scene, ANIM_RATE_DT_MS);
+        step_due_at(scene, a, thresholds[t] + band * 2);
         TEST_ASSERT_EQUAL_INT(intervals[t + 1], a->interval);
         TEST_ASSERT_EQUAL_INT(tiers[t + 1], a->tier);
     }
     for (int t = (int)(sizeof thresholds / sizeof thresholds[0]) - 1; t >= 0; t--) {
-        a->drawn_radius_px = thresholds[t] - band / 2;
-        scene_animation_step(scene, ANIM_RATE_DT_MS);
+        step_due_at(scene, a, thresholds[t] - band / 2);
         TEST_ASSERT_EQUAL_INT(intervals[t + 1], a->interval);
         TEST_ASSERT_EQUAL_INT(tiers[t + 1], a->tier);
-        a->drawn_radius_px = thresholds[t] - band * 2;
-        scene_animation_step(scene, ANIM_RATE_DT_MS);
+        step_due_at(scene, a, thresholds[t] - band * 2);
         TEST_ASSERT_EQUAL_INT(intervals[t], a->interval);
         TEST_ASSERT_EQUAL_INT(tiers[t], a->tier);
     }
@@ -5307,23 +5338,27 @@ test_animation_rate_tier_jumps_and_first_read(void) {
     scene_animator_t* a = &scene->animators[0];
     const render_anim_settings_t s = RENDER_SETTINGS_DEFAULT.anim;
     const float near = s.mid_px + s.hysteresis_px * 2, far = s.far_px - s.hysteresis_px * 2;
-    a->drawn_radius_px = near;
-    scene_animation_step(scene, ANIM_RATE_DT_MS);
+    step_due_at(scene, a, near);
     TEST_ASSERT_EQUAL_INT(SCENE_ANIM_TIER_NEAR, a->tier);
-    a->drawn_radius_px = far;
-    scene_animation_step(scene, ANIM_RATE_DT_MS);
+    step_due_at(scene, a, far);
     TEST_ASSERT_EQUAL_INT(SCENE_ANIM_TIER_FAR, a->tier);
-    a->drawn_radius_px = near;
-    scene_animation_step(scene, ANIM_RATE_DT_MS);
+    step_due_at(scene, a, near);
     TEST_ASSERT_EQUAL_INT(SCENE_ANIM_TIER_NEAR, a->tier);
-    a->drawn_radius_px = s.mid_px - s.hysteresis_px / 2;
-    scene_animation_step(scene, ANIM_RATE_DT_MS);
+    step_due_at(scene, a, s.mid_px - s.hysteresis_px / 2);
     TEST_ASSERT_EQUAL_INT(SCENE_ANIM_TIER_NEAR, a->tier);
     a->interval = 0;
-    a->drawn_radius_px = s.mid_px - s.hysteresis_px / 2;
-    scene_animation_step(scene, ANIM_RATE_DT_MS);
+    step_due_at(scene, a, s.mid_px - s.hysteresis_px / 2);
     TEST_ASSERT_EQUAL_INT(SCENE_ANIM_TIER_MID, a->tier);
     TEST_ASSERT_EQUAL_INT(s.mid_every, a->interval);
+}
+
+/* Composes frames until one draws `a` on its due frame: the draw measures a
+ * copy only then, after the step that makes it due. */
+static void
+frame_due(scene_t* scene, const scene_animator_t* a) {
+    do {
+        frame(0);
+    } while (!scene_animator_due(scene, a));
 }
 
 static void
@@ -5334,7 +5369,7 @@ test_animation_rate_reads_last_drawn_bounds_and_rejects_offscreen(void) {
     scene_animator_t* a = &scene->animators[row_of(red)];
     render_settings_t settings = RENDER_SETTINGS_DEFAULT;
     render_context_set_settings(render_context_main(), &settings);
-    frame(0);
+    frame_due(scene, a);
     TEST_ASSERT_EQUAL_INT((RENDER_SETTINGS_DEFAULT.anim.far_every), a->interval);
     TEST_ASSERT_GREATER_THAN_FLOAT(0.0F, a->drawn_radius_px);
     entity_t camera = camera_first(root);
@@ -5343,7 +5378,7 @@ test_animation_rate_reads_last_drawn_bounds_and_rejects_offscreen(void) {
     transform_set_local(camera, eye);
     scene->cameras[0].lens.half_fov_short_tan =
         (float)SIZE / ((RENDER_SETTINGS_DEFAULT.anim.mid_px) * (RENDER_SETTINGS_DEFAULT.anim.far_every));
-    frame(0);
+    frame_due(scene, a);
     TEST_ASSERT_EQUAL_INT((RENDER_SETTINGS_DEFAULT.anim.far_every), a->interval);
     TEST_ASSERT_GREATER_THAN_FLOAT((RENDER_SETTINGS_DEFAULT.anim.mid_px) + (RENDER_SETTINGS_DEFAULT.anim.hysteresis_px),
                                    a->drawn_radius_px);
@@ -5352,7 +5387,7 @@ test_animation_rate_reads_last_drawn_bounds_and_rejects_offscreen(void) {
     transformf_t pose = transform_local(red);
     pose.position.x = CAMERA_DISTANCE * SIZE;
     transform_set_local(red, pose);
-    frame(0);
+    frame_due(scene, a);
     TEST_ASSERT_EQUAL_FLOAT(0.0F, a->drawn_radius_px);
     scene_animation_step(scene, 0);
     TEST_ASSERT_EQUAL_INT((RENDER_SETTINGS_DEFAULT.anim.far_every), a->interval);
@@ -5367,15 +5402,19 @@ test_animation_rate_overrides_and_reset(void) {
     settings.anim.far_every = RENDER_ANIM_EVERY_MIN;
     render_context_set_settings(render_context_main(), &settings);
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(anim, far_every), RENDER_ANIM_EVERY_MAX));
+    until_due(scene, a);
     scene_animation_step(scene, ANIM_RATE_DT_MS);
     TEST_ASSERT_EQUAL_INT(RENDER_ANIM_EVERY_MAX, a->interval);
     TEST_ASSERT_FALSE(tune_set(tune_shared(), TUNE_NAME(anim, far_every), RENDER_ANIM_EVERY_MAX + 1));
+    until_due(scene, a);
     scene_animation_step(scene, ANIM_RATE_DT_MS);
     TEST_ASSERT_EQUAL_INT(RENDER_ANIM_EVERY_MAX, a->interval);
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(anim, far_every), 0));
+    until_due(scene, a);
     scene_animation_step(scene, ANIM_RATE_DT_MS);
     TEST_ASSERT_EQUAL_INT(RENDER_ANIM_EVERY_MIN, a->interval);
     TEST_ASSERT_TRUE(tune_reset(tune_shared(), TUNE_NAME(anim, far_every)));
+    until_due(scene, a);
     scene_animation_step(scene, ANIM_RATE_DT_MS);
     TEST_ASSERT_EQUAL_INT(RENDER_ANIM_EVERY_MIN, a->interval);
 }
@@ -5397,6 +5436,7 @@ test_animation_rate_undrawn_and_fractional_speed(void) {
             TEST_ASSERT_EQUAL_UINT16(reference.current.playhead.fraction, a->layer.current.playhead.fraction);
         }
     }
+    until_due(scene, a);
     a->drawn_radius_px = RENDER_SETTINGS_DEFAULT.anim.mid_px * 2;
     scene_animation_step(scene, dt_ms);
     TEST_ASSERT_EQUAL_INT(RENDER_ANIM_EVERY_MIN, a->interval);
@@ -5441,6 +5481,7 @@ test_animation_rate_first_placement_jump_and_debt(void) {
         TEST_ASSERT_EQUAL_INT(tiers[i], a->tier);
         TEST_ASSERT_EQUAL_INT(a->interval == RENDER_ANIM_EVERY_MIN, a->posed);
     }
+    until_due(scene, a);
     TEST_ASSERT_GREATER_THAN_UINT32(0, a->owed_ms);
     anim_layer_t reference = a->layer;
     anim_layer_advance(&reference, a->owed_ms + ANIM_RATE_DT_MS);
@@ -7612,6 +7653,7 @@ run_scene_suite(void) {
     RUN_TEST(test_a_light_change_relights_at_once);
     RUN_TEST(test_a_moving_near_copy_relights_every_frame);
     RUN_TEST(test_a_moving_copy_with_no_clip_relights_at_once);
+    RUN_TEST(test_a_copy_holds_its_tier_between_its_due_frames);
     RUN_TEST(test_animation_rate_tier_hysteresis);
     RUN_TEST(test_animation_rate_tier_jumps_and_first_read);
     RUN_TEST(test_animation_rate_first_placement_jump_and_debt);
