@@ -6,6 +6,26 @@
 #include "hash/crc32.h"
 #include "stream/stream_provider.h"
 
+static bool
+play_frames(int argc, char** argv) {
+    if (stream_status().frames > 0) {
+        if (!stream_seek(stream_status().frames - 1) || stream_next() != stream_status().frames - 1
+            || !stream_seek(0)) {
+            return false;
+        }
+    }
+    if (argc == 5 && !stream_seek(atoi(argv[4]))) {
+        return false;
+    }
+    while (render_host_frame()->index < render_host_frame()->count) {
+        render_host_step(render_host_frame()->dt_ms, &render_host_frame()->input);
+        if (argc == 5) {
+            break;
+        }
+    }
+    return true;
+}
+
 int
 main(int argc, char** argv) {
     if (argc != 4 && argc != 5) {
@@ -36,19 +56,8 @@ main(int argc, char** argv) {
     if (!render_host_open(&stream_provider, sizeof args / sizeof args[0], args, &code)) {
         return code;
     }
-    if (status.frames > 0) {
-        if (!stream_seek(status.frames - 1) || stream_next() != status.frames - 1 || !stream_seek(0)) {
-            return 2;
-        }
-    }
-    if (argc == 5 && !stream_seek(atoi(argv[4]))) {
+    if (!play_frames(argc, argv)) {
         return 2;
-    }
-    while (render_host_frame()->index < render_host_frame()->count) {
-        render_host_step(render_host_frame()->dt_ms, &render_host_frame()->input);
-        if (argc == 5) {
-            break;
-        }
     }
     const render_host_image_t image = render_host_image();
     const uint32_t crc = crc32_update(0, image.bgr, image.stride * (size_t)image.height);
