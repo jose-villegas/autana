@@ -217,6 +217,22 @@ with mock.patch.object(espressif, 'PROJECT_ROOT', Path(sys.argv[2])), \\
 
 
 @unittest.skipUnless(os.name == 'nt', 'real winreg reads')
+class InstallCommandTests(unittest.TestCase):
+    PIN = {'commit': 'f0114250e205e33a945e2f3e7ec40085c5a029a2',
+           'image': 'espressif/idf:release-v6.1@sha256:test'}
+
+    def test_a_new_checkout_is_named_for_its_release_and_commit(self):
+        older = dict(self.PIN, commit='9a97' + '0' * 36)
+        new, old = (espressif.install_commands(pin, Path(tempfile.gettempdir())) for pin in (self.PIN, older))
+        name = f"v6.1-{self.PIN['commit'][:espressif.INSTALL_COMMIT_DIGITS]}"
+        self.assertIn(name, new.splitlines()[0])
+        self.assertNotEqual(new.splitlines()[0], old.splitlines()[0])
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows installer')
+    def test_the_windows_installer_drops_git_bashs_msystem(self):
+        self.assertIn('$env:MSYSTEM=$null;', espressif.install_commands(self.PIN))
+
+
 class RegistryTests(unittest.TestCase):
     def setUp(self):
         import winreg
