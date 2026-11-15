@@ -85,6 +85,7 @@ typedef struct {
     X(FOLIAGE_FAR, "foliage-far", MASKED)                                                                              \
     X(FOLIAGE_FAR_OPAQUE, "foliage-far-opaque", TEXTURED)                                                              \
     X(RECORD, "record", WAVE)                                                                                          \
+    X(CULL_SETUP, "cull-setup", BANDED)                                                                                \
     X(BAKED_TREE, "baked-tree", STATIC)
 
 #define STRESS_PRESET_ID(id_, ...) STRESS_##id_,
