@@ -14,25 +14,71 @@ import numpy as np
 from . import log
 from .geometry import distinct_corners, nearest_triangles, triangle_areas, triangle_search
 from .import_settings import LIGHT_FIELDS
+from .obj import alpha_tested
+
+
+# Where a triangle's alpha is sampled: its centre and three points towards its corners, as barycentric weights.
+ALPHA_POINTS = np.array([[1 / 3, 1 / 3, 1 / 3], [0.6, 0.2, 0.2], [0.2, 0.6, 0.2], [0.2, 0.2, 0.6]])
+# Mip level a triangle's alpha is sampled at, so one texel's hole does not decide a whole triangle.
+TRIANGLE_ALPHA_LOD = 2.0
+
+
+def triangle_alpha(uv, tri_t, texture):
+    """Each triangle's mean texture alpha over ALPHA_POINTS."""
+    alpha = np.zeros(len(tri_t))
+    for b in ALPHA_POINTS:
+        tuv = (uv[tri_t] * b[None, :, None]).sum(axis=1)
+        alpha += texture.sample(tuv, np.full(len(tri_t), TRIANGLE_ALPHA_LOD))[:, 3]
+    return alpha / len(ALPHA_POINTS)
 
 
 def drop_masked(p, uv, tri_v, tri_t, tri_m, textures, keep_alpha=0.5):
     """Alpha-tested cards (leaves, chains) keep only triangles mostly opaque."""
     keep = np.ones(len(tri_v), dtype=bool)
-    bary = np.array([[1 / 3, 1 / 3, 1 / 3], [0.6, 0.2, 0.2], [0.2, 0.6, 0.2], [0.2, 0.2, 0.6]])
+    tested = alpha_tested(textures)
     for m, tex in enumerate(textures):
         sel = np.nonzero(tri_m == m)[0]
-        if tex is None or len(sel) == 0 or tex.levels[0][..., 3].min() > 0.99:
+        if not tested[m] or len(sel) == 0:
             continue
-        alpha = np.zeros(len(sel))
-        for b in bary:
-            tuv = (uv[tri_t[sel]] * b[None, :, None]).sum(axis=1)
-            alpha += tex.sample(tuv, np.full(len(sel), 2.0))[:, 3]
-        keep[sel] = alpha / len(bary) >= keep_alpha
+        keep[sel] = triangle_alpha(uv, tri_t[sel], tex) >= keep_alpha
     keep &= triangle_areas(p, tri_v) > 1e-6
     log(f"masked/degenerate triangles dropped: {np.count_nonzero(~keep)}")
     result = (tri_v[keep], tri_t[keep], tri_m[keep])
     return (*result, keep)
+
+
+def hit_barycentrics(p, tri_v, hits, locations):
+    """Barycentric weights of ray hits at `locations` on their triangles `hits`."""
+    a, b, c = (p[tri_v[hits, corner]] for corner in range(3))
+    normal = np.cross(b - a, c - a)
+    twice_area = np.einsum("ij,ij->i", normal, normal)
+    wa = np.einsum("ij,ij->i", np.cross(c - b, locations - b), normal) / twice_area
+    wb = np.einsum("ij,ij->i", np.cross(a - c, locations - c), normal) / twice_area
+    return np.stack([wa, wb, 1.0 - wa - wb], axis=1)
+
+
+class AlphaTest:
+    """A `RayQuery` hit filter: a hit is solid where the source's level-zero texture alpha at its interpolated UV is
+    at least `keep_alpha`. Hits on materials `alpha_tested` finds opaque are solid without a sample."""
+
+    def __init__(self, source, keep_alpha):
+        self.source, self.keep_alpha = source, keep_alpha
+        self.tested = alpha_tested(source.textures)
+
+    def __call__(self, hits, locations):
+        source = self.source
+        solid = np.ones(len(hits), dtype=bool)
+        materials = source.tri_m[hits]
+        selected = np.flatnonzero(self.tested[materials])
+        if not len(selected):
+            return solid
+        bary = hit_barycentrics(source.p, source.tri_v, hits[selected], locations[selected])
+        uv = (source.uv[source.tri_t[hits[selected]]] * bary[:, :, None]).sum(axis=1)
+        for material in np.unique(materials[selected]):
+            chosen = materials[selected] == material
+            alpha = source.textures[material].sample(uv[chosen], np.zeros(np.count_nonzero(chosen)))[:, 3]
+            solid[selected[chosen]] = alpha >= self.keep_alpha
+        return solid
 
 
 def visible_from_region(p, tri_v, double, intersector, rounds, rng, lo, hi):
