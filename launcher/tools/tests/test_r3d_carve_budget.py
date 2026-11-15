@@ -208,6 +208,38 @@ class FitCeilingTests(unittest.TestCase):
             self.run_fit(4, output_extra=True)
 
 
+class CarvedReportTests(unittest.TestCase):
+    def test_each_carved_shape_counts_its_copies_cut_texels_and_nearest_eye_with_its_baked_level_on_its_source(self):
+        with tempfile.TemporaryDirectory() as directory:
+            blob, copies, geometry, job, _ = bundle_fixture(directory)
+        entries, rows = mesh_bundle.decode(blob)
+        cut = NS(levels=[np.zeros((1, 1, 4))])
+        positions = np.concatenate([placed for _, (placed, *_) in copies])
+        faces = np.concatenate([own + 3 * k for k, (_, (_, _, own, _)) in enumerate(copies)])
+        # Copies a and b share one mesh; c is mirrored, so it is its own, and its one triangle cuts texels.
+        src = NS(p=positions, tri_v=faces, tri_o=np.arange(3), tri_m=np.array([0, 0, 1]), textures=[None, cut],
+                 object_names=['a', 'b', 'c'])
+        eye = [-10., 1, 0]
+        shapes, rest = objects_report.carved_shapes(src, entries, rows, [eye], NEAR)
+        self.assertEqual([(s['shape'], s['copies'], s['source'], s['baked'], s['drawn'], s['alpha_tested'])
+                          for s in shapes], [('a', 2, 1, 1, 2, 0.0), ('c', 1, 1, 1, 1, 1.0)])
+        # a spans x 0..4 and c, mirrored about x = 16, spans 12..16; the eye sits level with both, at x = -10.
+        self.assertEqual([s['nearest'] for s in shapes], [10.0, 22.0])
+        self.assertEqual(rest, len(geometry.tris))
+        mirrored = shapes[1]
+        np.testing.assert_allclose(np.sort(mirrored['baked_positions'], axis=0), np.sort(positions[6:9], axis=0),
+                                   atol=1e-2)
+        with tempfile.TemporaryDirectory() as directory, \
+                patch('r3d.objects.carve.views', return_value=([eye], FOCAL, NEAR)):
+            out = pathlib.Path(directory)
+            (out / 'start.bundle').write_bytes(blob)
+            objects_report.write_carved(None, job, src, out / 'start.bundle', out)
+            table = (out / 'carved.md').read_text().splitlines()
+            self.assertTrue((out / 'carved.png').stat().st_size)
+        self.assertIn('| a | 2 | 1 | 1 | 2 | 0% | 10 |', table)
+        self.assertIn('| c | 1 | 1 | 1 | 1 | 100% | 22 |', table)
+
+
 class SourcePlacementTests(unittest.TestCase):
     def test_part_order_uses_relative_tolerance_across_absolute_rounding_boundaries(self):
         from r3d.obj import load_obj

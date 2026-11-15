@@ -4,6 +4,7 @@
     objects_report.py SCENE.scene.toml --object NAME --out DIR
         [--tolerance X] [--parts] [--surface-tolerance [X] [--surface-floor D]]
         [--held-out [--fitted BUNDLE] [--cache DIR] [--docs]] [--authoring]
+        [--carved BUNDLE]
 
 Reads source geometry after alpha masking. Writes only to --out, which must
 be outside the repository.
@@ -30,6 +31,14 @@ how the variant's ceiling splits between the carved shapes and the rest, then
 the shapes whose kept level still moves its surface more than
 lod.tolerance_px at the camera's closest view, with the reason
 (objects/detail.py).
+
+--carved reads a baked bundle of the renderer (its start or a fit) and writes
+carved.md, one row per carved shape: copies, triangles of one source copy and
+of its baked finest level, triangles drawn by all copies, the share of its
+source triangles with an alpha-tested material, and the nearest any camera
+path eye comes to a copy (objects/carve.py views); then the rest's finest
+triangles. carved.png draws the CARVED_SHEET_SHAPES shapes drawing the most,
+source beside baked finest level from two sides.
 """
 
 import argparse
@@ -60,6 +69,9 @@ SHEET_MIN_TRIANGLES = 20
 # Degrees: azimuth and elevation of the sheet's eye in each shape's principal frame, so depth shows.
 SHEET_VIEW = (-35.0, 30.0)
 SHEET_AMBIENT = 0.35
+CARVED_SHEET_SHAPES = 12
+# Degrees: the carved sheet's second eye, round the far side of each shape.
+CARVED_BACK_VIEW = (145.0, 30.0)
 RESIDUAL_BINS = 32
 # Exact matches need a positive display floor on the logarithmic axis.
 RESIDUAL_DISPLAY_FLOOR = 1e-16
@@ -140,8 +152,6 @@ def write_sheet(path, objects, shapes):
     """The SHEET_SHAPES repeated shapes of at least SHEET_MIN_TRIANGLES saving the most triangles, up to SHEET_COPIES
     copies each: every copy taken back into its shape's frame, seen from SHEET_VIEW off its principal axes, shaded
     by facing, nearest triangles last."""
-    from matplotlib.collections import PolyCollection
-
     by_name = {obj.name: obj for obj in objects}
     counts = {name: len(obj.triangles) for name, obj in by_name.items()}
     repeated = sorted((s for s in shapes if len(s.instances) > 1 and len(s.triangles) >= SHEET_MIN_TRIANGLES),
@@ -151,24 +161,36 @@ def write_sheet(path, objects, shapes):
     for axis in axes.flat:
         axis.set_axis_off()
     turn = sheet_turn(*SHEET_VIEW)
-    colour = np.array(matplotlib.colors.to_rgb(plot_style.SLOTS[0]))
     for row, shape in zip(axes, repeated):
-        centred = shape.positions - shape.positions.mean(axis=0)
-        view = np.linalg.eigh(centred.T @ centred)[1][:, ::-1] @ turn
+        view = principal_view(shape.positions, turn)
         for axis, instance in zip(row, shape.instances):
             obj = by_name[instance.object_name]
-            corners = (place(obj.positions - instance.position, instance.linear.T, 0.0) @ view)[obj.triangles]
-            normal = np.cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0])
-            facing = np.abs(normal[:, 2]) / np.maximum(np.linalg.norm(normal, axis=1), 1e-12)
-            order = np.argsort(corners[:, :, 2].mean(axis=1))
-            shade = SHEET_AMBIENT + (1 - SHEET_AMBIENT) * facing[order, None]
-            axis.add_collection(PolyCollection(corners[order, :, :2], facecolor=colour * shade, edgecolor='white',
-                                               linewidth=0.2))
-            axis.autoscale_view()
-            axis.set_aspect('equal')
+            draw_shaded(axis, place(obj.positions - instance.position, instance.linear.T, 0.0) @ view, obj.triangles)
             axis.set_title(f'{len(obj.triangles)} tris' + (' mirrored' if instance.mirrored else ''),
                            fontsize=plot_style.LABEL_SIZE)
     plot_style.save(fig, path)
+
+
+def principal_view(positions, turn):
+    """Columns: the screen axes of `turn` (sheet_turn) in the principal frame of positions about their mean."""
+    centred = positions - positions.mean(axis=0)
+    return np.linalg.eigh(centred.T @ centred)[1][:, ::-1] @ turn
+
+
+def draw_shaded(axis, points, triangles):
+    """Triangles of view-space points, shaded by facing, nearest last."""
+    from matplotlib.collections import PolyCollection
+
+    corners = points[triangles]
+    normal = np.cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0])
+    facing = np.abs(normal[:, 2]) / np.maximum(np.linalg.norm(normal, axis=1), 1e-12)
+    order = np.argsort(corners[:, :, 2].mean(axis=1))
+    shade = SHEET_AMBIENT + (1 - SHEET_AMBIENT) * facing[order, None]
+    colour = np.array(matplotlib.colors.to_rgb(plot_style.SLOTS[0]))
+    axis.add_collection(PolyCollection(corners[order, :, :2], facecolor=colour * shade, edgecolor='white',
+                                       linewidth=0.2))
+    axis.autoscale_view()
+    axis.set_aspect('equal')
 
 
 def sheet_turn(azimuth, elevation):
@@ -194,6 +216,7 @@ def main(argv=None):
     parser.add_argument('--cache', type=pathlib.Path)
     parser.add_argument('--docs', action='store_true')
     parser.add_argument('--authoring', action='store_true')
+    parser.add_argument('--carved', type=pathlib.Path)
     args = parser.parse_args(argv)
     if args.surface_floor and args.surface_tolerance is None:
         parser.error('--surface-floor needs --surface-tolerance')
@@ -225,7 +248,83 @@ def main(argv=None):
         write_error_report(args, scene, job, out)
     if args.authoring:
         write_authoring(scene, job, out)
+    if args.carved:
+        write_carved(scene, job, src, args.carved, out)
     return 0
+
+
+def write_carved(scene, job, src, bundle, out):
+    """The --carved report; see the module docstring."""
+    from r3d import mesh_bundle
+    from r3d.objects.carve import views
+
+    entries, copies = mesh_bundle.decode(pathlib.Path(bundle).read_bytes())
+    eyes, _, near = views(scene, job.renderer)
+    shapes, rest = carved_shapes(src, entries, copies, eyes, near)
+    lines = [f'# {job.object.name}: carved shapes', '',
+             '| Shape | Copies | Source tris | Baked tris | Drawn tris | Alpha-tested | Nearest eye |',
+             '|---|---:|---:|---:|---:|---:|---:|']
+    lines += [f"| {s['shape']} | {s['copies']} | {s['source']} | {s['baked']} | {s['drawn']} | "
+              f"{s['alpha_tested']:.0%} | {s['nearest']:.0f} |" for s in shapes]
+    lines += ['', f"Rest: {rest} finest tris. Copies: {len(shapes)} shapes, {sum(s['drawn'] for s in shapes)} "
+              f'tris drawn by {len(copies)} copies.']
+    (out / 'carved.md').write_text('\n'.join(lines) + '\n')
+    write_carved_sheet(out / 'carved.png', shapes[:CARVED_SHEET_SHAPES])
+    print(f'{len(shapes)} carved shapes, rest {rest} finest tris')
+
+
+def carved_shapes(src, entries, copies, eyes, near):
+    """(shapes, rest): per carved mesh of a decoded bundle, most drawn first, its first source object's source
+    triangles and its baked finest level placed by its first copy, both in source units; and the rest's finest
+    triangle count."""
+    from r3d import mesh_bundle
+    from r3d.lit_mesh import finest_count, finest_triangles, read_bundle_mesh
+    from r3d.obj import alpha_tested
+    from r3d.objects.detail import nearest_distance
+
+    tested = alpha_tested(src.textures)
+    index = {name: i for i, name in enumerate(src.object_names)}
+    placed = {}
+    for row in copies:
+        placed.setdefault(row['mesh'], []).append(row)
+    shapes = []
+    for name, rows in placed.items():
+        mesh = read_bundle_mesh(entries, name)
+        local, _, triangles, _, _ = finest_triangles(mesh)
+        local = local / float(mesh.position_scale)
+        points = [local @ np.asarray(row['matrix'], dtype=np.float64).T + np.asarray(row['position']) for row in rows]
+        mine = src.tri_o == index[rows[0]['first']]
+        shapes.append(dict(shape=rows[0]['first'], copies=len(rows), source=int(mine.sum()), baked=len(triangles),
+                           drawn=len(triangles) * len(rows), alpha_tested=float(tested[src.tri_m[mine]].mean()),
+                           nearest=nearest_distance([p.min(axis=0) for p in points], [p.max(axis=0) for p in points],
+                                                    eyes, near),
+                           source_positions=src.p, source_triangles=src.tri_v[mine],
+                           baked_positions=points[0], baked_triangles=triangles))
+    shapes.sort(key=lambda s: s['drawn'], reverse=True)
+    return shapes, finest_count(read_bundle_mesh(entries, mesh_bundle.rest_name(entries, copies)))
+
+
+def write_carved_sheet(path, shapes):
+    """Each shape's source copy beside its baked finest level, from SHEET_VIEW and CARVED_BACK_VIEW in the source
+    copy's principal frame."""
+    turns = [sheet_turn(*SHEET_VIEW), sheet_turn(*CARVED_BACK_VIEW)]
+    rows, columns = max(len(shapes), 1), 2 * len(turns)
+    fig, axes = plot_style.subplots(rows, columns, (1.6 * columns, 1.7 * rows), squeeze=False)
+    for axis in axes.flat:
+        axis.set_axis_off()
+    for row, shape in zip(axes, shapes):
+        used = shape['source_positions'][np.unique(shape['source_triangles'])]
+        centre = used.mean(axis=0)
+        for k, turn in enumerate(turns):
+            view = principal_view(used, turn)
+            pair = ((shape['source_positions'], shape['source_triangles'], 'source'),
+                    (shape['baked_positions'], shape['baked_triangles'], 'baked'))
+            for axis, (points, triangles, label) in zip(row[2 * k:], pair):
+                draw_shaded(axis, (points - centre) @ view, triangles)
+                axis.set_title(f'{label} {len(triangles)} tris', fontsize=plot_style.LABEL_SIZE)
+        row[0].set_title(f"{shape['shape'][-22:]} x{shape['copies']}\nsource {shape['source']} tris",
+                         fontsize=plot_style.LABEL_SIZE)
+    plot_style.save(fig, path)
 
 
 def write_authoring(scene, job, out):
