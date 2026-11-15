@@ -5,6 +5,7 @@ import pathlib
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from types import SimpleNamespace
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
@@ -303,3 +304,14 @@ class TextureDtypeTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipIf(np is None, "needs numpy")
+class PinLlvmTest(unittest.TestCase):
+    def test_a_loaded_library_is_pinned_on_windows_only(self):
+        with unittest.mock.patch.object(mitsuba_reference, "LLVM_LIBRARY", "kernel32.dll"):
+            self.assertEqual(mitsuba_reference.pin_llvm(), sys.platform == "win32")
+
+    def test_a_library_never_loaded_is_not_pinned(self):
+        with unittest.mock.patch.object(mitsuba_reference, "LLVM_LIBRARY", "no-such-library.dll"):
+            self.assertFalse(mitsuba_reference.pin_llvm())
