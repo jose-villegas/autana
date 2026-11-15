@@ -226,7 +226,8 @@ what each stage costs: [Culling.md](frame/Culling.md).
 ## Textured triangles
 
 A mesh whose [LUVS](../assets/formats/LUVS.md) entry names textures draws
-those triangles through `render/texture/r3d_texture.h`. Each pixel takes an
+those triangles through
+[`render/texture/r3d_texture.h`](../../launcher/main/render/texture/r3d_texture.h). Each pixel takes an
 [LTEX](../assets/formats/LTEX.md) texel at the vertex light's dithered level.
 
 | Format | A pixel | Steps |
@@ -248,8 +249,7 @@ A dividing triangle starts from segments of `texture.divide_px` pixels. It
 doubles them, up to `RENDER_TEXTURE_DIVIDE_PX_MAX`, while one segment would
 still bend less than `texture.affine_bend`.
 
-The affine and MASK1 paths keep their own row walks; the divide's set-up, walk
-and fill sit at the end of flash code, apart from them.
+The divide's set-up, walk and fill sit at the end of flash code.
 
 ## Memory
 

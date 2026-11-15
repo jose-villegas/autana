@@ -310,22 +310,13 @@ r3d_texture_segment_px(int divide_px, float affine_bend, float extent, float z_n
     return divide;
 }
 
-/* The start of the tile of side 1 << size_log2 holding texel coordinate
- * `u`: a floor and a mask, with no float divide. */
-static inline float
-tile_origin(float u, int size_log2) {
-    int32_t whole = (int32_t)u;
-    whole -= (float)whole > u ? 1 : 0;
-    return (float)(whole & ~(int32_t)((1U << size_log2) - 1U));
-}
-
 /* Whether an INDEX4 triangle set up affine in `su` divides, and how far
  * apart, judged on `whole`, its unclipped box, so every window that draws a
  * part of it maps u and v alike. When it does, its u and v planes become
  * u q and v q, from the texture's tile holding vertex 0, so a far tile's
  * large u keeps its fraction through the products and divides; the level
- * stays the affine planes' pick. Apart from set_up(), whose affine and MASK1
- * path is unchanged by divides, at the flash tail. */
+ * stays the affine planes' pick. It sits at the flash tail, apart from
+ * set_up(). */
 static RENDER_TAIL_ATTR __attribute__((noinline)) void
 set_up_divide(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[CORNERS], const vec2f_t uv[CORNERS],
               const r3d_texture_t* texture, recti_t box, recti_t whole, setup_t* su) {
@@ -344,7 +335,9 @@ set_up_divide(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[
     }
     /* The level's side over level 0's: the scale set_up() gave u and v. */
     const float scale = (float)(su->sampler.mask + 1U) / (float)(1U << texture->size_log2);
-    const vec2f_t origin = {tile_origin(uv[0].x, texture->size_log2), tile_origin(uv[0].y, texture->size_log2)};
+    /* The start of the tile holding vertex 0. */
+    const float tile = (float)(1U << texture->size_log2);
+    const vec2f_t origin = {uv[0].x - mathf_repeat(uv[0].x, tile), uv[0].y - mathf_repeat(uv[0].y, tile)};
     float s_q[CORNERS];
     float t_q[CORNERS];
     for (int i = 0; i < CORNERS; i++) {
@@ -420,7 +413,7 @@ walk_plain(const r3d_span_target_t* target, const setup_t* su, recti_t box, cons
     walk_rows(target, su, box, v0, v1, v2, long_on_left, WALK_FILL);
 }
 
-/* At the flash tail, as fill_divided(): the affine walk keeps its place. */
+/* At the flash tail, as fill_divided(). */
 static RENDER_TAIL_ATTR __attribute__((noinline)) void
 walk_divided(const r3d_span_target_t* target, const setup_t* su, recti_t box, const r3d_span_vertex_t* v0,
              const r3d_span_vertex_t* v1, const r3d_span_vertex_t* v2, bool long_on_left) {
@@ -466,8 +459,8 @@ r3d_span_textured_triangle(const r3d_span_target_t* target, const r3d_span_verte
     if (texture->format == R3D_TEXTURE_MASK1) {
         walk_cut(target, &su, box, v0, v1, v2, long_on_left);
     } else {
-        /* A triangle no wider than one segment steps affine: affine across it
-         * maps u and v as one divided segment would. */
+        /* A triangle no wider than one segment steps affine: its bend is at
+         * most one segment's. */
         su.divide = 0;
         if (target->texture_divide_px != 0 && mathi_max(whole.w, whole.h) > target->texture_divide_px) {
             set_up_divide(target, corners, uv, texture, box, whole, &su);
