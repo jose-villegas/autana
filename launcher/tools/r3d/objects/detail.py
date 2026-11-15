@@ -36,15 +36,36 @@ class Authoring:
     reason: str  # 'ceiling': the balance stepped it past the threshold; 'silhouette': its stand-in's surface moved
 
 
-def nearest_distance(lows, highs, eyes, near):
+def nearest_distance(lows, highs, eyes, near, sight=None):
     """The closest any of `eyes` comes to any copy's bounds (lows, highs per copy), never nearer than the camera's
-    near plane, since nothing nearer is drawn. With no eyes the camera may stand anywhere: the near plane."""
+    near plane, since nothing nearer is drawn. With no eyes the camera may stand anywhere: the near plane. With
+    `sight` (each eye's forward and the tangent of its view's half-angle) an eye counts only for the copies in its
+    view (in_view); copies no eye sees count every eye, as without it."""
     eyes = np.asarray(eyes, dtype=np.float64).reshape(-1, 3)
     if not len(eyes):
         return float(near)
     lows, highs = np.asarray(lows, dtype=np.float64), np.asarray(highs, dtype=np.float64)
     gap = np.maximum(np.maximum(lows[None] - eyes[:, None], eyes[:, None] - highs[None]), 0.0)
-    return max(float(np.linalg.norm(gap, axis=2).min()), float(near))
+    distance = np.linalg.norm(gap, axis=2)
+    if sight is not None:
+        seen = in_view(lows, highs, eyes, *sight)
+        if seen.any():
+            distance = np.where(seen, distance, np.inf)
+    return max(float(distance.min()), float(near))
+
+
+def in_view(lows, highs, eyes, forwards, half_tan):
+    """(eyes, copies): does each copy's bounding sphere reach into each eye's view cone, of half-angle
+    atan(half_tan) about its forward? A cone round the view's corners holds every pixel."""
+    centre, radius = (lows + highs) / 2, np.linalg.norm(highs - lows, axis=1) / 2
+    to = centre[None] - eyes[:, None]
+    length = np.linalg.norm(to, axis=2)
+    forwards = np.asarray(forwards, dtype=np.float64)
+    forwards = forwards / np.linalg.norm(forwards, axis=1, keepdims=True)
+    along = np.einsum('ecd,ed->ec', to, forwards) / np.maximum(length, 1e-12)
+    angle = np.arccos(np.clip(along, -1.0, 1.0))
+    spread = np.arcsin(np.clip(radius[None] / np.maximum(length, 1e-12), 0.0, 1.0))
+    return (length <= radius[None]) | (angle <= np.arctan(half_tan) + spread)
 
 
 def object_error(distance, focal, error_px=TOLERANCE_PX):

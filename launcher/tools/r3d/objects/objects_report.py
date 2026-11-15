@@ -36,8 +36,8 @@ lod.tolerance_px at the camera's closest view, with the reason
 carved.md, one row per carved shape: copies, triangles of one source copy and
 of its baked finest level, triangles drawn by all copies, the share of its
 source triangles with an alpha-tested material, and the nearest any camera
-path eye comes to a copy (objects/carve.py views); then the rest's finest
-triangles. carved.png draws the CARVED_SHEET_SHAPES shapes drawing the most,
+path eye comes to a copy, then the nearest one looking at it, as the carve
+budgets it (objects/carve.py views); then the rest's finest triangles. carved.png draws the CARVED_SHEET_SHAPES shapes drawing the most,
 source beside baked finest level from two sides.
 """
 
@@ -259,13 +259,13 @@ def write_carved(scene, job, src, bundle, out):
     from r3d.objects.carve import views
 
     entries, copies = mesh_bundle.decode(pathlib.Path(bundle).read_bytes())
-    eyes, _, near = views(scene, job.renderer)
-    shapes, rest = carved_shapes(src, entries, copies, eyes, near)
+    eyes, _, near, sight = views(scene, job.renderer)
+    shapes, rest = carved_shapes(src, entries, copies, eyes, near, sight)
     lines = [f'# {job.object.name}: carved shapes', '',
-             '| Shape | Copies | Source tris | Baked tris | Drawn tris | Alpha-tested | Nearest eye |',
-             '|---|---:|---:|---:|---:|---:|---:|']
+             '| Shape | Copies | Source tris | Baked tris | Drawn tris | Alpha-tested | Nearest eye | Nearest in view |',
+             '|---|---:|---:|---:|---:|---:|---:|---:|']
     lines += [f"| {s['shape']} | {s['copies']} | {s['source']} | {s['baked']} | {s['drawn']} | "
-              f"{s['alpha_tested']:.0%} | {s['nearest']:.0f} |" for s in shapes]
+              f"{s['alpha_tested']:.0%} | {s['nearest']:.0f} | {s['in_view']:.0f} |" for s in shapes]
     lines += ['', f"Rest: {rest} finest tris. Copies: {len(shapes)} shapes, {sum(s['drawn'] for s in shapes)} "
               f'tris drawn by {len(copies)} copies.']
     (out / 'carved.md').write_text('\n'.join(lines) + '\n')
@@ -273,7 +273,7 @@ def write_carved(scene, job, src, bundle, out):
     print(f'{len(shapes)} carved shapes, rest {rest} finest tris')
 
 
-def carved_shapes(src, entries, copies, eyes, near):
+def carved_shapes(src, entries, copies, eyes, near, sight=None):
     """(shapes, rest): per carved mesh of a decoded bundle, most drawn first, its first source object's source
     triangles and its baked finest level placed by its first copy, both in source units; and the rest's finest
     triangle count."""
@@ -293,11 +293,12 @@ def carved_shapes(src, entries, copies, eyes, near):
         local, _, triangles, _, _ = finest_triangles(mesh)
         local = local / float(mesh.position_scale)
         points = [local @ np.asarray(row['matrix'], dtype=np.float64).T + np.asarray(row['position']) for row in rows]
+        bounds = [p.min(axis=0) for p in points], [p.max(axis=0) for p in points]
         mine = src.tri_o == index[rows[0]['first']]
         shapes.append(dict(shape=rows[0]['first'], copies=len(rows), source=int(mine.sum()), baked=len(triangles),
                            drawn=len(triangles) * len(rows), alpha_tested=float(tested[src.tri_m[mine]].mean()),
-                           nearest=nearest_distance([p.min(axis=0) for p in points], [p.max(axis=0) for p in points],
-                                                    eyes, near),
+                           nearest=nearest_distance(*bounds, eyes, near),
+                           in_view=nearest_distance(*bounds, eyes, near, sight),
                            source_positions=src.p, source_triangles=src.tri_v[mine],
                            baked_positions=points[0], baked_triangles=triangles))
     shapes.sort(key=lambda s: s['drawn'], reverse=True)

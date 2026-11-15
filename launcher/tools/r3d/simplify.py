@@ -213,18 +213,25 @@ def _mesh_passes(tris, labels, tri_o, triangles, reserved, selected, edges, budg
 def _carve_shape(shape, pos, rgb, tris, labels, selected, policies, parts, single, locks,
                  deviation, options, shade, shapes, budget, error):
     from scipy.spatial import cKDTree
+    from .geometry import weld_map
     from .objects.instances import place
     from .objects.surface_match import JoinedInstance
 
     emitted, consumed, shared = [], set(), []
-    union = np.zeros(len(shape.positions), dtype=bool)
+    # A derived shape is welded as detail.ladder measured it: the seams the source splits at would hold its stand-in
+    # back. A pinned one is not: nothing measures its move, and welding frees its stand-in to move vertices.
+    positions, triangles = shape.positions, shape.triangles
+    if error is not None:
+        first, inverse = weld_map(positions)
+        positions, triangles = positions[first], inverse[triangles]
+    union = np.zeros(len(positions), dtype=bool)
     first_indices = None
     placements = []
     for instance in shape.instances:
         obj = int(instance.object_name)
         sel, _ = parts[single[obj]]
         used = np.unique(tris[sel])
-        placed = place(shape.positions, instance.linear, instance.position)
+        placed = place(positions, instance.linear, instance.position)
         _, nearest = cKDTree(pos[used]).query(placed)
         # A copy joined by surface holds no locked vertex (rule_shapes), so its nearest rows add nothing here.
         indices = used[nearest]
@@ -234,7 +241,7 @@ def _carve_shape(shape, pos, rgb, tris, labels, selected, policies, parts, singl
         placements.append((instance, indices))
         consumed.add(single[obj])
     stand_in, candidates, budget, moved = stand_in_within(
-        shape.positions, rgb[first_indices], shape.triangles, shape.materials, budget, deviation, options,
+        positions, rgb[first_indices], triangles, shape.materials, budget, deviation, options,
         union if np.any(union) else None, error)
     p, c, t, kept = stand_in.positions, stand_in.rgb, stand_in.tris, stand_in.kept
     shared.append(dict(objects=[int(i.object_name) for i in shape.instances], copies=len(shape.instances),

@@ -51,9 +51,15 @@ def weld(p, tris, tolerance=1e-3):
 
 def weld_keeping(p, tris, tolerance=1e-3):
     """Merges coincident vertices across materials; every triangle stays."""
+    first, inverse = weld_map(p, tolerance)
+    return p[first], inverse[tris]
+
+
+def weld_map(p, tolerance=1e-3):
+    """(first, inverse): one source vertex per position within `tolerance`, and each vertex's welded index."""
     key = np.round(p / tolerance).astype(np.int64)
     _, first, inverse = np.unique(key, axis=0, return_index=True, return_inverse=True)
-    return p[first], inverse.reshape(-1)[tris]
+    return first, inverse.reshape(-1)
 
 
 def corner_normals(p, tris, crease_deg=40.0):

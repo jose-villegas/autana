@@ -143,8 +143,8 @@ def carve_selection(src, tri_v, tri_m, selected, settings, job, scene):
                                        masked)
     if not any("triangles" not in rule for rule in selected.values()):
         return selected, None
-    eyes, focal, near = views(scene, job.renderer)
-    _, shapes = derived_budgets(src.p, tri_v, tri_m, src.tri_o, selected, eyes, focal, near)
+    eyes, focal, near, sight = views(scene, job.renderer)
+    _, shapes = derived_budgets(src.p, tri_v, tri_m, src.tri_o, selected, eyes, focal, near, sight)
     per_object = {}
     for shape in shapes:
         for obj in shape["objects"]:
