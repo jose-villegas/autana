@@ -3,7 +3,7 @@
 # The render lab's images for docs/images/, made by
 # launcher/tools/render/render_doc_images.sh.
 #
-#   doc_images.sh <out-tree> <work-dir>
+#   doc_images.sh <out-tree> <work-dir> [butterflies]
 #
 # <out-tree> holds the app's images in overview/.
 #
@@ -18,7 +18,29 @@ OUT=$1/overview
 W=$2
 run mkdir -p "$W" "$OUT"
 
-run sh launcher/main/apps/render_lab/tools/render_lab_render_host.sh -o "$W" > "$W/scenes.log"
+if [ "${3:-}" = butterflies ]; then
+    run sh launcher/main/apps/render_lab/tools/render_lab_render_host.sh -o "$W" --build-only > "$W/scenes.log"
+else
+    run sh launcher/main/apps/render_lab/tools/render_lab_render_host.sh -o "$W" > "$W/scenes.log"
+fi
+
+if [ "${3:-}" = butterflies ]; then
+    for key in butterflies few-butterflies; do
+        run "$W/render_lab_render" --quarter 1 --no-hud --scene "stress-$key" --frames 2 -o "$W/stress-$key.bmp" \
+            2> "$W/stress-$key.log"
+        run "$PYTHON" launcher/tools/docs/figures.py png "$W/stress-$key.bmp" "$OUT/render-lab-stress-$key.png"
+    done
+fi
+BUTTERFLY_FRAMES=50
+BUTTERFLY_DT=20
+run "$W/render_lab_render" --quarter 1 --no-hud --scene stress-few-butterflies --camera detail \
+    --frames "$BUTTERFLY_FRAMES" --dt "$BUTTERFLY_DT" -o "$W/butterflies-motion.bmp" \
+    --video "$W/butterflies-motion.avi" 2> "$W/butterflies.log"
+run "$PYTHON" launcher/tools/docs/figures.py gif "$W/butterflies-motion.avi" \
+    "$OUT/render-lab-butterflies.gif" --fps "1000/$BUTTERFLY_DT"
+if [ "${3:-}" = butterflies ]; then
+    exit 0
+fi
 
 # The start of the flythrough, on the fitted full mesh.
 run "$W/render_lab_render" --quarter 1 --no-hud --scene sponza-fitted-full --frames 90 --dt 100 \

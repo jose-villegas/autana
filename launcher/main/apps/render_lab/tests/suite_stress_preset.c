@@ -7,6 +7,8 @@
 
 #include <float.h>
 #include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "suites.h"
@@ -17,6 +19,7 @@
 #include "anim/anim_binding.h"
 #include "anim/anim_transform.h"
 #include "apps/render_lab/render_lab_view.h"
+#include "apps/render_lab/stress/stress_flap.h"
 #include "apps/render_lab/stress/stress_preset.h"
 #include "asset/asset_store.h"
 #include "collections/bits.h"
@@ -31,6 +34,12 @@
 #include "render/r3d_span.h"
 #include "render/r3d_span_internal.h"
 #include "render/view/r3d_pipeline_count.h"
+#include "scene/animator/animator.h"
+#include "scene/camera/camera.h"
+#include "scene/renderer/renderer.h"
+#include "scene/scene.h"
+#include "scene/scene_shell.h"
+#include "scene/transform/transform.h"
 
 /* Any framing: a preset is laid out in proportion to it. */
 static const stress_framing_t framing = {10.0F, 0.5F};
@@ -693,8 +702,167 @@ test_foliage_mask_opens_as_mask1_and_keeps_about_0_7_of_a_card(void) {
     memory_free(ltex);
 }
 
+#define BUTTERFLY_TRIANGLES (STRESS_BUTTERFLY_PART_TRIANGLES * STRESS_BUTTERFLY_PARTS)
+#define TEST_TIP_X          (STRESS_BUTTERFLY_SPAN * 0.5F)
+#define TEST_TIP_Z          (22.0F * STRESS_BUTTERFLY_SPAN / 116.0F)
+#define TEST_ANGLE          0.5F
+#define TEST_TOLERANCE      0.000001F
+#define TEST_WIDTH          96
+#define TEST_HEIGHT         96
+#define TEST_TIME_MS        37
+#define TEST_CAMERA_TIME_MS 1300
+#define TEST_BODY_SCALE     100.0F
+static uint16_t* pixels;
+static uint16_t* held;
+
+static void
+butterfly_fixture_end(void) {
+    scene_unload_all();
+    free(pixels);
+    free(held);
+    pixels = NULL;
+    held = NULL;
+}
+
+static void
+test_butterfly_pool_has_parented_wings_and_24_triangles(void) {
+    suite_set_test_cleanup(butterfly_fixture_end);
+    const entity_t root = scene_load(STRESS_BUTTERFLY_SCENE);
+    TEST_ASSERT_EQUAL_INT(PENDING_READY, scene_state(root));
+    int parts = 0;
+    for (entity_t e = entity_next(root, ENTITY_NONE); !handle_is_none(e); e = entity_next(root, e)) {
+        parts += renderer_mesh(e) != NULL;
+    }
+    TEST_ASSERT_EQUAL_INT(STRESS_BUTTERFLY_COPIES * STRESS_BUTTERFLY_PARTS, parts);
+    for (int i = 0; i < STRESS_BUTTERFLY_COPIES; i++) {
+        char name[ASSET_NAME_MAX];
+        snprintf(name, sizeof name, STRESS_BUTTERFLY_FORMAT, i);
+        const entity_t body = entity_find(root, name_hash(name));
+        TEST_ASSERT_FALSE(handle_is_none(body));
+        int children = 0;
+        TEST_ASSERT_NOT_NULL(renderer_mesh(body));
+        TEST_ASSERT_EQUAL_INT(STRESS_BUTTERFLY_PART_TRIANGLES, renderer_mesh(body)->triangle_count);
+        int triangles = renderer_mesh(body)->triangle_count;
+        for (entity_t e = entity_next(root, ENTITY_NONE); !handle_is_none(e); e = entity_next(root, e)) {
+            if (handle_equal(entity_parent(e), body)) {
+                children++;
+                TEST_ASSERT_NOT_NULL(renderer_mesh(e));
+                TEST_ASSERT_EQUAL_INT(STRESS_BUTTERFLY_PART_TRIANGLES, renderer_mesh(e)->triangle_count);
+                triangles += renderer_mesh(e)->triangle_count;
+            }
+        }
+        TEST_ASSERT_EQUAL_INT(STRESS_BUTTERFLY_PARTS - 1, children);
+        TEST_ASSERT_EQUAL_INT(BUTTERFLY_TRIANGLES, triangles);
+    }
+}
+
+static entity_t
+butterfly_fixture(void) {
+    suite_set_test_cleanup(butterfly_fixture_end);
+    const entity_t root = scene_load(STRESS_BUTTERFLY_SCENE);
+    TEST_ASSERT_EQUAL_INT(PENDING_READY, scene_state(root));
+    return root;
+}
+
+static vec3f_t
+butterfly_tip(entity_t wing) {
+    const transformf_t world = transform_world(wing);
+    return vec3f_add(world.position, quatf_rotate(world.rotation, (vec3f_t){world.scale.x * TEST_TIP_X, 0.0F,
+                                                                            world.scale.z * TEST_TIP_Z}));
+}
+
+static void
+test_hinge_angles_preserve_body_and_raise_mirrored_tips(void) {
+    const entity_t root = butterfly_fixture();
+    const entity_t body = entity_find(root, name_hash("butterfly_00"));
+    const entity_t left = entity_find(root, name_hash("butterfly_00_wing_l"));
+    const entity_t right = entity_find(root, name_hash("butterfly_00_wing_r"));
+    const transformf_t body_before = transform_world(body);
+    const transformf_t rests[] = {transform_local(left), transform_local(right)};
+    const float angles[] = {0.0F, TEST_ANGLE, -TEST_ANGLE};
+    for (size_t i = 0; i < sizeof angles / sizeof angles[0]; i++) {
+        const float angle = angles[i];
+        transform_set_local(left, stress_flap_wing(rests[0], angle, STRESS_FLAP_LEFT));
+        transform_set_local(right, stress_flap_wing(rests[1], angle, STRESS_FLAP_RIGHT));
+        const vec3f_t l = butterfly_tip(left);
+        const vec3f_t r = butterfly_tip(right);
+        TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE, TEST_TIP_X * cosf(angle), l.x);
+        TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE, TEST_TIP_X * sinf(angle), l.y);
+        TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE, TEST_TIP_Z, l.z);
+        TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE, -l.x, r.x);
+        TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE, l.y, r.y);
+        if (angle > 0.0F) {
+            TEST_ASSERT_GREATER_THAN_FLOAT(0.0F, l.y);
+            TEST_ASSERT_GREATER_THAN_FLOAT(0.0F, r.y);
+        }
+        const transformf_t after = transform_world(body);
+        TEST_ASSERT_EQUAL_MEMORY(&body_before, &after, sizeof after);
+    }
+}
+
+static void
+test_flap_time_and_copy_phase_are_deterministic(void) {
+    TEST_ASSERT_EQUAL_FLOAT(STRESS_FLAP_BIAS, stress_flap_angle(0, 0));
+    for (int copy = 0; copy < STRESS_BUTTERFLY_COPIES; copy++) {
+        const float at = stress_flap_angle(TEST_TIME_MS, copy);
+        const float expected = STRESS_FLAP_AMPLITUDE
+                                   * sinf(2.0F * MATH_PI * STRESS_FLAP_HZ * TEST_TIME_MS / STRESS_FLAP_MS_PER_SECOND
+                                          + STRESS_FLAP_PHASE_STEP * (float)copy)
+                               + STRESS_FLAP_BIAS;
+        TEST_ASSERT_EQUAL_FLOAT(expected, at);
+        TEST_ASSERT_EQUAL_FLOAT(at, stress_flap_angle(TEST_TIME_MS, copy));
+    }
+    TEST_ASSERT_NOT_EQUAL(stress_flap_angle(TEST_TIME_MS, 0), stress_flap_angle(TEST_TIME_MS, 1));
+}
+
+static void
+test_two_seeks_and_flap_renders_at_same_time_match_bytes(void) {
+    const entity_t root = butterfly_fixture();
+    for (int i = 1; i < STRESS_BUTTERFLY_COPIES; i++) {
+        char name[ASSET_NAME_MAX];
+        snprintf(name, sizeof name, STRESS_BUTTERFLY_FORMAT, i);
+        entity_set_enabled(entity_find(root, name_hash(name)), false);
+    }
+    const entity_t camera = entity_find(root, name_hash("camera"));
+    TEST_ASSERT_TRUE(camera_activate(camera));
+    const entity_t wings[] = {entity_find(root, name_hash("butterfly_00_wing_l")),
+                              entity_find(root, name_hash("butterfly_00_wing_r"))};
+    const transformf_t rests[] = {transform_local(wings[0]), transform_local(wings[1])};
+    transformf_t body = transformf_identity();
+    transformf_set_scale(&body, (vec3f_t){TEST_BODY_SCALE, TEST_BODY_SCALE, TEST_BODY_SCALE});
+    transformf_set_rotation(&body, quatf_from_axis_angle(vec3f_unit_x(), -MATH_PI * 0.5F));
+    transform_set_local(entity_find(root, name_hash("butterfly_00")), body);
+    const size_t bytes = sizeof *pixels * TEST_WIDTH * TEST_HEIGHT;
+    pixels = malloc(bytes);
+    held = malloc(bytes);
+    TEST_ASSERT_NOT_NULL(pixels);
+    TEST_ASSERT_NOT_NULL(held);
+    const scene_target_t target = {pixels, TEST_WIDTH, TEST_HEIGHT, NULL, NULL};
+    for (int render = 0; render < 2; render++) {
+        TEST_ASSERT_TRUE(animator_seek(camera, ANIMATOR_CURRENT, TEST_CAMERA_TIME_MS));
+        const float angle = stress_flap_angle(TEST_TIME_MS, 0);
+        transform_set_local(wings[0], stress_flap_wing(rests[0], angle, STRESS_FLAP_LEFT));
+        transform_set_local(wings[1], stress_flap_wing(rests[1], angle, STRESS_FLAP_RIGHT));
+        (void)scene_compose(0, 0, &target);
+        if (render == 0) {
+            memcpy(held, pixels, bytes);
+        } else {
+            TEST_ASSERT_EQUAL_MEMORY(held, pixels, bytes);
+        }
+    }
+    bool visible = false;
+    for (int i = 1; i < TEST_WIDTH * TEST_HEIGHT; i++) {
+        visible = visible || pixels[i] != pixels[0];
+    }
+    TEST_ASSERT_TRUE_MESSAGE(visible, "the deterministic frame must contain the butterfly");
+}
+
 void
 run_stress_preset_suite(void) {
+    RUN_TEST(test_butterfly_pool_has_parented_wings_and_24_triangles);
+    RUN_TEST(test_hinge_angles_preserve_body_and_raise_mirrored_tips);
+    RUN_TEST(test_flap_time_and_copy_phase_are_deterministic);
+    RUN_TEST(test_two_seeks_and_flap_renders_at_same_time_match_bytes);
     RUN_TEST(test_culled_fraction_sweeps_from_visible_to_mostly_off_frustum);
     RUN_TEST(test_near_plane_sweeps_behind_and_clipped_triangles);
     RUN_TEST(test_card_has_holes_colour_steps_and_scene_size_bins);
@@ -720,4 +888,4 @@ run_stress_preset_suite(void) {
 
 SUITE_REGISTER(run_stress_preset_suite);
 
-SUITE_READS(run_stress_preset_suite, STRESS_SCENE);
+SUITE_READS(run_stress_preset_suite, STRESS_SCENE, STRESS_BUTTERFLY_SCENE);

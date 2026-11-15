@@ -10,11 +10,13 @@
 #include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/scene_baked.h"
+#include "apps/render_lab/stress/stress_flap.h"
 #include "core/tune.h"
 #include "draw/draw.h"
 #include "esp_log.h"
 #include "image/pixel/rgb565.h"
 #include "math/scalar/math_const.h"
+#include "profile/frame_cost.h"
 #include "render/context/render_context.h"
 #include "scene/animator/animator.h"
 #include "scene/camera/camera.h"
@@ -34,6 +36,10 @@ static entity_t camera; /* the swing the copies are placed for */
 static entity_t viewer; /* the camera shown: the one the start named, else the swing */
 static entity_t* slots; /* the pool's copies, in name order */
 static int pool;
+#define STRESS_WING_SIDES 2
+static const char wing_suffix[STRESS_WING_SIDES] = {'l', 'r'};
+static entity_t* wings;
+static transformf_t* wing_rests;
 static stress_buffers_t buffers[STRESS_MIX_LEVELS];
 static r3d_dynamic_mesh_t mesh[STRESS_MIX_LEVELS];
 static uint32_t wave_ms;
@@ -53,8 +59,28 @@ fail(const char* what) {
 /* The pool is every copy the pack names, from 0 up to the first it lacks. */
 static bool
 find_pool(void) {
-    slots = lab_scene_copies(loaded, STRESS_SLOT_FORMAT, &pool);
-    return slots != NULL;
+    slots = lab_scene_copies(loaded, shown->butterfly ? STRESS_BUTTERFLY_FORMAT : STRESS_SLOT_FORMAT, &pool);
+    if (slots == NULL || !shown->butterfly) {
+        return slots != NULL;
+    }
+    wings = lab_scene_take(sizeof *wings * (size_t)pool * STRESS_WING_SIDES);
+    wing_rests = lab_scene_take(sizeof *wing_rests * (size_t)pool * STRESS_WING_SIDES);
+    if (wings == NULL || wing_rests == NULL) {
+        return false;
+    }
+    for (int i = 0; i < pool; i++) {
+        for (int side = 0; side < STRESS_WING_SIDES; side++) {
+            char name[ASSET_NAME_MAX];
+            snprintf(name, sizeof name, STRESS_BUTTERFLY_WING_FORMAT, i, wing_suffix[side]);
+            const int at = i * STRESS_WING_SIDES + side;
+            wings[at] = entity_find(loaded, name_hash(name));
+            if (handle_is_none(wings[at]) || !handle_equal(entity_parent(wings[at]), slots[i])) {
+                return false;
+            }
+            wing_rests[at] = transform_local(wings[at]);
+        }
+    }
+    return true;
 }
 
 static int
@@ -149,6 +175,13 @@ build(void) {
 /* The asset's longest side becomes one unit, centred like a generated primitive. */
 static transformf_t
 static_shape(void) {
+    if (shown->butterfly) {
+        transformf_t shape = transformf_identity();
+        const float scale = 1.0F / STRESS_BUTTERFLY_SPAN;
+        transformf_set_scale(&shape, (vec3f_t){scale, scale, scale});
+        transformf_set_rotation(&shape, quatf_from_axis_angle(vec3f_unit_x(), -MATH_PI * 0.5F));
+        return shape;
+    }
     const r3d_lit_mesh_t* asset = renderer_mesh(slots[0]);
     const box3f_t box = r3d_lit_mesh_world_bounds(asset, NULL);
     const vec3f_t span = vec3f_sub(box.hi, box.lo);
@@ -198,7 +231,8 @@ apply_settings(void) {
 
 static bool
 load(void) {
-    loaded = lab_scene_load(TAG, failure, sizeof failure, STRESS_SCENE, "stress");
+    loaded = lab_scene_load(TAG, failure, sizeof failure, shown->butterfly ? STRESS_BUTTERFLY_SCENE : STRESS_SCENE,
+                            "stress");
     if (handle_is_none(loaded)) {
         return false;
     }
@@ -248,16 +282,33 @@ scene_stress_exit(void) {
     loaded = ENTITY_NONE;
     slots = NULL;
     pool = 0;
+    wings = NULL;
+    wing_rests = NULL;
 }
 
-/* A per-frame preset's wave moves on by the frame's time, so a replay at the same steps draws the same frames. */
+static void
+flap(void) {
+    FRAME_COST_BEGIN(flap_from);
+    for (int i = 0; i < shown->copies; i++) {
+        const float angle = stress_flap_angle(wave_ms, i);
+        for (int side = 0; side < STRESS_WING_SIDES; side++) {
+            const int at = i * STRESS_WING_SIDES + side;
+            transform_set_local(
+                wings[at], stress_flap_wing(wing_rests[at], angle, side == 0 ? STRESS_FLAP_LEFT : STRESS_FLAP_RIGHT));
+        }
+    }
+    FRAME_COST_END(flap_from, STRESS_FLAP_STAGE_NAME);
+}
+
 static void
 scene_stress_update(uint32_t dt_ms) {
-    if (handle_is_none(loaded) || failure[0] != '\0' || !stress_per_frame(shown)) {
+    if (handle_is_none(loaded) || failure[0] != '\0') {
         return;
     }
     wave_ms += dt_ms;
-    if (!build()) {
+    if (shown->butterfly) {
+        flap();
+    } else if (stress_per_frame(shown) && !build()) {
         ESP_LOGW(TAG, "the mesh did not fit");
     }
 }
@@ -295,7 +346,8 @@ scene_stress_path(void) {
                 .update = scene_stress_update,                                                                         \
                 .status = LAB_SCENE_DEV(scene_stress_status),                                                          \
                 .controls = STRESS_SURFACE_IS_PER_FRAME(STRESS_SURFACE_##surface_) ? NULL : scene_baked_controls,      \
-                .generates_frames = !STRESS_SURFACE_IS_PER_FRAME(STRESS_SURFACE_##surface_),                           \
+                .generates_frames = !STRESS_SURFACE_IS_PER_FRAME(STRESS_SURFACE_##surface_)                            \
+                                    && STRESS_##id_ != STRESS_BUTTERFLIES && STRESS_##id_ != STRESS_FEW_BUTTERFLIES,   \
                 .path = scene_stress_path},
 
 const lab_scene_t scene_stress[STRESS_PRESET_COUNT] = {STRESS_PRESETS(STRESS_SCENE_ROW)};

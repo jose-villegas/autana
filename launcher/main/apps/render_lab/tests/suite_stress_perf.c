@@ -129,7 +129,9 @@ stress_goal(void) {
             return goal;
         }
     }
-    TEST_FAIL_MESSAGE("stress perf row has no goal entry");
+    if (!((const stress_params_t*)preset->data)->butterfly) {
+        TEST_FAIL_MESSAGE("stress perf row has no goal entry");
+    }
     return NULL;
 }
 
@@ -137,8 +139,8 @@ static void
 report_goals(const stress_goal_t* goal, const int64_t sums[STRESS_PERF_STAGES], int poses) {
     char row[LAB_PERF_ROW_NAME_SIZE];
     const bool own_size = size_step == STRESS_PERF_NO_STEP;
-    int length = snprintf(row, sizeof row, "%s %s%s%s", goal->key, goal->quarter, own_size ? "" : " ",
-                          own_size ? "" : goal->size);
+    int length = snprintf(row, sizeof row, "%s %s%s%s", preset->key, quarter->name, own_size ? "" : " ",
+                          own_size ? "" : size_name());
     TEST_ASSERT_TRUE(length > 0 && (size_t)length < sizeof row);
     int64_t total = 0;
     for (int i = 0; i < STRESS_PERF_STAGES; i++) {
@@ -146,10 +148,14 @@ report_goals(const stress_goal_t* goal, const int64_t sums[STRESS_PERF_STAGES], 
         length = snprintf(stage, sizeof stage, "%s %s", row, stress_perf_stages[i]);
         TEST_ASSERT_TRUE(length > 0 && (size_t)length < sizeof stage);
         const int64_t mean = sums[i] / poses;
-        (void)perf_goal(stage, mean, goal->stage_us[i]);
+        (void)perf_goal(stage, mean, goal == NULL ? 0 : goal->stage_us[i]);
         total += mean;
     }
-    lab_perf_named_budget(row, total, total, &goal->sum, true);
+    if (goal == NULL) {
+        (void)perf_goal(row, total, 0);
+    } else {
+        lab_perf_named_budget(row, total, total, &goal->sum, true);
+    }
 }
 
 /* The recorder's sink for a timed run: takes every frame and keeps nothing. */

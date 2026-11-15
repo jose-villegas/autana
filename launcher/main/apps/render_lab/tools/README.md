@@ -158,6 +158,8 @@ the presets vary the copies' geometry, layout and colour modes.
 | `stress-noisy-tiny` | ![Stress noisy tiny: cylinders end on, their fans of slivers](../../../../../docs/images/overview/render-lab-stress-noisy-tiny.png) | many small cylinders end on, each end a fan of slivers whose corners are far apart in colour | the small-fill gate: every sliver is tested and none passes |
 | `stress-mix` | ![Stress mix: planes with several tessellations and colour modes](../../../../../docs/images/overview/render-lab-stress-mix.png) | copies cycling through tessellations; a named share of triangles has equal corner colours | a single triangle size or colour mode standing for a scene's draw cost |
 | `stress-static-copies` | ![Static triangle copies](../../../../../docs/images/overview/render-lab-stress-static-copies.png) | the stress pack's LMSH triangle, retained in each renderer | static asset residency and small transform batches |
+| `stress-butterflies` | ![Butterfly wall](../../../../../docs/images/overview/render-lab-stress-butterflies.png) | a wall of butterfly bodies with two hinged wings each | static mesh batches, hierarchy propagation and flap transforms |
+| `stress-few-butterflies` | ![Four butterflies](../../../../../docs/images/overview/render-lab-stress-few-butterflies.png) | a smaller wall with the same coverage | larger wing triangles with fewer transform batches |
 | `stress-uniform-mid` | ![Uniform plane with intermediate coverage](../../../../../docs/images/overview/render-lab-stress-uniform-mid.png) | equal-colour large triangles | intermediate uniform fill without shaded pixels |
 | `stress-uniform-full` | ![Uniform plane covering the view](../../../../../docs/images/overview/render-lab-stress-uniform-full.png) | equal-colour large triangles spanning the view | uniform fill beyond the water workload at full-width render sizes |
 | `stress-card` | ![Card copies with ragged edges and sampled colours](../../../../../docs/images/overview/render-lab-stress-card.png) | copies sharing a generated perforated quad with uneven tessellation and procedural texture samples at its corners | scene-like small triangles with irregular edges and colour steps |
@@ -170,6 +172,18 @@ the presets vary the copies' geometry, layout and colour modes.
 | `stress-foliage-far` | ![Stress foliage far: a wall of small bushes of masked cards](../../../../../docs/images/overview/render-lab-stress-foliage-far.png) | 36 small bushes side by side, their cards a few pixels across | the masked textured fill on small triangles, as distant foliage draws |
 | `stress-foliage-far-opaque` | ![Stress foliage far opaque: the same cards under the brick](../../../../../docs/images/overview/render-lab-stress-foliage-far-opaque.png) | `stress-foliage-far`'s cards under the INDEX4 brick, whole | the twin: against it, the far cards' mask costs alone |
 | `stress-record` | ![Stress record: four planes with a wave running over them](../../../../../docs/images/overview/render-lab-stress-record.png) | four planes made again every frame, a wave running over them, while the frame recorder runs | the recorder: each frame's four built meshes written whole, a keyframe's meshes every 30 frames |
+
+![Butterfly wing motion](../../../../../docs/images/overview/render-lab-butterflies.gif)
+
+The butterfly pack uses unlit material colours. Its wing outline traces
+miziziziz's CC0 texture<sup>[[126]](../../../../../docs/Citations.md#miziziziz-butterfly-2019)</sup>.
+`stress_flap` supplies harness rotations until Loupe's scene timeline binds them.
+
+Regenerate only the butterfly images with:
+
+```sh
+PYTHON=python sh launcher/main/apps/render_lab/tools/doc_images.sh docs/images /tmp/butterfly-images butterflies
+```
 
 A change is judged by each preset's own readout, stage by stage. The sum over
 presets is a summary line only. A draw change can win on two-sided and static

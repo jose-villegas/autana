@@ -38,11 +38,19 @@ typedef enum {
     STRESS_LAYOUT_STACK, /* one behind another, each the arrangement's size: depth complexity = copies */
 } stress_layout_t;
 
-#define STRESS_SCENE         "stress"
-#define STRESS_CAMERA        "camera"
-#define STRESS_ORBIT_CLIP    "orbit"
-#define STRESS_CAMERA_CULLED "culled"
-#define STRESS_CAMERA_NEAR   "near"
+#define STRESS_BUTTERFLY_SCENE          "butterfly"
+#define STRESS_BUTTERFLY_FORMAT         "butterfly_%02d"
+#define STRESS_BUTTERFLY_WING_FORMAT    "butterfly_%02d_wing_%c"
+#define STRESS_BUTTERFLY_COPIES         32
+#define STRESS_FEW_BUTTERFLY_COPIES     4
+#define STRESS_BUTTERFLY_PART_TRIANGLES 8
+#define STRESS_BUTTERFLY_PARTS          3
+#define STRESS_BUTTERFLY_SPAN           0.07F
+#define STRESS_SCENE                    "stress"
+#define STRESS_CAMERA                   "camera"
+#define STRESS_ORBIT_CLIP               "orbit"
+#define STRESS_CAMERA_CULLED            "culled"
+#define STRESS_CAMERA_NEAR              "near"
 
 typedef struct {
     stress_shape_t shape;
@@ -54,6 +62,7 @@ typedef struct {
     const char* camera;
     int perf_poses; /* poses the stress perf suite replays along the swing */
     bool record;    /* the stress perf suite runs the frame recorder over it: its stage too */
+    bool butterfly; /* a body and two hinged wings per copy */
 } stress_params_t;
 
 /* X(ID, key, surface): each preset, its key the scene key's suffix and its
@@ -81,6 +90,8 @@ typedef struct {
     X(FOLIAGE_NEAR_OPAQUE, "foliage-near-opaque", TEXTURED)                                                            \
     X(FOLIAGE_FAR, "foliage-far", MASKED)                                                                              \
     X(FOLIAGE_FAR_OPAQUE, "foliage-far-opaque", TEXTURED)                                                              \
+    X(BUTTERFLIES, "butterflies", STATIC)                                                                              \
+    X(FEW_BUTTERFLIES, "few-butterflies", STATIC)                                                                      \
     X(RECORD, "record", WAVE)
 
 #define STRESS_PRESET_ID(id_, ...) STRESS_##id_,
