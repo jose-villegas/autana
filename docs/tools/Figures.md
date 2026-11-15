@@ -356,8 +356,8 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/ui/panel.png"><img src="../images/ui/panel.png" width="160" alt=""></a> | panel, portrait | [ui/panel](../ui/panel.md) | not declared yet |
 | <a href="../images/ui/scroll-landscape.png"><img src="../images/ui/scroll-landscape.png" width="160" alt=""></a> | scroll, landscape | [ui/scrolling](../ui/scrolling.md) | not declared yet |
 | <a href="../images/ui/scroll.png"><img src="../images/ui/scroll.png" width="160" alt=""></a> | scroll, portrait | [ui/scrolling](../ui/scrolling.md) | not declared yet |
-| <a href="../images/ui/settings-landscape.png"><img src="../images/ui/settings-landscape.png" width="160" alt=""></a> | settings, landscape | [ui/README](../ui/README.md) | not declared yet |
-| <a href="../images/ui/settings.png"><img src="../images/ui/settings.png" width="160" alt=""></a> | settings, portrait | [ui/README](../ui/README.md) | not declared yet |
+| <a href="../images/ui/settings-landscape.png"><img src="../images/ui/settings-landscape.png" width="160" alt=""></a> | settings, landscape | [ui/Building-a-Screen](../ui/Building-a-Screen.md), [ui/README](../ui/README.md) | not declared yet |
+| <a href="../images/ui/settings.png"><img src="../images/ui/settings.png" width="160" alt=""></a> | settings, portrait | [ui/Building-a-Screen](../ui/Building-a-Screen.md), [ui/README](../ui/README.md) | not declared yet |
 | <a href="../images/ui/slider-landscape.png"><img src="../images/ui/slider-landscape.png" width="160" alt=""></a> | slider, landscape | [ui/slider](../ui/slider.md) | not declared yet |
 | <a href="../images/ui/slider-pressed.png"><img src="../images/ui/slider-pressed.png" width="160" alt=""></a> | slider, pressed | [ui/slider](../ui/slider.md) | not declared yet |
 | <a href="../images/ui/slider-tapped.png"><img src="../images/ui/slider-tapped.png" width="160" alt=""></a> | slider, tapped | [ui/slider](../ui/slider.md) | not declared yet |
