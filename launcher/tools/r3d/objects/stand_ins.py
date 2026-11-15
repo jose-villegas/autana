@@ -62,8 +62,10 @@ def _frame(points):
 
 
 def plane(positions, rgb, tris, materials, budget, weight, options, lock):
-    if lock is not None and np.any(lock):
-        return None
+    """Coplanar plates joined into rectangles, the rest simplified regularly. A plate holding a `lock`ed vertex (a
+    contact border) is not flattened: it stays in the rest, which keeps its locked vertices. `kept` maps each output
+    vertex to an input one: a rectangle corner to an unlocked vertex of its plates."""
+    locked = np.zeros(len(positions), dtype=bool) if lock is None else np.asarray(lock, dtype=bool)
     parts = object_groups(positions, tris, np.arange(len(tris)))
     plates = []
     for part in np.unique(parts):
@@ -71,7 +73,7 @@ def plane(positions, rgb, tris, materials, budget, weight, options, lock):
         vertices = np.unique(tris[faces])
         centre, axes, low, high = _frame(positions[vertices])
         extents = high - low
-        if extents[1] > 0 and extents[0] <= PLATE_RATIO * extents[1]:
+        if extents[1] > 0 and extents[0] <= PLATE_RATIO * extents[1] and not locked[vertices].any():
             plates.append((faces, vertices, centre, axes[:, 0]))
     links = []
     diagonal = bounds_diagonal(positions)
@@ -94,7 +96,7 @@ def plane(positions, rgb, tris, materials, budget, weight, options, lock):
     groups = [group for group in groups if len(group) >= 2]
     if not groups or len(groups) * len(RECTANGLE_TRIS) > budget:
         return None
-    out_p, out_c, out_t, out_m = [], [], [], []
+    out_p, out_c, out_t, out_m, out_k = [], [], [], [], []
     remaining = np.ones(len(tris), dtype=bool)
     for group in groups:
         faces = np.concatenate([plates[i][0] for i in group])
@@ -108,18 +110,21 @@ def plane(positions, rgb, tris, materials, budget, weight, options, lock):
         out_t.append(RECTANGLE_TRIS + sum(len(p) for p in out_p[:-1]))
         values, counts = np.unique(materials[faces], return_counts=True)
         out_m.append(np.full(len(RECTANGLE_TRIS), values[np.argmax(counts)]))
+        out_k.append(np.full(len(corners), vertices[0]))
     if np.any(remaining):
         used, local = np.unique(tris[remaining], return_inverse=True)
         rest = regular(positions[used], rgb[used], local.reshape(-1, 3), materials[remaining],
-                       max(1, budget - len(groups) * len(RECTANGLE_TRIS)), weight, options, None)
+                       max(1, budget - len(groups) * len(RECTANGLE_TRIS)), weight, options,
+                       locked[used] if locked[used].any() else None)
         out_t.append(rest.tris + sum(len(p) for p in out_p))
         out_p.append(rest.positions)
         out_c.append(rest.rgb)
         out_m.append(rest.materials)
+        out_k.append(used[rest.kept])
     if sum(len(t) for t in out_t) > budget:
         return None
     return StandIn('plane', np.concatenate(out_p), np.concatenate(out_c), np.concatenate(out_t),
-                   np.concatenate(out_m), None)
+                   np.concatenate(out_m), np.concatenate(out_k))
 
 
 def _draw(mesh, query, origins, directions):

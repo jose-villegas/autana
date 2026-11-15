@@ -66,10 +66,56 @@ def test_organic_regular_is_identical_and_unscored():
     assert rows == [dict(kind='regular', triangles=len(result.tris), error=None, chosen=True)]
 
 
-def test_lock_disallows_plane():
-    data = table()
+def locked_at(data, vertices):
     lock = np.zeros(len(data[0]), dtype=bool)
-    lock[0] = True
+    lock[vertices] = True
+    return lock
+
+
+def rectangle_vertices(candidate):
+    # A rectangle is drawn from both sides: its triangles come in opposite-winding pairs, which simplify never makes.
+    def turned(t):
+        return tuple(int(v) for v in np.roll(t, -int(np.argmin(t))))
+
+    faces = {turned(t) for t in candidate.tris}
+    double = [t for t in candidate.tris if turned(t[::-1]) in faces]
+    return np.unique(np.array(double, dtype=int))
+
+
+def assert_locked_vertices_unmoved(candidate, data, lock):
+    for vertex in np.flatnonzero(lock):
+        out = np.flatnonzero(candidate.kept == vertex)
+        assert len(out), vertex
+        # Unmoved to float32: the carve then puts each copy's locked positions back exactly (simplify._carve_shape).
+        np.testing.assert_allclose(candidate.positions[out], np.broadcast_to(data[0][vertex], (len(out), 3)),
+                                   atol=np.finfo(np.float32).eps)
+
+
+def test_locked_feet_keep_the_legs_exact_and_the_planks_flatten():
+    data = table()
+    lock = locked_at(data, np.flatnonzero(data[0][:, 2] == 0.))
+    candidate = stand_ins.plane(*data, BUDGET * 4, WEIGHT, PERMISSIVE, lock)
+    assert candidate is not None
+    assert_locked_vertices_unmoved(candidate, data, lock)
+    corners = candidate.positions[rectangle_vertices(candidate)]
+    assert np.ptp(corners[:, 0]) >= 1.451 - 1e-6
+
+
+def test_a_locked_plank_is_not_flattened_and_the_other_planks_are():
+    data = table()
+    plank = np.flatnonzero((data[0][:, 0] <= 0.12) & (data[0][:, 2] >= 1.))
+    lock = locked_at(data, plank[:1])
+    candidate = stand_ins.plane(*data, BUDGET * 4, WEIGHT, PERMISSIVE, lock)
+    assert candidate is not None
+    assert_locked_vertices_unmoved(candidate, data, lock)
+    corners = candidate.positions[rectangle_vertices(candidate)]
+    assert corners[:, 0].min() >= 0.121 - 1e-6
+    assert not lock[candidate.kept[rectangle_vertices(candidate)]].any()
+
+
+def test_a_lock_on_every_plate_leaves_no_plane():
+    data = table()
+    lock = locked_at(data, np.flatnonzero(data[0][:, 2] >= 1.))
     assert stand_ins.plane(*data, BUDGET, WEIGHT, PERMISSIVE, lock) is None
     with patch.object(stand_ins, 'view_error', side_effect=AssertionError('unexpected scoring')):
         assert choose(data, lock=lock)[0].kind == 'regular'
