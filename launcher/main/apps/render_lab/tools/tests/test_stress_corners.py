@@ -38,9 +38,10 @@ STATIC_VERTICES = sum(line.startswith("v ") for line in STATIC_COPY.read_text().
 
 def preset_copies():
     """Each preset's copy count by its key, in the order STRESS_PRESETS lists them."""
+    constants = dict(re.findall(r"^#define\s+(\w+)\s+(\d+)$", PRESETS.read_text(), re.MULTILINE))
     keys = re.findall(r'^\s*X\((\w+), "([^"]+)"', PRESETS.read_text(), re.MULTILINE)
-    rows = dict(re.findall(r'^\s*\[STRESS_(\w+)\] = \{\w+, \d+, (\d+),', TABLE.read_text(), re.MULTILINE))
-    return {key: int(rows[name]) for name, key in keys}
+    rows = dict(re.findall(r'^\s*\[STRESS_(\w+)\] = \{\w+, \d+, (\w+),', TABLE.read_text(), re.MULTILINE))
+    return {key: int(constants.get(rows[name], rows[name])) for name, key in keys}
 
 
 class StressCorners(unittest.TestCase):
@@ -83,7 +84,7 @@ class StressCorners(unittest.TestCase):
         self.assertEqual({"open", "stack", "tiny-copies", "big-tris", "per-frame", "two-sided", "noisy-tiny", "mix",
                           "static-copies", "uniform-mid", "uniform-full", "card", "culled", "near",
                           "few-copies", "textured", "record", "foliage-near", "foliage-near-opaque", "foliage-far",
-                          "foliage-far-opaque"}, set(preset_copies()))
+                          "foliage-far-opaque", "skinned-sh-blobs"}, set(preset_copies()))
 
     def assert_all_in_view(self, c):
         """Nothing culled: every cluster tested is kept, and no node is cut."""
