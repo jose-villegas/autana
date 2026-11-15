@@ -41,30 +41,45 @@ def odd_scene():
 
 
 @unittest.skipIf(np is None, "needs the r3d environment")
-class FreeRepeatTest(unittest.TestCase):
-    def test_copies_that_touch_nothing_are_carved_and_a_lone_object_is_not(self):
-        pos, tri_v, tri_m, tri_o, names = odd_scene()
-        found = carve.free_repeats(pos, tri_v, tri_m, tri_o, names, {}, SCALE)
+class RepeatTest(unittest.TestCase):
+    def found(self, pos, tri_v, tri_m, tri_o, names, selected=None, masked=()):
+        return carve.repeats(pos, tri_v, tri_m, tri_o, names, selected or {}, SCALE, masked)[0]
+
+    def test_copies_that_touch_nothing_are_carved_free_and_a_lone_object_is_not(self):
+        found = self.found(*odd_scene())
         self.assertEqual(sorted(found), [0, 1])
         self.assertTrue(all(rule is carve.FREE_REPEAT for rule in found.values()))
 
-    def test_a_shape_with_one_touching_copy_stays_in_the_rest(self):
+    def test_a_shape_with_one_touching_copy_is_carved_with_its_seams_locked(self):
         pos, tri_v, tri_m, tri_o, names = scene([0, 0, 0], [10, 0, 0], [12, 0, 0])
-        self.assertEqual(carve.touching(pos, tri_v, tri_o, {0, 1, 2}, SCALE), {1, 2})
-        self.assertEqual(carve.free_repeats(pos, tri_v, tri_m, tri_o, names, {}, SCALE), {})
+        found, edges = carve.repeats(pos, tri_v, tri_m, tri_o, names, {}, SCALE)
+        self.assertEqual(sorted(found), [0, 1, 2])
+        self.assertTrue(all(rule is carve.TOUCHING_REPEAT for rule in found.values()))
+        self.assertEqual({(edge.a, edge.b) for edge in edges}, {(1, 2)})
+        self.assertEqual(carve.seam_policies(found, edges), {0: "lock", 1: "lock", 2: "lock"})
+
+    def test_a_repeat_touching_the_rest_locks_both_sides_of_the_contact(self):
+        pos, tri_v, tri_m, tri_o, names = scene([0, 0, 0], [10, 0, 0], [12, 0, 0])
+        tri_o = np.where(tri_o == 2, 2, tri_o)  # ball 2 is the rest's: only 0 and 1 are a shape's copies
+        found, edges = carve.repeats(pos, tri_v, tri_m, tri_o, names, {2: {"match": {}, "carve": False}}, SCALE)
+        locks = carve.contact_locks(len(pos), edges, carve.seam_policies(found, edges), found)
+        self.assertEqual(sorted(found), [0, 1])
+        touching = [edge for edge in edges if {edge.a, edge.b} == {1, 2}]
+        self.assertTrue(touching and locks[touching[0].vertices_a].all() and locks[touching[0].vertices_b].all())
+        self.assertFalse(locks[np.unique(tri_v[tri_o == 0])].any())
 
     def test_objects_a_rule_carves_are_left_to_it(self):
         pos, tri_v, tri_m, tri_o, names = scene([0, 0, 0], [10, 0, 0], [20, 0, 0])
         rule = {"match": {"object": "ball_0"}}
-        self.assertEqual(sorted(carve.free_repeats(pos, tri_v, tri_m, tri_o, names, {0: rule}, SCALE)), [1, 2])
+        self.assertEqual(sorted(self.found(pos, tri_v, tri_m, tri_o, names, {0: rule})), [1, 2])
 
     def test_free_copies_with_an_alpha_tested_material_stay_in_the_rest(self):
         pos, tri_v, tri_m, tri_o, names = scene([0, 0, 0], [10, 0, 0])
         per_copy = len(tri_m) // 2
         tri_m = np.where(np.arange(len(tri_m)) % per_copy % 7 == 0, 1, 0)  # each copy: the same few leaf cards
-        self.assertEqual(sorted(carve.free_repeats(pos, tri_v, tri_m, tri_o, names, {}, SCALE, masked=[0])), [])
-        self.assertEqual(sorted(carve.free_repeats(pos, tri_v, tri_m, tri_o, names, {}, SCALE, masked=[1])), [])
-        self.assertEqual(sorted(carve.free_repeats(pos, tri_v, tri_m, tri_o, names, {}, SCALE, masked=[2])), [0, 1])
+        self.assertEqual(sorted(self.found(pos, tri_v, tri_m, tri_o, names, masked=[0])), [])
+        self.assertEqual(sorted(self.found(pos, tri_v, tri_m, tri_o, names, masked=[1])), [])
+        self.assertEqual(sorted(self.found(pos, tri_v, tri_m, tri_o, names, masked=[2])), [0, 1])
 
     def test_a_material_is_alpha_tested_when_its_texture_cuts_a_texel(self):
         from r3d.obj import ALPHA_OPAQUE, alpha_tested
