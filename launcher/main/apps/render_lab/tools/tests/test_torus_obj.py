@@ -10,24 +10,12 @@ import unittest
 
 HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
-from torus_obj import torus_obj  # noqa: E402
+from torus_obj import torus  # noqa: E402
 
 RING_RADIUS = 4.0
 TUBE_RADIUS = 1.0
 RING_STEPS = 6
 TUBE_STEPS = 4
-
-
-def parse(text):
-    """The OBJ's vertices and faces, faces as 0-based corner triples."""
-    vertices, faces = [], []
-    for line in text.splitlines():
-        parts = line.split()
-        if parts and parts[0] == "v":
-            vertices.append(tuple(float(p) for p in parts[1:4]))
-        elif parts and parts[0] == "f":
-            faces.append(tuple(int(p) - 1 for p in parts[1:4]))
-    return vertices, faces
 
 
 def signed_volume(vertices, faces):
@@ -41,8 +29,7 @@ def signed_volume(vertices, faces):
 
 class TorusObj(unittest.TestCase):
     def setUp(self):
-        text = torus_obj("ring", "cmd", RING_RADIUS, TUBE_RADIUS, RING_STEPS, TUBE_STEPS)
-        self.vertices, self.faces = parse(text)
+        self.vertices, self.faces = torus(RING_RADIUS, TUBE_RADIUS, RING_STEPS, TUBE_STEPS)
 
     def test_one_vertex_per_step_pair_and_two_triangles(self):
         self.assertEqual(RING_STEPS * TUBE_STEPS, len(self.vertices))
