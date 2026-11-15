@@ -16,6 +16,8 @@ import unittest
 ROOT = pathlib.Path(__file__).resolve().parents[5]
 sys.path.insert(0, str(ROOT / "launcher/tools/device"))
 import framerec  # noqa: E402
+sys.path.insert(0, str(ROOT / "launcher/tools/render"))
+import showcase  # noqa: E402
 
 FRAMES = 61
 SHORT_FRAMES = 10
@@ -23,10 +25,11 @@ SHORT_KEYFRAME_EVERY = 3
 GENERATED_FRAMES = 2
 FUTURE_RECORD_TYPE = 0xFFFF
 BUDGET_TRIANGLES = 1200
+SHOWCASE = showcase.showcase(showcase.load_scene(ROOT / "launcher/demo/sponza/sponza.scene.toml"))
 RECORDED = {
     "herd": ["--scene", "capybara/herd"],
-    "sponza": ["--scene", "sponza", "--object", "atrium_fitted_full"],
-    "budget": ["--scene", "sponza", "--object", "atrium_fitted_full", "--set", f"render.lod_triangle_budget={BUDGET_TRIANGLES}"],
+    "sponza": ["--scene", "sponza", "--object", SHOWCASE],
+    "budget": ["--scene", "sponza", "--object", SHOWCASE, "--set", f"render.lod_triangle_budget={BUDGET_TRIANGLES}"],
 }
 
 
