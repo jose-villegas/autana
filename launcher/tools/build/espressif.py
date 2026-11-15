@@ -175,15 +175,22 @@ def idf_image_tag(image):
     return image.split("@")[0].rpartition(":")[2]
 
 
+# Enough of the pin's commit to tell two installs of one release apart.
+INSTALL_COMMIT_DIGITS = 8
+
+
 def install_commands(pin, home=None, checkout=None):
-    """Commands to install a missing pinned checkout, or just its missing tools."""
-    tag = idf_image_tag(pin["image"]).removeprefix("release-")
-    folder = Path("C:/Espressif") / tag if os.name == "nt" else (home or Path.home()) / "esp" / tag
+    """Commands to install a missing pinned checkout, or just its missing tools. A new checkout's folder names
+    the pin's commit too, so it lands beside an older pin of the same release rather than on top of it."""
+    name = f"{idf_image_tag(pin['image']).removeprefix('release-')}-{pin['commit'][:INSTALL_COMMIT_DIGITS]}"
+    folder = Path("C:/Espressif") / name if os.name == "nt" else (home or Path.home()) / "esp" / name
     existing = checkout is not None
     checkout = Path(checkout) if existing else folder / "esp-idf"
     if existing:
         folder = checkout.parent
-    installer = (f"powershell -NoProfile -Command '& {{ $env:IDF_TOOLS_PATH=\"{folder / 'tools'}\"; .\\install.ps1 esp32s3 }}'"
+    # install.ps1 refuses an environment that still carries Git Bash's MSYSTEM.
+    installer = (f"powershell -NoProfile -Command '& {{ $env:MSYSTEM=$null; "
+                 f"$env:IDF_TOOLS_PATH=\"{folder / 'tools'}\"; .\\install.ps1 esp32s3 }}'"
                  if os.name == "nt" else f"IDF_TOOLS_PATH='{folder / 'tools'}' ./install.sh esp32s3")
     if existing:
         return f"cd '{checkout}'\n{installer}"
