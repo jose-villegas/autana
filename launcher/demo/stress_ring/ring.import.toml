@@ -5,5 +5,5 @@ path = "ring.obj"
 credit = "A torus written for this scene by main/apps/render_lab/tools/torus_obj.py."
 
 [output]
-name = "ring"
+name = "stress_torus"
 position_scale = 4096   # ticks per unit: the ring reaches 4.6, inside int16

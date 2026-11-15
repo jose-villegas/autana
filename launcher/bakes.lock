@@ -187,15 +187,6 @@ run = 43184150229
 host = "Linux x86_64"
 
 [[bake]]
-output = "ring.bundle"
-source = "launcher/demo/stress_ring/stress_ring.scene.toml"
-key = "1b769e6fc0062b1c58bbe0789252db0c72b49fd6666b80829f154b6ea6643e0e"
-sha256 = "aafc357eee16a7d9524c4cfdaf6c515bc9ef75aca53b2d1abdca462e6bd8c56d"
-size = 458208
-run = 43700864025
-host = "Linux x86_64"
-
-[[bake]]
 output = "sponza.atrium.bundle"
 source = "launcher/demo/sponza/sponza.scene.toml"
 key = "099838b7ce6cbf1c9eeae4b5723c2592512e0546a223fbd0bfce6337cab5b771"
