@@ -14,7 +14,7 @@
 
 #include <stdint.h>
 
-#define FRAME_RECORD_VERSION        1
+#define FRAME_RECORD_VERSION        2
 #define FRAME_RECORD_BUILD_ID_BYTES 32
 #define FRAME_RECORD_PACK_NAME      32
 #define FRAME_RECORD_MATRIX         16 /* floats of a mat4f_t */
@@ -34,11 +34,12 @@ typedef enum {
     FRAME_RECORD_VIEW = 4, /* the frame's render_view_t, as the engine holds it */
     FRAME_RECORD_CHOICE = 5,
     FRAME_RECORD_MESH = 6,
-    FRAME_RECORD_POSE = 7,    /* frame_record_pose_t, then float[16] per joint */
-    FRAME_RECORD_DYNMESH = 8, /* frame_record_dynmesh_t, then float[3] and u8[3] per vertex, u16[3] per triangle,
+    FRAME_RECORD_POSE = 7,      /* frame_record_pose_t, then float[16] per joint, then u8[3] per lit vertex */
+    FRAME_RECORD_DYNMESH = 8,   /* frame_record_dynmesh_t, then float[3] and u8[3] per vertex, u16[3] per triangle,
                                * then a textured mesh's i16[2] UV per vertex */
-    FRAME_RECORD_TUNE = 9,    /* a tunable's value: on a keyframe each off its initial, else each that changed */
-    FRAME_RECORD_CHECK = 10,  /* the crc32 of a keyframe's composed picture, in a later frame's records */
+    FRAME_RECORD_TUNE = 9,      /* a tunable's value: on a keyframe each off its initial, else each that changed */
+    FRAME_RECORD_CHECK = 10,    /* the crc32 of a keyframe's composed picture, in a later frame's records */
+    FRAME_RECORD_SETTINGS = 11, /* the context's render_settings_t, as the engine holds it: each keyframe and change */
 } frame_record_type_t;
 
 /* Where a drawn mesh came from. */
@@ -69,18 +70,21 @@ typedef struct __attribute__((packed)) {
     uint32_t index, dt_ms;
     uint8_t flags;
     uint16_t instances, batches;
+    uint32_t bytes; /* the frame's records after this one: a reader knows a frame is whole */
 } frame_record_frame_t;
 
 typedef struct __attribute__((packed)) {
     int16_t step;
     uint8_t generated, scale_percent;
     uint16_t clear;
+    uint16_t width, height; /* the size the frame drew at, before the upscale */
 } frame_record_choice_t;
 
-/* A pack entry: FRAME_RECORD_NO_PACK and FRAME_RECORD_NO_ENTRY for none. */
+/* A place in a pack entry: FRAME_RECORD_NO_PACK and FRAME_RECORD_NO_ENTRY for none. */
 typedef struct __attribute__((packed)) {
     uint8_t pack;
     uint32_t entry;
+    uint32_t offset; /* bytes into the entry */
 } frame_record_where_t;
 
 /* Instances first, then batches, each numbered from 0 in that order. */
@@ -91,8 +95,12 @@ typedef struct __attribute__((packed)) {
     float model[FRAME_RECORD_MATRIX];
 } frame_record_mesh_t;
 
+/* `skin` is the skin asset that posed it. `lit` is the posed mesh's vertex
+ * count when its colours are its own, lit as it was posed, and 0 when they
+ * are the pack's. */
 typedef struct __attribute__((packed)) {
-    uint16_t index, joints;
+    uint16_t index, joints, lit;
+    frame_record_where_t skin;
 } frame_record_pose_t;
 
 typedef struct __attribute__((packed)) {

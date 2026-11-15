@@ -33,7 +33,7 @@ TAG = read_define(Path(__file__).resolve().parents[2] / "main/shell/console/cons
 # frame_record_type_t
 RECORD_TYPES = {
     "HEADER": 1, "PACK": 2, "FRAME": 3, "VIEW": 4, "CHOICE": 5,
-    "MESH": 6, "POSE": 7, "DYNMESH": 8, "TUNE": 9, "CHECK": 10,
+    "MESH": 6, "POSE": 7, "DYNMESH": 8, "TUNE": 9, "CHECK": 10, "SETTINGS": 11,
 }
 RECORD_NAMES = {number: name for name, number in RECORD_TYPES.items()}
 # frame_record_kind_t: where a MESH's mesh came from
@@ -47,10 +47,10 @@ GENERATED = 4
 HEAD = struct.Struct("<HI")
 HEADER = struct.Struct("<HHHH32s")
 PACK = struct.Struct("<BI32s")
-FRAME = struct.Struct("<IIBHH")
-CHOICE = struct.Struct("<hBBH")
-MESH = struct.Struct("<HBB" + "BI" * 3 + "16f")
-POSE = struct.Struct("<HH")
+FRAME = struct.Struct("<IIBHHI")
+CHOICE = struct.Struct("<hBBHHH")
+MESH = struct.Struct("<HBB" + "BII" * 3 + "16f")
+POSE = struct.Struct("<HHH" + "BII")
 DYNMESH = struct.Struct("<HBBiIIB")
 TUNE = struct.Struct("<32si")
 CHECK = struct.Struct("<IHHI")
@@ -75,6 +75,7 @@ class Frame:
     flags: int
     instances: int
     batches: int
+    bytes: int  # the frame's records after its FRAME
     records: list = field(default_factory=list)  # (type name, body bytes) after the FRAME
 
     @property
@@ -123,10 +124,10 @@ def decode_tune(body):
 def decode_mesh(body):
     fields = MESH.unpack(body)
     index, kind, placed = fields[:3]
-    where = [(fields[3 + 2 * i], fields[4 + 2 * i]) for i in range(3)]
+    where = [tuple(fields[3 + 3 * i:6 + 3 * i]) for i in range(3)]
     kinds = {number: name for name, number in MESH_KINDS.items()}
     return {"index": index, "kind": kinds.get(kind, kind), "placed": bool(placed), "positions": where[0], "colours": where[1],
-            "batch": where[2], "model": list(fields[9:])}
+            "batch": where[2], "model": list(fields[12:])}
 
 
 def parse(data):

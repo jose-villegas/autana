@@ -34,7 +34,7 @@ def header(keyframe_every=30):
 
 
 def frame(index, flags=0):
-    return record("FRAME", framerec.FRAME.pack(index, 16, flags, 0, 0))
+    return record("FRAME", framerec.FRAME.pack(index, 16, flags, 0, 0, 0))
 
 
 class FormatTests(unittest.TestCase):

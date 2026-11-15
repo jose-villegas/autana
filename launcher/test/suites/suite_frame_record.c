@@ -190,11 +190,19 @@ test_a_stream_opens_with_its_header_then_each_frame_with_frame_view_and_choice(v
     TEST_ASSERT_EQUAL_UINT16(FRAME_RECORD_VIEW, found[2].type);
     TEST_ASSERT_EQUAL_UINT32(sizeof(render_view_t), found[2].length);
     TEST_ASSERT_EQUAL_UINT16(FRAME_RECORD_CHOICE, found[3].type);
+    frame_record_choice_t choice;
+    TEST_ASSERT_EQUAL_UINT32(sizeof choice, found[3].length);
+    memcpy(&choice, found[3].body, sizeof choice);
+    /* The size it drew at: scale 100 draws the whole viewport. */
+    TEST_ASSERT_EQUAL_UINT16(W, choice.width);
+    TEST_ASSERT_EQUAL_UINT16(H, choice.height);
     const frame_record_frame_t frame = frame_of(0);
     TEST_ASSERT_EQUAL_UINT32(0, frame.index);
     TEST_ASSERT_EQUAL_UINT32(DT_MS, frame.dt_ms);
     TEST_ASSERT_EQUAL_UINT8(FRAME_RECORD_KEYFRAME, frame.flags);
     TEST_ASSERT_EQUAL_UINT16(RASTER_RIG_QUADS, frame.instances);
+    /* The records after its FRAME, to the stream's end: it is the only frame. */
+    TEST_ASSERT_EQUAL_UINT32((uint32_t)(sink->bytes + sink->size - (found[1].body + found[1].length)), frame.bytes);
 }
 
 static void
@@ -372,18 +380,26 @@ test_a_posed_mesh_names_its_bind_and_its_palette_rides_each_keyframe_and_each_ne
     palette[1].m[3][0] = 0.25F;
     const r3d_lit_mesh_t* posed = &rig->quad[0].mesh;
     const r3d_lit_mesh_t* bind = &rig->quad[1].mesh; /* the same vertex count, elsewhere */
-    frame_record_note_skin(posed, bind, palette, 2);
+    /* No pack holds the rig's skin: the POSE names none. */
+    const r3d_skin_t skin = {.joint_count = 2, .vertices = (const uint8_t*)palette};
+    frame_record_note_skin(posed, bind, &skin, palette, 2);
     draw_frame();
     draw_frame();
-    frame_record_note_skin(posed, bind, palette, 2);
+    frame_record_note_skin(posed, bind, &skin, palette, 2);
     draw_frame();
     find_records();
     const found_t* pose = carried(0, FRAME_RECORD_SKINNED, FRAME_RECORD_POSE);
     frame_record_pose_t head;
     memcpy(&head, pose->body, sizeof head);
     TEST_ASSERT_EQUAL_UINT16(2, head.joints);
-    TEST_ASSERT_EQUAL_UINT32(sizeof head + sizeof palette, pose->length);
+    /* The rig's colours are its own, no pack's: they ride as the pose lit them. */
+    TEST_ASSERT_NOT_NULL(posed->colors);
+    TEST_ASSERT_EQUAL_UINT16(posed->vertex_count, head.lit);
+    TEST_ASSERT_EQUAL_UINT8(FRAME_RECORD_NO_PACK, head.skin.pack);
+    const size_t colours = (size_t)head.lit * sizeof posed->colors[0];
+    TEST_ASSERT_EQUAL_UINT32(sizeof head + sizeof palette + colours, pose->length);
     TEST_ASSERT_EQUAL_MEMORY(palette, pose->body + sizeof head, sizeof palette);
+    TEST_ASSERT_EQUAL_MEMORY(posed->colors, pose->body + sizeof head + sizeof palette, colours);
     TEST_ASSERT_NULL(mesh_record(1, FRAME_RECORD_POSE, 0));
     TEST_ASSERT_NOT_NULL(mesh_record(2, FRAME_RECORD_POSE, 0));
     TEST_ASSERT_NULL(mesh_record(0, FRAME_RECORD_POSE, 1));
@@ -565,7 +581,8 @@ test_a_mesh_made_in_a_block_forgets_the_notes_of_meshes_that_lived_there(void) {
     suite_set_test_cleanup(forget_notes);
     const r3d_lit_mesh_t* mesh = &rig->quad[1].mesh;
     frame_record_note_built(mesh, &triangle, true);
-    frame_record_note_skin(&rig->quad[0].mesh, mesh, NULL, 0);
+    const r3d_skin_t skin = {0};
+    frame_record_note_skin(&rig->quad[0].mesh, mesh, &skin, NULL, 0);
     frame_record_forget(mesh->positions, sizeof mesh->positions[0]);
     frame_record_forget(rig->quad[0].mesh.positions, sizeof mesh->positions[0]);
     draw_frame();

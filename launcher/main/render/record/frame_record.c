@@ -35,6 +35,7 @@ typedef struct {
 typedef struct {
     note_head_t head; /* the posed positions */
     const void* bind_positions;
+    const void* skin_vertices; /* the skin asset's, in a pack */
     const mat4f_t* palette;
     uint16_t joints;
     bool fresh; /* posed since the last recorded frame */
@@ -87,6 +88,7 @@ typedef struct {
     bool check_due; /* the last frame was a keyframe the sink took: hash what composes from it */
     bool checked;   /* `check` holds a hash for the next frame's records */
     frame_record_check_t check;
+    render_settings_t settings; /* as last recorded */
     frame_record_counts_t counts;
 } recording_t;
 
@@ -151,10 +153,12 @@ frame_record_take_notes(void) {
 }
 
 void
-frame_record_note_skin(const r3d_lit_mesh_t* posed, const r3d_lit_mesh_t* bind, const mat4f_t* palette, int joints) {
+frame_record_note_skin(const r3d_lit_mesh_t* posed, const r3d_lit_mesh_t* bind, const r3d_skin_t* skin,
+                       const mat4f_t* palette, int joints) {
     if (notes != NULL) {
         noted_skin_t* note = note_stamp(NOTE_TABLE(skins), posed->positions, bind->vertex_count);
         note->bind_positions = bind->positions;
+        note->skin_vertices = skin->vertices;
         note->palette = palette;
         note->joints = (uint16_t)joints;
         note->fresh = true;
@@ -248,7 +252,7 @@ static frame_record_where_t
 where(const void* address) {
     asset_location_t at;
     if (address == NULL || !asset_store_locate(address, &at)) {
-        return (frame_record_where_t){FRAME_RECORD_NO_PACK, FRAME_RECORD_NO_ENTRY};
+        return (frame_record_where_t){FRAME_RECORD_NO_PACK, FRAME_RECORD_NO_ENTRY, 0};
     }
     if ((rec->packs_named & (1U << at.slot)) == 0) {
         frame_record_pack_t pack = {.slot = (uint8_t)at.slot, .crc32 = at.pack_crc};
@@ -256,7 +260,7 @@ where(const void* address) {
         record(FRAME_RECORD_PACK, &pack, sizeof pack);
         rec->packs_named |= 1U << at.slot;
     }
-    return (frame_record_where_t){(uint8_t)at.slot, at.entry};
+    return (frame_record_where_t){(uint8_t)at.slot, at.entry, at.offset};
 }
 
 static bool
@@ -274,15 +278,28 @@ moved(int index, const r3d_lit_mesh_t* mesh, const void* batch, const mat4f_t* m
     return !same;
 }
 
+/* A posed mesh's colours are its own when lit as it was posed: no pack holds them. */
+static bool
+lit_by_pose(const r3d_lit_mesh_t* posed) {
+    asset_location_t at;
+    return posed->colors != NULL && !asset_store_locate(posed->colors, &at);
+}
+
 static void
-record_pose(int index, noted_skin_t* skin, bool keyframe) {
+record_pose(int index, const r3d_lit_mesh_t* posed, noted_skin_t* skin, bool keyframe) {
     if (!keyframe && !skin->fresh) {
         return;
     }
-    const frame_record_pose_t pose = {(uint16_t)index, skin->joints};
-    head(FRAME_RECORD_POSE, sizeof pose + ((size_t)skin->joints * sizeof(mat4f_t)));
+    const bool lit = lit_by_pose(posed);
+    const frame_record_pose_t pose = {(uint16_t)index, skin->joints, lit ? (uint16_t)posed->vertex_count : 0U,
+                                      where(skin->skin_vertices)};
+    const size_t colours = (size_t)pose.lit * sizeof posed->colors[0];
+    head(FRAME_RECORD_POSE, sizeof pose + ((size_t)skin->joints * sizeof(mat4f_t)) + colours);
     put(&pose, sizeof pose);
     put(skin->palette, (size_t)skin->joints * sizeof(mat4f_t));
+    if (lit) {
+        put(posed->colors, colours);
+    }
 }
 
 static void
@@ -359,7 +376,7 @@ record_mesh(int index, const r3d_instance_t* instance, const r3d_batch_t* batch,
                           skin != NULL ? skin->bind_positions : (const void*)mesh->positions);
     }
     if (skin != NULL) {
-        record_pose(index, skin, keyframe);
+        record_pose(index, mesh, skin, keyframe);
     } else if (b != NULL) {
         record_built(index, b, keyframe);
     }
@@ -475,11 +492,17 @@ record_frame_head(const render_context_t* context, const raster_t* raster, uint3
     };
     record(FRAME_RECORD_FRAME, &frame, sizeof frame);
     record(FRAME_RECORD_VIEW, &context->frame_view, sizeof context->frame_view);
-    const frame_record_choice_t choice = {(int16_t)context->frame.step, generated, (uint8_t)context->scale_percent,
-                                          raster->clear};
+    const frame_record_choice_t choice = {(int16_t)context->frame.step,    generated,
+                                          (uint8_t)context->scale_percent, raster->clear,
+                                          (uint16_t)context->frame.width,  (uint16_t)context->frame.height};
     record(FRAME_RECORD_CHOICE, &choice, sizeof choice);
     if (rec->checked) {
         record(FRAME_RECORD_CHECK, &rec->check, sizeof rec->check);
+    }
+    const render_settings_t* settings = render_context_settings(context);
+    if (keyframe || memcmp(settings, &rec->settings, sizeof *settings) != 0) {
+        record(FRAME_RECORD_SETTINGS, settings, sizeof *settings);
+        rec->settings = *settings;
     }
     record_tunables(keyframe);
 }
@@ -528,6 +551,12 @@ frame_record_frame(const render_context_t* context, const raster_t* raster, uint
         record_meshes(raster, keyframe);
     }
     rec->index++;
+    /* The FRAME record leads the bytes: its count of what follows it. */
+    const size_t frame_end = sizeof(frame_record_head_t) + sizeof(frame_record_frame_t);
+    const uint32_t bytes = (uint32_t)(rec->size - frame_end);
+    if (!rec->overflowed) {
+        memcpy(rec->bytes + frame_end - sizeof bytes, &bytes, sizeof bytes);
+    }
     const bool taken = !rec->overflowed && rec->out.write(rec->out.sink, rec->bytes, rec->size);
     if (!generated) {
         clear_fresh(); /* a generated frame carried no pose or build: the next drawn one does */
