@@ -5923,6 +5923,10 @@ test_paused_skin_setters_replacement_and_reenable(void) {
     TEST_ASSERT_UINT8_WITHIN(1, skin->bind.colors[0][0], skin->colors[0][0]);
 }
 
+/* A skin's buffers are two heap blocks, and the device heap rounds each block
+ * by where it lands, so the same buffers taken again match to within that. */
+enum { SKIN_BLOCKS = 2, HEAP_BLOCK_ROUNDING = 8 };
+
 /* A skin holds its buffers only while its entity is active, so memory follows
  * the copies shown, not the pool: the herd loads its pool holding none, one
  * copy shown takes one copy's buffers, and a disabled copy gives its back at once. */
@@ -5954,9 +5958,6 @@ test_a_skin_holds_its_buffers_only_while_its_entity_is_active(void) {
     }
     scene_animation_step(columns(herd), 0);
 
-    /* The device heap rounds each block by where it lands, so copies match to within that. */
-    enum { SKIN_BLOCKS = 2, HEAP_BLOCK_ROUNDING = 8 };
-
     TEST_ASSERT_UINT_WITHIN(HERD_POOL * SKIN_BLOCKS * HEAP_BLOCK_ROUNDING, loaded - one * HERD_POOL,
                             memory_free_bytes(MEMORY_FAST));
     for (int i = 1; i < HERD_POOL; i++) {
@@ -5978,14 +5979,15 @@ test_a_skin_disabled_and_enabled_again_draws_the_same_frame(void) {
     scene_animation_step(columns(scene), RIG_DURATION_MS / RIG_TRAVEL);
     frame(0);
     memcpy(fx.held, fx.pixels, picture);
-    const size_t shown = memory_free_bytes(MEMORY_INTERNAL);
+    /* Counted across both RAMs: MEMORY_FAST puts the buffers off chip once the on-chip reserve is reached. */
+    const size_t shown = memory_free_bytes(MEMORY_FAST);
     entity_set_enabled(green, false);
-    TEST_ASSERT_GREATER_THAN_UINT(shown, memory_free_bytes(MEMORY_INTERNAL));
+    TEST_ASSERT_GREATER_THAN_UINT(shown, memory_free_bytes(MEMORY_FAST));
     frame(0);
     TEST_ASSERT_NOT_EQUAL_INT(0, memcmp(fx.held, fx.pixels, picture));
     entity_set_enabled(green, true);
     frame(0);
-    TEST_ASSERT_EQUAL_UINT(shown, memory_free_bytes(MEMORY_INTERNAL));
+    TEST_ASSERT_UINT_WITHIN(SKIN_BLOCKS * HEAP_BLOCK_ROUNDING, shown, memory_free_bytes(MEMORY_FAST));
     TEST_ASSERT_EQUAL_MEMORY(fx.held, fx.pixels, picture);
 }
 
