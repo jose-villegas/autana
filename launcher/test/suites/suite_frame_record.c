@@ -483,16 +483,20 @@ test_a_generated_frame_on_a_keyframes_turn_hands_the_keyframe_to_the_next_drawn_
 }
 
 static void
-test_a_generated_frame_after_a_drop_is_no_keyframe_and_the_next_drawn_frame_is(void) {
+test_generated_frames_after_a_drop_wait_for_a_drawn_keyframe(void) {
     open_recording(2); /* the header, frame 0, then frame 1 */
     draw_frame();
     draw_frame();
     generate_frame();
+    generate_frame();
     draw_frame();
+    generate_frame();
     find_records();
-    TEST_ASSERT_EQUAL_UINT8(FRAME_RECORD_AFTER_DROP | FRAME_RECORD_GENERATED, frame_of(1).flags);
-    TEST_ASSERT_EQUAL_UINT8(FRAME_RECORD_KEYFRAME, frame_of(2).flags);
-    TEST_ASSERT_EQUAL_INT(RASTER_RIG_QUADS, count_in_frame(2, FRAME_RECORD_MESH));
+    TEST_ASSERT_EQUAL_UINT32(3, frame_record_counts().dropped);
+    TEST_ASSERT_EQUAL_UINT8(FRAME_RECORD_AFTER_DROP | FRAME_RECORD_KEYFRAME, frame_of(1).flags);
+    TEST_ASSERT_EQUAL_UINT32(4, frame_of(1).index);
+    TEST_ASSERT_EQUAL_INT(RASTER_RIG_QUADS, count_in_frame(1, FRAME_RECORD_MESH));
+    TEST_ASSERT_EQUAL_UINT8(FRAME_RECORD_GENERATED, frame_of(2).flags);
 }
 
 static void
@@ -631,7 +635,7 @@ run_frame_record_suite(void) {
     RUN_TEST(test_a_built_mesh_carries_its_source_whole_each_keyframe_and_each_build);
     RUN_TEST(test_a_textured_built_mesh_carries_its_uvs_after_its_triangles);
     RUN_TEST(test_a_generated_frame_on_a_keyframes_turn_hands_the_keyframe_to_the_next_drawn_frame);
-    RUN_TEST(test_a_generated_frame_after_a_drop_is_no_keyframe_and_the_next_drawn_frame_is);
+    RUN_TEST(test_generated_frames_after_a_drop_wait_for_a_drawn_keyframe);
     RUN_TEST(test_a_hash_whose_frame_is_dropped_rides_the_next_frame_taken);
     RUN_TEST(test_a_mesh_struct_rewritten_in_place_with_new_arrays_is_recorded_again);
     RUN_TEST(test_each_instance_drawing_a_rebuilt_mesh_carries_the_build);

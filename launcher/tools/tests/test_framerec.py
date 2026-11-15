@@ -65,6 +65,17 @@ class RecordTests(unittest.TestCase):
         stream = framerec.parse(header() + frame(0) + record(200, b"later"))
         self.assertEqual(stream.frames[0].records, [(200, b"later")])
 
+    def test_truncated_frame_is_not_counted(self):
+        incomplete = record("FRAME", framerec.FRAME.pack(1, 16, 0, 0, 0, 100))
+        stream = framerec.parse(header() + frame(0) + incomplete)
+        self.assertEqual([f.index for f in stream.frames], [0])
+
+    def test_record_cannot_cross_declared_frame_boundary(self):
+        payload = record(200, b"later")
+        framed = record("FRAME", framerec.FRAME.pack(0, 16, 0, 0, 0, len(payload) - 1))
+        with self.assertRaisesRegex(framerec.StreamError, "frame"):
+            framerec.parse(header() + framed + payload)
+
     def test_a_stream_that_does_not_open_with_its_header_is_refused(self):
         with self.assertRaisesRegex(framerec.StreamError, "opens with HEADER"):
             framerec.parse(frame(0))

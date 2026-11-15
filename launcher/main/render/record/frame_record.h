@@ -7,7 +7,8 @@
  *
  * A frame is written whole or not at all: the sink's write gets one frame's
  * bytes in one call, and a refusal drops that frame, counts it, and makes the
- * next frame a keyframe. Every keyframe_every-th frame is a keyframe.
+ * next drawn frame a keyframe. Generated frames drop until a drawn keyframe
+ * is accepted. A keyframe due on a generated frame waits for the next draw.
  *
  * A pack mesh is named by its pack and entry. A mesh the app made is told
  * here by whoever made it, before the draw: a skinned copy by the skinning
@@ -47,7 +48,7 @@ typedef struct {
 
 typedef struct {
     uint32_t frames;  /* written */
-    uint32_t dropped; /* refused by the sink */
+    uint32_t dropped; /* not written */
 } frame_record_counts_t;
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST

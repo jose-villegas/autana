@@ -616,6 +616,11 @@ frame_record_frame(const render_context_t* context, const raster_t* raster, uint
     if (rec == NULL) {
         return;
     }
+    if (context->frame.generated && (rec->after_drop || rec->counts.frames == 0)) {
+        rec->index++;
+        settle(false, true, false);
+        return;
+    }
     FRAME_COST_BEGIN(recorded_from);
     const bool generated = context->frame.generated;
     const bool due = keyframe_due();

@@ -167,11 +167,20 @@ void
 render_context_set_scale(render_context_t* c, int percent) {
     assert(percent > 0 && percent <= 100);
     c->scale_percent = percent;
+    c->raster_size = (resolution_step_t){0};
+}
+
+void
+render_context_set_raster_size(render_context_t* c, resolution_step_t size) {
+    assert(size.width > 0 && size.height > 0);
+    c->policy = RENDER_FIXED;
+    c->raster_size = size;
 }
 
 void
 render_context_set_dynamic_resolution(render_context_t* c, const resolution_config_t* config,
                                       const resolution_model_t* model, int first_step) {
+    c->raster_size = (resolution_step_t){0};
     if (config == NULL) {
         c->policy = RENDER_FIXED;
         return;
@@ -427,7 +436,12 @@ aim_raster(render_context_t* c, const r3d_instance_t* instances, int count, cons
     r->width = step < 0 ? view->viewport.width * c->scale_percent / 100 : c->ladder.steps[step].width;
     r->height = step < 0 ? view->viewport.height * c->scale_percent / 100 : c->ladder.steps[step].height;
     r->present = view->present;
-    r->height = raster_present_size((resolution_step_t){r->width, r->height}, r->present).height;
+    if (c->raster_size.width > 0) {
+        r->width = c->raster_size.width;
+        r->height = c->raster_size.height;
+    } else {
+        r->height = raster_present_size((resolution_step_t){r->width, r->height}, r->present).height;
+    }
     r->clear = clear;
     r->upscaled = true; /* render_context_compose() names the picture */
     r->destination_width = view->viewport.width;
