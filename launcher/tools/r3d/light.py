@@ -12,7 +12,7 @@ LIGHT_GAMMA = read_define(LIGHT_OWNER,
 import numpy as np
 
 from . import log
-from .geometry import distinct_corners, nearest_triangles, triangle_areas, triangle_search
+from .geometry import distinct_corners, hit_barycentrics, nearest_triangles, triangle_areas, triangle_search
 from .import_settings import LIGHT_FIELDS
 from .obj import alpha_tested
 
@@ -45,16 +45,6 @@ def drop_masked(p, uv, tri_v, tri_t, tri_m, textures, keep_alpha=0.5):
     log(f"masked/degenerate triangles dropped: {np.count_nonzero(~keep)}")
     result = (tri_v[keep], tri_t[keep], tri_m[keep])
     return (*result, keep)
-
-
-def hit_barycentrics(p, tri_v, hits, locations):
-    """Barycentric weights of ray hits at `locations` on their triangles `hits`."""
-    a, b, c = (p[tri_v[hits, corner]] for corner in range(3))
-    normal = np.cross(b - a, c - a)
-    twice_area = np.einsum("ij,ij->i", normal, normal)
-    wa = np.einsum("ij,ij->i", np.cross(c - b, locations - b), normal) / twice_area
-    wb = np.einsum("ij,ij->i", np.cross(a - c, locations - c), normal) / twice_area
-    return np.stack([wa, wb, 1.0 - wa - wb], axis=1)
 
 
 class AlphaTest:

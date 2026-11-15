@@ -17,7 +17,7 @@ try:
     from PIL import Image
 
     from r3d import light
-    from r3d.obj import Texture
+    from r3d.obj import ALPHA_OPAQUE, Texture, alpha_tested
 except ImportError:
     np = None
 
@@ -93,6 +93,30 @@ class AlphaTestTests(unittest.TestCase):
         np.testing.assert_array_equal(light.AlphaTest(self.source, KEEP_ALPHA)(triangles + 2, locations), True)
         np.testing.assert_array_equal(alpha(np.zeros(0, dtype=int), np.zeros((0, 3))), [])
 
+    def test_a_material_is_alpha_tested_when_any_texel_is_at_or_under_the_opaque_line(self):
+        def texture(alpha_min):
+            level = np.ones((2, 2, 4))
+            level[0, 0, 3] = alpha_min
+            return SimpleNamespace(levels=[level])
+
+        tested = alpha_tested([None, texture(1.0), texture(ALPHA_OPAQUE), texture(ALPHA_OPAQUE + 0.005)])
+        np.testing.assert_array_equal(tested, [False, False, True, False])
+
+    def test_one_texel_decides_at_level_zero_and_keep_alpha_itself_is_solid(self):
+        texture = copy(self.source.textures[0])
+        level = np.ones((TEXELS, TEXELS, 4))
+        row, column = 2, 5
+        u, v = (column + 0.5) / TEXELS, 1.0 - (row + 0.5) / TEXELS
+        location = np.array([[u * 2 * HALF - HALF, v * 2 * HALF - HALF, CARD_Z]])
+        triangle = np.array([0 if u > v else 1])
+        for alpha, solid in ((KEEP_ALPHA, True), (KEEP_ALPHA / 2, False)):
+            level[row, column, 3] = alpha
+            # The coarser level averages the texel away; only level 0 still cuts it.
+            texture.levels = [level.copy(), np.ones((TEXELS // 2, TEXELS // 2, 4))]
+            self.source.textures[0] = texture
+            with self.subTest(alpha=alpha):
+                np.testing.assert_array_equal(light.AlphaTest(self.source, KEEP_ALPHA)(triangle, location), [solid])
+
     def test_drop_masked_keeps_the_triangles_mostly_opaque(self):
         source = checker_source(self.directory, plane=False)
         pixels = np.full((TEXELS, TEXELS, 4), 255, dtype=np.uint8)
@@ -137,6 +161,8 @@ class FilteredQueryTests(unittest.TestCase):
                 np.testing.assert_array_equal(hit, True)
                 np.testing.assert_array_equal(triangles, faces)
                 np.testing.assert_allclose(distance, EYE_Z - where[:, 2], atol=1e-6)
+                _, doubled, _ = query.first_hits(origins, 2 * directions)
+                np.testing.assert_allclose(doubled, distance / 2, atol=1e-6, err_msg="distance is not in direction lengths")
                 np.testing.assert_array_equal(query.blocked(origins, directions), True)
                 firsts = {}
                 for tris, alive, _ in query.hit_rounds(origins, directions):

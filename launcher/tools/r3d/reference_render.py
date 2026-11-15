@@ -27,7 +27,7 @@ from PIL import Image
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from r3d import mesh_source, mitsuba_reference
-from r3d.geometry import corner_normals
+from r3d.geometry import corner_normals, hit_barycentrics
 from r3d.import_settings import load_scene
 from r3d.light import albedo_from_uv, coincident_faces, drop_masked, light, open_side_occlusion, to_srgb8
 from r3d.mesh_source import load_source, path_light_for
@@ -37,16 +37,6 @@ from r3d.ray_query import RayQuery
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "render"))
 
 from colour_maths import expand_565  # noqa: E402
-
-
-def hit_barycentrics(source, hits, locations):
-    """Barycentric weights of ray hits on their source triangles."""
-    faces = source.tri_v[hits]
-    a, b, c = source.p[faces[:, 0]], source.p[faces[:, 1]], source.p[faces[:, 2]]
-    total = np.abs(np.cross(b - a, c - a)).sum(axis=1)
-    wa = np.abs(np.cross(b - locations, c - locations)).sum(axis=1) / total
-    wb = np.abs(np.cross(c - locations, a - locations)).sum(axis=1) / total
-    return np.stack([wa, wb, 1.0 - wa - wb], axis=1)
 
 
 def hit_normals(source, hits, bary):
@@ -103,7 +93,7 @@ def primary_hits(source, job, pose, width, height, lens, samples):
     origin, direction = camera_rays(width, height, lens, pose[:3], pose[3:], samples)
     double_materials = [source.names.index(name) for name in job.settings.double_sided]
     locations, rays, faces = drawn_hits(source, double_materials, origin, direction)
-    bary = hit_barycentrics(source, faces, locations) if len(rays) else np.zeros((0, 3))
+    bary = hit_barycentrics(source.p, source.tri_v, faces, locations) if len(rays) else np.zeros((0, 3))
     normal = hit_normals(source, faces, bary) if len(rays) else np.zeros((0, 3))
     double = np.isin(source.tri_m[faces], double_materials)
     return origin, direction, locations, rays, faces, normal, bary, double

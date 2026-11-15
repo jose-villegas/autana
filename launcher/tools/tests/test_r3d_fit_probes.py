@@ -20,6 +20,8 @@ try:
 except ImportError:
     np = None
 
+from tests.r3d_env import needs_mitsuba  # noqa: E402
+
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
@@ -201,6 +203,43 @@ class PrepareReferencesTests(unittest.TestCase):
                 self.assertEqual(query.args, ("positions", "triangles"))
                 self.assertIsInstance(query.hit_filter, AlphaTest)
                 self.assertEqual(query.hit_filter.keep_alpha, keep_alpha)
+
+
+@needs_mitsuba
+@unittest.skipIf(np is None, "the r3d environment is not installed")
+class ProbeSourceTests(unittest.TestCase):
+    def test_an_alpha_masked_obj_keeps_its_cut_card_for_the_probes_and_finds_its_cut_texture(self):
+        from PIL import Image
+        from r3d import ray_query
+
+        self.addCleanup(setattr, ray_query, "VARIANT", ray_query.VARIANT)
+        ray_query.VARIANT = "scalar_rgb"
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            pixels = np.full((4, 4, 4), 255, dtype=np.uint8)
+            pixels[..., 3] = 0
+            Image.fromarray(pixels).save(root / "leaf.png")
+            (root / "card.mtl").write_text("newmtl wall\nKd 1 1 1\nnewmtl leaf\nKd 1 1 1\nmap_Kd leaf.png\n")
+            (root / "card.obj").write_text("".join(f"v {x} {y} {z}\n" for z in (0, 1) for x, y in
+                                                   ((-1, -1), (1, -1), (1, 1), (-1, 1))) +
+                                           "vt 0 0\nvt 1 0\nvt 1 1\nvt 0 1\n"
+                                           "usemtl wall\nf 1/1 2/2 3/3 4/4\nusemtl leaf\nf 5/1 6/2 7/3 8/4\n")
+            camera = SimpleNamespace(region=None, near_z=0.1)
+            settings = SimpleNamespace(source={"path": root / "card.obj"}, alpha_keep=0.5)
+            inputs = SimpleNamespace(scene=lambda: SimpleNamespace(camera=SimpleNamespace(component=camera)),
+                                     probes=SimpleNamespace(face=8, spacing=1.0),
+                                     job=lambda: SimpleNamespace(settings=settings))
+            selected = {}
+
+            def select(positions, tris, *args, **kwargs):
+                selected.update(tris=tris, **kwargs)
+                return [], [], {}
+
+            with mock.patch("r3d.views.probes.select", select):
+                reference_set.probe_poses(inputs, root, None)
+        self.assertEqual(len(selected["tris"]), 4, "the probes' source lost the masked card")
+        np.testing.assert_array_equal(selected["query"].hit_filter.tested, [False, True])
+
 
 if __name__ == "__main__":
     unittest.main()

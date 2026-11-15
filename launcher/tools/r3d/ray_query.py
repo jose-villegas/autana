@@ -108,7 +108,7 @@ class RayQuery:
         return origins[ray] + directions[ray] * distance[ray, None], ray, tri[ray]
 
     def blocked(self, origins, directions):
-        """True for each ray that hits the mesh."""
+        """True for each ray that hits a solid part of the mesh (every hit without a `hit_filter`)."""
         if self.scalar or self.hit_filter is not None:
             return self.first_hits(np.asarray(origins), np.asarray(directions))[0]
         self._check_variant()
