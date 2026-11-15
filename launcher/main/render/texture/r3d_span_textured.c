@@ -161,9 +161,10 @@ pack_uv(int32_t u, int32_t v) {
     return ((uint32_t)u << UV_HALF_BITS) + (uint32_t)v;
 }
 
-/* The carry at a span's first pixel, `first` to `last` on row `y`. */
+/* The carry at a span's first pixel, `first` to `last` on row `y`; its u
+ * and v only when the span steps affine, as fill_divided() sets its own. */
 static inline __attribute__((always_inline)) void
-span_carry(const setup_t* su, int y, int first, int last, carry_t* c) {
+span_carry(const setup_t* su, int y, int first, int last, bool affine, carry_t* c) {
     const float fx = (float)(first - su->x0);
     const float fy = (float)(y - su->y0);
     const int steps = last - first;
@@ -173,6 +174,11 @@ span_carry(const setup_t* su, int y, int first, int last, carry_t* c) {
     c->level = (int32_t)mathf_clamp(plane_at(&su->level, fx, fy), -2.0e9F, 2.0e9F);
     c->dlevel = (int32_t)su->level.dx;
     r3d_span_clamp_to(LEVEL_MAX, steps, &c->level, &c->dlevel);
+    if (!affine) {
+        c->uv = 0;
+        c->duv = 0;
+        return;
+    }
     c->uv = pack_uv(fixed_uv(plane_at(&su->s, fx, fy)), fixed_uv(plane_at(&su->t, fx, fy)));
     c->duv = pack_uv((int32_t)(su->s.dx * (float)UV_ONE), 0) + (uint32_t)(int32_t)(su->t.dx * (float)UV_ONE);
 }
@@ -238,7 +244,9 @@ typedef enum {
 static inline __attribute__((always_inline)) void
 walk_span(const r3d_span_target_t* target, const setup_t* su, int y, int first, int last, walk_t walk) {
     carry_t c;
-    span_carry(su, y, first, last, &c);
+    /* A cut or a write walk is affine whatever the triangle: MASK1 never
+     * divides and a writer takes depth alone, so only a fill walk asks. */
+    span_carry(su, y, first, last, walk != WALK_FILL || su->divide == 0, &c);
     if (walk == WALK_WRITE) {
         if (su->sampler.texture->format == R3D_TEXTURE_MASK1) {
             write_kept_runs(target, &su->sampler, y, first, last, &c);
@@ -301,6 +309,46 @@ r3d_texture_segment_px(int divide_px, float affine_bend, float extent, float z_n
     return divide;
 }
 
+/* The start of the tile of side 1 << size_log2 holding texel coordinate
+ * `u`: a floor and a mask, with no float divide. */
+static inline float
+tile_origin(float u, int size_log2) {
+    int32_t whole = (int32_t)u;
+    whole -= (float)whole > u ? 1 : 0;
+    return (float)(whole & ~(int32_t)((1U << size_log2) - 1U));
+}
+
+/* Whether an INDEX4 triangle divides and how far apart, judged on `whole`;
+ * when it does, its u and v planes become u q and v q, from the texture's
+ * tile holding vertex 0, so a far tile's large u keeps its fraction through
+ * the products and divides. The level stays the affine planes' pick. Out of
+ * set_up(), whose affine and MASK1 path stays short. */
+static __attribute__((noinline)) void
+set_up_divide(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[CORNERS], const vec2f_t uv[CORNERS],
+              const r3d_texture_t* texture, recti_t whole, const r3d_span_frame_t* f, float scale, setup_t* su) {
+    const float z_near = mathf_max(v[0]->z, mathf_max(v[1]->z, v[2]->z));
+    const float z_far = mathf_min(v[0]->z, mathf_min(v[1]->z, v[2]->z));
+    const float side = (float)mathi_max(whole.w, whole.h);
+    const float extent =
+        mathf_max(mathf_abs(su->s.dx) + mathf_abs(su->t.dx), mathf_abs(su->s.dy) + mathf_abs(su->t.dy)) * side;
+    su->divide = r3d_texture_segment_px(target->texture_divide_px,
+                                        (float)target->texture_bend_steps * (1.0F / (float)R3D_SPAN_BEND_STEPS), extent,
+                                        z_near, z_far, side);
+    if (su->divide == 0) {
+        return;
+    }
+    const vec2f_t origin = {tile_origin(uv[0].x, texture->size_log2), tile_origin(uv[0].y, texture->size_log2)};
+    float s_q[CORNERS];
+    float t_q[CORNERS];
+    for (int i = 0; i < CORNERS; i++) {
+        s_q[i] = (uv[i].x - origin.x) * scale * v[i]->z;
+        t_q[i] = (uv[i].y - origin.y) * scale * v[i]->z;
+    }
+    su->q = r3d_span_plane_of(f, v[0]->z, v[1]->z, v[2]->z);
+    su->s = r3d_span_plane_of(f, s_q[0], s_q[1], s_q[2]);
+    su->t = r3d_span_plane_of(f, t_q[0], t_q[1], t_q[2]);
+}
+
 /* Sets `su` up to fill the triangle's part in window box `box`, off the row
  * walks' stack chain: the frame lives only here. Whether an INDEX4 triangle
  * divides, and how far apart, are judged on `whole`, its unclipped box, so
@@ -319,38 +367,18 @@ set_up(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[CORNERS
     const uint16_t cap =
         target->skip_hidden ? r3d_span_depth_limit(mathf_max(v[0]->z, mathf_max(v[1]->z, v[2]->z))) : R3D_DEPTH_NEAREST;
     su->depth_max = cap == R3D_DEPTH_NEAREST ? DEPTH_MAX : (((int32_t)cap << R3D_DEPTH_SHIFT) | 0xFF);
-    /* u and v from the texture's tile holding vertex 0, so a far tile's
-     * large u keeps its fraction through the float planes and divides. */
-    const float tile = (float)(1U << texture->size_log2);
-    const vec2f_t origin = {floorf(uv[0].x / tile) * tile, floorf(uv[0].y / tile) * tile};
-    vec2f_t local[CORNERS];
-    for (int i = 0; i < CORNERS; i++) {
-        local[i] = (vec2f_t){uv[i].x - origin.x, uv[i].y - origin.y};
-    }
-    su->s = r3d_span_plane_of(&f, local[0].x, local[1].x, local[2].x);
-    su->t = r3d_span_plane_of(&f, local[0].y, local[1].y, local[2].y);
+    su->s = r3d_span_plane_of(&f, uv[0].x, uv[1].x, uv[2].x);
+    su->t = r3d_span_plane_of(&f, uv[0].y, uv[1].y, uv[2].y);
     const int level = pick_level(su, texture);
     const float scale = 1.0F / (float)(1U << level);
     su->s = (r3d_span_plane_t){su->s.base * scale, su->s.dx * scale, su->s.dy * scale};
     su->t = (r3d_span_plane_t){su->t.base * scale, su->t.dx * scale, su->t.dy * scale};
     su->divide = 0;
-    if (texture->format != R3D_TEXTURE_MASK1) {
-        const float z_near = mathf_max(v[0]->z, mathf_max(v[1]->z, v[2]->z));
-        const float z_far = mathf_min(v[0]->z, mathf_min(v[1]->z, v[2]->z));
-        const float side = (float)mathi_max(whole.w, whole.h);
-        const float extent =
-            mathf_max(mathf_abs(su->s.dx) + mathf_abs(su->t.dx), mathf_abs(su->s.dy) + mathf_abs(su->t.dy)) * side;
-        su->divide = r3d_texture_segment_px(target->texture_divide_px,
-                                            (float)target->texture_bend_steps * (1.0F / (float)R3D_SPAN_BEND_STEPS),
-                                            extent, z_near, z_far, side);
-    }
-    if (su->divide != 0) {
-        /* The level stays the affine planes' pick; u and v become u q and v q. */
-        su->q = r3d_span_plane_of(&f, v[0]->z, v[1]->z, v[2]->z);
-        su->s = r3d_span_plane_of(&f, local[0].x * scale * v[0]->z, local[1].x * scale * v[1]->z,
-                                  local[2].x * scale * v[2]->z);
-        su->t = r3d_span_plane_of(&f, local[0].y * scale * v[0]->z, local[1].y * scale * v[1]->z,
-                                  local[2].y * scale * v[2]->z);
+    /* A triangle no wider than one segment steps affine: affine across it
+     * maps u and v as one divided segment would. */
+    if (texture->format != R3D_TEXTURE_MASK1 && target->texture_divide_px != 0
+        && mathi_max(whole.w, whole.h) > target->texture_divide_px) {
+        set_up_divide(target, v, uv, texture, whole, &f, scale, su);
     }
     const int side_log2 = texture->size_log2 - level;
     const uint32_t mask = (1U << side_log2) - 1U;

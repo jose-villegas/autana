@@ -1885,25 +1885,23 @@ test_short_windows_of_a_tall_mildly_bent_triangle_draw_the_whole_ones_pixels(voi
     free(both);
 }
 
-/* The texture repeats: the same triangle a whole number of tiles away, either
- * way, draws the same pixels, affine and dividing. */
+/* The texture repeats: a dividing triangle a whole number of tiles away,
+ * either way, draws the same pixels, as it divides from its own tile. An
+ * affine one steps from u and v as given, as before divides. */
 static void
 test_a_triangle_whole_tiles_away_draws_the_same_pixels(void) {
     fixture();
     const float tile = (float)TEX_SIDE;
     const vec2f_t shifts[] = {
         {tile * TILES_FAR, tile * TILES_FAR}, {-tile * TILES_FAR, -tile * TILES_FAR}, {tile * TILES_FAR, -tile}};
-    const int divides[] = {0, RENDER_SETTINGS_DEFAULT.texture.divide_px};
-    for (size_t d = 0; d < sizeof divides / sizeof divides[0]; d++) {
-        for (size_t s = 0; s < sizeof shifts / sizeof shifts[0]; s++) {
-            clear();
-            const render_texture_settings_t settings =
-                settings_of(divides[d], RENDER_SETTINGS_DEFAULT.texture.affine_bend);
-            draw_floor(0, settings, FLOOR_Z_STEEP, vec2f_zero());
-            draw_floor(1, settings, FLOOR_Z_STEEP, shifts[s]);
-            TEST_ASSERT_GREATER_THAN_MESSAGE(COVERED_MIN, covered_pixels(0), "the floor covers too little to tell");
-            TEST_ASSERT_EQUAL_MESSAGE(0, colours_differing(0, 1), "a far tile draws other pixels");
-        }
+    const render_texture_settings_t settings =
+        settings_of(RENDER_SETTINGS_DEFAULT.texture.divide_px, RENDER_SETTINGS_DEFAULT.texture.affine_bend);
+    for (size_t s = 0; s < sizeof shifts / sizeof shifts[0]; s++) {
+        clear();
+        draw_floor(0, settings, FLOOR_Z_STEEP, vec2f_zero());
+        draw_floor(1, settings, FLOOR_Z_STEEP, shifts[s]);
+        TEST_ASSERT_GREATER_THAN_MESSAGE(COVERED_MIN, covered_pixels(0), "the floor covers too little to tell");
+        TEST_ASSERT_EQUAL_MESSAGE(0, colours_differing(0, 1), "a far tile draws other pixels");
     }
 }
 
