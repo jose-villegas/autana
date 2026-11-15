@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "device"))
 from scripts.ci.github_api import PER_PAGE, call, pages
 from device_lock import LockStore, board_read_root, heavy_root, write_json
-from process_tree import launch_process_tree, stop_process_tree, close_process_tree
+from process_tree import STAGE_PROGRESS_ENV, launch_process_tree, stop_process_tree, close_process_tree
 from ci_step import output, summarize
 
 NIGHT_START = "01:00"
@@ -41,7 +41,12 @@ RECENT_RUNS_WINDOW = timedelta(days=2)
 BAKES_WORKFLOW = "bakes-gpu.yml"
 DOC_IMAGES_WORKFLOW = "doc-images-gpu.yml"
 GPU_WORKFLOWS = (BAKES_WORKFLOW, DOC_IMAGES_WORKFLOW)
-GPU_STAGE_HANG_SECONDS = {DOC_IMAGES_WORKFLOW: 14 * 60 * 60, BAKES_WORKFLOW: 4 * 60 * 60}
+# A GPU stage is hung once no task or bake has finished for this long: above the slowest single task (a
+# cold CPU reference set, about 2.5 h), so a slow stage that still progresses is never stopped.
+GPU_STAGE_PROGRESS_SECONDS = 4 * 60 * 60
+# Each stage's backstop, far above GPU_STAGE_PROGRESS_SECONDS so only a stage that never ends meets it, and
+# under its job's timeout-minutes (doc images 1380, bakes 600) so the guard, not GitHub, stops it.
+GPU_STAGE_HANG_SECONDS = {DOC_IMAGES_WORKFLOW: 14 * 60 * 60, BAKES_WORKFLOW: 9 * 60 * 60}
 # Doc images reserve WSL_MEMORY_REQUIRED_BYTES and render for hours: they wait for the boards and hold heavy.
 # A fit is one GPU-bound process: it runs beside builds and board jobs, on its CPU share.
 QUIET_HOST_WORKFLOWS = (DOC_IMAGES_WORKFLOW,)
@@ -144,13 +149,35 @@ def gpu_pending(workflows=GPU_WORKFLOWS, request=None):
                for job in pages(f"/actions/runs/{run['id']}/jobs", "jobs", request))
 
 
-def wait_idle(busy, clock, idle_polls=1):
+def wait_idle(busy, clock, idle_polls=1, until=None):
+    """True once busy() is false idle_polls polls in a row; False when `until` comes first."""
     idle = 0
     while True:
         idle = 0 if busy() else idle + 1
         if idle >= idle_polls:
             return True
+        if until is not None and clock.now() >= until:
+            return False
         clock.sleep(QUEUE_POLL_SECONDS)
+
+
+def guard_stage(process, progress, started, clock, workflow):
+    """The stage's exit code, or EXIT_HUNG once it stops progressing (nothing touched `progress` for
+    GPU_STAGE_PROGRESS_SECONDS) or passes GPU_STAGE_HANG_SECONDS; a hung stage's process tree is stopped."""
+    while True:
+        try:
+            return process.wait(timeout=QUEUE_POLL_SECONDS)
+        except subprocess.TimeoutExpired:
+            pass
+        now = clock.now()
+        # A lost progress file counts as no progress since the start, never as a crash of the guard.
+        idle = now.timestamp() - (progress.stat().st_mtime if progress.exists() else started.timestamp())
+        expired = ("GPU_STAGE_PROGRESS_SECONDS" if idle >= GPU_STAGE_PROGRESS_SECONDS else
+                   "GPU_STAGE_HANG_SECONDS" if (now - started).total_seconds() >= GPU_STAGE_HANG_SECONDS[workflow] else None)
+        if expired:
+            print(f"{expired} expired for {workflow}: last progress {idle / 60:.0f} min ago", flush=True)
+            stop_process_tree(process)
+            return EXIT_HUNG
 
 
 def quiet_host(workflow):
@@ -213,21 +240,22 @@ def main():
         os.sched_setaffinity(0, share)
         print(f"beside board work on CPUs {','.join(map(str, sorted(share)))}", flush=True)
     started, code = clock.now(), EXIT_HUNG
+    marker = os.environ.get("MARKER") or started.isoformat()
+    steps = heavy_root() / "night-steps" / datetime.fromisoformat(marker).strftime(MARKER_KEY_FORMAT)
+    progress = steps / (workflow + ".progress")
+    progress.parent.mkdir(parents=True, exist_ok=True)
+    progress.touch()
+    os.environ[STAGE_PROGRESS_ENV] = str(progress)
     process = None
     try:
         process = launch_process_tree(command)
-        try:
-            code = process.wait(timeout=GPU_STAGE_HANG_SECONDS[workflow])
-        except subprocess.TimeoutExpired:
-            print(f"GPU_STAGE_HANG_SECONDS expired for {workflow}", flush=True)
-            stop_process_tree(process)
+        code = guard_stage(process, progress, started, clock, workflow)
         return code
     finally:
         if process is not None:
             close_process_tree(process)
-        marker = os.environ.get("MARKER") or started.isoformat()
-        key = datetime.fromisoformat(marker).strftime(MARKER_KEY_FORMAT)
-        write_json(heavy_root() / "night-steps" / key / (workflow + ".json"),
+        progress.unlink(missing_ok=True)
+        write_json(steps / (workflow + ".json"),
                    dict(workflow=workflow, run=os.environ.get("GITHUB_RUN_ID"), marker=marker,
                         started=started.isoformat(), ended=clock.now().isoformat(), exit=code))
 

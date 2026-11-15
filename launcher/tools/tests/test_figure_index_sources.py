@@ -84,9 +84,10 @@ class ShowingsTests(Tree):
         self.assertEqual(figure_index.showings(self.root),
                          {"docs/images/math/wide.png": [("launcher/tools/README.md", "Tool")]})
 
-    def test_an_image_outside_docs_images_is_not_a_showing(self):
+    def test_an_image_outside_docs_images_is_a_showing(self):
         write(self.root / "docs/math/One.md", "![a](../other/a.png) ![b](../../assets/b.png)\n![c](../images/math/wide.png)\n")
-        self.assertEqual(list(figure_index.showings(self.root)), ["docs/images/math/wide.png"])
+        self.assertEqual(sorted(figure_index.showings(self.root)),
+                         ["assets/b.png", "docs/images/math/wide.png", "docs/other/a.png"])
 
 
 class BodyTests(Tree):

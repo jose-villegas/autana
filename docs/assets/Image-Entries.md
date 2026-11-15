@@ -5,7 +5,8 @@ Part of the [asset docs](README.md). A picture is one entry of type `IMAG`, read
 `NAME.image.toml` names a PNG in its own folder (`source = "x.png"`) and how
 many quarter turns clockwise take it to the stored pixels (`quarter_turns`, 0
 to 3; a picture drawn in a landscape frame is turned into the panel's portrait
-one once, here, so drawing it reads rows in order). The source must be opaque.
+one once, here, so drawing it reads rows in order). An opaque source stores
+RGB565; a source with any alpha below 255 also stores its alpha (RGB565A8).
 
 ## Example
 
@@ -37,3 +38,24 @@ image_example(const asset_pack_t* pack, const char* name, int x, int y, gfx_colo
 }
 ```
 <!-- /generated: asset-image-example -->
+
+## Sprites
+
+A sprite is a picture drawn stretched to any size by its nine-slice border:
+`border = [left, top, right, bottom]` in the `.image.toml`, in pixels of the
+source, turned with it. The entry is then a [SPRT](formats/SPRT.md): the
+border ahead of the same picture.
+
+| Part of the sprite | Drawn |
+|---|---|
+| corners | 1:1 |
+| top and bottom edges | stretched across |
+| left and right edges | stretched down |
+| centre | stretched both ways; one colour at one alpha is one blended rectangle |
+
+`draw_sprite_open()` (`draw/draw_sprite.h`) reads a SPRT, or an IMAG as a
+sprite without a border, once when its pack loads. `draw_sprite()` fills a
+panel rectangle with it at a quarter turn, clipped by `draw_set_clip()`:
+coverage 0 leaves the panel, 255 replaces it, and anything between mixes.
+The pixels stay in the pack until `draw_sprite_make_resident()` copies them
+into RAM the caller owns.

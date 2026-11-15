@@ -48,14 +48,12 @@ static const struct {
              PART(flags, PER_ENTITY),
              PART(locals, PER_ENTITY),
              PART(world_slots, PER_ENTITY),
-             PART(instances, PER_RENDERER),
              PART(animators, PER_ENTITY),
              PART(skinned_renderers, PER_ENTITY),
              PART(lights, PER_ENTITY),
              PART(staged, PER_ENTITY),
              PART(active_renderers, PER_RENDERER),
-             PART(batches, PER_BATCH),
-             PART(batch_draws, PER_BATCH)};
+             PART(batches, PER_BATCH)};
 
 /* Carves the scene's arrays after its header, each on its own alignment, and
  * points them into `scene`'s block; a NULL scene only measures. Returns the
@@ -98,11 +96,13 @@ scene_allocate(size_t bytes, memory_kind_t kind) {
 }
 
 void*
-scene_allocate_kept(size_t bytes) {
-    if (injected_failure()) {
-        return NULL;
-    }
+scene_allocate_kept_optional(size_t bytes) {
     return kept_take != NULL ? kept_take(bytes, _Alignof(max_align_t)) : memory_alloc(bytes, MEMORY_APP);
+}
+
+void*
+scene_allocate_kept(size_t bytes) {
+    return injected_failure() ? NULL : scene_allocate_kept_optional(bytes);
 }
 
 void
@@ -288,28 +288,35 @@ open_batches(scene_t* scene, const asset_pack_t* pack) {
     return scene_failure_make(SCENE_OK, ASSET_OK, scene->root->id);
 }
 
+/* Opens renderer `i`'s mesh and its colours. */
+static scene_failure_t
+open_mesh(scene_t* scene, const asset_pack_t* pack, int i) {
+    const bool lit = i < scene->asset.renderer_count;
+    const char* mesh =
+        lit ? scene->asset.renderers[i].mesh : scene->asset.skinned_renderers[i - scene->asset.renderer_count].mesh;
+    r3d_lit_mesh_t* view = &scene->renderers[i].mesh;
+    asset_status_t status = r3d_lit_mesh_open(pack, mesh, view);
+    if (status == ASSET_OK && lit && scene->asset.renderers[i].colour_set != SCENE_ASSET_COLOUR_SET_OWN) {
+        status = r3d_lit_mesh_open_colours(pack, mesh, scene->asset.renderers[i].colour_set, view);
+    }
+    if (status == ASSET_OK && view->colors == NULL && view->face_colors == NULL) {
+        status = ASSET_ERR_FORMAT;
+    }
+    if (status != ASSET_OK) {
+        return scene_failure_make(SCENE_ERR_ASSET, status, mesh);
+    }
+    scene->renderers[i].colour_sets = 1;
+    return scene_failure_make(SCENE_OK, ASSET_OK, mesh);
+}
+
 /* Opens every renderer's mesh, then their coarse bits; stops at the first that fails. */
 static scene_failure_t
 open_meshes(scene_t* scene, const asset_pack_t* pack) {
     for (int i = 0; i < scene->renderer_count; i++) {
-        const char* mesh = i < scene->asset.renderer_count
-                               ? scene->asset.renderers[i].mesh
-                               : scene->asset.skinned_renderers[i - scene->asset.renderer_count].mesh;
-        r3d_lit_mesh_t* view = &scene->renderers[i].mesh;
-        asset_status_t status = r3d_lit_mesh_open(pack, mesh, view);
-        if (status == ASSET_OK && i < scene->asset.renderer_count) {
-            const uint16_t set = scene->asset.renderers[i].colour_set;
-            if (set != SCENE_ASSET_COLOUR_SET_OWN) {
-                status = r3d_lit_mesh_open_colours(pack, mesh, set, view);
-            }
+        const scene_failure_t opened = open_mesh(scene, pack, i);
+        if (opened.status != SCENE_OK) {
+            return opened;
         }
-        if (status == ASSET_OK && view->colors == NULL && view->face_colors == NULL) {
-            status = ASSET_ERR_FORMAT;
-        }
-        if (status != ASSET_OK) {
-            return scene_failure_make(SCENE_ERR_ASSET, status, mesh);
-        }
-        scene->renderers[i].colour_sets = 1;
     }
     const scene_failure_t batches = open_batches(scene, pack);
     return batches.status != SCENE_OK ? batches : open_lod_bits(scene);
@@ -446,7 +453,16 @@ free_columns(scene_t* scene) {
     memory_free(scene->light_transfer);
     memory_free(scene->lod_bits);
     memory_free(scene->chunks);
+    for (int i = 0; i < scene->renderer_count; i++) {
+        scene_renderer_texturing_free(&scene->renderers[i]);
+    }
     scene_hierarchy_release(scene);
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+    if (scene->copies != NULL) {
+        asset_store_copies_remove(scene->copies);
+        scene_free_kept(scene->copies);
+    }
+#endif
     scene_free_kept(scene->resident);
     scene_free_kept(scene);
 }
