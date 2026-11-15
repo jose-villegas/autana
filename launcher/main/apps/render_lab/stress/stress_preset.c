@@ -59,6 +59,9 @@ const stress_params_t stress_presets[STRESS_PRESET_COUNT] = {
                                    STRESS_SURFACE_OF(FOLIAGE_FAR_OPAQUE), STRESS_CAMERA, 6},
     [STRESS_RECORD] = {STRESS_SHAPE_PLANE, 24, 4, STRESS_LAYOUT_WALL, 80, STRESS_SURFACE_OF(RECORD), STRESS_CAMERA, 6,
                        true},
+    /* No copies: its own pack's baked ring, culled through the tree the bake tools built. */
+    [STRESS_BAKED_TREE] = {STRESS_SHAPE_PLANE, 1, 0, STRESS_LAYOUT_WALL, 100, STRESS_SURFACE_OF(BAKED_TREE),
+                           STRESS_CAMERA_SWEEP, 8, .scene = STRESS_RING_SCENE},
 };
 
 stress_params_t
