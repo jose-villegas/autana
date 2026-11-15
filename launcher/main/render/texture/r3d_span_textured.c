@@ -184,6 +184,36 @@ span_carry(const setup_t* su, int y, int first, int last, bool affine, carry_t* 
     c->duv = pack_uv((int32_t)(su->s.dx * (float)UV_ONE), 0) + (uint32_t)(int32_t)(su->t.dx * (float)UV_ONE);
 }
 
+/* The level whose texels a step of sqrt(rho2) level-0 texels crosses about
+ * one of: floor(log2) of the step, at most the texture's last. */
+static inline int
+level_for(float rho2, int levels) {
+    int level = 0;
+    while (level + 1 < levels && rho2 >= (float)(1U << (2 * (level + 1)))) {
+        level++;
+    }
+    return level;
+}
+
+/* 2^-level, exactly, without a divide. */
+static inline float
+level_scale(int level) {
+    union {
+        uint32_t bits;
+        float value;
+    } scale = {.bits = (uint32_t)(127 - level) << 23};
+
+    return scale.value;
+}
+
+/* The sampler of `texture`'s level `level`. */
+static inline sampler_t
+sampler_at(const r3d_texture_t* texture, int level) {
+    const int side_log2 = texture->size_log2 - level;
+    const uint32_t mask = (1U << side_log2) - 1U;
+    return (sampler_t){texture->texels[level], mask, mask << side_log2, (uint32_t)(V_INT_SHIFT - side_log2), texture};
+}
+
 /* An INDEX4 span whose u and v divide by depth every su->divide pixels,
  * from s = u q, t = v q and q at its first pixel. u and v wrap once at the
  * start and then step in fixed point; each divide aims the next segment's
@@ -193,6 +223,24 @@ span_carry(const setup_t* su, int y, int first, int last, bool affine, carry_t* 
 static RENDER_TAIL_ATTR __attribute__((noinline)) void
 fill_divided(const setup_t* su, uint16_t* depth, uint16_t* color, int count, carry_t* c, float s, float t, float q,
              int x, int y) {
+    /* The span's level, from the true texel step at its centre: s, t and q
+     * are in level-0 texels until the level scales them. */
+    const float half = (float)(count - 1) * 0.5F;
+    const float rc = mathf_recip_approx(q + (su->q.dx * half));
+    const float uc = (s + (su->s.dx * half)) * rc;
+    const float vc = (t + (su->t.dx * half)) * rc;
+    const float dudx = (su->s.dx - (uc * su->q.dx)) * rc;
+    const float dvdx = (su->t.dx - (vc * su->q.dx)) * rc;
+    const float dudy = (su->s.dy - (uc * su->q.dy)) * rc;
+    const float dvdy = (su->t.dy - (vc * su->q.dy)) * rc;
+    const int level =
+        level_for(mathf_max((dudx * dudx) + (dvdx * dvdx), (dudy * dudy) + (dvdy * dvdy)), su->sampler.texture->levels);
+    const sampler_t sampler = sampler_at(su->sampler.texture, level);
+    const float k = level_scale(level);
+    s *= k;
+    t *= k;
+    const float ds = su->s.dx * k;
+    const float dt = su->t.dx * k;
     float r = mathf_recip_approx(q);
     float u_at = s * r * (float)UV_ONE;
     float v_at = t * r * (float)UV_ONE;
@@ -201,14 +249,14 @@ fill_divided(const setup_t* su, uint16_t* depth, uint16_t* color, int count, car
         const int n = mathi_min(su->divide, count - done);
         const float steps = (float)n;
         const float inverse = segment_inverse[n];
-        s += su->s.dx * steps;
-        t += su->t.dx * steps;
+        s += ds * steps;
+        t += dt * steps;
         q += su->q.dx * steps;
         r = mathf_recip_approx(q);
         const int32_t du = (int32_t)(((s * r * (float)UV_ONE) - u_at) * inverse);
         const int32_t dv = (int32_t)(((t * r * (float)UV_ONE) - v_at) * inverse);
         c->duv = pack_uv(du, 0) + (uint32_t)dv;
-        fill_with(depth + done, color + done, n, c, &su->sampler, x + done, y, false);
+        fill_with(depth + done, color + done, n, c, &sampler, x + done, y, false);
         u_at += (float)(du * n);
         v_at += (float)(dv * n);
         done += n;
@@ -279,12 +327,7 @@ pick_level(const setup_t* su, const r3d_texture_t* texture) {
     const float dvdx = su->t.dx;
     const float dudy = su->s.dy;
     const float dvdy = su->t.dy;
-    const float rho2 = mathf_max((dudx * dudx) + (dvdx * dvdx), (dudy * dudy) + (dvdy * dvdy));
-    int level = 0;
-    while (level + 1 < texture->levels && rho2 >= (float)(1U << (2 * (level + 1)))) {
-        level++;
-    }
-    return level;
+    return level_for(mathf_max((dudx * dudx) + (dvdx * dvdx), (dudy * dudy) + (dvdy * dvdy)), texture->levels);
 }
 
 /* A vertex colour's luminance, 0..255, as an 8.8 level, 255 the last. */
@@ -314,10 +357,10 @@ r3d_texture_segment_px(int divide_px, float affine_bend, float extent, float z_n
 /* Whether an INDEX4 triangle set up affine in `su` divides, and how far
  * apart, judged on `whole`, its unclipped box, so every window that draws a
  * part of it maps u and v alike. When it does, its u and v planes become
- * u q and v q, from the texture's tile holding vertex 0, so a far tile's
- * large u keeps its fraction through the products and divides; the level
- * stays the affine planes' pick. It sits at the flash tail, apart from
- * set_up(). */
+ * u q and v q in level-0 texels, from the texture's tile holding vertex 0,
+ * so a far tile's large u keeps its fraction through the products and
+ * divides; each span picks its own level. It sits at the flash tail, apart
+ * from set_up(). */
 static RENDER_TAIL_ATTR __attribute__((noinline)) void
 set_up_divide(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[CORNERS], const vec2f_t uv[CORNERS],
               const r3d_texture_t* texture, recti_t whole, setup_t* su) {
@@ -334,16 +377,14 @@ set_up_divide(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[
         su->divide = 0;
         return;
     }
-    /* The level's side over level 0's: the scale set_up() gave u and v. */
-    const float scale = (float)(su->sampler.mask + 1U) / (float)(1U << texture->size_log2);
     /* The start of the tile holding vertex 0. */
     const float tile = (float)(1U << texture->size_log2);
     const vec2f_t origin = {uv[0].x - mathf_repeat(uv[0].x, tile), uv[0].y - mathf_repeat(uv[0].y, tile)};
     float s_q[CORNERS];
     float t_q[CORNERS];
     for (int i = 0; i < CORNERS; i++) {
-        s_q[i] = (uv[i].x - origin.x) * scale * v[i]->z;
-        t_q[i] = (uv[i].y - origin.y) * scale * v[i]->z;
+        s_q[i] = (uv[i].x - origin.x) * v[i]->z;
+        t_q[i] = (uv[i].y - origin.y) * v[i]->z;
     }
     su->qx0 = whole.x;
     su->qy0 = whole.y;
@@ -374,10 +415,7 @@ set_up(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[CORNERS
     const float scale = 1.0F / (float)(1U << level);
     su->s = (r3d_span_plane_t){su->s.base * scale, su->s.dx * scale, su->s.dy * scale};
     su->t = (r3d_span_plane_t){su->t.base * scale, su->t.dx * scale, su->t.dy * scale};
-    const int side_log2 = texture->size_log2 - level;
-    const uint32_t mask = (1U << side_log2) - 1U;
-    su->sampler =
-        (sampler_t){texture->texels[level], mask, mask << side_log2, (uint32_t)(V_INT_SHIFT - side_log2), texture};
+    su->sampler = sampler_at(texture, level);
     su->level = r3d_span_plane_of(&f, light_level(v[0]), light_level(v[1]), light_level(v[2]));
     return true;
 }
