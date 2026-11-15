@@ -61,6 +61,9 @@ const stress_params_t stress_presets[STRESS_PRESET_COUNT] = {
                        true},
     [STRESS_CULL_SETUP] = {STRESS_SHAPE_CUBE, 1, 1, STRESS_LAYOUT_WALL, 10, STRESS_SURFACE_OF(CULL_SETUP),
                            STRESS_CAMERA, 6},
+    /* No copies: its own pack's baked ring, culled through the tree the bake tools built. */
+    [STRESS_BAKED_TREE] = {STRESS_SHAPE_PLANE, 1, 0, STRESS_LAYOUT_WALL, 100, STRESS_SURFACE_OF(BAKED_TREE),
+                           STRESS_CAMERA_SWEEP, 8, .scene = STRESS_RING_SCENE},
 };
 
 stress_params_t
