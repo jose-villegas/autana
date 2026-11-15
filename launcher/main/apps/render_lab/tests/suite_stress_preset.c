@@ -19,13 +19,13 @@
 #include "anim/anim_binding.h"
 #include "anim/anim_transform.h"
 #include "apps/render_lab/render_lab_view.h"
-#include "apps/render_lab/stress/stress_flap.h"
 #include "apps/render_lab/stress/stress_preset.h"
 #include "asset/asset_store.h"
 #include "collections/bits.h"
 #include "core/memory.h"
 #include "gfx/gfx.h"
 #include "image/pixel/rgb565.h"
+#include "kinematics/hinge/hinge.h"
 #include "lab/lab_view.h"
 #include "lab/test/lab_perf_quarters.h"
 #include "math/scalar/math_const.h"
@@ -725,7 +725,6 @@ test_foliage_mask_opens_as_mask1_and_keeps_about_0_7_of_a_card(void) {
 #define TEST_TOLERANCE      0.000001F
 #define TEST_WIDTH          96
 #define TEST_HEIGHT         96
-#define TEST_TIME_MS        37
 #define TEST_CAMERA_TIME_MS 1300
 #define TEST_BODY_SCALE     100.0F
 static uint16_t* pixels;
@@ -829,12 +828,18 @@ butterfly_tip(entity_t wing) {
                                                                             world.scale.z * TEST_TIP_Z}));
 }
 
+static void
+pose_wing(entity_t wing, const transformf_t* rest, vec3f_t axis, float angle) {
+    const hinge_t hinge = {.rest = *rest, .axis = axis, .min = -MATH_PI, .max = MATH_PI};
+    transform_set_local(wing, hinge_pose(&hinge, angle));
+}
+
 /* Keep per-angle transform temporaries out of the fixture's stack frame. */
 static __attribute__((noinline)) void
 check_butterfly_hinge_angle(entity_t body, entity_t left, entity_t right, const transformf_t* rests,
                             const transformf_t* body_before, float angle) {
-    transform_set_local(left, stress_flap_wing(rests[0], angle, STRESS_FLAP_LEFT));
-    transform_set_local(right, stress_flap_wing(rests[1], angle, STRESS_FLAP_RIGHT));
+    pose_wing(left, &rests[0], vec3f_forward(), angle);
+    pose_wing(right, &rests[1], vec3f_back(), angle);
     const vec3f_t l = butterfly_tip(left);
     const vec3f_t r = butterfly_tip(right);
     TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE, TEST_TIP_X * cosf(angle), l.x);
@@ -865,21 +870,6 @@ test_hinge_angles_preserve_body_and_raise_mirrored_tips(void) {
 }
 
 static void
-test_flap_time_and_copy_phase_are_deterministic(void) {
-    TEST_ASSERT_EQUAL_FLOAT(STRESS_FLAP_BIAS, stress_flap_angle(0, 0));
-    for (int copy = 0; copy < STRESS_BUTTERFLY_COPIES; copy++) {
-        const float at = stress_flap_angle(TEST_TIME_MS, copy);
-        const float expected = STRESS_FLAP_AMPLITUDE
-                                   * sinf(2.0F * MATH_PI * STRESS_FLAP_HZ * TEST_TIME_MS / STRESS_FLAP_MS_PER_SECOND
-                                          + STRESS_FLAP_PHASE_STEP * (float)copy)
-                               + STRESS_FLAP_BIAS;
-        TEST_ASSERT_EQUAL_FLOAT(expected, at);
-        TEST_ASSERT_EQUAL_FLOAT(at, stress_flap_angle(TEST_TIME_MS, copy));
-    }
-    TEST_ASSERT_NOT_EQUAL(stress_flap_angle(TEST_TIME_MS, 0), stress_flap_angle(TEST_TIME_MS, 1));
-}
-
-static void
 test_two_seeks_and_flap_renders_at_same_time_match_bytes(void) {
     const entity_t root = butterfly_fixture();
     for (int i = 1; i < STRESS_BUTTERFLY_COPIES; i++) {
@@ -904,9 +894,9 @@ test_two_seeks_and_flap_renders_at_same_time_match_bytes(void) {
     const scene_target_t target = {pixels, TEST_WIDTH, TEST_HEIGHT, NULL, NULL};
     for (int render = 0; render < 2; render++) {
         TEST_ASSERT_TRUE(animator_seek(camera, ANIMATOR_CURRENT, TEST_CAMERA_TIME_MS));
-        const float angle = stress_flap_angle(TEST_TIME_MS, 0);
-        transform_set_local(wings[0], stress_flap_wing(rests[0], angle, STRESS_FLAP_LEFT));
-        transform_set_local(wings[1], stress_flap_wing(rests[1], angle, STRESS_FLAP_RIGHT));
+        const float angle = TEST_ANGLE;
+        pose_wing(wings[0], &rests[0], vec3f_forward(), angle);
+        pose_wing(wings[1], &rests[1], vec3f_back(), angle);
         (void)scene_compose(0, 0, &target);
         if (render == 0) {
             memcpy(held, pixels, bytes);
@@ -926,7 +916,6 @@ run_stress_preset_suite(void) {
     RUN_TEST(test_wing_leading_edge_is_forward_in_body_frame);
     RUN_TEST(test_butterfly_pool_has_parented_wings_and_24_triangles);
     RUN_TEST(test_hinge_angles_preserve_body_and_raise_mirrored_tips);
-    RUN_TEST(test_flap_time_and_copy_phase_are_deterministic);
     RUN_TEST(test_two_seeks_and_flap_renders_at_same_time_match_bytes);
     RUN_TEST(test_culled_fraction_sweeps_from_visible_to_mostly_off_frustum);
     RUN_TEST(test_near_plane_sweeps_behind_and_clipped_triangles);

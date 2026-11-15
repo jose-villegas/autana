@@ -177,7 +177,8 @@ the presets vary the copies' geometry, layout and colour modes.
 
 The butterfly pack uses unlit material colours. Its wing outline traces
 miziziziz's CC0 texture<sup>[[126]](../../../../../docs/Citations.md#miziziziz-butterfly-2019)</sup>.
-`stress_flap` supplies harness rotations until Loupe's scene timeline binds them.
+`scene_stress.c` feeds prescribed sine angles to `hinge_pose`; when Loupe's
+scene timeline (E3) keys wing rotations, the presets play that instead.
 
 Regenerate only the butterfly images with:
 

@@ -10,11 +10,11 @@
 #include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/scene_baked.h"
-#include "apps/render_lab/stress/stress_flap.h"
 #include "core/tune.h"
 #include "draw/draw.h"
 #include "esp_log.h"
 #include "image/pixel/rgb565.h"
+#include "kinematics/hinge/hinge.h"
 #include "math/scalar/math_const.h"
 #include "profile/frame_cost.h"
 #include "render/context/render_context.h"
@@ -24,6 +24,15 @@
 #include "scene/scene.h"
 #include "scene/transform/transform.h"
 #include "ui/ui.h"
+
+#define STRESS_FLAP_HZ            4.0F
+#define STRESS_FLAP_AMPLITUDE     (55.0F * MATH_PI / 180.0F)
+#define STRESS_FLAP_BIAS          (10.0F * MATH_PI / 180.0F)
+#define STRESS_FLAP_PHASE_STEP    (MATH_PI * 0.618034F)
+#define STRESS_FLAP_MS_PER_SECOND 1000.0F
+#define STRESS_FLAP_STAGE_NAME    "stress.flap"
+
+#define STRESS_FLAP_LIMIT         (STRESS_FLAP_AMPLITUDE + STRESS_FLAP_BIAS)
 
 static const char* TAG = "stress";
 
@@ -39,7 +48,7 @@ static int pool;
 #define STRESS_WING_SIDES 2
 static const char wing_suffix[STRESS_WING_SIDES] = {'l', 'r'};
 static entity_t* wings;
-static transformf_t* wing_rests;
+static hinge_t* wing_hinges;
 static stress_buffers_t buffers[STRESS_MIX_LEVELS];
 static r3d_dynamic_mesh_t mesh[STRESS_MIX_LEVELS];
 static uint32_t wave_ms;
@@ -65,8 +74,8 @@ find_pool(void) {
         return slots != NULL;
     }
     wings = lab_scene_take(sizeof *wings * (size_t)pool * STRESS_WING_SIDES);
-    wing_rests = lab_scene_take(sizeof *wing_rests * (size_t)pool * STRESS_WING_SIDES);
-    if (wings == NULL || wing_rests == NULL) {
+    wing_hinges = lab_scene_take(sizeof *wing_hinges * (size_t)pool * STRESS_WING_SIDES);
+    if (wings == NULL || wing_hinges == NULL) {
         return false;
     }
     for (int i = 0; i < pool; i++) {
@@ -78,7 +87,10 @@ find_pool(void) {
             if (handle_is_none(wings[at]) || !handle_equal(entity_parent(wings[at]), slots[i])) {
                 return false;
             }
-            wing_rests[at] = transform_local(wings[at]);
+            wing_hinges[at] = (hinge_t){.rest = transform_local(wings[at]),
+                                        .axis = side == 0 ? vec3f_forward() : vec3f_back(),
+                                        .min = -STRESS_FLAP_LIMIT,
+                                        .max = STRESS_FLAP_LIMIT};
         }
     }
     return true;
@@ -284,18 +296,22 @@ scene_stress_exit(void) {
     slots = NULL;
     pool = 0;
     wings = NULL;
-    wing_rests = NULL;
+    wing_hinges = NULL;
 }
 
 static void
 flap(void) {
     FRAME_COST_BEGIN(flap_from);
     for (int i = 0; i < shown->copies; i++) {
-        const float angle = stress_flap_angle(wave_ms, i);
+        /* The sine stands in for Loupe's scene timeline (E3): when it keys wing rotations,
+         * the presets play that instead. */
+        const float seconds = (float)wave_ms / STRESS_FLAP_MS_PER_SECOND;
+        const float phase = STRESS_FLAP_PHASE_STEP * (float)i;
+        const float angle =
+            STRESS_FLAP_AMPLITUDE * sinf(2.0F * MATH_PI * STRESS_FLAP_HZ * seconds + phase) + STRESS_FLAP_BIAS;
         for (int side = 0; side < STRESS_WING_SIDES; side++) {
             const int at = i * STRESS_WING_SIDES + side;
-            transform_set_local(
-                wings[at], stress_flap_wing(wing_rests[at], angle, side == 0 ? STRESS_FLAP_LEFT : STRESS_FLAP_RIGHT));
+            transform_set_local(wings[at], hinge_pose(&wing_hinges[at], angle));
         }
     }
     FRAME_COST_END(flap_from, STRESS_FLAP_STAGE_NAME);
