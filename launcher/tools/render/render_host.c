@@ -291,7 +291,7 @@ refuse(int* exit_code, const char* argv0) {
 /* One open run owns the frame history, readback buffers and output streams. */
 static struct {
     const frame_provider_t* provider;
-    bool panel, crop, video_ok;
+    bool panel, crop, video_ok, failed;
     const char *out_path, *video_path, *record_path;
     FILE* record;
     int out_w, out_h;
@@ -432,6 +432,7 @@ render_host_open(const frame_provider_t* provider, int argc, char** argv, int* e
     host.frame.dt_ms = host.provider->dt_ms > 0 ? host.provider->dt_ms : DEFAULT_DT_MS;
     char* rest[64];
     int rest_count = 0;
+    bool frames_set = false;
     for (int i = 1; i < argc; i++) {
         const char* a = argv[i];
         const bool has_value = i + 1 < argc;
@@ -449,6 +450,7 @@ render_host_open(const frame_provider_t* provider, int argc, char** argv, int* e
             }
         } else if (strcmp(a, "--frames") == 0 && has_value) {
             host.frame.count = (int)strtol(argv[++i], NULL, 10);
+            frames_set = true;
         } else if (strcmp(a, "--dt") == 0 && has_value) {
             host.frame.dt_ms = (uint32_t)strtoul(argv[++i], NULL, 10);
         } else if (strcmp(a, "-o") == 0 && has_value) {
@@ -471,6 +473,10 @@ render_host_open(const frame_provider_t* provider, int argc, char** argv, int* e
     }
     if (host.provider->options != NULL ? !host.provider->options(rest_count, rest) : rest_count > 0) {
         return refuse(exit_code, argv[0]);
+    }
+
+    if (!frames_set && provider->frame_count != NULL) {
+        host.frame.count = provider->frame_count();
     }
 
     output_size(host.frame.quarter, host.panel, &host.out_w, &host.out_h);
@@ -617,6 +623,11 @@ render_host_step(uint32_t dt_ms, const input_t* input) {
     host.frame.elapsed_ms += dt_ms;
 }
 
+void
+render_host_fail(void) {
+    host.failed = true;
+}
+
 bool
 render_host_close(void) {
     const bool recorded = record_stop();
@@ -680,7 +691,7 @@ render_host_close(void) {
         fprintf(stderr, "%s: the frame watch had no room for %lu events, so it may have missed one\n",
                 host.provider->name, (unsigned long)verdict.dropped);
     }
-    return ok && recorded && frame_watch_verdict_clean(verdict);
+    return ok && recorded && !host.failed && frame_watch_verdict_clean(verdict);
 }
 
 /* Selecting a provider builds the CLI; without it this file is a library. */

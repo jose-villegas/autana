@@ -7,7 +7,7 @@ render writes it with `--record` ([Render harness](Render-Harness.md)).
 
 | Format | Version | Writer (C) | Reader (Python) |
 |---|---|---|---|
-| frame record stream | `FRAME_RECORD_VERSION` 1 | [`frame_record.c`](../../launcher/main/render/record/frame_record.c) | [`framerec.py`](../../launcher/tools/device/framerec.py) |
+| frame record stream | `FRAME_RECORD_VERSION` 2 | [`frame_record.c`](../../launcher/main/render/record/frame_record.c) | [`framerec.py`](../../launcher/tools/device/framerec.py) |
 
 The layout is [`frame_record_format.h`](../../launcher/main/render/record/frame_record_format.h).
 The stream is cut at the renderer's input, not at scene state and not at
@@ -37,20 +37,21 @@ title Record head, 6 bytes before every body
 | Part | At | Size |
 |---|---|---|
 | Stream header | 0 | one `HEADER` record |
-| Frames | after the header | per frame: `FRAME`, then its records until the next `FRAME` |
+| Frames | after the header | per frame: `FRAME`, then its `bytes` of records; a final `CHECK` may follow |
 
 | Type | Number | Body |
 |---|---|---|
 | `HEADER` | 1 | version, panel size, keyframe interval, build id |
 | `PACK` | 2 | a pack's slot, crc32 and name, before the first mesh that names it in a keyframe interval |
-| `FRAME` | 3 | index, dt, flags, instance and batch counts |
+| `FRAME` | 3 | index, dt, flags, instance and batch counts, following record bytes |
 | `VIEW` | 4 | the frame's `render_view_t`, as the engine holds it |
-| `CHOICE` | 5 | the resolution step, whether the frame was generated, the scale, the clear colour |
+| `CHOICE` | 5 | the resolution step, whether the frame was generated, the scale, the clear colour, drawn width and height |
 | `MESH` | 6 | a drawn mesh: kind, where its arrays live, model matrix |
-| `POSE` | 7 | a skinned mesh's palette: one `float[16]` per joint |
+| `POSE` | 7 | skin location, one `float[16]` per joint, then `u8[3]` per lit vertex |
 | `DYNMESH` | 8 | a mesh built this frame: then `float[3]` + `u8[3]` per vertex, `u16[3]` per triangle, and a textured mesh's `i16[2]` UV per vertex |
 | `TUNE` | 9 | a tunable's value: on a keyframe each off its initial, else each that changed |
 | `CHECK` | 10 | the crc32 of a keyframe's composed picture, carried by the next frame the sink takes |
+| `SETTINGS` | 11 | the context's `render_settings_t`, on keyframes and changes |
 
 ```mermaid
 ---
@@ -89,16 +90,17 @@ title PACK content, 37 bytes after the head
 config:
   themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #c7aaee !important; } g:nth-of-type(2) rect:nth-of-type(4) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(5) { fill: #93d6b0 !important; } .packetLabel { fill: #1b1b1b !important; }"
   packet:
-    bitsPerRow: 13
-    bitWidth: 60
+    bitsPerRow: 17
+    bitWidth: 50
 ---
 packet-beta
-title FRAME content, 13 bytes after the head
+title FRAME content, 17 bytes after the head
 0-3: "index"
 4-7: "dt_ms"
 8-8: "flags"
 9-10: "instances"
 11-12: "batches"
+13-16: "bytes"
 ```
 
 ```mermaid
@@ -110,11 +112,13 @@ config:
     bitWidth: 70
 ---
 packet-beta
-title CHOICE content, 6 bytes after the head
+title CHOICE content, 10 bytes after the head
 0-1: "step"
 2-2: "generated"
 3-3: "scale_percent"
 4-5: "clear"
+6-7: "width"
+8-9: "height"
 ```
 
 ```mermaid
@@ -122,21 +126,24 @@ title CHOICE content, 6 bytes after the head
 config:
   themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(4) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(5) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(6) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(7) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(8) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(9) { fill: #e3e3e3 !important; } g:nth-of-type(3) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(4) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(5) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(6) rect:nth-of-type(1) { fill: #e3e3e3 !important; } .packetLabel { fill: #1b1b1b !important; }"
   packet:
-    bitsPerRow: 19
+    bitsPerRow: 16
     bitWidth: 50
 ---
 packet-beta
-title MESH content, 83 bytes after the head: 19, then the model matrix
+title MESH content, 95 bytes after the head: 31, then the model matrix
 0-1: "index"
 2-2: "kind"
 3-3: "placed"
 4-4: "pack"
 5-8: "entry"
-9-9: "pack"
-10-13: "entry"
-14-14: "pack"
-15-18: "entry"
-19-82: "model"
+9-12: "offset"
+13-13: "pack"
+14-17: "entry"
+18-21: "offset"
+22-22: "pack"
+23-26: "entry"
+27-30: "offset"
+31-94: "model"
 ```
 
 ```mermaid
@@ -148,16 +155,31 @@ config:
     bitWidth: 50
 ---
 packet-beta
-title POSE and DYNMESH content heads, 4 and 17 bytes after the record head
+title POSE content head, 15 bytes after the record head
 0-1: "index"
 2-3: "joints"
-4-5: "index"
-6-6: "fitted"
-7-7: "double_sided"
-8-11: "position_scale"
-12-15: "vertices"
-16-19: "triangles"
-20-20: "textured"
+4-5: "lit"
+6-6: "pack"
+7-10: "entry"
+11-14: "offset"
+```
+
+```mermaid
+---
+config:
+  packet:
+    bitsPerRow: 8
+    bitWidth: 50
+---
+packet-beta
+title DYNMESH content head, 17 bytes after the record head
+0-1: "index"
+2-2: "fitted"
+3-3: "double_sided"
+4-7: "position_scale"
+8-11: "vertices"
+12-15: "triangles"
+16-16: "textured"
 ```
 
 ```mermaid
@@ -178,10 +200,14 @@ title TUNE content, 36 bytes, and CHECK content, 12 bytes, after the head
 44-47: "crc32"
 ```
 
-A `MESH` names three places, each a pack slot and entry: its positions, its
+A `MESH` names three places, each a pack slot, entry and byte offset: its positions, its
 colours, and for a batch the copies' places. A mesh the app made has
 `FRAME_RECORD_NO_PACK` and `FRAME_RECORD_NO_ENTRY` there; its data rides in
 the same frame's `POSE` or `DYNMESH`.
+
+`POSE.skin` names the skin entry. Its palette follows the head, then `lit`
+vertex colours when the posed mesh owns its lighting. `SETTINGS` and `VIEW`
+carry the engine structs; writer and reader must share their layout.
 
 | Kind | Number | The mesh |
 |---|---|---|

@@ -439,7 +439,13 @@ rewinding output files or the wall clock. Timed choices (frame generation
 and predicted resolution) replay only as exactly as their clock.
 Byte comparisons use frame generation off and a fixed or declared size.
 
-Each draw receives a `provider_frame_t`. Optional `path_ms` and `seek` hooks
+`stream_render.sh --stream FILE --check -o out.bmp` redraws a frame recording
+with packs from `AUTANA_ASSET_DIR`. It reports each drawn CHECK and fails on
+a differing picture. Without `--frames`, it draws the whole recorded stream.
+The `autana::stream_provider` library also accepts live bytes through `stream_feed()`.
+
+Each draw receives a `provider_frame_t`. The optional `frame_count` hook
+sets the default count after provider options. Optional `path_ms` and `seek` hooks
 expose a provider's path duration and camera cuts. The scene-file provider
 seeks its animators and clears render history at a cut. An optional
 `render_context` hook returns the context a provider draws through, so a

@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.21)
+project(stream_feed_tests LANGUAGES C)
+add_subdirectory(../.. render)
+add_executable(stream_feed_probe feed_probe.c)
+target_link_libraries(stream_feed_probe PRIVATE autana::stream_provider)
