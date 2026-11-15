@@ -6,7 +6,13 @@
 #include "simd/simd.h"
 
 #if SIMD_PIE
+#include "image/pixel/rgb565_layout.h"
 #include "simd/pie_asm.h"
+
+/* How far down red moves to sit in a lane beside blue, the rounding a
+ * quarter adds before its divide by four. */
+#define QUARTER_RED_DOWN 3
+#define QUARTER_ROUND    2
 
 /* clang-format off */
 /* The PIE conventions both kernels follow sit beside their first use in
@@ -15,12 +21,12 @@
 .section .rodata.gfx_pie_constants, "a"
 .align 16
 gfx_pie_lane_bits: .short 1, 2, 4, 8, 16, 32, 64, 128
-gfx_pie_red_lane: .short 0x1F00 /* red, shifted into its lane beside blue */
-gfx_pie_blue: .short 0x001F
-gfx_pie_rb_round: .short 0x0202
-gfx_pie_green: .short 0x07E0
-gfx_pie_green_round: .short 0x0040
-gfx_pie_red_out: .short 0xF800
+gfx_pie_red_lane: .short RGB565_RED_MASK >> QUARTER_RED_DOWN /* red, in its lane beside blue */
+gfx_pie_blue: .short RGB565_BLUE_MASK
+gfx_pie_rb_round: .short (QUARTER_ROUND << (RGB565_RED_AT - QUARTER_RED_DOWN)) | (QUARTER_ROUND << RGB565_BLUE_AT)
+gfx_pie_green: .short RGB565_GREEN_MASK
+gfx_pie_green_round: .short QUARTER_ROUND << RGB565_GREEN_AT
+gfx_pie_red_out: .short RGB565_RED_MASK
 /* blend becomes mine where mask is set (Per-lane choice, below). */
 .macro pie_pick blend, mine, mask, spare
     ee.xorq \spare, \blend, \mine
@@ -51,17 +57,12 @@ gfx_pie_red_out: .short 0xF800
     ee.orq \rb, \rb, \other
 .endm
 
-.section .text.gfx_quarter_select, "ax", @progbits
-.align 4
-.global gfx_quarter_select
-.type gfx_quarter_select, @function
 /* Pointers to the constants are set once, before a zero-overhead loop; blue
  * and green stay in q6 and q7, the rest are broadcast each step. The green
  * sum runs between the red-blue steps, so neither waits on its own last
  * result. a2 mine, a3 other, a4 keep, a5 out, a6 steps; a7 to a12
  * constants. */
-gfx_quarter_select:
-    entry a1, 16 /* a leaf: nothing on the stack */
+SIMD_PIE_FUNC gfx_quarter_select
     movi a7, gfx_pie_red_lane
     movi a8, gfx_pie_rb_round
     movi a9, gfx_pie_green_round
@@ -89,7 +90,7 @@ gfx_quarter_select:
  * between a pair of 16-bit lanes; every shift is followed by a mask that
  * drops them. EE.VSR.32 is arithmetic, and the mask drops the sign fill
  * too. */
-    ssai 3
+    ssai QUARTER_RED_DOWN
     ee.vsr.32 q5, q1
     ee.vadds.s16 q3, q3, q2
     ee.andq q5, q5, q4
@@ -130,19 +131,14 @@ gfx_quarter_select:
     SIMD_PIE_SWAP16 q2, q3 /* q3 big-endian */
     ee.vst.128.ip q3, a5, 16
 2:
-    retw.n
-.size gfx_quarter_select, . - gfx_quarter_select
+SIMD_PIE_END gfx_quarter_select
 
 /* gfx_quarter_spread works out 3 mine + rounding once for both sides, blends
  * the left, then the right, swaps the pair back to big-endian at once, selects
  * each against mine, and EE.VZIP.16 lays the two out as the panel row: a2
  * mine, a3 left, a4 right, a5 keeps, a6 out, a7 steps; a8 to a14 constants
  * and the right keeps. */
-.section .text.gfx_quarter_spread, "ax", @progbits
-.global gfx_quarter_spread
-.type gfx_quarter_spread, @function
-gfx_quarter_spread:
-    entry a1, 16
+SIMD_PIE_FUNC gfx_quarter_spread
     movi a8, gfx_pie_red_lane
     movi a9, gfx_pie_rb_round
     movi a10, gfx_pie_green_round
@@ -158,7 +154,7 @@ gfx_quarter_spread:
     ee.vld.128.ip q1, a3, 16
     SIMD_PIE_SWAP16 q0, q1 /* q1 mine, q0 left, native */
     ee.vldbc.16 q4, a8
-    ssai 3
+    ssai QUARTER_RED_DOWN
     ee.vsr.32 q5, q1
     ee.andq q2, q1, q7
     ee.andq q5, q5, q4
@@ -176,7 +172,7 @@ gfx_quarter_spread:
     ee.vld.128.ip q0, a4, 16
     SIMD_PIE_SWAP16 q0, q1 /* q1 right, native; q0 spent */
     ee.vldbc.16 q4, a8
-    ssai 3
+    ssai QUARTER_RED_DOWN
     pie_spread_side q1, q0, q2 /* the right blend, native */
     SIMD_PIE_SWAP16 q5, q0 /* q0 left, q5 right, big-endian */
     ee.vld.128.ip q1, a2, 16
@@ -193,7 +189,6 @@ gfx_quarter_spread:
     ee.vst.128.ip q0, a6, 16
     ee.vst.128.ip q5, a6, 16
 2:
-    retw.n
-.size gfx_quarter_spread, . - gfx_quarter_spread
+SIMD_PIE_END gfx_quarter_spread
 /* clang-format on */
 #endif

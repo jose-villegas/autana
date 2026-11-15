@@ -3,12 +3,15 @@
 
 #include <stdint.h>
 
+#include "image/pixel/rgb565_layout.h"
+
 /* RGB565 with its two bytes swapped (high byte first in memory); rgb565_swap() converts to native. */
 typedef uint16_t rgb565be_t;
 
 /* 0xRRGGBB to RGB565. */
 #define RGB565(rgb)                                                                                                    \
-    ((((uint32_t)(rgb) >> 8) & 0xF800u) | (((uint32_t)(rgb) >> 5) & 0x07E0u) | (((uint32_t)(rgb) >> 3) & 0x001Fu))
+    ((((uint32_t)(rgb) >> 8) & RGB565_RED_MASK) | (((uint32_t)(rgb) >> 5) & RGB565_GREEN_MASK)                         \
+     | (((uint32_t)(rgb) >> 3) & RGB565_BLUE_MASK))
 
 /* Usable in a constant expression, so colour tables built from it live in flash, not RAM. */
 #define RGB565BE(rgb) ((rgb565be_t)((RGB565(rgb) >> 8) | (RGB565(rgb) << 8)))
@@ -22,25 +25,23 @@ rgb565_swap(uint16_t c) {
 /* Native RGB565 channels: swap a high-byte-first colour before extracting them. */
 static inline unsigned
 rgb565_r5(uint16_t native) {
-    return (native >> 11) & 0x1Fu;
+    return (native >> RGB565_RED_AT) & RGB565_C5_MAX;
 }
-
-#define RGB565_G6_MAX 0x3Fu
 
 static inline unsigned
 rgb565_g6(uint16_t native) {
-    return (native >> 5) & RGB565_G6_MAX;
+    return (native >> RGB565_GREEN_AT) & RGB565_G6_MAX;
 }
 
 static inline unsigned
 rgb565_b5(uint16_t native) {
-    return native & 0x1Fu;
+    return (native >> RGB565_BLUE_AT) & RGB565_C5_MAX;
 }
 
 /* Pack already-quantised channels (5, 6, 5 bits) in high-byte-first order. */
 static inline rgb565be_t
 rgb565be_pack(uint8_t r5, uint8_t g6, uint8_t b5) {
-    return rgb565_swap((uint16_t)(((uint16_t)r5 << 11) | ((uint16_t)g6 << 5) | b5));
+    return rgb565_swap((uint16_t)(((uint16_t)r5 << RGB565_RED_AT) | ((uint16_t)g6 << RGB565_GREEN_AT) | b5));
 }
 
 /* Channel separation leaves five multiplier bits without cross-channel carries. */
@@ -185,15 +186,15 @@ rgb565be_add(rgb565be_t a, rgb565be_t b) {
     uint16_t g = (uint16_t)(rgb565_g6(na) + rgb565_g6(nb));
     uint16_t bl = (uint16_t)(rgb565_b5(na) + rgb565_b5(nb));
 
-    if (r > 0x1Fu) {
-        r = 0x1Fu;
+    if (r > RGB565_C5_MAX) {
+        r = RGB565_C5_MAX;
     }
-    if (g > 0x3Fu) {
-        g = 0x3Fu;
+    if (g > RGB565_G6_MAX) {
+        g = RGB565_G6_MAX;
     }
-    if (bl > 0x1Fu) {
-        bl = 0x1Fu;
+    if (bl > RGB565_C5_MAX) {
+        bl = RGB565_C5_MAX;
     }
 
-    return rgb565_swap((uint16_t)((r << 11) | (g << 5) | bl));
+    return rgb565be_pack((uint8_t)r, (uint8_t)g, (uint8_t)bl);
 }

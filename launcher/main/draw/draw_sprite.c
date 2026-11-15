@@ -13,6 +13,7 @@
 #include "image/pixel/rgb565.h"
 #include "math/linear/affine2x.h"
 #include "math/scalar/mathi.h"
+#include "simd/fill.h"
 
 #define SPRITE_QUARTER_MASK 3
 #define SPRITE_COVER_FULL   UINT8_MAX
@@ -117,20 +118,44 @@ slice_axis(int out_len, int src_len, int lo, int hi, int scale) {
     return axis;
 }
 
-/* The source pixel along the axis for output pixel `at`: corners `scale`
- * output pixels to a source pixel, the centre stretched by nearest pixel
- * centre. */
-static int
-slice_source(const slice_axis_t* axis, int at) {
+/* The slices of an axis, in output order; SLICE_NONE is no slice yet. */
+typedef enum { SLICE_NONE = -1, SLICE_LO, SLICE_CENTRE, SLICE_HI } slice_t;
+
+static slice_t
+slice_of(const slice_axis_t* axis, int at) {
     if (at < axis->out_lo) {
+        return SLICE_LO;
+    }
+    return at < axis->out_len - axis->out_hi ? SLICE_CENTRE : SLICE_HI;
+}
+
+/* Output pixel `at` along the axis, counted from its far end when the turn
+ * mirrors it. */
+static int
+axis_at(const slice_axis_t* axis, bool mirror, int at) {
+    return mirror ? axis->out_len - 1 - at : at;
+}
+
+/* The source pixel for output pixel `at` in `slice`: corners `scale` output
+ * pixels to a source pixel, the centre stretched by nearest pixel centre. */
+static int
+slice_source(const slice_axis_t* axis, slice_t slice, int at) {
+    if (slice == SLICE_LO) {
         return at / axis->scale;
     }
-    if (at >= axis->out_len - axis->out_hi) {
+    if (slice == SLICE_HI) {
         return axis->src_len - 1 - ((axis->out_len - 1 - at) / axis->scale);
     }
     const int centre_src = axis->src_len - axis->lo - axis->hi;
     const int centre_out = axis->out_len - axis->out_lo - axis->out_hi;
     return axis->lo + (((2 * (at - axis->out_lo)) + 1) * centre_src / (2 * centre_out));
+}
+
+/* The source pixel along `axis` for output pixel `at`, mirrored or not. */
+static int
+axis_source(const slice_axis_t* axis, bool mirror, int at) {
+    const int along = axis_at(axis, mirror, at);
+    return slice_source(axis, slice_of(axis, along), along);
 }
 
 /* `count` panel pixels that all show one source pixel: a stretched edge
@@ -141,9 +166,7 @@ blend_run(gfx_color_t* dst, int count, gfx_color_t pixel, uint8_t cover) {
         return;
     }
     if (cover == SPRITE_COVER_FULL) {
-        for (int i = 0; i < count; i++) {
-            dst[i] = pixel;
-        }
+        simd_fill_u16(dst, pixel, (size_t)count);
     } else if (count == 1) {
         dst[0] = rgb565be_mix(dst[0], pixel, cover);
     } else {
@@ -152,46 +175,28 @@ blend_run(gfx_color_t* dst, int count, gfx_color_t pixel, uint8_t cover) {
     }
 }
 
-/* The output pixel's source along `axis`, counted from its far end when the
- * turn mirrors that axis. */
-static int
-axis_source(const slice_axis_t* axis, bool mirror, int at) {
-    return slice_source(axis, mirror ? axis->out_len - 1 - at : at);
-}
-
-/* The slices of an axis, in output order. */
-typedef enum { SLICE_LO, SLICE_CENTRE, SLICE_HI } slice_t;
-
-static slice_t
-slice_of(const slice_axis_t* axis, int at) {
-    if (at < axis->out_lo) {
-        return SLICE_LO;
-    }
-    return at < axis->out_len - axis->out_hi ? SLICE_CENTRE : SLICE_HI;
-}
-
-/* Output pixels from `at` to the end of its border slice, walking up the
+/* Output pixels from `at` to the end of border slice `slice`, walking up the
  * axis, or down it when `down`. */
 static int
-border_left(const slice_axis_t* axis, int at, bool down) {
+border_left(const slice_axis_t* axis, slice_t slice, int at, bool down) {
     if (down) {
-        return at < axis->out_lo ? at + 1 : at - (axis->out_len - axis->out_hi) + 1;
+        return slice == SLICE_LO ? at + 1 : at - (axis->out_len - axis->out_hi) + 1;
     }
-    return (at < axis->out_lo ? axis->out_lo : axis->out_len) - at;
+    return (slice == SLICE_LO ? axis->out_lo : axis->out_len) - at;
 }
 
-/* How many output pixels from `at` on show the source pixel `at` shows,
- * walking up the axis, or down it when `down`: `scale` a border pixel, or a
- * stretched centre pixel's span, ending where its slice does. */
+/* How many output pixels from `at` on, in `slice`, show the source pixel `at`
+ * shows, walking up the axis, or down it when `down`: `scale` a border pixel,
+ * or a stretched centre pixel's span, ending where its slice does. */
 static int
-slice_run(const slice_axis_t* axis, int at, bool down) {
+slice_run(const slice_axis_t* axis, slice_t slice, int at, bool down) {
     const int centre_at = axis->out_lo;
     const int hi_at = axis->out_len - axis->out_hi;
-    if (at < centre_at) {
+    if (slice == SLICE_LO) {
         const int first = (at / axis->scale) * axis->scale;
         return down ? at - first + 1 : mathi_min(first + axis->scale, centre_at) - at;
     }
-    if (at >= hi_at) {
+    if (slice == SLICE_HI) {
         const int from_end = axis->out_len - 1 - at;
         const int last = axis->out_len - 1 - ((from_end / axis->scale) * axis->scale);
         return down ? at - mathi_max(last - axis->scale + 1, hi_at) + 1 : last - at + 1;
@@ -212,7 +217,7 @@ slice_run(const slice_axis_t* axis, int at, bool down) {
 /* A walk along an axis: the slice of its last run and that run's source
  * pixel. */
 typedef struct {
-    int slice;
+    slice_t slice;
     int src;
 } axis_walk_t;
 
@@ -223,13 +228,13 @@ typedef struct {
 static inline __attribute__((always_inline)) int
 walk_run(axis_walk_t* walk, const slice_axis_t* axis, int at, bool down) {
     const slice_t in = slice_of(axis, at);
-    if ((int)in == walk->slice && in != SLICE_CENTRE) {
+    if (in == walk->slice && in != SLICE_CENTRE) {
         walk->src += down ? -1 : 1;
-        return mathi_min(axis->scale, border_left(axis, at, down));
+        return mathi_min(axis->scale, border_left(axis, in, at, down));
     }
-    walk->slice = (int)in;
-    walk->src = slice_source(axis, at);
-    return slice_run(axis, at, down);
+    walk->slice = in;
+    walk->src = slice_source(axis, in, at);
+    return slice_run(axis, in, at, down);
 }
 
 /* One panel row's pixels [x0, x1) of a sprite whose column axis is `axis`
@@ -246,9 +251,9 @@ blend_span(gfx_color_t* row, int x0, int x1, const slice_axis_t* axis, bool mirr
     int start = x0;
     gfx_color_t pixel = 0;
     uint8_t cover = 0;
-    axis_walk_t walk = {-1, 0};
+    axis_walk_t walk = {SLICE_NONE, 0};
     for (int col = x0; col < x1;) {
-        const int at = mirror ? axis->out_len - 1 - (col - origin) : col - origin;
+        const int at = axis_at(axis, mirror, col - origin);
         const int count = mathi_min(walk_run(&walk, axis, at, mirror), x1 - col);
         const size_t source = base + ((size_t)walk.src * step);
         const gfx_color_t next = color[source];

@@ -6,6 +6,8 @@
  */
 #pragma once
 
+#include "image/pixel/rgb565_layout.h"
+
 /* Lanes: a Q register holds 8 pixels as 16-bit lanes, native after the byte
  * swap. Each channel is masked where it lies, never shifted down:
  *
@@ -19,13 +21,6 @@
  * rgb565_div255(sum - 1) for every sum a blend makes (at most 63 * 255 + 128).
  * Shifting by 16 - at leaves the quotient at `at`, the fraction below it
  * dropped by the mask. Every sum stays below 0x8000: no saturation. */
-/* Where each channel lies in a native RGB565 pixel. */
-#define BLEND_RED_MASK       0xF800u
-#define BLEND_GREEN_MASK     0x07E0u
-#define BLEND_BLUE_MASK      0x001Fu
-#define BLEND_RED_AT         11
-#define BLEND_GREEN_AT       5
-#define BLEND_BLUE_AT        0
 #define BLEND_DIV_SCALE      257u /* 2^16 / 255, rounded down: (sum * 257) >> 16 */
 #define BLEND_DIV_SHIFT      16
 #define BLEND_DIV_ROUND      1u /* rgb565_div255()'s + 1, folded into each add */

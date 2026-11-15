@@ -20,6 +20,7 @@
 #include <stdint.h>
 
 #include "build/build_variant.h"
+#include "collections/bits.h"
 #include "gfx/present/gfx_present.h"
 #include "math/scalar/mathi.h"
 
@@ -113,7 +114,7 @@ mark_leaves(int x0, int y0, int x1, int y1) {
     const int col_last = (x1 - 1) / LEAF_W;
     const int row_first = y0 / LEAF_H;
     const int row_last = (y1 - 1) / LEAF_H;
-    const uint16_t bits = (uint16_t)(((1u << (col_last - col_first + 1)) - 1u) << col_first);
+    const uint16_t bits = (uint16_t)bits32_run((unsigned)col_first, (unsigned)(col_last - col_first + 1));
 
     for (int row = row_first; row <= row_last; row++) {
         leaf_dirty[row] |= bits;
@@ -341,7 +342,7 @@ dirty_region_dirty(int x, int y, int w, int h) {
 
             const int lx0 = ((x0 > col * COL_WIDTH) ? x0 : col * COL_WIDTH) / LEAF_W;
             const int lx1 = (((x1 < (col + 1) * COL_WIDTH) ? x1 : (col + 1) * COL_WIDTH) - 1) / LEAF_W;
-            const uint16_t mask = (uint16_t)(((1u << (lx1 - lx0 + 1)) - 1u) << lx0);
+            const uint16_t mask = (uint16_t)bits32_run((unsigned)lx0, (unsigned)(lx1 - lx0 + 1));
             const int ly0 = ((y0 > row * STRIP_HEIGHT) ? y0 : row * STRIP_HEIGHT) / LEAF_H;
             const int ly1 = (((y1 < (row + 1) * STRIP_HEIGHT) ? y1 : (row + 1) * STRIP_HEIGHT) - 1) / LEAF_H;
             for (int leaf_row = ly0; leaf_row <= ly1; leaf_row++) {
@@ -385,7 +386,7 @@ static inline uint16_t
 leaf_columns_of(recti_t area) {
     const int first = area.x / LEAF_W;
     const int last = (recti_right(area) - 1) / LEAF_W;
-    return (uint16_t)(((1u << (last - first + 1)) - 1u) << first);
+    return (uint16_t)bits32_run((unsigned)first, (unsigned)(last - first + 1));
 }
 
 static inline void
@@ -417,7 +418,7 @@ dirty_leaves_take(gfx_dirty_leaves_t* left, recti_t area, recti_t* out) {
         }
         const int first = __builtin_ctz(bits);
         const int count = __builtin_ctz(~(bits >> first));
-        const uint16_t run = (uint16_t)(((1u << count) - 1u) << first);
+        const uint16_t run = (uint16_t)bits32_run((unsigned)first, (unsigned)count);
         int bottom = top;
         while (bottom < last && (left->rows[bottom + 1] & run) == run) {
             bottom++;

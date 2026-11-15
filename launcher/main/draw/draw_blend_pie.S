@@ -27,10 +27,10 @@
 
 /* Eight native pixels of `in` blended into `out`; `spare` is spent. */
 .macro blend_pixels out, in, spare
-    blend_channel \out, \in, a8, a11, BLEND_RED_AT
-    blend_channel \spare, \in, a9, a12, BLEND_GREEN_AT
+    blend_channel \out, \in, a8, a11, RGB565_RED_AT
+    blend_channel \spare, \in, a9, a12, RGB565_GREEN_AT
     ee.orq \out, \out, \spare
-    blend_channel \spare, \in, a10, a13, BLEND_BLUE_AT
+    blend_channel \spare, \in, a10, a13, RGB565_BLUE_AT
     ee.orq \out, \out, \spare
 .endm
 
