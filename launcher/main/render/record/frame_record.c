@@ -499,7 +499,7 @@ record_frame_head(const render_context_t* context, const raster_t* raster, uint3
     if (rec->checked) {
         record(FRAME_RECORD_CHECK, &rec->check, sizeof rec->check);
     }
-    const render_settings_t* settings = render_context_settings(context);
+    const render_settings_t* settings = &context->settings;
     if (keyframe || memcmp(settings, &rec->settings, sizeof *settings) != 0) {
         record(FRAME_RECORD_SETTINGS, settings, sizeof *settings);
         rec->settings = *settings;
