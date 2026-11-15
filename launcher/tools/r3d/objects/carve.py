@@ -6,7 +6,9 @@ alpha-tested material (foliage, chains, glass panes) stays in the rest: a carved
 does not keep its cards, while the rest is pruned against the reference. That holds for free repeats only: an
 import rule that names such an object still carves it, as its author asked. A rule that pins `triangles` keeps that
 budget; every other shape's comes from detail.py: its near level for the camera's closest view, stepped down by
-the measured balance while the stored copy prototypes would exceed their room.
+the measured balance while the stored copy prototypes would exceed their room. A renderer whose visibility follows
+the camera path counts a view only where it looks at a copy. A derived shape's coincident vertices are welded first, so
+the seams its source splits at (texture coordinates, materials) do not hold its level back.
 """
 
 import sys
@@ -19,6 +21,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "device"))
 
 from board import PANEL_HEIGHT, PANEL_WIDTH  # noqa: E402
+from r3d.geometry import weld_map  # noqa: E402
 from r3d.mesh_source import camera_path_poses  # noqa: E402
 from r3d.objects import detail  # noqa: E402
 from r3d.objects.contact import contact_pairs  # noqa: E402
@@ -54,9 +57,11 @@ def free_repeats(pos, tri_v, tri_m, tri_o, object_names, selected, position_scal
 
 
 def views(scene, renderer):
-    """(eyes, focal, near): the camera path's eye positions, sampled at the fit's coverage spacing or else the
-    renderer's camera_path visibility spacing, and the panel's focal length. A scene without a camera path, or a
-    renderer that samples none (its camera may stand anywhere in a region), has no eyes."""
+    """(eyes, focal, near, sight): the camera path's eye positions, sampled at the fit's coverage spacing or else
+    the renderer's camera_path visibility spacing, and the panel's focal length. A scene without a camera path, or a
+    renderer that samples none (its camera may stand anywhere in a region), has no eyes. When the renderer's
+    visibility follows the camera path, sight is each eye's forward and the half-angle tangent of a view round the
+    panel's corners held either way up (detail.in_view); otherwise None."""
     camera = getattr(getattr(scene, "camera", None), "component", None)
     if camera is None:
         from r3d.import_settings import SettingsError
@@ -65,13 +70,16 @@ def views(scene, renderer):
     every_ms = fit.coverage_every_ms if fit is not None else getattr(renderer.visibility, "every_ms", None)
     if camera.path is None or every_ms is None:
         lens = camera.half_fov_short_tan
-        return np.zeros((0, 3)), focal_px(PANEL_WIDTH, PANEL_HEIGHT, lens), camera.near_z
+        return np.zeros((0, 3)), focal_px(PANEL_WIDTH, PANEL_HEIGHT, lens), camera.near_z, None
     width, height, lens, near, poses = camera_path_poses(
         scene, SimpleNamespace(size=(PANEL_WIDTH, PANEL_HEIGHT), every_ms=every_ms), either_way_up=False)
-    return np.array([pose[:3] for pose in poses]), focal_px(width, height, lens), near
+    sight = None
+    if getattr(getattr(renderer, "visibility", None), "source", None) == "camera_path":
+        sight = np.array([pose[3:6] for pose in poses]), lens * np.hypot(width, height) / min(width, height)
+    return np.array([pose[:3] for pose in poses]), focal_px(width, height, lens), near, sight
 
 
-def derived_budgets(pos, tri_v, tri_m, tri_o, selected, eyes, focal, near):
+def derived_budgets(pos, tri_v, tri_m, tri_o, selected, eyes, focal, near, sight=None):
     """Near budgets and ladders per derived shape, grouped by rule as the carve groups them.
     The measured carve chooses rungs within the copies' room after stand-in growth."""
     names = [str(i) for i in range(int(tri_o.max()) + 1)]
@@ -87,10 +95,11 @@ def derived_budgets(pos, tri_v, tri_m, tri_o, selected, eyes, focal, near):
             members = [int(instance.object_name) for instance in shape.instances]
             used = [np.unique(tri_v[tri_o == obj]) for obj in members]
             distance = detail.nearest_distance([pos[u].min(axis=0) for u in used], [pos[u].max(axis=0) for u in used],
-                                               eyes, near)
-            shapes.append(dict(objects=members, distance=distance, positions=shape.positions,
-                               triangles=shape.triangles,
-                               ladder=detail.ladder(shape.positions, shape.triangles, distance, focal)))
+                                               eyes, near, sight)
+            first, inverse = weld_map(shape.positions)
+            positions, triangles = shape.positions[first], inverse[shape.triangles]
+            shapes.append(dict(objects=members, distance=distance, positions=positions, triangles=triangles,
+                               ladder=detail.ladder(positions, triangles, distance, focal)))
     picks = [0] * len(shapes)
     budgets = {}
     for shape, pick in zip(shapes, picks):

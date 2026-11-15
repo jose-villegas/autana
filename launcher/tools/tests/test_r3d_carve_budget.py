@@ -230,14 +230,14 @@ class CarvedReportTests(unittest.TestCase):
         np.testing.assert_allclose(np.sort(mirrored['baked_positions'], axis=0), np.sort(positions[6:9], axis=0),
                                    atol=1e-2)
         with tempfile.TemporaryDirectory() as directory, \
-                patch('r3d.objects.carve.views', return_value=([eye], FOCAL, NEAR)):
+                patch('r3d.objects.carve.views', return_value=([eye], FOCAL, NEAR, None)):
             out = pathlib.Path(directory)
             (out / 'start.bundle').write_bytes(blob)
             objects_report.write_carved(None, job, src, out / 'start.bundle', out)
             table = (out / 'carved.md').read_text().splitlines()
             self.assertTrue((out / 'carved.png').stat().st_size)
-        self.assertIn('| a | 2 | 1 | 1 | 2 | 0% | 10 |', table)
-        self.assertIn('| c | 1 | 1 | 1 | 1 | 100% | 22 |', table)
+        self.assertIn('| a | 2 | 1 | 1 | 2 | 0% | 10 | 10 |', table)
+        self.assertIn('| c | 1 | 1 | 1 | 1 | 100% | 22 | 22 |', table)
 
 
 class SourcePlacementTests(unittest.TestCase):
@@ -267,7 +267,7 @@ class MeasuredBalanceTests(unittest.TestCase):
         rule = {'match': {'object': 'ball_*'}, 'seam': 'free'}
         ladder = [detail.Rung(count, detail.TOLERANCE_PX * 2 ** i) for i, count in enumerate(counts)]
         renderer = NS(variant=NS(triangles=1, ceiling=room + 1), fit=NS(budget=1) if fitted else None)
-        with patch.object(mesh_import, 'views', return_value=([], FOCAL, NEAR)), \
+        with patch.object(mesh_import, 'views', return_value=([], FOCAL, NEAR, None)), \
                 patch.object(detail, 'ladder', return_value=ladder):
             selected, derived = mesh_import.carve_selection(NS(p=p, tri_o=o, textures=[], object_names=names), t, m,
                 {0: rule, 1: rule}, NS(position_scale=4), NS(renderer=renderer), object())

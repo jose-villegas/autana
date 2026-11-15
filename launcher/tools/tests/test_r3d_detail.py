@@ -48,6 +48,24 @@ class NearestDistanceTest(unittest.TestCase):
         self.assertEqual(detail.nearest_distance(lows, highs, [[0.5, 0.5, 0.5]], NEAR), NEAR)
         self.assertEqual(detail.nearest_distance(lows, highs, [], NEAR), NEAR)
 
+    def test_with_sight_an_eye_counts_only_for_the_copies_it_looks_at(self):
+        lows, highs = [[0, 0, 0]], [[1, 1, 1]]
+        # The near eye looks away from the box, the far one at it.
+        eyes, forwards = [[3, 0.5, 0.5], [20, 0.5, 0.5]], np.array([[1, 0, 0], [-1, 0, 0]])
+        self.assertAlmostEqual(detail.nearest_distance(lows, highs, eyes, NEAR, (forwards, 0.5)), 19.0)
+        self.assertAlmostEqual(detail.nearest_distance(lows, highs, eyes, NEAR), 2.0)
+
+    def test_a_copy_no_eye_looks_at_counts_every_eye(self):
+        lows, highs = [[0, 0, 0]], [[1, 1, 1]]
+        eyes, forwards = [[3, 0.5, 0.5], [20, 0.5, 0.5]], np.array([[1, 0, 0], [1, 0, 0]])
+        self.assertAlmostEqual(detail.nearest_distance(lows, highs, eyes, NEAR, (forwards, 0.5)), 2.0)
+
+    def test_a_copy_is_in_view_while_its_bounding_sphere_reaches_into_the_cone(self):
+        # Half-angle atan(0.5) = 26.6 deg. Centre 31.0 deg off axis, sphere 8.5 deg wide: in; 38.7 and 7.8: out.
+        lows, highs = np.array([[5., -1, 9], [7, -1, 9]]), np.array([[7., 1, 11], [9, 1, 11]])
+        seen = detail.in_view(lows, highs, np.zeros((1, 3)), np.array([[0., 0, 1]]), 0.5)
+        self.assertEqual(seen.tolist(), [[True, False]])
+
 
 @unittest.skipIf(np is None, "needs the r3d environment")
 class LadderTest(unittest.TestCase):
