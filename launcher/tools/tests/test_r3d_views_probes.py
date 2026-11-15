@@ -169,6 +169,7 @@ class SelectTests(unittest.TestCase):
         views = self.select(query=query, path=self.path_facing_the_shell())
         self.assertEqual(views.record["path_shown"], shell_side)
         self.assertEqual(views.training, [], "training kept a face that shows only what the path shows")
+        self.assertEqual(views.record["train"]["shown_after"], shell_side, "what the path showed went uncounted")
         self.assertEqual(len(views.held_out), 1, "the held-out set started from what the path shows")
         self.assertEqual(views.record["held_out"]["shown_after"], shell_side)
         plain = self.select(query=query)
