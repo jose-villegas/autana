@@ -23,16 +23,28 @@ that have no direct measurement.
 shows a petted animal lowering and rolling onto its side at about 50.6–53.1 s.
 Inspection at four samples per second brackets that action at about 2.5 s, with 0.25 s resolution.
 
-The body and the keeper obscure individual foot contacts in that sequence. It does not
-establish hind-first versus fore-first sternal lowering, a natural rise, or unprompted rest.
-Those orders and durations are **animation choices, not measured**.
+The keeper obscures individual foot contacts in that sequence. It does not establish a
+sternal lowering or rise. The dog rig supplies a separate joint and timing reference.
 
-| Motion | Choice and reason |
+## Rig references
+
+| Reference | Licence | Role and limits |
+|---|---|---|
+| [German Shepherd by DreamNoms](https://sketchfab.com/3d-models/stylized-low-poly-german-shepherd-18d8fbe184c5448283762893b6ea9752) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | `SitDown`/`LayDown`, `IdleLieDown`, `SitUp`/`StandUp`, `SitScratchEar`: rest joint targets, hind-paw orientation and authored stroke spacing. Separate pelvis and breast helpers and additional skin influences distinguish it from this rig. |
+| [AI4Animation quadruped mocap](https://github.com/sebastianstarke/AI4Animation/tree/master/AI4Animation/SIGGRAPH_2018), Zhang, Starke, Komura and Saito | [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/); research/education project | `D1_045_KAN01_001.bvh`: sternal rest, lowering and rise. Spine, chest, neck, head, forelegs, hind legs and tail; no ears or separate hind toes. |
+| [Rabbit by CDmir, with TinyWorlds](https://opengameart.org/content/rabbit-0) | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | `Sitting.000`: folded hind-leg target on a rig with comparable limb chains and ears. It contains no verified hind-foot scratch. |
+| [Quaternius Ultimate Animated Animal Pack](https://quaternius.com/packs/ultimateanimatedanimals.html), Shiba Inu | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) on the pack page | Thigh and belly skin comparison. Its stored influences exceed this asset's limit; its inspected action set supplies no lie or scratch. |
+
+The dog dataset supplies measured trunk-transfer timing. The Shepherd supplies
+authored rest and scratch joint targets.
+These guide authored control keys; its motion samples and rigs stay outside the repository.<sup>[[131]](../../../docs/Citations.md#zhang-2018)</sup>
+
+| Motion | Timing and adaptation |
 |---|---|
-| Lower to lie | Shift weight first, fold the hind legs, place the forefeet forward, then settle the chest and belly. The 3 s duration is an animation choice; the filmed side roll is only a loose pacing comparison. |
-| Rise from lie | Load the forefeet, lift the chest, then extend the hind legs; 2.5 s. Animation choice, not measured: no unobstructed sternal rise is timed. |
-| Lower to sit | Transfer load toward the forefeet, fold the hind legs, then settle the haunches; 2.5 s. Animation choice, not measured: the ethogram defines the endpoint, not the sequence. |
-| Rise from sit | Lean forward before extending the hind legs; 2.3 s. Animation choice, not measured: no frame-counted stand-up reference is verified. |
+| Lower to lie | Dog take, source frames 390-492 at 60 Hz; 1.7 s. Trunk height and knee-flexion progress guide the keys. Paw replanting is authored for the fixed capybara proportions. |
+| Rise from lie | The same take, frames 123-189; 1.1 s. The measured trunk lift guides a separate rise curve. Stationary idle is the authored endpoint; the capture continues into locomotion. |
+| Lower to sit | Grounded haunches and supporting forefeet; 2.5 s. Authored timing. |
+| Rise from sit | Forward load before hind extension; 2.3 s. Authored timing. |
 
 Mortola and Lanthier's Table 2 reports 41 breaths/min for one 38 kg male capybara,
 videotaped standing for 27 minutes. This is a resting standing observation, not a species
@@ -42,9 +54,9 @@ The rest loops use four breaths in 176 frame intervals at 30 fps: about 40.9/min
 Applying the standing rate to lying and sitting is an animation choice. Visible flank
 excursion in metres is not established by the cited table.<sup>[[128]](../../../docs/Citations.md#mortola-2005)</sup>
 
-The torso retains its rest proportions during lowering; leg flexion supplies the height
-change. The small breathing excursion is an animation choice. Its amplitude is not
-a measured biological excursion.
+The lying trunk keeps its control scales fixed. The loop carries its small breathing
+cue through the neck. The sitting breathing keys retain their chest excursion; neither
+amplitude is a measured biological excursion.
 
 ## Gestures and anatomy
 
@@ -65,28 +77,45 @@ Original gait actions retain their keys. Weight fitting must keep their worst ed
 strain and maximum folded-face counts within their measured source limits; the
 before/after sheets remain part of that check.
 
-Torso and spine controls do not compress the body to meet the ground. Compare the
-lying side silhouette's back-to-belly depth with the leg length and the linked rest
-photographs; a floor-contact pass alone cannot establish a convincing volume.
+The lying pose fits the Shepherd elbow, knee and hock targets while retaining belly and haunch
+support. The fitter adapts the joint angles to the fixed limb lengths and skin.
+`reference_targets.json` and the fit report retain the target residuals.
+
+The Shepherd skin blends the thigh through pelvis helpers. The local skin studies
+compare a continuous body-to-thigh band and motion-bounded pairs.
+The primary blend retains the approved weights. The scratch still has a folded
+thigh-to-body region and remains a visual failure.
+
+![Lying pose and skin comparison](rest-review-lie.png)
+
+![Scratch pose and skin comparison](rest-review-scratch.png)
+
+Each strip compares capybara poses with the same skin: reference above, candidate
+below. The local review package pairs the candidate with licensed reference rigs
+and includes complete GIFs and approved-action comparisons.
+
+Fixed control scales and a rounded silhouette do not establish true enclosed volume.
+Subframe contact and arbitrary self-intersection remain unmeasured.
 
 The scratch preview is restricted BBC/Getty footage. Its watermarked frames belong
 only in the local review package. The repository links the source page without
 embedding an image.
 
-Subframe contact, arbitrary self-intersection, recumbent respiration, natural rise
-order, flick timing and a neutral head-turn range remain unmeasured. Pose and timing
-settings in the review package identify the authored choices.
+Capybara sternal-rise timing, recumbent respiration, flick timing and a neutral
+head-turn range remain unmeasured. The dog timing is a quadruped reference, not
+a capybara measurement.
 
 ## Clip reference table
 
-All durations below are authored choices. Loop breathing follows the limited standing
-observation described above; no recumbent breathing rate is verified.
+Lying transition timing follows the dog take; the other durations are authored.
+Loop breathing follows the limited standing observation described above.
+No recumbent breathing rate is verified.
 
 | Clip | Posture and timing followed | Sources |
 |---|---|---|
-| lie_down | Standing idle pose to forelegs-forward sternal rest; weight shift before folding and settling; 3 s. | Monto's Ljubljana photograph; Ruiz-Tagle ethogram<sup>[[127]](../../../docs/Citations.md#ruiz-tagle-2021)</sup>; Biopark 50.6–53.1 s for loose pacing only. |
+| lie_down | Standing idle to sternal rest with measured dog trunk-transfer timing; 1.7 s. | Monto's Ljubljana photograph; Ruiz-Tagle ethogram<sup>[[127]](../../../docs/Citations.md#ruiz-tagle-2021)</sup>; Biopark 50.6–53.1 s for loose pacing only. |
 | lie_idle | Rounded sternal trunk with its barrel depth retained, forward forelegs, hind legs folded beside it and lowered head; about 40.9 breaths/min; seamless 176-interval loop. | Monto and Kilby Resting photographs; Pucora<sup>[[126]](../../../docs/Citations.md#pucora-2019)</sup>; Mortola and Lanthier<sup>[[128]](../../../docs/Citations.md#mortola-2005)</sup>. |
-| lie_up | Sternal pose to idle; forefoot loading and chest lift before hind extension; 2.5 s. | Same lying references; rise order and timing not measured. |
+| lie_up | Sternal pose to idle with the separate measured dog trunk-lift timing; 1.1 s. | AI4Animation dog take and the lying posture references; capybara rise timing is unmeasured. |
 | sit_down | Idle to haunches-down sit, forefeet supporting the chest; 2.5 s. | Kilby Sitting Sideways photograph; Ruiz-Tagle<sup>[[127]](../../../docs/Citations.md#ruiz-tagle-2021)</sup>. |
 | sit_idle | Rounded grounded haunches with the thigh inside the body outline, raised chest and supporting forelegs; about 40.9 breaths/min; seamless 176-interval loop. | Kilby Sitting Sideways photograph; Ruiz-Tagle<sup>[[127]](../../../docs/Citations.md#ruiz-tagle-2021)</sup>; Mortola and Lanthier<sup>[[128]](../../../docs/Citations.md#mortola-2005)</sup>. |
 | stand_up | Sit to idle; forward loading before hind extension; 2.3 s. | Same sitting references; rise order and timing not measured. |
