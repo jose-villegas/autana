@@ -5,6 +5,7 @@ This header-only package uses math for rectangles; its tests run with testkit.
 
 `image_t` borrows pixels with a format and byte pitch.
 `IMAGE_U16` and `IMAGE_U32` describe raw maps whose meaning belongs to their caller.
+`IMAGE_A8` is one coverage byte a pixel, 0 clear to 255 solid.
 
 `image_format_bits()` gives bit depth; `IMAGE_PITCH()` rounds row bytes up.
 `image_row()` addresses a row; `image_sub()` shares pixels and pitch.

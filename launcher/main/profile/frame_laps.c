@@ -13,6 +13,7 @@ frame_laps_core_t frame_laps_cores[FRAME_LAPS_CORES];
 
 static const char* names[FRAME_LAPS_NAMES];
 static int name_count;
+static int names_dropped; /* call sites the full table refused */
 static portMUX_TYPE names_lock = portMUX_INITIALIZER_UNLOCKED;
 
 /* Both cores may meet a name first at once: one adds it, the other finds it. */
@@ -28,6 +29,9 @@ frame_laps_slot(const char* name) {
     if (slot == 0 && name_count < FRAME_LAPS_NAMES) {
         names[name_count++] = name;
         slot = (frame_laps_slot_t)name_count;
+    } else if (slot == 0) {
+        names_dropped++;
+        slot = FRAME_LAPS_SLOT_REFUSED;
     }
     portEXIT_CRITICAL(&names_lock);
     return slot;
@@ -52,7 +56,7 @@ frame_laps_take_report(uint32_t frames, char* out, size_t out_size) {
         lap = lap_cycles();
     }
     return frame_laps_report(frame_laps_cores, FRAME_LAPS_CORES, names, frames, CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ, lap,
-                             out, out_size);
+                             names_dropped, out, out_size);
 }
 
 #endif

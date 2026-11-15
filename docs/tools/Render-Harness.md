@@ -56,6 +56,10 @@ more than once; edges behind the drawn depth are left out, and
 
 `--set owner.name=value` sets any registered tunable before drawing; repeat it
 for several values. Invalid names, values and ranges fail the render.
+`--set render.FIELD=value` sets a render setting instead, as a pack's
+`.render.toml` would (`render.lod.tolerance_px=4`); FIELD is a dotted name of
+[`RENDER_SETTINGS_FIELDS`](../../launcher/main/render/settings/render_settings_default.h). A harness
+that links no renderer refuses it.
 The viewer compiles hot tunables live. `--tunables` prints every registered
 tunable with its default and range on stderr. It exits without rendering.
 
@@ -142,11 +146,11 @@ verifies recorded content, while the render check detects stale measurements.
 The image script rewrites blocks by default; --check reports
 changed doc-path#block-name and exits 1. The refresh PR includes changed tables
 and images together. `render_doc_images.sh --stage gpu` rebuilds fitted comparisons and sweeps in
-the WSL CUDA environment; the board stage consumes a perf capture. Both use
+the WSL CUDA environment; the board stage consumes a board capture. Both use
 this writer.
 
-`--stage board` takes one `--capture PATH` per board run, all from the same
-diagnostics image, and uses their median; `--check` reports without writing.
+`--stage board` takes one `--capture PATH` per board run of
+`run_sponza_bakes_suite`, all from the same diagnostics image, and uses their median; `--check` reports without writing.
 It rejects missing variants, missing or repeated per-pose timings, failed
 suites and mismatched build identities, and rewrites the board tables and
 `launcher/tools/r3d/board_cost_weights.txt`. Refresh the GPU stage after the
@@ -201,12 +205,13 @@ The [night order](../../launcher/tools/perf/README.md#nightly-scoped-chain)
 owns the marker, bake priority and board-plan handoff. The hosted job
 only fingerprints. Every Bakes GPU completion triggers a fresh check.
 
-GPU stages wait for active board locks, then take heavy and run to completion.
+The doc-images GPU stage waits for active board locks, then takes heavy and runs to completion.
 A board claimed between these steps waits for heavy before building.
 Human reservations do not block the GPU stage.
 
-`GPU_STAGE_HANG_SECONDS` in `scripts/lib/local_schedule.py` bounds each
-stage's process tree. `override` starts at once while retaining the board-lock
+`scripts/lib/local_schedule.py` stops a stage's process tree once no task or
+bake has finished for `GPU_STAGE_PROGRESS_SECONDS`, and in any case after
+`GPU_STAGE_HANG_SECONDS`. `override` starts at once while retaining the board-lock
 wait; `force` controls freshness independently.
 
 The images are current only when the newest unexpired record from main is a rendered record for this fingerprint. A
@@ -368,7 +373,7 @@ Two files, the same declare-then-source shape a report script uses:
   roots fails the build.
 
 CMake's `autana::render_host_core` supplies the host frame loop on top of
-`autana::render_engine`: drawing, assets, tune, jobs and packages, with no `main()` and no
+`autana::render_engine`: drawing, assets, tune, jobs, the frame recorder and packages, with no `main()` and no
 allocation hooks. `launcher/tools/render/engine_sources.cmake` owns that list, and
 `run_tests.sh` reads it with `cmake -P`.
 

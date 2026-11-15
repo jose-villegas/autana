@@ -29,7 +29,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools"))
 sys.path.insert(0, str(ROOT / "launcher/tools/render"))
 from build.c_header import read_define
-from cull_counts import CULL_HEADER, plot_counts
+from cull_counts import CULL_HEADER, enum_value, plot_counts
 from check_avi import read_video
 from docs.figures import render_scene, save_png
 from docs.plot_style import save, subplots
@@ -42,12 +42,6 @@ FRAMES = 120  # frames along the whole path, for the counts and the videos
 POSES = 3  # sheet rows, evenly inside the path
 FIGURE_SIZE = (10, 5.2)
 PERCENT = 100
-
-def enum_value(enum, prefix, name, source=CULL_HEADER):
-    """A cullview tunable's value: `name`'s place in raster_cull_view.h's `enum`."""
-    text = pathlib.Path(source).read_text(encoding="utf-8")
-    body = re.search(r"typedef enum(?: __attribute__\(\(\w+\)\))? \{(.*?)\} " + enum + ";", text, re.S)[1]
-    return re.findall(prefix + r"(\w+)", body).index(name)
 
 
 def cull_from(name):

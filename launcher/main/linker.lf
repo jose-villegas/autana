@@ -31,3 +31,22 @@ entries:
 archive: libwaveshare__esp_lcd_sh8601.a
 entries:
     esp_lcd_sh8601:panel_sh8601_draw_bitmap (noflash)
+
+# RENDER_TAIL_ATTR code (render/code_layout.h) after all other flash text, so cold
+# code never moves a hot flash function's cache placement. The section name does not
+# start with .text, which the generic flash rule would take first; SURROUND gives the
+# mapping its own line after that rule, with _render_tail_start/_end around it.
+[sections:render_tail]
+entries:
+    .render_tail.text
+    .render_tail.literal
+
+[scheme:render_tail]
+entries:
+    render_tail -> flash_text
+
+[mapping:render_tail]
+archive: libmain.a
+entries:
+    * (render_tail);
+        render_tail -> flash_text SURROUND(render_tail)

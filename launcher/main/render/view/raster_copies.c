@@ -10,8 +10,10 @@ int
 raster_copies_shape(const raster_t* raster, int i, int* copies) {
     int first = -1;
     *copies = 0;
-    for (int j = 0; j < raster->instance_count; j++) {
-        if (raster->instances[j].mesh->positions == raster->instances[i].mesh->positions) {
+    const int count = raster_drawn_count(raster);
+    const void* positions = raster_drawn_at(raster, i)->mesh->positions;
+    for (int j = 0; j < count; j++) {
+        if (raster_drawn_at(raster, j)->mesh->positions == positions) {
             first = first < 0 ? j : first;
             ++*copies;
         }
@@ -23,17 +25,17 @@ static void
 begin(const raster_attachment_t* self, const raster_t* raster, const render_view_t* view) {
     (void)view;
     raster_copies_t* state = self->state;
-    assert(raster->instance_count < RASTER_COPIES_UNIQUE);
+    assert(raster_drawn_count(raster) < RASTER_COPIES_UNIQUE);
     state->raster = raster;
 }
 
 /* A copied shape takes its first instance's index plus one, the id the boxes
  * view hues by; 0 stays empty. */
 static bool
-writer(const raster_attachment_t* self, int instance, r3d_span_writer_t* out) {
+writer(const raster_attachment_t* self, int entry, r3d_span_writer_t* out) {
     const raster_copies_t* state = self->state;
     int copies;
-    const int shape = raster_copies_shape(state->raster, instance, &copies);
+    const int shape = raster_copies_shape(state->raster, entry, &copies);
     const uint32_t id = copies >= RASTER_COPIES_SHARED ? 1U + (uint32_t)shape : RASTER_COPIES_UNIQUE;
     *out = (r3d_span_writer_t){.span = raster_attachment_tag, .step = R3D_SPAN_STEP_NONE, .value = id};
     return true;

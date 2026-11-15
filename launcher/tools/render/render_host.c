@@ -27,6 +27,7 @@
 #include "ui/layout/ui_transform.h"
 
 #include "render/context/render_context.h"
+#include "render/record/frame_record.h"
 #include "scene/scene_shell.h"
 
 #if defined(_WIN32)
@@ -51,6 +52,30 @@ render_host_set_tunable(const char* name, int32_t value) {
     return true;
 }
 
+/* The main context's render settings, as an app's pack sets them on a board:
+ * RENDER_SETTINGS_DEFAULT with each --set render.FIELD=value applied. */
+#define SETTINGS_PREFIX "render."
+static render_settings_t settings = RENDER_SETTINGS_DEFAULT;
+static bool settings_set;
+
+/* Sets `field`, a RENDER_SETTINGS_FIELDS name such as lod.tolerance_px, from
+ * `text`; false when no field has that name or the text is not its value. */
+static bool
+set_setting(const char* field, const char* text) {
+    char* end = NULL;
+#define PARSE_bool(text)  (strtol((text), &end, 10) != 0)
+#define PARSE_float(text) strtof((text), &end)
+#define PARSE_int(text)   (int)strtol((text), &end, 10)
+#define SET_FIELD(name, type, valid)                                                                                   \
+    if (strcmp(field, #name) == 0) {                                                                                   \
+        settings.name = PARSE_##type(text);                                                                            \
+        return end != text && *end == '\0';                                                                            \
+    }
+    RENDER_SETTINGS_FIELDS(SET_FIELD)
+#undef SET_FIELD
+    return false;
+}
+
 bool
 render_host_set_tunable_text(const char* assignment) {
     char name[TUNE_NAME_MAX + 1];
@@ -62,6 +87,16 @@ render_host_set_tunable_text(const char* assignment) {
     const size_t length = (size_t)(equal - assignment);
     memcpy(name, assignment, length);
     name[length] = '\0';
+    const size_t prefix = sizeof SETTINGS_PREFIX - 1;
+    /* render.lod.tolerance_px is a settings field; render.lod_blend a tunable. */
+    if (strncmp(name, SETTINGS_PREFIX, prefix) == 0 && strchr(name + prefix, '.') != NULL) {
+        if (!set_setting(name + prefix, equal + 1)) {
+            fprintf(stderr, "render_host: unknown render setting or bad value: %s\n", assignment);
+            return false;
+        }
+        settings_set = true;
+        return true;
+    }
     int32_t value;
     if (!tune_parse_value(equal + 1, &value)) {
         fprintf(stderr, "render_host: invalid tunable value %s\n", equal + 1);
@@ -202,6 +237,14 @@ scene_shell_compose(uint32_t dt_ms) {
     (void)dt_ms;
 }
 
+/* Render settings where a provider did not link the renderer: none to set.
+ * render_host_settings.c's own definition replaces this. */
+__attribute__((weak)) bool
+render_host_apply_settings(const render_settings_t* settings) {
+    (void)settings;
+    return false;
+}
+
 /* The shell's app exit where a provider did not link the scene manager: no scene to unload. scene/scene.c's own
  * definition replaces this, and takes the render context with it. */
 __attribute__((weak)) void
@@ -232,8 +275,8 @@ apply_input(const frame_provider_t* provider, int index, input_t* state) {
 static int
 usage(const char* argv0) {
     fprintf(stderr,
-            "usage: %s [--quarter N] [--panel] [--frames N] [--dt N] [-o PATH] [--video PATH]\n"
-            "       [--set owner.name=value ...] [--tunables] [--crop]\n"
+            "usage: %s [--quarter N] [--panel] [--frames N] [--dt N] [-o PATH] [--video PATH] [--record PATH]\n"
+            "       [--set owner.name=value ...] [--set render.FIELD=value ...] [--tunables] [--crop]\n"
             "       docs/tools/Render-Harness.md lists options; the scene may take more.\n",
             argv0);
     return 2;
@@ -249,7 +292,8 @@ refuse(int* exit_code, const char* argv0) {
 static struct {
     const frame_provider_t* provider;
     bool panel, crop, video_ok;
-    const char *out_path, *video_path;
+    const char *out_path, *video_path, *record_path;
+    FILE* record;
     int out_w, out_h;
     affine2x_t t;
     int32_t stride;
@@ -342,6 +386,42 @@ release(void) {
     app_arena_exit();
 }
 
+static bool
+record_write(void* sink, const uint8_t* bytes, size_t count) {
+    return fwrite(bytes, 1, count, sink) == count;
+}
+
+/* --record PATH: each frame's render input from the first, as a board's
+ * FRAMEREC sends it (render/record/frame_record_format.h). */
+static bool
+record_start(void) {
+    host.record = fopen(host.record_path, "wb");
+    const frame_record_out_t out = {record_write, host.record};
+    if (host.record == NULL || !frame_record_start(&out, FRAME_RECORD_KEYFRAME_EVERY)) {
+        fprintf(stderr, "%s: cannot record to %s\n", host.provider->name, host.record_path);
+        if (host.record != NULL) {
+            fclose(host.record);
+        }
+        return false;
+    }
+    return true;
+}
+
+/* Before the frames the watch draws past --frames, which no image shows. */
+static bool
+record_stop(void) {
+    if (host.record == NULL) {
+        return true;
+    }
+    const frame_record_counts_t counts = frame_record_counts();
+    frame_record_stop();
+    const bool closed = fclose(host.record) == 0;
+    host.record = NULL;
+    fprintf(stderr, "RECORD %s frames=%lu dropped=%lu\n", host.record_path, (unsigned long)counts.frames,
+            (unsigned long)counts.dropped);
+    return closed && counts.dropped == 0;
+}
+
 bool
 render_host_open(const frame_provider_t* provider, int argc, char** argv, int* exit_code) {
     memset(&host, 0, sizeof host);
@@ -375,6 +455,8 @@ render_host_open(const frame_provider_t* provider, int argc, char** argv, int* e
             host.out_path = argv[++i];
         } else if (strcmp(a, "--video") == 0 && has_value) {
             host.video_path = argv[++i];
+        } else if (strcmp(a, "--record") == 0 && has_value) {
+            host.record_path = argv[++i];
         } else if (strcmp(a, "--crop") == 0) {
             host.crop = true;
         } else if (rest_count < (int)(sizeof(rest) / sizeof(rest[0]))) {
@@ -422,6 +504,11 @@ render_host_open(const frame_provider_t* provider, int argc, char** argv, int* e
         return false;
     }
     app_arena_enter();
+    if (host.record_path != NULL && !frame_record_take_notes()) {
+        app_arena_exit();
+        fprintf(stderr, "%s: no memory for the frame record notes\n", host.provider->name);
+        return false;
+    }
     if (!gfx_init()) {
         app_arena_exit();
         fprintf(stderr, "gfx_init failed\n");
@@ -429,6 +516,12 @@ render_host_open(const frame_provider_t* provider, int argc, char** argv, int* e
     }
     if (host.provider->setup != NULL && !host.provider->setup(host.frame.quarter)) {
         fprintf(stderr, "%s: setup failed\n", host.provider->name);
+        release();
+        return false;
+    }
+    if (settings_set && !render_host_apply_settings(&settings)) {
+        fprintf(stderr, "%s: --set render.FIELD needs the renderer linked (autana::render_host)\n",
+                host.provider->name);
         release();
         return false;
     }
@@ -468,6 +561,13 @@ render_host_open(const frame_provider_t* provider, int argc, char** argv, int* e
     }
     if (!render_watch_start(argv[0], host.console_path)) {
         fprintf(stderr, "%s: cannot capture stdout in %s\n", host.provider->name, host.console_path);
+        free(host.console_path);
+        free(host.frame_buf);
+        release();
+        return false;
+    }
+
+    if (host.record_path != NULL && !record_start()) {
         free(host.console_path);
         free(host.frame_buf);
         release();
@@ -519,6 +619,7 @@ render_host_step(uint32_t dt_ms, const input_t* input) {
 
 bool
 render_host_close(void) {
+    const bool recorded = record_stop();
     /* However few frames the image needed, the provider goes on drawing until
      * the watch has judged a whole window of it at rest. Nothing of these
      * reaches the image. */
@@ -579,7 +680,7 @@ render_host_close(void) {
         fprintf(stderr, "%s: the frame watch had no room for %lu events, so it may have missed one\n",
                 host.provider->name, (unsigned long)verdict.dropped);
     }
-    return ok && frame_watch_verdict_clean(verdict);
+    return ok && recorded && frame_watch_verdict_clean(verdict);
 }
 
 /* Selecting a provider builds the CLI; without it this file is a library. */

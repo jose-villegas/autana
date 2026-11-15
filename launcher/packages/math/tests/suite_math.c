@@ -322,6 +322,20 @@ test_the_octahedral_map_puts_the_poles_at_the_centre_and_a_corner(void) {
 }
 
 static void
+test_in_place_affine_products_are_mul_affine_bit_for_bit(void) {
+    const mat4f_t a = mat4f_from_trs((vec3f_t){1.0F, -2.0F, 3.0F}, quatf_from_euler((vec3f_t){0.4F, -0.3F, 0.2F}),
+                                     (vec3f_t){2.0F, 1.0F, 0.5F});
+    const mat4f_t b = mat4f_from_trs((vec3f_t){-3.0F, 1.0F, 2.0F}, quatf_from_euler((vec3f_t){-0.2F, 0.5F, 0.3F}),
+                                     (vec3f_t){0.5F, 3.0F, 2.0F});
+    const mat4f_t want = mat4f_mul_affine(a, b);
+    mat4f_t post = a, pre = b;
+    mat4f_post_mul_affine(&post, &b);
+    mat4f_pre_mul_affine(&a, &pre);
+    assert_mat4_exact(&want, &post);
+    assert_mat4_exact(&want, &pre);
+}
+
+static void
 test_affine_product_and_inverse_match_full_matrices(void) {
     const mat4f_t a = mat4f_from_trs((vec3f_t){1.0F, -2.0F, 3.0F}, quatf_from_euler((vec3f_t){0.4F, -0.3F, 0.2F}),
                                      (vec3f_t){2.0F, 1.0F, 0.5F});
@@ -822,6 +836,7 @@ suite_math(void) {
     RUN_TEST(test_cofactor_random_matrices_and_reflection);
     RUN_TEST(test_affine_inverse_preserves_small_and_large_scales);
     RUN_TEST(test_affine_product_and_inverse_match_full_matrices);
+    RUN_TEST(test_in_place_affine_products_are_mul_affine_bit_for_bit);
     RUN_TEST(test_a_quarter_turn_about_y_takes_z_to_x);
     RUN_TEST(test_a_quarter_turn_about_x_takes_y_to_z_and_about_z_takes_x_to_y);
     RUN_TEST(test_euler_angles_apply_z_then_x_then_y);

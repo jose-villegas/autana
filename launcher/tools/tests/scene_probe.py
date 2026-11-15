@@ -97,14 +97,12 @@ def authored_entries(root):
     mesh_asset.BLOB_HEADER.pack_into(mesh, 0, *header)
     mesh.extend(bytes([64, 128, 192]) * len(positions))
     name, skeleton, skin = skin_asset.bake(document, binary, 5, mesh)
-    tracks, duration, root_kind = tracks_asset.clip_tracks(document, binary, document['animations'][0])
-    clip = tracks_asset.encode(tracks, duration, root_kind)
+    clip = tracks_asset.encode(*tracks_asset.clip_tracks(document, binary, document['animations'][0]))
     entries = [('authored', scene_asset.TYPE, scene), ('backdrop', mesh_asset.TYPE, bytes(mesh)),
                (name, skeleton_asset.TYPE, skeleton),
                ('idle', tracks_asset.TYPE, clip), ('walk', tracks_asset.TYPE, clip)]
-    for name in ('first', 'second'):
-        key = 'authored.' + name
-        entries.extend([(key, mesh_asset.TYPE, bytes(mesh)), (key + '.skin', skin_asset.TYPE, skin)])
+    # Both skinned objects place the one import, so they share its mesh and skin.
+    entries.extend([('mesh', mesh_asset.TYPE, bytes(mesh)), ('mesh.skin', skin_asset.TYPE, skin)])
     return [(name, kind, to_engine(kind, data)) for name, kind, data in entries]
 
 

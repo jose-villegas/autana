@@ -39,6 +39,7 @@ panel driver ([`linker.lf:18`](../../launcher/main/linker.lf#L18)).
 | A function in ESP-IDF or a managed component | a `noflash` mapping | the source cannot be changed |
 | A whole object or archive | a mapping with `*` | one line instead of one per function |
 | A section the stock script does not place | `[sections]` plus a scheme | the file places `__patchable_function_entries` in flash rodata this way |
+| Cold flash code that must not sit among hot flash functions | a section attribute, `[sections]` plus a scheme with `SURROUND` | `RENDER_TAIL_ATTR` ([`code_layout.h`](../../launcher/main/render/code_layout.h)) goes after all other flash text; its name must not start with `.text`, or the generic flash rule takes it first |
 
 A mapping cannot name a compiler clone. If the build produces only a clone of an IDF
 function, map the whole object or move the caller-facing entry; the gate described in
