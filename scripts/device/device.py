@@ -74,11 +74,24 @@ def python_with_pyserial():
     return idf_python()
 
 
+# The oldest Python the engine's scripts parse; an older ESP-IDF Python cannot run them.
+PYTHON_MINIMUM_TEXT = (Path(__file__).resolve().parents[1] / "lib" / "python-min-version").read_text().strip()
+PYTHON_MINIMUM = tuple(map(int, PYTHON_MINIMUM_TEXT.split(".")))
+
+
+def python_version(python):
+    """(major, minor) of the interpreter at `python`."""
+    done = subprocess.run([python, "-c", "import sys; print(*sys.version_info[:2])"], capture_output=True,
+                          text=True, check=True, stdin=subprocess.DEVNULL)
+    return tuple(map(int, done.stdout.split()))
+
+
 def rerun_under_idf_python(argv, script=__file__):
     """The exit status of script (this file unless given) run again with argv
     under ESP-IDF's Python, or None when this interpreter can already reach the
     board. pyserial lives in that environment, not in whichever `python` a
-    caller found first, so no caller has to know which one to pick."""
+    caller found first, so no caller has to know which one to pick. An ESP-IDF
+    Python older than PYTHON_MINIMUM cannot parse these scripts: refused."""
     try:
         import serial  # noqa: F401
         return None
@@ -87,6 +100,11 @@ def rerun_under_idf_python(argv, script=__file__):
     python = idf_python()
     if os.path.normcase(os.path.abspath(python)) == os.path.normcase(os.path.abspath(sys.executable)):
         return None
+    version = python_version(python)
+    if version < PYTHON_MINIMUM:
+        raise SystemExit(f"pyserial is not installed for {sys.executable}, and ESP-IDF's Python {python} is "
+                         f"{'.'.join(map(str, version))}, older than {PYTHON_MINIMUM_TEXT}: install pyserial "
+                         f"(scripts/gates/requirements.txt) for {sys.executable}")
     return subprocess.call([python, str(Path(script).resolve()), *argv])
 
 
