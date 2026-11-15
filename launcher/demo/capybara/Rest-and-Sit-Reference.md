@@ -63,8 +63,10 @@ idle action retains its breathing, ear reactions, tail keys, seam and frame-1 po
 ## Rig boundary
 
 The review skin blends upper shoulder and rump surfaces toward torso bones, with at
-most two influences per vertex. The mesh coordinates, topology, deform bones and
-original action keys are fixed.
+most two stored influences per source vertex. Mirror evaluation can combine extra
+influences at the centre seam; its evaluated limit needs a separate check.
+
+The mesh coordinates, topology, deform bones and original action keys are fixed.
 
 Deep forelimb flexion and a neck-reaching hind leg remain demanding skin poses. Their
 review includes measured edge strain and face-fold indicators, plus before/after sheets
