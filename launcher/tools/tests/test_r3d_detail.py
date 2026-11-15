@@ -94,6 +94,26 @@ class LadderTest(unittest.TestCase):
         self.assertLessEqual(moved * FOCAL / distance, detail.TOLERANCE_PX)
         self.assertLess(len(kept), len(tris))
 
+    def test_a_lock_on_no_vertex_simplifies_as_no_lock(self):
+        from r3d.meshopt import simplify_to_error
+        positions, tris = sphere()
+        error = detail.object_error(20.0, FOCAL)
+        free = simplify_to_error(positions, tris, error)
+        self.assertLess(len(free), len(tris))
+        np.testing.assert_array_equal(simplify_to_error(positions, tris, error, vertex_lock=np.zeros(len(positions), bool)),
+                                      free)
+
+    def test_every_rung_keeps_the_locked_vertices(self):
+        positions, tris = sphere()
+        lock = np.abs(positions[:, 1]) < 1e-9  # the equator: a contact border round the middle
+        self.assertGreater(lock.sum(), 3)
+        rungs = detail.ladder(positions, tris, 2.0, FOCAL, lock=lock)
+        for rung in rungs:
+            kept = detail.level(positions, tris, detail.object_error(2.0, FOCAL, rung.error_px), lock)
+            self.assertEqual(len(kept), rung.triangles)
+            self.assertTrue(np.isin(np.flatnonzero(lock), kept).all())
+        self.assertFalse(np.isin(np.flatnonzero(lock), detail.level(positions, tris, 1.0)).all())
+
     def test_a_part_dropped_at_any_error_keeps_the_shape_whole(self):
         # A flat grid, and apart from it a zero-area sliver meshoptimizer drops even at error 0.
         grid = [[x, y, 0.0] for y in range(3) for x in range(3)]

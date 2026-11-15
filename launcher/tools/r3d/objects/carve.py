@@ -25,7 +25,7 @@ from r3d.geometry import weld_map  # noqa: E402
 from r3d.mesh_source import camera_path_poses  # noqa: E402
 from r3d.objects import detail  # noqa: E402
 from r3d.objects.contact import contact_pairs  # noqa: E402
-from r3d.objects.instances import match_instances, source_objects  # noqa: E402
+from r3d.objects.instances import match_instances, place, source_objects  # noqa: E402
 from r3d.poses import focal_px  # noqa: E402
 
 # The rule a free repeat is carved by: its seams free, since it touches nothing.
@@ -39,6 +39,22 @@ def touching(pos, tri_v, tri_o, candidates, position_scale):
     other's surface (contact.py's test)."""
     return {obj for edge in contact_pairs(pos, tri_v, tri_o, position_scale, among=candidates)
             for obj in (edge.a, edge.b) if obj in candidates}
+
+
+def contact_locks(vertex_count, edges, policies, selected):
+    """One flag per vertex: the contact border a simplify keeps. A contact touching a `lock` mesh (or a `weld` mesh
+    whose contact sits inside a face) locks both sides' border vertices; a `free` mesh frees only its own side, so
+    the rest it touches keeps its border and the walls stay closed."""
+    locks = np.zeros(vertex_count, dtype=bool)
+    for edge in edges:
+        if any(policies.get(obj) == 'lock' or (edge.unshared and policies.get(obj) == 'weld')
+               for obj in (edge.a, edge.b)):
+            locks[edge.vertices_a] = True
+            locks[edge.vertices_b] = True
+        for obj, other, vertices in ((edge.a, edge.b, edge.vertices_b), (edge.b, edge.a, edge.vertices_a)):
+            if policies.get(obj) == 'free' and other not in selected:
+                locks[vertices] = True
+    return locks
 
 
 def free_repeats(pos, tri_v, tri_m, tri_o, object_names, selected, position_scale, masked=()):
@@ -79,9 +95,26 @@ def views(scene, renderer):
     return np.array([pose[:3] for pose in poses]), focal_px(width, height, lens), near, sight
 
 
-def derived_budgets(pos, tri_v, tri_m, tri_o, selected, eyes, focal, near, sight=None):
+def shape_lock(positions, instances, used, pos, locks):
+    """One flag per shape vertex: locked where any copy places it on a source vertex `locks` flags. Each copy's
+    vertices are found as the carve places them (simplify._carve_shape): the shape under the copy's transform,
+    then the nearest of the copy's own source vertices `used`."""
+    from scipy.spatial import cKDTree
+
+    locked = np.zeros(len(positions), dtype=bool)
+    if locks is None:
+        return locked
+    for instance, own in zip(instances, used):
+        if np.any(locks[own]):
+            _, nearest = cKDTree(pos[own]).query(place(positions, instance.linear, instance.position))
+            locked |= locks[own[nearest]]
+    return locked
+
+
+def derived_budgets(pos, tri_v, tri_m, tri_o, selected, eyes, focal, near, sight=None, locks=None):
     """Near budgets and ladders per derived shape, grouped by rule as the carve groups them.
-    The measured carve chooses rungs within the copies' room after stand-in growth."""
+    The measured carve chooses rungs within the copies' room after stand-in growth. `locks` (one flag per source
+    vertex, contact_locks) holds each shape's ladder to keep every vertex a copy's contact border locks."""
     names = [str(i) for i in range(int(tri_o.max()) + 1)]
     groups = rule_groups(selected)
     shapes = []
@@ -98,8 +131,10 @@ def derived_budgets(pos, tri_v, tri_m, tri_o, selected, eyes, focal, near, sight
                                                eyes, near, sight)
             first, inverse = weld_map(shape.positions)
             positions, triangles = shape.positions[first], inverse[shape.triangles]
+            locked = shape_lock(positions, shape.instances, used, pos, locks)
             shapes.append(dict(objects=members, distance=distance, positions=positions, triangles=triangles,
-                               ladder=detail.ladder(positions, triangles, distance, focal)))
+                               locked=locked, ladder=detail.ladder(positions, triangles, distance, focal,
+                                                                   lock=locked if locked.any() else None)))
     picks = [0] * len(shapes)
     budgets = {}
     for shape, pick in zip(shapes, picks):
