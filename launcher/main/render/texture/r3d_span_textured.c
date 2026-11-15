@@ -186,8 +186,10 @@ span_carry(const setup_t* su, int y, int first, int last, bool affine, carry_t* 
 /* An INDEX4 span whose u and v divide by depth every su->divide pixels,
  * from s = u q, t = v q and q at its first pixel. u and v wrap once at the
  * start and then step in fixed point; each divide aims the next segment's
- * step at the true u and v, unwrapped, from where the steps so far reached. */
-static __attribute__((noinline)) void
+ * step at the true u and v, unwrapped, from where the steps so far reached.
+ * At the flash tail, with the rest of the divide, so the affine path keeps
+ * its cache placement. */
+static RENDER_TAIL_ATTR __attribute__((noinline)) void
 fill_divided(const setup_t* su, uint16_t* depth, uint16_t* color, int count, carry_t* c, float s, float t, float q,
              int x, int y) {
     float r = mathf_recip_approx(q);
@@ -236,17 +238,16 @@ write_kept_runs(const r3d_span_target_t* target, const sampler_t* s, int y, int 
 
 /* What a row walk does with each span. */
 typedef enum {
-    WALK_FILL,  /* the INDEX4 fill */
-    WALK_CUT,   /* the MASK1 fill: kept texels only */
-    WALK_WRITE, /* the target's writers over what a fill walk drew */
+    WALK_FILL,    /* the INDEX4 fill, affine */
+    WALK_DIVIDED, /* the INDEX4 fill, dividing by depth */
+    WALK_CUT,     /* the MASK1 fill: kept texels only */
+    WALK_WRITE,   /* the target's writers over what a fill walk drew */
 } walk_t;
 
 static inline __attribute__((always_inline)) void
 walk_span(const r3d_span_target_t* target, const setup_t* su, int y, int first, int last, walk_t walk) {
     carry_t c;
-    /* A cut or a write walk is affine whatever the triangle: MASK1 never
-     * divides and a writer takes depth alone, so only a fill walk asks. */
-    span_carry(su, y, first, last, walk != WALK_FILL || su->divide == 0, &c);
+    span_carry(su, y, first, last, walk != WALK_DIVIDED, &c);
     if (walk == WALK_WRITE) {
         if (su->sampler.texture->format == R3D_TEXTURE_MASK1) {
             write_kept_runs(target, &su->sampler, y, first, last, &c);
@@ -258,7 +259,7 @@ walk_span(const r3d_span_target_t* target, const setup_t* su, int y, int first, 
     const r3d_span_row_t row = r3d_span_row(target, y);
     if (walk == WALK_CUT) {
         fill_masked(row.depth + first, row.color + first, last - first + 1, &c, &su->sampler, first, y);
-    } else if (su->divide != 0) {
+    } else if (walk == WALK_DIVIDED) {
         const float fx = (float)(first - su->x0);
         const float fy = (float)(y - su->y0);
         fill_divided(su, row.depth + first, row.color + first, last - first + 1, &c, plane_at(&su->s, fx, fy),
@@ -322,8 +323,8 @@ tile_origin(float u, int size_log2) {
  * when it does, its u and v planes become u q and v q, from the texture's
  * tile holding vertex 0, so a far tile's large u keeps its fraction through
  * the products and divides. The level stays the affine planes' pick. Out of
- * set_up(), whose affine and MASK1 path stays short. */
-static __attribute__((noinline)) void
+ * set_up(), whose affine and MASK1 path stays short, at the flash tail. */
+static RENDER_TAIL_ATTR __attribute__((noinline)) void
 set_up_divide(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[CORNERS], const vec2f_t uv[CORNERS],
               const r3d_texture_t* texture, recti_t whole, const r3d_span_frame_t* f, float scale, setup_t* su) {
     const float z_near = mathf_max(v[0]->z, mathf_max(v[1]->z, v[2]->z));
@@ -422,6 +423,13 @@ walk_plain(const r3d_span_target_t* target, const setup_t* su, recti_t box, cons
     walk_rows(target, su, box, v0, v1, v2, long_on_left, WALK_FILL);
 }
 
+/* At the flash tail, as fill_divided(): the affine walk keeps its place. */
+static RENDER_TAIL_ATTR __attribute__((noinline)) void
+walk_divided(const r3d_span_target_t* target, const setup_t* su, recti_t box, const r3d_span_vertex_t* v0,
+             const r3d_span_vertex_t* v1, const r3d_span_vertex_t* v2, bool long_on_left) {
+    walk_rows(target, su, box, v0, v1, v2, long_on_left, WALK_DIVIDED);
+}
+
 /* At the flash tail, as fill_masked(). */
 static RENDER_TAIL_ATTR __attribute__((noinline)) void
 walk_cut(const r3d_span_target_t* target, const setup_t* su, recti_t box, const r3d_span_vertex_t* v0,
@@ -459,6 +467,8 @@ r3d_span_textured_triangle(const r3d_span_target_t* target, const r3d_span_verte
     FRAME_LAP("r3d.draw.fill");
     if (texture->format == R3D_TEXTURE_MASK1) {
         walk_cut(target, &su, box, v0, v1, v2, long_on_left);
+    } else if (su.divide != 0) {
+        walk_divided(target, &su, box, v0, v1, v2, long_on_left);
     } else {
         walk_plain(target, &su, box, v0, v1, v2, long_on_left);
     }
