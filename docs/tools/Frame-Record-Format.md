@@ -235,9 +235,13 @@ flowchart LR
 | Field | Encoding |
 |---|---|
 | Pick phase | `u32 raster.pick_round` |
-| Steering | `f32` tolerances, `i32` picked coverage and bin, histogram halves (`i32` saves/finest and `f32` unit), `i64` drawn triangles, `i32` frames, `u8` settled; see `frame_record_lodstate_t` |
+| Steering | raw `r3d_lod_steer_t`, including its padding, as the engine holds it: tolerances, picked coverage, histogram halves, bin, drawn triangles, frame count and settled flag |
 | Mesh word count | `u32`, one for each mesh in FRAME order |
 | Coarse words | `u32[word_count]`; a batch holds every copy's words in copy order |
+
+The prefix is packed `{uint32_t pick_round; r3d_lod_steer_t steer;}`.
+HEADER’s build id pins the steering layout and size. `framerec.py` keeps
+LODSTATE opaque; replay uses the matching engine build to read it.
 
 The record follows the keyframe's meshes. Replay resolves those meshes,
 then restores the snapshot before drawing. Seeking draws forward from the

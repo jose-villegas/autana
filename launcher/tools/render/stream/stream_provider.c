@@ -1,6 +1,8 @@
 /* stream_provider: indexes recorded render inputs and redraws them from their validated packs. */
 #include "stream_provider.h"
 
+#include "collections/mem.h"
+
 #include <limits.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -451,8 +453,7 @@ build_mesh(stream_mesh_t* m) {
     size_t offsets[STREAM_SOURCE_ARRAYS];
     size_t source_bytes = 0;
     for (size_t i = 0; i < STREAM_SOURCE_ARRAYS; i++) {
-        offsets[i] = source_bytes;
-        source_bytes += (sizes[i] + alignment - 1) / alignment * alignment;
+        offsets[i] = mem_carve(&source_bytes, sizes[i], alignment);
     }
     if (!reserve(&m->source, &m->source_bytes, source_bytes)) {
         return false;
@@ -647,18 +648,7 @@ restore_lod(int count) {
     memcpy(&state, body, sizeof state);
     render_context_t* context = render_context_main();
     context->raster.pick_round = state.pick_round;
-    context->steer = (r3d_lod_steer_t){.tolerance_px = state.tolerance_px,
-                                       .picked_tolerance_px = state.picked_tolerance_px,
-                                       .picked_coverage_permille = state.picked_coverage_permille,
-                                       .bin = state.bin,
-                                       .drawn = state.drawn,
-                                       .frames = state.frames,
-                                       .settled = state.settled != 0};
-    for (size_t i = 0; i < sizeof context->steer.halves / sizeof context->steer.halves[0]; i++) {
-        memcpy(context->steer.halves[i].saves, state.saves[i], sizeof state.saves[i]);
-        context->steer.halves[i].finest = state.finest[i];
-        context->steer.halves[i].unit = state.unit[i];
-    }
+    memcpy(&context->steer, &state.steer, sizeof context->steer);
     size_t at = sizeof state;
     for (int i = 0; i < count; i++) {
         uint32_t words;

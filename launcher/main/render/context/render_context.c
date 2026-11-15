@@ -485,10 +485,6 @@ keep_frame(render_context_t* c, const render_view_t* view) {
 bool
 render_context_draw(render_context_t* c, const r3d_instance_t* instances, int count, const render_view_t* view,
                     uint16_t clear) {
-#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-    c->observed = false;
-    c->frame_view = *view;
-#endif
     if (!c->batches_set) {
         c->raster.batches = NULL; /* none set for this draw */
         c->raster.batch_count = 0;
@@ -497,6 +493,10 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     if (can_generate(c, view) && render_context_generate(c, view)) {
         return true;
     }
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+    c->observed = false;
+    c->frame_view = *view;
+#endif
     frame_record_before_draw(c, instances, count);
     begin_draw(c);
     aim_raster(c, instances, count, view, clear);
@@ -582,6 +582,7 @@ render_context_compose(render_context_t* c, uint16_t* destination, uint16_t* hal
         c->raster.first_row = 0;
         c->raster.end_row = 0;
     }
+    /* Replay warps with generation disabled, so the recorded frame also selects the compose path. */
     if (c->policy == RENDER_FIXED && !c->generating && !c->frame.generated) {
         compose_rows(c, size.height);
         if (!c->frame.unchanged) {

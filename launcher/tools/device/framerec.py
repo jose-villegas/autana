@@ -55,6 +55,9 @@ DYNMESH = struct.Struct("<HBBiIIB")
 TUNE = struct.Struct("<32si")
 CHECK = struct.Struct("<IHHI")
 MATRIX = struct.Struct("<16f")
+# LODSTATE is a packed u32 pick_round, raw r3d_lod_steer_t (padding included),
+# then per-mesh u32 counts and words. HEADER build_id pins the steer size;
+# this reader retains the body as opaque bytes, like VIEW and SETTINGS.
 FIXED = {"HEADER": HEADER, "PACK": PACK, "FRAME": FRAME, "CHOICE": CHOICE, "MESH": MESH,
          "TUNE": TUNE, "CHECK": CHECK}
 

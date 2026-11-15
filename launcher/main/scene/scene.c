@@ -26,13 +26,6 @@ int scene_fail_allocation_after = -1;
 static uint64_t requests; /* scene_root_t.order of the latest request */
 static memory_take_fn kept_take;
 
-size_t
-scene_storage_carve(size_t* end, size_t bytes, size_t align) {
-    const size_t at = mathi_size_ceil(*end, align);
-    *end = at + bytes;
-    return at;
-}
-
 /* What one of the scene's arrays is counted in. */
 enum { PER_RENDERER, PER_CAMERA, PER_ENTITY, PER_BATCH, PER_COUNT };
 
@@ -66,7 +59,7 @@ place(const scene_asset_t* asset, scene_t* scene) {
                                       [PER_BATCH] = asset->batch_count};
     size_t end = sizeof(scene_t);
     for (size_t i = 0; i < sizeof PARTS / sizeof *PARTS; i++) {
-        const size_t at = scene_storage_carve(&end, PARTS[i].size * counts[PARTS[i].per], PARTS[i].align);
+        const size_t at = mem_carve(&end, PARTS[i].size * counts[PARTS[i].per], PARTS[i].align);
         if (scene != NULL) {
             void* array = (uint8_t*)scene + at;
             memcpy((uint8_t*)scene + PARTS[i].member, &array, sizeof array);

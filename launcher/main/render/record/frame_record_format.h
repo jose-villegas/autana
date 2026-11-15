@@ -130,12 +130,5 @@ typedef struct __attribute__((packed)) {
 /* Each mesh in FRAME order follows with u32 word_count, then that many u32 words. */
 typedef struct __attribute__((packed)) {
     uint32_t pick_round;
-    float tolerance_px, picked_tolerance_px;
-    int32_t picked_coverage_permille, bin;
-    int32_t saves[2][R3D_LOD_BINS];
-    int32_t finest[2];
-    float unit[2];
-    int64_t drawn;
-    int32_t frames;
-    uint8_t settled;
+    r3d_lod_steer_t steer;
 } frame_record_lodstate_t;

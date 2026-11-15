@@ -592,6 +592,22 @@ test_a_mesh_made_in_a_block_forgets_the_notes_of_meshes_that_lived_there(void) {
 }
 
 static void
+test_a_keyframe_without_a_snapshot_drops_instead_of_reusing_lod_state(void) {
+    open_recording(-1);
+    for (int i = 0; i < KEYFRAME_EVERY; i++) {
+        draw_frame();
+    }
+    const size_t before = sink->size;
+    frame_record_frame(context, &context->raster, DT_MS);
+    TEST_ASSERT_EQUAL_UINT32(before, sink->size);
+    TEST_ASSERT_EQUAL_UINT32(1, frame_record_counts().dropped);
+    draw_frame();
+    find_records();
+    TEST_ASSERT_EQUAL_UINT8(FRAME_RECORD_KEYFRAME | FRAME_RECORD_AFTER_DROP, frame_of(KEYFRAME_EVERY).flags);
+    TEST_ASSERT_EQUAL_INT(1, count_in_frame(KEYFRAME_EVERY, FRAME_RECORD_LODSTATE));
+}
+
+static void
 test_a_second_start_is_refused_while_recording(void) {
     open_recording(-1);
     const frame_record_out_t out = {take, sink};
@@ -608,6 +624,7 @@ run_frame_record_suite(void) {
     RUN_TEST(test_a_refused_frame_is_dropped_whole_and_counted_and_the_next_is_a_keyframe);
     RUN_TEST(test_a_changed_tunable_rides_in_the_next_frame_and_every_keyframe_while_off_its_initial);
     RUN_TEST(test_a_keyframes_picture_is_hashed_into_the_next_frame_and_the_last_one_at_stop);
+    RUN_TEST(test_a_keyframe_without_a_snapshot_drops_instead_of_reusing_lod_state);
     RUN_TEST(test_a_second_start_is_refused_while_recording);
     RUN_TEST(test_a_mesh_in_no_pack_is_named_by_no_pack_and_no_pack_is_named);
     RUN_TEST(test_a_posed_mesh_names_its_bind_and_its_palette_rides_each_keyframe_and_each_new_pose);
