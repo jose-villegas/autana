@@ -24,7 +24,7 @@ GENERATED_FRAMES = 2
 FUTURE_RECORD_TYPE = 0xFFFF
 BUDGET_TRIANGLES = 1200
 RECORDED = {
-    "herd": ["--scene", "herd"],
+    "herd": ["--scene", "capybara/herd"],
     "sponza": ["--scene", "sponza", "--object", "atrium_fitted_full"],
     "budget": ["--scene", "sponza", "--object", "atrium_fitted_full", "--set", f"render.lod_triangle_budget={BUDGET_TRIANGLES}"],
 }
