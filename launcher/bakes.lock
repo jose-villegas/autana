@@ -142,6 +142,24 @@ run = 43184150229
 host = "Linux x86_64"
 
 [[bake]]
+output = "butterfly_body.bundle"
+source = "launcher/demo/butterfly/butterfly.scene.toml"
+key = "7a4a7ece3315178481396305745b7854de11a8918e117bdadaeb63aeb78d0394"
+sha256 = "6d1e2a57210bb3a12c9b8cf720dd84f8a6bf61f8e7b3c8f2b4277bc9f651a0f1"
+size = 336
+run = 43744284942
+host = "Linux x86_64"
+
+[[bake]]
+output = "butterfly_wing.bundle"
+source = "launcher/demo/butterfly/butterfly.scene.toml"
+key = "8c0b779b52cbfc9ecd9d8d53c4dc7575275f341b0155d2eddbda226335b5186e"
+sha256 = "819f3ea05867c6a80f242e239cf4127358cab8674e840575b730c6287fac4173"
+size = 368
+run = 43744284942
+host = "Linux x86_64"
+
+[[bake]]
 output = "capybara.glb"
 source = "launcher/demo/capybara/capybara.import.toml"
 key = "e6cd6da2117fddc062cb3f6aff1404d7b3797bf84cf395ef5594978bde3f2618"
