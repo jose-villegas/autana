@@ -871,6 +871,22 @@ class FittedBakeTests(FittedBakeCase):
         self.assertIn(f"skipped {self.level(LOCKED_SHA256).output}", done.out)
         self.assertIn(self.fit(LOCKED_SHA256).key, done.out)
 
+    def test_shards_sizes_the_matrix_from_the_missing_sets_rays_and_skips_locked_ones(self):
+        rays = 3 * bake.CALIBRATION_RAYS
+        with mock.patch.object(produce, "reference_rays", return_value=rays) as counted:
+            missing = self.command(["shards"], {})
+            locked = self.command(["shards"], self.locked(LOCKED_SHA256, run=RUN))
+        self.assertEqual(json.loads(missing.out), list(range(bake.reference_shards(rays))))
+        self.assertEqual(json.loads(locked.out), [])
+        self.assertEqual([call.args[0] for call in counted.call_args_list], [self.reference])
+
+    def test_a_set_past_a_job_matrix_is_refused(self):
+        too_many = (bake.MATRIX_JOBS + 1) * bake.REFERENCE_SHARD_SECONDS * bake.CALIBRATION_RAYS // bake.CALIBRATION_SECONDS
+        self.assertEqual(bake.reference_shards(bake.MATRIX_JOBS * bake.REFERENCE_SHARD_SECONDS * bake.CALIBRATION_RAYS
+                                               // bake.CALIBRATION_SECONDS), bake.MATRIX_JOBS)
+        with self.assertRaisesRegex(bake.BakeMissing, "a job matrix holds"):
+            bake.reference_shards(too_many)
+
     def test_list_says_a_fit_waits_for_its_start_until_the_start_is_locked(self):
         waiting = self.command(["list"], {})
         lines = {line.split("\t")[0]: line for line in waiting.out.splitlines()}
@@ -1881,7 +1897,7 @@ class ProduceTests(unittest.TestCase):
             reference_render.render_sets(inputs, [(work / name, work / folder)
                                                   for name, folder in sets.training + sets.held_out])
 
-        with mock.patch.object(reference_render, "render_sets", side_effect=render_sets), \
+        with mock.patch.object(reference_render, "render_sets", autospec=True, side_effect=render_sets), \
              mock.patch("r3d.reference_set.reference_inputs", side_effect=lambda job, scene: self.inputs), \
              mock.patch("r3d.reference_set.prepare_references", side_effect=prepare):
             yield prepare

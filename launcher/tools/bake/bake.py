@@ -159,13 +159,18 @@ TRACED_KINDS = ("mesh", "reference")
 REFERENCE_SHARD_SECONDS = 90 * 60
 CALIBRATION_RAYS = 158_269_440  # bistro.street_fitted: 240 poses at 184 x 224, 4 x 4 samples (produce.reference_rays)
 CALIBRATION_SECONDS = 5 * 60 * 60  # the same set on one hosted 4-CPU runner, CPU Bakes run 43016329421
+MATRIX_JOBS = 256  # GitHub Actions' most jobs one matrix makes
 # What a fit whose key waits for its inputs asks for, when the same run would make it.
 BAKE_INPUTS_FIRST = "bake its start and reference set first: bake.py bake --kind mesh, then --kind reference"
 SOUND_SUFFIX = ".sond"
 def reference_shards(rays):
-    """The shards that trace `rays` primary rays, each near REFERENCE_SHARD_SECONDS on a hosted runner; at least one."""
+    """The shards that trace `rays` primary rays, each near REFERENCE_SHARD_SECONDS on a hosted runner; at least one,
+    and no more than a job matrix holds."""
     seconds = rays * CALIBRATION_SECONDS / CALIBRATION_RAYS
-    return max(1, math.ceil(seconds / REFERENCE_SHARD_SECONDS))
+    count = max(1, math.ceil(seconds / REFERENCE_SHARD_SECONDS))
+    if count > MATRIX_JOBS:
+        raise BakeMissing(f"{rays} reference rays need {count} shards; a job matrix holds {MATRIX_JOBS}")
+    return count
 
 
 def entry_file(entry):

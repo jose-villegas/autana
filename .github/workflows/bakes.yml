@@ -155,26 +155,29 @@ jobs:
 
       - name: Whether a reference set is missing
         id: missing
-        run: echo "any=$(python launcher/tools/bake/bake.py list --missing --kind reference | grep -q . && echo true)" >> "$GITHUB_OUTPUT"
+        shell: bash
+        run: |
+          python launcher/tools/bake/bake.py list --missing --kind reference | tee "$RUNNER_TEMP/reference.txt"
+          echo "count=$(wc -l < "$RUNNER_TEMP/reference.txt")" >> "$GITHUB_OUTPUT"
 
       # Counting a set's rays writes its poses, and choosing probe faces traces visibility: a shard's inputs.
       - name: Fetch source files
-        if: ${{ steps.missing.outputs.any == 'true' }}
+        if: ${{ steps.missing.outputs.count != '0' }}
         run: git lfs pull --exclude=""
 
       - name: Initialize only meshoptimizer
-        if: ${{ steps.missing.outputs.any == 'true' }}
+        if: ${{ steps.missing.outputs.count != '0' }}
         run: git submodule update --init --depth 1 third_party/upstream/meshoptimizer
 
       - name: Install the r3d requirements and LLVM
-        if: ${{ steps.missing.outputs.any == 'true' }}
+        if: ${{ steps.missing.outputs.count != '0' }}
         run: |
           pip install -r launcher/tools/r3d/requirements.txt
           sudo sh scripts/ci/apt_install.sh -y --no-install-recommends llvm
 
       - name: The shards that trace the missing reference sets
         id: plan
-        if: ${{ steps.missing.outputs.any == 'true' }}
+        if: ${{ steps.missing.outputs.count != '0' }}
         run: echo "shards=$(python launcher/tools/bake/bake.py shards)" >> "$GITHUB_OUTPUT"
 
   # A reference set takes hours on one hosted runner; each shard traces a share of every missing set's poses.
