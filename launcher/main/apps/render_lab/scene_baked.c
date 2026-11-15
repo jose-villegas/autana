@@ -23,6 +23,7 @@
 #include "render_lab_dynres.h"
 #include "render_lab_view.h"
 #include "scene/camera/camera.h"
+#include "scene/renderer/renderer.h"
 #include "scene/scene.h"
 #include "ui/ui.h"
 
@@ -63,7 +64,7 @@ camera_entity(void) {
 
 lab_path_t
 scene_baked_path(void) {
-    return (lab_path_t){loaded, handle_is_none(loaded) ? ENTITY_NONE : camera_entity(), NULL};
+    return (lab_path_t){.scene = loaded, .entity = handle_is_none(loaded) ? ENTITY_NONE : camera_entity()};
 }
 
 static void
@@ -75,6 +76,24 @@ apply_settings(void) {
 #if TUNE_ENABLED
     render_context_set_debug_view(render_context_main(), render_lab_debug_view());
 #endif
+}
+
+bool
+scene_baked_show(entity_t root, const scene_baked_t* family, scene_baked_variant_t shown, char* failure, size_t size) {
+    bool all = true;
+    for (int i = 0; i < (int)SCENE_BAKED_VARIANT_COUNT; i++) {
+        const entity_t bake = entity_find(root, name_hash(family->bakes[i]));
+        if (handle_is_none(bake)) {
+            ESP_LOGE(TAG, "the scene has no entity '%s'", family->bakes[i]);
+            if (snprintf(failure, size, "no bake '%s'", family->bakes[i]) < 0) {
+                failure[0] = '\0';
+            }
+            all = false;
+            continue;
+        }
+        entity_set_enabled(bake, i == (int)shown);
+    }
+    return all;
 }
 
 void
@@ -93,16 +112,10 @@ scene_baked_enter(const lab_scene_t* self) {
         loaded = ENTITY_NONE;
         return;
     }
-    for (int i = 0; i < (int)SCENE_BAKED_VARIANT_COUNT; i++) {
-        const entity_t bake = entity_find(loaded, name_hash(family->bakes[i]));
-        if (handle_is_none(bake)) {
-            ESP_LOGE(TAG, "the scene has no entity '%s'", family->bakes[i]);
-            if (snprintf(failure, sizeof failure, "no bake '%s'", family->bakes[i]) < 0) {
-                failure[0] = '\0';
-            }
-            continue;
-        }
-        entity_set_enabled(bake, i == (int)shown->variant);
+    (void)scene_baked_show(loaded, family, shown->variant, failure, sizeof failure);
+    const entity_t bake = entity_find(loaded, name_hash(family->bakes[shown->variant]));
+    if (shown->textured && !handle_is_none(bake) && !renderer_set_textured(bake, true, &why)) {
+        record_failure(&why);
     }
     (void)camera_activate(render_lab.start_camera == NULL ? camera_first(loaded)
                                                           : entity_find(loaded, name_hash(render_lab.start_camera)));
@@ -140,3 +153,8 @@ scene_baked_status(void) {
 
 SCENE_BAKED_FAMILY(scene_sponza, sponza_shown, &baked_sponza, "Sponza", "sponza");
 SCENE_BAKED_FAMILY(scene_bistro, bistro_shown, &baked_bistro, "Bistro", "bistro");
+
+static const scene_baked_shown_t bistro_textured_shown = {&baked_bistro, SCENE_BAKED_FITTED_FULL, true};
+const lab_scene_t scene_bistro_textured =
+    SCENE_BAKED_ENTRY("Bistro Fitted Full Textured", "bistro-fitted-full-textured", "Bistro", "Fitted Full Textured",
+                      &bistro_textured_shown);

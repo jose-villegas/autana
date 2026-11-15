@@ -97,8 +97,7 @@ def authored_entries(root):
     mesh_asset.BLOB_HEADER.pack_into(mesh, 0, *header)
     mesh.extend(bytes([64, 128, 192]) * len(positions))
     name, skeleton, skin = skin_asset.bake(document, binary, 5, mesh)
-    tracks, duration, root_kind = tracks_asset.clip_tracks(document, binary, document['animations'][0])
-    clip = tracks_asset.encode(tracks, duration, root_kind)
+    clip = tracks_asset.encode(*tracks_asset.clip_tracks(document, binary, document['animations'][0]))
     entries = [('authored', scene_asset.TYPE, scene), ('backdrop', mesh_asset.TYPE, bytes(mesh)),
                (name, skeleton_asset.TYPE, skeleton),
                ('idle', tracks_asset.TYPE, clip), ('walk', tracks_asset.TYPE, clip)]

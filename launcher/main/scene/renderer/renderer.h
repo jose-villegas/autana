@@ -23,3 +23,11 @@ bool renderer_set_mesh(entity_t entity, const r3d_lit_mesh_t* mesh);
  * skeleton animator (animator_set_clips()). False, and `why`, which may be
  * NULL, says why, when it cannot. */
 bool renderer_set_skin(entity_t entity, const char* skin_id, scene_failure_t* why);
+
+/* Draws the entity's static renderer with its mesh's textures
+ * (render/texture/) when `on`, else plain, as it loads. The first `on` opens
+ * them from the mesh's LUVS sibling in the scene's pack and copies their
+ * texels to the app heap; they stay open until the scene unloads. False, and
+ * `why`, which may be NULL, says why, when the entity has no static renderer,
+ * its mesh has no textures, or they could not be opened. */
+bool renderer_set_textured(entity_t entity, bool on, scene_failure_t* why);

@@ -10,4 +10,5 @@
 #include "math/scalar/mathf.h"
 
 MATH_DEFINE_VEC2(vec2f, float, float, mathf)
+MATH_DEFINE_VEC2_LENGTH(vec2f, float, mathf)
 MATH_DEFINE_VEC_LERP(vec2f, float, mathf, 2)

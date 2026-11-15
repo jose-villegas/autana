@@ -88,8 +88,8 @@ class EngineSkin:
     def positions(self, clip, ms, influences):
         """Model-space positions of every LMSH vertex, as the engine skins them at `ms` into `clip`."""
         if clip not in self._clips:
-            tracks, duration, root = tracks_asset.clip_tracks(self.document, self.binary, self.asset.animations[clip])
-            self._clips[clip] = tracks_asset.encode(tracks, duration, root)
+            self._clips[clip] = tracks_asset.encode(
+                *tracks_asset.clip_tracks(self.document, self.binary, self.asset.animations[clip]))
         _, skeleton, skin = self.variants[influences]
         entries = [(MESH_ID, b"LMSH", self.mesh_bytes), (self.skeleton_name, b"SKEL", skeleton),
                    (SKIN_ID, b"SKIN", skin), (CLIP_ID, b"TRCK", self._clips[clip]), (scene_host.SCENE_ID, b"SCNE", self.scene_bytes)]

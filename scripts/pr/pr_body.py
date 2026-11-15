@@ -12,8 +12,10 @@ perf, the rows of perf_compare's comparison.json in --perf DIR. The ticket is
 knows. What the diff cannot say is left as a `<!-- fill -->` marker.
 
 `check` passes when no marker is left, the Ticket line passes
-scripts/gates/check-pr-ticket.sh, and every mermaid block renders under
-scripts/gates/check-mermaid.mjs.
+scripts/gates/check-pr-ticket.sh, every code fence closes and every formula
+renders under scripts/gates/check-math.mjs, and every mermaid block renders
+under scripts/gates/check-mermaid.mjs. CI runs it on the description as
+GitHub holds it.
 """
 import argparse
 import json
@@ -28,6 +30,7 @@ PERF_TOOLS = REPO / 'launcher' / 'tools' / 'perf'
 TEMPLATE = REPO / '.github' / 'pull_request_template.md'
 TICKET_GATE = REPO / 'scripts' / 'gates' / 'check-pr-ticket.sh'
 MERMAID_GATE = REPO / 'scripts' / 'gates' / 'check-mermaid.mjs'
+MATH_GATE = REPO / 'scripts' / 'gates' / 'check-math.mjs'
 KINDS = ('change', 'move', 'perf', 'docs')
 # Above this many rows a table stops being read at a glance, so changed files
 # are grouped by ever shorter directory prefixes until the rows fit.
@@ -36,7 +39,6 @@ FILL = '<!-- fill -->'
 MARKER = re.compile(r'<!-- (fill|block)\b')
 BLOCK_LINE = re.compile(r'^<!-- block\b.*-->$', re.M)
 TICKET_LINE = re.compile(r'^Ticket:.*$', re.M)
-FENCE = '```mermaid'
 
 
 def git(*args):
@@ -198,7 +200,8 @@ def run_gate(command, body, label):
     result = subprocess.run([program, *command[1:]], input=body, capture_output=True, text=True, encoding='utf-8')
     if result.returncode == 0:
         return []
-    return [f'{label}: {(result.stderr or result.stdout).strip()}']
+    # The gates print what failed on stdout and a missing dependency on stderr.
+    return [f'{label}: {(result.stdout + result.stderr).strip()}']
 
 
 def check(body):
@@ -206,8 +209,9 @@ def check(body):
     problems = [f'line {number}: unfilled marker: {line.strip()}'
                 for number, line in enumerate(body.splitlines(), 1) if MARKER.search(line)]
     problems += run_gate(['sh', str(TICKET_GATE)], body, 'ticket')
-    if FENCE in body:
-        problems += run_gate(['node', str(MERMAID_GATE), '--stdin', 'PR description'], body, 'mermaid')
+    problems += run_gate(['node', str(MATH_GATE), '--stdin', 'PR description'], body, 'markdown')
+    # Passes a body without diagrams before it looks for a mermaid-cli.
+    problems += run_gate(['node', str(MERMAID_GATE), '--stdin', 'PR description'], body, 'mermaid')
     return problems
 
 
@@ -220,12 +224,13 @@ def main(argv=None):
     new.add_argument('--base', default='origin/main')
     new.add_argument('--perf', metavar='DIR', help="perf_compare's --out directory (kind perf)")
     new.add_argument('--out', '-o', type=Path, help='write the description here as UTF-8; default: stdout')
-    checked = commands.add_parser('check', help='fail on markers, a bad Ticket line or a broken diagram')
+    checked = commands.add_parser('check', help='fail on markers, a bad Ticket line, an unclosed fence or a broken formula or diagram')
     checked.add_argument('body', type=Path)
     args = parser.parse_args(argv)
 
     if args.command == 'check':
-        problems = check(args.body.read_text(encoding='utf-8'))
+        # utf-8-sig: Windows PowerShell 5.1 writes a byte order mark.
+        problems = check(args.body.read_text(encoding='utf-8-sig'))
         for problem in problems:
             print(problem, file=sys.stderr)
         return 1 if problems else 0
