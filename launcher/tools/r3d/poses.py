@@ -99,9 +99,3 @@ def sample_camera_rows(animation, node, every_ms, width, height, lens, near):
     from anim import track_host
 
     return parse_pose_rows(track_host.poses(animation, node, every_ms, width, height, lens, near))
-
-
-def flight_camera(scene):
-    """The lens of the scene's first camera with a path: the flythrough a path tool samples. The scene camera
-    (the first) may have none, its fits trained on probes over its region."""
-    return next((obj.component for obj in scene.objects if obj.kind == "camera" and obj.component.path), None)
