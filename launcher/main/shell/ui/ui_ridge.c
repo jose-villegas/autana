@@ -835,14 +835,29 @@ box_takes(recti_t* box, recti_t span) {
     return true;
 }
 
-/* `box` kept after the `count` boxes so far; a full list grows its last. */
+/* A box in strip space repainted whole, so the ridge can say it is fresh. */
+static void
+repaint_box(recti_t box) {
+    if (ridge->by_column && ridge->scanline_dither) {
+        repaint_column_box(box);
+    } else {
+        for (int strip = box.x; strip < recti_right(box); strip++) {
+            repaint_strip(strip, box.y, recti_bottom(box));
+        }
+    }
+    ui_fresh_add(&ridge->fresh, ridge->by_column ? box : (recti_t){box.y, box.x, box.h, box.w});
+}
+
+/* `box` kept after the `count` boxes so far. Past a full list it is
+ * repainted now, and the fresh list overflows: the UI puts the backdrop back
+ * instead, which a box grown over the rest would cost far more than. */
 static int
 keep_box(recti_t* boxes, int count, recti_t box) {
     if (recti_is_empty(box)) {
         return count;
     }
     if (count == UI_FRESH_MAX) {
-        boxes[count - 1] = recti_union(boxes[count - 1], box);
+        repaint_box(box);
         return count;
     }
     boxes[count] = box;
@@ -901,19 +916,6 @@ merge_boxes(recti_t* boxes, int count) {
         }
     }
     return count;
-}
-
-/* A box in strip space repainted whole, so the ridge can say it is fresh. */
-static void
-repaint_box(recti_t box) {
-    if (ridge->by_column && ridge->scanline_dither) {
-        repaint_column_box(box);
-    } else {
-        for (int strip = box.x; strip < recti_right(box); strip++) {
-            repaint_strip(strip, box.y, recti_bottom(box));
-        }
-    }
-    ui_fresh_add(&ridge->fresh, ridge->by_column ? box : (recti_t){box.y, box.x, box.h, box.w});
 }
 
 /* Each layer's moves gather into boxes that hug them, boxes that overlap
