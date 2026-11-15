@@ -268,6 +268,9 @@ scene_animation_repose(scene_t* scene, uint32_t dt_ms) {
     FRAME_COST_BEGIN(lit_from);
     const int clusters = skin_stage_prepare(scene);
     if (clusters > 0 && scene->light_transfer != NULL) {
+        if (scene->probes != NULL) {
+            scene_resolve(scene);
+        }
         scene_lights_prepare(scene);
     }
     FRAME_COST_END(lit_from, SCENE_ANIM_STAGE_LIGHT_NAME);

@@ -247,13 +247,19 @@ load_sponza(void) {
     return true;
 }
 
-static void
-contact(const r3d_span_target_t* target, const r3d_lens_t* lens, void* user) {
+static box3f_t
+contact_bounds(void* user) {
     (void)user;
     vec3f_t ground = transform_world(capybara).position;
     ground.y = RUN_FLOOR_Y;
-    const vec3f_t half = box3f_half_extent(scene_bounds(capybara));
-    contact_blob_draw(target, lens, ground, vec3f_unit_y(), fmaxf(half.x, half.z), RUN_BLOB_STRENGTH);
+    return contact_blob_bounds(scene_bounds(capybara), ground);
+}
+
+static void
+contact(const r3d_span_target_t* target, const r3d_lens_t* lens, void* user) {
+    const box3f_t bounds = contact_bounds(user);
+    contact_blob_draw(target, lens, box3f_centre(bounds), vec3f_unit_y(), box3f_half_extent(bounds).x,
+                      RUN_BLOB_STRENGTH);
 }
 
 /* The capybara without its meadow, its gait built from its clips. */
@@ -265,7 +271,7 @@ load_capybara(void) {
     }
     entity_set_enabled(entity_find(capybara, name_hash(CAPYBARA_MEADOW)), false);
     runner = entity_find(capybara, name_hash(CAPYBARA_SUBJECT));
-    scene_set_post_draw(capybara, contact, NULL);
+    scene_set_post_draw(capybara, contact, contact_bounds, NULL);
     if (handle_is_none(runner) || !build_gait()) {
         fail("no capybara gallop");
         return false;

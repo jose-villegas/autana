@@ -43,6 +43,7 @@
 #include "asset/asset_store_shell.h"
 #include "lcol_name_vectors.h"
 #include "math/scalar/mathi.h"
+#include "render/contact/contact_blob.h"
 #include "render/context/render_context.h"
 #include "render/lcol_format.h"
 #include "render/llod_format.h"
@@ -3115,6 +3116,41 @@ assert_the_picture_is_the_whole_draw(void) {
     render_context_forget(render_context_main());
     frame_over_the_last();
     TEST_ASSERT_EQUAL_HEX16_ARRAY(fx.held, fx.pixels, SIZE * SIZE);
+}
+
+#define MOVING_BLOB_RADIUS 5.0F
+
+static box3f_t
+moving_blob_bounds(void* user) {
+    const vec3f_t centre = transform_world(*(entity_t*)user).position;
+    const vec3f_t extent = {MOVING_BLOB_RADIUS, MOVING_BLOB_RADIUS, MOVING_BLOB_RADIUS};
+    return (box3f_t){vec3f_sub(centre, extent), vec3f_add(centre, extent)};
+}
+
+static void
+moving_blob(const r3d_span_target_t* target, const r3d_lens_t* lens, void* user) {
+    const entity_t mover = *(entity_t*)user;
+    contact_blob_draw(target, lens, transform_world(mover).position, vec3f_unit_z(), MOVING_BLOB_RADIUS, 1.0F);
+}
+
+static void
+test_moving_post_draw_disc_clears_its_previous_rows(void) {
+    fixture();
+    const entity_t root = show("test_pair");
+    entity_t mover = entity_find(root, name_hash("red"));
+    const entity_t backdrop = entity_find(root, name_hash("green"));
+    transformf_t behind = transform_local(backdrop);
+    transformf_set_position(&behind, vec3f_unit_z());
+    transformf_set_scale(&behind, (vec3f_t){2 * MOVING_BLOB_RADIUS, 2 * MOVING_BLOB_RADIUS, 1});
+    transform_set_local(backdrop, behind);
+    scene_set_post_draw(root, moving_blob, moving_blob_bounds, &mover);
+    render_context_set_scale(render_context_main(), 100);
+    settle_the_picture();
+    transformf_t pose = transform_local(mover);
+    transformf_set_position(&pose, (vec3f_t){0, SWAPPED_SCENE_DROP, 0});
+    transform_set_local(mover, pose);
+    frame_over_the_last();
+    assert_the_picture_is_the_whole_draw();
 }
 
 static int
@@ -8028,6 +8064,7 @@ run_scene_suite(void) {
     RUN_TEST(test_a_scene_without_the_active_camera_draws_its_copies);
     RUN_TEST(test_a_renderer_swapped_for_its_twin_in_another_scene_redraws_the_frame);
     RUN_TEST(test_a_renderer_moving_in_a_second_scene_redraws_its_rows_as_a_whole_draw_does);
+    RUN_TEST(test_moving_post_draw_disc_clears_its_previous_rows);
     RUN_TEST(test_a_renderer_moving_in_the_cameras_scene_redraws_its_rows_as_a_whole_draw_does);
     RUN_TEST(test_more_changed_renderers_than_the_cap_over_two_scenes_draws_every_row);
     RUN_TEST(test_as_many_changed_renderers_as_the_cap_over_two_scenes_redraws_only_their_rows);

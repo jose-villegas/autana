@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "math/linear/transformf.h"
+#include "math/scalar/mathi.h"
 #include "render/r3d_skin_format.h"
 #include "render/skin/r3d_skin_light_directions.h"
 #include "render/skin/r3d_skin_light_internal.h"
@@ -607,6 +608,41 @@ legacy_ambient_table(const r3d_skin_lights_t* lights, r3d_skin_light_table_t* ta
     return maximum / R3D_SKIN_LIGHT_TABLE_MASK;
 }
 
+static vec3f_t
+legacy_vertex_irradiance(const fixture_t* f, int vertex, int mode, const r3d_skin_lights_t* lights,
+                         const r3d_skin_lights_t* legacy) {
+    vec3f_t n = skin_light_reference_normal(&f->skin, f->normals, vertex, false);
+    if (mode == R3D_SKIN_LIGHT_RENORMALISED) {
+        n = light_renormalise(n);
+    }
+    if (mode == R3D_SKIN_LIGHT_TABLE) {
+        return r3d_skin_light_table_sample(n, legacy);
+    }
+    vec3f_t sum = lights->ambient.constant;
+    for (int i = 0; i < lights->count; i++) {
+        const float facing = fmaxf(0, vec3f_dot(n, lights->direction[i]));
+        sum = vec3f_add(sum, vec3f_scale(lights->color[i], facing));
+    }
+    return sum;
+}
+
+static int
+assert_legacy_vertex_colors(const fixture_t* f, int mode, const r3d_skin_lights_t* lights,
+                            const r3d_skin_lights_t* legacy) {
+    int drift = 0;
+    for (int v = 0; v < VERTICES; v++) {
+        const vec3f_t sum = legacy_vertex_irradiance(f, v, mode, lights, legacy);
+        uint8_t expected[SH1_CHANNELS];
+        light_shade(sum, lights, f->bind.colors[v], expected);
+        for (int channel = 0; channel < SH1_CHANNELS; channel++) {
+            const int error = abs((int)expected[channel] - f->out[v][channel]);
+            TEST_ASSERT_LESS_OR_EQUAL_INT(mode == R3D_SKIN_LIGHT_TABLE ? 1 : 0, error);
+            drift = mathi_max(error, drift);
+        }
+    }
+    return drift;
+}
+
 static void
 test_flat_ambient_legacy_parity_and_table_drift(void) {
     static const uint8_t colors[VERTICES][3] = {{128, 64, 32}, {255, 19, 83}, {47, 211, 128}, {91, 173, 237}};
@@ -638,33 +674,7 @@ test_flat_ambient_legacy_parity_and_table_drift(void) {
         legacy.ambient = (sh1_irradiance_t){0};
         for (size_t mode = 0; mode < sizeof modes / sizeof modes[0]; mode++) {
             modes[mode].kernel(&f->skin, &f->bind, f->palette, 0, CLUSTERS, &posed, f->normals, &lights, f->out);
-            for (int v = 0; v < VERTICES; v++) {
-                vec3f_t n = skin_light_reference_normal(&f->skin, f->normals, v, false);
-                if (mode == R3D_SKIN_LIGHT_RENORMALISED) {
-                    n = light_renormalise(n);
-                }
-                vec3f_t sum = lights.ambient.constant;
-                for (int i = 0; i < lights.count; i++) {
-                    const float facing = vec3f_dot(n, lights.direction[i]);
-                    if (facing > 0) {
-                        sum = vec3f_add(sum, vec3f_scale(lights.color[i], facing));
-                    }
-                }
-                if (mode == R3D_SKIN_LIGHT_TABLE) {
-                    sum = r3d_skin_light_table_sample(n, &legacy);
-                }
-                uint8_t expected[SH1_CHANNELS];
-                light_shade(sum, &lights, colors[v], expected);
-                for (int channel = 0; channel < SH1_CHANNELS; channel++) {
-                    const int error = abs((int)expected[channel] - f->out[v][channel]);
-                    if (mode == R3D_SKIN_LIGHT_TABLE) {
-                        TEST_ASSERT_LESS_OR_EQUAL_INT(1, error);
-                        drift = error > drift ? error : drift;
-                    } else {
-                        TEST_ASSERT_EQUAL_UINT8(expected[channel], f->out[v][channel]);
-                    }
-                }
-            }
+            drift = mathi_max(drift, assert_legacy_vertex_colors(f, (int)mode, &lights, &legacy));
         }
         free(block);
     }
@@ -672,6 +682,15 @@ test_flat_ambient_legacy_parity_and_table_drift(void) {
     free(tables);
     free(transfer);
     free(f);
+}
+
+static void
+set_alternating_normals(fixture_t* f) {
+    for (int v = 0; v < VERTICES; v++) {
+        int8_t* n = (int8_t*)(f->records + v * f->skin.vertex_stride + 2 * f->skin.influences);
+        n[0] = n[2] = 0;
+        n[1] = v & 1 ? -R3D_SKIN_NORMAL_SCALE : R3D_SKIN_NORMAL_SCALE;
+    }
 }
 
 static void
@@ -687,11 +706,7 @@ test_sh_gradient_through_each_kernel(void) {
     fixture(R3D_SKIN_INFLUENCES_MIN, f);
     f->bind.colors = colors;
     f->bind.positions = positions;
-    for (int v = 0; v < VERTICES; v++) {
-        int8_t* n = (int8_t*)(f->records + v * f->skin.vertex_stride + 2 * f->skin.influences);
-        n[0] = n[2] = 0;
-        n[1] = v & 1 ? -R3D_SKIN_NORMAL_SCALE : R3D_SKIN_NORMAL_SCALE;
-    }
+    set_alternating_normals(f);
     r3d_skin_light_transfer_build(0, transfer);
     r3d_skin_lights_t lights = {.transfer = transfer, .table = table};
     lights.table_scale = r3d_skin_light_table_build(&lights, table);

@@ -10,7 +10,8 @@ enum { SH1_COEFFICIENTS = 4, SH1_CHANNELS = 3 };
 #define SH1_A0  MATH_PI
 #define SH1_A1  (2.0F * MATH_PI / 3.0F)
 
-/* Real radiance ordered Y00, Y1-1 (+y), Y10 (+z), Y11 (+x), each RGB. */
+/* Sloan, Stupid Spherical Harmonics (SH) Tricks: real radiance ordered
+ * Y00, Y1-1 (+y), Y10 (+z), Y11 (+x), each RGB, with SH1_Y00/SH1_Y1 normalisation. */
 typedef struct {
     vec3f_t c[SH1_COEFFICIENTS];
 } sh1_rgb_t;

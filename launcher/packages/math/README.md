@@ -116,6 +116,7 @@ header's opening comment; `--check` verifies it.
 | [include/math/scalar/rng.h](include/math/scalar/rng.h) | rng: a small deterministic pseudo-random generator, for anything that wants one. |
 | [include/math/scalar/trig.h](include/math/scalar/trig.h) | trig, sine and cosine of a 16-bit phase, in integers: TRIG_TURN is one turn and the result has TRIG_SIN_SHIFT fractional bits, at most TRIG_SIN_MAX. |
 | [include/math/scalar/units.h](include/math/scalar/units.h) | units: integer time conversion scales. |
+| [include/math/sh/sh1.h](include/math/sh/sh1.h) | sh1: RGB first-order spherical harmonics and cosine-convolved irradiance. |
 | [include/math/signal/goertzel.h](include/math/signal/goertzel.h) | Streaming single-bin detection (Goertzel, 1958). |
 | [include/math/signal/pitch.h](include/math/signal/pitch.h) | pitch: equal-temperament offsets relative to a caller's reference frequency. |
 | [include/math/signal/smooth.h](include/math/signal/smooth.h) | smooth: exact exponential approach toward a target, independent of frame step. |
