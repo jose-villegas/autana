@@ -63,6 +63,9 @@ measured by two requests stops the comparison. Commands run from the current rep
 `@TABLE@` become this flash's capture and table files, `@PROJECT@` the revision's
 project tree. A table command requiring budgets must read them from that tree,
 for example with `--source @PROJECT@/path/to/suite.c`.
+A suite that prints only `PERF TARGET` lines, pegged or not, such as
+`run_stress_perf_suite`, takes
+`'python3 launcher/tools/perf/perf_target_table.py @CAPTURE@ @TABLE@'`.
 
 ```sh
 launcher/tools/perf/perf_compare.sh A B -o comparison --rng-seed 42 \

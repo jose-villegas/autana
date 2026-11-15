@@ -30,6 +30,7 @@ import lock_scope
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import autana_config  # noqa: E402
+from native_path import git_bash  # noqa: E402,F401  (callers and tests reach it as device.git_bash)
 import board_serial
 from console_protocol import FRAMED_ENDINGS, replies_to, require_development, reply_prefix
 from device_capture import (BOOTS_FROM_RESET, BOOTS_ON_RUNNING, BUILD_ID_BYTES_RE as BUILD_ID, BUILD_ID_REQUEST,
@@ -74,11 +75,24 @@ def python_with_pyserial():
     return idf_python()
 
 
+# The oldest Python the engine's scripts parse; an older ESP-IDF Python cannot run them.
+PYTHON_MINIMUM_TEXT = (Path(__file__).resolve().parents[1] / "lib" / "python-min-version").read_text().strip()
+PYTHON_MINIMUM = tuple(map(int, PYTHON_MINIMUM_TEXT.split(".")))
+
+
+def python_version(python):
+    """(major, minor) of the interpreter at `python`."""
+    done = subprocess.run([python, "-c", "import sys; print(*sys.version_info[:2])"], capture_output=True,
+                          text=True, check=True, stdin=subprocess.DEVNULL)
+    return tuple(map(int, done.stdout.split()))
+
+
 def rerun_under_idf_python(argv, script=__file__):
     """The exit status of script (this file unless given) run again with argv
     under ESP-IDF's Python, or None when this interpreter can already reach the
     board. pyserial lives in that environment, not in whichever `python` a
-    caller found first, so no caller has to know which one to pick."""
+    caller found first, so no caller has to know which one to pick. An ESP-IDF
+    Python older than PYTHON_MINIMUM cannot parse these scripts: refused."""
     try:
         import serial  # noqa: F401
         return None
@@ -87,26 +101,12 @@ def rerun_under_idf_python(argv, script=__file__):
     python = idf_python()
     if os.path.normcase(os.path.abspath(python)) == os.path.normcase(os.path.abspath(sys.executable)):
         return None
+    version = python_version(python)
+    if version < PYTHON_MINIMUM:
+        raise SystemExit(f"pyserial is not installed for {sys.executable}, and ESP-IDF's Python {python} is "
+                         f"{'.'.join(map(str, version))}, older than {PYTHON_MINIMUM_TEXT}: install pyserial "
+                         f"(scripts/gates/requirements.txt) for {sys.executable}")
     return subprocess.call([python, str(Path(script).resolve()), *argv])
-
-
-def git_bash():
-    """From a native Windows shell, `bash` on PATH is WSL's launcher, which
-    hands the script path to Linux bash to unescape and cannot run ESP-IDF."""
-    if os.name != "nt":
-        return "bash"
-    candidates = []
-    git = shutil.which("git")
-    if git:
-        git_root = Path(git).resolve().parent.parent
-        candidates += [git_root / "bin" / "bash.exe", git_root / "usr" / "bin" / "bash.exe"]
-    for base in (os.environ.get("ProgramFiles"), os.environ.get("ProgramW6432")):
-        if base:
-            candidates.append(Path(base) / "Git" / "bin" / "bash.exe")
-    for candidate in candidates:
-        if candidate.is_file():
-            return str(candidate)
-    raise RuntimeError("Git Bash not found; install Git for Windows")
 
 
 class NoBoard(RuntimeError):
@@ -1294,7 +1294,7 @@ def on_windows():
 def script_environment(environment=None):
     """Git Bash on Windows needs MSYSTEM; elsewhere it would send idf.sh
     looking for cmd."""
-    environment = dict(environment or os.environ)
+    environment = dict(os.environ if environment is None else environment)
     if on_windows():
         environment.setdefault("MSYSTEM", "MINGW64")
     return environment

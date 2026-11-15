@@ -291,10 +291,10 @@ if [ -z "${QUIET_INNER:-}" ]; then
     [ "$BUILD_ONLY" = 1 ] && set -- "$@" --build-only
     [ -n "$JOBS" ] && set -- "$@" --jobs "$JOBS"
     quiet_run host-tests env QUIET_INNER=1 sh "$0" "$@" --build-dir "$BUILD_DIR" || true
-    QUIET_SUMMARY=$(grep -E '^[0-9]+ Tests [0-9]+ Failures [0-9]+ Ignored' "$QUIET_LOG" | tail -n 1)
-    grep '^waiting on lock:' "$QUIET_LOG" || true
+    QUIET_SUMMARY=$(grep -aE '^[0-9]+ Tests [0-9]+ Failures [0-9]+ Ignored' "$QUIET_LOG" | tail -n 1)
+    grep -a '^waiting on lock:' "$QUIET_LOG" || true
     export QUIET_SUMMARY
-    QUIET_FAILURES=$(grep -E ':FAIL|ERROR: (AddressSanitizer|LeakSanitizer)' "$QUIET_LOG" || true)
+    QUIET_FAILURES=$(grep -aE ':FAIL|ERROR: (AddressSanitizer|LeakSanitizer)' "$QUIET_LOG" || true)
     if [ -n "$QUIET_FAILURES" ]; then
         printf 'Test and sanitizer failures:\n%s\n' "$QUIET_FAILURES"
         if printf '%s\n' "$QUIET_FAILURES" | grep -q ':FAIL: the process died on signal'; then
@@ -303,7 +303,7 @@ if [ -z "${QUIET_INNER:-}" ]; then
         fi
     fi
     if [ "$SANITIZE" = 1 ]; then
-        QUIET_FINDINGS=$(grep 'runtime error:' "$QUIET_LOG" | sed -E 's/:[0-9]+: runtime error:/: runtime error:/' | sort -u || true)
+        QUIET_FINDINGS=$(grep -a 'runtime error:' "$QUIET_LOG" | sed -E 's/:[0-9]+: runtime error:/: runtime error:/' | sort -u || true)
         if [ -n "$QUIET_FINDINGS" ]; then
             printf 'UBSan findings (%s):\n%s\n' "$(printf '%s\n' "$QUIET_FINDINGS" | wc -l | tr -d ' ')" "$QUIET_FINDINGS"
             quiet_end run_tests 1 || exit $?
