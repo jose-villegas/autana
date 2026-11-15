@@ -28,7 +28,7 @@ draw_row(const r3d_span_target_t* target, const r3d_lens_t* lens, const blob_pla
     gfx_color_t* color = gfx_target_color(&target->rows, y);
     const uint16_t* depth = gfx_target_depth(&target->rows, y);
     for (int x = x0; x < x1; x++) {
-        const vec3f_t ray = {x + 0.5F - lens->project.cx, y + 0.5F - lens->project.cy, 1.0F};
+        const vec3f_t ray = {(float)x + 0.5F - lens->project.cx, (float)y + 0.5F - lens->project.cy, 1.0F};
         const float denominator = vec3f_dot(blob->normal, ray);
         if (denominator == 0.0F) {
             continue;
@@ -38,13 +38,13 @@ draw_row(const r3d_span_target_t* target, const r3d_lens_t* lens, const blob_pla
             continue;
         }
         const float encoded = lens->depth_near * R3D_DEPTH_NEAREST / z;
-        if (encoded < depth[x]) {
+        if (encoded < (float)depth[x]) {
             continue;
         }
         const vec3f_t delta = vec3f_sub(vec3f_scale(ray, z), blob->centre);
         const vec3f_t units = {delta.x * blob->inverse_fx, delta.y * blob->inverse_fy, delta.z};
         const float coverage = blob->strength * (1.0F - vec3f_dot(units, units) * blob->inverse_radius_squared);
-        if (coverage * BAYER4_LEVELS > bayer4x4[y & (BAYER4_SIDE - 1)][x & (BAYER4_SIDE - 1)]) {
+        if (coverage * BAYER4_LEVELS > (float)bayer4x4[y & (BAYER4_SIDE - 1)][x & (BAYER4_SIDE - 1)]) {
             color[x] = rgb565be_unspread(rgb565be_spread(color[x]) >> 1);
         }
     }
@@ -66,15 +66,18 @@ contact_blob_draw(const r3d_span_target_t* target, const r3d_lens_t* lens, vec3f
                             vec3f_dot(lens_axis(lens, 1), up) * inverse_fy * inverse_fy,
                             vec3f_dot(lens_axis(lens, 2), up)};
     const float plane = vec3f_dot(normal, centre);
-    int x0 = 0, x1 = lens->width;
-    int y0 = target->rows.first_row, y1 = gfx_target_end_row(&target->rows);
+    int x0 = 0;
+    int x1 = lens->width;
+    int y0 = target->rows.first_row;
+    int y1 = gfx_target_end_row(&target->rows);
     x1 = mathi_min(x1, target->rows.attachment[GFX_ATTACHMENT_COLOR].width);
     if (centre.z - radius > lens->project.near_z) {
-        const float near_z = centre.z - radius, far_z = centre.z + radius;
-        const float left = centre.x - fabsf(lens->focal_x) * radius;
-        const float right = centre.x + fabsf(lens->focal_x) * radius;
-        const float top = centre.y - fabsf(lens->focal_y) * radius;
-        const float bottom = centre.y + fabsf(lens->focal_y) * radius;
+        const float near_z = centre.z - radius;
+        const float far_z = centre.z + radius;
+        const float left = centre.x - (fabsf(lens->focal_x) * radius);
+        const float right = centre.x + (fabsf(lens->focal_x) * radius);
+        const float top = centre.y - (fabsf(lens->focal_y) * radius);
+        const float bottom = centre.y + (fabsf(lens->focal_y) * radius);
         x0 = (int)fmaxf((float)x0, floorf(lens->project.cx + fminf(left / near_z, left / far_z)));
         x1 = (int)fminf((float)x1, ceilf(lens->project.cx + fmaxf(right / near_z, right / far_z)));
         y0 = (int)fmaxf((float)y0, floorf(lens->project.cy + fminf(top / near_z, top / far_z)));

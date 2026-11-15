@@ -106,7 +106,7 @@ load_skins(void) {
     for (int p = 0; p < STRESS_PROBE_COUNT; p++) {
         for (int channel = 0; channel < SH1_CHANNELS; channel++) {
             probe_coefficients[p][channel] =
-                (int16_t)((STRESS_PROBE_BASE + STRESS_PROBE_STEP * p) / STRESS_PROBE_SCALE);
+                (int16_t)((STRESS_PROBE_BASE + STRESS_PROBE_STEP * (float)p) / STRESS_PROBE_SCALE);
             probe_coefficients[p][SH1_CHANNELS + channel] = (int16_t)(STRESS_PROBE_UP / STRESS_PROBE_SCALE);
         }
     }

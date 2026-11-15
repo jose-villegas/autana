@@ -27,13 +27,13 @@ sh_probes_sample(const sh_probes_t* probes, vec3f_t world) {
         for (int y = 0; y < 2; y++) {
             sh1_rgb_t ends[2];
             for (int x = 0; x < 2; x++) {
-                const size_t index = (size_t)indices[2][z] * probes->dims[1] * probes->dims[0]
-                                     + (size_t)indices[1][y] * probes->dims[0] + (size_t)indices[0][x];
+                const size_t index = ((size_t)indices[2][z] * probes->dims[1] * probes->dims[0])
+                                     + ((size_t)indices[1][y] * probes->dims[0]) + (size_t)indices[0][x];
                 const int16_t* packed = probes->coefficients[index];
                 for (int c = 0; c < SH1_COEFFICIENTS; c++) {
-                    ends[x].c[c] = (vec3f_t){packed[c * SH1_CHANNELS] * probes->scale,
-                                             packed[c * SH1_CHANNELS + 1] * probes->scale,
-                                             packed[c * SH1_CHANNELS + 2] * probes->scale};
+                    ends[x].c[c] = (vec3f_t){(float)packed[c * SH1_CHANNELS] * probes->scale,
+                                             (float)packed[(c * SH1_CHANNELS) + 1] * probes->scale,
+                                             (float)packed[(c * SH1_CHANNELS) + 2] * probes->scale};
                 }
             }
             rows[z][y] = sh1_rgb_lerp(ends[0], ends[1], weight[0]);
