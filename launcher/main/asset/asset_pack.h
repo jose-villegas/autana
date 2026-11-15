@@ -93,3 +93,6 @@ asset_status_t asset_pack_find(const asset_pack_t* pack, const char* name, uint3
 
 /* A short phrase for a status, for a log line. */
 const char* asset_status_text(asset_status_t status);
+
+/* The crc32 an opened pack's header states, which its open checked. */
+uint32_t asset_pack_checksum(const asset_pack_t* pack);
