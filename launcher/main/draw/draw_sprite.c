@@ -209,6 +209,29 @@ slice_run(const slice_axis_t* axis, int at, bool down) {
     return mathi_min(mathi_ceil_div((q + 1) * twice_out, centre_src) / 2, hi_at - centre_at) - k;
 }
 
+/* A walk along an axis: the slice of its last run and that run's source
+ * pixel. */
+typedef struct {
+    int slice;
+    int src;
+} axis_walk_t;
+
+/* The run from output pixel `at`, the next after the walk's last: its length,
+ * its source pixel left in the walk. Past its first run, a border slice steps
+ * a source pixel each `scale` output pixels, so only a slice's first run
+ * divides. */
+static inline __attribute__((always_inline)) int
+walk_run(axis_walk_t* walk, const slice_axis_t* axis, int at, bool down) {
+    const slice_t in = slice_of(axis, at);
+    if ((int)in == walk->slice && in != SLICE_CENTRE) {
+        walk->src += down ? -1 : 1;
+        return mathi_min(axis->scale, border_left(axis, at, down));
+    }
+    walk->slice = (int)in;
+    walk->src = slice_source(axis, at);
+    return slice_run(axis, at, down);
+}
+
 /* One panel row's pixels [x0, x1) of a sprite whose column axis is `axis`
  * from panel column `origin`, mirrored or not: its source pixels are `base +
  * source * step`, the same index in both planes, which share one stride.
@@ -223,24 +246,11 @@ blend_span(gfx_color_t* row, int x0, int x1, const slice_axis_t* axis, bool mirr
     int start = x0;
     gfx_color_t pixel = 0;
     uint8_t cover = 0;
-    int slice = -1;
-    int src = 0;
+    axis_walk_t walk = {-1, 0};
     for (int col = x0; col < x1;) {
         const int at = mirror ? axis->out_len - 1 - (col - origin) : col - origin;
-        const slice_t in = slice_of(axis, at);
-        int run;
-        /* Past its first run, a border slice steps a source pixel each
-         * `scale` output pixels, so only a slice's first run divides. */
-        if ((int)in == slice && in != SLICE_CENTRE) {
-            src += mirror ? -1 : 1;
-            run = mathi_min(axis->scale, border_left(axis, at, mirror));
-        } else {
-            src = slice_source(axis, at);
-            run = slice_run(axis, at, mirror);
-            slice = (int)in;
-        }
-        const int count = mathi_min(run, x1 - col);
-        const size_t source = base + ((size_t)src * step);
+        const int count = mathi_min(walk_run(&walk, axis, at, mirror), x1 - col);
+        const size_t source = base + ((size_t)walk.src * step);
         const gfx_color_t next = color[source];
         const uint8_t next_cover = alpha == NULL ? SPRITE_COVER_FULL : alpha[source];
         if (col > start && (next != pixel || next_cover != cover)) {
