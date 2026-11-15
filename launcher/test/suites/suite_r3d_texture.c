@@ -1569,25 +1569,41 @@ settings_of(int divide_px, float bend) {
     return (render_texture_settings_t){divide_px, bend};
 }
 
+#define FLOOR_SPAN 44 /* the floor's width and height in pixels */
+#define FLOOR_X0   2
+#define FLOOR_Y0   2
+
+/* The floor over a w by h box: the apex at the top middle, the base along
+ * the bottom, its UVs scaled with the size, so the texels a pixel stay the same. */
 static void
-floor_triangle(r3d_span_vertex_t v[3], vec2f_t uv[3], float z_far, vec2f_t shift) {
-    v[0] = vertex(24, 2, z_far, UINT8_MAX);
-    v[1] = vertex(46, 46, FLOOR_Z_NEAR, UINT8_MAX);
-    v[2] = vertex(2, 46, FLOOR_Z_NEAR, UINT8_MAX);
-    uv[0] = (vec2f_t){(FLOOR_U_TEXELS / 2) + shift.x, shift.y};
-    uv[1] = (vec2f_t){FLOOR_U_TEXELS + shift.x, FLOOR_V_TEXELS + shift.y};
-    uv[2] = (vec2f_t){shift.x, FLOOR_V_TEXELS + shift.y};
+floor_triangle_sized(r3d_span_vertex_t v[3], vec2f_t uv[3], float z_far, vec2f_t shift, int w, int h) {
+    v[0] = vertex(FLOOR_X0 + ((float)w / 2), FLOOR_Y0, z_far, UINT8_MAX);
+    v[1] = vertex(FLOOR_X0 + (float)w, FLOOR_Y0 + (float)h, FLOOR_Z_NEAR, UINT8_MAX);
+    v[2] = vertex(FLOOR_X0, FLOOR_Y0 + (float)h, FLOOR_Z_NEAR, UINT8_MAX);
+    const float u = FLOOR_U_TEXELS * (float)w / FLOOR_SPAN;
+    const float t = FLOOR_V_TEXELS * (float)h / FLOOR_SPAN;
+    uv[0] = (vec2f_t){(u / 2) + shift.x, shift.y};
+    uv[1] = (vec2f_t){u + shift.x, t + shift.y};
+    uv[2] = (vec2f_t){shift.x, t + shift.y};
 }
 
-/* The floor, its apex at depth z_far, drawn into target `which` with `settings`. */
+/* A w by h floor, its apex at depth z_far, drawn with `tex` into target
+ * `which` with `settings`. */
 static void
-draw_floor(int which, render_texture_settings_t settings, float z_far, vec2f_t shift) {
+draw_floor_sized(int which, const r3d_texture_t* tex, render_texture_settings_t settings, float z_far, vec2f_t shift,
+                 int w, int h) {
     r3d_span_vertex_t v[3];
     vec2f_t uv[3];
-    floor_triangle(v, uv, z_far, shift);
+    floor_triangle_sized(v, uv, z_far, shift, w, h);
     r3d_span_target_t target = target_at(which);
     r3d_span_set_texture(&target, &settings);
-    r3d_span_textured_triangle(&target, &v[0], &v[1], &v[2], uv, texture);
+    r3d_span_textured_triangle(&target, &v[0], &v[1], &v[2], uv, tex);
+}
+
+/* The INDEX4 floor, its apex at depth z_far, drawn into target `which` with `settings`. */
+static void
+draw_floor(int which, render_texture_settings_t settings, float z_far, vec2f_t shift) {
+    draw_floor_sized(which, texture, settings, z_far, shift, FLOOR_SPAN, FLOOR_SPAN);
 }
 
 static int
@@ -1822,56 +1838,56 @@ test_row_windows_draw_the_pixels_the_whole_target_does(void) {
  * window's box they stop shorter, so a window that took its own box would
  * step its pixels apart from the whole's. Its u and v run half a texel a
  * pixel, so the bend estimate's extent is half the side. */
-#define WIDE_COLUMNS    16
-#define WIDE_ROWS_ALL   96
-#define WIDE_X_LEFT     (-10)
-#define WIDE_X_RIGHT    42
-#define WIDE_Y_TOP      (-20)
-#define WIDE_Y_BOTTOM   140
-#define WIDE_SIDE       (WIDE_Y_BOTTOM - WIDE_Y_TOP) /* the whole box's longer side */
-#define WIDE_Z_FAR      0.1F
-#define WIDE_Z_NEAR     0.9F
-#define WIDE_Z_MID      0.5F
-#define WIDE_TEXEL_STEP 0.5F
-#define WIDE_BEND       8.0F
-#define WIDE_WINDOW     4 /* a window's rows, the few a slice of a two-core draw holds */
+#define TALL_COLUMNS    16
+#define TALL_ROWS_ALL   96
+#define TALL_X_LEFT     (-10)
+#define TALL_X_RIGHT    42
+#define TALL_Y_TOP      (-20)
+#define TALL_Y_BOTTOM   140
+#define TALL_SIDE       (TALL_Y_BOTTOM - TALL_Y_TOP) /* the whole box's longer side */
+#define TALL_Z_FAR      0.1F
+#define TALL_Z_NEAR     0.9F
+#define TALL_Z_MID      0.5F
+#define TALL_TEXEL_STEP 0.5F
+#define TALL_BEND       8.0F
+#define TALL_WINDOW     4 /* a window's rows, the few a slice of a two-core draw holds */
 
 static void
-wide_triangle(r3d_span_vertex_t v[3], vec2f_t uv[3]) {
-    v[0] = vertex(WIDE_X_LEFT, WIDE_Y_TOP, WIDE_Z_FAR, UINT8_MAX);
-    v[1] = vertex(WIDE_X_RIGHT, WIDE_Y_BOTTOM, WIDE_Z_NEAR, UINT8_MAX);
-    v[2] = vertex(WIDE_X_LEFT, WIDE_Y_BOTTOM, WIDE_Z_MID, UINT8_MAX);
-    const vec2f_t corner[3] = {{WIDE_X_LEFT, WIDE_Y_TOP}, {WIDE_X_RIGHT, WIDE_Y_BOTTOM}, {WIDE_X_LEFT, WIDE_Y_BOTTOM}};
+tall_triangle(r3d_span_vertex_t v[3], vec2f_t uv[3]) {
+    v[0] = vertex(TALL_X_LEFT, TALL_Y_TOP, TALL_Z_FAR, UINT8_MAX);
+    v[1] = vertex(TALL_X_RIGHT, TALL_Y_BOTTOM, TALL_Z_NEAR, UINT8_MAX);
+    v[2] = vertex(TALL_X_LEFT, TALL_Y_BOTTOM, TALL_Z_MID, UINT8_MAX);
+    const vec2f_t corner[3] = {{TALL_X_LEFT, TALL_Y_TOP}, {TALL_X_RIGHT, TALL_Y_BOTTOM}, {TALL_X_LEFT, TALL_Y_BOTTOM}};
     for (int i = 0; i < 3; i++) {
-        uv[i] = (vec2f_t){corner[i].x * WIDE_TEXEL_STEP, corner[i].y * WIDE_TEXEL_STEP};
+        uv[i] = (vec2f_t){corner[i].x * TALL_TEXEL_STEP, corner[i].y * TALL_TEXEL_STEP};
     }
 }
 
 static int
-wide_segment_px(float side) {
-    return r3d_texture_segment_px(WINDOW_DIVIDE_PX, WIDE_BEND, WIDE_TEXEL_STEP * side, WIDE_Z_NEAR, WIDE_Z_FAR, side);
+tall_segment_px(float side) {
+    return r3d_texture_segment_px(WINDOW_DIVIDE_PX, TALL_BEND, TALL_TEXEL_STEP * side, TALL_Z_NEAR, TALL_Z_FAR, side);
 }
 
 static void
 test_short_windows_of_a_tall_mildly_bent_triangle_draw_the_whole_ones_pixels(void) {
     /* The whole's side and a short window's take other segments, or the draws could not tell. */
-    TEST_ASSERT_EQUAL(RENDER_TEXTURE_DIVIDE_PX_MAX, wide_segment_px((float)WIDE_SIDE));
-    TEST_ASSERT_NOT_EQUAL(wide_segment_px((float)WIDE_SIDE), wide_segment_px((float)WIDE_COLUMNS));
+    TEST_ASSERT_EQUAL(RENDER_TEXTURE_DIVIDE_PX_MAX, tall_segment_px((float)TALL_SIDE));
+    TEST_ASSERT_NOT_EQUAL(tall_segment_px((float)TALL_SIDE), tall_segment_px((float)TALL_COLUMNS));
     fixture();
-    const size_t pixels = (size_t)WIDE_COLUMNS * WIDE_ROWS_ALL;
+    const size_t pixels = (size_t)TALL_COLUMNS * TALL_ROWS_ALL;
     uint16_t* both = calloc(pixels * 4, sizeof *both); /* colour and depth, whole then windows */
     TEST_ASSERT_NOT_NULL(both);
     r3d_span_vertex_t v[3];
     vec2f_t uv[3];
-    wide_triangle(v, uv);
-    const render_texture_settings_t settings = settings_of(WINDOW_DIVIDE_PX, WIDE_BEND);
-    r3d_span_target_t whole = r3d_span_target(both, both + pixels, WIDE_COLUMNS, 0, WIDE_ROWS_ALL);
+    tall_triangle(v, uv);
+    const render_texture_settings_t settings = settings_of(WINDOW_DIVIDE_PX, TALL_BEND);
+    r3d_span_target_t whole = r3d_span_target(both, both + pixels, TALL_COLUMNS, 0, TALL_ROWS_ALL);
     r3d_span_set_texture(&whole, &settings);
     r3d_span_textured_triangle(&whole, &v[0], &v[1], &v[2], uv, texture);
     uint16_t* windows = both + (2 * pixels);
-    for (int row0 = 0; row0 < WIDE_ROWS_ALL; row0 += WIDE_WINDOW) {
-        uint16_t* color = windows + ((size_t)row0 * WIDE_COLUMNS);
-        r3d_span_target_t window = r3d_span_target(color, color + pixels, WIDE_COLUMNS, row0, row0 + WIDE_WINDOW);
+    for (int row0 = 0; row0 < TALL_ROWS_ALL; row0 += TALL_WINDOW) {
+        uint16_t* color = windows + ((size_t)row0 * TALL_COLUMNS);
+        r3d_span_target_t window = r3d_span_target(color, color + pixels, TALL_COLUMNS, row0, row0 + TALL_WINDOW);
         r3d_span_set_texture(&window, &settings);
         r3d_span_textured_triangle(&window, &v[0], &v[1], &v[2], uv, texture);
     }
@@ -1885,9 +1901,58 @@ test_short_windows_of_a_tall_mildly_bent_triangle_draw_the_whole_ones_pixels(voi
     free(both);
 }
 
+/* The longer side of the w by h floor's unclipped box, in pixel centres. */
+static int
+floor_side(int w, int h) {
+    r3d_span_vertex_t v[3];
+    vec2f_t uv[3];
+    floor_triangle_sized(v, uv, FLOOR_Z_STEEP, vec2f_zero(), w, h);
+    const recti_t whole = r3d_span_extent_limits(&v[0], &v[1], &v[2], 0, 0).centres;
+    return mathi_max(whole.w, whole.h);
+}
+
+/* A strongly bent floor w by h, drawn with divide_px 0 and with `divide_px`:
+ * how many pixels of the two draws differ. */
+static int
+divide_px_changes(int w, int h, int divide_px) {
+    clear();
+    draw_floor_sized(0, texture, settings_of(0, TRUTH_BEND), FLOOR_Z_STEEP, vec2f_zero(), w, h);
+    draw_floor_sized(1, texture, settings_of(divide_px, TRUTH_BEND), FLOOR_Z_STEEP, vec2f_zero(), w, h);
+    TEST_ASSERT_GREATER_THAN_MESSAGE(COVERED_MIN, covered_pixels(0), "the floor covers too little to tell");
+    return colours_differing(0, 1);
+}
+
+/* A box no longer than divide_px on its longer side steps affine, one pixel
+ * longer divides: the gate is the longer side, the width or the height. */
+#define GATE_LONG  24
+#define GATE_SHORT 14
+
+static void
+gate_on_the_longer_side(int w, int h, bool width_is_longer) {
+    fixture();
+    const int side = floor_side(w, h);
+    const int w_over = w + (width_is_longer ? 1 : 0);
+    const int h_over = h + (width_is_longer ? 0 : 1);
+    TEST_ASSERT_EQUAL_MESSAGE(side + 1, floor_side(w_over, h_over),
+                              "one pixel on the longer side grows the box by one");
+    TEST_ASSERT_EQUAL_MESSAGE(0, divide_px_changes(w, h, side), "a box exactly divide_px long divided");
+    TEST_ASSERT_GREATER_THAN_MESSAGE(0, divide_px_changes(w_over, h_over, side),
+                                     "a box one pixel past divide_px stepped affine");
+}
+
+static void
+test_a_triangle_whose_width_is_divide_px_steps_affine_and_one_pixel_wider_divides(void) {
+    gate_on_the_longer_side(GATE_LONG, GATE_SHORT, true);
+}
+
+static void
+test_a_triangle_whose_height_is_divide_px_steps_affine_and_one_pixel_taller_divides(void) {
+    gate_on_the_longer_side(GATE_SHORT, GATE_LONG, false);
+}
+
 /* The texture repeats: a dividing triangle a whole number of tiles away,
  * either way, draws the same pixels, as it divides from its own tile. An
- * affine one steps from u and v as given, as before divides. */
+ * An affine one steps from u and v as given. */
 static void
 test_a_triangle_whole_tiles_away_draws_the_same_pixels(void) {
     fixture();
@@ -1903,6 +1968,30 @@ test_a_triangle_whole_tiles_away_draws_the_same_pixels(void) {
         TEST_ASSERT_GREATER_THAN_MESSAGE(COVERED_MIN, covered_pixels(0), "the floor covers too little to tell");
         TEST_ASSERT_EQUAL_MESSAGE(0, colours_differing(0, 1), "a far tile draws other pixels");
     }
+}
+
+/* MASK1 never divides: a strongly bent one draws the same with divide_px 0
+ * and the default, as the affine walk, showing kept and cut pixels. */
+static void
+test_a_bent_mask1_triangle_draws_the_same_at_any_divide_px(void) {
+    fixture();
+    mask_texture_open();
+    background(0);
+    background(1);
+    draw_floor_sized(0, mask_texture, settings_of(0, TRUTH_BEND), FLOOR_Z_STEEP, vec2f_zero(), FLOOR_SPAN, FLOOR_SPAN);
+    draw_floor_sized(1, mask_texture, settings_of(DIVIDE_PX_16, TRUTH_BEND), FLOOR_Z_STEEP, vec2f_zero(), FLOOR_SPAN,
+                     FLOOR_SPAN);
+    TEST_ASSERT_EQUAL_MESSAGE(0, colours_differing(0, 1), "divide_px changed a MASK1 triangle");
+    TEST_ASSERT_EQUAL_MESSAGE(0, memcmp(depths_of(0), depths_of(1), PIXELS * sizeof(uint16_t)), "its depths changed");
+    int kept = 0;
+    for (int i = 0; i < PIXELS; i++) {
+        kept += depths_of(0)[i] != BG_DEPTH;
+    }
+    clear();
+    draw_floor(2, settings_of(0, TRUTH_BEND), FLOOR_Z_STEEP, vec2f_zero());
+    const int covered = covered_pixels(2);
+    TEST_ASSERT_GREATER_THAN_MESSAGE(0, kept, "no pixel kept: the pattern tells nothing");
+    TEST_ASSERT_LESS_THAN_MESSAGE(covered, kept, "no hole cut: the pattern tells nothing");
 }
 
 /* A textured floor drawn through the raster: its settings reach every
@@ -2016,9 +2105,9 @@ test_a_mask1_chart_draws_textured_under_a_writer_marking_only_kept_pixels(void) 
     TEST_ASSERT_EQUAL_INT(drawn, marked_pixels());
 }
 
-/* An INDEX4 chart under a writer is drawn as the plain mesh, as before the
- * textured fill took writers: the same colours and depth, the writer marking
- * what the plain draw covers; with no writer it does draw textured. */
+/* An INDEX4 chart under a writer is drawn as the plain mesh: the same
+ * colours and depth, the writer marking what the plain draw covers; with no
+ * writer it does draw textured. */
 static void
 test_an_index4_chart_under_a_writer_draws_exactly_as_plain(void) {
     scene_t* s = scene_fixture();
@@ -2237,7 +2326,10 @@ run_r3d_texture_suite(void) {
     RUN_TEST(test_a_spans_last_pixel_matches_the_truth_at_every_length_around_a_segment);
     RUN_TEST(test_row_windows_draw_the_pixels_the_whole_target_does);
     RUN_TEST(test_short_windows_of_a_tall_mildly_bent_triangle_draw_the_whole_ones_pixels);
+    RUN_TEST(test_a_triangle_whose_width_is_divide_px_steps_affine_and_one_pixel_wider_divides);
+    RUN_TEST(test_a_triangle_whose_height_is_divide_px_steps_affine_and_one_pixel_taller_divides);
     RUN_TEST(test_a_triangle_whole_tiles_away_draws_the_same_pixels);
+    RUN_TEST(test_a_bent_mask1_triangle_draws_the_same_at_any_divide_px);
     RUN_TEST(test_the_rasters_texture_settings_reach_the_fill);
     RUN_TEST(test_set_texture_keeps_divide_px_and_the_bend_in_steps_and_rounds_a_fine_bend_up);
     RUN_TEST(test_a_mask1_chart_draws_textured_under_a_writer_marking_only_kept_pixels);
