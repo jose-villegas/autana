@@ -15,7 +15,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | [input](#input) | 11 | 0 | 0 |
 | [kinematics](#kinematics) | 6 | 2 | 0 |
 | [math](#math) | 25 | 25 | 0 |
-| [overview](#overview) | 32 | 0 | 0 |
+| [overview](#overview) | 33 | 0 | 0 |
 | [physics](#physics) | 2 | 0 | 0 |
 | [power](#power) | 2 | 0 | 0 |
 | [render](#render) | 130 | 6 | 0 |
@@ -147,6 +147,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/overview/render-lab-stress-baked-tree.png"><img src="../images/overview/render-lab-stress-baked-tree.png" width="160" alt=""></a> | Stress baked tree: the inside of a ring | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-big-tris.png"><img src="../images/overview/render-lab-stress-big-tris.png" width="160" alt=""></a> | Stress big tris: a few triangles over most of the picture | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-card.png"><img src="../images/overview/render-lab-stress-card.png" width="160" alt=""></a> | Card copies with ragged edges and sampled colours | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
+| <a href="../images/overview/render-lab-stress-cull-setup.png"><img src="../images/overview/render-lab-stress-cull-setup.png" width="160" alt=""></a> | Stress cull setup: one small cube | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-culled.png"><img src="../images/overview/render-lab-stress-culled.png" width="160" alt=""></a> | Plane before the camera turns away | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-few-copies.png"><img src="../images/overview/render-lab-stress-few-copies.png" width="160" alt=""></a> | Stress few copies: two dense spheres | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-foliage-far-opaque.png"><img src="../images/overview/render-lab-stress-foliage-far-opaque.png" width="160" alt=""></a> | Stress foliage far opaque: the same cards under the brick | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |

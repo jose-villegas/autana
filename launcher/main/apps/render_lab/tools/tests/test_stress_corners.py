@@ -87,7 +87,7 @@ class StressCorners(unittest.TestCase):
         self.assertEqual({"open", "stack", "tiny-copies", "big-tris", "per-frame", "two-sided", "noisy-tiny", "mix",
                           "static-copies", "uniform-mid", "uniform-full", "card", "culled", "near",
                           "few-copies", "textured", "record", "foliage-near", "foliage-near-opaque", "foliage-far",
-                          "foliage-far-opaque", "baked-tree"}, set(preset_copies()))
+                          "foliage-far-opaque", "cull-setup", "baked-tree"}, set(preset_copies()))
 
     def test_the_baked_ring_is_culled_through_its_tree(self):
         """The ring alone, one mesh and no copy, culled through its tree at every pose of the turn."""
@@ -161,6 +161,14 @@ class StressCorners(unittest.TestCase):
         c = self.last_counts("tiny-copies")
         self.assertGreaterEqual(c["clusters_drawn"], preset_copies()["tiny-copies"])
         self.assert_all_in_view(c)
+
+    def test_cull_setup_walks_almost_nothing(self):
+        """One copy of a few clusters: the cull's walk is a few nodes, so what it costs is its setup."""
+        self.assertEqual(1, preset_copies()["cull-setup"])
+        c = self.last_counts("cull-setup")
+        self.assert_all_in_view(c)
+        tiny = self.last_counts("tiny-copies")
+        self.assertLessEqual(c["clusters_kept"], tiny["clusters_kept"] / preset_copies()["tiny-copies"])
 
     def test_few_copies_give_each_core_one_dense_copy(self):
         """Two copies, each many clusters: the cull's split puts one whole copy on each core."""
