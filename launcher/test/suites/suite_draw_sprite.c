@@ -449,7 +449,7 @@ test_coverage_0_leaves_255_replaces_and_between_mixes(void) {
 
     enum { COVER_W = 3, COVER_MID = 128 };
 
-    static gfx_color_t color[COVER_W] = {0xF800, 0x07E0, 0x001F};
+    static gfx_color_t color[COVER_W] = {RGB565_RED_MASK, RGB565_GREEN_MASK, RGB565_BLUE_MASK};
     static uint8_t alpha[COVER_W] = {0, UINT8_MAX, COVER_MID};
     const sprite_t s = {
         .color = {color, IMAGE_RGB565BE, COVER_W, 1, sizeof color},

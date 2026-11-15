@@ -244,8 +244,8 @@ test_rgb565_round_trips_through_rgb888(void) {
  * is red 31 in the high byte of native, so high-byte-first order has it low. */
 static void
 test_swap_and_channels_read_hand_packed_rgb565(void) {
-    TEST_ASSERT_EQUAL_HEX16(0xF800u, rgb565_swap(RGB565BE(0xF80000)));
-    TEST_ASSERT_EQUAL_HEX16(0x00F8u, rgb565_swap(0xF800u));
+    TEST_ASSERT_EQUAL_HEX16(RGB565_RED_MASK, rgb565_swap(RGB565BE(0xF80000)));
+    TEST_ASSERT_EQUAL_HEX16(0x00F8u, rgb565_swap(RGB565_RED_MASK));
 
     const uint16_t native = (uint16_t)((19u << 11) | (40u << 5) | 7u);
     TEST_ASSERT_EQUAL_UINT(19, rgb565_r5(native));
