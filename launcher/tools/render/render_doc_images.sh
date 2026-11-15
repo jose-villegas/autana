@@ -301,6 +301,13 @@ if [ -f docs/audio/data/mic_eq_probe_capture.txt ]; then
 fi
 # --orphans scans this runner: mic-eq-probe-adc.png, mic-eq-probe-adc-dark.png,
 # mic-eq-probe-dac.png, mic-eq-probe-dac-dark.png, mic-eq-probe-hpf.png, mic-eq-probe-hpf-dark.png
+if [ -f docs/audio/data/mic_eq_slots_capture.txt ]; then
+    run "$PYTHON" launcher/tools/audio/mic/mic_eq_probe_figures.py --capture docs/audio/data/mic_eq_slots_capture.txt \
+        --out "$OUT/audio" > "$WORK/mic_eq_slots_figures.log"
+fi
+# --orphans scans this runner: mic-eq-slots-adc.png, mic-eq-slots-adc-dark.png, mic-eq-slots-dac.png,
+# mic-eq-slots-dac-dark.png, mic-eq-scale-adc.png, mic-eq-scale-adc-dark.png, mic-eq-scale-dac.png,
+# mic-eq-scale-dac-dark.png
 if [ -f docs/audio/data/audio_mic_dsp_capture.txt ]; then
     run "$PYTHON" launcher/tools/audio/audio_mic_dsp_figures.py --out "$OUT/audio" > "$WORK/audio_mic_dsp_figures.log"
 fi
@@ -385,7 +392,7 @@ run "$PYTHON" launcher/tools/r3d/dynres_replay.py docs/render/data/dynamic-resol
 
 # Frame generation: every mesh scene's warped frames scored on the host.
 run sh launcher/tools/r3d/framegen/framegen_docs.sh --out "$OUT/render" "$OUT/tables" > "$WORK/framegen.log" 2>&1
-# --orphans scans this runner: framegen-bistro-holes.png, framegen-bistro-path.png, framegen-bistro-path-dark.png, framegen-bistro.gif, framegen-sponza-holes.png, framegen-pricing.png, framegen-pricing-dark.png, framegen-bistro-sheet.png, framegen-bistro-sheet.crops.png
+# --orphans scans this runner: framegen-bistro-holes.png, framegen-bistro-path.png, framegen-bistro-path-dark.png, framegen-bistro.gif, framegen-sponza-holes.png, framegen-bistro-sheet.png, framegen-bistro-sheet.crops.png
 
 # The frame stages as shipped, what is inside the lapped stages, and what
 # each debug view adds, from the pipeline captures beside the page.

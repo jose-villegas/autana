@@ -1,8 +1,8 @@
 /*
  * Portable suite: render/dynamic/r3d_dynamic_mesh.h. A grid of quads built
  * at run time must come out as a lit mesh the pipeline can walk, carrying
- * each vertex's place and colour, and a source too big must leave a mesh
- * that is still whole.
+ * each vertex's place and colour (and a textured source's UV), and a source
+ * too big must leave a mesh that is still whole.
  */
 #include <stdlib.h>
 #include <string.h>
@@ -25,6 +25,7 @@
 static vec3f_t* positions;
 static uint8_t (*colors)[3];
 static uint16_t (*triangles)[3];
+static int16_t (*uvs)[2];
 static void* block;
 static r3d_dynamic_mesh_t mesh;
 
@@ -33,17 +34,22 @@ fixture_end(void) {
     free(positions);
     free(colors);
     free(triangles);
+    free(uvs);
     free(block);
     positions = NULL;
     colors = NULL;
     triangles = NULL;
+    uvs = NULL;
     block = NULL;
 }
 
 static r3d_dynamic_source_t
 sheet(int quads) {
-    return (r3d_dynamic_source_t){
-        positions, (const uint8_t (*)[3])colors, CORNERS, (const uint16_t (*)[3])triangles, 2 * quads, false};
+    return (r3d_dynamic_source_t){.positions = positions,
+                                  .colors = (const uint8_t (*)[3])colors,
+                                  .vertex_count = CORNERS,
+                                  .triangles = (const uint16_t (*)[3])triangles,
+                                  .triangle_count = 2 * quads};
 }
 
 static bool
@@ -94,7 +100,22 @@ expect_valid(void) {
 }
 
 /* A sheet's clusters share most vertices: two a triangle is room enough. */
-static const r3d_dynamic_capacity_t ROOMY = {2 * 2 * QUADS, 2 * QUADS, CORNERS};
+static const r3d_dynamic_capacity_t ROOMY = {2 * 2 * QUADS, 2 * QUADS, CORNERS, false};
+static const r3d_dynamic_capacity_t ROOMY_TEXTURED = {2 * 2 * QUADS, 2 * QUADS, CORNERS, true};
+
+/* The whole sheet with a UV on every corner, each unlike the others. */
+static r3d_dynamic_source_t
+textured_sheet(void) {
+    uvs = malloc(sizeof(int16_t[2]) * CORNERS);
+    TEST_ASSERT_NOT_NULL(uvs);
+    for (int i = 0; i < CORNERS; i++) {
+        uvs[i][0] = (int16_t)i;
+        uvs[i][1] = (int16_t)(-1 - i);
+    }
+    r3d_dynamic_source_t source = sheet(QUADS);
+    source.uvs = (const int16_t (*)[2])uvs;
+    return source;
+}
 
 /* Each output vertex is the source vertex it copies: in ticks, same colour,
  * at the corner the raster's winding puts it. */
@@ -130,6 +151,51 @@ test_a_sheet_builds_into_a_mesh_the_pipeline_can_walk(void) {
     }
 }
 
+/* A textured source's UVs travel with each vertex copy, beside its
+ * position and colour. */
+static void
+test_a_textured_sheet_carries_each_vertexs_uv_into_its_copies(void) {
+    fixture_begin(ROOMY_TEXTURED);
+    const r3d_dynamic_source_t source = textured_sheet();
+    TEST_ASSERT_TRUE(r3d_dynamic_mesh_build(&mesh, &source));
+    expect_valid();
+    expect_copies();
+    static const int TURNED[3] = {0, 2, 1};
+    for (int t = 0; t < mesh.mesh.triangle_count; t++) {
+        for (int k = 0; k < 3; k++) {
+            const int out = mesh.mesh.triangles[t][k];
+            TEST_ASSERT_EQUAL_MEMORY(uvs[triangles[t][TURNED[k]]], mesh.uvs[out], sizeof uvs[0]);
+        }
+    }
+}
+
+/* A textured source needs room for its UVs: an untextured capacity refuses it. */
+static void
+test_a_textured_sheet_does_not_build_into_an_untextured_capacity(void) {
+    fixture_begin(ROOMY);
+    const r3d_dynamic_source_t source = textured_sheet();
+    TEST_ASSERT_FALSE(r3d_dynamic_mesh_build(&mesh, &source));
+    TEST_ASSERT_EQUAL_INT(0, mesh.built_clusters);
+    TEST_ASSERT_NULL(mesh.uvs);
+}
+
+/* A textured capacity holds a UV pair a vertex more, and init refuses a block
+ * sized for the untextured layout; the block sized for it, it opens. */
+static void
+test_a_textured_capacity_needs_more_bytes_than_an_untextured_one(void) {
+    suite_add_test_cleanup(fixture_end);
+    const size_t plain = r3d_dynamic_mesh_bytes(ROOMY);
+    const size_t textured = r3d_dynamic_mesh_bytes(ROOMY_TEXTURED);
+    TEST_ASSERT_GREATER_OR_EQUAL_UINT32((uint32_t)(plain + ((size_t)ROOMY.vertices * sizeof(int16_t[2]))),
+                                        (uint32_t)textured);
+    block = malloc(textured);
+    TEST_ASSERT_NOT_NULL(block);
+    TEST_ASSERT_FALSE(r3d_dynamic_mesh_init(&mesh, block, plain, ROOMY_TEXTURED, POSITION_SCALE));
+    TEST_ASSERT_NULL(mesh.uvs);
+    TEST_ASSERT_TRUE(r3d_dynamic_mesh_init(&mesh, block, textured, ROOMY_TEXTURED, POSITION_SCALE));
+    TEST_ASSERT_NOT_NULL(mesh.uvs);
+}
+
 /* A cluster copies only the vertices it uses and shares them among its
  * triangles: a sheet costs near one vertex a triangle, not three. */
 static void
@@ -141,7 +207,7 @@ test_clusters_share_vertices_within_themselves(void) {
 
 static void
 test_a_source_too_big_leaves_a_whole_mesh(void) {
-    const r3d_dynamic_capacity_t tight = {100, 2 * QUADS, CORNERS};
+    const r3d_dynamic_capacity_t tight = {100, 2 * QUADS, CORNERS, false};
     fixture_begin(tight);
     TEST_ASSERT_FALSE(build(QUADS));
     TEST_ASSERT_GREATER_THAN_INT(0, mesh.mesh.triangle_count);
@@ -185,8 +251,8 @@ static void
 test_a_bad_capacity_or_block_is_refused(void) {
     r3d_dynamic_mesh_t m;
     uint8_t small[16];
-    TEST_ASSERT_EQUAL_size_t(0, r3d_dynamic_mesh_bytes((r3d_dynamic_capacity_t){0, 10, 10}));
-    TEST_ASSERT_EQUAL_size_t(0, r3d_dynamic_mesh_bytes((r3d_dynamic_capacity_t){10, 10, INT16_MAX + 1}));
+    TEST_ASSERT_EQUAL_size_t(0, r3d_dynamic_mesh_bytes((r3d_dynamic_capacity_t){0, 10, 10, false}));
+    TEST_ASSERT_EQUAL_size_t(0, r3d_dynamic_mesh_bytes((r3d_dynamic_capacity_t){10, 10, INT16_MAX + 1, false}));
     TEST_ASSERT_FALSE(r3d_dynamic_mesh_init(&m, small, sizeof small, ROOMY, POSITION_SCALE));
     TEST_ASSERT_FALSE(r3d_dynamic_mesh_init(&m, NULL, SIZE_MAX, ROOMY, POSITION_SCALE));
 }
@@ -195,6 +261,9 @@ void
 suite_dynamic_mesh(void) {
     RUN_TEST(test_a_sheet_builds_into_a_mesh_the_pipeline_can_walk);
     RUN_TEST(test_clusters_share_vertices_within_themselves);
+    RUN_TEST(test_a_textured_sheet_carries_each_vertexs_uv_into_its_copies);
+    RUN_TEST(test_a_textured_sheet_does_not_build_into_an_untextured_capacity);
+    RUN_TEST(test_a_textured_capacity_needs_more_bytes_than_an_untextured_one);
     RUN_TEST(test_a_source_too_big_leaves_a_whole_mesh);
     RUN_TEST(test_a_rebuild_replaces_what_was_there);
     RUN_TEST(test_the_counts_a_raster_sizes_by_never_move);

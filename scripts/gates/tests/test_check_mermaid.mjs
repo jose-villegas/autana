@@ -32,7 +32,6 @@ test('extracts a single fenced block with its start line', () => {
   assert.equal(blocks.length, 1);
   assert.equal(blocks[0].line, 2);
   assert.equal(blocks[0].source, 'graph TD\nA --> B');
-  assert.equal(blocks[0].unterminated, undefined);
 });
 
 test('extracts multiple blocks in file order', () => {
@@ -43,11 +42,12 @@ test('extracts multiple blocks in file order', () => {
   assert.equal(blocks[1].line, 5);
 });
 
-test('flags a fence with no closing fence', () => {
+// check-math.mjs refuses the fence itself; this gate still renders what it holds.
+test('a fence with no closing fence runs to the end', () => {
   const text = ['```mermaid', 'graph TD', 'A --> B'].join('\n');
   const blocks = extractBlocks(text);
   assert.equal(blocks.length, 1);
-  assert.equal(blocks[0].unterminated, true);
+  assert.equal(blocks[0].source, 'graph TD\nA --> B');
 });
 
 test('ignores text outside a fence', () => {

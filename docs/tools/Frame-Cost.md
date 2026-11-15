@@ -44,6 +44,10 @@ report flags a further one with ` +N dropped`, and a charge from any task but
 the frame loop's own with ` +N foreign`. On a host and in release the
 brackets compile to nothing.
 
+The animation step brackets are `anim.pose` (clips and poses),
+`anim.light` (normal palettes and world lights), `anim.skin` and
+`anim.refit` (skinned bounds).
+
 The raster brackets are `r3d.census`, `r3d.cull`, `r3d.transform`,
 `r3d.draw`, `r3d.show` and `r3d.upscale`. Clip and span fill are inside
 `r3d.draw`. Laps split the cull, under `r3d.cull` or `r3d.census`:

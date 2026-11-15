@@ -1,6 +1,7 @@
 """Fit stage costs on stress replay poses and score held-out scene poses."""
 import argparse
 import pathlib
+import re
 import sys
 
 import numpy as np
@@ -11,8 +12,19 @@ sys.path[:0] = [str(ROOT / "launcher/tools/perf"), str(ROOT / "launcher/tools")]
 from frame_profile import replays
 from render.cull_counts import size_fields, upscale_counts
 from build.c_header import read_define
-from stress_goals import STAGE_HEADER, STAGES
 
+# r3d's stages, the ones scene counts predict: the recorder's is not fitted.
+STAGE_HEADER = ROOT / "launcher/main/render/r3d_stages.h"
+
+
+def r3d_stage_names():
+    """The bracket names in r3d's stage enum order."""
+    enum = re.search(r"enum\s*\{([^}]+)\}", STAGE_HEADER.read_text(encoding="utf-8"))[1]
+    ids = [name.strip() for name in enum.split(",") if name.strip() != "R3D_STAGE_COUNT"]
+    return tuple(read_define(STAGE_HEADER, f"{name}_NAME") for name in ids)
+
+
+STAGES = r3d_stage_names()
 UPSCALE = read_define(STAGE_HEADER, "R3D_STAGE_UPSCALE_NAME")
 FRAME = "frame"
 ALL_STAGES = (*STAGES, FRAME)
