@@ -25,6 +25,7 @@
 #include "render/context/render_context.h"
 #include "render/dynamic/r3d_dynamic_mesh.h"
 #include "render/r3d_lit_mesh.h"
+#include "render/r3d_skin.h"
 
 typedef struct {
     bool (*write)(void* sink, const uint8_t* bytes, size_t count); /* false: sink full, the frame is dropped */
@@ -66,9 +67,10 @@ void frame_record_frame(const render_context_t* context, const raster_t* raster,
  * loads. False when it does not fit; true when already taken. */
 bool frame_record_take_notes(void);
 
-/* `posed` is `bind` posed by `palette`, `joints` matrices kept by the caller. */
-void frame_record_note_skin(const r3d_lit_mesh_t* posed, const r3d_lit_mesh_t* bind, const mat4f_t* palette,
-                            int joints);
+/* `posed` is `bind` posed through `skin` by `palette`, `joints` matrices
+ * kept by the caller. */
+void frame_record_note_skin(const r3d_lit_mesh_t* posed, const r3d_lit_mesh_t* bind, const r3d_skin_t* skin,
+                            const mat4f_t* palette, int joints);
 /* `built` was built from `source`, whose arrays stay until the next build. */
 void frame_record_note_built(const r3d_lit_mesh_t* built, const r3d_dynamic_source_t* source, bool fitted);
 /* A mesh is being made in `block`: notes of meshes that lived there are stale. */
@@ -110,9 +112,11 @@ frame_record_frame(const render_context_t* context, const raster_t* raster, uint
 }
 
 static inline void
-frame_record_note_skin(const r3d_lit_mesh_t* posed, const r3d_lit_mesh_t* bind, const mat4f_t* palette, int joints) {
+frame_record_note_skin(const r3d_lit_mesh_t* posed, const r3d_lit_mesh_t* bind, const r3d_skin_t* skin,
+                       const mat4f_t* palette, int joints) {
     (void)posed;
     (void)bind;
+    (void)skin;
     (void)palette;
     (void)joints;
 }

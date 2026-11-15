@@ -70,9 +70,11 @@ r3d_lens_place(r3d_lens_t* lens, const mat4f_t* model, int position_scale) {
 }
 
 void
-frame_record_note_skin(const r3d_lit_mesh_t* posed, const r3d_lit_mesh_t* bind, const mat4f_t* palette, int joints) {
+frame_record_note_skin(const r3d_lit_mesh_t* posed, const r3d_lit_mesh_t* bind, const r3d_skin_t* skin,
+                       const mat4f_t* palette, int joints) {
     (void)posed;
     (void)bind;
+    (void)skin;
     (void)palette;
     (void)joints;
 }

@@ -168,7 +168,7 @@ scene_skin_range(scene_t* scene, int first, int count) {
             r3d_skin_clusters(&skin->skin, &skin->bind, skin->palette, start, end - start, &skin->output);
         }
         if (start == 0 && end > 0) { /* the range from the first cluster tells the recorder once per pose */
-            frame_record_note_skin(&skin->output.mesh, &skin->bind, skin->palette, skin->skin.joint_count);
+            frame_record_note_skin(&skin->output.mesh, &skin->bind, &skin->skin, skin->palette, skin->skin.joint_count);
         }
         offset += clusters;
     }
