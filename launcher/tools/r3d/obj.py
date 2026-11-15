@@ -1,4 +1,4 @@
-"""Wavefront OBJ and MTL loading, and the textures an MTL names, as linear-light mip chains."""
+"""Wavefront OBJ writing, OBJ and MTL loading, and the textures an MTL names, as linear-light mip chains."""
 
 import os
 import pathlib
@@ -137,3 +137,23 @@ def load_textures(root, materials, names, dtype=None):
         else:
             textures.append(None)
     return textures
+
+
+def write_obj(path, mtllib, positions, groups, uvs=None, banner=(), position_decimals=3, uv_decimals=5):
+    """Writes `positions` (and a `vt` per uv, sharing its index) under `mtllib`, then each (object,
+    material, triangles) group: an `o` line when the object changes (None writes none), `usemtl`,
+    and its 0-based triangles as 1-based faces. `banner` lines go first, as comments."""
+    lines = [f"# {line}".rstrip() for line in banner] + [f"mtllib {mtllib}"]
+    p = position_decimals
+    lines += [f"v {x:.{p}f} {y:.{p}f} {z:.{p}f}" for x, y, z in positions]
+    if uvs is not None:
+        lines += [f"vt {u:.{uv_decimals}f} {v:.{uv_decimals}f}" for u, v in uvs]
+    face = "f {0}/{0} {1}/{1} {2}/{2}" if uvs is not None else "f {0} {1} {2}"
+    last = None
+    for obj, material, triangles in groups:
+        if obj is not None and obj != last:
+            lines.append(f"o {obj}")
+        last = obj
+        lines.append(f"usemtl {material}")
+        lines += [face.format(a + 1, b + 1, c + 1) for a, b, c in triangles]
+    pathlib.Path(path).write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
