@@ -131,7 +131,7 @@ void mark_band_overlay(gfx_color_t* buf, int row0, int height);
 extern uint32_t overlay_bordered_rows;
 void mark_strip_overlay(gfx_color_t* slot, int row);
 bool send_row_with_overlays(int row, int y);
-void send_overlay_bordered_rows_clean(bool (*send_rows)(int y0, int y1), int* queued);
+void send_overlay_bordered_rows_clean(uint32_t sending, bool (*send_rows)(int y0, int y1), int* queued);
 void send_audit_capture(int x0, int y0, int w, int h, const gfx_color_t* buf);
 void send_audit_check(void);
 #endif

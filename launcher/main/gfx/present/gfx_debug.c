@@ -435,12 +435,20 @@ send_row_with_overlays(int row, int y) {
 uint32_t overlay_bordered_rows;
 _Static_assert(STRIP_COUNT <= 32, "one bit per strip row");
 
-/* Before the dirty sends, so a row both bordered last present and dirty now
- * ends up showing only this present's borders. */
+/* Before the dirty sends. A bordered row in `sending` (this present sends it)
+ * is widened to its whole strip instead, so its one send with this present's
+ * borders also covers last present's: resending it clean as well would send
+ * the row twice. Only rows gone quiet are resent clean. */
 void
-send_overlay_bordered_rows_clean(bool (*send_rows)(int y0, int y1), int* queued) {
+send_overlay_bordered_rows_clean(uint32_t sending, bool (*send_rows)(int y0, int y1), int* queued) {
     for (int row = 0; row < STRIP_COUNT; row++) {
-        if ((overlay_bordered_rows & (1U << row)) && send_rows(row * STRIP_HEIGHT, (row + 1) * STRIP_HEIGHT)) {
+        const uint32_t bit = 1U << row;
+        if (!(overlay_bordered_rows & bit)) {
+            continue;
+        }
+        if (sending & bit) {
+            mark_band(row * STRIP_HEIGHT, (row + 1) * STRIP_HEIGHT);
+        } else if (send_rows(row * STRIP_HEIGHT, (row + 1) * STRIP_HEIGHT)) {
             (*queued)++;
         }
     }
