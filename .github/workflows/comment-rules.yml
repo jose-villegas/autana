@@ -241,6 +241,11 @@ jobs:
           npm ci --prefix scripts/gates
       - name: Tool tests
         run: sh scripts/run-tool-tests.sh
+      # A native crash past Python's own shutdown, where the faulthandler is off, is named by Windows' crash record.
+      - name: Crashed processes
+        if: ${{ failure() }}
+        shell: pwsh
+        run: Get-WinEvent -FilterHashtable @{LogName='Application'; Id=1000} -MaxEvents 5 -ErrorAction SilentlyContinue | Format-List TimeCreated, Message
       # The quiet run prints each failing suite's head; the whole log is what a fix is classified from.
       - if: ${{ !cancelled() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
