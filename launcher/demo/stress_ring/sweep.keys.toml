@@ -1,4 +1,4 @@
-# Standing at the ring's centre and turning half a turn and back, looking along its inner wall:
+# Standing at the ring's centre and turning half a turn and back, looking at its inner wall:
 # the cull walk reaches a different part of the ring's tree at every pose.
 node = "camera"
 animation = "sweep"

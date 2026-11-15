@@ -31,7 +31,6 @@ typedef enum {
     STRESS_SURFACE_TWO_SIDED, /* banded, and drawn from both sides: nothing faces away */
     STRESS_SURFACE_TEXTURED,  /* banded light under a generated INDEX4 brick texture (render/texture) */
     STRESS_SURFACE_MASKED,    /* banded light, each foliage card cut by a generated MASK1 texture */
-    STRESS_SURFACE_BAKED,     /* no copy: the pack's baked ring, culled through the tree the bake tools built */
 } stress_surface_t;
 
 typedef enum {
@@ -45,7 +44,7 @@ typedef enum {
 #define STRESS_CAMERA_CULLED "culled"
 #define STRESS_CAMERA_NEAR   "near"
 #define STRESS_CAMERA_SWEEP  "sweep"
-#define STRESS_RING          "ring"
+#define STRESS_RING_SCENE    "stress_ring"
 
 typedef struct {
     stress_shape_t shape;
@@ -55,8 +54,9 @@ typedef struct {
     int coverage_percent; /* how much of the picture's short side the arrangement spans */
     stress_surface_t surface;
     const char* camera;
-    int perf_poses; /* poses the stress perf suite replays along the swing */
-    bool record;    /* the stress perf suite runs the frame recorder over it: its stage too */
+    int perf_poses;    /* poses the stress perf suite replays along the swing */
+    bool record;       /* the stress perf suite runs the frame recorder over it: its stage too */
+    const char* scene; /* the pack shown: NULL is STRESS_SCENE's copy pool, another its own meshes as placed */
 } stress_params_t;
 
 /* X(ID, key, surface): each preset, its key the scene key's suffix and its
@@ -85,7 +85,7 @@ typedef struct {
     X(FOLIAGE_FAR, "foliage-far", MASKED)                                                                              \
     X(FOLIAGE_FAR_OPAQUE, "foliage-far-opaque", TEXTURED)                                                              \
     X(RECORD, "record", WAVE)                                                                                          \
-    X(BAKED_TREE, "baked-tree", BAKED)
+    X(BAKED_TREE, "baked-tree", STATIC)
 
 #define STRESS_PRESET_ID(id_, ...) STRESS_##id_,
 
@@ -100,12 +100,6 @@ extern const stress_params_t stress_presets[STRESS_PRESET_COUNT];
 static inline bool
 stress_per_frame(const stress_params_t* p) {
     return STRESS_SURFACE_IS_PER_FRAME(p->surface);
-}
-
-/* Whether the preset's copies show a mesh made at run time, not an asset. */
-static inline bool
-stress_generated(const stress_params_t* p) {
-    return p->surface != STRESS_SURFACE_STATIC && p->surface != STRESS_SURFACE_BAKED;
 }
 
 /* A copy's mesh: the shape's vertex and triangle counts. */

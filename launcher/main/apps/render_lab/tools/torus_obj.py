@@ -1,5 +1,5 @@
 """Writes a torus about the y axis as an OBJ, faces counter-clockwise from outside, with a material
-of the file's own name. Tessellated finely, its baked cluster tree has several levels.
+of the file's own name. Fine tessellation is what gives the bake a deep cluster tree.
 
     python main/apps/render_lab/tools/torus_obj.py OUT.obj RING_RADIUS TUBE_RADIUS RING_STEPS TUBE_STEPS
 

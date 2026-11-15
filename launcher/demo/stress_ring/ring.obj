@@ -1,6 +1,6 @@
 # GENERATED FILE - do not edit.
 #
-#     python main/apps/render_lab/tools/torus_obj.py demo/stress/ring.obj 4 0.6 256 32
+#     python main/apps/render_lab/tools/torus_obj.py demo/stress_ring/ring.obj 4 0.6 256 32
 #
 mtllib ring.mtl
 v 4.60000 0.00000 -0.00000

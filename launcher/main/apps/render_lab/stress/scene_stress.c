@@ -1,4 +1,4 @@
-/* scene_stress: static assets or shared generated meshes in a copy pool, or a baked ring, before a moving camera. */
+/* scene_stress: a pool of static or generated copies, or a pack's own baked mesh, before a moving camera. */
 
 #include "apps/render_lab/stress/scene_stress.h"
 
@@ -33,7 +33,6 @@ static entity_t loaded;
 static entity_t camera; /* the swing the copies are placed for */
 static entity_t viewer; /* the camera shown: the one the start named, else the swing */
 static entity_t* slots; /* the pool's copies, in name order */
-static entity_t ring;   /* the baked-tree preset's mesh, hidden for every other preset */
 static int pool;
 static stress_buffers_t buffers[STRESS_MIX_LEVELS];
 static r3d_dynamic_mesh_t mesh[STRESS_MIX_LEVELS];
@@ -166,6 +165,9 @@ static_shape(void) {
  * about the origin's up so its +z faces it there. */
 static void
 place_copies(void) {
+    if (shown->copies == 0) {
+        return; /* a pack without a pool shows its meshes where it placed them */
+    }
     (void)animator_seek(camera, ANIMATOR_CURRENT, 0);
     const vec3f_t eye = transform_world(camera).position;
     const lens_t* lens = camera_lens(camera);
@@ -173,10 +175,8 @@ place_copies(void) {
     transformf_t facing = transformf_identity();
     transformf_set_rotation(&facing, quatf_from_axis_angle(vec3f_unit_y(), atan2f(eye.x, eye.z)));
     const transformf_t shape = shown->surface == STRESS_SURFACE_STATIC ? static_shape() : transformf_identity();
-    const bool baked = shown->surface == STRESS_SURFACE_BAKED;
-    entity_set_enabled(ring, baked);
     for (int i = 0; i < pool; i++) {
-        const bool used = !baked && i < shown->copies;
+        const bool used = i < shown->copies;
         entity_set_enabled(slots[i], used);
         if (used) {
             transformf_t place = stress_copy_place(shown, i, seen);
@@ -201,7 +201,7 @@ apply_settings(void) {
 
 static bool
 load(void) {
-    loaded = lab_scene_load(TAG, failure, sizeof failure, STRESS_SCENE, "stress");
+    loaded = lab_scene_load(TAG, failure, sizeof failure, shown->scene != NULL ? shown->scene : STRESS_SCENE, "stress");
     if (handle_is_none(loaded)) {
         return false;
     }
@@ -211,12 +211,7 @@ load(void) {
         return false;
     }
     viewer = render_lab.start_camera == NULL ? camera : entity_find(loaded, name_hash(render_lab.start_camera));
-    ring = entity_find(loaded, name_hash(STRESS_RING));
-    if (handle_is_none(ring)) {
-        fail("no stress ring");
-        return false;
-    }
-    if (!find_pool() || (stress_generated(shown) && !take_mesh())) {
+    if (!find_pool() || (shown->surface != STRESS_SURFACE_STATIC && !take_mesh())) {
         fail("no memory for stress");
         return false;
     }
@@ -228,7 +223,7 @@ load(void) {
         fail("no memory for the stress texture");
         return false;
     }
-    if (stress_generated(shown) && !build()) {
+    if (shown->surface != STRESS_SURFACE_STATIC && !build()) {
         fail("stress mesh did not fit");
         return false;
     }

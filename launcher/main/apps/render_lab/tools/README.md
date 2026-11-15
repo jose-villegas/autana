@@ -138,16 +138,17 @@ Source: `water-stages-board.log`
 
 ### Stress
 
-The Stress family repeats a generated primitive or static pack mesh before a
-swinging camera. Each preset ties down one behaviour with its own pegged goal.
-The presets are the per-PR perf check for r3d work. Scenes run nightly, on
-request, and for bake and fit changes; a scene regression with no preset
-moving is a coverage gap and becomes a new preset.
+The Stress family shows a generated primitive or a static pack mesh in copies,
+or a baked mesh of its own pack, before a moving camera. Each preset ties down
+one behaviour with its own pegged goal. The presets are the per-PR perf check
+for r3d work. Scenes run nightly, on request, and for bake and fit changes; a
+scene regression with no preset moving is a coverage gap and becomes a new
+preset.
 
 Repeated geometry exercises hierarchical visibility<sup>[[112]](../../../../../docs/Citations.md#greene-1993)</sup>;
 the presets vary the copies' geometry, layout and colour modes.
 
-| Scene key | As the swing starts | Made of | Ties down |
+| Scene key | As the camera starts | Made of | Ties down |
 |---|---|---|---|
 | `stress-open` | ![Stress open: a wall of planes side by side](../../../../../docs/images/overview/render-lab-stress-open.png) | a wall of planes side by side | hidden-cluster skip and cluster cull: nothing hides and nothing is off screen |
 | `stress-stack` | ![Stress stack: planes one behind another](../../../../../docs/images/overview/render-lab-stress-stack.png) | planes one behind another | the skip's win, and the depth cost of the debug views |
@@ -170,7 +171,7 @@ the presets vary the copies' geometry, layout and colour modes.
 | `stress-foliage-far` | ![Stress foliage far: a wall of small bushes of masked cards](../../../../../docs/images/overview/render-lab-stress-foliage-far.png) | 36 small bushes side by side, their cards a few pixels across | the masked textured fill on small triangles, as distant foliage draws |
 | `stress-foliage-far-opaque` | ![Stress foliage far opaque: the same cards under the brick](../../../../../docs/images/overview/render-lab-stress-foliage-far-opaque.png) | `stress-foliage-far`'s cards under the INDEX4 brick, whole | the twin: against it, the far cards' mask costs alone |
 | `stress-record` | ![Stress record: four planes with a wave running over them](../../../../../docs/images/overview/render-lab-stress-record.png) | four planes made again every frame, a wave running over them, while the frame recorder runs | the recorder: each frame's four built meshes written whole, a keyframe's meshes every 30 frames |
-| `stress-baked-tree` | ![Stress baked tree: the inside of a ring](../../../../../docs/images/overview/render-lab-stress-baked-tree.png) | a ring baked by the bake tools, the camera at its centre turning half a turn | the baked cluster tree the cull walks, which no generated copy has |
+| `stress-baked-tree` | ![Stress baked tree: the inside of a ring](../../../../../docs/images/overview/render-lab-stress-baked-tree.png) | a ring baked by the bake tools in its own pack, the camera at its centre turning half a turn; [`torus_obj.py`](torus_obj.py) writes the ring into [`ring.obj`](../../../../demo/stress_ring/ring.obj) | the baked cluster tree the cull walks, which no generated copy has |
 
 A change is judged by each preset's own readout, stage by stage. The sum over
 presets is a summary line only. A draw change can win on two-sided and static
