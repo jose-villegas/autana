@@ -1,11 +1,12 @@
-"""Views from probes spread through a region, beside the camera path's: the fit's (geometry.probes in an import).
+"""Views from probes spread through a region, beside the camera path's. The fit uses them (`geometry.probes` in an
+import).
 
 `select` puts one jittered probe in every `spacing`-sized cell of the scene camera's region (the source's bounds
 without one), moves probes out of geometry and drops those still inside, gives each probe six 90 degree cube
 faces, and keeps faces greedily by the target triangles (every triangle without `targets`) they show that neither
-the path nor a kept face shows yet. Every triangle occludes, through the caller's `query` when it cuts texels out.
-Shown sets are traced on the source alone, so the probes, like the rest of a reference set, never depend on the
-start. Probes reach surface seen from somewhere off the path, never surface seen from nowhere.
+the path nor a kept face shows yet. Every triangle occludes; a `query` with a hit filter lets rays through cut-out
+texels. Shown sets are traced on the source alone, so the probes, like the rest of a reference set, never depend on
+the start. Probes reach surface seen from somewhere off the path, never surface seen from nowhere.
 
 Inside geometry is DDGI's probe classification and relocation (Majercik et al. 2021): a probe whose rays hit back
 faces more than BACKFACE of the time is inside, and one too near a front face would clip its views. Either moves at

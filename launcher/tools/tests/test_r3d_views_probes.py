@@ -155,7 +155,46 @@ class SelectTests(unittest.TestCase):
         self.assertEqual(everything.record.pop("targets"), len(self.source.tri_v))
         self.assertEqual(everything.record, plain.record)
         np.testing.assert_array_equal(everything.training, plain.training)
+        np.testing.assert_array_equal(everything.held_out, plain.held_out)
         self.assertGreater(len(plain.training), 0, "the plain shell showed nothing")
+
+    def path_facing_the_shell(self):
+        """A path view from the probe's cell straight at the shell: it shows the shell's +x side and nothing else."""
+        return self.SIZE, self.SIZE, probes.FACE_LENS, [np.array([3.0, 0.0, 0.0, -1.0, 0.0, 0.0])]
+
+    def test_held_out_faces_come_from_their_own_probes_and_start_from_nothing_shown(self):
+        query = self.query(cut=False)
+        facing = face_normals(self.source.p, self.source.tri_v)[0] @ np.array([1.0, 0.0, 0.0]) > 0.5
+        shell_side = int(np.count_nonzero(facing & ~self.targets))
+        views = self.select(query=query, path=self.path_facing_the_shell())
+        self.assertEqual(views.record["path_shown"], shell_side)
+        self.assertEqual(views.training, [], "training kept a face that shows only what the path shows")
+        self.assertEqual(len(views.held_out), 1, "the held-out set started from what the path shows")
+        self.assertEqual(views.record["held_out"]["shown_after"], shell_side)
+        plain = self.select(query=query)
+        self.assertEqual(len(plain.training), 1)
+        self.assertFalse(np.array_equal(plain.training[0][:3], plain.held_out[0][:3]),
+                         "the held-out probe shares the training probe's jitter")
+
+    def test_the_path_counts_only_what_it_shows_of_the_targets(self):
+        path = self.path_facing_the_shell()
+        query = self.query(cut=False)
+        self.assertEqual(self.select(query=query, path=path, targets=self.targets).record["path_shown"], 0)
+        cut = self.select(query=self.query(cut=True), path=path, targets=self.targets)
+        facing = face_normals(self.source.p, self.source.tri_v)[0] @ np.array([1.0, 0.0, 0.0]) > 0.5
+        self.assertEqual(cut.record["path_shown"], np.count_nonzero(facing & self.targets))
+        self.assertEqual(cut.training, [], "the path already shows every target the probe can")
+
+    def test_the_held_out_count_stops_at_its_limit(self):
+        box, box_tris = closed_box(0.5)
+        wall = np.array([[-2.0, -3.0, -3.0], [-2.0, 3.0, -3.0], [-2.0, 3.0, 3.0], [-2.0, -3.0, 3.0]])
+        positions = np.concatenate([box, wall])
+        tris = np.concatenate([box_tris, np.array([[0, 1, 2], [0, 2, 3]]) + len(box)])
+        region = (np.array([1.0, -2.0, -2.0]), np.array([3.0, 2.0, 2.0]))
+        counts = [len(probes.select(positions, tris, region, self.NEAR, 2.0, 7, select_size=12,
+                                    held_out_faces=limit).held_out) for limit in (probes.HELD_OUT_FACES, 1)]
+        self.assertGreater(counts[0], 1, "the fixture has too few held-out candidates to test the limit")
+        self.assertEqual(counts[1], 1)
 
     def test_the_given_query_traces_and_the_sizes_are_arguments(self):
         from r3d import ray_query
