@@ -241,6 +241,26 @@ fill_scene_changed(scene_t* scene, int changes, name_hash64_t* set) {
     return changes;
 }
 
+static int
+fill_post_draw_changed(scene_t* scene, int changes) {
+    if (scene->post_draw == NULL) {
+        return changes;
+    }
+    if (scene->post_draw_bounds == NULL) {
+        return -1;
+    }
+    const box3f_t bounds = scene->post_draw_bounds(scene->post_draw_user);
+    if (changes >= 0) {
+        if (changes < RENDER_PARTIAL_CHANGES_MAX) {
+            changed[changes++] = box3f_union(scene->post_drawn_bounds, bounds);
+        } else {
+            changes = -1;
+        }
+    }
+    scene->post_drawn_bounds = bounds;
+    return changes;
+}
+
 /* Where each changed renderer was and is, for partial redraw; -1 when the
  * drawn set changed (a renderer left or joined) or more changed than fit.
  * Every drawn renderer's box is kept as where it was drawn. */
@@ -250,6 +270,7 @@ fill_changed(void) {
     name_hash64_t set = NAME_HASH64_OFFSET_BASIS;
     for (int k = 0; k < drawn_scene_count; k++) {
         changes = fill_scene_changed(drawn_scenes[k], changes, &set);
+        changes = fill_post_draw_changed(drawn_scenes[k], changes);
     }
     const bool same = set == drawn_set;
     drawn_set = set;
@@ -285,13 +306,15 @@ scene_bounds(entity_t entity) {
 }
 
 void
-scene_set_post_draw(entity_t root, raster_post_draw_fn draw, void* user) {
+scene_set_post_draw(entity_t root, raster_post_draw_fn draw, scene_post_draw_bounds_fn bounds, void* user) {
     scene_row_t row;
     scene_root_t* record = scene_entity_lookup(root, &row);
     if (record == NULL || row != SCENE_ROW_ROOT || record->scene == NULL) {
         return;
     }
     record->scene->post_draw = draw;
+    record->scene->post_draw_bounds = bounds;
+    record->scene->post_drawn_bounds = box3f_empty();
     record->scene->post_draw_user = user;
     render_context_forget(render_context_main());
 }

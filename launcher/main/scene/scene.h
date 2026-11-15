@@ -73,5 +73,7 @@ void scene_set_paused(bool paused);
 /* Borrowed until changed or unloaded; NULL restores flat ambient. Only a loaded root accepts it. */
 void scene_set_probes(entity_t root, const sh_probes_t* probes);
 
-/* Called after all geometry, before composition, for the rows drawn; user outlives the scene. */
-void scene_set_post_draw(entity_t root, raster_post_draw_fn draw, void* user);
+/* Called after geometry for the rows drawn; bounds covers every touched world point.
+ * A NULL bounds callback forces whole redraws. The user outlives the scene. */
+typedef box3f_t (*scene_post_draw_bounds_fn)(void* user);
+void scene_set_post_draw(entity_t root, raster_post_draw_fn draw, scene_post_draw_bounds_fn bounds, void* user);

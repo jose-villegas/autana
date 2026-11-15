@@ -282,6 +282,8 @@ struct scene {
     bool light_table_dirty;
     const sh_probes_t* probes;
     raster_post_draw_fn post_draw;
+    scene_post_draw_bounds_fn post_draw_bounds;
+    box3f_t post_drawn_bounds;
     void* post_draw_user;
     bool skins_pending; /* a bound skin may be ACTIVE without its buffers */
     int starved_count;  /* skins whose buffers did not fit; root->failure says which */

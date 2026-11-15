@@ -72,13 +72,18 @@ find_pool(void) {
     return slots != NULL;
 }
 
+static box3f_t
+skin_blob_bounds(void* user) {
+    const entity_t* root = user;
+    const vec3f_t ground = transform_world(grounds[root - slots]).position;
+    return contact_blob_bounds(scene_bounds(*root), ground);
+}
+
 static void
 skin_blob(const r3d_span_target_t* target, const r3d_lens_t* lens, void* user) {
-    const entity_t* root = user;
-    const box3f_t bounds = scene_bounds(*root);
-    const vec3f_t half = box3f_half_extent(bounds);
-    const vec3f_t ground = transform_world(grounds[root - slots]).position;
-    contact_blob_draw(target, lens, ground, vec3f_unit_y(), fmaxf(half.x, half.z), STRESS_BLOB_STRENGTH);
+    const box3f_t bounds = skin_blob_bounds(user);
+    contact_blob_draw(target, lens, box3f_centre(bounds), vec3f_unit_y(), box3f_half_extent(bounds).x,
+                      STRESS_BLOB_STRENGTH);
 }
 
 static bool
@@ -119,7 +124,7 @@ load_skins(void) {
             }
         }
         scene_set_probes(slots[i], &probes);
-        scene_set_post_draw(slots[i], skin_blob, &slots[i]);
+        scene_set_post_draw(slots[i], skin_blob, skin_blob_bounds, &slots[i]);
     }
     return true;
 }

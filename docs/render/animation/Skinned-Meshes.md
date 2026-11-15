@@ -176,6 +176,9 @@ Cosine convolution gives `E(n) = constant + gradient * n`, with
 `A0 = π` and `A1 = 2π/3`.<sup>[[126]](../../Citations.md#ramamoorthi-hanrahan-2001)</sup>
 Four RGB radiance coefficients become one constant and a channel-row matrix.
 
+`sh1_rgb_t` uses the real basis order Y00, Y1−1 (+y), Y10 (+z), Y11 (+x),
+with normalisation `SH1_Y00` and `SH1_Y1`.<sup>[[127]](../../Citations.md#sloan-2008)</sup>
+
 | Input | Per mover | Per vertex |
 |---|---|---|
 | Flat ambient | Scene colour × intensity; zero gradient | Add the constant. |
@@ -185,9 +188,14 @@ All lighting modes add ambient outside the direct-light table. A zero
 normal samples the ambient constant. The table stores only directional
 light; moving a renderer through probes needs no table rebuild.
 
+### Contact discs
+
 Contact discs run after geometry and before composition, sharing its lens
 and depth scale. Bayer coverage falls with squared radius; covered pixels
 halve their RGB565 channels. The callback draws only the target's rows.
+
+`scene_set_post_draw()` takes a world-bounds callback. Partial redraw covers
+its previous and current boxes.
 
 ## 6. Current limits
 
