@@ -412,38 +412,35 @@ holds(recti_t outer, recti_t inner) {
            || recti_intersect(outer, inner).w * recti_intersect(outer, inner).h == inner.w * inner.h;
 }
 
-/* A layer's box per column group, merged where boxes overlap: a merge can
- * reach a third box the first never touched, so merging goes on until none
- * overlap. Boxes that only touch, and empty ones, stay apart or go. */
+/* The layers' boxes, merged where two overlap: a merge can reach a third box
+ * the first never touched, so merging goes on until none overlap. Boxes that
+ * only touch stay apart. */
 static void
-assert_spans_merge(const int16_t* lo_in, const int16_t* hi_in, int count, int want_count, const int16_t* want_lo,
-                   const int16_t* want_hi) {
-    int16_t lo[3];
-    int16_t hi[3];
-    memcpy(lo, lo_in, (size_t)count * sizeof *lo);
-    memcpy(hi, hi_in, (size_t)count * sizeof *hi);
-    const int left = ui_ridge_merge_spans_for_test(lo, hi, count);
+assert_boxes_merge(const recti_t* in, int count, int want_count, const recti_t* want) {
+    recti_t boxes[3];
+    memcpy(boxes, in, (size_t)count * sizeof *boxes);
+    const int left = ui_ridge_merge_boxes_for_test(boxes, count);
     TEST_ASSERT_EQUAL_INT(want_count, left);
     for (int i = 0; i < want_count; i++) {
         bool found = false;
         for (int j = 0; j < left; j++) {
-            found = found || (lo[j] == want_lo[i] && hi[j] == want_hi[i]);
+            found = found || memcmp(&boxes[j], &want[i], sizeof boxes[j]) == 0;
         }
-        TEST_ASSERT_TRUE_MESSAGE(found, "a span the merge should leave");
+        TEST_ASSERT_TRUE_MESSAGE(found, "a box the merge should leave");
     }
 }
 
 static void
 test_layer_boxes_merge_until_none_overlap(void) {
     /* The first and last meet only once the middle one joins the first. */
-    assert_spans_merge((const int16_t[]){0, 9, 19}, (const int16_t[]){10, 20, 30}, 3, 1, (const int16_t[]){0},
-                       (const int16_t[]){30});
+    assert_boxes_merge((const recti_t[]){{0, 0, 10, 10}, {8, 8, 10, 10}, {0, 16, 10, 4}}, 3, 1,
+                       (const recti_t[]){{0, 0, 18, 20}});
     /* Scanned the other way: the first takes the last, then reaches the middle. */
-    assert_spans_merge((const int16_t[]){0, 19, 9}, (const int16_t[]){10, 30, 20}, 3, 1, (const int16_t[]){0},
-                       (const int16_t[]){30});
-    /* Touching boxes share no row and stay; an empty one goes. */
-    assert_spans_merge((const int16_t[]){0, 10, 40}, (const int16_t[]){10, 20, 40}, 3, 2, (const int16_t[]){0, 10},
-                       (const int16_t[]){10, 20});
+    assert_boxes_merge((const recti_t[]){{0, 0, 10, 10}, {0, 16, 10, 4}, {8, 8, 10, 10}}, 3, 1,
+                       (const recti_t[]){{0, 0, 18, 20}});
+    /* Touching boxes share no pixel and stay apart. */
+    assert_boxes_merge((const recti_t[]){{0, 0, 10, 10}, {10, 0, 10, 10}, {0, 10, 10, 10}}, 3, 3,
+                       (const recti_t[]){{0, 0, 10, 10}, {10, 0, 10, 10}, {0, 10, 10, 10}});
 }
 
 /* A column group's mark must reach every changed pixel and stop at their

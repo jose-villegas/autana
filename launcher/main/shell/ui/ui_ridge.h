@@ -75,6 +75,6 @@ int ui_ridge_dissolve_restarts_for_test(void);
 int ui_ridge_gradient_lag_for_test(void);
 /* How many times the gradient has turned, each repainting row by row. */
 int ui_ridge_gradient_turns_for_test(void);
-/* The spans [lo[i], hi[i]) merged until none overlap; how many are left. */
-int ui_ridge_merge_spans_for_test(int16_t* lo, int16_t* hi, int count);
+/* The boxes merged until none overlap; how many are left, at the front. */
+int ui_ridge_merge_boxes_for_test(recti_t* boxes, int count);
 #endif

@@ -146,7 +146,8 @@ typedef struct {
     int dissolve_restarts;
 #endif
     edge_lines_t was_lines, now_lines;
-    ui_fresh_t fresh; /* where this frame's step painted */
+    ui_fresh_t fresh;            /* where this frame's step painted */
+    recti_t boxes[UI_FRESH_MAX]; /* the step's boxes, in strip space */
     int gradient_turns;
     uint8_t lip_alpha[RIDGE_LAYER_COUNT][RIDGE_MAX_LIP_PX];
     uint32_t theme_seed, tuned_at, alive_ms, wave_ms, shake_seed;
@@ -155,22 +156,15 @@ typedef struct {
     bool by_column, axis_on_screen, ambient, painted, scanline_dither;
 } ridge_t;
 
-#define RIDGE_ENTRY            "ridge"
-#define RIDGE_ROW              "y"
+#define RIDGE_ENTRY        "ridge"
+#define RIDGE_ROW          "y"
 /* A level fallback crosses the middle of the landscape frame. */
-#define RIDGE_LEVEL_HEIGHT     (RIDGE_CURVE_VIEW_H / 2)
+#define RIDGE_LEVEL_HEIGHT (RIDGE_CURVE_VIEW_H / 2)
 
-#define TAG                    "ui_ridge"
-/* Strips a band of row or column strips holds: one fresh box each. */
-#define RIDGE_STRIP_BAND       16
-/* A step's fresh boxes: a box per layer per column group in portrait, one
- * per band of strips otherwise. */
-#define RIDGE_GROUPS(len, per) (((len) + (per) - 1) / (per))
-_Static_assert(RIDGE_LAYER_COUNT* RIDGE_GROUPS(GFX_WIDTH, RIDGE_COLUMN_GROUP) <= UI_FRESH_MAX,
-               "a step's column boxes fit the fresh list");
-_Static_assert(RIDGE_GROUPS(GFX_WIDTH, RIDGE_STRIP_BAND) <= UI_FRESH_MAX
-                   && RIDGE_GROUPS(GFX_HEIGHT, RIDGE_STRIP_BAND) <= UI_FRESH_MAX,
-               "a step's bands fit the fresh list");
+#define TAG                "ui_ridge"
+/* A fresh box grows over a layer's next span while that paints at most this
+ * many pixels the span does not need; past it a box of its own is cheaper. */
+#define RIDGE_BOX_WASTE_PX 32
 static const int16_t level_height = RIDGE_LEVEL_HEIGHT * RIDGE_SUBPIXEL_ONE;
 static const int16_t* curve;
 static ridge_t* ridge;
@@ -773,19 +767,6 @@ column_pixel(int x, int y) {
     return color;
 }
 
-/* The rows any of columns [x0, x1) needs repainted; empty when none. */
-static void
-group_rows(const int16_t* lo, const int16_t* hi, int x0, int x1, int* y0, int* y1) {
-    *y0 = GFX_HEIGHT;
-    *y1 = 0;
-    for (int x = x0; x < x1; x++) {
-        if (lo[x] < hi[x]) {
-            *y0 = lo[x] < *y0 ? lo[x] : *y0;
-            *y1 = hi[x] > *y1 ? hi[x] : *y1;
-        }
-    }
-}
-
 /* Widens the edges of what changed, [*left, *right) by [*top, *bottom), to
  * hold pixel (x, y). */
 static inline __attribute__((always_inline)) void
@@ -796,13 +777,12 @@ note_changed(int* left, int* right, int* top, int* bottom, int x, int y) {
     *bottom = y + 1;
 }
 
-/* Repaints one row of a column group, noting each pixel that changes. */
+/* Repaints row `y` of columns [x0, x1), noting each pixel that changes. */
 static inline __attribute__((always_inline)) void
-repaint_group_row(gfx_color_t* row, const int16_t* lo, const int16_t* hi, int x0, int x1, int y, int* left, int* right,
-                  int* top, int* bottom) {
+repaint_box_row(gfx_color_t* row, int x0, int x1, int y, int* left, int* right, int* top, int* bottom) {
     const bool masked = dissolving();
     for (int x = x0; x < x1; x++) {
-        if (y >= lo[x - x0] && y < hi[x - x0] && (!masked || dissolved(x, y))) {
+        if (!masked || dissolved(x, y)) {
             const gfx_color_t color = column_pixel(x, y);
             if (row[x] != color) {
                 row[x] = color;
@@ -812,162 +792,144 @@ repaint_group_row(gfx_color_t* row, const int16_t* lo, const int16_t* hi, int x0
     }
 }
 
-/* Span `i` moved down until no span before it starts later. */
+/* Portrait: a column's pixels are a row apart in the framebuffer, so a box
+ * of columns is painted row by row, each RIDGE_COLUMN_GROUP of its columns
+ * marking dirty only what changed in it. */
 static void
-sink_span(int16_t* lo, int16_t* hi, int i) {
-    for (; i > 0 && lo[i - 1] > lo[i]; i--) {
-        const int16_t l = lo[i];
-        const int16_t h = hi[i];
-        lo[i] = lo[i - 1];
-        hi[i] = hi[i - 1];
-        lo[i - 1] = l;
-        hi[i - 1] = h;
-    }
-}
-
-/* The spans [lo[i], hi[i]) merged wherever two overlap, empty ones dropped:
- * sorted by start, one sweep folds each span into the last kept one it
- * overlaps, so a merge that reaches a third span takes it too. Returns how
- * many are left, at the front. */
-static int
-merge_spans(int16_t* lo, int16_t* hi, int count) {
-    int left = 0;
-    for (int i = 0; i < count; i++) {
-        if (lo[i] < hi[i]) {
-            lo[left] = lo[i];
-            hi[left] = hi[i];
-            sink_span(lo, hi, left++);
-        }
-    }
-    int kept = 0;
-    for (int i = 0; i < left; i++) {
-        if (kept > 0 && lo[i] < hi[kept - 1]) {
-            if (hi[i] > hi[kept - 1]) {
-                hi[kept - 1] = hi[i];
-            }
-        } else {
-            lo[kept] = lo[i];
-            hi[kept] = hi[i];
-            kept++;
-        }
-    }
-    return kept;
-}
-
-/* Rows [y0, y1) of the group of columns from `x0` repainted whole, so the
- * ridge can say the box is fresh. */
-static void
-repaint_column_box(int x0, int y0, int y1) {
-    const int x1 = x0 + RIDGE_COLUMN_GROUP < GFX_WIDTH ? x0 + RIDGE_COLUMN_GROUP : GFX_WIDTH;
-    int16_t lo[RIDGE_COLUMN_GROUP];
-    int16_t hi[RIDGE_COLUMN_GROUP];
-    for (int x = 0; x < x1 - x0; x++) {
-        lo[x] = (int16_t)y0;
-        hi[x] = (int16_t)y1;
-    }
-    ui_fresh_add(&ridge->fresh, recti_from_edges(x0, y0, x1, y1));
+repaint_column_box(recti_t box) {
     gfx_color_t* const framebuffer = gfx_framebuffer();
-    int left = x1;
-    int right = x0;
-    int top = y1;
-    int bottom = y0;
-    for (int y = y0; y < y1; y++) {
-        repaint_group_row(framebuffer + (y * GFX_WIDTH), lo, hi, x0, x1, y, &left, &right, &top, &bottom);
-    }
-    const recti_t changed = recti_from_edges(left, top, right, bottom);
-    if (!recti_is_empty(changed)) {
-        gfx_mark_dirty(changed.x, changed.y, changed.w, changed.h);
+    for (int x0 = box.x; x0 < recti_right(box);) {
+        const int x1 = mathi_min(((x0 / RIDGE_COLUMN_GROUP) + 1) * RIDGE_COLUMN_GROUP, recti_right(box));
+        int left = x1;
+        int right = x0;
+        int top = recti_bottom(box);
+        int bottom = box.y;
+        for (int y = box.y; y < recti_bottom(box); y++) {
+            repaint_box_row(framebuffer + (y * GFX_WIDTH), x0, x1, y, &left, &right, &top, &bottom);
+        }
+        const recti_t changed = recti_from_edges(left, top, right, bottom);
+        if (!recti_is_empty(changed)) {
+            gfx_mark_dirty(changed.x, changed.y, changed.w, changed.h);
+        }
+        x0 = x1;
     }
 }
 
-/* Widens [*lo, *hi) by what strip `strip`'s layers' moves need repainted;
- * the moves are then what the screen shows. */
-static void
-extend_strip_repaint(int strip, int* lo, int* hi) {
-    for (int layer = 0; layer < RIDGE_LAYER_COUNT; layer++) {
+/* Grows `box` to hold `span` when that wastes at most RIDGE_BOX_WASTE_PX
+ * pixels the span does not need; whether it did. Boxes and spans are in
+ * strip space: strips across, the span along them down. */
+static bool
+box_takes(recti_t* box, recti_t span) {
+    if (recti_is_empty(span)) {
+        return true;
+    }
+    if (recti_is_empty(*box)) {
+        *box = span;
+        return true;
+    }
+    const recti_t grown = recti_union(*box, span);
+    if ((grown.w * grown.h) - (box->w * box->h) - (span.w * span.h) > RIDGE_BOX_WASTE_PX) {
+        return false;
+    }
+    *box = grown;
+    return true;
+}
+
+/* `box` kept after the `count` boxes so far; a full list grows its last. */
+static int
+keep_box(recti_t* boxes, int count, recti_t box) {
+    if (recti_is_empty(box)) {
+        return count;
+    }
+    if (count == UI_FRESH_MAX) {
+        boxes[count - 1] = recti_union(boxes[count - 1], box);
+        return count;
+    }
+    boxes[count] = box;
+    return count + 1;
+}
+
+/* Layer `layer`'s moves, a span along each strip, gathered strip by strip
+ * into boxes kept after the `count` so far; the moves are then what the
+ * screen shows. Returns the count. */
+static int
+keep_layer_boxes(int layer, recti_t* boxes, int count) {
+    const int along = ridge->by_column ? GFX_HEIGHT : GFX_WIDTH;
+    recti_t box = recti_empty();
+    for (int strip = 0; strip < ridge->strips; strip++) {
         const int was = ridge->shown[layer][strip];
         const int now = ridge->boundary[layer][strip];
+        int lo = INT_MAX;
+        int hi = INT_MIN;
         if (was != now) {
-            extend_repaint_range(was, now, lo, hi);
+            extend_repaint_range(was, now, &lo, &hi);
         }
         ridge->shown[layer][strip] = (int16_t)now;
-    }
-}
-
-/* The rows of column `x` that layer `layer`'s move needs repainted; the
- * move is then what the screen shows. */
-static void
-column_repaint_rows(int layer, int x, int16_t* lo, int16_t* hi) {
-    int first = INT_MAX;
-    int last = INT_MIN;
-    const int was = ridge->shown[layer][x];
-    const int now = ridge->boundary[layer][x];
-    if (was != now) {
-        extend_repaint_range(was, now, &first, &last);
-    }
-    *lo = (int16_t)mathi_clamp(first, 0, GFX_HEIGHT);
-    *hi = (int16_t)mathi_clamp(last, 0, GFX_HEIGHT);
-    ridge->shown[layer][x] = (int16_t)now;
-}
-
-/* Portrait: a column's pixels are a row apart in the framebuffer, so paint
- * a group of columns row by row rather than each column top to bottom. Each
- * layer's move makes a box across the group, boxes that overlap merge, and
- * each box is repainted whole. */
-static void
-repaint_changed_columns(void) {
-    int16_t lo[RIDGE_COLUMN_GROUP];
-    int16_t hi[RIDGE_COLUMN_GROUP];
-    for (int x0 = 0; x0 < GFX_WIDTH; x0 += RIDGE_COLUMN_GROUP) {
-        const int x1 = x0 + RIDGE_COLUMN_GROUP < GFX_WIDTH ? x0 + RIDGE_COLUMN_GROUP : GFX_WIDTH;
-        int16_t box_lo[RIDGE_LAYER_COUNT];
-        int16_t box_hi[RIDGE_LAYER_COUNT];
-        for (int layer = 0; layer < RIDGE_LAYER_COUNT; layer++) {
-            for (int x = x0; x < x1; x++) {
-                column_repaint_rows(layer, x, &lo[x - x0], &hi[x - x0]);
-            }
-            int y0;
-            int y1;
-            group_rows(lo, hi, 0, x1 - x0, &y0, &y1);
-            box_lo[layer] = (int16_t)y0;
-            box_hi[layer] = (int16_t)y1;
-        }
-        const int boxes = merge_spans(box_lo, box_hi, RIDGE_LAYER_COUNT);
-        for (int box = 0; box < boxes; box++) {
-            repaint_column_box(x0, box_lo[box], box_hi[box]);
+        lo = mathi_clamp(lo, 0, along);
+        hi = mathi_clamp(hi, lo, along);
+        const recti_t span = {strip, lo, 1, hi - lo};
+        if (!box_takes(&box, span)) {
+            count = keep_box(boxes, count, box);
+            box = span;
         }
     }
+    return keep_box(boxes, count, box);
 }
 
-/* Strips go in bands of RIDGE_STRIP_BAND, each band's span repainted
- * across all of its strips, so the band is one fresh box. */
+/* The first box after `i` that overlaps box `i`, or -1. */
+static int
+overlapping_box(const recti_t* boxes, int count, int i) {
+    for (int j = i + 1; j < count; j++) {
+        if (!recti_is_empty(recti_intersect(boxes[i], boxes[j]))) {
+            return j;
+        }
+    }
+    return -1;
+}
+
+/* The boxes merged wherever two overlap, until none do: a union can reach a
+ * box neither part touched, so each merge starts the scan again. Returns how
+ * many are left, at the front. */
+static int
+merge_boxes(recti_t* boxes, int count) {
+    for (int i = 0; i < count; i++) {
+        const int j = overlapping_box(boxes, count, i);
+        if (j >= 0) {
+            boxes[i] = recti_union(boxes[i], boxes[j]);
+            boxes[j] = boxes[--count];
+            i = -1;
+        }
+    }
+    return count;
+}
+
+/* A box in strip space repainted whole, so the ridge can say it is fresh. */
+static void
+repaint_box(recti_t box) {
+    if (ridge->by_column && ridge->scanline_dither) {
+        repaint_column_box(box);
+    } else {
+        for (int strip = box.x; strip < recti_right(box); strip++) {
+            repaint_strip(strip, box.y, recti_bottom(box));
+        }
+    }
+    ui_fresh_add(&ridge->fresh, ridge->by_column ? box : (recti_t){box.y, box.x, box.h, box.w});
+}
+
+/* Each layer's moves gather into boxes that hug them, boxes that overlap
+ * merge, and each box is repainted whole. */
 static void
 repaint_changed(void) {
     if (dissolving()) {
         ridge->fresh.overflow = true; /* a dissolve leaves pixels undissolved */
     }
-    if (ridge->by_column && ridge->scanline_dither) {
-        repaint_changed_columns();
-        return;
+    int count = 0;
+    for (int layer = 0; layer < RIDGE_LAYER_COUNT; layer++) {
+        count = keep_layer_boxes(layer, ridge->boxes, count);
     }
-    const int along = ridge->by_column ? GFX_HEIGHT : GFX_WIDTH;
-    for (int s0 = 0; s0 < ridge->strips; s0 += RIDGE_STRIP_BAND) {
-        const int s1 = s0 + RIDGE_STRIP_BAND < ridge->strips ? s0 + RIDGE_STRIP_BAND : ridge->strips;
-        int lo = INT_MAX;
-        int hi = INT_MIN;
-        for (int strip = s0; strip < s1; strip++) {
-            extend_strip_repaint(strip, &lo, &hi);
-        }
-        lo = mathi_clamp(lo, 0, along);
-        hi = mathi_clamp(hi, lo, along);
-        if (lo >= hi) {
-            continue;
-        }
-        for (int strip = s0; strip < s1; strip++) {
-            repaint_strip(strip, lo, hi);
-        }
-        ui_fresh_add(&ridge->fresh,
-                     ridge->by_column ? recti_from_edges(s0, lo, s1, hi) : recti_from_edges(lo, s0, hi, s1));
+    count = merge_boxes(ridge->boxes, count);
+    for (int box = 0; box < count; box++) {
+        repaint_box(ridge->boxes[box]);
     }
 }
 
@@ -1446,8 +1408,8 @@ ui_ridge_gradient_turns_for_test(void) {
 }
 
 int
-ui_ridge_merge_spans_for_test(int16_t* lo, int16_t* hi, int count) {
-    return merge_spans(lo, hi, count);
+ui_ridge_merge_boxes_for_test(recti_t* boxes, int count) {
+    return merge_boxes(boxes, count);
 }
 
 int

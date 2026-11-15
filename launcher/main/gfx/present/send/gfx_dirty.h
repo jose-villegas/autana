@@ -206,7 +206,7 @@ dirty_mark_all(void) {
         return;
     }
     all_dirty = true;
-    cell_dirty = (CELL_COUNT >= 32) ? 0xFFFFFFFFu : (1u << CELL_COUNT) - 1u;
+    cell_dirty = bits32_run(0, CELL_COUNT);
     cell_banded = cell_dirty;
     for (int row = 0; row < STRIP_COUNT; row++) {
         for (int col = 0; col < GRID_COLS; col++) {
@@ -551,7 +551,7 @@ static inline uint16_t
 leaf_mask_for_run(int row, int col_first, int col_last) {
     const int lc0 = col_first * LEAF_SUB;
     const int lc1 = col_last * LEAF_SUB;
-    const uint16_t span = (uint16_t)(((1u << (lc1 - lc0)) - 1u) << lc0);
+    const uint16_t span = (uint16_t)bits32_run((unsigned)lc0, (unsigned)(lc1 - lc0));
     uint16_t mask = 0;
 
     for (int sub = 0; sub < LEAF_SUB; sub++) {
