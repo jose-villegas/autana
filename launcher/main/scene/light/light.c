@@ -159,7 +159,7 @@ scene_lights_prepare(scene_t* scene) {
     if (scene->light_transfer == NULL) {
         return;
     }
-    r3d_skin_lights_t world = {.ambient = vec3f_scale(scene->ambient_color, scene->ambient_intensity),
+    r3d_skin_lights_t world = {.ambient = {.constant = vec3f_scale(scene->ambient_color, scene->ambient_intensity)},
                                .transfer = scene->light_transfer};
     for (int i = 0; i < scene->staged_count; i++) {
         const scene_row_t l = scene->staged[i];
@@ -179,4 +179,58 @@ scene_lights_prepare(scene_t* scene) {
         world.table_scale = scene->world_lights.table_scale;
     }
     scene->world_lights = world;
+    for (int r = 0; r < scene->renderer_count; r++) {
+        scene_renderer_t* renderer = &scene->renderers[r];
+        scene_skinned_renderer_t* skin = &scene->skinned_renderers[renderer->entity];
+        if (!skin->bound) {
+            continue;
+        }
+        skin->ambient = world.ambient;
+        if (scene->probes != NULL) {
+            renderer->model = scene_row_world_matrix(scene->root, renderer->entity);
+            renderer->placed = !scene_transform_is_identity(&renderer->model);
+            scene_renderer_bound(renderer);
+            const sh1_rgb_t radiance = sh_probes_sample(scene->probes, box3f_centre(renderer->world_bounds));
+            skin->ambient = sh1_rgb_irradiance(&radiance);
+        }
+    }
+}
+
+void
+scene_set_probes(entity_t root, const sh_probes_t* probes) {
+    scene_row_t row;
+    scene_root_t* record = scene_entity_lookup(root, &row);
+    if (record == NULL || row != SCENE_ROW_ROOT || record->scene == NULL) {
+        return;
+    }
+    scene_t* scene = record->scene;
+    if (probes != NULL && scene->light_transfer == NULL && !scene_lights_allocate(scene)) {
+        return;
+    }
+    scene->probes = probes;
+    const bool unlit = probes == NULL && scene->light_count == 0 && scene->ambient_intensity == 0.0F;
+    if (unlit) {
+        memory_free(scene->light_transfer);
+        scene->light_transfer = NULL;
+        scene->world_lights.transfer = NULL;
+    }
+    for (int r = 0; r < scene->renderer_count; r++) {
+        const scene_row_t e = scene->renderers[r].entity;
+        scene_skinned_renderer_t* skin = &scene->skinned_renderers[e];
+        if (skin->light_storage != NULL && unlit) {
+            memory_free(skin->light_storage);
+            skin->light_storage = NULL;
+            skin->colors = NULL;
+            skin->normal_palette = NULL;
+            skin->output.mesh.colors = skin->bind.colors;
+            scene->renderers[r].mesh.colors = skin->bind.colors;
+        }
+        if (skin->light_storage != NULL) {
+            skin->output.mesh.colors = skin->colors;
+            scene->renderers[r].mesh.colors = skin->colors;
+        }
+        if (skin->bound) {
+            scene->flags[e] |= SCENE_FLAG_SKIN_DIRTY;
+        }
+    }
 }

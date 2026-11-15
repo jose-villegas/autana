@@ -166,12 +166,34 @@ at once.
 [`rate_figures.py`](../../../launcher/tools/anim/playback/rate_figures.py) measures the lag above from
 the glTF clips and the default settings.
 
+### Ambient irradiance
+
+Ambient is either flat or sampled from a world-space L1 SH grid at each
+skinned renderer's bounds centre. The grid is borrowed through
+`scene_set_probes()`; `NULL` restores the scene's flat ambient.
+
+Cosine convolution gives `E(n) = constant + gradient * n`, with
+`A0 = π` and `A1 = 2π/3`.<sup>[[126]](../../Citations.md#ramamoorthi-hanrahan-2001)</sup>
+Four RGB radiance coefficients become one constant and a channel-row matrix.
+
+| Input | Per mover | Per vertex |
+|---|---|---|
+| Flat ambient | Scene colour × intensity; zero gradient | Add the constant. |
+| Probe grid | Clamp and trilinearly sample packed coefficients, then convolve. | Add the constant and nine multiply-adds. |
+
+All lighting modes add ambient outside the direct-light table. A zero
+normal samples the ambient constant. The table stores only directional
+light; moving a renderer through probes needs no table rebuild.
+
+Contact discs run after geometry and before composition, sharing its lens
+and depth scale. Bayer coverage falls with squared radius; covered pixels
+halve their RGB565 channels. The callback draws only the target's rows.
+
 ## 6. Current limits
 
 - Loop or clamp is set per animator in the scene file, not per clip.
 - A skin whose colours are per face (no vertex colours) cannot be lit.
-- A skinned mesh in a baked scene gets the direct lights and ambient, not
-  the scene's baked indirect light.
+- Indirect lighting requires a supplied probe grid; the runtime does not generate grids.
 - Influences per vertex are set per pack build, not per rig.
 
 The frame perf harness holds the display quarter, so gravity cannot change

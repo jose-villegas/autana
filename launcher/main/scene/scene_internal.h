@@ -218,6 +218,7 @@ typedef struct {
     mat3f_t* normal_palette;
     void* light_storage;
     bool lighting_valid;
+    sh1_irradiance_t ambient;
     /* bound: a skin is attached. Its buffers (storage, light_storage)
      * exist only while its entity is ACTIVE; starved: they did not fit when it
      * became ACTIVE, so it is not drawn until it stops being ACTIVE. */
@@ -279,6 +280,9 @@ struct scene {
     r3d_skin_light_table_t* light_table;
     int light_table_users;
     bool light_table_dirty;
+    const sh_probes_t* probes;
+    raster_post_draw_fn post_draw;
+    void* post_draw_user;
     bool skins_pending; /* a bound skin may be ACTIVE without its buffers */
     int starved_count;  /* skins whose buffers did not fit; root->failure says which */
     uint8_t* flags;     /* one per entity: SCENE_FLAG_* */

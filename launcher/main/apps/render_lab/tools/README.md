@@ -158,6 +158,7 @@ the presets vary the copies' geometry, layout and colour modes.
 | `stress-noisy-tiny` | ![Stress noisy tiny: cylinders end on, their fans of slivers](../../../../../docs/images/overview/render-lab-stress-noisy-tiny.png) | many small cylinders end on, each end a fan of slivers whose corners are far apart in colour | the small-fill gate: every sliver is tested and none passes |
 | `stress-mix` | ![Stress mix: planes with several tessellations and colour modes](../../../../../docs/images/overview/render-lab-stress-mix.png) | copies cycling through tessellations; a named share of triangles has equal corner colours | a single triangle size or colour mode standing for a scene's draw cost |
 | `stress-static-copies` | ![Static triangle copies](../../../../../docs/images/overview/render-lab-stress-static-copies.png) | the stress pack's LMSH triangle, retained in each renderer | static asset residency and small transform batches |
+| `stress-skinned-sh-blobs` | ![Skinned copies with probe lighting and contact discs](images/skinned-sh-blobs.png) | animated skins over floor pads; copy count is `STRESS_SKINNED_COPIES` | Per-mover SH sampling, per-vertex irradiance and depth-tested contact discs. |
 | `stress-uniform-mid` | ![Uniform plane with intermediate coverage](../../../../../docs/images/overview/render-lab-stress-uniform-mid.png) | equal-colour large triangles | intermediate uniform fill without shaded pixels |
 | `stress-uniform-full` | ![Uniform plane covering the view](../../../../../docs/images/overview/render-lab-stress-uniform-full.png) | equal-colour large triangles spanning the view | uniform fill beyond the water workload at full-width render sizes |
 | `stress-card` | ![Card copies with ragged edges and sampled colours](../../../../../docs/images/overview/render-lab-stress-card.png) | copies sharing a generated perforated quad with uneven tessellation and procedural texture samples at its corners | scene-like small triangles with irregular edges and colour steps |
@@ -862,3 +863,29 @@ Sources:
 - `frame-profile-1-board.log`
 - `frame-peak-overdraw.tsv`
 <!-- /generated: frame-timing-profiles -->
+
+### Probe lighting and contact discs
+
+`stress-skinned-sh-blobs` loads the capybara pack into the existing stress
+copy layout. Its code-generated grid varies ambient across the copies;
+no probe content is read from the pack.
+
+The stress perf replay advances skinned presets by `LAB_TEST_FRAME_MS` per
+draw. It reports `anim.pose`, `anim.light` and `anim.skin` beside the raster
+stages. Contact callbacks count toward `r3d.draw`.
+
+![Geometry, its contact disc, and an amplified difference](images/contact-blob.png)
+
+The contact comparison uses `capybara-sponza`, a stationary pose after
+`--frames 12 --quarter 1 --no-hud`. The disc lies on `RUN_FLOOR_Y`, takes
+its radius from the mover's bounds and tests the scene's retained depth.
+
+![Enlarged contact differences](images/contact-blob.crops.png)
+
+Reproduce a host image with the app's renderer:
+
+```sh
+launcher/main/apps/render_lab/tools/render_lab_render_host.sh --build-only -o /tmp/probe-render
+AUTANA_ASSET_DIR=launcher/test/build/assets /tmp/probe-render/render_lab_render \
+  --scene stress-skinned-sh-blobs --quarter 1 --no-hud --frames 12 -o /tmp/probe-stress.bmp
+```

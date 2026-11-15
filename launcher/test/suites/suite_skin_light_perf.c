@@ -159,7 +159,7 @@ fixture(int lights) {
     r3d_skin_palette(&f->skin, f->model, f->bind.position_scale, f->palette);
     r3d_skin_normal_palette(f->palette, joints, mat4f_identity(), f->normals);
     f->lights.count = lights;
-    f->lights.ambient = (vec3f_t){0.22F, 0.22F, 0.25F};
+    f->lights.ambient.constant = (vec3f_t){0.22F, 0.22F, 0.25F};
     for (int i = 0; i < lights; i++) {
         f->lights.direction[i] = vec3f_normalize(DIRECTIONS[i]);
         f->lights.color[i] = COLORS[i];
