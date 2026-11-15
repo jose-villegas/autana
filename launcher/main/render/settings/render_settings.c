@@ -43,7 +43,7 @@ render_settings_read(const asset_pack_t* pack, render_settings_t* out) {
 }
 
 TUNE_OWNER(render);
-/* Development overrides of the settings a context draws with (TUNE_OVERRIDE). */
+/* Development overrides of the settings a context draws and the scene poses with (TUNE_OVERRIDE). */
 /* The generated meshlet-size table measures both culling settings. */
 TUNE_OVERRIDE(render, cull, 1);
 /* 0 encodes depth with the clip plane's near_z: the depth-precision figures

@@ -16,7 +16,7 @@ flowchart LR
     Asset["the app's pack: entry render<br/>set by the shell at start"] --> Settings
     App["app<br/>render_context_set_settings()"] --> Settings["the context's settings<br/>render_context_settings() reads them back"]
     Settings --> Pick{"knob set?<br/>development builds only"}
-    Knob["TUNE render.cull, render.depth_fit,<br/>render.batched, render.partial_redraw,<br/>render.lod_coverage_permille, render.lod_pick_every,<br/>render.lod_triangle_budget"] -->|SET| Pick
+    Knob["TUNE render.* and anim.*:<br/>every TUNE_OVERRIDE in render_settings.c"] -->|SET| Pick
     Knob -->|RESET| Unset["unset"]
     Unset --> Pick
     Pick -->|"no"| Frame["the frame draws with them,<br/>resolved once (render_settings_tuned())"]
