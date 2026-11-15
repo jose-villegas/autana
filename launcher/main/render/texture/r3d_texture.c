@@ -132,13 +132,19 @@ section_fits(uint32_t offset, uint32_t count, uint32_t size, uint32_t alignment,
            && (uint64_t)offset + ((uint64_t)count * size) <= entry_size;
 }
 
+/* Material `k`'s LTEX sibling of mesh `mesh_id`. */
+static asset_status_t
+material_view(const asset_pack_t* pack, const char* mesh_id, int k, asset_view_t* view) {
+    char suffix[ASSET_NAME_MAX];
+    (void)snprintf(suffix, sizeof suffix, "%s%d", R3D_TEXTURE_MATERIAL_SUFFIX, k);
+    return r3d_lit_mesh_open_sibling(pack, mesh_id, suffix, R3D_TEXTURE_ASSET, true, view);
+}
+
 static asset_status_t
 open_materials(const asset_pack_t* pack, const char* mesh_id, int count, r3d_texture_t* materials) {
     for (int k = 0; k < count; k++) {
-        char suffix[ASSET_NAME_MAX];
-        (void)snprintf(suffix, sizeof suffix, "%s%d", R3D_TEXTURE_MATERIAL_SUFFIX, k);
         asset_view_t view;
-        asset_status_t status = r3d_lit_mesh_open_sibling(pack, mesh_id, suffix, R3D_TEXTURE_ASSET, true, &view);
+        asset_status_t status = material_view(pack, mesh_id, k, &view);
         status = status == ASSET_OK ? r3d_texture_from_asset(&view, &materials[k]) : status;
         if (status != ASSET_OK) {
             return status;
@@ -187,6 +193,14 @@ charts_valid(const r3d_lit_mesh_t* mesh, int count, uint32_t uv_count, const r3d
     return true;
 }
 
+bool
+r3d_texture_texturing_fits(const r3d_mesh_texturing_t* texturing, const r3d_lit_mesh_t* mesh) {
+    return texturing->vertex_count == (uint32_t)mesh->vertex_count
+           && texturing->cluster_count == (uint32_t)mesh->cluster_count
+           && texturing->triangle_count == (uint32_t)mesh->triangle_count
+           && charts_valid(mesh, texturing->material_count, texturing->uv_count, texturing);
+}
+
 asset_status_t
 r3d_texture_texturing_from_asset(const asset_view_t* uvs, const asset_pack_t* pack, const char* mesh_id,
                                  const r3d_lit_mesh_t* mesh, r3d_texture_t* materials, int capacity,
@@ -205,8 +219,7 @@ r3d_texture_texturing_from_asset(const asset_view_t* uvs, const asset_pack_t* pa
     const uint32_t shifts_off = asset_read_u32(data + R3D_TEXTURE_UVS_AT_SHIFTS_OFF);
     const uint32_t clusters_off = asset_read_u32(data + R3D_TEXTURE_UVS_AT_CLUSTERS_OFF);
     const uint32_t triangles_off = asset_read_u32(data + R3D_TEXTURE_UVS_AT_TRIANGLES_OFF);
-    if (vertices != (uint32_t)mesh->vertex_count || clusters != (uint32_t)mesh->cluster_count
-        || triangles != (uint32_t)mesh->triangle_count || uv_count < vertices) {
+    if (uv_count < vertices) {
         return ASSET_ERR_FORMAT;
     }
     const uint32_t pair = 2U * sizeof(int16_t);
@@ -223,8 +236,12 @@ r3d_texture_texturing_from_asset(const asset_view_t* uvs, const asset_pack_t* pa
                                        .cluster_shift = (const int32_t*)(const void*)(data + shifts_off),
                                        .triangle_code = data + triangles_off,
                                        .materials = materials,
-                                       .material_count = count};
-    if (!charts_valid(mesh, count, uv_count, &read)) {
+                                       .material_count = count,
+                                       .vertex_count = vertices,
+                                       .cluster_count = clusters,
+                                       .triangle_count = triangles,
+                                       .uv_count = uv_count};
+    if (!r3d_texture_texturing_fits(&read, mesh)) {
         return ASSET_ERR_FORMAT;
     }
     const asset_status_t status = open_materials(pack, mesh_id, count, materials);
@@ -233,4 +250,41 @@ r3d_texture_texturing_from_asset(const asset_view_t* uvs, const asset_pack_t* pa
     }
     *texturing = read;
     return ASSET_OK;
+}
+
+asset_status_t
+r3d_texture_mesh_cuts(const asset_pack_t* pack, const char* mesh_id, bool* cuts) {
+    *cuts = false;
+    asset_view_t uvs;
+    asset_status_t status =
+        r3d_lit_mesh_open_sibling(pack, mesh_id, R3D_TEXTURE_UVS_NAME_SUFFIX, R3D_TEXTURE_UVS_ASSET, false, &uvs);
+    if (status != ASSET_OK || uvs.data == NULL) {
+        return status;
+    }
+    const int count = r3d_texture_uvs_material_count(&uvs);
+    if (count == 0) {
+        return ASSET_ERR_FORMAT;
+    }
+    bool found = false;
+    for (int k = 0; k < count && status == ASSET_OK; k++) {
+        asset_view_t view;
+        status = material_view(pack, mesh_id, k, &view);
+        if (status == ASSET_OK) {
+            status =
+                asset_entry_validate(view, R3D_TEXTURE_VERSION, R3D_TEXTURE_AT_VERSION, R3D_TEXTURE_HEADER_SIZE, 4U);
+        }
+        found = found || (status == ASSET_OK && asset_read_u16(view.data + R3D_TEXTURE_AT_FORMAT) == R3D_TEXTURE_MASK1);
+    }
+    *cuts = status == ASSET_OK && found;
+    return status;
+}
+
+bool
+r3d_texture_texturing_cuts(const r3d_mesh_texturing_t* texturing) {
+    for (int k = 0; k < texturing->material_count; k++) {
+        if (texturing->materials[k].format == R3D_TEXTURE_MASK1) {
+            return true;
+        }
+    }
+    return false;
 }

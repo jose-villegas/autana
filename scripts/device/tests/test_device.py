@@ -73,6 +73,7 @@ class InterpreterTests(unittest.TestCase):
     def test_without_pyserial_it_runs_itself_again_under_idf_python(self):
         with mock.patch.dict(sys.modules, self.MISSING), \
                 mock.patch.object(device, "idf_python", return_value="C:/idf/python.exe"), \
+                mock.patch.object(device, "python_version", return_value=device.PYTHON_MINIMUM), \
                 mock.patch.object(device.subprocess, "call", return_value=3) as call:
             status = device.rerun_under_idf_python(["status"])
         self.assertEqual(status, 3)
@@ -80,10 +81,18 @@ class InterpreterTests(unittest.TestCase):
         self.assertEqual(call.call_args.args[0][-1], "status")
 
     def test_a_tool_reruns_its_own_script_rather_than_device_py(self):
-        with mock.patch.dict(sys.modules, self.MISSING),                 mock.patch.object(device, "idf_python", return_value="C:/idf/python.exe"),                 mock.patch.object(device.subprocess, "call", return_value=0) as call:
+        with mock.patch.dict(sys.modules, self.MISSING),                 mock.patch.object(device, "idf_python", return_value="C:/idf/python.exe"),                 mock.patch.object(device, "python_version", return_value=device.PYTHON_MINIMUM),                 mock.patch.object(device.subprocess, "call", return_value=0) as call:
             device.rerun_under_idf_python(["--plan"], "tools/perf_compare.py")
         self.assertEqual(call.call_args.args[0][1], str(Path("tools/perf_compare.py").resolve()))
         self.assertEqual(call.call_args.args[0][2:], ["--plan"])
+
+    def test_an_idf_python_below_the_minimum_is_refused_naming_the_fix(self):
+        with mock.patch.dict(sys.modules, self.MISSING),                 mock.patch.object(device, "idf_python", return_value="C:/idf/python.exe"),                 mock.patch.object(device, "python_version", return_value=(3, 11)),                 mock.patch.object(device.subprocess, "call") as call:
+            with self.assertRaises(SystemExit) as refused:
+                device.rerun_under_idf_python(["status"])
+        call.assert_not_called()
+        for named in ("pyserial", sys.executable, "C:/idf/python.exe", "3.11", device.PYTHON_MINIMUM_TEXT):
+            self.assertIn(named, str(refused.exception))
 
     def test_it_does_not_rerun_when_idf_python_is_this_interpreter(self):
         with mock.patch.dict(sys.modules, self.MISSING), \

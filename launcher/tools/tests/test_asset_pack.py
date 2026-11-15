@@ -388,9 +388,11 @@ class DemoAssetTests(unittest.TestCase):
                 self.assertIn("must be letters", str(caught.exception))
 
     def test_relative_and_absolute_searches_produce_one_pack(self):
-        relative = pathlib.Path(os.path.relpath(self.demo))
-        self.assertEqual(contents(build_pack.pack_bytes([relative, self.demo.resolve()])),
-                         {"sample": {"one": self.entry}})
+        # From inside the tree: a checkout and the temporary folder can be on different Windows drives.
+        with contextlib.chdir(self.demo.parent):
+            relative = pathlib.Path(os.path.relpath(self.demo))
+            self.assertEqual(contents(build_pack.pack_bytes([relative, self.demo.resolve()])),
+                             {"sample": {"one": self.entry}})
 
     def test_a_demo_manifest_is_refused_naming_its_file(self):
         write(self.main / "demo_assets.toml", 'demo = ["sample"]')
