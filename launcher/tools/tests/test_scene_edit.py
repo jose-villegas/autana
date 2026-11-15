@@ -7,6 +7,7 @@ import pathlib
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
@@ -137,6 +138,11 @@ class SceneEditTests(unittest.TestCase):
 
     def test_a_result_the_scene_rules_refuse_is_not_written(self):
         self.assert_refused("box.scale=0,1,1", why="scale must be positive")
+
+    def test_a_check_that_cannot_read_the_result_puts_the_file_back(self):
+        load = scene_edit.import_settings.load_scene
+        with mock.patch.object(scene_edit.import_settings, "load_scene", side_effect=[load(self.scene), OSError("held")]):
+            self.assert_refused("box.position=9,9,9", why="held")
 
     def test_unknown_objects_fields_and_values_are_refused(self):
         self.assert_refused("chair.position=0,0,0", why="no object 'chair'")

@@ -15,14 +15,13 @@ and says why on stderr.
 
 import argparse
 import json
-import os
 import pathlib
 import sys
-import tempfile
 
 import tomlkit
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+from bake import bake  # noqa: E402
 from r3d import import_settings  # noqa: E402
 
 SCENE_SUFFIX = ".scene.toml"
@@ -116,22 +115,17 @@ def apply(path, assignments):
     # Checked in place: the scene's id is its file name, and its asset names are checked against the pack's limit.
     try:
         import_settings.load_scene(path)
-    except (import_settings.SettingsError, ValueError) as error:
+    except (import_settings.SettingsError, OSError, ValueError) as error:
         replace(path, original)
         raise Refused(f"{path}: {error}") from error
 
 
 def replace(path, data):
-    """`path` holds `data`, all of it or none: written beside it, then moved over it. The partial file is not a
-    .scene.toml, so nothing that lists scenes picks it up."""
-    handle, temporary = tempfile.mkstemp(prefix=f"{path.name}.", suffix=".tmp", dir=path.parent)
+    """`path` holds `data`, all of it or none, through bake.place's write by rename."""
     try:
-        with os.fdopen(handle, "wb") as target:
-            target.write(data)
-        os.replace(temporary, path)
-    except BaseException:
-        os.unlink(temporary)
-        raise
+        bake.place(data, path)
+    except bake.BakeMissing as error:
+        raise Refused(str(error)) from error
 
 
 def main(argv=None):
