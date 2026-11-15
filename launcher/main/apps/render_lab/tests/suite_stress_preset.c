@@ -19,6 +19,7 @@
 #include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/stress/stress_preset.h"
 #include "asset/asset_store.h"
+#include "collections/bits.h"
 #include "core/memory.h"
 #include "gfx/gfx.h"
 #include "image/pixel/rgb565.h"
@@ -74,6 +75,7 @@ fixture_end(void) {
         memory_free(f.at[i].positions);
         memory_free(f.at[i].colors);
         memory_free(f.at[i].triangles);
+        memory_free(f.at[i].uvs);
     }
     memory_free(f.mesh_block);
     memory_free(f.projected);
@@ -94,9 +96,11 @@ fixture_begin(const stress_params_t* p, int sets) {
     const size_t vertices = (size_t)stress_vertex_count(p);
     const size_t triangles = (size_t)stress_triangle_count(p);
     for (int i = 0; i < sets; i++) {
-        f.at[i] = (stress_buffers_t){memory_alloc(sizeof(vec3f_t) * vertices, MEMORY_PSRAM),
-                                     memory_alloc(sizeof(uint8_t[3]) * vertices, MEMORY_PSRAM),
-                                     memory_alloc(sizeof(uint16_t[3]) * triangles, MEMORY_PSRAM)};
+        f.at[i] =
+            (stress_buffers_t){memory_alloc(sizeof(vec3f_t) * vertices, MEMORY_PSRAM),
+                               memory_alloc(sizeof(uint8_t[3]) * vertices, MEMORY_PSRAM),
+                               memory_alloc(sizeof(uint16_t[3]) * triangles, MEMORY_PSRAM),
+                               stress_textured(p) ? memory_alloc(sizeof(int16_t[2]) * vertices, MEMORY_PSRAM) : NULL};
         TEST_ASSERT_NOT_NULL(f.at[i].positions);
         TEST_ASSERT_NOT_NULL(f.at[i].colors);
         TEST_ASSERT_NOT_NULL(f.at[i].triangles);
@@ -154,7 +158,8 @@ mesh_fixture(const stress_params_t* p) {
     fixture_begin(p, 1);
     r3d_dynamic_source_t source;
     TEST_ASSERT_TRUE(stress_source(p, 0, &f.at[0], &source));
-    const r3d_dynamic_capacity_t capacity = r3d_dynamic_capacity_for(source.vertex_count, source.triangle_count);
+    r3d_dynamic_capacity_t capacity = r3d_dynamic_capacity_for(source.vertex_count, source.triangle_count);
+    capacity.textured = source.uvs != NULL;
     const size_t bytes = r3d_dynamic_mesh_bytes(capacity);
     f.mesh_block = memory_alloc(bytes, MEMORY_PSRAM);
     TEST_ASSERT_NOT_NULL(f.mesh_block);
@@ -530,6 +535,164 @@ test_near_plane_sweeps_behind_and_clipped_triangles(void) {
     release();
 }
 
+/* Foliage depth is sampled on this grid over the bush's unit square. */
+#define FOLIAGE_SAMPLES    32
+/* The cards overlap: where any covers a sample, this many on average. */
+#define FOLIAGE_MEAN_DEPTH 2.0F
+/* The mask keeps about 0.7 of a card: between these shares. */
+#define FOLIAGE_KEPT_LEAST 0.6F
+#define FOLIAGE_KEPT_MOST  0.8F
+/* A mip texel covers MIP_COVERS texels of the level above and is kept when
+ * MIP_KEPT_SHARE of them are: the rule stated here, not read from the code. */
+#define MIP_COVERS         4
+#define MIP_KEPT_SHARE     0.5F
+
+/* Whether (x, y) is inside triangle t of `src`, seen down z, either winding. */
+static bool
+covers(const r3d_dynamic_source_t* src, int t, float x, float y) {
+    const vec3f_t* p[3];
+    for (int k = 0; k < 3; k++) {
+        p[k] = &src->positions[src->triangles[t][k]];
+    }
+    float sign = 0.0F;
+    for (int k = 0; k < 3; k++) {
+        const vec3f_t* u = p[k];
+        const vec3f_t* w = p[(k + 1) % 3];
+        const float side = ((w->x - u->x) * (y - u->y)) - ((w->y - u->y) * (x - u->x));
+        if (side * sign < 0.0F) {
+            return false;
+        }
+        sign = side != 0.0F ? side : sign;
+    }
+    return true;
+}
+
+/* Each foliage preset's twin differs only by its surface, an INDEX4
+ * texture for the MASK1 one: their draw costs differ by the mask alone. */
+static void
+test_foliage_presets_differ_from_their_twins_by_the_mask_alone(void) {
+    const int pairs[][2] = {{STRESS_FOLIAGE_NEAR, STRESS_FOLIAGE_NEAR_OPAQUE},
+                            {STRESS_FOLIAGE_FAR, STRESS_FOLIAGE_FAR_OPAQUE}};
+    for (size_t i = 0; i < sizeof pairs / sizeof pairs[0]; i++) {
+        stress_params_t masked = stress_presets[pairs[i][0]];
+        TEST_ASSERT_EQUAL_INT(STRESS_SURFACE_MASKED, masked.surface);
+        TEST_ASSERT_EQUAL_INT(STRESS_SHAPE_FOLIAGE, masked.shape);
+        TEST_ASSERT_EQUAL_INT(STRESS_SURFACE_TEXTURED, stress_presets[pairs[i][1]].surface);
+        masked.surface = stress_presets[pairs[i][1]].surface;
+        TEST_ASSERT_EQUAL_MEMORY(&stress_presets[pairs[i][1]], &masked, sizeof masked);
+    }
+    /* Near cards fill more of the picture than far ones. */
+    const int short_px = DEFAULT_SHORT_PX;
+    TEST_ASSERT_GREATER_THAN_FLOAT(stress_cut_px(&stress_presets[STRESS_FOLIAGE_FAR], short_px),
+                                   stress_cut_px(&stress_presets[STRESS_FOLIAGE_NEAR], short_px));
+}
+
+/* Cards of `source` over sample (sx, sy) of a FOLIAGE_SAMPLES grid on the unit square. */
+static int
+cards_over(const r3d_dynamic_source_t* source, int sx, int sy) {
+    const float x = (((float)sx + 0.5F) / FOLIAGE_SAMPLES) - 0.5F;
+    const float y = (((float)sy + 0.5F) / FOLIAGE_SAMPLES) - 0.5F;
+    int depth = 0;
+    for (int t = 0; t < source->triangle_count; t++) {
+        depth += covers(source, t, x, y) ? 1 : 0;
+    }
+    return depth;
+}
+
+/* The corners of the texture, `side` in UV units, that card `card`'s two
+ * triangles reach, one bit each; every UV is at a corner. */
+static int
+card_corners(int card, int side) {
+    int corners = 0;
+    for (int t = 2 * card; t < (2 * card) + 2; t++) {
+        for (int k = 0; k < 3; k++) {
+            const int16_t* uv = f.mesh.uvs[f.mesh.mesh.triangles[t][k]];
+            TEST_ASSERT_TRUE(uv[0] == 0 || uv[0] == side);
+            TEST_ASSERT_TRUE(uv[1] == 0 || uv[1] == side);
+            corners |= 1 << ((uv[0] != 0 ? 1 : 0) + (uv[1] != 0 ? 2 : 0));
+        }
+    }
+    return corners;
+}
+
+/* A bush's cards overlap several deep, and each card's UVs span its
+ * texture from corner to corner. */
+static void
+test_foliage_cards_overlap_and_span_their_texture_corner_to_corner(void) {
+    const stress_params_t* p = &stress_presets[STRESS_FOLIAGE_NEAR];
+    mesh_fixture(p);
+    r3d_dynamic_source_t source;
+    TEST_ASSERT_TRUE(stress_source(p, 0, &f.at[0], &source));
+    int covered = 0;
+    int layers = 0;
+    for (int sy = 0; sy < FOLIAGE_SAMPLES; sy++) {
+        for (int sx = 0; sx < FOLIAGE_SAMPLES; sx++) {
+            const int depth = cards_over(&source, sx, sy);
+            covered += depth > 0 ? 1 : 0;
+            layers += depth;
+        }
+    }
+    TEST_ASSERT_GREATER_THAN_INT(0, covered);
+    TEST_ASSERT_GREATER_OR_EQUAL_FLOAT(FOLIAGE_MEAN_DEPTH, (float)layers / (float)covered);
+
+    /* Every cluster is textured on the source's UVs, and a card's two
+     * triangles reach all four corners of its texture. */
+    const int side = (1 << STRESS_MASK_SIZE_LOG2) << R3D_TEXTURE_UV_SHIFT;
+    TEST_ASSERT_NOT_NULL(f.mesh.uvs);
+    for (int card = 0; card < p->cuts; card++) {
+        TEST_ASSERT_EQUAL_INT(0xF, card_corners(card, side));
+    }
+    release();
+}
+
+/* Kept texels of `t`'s level `level`, `side` texels a side. */
+static int
+kept_texels(const r3d_texture_t* t, int level, int side) {
+    int kept = 0;
+    for (int o = 0; o < side * side; o++) {
+        kept += bits8_get(t->texels[level], (size_t)o) ? 1 : 0;
+    }
+    return kept;
+}
+
+/* The masked presets' entry opens as a MASK1 texture with every level
+ * down to MASK1's smallest; its level 0 keeps about 0.7 of a card, and
+ * each mip keeps a texel where half or more of the four it covers are. */
+static void
+test_foliage_mask_opens_as_mask1_and_keeps_about_0_7_of_a_card(void) {
+    const size_t bytes = stress_texture_bytes(STRESS_SURFACE_MASKED);
+    uint8_t* ltex = memory_alloc(bytes, MEMORY_PSRAM);
+    r3d_texture_t* t = memory_alloc(sizeof *t, MEMORY_PSRAM);
+    TEST_ASSERT_NOT_NULL(ltex);
+    TEST_ASSERT_NOT_NULL(t);
+    stress_texture_write(STRESS_SURFACE_MASKED, ltex);
+    const asset_view_t view = {ltex, (uint32_t)bytes};
+    TEST_ASSERT_EQUAL(ASSET_OK, r3d_texture_from_asset(&view, t));
+    TEST_ASSERT_EQUAL_UINT8(R3D_TEXTURE_MASK1, t->format);
+    TEST_ASSERT_EQUAL_INT(STRESS_MASK_SIZE_LOG2 - R3D_TEXTURE_MASK1_SIZE_LOG2_MIN + 1, t->levels);
+    const int side = 1 << STRESS_MASK_SIZE_LOG2;
+    const float share = (float)kept_texels(t, 0, side) / (float)(side * side);
+    TEST_ASSERT_GREATER_THAN_FLOAT(FOLIAGE_KEPT_LEAST, share);
+    TEST_ASSERT_LESS_THAN_FLOAT(FOLIAGE_KEPT_MOST, share);
+    for (int l = 1; l < t->levels; l++) {
+        const int s = side >> l;
+        for (int y = 0; y < s; y++) {
+            for (int x = 0; x < s; x++) {
+                int under = 0;
+                for (int k = 0; k < 4; k++) {
+                    const int o = (((2 * y) + (k / 2)) * (2 * s)) + (2 * x) + (k % 2);
+                    under += bits8_get(t->texels[l - 1], (size_t)o) ? 1 : 0;
+                }
+                const int o = (y * s) + x;
+                const bool half_or_more = (float)under / (float)MIP_COVERS >= MIP_KEPT_SHARE;
+                TEST_ASSERT_EQUAL_INT(half_or_more ? 1 : 0, bits8_get(t->texels[l], (size_t)o) ? 1 : 0);
+            }
+        }
+    }
+    memory_free(t);
+    memory_free(ltex);
+}
+
 void
 run_stress_preset_suite(void) {
     RUN_TEST(test_culled_fraction_sweeps_from_visible_to_mostly_off_frustum);
@@ -550,6 +713,9 @@ run_stress_preset_suite(void) {
     RUN_TEST(test_big_tris_are_past_every_small_fill);
     RUN_TEST(test_two_sided_is_a_closed_shape_drawn_from_both_sides);
     RUN_TEST(test_noisy_tiny_slivers_are_gated_and_fail_the_gate);
+    RUN_TEST(test_foliage_presets_differ_from_their_twins_by_the_mask_alone);
+    RUN_TEST(test_foliage_cards_overlap_and_span_their_texture_corner_to_corner);
+    RUN_TEST(test_foliage_mask_opens_as_mask1_and_keeps_about_0_7_of_a_card);
 }
 
 SUITE_REGISTER(run_stress_preset_suite);

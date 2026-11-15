@@ -100,7 +100,7 @@ colour_mode(const r3d_lit_mesh_t* mesh, const uint16_t* tri, const r3d_pipeline_
     r3d_span_vertex_t corners[3];
     for (int k = 0; k < 3; k++) {
         const uint8_t* rgb = mesh->colors[tri[k]];
-        corners[k] = (r3d_span_vertex_t){v[k]->sx, v[k]->sy, v[k]->iz, rgb[0], rgb[1], rgb[2]};
+        corners[k] = span_corner(v[k], rgb);
     }
     return r3d_span_uniform(&corners[0], &corners[1], &corners[2]) ? R3D_SIZES_UNIFORM : R3D_SIZES_SHADED;
 }

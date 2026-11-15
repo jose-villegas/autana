@@ -88,7 +88,7 @@ source = "NAME.glb"     # a .glb, .fbx or .keys.toml beside this one
 animation = "walk"      # the animation's name in the glTF
 ```
 
-The entry's layout is [TRCK v3](../../assets/formats/TRCK.md).
+The entry's layout is [TRCK v4](../../assets/formats/TRCK.md).
 
 ### Reading a clip
 
@@ -309,7 +309,7 @@ An app plays clips through the scene and includes only `scene/scene.h`;
 | `animator_play()` | starts a clip in the current slot at clip time 0, speed 1, unpaused, blending from what is shown over `blend_ms` |
 | `animator_set_speed()`, `animator_set_paused()` | one slot's speed or pause, current or previous ([Sampling](#sampling)) |
 | `animator_seek()` | puts a slot at a clip time and samples at once, without drawing |
-| `animator_clip_count()`, `animator_clip_name()`, `animator_clip_duration_ms()` | the entity's clips |
+| `animator_clip_count()`, `animator_clip_name()`, `animator_clip_duration_ms()`, `animator_clip_ground_mps()` | the entity's clips; the last, the ground speed the clip shows at playback 1 |
 
 The scene file's `wrap` sets loop or clamp. A camera `path` loads as an
 animator on the camera's entity: the pack build keeps the path node's tracks

@@ -12,3 +12,4 @@ and nothing else, allocates nothing, and every header is checked by a host suite
 | [Follow](Follow.md) | Exact steps toward a target: halving decay, a coast and a critically damped spring |
 | [Orbit](Orbit.md) | A transform orbiting a target: steering, fling, reset and framing a sphere |
 | [Fly](Fly.md) | A transform flown freely: keys, a level-horizon drag and a wheel-scaled speed |
+| [Profile](Profile.md) | A move along a line in time: rest, ease up, cruise, ease down, rest |

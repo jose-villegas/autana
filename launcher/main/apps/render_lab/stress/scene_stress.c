@@ -5,6 +5,7 @@
 #include <math.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <string.h>
 
 #include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/render_lab_view.h"
@@ -38,6 +39,10 @@ static stress_buffers_t buffers[STRESS_MIX_LEVELS];
 static r3d_dynamic_mesh_t mesh[STRESS_MIX_LEVELS];
 static uint32_t wave_ms;
 
+/* A textured preset's texture and its texturing of the one mesh. */
+static r3d_texture_t* texture;
+static r3d_mesh_texturing_t texturing;
+
 /* What the panel says in place of the triangle count when the scene could not load. */
 static char failure[LAB_STATUS_LEN];
 
@@ -64,17 +69,63 @@ take_mesh(void) {
         const stress_params_t p = stress_copy_params(shown, i);
         const int vertices = stress_vertex_count(&p);
         const int triangles = stress_triangle_count(&p);
+        const bool textured = stress_textured(shown);
         buffers[i] = (stress_buffers_t){lab_scene_take(sizeof(vec3f_t) * (size_t)vertices),
                                         lab_scene_take(sizeof(uint8_t[3]) * (size_t)vertices),
-                                        lab_scene_take(sizeof(uint16_t[3]) * (size_t)triangles)};
-        const r3d_dynamic_capacity_t capacity = r3d_dynamic_capacity_for(vertices, triangles);
+                                        lab_scene_take(sizeof(uint16_t[3]) * (size_t)triangles),
+                                        textured ? lab_scene_take(sizeof(int16_t[2]) * (size_t)vertices) : NULL};
+        r3d_dynamic_capacity_t capacity = r3d_dynamic_capacity_for(vertices, triangles);
+        capacity.textured = textured;
         const size_t bytes = r3d_dynamic_mesh_bytes(capacity);
         void* block = lab_scene_take(bytes);
-        if (buffers[i].positions == NULL || buffers[i].colors == NULL || buffers[i].triangles == NULL || block == NULL
+        if ((textured && buffers[i].uvs == NULL) || buffers[i].positions == NULL || buffers[i].colors == NULL
+            || buffers[i].triangles == NULL || block == NULL
             || !r3d_dynamic_mesh_init(&mesh[i], block, bytes, capacity, STRESS_TICKS_PER_UNIT)) {
             return false;
         }
     }
+    return true;
+}
+
+/* The surface's entry, in the scene's arena, and a texturing of every
+ * triangle of the one mesh with it, on the UVs the build copies. */
+static bool
+take_texture(void) {
+    const size_t bytes = stress_texture_bytes(shown->surface);
+    uint8_t* ltex = lab_scene_take(bytes);
+    texture = lab_scene_take(sizeof *texture);
+    const r3d_lit_mesh_t* m = &mesh[0].mesh;
+    uint8_t (*material)[R3D_TEXTURE_CHARTS] = lab_scene_take(sizeof *material * (size_t)m->cluster_count);
+    int32_t* shift = lab_scene_take(sizeof *shift * (size_t)m->cluster_count);
+    /* The mesh is built later: its codes cover every triangle it can hold. */
+    const size_t codes = ((size_t)mesh[0].capacity.triangles + R3D_TEXTURE_UVS_TRIANGLES_PER_BYTE - 1U)
+                         / R3D_TEXTURE_UVS_TRIANGLES_PER_BYTE;
+    uint8_t* code = lab_scene_take(codes);
+    if (ltex == NULL || texture == NULL || material == NULL || shift == NULL || code == NULL) {
+        return false;
+    }
+    stress_texture_write(shown->surface, ltex);
+    const asset_view_t view = {ltex, (uint32_t)bytes};
+    if (r3d_texture_from_asset(&view, texture) != ASSET_OK) {
+        return false;
+    }
+    /* One chart, the texture, under every triangle. */
+    memset(material, R3D_TEXTURE_NONE, sizeof *material * (size_t)m->cluster_count);
+    for (int c = 0; c < m->cluster_count; c++) {
+        material[c][0] = 0;
+    }
+    memset(shift, 0, sizeof *shift * (size_t)m->cluster_count);
+    uint8_t chart_0 = 0;
+    for (unsigned k = 0; k < R3D_TEXTURE_UVS_TRIANGLES_PER_BYTE; k++) {
+        chart_0 |= (uint8_t)(1U << (k * R3D_TEXTURE_UVS_CODE_BITS));
+    }
+    memset(code, chart_0, codes);
+    texturing = (r3d_mesh_texturing_t){.uvs = (const int16_t (*)[2])mesh[0].uvs,
+                                       .cluster_material = (const uint8_t (*)[R3D_TEXTURE_CHARTS])material,
+                                       .cluster_shift = shift,
+                                       .triangle_code = code,
+                                       .materials = texture,
+                                       .material_count = 1};
     return true;
 }
 
@@ -85,6 +136,9 @@ build(void) {
         r3d_dynamic_source_t source;
         if (!stress_source(&p, wave_ms, &buffers[i], &source) || !r3d_dynamic_mesh_build(&mesh[i], &source)) {
             return false;
+        }
+        if (stress_textured(shown)) {
+            mesh[i].mesh.texturing = &texturing;
         }
     }
     for (int i = 0; i < shown->copies; i++) {
@@ -170,6 +224,10 @@ load(void) {
         fail("too few stress copies");
         return false;
     }
+    if (stress_textured(shown) && !take_texture()) {
+        fail("no memory for the stress texture");
+        return false;
+    }
     if (stress_generated(shown) && !build()) {
         fail("stress mesh did not fit");
         return false;
@@ -228,7 +286,7 @@ scene_stress_status(void) {
 /* The camera shown: swinging, unless the start named a still one. */
 static lab_path_t
 scene_stress_path(void) {
-    return (lab_path_t){loaded, handle_is_none(loaded) ? ENTITY_NONE : viewer, NULL};
+    return (lab_path_t){.scene = loaded, .entity = handle_is_none(loaded) ? ENTITY_NONE : viewer};
 }
 
 /* A still preset can have frames generated: only the camera moves. */

@@ -297,7 +297,10 @@ class RenderSettingsPackTests(unittest.TestCase):
                                                     "lod.tolerance_px": [32],
                                                     "lod.hysteresis_px": [8], "lod.coverage_permille": [250],
                                                     "lod.pick_every": [4], "lod.triangle_budget": [0],
-                                                    "lod.blend": [0], "lod.blend_px": [4]}, 4))
+                                                    "lod.blend": [0], "lod.blend_px": [4],
+                                                    "anim.mid_px": [768], "anim.far_px": [320],
+                                                    "anim.mid_every": [2], "anim.far_every": [4],
+                                                    "anim.hysteresis_px": [64]}, 4))
 
     def test_each_app_pack_has_its_own_render_entry_whichever_root_selects_it(self):
         with tempfile.TemporaryDirectory() as directory:

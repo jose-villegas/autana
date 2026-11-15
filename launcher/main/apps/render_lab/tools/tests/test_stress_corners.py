@@ -82,7 +82,8 @@ class StressCorners(unittest.TestCase):
     def test_every_preset_is_held_here(self):
         self.assertEqual({"open", "stack", "tiny-copies", "big-tris", "per-frame", "two-sided", "noisy-tiny", "mix",
                           "static-copies", "uniform-mid", "uniform-full", "card", "culled", "near",
-                          "few-copies", "baked-tree"}, set(preset_copies()))
+                          "few-copies", "textured", "record", "foliage-near", "foliage-near-opaque", "foliage-far",
+                          "foliage-far-opaque", "baked-tree"}, set(preset_copies()))
 
     def test_the_baked_ring_is_culled_through_its_tree(self):
         c = self.counts("baked-tree")

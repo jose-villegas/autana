@@ -141,8 +141,7 @@ def write_camera_clip(directory, name="fly", reach=1.0, degrees=0.0, props=(), n
 def probe_entry():
     """The probe clip's TRCK bytes."""
     document, binary = gltf_read.parse_glb(probe_glb())
-    tracks, duration_ms, root = tracks_asset.clip_tracks(document, binary, document["animations"][0])
-    return tracks_asset.encode(tracks, duration_ms, root)
+    return tracks_asset.encode(*tracks_asset.clip_tracks(document, binary, document["animations"][0]))
 
 
 def single(value):

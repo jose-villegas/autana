@@ -2,11 +2,13 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #include "math/linear/transformf.h"
 #include "math/linear/vec3f.h"
 #include "render/dynamic/r3d_dynamic_mesh.h"
+#include "render/texture/r3d_texture.h"
 
 typedef enum {
     STRESS_SHAPE_PLANE,    /* primitive_plane(): a square facing the camera */
@@ -15,6 +17,7 @@ typedef enum {
     STRESS_SHAPE_CYLINDER, /* primitive_cylinder(): its axis toward the camera, an end's fan of slivers in view */
     STRESS_SHAPE_GRID,     /* independent triangle corners on a tessellated square */
     STRESS_SHAPE_CARD,     /* perforated square with uneven tessellation */
+    STRESS_SHAPE_FOLIAGE,  /* a bush: `cuts` small square cards scattered, turned and overlapping several deep */
 } stress_shape_t;
 
 typedef enum {
@@ -26,6 +29,8 @@ typedef enum {
     STRESS_SURFACE_UNIFORM,   /* one colour at every corner: zero colour steps, filled uniform */
     STRESS_SURFACE_STATIC,    /* the pack's own static mesh asset per copy, nothing generated */
     STRESS_SURFACE_TWO_SIDED, /* banded, and drawn from both sides: nothing faces away */
+    STRESS_SURFACE_TEXTURED,  /* banded light under a generated INDEX4 brick texture (render/texture) */
+    STRESS_SURFACE_MASKED,    /* banded light, each foliage card cut by a generated MASK1 texture */
     STRESS_SURFACE_BAKED,     /* no copy: the pack's baked ring, culled through the tree the bake tools built */
 } stress_surface_t;
 
@@ -51,6 +56,7 @@ typedef struct {
     stress_surface_t surface;
     const char* camera;
     int perf_poses; /* poses the stress perf suite replays along the swing */
+    bool record;    /* the stress perf suite runs the frame recorder over it: its stage too */
 } stress_params_t;
 
 /* X(ID, key, surface): each preset, its key the scene key's suffix and its
@@ -73,6 +79,12 @@ typedef struct {
     X(CULLED, "culled", BANDED)                                                                                        \
     X(NEAR, "near", BANDED)                                                                                            \
     X(FEW_COPIES, "few-copies", BANDED)                                                                                \
+    X(TEXTURED, "textured", TEXTURED)                                                                                  \
+    X(FOLIAGE_NEAR, "foliage-near", MASKED)                                                                            \
+    X(FOLIAGE_NEAR_OPAQUE, "foliage-near-opaque", TEXTURED)                                                            \
+    X(FOLIAGE_FAR, "foliage-far", MASKED)                                                                              \
+    X(FOLIAGE_FAR_OPAQUE, "foliage-far-opaque", TEXTURED)                                                              \
+    X(RECORD, "record", WAVE)                                                                                          \
     X(BAKED_TREE, "baked-tree", BAKED)
 
 #define STRESS_PRESET_ID(id_, ...) STRESS_##id_,
@@ -100,12 +112,20 @@ stress_generated(const stress_params_t* p) {
 int stress_vertex_count(const stress_params_t* p);
 int stress_triangle_count(const stress_params_t* p);
 
+/* Whether a preset draws its triangles textured. */
+static inline bool
+stress_textured(const stress_params_t* p) {
+    return p->surface == STRESS_SURFACE_TEXTURED || p->surface == STRESS_SURFACE_MASKED;
+}
+
 /* What stress_source() writes into: stress_vertex_count() positions and
- * colours, stress_triangle_count() triangles. */
+ * colours, stress_triangle_count() triangles, and for a textured preset
+ * stress_vertex_count() UVs (NULL otherwise). */
 typedef struct {
     vec3f_t* positions;
     uint8_t (*colors)[3];
     uint16_t (*triangles)[3];
+    int16_t (*uvs)[2];
 } stress_buffers_t;
 
 /* Positions are stored at this many ticks per unit: a unit shape and its
@@ -141,3 +161,18 @@ float stress_cut_px(const stress_params_t* p, int short_px);
 #define STRESS_MIX_LEVELS         4
 #define STRESS_MIX_UNIFORM_PERIOD 2
 stress_params_t stress_copy_params(const stress_params_t* p, int copy);
+
+/* A textured preset's LTEX entry. TEXTURED: a brick 2^STRESS_TEXTURE_SIZE_LOG2
+ * texels a side and its mips, repeated STRESS_TEXTURE_REPEATS times across a
+ * plane and once across a foliage card. MASKED: a MASK1 disc
+ * 2^STRESS_MASK_SIZE_LOG2 texels a side with scattered one-texel holes,
+ * keeping about 0.7 of a card, so its rows break into ragged runs as a leaf
+ * card's do; each mip keeps a texel where half or more of the four it
+ * covers are kept. A card's UVs span its texture once. */
+#define STRESS_TEXTURE_SIZE_LOG2 6
+#define STRESS_TEXTURE_REPEATS   3
+#define STRESS_MASK_SIZE_LOG2    5
+
+/* The entry's bytes, and the entry written into `ltex`, that many long. */
+size_t stress_texture_bytes(stress_surface_t surface);
+void stress_texture_write(stress_surface_t surface, uint8_t* ltex);
