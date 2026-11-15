@@ -372,7 +372,7 @@ Two files, the same declare-then-source shape a report script uses:
   roots fails the build.
 
 CMake's `autana::render_host_core` supplies the host frame loop on top of
-`autana::render_engine`: drawing, assets, tune, jobs and packages, with no `main()` and no
+`autana::render_engine`: drawing, assets, tune, jobs, the frame recorder and packages, with no `main()` and no
 allocation hooks. `launcher/tools/render/engine_sources.cmake` owns that list, and
 `run_tests.sh` reads it with `cmake -P`.
 

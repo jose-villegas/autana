@@ -19,6 +19,7 @@
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
 #include "input/input_shell.h"
+#include "render/record/frame_record.h"
 #include "scene/scene_shell.h"
 #include "selftest/post.h"
 #include "selftest/post_layout.h"
@@ -99,6 +100,9 @@ app_boot_init(void) {
     ui_ridge_load();
     if (!scene_world_init()) {
         ESP_LOGE(TAG, "No entity table: no scene will load");
+    }
+    if (!frame_record_take_notes()) {
+        ESP_LOGW(TAG, "No frame record notes: a recording carries no poses or built meshes");
     }
     shell_init();
     heap_mark("boot");
