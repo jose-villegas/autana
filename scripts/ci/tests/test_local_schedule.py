@@ -181,6 +181,20 @@ class LocalScheduleTests(unittest.TestCase):
             record = json.loads((Path(root) / 'night-steps' / key / (schedule.BAKES_WORKFLOW + '.json')).read_text())
             self.assertEqual(record['marker'], clock.now().isoformat())
 
+    def test_a_stage_runs_where_os_has_no_cpu_affinity(self):
+        class WindowsOs:
+            """os as Windows has it: no sched_getaffinity or sched_setaffinity."""
+            def __getattr__(self, name):
+                if name.startswith('sched_'):
+                    raise AttributeError(name)
+                return getattr(os, name)
+        with tempfile.TemporaryDirectory() as root:
+            process = Mock()
+            process.wait.return_value = 0
+            with patch.dict(os.environ, GPU_WORKFLOW=schedule.BAKES_WORKFLOW, MARKER='',
+                            GITHUB_OUTPUT='', _AUTANA_HEAVY_LOCK_ROOT=root),                     patch.object(schedule, 'os', WindowsOs()),                     patch.object(schedule, 'quiet_host', return_value=False),                     patch.object(schedule, 'Clock', return_value=Clock(3, tzinfo=timezone.utc)),                     patch.object(sys, 'argv', ['schedule', 'start', '--', 'bake']),                     patch.object(schedule, 'launch_process_tree', return_value=process),                     patch.object(schedule, 'close_process_tree'):
+                self.assertEqual(schedule.main(), 0)
+
     def test_gpu_shell_only_deferral_ends_green(self):
         root = Path(__file__).resolve().parents[3]
         with tempfile.TemporaryDirectory() as directory:

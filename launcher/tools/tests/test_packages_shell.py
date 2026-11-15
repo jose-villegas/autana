@@ -380,7 +380,9 @@ target_link_libraries(runner PRIVATE testkit_runner)
 ''', encoding="utf-8")
         build = work / "build"
         cls.runner = build / ("runner.exe" if os.name == "nt" else "runner")
-        for command in (["cmake", "-S", str(work), "-B", str(build), "-G", "Unix Makefiles"],
+        # The generator render_scene.sh picks: Ninja where installed, else the host's make.
+        generator = "Ninja" if shutil.which("ninja") else "MinGW Makefiles" if os.name == "nt" else "Unix Makefiles"
+        for command in (["cmake", "-S", str(work), "-B", str(build), "-G", generator],
                         ["cmake", "--build", str(build), "--target", "runner"]):
             result = subprocess.run(command, capture_output=True, text=True, timeout=120)
             if result.returncode:
