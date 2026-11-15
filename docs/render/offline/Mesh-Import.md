@@ -106,14 +106,16 @@ cost and error of each mode on the board.
 
 #### process
 
-`[process].seed` makes `thin` choose the same triangles on every import.
+`[process].seed` makes thinning and card sampling repeatable.
 
 ### Geometry
 
-Every Geometry table opts its step in; without it the step does not run.
+Geometry tables control the import steps. `alpha_mask` also enables automatic
+card selection, with `geometry.cards` tuning its decisions.
 
 | Option | Keys | What it does | Default | Cost (bake / frame) | Option link |
 |---|---|---|---|---|---|
+| `geometry.cards` | `never`, `always`, `epsilon`, `area_cost` | Selects cut-out materials for billboard clouds. | Automatic with `alpha_mask`. | Probe selection and mask tracing / cut-out quads. | [cards](#cards) |
 | `geometry.alpha_mask` | `keep_alpha` | Drops alpha-tested triangles that are mostly transparent. | Off. | Seconds / fewer triangles. | [alpha_mask](#alpha_mask) |
 | `geometry.thin` | `material`, `keep` | Keeps a share of one material's triangles. | Off. | None / fewer triangles. | [thin](#thin) |
 | `geometry.simplify` | `dense_edge`, `seal_seams`, `colour_deviation` | Splits long edges and simplifies each variant to its budget, colour steering the collapses; can seal seams. | Off. | Seconds / set by the budget. | [simplify](#simplify) |
@@ -149,11 +151,74 @@ own to the next, or that has none.
 
 #### alpha_mask
 
-`geometry.alpha_mask` removes mostly transparent cut-out cards because the
-rasterizer does not alpha-test them. Off is above on; this step also changes
-what the simplifier keeps elsewhere, so not every difference is a card.
+`geometry.alpha_mask` drops mostly transparent triangles from ordinary geometry.
+References keep the source triangles and test alpha at every hit, including
+shadow and bounce rays. Alpha below `keep_alpha` lets a ray through.
+
+The image compares triangle removal with it disabled. Card candidates also
+pass through the automatic selection below.
 
 ![alpha_mask off against on](../images/import-alpha-mask.png)
+
+#### cards
+
+`geometry.alpha_mask` enables automatic billboard clouds. Each accepted
+material becomes a double-sided shape with vertex colours,
+[LUVS](../../assets/formats/LUVS.md) and [MASK1 LTEX](../../assets/formats/LTEX.md) pages.
+
+| Decision | Rule |
+|---|---|
+| Candidate | A cut-out texture with at least `CARD_SEE_THROUGH_MIN` of its triangles below `keep_alpha` in mean alpha. Carved and thinned materials are excluded. |
+| Accepted | Cards cover at least `CARD_COVERED_MIN` of the opaque surface's area-weighted samples, within their slabs, rectangles and kept texels. |
+| Ordinary geometry | Non-candidates and rejected candidates remain geometry. |
+| Overrides | `never` excludes a material; `always` bypasses the thresholds. Forcing a carved or thinned material, unknown names, or overlapping overrides is an error. |
+
+The greedy plane score follows Décoret et al.<sup>[[126]](../../Citations.md#decoret-2003)</sup>:
+projected sample area earns coverage; an area cost and a per-card floor stop
+selection when another plane would not pay for itself.
+
+Training probe faces weight samples by visible projected size. Probes use
+the camera region and near plane, or source bounds and a near plane derived
+from their diagonal. Rays pass through the source's cut texels.
+
+Seen weights average one; unseen samples weigh zero. `geometry.probes.spacing`
+sets probe spacing when present. Probe selection uses the shared seed in
+`reference_set.py` and does not read a camera path.
+
+| Key | Meaning | Default |
+|---|---|---|
+| `never` | Material names kept as geometry. | `[]` |
+| `always` | Material names forced into cards. | `[]` |
+| `epsilon` | Slab half-depth in source units. | `CARD_EPSILON` in `cards/__init__.py` |
+| `area_cost` | Penalty per unit of card area. | `CARD_AREA_COST` in `cards/__init__.py` |
+
+A set shares one world texel size: its median parent long side divided by
+`CARD_MASK_TEXELS`. Splitting at `CARD_MAX_SIDE` and trimming preserve it.
+Only hits within ±`epsilon` of a plane set its texels.
+
+Corner albedos come from mask quadrants and receive the bake light. Trimmed
+masks pack into pages with a coarsest-mip texel of padding on every side.
+Mip coverage follows `R3D_TEXTURE_MASK1_MIP_KEPT`.
+
+Cards keep their own `<shape_id>.uvs` and `<shape_id>.t<k>` bundle entries.
+Each cluster uses one page on chart zero; every triangle draws with that
+chart. No `textures.toml` entry is needed.
+
+| Budget | Rule |
+|---|---|
+| Ceiling | Card triangles are paid first; the rest gets `min(triangles, ceiling − card triangles)`. |
+| Fit | Accepted materials leave camera references and the fit; they remain in the light bake as occluders and bounce sources. |
+| Levels | Cards bypass simplification and carry no coarser levels. |
+
+The candidate and budget tables are generated from each scene's import
+record. Generate the CSV with `cards_report.py SCENE --object NAME --docs`;
+`render_doc_images.sh` renders it to a Markdown table.
+
+<!-- generated: sponza-atrium-fitted-full-cards sha256=01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b -->
+<!-- /generated: sponza-atrium-fitted-full-cards -->
+
+<!-- generated: bistro-street-fitted-full-cards sha256=01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b -->
+<!-- /generated: bistro-street-fitted-full-cards -->
 
 #### thin
 
