@@ -26,8 +26,14 @@ HASH_HEX_DIGITS = 8
 
 def shape_id(mesh, rule, first):
     """A bounded shape id, stable under output ordering and copy count."""
+    from r3d.texture import uv_transfer
+
     key = name_hash(json.dumps([mesh, rule, first], sort_keys=True))
-    result = f"{mesh.split('.', 1)[0]}.{key:0{HASH_HEX_DIGITS}x}"
+    suffix = f".{key:0{HASH_HEX_DIGITS}x}"
+    longest = max(len(NAME_SUFFIX), len(uv_transfer.NAME_SUFFIX),
+                  len(f"{uv_transfer.TEXTURE_SUFFIX}{uv_transfer.MATERIALS_MAX - 1}"))
+    room = NAME_BYTES - 1 - len(suffix) - longest
+    result = mesh.split(".", 1)[0][:max(room, 0)] + suffix
     if len((result + NAME_SUFFIX).encode("ascii")) >= NAME_BYTES:
         raise PackError(f"shape id {result!r} leaves no room for its colours")
     return result
@@ -118,6 +124,8 @@ def encode(entries, copies):
 
 
 def decode(data):
+    from r3d.texture import texture_asset, uv_transfer
+
     entries = parse_pack(data)
     if MANIFEST not in entries:
         raise PackError("mesh bundle has no manifest")
@@ -135,6 +143,20 @@ def decode(data):
             if mesh is None or mesh[0] != mesh_asset.TYPE or not name.endswith(lod_asset.NAME_SUFFIX):
                 raise PackError("LLOD sibling has no LMSH")
             lod_asset.validate_mesh(blob, mesh[1])
+        if kind == uv_transfer.TYPE:
+            stem = name.removesuffix(uv_transfer.NAME_SUFFIX)
+            mesh = entries.get(stem)
+            if mesh is None or mesh[0] != mesh_asset.TYPE or stem == name:
+                raise PackError("LUVS sibling has no LMSH")
+            try:
+                luvs = uv_transfer.decode(blob)
+                for page in range(luvs.material_count):
+                    texture = entries.get(uv_transfer.texture_name(stem, page))
+                    if texture is None or texture[0] != texture_asset.TYPE:
+                        raise PackError("LUVS material has no LTEX sibling")
+                    texture_asset.decode(texture[1])
+            except (ValueError, struct.error) as error:
+                raise PackError(str(error)) from error
         if kind == morph_asset.TYPE:
             mesh = entries.get(name.removesuffix(morph_asset.NAME_SUFFIX))
             if (mesh is None or mesh[0] != mesh_asset.TYPE or not name.endswith(morph_asset.NAME_SUFFIX)
@@ -161,12 +183,16 @@ def rest_name(entries, copies):
 
 def rename_rest(entries, copies, name):
     """Retarget a replacement bundle's sole rest mesh and its siblings to a pack entry id."""
+    from r3d.texture import uv_transfer
+
     old = rest_name(entries, copies)
     if old == name:
         return entries
     names = {old: name}
     for key, _, _ in entries:
         if key.startswith(old) and key[len(old):] in (lcol_asset.NAME_SUFFIX, lod_asset.NAME_SUFFIX,
-                                                         morph_asset.NAME_SUFFIX):
+                                                         morph_asset.NAME_SUFFIX, uv_transfer.NAME_SUFFIX):
+            names[key] = lcol_asset.sibling_name(name, key[len(old):])
+        if key.startswith(old + uv_transfer.TEXTURE_SUFFIX):
             names[key] = lcol_asset.sibling_name(name, key[len(old):])
     return [(names.get(key, key), kind, blob) for key, kind, blob in entries]

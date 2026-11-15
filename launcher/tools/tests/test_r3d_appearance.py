@@ -718,7 +718,7 @@ class PruneAndCostTests(unittest.TestCase):
                                  "--seam-margin", "0.25"])
             calls["optimise"].assert_called_once()
             self.assertEqual(source_for.call_args.args[1], "card")
-            self.assertEqual(source_for.call_args.kwargs, {"lit": False})
+            self.assertEqual(source_for.call_args.kwargs, {"lit": False, "hide_cards": True})
             options = calls["optimise"].call_args.kwargs
             self.assertIs(options["source"], source)
             self.assertEqual(options["seam_margin"], 0.25)

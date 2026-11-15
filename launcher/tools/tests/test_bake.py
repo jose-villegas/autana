@@ -540,6 +540,17 @@ class StageTests(unittest.TestCase):
         # The reference stage's entry is named by the fit's key through the reference key, so the fit stops there.
         self.assertNotIn("r3d/fitted_variant.py", self.names("fit"))
 
+    def test_cards_code_keys_mesh_and_reference_stages(self):
+        expected = {"r3d/cards/choose.py": "probe_weights", "r3d/cards/bake.py": "bake_pixels",
+                    "r3d/cards/emit.py": "make_shape", "r3d/cards/decide.py": "carded",
+                    "r3d/cards/pages.py": "pack_pages"}
+        for stage in ("mesh", "reference"):
+            self.assertTrue(set(expected) <= self.names(stage), stage)
+            units, _ = bake.stage_units(stage)
+            reached = {(unit.path.relative_to(TOOLS).as_posix(), name) for unit in units for name in unit.names}
+            for path, name in expected.items():
+                self.assertIn((path, name), reached, stage)
+
     def test_modules_reached_through_sys_path_are_in_the_stages_that_import_them(self):
         for stage in ("mesh", "reference", "fit"):
             self.assertIn("device/gfx_color.py", self.names(stage), stage)
