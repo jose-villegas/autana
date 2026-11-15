@@ -467,10 +467,9 @@ collect every `.c` in the app folder outside `tools/` and `tests/`,
 excluding `suite_*.c`, and list only the shared engine and host-shim
 sources by hand, so a new source file needs no edit to the script.
 
-`render_host.c` calls `scene_shell_compose()` before each `draw()`, as the
-shell does before an app's `frame()`. A scene whose sources include
-`main/scene/scene_shell.c` gets the real one, which does nothing without an
-active camera; any other scene gets a no-op.
+The host composes active scenes before each provider draw. Scene-file providers
+draw through the scene manager; stream providers replay recorded drawing commands.
+Without the scene manager, composition is a no-op.
 
 Each line of `scene_renders` is `<label>|<arguments>|<width>x<height>`,
 optionally followed by flags: `|nopin`; `|nopacks`, which runs that
