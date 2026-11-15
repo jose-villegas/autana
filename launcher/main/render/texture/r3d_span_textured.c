@@ -319,14 +319,16 @@ tile_origin(float u, int size_log2) {
     return (float)(whole & ~(int32_t)((1U << size_log2) - 1U));
 }
 
-/* Whether an INDEX4 triangle divides and how far apart, judged on `whole`;
- * when it does, its u and v planes become u q and v q, from the texture's
- * tile holding vertex 0, so a far tile's large u keeps its fraction through
- * the products and divides. The level stays the affine planes' pick. Out of
- * set_up(), whose affine and MASK1 path stays short, at the flash tail. */
+/* Whether an INDEX4 triangle set up affine in `su` divides, and how far
+ * apart, judged on `whole`, its unclipped box, so every window that draws a
+ * part of it maps u and v alike. When it does, its u and v planes become
+ * u q and v q, from the texture's tile holding vertex 0, so a far tile's
+ * large u keeps its fraction through the products and divides; the level
+ * stays the affine planes' pick. Apart from set_up(), whose affine and MASK1
+ * path is unchanged by divides, at the flash tail. */
 static RENDER_TAIL_ATTR __attribute__((noinline)) void
 set_up_divide(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[CORNERS], const vec2f_t uv[CORNERS],
-              const r3d_texture_t* texture, recti_t whole, const r3d_span_frame_t* f, float scale, setup_t* su) {
+              const r3d_texture_t* texture, recti_t box, recti_t whole, setup_t* su) {
     const float z_near = mathf_max(v[0]->z, mathf_max(v[1]->z, v[2]->z));
     const float z_far = mathf_min(v[0]->z, mathf_min(v[1]->z, v[2]->z));
     const float side = (float)mathi_max(whole.w, whole.h);
@@ -335,9 +337,13 @@ set_up_divide(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[
     su->divide = r3d_texture_segment_px(target->texture_divide_px,
                                         (float)target->texture_bend_steps * (1.0F / (float)R3D_SPAN_BEND_STEPS), extent,
                                         z_near, z_far, side);
-    if (su->divide == 0) {
+    r3d_span_frame_t f;
+    if (su->divide == 0 || !r3d_span_frame_of(v[0], v[1], v[2], box.x, box.y, &f)) {
+        su->divide = 0;
         return;
     }
+    /* The level's side over level 0's: the scale set_up() gave u and v. */
+    const float scale = (float)(su->sampler.mask + 1U) / (float)(1U << texture->size_log2);
     const vec2f_t origin = {tile_origin(uv[0].x, texture->size_log2), tile_origin(uv[0].y, texture->size_log2)};
     float s_q[CORNERS];
     float t_q[CORNERS];
@@ -345,18 +351,16 @@ set_up_divide(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[
         s_q[i] = (uv[i].x - origin.x) * scale * v[i]->z;
         t_q[i] = (uv[i].y - origin.y) * scale * v[i]->z;
     }
-    su->q = r3d_span_plane_of(f, v[0]->z, v[1]->z, v[2]->z);
-    su->s = r3d_span_plane_of(f, s_q[0], s_q[1], s_q[2]);
-    su->t = r3d_span_plane_of(f, t_q[0], t_q[1], t_q[2]);
+    su->q = r3d_span_plane_of(&f, v[0]->z, v[1]->z, v[2]->z);
+    su->s = r3d_span_plane_of(&f, s_q[0], s_q[1], s_q[2]);
+    su->t = r3d_span_plane_of(&f, t_q[0], t_q[1], t_q[2]);
 }
 
-/* Sets `su` up to fill the triangle's part in window box `box`, off the row
- * walks' stack chain: the frame lives only here. Whether an INDEX4 triangle
- * divides, and how far apart, are judged on `whole`, its unclipped box, so
- * every window that draws a part of it maps u and v alike. */
+/* Sets `su` up to fill the triangle's part in window box `box` affine, off
+ * the row walks' stack chain: the frame lives only here. */
 static __attribute__((noinline)) bool
 set_up(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[CORNERS], const vec2f_t uv[CORNERS],
-       const r3d_texture_t* texture, recti_t box, recti_t whole, setup_t* su) {
+       const r3d_texture_t* texture, recti_t box, setup_t* su) {
     r3d_span_frame_t f;
     if (!r3d_span_frame_of(v[0], v[1], v[2], box.x, box.y, &f)) {
         return false;
@@ -374,13 +378,6 @@ set_up(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[CORNERS
     const float scale = 1.0F / (float)(1U << level);
     su->s = (r3d_span_plane_t){su->s.base * scale, su->s.dx * scale, su->s.dy * scale};
     su->t = (r3d_span_plane_t){su->t.base * scale, su->t.dx * scale, su->t.dy * scale};
-    su->divide = 0;
-    /* A triangle no wider than one segment steps affine: affine across it
-     * maps u and v as one divided segment would. */
-    if (texture->format != R3D_TEXTURE_MASK1 && target->texture_divide_px != 0
-        && mathi_max(whole.w, whole.h) > target->texture_divide_px) {
-        set_up_divide(target, v, uv, texture, whole, &f, scale, su);
-    }
     const int side_log2 = texture->size_log2 - level;
     const uint32_t mask = (1U << side_log2) - 1U;
     su->sampler =
@@ -457,7 +454,8 @@ r3d_span_textured_triangle(const r3d_span_target_t* target, const r3d_span_verte
         return;
     }
     setup_t su;
-    if (!set_up(target, (const r3d_span_vertex_t* const[CORNERS]){a, b, c}, uv, texture, box, whole, &su)) {
+    const r3d_span_vertex_t* const corners[CORNERS] = {a, b, c};
+    if (!set_up(target, corners, uv, texture, box, &su)) {
         return;
     }
     const r3d_span_vertex_t* v0 = a;
@@ -467,10 +465,18 @@ r3d_span_textured_triangle(const r3d_span_target_t* target, const r3d_span_verte
     FRAME_LAP("r3d.draw.fill");
     if (texture->format == R3D_TEXTURE_MASK1) {
         walk_cut(target, &su, box, v0, v1, v2, long_on_left);
-    } else if (su.divide != 0) {
-        walk_divided(target, &su, box, v0, v1, v2, long_on_left);
     } else {
-        walk_plain(target, &su, box, v0, v1, v2, long_on_left);
+        /* A triangle no wider than one segment steps affine: affine across it
+         * maps u and v as one divided segment would. */
+        su.divide = 0;
+        if (target->texture_divide_px != 0 && mathi_max(whole.w, whole.h) > target->texture_divide_px) {
+            set_up_divide(target, corners, uv, texture, box, whole, &su);
+        }
+        if (su.divide != 0) {
+            walk_divided(target, &su, box, v0, v1, v2, long_on_left);
+        } else {
+            walk_plain(target, &su, box, v0, v1, v2, long_on_left);
+        }
     }
     if (target->writer_count != 0) {
         walk_writers(target, &su, box, v0, v1, v2, long_on_left);
