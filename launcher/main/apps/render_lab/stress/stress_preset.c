@@ -16,7 +16,7 @@ enum { STRESS_PRESETS(STRESS_PRESET_SURFACE) };
 
 #define STRESS_SURFACE_OF(id_) ((stress_surface_t)STRESS_##id_##_SURFACE)
 
-/* Shape, cuts, copies, layout, coverage percent, surface, camera and replay poses. */
+/* Shape, cuts, copies, layout, coverage percent, surface, camera, replay poses and recording. */
 const stress_params_t stress_presets[STRESS_PRESET_COUNT] = {
     [STRESS_OPEN] = {STRESS_SHAPE_PLANE, 8, 16, STRESS_LAYOUT_WALL, 60, STRESS_SURFACE_OF(OPEN), STRESS_CAMERA, 6},
     [STRESS_STACK] = {STRESS_SHAPE_PLANE, 8, 8, STRESS_LAYOUT_STACK, 90, STRESS_SURFACE_OF(STACK), STRESS_CAMERA, 6},
@@ -61,6 +61,8 @@ const stress_params_t stress_presets[STRESS_PRESET_COUNT] = {
                             STRESS_CAMERA, 6},
     [STRESS_FOLIAGE_FAR_OPAQUE] = {STRESS_SHAPE_FOLIAGE, 24, 36, STRESS_LAYOUT_WALL, 70,
                                    STRESS_SURFACE_OF(FOLIAGE_FAR_OPAQUE), STRESS_CAMERA, 6},
+    [STRESS_RECORD] = {STRESS_SHAPE_PLANE, 24, 4, STRESS_LAYOUT_WALL, 80, STRESS_SURFACE_OF(RECORD), STRESS_CAMERA, 6,
+                       true},
 };
 
 stress_params_t
