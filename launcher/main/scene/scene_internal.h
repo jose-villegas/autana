@@ -8,6 +8,8 @@
 
 #include "anim/anim_tracks.h"
 #include "anim/playback/anim_layer.h"
+#include "asset/asset_store.h"
+#include "build/build_variant.h"
 #include "core/checkpoint.h"
 #include "core/handle.h"
 #include "core/memory.h"
@@ -275,16 +277,17 @@ struct scene {
     uint8_t* flags;     /* one per entity: SCENE_FLAG_* */
     scene_renderer_t* renderers;
     void* resident; /* mesh arrays (positions, triangles, colours), deduplicated; NULL when absent */
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+    asset_copies_t* copies; /* resident's arrays' sources, told to the asset store; NULL when none */
+#endif
     scene_camera_t* cameras;
     const asset_pack_t* pack;
     transformf_t* locals;
     scene_animator_t* animators;
     scene_skinned_renderer_t* skinned_renderers;
-    r3d_instance_t* instances;     /* one per renderer: what the raster draws this frame */
-    r3d_batch_t* batches;          /* one per SCNE batch, its renderer's */
-    r3d_batch_draw_t* batch_draws; /* one per SCNE batch: what the raster draws of it this frame */
-    r3d_copy_chunk_t* chunks;      /* every batch's chunks, internal RAM: what the cull reads first */
-    uint16_t* world_slots;         /* one per entity: its index in `worlds`, or SCENE_WORLD_SLOT_NONE when childless */
+    r3d_batch_t* batches;     /* one per SCNE batch, its renderer's */
+    r3d_copy_chunk_t* chunks; /* every batch's chunks, internal RAM: what the cull reads first */
+    uint16_t* world_slots;    /* one per entity: its index in `worlds`, or SCENE_WORLD_SLOT_NONE when childless */
     int world_count;
     mat4f_t* worlds;             /* one per entity with children, in entity order */
     scene_row_t* world_entities; /* the entity each of `worlds` belongs to */
@@ -309,6 +312,9 @@ void* scene_allocate(size_t bytes, memory_kind_t kind);
  * scene_set_take() installed, else the heap. scene_free_kept() frees it only
  * when it came from the heap; a taken one goes back with its lender. */
 void* scene_allocate_kept(size_t bytes);
+/* As scene_allocate_kept(), for what a load does without when refused: no
+ * injected failure lands on it. */
+void* scene_allocate_kept_optional(size_t bytes);
 void scene_free_kept(void* block);
 
 /* Copies static mesh arrays (positions, triangles, colours) into one block from scene_allocate_kept(),
@@ -331,6 +337,9 @@ void scene_draw_activate(scene_t* scene, int camera);
 /* A scene is going away: the draw drops it if its camera is active. */
 void scene_draw_forget(const scene_t* scene);
 void scene_draw_release(void);
+/* What the last draw gave the raster: every drawn scene's instances, in
+ * the order the scenes are drawn; valid until the next draw. */
+const r3d_instance_t* scene_drawn_instances(void);
 
 /* Rebuilds the world of every parent and active renderer whose own transform
  * or an ancestor's changed, then clears DIRTY and MOVED. An inactive

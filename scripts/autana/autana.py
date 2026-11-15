@@ -1243,6 +1243,24 @@ def capture_screenshot(out, view):
     return call_device(command)
 
 
+def record(args):
+    """FRAMEREC START and the frame record stream, see device.py's own
+    `record` subcommand; it holds the lock and the port until it ends."""
+    import argparse
+    parser = argparse.ArgumentParser(prog="autana record")
+    parser.add_argument("-o", "--out")
+    parser.add_argument("--seconds", type=float)
+    parsed = parser.parse_args(args)
+    if refused_as_busy():
+        return EXIT_BUSY
+    command = device_command("record")
+    if parsed.out:
+        command += ["--out", parsed.out]
+    if parsed.seconds is not None:
+        command += ["--seconds", str(parsed.seconds)]
+    return call_device(command)
+
+
 def mic(args):
     import argparse
     parser = argparse.ArgumentParser(prog="autana mic")
@@ -1845,6 +1863,8 @@ COMMAND_GROUPS = (
         Command("screenshot", screenshot, (
             ("screenshot [--as-shown|--framebuffer] [-o PATH]", "PATH.png plus a PATH.json state snapshot; landscape by default"),
             ("screenshot --frames N -o PATH", "N frames as PATH-00 on: the loop is frozen and stepped a frame between captures, then resumed"),)),
+        one("record", record, "record [-o PATH] [--seconds S]",
+            "each frame's render input as records (FRAMEREC), to PATH or stdout; console lines from stdin go to the board, so FREEZE, STEP and RESUME pause and step it; stops when stdin ends or after S seconds; development builds"),
         Command("battery", battery, (
             ("battery [--json]", "fresh voltage, percentage, USB, charge phase and flow, plus raw PMU status bytes; development builds"),
             ("battery --log [--json]", "persistent battery records oldest first (JSON is an array); reasons: periodic, transition, boot, shutdown-warning; development builds"),

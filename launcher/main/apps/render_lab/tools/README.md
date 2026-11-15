@@ -165,6 +165,11 @@ the presets vary the copies' geometry, layout and colour modes.
 | `stress-near` | ![Spheres along the camera path](../../../../../docs/images/overview/render-lab-stress-near.png) | stacked spheres and a camera passing through their front surfaces | triangles behind and crossing the near plane |
 | `stress-few-copies` | ![Stress few copies: two dense spheres](../../../../../docs/images/overview/render-lab-stress-few-copies.png) | two dense spheres side by side | the two-core cull split: with one instance a core, its fork and join cost more than the halved walk saves |
 | `stress-textured` | ![Stress textured: big triangles under a brick texture](../../../../../docs/images/overview/render-lab-stress-textured.png) | the big-tris layout, its banded light multiplied by a generated 4-bit brick texture ([LTEX](../../../../../docs/assets/formats/LTEX.md)) | the textured span fill against the same pixels drawn plain in `stress-big-tris` |
+| `stress-foliage-near` | ![Stress foliage near: three bushes of masked cards over the view](../../../../../docs/images/overview/render-lab-stress-foliage-near.png) | three bushes one behind another over the whole view, each 24 small cards turned and overlapping several deep, cut by a generated MASK1 texture ([LTEX](../../../../../docs/assets/formats/LTEX.md)) keeping about 0.7 | the masked textured fill at its largest: foliage cards' overdraw near the camera |
+| `stress-foliage-near-opaque` | ![Stress foliage near opaque: the same cards under the brick](../../../../../docs/images/overview/render-lab-stress-foliage-near-opaque.png) | `stress-foliage-near`'s cards under the INDEX4 brick, whole | the twin: against it, the near cards' mask costs alone |
+| `stress-foliage-far` | ![Stress foliage far: a wall of small bushes of masked cards](../../../../../docs/images/overview/render-lab-stress-foliage-far.png) | 36 small bushes side by side, their cards a few pixels across | the masked textured fill on small triangles, as distant foliage draws |
+| `stress-foliage-far-opaque` | ![Stress foliage far opaque: the same cards under the brick](../../../../../docs/images/overview/render-lab-stress-foliage-far-opaque.png) | `stress-foliage-far`'s cards under the INDEX4 brick, whole | the twin: against it, the far cards' mask costs alone |
+| `stress-record` | ![Stress record: four planes with a wave running over them](../../../../../docs/images/overview/render-lab-stress-record.png) | four planes made again every frame, a wave running over them, while the frame recorder runs | the recorder: each frame's four built meshes written whole, a keyframe's meshes every 30 frames |
 
 A change is judged by each preset's own readout, stage by stage. The sum over
 presets is a summary line only. A draw change can win on two-sided and static
@@ -304,7 +309,7 @@ camera, so the per-copy costs of posing, skinning and culling all show.
 |---|---|
 | Each copy's leg: a target and speed, or a graze | `herd/herd_wander.h` |
 | Keep apart, look ahead, stay inside; then arrive with what acceleration is left | `math/motion/steer2f.h` ([Motion](../../../../../docs/math/Motion.md)) |
-| The clip and rate for the copy's speed | `locomotion/gait.h`, from each clip's `ground_mm_s` ([TRCK](../../../../../docs/assets/formats/TRCK.md)) |
+| The clip and rate for the copy's speed | `scene/animator/gait.h`, from each clip's `ground_mm_s` ([TRCK](../../../../../docs/assets/formats/TRCK.md)) |
 
 `pose <ms>` seeks the whole herd: it walks again from its seed to that time,
 so two seeks to one time draw the same frame. Played on from there, clip phases
@@ -326,6 +331,24 @@ can differ slightly from an unbroken run, which steps clips by frame time.
 | The camera, orbited round the area | [`lab/lab_orbit.h`](../../../lab/lab_orbit.h) |
 | Each size's copies, and a turn's frame and animation-step cost with their stages (`herd.wander`, `herd.gait`, the animation step's and r3d's); a paced row steps each frame by the last one's time | [`tests/suite_herd_perf.c`](../tests/suite_herd_perf.c) |
 | The suite's timing table for `perf_compare.sh` | [`herd_tables.py`](herd_tables.py) `--perf-table CAPTURE TABLE` |
+
+### Capybara in Sponza
+
+`capybara-sponza` loads Sponza's fitted full bake and the capybara as two
+scenes, both drawn through Sponza's camera. The capybara rests between the
+first pair of columns, gallops down the atrium and rests between the last
+pair; its clip and rate come from its ground speed. A third-person camera
+starts a little round from its face, turns slowly toward its back as it runs,
+never reaching it, and comes back as it stops. With frame generation on, a
+generated frame shows the capybara where the last drawn frame put it.
+
+![Capybara in Sponza: the capybara's run down the atrium, rest to rest, under a third-person camera](../../../../../docs/images/overview/render-lab-capybara-sponza.gif)
+
+| What | Owner |
+|---|---|
+| The run's place and speed in time | `kinematics/profile/motion_profile.h` ([Profile](../../../../../docs/kinematics/Profile.md)) |
+| The clip and rate for its speed, read a blend ahead | `scene/animator/gait.h` |
+| The run's ends, the camera and the scenes | `capybara_sponza/scene_capybara_sponza.c` |
 
 ### Small fill
 
