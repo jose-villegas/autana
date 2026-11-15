@@ -109,7 +109,7 @@ config:
   themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(4) { fill: #e3e3e3 !important; } .packetLabel { fill: #1b1b1b !important; }"
   packet:
     bitsPerRow: 6
-    bitWidth: 70
+    bitWidth: 120
 ---
 packet-beta
 title CHOICE content, 10 bytes after the head
@@ -169,7 +169,7 @@ title POSE content head, 15 bytes after the record head
 config:
   packet:
     bitsPerRow: 8
-    bitWidth: 50
+    bitWidth: 120
 ---
 packet-beta
 title DYNMESH content head, 17 bytes after the record head
