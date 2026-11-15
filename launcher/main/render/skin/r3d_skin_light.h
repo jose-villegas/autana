@@ -5,7 +5,8 @@
 #include "math/sh/sh1.h"
 #include "render/skin/r3d_skinning.h"
 
-#define R3D_SKIN_LIGHT_MAX 4
+#define R3D_SKIN_LIGHT_MAX           4
+#define R3D_SKIN_LIGHT_LAMBERT_SCALE (1.0F / MATH_PI)
 
 enum { R3D_SKIN_LIGHT_CHANNELS = 3 };
 
@@ -85,4 +86,5 @@ void r3d_skin_clusters_table(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind,
                              int count, r3d_skin_output_t* out, const mat3f_t* normals, const r3d_skin_lights_t* lights,
                              uint8_t (*light)[3]);
 
+sh1_irradiance_t r3d_skin_light_ambient_sh(const sh1_rgb_t* radiance);
 void r3d_skin_light_set_ambient_sh(r3d_skin_lights_t* lights, const sh1_rgb_t* radiance);

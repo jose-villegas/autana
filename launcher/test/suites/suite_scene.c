@@ -4897,6 +4897,30 @@ test_set_transform_reads_back_exactly_and_drives_placement(void) {
 }
 
 static void
+test_constant_probe_matches_flat_ambient_in_each_kernel(void) {
+    static const uint8_t modes[] = {R3D_SKIN_LIGHT_DIRECT, R3D_SKIN_LIGHT_RENORMALISED, R3D_SKIN_LIGHT_TABLE};
+    for (size_t mode = 0; mode < sizeof modes / sizeof modes[0]; mode++) {
+        skin_fixture_options_t options = SKIN_OPTIONS;
+        options.mode = modes[mode];
+        fixture_with_skin(&options);
+        const entity_t root = load("test_skin");
+        const entity_t skin = entity_find(root, name_hash("red"));
+        scene_animation_step(columns(root), 0);
+        uint8_t flat[3];
+        memcpy(flat, renderer_mesh(skin)->colors[0], sizeof flat);
+        const int16_t coefficients[1][SH_PROBES_COMPONENTS] = {{1, 2, 3}};
+        const sh_probes_t probes = {.spacing = {1, 1, 1},
+                                    .dims = {1, 1, 1},
+                                    .scale = options.intensity * options.ambient.x / SH1_Y00,
+                                    .coefficients = coefficients};
+        scene_set_probes(root, &probes);
+        scene_animation_step(columns(root), 0);
+        TEST_ASSERT_EQUAL_MEMORY(flat, renderer_mesh(skin)->colors[0], sizeof flat);
+        release_fixture();
+    }
+}
+
+static void
 test_scene_probe_lighting_and_restore(void) {
     for (int ambient = 0; ambient < 2; ambient++) {
         skin_fixture_options_t options = SKIN_OPTIONS;
@@ -7928,6 +7952,7 @@ run_scene_suite(void) {
     RUN_TEST(test_idle_lit_skin_skips_and_transform_changes_run);
     RUN_TEST(test_light_attachment_defaults_refusals_and_capacity);
     RUN_TEST(test_scene_light_rotation_shades_only_skin_and_matches_kernel);
+    RUN_TEST(test_constant_probe_matches_flat_ambient_in_each_kernel);
     RUN_TEST(test_scene_probe_lighting_and_restore);
     RUN_TEST(test_authored_skin_modes_animation_and_ambient);
     RUN_TEST(test_authored_light_preserves_static_mesh_colors);

@@ -101,7 +101,19 @@ r3d_skin_light_encode(float radiance, const r3d_skin_light_transfer_t* transfer)
     return light_encode(radiance, transfer);
 }
 
+sh1_irradiance_t
+r3d_skin_light_ambient_sh(const sh1_rgb_t* radiance) {
+    sh1_irradiance_t ambient = sh1_rgb_irradiance(radiance);
+    ambient.constant = vec3f_scale(ambient.constant, R3D_SKIN_LIGHT_LAMBERT_SCALE);
+    for (int row = 0; row < SH1_CHANNELS; row++) {
+        for (int column = 0; column < SH1_CHANNELS; column++) {
+            ambient.gradient.m[row][column] *= R3D_SKIN_LIGHT_LAMBERT_SCALE;
+        }
+    }
+    return ambient;
+}
+
 void
 r3d_skin_light_set_ambient_sh(r3d_skin_lights_t* lights, const sh1_rgb_t* radiance) {
-    lights->ambient = sh1_rgb_irradiance(radiance);
+    lights->ambient = r3d_skin_light_ambient_sh(radiance);
 }

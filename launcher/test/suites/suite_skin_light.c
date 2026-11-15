@@ -694,7 +694,7 @@ set_alternating_normals(fixture_t* f) {
 }
 
 static void
-test_sh_gradient_through_each_kernel(void) {
+test_constant_and_gradient_sh_through_each_kernel(void) {
     static const uint8_t colors[VERTICES][3] = {{255, 255, 255}, {255, 255, 255}, {255, 255, 255}, {255, 255, 255}};
     static const int16_t positions[VERTICES][3] = {{0}};
     fixture_t* f = malloc(sizeof *f);
@@ -710,12 +710,23 @@ test_sh_gradient_through_each_kernel(void) {
     r3d_skin_light_transfer_build(0, transfer);
     r3d_skin_lights_t lights = {.transfer = transfer, .table = table};
     lights.table_scale = r3d_skin_light_table_build(&lights, table);
-    sh1_rgb_t sh = {0};
-    sh.c[0] = (vec3f_t){1, 1, 1};
-    sh.c[1] = (vec3f_t){0.5F, 0.5F, 0.5F};
-    r3d_skin_light_set_ambient_sh(&lights, &sh);
     r3d_skin_output_t posed;
     void* block = fixture_output(f, &posed);
+    const vec3f_t radiance = {0.125F, 0.25F, 0.5F};
+    const sh1_rgb_t constant = {.c = {vec3f_scale(radiance, 1.0F / SH1_Y00)}};
+    for (size_t k = 0; k < sizeof modes / sizeof modes[0]; k++) {
+        lights.ambient = (sh1_irradiance_t){.constant = radiance};
+        modes[k].kernel(&f->skin, &f->bind, f->palette, 0, CLUSTERS, &posed, f->normals, &lights, f->out);
+        uint8_t flat[VERTICES][3];
+        memcpy(flat, f->out, sizeof flat);
+        r3d_skin_light_set_ambient_sh(&lights, &constant);
+        modes[k].kernel(&f->skin, &f->bind, f->palette, 0, CLUSTERS, &posed, f->normals, &lights, f->out);
+        TEST_ASSERT_EQUAL_MEMORY(flat, f->out, sizeof flat);
+    }
+    sh1_rgb_t sh = {0};
+    sh.c[0] = vec3f_one();
+    sh.c[1] = (vec3f_t){0.5F, 0.5F, 0.5F};
+    r3d_skin_light_set_ambient_sh(&lights, &sh);
     for (size_t k = 0; k < sizeof modes / sizeof modes[0]; k++) {
         modes[k].kernel(&f->skin, &f->bind, f->palette, 0, CLUSTERS, &posed, f->normals, &lights, f->out);
         TEST_ASSERT_GREATER_THAN(f->out[1][0], f->out[0][0]);
@@ -729,7 +740,7 @@ test_sh_gradient_through_each_kernel(void) {
 void
 suite_skin_light(void) {
     RUN_TEST(test_flat_ambient_legacy_parity_and_table_drift);
-    RUN_TEST(test_sh_gradient_through_each_kernel);
+    RUN_TEST(test_constant_and_gradient_sh_through_each_kernel);
     RUN_TEST(test_reference_decodes_packed_normal_length);
     RUN_TEST(test_table_extreme_finite_intensities);
     RUN_TEST(test_table_irradiance_floor_boundary);
