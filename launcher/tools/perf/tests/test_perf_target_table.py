@@ -11,6 +11,7 @@ from layout_measure import parse_report
 CAPTURE = """I (9645) device_tests: PERF TARGET stress-card portrait r3d.draw: measured 1290 us, goal 1300 us, distance -1%
 I (9650) device_tests: PERF TARGET stress-card portrait: measured 1757 us, goal 2752 us, distance -36%
 I (9660) device_tests: PERF TARGET stress-card portrait: measured 1760 us, goal 2752 us, distance -36%
+I (9665) device_tests: PERF TARGET stress-new portrait: measured 900 us, goal not yet pegged
 I (9670) device_tests: PERF TARGET SUMMARY: 0 unmet
 """
 
@@ -22,7 +23,7 @@ class PerfTargetTable(unittest.TestCase):
             capture.write_text(CAPTURE, encoding="utf-8")
             self.assertEqual(perf_target_table.main([str(capture), str(table)]), 0)
             self.assertEqual(parse_report(table), {"stress-card portrait r3d.draw": 1290,
-                                                   "stress-card portrait": 1760})
+                                                   "stress-card portrait": 1760, "stress-new portrait": 900})
 
     def test_a_capture_with_no_targets_is_refused(self):
         with self.assertRaisesRegex(ValueError, "no PERF TARGET"):

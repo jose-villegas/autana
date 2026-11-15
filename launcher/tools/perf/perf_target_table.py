@@ -3,19 +3,19 @@
 
 Usage: perf_target_table.py CAPTURE TABLE, as perf_compare's table command
 `python3 launcher/tools/perf/perf_target_table.py @CAPTURE@ @TABLE@` for a
-suite that reports only pegged PERF TARGET lines.
+suite that reports only PERF TARGET lines.
 """
 import argparse
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/device"))
-from device_report import parse_perf_targets, read_capture_text  # noqa: E402
+from device_report import parse_perf_targets, parse_unpegged_targets, read_capture_text  # noqa: E402
 
 
 def render(text):
-    """The markdown table of `text`'s PERF TARGET rows, the last of each name kept."""
-    targets, _ = parse_perf_targets(text)
+    """The markdown table of `text`'s PERF TARGET rows, pegged or not, the last of each name kept."""
+    targets = parse_perf_targets(text)[0] + parse_unpegged_targets(text)
     rows = {target["name"]: target["measured"] for target in targets}
     if not rows:
         raise ValueError("capture has no PERF TARGET rows")
