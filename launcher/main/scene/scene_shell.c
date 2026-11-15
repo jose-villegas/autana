@@ -54,17 +54,29 @@ note_shown(bool expanded, const scene_target_t* target) {
     }
 }
 
-void
-scene_shell_compose(uint32_t dt_ms) {
-    if (!scene_has_active_camera()) {
-        return;
-    }
+static bool
+compose_picture(uint32_t dt_ms, bool drawn) {
     scene_target_t target;
     fill_target(&target);
     /* Partial redraw rewrites some rows only; otherwise these are all of them. */
-    const bool expanded = scene_compose(dt_ms, display_quarter_now(), &target);
+    const bool expanded =
+        drawn ? render_context_compose(render_context_main(), target.pixels, target.half_pixels, target.half_seams)
+              : scene_compose(dt_ms, display_quarter_now(), &target);
     note_shown(expanded, &target);
     finish_compose(expanded, &target);
+    return expanded;
+}
+
+bool
+scene_shell_compose_drawn(void) {
+    return compose_picture(0, true);
+}
+
+void
+scene_shell_compose(uint32_t dt_ms) {
+    if (scene_has_active_camera()) {
+        (void)compose_picture(dt_ms, false);
+    }
 }
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST

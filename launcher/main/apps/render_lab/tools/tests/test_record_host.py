@@ -67,6 +67,87 @@ class RecordHost(unittest.TestCase):
         self.assertTrue(name in self.streams, self.logs.get(name, "")[-2000:])
         return self.streams[name]
 
+    def test_stream_replay_matches_every_check(self):
+        self.assertIsNone(self.failure, self.failure)
+        shell = shutil.which("sh") or shutil.which("bash")
+        script = ROOT / "launcher/tools/render/stream_render.sh"
+        built = subprocess.run([shell, str(script), "--build-only", "-o", str(self.out / "replay")],
+                               capture_output=True, text=True, timeout=900)
+        self.assertEqual(built.returncode, 0, (built.stdout + built.stderr)[-2000:])
+        binary = re.search(r"^built (.+)$", built.stdout, re.MULTILINE)
+        self.assertIsNotNone(binary, built.stdout)
+        for name in RECORDED:
+            with self.subTest(scene=name):
+                stream = self.stream(name)
+                env = dict(os.environ, AUTANA_ASSET_DIR=str(self.out / "assets"))
+                run = subprocess.run([binary[1].strip(), "--stream", str(self.out / (name + ".frec")),
+                                      "--check", "--quarter", "0" if name == "water" else "1",
+                                      "-o", str(self.out / (name + "-replay.bmp"))],
+                                     capture_output=True, text=True, timeout=600, env=env)
+                self.assertEqual(run.returncode, 0, run.stderr[-4000:])
+                matched = re.findall(r"CHECK (\d+) SAME", run.stderr)
+                self.assertEqual([int(i) for i in matched], sorted(stream.checks), run.stderr[-4000:])
+
+        data = bytearray((self.out / "herd.frec").read_bytes())
+        at = 0
+        while at < len(data):
+            kind, length = framerec.HEAD.unpack_from(data, at)
+            body = at + framerec.HEAD.size
+            if kind == framerec.RECORD_TYPES["CHECK"]:
+                index, width, height, crc = framerec.CHECK.unpack_from(data, body)
+                data[body:body + framerec.CHECK.size] = framerec.CHECK.pack(index, width, height, crc ^ 1)
+                break
+            at = body + length
+        changed = self.out / "wrong-check.frec"
+        changed.write_bytes(data)
+        run = subprocess.run([binary[1].strip(), "--stream", str(changed), "--check", "--frames", "1",
+                              "-o", str(self.out / "wrong-check.bmp")],
+                             capture_output=True, text=True, env=env, timeout=600)
+        self.assertNotEqual(run.returncode, 0)
+        self.assertIn("CHECK 0 DIFFERS", run.stderr)
+
+    def test_piecewise_feed_and_pack_identity(self):
+        self.assertIsNone(self.failure, self.failure)
+        project = ROOT / "launcher/tools/render/stream/tests"
+        build_dir = self.out / "feed-build"
+        for command in (["cmake", "-S", str(project), "-B", str(build_dir)],
+                        ["cmake", "--build", str(build_dir), "--target", "stream_feed_probe", "--parallel"]):
+            run = subprocess.run(command, capture_output=True, text=True, timeout=900)
+            self.assertEqual(run.returncode, 0, (run.stdout + run.stderr)[-2000:])
+        probe = build_dir / ("stream_feed_probe.exe" if os.name == "nt" else "stream_feed_probe")
+        env = dict(os.environ, AUTANA_ASSET_DIR=str(self.out / "assets"))
+        path = self.out / "herd.frec"
+        results = []
+        for chunk in (1, 7, path.stat().st_size):
+            run = subprocess.run([str(probe), str(path), str(chunk), str(self.out / "feed.bmp")],
+                                 capture_output=True, text=True, env=env, timeout=600)
+            self.assertEqual(run.returncode, 0, run.stderr[-4000:])
+            results.append(run.stdout)
+            self.assertIn(f"INDEX {FRAMES} 0 ", run.stdout)
+            self.assertIn(f"RESULT {len(self.stream('herd').checks)} 0 ", run.stdout)
+        self.assertEqual(results[0], results[1])
+        self.assertEqual(results[0], results[2])
+        data = bytearray(path.read_bytes())
+        at = 0
+        pack_name = None
+        while at < len(data):
+            kind, length = framerec.HEAD.unpack_from(data, at)
+            body = at + framerec.HEAD.size
+            if kind == framerec.RECORD_TYPES["PACK"]:
+                slot, crc, name = framerec.PACK.unpack_from(data, body)
+                pack_name = name.split(b"\0", 1)[0].decode()
+                data[body:body + framerec.PACK.size] = framerec.PACK.pack(slot, crc ^ 1, name)
+                break
+            at = body + length
+        self.assertIsNotNone(pack_name)
+        bad = self.out / "wrong-crc.frec"
+        bad.write_bytes(data)
+        run = subprocess.run([str(probe), str(bad), "7", str(self.out / "bad.bmp")],
+                             capture_output=True, text=True, env=env, timeout=600)
+        self.assertNotEqual(run.returncode, 0)
+        self.assertIn(pack_name, run.stderr)
+        self.assertIn("crc32 stream=", run.stderr)
+
     def test_each_drawn_frame_is_recorded_and_none_dropped(self):
         for name in RECORDED:
             with self.subTest(scene=name):

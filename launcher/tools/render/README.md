@@ -4,6 +4,7 @@
 |---|---|
 | [render_host.c](render_host.c) | Opens, steps and closes a frame-provider run with BMP output. |
 | [render_host.h](render_host.h) | `frame_provider_t`, `provider_frame_t` and the open/step/close API. |
+| [stream_render.sh](stream_render.sh) | Builds the frame-record renderer; `--stream PATH --check` redraws inputs with packs from `AUTANA_ASSET_DIR` and checks recorded pictures. `--build-only -o DIR` returns the executable. |
 | [render_scene.sh](render_scene.sh) | Compiles, runs, and checks one host render scene. |
 | [render_all_scenes.sh](render_all_scenes.sh) | Discovers and checks all host render scenes. |
 | [scene_viewer.sh](scene_viewer.sh) | The headless renderer for bakes, figures and tests. Builds and renders a scene file, selecting renderers with `--object NAME`; `--build-only -o DIR` returns the host path; `--deps` lists what it is compiled from; to look at a scene, use [Loupe](https://github.com/jose-villegas/loupe). |

@@ -56,6 +56,8 @@ typedef struct {
     /* The provider's own options, given every argument render_host.c did not
      * recognise. Return false to reject the command line. */
     bool (*options)(int argc, char** argv);
+    /* Optional default count, asked after options when --frames is absent. */
+    int (*frame_count)(void);
 
     /* Called once after gfx_init(), before the first frame. */
     bool (*setup)(int quarter);
@@ -118,5 +120,7 @@ void render_host_step(uint32_t dt_ms, const input_t* input);
 /* Draw warm-up frames for the frame watch, write the saved image and close
  * outputs. False means the run failed, including a frame-watch violation. */
 bool render_host_close(void);
+/* A provider marks its run failed; render_host_close() then returns false. */
+void render_host_fail(void);
 
 #endif
