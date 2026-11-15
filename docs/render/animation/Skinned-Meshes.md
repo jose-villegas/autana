@@ -168,6 +168,8 @@ the glTF clips and the default settings.
 
 ### Ambient irradiance
 
+Ambient is irradiance over pi, like the direct lights.
+
 Ambient is either flat or sampled from a world-space L1 SH grid at each
 skinned renderer's bounds centre. The grid is borrowed through
 `scene_set_probes()`; `NULL` restores the scene's flat ambient.

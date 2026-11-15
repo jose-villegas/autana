@@ -192,7 +192,7 @@ scene_lights_prepare(scene_t* scene) {
         skin->ambient = world.ambient;
         if (scene->probes != NULL) {
             const sh1_rgb_t radiance = sh_probes_sample(scene->probes, box3f_centre(renderer->world_bounds));
-            skin->ambient = sh1_rgb_irradiance(&radiance);
+            skin->ambient = r3d_skin_light_ambient_sh(&radiance);
         }
     }
 }
