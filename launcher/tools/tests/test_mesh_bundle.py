@@ -60,6 +60,15 @@ def bundle_fixture(directory, flat=False, lod=False, fit=None, positions=None, t
 
 
 class MeshBundleTests(unittest.TestCase):
+    def test_a_long_material_stem_shortens_to_leave_room_for_colours(self):
+        from asset.asset_pack import NAME_BYTES
+        long = "x" * NAME_BYTES + ".DoubleSided"
+        first, second = (mesh_bundle.shape_id(long, {"material": long}, index) for index in range(2))
+        for name in (first, second):
+            self.assertLess(len((name + lcol_asset.NAME_SUFFIX).encode("ascii")), NAME_BYTES)
+            self.assertTrue(name.startswith("x"))
+        self.assertNotEqual(first, second)
+
     def test_a_start_with_two_shapes_sums_meshlets_over_every_mesh_and_writes_one_file(self):
         recorder = StepRecorder(probe=lambda gpu: (100, None), interval=None)
         with tempfile.TemporaryDirectory() as directory:
@@ -399,6 +408,22 @@ class FitCopiesTests(unittest.TestCase):
         # The finest clusters' own vertices and triangles, in the bundle's order: nothing welded by value.
         np.testing.assert_array_equal(vertices[placed.tris], faces)
         self.assertEqual(len(placed.vertex_point), len(vertices))
+
+    def test_the_fit_leaves_masked_copies_out(self):
+        from r3d.texture import texture_asset, uv_transfer
+        from r3d.fit.copies import drawn_copies
+        entries = [(name, mesh_asset.TYPE, b"") for name in ("shape.a", "cards.b")]
+        mesh = SimpleNamespace(pos=np.zeros((4, 3)), tris=np.zeros((2, 3), int), clusters=[(0, 4, 0, 2)])
+        luvs = uv_transfer.card_luvs(mesh, np.zeros((4, 2)), [0])
+        texture = texture_asset.mask_texture(np.ones((4, 4), bool), 1)
+        entries += [(uv_transfer.name_for_mesh("cards.b"), uv_transfer.TYPE, uv_transfer.pack_luvs(luvs)),
+                    (uv_transfer.texture_name("cards.b", 0), texture_asset.TYPE, texture_asset.pack_ltex(texture))]
+        rows = [{"mesh": "shape.a"}, {"mesh": "cards.b"}, {"mesh": "shape.a"}]
+        self.assertEqual(drawn_copies(entries, rows), [rows[0], rows[2]])
+        luvs.materials[:] = uv_transfer.NONE
+        luvs.codes[:] = uv_transfer.PLAIN
+        entries[-2] = (uv_transfer.name_for_mesh("cards.b"), uv_transfer.TYPE, uv_transfer.pack_luvs(luvs))
+        self.assertEqual(drawn_copies(entries, rows), [rows[0], rows[2]])
 
     def test_copies_must_be_shaded_as_their_rest_is(self):
         from r3d.fit.copies import placed_copies

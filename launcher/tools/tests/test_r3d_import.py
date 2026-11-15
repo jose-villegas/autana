@@ -131,6 +131,36 @@ class ImportTests(unittest.TestCase):
         self.assertEqual((settings.seed, settings.alpha_keep, settings.thin.keep, settings.variants[0].triangles), (3, 0.5, 0.5, 10))
         self.assertFalse(hasattr(settings, "light"))
 
+    def test_cards_defaults_and_absent_key(self):
+        from r3d.cards import CARD_EPSILON, CARD_AREA_COST
+        with tempfile.TemporaryDirectory() as directory:
+            plain = load_import_settings(write_import(directory))
+            settings = load_import_settings(write_import(directory, body=
+                '[process]\nseed = 3\n[geometry]\nalpha_mask = { keep_alpha = 0.5 }\n'))
+        self.assertFalse(hasattr(plain, "cards"))
+        self.assertEqual(vars(settings.cards), dict(never=[], always=[],
+                         epsilon=CARD_EPSILON, area_cost=CARD_AREA_COST))
+        self.assertEqual(settings.seed, 3)
+
+    def test_cards_overlapping_overrides_are_an_error(self):
+        self.rejects("both never and always", '[geometry]\nalpha_mask = { keep_alpha = 0.5 }\n'
+                     'cards = { never = ["m"], always = ["m"] }\n')
+
+    def test_cards_reject_invalid_settings(self):
+        prefix = '[geometry]\nalpha_mask = { keep_alpha = 0.5 }\n'
+        cases = (
+            ('cards = { choice = "path" }', "geometry.cards.choice"),
+            ('cards = { path = "fly.anim.toml" }', "geometry.cards.path"),
+            ('cards = { choice = "other" }', "geometry.cards.choice"),
+            ('cards = { epsilon = 0 }', "geometry.cards.epsilon"),
+            ('cards = { area_cost = -1 }', "geometry.cards.area_cost"),
+            ('cards = { typo = 1 }', "geometry.cards.typo"),
+        )
+        for body, message in cases:
+            with self.subTest(body=body):
+                self.rejects(message, prefix + body + '\n')
+        self.rejects("cards needs geometry.alpha_mask", '[geometry]\ncards = {}\n')
+
     def test_old_scene_owned_keys_name_each_new_home(self):
         cases = (
             ('[visibility]\nrounds = 2\n', r"\[visibility\] moved to objects\.mesh_renderer\.visibility"),
