@@ -16,7 +16,7 @@ from build.c_header import read_define
 from device_report import parse_perf_targets, parse_unpegged_targets
 
 SUITE = ROOT / "launcher/main/apps/render_lab/tests/suite_stress_perf.c"
-STAGE_HEADER = ROOT / "launcher/main/render/r3d_stages.h"
+MAIN = ROOT / "launcher/main"
 GOAL_MARGIN = Fraction("1.01")
 CEILING_MARGIN = Fraction("1.15")
 GOAL_QUANTUM_US = 10
@@ -25,10 +25,17 @@ TABLE_ROW = re.compile(r'\{"(stress-[^"]+)",\s*"([^"]+)",\s*"([^"]+)",\s*\{([^}]
 
 
 def stage_names():
-    """The bracket names in the stage enum's order, which indexes a row's goals."""
-    enum = re.search(r"enum\s*\{([^}]+)\}", STAGE_HEADER.read_text(encoding="utf-8"))[1]
-    ids = [name.strip() for name in enum.split(",") if name.strip() != "R3D_STAGE_COUNT"]
-    return tuple(read_define(STAGE_HEADER, f"{name}_NAME") for name in ids)
+    """The bracket names in the suite's stress_perf_stages order, which indexes a row's goals:
+    each stage's define, which one engine header owns."""
+    listed = re.search(r"stress_perf_stages\[\w+\]\s*=\s*\{([^}]+)\}", SUITE.read_text(encoding="utf-8"))[1]
+    headers = [header.read_text(encoding="utf-8", errors="replace") for header in MAIN.rglob("*.h")]
+    names = []
+    for define in (name.strip() for name in listed.split(",") if name.strip()):
+        found = [value for text in headers for value in re.findall(rf'^#define\s+{define}\s+"([^"]+)"', text, re.M)]
+        if len(found) != 1:
+            raise ValueError(f"{SUITE}: stage {define} is defined {len(found)} times in {MAIN}'s headers")
+        names.append(found[0])
+    return tuple(names)
 
 
 STAGES = stage_names()
@@ -75,11 +82,15 @@ def ceil_goal(value):
     return max(GOAL_QUANTUM_US, math.ceil(value / GOAL_QUANTUM_US) * GOAL_QUANTUM_US)
 
 
-def generate(paths, unpegged=()):
+def generate(paths, unpegged=(), presets=()):
+    """The goal rows from `paths`; only `presets`' rows when given, from captures of those alone."""
     rows = table_rows()
-    unknown = set(unpegged) - {key for key, _, _ in rows}
-    if unknown:
-        raise ValueError(f"--unpegged {', '.join(sorted(unknown))}: no such preset in {SUITE.name}")
+    for flag, keys in (("--unpegged", unpegged), ("--preset", presets)):
+        unknown = set(keys) - {key for key, _, _ in rows}
+        if unknown:
+            raise ValueError(f"{flag} {', '.join(sorted(unknown))}: no such preset in {SUITE.name}")
+    if presets:
+        rows = [row for row in rows if row[0] in presets]
     if not paths:
         raise ValueError("no captures")
     names = {row: [row_name(row)] + [f"{row_name(row)} {stage}" for stage in STAGES] for row in rows}
@@ -105,9 +116,11 @@ def main():
     parser.add_argument("captures", type=pathlib.Path, nargs="+")
     parser.add_argument("--unpegged", action="append", default=[], metavar="PRESET",
                         help="a preset whose rows stay at zero; repeatable")
+    parser.add_argument("--preset", action="append", default=[], metavar="PRESET",
+                        help="print only this preset's rows, from captures of it alone (--test); repeatable")
     args = parser.parse_args()
     try:
-        print(generate(args.captures, args.unpegged))
+        print(generate(args.captures, args.unpegged, args.preset))
     except (OSError, ValueError) as error:
         parser.exit(1, f"{error}\n")
 

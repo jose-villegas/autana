@@ -238,6 +238,19 @@ def board_for_lock(store, named=None, remembered=False, auto_pick=False, token=N
 RESET_LEAVE_SECONDS = 2
 USB_POLL_SECONDS = 0.05
 PORT_REAPPEAR_SECONDS = 20
+# A reconnect slower than this share of its window is logged by phase (left the port list, listed again, opened),
+# so a window too short for a board, or a host holding the port, shows before it fails.
+RECONNECT_REPORT_SHARE = 0.25
+# The phases a reconnect passes through, in order; a slow or failed one is reported by phase.
+RECONNECT_PHASES = ("left", "listed", "opened")
+
+
+def reconnect_line(marks, ended, limit):
+    """`marks` are the start and each finished phase's end; a phase still open at `ended` is the one that failed."""
+    phases = [f"{name}={end - begin:.2f}" for name, begin, end in zip(RECONNECT_PHASES, marks, marks[1:])]
+    if len(marks) <= len(RECONNECT_PHASES):
+        phases.append(f"{RECONNECT_PHASES[len(marks) - 1]}={ended - marks[-1]:.2f} failed=1")
+    return f"reset_reconnect_seconds={ended - marks[0]:.2f} {' '.join(phases)} limit={limit:g}"
 
 
 def reconnect_after_reset(seconds=PORT_REAPPEAR_SECONDS, sleep=time.sleep, now=time.monotonic):
@@ -248,22 +261,32 @@ def reconnect_after_reset(seconds=PORT_REAPPEAR_SECONDS, sleep=time.sleep, now=t
     capture that follows loses as little of the boot as it can. Raises
     PortUnavailable at `seconds`."""
     board = ACTIVE_LOCK.held.board
-    deadline = now() + seconds
-    leave_by = min(now() + RESET_LEAVE_SECONDS, deadline)
+    marks = [now()]
+    deadline = marks[0] + seconds
+    leave_by = min(marks[0] + RESET_LEAVE_SECONDS, deadline)
 
     def listed():
         require_live_lock()
         return any(found.serial == board for found in plugged_boards())
 
-    while now() < leave_by and listed():
-        sleep(min(USB_POLL_SECONDS, max(0, leave_by - now())))
-    while not listed():
-        if now() >= deadline:
-            raise PortUnavailable(f"board {board} did not come back on USB within "
-                                  f"{seconds:g}s of its reset")
-        sleep(min(USB_POLL_SECONDS, max(0, deadline - now())))
-    return open_when_free(max(0, deadline - now()), reason="re-enumerating after reset",
-                          sleep=sleep, now=now)
+    try:
+        while now() < leave_by and listed():
+            sleep(min(USB_POLL_SECONDS, max(0, leave_by - now())))
+        marks.append(now())
+        while not listed():
+            if now() >= deadline:
+                raise PortUnavailable(f"board {board} did not come back on USB within "
+                                      f"{seconds:g}s of its reset")
+            sleep(min(USB_POLL_SECONDS, max(0, deadline - now())))
+        marks.append(now())
+        connection = open_when_free(max(0, deadline - now()), reason="re-enumerating after reset",
+                                    sleep=sleep, now=now)
+        marks.append(now())
+    finally:
+        ended = now()
+        if len(marks) <= len(RECONNECT_PHASES) or ended - marks[0] > RECONNECT_REPORT_SHARE * seconds:
+            print(reconnect_line(marks, ended, seconds), file=sys.stderr)
+    return connection
 
 
 FLUSH_POLL_SECONDS = 0.05
@@ -1942,25 +1965,26 @@ def feed_lines(lines, inbox):
     inbox.put(None)
 
 
-def stream(args, store, board, lines=None, out=None):
-    """Console lines from stdin to the board as each arrives, and every line
-    the board writes to stdout, under one lock and one open port until stdin
-    ends: for a desktop tool steering the board live, where a `send` per line
-    (a process, a lock and an open each) is far too slow. A lost lock or a
-    failed read ends it with an error, even while stdin is quiet."""
-    lines = sys.stdin if lines is None else lines
-    out = sys.stdout if out is None else out
-    with HeldLock(store, board, args.owner, "stream", args.wait):
+def steer(args, store, board, purpose, read, lines, opening=(), closing=None, done=None, interrupt_ends=False):
+    """Console lines from `lines` to the board as each arrives, under one lock
+    and one open port, while `read(connection, stop, failed)` takes what the
+    board writes on its own thread. `opening` lines go first; `closing(connection,
+    failed)` runs after `lines` end, before the port closes; a set `done` ends
+    the lines early, and so does Ctrl+C with `interrupt_ends`. A lost lock or a failed read ends it with an error, even
+    while `lines` is quiet."""
+    with HeldLock(store, board, args.owner, purpose, args.wait):
         with open_when_free() as connection:
             stop = threading.Event()
             failed = []
-            reader = threading.Thread(target=echo_board, args=(connection, stop, out, failed), daemon=True)
+            reader = threading.Thread(target=read, args=(connection, stop, failed), daemon=True)
             reader.start()
-            # stdin is read on its own thread, so a quiet stdin never stops the checks below.
+            # The lines are read on their own thread, so a quiet stdin never stops the checks below.
             inbox = queue.Queue()
             threading.Thread(target=feed_lines, args=(lines, inbox), daemon=True).start()
             try:
-                while True:
+                for line in opening:
+                    connection.write(line.encode("ascii") + b"\n")
+                while done is None or not done.is_set():
                     if failed:
                         raise RuntimeError(f"reading the board failed: {failed[0]}") from failed[0]
                     require_unlost()
@@ -1968,6 +1992,10 @@ def stream(args, store, board, lines=None, out=None):
                         line = inbox.get(timeout=STREAM_CHECK_SECONDS)
                     except queue.Empty:
                         continue
+                    except KeyboardInterrupt:
+                        if not interrupt_ends:
+                            raise
+                        break
                     if line is None:
                         break
                     try:
@@ -1975,10 +2003,94 @@ def stream(args, store, board, lines=None, out=None):
                     except UnicodeEncodeError as error:
                         raise RuntimeError(f"console lines are ASCII: {line.rstrip()!r}") from error
                     connection.write(data)
+                if closing is not None:
+                    closing(connection, failed)
             finally:
                 stop.set()
                 reader.join()
+
+
+def stream(args, store, board, lines=None, out=None):
+    """Console lines from stdin to the board as each arrives, and every line
+    the board writes to stdout, under one lock and one open port until stdin
+    ends: for a desktop tool steering the board live, where a `send` per line
+    (a process, a lock and an open each) is far too slow."""
+    lines = sys.stdin if lines is None else lines
+    out = sys.stdout if out is None else out
+    steer(args, store, board, "stream", lambda connection, stop, failed: echo_board(connection, stop, out, failed),
+          lines)
     return 0
+
+
+# How long FRAMEREC STOP may take to drain the board's ring and answer.
+RECORD_END_SECONDS = 30
+
+
+def record_frames(args, store, board, lines=None, out=None, log=None):
+    """FRAMEREC START, then the record stream the board's FRAMEREC_BIN packets
+    carry (launcher/tools/device/framerec.py) to `out` (args.out, else
+    stdout) and its other lines to `log` (stderr), as stream() steers it:
+    console lines from stdin go to the board as they arrive (FREEZE, STEP,
+    RESUME). When stdin ends, or after args.seconds, FRAMEREC STOP and the
+    board's FRAMEREC_END. Exits 1 when the board refused or a packet arrived
+    damaged."""
+    import framerec
+
+    log = sys.stderr if log is None else log
+    timed = args.seconds is not None
+    if lines is None:
+        lines = [] if timed else sys.stdin
+    if timed:
+        lines = until_seconds(lines, args.seconds)
+    packets = framerec.packets()
+    ended = threading.Event()
+    answer = []
+    began = threading.Event()
+
+    def read(connection, stop, failed):
+        try:
+            while not stop.is_set():
+                for kind, data in packets.feed(connection.read(STREAM_READ_BYTES)):
+                    if kind == "data":
+                        sink.write(data)
+                        sink.flush()
+                        continue
+                    text = data.decode("utf-8", errors="replace")
+                    print(text, file=log, flush=True)
+                    if text.startswith("FRAMEREC_BEGIN"):
+                        began.set()
+                    # A refusal ends the record only as START's answer: after BEGIN it answers a typed line.
+                    if text.startswith("FRAMEREC_END") or (text.startswith("FRAMEREC_REFUSED") and not began.is_set()):
+                        answer.append(text)
+                        ended.set()
+        except Exception as error:  # noqa: BLE001  (any read failure ends the record, raised by its owner)
+            failed.append(error)
+            ended.set()
+
+    def closing(connection, failed):
+        # Unless the board ended it: a failed read leaves the board recording.
+        if not answer:
+            connection.write(b"FRAMEREC STOP\n")
+        if failed:
+            raise RuntimeError(f"reading the board failed: {failed[0]}") from failed[0]
+        deadline = time.monotonic() + RECORD_END_SECONDS
+        while not ended.wait(STREAM_CHECK_SECONDS):
+            require_unlost()
+            if time.monotonic() > deadline:
+                raise RuntimeError(f"no FRAMEREC_END within {RECORD_END_SECONDS} s of FRAMEREC STOP")
+
+    with contextlib.ExitStack() as files:
+        sink = files.enter_context(open(args.out, "wb")) if args.out else (out or sys.stdout.buffer)
+        steer(args, store, board, "record", read, lines, opening=["FRAMEREC START"], closing=closing, done=ended,
+              interrupt_ends=True)
+    return 1 if answer and answer[0].startswith("FRAMEREC_REFUSED") else 0
+
+
+def until_seconds(lines, seconds):
+    """`lines`, then nothing more once `seconds` have passed since the first was asked for."""
+    deadline = time.monotonic() + seconds
+    yield from lines
+    time.sleep(max(0.0, deadline - time.monotonic()))
 
 
 def screenshot(args, store, board):
@@ -2376,6 +2488,12 @@ def main(argv=None):
     subparsers.add_parser(
         "stream", help="write console lines from stdin as they come and print every line the "
                        "board writes, under one lock until stdin ends")
+    record_parser = subparsers.add_parser(
+        "record", help="FRAMEREC START, the frame record stream to stdout or --out, console lines from stdin "
+                       "to the board, and FRAMEREC STOP when stdin ends or after --seconds")
+    record_parser.add_argument("--out", help="write the stream here instead of stdout")
+    record_parser.add_argument("--seconds", type=float,
+                               help="stop after this long; stdin is then not read")
     screenshot_parser = subparsers.add_parser(
         "screenshot", help="capture what the panel shows right now, as a .png plus a .json state snapshot")
     screenshot_parser.add_argument("--out",
@@ -2586,7 +2704,7 @@ def main(argv=None):
             # Looked up per call, so a test's patch of one of them is the one run.
             board_commands = {"run-suite": run_suite, "selftest": selftest, "coredump": coredump,
                               "reset": reset_device, "batch": batch, "screenshot": screenshot, "mic-record": mic_record,
-                              "stream": stream}
+                              "stream": stream, "record": record_frames}
             result = board_commands.get(args.command, listen)(args, store, board)
             return result
         result = 0

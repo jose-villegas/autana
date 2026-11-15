@@ -3,7 +3,8 @@
  * level are planes set up in float once; each span starts from them and
  * steps fixed point, u and v packed in one word, affine across the
  * triangle as the PS1 drew them. A pixel is one colormap load: the texel's
- * colour at the vertex light's dithered level.
+ * colour at the vertex light's dithered level. A MASK1 texture's span skips
+ * the pixels whose texel is 0 and draws the rest in its one colour.
  */
 #include "render/texture/r3d_texture.h"
 
@@ -11,10 +12,12 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "collections/bits.h"
 #include "image/pixel/bayer.h"
 #include "math/scalar/mathf.h"
 #include "math/scalar/mathi.h"
 #include "profile/frame_laps.h"
+#include "render/code_layout.h"
 #include "render/r3d_span_internal.h"
 
 /* u and v walk as 8.8 texels, packed u high and v low in one word; a carry
@@ -29,6 +32,7 @@
 #define V_INT_SHIFT  UV_FRAC
 #define NIBBLE_BITS  4
 #define NIBBLE_MASK  0xFU
+#define MASK1_KEPT   1 /* the colour a kept MASK1 texel draws */
 /* The light level walks as 8.8. */
 #define LIGHT_FRAC   8
 #define LEVEL_MAX    ((R3D_TEXTURE_LIGHT_LEVELS - 1) << LIGHT_FRAC)
@@ -61,16 +65,28 @@ typedef struct {
     int32_t level, dlevel;
 } carry_t;
 
+/* The texel under `uv`, counted row-major across the level. */
+static inline __attribute__((always_inline)) uint32_t
+texel_offset(const sampler_t* s, uint32_t uv) {
+    return ((uv >> s->v_shift) & s->row_mask) | ((uv >> U_INT_SHIFT) & s->mask);
+}
+
 static inline __attribute__((always_inline)) uint32_t
 texel(const sampler_t* s, uint32_t uv) {
-    const uint32_t o = ((uv >> s->v_shift) & s->row_mask) | ((uv >> U_INT_SHIFT) & s->mask);
+    const uint32_t o = texel_offset(s, uv);
     return (uint32_t)(s->texels[o >> 1] >> ((o & 1U) * NIBBLE_BITS)) & NIBBLE_MASK;
 }
 
+static inline __attribute__((always_inline)) bool
+kept(const sampler_t* s, uint32_t uv) {
+    return bits8_get(s->texels, texel_offset(s, uv));
+}
+
 /* The colormap row of the level, dithered between levels by the screen's
- * 4x4 Bayer threshold at absolute coordinates. */
-static __attribute__((noinline)) void
-fill_colormap(uint16_t* depth, uint16_t* color, int count, carry_t* c, const sampler_t* s, int x, int y) {
+ * 4x4 Bayer threshold at absolute coordinates; `masked`, only the pixels
+ * whose MASK1 texel is kept. */
+static inline __attribute__((always_inline)) void
+fill_with(uint16_t* depth, uint16_t* color, int count, carry_t* c, const sampler_t* s, int x, int y, bool masked) {
     int32_t z = c->z;
     uint32_t uv = c->uv;
     int32_t level = c->level;
@@ -81,10 +97,10 @@ fill_colormap(uint16_t* depth, uint16_t* color, int count, carry_t* c, const sam
     const uint16_t (*colormap)[R3D_TEXTURE_COLOURS] = s->texture->colormap;
     for (int i = 0; i < count; i++) {
         const uint16_t zq = (uint16_t)(z >> R3D_DEPTH_SHIFT);
-        if (zq > depth[i]) {
+        if (zq > depth[i] && (!masked || kept(s, uv))) {
             const int32_t l = (level + ((int32_t)threshold[(x + i) & (BAYER4_SIDE - 1)] << DITHER_SHIFT)) >> LIGHT_FRAC;
             depth[i] = zq;
-            color[i] = colormap[l][texel(s, uv)];
+            color[i] = colormap[l][masked ? MASK1_KEPT : texel(s, uv)];
         }
         z += dz;
         uv += duv;
@@ -93,6 +109,17 @@ fill_colormap(uint16_t* depth, uint16_t* color, int count, carry_t* c, const sam
     c->z = z;
     c->uv = uv;
     c->level = level;
+}
+
+static __attribute__((noinline)) void
+fill_colormap(uint16_t* depth, uint16_t* color, int count, carry_t* c, const sampler_t* s, int x, int y) {
+    fill_with(depth, color, count, c, s, x, y, false);
+}
+
+/* At the flash tail: a cut texture is rare beside a plain one. */
+static RENDER_TAIL_ATTR __attribute__((noinline)) void
+fill_masked(uint16_t* depth, uint16_t* color, int count, carry_t* c, const sampler_t* s, int x, int y) {
+    fill_with(depth, color, count, c, s, x, y, true);
 }
 
 /* What the set-up hands the row walk. */
@@ -117,23 +144,69 @@ pack_uv(int32_t u, int32_t v) {
     return ((uint32_t)u << UV_HALF_BITS) + (uint32_t)v;
 }
 
-static void
-fill_span(const setup_t* su, const r3d_span_row_t* row, int y, int first, int last) {
+/* The carry at a span's first pixel, `first` to `last` on row `y`. */
+static inline __attribute__((always_inline)) void
+span_carry(const setup_t* su, int y, int first, int last, carry_t* c) {
     const float fx = (float)(first - su->x0);
     const float fy = (float)(y - su->y0);
     const int steps = last - first;
+    c->z = (int32_t)mathf_clamp(plane_at(&su->z, fx, fy), -2.0e9F, 2.0e9F);
+    c->dz = (int32_t)su->z.dx;
+    r3d_span_clamp_to(su->depth_max, steps, &c->z, &c->dz);
+    c->level = (int32_t)mathf_clamp(plane_at(&su->level, fx, fy), -2.0e9F, 2.0e9F);
+    c->dlevel = (int32_t)su->level.dx;
+    r3d_span_clamp_to(LEVEL_MAX, steps, &c->level, &c->dlevel);
+    c->uv = pack_uv(fixed_uv(plane_at(&su->s, fx, fy)), fixed_uv(plane_at(&su->t, fx, fy)));
+    c->duv = pack_uv((int32_t)(su->s.dx * (float)UV_ONE), 0) + (uint32_t)(int32_t)(su->t.dx * (float)UV_ONE);
+}
+
+/* The target's writers over each run of kept MASK1 texels in the span the
+ * carry `c` starts: a hole leaves its pixel, so no writer sees it, even
+ * where the stored depth ties the card's. */
+static inline __attribute__((always_inline)) void
+write_kept_runs(const r3d_span_target_t* target, const sampler_t* s, int y, int first, int last, const carry_t* c) {
+    uint32_t uv = c->uv;
+    int start = first;
+    bool in_run = false;
+    for (int x = first; x <= last; x++, uv += c->duv) {
+        const bool k = kept(s, uv);
+        if (k && !in_run) {
+            start = x;
+        } else if (!k && in_run) {
+            r3d_span_write(target, y, start, x - 1, c->z + (c->dz * (start - first)), c->dz);
+        }
+        in_run = k;
+    }
+    if (in_run) {
+        r3d_span_write(target, y, start, last, c->z + (c->dz * (start - first)), c->dz);
+    }
+}
+
+/* What a row walk does with each span. */
+typedef enum {
+    WALK_FILL,  /* the INDEX4 fill */
+    WALK_CUT,   /* the MASK1 fill: kept texels only */
+    WALK_WRITE, /* the target's writers over what a fill walk drew */
+} walk_t;
+
+static inline __attribute__((always_inline)) void
+walk_span(const r3d_span_target_t* target, const setup_t* su, int y, int first, int last, walk_t walk) {
     carry_t c;
-    c.z = (int32_t)mathf_clamp(plane_at(&su->z, fx, fy), -2.0e9F, 2.0e9F);
-    c.dz = (int32_t)su->z.dx;
-    r3d_span_clamp_to(su->depth_max, steps, &c.z, &c.dz);
-    c.level = (int32_t)mathf_clamp(plane_at(&su->level, fx, fy), -2.0e9F, 2.0e9F);
-    c.dlevel = (int32_t)su->level.dx;
-    r3d_span_clamp_to(LEVEL_MAX, steps, &c.level, &c.dlevel);
-    uint16_t* depth = row->depth + first;
-    uint16_t* color = row->color + first;
-    c.uv = pack_uv(fixed_uv(plane_at(&su->s, fx, fy)), fixed_uv(plane_at(&su->t, fx, fy)));
-    c.duv = pack_uv((int32_t)(su->s.dx * (float)UV_ONE), 0) + (uint32_t)(int32_t)(su->t.dx * (float)UV_ONE);
-    fill_colormap(depth, color, steps + 1, &c, &su->sampler, first, y);
+    span_carry(su, y, first, last, &c);
+    if (walk == WALK_WRITE) {
+        if (su->sampler.texture->format == R3D_TEXTURE_MASK1) {
+            write_kept_runs(target, &su->sampler, y, first, last, &c);
+        } else {
+            r3d_span_write(target, y, first, last, c.z, c.dz);
+        }
+        return;
+    }
+    const r3d_span_row_t row = r3d_span_row(target, y);
+    if (walk == WALK_CUT) {
+        fill_masked(row.depth + first, row.color + first, last - first + 1, &c, &su->sampler, first, y);
+    } else {
+        fill_colormap(row.depth + first, row.color + first, last - first + 1, &c, &su->sampler, first, y);
+    }
 }
 
 /* The level a pixel steps about one texel of: floor(log2) of the longest
@@ -162,7 +235,8 @@ light_level(const r3d_span_vertex_t* v) {
     return luma * ((float)LEVEL_MAX / (float)UINT8_MAX);
 }
 
-static bool
+/* Off the row walks' stack chain: the frame lives only here. */
+static __attribute__((noinline)) bool
 set_up(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[CORNERS], const vec2f_t uv[CORNERS],
        const r3d_texture_t* texture, recti_t box, setup_t* su) {
     r3d_span_frame_t f;
@@ -193,6 +267,54 @@ set_up(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[CORNERS
 /* r3d_span's walk: the long edge v0-v2 runs the whole height, and v1 lies
  * right of it when v0-v1-v2 winds positive; the short edge is v0-v1 above
  * v1's row and v1-v2 from it. */
+static inline __attribute__((always_inline)) void
+walk_rows(const r3d_span_target_t* target, const setup_t* su, recti_t box, const r3d_span_vertex_t* v0,
+          const r3d_span_vertex_t* v1, const r3d_span_vertex_t* v2, bool long_on_left, walk_t walk) {
+    const int end = recti_bottom(box);
+    const int split = mathi_clamp(r3d_span_first_centre(v1->y), box.y, end);
+    const int last_column = target->rows.attachment[GFX_ATTACHMENT_COLOR].width - 1;
+    r3d_span_walk_edge_t long_edge = r3d_span_walk_edge_at(v0, v2, box.y);
+    r3d_span_walk_edge_t short_edge =
+        box.y < split ? r3d_span_walk_edge_at(v0, v1, box.y) : r3d_span_walk_edge_at(v1, v2, box.y);
+    for (int y = box.y; y < end; y++) {
+        if (y == split && box.y < split) {
+            short_edge = r3d_span_walk_edge_at(v1, v2, y);
+        }
+        const r3d_span_walk_edge_t* left = long_on_left ? &long_edge : &short_edge;
+        const r3d_span_walk_edge_t* right = long_on_left ? &short_edge : &long_edge;
+        const int first = mathi_max(left->q, 0);
+        const int last = mathi_min(right->q - 1, last_column);
+        if (first <= last) {
+            walk_span(target, su, y, first, last, walk);
+        }
+        r3d_span_walk_edge_step(&long_edge);
+        r3d_span_walk_edge_step(&short_edge);
+    }
+}
+
+static __attribute__((noinline)) void
+walk_plain(const r3d_span_target_t* target, const setup_t* su, recti_t box, const r3d_span_vertex_t* v0,
+           const r3d_span_vertex_t* v1, const r3d_span_vertex_t* v2, bool long_on_left) {
+    walk_rows(target, su, box, v0, v1, v2, long_on_left, WALK_FILL);
+}
+
+/* At the flash tail, as fill_masked(). */
+static RENDER_TAIL_ATTR __attribute__((noinline)) void
+walk_cut(const r3d_span_target_t* target, const setup_t* su, recti_t box, const r3d_span_vertex_t* v0,
+         const r3d_span_vertex_t* v1, const r3d_span_vertex_t* v2, bool long_on_left) {
+    walk_rows(target, su, box, v0, v1, v2, long_on_left, WALK_CUT);
+}
+
+/* After the fill, as r3d_span's writers: each pixel's depth is then the
+ * triangle's where it drew. At the flash tail: only debug views write. */
+static RENDER_TAIL_ATTR __attribute__((noinline, cold)) void
+walk_writers(const r3d_span_target_t* target, const setup_t* su, recti_t box, const r3d_span_vertex_t* v0,
+             const r3d_span_vertex_t* v1, const r3d_span_vertex_t* v2, bool long_on_left) {
+    walk_rows(target, su, box, v0, v1, v2, long_on_left, WALK_WRITE);
+}
+
+/* Sets up `texture` over the triangle, then walks its rows: the INDEX4
+ * fill or MASK1's cut, then the target's writers over what it drew. */
 void
 r3d_span_textured_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                            const r3d_span_vertex_t* c, const vec2f_t uv[CORNERS], const r3d_texture_t* texture) {
@@ -209,26 +331,13 @@ r3d_span_textured_triangle(const r3d_span_target_t* target, const r3d_span_verte
     const r3d_span_vertex_t* v1 = b;
     const r3d_span_vertex_t* v2 = c;
     const bool long_on_left = (area2 > 0) != r3d_span_sort_by_y(&v0, &v1, &v2);
-    const int end = recti_bottom(box);
-    const int split = mathi_clamp(r3d_span_first_centre(v1->y), box.y, end);
-    const int last_column = target->rows.attachment[GFX_ATTACHMENT_COLOR].width - 1;
-    r3d_span_walk_edge_t long_edge = r3d_span_walk_edge_at(v0, v2, box.y);
-    r3d_span_walk_edge_t short_edge =
-        box.y < split ? r3d_span_walk_edge_at(v0, v1, box.y) : r3d_span_walk_edge_at(v1, v2, box.y);
     FRAME_LAP("r3d.draw.fill");
-    for (int y = box.y; y < end; y++) {
-        if (y == split && box.y < split) {
-            short_edge = r3d_span_walk_edge_at(v1, v2, y);
-        }
-        const r3d_span_walk_edge_t* left = long_on_left ? &long_edge : &short_edge;
-        const r3d_span_walk_edge_t* right = long_on_left ? &short_edge : &long_edge;
-        const int first = mathi_max(left->q, 0);
-        const int last = mathi_min(right->q - 1, last_column);
-        if (first <= last) {
-            const r3d_span_row_t row = r3d_span_row(target, y);
-            fill_span(&su, &row, y, first, last);
-        }
-        r3d_span_walk_edge_step(&long_edge);
-        r3d_span_walk_edge_step(&short_edge);
+    if (texture->format == R3D_TEXTURE_MASK1) {
+        walk_cut(target, &su, box, v0, v1, v2, long_on_left);
+    } else {
+        walk_plain(target, &su, box, v0, v1, v2, long_on_left);
+    }
+    if (target->writer_count != 0) {
+        walk_writers(target, &su, box, v0, v1, v2, long_on_left);
     }
 }
