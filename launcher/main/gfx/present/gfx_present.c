@@ -694,26 +694,6 @@ send_one_row(int row, int* queued) {
     }
 }
 
-/* Interlace sends one parity of rows per present; the rest wait, dirty. */
-static inline bool
-interlace_skips(int row) {
-    return interlace_on && (row % 2) != frame_parity;
-}
-
-#if CONFIG_LAUNCHER_DEVELOPMENT
-/* One bit per strip row this present sends. */
-static uint32_t
-rows_sent_this_present(bool interlaced) {
-    uint32_t rows = 0;
-    for (int row = 0; row < STRIP_COUNT; row++) {
-        if (dirty_row_is_dirty(row) && !(interlaced && interlace_skips(row))) {
-            rows |= 1U << row;
-        }
-    }
-    return rows;
-}
-#endif
-
 /* Persistent compact pictures send whole dirty strips. Interlace requires
  * a full-resolution framebuffer. Not inlined: it is not the hot path the
  * IRAM placement is for. */
@@ -721,7 +701,7 @@ static __attribute__((noinline)) void
 run_present_strips(bool (*send_rows)(int y0, int y1)) {
     int queued = 0;
 #if CONFIG_LAUNCHER_DEVELOPMENT
-    send_overlay_bordered_rows_clean(rows_sent_this_present(false), send_rows, &queued);
+    send_overlay_bordered_rows_clean(send_rows, &queued);
 #endif
     for (int row = 0; row < STRIP_COUNT; row++) {
         if (!dirty_row_is_dirty(row)) {
@@ -761,7 +741,7 @@ send_dirty_rows(int* queued) {
             continue; /* unchanged: the panel is still showing it */
         }
 
-        if (interlace_skips(row)) {
+        if (interlace_on && (row % 2) != frame_parity) {
             remaining_cell_dirty |= cell_dirty & (((1U << GRID_COLS) - 1U) << (row * GRID_COLS));
             continue;
         }
@@ -794,7 +774,7 @@ run_present_normal(void) {
     }
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
-    send_overlay_bordered_rows_clean(rows_sent_this_present(interlace_on), send_fb_rows, &queued);
+    send_overlay_bordered_rows_clean(send_fb_rows, &queued);
 #endif
 
     const uint32_t remaining_cell_dirty = send_dirty_rows(&queued);
