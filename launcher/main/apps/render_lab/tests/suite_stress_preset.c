@@ -829,6 +829,27 @@ butterfly_tip(entity_t wing) {
                                                                             world.scale.z * TEST_TIP_Z}));
 }
 
+/* Keep per-angle transform temporaries out of the fixture's stack frame. */
+static __attribute__((noinline)) void
+check_butterfly_hinge_angle(entity_t body, entity_t left, entity_t right, const transformf_t* rests,
+                            const transformf_t* body_before, float angle) {
+    transform_set_local(left, stress_flap_wing(rests[0], angle, STRESS_FLAP_LEFT));
+    transform_set_local(right, stress_flap_wing(rests[1], angle, STRESS_FLAP_RIGHT));
+    const vec3f_t l = butterfly_tip(left);
+    const vec3f_t r = butterfly_tip(right);
+    TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE, TEST_TIP_X * cosf(angle), l.x);
+    TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE, TEST_TIP_X * sinf(angle), l.y);
+    TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE, TEST_TIP_Z, l.z);
+    TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE, -l.x, r.x);
+    TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE, l.y, r.y);
+    if (angle > 0.0F) {
+        TEST_ASSERT_GREATER_THAN_FLOAT(0.0F, l.y);
+        TEST_ASSERT_GREATER_THAN_FLOAT(0.0F, r.y);
+    }
+    const transformf_t after = transform_world(body);
+    TEST_ASSERT_EQUAL_MEMORY(body_before, &after, sizeof after);
+}
+
 static void
 test_hinge_angles_preserve_body_and_raise_mirrored_tips(void) {
     const entity_t root = butterfly_fixture();
@@ -839,22 +860,7 @@ test_hinge_angles_preserve_body_and_raise_mirrored_tips(void) {
     const transformf_t rests[] = {transform_local(left), transform_local(right)};
     const float angles[] = {0.0F, TEST_ANGLE, -TEST_ANGLE};
     for (size_t i = 0; i < sizeof angles / sizeof angles[0]; i++) {
-        const float angle = angles[i];
-        transform_set_local(left, stress_flap_wing(rests[0], angle, STRESS_FLAP_LEFT));
-        transform_set_local(right, stress_flap_wing(rests[1], angle, STRESS_FLAP_RIGHT));
-        const vec3f_t l = butterfly_tip(left);
-        const vec3f_t r = butterfly_tip(right);
-        TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE, TEST_TIP_X * cosf(angle), l.x);
-        TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE, TEST_TIP_X * sinf(angle), l.y);
-        TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE, TEST_TIP_Z, l.z);
-        TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE, -l.x, r.x);
-        TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE, l.y, r.y);
-        if (angle > 0.0F) {
-            TEST_ASSERT_GREATER_THAN_FLOAT(0.0F, l.y);
-            TEST_ASSERT_GREATER_THAN_FLOAT(0.0F, r.y);
-        }
-        const transformf_t after = transform_world(body);
-        TEST_ASSERT_EQUAL_MEMORY(&body_before, &after, sizeof after);
+        check_butterfly_hinge_angle(body, left, right, rests, &body_before, angles[i]);
     }
 }
 
