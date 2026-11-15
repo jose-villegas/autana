@@ -99,8 +99,11 @@ fixture_end(void) {
 /* `sets` buffer sets for preset `p`'s copy, FIXTURE_SETS only where a test
  * compares two builds: outside an app, PSRAM holds one set of the largest
  * mix copy, not two. */
-static void
+static bool
 fixture_begin(const stress_params_t* p, int sets) {
+    if (STRESS_SURFACE_USES_PACK(p->surface)) {
+        return false;
+    }
     suite_add_test_cleanup(fixture_end);
     const size_t vertices = (size_t)stress_vertex_count(p);
     const size_t triangles = (size_t)stress_triangle_count(p);
@@ -114,6 +117,7 @@ fixture_begin(const stress_params_t* p, int sets) {
         TEST_ASSERT_NOT_NULL(f.at[i].colors);
         TEST_ASSERT_NOT_NULL(f.at[i].triangles);
     }
+    return true;
 }
 
 static void
@@ -140,23 +144,32 @@ test_every_preset_has_its_row(void) {
     }
 }
 
+static bool
+fixture_pair(const stress_params_t* p, uint32_t later_ms, r3d_dynamic_source_t pair[FIXTURE_SETS]) {
+    if (!fixture_begin(p, FIXTURE_SETS)) {
+        return false;
+    }
+    TEST_ASSERT_TRUE(stress_source(p, 0, &f.at[0], &pair[0]));
+    TEST_ASSERT_TRUE(stress_source(p, later_ms, &f.at[1], &pair[1]));
+    return true;
+}
+
 static void
 test_every_preset_mesh_is_whole_and_repeats(void) {
     for (int i = 0; i < STRESS_PRESET_COUNT; i++) {
         const stress_params_t* p = &stress_presets[i];
-        fixture_begin(p, FIXTURE_SETS);
-        r3d_dynamic_source_t a;
-        r3d_dynamic_source_t b;
-        TEST_ASSERT_TRUE(stress_source(p, 0, &f.at[0], &a));
-        TEST_ASSERT_TRUE(stress_source(p, 0, &f.at[1], &b));
-        TEST_ASSERT_EQUAL_INT(stress_vertex_count(p), a.vertex_count);
-        TEST_ASSERT_EQUAL_INT(stress_triangle_count(p), a.triangle_count);
-        for (int t = 0; t < a.triangle_count; t++) {
+        r3d_dynamic_source_t pair[FIXTURE_SETS];
+        if (!fixture_pair(p, 0, pair)) {
+            continue;
+        }
+        TEST_ASSERT_EQUAL_INT(stress_vertex_count(p), pair[0].vertex_count);
+        TEST_ASSERT_EQUAL_INT(stress_triangle_count(p), pair[0].triangle_count);
+        for (int t = 0; t < pair[0].triangle_count; t++) {
             for (int k = 0; k < 3; k++) {
-                TEST_ASSERT_LESS_THAN_INT(a.vertex_count, a.triangles[t][k]);
+                TEST_ASSERT_LESS_THAN_INT(pair[0].vertex_count, pair[0].triangles[t][k]);
             }
         }
-        TEST_ASSERT_TRUE(same_source(&a, &b));
+        TEST_ASSERT_TRUE(same_source(&pair[0], &pair[1]));
         release();
     }
 }
@@ -188,7 +201,9 @@ assert_mesh_fits(const stress_params_t* p) {
 static void
 test_every_preset_mesh_fits_a_dynamic_mesh(void) {
     for (int i = 0; i < STRESS_PRESET_COUNT; i++) {
-        assert_mesh_fits(&stress_presets[i]);
+        if (!STRESS_SURFACE_USES_PACK(stress_presets[i].surface)) {
+            assert_mesh_fits(&stress_presets[i]);
+        }
     }
 }
 
@@ -216,12 +231,11 @@ static void
 test_only_a_per_frame_preset_moves(void) {
     for (int i = 0; i < STRESS_PRESET_COUNT; i++) {
         const stress_params_t* p = &stress_presets[i];
-        fixture_begin(p, FIXTURE_SETS);
-        r3d_dynamic_source_t first;
-        r3d_dynamic_source_t later;
-        TEST_ASSERT_TRUE(stress_source(p, 0, &f.at[0], &first));
-        TEST_ASSERT_TRUE(stress_source(p, WAVE_LATER_MS, &f.at[1], &later));
-        TEST_ASSERT_EQUAL(!stress_per_frame(p), same_source(&first, &later));
+        r3d_dynamic_source_t pair[FIXTURE_SETS];
+        if (!fixture_pair(p, WAVE_LATER_MS, pair)) {
+            continue;
+        }
+        TEST_ASSERT_EQUAL(!stress_per_frame(p), same_source(&pair[0], &pair[1]));
         release();
     }
     TEST_ASSERT_TRUE(stress_per_frame(&stress_presets[STRESS_PER_FRAME]));
@@ -328,7 +342,9 @@ static void
 test_two_sided_is_a_closed_shape_drawn_from_both_sides(void) {
     for (int i = 0; i < STRESS_PRESET_COUNT; i++) {
         const stress_params_t* p = &stress_presets[i];
-        fixture_begin(p, 1);
+        if (!fixture_begin(p, 1)) {
+            continue;
+        }
         r3d_dynamic_source_t source;
         TEST_ASSERT_TRUE(stress_source(p, 0, &f.at[0], &source));
         TEST_ASSERT_EQUAL(i == STRESS_TWO_SIDED, source.double_sided);
@@ -764,6 +780,48 @@ butterfly_fixture(void) {
     return root;
 }
 
+/* Rim x coordinates identify the traced leading edge and hindwing independently of vertex order. */
+#define TEST_LEADING_INNER_X 0.009051724F
+#define TEST_LEADING_OUTER_X 0.031982759F
+#define TEST_HIND_INNER_X    0.001810345F
+#define TEST_HIND_OUTER_X    0.018103448F
+#define TEST_RIM_POINTS      2
+
+static void
+test_wing_leading_edge_is_forward_in_body_frame(void) {
+    const entity_t root = butterfly_fixture();
+    const entity_t wings[] = {entity_find(root, name_hash("butterfly_00_wing_l")),
+                              entity_find(root, name_hash("butterfly_00_wing_r"))};
+    for (size_t side = 0; side < sizeof wings / sizeof wings[0]; side++) {
+        const r3d_lit_mesh_t* mesh = renderer_mesh(wings[side]);
+        TEST_ASSERT_NOT_NULL(mesh);
+        const transformf_t rest = transform_local(wings[side]);
+        float leading = FLT_MAX;
+        float hind = -FLT_MAX;
+        int leading_points = 0;
+        int hind_points = 0;
+        const float tick = 1.0F / (float)mesh->position_scale;
+        for (int v = 0; v < mesh->vertex_count; v++) {
+            const vec3f_t point = {mesh->positions[v][0] * tick, mesh->positions[v][1] * tick,
+                                   mesh->positions[v][2] * tick};
+            const float x = fabsf(point.x);
+            const vec3f_t in_body = vec3f_add(rest.position, quatf_rotate(rest.rotation, point));
+            const float forward = vec3f_dot(in_body, vec3f_forward());
+            if (fabsf(x - TEST_LEADING_INNER_X) <= tick || fabsf(x - TEST_LEADING_OUTER_X) <= tick) {
+                leading = fminf(leading, forward);
+                leading_points++;
+            }
+            if (fabsf(x - TEST_HIND_INNER_X) <= tick || fabsf(x - TEST_HIND_OUTER_X) <= tick) {
+                hind = fmaxf(hind, forward);
+                hind_points++;
+            }
+        }
+        TEST_ASSERT_EQUAL_INT(TEST_RIM_POINTS, leading_points);
+        TEST_ASSERT_EQUAL_INT(TEST_RIM_POINTS, hind_points);
+        TEST_ASSERT_GREATER_THAN_FLOAT_MESSAGE(hind, leading, "forewing leading edge must face body forward");
+    }
+}
+
 static vec3f_t
 butterfly_tip(entity_t wing) {
     const transformf_t world = transform_world(wing);
@@ -859,6 +917,7 @@ test_two_seeks_and_flap_renders_at_same_time_match_bytes(void) {
 
 void
 run_stress_preset_suite(void) {
+    RUN_TEST(test_wing_leading_edge_is_forward_in_body_frame);
     RUN_TEST(test_butterfly_pool_has_parented_wings_and_24_triangles);
     RUN_TEST(test_hinge_angles_preserve_body_and_raise_mirrored_tips);
     RUN_TEST(test_flap_time_and_copy_phase_are_deterministic);

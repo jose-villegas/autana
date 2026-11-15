@@ -57,10 +57,10 @@ const stress_params_t stress_presets[STRESS_PRESET_COUNT] = {
                             STRESS_CAMERA, 6},
     [STRESS_FOLIAGE_FAR_OPAQUE] = {STRESS_SHAPE_FOLIAGE, 24, 36, STRESS_LAYOUT_WALL, 70,
                                    STRESS_SURFACE_OF(FOLIAGE_FAR_OPAQUE), STRESS_CAMERA, 6},
-    [STRESS_BUTTERFLIES] = {STRESS_SHAPE_PLANE, 1, STRESS_BUTTERFLY_COPIES, STRESS_LAYOUT_WALL, 80,
-                            STRESS_SURFACE_OF(BUTTERFLIES), STRESS_CAMERA, 6, .butterfly = true},
-    [STRESS_FEW_BUTTERFLIES] = {STRESS_SHAPE_PLANE, 1, STRESS_FEW_BUTTERFLY_COPIES, STRESS_LAYOUT_WALL, 80,
-                                STRESS_SURFACE_OF(FEW_BUTTERFLIES), STRESS_CAMERA, 6, .butterfly = true},
+    [STRESS_BUTTERFLIES] = {STRESS_SHAPE_BUTTERFLY, 1, STRESS_BUTTERFLY_COPIES, STRESS_LAYOUT_WALL, 80,
+                            STRESS_SURFACE_OF(BUTTERFLIES), STRESS_CAMERA, 6},
+    [STRESS_FEW_BUTTERFLIES] = {STRESS_SHAPE_BUTTERFLY, 1, STRESS_FEW_BUTTERFLY_COPIES, STRESS_LAYOUT_WALL, 80,
+                                STRESS_SURFACE_OF(FEW_BUTTERFLIES), STRESS_CAMERA, 6},
     [STRESS_RECORD] = {STRESS_SHAPE_PLANE, 24, 4, STRESS_LAYOUT_WALL, 80, STRESS_SURFACE_OF(RECORD), STRESS_CAMERA, 6,
                        true},
 };
@@ -242,6 +242,7 @@ static primitive_counts_t
 counts_of(const stress_params_t* p) {
     const shapes_t s = shapes_of(p);
     switch (p->shape) {
+        case STRESS_SHAPE_BUTTERFLY: break;
         case STRESS_SHAPE_CARD: {
             const int triangles = card_triangles(p->cuts);
             return (primitive_counts_t){3 * triangles, triangles};
@@ -287,6 +288,7 @@ static bool
 make(const stress_params_t* p, const stress_buffers_t* b, primitive_mesh_t* m) {
     const shapes_t s = shapes_of(p);
     switch (p->shape) {
+        case STRESS_SHAPE_BUTTERFLY: return false;
         case STRESS_SHAPE_GRID: make_mixed(p, b); break;
         case STRESS_SHAPE_CARD: make_card(p, b); break;
         case STRESS_SHAPE_FOLIAGE: make_foliage(p, b); break;
@@ -441,6 +443,7 @@ float
 stress_cut_px(const stress_params_t* p, int short_px) {
     const float width = (float)short_px * (float)p->coverage_percent / STRESS_PERCENT * copy_share(p);
     switch (p->shape) {
+        case STRESS_SHAPE_BUTTERFLY: break;
         case STRESS_SHAPE_GRID:
         case STRESS_SHAPE_CARD:
         case STRESS_SHAPE_PLANE:

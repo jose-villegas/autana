@@ -59,8 +59,9 @@ fail(const char* what) {
 /* The pool is every copy the pack names, from 0 up to the first it lacks. */
 static bool
 find_pool(void) {
-    slots = lab_scene_copies(loaded, shown->butterfly ? STRESS_BUTTERFLY_FORMAT : STRESS_SLOT_FORMAT, &pool);
-    if (slots == NULL || !shown->butterfly) {
+    slots = lab_scene_copies(
+        loaded, shown->surface == STRESS_SURFACE_HINGED ? STRESS_BUTTERFLY_FORMAT : STRESS_SLOT_FORMAT, &pool);
+    if (slots == NULL || shown->surface != STRESS_SURFACE_HINGED) {
         return slots != NULL;
     }
     wings = lab_scene_take(sizeof *wings * (size_t)pool * STRESS_WING_SIDES);
@@ -175,7 +176,7 @@ build(void) {
 /* The asset's longest side becomes one unit, centred like a generated primitive. */
 static transformf_t
 static_shape(void) {
-    if (shown->butterfly) {
+    if (shown->surface == STRESS_SURFACE_HINGED) {
         transformf_t shape = transformf_identity();
         const float scale = 1.0F / STRESS_BUTTERFLY_SPAN;
         transformf_set_scale(&shape, (vec3f_t){scale, scale, scale});
@@ -204,13 +205,13 @@ place_copies(void) {
     const stress_framing_t seen = {sqrtf(vec3f_dot(eye, eye)), lens->half_fov_short_tan};
     transformf_t facing = transformf_identity();
     transformf_set_rotation(&facing, quatf_from_axis_angle(vec3f_unit_y(), atan2f(eye.x, eye.z)));
-    const transformf_t shape = shown->surface == STRESS_SURFACE_STATIC ? static_shape() : transformf_identity();
+    const transformf_t shape = STRESS_SURFACE_USES_PACK(shown->surface) ? static_shape() : transformf_identity();
     for (int i = 0; i < pool; i++) {
         const bool used = i < shown->copies;
         entity_set_enabled(slots[i], used);
         if (used) {
             transformf_t place = stress_copy_place(shown, i, seen);
-            if (shown->surface == STRESS_SURFACE_STATIC) {
+            if (STRESS_SURFACE_USES_PACK(shown->surface)) {
                 place = transformf_compose(&place, &shape);
             }
             transform_set_local(slots[i], transformf_compose(&facing, &place));
@@ -231,8 +232,8 @@ apply_settings(void) {
 
 static bool
 load(void) {
-    loaded = lab_scene_load(TAG, failure, sizeof failure, shown->butterfly ? STRESS_BUTTERFLY_SCENE : STRESS_SCENE,
-                            "stress");
+    loaded = lab_scene_load(TAG, failure, sizeof failure,
+                            shown->surface == STRESS_SURFACE_HINGED ? STRESS_BUTTERFLY_SCENE : STRESS_SCENE, "stress");
     if (handle_is_none(loaded)) {
         return false;
     }
@@ -242,7 +243,7 @@ load(void) {
         return false;
     }
     viewer = render_lab.start_camera == NULL ? camera : entity_find(loaded, name_hash(render_lab.start_camera));
-    if (!find_pool() || (shown->surface != STRESS_SURFACE_STATIC && !take_mesh())) {
+    if (!find_pool() || (!STRESS_SURFACE_USES_PACK(shown->surface) && !take_mesh())) {
         fail("no memory for stress");
         return false;
     }
@@ -254,7 +255,7 @@ load(void) {
         fail("no memory for the stress texture");
         return false;
     }
-    if (shown->surface != STRESS_SURFACE_STATIC && !build()) {
+    if (!STRESS_SURFACE_USES_PACK(shown->surface) && !build()) {
         fail("stress mesh did not fit");
         return false;
     }
@@ -300,13 +301,14 @@ flap(void) {
     FRAME_COST_END(flap_from, STRESS_FLAP_STAGE_NAME);
 }
 
+/* Advance the wave mesh or the wing hinges each frame. */
 static void
 scene_stress_update(uint32_t dt_ms) {
     if (handle_is_none(loaded) || failure[0] != '\0') {
         return;
     }
     wave_ms += dt_ms;
-    if (shown->butterfly) {
+    if (shown->surface == STRESS_SURFACE_HINGED) {
         flap();
     } else if (stress_per_frame(shown) && !build()) {
         ESP_LOGW(TAG, "the mesh did not fit");
@@ -346,8 +348,7 @@ scene_stress_path(void) {
                 .update = scene_stress_update,                                                                         \
                 .status = LAB_SCENE_DEV(scene_stress_status),                                                          \
                 .controls = STRESS_SURFACE_IS_PER_FRAME(STRESS_SURFACE_##surface_) ? NULL : scene_baked_controls,      \
-                .generates_frames = !STRESS_SURFACE_IS_PER_FRAME(STRESS_SURFACE_##surface_)                            \
-                                    && STRESS_##id_ != STRESS_BUTTERFLIES && STRESS_##id_ != STRESS_FEW_BUTTERFLIES,   \
+                .generates_frames = STRESS_SURFACE_GENERATES_FRAMES(STRESS_SURFACE_##surface_),                        \
                 .path = scene_stress_path},
 
 const lab_scene_t scene_stress[STRESS_PRESET_COUNT] = {STRESS_PRESETS(STRESS_SCENE_ROW)};

@@ -129,7 +129,8 @@ stress_goal(void) {
             return goal;
         }
     }
-    if (!((const stress_params_t*)preset->data)->butterfly) {
+    /* Only hinged surfaces may run without captured goals. */
+    if (((const stress_params_t*)preset->data)->surface != STRESS_SURFACE_HINGED) {
         TEST_FAIL_MESSAGE("stress perf row has no goal entry");
     }
     return NULL;

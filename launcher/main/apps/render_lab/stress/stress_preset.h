@@ -11,16 +11,18 @@
 #include "render/texture/r3d_texture.h"
 
 typedef enum {
-    STRESS_SHAPE_PLANE,    /* primitive_plane(): a square facing the camera */
-    STRESS_SHAPE_SPHERE,   /* primitive_sphere(): closed, half of it facing away */
-    STRESS_SHAPE_CUBE,     /* primitive_cube(): closed, its back face facing away */
-    STRESS_SHAPE_CYLINDER, /* primitive_cylinder(): its axis toward the camera, an end's fan of slivers in view */
-    STRESS_SHAPE_GRID,     /* independent triangle corners on a tessellated square */
-    STRESS_SHAPE_CARD,     /* perforated square with uneven tessellation */
-    STRESS_SHAPE_FOLIAGE,  /* a bush: `cuts` small square cards scattered, turned and overlapping several deep */
+    STRESS_SHAPE_BUTTERFLY, /* the pack's body and wing meshes */
+    STRESS_SHAPE_PLANE,     /* primitive_plane(): a square facing the camera */
+    STRESS_SHAPE_SPHERE,    /* primitive_sphere(): closed, half of it facing away */
+    STRESS_SHAPE_CUBE,      /* primitive_cube(): closed, its back face facing away */
+    STRESS_SHAPE_CYLINDER,  /* primitive_cylinder(): its axis toward the camera, an end's fan of slivers in view */
+    STRESS_SHAPE_GRID,      /* independent triangle corners on a tessellated square */
+    STRESS_SHAPE_CARD,      /* perforated square with uneven tessellation */
+    STRESS_SHAPE_FOLIAGE,   /* a bush: `cuts` small square cards scattered, turned and overlapping several deep */
 } stress_shape_t;
 
 typedef enum {
+    STRESS_SURFACE_HINGED,    /* the butterfly pack's body and two wings per copy, hinges turned every frame */
     STRESS_SURFACE_BANDED,    /* still colour bands up the copy, each triangle's corners close */
     STRESS_SURFACE_WAVE,      /* the bands run up it, pushing it out: the mesh made again every frame */
     STRESS_SURFACE_NOISY,     /* neighbouring vertices at opposite colours: every triangle's corners far apart */
@@ -62,7 +64,6 @@ typedef struct {
     const char* camera;
     int perf_poses; /* poses the stress perf suite replays along the swing */
     bool record;    /* the stress perf suite runs the frame recorder over it: its stage too */
-    bool butterfly; /* a body and two hinged wings per copy */
 } stress_params_t;
 
 /* X(ID, key, surface): each preset, its key the scene key's suffix and its
@@ -90,8 +91,8 @@ typedef struct {
     X(FOLIAGE_NEAR_OPAQUE, "foliage-near-opaque", TEXTURED)                                                            \
     X(FOLIAGE_FAR, "foliage-far", MASKED)                                                                              \
     X(FOLIAGE_FAR_OPAQUE, "foliage-far-opaque", TEXTURED)                                                              \
-    X(BUTTERFLIES, "butterflies", STATIC)                                                                              \
-    X(FEW_BUTTERFLIES, "few-butterflies", STATIC)                                                                      \
+    X(BUTTERFLIES, "butterflies", HINGED)                                                                              \
+    X(FEW_BUTTERFLIES, "few-butterflies", HINGED)                                                                      \
     X(RECORD, "record", WAVE)
 
 #define STRESS_PRESET_ID(id_, ...) STRESS_##id_,
@@ -103,6 +104,9 @@ extern const stress_params_t stress_presets[STRESS_PRESET_COUNT];
 /* Whether a surface's mesh is made again every frame: a constant
  * expression, so a static table can read it. */
 #define STRESS_SURFACE_IS_PER_FRAME(surface_) ((surface_) == STRESS_SURFACE_WAVE)
+#define STRESS_SURFACE_USES_PACK(surface_)    ((surface_) == STRESS_SURFACE_STATIC || (surface_) == STRESS_SURFACE_HINGED)
+#define STRESS_SURFACE_GENERATES_FRAMES(surface_)                                                                      \
+    (!STRESS_SURFACE_IS_PER_FRAME(surface_) && (surface_) != STRESS_SURFACE_HINGED)
 
 static inline bool
 stress_per_frame(const stress_params_t* p) {
