@@ -104,8 +104,10 @@ scene_animate_range(scene_t* scene, int first, int count, uint32_t dt_ms, const 
         if (!paced(scene, e)) {
             continue;
         }
-        const int interval =
-            scene->skinned_renderers[e].bound ? animation_interval(a, settings) : RENDER_ANIM_EVERY_MIN;
+        /* The tier changes only on the frames the draw measured it for. */
+        const int interval = !scene->skinned_renderers[e].bound ? RENDER_ANIM_EVERY_MIN
+                             : scene_animator_due(scene, a)     ? animation_interval(a, settings)
+                                                                : a->interval;
         const bool force = a->dirty;
         const bool due = (scene->animation_frame + a->phase) % (uint32_t)interval == 0;
         /* A zero-time repose belongs to its dirty copy; others keep their debt. */

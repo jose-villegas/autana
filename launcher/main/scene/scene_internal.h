@@ -192,7 +192,7 @@ typedef struct {
     int* counts;
     uint8_t root;
     anim_wrap_t wrap;
-    float drawn_radius_px; /* last draw's size; cleared each step so undrawn scenes use the far tier */
+    float drawn_radius_px; /* last draw's size when due; cleared each step so undrawn scenes use the far tier */
     uint32_t owed_ms;      /* skipped time is charged at the next pose, before playback controls change */
     uint32_t phase;        /* stable slot spreads copies' poses across frames */
     int interval;          /* zero selects the first tier without a hysteresis history */
@@ -389,6 +389,14 @@ void scene_stage_add(scene_t* scene, scene_row_t entity);
 void scene_animation_step(scene_t* scene, uint32_t dt_ms);
 /* The same without settling: a seek re-poses what is shown and takes no buffers. */
 void scene_animation_repose(scene_t* scene, uint32_t dt_ms);
+
+/* Whether `a` picks its pose tier, and so needs its drawn size, at the next
+ * step: on the frames its current tier poses it, or before it has a tier. */
+static inline bool
+scene_animator_due(const scene_t* scene, const scene_animator_t* a) {
+    return a->interval == 0 || (scene->animation_frame + a->phase) % (uint32_t)a->interval == 0;
+}
+
 /* Animates staged[first, first + count). */
 void scene_animate_range(scene_t* scene, int first, int count, uint32_t dt_ms, const render_anim_settings_t* settings);
 bool scene_skin_light_apply_mode(scene_t* scene, scene_row_t entity, scene_skinned_renderer_t* skin,
