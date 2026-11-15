@@ -1901,6 +1901,36 @@ test_short_windows_of_a_tall_mildly_bent_triangle_draw_the_whole_ones_pixels(voi
     free(both);
 }
 
+/* A dividing sliver reaching far past the target, its corners in raw
+ * subpixels: measured from a window's own origin, its planes round apart
+ * from the whole target's and one pixel samples the next texel. */
+static const r3d_span_vertex_t FAR_REACHING[3] = {
+    {-23, -18, 0.124F, UINT8_MAX, UINT8_MAX, UINT8_MAX},
+    {237, 339, 0.423F, UINT8_MAX, UINT8_MAX, UINT8_MAX},
+    {574, 717, 0.152F, UINT8_MAX, UINT8_MAX, UINT8_MAX},
+};
+static const vec2f_t FAR_REACHING_UV[3] = {{7.8125F, -1.125F}, {6.375F, 5.75F}, {2.0F, -7.3125F}};
+
+static void
+test_four_row_windows_of_a_dividing_triangle_sample_the_whole_ones_texels(void) {
+    fixture();
+    clear();
+    texture->levels = 1; /* the sliver's steep planes would pick a mip of one index; level 0 tells texels apart */
+    const render_texture_settings_t settings = RENDER_SETTINGS_DEFAULT.texture;
+    r3d_span_target_t whole = target_at(0);
+    r3d_span_set_texture(&whole, &settings);
+    r3d_span_textured_triangle(&whole, &FAR_REACHING[0], &FAR_REACHING[1], &FAR_REACHING[2], FAR_REACHING_UV, texture);
+    for (int row0 = 0; row0 < SIDE; row0 += TALL_WINDOW) {
+        uint16_t* color = buffers + (2 * PIXELS) + ((size_t)row0 * SIDE);
+        r3d_span_target_t window = r3d_span_target(color, color + PIXELS, SIDE, row0, row0 + TALL_WINDOW);
+        r3d_span_set_texture(&window, &settings);
+        r3d_span_textured_triangle(&window, &FAR_REACHING[0], &FAR_REACHING[1], &FAR_REACHING[2], FAR_REACHING_UV,
+                                   texture);
+    }
+    TEST_ASSERT_GREATER_THAN_MESSAGE(0, covered_pixels(0), "the sliver draws nothing");
+    TEST_ASSERT_EQUAL_UINT16_ARRAY_MESSAGE(buffers, buffers + (2 * PIXELS), PIXELS, "a window's colour differs");
+}
+
 /* The longer side of the w by h floor's unclipped box, in pixel centres. */
 static int
 floor_side(int w, int h) {
@@ -2326,6 +2356,7 @@ run_r3d_texture_suite(void) {
     RUN_TEST(test_a_spans_last_pixel_matches_the_truth_at_every_length_around_a_segment);
     RUN_TEST(test_row_windows_draw_the_pixels_the_whole_target_does);
     RUN_TEST(test_short_windows_of_a_tall_mildly_bent_triangle_draw_the_whole_ones_pixels);
+    RUN_TEST(test_four_row_windows_of_a_dividing_triangle_sample_the_whole_ones_texels);
     RUN_TEST(test_a_triangle_whose_width_is_divide_px_steps_affine_and_one_pixel_wider_divides);
     RUN_TEST(test_a_triangle_whose_height_is_divide_px_steps_affine_and_one_pixel_taller_divides);
     RUN_TEST(test_a_triangle_whole_tiles_away_draws_the_same_pixels);

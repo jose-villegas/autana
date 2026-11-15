@@ -144,8 +144,9 @@ typedef struct {
     r3d_span_plane_t level; /* 8.8 light level */
     r3d_span_plane_t q;     /* inverse depth, when the triangle divides */
     int32_t depth_max;
-    int x0, y0; /* the origin pixel */
-    int divide; /* pixels between divides, 0 when the triangle steps affine */
+    int x0, y0;   /* the origin pixel */
+    int qx0, qy0; /* the dividing planes' origin pixel: the unclipped box's, alike in every window */
+    int divide;   /* pixels between divides, 0 when the triangle steps affine */
     sampler_t sampler;
 } setup_t;
 
@@ -260,8 +261,8 @@ walk_span(const r3d_span_target_t* target, const setup_t* su, int y, int first, 
     if (walk == WALK_CUT) {
         fill_masked(row.depth + first, row.color + first, last - first + 1, &c, &su->sampler, first, y);
     } else if (walk == WALK_DIVIDED) {
-        const float fx = (float)(first - su->x0);
-        const float fy = (float)(y - su->y0);
+        const float fx = (float)(first - su->qx0);
+        const float fy = (float)(y - su->qy0);
         fill_divided(su, row.depth + first, row.color + first, last - first + 1, &c, plane_at(&su->s, fx, fy),
                      plane_at(&su->t, fx, fy), plane_at(&su->q, fx, fy), first, y);
     } else {
@@ -295,7 +296,7 @@ light_level(const r3d_span_vertex_t* v) {
     return luma * ((float)LEVEL_MAX / (float)UINT8_MAX);
 }
 
-int
+RENDER_TAIL_ATTR int
 r3d_texture_segment_px(int divide_px, float affine_bend, float extent, float z_near, float z_far, float side) {
     const float bent = extent * (z_near - z_far);
     const float allowed = affine_bend * BEND_SPREAD * z_far;
@@ -319,7 +320,7 @@ r3d_texture_segment_px(int divide_px, float affine_bend, float extent, float z_n
  * set_up(). */
 static RENDER_TAIL_ATTR __attribute__((noinline)) void
 set_up_divide(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[CORNERS], const vec2f_t uv[CORNERS],
-              const r3d_texture_t* texture, recti_t box, recti_t whole, setup_t* su) {
+              const r3d_texture_t* texture, recti_t whole, setup_t* su) {
     const float z_near = mathf_max(v[0]->z, mathf_max(v[1]->z, v[2]->z));
     const float z_far = mathf_min(v[0]->z, mathf_min(v[1]->z, v[2]->z));
     const float side = (float)mathi_max(whole.w, whole.h);
@@ -329,7 +330,7 @@ set_up_divide(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[
                                         (float)target->texture_bend_steps * (1.0F / (float)R3D_SPAN_BEND_STEPS), extent,
                                         z_near, z_far, side);
     r3d_span_frame_t f;
-    if (su->divide == 0 || !r3d_span_frame_of(v[0], v[1], v[2], box.x, box.y, &f)) {
+    if (su->divide == 0 || !r3d_span_frame_of(v[0], v[1], v[2], whole.x, whole.y, &f)) {
         su->divide = 0;
         return;
     }
@@ -344,6 +345,8 @@ set_up_divide(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[
         s_q[i] = (uv[i].x - origin.x) * scale * v[i]->z;
         t_q[i] = (uv[i].y - origin.y) * scale * v[i]->z;
     }
+    su->qx0 = whole.x;
+    su->qy0 = whole.y;
     su->q = r3d_span_plane_of(&f, v[0]->z, v[1]->z, v[2]->z);
     su->s = r3d_span_plane_of(&f, s_q[0], s_q[1], s_q[2]);
     su->t = r3d_span_plane_of(&f, t_q[0], t_q[1], t_q[2]);
@@ -463,7 +466,7 @@ r3d_span_textured_triangle(const r3d_span_target_t* target, const r3d_span_verte
          * most one segment's. */
         su.divide = 0;
         if (target->texture_divide_px != 0 && mathi_max(whole.w, whole.h) > target->texture_divide_px) {
-            set_up_divide(target, corners, uv, texture, box, whole, &su);
+            set_up_divide(target, corners, uv, texture, whole, &su);
         }
         if (su.divide != 0) {
             walk_divided(target, &su, box, v0, v1, v2, long_on_left);
