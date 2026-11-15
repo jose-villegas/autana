@@ -209,8 +209,9 @@ The doc-images GPU stage waits for active board locks, then takes heavy and runs
 A board claimed between these steps waits for heavy before building.
 Human reservations do not block the GPU stage.
 
-`GPU_STAGE_HANG_SECONDS` in `scripts/lib/local_schedule.py` bounds each
-stage's process tree. `override` starts at once while retaining the board-lock
+`scripts/lib/local_schedule.py` stops a stage's process tree once no task or
+bake has finished for `GPU_STAGE_PROGRESS_SECONDS`, and in any case after
+`GPU_STAGE_HANG_SECONDS`. `override` starts at once while retaining the board-lock
 wait; `force` controls freshness independently.
 
 The images are current only when the newest unexpired record from main is a rendered record for this fingerprint. A
