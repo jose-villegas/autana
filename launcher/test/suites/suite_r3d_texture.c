@@ -1660,11 +1660,10 @@ marked_in_columns(int from, int to) {
     return n;
 }
 
-/* The left triangle on chart 0, an INDEX4 material; the right on chart 1, a
- * MASK1 one. Under a writer the left draws exactly as plain and the right
- * as the textured, cut draw, the writer marking only its kept pixels. */
-static void
-test_under_a_writer_a_mask1_triangle_is_cut_and_an_index4_one_is_plain(void) {
+/* The mixed mesh: the left triangle on an INDEX4 chart, the right on a MASK1
+ * one; target 0 drawn plain, target 1 textured, outside a blend. */
+static scene_t*
+mixed_scene_drawn(void) {
     scene_t* s = scene_fixture_pair();
     place_two_triangles(s, 1);
     const uint8_t chart_materials[R3D_TEXTURE_CHARTS] = {0, 1};
@@ -1673,6 +1672,15 @@ test_under_a_writer_a_mask1_triangle_is_cut_and_an_index4_one_is_plain(void) {
     draw_scene(s, 0, false);
     background(1);
     draw_scene(s, 1, true);
+    return s;
+}
+
+/* The left triangle on chart 0, an INDEX4 material; the right on chart 1, a
+ * MASK1 one. Under a writer the left draws exactly as plain and the right
+ * as the textured, cut draw, the writer marking only its kept pixels. */
+static void
+test_under_a_writer_a_mask1_triangle_is_cut_and_an_index4_one_is_plain(void) {
+    scene_t* s = mixed_scene_drawn();
     background(2);
     r3d_span_target_t target = target_at(2);
     r3d_span_writer_t writer;
@@ -1763,21 +1771,6 @@ draw_blended_into(scene_t* s, int which, uint8_t blend, bool dither) {
     s->rows[0].blend = blend;
     s->mesh.texturing = &s->texturing;
     r3d_pipeline_draw_blended(&s->mesh, &lens, visible, 1, s->cs, s->rows, &target, s->work, dither);
-}
-
-/* The mixed mesh: the left triangle on an INDEX4 chart, the right on a MASK1
- * one; target 0 drawn plain, target 1 textured, outside a blend. */
-static scene_t*
-mixed_scene_drawn(void) {
-    scene_t* s = scene_fixture_pair();
-    place_two_triangles(s, 1);
-    const uint8_t chart_materials[R3D_TEXTURE_CHARTS] = {0, 1};
-    scene_mesh_with(s, SCENE_TRIANGLES, (uint8_t)(code_at(0, 1) | code_at(1, 2)), chart_materials, 2);
-    background(0);
-    draw_scene(s, 0, false);
-    background(1);
-    draw_scene(s, 1, true);
-    return s;
 }
 
 /* A cut is coverage: in a morph a MASK1 chart draws textured and whole, never
