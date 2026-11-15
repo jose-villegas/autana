@@ -6,6 +6,7 @@
 #include "asset/asset_store.h"
 #include "core/memory.h"
 #include "core/tune.h"
+#include "esp_log.h"
 #include "gfx/gfx.h"
 #include "hash/crc32.h"
 #include "profile/frame_cost.h"
@@ -547,7 +548,7 @@ snapshot_lod_mesh(uint8_t* out, const r3d_instance_t* instance, const r3d_batch_
             memset(out + sizeof words, 0, (size_t)words * sizeof(uint32_t));
         }
     }
-    return sizeof words + (size_t)words * sizeof(uint32_t);
+    return sizeof words + ((size_t)words * sizeof(uint32_t));
 }
 
 static size_t
@@ -572,29 +573,21 @@ reserve_lod_state(size_t bytes) {
     return rec->lod_state != NULL;
 }
 
+static bool
+keyframe_due(void) {
+    return rec->keyframe_next || (rec->index % rec->keyframe_every == 0);
+}
+
 static void
 snapshot_lod_state(const render_context_t* context) {
-    const raster_t* raster = &context->raster;
-    const r3d_lod_steer_t* steer = &context->steer;
-    frame_record_lodstate_t state = {.pick_round = raster->pick_round,
-                                     .tolerance_px = steer->tolerance_px,
-                                     .picked_tolerance_px = steer->picked_tolerance_px,
-                                     .picked_coverage_permille = steer->picked_coverage_permille,
-                                     .bin = steer->bin,
-                                     .drawn = steer->drawn,
-                                     .frames = steer->frames,
-                                     .settled = steer->settled};
-    for (size_t i = 0; i < sizeof steer->halves / sizeof steer->halves[0]; i++) {
-        memcpy(state.saves[i], steer->halves[i].saves, sizeof state.saves[i]);
-        state.finest[i] = steer->halves[i].finest;
-        state.unit[i] = steer->halves[i].unit;
-    }
+    frame_record_lodstate_t state = {.pick_round = context->raster.pick_round};
+    memcpy(&state.steer, &context->steer, sizeof state.steer);
     memcpy(rec->lod_state, &state, sizeof state);
 }
 
 void
 frame_record_before_draw(const render_context_t* context, const r3d_instance_t* instances, int count) {
-    if (rec == NULL || !(rec->keyframe_next || rec->index % rec->keyframe_every == 0)) {
+    if (rec == NULL || !keyframe_due()) {
         return;
     }
     const raster_t* raster = &context->raster;
@@ -607,6 +600,17 @@ frame_record_before_draw(const render_context_t* context, const r3d_instance_t* 
     rec->lod_size = header_bytes + snapshot_lod_meshes(rec->lod_state + header_bytes, raster, instances, count);
 }
 
+static void
+record_lod_state(void) {
+    if (rec->lod_size == 0) {
+        ESP_LOGE("frame_record", "keyframe has no pre-draw LOD state");
+        rec->overflowed = true;
+        return;
+    }
+    record(FRAME_RECORD_LODSTATE, rec->lod_state, rec->lod_size);
+    rec->lod_size = 0;
+}
+
 void
 frame_record_frame(const render_context_t* context, const raster_t* raster, uint32_t dt_ms) {
     if (rec == NULL) {
@@ -614,9 +618,9 @@ frame_record_frame(const render_context_t* context, const raster_t* raster, uint
     }
     FRAME_COST_BEGIN(recorded_from);
     const bool generated = context->frame.generated;
-    const bool keyframe_due = rec->keyframe_next || rec->index % rec->keyframe_every == 0;
+    const bool due = keyframe_due();
     /* A generated frame draws no meshes, so it cannot be a keyframe: the next drawn frame is. */
-    const bool keyframe = keyframe_due && !generated;
+    const bool keyframe = due && !generated;
     rec->size = 0;
     rec->overflowed = false;
     if (keyframe) {
@@ -626,11 +630,7 @@ frame_record_frame(const render_context_t* context, const raster_t* raster, uint
     if (!generated) {
         record_meshes(raster, keyframe);
         if (keyframe) {
-            if (rec->lod_size == 0) {
-                rec->overflowed = true;
-            } else {
-                record(FRAME_RECORD_LODSTATE, rec->lod_state, rec->lod_size);
-            }
+            record_lod_state();
         }
     }
     rec->index++;
@@ -644,7 +644,7 @@ frame_record_frame(const render_context_t* context, const raster_t* raster, uint
     if (!generated) {
         clear_fresh(); /* a generated frame carried no pose or build: the next drawn one does */
     }
-    settle(taken, keyframe_due, keyframe);
+    settle(taken, due, keyframe);
     FRAME_COST_END(recorded_from, FRAME_RECORD_STAGE_NAME);
 }
 

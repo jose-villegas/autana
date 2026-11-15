@@ -10,6 +10,7 @@
 #include "anim/playback/anim_layer.h"
 #include "asset/asset_store.h"
 #include "build/build_variant.h"
+#include "collections/mem.h"
 #include "core/checkpoint.h"
 #include "core/handle.h"
 #include "core/memory.h"
@@ -294,9 +295,8 @@ void scene_hierarchy_update_active(scene_t* scene, scene_row_t entity);
 /* True when drawing the mesh as it is gives the same picture. */
 bool scene_transform_is_identity(const mat4f_t* transform);
 
-size_t scene_storage_carve(size_t* end, size_t bytes, size_t align);
 #define SCENE_STORAGE_RESERVE(layout, end, member, type, count)                                                        \
-    ((layout).member = scene_storage_carve(&(end), sizeof(type) * (size_t)(count), _Alignof(type)))
+    ((layout).member = mem_carve(&(end), sizeof(type) * (size_t)(count), _Alignof(type)))
 int scene_renderer_index(const scene_t* scene, scene_row_t entity);
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 void scene_draw_checkpoint_capture(checkpoint_t* saved);

@@ -7,7 +7,7 @@
 | [stream_render.sh](stream_render.sh) | Builds the frame-record renderer; `--stream PATH --check` redraws inputs with packs from `AUTANA_ASSET_DIR` and checks recorded pictures. `--build-only -o DIR` returns the executable. |
 | [render_scene.sh](render_scene.sh) | Compiles, runs, and checks one host render scene. |
 | [render_all_scenes.sh](render_all_scenes.sh) | Discovers and checks all host render scenes. |
-| [scene_viewer.sh](scene_viewer.sh) | The headless renderer for bakes, figures and tests. Builds and renders a scene file, selecting renderers with `--object NAME`; `--build-only -o DIR` returns the host path; `--deps` lists what it is compiled from; to look at a scene, use [Loupe](https://github.com/jose-villegas/loupe). |
+| [scene_viewer.sh](scene_viewer.sh) | The headless renderer for bakes, figures and tests. Builds and renders a scene file, selecting renderers with `--object NAME`; `--framegen 0|1` enables frame generation (off by default); `--build-only -o DIR` returns the host path; `--deps` lists what it is compiled from; to look at a scene, use [Loupe](https://github.com/jose-villegas/loupe). |
 | [doc_images_demo.sh](doc_images_demo.sh) | Makes the demo's bake, fidelity, import and small-fill images and measured CPU tables through the scene viewer; `--small-fill-only` selects the small-fill outputs. |
 | [doc_tables.py](doc_tables.py) | Writes CPU tables from comparison logs, tunable listings and sweep captures, with scene and object names supplied as arguments. |
 | [doc_import_examples.py](doc_import_examples.py) | Renders albedo and face-sampling examples from a supplied scene and its smooth and flat fitted renderers. |
