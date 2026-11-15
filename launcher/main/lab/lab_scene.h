@@ -1,6 +1,7 @@
 /* lab_scene: one scene of a lab (lab.h), behind its shared HUD and menu. */
 #pragma once
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -18,6 +19,13 @@ typedef struct {
     entity_t scene; /* ENTITY_NONE when the scene has not loaded */
     entity_t entity;
     const char* clip; /* the clip a frame profile plays; NULL keeps the entity's current one */
+    /* Optional, for a path no one animator plays, such as copies walking: puts
+     * the whole scene at t_ms (below duration_ms) and holds it there until
+     * play() lets it move again; a path with seek has play too. With it,
+     * entity and clip are not read. */
+    bool (*seek)(uint32_t t_ms);
+    void (*play)(void);
+    uint32_t duration_ms; /* the seek path's length */
 } lab_path_t;
 
 typedef struct lab_scene {
@@ -50,9 +58,9 @@ typedef struct lab_scene {
     /* Optional. Drawn in the BOOT menu below the Scene row while the scene is
      * paused; may call public scene_* calls only. */
     lab_controls_fn controls;
-    /* Whether frame generation suits the scene: true where nothing moves on
-     * its own, so the camera's pose alone warps a frame. A lab may turn it
-     * on for such a scene only. */
+    /* Whether frame generation suits the scene: true where a warp to the
+     * camera's pose shows it, what moves on its own one drawn frame behind.
+     * A lab may turn it on for such a scene only. */
     bool generates_frames;
     /* Optional. Handles `<word> <args>` that the lab's own commands did not;
      * false means the command is not this scene's. */

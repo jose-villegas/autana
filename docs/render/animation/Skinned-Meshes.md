@@ -156,7 +156,10 @@ Each threshold moves by `anim.hysteresis_px` away from the copy's current tier.
 
 Staggered copies spread poses across frames. Skipped copies keep their skin;
 their next pose pays owed time. Clip changes, seeks and shows pose at once.
-Transform and light changes re-skin with the kept palette.
+A light change re-skins at once with the kept palette. A move relights
+a copy at its next pose, so a mid or far copy's lighting trails its move
+as its pose does; a near copy, a paused one and one with no clip relight
+at once.
 
 ![Worst vertex behind its true pose, in pixels, for idle, walk and gallop at the widest mid and far sizes, at the mid and far pose rates with a 16 ms frame](../../images/anim/anim-rate-lag.png)
 

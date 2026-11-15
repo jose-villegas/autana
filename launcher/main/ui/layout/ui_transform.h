@@ -11,27 +11,12 @@
 #include "draw/icon.h"
 #include "math/linear/affine2x.h"
 
-/* Rotation by `turn` quarter turns (mod 4, negative allowed), about a
- * viewport `viewport_w` x `viewport_h` wide: the PHYSICAL panel,
- * unchanged in size when the UI turns. The domain expected is the
- * LOGICAL canvas: for an odd turn that is viewport_h wide, viewport_w
- * tall (see ui_width()/ui_height()), for turn 0 or 2 it is viewport_w x
- * viewport_h. Each matrix entry is exactly 0, MATHX_ONE or -MATHX_ONE,
- * translations exact integers scaled by MATHX_ONE, exact in Q16.16, no
- * rounding to compound. */
+/* affine2x_quarter_turn() about a viewport `viewport_w` x `viewport_h`
+ * wide: the PHYSICAL panel, unchanged in size when the UI turns. The domain
+ * is the LOGICAL canvas (see ui_width()/ui_height()). */
 static inline affine2x_t
 ui_transform_quarter_turn(int turn, int viewport_w, int viewport_h) {
-    const int t = ((turn % 4) + 4) % 4;
-    const int32_t w = (int32_t)viewport_w << MATHX_SHIFT;
-    const int32_t h = (int32_t)viewport_h << MATHX_SHIFT;
-
-    switch (t) {
-        case 1: /* one quarter turn clockwise */ return (affine2x_t){{0, MATHX_ONE}, {-MATHX_ONE, 0}, {w, 0}};
-        case 2: /* half turn */ return (affine2x_t){{-MATHX_ONE, 0}, {0, -MATHX_ONE}, {w, h}};
-        case 3: /* three quarter turns clockwise (one counter-clockwise) */
-            return (affine2x_t){{0, -MATHX_ONE}, {MATHX_ONE, 0}, {0, h}};
-        default: return affine2x_identity();
-    }
+    return affine2x_quarter_turn(turn, viewport_w, viewport_h);
 }
 
 /* Which ui_transform_quarter_turn() this is, 0 to 3, or 0 for a transform

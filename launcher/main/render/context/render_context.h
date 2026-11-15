@@ -111,7 +111,6 @@ typedef struct {
     int32_t drawn_us;     /* the last drawn frame's draw and compose; 0 before one */
     int drawn_in_row;     /* drawn frames since the last generated one */
     bool paying;          /* the last verdict: a generated frame costs less than a drawn one */
-    int32_t shown_us;     /* the caller's budget per shown frame; the ladder's is per drawn frame */
     render_view_t kept_view;
     framegen_target_t framegen;
     render_partial_t partial; /* render/partial: rows redrawn on a still camera */
@@ -119,6 +118,8 @@ typedef struct {
     /* Whether the last frame's debug view drew a second view, and from where. */
     bool observed;
     transformf_t observed_from;
+    /* The last frame's own view, drawn or generated (render/record). */
+    render_view_t frame_view;
     /* A checkpoint holds the bytes before `observing` only. What
      * render_context_set_observer() was given is input, like the view pick. */
     bool observing;

@@ -1,5 +1,6 @@
 """The PR description scaffold fills what the diff shows and its check catches what is left."""
 import json
+import os
 import pathlib
 import shutil
 import subprocess
@@ -21,6 +22,12 @@ def mermaid_runs():
     node = shutil.which('node')
     return node is not None and subprocess.run(
         [node, str(pr_body.MERMAID_GATE), '--probe'], capture_output=True).returncode == 0
+
+
+def math_runs():
+    """check-math.mjs has its dependencies; CI installs them, so there a gap fails instead."""
+    node = shutil.which('node')
+    return bool(os.environ.get('CI')) or node is not None and (pr_body.REPO / 'scripts' / 'gates' / 'node_modules' / 'markdown-it').is_dir()
 
 
 class Repo:
@@ -158,6 +165,22 @@ class CheckTests(unittest.TestCase):
         self.assertEqual(pr_body.check(good), [])
         problems = pr_body.check(good.replace('a --> b', 'a --> (('))
         self.assertTrue(any(p.startswith('mermaid:') for p in problems), problems)
+
+    @unittest.skipUnless(math_runs(), 'no markdown-it and MathJax to parse with')
+    def test_a_code_fence_that_never_closes_fails(self):
+        # #1523's body after a text replace joined its diagram's last line to the next paragraph.
+        good = 'Text.\n\n```c\nint x;\n```\n\nMore text.\n\nTicket: cvpg\n'
+        self.assertEqual(pr_body.check(good), [])
+        problems = pr_body.check(good.replace('int x;\n```\n\n', 'int x;'))
+        self.assertTrue(any(p.startswith('markdown:') and 'never closes' in p for p in problems), problems)
+
+    @unittest.skipUnless(math_runs(), 'no markdown-it and MathJax to parse with')
+    def test_a_formula_github_cannot_render_fails(self):
+        good = 'Cost grows as $O(n^2)$ here.\n\nTicket: cvpg\n'
+        self.assertEqual(pr_body.check(good), [])
+        for broken in ('$\\frac{1}{$', '$\\notamacro x$', '$\\operatorname{f}$'):
+            problems = pr_body.check(good.replace('$O(n^2)$', broken))
+            self.assertTrue(any(p.startswith('markdown:') for p in problems), (broken, problems))
 
 
 if __name__ == '__main__':
