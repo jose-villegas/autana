@@ -4,7 +4,9 @@ How the span fill draws a textured triangle: which texel each pixel takes,
 from which mip level, and how bright. The texture's bytes are
 [LTEX](../../assets/formats/LTEX.md); a mesh names its textures and u, v
 through its [LUVS](../../assets/formats/LUVS.md) entry. The fill is
-[`render/texture/r3d_texture.h`](../../../launcher/main/render/texture/r3d_texture.h).
+[`r3d_span_textured.c`](../../../launcher/main/render/texture/r3d_span_textured.c);
+its texture type is
+[`r3d_texture.h`](../../../launcher/main/render/texture/r3d_texture.h).
 
 ```mermaid
 flowchart LR
@@ -37,24 +39,22 @@ between two rows.
 
 ## Mip level
 
-Level 0 is the texture's full size; each mip halves the last. A pixel should
-read the level where one step across the screen moves about one texel: the
-level is floor(log2 ρ), where ρ is the longer of the texel steps per pixel
-along x and along y, in level-0 texels, up to the last level
-<sup>[[123]](../../Citations.md#williams-1983)</sup>.
+Level 0 is full size; each mip halves the last
+<sup>[[123]](../../Citations.md#williams-1983)</sup>. A pixel should read the
+level where one screen step moves about one texel: floor(log2 ρ), ρ the longer
+of the level-0 texel steps per pixel along x and y, capped at the last level.
 
-A triangle picks one level for all its pixels, from the steps of its affine
-u and v planes: the step averaged over the triangle. On a triangle that
-recedes, the true step grows towards the far end
-<sup>[[124]](../../Citations.md#heckbert-1989)</sup>. Its far pixels read a
-finer level than their step needs, and those texels alias.
+A triangle picks one level from the steps of its affine u and v planes,
+averaged over the triangle. Where it recedes the true step grows
+<sup>[[124]](../../Citations.md#heckbert-1989)</sup>, so far pixels read a
+finer level than they need and alias.
 
 ## Perspective
 
-Stepped affine, u and v bend across a triangle that recedes: rows on a floor
-near the camera curve. An INDEX4 span instead divides u and v by depth every
-few pixels and steps them affine between, when all of these hold, judged on
-the triangle's unclipped box so every row slice draws it alike:
+Stepped affine, u and v bend across a receding triangle: floor rows near the
+camera curve. An INDEX4 span divides u and v by depth every few pixels,
+affine between <sup>[[124]](../../Citations.md#heckbert-1989)</sup>, when all
+of these hold on the triangle's unclipped box, so every row slice agrees:
 
 | Test | Setting ([Render-Settings.md](../Render-Settings.md)) |
 |---|---|
@@ -64,15 +64,11 @@ the triangle's unclipped box so every row slice draws it alike:
 
 A dividing triangle starts from segments of `texture.divide_px` pixels. It
 doubles them, up to `RENDER_TEXTURE_DIVIDE_PX_MAX`, while one segment would
-still bend less than `texture.affine_bend`.
+still bend no more than `texture.affine_bend`.
 
-![The near floor's squares where affine differs most from a divide every pixel, with each column's CIE76 dE against that divide](../../images/render/bistro-street-divide.png)
+![The near floor's squares where affine differs most from a divide every pixel, with each column's CIE76 colour distance from that divide](../../images/render/bistro-street-divide.png)
 
-CIE76 is the distance between two colours in CIELAB. The columns divide
-every pixel, step affine, then divide every 16 and every 8 pixels.
-
-The divide's set-up, walk and fill sit at the end of flash code, apart from
-the affine walk.
+CIE76 is the distance between two colours in CIELAB.
 
 ## Related
 
