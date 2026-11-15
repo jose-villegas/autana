@@ -209,8 +209,9 @@ The doc-images GPU stage waits for active board locks, then takes heavy and runs
 A board claimed between these steps waits for heavy before building.
 Human reservations do not block the GPU stage.
 
-`GPU_STAGE_HANG_SECONDS` in `scripts/lib/local_schedule.py` bounds each
-stage's process tree. `override` starts at once while retaining the board-lock
+`scripts/lib/local_schedule.py` stops a stage's process tree once no task or
+bake has finished for `GPU_STAGE_PROGRESS_SECONDS`, and in any case after
+`GPU_STAGE_HANG_SECONDS`. `override` starts at once while retaining the board-lock
 wait; `force` controls freshness independently.
 
 The images are current only when the newest unexpired record from main is a rendered record for this fingerprint. A
@@ -372,7 +373,7 @@ Two files, the same declare-then-source shape a report script uses:
   roots fails the build.
 
 CMake's `autana::render_host_core` supplies the host frame loop on top of
-`autana::render_engine`: drawing, assets, tune, jobs and packages, with no `main()` and no
+`autana::render_engine`: drawing, assets, tune, jobs, the frame recorder and packages, with no `main()` and no
 allocation hooks. `launcher/tools/render/engine_sources.cmake` owns that list, and
 `run_tests.sh` reads it with `cmake -P`.
 

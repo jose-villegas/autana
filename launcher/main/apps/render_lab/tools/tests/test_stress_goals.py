@@ -65,18 +65,21 @@ class StressGoalsTest(unittest.TestCase):
         path.write_text(text, encoding="utf-8")
         return path
 
+    def test_the_stages_are_the_suite_s_list_r3d_s_then_the_recorder_s(self):
+        self.assertEqual(goals.STAGES, ("r3d.cull", "r3d.transform", "r3d.draw", "r3d.upscale", "frame.record"))
+
     def test_margin_rounds_up_to_the_quantum_and_a_zero_still_pegs(self):
         stages = {(self.first, goals.STAGES[0]): 0, (self.first, goals.STAGES[1]): 1000,
                   (self.first, goals.STAGES[2]): 991}
         path = self.write("rounding", capture_text(sums={self.first: 2000}, stages=stages))
         # 0 -> the quantum; 1000 x 1.01 = 1010 exactly; 991 x 1.01 = 1000.91 -> 1010.
-        self.assertIn("{10, 1010, 1010, 1010}, {2020, 2330}},", line_of(goals.generate([path]), self.first))
+        self.assertIn("{10, 1010, 1010, 1010, 1010}, {2020, 2330}},", line_of(goals.generate([path]), self.first))
 
     def test_worst_per_stage_and_worst_sum_come_from_different_captures(self):
         a = self.write("a", capture_text(sums={self.first: 5000}, stages={(self.first, goals.STAGES[0]): 2000}))
         b = self.write("b", capture_text(sums={self.first: 2000}, stages={(self.first, goals.STAGES[1]): 3000}))
         line = line_of(goals.generate([a, b]), self.first)
-        self.assertIn("{2020, 3030, 1010, 1010}, {5050, 5810}},", line)
+        self.assertIn("{2020, 3030, 1010, 1010, 1010}, {5050, 5810}},", line)
 
     def test_a_rerun_case_keeps_its_worst_measure(self):
         sum_name = goals.row_name(self.first)
@@ -100,6 +103,19 @@ class StressGoalsTest(unittest.TestCase):
     def test_unknown_unpegged_preset_is_refused(self):
         with self.assertRaisesRegex(ValueError, "--unpegged stress-nope: no such preset"):
             goals.generate([self.write("c", capture_text())], ["stress-nope"])
+
+    def test_a_preset_s_rows_come_from_captures_of_it_alone(self):
+        key = self.first[0]
+        whole = capture_text()
+        alone = "".join(line + "\n" for line in whole.splitlines() if f"PERF TARGET {key} " in line)
+        output = goals.generate([self.write("alone", alone)], presets=[key])
+        expected = [line for line in goals.generate([self.write("whole", whole)]).splitlines()
+                    if line.startswith('    {"%s",' % key)]
+        self.assertEqual(expected, output.splitlines())
+
+    def test_unknown_preset_is_refused(self):
+        with self.assertRaisesRegex(ValueError, "--preset stress-nope: no such preset"):
+            goals.generate([self.write("c", capture_text())], presets=["stress-nope"])
 
     def test_missing_target_names_the_capture_and_the_target(self):
         missing = names(goals.table_rows()[-1])[2]
