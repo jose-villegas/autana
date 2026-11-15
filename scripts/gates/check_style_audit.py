@@ -445,7 +445,7 @@ def pmu_owner(root, path, text):
 # (launcher/packages/) sits under every row: PACKAGE-INCLUDE keeps it there.
 
 LAYER_BANDS = (
-    ("system", ("apps", "shell", "boot selftest", "app")),
+    ("system", ("apps", "shell", "boot selftest", "lab", "app")),
     ("engine", ("ui scene", "render", "draw anim sound", "asset")),
     ("platform", ("input audio", "power", "display", "gfx", "services", "profile", "console", "core", "board",
                   "build")),
@@ -524,10 +524,10 @@ def rule_include_direction(root, path, text):
                        "INCLUDE_DIRECTION_EXCEPTIONS entry citing the doc section that draws it")
 
 
-# RULE: an app (a folder of the top row, launcher/main/apps/) uses the engine, the platform and the app contract, and never the
-# rest of the system band: docs/plans/Engine-Layer-Design-Sketch.md's tier
-# rule. The app contract is the system band's lowest row, so the rule names
-# no folder. A shell app (shell/apps/) shares the apps tier for
+# RULE: an app (a folder of the top row, launcher/main/apps/) uses the engine, the platform, the lab shell and the app
+# contract, and never the rest of the system band: docs/plans/Engine-Layer-Design-Sketch.md's tier
+# rule. The lab shell and the app contract are the system band's lowest two
+# rows, so the rule names no folder. A shell app (shell/apps/) shares the apps tier for
 # INCLUDE-DIRECTION but ships with the shell, so it may reach the system
 # band. Both include rules below read C and C++ sources alike.
 
@@ -535,7 +535,8 @@ INCLUDE_RULE_SUFFIXES = SOURCE_EXTENSIONS
 
 SYSTEM_ROWS = dict(LAYER_BANDS)["system"]
 APPS_ROW = SYSTEM_ROWS[0].split()
-SYSTEM_BAND_REFUSED = {layer for row in SYSTEM_ROWS[1:-1] for layer in row.split()}
+APP_BASE = {"lab", "app"}  # the lab shell and the app contract
+SYSTEM_BAND_REFUSED = {layer for row in SYSTEM_ROWS[1:] for layer in row.split()} - APP_BASE
 
 
 @text_rule("SYSTEM-BAND")
@@ -551,7 +552,7 @@ def rule_system_band(root, path, text):
     for number, inc, target_layer in _main_include_layers(root, path, text):
         if target_layer in SYSTEM_BAND_REFUSED:
             yield number, (f'"{inc}" reaches into {target_layer}/, the system band - an app uses '
-                           "the engine, the platform and the app contract (app/)")
+                           "the engine, the platform, the lab shell (lab/) and the app contract (app/)")
 
 
 # RULE: the UI backend stays behind ui/'s face. A header is the backend's
@@ -762,9 +763,11 @@ def rule_package_config(root, path, text):
 # The ESP-IDF branch matches any drive path that names an esp-idf checkout,
 # not one installer's folder layout. It stays off root-anchored paths: the
 # portable $HOME/esp/esp-idf default and github.com/espressif/esp-idf both
-# contain the name and are fine.
+# contain the name and are fine. /home starts a path where no name runs into
+# it, or after a short flag such as -I: a test named capybara/home/portrait is
+# not a path. /Users counts anywhere, so WSL's /mnt/c/Users/<name> is caught.
 PERSONAL_PATH = re.compile(
-    r"C:\\Users\\[A-Za-z0-9][A-Za-z0-9_.-]*|/home/[A-Za-z0-9][A-Za-z0-9_.-]*|/Users/[A-Za-z0-9][A-Za-z0-9_.-]*"
+    r"C:\\Users\\[A-Za-z0-9][A-Za-z0-9_.-]*|(?:(?<![\w.~-])|(?<=(?<![\w.-])-[A-Za-z]))/home/[A-Za-z0-9][A-Za-z0-9_.-]*|/Users/[A-Za-z0-9][A-Za-z0-9_.-]*"
     r"|(?<![\w/])[A-Za-z]:[\\/][^\s\"'`;|()]*?esp-idf[\w.-]*")
 
 

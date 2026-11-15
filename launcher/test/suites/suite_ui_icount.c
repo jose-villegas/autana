@@ -88,10 +88,10 @@ UI_ICOUNT_PAIR(dropdown_icons, ui_dropdown_icons(box, UI_ICOUNT_LABEL, &state->v
 #define UI_ICOUNT_TEXT_PAIR(name, align, ink)                                                                          \
     UI_ICOUNT_PAIR(name, ui_##name(box, UI_ICOUNT_LABEL),                                                              \
                    ui_text_in(ctx, r, UI_ICOUNT_LABEL, state->theme.ink, UI_ICOUNT_SCALE, align))
-UI_ICOUNT_TEXT_PAIR(text, UI_ALIGN_LEFT, text)
-UI_ICOUNT_TEXT_PAIR(text_right, UI_ALIGN_RIGHT, text)
+UI_ICOUNT_TEXT_PAIR(text, UI_ALIGN_START, text)
+UI_ICOUNT_TEXT_PAIR(text_right, UI_ALIGN_END, text)
 UI_ICOUNT_TEXT_PAIR(text_centre, UI_ALIGN_CENTRE, text)
-UI_ICOUNT_TEXT_PAIR(caption, UI_ALIGN_LEFT, caption)
+UI_ICOUNT_TEXT_PAIR(caption, UI_ALIGN_START, caption)
 UI_ICOUNT_PAIR(header, ui_header(box, UI_ICOUNT_LABEL),
                ui_header_bar(ctx, r, UI_ICOUNT_LABEL, UI_ICOUNT_SCALE, &state->theme))
 UI_ICOUNT_PAIR(panel, ui_panel(box), ui_mu_panel(ctx, r, &state->theme))

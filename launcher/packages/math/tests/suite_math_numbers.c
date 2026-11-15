@@ -28,6 +28,7 @@
 #include "math/linear/transformf.h"
 #include "math/linear/transformx.h"
 #include "math/linear/vec_convert.h"
+#include "math/scalar/ease.h"
 #include "math/scalar/float_bits.h"
 #include "math/scalar/math_const.h"
 #include "math/scalar/mathf.h"
@@ -250,6 +251,19 @@ test_length_is_the_root_of_the_self_dot(void) {
     TEST_ASSERT_EQUAL_FLOAT(13.0F, vec3f_length(three_four_twelve));
     TEST_ASSERT_EQUAL_FLOAT(0.0F, vec3f_length(vec3f_zero()));
     TEST_ASSERT_FLOAT_WITHIN(FLT_EPSILON, 1.0F, vec3f_length(vec3f_normalize(A)));
+}
+
+/* A vec2's length, and a clamp that shortens only what is longer, keeping its direction. */
+static void
+test_vec2_length_and_clamp_length(void) {
+    static const vec2f_t three_four = {3.0F, 4.0F};
+    TEST_ASSERT_EQUAL_FLOAT(5.0F, vec2f_length(three_four));
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, vec2f_length(vec2f_zero()));
+    const vec2f_t cut = vec2f_clamp_length(three_four, 2.5F);
+    TEST_ASSERT_EQUAL_FLOAT(1.5F, cut.x);
+    TEST_ASSERT_EQUAL_FLOAT(2.0F, cut.y);
+    TEST_ASSERT_TRUE(vec2f_equal(three_four, vec2f_clamp_length(three_four, 5.0F)));
+    TEST_ASSERT_TRUE(vec2f_equal(vec2f_zero(), vec2f_clamp_length(vec2f_zero(), 0.0F)));
 }
 
 /* The double-precision reference runs on the host only: the device's FPU is single precision. */
@@ -1217,6 +1231,21 @@ test_mathf_lerp(void) {
     TEST_ASSERT_EQUAL_FLOAT(6.0F, mathf_lerp(8.0F, 0.0F, 0.25F));
 }
 
+/* Flat past each edge, half way at the middle, and level at both edges:
+ * its slope there is 0. */
+static void
+test_ease_smoothstep(void) {
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, ease_smoothstep(2.0F, 6.0F, 1.0F));
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, ease_smoothstep(2.0F, 6.0F, 2.0F));
+    TEST_ASSERT_EQUAL_FLOAT(0.5F, ease_smoothstep(2.0F, 6.0F, 4.0F));
+    TEST_ASSERT_EQUAL_FLOAT(1.0F, ease_smoothstep(2.0F, 6.0F, 6.0F));
+    TEST_ASSERT_EQUAL_FLOAT(1.0F, ease_smoothstep(2.0F, 6.0F, 7.0F));
+    TEST_ASSERT_EQUAL_FLOAT(0.15625F, ease_smoothstep(0.0F, 1.0F, 0.25F)); /* 3/16 - 2/64 */
+    const float step = 1.0e-3F;
+    TEST_ASSERT_FLOAT_WITHIN(1.0e-5F, 0.0F, ease_smoothstep(0.0F, 1.0F, step));
+    TEST_ASSERT_FLOAT_WITHIN(1.0e-5F, 1.0F, ease_smoothstep(0.0F, 1.0F, 1.0F - step));
+}
+
 static void
 test_mathi_lerp(void) {
     static const int32_t endpoints[][2] = {
@@ -1767,6 +1796,23 @@ test_rsqrt_device_mantissas_and_normal_exponent_edges(void) {
 }
 #endif
 
+/* The exponent matches frexpf's over every normal exponent, at a power of
+ * two and just below the next. */
+static void
+test_scalar_exponent_matches_frexpf_across_the_normal_range(void) {
+    for (int e = FLT_MIN_EXP; e <= FLT_MAX_EXP; e++) {
+        const float low = ldexpf(0.5F, e);
+        int expected = 0;
+        (void)frexpf(low, &expected);
+        TEST_ASSERT_EQUAL_INT(expected, mathf_exponent(low));
+        if (e < FLT_MAX_EXP) {
+            const float high = nextafterf(ldexpf(1.0F, e), 0.0F);
+            (void)frexpf(high, &expected);
+            TEST_ASSERT_EQUAL_INT(expected, mathf_exponent(high));
+        }
+    }
+}
+
 static void
 test_scalar_half_and_absolute_value(void) {
     static const float half = 0.5F;
@@ -2101,6 +2147,7 @@ suite_math_numbers(void) {
     RUN_TEST(test_integer_half_chords_floor);
     RUN_TEST(test_integer_half_chords_round);
     RUN_TEST(test_integer_half_chords_int16_radius_edges);
+    RUN_TEST(test_scalar_exponent_matches_frexpf_across_the_normal_range);
     RUN_TEST(test_scalar_half_and_absolute_value);
 #if !defined(ESP_PLATFORM) || (defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP)
     RUN_TEST(test_recip_approx_mantissas_and_normal_exponent_edges);
@@ -2112,6 +2159,7 @@ suite_math_numbers(void) {
     RUN_TEST(test_rsqrt_normalize_and_nlerp_component_sweeps);
 #endif
     RUN_TEST(test_mathf_lerp);
+    RUN_TEST(test_ease_smoothstep);
     RUN_TEST(test_mathi_lerp);
     RUN_TEST(test_mathi_lerp_u8);
     RUN_TEST(test_maths_lerp);
@@ -2156,6 +2204,7 @@ suite_math_numbers(void) {
     RUN_TEST(test_vec2_ops_agree_across_every_number_type);
     RUN_TEST(test_normalize_divide_zero_and_float);
     RUN_TEST(test_length_is_the_root_of_the_self_dot);
+    RUN_TEST(test_vec2_length_and_clamp_length);
 #ifndef ESP_PLATFORM
     RUN_TEST(test_fixed_normalize_saturation_edges);
 #endif

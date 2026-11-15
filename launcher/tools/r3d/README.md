@@ -30,7 +30,7 @@ mesh. Nothing here runs on the board.
 | [bake_fidelity.py](bake_fidelity.py) | Re-lights a flat mesh's geometry with chosen sample count, placement and sky rays into a scratch directory, renders it on the host and scores it against the reference; see [shading: flat](../../../docs/render/scene/Scene-Files.md#shading-flat). |
 | [appearance_simplify.py](appearance_simplify.py) | Fits a smooth or flat mesh's vertex positions and colours to reference renders along a camera path with a differentiable rasterizer, its triangles unchanged; see [Appearance fit](#appearance-fit). |
 | [objects/](objects/objects_report.py) | Rigid instances, triangles saved and residuals: `objects_report.py SCENE.scene.toml --object NAME --out DIR`. |
-| [lod/](lod/lod_replay.py) | Cluster levels of a fitted mesh, picked along its camera path at fixed tolerances and budgets: `lod_replay.py SCENE.scene.toml --object NAME --out DIR`; see [Cluster level of detail](../../../docs/plans/Cluster-LOD.md). |
+| [lod/](lod/lod_replay.py) | Cluster levels of a fitted mesh, picked along its camera path at fixed tolerances and budgets: `lod_replay.py SCENE.scene.toml --object NAME --out DIR`; see [Levels of detail](../../../docs/render/frame/Levels-of-Detail.md). |
 | [poses.py](poses.py) | Reads the camera poses file `tools/anim/track_host.py` writes, samples a scene camera's path through it from the clip's `.anim.toml`, and casts a pose's pinhole rays. |
 | [fitted_variant.py](fitted_variant.py) | Remakes a scene renderer's fitted mesh from the `fit` recipe it records; see [A fitted variant](#a-fitted-variant). |
 | [cost_model.py](cost_model.py), [board_cost_weights.txt](board_cost_weights.txt) | A linear model of a mesh's frame time from a pose (submitted and drawn triangles, rows, pixels with overdraw, clusters in view), and its weights with the board frames they were fitted to; see [Cost-aware fit](#cost-aware-fit). |
@@ -133,7 +133,7 @@ bake's heatmap, all on that one scale.
 `reference_render.py --backend mitsuba` renders the same source with Mitsuba 3 in
 place of the bake lighting. It reads the same geometry after alpha rejection, albedo,
 camera and poses, and shares exposure, tone map and RGB565 conversion. `bake` is the default backend.
-The variant is `cuda_ad_rgb` when a CUDA device can load a scene, else
+This backend's variant is `cuda_ad_rgb` when a CUDA device can load a scene, else
 `llvm_ad_rgb` when libLLVM is present, else `scalar_rgb` (`--variant`); only
 the tests are small enough for the scalar one.
 
@@ -210,9 +210,8 @@ stage instead of being lit again. Every `--poses`/`--reference` pair trains
 one mesh together (the path-averaged mesh); `--per-shot` trains one per
 pair, for a mesh swapped as the camera moves through each segment.
 
-The fit produces identical bytes for identical inputs on the same GPU model
-in the pinned environment. A different GPU may produce different bytes.
-Per-pixel gathers accumulate gradients with fixed-point integer sums;
+The fit produces identical bytes for identical inputs in the pinned
+environment, on any GPU model. Per-pixel gathers accumulate gradients with fixed-point integer sums;
 integer addition is order-independent. Their integer scatter locally relaxes
 torch's deterministic algorithm flag and restores it on return. The fit's
 scoped cuBLAS workspace and algorithm settings are also restored on return.
@@ -310,19 +309,22 @@ The surface term anchors fitted triangles to the alpha-masked source, with a
 recipe weight and a margin in each triangle's start edge scale;
 [Appearance-Fit.md describes the surface term](../../../docs/render/offline/Appearance-Fit.md#surface).
 
-### Reference on the GPU
+### Reference on the CPU
 
-A reference set traces its rays and bounced light on Mitsuba 3's `cuda_ad_rgb` variant, OptiX on the GPU, when
-that variant loads a scene in the process, and on `llvm_ad_rgb` otherwise (`ray_query.trace_variant`). Mesh bakes,
-starts included, always trace on `llvm_ad_rgb`, so their bytes never depend on a GPU.
+A reference set traces its rays and bounced light on `llvm_ad_rgb` (`ray_query.VARIANT`), as mesh bakes do, so a set
+made again repeats byte for byte on one kind of host; its bytes differ between CPU vendors by an ulp ([isa.py](isa.py)), and between CPU models of one vendor.
+It does not trace on the GPU: OptiX does not promise the same acceleration structure from the same
+triangles<sup>[[116]](../../../docs/Citations.md#nvidia-optix-bvh-repeat)</sup>. On some GPUs a shadow ray grazing an edge
+hits or misses by the build, now and then a pixel, and the fit makes that pixel a different mesh. The CPU is slower
+than the GPU, paid once per reference key: the fits that read a set share it.
 
-| | CUDA | LLVM |
-|---|---|---|
-| Poses | one after another in the process, which frees the device before the fit | one after another, Mitsuba spreading each over every core |
-| Bytes | differ from LLVM's by float rounding; `test_r3d_reference.py` bounds the difference where both run | differ between CPU vendors by an ulp ([isa.py](isa.py)) |
+Since a set differs between CPU models, the bake locks it: the CPU Bakes job renders it and packs what the fit reads
+(`pack_references`: the training pictures and normals and the pose files) into `<entry>.reference.tar.xz`, and a
+fit's key names those bytes, as it names its start's ([Bakes](../../../docs/assets/Bakes.md)). Every GPU host fits
+from the same set.
 
-The reference key names the light model, not the device, so a set made on either serves the same fits; the set's
-`traced_on.txt` records which one made it. Under WSL 2 the Windows driver ships only an OptiX loader stub: Dr.Jit loads OptiX
+The path-traced backend still runs on `cuda_ad_rgb` where it loads a scene. Under WSL 2 the Windows driver ships only
+an OptiX loader stub: Dr.Jit loads OptiX
 from the Linux driver of the same version, whose `libnvoptix.so.1`, `libnvidia-rtcore`, `libnvidia-ptxjitcompiler`,
 `libnvidia-gpucomp` and `nvoptix.bin` sit in one folder named to the one process that traces, never to the shell's
 profile:

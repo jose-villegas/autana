@@ -447,7 +447,7 @@ void f(void) {
 
     def test_an_app_or_the_editor_including_the_system_band_is_flagged_but_not_the_app_contract(self):
         targets = ("shell/shell.h", "console/console_verbs.h", "selftest/post.h", "boot/boot_anim.h",
-                   "app/app.h", "ui/ui.h")
+                   "app/app.h", "lab/lab.h", "ui/ui.h")
         self.assert_include_cases("SYSTEM-BAND", {"launcher/main/" + t: "#pragma once\n" for t in targets}, flagged=(
             "launcher/main/apps/x/x.c shell/shell.h",
             "launcher/main/apps/x/x.h boot/boot_anim.h",
@@ -455,6 +455,7 @@ void f(void) {
             "launcher/main/apps/x/x.c <selftest/post.h>",
         ), allowed=(
             "launcher/main/apps/x/x.c app/app.h",
+            "launcher/main/apps/x/x.c lab/lab.h",
             "launcher/main/apps/x/x.c ui/ui.h",
             "launcher/main/apps/x/x.c console/console_verbs.h",
             "launcher/main/shell/apps/x/x.c selftest/post.h",
@@ -462,9 +463,11 @@ void f(void) {
 
     def test_the_system_band_refused_follows_the_layer_table(self):
         system = dict(check_style_audit.LAYER_BANDS)["system"]
-        between = {layer for row in system[1:-1] for layer in row.split()}
-        self.assertEqual(check_style_audit.SYSTEM_BAND_REFUSED, between)
-        self.assertNotIn(system[-1], between)
+        rows = {layer for row in system[1:] for layer in row.split()}
+        self.assertEqual(check_style_audit.SYSTEM_BAND_REFUSED, rows - check_style_audit.APP_BASE)
+        for base in check_style_audit.APP_BASE:
+            self.assertIn(base, rows)
+            self.assertNotIn(base, check_style_audit.SYSTEM_BAND_REFUSED)
 
     BACKEND = {"launcher/components/microui/include/microui.h": "#pragma once\n"}
 
@@ -760,6 +763,15 @@ void f(void) {
             "scripts/device/device.py": 'GLOB = "~/.espressif/python_env/idf*_env/Scripts/python.exe"\n',
         })
         self.assertEqual(findings, [])
+
+    def test_home_inside_a_name_is_not_a_path(self):
+        findings = self.audit("PERSONAL-PATH", {
+            "docs/render/data/capture.log": "test_real_time_frame_profile/capybara/home/portrait:PASS\n"
+                                            "cd " + "/".join(["", "home", "jdoe", "esp"]) + "\n"
+                                            "cd " + "/".join(["", "mnt", "c", "Users", "jdoe"]) + "\n"
+                                            "gcc -I" + "/".join(["", "home", "jdoe", "include"]) + "\n",
+        })
+        self.assertEqual(len(findings), 3)
 
     def test_utf8_read_as_cp1252_is_flagged(self):
         mangled = {"middle dot": "\u00b7", "arrow": "\u2192", "e acute": "\u00e9", "check": "\u2713"}

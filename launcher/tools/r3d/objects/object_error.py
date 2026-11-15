@@ -27,7 +27,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "render"))
 
 from docs import plot_style  # noqa: E402
-from r3d.geometry import majority  # noqa: E402
+from r3d.geometry import face_normals, majority  # noqa: E402
 
 SKY = "(sky)"
 TOP_ROWS = 20
@@ -118,13 +118,6 @@ def nearest_source(source_p, tri_v, drawn_p, drawn_tris):
     from scipy.spatial import cKDTree
 
     return cKDTree(source_p[tri_v].mean(axis=1)).query(drawn_p[drawn_tris].mean(axis=1))[1]
-
-
-def face_normals(p, tris):
-    """Each triangle's unit normal and its area."""
-    normal = np.cross(p[tris[:, 1]] - p[tris[:, 0]], p[tris[:, 2]] - p[tris[:, 0]])
-    length = np.linalg.norm(normal, axis=1)
-    return normal / np.maximum(length, 1e-30)[:, None], 0.5 * length
 
 
 def planar_parts(source_p, tri_v, labels, count):

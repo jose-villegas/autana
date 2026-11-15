@@ -89,3 +89,23 @@ for key in $(sed -n 's/^ *X([A-Z_]*, "\([^"]*\)".*/\1/p' launcher/main/apps/rend
         2> "$W/stress-$key.log"
     run "$PYTHON" launcher/tools/docs/figures.py png "$W/stress-$key.bmp" "$OUT/render-lab-stress-$key.png"
 done
+
+# The biggest herd walking for 12 s at its own pace, so each gait's feet keep
+# to the ground, while the orbit makes a fifth of a turn.
+HERD_FRAMES=150
+HERD_DT=80
+HERD_TURNS=5
+run "$W/render_lab_render" --quarter 1 --no-hud --scene herd-8 --frames "$HERD_FRAMES" --dt "$HERD_DT" \
+    --set render_lab.orbit_ms="$((HERD_FRAMES * HERD_DT * HERD_TURNS))" -o "$W/herd-motion.bmp" \
+    --video "$W/herd-motion.avi" 2> "$W/herd.log"
+run "$PYTHON" launcher/tools/docs/figures.py gif "$W/herd-motion.avi" "$OUT/render-lab-herd.gif" --fps "1000/$HERD_DT"
+
+# The capybara's whole run down Sponza's atrium, rest to rest, at 10 frames a
+# second: a coarser step samples a gallop stride too few times to read.
+CAPYBARA_SPONZA_DT=100
+CAPYBARA_SPONZA_FRAMES=185
+run "$W/render_lab_render" --quarter 1 --no-hud --scene capybara-sponza --frames "$CAPYBARA_SPONZA_FRAMES" \
+    --dt "$CAPYBARA_SPONZA_DT" -o "$W/capybara-sponza-motion.bmp" --video "$W/capybara-sponza-motion.avi" \
+    2> "$W/capybara-sponza.log"
+run "$PYTHON" launcher/tools/docs/figures.py gif "$W/capybara-sponza-motion.avi" "$OUT/render-lab-capybara-sponza.gif" \
+    --fps "1000/$CAPYBARA_SPONZA_DT"

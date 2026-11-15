@@ -23,6 +23,7 @@
 #include "render_lab_dynres.h"
 #include "render_lab_view.h"
 #include "scene/camera/camera.h"
+#include "scene/renderer/renderer.h"
 #include "scene/scene.h"
 #include "ui/ui.h"
 
@@ -33,7 +34,7 @@ static entity_t loaded;
 
 /* What the panel says in place of the triangle count when the scene could not
  * load; empty when it could. */
-static char failure[RENDER_LAB_STATUS_LEN];
+static char failure[LAB_STATUS_LEN];
 
 static void
 record_failure(const scene_failure_t* why) {
@@ -58,12 +59,12 @@ record_failure(const scene_failure_t* why) {
 static entity_t
 camera_entity(void) {
     return entity_find(loaded,
-                       name_hash(render_lab_start_camera == NULL ? shown_family->camera : render_lab_start_camera));
+                       name_hash(render_lab.start_camera == NULL ? shown_family->camera : render_lab.start_camera));
 }
 
-render_lab_path_t
+lab_path_t
 scene_baked_path(void) {
-    return (render_lab_path_t){loaded, handle_is_none(loaded) ? ENTITY_NONE : camera_entity(), NULL};
+    return (lab_path_t){.scene = loaded, .entity = handle_is_none(loaded) ? ENTITY_NONE : camera_entity()};
 }
 
 static void
@@ -77,8 +78,26 @@ apply_settings(void) {
 #endif
 }
 
+bool
+scene_baked_show(entity_t root, const scene_baked_t* family, scene_baked_variant_t shown, char* failure, size_t size) {
+    bool all = true;
+    for (int i = 0; i < (int)SCENE_BAKED_VARIANT_COUNT; i++) {
+        const entity_t bake = entity_find(root, name_hash(family->bakes[i]));
+        if (handle_is_none(bake)) {
+            ESP_LOGE(TAG, "the scene has no entity '%s'", family->bakes[i]);
+            if (snprintf(failure, size, "no bake '%s'", family->bakes[i]) < 0) {
+                failure[0] = '\0';
+            }
+            all = false;
+            continue;
+        }
+        entity_set_enabled(bake, i == (int)shown);
+    }
+    return all;
+}
+
 void
-scene_baked_enter(const render_lab_scene_t* self) {
+scene_baked_enter(const lab_scene_t* self) {
     const scene_baked_shown_t* shown = self->data;
     const scene_baked_t* family = shown->family;
     draw_clear(RGB565BE(UI_BACKGROUND));
@@ -93,19 +112,13 @@ scene_baked_enter(const render_lab_scene_t* self) {
         loaded = ENTITY_NONE;
         return;
     }
-    for (int i = 0; i < (int)SCENE_BAKED_VARIANT_COUNT; i++) {
-        const entity_t bake = entity_find(loaded, name_hash(family->bakes[i]));
-        if (handle_is_none(bake)) {
-            ESP_LOGE(TAG, "the scene has no entity '%s'", family->bakes[i]);
-            if (snprintf(failure, sizeof failure, "no bake '%s'", family->bakes[i]) < 0) {
-                failure[0] = '\0';
-            }
-            continue;
-        }
-        entity_set_enabled(bake, i == (int)shown->variant);
+    (void)scene_baked_show(loaded, family, shown->variant, failure, sizeof failure);
+    const entity_t bake = entity_find(loaded, name_hash(family->bakes[shown->variant]));
+    if (shown->textured && !handle_is_none(bake) && !renderer_set_textured(bake, true, &why)) {
+        record_failure(&why);
     }
-    (void)camera_activate(render_lab_start_camera == NULL ? camera_first(loaded)
-                                                          : entity_find(loaded, name_hash(render_lab_start_camera)));
+    (void)camera_activate(render_lab.start_camera == NULL ? camera_first(loaded)
+                                                          : entity_find(loaded, name_hash(render_lab.start_camera)));
     (void)camera_set_skip_hidden(camera_entity(), family->skip_hidden);
     apply_settings();
 }
@@ -126,7 +139,7 @@ scene_baked_frame(uint32_t dt_ms) {
 /* The size drawn at and the triangle count, or why the scene did not load. */
 static inline const char*
 scene_baked_status(void) {
-    static char buf[RENDER_LAB_STATUS_LEN];
+    static char buf[LAB_STATUS_LEN];
     if (failure[0] != '\0') {
         return failure;
     }
@@ -140,3 +153,8 @@ scene_baked_status(void) {
 
 SCENE_BAKED_FAMILY(scene_sponza, sponza_shown, &baked_sponza, "Sponza", "sponza");
 SCENE_BAKED_FAMILY(scene_bistro, bistro_shown, &baked_bistro, "Bistro", "bistro");
+
+static const scene_baked_shown_t bistro_textured_shown = {&baked_bistro, SCENE_BAKED_FITTED_FULL, true};
+const lab_scene_t scene_bistro_textured =
+    SCENE_BAKED_ENTRY("Bistro Fitted Full Textured", "bistro-fitted-full-textured", "Bistro", "Fitted Full Textured",
+                      &bistro_textured_shown);

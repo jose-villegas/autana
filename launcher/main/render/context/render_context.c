@@ -10,6 +10,7 @@
 #include "core/memory.h"
 #include "core/timing.h"
 #include "core/tune.h"
+#include "profile/frame_cost.h"
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 #include "render/view/raster_boxes.h"
@@ -155,6 +156,13 @@ render_context_set_changed(render_context_t* c, const box3f_t* boxes, int count)
 }
 
 void
+render_context_set_batches(render_context_t* c, const r3d_batch_draw_t* batches, int count) {
+    c->raster.batches = batches; /* the raster keeps them, so its census reads them after the draw */
+    c->raster.batch_count = count;
+    c->batches_set = true;
+}
+
+void
 render_context_set_scale(render_context_t* c, int percent) {
     assert(percent > 0 && percent <= 100);
     c->scale_percent = percent;
@@ -168,7 +176,6 @@ render_context_set_dynamic_resolution(render_context_t* c, const resolution_conf
         return;
     }
     c->ladder = *config;
-    c->shown_us = config->budget_us;
     c->chose_at_us = 0;
     c->policy = model == NULL ? RENDER_STEPPED : RENDER_PREDICTED;
     if (c->policy == RENDER_STEPPED) {
@@ -267,19 +274,19 @@ draw_second_view(render_context_t* c) {
     const tune_entry_t* culling = tune_find(tune_shared(), TUNE_NAME(render, cull));
     const int32_t culled = *culling->value;
     const transformf_t* observer = c->observing ? &c->observer : NULL;
-    render_view_t second;
+    render_view_t* second = &c->second;
     bool listed = false;
-    while (row->second_view(c->debug_view_state, &c->raster, observer, &second, &listed)) {
+    while (row->second_view(c->debug_view_state, &c->raster, observer, second, &listed)) {
         if (!c->observed) {
-            note_observed(c, observer, &second);
+            note_observed(c, observer, second);
         }
         c->raster.split = NULL;
         c->raster.picks_levels = false;
         if (listed) {
-            raster_draw_culled(&c->raster, &second);
+            raster_draw_culled(&c->raster, second);
         } else {
             (void)tune_set(tune_shared(), TUNE_NAME(render, cull), 0);
-            (void)raster_draw(&c->raster, &second);
+            (void)raster_draw(&c->raster, second);
             (void)tune_set(tune_shared(), TUNE_NAME(render, cull), culled);
         }
         c->raster.split = &c->split;
@@ -299,25 +306,10 @@ generation_pays(const render_context_t* c) {
     return c->generating && c->generated_us != 0 && (int64_t)c->generated_us * 100 < (int64_t)c->drawn_us * share;
 }
 
-/* The ladder the policies price a drawn frame against. While generation
- * pays, a drawn frame and the frames generated from it share their budgets:
- * the drawn one gets what the generated ones leave, never less than one
- * frame's. */
-static const resolution_config_t*
-policy_config(render_context_t* c) {
-    c->ladder.budget_us = c->shown_us;
-    if (c->paying) {
-        const int32_t shared_us =
-            (FRAMEGEN_SHOWN_PER_DRAWN * c->shown_us) - ((FRAMEGEN_SHOWN_PER_DRAWN - 1) * c->generated_us);
-        c->ladder.budget_us = shared_us > c->shown_us ? shared_us : c->shown_us;
-    }
-    return &c->ladder;
-}
-
 /* Whether this frame can be warped from the kept one: generation on, a drawn
  * frame kept, no debug view, the same viewport, and a target; and it pays
- * (the verdict the drawn frame is then priced by), has not been measured, or
- * is due to be measured again. */
+ * (the last verdict, kept in `paying`), has not been measured, or is due to
+ * be measured again. */
 static bool
 can_generate(render_context_t* c, const render_view_t* view) {
     const raster_t* r = &c->raster;
@@ -340,26 +332,32 @@ can_generate(render_context_t* c, const render_view_t* view) {
 static void
 generate(render_context_t* c, const render_view_t* view) {
     const int64_t began_us = timing_now_us();
+    FRAME_COST_BEGIN(warped_from);
     framegen_warp(&c->raster, &c->kept_view, view, &c->framegen);
+    FRAME_COST_END(warped_from, FRAMEGEN_STAGE_WARP_NAME);
+    FRAME_COST_BEGIN(filled_from);
     (void)framegen_fill(&c->raster, &c->framegen);
+    FRAME_COST_END(filled_from, FRAMEGEN_STAGE_FILL_NAME);
     c->frame.draw_us = (int32_t)(timing_now_us() - began_us);
     c->frame.generated = true;
     c->kept = false; /* FRAMEGEN_SHOWN_PER_DRAWN: the next frame is drawn */
     c->drawn_in_row = 0;
 }
 
-/* No row changed, but picks are owed (render_partial_picks_owed()): a
- * census makes them, and true when one changed a cut or the depth scale,
+/* No row changed, but picks are owed (render_partial_picks_owed(), or a
+ * steer that moved its tolerance last round and has yet to see it drawn):
+ * a census makes them, and true when one changed a cut or the depth scale,
  * the census list then drawn over every row. */
 static bool
 census_changed(render_context_t* c, const render_view_t* view) {
     raster_t* r = &c->raster;
-    if (!render_partial_picks_owed(&c->partial, raster_settings(r).lod.pick_every)) {
+    const bool steering = raster_triangle_budget(r) > 0 && !c->steer.settled;
+    if (!steering && !render_partial_picks_owed(&c->partial, raster_pick_every(r))) {
         return false;
     }
     const float kept_near = raster_depth_near(r);
     c->frame.stats = raster_census(r, view);
-    if (!c->frame.stats.levels_changed && raster_depth_near(r) == kept_near) {
+    if (!raster_levels_changed(r) && raster_depth_near(r) == kept_near) {
         r->pick_round++; /* the census took this frame's share */
         return false;
     }
@@ -390,16 +388,9 @@ draw_partial(render_context_t* c, const render_view_t* view) {
     return true;
 }
 
-bool
-render_context_draw(render_context_t* c, const r3d_instance_t* instances, int count, const render_view_t* view,
-                    uint16_t clear) {
-#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-    c->observed = false;
-#endif
-    if (can_generate(c, view)) {
-        generate(c, view);
-        return true;
-    }
+/* The frame's bookkeeping as a draw begins: nothing generated, kept or unchanged yet. */
+static __attribute__((noinline)) void
+begin_draw(render_context_t* c) {
     c->frame.generated = false;
     c->frame.unchanged = false;
     c->kept = false;
@@ -407,9 +398,15 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
         c->drawn_in_row++;
     }
     c->frame.predicted_us = 0;
+}
+
+/* Aims the raster at this frame's instances, size and destination. */
+static __attribute__((noinline)) void
+aim_raster(render_context_t* c, const r3d_instance_t* instances, int count, const render_view_t* view, uint16_t clear) {
     const int step = current_step(c);
     raster_t* r = &c->raster;
     r->split = &c->split;
+    r->steer = &c->steer;
     r->picks_levels = true;
     r->settings = &c->settings;
     r->instances = instances;
@@ -422,43 +419,89 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     r->upscaled = true; /* render_context_compose() names the picture */
     r->destination_width = view->viewport.width;
     r->destination_height = view->viewport.height;
+}
+
+/* Off: the plain draw, nothing timed or chosen, unless frame generation needs the drawn cost.
+ * False when the partial redraw found nothing to draw. */
+static bool
+draw_fixed(render_context_t* c, const render_view_t* view) {
+    raster_t* r = &c->raster;
+    const bool partial = raster_partial_redraw(r);
+    if (partial && !draw_partial(c, view)) {
+        return false;
+    }
+    if (!partial) {
+        c->frame.stats = raster_draw(r, view);
+    }
+    return true;
+}
+
+/* The draw the resolution policy times, choosing the size first when it predicts. */
+static void
+draw_timed(render_context_t* c, const render_view_t* view) {
+    raster_t* r = &c->raster;
+    render_partial_forget(&c->partial);
+    const int64_t began_us = timing_now_us();
+    if (c->policy == RENDER_PREDICTED) {
+        /* Culled once: the census prices the frame and the draw reuses its list. */
+        c->frame.stats = raster_census(r, view);
+        const int32_t elapsed_us = c->chose_at_us == 0 ? 0 : (int32_t)(began_us - c->chose_at_us);
+        c->chose_at_us = began_us;
+        const int chosen = resolution_predict_choose(&c->predict, &c->ladder, c->frame.stats.triangles, elapsed_us);
+        c->frame.predicted_us = (int32_t)c->predict.chosen_us;
+        r->width = c->ladder.steps[chosen].width;
+        r->height = raster_present_size(c->ladder.steps[chosen], r->present).height;
+        c->frame.width = r->width;
+        c->frame.height = r->height;
+        raster_draw_culled(r, view);
+    } else {
+        c->frame.stats = raster_draw(r, view);
+    }
+    c->frame.draw_us = (int32_t)(timing_now_us() - began_us);
+}
+
+/* Records the drawn frame so the next one can reuse it. Not inlined: a leaf
+ * off the draw's deepest chain, keeping its frame out of the draw's. */
+static __attribute__((noinline)) void
+keep_frame(render_context_t* c, const render_view_t* view) {
+    c->kept = true;
+    c->kept_view = *view;
+    render_partial_kept(&c->partial, &c->raster, view);
+}
+
+bool
+render_context_draw(render_context_t* c, const r3d_instance_t* instances, int count, const render_view_t* view,
+                    uint16_t clear) {
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+    c->observed = false;
+    c->frame_view = *view;
+#endif
+    if (!c->batches_set) {
+        c->raster.batches = NULL; /* none set for this draw */
+        c->raster.batch_count = 0;
+    }
+    c->batches_set = false;
+    if (can_generate(c, view)) {
+        generate(c, view);
+        return true;
+    }
+    begin_draw(c);
+    aim_raster(c, instances, count, view, clear);
     fit_scratch(c);
     if (c->scratch == NULL) {
         return false;
     }
+    raster_t* r = &c->raster;
     c->frame.width = r->width;
     c->frame.height = r->height;
     r->first_row = 0;
     r->end_row = 0;
     if (c->policy == RENDER_FIXED && !c->generating) {
-        /* Off: the plain draw, nothing timed or chosen, unless frame generation needs the drawn cost. */
-        const bool partial = raster_settings(r).partial_redraw;
-        if (partial && !draw_partial(c, view)) {
+        if (!draw_fixed(c, view)) {
             return true;
         }
-        if (!partial) {
-            c->frame.stats = raster_draw(r, view);
-        }
     } else {
-        render_partial_forget(&c->partial);
-        const int64_t began_us = timing_now_us();
-        if (c->policy == RENDER_PREDICTED) {
-            /* Culled once: the census prices the frame and the draw reuses its list. */
-            c->frame.stats = raster_census(r, view);
-            const int32_t elapsed_us = c->chose_at_us == 0 ? 0 : (int32_t)(began_us - c->chose_at_us);
-            c->chose_at_us = began_us;
-            const int chosen =
-                resolution_predict_choose(&c->predict, policy_config(c), c->frame.stats.triangles, elapsed_us);
-            c->frame.predicted_us = (int32_t)c->predict.chosen_us;
-            r->width = c->ladder.steps[chosen].width;
-            r->height = raster_present_size(c->ladder.steps[chosen], r->present).height;
-            c->frame.width = r->width;
-            c->frame.height = r->height;
-            raster_draw_culled(r, view);
-        } else {
-            c->frame.stats = raster_draw(r, view);
-        }
-        c->frame.draw_us = (int32_t)(timing_now_us() - began_us);
+        draw_timed(c, view);
     }
     r->pick_round++;
     c->frame.step = current_step(c);
@@ -468,9 +511,7 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
         raster_show(r);
     }
 #endif
-    c->kept = true;
-    c->kept_view = *view;
-    render_partial_kept(&c->partial, r, view);
+    keep_frame(c, view);
     return true;
 }
 
@@ -546,15 +587,15 @@ render_context_compose(render_context_t* c, uint16_t* destination, uint16_t* hal
     raster_upscale_picture(&c->raster, picture, destination, seams, size.width, size.height);
     c->frame.upscale_us = (int32_t)(timing_now_us() - began_us);
     if (c->frame.generated) {
-        /* Not priced itself: its cost sets what the next drawn frame may spend. */
+        /* Not priced: its cost only decides whether generation pays. */
         c->generated_us = c->frame.draw_us + c->frame.upscale_us;
         return expanded;
     }
     const int32_t cost_us = c->frame.draw_us + c->frame.upscale_us;
     if (c->policy == RENDER_STEPPED) {
-        (void)resolution_control_update(&c->control, policy_config(c), cost_us);
+        (void)resolution_control_update(&c->control, &c->ladder, cost_us);
     } else if (c->policy == RENDER_PREDICTED) {
-        resolution_predict_measured(&c->predict, policy_config(c), c->frame.stats.triangles, cost_us);
+        resolution_predict_measured(&c->predict, &c->ladder, c->frame.stats.triangles, cost_us);
     }
     c->drawn_us = cost_us; /* after pricing: this frame was drawn as the last one decided */
     return expanded;
@@ -563,6 +604,16 @@ render_context_compose(render_context_t* c, uint16_t* destination, uint16_t* hal
 render_context_frame_t
 render_context_frame(const render_context_t* c) {
     return c->frame;
+}
+
+int
+render_context_rows_first(const render_context_t* c) {
+    return c->frame.rows_first;
+}
+
+int
+render_context_rows_end(const render_context_t* c) {
+    return c->frame.rows_end;
 }
 
 bool
@@ -609,12 +660,12 @@ render_context_observer_pose(const render_context_t* c, transformf_t* out) {
     return c->observed;
 }
 
-/* The context's bytes a checkpoint holds: all but the observer, which ends it. */
+/* The context's bytes a checkpoint holds: all but the observer and the
+ * second view, which end it. */
 #define CARRIED_BYTES offsetof(render_context_t, observing)
-_Static_assert(offsetof(render_context_t, observer) + sizeof(((render_context_t*)0)->observer)
-                       + _Alignof(render_context_t)
+_Static_assert(offsetof(render_context_t, second) + sizeof(((render_context_t*)0)->second) + _Alignof(render_context_t)
                    > sizeof(render_context_t),
-               "the observer ends render_context_t: a checkpoint holds the bytes before it");
+               "the second view ends render_context_t: a checkpoint holds the bytes before the observer");
 
 void
 render_context_checkpoint_capture(checkpoint_t* saved, render_context_t* context) {
