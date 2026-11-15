@@ -917,7 +917,7 @@ class PathLightForTests(unittest.TestCase):
         self.assertEqual(built.call_count, 1)
 
     def test_a_scene_is_kept_per_variant_and_the_default_is_the_bake_variant(self):
-        other_variant = "scalar_rgb"
+        other_variant = "llvm_ad_rgb" if ray_query.VARIANT == "scalar_rgb" else "scalar_rgb"
         indirect = SimpleNamespace(bounces=1, rays=8)
         scene = SimpleNamespace(lights=[], indirect=SimpleNamespace(albedo_boost=1.0, intensity=1.0))
         with mock.patch.object(mesh_source, "PathLight", side_effect=lambda *args: object()) as built:
