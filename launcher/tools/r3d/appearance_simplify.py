@@ -37,9 +37,9 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from r3d import log  # noqa: E402
 from r3d.geometry import closest_point_on_triangles, triangle_areas  # noqa: E402
-from r3d.fit.copies import check_hidden_copies, hidden_copy_pixels, joined, placed_copies  # noqa: E402
+from r3d.fit.copies import carved_triangles, check_hidden_copies, hidden_copy_pixels, joined, placed_copies  # noqa: E402
 from r3d.fit import gbuffer  # noqa: E402
-from r3d.import_settings import load_scene, match_meshes  # noqa: E402
+from r3d.import_settings import load_scene  # noqa: E402
 from r3d.lit_mesh import finest_triangles, read_lit_mesh  # noqa: E402
 from r3d.cost_model import load as load_cost  # noqa: E402
 from r3d.poses import camera_basis, read_poses  # noqa: E402
@@ -1073,10 +1073,8 @@ def main(argv=None):
             source, job = source_for(scene, args.object, lit=False)
         carved = None
         if copies is not None:
-            carved = np.zeros(len(source.object_names), dtype=bool)
-            carved[list(match_meshes(source.tri_o, source.tri_m, source.object_names, source.names,
-                                     job.settings.meshes))] = True
-            carved = carved[source.tri_o]
+            carved = carved_triangles(source, job.settings)
+            log(f"carved source triangles: {int(carved.sum())} of {len(carved)}")
         fit_start = fitted
         cost = None if args.cost_model is None else load_cost(args.cost_model)[0]
         points, rgb, history = optimise(fitted, views, size, args.steps, args.batch, args.lr_position, args.lr_colour,

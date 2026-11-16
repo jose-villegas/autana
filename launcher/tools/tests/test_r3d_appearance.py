@@ -227,6 +227,21 @@ class SeamHoldTests(unittest.TestCase):
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
+@unittest.skipIf(np is None, "the r3d environment is not installed")
+class CarvedTriangleTests(unittest.TestCase):
+    def test_the_fit_flags_the_rule_objects_and_every_repeat_the_bake_carves(self):
+        from r3d.fit.copies import carved_triangles
+
+        corner = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]], dtype=float)
+        # a, b, c: one triangle placed three times; d: a shape of its own; r: a scene rule's object.
+        p = np.concatenate([corner + [10 * k, 0, 0] for k in range(3)] + [corner * [3, 1, 1] + [0, 10, 0],
+                                                                           corner * [1, 5, 1] + [0, 20, 0]])
+        source = SimpleNamespace(p=p, tri_v=np.arange(15).reshape(5, 3), tri_m=np.zeros(5, dtype=int),
+                                 tri_o=np.arange(5), object_names=['a', 'b', 'c', 'd', 'r'], names=['stone'], textures=[])
+        settings = SimpleNamespace(meshes=({'match': {'object': 'r'}, 'triangles': 1},), position_scale=4)
+        np.testing.assert_array_equal(carved_triangles(source, settings), [True, True, True, False, True])
+
+
 class StretchTests(unittest.TestCase):
     def test_small_part_stretch_is_reported_separately(self):
         from r3d.appearance_simplify import STRETCH_RATIO, stretch_report

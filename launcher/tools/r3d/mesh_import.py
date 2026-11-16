@@ -135,18 +135,25 @@ def thin_meshes(src, selected, thin, seed):
     return keep
 
 
+def carved_repeats(src, tri_v, tri_m, selected, settings):
+    """(selected, contacts, tri_o, object_names): the rules' objects in `selected` plus every repeat of `src`'s
+    objects and of their repeated parts grown into units (objects/units.py), numbered as objects after the source's
+    in the returned tri_o and object_names. What a carved bake carves, and so what its fit draws as copies."""
+    position_scale = POSITION_SCALE if settings.position_scale is None else settings.position_scale
+    masked = np.flatnonzero(alpha_tested(src.textures))
+    found, _ = repeats(src.p, tri_v, tri_m, src.tri_o, src.object_names, selected, position_scale, masked)
+    grown = repeated_units(src.p, tri_v, tri_m, src.tri_o, src.object_names, {*selected, *found}, masked)
+    units, edges = repeats(src.p, tri_v, tri_m, grown.tri_o, grown.object_names, selected | found, position_scale,
+                           masked)
+    return selected | found | units, edges, grown.tri_o, grown.object_names
+
+
 def carve_selection(src, tri_v, tri_m, selected, settings, job, scene):
     """The rules' objects plus every repeat, each carried by one rule per shape whose `triangles` is pinned or
     derived (objects/carve.py), and the derived shapes for the report. A derived shape's ladder keeps the contact
     border its seam locks. Repeated parts of the other objects are grown into units (objects/units.py), which
     become objects of `src` and repeat like any other."""
-    position_scale = POSITION_SCALE if settings.position_scale is None else settings.position_scale
-    masked = np.flatnonzero(alpha_tested(src.textures))
-    found, _ = repeats(src.p, tri_v, tri_m, src.tri_o, src.object_names, selected, position_scale, masked)
-    grown = repeated_units(src.p, tri_v, tri_m, src.tri_o, src.object_names, {*selected, *found}, masked)
-    src.tri_o, src.object_names = grown.tri_o, grown.object_names
-    units, edges = repeats(src.p, tri_v, tri_m, src.tri_o, src.object_names, selected | found, position_scale, masked)
-    selected = selected | found | units
+    selected, edges, src.tri_o, src.object_names = carved_repeats(src, tri_v, tri_m, selected, settings)
     if not any("triangles" not in rule for rule in selected.values()):
         return selected, None
     eyes, focal, near, sight = views(scene, job.renderer)

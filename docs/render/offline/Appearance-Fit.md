@@ -188,7 +188,9 @@ anchors another hold.
 
 A carved bake's copies are frozen in the fit. A rest point within the same
 margin of a copy's triangle stays where it started, so the rest's contact
-border with a copy stays as closed as the start's.
+border with a copy stays as closed as the start's. The fit flags the source
+triangles drawn as copies by rerunning the bake's own carve (rules, repeats
+and units), so the rest is kept from covering every copy, not only rule ones.
 
 ### Normals
 
