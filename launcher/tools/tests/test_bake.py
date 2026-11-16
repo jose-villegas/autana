@@ -758,7 +758,7 @@ class FittedBakeTests(FittedBakeCase):
         source.mkdir()
         expected = write_reference_tree(source)
         reference = self.root / self.reference.output
-        reference.write_bytes(reference_set.pack_references(source, reference_set.fit_sets(True, False, False)))
+        reference.write_bytes(reference_set.pack_references(source, reference_set.fit_sets(True, False)))
         start = self.root / self.start.output
         start.write_bytes(b"locked start bundle")
         lock = {item.key: produce.record(item, path, self.cache)
@@ -1872,7 +1872,7 @@ class ProduceTests(unittest.TestCase):
         from r3d.reference_set import fit_sets
 
         # A camera path, probes and a shaped fit: every set a reference bake can hold.
-        self.inputs = types.SimpleNamespace(sets=lambda: fit_sets(True, True, True))
+        self.inputs = types.SimpleNamespace(sets=lambda: fit_sets(True, True))
 
         def render_sets(inputs, sets, samples=4):
             for poses_path, out in sets:

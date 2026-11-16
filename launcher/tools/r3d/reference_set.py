@@ -21,20 +21,13 @@ PROBE_SEED = 1
 PACKED_SUFFIXES = (".png", ".normal.npy")
 
 
-def fit_sets(path, probed, shaped):
-    """The sets of a camera with a `path` and an import with geometry.probes (`probed`), one that shapes its fit
-    (`shaped`: probes or geometry.budget): `training` pairs, `coverage` poses, `held_out` pairs, and `scored`,
-    the held-out pairs the fit reads to count holes, none unless shaped. The prune keeps what the path shows
-    before what only a probe does, so the path's sets come first."""
+def fit_sets(path, probed):
+    """Training, coverage and held-out sets, with held-out references for probe fits' closure gate.
+    Path coverage ranks before probe coverage."""
     held_out = ((HELD_OUT,) if path else ()) + ((PROBE_HELD_OUT,) if probed else ())
     return SimpleNamespace(training=(TRAINING if path else ()) + ((PROBE_TRAINING,) if probed else ()),
                            coverage=((COVERAGE,) if path else ()) + ((PROBE_TRAINING[0],) if probed else ()),
-                           held_out=held_out, scored=held_out if shaped else ())
-
-
-def shapes_fit(fit):
-    """Whether an import's `fit` (geometry.probes, geometry.budget) shapes its fit."""
-    return fit.probes is not None or fit.budget is not None
+                           held_out=held_out, scored=held_out if probed else ())
 
 
 def poses_text(width, height, lens, near, poses):
@@ -74,7 +67,7 @@ def canonical(value):
 class ReferenceInputs:
     """Everything a fit's reference set reads, and so everything its bake key counts (bake/bake.py): the
     import, the scene's bake light, tone map and camera, the size and spacing of the poses, the import's
-    probes (None without geometry.probes) and whether it shapes the fit. Nothing of
+    probes (None without geometry.probes). Nothing of
     the start or its renderer, so fits that differ only there share one set. The set is rendered from
     these fields alone (`job()`, `scene()`): one the render reads and this lacks fails there."""
     settings: SimpleNamespace     # the import
@@ -86,10 +79,9 @@ class ReferenceInputs:
     size: tuple                   # the fit recipe's pose size
     poses: dict                   # the fit recipe's POSE_SPACING fields
     probes: SimpleNamespace = None  # the import's geometry.probes
-    shaped: bool = False          # the import shapes the fit (shapes_fit): its pack holds the scored references
 
     def sets(self):
-        return fit_sets(self.camera.path is not None, self.probes is not None, self.shaped)
+        return fit_sets(self.camera.path is not None, self.probes is not None)
 
     def job(self):
         return SimpleNamespace(settings=self.settings, bake=self.bake)
@@ -106,7 +98,7 @@ def reference_inputs(job, scene):
     return ReferenceInputs(settings=job.settings, bake=job.bake, lights=scene.lights, indirect=scene.indirect,
                            tonemap_white=scene.tonemap_white, camera=scene.camera.component, size=size,
                            poses={name: getattr(renderer.fit, name) for name in POSE_SPACING},
-                           probes=job.settings.fit.probes, shaped=shapes_fit(job.settings.fit))
+                           probes=job.settings.fit.probes)
 
 
 def prepare_references(inputs, work):

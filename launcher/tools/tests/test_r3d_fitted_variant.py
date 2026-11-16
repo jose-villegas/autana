@@ -32,8 +32,8 @@ try:
 except ImportError:
     Image = render_compare = None
 
-# An import that sets neither geometry.probes nor geometry.budget.
-UNSHAPED = SimpleNamespace(probes=None, budget=None)
+# An import without geometry.probes.
+UNSHAPED = SimpleNamespace(probes=None)
 
 
 @unittest.skipIf(mesh_import is None, "needs the r3d environment")

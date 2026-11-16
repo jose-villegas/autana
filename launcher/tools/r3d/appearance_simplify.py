@@ -59,8 +59,6 @@ SEAM_MARGIN = 0.25
 # CIE76 distance from the clear colour past which a reference pixel is surface, so a fit showing nothing there
 # shows a hole: well past the eye's just-noticeable difference, so dark surface near a dark clear is not counted.
 HOLE_DE = 10.0
-# The fit's record of the budgets it tried and their held-out holes, beside stretch.json.
-HOLES = "holes.json"
 CUBLAS_WORKSPACE_ENV = "CUBLAS_WORKSPACE_CONFIG"
 CUBLAS_WORKSPACE = ":4096:8"
 RASTER_EPSILON = 1.0 / 16.0
@@ -683,32 +681,18 @@ def hole_pixels(mesh, views, size, clear, device="cuda"):
     return holes
 
 
-def settled(holes, share):
-    """The index of the budget the fit settles on, `holes` per budget in rising order: the first whose holes fall
-    by less than `share` of the holes before it to the next budget's, or that has none; the last otherwise."""
-    for index, count in enumerate(holes):
-        if count == 0 or index + 1 == len(holes) or count - holes[index + 1] < share * count:
-            return index
-    raise ValueError("no budgets to settle on")
+# Over held-out views, a fit may lose at most CLOSURE_GROWTH of their pixels to holes beyond its start.
+# Probe fits (48 held-out faces, scale 2, 7.08M pixels): fitting a start simplified to the budget loses
+# 0.002 points fewer than the start; the pixel-ranked prune loses 0.51 more.
+CLOSURE_GROWTH = 0.0005
 
 
-def settle(fitted, copies, shown, budget, steps, held_out, clear):
-    """(pruned mesh, kept indices, hole record): `fitted` pruned to `budget`, or with `steps` (STEP, SHARE) to the
-    budget `settled` picks from STEP, 2 STEP, ... up to `budget`, by the hole pixels over the `held_out` (views,
-    size) sets. The record holds each budget tried and its holes; it is empty without held-out views."""
-    budgets = [budget] if steps is None else [*range(int(steps[0]), budget, int(steps[0])), budget]
-    tried, holes = [], []
-    for candidate in budgets:
-        tried.append(prune(fitted, shown, candidate))
-        if not held_out:
-            break
-        holes.append(sum(hole_pixels(joined(tried[-1][0], copies), views, size, clear) for views, size in held_out))
-        log(f"budget {candidate}: {len(tried[-1][0].tris)} triangles, {holes[-1]} held-out hole pixels")
-        if steps is None or holes[-1] == 0 or settled(holes, steps[1]) < len(holes) - 1:
-            break
-    chosen = settled(holes, steps[1]) if steps is not None else len(tried) - 1
-    record = {"budgets": budgets[:len(holes)], "holes": holes, "budget": budgets[chosen]} if holes else {}
-    return (*tried[chosen], record)
+def check_closure(start_holes, fitted_holes, pixels):
+    """Check held-out hole growth against the start and return the log line."""
+    line = f"hole pixels: start {start_holes / pixels:.2%}; fitted {fitted_holes / pixels:.2%} over {pixels} pixels"
+    if (fitted_holes - start_holes) / pixels > CLOSURE_GROWTH:
+        raise ValueError(f"closure: {line} (growth allowed {CLOSURE_GROWTH:.2%})")
+    return line
 
 
 def triangle_error(mesh, views, size, clear, device="cuda"):
@@ -971,10 +955,7 @@ def main(argv=None):
     parser.add_argument("--coverage-poses", action="append",
                         help="a poses file to count shown pixels over, the training poses otherwise; repeated, ranked: "
                              "the prune keeps what an earlier file shows before what only a later one does")
-    parser.add_argument("--settle", nargs=2, type=float, metavar=("STEP", "SHARE"),
-                        help="with --budget as the most, prune to STEP, 2 STEP, ... and keep the first budget whose "
-                             "held-out holes fall by less than SHARE to the next")
-    parser.add_argument("--held-out-poses", action="append", default=[], help="poses whose holes settle the budget")
+    parser.add_argument("--held-out-poses", action="append", default=[], help="poses the closure gate checks")
     parser.add_argument("--held-out-reference", action="append", default=[], help="references for --held-out-poses")
     parser.add_argument("--cost-model", help="a cost_model.py weights file, such as board_cost_weights.txt")
     parser.add_argument("--cost-weight", type=float, default=0.0, help="dE76 per predicted millisecond")
@@ -997,9 +978,6 @@ def main(argv=None):
         parser.error("give one --reference per --poses")
     if len(args.held_out_poses) != len(args.held_out_reference):
         parser.error("give one --held-out-reference per --held-out-poses")
-    if args.settle and (args.budget is None or not args.held_out_poses or args.settle[0] < 1
-                        or not 0 <= args.settle[1] < 1):
-        parser.error("--settle needs --budget, --held-out-poses, a STEP of at least 1 and a SHARE in [0, 1)")
     if any(not np.isfinite(value) or value < 0 for value in (args.surface_weight, args.surface_margin, args.seam_margin)):
         parser.error("surface weight, surface margin and seam margin must be finite and nonnegative")
     if args.surface_weight and not args.score and not args.object:
@@ -1064,10 +1042,12 @@ def main(argv=None):
                     for poses in args.coverage_poses] if args.coverage_poses else [coverage(drawn, views, size)[:len(fitted.tris)]]
             shown = rows[0] if len(rows) == 1 else np.stack(rows)
             held_out = [load_views([pair], args.scale) for pair in zip(args.held_out_poses, args.held_out_reference)]
-            pruned, kept, holes = settle(fitted, copies, shown, args.budget, args.settle, held_out, clear)
-            if holes:
-                out.mkdir(parents=True, exist_ok=True)
-                (out / HOLES).write_text(json.dumps(holes) + "\n", encoding="utf-8")
+            pruned, kept = prune(fitted, shown, args.budget)
+            if held_out:
+                pixels = sum(len(views) * size[0] * size[1] for views, size in held_out)
+                start_holes, fitted_holes = (sum(hole_pixels(joined(mesh, copies), views, size, clear)
+                                                 for views, size in held_out) for mesh in (fit_start, pruned))
+                log(check_closure(start_holes, fitted_holes, pixels))
             log(f"pruned {len(fitted.tris) - len(pruned.tris)} triangles: "
                 f"{np.count_nonzero(~(np.atleast_2d(shown) > 0).any(axis=0))} never shown")
             fitted = pruned
