@@ -53,15 +53,18 @@ SECOND_CHARS = len("YYYY-MM-DDTHH:MM:SS")
 MONTH_CHARS = len("YYYY-MM")
 # Bumped whenever capture_rows() reads a capture differently, so cached lines are parsed again.
 PARSED_FORMAT = 2
-# Longer than any sync takes; a lock this old belongs to a sync that died.
-STORE_LOCK_SECONDS = 600
 LOCK_EVENT_VAR = "AUTANA_LOCK_EVENT"
-# Far longer than any store transfer takes (the branch is under a megabyte). Git has no deadline of its own, so a
-# call still running past it is hung - a stalled transfer, a credential prompt, a dead connection - and its whole
-# process tree is stopped and the call tried again, rather than holding a night's plan for hours. A store
-# checkout makes two such calls, so it gives up after 2 x NETWORK_ATTEMPTS x NETWORK_SECONDS at most.
-NETWORK_SECONDS = 300
+# Far longer than any store transfer takes (the branch is under a megabyte and fetches in seconds). Git has no
+# deadline of its own, so a call still running past it is hung - a stalled transfer, a credential prompt, a dead
+# connection - and its whole process tree is stopped and the call tried again, rather than holding a night's plan.
+NETWORK_SECONDS = 120
 NETWORK_ATTEMPTS = 3
+# Remote calls a sync makes while it holds the store: two pulls (ls-remote and fetch each) and the push.
+SYNC_NETWORK_CALLS = 5
+# Time a sync spends on its own files, beside the remote calls.
+SYNC_LOCAL_SECONDS = 600
+# Longer than any sync can take, every remote call on its last attempt; a lock this old belongs to a sync that died.
+STORE_LOCK_SECONDS = SYNC_NETWORK_CALLS * NETWORK_ATTEMPTS * NETWORK_SECONDS + SYNC_LOCAL_SECONDS
 RELEASED = "released"
 
 
@@ -200,6 +203,9 @@ def network_git(store, *words):
             stop_process_tree(process)
             output, errors = process.communicate()
             failure = f"no answer in {NETWORK_SECONDS} s"
+        except BaseException:
+            stop_process_tree(process)
+            raise
         finally:
             close_process_tree(process)
         if failure is None:
@@ -211,7 +217,9 @@ def network_git(store, *words):
 
 
 def remote_has_branch(store):
-    return bool(network_git(store, "ls-remote", "origin", "refs/heads/" + BRANCH))
+    # ls-remote matches a pattern's tail, so refs/heads/x/<BRANCH> answers too: only the exact ref counts.
+    ref = "refs/heads/" + BRANCH
+    return any(line.split("\t")[-1] == ref for line in network_git(store, "ls-remote", "origin", ref).splitlines())
 
 
 def open_store(store):

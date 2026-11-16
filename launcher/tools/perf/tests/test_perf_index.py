@@ -250,6 +250,9 @@ class RemoteCalls(unittest.TestCase):
         git(self.dir, "remote", "add", "origin", str(remote))
         self.assertFalse(perf_index.remote_has_branch(self.dir))
         git(self.dir, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "start")
+        # A branch whose name only ends in the store's is not the store's.
+        git(self.dir, "push", "-q", "origin", "HEAD:refs/heads/elsewhere/" + perf_index.BRANCH)
+        self.assertFalse(perf_index.remote_has_branch(self.dir))
         git(self.dir, "push", "-q", "origin", "HEAD:refs/heads/" + perf_index.BRANCH)
         self.assertTrue(perf_index.remote_has_branch(self.dir))
 
