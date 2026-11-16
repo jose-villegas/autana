@@ -163,8 +163,10 @@ typedef struct {
 
 #define TAG                "ui_ridge"
 /* A fresh box grows over a layer's next span while that paints at most this
- * many pixels the span does not need; past it a box of its own is cheaper. */
-#define RIDGE_BOX_WASTE_PX 32
+ * many pixels the span does not need; past it a box of its own is cheaper.
+ * Measured on the home screen: at half this the landscape ridge needs more
+ * boxes than UI_FRESH_MAX, and at twice it paints about twice the pixels. */
+#define RIDGE_BOX_WASTE_PX 64
 static const int16_t level_height = RIDGE_LEVEL_HEIGHT * RIDGE_SUBPIXEL_ONE;
 static const int16_t* curve;
 static ridge_t* ridge;
