@@ -9,8 +9,12 @@ not gate anything. Installs nothing.
 """
 
 import argparse
+import pathlib
 import sys
 import time
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+from r3d.mitsuba_reference import import_mitsuba  # noqa: E402
 
 # The render: Mitsuba's own Cornell box, small enough to finish quickly.
 SIZE = 128
@@ -21,8 +25,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--variant", default="cuda_ad_rgb")
     args = parser.parse_args(argv)
+    mi = import_mitsuba()
     import drjit as dr
-    import mitsuba as mi
 
     print(f"mitsuba {mi.__version__}, drjit {dr.__version__}, variants {', '.join(mi.variants())}")
     try:
