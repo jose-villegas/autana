@@ -694,6 +694,20 @@ set_alternating_normals(fixture_t* f) {
 }
 
 static void
+test_ambient_gradient_detection(void) {
+    sh1_irradiance_t ambient = {.constant = {1, 2, 3}};
+    TEST_ASSERT_FALSE(light_has_gradient(&ambient));
+    for (int row = 0; row < SH1_CHANNELS; row++) {
+        for (int column = 0; column < SH1_CHANNELS; column++) {
+            ambient.gradient.m[row][column] = -FLT_MIN;
+            TEST_ASSERT_TRUE(light_has_gradient(&ambient));
+            ambient.gradient.m[row][column] = -0.0F;
+            TEST_ASSERT_FALSE(light_has_gradient(&ambient));
+        }
+    }
+}
+
+static void
 test_constant_and_gradient_sh_through_each_kernel(void) {
     static const uint8_t colors[VERTICES][3] = {{255, 255, 255}, {255, 255, 255}, {255, 255, 255}, {255, 255, 255}};
     static const int16_t positions[VERTICES][3] = {{0}};
@@ -739,6 +753,7 @@ test_constant_and_gradient_sh_through_each_kernel(void) {
 
 void
 suite_skin_light(void) {
+    RUN_TEST(test_ambient_gradient_detection);
     RUN_TEST(test_flat_ambient_legacy_parity_and_table_drift);
     RUN_TEST(test_constant_and_gradient_sh_through_each_kernel);
     RUN_TEST(test_reference_decodes_packed_normal_length);

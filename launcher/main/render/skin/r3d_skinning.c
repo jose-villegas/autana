@@ -153,12 +153,15 @@ skin_lit_vertex(const uint8_t* record, int influences, const mat4f_t* palette, c
 }
 
 static inline __attribute__((always_inline)) void
-skin_light_vertex(vec3f_t normal, const r3d_skin_lights_t* lights, const uint8_t albedo[3], uint8_t out[3], int mode) {
-    if (mode == LIGHT_TABLE) {
-        light_shade(r3d_skin_light_table_sample(normal, lights), lights, albedo, out);
-    } else {
-        light_evaluate(mode == LIGHT_RENORMALISED ? light_renormalise(normal) : normal, lights, albedo, out);
+skin_light_vertex(vec3f_t normal, const r3d_skin_lights_t* lights, const sh1_irradiance_t* ambient,
+                  const uint8_t albedo[3], uint8_t out[3], int mode, bool gradient) {
+    if (mode == LIGHT_RENORMALISED) {
+        normal = light_renormalise(normal);
     }
+    const vec3f_t sum = gradient ? sh1_irradiance_eval(ambient, normal) : ambient->constant;
+    light_shade(mode == LIGHT_TABLE ? light_table_sample(normal, lights, sum)
+                                    : light_direct_irradiance(normal, lights, sum),
+                lights, albedo, out);
 }
 
 /* The bounds of a cluster's posed vertices, in a pass after the skinning loop so
@@ -190,7 +193,8 @@ skin_range(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4f_t* pa
 static inline __attribute__((always_inline)) void
 skin_lit_range(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4f_t* palette, int first, int count,
                r3d_skin_output_t* out, const mat3f_t* normals, const r3d_skin_lights_t* lights,
-               uint8_t (*light)[R3D_SKIN_LIGHT_CHANNELS], int influences, int mode) {
+               uint8_t (*light)[R3D_SKIN_LIGHT_CHANNELS], int influences, int mode, bool gradient) {
+    const sh1_irradiance_t ambient = lights->ambient;
     const uint8_t* vertices = skin->vertices;
     const size_t stride = skin->vertex_stride;
     const int16_t (*positions)[POSITION_AXES] = bind->positions;
@@ -203,7 +207,7 @@ skin_lit_range(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4f_t
             vec3f_t normal;
             skin_lit_vertex(vertices + ((size_t)v * stride), influences, palette, positions[v], posed[v], normals,
                             &normal);
-            skin_light_vertex(normal, lights, colors[v], light[v], mode);
+            skin_light_vertex(normal, lights, &ambient, colors[v], light[v], mode, gradient);
         }
         cluster->bounds = cluster_bounds(posed, cluster);
     }
@@ -232,6 +236,16 @@ r3d_skin_clusters(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4
     }
 }
 
+#define SKIN_LIGHT_RANGE(influences, mode)                                                                             \
+    do {                                                                                                               \
+        if (light_has_gradient(&prepared.ambient)) {                                                                   \
+            skin_lit_range(skin, bind, palette, first, count, out, normals, &prepared, light, influences, mode, true); \
+        } else {                                                                                                       \
+            skin_lit_range(skin, bind, palette, first, count, out, normals, &prepared, light, influences, mode,        \
+                           false);                                                                                     \
+        }                                                                                                              \
+    } while (0)
+
 #define SKIN_LIGHT_KERNEL(name, mode)                                                                                  \
     void name(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4f_t* palette, int first, int count,        \
               r3d_skin_output_t* out, const mat3f_t* normals, const r3d_skin_lights_t* lights, uint8_t (*light)[3]) {  \
@@ -240,11 +254,9 @@ r3d_skin_clusters(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4
         const r3d_skin_lights_t prepared = *lights;                                                                    \
         check_range(skin, bind, first, count);                                                                         \
         if (skin->influences == R3D_SKIN_INFLUENCES_MIN) {                                                             \
-            skin_lit_range(skin, bind, palette, first, count, out, normals, &prepared, light, R3D_SKIN_INFLUENCES_MIN, \
-                           mode);                                                                                      \
+            SKIN_LIGHT_RANGE(R3D_SKIN_INFLUENCES_MIN, mode);                                                           \
         } else {                                                                                                       \
-            skin_lit_range(skin, bind, palette, first, count, out, normals, &prepared, light, R3D_SKIN_INFLUENCES_MAX, \
-                           mode);                                                                                      \
+            SKIN_LIGHT_RANGE(R3D_SKIN_INFLUENCES_MAX, mode);                                                           \
         }                                                                                                              \
     }
 SKIN_LIGHT_KERNEL(r3d_skin_clusters_lit, LIGHT_DIRECT)
