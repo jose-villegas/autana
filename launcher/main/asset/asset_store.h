@@ -45,6 +45,7 @@ int asset_store_mounted(void);
 typedef struct {
     int slot; /* 0 .. ASSET_STORE_MOUNTS_MAX - 1, steady while the pack stays mounted */
     uint32_t entry;
+    uint32_t offset; /* bytes into the entry */
     const char* pack_name;
     uint32_t pack_crc;
 } asset_location_t;

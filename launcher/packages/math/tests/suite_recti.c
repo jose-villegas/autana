@@ -123,6 +123,12 @@ enum {
         }                                                                                                              \
     }                                                                                                                  \
                                                                                                                        \
+    static void test_##P##_area_is_width_times_height_and_zero_when_empty(void) {                                      \
+        A(C(RECT_WIDTH * RECT_HEIGHT), P##_area(P##_R));                                                               \
+        A(C(RECT_ZERO), P##_area(P##_NEGATIVE_W));                                                                     \
+        A(C(RECT_ZERO), P##_area(P##_NEGATIVE_H));                                                                     \
+    }                                                                                                                  \
+                                                                                                                       \
     static void test_##P##_union_of_two_empty_rects_is_empty_with_no_negative_size(void) {                             \
         const P##_t pairs[][2] = {{P##_NEGATIVE_W, P##_NEGATIVE_H}, {P##_NEGATIVE_H, P##_NEGATIVE_W}};                 \
         for (size_t i = 0; i < sizeof pairs / sizeof pairs[0]; i++) {                                                  \
@@ -148,6 +154,7 @@ suite_recti(void) {
     RUN_TEST(test_rectf_union_covers_both_and_skips_an_empty_one);
     RUN_TEST(test_rectf_negative_sizes_are_empty_and_hold_nothing);
     RUN_TEST(test_rectf_union_of_two_empty_rects_is_empty_with_no_negative_size);
+    RUN_TEST(test_rectf_area_is_width_times_height_and_zero_when_empty);
     RUN_TEST(test_recti_right_and_bottom_are_exclusive);
     RUN_TEST(test_recti_from_edges_round_trips_and_crossed_edges_are_empty);
     RUN_TEST(test_recti_contains_holds_the_left_and_top_edges_only);
@@ -156,6 +163,7 @@ suite_recti(void) {
     RUN_TEST(test_recti_union_covers_both_and_skips_an_empty_one);
     RUN_TEST(test_recti_negative_sizes_are_empty_and_hold_nothing);
     RUN_TEST(test_recti_union_of_two_empty_rects_is_empty_with_no_negative_size);
+    RUN_TEST(test_recti_area_is_width_times_height_and_zero_when_empty);
     RUN_TEST(test_rects_right_and_bottom_are_exclusive);
     RUN_TEST(test_rects_from_edges_round_trips_and_crossed_edges_are_empty);
     RUN_TEST(test_rects_contains_holds_the_left_and_top_edges_only);
@@ -164,6 +172,7 @@ suite_recti(void) {
     RUN_TEST(test_rects_union_covers_both_and_skips_an_empty_one);
     RUN_TEST(test_rects_negative_sizes_are_empty_and_hold_nothing);
     RUN_TEST(test_rects_union_of_two_empty_rects_is_empty_with_no_negative_size);
+    RUN_TEST(test_rects_area_is_width_times_height_and_zero_when_empty);
     RUN_TEST(test_rectx_right_and_bottom_are_exclusive);
     RUN_TEST(test_rectx_from_edges_round_trips_and_crossed_edges_are_empty);
     RUN_TEST(test_rectx_contains_holds_the_left_and_top_edges_only);
@@ -172,6 +181,7 @@ suite_recti(void) {
     RUN_TEST(test_rectx_union_covers_both_and_skips_an_empty_one);
     RUN_TEST(test_rectx_negative_sizes_are_empty_and_hold_nothing);
     RUN_TEST(test_rectx_union_of_two_empty_rects_is_empty_with_no_negative_size);
+    RUN_TEST(test_rectx_area_is_width_times_height_and_zero_when_empty);
 }
 
 SUITE_REGISTER(suite_recti);
