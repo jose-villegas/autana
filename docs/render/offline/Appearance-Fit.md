@@ -192,12 +192,6 @@ border with a copy stays as closed as the start's. The fit flags the source
 triangles drawn as copies by rerunning the bake's own carve (rules, repeats
 and units), so the rest is kept from covering every copy, not only rule ones.
 
-### Move cap
-
-No point ends a step further than `MOVE_CAP` × its capped local start edge
-scale from its start: one that does is projected back onto that sphere. Each
-point stays near the surface it came from, rather than drifting over others.
-
 ### Normals
 
 Colour alone permits geometry that matches one view but differs from another.
