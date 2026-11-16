@@ -181,11 +181,13 @@ class Sync(Isolated):
         git(seed, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "start")
         git(seed, "push", "-q", "origin", perf_index.BRANCH)
         self.records.capture(A308, "a1-diag", "2026-10-23T10:00:00", target(ROW, 100, 200))
-        with (patch.object(perf_index, "REPO", seed),
-              patch.object(perf_index, "network_git", wraps=perf_index.network_git) as remote_call):
-            self.sync(self.dir / "store", "hostA")
-        # The store's checkout, its pull and the push: no remote call is left without a deadline.
+        with patch.object(perf_index, "REPO", seed):
+            store = perf_index.open_store(self.dir / "store")
+            with patch.object(perf_index, "network_git", wraps=perf_index.network_git) as remote_call:
+                self.sync(store, "hostA")
+        # The pulls and the push: no remote call is left without a deadline, and the lock's age counts them all.
         self.assertEqual({call.args[1] for call in remote_call.call_args_list}, {"ls-remote", "fetch", "push"})
+        self.assertEqual(remote_call.call_count, perf_index.SYNC_NETWORK_CALLS)
         pushed = subprocess.run(["git", "-C", str(remote), "ls-tree", "-r", "--name-only", perf_index.BRANCH],
                                 capture_output=True, text=True, stdin=subprocess.DEVNULL).stdout
         self.assertIn("2026-10-23-hostA.jsonl", pushed)
