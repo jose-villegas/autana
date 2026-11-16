@@ -94,6 +94,9 @@ open_renderer_skin(scene_t* scene, scene_row_t entity, int renderer, const char*
     }
     next->light_mode = (skin_light_mode_t)next->skin.lighting_mode;
     next->bound = true;
+    if (status == ASSET_OK) {
+        (void)skin_contacts_find(&animator->skeleton, &next->skin, &next->contacts);
+    }
     return status;
 }
 

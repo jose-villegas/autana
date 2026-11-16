@@ -39,14 +39,15 @@ static int pool;
 static stress_buffers_t buffers[STRESS_MIX_LEVELS];
 static r3d_dynamic_mesh_t mesh[STRESS_MIX_LEVELS];
 static uint32_t wave_ms;
-#define STRESS_PROBE_SIDE         2
-#define STRESS_PROBE_COUNT        (STRESS_PROBE_SIDE * STRESS_PROBE_SIDE * STRESS_PROBE_SIDE)
-#define STRESS_PROBE_SCALE        (1.0F / 1024.0F)
-#define STRESS_PROBE_EXTENT       10.0F
-#define STRESS_PROBE_BASE         0.5F
-#define STRESS_PROBE_STEP         0.1F
-#define STRESS_PROBE_UP           0.25F
-#define STRESS_GROUND_WIDTH_SCALE 1.5F
+#define STRESS_PROBE_SIDE              2
+#define STRESS_PROBE_COUNT             (STRESS_PROBE_SIDE * STRESS_PROBE_SIDE * STRESS_PROBE_SIDE)
+#define STRESS_PROBE_SCALE             (1.0F / 1024.0F)
+#define STRESS_PROBE_EXTENT            10.0F
+#define STRESS_PROBE_BASE              0.5F
+#define STRESS_PROBE_STEP              0.1F
+#define STRESS_PROBE_UP                0.25F
+#define STRESS_CONTACT_LIGHT_ELEVATION (35.0F * MATH_PI / 180.0F)
+#define STRESS_GROUND_WIDTH_SCALE      1.5F
 static int16_t probe_coefficients[STRESS_PROBE_COUNT][SH_PROBES_COMPONENTS];
 static sh_probes_t probes;
 static int skinned_count;
@@ -109,7 +110,16 @@ load_skins(void) {
             }
         }
         scene_set_probes(slots[i], &probes);
-        scene_set_contact_blob(skin, transform_world(grounds[i]).position.y, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT);
+        scene_set_contact_blob(skin, transform_world(grounds[i]).position.y, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT,
+                               shown->surface == STRESS_SURFACE_SKINNED_FEET_BLOBS ? SCENE_CONTACT_FEET
+                                                                                   : SCENE_CONTACT_BODY);
+        if (shown->surface == STRESS_SURFACE_SKINNED_FEET_BLOBS) {
+            const entity_t light = entity_find(slots[i], name_hash(CAPYBARA_LIGHT));
+            transformf_t pose = transform_local(light);
+            transformf_set_rotation(
+                &pose, quatf_from_axis_angle(vec3f_unit_x(), MATH_PI / 2 - STRESS_CONTACT_LIGHT_ELEVATION));
+            transform_set_local(light, pose);
+        }
     }
     return true;
 }
@@ -206,9 +216,7 @@ build(void) {
 /* The asset's longest side becomes one unit, centred like a generated primitive. */
 static transformf_t
 static_shape(void) {
-    const entity_t subject = shown->surface == STRESS_SURFACE_SKINNED_SH_BLOBS
-                                 ? entity_find(slots[0], name_hash(CAPYBARA_SUBJECT))
-                                 : slots[0];
+    const entity_t subject = stress_skinned(shown) ? entity_find(slots[0], name_hash(CAPYBARA_SUBJECT)) : slots[0];
     const r3d_lit_mesh_t* asset = renderer_mesh(subject);
     const box3f_t box = r3d_lit_mesh_world_bounds(asset, NULL);
     const vec3f_t span = vec3f_sub(box.hi, box.lo);
@@ -235,15 +243,13 @@ place_copies(void) {
     transformf_t facing = transformf_identity();
     transformf_set_rotation(&facing, quatf_from_axis_angle(vec3f_unit_y(), atan2f(eye.x, eye.z)));
     const transformf_t shape =
-        (shown->surface == STRESS_SURFACE_STATIC || shown->surface == STRESS_SURFACE_SKINNED_SH_BLOBS)
-            ? static_shape()
-            : transformf_identity();
+        (shown->surface == STRESS_SURFACE_STATIC || stress_skinned(shown)) ? static_shape() : transformf_identity();
     for (int i = 0; i < pool; i++) {
         const bool used = i < shown->copies;
         entity_set_enabled(slots[i], used);
         if (used) {
             transformf_t place = stress_copy_place(shown, i, seen);
-            if (shown->surface == STRESS_SURFACE_STATIC || shown->surface == STRESS_SURFACE_SKINNED_SH_BLOBS) {
+            if (shown->surface == STRESS_SURFACE_STATIC || stress_skinned(shown)) {
                 place = transformf_compose(&place, &shape);
             }
             transform_set_local(slots[i], transformf_compose(&facing, &place));

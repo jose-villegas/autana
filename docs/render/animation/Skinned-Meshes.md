@@ -195,13 +195,24 @@ job's stack; scenes keep no per-entity SH cache.
 
 ### Contact discs
 
-Contact discs run after geometry and before composition, sharing its lens
-and depth scale. Bayer coverage falls with squared radius; covered pixels
-halve their RGB565 channels. The disc draws only the target's rows.
+`scene_set_contact_blob(renderer, ground_y, strength, shape)` draws planar
+contact shadows after geometry, before composition. Zero strength disables
+them. The light-directed projection follows Blinn's planar-shadow idea.<sup>[[128]](../../Citations.md#blinn-1988)</sup>
 
-`scene_set_contact_blob(renderer, ground_y, strength)` uses the renderer's
-world bounds for the disc's centre and radius. Partial redraw covers the
-previous and current renderer and disc bounds. Zero strength disables it.
+| Part | Rule |
+|---|---|
+| `SCENE_CONTACT_BODY` | One disc under the world box, radius the smaller horizontal half extent. |
+| `SCENE_CONTACT_FEET` | Lowest bind-space leaves within `CONTACT_JOINT_BAND` times rig height; at most `SKIN_CONTACTS_MAX`, lowest first. No contacts or skin falls back to BODY. |
+| Bind dimensions | Radius is half the nearest contact spacing in xz, or half rig height for one contact. Lift is a quarter rig height. Renderer world scale applies to all lengths. |
+| Light | Brightest directional light by luminance, else the sampled SH L1 dominant direction, else overhead. |
+| Warp | A sphere of radius r with centre h + r above ground projects away from the light: offset (h + r) tan, long radius r/e, short radius r. Elevation cosine e is clamped to `CONTACT_LIGHT_ELEVATION_MIN`. |
+| Lift | Height above the scaled bind height gives t = min(h/lift, 1). Radius grows by 1 + t; strength falls by (1 - t)². At t = 1 the contact disappears. |
+| Coverage | Maximum squared radial falloff across discs, one Bayer test and at most one RGB565 halve per pixel. Overlap adds no darkness. |
+| Redraw bounds | The world box grows by the maximum radius, plus (lift + radius) tan + radius/e along the axis away from light; vertical reach is ground ± radius. Both partial redraw and the post pass use this rule. |
+
+Partial redraw keeps both previous and current shadow bounds. A change in
+the selected light direction forgets the retained picture while shadows
+are enabled. Each target row visits only the union of its disc spans.
 
 ## 6. Current limits
 

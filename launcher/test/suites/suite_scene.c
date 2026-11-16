@@ -4885,6 +4885,153 @@ test_probes_sample_last_resolved_bounds_without_allocating(void) {
 }
 
 static void
+test_contact_light_choice_and_shadow_invalidation(void) {
+    fixture_with_skin(&SKIN_OPTIONS);
+    const entity_t root = load("test_skin");
+    const entity_t entity = entity_find(root, name_hash("red"));
+    scene_t* scene = columns(root);
+    vec3f_t light = scene_contact_light(scene, vec3f_zero());
+    TEST_ASSERT_EQUAL_FLOAT(1, light.y);
+    static const int16_t coefficients[1][SH_PROBES_COMPONENTS] = {{0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1}};
+    static const sh_probes_t probes = {.dims = {1, 1, 1}, .scale = 1, .coefficients = coefficients};
+    scene_set_probes(root, &probes);
+    light = scene_contact_light(scene, vec3f_zero());
+    TEST_ASSERT_FLOAT_WITHIN(0.001F, 1, light.x);
+    scene->world_lights.count = 2;
+    scene->world_lights.direction[0] = vec3f_unit_y();
+    scene->world_lights.direction[1] = vec3f_unit_z();
+    scene->world_lights.color[0] = (vec3f_t){1, 0, 0};
+    scene->world_lights.color[1] = (vec3f_t){0, 1, 0};
+    light = scene_contact_light(scene, vec3f_zero());
+    TEST_ASSERT_EQUAL_FLOAT(1, light.z);
+    (void)scene_bounds(root);
+    TEST_ASSERT_TRUE(light_set_intensity(entity, 1));
+    scene_lights_prepare(scene);
+    render_context_main()->partial.kept = true;
+    transformf_t pose = transform_local(entity);
+    transformf_set_rotation(&pose, quatf_from_axis_angle(vec3f_unit_x(), MATH_PI / 4));
+    transform_set_local(entity, pose);
+    scene_lights_prepare(scene);
+    TEST_ASSERT_TRUE(render_context_main()->partial.kept);
+    scene_set_contact_blob(entity, 0, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, SCENE_CONTACT_BODY);
+    render_context_main()->partial.kept = true;
+    scene_lights_prepare(scene);
+    TEST_ASSERT_TRUE(render_context_main()->partial.kept);
+    transformf_set_rotation(&pose, quatf_from_axis_angle(vec3f_unit_x(), MATH_PI / 3));
+    transform_set_local(entity, pose);
+    scene_lights_prepare(scene);
+    TEST_ASSERT_FALSE(render_context_main()->partial.kept);
+    render_context_main()->partial.kept = true;
+    TEST_ASSERT_TRUE(light_set_intensity(entity, 2));
+    scene_lights_prepare(scene);
+    TEST_ASSERT_TRUE(render_context_main()->partial.kept);
+    scene_set_contact_blob(entity, 0, 0, SCENE_CONTACT_BODY);
+    render_context_main()->partial.kept = true;
+    transformf_set_rotation(&pose, quatf_identity());
+    transform_set_local(entity, pose);
+    scene_lights_prepare(scene);
+    TEST_ASSERT_TRUE(render_context_main()->partial.kept);
+}
+
+static void
+test_contact_world_scale_clamp_and_fallback(void) {
+    fixture_with_skin(&SKIN_OPTIONS);
+    const entity_t root = load("test_skin");
+    const entity_t entity = entity_find(root, name_hash("red"));
+    scene_t* scene = columns(root);
+    scene_skins_settle(scene);
+    scene_skinned_renderer_t* skin = &scene->skinned_renderers[row_of(entity)];
+    scene_renderer_t* r = &scene->renderers[scene_renderer_index(scene, row_of(entity))];
+    skin->contacts = (skin_contacts_t){.joints = {0}, .rest_y = {0.5F}, .radius = 1, .lift = 2, .count = 1};
+    scene_set_contact_blob(entity, 0, 1, SCENE_CONTACT_FEET);
+    transformf_t pose = transform_local(entity);
+    transformf_set_scale(&pose, (vec3f_t){2, 2, 2});
+    transform_set_local(entity, pose);
+    r->world_bounds = (box3f_t){{-1, 0, -1}, {1, 2, 1}};
+    skin->model[0] = mat4f_identity();
+    skin->model[0].m[0][3] = 10;
+    skin->model[0].m[2][3] = -10;
+    skin->model[0].m[1][3] = skin->contacts.rest_y[0];
+    contact_disc_t discs[SKIN_CONTACTS_MAX];
+    TEST_ASSERT_EQUAL_INT(1, scene_contact_discs(scene, r, vec3f_unit_y(), discs));
+    TEST_ASSERT_EQUAL_FLOAT(1, discs[0].centre.x);
+    TEST_ASSERT_EQUAL_FLOAT(-1, discs[0].centre.z);
+    TEST_ASSERT_EQUAL_FLOAT(0.25F, discs[0].inverse_short2);
+    TEST_ASSERT_EQUAL_FLOAT(1, discs[0].strength);
+    skin->model[0].m[1][3] += skin->contacts.lift * 0.5F;
+    TEST_ASSERT_EQUAL_INT(1, scene_contact_discs(scene, r, vec3f_unit_y(), discs));
+    TEST_ASSERT_EQUAL_FLOAT(1.0F / 9, discs[0].inverse_short2);
+    TEST_ASSERT_EQUAL_FLOAT(0.25F, discs[0].strength);
+    skin->model[0].m[1][3] += skin->contacts.lift * 0.5F;
+    TEST_ASSERT_EQUAL_INT(0, scene_contact_discs(scene, r, vec3f_unit_y(), discs));
+    skin->contacts.count = 0;
+    TEST_ASSERT_EQUAL_INT(1, scene_contact_discs(scene, r, vec3f_unit_y(), discs));
+    TEST_ASSERT_EQUAL_FLOAT(1, discs[0].inverse_short2);
+    TEST_ASSERT_EQUAL_FLOAT(0, discs[0].centre.x);
+    skin->bound = false;
+    TEST_ASSERT_EQUAL_INT(1, scene_contact_discs(scene, r, vec3f_unit_y(), discs));
+    skin->bound = true;
+}
+
+static void
+test_contact_warp_and_bounds_sweep(void) {
+    fixture_with_skin(&SKIN_OPTIONS);
+    const entity_t root = load("test_skin");
+    const entity_t entity = entity_find(root, name_hash("red"));
+    scene_t* scene = columns(root);
+    const scene_row_t row = row_of(entity);
+    scene_skinned_renderer_t* skin = &scene->skinned_renderers[row];
+    scene_renderer_t* r = &scene->renderers[scene_renderer_index(scene, row)];
+    skin->contacts = (skin_contacts_t){.joints = {0}, .rest_y = {0}, .radius = 1, .lift = 2, .count = 1};
+    scene_set_contact_blob(entity, 0, 1, SCENE_CONTACT_FEET);
+    r->world_bounds = (box3f_t){{-1, 0, -1}, {1, 2, 1}};
+    scene_skins_settle(scene);
+    TEST_ASSERT_NOT_NULL(skin->model);
+    skin->model[0] = mat4f_identity();
+    contact_disc_t discs[SKIN_CONTACTS_MAX];
+    TEST_ASSERT_EQUAL_INT(1, scene_contact_discs(scene, r, vec3f_unit_y(), discs));
+    TEST_ASSERT_EQUAL_FLOAT(0, discs[0].centre.x);
+    TEST_ASSERT_EQUAL_FLOAT(0, discs[0].centre.z);
+    TEST_ASSERT_EQUAL_FLOAT(discs[0].inverse_short2, discs[0].inverse_long2);
+
+    enum { ELEVATIONS = 10, LIFTS = 10, DIRECTIONS = 8, SAMPLES = 32 };
+
+    for (int az = 0; az < DIRECTIONS; az++) {
+        for (int el = 0; el <= ELEVATIONS; el++) {
+            const float e = (float)el / ELEVATIONS;
+            const float angle = 2 * MATH_PI * az / DIRECTIONS;
+            const vec3f_t light = {sqrtf(1 - e * e) * cosf(angle), e, sqrtf(1 - e * e) * sinf(angle)};
+            const box3f_t bounds = contact_blob_bounds(r->world_bounds, 0, scene_contact_reach(scene, r), light);
+            for (int h = 0; h <= LIFTS; h++) {
+                const float t = h == LIFTS - 1 ? 0.999F : (float)h / LIFTS;
+                skin->model[0].m[1][3] = t * skin->contacts.lift;
+                const int count = scene_contact_discs(scene, r, light, discs);
+                TEST_ASSERT_EQUAL_INT(t >= 1 ? 0 : 1, count);
+                if (count == 0) {
+                    continue;
+                }
+                const contact_disc_t d = discs[0];
+                if (h == 0 && e < 1) {
+                    TEST_ASSERT_LESS_THAN_FLOAT(0, d.centre.x * light.x + d.centre.z * light.z);
+                    TEST_ASSERT_LESS_THAN_FLOAT(d.inverse_short2, d.inverse_long2);
+                    TEST_ASSERT_LESS_THAN_FLOAT(1, vec3f_dot(d.centre, d.axis) * vec3f_dot(d.centre, d.axis)
+                                                       * d.inverse_long2);
+                }
+                const vec3f_t across = vec3f_cross(vec3f_unit_y(), d.axis);
+                for (int sample = 0; sample < SAMPLES; sample++) {
+                    const float phase = 2 * MATH_PI * sample / SAMPLES;
+                    const vec3f_t p =
+                        vec3f_add(d.centre, vec3f_add(vec3f_scale(d.axis, cosf(phase) / sqrtf(d.inverse_long2)),
+                                                      vec3f_scale(across, sinf(phase) / sqrtf(d.inverse_short2))));
+                    TEST_ASSERT_TRUE(p.x >= bounds.lo.x && p.x <= bounds.hi.x);
+                    TEST_ASSERT_TRUE(p.z >= bounds.lo.z && p.z <= bounds.hi.z);
+                }
+            }
+        }
+    }
+}
+
+static void
 test_contact_footprint_and_partial_redraw(void) {
     enum { BODY_HALF_X = 4, BODY_HALF_Z = 1, GROUND_Y = -2 };
 
@@ -4896,7 +5043,7 @@ test_contact_footprint_and_partial_redraw(void) {
     node.bounds = (box3s_t){{-BODY_HALF_X, -1, -BODY_HALF_Z}, {BODY_HALF_X, 1, BODY_HALF_Z}};
     mesh.nodes = &node;
     TEST_ASSERT_TRUE(renderer_set_mesh(mover, &mesh));
-    scene_set_contact_blob(mover, GROUND_Y, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT);
+    scene_set_contact_blob(mover, GROUND_Y, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, SCENE_CONTACT_BODY);
     settle_the_picture();
     for (int step = 1; step <= MOVER_STEPS; step++) {
         put_at(mover, (float)step * 0.25F, (float)step * 0.5F);
@@ -4914,7 +5061,7 @@ test_forgetting_another_scene_keeps_the_contact_draw_hook(void) {
     fixture();
     const entity_t root = show("test_pair");
     const entity_t renderer = entity_find(root, name_hash("red"));
-    scene_set_contact_blob(renderer, 0, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT);
+    scene_set_contact_blob(renderer, 0, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, SCENE_CONTACT_BODY);
     frame(0);
     const struct raster_post* post = render_context_main()->raster.post;
     TEST_ASSERT_NOT_NULL(post);
@@ -7926,6 +8073,9 @@ run_scene_suite(void) {
     RUN_TEST(test_scene_light_rotation_shades_only_skin_and_matches_kernel);
     RUN_TEST(test_probes_sample_last_resolved_bounds_without_allocating);
     RUN_TEST(test_forgetting_another_scene_keeps_the_contact_draw_hook);
+    RUN_TEST(test_contact_light_choice_and_shadow_invalidation);
+    RUN_TEST(test_contact_world_scale_clamp_and_fallback);
+    RUN_TEST(test_contact_warp_and_bounds_sweep);
     RUN_TEST(test_contact_footprint_and_partial_redraw);
     RUN_TEST(test_authored_skin_modes_animation_and_ambient);
     RUN_TEST(test_authored_light_preserves_static_mesh_colors);

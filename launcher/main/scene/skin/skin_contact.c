@@ -1,0 +1,82 @@
+/* skin_contact: bind-space leaf contacts for ground shadows. */
+#include "scene/skin/skin_contact.h"
+
+#include <float.h>
+#include <math.h>
+#include "math/linear/mat4f.h"
+
+vec3f_t
+skin_contact_bind_position(const r3d_skin_t* skin, int joint) {
+    mat4f_t inverse = mat4f_identity();
+    for (int r = 0; r < 3; r++) {
+        for (int c = 0; c < 4; c++) {
+            inverse.m[r][c] = skin->inverse_binds[joint][r * 4 + c];
+        }
+    }
+    const mat4f_t bind = mat4f_invert_affine(inverse);
+    return mat4f_apply(&bind, vec3f_zero());
+}
+
+static bool
+leaf(const anim_skeleton_t* skeleton, int joint) {
+    for (int j = 0; j < skeleton->joint_count; j++) {
+        if (skeleton->joints[j].parent == joint) {
+            return false;
+        }
+    }
+    return true;
+}
+
+int
+skin_contacts_find(const anim_skeleton_t* skeleton, const r3d_skin_t* skin, skin_contacts_t* out) {
+    *out = (skin_contacts_t){0};
+    if (skeleton->joint_count != skin->joint_count || skin->joint_count == 0) {
+        return 0;
+    }
+    float low = FLT_MAX, high = -FLT_MAX, lowest_leaf = FLT_MAX;
+    for (int j = 0; j < skin->joint_count; j++) {
+        const vec3f_t p = skin_contact_bind_position(skin, j);
+        if (!isfinite(p.x) || !isfinite(p.y) || !isfinite(p.z)) {
+            return 0;
+        }
+        low = fminf(low, p.y);
+        high = fmaxf(high, p.y);
+        if (leaf(skeleton, j)) {
+            lowest_leaf = fminf(lowest_leaf, p.y);
+        }
+    }
+    const float height = high - low;
+    for (int j = 0; j < skin->joint_count; j++) {
+        const float y = skin_contact_bind_position(skin, j).y;
+        if (!leaf(skeleton, j) || y > lowest_leaf + CONTACT_JOINT_BAND * height) {
+            continue;
+        }
+        int at = out->count;
+        while (at > 0 && y < out->rest_y[at - 1]) {
+            if (at < SKIN_CONTACTS_MAX) {
+                out->rest_y[at] = out->rest_y[at - 1];
+                out->joints[at] = out->joints[at - 1];
+            }
+            at--;
+        }
+        if (at < SKIN_CONTACTS_MAX) {
+            out->rest_y[at] = y;
+            out->joints[at] = j;
+        }
+        if (out->count < SKIN_CONTACTS_MAX) {
+            out->count++;
+        }
+    }
+    float nearest = FLT_MAX;
+    for (int i = 0; i < out->count; i++) {
+        for (int j = i + 1; j < out->count; j++) {
+            vec3f_t d = vec3f_sub(skin_contact_bind_position(skin, out->joints[i]),
+                                  skin_contact_bind_position(skin, out->joints[j]));
+            d.y = 0;
+            nearest = fminf(nearest, vec3f_length(d));
+        }
+    }
+    out->radius = CONTACT_RADIUS_FRACTION * (out->count > 1 ? nearest : height);
+    out->lift = CONTACT_LIFT_FRACTION * height;
+    return out->count;
+}

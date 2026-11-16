@@ -17,6 +17,7 @@
 #include "hash/name_hash.h"
 #include "math/linear/mat3f.h"
 #include "render/batch/r3d_batch.h"
+#include "render/contact/contact_blob.h"
 #include "render/lod/r3d_lod.h"
 #include "render/probe/sh_probes.h"
 #include "render/r3d_instance.h"
@@ -26,6 +27,7 @@
 #include "scene/entity/entity.h"
 #include "scene/scene.h"
 #include "scene/skin/skin.h"
+#include "scene/skin/skin_contact.h"
 
 typedef struct scene scene_t;
 #include "scene/scene_conventions.h"
@@ -152,7 +154,8 @@ typedef struct {
     mat4f_t model;
     box3f_t world_bounds; /* the mesh's root box through `model`, kept with it */
     float contact_blob_ground_y, contact_blob_strength;
-    box3f_t drawn_bounds; /* world_bounds when last drawn (render/partial) */
+    scene_contact_shape_t contact_blob_shape;
+    box3f_t drawn_bounds; /* geometry and contact bounds when last drawn (render/partial) */
     scene_row_t entity;
     bool placed;        /* false while the transform is the identity: drawn as it is */
     bool changed;       /* its mesh or model changed since it was last drawn (render/partial) */
@@ -211,6 +214,7 @@ typedef struct {
 
 typedef struct {
     r3d_skin_t skin;
+    skin_contacts_t contacts;
     r3d_lit_mesh_t bind;
     r3d_skin_output_t output;
     mat4f_t* model;
@@ -432,3 +436,15 @@ void scene_skin_range(scene_t* scene, int first, int count);
 scene_failure_t scene_failure_make(scene_status_t status, asset_status_t asset, const char* what);
 /* Stores the failure in `why`, which may be NULL; true for SCENE_OK. */
 bool scene_report(scene_failure_t* why, scene_status_t status, asset_status_t asset, const char* what);
+
+#define CONTACT_LIGHT_ELEVATION_MIN 0.3F
+#define CONTACT_LIFT_SPREAD         1.0F
+
+typedef struct {
+    float radius, lift;
+} contact_reach_t;
+
+vec3f_t scene_contact_light(const scene_t* scene, vec3f_t world);
+contact_reach_t scene_contact_reach(const scene_t* scene, const scene_renderer_t* renderer);
+box3f_t contact_blob_bounds(box3f_t mover, float ground_y, contact_reach_t reach, vec3f_t light);
+int scene_contact_discs(const scene_t* scene, const scene_renderer_t* renderer, vec3f_t light, contact_disc_t* discs);

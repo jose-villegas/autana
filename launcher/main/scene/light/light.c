@@ -5,7 +5,19 @@
 #include <stdio.h>
 #include <string.h>
 #include "core/memory.h"
+#include "render/context/render_context.h"
 #include "scene/scene_internal.h"
+
+static int
+brightest_light(const r3d_skin_lights_t* lights) {
+    int brightest = 0;
+    for (int i = 1; i < lights->count; i++) {
+        if (sh1_rgb_luminance(lights->color[i]) > sh1_rgb_luminance(lights->color[brightest])) {
+            brightest = i;
+        }
+    }
+    return brightest;
+}
 
 r3d_skin_light_transfer_t*
 scene_light_transfer_take(const scene_t* scene) {
@@ -182,6 +194,25 @@ scene_lights_prepare(scene_t* scene) {
     } else {
         world.table_scale = scene->world_lights.table_scale;
     }
+    bool direction_changed = world.count != scene->world_lights.count;
+    for (int i = 0; i < world.count && !direction_changed; i++) {
+        const vec3f_t before = scene->world_lights.direction[i], after = world.direction[i];
+        direction_changed = before.x != after.x || before.y != after.y || before.z != after.z;
+    }
+    if (!direction_changed && world.count > 0) {
+        const vec3f_t before = scene->world_lights.direction[brightest_light(&scene->world_lights)];
+        const vec3f_t after = world.direction[brightest_light(&world)];
+        direction_changed = before.x != after.x || before.y != after.y || before.z != after.z;
+    }
+    if (direction_changed) {
+        for (int i = 0; i < scene->active_renderer_count; i++) {
+            const scene_renderer_t* r = &scene->renderers[scene->active_renderers[i]];
+            if (r->contact_blob_strength > 0 && r->mesh.node_count > 0) {
+                render_context_forget(render_context_main());
+                break;
+            }
+        }
+    }
     scene->world_lights = world;
 }
 
@@ -213,4 +244,19 @@ scene_set_probes(entity_t root, const sh_probes_t* probes) {
         }
     }
     scene->skins_pending = true;
+}
+
+vec3f_t
+scene_contact_light(const scene_t* scene, vec3f_t world) {
+    if (scene->world_lights.count > 0) {
+        return scene->world_lights.direction[brightest_light(&scene->world_lights)];
+    }
+    if (scene->probes != NULL) {
+        const sh1_rgb_t radiance = sh_probes_sample(scene->probes, world);
+        const vec3f_t direction = sh1_rgb_dominant_direction(&radiance);
+        if (vec3f_dot(direction, direction) > 0) {
+            return direction;
+        }
+    }
+    return vec3f_unit_y();
 }
