@@ -152,11 +152,9 @@ own to the next, or that has none.
 #### alpha_mask
 
 `geometry.alpha_mask` drops mostly transparent triangles from ordinary geometry.
-References keep the source triangles and test alpha at every hit, including
-shadow and bounce rays. Alpha below `keep_alpha` lets a ray through.
+References use [per-hit alpha testing](Bake-Method.md#fidelity-against-a-reference).
 
-The image compares triangle removal with it disabled. Card candidates also
-pass through the automatic selection below.
+The image compares triangle removal with it disabled.
 
 ![alpha_mask off against on](../images/import-alpha-mask.png)
 
@@ -177,13 +175,16 @@ The greedy plane score follows Décoret et al.<sup>[[126]](../../Citations.md#de
 projected sample area earns coverage; an area cost and a per-card floor stop
 selection when another plane would not pay for itself.
 
-Training probe faces weight samples by visible projected size. Probes use
-the camera region and near plane, or source bounds and a near plane derived
-from their diagonal. Rays pass through the source's cut texels.
+Training probe faces weight samples by visible projected size. The grid
+covers the scene camera's region, else the source bounds. Its default
+spacing is `PROBE_SPACING_NEAR_PLANES` near planes (`views/probes.py`).
 
-Seen weights average one; unseen samples weigh zero. `geometry.probes.spacing`
-sets probe spacing when present. Probe selection uses the shared seed in
-`reference_set.py` and does not read a camera path.
+The near plane comes from the scene camera, else `PROBE_NEAR_SHARE` of the
+source diagonal. `geometry.probes.spacing` overrides spacing. Selection
+uses the seed in `reference_set.py` and does not read a camera path.
+
+Seen weights average one; unseen samples weigh zero. Rays use
+[per-hit alpha testing](Bake-Method.md#fidelity-against-a-reference).
 
 | Key | Meaning | Default |
 |---|---|---|
@@ -192,13 +193,13 @@ sets probe spacing when present. Probe selection uses the shared seed in
 | `epsilon` | Slab half-depth in source units. | `CARD_EPSILON` in `cards/__init__.py` |
 | `area_cost` | Penalty per unit of card area. | `CARD_AREA_COST` in `cards/__init__.py` |
 
-A set shares one world texel size: its median parent long side divided by
-`CARD_MASK_TEXELS`. Splitting at `CARD_MAX_SIDE` and trimming preserve it.
-Only hits within ±`epsilon` of a plane set its texels.
-
-Corner albedos come from mask quadrants and receive the bake light. Trimmed
-masks pack into pages with a coarsest-mip texel of padding on every side.
-Mip coverage follows `R3D_TEXTURE_MASK1_MIP_KEPT`.
+| Sampling | Rule |
+|---|---|
+| Texel size | The median parent long side divided by `CARD_MASK_TEXELS`, shared by the set. Splitting at `CARD_MAX_SIDE` and trimming preserve it. |
+| Slab hits | Only hits within ±`epsilon` of the plane set texels. |
+| Corner albedo | Mask quadrants supply corner albedos, which receive bake light. |
+| Padding | Trimmed masks pack with one coarsest-mip texel of empty padding per side, on that mip's grid. |
+| Mip coverage | A parent texel is kept when at least `R3D_TEXTURE_MASK1_MIP_KEPT` of its four children are kept. |
 
 Cards keep their own `<shape_id>.uvs` and `<shape_id>.t<k>` bundle entries.
 Each cluster uses one page on chart zero; every triangle draws with that

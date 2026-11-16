@@ -8,6 +8,7 @@ from asset.asset_pack import NAME_BYTES, PackError, build_pack, parse_pack
 from build.name_hash import name_hash
 from r3d import lcol_asset, lod_asset, mesh_asset, morph_asset
 from r3d.lcol_asset import NAME_SUFFIX
+from r3d.texture import texture_asset, uv_transfer
 
 SUFFIX = ".bundle"
 MANIFEST = "copies"
@@ -26,16 +27,12 @@ HASH_HEX_DIGITS = 8
 
 def shape_id(mesh, rule, first):
     """A bounded shape id, stable under output ordering and copy count."""
-    from r3d.texture import uv_transfer
-
     key = name_hash(json.dumps([mesh, rule, first], sort_keys=True))
     suffix = f".{key:0{HASH_HEX_DIGITS}x}"
     longest = max(len(NAME_SUFFIX), len(uv_transfer.NAME_SUFFIX),
                   len(f"{uv_transfer.TEXTURE_SUFFIX}{uv_transfer.MATERIALS_MAX - 1}"))
     room = NAME_BYTES - 1 - len(suffix) - longest
     result = mesh.split(".", 1)[0][:max(room, 0)] + suffix
-    if len((result + NAME_SUFFIX).encode("ascii")) >= NAME_BYTES:
-        raise PackError(f"shape id {result!r} leaves no room for its colours")
     return result
 
 
@@ -124,8 +121,6 @@ def encode(entries, copies):
 
 
 def decode(data):
-    from r3d.texture import texture_asset, uv_transfer
-
     entries = parse_pack(data)
     if MANIFEST not in entries:
         raise PackError("mesh bundle has no manifest")
@@ -183,8 +178,6 @@ def rest_name(entries, copies):
 
 def rename_rest(entries, copies, name):
     """Retarget a replacement bundle's sole rest mesh and its siblings to a pack entry id."""
-    from r3d.texture import uv_transfer
-
     old = rest_name(entries, copies)
     if old == name:
         return entries

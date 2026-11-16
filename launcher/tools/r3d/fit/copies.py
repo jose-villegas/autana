@@ -12,7 +12,6 @@ import numpy as np
 
 from r3d import lcol_asset, mesh_bundle
 from r3d.texture import texture_asset, uv_transfer
-from asset.asset_pack import PackError
 from r3d.fit.gbuffer import IN_FRONT, distance, reference_buffers
 from r3d.lit_mesh import finest, read_bundle_mesh, rgb888
 
@@ -27,19 +26,28 @@ HIDDEN_WORST_GROWTH = 0.010
 def drawn_copies(entries, rows):
     """The copy rows the fit draws. A masked shape (cards) is left out: the fit's references hide the material it
     replaces (reference_render.lit_source), so the fit sees the surfaces it is later drawn over."""
+    masked = masked_copies(entries, rows)
+    return [row for row in rows if row not in masked]
+
+
+def masked_copies(entries, rows):
+    """Copy rows whose shape draws MASK1 pages; their material match records the hidden source material."""
     data = {name: (kind, blob) for name, kind, blob in entries}
 
     def masked(mesh):
-        try:
-            row = data.get(uv_transfer.name_for_mesh(mesh))
-        except PackError:
-            return False
+        row = data.get(uv_transfer.name_for_mesh(mesh))
         if row is None or row[0] != uv_transfer.TYPE:
             return False
         luvs = uv_transfer.decode(row[1])
         return any(texture_asset.decode(data[uv_transfer.texture_name(mesh, int(page))][1]).format == texture_asset.MASK1
                    for page in range(luvs.material_count))
-    return [row for row in rows if not masked(row["mesh"])]
+    return [row for row in rows if masked(row["mesh"])]
+
+
+def hidden_materials(bundle):
+    """Source material names hidden by the start bundle's masked card shapes, without selecting or baking cards."""
+    entries, rows = mesh_bundle.decode(pathlib.Path(bundle).read_bytes())
+    return {row["match"]["material"] for row in masked_copies(entries, rows)}
 
 
 def placed_copies(bundle, flat):

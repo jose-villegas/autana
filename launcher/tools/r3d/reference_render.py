@@ -27,10 +27,11 @@ from PIL import Image
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from r3d import mesh_source, mitsuba_reference
+from r3d.cards import emit as card_emit
 from r3d.geometry import corner_normals, hit_barycentrics
 from r3d.import_settings import load_scene
 from r3d.light import AlphaTest, albedo_from_uv, coincident_faces, light, open_side_occlusion, to_srgb8
-from r3d.mesh_source import load_source, path_light_for
+from r3d.mesh_source import load_source, path_light_for, camera_filter
 from r3d.poses import camera_rays, read_poses
 from r3d.ray_query import RayQuery
 
@@ -71,7 +72,7 @@ def drawn_hits(source, double_materials, origin, direction):
     unless its twin wound the other way lies on it. Where a reduced source's two shells cross, the inner shell's back
     would otherwise show through the outer one."""
     active = np.ones(len(origin), bool)
-    hidden = getattr(source, "camera_hidden", None)
+    keep = camera_filter(source)
     # The first round yields even when every ray misses, so each list holds at least one array.
     found_at, found_ray, found_tri = [], [], []
     for tri, alive, where in source.intersector.hit_rounds(origin, direction, active):
@@ -79,8 +80,8 @@ def drawn_hits(source, double_materials, origin, direction):
         front = (np.cross(b - a, c - a) * direction[alive]).sum(axis=1) < 0
         shown = np.where(front | np.isin(source.tri_m[tri], double_materials), tri, source.twin[tri])
         drawn = shown >= 0
-        if hidden is not None:
-            drawn &= ~hidden[tri]
+        if keep is not None:
+            drawn &= keep(tri, where)
         found_at.append(where[drawn])
         found_ray.append(alive[drawn])
         found_tri.append(shown[drawn])
@@ -153,7 +154,7 @@ def device_picture(linear, covered, tonemap_white, background):
     return expand_565(np.round(lit).astype(np.uint8))
 
 
-def source_for(scene, name=None, lit=True, hide_cards=False):
+def source_for(scene, name=None, lit=True, hide_cards=False, hidden_materials=None):
     """The full-detail source of the scene object `name` (the first mesh renderer
     when None), alpha-tested per hit with that renderer's bake lighting; returns it with
     the object's job. `lit=False` skips lighting queries and the bounced-light tracer,
@@ -162,16 +163,16 @@ def source_for(scene, name=None, lit=True, hide_cards=False):
     named = [item for item in scene.renderers if name in (None, item.object.name)]
     if not named:
         raise ValueError(f"the scene places no mesh renderer named {name!r}")
-    return lit_source(named[0], scene, lit, hide_cards=hide_cards), named[0]
+    return lit_source(named[0], scene, lit, hide_cards=hide_cards, hidden_materials=hidden_materials), named[0]
 
 
-def lit_source(job, scene, lit=True, hide_cards=False):
+def lit_source(job, scene, lit=True, hide_cards=False, hidden_materials=None):
     """Full-detail alpha-tested source with bake lighting. `hide_cards` passes accepted materials on camera rays;
     they still shadow and bounce light onto the surfaces behind them."""
     settings = job.settings
-    selecting_cards = hide_cards and getattr(settings, "cards", None) is not None
+    selecting_cards = hide_cards and hidden_materials is None and settings.cards is not None
     source = load_source(settings, np.float64 if lit or selecting_cards else np.float32)
-    source.camera_hidden = (camera_hidden(source, settings, scene, getattr(job, "renderer", None))
+    source.camera_hidden = (camera_hidden(source, settings, scene, hidden_materials)
                             if hide_cards else np.zeros(len(source.tri_v), bool))
     source.alpha_test = AlphaTest(source, settings.alpha_keep) if settings.alpha_keep is not None else None
     source.corner_normals = corner_normals(source.p, source.tri_v)
@@ -183,20 +184,12 @@ def lit_source(job, scene, lit=True, hide_cards=False):
     return source
 
 
-def camera_hidden(source, settings, scene=None, renderer=None):
-    """Per source triangle, whether accepted cards replace its material."""
-    cards = getattr(settings, "cards", None)
-    if cards is None:
-        return np.zeros(len(source.tri_v), bool)
-    from r3d.cards import decide
-    from r3d.cards.emit import make_shape, material_views
-
-    def make(material):
-        views, query = material_views(source, material, settings, scene)
-        return make_shape(source, material, cards, settings.seed, settings.alpha_keep, views=views, query=query)
-
-    accepted, _ = decide.carded(source, settings, make)
-    return np.isin(source.tri_m, [material for material, _, _ in accepted])
+def camera_hidden(source, settings, scene=None, hidden_materials=None):
+    """Per source triangle, whether an accepted card material hides it on camera rays."""
+    if hidden_materials is None:
+        accepted, _ = card_emit.carded(source, settings, scene)
+        hidden_materials = [source.names[material] for material, _, _ in accepted]
+    return np.isin(source.tri_m, [source.names.index(name) for name in hidden_materials])
 
 
 def render_sets(inputs, sets, samples=4):

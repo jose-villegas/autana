@@ -49,26 +49,29 @@ def drop_masked(p, uv, tri_v, tri_t, tri_m, textures, keep_alpha=0.5):
 
 class AlphaTest:
     """A `RayQuery` hit filter: a hit is solid where the source's level-zero texture alpha at its interpolated UV is
-    at least `keep_alpha`. Hits on materials `alpha_tested` finds opaque are solid without a sample."""
+    at least `keep_alpha`. The same RGBA samples supply card albedo."""
 
     def __init__(self, source, keep_alpha):
         self.source, self.keep_alpha = source, keep_alpha
         self.tested = alpha_tested(source.textures)
 
-    def __call__(self, hits, locations):
+    def rgba(self, hits, locations):
+        """Level-zero linear RGBA at source hits; untextured materials return white."""
         source = self.source
-        solid = np.ones(len(hits), dtype=bool)
+        rgba = np.ones((len(hits), 4))
         materials = source.tri_m[hits]
-        selected = np.flatnonzero(self.tested[materials])
-        if not len(selected):
-            return solid
-        bary = hit_barycentrics(source.p, source.tri_v, hits[selected], locations[selected])
-        uv = (source.uv[source.tri_t[hits[selected]]] * bary[:, :, None]).sum(axis=1)
-        for material in np.unique(materials[selected]):
-            chosen = materials[selected] == material
-            alpha = source.textures[material].sample(uv[chosen], np.zeros(np.count_nonzero(chosen)))[:, 3]
-            solid[selected[chosen]] = alpha >= self.keep_alpha
-        return solid
+        for material in np.unique(materials):
+            texture = source.textures[material]
+            if texture is None:
+                continue
+            chosen = np.flatnonzero(materials == material)
+            bary = hit_barycentrics(source.p, source.tri_v, hits[chosen], locations[chosen])
+            uv = (source.uv[source.tri_t[hits[chosen]]] * bary[:, :, None]).sum(axis=1)
+            rgba[chosen] = texture.sample(uv, np.zeros(len(chosen)))
+        return rgba
+
+    def __call__(self, hits, locations):
+        return self.rgba(hits, locations)[:, 3] >= self.keep_alpha
 
 
 def visible_from_region(p, tri_v, double, intersector, rounds, rng, lo, hi):

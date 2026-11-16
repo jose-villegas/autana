@@ -92,26 +92,29 @@ class CardSamplingTests(unittest.TestCase):
             points[:, 2] = PLANE_Z - VISIBILITY_MARGIN
             normals = np.tile([0., 0., 1.], (len(points), 1))
             faces = [np.array([0., 0., EYE_Z, 0., 0., -1.])]
-            wall = RayQuery(source.p, source.tri_v)
-            np.testing.assert_array_equal(probe_weights(points, normals, faces, wall), 0)
-            cut = RayQuery(source.p, source.tri_v, hit_filter=AlphaTest(source, KEEP_ALPHA))
-            weight = probe_weights(points, normals, faces, cut)
+            wall = RayQuery(source.p, source.tri_v, "scalar_rgb")
+            np.testing.assert_array_equal(probe_weights(points, faces, wall, 1.0), 0)
+            cut = RayQuery(source.p, source.tri_v, "scalar_rgb", hit_filter=AlphaTest(source, KEEP_ALPHA))
+            weight = probe_weights(points, faces, cut, 1.0)
             np.testing.assert_array_equal(weight[np.asarray(SOLID)], 0)
             self.assertTrue((weight[~np.asarray(SOLID)] > 0).all())
 
     def test_slab_rejects_hits_outside_epsilon(self):
         from r3d.cards import CARD_EPSILON
         from r3d.cards.bake import bake_pixels
+        from r3d.light import AlphaTest
+        from types import SimpleNamespace
         from r3d.ray_query import RayQuery
         epsilon = CARD_EPSILON
         card = dict(c=np.zeros(3), a=np.eye(3)[0], b=np.eye(3)[1], n=np.eye(3)[2],
-                    lo=np.full(2, -1.), hi=np.full(2, 1.), depth=(-epsilon, epsilon))
+                    lo=np.full(2, -1.), hi=np.full(2, 1.), depth=(-epsilon, epsilon), texel_size=0.25)
         tris = np.array([[0, 1, 2], [2, 1, 3]])
         for z, kept in ((-epsilon * 1.1, False), (-epsilon * .9, True),
                         (epsilon * 1.1, False), (epsilon * .9, True)):
             positions = np.array([[-1., -1., z], [1., -1., z], [-1., 1., z], [1., 1., z]])
-            query = RayQuery(positions, tris)
-            mask, _, _ = bake_pixels(card, query, positions, tris, None, None, None, .5)
+            sub = SimpleNamespace(p=positions, tri_v=tris, tri_m=np.zeros(len(tris), int), textures=[None])
+            query = RayQuery(positions, tris, "scalar_rgb", hit_filter=AlphaTest(sub, .5))
+            mask, _, _ = bake_pixels(card, query)
             self.assertEqual(bool(mask.any()), kept, z)
 
     def test_one_density_for_a_set_survives_splitting(self):
@@ -122,23 +125,15 @@ class CardSamplingTests(unittest.TestCase):
         self.assertEqual({piece['texel_size'] for piece in pieces}, {32. / CARD_MASK_TEXELS})
 
     def test_bare_probe_region_and_near_follow_source_scale(self):
-        from types import SimpleNamespace
         from unittest.mock import patch
-        from r3d.cards.emit import material_views
-        from r3d.cards import CARD_PROBE_NEAR_SHARE
-        from r3d.views.probes import ProbeViews
-        source = SimpleNamespace(p=np.array([[0., 0., 0.], [2., 3., 4.], [2., 0., 0.]]),
-                                 tri_v=np.array([[0, 1, 2]]), tri_m=np.array([0]), textures=[None])
-        settings = SimpleNamespace(alpha_keep=.5)
-        calls = []
-        with patch('r3d.cards.emit.RayQuery'), patch('r3d.views.probes.select', return_value=ProbeViews([], [], {})) as select:
+        from r3d.views import probes
+        positions = np.array([[0., 0., 0.], [2., 3., 4.], [2., 0., 0.]])
+        triangles = np.array([[0, 1, 2]])
+        near = np.linalg.norm(np.ptp(positions, axis=0)) * probes.PROBE_NEAR_SHARE
+        with patch.object(probes, 'classify', side_effect=lambda q, n, p, c, z: (p, np.full(len(p), 'inside'))) as classify:
             for scale in (1., 100.):
-                mesh = SimpleNamespace(**vars(source))
-                mesh.p = source.p * scale
-                material_views(mesh, 0, settings, None)
-                calls.append(select.call_args)
-        for scale, call in zip((1., 100.), calls):
-            np.testing.assert_array_equal(call.args[0], source.p * scale)
-            self.assertIsNone(call.args[2])
-            self.assertAlmostEqual(call.args[3], np.linalg.norm([2., 3., 4.]) * CARD_PROBE_NEAR_SHARE * scale)
-        self.assertAlmostEqual(calls[1].args[3], 100 * calls[0].args[3])
+                views = probes.select(positions * scale, triangles, None, None, None, 1, query=object())
+                self.assertAlmostEqual(classify.call_args.args[-1], near * scale)
+                self.assertGreaterEqual(views.record['spacing'], probes.PROBE_SPACING_NEAR_PLANES * near * scale)
+                np.testing.assert_allclose(views.record['region'], [positions.min(axis=0) * scale,
+                                                                    positions.max(axis=0) * scale])

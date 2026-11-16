@@ -45,7 +45,7 @@ def choose_cards(p, t, **options):
     from r3d.ray_query import RayQuery
     from r3d.views.probes import cube_poses
     views = options.pop('views', cube_poses([[0, 0, SIDE], [SIDE, 0, 0], [-SIDE, 0, 0]]))
-    return select_cards(p, t, views=views, query=RayQuery(p, t), **options)
+    return split_cards(select_cards(p, t, views=views, query=RayQuery(p, t), **options))[0]
 
 
 def card_settings(path):
@@ -215,6 +215,7 @@ class CardTests(unittest.TestCase):
         p, t = quads(True)
         uv = p[:, :2] / SIDE + 0.5
         texture = Mock()
+        texture.levels = [np.zeros((1, 1, 4))]
         texture.sample.side_effect = lambda uv, lod: np.column_stack([
             np.ones((len(uv), 3)), (uv[:, 0] >= 0.5).astype(float)])
         for seed in SEEDS:
@@ -251,7 +252,7 @@ class CardTests(unittest.TestCase):
     def test_split_masks_keep_parent_texel_size(self):
         from unittest.mock import Mock
         from r3d.cards import CARD_MAX_SIDE
-        from r3d.cards.bake import bake_pixels, CARD_MASK_TEXELS
+        from r3d.cards.bake import bake_pixels
         p, t = quads()
         card = choose_cards(p, t)[0]
         card['lo'] = np.zeros(2)
@@ -259,24 +260,26 @@ class CardTests(unittest.TestCase):
         pieces, _ = split_cards([card])
         query = Mock()
         query.hit_rounds.return_value = []
-        parent, _, _ = bake_pixels(card, query, p, t, None, None, None, 0.5)
-        masks = [bake_pixels(piece, query, p, t, None, None, None, 0.5)[0] for piece in pieces]
+        card = dict(card, texel_size=pieces[0]["texel_size"])
+        parent, _, _ = bake_pixels(card, query)
+        masks = [bake_pixels(piece, query)[0] for piece in pieces]
         self.assertEqual(parent.shape, (CARD_MASK_TEXELS // 2, CARD_MASK_TEXELS))
         self.assertEqual(sum(mask.size for mask in masks), parent.size)
         self.assertTrue(all(mask.shape == (CARD_MASK_TEXELS // 4,) * 2 for mask in masks))
         for piece in pieces:
             trimmed = dict(piece, hi=piece['lo'] + (piece['hi'] - piece['lo']) / 2)
-            mask = bake_pixels(trimmed, query, p, t, None, None, None, 0.5)[0]
+            mask = bake_pixels(trimmed, query)[0]
             self.assertEqual(mask.shape, (CARD_MASK_TEXELS // 8,) * 2)
 
     def test_trimmed_mask_keeps_parent_texel_size(self):
         from unittest.mock import Mock
-        from r3d.cards.bake import CARD_MASK_TEXELS
         p, t = quads()
         uv = p[:, :2] / SIDE + 0.5
         card = dict(c=np.zeros(3), a=np.eye(3)[0], b=np.eye(3)[1], n=np.eye(3)[2],
-                    lo=np.full(2, -SIDE / 2), hi=np.full(2, SIDE / 2), depth=(-CARD_EPSILON, CARD_EPSILON))
+                    lo=np.full(2, -SIDE / 2), hi=np.full(2, SIDE / 2), depth=(-CARD_EPSILON, CARD_EPSILON),
+                    texel_size=SIDE / CARD_MASK_TEXELS)
         texture = Mock()
+        texture.levels = [np.zeros((1, 1, 4))]
         texture.sample.side_effect = lambda uv, lod: np.column_stack([
             np.ones((len(uv), 3)), ((uv > 0.25) & (uv < 0.75)).all(axis=1).astype(float)])
         trimmed, mask, _, _ = bake_card(card, p, t, uv, t, texture, 0.5)

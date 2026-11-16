@@ -94,6 +94,8 @@ def pack_ltex(indexed):
     """The LTEX entry: header, palette, then levels, low bits holding the first texel."""
     import numpy as np
 
+    if not indexed.levels:
+        raise ValueError("LTEX needs at least one mip level")
     side = len(indexed.levels[0])
     masked = indexed.format == MASK1
     if indexed.format not in (INDEX4, MASK1):
