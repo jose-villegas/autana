@@ -133,14 +133,20 @@ same_source(const r3d_dynamic_source_t* a, const r3d_dynamic_source_t* b) {
            && memcmp(a->triangles, b->triangles, sizeof(uint16_t[3]) * (size_t)a->triangle_count) == 0;
 }
 
-/* stress_presets fills each ID STRESS_PRESETS names: a missed row would be all zeros. */
+/* stress_presets fills each ID STRESS_PRESETS names: a missed row would be all zeros.
+ * Hinged copies use their own pack; a pack without copies shows its placed meshes. */
 static void
 test_every_preset_has_its_row(void) {
     for (int i = 0; i < STRESS_PRESET_COUNT; i++) {
         TEST_ASSERT_GREATER_THAN_INT(0, stress_presets[i].cuts);
         TEST_ASSERT_GREATER_THAN_INT(0, stress_presets[i].perf_poses);
-        TEST_ASSERT_GREATER_THAN_INT(0, stress_presets[i].copies);
         TEST_ASSERT_GREATER_THAN_INT(0, stress_presets[i].coverage_percent);
+        if (stress_presets[i].surface == STRESS_SURFACE_HINGED) {
+            TEST_ASSERT_GREATER_THAN_INT(0, stress_presets[i].copies);
+            TEST_ASSERT_EQUAL_STRING(STRESS_BUTTERFLY_SCENE, stress_presets[i].scene);
+        } else {
+            TEST_ASSERT_TRUE((stress_presets[i].copies > 0) != (stress_presets[i].scene != NULL));
+        }
     }
 }
 

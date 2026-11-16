@@ -66,7 +66,7 @@ mesh_array_repoint(scene_t* scene, int index, size_t array, const void* source, 
  * it there and tells it into `told`, when given; NULL while measuring. */
 static void*
 copy_in(void* block, size_t* end, size_t alignment, const void* source, size_t bytes, asset_copy_t* told, int* count) {
-    const size_t at = scene_storage_carve(end, bytes, alignment);
+    const size_t at = mem_carve(end, bytes, alignment);
     const int copied = (*count)++;
     if (block == NULL) {
         return NULL;

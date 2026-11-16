@@ -86,7 +86,9 @@ typedef struct {
     size_t scratch_bytes;
     memory_take_fn take; /* where the scratch comes from; NULL is the heap */
     int scale_percent;
-    render_settings_t settings; /* the caller's own; the raster reads them through `raster.settings` */
+    resolution_step_t raster_size;
+    render_settings_t settings;       /* the caller's own */
+    render_settings_t drawn_settings; /* this frame's: `settings` under the overrides, read through `raster.settings` */
 
     enum { RENDER_FIXED, RENDER_STEPPED, RENDER_PREDICTED } policy;
 
@@ -169,6 +171,13 @@ void render_context_forget(render_context_t* context);
  * way out; it holds while dynamic resolution is off. */
 void render_context_set_scale(render_context_t* context, int percent);
 
+/* Fixed raster dimensions, already adjusted for presentation. Scale or dynamic
+ * resolution selection clears them. */
+void render_context_set_raster_size(render_context_t* context, resolution_step_t size);
+
+/* Warps the kept draw to this view; false without a kept frame or warp storage. */
+bool render_context_generate(render_context_t* c, const render_view_t* view);
+
 /* Frame generation: after each drawn frame, the next one is warped from it
  * to its own view instead of drawn, while a generated frame costs less than a
  * drawn one (FRAMEGEN_GAIN_PERCENT less to start); otherwise frames are drawn,
@@ -210,7 +219,7 @@ bool render_context_draw(render_context_t* context, const r3d_instance_t* instan
 
 /* What the next frame draws with; the context keeps its own copy, and
  * RENDER_SETTINGS_DEFAULT until set. A development override goes on top of
- * them in the draw (raster_settings()), never into them, so
+ * them once a frame (render_settings_tuned()), never into them, so
  * render_context_settings() returns them as set. */
 void render_context_set_settings(render_context_t* context, const render_settings_t* settings);
 const render_settings_t* render_context_settings(const render_context_t* context);

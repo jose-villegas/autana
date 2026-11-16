@@ -53,6 +53,8 @@ typedef enum {
 #define STRESS_ORBIT_CLIP               "orbit"
 #define STRESS_CAMERA_CULLED            "culled"
 #define STRESS_CAMERA_NEAR              "near"
+#define STRESS_CAMERA_SWEEP             "sweep"
+#define STRESS_RING_SCENE               "stress_ring"
 
 typedef struct {
     stress_shape_t shape;
@@ -62,8 +64,9 @@ typedef struct {
     int coverage_percent; /* how much of the picture's short side the arrangement spans */
     stress_surface_t surface;
     const char* camera;
-    int perf_poses; /* poses the stress perf suite replays along the swing */
-    bool record;    /* the stress perf suite runs the frame recorder over it: its stage too */
+    int perf_poses;    /* poses the stress perf suite replays along the swing */
+    bool record;       /* the stress perf suite runs the frame recorder over it: its stage too */
+    const char* scene; /* the pack shown: NULL is STRESS_SCENE's copy pool, another its own meshes as placed */
 } stress_params_t;
 
 /* X(ID, key, surface): each preset, its key the scene key's suffix and its
@@ -93,7 +96,9 @@ typedef struct {
     X(FOLIAGE_FAR_OPAQUE, "foliage-far-opaque", TEXTURED)                                                              \
     X(BUTTERFLIES, "butterflies", HINGED)                                                                              \
     X(FEW_BUTTERFLIES, "few-butterflies", HINGED)                                                                      \
-    X(RECORD, "record", WAVE)
+    X(RECORD, "record", WAVE)                                                                                          \
+    X(CULL_SETUP, "cull-setup", BANDED)                                                                                \
+    X(BAKED_TREE, "baked-tree", STATIC)
 
 #define STRESS_PRESET_ID(id_, ...) STRESS_##id_,
 

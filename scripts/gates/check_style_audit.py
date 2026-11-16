@@ -799,8 +799,10 @@ def rule_model_named_tool(root, path, text):
     rel = pathlib.PurePosixPath(relpath(root, path))
     if rel.suffix.lower() not in TOOL_CODE_SUFFIXES or not ("tools" in rel.parts or rel.parts[0] == "scripts"):
         return
+    name = rel.name.lower()
     for model in _model_names(root):
-        if model in rel.name.lower():
+        # whole words of the name: a model "ring" names ring_bake.py, not spring_figures.py
+        if re.search(rf"(?<![a-z0-9]){re.escape(model)}(?![a-z0-9])", name):
             yield 1, f"named after the model {model} - take the model as an argument and name the tool for what it does"
 
 

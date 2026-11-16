@@ -138,16 +138,17 @@ Source: `water-stages-board.log`
 
 ### Stress
 
-The Stress family repeats a generated primitive or static pack mesh before a
-swinging camera. Each preset ties down one behaviour with its own pegged goal.
-The presets are the per-PR perf check for r3d work. Scenes run nightly, on
-request, and for bake and fit changes; a scene regression with no preset
-moving is a coverage gap and becomes a new preset.
+The Stress family shows a generated primitive or a static pack mesh in copies,
+or a baked mesh of its own pack, before a moving camera. Each preset ties down
+one behaviour with its own pegged goal. The presets are the per-PR perf check
+for r3d work. Scenes run nightly, on request, and for bake and fit changes; a
+scene regression with no preset moving is a coverage gap and becomes a new
+preset.
 
 Repeated geometry exercises hierarchical visibility<sup>[[112]](../../../../../docs/Citations.md#greene-1993)</sup>;
 the presets vary the copies' geometry, layout and colour modes.
 
-| Scene key | As the swing starts | Made of | Ties down |
+| Scene key | As the camera starts | Made of | Ties down |
 |---|---|---|---|
 | `stress-open` | ![Stress open: a wall of planes side by side](../../../../../docs/images/overview/render-lab-stress-open.png) | a wall of planes side by side | hidden-cluster skip and cluster cull: nothing hides and nothing is off screen |
 | `stress-stack` | ![Stress stack: planes one behind another](../../../../../docs/images/overview/render-lab-stress-stack.png) | planes one behind another | the skip's win, and the depth cost of the debug views |
@@ -158,8 +159,6 @@ the presets vary the copies' geometry, layout and colour modes.
 | `stress-noisy-tiny` | ![Stress noisy tiny: cylinders end on, their fans of slivers](../../../../../docs/images/overview/render-lab-stress-noisy-tiny.png) | many small cylinders end on, each end a fan of slivers whose corners are far apart in colour | the small-fill gate: every sliver is tested and none passes |
 | `stress-mix` | ![Stress mix: planes with several tessellations and colour modes](../../../../../docs/images/overview/render-lab-stress-mix.png) | copies cycling through tessellations; a named share of triangles has equal corner colours | a single triangle size or colour mode standing for a scene's draw cost |
 | `stress-static-copies` | ![Static triangle copies](../../../../../docs/images/overview/render-lab-stress-static-copies.png) | the stress pack's LMSH triangle, retained in each renderer | static asset residency and small transform batches |
-| `stress-butterflies` | ![Butterfly wall](../../../../../docs/images/overview/render-lab-stress-butterflies.png) | a wall of butterfly bodies with two hinged wings each | static mesh batches, hierarchy propagation and flap transforms |
-| `stress-few-butterflies` | ![Four butterflies](../../../../../docs/images/overview/render-lab-stress-few-butterflies.png) | a smaller wall with the same coverage | larger wing triangles with fewer transform batches |
 | `stress-uniform-mid` | ![Uniform plane with intermediate coverage](../../../../../docs/images/overview/render-lab-stress-uniform-mid.png) | equal-colour large triangles | intermediate uniform fill without shaded pixels |
 | `stress-uniform-full` | ![Uniform plane covering the view](../../../../../docs/images/overview/render-lab-stress-uniform-full.png) | equal-colour large triangles spanning the view | uniform fill beyond the water workload at full-width render sizes |
 | `stress-card` | ![Card copies with ragged edges and sampled colours](../../../../../docs/images/overview/render-lab-stress-card.png) | copies sharing a generated perforated quad with uneven tessellation and procedural texture samples at its corners | scene-like small triangles with irregular edges and colour steps |
@@ -171,12 +170,16 @@ the presets vary the copies' geometry, layout and colour modes.
 | `stress-foliage-near-opaque` | ![Stress foliage near opaque: the same cards under the brick](../../../../../docs/images/overview/render-lab-stress-foliage-near-opaque.png) | `stress-foliage-near`'s cards under the INDEX4 brick, whole | the twin: against it, the near cards' mask costs alone |
 | `stress-foliage-far` | ![Stress foliage far: a wall of small bushes of masked cards](../../../../../docs/images/overview/render-lab-stress-foliage-far.png) | 36 small bushes side by side, their cards a few pixels across | the masked textured fill on small triangles, as distant foliage draws |
 | `stress-foliage-far-opaque` | ![Stress foliage far opaque: the same cards under the brick](../../../../../docs/images/overview/render-lab-stress-foliage-far-opaque.png) | `stress-foliage-far`'s cards under the INDEX4 brick, whole | the twin: against it, the far cards' mask costs alone |
+| `stress-butterflies` | ![Butterfly wall](../../../../../docs/images/overview/render-lab-stress-butterflies.png) | a wall of butterfly bodies with two hinged wings each | static mesh batches, hierarchy propagation and flap transforms |
+| `stress-few-butterflies` | ![Four butterflies](../../../../../docs/images/overview/render-lab-stress-few-butterflies.png) | a smaller wall with the same coverage | larger wing triangles with fewer transform batches |
 | `stress-record` | ![Stress record: four planes with a wave running over them](../../../../../docs/images/overview/render-lab-stress-record.png) | four planes made again every frame, a wave running over them, while the frame recorder runs | the recorder: each frame's four built meshes written whole, a keyframe's meshes every 30 frames |
+| `stress-cull-setup` | ![Stress cull setup: one small cube](../../../../../docs/images/overview/render-lab-stress-cull-setup.png) | one small cube of a few triangles | the cull's setup before it walks anything: the lens, frustum, settings and pick setup every cull pays once |
+| `stress-baked-tree` | ![Stress baked tree: the inside of a ring](../../../../../docs/images/overview/render-lab-stress-baked-tree.png) | a ring baked by the bake tools in its own pack, the camera at its centre turning half a turn; [`torus_obj.py`](torus_obj.py) writes the ring into [`ring.obj`](../../../../demo/stress_ring/ring.obj) | the baked cluster tree the cull walks, which no generated copy has |
 
 ![Butterfly wing motion](../../../../../docs/images/overview/render-lab-butterflies.gif)
 
 The butterfly pack uses unlit material colours. Its wing outline traces
-miziziziz's CC0 texture<sup>[[126]](../../../../../docs/Citations.md#miziziziz-butterfly-2019)</sup>.
+miziziziz's CC0 texture<sup>[[128]](../../../../../docs/Citations.md#miziziziz-butterfly-2019)</sup>.
 `scene_stress.c` feeds prescribed sine angles to `hinge_pose`; when Loupe's
 scene timeline (E3) keys wing rotations, the presets play that instead.
 

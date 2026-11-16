@@ -1,4 +1,4 @@
-/* scene_stress: static assets or shared generated meshes in a copy pool before a camera swing. */
+/* scene_stress: a pool of static or generated copies, or a pack's own baked mesh, before a moving camera. */
 
 #include "apps/render_lab/stress/scene_stress.h"
 
@@ -210,6 +210,9 @@ static_shape(void) {
  * about the origin's up so its +z faces it there. */
 static void
 place_copies(void) {
+    if (shown->copies == 0) {
+        return; /* a pack without a pool shows its meshes where it placed them */
+    }
     (void)animator_seek(camera, ANIMATOR_CURRENT, 0);
     const vec3f_t eye = transform_world(camera).position;
     const lens_t* lens = camera_lens(camera);
@@ -243,8 +246,7 @@ apply_settings(void) {
 
 static bool
 load(void) {
-    loaded = lab_scene_load(TAG, failure, sizeof failure,
-                            shown->surface == STRESS_SURFACE_HINGED ? STRESS_BUTTERFLY_SCENE : STRESS_SCENE, "stress");
+    loaded = lab_scene_load(TAG, failure, sizeof failure, shown->scene != NULL ? shown->scene : STRESS_SCENE, "stress");
     if (handle_is_none(loaded)) {
         return false;
     }

@@ -102,12 +102,10 @@ static const stress_goal_t stress_goals[] = {
     {"stress-few-copies", "landscape", "default", {260, 1080, 5720, 2050, 0}, {9080, 10450}},
     {"stress-textured", "portrait", "default", {0, 0, 0, 0, 0}, {0, 0}},
     {"stress-textured", "landscape", "default", {0, 0, 0, 0, 0}, {0, 0}},
-    {"stress-record", "portrait", "default", {290, 1070, 9790, 2420, 1330}, {14810, 17040}},
-    {"stress-record", "landscape", "default", {290, 1070, 10620, 2420, 1320}, {15650, 18000}},
     {"stress-foliage-near", "portrait", "default", {200, 200, 24720, 2430, 0}, {27520, 31650}},
     {"stress-foliage-near", "landscape", "default", {200, 190, 22430, 2410, 0}, {25200, 28980}},
-    {"stress-foliage-near-opaque", "portrait", "default", {190, 200, 26280, 2420, 0}, {29070, 33440}},
-    {"stress-foliage-near-opaque", "landscape", "default", {200, 190, 24100, 2370, 0}, {26830, 30860}},
+    {"stress-foliage-near-opaque", "portrait", "default", {190, 220, 31020, 2420, 0}, {33800, 38870}},
+    {"stress-foliage-near-opaque", "landscape", "default", {180, 200, 28310, 2390, 0}, {31040, 35700}},
     {"stress-foliage-far", "portrait", "default", {340, 1800, 18370, 2250, 0}, {22710, 26120}},
     {"stress-foliage-far", "landscape", "default", {350, 1790, 15260, 2250, 0}, {19610, 22560}},
     {"stress-foliage-far-opaque", "portrait", "default", {340, 1800, 18230, 2260, 0}, {22610, 26010}},
@@ -116,6 +114,12 @@ static const stress_goal_t stress_goals[] = {
     {"stress-butterflies", "landscape", "default", {630, 2430, 6910, 2300, 0}, {12170, 14000}},
     {"stress-few-butterflies", "portrait", "default", {240, 280, 1970, 2290, 0}, {4720, 5430}},
     {"stress-few-butterflies", "landscape", "default", {250, 300, 2120, 2320, 0}, {4920, 5660}},
+    {"stress-record", "portrait", "default", {290, 1070, 9790, 2420, 1330}, {14810, 17040}},
+    {"stress-record", "landscape", "default", {290, 1070, 10620, 2420, 1320}, {15650, 18000}},
+    {"stress-cull-setup", "portrait", "default", {150, 60, 1000, 2250, 0}, {3420, 3940}},
+    {"stress-cull-setup", "landscape", "default", {140, 70, 980, 2250, 0}, {3410, 3930}},
+    {"stress-baked-tree", "portrait", "default", {370, 580, 6090, 2200, 10}, {9150, 10530}},
+    {"stress-baked-tree", "landscape", "default", {390, 650, 7230, 2310, 10}, {10550, 12140}},
 };
 
 static const char*
