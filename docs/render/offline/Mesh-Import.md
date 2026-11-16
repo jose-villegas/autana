@@ -118,7 +118,6 @@ Every Geometry table opts its step in; without it the step does not run.
 | `geometry.thin` | `material`, `keep` | Keeps a share of one material's triangles. | Off. | None / fewer triangles. | [thin](#thin) |
 | `geometry.simplify` | `dense_edge`, `seal_seams`, `colour_deviation` | Splits long edges and simplifies each variant to its budget, colour steering the collapses; can seal seams. | Off. | Seconds / set by the budget. | [simplify](#simplify) |
 | `geometry.probes` | `spacing`, `face` | Adds fit views from probes spread through the camera's region, for surface the path never shows. | Off. | Minutes / more triangles kept. | [probes](#probes) |
-| `geometry.budget` | `step`, `settle` | Lets each fitted renderer settle on a prune budget below its own by held-out holes. | The renderer's `fit.prune.budget`. | A prune per step / fewer triangles. | [budget](#budget) |
 
 #### probes
 
@@ -134,18 +133,14 @@ that the path and the faces kept before it do not<sup>[[120]](../../Citations.md
 | `spacing` | World units between probes. | `PROBE_SPACING_NEAR_PLANES` near planes of the scene camera, widened to at most `PROBE_COUNT_MAX` probes. |
 | `face` | A kept face's square size in pixels. | `PROBE_FACE`. |
 
-A camera without a path fits on probes alone. Probes reach surface seen from
-somewhere off the path, never surface seen from nowhere. The fit's prune keeps
-what the path shows before what only a probe shows; see
-[Appearance Fit](Appearance-Fit.md#probes-and-the-settle-budget).
+A camera without a path fits on probes alone. A probe-trained fit's prune budget
+must equal its variant's `triangles`, spent by the import's
+[simplify](#simplify) through quadric edge collapse<sup>[[12]](../../Citations.md#garland-1997)</sup>
+with appearance attributes<sup>[[13]](../../Citations.md#hoppe-1999)</sup>.
 
-#### budget
-
-`geometry.budget` lets each fitted renderer prune to less than its
-`fit.prune.budget`, which it keeps without one. The fit tries `step`, 2 `step`,
-and so on up to that budget, counting hole pixels over the held-out views. It
-keeps the first budget whose holes fall by less than the `settle` share of its
-own to the next, or that has none.
+The prune drops only triangles no coverage view shows. The held-out closure gate
+rejects hole growth beyond the start's allowance; see
+[Appearance Fit](Appearance-Fit.md#probes-and-closure).
 
 #### alpha_mask
 

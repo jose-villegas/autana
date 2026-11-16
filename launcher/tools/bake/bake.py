@@ -667,19 +667,15 @@ def mesh_recipe(job, scene, tools, poses=None, unavailable=None):
     return recipe
 
 
-def fit_recipe(fit, settle=None):
-    """The renderer's fit and the import's `settle` (geometry.budget), left out when unset so a mesh without it
-    keeps its key; geometry.probes reaches the fit through the reference key."""
-    recipe = dict(vars(fit))
-    if settle is not None:
-        recipe["settle"] = canonical(settle)
-    return recipe
+def fit_recipe(fit):
+    """The renderer's fit settings; probes reach the fit through the reference key."""
+    return dict(vars(fit))
 
 
 def reference_recipe(inputs, tools, poses=None, unavailable=None):
     """A fit's reference set by every field of its reference_set.ReferenceInputs: the import as a mesh counts
     it, the camera by its lens and sampled poses (a camera without a path has none: its views are all probes),
-    probes and shaped only when set, the rest as parsed."""
+    probes only when set, the rest as parsed."""
     recipe = {}
     for field in dataclasses.fields(inputs):
         value = getattr(inputs, field.name)
@@ -695,7 +691,7 @@ def reference_recipe(inputs, tools, poses=None, unavailable=None):
                                for name, field in (("train", "train_every_ms"),
                                                    ("coverage", "coverage_every_ms"))}
             recipe["camera"] = camera
-        elif field.name in ("probes", "shaped"):
+        elif field.name == "probes":
             if value:
                 recipe[field.name] = canonical(value)
         else:
@@ -720,7 +716,7 @@ def stage_keys(job, scene, tools, starts=None, poses=None):
         start_sha256 = None if starts is None else starts.get(start)
         reference_sha256 = None if starts is None or reference is None else starts.get(reference)
         fit = None if start_sha256 is None or reference_sha256 is None else digest(
-            ["fit", reference_sha256, start_sha256, fit_recipe(job.renderer.fit, job.settings.fit.budget),
+            ["fit", reference_sha256, start_sha256, fit_recipe(job.renderer.fit),
              tools["fit"]])
         fit_sha256 = None if starts is None or fit is None else starts.get(fit)
         levels = None if fit_sha256 is None else digest(

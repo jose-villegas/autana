@@ -272,7 +272,7 @@ def load_process(process, steps):
 def load_geometry(table, steps):
     """The optional steps that decide which source triangles remain."""
     check_keys(table, (), "geometry", optional=("alpha_mask", "thin", "simplify", "meshlet_triangles", "lod", "morph",
-                                                "probes", "budget"))
+                                                "probes"))
     steps.meshlet_triangles = count(table.get("meshlet_triangles", MESHLET_TRIANGLES), "geometry.meshlet_triangles")
     steps.lod = boolean(table.get("lod", LOD), "geometry.lod")
     steps.morph = boolean(table.get("morph", MORPH), "geometry.morph")
@@ -300,10 +300,9 @@ def load_geometry(table, steps):
             colour_deviation=number(simplify["colour_deviation"], "geometry.simplify.colour_deviation"))
         if steps.simplify.colour_deviation <= 0:
             raise SettingsError("geometry.simplify.colour_deviation must be above 0")
-    steps.fit = SimpleNamespace(probes=load_probes(table["probes"]) if "probes" in table else None,
-                                budget=load_budget(table["budget"]) if "budget" in table else None)
-    if (steps.fit.probes or steps.fit.budget) and not steps.simplify:
-        raise SettingsError("geometry.probes and geometry.budget shape a fit, which needs geometry.simplify")
+    steps.fit = SimpleNamespace(probes=load_probes(table["probes"]) if "probes" in table else None)
+    if steps.fit.probes is not None and not steps.simplify:
+        raise SettingsError("geometry.probes shapes a fit, which needs geometry.simplify")
 
 
 def load_probes(table, where="geometry.probes"):
@@ -315,18 +314,6 @@ def load_probes(table, where="geometry.probes"):
     if probes.spacing is not None and probes.spacing <= 0:
         raise SettingsError(f"{where}.spacing must be positive")
     return probes
-
-
-def load_budget(table, where="geometry.budget"):
-    """A settled prune budget: each fitted renderer tries `step`, 2 `step`, ... up to its fit.prune.budget and
-    stops at the first whose held-out holes fall by less than the `settle` share of the step before. Without
-    geometry.budget the prune keeps fit.prune.budget."""
-    check_keys(table, ("step", "settle"), where)
-    budget = SimpleNamespace(step=count(table["step"], f"{where}.step"),
-                             settle=number(table["settle"], f"{where}.settle"))
-    if not 0 <= budget.settle < 1:
-        raise SettingsError(f"{where}.settle must be at least 0 and below 1")
-    return budget
 
 
 SEAM_POLICIES = ("weld", "lock", "free")
@@ -842,6 +829,12 @@ def load_scene(path):
     sources = {item.renderer.visibility.source for item in jobs if item.renderer.visibility}
     camera_path = cameras[0].component.path if cameras else None
     for item in jobs:
+        if (item.renderer.fit and item.settings.fit.probes is not None
+                and item.renderer.fit.budget < item.renderer.variant.triangles):
+            raise SettingsError(f"scene.objects {item.object.name!r} mesh_renderer.fit.prune.budget "
+                                f"{item.renderer.fit.budget} is below variant {item.renderer.variant.name}'s triangles "
+                                f"{item.renderer.variant.triangles}: a fit trained on geometry.probes keeps every triangle "
+                                "its views show; set the variant's triangles to the budget")
         if item.renderer.fit and camera_path is None and item.settings.fit.probes is None:
             raise SettingsError(f"scene.objects {item.object.name!r} mesh_renderer.fit needs the scene camera path "
                                 "or its import's geometry.probes")
