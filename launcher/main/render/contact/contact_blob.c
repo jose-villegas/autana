@@ -40,7 +40,8 @@ draw_row(const r3d_span_target_t* target, const r3d_lens_t* lens, const blob_pla
         const vec3f_t ray = {(float)x + 0.5F - lens->project.cx, row_y, 1.0F};
         const vec3f_t delta = vec3f_sub(vec3f_scale(ray, z), blob->centre);
         const vec3f_t units = {delta.x * blob->inverse_fx, delta.y * blob->inverse_fy, delta.z};
-        const float coverage = blob->strength * (1.0F - vec3f_dot(units, units) * blob->inverse_radius_squared);
+        const float falloff = fmaxf(0.0F, 1.0F - vec3f_dot(units, units) * blob->inverse_radius_squared);
+        const float coverage = blob->strength * falloff * falloff;
         if (coverage * BAYER4_LEVELS > (float)bayer4x4[y & (BAYER4_SIDE - 1)][x & (BAYER4_SIDE - 1)]) {
             color[x] = rgb565be_unspread(rgb565be_spread(color[x]) >> 1);
         }

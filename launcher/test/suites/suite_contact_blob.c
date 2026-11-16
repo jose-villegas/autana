@@ -50,6 +50,38 @@ test_blob_depth_radius_rows_strength(void) {
 }
 
 static void
+test_blob_squared_falloff(void) {
+    static const float distances[] = {0.0F, 0.5F, 1.0F, 1.5F};
+    static const int covered[] = {BAYER4_LEVELS, 9, 0, 0};
+    uint16_t* color = malloc(BLOB_WIDTH * BLOB_HEIGHT * sizeof *color);
+    uint16_t* depth = calloc(BLOB_WIDTH * BLOB_HEIGHT, sizeof *depth);
+    TEST_ASSERT_NOT_NULL(color);
+    TEST_ASSERT_NOT_NULL(depth);
+    const transformf_t pose = transformf_identity();
+    const render_view_t view = render_view_make(&pose, 1, 1, (viewport_t){BLOB_WIDTH, BLOB_HEIGHT, 0});
+    const r3d_span_target_t target = r3d_span_target(color, depth, BLOB_WIDTH, 0, BLOB_HEIGHT);
+    for (size_t d = 0; d < sizeof distances / sizeof distances[0]; d++) {
+        int count = 0;
+        for (int y = 0; y < BAYER4_SIDE; y++) {
+            for (int x = 0; x < BAYER4_SIDE; x++) {
+                r3d_lens_t lens;
+                r3d_lens_init(&lens, &view, 1);
+                lens.project.cx = (float)x + 0.5F;
+                lens.project.cy = (float)y + 0.5F;
+                const vec3f_t ground = {distances[d] * BLOB_RADIUS, 0, BLOB_DEPTH};
+                const int pixel = y * BLOB_WIDTH + x;
+                color[pixel] = RGB565BE(0xffffff);
+                contact_blob_draw(&target, &lens, ground, vec3f_unit_z(), BLOB_RADIUS, 1);
+                count += color[pixel] != RGB565BE(0xffffff);
+            }
+        }
+        TEST_ASSERT_EQUAL_INT(covered[d], count);
+    }
+    free(depth);
+    free(color);
+}
+
+static void
 floor_blob(const r3d_span_target_t* target, const r3d_lens_t* lens, void* user) {
     const bool* occluded = user;
     r3d_span_target_t clear = *target;
@@ -96,6 +128,7 @@ test_blob_coplanar_floor_matches_unoccluded_disc(void) {
 void
 suite_contact_blob(void) {
     RUN_TEST(test_blob_depth_radius_rows_strength);
+    RUN_TEST(test_blob_squared_falloff);
     RUN_TEST(test_blob_coplanar_floor_matches_unoccluded_disc);
 }
 

@@ -57,7 +57,7 @@ light_direct_irradiance(vec3f_t normal, const r3d_skin_lights_t* lights, vec3f_t
 
 static inline __attribute__((always_inline)) vec3f_t
 light_irradiance(vec3f_t normal, const r3d_skin_lights_t* lights) {
-    return light_direct_irradiance(normal, lights, sh1_irradiance_eval(&lights->ambient, normal));
+    return light_direct_irradiance(normal, lights, lights->ambient);
 }
 
 static inline __attribute__((always_inline)) void
@@ -76,7 +76,7 @@ light_evaluate(vec3f_t normal, const r3d_skin_lights_t* lights, const uint8_t al
 static inline __attribute__((always_inline)) vec3f_t
 light_table_sample(vec3f_t normal, const r3d_skin_lights_t* lights) {
     if (normal.x == 0.0F && normal.y == 0.0F && normal.z == 0.0F) {
-        return lights->ambient.constant;
+        return lights->ambient;
     }
     const vec2f_t point = vec3f_octahedral(normal);
     const float half = 0.5F * (R3D_SKIN_LIGHT_TABLE_SIDE - 1);

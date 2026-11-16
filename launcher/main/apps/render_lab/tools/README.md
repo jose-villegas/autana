@@ -339,14 +339,14 @@ can differ slightly from an unbroken run, which steps clips by frame time.
 ### Capybara in Sponza
 
 `capybara-sponza` loads Sponza's fitted full bake and the capybara as two
-scenes, both drawn through Sponza's camera. The capybara rests between the
-first pair of columns, gallops down the atrium and rests between the last
-pair; its clip and rate come from its ground speed. A third-person camera
-starts a little round from its face, turns slowly toward its back as it runs,
-never reaching it, and comes back as it stops. With frame generation on, a
-generated frame shows the capybara where the last drawn frame put it.
+scenes, both drawn through Sponza's camera. The run follows the ground-floor
+curtains at z=190, from x=-616 to x=487, with a rest at each end.
 
-![Capybara in Sponza: the capybara's run down the atrium, rest to rest, under a third-person camera](../../../../../docs/images/overview/render-lab-capybara-sponza.gif)
+![Capybara beside the curtains, rest to rest, under a courtyard-side camera](../../../../../docs/images/overview/render-lab-capybara-sponza.gif)
+
+The camera orbits on the courtyard side, turning toward the capybara's back
+during the run and returning toward its face at rest. The contact blob uses
+the body's smaller horizontal half extent and a squared radial falloff.
 
 | What | Owner |
 |---|---|

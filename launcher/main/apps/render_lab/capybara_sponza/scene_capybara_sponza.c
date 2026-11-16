@@ -1,14 +1,5 @@
-/*
- * scene_capybara_sponza: the capybara's run down Sponza's atrium. Sponza
- * (its fitted full bake) and the capybara load as two scenes, both drawn
- * through Sponza's camera. The capybara idles between the first pair of
- * columns at the lion end, gallops down the centre line and comes to rest
- * between the last pair (a motion profile), its clip and rate from its
- * ground speed (gait). A third-person camera sees it from a front
- * three-quarter while it idles, turns slowly round toward its back as it
- * runs, never all the way, and back as it comes to rest. Everything is a
- * function of the path's time, so a frame profile seeks it.
- */
+/* scene_capybara_sponza: a gait-driven run beside Sponza's ground-floor curtains,
+ * seen through a courtyard-side camera. Path time determines the pose and orbit. */
 #include "apps/render_lab/capybara_sponza/scene_capybara_sponza.h"
 
 #include <math.h>
@@ -43,9 +34,8 @@ static const char* TAG = "capybara_sponza";
 
 /* Sponza is in centimetres, the capybara in metres. */
 #define RUN_SCALE           100.0F
-/* The atrium's centre line (z) and floor (y), and the x of its first and
- * last pairs of columns from the lion's west wall (Sponza's source mesh). */
-#define RUN_CENTRE_Z        (-34.0F)
+/* The curtain-side run (z), floor (y), and end columns (x), in source units. */
+#define RUN_CENTRE_Z        190.0F
 #define RUN_FLOOR_Y         0.0F
 #define RUN_START_X         (-616.0F)
 #define RUN_END_X           487.0F
@@ -55,10 +45,8 @@ static const char* TAG = "capybara_sponza";
 /* The capybara faces -z; a quarter turn back about y faces it +x, down the run. */
 #define RUN_HEADING         (-0.25F * MATH_TAU)
 
-/* The third-person camera: this far from the capybara and this high, looking
- * at a point this high on it; inside the columns (225 cm off the centre line)
- * when it is at the capybara's side. It stands 15 degrees round from the
- * face at both ends and 135 mid-run, short of the back. */
+/* The camera orbits on the courtyard side of the curtain-side run, from
+ * 15 degrees off its face at rest to 135 degrees mid-run. */
 #define RUN_CAMERA_DISTANCE 220.0F
 #define RUN_CAMERA_HEIGHT   100.0F
 #define RUN_CAMERA_FROM     (MATH_PI / 12.0F)
@@ -152,11 +140,11 @@ place(motion_profile_at_t at) {
                                .rotation = quatf_from_axis_angle(vec3f_unit_y(), RUN_HEADING),
                                .scale = {RUN_SCALE, RUN_SCALE, RUN_SCALE}};
     transform_set_local(capybara, body);
-    /* Ahead of it at angle 0, toward behind it at pi, round its +z side. */
+    /* Ahead of it at angle 0, toward behind it at pi, round its courtyard side. */
     const float angle = camera_angle(at.at);
     transformf_t eye = transform_local(camera);
     eye.position = (vec3f_t){at.at + (RUN_CAMERA_DISTANCE * cosf(angle)), RUN_FLOOR_Y + RUN_CAMERA_HEIGHT,
-                             RUN_CENTRE_Z + (RUN_CAMERA_DISTANCE * sinf(angle))};
+                             RUN_CENTRE_Z - (RUN_CAMERA_DISTANCE * sinf(angle))};
     transformf_look_at(&eye, (vec3f_t){at.at, RUN_FLOOR_Y + RUN_CAMERA_LOOK_Y, RUN_CENTRE_Z}, vec3f_unit_y());
     transform_set_local(camera, eye);
 }

@@ -32,7 +32,7 @@ r3d_skin_light_table_build(const r3d_skin_lights_t* lights, r3d_skin_light_table
     /* Light-change builds use two passes to avoid a large scratch buffer and an allocation failure path. */
     float maximum = 0.0F;
     for (int cell = 0; cell < R3D_SKIN_LIGHT_TABLE_CELLS; cell++) {
-        const vec3f_t sum = light_direct_irradiance(light_table_directions[cell], lights, lights->ambient.constant);
+        const vec3f_t sum = light_direct_irradiance(light_table_directions[cell], lights, lights->ambient);
         if (sum.x > maximum) {
             maximum = sum.x;
         }
@@ -51,7 +51,7 @@ r3d_skin_light_table_build(const r3d_skin_lights_t* lights, r3d_skin_light_table
     const float scale = maximum / R3D_SKIN_LIGHT_TABLE_MASK;
     const float encode = R3D_SKIN_LIGHT_TABLE_MASK / maximum;
     for (int cell = 0; cell < R3D_SKIN_LIGHT_TABLE_CELLS; cell++) {
-        const vec3f_t sum = light_direct_irradiance(light_table_directions[cell], lights, lights->ambient.constant);
+        const vec3f_t sum = light_direct_irradiance(light_table_directions[cell], lights, lights->ambient);
         const float channels[] = {sum.x, sum.y, sum.z};
         uint32_t packed = 0;
 #pragma GCC unroll R3D_SKIN_LIGHT_CHANNELS
@@ -66,11 +66,7 @@ r3d_skin_light_table_build(const r3d_skin_lights_t* lights, r3d_skin_light_table
 
 vec3f_t
 r3d_skin_light_table_sample(vec3f_t normal, const r3d_skin_lights_t* lights) {
-    if (!light_has_gradient(&lights->ambient)) {
-        return light_table_sample(normal, lights);
-    }
-    const sh1_irradiance_t gradient = {.gradient = lights->ambient.gradient};
-    return vec3f_add(light_table_sample(normal, lights), sh1_irradiance_eval(&gradient, light_renormalise(normal)));
+    return light_table_sample(normal, lights);
 }
 
 uint8_t
@@ -84,9 +80,4 @@ r3d_skin_light_ambient_sh(const sh1_rgb_t* radiance) {
     ambient.constant = vec3f_scale(ambient.constant, R3D_SKIN_LIGHT_LAMBERT_SCALE);
     ambient.gradient = mat3f_scale(ambient.gradient, R3D_SKIN_LIGHT_LAMBERT_SCALE);
     return ambient;
-}
-
-void
-r3d_skin_light_set_ambient_sh(r3d_skin_lights_t* lights, const sh1_rgb_t* radiance) {
-    lights->ambient = r3d_skin_light_ambient_sh(radiance);
 }
