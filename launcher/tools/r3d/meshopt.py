@@ -16,6 +16,8 @@ SOURCE = HERE.parents[2] / "third_party" / "upstream" / "meshoptimizer" / "src"
 CACHE = HERE / ".cache"
 
 UNLIMITED_ERROR = 1e9
+# simplify_with_update's passes at most: each locks the corners round a locked vertex left without a triangle.
+LOCK_ROUNDS = 4
 
 # meshoptimizer.h's meshopt_SimplifyErrorAbsolute (the error is in model units)
 # and meshopt_SimplifyPrune (a piece smaller than the error goes entirely).
@@ -44,8 +46,27 @@ def simplify_with_update(pos, rgb, tris, target_triangles, colour_weight, option
     """Simplifies to about target_triangles, keeping colour (0..255 per
     channel, `colour_weight` per level) as an attribute and moving the
     surviving vertices and colours to where they best preserve the appearance.
-    Returns (pos, rgb, tris, kept): kept[i] is the input vertex output
-    vertex i came from."""
+    A vertex flagged in `vertex_lock` neither moves nor goes, and keeps a
+    triangle: when every triangle round a locked vertex collapses among its
+    unlocked corners, those corners are locked too and the pass runs again,
+    at most LOCK_ROUNDS times. Returns (pos, rgb, tris, kept): kept[i] is the
+    input vertex output vertex i came from."""
+    tris = np.asarray(tris)
+    lock = None if vertex_lock is None else np.asarray(vertex_lock, dtype=bool).copy()
+    for _ in range(LOCK_ROUNDS):
+        result = _simplify_with_update_once(pos, rgb, tris, target_triangles, colour_weight, options, lock)
+        if lock is None:
+            return result
+        drawn = np.zeros(len(lock), dtype=bool)
+        drawn[result[3][result[2]]] = True
+        orphan = lock & ~drawn & np.isin(np.arange(len(lock)), tris)
+        if not orphan.any():
+            return result
+        lock[tris[orphan[tris].any(axis=1)]] = True
+    return result
+
+
+def _simplify_with_update_once(pos, rgb, tris, target_triangles, colour_weight, options, vertex_lock):
     target_triangles = min(target_triangles, len(tris))
     lib = _library()
     fn = lib.meshopt_simplifyWithUpdate
