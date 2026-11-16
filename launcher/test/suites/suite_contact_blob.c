@@ -138,26 +138,37 @@ test_blob_coplanar_floor_matches_unoccluded_disc(void) {
     TEST_ASSERT_TRUE(same);
 }
 
+typedef struct {
+    uint16_t* color;
+    uint16_t* depth;
+    r3d_lens_t lens;
+    r3d_span_target_t target;
+} blob_fixture_t;
+
+static blob_fixture_t
+blob_fixture_make(int size) {
+    blob_fixture_t f = {.color = malloc(size * size * sizeof *f.color), .depth = calloc(size * size, sizeof *f.depth)};
+    TEST_ASSERT_NOT_NULL(f.color);
+    TEST_ASSERT_NOT_NULL(f.depth);
+    const transformf_t pose = transformf_identity();
+    const render_view_t view = render_view_make(&pose, 1, 1, (viewport_t){size, size, 0});
+    r3d_lens_init(&f.lens, &view, 1);
+    f.target = r3d_span_target(f.color, f.depth, size, 0, size);
+    for (int i = 0; i < size * size; i++) {
+        f.color[i] = RGB565BE(0xffffff);
+    }
+    return f;
+}
+
 static void
 test_round_disc_golden(void) {
     enum { SIZE = 32 };
 
-    uint16_t* color = malloc(SIZE * SIZE * sizeof *color);
-    uint16_t* depth = calloc(SIZE * SIZE, sizeof *depth);
-    TEST_ASSERT_NOT_NULL(color);
-    TEST_ASSERT_NOT_NULL(depth);
-    const transformf_t pose = transformf_identity();
-    const render_view_t view = render_view_make(&pose, 1, 1, (viewport_t){SIZE, SIZE, 0});
-    r3d_lens_t lens;
-    r3d_lens_init(&lens, &view, 1);
-    const r3d_span_target_t target = r3d_span_target(color, depth, SIZE, 0, SIZE);
-    for (int i = 0; i < SIZE * SIZE; i++) {
-        color[i] = RGB565BE(0xffffff);
-    }
-    draw_round(&target, &lens, (vec3f_t){0, 0, BLOB_DEPTH}, vec3f_unit_z(), BLOB_RADIUS, 1);
-    const uint32_t crc = crc32_update(0, color, SIZE * SIZE * sizeof *color);
-    free(depth);
-    free(color);
+    blob_fixture_t f = blob_fixture_make(SIZE);
+    draw_round(&f.target, &f.lens, (vec3f_t){0, 0, BLOB_DEPTH}, vec3f_unit_z(), BLOB_RADIUS, 1);
+    const uint32_t crc = crc32_update(0, f.color, SIZE * SIZE * sizeof *f.color);
+    free(f.depth);
+    free(f.color);
     static const uint32_t round_disc_golden = 0xD248B59FU;
     TEST_ASSERT_EQUAL_HEX32(round_disc_golden, crc);
 }
@@ -166,27 +177,16 @@ static void
 test_overlapping_discs_and_elongation(void) {
     enum { SIZE = 32, ALONG_X = 20, ACROSS_Y = 20, MIDDLE = 16 };
 
-    uint16_t* color = malloc(SIZE * SIZE * sizeof *color);
-    uint16_t* depth = calloc(SIZE * SIZE, sizeof *depth);
-    TEST_ASSERT_NOT_NULL(color);
-    TEST_ASSERT_NOT_NULL(depth);
-    const transformf_t pose = transformf_identity();
-    const render_view_t view = render_view_make(&pose, 1, 1, (viewport_t){SIZE, SIZE, 0});
-    r3d_lens_t lens;
-    r3d_lens_init(&lens, &view, 1);
-    const r3d_span_target_t target = r3d_span_target(color, depth, SIZE, 0, SIZE);
+    blob_fixture_t f = blob_fixture_make(SIZE);
     contact_disc_t discs[2] = {
         {.centre = {0, 0, BLOB_DEPTH}, .axis = {1, 0, 0}, .inverse_long2 = 0.25F, .inverse_short2 = 1, .strength = 1}};
     discs[1] = discs[0];
-    for (int i = 0; i < SIZE * SIZE; i++) {
-        color[i] = RGB565BE(0xffffff);
-    }
-    contact_blob_draw(&target, &lens, vec3f_unit_z(), discs, 2);
-    TEST_ASSERT_EQUAL_HEX16(rgb565be_pack(15, 31, 15), color[MIDDLE * SIZE + MIDDLE]);
-    TEST_ASSERT_NOT_EQUAL(RGB565BE(0xffffff), color[MIDDLE * SIZE + ALONG_X]);
-    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xffffff), color[ACROSS_Y * SIZE + MIDDLE]);
-    free(depth);
-    free(color);
+    contact_blob_draw(&f.target, &f.lens, vec3f_unit_z(), discs, 2);
+    TEST_ASSERT_EQUAL_HEX16(rgb565be_pack(15, 31, 15), f.color[MIDDLE * SIZE + MIDDLE]);
+    TEST_ASSERT_NOT_EQUAL(RGB565BE(0xffffff), f.color[MIDDLE * SIZE + ALONG_X]);
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xffffff), f.color[ACROSS_Y * SIZE + MIDDLE]);
+    free(f.depth);
+    free(f.color);
 }
 
 void
