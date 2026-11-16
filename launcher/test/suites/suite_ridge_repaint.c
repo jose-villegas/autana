@@ -251,6 +251,19 @@ test_the_ambient_ridge_held_upright_repaints_as_a_full_paint_and_is_sent(void) {
     assert_fresh_audit("ambient portrait", &audit);
 }
 
+/* Past the boxes a step may list, each box is still repainted whole and the
+ * step says its list overflowed, so the UI puts the backdrop back. */
+static void
+test_boxes_past_a_full_list_are_repainted_and_overflow_it(void) {
+    enum { ONE_BOX = 1 };
+
+    fixture();
+    ui_ridge_cap_boxes_for_test(ONE_BOX);
+    const audit_t audit = audit_arm(ARM_AMBIENT, 200);
+    assert_audit("boxes past a full list", &audit);
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, audit.overflowed, "a step past its cap said its list overflowed");
+}
+
 static void
 test_shaking_plucks_repaint_as_a_full_paint_and_are_sent(void) {
     fixture();
@@ -494,6 +507,7 @@ suite_ridge_repaint(void) {
     RUN_TEST(test_a_wobble_repaints_as_a_full_paint_and_is_sent);
     RUN_TEST(test_the_ambient_ridge_repaints_as_a_full_paint_and_is_sent);
     RUN_TEST(test_the_ambient_ridge_held_upright_repaints_as_a_full_paint_and_is_sent);
+    RUN_TEST(test_boxes_past_a_full_list_are_repainted_and_overflow_it);
     RUN_TEST(test_shaking_plucks_repaint_as_a_full_paint_and_are_sent);
     RUN_TEST(test_the_boot_hold_and_ease_in_repaint_as_a_full_paint_and_are_sent);
     RUN_TEST(test_a_dissolved_strip_switch_is_sent_and_ends_on_a_full_paint);

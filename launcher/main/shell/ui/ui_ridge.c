@@ -148,7 +148,9 @@ typedef struct {
     edge_lines_t was_lines, now_lines;
     ui_fresh_t fresh;            /* where this frame's step painted */
     recti_t boxes[UI_FRESH_MAX]; /* the step's boxes, in strip space */
+#if BUILD_VARIANT_SELFTEST_OR_HOST
     int gradient_turns;
+#endif
     uint8_t lip_alpha[RIDGE_LAYER_COUNT][RIDGE_MAX_LIP_PX];
     uint32_t theme_seed, tuned_at, alive_ms, wave_ms, shake_seed;
     float shake;
@@ -156,17 +158,25 @@ typedef struct {
     bool by_column, axis_on_screen, ambient, painted, scanline_dither;
 } ridge_t;
 
-#define RIDGE_ENTRY        "ridge"
-#define RIDGE_ROW          "y"
+#define RIDGE_ENTRY           "ridge"
+#define RIDGE_ROW             "y"
 /* A level fallback crosses the middle of the landscape frame. */
-#define RIDGE_LEVEL_HEIGHT (RIDGE_CURVE_VIEW_H / 2)
+#define RIDGE_LEVEL_HEIGHT    (RIDGE_CURVE_VIEW_H / 2)
 
-#define TAG                "ui_ridge"
-/* A fresh box grows over a layer's next span while that paints at most this
- * many pixels the span does not need; past it a box of its own is cheaper.
- * Measured on the home screen: at half this the landscape ridge needs more
- * boxes than UI_FRESH_MAX, and at twice it paints about twice the pixels. */
-#define RIDGE_BOX_WASTE_PX 64
+#define TAG                   "ui_ridge"
+/* A fresh box grows over a layer's next span while the pixels it paints that
+ * no move needs stay within its moved pixels >> RIDGE_BOX_SLACK_SHIFT, or
+ * within RIDGE_BOX_SLACK_PX while it is small; past that a box of its own is
+ * cheaper. */
+#define RIDGE_BOX_SLACK_SHIFT 2
+#define RIDGE_BOX_SLACK_PX    16
+#if BUILD_VARIANT_SELFTEST_OR_HOST
+/* The boxes a step may list; a test lowers it to drive the overflow. */
+static int box_cap = UI_FRESH_MAX;
+#define RIDGE_BOX_CAP box_cap
+#else
+#define RIDGE_BOX_CAP UI_FRESH_MAX
+#endif
 static const int16_t level_height = RIDGE_LEVEL_HEIGHT * RIDGE_SUBPIXEL_ONE;
 static const int16_t* curve;
 static ridge_t* ridge;
@@ -817,23 +827,22 @@ repaint_column_box(recti_t box) {
     }
 }
 
-/* Grows `box` to hold `span` when that wastes at most RIDGE_BOX_WASTE_PX
- * pixels the span does not need; whether it did. Boxes and spans are in
- * strip space: strips across, the span along them down. */
+/* A box gathering a layer's moves, in strip space: strips across, the span
+ * along them down; `moved` the pixels of the spans it holds. */
+typedef struct {
+    recti_t rect;
+    int moved;
+} move_box_t;
+
+/* Grows `box` to hold `span` while its slack allows; whether it did. */
 static bool
-box_takes(recti_t* box, recti_t span) {
-    if (recti_is_empty(span)) {
-        return true;
-    }
-    if (recti_is_empty(*box)) {
-        *box = span;
-        return true;
-    }
-    const recti_t grown = recti_union(*box, span);
-    if ((grown.w * grown.h) - (box->w * box->h) - (span.w * span.h) > RIDGE_BOX_WASTE_PX) {
+box_takes(move_box_t* box, recti_t span) {
+    const int moved = box->moved + recti_area(span);
+    const recti_t grown = recti_union(box->rect, span);
+    if (recti_area(grown) - moved > mathi_max(moved >> RIDGE_BOX_SLACK_SHIFT, RIDGE_BOX_SLACK_PX)) {
         return false;
     }
-    *box = grown;
+    *box = (move_box_t){grown, moved};
     return true;
 }
 
@@ -851,14 +860,15 @@ repaint_box(recti_t box) {
 }
 
 /* `box` kept after the `count` boxes so far. Past a full list it is
- * repainted now, and the fresh list overflows: the UI puts the backdrop back
- * instead, which a box grown over the rest would cost far more than. */
+ * repainted now and the fresh list marked overflowed, so the UI puts the
+ * backdrop back instead of trusting the list. */
 static int
 keep_box(recti_t* boxes, int count, recti_t box) {
     if (recti_is_empty(box)) {
         return count;
     }
-    if (count == UI_FRESH_MAX) {
+    if (count == RIDGE_BOX_CAP) {
+        ridge->fresh.overflow = true;
         repaint_box(box);
         return count;
     }
@@ -872,7 +882,7 @@ keep_box(recti_t* boxes, int count, recti_t box) {
 static int
 keep_layer_boxes(int layer, recti_t* boxes, int count) {
     const int along = ridge->by_column ? GFX_HEIGHT : GFX_WIDTH;
-    recti_t box = recti_empty();
+    move_box_t box = {recti_empty(), 0};
     for (int strip = 0; strip < ridge->strips; strip++) {
         const int was = ridge->shown[layer][strip];
         const int now = ridge->boundary[layer][strip];
@@ -886,11 +896,11 @@ keep_layer_boxes(int layer, recti_t* boxes, int count) {
         hi = mathi_clamp(hi, lo, along);
         const recti_t span = {strip, lo, 1, hi - lo};
         if (!box_takes(&box, span)) {
-            count = keep_box(boxes, count, box);
-            box = span;
+            count = keep_box(boxes, count, box.rect);
+            box = (move_box_t){span, recti_area(span)};
         }
     }
-    return keep_box(boxes, count, box);
+    return keep_box(boxes, count, box.rect);
 }
 
 /* The first box after `i` that overlaps box `i`, or -1. */
@@ -1067,7 +1077,9 @@ repaint_swept_row(int y) {
 static void
 repaint_gradient_turn(ridge_vector_t was) {
     ridge->fresh.overflow = true; /* a row each, more than the list holds */
+#if BUILD_VARIANT_SELFTEST_OR_HOST
     ridge->gradient_turns++;
+#endif
     edge_lines(&ridge->was_lines, was);
     edge_lines(&ridge->now_lines, ridge->gradient_pose);
     for (int y = 0; y < GFX_HEIGHT; y++) {
@@ -1338,6 +1350,7 @@ ui_ridge_release_for_test(void) {
 void
 ui_ridge_reset_for_test(void) {
     test_owns_state = ridge == NULL;
+    box_cap = UI_FRESH_MAX;
     allocate_once();
     if (ridge == NULL) {
         return;
@@ -1409,6 +1422,11 @@ ui_ridge_dissolve_restarts_for_test(void) {
 int
 ui_ridge_gradient_turns_for_test(void) {
     return ridge != NULL ? ridge->gradient_turns : 0;
+}
+
+void
+ui_ridge_cap_boxes_for_test(int cap) {
+    box_cap = cap;
 }
 
 int
