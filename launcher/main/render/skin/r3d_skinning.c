@@ -157,7 +157,7 @@ skin_light_vertex(vec3f_t normal, const r3d_skin_lights_t* lights, const sh1_irr
                   const uint8_t albedo[3], uint8_t out[3], int mode, bool gradient) {
     if (!gradient) {
         if (mode == LIGHT_TABLE) {
-            light_shade(r3d_skin_light_table_sample(normal, lights), lights, albedo, out);
+            light_shade(light_table_sample(normal, lights), lights, albedo, out);
         } else {
             light_evaluate(mode == LIGHT_RENORMALISED ? light_renormalise(normal) : normal, lights, albedo, out);
         }
