@@ -425,25 +425,27 @@ class NativeTests(unittest.TestCase):
         self.assertEqual(found, {"a.c", "near.h", "inc/sub/far.h", "inc/sub/deep.h"})
 
     def test_define_values_are_keyed_without_compiling_their_include_graph(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = pathlib.Path(directory)
-            header = root / "owner.h"
-            included = root / "runtime.h"
-            included.write_text("#define UNUSED 1\n")
-            header.write_text('#include "runtime.h"\n#define GAMMA 2.2F\n')
-            module = root / "entry.py"
-            module.write_text('from pathlib import Path\nfrom build.c_header import read_define\n'
-                              'OWNER = Path(__file__).with_name("owner.h")\n'
-                              'GAMMA = read_define(OWNER, "GAMMA")\n')
-            try:
-                before = bake.native_inputs([module])
-                self.assertEqual(set(before), {bake.relative(header)})
-                included.write_text("#define UNUSED 2\n")
-                self.assertEqual(bake.native_inputs([module]), before)
-                header.write_text('#include "runtime.h"\n#define GAMMA 2.4F\n')
-                self.assertNotEqual(bake.native_inputs([module]), before)
-            finally:
-                bake.module_facts.cache_clear()
+        for reader, expression in (("read_define", 'read_define(OWNER, "GAMMA")'),
+                                   ("read_defines", 'read_defines(OWNER, "", ("GAMMA",))')):
+            with self.subTest(reader=reader), tempfile.TemporaryDirectory() as directory:
+                root = pathlib.Path(directory)
+                header = root / "owner.h"
+                included = root / "runtime.h"
+                included.write_text("#define UNUSED 1\n")
+                header.write_text('#include "runtime.h"\n#define GAMMA 2.2F\n')
+                module = root / "entry.py"
+                module.write_text(f'from pathlib import Path\nfrom build.c_header import {reader}\n'
+                                  'OWNER = Path(__file__).with_name("owner.h")\n'
+                                  f'GAMMA = {expression}\n')
+                try:
+                    before = bake.native_inputs([module])
+                    self.assertEqual(set(before), {bake.relative(header)})
+                    included.write_text("#define UNUSED 2\n")
+                    self.assertEqual(bake.native_inputs([module]), before)
+                    header.write_text('#include "runtime.h"\n#define GAMMA 2.4F\n')
+                    self.assertNotEqual(bake.native_inputs([module]), before)
+                finally:
+                    bake.module_facts.cache_clear()
 
     def test_all_literal_defines_key_even_comprehension_reads(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -459,12 +461,14 @@ class NativeTests(unittest.TestCase):
                 header.write_text(text)
                 self.assertNotEqual(before, bake.native_inputs([module]))
 
-    def test_unresolvable_read_define_header_is_loud(self):
+    def test_variable_headers_are_ignored_and_missing_paths_are_loud(self):
         with tempfile.TemporaryDirectory() as directory:
             module = pathlib.Path(directory) / "entry.py"
-            module.write_text('VALUE = read_define(unknown_header, "MODE")\n')
-            with self.assertRaisesRegex(bake.SettingsError, r'entry.py:1: cannot resolve read_define header'):
-                bake.native_inputs([module])
+            module.write_text('VALUE = read_define(unknown_header, "MODE")\n'
+                              'def read_values(header):\n'
+                              '    return read_defines(header, "ITEM_", ("COUNT",))\n')
+            self.assertEqual(bake.native_inputs([module]), {})
+            self.assertEqual(bake.native_inputs([TOOLS / "build/c_header.py"]), {})
             missing = pathlib.Path(directory) / "missing.py"
             missing.write_text('from pathlib import Path\nOWNER = Path(__file__).with_name("missing.h")\n'
                                'VALUE = read_define(OWNER, "MODE")\n')

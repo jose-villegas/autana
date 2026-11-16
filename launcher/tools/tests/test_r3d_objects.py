@@ -23,7 +23,7 @@ from r3d.import_settings import SettingsError, load_import_settings, load_scene
 from r3d.objects.instances import (MATCH_TOLERANCE, SourceObject, bounds_diagonal, match_instances, place, rigid_fit,
                                    source_objects)
 from r3d.objects.surface_match import FLOOR_CAP, SURFACE_TOLERANCE, limit, merge, nearest, surface
-from soup import subdivided
+from soup import Soup, subdivided
 from r3d.objects.object_error import (PLANAR_AREA_SHARE, PLANAR_DEGREES, SHEET_DEGREES, SHEET_GROWTH, SKY, Parts,
                                       cell, common_prefix, object_rows, part_labels, part_names, planar_parts, read,
                                       nearest_source, report_body, rows_for, shape_rows, sheet_triangles, write)
@@ -31,8 +31,9 @@ from r3d.objects.objects_report import main, masked_objects
 from r3d.mesh_import import load_source
 from test_r3d_import import camera, renderer, write_import, write_scene
 
-POINTS = np.array([[0., 0., 0.], [3., 0., 0.], [0., 2., 0.], [0., 0., 1.]])
-TRIANGLES = np.array([[0, 2, 1], [0, 1, 3], [0, 3, 2], [1, 2, 3]])
+SHAPE = Soup([[0., 0., 0.], [3., 0., 0.], [0., 2., 0.], [0., 0., 1.]],
+             [[0, 2, 1], [0, 1, 3], [0, 3, 2], [1, 2, 3]])
+POINTS, TRIANGLES = SHAPE.vertices, SHAPE.faces
 MATERIALS = np.array([0, 1, 0, 1])
 
 

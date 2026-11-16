@@ -65,6 +65,12 @@ def check_keys(table, required, where, optional=()):
             raise SettingsError(f"{where}.{name} is not a known setting")
 
 
+def load_fields(table, fields, where):
+    """Read a closed table of required, typed fields as a namespace."""
+    check_keys(table, tuple(fields), where)
+    return SimpleNamespace(**{name: reader(table[name], f"{where}.{name}") for name, reader in fields.items()})
+
+
 def text(value, where):
     if not isinstance(value, str) or not value:
         raise SettingsError(f"{where} must be a non-empty string")
@@ -304,19 +310,11 @@ def load_geometry(table, steps):
             raise SettingsError("geometry.cards names a material in both never and always")
         steps.cards = SimpleNamespace(never=never, always=always, epsilon=epsilon, area_cost=cost)
     if "thin" in table:
-        thin = table["thin"]
-        check_keys(thin, ("material", "keep"), "geometry.thin")
-        steps.thin = SimpleNamespace(material=text(thin["material"], "geometry.thin.material"),
-                                     keep=number(thin["keep"], "geometry.thin.keep"))
+        steps.thin = load_fields(table["thin"], {"material": text, "keep": number}, "geometry.thin")
     if "simplify" in table:
-        simplify = table["simplify"]
-        check_keys(simplify, ("dense_edge", "props", "props_share", "seal_seams", "colour_deviation"), "geometry.simplify")
-        steps.simplify = SimpleNamespace(
-            dense_edge=number(simplify["dense_edge"], "geometry.simplify.dense_edge"),
-            props=set(strings(simplify["props"], "geometry.simplify.props")),
-            props_share=number(simplify["props_share"], "geometry.simplify.props_share"),
-            seal_seams=boolean(simplify["seal_seams"], "geometry.simplify.seal_seams"),
-            colour_deviation=number(simplify["colour_deviation"], "geometry.simplify.colour_deviation"))
+        steps.simplify = load_fields(table["simplify"], {
+            "dense_edge": number, "props": lambda value, where: set(strings(value, where)),
+            "props_share": number, "seal_seams": boolean, "colour_deviation": number}, "geometry.simplify")
         if steps.simplify.colour_deviation <= 0:
             raise SettingsError("geometry.simplify.colour_deviation must be above 0")
     steps.fit = SimpleNamespace(probes=load_probes(table["probes"]) if "probes" in table else None,
@@ -765,10 +763,7 @@ def load_bake(table):
                            colour_merge_step=count(table["colour_merge_step"], "scene.bake.colour_merge_step"),
                            indirect=None, ao=None)
     if "indirect" in table:
-        indirect = table["indirect"]
-        check_keys(indirect, ("bounces", "rays"), "scene.bake.indirect")
-        bake.indirect = SimpleNamespace(bounces=count(indirect["bounces"], "scene.bake.indirect.bounces"),
-                                        rays=count(indirect["rays"], "scene.bake.indirect.rays"))
+        bake.indirect = load_fields(table["indirect"], {"bounces": count, "rays": count}, "scene.bake.indirect")
     if "ao" in table:
         ao = table["ao"]
         check_keys(ao, ("distance", "rays"), "scene.bake.ao", optional=("strength", "indirect"))

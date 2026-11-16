@@ -467,12 +467,16 @@ def native_inputs(files):
         tree, constants, _ = module_facts(path)
         headers = set()
         for node in ast.walk(tree):
-            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in ("read_define", "checked_struct"):
+            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                    and node.func.id in ("read_define", "read_defines", "checked_struct")):
                 try:
                     header = pathlib.Path(eval(compile(ast.Expression(node.args[0]), str(path), "eval"),
                                                {"__builtins__": {}}, constants)).resolve()
+                except (NameError, TypeError, ValueError, IndexError):
+                    continue
+                try:
                     header_text = header.read_text(encoding="utf-8")
-                except (NameError, TypeError, ValueError, IndexError, OSError) as error:
+                except OSError as error:
                     raise SettingsError(f"{path}:{node.lineno}: cannot resolve read_define header: {error}") from error
                 if header not in defines:
                     values = {}
