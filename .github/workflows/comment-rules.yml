@@ -77,7 +77,7 @@ jobs:
       - name: Workflow gate dependencies
         run: |
           sudo sh scripts/ci/apt_install.sh -y libportaudio2
-          pip install -r scripts/gates/requirements.txt -r launcher/tools/render/requirements.txt -r launcher/test/device/requirements.txt -r launcher/tools/audio/requirements.txt -r launcher/tools/audio/mic/requirements.txt
+          pip install -r scripts/gates/requirements.txt -r launcher/tools/render/requirements.txt -r launcher/test/device/requirements.txt -r launcher/tools/audio/requirements.txt -r launcher/tools/audio/mic/requirements.txt -r launcher/tools/scene/requirements.txt
 
       # test_r3d_bake.py skips itself without numpy and scipy, and builds
       # meshoptimizer's library from its submodule with the runner's compiler;
@@ -236,7 +236,7 @@ jobs:
           echo "TMP=$long" >> "$GITHUB_ENV"
       - name: Tool test dependencies
         run: |
-          pip install -r scripts/gates/requirements.txt -r launcher/tools/render/requirements.txt -r launcher/test/device/requirements.txt -r launcher/tools/audio/requirements.txt -r launcher/tools/audio/mic/requirements.txt -r launcher/tools/r3d/requirements.txt
+          pip install -r scripts/gates/requirements.txt -r launcher/tools/render/requirements.txt -r launcher/test/device/requirements.txt -r launcher/tools/audio/requirements.txt -r launcher/tools/audio/mic/requirements.txt -r launcher/tools/r3d/requirements.txt -r launcher/tools/scene/requirements.txt
           git submodule update --init --depth 1 third_party/upstream/meshoptimizer third_party/upstream/ufbx
           npm ci --prefix scripts/gates
       - name: Tool tests
