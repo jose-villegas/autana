@@ -236,6 +236,40 @@ test_launcher_backdrop_motion_and_rest(void) {
                              "on exactly the settled screen: the motion left nothing behind");
 }
 
+/* A screen of tiles, skinned from the engine pack, and frames of ambient
+ * motion under them. */
+#define TILE_APPS    6
+#define UNDER_FRAMES 60
+
+/* The ridge moving under translucent tiles repaints only where it moved,
+ * the backdrop put back under each tile first: every such frame is the
+ * picture a whole repaint of the backdrop and the UI makes. */
+static void
+test_the_ridge_moving_under_the_tiles_equals_a_whole_repaint(void) {
+    app_t apps[TILE_APPS] = {
+        {.name = "Alpha"}, {.name = "Beta"}, {.name = "Gamma"}, {.name = "Delta"}, {.name = "Eps"}, {.name = "Zeta"},
+    };
+    fixture(apps, TILE_APPS);
+    ui_set_transform(affine2x_identity());
+    ui_ridge_settle();
+    ui_ridge_set_ambient(true);
+    frame(false, false);
+    int moved = 0;
+    for (int i = 0; i < UNDER_FRAMES; i++) {
+        moved += frame(false, false);
+        reference = snapshot();
+        TEST_ASSERT_NOT_NULL_MESSAGE(reference, "no memory for the frame copy");
+        ui_invalidate();
+        (void)ui_launcher_frame(NULL, 0);
+        const bool same = memcmp(reference, gfx_framebuffer(), PIXELS * sizeof *reference) == 0;
+        memory_free(reference);
+        reference = NULL;
+        gfx_present();
+        TEST_ASSERT_TRUE_MESSAGE(same, "a frame drawn under the tiles differs from a whole repaint");
+    }
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(UNDER_FRAMES / 2, moved, "the ridge moved under the tiles");
+}
+
 #define VIBRATION_FRAMES ((int)(4 * MATH_MS_PER_S / FRAME_MS))
 #define VIBRATION_G      (SHAKE_START_G / 2)
 #define DELIBERATE_G     (SHAKE_FULL_G * 2)
@@ -369,6 +403,7 @@ void
 suite_ridge_backdrop(void) {
     RUN_TEST(test_boot_flat_without_initial_sample_keeps_landscape);
     RUN_TEST(test_launcher_backdrop_motion_and_rest);
+    RUN_TEST(test_the_ridge_moving_under_the_tiles_equals_a_whole_repaint);
     RUN_TEST(test_ambient_off_ignores_deliberate_shake);
     RUN_TEST(test_weak_shake_scales_spring_offset);
     RUN_TEST(test_speaker_vibration_never_plucks_but_deliberate_shake_does);

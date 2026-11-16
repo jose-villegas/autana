@@ -8,12 +8,20 @@
 #include "gfx/gfx.h"
 #include "gfx/target/gfx_color.h"
 #include "input/input.h"
+#include "math/geometry/recti.h"
+#include "ui/ui.h"
 
-#define RIDGE_CURVE_POINTS GFX_HEIGHT
-#define RIDGE_CURVE_VIEW_H GFX_WIDTH
+#define RIDGE_CURVE_POINTS    GFX_HEIGHT
+#define RIDGE_CURVE_VIEW_H    GFX_WIDTH
 /* Columns repainted and dirtied together, 16 wide: one PSRAM cache line of
  * RGB565. */
-#define RIDGE_COLUMN_GROUP 16
+#define RIDGE_COLUMN_GROUP    16
+/* A fresh box grows over a layer's next span while the pixels it paints that
+ * no move needs stay within its moved pixels >> RIDGE_BOX_SLACK_SHIFT, or
+ * within RIDGE_BOX_SLACK_PX while it is small; past that a box of its own is
+ * cheaper. */
+#define RIDGE_BOX_SLACK_SHIFT 2
+#define RIDGE_BOX_SLACK_PX    16
 
 /* Read the curve from the engine pack and keep that pack mounted; only the first call reads. An unavailable or invalid curve releases the pack and draws a level ridge. */
 void ui_ridge_load(void);
@@ -41,8 +49,15 @@ void ui_ridge_settle(void);
  * untouched. */
 void ui_ridge_step(const input_t* input, uint32_t dt_ms);
 
-/* The whole layered backdrop and the ridge as it stands: a ui_backdrop_fn. */
-void ui_ridge_paint(void);
+/* The layered backdrop and the ridge as they stand, inside `area`: a
+ * ui_backdrop_fn. The whole screen also catches the screen up with the ridge
+ * (its gradient, a dissolve); a smaller area repaints what the step last
+ * painted there, or, mid-dissolve, the whole screen, ending the dissolve. */
+void ui_ridge_paint(recti_t area);
+
+/* Where the last ui_ridge_step() painted, for ui_end_over(); NULL with no
+ * ridge. */
+const ui_fresh_t* ui_ridge_fresh(void);
 
 #if BUILD_VARIANT_SELFTEST_OR_HOST
 #include "physics/spring/spring_line.h"
@@ -64,4 +79,13 @@ bool ui_ridge_dissolving_for_test(void);
 int ui_ridge_dissolve_restarts_for_test(void);
 /* How many pose steps the fill's gradient trails the ridge by. */
 int ui_ridge_gradient_lag_for_test(void);
+/* How many times the gradient has turned, each repainting row by row. */
+int ui_ridge_gradient_turns_for_test(void);
+/* Whether the last step painted boxes; if so its moved pixels, a span per
+ * strip per layer, and its boxes before the merge: their pixels and how many. */
+bool ui_ridge_boxes_for_test(int* moved_px, int* kept_px, int* kept_boxes);
+/* At most `cap` boxes a step, UI_FRESH_MAX restoring the default. */
+void ui_ridge_cap_boxes_for_test(int cap);
+/* The boxes merged until none overlap; how many are left, at the front. */
+int ui_ridge_merge_boxes_for_test(recti_t* boxes, int count);
 #endif
