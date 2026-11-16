@@ -244,6 +244,14 @@ test_normalize_divide_zero_and_float(void) {
     }
 }
 
+static void
+test_length_is_the_root_of_the_self_dot(void) {
+    static const vec3f_t three_four_twelve = {3.0F, 4.0F, 12.0F};
+    TEST_ASSERT_EQUAL_FLOAT(13.0F, vec3f_length(three_four_twelve));
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, vec3f_length(vec3f_zero()));
+    TEST_ASSERT_FLOAT_WITHIN(FLT_EPSILON, 1.0F, vec3f_length(vec3f_normalize(A)));
+}
+
 /* The double-precision reference runs on the host only: the device's FPU is single precision. */
 #ifndef ESP_PLATFORM
 static void
@@ -1759,6 +1767,23 @@ test_rsqrt_device_mantissas_and_normal_exponent_edges(void) {
 }
 #endif
 
+/* The exponent matches frexpf's over every normal exponent, at a power of
+ * two and just below the next. */
+static void
+test_scalar_exponent_matches_frexpf_across_the_normal_range(void) {
+    for (int e = FLT_MIN_EXP; e <= FLT_MAX_EXP; e++) {
+        const float low = ldexpf(0.5F, e);
+        int expected = 0;
+        (void)frexpf(low, &expected);
+        TEST_ASSERT_EQUAL_INT(expected, mathf_exponent(low));
+        if (e < FLT_MAX_EXP) {
+            const float high = nextafterf(ldexpf(1.0F, e), 0.0F);
+            (void)frexpf(high, &expected);
+            TEST_ASSERT_EQUAL_INT(expected, mathf_exponent(high));
+        }
+    }
+}
+
 static void
 test_scalar_half_and_absolute_value(void) {
     static const float half = 0.5F;
@@ -2093,6 +2118,7 @@ suite_math_numbers(void) {
     RUN_TEST(test_integer_half_chords_floor);
     RUN_TEST(test_integer_half_chords_round);
     RUN_TEST(test_integer_half_chords_int16_radius_edges);
+    RUN_TEST(test_scalar_exponent_matches_frexpf_across_the_normal_range);
     RUN_TEST(test_scalar_half_and_absolute_value);
 #if !defined(ESP_PLATFORM) || (defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP)
     RUN_TEST(test_recip_approx_mantissas_and_normal_exponent_edges);
@@ -2147,6 +2173,7 @@ suite_math_numbers(void) {
     RUN_TEST(test_vec3_add_sub_scale_dot_cross_agree_across_every_number_type);
     RUN_TEST(test_vec2_ops_agree_across_every_number_type);
     RUN_TEST(test_normalize_divide_zero_and_float);
+    RUN_TEST(test_length_is_the_root_of_the_self_dot);
 #ifndef ESP_PLATFORM
     RUN_TEST(test_fixed_normalize_saturation_edges);
 #endif

@@ -4,7 +4,7 @@
 #include <string.h>
 #include "anim/anim_binding.h"
 #include "anim/anim_tracks_format.h"
-#include "scene/camera/camera.h"
+#include "scene/camera/lens.h"
 #include "suites.h"
 #include "test_anim_tracks.h"
 #include "unity.h"
@@ -192,8 +192,8 @@ test_binding_description_has_component_order_and_snprintf_length(void) {
     TEST_ASSERT_EQUAL_INT(strlen(want), anim_binding_describe(&b, text, 1));
     TEST_ASSERT_EQUAL_STRING("", text);
     TEST_ASSERT_EQUAL_INT(strlen(want), anim_binding_describe(&b, NULL, 0));
-    TEST_ASSERT_EQUAL_INT(ANIM_COMPONENT_CAMERA, CAMERA_FIELDS.component);
-    TEST_ASSERT_EQUAL_STRING("half_fov_short_tan", CAMERA_FIELDS.fields[0].name);
+    TEST_ASSERT_EQUAL_INT(ANIM_COMPONENT_CAMERA, LENS_FIELDS.component);
+    TEST_ASSERT_EQUAL_STRING("half_fov_short_tan", LENS_FIELDS.fields[0].name);
 }
 
 void

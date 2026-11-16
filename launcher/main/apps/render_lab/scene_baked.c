@@ -22,13 +22,14 @@
 #include "render_lab.h"
 #include "render_lab_dynres.h"
 #include "render_lab_view.h"
+#include "scene/camera/camera.h"
 #include "scene/scene.h"
 #include "ui/ui.h"
 
 static const char* TAG = "scene_baked";
 
 static const scene_baked_t* shown_family;
-static scene_t* loaded;
+static entity_t loaded;
 
 /* What the panel says in place of the triangle count when the scene could not
  * load; empty when it could. */
@@ -54,22 +55,22 @@ record_failure(const scene_failure_t* why) {
 }
 
 /* The camera the settings follow: the one the start named, else the family's. */
-static scene_entity_t
+static entity_t
 camera_entity(void) {
-    return scene_find(loaded,
-                      name_hash(render_lab_start_camera == NULL ? shown_family->camera : render_lab_start_camera));
+    return entity_find(loaded,
+                       name_hash(render_lab_start_camera == NULL ? shown_family->camera : render_lab_start_camera));
 }
 
 render_lab_path_t
 scene_baked_path(void) {
-    return (render_lab_path_t){loaded, loaded == NULL ? SCENE_ENTITY_NONE : camera_entity(), NULL};
+    return (render_lab_path_t){loaded, handle_is_none(loaded) ? ENTITY_NONE : camera_entity(), NULL};
 }
 
 static void
 apply_settings(void) {
     render_lab_apply_raster_settings();
-    if (loaded != NULL) {
-        (void)render_lab_apply_camera_settings(loaded, camera_entity());
+    if (!handle_is_none(loaded)) {
+        (void)render_lab_apply_camera_settings(camera_entity());
     }
 #if TUNE_ENABLED
     render_context_set_debug_view(render_context_main(), render_lab_debug_view());
@@ -83,33 +84,36 @@ scene_baked_enter(const render_lab_scene_t* self) {
     draw_clear(RGB565BE(UI_BACKGROUND));
     failure[0] = '\0';
     shown_family = family;
-    scene_failure_t why;
-    loaded = scene_load(family->scene, &why);
-    if (loaded == NULL) {
+    scene_failure_t why = {.status = SCENE_ERR_FULL}; /* what scene_load() leaves when it returns no root */
+    loaded = scene_load(family->scene);
+    if (scene_state(loaded) != PENDING_READY) {
+        (void)scene_failure(loaded, &why);
         record_failure(&why);
+        scene_release(loaded);
+        loaded = ENTITY_NONE;
         return;
     }
     for (int i = 0; i < (int)SCENE_BAKED_VARIANT_COUNT; i++) {
-        const scene_entity_t bake = scene_find(loaded, name_hash(family->bakes[i]));
-        if (bake == SCENE_ENTITY_NONE) {
+        const entity_t bake = entity_find(loaded, name_hash(family->bakes[i]));
+        if (handle_is_none(bake)) {
             ESP_LOGE(TAG, "the scene has no entity '%s'", family->bakes[i]);
             if (snprintf(failure, sizeof failure, "no bake '%s'", family->bakes[i]) < 0) {
                 failure[0] = '\0';
             }
             continue;
         }
-        scene_entity_set_enabled(loaded, bake, i == (int)shown->variant);
+        entity_set_enabled(bake, i == (int)shown->variant);
     }
-    (void)scene_activate(loaded,
-                         render_lab_start_camera == NULL ? SCENE_CAMERA_FIRST : name_hash(render_lab_start_camera));
-    (void)scene_camera_set_skip_hidden(loaded, camera_entity(), family->skip_hidden);
+    (void)camera_activate(render_lab_start_camera == NULL ? camera_first(loaded)
+                                                          : entity_find(loaded, name_hash(render_lab_start_camera)));
+    (void)camera_set_skip_hidden(camera_entity(), family->skip_hidden);
     apply_settings();
 }
 
 void
 scene_baked_exit(void) {
-    scene_unload(loaded);
-    loaded = NULL;
+    scene_release(loaded);
+    loaded = ENTITY_NONE;
 }
 
 /* The shell has already drawn the scene into the framebuffer. */

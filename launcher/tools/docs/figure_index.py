@@ -138,15 +138,12 @@ def body(images, sources, shown, owner):
 def index(owner, check=False, root=ROOT):
     """Write the page and the GIF thumbnails, or with `check` say what differs; returns the differences.
     `owner(image)` is the script that declares an image under docs/images/, or None. An image no page
-    shows is a warning on stderr."""
+    shows is a difference: show it or stop making it."""
     from compare_images import compare, load_frames
     from docs.figures import gif_delays, shrink_gif
     images = sorted(name for name in tracked_files(root, [IMAGES]) if name.endswith(PICTURES))
     shown = showings(root)
-    for image in images:
-        if image not in shown:
-            print(f"shown nowhere {image}", file=sys.stderr)
-    differences = []
+    differences = [f"shown nowhere {image}" for image in images if image not in shown]
     wanted = {thumbnail_of(image): image for image in images if image.endswith(".gif")}
     kept = set(tracked_files(root, [THUMBNAILS])) | {thumbnail for thumbnail in wanted if (root / thumbnail).is_file()}
     sources = readable(root, [*images, *sorted(kept & set(wanted))])

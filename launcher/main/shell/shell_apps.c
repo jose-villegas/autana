@@ -10,6 +10,7 @@
 
 #include "app/app.h"
 #include "app/app_arena.h"
+#include "asset/asset_store.h"
 #include "core/memory.h"
 #include "display/display.h"
 #include "display/display_shell.h"
@@ -170,11 +171,16 @@ shell_apply_full_redraw(const app_t* app) {
     }
 }
 
+/* The running app's pack (app_t.pack), held from start to exit. */
+static handle_t app_pack = HANDLE_NONE;
+
 void
 shell_exit_app(const app_t** current) {
     ESP_LOGI(TAG, "Leaving %s", (*current)->name);
     sound_stop_app_voices();
     (*current)->exit();
+    asset_store_release(app_pack);
+    app_pack = HANDLE_NONE;
     shell_systems_app_exit();
     sound_end_app();
 #if CONFIG_LAUNCHER_DEVELOPMENT
@@ -233,6 +239,8 @@ shell_start_app(const app_t** current, const app_t* next) {
 #endif
     sound_begin_app();
     app_arena_enter();
+    app_pack = next->pack != NULL ? asset_store_load(next->pack) : HANDLE_NONE;
+    shell_systems_app_enter(asset_store_loaded(app_pack));
     (*current)->enter();
     frame_ready = false;
     frame_watch_restart();
@@ -515,6 +523,8 @@ static int shell_test_system_composes;
 static int shell_test_system_exits;
 static int shell_test_app_exits_at_system_exit;
 static bool shell_test_system_overlaps;
+static const asset_pack_t* shell_test_entered_pack;
+static int shell_test_enters_at_system_enter;
 
 static void
 shell_test_system_update(uint32_t dt_ms) {
@@ -526,6 +536,12 @@ static void
 shell_test_system_compose(uint32_t dt_ms) {
     (void)dt_ms;
     shell_test_system_composes++;
+}
+
+static void
+shell_test_system_app_enter(const asset_pack_t* pack) {
+    shell_test_entered_pack = pack;
+    shell_test_enters_at_system_enter = shell_test_enters;
 }
 
 static void
@@ -550,6 +566,7 @@ shell_test_swap_in_system(void) {
         .order = SHELL_ORDER_SCENE,
         .update = shell_test_system_update,
         .compose = shell_test_system_compose,
+        .app_enter = shell_test_system_app_enter,
         .app_exit = shell_test_system_app_exit,
         .overlaps_present = shell_test_system_overlap,
     };
@@ -608,6 +625,26 @@ shell_test_leaving_runs_the_systems_app_exit_after_the_apps_exit(void) {
     shell_system_swap_for_test(real);
     exit_requested = false;
     return none_while_running && once_after_the_app;
+}
+
+bool
+shell_test_systems_enter_with_the_apps_pack_before_it(void) {
+    shell_system_t* const real = shell_test_swap_in_system();
+    app_t app = shell_test_app;
+    app.pack = ASSET_ENGINE_PACK;
+    const handle_t engine = asset_store_load(ASSET_ENGINE_PACK);
+    const app_t* current = NULL;
+    shell_start_app(&current, &app);
+    const bool with_pack = shell_test_entered_pack != NULL && shell_test_entered_pack == asset_store_loaded(engine)
+                           && shell_test_enters_at_system_enter == 0 && shell_test_enters == 1;
+    shell_exit_app(&current);
+    shell_start_app(&current, &shell_test_app);
+    const bool without = shell_test_entered_pack == NULL && shell_test_enters_at_system_enter == 1;
+    shell_exit_app(&current);
+    asset_store_release(engine);
+    shell_system_swap_for_test(real);
+    exit_requested = false;
+    return with_pack && without;
 }
 #endif
 

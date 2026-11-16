@@ -17,6 +17,7 @@
 #include "core/app_heap.h"
 #include "heap_arena.h"
 #include "pack_reads.h"
+#include "scene/scene_shell.h"
 #include "shell/ui/ui_ridge.h"
 #include "suites.h"
 #include "ui/ui.h"
@@ -96,6 +97,10 @@ main(int argc, char** argv) {
     app_arena_enter();
     ui_init();
     ui_ridge_load();
+    if (!scene_world_init()) {
+        (void)printf("FAIL: the entity table did not fit the modeled PSRAM heap\n");
+        return 1;
+    }
     pack_reads_begin();
     UNITY_BEGIN();
 

@@ -57,16 +57,24 @@ pending_tokens_cancel(void) {
     }
 }
 
+static bool
+token_alive(handle_t owner) {
+    const token_t* token = find_token(owner);
+    return token != NULL && token->alive;
+}
+
+static pending_alive_fn alive_by_kind[HANDLE_OWNER_MAX + 1U] = {[HANDLE_OWNER_TOKEN] = token_alive};
+
+void
+pending_owner_register(handle_owner_t kind, pending_alive_fn alive) {
+    alive_by_kind[kind] = alive;
+}
+
 bool
 pending_owner_alive(handle_t owner) {
     if (handle_is_none(owner)) {
         return true;
     }
-    switch (handle_owner(owner)) {
-        case HANDLE_OWNER_TOKEN: {
-            const token_t* token = find_token(owner);
-            return token != NULL && token->alive;
-        }
-        default: return false;
-    }
+    const pending_alive_fn alive = alive_by_kind[handle_owner(owner)];
+    return alive != NULL && alive(owner);
 }

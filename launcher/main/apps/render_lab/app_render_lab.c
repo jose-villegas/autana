@@ -11,6 +11,7 @@
 #include "apps/render_lab/ui/render_lab_hud_screen.h"
 #include "apps/render_lab/ui/render_lab_menu_screen.h"
 #include "build/build_variant.h"
+#include "console/render_lab_fly.h"
 #include "core/tune.h"
 #include "draw/draw.h"
 #include "esp_log.h"
@@ -20,6 +21,7 @@
 #include "render_lab_dynres.h"
 #include "render_lab_scene.h"
 #include "render_lab_view.h"
+#include "scene/animator/animator.h"
 #include "scene/scene.h"
 #include "scene_baked.h"
 #include "stress/scene_stress.h"
@@ -109,6 +111,7 @@ enter_scene(void) {
 
 static void
 exit_scene(void) {
+    render_lab_fly_stop();
     current_scene()->exit();
     app_arena_rewind(scene_mark);
 }
@@ -379,36 +382,38 @@ render_lab_exit(void) {
 }
 
 /* The scene's own steer() and update(), where it has them, overlapped with
- * the send of the frame drawn last pass. A scene switch or the menu takes effect in frame(),
- * which runs after this, so a scene must cope with frame() arriving without
- * a matching update(). */
+ * the send of the frame drawn last pass, then the flight, last so it wins
+ * over a scene that places its own camera. A scene switch or the menu takes
+ * effect in frame(), which runs after this, so a scene must cope with frame()
+ * arriving without a matching update(). */
 static void
 render_lab_update(uint32_t dt_ms, const input_t* input) {
-    if (menu_open) {
-        return;
+    if (!menu_open) {
+        if (current_scene()->steer != NULL) {
+            current_scene()->steer(dt_ms, input);
+        }
+        if (current_scene()->update != NULL) {
+            current_scene()->update(dt_ms);
+        }
     }
-    if (current_scene()->steer != NULL) {
-        current_scene()->steer(dt_ms, input);
-    }
-    if (current_scene()->update != NULL) {
-        current_scene()->update(dt_ms);
-    }
+    render_lab_fly_frame(dt_ms);
 }
 
 /* The showing scene's path, with no scene when it has none or has not loaded. */
 static render_lab_path_t
 shown_path(void) {
-    return current_scene()->path == NULL ? (render_lab_path_t){NULL, SCENE_ENTITY_NONE, NULL} : current_scene()->path();
+    return current_scene()->path == NULL ? (render_lab_path_t){ENTITY_NONE, ENTITY_NONE, NULL}
+                                         : current_scene()->path();
 }
 
 /* The path's clip, -1 when the scene has none or lacks the clip it names. */
 static int
 path_clip(const render_lab_path_t* path) {
-    if (path->scene == NULL || path->clip == NULL) {
-        return path->scene == NULL ? -1 : scene_animator_current_clip(path->scene, path->entity);
+    if (handle_is_none(path->scene) || path->clip == NULL) {
+        return handle_is_none(path->scene) ? -1 : animator_current_clip(path->entity);
     }
-    for (int clip = 0; clip < scene_animator_clip_count(path->scene, path->entity); clip++) {
-        if (strcmp(scene_animator_clip_name(path->scene, path->entity, clip), path->clip) == 0) {
+    for (int clip = 0; clip < animator_clip_count(path->entity); clip++) {
+        if (strcmp(animator_clip_name(path->entity, clip), path->clip) == 0) {
             return clip;
         }
     }
@@ -419,7 +424,7 @@ uint32_t
 render_lab_path_duration_ms(void) {
     const render_lab_path_t path = shown_path();
     const int clip = path_clip(&path);
-    return clip < 0 ? 0 : scene_animator_clip_duration_ms(path.scene, path.entity, clip);
+    return clip < 0 ? 0 : animator_clip_duration_ms(path.entity, clip);
 }
 
 bool
@@ -427,12 +432,10 @@ render_lab_seek_path(uint32_t t_ms) {
     const render_lab_path_t path = shown_path();
     const int clip = path_clip(&path);
     const uint32_t duration_ms = render_lab_path_duration_ms();
-    if (duration_ms == 0
-        || (clip != scene_animator_current_clip(path.scene, path.entity)
-            && !scene_animator_play(path.scene, path.entity, clip, 0))) {
+    if (duration_ms == 0 || (clip != animator_current_clip(path.entity) && !animator_play(path.entity, clip, 0))) {
         return false;
     }
-    return scene_animator_seek(path.scene, path.entity, SCENE_ANIMATOR_CURRENT, t_ms % duration_ms);
+    return animator_seek(path.entity, ANIMATOR_CURRENT, t_ms % duration_ms);
 }
 
 /* "render pose <ms> | play": the reply to the words after "pose ". */
@@ -445,11 +448,10 @@ pose_console(const char* rest) {
     if (render_lab_path_duration_ms() == 0) {
         (void)printf("RENDER_ERR scene %s has no path\n", current_scene()->key);
     } else if (play) {
-        (void)scene_animator_set_paused(path.scene, path.entity, SCENE_ANIMATOR_CURRENT, false);
+        (void)animator_set_paused(path.entity, ANIMATOR_CURRENT, false);
         (void)printf("RENDER pose=play\nRENDER_END\n");
     } else if (!isdigit((unsigned char)rest[0]) || *end != '\0' || t_ms > UINT32_MAX
-               || !render_lab_seek_path((uint32_t)t_ms)
-               || !scene_animator_set_paused(path.scene, path.entity, SCENE_ANIMATOR_CURRENT, true)) {
+               || !render_lab_seek_path((uint32_t)t_ms) || !animator_set_paused(path.entity, ANIMATOR_CURRENT, true)) {
         (void)printf("RENDER_ERR usage: render pose <ms> | render pose play\n");
     } else {
         (void)printf("RENDER pose=%lu\nRENDER_END\n", t_ms);
@@ -457,7 +459,7 @@ pose_console(const char* rest) {
     (void)fflush(stdout);
 }
 
-/* "render scenes" lists each scene's key and name and which one shows; "render scene <key>" switches to that exact key at the next frame. "render pose <ms>" holds the showing scene's path there (render_lab_seek_path(), then paused), so a view can be compared at one pose; "render pose play" lets it move again. Replies are "RENDER ..." lines then "RENDER_END", or "RENDER_ERR <why>". Other words go to the showing scene's console hook, if it has one. */
+/* "render scenes" lists each scene's key and name and which one shows; "render scene <key>" switches to that exact key at the next frame. "render pose <ms>" holds the showing scene's path there (render_lab_seek_path(), then paused), so a view can be compared at one pose; "render pose play" lets it move again; "render fly" flies it (render_lab_fly.h). Replies are "RENDER ..." lines then "RENDER_END", or "RENDER_ERR <why>". Other words go to the showing scene's console hook, if it has one. */
 bool
 render_lab_console(const char* args) {
     if (strcmp(args, "scenes") == 0) {
@@ -484,6 +486,9 @@ render_lab_console(const char* args) {
     }
     if (strncmp(args, "pose ", 5) == 0) {
         pose_console(args + 5);
+        return true;
+    }
+    if (render_lab_fly_console(args)) {
         return true;
     }
     return current_scene()->console != NULL && current_scene()->console(args, console_reply_stdio);
@@ -525,6 +530,30 @@ render_lab_scene_fail(const char* tag, char* failure, size_t size, const char* w
     if (snprintf(failure, size, "%s", what) < 0) {
         failure[0] = '\0';
     }
+}
+
+/* Its own frame, so the reason is not on the stack while the scene loads. */
+static __attribute__((noinline)) void
+fail_load(const char* tag, char* failure, size_t size, entity_t root, const char* label) {
+    scene_failure_t why = {.status = SCENE_ERR_FULL}; /* what scene_load() leaves when it returns no root */
+    (void)scene_failure(root, &why);
+    scene_release(root);
+    const bool missing = why.asset == ASSET_ERR_NOT_FOUND || why.asset == ASSET_ERR_NO_PACK;
+    char what[RENDER_LAB_STATUS_LEN];
+    if (snprintf(what, sizeof what, missing ? "no %s pack: flash it" : "%s did not load", label) < 0) {
+        what[0] = '\0';
+    }
+    render_lab_scene_fail(tag, failure, size, what);
+}
+
+entity_t
+render_lab_scene_load(const char* tag, char* failure, size_t size, const char* id, const char* label) {
+    const entity_t root = scene_load(id);
+    if (scene_state(root) == PENDING_READY) {
+        return root;
+    }
+    fail_load(tag, failure, size, root, label);
+    return ENTITY_NONE;
 }
 
 void*

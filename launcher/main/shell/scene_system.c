@@ -12,6 +12,7 @@
 static shell_system_t scene_system = {
     .name = "scene",
     .order = SHELL_ORDER_SCENE,
+    .poll = scene_step,
     .update = scene_shell_render,
     .compose = scene_shell_compose,
     .app_exit = scene_unload_all,

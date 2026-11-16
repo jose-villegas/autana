@@ -125,6 +125,12 @@ class CloneTests(unittest.TestCase):
     def test_within_file(self):
         self.assertTrue(self.scan({"launcher/main/a.c": BLOCK + "\n" + BLOCK}))
 
+    def test_a_list_matching_itself_a_row_on_is_ignored_but_a_copy_beside_it_is_not(self):
+        rows = "".join(f"    case PART_{i}: return part_{i}_fits(scene, row);\n" for i in range(16))
+        listing = "static bool\nfits(int part, const void* row) {\n    switch (part) {\n" + rows + "    }\n}\n"
+        self.assertEqual(self.scan({"launcher/main/a.c": listing}), [])
+        self.assertTrue(self.scan({"launcher/main/a.c": listing + "\n" + BLOCK + "\n" + BLOCK}))
+
     def test_skip_rules(self):
         files = {"launcher/main/a.c": BLOCK, "scripts/tool.py": "pass",
                  "launcher/components/x.c": BLOCK, "launcher/packages/testkit/unity/x.h": BLOCK,

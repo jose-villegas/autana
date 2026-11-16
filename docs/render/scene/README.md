@@ -13,7 +13,10 @@ flowchart LR
 | Page | Covers |
 |---|---|
 | [Scene-Files.md](Scene-Files.md) | The scene file: objects, components, what a scene must carry, every option grouped per component |
-| [Scene-Manager.md](Scene-Manager.md) | The runtime: load by name, the component arrays, what the shell does each frame, hierarchy, ownership |
+| [Scene-Manager.md](Scene-Manager.md) | The runtime: the world of entities, scene roots, the component arrays, hierarchy |
+| [Scene-Components.md](Scene-Components.md) | The calls an app makes, one module per component |
+| [Scene-Loading.md](Scene-Loading.md) | Blocking and async loading, release, what memory a scene holds |
+| [Scene-Frame.md](Scene-Frame.md) | What the shell does with the scenes each frame, and the calls beneath it |
 | [Camera.md](Camera.md) | A scene camera: pose and lens, how a view is built, lens shift, which lens fields animate |
 
 The entry's bytes are [SCNE](../../assets/formats/SCNE.md); a first scene, step

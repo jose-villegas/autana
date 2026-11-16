@@ -69,7 +69,7 @@ class DocStagesTests(unittest.TestCase):
         from r3d import import_settings, fitted_variant, mesh_import, reference_render
         fit = NS(size=(8, 6), held_out_every_ms=2000)
         job = NS(renderer=NS(fit=fit, visibility=NS(source="camera_region", rounds=2),
-                             variant=NS(name="full")), asset_path=Path("start.mesh"), object=NS(name="hall"))
+                             variant=NS(name="full")), asset_path=Path("start.bundle"), object=NS(name="hall"))
         scene = NS(renderers=[job])
         args = NS(build_commit=None, capture=[], scene=Path("room.scene.toml"), object="hall")
         poses = (8, 6, .5, 1, [[0, 0, 0, 0, 0, -1]])
@@ -122,11 +122,11 @@ class DocStagesTests(unittest.TestCase):
                 mock.patch.object(lit_mesh, "finest_triangles", return_value=([], [], [0])), \
                 mock.patch.object(cost_model, "mesh_rows"), \
                 mock.patch.object(cost_model, "predict", return_value=np.array([1])):
-            stages.measure_worker("paint", job, Path("scratch.mesh"), self.tmp, self.tmp, Path("host"), [], scene)
+            stages.measure_worker("paint", job, Path("scratch.bundle"), self.tmp, self.tmp, Path("host"), [], scene)
         fields = score.call_args.args[0].render_args.split()
         self.assertEqual(fields[fields.index("--scene") + 1], "gallery")
         self.assertEqual(fields[fields.index("--object") + 1], "painting")
-        pack.assert_called_once_with([scene], ["gallery.paint=scratch.mesh"])
+        pack.assert_called_once_with([scene], ["gallery.paint=scratch.bundle"])
 
     def setUp(self):
         directory = tempfile.TemporaryDirectory()
@@ -139,7 +139,7 @@ class DocStagesTests(unittest.TestCase):
         import numpy as np
         scene_path = Path("gallery.scene.toml")
         job = NS(renderer=NS(fit=NS(held_out_every_ms=1000), visibility=object()))
-        scene = NS(renderers=[NS(object=NS(name=name), asset_path=Path(name + ".mesh"))
+        scene = NS(renderers=[NS(object=NS(name=name), asset_path=Path(name + ".bundle"))
                               for name in ("painting", "painting_lite")])
         capture = self.tmp / "capture.txt"
         capture.write_text("abcdef123456-diag\nFRAME COST rendered 8x6\nCAPTURE pose_every_ms=1000\n" +
@@ -169,7 +169,7 @@ class DocStagesTests(unittest.TestCase):
                                              build_commit=None, check=False), out, work), 0)
         placed.assert_called_once_with(scene, "painting_fitted")
         self.assertEqual([call.args[0] for call in rows.call_args_list],
-                         [Path("painting.mesh"), Path("painting_lite.mesh")])
+                         [Path("painting.bundle"), Path("painting_lite.bundle")])
         self.assertEqual(fit.call_args.args[1], [51.0, 42.0])
         self.assertEqual({path.name for path in (out / "tables").iterdir()},
                          {"gallery-board.md", "gallery-board-model.md"})
@@ -585,12 +585,12 @@ class FullGpuSchedulingTests(unittest.TestCase):
             self.assertEqual(consumed, expected_rows)
             self.assertEqual({label: measured[label] for label in ('lite-GI-bake', 'full-path-culled', 'lite-GI-fit',
                                                                    'normal-0', 'normal-0.3', 'budget-6000-cost-0')},
-                             {'lite-GI-bake': Path('kept/hall_lite/lite.mesh'),
-                              'full-path-culled': Path('kept/hall/culled.mesh'),
-                              'lite-GI-fit': Path('kept/fit-lite/fitted.mesh'),
-                              'normal-0': Path('kept/normal-0/fitted.mesh'),
-                              'normal-0.3': Path('kept/fit-lite/fitted.mesh'),
-                              'budget-6000-cost-0': Path('kept/fit-lite/fitted.mesh')},
+                             {'lite-GI-bake': Path('kept/hall_lite/lite.bundle'),
+                              'full-path-culled': Path('kept/hall/culled.bundle'),
+                              'lite-GI-fit': Path('kept/fit-lite/fitted.bundle'),
+                              'normal-0': Path('kept/normal-0/fitted.bundle'),
+                              'normal-0.3': Path('kept/fit-lite/fitted.bundle'),
+                              'budget-6000-cost-0': Path('kept/fit-lite/fitted.bundle')},
                              "a kept result is measured from its cache folder; the recipe's own point is its fit")
             measurements = json.loads((out / 'measurements.json').read_text())
             self.assertEqual([row[0] for row in measurements['rows']], expected_rows)
@@ -643,7 +643,7 @@ class KeeperTests(unittest.TestCase):
         self.jobs = [placed_variant(self.scene, "atrium" + entry.name) for entry in stages.FITTED]
         self.inputs = self.root / "inputs"
         self.inputs.mkdir()
-        (self.inputs / f"{self.jobs[0].renderer.variant.name}.mesh").write_bytes(b"start")
+        (self.inputs / f"{self.jobs[0].renderer.variant.name}.bundle").write_bytes(b"start")
 
     def tearDown(self):
         self.directory.cleanup()
@@ -692,7 +692,7 @@ class KeeperTests(unittest.TestCase):
         self.assertEqual(len(set(folders.values())), len(folders), folders)
         self.assertEqual(self.fit_folder({"budget": self.jobs[0].renderer.fit.budget, "cost_weight": 0.0}),
                          folders["recipe"], "the recipe's budget given as a point is the recipe's fit")
-        (self.inputs / f"{self.jobs[0].renderer.variant.name}.mesh").write_bytes(b"other start")
+        (self.inputs / f"{self.jobs[0].renderer.variant.name}.bundle").write_bytes(b"other start")
         self.assertNotEqual(self.fit_folder(), folders["recipe"], "a fit counts its start's bytes")
 
     def test_a_cost_weighted_fit_counts_the_cost_model(self):
@@ -723,13 +723,13 @@ class KeeperTests(unittest.TestCase):
         (references / "reference").mkdir(parents=True)
         (references / "train.txt").write_text("poses")
         start.mkdir()
-        (start / "lite.mesh").write_bytes(b"mesh")
+        (start / "lite.bundle").write_bytes(b"mesh")
         (start / stages.STEPS).write_text("[]")
         inputs = self.root / "linked"
         for _ in range(2):
             stages.link_inputs(inputs, start, references)
-        self.assertEqual(sorted(path.name for path in inputs.iterdir()), ["lite.mesh", "reference", "train.txt"])
-        self.assertEqual((inputs / "lite.mesh").read_bytes(), b"mesh")
+        self.assertEqual(sorted(path.name for path in inputs.iterdir()), ["lite.bundle", "reference", "train.txt"])
+        self.assertEqual((inputs / "lite.bundle").read_bytes(), b"mesh")
         self.assertTrue((inputs / "reference").is_dir())
 
 

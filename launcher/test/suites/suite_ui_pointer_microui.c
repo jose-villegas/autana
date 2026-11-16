@@ -453,8 +453,11 @@ test_a_drag_moves_a_slider_microui_would_not_track_on_a_tap(void) {
 /* One frame of a scrollable list, fed exactly as ui.c does, including the
  * over_scrollable report back after mu_end(). Returns the index of the row
  * whose button submitted, or -1. */
+static int list_held_row; /* the row list_frame() last drew pressed, or -1 */
+
 static int
 list_frame(bool down, bool pressed, bool released, int x, int y) {
+    list_held_row = -1;
     input_t in = {0};
     in.down = down;
     in.pressed = pressed;
@@ -475,6 +478,9 @@ list_frame(bool down, bool pressed, bool released, int x, int y) {
             mu_layout_row(ctx, 1, (int[]){-1}, LIST_ROW_H);
             if (mu_button(ctx, label)) {
                 submitted = row;
+            }
+            if (ui_bridge_held(ctx, &pointer, ctx->last_id)) {
+                list_held_row = row;
             }
         }
         mu_end_window(ctx);
@@ -568,6 +574,57 @@ test_a_tap_on_a_scrollable_list_presses_the_row_under_it_once(void) {
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(1, submits, "a tap still presses exactly once on content that scrolls");
     TEST_ASSERT_EQUAL_INT(0, row);
+}
+
+/* A press on content that scrolls acts on the lift, but the row under it
+ * draws pressed from the frame of contact. */
+static void
+test_a_waiting_press_draws_its_row_pressed_from_contact(void) {
+    fixture();
+    list_idle_frames(2);
+    const int cx = CANVAS_W / 2;
+    const int cy = 5 + LIST_ROW_H + LIST_ROW_H / 2;
+
+    TEST_ASSERT_EQUAL_INT_MESSAGE(-1, list_frame(true, true, false, cx, cy), "the press still waits for the lift");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, list_held_row, "the row under the finger draws pressed on contact");
+    list_frame(true, false, false, cx, cy);
+    TEST_ASSERT_EQUAL_INT(1, list_held_row);
+    TEST_ASSERT_EQUAL_INT(1, list_frame(false, false, true, cx, cy));
+    list_idle_frames(1);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(-1, list_held_row, "a lifted finger leaves nothing pressed");
+}
+
+/* A press that turns into a scroll gives its pressed look back on the frame
+ * the drag starts, and never acts. */
+static void
+test_a_scroll_takes_the_pressed_look_back(void) {
+    fixture();
+    list_idle_frames(2);
+    const int cx = CANVAS_W / 2;
+    const int y0 = 300;
+
+    int submits = list_frame(true, true, false, cx, y0) >= 0;
+    TEST_ASSERT_NOT_EQUAL_INT(-1, list_held_row);
+    submits += list_frame(true, false, false, cx, y0 - UI_POINTER_DRAG_THRESHOLD) >= 0;
+    TEST_ASSERT_NOT_EQUAL_INT_MESSAGE(-1, list_held_row, "inside the slop the press still waits");
+    for (int step = 1; step <= 4; step++) {
+        submits += list_frame(true, false, false, cx, y0 - (2 * step * UI_POINTER_DRAG_THRESHOLD)) >= 0;
+        TEST_ASSERT_EQUAL_INT_MESSAGE(-1, list_held_row, "past the slop it is a scroll, and nothing draws pressed");
+    }
+    submits += list_frame(false, false, true, cx, y0 - (8 * UI_POINTER_DRAG_THRESHOLD)) >= 0;
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, submits, "a scroll presses nothing");
+    TEST_ASSERT_GREATER_THAN_INT(0, mu_get_container(ctx, "list")->scroll.y);
+}
+
+/* Off scrolling content the press lands at once and holds the look itself. */
+static void
+test_a_press_off_scrolling_content_draws_pressed_with_its_click(void) {
+    fixture();
+    idle_frames(2);
+    TEST_ASSERT_TRUE(frame(true, true, false, BTN_X + BTN_W / 2, BTN_Y + BTN_H / 2));
+    TEST_ASSERT_TRUE(ui_bridge_held(ctx, &pointer, button_id));
+    frame(false, false, true, BTN_X + BTN_W / 2, BTN_Y + BTN_H / 2);
+    TEST_ASSERT_FALSE(ui_bridge_held(ctx, &pointer, button_id));
 }
 
 static void
@@ -695,6 +752,9 @@ run_ui_pointer_microui_suite(void) {
     RUN_TEST(test_dragging_up_scrolls_the_list_without_pressing_a_row);
     RUN_TEST(test_a_press_on_the_scrollbar_does_not_jump_the_list);
     RUN_TEST(test_a_tap_on_a_scrollable_list_presses_the_row_under_it_once);
+    RUN_TEST(test_a_waiting_press_draws_its_row_pressed_from_contact);
+    RUN_TEST(test_a_scroll_takes_the_pressed_look_back);
+    RUN_TEST(test_a_press_off_scrolling_content_draws_pressed_with_its_click);
     RUN_TEST(test_scrolling_stops_at_the_end_and_the_last_row_is_reachable);
     RUN_TEST(test_a_press_on_a_window_over_scrolling_content_goes_down_at_once);
     RUN_TEST(test_overlapping_controls_take_one_press_once);

@@ -18,6 +18,8 @@
 #include "perf_budget.h"
 #include "render/context/render_context.h"
 #include "render/r3d_span_internal.h"
+#include "scene/animator/animator.h"
+#include "scene/renderer/renderer.h"
 #include "scene/scene_internal.h"
 #include "testkit/bench.h"
 #include "testkit/cleanup.h"
@@ -29,8 +31,10 @@ static const char* TAG = "capybara_perf";
 
 typedef struct {
     render_lab_test_t saved;
-    scene_t* scene;
-    scene_entity_t subject;
+    entity_t scene;
+    entity_t subject;
+    scene_t* columns;        /* the scene's columns, which the stage timings call into */
+    scene_row_t subject_row; /* the subject's row in them */
     int32_t elapsed_us[PERF_SAMPLES];
     int32_t render_us[PERF_SAMPLES];
     int32_t cpu_cycles[PERF_SAMPLES];
@@ -63,10 +67,12 @@ fixture(void) {
     render_lab_test_enter(&active->saved, scene_capybara.key);
     suite_set_test_cleanup(release_fixture);
     active->scene = render_lab_test_loaded_scene(CAPYBARA_SCENE);
-    TEST_ASSERT_NOT_NULL(active->scene);
-    active->subject = scene_find(active->scene, name_hash(CAPYBARA_SUBJECT));
-    TEST_ASSERT_NOT_EQUAL(SCENE_ENTITY_NONE, active->subject);
-    const r3d_lit_mesh_t* mesh = scene_entity_mesh(active->scene, active->subject);
+    TEST_ASSERT_FALSE(handle_is_none(active->scene));
+    active->subject = entity_find(active->scene, name_hash(CAPYBARA_SUBJECT));
+    TEST_ASSERT_FALSE(handle_is_none(active->subject));
+    active->columns = scene_entity_row(active->subject, &active->subject_row);
+    TEST_ASSERT_NOT_NULL(active->columns);
+    const r3d_lit_mesh_t* mesh = renderer_mesh(active->subject);
     TEST_ASSERT_NOT_NULL(mesh);
     TEST_ASSERT_GREATER_THAN_INT(0, mesh->vertex_count);
     heap_report(SKIN_PERF_PHASE_LOADED);
@@ -79,7 +85,7 @@ fixture(void) {
 
 static void
 assert_skin_changes(fixture_t* f) {
-    const r3d_lit_mesh_t* mesh = scene_entity_mesh(f->scene, f->subject);
+    const r3d_lit_mesh_t* mesh = renderer_mesh(f->subject);
     memcpy(f->positions, mesh->positions, f->position_bytes);
     render_lab_test_frame(false, NULL);
     TEST_ASSERT_NOT_EQUAL(0, memcmp(f->positions, mesh->positions, f->position_bytes));
@@ -92,9 +98,9 @@ test_console_gallop_blends_and_skins(void) {
     char command[ASSET_NAME_MAX];
     TEST_ASSERT_TRUE(snprintf(command, sizeof command, CAPYBARA_CLIP_COMMAND, CAPYBARA_CLIP_BLEND_MS) >= 0);
     TEST_ASSERT_TRUE(app_render_lab.console->handle(command));
-    const scene_animator_t* a = &f->scene->animators[f->subject];
+    const scene_animator_t* a = &f->columns->animators[f->subject_row];
     TEST_ASSERT_EQUAL_UINT32(CAPYBARA_CLIP_BLEND_MS, a->layer.blend_ms);
-    TEST_ASSERT_EQUAL_STRING("gallop", scene_animator_clip_name(f->scene, f->subject, a->layer.current.clip));
+    TEST_ASSERT_EQUAL_STRING("gallop", animator_clip_name(f->subject, a->layer.current.clip));
     render_lab_test_frame(false, NULL);
     TEST_ASSERT_EQUAL_UINT32(RENDER_LAB_TEST_FRAME_MS, a->layer.blended_ms);
     TEST_ASSERT_LESS_THAN_UINT32(CAPYBARA_CLIP_BLEND_MS, a->layer.blended_ms);
@@ -102,7 +108,7 @@ test_console_gallop_blends_and_skins(void) {
         render_lab_test_frame(false, NULL);
     }
     TEST_ASSERT_EQUAL_UINT32(CAPYBARA_CLIP_BLEND_MS, a->layer.blended_ms);
-    TEST_ASSERT_EQUAL_STRING("gallop", scene_animator_clip_name(f->scene, f->subject, a->layer.current.clip));
+    TEST_ASSERT_EQUAL_STRING("gallop", animator_clip_name(f->subject, a->layer.current.clip));
     assert_skin_changes(f);
 }
 
@@ -133,12 +139,12 @@ step(void* ctx) {
 static void
 report_stage(fixture_t* f, const char* stage, job_fn_t fn, int count, bool split, const char* cores) {
     const int half = count / 2;
-    range_t a = {f->scene, 0, split ? half : count};
-    range_t b = {f->scene, half, count - half};
+    range_t a = {f->columns, 0, split ? half : count};
+    range_t b = {f->columns, half, count - half};
     _Static_assert(sizeof a <= JOB_CTX_MAX, "perf range fits worker context");
     int worker_samples = 0;
     for (int i = -1; i < PERF_SAMPLES; i++) {
-        scene_animation_step(f->scene, RENDER_LAB_TEST_FRAME_MS);
+        scene_animation_step(f->columns, RENDER_LAB_TEST_FRAME_MS);
         const int64_t start_us = timing_now_us();
         const uint32_t start_cycles = esp_cpu_get_cycle_count();
         bool dispatched = false;
@@ -157,8 +163,8 @@ report_stage(fixture_t* f, const char* stage, job_fn_t fn, int count, bool split
     }
     const bench_stats_t us = bench_stats_compute(f->elapsed_us, PERF_SAMPLES);
     const bench_stats_t cycles = bench_stats_compute(f->cpu_cycles, PERF_SAMPLES);
-    const int vertices = scene_entity_mesh(f->scene, f->subject)->vertex_count;
-    const scene_skinned_renderer_t* skin = &f->scene->skinned_renderers[f->subject];
+    const int vertices = renderer_mesh(f->subject)->vertex_count;
+    const scene_skinned_renderer_t* skin = &f->columns->skinned_renderers[f->subject_row];
     TEST_ASSERT_GREATER_THAN_INT64(0, us.avg);
     if (strcmp(stage, SKIN_PERF_STAGE_SKIN) == 0) {
         const int64_t goal_us = (int64_t)vertices * SKIN_PERF_BUDGET_NS_PER_VERTEX / SKIN_PERF_NS_PER_US;
@@ -172,16 +178,17 @@ report_stage(fixture_t* f, const char* stage, job_fn_t fn, int count, bool split
                               " mean_us=%lld p95_us=%lld "
                               "us_per_vertex=%.3f "
                               "cycles_per_vertex=%.3f",
-             stage, cores, worker_samples, PERF_SAMPLES, vertices, f->scene->animators[f->subject].skeleton.joint_count,
-             skin->skin.influences, skin->light_mode, f->scene->light_count, (long long)us.avg, (long long)us.p95,
-             (double)us.avg / vertices, (double)cycles.avg / vertices);
+             stage, cores, worker_samples, PERF_SAMPLES, vertices,
+             f->columns->animators[f->subject_row].skeleton.joint_count, skin->skin.influences, skin->light_mode,
+             f->columns->light_count, (long long)us.avg, (long long)us.p95, (double)us.avg / vertices,
+             (double)cycles.avg / vertices);
 }
 
 static bench_stats_t
 frame_cost(fixture_t* f, bool paused, bench_stats_t* render_stats, const char* quarter) {
-    const int joints = f->scene->animators[f->subject].skeleton.joint_count;
-    (void)scene_animator_set_paused(f->scene, f->subject, SCENE_ANIMATOR_CURRENT, paused);
-    (void)scene_animator_set_paused(f->scene, f->subject, SCENE_ANIMATOR_PREVIOUS, paused);
+    const int joints = f->columns->animators[f->subject_row].skeleton.joint_count;
+    (void)animator_set_paused(f->subject, ANIMATOR_CURRENT, paused);
+    (void)animator_set_paused(f->subject, ANIMATOR_PREVIOUS, paused);
     for (int i = -1; i < PERF_SAMPLES; i++) {
         const int64_t start = timing_now_us();
         const int64_t render_us = render_lab_test_frame(false, NULL);
@@ -211,8 +218,8 @@ frame_cost(fixture_t* f, bool paused, bench_stats_t* render_stats, const char* q
 static void
 report_stage_split(fixture_t* f, const char* quarter) {
     static const char* const names[4] = {"whole", "setup", "edges", "carry"};
-    (void)scene_animator_set_paused(f->scene, f->subject, SCENE_ANIMATOR_CURRENT, true);
-    (void)scene_animator_set_paused(f->scene, f->subject, SCENE_ANIMATOR_PREVIOUS, true);
+    (void)animator_set_paused(f->subject, ANIMATOR_CURRENT, true);
+    (void)animator_set_paused(f->subject, ANIMATOR_PREVIOUS, true);
     render_context_t* context = render_context_main();
     const raster_split_t split = context->split;
     int64_t mean[4];
@@ -246,12 +253,12 @@ test_animation_and_frame_cost(void) {
     TEST_ASSERT_TRUE(app_render_lab.console->handle(command));
     assert_skin_changes(f);
     heap_report(SKIN_PERF_PHASE_PLAYING);
-    const int clusters = scene_entity_mesh(f->scene, f->subject)->cluster_count;
+    const int clusters = renderer_mesh(f->subject)->cluster_count;
     TEST_ASSERT_GREATER_THAN_INT(0, clusters);
     report_stage(f, SKIN_PERF_STAGE_SKIN, skin_slice, clusters, false, SKIN_PERF_CORES_ONE);
     report_stage(f, SKIN_PERF_STAGE_SKIN, skin_slice, clusters, true, SKIN_PERF_CORES_TWO);
-    report_stage(f, SKIN_PERF_STAGE_ANIMATE, animate_slice, f->scene->staged_count, false, SKIN_PERF_CORES_ONE);
-    report_stage(f, SKIN_PERF_STAGE_ANIMATE, animate_slice, f->scene->staged_count, true, SKIN_PERF_CORES_TWO);
+    report_stage(f, SKIN_PERF_STAGE_ANIMATE, animate_slice, f->columns->staged_count, false, SKIN_PERF_CORES_ONE);
+    report_stage(f, SKIN_PERF_STAGE_ANIMATE, animate_slice, f->columns->staged_count, true, SKIN_PERF_CORES_TWO);
     report_stage(f, SKIN_PERF_STAGE_ANIMATION_STEP, step, 1, false, SKIN_PERF_CORES_UNKNOWN);
     for (size_t q = 0; q < R3D_PERF_QUARTER_COUNT; q++) {
         const r3d_perf_quarter_t* quarter = &r3d_perf_quarters[q];
@@ -264,7 +271,7 @@ test_animation_and_frame_cost(void) {
         const bench_stats_t playing = frame_cost(f, false, &playing_render, quarter->name);
         const bench_stats_t paused = frame_cost(f, true, &paused_render, quarter->name);
         report_stage_split(f, quarter->name);
-        const int joints = f->scene->animators[f->subject].skeleton.joint_count;
+        const int joints = f->columns->animators[f->subject_row].skeleton.joint_count;
         ESP_LOGI(TAG,
                  SKIN_PERF_PREFIX " stage=" SKIN_PERF_STAGE_RENDER_DELTA
                                   " joints=%d mean_us=%lld p95_us=%lld" R3D_PERF_QUARTER_FORMAT,

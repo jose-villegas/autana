@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "core/tune.h"
+#include "scene/camera/camera.h"
 
 TUNE_OWNER(render_lab);
 TUNE(render_lab, view, RENDER_DEBUG_VIEW_SHADED, RENDER_DEBUG_VIEW_SHADED, RENDER_DEBUG_VIEW_COUNT);
@@ -108,9 +109,8 @@ render_lab_upscale_select(int index) {
 }
 
 bool
-render_lab_apply_camera_settings(scene_t* scene, scene_entity_t camera) {
-    return scene_camera_set_present(scene, camera, render_lab_present())
-           && scene_camera_set_small_fill(scene, camera, render_lab_small_fill());
+render_lab_apply_camera_settings(entity_t camera) {
+    return camera_set_present(camera, render_lab_present()) && camera_set_small_fill(camera, render_lab_small_fill());
 }
 
 resolution_step_t

@@ -119,6 +119,11 @@ class BodyTests(Tree):
 
 
 class IndexSourcesTests(Tree):
+    def setUp(self):
+        super().setUp()
+        write(self.root / "docs/math/One.md", "![](../images/math/wide.png) ![](../images/math/narrow.png)\n"
+                                              "![Spin](../images/anim/spin.gif)\n")
+
     def index(self, check=False, root=None):
         owner = {"docs/images/math/wide.png": "launcher/tools/math/plots.py"}.get
         with contextlib.redirect_stderr(io.StringIO()) as warnings:

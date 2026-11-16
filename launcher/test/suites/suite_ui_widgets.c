@@ -927,6 +927,38 @@ test_ui_end_in_band_mode_is_replayed_over_each_band(void) {
     gfx_reset_for_test();
 }
 
+/* One frame of a text-only canvas over an expanded picture that changed
+ * no rows of its own. */
+static void
+expanded_text_frame(const char* text) {
+    gfx_expand_frame(false, 0, 0);
+    const input_t idle = {0};
+    ui_begin(&idle);
+    if (ui_begin_screen(ui_context(), "Hud", MU_OPT_NOTITLE | MU_OPT_NOFRAME)) {
+        mu_label(ui_context(), text);
+        mu_end_window(ui_context());
+    }
+    TEST_ASSERT_TRUE(ui_end(UI_NO_BACKGROUND));
+}
+
+/* Over an expanded picture that kept its rows, text that changed dirties
+ * its band and text that held does not. */
+static void
+test_changed_ui_over_a_held_expanded_picture_dirties_its_band(void) {
+    TEST_ASSERT_TRUE(gfx_init());
+    fixture();
+    TEST_ASSERT_NOT_NULL(gfx_half_picture());
+    expanded_text_frame("12");
+    gfx_present();
+    expanded_text_frame("12");
+    TEST_ASSERT_FALSE(gfx_region_dirty(0, 0, GFX_WIDTH, GFX_HEIGHT));
+    gfx_present();
+    expanded_text_frame("13");
+    TEST_ASSERT_TRUE(gfx_region_dirty(0, 0, GFX_WIDTH, GFX_HEIGHT));
+    gfx_present();
+    gfx_reset_for_test();
+}
+
 static void
 test_closing_the_list_restores_the_pixels_under_it(void) {
     TEST_ASSERT_TRUE(gfx_init());
@@ -1543,6 +1575,7 @@ run_ui_widgets_suite(void) {
     RUN_TEST(test_dense_bands_match_a_full_repaint);
     RUN_TEST(test_closing_the_list_restores_the_pixels_under_it);
     RUN_TEST(test_ui_end_in_band_mode_is_replayed_over_each_band);
+    RUN_TEST(test_changed_ui_over_a_held_expanded_picture_dirties_its_band);
     RUN_TEST(test_open_list_stays_on_top_during_held_and_idle_partial_frames);
     RUN_TEST(test_open_list_stays_on_top_during_held_and_idle_band_frames);
 #endif

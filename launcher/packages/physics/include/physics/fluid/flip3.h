@@ -47,6 +47,10 @@
  * Ours, the smallest that holds a pool's volume over a minute. */
 #define FLIP3_DRIFT_GAIN         0.1F
 
+/* flip3_field() shows every particle outside the surface: a speed depends
+ * on the length unit, so the caller picks one. */
+#define FLIP3_SHOW_SPEED         0.0F
+
 typedef struct {
     vec3f_t size; /* the box's inside */
     float cell;   /* the grid's spacing, rounded per axis so whole cells fill the box */
@@ -62,10 +66,16 @@ typedef struct {
      * two halves that flip3_split_with() may run at once (red-black
      * Gauss-Seidel), rather than in index order on one core. */
     bool red_black;
+    /* flip3_field() shows a particle outside the surface only when it moves at
+     * least this fast, in length units per second: drops and splash keep
+     * their spray, and a straggler resting on the surface blends in rather
+     * than holding a one-sample spike. 0 shows every one. */
+    float show_speed;
 } flip3_tuning_t;
 
 #define FLIP3_TUNING_DEFAULT                                                                                           \
-    ((flip3_tuning_t){FLIP3_FLIP_RATIO, FLIP3_PRESSURE_ITERS, FLIP3_OVER_RELAXATION, FLIP3_DRIFT_GAIN, false})
+    ((flip3_tuning_t){FLIP3_FLIP_RATIO, FLIP3_PRESSURE_ITERS, FLIP3_OVER_RELAXATION, FLIP3_DRIFT_GAIN, false,          \
+                      FLIP3_SHOW_SPEED})
 
 /* The step's stages, in the order they run, with the names a timing log
  * gives them. */
@@ -195,8 +205,8 @@ size_t flip3_field_count(const flip3_t* f, float samples);
 
 /* The surface field: the water's density over the box, 1 at rest. One
  * [1 2 1] / 4 pass per axis rounds it; the walls mirror, so water against
- * glass keeps its density. Then every particle's nearest sample reads
- * above FLIP3_SURFACE_LEVEL, so a film or drop thinner than the smoothing
- * is still inside the surface. Returns its sizes,
+ * glass keeps its density. Then every particle at least the tuning's
+ * show_speed fast has its nearest sample read above FLIP3_SURFACE_LEVEL, so a
+ * film or drop thinner than the smoothing is still inside the surface. Returns its sizes,
  * origin and spacing in box coordinates, for iso_surface_nets(). */
 iso_field_t flip3_field(const flip3_t* f, float samples, float* out);

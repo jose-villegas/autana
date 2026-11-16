@@ -5,12 +5,18 @@ prove hidden at the cheapest unit it can: a triangle the bake never saw, an
 instance or subtree outside the frustum, a cluster outside a core's rows, a
 triangle that would fill nothing.
 
+![Bistro's fates from behind the camera](../../images/render/cull-bistro-chase.gif)
+
+Bistro along its camera path, seen from behind the camera: culled clusters as a
+grey screen door, each kept one outlined blue if not set up, red if hidden,
+green if drawn ([the cull, seen](#the-cull-seen)).
+
 ```mermaid
 flowchart LR
     subgraph Offline["offline, at the bake"]
         Vis["visibility<br/><i>triangles no camera<br/>pose sees</i>"]
     end
-    subgraph Census["the cull, core 0"]
+    subgraph Census["the cull, both cores"]
         direction TB
         Inst["instance<br/><i>its world box, then<br/>its root box under its model</i>"] --> Node["node<br/><i>box against the planes<br/>its parent crossed</i>"]
         Node --> Cluster["cluster<br/><i>box against<br/>the leaf's planes</i>"]
@@ -26,7 +32,7 @@ flowchart LR
 | Stage | Test | Unit | Where | Saves |
 |---|---|---|---|---|
 | Visibility | no ray from the camera region or path reaches it | triangle | the importer, offline ([visibility](../scene/Scene-Files.md#visibility-camera_region)) | flash and every stage below |
-| Instance | its world box, then its root node's box, is outside a frustum plane | instance, each copy under its own model | `cull_instances()` in [raster.c](../../../launcher/main/render/raster.c), then `r3d_pipeline_cull()` from the root | the whole mesh; with the world box, its lens and its walk too |
+| Instance | its world box, then its root node's box, is outside a frustum plane | instance, each copy under its own model | `cull_instances()` in [raster.c](../../../launcher/main/render/raster.c), then `r3d_pipeline_cull()` from the root | the whole mesh; with the world box, its lens, its level pick and its walk too |
 | Node | its box is outside a plane its parent's box crossed | node of the cluster tree | `r3d_pipeline_cull()` | its subtree |
 | Cluster | its box is outside a plane its leaf's box crossed | cluster | `r3d_pipeline_cull()` | its vertices' transform and its triangles |
 | Rows | its transformed vertices span no row of this core's half | cluster, per core | `r3d_pipeline_draw()` | its triangles on that core |
@@ -65,9 +71,10 @@ drop. Those then build no lens and read no tree. Kept clusters and pixels are
 the same either way.
 
 An instance that kept no cluster gets no slot in the draw's batch; its
-attachment writers still see it. `render.cull` (a development tunable,
-default 1) set to 0 keeps every cluster and skips the world box; the
-meshlet-size table in [Baked-Mesh.md](../offline/Baked-Mesh.md#meshlets)
+attachment writers still see it. `cull` off in the context's settings
+(`render_context_set_settings()`, or the development knob `render.cull` set
+to 0) keeps every cluster and skips the world box; the meshlet-size table in
+[Baked-Mesh.md](../offline/Baked-Mesh.md#meshlets)
 measures both.
 
 ## Per triangle
@@ -91,8 +98,9 @@ with the walk's nodes visited and cut and its clusters tested and kept.
 ## The cull, seen
 
 The cull view ([raster_cull_view.h](../../../launcher/main/render/view/raster_cull_view.h))
-paints every cluster in the colour of its fate this frame. Seen from the camera
-only drawn clusters show, so it redraws from a spectator.
+paints every cluster in the colour of its fate this frame: of a mesh with
+levels, only the clusters its level pick chose. Seen from the camera only drawn
+clusters show, so it redraws from a spectator.
 
 | Fate | Colour | The cluster |
 |---|---|---|
@@ -106,6 +114,9 @@ only drawn clusters show, so it redraws from a spectator.
 | `cullview.from` | 0 the camera, 1 above the instances' bounds looking down, 2 behind and above the camera |
 | `cullview.paint` | 0 the baked colours, culled clusters as a sparse screen door with a dashed grey border, each kept cluster's border solid in its fate's colour; 1 each cluster flat in its fate's colour; 2 each cluster in the hue of its node at `cullview.level`, darker the earlier it was dropped |
 | `cullview.level` | the tree depth whose node boxes the overlay draws; 0 none, 1 the root's children |
+
+An observer set on the context replaces the spectator's pose, whatever
+`cullview.from` says; the lens stays the camera's.
 
 From a spectator the culled and the kept clusters are drawn apart, so culled
 geometry never hides kept geometry behind it: the holes in its screen door
@@ -131,8 +142,6 @@ The frame's own cull and draw count nothing; `r3d_pipeline_cull_counted()` and
 Bistro along its camera path:
 
 ![Bistro's cull along its path](../../images/render/cull-bistro-sheet.png)
-
-![Bistro's fates from behind the camera](../../images/render/cull-bistro-chase.gif)
 
 ![Bistro's counts along its path](../../images/render/cull-bistro-counts.png)
 

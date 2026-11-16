@@ -41,23 +41,56 @@ class GpuQueueTests(unittest.TestCase):
         self.assertTrue(schedule.gpu_ready(clock, board_held=lambda: clock.now() < release))
         self.assertEqual(clock.now(), release)
 
-    def test_ready_refreshes_marker_and_defers_only_doc_images(self):
-        import json
+    def run_main(self, workflow, *argv, bakes_pending=False):
         import contextlib
         import io
+        with patch.dict(os.environ, GPU_WORKFLOW=workflow, RUNNER_NAME='runner'), \
+                patch.object(sys, 'argv', ['schedule', *argv]), \
+                patch.object(schedule, 'Clock', return_value=Clock(1)), \
+                patch.object(schedule, 'gpu_pending', return_value=bakes_pending), \
+                patch.object(schedule, 'gpu_ready') as ready, \
+                contextlib.redirect_stdout(io.StringIO()):
+            return schedule.main(), ready.called
+
+    def test_ready_refreshes_marker_and_defers_only_doc_images(self):
+        import json
         for workflow in schedule.GPU_WORKFLOWS:
-            clock = Clock(1)
-            with patch.dict(os.environ, GPU_WORKFLOW=workflow, RUNNER_NAME='runner'), \
-                    patch.object(sys, 'argv', ['schedule', 'ready']), \
-                    patch.object(schedule, 'Clock', return_value=clock), \
-                    patch.object(schedule, 'gpu_pending', return_value=True), \
-                    patch.object(schedule, 'gpu_ready') as ready, \
-                    contextlib.redirect_stdout(io.StringIO()):
-                code = schedule.main()
+            code, _ = self.run_main(workflow, 'ready', bakes_pending=True)
             self.assertEqual(code, schedule.EXIT_DEFERRED if workflow == schedule.DOC_IMAGES_WORKFLOW else 0)
-            self.assertEqual(ready.called, workflow != schedule.DOC_IMAGES_WORKFLOW)
             marker = json.loads((schedule.heavy_root() / schedule.GPU_HOST_MARKER).read_text())
             self.assertEqual(marker['runner'], 'runner')
+
+    def test_only_a_quiet_host_stage_waits_for_boards(self):
+        for workflow in schedule.GPU_WORKFLOWS:
+            with self.subTest(workflow=workflow):
+                quiet = workflow in schedule.QUIET_HOST_WORKFLOWS
+                self.assertEqual(self.run_main(workflow, 'ready'), (0, quiet))
+        self.assertNotIn(schedule.BAKES_WORKFLOW, schedule.QUIET_HOST_WORKFLOWS)
+
+    def test_cpu_share_is_the_top_cpus_and_never_empty(self):
+        for count in (1, 2, 3, 10, 12):
+            with self.subTest(count=count):
+                cpus = set(range(count))
+                share = schedule.cpu_share(cpus)
+                self.assertEqual(len(share), max(1, count // schedule.SHARED_CPU_DIVISOR))
+                self.assertEqual(min(share), count - len(share))
+        self.assertEqual(schedule.cpu_share({4, 7, 9, 11}), {9, 11})
+
+    @unittest.skipUnless(hasattr(os, 'sched_setaffinity'), 'the GPU stages run on Linux')
+    def test_start_runs_only_a_beside_board_stage_on_its_share(self):
+        import subprocess
+        root = Path(__file__).resolve().parents[3]
+        probe = [sys.executable, '-c', 'import os, sys; sys.exit(len(os.sched_getaffinity(0)))']
+        ours = os.sched_getaffinity(0)
+        for workflow in schedule.GPU_WORKFLOWS:
+            with self.subTest(workflow=workflow):
+                environment = {name: value for name, value in os.environ.items() if name != 'GITHUB_OUTPUT'}
+                done = subprocess.run([sys.executable, 'scripts/lib/local_schedule.py', 'start', '--', *probe],
+                                      cwd=root, capture_output=True, text=True,
+                                      env=dict(environment, GPU_WORKFLOW=workflow))
+                quiet = workflow in schedule.QUIET_HOST_WORKFLOWS
+                self.assertEqual(done.returncode, len(ours) if quiet else len(schedule.cpu_share(ours)), done.stderr)
+                self.assertEqual('beside board work on CPUs' in done.stdout, not quiet)
 
     def test_workflows_separate_marker_wait_and_work(self):
         root = Path(__file__).resolve().parents[3]

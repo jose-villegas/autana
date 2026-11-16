@@ -40,7 +40,7 @@ title MCOP header, 16 bytes at 0, one cell a byte
 | `RENDERER` | Colour set, uint16; NUL-padded mesh id, `asset_pack.NAME_BYTES` bytes |
 | `METADATA` | uint32 string offsets for owner, first source, copy source and sorted JSON match map |
 
-Pack building expands copies into SCNE entities under the authored renderer.
+Pack building writes each shape's copies as one SCNE batch, on a child of the authored renderer ([Batches](SCNE.md#batches)).
 SCNE names carry hashes computed by `build.name_hash`; MCOP names have no hash.
 
 The reader rejects unknown versions, nonzero reserved fields, invalid section

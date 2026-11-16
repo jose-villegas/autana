@@ -18,7 +18,8 @@
 handle_t asset_store_load(const char* name);
 
 /* Handles beyond one per mounted pack: second holders of a pack (the engine pack's ridge and
- * icon sets) and async requests still waiting for a mount. */
+ * icon sets, an app's own loads beside the shell's hold of its pack) and async requests still
+ * waiting for a mount. */
 #define ASSET_STORE_EXTRA_HANDLES 4U
 /* Live handles, blocking and async, at once. When full, a load logs and returns HANDLE_NONE;
  * it never drops a holder. */

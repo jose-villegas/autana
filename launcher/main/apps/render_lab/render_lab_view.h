@@ -34,7 +34,7 @@ const char* const* render_lab_upscale_names(int* count);
 int render_lab_upscale_selected(void);
 bool render_lab_upscale_select(int index);
 
-bool render_lab_apply_camera_settings(scene_t* scene, scene_entity_t camera);
+bool render_lab_apply_camera_settings(entity_t camera);
 
 /* The tunable render_lab.layout, the framebuffer layout render_lab asks for
  * at enter(); a change takes effect at the next enter or scene switch. */
