@@ -218,6 +218,10 @@ test_scalar_integer_bounds(void) {
     TEST_ASSERT_EQUAL_INT(3, mathi_clamp(3, -7, 9));
     TEST_ASSERT_EQUAL_INT(3, mathi_clamp(-5, 3, 3));
     TEST_ASSERT_EQUAL_INT(0, mathi_clamp(-1, 0, -2));
+    TEST_ASSERT_EQUAL_INT(0, mathi_ceil_div(0, 4));
+    TEST_ASSERT_EQUAL_INT(2, mathi_ceil_div(8, 4));
+    TEST_ASSERT_EQUAL_INT(3, mathi_ceil_div(9, 4));
+    TEST_ASSERT_EQUAL_INT(1, mathi_ceil_div(1, 7));
     static const uint64_t roots[] = {0, 1, 2, 255, 65535, 65536, 16777215, 3037000499, UINT32_MAX};
     for (size_t i = 0; i < sizeof(roots) / sizeof(roots[0]); i++) {
         const uint64_t root = roots[i];

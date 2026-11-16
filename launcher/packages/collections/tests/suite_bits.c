@@ -45,6 +45,15 @@ test_bits32_sets_only_its_own_flag_bit_zero_first(void) {
 }
 
 static void
+test_bits32_run_sets_count_bits_from_first(void) {
+    TEST_ASSERT_EQUAL_HEX32(0, bits32_run(0, 0));
+    TEST_ASSERT_EQUAL_HEX32(0x1, bits32_run(0, 1));
+    TEST_ASSERT_EQUAL_HEX32(0x70, bits32_run(4, 3));
+    TEST_ASSERT_EQUAL_HEX32(UINT32_C(1) << 31, bits32_run(31, 1));
+    TEST_ASSERT_EQUAL_HEX32(UINT32_MAX, bits32_run(0, BITS32_WORD_BITS));
+}
+
+static void
 test_bits32_put_reports_changes_and_preserves_neighbours(void) {
     uint32_t bits[BITS32_WORDS(FLAGS)] = {0};
     for (size_t index = 0; index < FLAGS; index++) {
@@ -63,6 +72,7 @@ test_bits32_put_reports_changes_and_preserves_neighbours(void) {
 void
 run_bits_suite(void) {
     RUN_TEST(test_bits32_put_reports_changes_and_preserves_neighbours);
+    RUN_TEST(test_bits32_run_sets_count_bits_from_first);
     RUN_TEST(test_bits_counts_round_up_to_whole_storage);
     RUN_TEST(test_bits8_sets_only_its_own_flag_bit_zero_first);
     RUN_TEST(test_bits32_sets_only_its_own_flag_bit_zero_first);
