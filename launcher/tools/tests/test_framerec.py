@@ -48,6 +48,8 @@ class FormatTests(unittest.TestCase):
             with self.subTest(flag=name):
                 self.assertEqual(getattr(framerec, name), read_define(FORMAT_HEADER, "FRAME_RECORD_" + name))
 
+        self.assertEqual(framerec.MESH.size, read_define(FORMAT_HEADER, "FRAME_RECORD_MESH_BYTES"))
+
 
 class RecordTests(unittest.TestCase):
     def test_a_stream_reads_back_into_its_header_frames_and_checks(self):

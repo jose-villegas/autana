@@ -266,10 +266,11 @@ where(const void* address) {
     return (frame_record_where_t){(uint8_t)at.slot, at.entry, at.offset};
 }
 
-/* A mesh's colours: per vertex, else per triangle, else none. */
+/* A mesh's colours as the pipeline picks them: per triangle when it has
+ * those, else per vertex, else none. */
 static const void*
 colours_of(const r3d_lit_mesh_t* mesh) {
-    return mesh->colors != NULL ? (const void*)mesh->colors : (const void*)mesh->face_colors;
+    return mesh->face_colors != NULL ? (const void*)mesh->face_colors : (const void*)mesh->colors;
 }
 
 static bool
@@ -358,7 +359,7 @@ record_mesh_place(int index, const r3d_instance_t* instance, const r3d_batch_t* 
     frame_record_mesh_t m = {.index = (uint16_t)index,
                              .kind = (uint8_t)kind,
                              .placed = instance->model != NULL,
-                             .faces = mesh->colors == NULL && mesh->face_colors != NULL};
+                             .faces = mesh->face_colors != NULL};
     m.positions = where(positions);
     m.colours = where(colours_of(mesh));
     m.batch = where(batch != NULL ? (const void*)batch->places : NULL);
