@@ -160,6 +160,7 @@ the presets vary the copies' geometry, layout and colour modes.
 | `stress-mix` | ![Stress mix: planes with several tessellations and colour modes](../../../../../docs/images/overview/render-lab-stress-mix.png) | copies cycling through tessellations; a named share of triangles has equal corner colours | a single triangle size or colour mode standing for a scene's draw cost |
 | `stress-static-copies` | ![Static triangle copies](../../../../../docs/images/overview/render-lab-stress-static-copies.png) | the stress pack's LMSH triangle, retained in each renderer | static asset residency and small transform batches |
 | `stress-skinned-sh-blobs` | ![Skinned copies with probe lighting and contact discs](../../../../../docs/images/overview/render-lab-stress-skinned-sh-blobs.png) | animated skins over floor pads; copy count is `STRESS_SKINNED_COPIES` | Per-mover SH sampling, per-vertex irradiance and depth-tested contact discs. |
+| `stress-skinned-feet-blobs` | Per-foot contacts under a low directional light | Same animated copies and probe lighting as `stress-skinned-sh-blobs` | Warped leaf-contact shadows, overlap coverage and partial redraw bounds. |
 | `stress-uniform-mid` | ![Uniform plane with intermediate coverage](../../../../../docs/images/overview/render-lab-stress-uniform-mid.png) | equal-colour large triangles | intermediate uniform fill without shaded pixels |
 | `stress-uniform-full` | ![Uniform plane covering the view](../../../../../docs/images/overview/render-lab-stress-uniform-full.png) | equal-colour large triangles spanning the view | uniform fill beyond the water workload at full-width render sizes |
 | `stress-card` | ![Card copies with ragged edges and sampled colours](../../../../../docs/images/overview/render-lab-stress-card.png) | copies sharing a generated perforated quad with uneven tessellation and procedural texture samples at its corners | scene-like small triangles with irregular edges and colour steps |
@@ -345,8 +346,8 @@ curtains at z=190, from x=-616 to x=487, with a rest at each end.
 ![Capybara beside the curtains, rest to rest, under a courtyard-side camera](../../../../../docs/images/overview/render-lab-capybara-sponza.gif)
 
 The camera orbits on the courtyard side, turning toward the capybara's back
-during the run and returning toward its face at rest. The contact blob uses
-the body's smaller horizontal half extent and a squared radial falloff.
+during the run and returning toward its face at rest. Each planted foot
+casts a light-warped contact disc; lifted feet spread and fade.
 
 | What | Owner |
 |---|---|

@@ -74,5 +74,7 @@ void scene_set_probes(entity_t root, const sh_probes_t* probes);
 
 #define SCENE_CONTACT_BLOB_STRENGTH_DEFAULT 0.75F
 
-/* A ground-plane contact disc under this renderer's world bounds; zero strength disables it. */
-void scene_set_contact_blob(entity_t renderer, float ground_y, float strength);
+/* Ground-plane contact shadows for this renderer; zero strength disables them. */
+typedef enum { SCENE_CONTACT_BODY, SCENE_CONTACT_FEET } scene_contact_shape_t;
+
+void scene_set_contact_blob(entity_t renderer, float ground_y, float strength, scene_contact_shape_t shape);

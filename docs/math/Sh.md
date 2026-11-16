@@ -14,3 +14,5 @@ gradient matrix. Irradiance is `constant + gradient * normal`.
 | `sh1_rgb_add_direction` | Accumulate a direction's radiance times its integration weight. |
 | `sh1_rgb_irradiance` | Convolve with the cosine kernel, using `SH1_A0` and `SH1_A1`. |
 | `sh1_irradiance_eval` | Evaluate irradiance at a normal. |
+| `sh1_rgb_luminance` | Linear RGB luminance with the `SH1_LUMINANCE_*` weights. |
+| `sh1_rgb_dominant_direction` | Unit direction of the luminance-weighted L1 gradient; zero for an isotropic field. |
