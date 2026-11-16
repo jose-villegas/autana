@@ -1,5 +1,4 @@
-"""Checks the fit's probe views (r3d/fit/probes.py), the path-first prune and the closure gate
-(r3d/appearance_simplify.py): placement, the inside test on a closed box, the greedy pick, and the ranking."""
+"""Checks probe placement, face selection and the fit's held-out closure gate."""
 
 import contextlib
 import io
@@ -16,7 +15,7 @@ try:
     import numpy as np
 
     from r3d import appearance_simplify, reference_set
-    from r3d.appearance_simplify import FitMesh, prune
+    from r3d.appearance_simplify import FitMesh
     from r3d.fit import probes
     from r3d.geometry import face_normals
 except ImportError:
@@ -102,29 +101,6 @@ class ProbeInsideTests(unittest.TestCase):
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
-class PathFirstPruneTests(unittest.TestCase):
-    def mesh(self, count):
-        return FitMesh(np.zeros((3 * count, 3)), np.zeros((3 * count, 3)), np.arange(3 * count).reshape(count, 3),
-                       np.zeros(count), 8, np.arange(3 * count))
-
-    def test_one_row_keeps_the_most_shown_and_never_the_unshown(self):
-        shown = np.array([0, 50, 3, 0, 900, 7])
-        _, kept = prune(self.mesh(6), shown, 3)
-        self.assertEqual(kept.tolist(), [1, 4, 5])
-        _, ranked = prune(self.mesh(6), shown[None], 3)
-        self.assertEqual(ranked.tolist(), kept.tolist(), "one ranked row ordered unlike one row")
-        self.assertEqual(len(prune(self.mesh(6), shown, 6)[1]), 4)
-
-    def test_what_the_path_shows_outranks_a_larger_probe_only_triangle(self):
-        path = np.array([5, 0, 1, 0])
-        probe = np.array([0, 900, 0, 40])
-        _, kept = prune(self.mesh(4), np.stack([path, probe]), 3)
-        self.assertEqual(kept.tolist(), [0, 1, 2], "a probe-only triangle outranked one the path shows")
-        _, kept = prune(self.mesh(4), np.stack([path, probe]), 4)
-        self.assertEqual(kept.tolist(), [0, 1, 2, 3])
-
-
-@unittest.skipIf(np is None, "the r3d environment is not installed")
 class ClosureTests(unittest.TestCase):
     SIZE = (100, 100)
     PIXELS = SIZE[0] * SIZE[1]
@@ -139,7 +115,8 @@ class ClosureTests(unittest.TestCase):
             check(self.START_HOLES, self.START_HOLES + growth + 1, self.PIXELS)
 
     def test_main_checks_the_pruned_fit_before_writing(self):
-        mesh = PathFirstPruneTests().mesh(2)
+        mesh = FitMesh(np.zeros((6, 3)), np.zeros((6, 3)), np.arange(6).reshape(2, 3),
+                       np.zeros(2), 8, np.arange(6))
         size = self.SIZE
         views = [object()]
         for fitted_holes in (self.START_HOLES, self.PIXELS):
@@ -151,16 +128,19 @@ class ClosureTests(unittest.TestCase):
                 with contextlib.ExitStack() as stack:
                     for name, value in dict(load_scene=SimpleNamespace(camera=SimpleNamespace(
                             component=SimpleNamespace(background=0))), start_mesh=mesh,
-                            load_views=(views, size), optimise=(mesh.points, mesh.rgb, [1.0]),
-                            coverage=np.ones(len(mesh.tris)), stretch_report={
+                            load_views=(views, size), pose_views=(views, size), optimise=(mesh.points, mesh.rgb, [1.0]),
+                            stretch_report={
                                 "small": dict(stretch=0, area_growth=0, moved=0),
                                 "rest": dict(stretch=0, area_growth=0, moved=0),
                                 "worst": dict(stretch=[], area_growth=[], moved=[])}).items():
                         stack.enter_context(mock.patch.object(appearance_simplify, name, return_value=value))
                     holes = stack.enter_context(mock.patch.object(appearance_simplify, "hole_pixels",
                                                                  side_effect=[self.START_HOLES, fitted_holes]))
+                    stack.enter_context(mock.patch.object(appearance_simplify, "coverage",
+                                                         side_effect=[np.array([0, 0]), np.array([1, 0])]))
                     stack.enter_context(mock.patch.object(appearance_simplify, "write_mesh", write_mesh))
-                    args = [*FitArgumentTests.BASE[:-1], str(out), *FitArgumentTests.HELD, "--budget", "1"]
+                    args = [*FitArgumentTests.BASE[:-1], str(out), *FitArgumentTests.HELD,
+                            "--coverage-poses", "path.txt", "--coverage-poses", "probes.txt"]
                     if fitted_holes == self.PIXELS:
                         with self.assertRaisesRegex(ValueError, "closure"):
                             appearance_simplify.main(args)

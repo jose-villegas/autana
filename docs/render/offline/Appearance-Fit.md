@@ -70,14 +70,15 @@ An import's [`geometry.probes`](Mesh-Import.md#probes) adds training cube faces
 and held-out faces from a second seed. Placement and face selection use the
 source alone, so the reference set depends only on its own inputs.
 
-A probe-trained fit's prune budget equals its variant's `triangles`. The import
-spends it through quadric edge collapse<sup>[[12]](../../Citations.md#garland-1997)</sup>
-with appearance attributes<sup>[[13]](../../Citations.md#hoppe-1999)</sup>.
+A probe fit has no `fit.prune.budget`: its variant's `triangles` is the budget.
+The import spends it through simplify with quadric edge collapse<sup>[[12]](../../Citations.md#garland-1997)</sup>
+and appearance attributes<sup>[[13]](../../Citations.md#hoppe-1999)</sup>.
+
 The prune drops only triangles no coverage view shows.
 
 A hole pixel shows no fitted surface where the reference differs from the clear
-colour by more than `HOLE_DE`. The closure gate rejects a fit whose held-out
-hole growth exceeds `CLOSURE_GROWTH` of the views' pixels beyond its start's holes.
+colour by more than `HOLE_DE`. The closure gate rejects held-out hole growth of
+more than `CLOSURE_GROWTH` of the held-out pixels beyond the start's holes.
 
 ## Cost model
 

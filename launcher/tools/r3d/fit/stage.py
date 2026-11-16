@@ -24,6 +24,8 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
     and passes the copy-coverage gate over the held-out poses; its copies are written back unchanged."""
     from r3d.appearance_simplify import main as fit_main
 
+    if budget is not None and job.settings.fit.probes is not None:
+        raise ValueError("sweep budget is refused with geometry.probes; the variant's triangles is the budget")
     renderer = job.renderer
     variant, recipe = renderer.variant, renderer.fit
     inputs = pathlib.Path(work) if inputs is None else pathlib.Path(inputs)
@@ -43,9 +45,11 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
         command += ["--poses", str(inputs / poses), "--reference", str(inputs / reference)]
     for poses in sets.coverage:
         command += ["--coverage-poses", str(inputs / poses)]
-    for poses, reference in sets.scored:
+    for poses, reference in sets.held_out if shaping.probes is not None else ():
         command += ["--held-out-poses", str(inputs / poses), "--held-out-reference", str(inputs / reference)]
-    command += ["--out", str(out), "--budget", str(recipe.budget if budget is None else budget),
+    if shaping.probes is None:
+        command += ["--budget", str(recipe.budget if budget is None else budget)]
+    command += ["--out", str(out),
                 "--steps", str(steps), "--batch", str(recipe.batch),
                 "--laplacian", str(recipe.laplacian), "--normal-weight", str(recipe.normal_weight),
                 "--object", job.object.name, "--surface-weight", str(recipe.surface_weight),

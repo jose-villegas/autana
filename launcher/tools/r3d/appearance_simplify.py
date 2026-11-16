@@ -564,18 +564,10 @@ def coverage(mesh, views, size, device="cuda"):
 
 
 def prune(mesh, shown, budget):
-    """Drop never-shown triangles first, then those showing fewest pixels to
-    meet `budget`. `shown` is one row of pixels per triangle, or ranked rows:
-    a triangle an earlier row shows outranks every one it does not, and each
-    is ordered by the pixels of the first row that shows it. A flat mesh's
-    colours go with their triangles. Return the pruned mesh and the kept
-    start indices."""
-    shown = np.atleast_2d(np.asarray(shown))
-    seen = shown > 0
-    first = np.where(seen.any(axis=0), seen.argmax(axis=0), len(shown))
-    pixels = shown[np.minimum(first, len(shown) - 1), np.arange(shown.shape[1])] * (first < len(shown))
-    order = np.lexsort((-pixels, first))
-    keep = np.sort(order[: min(budget, int(np.count_nonzero(seen.any(axis=0))))])
+    """Keep the most-shown triangles up to `budget`, dropping every never-shown triangle.
+    `shown` holds pixels per triangle. Return the pruned mesh and kept start indices."""
+    shown = np.asarray(shown)
+    keep = np.sort(np.argsort(-shown, kind="stable")[:min(budget, np.count_nonzero(shown))])
     pruned = mesh._replace(rgb=mesh.rgb[keep] if mesh.flat else mesh.rgb, tris=mesh.tris[keep],
                            double=np.asarray(mesh.double)[keep])
     return pruned, keep
@@ -681,9 +673,7 @@ def hole_pixels(mesh, views, size, clear, device="cuda"):
     return holes
 
 
-# Over held-out views, a fit may lose at most CLOSURE_GROWTH of their pixels to holes beyond its start.
-# Probe fits (48 held-out faces, scale 2, 7.08M pixels): fitting a start simplified to the budget loses
-# 0.002 points fewer than the start; the pixel-ranked prune loses 0.51 more.
+# The share of held-out pixels a fit may lose to holes beyond its start's.
 CLOSURE_GROWTH = 0.0005
 
 
@@ -953,8 +943,7 @@ def main(argv=None):
     parser.add_argument("--laplacian", type=float, default=10.0)
     parser.add_argument("--budget", type=int, help="prune to this many triangles, those that show least first")
     parser.add_argument("--coverage-poses", action="append",
-                        help="a poses file to count shown pixels over, the training poses otherwise; repeated, ranked: "
-                             "the prune keeps what an earlier file shows before what only a later one does")
+                        help="a poses file to count shown pixels over; repeat to sum coverage, training poses otherwise")
     parser.add_argument("--held-out-poses", action="append", default=[], help="poses the closure gate checks")
     parser.add_argument("--held-out-reference", action="append", default=[], help="references for --held-out-poses")
     parser.add_argument("--cost-model", help="a cost_model.py weights file, such as board_cost_weights.txt")
@@ -1035,22 +1024,20 @@ def main(argv=None):
                                         seam_margin=args.seam_margin, copies=copies, carved=carved,
                                         front_weight=args.front_weight, depth_weight=args.depth_weight)
         fitted = fitted._replace(points=points, rgb=rgb)
-        kept = np.arange(len(fit_start.tris))
-        if args.budget is not None:
-            drawn = joined(fitted, copies)
-            rows = [coverage(drawn, *pose_views(poses, args.scale))[:len(fitted.tris)]
-                    for poses in args.coverage_poses] if args.coverage_poses else [coverage(drawn, views, size)[:len(fitted.tris)]]
-            shown = rows[0] if len(rows) == 1 else np.stack(rows)
-            held_out = [load_views([pair], args.scale) for pair in zip(args.held_out_poses, args.held_out_reference)]
-            pruned, kept = prune(fitted, shown, args.budget)
-            if held_out:
-                pixels = sum(len(views) * size[0] * size[1] for views, size in held_out)
-                start_holes, fitted_holes = (sum(hole_pixels(joined(mesh, copies), views, size, clear)
-                                                 for views, size in held_out) for mesh in (fit_start, pruned))
-                log(check_closure(start_holes, fitted_holes, pixels))
-            log(f"pruned {len(fitted.tris) - len(pruned.tris)} triangles: "
-                f"{np.count_nonzero(~(np.atleast_2d(shown) > 0).any(axis=0))} never shown")
-            fitted = pruned
+        drawn = joined(fitted, copies)
+        rows = [coverage(drawn, *pose_views(poses, args.scale))[:len(fitted.tris)]
+                for poses in args.coverage_poses] if args.coverage_poses else [coverage(drawn, views, size)[:len(fitted.tris)]]
+        shown = np.sum(rows, axis=0)
+        held_out = [load_views([pair], args.scale) for pair in zip(args.held_out_poses, args.held_out_reference)]
+        pruned, kept = prune(fitted, shown, len(fitted.tris) if args.budget is None else args.budget)
+        if held_out:
+            pixels = sum(len(held_views) * held_size[0] * held_size[1] for held_views, held_size in held_out)
+            start_holes, fitted_holes = (sum(hole_pixels(joined(candidate, copies), held_views, held_size, clear)
+                                             for held_views, held_size in held_out) for candidate in (fit_start, pruned))
+            log(check_closure(start_holes, fitted_holes, pixels))
+        log(f"pruned {len(fitted.tris) - len(pruned.tris)} triangles: "
+            f"{np.count_nonzero(shown == 0)} never shown")
+        fitted = pruned
         if copies is not None:
             hidden = hidden_copy_pixels(source, carved, (fit_start, fitted), args.copy_poses)
             log(check_hidden_copies(*hidden))
