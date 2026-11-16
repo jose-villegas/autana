@@ -1,11 +1,12 @@
 """Reads a scene's object placements, and writes changed ones back into its .scene.toml, keeping every comment and
 the file's own formatting: only the values named change.
 
-    python launcher/tools/scene/scene_edit.py read SCENE.scene.toml
+    python launcher/tools/scene/scene_edit.py read SCENE.scene.toml [-o OUT.json]
     python launcher/tools/scene/scene_edit.py set SCENE.scene.toml --set NAME.FIELD=X,Y,Z [--set ...]
 
-`read` prints the objects as JSON, each with its name, parent, component kind, whether it is a baked renderer, and its
-position, rotation (Euler degrees) and scale as authored, defaults filled in. `set` changes FIELD (position, rotation
+`read` prints the objects as JSON (or writes them to OUT.json), each with its name, parent, component kind, whether it
+is a baked renderer, why `set` would refuse to place it (null when it would not), and its position, rotation (Euler
+degrees) and scale as authored, defaults filled in. `set` changes FIELD (position, rotation
 or scale) of the object NAME; a key the object lacks is added. It writes .scene.toml files only, and places only
 renderers that are not baked: a baked renderer is traced where it sits, at identity, and a light or a camera changes
 the lighting every bake traces. It never adds, removes or reorders objects, so the cameras keep their order. The
@@ -51,9 +52,9 @@ def load(path):
 
 
 def placements(path):
-    """Every object's name, parent, kind, bake flag and placement, in the file's order."""
+    """Every object's name, parent, kind, bake flag, lock reason and placement, in the file's order."""
     return [dict(name=item.name, parent=item.parent, kind=item.kind,
-                 baked=item.kind in RENDERERS and bool(item.component.bake),
+                 baked=item.kind in RENDERERS and bool(item.component.bake), locked=lock_reason(item),
                  position=item.position, rotation=item.rotation, scale=item.scale) for item in load(path).objects]
 
 
@@ -74,12 +75,20 @@ def parse_assignment(text):
     return name, field, vector
 
 
-def check_placeable(item, path):
-    """Refuses an object a placement edit may not move: a light, a camera, or a baked renderer."""
+def lock_reason(item):
+    """Why a placement edit may not move `item` (a light, a camera, or a baked renderer); None when it may."""
     if item.kind not in RENDERERS:
-        raise Refused(f"{path}: {item.name!r} is a {item.kind}; only renderers that are not baked are placed")
+        return f"{item.name!r} is a {item.kind}; only renderers that are not baked are placed"
     if item.component.bake:
-        raise Refused(f"{path}: {item.name!r} is baked (bake = true): a baked renderer is traced where it sits")
+        return f"{item.name!r} is baked (bake = true): a baked renderer is traced where it sits"
+    return None
+
+
+def check_placeable(item, path):
+    """Refuses an object lock_reason names a reason for."""
+    reason = lock_reason(item)
+    if reason is not None:
+        raise Refused(f"{path}: {reason}")
 
 
 def set_value(table, field, vector):
@@ -133,6 +142,7 @@ def main(argv=None):
     commands = parser.add_subparsers(dest="command", required=True)
     read = commands.add_parser("read", help="print the objects' placements as JSON")
     read.add_argument("scene")
+    read.add_argument("-o", dest="out", metavar="OUT.json", help="write the JSON here instead of printing it")
     write = commands.add_parser("set", help="change objects' placements in the file")
     write.add_argument("scene")
     write.add_argument("--set", dest="assignments", action="append", required=True, metavar="NAME.FIELD=X,Y,Z")
@@ -140,7 +150,11 @@ def main(argv=None):
     try:
         path = scene_path(args.scene)
         if args.command == "read":
-            print(json.dumps({"objects": placements(path)}))
+            text = json.dumps({"objects": placements(path)})
+            if args.out:
+                pathlib.Path(args.out).write_text(text + "\n", encoding="utf-8")
+            else:
+                print(text)
         else:
             apply(path, [parse_assignment(text) for text in args.assignments])
     except Refused as error:

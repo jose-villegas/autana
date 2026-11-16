@@ -14,6 +14,7 @@
 #include "unity.h"
 
 #include "math/linear/mat3f.h"
+#include "math/linear/quatf_euler.h"
 #include "math/linear/transformf.h"
 #include "math/linear/transformx.h"
 #include "math/linear/vec_convert.h"
@@ -90,6 +91,35 @@ test_euler_angles_apply_z_then_x_then_y(void) {
     const quatf_t q = quatf_from_euler((vec3f_t){HALF_PI, HALF_PI, HALF_PI});
     assert_vec3(vec3f_unit_x(), quatf_rotate(q, vec3f_unit_x()));
     assert_vec3(vec3f_unit_z(), quatf_rotate(q, vec3f_unit_y()));
+}
+
+/* Angles inside quatf_to_euler's ranges come back as given, each part on its own and all three at once. */
+static void
+test_euler_angles_come_back_from_their_quaternion(void) {
+    const vec3f_t cases[] = {{0.0F, 0.0F, 0.0F},  {0.7F, 0.0F, 0.0F},   {0.0F, -2.5F, 0.0F}, {0.0F, 0.0F, 3.0F},
+                             {-0.2F, 0.8F, 0.3F}, {1.4F, -3.0F, -2.9F}, {-1.5F, 2.2F, 1.1F}};
+    for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+        assert_vec3(cases[i], quatf_to_euler(quatf_from_euler(cases[i])));
+    }
+}
+
+/* At pitch +-90 degrees yaw and roll turn about one axis: the angles that come back differ, the turn does not. */
+static void
+test_euler_angles_at_a_pitch_lock_give_the_same_turn(void) {
+    const vec3f_t locked[] = {{HALF_PI, 0.4F, 0.9F}, {-HALF_PI, -1.0F, 0.5F}};
+    for (size_t i = 0; i < sizeof locked / sizeof locked[0]; i++) {
+        const quatf_t q = quatf_from_euler(locked[i]);
+        const quatf_t again = quatf_from_euler(quatf_to_euler(q));
+        assert_vec3(quatf_rotate(q, vec3f_unit_x()), quatf_rotate(again, vec3f_unit_x()));
+        assert_vec3(quatf_rotate(q, vec3f_unit_y()), quatf_rotate(again, vec3f_unit_y()));
+    }
+    /* A quarter pitch with yaw, built exactly: roll comes back 0 and yaw takes the whole turn. */
+    const float half = sqrtf(0.5F);
+    const quatf_t exact = quatf_mul(quatf_from_axis_angle(vec3f_unit_y(), 0.6F), (quatf_t){half, 0.0F, 0.0F, half});
+    const vec3f_t back = quatf_to_euler(exact);
+    TEST_ASSERT_FLOAT_WITHIN(SLACK, HALF_PI, back.x);
+    TEST_ASSERT_FLOAT_WITHIN(SLACK, 0.6F, back.y);
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, back.z);
 }
 
 static void
@@ -840,6 +870,8 @@ suite_math(void) {
     RUN_TEST(test_a_quarter_turn_about_y_takes_z_to_x);
     RUN_TEST(test_a_quarter_turn_about_x_takes_y_to_z_and_about_z_takes_x_to_y);
     RUN_TEST(test_euler_angles_apply_z_then_x_then_y);
+    RUN_TEST(test_euler_angles_come_back_from_their_quaternion);
+    RUN_TEST(test_euler_angles_at_a_pitch_lock_give_the_same_turn);
     RUN_TEST(test_a_product_applies_the_right_operand_first);
     RUN_TEST(test_slerp_hits_both_ends_and_the_half_angle_between);
     RUN_TEST(test_slerp_takes_the_short_way_when_the_signs_differ);
