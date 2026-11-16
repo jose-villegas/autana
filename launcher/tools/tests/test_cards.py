@@ -10,13 +10,16 @@ import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from r3d.cards import CARD_EPSILON, CANDIDATE_MIN_SAMPLES, SAMPLES_PER_TRIANGLE
-from r3d.cards.choose import card_from, choose_cards as select_cards, split_cards
+from r3d.cards.choose import card_from, choose_cards as select_cards, samples, split_cards
 from r3d.cards.bake import bake_card, corner_colours
 from r3d import mesh_bundle, mesh_import
 from r3d.lit_mesh import read_bundle_mesh
 from r3d.texture import texture_asset, uv_transfer
 from r3d.cards import CARD_MASK_TEXELS
 from r3d.obj import Texture
+from r3d.mesh_source import with_triangles
+from r3d.light import AlphaTest
+from r3d.ray_query import RayQuery
 from tests import soup  # noqa: F401
 
 SIDE = CARD_EPSILON * 12
@@ -45,7 +48,12 @@ def choose_cards(p, t, **options):
     from r3d.ray_query import RayQuery
     from r3d.views.probes import cube_poses
     views = options.pop('views', cube_poses([[0, 0, SIDE], [SIDE, 0, 0], [-SIDE, 0, 0]]))
-    return split_cards(select_cards(p, t, views=views, query=RayQuery(p, t), **options))[0]
+    rng = np.random.default_rng(options.pop('seed', 0))
+    sub = with_triangles(SimpleNamespace(p=p, textures=[options.pop('texture', None)]), t,
+                         options.pop('tri_uv', t), np.zeros(len(t), int),
+                         uv=options.pop('uv', p[:, :2] / SIDE + 0.5))
+    sampled = samples(sub, rng, options.pop('keep_alpha', 0.5))
+    return split_cards(select_cards(sampled, rng, views=views, query=RayQuery(p, t), **options))[0]
 
 
 def card_settings(path):
@@ -139,6 +147,22 @@ class CardTests(unittest.TestCase):
         self.assertFalse(geometry.shapes)
         self.assertIn(geometry.src.names.index('leaf'), geometry.tri_mat)
 
+    def test_all_geometry_replaced_by_cards_with_simplification(self):
+        from r3d.import_settings import albedo_jobs
+        settings, src = self.import_fixture()
+        leaf = src.tri_m == src.names.index('leaf')
+        from r3d.mesh_source import with_triangles
+        src = with_triangles(src, src.tri_v[leaf], src.tri_t[leaf], src.tri_m[leaf], tri_o=src.tri_o[leaf])
+        settings.simplify = SimpleNamespace(dense_edge=SIDE, props=[], props_share=0.,
+                                           colour_deviation=1., seal_seams=False)
+        job = albedo_jobs(settings)[0]
+        job.renderer.variant.triangles = len(src.tri_v)
+        with patch.object(mesh_import, 'load_source', return_value=src):
+            geometry = mesh_import.bake_geometry(job, None, carve=True)
+        self.assertEqual(geometry.tris.shape, (0, 3))
+        self.assertTrue(geometry.shapes)
+        self.assertTrue(geometry.mesh_report['cards']['leaf']['accepted'])
+
     def test_never_keeps_passing_leaf(self):
         from r3d.import_settings import albedo_jobs
         settings, _ = self.import_fixture()
@@ -219,8 +243,8 @@ class CardTests(unittest.TestCase):
         texture.sample.side_effect = lambda uv, lod: np.column_stack([
             np.ones((len(uv), 3)), (uv[:, 0] >= 0.5).astype(float)])
         for seed in SEEDS:
-            points, normals, area = samples(p, t, np.random.default_rng(seed), uv=uv, tri_uv=t,
-                                             texture=texture, keep_alpha=0.5)
+            sub = with_triangles(SimpleNamespace(p=p, uv=uv, textures=[texture]), t, t, np.zeros(len(t), int))
+            points, normals, area = samples(sub, np.random.default_rng(seed), 0.5)
             self.assertGreater(len(points), CANDIDATE_MIN_SAMPLES)
             self.assertLess(len(points), len(t) * SAMPLES_PER_TRIANGLE)
             self.assertTrue(np.all(points[:, 0] >= 0))
@@ -236,8 +260,8 @@ class CardTests(unittest.TestCase):
     def test_area_cost_can_stop_selection(self):
         p, t = quads(True)
         for seed in SEEDS:
-            self.assertLessEqual(len(choose_cards(p, t, area_cost=100, seed=seed)),
-                                 len(choose_cards(p, t, seed=seed)))
+            self.assertGreater(len(choose_cards(p, t, area_cost=0, seed=seed)), 0)
+            self.assertEqual(choose_cards(p, t, area_cost=100, seed=seed), [])
 
     def test_probe_weights_unseen_quad_to_zero(self):
         p, t = quads()
@@ -282,7 +306,9 @@ class CardTests(unittest.TestCase):
         texture.levels = [np.zeros((1, 1, 4))]
         texture.sample.side_effect = lambda uv, lod: np.column_stack([
             np.ones((len(uv), 3)), ((uv > 0.25) & (uv < 0.75)).all(axis=1).astype(float)])
-        trimmed, mask, _, _ = bake_card(card, p, t, uv, t, texture, 0.5)
+        sub = with_triangles(SimpleNamespace(p=p, uv=uv, textures=[texture]), t, t, np.zeros(len(t), int))
+        query = RayQuery(p, t, hit_filter=AlphaTest(sub, 0.5))
+        trimmed, mask, _, _ = bake_card(card, query)
         self.assertEqual(mask.shape, (CARD_MASK_TEXELS // 2,) * 2)
         np.testing.assert_allclose(trimmed['hi'] - trimmed['lo'], SIDE / 2)
         self.assertTrue(mask.all())
@@ -302,7 +328,9 @@ class CardTests(unittest.TestCase):
         card = dict(choose_cards(p, t)[0])
         card['hi'] = card['lo'].copy()
         with np.errstate(all='raise'):
-            self.assertIsNone(bake_card(card, p, t, uv, t, None, 0.5))
+            sub = with_triangles(SimpleNamespace(p=p, uv=uv, textures=[None]), t, t, np.zeros(len(t), int))
+            query = RayQuery(p, t, hit_filter=AlphaTest(sub, 0.5))
+            self.assertIsNone(bake_card(card, query))
 
     def test_long_card_splits(self):
         from r3d.cards import CARD_MAX_SIDE
@@ -324,7 +352,9 @@ class CardTests(unittest.TestCase):
             colour = np.array([64, 128, 192], np.uint8)
             Image.new('RGBA', (8, 8), tuple(colour) + (255,)).save(image)
             texture = Texture(image)
-            baked = bake_card(choose_cards(p, t)[0], p, t, uv, t, texture, 0.5)
+            sub = with_triangles(SimpleNamespace(p=p, uv=uv, textures=[texture]), t, t, np.zeros(len(t), int))
+            query = RayQuery(p, t, hit_filter=AlphaTest(sub, 0.5))
+            baked = bake_card(choose_cards(p, t)[0], query)
         self.assertIsNotNone(baked)
         card, mask, albedo, coverage = baked
         np.testing.assert_allclose(corner_colours(mask, albedo, coverage),
@@ -348,9 +378,12 @@ class CardTests(unittest.TestCase):
             image.save(path)
             tex = Texture(path)
             card = choose_cards(p, t)[0]
-            baked = bake_card(card, p, t, uv, t, tex, 0.5)
+            sub = with_triangles(SimpleNamespace(p=p, uv=uv, textures=[tex]), t, t, np.zeros(len(t), int))
+            query = RayQuery(p, t, hit_filter=AlphaTest(sub, 0.5))
+            baked = bake_card(card, query)
             self.assertIsNotNone(baked)
-            empty = bake_card(card, p, t, np.tile([0.25, 0.5], (len(p), 1)), t, tex, 0.5)
+            sub.uv = np.tile([0.25, 0.5], (len(p), 1))
+            empty = bake_card(card, query)
             self.assertIsNone(empty)
 
     def test_the_replaced_material_still_casts_light_but_not_visibility(self):

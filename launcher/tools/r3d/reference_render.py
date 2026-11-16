@@ -72,7 +72,7 @@ def drawn_hits(source, double_materials, origin, direction):
     unless its twin wound the other way lies on it. Where a reduced source's two shells cross, the inner shell's back
     would otherwise show through the outer one."""
     active = np.ones(len(origin), bool)
-    keep = camera_filter(source)
+    keep = camera_filter(source, alpha=False)
     # The first round yields even when every ray misses, so each list holds at least one array.
     found_at, found_ray, found_tri = [], [], []
     for tri, alive, where in source.intersector.hit_rounds(origin, direction, active):

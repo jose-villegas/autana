@@ -1,7 +1,5 @@
 """Select billboard planes with the greedy projected-area score of Décoret et al. 2003."""
 
-from types import SimpleNamespace
-
 import numpy as np
 from scipy.cluster.vq import kmeans2
 from scipy.spatial import cKDTree
@@ -24,8 +22,8 @@ VISIBILITY_MARGIN = 1.0
 AXIS_ALIGNMENT_MIN = 0.1
 
 
-def samples(positions, triangles, rng, *, uv=None, tri_uv=None, texture=None, keep_alpha=None):
-    corners = positions[triangles]
+def samples(sub, rng, keep_alpha):
+    corners = sub.p[sub.tri_v]
     cross = np.cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0])
     lengths = np.linalg.norm(cross, axis=1)
     keep = lengths > NORMAL_MIN
@@ -34,12 +32,9 @@ def samples(positions, triangles, rng, *, uv=None, tri_uv=None, texture=None, ke
     points = (corners[:, None] * bary[..., None]).sum(axis=2).reshape(-1, 3)
     normals = np.repeat(cross / lengths[:, None], SAMPLES_PER_TRIANGLE, axis=0)
     area = np.repeat(lengths / (2 * SAMPLES_PER_TRIANGLE), SAMPLES_PER_TRIANGLE)
-    if texture is not None:
-        sub = SimpleNamespace(p=positions, tri_v=triangles, uv=uv, tri_t=tri_uv,
-                              tri_m=np.zeros(len(triangles), dtype=int), textures=[texture])
-        hits = np.repeat(np.flatnonzero(keep), SAMPLES_PER_TRIANGLE)
-        opaque = AlphaTest(sub, keep_alpha)(hits, points)
-        points, normals, area = points[opaque], normals[opaque], area[opaque]
+    hits = np.repeat(np.flatnonzero(keep), SAMPLES_PER_TRIANGLE)
+    opaque = AlphaTest(sub, keep_alpha)(hits, points)
+    points, normals, area = points[opaque], normals[opaque], area[opaque]
     return points, normals, area
 
 
@@ -123,12 +118,8 @@ def card_from(centre, normal, points, epsilon):
     return dict(c=c, a=a, b=b, n=normal, lo=xy.min(axis=0), hi=xy.max(axis=0), depth=(-epsilon, epsilon))
 
 
-def choose_cards(positions, triangles, *, seed=0, epsilon=CARD_EPSILON, area_cost=CARD_AREA_COST,
-                 views=(), query=None, uv=None, tri_uv=None, texture=None, keep_alpha=None,
-                 sampled=None, rng=None, face_lens=FACE_LENS):
-    rng = np.random.default_rng(seed) if rng is None else rng
-    points, normals, area = (samples(np.asarray(positions), np.asarray(triangles), rng, uv=uv, tri_uv=tri_uv,
-                                    texture=texture, keep_alpha=keep_alpha) if sampled is None else sampled)
+def choose_cards(sampled, rng, *, views, query, face_lens=FACE_LENS, epsilon=CARD_EPSILON, area_cost=CARD_AREA_COST):
+    points, normals, area = sampled
     if not len(points):
         return []
     weighted_area = area * probe_weights(points, views, query, face_lens)

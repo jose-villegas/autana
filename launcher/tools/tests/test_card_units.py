@@ -73,7 +73,8 @@ class SharedOwnerTests(unittest.TestCase):
                 patch.object(emit, 'choose_cards', return_value=[]) as choose, patch.object(emit, 'RayQuery'):
             emit.make_shape(source, 0, NS(epsilon=1., area_cost=0.), 0, .5, views=views, query=None)
         sample.assert_called_once()
-        self.assertIs(choose.call_args.kwargs['sampled'], sampled)
+        self.assertIs(choose.call_args.args[0], sampled)
+        self.assertIs(choose.call_args.args[1], sample.call_args.args[1])
         self.assertEqual(choose.call_args.kwargs['face_lens'], views.face_lens)
 
 
@@ -91,6 +92,7 @@ class SharedOwnerTests(unittest.TestCase):
                                                    ('two', pathlib.Path(folder)/'two')])
         accepted.assert_called_once()
         self.assertEqual(render.call_count, 2)
+        self.assertIs(render.call_args_list[0].args[0], render.call_args_list[1].args[0])
         np.testing.assert_array_equal(source.camera_hidden, [True])
 
 
@@ -295,13 +297,38 @@ class CardFormatTests(unittest.TestCase):
         p = np.array([[0., 0., 0.], [2., 0., 0.], [0., 2., 0.]])
         mesh = build_lit_mesh(p, np.full((3, 3), 128), np.array([[0, 1, 2]]), np.ones(1), colourless=True)
         entries[0:1] = bundle_entries('card', mesh)
+        entries += bundle_entries('rest', build_lit_mesh(p, np.full((3, 3), 128),
+                                                       np.array([[0, 1, 2]]), np.ones(1)))
         entries.append((lcol_asset.name_for_mesh('card'), lcol_asset.TYPE,
                         lcol_asset.encode(lcol_asset.RGB888, len(mesh.pos), [bytes(len(mesh.pos)*3)])))
         with tempfile.TemporaryDirectory() as folder:
             bundle = pathlib.Path(folder) / 'start.bundle'
             bundle.write_bytes(mesh_bundle.encode(entries, [row]))
             with patch.object(emit, 'carded', side_effect=AssertionError('unexpected bake')):
-                materials = hidden_materials(bundle)
+                materials = hidden_materials(*mesh_bundle.decode(bundle.read_bytes()))
                 self.assertEqual(materials, {'leaf'})
+                from r3d.appearance_simplify import start_mesh
+                with patch.object(pathlib.Path, 'read_bytes', autospec=True,
+                                  side_effect=pathlib.Path.read_bytes) as read:
+                    fitted = start_mesh(bundle)
+                read.assert_called_once_with(bundle)
+                self.assertEqual(fitted.hidden_materials, frozenset({'leaf'}))
+                from r3d.fit import stage
+                recipe = NS(steps=1, budget=1, batch=1, laplacian=0., normal_weight=0.,
+                            surface_weight=1., surface_margin=0.)
+                job = NS(asset_name='rest', object=NS(name='rest'),
+                         settings=NS(fit=NS(probes=None, budget=None)),
+                         renderer=NS(variant=NS(name='rest'), fit=recipe))
+                def fit_main(command):
+                    at = command.index('--hidden-materials')
+                    self.assertEqual(command[at + 1], 'leaf')
+                    rest = pathlib.Path(command[command.index('--start') + 1])
+                    rest_entries, rest_rows = mesh_bundle.decode(rest.read_bytes())
+                    self.assertEqual(hidden_materials(rest_entries, rest_rows), set())
+                    raise InterruptedError('checked stage inputs')
+                with patch('r3d.appearance_simplify.main', side_effect=fit_main), \
+                        self.assertRaisesRegex(InterruptedError, 'checked stage inputs'):
+                    stage.fit('scene', NS(camera=NS(component=NS(path=True))), job,
+                              pathlib.Path(folder), start=bundle)
                 source = NS(names=['leaf', 'wall'], tri_m=np.array([0, 1]))
                 np.testing.assert_array_equal(camera_hidden(source, NS(), hidden_materials=materials), [True, False])

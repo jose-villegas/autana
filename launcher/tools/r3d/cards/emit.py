@@ -31,11 +31,11 @@ def make_shape(src, material, settings, seed, keep_alpha, *, views, query):
     ids = np.flatnonzero(src.tri_m == material)
     triangles, tri_uv = src.tri_v[ids], src.tri_t[ids]
     rng = np.random.default_rng(seed)
-    sampled = samples(src.p, triangles, rng, uv=src.uv, tri_uv=tri_uv,
-                      texture=src.textures[material], keep_alpha=keep_alpha)
+    sub = with_triangles(src, triangles, tri_uv, src.tri_m[ids])
+    sampled = samples(sub, rng, keep_alpha)
     points, _, area = sampled
-    selected = choose_cards(src.p, triangles, epsilon=settings.epsilon, area_cost=settings.area_cost,
-                            views=views.training, query=query, sampled=sampled, rng=rng, face_lens=views.face_lens)
+    selected = choose_cards(sampled, rng, epsilon=settings.epsilon, area_cost=settings.area_cost,
+                            views=views.training, query=query, face_lens=views.face_lens)
     long_sides = np.array([max(card['hi'] - card['lo']) for card in selected])
     distribution = (dict(zip(SIDE_PERCENTILES, np.percentile(long_sides, list(SIDE_PERCENTILES.values())).tolist()))
                     if len(selected) else {})
@@ -43,12 +43,11 @@ def make_shape(src, material, settings, seed, keep_alpha, *, views, query):
         ", ".join(f"{key}={value:.3f}" for key, value in distribution.items()))
     cards, splits = split_cards(selected)
     query_source = query
-    sub = with_triangles(src, triangles, tri_uv, src.tri_m[ids])
     query = RayQuery(sub.p, sub.tri_v, hit_filter=AlphaTest(sub, keep_alpha))
     positions, colours, masks, planes = [], [], [], []
     represented = np.zeros(len(points), bool)
     for card in cards:
-        baked = bake_card(card, src.p, triangles, src.uv, tri_uv, src.textures[material], keep_alpha, query=query)
+        baked = bake_card(card, query)
         if baked is None:
             continue
         card, mask, albedo, coverage = baked

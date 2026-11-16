@@ -13,6 +13,7 @@ import numpy as np
 
 from . import isa
 from .poses import camera_basis
+from .obj import alpha_tested
 
 DEFAULT_SPP = 256
 DEFAULT_DEPTH = 12
@@ -57,6 +58,37 @@ def boosted_albedo(albedo, boost):
     return np.minimum(albedo * boost, np.maximum(albedo, ALBEDO_CEILING))
 
 
+def threshold_texture(mi, texture, keep_alpha):
+    """A binary Mitsuba opacity from bilinear, repeating level-zero alpha, as AlphaTest samples it."""
+    class AlphaThreshold(mi.Texture):
+        def __init__(self, texture, keep_alpha):
+            super().__init__(mi.Properties())
+            self.keep_alpha = keep_alpha
+            self.alpha = mi.load_dict({"type": "bitmap", "bitmap": mi.Bitmap(
+                texture.levels[0][..., 3:4].astype(np.float32)), "raw": True,
+                "filter_type": "bilinear", "wrap_mode": "repeat"})
+
+        def eval_1(self, si, active=True):
+            return mi.Float(self.alpha.eval_1(si, active) >= self.keep_alpha)
+
+        def eval(self, si, active=True):
+            return mi.Spectrum(self.eval_1(si, active))
+
+        def eval_3(self, si, active=True):
+            return mi.Color3f(self.eval_1(si, active))
+
+        def is_spatially_varying(self):
+            return True
+
+        def traverse(self, callback):
+            callback.put_object("alpha", self.alpha, mi.ParamFlags.NonDifferentiable)
+
+        def to_string(self):
+            return "AlphaThreshold"
+
+    return AlphaThreshold(texture, keep_alpha)
+
+
 def material_bsdf(mi, kd, texture, two_sided, boost=1.0, alpha_test=None):
     """The diffuse BSDF of one material: texture (linear, level 0) times Kd as `albedo_from_uv` samples it, or Kd
     decoded with the same power 2.2 when untextured, both through `boosted_albedo`. `raw` keeps Mitsuba from
@@ -70,12 +102,9 @@ def material_bsdf(mi, kd, texture, two_sided, boost=1.0, alpha_test=None):
                        "wrap_mode": "repeat"}
     bsdf = {"type": "diffuse", "reflectance": reflectance}
     bsdf = {"type": "twosided", "bsdf": bsdf} if two_sided else bsdf
-    if alpha_test is not None and texture is not None and np.any(texture.levels[0][..., 3] < 1.0):
-        # Mitsuba 3.9.1's mask has no threshold parameter; nearest filtering keeps its opacity binary.
-        opacity = (texture.levels[0][..., 3] >= alpha_test.keep_alpha).astype(np.float32)[..., None]
+    if alpha_test is not None and texture is not None and alpha_tested([texture])[0]:
         bsdf = {"type": "mask", "bsdf": bsdf,
-                "opacity": {"type": "bitmap", "bitmap": mi.Bitmap(opacity), "raw": True,
-                            "filter_type": "nearest", "wrap_mode": "repeat"}}
+                "opacity": threshold_texture(mi, texture, alpha_test.keep_alpha)}
     return bsdf
 
 

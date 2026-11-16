@@ -9,7 +9,7 @@ import pathlib
 
 from r3d import mesh_bundle, mesh_asset, log
 from r3d.reference_set import fit_sets, shapes_fit
-from r3d.fit.copies import drawn_copies
+from r3d.fit.copies import drawn_copies, hidden_materials
 
 # A carved start's rest is fitted with the reference G-buffer terms (fit/gbuffer.py) at these weights: the front
 # term pushes it behind the copies, the depth term holds it to the source's surface. Picked on street_fitted: front
@@ -38,7 +38,8 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
     out = work / "fitted"
     steps = min(recipe.steps, 8) if smoke else recipe.steps
     shaping = job.settings.fit
-    command = ["--scene", str(scene_path), "--start", str(start)]
+    command = ["--scene", str(scene_path), "--start", str(start),
+               "--hidden-materials", *sorted(hidden_materials(bundle_entries, copies))]
     sets = fit_sets(scene.camera.component.path is not None, shaping.probes is not None, shapes_fit(shaping))
     for poses, reference in sets.training:
         command += ["--poses", str(inputs / poses), "--reference", str(inputs / reference)]
