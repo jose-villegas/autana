@@ -37,6 +37,12 @@ render_context_settings(const render_context_t* context) {
     return &defaults;
 }
 
+/* Nothing here sets a development override, so the tiers read as set. */
+void
+render_anim_settings_tune(render_anim_settings_t* anim) {
+    (void)anim;
+}
+
 void
 scene_draw_forget(const scene_t* scene) {
     (void)scene;
