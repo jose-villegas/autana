@@ -539,11 +539,15 @@ open_mesh(stream_mesh_t* m, const frame_record_mesh_t* row) {
         return refuse("cannot open mesh at %u:%u", row->positions.pack, row->positions.entry);
     }
     if (row->colours.pack != FRAME_RECORD_NO_PACK) {
+        const size_t bytes = row->faces != 0 ? (size_t)m->mesh.triangle_count * sizeof m->mesh.face_colors[0]
+                                             : (size_t)m->mesh.vertex_count * sizeof m->mesh.colors[0];
         asset_entry_t colours;
-        if (!where_entry(row->colours, &colours, (size_t)m->mesh.vertex_count * sizeof m->mesh.colors[0])) {
+        if (!where_entry(row->colours, &colours, bytes)) {
             return false;
         }
-        m->mesh.colors = (const uint8_t (*)[3])(colours.view.data + row->colours.offset);
+        const uint8_t* at = colours.view.data + row->colours.offset;
+        m->mesh.colors = row->faces != 0 ? NULL : (const uint8_t (*)[3])at;
+        m->mesh.face_colors = row->faces != 0 ? (const uint16_t*)(const void*)at : NULL;
     }
     if (row->kind == FRAME_RECORD_SKINNED && !pose_mesh(m)) {
         return false;

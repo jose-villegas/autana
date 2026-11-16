@@ -90,10 +90,11 @@ typedef struct __attribute__((packed)) {
     uint32_t offset; /* bytes into the entry */
 } frame_record_where_t;
 
-/* Instances first, then batches, each numbered from 0 in that order. */
+/* Instances first, then batches, each numbered from 0 in that order. `faces`
+ * is 1 when `colours` holds one RGB565 per triangle, 0 for RGB888 per vertex. */
 typedef struct __attribute__((packed)) {
     uint16_t index;
-    uint8_t kind, placed;
+    uint8_t kind, placed, faces;
     frame_record_where_t positions, colours, batch;
     float model[FRAME_RECORD_MATRIX];
 } frame_record_mesh_t;

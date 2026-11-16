@@ -49,7 +49,7 @@ HEADER = struct.Struct("<HHHH32s")
 PACK = struct.Struct("<BI32s")
 FRAME = struct.Struct("<IIBHHI")
 CHOICE = struct.Struct("<hBBHHH")
-MESH = struct.Struct("<HBB" + "BII" * 3 + "16f")
+MESH = struct.Struct("<HBBB" + "BII" * 3 + "16f")
 POSE = struct.Struct("<HHH" + "BII")
 DYNMESH = struct.Struct("<HBBiIIB")
 TUNE = struct.Struct("<32si")
@@ -126,11 +126,11 @@ def decode_tune(body):
 
 def decode_mesh(body):
     fields = MESH.unpack(body)
-    index, kind, placed = fields[:3]
-    where = [tuple(fields[3 + 3 * i:6 + 3 * i]) for i in range(3)]
+    index, kind, placed, faces = fields[:4]
+    where = [tuple(fields[4 + 3 * i:7 + 3 * i]) for i in range(3)]
     kinds = {number: name for name, number in MESH_KINDS.items()}
-    return {"index": index, "kind": kinds.get(kind, kind), "placed": bool(placed), "positions": where[0], "colours": where[1],
-            "batch": where[2], "model": list(fields[12:])}
+    return {"index": index, "kind": kinds.get(kind, kind), "placed": bool(placed), "faces": bool(faces),
+            "positions": where[0], "colours": where[1], "batch": where[2], "model": list(fields[13:])}
 
 
 def framed_records(data):

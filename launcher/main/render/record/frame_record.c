@@ -266,6 +266,12 @@ where(const void* address) {
     return (frame_record_where_t){(uint8_t)at.slot, at.entry, at.offset};
 }
 
+/* A mesh's colours: per vertex, else per triangle, else none. */
+static const void*
+colours_of(const r3d_lit_mesh_t* mesh) {
+    return mesh->colors != NULL ? (const void*)mesh->colors : (const void*)mesh->face_colors;
+}
+
 static bool
 moved(int index, const r3d_lit_mesh_t* mesh, const void* batch, const mat4f_t* model) {
     if (index >= RECORDED_SLOTS_MAX) {
@@ -273,7 +279,7 @@ moved(int index, const r3d_lit_mesh_t* mesh, const void* batch, const mat4f_t* m
     }
     recorded_slot_t* slot = &rec->slots[index];
     const recorded_slot_t now = {
-        mesh, mesh->positions, mesh->colors, batch, model != NULL ? *model : mat4f_identity(), model != NULL};
+        mesh, mesh->positions, colours_of(mesh), batch, model != NULL ? *model : mat4f_identity(), model != NULL};
     const bool same = slot->mesh == now.mesh && slot->positions == now.positions && slot->colours == now.colours
                       && slot->batch == now.batch && slot->placed == now.placed
                       && memcmp(&slot->model, &now.model, sizeof now.model) == 0;
@@ -349,9 +355,12 @@ static void
 record_mesh_place(int index, const r3d_instance_t* instance, const r3d_batch_t* batch, frame_record_kind_t kind,
                   const void* positions) {
     const r3d_lit_mesh_t* mesh = instance->mesh;
-    frame_record_mesh_t m = {.index = (uint16_t)index, .kind = (uint8_t)kind, .placed = instance->model != NULL};
+    frame_record_mesh_t m = {.index = (uint16_t)index,
+                             .kind = (uint8_t)kind,
+                             .placed = instance->model != NULL,
+                             .faces = mesh->colors == NULL && mesh->face_colors != NULL};
     m.positions = where(positions);
-    m.colours = where(mesh->colors);
+    m.colours = where(colours_of(mesh));
     m.batch = where(batch != NULL ? (const void*)batch->places : NULL);
     const mat4f_t model = instance->model != NULL ? *instance->model : mat4f_identity();
     memcpy(m.model, &model, sizeof m.model);
