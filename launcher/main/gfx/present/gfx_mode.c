@@ -542,10 +542,7 @@ gfx_band_next(void) {
          * per-band UI changes) have done their job for gfx_band_dirty();
          * clear them so next frame's marks start from nothing, the same
          * reset a full-fb present gives itself at the end of every frame. */
-        for (int row = 0; row < STRIP_COUNT; row++) {
-            dirty_row_sent(row);
-        }
-        dirty_frame_sent();
+        dirty_all_rows_sent();
         return false;
     }
 #if CONFIG_LAUNCHER_DEVELOPMENT

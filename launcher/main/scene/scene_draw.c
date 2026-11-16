@@ -172,7 +172,7 @@ fit_drawn(void) {
     instances = instances > drawn.instance_capacity ? instances : drawn.instance_capacity;
     batches = batches > drawn.batch_capacity ? batches : drawn.batch_capacity;
     size_t end = sizeof(r3d_instance_t) * (size_t)instances;
-    const size_t at = scene_storage_carve(&end, sizeof(r3d_batch_draw_t) * (size_t)batches, _Alignof(r3d_batch_draw_t));
+    const size_t at = mem_carve(&end, sizeof(r3d_batch_draw_t) * (size_t)batches, _Alignof(r3d_batch_draw_t));
     scene_free_kept(drawn.block);
     drawn.block = scene_allocate_kept(end);
     const bool fits = drawn.block != NULL;
@@ -188,17 +188,37 @@ scene_drawn_instances(void) {
     return drawn.instances;
 }
 
+/* The drawn view's size measure, built at its first use in a frame. */
+typedef struct {
+    r3d_lod_measure_t measure;
+    bool ready;
+} size_measure_t;
+
+/* `bounds`' drawn radius in pixels, through `m`'s measure. */
+static float
+drawn_radius(box3f_t bounds, size_measure_t* m) {
+    if (!m->ready) {
+        r3d_lens_t lens;
+        r3d_lens_init(&lens, &drawn_view, 1);
+        m->measure = r3d_lod_measure(&lens);
+        m->ready = true;
+    }
+    return r3d_lod_bounds_pixels(bounds, &m->measure);
+}
+
 /* `scene`'s active renderers, appended to `drawn` from `*count` instances
- * and `*batches` batch draws. */
+ * and `*batches` batch draws. A skinned copy is measured only when its next
+ * step picks its tier. */
 static void
-fill_scene(scene_t* scene, const r3d_lod_measure_t* measure, int* count, int* batches) {
+fill_scene(scene_t* scene, size_measure_t* measure, int* count, int* batches) {
     for (int i = 0; i < scene->active_renderer_count; i++) {
         scene_renderer_t* r = &scene->renderers[scene->active_renderers[i]];
         if (r->mesh.node_count == 0) {
             continue;
         }
-        if (scene->skinned_renderers[r->entity].bound) {
-            scene->animators[r->entity].drawn_radius_px = r3d_lod_bounds_pixels(r->world_bounds, measure);
+        scene_animator_t* a = &scene->animators[r->entity];
+        if (scene->skinned_renderers[r->entity].bound && scene_animator_due(scene, a)) {
+            a->drawn_radius_px = drawn_radius(r->world_bounds, measure);
         }
         const r3d_instance_t instance = {&r->mesh, r->placed ? &r->model : NULL, &r->world_bounds, r->lod_coarse};
         if (r->batch != NULL) {
@@ -214,9 +234,7 @@ fill_scene(scene_t* scene, const r3d_lod_measure_t* measure, int* count, int* ba
  * batches, `*batches` of them. scene_resolve() has listed them. */
 static int
 fill_instances(int* batches) {
-    r3d_lens_t lens;
-    r3d_lens_init(&lens, &drawn_view, 1);
-    const r3d_lod_measure_t measure = r3d_lod_measure(&lens);
+    size_measure_t measure = {.ready = false};
     int count = 0;
     *batches = 0;
     for (int k = 0; k < drawn_scene_count; k++) {

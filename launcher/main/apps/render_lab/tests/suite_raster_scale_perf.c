@@ -97,11 +97,10 @@ typedef struct {
     raster_buffers_t buffers;
 } span_split_t;
 
-/* One core, one pose: each stage as the difference of two stopped draws;
- * not inlined, so its frame is gone before the raster draws. */
+/* One core, at the pose just seeked: each stage as the difference of two
+ * stopped draws; not inlined, so its frame is gone before the raster draws. */
 static __attribute__((noinline)) void
-add_span_split(raster_t* raster, uint32_t t_ms, span_split_t* sum) {
-    (void)animator_seek(camera_entity, ANIMATOR_CURRENT, t_ms);
+add_span_split(raster_t* raster, span_split_t* sum) {
     r3d_lens_t* draw_lens = &sum->lens;
     {
         const render_view_t view =
@@ -161,7 +160,8 @@ measure_size(raster_t* raster, gfx_color_t* destination, resolution_step_t size,
     TEST_ASSERT_NOT_NULL(spans);
     *spans = (span_split_t){0};
     for (uint32_t t_ms = 0; t_ms < period && t_ms / POSE_EVERY_MS < POSES_MAX; t_ms += POSE_EVERY_MS) {
-        add_span_split(raster, t_ms, spans);
+        (void)animator_seek(camera_entity, ANIMATOR_CURRENT, t_ms);
+        add_span_split(raster, spans);
     }
 
     int64_t sum = 0;
