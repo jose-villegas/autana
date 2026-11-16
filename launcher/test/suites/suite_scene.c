@@ -4885,6 +4885,31 @@ test_probes_sample_last_resolved_bounds_without_allocating(void) {
 }
 
 static void
+test_contact_footprint_and_partial_redraw(void) {
+    enum { BODY_HALF_X = 4, BODY_HALF_Z = 1, GROUND_Y = -2 };
+
+    fixture();
+    const entity_t root = show("test_solo");
+    const entity_t mover = entity_find(root, name_hash("blue"));
+    r3d_lit_mesh_t mesh = *renderer_mesh(mover);
+    r3d_lit_node_t node = mesh.nodes[0];
+    node.bounds = (box3s_t){{-BODY_HALF_X, -1, -BODY_HALF_Z}, {BODY_HALF_X, 1, BODY_HALF_Z}};
+    mesh.nodes = &node;
+    TEST_ASSERT_TRUE(renderer_set_mesh(mover, &mesh));
+    scene_set_contact_blob(mover, GROUND_Y, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT);
+    settle_the_picture();
+    for (int step = 1; step <= MOVER_STEPS; step++) {
+        put_at(mover, (float)step * 0.25F, (float)step * 0.5F);
+        frame_over_the_last();
+        TEST_ASSERT_GREATER_THAN_INT(0, rows_the_last_frame_drew());
+        TEST_ASSERT_LESS_THAN_INT(SIZE, rows_the_last_frame_drew());
+        const render_partial_t* partial = &render_context_main()->partial;
+        TEST_ASSERT_EQUAL_FLOAT(GROUND_Y - BODY_HALF_Z, partial->changed[0].lo.y);
+        assert_the_picture_is_the_whole_draw();
+    }
+}
+
+static void
 test_forgetting_another_scene_keeps_the_contact_draw_hook(void) {
     fixture();
     const entity_t root = show("test_pair");
@@ -7901,6 +7926,7 @@ run_scene_suite(void) {
     RUN_TEST(test_scene_light_rotation_shades_only_skin_and_matches_kernel);
     RUN_TEST(test_probes_sample_last_resolved_bounds_without_allocating);
     RUN_TEST(test_forgetting_another_scene_keeps_the_contact_draw_hook);
+    RUN_TEST(test_contact_footprint_and_partial_redraw);
     RUN_TEST(test_authored_skin_modes_animation_and_ambient);
     RUN_TEST(test_authored_light_preserves_static_mesh_colors);
     RUN_TEST(test_authored_tonemap_changes_skin_colors_in_both_attachment_orders);

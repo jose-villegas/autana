@@ -59,7 +59,7 @@ typedef struct {
     int count;
     vec3f_t direction[R3D_SKIN_LIGHT_MAX];
     vec3f_t color[R3D_SKIN_LIGHT_MAX];
-    sh1_irradiance_t ambient;
+    vec3f_t ambient;
     const r3d_skin_light_table_t* table;
     float table_scale;
     const r3d_skin_light_transfer_t* transfer;
@@ -87,7 +87,6 @@ void r3d_skin_clusters_table(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind,
                              uint8_t (*light)[3]);
 
 sh1_irradiance_t r3d_skin_light_ambient_sh(const sh1_rgb_t* radiance);
-void r3d_skin_light_set_ambient_sh(r3d_skin_lights_t* lights, const sh1_rgb_t* radiance);
 
 /* Per-renderer ambient override; mode is R3D_SKIN_LIGHT_* from r3d_skin_format.h. */
 void r3d_skin_clusters_ambient(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4f_t* palette, int first,

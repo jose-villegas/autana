@@ -230,7 +230,7 @@ contact_blob_bounds(box3f_t mover, float ground_y) {
     vec3f_t ground = box3f_centre(mover);
     ground.y = ground_y;
     const vec3f_t half = box3f_half_extent(mover);
-    const float radius = fmaxf(half.x, half.z);
+    const float radius = fminf(half.x, half.z);
     const vec3f_t extent = {radius, radius, radius};
     return (box3f_t){vec3f_sub(ground, extent), vec3f_add(ground, extent)};
 }

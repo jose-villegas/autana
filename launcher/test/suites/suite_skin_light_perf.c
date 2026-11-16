@@ -93,6 +93,8 @@ typedef struct {
     int32_t* samples;
     int32_t* micros;
     r3d_skin_lights_t lights;
+    sh1_irradiance_t ambient;
+    bool probes;
 } fixture_t;
 
 static fixture_t* active;
@@ -161,7 +163,7 @@ fixture(int lights) {
     r3d_skin_palette(&f->skin, f->model, f->bind.position_scale, f->palette);
     r3d_skin_normal_palette(f->palette, joints, mat4f_identity(), f->normals);
     f->lights.count = lights;
-    f->lights.ambient.constant = (vec3f_t){0.22F, 0.22F, 0.25F};
+    f->lights.ambient = (vec3f_t){0.22F, 0.22F, 0.25F};
     for (int i = 0; i < lights; i++) {
         f->lights.direction[i] = vec3f_normalize(DIRECTIONS[i]);
         f->lights.color[i] = COLORS[i];
@@ -207,7 +209,16 @@ kernel(fixture_t* f, kernel_t kind) {
         const r3d_skin_light_kernel_t function = kind == DIRECT         ? r3d_skin_clusters_lit
                                                  : kind == RENORMALISED ? r3d_skin_clusters_renormalised
                                                                         : r3d_skin_clusters_table;
-        function(&f->skin, &f->bind, f->palette, 0, f->bind.cluster_count, &f->posed, f->normals, &f->lights, f->light);
+        if (f->probes) {
+            const unsigned mode = kind == DIRECT         ? R3D_SKIN_LIGHT_DIRECT
+                                  : kind == RENORMALISED ? R3D_SKIN_LIGHT_RENORMALISED
+                                                         : R3D_SKIN_LIGHT_TABLE;
+            r3d_skin_clusters_ambient(&f->skin, &f->bind, f->palette, 0, f->bind.cluster_count, &f->posed, f->normals,
+                                      &f->lights, f->light, &f->ambient, mode);
+        } else {
+            function(&f->skin, &f->bind, f->palette, 0, f->bind.cluster_count, &f->posed, f->normals, &f->lights,
+                     f->light);
+        }
         return;
     }
     r3d_skin_clusters(&f->skin, &f->bind, f->palette, 0, f->bind.cluster_count, &f->posed);
@@ -222,7 +233,7 @@ static void
 quality_reference(const fixture_t* f, int vertex, bool normalise, uint8_t out[3]) {
     const vec3f_t normal = skin_light_reference_normal(&f->skin, f->normals, vertex, normalise);
     r3d_skin_lights_t lights = f->lights;
-    lights.ambient.constant = sh1_irradiance_eval(&f->lights.ambient, normal);
+    lights.ambient = f->probes ? sh1_irradiance_eval(&f->ambient, normal) : f->lights.ambient;
     skin_light_reference(normal, &lights, f->bind.colors[vertex], 0, out);
 }
 
@@ -292,7 +303,8 @@ static void
 measure(kernel_t kind, int lights, bool probes, const char* label) {
     fixture_t* f = fixture_for_kernel(kind, lights);
     if (probes) {
-        r3d_skin_light_set_ambient_sh(&f->lights, &PROBE_RADIANCE);
+        f->ambient = r3d_skin_light_ambient_sh(&PROBE_RADIANCE);
+        f->probes = true;
     }
     const bool table_mode = kind == TABLE || kind == TABLE_BUILD;
     const char* mode = table_mode ? "table" : kind == DIRECT ? "direct" : "renormalised";

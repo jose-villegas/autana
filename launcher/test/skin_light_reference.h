@@ -35,7 +35,7 @@ skin_light_reference_encode(float linear, float white) {
 static inline void
 skin_light_reference(vec3f_t normal, const r3d_skin_lights_t* lights, const uint8_t albedo[3], float white,
                      uint8_t out[3]) {
-    float sum[] = {lights->ambient.constant.x, lights->ambient.constant.y, lights->ambient.constant.z};
+    float sum[] = {lights->ambient.x, lights->ambient.y, lights->ambient.z};
     for (int i = 0; i < lights->count; i++) {
         const vec3f_t direction = lights->direction[i];
         const float facing = fmaxf(0, normal.x * direction.x + normal.y * direction.y + normal.z * direction.z);
