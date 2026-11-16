@@ -3,7 +3,8 @@
 
     python launcher/tools/bake/bake.py list [PATH ...] [--missing] [--kind mesh|reference|fit|levels|texture|sound]
     python launcher/tools/bake/bake.py bake [PATH ...] [--kind KIND] [--only OUTPUT ...] [--again] [--out DIR]
-                                            [--from-run N ...]
+                                            [--from-run N ...] [--shard K/N | --shards DIR]
+    python launcher/tools/bake/bake.py shards [PATH ...]
     python launcher/tools/bake/bake.py lock [PATH ...] [--from-run N ... | --seed] [--cache DIR]
     python launcher/tools/bake/bake.py check [PATH ...]
     python launcher/tools/bake/bake.py fetch [PATH ...] [--cache DIR] [--offline]
@@ -70,6 +71,7 @@ import functools
 import hashlib
 import io
 import json
+import math
 import multiprocessing
 import os
 import pathlib
@@ -151,9 +153,26 @@ TEXTURE_SUFFIX = ".texture.pack"
 WAITS = {"levels": "waits for its fit", "texture": "waits for its mesh"}
 # The kinds that trace rays on the CPU, whose bytes differ between CPU vendors (LOCK's mesh_cpu_vendor).
 TRACED_KINDS = ("mesh", "reference")
+# A run traces its missing reference sets in shards that each take a share of every set's poses, as many as keep a
+# shard near REFERENCE_SHARD_SECONDS on a hosted 4-CPU runner: a quarter of the 6 h cap, room for a scene whose rays
+# cost more than the calibration's. The rate is bistro.street_fitted's primary rays over its hosted trace time.
+REFERENCE_SHARD_SECONDS = 90 * 60
+CALIBRATION_RAYS = 158_269_440  # bistro.street_fitted: 240 poses at 184 x 224, 4 x 4 samples (produce.reference_rays)
+CALIBRATION_SECONDS = 5 * 60 * 60  # the same set on one hosted 4-CPU runner, CPU Bakes run 43016329421
+MATRIX_JOBS = 256  # GitHub Actions' most jobs one matrix makes
 # What a fit whose key waits for its inputs asks for, when the same run would make it.
 BAKE_INPUTS_FIRST = "bake its start and reference set first: bake.py bake --kind mesh, then --kind reference"
 SOUND_SUFFIX = ".sond"
+def reference_shards(rays):
+    """The shards that trace `rays` primary rays, each near REFERENCE_SHARD_SECONDS on a hosted runner; at least one,
+    and no more than a job matrix holds."""
+    seconds = rays * CALIBRATION_SECONDS / CALIBRATION_RAYS
+    count = max(1, math.ceil(seconds / REFERENCE_SHARD_SECONDS))
+    if count > MATRIX_JOBS:
+        raise BakeMissing(f"{rays} reference rays need {count} shards; a job matrix holds {MATRIX_JOBS}")
+    return count
+
+
 def entry_file(entry):
     return (TOOLS / entry.partition(":")[0]).resolve()
 
@@ -1164,8 +1183,15 @@ def gpu_name():
 
 
 def rerun_on(mesh_cpu_vendor):
-    return (f"the lock's meshes are {mesh_cpu_vendor}'s: re-run the failed Bakes CPU job until it lands on a "
+    return (f"the lock's meshes are {mesh_cpu_vendor}'s: re-run the failed Bakes job until it lands on a "
             f"{mesh_cpu_vendor} runner")
+
+
+def wrong_vendor(mesh_cpu_vendor, cpu):
+    """Why a host whose CPU is `cpu` may not trace for a lock of `mesh_cpu_vendor`; None when it may."""
+    if mesh_cpu_vendor and cpu != mesh_cpu_vendor:
+        return f"this host's CPU is {cpu or 'not named'}, but {rerun_on(mesh_cpu_vendor)}"
+    return None
 
 
 def from_made(bake, lock, made):
@@ -1323,7 +1349,7 @@ def _mesh_rows(found, cache, lock, blender, again, keep):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("command", choices=("list", "bake", "lock", "check", "fetch", "path", "publish", "tool"))
+    parser.add_argument("command", choices=("list", "bake", "shards", "lock", "check", "fetch", "path", "publish", "tool"))
     parser.add_argument("paths", nargs="*", help="what build_pack.py takes; launcher/main when omitted")
     parser.add_argument("--cache", help="the cache directory; the user cache when omitted")
     parser.add_argument("--seed", action="store_true", help="lock: lock the tree's own files")
@@ -1335,9 +1361,12 @@ def main(argv=None):
     parser.add_argument("--out", help="bake: also copy what was made here, for a CI run to upload")
     parser.add_argument("--only", action="append", metavar="OUTPUT", help="bake: only this output; repeatable")
     parser.add_argument("--again", action="store_true", help="bake: make them even when locked, and compare")
+    parser.add_argument("--shard", metavar="K/N", help="bake --kind reference: trace shard K of N of each set into --out")
+    parser.add_argument("--shards", metavar="DIR", help="bake --kind reference: join the shards in DIR, then pack")
     parser.add_argument("--offline", action="store_true", help="fetch: never download")
     args = parser.parse_intermixed_args(argv)  # paths may follow options, as a shell user types them
     from r3d.build_pack import DEFAULT_SEARCH
+    from process_tree import progressed
 
     cache = pathlib.Path(args.cache) if args.cache else default_cache()
     try:
@@ -1354,7 +1383,13 @@ def main(argv=None):
         starts = locked_starts(lock, made)
         poses = Poses(held, resample=args.command == "lock")
         found = [] if args.command == "path" else bakes(paths, starts, poses)
-        if args.command == "list":
+        if args.command == "shards":
+            # The shard numbers a run traces its missing reference sets in, as a JSON list for a job matrix.
+            from bake import produce
+
+            rays = [produce.reference_rays(bake) for bake in found if bake.kind == "reference" and bake.key not in lock]
+            print(json.dumps(list(range(reference_shards(sum(rays)))) if rays else []))
+        elif args.command == "list":
             for bake in found:
                 if (args.missing and bake.key in lock) or args.kind not in (None, bake.kind):
                     continue
@@ -1379,14 +1414,33 @@ def main(argv=None):
                 return (bake.kind == kind and args.kind in (None, kind) and (args.again or bake.key not in lock)
                         and not (args.only and bake.output not in args.only))
 
+            # Joined shards are traced already, where the shards ran: packing them traces nothing here.
+            joined = set()
+            if args.shards:
+                for bake in found:
+                    parts = sorted(pathlib.Path(args.shards).glob(f"*/{bake.output}.shard-*"))
+                    if to_make(bake, "reference") and parts:
+                        produce.join_reference_shards(bake, cache, parts)
+                        joined.add(bake.output)
+                        print(f"joined {len(parts)} shards of {bake.output}", flush=True)
             # What is made for a run to upload must be lockable: a mesh only on the lock's CPU vendor.
             mesh_cpu_vendor, cpu = tables.get("mesh_cpu_vendor"), cpu_vendor()
             if args.out:
                 print(f"this host's CPU vendor: {cpu or 'not named'}; "
                       f"the lock's meshes: {mesh_cpu_vendor or 'not named'}")
-                if mesh_cpu_vendor and cpu != mesh_cpu_vendor and any(to_make(bake, kind) for bake in found
-                                                                       for kind in TRACED_KINDS):
-                    raise BakeMissing(f"this host's CPU is {cpu or 'not named'}, but {rerun_on(mesh_cpu_vendor)}")
+                refusal = wrong_vendor(mesh_cpu_vendor, cpu)
+                if refusal and any(to_make(bake, kind) and bake.output not in joined
+                                   for bake in found for kind in TRACED_KINDS):
+                    raise BakeMissing(refusal)
+            if args.shard:
+                shard, count = (int(part) for part in args.shard.split("/"))
+                if args.kind != "reference" or not args.out or not 0 <= shard < count:
+                    parser.error("--shard K/N takes --kind reference, --out DIR and 0 <= K < N")
+                for bake in found:
+                    if to_make(bake, "reference"):
+                        produce.reference_shard(bake, pathlib.Path(args.out) / f"{bake.output}.shard-{shard}", shard, count)
+                        print(f"traced shard {shard}/{count} of {bake.output}", flush=True)
+                return 0
             for run in args.from_run or ():
                 # Each upload apart: two attempts of one run may have made one key on different hosts.
                 with tempfile.TemporaryDirectory() as folder:
@@ -1398,6 +1452,7 @@ def main(argv=None):
             def keep(row):
                 if args.out:
                     produce.export(row, cache, pathlib.Path(args.out))
+                progressed()
                 return row
 
             rows, made_starts = [], {}

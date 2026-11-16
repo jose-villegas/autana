@@ -86,8 +86,8 @@ if [ -n "$mjs_files" ]; then
     fi
 fi
 
-py_tests=$(grep -oE '^Ran [0-9]+ tests? in' "$QUIET_LOG" | grep -oE '[0-9]+' | { sum=0; while read -r n; do sum=$((sum + n)); done; echo "$sum"; })
-node_tests=$(grep -oE 'tests [0-9]+$' "$QUIET_LOG" | grep -oE '[0-9]+' | { sum=0; while read -r n; do sum=$((sum + n)); done; echo "$sum"; })
+py_tests=$(grep -aoE '^Ran [0-9]+ tests? in' "$QUIET_LOG" | grep -oE '[0-9]+' | { sum=0; while read -r n; do sum=$((sum + n)); done; echo "$sum"; })
+node_tests=$(grep -aoE 'tests [0-9]+$' "$QUIET_LOG" | grep -oE '[0-9]+' | { sum=0; while read -r n; do sum=$((sum + n)); done; echo "$sum"; })
 QUIET_SUMMARY="$((py_tests + node_tests)) tests across $suite_count suites"
 export QUIET_SUMMARY
 quiet_end run-tool-tests

@@ -141,6 +141,7 @@ class NightlyTests(unittest.TestCase):
         header = self.repo / "launcher/test/suites.h"
         header.parent.mkdir(parents=True)
         header.write_text("#define SUITE_FILTER_LEN 24\n#define SUITE_FILTER_MAX 4\n")
+        (self.repo / "launcher/test/suite_fixture.c").write_text("SUITE_REGISTER(suite);")
         for number in range(6):
             (self.repo / "code").write_text(str(number))
             chain.git(self.repo, "add", ".")
@@ -208,6 +209,31 @@ class NightlyTests(unittest.TestCase):
         def capture(*args, **kwargs):
             return dict(original(*args, **kwargs), **fields)
         return patch.object(chain, "run_flash", side_effect=capture)
+
+    def night_suites(self, suites, steps):
+        """The suites each capture asked for, in order, and each step's outcome, for a night of `suites`."""
+        self.args.suite = [(suite, "-", "-") for suite in suites]
+        results, replay, _ = self.run_chain(steps)
+        ran = [command[command.index("suite") + 1] for command in replay.calls if "suite" in command]
+        return ran, [result.outcome for result in results]
+
+    def test_a_step_older_than_a_suite_measures_without_it(self):
+        (self.repo / "launcher/test/suite_late.c").write_text("SUITE_REGISTER_ON_REQUEST(late);")
+        chain.git(self.repo, "add", ".")
+        chain.git(self.repo, "commit", "-qm", "a late suite (#106)")
+        self.commits.append(chain.git(self.repo, "rev-parse", "HEAD"))
+        # The anchor, last night's commit, predates a suite added since as any older step does.
+        for anchor in (False, True):
+            with self.subTest(anchor=anchor):
+                self.assertEqual(self.night_suites(("suite", "late"), self.steps((1, 6), anchor=anchor)),
+                                 (["suite", "suite", "late"], ["measured", "measured"]))
+
+    def test_the_newest_step_without_a_suite_fails_its_capture(self):
+        self.assertEqual(self.night_suites(("suite", "missing"), self.steps((1, 5))),
+                         (["suite"], ["measured", "capture_failed"]))
+
+    def test_a_step_that_registers_none_of_the_suites_fails_its_capture(self):
+        self.assertEqual(self.night_suites(("missing",), self.steps((1, 5))), ([], ["capture_failed", "capture_failed"]))
 
     def test_lane_timestamps_and_timeline(self):
         marker = self.clock.now().isoformat()
@@ -1572,14 +1598,15 @@ class NightlyTests(unittest.TestCase):
         self.assertTrue((self.args.out / writes[-1]["selftest"]["report"]).is_file())
 
     def test_plan_waits_for_gpu_queue_to_finish(self):
-        for release_hour, release_minute in ((22, 30), (1, 30), (12, 45)):
+        # Each release falls before the 01:00 night's BOARD_LAST_START.
+        for release_hour, release_minute in ((22, 30), (1, 30), (5, 45)):
             with self.subTest(release_hour=release_hour):
                 clock = ScheduleClock(18)
                 schedule.refresh_gpu_host("gpu-runner", clock)
                 day = 21 if release_hour > 12 else 22
                 released = datetime(2026, 10, day, release_hour, release_minute)
                 args = SimpleNamespace(repo=self.repo, tip="HEAD", boards=["20E8"],
-                    data=self.args.data, out=self.root / "plan.json", marker=self.clock.now().isoformat(),
+                    data=self.args.data, out=self.root / "plan.json", marker=datetime(2026, 10, 22, 1).isoformat(),
                     from_sha=None, max_steps=None, selftest_board="20E8")
                 asked = set()
                 def request(method, path):
@@ -1645,6 +1672,31 @@ class NightlyTests(unittest.TestCase):
                          {"2124": ("0", None, None), "20E8": ("1", "book2", "Book2")})
         self.assertIn(call("SCOPED_BOARDS=2124 20E8"), said.call_args_list)
         self.assertIn(call("SELFTEST_BOARD=2124"), said.call_args_list)
+
+    def test_plan_stops_waiting_for_gpu_work_at_its_deadline(self):
+        marker = self.clock.now().replace(day=22, hour=1, minute=0)
+        args = SimpleNamespace(repo=self.repo, tip="HEAD", boards=None, data=self.args.data,
+                               out=self.root / "plan.json", marker=marker.isoformat(),
+                               from_sha=None, max_steps=None, selftest_board=None)
+        started, polls = self.clock.now(), []
+        cutoff = chain.night_cutoff(marker)
+
+        def pending(*_, **__):
+            polls.append(1)
+            # Well past the deadline, a wait without one would poll forever: fail instead.
+            self.assertLess(len(polls), 2 * (cutoff - started).total_seconds() // QUEUE_POLL_SECONDS)
+            return True
+        with patch.object(chain, "local_boards", return_value=[self.row("2124", port="COM4")]), \
+                patch.object(chain, "remote_boards", return_value=([], [])), \
+                patch.object(chain, "gpu_on_host", return_value=True), \
+                patch.object(chain, "gpu_pending", side_effect=pending), \
+                patch.object(chain, "summarize") as summary, patch("builtins.print") as said:
+            chain.plan(args, self.clock)
+        self.assertGreaterEqual(self.clock.now(), cutoff)
+        self.assertIn(call(chain.GPU_STILL_PENDING), summary.call_args_list)
+        self.assertTrue(any(chain.GPU_STILL_PENDING in str(c.args[0]) for c in said.call_args_list))
+        # The wait ends at the night's cutoff, where a discovered night starts no lane: the GPU took the night.
+        self.assertEqual(list(json.loads(args.out.read_text())["lanes"]), [])
 
     def test_plan_skips_a_gated_hosts_boards(self):
         args = SimpleNamespace(repo=self.repo, tip="HEAD", boards=None, data=self.args.data,

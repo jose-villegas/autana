@@ -138,16 +138,17 @@ Source: `water-stages-board.log`
 
 ### Stress
 
-The Stress family repeats a generated primitive or static pack mesh before a
-swinging camera. Each preset ties down one behaviour with its own pegged goal.
-The presets are the per-PR perf check for r3d work. Scenes run nightly, on
-request, and for bake and fit changes; a scene regression with no preset
-moving is a coverage gap and becomes a new preset.
+The Stress family shows a generated primitive or a static pack mesh in copies,
+or a baked mesh of its own pack, before a moving camera. Each preset ties down
+one behaviour with its own pegged goal. The presets are the per-PR perf check
+for r3d work. Scenes run nightly, on request, and for bake and fit changes; a
+scene regression with no preset moving is a coverage gap and becomes a new
+preset.
 
 Repeated geometry exercises hierarchical visibility<sup>[[112]](../../../../../docs/Citations.md#greene-1993)</sup>;
 the presets vary the copies' geometry, layout and colour modes.
 
-| Scene key | As the swing starts | Made of | Ties down |
+| Scene key | As the camera starts | Made of | Ties down |
 |---|---|---|---|
 | `stress-open` | ![Stress open: a wall of planes side by side](../../../../../docs/images/overview/render-lab-stress-open.png) | a wall of planes side by side | hidden-cluster skip and cluster cull: nothing hides and nothing is off screen |
 | `stress-stack` | ![Stress stack: planes one behind another](../../../../../docs/images/overview/render-lab-stress-stack.png) | planes one behind another | the skip's win, and the depth cost of the debug views |
@@ -169,6 +170,9 @@ the presets vary the copies' geometry, layout and colour modes.
 | `stress-foliage-near-opaque` | ![Stress foliage near opaque: the same cards under the brick](../../../../../docs/images/overview/render-lab-stress-foliage-near-opaque.png) | `stress-foliage-near`'s cards under the INDEX4 brick, whole | the twin: against it, the near cards' mask costs alone |
 | `stress-foliage-far` | ![Stress foliage far: a wall of small bushes of masked cards](../../../../../docs/images/overview/render-lab-stress-foliage-far.png) | 36 small bushes side by side, their cards a few pixels across | the masked textured fill on small triangles, as distant foliage draws |
 | `stress-foliage-far-opaque` | ![Stress foliage far opaque: the same cards under the brick](../../../../../docs/images/overview/render-lab-stress-foliage-far-opaque.png) | `stress-foliage-far`'s cards under the INDEX4 brick, whole | the twin: against it, the far cards' mask costs alone |
+| `stress-record` | ![Stress record: four planes with a wave running over them](../../../../../docs/images/overview/render-lab-stress-record.png) | four planes made again every frame, a wave running over them, while the frame recorder runs | the recorder: each frame's four built meshes written whole, a keyframe's meshes every 30 frames |
+| `stress-cull-setup` | ![Stress cull setup: one small cube](../../../../../docs/images/overview/render-lab-stress-cull-setup.png) | one small cube of a few triangles | the cull's setup before it walks anything: the lens, frustum, settings and pick setup every cull pays once |
+| `stress-baked-tree` | ![Stress baked tree: the inside of a ring](../../../../../docs/images/overview/render-lab-stress-baked-tree.png) | a ring baked by the bake tools in its own pack, the camera at its centre turning half a turn; [`torus_obj.py`](torus_obj.py) writes the ring into [`ring.obj`](../../../../demo/stress_ring/ring.obj) | the baked cluster tree the cull walks, which no generated copy has |
 
 A change is judged by each preset's own readout, stage by stage. The sum over
 presets is a summary line only. A draw change can win on two-sided and static
@@ -308,7 +312,7 @@ camera, so the per-copy costs of posing, skinning and culling all show.
 |---|---|
 | Each copy's leg: a target and speed, or a graze | `herd/herd_wander.h` |
 | Keep apart, look ahead, stay inside; then arrive with what acceleration is left | `math/motion/steer2f.h` ([Motion](../../../../../docs/math/Motion.md)) |
-| The clip and rate for the copy's speed | `locomotion/gait.h`, from each clip's `ground_mm_s` ([TRCK](../../../../../docs/assets/formats/TRCK.md)) |
+| The clip and rate for the copy's speed | `scene/animator/gait.h`, from each clip's `ground_mm_s` ([TRCK](../../../../../docs/assets/formats/TRCK.md)) |
 
 `pose <ms>` seeks the whole herd: it walks again from its seed to that time,
 so two seeks to one time draw the same frame. Played on from there, clip phases
@@ -330,6 +334,24 @@ can differ slightly from an unbroken run, which steps clips by frame time.
 | The camera, orbited round the area | [`lab/lab_orbit.h`](../../../lab/lab_orbit.h) |
 | Each size's copies, and a turn's frame and animation-step cost with their stages (`herd.wander`, `herd.gait`, the animation step's and r3d's); a paced row steps each frame by the last one's time | [`tests/suite_herd_perf.c`](../tests/suite_herd_perf.c) |
 | The suite's timing table for `perf_compare.sh` | [`herd_tables.py`](herd_tables.py) `--perf-table CAPTURE TABLE` |
+
+### Capybara in Sponza
+
+`capybara-sponza` loads Sponza's fitted full bake and the capybara as two
+scenes, both drawn through Sponza's camera. The capybara rests between the
+first pair of columns, gallops down the atrium and rests between the last
+pair; its clip and rate come from its ground speed. A third-person camera
+starts a little round from its face, turns slowly toward its back as it runs,
+never reaching it, and comes back as it stops. With frame generation on, a
+generated frame shows the capybara where the last drawn frame put it.
+
+![Capybara in Sponza: the capybara's run down the atrium, rest to rest, under a third-person camera](../../../../../docs/images/overview/render-lab-capybara-sponza.gif)
+
+| What | Owner |
+|---|---|
+| The run's place and speed in time | `kinematics/profile/motion_profile.h` ([Profile](../../../../../docs/kinematics/Profile.md)) |
+| The clip and rate for its speed, read a blend ahead | `scene/animator/gait.h` |
+| The run's ends, the camera and the scenes | `capybara_sponza/scene_capybara_sponza.c` |
 
 ### Small fill
 

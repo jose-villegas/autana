@@ -93,3 +93,8 @@ console_freeze_frame_allowed(void) {
     }
     return false;
 }
+
+bool
+console_freeze_held(void) {
+    return frozen;
+}

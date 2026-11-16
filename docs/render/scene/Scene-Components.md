@@ -27,6 +27,7 @@ false for a non-camera entity or an invalid value.
 | `scene/animator/animator.h` | `animator_set_clips()` | attaches clips and a skeleton |
 | | `animator_play()`, `_set_speed()`, `_set_paused()`, `_seek()` | control its playback slots |
 | | `animator_clip_count()`, `_clip_name()`, `_clip_duration_ms()`, `_current_clip()`, `_paused()` | query them |
+| `scene/animator/gait.h` | `gait_pick()`, `gait_apply()` | the clip and playback rate for a ground speed, so a walker's feet keep pace; a still clip only up to `stop_mps` |
 | `scene/camera/camera.h` | `camera_first(within)`, `camera_lens()` | the first camera below `within`; a camera's lens |
 | | `camera_activate()`, `camera_deactivate()`, `camera_active()` | the one active camera engine-wide |
 | | `camera_cut()` | after a jump of the active camera, the renderer drops what it carried from earlier frames |

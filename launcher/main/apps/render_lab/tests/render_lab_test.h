@@ -34,8 +34,10 @@ void render_lab_test_write_counts(const int64_t sums[RENDER_LAB_TEST_COUNTS], in
 
 /* Replays a paused pose: cull counts, then FRAME_PROFILE_REPLAY_DRAWS
  * shaded frames, logged as FRAME_PROFILE_REPLAY under tag. Optional
- * stage_us receives mean microseconds before the window clears. */
+ * stage_us receives each of the `count` stages' mean microseconds before
+ * the window clears. */
 void render_lab_test_replay_pose(const char* tag, entity_t entity, uint32_t duration_ms, int32_t path_ms,
-                                 const char* row, const char* quarter, int64_t stage_us[R3D_STAGE_COUNT]);
+                                 const char* row, const char* quarter, const char* const* stages, int count,
+                                 int64_t* stage_us);
 
 #endif

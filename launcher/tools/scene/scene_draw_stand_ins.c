@@ -3,12 +3,14 @@
  * active, where scene_draw.c's versions do nothing too; linking scene_draw.c needs the whole renderer source
  * list. Any drawing call still fails to link. scene_host.py lists this beside the scene sources.
  * The render context scene.c lends its scratch to is stood in for the same reason: without drawing there is no
- * context, so scene.c's calls on it have nothing to set or drop.
+ * context, so scene.c's calls on it have nothing to set or drop; and no frame is recorded, so the skin system's
+ * notes to the recorder go nowhere.
  */
 #include <stdlib.h>
 
 #include "render/context/render_context.h"
 #include "render/r3d_pipeline.h"
+#include "render/record/frame_record.h"
 #include "scene/scene_internal.h"
 
 render_context_t*
@@ -33,6 +35,12 @@ render_context_settings(const render_context_t* context) {
     (void)context;
     static const render_settings_t defaults = RENDER_SETTINGS_DEFAULT;
     return &defaults;
+}
+
+/* Nothing here sets a development override, so the tiers read as set. */
+void
+render_anim_settings_tune(render_anim_settings_t* anim) {
+    (void)anim;
 }
 
 void
@@ -65,4 +73,20 @@ r3d_lens_place(r3d_lens_t* lens, const mat4f_t* model, int position_scale) {
     (void)model;
     (void)position_scale;
     abort();
+}
+
+void
+frame_record_note_skin(const r3d_lit_mesh_t* posed, const r3d_lit_mesh_t* bind, const r3d_skin_t* skin,
+                       const mat4f_t* palette, int joints) {
+    (void)posed;
+    (void)bind;
+    (void)skin;
+    (void)palette;
+    (void)joints;
+}
+
+void
+frame_record_forget(const void* block, size_t bytes) {
+    (void)block;
+    (void)bytes;
 }

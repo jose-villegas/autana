@@ -13,12 +13,12 @@ is stale, so rerun it after changing an image or the pages that show one.
 | [anim](#anim) | 5 | 0 | 0 |
 | [audio](#audio) | 40 | 0 | 0 |
 | [input](#input) | 11 | 0 | 0 |
-| [kinematics](#kinematics) | 5 | 1 | 0 |
+| [kinematics](#kinematics) | 6 | 2 | 0 |
 | [math](#math) | 25 | 25 | 0 |
-| [overview](#overview) | 29 | 0 | 0 |
+| [overview](#overview) | 33 | 0 | 0 |
 | [physics](#physics) | 2 | 0 | 0 |
 | [power](#power) | 2 | 0 | 0 |
-| [render](#render) | 133 | 7 | 0 |
+| [render](#render) | 131 | 7 | 0 |
 | [ui](#ui) | 62 | 0 | 0 |
 
 ## anim
@@ -101,6 +101,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/kinematics/orbit-fling-decay.png"><img src="../images/kinematics/orbit-fling-decay.png" width="160" alt=""></a> | Fling speed and covered angle at 16 and 50 millisecond frame steps, approaching the same limiting angle | [kinematics/Follow](../kinematics/Follow.md) | not declared yet |
 | <a href="../images/kinematics/orbit-fling.gif"><img src="figure-thumbnails/kinematics/orbit-fling.gif" width="160" alt=""></a> | 3D orbit with pose axes, a fading trail and pitch-limit circles through held steering, fling and reset to home; signed yaw and pitch speeds below | [kinematics/Orbit](../kinematics/Orbit.md) | not declared yet |
 | <a href="../images/kinematics/orbit-reset-spring.png"><img src="../images/kinematics/orbit-reset-spring.png" width="160" alt=""></a> | Reset from rest, moving away, and moving quickly toward home; the last crosses home, with dotted settle times | [kinematics/Follow](../kinematics/Follow.md) | not declared yet |
+| <a href="../images/kinematics/profile-move.png"><img src="../images/kinematics/profile-move.png" width="160" alt=""></a> | Place and speed against time for a 10-unit move that cruises at its peak and a 2-unit move whose ramps meet at half the peak | [kinematics/Profile](../kinematics/Profile.md) | [profile_figures.py](../../launcher/tools/kinematics/profile_figures.py) |
 
 ## math
 
@@ -139,11 +140,14 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/overview/boot-anim.gif"><img src="figure-thumbnails/overview/boot-anim.gif" width="160" alt=""></a> | The boot animation growing a grid and moving the camera through it before fading to black | [README](../../README.md) | not declared yet |
 | <a href="../images/overview/launcher-home.gif"><img src="figure-thumbnails/overview/launcher-home.gif" width="160" alt=""></a> | The launcher listing Falling Sand and Render Lab, its backdrop ridge levelling as the board rocks | [README](../../README.md) | not declared yet |
 | <a href="../images/overview/launcher-home.png"><img src="../images/overview/launcher-home.png" width="160" alt=""></a> | The launcher, rendered on a host with the release build's apps | [firmware/README](../firmware/README.md) | not declared yet |
+| <a href="../images/overview/render-lab-capybara-sponza.gif"><img src="figure-thumbnails/overview/render-lab-capybara-sponza.gif" width="160" alt=""></a> | Capybara in Sponza: the capybara's run down the atrium, rest to rest, under a third-person camera | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-capybara.gif"><img src="figure-thumbnails/overview/render-lab-capybara.gif" width="160" alt=""></a> | A skinned capybara on a meadow blending through each of its animation clips in turn, then back to the first | [README](../../README.md) | not declared yet |
 | <a href="../images/overview/render-lab-herd.gif"><img src="figure-thumbnails/overview/render-lab-herd.gif" width="160" alt=""></a> | Herd 8: eight capybaras walking, each clip at the pace of its ground speed | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-sponza.gif"><img src="figure-thumbnails/overview/render-lab-sponza.gif" width="160" alt=""></a> | A camera moving through the Crytek Sponza atrium with baked lighting on the fitted full mesh | [README](../../README.md) | not declared yet |
+| <a href="../images/overview/render-lab-stress-baked-tree.png"><img src="../images/overview/render-lab-stress-baked-tree.png" width="160" alt=""></a> | Stress baked tree: the inside of a ring | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-big-tris.png"><img src="../images/overview/render-lab-stress-big-tris.png" width="160" alt=""></a> | Stress big tris: a few triangles over most of the picture | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-card.png"><img src="../images/overview/render-lab-stress-card.png" width="160" alt=""></a> | Card copies with ragged edges and sampled colours | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
+| <a href="../images/overview/render-lab-stress-cull-setup.png"><img src="../images/overview/render-lab-stress-cull-setup.png" width="160" alt=""></a> | Stress cull setup: one small cube | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-culled.png"><img src="../images/overview/render-lab-stress-culled.png" width="160" alt=""></a> | Plane before the camera turns away | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-few-copies.png"><img src="../images/overview/render-lab-stress-few-copies.png" width="160" alt=""></a> | Stress few copies: two dense spheres | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-foliage-far-opaque.png"><img src="../images/overview/render-lab-stress-foliage-far-opaque.png" width="160" alt=""></a> | Stress foliage far opaque: the same cards under the brick | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
@@ -155,6 +159,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/overview/render-lab-stress-noisy-tiny.png"><img src="../images/overview/render-lab-stress-noisy-tiny.png" width="160" alt=""></a> | Stress noisy tiny: cylinders end on, their fans of slivers | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-open.png"><img src="../images/overview/render-lab-stress-open.png" width="160" alt=""></a> | Stress open: a wall of planes side by side | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-per-frame.png"><img src="../images/overview/render-lab-stress-per-frame.png" width="160" alt=""></a> | Stress per frame: one plane with a wave running over it | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
+| <a href="../images/overview/render-lab-stress-record.png"><img src="../images/overview/render-lab-stress-record.png" width="160" alt=""></a> | Stress record: four planes with a wave running over them | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-stack.png"><img src="../images/overview/render-lab-stress-stack.png" width="160" alt=""></a> | Stress stack: planes one behind another | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-static-copies.png"><img src="../images/overview/render-lab-stress-static-copies.png" width="160" alt=""></a> | Static triangle copies | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-textured.png"><img src="../images/overview/render-lab-stress-textured.png" width="160" alt=""></a> | Stress textured: big triangles under a brick texture | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
@@ -239,8 +244,6 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/render/framegen-bistro-sheet.crops.png"><img src="../images/render/framegen-bistro-sheet.crops.png" width="160" alt=""></a> | Bistro: the places the generated frame differs most, enlarged | [render/frame/Frame-Generation](../render/frame/Frame-Generation.md) | not declared yet |
 | <a href="../images/render/framegen-bistro-sheet.png"><img src="../images/render/framegen-bistro-sheet.png" width="160" alt=""></a> | Bistro: true and generated frames with their difference | [render/frame/Frame-Generation](../render/frame/Frame-Generation.md) | not declared yet |
 | <a href="../images/render/framegen-bistro.gif"><img src="figure-thumbnails/render/framegen-bistro.gif" width="160" alt=""></a> | Bistro: the generated frames around the one with the most holes | [render/frame/Frame-Generation](../render/frame/Frame-Generation.md) | not declared yet |
-| <a href="../images/render/framegen-pricing-dark.png"><img src="../images/render/framegen-pricing-dark.png" width="160" alt=""></a> | — | [render/frame/Frame-Generation](../render/frame/Frame-Generation.md) | not declared yet |
-| <a href="../images/render/framegen-pricing.png"><img src="../images/render/framegen-pricing.png" width="160" alt=""></a> | — | [render/frame/Frame-Generation](../render/frame/Frame-Generation.md) | not declared yet |
 | <a href="../images/render/framegen-sponza-holes.png"><img src="../images/render/framegen-sponza-holes.png" width="160" alt=""></a> | Sponza: true frame, generated frame and its holes | [render/frame/Frame-Generation](../render/frame/Frame-Generation.md) | not declared yet |
 | <a href="../images/render/gfx-layout-costs.png"><img src="../images/render/gfx-layout-costs.png" width="160" alt=""></a> | Frame cost by framebuffer layout | [gfx/Targets-and-Modes](../gfx/Targets-and-Modes.md) | not declared yet |
 | <a href="../images/render/gpu/appearance-indirect-flat.crops.png"><img src="../images/render/gpu/appearance-indirect-flat.crops.png" width="160" alt=""></a> | Flat bake, lite fit and flat fit.crops | [render/offline/Bake-Quality](../render/offline/Bake-Quality.md) | not declared yet |
@@ -356,8 +359,8 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/ui/panel.png"><img src="../images/ui/panel.png" width="160" alt=""></a> | panel, portrait | [ui/panel](../ui/panel.md) | not declared yet |
 | <a href="../images/ui/scroll-landscape.png"><img src="../images/ui/scroll-landscape.png" width="160" alt=""></a> | scroll, landscape | [ui/scrolling](../ui/scrolling.md) | not declared yet |
 | <a href="../images/ui/scroll.png"><img src="../images/ui/scroll.png" width="160" alt=""></a> | scroll, portrait | [ui/scrolling](../ui/scrolling.md) | not declared yet |
-| <a href="../images/ui/settings-landscape.png"><img src="../images/ui/settings-landscape.png" width="160" alt=""></a> | settings, landscape | [ui/README](../ui/README.md) | not declared yet |
-| <a href="../images/ui/settings.png"><img src="../images/ui/settings.png" width="160" alt=""></a> | settings, portrait | [ui/README](../ui/README.md) | not declared yet |
+| <a href="../images/ui/settings-landscape.png"><img src="../images/ui/settings-landscape.png" width="160" alt=""></a> | settings, landscape | [ui/Building-a-Screen](../ui/Building-a-Screen.md), [ui/README](../ui/README.md) | not declared yet |
+| <a href="../images/ui/settings.png"><img src="../images/ui/settings.png" width="160" alt=""></a> | settings, portrait | [ui/Building-a-Screen](../ui/Building-a-Screen.md), [ui/README](../ui/README.md) | not declared yet |
 | <a href="../images/ui/slider-landscape.png"><img src="../images/ui/slider-landscape.png" width="160" alt=""></a> | slider, landscape | [ui/slider](../ui/slider.md) | not declared yet |
 | <a href="../images/ui/slider-pressed.png"><img src="../images/ui/slider-pressed.png" width="160" alt=""></a> | slider, pressed | [ui/slider](../ui/slider.md) | not declared yet |
 | <a href="../images/ui/slider-tapped.png"><img src="../images/ui/slider-tapped.png" width="160" alt=""></a> | slider, tapped | [ui/slider](../ui/slider.md) | not declared yet |

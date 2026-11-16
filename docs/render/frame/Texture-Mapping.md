@@ -40,20 +40,20 @@ between two rows.
 ## Mip level
 
 Level 0 is full size; each mip halves the last
-<sup>[[123]](../../Citations.md#williams-1983)</sup>. A pixel should read the
+<sup>[[126]](../../Citations.md#williams-1983)</sup>. A pixel should read the
 level where one screen step moves about one texel: floor(log2 ρ), ρ the longer
 of the level-0 texel steps per pixel along x and y, capped at the last level.
 
 A triangle picks one level from the steps of its affine u and v planes,
 averaged over the triangle. Where it recedes the true step grows
-<sup>[[124]](../../Citations.md#heckbert-1989)</sup>, so far pixels read a
+<sup>[[127]](../../Citations.md#heckbert-1989)</sup>, so far pixels read a
 finer level than they need and alias.
 
 ## Perspective
 
 Stepped affine, u and v bend across a receding triangle: floor rows near the
 camera curve. An INDEX4 span divides u and v by depth every few pixels,
-affine between <sup>[[124]](../../Citations.md#heckbert-1989)</sup>, when all
+affine between <sup>[[127]](../../Citations.md#heckbert-1989)</sup>, when all
 of these hold on the triangle's unclipped box, so every row slice agrees:
 
 | Test | Setting ([Render-Settings.md](../Render-Settings.md)) |
