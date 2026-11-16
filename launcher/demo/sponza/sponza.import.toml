@@ -63,8 +63,8 @@ seam = "free"
 
 # Each variant's triangles budget the rest; the props add 4433 at
 # objects_scale 1 and 2236 at 0.5, so each ceiling is the old total. The
-# fitted variants scale their props lower: the fit's prune (sponza.scene.toml)
-# then keeps every rest triangle the camera sees within the old drawn total.
+# fitted variants scale their props lower; their triangles are the fits'
+# budgets, so a probe fit stays closed (Appearance-Fit.md).
 [[variants]]
 name = "sponza"
 triangles = 12948
@@ -78,12 +78,12 @@ ceiling = 8672
 
 [[variants]]
 name = "sponza_fitted"
-triangles = 11188
+triangles = 6761
 objects_scale = 0.43
 ceiling = 13500
 
 [[variants]]
 name = "sponza_fitted_full"
-triangles = 25491
+triangles = 13313
 objects_scale = 0.92
 ceiling = 30000
