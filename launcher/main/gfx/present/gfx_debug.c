@@ -467,6 +467,13 @@ overlay_note_bordered(recti_t box) {
     overlay_bordered[row] = recti_union(overlay_bordered[row], box);
 }
 
+/* Out of line: inlined, dirty_mark()'s frame would sit under every send
+ * overlay_take_off_last_borders() makes. */
+static __attribute__((noinline)) void
+mark_box_dirty(recti_t box) {
+    dirty_mark(box.x, box.y, box.w, box.h);
+}
+
 /* Before the dirty sends. A strip dirty again has last present's bordered box
  * marked dirty, so its one send with this present's borders also covers the
  * old ones; a quiet strip is resent clean. A strip interlace holds back keeps
@@ -479,7 +486,7 @@ overlay_take_off_last_borders(bool (*send_rows)(int y0, int y1), int* queued) {
             continue;
         }
         if (dirty_row_is_dirty(row)) {
-            dirty_mark(box.x, box.y, box.w, box.h);
+            mark_box_dirty(box);
         } else if (send_rows(row * STRIP_HEIGHT, (row + 1) * STRIP_HEIGHT)) {
             (*queued)++;
         }
