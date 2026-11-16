@@ -1,4 +1,4 @@
-"""Select billboard planes with Décoret et al. (docs/Citations.md#decoret-2003) greedy projected-area score."""
+"""Select billboard planes with the greedy projected-area score of Décoret et al. 2003."""
 
 from types import SimpleNamespace
 
