@@ -64,6 +64,8 @@ open_model(const asset_pack_t* pack, anim_skeleton_t* skeleton, r3d_skin_t* skin
 #define SAMPLES           100
 #define WARMUP            8
 #define XTPERF_ITERATIONS 100
+static const sh1_rgb_t PROBE_RADIANCE = {
+    .c = {{0.8F, 0.8F, 0.9F}, {0.1F, -0.05F, 0.08F}, {-0.04F, 0.08F, 0.02F}, {0.06F, 0.03F, -0.04F}}};
 static const char* TAG = "skin_light_perf";
 static const char TEST_PREFIX[] = "test_";
 static const vec3f_t DIRECTIONS[] = {
@@ -217,12 +219,19 @@ kernel(fixture_t* f, kernel_t kind) {
 }
 
 static void
+quality_reference(const fixture_t* f, int vertex, bool normalise, uint8_t out[3]) {
+    const vec3f_t normal = skin_light_reference_normal(&f->skin, f->normals, vertex, normalise);
+    r3d_skin_lights_t lights = f->lights;
+    lights.ambient.constant = sh1_irradiance_eval(&f->lights.ambient, normal);
+    skin_light_reference(normal, &lights, f->bind.colors[vertex], 0, out);
+}
+
+static void
 assert_direct_quality(const fixture_t* f) {
     int direct_max = 0;
     for (int v = 0; v < f->bind.vertex_count; v++) {
         uint8_t reference[R3D_SKIN_LIGHT_CHANNELS];
-        skin_light_reference(skin_light_reference_normal(&f->skin, f->normals, v, false), &f->lights, f->bind.colors[v],
-                             0, reference);
+        quality_reference(f, v, false, reference);
         for (int k = 0; k < R3D_SKIN_LIGHT_CHANNELS; k++) {
             const int error = abs((int)f->light[v][k] - reference[k]);
             direct_max = error > direct_max ? error : direct_max;
@@ -249,7 +258,7 @@ quality(fixture_t* f, kernel_t kind) {
     int error_max = 0;
     for (int v = 0; v < f->bind.vertex_count; v++) {
         uint8_t reference[3];
-        reference_light(f, v, reference);
+        quality_reference(f, v, true, reference);
         for (int k = 0; k < R3D_SKIN_LIGHT_CHANNELS; k++) {
             const int error = abs((int)f->light[v][k] - reference[k]);
             error_sum += error;
@@ -280,8 +289,11 @@ fixture_for_kernel(kernel_t kind, int lights) {
 }
 
 static void
-measure(kernel_t kind, int lights, const char* label) {
+measure(kernel_t kind, int lights, bool probes, const char* label) {
     fixture_t* f = fixture_for_kernel(kind, lights);
+    if (probes) {
+        r3d_skin_light_set_ambient_sh(&f->lights, &PROBE_RADIANCE);
+    }
     const bool table_mode = kind == TABLE || kind == TABLE_BUILD;
     const char* mode = table_mode ? "table" : kind == DIRECT ? "direct" : "renormalised";
     ESP_LOGI(
@@ -366,7 +378,7 @@ test_skin_light_xtensa_counters(void) {
 }
 
 #define PERF_TEST(name, kind, lights)                                                                                  \
-    static void name(void) { measure(kind, lights, #name); }
+    static void name(void) { measure(kind, lights, false, #name); }
 #define LIGHT_COUNT_TESTS(prefix, kind)                                                                                \
     PERF_TEST(test_##prefix##_1, kind, 1)                                                                              \
     PERF_TEST(test_##prefix##_2, kind, 2)                                                                              \
@@ -381,8 +393,26 @@ LIGHT_COUNT_TESTS(exact_separate, EXACT_SEPARATE)
 #undef LIGHT_COUNT_TESTS
 #undef PERF_TEST
 
+static void
+test_probe_direct_1(void) {
+    measure(DIRECT, 1, true, __func__);
+}
+
+static void
+test_probe_renormalised_1(void) {
+    measure(RENORMALISED, 1, true, __func__);
+}
+
+static void
+test_probe_table_1(void) {
+    measure(TABLE, 1, true, __func__);
+}
+
 void
 suite_skin_light_perf(void) {
+    RUN_TEST(test_probe_direct_1);
+    RUN_TEST(test_probe_renormalised_1);
+    RUN_TEST(test_probe_table_1);
     RUN_TEST(test_skin_light_xtensa_counters);
     RUN_TEST(test_normal_palette_build);
     RUN_TEST(test_skin_only);
