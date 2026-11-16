@@ -85,6 +85,7 @@ stress-foliage-near|--quarter 1 --no-hud --scene stress-foliage-near --frames 2|
 stress-foliage-near-opaque|--quarter 1 --no-hud --scene stress-foliage-near-opaque --frames 2|448x368|nopin
 stress-foliage-far|--quarter 1 --no-hud --scene stress-foliage-far --frames 2|448x368|nopin
 stress-foliage-far-opaque|--quarter 1 --no-hud --scene stress-foliage-far-opaque --frames 2|448x368|nopin
+stress-cull-setup|--quarter 1 --no-hud --scene stress-cull-setup --frames 2|448x368|nopin
 stress-noisy-tiny|--quarter 1 --no-hud --scene stress-noisy-tiny --frames 2|448x368|nopin
 stress-textured|--quarter 1 --no-hud --scene stress-textured --frames 2|448x368|nopin
 stress-record|--quarter 1 --no-hud --scene stress-record --frames 2|448x368|nopin

@@ -197,22 +197,20 @@ assert_only_off(render_settings_t s, size_t off) {
 
 static void
 test_each_field_and_each_knob_reach_only_their_own_slot(void) {
-    raster_rig_t* r = open_rig();
     static const char* const knobs[] = {TUNE_NAME(render, cull), TUNE_NAME(render, depth_fit),
                                         TUNE_NAME(render, batched)};
     render_settings_t set;
     bool* const fields[] = {&set.cull, &set.depth_fit, &set.batched};
     _Static_assert(sizeof fields / sizeof fields[0] == sizeof knobs / sizeof knobs[0], "a field per knob");
-    r->raster.settings = &set;
     for (size_t k = 0; k < sizeof knobs / sizeof knobs[0]; k++) {
         set = RENDER_SETTINGS_DEFAULT;
         *fields[k] = false;
-        assert_only_off(raster_settings(&r->raster), k);
+        assert_only_off(render_settings_tuned(&set), k);
         TEST_ASSERT_TRUE(tune_set(tune_shared(), knobs[k], 1));
-        assert_only_off(raster_settings(&r->raster), SIZE_MAX);
+        assert_only_off(render_settings_tuned(&set), SIZE_MAX);
         set = RENDER_SETTINGS_DEFAULT;
         TEST_ASSERT_TRUE(tune_set(tune_shared(), knobs[k], 0));
-        assert_only_off(raster_settings(&r->raster), k);
+        assert_only_off(render_settings_tuned(&set), k);
         TEST_ASSERT_TRUE(tune_reset(tune_shared(), knobs[k]));
     }
 }
@@ -228,28 +226,24 @@ test_a_release_build_carries_no_override(void) {
  * reset gives the caller's value back. */
 static void
 test_the_partial_redraw_knob_overrides_the_callers_value(void) {
-    raster_rig_t* r = open_rig();
     render_settings_t set = RENDER_SETTINGS_DEFAULT;
-    r->raster.settings = &set;
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, partial_redraw), 1));
-    TEST_ASSERT_TRUE(raster_settings(&r->raster).partial_redraw);
+    TEST_ASSERT_TRUE(render_settings_tuned(&set).partial_redraw);
     set.partial_redraw = true;
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, partial_redraw), 0));
-    TEST_ASSERT_FALSE(raster_settings(&r->raster).partial_redraw);
+    TEST_ASSERT_FALSE(render_settings_tuned(&set).partial_redraw);
     TEST_ASSERT_TRUE(tune_reset(tune_shared(), TUNE_NAME(render, partial_redraw)));
-    TEST_ASSERT_TRUE(raster_settings(&r->raster).partial_redraw);
+    TEST_ASSERT_TRUE(render_settings_tuned(&set).partial_redraw);
 }
 
 /* The coverage cap's knob changes that field of what a draw uses and no other, and a reset gives the caller's
  * value back. */
 static void
 test_the_coverage_knob_overrides_only_the_coverage_cap(void) {
-    raster_rig_t* r = open_rig();
     render_settings_t set = RENDER_SETTINGS_DEFAULT;
     set.lod = (render_lod_settings_t){3.0F, 0.25F, 100, 2, 7, RENDER_LOD_BLEND_ON, 0.5F};
-    r->raster.settings = &set;
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, lod_coverage_permille), 500));
-    render_settings_t used = raster_settings(&r->raster);
+    render_settings_t used = render_settings_tuned(&set);
     TEST_ASSERT_EQUAL_INT(500, used.lod.coverage_permille);
     TEST_ASSERT_EQUAL_FLOAT(3.0F, used.lod.tolerance_px);
     TEST_ASSERT_EQUAL_FLOAT(0.25F, used.lod.hysteresis_px);
@@ -257,7 +251,7 @@ test_the_coverage_knob_overrides_only_the_coverage_cap(void) {
     TEST_ASSERT_EQUAL_INT(7, used.lod.triangle_budget);
     TEST_ASSERT_EQUAL_INT(100, set.lod.coverage_permille);
     TEST_ASSERT_TRUE(tune_reset(tune_shared(), TUNE_NAME(render, lod_coverage_permille)));
-    used = raster_settings(&r->raster);
+    used = render_settings_tuned(&set);
     TEST_ASSERT_EQUAL_INT(100, used.lod.coverage_permille);
 }
 

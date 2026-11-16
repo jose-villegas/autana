@@ -9,21 +9,30 @@
  * moves code that loads no literal behind all other code of its link rule,
  * where a pad would shift nothing. layout_pad.py --check proves the placement
  * after every seeded link. */
-#define LAYOUT_PAD_STR2(x) #x
-#define LAYOUT_PAD_STR(x)  LAYOUT_PAD_STR2(x)
-#define LAYOUT_PAD_SECTION(name, flags, align, body)                                                                   \
-    ".pushsection " name ",\"" flags "\",@progbits\n.balign " LAYOUT_PAD_STR(align) "\n" body ".popsection\n"
+
+/* Each pad's directives, written once: an assembly source takes them as
+ * they are, a C source as a string. `;` ends a statement, for gas as for a
+ * line break. */
+#define LAYOUT_PAD_STR2(...)  #__VA_ARGS__
+#define LAYOUT_PAD_STR(...)   LAYOUT_PAD_STR2(__VA_ARGS__)
 
 /* An L32R is three bytes; the pad is a whole number of cache lines. */
 #define LAYOUT_PAD_L32R_BYTES 3
 
-#if LAYOUT_PAD_TEXT > 0
-__asm__(LAYOUT_PAD_SECTION(".text.layout_pad", "axR", LAYOUT_PAD_TEXT_ALIGN,
-                           ".literal .Llayout_pad_literal, 0\nl32r a2, .Llayout_pad_literal\n.space " LAYOUT_PAD_STR(
-                               LAYOUT_PAD_TEXT) " - " LAYOUT_PAD_STR(LAYOUT_PAD_L32R_BYTES) "\n"));
+/* clang-format off */
+#define LAYOUT_PAD_TEXT_DIRECTIVES                                                                                         .pushsection .text.layout_pad, "axR", @progbits; .balign LAYOUT_PAD_TEXT_ALIGN;                                        .literal .Llayout_pad_literal, 0; l32r a2, .Llayout_pad_literal;                                                       .space LAYOUT_PAD_TEXT - LAYOUT_PAD_L32R_BYTES; .popsection
+#define LAYOUT_PAD_RODATA_DIRECTIVES                                                                                       .pushsection .rodata.layout_pad, "aR", @progbits; .balign LAYOUT_PAD_RODATA_ALIGN;                                     .space LAYOUT_PAD_RODATA; .popsection
+/* clang-format on */
+
+#ifdef __ASSEMBLER__
+#define LAYOUT_PAD_EMIT(directives) directives
+#else
+#define LAYOUT_PAD_EMIT(directives) __asm__(LAYOUT_PAD_STR(directives))
 #endif
 
+#if LAYOUT_PAD_TEXT > 0
+LAYOUT_PAD_EMIT(LAYOUT_PAD_TEXT_DIRECTIVES);
+#endif
 #if LAYOUT_PAD_RODATA > 0
-__asm__(LAYOUT_PAD_SECTION(".rodata.layout_pad", "aR", LAYOUT_PAD_RODATA_ALIGN,
-                           ".space " LAYOUT_PAD_STR(LAYOUT_PAD_RODATA) "\n"));
+LAYOUT_PAD_EMIT(LAYOUT_PAD_RODATA_DIRECTIVES);
 #endif

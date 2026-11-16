@@ -16,6 +16,7 @@
 #include "lab/lab_scene.h"
 #include "lab/test/lab_perf_quarters.h"
 #include "lab/test/lab_test.h"
+#include "math/scalar/units.h"
 #include "perf_budget.h"
 #include "render/context/render_context.h"
 #include "render/r3d_span_internal.h"
@@ -169,7 +170,7 @@ report_stage(fixture_t* f, const char* stage, job_fn_t fn, int count, bool split
     const scene_skinned_renderer_t* skin = &f->columns->skinned_renderers[f->subject_row];
     TEST_ASSERT_GREATER_THAN_INT64(0, us.avg);
     if (strcmp(stage, SKIN_PERF_STAGE_SKIN) == 0) {
-        const int64_t goal_us = (int64_t)vertices * SKIN_PERF_BUDGET_NS_PER_VERTEX / SKIN_PERF_NS_PER_US;
+        const int64_t goal_us = (int64_t)vertices * SKIN_PERF_BUDGET_NS_PER_VERTEX / MATH_NS_PER_US;
         char name[sizeof("skin " SKIN_PERF_CORES_UNKNOWN " core(s)")];
         const int length = snprintf(name, sizeof name, "skin %s core(s)", cores);
         TEST_ASSERT_TRUE(length > 0 && (size_t)length < sizeof name);
