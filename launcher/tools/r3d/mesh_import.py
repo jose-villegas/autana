@@ -159,6 +159,14 @@ def carve_selection(src, tri_v, tri_m, selected, settings, job, scene):
     return selected, SimpleNamespace(shapes=shapes, focal=focal, per_object=per_object)
 
 
+def mask_alpha(src, settings):
+    """Drop `src`'s triangles that the alpha mask cuts (geometry.alpha_mask), in place: what carving sees."""
+    if settings.alpha_keep is not None:
+        src.tri_v, src.tri_t, src.tri_m, keep = drop_masked(src.p, src.uv, src.tri_v, src.tri_t, src.tri_m,
+                                                           src.textures, settings.alpha_keep)
+        src.tri_o = src.tri_o[keep]
+
+
 def bake_geometry(job, scene, recorder=None, *, carve=False):
     """Everything a mesh needs before its colours are final: the source, its
     ray intersector and the simplified geometry with the colours a smooth bake
@@ -170,13 +178,10 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
         src = load_source(settings)
         step["triangles_out"] = len(src.tri_v)
     scale = {} if settings.position_scale is None else {"position_scale": settings.position_scale}
+    with recorder.step("alpha mask", len(src.tri_v)) as step:
+        mask_alpha(src, settings)
+        step["triangles_out"] = len(src.tri_v)
     tri_v, tri_t, tri_m = src.tri_v, src.tri_t, src.tri_m
-    with recorder.step("alpha mask", len(tri_v)) as step:
-        if settings.alpha_keep is not None:
-            tri_v, tri_t, tri_m, keep = drop_masked(src.p, src.uv, tri_v, tri_t, tri_m, src.textures, settings.alpha_keep)
-            src.tri_o = src.tri_o[keep]
-            src.tri_v, src.tri_t, src.tri_m = tri_v, tri_t, tri_m
-        step["triangles_out"] = len(tri_v)
     meshes = variant_meshes(settings.meshes, renderer.variant)
     if not carve or scene is None:
         meshes = tuple(rule for rule in meshes if "triangles" in rule)

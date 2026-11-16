@@ -249,6 +249,8 @@ def main(argv=None):
     if args.authoring:
         write_authoring(scene, job, out)
     if args.carved:
+        from r3d.mesh_import import mask_alpha
+        mask_alpha(src, job.settings)
         write_carved(scene, job, src, args.carved, out)
     return 0
 
