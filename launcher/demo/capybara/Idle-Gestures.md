@@ -4,7 +4,6 @@
 
 [capybara.blend](capybara.blend) holds the source actions.
 [capybara.import.toml](capybara.import.toml) selects the engine clips.
-The mesh, skin weights, vertex colours and control rig are unchanged.
 
 ## References and limits
 
