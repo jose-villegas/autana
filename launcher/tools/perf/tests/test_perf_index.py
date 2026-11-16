@@ -6,6 +6,7 @@ import pathlib
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 
@@ -163,44 +164,94 @@ class Sync(Isolated):
             (self.dir / "repo").mkdir()
             git(self.dir / "repo", "init", "-q")
             git(self.dir / "repo", "remote", "add", "origin", str(remote))
-            perf_index.main(["store", "--path", str(store)])
+            with contextlib.redirect_stderr(io.StringIO()) as said:
+                perf_index.main(["store", "--path", str(store)])
         head = subprocess.run(["git", "-C", str(store), "symbolic-ref", "HEAD"], capture_output=True,
                               text=True, stdin=subprocess.DEVNULL).stdout.strip()
         self.assertEqual(head, "refs/heads/" + perf_index.BRANCH)
+        self.assertRegex(said.getvalue(), r"perf_index: store checked out in \d+ s")
 
-    def test_a_stalled_fetch_is_cut_off_and_tried_again(self):
-        calls = []
-        failure = subprocess.CalledProcessError(128, ["git", "fetch"])
-
-        def flaky(store, *words):
-            calls.append(words)
-            if len(calls) == 1:
-                raise failure
-            return ""
-
-        with (patch.object(perf_index, "git", side_effect=flaky),
-              contextlib.redirect_stderr(io.StringIO()) as said):
-            perf_index.network_git(self.dir, "fetch", "-q", "origin", perf_index.BRANCH)
-        self.assertEqual(len(calls), 2)
-        self.assertIn(f"http.lowSpeedTime={perf_index.STALL_SECONDS}", calls[0])
-        self.assertIn("trying again", said.getvalue())
-
-    def test_a_fetch_that_keeps_failing_raises_after_the_last_attempt(self):
-        failing = subprocess.CalledProcessError(128, ["git"])
-        with (patch.object(perf_index, "git", side_effect=failing) as call,
-              contextlib.redirect_stderr(io.StringIO()), self.assertRaises(subprocess.CalledProcessError)):
-            perf_index.network_git(self.dir, "fetch", "-q", "origin", perf_index.BRANCH)
-        self.assertEqual(call.call_count, perf_index.NETWORK_ATTEMPTS)
-
-    def test_an_absent_branch_is_an_answer_not_a_retry(self):
-        absent = subprocess.CalledProcessError(perf_index.LS_REMOTE_ABSENT, ["git", "ls-remote"])
-        with patch.object(perf_index, "git", side_effect=absent) as call:
-            self.assertFalse(perf_index.remote_has_branch(self.dir))
-        self.assertEqual(call.call_count, 1)
+    def test_every_remote_call_of_a_sync_has_a_deadline(self):
+        remote = self.dir / "remote.git"
+        subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True, stdin=subprocess.DEVNULL)
+        subprocess.run(["git", "-C", str(self.dir), "clone", "-q", str(remote), "seed"], check=True,
+                       capture_output=True, stdin=subprocess.DEVNULL)
+        seed = self.dir / "seed"
+        git(seed, "checkout", "-q", "--orphan", perf_index.BRANCH)
+        git(seed, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "start")
+        git(seed, "push", "-q", "origin", perf_index.BRANCH)
+        self.records.capture(A308, "a1-diag", "2026-10-23T10:00:00", target(ROW, 100, 200))
+        with (patch.object(perf_index, "REPO", seed),
+              patch.object(perf_index, "network_git", wraps=perf_index.network_git) as remote_call):
+            self.sync(self.dir / "store", "hostA")
+        # The store's checkout, its pull and the push: no remote call is left without a deadline.
+        self.assertEqual({call.args[1] for call in remote_call.call_args_list}, {"ls-remote", "fetch", "push"})
+        pushed = subprocess.run(["git", "-C", str(remote), "ls-tree", "-r", "--name-only", perf_index.BRANCH],
+                                capture_output=True, text=True, stdin=subprocess.DEVNULL).stdout
+        self.assertIn("2026-10-23-hostA.jsonl", pushed)
 
     def test_host_must_be_a_short_name(self):
         with self.assertRaises(SystemExit):
             self.sync(self.dir / "store", "JV.local/user")
+
+
+class RemoteCalls(unittest.TestCase):
+    """network_git on a real git: aliases stand in for a remote that hangs, fails or answers late."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.dir = pathlib.Path(self.temp.name)
+        git(self.dir, "init", "-q")
+
+    def call(self, script, seconds=perf_index.NETWORK_SECONDS):
+        with (patch.object(perf_index, "NETWORK_SECONDS", seconds),
+              contextlib.redirect_stderr(io.StringIO()) as said):
+            try:
+                return perf_index.network_git(self.dir, "-c", f"alias.on-the-remote=!{script}", "on-the-remote")
+            finally:
+                self.said = said.getvalue()
+
+    def attempts(self):
+        return int((self.dir / "count").read_text())
+
+    # Fails until the nth call, then answers; each call counts itself in ./count.
+    @staticmethod
+    def answering_on(n):
+        return (f"c=$(cat count 2>/dev/null || echo 0); c=$((c+1)); echo $c > count; "
+                f"[ $c -ge {n} ] && echo answered; [ $c -ge {n} ]")
+
+    def test_a_hung_call_is_stopped_with_its_children_and_tried_again(self):
+        started = time.monotonic()
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.call("echo started >> count; sleep 60", seconds=1)
+        # The shell's sleep holds the output pipe: had only git been stopped, this would wait the full minute.
+        self.assertLess(time.monotonic() - started, 30)
+        self.assertEqual((self.dir / "count").read_text().split(), ["started"] * perf_index.NETWORK_ATTEMPTS)
+        self.assertIn(f"attempt 1 of {perf_index.NETWORK_ATTEMPTS}: no answer in 1 s", self.said)
+
+    def test_a_failing_call_is_tried_until_it_answers_on_the_last_attempt(self):
+        self.assertEqual(self.call(self.answering_on(perf_index.NETWORK_ATTEMPTS)), "answered")
+        self.assertEqual(self.attempts(), perf_index.NETWORK_ATTEMPTS)
+        self.assertIn(f"attempt 1 of {perf_index.NETWORK_ATTEMPTS}: exit 1", self.said)
+
+    def test_a_call_that_keeps_failing_raises_after_the_last_attempt(self):
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.call(self.answering_on(perf_index.NETWORK_ATTEMPTS + 1))
+        self.assertEqual(self.attempts(), perf_index.NETWORK_ATTEMPTS)
+
+    def test_a_call_never_waits_on_a_prompt(self):
+        # `cat` ends at once on the closed stdin; a prompt on an open one would wait for the deadline.
+        self.assertEqual(self.call("echo ${GIT_TERMINAL_PROMPT}; cat", seconds=10), "0")
+
+    def test_a_branch_is_seen_only_once_the_remote_has_it(self):
+        remote = self.dir / "remote.git"
+        subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True, stdin=subprocess.DEVNULL)
+        git(self.dir, "remote", "add", "origin", str(remote))
+        self.assertFalse(perf_index.remote_has_branch(self.dir))
+        git(self.dir, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "start")
+        git(self.dir, "push", "-q", "origin", "HEAD:refs/heads/" + perf_index.BRANCH)
+        self.assertTrue(perf_index.remote_has_branch(self.dir))
 
 
 if __name__ == "__main__":

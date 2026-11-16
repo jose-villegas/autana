@@ -40,6 +40,7 @@ from device_lock import short_id  # noqa: E402
 from device_report import parse_perf_targets, parse_unpegged_targets, read_capture_text, read_index, records_root  # noqa: E402
 from layout_measure import timing_samples  # noqa: E402
 from nightly.scoped_chain import git  # noqa: E402
+from process_tree import launch_process_tree, stop_process_tree, close_process_tree  # noqa: E402
 import autana_config  # noqa: E402
 
 BRANCH = "perf-data"
@@ -52,15 +53,14 @@ SECOND_CHARS = len("YYYY-MM-DDTHH:MM:SS")
 MONTH_CHARS = len("YYYY-MM")
 # Bumped whenever capture_rows() reads a capture differently, so cached lines are parsed again.
 PARSED_FORMAT = 2
-# `git ls-remote --exit-code` status for a ref the remote does not have.
-LS_REMOTE_ABSENT = 2
 # Longer than any sync takes; a lock this old belongs to a sync that died.
 STORE_LOCK_SECONDS = 600
 LOCK_EVENT_VAR = "AUTANA_LOCK_EVENT"
-# A transfer slower than this many bytes a second for this many seconds is stalled: git, which has no timeout of
-# its own, gives up and the call is tried again, rather than hanging a night's plan for hours.
-STALL_BYTES_PER_SECOND = 1024
-STALL_SECONDS = 120
+# Far longer than any store transfer takes (the branch is under a megabyte). Git has no deadline of its own, so a
+# call still running past it is hung - a stalled transfer, a credential prompt, a dead connection - and its whole
+# process tree is stopped and the call tried again, rather than holding a night's plan for hours. A store
+# checkout makes two such calls, so it gives up after 2 x NETWORK_ATTEMPTS x NETWORK_SECONDS at most.
+NETWORK_SECONDS = 300
 NETWORK_ATTEMPTS = 3
 RELEASED = "released"
 
@@ -186,25 +186,32 @@ def write_lines(store, lines):
 
 
 def network_git(store, *words):
-    """`git` on the remote: a stalled transfer fails after STALL_SECONDS and is tried NETWORK_ATTEMPTS times."""
-    stall = ("-c", f"http.lowSpeedLimit={STALL_BYTES_PER_SECOND}", "-c", f"http.lowSpeedTime={STALL_SECONDS}")
-    for attempt in range(NETWORK_ATTEMPTS):
+    """`git` on the remote, its stdout: stopped with its children after NETWORK_SECONDS, tried NETWORK_ATTEMPTS
+    times, never prompting. Raises CalledProcessError when the last attempt fails too."""
+    command = ["git", "-C", str(store), "-c", "core.longpaths=true", *words]
+    for attempt in range(1, NETWORK_ATTEMPTS + 1):
+        process = launch_process_tree(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                      stderr=subprocess.PIPE, text=True,
+                                      env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
         try:
-            return git(store, *stall, *words)
-        except subprocess.CalledProcessError as error:
-            if attempt + 1 == NETWORK_ATTEMPTS or (words[0] == "ls-remote" and error.returncode == LS_REMOTE_ABSENT):
-                raise
-            print(f"perf_index: git {words[0]} failed ({error.returncode}); trying again", file=sys.stderr)
+            output, errors = process.communicate(timeout=NETWORK_SECONDS)
+            failure = f"exit {process.returncode}" if process.returncode else None
+        except subprocess.TimeoutExpired:
+            stop_process_tree(process)
+            output, errors = process.communicate()
+            failure = f"no answer in {NETWORK_SECONDS} s"
+        finally:
+            close_process_tree(process)
+        if failure is None:
+            return output.strip()
+        print(f"perf_index: git {' '.join(words)}: attempt {attempt} of {NETWORK_ATTEMPTS}: {failure}"
+              + (f": {errors.strip()}" if errors.strip() else ""), file=sys.stderr)
+        if attempt == NETWORK_ATTEMPTS:
+            raise subprocess.CalledProcessError(process.returncode, command, output, errors)
 
 
 def remote_has_branch(store):
-    try:
-        network_git(store, "ls-remote", "--exit-code", "origin", "refs/heads/" + BRANCH)
-    except subprocess.CalledProcessError as error:
-        if error.returncode == LS_REMOTE_ABSENT:
-            return False
-        raise
-    return True
+    return bool(network_git(store, "ls-remote", "origin", "refs/heads/" + BRANCH))
 
 
 def open_store(store):
@@ -226,7 +233,9 @@ def open_store(store):
 
 def pull(store):
     if remote_has_branch(store):
-        network_git(store, "pull", "-q", "--no-rebase", "--no-edit", "origin", BRANCH)
+        # Fetch and merge apart: only the network half is tried again, never a merge that left MERGE_HEAD behind.
+        network_git(store, "fetch", "-q", "origin", BRANCH)
+        git(store, "merge", "-q", "--no-edit", "FETCH_HEAD")
 
 
 @contextlib.contextmanager
@@ -290,7 +299,8 @@ def sync_held(args, store):
         git(store, "-c", "user.name=perf_index", "-c", "user.email=perf_index@localhost", "commit", "-q",
             "-m", f"perf: {len(lines)} captures from {args.host}")
         pull(store)
-        git(store, "push", "-q", "origin", "HEAD:" + BRANCH)
+        # A push tried again is safe: one that already landed is up to date, one that cannot land is refused again.
+        network_git(store, "push", "-q", "origin", "HEAD:" + BRANCH)
     print(f"sync: {len(lines)} captures in {len(touched)} files" + ("" if args.write_only else ", pushed"))
     return 0
 
