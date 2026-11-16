@@ -115,7 +115,7 @@ def divide_sheet(args, work):
     sheet.save(args.out / args.divide_image, optimize=True)
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--scene", required=True)
     parser.add_argument("--object", required=True)
@@ -127,7 +127,7 @@ def main():
     parser.add_argument("--divides", help="texture.divide_px values, comma-separated, the truth first")
     parser.add_argument("--divide-image", help="the divide sheet's file name")
     parser.add_argument("--out", required=True, type=pathlib.Path)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if bool(args.divides) != bool(args.divide_image):
         parser.error("--divides and --divide-image go together")
     with tempfile.TemporaryDirectory() as folder:

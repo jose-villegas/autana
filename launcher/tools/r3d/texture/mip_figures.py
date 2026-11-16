@@ -114,14 +114,14 @@ def mip_figure(data, args):
     save(fig, args.out / IMAGE)
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--cc", required=True)
     parser.add_argument("--out", type=pathlib.Path, required=True)
     parser.add_argument("--textures", type=pathlib.Path, required=True, help="a textures.toml: its first size")
     parser.add_argument("--source", type=pathlib.Path, required=True, help="the texture whose chain is shown")
     parser.add_argument("--title", required=True, help="the chain's title")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     args.out.mkdir(parents=True, exist_ok=True)
     mip_figure(run_probe(args.cc, SOURCES), args)
     return 0
