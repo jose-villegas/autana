@@ -8,7 +8,8 @@
 #include "math/linear/quatf.h"
 #include "math/linear/vec3f.h"
 
-/* How small cos pitch gets before pitch is taken as +-90 degrees (about 0.06 degrees short). */
+/* How small cos pitch gets before pitch is taken as +-90 degrees (about 0.06
+ * degrees short); the angles read inside it turn an axis at most this far off. */
 #define QUATF_EULER_LOCK 1e-3F
 
 /* The angles (pitch about x, yaw about y, roll about z; radians) that

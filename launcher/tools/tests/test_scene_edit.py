@@ -94,6 +94,13 @@ class SceneEditTests(unittest.TestCase):
         self.assertEqual((code, out), (0, ""))
         self.assertEqual(json.loads(out_path.read_text(encoding="utf-8")), json.loads(run("read", self.scene)[1]))
 
+    def test_read_into_a_missing_folder_fails_saying_where(self):
+        out_path = self.folder / "missing" / "objects.json"
+        code, out, err = run("read", self.scene, "-o", out_path)
+        self.assertEqual((code, out), (1, ""))
+        self.assertIn("objects.json", err)
+        self.assertNotIn("Traceback", err)
+
     def test_an_existing_value_changes_in_place_and_keeps_its_comment(self):
         before = self.lines()
         self.assertEqual(run("set", self.scene, "--set", "box.position=0.5,-2,4.25")[0], 0)

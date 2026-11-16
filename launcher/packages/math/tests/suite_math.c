@@ -122,6 +122,34 @@ test_euler_angles_at_a_pitch_lock_give_the_same_turn(void) {
     TEST_ASSERT_EQUAL_FLOAT(0.0F, back.z);
 }
 
+/* Pitch where cos pitch is twice and half QUATF_EULER_LOCK. Outside the lock
+ * the angles come back as given. Inside, roll folds into yaw, which moves an
+ * axis by at most cos pitch, so the turn matches within QUATF_EULER_LOCK. */
+static void
+test_euler_angles_beside_the_lock_threshold(void) {
+    const vec3f_t outside = {HALF_PI - (2.0F * QUATF_EULER_LOCK), 0.4F, 0.3F};
+    const vec3f_t back = quatf_to_euler(quatf_from_euler(outside));
+    /* Yaw and roll come from entries scaled by cos pitch, so their noise grows by 1 / cos pitch. */
+    const float split_slack = SLACK / (2.0F * QUATF_EULER_LOCK);
+    TEST_ASSERT_FLOAT_WITHIN(SLACK, outside.x, back.x);
+    TEST_ASSERT_FLOAT_WITHIN(split_slack, outside.y, back.y);
+    TEST_ASSERT_FLOAT_WITHIN(split_slack, outside.z, back.z);
+
+    const vec3f_t inside = {HALF_PI - (0.5F * QUATF_EULER_LOCK), 0.4F, 0.3F};
+    const quatf_t q = quatf_from_euler(inside);
+    const vec3f_t folded = quatf_to_euler(q);
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, folded.z);
+    const quatf_t again = quatf_from_euler(folded);
+    const vec3f_t axes[] = {vec3f_unit_x(), vec3f_unit_y(), vec3f_unit_z()};
+    for (size_t i = 0; i < sizeof axes / sizeof axes[0]; i++) {
+        const vec3f_t want = quatf_rotate(q, axes[i]);
+        const vec3f_t got = quatf_rotate(again, axes[i]);
+        TEST_ASSERT_FLOAT_WITHIN(QUATF_EULER_LOCK, want.x, got.x);
+        TEST_ASSERT_FLOAT_WITHIN(QUATF_EULER_LOCK, want.y, got.y);
+        TEST_ASSERT_FLOAT_WITHIN(QUATF_EULER_LOCK, want.z, got.z);
+    }
+}
+
 static void
 test_a_product_applies_the_right_operand_first(void) {
     const quatf_t about_y = quatf_from_axis_angle(vec3f_unit_y(), HALF_PI);
@@ -872,6 +900,7 @@ suite_math(void) {
     RUN_TEST(test_euler_angles_apply_z_then_x_then_y);
     RUN_TEST(test_euler_angles_come_back_from_their_quaternion);
     RUN_TEST(test_euler_angles_at_a_pitch_lock_give_the_same_turn);
+    RUN_TEST(test_euler_angles_beside_the_lock_threshold);
     RUN_TEST(test_a_product_applies_the_right_operand_first);
     RUN_TEST(test_slerp_hits_both_ends_and_the_half_angle_between);
     RUN_TEST(test_slerp_takes_the_short_way_when_the_signs_differ);

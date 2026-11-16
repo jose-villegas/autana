@@ -157,7 +157,7 @@ def main(argv=None):
                 print(text)
         else:
             apply(path, [parse_assignment(text) for text in args.assignments])
-    except Refused as error:
+    except (Refused, OSError) as error:
         print(f"scene_edit: {error}", file=sys.stderr)
         return 1
     return 0
