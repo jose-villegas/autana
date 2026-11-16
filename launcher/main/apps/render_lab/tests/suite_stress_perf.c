@@ -112,6 +112,10 @@ static const stress_goal_t stress_goals[] = {
     {"stress-foliage-far", "landscape", "default", {350, 1790, 15260, 2250, 0}, {19610, 22560}},
     {"stress-foliage-far-opaque", "portrait", "default", {340, 1800, 18230, 2260, 0}, {22610, 26010}},
     {"stress-foliage-far-opaque", "landscape", "default", {340, 1790, 15130, 2260, 0}, {19510, 22440}},
+    {"stress-butterflies", "portrait", "default", {640, 2440, 6560, 2190, 0}, {11770, 13540}},
+    {"stress-butterflies", "landscape", "default", {630, 2430, 6910, 2300, 0}, {12170, 14000}},
+    {"stress-few-butterflies", "portrait", "default", {240, 280, 1970, 2290, 0}, {4720, 5430}},
+    {"stress-few-butterflies", "landscape", "default", {250, 300, 2120, 2320, 0}, {4920, 5660}},
 };
 
 static const char*
@@ -129,10 +133,7 @@ stress_goal(void) {
             return goal;
         }
     }
-    /* Only hinged surfaces may run without captured goals. */
-    if (((const stress_params_t*)preset->data)->surface != STRESS_SURFACE_HINGED) {
-        TEST_FAIL_MESSAGE("stress perf row has no goal entry");
-    }
+    TEST_FAIL_MESSAGE("stress perf row has no goal entry");
     return NULL;
 }
 
