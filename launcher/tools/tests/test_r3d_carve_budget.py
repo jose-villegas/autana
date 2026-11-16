@@ -239,6 +239,22 @@ class CarvedReportTests(unittest.TestCase):
         self.assertIn('| a | 2 | 1 | 1 | 2 | 0% | 10 | 10 |', table)
         self.assertIn('| c | 1 | 1 | 1 | 1 | 100% | 22 | 22 |', table)
 
+    def test_a_unit_shape_is_found_by_its_anchor_part_name(self):
+        with tempfile.TemporaryDirectory() as directory:
+            blob, copies, _, _, _ = bundle_fixture(directory)
+        entries, rows = mesh_bundle.decode(blob)
+        positions = np.concatenate([placed for _, (placed, *_) in copies])
+        faces = np.concatenate([own + 3 * k for k, (_, (_, _, own, _)) in enumerate(copies)])
+        # One source object holds all three copies as separate parts (c moved off b's corner), so the bake names
+        # each carved shape after its anchor part, w#k.
+        positions[6:] += [0, 10, 0]
+        src = NS(p=positions, tri_v=faces, tri_o=np.zeros(3, int), tri_m=np.zeros(3, int), textures=[None],
+                 object_names=['w'])
+        parts = {'a': 'w#0', 'b': 'w#1', 'c': 'w#2'}
+        rows = [{**row, 'first': parts[row['first']]} for row in rows]
+        shapes, _ = objects_report.carved_shapes(src, entries, rows, [[-10., 1, 0]], NEAR)
+        self.assertEqual([(s['shape'], s['copies'], s['source']) for s in shapes], [('w#0', 2, 1), ('w#2', 1, 1)])
+
 
 class SourcePlacementTests(unittest.TestCase):
     def test_part_order_uses_relative_tolerance_across_absolute_rounding_boundaries(self):
