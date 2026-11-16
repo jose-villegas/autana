@@ -270,6 +270,10 @@ again, at most `LOCK_ROUNDS` times (`meshopt.py`).
 Rigid copies share local simplification and their union of locks. Each copy
 is lit against the full source.
 
+A carved bake takes its locks from the full source's contact graph. After the
+visibility cull, a vertex within the seal tolerance of a source lock stays
+locked, so a copy keeps its seam where the triangles it touches were culled.
+
 A copy joined by surface is drawn with the shape's simplified triangles, placed on its own surface. Each
 material of the shape becomes the copy's own material nearest most of its triangles. These are not the copy's
 triangles, so a shape with a locked or welded copy stays exact. Copies whose materials differ in sidedness get
