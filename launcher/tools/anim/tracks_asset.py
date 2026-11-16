@@ -31,6 +31,7 @@ VERSION = read_define(OWNER, "ANIM_TRACKS_VERSION")
 HEADER = struct.Struct("<HHIIIB3x")
 ROW = struct.Struct("<HHIIIIIHBB")
 BINDING_OWNER = pathlib.Path(__file__).resolve().parents[2] / "main/anim/anim_binding.h"
+TARGET_SELF = read_define(BINDING_OWNER, "ANIM_TARGET_SELF")
 HEADER_SIZE, ROW_SIZE, AT_VERSION, AT_ROOT, AT_PAD, HEADER_PAD_SIZE = [
     read_define(OWNER, "ANIM_TRACKS_" + name)
     for name in ("HEADER_SIZE", "ROW_SIZE", "AT_VERSION", "AT_ROOT", "AT_PAD", "HEADER_PAD_SIZE")]
@@ -313,8 +314,7 @@ def bake(path, node=None):
         raise TracksError("%s: source %s: %s" % (path, source, error)) from error
     tracks, duration_ms, root = clip_tracks(document, binary, find_animation(document, animation, source))
     if node is not None:
-        target = read_define(BINDING_OWNER, "ANIM_TARGET_SELF")
-        tracks = [dict(track, path=target) for track in tracks if track["path"] == node]
+        tracks = [dict(track, path=TARGET_SELF) for track in tracks if track["path"] == node]
         if not tracks or root != ROOT_SCENE:
             raise TracksError(f"{path}: camera node {node!r} has no property tracks")
     try:

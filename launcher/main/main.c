@@ -19,6 +19,7 @@
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
 #include "input/input_shell.h"
+#include "scene/scene_shell.h"
 #include "selftest/post.h"
 #include "selftest/post_layout.h"
 #include "selftest/post_ui.h"
@@ -96,6 +97,9 @@ app_boot_init(void) {
                  (unsigned)memory_free_bytes(MEMORY_PSRAM), (unsigned)memory_largest_block(MEMORY_PSRAM));
     }
     ui_ridge_load();
+    if (!scene_world_init()) {
+        ESP_LOGE(TAG, "No entity table: no scene will load");
+    }
     shell_init();
     heap_mark("boot");
 

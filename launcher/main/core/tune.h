@@ -141,6 +141,18 @@ tune_setting_store(int32_t* setting, int32_t low, int32_t high, int32_t value) {
 }
 #endif
 
+/* A knob over a value set elsewhere, from 0 to `high`: it starts at
+ * TUNE_UNSET and RESET returns it there, so that value holds until a SET.
+ * tune_override() picks between them; a release build has only TUNE_UNSET,
+ * and the pick folds away. */
+#define TUNE_UNSET                       (-1)
+#define TUNE_OVERRIDE(owner, what, high) TUNE(owner, what, TUNE_UNSET, TUNE_UNSET, high)
+
+static inline int32_t
+tune_override(int32_t knob, int32_t value) {
+    return knob == TUNE_UNSET ? value : knob;
+}
+
 /* Pinned code needs constants unless the build explicitly permits live
  * loads; a host build is the default image's code too, and links without
  * the registry. */

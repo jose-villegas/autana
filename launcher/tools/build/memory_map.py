@@ -25,6 +25,9 @@ from pathlib import Path
 
 VARIANTS = ("release", "dev", "diag")
 MAIN_VARIANT = VARIANTS[0]
+# GNU ld zeros DWARF addresses for code removed by section garbage collection.
+DWARF_DISCARDED_PC = 0
+DWARF_ZERO_BASED_FILES_VERSION = 5
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools/render"))
 sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
@@ -103,6 +106,7 @@ class Site:
     archive: str
     entries: list | bool
     uses: list = field(default_factory=list)
+    required: list = field(default_factory=list)
 
     @property
     def label(self):
@@ -245,6 +249,8 @@ def sites(root, owned=None):
             if not re.search(r"[A-Za-z][^.?!]*[.?!]", reason) or len(re.findall(r"[A-Za-z]+", reason)) < 2 or re.search(r"\b(?:TODO|TBD|FIXME)\b", reason, re.I):
                 raise ValueError(f"{name}:{index + 1}: missing IRAM reason beyond budget")
             site = Site(name, index + 1, owner, reason, budget, archive, entries)
+            if kind == "c" and entries and attributed:
+                site.required.extend((obj, symbol, name, index + 1) for obj, symbol in entries)
             found.append(site)
             if path.suffix in {".c", ".h"} and budget_alias:
                 alias_sites[define.group(1)] = site
@@ -254,6 +260,8 @@ def sites(root, owned=None):
             if site and site.archive == archive:
                 site.entries.extend(entry for entry in entries if entry not in site.entries)
                 site.uses.append((name, line))
+                site.required.extend((obj, symbol, name, line) for obj, symbol in entries
+                                     if (obj, symbol, name, line) not in site.required)
     return found
 
 
@@ -266,10 +274,14 @@ def clone_base(symbol):
     return CLONE_SUFFIX.sub("", symbol)
 
 
+def matches_entry(item, archive, obj, symbol):
+    return (fnmatch.fnmatch(item.archive, archive)
+            and fnmatch.fnmatch(item.object.removesuffix(".obj").removesuffix(".o").removesuffix(".c"), obj)
+            and fnmatch.fnmatch(clone_base(item.symbol), symbol))
+
+
 def matches_site(item, site):
-    return fnmatch.fnmatch(item.archive, site.archive) and any(
-        fnmatch.fnmatch(item.object.removesuffix(".obj").removesuffix(".o").removesuffix(".c"), obj)
-        and fnmatch.fnmatch(clone_base(item.symbol), symbol) for obj, symbol in site.entries)
+    return any(matches_entry(item, site.archive, obj, symbol) for obj, symbol in site.entries)
 
 
 def iram_entries(build):
@@ -290,7 +302,67 @@ def iram_entries(build):
     return json.loads(run(idf_python(), "-c", LDGEN_ENTRIES, str(Path(script).parent), json.dumps(arguments)))
 
 
-def check(placements, inputs, variant, owned, active, idf_commit=None, pinned_commit=None, exact=True, linker_entries=()):
+def inline_instances(elf, sections):
+    """Read every emitted inline range from the build ELF with pyelftools."""
+    from elftools.elf.elffile import ELFFile
+    from elftools.dwarf.descriptions import describe_form_class
+
+    result = []
+    with elf.open("rb") as stream:
+        dwarf = ELFFile(stream).get_dwarf_info()
+        if not dwarf.has_debug_info:
+            raise ValueError(f"{elf}: DWARF debug info required for inline placement")
+        for cu in dwarf.iter_CUs():
+            base = cu.get_top_DIE().attributes.get("DW_AT_low_pc")
+            for die in cu.iter_DIEs():
+                if die.tag != "DW_TAG_inlined_subroutine":
+                    continue
+                origin = die.get_DIE_from_attribute("DW_AT_abstract_origin")
+                while "DW_AT_abstract_origin" in origin.attributes:
+                    origin = origin.get_DIE_from_attribute("DW_AT_abstract_origin")
+                if "DW_AT_name" not in origin.attributes or "DW_AT_decl_file" not in origin.attributes:
+                    continue
+                name = origin.attributes["DW_AT_name"].value.decode()
+                index = origin.attributes["DW_AT_decl_file"].value
+                lines = dwarf.line_program_for_CU(origin.cu)
+                files = lines["file_entry"]
+                zero_based = origin.cu["version"] >= DWARF_ZERO_BASED_FILES_VERSION
+                entry = files[index if zero_based else index - 1]
+                source = Path(entry.name.decode())
+                directory = entry.dir_index
+                if zero_based or directory:
+                    source = Path(lines["include_directory"][directory if zero_based else directory - 1].decode()) / source
+                comp_dir = origin.cu.get_top_DIE().attributes.get("DW_AT_comp_dir")
+                if comp_dir:
+                    source = Path(comp_dir.value.decode()) / source
+                ranges = []
+                attrs = die.attributes
+                if "DW_AT_ranges" in attrs:
+                    address = base.value if base else 0
+                    for entry in dwarf.range_lists().get_range_list_at_offset(attrs["DW_AT_ranges"].value, cu):
+                        if hasattr(entry, "base_address"):
+                            address = entry.base_address
+                        else:
+                            offset = 0 if entry.is_absolute else address
+                            ranges.append((offset + entry.begin_offset, offset + entry.end_offset))
+                elif "DW_AT_low_pc" in attrs:
+                    low = attrs["DW_AT_low_pc"].value
+                    high = attrs["DW_AT_high_pc"]
+                    ranges.append((low, high.value + (low if describe_form_class(high.form) == "constant" else 0)))
+                result.extend(inline_rows(source.resolve().as_posix(), name, ranges, sections))
+    return result
+
+
+def inline_rows(source, name, ranges, sections):
+    for low, high in ranges:
+        if low == DWARF_DISCARDED_PC or high <= low:
+            continue
+        section = next((key for key, (start, size) in sections.items()
+                        if start <= low and high <= start + size), "outside linked sections")
+        yield source, name, section, low, high
+
+
+def check(placements, inputs, variant, owned, active, idf_commit=None, pinned_commit=None, exact=True, linker_entries=(), inlines=(), inspect_inline=True):
     errors = []
     drift = commit_drift(idf_commit, pinned_commit) if idf_commit is not None else None
     used = Counter()
@@ -330,7 +402,21 @@ def check(placements, inputs, variant, owned, active, idf_commit=None, pinned_co
             if size:
                 errors.append(f"{site.label}: compiled-out site owns {size} B")
         else:
-            if not size:
+            for obj, symbol, path, _ in site.required:
+                copies = [item for item in inputs if not item.literal and matches_entry(item, site.archive, obj, symbol)]
+                instances = [row for row in inlines
+                             if (row[0] == path or row[0].endswith("/" + path)) and clone_base(row[1]) == symbol]
+                if not copies and not instances and inspect_inline:
+                    errors.append(f"{site.label}: {symbol}: no emitted copy or inline instance")
+                outside = sorted({item.output for item in copies if not item.output.startswith(".iram")})
+                if outside:
+                    errors.append(f"{site.label}: {symbol}: out-of-line copy in {', '.join(outside)}; "
+                                  "check compiler clones and linker mappings")
+                for source, name, section, low, high in instances:
+                    if not section.startswith(".iram"):
+                        errors.append(f"{site.label}: {symbol}: inlined copy in {section} "
+                                      f"[{low:#x}, {high:#x}); keep it out of line with noinline")
+            if not size and not site.required:
                 errors.append(f"{site.label}: placed nothing in this build")
             if exact:
                 budget = site.budget
@@ -420,6 +506,7 @@ def build_sites(root, build):
     alive = preprocessed_lines(build["build"], root, paths)
     enabled = {}
     for site in placements:
+        site.required = [entry for entry in site.required if (root / entry[2], entry[3]) in alive]
         if site.path.endswith(".lf"):
             site.entries = fragment_entries(site, root, build["config"])
             enabled[site.label] = bool(site.entries)
@@ -523,7 +610,7 @@ def build_variant(build):
     return build_id, variant
 
 
-def read_build(build, root=ROOT):
+def read_build(build, root=ROOT, *, inspect_inline=False):
     build = build.resolve()
     metadata = json.loads((build / "project_description.json").read_text(encoding="utf-8"))
     elf = build / metadata["app_elf"]
@@ -544,7 +631,7 @@ def read_build(build, root=ROOT):
     regions = {name: (int(address, 16), int(size, 16)) for name, address, size in
                re.findall(r"^(iram0_0_seg|dram0_0_seg)\s+(0x[\da-f]+)\s+(0x[\da-f]+)", maptext, re.M)}
     build_id, variant = build_variant(build)
-    return dict(build=build, metadata=metadata, owned=components(root, metadata), build_id=build_id, variant=variant, idf_commit=idf_commit(metadata["idf_path"]), inputs=inputs, placed_inputs=placed_inputs, linker_entries=iram_entries(build), sections=sections, constants=constants,
+    return dict(build=build, metadata=metadata, owned=components(root, metadata), build_id=build_id, variant=variant, idf_commit=idf_commit(metadata["idf_path"]), inputs=inputs, placed_inputs=placed_inputs, linker_entries=iram_entries(build), inlines=inline_instances(elf, sections) if inspect_inline else (), sections=sections, constants=constants,
                 size=size, align=align, pad=pad, slack=slack, config=config, regions=regions)
 
 
@@ -563,7 +650,7 @@ def update_budgets(root, builds):
     measured, files = {}, {}
     for build in builds:
         for site, size, _ in build["report"]:
-            if size:
+            if size or (build.get("active") and build["active"](site)):
                 measured.setdefault((site.path, site.line), {})[build["variant"]] = size
     for (name, line), sizes in sorted(measured.items()):
         if name not in files:
@@ -953,16 +1040,17 @@ def main():
             return 0
         if not args.builds:
             parser.error("build directories required unless --source-only")
-        builds = [read_build(build, args.root) for build in args.builds]
+        builds = [read_build(build, args.root, inspect_inline=args.check or args.update_budgets) for build in args.builds]
         pin = idf_pin(args.root)
         errors = []
         for build in builds:
             try:
                 placements, active = build_sites(args.root.resolve(), build)
+                build["active"] = active
                 drift = commit_drift(build["idf_commit"], pin["commit"])
                 if args.require_pin and drift:
                     errors.append(f"{build['variant']}: IDF drift: {drift}")
-                build["report"] = check(placements, build["placed_inputs"], build["variant"], build["owned"], active, build["idf_commit"], pin["commit"], exact=not args.update_budgets, linker_entries=build["linker_entries"])
+                build["report"] = check(placements, build["placed_inputs"], build["variant"], build["owned"], active, build["idf_commit"], pin["commit"], exact=not args.update_budgets, linker_entries=build["linker_entries"], inlines=build.get("inlines", ()), inspect_inline=args.check or args.update_budgets)
             except ValueError as error:
                 errors.append(f"{build['variant']}: {error}")
                 continue
@@ -970,7 +1058,7 @@ def main():
                 continue
             for site, size, names in build["report"]:
                 print(f"{build['variant']}: {site.owner} {site.label}: {size} B" +
-                      (" (note: compiled out)" if not size else ""))
+                      (" (note: compiled out)" if not active(site) else ""))
             print(f"PASS IRAM {build['variant']}: {len(build['report'])} sites checked")
         if errors:
             raise ValueError("\n".join(errors))

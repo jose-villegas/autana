@@ -12,10 +12,10 @@
 
 _Static_assert(SCENE_WORLD_SLOT_NONE == 0xFFFFU, "world_slots are cleared with 0xFF bytes");
 
-static scene_entity_t
-parent_of(const scene_t* scene, scene_entity_t entity) {
+static scene_row_t
+parent_of(const scene_t* scene, scene_row_t entity) {
     const uint16_t parent = scene->asset.parents[entity];
-    return parent == SCENE_ASSET_PARENT_ROOT ? SCENE_ENTITY_NONE : (scene_entity_t)parent;
+    return parent == SCENE_ASSET_PARENT_ROOT ? SCENE_ROW_NONE : (scene_row_t)parent;
 }
 
 bool
@@ -24,8 +24,8 @@ scene_hierarchy_open(scene_t* scene) {
     memset(scene->world_slots, 0xFF, sizeof *scene->world_slots * (size_t)entities);
     int worlds_needed = 0;
     for (int e = 0; e < entities; e++) {
-        const scene_entity_t parent = parent_of(scene, (scene_entity_t)e);
-        if (parent != SCENE_ENTITY_NONE && scene->world_slots[parent] == SCENE_WORLD_SLOT_NONE) {
+        const scene_row_t parent = parent_of(scene, (scene_row_t)e);
+        if (parent != SCENE_ROW_NONE && scene->world_slots[parent] == SCENE_WORLD_SLOT_NONE) {
             scene->world_slots[parent] = 0; /* has children; numbered below, in entity order */
             worlds_needed++;
         }
@@ -35,17 +35,16 @@ scene_hierarchy_open(scene_t* scene) {
     }
     size_t end = 0;
     const size_t worlds = scene_storage_carve(&end, sizeof(mat4f_t) * (size_t)worlds_needed, alignof(mat4f_t));
-    const size_t owners =
-        scene_storage_carve(&end, sizeof(scene_entity_t) * (size_t)worlds_needed, alignof(scene_entity_t));
+    const size_t owners = scene_storage_carve(&end, sizeof(scene_row_t) * (size_t)worlds_needed, alignof(scene_row_t));
     uint8_t* block = scene_allocate_kept(end);
     if (block == NULL) {
         return false;
     }
     scene->worlds = (mat4f_t*)(void*)(block + worlds);
-    scene->world_entities = (scene_entity_t*)(void*)(block + owners);
+    scene->world_entities = (scene_row_t*)(void*)(block + owners);
     for (int e = 0; e < entities; e++) {
         if (scene->world_slots[e] != SCENE_WORLD_SLOT_NONE) {
-            scene->world_entities[scene->world_count] = (scene_entity_t)e;
+            scene->world_entities[scene->world_count] = (scene_row_t)e;
             scene->world_slots[e] = (uint16_t)scene->world_count++;
         }
     }
@@ -59,32 +58,55 @@ scene_hierarchy_release(scene_t* scene) {
 }
 
 static bool
-changed(const scene_t* scene, scene_entity_t entity) {
-    const scene_entity_t parent = parent_of(scene, entity);
+changed(const scene_t* scene, scene_row_t entity) {
+    const scene_row_t parent = parent_of(scene, entity);
     return (scene->flags[entity] & SCENE_FLAG_DIRTY) != 0
-           || (parent != SCENE_ENTITY_NONE && (scene->flags[parent] & SCENE_FLAG_MOVED) != 0);
+           || (parent != SCENE_ROW_NONE && (scene->flags[parent] & SCENE_FLAG_MOVED) != 0);
 }
 
-/* The parent's kept world times the entity's own transform. */
+/* The parent's kept world, or the root's, times the entity's own transform. */
 static mat4f_t
-world_from_parent(const scene_t* scene, scene_entity_t entity) {
+world_from_parent(const scene_t* scene, scene_row_t entity) {
     const mat4f_t local = transformf_compute_matrix(&scene->locals[entity]);
-    const scene_entity_t parent = parent_of(scene, entity);
-    return parent == SCENE_ENTITY_NONE ? local : mat4f_mul_affine(scene->worlds[scene->world_slots[parent]], local);
+    const scene_row_t parent = parent_of(scene, entity);
+    if (parent == SCENE_ROW_NONE) {
+        return scene->root->placed ? mat4f_mul_affine(scene->root->world, local) : local;
+    }
+    return mat4f_mul_affine(scene->worlds[scene->world_slots[parent]], local);
+}
+
+/* The box of every chunk's sphere of batch `batch`, where `model` puts it.
+ * Not inlined: a renderer with no batch keeps its frame. */
+static __attribute__((noinline)) box3f_t
+batch_world_bounds(const r3d_batch_t* batch, const mat4f_t* model) {
+    box3f_t local = box3f_empty();
+    for (int c = 0; c < batch->chunk_count; c++) {
+        const spheref_t s = r3d_batch_chunk_sphere(batch, c);
+        const vec3f_t reach = {s.radius, s.radius, s.radius};
+        local = box3f_union(local, (box3f_t){vec3f_sub(s.centre, reach), vec3f_add(s.centre, reach)});
+    }
+    return r3d_box_placed(local, model);
 }
 
 void
 scene_renderer_bound(scene_renderer_t* r) {
-    if (r->mesh.node_count > 0) {
-        r->world_bounds = r3d_lit_mesh_world_bounds(&r->mesh, r->placed ? &r->model : NULL);
+    r->changed = true;
+    if (r->mesh.node_count == 0) {
+        return;
     }
+    const mat4f_t* model = r->placed ? &r->model : NULL;
+    r->world_bounds =
+        r->batch == NULL ? r3d_lit_mesh_world_bounds(&r->mesh, model) : batch_world_bounds(r->batch, model);
 }
 
 static void
 list_active_renderers(scene_t* scene) {
     scene->active_renderer_count = 0;
     for (int i = 0; i < scene->renderer_count; i++) {
-        if ((scene->flags[scene->renderers[i].entity] & SCENE_FLAG_ACTIVE) != 0) {
+        const scene_row_t e = scene->renderers[i].entity;
+        /* A skin settled without its buffers did not fit: it is not drawn. */
+        const bool starved = scene->skinned_renderers[e].starved;
+        if ((scene->flags[e] & SCENE_FLAG_ACTIVE) != 0 && !starved) {
             scene->active_renderers[scene->active_renderer_count++] = (uint16_t)i;
         }
     }
@@ -93,11 +115,12 @@ list_active_renderers(scene_t* scene) {
 
 void
 scene_resolve(scene_t* scene) {
+    scene_skins_settle(scene);
     if (scene->active_renderers_stale) {
         list_active_renderers(scene);
     }
     for (int i = 0; i < scene->world_count; i++) {
-        const scene_entity_t e = scene->world_entities[i];
+        const scene_row_t e = scene->world_entities[i];
         if (changed(scene, e)) {
             scene->worlds[i] = world_from_parent(scene, e);
             scene->flags[e] |= SCENE_FLAG_MOVED;
@@ -118,70 +141,111 @@ scene_resolve(scene_t* scene) {
 }
 
 void
-scene_hierarchy_update_active(scene_t* scene, scene_entity_t entity) {
-    for (int e = entity; e < scene->asset.entity_count; e++) {
-        const scene_entity_t parent = parent_of(scene, (scene_entity_t)e);
-        const bool active = (scene->flags[e] & SCENE_FLAG_ENABLED) != 0
-                            && (parent == SCENE_ENTITY_NONE || (scene->flags[parent] & SCENE_FLAG_ACTIVE) != 0);
+scene_hierarchy_update_active(scene_t* scene, scene_row_t entity) {
+    const bool root_active = (scene->root->flags & SCENE_FLAG_ACTIVE) != 0;
+    for (int e = entity == SCENE_ROW_ROOT ? 0 : entity; e < scene->asset.entity_count; e++) {
+        const scene_row_t parent = parent_of(scene, (scene_row_t)e);
+        const bool active =
+            (scene->flags[e] & SCENE_FLAG_ENABLED) != 0
+            && (parent == SCENE_ROW_NONE ? root_active : (scene->flags[parent] & SCENE_FLAG_ACTIVE) != 0);
         if (active != ((scene->flags[e] & SCENE_FLAG_ACTIVE) != 0)) {
             scene->flags[e] ^= SCENE_FLAG_ACTIVE;
             scene->flags[e] |= SCENE_FLAG_CHANGED;
             scene->active_renderers_stale = true;
+            /* A skin holds its buffers only while ACTIVE. */
+            scene->skins_pending |= active && scene->skinned_renderers[e].bound;
+            if (!active) {
+                scene_skin_deactivate(scene, (scene_row_t)e);
+            }
         }
     }
 }
 
-scene_entity_t
-scene_entity_parent(const scene_t* scene, scene_entity_t entity) {
-    assert(entity < scene->asset.entity_count);
-    return parent_of(scene, entity);
-}
-
-bool
-scene_entity_is_within(const scene_t* scene, scene_entity_t entity, scene_entity_t ancestor) {
-    assert(entity < scene->asset.entity_count);
-    for (scene_entity_t e = entity; e != SCENE_ENTITY_NONE && e >= ancestor; e = parent_of(scene, e)) {
-        if (e == ancestor) {
-            return true;
-        }
-    }
-    return false;
-}
-
-bool
-scene_entity_active(const scene_t* scene, scene_entity_t entity) {
-    assert(entity < scene->asset.entity_count);
-    return (scene->flags[entity] & SCENE_FLAG_ACTIVE) != 0;
-}
-
-transformf_t
-scene_entity_world(const scene_t* scene, scene_entity_t entity) {
-    assert(entity < scene->asset.entity_count);
-    transformf_t world = scene->locals[entity];
-    for (scene_entity_t e = parent_of(scene, entity); e != SCENE_ENTITY_NONE; e = parent_of(scene, e)) {
-        world = transformf_compose(&scene->locals[e], &world);
-    }
-    return world;
+scene_row_t
+scene_row_parent(const scene_t* scene, scene_row_t row) {
+    return row == SCENE_ROW_ROOT ? SCENE_ROW_NONE : parent_of(scene, row);
 }
 
 void
-scene_entity_set_world(scene_t* scene, scene_entity_t entity, transformf_t world) {
-    assert(entity < scene->asset.entity_count);
-    const scene_entity_t parent = parent_of(scene, entity);
-    if (parent == SCENE_ENTITY_NONE) {
-        scene_entity_set_local(scene, entity, world);
+scene_row_set_local(scene_root_t* root, scene_row_t row, transformf_t local) {
+    scene_t* scene = root->scene;
+    if (row == SCENE_ROW_ROOT) {
+        /* The root is every top-level row's parent: the rule below holds for it too. */
+        assert(transformf_scale_is_even(&local));
+        root->local = local;
+        root->world = transformf_compute_matrix(&local);
+        root->placed = !scene_transform_is_identity(&root->world);
+        for (int e = 0; scene != NULL && e < scene->asset.entity_count; e++) {
+            if (parent_of(scene, (scene_row_t)e) == SCENE_ROW_NONE) {
+                scene->flags[e] |= SCENE_FLAG_CHANGED;
+            }
+        }
         return;
     }
-    const transformf_t parent_world = scene_entity_world(scene, parent);
-    scene_entity_set_local(scene, entity, transformf_relative(&parent_world, &world));
+    /* A parent scales evenly, so every world below it is an exact TRS; the
+     * loader and the importer keep content so. */
+    assert(scene->world_slots[row] == SCENE_WORLD_SLOT_NONE || transformf_scale_is_even(&local));
+    scene->locals[row] = local;
+    scene->flags[row] |= SCENE_FLAG_CHANGED;
+}
+
+transformf_t
+scene_row_local(const scene_root_t* root, scene_row_t row) {
+    return row == SCENE_ROW_ROOT ? root->local : root->scene->locals[row];
+}
+
+transformf_t
+scene_row_world(const scene_root_t* root, scene_row_t row) {
+    transformf_t world = scene_row_local(root, row);
+    if (row == SCENE_ROW_ROOT) {
+        return world;
+    }
+    for (scene_row_t e = parent_of(root->scene, row); e != SCENE_ROW_NONE; e = parent_of(root->scene, e)) {
+        world = transformf_compose(&root->scene->locals[e], &world);
+    }
+    return transformf_compose(&root->local, &world);
 }
 
 mat4f_t
-scene_entity_world_matrix(const scene_t* scene, scene_entity_t entity) {
-    assert(entity < scene->asset.entity_count);
-    mat4f_t world = transformf_compute_matrix(&scene->locals[entity]);
-    for (scene_entity_t e = parent_of(scene, entity); e != SCENE_ENTITY_NONE; e = parent_of(scene, e)) {
-        world = mat4f_mul_affine(transformf_compute_matrix(&scene->locals[e]), world);
+scene_row_world_matrix(const scene_root_t* root, scene_row_t row) {
+    const transformf_t local = scene_row_local(root, row);
+    mat4f_t world = transformf_compute_matrix(&local);
+    if (row == SCENE_ROW_ROOT) {
+        return world;
     }
-    return world;
+    for (scene_row_t e = parent_of(root->scene, row); e != SCENE_ROW_NONE; e = parent_of(root->scene, e)) {
+        world = mat4f_mul_affine(transformf_compute_matrix(&root->scene->locals[e]), world);
+    }
+    return root->placed ? mat4f_mul_affine(root->world, world) : world;
+}
+
+void
+scene_row_set_world(scene_root_t* root, scene_row_t row, transformf_t world) {
+    const scene_row_t parent = scene_row_parent(root->scene, row);
+    if (row == SCENE_ROW_ROOT) {
+        scene_row_set_local(root, row, world);
+        return;
+    }
+    const transformf_t parent_world = scene_row_world(root, parent == SCENE_ROW_NONE ? SCENE_ROW_ROOT : parent);
+    scene_row_set_local(root, row, transformf_relative(&parent_world, &world));
+}
+
+uint8_t
+scene_row_flags(const scene_root_t* root, scene_row_t row) {
+    return row == SCENE_ROW_ROOT ? root->flags : root->scene->flags[row];
+}
+
+void
+scene_row_set_enabled(scene_root_t* root, scene_row_t row, bool enabled) {
+    if (row == SCENE_ROW_ROOT) {
+        root->flags = enabled ? (uint8_t)(root->flags | SCENE_FLAG_ENABLED | SCENE_FLAG_ACTIVE)
+                              : (uint8_t)(root->flags & ~(SCENE_FLAG_ENABLED | SCENE_FLAG_ACTIVE));
+    } else {
+        uint8_t* flags = &root->scene->flags[row];
+        *flags = enabled ? (uint8_t)(*flags | SCENE_FLAG_ENABLED) : (uint8_t)(*flags & ~SCENE_FLAG_ENABLED);
+        *flags |= SCENE_FLAG_CHANGED;
+    }
+    if (root->scene != NULL) {
+        scene_hierarchy_update_active(root->scene, row);
+    }
 }

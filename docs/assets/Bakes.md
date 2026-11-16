@@ -17,6 +17,10 @@ signed in). **A build with a cold cache needs the network once**; offline, it
 fails naming every mesh it cannot get. Files land in the cache by rename, so
 builds running side by side never read half a file.
 
+A bake's code is everything its entry scripts import. A fit's reference set, the slowest bake, counts only the
+functions, classes and constants its entry functions reach (`bake/code_units.py`), so an edit to a helper it
+never runs keeps its renders.
+
 A pull request that changes what a mesh is made from gets its bake from the
 Bakes workflow: its CPU job bakes the meshes the lock lacks and uploads them,
 and the lock check fails until the author runs `bake.py lock --from-run N`
@@ -40,6 +44,10 @@ a run that made a mesh on another vendor, naming both, and the CPU job fails
 before baking when the hosted runner it got is another vendor's. Either way,
 re-run the failed job until it lands on the lock's vendor.
 
+A fit's reference set is traced on the CPU, as a mesh is, since the GPU's ray
+tracing may build a different tree each time
+([Reference on the CPU](../../launcher/tools/r3d/README.md#reference-on-the-cpu)).
+
 A fit repeats byte for byte only on one GPU model, so a fit's row also names
 its `gpu`. The Bakes GPU run's `runner` input picks the self-hosted runner by
 its label (default `gpu`). One attempt fits on one runner; a rerun attempt may land on
@@ -55,11 +63,18 @@ it is made, and the upload runs even when the job fails, so a failed run locks t
 
 Each attempt uploads its own artifact; a key two attempts made locks with the later attempt's bytes.
 
-A renderer whose import carves shared meshes has a `.bundle` row; an uncarved
-one has a `.mesh` row. A carved fit's CPU start is `.start.bundle`. The GPU fit
-trains only the rest, copying shapes, LCOL and the
-[MCOP manifest](formats/MCOP.md) unchanged; its key names the
-locked start bundle's bytes, and its references use the full source.
+Every mesh bake writes a `.bundle`: its LMSH entries, LCOL/LLOD siblings
+and copies manifest, including when no shapes are carved.
+
+| Fitted renderer stage | Output | Input |
+|---|---|---|
+| CPU start | `<entry>.start.bundle` | Source and import recipe |
+| GPU fit | `<entry>.fit.bundle` | Locked start bytes and references; rest without levels |
+| CPU levels | `<entry>.bundle` | Locked fit bytes, `lod` and meshlet size |
+
+The fit trains only the rest. Both later stages pass copy meshes, colour
+sets and the [MCOP manifest](formats/MCOP.md) through unchanged. Only the final
+bundle enters the scene pack.
 
 The lock's `[[poses]]` rows hold the digest and count of each camera-path sampling.
 

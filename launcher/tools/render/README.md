@@ -94,8 +94,7 @@ suite's tunable that each row sets to the showcase's shipped meshlet size: the
 suite's p95 ceilings, pegged on shipped bakes, then gate only bakes of that size.
 Preparation copies the tracked tree into
 `launcher/tools/results/meshlet-sizes/tree` and re-clusters the showcase's cached
-bake through `rebake.py`, without building firmware or accessing the board. The
-other bakes keep the shipped size, so the suite's budgets for them hold.
+bake through `rebake.py`, without building firmware or accessing the board.
 
 Packs read meshes from the bake cache by the lock, so a row puts its size's
 bakes in the cache and points the tree's `bakes.lock` at them. Install a row,
@@ -130,6 +129,6 @@ geometry or render sizes fail. Monitor logs cannot supply this table.
 
 ## Pinhole rays
 
-`python launcher/tools/render/pinhole_rays.py rays SCENE.scene.toml --mesh DRAWN.mesh --video FRAMES.avi --dt MS` traces enclosed sky in a HUD-free host video made with `--quarter 1`. It reports raster misses, geometry holes and random-pixel projection agreement (which should approach one). `--frames 0,1,2` selects zero-based video frames; `--against OTHER.mesh ...` compares each hole with other geometry at neighbouring drawn depth. Mitsuba's scalar CPU variant needs no LLVM runtime.
+`python launcher/tools/render/pinhole_rays.py rays SCENE.scene.toml --mesh DRAWN.bundle --video FRAMES.avi --dt MS` traces enclosed sky in a HUD-free host video made with `--quarter 1`. It reports raster misses, geometry holes and random-pixel projection agreement (which should approach one). `--frames 0,1,2` selects zero-based video frames; `--against OTHER.bundle ...` compares each hole with other geometry at neighbouring drawn depth. Mitsuba's scalar CPU variant needs no LLVM runtime.
 
-`python launcher/tools/render/pinhole_rays.py shown SCENE.scene.toml --object OBJECT START.mesh ...` estimates visible triangles for each fitted start using the selected object's fit coverage spacing and square coverage view at its pose size. First-hit front-face rays use Mitsuba's LLVM CPU variant and require libLLVM. The count estimates post-fit pruning coverage; it is not the GPU raster count.
+`python launcher/tools/render/pinhole_rays.py shown SCENE.scene.toml --object OBJECT START.bundle ...` estimates visible triangles for each fitted start using the selected object's fit coverage spacing and square coverage view at its pose size. First-hit front-face rays use Mitsuba's LLVM CPU variant and require libLLVM. The count estimates post-fit pruning coverage; it is not the GPU raster count.

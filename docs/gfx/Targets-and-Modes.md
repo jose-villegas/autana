@@ -123,7 +123,9 @@ An expanded frame holds an exact-half picture in `gfx_half_picture()`: a buffer 
 gfx's own PSRAM that costs 82 KB while a full-framebuffer app runs.
 
 - `scene_compose()` copies into it and `scene_shell_compose()` calls
-  `gfx_expand_frame()`; a paused or undrawn scene keeps its last picture.
+  `gfx_expand_frame()` with the rows the frame recomposed: all of them,
+  or under partial redraw only those that changed. A paused or undrawn
+  scene keeps its last picture.
 - Presentation doubles it into send strips until `gfx_present_wait()` completes.
   Raw framebuffer drawing is guarded during that interval, except in double mode,
   which has no expanded frames.

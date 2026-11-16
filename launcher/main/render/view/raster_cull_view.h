@@ -6,7 +6,7 @@
  *
  * Seen from the camera only drawn clusters show, so the view can draw a
  * second time from a spectator, above the scene or behind the camera, and
- * paint the camera's fates there, every cluster drawn. Its overlay draws one
+ * paint the camera's fates there, every cluster the levels drew. Its overlay draws one
  * tree level's node boxes and, from a spectator, the camera's frustum.
  *
  * Tunables: cullview.from (raster_cull_from_t), cullview.paint
@@ -49,7 +49,9 @@ typedef enum {
  * kept, and the holes in its screen door show what is behind. */
 typedef enum { RASTER_CULL_PASS_CAMERA, RASTER_CULL_PASS_CULLED, RASTER_CULL_PASS_KEPT } raster_cull_pass_t;
 
-/* What the view holds room for, every instance together. */
+/* What the view holds room for, every instance together, counting only the
+ * level of each mesh the frame draws: a slot per drawn cluster and one per
+ * instance, and the drawn clusters' triangles. */
 #define RASTER_CULL_CLUSTERS_MAX  8192
 #define RASTER_CULL_TRIANGLES_MAX 131072
 /* The largest picture it layers: the panel's. */
@@ -69,6 +71,7 @@ typedef struct {
     X(nodes_cut, counts.nodes_cut)                                                                                     \
     X(clusters_tested, counts.clusters_tested)                                                                         \
     X(clusters_kept, counts.clusters_kept)                                                                             \
+    X(clusters_coarse, counts.clusters_coarse)                                                                         \
     X(clusters_not_set_up, clusters[RASTER_FATE_NOT_SET_UP])                                                           \
     X(clusters_hidden, clusters[RASTER_FATE_HIDDEN])                                                                   \
     X(clusters_drawn, clusters[RASTER_FATE_DRAWN])                                                                     \
@@ -82,16 +85,28 @@ typedef struct {
 
 typedef struct {
     raster_cull_from_t from;
-    bool spectating; /* drawing from the spectator */
-    int pass;        /* raster_cull_pass_t: which of the frame's draws is next */
-    int clusters, triangles;
+    bool spectating;                 /* drawing from the spectator */
+    bool spectated;                  /* this frame drew from the spectator: an observer or cullview.from */
+    int pass;                        /* raster_cull_pass_t: which of the frame's draws is next */
+    int clusters, triangles;         /* drawn this frame, the level each instance drew */
     int next_cluster, next_triangle; /* the next instance's first IDs, as the draw reaches it */
     const raster_t* raster;
     render_view_t camera, spectator;
+    transformf_t spectator_pose; /* what `spectator` was made from, exactly: render_view_pose() only to rounding */
     raster_cull_frame_t frame;
+    /* Each instance's drawn clusters: their count, then their mesh indices
+     * ascending. The k-th drawn cluster, counting across the instances, has
+     * slot k in the arrays below; a tag names a mesh index, which the list finds. */
+    uint16_t drawn[RASTER_CULL_CLUSTERS_MAX];
     uint8_t fate[RASTER_CULL_CLUSTERS_MAX];
-    uint16_t set_up[RASTER_CULL_CLUSTERS_MAX];
-    uint16_t node[RASTER_CULL_CLUSTERS_MAX]; /* each cluster's node at cullview.level */
+
+    /* One array for three steps of the frame, each done with it before the next. */
+    union {
+        uint16_t set_up[RASTER_CULL_CLUSTERS_MAX]; /* counting: an instance's kept clusters' set-up triangles */
+        uint32_t triangle_first[RASTER_CULL_CLUSTERS_MAX / 2]; /* tallying: each drawn pair's first drawn triangle */
+        uint16_t node[RASTER_CULL_CLUSTERS_MAX];               /* painting: each slot's node at cullview.level */
+    };
+
     r3d_pipeline_count_walk_t walk;
     /* The tree walks' pending nodes, here rather than on the drawing task's stack. */
     uint16_t walk_node[R3D_LIT_WALK_STACK_MAX], walk_shown[R3D_LIT_WALK_STACK_MAX];
@@ -105,9 +120,11 @@ typedef struct {
 
 raster_attachment_t raster_cull_view(void* state);
 
-/* After the camera's draw: tallies its fates and, unless cullview.from is
- * the camera, writes the spectator's view to draw from next. */
-bool raster_cull_second_view(void* state, const raster_t* raster, render_view_t* out, bool* listed);
+/* After the camera's draw: tallies its fates and, given an observer or
+ * unless cullview.from is the camera, writes the spectator's view to draw
+ * from next: from the observer's pose when given, else cullview.from's. */
+bool raster_cull_second_view(void* state, const raster_t* raster, const transformf_t* observer, render_view_t* out,
+                             bool* listed);
 
 /* Lines over the composed picture, `width` by `height` from (0, 0). */
 void raster_cull_overlay(void* state, int width, int height);

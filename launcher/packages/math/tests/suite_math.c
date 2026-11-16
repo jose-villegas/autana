@@ -322,6 +322,20 @@ test_the_octahedral_map_puts_the_poles_at_the_centre_and_a_corner(void) {
 }
 
 static void
+test_in_place_affine_products_are_mul_affine_bit_for_bit(void) {
+    const mat4f_t a = mat4f_from_trs((vec3f_t){1.0F, -2.0F, 3.0F}, quatf_from_euler((vec3f_t){0.4F, -0.3F, 0.2F}),
+                                     (vec3f_t){2.0F, 1.0F, 0.5F});
+    const mat4f_t b = mat4f_from_trs((vec3f_t){-3.0F, 1.0F, 2.0F}, quatf_from_euler((vec3f_t){-0.2F, 0.5F, 0.3F}),
+                                     (vec3f_t){0.5F, 3.0F, 2.0F});
+    const mat4f_t want = mat4f_mul_affine(a, b);
+    mat4f_t post = a, pre = b;
+    mat4f_post_mul_affine(&post, &b);
+    mat4f_pre_mul_affine(&a, &pre);
+    assert_mat4_exact(&want, &post);
+    assert_mat4_exact(&want, &pre);
+}
+
+static void
 test_affine_product_and_inverse_match_full_matrices(void) {
     const mat4f_t a = mat4f_from_trs((vec3f_t){1.0F, -2.0F, 3.0F}, quatf_from_euler((vec3f_t){0.4F, -0.3F, 0.2F}),
                                      (vec3f_t){2.0F, 1.0F, 0.5F});
@@ -436,6 +450,32 @@ test_vecf_wrap_offset_bounds(void) {
     const vec3f_t got3 = vec3f_wrap(v, lo, hi);
     CHECK_VEC2(TEST_ASSERT_EQUAL_FLOAT, 1, got2, 3.5F, 1.5F, 0);
     CHECK_VEC3(TEST_ASSERT_EQUAL_FLOAT, 1, got3, 3.5F, 1.5F, 1.5F);
+}
+
+static void
+test_quatf_conjugate(void) {
+    const quatf_t q = quatf_from_euler((vec3f_t){0.3F, -0.7F, 1.1F});
+    const quatf_t back = quatf_conjugate(q);
+    const quatf_t identity = quatf_identity();
+    const quatf_t product = quatf_mul(q, back);
+    CHECK_QUAT_NEAR(TEST_ASSERT_FLOAT_WITHIN, SLACK, identity, product);
+    const vec3f_t v = {0.25F, -0.5F, 0.75F};
+    assert_vec3(v, quatf_rotate(back, quatf_rotate(q, v)));
+}
+
+static void
+test_quatx_conjugate(void) {
+    const quatx_t q = quatx_normalize(quatx_from_euler((vec3x_t){MATHX_ONE / 12, -MATHX_ONE / 8, MATHX_ONE / 6}));
+    const quatx_t back = quatx_conjugate(q);
+    const quatx_t identity = quatx_identity();
+    const quatx_t product = quatx_mul(q, back);
+    const int32_t slack = 16;
+    CHECK_QUAT_NEAR(TEST_ASSERT_INT32_WITHIN, slack, identity, product);
+    const vec3x_t v = {MATHX_ONE / 4, -MATHX_ONE / 2, 3 * MATHX_ONE / 4};
+    const vec3x_t got = quatx_rotate(back, quatx_rotate(q, v));
+    TEST_ASSERT_INT32_WITHIN(slack, v.x, got.x);
+    TEST_ASSERT_INT32_WITHIN(slack, v.y, got.y);
+    TEST_ASSERT_INT32_WITHIN(slack, v.z, got.z);
 }
 
 static void
@@ -784,6 +824,8 @@ suite_math(void) {
     RUN_TEST(test_vecf_wrap_offset_bounds);
     RUN_TEST(test_quatf_nlerp_components_and_zero_dot);
     RUN_TEST(test_quatx_nlerp_components_and_zero_dot);
+    RUN_TEST(test_quatf_conjugate);
+    RUN_TEST(test_quatx_conjugate);
     RUN_TEST(test_quatf_nlerp);
     RUN_TEST(test_quatx_nlerp);
 
@@ -794,6 +836,7 @@ suite_math(void) {
     RUN_TEST(test_cofactor_random_matrices_and_reflection);
     RUN_TEST(test_affine_inverse_preserves_small_and_large_scales);
     RUN_TEST(test_affine_product_and_inverse_match_full_matrices);
+    RUN_TEST(test_in_place_affine_products_are_mul_affine_bit_for_bit);
     RUN_TEST(test_a_quarter_turn_about_y_takes_z_to_x);
     RUN_TEST(test_a_quarter_turn_about_x_takes_y_to_z_and_about_z_takes_x_to_y);
     RUN_TEST(test_euler_angles_apply_z_then_x_then_y);

@@ -22,10 +22,13 @@
 typedef struct checkpoint checkpoint_t;
 #include "core/memory.h"
 #include "render/framegen/framegen.h"
+#include "render/lod/r3d_lod.h"
+#include "render/partial/render_partial.h"
 #include "render/r3d_instance.h"
 #include "render/raster.h"
 #include "render/render_view.h"
 #include "render/resolution/resolution.h"
+#include "render/settings/render_settings.h"
 
 /* The share of the destination a frame draws at until set. */
 #define RENDER_CONTEXT_DEFAULT_SCALE_PERCENT 50
@@ -51,41 +54,39 @@ typedef struct {
     int32_t draw_us, upscale_us;
     int32_t predicted_us;
     bool generated; /* warped from the last drawn frame, not drawn */
+    bool unchanged; /* partial redraw: nothing changed, nothing drawn or composed */
+    /* The destination rows [rows_first, rows_end) the last compose rewrote,
+     * at the view's destination size. */
+    int rows_first, rows_end;
 } render_context_frame_t;
 
 typedef struct {
     const char* name;
     size_t state_bytes;
     raster_attachment_t (*attachment)(void* state);
-    /* Optional. After the frame's draw, and after each draw it asks for:
-     * true to draw the same instances again through `out`, the frame's
-     * stats kept from the first. With `listed` set it has filled the
-     * raster's census list with the clusters to draw; otherwise every
-     * cluster is drawn. */
-    bool (*second_view)(void* state, const raster_t* raster, render_view_t* out, bool* listed);
+    /* Optional. After each draw: true to draw the same instances again
+     * through `out`, from `observer` when not NULL, else its own pose; the
+     * stats stay the first draw's. `listed` set: it filled the census list
+     * with the clusters to draw; otherwise all are drawn. */
+    bool (*second_view)(void* state, const raster_t* raster, const transformf_t* observer, render_view_t* out,
+                        bool* listed);
     /* Optional. Over the composed picture, `width` by `height`, with draw/. */
     void (*overlay)(void* state, int width, int height);
-    /* Optional. Before each draw, room in the state for `instances`; false
-     * detaches the view, logged, and the frame draws shaded. */
-    bool (*reserve)(void* state, int instances);
-    /* Optional. Frees what reserve took, before the state is freed. */
-    void (*release)(void* state);
-#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-    void (*checkpoint)(checkpoint_t* saved, void* state);
-#endif
 } render_debug_view_t;
 
 #define RENDER_DEBUG_VIEW_UNKNOWN -2
 #define RENDER_DEBUG_VIEW_SHADED  0
-#define RENDER_DEBUG_VIEW_COUNT   8 /* table rows; views run 0 to this */
+#define RENDER_DEBUG_VIEW_COUNT   7 /* table rows; views run 0 to this */
 
 typedef struct {
     raster_split_t split;
-    raster_t raster; /* keeps its upscale maps from frame to frame */
+    r3d_lod_steer_t steer; /* the pick's tolerance within lod.triangle_budget */
+    raster_t raster;       /* keeps its upscale maps from frame to frame */
     void* scratch;
     size_t scratch_bytes;
     memory_take_fn take; /* where the scratch comes from; NULL is the heap */
     int scale_percent;
+    render_settings_t settings; /* the caller's own; the raster reads them through `raster.settings` */
 
     enum { RENDER_FIXED, RENDER_STEPPED, RENDER_PREDICTED } policy;
 
@@ -95,7 +96,6 @@ typedef struct {
     int64_t chose_at_us; /* when the predictor last chose; 0 before its first choice */
     int debug_view;      /* zero is shaded; table rows start at one */
     void* debug_view_state;
-    int refused_view; /* a view whose reserve failed, not asked for again until another is */
     raster_attachment_t debug_view_attachment;
     const raster_attachment_t* debug_view_attached[1];
     render_context_frame_t frame;
@@ -105,6 +105,7 @@ typedef struct {
      * `framegen`. */
     bool generating;
     bool kept;
+    bool batches_set;     /* render_context_set_batches() since the last draw; else the next draws none */
     int32_t generated_us; /* the last generated frame's warp, fill and compose; 0 before one */
     int32_t drawn_us;     /* the last drawn frame's draw and compose; 0 before one */
     int drawn_in_row;     /* drawn frames since the last generated one */
@@ -112,11 +113,37 @@ typedef struct {
     int32_t shown_us;     /* the caller's budget per shown frame; the ladder's is per drawn frame */
     render_view_t kept_view;
     framegen_target_t framegen;
+    render_partial_t partial; /* render/partial: rows redrawn on a still camera */
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+    /* Whether the last frame's debug view drew a second view, and from where. */
+    bool observed;
+    transformf_t observed_from;
+    /* A checkpoint holds the bytes before `observing` only. What
+     * render_context_set_observer() was given is input, like the view pick. */
+    bool observing;
+    transformf_t observer;
+    /* The debug view's second draw's view: here, not on the draw's stack. */
+    render_view_t second;
+#endif
 } render_context_t;
+
+/* A context before any setting: what render_context_release() returns to. A
+ * zeroed one draws with every setting off. */
+#define RENDER_CONTEXT_DEFAULT                                                                                         \
+    ((render_context_t){.scale_percent = RENDER_CONTEXT_DEFAULT_SCALE_PERCENT,                                         \
+                        .settings = RENDER_SETTINGS_DEFAULT,                                                           \
+                        .frame = {.step = -1}})
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 void render_context_checkpoint_capture(checkpoint_t* saved, render_context_t* context);
 bool render_context_checkpoint_prepare(checkpoint_t* saved, render_context_t* context);
+
+/* A pose the debug view's second draw is seen from, or NULL for the view's
+ * own. Not carried state: a checkpoint neither holds nor restores it. */
+void render_context_set_observer(render_context_t* context, const transformf_t* pose);
+/* The pose the last frame's second draw was seen from: the observer when one
+ * is set, else the view's own to rounding. False when the view drew none. */
+bool render_context_observer_pose(const render_context_t* context, transformf_t* out);
 #endif
 
 /* The engine's own context, the one the scene manager draws through. */
@@ -148,6 +175,15 @@ void render_context_set_scale(render_context_t* context, int percent);
  * view, a camera cut or a new viewport draws the next frame. */
 void render_context_set_frame_generation(render_context_t* context, bool on);
 
+/* Partial redraw (render/partial, on with render_settings_t.partial_redraw):
+ * the next frame's changed boxes, world units, each where an object was and
+ * is now; a negative count changes everything. Each frame sets them anew. */
+void render_context_set_changed(render_context_t* context, const box3f_t* boxes, int count);
+
+/* The next draw's `count` batches, drawn after its instances; a draw with
+ * none set draws none. */
+void render_context_set_batches(render_context_t* context, const r3d_batch_draw_t* batches, int count);
+
 /* Opts in: each frame draws at a step of `config` to hold its budget, chosen
  * by the stepped controller, or by the predictor when `model` is not NULL.
  * NULL `config` returns to the fixed scale. */
@@ -171,6 +207,13 @@ void render_context_print_debug_views(FILE* out);
 bool render_context_draw(render_context_t* context, const r3d_instance_t* instances, int count,
                          const render_view_t* view, uint16_t clear);
 
+/* What the next frame draws with; the context keeps its own copy, and
+ * RENDER_SETTINGS_DEFAULT until set. A development override goes on top of
+ * them in the draw (raster_settings()), never into them, so
+ * render_context_settings() returns them as set. */
+void render_context_set_settings(render_context_t* context, const render_settings_t* settings);
+const render_settings_t* render_context_settings(const render_context_t* context);
+
 /* How a kept-width upscale fills its rows; UPSCALE_FILTER_NEAREST until set. */
 void render_context_set_upscale_filter(render_context_t* context, upscale_filter_t filter);
 upscale_filter_t render_context_upscale_filter(const render_context_t* context);
@@ -178,10 +221,17 @@ upscale_filter_t render_context_upscale_filter(const render_context_t* context);
 /* With `half`, expands a compatible draw into the half picture and
  * returns true, marking `half_seams` (when not NULL) through the upscale
  * filter; otherwise upscales into `destination` at the view's destination
- * size. Either path feeds its cost to dynamic resolution. */
+ * size. Either path feeds its cost to dynamic resolution. A NULL
+ * `destination` (no framebuffer) composes nothing, and the next compose
+ * writes every row. */
 bool render_context_compose(render_context_t* context, uint16_t* destination, uint16_t* half, uint8_t* half_seams);
 
 render_context_frame_t render_context_frame(const render_context_t* context);
+
+/* The destination rows [rows_first, rows_end) the last compose rewrote, as in
+ * render_context_frame(), without copying the whole frame onto a deep stack. */
+int render_context_rows_first(const render_context_t* context);
+int render_context_rows_end(const render_context_t* context);
 
 /* Whether the debug view draws lines over the composed picture: a caller
  * then composes at full size, not into a half picture. */

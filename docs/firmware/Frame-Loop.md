@@ -30,7 +30,7 @@ uses swipes or a short PWR press for itself keeps them.
 | one pass of the loop, with and without `update()` | [Building-an-App.md](Building-an-App.md#one-pass-of-the-frame-loop) |
 | the split present: with `app_t.update`, the previous frame is sent on core 1 while `update()` runs on core 0 | [Gfx: who runs the present](../gfx/Present.md#present-who-runs-it) |
 | drawing a mesh with `raster_draw()` from `update()`, on both cores | [Mesh-Rendering.md](../render/Mesh-Rendering.md#on-both-cores) |
-| an app with an active scene camera | [Scene-Manager.md](../render/scene/Scene-Manager.md#each-frame) |
+| an app with an active scene camera | [Scene-Frame.md](../render/scene/Scene-Frame.md#each-frame) |
 
 While a scene camera is active the shell draws it in the same overlap window and
 upscales it into the framebuffer before `frame()`, with or without an `update()`.
@@ -78,6 +78,7 @@ phase over all of them, lowest `order` first, and skips a NULL callback.
 | `update(dt_ms)` | after the app's `update()`, while the last frame is still being sent; touches no framebuffer |
 | `compose(dt_ms)` | once the send is done, before the app's `frame()` draws over it |
 | `poll(dt_ms)` | every running-app pass, including priming, immediately before `frame()`; advances pending work and delivers completions |
+| `app_enter(pack)` | right before the app's `enter()`, with its mounted `app_t.pack` or NULL; `shell/render_system.c` sets the main render context's settings from it |
 | `app_exit()` | right after the app's `exit()` |
 | `overlaps_present()` | a query, not a phase: true makes the app's frame present a pass late, so `update` has a send to overlap |
 

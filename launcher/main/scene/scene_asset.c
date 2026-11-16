@@ -22,7 +22,8 @@ _Static_assert(sizeof(scene_asset_name_t) == SCENE_ASSET_NAME_SIZE
 _Static_assert(sizeof(scene_asset_transform_t) == 48 && sizeof(scene_asset_renderer_t) == 36
                    && sizeof(scene_asset_camera_t) == 16 && sizeof(scene_asset_light_t) == 20
                    && sizeof(scene_asset_skinned_renderer_t) == 100 && sizeof(scene_asset_animator_t) == 12
-                   && sizeof(scene_asset_settings_t) == 20,
+                   && sizeof(scene_asset_settings_t) == 20 && sizeof(scene_asset_batch_t) == 12
+                   && sizeof(r3d_copy_chunk_t) == 16 && sizeof(r3d_copy_place_t) == 8 && sizeof(r3d_copy_turn_t) == 8,
                "SCNE mapped row layouts");
 _Static_assert(SCENE_ASSET_AT_COUNTS == sizeof(uint16_t)
                    && SCENE_ASSET_AT_OFFSETS
@@ -137,6 +138,45 @@ settings_fit(const scene_asset_t* scene, const void* row) {
            && nonnegative(settings->tonemap_white);
 }
 
+static bool
+batch_fits(const scene_asset_t* scene, const void* row) {
+    const scene_asset_batch_t* b = row;
+    return b->renderer < scene->renderer_count && b->copy_count > 0;
+}
+
+static bool
+chunk_fits(const void* row) {
+    const r3d_copy_chunk_t* c = row;
+    return isfinite(c->centre.x) && isfinite(c->centre.y) && isfinite(c->centre.z) && nonnegative(c->reach);
+}
+
+static bool
+turn_fits(const void* row) {
+    const r3d_copy_turn_t* t = row;
+    return t->largest < 4U;
+}
+
+/* Batches take the copies and chunks in turn, every one, and a renderer at most once. */
+static bool
+batches_cover(const scene_asset_t* scene) {
+    uint32_t copies = 0;
+    uint32_t chunks = 0;
+    for (int i = 0; i < scene->batch_count; i++) {
+        const scene_asset_batch_t* b = &scene->batches[i];
+        if (b->first_copy != copies || b->first_chunk != chunks) {
+            return false;
+        }
+        for (int j = 0; j < i; j++) {
+            if (scene->batches[j].renderer == b->renderer) {
+                return false;
+            }
+        }
+        copies += b->copy_count;
+        chunks += (uint32_t)r3d_batch_chunks(b->copy_count);
+    }
+    return copies == scene->copy_count && chunks == scene->chunk_count;
+}
+
 typedef struct {
     size_t stride, view, count;
 } part_layout_t;
@@ -154,7 +194,11 @@ static const part_layout_t LAYOUT[SCENE_ASSET_PART_COUNT] = {
     PART_LAYOUT(animators, animator_count),
     PART_LAYOUT(clips, clip_count),
     {sizeof(scene_asset_settings_t), offsetof(scene_asset_t, settings), SIZE_MAX},
-    PART_LAYOUT(parents, entity_count)};
+    PART_LAYOUT(parents, entity_count),
+    PART_LAYOUT(batches, batch_count),
+    PART_LAYOUT(chunks, chunk_count),
+    PART_LAYOUT(places, copy_count),
+    {sizeof(r3d_copy_turn_t), offsetof(scene_asset_t, turns), offsetof(scene_asset_t, copy_count)}};
 
 static bool
 row_fits(const scene_asset_t* scene, int part, const void* row) {
@@ -169,6 +213,10 @@ row_fits(const scene_asset_t* scene, int part, const void* row) {
         case SCENE_ASSET_ANIMATORS: return animator_fits(scene, row);
         case SCENE_ASSET_SETTINGS: return settings_fit(scene, row);
         case SCENE_ASSET_PARENTS: return parent_fits(scene, row);
+        case SCENE_ASSET_BATCHES: return batch_fits(scene, row);
+        case SCENE_ASSET_CHUNKS: return chunk_fits(row);
+        case SCENE_ASSET_PLACES: return true;
+        case SCENE_ASSET_TURNS: return turn_fits(row);
         default: return false;
     }
 }
@@ -223,8 +271,8 @@ scene_asset_open(asset_view_t entry, scene_asset_t* out) {
     }
     const uint16_t entities = count(entry, SCENE_ASSET_NAMES);
     if (count(entry, SCENE_ASSET_TRANSFORMS) != entities || count(entry, SCENE_ASSET_PARENTS) != entities
-        || entities == SCENE_ENTITY_NONE || count(entry, SCENE_ASSET_SETTINGS) != 1
-        || !asset_entry_zero(entry, AT_HEADER_PAD, SCENE_ASSET_AT_OFFSETS)) {
+        || count(entry, SCENE_ASSET_TURNS) != count(entry, SCENE_ASSET_PLACES) || entities == SCENE_ROW_NONE
+        || count(entry, SCENE_ASSET_SETTINGS) != 1 || !asset_entry_zero(entry, AT_HEADER_PAD, SCENE_ASSET_AT_OFFSETS)) {
         return ASSET_ERR_FORMAT;
     }
     scene_asset_t scene = {0};
@@ -244,7 +292,10 @@ scene_asset_open(asset_view_t entry, scene_asset_t* out) {
     if (!parents_pad_zero(entry, &scene) || scene.renderer_count + scene.skinned_renderer_count > UINT16_MAX) {
         return ASSET_ERR_FORMAT;
     }
-    const asset_status_t checked = check_rows(&scene);
+    asset_status_t checked = check_rows(&scene);
+    if (checked == ASSET_OK && !batches_cover(&scene)) {
+        checked = ASSET_ERR_FORMAT;
+    }
     if (checked == ASSET_OK) {
         *out = scene;
     }

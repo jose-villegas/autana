@@ -42,6 +42,12 @@ BAKES_WORKFLOW = "bakes-gpu.yml"
 DOC_IMAGES_WORKFLOW = "doc-images-gpu.yml"
 GPU_WORKFLOWS = (BAKES_WORKFLOW, DOC_IMAGES_WORKFLOW)
 GPU_STAGE_HANG_SECONDS = {DOC_IMAGES_WORKFLOW: 14 * 60 * 60, BAKES_WORKFLOW: 4 * 60 * 60}
+# Doc images reserve WSL_MEMORY_REQUIRED_BYTES and render for hours: they wait for the boards and hold heavy.
+# A fit is one GPU-bound process: it runs beside builds and board jobs, on its CPU share.
+QUIET_HOST_WORKFLOWS = (DOC_IMAGES_WORKFLOW,)
+# A stage beside board work runs on the top 1/SHARED_CPU_DIVISOR of the host's CPUs; builds and board
+# tooling keep the rest.
+SHARED_CPU_DIVISOR = 2
 NIGHT_STEP_HANG_SECONDS = 23 * 60 * 60
 GPU_PENDING_STATUSES = ("queued", "waiting", "in_progress")
 DEFERRED = "GPU doc images deferred: bakes queued or running"
@@ -147,6 +153,16 @@ def wait_idle(busy, clock, idle_polls=1):
         clock.sleep(QUEUE_POLL_SECONDS)
 
 
+def quiet_host(workflow):
+    return workflow in QUIET_HOST_WORKFLOWS
+
+
+def cpu_share(cpus):
+    """The CPUs a stage beside board work runs on: the highest-numbered 1/SHARED_CPU_DIVISOR, at least one."""
+    cpus = sorted(cpus)
+    return set(cpus[len(cpus) - max(1, len(cpus) // SHARED_CPU_DIVISOR):])
+
+
 def gpu_ready(clock=None, board_held=None):
     clock = clock or Clock()
     if board_held is None:
@@ -185,12 +201,17 @@ def main():
             print(DEFERRED)
             summarize(DEFERRED)
             return EXIT_DEFERRED
-        gpu_ready(clock)
+        if quiet_host(workflow):
+            gpu_ready(clock)
         return 0
     command = args.command[1:] if args.command[:1] == ["--"] else args.command
     if not command:
         parser.error("start needs -- <command...>")
     output({"rendered": True})
+    if not quiet_host(workflow):
+        share = cpu_share(os.sched_getaffinity(0))
+        os.sched_setaffinity(0, share)
+        print(f"beside board work on CPUs {','.join(map(str, sorted(share)))}", flush=True)
     started, code = clock.now(), EXIT_HUNG
     process = None
     try:

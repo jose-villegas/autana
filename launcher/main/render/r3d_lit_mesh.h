@@ -19,6 +19,7 @@
 #include "math/geometry/box3f.h"
 #include "math/geometry/box3s.h"
 #include "math/geometry/spheref.h"
+#include "math/geometry/spheres.h"
 #include "math/linear/mat4f.h"
 
 typedef struct {
@@ -32,11 +33,12 @@ typedef struct {
  * children, at most its MAX_DEPTH levels below the root. */
 #define R3D_LIT_NODE_CHILDREN_MAX 8
 #define R3D_LIT_TREE_DEPTH_MAX    10
-/* What a depth-first walk of the tree holds pending at most: each level's
- * unvisited siblings, with room to spare. */
+/* What a depth-first walk of a tree within R3D_LIT_TREE_DEPTH_MAX holds
+ * pending at most: each level's unvisited siblings, and the node in hand. */
+#define R3D_LIT_WALK_DEEPEST      ((R3D_LIT_TREE_DEPTH_MAX * (R3D_LIT_NODE_CHILDREN_MAX - 1)) + 1)
+/* A walk's stack, with room to spare. */
 #define R3D_LIT_WALK_STACK_MAX    256
-_Static_assert((R3D_LIT_TREE_DEPTH_MAX * (R3D_LIT_NODE_CHILDREN_MAX - 1)) + 1 <= R3D_LIT_WALK_STACK_MAX,
-               "a deepest walk fits its stack");
+_Static_assert(R3D_LIT_WALK_DEEPEST <= R3D_LIT_WALK_STACK_MAX, "a deepest walk fits its stack");
 
 typedef struct {
     box3s_t bounds; /* bounds of everything below, position ticks */
@@ -44,6 +46,32 @@ typedef struct {
     uint8_t count;  /* children, or a leaf's clusters */
     bool leaf;
 } r3d_lit_node_t;
+
+/* Levels of detail (docs/plans/Cluster-LOD.md): a mesh may carry coarser
+ * clusters beside its finest ones, each simplified from a group of finer
+ * clusters with the group's border kept. A group is drawn coarse when its
+ * error, projected, is small enough (render/r3d_lod.h); then its clusters
+ * give way to the ones simplified from it. Both sides of a switch read the
+ * one group record, so neighbours never crack. */
+#define R3D_LOD_NONE           0xFFFFU /* own: a finest cluster; parent: a group never drawn coarse */
+/* Position ticks a parent group's bounds keep beyond those of each group
+ * simplified into it, so float rounding in the pick cannot reorder them. */
+#define R3D_LOD_ENCLOSE_MARGIN 1
+
+typedef struct {
+    uint16_t own;    /* the group simplified into this cluster */
+    uint16_t parent; /* the group this cluster belongs to */
+} r3d_lit_cluster_lod_t;
+
+typedef struct {
+    spheres_t bounds; /* position ticks; holds the bounds of every group simplified into it */
+    uint16_t error;   /* position ticks; at least that of every group simplified into it */
+    /* Triangles drawn fewer when the group turns coarse: those of the
+     * clusters it holds less those simplified from it. A parent's add to
+     * its sources', so a cut's triangles are the finest less the saves of
+     * its coarse groups. */
+    int16_t saves;
+} r3d_lit_lod_group_t;
 
 typedef struct {
     const int16_t (*positions)[3];  /* ticks; position_scale ticks per model unit */
@@ -53,16 +81,42 @@ typedef struct {
     const r3d_lit_node_t* nodes; /* children of a node sit together */
     int vertex_count, triangle_count, cluster_count, node_count;
     int position_scale;
-    const uint16_t* face_colors; /* target-format RGB565, one per triangle, or NULL */
+    const uint16_t* face_colors;              /* target-format RGB565, one per triangle, or NULL */
+    const r3d_lit_cluster_lod_t* cluster_lod; /* one per cluster, or NULL: every cluster is finest */
+    const r3d_lit_lod_group_t* lod_groups;
+    int lod_group_count;
+    /* Position ticks: the least error of any group, which bounds when the
+     * pick can skip a pose (render/lod/r3d_lod.h); 0 never skips. */
+    uint16_t lod_error_least;
+    /* The node the cluster walk starts at: the root's first child when it
+     * holds the finest clusters and its second the coarse ones, in the order
+     * of the group simplified into each; the walk then takes the coarse
+     * clusters of the picked cut from their groups. Else the root, 0
+     * (r3d_lit_mesh_find_levels()). */
+    uint16_t lod_finest_root;
+    uint16_t lod_coarse_first; /* the first coarse cluster, with lod_finest_root set */
+    int lod_finest_triangles;  /* the finest level's, with cluster_lod set */
 } r3d_lit_mesh_t;
 
-/* The asset type of a lit mesh entry. */
-#define R3D_LIT_MESH_ASSET ASSET_TYPE('L', 'M', 'S', 'H')
+/* The asset type of a lit mesh entry, and the bytes of its header. */
+#define R3D_LIT_MESH_ASSET        ASSET_TYPE('L', 'M', 'S', 'H')
+#define R3D_LIT_MESH_HEADER_BYTES 44
 
 /* Fills `mesh` with pointers into `asset`, which must outlive it, after
  * checking every array and every cluster and node range against the entry.
  * On failure `mesh` is zeroed and the status says what was wrong. */
 asset_status_t r3d_lit_mesh_from_asset(const asset_view_t* asset, r3d_lit_mesh_t* mesh);
+
+/* Sets lod_finest_root and lod_coarse_first of a mesh with levels laid out
+ * as the levels bake lays them: the root's two children, the first holding
+ * only finest clusters and the second only coarse ones, and the coarse
+ * clusters after the finest in the order of the group simplified into each.
+ * Any other layout sets both 0, and the walk covers the whole tree. Also
+ * sets lod_finest_triangles. */
+void r3d_lit_mesh_find_levels(r3d_lit_mesh_t* mesh);
+
+/* A failed sibling clears only the levels; the geometry remains loaded. */
+asset_status_t r3d_lit_mesh_levels_from_asset(const asset_view_t* levels, r3d_lit_mesh_t* mesh);
 
 /* The same for the lit mesh entry named `id` in `pack`. */
 asset_status_t r3d_lit_mesh_open(const asset_pack_t* pack, const char* id, r3d_lit_mesh_t* mesh);
@@ -92,3 +146,6 @@ spheref_t r3d_lit_mesh_bounding_sphere(const r3d_lit_mesh_t* mesh);
 /* The box of the root node's bounds carried through `model` (NULL: as it is),
  * in world units: it holds every vertex where the instance sits. */
 box3f_t r3d_lit_mesh_world_bounds(const r3d_lit_mesh_t* mesh, const mat4f_t* model);
+
+/* The box that holds `box` carried through `model` (NULL: as it is). */
+box3f_t r3d_box_placed(box3f_t box, const mat4f_t* model);

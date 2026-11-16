@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Cached bakes: the content a pack needs, named by a digest of what makes them.
 
-    python launcher/tools/bake/bake.py list [PATH ...] [--missing] [--kind mesh|fit|sound]
+    python launcher/tools/bake/bake.py list [PATH ...] [--missing] [--kind mesh|fit|levels|sound]
     python launcher/tools/bake/bake.py bake [PATH ...] [--kind KIND] [--only OUTPUT ...] [--again] [--out DIR]
                                             [--from-run N ...]
     python launcher/tools/bake/bake.py lock [PATH ...] [--from-run N ... | --seed] [--cache DIR]
@@ -23,10 +23,10 @@ define their own way. LOCK's `mesh_cpu_vendor` names the vendor its meshes
 were made on; a run records its host's, and `lock --from-run` refuses a run
 whose meshes were made on another, as `bake --out` does on such a host.
 
-A fit's start is a mesh bake of its own (`<entry>.start.mesh`, locked and published, held by no pack).
-The fit's key names the start's locked bytes, so it is unknown until the start is locked: `list` says the
-fit waits for its start, and the Bakes GPU run fits only once the start's row is committed. A fit's
-references are keyed on what they read (reference_set.ReferenceInputs), not on the start.
+A fitted renderer has a CPU start (`<entry>.start.bundle`), a GPU fit without rest levels
+(`<entry>.fit.bundle`) and CPU levels (`<entry>.bundle`). Each later key names its input's locked
+bytes; only the final bundle enters a pack. The fit's references are keyed on what they read
+(reference_set.ReferenceInputs), not on the start.
 
 `list` prints every bake with its key, or with `--missing` those LOCK lacks. `bake` makes each bake LOCK has no
 row for into the cache (produce.py), and with `--out` also copies each one there as it is made, the folder a CI
@@ -93,17 +93,19 @@ from http_get import get
 
 from build import packages  # noqa: E402
 from build.c_header import read_define  # noqa: E402
+from bake import code_units  # noqa: E402
 from c_lexer import c_code  # noqa: E402
+from r3d.mesh_bundle import SUFFIX as BUNDLE_SUFFIX
 from r3d.import_settings import BLEND_SUFFIX, SettingsError, content_checksum, source_digest  # noqa: E402
 
 LOCK = REPO / "launcher" / "bakes.lock"
 RELEASE_TAG = "bakes"
 RELEASE_URL = f"https://github.com/jose-villegas/autana/releases/download/{RELEASE_TAG}/"
 API_URL = "https://api.github.com/repos/jose-villegas/autana"
-MESH_SUFFIX = ".mesh"
 # A fit's start, the mesh its fit begins from.
 START_MARKER = ".start"
-START_SUFFIX = START_MARKER + MESH_SUFFIX
+START_SUFFIX = START_MARKER + BUNDLE_SUFFIX
+FIT_MARKER = ".fit"
 DOWNLOAD_TIMEOUT_S = 60
 # A rename into the cache another process holds open is retried this often, waiting a growing step.
 PLACE_ATTEMPTS = 8
@@ -119,21 +121,28 @@ CPUINFO = pathlib.Path("/proc/cpuinfo")
 NVIDIA_SMI_NAME = ("nvidia-smi", "--query-gpu=name", "--format=csv,noheader")
 GPU_QUERY_TIMEOUT_S = 10
 # Each stage's entry scripts. Its code is their import closure (see stage_files), the C and the
-# submodules its files compile, and the requirements beside them.
+# submodules its files compile, and the requirements beside them. An entry named `file.py:function` keys only
+# the code that function and the closure's import-time statements reach (see stage_units).
 STAGES = {
     "poses": ("anim/track_host.py",),
     "mesh": ("r3d/mesh_import.py",),
-    "reference": ("r3d/reference_render.py", "r3d/reference_set.py"),
+    "reference": ("r3d/reference_set.py:prepare_references", "r3d/reference_set.py:reference_inputs",
+                  "r3d/reference_set.py:canonical", "r3d/reference_render.py:render_sets"),
     "fit": ("r3d/fit/stage.py", "r3d/appearance_simplify.py"),
+    "levels": ("r3d/lod/levels_stage.py",),
     "blend": ("gltf/blend_skin_to_glb.py",),
     "sound": ("audio/sound_import.py",),
 }
 BLEND_EXPORT = "gltf/blend_skin_to_glb.py"
 GLB_SUFFIX = ".glb"
 # The order kinds are made in: a mesh reads the export of its .blend.
-KINDS = ("blend", "mesh", "fit", "sound")
+KINDS = ("blend", "mesh", "fit", "levels", "sound")
 SOUND_SUFFIX = ".sond"
-ENTRIES = {(TOOLS / entry).resolve() for entries in STAGES.values() for entry in entries}
+def entry_file(entry):
+    return (TOOLS / entry.partition(":")[0]).resolve()
+
+
+ENTRIES = {entry_file(entry) for entries in STAGES.values() for entry in entries}
 REQUIREMENTS_NAME = "requirements.txt"
 REQUIREMENTS_GLOB = "requirements*.txt"
 C_SUFFIXES = (".c", ".cc", ".cpp", ".h", ".hpp")
@@ -156,7 +165,7 @@ class BakeUnlocked(BakeMissing):
 
 @dataclasses.dataclass(frozen=True)
 class Bake:
-    output: str            # the file it makes: "<id>.mesh"
+    output: str            # the file it makes: "<id>.bundle"
     source: pathlib.Path   # the file that asks for it
     holder: str            # the scene object, or the import variant, it is made for
     kind: str              # one of KINDS
@@ -331,9 +340,9 @@ def string_statement_spans(tree):
             and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str)]
 
 
-def code_tokens(path):
-    """A file's tokens without comments, docstrings, blank lines, layout or import plumbing: the same
-    on every Python from 3.12, and wherever the file lives."""
+def line_tokens(path):
+    """(line, kind, text) of a file's tokens that carry code: no comments, docstrings, blank lines or import
+    plumbing."""
     tree = module_facts(path)[0]
     skipped = plumbing_lines(tree)
     strings = string_statement_spans(tree)
@@ -345,9 +354,21 @@ def code_tokens(path):
                 continue
             if any(start <= token.start < end for start, end in strings):
                 continue
-            if kind == "NEWLINE" and (not kept or kept[-1][0] in SHAPE_TOKENS):
-                continue
-            kept.append([kind, "" if kind in SHAPE_TOKENS else token.string])
+            kept.append((token.start[0], kind, "" if kind in SHAPE_TOKENS else token.string))
+    return tuple(kept)
+
+
+def code_tokens(path, lines=None, skip=(), tokens=None):
+    """A file's tokens, or those of lines `lines` (first, last) outside the `skip` spans, without comments,
+    docstrings, blank lines, layout or import plumbing: the same on every Python from 3.12, and wherever the
+    file lives. `tokens` is the file's line_tokens when the caller has them."""
+    kept = []
+    for line, kind, text in tokens or line_tokens(path):
+        if lines is not None and not (lines[0] <= line <= lines[1] and not any(a <= line <= b for a, b in skip)):
+            continue
+        if kind == "NEWLINE" and (not kept or kept[-1][0] in SHAPE_TOKENS):
+            continue
+        kept.append([kind, text])
     return kept
 
 
@@ -363,9 +384,24 @@ def c_content(path):
 def stage_files(stage):
     """The files whose code makes `stage`'s output: its entries' closure, stopping at another stage's
     entry script, whose key or output the stage already names."""
-    own = {(TOOLS / entry).resolve() for entry in STAGES[stage]}
-    stop = {(TOOLS / entry).resolve() for entries in STAGES.values() for entry in entries} - own
-    return closure(STAGES[stage], stop)
+    own = {entry_file(entry) for entry in STAGES[stage]}
+    return closure(sorted({str(path.relative_to(TOOLS)) for path in own}), ENTRIES - own)
+
+
+@functools.cache
+def stage_units(stage):
+    """The units (code_units.Unit) of `stage`'s files its entry functions reach, and the names the walk could
+    not place (each counts its whole module)."""
+    paths = stage_files(stage)
+    roots = [TOOLS, *dict.fromkeys(directory for path in paths for directory in module_facts(path)[2])]
+
+    def find(path, name, level):
+        package = ".".join(path.relative_to(TOOLS).parts[:-1]) if path.is_relative_to(TOOLS) else ""
+        return module_file(name, package, level, roots)
+
+    walk = code_units.Walk(paths, find)
+    entries = [(entry_file(entry), entry.partition(":")[2]) for entry in STAGES[stage]]
+    return walk.units(entries), walk.unresolved
 
 
 def c_includes(sources, include_dirs):
@@ -408,7 +444,7 @@ def native_inputs(files):
         tree, constants, _ = module_facts(path)
         headers = set()
         for node in ast.walk(tree):
-            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "read_define":
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in ("read_define", "checked_struct"):
                 try:
                     header = pathlib.Path(eval(compile(ast.Expression(node.args[0]), str(path), "eval"),
                                                {"__builtins__": {}}, constants)).resolve()
@@ -478,6 +514,16 @@ def pinned_requirements(paths):
     return tuple(sorted(pins))
 
 
+def units_digests(units):
+    """A digest per file of its units' tokens in file order, so moving one statement past another counts."""
+    files, read = {}, {}
+    for unit in units:
+        if unit.path not in read:
+            read[unit.path] = line_tokens(unit.path)
+        files.setdefault(unit.path, []).extend(code_tokens(unit.path, *unit.lines, read[unit.path]))
+    return [digest(tokens) for tokens in files.values() if tokens]
+
+
 @functools.cache
 def tool_digest(stage):
     """The code of a stage by content alone: its files' tokens and the C they compile as a sorted list of
@@ -486,7 +532,10 @@ def tool_digest(stage):
     paths = stage_files(stage)
     native = native_inputs(paths)
     pinned = {path: commit for path, commit in native.items() if (REPO / path).resolve() in submodules()}
-    contents = [digest(code_tokens(path)) for path in paths]
+    if all(":" in entry for entry in STAGES[stage]):
+        contents = units_digests(stage_units(stage)[0])
+    else:
+        contents = [digest(code_tokens(path)) for path in paths]
     contents += [value for path, value in native.items() if path not in pinned]
     return digest([sorted(contents), pinned, [list(pin) for pin in requirement_pins(stage)]])
 
@@ -570,8 +619,7 @@ def mesh_recipe(job, scene, tools, poses=None, unavailable=None):
     settings, sources = import_recipe(job.settings, tools)
     renderer = {name: canonical(value) for name, value in vars(job.renderer).items() if name not in ("settings", "fit")}
     recipe = {"settings": settings, "renderer": renderer, "sources": sources}
-    if job.settings.meshes:
-        recipe["renderer_id"] = job.asset_name
+    recipe["renderer_id"] = job.asset_name
     if job.bake is not None:
         recipe["scene"] = {"lights": canonical(scene.lights), "tonemap_white": scene.tonemap_white,
                            "bake": canonical(job.bake), "indirect": canonical(scene.indirect) if job.bake.indirect else None}
@@ -608,10 +656,9 @@ def reference_recipe(inputs, tools, poses=None, unavailable=None):
 
 
 def stage_keys(job, scene, tools, starts=None, poses=None):
-    """{stage: key} of one job: a mesh alone, or a fit's start, references and fit. The references are keyed
-    on what they read, not on the start, so fits that differ only in their start share them; the fit is
-    keyed on its references and on its start's bytes, which `starts` ({start key: sha256}) gives, and is
-    None while they are unknown. A key is None while a poses digest it needs cannot be had."""
+    """A mesh key or the start, reference, fit and levels keys of a fitted renderer. `starts` maps
+    dependency keys to locked byte digests; each later key waits while its input's bytes are unknown.
+    References name their own inputs, so fits with different starts may share them."""
     poses = Poses({}) if poses is None else poses
     unavailable = set()
     recipe = mesh_recipe(job, scene, tools, poses, unavailable)
@@ -625,7 +672,11 @@ def stage_keys(job, scene, tools, starts=None, poses=None):
         start_sha256 = None if starts is None else starts.get(start)
         fit = None if start_sha256 is None or reference is None else digest(
             ["fit", reference, start_sha256, fit_recipe(job.renderer.fit), tools["fit"]])
-        keys = {"start": start, "start_sha256": start_sha256, "reference": reference, "fit": fit}
+        fit_sha256 = None if starts is None or fit is None else starts.get(fit)
+        levels = None if fit_sha256 is None else digest(
+            ["levels", fit_sha256, start_sha256, (job.settings.lod, job.settings.meshlet_triangles), tools["levels"]])
+        keys = {"start": start, "start_sha256": start_sha256, "reference": reference, "fit": fit,
+                "fit_sha256": fit_sha256, "levels": levels}
     if unavailable:
         keys["reason"] = poses.reason(unavailable)
     return keys
@@ -701,6 +752,13 @@ def bakes_in(packs, jobs, starts=None, poses=None):
                     output=f"{entry}{start_suffix}", source=asker, holder=holder, kind="mesh", key=keys["start"],
                     suffix=suffix, tree=source.with_name(f"{entry}{start_suffix}"), job=job, scene=scene,
                     stages={"mesh": keys["start"], **({"reason": keys["reason"]} if "reason" in keys else {})}, packed=False))
+            if kind == "fit":
+                fitted = Bake(output=f"{entry}{FIT_MARKER}{suffix}", source=asker, holder=holder, kind="fit",
+                              key=keys["fit"], suffix=suffix, tree=source.with_name(f"{entry}{FIT_MARKER}{suffix}"),
+                              job=job, scene=scene, stages=keys, start=start, packed=False)
+                found.append(fitted)
+                start = fitted
+                kind = "levels"
             found.append(Bake(output=f"{entry}{suffix}", source=asker, holder=holder, kind=kind, key=keys[kind],
                               suffix=suffix, tree=source, job=job, scene=scene, stages=keys, start=start))
     return list(exports.values()) + list(fit_starts.values()) + found
@@ -803,7 +861,8 @@ def unlocked(bake):
     if bake.stages and bake.stages.get("reason"):
         return bake.stages["reason"]
     if bake.key is None:
-        return (f"its start {bake.stages['start']} is not locked, so its key, which names the start's bytes, "
+        dependency = "fit" if bake.kind == "levels" else "start"
+        return (f"its {dependency} {bake.stages[dependency]} is not locked, so its key, which names those bytes, "
                 "is not known yet")
     return f"{relative(LOCK)} has no row for this key: its recipe, a source or its tool changed"
 
@@ -812,6 +871,8 @@ def bake_again(bake):
     if bake.stages and bake.stages.get("reason"):
         return ("run bake.py lock on a host with a C compiler (track_host.py builds the device sampler), "
                 "or the CI Bakes check")
+    if bake.key is None and bake.kind == "levels":
+        return "lock its fit first: bake.py lock --from-run N with the Bakes GPU run that made it"
     if bake.key is None:
         return ("lock its start first: bake.py lock --from-run N with the Bakes run that made it, then run the "
                 "Bakes GPU workflow on this branch")
@@ -1233,7 +1294,7 @@ def main(argv=None):
             for bake in found:
                 if (args.missing and bake.key in lock) or args.kind not in (None, bake.kind):
                     continue
-                print(f"{bake.output}\t{bake.kind}\t{bake.key or 'waits for its start'}\t{relative(bake.source)}")
+                print(f"{bake.output}\t{bake.kind}\t{bake.key or ('waits for its fit' if bake.kind == 'levels' else 'waits for its start')}\t{relative(bake.source)}")
         elif args.command == "bake":
             from bake import produce
 
@@ -1278,21 +1339,29 @@ def main(argv=None):
             for kind in KINDS:
                 if args.kind not in (None, kind):
                     continue
-                if kind == "fit" and made_starts:
-                    # A fit's key names its start's bytes: the lock's, else those this run just made.
-                    found = bakes(paths, {**made_starts, **starts}, poses)
+                if kind in ("fit", "levels") and made_starts:
+                    # A fit's key names its start's bytes: the lock's, else those this run just made, which
+                    # also replace a seeded row's carried-over bytes (locked_starts).
+                    found = bakes(paths, locked_starts(lock, made_starts), poses)
                 selected = [bake for bake in found if to_make(bake, kind)]
                 if kind == "mesh":
                     made_rows = _mesh_rows(selected, cache, lock, args.blender, args.again, keep)
-                    made_starts.update({bake.key: row["sha256"] for bake, row in zip(selected, made_rows) if not bake.packed})
+                    made_starts.update({bake.key: row for bake, row in zip(selected, made_rows) if not bake.packed})
                     rows.extend(made_rows)
                 else:
                     for bake in selected:
+                        if bake.key is None and bake.kind == "levels":
+                            # Its fit comes from a GPU run: the CPU run makes the levels once the fit is locked.
+                            print(f"skipped {bake.output}: {unlocked(bake)}")
+                            continue
                         if bake.key is None:
                             raise BakeMissing(describe(bake, unlocked(bake), "bake its start first: bake.py bake --kind mesh"))
-                        rows.append(keep((None if args.again else produce.made(bake.key, cache)) or produce.produce(
+                        row = keep((None if args.again else produce.made(bake.key, cache)) or produce.produce(
                             bake, cache, lock, args.blender,
-                            fresh_references and fresh_references.name)))
+                            fresh_references and fresh_references.name))
+                        rows.append(row)
+                        if not bake.packed:
+                            made_starts[bake.key] = row
             for row in rows:
                 locked = lock.get(row["key"])
                 versus = "" if locked is None else (
