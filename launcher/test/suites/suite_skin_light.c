@@ -592,7 +592,7 @@ flat_vertex_irradiance(const fixture_t* f, int vertex, int mode, const r3d_skin_
         n = light_renormalise(n);
     }
     if (mode == R3D_SKIN_LIGHT_TABLE) {
-        return light_table_sample(n, lights);
+        return r3d_skin_light_table_sample(n, lights);
     }
     vec3f_t sum = lights->ambient;
     for (int i = 0; i < lights->count; i++) {
