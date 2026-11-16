@@ -2,6 +2,7 @@
  * texture whose every mip level is one solid colour, so each pixel's colour
  * names the level its triangle picked; beside it, each pixel's own level
  * from the texels one screen step moves there. Prints both maps as JSON. */
+#include <limits.h>
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -17,6 +18,7 @@ enum {
     SIZE_LOG2 = 6, /* Bistro's street textures: 64 texels a side */
     LEVELS = SIZE_LOG2 - R3D_TEXTURE_SIZE_LOG2_MIN + 1,
     NONE = -1,
+    TEXEL_BITS = CHAR_BIT / R3D_TEXTURE_INDEX4_PER_BYTE,
 };
 
 /* The camera: its height over the floor, focal length in pixels, and the
@@ -49,7 +51,7 @@ put_u32(uint8_t* at, uint32_t v) {
  * i's channels are spread apart so every colour lights to its own RGB565. */
 static uint8_t*
 solid_levels_ltex(size_t* bytes) {
-    const size_t palette_off = R3D_TEXTURE_AT_TEXELS_OFF + 4U;
+    const size_t palette_off = R3D_TEXTURE_AT_TEXELS_OFF + sizeof(uint32_t); /* after the texels offset */
     const size_t texels_off = palette_off + (size_t)R3D_TEXTURE_COLOURS * R3D_TEXTURE_PALETTE_STRIDE;
     size_t texels = 0;
     for (int l = 0; l < LEVELS; l++) {
@@ -76,7 +78,7 @@ solid_levels_ltex(size_t* bytes) {
     uint8_t* at = b + texels_off;
     for (int l = 0; l < LEVELS; l++) {
         const size_t n = r3d_texture_level_bytes(R3D_TEXTURE_INDEX4, SIZE_LOG2 - l);
-        memset(at, (int)(l | (l << 4)), n);
+        memset(at, (int)(l | (l << TEXEL_BITS)), n);
         at += n;
     }
     return b;
