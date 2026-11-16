@@ -19,7 +19,6 @@ static const char* camera_name;
 static char** object_names;
 static int object_count;
 static const char* textured_name; /* the renderer drawn with its textures, or NULL */
-static int shell_quarter;
 static bool generating;
 static recti_t size_rect;
 static camera_present_t present;
@@ -185,14 +184,9 @@ chosen_camera(entity_t scene) {
     return camera_name != NULL ? entity_find(scene, name_hash(camera_name)) : camera_first(scene);
 }
 
-int
-display_quarter_now(void) {
-    return shell_quarter;
-}
-
 static bool
 setup(int quarter) {
-    shell_quarter = quarter;
+    (void)quarter;
     scene_failure_t why;
     entity_t scene = scene_load(scene_id);
     if (scene_state(scene) != PENDING_READY) {

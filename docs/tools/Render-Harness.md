@@ -378,9 +378,9 @@ allocation hooks. `launcher/tools/render/engine_sources.cmake` owns that list, a
 `run_tests.sh` reads it with `cmake -P`.
 
 `scene_target=render_host` selects `autana::render_host`, adding the renderer that
-`launcher/main/renderer_sources.cmake` lists. Its consumer defines `display_quarter_now()`
-from `display/display.h`. `scene_target=scene_provider` adds the scene-file
-provider, `scene_viewer.c`, which defines it.
+`launcher/main/renderer_sources.cmake` lists. `render_host.c` answers `display_quarter_now()`
+(`display/display.h`) with the run's quarter unless the consumer defines its own, so the
+scene-file provider (`scene_target=scene_provider`, `scene_viewer.c`) and the stream provider link together.
 
 A host consumer adds `launcher/tools/render` with `add_subdirectory()` and links
 the chosen target. Its interface sources compile with the consumer's defines;

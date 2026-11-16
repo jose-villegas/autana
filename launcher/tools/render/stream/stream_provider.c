@@ -84,7 +84,6 @@ static struct {
     render_view_t view;
     frame_record_choice_t choice;
     render_settings_t settings;
-    int quarter;
     size_t lod_at, lod_bytes;
 } stream;
 
@@ -1003,14 +1002,9 @@ frame_count(void) {
     return stream.status.frames;
 }
 
-int
-display_quarter_now(void) {
-    return stream.quarter;
-}
-
 static bool
 setup(int quarter) {
-    stream.quarter = quarter;
+    (void)quarter;
     stream.next = 0;
     stream.decoded = -1;
     return !stream.status.refused;
