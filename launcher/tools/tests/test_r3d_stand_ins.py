@@ -66,6 +66,26 @@ def test_organic_regular_is_identical_and_unscored():
     assert rows == [dict(kind='regular', triangles=len(result.tris), error=None, chosen=True)]
 
 
+def test_a_locked_vertex_keeps_a_triangle_when_its_part_would_collapse():
+    from itertools import product
+
+    points = np.array(list(product((-1., 0., 1.), repeat=3)))
+    points = points[np.any(points, axis=1)]
+    points /= np.linalg.norm(points, axis=1, keepdims=True)
+    # A three-triangle fan beside the hull, touching other geometry only at its hub: the hub alone is locked.
+    hub = len(points)
+    fan = np.array([[3, 0, 0], [3.2, 0, 0], [3.14, 0.14, 0], [3, 0.2, 0], [2.86, 0.14, 0]])
+    positions = np.vstack([points, fan])
+    tris = np.vstack([ConvexHull(points).simplices, hub + np.array([[0, 1, 2], [0, 2, 3], [0, 3, 4]])])
+    lock = np.zeros(len(positions), dtype=bool)
+    lock[hub] = True
+    for budget in (4, 16):
+        _p, _c, faces, kept = simplify_with_update(positions, np.full_like(positions, 180.), tris, budget, WEIGHT,
+                                                    PERMISSIVE, vertex_lock=lock)
+        assert hub in kept[faces], budget
+        assert np.array_equal(_p[np.flatnonzero(kept == hub)[0]], positions[hub])
+
+
 def locked_at(data, vertices):
     lock = np.zeros(len(data[0]), dtype=bool)
     lock[vertices] = True

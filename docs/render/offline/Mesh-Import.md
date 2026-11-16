@@ -263,6 +263,9 @@ budgets:
 Weld and lock pin every contact vertex; weld shares one budget with the floor,
 so its pillar ends with fewer triangles than under lock. Free keeps only the
 floor's side pinned, and the pass spends what it frees up the shaft.
+A pinned vertex also keeps a triangle: when every triangle round it would
+collapse among its unpinned corners, the pass pins those corners too and runs
+again, at most `LOCK_ROUNDS` times (`meshopt.py`).
 
 Rigid copies share local simplification and their union of locks. Each copy
 is lit against the full source.
