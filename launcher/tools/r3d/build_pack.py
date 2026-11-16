@@ -250,7 +250,9 @@ def pack_bytes(paths, replace=(), cache=None, offline=False, unlocked=None,
     wanted = {}
     for found in bake.bakes_in(packs, locked):
         if found.packed and found.output.removesuffix(found.suffix) not in replaced:
-            wanted.setdefault(owner[found.tree.resolve()], []).append(found)
+            # A texture bake joins the pack of the mesh it textures.
+            entry = found.start if found.kind == "texture" else found
+            wanted.setdefault(owner[entry.tree.resolve()], []).append(found)
     lock, cache = bake.read_lock(), cache or bake.default_cache()
     fetched, errors = {}, []
     for name in sorted(packs):
@@ -304,6 +306,10 @@ def pack_bytes(paths, replace=(), cache=None, offline=False, unlocked=None,
                                  cache=cache, offline=offline, copies=bundle_copies) for key, source in sorted(sources.items())
                       if source.suffix != mesh_bundle.SUFFIX]
         entry_rows.extend(bundle_rows)
+        for found in wanted.get(name, []):
+            if found.kind == "texture":
+                textured = parse_pack(fetched[found.tree.resolve()].read_bytes())
+                entry_rows.extend((key, kind, data) for key, (kind, data) in textured.items())
         mesh_rows = [(key, original_packs[name][key], data) for key, kind, data in entry_rows
                      if kind == LIT_MESH and key in original_packs[name] and original_packs[name][key].resolve() in jobs]
         additions = skin_pack.entries(mesh_rows, jobs, cache or bake.default_cache(), offline, max_influences)
@@ -405,7 +411,7 @@ def pack_entry(key, source, engine_frame=True, camera_node=None, cache=None, off
         if source.name.endswith(render_asset.SUFFIX):
             return key, render_asset.TYPE, render_asset.bake(source)
         if source.name.endswith(IMAGE):
-            return key, image_asset.TYPE, image_asset.bake(source)
+            return key, *image_asset.bake(source)
         if source.name.endswith(ICONS):
             return key, image_asset.TYPE, icons_asset.bake(source, key)
         if source.name.endswith(SCENE):

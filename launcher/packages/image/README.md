@@ -5,6 +5,7 @@ This header-only package uses math for rectangles; its tests run with testkit.
 
 `image_t` borrows pixels with a format and byte pitch.
 `IMAGE_U16` and `IMAGE_U32` describe raw maps whose meaning belongs to their caller.
+`IMAGE_A8` is one coverage byte a pixel, 0 clear to 255 solid.
 
 `image_format_bits()` gives bit depth; `IMAGE_PITCH()` rounds row bytes up.
 `image_row()` addresses a row; `image_sub()` shares pixels and pitch.
@@ -20,5 +21,6 @@ This header-only package uses math for rectangles; its tests run with testkit.
 | [include/image/palette/palette.h](include/image/palette/palette.h) | palette: named RGB565 entries and lookup through a caller-owned reverse map. |
 | [include/image/pixel/bayer.h](include/image/pixel/bayer.h) | bayer: ordered dithering at absolute pixel coordinates. |
 | [include/image/pixel/rgb565.h](include/image/pixel/rgb565.h) | rgb565: native and high-byte-first RGB565 pixel arithmetic. |
+| [include/image/pixel/rgb565_layout.h](include/image/pixel/rgb565_layout.h) | rgb565_layout: where each channel lies in a native RGB565 pixel. |
 | [include/image/pixel/rgb888.h](include/image/pixel/rgb888.h) | rgb888: interpolation and hue generation for 0xRRGGBB colours. |
 <!-- /generated: package-image-headers -->

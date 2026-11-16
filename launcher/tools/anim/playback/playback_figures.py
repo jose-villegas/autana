@@ -77,9 +77,8 @@ def model_pack(model, clips, directory):
     _, rows, skeleton = skeleton_asset.rig(document, mesh_node)
     entries = [(skeleton, b"SKEL", skeleton_asset.encode(rows))]
     for name in clips:
-        tracks, duration, root = tracks_asset.clip_tracks(document, binary,
-                                                           tracks_asset.find_animation(document, name, model))
-        entries.append((name, b"TRCK", tracks_asset.encode(tracks, duration, root)))
+        clip = tracks_asset.clip_tracks(document, binary, tracks_asset.find_animation(document, name, model))
+        entries.append((name, b"TRCK", tracks_asset.encode(*clip)))
     entries.append((scene_host.SCENE_ID, b"SCNE", scene_host.one_entity_scene()))
     pack = directory / "clips.pack"
     pack.write_bytes(build_pack(entries))
@@ -262,7 +261,7 @@ def main():
     with tempfile.TemporaryDirectory() as work:
         directory = pathlib.Path(work)
         pack, skeleton = model_pack(args.model, args.clips, directory)
-        probe = build_probe(args.cc, PROBE_SOURCES, directory)
+        probe = build_probe(args.cc, PROBE_SOURCES, directory, scene_host.FLAGS)
         runs = {name: play(probe, pack, skeleton, args.clips, wrap, events, PLAYHEAD_END_MS, directory)
                 for name, (wrap, events) in PLAYHEAD_RUNS.items()}
         blend = play(probe, pack, skeleton, args.clips, LOOP, BLEND_SCRIPT, BLEND_END_MS, directory)

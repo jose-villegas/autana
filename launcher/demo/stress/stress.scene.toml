@@ -11,6 +11,26 @@ near_z = 0.5
 background = 0x0B0D12
 path = { animation = "orbit.anim.toml", node = "camera" }
 
+[[objects]]
+name = "culled"
+position = [0.0, 1.0, 10.0]
+
+[objects.camera]
+half_fov_short_tan = 0.5
+near_z = 0.5
+background = 0x0B0D12
+path = { animation = "culled.anim.toml", node = "camera" }
+
+[[objects]]
+name = "near"
+position = [0.0, 1.0, 10.0]
+
+[objects.camera]
+half_fov_short_tan = 0.5
+near_z = 0.5
+background = 0x0B0D12
+path = { animation = "near.anim.toml", node = "camera" }
+
 # The swing's first pose, held: a frame differs from the last only where the mesh moved.
 [[objects]]
 name = "still"

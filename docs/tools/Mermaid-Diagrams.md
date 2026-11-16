@@ -64,11 +64,12 @@ hook entirely; CI is what actually gates a diagram; see below.
 
 ## CI
 
-`.github/workflows/mermaid.yml` installs `@mermaid-js/mermaid-cli`, points
-it at a `--no-sandbox` Puppeteer config (the CI container has no
-unprivileged user namespace for Chrome's own sandbox) via the
-`CHECK_MERMAID_MMDC_ARGS` environment variable, and runs
-`node scripts/gates/check-mermaid.mjs` over the whole repo. Path-filtered to
+`.github/workflows/mermaid.yml` runs `node scripts/gates/check-mermaid.mjs`
+over the whole repo. `.github/actions/mermaid-cli` installs
+`@mermaid-js/mermaid-cli` and points it at a `--no-sandbox` Puppeteer config
+(the CI container has no unprivileged user namespace for Chrome's own
+sandbox) via `CHECK_MERMAID_MMDC_ARGS`; the PR ticket job uses it too for a
+description with a diagram. Path-filtered to
 changes under any `.md` file or the validator itself, unlike this repo's
 other workflows, because installing Chrome is real per-run cost that
 nothing else here can affect.

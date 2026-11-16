@@ -24,11 +24,11 @@
 #include "apps/render_lab/baked_families.h"
 #include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/tests/one_core_draw.h"
-#include "apps/render_lab/tests/r3d_perf_quarters.h"
 #include "asset/asset_store.h"
 #include "core/memory.h"
 #include "core/timing.h"
 #include "gfx/gfx.h"
+#include "lab/test/lab_perf_quarters.h"
 #include "render/r3d_span_internal.h"
 #include "render/raster_internal.h"
 #include "render/view/r3d_pipeline_count.h"
@@ -88,7 +88,7 @@ report_pose(const char* scene, const char* bake, uint32_t t_ms, variant_t varian
     r3d_pipeline_counts_t n = {0};
     r3d_pipeline_count_walk_t* walk = memory_alloc(sizeof(*walk), MEMORY_APP);
     TEST_ASSERT_NOT_NULL(walk);
-    TEST_ASSERT_EQUAL_INT(visible, r3d_pipeline_cull_counted(mesh, lens, NULL, b.culled + 1, walk, &n));
+    TEST_ASSERT_EQUAL_INT(visible, r3d_pipeline_cull_counted(mesh, lens, NULL, NULL, b.culled + 1, walk, &n));
     memory_free(walk);
     r3d_pipeline_transform(mesh, lens, b.culled + 1, visible, b.cs, b.rows, false);
     r3d_pipeline_count_triangles(mesh, lens, b.culled + 1, visible, b.cs, &n, NULL);
@@ -99,11 +99,11 @@ report_pose(const char* scene, const char* bake, uint32_t t_ms, variant_t varian
     ESP_LOGI(TAG,
              "cull_cost: scene=%s bake=%s t_ms=%u variant=%s %dx%d nodes=%d cut=%d tested=%d clusters=%d vertices=%d "
              "submitted=%d behind=%d clipped=%d missed=%d facing_away=%d set_up=%d cull_us=%lld transform_us=%lld "
-             "setup_us=%lld draw_us=%lld" R3D_PERF_QUARTER_FORMAT,
+             "setup_us=%lld draw_us=%lld" LAB_PERF_QUARTER_FORMAT,
              scene, bake, (unsigned)t_ms, variant_names[variant], raster->width, raster->height, n.nodes_visited,
              n.nodes_cut, n.clusters_tested, n.clusters_kept, vertices, n.triangles_submitted, n.triangles_behind,
              n.triangles_clipped, n.triangles_missed, n.triangles_facing_away, n.triangles_set_up, (long long)us.cull,
-             (long long)us.transform, (long long)us.setup, (long long)us.draw, r3d_perf_quarters[0].name);
+             (long long)us.transform, (long long)us.setup, (long long)us.draw, lab_perf_quarters[0].name);
 }
 
 static void
@@ -153,7 +153,7 @@ measure_family(const scene_baked_t* family) {
         (void)animator_seek(camera, ANIMATOR_CURRENT, t_ms);
         const transformf_t pose = transform_world(camera);
         const render_view_t view =
-            lens_view(lens_of, &pose, (viewport_t){size.width, size.height, r3d_perf_quarters[0].quarter});
+            lens_view(lens_of, &pose, (viewport_t){size.width, size.height, lab_perf_quarters[0].quarter});
         r3d_lens_t lens;
         r3d_lens_init(&lens, &view, mesh.position_scale);
         r3d_lens_t mirrored = lens;

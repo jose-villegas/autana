@@ -21,9 +21,18 @@
 #include "input/input.h"
 #include "input/touch/gesture.h"
 
+/* What an app is to the person holding the device, which orders the home
+ * screen: labs, then apps, then the system's own; by name within each. */
+typedef enum {
+    APP_KIND_APP = 0, /* the default an app_t left unset gets */
+    APP_KIND_LAB,     /* a development lab: scenes and probes on the lab shell */
+    APP_KIND_SYSTEM,  /* the device's own, tending the device itself */
+} app_kind_t;
+
 typedef struct app {
     const char* name;
     const char* summary; /* one line, shown in the launcher list */
+    app_kind_t kind;
 
     /* Optional, NULL for none: NAME of the app's NAME.pack.toml. The shell
      * mounts that pack while the app runs and, before enter(), sets the main
@@ -108,7 +117,7 @@ void app_register(app_t* app);
 #define APP_REGISTER(symbol)                                                                                           \
     __attribute__((constructor)) static void symbol##_register(void) { app_register(&symbol); }
 
-/* The head of the registered apps, sorted by name and linked through
+/* The head of the registered apps, in home order (app_kind_t), linked through
  * app_t.next, NULL-terminated; NULL itself when nothing is registered.
  * Valid from the first line of app_main(). */
 const app_t* app_list(void);

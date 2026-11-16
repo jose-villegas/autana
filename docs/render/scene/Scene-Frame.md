@@ -39,8 +39,10 @@ with no destination for upscaling.
 
 `scene_render()` runs the animation and skinning stages
 ([Skeleton-and-Skin.md](../animation/Skeleton-and-Skin.md#runtime)),
-then resolves the hierarchy ([Hierarchy](Scene-Manager.md#hierarchy)), fills `instances[]`
-from the active renderers and draws. The raster's scratch block is the engine's, sized
+then resolves the hierarchy ([Hierarchy](Scene-Manager.md#hierarchy)) of every
+drawn scene, fills one list of instances and batch draws from their active
+renderers and draws. The list is scene memory, grown to the drawn scenes'
+renderers and batches, and dropped when any scene is released. The raster's scratch block is the engine's, sized
 for the largest enabled mesh's working buffers, every enabled instance's
 census slot and the render size. Dynamic resolution reserves the finest
 step's raster block; the census list stays at the same offset across steps.

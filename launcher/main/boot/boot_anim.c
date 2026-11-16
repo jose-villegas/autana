@@ -514,7 +514,7 @@ draw_floor(uint32_t now_ms, uint8_t ink, uint8_t reveal, const boot_anim_view_t*
         .floor = boot_anim_floor_state(now_ms),
         .clip = surface.clip,
         .ink = ink,
-        .stride = bayer_level(reveal) >= BOOT_ANIM_DISSOLVE_COARSE_LEVEL ? 2 : 1,
+        .stride = bayer_level(reveal, UINT8_MAX) >= BOOT_ANIM_DISSOLVE_COARSE_LEVEL ? 2 : 1,
         .drawn = (int)((boot_anim_pen(now_ms) * (int32_t)(BOOT_ANIM_CURVE_POINTS - 1)) >> BOOT_ANIM_Q),
         .colour_pen = boot_anim_colour_progress(now_ms),
         .view = view,

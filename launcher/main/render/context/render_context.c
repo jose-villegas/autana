@@ -9,7 +9,8 @@
 #include "build/build_variant.h"
 #include "core/memory.h"
 #include "core/timing.h"
-#include "core/tune.h"
+#include "profile/frame_cost.h"
+#include "render/record/frame_record.h"
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 #include "render/view/raster_boxes.h"
@@ -165,17 +166,25 @@ void
 render_context_set_scale(render_context_t* c, int percent) {
     assert(percent > 0 && percent <= 100);
     c->scale_percent = percent;
+    c->raster_size = (resolution_step_t){0};
+}
+
+void
+render_context_set_raster_size(render_context_t* c, resolution_step_t size) {
+    assert(size.width > 0 && size.height > 0);
+    c->policy = RENDER_FIXED;
+    c->raster_size = size;
 }
 
 void
 render_context_set_dynamic_resolution(render_context_t* c, const resolution_config_t* config,
                                       const resolution_model_t* model, int first_step) {
+    c->raster_size = (resolution_step_t){0};
     if (config == NULL) {
         c->policy = RENDER_FIXED;
         return;
     }
     c->ladder = *config;
-    c->shown_us = config->budget_us;
     c->chose_at_us = 0;
     c->policy = model == NULL ? RENDER_STEPPED : RENDER_PREDICTED;
     if (c->policy == RENDER_STEPPED) {
@@ -270,9 +279,9 @@ draw_second_view(render_context_t* c) {
         return;
     }
     /* Its own views and clusters: none may steer the frame's core split, and
-     * the hook reads the override the frame drew with. */
-    const tune_entry_t* culling = tune_find(tune_shared(), TUNE_NAME(render, cull));
-    const int32_t culled = *culling->value;
+     * the hook reads the settings the frame drew with. */
+    render_settings_t unculled = c->drawn_settings;
+    unculled.cull = false;
     const transformf_t* observer = c->observing ? &c->observer : NULL;
     render_view_t* second = &c->second;
     bool listed = false;
@@ -285,9 +294,9 @@ draw_second_view(render_context_t* c) {
         if (listed) {
             raster_draw_culled(&c->raster, second);
         } else {
-            (void)tune_set(tune_shared(), TUNE_NAME(render, cull), 0);
+            c->raster.settings = &unculled;
             (void)raster_draw(&c->raster, second);
-            (void)tune_set(tune_shared(), TUNE_NAME(render, cull), culled);
+            c->raster.settings = &c->drawn_settings;
         }
         c->raster.split = &c->split;
         c->raster.picks_levels = true;
@@ -306,25 +315,10 @@ generation_pays(const render_context_t* c) {
     return c->generating && c->generated_us != 0 && (int64_t)c->generated_us * 100 < (int64_t)c->drawn_us * share;
 }
 
-/* The ladder the policies price a drawn frame against. While generation
- * pays, a drawn frame and the frames generated from it share their budgets:
- * the drawn one gets what the generated ones leave, never less than one
- * frame's. */
-static const resolution_config_t*
-policy_config(render_context_t* c) {
-    c->ladder.budget_us = c->shown_us;
-    if (c->paying) {
-        const int32_t shared_us =
-            (FRAMEGEN_SHOWN_PER_DRAWN * c->shown_us) - ((FRAMEGEN_SHOWN_PER_DRAWN - 1) * c->generated_us);
-        c->ladder.budget_us = shared_us > c->shown_us ? shared_us : c->shown_us;
-    }
-    return &c->ladder;
-}
-
 /* Whether this frame can be warped from the kept one: generation on, a drawn
- * frame kept, no debug view, the same viewport, and a target; and it pays
- * (the verdict the drawn frame is then priced by), has not been measured, or
- * is due to be measured again. */
+ * frame kept, no debug view, and the same viewport; and it pays
+ * (the last verdict, kept in `paying`), has not been measured, or is due to
+ * be measured again. */
 static bool
 can_generate(render_context_t* c, const render_view_t* view) {
     const raster_t* r = &c->raster;
@@ -336,23 +330,39 @@ can_generate(render_context_t* c, const render_view_t* view) {
         || a.quarter != b.quarter) {
         return false;
     }
-    if (c->framegen.width != r->width || c->framegen.height != r->height) {
-        framegen_target_free(&c->framegen);
-        return framegen_target_alloc(&c->framegen, r->width, r->height);
-    }
     return true;
 }
 
 /* The kept frame warped to `view` into the framegen target, which compose shows. */
-static void
-generate(render_context_t* c, const render_view_t* view) {
+bool
+render_context_generate(render_context_t* c, const render_view_t* view) {
+    if (!c->kept) {
+        return false;
+    }
+    if (c->framegen.width != c->raster.width || c->framegen.height != c->raster.height) {
+        framegen_target_free(&c->framegen);
+        if (!framegen_target_alloc(&c->framegen, c->raster.width, c->raster.height)) {
+            return false;
+        }
+    }
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+    c->observed = false;
+    c->frame_view = *view;
+#endif
     const int64_t began_us = timing_now_us();
+    FRAME_COST_BEGIN(warped_from);
     framegen_warp(&c->raster, &c->kept_view, view, &c->framegen);
+    FRAME_COST_END(warped_from, FRAMEGEN_STAGE_WARP_NAME);
+    FRAME_COST_BEGIN(filled_from);
     (void)framegen_fill(&c->raster, &c->framegen);
+    FRAME_COST_END(filled_from, FRAMEGEN_STAGE_FILL_NAME);
     c->frame.draw_us = (int32_t)(timing_now_us() - began_us);
     c->frame.generated = true;
+    c->frame.unchanged = false;
+    c->raster.first_row = c->raster.end_row = 0;
     c->kept = false; /* FRAMEGEN_SHOWN_PER_DRAWN: the next frame is drawn */
     c->drawn_in_row = 0;
+    return true;
 }
 
 /* No row changed, but picks are owed (render_partial_picks_owed(), or a
@@ -362,8 +372,9 @@ generate(render_context_t* c, const render_view_t* view) {
 static bool
 census_changed(render_context_t* c, const render_view_t* view) {
     raster_t* r = &c->raster;
-    const bool steering = raster_triangle_budget(r) > 0 && !c->steer.settled;
-    if (!steering && !render_partial_picks_owed(&c->partial, raster_pick_every(r))) {
+    const render_lod_settings_t lod = raster_settings(r).lod;
+    const bool steering = lod.triangle_budget > 0 && !c->steer.settled;
+    if (!steering && !render_partial_picks_owed(&c->partial, lod.pick_every)) {
         return false;
     }
     const float kept_near = raster_depth_near(r);
@@ -419,13 +430,19 @@ aim_raster(render_context_t* c, const r3d_instance_t* instances, int count, cons
     r->split = &c->split;
     r->steer = &c->steer;
     r->picks_levels = true;
-    r->settings = &c->settings;
+    c->drawn_settings = render_settings_tuned(&c->settings);
+    r->settings = &c->drawn_settings;
     r->instances = instances;
     r->instance_count = count;
     r->width = step < 0 ? view->viewport.width * c->scale_percent / 100 : c->ladder.steps[step].width;
     r->height = step < 0 ? view->viewport.height * c->scale_percent / 100 : c->ladder.steps[step].height;
     r->present = view->present;
-    r->height = raster_present_size((resolution_step_t){r->width, r->height}, r->present).height;
+    if (c->raster_size.width > 0) {
+        r->width = c->raster_size.width;
+        r->height = c->raster_size.height;
+    } else {
+        r->height = raster_present_size((resolution_step_t){r->width, r->height}, r->present).height;
+    }
     r->clear = clear;
     r->upscaled = true; /* render_context_compose() names the picture */
     r->destination_width = view->viewport.width;
@@ -437,7 +454,7 @@ aim_raster(render_context_t* c, const r3d_instance_t* instances, int count, cons
 static bool
 draw_fixed(render_context_t* c, const render_view_t* view) {
     raster_t* r = &c->raster;
-    const bool partial = raster_partial_redraw(r);
+    const bool partial = raster_settings(r).partial_redraw;
     if (partial && !draw_partial(c, view)) {
         return false;
     }
@@ -458,8 +475,7 @@ draw_timed(render_context_t* c, const render_view_t* view) {
         c->frame.stats = raster_census(r, view);
         const int32_t elapsed_us = c->chose_at_us == 0 ? 0 : (int32_t)(began_us - c->chose_at_us);
         c->chose_at_us = began_us;
-        const int chosen =
-            resolution_predict_choose(&c->predict, policy_config(c), c->frame.stats.triangles, elapsed_us);
+        const int chosen = resolution_predict_choose(&c->predict, &c->ladder, c->frame.stats.triangles, elapsed_us);
         c->frame.predicted_us = (int32_t)c->predict.chosen_us;
         r->width = c->ladder.steps[chosen].width;
         r->height = raster_present_size(c->ladder.steps[chosen], r->present).height;
@@ -484,18 +500,19 @@ keep_frame(render_context_t* c, const render_view_t* view) {
 bool
 render_context_draw(render_context_t* c, const r3d_instance_t* instances, int count, const render_view_t* view,
                     uint16_t clear) {
-#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-    c->observed = false;
-#endif
     if (!c->batches_set) {
         c->raster.batches = NULL; /* none set for this draw */
         c->raster.batch_count = 0;
     }
     c->batches_set = false;
-    if (can_generate(c, view)) {
-        generate(c, view);
+    if (can_generate(c, view) && render_context_generate(c, view)) {
         return true;
     }
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+    c->observed = false;
+    c->frame_view = *view;
+#endif
+    frame_record_before_draw(c, instances, count);
     begin_draw(c);
     aim_raster(c, instances, count, view, clear);
     fit_scratch(c);
@@ -580,7 +597,8 @@ render_context_compose(render_context_t* c, uint16_t* destination, uint16_t* hal
         c->raster.first_row = 0;
         c->raster.end_row = 0;
     }
-    if (c->policy == RENDER_FIXED && !c->generating) {
+    /* Replay warps with generation disabled, so the recorded frame also selects the compose path. */
+    if (c->policy == RENDER_FIXED && !c->generating && !c->frame.generated) {
         compose_rows(c, size.height);
         if (!c->frame.unchanged) {
             raster_upscale_picture(&c->raster, NULL, destination, seams, size.width, size.height);
@@ -598,15 +616,15 @@ render_context_compose(render_context_t* c, uint16_t* destination, uint16_t* hal
     raster_upscale_picture(&c->raster, picture, destination, seams, size.width, size.height);
     c->frame.upscale_us = (int32_t)(timing_now_us() - began_us);
     if (c->frame.generated) {
-        /* Not priced itself: its cost sets what the next drawn frame may spend. */
+        /* Not priced: its cost only decides whether generation pays. */
         c->generated_us = c->frame.draw_us + c->frame.upscale_us;
         return expanded;
     }
     const int32_t cost_us = c->frame.draw_us + c->frame.upscale_us;
     if (c->policy == RENDER_STEPPED) {
-        (void)resolution_control_update(&c->control, policy_config(c), cost_us);
+        (void)resolution_control_update(&c->control, &c->ladder, cost_us);
     } else if (c->policy == RENDER_PREDICTED) {
-        resolution_predict_measured(&c->predict, policy_config(c), c->frame.stats.triangles, cost_us);
+        resolution_predict_measured(&c->predict, &c->ladder, c->frame.stats.triangles, cost_us);
     }
     c->drawn_us = cost_us; /* after pricing: this frame was drawn as the last one decided */
     return expanded;

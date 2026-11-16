@@ -14,7 +14,6 @@
 #define SKIN_PERF_STAGE_FRAME_DELTA    "frame_delta"
 
 #define SKIN_PERF_BUDGET_NS_PER_VERTEX 1000
-#define SKIN_PERF_NS_PER_US            1000
 #define SKIN_PERF_CORES_ONE            "1"
 #define SKIN_PERF_CORES_TWO            "2"
 #define SKIN_PERF_CORES_UNKNOWN        "unknown"

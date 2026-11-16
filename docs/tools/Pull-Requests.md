@@ -21,7 +21,17 @@ python scripts/pr/pr_body.py check body.md && gh pr create --body-file body.md
 - **Ticket:** `--ticket <id>`, else the first segment of the branch name (`feature/ks4hn-hash` → `ks4hn`) that `bd show` finds. Without either, `new` stops and asks for `--ticket`.
 - **Unfilled parts** stay as HTML comments starting with `fill`, which GitHub renders as nothing; a leftover `block` comment also fails `check`.
 
-`check` fails on a marker left in, on a Ticket line that [`scripts/gates/check-pr-ticket.sh`](../../scripts/gates/check-pr-ticket.sh) rejects, and on a ```` ```mermaid ```` block that [`check-mermaid.mjs`](Mermaid-Diagrams.md) cannot render. The pull request check runs the ticket gate alone.
+`check` fails on what GitHub would show broken:
+
+| Fails on | Found by |
+|---|---|
+| a marker left in | `pr_body.py` |
+| a Ticket line it rejects | [`scripts/gates/check-pr-ticket.sh`](../../scripts/gates/check-pr-ticket.sh) |
+| a code fence that never closes, so the rest shows as code | [`check-math.mjs`](Math-Formulas.md) |
+| a formula GitHub's MathJax cannot render | [`check-math.mjs`](Math-Formulas.md) |
+| a ```` ```mermaid ```` block that does not render | [`check-mermaid.mjs`](Mermaid-Diagrams.md) |
+
+It needs Node and `npm ci --prefix scripts/gates`, and for a diagram `npm ci --prefix scripts/gates/mermaid`; a missing one fails the check. The PR ticket job in `.github/workflows/branch-name.yml` runs `check` on the description as GitHub holds it, again after every edit.
 
 ## Run the pull request's gates locally
 

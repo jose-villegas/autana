@@ -90,6 +90,42 @@ test_channels_blend_independently_green_stays_put(void) {
                                     "green must stay at zero while red and blue move independently");
 }
 
+/* The rounded per-channel blend rgb565be_mix() promises, worked one channel
+ * at a time: an independent reference for its packed two-word form. */
+static unsigned
+reference_channel(unsigned a, unsigned b, unsigned t) {
+    const unsigned full = 255;
+    return ((a * (full - t)) + (b * t) + (full / 2)) / full;
+}
+
+/* Every share and every pair of values in every channel against the
+ * reference: each pair of greens picks its reds (their low five bits) and
+ * blues (the complement), so red and blue meet every pair too, and no carry
+ * between packed channels hides. */
+static void
+test_mix_matches_the_rounded_per_channel_blend_at_every_share(void) {
+    const unsigned g6_values = RGB565_G6_MAX + 1;
+    for (unsigned t = 0; t <= UINT8_MAX; t++) {
+        for (unsigned ga = 0; ga < g6_values; ga++) {
+            for (unsigned gb = 0; gb < g6_values; gb++) {
+                const unsigned r5_max = rgb565_r5(UINT16_MAX);
+                const unsigned ra = ga & r5_max;
+                const unsigned rb = gb & r5_max;
+                const unsigned ba = ~ga & r5_max;
+                const unsigned bb = ~gb & r5_max;
+                const rgb565be_t a = rgb565be_pack((uint8_t)ra, (uint8_t)ga, (uint8_t)ba);
+                const rgb565be_t b = rgb565be_pack((uint8_t)rb, (uint8_t)gb, (uint8_t)bb);
+                const rgb565be_t want =
+                    rgb565be_pack((uint8_t)reference_channel(ra, rb, t), (uint8_t)reference_channel(ga, gb, t),
+                                  (uint8_t)reference_channel(ba, bb, t));
+                if (rgb565be_mix(a, b, (uint8_t)t) != want) {
+                    TEST_FAIL_MESSAGE("rgb565be_mix differs from the rounded per-channel blend");
+                }
+            }
+        }
+    }
+}
+
 /* rgb565be_add */
 
 static void
@@ -208,8 +244,8 @@ test_rgb565_round_trips_through_rgb888(void) {
  * is red 31 in the high byte of native, so high-byte-first order has it low. */
 static void
 test_swap_and_channels_read_hand_packed_rgb565(void) {
-    TEST_ASSERT_EQUAL_HEX16(0xF800u, rgb565_swap(RGB565BE(0xF80000)));
-    TEST_ASSERT_EQUAL_HEX16(0x00F8u, rgb565_swap(0xF800u));
+    TEST_ASSERT_EQUAL_HEX16(RGB565_RED_MASK, rgb565_swap(RGB565BE(0xF80000)));
+    TEST_ASSERT_EQUAL_HEX16(0x00F8u, rgb565_swap(RGB565_RED_MASK));
 
     const uint16_t native = (uint16_t)((19u << 11) | (40u << 5) | 7u);
     TEST_ASSERT_EQUAL_UINT(19, rgb565_r5(native));
@@ -299,6 +335,25 @@ test_lerp_rgb888_truncates_and_keeps_channels_apart(void) {
     TEST_ASSERT_EQUAL_HEX32(0x00FF00u, RGB888_LERP(0x00FF00u, 0x00FF00u, 7, 15));
 }
 
+static void
+test_bayer_level_scales_any_whole_with_half_levels_rounded_down(void) {
+    enum { WHOLE = 128, HALF_STEP = WHOLE / (2 * BAYER4_LEVELS) };
+
+    for (int level = 0; level < BAYER4_LEVELS; level++) {
+        const int tie = ((2 * level) + 1) * HALF_STEP;
+        TEST_ASSERT_EQUAL_INT(level, bayer_level(tie, WHOLE));
+        TEST_ASSERT_EQUAL_INT(level + 1, bayer_level(tie + 1, WHOLE));
+    }
+    TEST_ASSERT_EQUAL_INT(0, bayer_level(0, WHOLE));
+    TEST_ASSERT_EQUAL_INT(BAYER4_LEVELS, bayer_level(WHOLE, WHOLE));
+    TEST_ASSERT_EQUAL_INT(BAYER4_LEVELS, bayer_level(UINT32_MAX, UINT32_MAX));
+    TEST_ASSERT_EQUAL_INT(BAYER4_LEVELS / 2, bayer_level(UINT32_MAX / 2, UINT32_MAX));
+    for (int alpha = 0; alpha <= UINT8_MAX; alpha++) {
+        const int expected = alpha == UINT8_MAX ? BAYER4_LEVELS : (alpha + BAYER4_SIDE * 2) / BAYER4_LEVELS;
+        TEST_ASSERT_EQUAL_INT(expected, bayer_level(alpha, UINT8_MAX));
+    }
+}
+
 /* bayer_level() is the alpha->level scaling bayer_covers()
  * compares against the table, exposed so a caller with a whole row at one
  * alpha can compute it once. Pinning the two at EVERY alpha and cell is
@@ -306,7 +361,7 @@ test_lerp_rgb888_truncates_and_keeps_channels_apart(void) {
 static void
 test_dither_level_agrees_with_covers_at_every_alpha_and_cell(void) {
     for (int a = 0; a <= 255; a++) {
-        const int level = bayer_level((uint8_t)a);
+        const int level = bayer_level((uint8_t)a, UINT8_MAX);
         for (int y = 0; y < 4; y++) {
             for (int x = 0; x < 4; x++) {
                 TEST_ASSERT_EQUAL_MESSAGE(level > bayer4x4[y][x], bayer_covers(x, y, (uint8_t)a),
@@ -427,6 +482,7 @@ run_image_pixel_suite(void) {
     RUN_TEST(test_black_toward_white_at_half_gives_mid_grey);
     RUN_TEST(test_a_known_pair_blends_to_a_known_result);
     RUN_TEST(test_channels_blend_independently_green_stays_put);
+    RUN_TEST(test_mix_matches_the_rounded_per_channel_blend_at_every_share);
     RUN_TEST(test_mixing_toward_black_twice_is_darker_than_once);
     RUN_TEST(test_adding_black_changes_nothing);
     RUN_TEST(test_adding_two_primaries_gives_their_combination);
@@ -443,6 +499,7 @@ run_image_pixel_suite(void) {
     RUN_TEST(test_the_hue_wheel_has_no_seams);
     RUN_TEST(test_the_hue_wheel_runs_red_yellow_green_cyan_blue_magenta);
     RUN_TEST(test_lerp_rgb888_truncates_and_keeps_channels_apart);
+    RUN_TEST(test_bayer_level_scales_any_whole_with_half_levels_rounded_down);
     RUN_TEST(test_dither_level_agrees_with_covers_at_every_alpha_and_cell);
     RUN_TEST(test_alpha_zero_never_covers);
     RUN_TEST(test_alpha_255_always_covers);

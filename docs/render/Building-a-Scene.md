@@ -61,6 +61,17 @@ Add more mesh renderers to place more meshes; give one a `position`, a
 `bake = true` must sit at the identity transform, because it is baked where it
 stands ([Scene-Files.md](scene/Scene-Files.md)); one without it may go anywhere.
 
+A program can move a renderer that is not baked without touching the rest of
+the file. [`scene_edit.py`](../../launcher/tools/scene/scene_edit.py) prints
+every object's placement as JSON (`read`) and rewrites only the values it is
+given (`set`, with `--set NAME.FIELD=X,Y,Z` and FIELD one of position, rotation
+or scale), keeping the comments and layout. It refuses baked renderers, lights and cameras, and any
+result the scene rules reject:
+
+```sh
+python launcher/tools/scene/scene_edit.py set capybara.scene.toml --set capybara.position=0.5,0,-0.25
+```
+
 ## 3. Light it
 
 Light is part of the scene file: `[bake]` traces it into baked renderers, and
@@ -129,7 +140,7 @@ every mesh, skin, skeleton and clip it names. It flashes the pack with the app
 ## 6. Draw it
 
 An app loads the scene by name and activates its camera. The shell advances
-every loaded scene and draws through the active camera each frame, so the app
+every loaded scene and draws them all through the active camera each frame, so the app
 never calls draw; `frame()` runs after the scene is in the framebuffer and
 draws over it. Entities are found by name once the scene has loaded, so a
 misspelt one is found missing then:
@@ -161,8 +172,11 @@ hall_example_start(void) {
 
 Nothing else: the shell unloads what the app loaded when it exits. To move
 something, `transform_set_local(statue, where)`; to hide
-it, `entity_set_enabled()`. Several scenes may be loaded at once, and
-`camera_activate()` on another's camera changes what is drawn. How a frame is
+it, `entity_set_enabled()`. Several scenes may be loaded at once, and every
+one that is ready draws through the active camera: `camera_activate()` on
+another's camera changes the view, not which scenes are drawn, and
+`entity_set_enabled(root, false)` hides a whole scene. Each scene lights only
+its own renderers. How a frame is
 ordered against the panel send is in [Scene-Frame.md](scene/Scene-Frame.md),
 the storage behind it in [Scene-Loading.md](scene/Scene-Loading.md#ownership); how the raster draws each instance is in
 [Mesh-Rendering.md](Mesh-Rendering.md). To see the scene without a board, declare

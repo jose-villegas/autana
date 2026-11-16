@@ -1,9 +1,12 @@
 /* ease: timeline ramps and easing curves. Time is plain milliseconds, since nothing
  * here needs finer; the fraction is a byte (0..255), since it only ever scales
- * a value and is divided by 255 again. Inline: some run once per drawn point. */
+ * a value and is divided by 255 again; ease_smoothstep() is the float curve
+ * for float maths. Inline: some run once per drawn point. */
 #pragma once
 
 #include <stdint.h>
+
+#include "math/scalar/mathf.h"
 
 /* 0 before `start_ms`, 255 from `start_ms + dur_ms` on, linear between.
  * `dur_ms` of 0 jumps straight to 255 the instant `now_ms` passes
@@ -55,4 +58,13 @@ ease_smooth_q8(uint32_t elapsed_ms, uint32_t over_ms) {
     }
     const int64_t t = (int64_t)elapsed_ms * 256 / over_ms;
     return (int)((t * t * (3 * 256 - 2 * t)) >> 16);
+}
+
+/* GLSL's smoothstep: 0 at or below `edge0`, 1 at or above `edge1`, and
+ * 3u^2 - 2u^3 between, u the place of `x` from one edge to the other; eases
+ * in and out, so a change it drives neither starts nor stops sharply. */
+static inline float
+ease_smoothstep(float edge0, float edge1, float x) {
+    const float u = mathf_clamp((x - edge0) / (edge1 - edge0), 0.0F, 1.0F);
+    return u * u * (3.0F - (2.0F * u));
 }

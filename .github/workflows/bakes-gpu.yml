@@ -3,25 +3,21 @@ name: Bakes GPU
 # The fits a branch's launcher/bakes.lock lacks (launcher/tools/bake/bake.py),
 # made on the self-hosted CUDA runner, the maintainer's machine. Started only
 # by hand on the branch, so no pull request's code reaches that machine on its
-# own; then `bake.py lock --from-run N` with this run. A fit's start is locked
-# first, from the Bakes run that made it, and fetched here by its bytes; fits
-# that share their reference inputs share one reference set, which stays in the
-# runner's cache until nothing has read it for REFERENCE_KEEP_DAYS (produce.py);
-# the log says whether each was rendered or reused. `again` re-makes fits the
-# lock already has, each reference set rendered once more in a folder of the
-# run's own, to measure a fit against its locked bytes; those are never locked
-# from this run. `probe`
+# own; then `bake.py lock --from-run N` with this run. A fit's start and
+# reference set are locked first, from the Bakes run that made them, and
+# fetched here by their bytes, so the runner renders nothing. `again` re-makes
+# fits the lock already has and fails when one makes other bytes: dispatched on
+# another runner than the lock row's `gpu`, it checks that the fit repeats
+# there; those fits are never locked from this run. `probe`
 # installs and bakes nothing: it reports whether Mitsuba's CUDA variant can
 # trace on the runner (its driver, OptiX, one small render), for the
-# path-traced backend. Reference sets trace on the CPU (r3d/README.md,
-# "Reference on the CPU"). Under WSL 2 Dr.Jit finds OptiX only through the
+# path-traced backend. Under WSL 2 Dr.Jit finds OptiX only through the
 # Linux driver's libnvoptix (Mitsuba's OptiX setup page); the runner keeps a
 # copy in ~/gpu/optix, which only the probe names, in its own environment.
 #
 # `runner` picks the self-hosted runner by a label of its own; the default
-# `gpu` is the runner the night queue uses. One dispatch runs on one runner, so
-# every fit it makes comes from one GPU, which each fit's lock row names (a fit
-# is byte-reproducible only on its GPU model). Runs on different runners do
+# `gpu` is the runner the night queue uses. Any runner makes a fit's locked
+# bytes; each lock row names the GPU that made it. Runs on different runners do
 # not wait for each other. A fit waits for no board and takes no heavy lock: it
 # runs beside builds and board jobs on its host, on a CPU share
 # (scripts/ci/gpu_stage.sh).
@@ -39,7 +35,7 @@ on:
         required: false
         default: ''
       again:
-        description: 'Fit them even when the lock has them'
+        description: 'Fit them even when the lock has them; fail when the bytes differ'
         type: boolean
         default: false
       probe:
@@ -56,7 +52,8 @@ concurrency:
   cancel-in-progress: false
   queue: max
 
-# actions: read lets a fit fetch its locked start from the run that made it, before main publishes it.
+# actions: read lets a fit fetch its locked start and reference set from the run that made them, before main
+# publishes them.
 permissions:
   contents: read
   actions: read

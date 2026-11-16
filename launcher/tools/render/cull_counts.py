@@ -11,13 +11,45 @@ ROOT = pathlib.Path(__file__).resolve().parents[3]
 CULL_VIEW = ROOT / "launcher/main/render/view/raster_cull_view.c"
 CULL_HEADER = ROOT / "launcher/main/render/view/raster_cull_view.h"
 LINE_WIDTH = 1.4
+SIZE_PREFIX = "sized_"
+
+
+def enum_value(enum, prefix, name, source=CULL_HEADER):
+    """A named value's place in its owning header's enum."""
+    text = pathlib.Path(source).read_text(encoding="utf-8")
+    body = re.search(r"typedef enum(?: __attribute__\(\(\w+\)\))? \{(.*?)\} " + enum + ";", text, re.S)[1]
+    return re.findall(prefix + r"(\w+)", body).index(name)
+
+
+UPSCALE_HEADER = ROOT / "launcher/main/render/upscale.h"
+UPSCALE_PATHS = {enum_value("upscale_path_t", "UPSCALE_", name, UPSCALE_HEADER): name.lower()
+                 for name in ("MAPPED", "KEPT", "DOUBLED", "BLOCKS")}
+
+
+def upscale_counts(counts):
+    """Model areas derived from the recorded compose dimensions and selected path."""
+    render = counts["render_width"] * counts["render_height"]
+    output = counts["output_width"] * counts["output_height"]
+    path = UPSCALE_PATHS[counts["upscale_path"]]
+    return {"render_pixels": render, "output_pixels": output,
+            **{f"upscale_{name}_pixels": output if name == path else 0 for name in UPSCALE_PATHS.values()},
+            "upscale_surface_pixels": output if counts["upscale_surface"] else 0}
 
 
 def fields(source=CULL_HEADER):
     """Every count's name, in the order the view lists them."""
     text = pathlib.Path(source).read_text(encoding="utf-8")
     body = re.search(r"#define RASTER_CULL_FRAME_FIELDS\(X\)((?:.*\\\n)*.*)", text)[1]
-    return re.findall(r"X\((\w+),", body)
+    names = re.findall(r"X\((\w+),", body)
+    if "R3D_SIZES_FIELDS" in body:
+        sizes = (pathlib.Path(source).parent / "r3d_triangle_size.h").read_text(encoding="utf-8")
+        names.extend(SIZE_PREFIX + name for name in re.findall(r"X\(__VA_ARGS__ (\w+),", sizes))
+    return names
+
+
+def size_fields():
+    """Triangle size fields in their shared frame-field order."""
+    return tuple(name for name in fields() if name.startswith(SIZE_PREFIX))
 
 
 def fates(source=CULL_VIEW):

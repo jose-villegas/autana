@@ -79,7 +79,10 @@ def read(path):
     """The validated keys of one settings file, flattened."""
     path = pathlib.Path(path)
     try:
-        values = flatten(tomllib.loads(path.read_text(encoding="utf-8")))
+        declared = tomllib.loads(path.read_text(encoding="utf-8"))
+        if path.resolve() == DEFAULT.resolve():
+            declared.pop("ranges", None)
+        values = flatten(declared)
     except tomllib.TOMLDecodeError as error:
         raise ValueError(f"{path}: {error}") from None
     known = fields()
@@ -132,14 +135,45 @@ def bake(path):
     return table_asset.encode(rows, FRAC_BITS)
 
 
+def field_ranges():
+    """The default file's optional bounds, keyed by a field's member path."""
+    ranges = tomllib.loads(DEFAULT.read_text(encoding="utf-8")).get("ranges", {})
+    for field, bounds in ranges.items():
+        if field not in fields() or not isinstance(bounds, dict):
+            raise ValueError(f"{DEFAULT}: unknown range field {field}")
+        if bounds.keys() - {"min", "max", "min_exclusive", "max_exclusive"}:
+            raise ValueError(f"{DEFAULT}: {field} has an unknown range bound")
+    return ranges
+
+
+def range_predicate(kind, bounds):
+    """A field's C validity expression over its typed `value`; no bounds accepts any value."""
+    checks = []
+    for edge, comparison in (("min", ">"), ("max", "<")):
+        if edge not in bounds:
+            continue
+        bound = bounds[edge]
+        if isinstance(bound, str):
+            if not re.fullmatch(r"[A-Z][A-Z0-9_]*", bound):
+                raise ValueError(f"invalid C range constant {bound!r}")
+            limit = bound
+        else:
+            limit = literal(kind, bound, "F")
+        operator = comparison + ("" if bounds.get(f"{edge}_exclusive", False) else "=")
+        checks.append(f"value {operator} {limit}")
+    return " && ".join(checks) or "true"
+
+
 def header():
     """render_settings_default.h's text."""
     values, known = load(DEFAULT), fields()
     kinds = {key: kind for key, (kind, _, _) in known.items()}
+    ranges = field_ranges()
+    declarations = " ".join(f"X({key}, {kinds[key]}, {range_predicate(kinds[key], ranges.get(key, {}))})" for key in values)
     return (f"/* GENERATED FILE - do not edit.\n *     {COMMAND}\n */\n#pragma once\n\n"
             f"#define RENDER_SETTINGS_DEFAULT ((render_settings_t){{{nested(values, kinds)}}})\n"
-            "/* X(field, type) for each field of render_settings_t, in order: `field` as a member path. */\n"
-            f"#define RENDER_SETTINGS_FIELDS(X) {' '.join(f'X({key}, {kinds[key]})' for key in values)}\n"
+            "/* X(field, type, valid) in struct order; valid tests the typed field as `value`. */\n"
+            f"#define RENDER_SETTINGS_FIELDS(X) {declarations}\n"
             f"#define RENDER_SETTINGS_FIELD_COUNT {len(values)}\n")
 
 

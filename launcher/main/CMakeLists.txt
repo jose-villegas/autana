@@ -20,11 +20,15 @@ set(app_srcs
     "display/display_device.c"
     "display/panel_clock.c"
     "draw/draw.c"
+    "draw/draw_blend.c"
+    "draw/draw_blend_pie.S"
     "draw/draw_image.c"
+    "draw/draw_sprite.c"
     "draw/icon.c"
     "gfx/present/gfx_debug.c"
     "gfx/present/expand/gfx_expand.c"
     "gfx/present/expand/gfx_quarter_select.c"
+    "gfx/present/expand/gfx_quarter_select_pie.S"
     "gfx/present/gfx_mode.c"
     "gfx/present/modes/indexed/gfx_indexed.c"
     "gfx/present/gfx_present.c"
@@ -161,6 +165,10 @@ foreach(app_root IN LISTS app_roots)
     launcher_glob(root_apps "${app_root}/*.c")
     list(APPEND discovered_apps ${root_apps})
 endforeach()
+# The lab shell (lab/lab.h), the scene picker, HUD and fixtures every lab app
+# hosts its scenes behind, is split from its suites the same way.
+launcher_glob(lab_srcs "${CMAKE_CURRENT_LIST_DIR}/lab/*.c")
+list(APPEND discovered_apps ${lab_srcs})
 
 # apps/<name>/tools/ is an app's host-side tooling, not firmware. The glob
 # above is recursive and WHOLE_ARCHIVE force-links whatever it finds, so a
@@ -216,7 +224,7 @@ endif()
 set(app_reqs esp_codec_dev esp_driver_i2s math simd kinematics physics image hash collections microui esp32_s3_touch_amoled_1_8 esp_lcd heap esp_timer
              esp_driver_i2c esp_driver_tsens esp_hw_support esp_psram spi_flash esp_partition
              fatfs esp_driver_sdmmc sdmmc
-             esp_driver_usb_serial_jtag esp_driver_uart vfs nvs_flash esp_app_format espcoredump
+             esp_driver_usb_serial_jtag esp_driver_uart esp_ringbuf vfs nvs_flash esp_app_format espcoredump
              waveshare__esp_lcd_sh8601 espressif__esp_lcd_touch espressif__esp_lcd_co5300
              # perfmon, unity, testkit and esp_mm (a perf suite's cache control) are
              # listed unconditionally, NOT inside the block below: ESP-IDF

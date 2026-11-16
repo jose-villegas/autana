@@ -1,16 +1,22 @@
 #include "suites.h"
 #ifdef DEVICE_BUILD
 #include <math.h>
+#include <stdio.h>
 #include <string.h>
-#include "apps/render_lab/render_lab_scene.h"
+#include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/scene_water.h"
 #include "apps/render_lab/tests/render_lab_test.h"
 #include "apps/render_lab/tests/water_perf_log.h"
 #include "core/memory.h"
 #include "core/timing.h"
 #include "core/tune.h"
+#include "display/display.h"
 #include "esp_log.h"
+#include "lab/lab_scene.h"
+#include "lab/test/lab_perf_quarters.h"
+#include "lab/test/lab_test.h"
 #include "profile/frame_cost.h"
+#include "render/context/render_context.h"
 #include "testkit/bench.h"
 #include "testkit/cleanup.h"
 #include "unity.h"
@@ -49,13 +55,33 @@ typedef struct {
     scene_water_stats_t sums;
 } water_row_t;
 
-static render_lab_test_t saved;
+/* The base tour's phases, kept for their FRAME_PROFILE_REPLAY lines: where
+ * each starts, its timed frame-cost report, and the cull view's counts
+ * summed over its frames on a second, untimed tour. The tour plays the same
+ * water every run, so both tours see the same frames. */
+#define WATER_PERF_PHASES_MAX 8
+
+typedef struct {
+    int32_t start_ms;
+    int frames;
+    char report[FRAME_COST_REPORT_MAX];
+    int64_t sums[RENDER_LAB_TEST_COUNTS];
+} water_phase_t;
+
+typedef struct {
+    water_phase_t phase[WATER_PERF_PHASES_MAX];
+    int count;
+    char counts[RENDER_LAB_TEST_COUNTS_MAX];
+} water_phases_t;
+
+static lab_test_t saved;
 static water_row_t row;
 static char* report;
+static water_phases_t* phases;
 
 static void
 release_fixture(void) {
-    render_lab_test_exit(&saved);
+    lab_test_exit(&saved);
     if (playing != NULL && playing->tune != NULL) {
         (void)tune_reset(tune_shared(), playing->tune);
     }
@@ -66,6 +92,13 @@ release_fixture(void) {
     memory_free(report);
     row = (water_row_t){0};
     report = NULL;
+}
+
+static void
+release_phases(void) {
+    release_fixture();
+    memory_free(phases);
+    phases = NULL;
 }
 
 static void
@@ -89,7 +122,7 @@ add(scene_water_stats_t* sums, const scene_water_stats_t* s) {
 }
 
 static void
-log_row(const char* config, const char* phase) {
+log_row(const char* config, const char* phase, int32_t start_ms) {
     const int n = row.frames;
     TEST_ASSERT_GREATER_THAN_INT(0, n);
     const bench_stats_t frame = bench_stats_compute(row.frame_us, n);
@@ -108,6 +141,12 @@ log_row(const char* config, const char* phase) {
     }
     (void)frame_cost_take_report((uint32_t)n, report, FRAME_COST_REPORT_MAX);
     ESP_LOGI(TAG, WATER_PERF_PREFIX " " WATER_PERF_COST, config, phase, report);
+    if (playing->tune == NULL) {
+        TEST_ASSERT_LESS_THAN_INT(WATER_PERF_PHASES_MAX, phases->count);
+        water_phase_t* kept = &phases->phase[phases->count++];
+        kept->start_ms = start_ms;
+        (void)snprintf(kept->report, sizeof kept->report, "%s", report);
+    }
     row.frames = 0;
     row.sums = (scene_water_stats_t){0};
 }
@@ -118,8 +157,8 @@ play(const water_config_t* config) {
     playing = config;
     TEST_ASSERT_TRUE(config->tune == NULL || tune_set(tune_shared(), config->tune, config->value));
     heap(config->name, WATER_PERF_BEFORE);
-    render_lab_test_enter(&saved, scene_water.key);
-    suite_set_test_cleanup(release_fixture);
+    lab_test_enter(&saved, &render_lab, scene_water.key);
+    suite_set_test_cleanup(release_phases);
     TEST_ASSERT_TRUE(app_render_lab.console->handle("water tour"));
     const int capacity = (int)(scene_water_tour_length_ms() / WATER_PERF_FRAME_MS);
     row.frame_us = memory_alloc((size_t)capacity * sizeof(int32_t), MEMORY_APP);
@@ -128,21 +167,25 @@ play(const water_config_t* config) {
     report = memory_alloc(FRAME_COST_REPORT_MAX, MEMORY_INTERNAL);
     TEST_ASSERT_TRUE(row.frame_us != NULL && row.update_us != NULL && row.draw_us != NULL && report != NULL);
     /* Untimed: the tour's upright refill. */
-    (void)render_lab_test_frame_dt(0, false, NULL);
+    (void)lab_test_frame_dt(0, false, NULL);
     (void)scene_water_take_stats();
-    (void)frame_cost_take_report(0, report, 0);
+    /* The first phase's report holds only its own frames, not the enter's
+     * or the previous config's. */
+    frame_cost_take_clear();
     heap(config->name, WATER_PERF_RUNNING);
     /* A frame belongs to the phase it starts in, so a row closes, with its
      * frame_cost window, before the next phase's first frame. */
     const char* phase = scene_water_tour_phase();
+    int32_t start_ms = 0;
     for (int f = 0; f < capacity; f++) {
         const char* now = scene_water_tour_phase();
         if (strcmp(now, phase) != 0) {
-            log_row(config->name, phase);
+            log_row(config->name, phase, start_ms);
             phase = now;
+            start_ms = f * WATER_PERF_FRAME_MS;
         }
         const int64_t start = timing_now_us();
-        const int64_t draw_us = render_lab_test_frame_dt(WATER_PERF_FRAME_MS, false, NULL);
+        const int64_t draw_us = lab_test_frame_dt(WATER_PERF_FRAME_MS, false, NULL);
         const int64_t frame_us = timing_now_us() - start;
         const scene_water_stats_t s = scene_water_take_stats();
         row.frame_us[row.frames] = (int32_t)frame_us;
@@ -151,17 +194,53 @@ play(const water_config_t* config) {
         row.frames++;
         add(&row.sums, &s);
     }
-    log_row(config->name, phase);
+    log_row(config->name, phase, start_ms);
     release_fixture();
     suite_clear_test_cleanup();
     heap(config->name, WATER_PERF_AFTER);
 }
 
+/* The base tour again through the cull view, untimed, then one
+ * FRAME_PROFILE_REPLAY line per phase: its mean counts and its timed report. */
+static void
+count_base_tour(void) {
+    playing = &configs[0];
+    lab_test_enter(&saved, &render_lab, scene_water.key);
+    TEST_ASSERT_TRUE(app_render_lab.console->handle("water tour"));
+    (void)lab_test_frame_dt(0, false, NULL);
+    render_lab_test_show_view(render_context_debug_view_named("cull"));
+    const int capacity = (int)(scene_water_tour_length_ms() / WATER_PERF_FRAME_MS);
+    int k = 0;
+    for (int f = 0; f < capacity; f++) {
+        if (k + 1 < phases->count && f * WATER_PERF_FRAME_MS >= phases->phase[k + 1].start_ms) {
+            k++;
+        }
+        (void)lab_test_frame_dt(WATER_PERF_FRAME_MS, false, NULL);
+        render_lab_test_add_cull_counts(phases->phase[k].sums);
+        phases->phase[k].frames++;
+    }
+    render_lab_test_show_view(RENDER_DEBUG_VIEW_SHADED);
+    const char* quarter = display_quarter_name(DISPLAY_DEFAULT_QUARTER);
+    for (int i = 0; i < phases->count; i++) {
+        const water_phase_t* p = &phases->phase[i];
+        render_lab_test_write_counts(p->sums, p->frames, phases->counts, sizeof phases->counts);
+        ESP_LOGI(TAG, FRAME_PROFILE_REPLAY LAB_PERF_QUARTER_FORMAT, scene_water.key, (int)p->start_ms, phases->counts,
+                 p->report, quarter);
+    }
+}
+
 static void
 test_water_tour_stages(void) {
+    phases = memory_alloc(sizeof *phases, MEMORY_APP);
+    TEST_ASSERT_NOT_NULL(phases);
+    *phases = (water_phases_t){0};
     for (size_t i = 0; i < sizeof configs / sizeof configs[0]; i++) {
         play(&configs[i]);
     }
+    suite_set_test_cleanup(release_phases);
+    count_base_tour();
+    release_phases();
+    suite_clear_test_cleanup();
 }
 #endif
 

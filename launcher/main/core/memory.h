@@ -39,7 +39,17 @@ typedef enum {
     MEMORY_DMA,      /* what the heap hands out as DMA-capable: internal only */
     MEMORY_APP,      /* the current app visit */
     MEMORY_PSRAM,    /* external RAM: large and slow */
+    MEMORY_FAST,     /* on-chip RAM while MEMORY_FAST_INTERNAL_RESERVE stays free, else external RAM,
+                      * each fallback counted */
 } memory_kind_t;
+
+/* What MEMORY_FAST leaves free on chip: it takes on-chip RAM only while
+ * this much stays free after the block, for the strict requests that
+ * come later (a DMA buffer, a task stack, an indexed picture), which have
+ * nowhere else to go. Sized for the largest, an indexed picture at a
+ * 2-pixel cell, (368 / 2) x (448 / 2) = 41216 bytes; gfx_indexed.c refuses
+ * a picture larger than this. */
+#define MEMORY_FAST_INTERNAL_RESERVE (41u * 1024u)
 
 size_t memory_free_bytes(memory_kind_t kind);
 
@@ -78,8 +88,18 @@ size_t memory_psram_bytes(void);
  * no kind lands once internal RAM runs short. */
 bool memory_in_psram(const void* p);
 
-/* Prints every region of this kind and its blocks to the console. */
+/* Prints every region of this kind and its blocks to the console, then
+ * where MEMORY_FAST has fallen back (memory_fast_fallbacks()). */
 void memory_dump(memory_kind_t kind);
+
+/* What MEMORY_FAST has placed in external RAM since boot because on-chip RAM
+ * could not fit it: how many blocks and their bytes, freed or not. */
+typedef struct {
+    uint32_t count;
+    size_t bytes;
+} memory_fallbacks_t;
+
+memory_fallbacks_t memory_fast_fallbacks(void);
 
 #if MEMORY_HEAP_CAPS
 static inline __attribute__((always_inline)) uint32_t
@@ -90,14 +110,22 @@ memory_caps(memory_kind_t kind) {
         case MEMORY_DMA: return MALLOC_CAP_DMA;
         case MEMORY_APP: __builtin_trap();
         case MEMORY_PSRAM: return MALLOC_CAP_SPIRAM;
+        case MEMORY_FAST: return MALLOC_CAP_8BIT; /* its size queries span both RAMs */
     }
     return MALLOC_CAP_8BIT;
 }
+
+/* External RAM for a MEMORY_FAST request on-chip RAM could not fit, counted
+ * against its call site; NULL when that is full too. Out of line, so the
+ * call site is its return address. */
+void* memory_fast_fallback(size_t bytes);
 #endif
 
 /* A byte-addressable block of this kind, or NULL when none is that large. A
  * request for one kind never falls back to another: running out where the
- * buffer was meant to live is the failure a caller has to see. */
+ * buffer was meant to live is the failure a caller has to see. MEMORY_FAST
+ * is the one kind that does, for a buffer that is faster on-chip but must
+ * not fail for want of it. */
 static inline __attribute__((always_inline)) void*
 memory_alloc(size_t bytes, memory_kind_t kind) {
     if (kind == MEMORY_APP) {
@@ -106,7 +134,16 @@ memory_alloc(size_t bytes, memory_kind_t kind) {
 #if MEMORY_HEAP_CAPS
     /* Internal RAM also holds word-only regions, which a byte store faults
      * in. */
-    return heap_caps_malloc(bytes, memory_caps(kind) | MALLOC_CAP_8BIT);
+    if (kind != MEMORY_FAST) {
+        return heap_caps_malloc(bytes, memory_caps(kind) | MALLOC_CAP_8BIT);
+    }
+    /* The free total, not the largest block: on the board the largest
+     * on-chip block is already below the reserve while an app runs, so a
+     * one-block rule would never take on-chip RAM at all. */
+    const uint32_t on_chip = memory_caps(MEMORY_INTERNAL) | MALLOC_CAP_8BIT;
+    const bool leaves_reserve = heap_caps_get_free_size(on_chip) >= bytes + MEMORY_FAST_INTERNAL_RESERVE;
+    void* block = leaves_reserve ? heap_caps_malloc(bytes, on_chip) : NULL;
+    return block != NULL ? block : memory_fast_fallback(bytes);
 #else
     (void)kind;
     return malloc(bytes);

@@ -37,7 +37,7 @@ scene_lights_allocate(scene_t* scene) {
     bool allocated = true;
     for (int r = 0; r < scene->renderer_count; r++) {
         scene_skinned_renderer_t* skin = &scene->skinned_renderers[scene->renderers[r].entity];
-        if (skin->internal_storage != NULL && !scene_skin_light_allocate(skin)) {
+        if (skin->storage != NULL && !scene_skin_light_allocate(skin)) {
             allocated = false;
             break;
         }
@@ -78,7 +78,7 @@ light_attach(scene_t* scene, scene_row_t entity) {
     scene_stage_add(scene, entity);
     for (int r = 0; r < scene->renderer_count; r++) {
         scene_skinned_renderer_t* skin = &scene->skinned_renderers[scene->renderers[r].entity];
-        if (skin->internal_storage != NULL) {
+        if (skin->storage != NULL) {
             skin->output.mesh.colors = skin->colors;
             scene->renderers[r].mesh.colors = skin->colors;
         }

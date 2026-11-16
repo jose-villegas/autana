@@ -60,6 +60,7 @@ typedef struct {
  * in step. */
 typedef struct {
     uint32_t duration_ms; /* the last key of any track */
+    uint16_t ground_mm_s; /* how fast a skeleton clip's planted foot slides back under it at playback 1; 0 for none */
 } anim_clip_t;
 
 /* Writes `width` floats. Before the first key and after the last, the end

@@ -56,6 +56,10 @@ more than once; edges behind the drawn depth are left out, and
 
 `--set owner.name=value` sets any registered tunable before drawing; repeat it
 for several values. Invalid names, values and ranges fail the render.
+`--set render.FIELD=value` sets a render setting instead, as a pack's
+`.render.toml` would (`render.lod.tolerance_px=4`); FIELD is a dotted name of
+[`RENDER_SETTINGS_FIELDS`](../../launcher/main/render/settings/render_settings_default.h). A harness
+that links no renderer refuses it.
 The viewer compiles hot tunables live. `--tunables` prints every registered
 tunable with its default and range on stderr. It exits without rendering.
 
@@ -205,8 +209,9 @@ The doc-images GPU stage waits for active board locks, then takes heavy and runs
 A board claimed between these steps waits for heavy before building.
 Human reservations do not block the GPU stage.
 
-`GPU_STAGE_HANG_SECONDS` in `scripts/lib/local_schedule.py` bounds each
-stage's process tree. `override` starts at once while retaining the board-lock
+`scripts/lib/local_schedule.py` stops a stage's process tree once no task or
+bake has finished for `GPU_STAGE_PROGRESS_SECONDS`, and in any case after
+`GPU_STAGE_HANG_SECONDS`. `override` starts at once while retaining the board-lock
 wait; `force` controls freshness independently.
 
 The images are current only when the newest unexpired record from main is a rendered record for this fingerprint. A
@@ -368,14 +373,14 @@ Two files, the same declare-then-source shape a report script uses:
   roots fails the build.
 
 CMake's `autana::render_host_core` supplies the host frame loop on top of
-`autana::render_engine`: drawing, assets, tune, jobs and packages, with no `main()` and no
+`autana::render_engine`: drawing, assets, tune, jobs, the frame recorder and packages, with no `main()` and no
 allocation hooks. `launcher/tools/render/engine_sources.cmake` owns that list, and
 `run_tests.sh` reads it with `cmake -P`.
 
 `scene_target=render_host` selects `autana::render_host`, adding the renderer that
-`launcher/main/renderer_sources.cmake` lists. Its consumer defines `display_quarter_now()`
-from `display/display.h`. `scene_target=scene_provider` adds the scene-file
-provider, `scene_viewer.c`, which defines it.
+`launcher/main/renderer_sources.cmake` lists. `render_host.c` answers `display_quarter_now()`
+(`display/display.h`) with the run's quarter unless the consumer defines its own, so the
+scene-file provider (`scene_target=scene_provider`, `scene_viewer.c`) and the stream provider link together.
 
 A host consumer adds `launcher/tools/render` with `add_subdirectory()` and links
 the chosen target. Its interface sources compile with the consumer's defines;
@@ -434,7 +439,16 @@ rewinding output files or the wall clock. Timed choices (frame generation
 and predicted resolution) replay only as exactly as their clock.
 Byte comparisons use frame generation off and a fixed or declared size.
 
-Each draw receives a `provider_frame_t`. Optional `path_ms` and `seek` hooks
+`stream_render.sh --stream FILE --check -o out.bmp` redraws a frame recording
+with packs from `AUTANA_ASSET_DIR`. It reports each drawn CHECK and fails on
+a differing picture. Without `--frames`, it draws the whole recorded stream.
+The `autana::stream_provider` library also accepts live bytes through `stream_feed()`.
+A host recording accepts `--record-keyframe-every N` to set its restart interval.
+Replay draws forward from a full keyframe snapshot and warps generated frames
+through their recorded views.
+
+Each draw receives a `provider_frame_t`. The optional `frame_count` hook
+sets the default count after provider options. Optional `path_ms` and `seek` hooks
 expose a provider's path duration and camera cuts. The scene-file provider
 seeks its animators and clears render history at a cut. An optional
 `render_context` hook returns the context a provider draws through, so a
@@ -453,10 +467,9 @@ collect every `.c` in the app folder outside `tools/` and `tests/`,
 excluding `suite_*.c`, and list only the shared engine and host-shim
 sources by hand, so a new source file needs no edit to the script.
 
-`render_host.c` calls `scene_shell_compose()` before each `draw()`, as the
-shell does before an app's `frame()`. A scene whose sources include
-`main/scene/scene_shell.c` gets the real one, which does nothing without an
-active camera; any other scene gets a no-op.
+The host composes active scenes before each provider draw. Scene-file providers
+draw through the scene manager; stream providers replay recorded drawing commands.
+Without the scene manager, composition is a no-op.
 
 Each line of `scene_renders` is `<label>|<arguments>|<width>x<height>`,
 optionally followed by flags: `|nopin`; `|nopacks`, which runs that

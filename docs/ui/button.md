@@ -2,7 +2,9 @@
 
 `bool ui_button(recti_t r, const char* label)` draws a labelled button
 filling `r`. It returns true on the frame a tap is released on it, and the
-caller decides what that means.
+caller decides what that means. A label too wide for one line splits at the
+last space that lets the first line fit; a word wider than the button is
+clipped.
 
 ## Example
 

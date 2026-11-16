@@ -55,7 +55,7 @@ QUIET_ERROR_PATTERN='FAILED:|error:|undefined reference to|out of memory|cannot 
 # (fixtures, error-path assertions) narrows QUIET_ERROR_PATTERN to its own
 # failure headers before quiet_end.
 quiet_error_lines() {
-    grep -E "$QUIET_ERROR_PATTERN" "$QUIET_LOG" | head -n "$QUIET_LIMIT" || true
+    grep -aE "$QUIET_ERROR_PATTERN" "$QUIET_LOG" | head -n "$QUIET_LIMIT" || true
 }
 
 quiet_failed_sections() {

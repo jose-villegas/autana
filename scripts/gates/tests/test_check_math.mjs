@@ -99,6 +99,34 @@ test('a ```math fence in a list item or indented is refused; at column 0 it pass
   assert.deepEqual(problemsIn('1. Step:\n\n```math\nx + y\n```\n\n2. Next.'), []);
 });
 
+test('a code fence that never closes is refused at its opening line', { skip }, () => {
+  const unclosed = [
+    ['```c\nint x;\n\nText $x$ after.', 1],
+    ['Text.\n\n~~~\nx', 3],
+    ['````\n```\nx', 1],
+    ['```', 1],
+    ['> ```\n> x', 1],
+    // Content, not closers: indented 4 past the opener, or a `>` outside a quote.
+    ['```text\nx\n    ```', 1],
+    ['```text\nx\n> ```', 1],
+    ['- ```c\n  x\n      ```', 1],
+    // A lone CR ends a line for markdown-it too.
+    ['a\rb\n\n```\nx\n```\n\n```\ny', 8],
+    // A text replace that swallowed the closing fence and joined the next paragraph.
+    ['```mermaid\nflowchart LR\n  a --> bHerd text.\n\n| A |\n|---|\n| 1 |', 1],
+  ];
+  for (const [markdown, line] of unclosed) {
+    const problems = problemsIn(markdown);
+    assert.equal(problems.length, 1, JSON.stringify(markdown));
+    assert.equal(problems[0].line, line);
+    assert.match(problems[0].message, /never closes/);
+  }
+  for (const markdown of ['```c\nx\n```', '````\n```\n````', '```\nx\n```  \n\n', '~~~\nx\n~~~~',
+    '> ```\n> x\n> ```', '- item\n\n  ```\n  x\n  ```\n- next', '```\n```']) {
+    assert.deepEqual(problemsIn(markdown), [], JSON.stringify(markdown));
+  }
+});
+
 test('a formula GitHub leaves as text in emphasis, a link or <b> is reported', { skip }, () => {
   for (const markdown of ['q *$x$* end', 'q [a $x$ b](http://a) end', 'q <b>$x$</b> end']) {
     assert.match(messagesIn(markdown)[0], /shows this as text/, markdown);

@@ -21,8 +21,9 @@ typedef struct {
     mu_Color caption;
     mu_Color muted; /* a disabled control's ink */
     int text_scale;
-    int icon_side;      /* beside a label; a tile sizes its own to fill it */
-    bool native_toggle; /* retain the style's checkbox frame palette */
+    int icon_side;         /* beside a label; a tile sizes its own to fill it */
+    bool native_toggle;    /* retain the style's checkbox frame palette */
+    const ui_skin_t* skin; /* buttons' and tiles' faces, set by ui_skin(); NULL draws the bevel */
 } ui_mu_theme_t;
 
 ui_mu_theme_t ui_theme_from_style(const mu_Style* style);
@@ -36,8 +37,6 @@ ui_mu_theme_t ui_theme_from_style(const mu_Style* style);
                      UI_THEME_FACE_COLOR(t, accent_face), UI_THEME_FACE_COLOR(t, on_accent),                           \
                      UI_THEME_FACE_COLOR(t, text), UI_THEME_FACE_COLOR(t, caption), UI_THEME_FACE_COLOR(t, muted),     \
                      .text_scale = (t)->text_scale, .icon_side = (t)->icon_side})
-
-typedef enum { UI_ALIGN_LEFT, UI_ALIGN_CENTRE, UI_ALIGN_RIGHT } ui_align_t;
 
 typedef struct {
     const image_t* icon; /* NULL for a label alone */

@@ -19,7 +19,7 @@ from asset.asset_pack import NAME_BYTES, PackError, build_pack as encode_pack, p
 from test_scene_asset import SceneFiles
 from test_r3d_import import SIMPLIFY, VARIANT, renderer, write_import
 from test_r3d_objects import POINTS, TRIANGLES, obj_text
-from r3d.lit_mesh import read_lit_mesh
+from r3d.lit_mesh import bundle_entries, read_bundle_mesh, read_lit_mesh
 from r3d.objects.instances import Instance
 from r3d.process_budget import StepRecorder
 from r3d.import_settings import MESHLET_TRIANGLES, albedo_jobs, load_import_settings
@@ -27,7 +27,7 @@ from tests.test_r3d_bake import canonical
 
 
 def bundle_fixture(directory, flat=False, lod=False, fit=None, positions=None, triangles=None, materials=(0, 0, 0),
-                   shapes=1, recorder=None):
+                   shapes=1, recorder=None, name=None):
     p = np.asarray(positions) if positions is not None else np.array([[0., 0, 0], [4, 0, 0], [0, 4, 0]])
     t = np.asarray(triangles) if triangles is not None else np.array([[0, 1, 2]])
     rgb = np.full(p.shape, 80)
@@ -48,11 +48,14 @@ def bundle_fixture(directory, flat=False, lod=False, fit=None, positions=None, t
                           kind='mesh_renderer', animator=None)
     renderer = SimpleNamespace(face_samples=(1, 1, 1, None) if flat else None, bake=True, fit=fit)
     job = SimpleNamespace(object=obj, renderer=renderer, asset_name='hall.atrium',
-                          settings=SimpleNamespace(meshlet_triangles=MESHLET_TRIANGLES, double_sided=['leaf'], lod=lod))
-    scene = SimpleNamespace(objects=[obj], renderers=[job], lights=[])
+                          settings=SimpleNamespace(meshlet_triangles=MESHLET_TRIANGLES, double_sided=['leaf'], lod=lod,
+                                                    morph=False, fit=SimpleNamespace(probes=None, budget=None)))
+    scene = SimpleNamespace(objects=[obj], renderers=[job], lights=[],
+                            camera=SimpleNamespace(component=SimpleNamespace(path='path')))
     with mock.patch.object(mesh_import, 'flat_colours', side_effect=[np.full((1, 3), value) for value in (80, 80, 81, 82)]):
-        mesh_import.write_baked(job, scene, pathlib.Path(directory), job.asset_name, geometry=geometry, recorder=recorder)
-    return (pathlib.Path(directory) / (job.asset_name + mesh_bundle.SUFFIX)).read_bytes(), copies, geometry, job, scene
+        mesh_import.write_baked(job, scene, pathlib.Path(directory), name or job.asset_name, geometry=geometry,
+                                recorder=recorder)
+    return (pathlib.Path(directory) / ((name or job.asset_name) + mesh_bundle.SUFFIX)).read_bytes(), copies, geometry, job, scene
 
 
 
@@ -119,7 +122,7 @@ class MeshBundleTests(unittest.TestCase):
         entries, manifest = mesh_bundle.decode(data)
         meshes = [row['mesh'] for row in manifest]
         self.assertEqual(len(set(meshes)), 3)
-        double = {row["mesh"]: {c[-1] for c in mesh_bundle.read_mesh(entries, row["mesh"]).clusters} for row in manifest}
+        double = {row["mesh"]: {c[-1] for c in read_bundle_mesh(entries, row["mesh"]).clusters} for row in manifest}
         self.assertEqual([double[mesh] for mesh in meshes], [{False}, {True}, {False}])
 
     def test_smooth_shapes_have_one_set_per_copy(self):
@@ -160,6 +163,12 @@ class MeshBundleTests(unittest.TestCase):
             self.assertEqual([row for row in before if row[0] not in changed],
                              [row for row in after if row[0] not in changed])
             self.assertEqual(placed, copies)
+
+    def test_a_start_written_under_a_long_variant_name_names_its_shapes_from_the_asset(self):
+        with tempfile.TemporaryDirectory() as directory:
+            baked = mesh_bundle.decode(bundle_fixture(directory)[0])[1]
+            named = mesh_bundle.decode(bundle_fixture(directory, name="a_fitted_variant_name")[0])[1]
+        self.assertEqual([row['mesh'] for row in named], [row['mesh'] for row in baked])
 
     def test_repeated_bakes_are_byte_identical(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -218,41 +227,19 @@ class MeshBundleTests(unittest.TestCase):
     def test_the_fit_bakes_levels_when_the_import_asks_for_them(self):
         for lod in (False, True):
             with self.subTest(lod=lod), tempfile.TemporaryDirectory() as directory:
-                work = pathlib.Path(directory)
-                data, _, _, job, scene = bundle_fixture(directory)
-                job.settings.lod = lod
-                start = work / (job.asset_name + '.start' + mesh_bundle.SUFFIX)
-                start.write_bytes(data)
-                job.renderer.variant = SimpleNamespace(name='fixture')
-                job.renderer.fit = SimpleNamespace(steps=1, batch=1, laplacian=0, normal_weight=0,
-                                                   surface_weight=0, surface_margin=0, budget=1)
                 asked = []
-
-                def fit_main(args):
-                    asked.append('--lod' in args)
-                    raw = pathlib.Path(args[args.index('--start') + 1])
-                    out = pathlib.Path(args[args.index('--out') + 1])
-                    out.mkdir()
-                    (out / raw.name).write_bytes(raw.read_bytes())
-                with mock.patch.dict(sys.modules, {'r3d.appearance_simplify': SimpleNamespace(main=fit_main)}):
-                    stage.fit(work / 'scene.scene.toml', scene, job, work, start=start,
-                              target=work / (job.asset_name + mesh_bundle.SUFFIX))
+                run_fit(directory, lambda args: asked.append('--lod' in args) or keep_start(args), lod=lod)
                 self.assertEqual(asked, [False])
 
     def test_fit_changes_only_the_rest_of_a_start_bundle(self):
         with tempfile.TemporaryDirectory() as directory:
             work = pathlib.Path(directory)
-            data, _, _, job, scene = bundle_fixture(directory)
-            start = work / (job.asset_name + '.start' + mesh_bundle.SUFFIX)
-            start.write_bytes(data)
-            job.renderer.variant = SimpleNamespace(name='fixture')
-            job.renderer.fit = SimpleNamespace(steps=1, batch=1, laplacian=0, normal_weight=0,
-                                               surface_weight=0, surface_margin=0, budget=1)
-            target = work / (job.asset_name + mesh_bundle.SUFFIX)
+            fixture_job = bundle_fixture(directory)[3]
+
             def fit_main(args):
                 raw = pathlib.Path(args[args.index('--start') + 1])
                 self.assertEqual(raw.suffix, '.bundle')
-                self.assertEqual(args[args.index('--copies') + 1], str(start))
+                self.assertEqual(args[args.index('--copies') + 1], str(start_path(work, fixture_job)))
                 self.assertEqual(args[args.index('--copy-poses') + 1], str(work / 'held_out.txt'))
                 products, copied = mesh_bundle.decode(raw.read_bytes())
                 blob = bytearray(products[0][2])
@@ -260,11 +247,103 @@ class MeshBundleTests(unittest.TestCase):
                 out = pathlib.Path(args[args.index('--out') + 1])
                 out.mkdir()
                 (out / raw.name).write_bytes(mesh_bundle.encode([(products[0][0], mesh_asset.TYPE, blob)], copied))
-            with mock.patch.dict(sys.modules, {'r3d.appearance_simplify': SimpleNamespace(main=fit_main)}):
-                stage.fit(work / 'scene.scene.toml', scene, job, work, start=start, target=target)
+            data, job, target = run_fit(directory, fit_main)
             before, after = parse_pack(data), parse_pack(target.read_bytes())
             self.assertNotEqual(before.pop(job.asset_name), after.pop(job.asset_name))
             self.assertEqual(before, after)
+
+
+def start_path(work, job):
+    return work / (job.asset_name + '.start' + mesh_bundle.SUFFIX)
+
+
+def keep_start(args):
+    """A fit that writes its start back unchanged."""
+    raw = pathlib.Path(args[args.index('--start') + 1])
+    out = pathlib.Path(args[args.index('--out') + 1])
+    out.mkdir()
+    (out / raw.name).write_bytes(raw.read_bytes())
+
+
+def run_fit(directory, fit_main, lod=None, path=True, shaping=None):
+    """Runs the fit stage on the fixture's start with `fit_main` standing in for the fit, the scene camera with a
+    path or without one and the import's fit `shaping` when given; returns the start's bytes, the job and the
+    fitted bundle."""
+    work = pathlib.Path(directory)
+    data, _, _, job, scene = bundle_fixture(directory)
+    scene.camera.component.path = 'path' if path else None
+    if lod is not None:
+        job.settings.lod = lod
+    if shaping is not None:
+        job.settings.fit = shaping
+    start_path(work, job).write_bytes(data)
+    job.renderer.variant = SimpleNamespace(name='fixture')
+    job.renderer.fit = SimpleNamespace(steps=1, batch=1, laplacian=0, normal_weight=0,
+                                       surface_weight=0, surface_margin=0, budget=1)
+    target = work / (job.asset_name + mesh_bundle.SUFFIX)
+    with mock.patch.dict(sys.modules, {'r3d.appearance_simplify': SimpleNamespace(main=fit_main)}):
+        stage.fit(work / 'scene.scene.toml', scene, job, work, start=start_path(work, job), target=target)
+    return data, job, target
+
+
+class FitCommandTests(unittest.TestCase):
+    """The command line the fit stage hands the fit: which sets, in which order, and the settle."""
+    SETTLE = SimpleNamespace(step=100, settle=0.05)
+
+    def command(self, path=True, probes=None, budget=None):
+        asked = []
+        shaping = SimpleNamespace(probes=probes, budget=budget)
+        with tempfile.TemporaryDirectory() as directory:
+            run_fit(directory, lambda args: asked.append(args) or keep_start(args), path=path, shaping=shaping)
+            work = str(pathlib.Path(directory))
+        return [pathlib.Path(arg).name if arg.startswith(work) else arg for arg in asked[0]]
+
+    @staticmethod
+    def values(args, flag):
+        return [args[i + 1] for i, arg in enumerate(args) if arg == flag]
+
+    def test_the_path_sets_come_before_the_probe_sets(self):
+        args = self.command(probes=SimpleNamespace())
+        self.assertEqual(self.values(args, '--poses'), ['train.txt', 'train_landscape.txt', 'probes.txt'])
+        self.assertEqual(self.values(args, '--reference'), ['reference', 'reference_landscape', 'reference_probes'])
+        self.assertEqual(self.values(args, '--coverage-poses'), ['coverage.txt', 'probes.txt'])
+
+    def test_a_camera_without_a_path_fits_on_the_probe_sets_alone(self):
+        args = self.command(path=False, probes=SimpleNamespace())
+        self.assertEqual(self.values(args, '--poses'), ['probes.txt'])
+        self.assertEqual(self.values(args, '--coverage-poses'), ['probes.txt'])
+        self.assertEqual(self.values(args, '--held-out-poses'), ['probes_held_out.txt'])
+
+    def test_without_probes_the_fit_reads_the_path_sets_alone(self):
+        args = self.command()
+        self.assertEqual(self.values(args, '--poses'), ['train.txt', 'train_landscape.txt'])
+        self.assertEqual(self.values(args, '--coverage-poses'), ['coverage.txt'])
+
+    def test_held_out_sets_pass_only_when_the_import_sets_probes_or_a_budget_and_pair_up(self):
+        for name, shaping in (('none', {}), ('probes', dict(probes=SimpleNamespace())),
+                              ('budget', dict(budget=self.SETTLE))):
+            with self.subTest(shaping=name):
+                args = self.command(**shaping)
+                held_out = ['held_out.txt'] + (['probes_held_out.txt'] if name == 'probes' else [])
+                references = ['reference_held_out'] + (['reference_probes_held_out'] if name == 'probes' else [])
+                if name == 'none':
+                    self.assertNotIn('--held-out-poses', args)
+                    self.assertNotIn('--held-out-reference', args)
+                else:
+                    self.assertEqual(self.values(args, '--held-out-poses'), held_out)
+                    self.assertEqual(self.values(args, '--held-out-reference'), references)
+
+    def test_settle_is_passed_only_with_a_budget(self):
+        args = self.command(budget=self.SETTLE)
+        self.assertEqual(self.values(args, '--settle'), ['100'])
+        self.assertEqual(args[args.index('--settle') + 2], '0.05')
+        self.assertNotIn('--settle', self.command())
+
+    def test_the_copy_gate_checks_the_path_held_out_set_unless_the_camera_has_no_path(self):
+        for path, probes, expected in ((True, SimpleNamespace(), 'held_out.txt'), (True, None, 'held_out.txt'),
+                                       (False, SimpleNamespace(), 'probes_held_out.txt')):
+            with self.subTest(path=path, probes=probes):
+                self.assertEqual(self.values(self.command(path, probes), '--copy-poses'), [expected])
 
 
 class FitCopiesTests(unittest.TestCase):
@@ -312,7 +391,7 @@ class FitCopiesTests(unittest.TestCase):
             data, _, _, _, _ = bundle_fixture(folder)
             _, copies = mesh_bundle.decode(data)
             row = {**copies[0], "mesh": "prototype", "colour_set": 0}
-            entries = mesh_bundle.mesh_entries("prototype", mesh)
+            entries = bundle_entries("prototype", mesh)
             entries.append((lcol_asset.name_for_mesh("prototype"), lcol_asset.TYPE, colours))
             path = pathlib.Path(folder) / 'copy.bundle'
             path.write_bytes(mesh_bundle.encode(entries, [row]))

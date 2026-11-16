@@ -19,13 +19,17 @@
 #include "ridge_arms.h"
 #include "shell/ui/ui_ridge.h"
 
-#define FB_PIXELS ((size_t)GFX_WIDTH * GFX_HEIGHT)
-#define FB_BYTES  (FB_PIXELS * sizeof(gfx_color_t))
+#define FB_PIXELS    ((size_t)GFX_WIDTH * GFX_HEIGHT)
+#define FB_BYTES     (FB_PIXELS * sizeof(gfx_color_t))
+/* The tilt sweep crosses the diagonal within these. */
+#define SWEEP_FRAMES 150
 
 typedef struct {
     int frames, dissolved;
     int unsent_px, first_unsent_frame;
     int unlike_px, first_unlike_frame;
+    int unfresh_px, first_unfresh_frame, fresh_frames, overflowed;
+    int moved_px, kept_px, painted_px, kept_boxes; /* over the fresh frames */
 } audit_t;
 
 /* What a frame is compared with: the frame before it, and a full paint that
@@ -60,7 +64,7 @@ prime(void) {
 
 static void
 rig_open(rig_t* rig) {
-    *rig = (rig_t){.audit = {.first_unsent_frame = -1, .first_unlike_frame = -1}};
+    *rig = (rig_t){.audit = {.first_unsent_frame = -1, .first_unlike_frame = -1, .first_unfresh_frame = -1}};
     rig->before = memory_alloc(FB_BYTES, MEMORY_APP);
     rig->reference = memory_alloc(FB_BYTES, MEMORY_APP);
     if (rig->before == NULL || rig->reference == NULL) {
@@ -102,16 +106,62 @@ unlike_a_full_paint(gfx_color_t* reference) {
     return unlike;
 }
 
+static bool
+in_fresh(const ui_fresh_t* fresh, int x, int y) {
+    for (int i = 0; i < fresh->count; i++) {
+        if (recti_contains(fresh->rects[i], x, y)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Where the step says it painted fresh, each pixel is a full paint's, and
+ * it changed nothing outside: what ui_end_over() replays the UI over alone.
+ * `reference` holds the full paint. */
+static int
+unfresh(const gfx_color_t* before, const gfx_color_t* reference) {
+    const ui_fresh_t* const fresh = ui_ridge_fresh();
+    const gfx_color_t* const now = gfx_framebuffer();
+    int wrong = 0;
+    for (size_t i = 0; i < FB_PIXELS; i++) {
+        const bool inside = in_fresh(fresh, (int)(i % GFX_WIDTH), (int)(i / GFX_WIDTH));
+        wrong += inside ? now[i] != reference[i] : now[i] != before[i];
+    }
+    return wrong;
+}
+
 /* A strip switch still dissolving in is by design unlike a full paint, but
  * what it changed must still be sent. */
 static void
 rig_frame(rig_t* rig, const input_t* input) {
     audit_t* const audit = &rig->audit;
+    const int turns_before = ui_ridge_gradient_turns_for_test();
     ui_ridge_step(input, RIDGE_ARM_FRAME_DT_MS);
+    const bool turned = ui_ridge_gradient_turns_for_test() != turns_before;
     const int unsent = unsent_changes(rig->before);
     const bool dissolving = ui_ridge_dissolving_for_test();
     const int unlike = dissolving ? 0 : unlike_a_full_paint(rig->reference);
+    const bool fresh = !dissolving && !ui_ridge_fresh()->overflow;
+    const int wrong = fresh ? unfresh(rig->before, rig->reference) : 0;
     gfx_present();
+    if (wrong > 0 && audit->first_unfresh_frame < 0) {
+        audit->first_unfresh_frame = audit->frames;
+    }
+    audit->unfresh_px += wrong;
+    int moved = 0;
+    int kept_px = 0;
+    int kept = 0;
+    if (fresh && ui_ridge_boxes_for_test(&moved, &kept_px, &kept)) {
+        audit->moved_px += moved;
+        audit->kept_px += kept_px;
+        audit->kept_boxes += kept;
+        for (int i = 0; i < ui_ridge_fresh()->count; i++) {
+            audit->painted_px += recti_area(ui_ridge_fresh()->rects[i]);
+        }
+    }
+    audit->fresh_frames += fresh;
+    audit->overflowed += !dissolving && !turned && ui_ridge_fresh()->overflow;
     if (unsent > 0 && audit->first_unsent_frame < 0) {
         audit->first_unsent_frame = audit->frames;
     }
@@ -135,8 +185,29 @@ assert_audit(const char* name, const audit_t* audit) {
         printf("ridge repaint %s: %d px unlike a full paint, first at frame %d\n", name, audit->unlike_px,
                audit->first_unlike_frame);
     }
+    if (audit->unfresh_px > 0) {
+        printf("ridge repaint %s: %d px wrong for the fresh places, first at frame %d\n", name, audit->unfresh_px,
+               audit->first_unfresh_frame);
+    }
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, audit->unsent_px, name);
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, audit->unlike_px, name);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, audit->unfresh_px, name);
+}
+
+/* assert_audit, and the step said where it painted, overflowing its places
+ * on no frame but a turn's or a dissolve's; its boxes held at most each
+ * one's slack past the moves, and the merge painted no pixel past them. */
+static void
+assert_fresh_audit(const char* name, const audit_t* audit) {
+    assert_audit(name, audit);
+    const int most =
+        audit->moved_px + (audit->moved_px >> RIDGE_BOX_SLACK_SHIFT) + (RIDGE_BOX_SLACK_PX * audit->kept_boxes);
+    printf("ridge repaint %s: %d moved px, %d boxed (at most %d) in %d boxes, %d painted\n", name, audit->moved_px,
+           audit->kept_px, most, audit->kept_boxes, audit->painted_px);
+    TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(most, audit->kept_px, "the boxes grew past their slack");
+    TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(audit->kept_px, audit->painted_px, "the merge painted past the boxes");
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, audit->fresh_frames, "the step said where it painted");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, audit->overflowed, "a step with no turn or dissolve overflowed its places");
 }
 
 static void
@@ -168,13 +239,13 @@ static void
 test_a_pluck_and_strum_repaint_as_a_full_paint_and_are_sent(void) {
     fixture();
     const audit_t audit = audit_arm(ARM_PLUCK_STRUM, 90);
-    assert_audit("pluck and strum", &audit);
+    assert_fresh_audit("pluck and strum", &audit);
 }
 
 static void
 test_a_tilt_sweep_repaints_as_a_full_paint_and_is_sent(void) {
     fixture();
-    const audit_t audit = audit_arm(ARM_TILT_SWEEP, 150);
+    const audit_t audit = audit_arm(ARM_TILT_SWEEP, SWEEP_FRAMES);
     assert_audit("tilt sweep", &audit);
 }
 
@@ -189,14 +260,51 @@ static void
 test_the_ambient_ridge_repaints_as_a_full_paint_and_is_sent(void) {
     fixture();
     const audit_t audit = audit_arm(ARM_AMBIENT, 200);
-    assert_audit("ambient landscape", &audit);
+    assert_fresh_audit("ambient landscape", &audit);
 }
 
 static void
 test_the_ambient_ridge_held_upright_repaints_as_a_full_paint_and_is_sent(void) {
     fixture();
     const audit_t audit = audit_arm(ARM_AMBIENT_PORTRAIT, 300);
-    assert_audit("ambient portrait", &audit);
+    assert_fresh_audit("ambient portrait", &audit);
+}
+
+/* Past the boxes a step may list, each box is still repainted whole and the
+ * step says its list overflowed, so the UI puts the backdrop back. */
+static void
+test_boxes_past_a_full_list_are_repainted_and_overflow_it(void) {
+    enum { ONE_BOX = 1 };
+
+    fixture();
+    ui_ridge_cap_boxes_for_test(ONE_BOX);
+    const audit_t audit = audit_arm(ARM_AMBIENT, 200);
+    assert_audit("boxes past a full list", &audit);
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, audit.overflowed, "a step past its cap said its list overflowed");
+}
+
+/* A merge whose split leaves more boxes than the cap repaints the rest at
+ * once and says the list overflowed; the screen is still a full paint's,
+ * and all it changed is sent. */
+static void
+test_a_split_past_the_cap_is_repainted_and_overflows_the_list(void) {
+    enum { TWO_BOXES = 2 };
+
+    fixture();
+    start_arm(ARM_AMBIENT);
+    rig_t rig;
+    rig_open(&rig);
+    TEST_ASSERT_FALSE_MESSAGE(ui_ridge_fresh()->overflow, "the primed step's list held");
+    ui_ridge_cap_boxes_for_test(TWO_BOXES);
+    /* Their bounding box adds pixels, so the second splits in two around
+     * the first: three boxes for a cap of two. */
+    recti_t boxes[TWO_BOXES] = {{0, 0, 10, 10}, {4, 4, 10, 10}};
+    const int left = ui_ridge_merge_boxes_for_test(boxes, TWO_BOXES);
+    TEST_ASSERT_EQUAL_INT(TWO_BOXES, left);
+    TEST_ASSERT_TRUE_MESSAGE(ui_ridge_fresh()->overflow, "a split past the cap said its list overflowed");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, unlike_a_full_paint(rig.reference), "the repainted piece is a full paint's");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, unsent_changes(rig.before), "the repainted piece is sent");
+    rig_close(&rig);
 }
 
 static void
@@ -220,10 +328,35 @@ static void
 test_a_dissolved_strip_switch_is_sent_and_ends_on_a_full_paint(void) {
     fixture();
     (void)tune_set(tune_shared(), TUNE_NAME(ridge, axis_dissolve_ms), 400);
-    const audit_t audit = audit_arm(ARM_TILT_SWEEP, 150);
+    const audit_t audit = audit_arm(ARM_TILT_SWEEP, SWEEP_FRAMES);
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, audit.dissolved, "the sweep never dissolved a strip switch");
     TEST_ASSERT_FALSE_MESSAGE(ui_ridge_dissolving_for_test(), "the strip switch never finished dissolving in");
     assert_audit("dissolved switch", &audit);
+}
+
+/* A part of the backdrop asked for mid-dissolve (ui_end_over() putting it
+ * back under the UI) cannot be painted as the screen mixes it, so the
+ * dissolve ends: the whole screen a full paint. */
+static void
+test_a_part_painted_mid_dissolve_ends_the_dissolve(void) {
+    fixture();
+    (void)tune_set(tune_shared(), TUNE_NAME(ridge, axis_dissolve_ms), 400);
+    start_arm(ARM_TILT_SWEEP);
+    int frame = 0;
+    while (!ui_ridge_dissolving_for_test() && frame < SWEEP_FRAMES) {
+        input_t input;
+        ridge_arm_drive(ARM_TILT_SWEEP, frame++, &input);
+        ui_ridge_step(&input, RIDGE_ARM_FRAME_DT_MS);
+        gfx_present();
+    }
+    TEST_ASSERT_TRUE_MESSAGE(ui_ridge_dissolving_for_test(), "the sweep never started a dissolve");
+    ui_ridge_paint((recti_t){0, 0, GFX_WIDTH / 2, GFX_HEIGHT / 2});
+    TEST_ASSERT_FALSE(ui_ridge_dissolving_for_test());
+    gfx_color_t* reference = memory_alloc(FB_BYTES, MEMORY_APP);
+    TEST_ASSERT_NOT_NULL(reference);
+    const int unlike = unlike_a_full_paint(reference);
+    memory_free(reference);
+    TEST_ASSERT_EQUAL_INT(0, unlike);
 }
 
 /* Crossing the diagonal again before the first dissolve is over restarts
@@ -335,6 +468,52 @@ holds(recti_t outer, recti_t inner) {
            || recti_intersect(outer, inner).w * recti_intersect(outer, inner).h == inner.w * inner.h;
 }
 
+enum { MERGE_FIELD = 24, MERGE_BOXES_MAX = 16, MERGE_ANY_COUNT = -1 };
+
+/* How many of `boxes` hold the pixel. */
+static int
+boxes_holding(const recti_t* boxes, int count, int x, int y) {
+    int n = 0;
+    for (int i = 0; i < count; i++) {
+        n += recti_contains(boxes[i], x, y);
+    }
+    return n;
+}
+
+/* The layers' boxes merged until none overlap: every pixel a box held is
+ * held by exactly one box left, and none other is, so a merge paints no
+ * pixel no box held. Boxes whose bounding box adds none merge into one. */
+static void
+assert_boxes_merge(const recti_t* in, int count, int want_count) {
+    recti_t boxes[MERGE_BOXES_MAX];
+    memcpy(boxes, in, (size_t)count * sizeof *boxes);
+    const int left = ui_ridge_merge_boxes_for_test(boxes, count);
+    if (want_count != MERGE_ANY_COUNT) {
+        TEST_ASSERT_EQUAL_INT(want_count, left);
+    }
+    for (int y = 0; y < MERGE_FIELD; y++) {
+        for (int x = 0; x < MERGE_FIELD; x++) {
+            const int held = boxes_holding(in, count, x, y) > 0;
+            TEST_ASSERT_EQUAL_INT_MESSAGE(held, boxes_holding(boxes, left, x, y),
+                                          "a pixel held once, iff a box held it");
+        }
+    }
+}
+
+static void
+test_layer_boxes_merge_until_none_overlap(void) {
+    fixture();
+    /* Bounding boxes adding no pixel merge, in a chain. */
+    assert_boxes_merge((const recti_t[]){{0, 0, 10, 10}, {0, 8, 10, 6}, {0, 12, 10, 8}}, 3, 1);
+    /* Bounding boxes that would add pixels split instead, in either order. */
+    assert_boxes_merge((const recti_t[]){{0, 0, 10, 10}, {8, 8, 10, 10}, {0, 16, 10, 4}}, 3, MERGE_ANY_COUNT);
+    assert_boxes_merge((const recti_t[]){{0, 0, 10, 10}, {0, 16, 10, 4}, {8, 8, 10, 10}}, 3, MERGE_ANY_COUNT);
+    /* One inside another is taken whole. */
+    assert_boxes_merge((const recti_t[]){{0, 0, 10, 10}, {2, 2, 4, 4}}, 2, 1);
+    /* Touching boxes share no pixel and stay apart. */
+    assert_boxes_merge((const recti_t[]){{0, 0, 10, 10}, {10, 0, 10, 10}, {0, 10, 10, 10}}, 3, 3);
+}
+
 /* A column group's mark must reach every changed pixel and stop at their
  * bounding box: the audit above passes a box that is too big. Each cell's
  * box is held between the box of its changed pixels and the most the marks
@@ -386,12 +565,16 @@ suite_ridge_repaint(void) {
     RUN_TEST(test_a_wobble_repaints_as_a_full_paint_and_is_sent);
     RUN_TEST(test_the_ambient_ridge_repaints_as_a_full_paint_and_is_sent);
     RUN_TEST(test_the_ambient_ridge_held_upright_repaints_as_a_full_paint_and_is_sent);
+    RUN_TEST(test_boxes_past_a_full_list_are_repainted_and_overflow_it);
+    RUN_TEST(test_a_split_past_the_cap_is_repainted_and_overflows_the_list);
     RUN_TEST(test_shaking_plucks_repaint_as_a_full_paint_and_are_sent);
     RUN_TEST(test_the_boot_hold_and_ease_in_repaint_as_a_full_paint_and_are_sent);
     RUN_TEST(test_a_dissolved_strip_switch_is_sent_and_ends_on_a_full_paint);
+    RUN_TEST(test_a_part_painted_mid_dissolve_ends_the_dissolve);
     RUN_TEST(test_a_strip_switch_inside_a_running_dissolve_is_sent_and_ends_on_a_full_paint);
     RUN_TEST(test_the_gradient_catches_up_once_the_tilt_stops);
     RUN_TEST(test_a_column_groups_dirty_box_covers_what_changed_and_no_more);
+    RUN_TEST(test_layer_boxes_merge_until_none_overlap);
 }
 
 #else

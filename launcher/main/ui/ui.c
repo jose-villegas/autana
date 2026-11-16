@@ -46,6 +46,7 @@
 #include "gfx/target/gfx_target.h"
 #include "hash/name_hash64.h"
 #include "image/pixel/rgb565.h"
+#include "math/geometry/rect_overlap.h"
 #include "math/scalar/mathi.h"
 #include "ui/controls/ui_icons.h"
 #include "ui/input/ui_bridge.h"
@@ -118,7 +119,7 @@ mu_color_to_gfx(mu_Color c) {
     return RGB565BE(ui_rgb_value(c));
 }
 
-static void
+static __attribute__((noinline)) void
 draw_text_command(const mu_Command* cmd, affine2x_t t) {
     const mu_Color ink = cmd->text.color;
     const mu_Color halo = ui_text_halo(ink);
@@ -186,73 +187,90 @@ draw_text_command(const mu_Command* cmd, affine2x_t t) {
     }
 }
 
+static __attribute__((noinline)) void
+draw_rect_command(const mu_Command* cmd, affine2x_t t) {
+    const mu_Color c = cmd->rect.color;
+    /* Fully transparent rects are microui's way of drawing nothing; we
+     * have no blending, so skip them rather than paint black. */
+    if (c.a == 0) {
+        return;
+    }
+    const mu_Rect r = ui_transform_mu_rect(t, cmd->rect.rect);
+    draw_rect(r.x, r.y, r.w, r.h, mu_color_to_gfx(c));
+}
+
+static __attribute__((noinline)) void
+draw_image_command(const mu_Command* cmd, affine2x_t t) {
+    const ui_image_command_t* image = (const ui_image_command_t*)cmd;
+    if (image->color.a != 0) {
+        icon_fill_ctx_t fc = {.color = mu_color_to_gfx(image->color)};
+        ui_transform_icon_blocks(t, image->image, ui_recti_from_mu(image->rect), icon_fill_emit, &fc);
+    }
+}
+
+/* An integer UI scale scales the border with the face. */
+static __attribute__((noinline)) void
+draw_sprite_command(const mu_Command* cmd, affine2x_t t) {
+    const ui_sprite_command_t* face = (const ui_sprite_command_t*)cmd;
+    const mu_Rect r = ui_transform_mu_rect(t, face->rect);
+    draw_sprite_scaled(face->sprite, ui_recti_from_mu(r), ui_transform_quarter(t), ui_transform_scale(t));
+}
+
+static __attribute__((noinline)) void
+draw_swatches_command(const mu_Command* cmd, affine2x_t t) {
+    const ui_swatch_command_t* grid = (const ui_swatch_command_t*)cmd;
+    for (int row = 0; row < grid->rows; row++) {
+        for (int col = 0; col < grid->cols; col++) {
+            const mu_Rect cell = ui_transform_mu_rect(t, ui_swatch_cell_rect(grid, col, row));
+            draw_rect(cell.x, cell.y, cell.w, cell.h, mu_color_to_gfx(ui_rgb(grid->rgb[(row * grid->cols) + col])));
+        }
+    }
+}
+
+/* microui's icons are close/check/collapsed/expanded. MU_ICON_CHECK is the
+ * system check icon because two callers need it: a checkbox toggle, and a
+ * per-tile selection badge. The other three, and the check without the
+ * engine pack, are a small centred square: nothing in this shell closes a
+ * window or collapses a tree yet to ask for them. */
+static __attribute__((noinline)) void
+draw_icon_command(const mu_Command* cmd, affine2x_t t) {
+    const gfx_color_t color = mu_color_to_gfx(cmd->icon.color);
+    const image_t* check = cmd->icon.id == MU_ICON_CHECK ? ui_icon_image(UI_ICON_CHECK) : NULL;
+    if (check != NULL) {
+        icon_fill_ctx_t fc = {.color = color};
+        ui_transform_icon_blocks(t, check, ui_recti_from_mu(cmd->icon.rect), icon_fill_emit, &fc);
+        return;
+    }
+    const mu_Rect r = ui_transform_mu_rect(t, cmd->icon.rect);
+    draw_rect(r.x + (r.w / 3), r.y + (r.h / 3), r.w / 3, r.h / 3, color);
+}
+
+/* A clip command's panel rect. */
+static recti_t
+command_clip(const mu_Command* cmd) {
+    return recti_intersect(ui_transform_rect(ui_effective_transform(), ui_recti_from_mu(cmd->clip.rect)),
+                           GFX_SCREEN_RECT);
+}
+
+/* Each command's drawer stays out of line (noinline): inlined, this
+ * frame would hold the largest drawer's locals under every other drawer,
+ * and a UI paint's stack carries it. */
 static void
 draw_command(const mu_Command* cmd) {
     const affine2x_t t = ui_effective_transform();
 
     switch (cmd->type) {
-
-        case MU_COMMAND_RECT: {
-            const mu_Color c = cmd->rect.color;
-            /* Fully transparent rects are microui's way of drawing nothing; we
-         * have no blending, so skip them rather than paint black. */
-            if (c.a == 0) {
-                break;
-            }
-            const mu_Rect r = ui_transform_mu_rect(t, cmd->rect.rect);
-            draw_rect(r.x, r.y, r.w, r.h, mu_color_to_gfx(c));
-            break;
-        }
-
-        case UI_COMMAND_IMAGE: {
-            const ui_image_command_t* image = (const ui_image_command_t*)cmd;
-            if (image->color.a != 0) {
-                icon_fill_ctx_t fc = {.color = mu_color_to_gfx(image->color)};
-                ui_transform_icon_blocks(t, image->image, ui_recti_from_mu(image->rect), icon_fill_emit, &fc);
-            }
-            break;
-        }
-
-        case UI_COMMAND_SWATCHES: {
-            const ui_swatch_command_t* grid = (const ui_swatch_command_t*)cmd;
-            for (int row = 0; row < grid->rows; row++) {
-                for (int col = 0; col < grid->cols; col++) {
-                    const mu_Rect cell = ui_transform_mu_rect(t, ui_swatch_cell_rect(grid, col, row));
-                    draw_rect(cell.x, cell.y, cell.w, cell.h,
-                              mu_color_to_gfx(ui_rgb(grid->rgb[(row * grid->cols) + col])));
-                }
-            }
-            break;
-        }
-
+        case MU_COMMAND_RECT: draw_rect_command(cmd, t); break;
+        case UI_COMMAND_IMAGE: draw_image_command(cmd, t); break;
+        case UI_COMMAND_SPRITE: draw_sprite_command(cmd, t); break;
+        case UI_COMMAND_SWATCHES: draw_swatches_command(cmd, t); break;
         case MU_COMMAND_TEXT: draw_text_command(cmd, t); break;
-
-        case MU_COMMAND_ICON: {
-            /* microui's icons are close/check/collapsed/expanded. MU_ICON_CHECK
-             * is the system check icon because two callers need it: a
-             * checkbox toggle, and a per-tile selection badge. The other
-             * three, and the check without the engine pack, are a small
-             * centred square: nothing in this shell closes a window or
-             * collapses a tree yet to ask for them. */
-            const mu_Color c = cmd->icon.color;
-            const gfx_color_t color = mu_color_to_gfx(c);
-            const image_t* check = cmd->icon.id == MU_ICON_CHECK ? ui_icon_image(UI_ICON_CHECK) : NULL;
-            if (check != NULL) {
-                icon_fill_ctx_t fc = {.color = color};
-                ui_transform_icon_blocks(t, check, ui_recti_from_mu(cmd->icon.rect), icon_fill_emit, &fc);
-            } else {
-                const mu_Rect r = ui_transform_mu_rect(t, cmd->icon.rect);
-                draw_rect(r.x + (r.w / 3), r.y + (r.h / 3), r.w / 3, r.h / 3, color);
-            }
-            break;
-        }
-
+        case MU_COMMAND_ICON: draw_icon_command(cmd, t); break;
         case MU_COMMAND_CLIP: {
-            const mu_Rect r = ui_transform_mu_rect(t, cmd->clip.rect);
+            const recti_t r = command_clip(cmd);
             draw_set_clip(r.x, r.y, r.w, r.h);
             break;
         }
-
         default: break;
     }
 }
@@ -280,11 +298,119 @@ next_canvas_command(const mu_Container* cnt, mu_Command** cmd) {
 void (*ui_canvas_painted_for_test)(const mu_Container*);
 #endif
 
+static bool command_rect(const mu_Command* cmd, mu_Rect* out);
+
+/* next_canvas_command(), `clip` (the screen to start) following the
+ * canvas's clip commands. */
+static bool
+next_clipped_command(const mu_Container* cnt, mu_Command** cmd, recti_t* clip) {
+    if (!next_canvas_command(cnt, cmd)) {
+        return false;
+    }
+    if ((*cmd)->type == MU_COMMAND_CLIP) {
+        *clip = command_clip(*cmd);
+    }
+    return true;
+}
+
+void
+ui_fresh_clear(ui_fresh_t* fresh) {
+    fresh->count = 0;
+    fresh->overflow = false;
+}
+
+/* Whether any two of `r` overlap, swept along the axis they are thinner on. */
+static bool
+rects_overlap_any(recti_t* r, int count) {
+    int widths = 0;
+    int heights = 0;
+    for (int i = 0; i < count; i++) {
+        widths += r[i].w;
+        heights += r[i].h;
+    }
+    int j;
+    return recti_overlapping_pair(r, count, widths <= heights, &j) >= 0;
+}
+
+void
+ui_fresh_add_all(ui_fresh_t* fresh, const recti_t* rects, int count) {
+    int at = fresh->count;
+    for (int i = 0; i < count && !fresh->overflow; i++) {
+        if (recti_is_empty(rects[i])) {
+            continue;
+        }
+        fresh->overflow = at == UI_FRESH_MAX;
+        if (!fresh->overflow) {
+            fresh->rects[at++] = rects[i];
+        }
+    }
+    if (fresh->overflow || rects_overlap_any(fresh->rects, at)) {
+        fresh->overflow = true;
+        return;
+    }
+    fresh->count = at;
+}
+
+void
+ui_fresh_add(ui_fresh_t* fresh, recti_t rect) {
+    ui_fresh_add_all(fresh, &rect, 1);
+}
+
+void
+ui_fresh_whole(ui_fresh_t* fresh) {
+    ui_fresh_clear(fresh);
+    ui_fresh_add(fresh, GFX_SCREEN_RECT);
+}
+
+/* Where a replay draws: a backdrop's fresh places when it gave them, else
+ * the dirt the frame had when the replay began. `left` is the dirt a
+ * command has yet to be drawn over, kept here so no frame under the
+ * command walk holds a copy. */
+typedef struct {
+    const ui_fresh_t* fresh;
+    gfx_dirty_leaves_t dirt;
+    gfx_dirty_leaves_t left;
+} replay_area_t;
+
+/* In a replay, a command is drawn again only over the replay's area.
+ * Anywhere else its last paint still stands, and a translucent one drawn
+ * there again would blend over itself. */
 static void
-paint_canvas(const mu_Container* cnt) {
-    mu_Command* cmd = NULL;
-    while (next_canvas_command(cnt, &cmd)) {
+replay_command(const mu_Command* cmd, recti_t clip, replay_area_t* area) {
+    mu_Rect r;
+    if (!command_rect(cmd, &r)) {
+        return;
+    }
+    const recti_t drawn = recti_intersect(clip, ui_recti_from_mu(r));
+    recti_t under;
+    if (area->fresh != NULL) {
+        for (int i = 0; i < area->fresh->count; i++) {
+            under = recti_intersect(drawn, area->fresh->rects[i]);
+            if (!recti_is_empty(under)) {
+                draw_set_clip(under.x, under.y, under.w, under.h);
+                draw_command(cmd);
+            }
+        }
+        return;
+    }
+    area->left = area->dirt;
+    while (gfx_dirty_leaves_take(&area->left, drawn, &under)) {
+        draw_set_clip(under.x, under.y, under.w, under.h);
         draw_command(cmd);
+    }
+}
+
+/* `area` NULL paints the whole canvas; otherwise it is replayed there. */
+static void
+paint_canvas(const mu_Container* cnt, replay_area_t* area) {
+    recti_t clip = GFX_SCREEN_RECT;
+    mu_Command* cmd = NULL;
+    while (next_clipped_command(cnt, &cmd, &clip)) {
+        if (area == NULL || cmd->type == MU_COMMAND_CLIP) {
+            draw_command(cmd);
+        } else {
+            replay_command(cmd, clip, area);
+        }
     }
     draw_clear_clip();
 #ifndef ESP_PLATFORM
@@ -322,31 +448,51 @@ canvas_physical_rect(const mu_Container* cnt) {
     return ui_transform_mu_rect(ui_effective_transform(), cnt->rect);
 }
 
-/* Which canvases changed. Also repaint one whose bands are already dirty:
- * something has drawn underneath it this frame, so its pixels are gone
- * however unchanged its own description is. */
+/* Whether any of the replay's area lies over the canvas: one that it misses
+ * keeps its pixels and is not walked. */
+static bool
+canvas_in_area(const mu_Container* cnt, const replay_area_t* area) {
+    const recti_t phys = ui_recti_from_mu(canvas_physical_rect(cnt));
+    if (area->fresh != NULL) {
+        for (int i = 0; i < area->fresh->count; i++) {
+            if (!recti_is_empty(recti_intersect(phys, area->fresh->rects[i]))) {
+                return true;
+            }
+        }
+        return false;
+    }
+    gfx_dirty_leaves_t left = area->dirt;
+    recti_t under;
+    return gfx_dirty_leaves_take(&left, phys, &under);
+}
+
 static bool
 canvas_itself_changed(const mu_Container* cnt) {
     const int slot = (int)(cnt - ui_ctx.containers);
     return ui_invalidated || slot < 0 || slot >= MU_CONTAINERPOOL_SIZE || hash_canvas(cnt) != ui_canvas_hash[slot];
 }
 
-static void
+/* Whether the canvas changed, or something drew underneath it this frame, so
+ * its pixels are gone however unchanged its own description is. */
+static bool
+canvas_needs_paint(const mu_Container* cnt) {
+    const mu_Rect phys = canvas_physical_rect(cnt);
+    return canvas_itself_changed(cnt) || gfx_region_dirty(phys.x, phys.y, phys.w, phys.h);
+}
+
+/* This and propagate_repaint_over_overlaps() stay out of line: ui_end() is
+ * their one caller, and inlined, their frames ride under every paint. */
+static __attribute__((noinline)) void
 mark_changed_canvases(int n, bool* repaint) {
     for (int i = 0; i < n && i < MU_ROOTLIST_SIZE; i++) {
-        const mu_Container* cnt = ui_ctx.root_list.items[i];
-        const mu_Rect phys = canvas_physical_rect(cnt);
-
-        if (canvas_itself_changed(cnt) || gfx_region_dirty(phys.x, phys.y, phys.w, phys.h)) {
-            repaint[i] = true;
-        }
+        repaint[i] = canvas_needs_paint(ui_ctx.root_list.items[i]);
     }
 }
 
 /* Painter's order: repainting a canvas erases whatever was drawn on top of
  * it, so everything above it that overlaps has to go again too. root_list is
  * sorted back to front by mu_end(). */
-static void
+static __attribute__((noinline)) void
 propagate_repaint_over_overlaps(int n, bool* repaint) {
     for (int i = 0; i < n && i < MU_ROOTLIST_SIZE; i++) {
         if (!repaint[i]) {
@@ -393,7 +539,7 @@ clear_vanished_canvases(uint32_t background_rgb) {
 }
 
 static bool
-repaint_marked_canvases(int n, const bool* repaint, uint32_t background_rgb) {
+repaint_marked_canvases(int n, const bool* repaint, uint32_t background_rgb, replay_area_t* area) {
     bool drew = false;
 
     for (int i = 0; i < n && i < MU_ROOTLIST_SIZE; i++) {
@@ -409,7 +555,7 @@ repaint_marked_canvases(int n, const bool* repaint, uint32_t background_rgb) {
             draw_rect(phys.x, phys.y, phys.w, phys.h, RGB565BE(background_rgb));
         }
 
-        paint_canvas(cnt);
+        paint_canvas(cnt, area);
 
         const int slot = (int)(cnt - ui_ctx.containers);
         if (slot >= 0 && slot < MU_CONTAINERPOOL_SIZE) {
@@ -435,6 +581,34 @@ ui_end_commands(void) {
 }
 
 bool
+ui_end_if_unsettled(void) {
+    if (ui_face_settle()) {
+        return false;
+    }
+    ui_end_commands();
+    return true;
+}
+
+/* Whether any canvas holds a face that lets what is under it show: with no
+ * background to clear to, ui_end() would blend it over its own last paint
+ * (ui_end_over() puts a backdrop back first). Out of line, so its walk
+ * stays off ui_end()'s frame. */
+#ifndef NDEBUG
+static __attribute__((noinline)) bool
+any_translucent_face(int n) {
+    for (int i = 0; i < n && i < MU_ROOTLIST_SIZE; i++) {
+        mu_Command* cmd = NULL;
+        while (next_canvas_command(ui_ctx.root_list.items[i], &cmd)) {
+            if (cmd->type == UI_COMMAND_SPRITE && ((const ui_sprite_command_t*)cmd)->sprite->alpha.pixels != NULL) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+#endif
+
+bool
 ui_end(uint32_t background_rgb) {
 #if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT
     finish_band_stats();
@@ -456,8 +630,9 @@ ui_end(uint32_t background_rgb) {
 
     clear_vanished_canvases(background_rgb);
     mark_changed_canvases(n, repaint);
+    assert(background_rgb != UI_NO_BACKGROUND || !any_translucent_face(n));
     propagate_repaint_over_overlaps(n, repaint);
-    const bool drew = repaint_marked_canvases(n, repaint, background_rgb);
+    const bool drew = repaint_marked_canvases(n, repaint, background_rgb, NULL);
 
     ui_invalidated = false;
 #if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT
@@ -469,12 +644,35 @@ ui_end(uint32_t background_rgb) {
     return drew;
 }
 
+/* Before an unchanged UI is replayed over the dirt, the backdrop goes back
+ * under every command there but an opaque rect, so each blends over the
+ * backdrop alone and the dirt ends as a whole repaint would leave it. */
+static void
+backdrop_under_replay(int n, ui_backdrop_fn paint_backdrop, const gfx_dirty_leaves_t* dirt) {
+    gfx_dirty_leaves_t under = {0};
+    for (int i = 0; i < n && i < MU_ROOTLIST_SIZE; i++) {
+        recti_t clip = GFX_SCREEN_RECT;
+        mu_Command* cmd = NULL;
+        mu_Rect r;
+        while (next_clipped_command(ui_ctx.root_list.items[i], &cmd, &clip)) {
+            if (cmd->type != MU_COMMAND_CLIP && cmd->type != MU_COMMAND_RECT && command_rect(cmd, &r)) {
+                gfx_dirty_leaves_add(&under, dirt, recti_intersect(clip, ui_recti_from_mu(r)));
+            }
+        }
+    }
+    recti_t area;
+    while (gfx_dirty_leaves_take(&under, GFX_SCREEN_RECT, &area)) {
+        paint_backdrop(area);
+    }
+}
+
 /* A backdrop is shared by every canvas, so once the UI itself has changed
- * it is painted once and every canvas goes over it. A UI that is unchanged
- * and only drawn under (the backdrop animating) is painted back on top
- * with no backdrop call: whoever drew under it has already drawn that part. */
+ * it is painted whole and every canvas goes over it. A UI that is unchanged
+ * and only drawn under (the backdrop animating) is replayed over just the
+ * places the backdrop painted fresh, or, without them, over the dirt that
+ * left, the backdrop first put back under it. */
 bool
-ui_end_over(ui_backdrop_fn paint_backdrop) {
+ui_end_over(ui_backdrop_fn paint_backdrop, const ui_fresh_t* fresh) {
 #if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT
     finish_band_stats();
 #endif
@@ -489,21 +687,24 @@ ui_end_over(ui_backdrop_fn paint_backdrop) {
     const int n = ui_ctx.root_list.idx;
     bool repaint[MU_ROOTLIST_SIZE] = {false};
     mu_Rect vanished[MU_CONTAINERPOOL_SIZE];
-    bool ui_changed = take_vanished_canvases(vanished) > 0;
+    bool changed = take_vanished_canvases(vanished) > 0;
     for (int i = 0; i < n && i < MU_ROOTLIST_SIZE; i++) {
-        ui_changed = ui_changed || canvas_itself_changed(ui_ctx.root_list.items[i]);
+        changed = changed || canvas_itself_changed(ui_ctx.root_list.items[i]);
     }
-
-    if (ui_changed) {
-        paint_backdrop();
-        for (int i = 0; i < n && i < MU_ROOTLIST_SIZE; i++) {
-            repaint[i] = true;
-        }
-    } else {
-        mark_changed_canvases(n, repaint);
-        propagate_repaint_over_overlaps(n, repaint);
+    /* A replay draws nothing outside its area, so a canvas goes again only
+     * where the area reaches it; above it, a canvas the area misses keeps
+     * its pixels. */
+    replay_area_t area = {.fresh = fresh != NULL && !fresh->overflow ? fresh : NULL};
+    if (changed) {
+        paint_backdrop(GFX_SCREEN_RECT);
+    } else if (area.fresh == NULL) {
+        gfx_dirty_leaves(&area.dirt);
+        backdrop_under_replay(n, paint_backdrop, &area.dirt);
     }
-    const bool drew = repaint_marked_canvases(n, repaint, UI_NO_BACKGROUND);
+    for (int i = 0; i < n && i < MU_ROOTLIST_SIZE; i++) {
+        repaint[i] = changed || canvas_in_area(ui_ctx.root_list.items[i], &area);
+    }
+    const bool drew = repaint_marked_canvases(n, repaint, UI_NO_BACKGROUND, changed ? NULL : &area);
 
     ui_invalidated = false;
 #if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT
@@ -547,7 +748,7 @@ typedef struct {
     ui_band_entry_kind_t kind;
     int y0, y1;  /* this entry's own row range, ignored when always is true */
     bool always; /* replay regardless of a band's own range: UI_BAND_ENTRY_CLIP_RESET,
-                                and any command type command_row_range() does not
+                                and any command type command_rect() does not
                                 recognise (currently just MU_COMMAND_CLIP, whose
                                 effect is state for what follows, not pixels of
                                 its own) */
@@ -587,52 +788,39 @@ ui_queue_band_overlay_rect(int x, int y, int w, int h, uint32_t rgb) {
     }
 }
 
-/* The row range `cmd`'s own drawing would touch, after the transform:
- * geometry only, no colour or font-pass work, since binning only needs to
- * decide whether a band should bother calling draw_command() at all.
- * False means "no extent of its own" (MU_COMMAND_CLIP), which the caller
- * takes to mean "always replay". */
+/* The physical rect `cmd`'s own drawing would touch, after the transform:
+ * geometry only, no colour or font-pass work. False means "no extent of its
+ * own" (MU_COMMAND_CLIP), which callers take to mean "always replay". */
 static bool
-command_row_range(const mu_Command* cmd, int* y0, int* y1) {
+command_rect(const mu_Command* cmd, mu_Rect* out) {
     const affine2x_t t = ui_effective_transform();
 
     switch (cmd->type) {
-        case MU_COMMAND_RECT: {
-            const mu_Rect r = ui_transform_mu_rect(t, cmd->rect.rect);
-            *y0 = r.y;
-            *y1 = r.y + r.h;
-            return true;
-        }
-        case UI_COMMAND_IMAGE:
-        case UI_COMMAND_SWATCHES: {
-            const mu_Rect rect = cmd->type == UI_COMMAND_IMAGE ? ((const ui_image_command_t*)cmd)->rect
-                                                               : ((const ui_swatch_command_t*)cmd)->rect;
-            const mu_Rect r = ui_transform_mu_rect(t, rect);
-            *y0 = r.y;
-            *y1 = r.y + r.h;
-            return true;
-        }
+        case MU_COMMAND_RECT: *out = ui_transform_mu_rect(t, cmd->rect.rect); return true;
+        case UI_COMMAND_IMAGE: *out = ui_transform_mu_rect(t, ((const ui_image_command_t*)cmd)->rect); return true;
+        case UI_COMMAND_SWATCHES: *out = ui_transform_mu_rect(t, ((const ui_swatch_command_t*)cmd)->rect); return true;
+        case UI_COMMAND_SPRITE: *out = ui_transform_mu_rect(t, ((const ui_sprite_command_t*)cmd)->rect); return true;
+        case MU_COMMAND_ICON: *out = ui_transform_mu_rect(t, cmd->icon.rect); return true;
         case MU_COMMAND_TEXT: {
             const ui_font_scaled_t fs = ui_resolve_font_scaled(cmd->text.font);
             const int tw = draw_font_text_width(fs.font, cmd->text.str, -1, fs.scale);
             const int th = draw_font_height(fs.font, fs.scale);
             const mu_Rect box = ui_transform_mu_rect(t, (mu_Rect){cmd->text.pos.x, cmd->text.pos.y, tw, th});
-            *y0 = box.y;
-            *y1 = box.y + box.h;
+            int x0 = box.x;
+            int y0 = box.y;
+            int x1 = box.x + box.w;
+            int y1 = box.y + box.h;
             if (cmd->text.color.a == 255) {
                 ui_text_pass_t passes[UI_TEXT_MAX_PASSES];
                 const int n = ui_text_passes(ui_text_style, passes, UI_TEXT_MAX_PASSES);
                 for (int i = 0; i < n; i++) {
-                    *y0 = mathi_min(*y0, box.y + passes[i].dy);
-                    *y1 = mathi_max(*y1, box.y + box.h + passes[i].dy);
+                    x0 = mathi_min(x0, box.x + passes[i].dx);
+                    y0 = mathi_min(y0, box.y + passes[i].dy);
+                    x1 = mathi_max(x1, box.x + box.w + passes[i].dx);
+                    y1 = mathi_max(y1, box.y + box.h + passes[i].dy);
                 }
             }
-            return true;
-        }
-        case MU_COMMAND_ICON: {
-            const mu_Rect r = ui_transform_mu_rect(t, cmd->icon.rect);
-            *y0 = r.y;
-            *y1 = r.y + r.h;
+            *out = (mu_Rect){x0, y0, x1 - x0, y1 - y0};
             return true;
         }
         default: return false;
@@ -760,7 +948,10 @@ ui_end_for_bands(uint32_t background_rgb) {
         mu_Command* cmd = NULL;
         while (next_canvas_command(cnt, &cmd)) {
             ui_band_entry_t entry = {.kind = UI_BAND_ENTRY_COMMAND, .cmd = cmd};
-            entry.always = !command_row_range(cmd, &entry.y0, &entry.y1);
+            mu_Rect rect = {0};
+            entry.always = !command_rect(cmd, &rect);
+            entry.y0 = rect.y;
+            entry.y1 = rect.y + rect.h;
             (void)bin_entry(&entry);
         }
 
@@ -801,7 +992,7 @@ replay_full_band(void) {
             const mu_Rect r = canvas_physical_rect(cnt);
             draw_rect(r.x, r.y, r.w, r.h, RGB565BE(ui_band_background));
         }
-        paint_canvas(cnt);
+        paint_canvas(cnt, NULL);
     }
     for (int i = 0; i < replay_rect_count; i++) {
         const ui_extra_rect_t* r = &extra_rects[i];

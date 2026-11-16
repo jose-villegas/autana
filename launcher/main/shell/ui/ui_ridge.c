@@ -21,6 +21,7 @@
 #include "gfx/present/gfx_present.h"
 #include "image/pixel/bayer.h"
 #include "image/pixel/rgb565.h"
+#include "math/geometry/rect_overlap.h"
 #include "math/scalar/ease.h"
 #include "math/scalar/fixed.h"
 #include "math/scalar/mathi.h"
@@ -146,6 +147,13 @@ typedef struct {
     int dissolve_restarts;
 #endif
     edge_lines_t was_lines, now_lines;
+    ui_fresh_t fresh;            /* where this frame's step painted */
+    recti_t boxes[UI_FRESH_MAX]; /* the step's boxes, in strip space */
+#if BUILD_VARIANT_SELFTEST_OR_HOST
+    int gradient_turns;
+    int moved_px, kept_px, kept_boxes; /* the last step's moved pixels, and its boxes before the merge */
+    bool boxed;                        /* whether the last step painted boxes */
+#endif
     uint8_t lip_alpha[RIDGE_LAYER_COUNT][RIDGE_MAX_LIP_PX];
     uint32_t theme_seed, tuned_at, alive_ms, wave_ms, shake_seed;
     float shake;
@@ -159,6 +167,13 @@ typedef struct {
 #define RIDGE_LEVEL_HEIGHT (RIDGE_CURVE_VIEW_H / 2)
 
 #define TAG                "ui_ridge"
+#if BUILD_VARIANT_SELFTEST_OR_HOST
+/* The boxes a step may list; a test lowers it to drive the overflow. */
+static int box_cap = UI_FRESH_MAX;
+#define RIDGE_BOX_CAP box_cap
+#else
+#define RIDGE_BOX_CAP UI_FRESH_MAX
+#endif
 static const int16_t level_height = RIDGE_LEVEL_HEIGHT * RIDGE_SUBPIXEL_ONE;
 static const int16_t* curve;
 static ridge_t* ridge;
@@ -761,19 +776,6 @@ column_pixel(int x, int y) {
     return color;
 }
 
-/* The rows any of columns [x0, x1) needs repainted; empty when none. */
-static void
-group_rows(const int16_t* lo, const int16_t* hi, int x0, int x1, int* y0, int* y1) {
-    *y0 = GFX_HEIGHT;
-    *y1 = 0;
-    for (int x = x0; x < x1; x++) {
-        if (lo[x] < hi[x]) {
-            *y0 = lo[x] < *y0 ? lo[x] : *y0;
-            *y1 = hi[x] > *y1 ? hi[x] : *y1;
-        }
-    }
-}
-
 /* Widens the edges of what changed, [*left, *right) by [*top, *bottom), to
  * hold pixel (x, y). */
 static inline __attribute__((always_inline)) void
@@ -784,13 +786,12 @@ note_changed(int* left, int* right, int* top, int* bottom, int x, int y) {
     *bottom = y + 1;
 }
 
-/* Repaints one row of a column group, noting each pixel that changes. */
+/* Repaints row `y` of columns [x0, x1), noting each pixel that changes. */
 static inline __attribute__((always_inline)) void
-repaint_group_row(gfx_color_t* row, const int16_t* lo, const int16_t* hi, int x0, int x1, int y, int* left, int* right,
-                  int* top, int* bottom) {
+repaint_box_row(gfx_color_t* row, int x0, int x1, int y, int* left, int* right, int* top, int* bottom) {
     const bool masked = dissolving();
     for (int x = x0; x < x1; x++) {
-        if (y >= lo[x - x0] && y < hi[x - x0] && (!masked || dissolved(x, y))) {
+        if (!masked || dissolved(x, y)) {
             const gfx_color_t color = column_pixel(x, y);
             if (row[x] != color) {
                 row[x] = color;
@@ -800,82 +801,164 @@ repaint_group_row(gfx_color_t* row, const int16_t* lo, const int16_t* hi, int x0
     }
 }
 
+/* Portrait: a column's pixels are a row apart in the framebuffer, so a box
+ * of columns is painted row by row, each RIDGE_COLUMN_GROUP of its columns
+ * marking dirty only what changed in it. */
 static void
-repaint_column_group(const int16_t* lo, const int16_t* hi, int x0) {
-    const int x1 = x0 + RIDGE_COLUMN_GROUP < GFX_WIDTH ? x0 + RIDGE_COLUMN_GROUP : GFX_WIDTH;
-    int y0;
-    int y1;
-    group_rows(lo, hi, 0, x1 - x0, &y0, &y1);
-    if (y0 >= y1) {
-        return;
-    }
+repaint_column_box(recti_t box) {
     gfx_color_t* const framebuffer = gfx_framebuffer();
-    int left = x1;
-    int right = x0;
-    int top = y1;
-    int bottom = y0;
-    for (int y = y0; y < y1; y++) {
-        repaint_group_row(framebuffer + (y * GFX_WIDTH), lo, hi, x0, x1, y, &left, &right, &top, &bottom);
-    }
-    const recti_t changed = recti_from_edges(left, top, right, bottom);
-    if (!recti_is_empty(changed)) {
-        gfx_mark_dirty(changed.x, changed.y, changed.w, changed.h);
+    for (int x0 = box.x; x0 < recti_right(box);) {
+        const int x1 = mathi_min(((x0 / RIDGE_COLUMN_GROUP) + 1) * RIDGE_COLUMN_GROUP, recti_right(box));
+        int left = x1;
+        int right = x0;
+        int top = recti_bottom(box);
+        int bottom = box.y;
+        for (int y = box.y; y < recti_bottom(box); y++) {
+            repaint_box_row(framebuffer + (y * GFX_WIDTH), x0, x1, y, &left, &right, &top, &bottom);
+        }
+        const recti_t changed = recti_from_edges(left, top, right, bottom);
+        if (!recti_is_empty(changed)) {
+            gfx_mark_dirty(changed.x, changed.y, changed.w, changed.h);
+        }
+        x0 = x1;
     }
 }
 
-/* The rows of column `x` that layer `layer`'s move needs repainted; the
- * move is then what the screen shows. */
-static void
-column_repaint_rows(int layer, int x, int16_t* lo, int16_t* hi) {
-    const int was = ridge->shown[layer][x];
-    const int now = ridge->boundary[layer][x];
-    int first = INT_MAX;
-    int last = INT_MIN;
-    if (was != now) {
-        extend_repaint_range(was, now, &first, &last);
+/* A box gathering a layer's moves, in strip space: strips across, the span
+ * along them down; `moved` the pixels of the spans it holds. */
+typedef struct {
+    recti_t rect;
+    int moved;
+} move_box_t;
+
+/* Grows `box` to hold `span` while its slack allows; whether it did. */
+static bool
+box_takes(move_box_t* box, recti_t span) {
+    const int moved = box->moved + recti_area(span);
+    const recti_t grown = recti_union(box->rect, span);
+    if (recti_area(grown) - moved > mathi_max(moved >> RIDGE_BOX_SLACK_SHIFT, RIDGE_BOX_SLACK_PX)) {
+        return false;
     }
-    *lo = (int16_t)mathi_clamp(first, 0, GFX_HEIGHT);
-    *hi = (int16_t)mathi_clamp(last, 0, GFX_HEIGHT);
-    ridge->shown[layer][x] = (int16_t)now;
+    *box = (move_box_t){grown, moved};
+    return true;
 }
 
-/* Portrait: a column's pixels are a row apart in the framebuffer, so paint
- * a group of columns row by row rather than each column top to bottom. */
+/* A box in strip space repainted whole, so the ridge can say it is fresh. */
 static void
-repaint_changed_columns(void) {
-    int16_t lo[RIDGE_COLUMN_GROUP];
-    int16_t hi[RIDGE_COLUMN_GROUP];
-    for (int layer = 0; layer < RIDGE_LAYER_COUNT; layer++) {
-        for (int x0 = 0; x0 < GFX_WIDTH; x0 += RIDGE_COLUMN_GROUP) {
-            const int x1 = x0 + RIDGE_COLUMN_GROUP < GFX_WIDTH ? x0 + RIDGE_COLUMN_GROUP : GFX_WIDTH;
-            for (int x = x0; x < x1; x++) {
-                column_repaint_rows(layer, x, &lo[x - x0], &hi[x - x0]);
-            }
-            repaint_column_group(lo, hi, x0);
+repaint_box(recti_t box) {
+    if (ridge->by_column && ridge->scanline_dither) {
+        repaint_column_box(box);
+    } else {
+        for (int strip = box.x; strip < recti_right(box); strip++) {
+            repaint_strip(strip, box.y, recti_bottom(box));
         }
     }
 }
 
+/* `box` kept after the `count` boxes so far. Past a full list it is
+ * repainted now and the fresh list marked overflowed, so the UI puts the
+ * backdrop back instead of trusting the list. */
+static int
+keep_box(recti_t* boxes, int count, recti_t box) {
+    if (recti_is_empty(box)) {
+        return count;
+    }
+    if (count == RIDGE_BOX_CAP) {
+        ridge->fresh.overflow = true;
+        repaint_box(box);
+        return count;
+    }
+    boxes[count] = box;
+    return count + 1;
+}
+
+/* Layer `layer`'s moves, a span along each strip, gathered strip by strip
+ * into boxes kept after the `count` so far; the moves are then what the
+ * screen shows. Returns the count. */
+static int
+keep_layer_boxes(int layer, recti_t* boxes, int count) {
+    const int along = ridge->by_column ? GFX_HEIGHT : GFX_WIDTH;
+    move_box_t box = {recti_empty(), 0};
+    for (int strip = 0; strip < ridge->strips; strip++) {
+        const int was = ridge->shown[layer][strip];
+        const int now = ridge->boundary[layer][strip];
+        int lo = INT_MAX;
+        int hi = INT_MIN;
+        if (was != now) {
+            extend_repaint_range(was, now, &lo, &hi);
+        }
+        ridge->shown[layer][strip] = (int16_t)now;
+        lo = mathi_clamp(lo, 0, along);
+        hi = mathi_clamp(hi, lo, along);
+        const recti_t span = {strip, lo, 1, hi - lo};
+#if BUILD_VARIANT_SELFTEST_OR_HOST
+        ridge->moved_px += recti_area(span);
+#endif
+        if (!box_takes(&box, span)) {
+            count = keep_box(boxes, count, box.rect);
+            box = (move_box_t){span, recti_area(span)};
+        }
+    }
+    return keep_box(boxes, count, box.rect);
+}
+
+/* The boxes until none overlap. Two whose bounding box holds no pixel
+ * outside them merge into it; otherwise the later loses what the earlier
+ * covers, in at most three pieces, so a merge never paints a pixel no box
+ * held and nothing chains. Returns how many are left, at the front. */
+static int
+merge_boxes(recti_t* boxes, int count) {
+    int i;
+    int j;
+    while ((i = recti_overlapping_pair(boxes, count, true, &j)) >= 0) {
+        const recti_t a = boxes[i];
+        const recti_t b = boxes[j];
+        const recti_t both = recti_union(a, b);
+        boxes[j] = boxes[--count];
+        if (recti_area(both) == recti_area(a) + recti_area(b) - recti_area(recti_intersect(a, b))) {
+            boxes[i] = both;
+            continue;
+        }
+        recti_t pieces[RECTI_SUBTRACT_MAX];
+        const int n = recti_subtract(b, a, pieces);
+        for (int piece = 0; piece < n; piece++) {
+            count = keep_box(boxes, count, pieces[piece]);
+        }
+    }
+    return count;
+}
+
+/* Each layer's moves gather into boxes that hug them, boxes that overlap
+ * merge, and each box is repainted whole. */
 static void
 repaint_changed(void) {
-    if (ridge->by_column && ridge->scanline_dither) {
-        repaint_changed_columns();
-        return;
+    if (dissolving()) {
+        ridge->fresh.overflow = true; /* a dissolve leaves pixels undissolved */
     }
-    for (int strip = 0; strip < ridge->strips; strip++) {
-        for (int layer = 0; layer < RIDGE_LAYER_COUNT; layer++) {
-            const int was = ridge->shown[layer][strip];
-            const int now = ridge->boundary[layer][strip];
-            if (was == now) {
-                continue;
-            }
-            int lo = INT_MAX;
-            int hi = INT_MIN;
-            extend_repaint_range(was, now, &lo, &hi);
-            ridge->shown[layer][strip] = (int16_t)now;
-            repaint_strip(strip, lo, hi);
+    int count = 0;
+#if BUILD_VARIANT_SELFTEST_OR_HOST
+    ridge->moved_px = 0;
+    ridge->boxed = true;
+#endif
+    for (int layer = 0; layer < RIDGE_LAYER_COUNT; layer++) {
+        count = keep_layer_boxes(layer, ridge->boxes, count);
+    }
+#if BUILD_VARIANT_SELFTEST_OR_HOST
+    ridge->kept_boxes = count;
+    ridge->kept_px = 0;
+    for (int box = 0; box < count; box++) {
+        ridge->kept_px += recti_area(ridge->boxes[box]);
+    }
+#endif
+    count = merge_boxes(ridge->boxes, count);
+    for (int box = 0; box < count; box++) {
+        repaint_box(ridge->boxes[box]);
+        if (!ridge->by_column) {
+            ridge->boxes[box] =
+                (recti_t){ridge->boxes[box].y, ridge->boxes[box].x, ridge->boxes[box].h, ridge->boxes[box].w};
         }
     }
+    ui_fresh_add_all(&ridge->fresh, ridge->boxes, count);
 }
 
 #define EDGE_FAR (INT64_C(1) << 40)
@@ -1007,6 +1090,10 @@ repaint_swept_row(int y) {
  * between each shade edge's old and new line. */
 static void
 repaint_gradient_turn(ridge_vector_t was) {
+    ridge->fresh.overflow = true; /* a row each, more than the list holds */
+#if BUILD_VARIANT_SELFTEST_OR_HOST
+    ridge->gradient_turns++;
+#endif
     edge_lines(&ridge->was_lines, was);
     edge_lines(&ridge->now_lines, ridge->gradient_pose);
     for (int y = 0; y < GFX_HEIGHT; y++) {
@@ -1040,6 +1127,7 @@ paint_dissolve_row(int y, int c) {
 
 static void
 paint_dissolve_level(int level) {
+    ridge->fresh.overflow = true;
     for (int cell = 0; cell < DISSOLVE_LEVELS; cell++) {
         if (bayer4x4[cell / 4][cell % 4] == level) {
             for (int y = cell / 4; y < GFX_HEIGHT; y += 4) {
@@ -1120,25 +1208,30 @@ gradient_due(void) {
     return drift >= gradient_steps || (drift > 0 && ridge->pose_still_ms >= GRADIENT_SETTLE_MS);
 }
 
-/* The pixels of a full paint at the ridge's state, into any buffer: no
+/* The pixels of a paint of `area` at the ridge's state, into any buffer: no
  * bookkeeping and no dirty marks, so a caller can compare against one. */
 static void
-paint_pixels(gfx_color_t* framebuffer) {
+paint_pixels_in(gfx_color_t* framebuffer, recti_t area) {
     if (!ridge->by_column && ridge->scanline_dither) {
-        for (int y = 0; y < GFX_HEIGHT; y++) {
-            paint_row_span(framebuffer, y, 0, GFX_WIDTH);
+        for (int y = area.y; y < recti_bottom(area); y++) {
+            paint_row_span(framebuffer, y, area.x, recti_right(area));
         }
     } else if (ridge->scanline_dither) {
-        for (int x = 0; x < GFX_WIDTH; x++) {
-            paint_column_span(framebuffer, x, 0, GFX_HEIGHT);
+        for (int x = area.x; x < recti_right(area); x++) {
+            paint_column_span(framebuffer, x, area.y, recti_bottom(area));
         }
     } else {
-        for (int y = 0; y < GFX_HEIGHT; y++) {
-            for (int x = 0; x < GFX_WIDTH; x++) {
+        for (int y = area.y; y < recti_bottom(area); y++) {
+            for (int x = area.x; x < recti_right(area); x++) {
                 framebuffer[(y * GFX_WIDTH) + x] = backdrop_pixel(x, y);
             }
         }
     }
+}
+
+static void
+paint_pixels(gfx_color_t* framebuffer) {
+    paint_pixels_in(framebuffer, GFX_SCREEN_RECT);
 }
 
 static void
@@ -1148,6 +1241,7 @@ paint_all(void) {
     }
     paint_pixels(gfx_framebuffer());
     gfx_mark_all_dirty();
+    ui_fresh_whole(&ridge->fresh);
     memcpy(ridge->shown, ridge->boundary, sizeof ridge->shown);
     finish_dissolve();
     ridge->painted = true;
@@ -1270,6 +1364,7 @@ ui_ridge_release_for_test(void) {
 void
 ui_ridge_reset_for_test(void) {
     test_owns_state = ridge == NULL;
+    box_cap = UI_FRESH_MAX;
     allocate_once();
     if (ridge == NULL) {
         return;
@@ -1338,6 +1433,29 @@ ui_ridge_dissolve_restarts_for_test(void) {
 #endif
 }
 
+bool
+ui_ridge_boxes_for_test(int* moved_px, int* kept_px, int* kept_boxes) {
+    *moved_px = ridge != NULL ? ridge->moved_px : 0;
+    *kept_px = ridge != NULL ? ridge->kept_px : 0;
+    *kept_boxes = ridge != NULL ? ridge->kept_boxes : 0;
+    return ridge != NULL && ridge->boxed;
+}
+
+int
+ui_ridge_gradient_turns_for_test(void) {
+    return ridge != NULL ? ridge->gradient_turns : 0;
+}
+
+void
+ui_ridge_cap_boxes_for_test(int cap) {
+    box_cap = cap;
+}
+
+int
+ui_ridge_merge_boxes_for_test(recti_t* boxes, int count) {
+    return merge_boxes(boxes, count);
+}
+
 int
 ui_ridge_gradient_lag_for_test(void) {
     allocate_once();
@@ -1349,14 +1467,24 @@ ui_ridge_gradient_lag_for_test(void) {
 #endif
 
 void
-ui_ridge_paint(void) {
+ui_ridge_paint(recti_t area) {
     allocate_once();
     if (ridge == NULL) {
-        draw_rect(0, 0, GFX_WIDTH, GFX_HEIGHT, RGB565BE(0));
+        draw_rect(area.x, area.y, area.w, area.h, RGB565BE(0));
         return;
     }
     FRAME_COST_BEGIN(painted_from);
-    paint_all();
+    const recti_t screen = GFX_SCREEN_RECT;
+    area = recti_intersect(area, screen);
+    if ((area.w == screen.w && area.h == screen.h) || dissolving()) {
+        /* Mid-dissolve the screen mixes two pictures, which a part cannot
+         * paint back: the dissolve ends here instead. */
+        paint_all();
+    } else {
+        /* The screen as it stands: what the step last painted. */
+        paint_pixels_in(gfx_framebuffer(), area);
+        gfx_mark_dirty(area.x, area.y, area.w, area.h);
+    }
     FRAME_COST_END(painted_from, "ridge.paint");
 }
 
@@ -1483,6 +1611,15 @@ ui_ridge_step(const input_t* input, uint32_t dt_ms) {
     raster_boundaries();
     FRAME_COST_END(layers_from, "ridge.layers");
     FRAME_COST_BEGIN(painted_from);
+    ui_fresh_clear(&ridge->fresh);
+#if BUILD_VARIANT_SELFTEST_OR_HOST
+    ridge->boxed = false;
+#endif
     paint_this_frame(retuned, dt_ms);
     FRAME_COST_END(painted_from, "ridge.paint");
+}
+
+const ui_fresh_t*
+ui_ridge_fresh(void) {
+    return ridge != NULL ? &ridge->fresh : NULL;
 }

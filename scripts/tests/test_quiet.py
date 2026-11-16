@@ -33,6 +33,17 @@ class QuietSummaryTests(unittest.TestCase):
         self.assertNotIn(FIXTURE, shown)
         self.assertNotIn("argparse fixture", shown)
 
+    def test_a_nul_byte_in_the_log_still_lists_the_failure(self):
+        # wsl.exe prints UTF-16, so a passing suite can leave NUL bytes in the log.
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory) / "run.log"
+            log.write_bytes(b"W\0S\n" + FAILURE.encode() + b"\n")
+            script = (f'. "{SCRIPTS / "quiet.sh"}"\nQUIET_LOG="{log.as_posix()}" QUIET_STATUS=0\n'
+                      "QUIET_ERROR_PATTERN='^FAIL: '\nquiet_end sample 1\n")
+            done = subprocess.run(["sh", "-c", script], capture_output=True, text=True)
+        self.assertIn(FAILURE, done.stdout)
+        self.assertNotIn("matches", done.stdout)
+
     def test_run_tool_tests_narrows_the_pattern(self):
         text = RUN_TOOL_TESTS.read_text(encoding="utf-8")
         self.assertIn("QUIET_ERROR_PATTERN=", text)

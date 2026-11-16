@@ -46,7 +46,7 @@ class LodAssetTests(unittest.TestCase):
         self.assertNotEqual(before["levels"], changed["levels"])
         other_bytes = bake.stage_keys(job, scene, TOOL_KEYS, AnyStart("2" * 64))
         self.assertNotEqual(before["levels"], other_bytes["levels"])
-        self.assertFalse(any("r3d/lod/" in str(path) for path in bake.stage_files("fit")))
+        self.assertFalse(any("r3d/lod/" in path.as_posix() for path in bake.stage_files("fit")))
 
     def test_mesh_bakes_are_bundles_and_fits_have_three_stages(self):
         from bake import bake

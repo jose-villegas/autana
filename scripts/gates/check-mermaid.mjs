@@ -202,7 +202,7 @@ export function extractBlocks(text) {
   }
 
   if (start !== -1) {
-    blocks.push({ line: start, source: body.join('\n'), unterminated: true });
+    blocks.push({ line: start, source: body.join('\n') });
   }
 
   return blocks;
@@ -355,10 +355,6 @@ async function runMmdc(args) {
 }
 
 async function validate(block, label, workDir, index) {
-  if (block.unterminated) {
-    return { label, ok: false, message: 'Unterminated ```mermaid fence — no closing ```' };
-  }
-
   if (!block.source.trim()) {
     return { label, ok: false, message: 'Empty mermaid block' };
   }

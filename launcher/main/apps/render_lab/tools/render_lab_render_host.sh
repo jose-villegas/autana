@@ -5,7 +5,7 @@
 #   ./launcher/main/apps/render_lab/tools/render_lab_render_host.sh [-o <dir>]
 #
 # Each declared render starts on one scene (--scene) via
-# render_lab_start_scene_key and steps 16 ms frames, full-framebuffer
+# render_lab.start_key and steps 16 ms frames, full-framebuffer
 # layout. Landscape is the shipping orientation, so it leads; a panel-native
 # render is the shape tools/render/render_diff.sh compares a device capture against.
 #
@@ -28,7 +28,7 @@ main/input/mapping/orbit_motion_touch.c
 main/input/motion/gravity.c
 main/apps/render_lab/tools/render_lab_render_host.c
 $(CDPATH= cd -- "$SCRIPT_DIR/../../../../" &&
-    find main/apps/render_lab \( -type d \( -name tools -o -name tests \) -prune \) -o \
+    find main/apps/render_lab main/lab \( -type d \( -name tools -o -name tests -o -name test \) -prune \) -o \
         \( -type f -name '*.c' ! -name 'suite_*.c' -print \) | LC_ALL=C sort)
 "
 scene_defines="-DCONFIG_LAUNCHER_DEVELOPMENT=0"
@@ -73,7 +73,26 @@ stress-tiny-copies|--quarter 1 --no-hud --scene stress-tiny-copies --frames 2|44
 stress-big-tris|--quarter 1 --no-hud --scene stress-big-tris --frames 2|448x368|nopin
 stress-per-frame|--quarter 1 --no-hud --scene stress-per-frame --frames 2|448x368|nopin
 stress-two-sided|--quarter 1 --no-hud --scene stress-two-sided --frames 2|448x368|nopin
+stress-mix|--quarter 1 --no-hud --scene stress-mix --frames 2|448x368|nopin
+stress-static-copies|--quarter 1 --no-hud --scene stress-static-copies --frames 2|448x368|nopin
+stress-uniform-mid|--quarter 1 --no-hud --scene stress-uniform-mid --frames 2|448x368|nopin
+stress-uniform-full|--quarter 1 --no-hud --scene stress-uniform-full --frames 2|448x368|nopin
+stress-card|--quarter 1 --no-hud --scene stress-card --frames 2|448x368|nopin
+stress-culled|--quarter 1 --no-hud --scene stress-culled --frames 2|448x368|nopin
+stress-near|--quarter 1 --no-hud --scene stress-near --frames 2|448x368|nopin
+stress-few-copies|--quarter 1 --no-hud --scene stress-few-copies --frames 2|448x368|nopin
+stress-foliage-near|--quarter 1 --no-hud --scene stress-foliage-near --frames 2|448x368|nopin
+stress-foliage-near-opaque|--quarter 1 --no-hud --scene stress-foliage-near-opaque --frames 2|448x368|nopin
+stress-foliage-far|--quarter 1 --no-hud --scene stress-foliage-far --frames 2|448x368|nopin
+stress-foliage-far-opaque|--quarter 1 --no-hud --scene stress-foliage-far-opaque --frames 2|448x368|nopin
+stress-cull-setup|--quarter 1 --no-hud --scene stress-cull-setup --frames 2|448x368|nopin
 stress-noisy-tiny|--quarter 1 --no-hud --scene stress-noisy-tiny --frames 2|448x368|nopin
+stress-textured|--quarter 1 --no-hud --scene stress-textured --frames 2|448x368|nopin
+stress-record|--quarter 1 --no-hud --scene stress-record --frames 2|448x368|nopin
+stress-baked-tree|--quarter 1 --no-hud --scene stress-baked-tree --frames 2|448x368|nopin
+herd-1|--quarter 1 --no-hud --scene herd-1 --frames 60|448x368|nopin
+herd-4|--quarter 1 --no-hud --scene herd-4 --frames 60|448x368|nopin
+herd-8|--quarter 1 --no-hud --scene herd-8 --frames 60|448x368|nopin
 "
 
 # The scenes read their meshes from asset packs of the baked meshes in the tree.
