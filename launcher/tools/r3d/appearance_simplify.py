@@ -56,9 +56,6 @@ SURFACE_REFERENCE_SAMPLES = 4_000_000
 SURFACE_TANGENTIAL_WEIGHT = 0.05
 # A start border point within this many capped local start edge scales of another part's triangle is held on it during the fit.
 SEAM_MARGIN = 0.25
-# A point moves at most this many capped local start edge scales from its start during the fit: a trust region that
-# keeps a point from flying across the scene over surfaces it never touched.
-MOVE_CAP = 1.0
 # CIE76 distance from the clear colour past which a reference pixel is surface, so a fit showing nothing there
 # shows a hole: well past the eye's just-noticeable difference, so dark surface near a dark clear is not counted.
 HOLE_DE = 10.0
@@ -803,7 +800,7 @@ def surface_loss(samples, centres, normals, scale, margin):
 def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian, seed=1, device="cuda", report=100,
              clear=(0.0, 0.0, 0.0), cost=None, cost_weight=0.0, scale=1, normal_weight=0.0, surface_weight=0.0,
              surface_margin=0.0, source=None, seam_margin=SEAM_MARGIN, copies=None, carved=None, front_weight=0.0,
-             depth_weight=0.0, move_cap=MOVE_CAP):
+             depth_weight=0.0):
     """Fit fixed triangles; return positions, colours and colour-only error history.
     Position steps use bounding diagonals and each vertex's capped local start scale.
     Laplacian drift and the source envelope use capped local start edge scales,
@@ -813,8 +810,6 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
     Seam holds pin border points that start near another part to its moving
     triangles by default, and copy pins keep the points that start near a frozen
     copy in place; `seam_margin=0` turns both off.
-    After every step a point further than `move_cap` capped local start edge scales from its start is projected back
-    onto that sphere; `move_cap=0` lets points move freely.
     `copies` (a FitMesh, fit/copies.py) is drawn after the mesh, unchanged.
     The front and depth terms (fit/gbuffer.py) need the source and `carved`, one flag per source triangle drawn
     as a copy."""
@@ -846,7 +841,6 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
         holds = seam_holds(mesh, seam_margin * point_scale.detach().cpu().numpy()[:, 0])
         log(f"seam holds: {len(holds.points)} points")
     step_scale = point_scale / point_scale.max()
-    bound = move_cap * point_scale
     pinned = None
     if seam_margin > 0 and copies is not None:
         pins = copy_pins(mesh, copies, seam_margin * point_scale.detach().cpu().numpy()[:, 0])
@@ -947,9 +941,6 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
         schedule.step()
         with torch.no_grad():
             colours.clamp_(0.0, 1.0)
-            if move_cap > 0:
-                move = (step_scale * delta).norm(dim=1, keepdim=True)
-                delta.mul_(bound / move.clamp_min(bound))
         history[step] = colour_error.detach()
         finite &= torch.isfinite(loss.detach())
         if (report and step % report == 0) or step == steps - 1:
@@ -960,10 +951,6 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
                 f"surface {float(surface):.6f}, front {float(front):.3e}, depth {float(depth):.3e}, "
                 f"{time.time() - started:.1f} s")
     points = held_positions()
-    with torch.no_grad():
-        moved = ((points - start).norm(dim=1) / point_scale[:, 0]).cpu().numpy()
-    log("moves in local start edge scales: p50 %.3f, p99 %.3f, max %.3f; %d points at the cap" % (
-        *np.percentile(moved, [50, 99]), moved.max(), int((moved >= move_cap * (1 - 1e-4)).sum()) if move_cap > 0 else 0))
     return points.detach().cpu().numpy().astype(np.float64), colours.detach().cpu().numpy().astype(np.float64), history.cpu().tolist()
 
 
@@ -1024,8 +1011,6 @@ def main(argv=None):
     parser.add_argument("--surface-weight", type=float, default=0.0, help="weight of the source-surface envelope")
     parser.add_argument("--surface-margin", type=float, default=0.0, help="source envelope margin in local start edge scales")
     parser.add_argument("--seam-margin", type=float, default=SEAM_MARGIN, help="seam hold margin in local start edge scales (0 holds nothing)")
-    parser.add_argument("--move-cap", type=float, default=MOVE_CAP,
-                        help="how far a point may move, in capped local start edge scales (0 moves freely)")
     parser.add_argument("--copies", help="a carved start bundle: its copies are drawn with the start, unchanged")
     parser.add_argument("--copy-poses", help="with --copies, the poses the copy-coverage gate checks the fit over")
     parser.add_argument("--front-weight", type=float, default=0.0,
@@ -1044,8 +1029,7 @@ def main(argv=None):
     if args.settle and (args.budget is None or not args.held_out_poses or args.settle[0] < 1
                         or not 0 <= args.settle[1] < 1):
         parser.error("--settle needs --budget, --held-out-poses, a STEP of at least 1 and a SHARE in [0, 1)")
-    if any(not np.isfinite(value) or value < 0 for value in (args.surface_weight, args.surface_margin, args.seam_margin,
-                                                             args.move_cap)):
+    if any(not np.isfinite(value) or value < 0 for value in (args.surface_weight, args.surface_margin, args.seam_margin)):
         parser.error("surface weight, surface margin and seam margin must be finite and nonnegative")
     if args.surface_weight and not args.score and not args.object:
         parser.error("a surface term needs --object, the scene object whose source anchors the fit")
@@ -1098,8 +1082,7 @@ def main(argv=None):
                                         scale=args.scale, normal_weight=args.normal_weight, source=source,
                                         surface_weight=args.surface_weight, surface_margin=args.surface_margin,
                                         seam_margin=args.seam_margin, copies=copies, carved=carved,
-                                        front_weight=args.front_weight, depth_weight=args.depth_weight,
-                                        move_cap=args.move_cap)
+                                        front_weight=args.front_weight, depth_weight=args.depth_weight)
         fitted = fitted._replace(points=points, rgb=rgb)
         kept = np.arange(len(fit_start.tris))
         if args.budget is not None:
