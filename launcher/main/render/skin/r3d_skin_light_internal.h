@@ -74,9 +74,9 @@ light_evaluate(vec3f_t normal, const r3d_skin_lights_t* lights, const uint8_t al
 }
 
 static inline __attribute__((always_inline)) vec3f_t
-light_table_sample(vec3f_t normal, const r3d_skin_lights_t* lights, vec3f_t ambient) {
+light_table_sample(vec3f_t normal, const r3d_skin_lights_t* lights) {
     if (normal.x == 0.0F && normal.y == 0.0F && normal.z == 0.0F) {
-        return ambient;
+        return lights->ambient.constant;
     }
     const vec2f_t point = vec3f_octahedral(normal);
     const float half = 0.5F * (R3D_SKIN_LIGHT_TABLE_SIDE - 1);
@@ -100,5 +100,5 @@ light_table_sample(vec3f_t normal, const r3d_skin_lights_t* lights, vec3f_t ambi
         const int bottom = (c * R3D_SKIN_LIGHT_TABLE_WEIGHT_ONE) + (wx * (d - c));
         channels[k] = (float)((top * R3D_SKIN_LIGHT_TABLE_WEIGHT_ONE) + (wy * (bottom - top))) * scale;
     }
-    return vec3f_add((vec3f_t){channels[0], channels[1], channels[2]}, ambient);
+    return (vec3f_t){channels[0], channels[1], channels[2]};
 }

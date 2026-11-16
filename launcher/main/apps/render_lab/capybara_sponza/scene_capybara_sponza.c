@@ -28,7 +28,6 @@
 #include "math/linear/quatf.h"
 #include "math/scalar/math_const.h"
 #include "math/scalar/units.h"
-#include "render/contact/contact_blob.h"
 #include "render/context/render_context.h"
 #include "scene/animator/animator.h"
 #include "scene/animator/gait.h"
@@ -48,7 +47,6 @@ static const char* TAG = "capybara_sponza";
  * last pairs of columns from the lion's west wall (Sponza's source mesh). */
 #define RUN_CENTRE_Z        (-34.0F)
 #define RUN_FLOOR_Y         0.0F
-#define RUN_BLOB_STRENGTH   0.75F
 #define RUN_START_X         (-616.0F)
 #define RUN_END_X           487.0F
 /* Still for 3 s at each end, 2.5 s easing to full gallop and as long back. */
@@ -247,21 +245,6 @@ load_sponza(void) {
     return true;
 }
 
-static box3f_t
-contact_bounds(void* user) {
-    (void)user;
-    vec3f_t ground = transform_world(capybara).position;
-    ground.y = RUN_FLOOR_Y;
-    return contact_blob_bounds(scene_bounds(capybara), ground);
-}
-
-static void
-contact(const r3d_span_target_t* target, const r3d_lens_t* lens, void* user) {
-    const box3f_t bounds = contact_bounds(user);
-    contact_blob_draw(target, lens, box3f_centre(bounds), vec3f_unit_y(), box3f_half_extent(bounds).x,
-                      RUN_BLOB_STRENGTH);
-}
-
 /* The capybara without its meadow, its gait built from its clips. */
 static bool
 load_capybara(void) {
@@ -271,7 +254,7 @@ load_capybara(void) {
     }
     entity_set_enabled(entity_find(capybara, name_hash(CAPYBARA_MEADOW)), false);
     runner = entity_find(capybara, name_hash(CAPYBARA_SUBJECT));
-    scene_set_post_draw(capybara, contact, contact_bounds, NULL);
+    scene_set_contact_blob(runner, RUN_FLOOR_Y, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT);
     if (handle_is_none(runner) || !build_gait()) {
         fail("no capybara gallop");
         return false;

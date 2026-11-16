@@ -29,11 +29,10 @@ r3d_skin_light_transfer_build(float tonemap_white, r3d_skin_light_transfer_t* ou
 /* Normal-indexed illumination (Miller and Hoffman 1984), octahedral directions (Cigolle et al. 2014). */
 float
 r3d_skin_light_table_build(const r3d_skin_lights_t* lights, r3d_skin_light_table_t* out) {
-    const r3d_skin_lights_t direct = *lights;
     /* Light-change builds use two passes to avoid a large scratch buffer and an allocation failure path. */
     float maximum = 0.0F;
     for (int cell = 0; cell < R3D_SKIN_LIGHT_TABLE_CELLS; cell++) {
-        const vec3f_t sum = light_direct_irradiance(light_table_directions[cell], &direct, vec3f_zero());
+        const vec3f_t sum = light_direct_irradiance(light_table_directions[cell], lights, lights->ambient.constant);
         if (sum.x > maximum) {
             maximum = sum.x;
         }
@@ -52,7 +51,7 @@ r3d_skin_light_table_build(const r3d_skin_lights_t* lights, r3d_skin_light_table
     const float scale = maximum / R3D_SKIN_LIGHT_TABLE_MASK;
     const float encode = R3D_SKIN_LIGHT_TABLE_MASK / maximum;
     for (int cell = 0; cell < R3D_SKIN_LIGHT_TABLE_CELLS; cell++) {
-        const vec3f_t sum = light_direct_irradiance(light_table_directions[cell], &direct, vec3f_zero());
+        const vec3f_t sum = light_direct_irradiance(light_table_directions[cell], lights, lights->ambient.constant);
         const float channels[] = {sum.x, sum.y, sum.z};
         uint32_t packed = 0;
 #pragma GCC unroll R3D_SKIN_LIGHT_CHANNELS
@@ -67,7 +66,11 @@ r3d_skin_light_table_build(const r3d_skin_lights_t* lights, r3d_skin_light_table
 
 vec3f_t
 r3d_skin_light_table_sample(vec3f_t normal, const r3d_skin_lights_t* lights) {
-    return light_table_sample(normal, lights, sh1_irradiance_eval(&lights->ambient, normal));
+    if (!light_has_gradient(&lights->ambient)) {
+        return light_table_sample(normal, lights);
+    }
+    const sh1_irradiance_t gradient = {.gradient = lights->ambient.gradient};
+    return vec3f_add(light_table_sample(normal, lights), sh1_irradiance_eval(&gradient, light_renormalise(normal)));
 }
 
 uint8_t
@@ -79,11 +82,7 @@ sh1_irradiance_t
 r3d_skin_light_ambient_sh(const sh1_rgb_t* radiance) {
     sh1_irradiance_t ambient = sh1_rgb_irradiance(radiance);
     ambient.constant = vec3f_scale(ambient.constant, R3D_SKIN_LIGHT_LAMBERT_SCALE);
-    for (int row = 0; row < SH1_CHANNELS; row++) {
-        for (int column = 0; column < SH1_CHANNELS; column++) {
-            ambient.gradient.m[row][column] *= R3D_SKIN_LIGHT_LAMBERT_SCALE;
-        }
-    }
+    ambient.gradient = mat3f_scale(ambient.gradient, R3D_SKIN_LIGHT_LAMBERT_SCALE);
     return ambient;
 }
 

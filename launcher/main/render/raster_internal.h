@@ -15,6 +15,11 @@
 #include "sdkconfig.h"
 #endif
 
+typedef struct raster_post {
+    void (*draw)(const r3d_span_target_t* target, const r3d_lens_t* lens, void* user);
+    void* user;
+} raster_post_t;
+
 /* One way of the data cache: addresses this far apart share a cache set. */
 #if defined(ESP_PLATFORM)
 #define RASTER_CACHE_WAY (CONFIG_ESP32S3_DATA_CACHE_SIZE / CONFIG_ESP32S3_DCACHE_ASSOCIATED_WAYS)

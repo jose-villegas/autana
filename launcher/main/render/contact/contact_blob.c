@@ -5,14 +5,6 @@
 #include "image/pixel/rgb565.h"
 #include "math/scalar/mathf.h"
 
-box3f_t
-contact_blob_bounds(box3f_t mover, vec3f_t ground) {
-    const vec3f_t half = box3f_half_extent(mover);
-    const float radius = fmaxf(half.x, half.z);
-    const vec3f_t extent = {radius, radius, radius};
-    return (box3f_t){vec3f_sub(ground, extent), vec3f_add(ground, extent)};
-}
-
 static vec3f_t
 lens_axis(const r3d_lens_t* lens, int row) {
     return (vec3f_t){lens->m.m[row][0], lens->m.m[row][1], lens->m.m[row][2]};
@@ -23,24 +15,29 @@ typedef struct {
     float distance, inverse_fx, inverse_fy, inverse_radius_squared, strength;
 } blob_plane_t;
 
+/* Projected vertex snapping shifts coplanar depth by up to one pixel; stored depth has whole units. */
+#define CONTACT_BLOB_DEPTH_BIAS_PIXELS 1.0F
+#define CONTACT_BLOB_DEPTH_BIAS_UNITS  1.0F
+
 static void
 draw_row(const r3d_span_target_t* target, const r3d_lens_t* lens, const blob_plane_t* blob, int y, int x0, int x1) {
     gfx_color_t* color = gfx_target_color(&target->rows, y);
     const uint16_t* depth = gfx_target_depth(&target->rows, y);
-    for (int x = x0; x < x1; x++) {
-        const vec3f_t ray = {(float)x + 0.5F - lens->project.cx, (float)y + 0.5F - lens->project.cy, 1.0F};
-        const float denominator = vec3f_dot(blob->normal, ray);
-        if (denominator == 0.0F) {
+    const float row_y = (float)y + 0.5F - lens->project.cy;
+    const float depth_scale = lens->depth_near * R3D_DEPTH_NEAREST / blob->distance;
+    const float step = blob->normal.x * depth_scale;
+    const float bias = CONTACT_BLOB_DEPTH_BIAS_UNITS
+                       + CONTACT_BLOB_DEPTH_BIAS_PIXELS * (fabsf(step) + fabsf(blob->normal.y * depth_scale));
+    const float row = ((blob->normal.y * row_y) + blob->normal.z) * depth_scale;
+    const float first_x = (float)x0 + 0.5F - lens->project.cx;
+    float encoded = row + first_x * step;
+    const float near_limit = lens->depth_near * R3D_DEPTH_NEAREST / lens->project.near_z;
+    for (int x = x0; x < x1; x++, encoded += step) {
+        if (!(encoded > 0.0F) || encoded >= near_limit || encoded + bias < (float)depth[x]) {
             continue;
         }
-        const float z = blob->distance / denominator;
-        if (!(z > lens->project.near_z)) {
-            continue;
-        }
-        const float encoded = lens->depth_near * R3D_DEPTH_NEAREST / z;
-        if (encoded < (float)depth[x]) {
-            continue;
-        }
+        const float z = lens->depth_near * R3D_DEPTH_NEAREST / encoded;
+        const vec3f_t ray = {(float)x + 0.5F - lens->project.cx, row_y, 1.0F};
         const vec3f_t delta = vec3f_sub(vec3f_scale(ray, z), blob->centre);
         const vec3f_t units = {delta.x * blob->inverse_fx, delta.y * blob->inverse_fy, delta.z};
         const float coverage = blob->strength * (1.0F - vec3f_dot(units, units) * blob->inverse_radius_squared);
@@ -66,6 +63,9 @@ contact_blob_draw(const r3d_span_target_t* target, const r3d_lens_t* lens, vec3f
                             vec3f_dot(lens_axis(lens, 1), up) * inverse_fy * inverse_fy,
                             vec3f_dot(lens_axis(lens, 2), up)};
     const float plane = vec3f_dot(normal, centre);
+    if (plane == 0.0F) {
+        return;
+    }
     int x0 = 0;
     int x1 = lens->width;
     int y0 = target->rows.first_row;

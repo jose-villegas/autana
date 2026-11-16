@@ -4861,6 +4861,47 @@ test_set_transform_reads_back_exactly_and_drives_placement(void) {
 }
 
 static void
+test_probes_sample_last_resolved_bounds_without_allocating(void) {
+    static const int16_t coefficients[1][SH_PROBES_COMPONENTS] = {{1}};
+    static const sh_probes_t probes = {.dims = {1, 1, 1}, .scale = 1, .coefficients = coefficients};
+    fixture_with_skin(&SKIN_OPTIONS);
+    const entity_t root = load("test_skin");
+    const entity_t entity = entity_find(root, name_hash("red"));
+    scene_t* scene = columns(root);
+    (void)scene_bounds(root);
+    scene_renderer_t* renderer = &scene->renderers[scene_renderer_index(scene, row_of(entity))];
+    const box3f_t bounds = renderer->world_bounds;
+    const size_t fast = memory_free_bytes(MEMORY_INTERNAL), slow = memory_free_bytes(MEMORY_PSRAM);
+    scene_set_probes(root, &probes);
+    transformf_t pose = transform_local(entity);
+    transformf_set_position(&pose, (vec3f_t){RIG_TRAVEL, 0, 0});
+    transform_set_local(entity, pose);
+    scene_animation_step(scene, 0);
+    TEST_ASSERT_EQUAL_MEMORY(&bounds, &renderer->world_bounds, sizeof bounds);
+    TEST_ASSERT_EQUAL_UINT(fast, memory_free_bytes(MEMORY_INTERNAL));
+    TEST_ASSERT_EQUAL_UINT(slow, memory_free_bytes(MEMORY_PSRAM));
+    (void)scene_bounds(root);
+    TEST_ASSERT_GREATER_THAN_FLOAT(bounds.lo.x, renderer->world_bounds.lo.x);
+}
+
+static void
+test_forgetting_another_scene_keeps_the_contact_draw_hook(void) {
+    fixture();
+    const entity_t root = show("test_pair");
+    const entity_t renderer = entity_find(root, name_hash("red"));
+    scene_set_contact_blob(renderer, 0, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT);
+    frame(0);
+    const struct raster_post* post = render_context_main()->raster.post;
+    TEST_ASSERT_NOT_NULL(post);
+    const entity_t other = load("test_pair");
+    scene_draw_forget(columns(other));
+    TEST_ASSERT_EQUAL_PTR(post, render_context_main()->raster.post);
+    const scene_t* scene = columns(root);
+    const int index = scene_renderer_index(scene, row_of(renderer));
+    TEST_ASSERT_EQUAL_FLOAT(SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, scene->renderers[index].contact_blob_strength);
+}
+
+static void
 test_authored_skin_modes_animation_and_ambient(void) {
     const size_t before = memory_free_bytes(MEMORY_INTERNAL);
     static const uint8_t modes[] = {R3D_SKIN_LIGHT_DIRECT, R3D_SKIN_LIGHT_RENORMALISED, R3D_SKIN_LIGHT_TABLE};
@@ -7858,6 +7899,8 @@ run_scene_suite(void) {
     RUN_TEST(test_idle_lit_skin_skips_and_transform_changes_run);
     RUN_TEST(test_light_attachment_defaults_refusals_and_capacity);
     RUN_TEST(test_scene_light_rotation_shades_only_skin_and_matches_kernel);
+    RUN_TEST(test_probes_sample_last_resolved_bounds_without_allocating);
+    RUN_TEST(test_forgetting_another_scene_keeps_the_contact_draw_hook);
     RUN_TEST(test_authored_skin_modes_animation_and_ambient);
     RUN_TEST(test_authored_light_preserves_static_mesh_colors);
     RUN_TEST(test_authored_tonemap_changes_skin_colors_in_both_attachment_orders);

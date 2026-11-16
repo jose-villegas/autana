@@ -21,8 +21,7 @@
 #include "render/settings/render_settings.h"
 #include "render/upscale.h"
 
-struct r3d_lens;
-typedef void (*raster_post_draw_fn)(const r3d_span_target_t* target, const struct r3d_lens* lens, void* user);
+struct raster_post;
 
 /* The caller's options; the scratch block holds everything else. */
 struct raster {
@@ -68,8 +67,7 @@ struct raster {
      * (render/partial). A draw whose depth scale moved, or whose level picks
      * changed a cut, redraws every row. */
     int first_row, end_row;
-    raster_post_draw_fn post_draw;
-    void* post_draw_user;
+    const struct raster_post* post;
 };
 
 /* What a draw uses: the raster's settings. */
