@@ -330,6 +330,8 @@ calibrate(const resolution_config_t* config, resolution_model_t* model) {
     raster_t* raster = &context->raster;
     raster->instances = &instance;
     raster->instance_count = 1;
+    context->drawn_settings = render_settings_tuned(&context->settings);
+    raster->settings = &context->drawn_settings;
     raster->upscaled = true;
     raster->present = lab_view_present(&render_lab_view_tunables);
     raster->width = config->steps[0].width;

@@ -29,6 +29,7 @@ sys.path.insert(0, str(HERE.parents[5] / "launcher/tools"))
 PRESETS = HERE.parents[1] / "stress" / "stress_preset.h"
 TABLE = HERE.parents[1] / "stress" / "stress_preset.c"
 FRAMES = 2
+SWEEP_FRAMES = 8
 WATER_UNIFORM_PIXELS = 41700
 EXISTING_UNIFORM_PIXELS = 5300
 DENSE_FACTOR = 8  # a few-copies copy holds this many times a tiny-copies copy's clusters and triangles
@@ -69,22 +70,35 @@ class StressCorners(unittest.TestCase):
         self.assertEqual(0, run.returncode, run.stderr[-2000:])
         return [(dump / ("%04d.raw" % i)).read_bytes() for i in (FRAMES - 1, FRAMES)]
 
-    def counts(self, key, *options):
-        """The last frame's counts of preset `key`, by name."""
+    def counts(self, key, *options, frames=FRAMES):
+        """Every frame's counts of preset `key`, by name, the last frame last."""
         rows = self.out / (key + ".csv")
-        run = subprocess.run([str(self.binary), "--quarter", "1", "--no-hud", "--frames", str(FRAMES), *options, "--scene",
+        run = subprocess.run([str(self.binary), "--quarter", "1", "--no-hud", "--frames", str(frames), *options, "--scene",
                               "stress-" + key, "--view", "cull", "--counts", str(rows), "-o",
                               str(self.out / (key + ".bmp"))], capture_output=True, text=True, timeout=120)
         self.assertEqual(0, run.returncode, run.stderr[-2000:])
         with rows.open(newline="") as f:
-            last = list(csv.DictReader(f))[-1]
-        return {name: int(value) for name, value in last.items()}
+            return [{name: int(value) for name, value in row.items()} for row in csv.DictReader(f)]
+
+    def last_counts(self, key, *options):
+        """The last frame's counts of preset `key`, by name."""
+        return self.counts(key, *options)[-1]
 
     def test_every_preset_is_held_here(self):
         self.assertEqual({"open", "stack", "tiny-copies", "big-tris", "per-frame", "two-sided", "noisy-tiny", "mix",
                           "static-copies", "uniform-mid", "uniform-full", "card", "culled", "near",
                           "few-copies", "textured", "record", "foliage-near", "foliage-near-opaque", "foliage-far",
-                          "foliage-far-opaque", "skinned-sh-blobs"}, set(preset_copies()))
+                          "foliage-far-opaque", "skinned-sh-blobs",
+                          "cull-setup", "baked-tree"}, set(preset_copies()))
+
+    def test_the_baked_ring_is_culled_through_its_tree(self):
+        """The ring alone, one mesh and no copy, culled through its tree at every pose of the turn."""
+        frames = self.counts("baked-tree", frames=SWEEP_FRAMES)
+        for c in frames:
+            self.assertEqual(1, c["transform_batches"], "the ring's own pack shows one mesh")
+            self.assertGreater(c["nodes_cut"], 0, "part of the ring is always behind the camera")
+            self.assertGreater(c["clusters_kept"], 0, "part of the ring is always in view")
+        self.assertGreater(len({c["clusters_kept"] for c in frames}), 1, "the camera turns: the kept set changes")
 
     def assert_all_in_view(self, c):
         """Nothing culled: every cluster tested is kept, and no node is cut."""
@@ -92,22 +106,22 @@ class StressCorners(unittest.TestCase):
         self.assertEqual(c["clusters_tested"], c["clusters_kept"])
 
     def assert_draws_every_triangle(self, key):
-        c = self.counts(key)
+        c = self.last_counts(key)
         self.assertGreater(c["triangles_submitted"], 0)
         self.assertEqual(c["triangles_submitted"], c["triangles_covering"])
 
     def test_static_copies_keep_the_pack_mesh(self):
-        c = self.counts("static-copies")
+        c = self.last_counts("static-copies")
         self.assertGreater(c["clusters_kept"], 0)
         self.assertEqual(0, c["triangles_facing_away"])
         self.assertEqual(c["triangles_submitted"], c["triangles_covering"])
         self.assertEqual(c["triangles_submitted"], c["clusters_kept"])
         self.assertEqual(c["vertices_transformed"], STATIC_VERTICES * c["clusters_kept"])
-        self.assertGreater(self.counts("open")["triangles_submitted"], c["triangles_submitted"])
+        self.assertGreater(self.last_counts("open")["triangles_submitted"], c["triangles_submitted"])
 
     def test_uniform_area_spans_water_without_shaded_pixels(self):
-        middle = self.counts("uniform-mid", "--size", "368x224")
-        full = self.counts("uniform-full", "--size", "368x224")
+        middle = self.last_counts("uniform-mid", "--size", "368x224")
+        full = self.last_counts("uniform-full", "--size", "368x224")
         for c in (middle, full):
             self.assertGreater(c["pixels_uniform"], 0)
             self.assertEqual(0, c["pixels_shaded"])
@@ -118,8 +132,8 @@ class StressCorners(unittest.TestCase):
         self.assertLess(middle["pixels_uniform"], WATER_UNIFORM_PIXELS)
 
     def test_upscale_counts_describe_actual_compose(self):
-        half = self.counts("uniform-mid")
-        wide = self.counts("uniform-mid", "--size", "368x224")
+        half = self.last_counts("uniform-mid")
+        wide = self.last_counts("uniform-mid", "--size", "368x224")
         self.assertEqual(184 * 224, half["render_width"] * half["render_height"])
         self.assertEqual(368 * 448, half["output_width"] * half["output_height"])
         self.assertEqual(368 * 224, wide["render_width"] * wide["render_height"])
@@ -128,35 +142,43 @@ class StressCorners(unittest.TestCase):
         self.assertEqual("kept", UPSCALE_PATHS[wide["upscale_path"]])
 
     def test_mix_fills_every_uniform_and_shaded_size_bin(self):
-        c = self.counts("mix")
+        c = self.last_counts("mix")
         for mode in ("uniform", "shaded"):
             for size in ("zero", "one", "two_to_four", "more"):
                 self.assertGreater(c[f"sized_{mode}_{size}"], 0, f"{mode}/{size}")
         self.assertEqual(c["triangles_set_up"], sum(value for name, value in c.items() if name.startswith("sized_")))
 
     def test_open_hides_and_culls_nothing(self):
-        c = self.counts("open")
+        c = self.last_counts("open")
         self.assertGreater(c["clusters_drawn"], 0)
         self.assertEqual(0, c["clusters_hidden"])
         self.assert_all_in_view(c)
 
     def test_stack_hides_most_of_what_it_keeps(self):
-        c = self.counts("stack")
+        c = self.last_counts("stack")
         self.assertGreater(c["clusters_drawn"], 0)
         self.assertGreater(c["clusters_hidden"], c["clusters_drawn"])
 
     def test_tiny_copies_are_all_in_view(self):
-        c = self.counts("tiny-copies")
+        c = self.last_counts("tiny-copies")
         self.assertGreaterEqual(c["clusters_drawn"], preset_copies()["tiny-copies"])
         self.assert_all_in_view(c)
+
+    def test_cull_setup_walks_almost_nothing(self):
+        """One copy of a few clusters: the cull's walk is a few nodes, so what it costs is its setup."""
+        self.assertEqual(1, preset_copies()["cull-setup"])
+        c = self.last_counts("cull-setup")
+        self.assert_all_in_view(c)
+        tiny = self.last_counts("tiny-copies")
+        self.assertLessEqual(c["clusters_kept"], tiny["clusters_kept"] / preset_copies()["tiny-copies"])
 
     def test_few_copies_give_each_core_one_dense_copy(self):
         """Two copies, each many clusters: the cull's split puts one whole copy on each core."""
         copies = preset_copies()["few-copies"]
         self.assertEqual(2, copies)
-        c = self.counts("few-copies")
+        c = self.last_counts("few-copies")
         self.assert_all_in_view(c)
-        tiny = self.counts("tiny-copies")
+        tiny = self.last_counts("tiny-copies")
         tiny_clusters_per_copy = tiny["clusters_kept"] / preset_copies()["tiny-copies"]
         tiny_triangles_per_copy = tiny["triangles_submitted"] / preset_copies()["tiny-copies"]
         # Dense: each copy holds a multiple of what a tiny copy does, in clusters and in triangles.
@@ -168,14 +190,14 @@ class StressCorners(unittest.TestCase):
 
     def test_two_sided_skips_nothing_facing_away(self):
         """A closed shape drawn from both sides: the one-sided spheres skip their far half, these cubes none."""
-        self.assertGreater(self.counts("tiny-copies")["triangles_facing_away"], 0)
-        c = self.counts("two-sided")
+        self.assertGreater(self.last_counts("tiny-copies")["triangles_facing_away"], 0)
+        c = self.last_counts("two-sided")
         self.assertGreater(c["triangles_submitted"], 0)
         self.assertEqual(0, c["triangles_facing_away"])
         self.assertGreater(c["clusters_hidden"], 0)
 
     def test_noisy_tiny_copies_are_all_in_view(self):
-        c = self.counts("noisy-tiny")
+        c = self.last_counts("noisy-tiny")
         self.assertGreaterEqual(c["clusters_drawn"], preset_copies()["noisy-tiny"])
         self.assert_all_in_view(c)
 

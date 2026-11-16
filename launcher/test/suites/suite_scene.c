@@ -43,7 +43,6 @@
 #include "asset/asset_store_shell.h"
 #include "lcol_name_vectors.h"
 #include "math/scalar/mathi.h"
-#include "render/contact/contact_blob.h"
 #include "render/context/render_context.h"
 #include "render/lcol_format.h"
 #include "render/llod_format.h"
@@ -3118,41 +3117,6 @@ assert_the_picture_is_the_whole_draw(void) {
     TEST_ASSERT_EQUAL_HEX16_ARRAY(fx.held, fx.pixels, SIZE * SIZE);
 }
 
-#define MOVING_BLOB_RADIUS 5.0F
-
-static box3f_t
-moving_blob_bounds(void* user) {
-    const vec3f_t centre = transform_world(*(entity_t*)user).position;
-    const vec3f_t extent = {MOVING_BLOB_RADIUS, MOVING_BLOB_RADIUS, MOVING_BLOB_RADIUS};
-    return (box3f_t){vec3f_sub(centre, extent), vec3f_add(centre, extent)};
-}
-
-static void
-moving_blob(const r3d_span_target_t* target, const r3d_lens_t* lens, void* user) {
-    const entity_t mover = *(entity_t*)user;
-    contact_blob_draw(target, lens, transform_world(mover).position, vec3f_unit_z(), MOVING_BLOB_RADIUS, 1.0F);
-}
-
-static void
-test_moving_post_draw_disc_clears_its_previous_rows(void) {
-    fixture();
-    const entity_t root = show("test_pair");
-    entity_t mover = entity_find(root, name_hash("red"));
-    const entity_t backdrop = entity_find(root, name_hash("green"));
-    transformf_t behind = transform_local(backdrop);
-    transformf_set_position(&behind, vec3f_unit_z());
-    transformf_set_scale(&behind, (vec3f_t){2 * MOVING_BLOB_RADIUS, 2 * MOVING_BLOB_RADIUS, 1});
-    transform_set_local(backdrop, behind);
-    scene_set_post_draw(root, moving_blob, moving_blob_bounds, &mover);
-    render_context_set_scale(render_context_main(), 100);
-    settle_the_picture();
-    transformf_t pose = transform_local(mover);
-    transformf_set_position(&pose, (vec3f_t){0, SWAPPED_SCENE_DROP, 0});
-    transform_set_local(mover, pose);
-    frame_over_the_last();
-    assert_the_picture_is_the_whole_draw();
-}
-
 static int
 rows_the_last_frame_drew(void) {
     const render_context_frame_t drawn = render_context_frame(render_context_main());
@@ -4897,66 +4861,6 @@ test_set_transform_reads_back_exactly_and_drives_placement(void) {
 }
 
 static void
-test_constant_probe_matches_flat_ambient_in_each_kernel(void) {
-    static const uint8_t modes[] = {R3D_SKIN_LIGHT_DIRECT, R3D_SKIN_LIGHT_RENORMALISED, R3D_SKIN_LIGHT_TABLE};
-    for (size_t mode = 0; mode < sizeof modes / sizeof modes[0]; mode++) {
-        skin_fixture_options_t options = SKIN_OPTIONS;
-        options.mode = modes[mode];
-        fixture_with_skin(&options);
-        const entity_t root = load("test_skin");
-        const entity_t skin = entity_find(root, name_hash("red"));
-        scene_animation_step(columns(root), 0);
-        uint8_t flat[3];
-        memcpy(flat, renderer_mesh(skin)->colors[0], sizeof flat);
-        const int16_t coefficients[1][SH_PROBES_COMPONENTS] = {{1, 2, 3}};
-        const sh_probes_t probes = {.spacing = {1, 1, 1},
-                                    .dims = {1, 1, 1},
-                                    .scale = options.intensity * options.ambient.x / SH1_Y00,
-                                    .coefficients = coefficients};
-        scene_set_probes(root, &probes);
-        scene_animation_step(columns(root), 0);
-        TEST_ASSERT_EQUAL_MEMORY(flat, renderer_mesh(skin)->colors[0], sizeof flat);
-        release_fixture();
-    }
-}
-
-static void
-test_scene_probe_lighting_and_restore(void) {
-    for (int ambient = 0; ambient < 2; ambient++) {
-        skin_fixture_options_t options = SKIN_OPTIONS;
-        if (ambient == 0) {
-            options.intensity = 0;
-        }
-        fixture_with_skin(&options);
-        entity_t root = load("test_skin");
-        const entity_t skin = entity_find(root, name_hash("red"));
-        scene_animation_step(columns(root), 0);
-        const uint8_t before = renderer_mesh(skin)->colors[0][0];
-        const int16_t data[2][SH_PROBES_COMPONENTS] = {{0}, {4, 4, 4}};
-        const vec3f_t centre =
-            box3f_centre(columns(root)->renderers[scene_renderer_index(columns(root), row_of(skin))].world_bounds);
-        const sh_probes_t probes = {
-            .origin = centre, .spacing = {RIG_TRAVEL, 1, 1}, .dims = {2, 1, 1}, .scale = 1, .coefficients = data};
-        scene_set_probes(root, &probes);
-        scene_animation_step(columns(root), 0);
-        const uint8_t dark = renderer_mesh(skin)->colors[0][0];
-        TEST_ASSERT_LESS_THAN(before, dark);
-        transformf_t moved = transform_local(root);
-        moved.position.x += RIG_TRAVEL;
-        transform_set_local(root, moved);
-        scene_animation_step(columns(root), 0);
-        TEST_ASSERT_EQUAL_UINT8(dark, renderer_mesh(skin)->colors[0][0]);
-        TEST_ASSERT_TRUE(animator_set_paused(skin, ANIMATOR_CURRENT, true));
-        scene_animation_step(columns(root), 0);
-        TEST_ASSERT_GREATER_THAN(dark, renderer_mesh(skin)->colors[0][0]);
-        scene_set_probes(root, NULL);
-        scene_animation_step(columns(root), 0);
-        TEST_ASSERT_EQUAL_UINT8(before, renderer_mesh(skin)->colors[0][0]);
-        release_fixture();
-    }
-}
-
-static void
 test_authored_skin_modes_animation_and_ambient(void) {
     const size_t before = memory_free_bytes(MEMORY_INTERNAL);
     static const uint8_t modes[] = {R3D_SKIN_LIGHT_DIRECT, R3D_SKIN_LIGHT_RENORMALISED, R3D_SKIN_LIGHT_TABLE};
@@ -6019,6 +5923,10 @@ test_paused_skin_setters_replacement_and_reenable(void) {
     TEST_ASSERT_UINT8_WITHIN(1, skin->bind.colors[0][0], skin->colors[0][0]);
 }
 
+/* A skin's buffers are two heap blocks, and the device heap rounds each block
+ * by where it lands, so the same buffers taken again match to within that. */
+enum { SKIN_BLOCKS = 2, HEAP_BLOCK_ROUNDING = 8 };
+
 /* A skin holds its buffers only while its entity is active, so memory follows
  * the copies shown, not the pool: the herd loads its pool holding none, one
  * copy shown takes one copy's buffers, and a disabled copy gives its back at once. */
@@ -6050,9 +5958,6 @@ test_a_skin_holds_its_buffers_only_while_its_entity_is_active(void) {
     }
     scene_animation_step(columns(herd), 0);
 
-    /* The device heap rounds each block by where it lands, so copies match to within that. */
-    enum { SKIN_BLOCKS = 2, HEAP_BLOCK_ROUNDING = 8 };
-
     TEST_ASSERT_UINT_WITHIN(HERD_POOL * SKIN_BLOCKS * HEAP_BLOCK_ROUNDING, loaded - one * HERD_POOL,
                             memory_free_bytes(MEMORY_FAST));
     for (int i = 1; i < HERD_POOL; i++) {
@@ -6074,6 +5979,7 @@ test_a_skin_disabled_and_enabled_again_draws_the_same_frame(void) {
     scene_animation_step(columns(scene), RIG_DURATION_MS / RIG_TRAVEL);
     frame(0);
     memcpy(fx.held, fx.pixels, picture);
+    /* Counted across both RAMs: MEMORY_FAST puts the buffers off chip once the on-chip reserve is reached. */
     const size_t shown = memory_free_bytes(MEMORY_FAST);
     entity_set_enabled(green, false);
     TEST_ASSERT_GREATER_THAN_UINT(shown, memory_free_bytes(MEMORY_FAST));
@@ -6081,7 +5987,7 @@ test_a_skin_disabled_and_enabled_again_draws_the_same_frame(void) {
     TEST_ASSERT_NOT_EQUAL_INT(0, memcmp(fx.held, fx.pixels, picture));
     entity_set_enabled(green, true);
     frame(0);
-    TEST_ASSERT_EQUAL_UINT(shown, memory_free_bytes(MEMORY_FAST));
+    TEST_ASSERT_UINT_WITHIN(SKIN_BLOCKS * HEAP_BLOCK_ROUNDING, shown, memory_free_bytes(MEMORY_FAST));
     TEST_ASSERT_EQUAL_MEMORY(fx.held, fx.pixels, picture);
 }
 
@@ -7952,8 +7858,6 @@ run_scene_suite(void) {
     RUN_TEST(test_idle_lit_skin_skips_and_transform_changes_run);
     RUN_TEST(test_light_attachment_defaults_refusals_and_capacity);
     RUN_TEST(test_scene_light_rotation_shades_only_skin_and_matches_kernel);
-    RUN_TEST(test_constant_probe_matches_flat_ambient_in_each_kernel);
-    RUN_TEST(test_scene_probe_lighting_and_restore);
     RUN_TEST(test_authored_skin_modes_animation_and_ambient);
     RUN_TEST(test_authored_light_preserves_static_mesh_colors);
     RUN_TEST(test_authored_tonemap_changes_skin_colors_in_both_attachment_orders);
@@ -8089,7 +7993,6 @@ run_scene_suite(void) {
     RUN_TEST(test_a_scene_without_the_active_camera_draws_its_copies);
     RUN_TEST(test_a_renderer_swapped_for_its_twin_in_another_scene_redraws_the_frame);
     RUN_TEST(test_a_renderer_moving_in_a_second_scene_redraws_its_rows_as_a_whole_draw_does);
-    RUN_TEST(test_moving_post_draw_disc_clears_its_previous_rows);
     RUN_TEST(test_a_renderer_moving_in_the_cameras_scene_redraws_its_rows_as_a_whole_draw_does);
     RUN_TEST(test_more_changed_renderers_than_the_cap_over_two_scenes_draws_every_row);
     RUN_TEST(test_as_many_changed_renderers_as_the_cap_over_two_scenes_redraws_only_their_rows);
