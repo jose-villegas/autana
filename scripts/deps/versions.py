@@ -22,6 +22,7 @@ sys.path.insert(0, str(ROOT / "launcher/tools"))
 from bake.produce import PIN  # noqa: E402  (the exact-pin line a bake key counts)
 from espressif import idf_commit, idf_path, idf_pin  # noqa: E402
 import pinned_tool  # noqa: E402
+from r3d import llvm_runtime  # noqa: E402
 
 MISSING = "not found"
 
@@ -69,6 +70,9 @@ def rows(root=ROOT):
     yield "Python", (root / ".python-version").read_text().strip(), ".".join(map(str, sys.version_info[:3]))
     node = output("node", "--version")
     yield "Node", (root / ".node-version").read_text().strip(), node.lstrip("v") if node else MISSING
+    if sys.platform == "win32":
+        llvm = llvm_runtime.VERSION if llvm_runtime.library().is_file() else MISSING
+        yield "LLVM for Dr.Jit", llvm_runtime.VERSION, llvm
     for name, package, version in pinned_requirements(root):
         yield f"{package} ({name})", version, installed(package)
 

@@ -11,7 +11,7 @@ import math
 
 import numpy as np
 
-from . import isa
+from . import isa, llvm_runtime
 from .poses import camera_basis
 
 DEFAULT_SPP = 256
@@ -22,6 +22,7 @@ def import_mitsuba():
     """The mitsuba module, or None when it is not installed; its CPU backend pinned to one instruction set first."""
     if importlib.util.find_spec("mitsuba") is None:
         return None
+    llvm_runtime.select()
     isa.pin()
     import mitsuba
 

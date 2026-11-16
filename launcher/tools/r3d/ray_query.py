@@ -65,7 +65,8 @@ class RayQuery:
             import drjit as dr
 
             if not dr.has_backend(dr.JitBackend.LLVM):
-                raise RuntimeError("ray queries need libLLVM (apt install llvm, or the LLVM runtime for your platform)")
+                raise RuntimeError("ray queries need libLLVM: apt install llvm on Linux; on Windows, "
+                                   "python launcher/tools/r3d/llvm_runtime.py install")
         mi.set_variant(variant)
         self.mi, self.variant, self.scalar = mi, variant, variant.startswith("scalar")
         self.positions, self.tris = np.asarray(positions, dtype=np.float64), np.asarray(tris, dtype=np.int64)
