@@ -16,6 +16,7 @@ third_party/upstream/meshoptimizer. Every mesh is written unless one is named.
 """
 
 import argparse
+from dataclasses import replace
 import pathlib
 import sys
 from types import SimpleNamespace
@@ -43,7 +44,10 @@ from r3d.light import (  # noqa: E402
 from r3d.lod.bake_levels import bake_lit_mesh
 from r3d.lod.morph import morph_blob
 from r3d.lit_mesh import POSITION_SCALE, WELD_PER_TICK, bundle_entries, panel_colour, build_lit_mesh  # noqa: E402
-from r3d.mesh_source import load_source, load_glb_source, path_light_for, camera_path_poses
+from r3d.mesh_source import load_source, load_glb_source, path_light_for, camera_path_poses, with_triangles
+from r3d.cards import emit as card_emit
+from r3d.cards.emit import QUAD_CORNERS
+from r3d.texture import texture_asset, uv_transfer
 from r3d.process_budget import NULL_RECORDER
 from r3d.ray_query import RayQuery  # noqa: E402
 from r3d.scene_name import SUFFIX  # noqa: E402
@@ -102,13 +106,6 @@ def fidelity_poses(scene, object_name, frames, dt):
                             number_format=".9g")
 
 
-def with_triangles(src, tri_v, tri_t, tri_m):
-    """`src` holding other triangles over the same vertices, UVs and materials."""
-    other = SimpleNamespace(**vars(src))
-    other.tri_v, other.tri_t, other.tri_m = tri_v, tri_t, tri_m
-    return other
-
-
 def visible_triangles(visibility, scene, p, tri_v, double, intersector, rng):
     """Which source triangles the camera can see, by visibility's source."""
     if visibility.source == "camera_path":
@@ -154,17 +151,9 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
     # The replaced material leaves the geometry but keeps casting light: the light bake's occluders and bounce
     # source hold it, so the surfaces the cards are drawn over keep its shadows.
     light_only = None
-    cards = getattr(settings, "cards", None)
-    if cards is not None:
-        from r3d.cards import decide
-        from r3d.cards.emit import make_shape
-        def make(material):
-            from r3d.cards.emit import material_views
-            views, query = material_views(src, material, settings, scene)
-            return make_shape(src, material, cards, settings.seed, settings.alpha_keep, views=views, query=query)
-
+    if settings.cards is not None:
         with recorder.step("cards", len(tri_v)) as step:
-            accepted_cards, card_report = decide.carded(src, settings, make)
+            accepted_cards, card_report = card_emit.carded(src, settings, scene)
             step["triangles_out"] = sum(report['triangles'] for _, _, report in accepted_cards)
         for name, report in card_report.items():
             share = "always" if report['forced'] else f"{report['see_through']:.3f}"
@@ -398,7 +387,6 @@ def write_shape(job, scene, out_dir, name, geometry, shape, recorder):
         tris = np.arange(len(local)).reshape(-1, 3)
         double = np.isin(labels, double_sided).astype(int)
         if masked:
-            from r3d.cards.emit import QUAD_CORNERS
             double[:] = 1
         options = dict(vertex_uvs=shape['vertex_uvs'][t].reshape(-1, 2),
                        vertex_pages=np.repeat(shape['page_of_card'], len(QUAD_CORNERS))[t].ravel()) if masked else {}
@@ -417,10 +405,8 @@ def write_shape(job, scene, out_dir, name, geometry, shape, recorder):
                               meshlet_triangles=job.settings.meshlet_triangles, lod=job.settings.lod and not masked,
                               **geometry.scale, **options)
         if masked:
-            from r3d.texture import texture_asset, uv_transfer
             luvs = uv_transfer.card_luvs(mesh, mesh.vertex_uvs, mesh.page_of_cluster)
             entries.append((uv_transfer.name_for_mesh(mesh_id), uv_transfer.TYPE, uv_transfer.pack_luvs(luvs)))
-            from dataclasses import replace
             coloured = SimpleNamespace(**vars(mesh))
             coloured.rgb = mesh.colour_keys[:, :lcol_asset.STRIDES[lcol_asset.RGB888]]
             for page, texture in enumerate(shape['pages']):

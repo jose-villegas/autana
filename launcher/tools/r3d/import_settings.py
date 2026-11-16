@@ -13,6 +13,8 @@ import re
 import tomllib
 from types import SimpleNamespace
 
+from r3d.cards import CARD_EPSILON, CARD_AREA_COST
+
 from anim import clip_name
 from build.c_header import read_define
 from asset.asset_pack import NAME_BYTES
@@ -290,9 +292,8 @@ def load_geometry(table, steps):
         alpha_mask = table["alpha_mask"]
         check_keys(alpha_mask, ("keep_alpha",), "geometry.alpha_mask")
         steps.alpha_keep = number(alpha_mask["keep_alpha"], "geometry.alpha_mask.keep_alpha")
+    steps.cards = None
     if "cards" in table or steps.alpha_keep is not None:
-        from r3d.cards import CARD_EPSILON, CARD_AREA_COST
-
         cards = table.get("cards", {})
         where = "geometry.cards"
         check_keys(cards, (), where, optional=("epsilon", "area_cost", "never", "always"))
@@ -486,7 +487,7 @@ def load_import_settings(path):
         meshes=meshes,
         meshlet_triangles=steps.meshlet_triangles, lod=steps.lod, morph=steps.morph, fit=steps.fit,
         variants=variants, skin_lighting=lighting,
-        **({"cards": steps.cards} if hasattr(steps, "cards") else {}))
+        cards=steps.cards)
 
 
 def source_files(settings):

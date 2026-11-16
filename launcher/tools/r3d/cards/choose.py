@@ -1,4 +1,6 @@
-"""Select billboard planes with Décoret et al. 2003's greedy projected-area score."""
+"""Select billboard planes with Décoret et al. (docs/Citations.md#decoret-2003) greedy projected-area score."""
+
+from types import SimpleNamespace
 
 import numpy as np
 from scipy.cluster.vq import kmeans2
@@ -7,9 +9,11 @@ from scipy.spatial import cKDTree
 from r3d.cards import (CARD_AREA_COST, CARD_EPSILON, CARD_FLOOR_EPS2, CARD_LIMIT,
                       CARD_RADIUS, CANDIDATE_MIN_SAMPLES, CANDIDATE_PATCHES,
                       SAMPLES_PER_TRIANGLE, W_PENALTY)
-from r3d.cards import CARD_MASK_TEXELS
-from r3d.views.probes import SELECT_SIZE, FACE_LENS
-from r3d.poses import camera_basis, focal_px
+from r3d.cards import CARD_MASK_TEXELS, CARD_MAX_SIDE, CARD_MIP_LEVELS
+from r3d.cards.pages import PAGE_SIDE
+from r3d.views.probes import FACE_LENS
+from r3d.poses import camera_basis
+from r3d.light import AlphaTest
 from r3d.surface_samples import uniform_barycentric
 
 NORMAL_MIN = 1e-9
@@ -31,8 +35,10 @@ def samples(positions, triangles, rng, *, uv=None, tri_uv=None, texture=None, ke
     normals = np.repeat(cross / lengths[:, None], SAMPLES_PER_TRIANGLE, axis=0)
     area = np.repeat(lengths / (2 * SAMPLES_PER_TRIANGLE), SAMPLES_PER_TRIANGLE)
     if texture is not None:
-        sample_uv = (uv[tri_uv[keep]][:, None] * bary[..., None]).sum(axis=2).reshape(-1, 2)
-        opaque = texture.sample(sample_uv, np.zeros(len(sample_uv)))[:, 3] >= keep_alpha
+        sub = SimpleNamespace(p=positions, tri_v=triangles, uv=uv, tri_t=tri_uv,
+                              tri_m=np.zeros(len(triangles), dtype=int), textures=[texture])
+        hits = np.repeat(np.flatnonzero(keep), SAMPLES_PER_TRIANGLE)
+        opaque = AlphaTest(sub, keep_alpha)(hits, points)
         points, normals, area = points[opaque], normals[opaque], area[opaque]
     return points, normals, area
 
@@ -59,23 +65,22 @@ def candidates(points, normals, rng):
     return out
 
 
-def probe_weights(points, normals, faces, query):
+def probe_weights(points, faces, query, face_lens):
     """Projected pixel area per sample over training cube faces, through the source's alpha-tested query."""
     weight = np.zeros(len(points))
-    focal = focal_px(SELECT_SIZE, SELECT_SIZE, FACE_LENS)
     for pose in faces:
         eye = np.asarray(pose[:3])
         right, up, forward = camera_basis(pose[3:])
         v = points - eye
         z = v @ forward
-        inside = (z > 0) & (np.abs(v @ right) < FACE_LENS * z) & (np.abs(v @ up) < FACE_LENS * z)
+        inside = (z > 0) & (np.abs(v @ right) < face_lens * z) & (np.abs(v @ up) < face_lens * z)
         ids = np.flatnonzero(inside)
         if not len(ids):
             continue
         distance = np.linalg.norm(v[ids], axis=1)
         hit, t, _ = query.first_hits(np.repeat(eye[None], len(ids), axis=0), v[ids] / distance[:, None])
         ids = ids[~hit | (t >= distance - VISIBILITY_MARGIN)]
-        weight[ids] += (focal / z[ids]) ** 2
+        weight[ids] += 1 / z[ids] ** 2
     seen = weight > 0
     if seen.any():
         weight /= weight[seen].mean()
@@ -119,13 +124,14 @@ def card_from(centre, normal, points, epsilon):
 
 
 def choose_cards(positions, triangles, *, seed=0, epsilon=CARD_EPSILON, area_cost=CARD_AREA_COST,
-                 views=(), query=None, uv=None, tri_uv=None, texture=None, keep_alpha=None):
-    rng = np.random.default_rng(seed)
-    points, normals, area = samples(np.asarray(positions), np.asarray(triangles), rng, uv=uv, tri_uv=tri_uv,
-                                    texture=texture, keep_alpha=keep_alpha)
+                 views=(), query=None, uv=None, tri_uv=None, texture=None, keep_alpha=None,
+                 sampled=None, rng=None, face_lens=FACE_LENS):
+    rng = np.random.default_rng(seed) if rng is None else rng
+    points, normals, area = (samples(np.asarray(positions), np.asarray(triangles), rng, uv=uv, tri_uv=tri_uv,
+                                    texture=texture, keep_alpha=keep_alpha) if sampled is None else sampled)
     if not len(points):
         return []
-    weighted_area = area * probe_weights(points, normals, views, query)
+    weighted_area = area * probe_weights(points, views, query, face_lens)
     tree = cKDTree(points)
     base = candidates(points, normals, rng)
     near = {tuple(c): np.asarray(tree.query_ball_point(c, CARD_RADIUS), dtype=np.int64) for c, _ in base}
@@ -161,11 +167,6 @@ def choose_cards(positions, triangles, *, seed=0, epsilon=CARD_EPSILON, area_cos
 
 
 def split_cards(cards, max_side=None):
-    from r3d.cards import CARD_MAX_SIDE
-
-    from r3d.cards import CARD_MIP_LEVELS
-    from r3d.cards.pages import PAGE_SIDE
-
     max_side = CARD_MAX_SIDE if max_side is None else max_side
     texel_size = (float(np.median([max(card["hi"] - card["lo"]) for card in cards])) / CARD_MASK_TEXELS
                   if cards else 0.0)

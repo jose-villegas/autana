@@ -37,7 +37,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from r3d import log  # noqa: E402
 from r3d.geometry import closest_point_on_triangles, triangle_areas  # noqa: E402
-from r3d.fit.copies import check_hidden_copies, hidden_copy_pixels, joined, placed_copies  # noqa: E402
+from r3d.fit.copies import hidden_materials, check_hidden_copies, hidden_copy_pixels, joined, placed_copies  # noqa: E402
 from r3d.fit import gbuffer  # noqa: E402
 from r3d.import_settings import load_scene, match_meshes  # noqa: E402
 from r3d.lit_mesh import finest_triangles, read_lit_mesh  # noqa: E402
@@ -1041,7 +1041,8 @@ def main(argv=None):
         if args.surface_weight or copies is not None:
             from r3d.reference_render import source_for
 
-            source, job = source_for(scene, args.object, lit=False, hide_cards=True)
+            source, job = source_for(scene, args.object, lit=False, hide_cards=True,
+                                     hidden_materials=hidden_materials(start))
         carved = None
         if copies is not None:
             carved = np.zeros(len(source.object_names), dtype=bool)

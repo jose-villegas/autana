@@ -2,19 +2,19 @@
 
 import numpy as np
 
-from r3d.geometry import hit_barycentrics
-from r3d.cards import CARD_MASK_TEXELS
+from types import SimpleNamespace
+
+from r3d.light import AlphaTest
 from r3d.ray_query import RayQuery
 
 SUPERSAMPLES = 2
 MIN_TEXELS = 2
 KEEP_COVERAGE = 0.5
-ALPHA_HIT_LIMIT = 16
 
 
-def bake_pixels(card, query, positions, triangles, uv, tri_uv, texture, keep_alpha):
+def bake_pixels(card, query):
     size = card['hi'] - card['lo']
-    texel_size = card.get("texel_size", size.max() / CARD_MASK_TEXELS)
+    texel_size = card["texel_size"]
     width, height = np.maximum(MIN_TEXELS, np.rint(size / texel_size).astype(int))
     gx, gy = np.meshgrid((np.arange(width * SUPERSAMPLES) + 0.5) / (width * SUPERSAMPLES),
                          (np.arange(height * SUPERSAMPLES) + 0.5) / (height * SUPERSAMPLES))
@@ -26,23 +26,15 @@ def bake_pixels(card, query, positions, triangles, uv, tri_uv, texture, keep_alp
     alpha = np.zeros(len(origins))
     albedo = np.zeros((len(origins), 3))
     active = np.ones(len(origins), bool)
-    for depth, (tri, ids, points) in enumerate(query.hit_rounds(origins, directions, active)):
-        if depth >= ALPHA_HIT_LIMIT:
-            break
+    alpha_test = query.hit_filter
+    for tri, ids, points in query.hit_rounds(origins, directions, active):
         inside = ((points - card['c']) @ card['n']) >= card['depth'][0]
-        active[ids[~inside]] = False
+        active[ids] = False
         ids, tri, points = ids[inside], tri[inside], points[inside]
-        if texture is None:
-            rgba = np.ones((len(ids), 4))
-        else:
-            bary = hit_barycentrics(positions, triangles, tri, points)
-            tuv = (uv[tri_uv[tri]] * bary[..., None]).sum(axis=1)
-            rgba = texture.sample(tuv, np.zeros(len(ids)))
-        solid = rgba[:, 3] >= keep_alpha
-        coverage[ids[solid]] = 1
-        alpha[ids[solid]] = rgba[solid, 3]
-        albedo[ids[solid]] = rgba[solid, :3] * rgba[solid, 3:4]
-        active[ids[solid]] = False
+        rgba = alpha_test.rgba(tri, points)
+        coverage[ids] = 1
+        alpha[ids] = rgba[:, 3]
+        albedo[ids] = rgba[:, :3] * rgba[:, 3:4]
     layout = (height, SUPERSAMPLES, width, SUPERSAMPLES)
     coverage = coverage.reshape(layout).mean(axis=(1, 3))
     alpha = alpha.reshape(layout).mean(axis=(1, 3))
@@ -53,9 +45,11 @@ def bake_pixels(card, query, positions, triangles, uv, tri_uv, texture, keep_alp
 def bake_card(card, positions, triangles, uv, tri_uv, texture, keep_alpha, *, query=None):
     if not np.any(card['hi'] > card['lo']):
         return None  # no extent: nothing to cover, and no texel size to measure one
-    query = RayQuery(positions, triangles) if query is None else query
-    card = dict(card, texel_size=card.get('texel_size', max(card['hi'] - card['lo']) / CARD_MASK_TEXELS))
-    mask, _, _ = bake_pixels(card, query, positions, triangles, uv, tri_uv, texture, keep_alpha)
+    if query is None:
+        sub = SimpleNamespace(p=positions, tri_v=triangles, uv=uv, tri_t=tri_uv,
+                              tri_m=np.zeros(len(triangles), dtype=int), textures=[texture])
+        query = RayQuery(positions, triangles, hit_filter=AlphaTest(sub, keep_alpha))
+    mask, _, _ = bake_pixels(card, query)
     if not mask.any():
         return None
     y, x = np.nonzero(mask)
@@ -63,7 +57,7 @@ def bake_card(card, positions, triangles, uv, tri_uv, texture, keep_alpha, *, qu
     size = card['hi'] - card['lo']
     trimmed = dict(card, lo=card['lo'] + size * [x.min() / width, y.min() / height],
                    hi=card['lo'] + size * [(x.max() + 1) / width, (y.max() + 1) / height])
-    mask, albedo, coverage = bake_pixels(trimmed, query, positions, triangles, uv, tri_uv, texture, keep_alpha)
+    mask, albedo, coverage = bake_pixels(trimmed, query)
     return (trimmed, mask, albedo, coverage) if mask.any() else None
 
 

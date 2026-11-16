@@ -81,14 +81,15 @@ class AlphaTestTests(unittest.TestCase):
         np.testing.assert_array_equal(light.AlphaTest(self.source, KEEP_ALPHA)(triangles, locations), SOLID,
                                       "texture coordinates outside 0..1 should repeat")
 
-    def test_opaque_and_untextured_materials_are_solid_without_a_sample(self):
+    def test_opaque_colour_is_sampled_and_untextured_hits_are_white(self):
         triangles, locations = self.card_hits()
         opaque = copy(self.source.textures[0])
         opaque.levels = [np.ones_like(level) for level in opaque.levels]
         self.source.textures[1] = opaque
         alpha = light.AlphaTest(self.source, KEEP_ALPHA)
-        with mock.patch.object(opaque, "sample", side_effect=AssertionError("opaque texture sampled")):
+        with mock.patch.object(opaque, "sample", wraps=opaque.sample) as sampled:
             np.testing.assert_array_equal(alpha(triangles + 2, locations), True)
+            sampled.assert_called_once()
         self.source.textures[1] = None
         np.testing.assert_array_equal(light.AlphaTest(self.source, KEEP_ALPHA)(triangles + 2, locations), True)
         np.testing.assert_array_equal(alpha(np.zeros(0, dtype=int), np.zeros((0, 3))), [])

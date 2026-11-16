@@ -11,6 +11,9 @@ from typing import NamedTuple
 
 import numpy as np
 
+from r3d.mesh_source import camera_filter
+from r3d.ray_query import RayQuery
+
 # A fitted pixel stands in front of the source when it is nearer than the source by more than this fraction of
 # the source's depth.
 IN_FRONT = 0.10
@@ -61,17 +64,8 @@ def reference_buffers(source, carved, matrices, sizes, device="cuda"):
 
     from r3d.appearance_simplify import Renderer
 
-    alpha = getattr(source, "alpha_test", None)
-    alpha = alpha if alpha is not None and alpha.tested.any() else None
-    hidden = getattr(source, "camera_hidden", None)
-    hidden = hidden if hidden is not None and hidden.any() else None
-    query = None
-    if alpha is not None or hidden is not None:
-        from r3d.ray_query import RayQuery
-
-        shown = lambda hits, where: ((True if hidden is None else ~hidden[hits]) &
-                                     (True if alpha is None else alpha(hits, where)))
-        query = RayQuery(source.p, source.tri_v, hit_filter=shown)
+    keep = camera_filter(source)
+    query = None if keep is None else RayQuery(source.p, source.tri_v, hit_filter=keep)
     points = torch.as_tensor(source.p, dtype=torch.float32, device=device)
     carved = torch.as_tensor(carved, device=device)
     renders, depth, copy = {}, [], []

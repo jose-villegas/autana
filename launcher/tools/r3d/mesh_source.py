@@ -43,6 +43,23 @@ def load_glb_source(settings):
                            colors=np.array(mesh.colors, dtype=np.float64))
 
 
+def with_triangles(src, tri_v, tri_t, tri_m, **attributes):
+    """`src` with other triangles and optional replacement vertex, UV or material arrays."""
+    return SimpleNamespace(**(vars(src) | dict(tri_v=tri_v, tri_t=tri_t, tri_m=tri_m) | attributes))
+
+
+def camera_filter(source):
+    """A hit filter for hidden materials and cut texels, or None for an opaque, unhidden source."""
+    alpha = getattr(source, "alpha_test", None)
+    alpha = alpha if alpha is not None and alpha.tested.any() else None
+    hidden = getattr(source, "camera_hidden", None)
+    hidden = hidden if hidden is not None and hidden.any() else None
+    if alpha is None and hidden is None:
+        return None
+    return lambda hits, where: ((True if hidden is None else ~hidden[hits]) &
+                               (True if alpha is None else alpha(hits, where)))
+
+
 PATH_LIGHTS = {}
 
 
