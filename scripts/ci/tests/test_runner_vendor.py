@@ -67,5 +67,25 @@ class RunnerVendorTests(unittest.TestCase):
         self.assertEqual(self.rerun(runner_vendor.VENDOR_TRIES, jobs), [])
 
 
+
+class BakesWorkflowTests(unittest.TestCase):
+    """A re-run happens only when the vendor check is a run's sole failure, so nothing after the lock may run,
+    and fail, when a bake before it failed: a skipped lock is no failure."""
+
+    def test_a_job_after_the_lock_waits_out_every_failure_the_lock_does(self):
+        import yaml
+        jobs = yaml.safe_load((runner_vendor.ROOT / ".github/workflows/bakes.yml").read_text())["jobs"]
+        guarded = [name for name in jobs["lock"]["needs"] if f"needs.{name}.result != 'failure'" in jobs["lock"]["if"]]
+        self.assertTrue(guarded)
+        for name, job in jobs.items():
+            needs = [job["needs"]] if isinstance(job.get("needs"), str) else job.get("needs", [])
+            if "lock" not in needs:
+                continue
+            with self.subTest(job=name):
+                for before in guarded:
+                    self.assertIn(before, needs)
+                    self.assertIn(f"needs.{before}.result != 'failure'", job["if"])
+
+
 if __name__ == "__main__":
     unittest.main()

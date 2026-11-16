@@ -15,6 +15,7 @@ import pathlib
 import re
 import shutil
 import subprocess
+import struct
 import sys
 import tempfile
 import unittest
@@ -27,10 +28,12 @@ import host_render  # noqa: E402
 
 # Two keyframe intervals and one frame: the third keyframe is the last frame.
 FRAMES = 61
+BUDGET_TRIANGLES = 1200
 RECORDED = {
     "herd": ["--scene", "herd-8"],
     "water": ["--quarter", "0", "--scene", "water", "--console", "0:water tour"],
     "sponza": ["--scene", "sponza-fitted-full"],
+    "budget": ["--scene", "sponza-fitted-full", "--set", f"render.lod_triangle_budget={BUDGET_TRIANGLES}"],
 }
 
 
@@ -46,6 +49,7 @@ class RecordHost(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.out = pathlib.Path(tempfile.mkdtemp(prefix="record_host_"))
+        cls.out.mkdir(parents=True, exist_ok=True)
         run, cls.binary = build(cls.out)
         cls.failure = None if cls.binary else (run.stdout + run.stderr)[-2000:]
         cls.streams, cls.logs = {}, {}
@@ -66,6 +70,56 @@ class RecordHost(unittest.TestCase):
         self.assertIsNone(self.failure, self.failure)
         self.assertTrue(name in self.streams, self.logs.get(name, "")[-2000:])
         return self.streams[name]
+
+    def test_stream_replay_matches_every_check(self):
+        self.assertIsNone(self.failure, self.failure)
+        shell = shutil.which("sh") or shutil.which("bash")
+        script = ROOT / "launcher/tools/render/stream_render.sh"
+        built = subprocess.run([shell, str(script), "--build-only", "-o", str(self.out / "replay")],
+                               capture_output=True, text=True, timeout=900)
+        self.assertEqual(built.returncode, 0, (built.stdout + built.stderr)[-2000:])
+        binary = re.search(r"^built (.+)$", built.stdout, re.MULTILINE)
+        self.assertIsNotNone(binary, built.stdout)
+        for name in RECORDED:
+            with self.subTest(scene=name):
+                stream = self.stream(name)
+                env = dict(os.environ, AUTANA_ASSET_DIR=str(self.out / "assets"))
+                run = subprocess.run([binary[1].strip(), "--stream", str(self.out / (name + ".frec")),
+                                      "--check", "--quarter", "0" if name == "water" else "1",
+                                      "-o", str(self.out / (name + "-replay.bmp"))],
+                                     capture_output=True, text=True, timeout=600, env=env)
+                self.assertEqual(run.returncode, 0, run.stderr[-4000:])
+                matched = re.findall(r"CHECK (\d+) SAME", run.stderr)
+                self.assertEqual([int(i) for i in matched], sorted(stream.checks), run.stderr[-4000:])
+
+        data = bytearray((self.out / "herd.frec").read_bytes())
+        at = 0
+        while at < len(data):
+            kind, length = framerec.HEAD.unpack_from(data, at)
+            body = at + framerec.HEAD.size
+            if kind == framerec.RECORD_TYPES["CHECK"]:
+                index, width, height, crc = framerec.CHECK.unpack_from(data, body)
+                data[body:body + framerec.CHECK.size] = framerec.CHECK.pack(index, width, height, crc ^ 1)
+                break
+            at = body + length
+        changed = self.out / "wrong-check.frec"
+        changed.write_bytes(data)
+        run = subprocess.run([binary[1].strip(), "--stream", str(changed), "--check", "--frames", "1",
+                              "-o", str(self.out / "wrong-check.bmp")],
+                             capture_output=True, text=True, env=env, timeout=600)
+        self.assertNotEqual(run.returncode, 0)
+        self.assertIn("CHECK 0 DIFFERS", run.stderr)
+
+    def test_keyframe_carries_pre_draw_lod_state(self):
+        for name in ("herd", "sponza", "budget"):
+            for frame in self.stream(name).frames:
+                if frame.keyframe:
+                    records = [body for kind, body in frame.records if kind == "LODSTATE"]
+                    self.assertEqual(len(records), 1, (name, frame.index))
+                    phase, tolerance = struct.unpack_from("<If", records[0])
+                    self.assertEqual(phase, frame.index, (name, frame.index))
+                    if name == "budget" and frame.index > 0:
+                        self.assertGreater(tolerance, 0)
 
     def test_each_drawn_frame_is_recorded_and_none_dropped(self):
         for name in RECORDED:
