@@ -125,26 +125,27 @@ title CHOICE content, 10 bytes after the head
 ```mermaid
 ---
 config:
-  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(4) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(5) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(6) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(7) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(8) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(9) { fill: #e3e3e3 !important; } g:nth-of-type(3) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(4) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(5) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(6) rect:nth-of-type(1) { fill: #e3e3e3 !important; } .packetLabel { fill: #1b1b1b !important; }"
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(4) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(5) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(6) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(7) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(8) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(9) { fill: #e3e3e3 !important; } g:nth-of-type(3) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(3) rect:nth-of-type(2) { fill: #e3e3e3 !important; } g:nth-of-type(3) rect:nth-of-type(3) { fill: #e3e3e3 !important; } g:nth-of-type(3) rect:nth-of-type(4) { fill: #e3e3e3 !important; } g:nth-of-type(3) rect:nth-of-type(5) { fill: #e3e3e3 !important; } g:nth-of-type(4) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(5) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(6) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(7) rect:nth-of-type(1) { fill: #e3e3e3 !important; } .packetLabel { fill: #1b1b1b !important; }"
   packet:
     bitsPerRow: 16
     bitWidth: 50
 ---
 packet-beta
-title MESH content, 95 bytes after the head: 31, then the model matrix
+title MESH content, 96 bytes after the head: 32, then the model matrix
 0-1: "index"
 2-2: "kind"
 3-3: "placed"
-4-4: "pack"
-5-8: "entry"
-9-12: "offset"
-13-13: "pack"
-14-17: "entry"
-18-21: "offset"
-22-22: "pack"
-23-26: "entry"
-27-30: "offset"
-31-94: "model"
+4-4: "faces"
+5-5: "pack"
+6-9: "entry"
+10-13: "offset"
+14-14: "pack"
+15-18: "entry"
+19-22: "offset"
+23-23: "pack"
+24-27: "entry"
+28-31: "offset"
+32-95: "model"
 ```
 
 ```mermaid
@@ -202,7 +203,8 @@ title TUNE content, 36 bytes, and CHECK content, 12 bytes, after the head
 ```
 
 A `MESH` names three places, each a pack slot, entry and byte offset: its positions, its
-colours, and for a batch the copies' places. A mesh the app made has
+colours, and for a batch the copies' places. `faces` says which colours: 1 for one
+RGB565 per triangle, 0 for RGB888 per vertex. A mesh the app made has
 `FRAME_RECORD_NO_PACK` and `FRAME_RECORD_NO_ENTRY` there; its data rides in
 the same frame's `POSE` or `DYNMESH`.
 
