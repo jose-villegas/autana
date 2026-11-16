@@ -2068,7 +2068,17 @@ test_the_rasters_texture_settings_reach_the_fill(void) {
     t->cluster_material[0][0] = 0;
     t->cluster_material[0][1] = R3D_TEXTURE_NONE;
     t->codes[0] = RIG_CODE_BOTH;
-    t->texturing = (r3d_mesh_texturing_t){t->uvs, t->cluster_material, t->cluster_shift, t->codes, texture, 1};
+    const r3d_lit_mesh_t* quad = &r->quad[0].mesh;
+    t->texturing = (r3d_mesh_texturing_t){t->uvs,
+                                          t->cluster_material,
+                                          t->cluster_shift,
+                                          t->codes,
+                                          texture,
+                                          1,
+                                          (uint32_t)quad->vertex_count,
+                                          (uint32_t)quad->cluster_count,
+                                          (uint32_t)quad->triangle_count,
+                                          (uint32_t)quad->vertex_count};
     r->quad[0].mesh.texturing = &t->texturing;
     const size_t pixels = (size_t)RIG_W * RIG_H;
     gfx_color_t* drawn[2];
