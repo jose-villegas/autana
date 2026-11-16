@@ -240,6 +240,37 @@ class MeshPolicyTests(unittest.TestCase):
         self.assertEqual(len(shared), 1)
         self.assertTrue(np.any(shared[0].kwargs['vertex_lock']))
 
+    def test_source_locks_hold_a_contact_whose_partner_was_culled(self):
+        from scipy.spatial import cKDTree
+        from r3d.objects.contact import contact_graph
+        from r3d.repair import seal_tolerance
+        p, t = sphere(13)
+        # Far enough apart that the copies touch only the support.
+        reflected = p * [-1, 1, 1] + [6 + np.ptp(p[:, 0]), 0, 0]
+        support = np.array([reflected[1], reflected[1] + [0, 0, 2], reflected[1] + [0, 2, 0]])
+        points = np.concatenate([p, reflected, support])
+        faces = np.concatenate([t, t[:, ::-1] + len(p), [np.arange(2 * len(p), 2 * len(p) + 3)]])
+        owners = np.concatenate([np.repeat([0, 1], len(t)), [2]])
+        locks = np.zeros(len(points), dtype=bool)
+        for edge in contact_graph(points, faces, owners):
+            locks[edge.vertices_a] = True
+            locks[edge.vertices_b] = True
+        self.assertTrue(np.any(locks[len(p):2 * len(p)]))
+        # A vertex within the seal tolerance of a locked one stands at the same contact.
+        distance = cKDTree(points[locks]).query(reflected)[0]
+        touching = int(np.count_nonzero(distance <= seal_tolerance()))
+        # The cull removed the support: only the source's contact border, matched by position, still locks the
+        # shape's vertices where the second copy touched it (the sphere's symmetry leaves which ones to the match).
+        culled = dict(tri_o=owners[:-1], object_names=('vase_a', 'vase_b', 'rest'), material_names=('plain',),
+                      meshes=({'match': {'object': 'vase*'}, 'triangles': 40},))
+        for locked, want in ((None, 0), (points[locks], touching)):
+            with watched_simplify() as run:
+                simplify(points, np.full_like(points, 100), faces[:-1], np.zeros(len(faces) - 1, dtype=int), 20,
+                         colour_deviation=1, allocation=Allocation(**culled, locked=locked))
+            shared = next(call for call in run.call_args_list if len(call.args[0]) == len(p))
+            lock = shared.kwargs['vertex_lock']
+            self.assertEqual(0 if lock is None else int(np.count_nonzero(lock)), want)
+
     def test_weld_pins_vertex_to_face_contact(self):
         p = np.array([[0., 0, 0], [4, 0, 0], [0, 4, 0], [1, 1, 0], [1, 1, 2], [2, 1, 2]])
         t = np.arange(6).reshape(-1, 3)

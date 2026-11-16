@@ -152,18 +152,19 @@ def carve_selection(src, tri_v, tri_m, selected, settings, job, scene):
     """The rules' objects plus every repeat, each carried by one rule per shape whose `triangles` is pinned or
     derived (objects/carve.py), and the derived shapes for the report. A derived shape's ladder keeps the contact
     border its seam locks. Repeated parts of the other objects are grown into units (objects/units.py), which
-    become objects of `src` and repeat like any other."""
+    become objects of `src` and repeat like any other. Also returns the positions of the source vertices the contact
+    border locks, so the simplify keeps them where the visibility cull removed the triangles they touch."""
     selected, edges, src.tri_o, src.object_names = carved_repeats(src, tri_v, tri_m, selected, settings)
-    if not any("triangles" not in rule for rule in selected.values()):
-        return selected, None
-    eyes, focal, near, sight = views(scene, job.renderer)
     locks = contact_locks(len(src.p), edges, seam_policies(selected, edges), selected)
+    if not any("triangles" not in rule for rule in selected.values()):
+        return selected, None, src.p[locks]
+    eyes, focal, near, sight = views(scene, job.renderer)
     _, shapes = derived_budgets(src.p, tri_v, tri_m, src.tri_o, selected, eyes, focal, near, sight, locks)
     per_object = {}
     for shape in shapes:
         for obj in shape["objects"]:
             per_object[obj] = shape
-    return selected, SimpleNamespace(shapes=shapes, focal=focal, per_object=per_object)
+    return selected, SimpleNamespace(shapes=shapes, focal=focal, per_object=per_object), src.p[locks]
 
 
 def mask_alpha(src, settings):
@@ -193,9 +194,9 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
     if not carve or scene is None:
         meshes = tuple(rule for rule in meshes if "triangles" in rule)
     selected = match_meshes(src.tri_o, tri_m, src.object_names, src.names, meshes) if meshes else {}
-    derived = None
+    derived = locked = None
     if carve and scene is not None:
-        selected, derived = carve_selection(src, tri_v, tri_m, selected, settings, job, scene)
+        selected, derived, locked = carve_selection(src, tri_v, tri_m, selected, settings, job, scene)
     carved_keep = thin_meshes(src, selected, settings.thin, settings.seed) if selected else None
     with recorder.step("visibility", len(tri_v)) as step:
         intersector = None
@@ -274,7 +275,7 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
                                                                          shade_shared=(lambda p, c, t, m, **kw: shade_placed(src, job, scene, p, c, t, m,
                                                                                                              intersector, bounce, preserve_corners=True, **kw))
                                                                                       if job.bake and carve else None,
-                                                                         report=mesh_report, shapes=shapes),
+                                                                         report=mesh_report, shapes=shapes, locked=locked),
                                                    reserved=[(frozenset(i for i, name in enumerate(src.names) if name in steps.props),
                                                               steps.props_share)],
                                                    colour_deviation=steps.colour_deviation, seal_seams=steps.seal_seams, **scale)
