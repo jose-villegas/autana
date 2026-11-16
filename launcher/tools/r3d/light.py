@@ -55,23 +55,31 @@ class AlphaTest:
         self.source, self.keep_alpha = source, keep_alpha
         self.tested = alpha_tested(source.textures)
 
+    def sample_material(self, material, hits, locations):
+        """Level-zero RGBA for hits of one textured material."""
+        source = self.source
+        bary = hit_barycentrics(source.p, source.tri_v, hits, locations)
+        uv = (source.uv[source.tri_t[hits]] * bary[:, :, None]).sum(axis=1)
+        return source.textures[material].sample(uv, np.zeros(len(hits)))
+
     def rgba(self, hits, locations):
         """Level-zero linear RGBA at source hits; untextured materials return white."""
-        source = self.source
         rgba = np.ones((len(hits), 4))
-        materials = source.tri_m[hits]
+        materials = self.source.tri_m[hits]
         for material in np.unique(materials):
-            texture = source.textures[material]
-            if texture is None:
-                continue
-            chosen = np.flatnonzero(materials == material)
-            bary = hit_barycentrics(source.p, source.tri_v, hits[chosen], locations[chosen])
-            uv = (source.uv[source.tri_t[hits[chosen]]] * bary[:, :, None]).sum(axis=1)
-            rgba[chosen] = texture.sample(uv, np.zeros(len(chosen)))
+            if self.source.textures[material] is not None:
+                chosen = np.flatnonzero(materials == material)
+                rgba[chosen] = self.sample_material(material, hits[chosen], locations[chosen])
         return rgba
 
     def __call__(self, hits, locations):
-        return self.rgba(hits, locations)[:, 3] >= self.keep_alpha
+        solid = np.ones(len(hits), dtype=bool)
+        materials = self.source.tri_m[hits]
+        for material in np.unique(materials):
+            if self.tested[material]:
+                chosen = np.flatnonzero(materials == material)
+                solid[chosen] = self.sample_material(material, hits[chosen], locations[chosen])[:, 3] >= self.keep_alpha
+        return solid
 
 
 def visible_from_region(p, tri_v, double, intersector, rounds, rng, lo, hi):

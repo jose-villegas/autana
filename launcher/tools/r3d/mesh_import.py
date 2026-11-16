@@ -251,7 +251,7 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
     check_ceiling(card_triangles, ceiling)
     available = None if ceiling is None else ceiling - card_triangles
     with recorder.step("simplify", len(tris)) as step:
-        if settings.simplify:
+        if settings.simplify and len(tris):
             steps = settings.simplify
             budget = renderer.variant.triangles if available is None else min(renderer.variant.triangles, available)
             mesh_report['rest_budget'] = budget

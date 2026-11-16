@@ -35,12 +35,12 @@ from scipy.sparse.csgraph import connected_components
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from r3d import log  # noqa: E402
+from r3d import log, mesh_bundle  # noqa: E402
 from r3d.geometry import closest_point_on_triangles, triangle_areas  # noqa: E402
 from r3d.fit.copies import hidden_materials, check_hidden_copies, hidden_copy_pixels, joined, placed_copies  # noqa: E402
 from r3d.fit import gbuffer  # noqa: E402
 from r3d.import_settings import load_scene, match_meshes  # noqa: E402
-from r3d.lit_mesh import finest_triangles, read_lit_mesh  # noqa: E402
+from r3d.lit_mesh import finest_triangles, read_bundle_mesh  # noqa: E402
 from r3d.cost_model import load as load_cost  # noqa: E402
 from r3d.poses import camera_basis, read_poses  # noqa: E402
 from r3d.repair import _border_edges  # noqa: E402
@@ -122,7 +122,8 @@ class FitMesh(NamedTuple):
     """What the fit moves and colours. points are the welded positions in
     model units; vertex_point maps each vertex to its position, so a colour
     seam cannot open into a crack when positions move. rgb (0..1) is one
-    colour per vertex, or per triangle when the mesh is flat."""
+    colour per vertex, or per triangle when the mesh is flat. hidden_materials carries
+    the bundle's card materials excluded from camera references."""
     points: np.ndarray
     rgb: np.ndarray
     tris: np.ndarray
@@ -130,17 +131,19 @@ class FitMesh(NamedTuple):
     scale: int
     vertex_point: np.ndarray
     flat: bool = False
+    hidden_materials: frozenset = frozenset()
 
 
 def start_mesh(path):
     """The FitMesh of a generated mesh: a smooth one welded back to one
     vertex per position and colour, a flat one to one per position."""
-    mesh = read_lit_mesh(path)
+    entries, rows = mesh_bundle.decode(pathlib.Path(path).read_bytes())
+    mesh = read_bundle_mesh(entries, mesh_bundle.rest_name(entries, rows))
     q, rgb, tris, double, face = finest_triangles(mesh)
     flat = rgb is None
     points, vertex_point = np.unique(q, axis=0, return_inverse=True)
     return FitMesh(points / float(mesh.position_scale), (face if flat else rgb) / 255.0, tris, double, mesh.position_scale,
-                   vertex_point.reshape(-1), flat)
+                   vertex_point.reshape(-1), flat, frozenset(hidden_materials(entries, rows)))
 
 
 def point_edges(tris, vertex_point):
@@ -736,7 +739,7 @@ def refine(mesh, error, budget):
     mesh's halves keep their triangle's colour."""
     from r3d.tessellate import split_marked_edges
 
-    points, rgb, tris, double, _scale, vertex_point, flat = mesh
+    points, rgb, tris, double, _scale, vertex_point, flat, _hidden = mesh
     positions = points[vertex_point]
     while len(tris) < budget:
         corners = vertex_point[tris]
@@ -792,7 +795,7 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
     as a copy."""
     import torch
 
-    points0, rgb0, tris, double, _scale, vertex_point, flat = mesh
+    points0, rgb0, tris, double, _scale, vertex_point, flat, _hidden = mesh
     torch.manual_seed(seed)
     rng = np.random.default_rng(seed)
     diagonal = float(np.linalg.norm(points0.max(axis=0) - points0.min(axis=0)))
@@ -982,6 +985,8 @@ def main(argv=None):
     parser.add_argument("--surface-weight", type=float, default=0.0, help="weight of the source-surface envelope")
     parser.add_argument("--surface-margin", type=float, default=0.0, help="source envelope margin in local start edge scales")
     parser.add_argument("--seam-margin", type=float, default=SEAM_MARGIN, help="seam hold margin in local start edge scales (0 holds nothing)")
+    parser.add_argument("--hidden-materials", nargs="*",
+                        help="source materials hidden by cards in the full bundle; defaults to the start's cards")
     parser.add_argument("--copies", help="a carved start bundle: its copies are drawn with the start, unchanged")
     parser.add_argument("--copy-poses", help="with --copies, the poses the copy-coverage gate checks the fit over")
     parser.add_argument("--front-weight", type=float, default=0.0,
@@ -1042,7 +1047,8 @@ def main(argv=None):
             from r3d.reference_render import source_for
 
             source, job = source_for(scene, args.object, lit=False, hide_cards=True,
-                                     hidden_materials=hidden_materials(start))
+                                     hidden_materials=(mesh.hidden_materials if args.hidden_materials is None
+                                                       else set(args.hidden_materials)))
         carved = None
         if copies is not None:
             carved = np.zeros(len(source.object_names), dtype=bool)

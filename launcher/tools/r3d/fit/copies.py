@@ -44,9 +44,8 @@ def masked_copies(entries, rows):
     return [row for row in rows if masked(row["mesh"])]
 
 
-def hidden_materials(bundle):
-    """Source material names hidden by the start bundle's masked card shapes, without selecting or baking cards."""
-    entries, rows = mesh_bundle.decode(pathlib.Path(bundle).read_bytes())
+def hidden_materials(entries, rows):
+    """Source material names hidden by decoded bundle card shapes, without selecting or baking cards."""
     return {row["match"]["material"] for row in masked_copies(entries, rows)}
 
 

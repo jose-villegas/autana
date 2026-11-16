@@ -2,10 +2,6 @@
 
 import numpy as np
 
-from types import SimpleNamespace
-
-from r3d.light import AlphaTest
-from r3d.ray_query import RayQuery
 
 SUPERSAMPLES = 2
 MIN_TEXELS = 2
@@ -42,13 +38,9 @@ def bake_pixels(card, query):
     return coverage >= KEEP_COVERAGE, albedo, alpha
 
 
-def bake_card(card, positions, triangles, uv, tri_uv, texture, keep_alpha, *, query=None):
+def bake_card(card, query):
     if not np.any(card['hi'] > card['lo']):
         return None  # no extent: nothing to cover, and no texel size to measure one
-    if query is None:
-        sub = SimpleNamespace(p=positions, tri_v=triangles, uv=uv, tri_t=tri_uv,
-                              tri_m=np.zeros(len(triangles), dtype=int), textures=[texture])
-        query = RayQuery(positions, triangles, hit_filter=AlphaTest(sub, keep_alpha))
     mask, _, _ = bake_pixels(card, query)
     if not mask.any():
         return None

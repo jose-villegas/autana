@@ -6,6 +6,7 @@ import numpy as np
 from soup import Soup
 from r3d.cards import CARD_MIP_LEVELS
 from r3d.cards.pages import pack_pages
+from r3d.mesh_source import with_triangles
 from r3d.texture import texture_asset, uv_transfer
 
 
@@ -63,7 +64,10 @@ class PageTests(unittest.TestCase):
         from r3d.lit_mesh import bake_lit_mesh
         quad = Soup([[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0]], [[0, 1, 2], [2, 1, 3]])
         tris = np.concatenate([quad.faces, quad.faces + len(quad.vertices)])
-        uvs = np.tile([[0, 0], [16, 0], [0, 16], [16, 16]], (2, 1))
+        uv_scale = 1 << uv_transfer.UV_SHIFT
+        corners = np.asarray(quad.vertices)[:, :2] * uv_scale
+        page_offset = np.array([2, 3]) * uv_scale
+        uvs = np.concatenate([corners + page_offset, corners])
         pages = np.repeat([1, 0], 4)
         mesh = bake_lit_mesh(np.tile(quad.vertices, (2, 1)), np.full((8, 3), 128), tris, np.ones(4),
                              vertex_uvs=uvs, vertex_pages=pages)
@@ -72,9 +76,18 @@ class PageTests(unittest.TestCase):
         luvs = uv_transfer.card_luvs(mesh, mesh.vertex_uvs, mesh.page_of_cluster)
         self.assertEqual(set(luvs.materials[:, 0]), {0, 1})
         np.testing.assert_array_equal(luvs.codes, 1)
-        for vb, vc, tb, tc, *_ in mesh.clusters:
+        for cluster, (vb, vc, tb, tc, *_) in enumerate(mesh.clusters):
             self.assertEqual(vc, 4)
             self.assertEqual(tc, 2)
+            page = int(luvs.materials[cluster, 0])
+            positions = mesh.pos[vb:vb + vc] / mesh.position_scale
+            expected_uvs = positions[:, :2] * uv_scale + page * page_offset
+            np.testing.assert_array_equal(luvs.uvs[vb:vb + vc], expected_uvs)
+            first = 2 if page == 0 else 0
+            expected_faces = sorted(tuple(sorted(map(tuple, uvs[face]))) for face in tris[first:first + 2])
+            faces = mesh.tris[tb:tb + tc]
+            actual_faces = sorted(tuple(sorted(map(tuple, luvs.uvs[face]))) for face in faces)
+            self.assertEqual(actual_faces, expected_faces)
 
 
 
@@ -112,7 +125,8 @@ class CardSamplingTests(unittest.TestCase):
         for z, kept in ((-epsilon * 1.1, False), (-epsilon * .9, True),
                         (epsilon * 1.1, False), (epsilon * .9, True)):
             positions = np.array([[-1., -1., z], [1., -1., z], [-1., 1., z], [1., 1., z]])
-            sub = SimpleNamespace(p=positions, tri_v=tris, tri_m=np.zeros(len(tris), int), textures=[None])
+            sub = with_triangles(SimpleNamespace(p=positions, textures=[None]),
+                                 tris, tris, np.zeros(len(tris), int))
             query = RayQuery(positions, tris, "scalar_rgb", hit_filter=AlphaTest(sub, .5))
             mask, _, _ = bake_pixels(card, query)
             self.assertEqual(bool(mask.any()), kept, z)

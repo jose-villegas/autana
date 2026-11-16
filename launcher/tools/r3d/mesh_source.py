@@ -48,9 +48,9 @@ def with_triangles(src, tri_v, tri_t, tri_m, **attributes):
     return SimpleNamespace(**(vars(src) | dict(tri_v=tri_v, tri_t=tri_t, tri_m=tri_m) | attributes))
 
 
-def camera_filter(source):
-    """A hit filter for hidden materials and cut texels, or None for an opaque, unhidden source."""
-    alpha = getattr(source, "alpha_test", None)
+def camera_filter(source, *, alpha=True):
+    """A hit filter for hidden materials and, with `alpha`, cut texels; None when neither applies."""
+    alpha = getattr(source, "alpha_test", None) if alpha else None
     alpha = alpha if alpha is not None and alpha.tested.any() else None
     hidden = getattr(source, "camera_hidden", None)
     hidden = hidden if hidden is not None and hidden.any() else None
