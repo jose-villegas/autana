@@ -177,6 +177,10 @@ typedef struct {
 } ui_fresh_t;
 
 void ui_fresh_clear(ui_fresh_t* fresh);
+/* Adds `count` rects, checked against each other and the list in one sort
+ * and sweep, so a backdrop adds all its rects in one call; the list's order
+ * is not kept. */
+void ui_fresh_add_all(ui_fresh_t* fresh, const recti_t* rects, int count);
 void ui_fresh_add(ui_fresh_t* fresh, recti_t rect);
 void ui_fresh_whole(ui_fresh_t* fresh);
 

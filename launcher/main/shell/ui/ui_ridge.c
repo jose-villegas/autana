@@ -856,7 +856,6 @@ repaint_box(recti_t box) {
             repaint_strip(strip, box.y, recti_bottom(box));
         }
     }
-    ui_fresh_add(&ridge->fresh, ridge->by_column ? box : (recti_t){box.y, box.x, box.h, box.w});
 }
 
 /* `box` kept after the `count` boxes so far. Past a full list it is
@@ -903,28 +902,27 @@ keep_layer_boxes(int layer, recti_t* boxes, int count) {
     return keep_box(boxes, count, box.rect);
 }
 
-/* The first box after `i` that overlaps box `i`, or -1. */
 static int
-overlapping_box(const recti_t* boxes, int count, int i) {
-    for (int j = i + 1; j < count; j++) {
-        if (!recti_is_empty(recti_intersect(boxes[i], boxes[j]))) {
-            return j;
-        }
-    }
-    return -1;
+by_first_strip(const void* a, const void* b) {
+    return ((const recti_t*)a)->x - ((const recti_t*)b)->x;
 }
 
-/* The boxes merged wherever two overlap, until none do: a union can reach a
- * box neither part touched, so each merge starts the scan again. Returns how
- * many are left, at the front. */
+/* The boxes merged wherever two overlap, until none do. Sorted by first
+ * strip, a box can overlap only those that start before it ends; a union
+ * keeps its place but can reach a box neither part touched, so each merge
+ * starts the sweep again. Returns how many are left, at the front. */
 static int
 merge_boxes(recti_t* boxes, int count) {
+    qsort(boxes, (size_t)count, sizeof boxes[0], by_first_strip);
     for (int i = 0; i < count; i++) {
-        const int j = overlapping_box(boxes, count, i);
-        if (j >= 0) {
-            boxes[i] = recti_union(boxes[i], boxes[j]);
-            boxes[j] = boxes[--count];
-            i = -1;
+        for (int j = i + 1; j < count && boxes[j].x < recti_right(boxes[i]); j++) {
+            if (!recti_is_empty(recti_intersect(boxes[i], boxes[j]))) {
+                boxes[i] = recti_union(boxes[i], boxes[j]);
+                memmove(&boxes[j], &boxes[j + 1], (size_t)(count - j - 1) * sizeof boxes[0]);
+                count--;
+                i = -1;
+                break;
+            }
         }
     }
     return count;
@@ -944,7 +942,12 @@ repaint_changed(void) {
     count = merge_boxes(ridge->boxes, count);
     for (int box = 0; box < count; box++) {
         repaint_box(ridge->boxes[box]);
+        if (!ridge->by_column) {
+            ridge->boxes[box] =
+                (recti_t){ridge->boxes[box].y, ridge->boxes[box].x, ridge->boxes[box].h, ridge->boxes[box].w};
+        }
     }
+    ui_fresh_add_all(&ridge->fresh, ridge->boxes, count);
 }
 
 #define EDGE_FAR (INT64_C(1) << 40)

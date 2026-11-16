@@ -32,6 +32,7 @@
 
 #include <assert.h>
 #include <limits.h>
+#include <stdlib.h>
 
 #include "esp_log.h"
 
@@ -318,22 +319,57 @@ ui_fresh_clear(ui_fresh_t* fresh) {
     fresh->overflow = false;
 }
 
+static int
+by_left(const void* a, const void* b) {
+    return ((const recti_t*)a)->x - ((const recti_t*)b)->x;
+}
+
+static int
+by_top(const void* a, const void* b) {
+    return ((const recti_t*)a)->y - ((const recti_t*)b)->y;
+}
+
+/* Sorted along the axis the rects are thinner on, a rect can overlap only
+ * those that start before it ends there. */
 void
-ui_fresh_add(ui_fresh_t* fresh, recti_t rect) {
-    if (recti_is_empty(rect) || fresh->overflow) {
-        return;
-    }
-    for (int i = 0; i < fresh->count; i++) {
-        if (!recti_is_empty(recti_intersect(fresh->rects[i], rect))) {
+ui_fresh_add_all(ui_fresh_t* fresh, const recti_t* rects, int count) {
+    int at = fresh->count;
+    for (int i = 0; i < count && !fresh->overflow; i++) {
+        if (recti_is_empty(rects[i])) {
+            continue;
+        }
+        if (at == UI_FRESH_MAX) {
             fresh->overflow = true;
-            return;
+        } else {
+            fresh->rects[at++] = rects[i];
         }
     }
-    if (fresh->count == UI_FRESH_MAX) {
-        fresh->overflow = true;
+    if (fresh->overflow) {
         return;
     }
-    fresh->rects[fresh->count++] = rect;
+    int widths = 0;
+    int heights = 0;
+    for (int i = 0; i < at; i++) {
+        widths += fresh->rects[i].w;
+        heights += fresh->rects[i].h;
+    }
+    const bool across = widths <= heights;
+    recti_t* const r = fresh->rects;
+    qsort(r, (size_t)at, sizeof r[0], across ? by_left : by_top);
+    for (int i = 0; i < at; i++) {
+        for (int j = i + 1; j < at && (across ? r[j].x < recti_right(r[i]) : r[j].y < recti_bottom(r[i])); j++) {
+            if (!recti_is_empty(recti_intersect(r[i], r[j]))) {
+                fresh->overflow = true;
+                return;
+            }
+        }
+    }
+    fresh->count = at;
+}
+
+void
+ui_fresh_add(ui_fresh_t* fresh, recti_t rect) {
+    ui_fresh_add_all(fresh, &rect, 1);
 }
 
 void
