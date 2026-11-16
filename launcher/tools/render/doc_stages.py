@@ -676,18 +676,21 @@ def light_sheets(light, out, work, measure, comparisons):
 
 
 # Run in a child so the stage's own process never initialises the JIT.
-RAY_TRACING_CHECK = "import drjit as dr; raise SystemExit(0 if dr.has_backend(dr.JitBackend.LLVM) else 3)"
+# The child names the pinned LLVM-C.dll to Dr.Jit first, as the bake workers do on Windows.
+RAY_TRACING_CHECK = ("import sys; sys.path.insert(0, sys.argv[1]); from r3d import llvm_runtime; llvm_runtime.select(); "
+                     "import drjit as dr; raise SystemExit(0 if dr.has_backend(dr.JitBackend.LLVM) else 3)")
 
 
 def require_ray_tracing():
     """The bakes trace their rays on Mitsuba's LLVM variant, which needs libatomic1 and libLLVM. A runner missing
     either fails here with the fix, not later inside a worker."""
-    done = subprocess.run([sys.executable, "-c", RAY_TRACING_CHECK], capture_output=True, text=True)
+    done = subprocess.run([sys.executable, "-c", RAY_TRACING_CHECK, str(ROOT / "launcher/tools")], capture_output=True,
+                          text=True)
     if done.returncode:
         lines = done.stderr.strip().splitlines()
         reason = lines[-1] if lines else "drjit found no LLVM backend"
         raise ValueError(f"the GPU stage traces rays on Mitsuba's LLVM variant ({reason}); "
-                         "install libatomic1 and libLLVM, for example apt install libatomic1 llvm")
+                         "on Linux apt install libatomic1 llvm; on Windows python launcher/tools/r3d/llvm_runtime.py install")
 
 
 def gpu(args, out, work):

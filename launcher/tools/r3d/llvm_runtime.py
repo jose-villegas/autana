@@ -5,21 +5,21 @@
     python launcher/tools/r3d/llvm_runtime.py where     # the library this process would name to Dr.Jit
 
 Dr.Jit loads LLVM-C.dll from the DLL search path unless DRJIT_LIBLLVM_PATH names it. `select()` names the cached
-copy for this process only, before Mitsuba loads, so every ray-query tool finds it with no persistent variable. A
+copy for this process only. Dr.Jit reads it when it is first imported, so `select()` must run before any
+`import drjit`; `mitsuba_reference.import_mitsuba` calls it first, and every ray-query tool imports Mitsuba there. A
 DRJIT_LIBLLVM_PATH already set wins. Linux and macOS take libLLVM from the system (apt install llvm).
 """
 import argparse
-import hashlib
 import os
 import pathlib
 import shutil
 import sys
 import tarfile
 import tempfile
-import urllib.request
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3] / "scripts/lib"))
 from autana_config import user_cache_dir  # noqa: E402
+from fetch import fetch_verified  # noqa: E402
 
 VERSION = "23.1.5"
 ARCHIVE = f"clang+llvm-{VERSION}-x86_64-pc-windows-msvc.tar.zst"
@@ -36,24 +36,16 @@ def library(root=None):
     return (root or user_cache_dir()) / "llvm" / VERSION / LIBRARY
 
 
-def select(environ=os.environ, platform=sys.platform, root=None):
+def select(environ=os.environ, platform=None, root=None):
     """Names the cached library to Dr.Jit in `environ` on Windows when it is installed and nothing names one yet.
     Returns the path Dr.Jit will load from, or None when it searches on its own."""
     if environ.get(ENV):
         return pathlib.Path(environ[ENV])
     path = library(root)
-    if platform != "win32" or not path.is_file():
+    if (platform or sys.platform) != "win32" or not path.is_file():
         return None
     environ[ENV] = str(path)
     return path
-
-
-def sha256(path):
-    digest = hashlib.sha256()
-    with open(path, "rb") as file:
-        while block := file.read(CHUNK):
-            digest.update(block)
-    return digest.hexdigest()
 
 
 def extract(archive, target):
@@ -78,12 +70,7 @@ def install(root=None, url=URL, expected=ARCHIVE_SHA256):
         return path
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=path.parent) as scratch:
-        archive = pathlib.Path(scratch) / ARCHIVE
-        with urllib.request.urlopen(url) as response, open(archive, "wb") as out:
-            shutil.copyfileobj(response, out, CHUNK)
-        found = sha256(archive)
-        if found != expected:
-            raise RuntimeError(f"{ARCHIVE}: SHA-256 {found}, pinned {expected}")
+        archive = fetch_verified(url, pathlib.Path(scratch) / ARCHIVE, expected)
         partial = pathlib.Path(scratch) / LIBRARY
         extract(archive, partial)
         os.replace(partial, path)

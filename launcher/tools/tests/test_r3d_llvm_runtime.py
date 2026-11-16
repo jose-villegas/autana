@@ -11,10 +11,11 @@ import sys
 import tarfile
 import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from r3d import llvm_runtime  # noqa: E402
+from r3d import llvm_runtime, mitsuba_reference  # noqa: E402
 
 try:
     from compression import zstd
@@ -64,6 +65,38 @@ class SelectTest(unittest.TestCase):
         self.assertIsNone(llvm_runtime.select(environ, "win32", self.root))
         self.assertEqual(environ, {})
 
+    def test_an_empty_name_counts_as_none(self):
+        path = self.installed()
+        environ = {llvm_runtime.ENV: ""}
+        self.assertEqual(llvm_runtime.select(environ, "win32", self.root), path)
+
+    def where(self, library):
+        """`where`'s exit status and output on Windows with `library` as the cache's copy and nothing named."""
+        with (mock.patch.object(llvm_runtime, "library", return_value=library),
+              mock.patch.dict(os.environ, {}, clear=True),
+              mock.patch.object(sys, "platform", "win32"),
+              mock.patch("sys.stdout", new_callable=io.StringIO) as out):
+            status = llvm_runtime.main(["where"])
+            self.assertNotIn(llvm_runtime.ENV, os.environ)
+        return status, out.getvalue().strip()
+
+    def test_where_exits_by_whether_a_library_is_named(self):
+        path = self.installed()
+        self.assertEqual(self.where(path), (0, str(path)))
+        status, said = self.where(self.root / "absent")
+        self.assertEqual(status, 1)
+        self.assertIn("none", said)
+
+    def test_drjit_is_imported_after_the_library_is_named(self):
+        order = []
+        fake = type(sys)("mitsuba")
+        with (mock.patch.object(mitsuba_reference.importlib.util, "find_spec", return_value=object()),
+              mock.patch.object(mitsuba_reference.llvm_runtime, "select", side_effect=lambda: order.append("select")),
+              mock.patch.object(mitsuba_reference.isa, "pin", side_effect=lambda: order.append("pin")),
+              mock.patch.dict(sys.modules, {"mitsuba": fake})):
+            self.assertIs(mitsuba_reference.import_mitsuba(), fake)
+        self.assertEqual(order, ["select", "pin"])
+
     def test_other_systems_keep_their_own_libllvm(self):
         self.installed()
         environ = {}
@@ -95,13 +128,18 @@ class InstallTest(unittest.TestCase):
         url, _ = self.serve(archive_with({"clang+llvm/bin/LLVM-C.dll": LIBRARY_BYTES}))
         with self.assertRaisesRegex(RuntimeError, "SHA-256"):
             llvm_runtime.install(self.root, url, "0" * 64)
-        self.assertFalse(llvm_runtime.library(self.root).exists())
+        self.assertEqual(list(llvm_runtime.library(self.root).parent.iterdir()), [])
 
     def test_an_archive_without_the_library_is_refused(self):
         url, digest = self.serve(archive_with({"clang+llvm/bin/clang.exe": b"clang"}))
         with self.assertRaisesRegex(RuntimeError, "no bin/LLVM-C.dll"):
             llvm_runtime.install(self.root, url, digest)
-        self.assertFalse(llvm_runtime.library(self.root).exists())
+        self.assertEqual(list(llvm_runtime.library(self.root).parent.iterdir()), [])
+
+    def test_a_failed_download_leaves_nothing(self):
+        with self.assertRaises(OSError):
+            llvm_runtime.install(self.root, (self.root / "absent.tar.zst").as_uri(), "0" * 64)
+        self.assertEqual(list(llvm_runtime.library(self.root).parent.iterdir()), [])
 
     def test_an_installed_library_is_not_fetched_again(self):
         path = llvm_runtime.library(self.root)

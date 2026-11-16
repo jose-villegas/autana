@@ -44,7 +44,8 @@ mesh. Nothing here runs on the board.
 The environment is pinned in [requirements.txt](requirements.txt), and the
 simplifier needs the meshoptimizer submodule and a host C++ compiler (`CXX`,
 else `c++` or `g++`). The bake traces its rays on Mitsuba's LLVM variant, so it also
-needs libLLVM and Dr.Jit needs libatomic1 (`apt install libatomic1 llvm` on Linux); without them the bake stops with an error.
+needs libLLVM and Dr.Jit needs libatomic1 (`apt install libatomic1 llvm` on Linux; on Windows
+`python launcher/tools/r3d/llvm_runtime.py install` fetches the pinned `LLVM-C.dll`); without them the bake stops with an error.
 [isa.py](isa.py) compiles those rays for x86-64-v3 (AVX2 and FMA) at 8 lanes and caps Embree at AVX2, building a
 small C library with the host C compiler (`CC`, else `cc`, `gcc` or `clang`), so a recipe bakes to the same bytes on
 every x86-64 Linux host of one vendor (AMD and Intel differ by an ulp; see its docstring); elsewhere it logs that the
