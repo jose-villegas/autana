@@ -136,7 +136,7 @@ unlike_a_full_paint_now(void) {
     gfx_color_t* const repainted = memory_alloc(bytes, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(repainted);
     memcpy(repainted, gfx_framebuffer(), bytes);
-    ui_ridge_paint();
+    ui_ridge_paint((recti_t){0, 0, GFX_WIDTH, GFX_HEIGHT});
     unlike_t unlike = {0, GFX_WIDTH, -1, GFX_HEIGHT, -1};
     for (size_t i = 0; i < (size_t)GFX_WIDTH * GFX_HEIGHT; i++) {
         if (repainted[i] != gfx_framebuffer()[i]) {
