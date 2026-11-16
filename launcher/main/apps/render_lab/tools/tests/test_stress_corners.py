@@ -7,10 +7,10 @@ with --view cull --counts, then holds each to what it is the loss case of:
 open hides and culls nothing, stack hides most of what it keeps, tiny copies
 are all in view and all drawn, big tris draws every triangle it submits,
 two-sided cubes skip nothing facing away, noisy tiny cylinders are all in
-view with every copy drawn, and
-before a still camera only the per-frame preset's frames differ. The sizes the
-triangles are drawn at, and the small-fill gate failing noisy-tiny's slivers,
-are suite_stress_preset.c's to hold.
+view with every copy drawn, and hinged butterflies keep every part in view
+and submit every triangle. Before a still camera, wave and hinged presets
+change frames. Triangle sizes and noisy-tiny's sliver gate are held by
+suite_stress_preset.c.
 """
 import csv
 import pathlib
@@ -26,6 +26,8 @@ sys.path.insert(0, str(HERE))
 import host_render  # noqa: E402
 sys.path.insert(0, str(HERE.parents[5] / "launcher/tools"))
 
+from build.c_header import read_define  # noqa: E402
+
 PRESETS = HERE.parents[1] / "stress" / "stress_preset.h"
 TABLE = HERE.parents[1] / "stress" / "stress_preset.c"
 FRAMES = 2
@@ -39,8 +41,9 @@ STATIC_VERTICES = sum(line.startswith("v ") for line in STATIC_COPY.read_text().
 def preset_copies():
     """Each preset's copy count by its key, in the order STRESS_PRESETS lists them."""
     keys = re.findall(r'^\s*X\((\w+), "([^"]+)"', PRESETS.read_text(), re.MULTILINE)
-    rows = dict(re.findall(r'^\s*\[STRESS_(\w+)\] = \{\w+, \d+, (\d+),', TABLE.read_text(), re.MULTILINE))
-    return {key: int(rows[name]) for name, key in keys}
+    rows = dict(re.findall(r'^\s*\[STRESS_(\w+)\] = \{\w+, \d+, (\w+),', TABLE.read_text(), re.MULTILINE))
+    return {key: int(rows[name]) if rows[name].isdigit() else read_define(PRESETS, rows[name])
+            for name, key in keys}
 
 
 class StressCorners(unittest.TestCase):
@@ -83,7 +86,7 @@ class StressCorners(unittest.TestCase):
         self.assertEqual({"open", "stack", "tiny-copies", "big-tris", "per-frame", "two-sided", "noisy-tiny", "mix",
                           "static-copies", "uniform-mid", "uniform-full", "card", "culled", "near",
                           "few-copies", "textured", "record", "foliage-near", "foliage-near-opaque", "foliage-far",
-                          "foliage-far-opaque"}, set(preset_copies()))
+                          "foliage-far-opaque", "butterflies", "few-butterflies"}, set(preset_copies()))
 
     def assert_all_in_view(self, c):
         """Nothing culled: every cluster tested is kept, and no node is cut."""
@@ -184,9 +187,25 @@ class StressCorners(unittest.TestCase):
     def test_per_frame_draws_the_whole_wave(self):
         self.assert_draws_every_triangle("per-frame")
 
-    def test_only_per_frame_moves_before_a_still_camera(self):
-        before, after = self.frames("per-frame")
-        self.assertNotEqual(before, after)
+    def test_butterflies_keep_every_part_in_view_and_submit_every_triangle(self):
+        parts = read_define(PRESETS, "STRESS_BUTTERFLY_PARTS")
+        triangles = read_define(PRESETS, "STRESS_BUTTERFLY_PART_TRIANGLES")
+        for key in ("butterflies", "few-butterflies"):
+            with self.subTest(key=key):
+                copies = preset_copies()[key]
+                c = self.counts(key)
+                self.assert_all_in_view(c)
+                self.assertEqual(copies * parts, c["transform_batches"])
+                self.assertGreaterEqual(c["clusters_drawn"], copies)
+                self.assertEqual(copies * parts * triangles, c["triangles_submitted"])
+                self.assertEqual(0, c["triangles_behind"])
+                self.assertEqual(0, c["triangles_clipped"])
+
+    def test_wave_and_hinges_move_before_a_still_camera(self):
+        for key in ("per-frame", "butterflies", "few-butterflies"):
+            with self.subTest(key=key):
+                before, after = self.frames(key)
+                self.assertNotEqual(before, after)
         before, after = self.frames("stack")
         self.assertEqual(before, after)
 

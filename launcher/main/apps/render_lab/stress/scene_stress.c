@@ -82,7 +82,7 @@ find_pool(void) {
         for (int side = 0; side < STRESS_WING_SIDES; side++) {
             char name[ASSET_NAME_MAX];
             snprintf(name, sizeof name, STRESS_BUTTERFLY_WING_FORMAT, i, wing_suffix[side]);
-            const int at = i * STRESS_WING_SIDES + side;
+            const int at = (i * STRESS_WING_SIDES) + side;
             wings[at] = entity_find(loaded, name_hash(name));
             if (handle_is_none(wings[at]) || !handle_equal(entity_parent(wings[at]), slots[i])) {
                 return false;
@@ -308,9 +308,9 @@ flap(void) {
         const float seconds = (float)wave_ms / STRESS_FLAP_MS_PER_SECOND;
         const float phase = STRESS_FLAP_PHASE_STEP * (float)i;
         const float angle =
-            STRESS_FLAP_AMPLITUDE * sinf(2.0F * MATH_PI * STRESS_FLAP_HZ * seconds + phase) + STRESS_FLAP_BIAS;
+            (STRESS_FLAP_AMPLITUDE * sinf((2.0F * MATH_PI * STRESS_FLAP_HZ * seconds) + phase)) + STRESS_FLAP_BIAS;
         for (int side = 0; side < STRESS_WING_SIDES; side++) {
-            const int at = i * STRESS_WING_SIDES + side;
+            const int at = (i * STRESS_WING_SIDES) + side;
             transform_set_local(wings[at], hinge_pose(&wing_hinges[at], angle));
         }
     }

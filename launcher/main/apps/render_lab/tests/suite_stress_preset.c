@@ -729,21 +729,31 @@ test_foliage_mask_opens_as_mask1_and_keeps_about_0_7_of_a_card(void) {
 #define TEST_BODY_SCALE     100.0F
 static uint16_t* pixels;
 static uint16_t* held;
+static memory_take_fn butterfly_take;
 
 static void
 butterfly_fixture_end(void) {
     scene_unload_all();
+    (void)scene_set_take(butterfly_take);
     free(pixels);
     free(held);
     pixels = NULL;
     held = NULL;
 }
 
-static void
-test_butterfly_pool_has_parented_wings_and_24_triangles(void) {
+static entity_t
+butterfly_fixture(void) {
+    scene_unload_all();
+    butterfly_take = scene_set_take(NULL);
     suite_set_test_cleanup(butterfly_fixture_end);
     const entity_t root = scene_load(STRESS_BUTTERFLY_SCENE);
     TEST_ASSERT_EQUAL_INT(PENDING_READY, scene_state(root));
+    return root;
+}
+
+static void
+test_butterfly_pool_has_parented_wings_and_24_triangles(void) {
+    const entity_t root = butterfly_fixture();
     int parts = 0;
     for (entity_t e = entity_next(root, ENTITY_NONE); !handle_is_none(e); e = entity_next(root, e)) {
         parts += renderer_mesh(e) != NULL;
@@ -769,14 +779,7 @@ test_butterfly_pool_has_parented_wings_and_24_triangles(void) {
         TEST_ASSERT_EQUAL_INT(STRESS_BUTTERFLY_PARTS - 1, children);
         TEST_ASSERT_EQUAL_INT(BUTTERFLY_TRIANGLES, triangles);
     }
-}
-
-static entity_t
-butterfly_fixture(void) {
-    suite_set_test_cleanup(butterfly_fixture_end);
-    const entity_t root = scene_load(STRESS_BUTTERFLY_SCENE);
-    TEST_ASSERT_EQUAL_INT(PENDING_READY, scene_state(root));
-    return root;
+    release();
 }
 
 /* Rim x coordinates identify the traced leading edge and hindwing independently of vertex order. */
@@ -819,13 +822,14 @@ test_wing_leading_edge_is_forward_in_body_frame(void) {
         TEST_ASSERT_EQUAL_INT(TEST_RIM_POINTS, hind_points);
         TEST_ASSERT_GREATER_THAN_FLOAT_MESSAGE(hind, leading, "forewing leading edge must face body forward");
     }
+    release();
 }
 
 static vec3f_t
 butterfly_tip(entity_t wing) {
     const transformf_t world = transform_world(wing);
-    return vec3f_add(world.position, quatf_rotate(world.rotation, (vec3f_t){world.scale.x * TEST_TIP_X, 0.0F,
-                                                                            world.scale.z * TEST_TIP_Z}));
+    return vec3f_add(world.position, quatf_rotate(world.rotation, (vec3f_t){(world.scale.x * TEST_TIP_X), 0.0F,
+                                                                            (world.scale.z * TEST_TIP_Z)}));
 }
 
 static void
@@ -867,6 +871,7 @@ test_hinge_angles_preserve_body_and_raise_mirrored_tips(void) {
     for (size_t i = 0; i < sizeof angles / sizeof angles[0]; i++) {
         check_butterfly_hinge_angle(body, left, right, rests, &body_before, angles[i]);
     }
+    release();
 }
 
 static void
@@ -909,6 +914,7 @@ test_two_seeks_and_flap_renders_at_same_time_match_bytes(void) {
         visible = visible || pixels[i] != pixels[0];
     }
     TEST_ASSERT_TRUE_MESSAGE(visible, "the deterministic frame must contain the butterfly");
+    release();
 }
 
 void
