@@ -21,6 +21,7 @@
 #include "gfx/present/gfx_present.h"
 #include "image/pixel/bayer.h"
 #include "image/pixel/rgb565.h"
+#include "math/geometry/rect_overlap.h"
 #include "math/scalar/ease.h"
 #include "math/scalar/fixed.h"
 #include "math/scalar/mathi.h"
@@ -150,6 +151,8 @@ typedef struct {
     recti_t boxes[UI_FRESH_MAX]; /* the step's boxes, in strip space */
 #if BUILD_VARIANT_SELFTEST_OR_HOST
     int gradient_turns;
+    int moved_px, kept_px, kept_boxes; /* the last step's moved pixels, and its boxes before the merge */
+    bool boxed;                        /* whether the last step painted boxes */
 #endif
     uint8_t lip_alpha[RIDGE_LAYER_COUNT][RIDGE_MAX_LIP_PX];
     uint32_t theme_seed, tuned_at, alive_ms, wave_ms, shake_seed;
@@ -158,18 +161,12 @@ typedef struct {
     bool by_column, axis_on_screen, ambient, painted, scanline_dither;
 } ridge_t;
 
-#define RIDGE_ENTRY           "ridge"
-#define RIDGE_ROW             "y"
+#define RIDGE_ENTRY        "ridge"
+#define RIDGE_ROW          "y"
 /* A level fallback crosses the middle of the landscape frame. */
-#define RIDGE_LEVEL_HEIGHT    (RIDGE_CURVE_VIEW_H / 2)
+#define RIDGE_LEVEL_HEIGHT (RIDGE_CURVE_VIEW_H / 2)
 
-#define TAG                   "ui_ridge"
-/* A fresh box grows over a layer's next span while the pixels it paints that
- * no move needs stay within its moved pixels >> RIDGE_BOX_SLACK_SHIFT, or
- * within RIDGE_BOX_SLACK_PX while it is small; past that a box of its own is
- * cheaper. */
-#define RIDGE_BOX_SLACK_SHIFT 2
-#define RIDGE_BOX_SLACK_PX    16
+#define TAG                "ui_ridge"
 #if BUILD_VARIANT_SELFTEST_OR_HOST
 /* The boxes a step may list; a test lowers it to drive the overflow. */
 static int box_cap = UI_FRESH_MAX;
@@ -894,6 +891,9 @@ keep_layer_boxes(int layer, recti_t* boxes, int count) {
         lo = mathi_clamp(lo, 0, along);
         hi = mathi_clamp(hi, lo, along);
         const recti_t span = {strip, lo, 1, hi - lo};
+#if BUILD_VARIANT_SELFTEST_OR_HOST
+        ridge->moved_px += recti_area(span);
+#endif
         if (!box_takes(&box, span)) {
             count = keep_box(boxes, count, box.rect);
             box = (move_box_t){span, recti_area(span)};
@@ -902,27 +902,27 @@ keep_layer_boxes(int layer, recti_t* boxes, int count) {
     return keep_box(boxes, count, box.rect);
 }
 
-static int
-by_first_strip(const void* a, const void* b) {
-    return ((const recti_t*)a)->x - ((const recti_t*)b)->x;
-}
-
-/* The boxes merged wherever two overlap, until none do. Sorted by first
- * strip, a box can overlap only those that start before it ends; a union
- * keeps its place but can reach a box neither part touched, so each merge
- * starts the sweep again. Returns how many are left, at the front. */
+/* The boxes until none overlap. Two whose bounding box holds no pixel
+ * outside them merge into it; otherwise the later loses what the earlier
+ * covers, in at most three pieces, so a merge never paints a pixel no box
+ * held and nothing chains. Returns how many are left, at the front. */
 static int
 merge_boxes(recti_t* boxes, int count) {
-    qsort(boxes, (size_t)count, sizeof boxes[0], by_first_strip);
-    for (int i = 0; i < count; i++) {
-        for (int j = i + 1; j < count && boxes[j].x < recti_right(boxes[i]); j++) {
-            if (!recti_is_empty(recti_intersect(boxes[i], boxes[j]))) {
-                boxes[i] = recti_union(boxes[i], boxes[j]);
-                memmove(&boxes[j], &boxes[j + 1], (size_t)(count - j - 1) * sizeof boxes[0]);
-                count--;
-                i = -1;
-                break;
-            }
+    int i;
+    int j;
+    while ((i = recti_overlapping_pair(boxes, count, true, &j)) >= 0) {
+        const recti_t a = boxes[i];
+        const recti_t b = boxes[j];
+        const recti_t both = recti_union(a, b);
+        boxes[j] = boxes[--count];
+        if (recti_area(both) == recti_area(a) + recti_area(b) - recti_area(recti_intersect(a, b))) {
+            boxes[i] = both;
+            continue;
+        }
+        recti_t pieces[RECTI_SUBTRACT_MAX];
+        const int n = recti_subtract(b, a, pieces);
+        for (int piece = 0; piece < n; piece++) {
+            count = keep_box(boxes, count, pieces[piece]);
         }
     }
     return count;
@@ -936,9 +936,20 @@ repaint_changed(void) {
         ridge->fresh.overflow = true; /* a dissolve leaves pixels undissolved */
     }
     int count = 0;
+#if BUILD_VARIANT_SELFTEST_OR_HOST
+    ridge->moved_px = 0;
+    ridge->boxed = true;
+#endif
     for (int layer = 0; layer < RIDGE_LAYER_COUNT; layer++) {
         count = keep_layer_boxes(layer, ridge->boxes, count);
     }
+#if BUILD_VARIANT_SELFTEST_OR_HOST
+    ridge->kept_boxes = count;
+    ridge->kept_px = 0;
+    for (int box = 0; box < count; box++) {
+        ridge->kept_px += recti_area(ridge->boxes[box]);
+    }
+#endif
     count = merge_boxes(ridge->boxes, count);
     for (int box = 0; box < count; box++) {
         repaint_box(ridge->boxes[box]);
@@ -1422,6 +1433,14 @@ ui_ridge_dissolve_restarts_for_test(void) {
 #endif
 }
 
+bool
+ui_ridge_boxes_for_test(int* moved_px, int* kept_px, int* kept_boxes) {
+    *moved_px = ridge != NULL ? ridge->moved_px : 0;
+    *kept_px = ridge != NULL ? ridge->kept_px : 0;
+    *kept_boxes = ridge != NULL ? ridge->kept_boxes : 0;
+    return ridge != NULL && ridge->boxed;
+}
+
 int
 ui_ridge_gradient_turns_for_test(void) {
     return ridge != NULL ? ridge->gradient_turns : 0;
@@ -1593,6 +1612,9 @@ ui_ridge_step(const input_t* input, uint32_t dt_ms) {
     FRAME_COST_END(layers_from, "ridge.layers");
     FRAME_COST_BEGIN(painted_from);
     ui_fresh_clear(&ridge->fresh);
+#if BUILD_VARIANT_SELFTEST_OR_HOST
+    ridge->boxed = false;
+#endif
     paint_this_frame(retuned, dt_ms);
     FRAME_COST_END(painted_from, "ridge.paint");
 }

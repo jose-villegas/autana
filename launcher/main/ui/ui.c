@@ -32,7 +32,6 @@
 
 #include <assert.h>
 #include <limits.h>
-#include <stdlib.h>
 
 #include "esp_log.h"
 
@@ -47,6 +46,7 @@
 #include "gfx/target/gfx_target.h"
 #include "hash/name_hash64.h"
 #include "image/pixel/rgb565.h"
+#include "math/geometry/rect_overlap.h"
 #include "math/scalar/mathi.h"
 #include "ui/controls/ui_icons.h"
 #include "ui/input/ui_bridge.h"
@@ -319,24 +319,7 @@ ui_fresh_clear(ui_fresh_t* fresh) {
     fresh->overflow = false;
 }
 
-static int
-by_left(const void* a, const void* b) {
-    return ((const recti_t*)a)->x - ((const recti_t*)b)->x;
-}
-
-static int
-by_top(const void* a, const void* b) {
-    return ((const recti_t*)a)->y - ((const recti_t*)b)->y;
-}
-
-/* Whether `b`, sorted after `a`, starts before `a` ends: across along x, else along y. */
-static bool
-starts_within(recti_t a, recti_t b, bool across) {
-    return across ? b.x < recti_right(a) : b.y < recti_bottom(a);
-}
-
-/* Whether any two of `r` overlap. Sorted along the axis the rects are
- * thinner on, a rect can overlap only those that start before it ends there. */
+/* Whether any two of `r` overlap, swept along the axis they are thinner on. */
 static bool
 rects_overlap_any(recti_t* r, int count) {
     int widths = 0;
@@ -345,16 +328,8 @@ rects_overlap_any(recti_t* r, int count) {
         widths += r[i].w;
         heights += r[i].h;
     }
-    const bool across = widths <= heights;
-    qsort(r, (size_t)count, sizeof r[0], across ? by_left : by_top);
-    for (int i = 0; i < count; i++) {
-        for (int j = i + 1; j < count && starts_within(r[i], r[j], across); j++) {
-            if (!recti_is_empty(recti_intersect(r[i], r[j]))) {
-                return true;
-            }
-        }
-    }
-    return false;
+    int j;
+    return recti_overlapping_pair(r, count, widths <= heights, &j) >= 0;
 }
 
 void

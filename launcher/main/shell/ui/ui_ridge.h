@@ -11,11 +11,17 @@
 #include "math/geometry/recti.h"
 #include "ui/ui.h"
 
-#define RIDGE_CURVE_POINTS GFX_HEIGHT
-#define RIDGE_CURVE_VIEW_H GFX_WIDTH
+#define RIDGE_CURVE_POINTS    GFX_HEIGHT
+#define RIDGE_CURVE_VIEW_H    GFX_WIDTH
 /* Columns repainted and dirtied together, 16 wide: one PSRAM cache line of
  * RGB565. */
-#define RIDGE_COLUMN_GROUP 16
+#define RIDGE_COLUMN_GROUP    16
+/* A fresh box grows over a layer's next span while the pixels it paints that
+ * no move needs stay within its moved pixels >> RIDGE_BOX_SLACK_SHIFT, or
+ * within RIDGE_BOX_SLACK_PX while it is small; past that a box of its own is
+ * cheaper. */
+#define RIDGE_BOX_SLACK_SHIFT 2
+#define RIDGE_BOX_SLACK_PX    16
 
 /* Read the curve from the engine pack and keep that pack mounted; only the first call reads. An unavailable or invalid curve releases the pack and draws a level ridge. */
 void ui_ridge_load(void);
@@ -75,6 +81,9 @@ int ui_ridge_dissolve_restarts_for_test(void);
 int ui_ridge_gradient_lag_for_test(void);
 /* How many times the gradient has turned, each repainting row by row. */
 int ui_ridge_gradient_turns_for_test(void);
+/* Whether the last step painted boxes; if so its moved pixels, a span per
+ * strip per layer, and its boxes before the merge: their pixels and how many. */
+bool ui_ridge_boxes_for_test(int* moved_px, int* kept_px, int* kept_boxes);
 /* At most `cap` boxes a step, UI_FRESH_MAX restoring the default. */
 void ui_ridge_cap_boxes_for_test(int cap);
 /* The boxes merged until none overlap; how many are left, at the front. */

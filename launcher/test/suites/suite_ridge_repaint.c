@@ -29,6 +29,7 @@ typedef struct {
     int unsent_px, first_unsent_frame;
     int unlike_px, first_unlike_frame;
     int unfresh_px, first_unfresh_frame, fresh_frames, overflowed;
+    int moved_px, kept_px, painted_px, kept_boxes; /* over the fresh frames */
 } audit_t;
 
 /* What a frame is compared with: the frame before it, and a full paint that
@@ -148,6 +149,17 @@ rig_frame(rig_t* rig, const input_t* input) {
         audit->first_unfresh_frame = audit->frames;
     }
     audit->unfresh_px += wrong;
+    int moved = 0;
+    int kept_px = 0;
+    int kept = 0;
+    if (fresh && ui_ridge_boxes_for_test(&moved, &kept_px, &kept)) {
+        audit->moved_px += moved;
+        audit->kept_px += kept_px;
+        audit->kept_boxes += kept;
+        for (int i = 0; i < ui_ridge_fresh()->count; i++) {
+            audit->painted_px += recti_area(ui_ridge_fresh()->rects[i]);
+        }
+    }
     audit->fresh_frames += fresh;
     audit->overflowed += !dissolving && !turned && ui_ridge_fresh()->overflow;
     if (unsent > 0 && audit->first_unsent_frame < 0) {
@@ -183,10 +195,17 @@ assert_audit(const char* name, const audit_t* audit) {
 }
 
 /* assert_audit, and the step said where it painted, overflowing its places
- * on no frame but a turn's or a dissolve's. */
+ * on no frame but a turn's or a dissolve's; its boxes held at most each
+ * one's slack past the moves, and the merge painted no pixel past them. */
 static void
 assert_fresh_audit(const char* name, const audit_t* audit) {
     assert_audit(name, audit);
+    const int most =
+        audit->moved_px + (audit->moved_px >> RIDGE_BOX_SLACK_SHIFT) + (RIDGE_BOX_SLACK_PX * audit->kept_boxes);
+    printf("ridge repaint %s: %d moved px, %d boxed (at most %d) in %d boxes, %d painted\n", name, audit->moved_px,
+           audit->kept_px, most, audit->kept_boxes, audit->painted_px);
+    TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(most, audit->kept_px, "the boxes grew past their slack");
+    TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(audit->kept_px, audit->painted_px, "the merge painted past the boxes");
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, audit->fresh_frames, "the step said where it painted");
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, audit->overflowed, "a step with no turn or dissolve overflowed its places");
 }
@@ -425,35 +444,49 @@ holds(recti_t outer, recti_t inner) {
            || recti_intersect(outer, inner).w * recti_intersect(outer, inner).h == inner.w * inner.h;
 }
 
-/* The layers' boxes, merged where two overlap: a merge can reach a third box
- * the first never touched, so merging goes on until none overlap. Boxes that
- * only touch stay apart. */
+enum { MERGE_FIELD = 24, MERGE_BOXES_MAX = 16, MERGE_ANY_COUNT = -1 };
+
+/* How many of `boxes` hold the pixel. */
+static int
+boxes_holding(const recti_t* boxes, int count, int x, int y) {
+    int n = 0;
+    for (int i = 0; i < count; i++) {
+        n += recti_contains(boxes[i], x, y);
+    }
+    return n;
+}
+
+/* The layers' boxes merged until none overlap: every pixel a box held is
+ * held by exactly one box left, and none other is, so a merge paints no
+ * pixel no box held. Boxes whose bounding box adds none merge into one. */
 static void
-assert_boxes_merge(const recti_t* in, int count, int want_count, const recti_t* want) {
-    recti_t boxes[3];
+assert_boxes_merge(const recti_t* in, int count, int want_count) {
+    recti_t boxes[MERGE_BOXES_MAX];
     memcpy(boxes, in, (size_t)count * sizeof *boxes);
     const int left = ui_ridge_merge_boxes_for_test(boxes, count);
-    TEST_ASSERT_EQUAL_INT(want_count, left);
-    for (int i = 0; i < want_count; i++) {
-        bool found = false;
-        for (int j = 0; j < left; j++) {
-            found = found || memcmp(&boxes[j], &want[i], sizeof boxes[j]) == 0;
+    if (want_count != MERGE_ANY_COUNT) {
+        TEST_ASSERT_EQUAL_INT(want_count, left);
+    }
+    for (int y = 0; y < MERGE_FIELD; y++) {
+        for (int x = 0; x < MERGE_FIELD; x++) {
+            const int held = boxes_holding(in, count, x, y) > 0;
+            TEST_ASSERT_EQUAL_INT_MESSAGE(held, boxes_holding(boxes, left, x, y),
+                                          "a pixel held once, iff a box held it");
         }
-        TEST_ASSERT_TRUE_MESSAGE(found, "a box the merge should leave");
     }
 }
 
 static void
 test_layer_boxes_merge_until_none_overlap(void) {
-    /* The first and last meet only once the middle one joins the first. */
-    assert_boxes_merge((const recti_t[]){{0, 0, 10, 10}, {8, 8, 10, 10}, {0, 16, 10, 4}}, 3, 1,
-                       (const recti_t[]){{0, 0, 18, 20}});
-    /* Scanned the other way: the first takes the last, then reaches the middle. */
-    assert_boxes_merge((const recti_t[]){{0, 0, 10, 10}, {0, 16, 10, 4}, {8, 8, 10, 10}}, 3, 1,
-                       (const recti_t[]){{0, 0, 18, 20}});
+    /* Bounding boxes adding no pixel merge, in a chain. */
+    assert_boxes_merge((const recti_t[]){{0, 0, 10, 10}, {0, 8, 10, 6}, {0, 12, 10, 8}}, 3, 1);
+    /* Bounding boxes that would add pixels split instead, in either order. */
+    assert_boxes_merge((const recti_t[]){{0, 0, 10, 10}, {8, 8, 10, 10}, {0, 16, 10, 4}}, 3, MERGE_ANY_COUNT);
+    assert_boxes_merge((const recti_t[]){{0, 0, 10, 10}, {0, 16, 10, 4}, {8, 8, 10, 10}}, 3, MERGE_ANY_COUNT);
+    /* One inside another is taken whole. */
+    assert_boxes_merge((const recti_t[]){{0, 0, 10, 10}, {2, 2, 4, 4}}, 2, 1);
     /* Touching boxes share no pixel and stay apart. */
-    assert_boxes_merge((const recti_t[]){{0, 0, 10, 10}, {10, 0, 10, 10}, {0, 10, 10, 10}}, 3, 3,
-                       (const recti_t[]){{0, 0, 10, 10}, {10, 0, 10, 10}, {0, 10, 10, 10}});
+    assert_boxes_merge((const recti_t[]){{0, 0, 10, 10}, {10, 0, 10, 10}, {0, 10, 10, 10}}, 3, 3);
 }
 
 /* A column group's mark must reach every changed pixel and stop at their

@@ -24,6 +24,13 @@ width or height is empty. Queries clamp result sizes to zero.
 
 The queries use half-open edges; crossed edges produce an empty rectangle.
 
+`rect_overlap.h` works on lists of `recti`:
+
+| Function | Purpose | Cost |
+|---|---|---|
+| `recti_overlapping_pair(r, count, across, &j)` | sorts by start along x (`across`) or y, then sweeps; the first `i` overlapping a later `j`, or -1 | one sort, then per rect only those starting before it ends |
+| `recti_subtract(a, b, out)` | the disjoint pieces of `a` outside `b`; at most `RECTI_SUBTRACT_MAX` (4), 3 when `b` reaches past `a` | fixed |
+
 ## plane (`f x`)
 
 `planef_t` and `planex_t` hold a vec3 `normal` and a scalar `d`; inside is
