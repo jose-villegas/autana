@@ -199,18 +199,38 @@ judge_profile(const frame_profile_t* p) {
                     &scenario->quarters[quarter_index], true);
 }
 
+/* The test's scenario, its playback and its played profile, freed by the
+ * cleanup: on the heap, so the frames under the played and replayed draws
+ * stay small. */
+typedef struct {
+    scenario_path_t path;
+    frame_profile_scenario_t playback;
+    int64_t remainder_us;
+} profile_run_t;
+
+static profile_run_t* run;
+
+static void
+release_run(void) {
+    memory_free(run);
+    run = NULL;
+}
+
 static void
 test_real_time_frame_profile(void) {
-    const scenario_path_t path = enter_scenario();
-    const frame_profile_scenario_t playback = {
-        scenario_row(),
-        (int64_t)path.duration_ms * MATH_US_PER_MS,
-    };
-    int64_t remainder_us = 0;
-    const frame_profile_t p = frame_profile_play(&playback, lab_test_profile_frame, &remainder_us, &played);
+    {
+        /* Its own scope, so its slot is the profile's below. */
+        const scenario_path_t path = enter_scenario(); /* it sets the cleanups afresh */
+        suite_add_test_cleanup(release_run);
+        run = memory_alloc(sizeof *run, MEMORY_INTERNAL);
+        TEST_ASSERT_NOT_NULL(run);
+        *run = (profile_run_t){path, {scenario_row(), (int64_t)path.duration_ms * MATH_US_PER_MS}, 0};
+    }
+    const frame_profile_t p = frame_profile_play(&run->playback, lab_test_profile_frame, &run->remainder_us, &played);
     /* The peaks first: a row over its budget is the one they explain. */
-    report_path(&path, &p);
+    report_path(&run->path, &p);
     judge_profile(&p);
+    release_run();
     release_fixture();
     suite_clear_test_cleanup();
 }
