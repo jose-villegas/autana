@@ -91,14 +91,13 @@ scene_animate_range(scene_t* scene, int first, int count, uint32_t dt_ms, const 
         }
         /* The tier changes only on the frames the draw measured it for; its
          * interval follows the settings every step. */
-        int interval = RENDER_ANIM_EVERY_MIN;
-        if (scene->skinned_renderers[e].bound && scene_animator_due(scene, a)) {
-            interval = animation_interval(a, settings);
-        } else if (scene->skinned_renderers[e].bound) {
-            interval = a->interval = tier_every(a->tier, settings);
+        const bool bound = scene->skinned_renderers[e].bound;
+        if (bound) {
+            a->interval =
+                scene_animator_due(scene, a) ? animation_interval(a, settings) : tier_every(a->tier, settings);
         }
         const bool force = a->dirty;
-        const bool due = (scene->animation_frame + a->phase) % (uint32_t)interval == 0;
+        const bool due = !bound || scene_animator_due(scene, a);
         /* A zero-time repose belongs to its dirty copy; others keep their debt. */
         if (!force && (dt_ms == 0 || !due)) {
             a->owed_ms += dt_ms;
