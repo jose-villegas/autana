@@ -296,11 +296,8 @@ first_head(frame_record_head_t head) {
 }
 
 static bool
-index_header(frame_record_head_t head, size_t at) {
+index_header(size_t at) {
     frame_record_header_t header;
-    if (!first_head(head)) {
-        return false;
-    }
     memcpy(&header, stream.bytes + at, sizeof header);
     if (header.version != FRAME_RECORD_VERSION) {
         return refuse("frame record version %u, expected %u", header.version, FRAME_RECORD_VERSION);
@@ -359,7 +356,7 @@ static bool
 scan_record(frame_record_head_t head, size_t body, size_t* out_end) {
     size_t end = body + head.length;
     if (!stream.header) {
-        if (!index_header(head, body)) {
+        if (!index_header(body)) {
             return false;
         }
     } else if (head.type == FRAME_RECORD_FRAME) {
@@ -391,7 +388,7 @@ stream_feed(const uint8_t* bytes, size_t count) {
         frame_record_head_t head;
         memcpy(&head, stream.bytes + stream.scanned, sizeof head);
         const size_t body = stream.scanned + sizeof head;
-        if ((stream.scanned == 0 && !first_head(head)) || head.length > stream.size - body
+        if ((!stream.header && !first_head(head)) || head.length > stream.size - body
             || !scan_record(head, body, &stream.scanned)) {
             break;
         }

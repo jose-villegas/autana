@@ -99,6 +99,9 @@ typedef struct __attribute__((packed)) {
     float model[FRAME_RECORD_MATRIX];
 } frame_record_mesh_t;
 
+#define FRAME_RECORD_MESH_BYTES 96 /* MESH content, as Frame-Record-Format.md draws it */
+_Static_assert(sizeof(frame_record_mesh_t) == FRAME_RECORD_MESH_BYTES, "MESH layout moved");
+
 /* `skin` is the skin asset that posed it. `lit` is the posed mesh's vertex
  * count when its colours are its own, lit as it was posed, and 0 when they
  * are the pack's. */
