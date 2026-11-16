@@ -5923,6 +5923,10 @@ test_paused_skin_setters_replacement_and_reenable(void) {
     TEST_ASSERT_UINT8_WITHIN(1, skin->bind.colors[0][0], skin->colors[0][0]);
 }
 
+/* A skin's buffers are two heap blocks, and the device heap rounds each block
+ * by where it lands, so the same buffers taken again match to within that. */
+enum { SKIN_BLOCKS = 2, HEAP_BLOCK_ROUNDING = 8 };
+
 /* A skin holds its buffers only while its entity is active, so memory follows
  * the copies shown, not the pool: the herd loads its pool holding none, one
  * copy shown takes one copy's buffers, and a disabled copy gives its back at once. */
@@ -5954,9 +5958,6 @@ test_a_skin_holds_its_buffers_only_while_its_entity_is_active(void) {
     }
     scene_animation_step(columns(herd), 0);
 
-    /* The device heap rounds each block by where it lands, so copies match to within that. */
-    enum { SKIN_BLOCKS = 2, HEAP_BLOCK_ROUNDING = 8 };
-
     TEST_ASSERT_UINT_WITHIN(HERD_POOL * SKIN_BLOCKS * HEAP_BLOCK_ROUNDING, loaded - one * HERD_POOL,
                             memory_free_bytes(MEMORY_FAST));
     for (int i = 1; i < HERD_POOL; i++) {
@@ -5978,14 +5979,15 @@ test_a_skin_disabled_and_enabled_again_draws_the_same_frame(void) {
     scene_animation_step(columns(scene), RIG_DURATION_MS / RIG_TRAVEL);
     frame(0);
     memcpy(fx.held, fx.pixels, picture);
-    const size_t shown = memory_free_bytes(MEMORY_INTERNAL);
+    /* Counted across both RAMs: MEMORY_FAST puts the buffers off chip once the on-chip reserve is reached. */
+    const size_t shown = memory_free_bytes(MEMORY_FAST);
     entity_set_enabled(green, false);
-    TEST_ASSERT_GREATER_THAN_UINT(shown, memory_free_bytes(MEMORY_INTERNAL));
+    TEST_ASSERT_GREATER_THAN_UINT(shown, memory_free_bytes(MEMORY_FAST));
     frame(0);
     TEST_ASSERT_NOT_EQUAL_INT(0, memcmp(fx.held, fx.pixels, picture));
     entity_set_enabled(green, true);
     frame(0);
-    TEST_ASSERT_EQUAL_UINT(shown, memory_free_bytes(MEMORY_INTERNAL));
+    TEST_ASSERT_UINT_WITHIN(SKIN_BLOCKS * HEAP_BLOCK_ROUNDING, shown, memory_free_bytes(MEMORY_FAST));
     TEST_ASSERT_EQUAL_MEMORY(fx.held, fx.pixels, picture);
 }
 
@@ -7391,8 +7393,17 @@ enum {
     TEXTURED_LUVS_BYTES =
         R3D_TEXTURE_UVS_HEADER_SIZE + QUAD_VERTICES * sizeof(int16_t[2]) + sizeof(int32_t) + R3D_TEXTURE_CHARTS + 1,
     TEXTURED_TRIANGLES_ON_CHART_0 = 1 | (1 << R3D_TEXTURE_UVS_CODE_BITS),
-    TEXTURED_PACK_ENTRIES = 5
+    TEXTURED_PACK_ENTRIES = 5,
+    /* The cut variant's MASK1 material: 8 and 4 texel sides, MASK1's smallest. */
+    CUT_LEVELS = TEXTURED_TEX_LOG2 - R3D_TEXTURE_MASK1_SIZE_LOG2_MIN + 1,
+    CUT_TEXELS_AT = TEXTURED_PALETTE_AT + (R3D_TEXTURE_MASK1_COLOURS * R3D_TEXTURE_PALETTE_STRIDE),
+    CUT_LTEX_BYTES =
+        CUT_TEXELS_AT
+        + (((1 << (2 * TEXTURED_TEX_LOG2)) + (1 << (2 * (TEXTURED_TEX_LOG2 - 1)))) / R3D_TEXTURE_MASK1_PER_BYTE)
 };
+
+/* Whether the red quad's material is the INDEX4 pattern or the MASK1 cut. */
+typedef enum { TEXTURE_PATTERN, TEXTURE_CUT } texture_kind_t;
 
 static void
 make_textured_ltex(uint8_t* b) {
@@ -7415,6 +7426,42 @@ make_textured_ltex(uint8_t* b) {
             at[o / 2] |= (uint8_t)(index << ((o % 2) * 4));
         }
         at += side * side / 2;
+    }
+}
+
+/* A MASK1 material kept in a 2-texel checker on level 0 and its 1-texel mip,
+ * so the quad shows holes at both levels, drawn in grey palette colour 1. */
+static void
+make_cut_ltex(uint8_t* b) {
+    test_pack_put16(b + R3D_TEXTURE_AT_VERSION, R3D_TEXTURE_VERSION);
+    test_pack_put16(b + R3D_TEXTURE_AT_FORMAT, R3D_TEXTURE_MASK1);
+    b[R3D_TEXTURE_AT_SIZE_LOG2] = TEXTURED_TEX_LOG2;
+    b[R3D_TEXTURE_AT_LEVELS] = CUT_LEVELS;
+    memset(b + R3D_TEXTURE_AT_TINT, R3D_TEXTURE_ONE, R3D_TEXTURE_TINT_RGB);
+    test_pack_put32(b + R3D_TEXTURE_AT_PALETTE_OFF, TEXTURED_PALETTE_AT);
+    test_pack_put32(b + R3D_TEXTURE_AT_TEXELS_OFF, CUT_TEXELS_AT);
+    memset(b + TEXTURED_PALETTE_AT + R3D_TEXTURE_PALETTE_STRIDE, R3D_TEXTURE_ONE, R3D_TEXTURE_TINT_RGB);
+    uint8_t* at = b + CUT_TEXELS_AT;
+    for (int level = 0; level < CUT_LEVELS; level++) {
+        const int side = (1 << TEXTURED_TEX_LOG2) >> level;
+        const int cell = 2 >> level;
+        for (int o = 0; o < side * side; o++) {
+            const int kept = (((o % side) / cell) + ((o / side) / cell)) % 2 == 0;
+            at[o / (int)R3D_TEXTURE_MASK1_PER_BYTE] |= (uint8_t)(kept << (o % (int)R3D_TEXTURE_MASK1_PER_BYTE));
+        }
+        at += side * side / (int)R3D_TEXTURE_MASK1_PER_BYTE;
+    }
+}
+
+/* Adds red's material of `kind` to `pack`. */
+static void
+add_red_material(test_pack_t* pack, texture_kind_t kind) {
+    const uint32_t bytes = kind == TEXTURE_CUT ? CUT_LTEX_BYTES : TEXTURED_LTEX_BYTES;
+    uint8_t* entry = test_pack_add(pack, "red" R3D_TEXTURE_MATERIAL_SUFFIX "0", R3D_TEXTURE_ASSET, bytes);
+    if (kind == TEXTURE_CUT) {
+        make_cut_ltex(entry);
+    } else {
+        make_textured_ltex(entry);
     }
 }
 
@@ -7444,17 +7491,16 @@ make_textured_luvs(uint8_t* b) {
     b[codes_at] = TEXTURED_TRIANGLES_ON_CHART_0;
 }
 
-/* The pair scene's pack with "red" textured, in place of the fixture's. */
+/* The pair scene's pack with "red" textured by `kind`, in place of the fixture's. */
 static void
-make_textured_pack(void) {
+make_textured_pack(texture_kind_t kind) {
     test_pack_t pack = test_pack_begin(fx.bytes, PACK_MAX, TEXTURED_PACK_ENTRIES);
     make_quad_entry(test_pack_add(&pack, "red", R3D_LIT_MESH_ASSET, QUAD_BYTES), UINT8_MAX, 0, 0, 1);
     make_quad_entry(test_pack_add(&pack, "green", R3D_LIT_MESH_ASSET, QUAD_BYTES), 0, UINT8_MAX, 0, 1);
     make_scene_entry(test_pack_add(&pack, "test_pair", SCENE_ASSET, scene_entry_size(&SCENES[0])), &SCENES[0]);
     make_textured_luvs(
         test_pack_add(&pack, "red" R3D_TEXTURE_UVS_NAME_SUFFIX, R3D_TEXTURE_UVS_ASSET, TEXTURED_LUVS_BYTES));
-    make_textured_ltex(
-        test_pack_add(&pack, "red" R3D_TEXTURE_MATERIAL_SUFFIX "0", R3D_TEXTURE_ASSET, TEXTURED_LTEX_BYTES));
+    add_red_material(&pack, kind);
     const uint32_t total = test_pack_finish(&pack);
     TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_open(&fx.pack, fx.bytes, total));
 }
@@ -7487,7 +7533,7 @@ pixels_differing_from(const uint16_t* than) {
 static void
 show_textured_pair(entity_t* red) {
     fixture();
-    make_textured_pack();
+    make_textured_pack(TEXTURE_PATTERN);
     const entity_t scene = show("test_pair");
     *red = entity_find(scene, name_hash("red"));
     render_textured_pair();
@@ -7565,6 +7611,213 @@ test_a_mesh_with_face_colours_draws_textured_triangles_plain(void) {
     TEST_ASSERT_EQUAL_INT(0, pixels_differing_from(fx.held));
 }
 
+/* Shows the pair scene with its red quad cut by a MASK1 material, keeping
+ * the picture of the plain pair in fx.held. */
+static void
+show_cut_pair(entity_t* red) {
+    show_textured_pair(red);
+    scene_unload_all();
+    make_textured_pack(TEXTURE_CUT);
+    *red = entity_find(show("test_pair"), name_hash("red"));
+    render_textured_pair();
+}
+
+/* A cut is coverage: drawn plain it would fill the whole quad. */
+static void
+test_a_mesh_whose_textures_cut_draws_them_as_it_loads(void) {
+    entity_t red;
+    show_cut_pair(&red);
+    TEST_ASSERT_NOT_NULL(renderer_mesh(red)->texturing);
+    TEST_ASSERT_GREATER_THAN(0, pixels_differing_from(fx.held));
+}
+
+static void
+test_textures_that_cut_never_turn_off(void) {
+    entity_t red;
+    show_cut_pair(&red);
+    memcpy(fx.held, rendered_picture(), sizeof(uint16_t) * SIZE * SIZE);
+    scene_failure_t why = {0};
+    TEST_ASSERT_FALSE(renderer_set_textured(red, false, &why));
+    TEST_ASSERT_EQUAL_INT(SCENE_ERR_ASSET, why.status);
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, why.asset);
+    TEST_ASSERT_NOT_NULL(renderer_mesh(red)->texturing);
+    render_textured_pair();
+    TEST_ASSERT_EQUAL_INT(0, pixels_differing_from(fx.held));
+    TEST_ASSERT_TRUE(renderer_set_textured(red, true, NULL));
+}
+
+/* Face colours leave no vertex colour to light a cut, and a mesh of other
+ * counts does not fit it: either swap is refused, the loaded mesh still drawn
+ * cut. A mesh it fits takes it at once. */
+static void
+test_a_mesh_that_cannot_take_the_cut_is_refused_and_one_that_can_takes_it(void) {
+    const uint16_t faces[QUAD_TRIANGLES] = {RGB565BE(0x00FF00), RGB565BE(0x0000FF)};
+    entity_t red;
+    show_cut_pair(&red);
+    memcpy(fx.held, rendered_picture(), sizeof(uint16_t) * SIZE * SIZE);
+    r3d_lit_mesh_t flat = *renderer_mesh(red);
+    flat.face_colors = faces;
+    TEST_ASSERT_FALSE(renderer_set_mesh(red, &flat));
+    r3d_lit_mesh_t fewer = *renderer_mesh(red);
+    fewer.triangle_count = QUAD_TRIANGLES - 1;
+    TEST_ASSERT_FALSE(renderer_set_mesh(red, &fewer));
+    TEST_ASSERT_NULL(renderer_mesh(red)->face_colors);
+    TEST_ASSERT_EQUAL_INT(QUAD_TRIANGLES, renderer_mesh(red)->triangle_count);
+    TEST_ASSERT_NOT_NULL(renderer_mesh(red)->texturing);
+    render_textured_pair();
+    TEST_ASSERT_EQUAL_INT(0, pixels_differing_from(fx.held));
+    const r3d_lit_mesh_t same = *renderer_mesh(red);
+    TEST_ASSERT_TRUE(renderer_set_mesh(red, &same));
+    TEST_ASSERT_NOT_NULL(renderer_mesh(red)->texturing);
+    render_textured_pair();
+    TEST_ASSERT_EQUAL_INT(0, pixels_differing_from(fx.held));
+}
+
+/* A copy of a textured renderer's mesh set back draws plain until textures
+ * are asked for again. */
+static void
+test_a_textured_mesh_set_back_draws_plain_until_asked_again(void) {
+    entity_t red;
+    show_textured_pair(&red);
+    TEST_ASSERT_TRUE(renderer_set_textured(red, true, NULL));
+    const r3d_lit_mesh_t copy = *renderer_mesh(red);
+    TEST_ASSERT_NOT_NULL(copy.texturing);
+    TEST_ASSERT_TRUE(renderer_set_mesh(red, &copy));
+    TEST_ASSERT_NULL(renderer_mesh(red)->texturing);
+    render_textured_pair();
+    TEST_ASSERT_EQUAL_INT(0, pixels_differing_from(fx.held));
+}
+
+/* Textures a run-time mesh brings, the caller's, are the ones it draws with;
+ * only a pointer to the renderer's own closes. */
+static void
+test_a_mesh_drawn_with_its_own_textures_keeps_them(void) {
+    static const r3d_mesh_texturing_t callers = {0};
+    entity_t red;
+    show_textured_pair(&red);
+    TEST_ASSERT_TRUE(renderer_set_textured(red, true, NULL));
+    r3d_lit_mesh_t own = *renderer_mesh(red);
+    own.texturing = &callers;
+    TEST_ASSERT_TRUE(renderer_set_mesh(red, &own));
+    TEST_ASSERT_EQUAL_PTR(&callers, renderer_mesh(red)->texturing);
+}
+
+/* The pair scene with both quads the cut "red", in place of the fixture's pack. */
+static void
+make_twin_cut_pack(void) {
+    scene_spec_t* twins = malloc(sizeof *twins);
+    TEST_ASSERT_NOT_NULL(twins);
+    *twins = SCENES[0];
+    twins->renderers[1].mesh = "red";
+    test_pack_t pack = test_pack_begin(fx.bytes, PACK_MAX, TEXTURED_PACK_ENTRIES - 1);
+    make_quad_entry(test_pack_add(&pack, "red", R3D_LIT_MESH_ASSET, QUAD_BYTES), UINT8_MAX, 0, 0, 1);
+    make_scene_entry(test_pack_add(&pack, "test_pair", SCENE_ASSET, scene_entry_size(twins)), twins);
+    free(twins);
+    make_textured_luvs(
+        test_pack_add(&pack, "red" R3D_TEXTURE_UVS_NAME_SUFFIX, R3D_TEXTURE_UVS_ASSET, TEXTURED_LUVS_BYTES));
+    add_red_material(&pack, TEXTURE_CUT);
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_open(&fx.pack, fx.bytes, test_pack_finish(&pack)));
+}
+
+/* Renderers of one cut mesh share its textures, opened once and open for
+ * the scene's life: a copy of one's mesh set on the other still draws them
+ * after the first swaps its own mesh. */
+static void
+test_renderers_of_one_cut_mesh_share_its_textures_for_the_scenes_life(void) {
+    fixture();
+    make_twin_cut_pack();
+    const entity_t scene = show("test_pair");
+    const entity_t first = entity_find(scene, name_hash("red"));
+    const entity_t second = entity_find(scene, name_hash("green"));
+    const r3d_mesh_texturing_t* shared = renderer_mesh(first)->texturing;
+    TEST_ASSERT_NOT_NULL(shared);
+    TEST_ASSERT_EQUAL_PTR(shared, renderer_mesh(second)->texturing);
+    TEST_ASSERT_TRUE(renderer_set_mesh(second, renderer_mesh(first)));
+    r3d_lit_mesh_t* bare = malloc(sizeof *bare);
+    TEST_ASSERT_NOT_NULL(bare);
+    *bare = *renderer_mesh(first);
+    bare->texturing = NULL;
+    const bool swapped = renderer_set_mesh(first, bare);
+    free(bare);
+    TEST_ASSERT_TRUE(swapped);
+    TEST_ASSERT_EQUAL_PTR(shared, renderer_mesh(first)->texturing);
+    TEST_ASSERT_EQUAL_PTR(shared, renderer_mesh(second)->texturing);
+}
+
+/* The batch scene drawn, its red quad plain or cut by `kind`. */
+static void
+draw_batch(texture_kind_t kind) {
+    scene_unload_all();
+    const batch_case_t spec = {.id = "valid", .at = SIZE_MAX, .turns = BATCH_COPIES};
+
+    enum { PLAIN_ENTRIES = 3, CUT_ENTRIES = PLAIN_ENTRIES + 2 }; /* + the LUVS and the material */
+
+    test_pack_t pack = test_pack_begin(fx.bytes, PACK_MAX, kind == TEXTURE_CUT ? CUT_ENTRIES : PLAIN_ENTRIES);
+    uint8_t* mesh = test_pack_add(&pack, "red", R3D_LIT_MESH_ASSET, QUAD_BYTES);
+    make_quad_entry(mesh, UINT8_MAX, 0, 0, 1);
+    test_pack_put32(mesh + MESH_COLOURS_WORD * sizeof(uint32_t), 0);
+    make_batch_entry(&pack, &spec);
+    const lcol_case_t colours = {0};
+    make_lcol_entry(&pack, &colours, LCOL_ENCODING_RGB888);
+    if (kind == TEXTURE_CUT) {
+        make_textured_luvs(
+            test_pack_add(&pack, "red" R3D_TEXTURE_UVS_NAME_SUFFIX, R3D_TEXTURE_UVS_ASSET, TEXTURED_LUVS_BYTES));
+        add_red_material(&pack, kind);
+    }
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_open(&fx.pack, fx.bytes, test_pack_finish(&pack)));
+    const entity_t root = load("test_batch");
+    TEST_ASSERT_EQUAL(kind == TEXTURE_CUT, columns(root)->renderers[0].mesh.texturing != NULL);
+    TEST_ASSERT_TRUE(camera_activate(camera_first(root)));
+    render_context_set_scale(render_context_main(), 100);
+    frame(16);
+}
+
+/* Pixels of fx.pixels in columns [from, to) that differ from fx.held. */
+static int
+columns_differing(int from, int to) {
+    int n = 0;
+    for (int y = 0; y < SIZE; y++) {
+        for (int x = from; x < to; x++) {
+            n += fx.pixels[(y * SIZE) + x] != fx.held[(y * SIZE) + x];
+        }
+    }
+    return n;
+}
+
+/* A batch's copies share their renderer's mesh, its cut included: each copy
+ * shows holes where the plain batch drew its whole quad. */
+static void
+test_every_copy_of_a_batch_draws_its_renderers_cut(void) {
+    fixture();
+    draw_batch(TEXTURE_PATTERN);
+    memcpy(fx.held, fx.pixels, sizeof(uint16_t) * SIZE * SIZE);
+    draw_batch(TEXTURE_CUT);
+    const int between = CENTER + (int)(BATCH_REACH * PIXELS_PER_UNIT);
+    TEST_ASSERT_GREATER_THAN_MESSAGE(0, columns_differing(0, between), "the first copy is not cut");
+    TEST_ASSERT_GREATER_THAN_MESSAGE(0, columns_differing(between, SIZE), "the second copy is not cut");
+}
+
+/* A packed flat-shaded mesh whose textures cut fails its scene's load. */
+static void
+test_a_scene_with_a_flat_shaded_mesh_whose_textures_cut_fails_to_load(void) {
+    fixture();
+    const lcol_case_t spec = {.second_set = LCOL_TEST_SETS - 1};
+    test_pack_t pack = test_pack_begin(fx.bytes, PACK_MAX, TEXTURED_PACK_ENTRIES);
+    uint8_t* mesh = test_pack_add(&pack, "red", R3D_LIT_MESH_ASSET, QUAD_BYTES);
+    make_quad_entry(mesh, UINT8_MAX, 0, 0, 1);
+    test_pack_put32(mesh + MESH_COLOURS_WORD * sizeof(uint32_t), 0);
+    make_lcol_scene(&pack, &spec, "flat cut");
+    make_lcol_entry(&pack, &spec, LCOL_ENCODING_RGB565);
+    make_textured_luvs(
+        test_pack_add(&pack, "red" R3D_TEXTURE_UVS_NAME_SUFFIX, R3D_TEXTURE_UVS_ASSET, TEXTURED_LUVS_BYTES));
+    add_red_material(&pack, TEXTURE_CUT);
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_open(&fx.pack, fx.bytes, test_pack_finish(&pack)));
+    scene_failure_t why = {0};
+    TEST_ASSERT_TRUE(fails(scene_load_from(&fx.pack, "test_pair"), &why));
+    TEST_ASSERT_EQUAL_INT(SCENE_ERR_ASSET, why.status);
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, why.asset);
+}
+
 void
 run_scene_suite(void) {
     /* The tests count the heap, so they run on it; the board lends the app
@@ -7575,6 +7828,14 @@ run_scene_suite(void) {
     RUN_TEST(test_a_mesh_of_other_counts_is_not_drawn_with_the_old_meshs_textures);
     RUN_TEST(test_a_mesh_of_the_same_counts_opens_its_textures_again_after_the_swap);
     RUN_TEST(test_a_mesh_with_face_colours_draws_textured_triangles_plain);
+    RUN_TEST(test_a_mesh_whose_textures_cut_draws_them_as_it_loads);
+    RUN_TEST(test_textures_that_cut_never_turn_off);
+    RUN_TEST(test_a_mesh_that_cannot_take_the_cut_is_refused_and_one_that_can_takes_it);
+    RUN_TEST(test_a_textured_mesh_set_back_draws_plain_until_asked_again);
+    RUN_TEST(test_a_mesh_drawn_with_its_own_textures_keeps_them);
+    RUN_TEST(test_renderers_of_one_cut_mesh_share_its_textures_for_the_scenes_life);
+    RUN_TEST(test_every_copy_of_a_batch_draws_its_renderers_cut);
+    RUN_TEST(test_a_scene_with_a_flat_shaded_mesh_whose_textures_cut_fails_to_load);
     RUN_TEST(test_static_mesh_arrays_are_resident_and_equal_the_pack);
     RUN_TEST(test_static_face_colours_are_resident_and_equal_the_pack);
     RUN_TEST(test_only_static_mesh_arrays_are_made_resident);

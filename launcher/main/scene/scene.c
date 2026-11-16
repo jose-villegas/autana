@@ -26,13 +26,6 @@ int scene_fail_allocation_after = -1;
 static uint64_t requests; /* scene_root_t.order of the latest request */
 static memory_take_fn kept_take;
 
-size_t
-scene_storage_carve(size_t* end, size_t bytes, size_t align) {
-    const size_t at = mathi_size_ceil(*end, align);
-    *end = at + bytes;
-    return at;
-}
-
 /* What one of the scene's arrays is counted in. */
 enum { PER_RENDERER, PER_CAMERA, PER_ENTITY, PER_BATCH, PER_COUNT };
 
@@ -66,7 +59,7 @@ place(const scene_asset_t* asset, scene_t* scene) {
                                       [PER_BATCH] = asset->batch_count};
     size_t end = sizeof(scene_t);
     for (size_t i = 0; i < sizeof PARTS / sizeof *PARTS; i++) {
-        const size_t at = scene_storage_carve(&end, PARTS[i].size * counts[PARTS[i].per], PARTS[i].align);
+        const size_t at = mem_carve(&end, PARTS[i].size * counts[PARTS[i].per], PARTS[i].align);
         if (scene != NULL) {
             void* array = (uint8_t*)scene + at;
             memcpy((uint8_t*)scene + PARTS[i].member, &array, sizeof array);
@@ -274,14 +267,7 @@ open_batches(scene_t* scene, const asset_pack_t* pack) {
             return scene_failure_make(SCENE_ERR_ASSET, status, mesh);
         }
         r3d_batch_t* batch = &scene->batches[i];
-        *batch = (r3d_batch_t){.chunks = scene->chunks + row->first_chunk,
-                               .places = asset->places + row->first_copy,
-                               .turns = asset->turns + row->first_copy,
-                               .colour_stride =
-                                   (uint32_t)(r->mesh.colors != NULL ? r->mesh.vertex_count : r->mesh.triangle_count),
-                               .copy_radius = r3d_batch_copy_radius(&r->mesh),
-                               .copy_count = row->copy_count,
-                               .chunk_count = (uint16_t)r3d_batch_chunks(row->copy_count)};
+        *batch = scene_asset_batch(asset, i, &r->mesh, scene->chunks);
         r->batch = batch;
         r->colour_sets = sets;
     }
@@ -499,6 +485,9 @@ open_scene(scene_root_t* record, const asset_pack_t* pack) {
                                        : scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, record->id);
     if (done.status == SCENE_OK) {
         done = scene_mesh_make_resident(scene);
+    }
+    if (done.status == SCENE_OK) {
+        done = scene_renderer_open_cuts(scene);
     }
     if (done.status == SCENE_OK) {
         done = open_transforms(scene);
