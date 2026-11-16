@@ -82,11 +82,18 @@ typedef struct {
     uint32_t* lod_coarse; /* into the scene's lod_bits, or NULL without levels; a batch's are its copies' */
     r3d_batch_t* batch;   /* its copies, or NULL: it draws its mesh once */
     uint16_t colour_sets; /* the sets its colour arrays hold from the one opened: 1, or its batch's highest plus one */
-    void* texturing;      /* its textures once renderer_set_textured() opened them (render/texture/), or NULL */
+    void* texturing;      /* its pack mesh's textures once opened (render/texture/), at load when they cut, or NULL */
+    bool texturing_owner; /* the renderer that opened them: the scene holds one block per mesh id */
 } scene_renderer_t;
 
-/* Frees what renderer_set_textured() opened for `r`; at the scene's close. */
+/* Drops `r`'s textures, freeing them when it opened them; at the scene's close. */
 void scene_renderer_texturing_free(scene_renderer_t* r);
+
+/* Opens, at load, the textures of every static renderer whose mesh cuts
+ * (r3d_texture_mesh_cuts()), so a MASK1 chart never draws plain. Fails with
+ * SCENE_ERR_ASSET when they cannot open, or ASSET_ERR_FORMAT for a flat-shaded
+ * mesh, which has no vertex colours to light them. */
+scene_failure_t scene_renderer_open_cuts(scene_t* scene);
 
 /* Sets `r`'s world box from its mesh and model; call after either changes,
  * a skinned mesh's refit included. */
