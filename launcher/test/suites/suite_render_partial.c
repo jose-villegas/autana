@@ -16,6 +16,7 @@
 #include "suites.h"
 #include "unity.h"
 
+#include "image/pixel/rgb565_layout.h"
 #include "math/geometry/box3f.h"
 #include "math/linear/transformf.h"
 #include "render/context/render_context.h"
@@ -27,7 +28,7 @@
 #define CARD 1 /* the rig quad the tests move */
 
 /* The card's two faces, red against the white wall, so every move shows. */
-static const uint16_t card_colors[2] = {0xF800, 0xF800};
+static const uint16_t card_colors[2] = {RGB565_RED_MASK, RGB565_RED_MASK};
 
 /* The card's path, rig units from where it starts: a slide, a hold, a step
  * toward the camera and back (the depth scale may refit), and a drop. */

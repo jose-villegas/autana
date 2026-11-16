@@ -58,3 +58,7 @@ void draw_sprite_make_resident(sprite_t* s, void* dst);
  * panel, 255 replaces it and anything between mixes with rgb565be_mix().
  * Clipped by draw_set_clip(). */
 void draw_sprite(const sprite_t* s, recti_t dst, int quarter_turns);
+
+/* draw_sprite() with the border drawn `scale` (1 or more) panel pixels to a
+ * sprite pixel, for a picture drawn at an integer zoom. */
+void draw_sprite_scaled(const sprite_t* s, recti_t dst, int quarter_turns, int scale);
