@@ -283,6 +283,30 @@ test_boxes_past_a_full_list_are_repainted_and_overflow_it(void) {
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, audit.overflowed, "a step past its cap said its list overflowed");
 }
 
+/* A merge whose split leaves more boxes than the cap repaints the rest at
+ * once and says the list overflowed; the screen is still a full paint's,
+ * and all it changed is sent. */
+static void
+test_a_split_past_the_cap_is_repainted_and_overflows_the_list(void) {
+    enum { TWO_BOXES = 2 };
+
+    fixture();
+    start_arm(ARM_AMBIENT);
+    rig_t rig;
+    rig_open(&rig);
+    TEST_ASSERT_FALSE_MESSAGE(ui_ridge_fresh()->overflow, "the primed step's list held");
+    ui_ridge_cap_boxes_for_test(TWO_BOXES);
+    /* Their bounding box adds pixels, so the second splits in two around
+     * the first: three boxes for a cap of two. */
+    recti_t boxes[TWO_BOXES] = {{0, 0, 10, 10}, {4, 4, 10, 10}};
+    const int left = ui_ridge_merge_boxes_for_test(boxes, TWO_BOXES);
+    TEST_ASSERT_EQUAL_INT(TWO_BOXES, left);
+    TEST_ASSERT_TRUE_MESSAGE(ui_ridge_fresh()->overflow, "a split past the cap said its list overflowed");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, unlike_a_full_paint(rig.reference), "the repainted piece is a full paint's");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, unsent_changes(rig.before), "the repainted piece is sent");
+    rig_close(&rig);
+}
+
 static void
 test_shaking_plucks_repaint_as_a_full_paint_and_are_sent(void) {
     fixture();
@@ -478,6 +502,7 @@ assert_boxes_merge(const recti_t* in, int count, int want_count) {
 
 static void
 test_layer_boxes_merge_until_none_overlap(void) {
+    fixture();
     /* Bounding boxes adding no pixel merge, in a chain. */
     assert_boxes_merge((const recti_t[]){{0, 0, 10, 10}, {0, 8, 10, 6}, {0, 12, 10, 8}}, 3, 1);
     /* Bounding boxes that would add pixels split instead, in either order. */
@@ -541,6 +566,7 @@ suite_ridge_repaint(void) {
     RUN_TEST(test_the_ambient_ridge_repaints_as_a_full_paint_and_is_sent);
     RUN_TEST(test_the_ambient_ridge_held_upright_repaints_as_a_full_paint_and_is_sent);
     RUN_TEST(test_boxes_past_a_full_list_are_repainted_and_overflow_it);
+    RUN_TEST(test_a_split_past_the_cap_is_repainted_and_overflows_the_list);
     RUN_TEST(test_shaking_plucks_repaint_as_a_full_paint_and_are_sent);
     RUN_TEST(test_the_boot_hold_and_ease_in_repaint_as_a_full_paint_and_are_sent);
     RUN_TEST(test_a_dissolved_strip_switch_is_sent_and_ends_on_a_full_paint);
