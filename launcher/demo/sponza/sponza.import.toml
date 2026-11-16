@@ -15,6 +15,9 @@ seed = 1
 alpha_mask = { keep_alpha = 0.5 }
 thin = { material = "leaf", keep = 0.35 }
 simplify = { dense_edge = 45.0, props = [], props_share = 0.0, seal_seams = true, colour_deviation = 1.0 }
+# The fits train on the flythrough and on probes over the whole atrium; the prune
+# keeps what the path shows first.
+probes = {}
 
 # The free-standing props: one mesh per repeated shape, each copy drawing
 # `triangles` times its
