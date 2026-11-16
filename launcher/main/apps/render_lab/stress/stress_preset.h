@@ -106,8 +106,6 @@ stress_skinned(const stress_params_t* p) {
 /* Whether a surface's mesh is made again every frame: a constant
  * expression, so a static table can read it. */
 #define STRESS_SURFACE_IS_PER_FRAME(surface_) ((surface_) == STRESS_SURFACE_WAVE)
-#define STRESS_SURFACE_IS_ANIMATED(surface_)                                                                           \
-    (STRESS_SURFACE_IS_PER_FRAME(surface_) || (surface_) == STRESS_SURFACE_SKINNED_SH_BLOBS)
 
 static inline bool
 stress_per_frame(const stress_params_t* p) {

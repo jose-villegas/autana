@@ -141,10 +141,19 @@ scene_skin_range(scene_t* scene, int first, int count) {
         const int start = mathi_clamp(first - offset, 0, clusters);
         const int end = mathi_clamp(first + count - offset, 0, clusters);
         if (scene->light_transfer != NULL && skin->lighting_valid) {
-            r3d_skin_lights_t lights = scene->world_lights;
-            lights.ambient = skin->ambient;
-            LIGHT_KERNELS[skin->light_mode](&skin->skin, &skin->bind, skin->palette, start, end - start, &skin->output,
-                                            skin->normal_palette, &lights, skin->colors);
+            if (scene->probes != NULL) {
+                const int r = scene_renderer_index(scene, e);
+                const sh1_rgb_t radiance =
+                    sh_probes_sample(scene->probes, box3f_centre(scene->renderers[r].world_bounds));
+                const sh1_irradiance_t ambient = r3d_skin_light_ambient_sh(&radiance);
+                r3d_skin_clusters_ambient(&skin->skin, &skin->bind, skin->palette, start, end - start, &skin->output,
+                                          skin->normal_palette, &scene->world_lights, skin->colors, &ambient,
+                                          skin->light_mode);
+            } else {
+                LIGHT_KERNELS[skin->light_mode](&skin->skin, &skin->bind, skin->palette, start, end - start,
+                                                &skin->output, skin->normal_palette, &scene->world_lights,
+                                                skin->colors);
+            }
         } else {
             r3d_skin_clusters(&skin->skin, &skin->bind, skin->palette, start, end - start, &skin->output);
         }
@@ -251,9 +260,6 @@ scene_animation_repose(scene_t* scene, uint32_t dt_ms) {
     FRAME_COST_BEGIN(lit_from);
     const int clusters = skin_stage_prepare(scene);
     if (clusters > 0 && scene->light_transfer != NULL) {
-        if (scene->probes != NULL) {
-            scene_resolve(scene);
-        }
         scene_lights_prepare(scene);
     }
     FRAME_COST_END(lit_from, SCENE_ANIM_STAGE_LIGHT_NAME);

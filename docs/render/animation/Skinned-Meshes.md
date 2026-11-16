@@ -171,7 +171,7 @@ the glTF clips and the default settings.
 Ambient is irradiance over pi, like the direct lights.
 
 Ambient is either flat or sampled from a world-space L1 SH grid at each
-skinned renderer's bounds centre. The grid is borrowed through
+skinned renderer's last resolved bounds centre. The grid is borrowed through
 `scene_set_probes()`; `NULL` restores the scene's flat ambient.
 
 Cosine convolution gives `E(n) = constant + gradient * n`, with
@@ -183,21 +183,25 @@ with normalisation `SH1_Y00` and `SH1_Y1`.<sup>[[127]](../../Citations.md#sloan-
 
 | Input | Per mover | Per vertex |
 |---|---|---|
-| Flat ambient | Scene colour × intensity; zero gradient | Add the constant. |
-| Probe grid | Clamp and trilinearly sample packed coefficients, then convolve. | Add the constant and nine multiply-adds. |
+| Flat ambient | Scene colour × intensity; zero gradient | Direct modes add the constant; table mode bakes it. |
+| Probe grid | Clamp and trilinearly sample packed coefficients, then convolve. | Add sampled ambient; table mode corrects its baked constant. |
 
-All lighting modes add ambient outside the direct-light table. A zero
-normal samples the ambient constant. The table stores only directional
-light; moving a renderer through probes needs no table rebuild.
+The shared table includes the scene's flat ambient. Probe overrides correct
+that constant per renderer, so moving through probes needs no table rebuild.
+
+Table-mode probe shading normalises nonzero normals for the gradient.
+A zero normal uses the ambient constant. Probe ambient lives on the skin
+job's stack; scenes keep no per-entity SH cache.
 
 ### Contact discs
 
 Contact discs run after geometry and before composition, sharing its lens
 and depth scale. Bayer coverage falls with squared radius; covered pixels
-halve their RGB565 channels. The callback draws only the target's rows.
+halve their RGB565 channels. The disc draws only the target's rows.
 
-`scene_set_post_draw()` takes a world-bounds callback. Partial redraw covers
-its previous and current boxes.
+`scene_set_contact_blob(renderer, ground_y, strength)` uses the renderer's
+world bounds for the disc's centre and radius. Partial redraw covers the
+previous and current renderer and disc bounds. Zero strength disables it.
 
 ## 6. Current limits
 

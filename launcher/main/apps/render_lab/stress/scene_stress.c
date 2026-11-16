@@ -16,8 +16,8 @@
 #include "esp_log.h"
 #include "image/pixel/rgb565.h"
 #include "math/scalar/math_const.h"
-#include "render/contact/contact_blob.h"
 #include "render/context/render_context.h"
+#include "render/probe/sh_probes.h"
 #include "scene/animator/animator.h"
 #include "scene/camera/camera.h"
 #include "scene/renderer/renderer.h"
@@ -46,7 +46,6 @@ static uint32_t wave_ms;
 #define STRESS_PROBE_BASE         0.5F
 #define STRESS_PROBE_STEP         0.1F
 #define STRESS_PROBE_UP           0.25F
-#define STRESS_BLOB_STRENGTH      0.75F
 #define STRESS_GROUND_WIDTH_SCALE 1.5F
 static int16_t probe_coefficients[STRESS_PROBE_COUNT][SH_PROBES_COMPONENTS];
 static sh_probes_t probes;
@@ -70,20 +69,6 @@ static bool
 find_pool(void) {
     slots = lab_scene_copies(loaded, STRESS_SLOT_FORMAT, &pool);
     return slots != NULL;
-}
-
-static box3f_t
-skin_blob_bounds(void* user) {
-    const entity_t* root = user;
-    const vec3f_t ground = transform_world(grounds[root - slots]).position;
-    return contact_blob_bounds(scene_bounds(*root), ground);
-}
-
-static void
-skin_blob(const r3d_span_target_t* target, const r3d_lens_t* lens, void* user) {
-    const box3f_t bounds = skin_blob_bounds(user);
-    contact_blob_draw(target, lens, box3f_centre(bounds), vec3f_unit_y(), box3f_half_extent(bounds).x,
-                      STRESS_BLOB_STRENGTH);
 }
 
 static bool
@@ -124,7 +109,7 @@ load_skins(void) {
             }
         }
         scene_set_probes(slots[i], &probes);
-        scene_set_post_draw(slots[i], skin_blob, skin_blob_bounds, &slots[i]);
+        scene_set_contact_blob(skin, transform_world(grounds[i]).position.y, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT);
     }
     return true;
 }
@@ -388,18 +373,19 @@ scene_stress_path(void) {
 
 /* A still preset can have frames generated: only the camera moves. */
 #define STRESS_SCENE_ROW(id_, key_, surface_, ...)                                                                     \
-    [STRESS_##id_] = {.name = "Stress " key_,                                                                          \
-                      .key = STRESS_SCENE "-" key_,                                                                    \
-                      .family = "Stress",                                                                              \
-                      .variant = key_,                                                                                 \
-                      .data = &stress_presets[STRESS_##id_],                                                           \
-                      .enter = scene_stress_enter,                                                                     \
-                      .frame = scene_stress_frame,                                                                     \
-                      .exit = scene_stress_exit,                                                                       \
-                      .update = scene_stress_update,                                                                   \
-                      .status = LAB_SCENE_DEV(scene_stress_status),                                                    \
-                      .controls = STRESS_SURFACE_IS_ANIMATED(STRESS_SURFACE_##surface_) ? NULL : scene_baked_controls, \
-                      .generates_frames = !STRESS_SURFACE_IS_ANIMATED(STRESS_SURFACE_##surface_),                      \
-                      .path = scene_stress_path},
+    [STRESS_##                                                                                                         \
+        id_] = {.name = "Stress " key_,                                                                                \
+                .key = STRESS_SCENE "-" key_,                                                                          \
+                .family = "Stress",                                                                                    \
+                .variant = key_,                                                                                       \
+                .data = &stress_presets[STRESS_##id_],                                                                 \
+                .enter = scene_stress_enter,                                                                           \
+                .frame = scene_stress_frame,                                                                           \
+                .exit = scene_stress_exit,                                                                             \
+                .update = scene_stress_update,                                                                         \
+                .status = LAB_SCENE_DEV(scene_stress_status),                                                          \
+                .controls = STRESS_SURFACE_IS_PER_FRAME(STRESS_SURFACE_##surface_) ? NULL : scene_baked_controls,      \
+                .generates_frames = !STRESS_SURFACE_IS_PER_FRAME(STRESS_SURFACE_##surface_),                           \
+                .path = scene_stress_path},
 
 const lab_scene_t scene_stress[STRESS_PRESET_COUNT] = {STRESS_PRESETS(STRESS_SCENE_ROW)};

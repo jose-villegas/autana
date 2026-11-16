@@ -155,13 +155,21 @@ skin_lit_vertex(const uint8_t* record, int influences, const mat4f_t* palette, c
 static inline __attribute__((always_inline)) void
 skin_light_vertex(vec3f_t normal, const r3d_skin_lights_t* lights, const sh1_irradiance_t* ambient,
                   const uint8_t albedo[3], uint8_t out[3], int mode, bool gradient) {
-    if (mode == LIGHT_RENORMALISED) {
-        normal = light_renormalise(normal);
+    if (mode == LIGHT_TABLE) {
+        vec3f_t sum = light_table_sample(normal, lights);
+        if (gradient) {
+            const sh1_irradiance_t correction = {.constant = vec3f_sub(ambient->constant, lights->ambient.constant),
+                                                 .gradient = ambient->gradient};
+            sum = vec3f_add(sum, sh1_irradiance_eval(&correction, light_renormalise(normal)));
+        }
+        light_shade(sum, lights, albedo, out);
+    } else {
+        if (mode == LIGHT_RENORMALISED) {
+            normal = light_renormalise(normal);
+        }
+        const vec3f_t sum = gradient ? sh1_irradiance_eval(ambient, normal) : lights->ambient.constant;
+        light_shade(light_direct_irradiance(normal, lights, sum), lights, albedo, out);
     }
-    const vec3f_t sum = gradient ? sh1_irradiance_eval(ambient, normal) : ambient->constant;
-    light_shade(mode == LIGHT_TABLE ? light_table_sample(normal, lights, sum)
-                                    : light_direct_irradiance(normal, lights, sum),
-                lights, albedo, out);
 }
 
 /* The bounds of a cluster's posed vertices, in a pass after the skinning loop so
@@ -193,8 +201,8 @@ skin_range(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4f_t* pa
 static inline __attribute__((always_inline)) void
 skin_lit_range(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4f_t* palette, int first, int count,
                r3d_skin_output_t* out, const mat3f_t* normals, const r3d_skin_lights_t* lights,
-               uint8_t (*light)[R3D_SKIN_LIGHT_CHANNELS], int influences, int mode, bool gradient) {
-    const sh1_irradiance_t ambient = lights->ambient;
+               uint8_t (*light)[R3D_SKIN_LIGHT_CHANNELS], const sh1_irradiance_t* ambient, int influences, int mode,
+               bool gradient) {
     const uint8_t* vertices = skin->vertices;
     const size_t stride = skin->vertex_stride;
     const int16_t (*positions)[POSITION_AXES] = bind->positions;
@@ -207,7 +215,7 @@ skin_lit_range(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4f_t
             vec3f_t normal;
             skin_lit_vertex(vertices + ((size_t)v * stride), influences, palette, positions[v], posed[v], normals,
                             &normal);
-            skin_light_vertex(normal, lights, &ambient, colors[v], light[v], mode, gradient);
+            skin_light_vertex(normal, lights, ambient, colors[v], light[v], mode, gradient);
         }
         cluster->bounds = cluster_bounds(posed, cluster);
     }
@@ -236,32 +244,57 @@ r3d_skin_clusters(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4
     }
 }
 
-#define SKIN_LIGHT_RANGE(influences, mode)                                                                             \
-    do {                                                                                                               \
-        if (light_has_gradient(&prepared.ambient)) {                                                                   \
-            skin_lit_range(skin, bind, palette, first, count, out, normals, &prepared, light, influences, mode, true); \
-        } else {                                                                                                       \
-            skin_lit_range(skin, bind, palette, first, count, out, normals, &prepared, light, influences, mode,        \
-                           false);                                                                                     \
-        }                                                                                                              \
-    } while (0)
+static inline __attribute__((always_inline)) void
+skin_light_dispatch(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4f_t* palette, int first, int count,
+                    r3d_skin_output_t* out, const mat3f_t* normals, const r3d_skin_lights_t* lights,
+                    uint8_t (*light)[3], const sh1_irradiance_t* ambient, int mode, bool gradient) {
+    assert(lights != NULL && normals != NULL);
+    assert(lights->count >= 0 && lights->count <= R3D_SKIN_LIGHT_MAX);
+    check_range(skin, bind, first, count);
+    if (skin->influences == R3D_SKIN_INFLUENCES_MIN) {
+        skin_lit_range(skin, bind, palette, first, count, out, normals, lights, light, ambient, R3D_SKIN_INFLUENCES_MIN,
+                       mode, gradient);
+    } else {
+        skin_lit_range(skin, bind, palette, first, count, out, normals, lights, light, ambient, R3D_SKIN_INFLUENCES_MAX,
+                       mode, gradient);
+    }
+}
 
 #define SKIN_LIGHT_KERNEL(name, mode)                                                                                  \
     void name(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4f_t* palette, int first, int count,        \
               r3d_skin_output_t* out, const mat3f_t* normals, const r3d_skin_lights_t* lights, uint8_t (*light)[3]) {  \
-        assert(lights != NULL && normals != NULL);                                                                     \
-        assert(lights->count >= 0 && lights->count <= R3D_SKIN_LIGHT_MAX);                                             \
-        const r3d_skin_lights_t prepared = *lights;                                                                    \
-        check_range(skin, bind, first, count);                                                                         \
-        if (skin->influences == R3D_SKIN_INFLUENCES_MIN) {                                                             \
-            SKIN_LIGHT_RANGE(R3D_SKIN_INFLUENCES_MIN, mode);                                                           \
+        if (light_has_gradient(&lights->ambient)) {                                                                    \
+            skin_light_dispatch(skin, bind, palette, first, count, out, normals, lights, light, &lights->ambient,      \
+                                mode, true);                                                                           \
         } else {                                                                                                       \
-            SKIN_LIGHT_RANGE(R3D_SKIN_INFLUENCES_MAX, mode);                                                           \
+            skin_light_dispatch(skin, bind, palette, first, count, out, normals, lights, light, NULL, mode, false);    \
         }                                                                                                              \
     }
 SKIN_LIGHT_KERNEL(r3d_skin_clusters_lit, LIGHT_DIRECT)
 SKIN_LIGHT_KERNEL(r3d_skin_clusters_renormalised, LIGHT_RENORMALISED)
 SKIN_LIGHT_KERNEL(r3d_skin_clusters_table, LIGHT_TABLE)
+
+void
+r3d_skin_clusters_ambient(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4f_t* palette, int first,
+                          int count, r3d_skin_output_t* out, const mat3f_t* normals, const r3d_skin_lights_t* lights,
+                          uint8_t (*light)[3], const sh1_irradiance_t* ambient, unsigned mode) {
+    assert(ambient != NULL);
+    switch (mode) {
+        case R3D_SKIN_LIGHT_DIRECT:
+            skin_light_dispatch(skin, bind, palette, first, count, out, normals, lights, light, ambient, LIGHT_DIRECT,
+                                true);
+            break;
+        case R3D_SKIN_LIGHT_RENORMALISED:
+            skin_light_dispatch(skin, bind, palette, first, count, out, normals, lights, light, ambient,
+                                LIGHT_RENORMALISED, true);
+            break;
+        case R3D_SKIN_LIGHT_TABLE:
+            skin_light_dispatch(skin, bind, palette, first, count, out, normals, lights, light, ambient, LIGHT_TABLE,
+                                true);
+            break;
+        default: assert(false);
+    }
+}
 
 void
 r3d_skin_refit_nodes(r3d_skin_output_t* out) {

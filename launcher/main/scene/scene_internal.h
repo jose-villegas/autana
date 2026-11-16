@@ -18,6 +18,7 @@
 #include "math/linear/mat3f.h"
 #include "render/batch/r3d_batch.h"
 #include "render/lod/r3d_lod.h"
+#include "render/probe/sh_probes.h"
 #include "render/r3d_instance.h"
 #include "render/skin/r3d_skin_light.h"
 #include "scene/animator/animator.h"
@@ -150,6 +151,7 @@ typedef struct {
     r3d_lit_mesh_t mesh;
     mat4f_t model;
     box3f_t world_bounds; /* the mesh's root box through `model`, kept with it */
+    float contact_blob_ground_y, contact_blob_strength;
     box3f_t drawn_bounds; /* world_bounds when last drawn (render/partial) */
     scene_row_t entity;
     bool placed;        /* false while the transform is the identity: drawn as it is */
@@ -218,7 +220,6 @@ typedef struct {
     mat3f_t* normal_palette;
     void* light_storage;
     bool lighting_valid;
-    sh1_irradiance_t ambient;
     /* bound: a skin is attached. Its buffers (storage, light_storage)
      * exist only while its entity is ACTIVE; starved: they did not fit when it
      * became ACTIVE, so it is not drawn until it stops being ACTIVE. */
@@ -281,10 +282,6 @@ struct scene {
     int light_table_users;
     bool light_table_dirty;
     const sh_probes_t* probes;
-    raster_post_draw_fn post_draw;
-    scene_post_draw_bounds_fn post_draw_bounds;
-    box3f_t post_drawn_bounds;
-    void* post_draw_user;
     bool skins_pending; /* a bound skin may be ACTIVE without its buffers */
     int starved_count;  /* skins whose buffers did not fit; root->failure says which */
     uint8_t* flags;     /* one per entity: SCENE_FLAG_* */

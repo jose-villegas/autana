@@ -88,3 +88,9 @@ void r3d_skin_clusters_table(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind,
 
 sh1_irradiance_t r3d_skin_light_ambient_sh(const sh1_rgb_t* radiance);
 void r3d_skin_light_set_ambient_sh(r3d_skin_lights_t* lights, const sh1_rgb_t* radiance);
+
+/* Per-renderer ambient override; mode is R3D_SKIN_LIGHT_* from r3d_skin_format.h. */
+void r3d_skin_clusters_ambient(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4f_t* palette, int first,
+                               int count, r3d_skin_output_t* out, const mat3f_t* normals,
+                               const r3d_skin_lights_t* lights, uint8_t (*light)[3], const sh1_irradiance_t* ambient,
+                               unsigned mode);

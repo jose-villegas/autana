@@ -4,7 +4,7 @@
 #include "math/sh/sh1.h"
 #define SH_PROBES_COMPONENTS (SH1_COEFFICIENTS * SH1_CHANNELS)
 
-typedef struct {
+typedef struct sh_probes {
     vec3f_t origin, spacing;
     uint16_t dims[3]; /* nonzero, x fastest; a singleton axis ignores its spacing */
     float scale;

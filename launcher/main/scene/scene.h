@@ -14,8 +14,7 @@
 #include "asset/asset_pack.h"
 #include "core/pending.h"
 #include "math/geometry/box3f.h"
-#include "render/probe/sh_probes.h"
-#include "render/raster.h"
+typedef struct sh_probes sh_probes_t;
 #include "scene/entity/entity.h"
 
 typedef enum {
@@ -73,7 +72,7 @@ void scene_set_paused(bool paused);
 /* Borrowed until changed or unloaded; NULL restores flat ambient. Only a loaded root accepts it. */
 void scene_set_probes(entity_t root, const sh_probes_t* probes);
 
-/* Called after geometry for the rows drawn; bounds covers every touched world point.
- * A NULL bounds callback forces whole redraws. The user outlives the scene. */
-typedef box3f_t (*scene_post_draw_bounds_fn)(void* user);
-void scene_set_post_draw(entity_t root, raster_post_draw_fn draw, scene_post_draw_bounds_fn bounds, void* user);
+#define SCENE_CONTACT_BLOB_STRENGTH_DEFAULT 0.75F
+
+/* A ground-plane contact disc under this renderer's world bounds; zero strength disables it. */
+void scene_set_contact_blob(entity_t renderer, float ground_y, float strength);

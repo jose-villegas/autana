@@ -183,18 +183,6 @@ scene_lights_prepare(scene_t* scene) {
         world.table_scale = scene->world_lights.table_scale;
     }
     scene->world_lights = world;
-    for (int r = 0; r < scene->renderer_count; r++) {
-        scene_renderer_t* renderer = &scene->renderers[r];
-        scene_skinned_renderer_t* skin = &scene->skinned_renderers[renderer->entity];
-        if (!skin->bound) {
-            continue;
-        }
-        skin->ambient = world.ambient;
-        if (scene->probes != NULL) {
-            const sh1_rgb_t radiance = sh_probes_sample(scene->probes, box3f_centre(renderer->world_bounds));
-            skin->ambient = r3d_skin_light_ambient_sh(&radiance);
-        }
-    }
 }
 
 void
