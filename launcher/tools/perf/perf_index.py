@@ -57,6 +57,11 @@ LS_REMOTE_ABSENT = 2
 # Longer than any sync takes; a lock this old belongs to a sync that died.
 STORE_LOCK_SECONDS = 600
 LOCK_EVENT_VAR = "AUTANA_LOCK_EVENT"
+# A transfer slower than this many bytes a second for this many seconds is stalled: git, which has no timeout of
+# its own, gives up and the call is tried again, rather than hanging a night's plan for hours.
+STALL_BYTES_PER_SECOND = 1024
+STALL_SECONDS = 120
+NETWORK_ATTEMPTS = 3
 RELEASED = "released"
 
 
@@ -180,9 +185,21 @@ def write_lines(store, lines):
     return touched
 
 
+def network_git(store, *words):
+    """`git` on the remote: a stalled transfer fails after STALL_SECONDS and is tried NETWORK_ATTEMPTS times."""
+    stall = ("-c", f"http.lowSpeedLimit={STALL_BYTES_PER_SECOND}", "-c", f"http.lowSpeedTime={STALL_SECONDS}")
+    for attempt in range(NETWORK_ATTEMPTS):
+        try:
+            return git(store, *stall, *words)
+        except subprocess.CalledProcessError as error:
+            if attempt + 1 == NETWORK_ATTEMPTS or (words[0] == "ls-remote" and error.returncode == LS_REMOTE_ABSENT):
+                raise
+            print(f"perf_index: git {words[0]} failed ({error.returncode}); trying again", file=sys.stderr)
+
+
 def remote_has_branch(store):
     try:
-        git(store, "ls-remote", "--exit-code", "origin", "refs/heads/" + BRANCH)
+        network_git(store, "ls-remote", "--exit-code", "origin", "refs/heads/" + BRANCH)
     except subprocess.CalledProcessError as error:
         if error.returncode == LS_REMOTE_ABSENT:
             return False
@@ -200,7 +217,7 @@ def open_store(store):
     git(store, "init", "-q")
     git(store, "remote", "add", "origin", git(REPO, "remote", "get-url", "origin"))
     if remote_has_branch(store):
-        git(store, "fetch", "-q", "origin", BRANCH)
+        network_git(store, "fetch", "-q", "origin", BRANCH)
         git(store, "checkout", "-q", "-b", BRANCH, "FETCH_HEAD")
     else:
         git(store, "checkout", "-q", "--orphan", BRANCH)
@@ -209,7 +226,7 @@ def open_store(store):
 
 def pull(store):
     if remote_has_branch(store):
-        git(store, "pull", "-q", "--no-rebase", "--no-edit", "origin", BRANCH)
+        network_git(store, "pull", "-q", "--no-rebase", "--no-edit", "origin", BRANCH)
 
 
 @contextlib.contextmanager
@@ -300,7 +317,10 @@ def main(argv=None):
     sync_parser.add_argument("--hook", action="store_true", help="for lock_hook: on `released` only, sync detached")
     args = parser.parse_args(argv)
     if args.command == "store":
+        started = time.monotonic()
         open_store(args.path)
+        # Timed, so a night whose plan starts late shows whether checking the store out held it.
+        print(f"perf_index: store checked out in {time.monotonic() - started:.0f} s", file=sys.stderr)
         return 0
     if args.hook:
         return hook(argv)

@@ -168,6 +168,36 @@ class Sync(Isolated):
                               text=True, stdin=subprocess.DEVNULL).stdout.strip()
         self.assertEqual(head, "refs/heads/" + perf_index.BRANCH)
 
+    def test_a_stalled_fetch_is_cut_off_and_tried_again(self):
+        calls = []
+        failure = subprocess.CalledProcessError(128, ["git", "fetch"])
+
+        def flaky(store, *words):
+            calls.append(words)
+            if len(calls) == 1:
+                raise failure
+            return ""
+
+        with (patch.object(perf_index, "git", side_effect=flaky),
+              contextlib.redirect_stderr(io.StringIO()) as said):
+            perf_index.network_git(self.dir, "fetch", "-q", "origin", perf_index.BRANCH)
+        self.assertEqual(len(calls), 2)
+        self.assertIn(f"http.lowSpeedTime={perf_index.STALL_SECONDS}", calls[0])
+        self.assertIn("trying again", said.getvalue())
+
+    def test_a_fetch_that_keeps_failing_raises_after_the_last_attempt(self):
+        failing = subprocess.CalledProcessError(128, ["git"])
+        with (patch.object(perf_index, "git", side_effect=failing) as call,
+              contextlib.redirect_stderr(io.StringIO()), self.assertRaises(subprocess.CalledProcessError)):
+            perf_index.network_git(self.dir, "fetch", "-q", "origin", perf_index.BRANCH)
+        self.assertEqual(call.call_count, perf_index.NETWORK_ATTEMPTS)
+
+    def test_an_absent_branch_is_an_answer_not_a_retry(self):
+        absent = subprocess.CalledProcessError(perf_index.LS_REMOTE_ABSENT, ["git", "ls-remote"])
+        with patch.object(perf_index, "git", side_effect=absent) as call:
+            self.assertFalse(perf_index.remote_has_branch(self.dir))
+        self.assertEqual(call.call_count, 1)
+
     def test_host_must_be_a_short_name(self):
         with self.assertRaises(SystemExit):
             self.sync(self.dir / "store", "JV.local/user")
