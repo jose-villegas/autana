@@ -12,6 +12,7 @@ nothing has read for REFERENCE_KEEP_DAYS is deleted.
 
 import copy
 import importlib.metadata
+import inspect
 import json
 import os
 import pathlib
@@ -252,6 +253,32 @@ def shard_renderer(render_sets, shard, count, rendered_sets):
                     index, rest = path.name.split(".", 1)
                     os.replace(path, pathlib.Path(out) / f"{shard + int(index) * count:04d}.{rest}")
     return render
+
+
+def reference_rays(bake):
+    """The primary rays `bake`'s reference set traces: every pose's width x height x samples², read from the poses
+    files the reference stage writes, with its renderer swapped for one that counts and traces nothing."""
+    from r3d import reference_render
+    from r3d.poses import parse_pose_rows
+    from r3d.reference_set import prepare_references, reference_inputs
+
+    rays = 0
+    # The samples render_sets traces at when prepare_references names none.
+    default = inspect.signature(reference_render.render_sets).parameters["samples"].default
+
+    def count(inputs, sets, samples=default):
+        nonlocal rays
+        for poses, _ in sets:
+            width, height, _lens, _near, posed = parse_pose_rows(pathlib.Path(poses).read_text())
+            rays += len(posed) * width * height * samples * samples
+
+    render_sets, reference_render.render_sets = reference_render.render_sets, count
+    try:
+        with tempfile.TemporaryDirectory() as work:
+            prepare_references(reference_inputs(bake.job, bake.scene), pathlib.Path(work))
+    finally:
+        reference_render.render_sets = render_sets
+    return rays
 
 
 def reference_shard(bake, out, shard, count):

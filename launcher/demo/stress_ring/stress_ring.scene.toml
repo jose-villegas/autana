@@ -1,0 +1,17 @@
+# The baked-tree stress preset's scene: a ring baked like any scene's mesh, and a camera
+# turning inside it, so the stress perf suite times the cull walk through the tree the bake
+# tools built. Its own pack, so the copy-pool presets never load the ring.
+[[objects]]
+name = "sweep"
+
+[objects.camera]
+half_fov_short_tan = 0.5
+near_z = 0.05
+background = 0x0B0D12
+path = { animation = "sweep.anim.toml", node = "camera" }
+
+[[objects]]
+name = "ring"
+
+[objects.mesh_renderer]
+mesh = "ring.import.toml"
