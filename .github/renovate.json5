@@ -44,11 +44,11 @@
       // The LLVM C library Dr.Jit loads on Windows; the bump also moves ARCHIVE_SHA256 beside it, whose check names
       // the new archive's digest.
       customType: 'regex',
-      managerFilePatterns: ['/^launcher/tools/r3d/llvm_runtime\.py$/'],
-      matchStrings: ['VERSION = "(?<currentValue>\d+\.\d+\.\d+)"'],
+      managerFilePatterns: ['/^launcher/tools/r3d/llvm_runtime\\.py$/'],
+      matchStrings: ['VERSION = "(?<currentValue>\\d+\\.\\d+\\.\\d+)"'],
       depNameTemplate: 'llvm/llvm-project',
       datasourceTemplate: 'github-releases',
-      extractVersionTemplate: '^llvmorg-(?<version>\d+\.\d+\.\d+)$',
+      extractVersionTemplate: '^llvmorg-(?<version>\\d+\\.\\d+\\.\\d+)$',
     },
   ],
 

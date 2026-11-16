@@ -126,7 +126,7 @@ class InstallTest(unittest.TestCase):
 
     def test_an_archive_off_its_pin_installs_nothing(self):
         url, _ = self.serve(archive_with({"clang+llvm/bin/LLVM-C.dll": LIBRARY_BYTES}))
-        with self.assertRaisesRegex(RuntimeError, "SHA-256"):
+        with self.assertRaisesRegex(ValueError, "SHA-256"):
             llvm_runtime.install(self.root, url, "0" * 64)
         self.assertEqual(list(llvm_runtime.library(self.root).parent.iterdir()), [])
 
