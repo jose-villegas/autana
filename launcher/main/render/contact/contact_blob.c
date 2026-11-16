@@ -104,6 +104,34 @@ project_disc(const r3d_span_target_t* target, const r3d_lens_t* lens, vec3f_t up
     return out;
 }
 
+static bool
+row_interval(const lens_disc_t* discs, int count, int y, int cursor, int width, int* left, int* right) {
+    int x0 = width, x1 = 0;
+    for (int i = 0; i < count; i++) {
+        const lens_disc_t* d = &discs[i];
+        if (y >= d->y0 && y < d->y1 && d->x1 > cursor && d->x0 < x0) {
+            x0 = mathi_max(cursor, d->x0);
+            x1 = d->x1;
+        }
+    }
+    if (x0 >= x1) {
+        return false;
+    }
+    int end;
+    do {
+        end = x1;
+        for (int i = 0; i < count; i++) {
+            const lens_disc_t* d = &discs[i];
+            if (y >= d->y0 && y < d->y1 && d->x0 <= x1) {
+                x1 = mathi_max(x1, d->x1);
+            }
+        }
+    } while (end != x1);
+    *left = x0;
+    *right = x1;
+    return true;
+}
+
 void
 contact_blob_draw(const r3d_span_target_t* target, const r3d_lens_t* lens, vec3f_t up, const contact_disc_t* discs,
                   int count) {
@@ -127,27 +155,10 @@ contact_blob_draw(const r3d_span_target_t* target, const r3d_lens_t* lens, vec3f
     for (int y = target->rows.first_row; y < gfx_target_end_row(&target->rows); y++) {
         int cursor = 0;
         while (cursor < lens->width) {
-            int x0 = lens->width, x1 = 0;
-            for (int i = 0; i < count; i++) {
-                const lens_disc_t* d = &projected[i];
-                if (y >= d->y0 && y < d->y1 && d->x1 > cursor && d->x0 < x0) {
-                    x0 = mathi_max(cursor, d->x0);
-                    x1 = d->x1;
-                }
-            }
-            if (x0 >= x1) {
+            int x0, x1;
+            if (!row_interval(projected, count, y, cursor, lens->width, &x0, &x1)) {
                 break;
             }
-            int end;
-            do {
-                end = x1;
-                for (int i = 0; i < count; i++) {
-                    const lens_disc_t* d = &projected[i];
-                    if (y >= d->y0 && y < d->y1 && d->x0 <= x1) {
-                        x1 = mathi_max(x1, d->x1);
-                    }
-                }
-            } while (end != x1);
             draw_row(target, lens, &blob, projected, count, y, x0, x1);
             cursor = x1;
         }

@@ -170,6 +170,32 @@ light_intensity(entity_t entity) {
     return scene->lights[row].kind == SCENE_LIGHT_NONE ? 0.0F : scene->lights[row].intensity;
 }
 
+static bool
+contact_light_direction_changed(const scene_t* scene, const r3d_skin_lights_t* world) {
+    bool direction_changed = world->count != scene->world_lights.count;
+    for (int i = 0; i < world->count && !direction_changed; i++) {
+        const vec3f_t before = scene->world_lights.direction[i], after = world->direction[i];
+        direction_changed = before.x != after.x || before.y != after.y || before.z != after.z;
+    }
+    if (!direction_changed && world->count > 0) {
+        const vec3f_t before = scene->world_lights.direction[brightest_light(&scene->world_lights)];
+        const vec3f_t after = world->direction[brightest_light(world)];
+        direction_changed = before.x != after.x || before.y != after.y || before.z != after.z;
+    }
+    return direction_changed;
+}
+
+static void
+forget_contact_lighting(const scene_t* scene) {
+    for (int i = 0; i < scene->active_renderer_count; i++) {
+        const scene_renderer_t* r = &scene->renderers[scene->active_renderers[i]];
+        if (r->contact_blob_strength > 0 && r->mesh.node_count > 0) {
+            render_context_forget(render_context_main());
+            break;
+        }
+    }
+}
+
 void
 scene_lights_prepare(scene_t* scene) {
     if (scene->light_transfer == NULL) {
@@ -194,24 +220,8 @@ scene_lights_prepare(scene_t* scene) {
     } else {
         world.table_scale = scene->world_lights.table_scale;
     }
-    bool direction_changed = world.count != scene->world_lights.count;
-    for (int i = 0; i < world.count && !direction_changed; i++) {
-        const vec3f_t before = scene->world_lights.direction[i], after = world.direction[i];
-        direction_changed = before.x != after.x || before.y != after.y || before.z != after.z;
-    }
-    if (!direction_changed && world.count > 0) {
-        const vec3f_t before = scene->world_lights.direction[brightest_light(&scene->world_lights)];
-        const vec3f_t after = world.direction[brightest_light(&world)];
-        direction_changed = before.x != after.x || before.y != after.y || before.z != after.z;
-    }
-    if (direction_changed) {
-        for (int i = 0; i < scene->active_renderer_count; i++) {
-            const scene_renderer_t* r = &scene->renderers[scene->active_renderers[i]];
-            if (r->contact_blob_strength > 0 && r->mesh.node_count > 0) {
-                render_context_forget(render_context_main());
-                break;
-            }
-        }
+    if (contact_light_direction_changed(scene, &world)) {
+        forget_contact_lighting(scene);
     }
     scene->world_lights = world;
 }
