@@ -15,7 +15,6 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "core/tune.h"
 #include "math/geometry/box3f.h"
 #include "math/linear/mat3f.h"
 #include "math/linear/transformf.h"
@@ -81,16 +80,18 @@ typedef struct {
     void* scratch;   /* the caller frees it */
 } drawn_t;
 
-/* `count` instances, then `batch_count` batches, drawn. */
+/* `count` instances, then `batch_count` batches, drawn with `settings` (NULL: the default). */
 static drawn_t
-draw_with(const r3d_instance_t* instances, int count, const r3d_batch_draw_t* batches, int batch_count) {
+draw_set(const r3d_instance_t* instances, int count, const r3d_batch_draw_t* batches, int batch_count,
+         const render_settings_t* settings) {
     raster_t raster = {.instances = instances,
                        .instance_count = count,
                        .batches = batches,
                        .batch_count = batch_count,
                        .width = SIZE,
                        .height = SIZE,
-                       .clear = CLEAR};
+                       .clear = CLEAR,
+                       .settings = settings};
     drawn_t out = {.scratch = malloc(raster_scratch_bytes(&raster))};
     TEST_ASSERT_NOT_NULL(out.scratch);
     raster.scratch = out.scratch;
@@ -100,6 +101,11 @@ draw_with(const r3d_instance_t* instances, int count, const r3d_batch_draw_t* ba
     out.depth = raster_depth(&raster);
     out.drawn_count = raster_drawn_count(&raster);
     return out;
+}
+
+static drawn_t
+draw_with(const r3d_instance_t* instances, int count, const r3d_batch_draw_t* batches, int batch_count) {
+    return draw_set(instances, count, batches, batch_count, NULL);
 }
 
 static drawn_t
@@ -409,33 +415,17 @@ test_a_world_box_straddling_a_plane_keeps_the_instance_and_its_pixels(void) {
     free(drawn.scratch);
 }
 
-static int32_t saved_cull;
-static bool cull_changed;
-
-static void
-restore_cull(void) {
-    if (cull_changed) {
-        (void)tune_set(tune_shared(), TUNE_NAME(render, cull), saved_cull);
-        cull_changed = false;
-    }
-}
-
 static void
 test_with_culling_off_an_off_screen_world_box_does_not_skip(void) {
     quad_t red;
     make_quad(&red, 255, 0, 0, 0);
     const r3d_instance_t boxed = {&red.mesh, NULL, &OUTSIDE[0].box, NULL};
-    const tune_entry_t* entry = tune_find(tune_shared(), TUNE_NAME(render, cull));
-    TEST_ASSERT_NOT_NULL(entry);
-    saved_cull = *entry->value;
-    cull_changed = true;
-    suite_set_test_cleanup(restore_cull);
-    (void)tune_reset(tune_shared(), TUNE_NAME(render, cull));
     const drawn_t on = draw(&boxed, 1);
     TEST_ASSERT_EQUAL_INT(0, on.stats.clusters);
     free(on.scratch);
-    (void)tune_set(tune_shared(), TUNE_NAME(render, cull), 0);
-    const drawn_t off = draw(&boxed, 1);
+    render_settings_t cull_off = RENDER_SETTINGS_DEFAULT;
+    cull_off.cull = false;
+    const drawn_t off = draw_set(&boxed, 1, NULL, 0, &cull_off);
     TEST_ASSERT_EQUAL_INT(1, off.stats.clusters);
     TEST_ASSERT_NOT_EQUAL_HEX16(CLEAR, pixel(off.color, 0.0F));
     free(off.scratch);

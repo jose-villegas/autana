@@ -34,8 +34,8 @@ scene_hierarchy_open(scene_t* scene) {
         return true;
     }
     size_t end = 0;
-    const size_t worlds = scene_storage_carve(&end, sizeof(mat4f_t) * (size_t)worlds_needed, alignof(mat4f_t));
-    const size_t owners = scene_storage_carve(&end, sizeof(scene_row_t) * (size_t)worlds_needed, alignof(scene_row_t));
+    const size_t worlds = mem_carve(&end, sizeof(mat4f_t) * (size_t)worlds_needed, alignof(mat4f_t));
+    const size_t owners = mem_carve(&end, sizeof(scene_row_t) * (size_t)worlds_needed, alignof(scene_row_t));
     uint8_t* block = scene_allocate_kept(end);
     if (block == NULL) {
         return false;
@@ -177,7 +177,7 @@ scene_row_set_local(scene_root_t* root, scene_row_t row, transformf_t local) {
         root->placed = !scene_transform_is_identity(&root->world);
         for (int e = 0; scene != NULL && e < scene->asset.entity_count; e++) {
             if (parent_of(scene, (scene_row_t)e) == SCENE_ROW_NONE) {
-                scene->flags[e] |= SCENE_FLAG_CHANGED;
+                scene->flags[e] |= SCENE_FLAG_PLACED;
             }
         }
         return;
@@ -186,7 +186,7 @@ scene_row_set_local(scene_root_t* root, scene_row_t row, transformf_t local) {
      * loader and the importer keep content so. */
     assert(scene->world_slots[row] == SCENE_WORLD_SLOT_NONE || transformf_scale_is_even(&local));
     scene->locals[row] = local;
-    scene->flags[row] |= SCENE_FLAG_CHANGED;
+    scene->flags[row] |= SCENE_FLAG_PLACED;
 }
 
 transformf_t

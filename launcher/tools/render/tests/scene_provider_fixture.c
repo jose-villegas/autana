@@ -84,6 +84,35 @@ check_video_fit(int64_t fit, const char* out) {
     return render_host_close();
 }
 
+/* --set render.FIELD=value reaches the main context's settings as a pack's
+ * would; an unknown field refuses the run. The runs write beside `out`. */
+#define FIXTURE_TOLERANCE_TEXT "render.lod.tolerance_px=4.5"
+#define FIXTURE_TOLERANCE_PX   4.5F
+
+static bool
+check_settings(const char* out) {
+    char image[1024];
+    (void)snprintf(image, sizeof image, "%s.settings.bmp", out);
+    char* set[] = {"settings", "--scene", "room", "--frames", "1", "--set", FIXTURE_TOLERANCE_TEXT, "-o", image};
+    int exit_code;
+    if (!render_host_open(&scene_provider, (int)(sizeof set / sizeof set[0]), set, &exit_code)) {
+        fprintf(stderr, "--set %s refused\n", FIXTURE_TOLERANCE_TEXT);
+        return false;
+    }
+    const bool reached = render_context_settings(render_context_main())->lod.tolerance_px == FIXTURE_TOLERANCE_PX;
+    if (!render_host_close() || !reached) {
+        fprintf(stderr, "--set %s did not reach the settings\n", FIXTURE_TOLERANCE_TEXT);
+        return false;
+    }
+    char* unknown[] = {"settings", "--scene", "room", "--frames", "1", "--set", "render.lod.none=1", "-o", image};
+    if (render_host_open(&scene_provider, (int)(sizeof unknown / sizeof unknown[0]), unknown, &exit_code)) {
+        (void)render_host_close();
+        fprintf(stderr, "an unknown render setting opened\n");
+        return false;
+    }
+    return true;
+}
+
 int
 main(int argc, char** argv) {
     int exit_code;
@@ -101,5 +130,5 @@ main(int argc, char** argv) {
             out = argv[i + 1];
         }
     }
-    return render_host_close() && ok && check_video_fit(fit, out) ? 0 : 1;
+    return render_host_close() && ok && check_video_fit(fit, out) && check_settings(out) ? 0 : 1;
 }

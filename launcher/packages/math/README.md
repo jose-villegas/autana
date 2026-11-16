@@ -63,6 +63,7 @@ header's opening comment; `--check` verifies it.
 | [include/math/geometry/planef.h](include/math/geometry/planef.h) | planef: an oriented plane of a float. |
 | [include/math/geometry/planex.h](include/math/geometry/planex.h) | planex: an oriented plane of a Q16.16. |
 | [include/math/geometry/primitive_mesh.h](include/math/geometry/primitive_mesh.h) | primitive_mesh: the standard shapes as indexed triangle meshes, for geometry made at run time or baked: a plane, a sphere, a cube, a capsule and a cylinder, each about the origin and each from a struct of its named parameters. |
+| [include/math/geometry/rect_overlap.h](include/math/geometry/rect_overlap.h) | rect_overlap: overlaps within a list of recti, found by one sort and sweep, and what is left of a rectangle once another is taken out of it. |
 | [include/math/geometry/rect_template.h](include/math/geometry/rect_template.h) | rect_template: the half-open rectangle for one number type; see docs/math/Conventions.md#templates for the macro arguments. |
 | [include/math/geometry/rectf.h](include/math/geometry/rectf.h) | rectf: a half-open rectangle of a float. |
 | [include/math/geometry/recti.h](include/math/geometry/recti.h) | recti: a half-open rectangle of an int. |
@@ -98,6 +99,7 @@ header's opening comment; `--check` verifies it.
 | [include/math/linear/vec_convert.h](include/math/linear/vec_convert.h) | vec_convert: explicit vector conversions; narrowing saturates, rounding ties away from zero. |
 | [include/math/linear/vec_ops_template.h](include/math/linear/vec_ops_template.h) | vec_ops_template: component-wise arithmetic and lerp for vectors of every dimension and number type. |
 | [include/math/linear/vec_swizzle_template.h](include/math/linear/vec_swizzle_template.h) | vec_swizzle_template: swizzles, a new vector made of named components of another (vec3f_zyx, vec2f_yx), for every number type. |
+| [include/math/motion/steer2f.h](include/math/motion/steer2f.h) | steer2f: steering behaviours for agents on a ground plane (Reynolds 1999): arrive at a point, keep apart from neighbours, and integrate one fixed step with an acceleration, speed and turn-rate limit. |
 | [include/math/projection/inverse_depth.h](include/math/projection/inverse_depth.h) | inverse_depth: depth stored as code = scale / z * code_max, for z &gt;= scale, which steps linearly across the screen. |
 | [include/math/projection/project_template.h](include/math/projection/project_template.h) | project_template: shared near-plane endpoint selection for pinhole clipping. |
 | [include/math/projection/projectf.h](include/math/projection/projectf.h) | projectf: pinhole projection in pixels with camera +y up and picture y down. |

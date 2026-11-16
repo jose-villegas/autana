@@ -1,7 +1,8 @@
 /* Render real firmware drawing code on a host, to a BMP, with synthetic time
  * and input (no live board data); options are in docs/tools/Render-Harness.md.
- * Provider adapters supply shell stubs such as display_quarter_now and
- * shell_home_edge when linking hardware-facing screen entry code. */
+ * Provider adapters supply shell stubs such as shell_home_edge when linking
+ * hardware-facing screen entry code; display_quarter_now defaults to the run's
+ * quarter, so several providers link into one program. */
 #ifndef RENDER_HOST_H
 #define RENDER_HOST_H
 
@@ -56,6 +57,8 @@ typedef struct {
     /* The provider's own options, given every argument render_host.c did not
      * recognise. Return false to reject the command line. */
     bool (*options)(int argc, char** argv);
+    /* Optional default count, asked after options when --frames is absent. */
+    int (*frame_count)(void);
 
     /* Called once after gfx_init(), before the first frame. */
     bool (*setup)(int quarter);
@@ -102,6 +105,10 @@ bool render_host_set_tunable(const char* name, int32_t value);
 /* "owner.name=value", as --set takes it; false, said on stderr, for anything else. */
 bool render_host_set_tunable_text(const char* assignment);
 
+/* Hands the --set render.FIELD values to the main render context, after the
+ * provider's setup; false when the provider links no renderer. */
+bool render_host_apply_settings(const render_settings_t* settings);
+
 /* Parse options and prepare the provider, graphics and outputs for a run.
  * False means no run opened; exit_code is 0 for a successful query, nonzero
  * for an error. */
@@ -114,5 +121,7 @@ void render_host_step(uint32_t dt_ms, const input_t* input);
 /* Draw warm-up frames for the frame watch, write the saved image and close
  * outputs. False means the run failed, including a frame-watch violation. */
 bool render_host_close(void);
+/* A provider marks its run failed; render_host_close() then returns false. */
+void render_host_fail(void);
 
 #endif

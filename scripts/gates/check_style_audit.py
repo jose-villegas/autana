@@ -445,7 +445,7 @@ def pmu_owner(root, path, text):
 # (launcher/packages/) sits under every row: PACKAGE-INCLUDE keeps it there.
 
 LAYER_BANDS = (
-    ("system", ("apps", "shell", "boot selftest", "app")),
+    ("system", ("apps", "shell", "boot selftest", "lab", "app")),
     ("engine", ("ui scene", "render", "draw anim sound", "asset")),
     ("platform", ("input audio", "power", "display", "gfx", "services", "profile", "console", "core", "board",
                   "build")),
@@ -524,10 +524,10 @@ def rule_include_direction(root, path, text):
                        "INCLUDE_DIRECTION_EXCEPTIONS entry citing the doc section that draws it")
 
 
-# RULE: an app (a folder of the top row, launcher/main/apps/) uses the engine, the platform and the app contract, and never the
-# rest of the system band: docs/plans/Engine-Layer-Design-Sketch.md's tier
-# rule. The app contract is the system band's lowest row, so the rule names
-# no folder. A shell app (shell/apps/) shares the apps tier for
+# RULE: an app (a folder of the top row, launcher/main/apps/) uses the engine, the platform, the lab shell and the app
+# contract, and never the rest of the system band: docs/plans/Engine-Layer-Design-Sketch.md's tier
+# rule. The lab shell and the app contract are the system band's lowest two
+# rows, so the rule names no folder. A shell app (shell/apps/) shares the apps tier for
 # INCLUDE-DIRECTION but ships with the shell, so it may reach the system
 # band. Both include rules below read C and C++ sources alike.
 
@@ -535,7 +535,8 @@ INCLUDE_RULE_SUFFIXES = SOURCE_EXTENSIONS
 
 SYSTEM_ROWS = dict(LAYER_BANDS)["system"]
 APPS_ROW = SYSTEM_ROWS[0].split()
-SYSTEM_BAND_REFUSED = {layer for row in SYSTEM_ROWS[1:-1] for layer in row.split()}
+APP_BASE = {"lab", "app"}  # the lab shell and the app contract
+SYSTEM_BAND_REFUSED = {layer for row in SYSTEM_ROWS[1:] for layer in row.split()} - APP_BASE
 
 
 @text_rule("SYSTEM-BAND")
@@ -551,7 +552,7 @@ def rule_system_band(root, path, text):
     for number, inc, target_layer in _main_include_layers(root, path, text):
         if target_layer in SYSTEM_BAND_REFUSED:
             yield number, (f'"{inc}" reaches into {target_layer}/, the system band - an app uses '
-                           "the engine, the platform and the app contract (app/)")
+                           "the engine, the platform, the lab shell (lab/) and the app contract (app/)")
 
 
 # RULE: the UI backend stays behind ui/'s face. A header is the backend's
@@ -798,8 +799,10 @@ def rule_model_named_tool(root, path, text):
     rel = pathlib.PurePosixPath(relpath(root, path))
     if rel.suffix.lower() not in TOOL_CODE_SUFFIXES or not ("tools" in rel.parts or rel.parts[0] == "scripts"):
         return
+    name = rel.name.lower()
     for model in _model_names(root):
-        if model in rel.name.lower():
+        # whole words of the name: a model "ring" names ring_bake.py, not spring_figures.py
+        if re.search(rf"(?<![a-z0-9]){re.escape(model)}(?![a-z0-9])", name):
             yield 1, f"named after the model {model} - take the model as an argument and name the tool for what it does"
 
 

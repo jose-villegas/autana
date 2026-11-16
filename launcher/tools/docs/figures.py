@@ -29,10 +29,11 @@ from render.check_avi import read_video  # noqa: E402
 PROBE_SUPPORT = (ROOT / "launcher/packages/math/src/text/math_text.c",)
 
 
-def build_probe(cc, sources, directory):
-    """Build a probe against the library into directory; returns the program."""
+def build_probe(cc, sources, directory, extra_flags=()):
+    """Build a probe against the library into directory, with `extra_flags` after the firmware's include roots;
+    returns the program."""
     binary = pathlib.Path(directory) / "probe"
-    flags = [f"-std={PROBE_STANDARD}", *(flag for root in include_roots() for flag in ("-I", str(root)))]
+    flags = [f"-std={PROBE_STANDARD}", *(flag for root in include_roots() for flag in ("-I", str(root))), *extra_flags]
     sources = [str(source) for source in (*sources, *PROBE_SUPPORT)]
     if os.environ.get(DEPENDS_FOLDER):
         for source in sources:

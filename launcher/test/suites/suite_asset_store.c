@@ -226,6 +226,50 @@ test_the_load_pack_example_reads_an_entry_and_releases_the_pack(void) {
     remove_pack("suite_pack_a");
 }
 
+/* An address in a mounted pack's entry is located there; a copy of the
+ * entry's bytes is located there too while it is told, and not after. */
+static void
+test_an_entry_and_a_told_copy_of_it_locate_to_the_entry(void) {
+    test_asset_dir_use(".");
+    write_pack("suite_pack_a", "first", 0, NOTE_BYTES);
+    handle_t load = asset_store_load("suite_pack_a");
+    const asset_pack_t* pack = asset_store_loaded(load);
+    const char* note = note_of(pack);
+    asset_location_t at;
+    TEST_ASSERT_TRUE(asset_store_locate(note + 1, &at));
+    TEST_ASSERT_EQUAL_STRING("suite_pack_a", at.pack_name);
+    TEST_ASSERT_EQUAL_UINT32(0, at.entry);
+    TEST_ASSERT_EQUAL_UINT32(asset_pack_checksum(pack), at.pack_crc);
+    char copy[NOTE_BYTES];
+    memcpy(copy, note, sizeof copy);
+    TEST_ASSERT_FALSE(asset_store_locate(copy + 1, &at));
+    const asset_copy_t told = {copy, note, sizeof copy};
+    asset_copies_t copies = {.copies = &told, .count = 1};
+    asset_store_copies_add(&copies);
+    asset_location_t copied;
+    TEST_ASSERT_TRUE(asset_store_locate(copy + 1, &copied));
+    TEST_ASSERT_EQUAL_INT(at.slot, copied.slot);
+    TEST_ASSERT_EQUAL_UINT32(at.entry, copied.entry);
+    TEST_ASSERT_FALSE(asset_store_locate(copy + sizeof copy, &copied));
+    /* A second block told after it stays when the first is taken back, and
+     * taking back one never told changes nothing. */
+    char other[NOTE_BYTES];
+    const asset_copy_t told_other = {other, note, sizeof other};
+    asset_copies_t others = {.copies = &told_other, .count = 1};
+    asset_copies_t never = {.copies = &told_other, .count = 1};
+    asset_store_copies_add(&others);
+    asset_store_copies_remove(&copies);
+    asset_store_copies_remove(&never);
+    TEST_ASSERT_FALSE(asset_store_locate(copy + 1, &copied));
+    TEST_ASSERT_TRUE(asset_store_locate(other + 1, &copied));
+    TEST_ASSERT_EQUAL_UINT32(at.entry, copied.entry);
+    asset_store_copies_remove(&others);
+    TEST_ASSERT_FALSE(asset_store_locate(other + 1, &copied));
+    asset_store_release(load);
+    TEST_ASSERT_FALSE(asset_store_locate(note + 1, &at));
+    remove_pack("suite_pack_a");
+}
+
 /* A counted mount is read once: a damaged file goes unseen until the last
  * use is released and the next mount reads it again. */
 static void
@@ -1140,6 +1184,7 @@ suite_asset_store(void) {
     RUN_TEST(test_the_load_pack_example_reads_an_entry_and_releases_the_pack);
     RUN_TEST(test_two_packs_mount_alone_and_a_bad_checksum_in_one_leaves_the_other_usable);
     RUN_TEST(test_a_pack_is_read_on_its_first_use_and_again_only_after_its_last_release);
+    RUN_TEST(test_an_entry_and_a_told_copy_of_it_locate_to_the_entry);
     RUN_TEST(test_a_mount_past_the_store_s_slots_is_refused_until_one_is_released);
 #endif
 }

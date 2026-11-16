@@ -13,6 +13,8 @@ import numpy as np
 TOOLS = pathlib.Path(__file__).resolve().parents[1]
 ROOT = TOOLS.parents[1]
 sys.path.insert(0, str(TOOLS))
+sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+from native_path import git_bash  # noqa: E402
 from native.shared_library import build_shared
 from r3d.light import albedo_from_uv, face_colours, LIGHT_GAMMA
 from anim import track_host
@@ -32,7 +34,7 @@ class PatchEquality(unittest.TestCase):
     def test_baked_patch_matches_runtime_per_vertex_bytes(self):
         compiler = track_host.compiler()
         if sys.platform == "win32":
-            compiler = subprocess.check_output(["bash", "-c", 'cygpath -m "$1"', "sh", compiler], text=True).strip()
+            compiler = subprocess.check_output([git_bash(), "-c", 'cygpath -m "$1"', "sh", compiler], text=True).strip()
         with contextlib.ExitStack() as stack:
             cache = pathlib.Path(stack.enter_context(tempfile.TemporaryDirectory()))
             main = ROOT / "launcher/main"

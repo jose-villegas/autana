@@ -28,6 +28,7 @@
 #include <stdint.h>
 
 #include "draw/draw_font.h"
+#include "draw/draw_sprite.h"
 #include "draw/icon.h"
 #include "input/input.h"
 #include "math/geometry/recti.h"
@@ -149,12 +150,44 @@ int ui_height(void);
  * frame) it bins as ui_end_for_bands() does and returns true. */
 bool ui_end(uint32_t background_rgb);
 
+/* After the frame's last window: if an aligned scroll window sat off where
+ * its own flow now puts it (its first frame, or a resize), closes the frame
+ * unpainted and returns true, and the caller builds the frame again, which
+ * lands it. Otherwise returns false and the frame goes on to ui_end(). */
+bool ui_end_if_unsettled(void);
+
 /* ui_end() over a backdrop that is drawn, not a colour. `paint_backdrop`
- * paints the whole screen and is called only when the UI itself changed; a
- * backdrop that animates draws its own changes before this call, and the
- * unchanged UI is put back over them. Full framebuffer only. */
-typedef void (*ui_backdrop_fn)(void);
-bool ui_end_over(ui_backdrop_fn paint_backdrop);
+ * paints the backdrop inside `area`, a panel rectangle, and marks it drawn.
+ * When the UI changed it is asked for the whole screen and every canvas goes
+ * over it. A backdrop that animates draws its own changes before this call;
+ * the unchanged UI is replayed over just those places, the backdrop first
+ * put back under all but opaque rects there, so nothing translucent blends
+ * over itself. Full framebuffer only. */
+typedef void (*ui_backdrop_fn)(recti_t area);
+
+/* The places a backdrop painted fresh this frame: disjoint, each pixel the
+ * backdrop alone, together holding every pixel it changed. One added past
+ * UI_FRESH_MAX, or one overlapping another, overflows the list. */
+#define UI_FRESH_MAX 256
+
+typedef struct {
+    recti_t rects[UI_FRESH_MAX];
+    int count;
+    bool overflow;
+} ui_fresh_t;
+
+void ui_fresh_clear(ui_fresh_t* fresh);
+/* Adds `count` rects, checked against each other and the list in one sort
+ * and sweep, so a backdrop adds all its rects in one call; the list's order
+ * is not kept. */
+void ui_fresh_add_all(ui_fresh_t* fresh, const recti_t* rects, int count);
+void ui_fresh_add(ui_fresh_t* fresh, recti_t rect);
+void ui_fresh_whole(ui_fresh_t* fresh);
+
+/* `fresh`, when the backdrop alone drew this frame, says where: the unchanged
+ * UI is replayed over just those places and nothing is put back. NULL, or
+ * one overflowed, replays over the frame's dirt as above. */
+bool ui_end_over(ui_backdrop_fn paint_backdrop, const ui_fresh_t* fresh);
 
 /* Declare that the framebuffer no longer holds this UI's output, so the
  * next ui_end() must repaint even if the UI is unchanged. Needed
@@ -207,6 +240,20 @@ typedef struct {
 /* The palette for the rest of the frame; NULL restores the shell look. */
 void ui_theme(const ui_theme_t* theme);
 
+/* Faces drawn from sprites, nine-sliced to each control, the border scaled
+ * with the UI's integer scale. `normal` and `pressed` are required; a NULL
+ * `selected` or `disabled` falls back to `normal`. A translucent face needs
+ * a background under it every paint: ui_end() with a colour, or
+ * ui_end_over(). */
+typedef struct {
+    const sprite_t *normal, *pressed, *selected, *disabled;
+} ui_skin_t;
+
+/* Buttons and tiles for the rest of the frame take their faces from `skin`,
+ * copied; NULL, the default, restores the code-drawn faces. The skin sets
+ * the faces and ui_theme() the ink, each independent of the other. */
+void ui_skin(const ui_skin_t* skin);
+
 /* A rect `w` wide and `h` tall at `y`, centred in a canvas `canvas_w` wide:
  * fixed-width content, where ui_row() spans the canvas. `w` is not clamped;
  * one wider than the canvas gets a negative x. */
@@ -224,12 +271,28 @@ ui_centered_rect(int canvas_w, int w, int h, int y) {
  * close at the next window verb or ui_end(). */
 void ui_screen(void);
 void ui_window(recti_t r);
+
+/* Where content shorter than its box sits along the box: text along its
+ * line, a scroll window's flow down the window. */
+typedef enum { UI_ALIGN_START, UI_ALIGN_CENTRE, UI_ALIGN_END } ui_align_t;
+
 /* A window whose flowed rows scroll vertically once they overflow `r`. */
 void ui_scroll_window(recti_t r);
+/* ui_scroll_window() whose flow, while it fits, sits at `align` down the
+ * window; flow that overflows starts at the top and scrolls. Placed from
+ * the previous frame's flow height, like microui's own clip; see
+ * ui_end_if_unsettled() for a frame that must land the first time. */
+void ui_scroll_window_aligned(recti_t r, ui_align_t align);
 /* Flow: ui_next() hands out the rows the window's width wide, or `w` wide and
  * centred after ui_row_centre(), each row below the last. */
 void ui_row(int h);
 void ui_row_centre(int w, int h);
+/* Flow in cells: ui_next() hands out cells `h` tall left to right, `cols` to
+ * a row, the window's width shared out among them, until the next row verb. */
+void ui_row_cells(int cols, int h);
+/* The height that fits `rows` rows of cells, gaps between, in the open
+ * window's height; 0 with no window open. */
+int ui_cell_height(int rows);
 recti_t ui_next(void);
 
 bool ui_button(recti_t r, const char* label);
@@ -251,6 +314,10 @@ bool ui_dropdown(recti_t r, const char* label, int* index, const char* const* na
 #define UI_DROPDOWN_CLOSE_FRAMES 4
 bool ui_dropdown_icons(recti_t r, const char* label, int* index, const char* const* names, const image_t* const* icons,
                        int count);
+
+/* How many strings this frame were wider than the space they were drawn
+ * in, and clipped: what a layout test asserts is none. */
+int ui_clipped_text(void);
 
 /* One line's height at the current theme's text scale. */
 int ui_text_height(void);

@@ -1,0 +1,14 @@
+node = "camera"
+animation = "lion"
+
+# Down the atrium's long axis toward the lion relief on the west wall, so its
+# meshes cross levels of detail on the way in.
+[[keys]]
+t = 0
+eye = [-760, 230, -35]
+look_at = [-1352, 160, -35]
+
+[[keys]]
+t = 10
+eye = [-990, 200, -35]
+look_at = [-1352, 165, -35]

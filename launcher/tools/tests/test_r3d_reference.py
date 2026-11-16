@@ -23,6 +23,86 @@ from tests.r3d_env import needs_mitsuba  # noqa: E402
 from tests.test_r3d_path_bake import needs_llvm  # noqa: E402
 
 
+def write_reference_tree(work):
+    from r3d import reference_set
+
+    expected = {name: name.encode() for name in
+                [poses for poses, _ in reference_set.TRAINING] + [reference_set.COVERAGE, reference_set.HELD_OUT[0]]}
+    for _, folder in reference_set.TRAINING:
+        for suffix in (".png", ".normal.npy"):
+            name = f"{folder}/frame{suffix}"
+            expected[name] = name.encode()
+    for name, data in expected.items():
+        path = work / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+    for _, folder in reference_set.TRAINING + (reference_set.HELD_OUT,):
+        path = work / folder
+        path.mkdir(exist_ok=True)
+        (path / "frame.linear.npy").write_bytes(b"linear light")
+    (work / reference_set.HELD_OUT[1] / "frame.png").write_bytes(b"held out picture")
+    return expected
+
+
+class PackedReferencesTests(unittest.TestCase):
+    def test_only_fit_inputs_round_trip_with_identical_bytes_despite_file_times(self):
+        import os
+        import tempfile
+        from r3d import reference_set
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            work, unpacked = root / "source", root / "unpacked"
+            work.mkdir()
+            expected = write_reference_tree(work)
+            sets = reference_set.fit_sets(True, False, False)
+            packed = reference_set.pack_references(work, sets)
+            self.assertEqual(reference_set.pack_references(work, sets), packed)
+            for path in work.rglob("*"):
+                os.utime(path, (0, 0))
+            self.assertEqual(reference_set.pack_references(work, sets), packed)
+            reference_set.unpack_references(packed, unpacked)
+            self.assertEqual({path.relative_to(unpacked).as_posix(): path.read_bytes()
+                              for path in unpacked.rglob("*") if path.is_file()}, expected)
+
+    def packed_names(self, path, probed, shaped):
+        import io
+        import tarfile
+        import tempfile
+        from r3d import reference_set
+
+        with tempfile.TemporaryDirectory() as directory:
+            work = pathlib.Path(directory)
+            write_reference_tree(work)
+            for poses, folder in (reference_set.PROBE_TRAINING, reference_set.PROBE_HELD_OUT):
+                (work / poses).write_bytes(b"probe poses")
+                (work / folder).mkdir()
+                for suffix in reference_set.PACKED_SUFFIXES + (".linear.npy",):
+                    (work / folder / f"face{suffix}").write_bytes(b"probe face")
+            (work / reference_set.HELD_OUT[1] / "frame.normal.npy").write_bytes(b"held out normals")
+            packed = reference_set.pack_references(work, reference_set.fit_sets(path, probed, shaped))
+        with tarfile.open(fileobj=io.BytesIO(packed), mode="r:xz") as tar:
+            return tar.getnames()
+
+    def test_a_fit_the_import_does_not_shape_packs_the_path_s_poses_and_training_references_alone(self):
+        # The pack of every import without geometry.probes or geometry.budget, so its bytes and key stay as they were.
+        self.assertEqual(self.packed_names(True, False, False),
+                         ["coverage.txt", "held_out.txt", "train.txt", "train_landscape.txt",
+                          "reference/frame.normal.npy", "reference/frame.png",
+                          "reference_landscape/frame.normal.npy", "reference_landscape/frame.png"])
+
+    def test_a_shaped_fit_packs_the_held_out_references_its_settle_counts_holes_over(self):
+        held_out = ["reference_held_out/frame.normal.npy", "reference_held_out/frame.png"]
+        self.assertEqual(self.packed_names(True, False, True),
+                         ["coverage.txt", "held_out.txt", "train.txt", "train_landscape.txt",
+                          "reference/frame.normal.npy", "reference/frame.png", *held_out,
+                          "reference_landscape/frame.normal.npy", "reference_landscape/frame.png"])
+        probes = ["probes.txt", "probes_held_out.txt"]
+        faces = [f"{folder}/face{suffix}" for folder in ("reference_probes", "reference_probes_held_out")
+                 for suffix in (".normal.npy", ".png")]
+        self.assertEqual(self.packed_names(False, True, True), probes + faces)
+
+
 def square(z=0.0, up=True):
     """The quad -2 < x, y < 2 at height `z`, wound to face +z, or -z when not `up`."""
     corners = [[-2.0, -2.0, z], [2.0, -2.0, z], [2.0, 2.0, z], [-2.0, 2.0, z]]

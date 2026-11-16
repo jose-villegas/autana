@@ -33,7 +33,7 @@ render_lab_dynres_set_on(bool on) {
 void
 render_lab_dynres_apply(void) {
     const int budget_ms = render_lab_budget_ms();
-    const int scale = render_lab_scale();
+    const int scale = lab_view_scale(&render_lab_view_tunables);
     if (budget_ms == applied_budget_ms && scale == applied_scale) {
         return;
     }
@@ -58,7 +58,7 @@ render_lab_dynres_stop(void) {
 
 const char*
 render_lab_dynres_size(void) {
-    static char size[RENDER_LAB_STATUS_LEN];
+    static char size[LAB_STATUS_LEN];
     const render_context_frame_t frame = render_context_frame(render_context_main());
     if (frame.step < 0 || snprintf(size, sizeof size, "%dx%d ", frame.width, frame.height) < 0) {
         size[0] = '\0';

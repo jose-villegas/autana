@@ -51,7 +51,8 @@ flowchart LR
 | Skin and light | `render/skin/r3d_skin_light.h`, one fused loop over the vertices | [cycles per vertex](#lighting-modes) |
 
 Posing or rotating a skin rebuilds its normal palette, not the table. A
-light setter or a light entity's `SCENE_FLAG_SKIN_DIRTY` rebuilds the table.
+light setter, or a light entity's `SCENE_FLAG_SKIN_DIRTY` or move
+(`SCENE_FLAG_RELIGHT`), rebuilds the table.
 
 ## How normals follow the bones
 

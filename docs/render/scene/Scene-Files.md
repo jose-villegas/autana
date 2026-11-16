@@ -369,8 +369,9 @@ wrap = "loop"
 # clips = ["idle", "walk"]
 ```
 
-The mesh id is `<scene>.<object>`; the skin id appends `.skin` and the skeleton
-id comes from the imported rig. The mesh holds unlit albedo. `bake` is refused.
+The mesh id is the import's variant, as an albedo renderer's is, so every
+renderer that places one import shares one mesh and skin; the skin id appends
+`.skin` and the skeleton id comes from the imported rig. The mesh holds unlit albedo. `bake` is refused.
 
 #### animator
 
