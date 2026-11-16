@@ -72,6 +72,17 @@ find_pool(void) {
     return slots != NULL;
 }
 
+static void
+set_contact_light(entity_t root) {
+    if (shown->surface == STRESS_SURFACE_SKINNED_FEET_BLOBS) {
+        const entity_t light = entity_find(root, name_hash(CAPYBARA_LIGHT));
+        transformf_t pose = transform_local(light);
+        transformf_set_rotation(&pose,
+                                quatf_from_axis_angle(vec3f_unit_x(), MATH_PI / 2 - STRESS_CONTACT_LIGHT_ELEVATION));
+        transform_set_local(light, pose);
+    }
+}
+
 static bool
 load_skins(void) {
     for (int i = 0; i < pool; i++) {
@@ -113,13 +124,7 @@ load_skins(void) {
         scene_set_contact_blob(skin, transform_world(grounds[i]).position.y, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT,
                                shown->surface == STRESS_SURFACE_SKINNED_FEET_BLOBS ? SCENE_CONTACT_FEET
                                                                                    : SCENE_CONTACT_BODY);
-        if (shown->surface == STRESS_SURFACE_SKINNED_FEET_BLOBS) {
-            const entity_t light = entity_find(slots[i], name_hash(CAPYBARA_LIGHT));
-            transformf_t pose = transform_local(light);
-            transformf_set_rotation(
-                &pose, quatf_from_axis_angle(vec3f_unit_x(), MATH_PI / 2 - STRESS_CONTACT_LIGHT_ELEVATION));
-            transform_set_local(light, pose);
-        }
+        set_contact_light(slots[i]);
     }
     return true;
 }

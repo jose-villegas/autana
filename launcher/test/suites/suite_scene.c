@@ -4900,8 +4900,8 @@ test_contact_light_choice_and_shadow_invalidation(void) {
     scene->world_lights.count = 2;
     scene->world_lights.direction[0] = vec3f_unit_y();
     scene->world_lights.direction[1] = vec3f_unit_z();
-    scene->world_lights.color[0] = (vec3f_t){1, 0, 0};
-    scene->world_lights.color[1] = (vec3f_t){0, 1, 0};
+    scene->world_lights.color[0] = vec3f_unit_x();
+    scene->world_lights.color[1] = vec3f_unit_y();
     light = scene_contact_light(scene, vec3f_zero());
     TEST_ASSERT_EQUAL_FLOAT(1, light.z);
     (void)scene_bounds(root);
@@ -4974,6 +4974,44 @@ test_contact_world_scale_clamp_and_fallback(void) {
 }
 
 static void
+assert_contact_disc_bounds(contact_disc_t d, box3f_t bounds) {
+    enum { SAMPLES = 32 };
+
+    const vec3f_t across = vec3f_cross(vec3f_unit_y(), d.axis);
+    for (int sample = 0; sample < SAMPLES; sample++) {
+        const float phase = 2 * MATH_PI * sample / SAMPLES;
+        const vec3f_t p = vec3f_add(d.centre, vec3f_add(vec3f_scale(d.axis, cosf(phase) / sqrtf(d.inverse_long2)),
+                                                        vec3f_scale(across, sinf(phase) / sqrtf(d.inverse_short2))));
+        TEST_ASSERT_TRUE(p.x >= bounds.lo.x && p.x <= bounds.hi.x);
+        TEST_ASSERT_TRUE(p.z >= bounds.lo.z && p.z <= bounds.hi.z);
+    }
+}
+
+static void
+assert_contact_lifts(scene_t* scene, scene_renderer_t* r, scene_skinned_renderer_t* skin, vec3f_t light, box3f_t bounds,
+                     float e) {
+    enum { LIFTS = 10 };
+
+    contact_disc_t discs[SKIN_CONTACTS_MAX];
+    for (int h = 0; h <= LIFTS; h++) {
+        const float t = h == LIFTS - 1 ? 0.999F : (float)h / LIFTS;
+        skin->model[0].m[1][3] = t * skin->contacts.lift;
+        const int count = scene_contact_discs(scene, r, light, discs);
+        TEST_ASSERT_EQUAL_INT(t >= 1 ? 0 : 1, count);
+        if (count == 0) {
+            continue;
+        }
+        const contact_disc_t d = discs[0];
+        if (h == 0 && e < 1) {
+            TEST_ASSERT_LESS_THAN_FLOAT(0, d.centre.x * light.x + d.centre.z * light.z);
+            TEST_ASSERT_LESS_THAN_FLOAT(d.inverse_short2, d.inverse_long2);
+            TEST_ASSERT_LESS_THAN_FLOAT(1, vec3f_dot(d.centre, d.axis) * vec3f_dot(d.centre, d.axis) * d.inverse_long2);
+        }
+        assert_contact_disc_bounds(d, bounds);
+    }
+}
+
+static void
 test_contact_warp_and_bounds_sweep(void) {
     fixture_with_skin(&SKIN_OPTIONS);
     const entity_t root = load("test_skin");
@@ -4994,7 +5032,7 @@ test_contact_warp_and_bounds_sweep(void) {
     TEST_ASSERT_EQUAL_FLOAT(0, discs[0].centre.z);
     TEST_ASSERT_EQUAL_FLOAT(discs[0].inverse_short2, discs[0].inverse_long2);
 
-    enum { ELEVATIONS = 10, LIFTS = 10, DIRECTIONS = 8, SAMPLES = 32 };
+    enum { ELEVATIONS = 10, DIRECTIONS = 8 };
 
     for (int az = 0; az < DIRECTIONS; az++) {
         for (int el = 0; el <= ELEVATIONS; el++) {
@@ -5002,31 +5040,7 @@ test_contact_warp_and_bounds_sweep(void) {
             const float angle = 2 * MATH_PI * az / DIRECTIONS;
             const vec3f_t light = {sqrtf(1 - e * e) * cosf(angle), e, sqrtf(1 - e * e) * sinf(angle)};
             const box3f_t bounds = contact_blob_bounds(r->world_bounds, 0, scene_contact_reach(scene, r), light);
-            for (int h = 0; h <= LIFTS; h++) {
-                const float t = h == LIFTS - 1 ? 0.999F : (float)h / LIFTS;
-                skin->model[0].m[1][3] = t * skin->contacts.lift;
-                const int count = scene_contact_discs(scene, r, light, discs);
-                TEST_ASSERT_EQUAL_INT(t >= 1 ? 0 : 1, count);
-                if (count == 0) {
-                    continue;
-                }
-                const contact_disc_t d = discs[0];
-                if (h == 0 && e < 1) {
-                    TEST_ASSERT_LESS_THAN_FLOAT(0, d.centre.x * light.x + d.centre.z * light.z);
-                    TEST_ASSERT_LESS_THAN_FLOAT(d.inverse_short2, d.inverse_long2);
-                    TEST_ASSERT_LESS_THAN_FLOAT(1, vec3f_dot(d.centre, d.axis) * vec3f_dot(d.centre, d.axis)
-                                                       * d.inverse_long2);
-                }
-                const vec3f_t across = vec3f_cross(vec3f_unit_y(), d.axis);
-                for (int sample = 0; sample < SAMPLES; sample++) {
-                    const float phase = 2 * MATH_PI * sample / SAMPLES;
-                    const vec3f_t p =
-                        vec3f_add(d.centre, vec3f_add(vec3f_scale(d.axis, cosf(phase) / sqrtf(d.inverse_long2)),
-                                                      vec3f_scale(across, sinf(phase) / sqrtf(d.inverse_short2))));
-                    TEST_ASSERT_TRUE(p.x >= bounds.lo.x && p.x <= bounds.hi.x);
-                    TEST_ASSERT_TRUE(p.z >= bounds.lo.z && p.z <= bounds.hi.z);
-                }
-            }
+            assert_contact_lifts(scene, r, skin, light, bounds, e);
         }
     }
 }

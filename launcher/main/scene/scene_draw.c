@@ -289,20 +289,25 @@ warped_disc(vec3f_t ground, float height, float radius, float strength, vec3f_t 
                             .strength = strength};
 }
 
+static int
+body_contact_disc(const scene_t* scene, const scene_renderer_t* r, vec3f_t light, contact_disc_t* discs) {
+    vec3f_t ground = box3f_centre(r->world_bounds);
+    ground.y = r->contact_blob_ground_y;
+    const float radius = scene_contact_reach(scene, r).radius;
+    if (!(radius > 0)) {
+        return 0;
+    }
+    discs[0] = warped_disc(ground, 0, radius, r->contact_blob_strength, light);
+    return 1;
+}
+
 int
 scene_contact_discs(const scene_t* scene, const scene_renderer_t* r, vec3f_t light, contact_disc_t* discs) {
     if (!(r->contact_blob_strength > 0)) {
         return 0;
     }
     if (!contact_uses_feet(scene, r)) {
-        vec3f_t ground = box3f_centre(r->world_bounds);
-        ground.y = r->contact_blob_ground_y;
-        const float radius = scene_contact_reach(scene, r).radius;
-        if (!(radius > 0)) {
-            return 0;
-        }
-        discs[0] = warped_disc(ground, 0, radius, r->contact_blob_strength, light);
-        return 1;
+        return body_contact_disc(scene, r, light, discs);
     }
     const scene_skinned_renderer_t* skin = &scene->skinned_renderers[r->entity];
     const skin_contacts_t* contacts = &skin->contacts;

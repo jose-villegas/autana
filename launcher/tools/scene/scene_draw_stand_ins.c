@@ -25,6 +25,11 @@ render_context_set_take(render_context_t* context, memory_take_fn take) {
 }
 
 void
+render_context_forget(render_context_t* context) {
+    (void)context;
+}
+
+void
 render_context_drop_scratch(render_context_t* context) {
     (void)context;
 }
