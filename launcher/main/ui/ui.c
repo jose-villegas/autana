@@ -329,8 +329,34 @@ by_top(const void* a, const void* b) {
     return ((const recti_t*)a)->y - ((const recti_t*)b)->y;
 }
 
-/* Sorted along the axis the rects are thinner on, a rect can overlap only
- * those that start before it ends there. */
+/* Whether `b`, sorted after `a`, starts before `a` ends: across along x, else along y. */
+static bool
+starts_within(recti_t a, recti_t b, bool across) {
+    return across ? b.x < recti_right(a) : b.y < recti_bottom(a);
+}
+
+/* Whether any two of `r` overlap. Sorted along the axis the rects are
+ * thinner on, a rect can overlap only those that start before it ends there. */
+static bool
+rects_overlap_any(recti_t* r, int count) {
+    int widths = 0;
+    int heights = 0;
+    for (int i = 0; i < count; i++) {
+        widths += r[i].w;
+        heights += r[i].h;
+    }
+    const bool across = widths <= heights;
+    qsort(r, (size_t)count, sizeof r[0], across ? by_left : by_top);
+    for (int i = 0; i < count; i++) {
+        for (int j = i + 1; j < count && starts_within(r[i], r[j], across); j++) {
+            if (!recti_is_empty(recti_intersect(r[i], r[j]))) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 void
 ui_fresh_add_all(ui_fresh_t* fresh, const recti_t* rects, int count) {
     int at = fresh->count;
@@ -338,31 +364,14 @@ ui_fresh_add_all(ui_fresh_t* fresh, const recti_t* rects, int count) {
         if (recti_is_empty(rects[i])) {
             continue;
         }
-        if (at == UI_FRESH_MAX) {
-            fresh->overflow = true;
-        } else {
+        fresh->overflow = at == UI_FRESH_MAX;
+        if (!fresh->overflow) {
             fresh->rects[at++] = rects[i];
         }
     }
-    if (fresh->overflow) {
+    if (fresh->overflow || rects_overlap_any(fresh->rects, at)) {
+        fresh->overflow = true;
         return;
-    }
-    int widths = 0;
-    int heights = 0;
-    for (int i = 0; i < at; i++) {
-        widths += fresh->rects[i].w;
-        heights += fresh->rects[i].h;
-    }
-    const bool across = widths <= heights;
-    recti_t* const r = fresh->rects;
-    qsort(r, (size_t)at, sizeof r[0], across ? by_left : by_top);
-    for (int i = 0; i < at; i++) {
-        for (int j = i + 1; j < at && (across ? r[j].x < recti_right(r[i]) : r[j].y < recti_bottom(r[i])); j++) {
-            if (!recti_is_empty(recti_intersect(r[i], r[j]))) {
-                fresh->overflow = true;
-                return;
-            }
-        }
     }
     fresh->count = at;
 }
