@@ -6074,14 +6074,14 @@ test_a_skin_disabled_and_enabled_again_draws_the_same_frame(void) {
     scene_animation_step(columns(scene), RIG_DURATION_MS / RIG_TRAVEL);
     frame(0);
     memcpy(fx.held, fx.pixels, picture);
-    const size_t shown = memory_free_bytes(MEMORY_INTERNAL);
+    const size_t shown = memory_free_bytes(MEMORY_FAST);
     entity_set_enabled(green, false);
-    TEST_ASSERT_GREATER_THAN_UINT(shown, memory_free_bytes(MEMORY_INTERNAL));
+    TEST_ASSERT_GREATER_THAN_UINT(shown, memory_free_bytes(MEMORY_FAST));
     frame(0);
     TEST_ASSERT_NOT_EQUAL_INT(0, memcmp(fx.held, fx.pixels, picture));
     entity_set_enabled(green, true);
     frame(0);
-    TEST_ASSERT_EQUAL_UINT(shown, memory_free_bytes(MEMORY_INTERNAL));
+    TEST_ASSERT_EQUAL_UINT(shown, memory_free_bytes(MEMORY_FAST));
     TEST_ASSERT_EQUAL_MEMORY(fx.held, fx.pixels, picture);
 }
 
