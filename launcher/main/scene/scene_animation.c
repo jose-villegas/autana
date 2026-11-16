@@ -80,6 +80,19 @@ paced(const scene_t* scene, scene_row_t e) {
            && (scene->flags[e] & SCENE_FLAG_ACTIVE);
 }
 
+/* Whether copy `e` poses this step. A bound copy's tier changes only on the
+ * frames the draw measured it for, and its interval follows the settings
+ * every step; a copy with no skin bound poses every step. */
+static bool
+pose_due(const scene_t* scene, scene_row_t e, const render_anim_settings_t* settings) {
+    if (!scene->skinned_renderers[e].bound) {
+        return true;
+    }
+    scene_animator_t* a = &scene->animators[e];
+    a->interval = scene_animator_due(scene, a) ? animation_interval(a, settings) : tier_every(a->tier, settings);
+    return scene_animator_due(scene, a);
+}
+
 void
 scene_animate_range(scene_t* scene, int first, int count, uint32_t dt_ms, const render_anim_settings_t* settings) {
     for (int i = first; i < first + count; i++) {
@@ -89,15 +102,8 @@ scene_animate_range(scene_t* scene, int first, int count, uint32_t dt_ms, const 
         if (!paced(scene, e)) {
             continue;
         }
-        /* The tier changes only on the frames the draw measured it for; its
-         * interval follows the settings every step. */
-        const bool bound = scene->skinned_renderers[e].bound;
-        if (bound) {
-            a->interval =
-                scene_animator_due(scene, a) ? animation_interval(a, settings) : tier_every(a->tier, settings);
-        }
         const bool force = a->dirty;
-        const bool due = !bound || scene_animator_due(scene, a);
+        const bool due = pose_due(scene, e, settings);
         /* A zero-time repose belongs to its dirty copy; others keep their debt. */
         if (!force && (dt_ms == 0 || !due)) {
             a->owed_ms += dt_ms;
