@@ -611,27 +611,25 @@ python launcher/tools/anim/track_host.py \
 ## The capybara asset
 
 `launcher/demo/capybara/capybara.blend` is a hand-modelled low-poly capybara
-with a control rig and in-place loops at 30 fps: `idle`, `walk`, `walk_fast`,
-`gallop` and `half_bound`. It is the source asset for skinned-mesh import;
-nothing in the build reads it.
+with a control rig and actions at 30 fps. The clip list is in
+[`capybara.import.toml`](../../../../demo/capybara/capybara.import.toml); idle
+gesture references are in [the asset notes](../../../../demo/capybara/Idle-Gestures.md).
 
-Its glTF export, `capybara.glb`, is a cached bake: deform bones only,
-every loop as an animation, four influences per vertex. Host tools that read
-glTF use it, such as the
-[skinned-mesh lighting](../../../../../docs/render/animation/Skinned-Lighting.md)
-measurement; `bake.py path capybara.glb` prints where it is.
-`capybara.import.toml` names the
-`.blend` and the loops to export (the file also holds the rig's own
-`capyrigAction`), and `launcher/tools/bake/bake.py` runs the model-agnostic
-exporter in Blender. By hand, it is:
+The cached export, `capybara.glb`, contains deform bones, selected actions and
+four influences per vertex. `bake.py path capybara.glb` prints its cache path.
+The [lighting measurement](../../../../../docs/render/animation/Skinned-Lighting.md) reads it.
+
+`capybara.import.toml` selects the source and actions.
+`launcher/tools/bake/bake.py` runs the model-agnostic exporter in Blender.
+By hand:
 
 ```sh
 blender --background --factory-startup --python launcher/tools/gltf/blend_skin_to_glb.py -- \
     launcher/demo/capybara/capybara.blend capybara.glb \
-    --clips idle,walk,walk_fast,gallop,half_bound
+    --clips idle,walk,walk_fast,gallop,half_bound,glance,ear_flick
 ```
 
-and measure the lighting again:
+Measure its lighting with:
 
 ```sh
 launcher/tools/r3d/skin_light/report_skin_light.sh "$(python launcher/tools/bake/bake.py path capybara.glb)" gallop
