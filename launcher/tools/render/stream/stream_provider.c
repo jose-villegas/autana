@@ -287,11 +287,19 @@ index_records(size_t begin, size_t end) {
     return true;
 }
 
+/* A stream opens with a HEADER of its fixed length; anything else is refused
+ * from its head alone, before waiting on the length it claims. */
+static bool
+first_head(frame_record_head_t head) {
+    return (head.type == FRAME_RECORD_HEADER && head.length == sizeof(frame_record_header_t))
+           || refuse("HEADER must be first");
+}
+
 static bool
 index_header(frame_record_head_t head, size_t at) {
     frame_record_header_t header;
-    if (head.type != FRAME_RECORD_HEADER || head.length != sizeof header) {
-        return refuse("HEADER must be first");
+    if (!first_head(head)) {
+        return false;
     }
     memcpy(&header, stream.bytes + at, sizeof header);
     if (header.version != FRAME_RECORD_VERSION) {
@@ -383,7 +391,8 @@ stream_feed(const uint8_t* bytes, size_t count) {
         frame_record_head_t head;
         memcpy(&head, stream.bytes + stream.scanned, sizeof head);
         const size_t body = stream.scanned + sizeof head;
-        if (head.length > stream.size - body || !scan_record(head, body, &stream.scanned)) {
+        if ((stream.scanned == 0 && !first_head(head)) || head.length > stream.size - body
+            || !scan_record(head, body, &stream.scanned)) {
             break;
         }
     }

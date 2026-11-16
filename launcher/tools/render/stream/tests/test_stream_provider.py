@@ -135,6 +135,15 @@ class StreamProvider(unittest.TestCase):
         self.assertIn(pack_name, run.stderr)
         self.assertIn("crc32 stream=", run.stderr)
 
+    def test_bytes_that_are_no_stream_are_refused_at_once(self):
+        noise = self.out / "noise.frec"
+        noise.write_bytes(bytes([0xA5]) * 1000)
+        run = subprocess.run([str(self.build_probe()), str(noise), "1000", str(self.out / "noise.bmp")],
+                             capture_output=True, text=True, timeout=600,
+                             env=dict(os.environ, AUTANA_ASSET_DIR=str(self.out / "assets")))
+        self.assertEqual(run.returncode, 1, run.stdout + run.stderr[-2000:])
+        self.assertIn("HEADER must be first", run.stdout)
+
     def replay_probe(self, path, target=None):
         args = [str(self.build_probe()), str(path), "7", str(self.out / "probe.bmp")]
         if target is not None:
