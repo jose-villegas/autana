@@ -609,8 +609,8 @@ class StageTests(unittest.TestCase):
         inputs = reference_inputs(job, scene)
         fields = {field.name for field in dataclasses.fields(ReferenceInputs)}
         unprobed = bake.reference_recipe(inputs, TOOL_KEYS, bake.Poses({}))
-        self.assertEqual(set(unprobed) - {"sources"}, fields - {"probes", "shaped"}, "an unshaped fit changed the key")
-        inputs = dataclasses.replace(inputs, probes=types.SimpleNamespace(spacing=None, face=8), shaped=True)
+        self.assertEqual(set(unprobed) - {"sources"}, fields - {"probes"}, "an import without probes changed the key")
+        inputs = dataclasses.replace(inputs, probes=types.SimpleNamespace(spacing=None, face=8))
         recipe = bake.reference_recipe(inputs, TOOL_KEYS, bake.Poses({}))
         self.assertEqual(set(recipe) - {"sources"}, fields)
         brighter = dataclasses.replace(inputs, tonemap_white=inputs.tonemap_white * 2)
@@ -1871,7 +1871,7 @@ class ProduceTests(unittest.TestCase):
         from r3d import reference_render
         from r3d.reference_set import fit_sets
 
-        # A camera path, probes and a shaped fit: every set a reference bake can hold.
+        # A camera path and probes: every set a reference bake can hold.
         self.inputs = types.SimpleNamespace(sets=lambda: fit_sets(True, True))
 
         def render_sets(inputs, sets, samples=4):
