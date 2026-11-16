@@ -1018,29 +1018,6 @@ class AppearanceFitTests(unittest.TestCase):
                                               lr_colour=0.05, laplacian=0.0, report=0, seam_margin=0)
             self.assertLess(np.mean(history[-10:]), 0.5 * np.mean(history[:3]))
 
-    def test_no_point_moves_past_the_cap(self):
-        import torch
-        from r3d.appearance_simplify import MOVE_CAP, Renderer, optimise, point_edges, vertex_scale
-
-        with tempfile.TemporaryDirectory() as directory:
-            mesh = start_mesh(write_start(directory))
-        size = (48, 40)
-        matrix = projection([0.2, -0.1, 3.0], [0.0, 0.0, -1.0], 24, 20, 0.62, 0.5)
-        truth = Renderer(mesh.tris, mesh.double, mesh.vertex_point, size, "cuda")
-        target = draw(truth, mesh.points * [1.3, 0.8, 1.0], mesh.rgb, matrix)
-        scale = vertex_scale(torch.as_tensor(mesh.points, dtype=torch.float32),
-                             torch.as_tensor(point_edges(mesh.tris, mesh.vertex_point))).numpy()[:, 0]
-        cap = 0.02
-        moved = {}
-        for move_cap in (0.0, cap):
-            points, _rgb, _history = optimise(mesh, [(matrix, target)], size, steps=150, batch=1, lr_position=0.01,
-                                              lr_colour=0.05, laplacian=0.0, report=0, seam_margin=0, move_cap=move_cap)
-            moved[move_cap] = np.linalg.norm(points - mesh.points, axis=1) / scale
-        self.assertGreater(moved[0.0].max(), 2 * cap, "the free fit never reaches the cap")
-        self.assertLessEqual(moved[cap].max(), cap * (1 + 1e-4))
-        self.assertGreater(moved[cap].max(), 0.5 * cap)
-        self.assertGreater(MOVE_CAP, 0)
-
     def test_a_flat_fit_moves_the_edge_between_two_face_colours(self):
         from r3d.appearance_simplify import Renderer, optimise
 
@@ -1235,8 +1212,7 @@ class AppearanceFitTests(unittest.TestCase):
         self.assertTrue(torch.isinf(fitted[~drawn]).all())
 
     def gbuffer_fit(self, rest, shown, source, carved, copies=None, **weights):
-        """The rest fitted on positions alone to one view of `shown`, the mesh the reference shows: its points. Moves
-        are free: each test's card travels several of its own edge lengths to show one term at work."""
+        """The rest fitted on positions alone to one view of `shown`, the mesh the reference shows: its points."""
         from r3d.appearance_simplify import Renderer, optimise
 
         size = (48, 40)
@@ -1245,7 +1221,7 @@ class AppearanceFitTests(unittest.TestCase):
                       matrix)
         return optimise(rest, [(matrix, target)], size, steps=200, batch=1, lr_position=0.01, lr_colour=0.0,
                         laplacian=0.0, report=0, seam_margin=0, copies=copies, source=source, carved=carved,
-                        move_cap=0, **weights)[0]
+                        **weights)[0]
 
     def test_the_front_term_pushes_the_rest_behind_the_copy(self):
         copy = self.card(0.0, half=1.0, rgb=0.2)
