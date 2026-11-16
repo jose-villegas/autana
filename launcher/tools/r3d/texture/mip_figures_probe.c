@@ -15,7 +15,7 @@
 enum {
     WIDTH = 320,
     HEIGHT = 200,
-    SIZE_LOG2 = 6, /* Bistro's street textures: 64 texels a side */
+    SIZE_LOG2 = 6, /* 64 texels a side: six levels down to 2 */
     LEVELS = SIZE_LOG2 - R3D_TEXTURE_SIZE_LOG2_MIN + 1,
     NONE = -1,
     TEXEL_BITS = CHAR_BIT / R3D_TEXTURE_INDEX4_PER_BYTE,

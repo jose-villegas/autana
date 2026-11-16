@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-"""Texture-Mapping.md's mip-level figure; --cc CC --out DIR.
+"""Texture-Mapping.md's mip-level figure.
 
-Top: a Bistro street texture's mip chain as the LTEX baker makes it (texture_asset.py), level 0 at the size
-bistro.textures.toml gives it, each level at its true size beside the last. Below: a receding floor drawn by the
-span fill (mip_figures_probe.c) with a texture whose every level is one solid colour, so each pixel shows the level
-its triangle picked; beside it, the pixels whose triangle picked a finer level than their own step reads, the far
-part of each triangle, where it aliases.
+    mip_figures.py --cc CC --out DIR --textures TOML --source PNG --title TEXT
+
+Top: the source texture's mip chain as the LTEX baker makes it (texture_asset.py), level 0 at the size the
+textures file's first renderer gives it, each level at its true size beside the last. Below: a receding floor drawn
+by the span fill (mip_figures_probe.c) with a texture whose every level is one solid colour, so each pixel shows the
+level its triangle picked; beside it, the pixels whose triangle picked a finer level than their own step reads, the
+far part of each triangle, where it aliases.
 """
+import argparse
 import pathlib
 import sys
 import tomllib
@@ -16,9 +19,8 @@ import numpy as np
 TOOLS = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(TOOLS))
 sys.path.insert(0, str(TOOLS / "r3d"))
-from docs.figures import probe_into_folder  # noqa: E402
+from docs.figures import run_probe  # noqa: E402
 from docs.plot_style import FAINT, LABEL_SIZE, MUTED, SLOTS, save, subplots  # noqa: E402
-from docs.producer import Producer  # noqa: E402
 from matplotlib.patches import Patch  # noqa: E402
 from obj import Texture  # noqa: E402
 from texture import texture_asset  # noqa: E402
@@ -28,11 +30,6 @@ PROBE = pathlib.Path(__file__).with_name("mip_figures_probe.c")
 SOURCES = (PROBE, ROOT / "launcher/main/render/texture/r3d_span_textured.c",
            ROOT / "launcher/main/render/texture/r3d_texture.c", ROOT / "launcher/main/render/r3d_span.c",
            ROOT / "launcher/main/asset/asset_pack.c", ROOT / "launcher/main/render/r3d_lit_mesh.c")
-# The demo's source textures, read from its checkout as bistro_figures.py does.
-PRODUCER = Producer(area="render", needs=("host", "bakes"), run=("--cc", "{cc}", "--out", "{out}"),
-                    outputs=("texture-mip-levels.png",))
-TEXTURES = ROOT / "launcher/demo/bistro/bistro.textures.toml"
-SOURCE = ROOT / "launcher/demo/bistro/source/textures/pavement_cobblestone_02_basecolor.png"
 IMAGE = "texture-mip-levels.png"
 NONE = -1
 CHAIN_GAP = 10  # level-0 texels between two levels of the chain
@@ -68,19 +65,19 @@ def level_image(levels, count):
     return image
 
 
-def street_texture():
-    """The cobblestone as the bake packs it: an LTEX entry, decoded back."""
-    size = tomllib.loads(TEXTURES.read_text(encoding="utf-8"))["renderers"][0]["size"]
-    indexed = texture_asset.material_texture(Texture(SOURCE).levels[0], size)
+def baked_texture(textures, source):
+    """`source` as the bake packs it at the size `textures` gives: an LTEX entry, decoded back."""
+    size = tomllib.loads(textures.read_text(encoding="utf-8"))["renderers"][0]["size"]
+    indexed = texture_asset.material_texture(Texture(source).levels[0], size)
     return texture_asset.decode(texture_asset.pack_ltex(indexed))
 
 
-def mip_figure(data, out):
+def mip_figure(data, args):
     shape = (data["height"], data["width"])
     picked = np.array(data["picked"]).reshape(shape)
     ideal = np.array(data["ideal"]).reshape(shape)
     count = data["levels"]
-    strip, sides = chain_image(street_texture())
+    strip, sides = chain_image(baked_texture(args.textures, args.source))
     fig, axes = subplots(2, 2, FIGURE_SIZE, height_ratios=(CHAIN_HEIGHT_SHARE, 1))
     gs = axes[0, 0].get_gridspec()
     for axis in axes[0]:
@@ -94,7 +91,7 @@ def mip_figure(data, out):
         chain.text(x + side / 2, sides[0] + below, f"level {level}: {side}x{side}", ha="center", va="top",
                    fontsize=LABEL_SIZE, color=MUTED)
         x += side + CHAIN_GAP
-    chain.set_title("A Bistro cobblestone's mip chain, each level half the last, at true size")
+    chain.set_title(args.title)
     chain.axis("off")
     axes[1, 0].imshow(level_image(picked, count), interpolation="nearest")
     axes[1, 0].set_title("The level each triangle picked")
@@ -114,12 +111,19 @@ def mip_figure(data, out):
     handles.append(Patch(color=ALIASED, label="aliases"))
     fig.legend(handles=handles, loc="lower center", ncol=len(handles), fontsize=LABEL_SIZE, frameon=False)
     fig.get_layout_engine().set(rect=(0, 0.05, 1, 0.95))
-    save(fig, out / IMAGE)
+    save(fig, args.out / IMAGE)
 
 
 def main():
-    data, out = probe_into_folder(__doc__.splitlines()[0], SOURCES)
-    mip_figure(data, out)
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--cc", required=True)
+    parser.add_argument("--out", type=pathlib.Path, required=True)
+    parser.add_argument("--textures", type=pathlib.Path, required=True, help="a textures.toml: its first size")
+    parser.add_argument("--source", type=pathlib.Path, required=True, help="the texture whose chain is shown")
+    parser.add_argument("--title", required=True, help="the chain's title")
+    args = parser.parse_args()
+    args.out.mkdir(parents=True, exist_ok=True)
+    mip_figure(run_probe(args.cc, SOURCES), args)
     return 0
 
 
