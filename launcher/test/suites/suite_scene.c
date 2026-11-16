@@ -5394,6 +5394,126 @@ test_animation_rate_reads_last_drawn_bounds_and_rejects_offscreen(void) {
 }
 
 /* Defaults, overrides and reset must select the same tiers in both worker slices. */
+/* `a` tiered at `px` with every tier at `base` frames, then its tier's interval
+ * set to `wanted` in the settings: the next step, not due, takes it at once and
+ * keeps the tier. */
+static void
+interval_follows_settings(float px, int tier, int base, int wanted) {
+    scene_t* scene = rate_fixture();
+    scene_animator_t* a = &scene->animators[0];
+    render_settings_t settings = RENDER_SETTINGS_DEFAULT;
+    settings.anim.mid_every = settings.anim.far_every = base;
+    render_context_set_settings(render_context_main(), &settings);
+    step_due_at(scene, a, px);
+    TEST_ASSERT_EQUAL_INT(tier, a->tier);
+    TEST_ASSERT_EQUAL_INT(base, a->interval);
+    TEST_ASSERT_FALSE(scene_animator_due(scene, a));
+    if (tier == SCENE_ANIM_TIER_MID) {
+        settings.anim.mid_every = wanted;
+    } else {
+        settings.anim.far_every = wanted;
+    }
+    render_context_set_settings(render_context_main(), &settings);
+    a->drawn_radius_px = px;
+    scene_animation_step(scene, ANIM_RATE_DT_MS);
+    TEST_ASSERT_EQUAL_INT(wanted, a->interval);
+    TEST_ASSERT_EQUAL_INT(tier, a->tier);
+}
+
+#define ANIM_MID_PX ((RENDER_SETTINGS_DEFAULT.anim.mid_px + RENDER_SETTINGS_DEFAULT.anim.far_px) / 2)
+
+static void
+test_animation_interval_follows_a_smaller_mid_every_on_a_non_due_step(void) {
+    interval_follows_settings(ANIM_MID_PX, SCENE_ANIM_TIER_MID, 3, 2);
+}
+
+static void
+test_animation_interval_follows_a_larger_mid_every_on_a_non_due_step(void) {
+    interval_follows_settings(ANIM_MID_PX, SCENE_ANIM_TIER_MID, 2, RENDER_ANIM_EVERY_MAX);
+}
+
+static void
+test_animation_interval_follows_a_smaller_far_every_on_a_non_due_step(void) {
+    interval_follows_settings(0.0F, SCENE_ANIM_TIER_FAR, 3, 2);
+}
+
+static void
+test_animation_interval_follows_a_larger_far_every_on_a_non_due_step(void) {
+    interval_follows_settings(0.0F, SCENE_ANIM_TIER_FAR, 2, RENDER_ANIM_EVERY_MAX);
+}
+
+/* The frames after which `a` is not due keep the radius the step cleared; the
+ * due ones carry the draw's measure. */
+static void
+assert_measured_only_when_due(scene_t* scene, const scene_animator_t* a) {
+    for (int i = 0; i < 2 * RENDER_SETTINGS_DEFAULT.anim.far_every; i++) {
+        frame(0);
+        if (scene_animator_due(scene, a)) {
+            TEST_ASSERT_GREATER_THAN_FLOAT(0.0F, a->drawn_radius_px);
+        } else {
+            TEST_ASSERT_EQUAL_FLOAT(0.0F, a->drawn_radius_px);
+        }
+    }
+}
+
+static void
+test_the_draw_measures_a_bound_copy_only_on_its_due_frames(void) {
+    entity_t root = rig_fixture("rig.skin2", NULL);
+    scene_t* scene = columns(root);
+    scene_animator_t* a = &scene->animators[row_of(entity_find(root, name_hash("red")))];
+    render_context_set_settings(render_context_main(), &RENDER_SETTINGS_DEFAULT);
+    frame_due(scene, a);
+    TEST_ASSERT_EQUAL_INT(RENDER_SETTINGS_DEFAULT.anim.far_every, a->interval);
+    assert_measured_only_when_due(scene, a);
+    release_fixture();
+}
+
+static void
+test_the_draw_never_measures_an_unbound_animated_copy(void) {
+    entity_t root = rig_fixture("rig.skin2", NULL);
+    scene_t* scene = columns(root);
+    const entity_t green = entity_find(root, name_hash("green"));
+    static const char* const clips[] = {"rig.move", "rig.move"};
+    entity_set_enabled(green, true);
+    TEST_ASSERT_TRUE(animator_set_clips(green, "rig", clips, 2, NULL));
+    TEST_ASSERT_TRUE(animator_play(green, 0, 0));
+    const scene_animator_t* unbound = &scene->animators[row_of(green)];
+    TEST_ASSERT_FALSE(scene->skinned_renderers[row_of(green)].bound);
+    TEST_ASSERT_EQUAL_UINT32(0, unbound->interval);
+    render_context_set_settings(render_context_main(), &RENDER_SETTINGS_DEFAULT);
+    for (int i = 0; i < 2 * RENDER_SETTINGS_DEFAULT.anim.far_every; i++) {
+        frame(0);
+        TEST_ASSERT_EQUAL_FLOAT(0.0F, unbound->drawn_radius_px);
+    }
+    release_fixture();
+}
+
+static void
+test_the_draw_measures_two_copies_each_on_its_own_due_frames(void) {
+    entity_t root = rig_fixture("rig.skin2", "rig.quad");
+    scene_t* scene = columns(root);
+    const scene_animator_t* red = &scene->animators[row_of(entity_find(root, name_hash("red")))];
+    const scene_animator_t* green = &scene->animators[row_of(entity_find(root, name_hash("green")))];
+    render_context_set_settings(render_context_main(), &RENDER_SETTINGS_DEFAULT);
+    frame_due(scene, red);
+    frame_due(scene, green);
+    TEST_ASSERT_NOT_EQUAL(red->phase, green->phase);
+    TEST_ASSERT_EQUAL_INT(RENDER_SETTINGS_DEFAULT.anim.far_every, red->interval);
+    TEST_ASSERT_EQUAL_INT(RENDER_SETTINGS_DEFAULT.anim.far_every, green->interval);
+    int red_only = 0, green_only = 0;
+    for (int i = 0; i < 2 * RENDER_SETTINGS_DEFAULT.anim.far_every; i++) {
+        frame(0);
+        const bool red_due = scene_animator_due(scene, red), green_due = scene_animator_due(scene, green);
+        TEST_ASSERT_EQUAL(red_due, red->drawn_radius_px > 0.0F);
+        TEST_ASSERT_EQUAL(green_due, green->drawn_radius_px > 0.0F);
+        red_only += red_due && !green_due;
+        green_only += green_due && !red_due;
+    }
+    TEST_ASSERT_GREATER_THAN_INT(0, red_only);
+    TEST_ASSERT_GREATER_THAN_INT(0, green_only);
+    release_fixture();
+}
+
 static void
 test_animation_rate_overrides_and_reset(void) {
     scene_t* scene = rate_fixture();
@@ -7925,6 +8045,13 @@ run_scene_suite(void) {
     RUN_TEST(test_animation_rate_blend_debt_and_phase_rebind);
     RUN_TEST(test_animation_rate_one_one_disables_skips);
     RUN_TEST(test_animation_rate_reads_last_drawn_bounds_and_rejects_offscreen);
+    RUN_TEST(test_animation_interval_follows_a_smaller_mid_every_on_a_non_due_step);
+    RUN_TEST(test_animation_interval_follows_a_larger_mid_every_on_a_non_due_step);
+    RUN_TEST(test_animation_interval_follows_a_smaller_far_every_on_a_non_due_step);
+    RUN_TEST(test_animation_interval_follows_a_larger_far_every_on_a_non_due_step);
+    RUN_TEST(test_the_draw_measures_a_bound_copy_only_on_its_due_frames);
+    RUN_TEST(test_the_draw_never_measures_an_unbound_animated_copy);
+    RUN_TEST(test_the_draw_measures_two_copies_each_on_its_own_due_frames);
     RUN_TEST(test_skin_step_skips_unposed_entities_before_posed_clusters);
     RUN_TEST(test_failed_second_camera_releases_the_first_animator);
     RUN_TEST(test_replacing_skin_clips_drives_the_new_clip_after_one_step);
