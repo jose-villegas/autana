@@ -274,16 +274,21 @@ def write_carved(scene, job, src, bundle, out):
 
 
 def carved_shapes(src, entries, copies, eyes, near, sight=None):
-    """(shapes, rest): per carved mesh of a decoded bundle, most drawn first, its first source object's source
-    triangles and its baked finest level placed by its first copy, both in source units; and the rest's finest
+    """(shapes, rest): per carved mesh of a decoded bundle, most drawn first, its first source object's (or, for
+    a unit, its anchor part's) source triangles and its baked finest level placed by its first copy, both in source units; and the rest's finest
     triangle count."""
     from r3d import mesh_bundle
     from r3d.lit_mesh import finest_count, finest_triangles, read_bundle_mesh
     from r3d.obj import alpha_tested
     from r3d.objects.detail import nearest_distance
+    from r3d.objects.object_error import part_labels, part_names
 
     tested = alpha_tested(src.textures)
-    index = {name: i for i, name in enumerate(src.object_names)}
+    owner = {name: (src.tri_o, i) for i, name in enumerate(src.object_names)}
+    if any(row['first'] not in owner for row in copies):
+        labels, _ = part_labels(src.p, src.tri_v, src.tri_o)
+        names, _, _ = part_names(labels, src.tri_o, src.object_names)
+        owner = {**{name: (labels, k) for k, name in enumerate(names)}, **owner}
     placed = {}
     for row in copies:
         placed.setdefault(row['mesh'], []).append(row)
@@ -294,7 +299,8 @@ def carved_shapes(src, entries, copies, eyes, near, sight=None):
         local = local / float(mesh.position_scale)
         points = [local @ np.asarray(row['matrix'], dtype=np.float64).T + np.asarray(row['position']) for row in rows]
         bounds = [p.min(axis=0) for p in points], [p.max(axis=0) for p in points]
-        mine = src.tri_o == index[rows[0]['first']]
+        ids, k = owner[rows[0]['first']]
+        mine = ids == k
         shapes.append(dict(shape=rows[0]['first'], copies=len(rows), source=int(mine.sum()), baked=len(triangles),
                            drawn=len(triangles) * len(rows), alpha_tested=float(tested[src.tri_m[mine]].mean()),
                            nearest=nearest_distance(*bounds, eyes, near),
