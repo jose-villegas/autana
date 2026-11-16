@@ -21,5 +21,6 @@ This header-only package uses math for rectangles; its tests run with testkit.
 | [include/image/palette/palette.h](include/image/palette/palette.h) | palette: named RGB565 entries and lookup through a caller-owned reverse map. |
 | [include/image/pixel/bayer.h](include/image/pixel/bayer.h) | bayer: ordered dithering at absolute pixel coordinates. |
 | [include/image/pixel/rgb565.h](include/image/pixel/rgb565.h) | rgb565: native and high-byte-first RGB565 pixel arithmetic. |
+| [include/image/pixel/rgb565_layout.h](include/image/pixel/rgb565_layout.h) | rgb565_layout: where each channel lies in a native RGB565 pixel. |
 | [include/image/pixel/rgb888.h](include/image/pixel/rgb888.h) | rgb888: interpolation and hue generation for 0xRRGGBB colours. |
 <!-- /generated: package-image-headers -->
