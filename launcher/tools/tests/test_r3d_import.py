@@ -147,10 +147,6 @@ class ImportTests(unittest.TestCase):
         rule = '[[objects.meshes]]\nmatch = { material = "m" }\ntriangles = 4\nvariants = { other = 2 }\n'
         self.rejects(r"objects\.meshes\[0\]\.variants\.other names no variant", SIMPLIFY + rule + VARIANT)
 
-    def test_geometry_budget_is_an_unknown_key(self):
-        self.rejects(r"geometry.budget is not a known setting",
-                     SIMPLIFY + 'budget = { step = 2, settle = 0.05 }\n' + VARIANT)
-
     def test_probes_read_closed_and_need_a_fitted_import(self):
         geometry = SIMPLIFY.removeprefix("[geometry]\n")
         with tempfile.TemporaryDirectory() as directory:
@@ -381,18 +377,22 @@ class SceneTests(unittest.TestCase):
                 self.lit_rejects(r"mesh.*fit.*camera path", 'variant = "mesh"\n' + REGION + FIT,
                                  body=SIMPLIFY + VARIANT, output=VARIANT_OUTPUT, objects=objects)
 
-    def test_probe_fit_budget_matches_the_variant_triangles(self):
+    def test_probe_fit_uses_only_the_variant_budget(self):
         options = dict(body=SIMPLIFY + 'probes = { face = 64 }\n' + VARIANT,
                        output=VARIANT_OUTPUT, objects=camera(path=True, region=False))
         extra = 'variant = "mesh"\n' + FIT
-        self.lit_rejects(r"budget 8.*triangles 10", extra, **options)
-        scene = load_scene(self.lit(extra.replace("budget = 8", "budget = 10"), **options))
-        self.assertEqual(scene.renderers[0].renderer.fit.budget, scene.renderers[0].renderer.variant.triangles)
+        with self.subTest(budget="explicit"):
+            self.lit_rejects(r"fit.prune.budget.*geometry.probes", extra.replace("budget = 8", "budget = 10"), **options)
+        with self.subTest(budget="absent"):
+            scene = load_scene(self.lit(extra.replace("budget = 8\n", ""), **options))
+            self.assertIsNone(scene.renderers[0].renderer.fit.budget)
 
     def test_a_fit_recipe_reads_and_needs_a_bake_and_room_to_prune(self):
         extra = 'variant = "mesh"\n' + FIT
         scene = load_scene(self.lit(extra, body=SIMPLIFY + VARIANT, output=VARIANT_OUTPUT,
                                          objects=camera(path=True, region=False)))
+        self.lit_rejects(r"fit.prune.budget.*required", extra.replace("budget = 8\n", ""),
+                         body=SIMPLIFY + VARIANT, output=VARIANT_OUTPUT, objects=camera(path=True, region=False))
         fit = scene.renderers[0].renderer.fit
         self.assertEqual((fit.budget, fit.normal_weight), (8, 1.0))
         self.assertEqual(fit.size, (184, 224))
@@ -1069,7 +1069,7 @@ class LocalSourceTests(unittest.TestCase):
             with tempfile.TemporaryDirectory() as directory:
                 root = pathlib.Path(directory)
                 write_import(root, output=VARIANT_OUTPUT, body=SIMPLIFY + shaping + VARIANT)
-                objects = renderer(extra='variant = "mesh"\nbake = true\n' + PATH + FIT.replace('budget = 8', 'budget = 10'))
+                objects = renderer(extra='variant = "mesh"\nbake = true\n' + PATH + (FIT.replace('budget = 8\n', '') if shaping else FIT))
                 scene = load_scene(write_scene(root, objects + sun_object() + camera(path=True, region=False), HEAD))
                 job = scene.renderers[0]
                 start = bake.stage_keys(job, scene, {stage: stage for stage in bake.STAGES})["start"]

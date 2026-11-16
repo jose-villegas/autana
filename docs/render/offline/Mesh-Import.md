@@ -133,14 +133,17 @@ that the path and the faces kept before it do not<sup>[[120]](../../Citations.md
 | `spacing` | World units between probes. | `PROBE_SPACING_NEAR_PLANES` near planes of the scene camera, widened to at most `PROBE_COUNT_MAX` probes. |
 | `face` | A kept face's square size in pixels. | `PROBE_FACE`. |
 
-A camera without a path fits on probes alone. A probe-trained fit's prune budget
-must equal its variant's `triangles`, spent by the import's
-[simplify](#simplify) through quadric edge collapse<sup>[[12]](../../Citations.md#garland-1997)</sup>
-with appearance attributes<sup>[[13]](../../Citations.md#hoppe-1999)</sup>.
+A camera without a path fits on probes alone.
 
-The prune drops only triangles no coverage view shows. The held-out closure gate
-rejects hole growth beyond the start's allowance; see
-[Appearance Fit](Appearance-Fit.md#probes-and-closure).
+A probe fit has no `fit.prune.budget`: its variant's `triangles` is the budget.
+The import spends it through [simplify](#simplify) with quadric edge collapse<sup>[[12]](../../Citations.md#garland-1997)</sup>
+and appearance attributes<sup>[[13]](../../Citations.md#hoppe-1999)</sup>.
+
+The prune drops only triangles no coverage view shows.
+
+A hole pixel shows no fitted surface where the reference differs from the clear
+colour by more than `HOLE_DE`. The closure gate rejects held-out hole growth of
+more than `CLOSURE_GROWTH` of the held-out pixels beyond the start's holes.
 
 #### alpha_mask
 

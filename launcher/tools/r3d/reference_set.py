@@ -22,12 +22,11 @@ PACKED_SUFFIXES = (".png", ".normal.npy")
 
 
 def fit_sets(path, probed):
-    """Training, coverage and held-out sets, with held-out references for probe fits' closure gate.
-    Path coverage ranks before probe coverage."""
+    """Training, coverage and held-out sets, with held-out references for probe fits' closure gate."""
     held_out = ((HELD_OUT,) if path else ()) + ((PROBE_HELD_OUT,) if probed else ())
     return SimpleNamespace(training=(TRAINING if path else ()) + ((PROBE_TRAINING,) if probed else ()),
                            coverage=((COVERAGE,) if path else ()) + ((PROBE_TRAINING[0],) if probed else ()),
-                           held_out=held_out, scored=held_out if probed else ())
+                           held_out=held_out)
 
 
 def poses_text(width, height, lens, near, poses):
@@ -151,13 +150,14 @@ def probe_poses(inputs, work, path):
 
 def pack_references(work, sets):
     """The files of the reference set in `work` that a fit with `sets` (fit_sets) reads, as one .tar.xz: the pose
-    files and the picture and normals of each training and scored reference. The other held-out references are
+    files and the picture and normals of each training and closure reference. The other held-out references are
     left out: they score a fit, not make it. Names are sorted and carry no time or owner, so the same files pack
     to the same bytes."""
     work = pathlib.Path(work)
     poses = {poses for poses, _ in sets.training + sets.held_out} | set(sets.coverage)
+    references = sets.training + (sets.held_out if PROBE_TRAINING in sets.training else ())
     names = sorted(poses) + sorted(
-        f"{folder}/{path.name}" for _, folder in sets.training + sets.scored for path in (work / folder).iterdir()
+        f"{folder}/{path.name}" for _, folder in references for path in (work / folder).iterdir()
         if path.name.endswith(PACKED_SUFFIXES))
     packed = io.BytesIO()
     with tarfile.open(fileobj=packed, mode="w:xz", format=tarfile.USTAR_FORMAT) as tar:

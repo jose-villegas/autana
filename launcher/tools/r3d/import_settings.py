@@ -156,36 +156,37 @@ def face_sample_options(value, where):
 
 
 FIT_GROUPS = {
-    "prune": ("budget", "coverage_every_ms"),
+    "prune": ("coverage_every_ms",),
     "poses": ("size", "train_every_ms", "held_out_every_ms"),
     "optimise": ("steps", "batch", "laplacian", "normal_weight", "surface_weight", "surface_margin"),
 }
-FIT_KEYS = tuple(key for keys in FIT_GROUPS.values() for key in keys)
+FIT_KEYS = ("budget",) + tuple(key for keys in FIT_GROUPS.values() for key in keys)
 
 
 def load_fit(value, variant, where):
     """The grouped recipe of a variant the appearance fit makes offline from
-    the mesh the import bakes at `triangles`: `prune` names the budget and
-    coverage poses, `poses` names training and held-out camera-path poses and
+    the mesh the import bakes at `triangles`: `prune` names coverage poses
+    and a path fit's budget, `poses` names training and held-out camera-path poses and
     `optimise` holds settings. What a fit made is recorded in launcher/bakes.lock
     (bake/bake.py), not here."""
     if "hashes" in value:
         raise SettingsError(f"{where}.hashes is gone: launcher/bakes.lock records what a fit made")
     for group, keys in FIT_GROUPS.items():
-        for key in keys:
+        for key in (("budget",) if group == "prune" else ()) + keys:
             if key in value:
                 raise SettingsError(f"{where}.{key} moved to {where}.{group}.{key}")
     check_keys(value, FIT_GROUPS, where)
     values = {}
     for group, keys in FIT_GROUPS.items():
         table = value[group]
-        check_keys(table, keys, f"{where}.{group}")
+        check_keys(table, keys, f"{where}.{group}", optional=("budget",) if group == "prune" else ())
         values.update(table)
     if variant.triangles is None:
         raise SettingsError(f"{where} needs the variant's triangles, the budget its start is simplified to")
-    fit = SimpleNamespace(**{key: values[key] for key in FIT_KEYS})
+    fit = SimpleNamespace(**{key: values.get(key) for key in FIT_KEYS})
     for key in ("budget", "train_every_ms", "held_out_every_ms", "coverage_every_ms", "steps", "batch"):
-        setattr(fit, key, count(values[key], f"{where}.{key}"))
+        if getattr(fit, key) is not None:
+            setattr(fit, key, count(values[key], f"{where}.{key}"))
     fit.size = pixel_size(values["size"], f"{where}.poses.size")
     fit.laplacian = number(values["laplacian"], f"{where}.laplacian")
     fit.normal_weight = number(values["normal_weight"], f"{where}.normal_weight")
@@ -194,7 +195,7 @@ def load_fit(value, variant, where):
         if value < 0:
             raise SettingsError(f"{where}.{key} must be nonnegative")
         setattr(fit, key, value)
-    if fit.budget > variant.triangles:
+    if fit.budget is not None and fit.budget > variant.triangles:
         raise SettingsError(f"{where}.budget cannot exceed the variant's triangles")
     return fit
 
@@ -829,12 +830,10 @@ def load_scene(path):
     sources = {item.renderer.visibility.source for item in jobs if item.renderer.visibility}
     camera_path = cameras[0].component.path if cameras else None
     for item in jobs:
-        if (item.renderer.fit and item.settings.fit.probes is not None
-                and item.renderer.fit.budget < item.renderer.variant.triangles):
-            raise SettingsError(f"scene.objects {item.object.name!r} mesh_renderer.fit.prune.budget "
-                                f"{item.renderer.fit.budget} is below variant {item.renderer.variant.name}'s triangles "
-                                f"{item.renderer.variant.triangles}: a fit trained on geometry.probes keeps every triangle "
-                                "its views show; set the variant's triangles to the budget")
+        if item.renderer.fit and ((item.renderer.fit.budget is None) == (item.settings.fit.probes is None)):
+            raise SettingsError(f"scene.objects {item.object.name!r} mesh_renderer.fit.prune.budget is "
+                                + ("required without geometry.probes" if item.settings.fit.probes is None else
+                                   "refused with geometry.probes; the variant's triangles is the budget"))
         if item.renderer.fit and camera_path is None and item.settings.fit.probes is None:
             raise SettingsError(f"scene.objects {item.object.name!r} mesh_renderer.fit needs the scene camera path "
                                 "or its import's geometry.probes")
