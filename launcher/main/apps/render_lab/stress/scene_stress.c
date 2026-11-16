@@ -30,7 +30,6 @@
 #define STRESS_FLAP_BIAS          (10.0F * MATH_PI / 180.0F)
 #define STRESS_FLAP_PHASE_STEP    (MATH_PI * 0.618034F)
 #define STRESS_FLAP_MS_PER_SECOND 1000.0F
-#define STRESS_FLAP_STAGE_NAME    "stress.flap"
 
 #define STRESS_FLAP_LIMIT         (STRESS_FLAP_AMPLITUDE + STRESS_FLAP_BIAS)
 
@@ -314,7 +313,7 @@ flap(void) {
             transform_set_local(wings[at], hinge_pose(&wing_hinges[at], angle));
         }
     }
-    FRAME_COST_END(flap_from, STRESS_FLAP_STAGE_NAME);
+    FRAME_COST_END(flap_from, "stress.flap");
 }
 
 /* Advance the wave mesh or the wing hinges each frame. */
