@@ -71,7 +71,7 @@ class AlphaReferenceTests(unittest.TestCase):
         from r3d import mitsuba_reference
         from r3d.obj import Texture
         mi = mitsuba_reference.import_mitsuba()
-        for variant in ('scalar_rgb', 'llvm_ad_rgb'):
+        for variant in ('scalar_rgb', 'llvm_ad_rgb') if have_llvm() else ('scalar_rgb',):
             mi.set_variant(variant)
             level = np.ones((2, 2, 4))
             level[:, 0, 3] = 0.
