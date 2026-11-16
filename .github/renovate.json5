@@ -40,6 +40,16 @@
       extractVersionTemplate: '^v(?<version>\\d+\\.\\d+\\.\\d+)$',
       autoReplaceStringTemplate: "BLENDER_VERSION = ({{{replace '\\.' ', ' newValue}}})",
     },
+    {
+      // The LLVM C library Dr.Jit loads on Windows; the bump also moves ARCHIVE_SHA256 beside it, whose check names
+      // the new archive's digest.
+      customType: 'regex',
+      managerFilePatterns: ['/^launcher/tools/r3d/llvm_runtime\.py$/'],
+      matchStrings: ['VERSION = "(?<currentValue>\d+\.\d+\.\d+)"'],
+      depNameTemplate: 'llvm/llvm-project',
+      datasourceTemplate: 'github-releases',
+      extractVersionTemplate: '^llvmorg-(?<version>\d+\.\d+\.\d+)$',
+    },
   ],
 
   packageRules: [
@@ -100,5 +110,7 @@
     },
     // A new Blender re-exports every skinned mesh: a rebake, opened from the dashboard.
     {matchDepNames: ['blender/blender'], groupName: 'Blender', groupSlug: 'blender', dependencyDashboardApproval: true},
+    // llvm_runtime.py is in every ray-tracing bake's key: a rebake, opened from the dashboard.
+    {matchDepNames: ['llvm/llvm-project'], groupName: 'LLVM for Dr.Jit', groupSlug: 'llvm-drjit', dependencyDashboardApproval: true},
   ],
 }

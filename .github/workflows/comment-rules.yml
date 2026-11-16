@@ -239,6 +239,11 @@ jobs:
           pip install -r scripts/gates/requirements.txt -r launcher/tools/render/requirements.txt -r launcher/test/device/requirements.txt -r launcher/tools/audio/requirements.txt -r launcher/tools/audio/mic/requirements.txt -r launcher/tools/r3d/requirements.txt
           git submodule update --init --depth 1 third_party/upstream/meshoptimizer third_party/upstream/ufbx
           npm ci --prefix scripts/gates
+      # The pinned LLVM-C.dll the ray-query tests trace on, rather than the runner's own; `where` fails without it.
+      - name: Dr.Jit's LLVM
+        run: |
+          python launcher/tools/r3d/llvm_runtime.py install
+          python launcher/tools/r3d/llvm_runtime.py where
       - name: Tool tests
         run: sh scripts/run-tool-tests.sh
       # A native crash past Python's own shutdown, where the faulthandler is off, is named by Windows' crash record.
