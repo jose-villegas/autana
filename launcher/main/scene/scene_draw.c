@@ -161,7 +161,7 @@ fit_drawn(void) {
     instances = instances > drawn.instance_capacity ? instances : drawn.instance_capacity;
     batches = batches > drawn.batch_capacity ? batches : drawn.batch_capacity;
     size_t end = sizeof(r3d_instance_t) * (size_t)instances;
-    const size_t at = scene_storage_carve(&end, sizeof(r3d_batch_draw_t) * (size_t)batches, _Alignof(r3d_batch_draw_t));
+    const size_t at = mem_carve(&end, sizeof(r3d_batch_draw_t) * (size_t)batches, _Alignof(r3d_batch_draw_t));
     scene_free_kept(drawn.block);
     drawn.block = scene_allocate_kept(end);
     const bool fits = drawn.block != NULL;

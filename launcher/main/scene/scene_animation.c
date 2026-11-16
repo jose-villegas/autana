@@ -6,33 +6,12 @@
 #include "anim/anim_tracks_format.h"
 #include "core/job.h"
 #include "core/memory.h"
-#include "core/tune.h"
 #include "math/scalar/mathi.h"
 #include "profile/frame_cost.h"
 #include "render/context/render_context.h"
 #include "render/record/frame_record.h"
 #include "scene/scene_anim_stages.h"
 #include "scene/scene_internal.h"
-
-TUNE_OWNER(anim);
-TUNE_OVERRIDE(anim, mid_px, RENDER_ANIM_PIXELS_MAX);
-TUNE_OVERRIDE(anim, far_px, RENDER_ANIM_PIXELS_MAX);
-TUNE_OVERRIDE(anim, mid_every, RENDER_ANIM_EVERY_MAX);
-TUNE_OVERRIDE(anim, far_every, RENDER_ANIM_EVERY_MAX);
-TUNE_OVERRIDE(anim, hysteresis_px, RENDER_ANIM_PIXELS_MAX);
-
-/* Resolve overrides before the parallel slices so every copy sees one policy. */
-static render_anim_settings_t
-animation_settings(void) {
-    render_anim_settings_t s = render_context_settings(render_context_main())->anim;
-    s.mid_px = mid_px == TUNE_UNSET ? s.mid_px : (float)mathi_clamp(mid_px, 0, RENDER_ANIM_PIXELS_MAX);
-    s.far_px = far_px == TUNE_UNSET ? s.far_px : (float)mathi_clamp(far_px, 0, RENDER_ANIM_PIXELS_MAX);
-    s.hysteresis_px =
-        hysteresis_px == TUNE_UNSET ? s.hysteresis_px : (float)mathi_clamp(hysteresis_px, 0, RENDER_ANIM_PIXELS_MAX);
-    s.mid_every = mathi_clamp(tune_override(mid_every, s.mid_every), RENDER_ANIM_EVERY_MIN, RENDER_ANIM_EVERY_MAX);
-    s.far_every = mathi_clamp(tune_override(far_every, s.far_every), RENDER_ANIM_EVERY_MIN, RENDER_ANIM_EVERY_MAX);
-    return s;
-}
 
 /* The pose interval of tier `tier` under `s`. */
 static int
@@ -180,7 +159,7 @@ scene_skin_range(scene_t* scene, int first, int count) {
             r3d_skin_clusters(&skin->skin, &skin->bind, skin->palette, start, end - start, &skin->output);
         }
         if (start == 0 && end > 0) { /* the range from the first cluster tells the recorder once per pose */
-            frame_record_note_skin(&skin->output.mesh, &skin->bind, skin->palette, skin->skin.joint_count);
+            frame_record_note_skin(&skin->output.mesh, &skin->bind, &skin->skin, skin->palette, skin->skin.joint_count);
         }
         offset += clusters;
     }
@@ -203,12 +182,16 @@ skin_slice(void* ctx, int from, int to) {
     scene_skin_range(ctx, from, to - from);
 }
 
+/* The tiers resolve under the overrides before the parallel slices, so every
+ * copy sees one policy; in place, so no second copy shares the repose's frame,
+ * which the skin and draw slices run beneath. */
 static void
-animate_entities(scene_t* scene, uint32_t dt_ms, render_anim_settings_t settings) {
+animate_entities(scene_t* scene, uint32_t dt_ms) {
     if (scene->skeleton_animator_count == 0) {
         return;
     }
-    animate_work_t w = {scene, dt_ms, settings};
+    animate_work_t w = {scene, dt_ms, render_context_settings(render_context_main())->anim};
+    render_anim_settings_tune(&w.settings);
     (void)job_run_range(&scene->animate_share, animate_slice, &w, scene->staged_count);
 }
 
@@ -273,7 +256,7 @@ scene_animation_repose(scene_t* scene, uint32_t dt_ms) {
             apply_property(scene, animator, dt_ms);
         }
     }
-    animate_entities(scene, dt_ms, animation_settings());
+    animate_entities(scene, dt_ms);
     FRAME_COST_END(posed_from, SCENE_ANIM_STAGE_POSE_NAME);
     FRAME_COST_BEGIN(lit_from);
     const int clusters = skin_stage_prepare(scene);
