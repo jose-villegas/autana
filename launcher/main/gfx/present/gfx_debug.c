@@ -113,8 +113,8 @@ restore_border(gfx_color_t* buf, int stride, int w, int h, const gfx_color_t* sa
     }
 }
 
-/* 6240 px combined, borrowed from gather_buf's front rather than
- * malloc'd separately: a separate allocation competes for the one
+/* The save scratch and the overlay view below, borrowed from gather_buf's
+ * front rather than malloc'd separately: a separate allocation competes for the one
  * contiguous 41 KB block an app needs, and a debug overlay must
  * never be why an app cannot start. gather_buf holds nothing else:
  * gathered runs pack into strip_bounce[], and the frame loop is
@@ -123,14 +123,30 @@ restore_border(gfx_color_t* buf, int stride, int w, int h, const gfx_color_t* sa
  * silent DMA overflow. */
 #define OVERLAY_CELL_SAVE_PIXELS (GRID_COLS * BORDER_PIXELS)
 #define OVERLAY_LEAF_SAVE_PIXELS (LEAF_RECTS_PER_ROW_MAX * LEAF_BORDER_PIXELS)
-_Static_assert(OVERLAY_CELL_SAVE_PIXELS + OVERLAY_LEAF_SAVE_PIXELS <= GATHER_MAX_PIXELS,
-               "overlay save/restore scratch must fit inside gather_buf");
+
+/* What this present's overlay outlines: each cell's dirty box (empty when
+ * clean) and the leaf bits, copied before overlay_take_off_last_borders()
+ * marks last present's bordered boxes dirty. The borders show only what
+ * changed, and the box recorded for the next take-off never grows by the
+ * take-off's own marks. */
+typedef struct {
+    recti_t cell[CELL_COUNT];
+    uint16_t leaves[STRIP_COUNT * LEAF_SUB];
+} overlay_view_t;
+
+#define OVERLAY_VIEW_PIXELS ((sizeof(overlay_view_t) + sizeof(gfx_color_t) - 1) / sizeof(gfx_color_t))
+_Static_assert(OVERLAY_CELL_SAVE_PIXELS + OVERLAY_LEAF_SAVE_PIXELS + OVERLAY_VIEW_PIXELS <= GATHER_MAX_PIXELS,
+               "overlay scratch must fit inside gather_buf");
 
 static inline gfx_color_t (*overlay_cell_save(void))
     [BORDER_PIXELS] { return (gfx_color_t(*)[BORDER_PIXELS])gather_buf; }
 
 static inline gfx_color_t (*overlay_leaf_save(void))
     [LEAF_BORDER_PIXELS] { return (gfx_color_t(*)[LEAF_BORDER_PIXELS])(gather_buf + OVERLAY_CELL_SAVE_PIXELS); }
+
+static inline overlay_view_t* overlay_view(void) {
+    return (overlay_view_t*)(gather_buf + OVERLAY_CELL_SAVE_PIXELS + OVERLAY_LEAF_SAVE_PIXELS);
+}
 
 /* Shared by send_full_row() and gather_and_send(), never live at once:
  * the frame loop is single-threaded. Read while the save scratch in
@@ -328,11 +344,11 @@ send_audit_check(void) {
     send_audit_log_if_due();
 }
 
-/* Green border on each dirty leaf of `row` inside the `height` rows from
- * `y0`; `buf` holds those rows starting at buffer row 0. */
+/* Green border on each leaf of `row` set in `leaves` inside the `height`
+ * rows from `y0`; `buf` holds those rows starting at buffer row 0. */
 static void
-mark_leaf_borders(int row, int y0, int height, gfx_color_t* buf) {
-    const int n = dirty_leaf_rects(row, recti_from_edges(0, y0, GFX_WIDTH, y0 + height), leaf_rect_scratch,
+mark_leaf_borders(const uint16_t* leaves, int row, int y0, int height, gfx_color_t* buf) {
+    const int n = dirty_leaf_rects(leaves, row, recti_from_edges(0, y0, GFX_WIDTH, y0 + height), leaf_rect_scratch,
                                    LEAF_RECTS_PER_ROW_MAX);
     for (int i = 0; i < n; i++) {
         const recti_t* r = &leaf_rect_scratch[i];
@@ -342,7 +358,8 @@ mark_leaf_borders(int row, int y0, int height, gfx_color_t* buf) {
 }
 
 /* The expanded strip in `slot` is a disposable copy, so borders drawn here
- * never need restoring. Must run before dirty_row_sent() clears the row's
+ * never need restoring. The strip goes out whole, so the whole strip is
+ * recorded. Must run before dirty_row_sent() clears the row's
  * leaf bits. */
 void
 mark_strip_overlay(gfx_color_t* slot, int row) {
@@ -353,8 +370,9 @@ mark_strip_overlay(gfx_color_t* slot, int row) {
         }
     }
     if (leaf_overlay_on) {
-        mark_leaf_borders(row, y, STRIP_HEIGHT, slot);
+        mark_leaf_borders(overlay_view()->leaves, row, y, STRIP_HEIGHT, slot);
     }
+    overlay_note_bordered(recti_from_edges(0, y, GFX_WIDTH, y + STRIP_HEIGHT));
 }
 
 static void
@@ -411,8 +429,8 @@ send_row_with_overlays(int row, int y) {
     /* leaf_rect_scratch never NULL: gfx_set_leaf_overlay() allocates */
     int leaf_n = 0;
     if (leaf_overlay_on) {
-        leaf_n = dirty_leaf_rects(row, recti_from_edges(0, y, GFX_WIDTH, y + STRIP_HEIGHT), leaf_rect_scratch,
-                                  LEAF_RECTS_PER_ROW_MAX);
+        leaf_n = dirty_leaf_rects(overlay_view()->leaves, row, recti_from_edges(0, y, GFX_WIDTH, y + STRIP_HEIGHT),
+                                  leaf_rect_scratch, LEAF_RECTS_PER_ROW_MAX);
     }
     if (!debug_overlay_on && leaf_n == 0) {
         return false;
@@ -425,36 +443,57 @@ send_row_with_overlays(int row, int y) {
         xSemaphoreTake(strip_sent, portMAX_DELAY);
     }
     restore_overlay_borders(y, leaf_n);
-    overlay_note_bordered(recti_from_edges(0, y, GFX_WIDTH, y + STRIP_HEIGHT));
+    if (debug_overlay_on) {
+        overlay_note_bordered(recti_from_edges(0, y, GFX_WIDTH, y + STRIP_HEIGHT));
+    }
+    for (int i = 0; i < leaf_n; i++) {
+        overlay_note_bordered(leaf_rect_scratch[i]);
+    }
     return true;
 }
 
-/* Borders a gathered run packed into `slot` (`box` in panel pixels): yellow
- * around a refined box or each of the run's cells, green around its leaves. */
+/* Borders `r` (panel pixels) in `slot`, which holds panel box `box` packed at
+ * its own width, and records it for the next take-off. */
+static void
+outline_in_box(gfx_color_t* slot, recti_t box, recti_t r, gfx_color_t colour) {
+    mark_rect_border(slot + ((size_t)(r.y - box.y) * box.w) + (r.x - box.x), box.w, r.w, r.h, colour);
+    overlay_note_bordered(r);
+}
+
+/* Borders a gathered run packed into `slot` (`box` in panel pixels) from the
+ * overlay view: yellow around each of the run's dirty cells, or one box
+ * around them for a refined split; green around its leaves. Last present's
+ * take-off can widen the box sent, never what is outlined. */
 void
 overlay_border_gathered(gfx_color_t* slot, recti_t box, int run_start, int run_end, bool refined, gfx_color_t border) {
+    const overlay_view_t* view = overlay_view();
     const int row = box.y / STRIP_HEIGHT;
-    if (debug_overlay_on && refined) {
-        mark_rect_border(slot, box.w, box.w, box.h, border);
-    } else if (debug_overlay_on) {
+    if (debug_overlay_on) {
+        recti_t split = recti_empty();
         for (int col = run_start; col < run_end; col++) {
-            const int idx = (row * GRID_COLS) + col;
-            gfx_color_t* at = slot + ((size_t)(cell_y0[idx] - box.y) * box.w) + (cell_x0[idx] - box.x);
-            mark_rect_border(at, box.w, cell_x1[idx] - cell_x0[idx], cell_y1[idx] - cell_y0[idx], border);
+            const recti_t cell = recti_intersect(view->cell[(row * GRID_COLS) + col], box);
+            if (recti_is_empty(cell)) {
+                continue;
+            }
+            if (refined) {
+                split = recti_union(split, cell);
+            } else {
+                outline_in_box(slot, box, cell, border);
+            }
+        }
+        if (!recti_is_empty(split)) {
+            outline_in_box(slot, box, split, border);
         }
     }
     if (leaf_overlay_on) {
-        const int n = dirty_leaf_rects(row, box, leaf_rect_scratch, LEAF_RECTS_PER_ROW_MAX);
+        const int n = dirty_leaf_rects(view->leaves, row, box, leaf_rect_scratch, LEAF_RECTS_PER_ROW_MAX);
         for (int i = 0; i < n; i++) {
-            const recti_t* r = &leaf_rect_scratch[i];
-            gfx_color_t* at = slot + ((size_t)(r->y - box.y) * box.w) + (r->x - box.x);
-            mark_rect_border(at, box.w, r->w, r->h, RGB565BE(0x00FF00));
+            outline_in_box(slot, box, leaf_rect_scratch[i], RGB565BE(0x00FF00));
         }
     }
-    overlay_note_bordered(box);
 }
 
-/* Per strip row, the box its last present sent with overlay borders; empty
+/* Per strip row, the union of the borders its last present drew; empty
  * when none. A border exists only in the bytes sent, never in `present_fb`, so
  * the panel keeps it until that box is sent again, and the dirty tracker never
  * resends what nothing changed in. Outlives the overlay toggles so switching
@@ -474,12 +513,26 @@ mark_box_dirty(recti_t box) {
     dirty_mark(box.x, box.y, box.w, box.h);
 }
 
+static void
+take_overlay_view(void) {
+    overlay_view_t* view = overlay_view();
+    for (int idx = 0; idx < CELL_COUNT; idx++) {
+        view->cell[idx] = (cell_dirty & (1U << idx))
+                              ? recti_from_edges(cell_x0[idx], cell_y0[idx], cell_x1[idx], cell_y1[idx])
+                              : recti_empty();
+    }
+    memcpy(view->leaves, leaf_dirty, sizeof view->leaves);
+}
+
 /* Before the dirty sends. A strip dirty again has last present's bordered box
  * marked dirty, so its one send with this present's borders also covers the
  * old ones; a quiet strip is resent clean. A strip interlace holds back keeps
  * its old borders until its own present. */
 void
 overlay_take_off_last_borders(bool (*send_rows)(int y0, int y1), int* queued) {
+    if (overlay_any_on()) {
+        take_overlay_view();
+    }
     for (int row = 0; row < STRIP_COUNT; row++) {
         const recti_t box = overlay_bordered[row];
         if (recti_is_empty(box)) {
@@ -505,7 +558,7 @@ mark_band_overlay(gfx_color_t* buf, int row0, int height) {
         const int row_first = row0 / STRIP_HEIGHT;
         const int row_last = (row0 + height - 1) / STRIP_HEIGHT;
         for (int row = row_first; row <= row_last; row++) {
-            mark_leaf_borders(row, row0, height, buf);
+            mark_leaf_borders(leaf_dirty, row, row0, height, buf);
         }
     }
 }

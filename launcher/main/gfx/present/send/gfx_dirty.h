@@ -112,11 +112,12 @@ mark_leaves(int x0, int y0, int x1, int y1) {
  * not a hand-counted number. */
 #define LEAF_RECTS_PER_ROW_MAX (LEAF_COLS * LEAF_SUB)
 
-/* Enumerates strip `row`'s dirty leaves intersecting clip, one rect per leaf.
- * Runs would hide the subdivision the overlay shows. A row marked only by
- * mark_band() has no leaf info and yields no rectangles. */
+/* Enumerates strip `row`'s dirty leaves in `leaves` (leaf_dirty or a copy of
+ * it) intersecting clip, one rect per leaf. Runs would hide the subdivision
+ * the overlay shows. A row marked only by mark_band() has no leaf info and
+ * yields no rectangles. */
 static inline int
-dirty_leaf_rects(int row, recti_t clip, recti_t* out, int max_out) {
+dirty_leaf_rects(const uint16_t* leaves, int row, recti_t clip, recti_t* out, int max_out) {
     int n = 0;
 
     for (int sub = 0; sub < LEAF_SUB; sub++) {
@@ -127,7 +128,7 @@ dirty_leaf_rects(int row, recti_t clip, recti_t* out, int max_out) {
             continue;
         }
 
-        const uint16_t bits = leaf_dirty[leaf_row];
+        const uint16_t bits = leaves[leaf_row];
         for (int col = 0; col < LEAF_COLS; col++) {
             if (!(bits & (1u << col))) {
                 continue;

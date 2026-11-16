@@ -93,7 +93,7 @@ test_dirty_leaf_rects_finds_nothing_in_a_clean_row(void) {
     fixture();
 
     recti_t out[8];
-    const int n = dirty_leaf_rects(0, recti_from_edges(0, 0, GFX_WIDTH, STRIP_HEIGHT), out, 8);
+    const int n = dirty_leaf_rects(leaf_dirty, 0, recti_from_edges(0, 0, GFX_WIDTH, STRIP_HEIGHT), out, 8);
 
     TEST_ASSERT_EQUAL_INT(0, n);
 }
@@ -104,7 +104,7 @@ test_dirty_leaf_rects_one_pixel_yields_the_whole_leaf(void) {
     dirty_mark(5, 5, 1, 1); /* leaf column 0, leaf row 0 */
 
     recti_t out[8];
-    const int n = dirty_leaf_rects(0, recti_from_edges(0, 0, GFX_WIDTH, STRIP_HEIGHT), out, 8);
+    const int n = dirty_leaf_rects(leaf_dirty, 0, recti_from_edges(0, 0, GFX_WIDTH, STRIP_HEIGHT), out, 8);
 
     TEST_ASSERT_EQUAL_INT(1, n);
     TEST_ASSERT_EQUAL_INT(0, out[0].x);
@@ -119,7 +119,7 @@ test_dirty_leaf_rects_two_columns_are_two_adjacent_rects(void) {
     dirty_mark(LEAF_W - 1, 0, 2, 1); /* straddles leaf columns 0 and 1 */
 
     recti_t out[8];
-    const int n = dirty_leaf_rects(0, recti_from_edges(0, 0, GFX_WIDTH, STRIP_HEIGHT), out, 8);
+    const int n = dirty_leaf_rects(leaf_dirty, 0, recti_from_edges(0, 0, GFX_WIDTH, STRIP_HEIGHT), out, 8);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(2, n,
                                   "one rect per dirty leaf, never merged into a run - merging would "
@@ -136,7 +136,7 @@ test_dirty_leaf_rects_two_leaf_rows_both_appear(void) {
     dirty_mark(5, LEAF_H - 1, 1, 2); /* straddles leaf rows 0 and 1 */
 
     recti_t out[8];
-    const int n = dirty_leaf_rects(0, recti_from_edges(0, 0, GFX_WIDTH, STRIP_HEIGHT), out, 8);
+    const int n = dirty_leaf_rects(leaf_dirty, 0, recti_from_edges(0, 0, GFX_WIDTH, STRIP_HEIGHT), out, 8);
 
     TEST_ASSERT_EQUAL_INT(2, n);
     TEST_ASSERT_EQUAL_INT(0, out[0].y);
@@ -152,7 +152,7 @@ test_dirty_leaf_rects_clips_to_the_callers_box(void) {
                                  [0,LEAF_W) x [0,LEAF_H) */
 
     recti_t out[8];
-    const int n = dirty_leaf_rects(0, recti_from_edges(5, 3, 15, 10), out, 8);
+    const int n = dirty_leaf_rects(leaf_dirty, 0, recti_from_edges(5, 3, 15, 10), out, 8);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(1, n,
                                   "the leaf is still one dirty leaf, just narrower than its own "
@@ -169,7 +169,7 @@ test_dirty_leaf_rects_a_leaf_entirely_outside_the_box_is_dropped(void) {
     dirty_mark(5, 5, 1, 1); /* leaf column 0: [0,LEAF_W) */
 
     recti_t out[8];
-    const int n = dirty_leaf_rects(0, recti_from_edges(30, 0, 50, STRIP_HEIGHT), out, 8);
+    const int n = dirty_leaf_rects(leaf_dirty, 0, recti_from_edges(30, 0, 50, STRIP_HEIGHT), out, 8);
 
     TEST_ASSERT_EQUAL_INT(0, n);
 }
@@ -180,7 +180,7 @@ test_dirty_leaf_rects_respects_the_max_out_cap(void) {
     leaf_dirty[0] = 0xFFFF; /* every leaf column dirty in leaf row 0 */
 
     recti_t out[16];
-    const int n = dirty_leaf_rects(0, recti_from_edges(0, 0, GFX_WIDTH, STRIP_HEIGHT), out, 5);
+    const int n = dirty_leaf_rects(leaf_dirty, 0, recti_from_edges(0, 0, GFX_WIDTH, STRIP_HEIGHT), out, 5);
 
     TEST_ASSERT_EQUAL_INT(5, n);
 }
@@ -194,7 +194,7 @@ test_dirty_leaf_rects_leaf_rows_are_independent(void) {
     /* Box only spans leaf row 0's own height; leaf row 2's rect must not
      * leak into this result just because it shares the same strip row. */
     recti_t out[8];
-    const int n = dirty_leaf_rects(0, recti_from_edges(0, 0, GFX_WIDTH, LEAF_H), out, 8);
+    const int n = dirty_leaf_rects(leaf_dirty, 0, recti_from_edges(0, 0, GFX_WIDTH, LEAF_H), out, 8);
 
     TEST_ASSERT_EQUAL_INT(1, n);
     TEST_ASSERT_EQUAL_INT(0, out[0].y);

@@ -691,7 +691,6 @@ run_present_strips(bool (*send_rows)(int y0, int y1)) {
         }
 #if CONFIG_LAUNCHER_DEVELOPMENT
         if (overlay_any_on()) {
-            overlay_note_bordered(recti_from_edges(0, row * STRIP_HEIGHT, GFX_WIDTH, (row + 1) * STRIP_HEIGHT));
             strip_overlay_row = row;
         }
 #endif
