@@ -101,6 +101,8 @@ class Allocation:
     detail: object = None
     split: object = None
     double_sided: tuple = ()
+    # Positions of the source vertices the source's contact border locks (mesh_import.carve_selection).
+    locked: object = None
 
 
 def object_groups(pos, tris, tri_o):
@@ -390,6 +392,11 @@ def _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, reserved, allocat
     parts, policies = _mesh_passes(tris, labels, tri_o, triangles, reserved, selected, edges, budgets)
     from .objects.carve import contact_locks
     locks = contact_locks(len(pos), edges, policies, selected)
+    if allocation.locked is not None and len(allocation.locked):
+        # The source's contact border, matched by position: a contact whose partner the cull removed still locks.
+        from scipy.spatial import cKDTree
+        near = cKDTree(allocation.locked).query(pos, distance_upper_bound=seal_tolerance(position_scale))[0]
+        locks |= np.isfinite(near)
     report = dict(requested_scene_total=requested, rest_budget=rest_budget, ceiling=allocation.ceiling, passes=[],
                   contacts=[dict(a=allocation.object_names[e.a], b=allocation.object_names[e.b], unshared=e.unshared,
                                  vertices_a=e.vertices_a.tolist(), vertices_b=e.vertices_b.tolist()) for e in edges],
