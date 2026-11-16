@@ -1046,7 +1046,7 @@ def main(argv=None):
         parser.error("--settle needs --budget, --held-out-poses, a STEP of at least 1 and a SHARE in [0, 1)")
     if any(not np.isfinite(value) or value < 0 for value in (args.surface_weight, args.surface_margin, args.seam_margin,
                                                              args.move_cap)):
-        parser.error("surface weight, surface margin, seam margin and move cap must be finite and nonnegative")
+        parser.error("surface weight, surface margin and seam margin must be finite and nonnegative")
     if args.surface_weight and not args.score and not args.object:
         parser.error("a surface term needs --object, the scene object whose source anchors the fit")
     if bool(args.copies) != bool(args.copy_poses) or (args.copies and not args.object):
