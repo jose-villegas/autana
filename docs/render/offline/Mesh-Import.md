@@ -207,11 +207,35 @@ Mirroring or a different per-face sidedness mask emits another prototype.
 
 Overlapping rules are rejected.
 
-### Free repeats and derived detail
+### Repeats, units and derived detail
 
-A carved bake automatically carves rigid repeats whose copies touch nothing.
-They need no rule. An uncarved geometry bake stores each placed copy and
-uses neither free repeats nor camera-derived budgets.
+A carved bake automatically carves rigid repeats; they need no rule. An object
+with an alpha-tested material stays in the rest.
+
+| Repeat | Seam |
+|---|---|
+| Every copy touches nothing | `free` |
+| Any copy touches other geometry | `lock`: the contact border of every copy stays fixed in the carved mesh, so the joint does not crack |
+
+Repeated parts inside one object grow into units, so a facade's windows carve
+like props. `objects/units.py` splits the objects not already carved into
+connected parts, matches them exactly, and grows each unit around an anchor:
+
+- Nearby repeated parts are placed in each anchor copy's frame; those at one spot around enough copies join.
+- A part votes only around its nearest anchor copy, never as a second anchor.
+- A copy joins only with every part of the unit.
+- Parts with an alpha-tested material join no unit.
+
+Each unit becomes an object and repeats like any other.
+
+| Constant | Value | Why |
+|---|---|---|
+| `MIN_COPIES` | 3 | An anchor, and a unit, needs this many copies to be worth a shared shape. |
+| `UNIT_REACH` | 2.0 | Gather parts within this many anchor diagonals: a frame's sill and panes, not the next window. |
+| `UNIT_SUPPORT` | 0.6 | A part joins when it sits at its spot around this share of the anchor copies. |
+
+An uncarved geometry bake stores each placed copy and uses neither repeats,
+units nor camera-derived budgets.
 
 | Step | Result |
 |---|---|
@@ -279,8 +303,9 @@ Each candidate is drawn unlit from the cube's face, edge and corner directions.
 The mean CIE76 error against the source averages black and white backgrounds.
 Equal errors within `ERROR_TIE` favour regular simplification.
 
-Any locked vertex excludes the plane proxy. Without joinable plates, regular
-simplification runs alone and skips scoring. Copies share the chosen local
+A plate holding a locked vertex is not joined into a rectangle: it stays with
+the regularly simplified parts, which keep their locked vertices. Without
+joinable plates, regular simplification runs alone and skips scoring. Copies share the chosen local
 geometry and retain their own placements.
 
 `r3d/objects/stand_ins.py` owns the thresholds:
