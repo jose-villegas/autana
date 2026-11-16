@@ -186,6 +186,10 @@ triangle at fixed start barycentrics, so parts that overlapped in the start
 cannot pull apart into cracks. Nearest contacts win, and a held point never
 anchors another hold.
 
+A carved bake's copies are frozen in the fit. A rest point within the same
+margin of a copy's triangle stays where it started, so the rest's contact
+border with a copy stays as closed as the start's.
+
 ### Normals
 
 Colour alone permits geometry that matches one view but differs from another.

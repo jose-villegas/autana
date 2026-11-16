@@ -212,6 +212,28 @@ def seam_holds(mesh: FitMesh, tolerance: np.ndarray) -> SeamHolds:
                      np.asarray(weights, dtype=float).reshape(-1, 3))
 
 
+def copy_pins(mesh: FitMesh, copies: FitMesh, tolerance: np.ndarray) -> np.ndarray:
+    """One flag per point of `mesh`: a point that starts within `tolerance` (a per-point distance) of a frozen
+    copy's triangle. The fit keeps it where it started, so the rest's contact border with a carved copy stays
+    as closed as the start's."""
+    from scipy.spatial import cKDTree
+
+    pinned = np.zeros(len(mesh.points), dtype=bool)
+    if copies is None or not len(copies.tris) or not len(mesh.points):
+        return pinned
+    triangles = copies.points[copies.vertex_point[copies.tris]]
+    centroids = triangles.mean(axis=1)
+    radius = np.linalg.norm(triangles - centroids[:, None], axis=2).max(axis=1)
+    tree = cKDTree(centroids)
+    for point, nearby in enumerate(tree.query_ball_point(mesh.points, radius.max() + tolerance)):
+        if not nearby:
+            continue
+        a, b, c = triangles[nearby].transpose(1, 0, 2)
+        _, distance = closest_point_on_triangles(np.broadcast_to(mesh.points[point], a.shape), a, b, c)
+        pinned[point] = distance.min() <= tolerance[point]
+    return pinned
+
+
 def hold_seams(points: "torch.Tensor", holds: SeamHolds) -> "torch.Tensor":
     """Apply independent seam holds out of place, with gradients into target corners."""
     import torch
@@ -786,7 +808,8 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
     weighted penalties.
     Both learning rates decay tenfold over the run.
     Seam holds pin border points that start near another part to its moving
-    triangles by default; `seam_margin=0` turns them off.
+    triangles by default, and copy pins keep the points that start near a frozen
+    copy in place; `seam_margin=0` turns both off.
     `copies` (a FitMesh, fit/copies.py) is drawn after the mesh, unchanged.
     The front and depth terms (fit/gbuffer.py) need the source and `carved`, one flag per source triangle drawn
     as a copy."""
@@ -818,10 +841,16 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
         holds = seam_holds(mesh, seam_margin * point_scale.detach().cpu().numpy()[:, 0])
         log(f"seam holds: {len(holds.points)} points")
     step_scale = point_scale / point_scale.max()
+    pinned = None
+    if seam_margin > 0 and copies is not None:
+        pins = copy_pins(mesh, copies, seam_margin * point_scale.detach().cpu().numpy()[:, 0])
+        log(f"copy pins: {int(pins.sum())} points")
+        pinned = torch.as_tensor(pins, device=device)[:, None]
 
     def held_positions():
         points = start + step_scale * delta
-        return hold_seams(points, holds) if holds is not None else points
+        points = hold_seams(points, holds) if holds is not None else points
+        return points if pinned is None else torch.where(pinned, start, points)
 
     copy_points, copy_colours = (None, None) if copies is None else (
         torch.as_tensor(values, dtype=torch.float32, device=device) for values in (copies.points, copies.rgb))

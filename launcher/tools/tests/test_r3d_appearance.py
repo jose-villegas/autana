@@ -112,6 +112,19 @@ class SeamHoldTests(unittest.TestCase):
         return FitMesh(points, np.ones_like(points), np.array([[0, 1, 2], [3, 4, 5]]),
                        np.zeros(2), 1, np.arange(len(points)))
 
+    def test_copy_pins_flag_the_points_within_their_tolerance_of_a_copy_triangle(self):
+        from r3d.appearance_simplify import copy_pins
+
+        mesh = self.mesh()
+        copy = FitMesh(np.array([[-1, -1, 0.0], [6, -1, 0.0], [-1, 6, 0.0]]), np.ones((3, 3)), np.array([[0, 1, 2]]),
+                       np.zeros(1), 1, np.arange(3))
+        # Point 0 sits 0.1 above the copy, point 1 a whole unit; the plane's points lie in it.
+        tolerance = np.full(len(mesh.points), 0.2)
+        np.testing.assert_array_equal(copy_pins(mesh, copy, tolerance), [True, False, False, True, True, True])
+        tolerance[0] = 0.05
+        self.assertFalse(copy_pins(mesh, copy, tolerance)[0], "each point's own tolerance decides")
+        np.testing.assert_array_equal(copy_pins(mesh, None, tolerance), np.zeros(len(mesh.points), bool))
+
     def test_border_point_held_at_start_barycentrics(self):
         from r3d.appearance_simplify import seam_holds
 
@@ -1126,6 +1139,27 @@ class AppearanceFitTests(unittest.TestCase):
                 for copies in (None, copy)}
         self.assertLess(fits[True].max(), 0.4, "without copies the rest is fitted to the target")
         np.testing.assert_array_equal(fits[False], rest.rgb, "a rest behind a copy is not fitted")
+
+    def test_rest_points_touching_a_copy_stay_where_they_started_and_the_others_move(self):
+        from r3d.appearance_simplify import Renderer, optimise, SEAM_MARGIN
+
+        rest = self.card(0.0)
+        copy = rest._replace(points=rest.points + [2.0, 0.0, 0.0])  # its left column is the rest's right one
+        size = (48, 40)
+        matrix = projection([0.0, 0.0, 4.0], [0.0, 0.0, -1.0], 24, 20, 0.62, 0.5)
+        target = draw(Renderer(rest.tris, rest.double, rest.vertex_point, size, "cuda"), rest.points * [0.6, 0.6, 1],
+                      rest.rgb, matrix)
+        options = dict(steps=40, batch=1, lr_position=0.01, lr_colour=0.0, laplacian=0.0, report=0, copies=copy)
+        touching = np.isclose(rest.points[:, 0], 1.0)
+        for margin in (SEAM_MARGIN, 0):
+            with self.subTest(seam_margin=margin):
+                points = optimise(rest, [(matrix, target)], size, seam_margin=margin, **options)[0]
+                moved = np.linalg.norm(points - rest.points, axis=1) > 1e-6
+                self.assertTrue(moved[~touching].any(), "the free rest points follow the target")
+                if margin:
+                    np.testing.assert_array_equal(points[touching], rest.points[touching])
+                else:
+                    self.assertTrue(moved[touching].any(), "without a margin the contact moves too")
 
     def test_hidden_copy_pixels_count_where_a_mesh_stands_in_front_of_a_copy(self):
         from r3d.fit.copies import hidden_copy_pixels
