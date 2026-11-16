@@ -62,7 +62,7 @@ amplitude is a measured biological excursion.
 
 | Feature | Evidence | Authored motion and limits |
 |---|---|---|
-| Scratch | [BBC Natural History / Getty footage](https://www.gettyimages.com.au/detail/video/capybara-scratches-head-with-hind-leg-stock-video-footage/831811658) shows a seated animal bowing its head while a hind foot reaches the cheek. The supporting foreleg stays on the bank. | Settle onto the haunches, bow the head, reach toward the cheek, make short strokes and return through the seated pose. The preview establishes posture and path; clip timing, left/right choice and stroke count are authored. |
+| Scratch | [BBC Natural History / Getty footage](https://www.gettyimages.com.au/detail/video/capybara-scratches-head-with-hind-leg-stock-video-footage/831811658) shows a seated animal bowing its head while a hind foot reaches the cheek. The supporting foreleg stays on the bank. | Lower into a partial crouch, turn and bow the head toward the left hind paw, and make small knee/hock strokes with a stable thigh. The source clock and fitted gains are animation choices; the preview establishes posture and path. |
 | Ear orientation | Inaka and Kimura classify ears as forward, slightly pulled back, or strongly pulled back and facing sideways. Their study scores photographs; it does not measure flick speed.<sup>[[130]](../../../docs/Citations.md#inaka-2021)</sup> | A short backward flick, small rebound and stagger between the ears, returning within a 1 s clip. Angles, stagger and timing are animation choices, not measured. |
 | Glance | The Biopark footage shows head reorientation during tactile interaction. Perspective and keeper contact prevent a reliable neutral head-turn range measurement. | About 25 degrees of combined neck/head turn, 0.75 s to turn, 0.7 s hold and 0.95 s return within 3 s. Animation choice, not measured; keep the body and feet quiet. |
 | Tail | Mones and Ojasti identify the capybara's tail as vestigial.<sup>[[129]](../../../docs/Citations.md#mones-1986)</sup> | The rig's tail control has only a subtle rest adjustment. This is asset stylisation, not evidence for a conspicuous natural tail wag. |
@@ -83,16 +83,28 @@ support. The fitter adapts the joint angles to the fixed limb lengths and skin.
 
 The Shepherd skin blends the thigh through pelvis helpers. The local skin studies
 compare a continuous body-to-thigh band and motion-bounded pairs.
-The primary blend retains the approved weights. The scratch still has a folded
-thigh-to-body region and remains a visual failure.
+The primary retains the approved weights. Scratch uses a partial crouch and a
+bowed, turned head to shorten the reach. The hip crease remains a visual failure.
 
 ![Lying pose and skin comparison](rest-review-lie.png)
 
 ![Scratch pose and skin comparison](rest-review-scratch.png)
 
-Each strip compares capybara poses with the same skin: reference above, candidate
-below. The local review package pairs the candidate with licensed reference rigs
-and includes complete GIFs and approved-action comparisons.
+The scratch sheet puts the primary first, then the lower-fold alternative and
+the reference action. Its matched Shepherd panel is credited to DreamNoms,
+CC BY 4.0. The local package includes separate complete GIFs for both variants.
+
+![Scratch problem faces and proposed support loop](rest-review-hip.png)
+
+Red faces fail the local fold test. The line marks a proposed hip support loop;
+it is not applied or proven to remove the crease. The measured variants, loop
+vertex counts and protected-action hashes are in [rest-review.json](rest-review.json).
+
+![Lying transfer comparison](rest-review-transfer.png)
+
+The lying sheet pairs the primary with the fitted Shepherd transfer. The study
+has no inter-leg crossings or floor penetration, but leg/body overlaps remain.
+The primary keeps the protected lying actions.
 
 Fixed control scales and a rounded silhouette do not establish true enclosed volume.
 Subframe contact and arbitrary self-intersection remain unmeasured.
@@ -119,6 +131,6 @@ No recumbent breathing rate is verified.
 | sit_down | Idle to haunches-down sit, forefeet supporting the chest; 2.5 s. | Kilby Sitting Sideways photograph; Ruiz-Tagle<sup>[[127]](../../../docs/Citations.md#ruiz-tagle-2021)</sup>. |
 | sit_idle | Rounded grounded haunches with the thigh inside the body outline, raised chest and supporting forelegs; about 40.9 breaths/min; seamless 176-interval loop. | Kilby Sitting Sideways photograph; Ruiz-Tagle<sup>[[127]](../../../docs/Citations.md#ruiz-tagle-2021)</sup>; Mortola and Lanthier<sup>[[128]](../../../docs/Citations.md#mortola-2005)</sup>. |
 | stand_up | Sit to idle; forward loading before hind extension; 2.3 s. | Same sitting references; rise order and timing not measured. |
-| scratch | Idle to seated lean, bowed head and hind-foot strokes toward the cheek, then return to idle. | BBC Natural History / Getty self-scratch preview; onset, return, stroke count and timing are authored. |
+| scratch | Partial crouch, bowed and turned head, outward knee and short knee/hock strokes with a stable thigh, then return to idle. | BBC Natural History / Getty posture; fitted DreamNoms SitScratchEar curves and capybara sit/rise entry and return. |
 | ear_flick | Idle to brief ear flick and rebound, return to idle; 1 s. | Inaka and Kimura's ear orientations<sup>[[130]](../../../docs/Citations.md#inaka-2021)</sup>; dynamic timing is unmeasured. |
 | glance | Idle to conservative head turn, hold and return; 3 s. | Biopark for qualitative head reorientation; angle and timing are unmeasured. |

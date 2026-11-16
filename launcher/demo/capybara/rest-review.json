@@ -1,0 +1,145 @@
+{
+  "primary": "Local review package: capybara-anim-rest/capybara_rest_sit.blend",
+  "variants": {
+    "primary": {
+      "label": "Primary: balanced reach",
+      "blend": "capybara_rest_sit.blend",
+      "audit": "scratch_primary/audit.json",
+      "frames": 151,
+      "closest_reach_frame": 77,
+      "closest_reach_folded_faces": 23,
+      "closest_reach_strain": 4.4888928236123675,
+      "max_folded_faces": 31,
+      "worst_edge_strain": 4.498644923846942,
+      "stroke_max_folded_faces": 24,
+      "paw_neck_vertex_gap_min_m": 0.009366094868731186,
+      "paw_neck_vertex_gap_max_m": 0.013612236840848708,
+      "stroke_thigh_max_angle_delta_degrees": 0.2684996184539827,
+      "stroke_support_drift_m": {
+        "hand.l": 1.873046918209871e-07,
+        "hand.r": 1.3604656122594228e-06,
+        "toes.r": 1.1445799094242763e-07
+      },
+      "floor_penetration_m": 0
+    },
+    "alternative": {
+      "label": "Alternative: fewer peak folds",
+      "blend": "scratch_alternative/capybara_rest_sit.blend",
+      "audit": "scratch_alternative/audit.json",
+      "frames": 151,
+      "closest_reach_frame": 58,
+      "closest_reach_folded_faces": 11,
+      "closest_reach_strain": 6.073807906619295,
+      "max_folded_faces": 33,
+      "worst_edge_strain": 6.0877654328696185,
+      "stroke_max_folded_faces": 11,
+      "paw_neck_vertex_gap_min_m": 0.015601278857721872,
+      "paw_neck_vertex_gap_max_m": 0.01639192359060023,
+      "stroke_thigh_max_angle_delta_degrees": 0.3278688239930742,
+      "stroke_support_drift_m": {
+        "hand.l": 7.897988831548169e-07,
+        "hand.r": 1.8220602020744423e-06,
+        "toes.r": 9.996002811937585e-08
+      },
+      "floor_penetration_m": 0
+    },
+    "reference": {
+      "label": "Reference action",
+      "blend": "round3/capybara_rest_sit.blend",
+      "audit": "round3/audit.json",
+      "frames": 181,
+      "closest_reach_frame": 61,
+      "closest_reach_folded_faces": 36,
+      "closest_reach_strain": 4.492484033914837,
+      "max_folded_faces": 52,
+      "worst_edge_strain": 4.520183336061847,
+      "stroke_max_folded_faces": 44,
+      "paw_neck_vertex_gap_min_m": 0.24690876707017578,
+      "paw_neck_vertex_gap_max_m": 0.29758744139228094,
+      "stroke_thigh_max_angle_delta_degrees": 9.490716127092501,
+      "stroke_support_drift_m": {
+        "hand.l": 0.0,
+        "hand.r": 0.0,
+        "toes.r": 0.0
+      },
+      "floor_penetration_m": 0
+    }
+  },
+  "protected_actions": {
+    "reference": "round3/capybara_rest_sit.blend",
+    "candidate": "capybara_rest_sit.blend",
+    "asset_invariants": {
+      "geometry": true,
+      "weights": true,
+      "bones": true,
+      "actions": true,
+      "vertex_colours": true
+    },
+    "actions": {
+      "lie_down": {
+        "key_hash_before": "1ec7907737fdf044e9081539c0facc55517a467cf45475dccfa6c5ca51ef2d24",
+        "key_hash_after": "1ec7907737fdf044e9081539c0facc55517a467cf45475dccfa6c5ca51ef2d24",
+        "maximum_evaluated_delta_m": 0.0
+      },
+      "lie_idle": {
+        "key_hash_before": "d2c4036989ed0797ea49940bbaf7d49bb7dffb1a0cfec2569e69ed2557f87992",
+        "key_hash_after": "d2c4036989ed0797ea49940bbaf7d49bb7dffb1a0cfec2569e69ed2557f87992",
+        "maximum_evaluated_delta_m": 0.0
+      },
+      "lie_up": {
+        "key_hash_before": "bae4f8636f4726977d2ddca405d81b629936629bb3a11cda4477bead1b272f36",
+        "key_hash_after": "bae4f8636f4726977d2ddca405d81b629936629bb3a11cda4477bead1b272f36",
+        "maximum_evaluated_delta_m": 0.0
+      },
+      "sit_down": {
+        "key_hash_before": "8fa95fd1968d1fbeb4d5cf557c2c48150d957dd14ed13b4d587b906efa2c06f3",
+        "key_hash_after": "8fa95fd1968d1fbeb4d5cf557c2c48150d957dd14ed13b4d587b906efa2c06f3",
+        "maximum_evaluated_delta_m": 0.0
+      },
+      "sit_idle": {
+        "key_hash_before": "7b67986f2c8bb6300e35d8171ea209db39d5900be471f931b2ee1ea6252a18d9",
+        "key_hash_after": "7b67986f2c8bb6300e35d8171ea209db39d5900be471f931b2ee1ea6252a18d9",
+        "maximum_evaluated_delta_m": 0.0
+      },
+      "stand_up": {
+        "key_hash_before": "0dad4d5eb4bbb1245c9d0f087b11af88d15540c750d6cc2e43bba08dcccf546b",
+        "key_hash_after": "0dad4d5eb4bbb1245c9d0f087b11af88d15540c750d6cc2e43bba08dcccf546b",
+        "maximum_evaluated_delta_m": 0.0
+      },
+      "glance": {
+        "key_hash_before": "18b863b4dc4f4450de50794a8e1f3a26b30e04bb7909bd393098ceaccbea5c26",
+        "key_hash_after": "18b863b4dc4f4450de50794a8e1f3a26b30e04bb7909bd393098ceaccbea5c26",
+        "maximum_evaluated_delta_m": 0.0
+      },
+      "ear_flick": {
+        "key_hash_before": "e1e9b8f15a80fce6a8535f84c5cd66fe862122801090877d11eadbfe2fef4e22",
+        "key_hash_after": "e1e9b8f15a80fce6a8535f84c5cd66fe862122801090877d11eadbfe2fef4e22",
+        "maximum_evaluated_delta_m": 0.0
+      }
+    }
+  },
+  "mesh_proposal": {
+    "new_stored_vertices": 24,
+    "new_evaluated_vertices_with_mirror": 46,
+    "status": "Unmodified mesh; proposed support loop, not a demonstrated deformation fix.",
+    "triangulated_diagnostic_samples": 39,
+    "location": "Torso/hindlimb attachment contour through stored edge 23 (vertices 5/27), around outer hip and posterior-medial groin; auxiliary triangle-diagonal samples are drawing points."
+  },
+  "all_numeric_pass": true,
+  "visual_crease_resolved": false,
+  "support_red_evidence": {
+    "test": "planted_feet",
+    "input": "retarget_final/capybara_rest_sit.blend",
+    "input_sha256": "d0698746a55985b964a994bc3b68ec3e251ba70e49b47f1181c34d642de0505a",
+    "maximum_forefoot_drift_m": 0.26348182149025445,
+    "threshold_m": 7.877881450476447e-05,
+    "passed": false,
+    "corrected_primary_passed": true
+  },
+  "source_motion_credit": {
+    "author": "DreamNoms",
+    "url": "https://sketchfab.com/3d-models/stylized-low-poly-german-shepherd-18d8fbe184c5448283762893b6ea9752",
+    "licence": "CC BY 4.0",
+    "changes": "Retargeted and resampled scratch curves with fitted controls and reduced distal gains; capybara sit/rise entry and return."
+  }
+}
