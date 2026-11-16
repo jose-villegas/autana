@@ -425,34 +425,66 @@ send_row_with_overlays(int row, int y) {
         xSemaphoreTake(strip_sent, portMAX_DELAY);
     }
     restore_overlay_borders(y, leaf_n);
+    overlay_note_bordered(recti_from_edges(0, y, GFX_WIDTH, y + STRIP_HEIGHT));
     return true;
 }
 
-/* Strip rows whose last send carried overlay borders. A border exists only
- * in the bytes sent, never in `present_fb`, so the panel keeps it until its row is
- * sent again, and the dirty tracker never resends a row nothing changed
- * in. Outlives the overlay toggles so switching one off still cleans up. */
-uint32_t overlay_bordered_rows;
-_Static_assert(STRIP_COUNT <= 32, "one bit per strip row");
-
-/* Before the dirty sends. A bordered row that is dirty again is widened to
- * its whole strip instead, so its one send with this present's borders also
- * covers last present's: resending it clean as well would send the row twice.
- * Only rows gone quiet are resent clean. A row interlace holds back keeps its
- * old borders until its own present. */
+/* Borders a gathered run packed into `slot` (`box` in panel pixels): yellow
+ * around a refined box or each of the run's cells, green around its leaves. */
 void
-send_overlay_bordered_rows_clean(bool (*send_rows)(int y0, int y1), int* queued) {
+overlay_border_gathered(gfx_color_t* slot, recti_t box, int run_start, int run_end, bool refined, gfx_color_t border) {
+    const int row = box.y / STRIP_HEIGHT;
+    if (debug_overlay_on && refined) {
+        mark_rect_border(slot, box.w, box.w, box.h, border);
+    } else if (debug_overlay_on) {
+        for (int col = run_start; col < run_end; col++) {
+            const int idx = (row * GRID_COLS) + col;
+            gfx_color_t* at = slot + ((size_t)(cell_y0[idx] - box.y) * box.w) + (cell_x0[idx] - box.x);
+            mark_rect_border(at, box.w, cell_x1[idx] - cell_x0[idx], cell_y1[idx] - cell_y0[idx], border);
+        }
+    }
+    if (leaf_overlay_on) {
+        const int n = dirty_leaf_rects(row, box, leaf_rect_scratch, LEAF_RECTS_PER_ROW_MAX);
+        for (int i = 0; i < n; i++) {
+            const recti_t* r = &leaf_rect_scratch[i];
+            gfx_color_t* at = slot + ((size_t)(r->y - box.y) * box.w) + (r->x - box.x);
+            mark_rect_border(at, box.w, r->w, r->h, RGB565BE(0x00FF00));
+        }
+    }
+    overlay_note_bordered(box);
+}
+
+/* Per strip row, the box its last present sent with overlay borders; empty
+ * when none. A border exists only in the bytes sent, never in `present_fb`, so
+ * the panel keeps it until that box is sent again, and the dirty tracker never
+ * resends what nothing changed in. Outlives the overlay toggles so switching
+ * one off still cleans up. */
+recti_t overlay_bordered[STRIP_COUNT];
+
+void
+overlay_note_bordered(recti_t box) {
+    const int row = box.y / STRIP_HEIGHT;
+    overlay_bordered[row] = recti_union(overlay_bordered[row], box);
+}
+
+/* Before the dirty sends. A strip dirty again has last present's bordered box
+ * marked dirty, so its one send with this present's borders also covers the
+ * old ones; a quiet strip is resent clean. A strip interlace holds back keeps
+ * its old borders until its own present. */
+void
+overlay_take_off_last_borders(bool (*send_rows)(int y0, int y1), int* queued) {
     for (int row = 0; row < STRIP_COUNT; row++) {
-        if (!(overlay_bordered_rows & (1U << row))) {
+        const recti_t box = overlay_bordered[row];
+        if (recti_is_empty(box)) {
             continue;
         }
         if (dirty_row_is_dirty(row)) {
-            mark_band(row * STRIP_HEIGHT, (row + 1) * STRIP_HEIGHT);
+            dirty_mark(box.x, box.y, box.w, box.h);
         } else if (send_rows(row * STRIP_HEIGHT, (row + 1) * STRIP_HEIGHT)) {
             (*queued)++;
         }
+        overlay_bordered[row] = recti_empty();
     }
-    overlay_bordered_rows = 0;
 }
 #endif /* ESP_PLATFORM */
 

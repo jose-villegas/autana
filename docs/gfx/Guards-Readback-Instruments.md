@@ -31,7 +31,7 @@ checkboxes toggle them.
 | `gfx_set_debug_overlay()` | outlines what was sent: cyan a full strip, yellow a gathered run |
 | `gfx_set_leaf_overlay()` | green outlines of the leaves marked this frame |
 | `gfx_set_send_audit()` | PSRAM shadow of every pixel sent, compared after each present, the tool for panel-link faults a screenshot cannot see |
-| (both overlays) | every present path; a border lasts one present, then its strip is resent clean, in band mode, by `gfx_band_dirty()` asking the app for the band once more |
+| (both overlays) | every present path; a border lasts one present: a strip dirty again goes out once with the new borders, a quiet strip is resent clean (in band mode, by `gfx_band_dirty()` asking the app for the band once more), and a strip interlace holds back keeps its old borders until its own present |
 | `gfx_get_strip_send_counts()` | full / gathered / partial counts since the last reset |
 | `gfx_get_bytes_sent()` | bytes queued |
 

@@ -36,7 +36,7 @@ _Static_assert(GFX_WIDTH == BOARD_PANEL_WIDTH && GFX_HEIGHT == BOARD_PANEL_HEIGH
  * places it: clones inherit the attribute; a mapping names only the original.
  * run_present is noinline so flash callers cannot inline its body out of IRAM.
  * Development overlays and send auditing make dev and diag larger.
- * IRAM budget: release 2418 B, dev 3242 B, diag 3242 B */
+ * IRAM budget: release 2418 B, dev 2818 B, diag 2818 B */
 #define GFX_PRESENT_IRAM_ATTR IRAM_ATTR
 static const char* TAG = "gfx";
 #else
@@ -457,7 +457,7 @@ note_send_failure(esp_err_t err) {
 /* Packs the box into the next strip_bounce slot and queues it, the same
  * ring send_fb_rows() uses, so copying one run overlaps sending the last. */
 static void GFX_PRESENT_IRAM_ATTR
-gather_and_send(int x0, int y0, int x1, int y1, int row, int run_start, int run_end, bool refined, int* queued,
+gather_and_send(int x0, int y0, int x1, int y1, int run_start, int run_end, bool refined, int* queued,
                 gfx_color_t border) {
     x0 = mathi_even_floor(x0);
     y0 = mathi_even_floor(y0);
@@ -474,27 +474,10 @@ gather_and_send(int x0, int y0, int x1, int y1, int row, int run_start, int run_
     }
 #if CONFIG_LAUNCHER_DEVELOPMENT
     send_audit_capture(x0, y0, w, h, slot);
-    if (debug_overlay_on && refined) {
-        /* One border around the whole packed box. */
-        mark_rect_border(slot, w, w, h, border);
-    } else if (debug_overlay_on) {
-        for (int col = run_start; col < run_end; col++) {
-            const int idx = (row * GRID_COLS) + col;
-            gfx_color_t* at = slot + ((size_t)(cell_y0[idx] - y0) * w) + (cell_x0[idx] - x0);
-            mark_rect_border(at, w, cell_x1[idx] - cell_x0[idx], cell_y1[idx] - cell_y0[idx], border);
-        }
-    }
-    if (leaf_overlay_on) {
-        const int n =
-            dirty_leaf_rects(row, recti_from_edges(x0, y0, x1, y1), leaf_rect_scratch, LEAF_RECTS_PER_ROW_MAX);
-        for (int i = 0; i < n; i++) {
-            const recti_t* r = &leaf_rect_scratch[i];
-            gfx_color_t* at = slot + ((size_t)(r->y - y0) * w) + (r->x - x0);
-            mark_rect_border(at, w, r->w, r->h, RGB565BE(0x00FF00));
-        }
+    if (overlay_any_on()) {
+        overlay_border_gathered(slot, recti_from_edges(x0, y0, x1, y1), run_start, run_end, refined, border);
     }
 #else
-    (void)row;
     (void)run_start;
     (void)run_end;
     (void)refined;
@@ -608,16 +591,15 @@ send_partial_band(int y0, int y1, int* queued) {
 
 /* Yellow; see gather_and_send()'s comment */
 static void
-send_run(int row, int run_start, int run_end, int box_x0, int box_x1, int box_y0, int box_y1, int split_n,
-         const int* split_x0, const int* split_x1, int* queued) {
+send_run(int run_start, int run_end, int box_x0, int box_x1, int box_y0, int box_y1, int split_n, const int* split_x0,
+         const int* split_x1, int* queued) {
     if (split_n == 0) {
-        gather_and_send(box_x0, box_y0, box_x1, box_y1, row, run_start, run_end, false, queued, RGB565BE(0xFFFF00));
+        gather_and_send(box_x0, box_y0, box_x1, box_y1, run_start, run_end, false, queued, RGB565BE(0xFFFF00));
         return;
     }
 
     for (int i = 0; i < split_n; i++) {
-        gather_and_send(split_x0[i], box_y0, split_x1[i], box_y1, row, run_start, run_end, true, queued,
-                        RGB565BE(0xFFFF00));
+        gather_and_send(split_x0[i], box_y0, split_x1[i], box_y1, run_start, run_end, true, queued, RGB565BE(0xFFFF00));
     }
 }
 
@@ -689,7 +671,7 @@ send_one_row(int row, int* queued) {
     }
 #endif
     for (int r = 0; r < n; r++) {
-        send_run(row, run_start[r], run_end[r], box_x0[r], box_x1[r], box_y0[r], box_y1[r], split_n[r], split_x0[r],
+        send_run(run_start[r], run_end[r], box_x0[r], box_x1[r], box_y0[r], box_y1[r], split_n[r], split_x0[r],
                  split_x1[r], queued);
     }
 }
@@ -701,7 +683,7 @@ static __attribute__((noinline)) void
 run_present_strips(bool (*send_rows)(int y0, int y1)) {
     int queued = 0;
 #if CONFIG_LAUNCHER_DEVELOPMENT
-    send_overlay_bordered_rows_clean(send_rows, &queued);
+    overlay_take_off_last_borders(send_rows, &queued);
 #endif
     for (int row = 0; row < STRIP_COUNT; row++) {
         if (!dirty_row_is_dirty(row)) {
@@ -709,7 +691,7 @@ run_present_strips(bool (*send_rows)(int y0, int y1)) {
         }
 #if CONFIG_LAUNCHER_DEVELOPMENT
         if (overlay_any_on()) {
-            overlay_bordered_rows |= 1U << row;
+            overlay_note_bordered(recti_from_edges(0, row * STRIP_HEIGHT, GFX_WIDTH, (row + 1) * STRIP_HEIGHT));
             strip_overlay_row = row;
         }
 #endif
@@ -746,11 +728,6 @@ send_dirty_rows(int* queued) {
             continue;
         }
 
-#if CONFIG_LAUNCHER_DEVELOPMENT
-        if (overlay_any_on()) {
-            overlay_bordered_rows |= 1U << row;
-        }
-#endif
         send_one_row(row, queued);
         dirty_row_sent(row);
     }
@@ -774,7 +751,7 @@ run_present_normal(void) {
     }
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
-    send_overlay_bordered_rows_clean(send_fb_rows, &queued);
+    overlay_take_off_last_borders(send_fb_rows, &queued);
 #endif
 
     const uint32_t remaining_cell_dirty = send_dirty_rows(&queued);
@@ -1041,7 +1018,7 @@ gfx_checkpoint_capture(checkpoint_t* saved) {
 #ifdef ESP_PLATFORM
         {(void*)&frame_parity, sizeof frame_parity},
 #if CONFIG_LAUNCHER_DEVELOPMENT
-        {(void*)&overlay_bordered_rows, sizeof overlay_bordered_rows},
+        {(void*)overlay_bordered, sizeof overlay_bordered},
 #endif
 #endif
         {(void*)&dev_present_send_us, sizeof dev_present_send_us},
