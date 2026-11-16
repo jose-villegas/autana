@@ -3,6 +3,7 @@ import unittest
 
 import numpy as np
 
+from soup import Soup
 from r3d.cards import CARD_MIP_LEVELS
 from r3d.cards.pages import pack_pages
 from r3d.texture import texture_asset, uv_transfer
@@ -60,11 +61,11 @@ class PageTests(unittest.TestCase):
 
     def test_page_labels_and_uvs_survive_welding_and_meshlet_order(self):
         from r3d.lit_mesh import bake_lit_mesh
-        corners = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0]])
-        tris = np.array([[0, 1, 2], [2, 1, 3], [4, 5, 6], [6, 5, 7]])
+        quad = Soup([[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0]], [[0, 1, 2], [2, 1, 3]])
+        tris = np.concatenate([quad.faces, quad.faces + len(quad.vertices)])
         uvs = np.tile([[0, 0], [16, 0], [0, 16], [16, 16]], (2, 1))
         pages = np.repeat([1, 0], 4)
-        mesh = bake_lit_mesh(np.tile(corners, (2, 1)), np.full((8, 3), 128), tris, np.ones(4),
+        mesh = bake_lit_mesh(np.tile(quad.vertices, (2, 1)), np.full((8, 3), 128), tris, np.ones(4),
                              vertex_uvs=uvs, vertex_pages=pages)
         self.assertEqual(len(mesh.pos), 8)
         self.assertEqual(len(mesh.tris), 4)

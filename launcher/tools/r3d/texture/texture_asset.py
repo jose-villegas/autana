@@ -3,26 +3,16 @@ The layout constants belong to render/texture/r3d_texture.h."""
 import dataclasses
 import pathlib
 
-from build.c_header import read_define
+from build.c_header import read_define, read_defines
 from r3d.mesh_asset import checked_struct
 
 OWNER = pathlib.Path(__file__).resolve().parents[3] / "main/render/texture/r3d_texture.h"
 TYPE = b"LTEX"
 UVS_TYPE = b"LUVS"  # a mesh's texturing, written by uv_transfer.py
-VERSION = read_define(OWNER, "R3D_TEXTURE_VERSION")
-INDEX4 = read_define(OWNER, "R3D_TEXTURE_INDEX4")
-MASK1 = read_define(OWNER, "R3D_TEXTURE_MASK1")
-MASK1_PER_BYTE = read_define(OWNER, "R3D_TEXTURE_MASK1_PER_BYTE")
-MASK1_SIZE_LOG2_MIN = read_define(OWNER, "R3D_TEXTURE_MASK1_SIZE_LOG2_MIN")
-MASK1_MIP_KEPT = read_define(OWNER, "R3D_TEXTURE_MASK1_MIP_KEPT")
-MASK1_COLOURS = read_define(OWNER, "R3D_TEXTURE_MASK1_COLOURS")
-INDEX4_PER_BYTE = read_define(OWNER, "R3D_TEXTURE_INDEX4_PER_BYTE")
-COLOURS = read_define(OWNER, "R3D_TEXTURE_COLOURS")
-PALETTE_STRIDE = read_define(OWNER, "R3D_TEXTURE_PALETTE_STRIDE")
-ONE = read_define(OWNER, "R3D_TEXTURE_ONE")
-SIZE_LOG2_MIN = read_define(OWNER, "R3D_TEXTURE_SIZE_LOG2_MIN")
-SIZE_LOG2_MAX = read_define(OWNER, "R3D_TEXTURE_SIZE_LOG2_MAX")
-TINT_RGB = read_define(OWNER, "R3D_TEXTURE_TINT_RGB")
+VERSION, INDEX4, MASK1, MASK1_PER_BYTE, MASK1_SIZE_LOG2_MIN, MASK1_MIP_KEPT, MASK1_COLOURS, INDEX4_PER_BYTE, \
+    COLOURS, PALETTE_STRIDE, ONE, SIZE_LOG2_MIN, SIZE_LOG2_MAX, TINT_RGB = read_defines(OWNER, "R3D_TEXTURE_",
+        ("VERSION", "INDEX4", "MASK1", "MASK1_PER_BYTE", "MASK1_SIZE_LOG2_MIN", "MASK1_MIP_KEPT", "MASK1_COLOURS",
+         "INDEX4_PER_BYTE", "COLOURS", "PALETTE_STRIDE", "ONE", "SIZE_LOG2_MIN", "SIZE_LOG2_MAX", "TINT_RGB"))
 TINT_PADDING = read_define(OWNER, "R3D_TEXTURE_TINT_BYTES") - TINT_RGB
 HEADER_FIELDS = (("VERSION", "H"), ("FORMAT", "H"), ("SIZE_LOG2", "B"), ("LEVELS", "B"),
                  ("TINT", f"{TINT_RGB}s{TINT_PADDING}x"), ("PALETTE_OFF", "I"), ("TEXELS_OFF", "I"))
