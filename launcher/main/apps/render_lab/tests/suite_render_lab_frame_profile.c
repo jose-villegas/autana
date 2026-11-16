@@ -67,9 +67,9 @@ static const profile_scenario_t profile_scenarios[] = {
     {.scene = &scene_sponza[SCENE_BAKED_FITTED_FULL], .quarters = {{48826, 60160}, {46066, 56159}}},
     {.scene = &scene_sponza[SCENE_BAKED_FITTED], .quarters = {{40510, 48377}, {38679, 45264}}},
     {.scene = &scene_sponza[SCENE_BAKED_FLAT_FITTED], .quarters = {{39384, 49012}, {37997, 46878}}},
-    CAPYBARA_ROW(capybara_home, {{20531, 20793}, {21164, 21432}}),
-    CAPYBARA_ROW(capybara_close, {{22108, 22455}, {23064, 23340}}),
-    CAPYBARA_ROW(capybara_blend, {{21079, 21407}, {21735, 22015}}),
+    CAPYBARA_ROW(capybara_home, {{20845, 21185}, {21592, 22018}}),
+    CAPYBARA_ROW(capybara_close, {{22561, 23064}, {23551, 23948}}),
+    CAPYBARA_ROW(capybara_blend, {{21149, 22049}, {21812, 22708}}),
     {&scene_bistro[SCENE_BAKED_FITTED_FULL], BISTRO_SCENE, BISTRO_CAMERA, NULL, {{36375, 54681}, {38062, 51881}}},
     {&scene_bistro_textured, BISTRO_SCENE, BISTRO_CAMERA, NULL, {{38825, 58151}, {41246, 54763}}},
 };
