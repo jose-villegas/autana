@@ -22,6 +22,18 @@ HIDDEN_MEAN_GROWTH = 0.0007
 HIDDEN_WORST_GROWTH = 0.010
 
 
+def carved_triangles(source, settings):
+    """One flag per source triangle that a carved start draws as a copy: the scene rules' objects and every repeat
+    and unit the bake carves (mesh_import.carved_repeats), so the reference G-buffer and the copy-coverage gate see
+    every copy the fit draws."""
+    from r3d.import_settings import match_meshes
+    from r3d.mesh_import import carved_repeats
+
+    rules = match_meshes(source.tri_o, source.tri_m, source.object_names, source.names, settings.meshes)
+    selected, _, tri_o, _ = carved_repeats(source, source.tri_v, source.tri_m, rules, settings)
+    return np.isin(tri_o, list(selected))
+
+
 def placed_copies(bundle, flat):
     """Every copy in a start bundle placed under its transform, as one FitMesh in the rest's units: a copy
     mesh's finest clusters as the bundle stores them, their own vertices with positions welded, one colour per
