@@ -28,7 +28,6 @@
 #include "scene/entity/entity.h"
 #include "scene/scene.h"
 #include "scene/skin/skin.h"
-#include "scene/skin/skin_contact.h"
 
 typedef struct scene scene_t;
 #include "scene/scene_conventions.h"
@@ -138,7 +137,6 @@ typedef struct {
 
 typedef struct {
     r3d_skin_t skin;
-    skin_contacts_t contacts;
     contact_mask_t contact_mask;
     bool contact_mask_failed;
     r3d_lit_mesh_t bind;
@@ -372,15 +370,12 @@ scene_failure_t scene_failure_make(scene_status_t status, asset_status_t asset, 
 bool scene_report(scene_failure_t* why, scene_status_t status, asset_status_t asset, const char* what);
 
 #define CONTACT_LIGHT_ELEVATION_MIN 0.3F
-#define CONTACT_LIFT_SPREAD         1.0F
 
 typedef struct {
-    float radius, lift;
+    float x, z;
 } contact_reach_t;
 
 vec3f_t scene_contact_light(const scene_t* scene, vec3f_t world, scene_t* const* drawn_scenes, int drawn_scene_count);
 contact_reach_t scene_contact_reach(const scene_t* scene, const scene_renderer_t* renderer);
 box3f_t contact_blob_bounds(box3f_t mover, float ground_y, contact_reach_t reach, vec3f_t light);
-const contact_mask_t* scene_contact_mask(const scene_t* scene, const scene_renderer_t* renderer,
-                                         contact_mask_t* placed);
-int scene_contact_discs(const scene_t* scene, const scene_renderer_t* renderer, vec3f_t light, contact_disc_t* discs);
+bool scene_contact_blob(const scene_t* scene, const scene_renderer_t* renderer, vec3f_t light, contact_blob_t* blob);

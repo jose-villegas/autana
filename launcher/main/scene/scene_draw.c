@@ -244,29 +244,14 @@ fill_instances(int* batches) {
 }
 
 #define CONTACT_AXIS_EPSILON 0.000001F
-_Static_assert(SKIN_CONTACTS_MAX <= CONTACT_BLOB_DISCS_MAX, "contact discs must fit the draw batch");
-
-static float
-contact_scale(const scene_t* scene, const scene_renderer_t* r) {
-    const vec3f_t scale = scene_row_world(scene->root, r->entity).scale;
-    return fmaxf(fabsf(scale.x), fmaxf(fabsf(scale.y), fabsf(scale.z)));
-}
-
-static bool
-contact_uses_feet(const scene_t* scene, const scene_renderer_t* r) {
-    const scene_skinned_renderer_t* skin = &scene->skinned_renderers[r->entity];
-    return r->contact_blob_shape != SCENE_CONTACT_BODY && skin->bound && skin->contacts.count > 0;
-}
 
 contact_reach_t
 scene_contact_reach(const scene_t* scene, const scene_renderer_t* r) {
-    if (contact_uses_feet(scene, r)) {
-        const skin_contacts_t* contacts = &scene->skinned_renderers[r->entity].contacts;
-        const float scale = contact_scale(scene, r);
-        return (contact_reach_t){contacts->radius * scale * (1 + CONTACT_LIFT_SPREAD), contacts->lift * scale};
-    }
     const vec3f_t half = box3f_half_extent(r->world_bounds);
-    return (contact_reach_t){fminf(half.x, half.z), 0};
+    const float radius = fminf(half.x, half.z);
+    const bool shape = r->contact_blob_shape == SCENE_CONTACT_SHAPE
+                       && scene->skinned_renderers[r->entity].contact_mask.coverage != NULL;
+    return (contact_reach_t){shape ? half.x : radius, shape ? half.z : radius};
 }
 
 static vec3f_t
@@ -280,79 +265,37 @@ light_elevation(vec3f_t light) {
     return mathf_clamp(light.y, CONTACT_LIGHT_ELEVATION_MIN, 1);
 }
 
+static contact_blob_t
+warped_blob(box3f_t mover, float ground_y, contact_reach_t reach, vec3f_t light) {
+    const vec3f_t axis = warp_axis(light);
+    const float e = vec3f_dot(axis, axis) == 0 ? 1 : light_elevation(light);
+    vec3f_t centre = box3f_centre(mover);
+    centre.y = ground_y;
+    const float radius = fminf(reach.x, reach.z);
+    centre = vec3f_add(centre, vec3f_scale(axis, radius * sqrtf(1 - e * e) / e));
+    const vec3f_t u = {reach.x, 0, 0}, v = {0, 0, reach.z};
+    return (contact_blob_t){.centre = centre,
+                            .u = vec3f_add(u, vec3f_scale(axis, vec3f_dot(u, axis) * (1 / e - 1))),
+                            .v = vec3f_add(v, vec3f_scale(axis, vec3f_dot(v, axis) * (1 / e - 1)))};
+}
+
 box3f_t
 contact_blob_bounds(box3f_t mover, float ground_y, contact_reach_t reach, vec3f_t light) {
-    const float e = light_elevation(light);
-    const vec3f_t axis = warp_axis(light);
-    const float far = (reach.lift + reach.radius) * sqrtf(1 - e * e) / e + reach.radius / e;
-    const vec3f_t offset = vec3f_scale(axis, far);
-    mover.lo.x += fminf(0, offset.x) - reach.radius;
-    mover.lo.z += fminf(0, offset.z) - reach.radius;
-    mover.hi.x += fmaxf(0, offset.x) + reach.radius;
-    mover.hi.z += fmaxf(0, offset.z) + reach.radius;
-    mover.lo.y = ground_y - reach.radius;
-    mover.hi.y = ground_y + reach.radius;
-    return mover;
+    const contact_blob_t blob = warped_blob(mover, ground_y, reach, light);
+    const vec3f_t extent = {fabsf(blob.u.x) + fabsf(blob.v.x), 0, fabsf(blob.u.z) + fabsf(blob.v.z)};
+    return (box3f_t){vec3f_sub(blob.centre, extent), vec3f_add(blob.centre, extent)};
 }
 
-static contact_disc_t
-warped_disc(vec3f_t ground, float height, float radius, float strength, vec3f_t light) {
-    const vec3f_t axis = warp_axis(light);
-    const bool round = vec3f_dot(axis, axis) == 0;
-    const float e = round ? 1 : light_elevation(light);
-    return (contact_disc_t){.centre = vec3f_add(ground, vec3f_scale(axis, (height + radius) * sqrtf(1 - e * e) / e)),
-                            .axis = round ? vec3f_unit_x() : axis,
-                            .inverse_long2 = e * e / (radius * radius),
-                            .inverse_short2 = 1 / (radius * radius),
-                            .strength = strength};
-}
-
-static int
-body_contact_disc(const scene_t* scene, const scene_renderer_t* r, vec3f_t light, contact_disc_t* discs) {
-    vec3f_t ground = box3f_centre(r->world_bounds);
-    ground.y = r->contact_blob_ground_y;
-    const float radius = scene_contact_reach(scene, r).radius;
-    if (!(radius > 0)) {
-        return 0;
+bool
+scene_contact_blob(const scene_t* scene, const scene_renderer_t* r, vec3f_t light, contact_blob_t* blob) {
+    const contact_reach_t reach = scene_contact_reach(scene, r);
+    *blob = warped_blob(r->world_bounds, r->contact_blob_ground_y, reach, light);
+    blob->strength = r->contact_blob_strength;
+    if (r->contact_blob_shape == SCENE_CONTACT_SHAPE) {
+        const contact_mask_t* mask = &scene->skinned_renderers[r->entity].contact_mask;
+        blob->mask = mask->coverage != NULL ? mask : NULL;
     }
-    discs[0] = warped_disc(ground, 0, radius, r->contact_blob_strength, light);
-    return 1;
-}
-
-int
-scene_contact_discs(const scene_t* scene, const scene_renderer_t* r, vec3f_t light, contact_disc_t* discs) {
-    if (!(r->contact_blob_strength > 0)) {
-        return 0;
-    }
-    if (!contact_uses_feet(scene, r)) {
-        return body_contact_disc(scene, r, light, discs);
-    }
-    const scene_skinned_renderer_t* skin = &scene->skinned_renderers[r->entity];
-    const skin_contacts_t* contacts = &skin->contacts;
-    const float scale = contact_scale(scene, r), lift = contacts->lift * scale;
-    const mat4f_t world = scene_row_world_matrix(scene->root, r->entity);
-    int count = 0;
-    for (int i = 0; i < contacts->count; i++) {
-        const int j = contacts->joints[i];
-        vec3f_t joint;
-        if (skin->model != NULL) {
-            joint = mat4f_apply(&skin->model[j], vec3f_zero());
-        } else {
-            joint = skin_contact_bind_position(&skin->skin, j);
-        }
-        joint = mat4f_apply(&world, joint);
-        const float h = fmaxf(0, joint.y - r->contact_blob_ground_y - contacts->rest_y[i] * scale);
-        const float t = lift > 0 ? fminf(h / lift, 1) : h > 0 ? 1 : 0;
-        const float radius = contacts->radius * scale * (1 + CONTACT_LIFT_SPREAD * t);
-        if (t >= 1 || !(radius > 0)) {
-            continue;
-        }
-        joint.x = mathf_clamp(joint.x, r->world_bounds.lo.x, r->world_bounds.hi.x);
-        joint.z = mathf_clamp(joint.z, r->world_bounds.lo.z, r->world_bounds.hi.z);
-        joint.y = r->contact_blob_ground_y;
-        discs[count++] = warped_disc(joint, h, radius, r->contact_blob_strength * (1 - t) * (1 - t), light);
-    }
-    return count;
+    return reach.x > 0 && reach.z > 0 && blob->strength > 0;
 }
 
 /* `scene`'s part of fill_changed(): its changed renderers' boxes into
@@ -453,18 +396,6 @@ scene_set_contact_blob(entity_t renderer, float ground_y, float strength, scene_
     render_context_forget(render_context_main());
 }
 
-const contact_mask_t*
-scene_contact_mask(const scene_t* scene, const scene_renderer_t* r, contact_mask_t* placed) {
-    *placed = scene->skinned_renderers[r->entity].contact_mask;
-    if (r->contact_blob_shape != SCENE_CONTACT_SHAPE || placed->coverage == NULL) {
-        return NULL;
-    }
-    placed->origin = (vec3f_t){r->world_bounds.lo.x, r->contact_blob_ground_y, r->world_bounds.lo.z};
-    placed->u = (vec3f_t){r->world_bounds.hi.x - r->world_bounds.lo.x, 0, 0};
-    placed->v = (vec3f_t){0, 0, r->world_bounds.hi.z - r->world_bounds.lo.z};
-    return placed->u.x > 0 && placed->v.z > 0 ? placed : NULL;
-}
-
 static void
 post_draw(const r3d_span_target_t* target, const r3d_lens_t* lens, void* user) {
     (void)user;
@@ -477,16 +408,16 @@ post_draw(const r3d_span_target_t* target, const r3d_lens_t* lens, void* user) {
                     scene_contact_light(scene, box3f_centre(r->world_bounds), drawn_scenes, drawn_scene_count);
                 const box3f_t bounds = contact_blob_bounds(r->world_bounds, r->contact_blob_ground_y,
                                                            scene_contact_reach(scene, r), light);
-                planef_t planes[PLANE_FRUSTUM_COUNT];
+                static planef_t planes[PLANE_FRUSTUM_COUNT];
                 r3d_lens_frustum(lens, planes);
                 unsigned mask = 0;
                 if (box3f_outside_planes(bounds, planes, PLANE_FRUSTUM_COUNT, &mask)) {
                     continue;
                 }
-                static contact_disc_t discs[SKIN_CONTACTS_MAX];
-                const int count = scene_contact_discs(scene, r, light, discs);
-                static contact_mask_t contact;
-                contact_blob_draw(target, lens, vec3f_unit_y(), discs, count, scene_contact_mask(scene, r, &contact));
+                static contact_blob_t blob;
+                if (scene_contact_blob(scene, r, light, &blob)) {
+                    contact_blob_draw(target, lens, &blob);
+                }
             }
         }
     }

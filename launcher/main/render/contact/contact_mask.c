@@ -1,4 +1,4 @@
-/* contact_mask: top-down posed-mesh coverage using the span fill's edges and planes. */
+/* contact_mask: top-down posed triangles filled with the span rasterizer's edges. */
 #include "render/contact/contact_mask.h"
 
 #include <math.h>
@@ -18,8 +18,7 @@ mask_vertex(const contact_mask_t* mask, const int16_t position[3], int scale, co
 }
 
 static void
-mask_row(contact_mask_t* mask, const r3d_span_edge_t edges[3], r3d_span_plane_t height, int y, float lift,
-         float strength, recti_t box) {
+mask_row(contact_mask_t* mask, const r3d_span_edge_t edges[3], int y, recti_t box) {
     const int cy = y * R3D_SUBPIXEL + R3D_SPAN_HALF_PIXEL;
     for (int x = mathi_max(0, box.x), end = mathi_min(mask->side, recti_right(box)); x < end; x++) {
         const int cx = x * R3D_SUBPIXEL + R3D_SPAN_HALF_PIXEL;
@@ -27,27 +26,21 @@ mask_row(contact_mask_t* mask, const r3d_span_edge_t edges[3], r3d_span_plane_t 
             < 0) {
             continue;
         }
-        const float h = height.base + height.dx * x + height.dy * y;
-        const float falloff = 1 - mathf_clamp(h / lift, 0, 1);
-        const int coverage = (int)(UINT8_MAX * strength * falloff * falloff);
-        uint8_t* cell = &mask->coverage[y * mask->side + x];
-        *cell = (uint8_t)mathi_max(*cell, coverage);
+        mask->coverage[y * mask->side + x] = UINT8_MAX;
     }
 }
 
 static void
-mask_triangle(contact_mask_t* mask, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c,
-              float lift, float strength) {
+mask_triangle(contact_mask_t* mask, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
+              const r3d_span_vertex_t* c) {
     if (r3d_span_area2(a, b, c) < 0) {
         const r3d_span_vertex_t* swap = b;
         b = c;
         c = swap;
     }
-    static r3d_span_frame_t frame;
-    if (!r3d_span_frame_of(a, b, c, 0, 0, &frame)) {
+    if (r3d_span_area2(a, b, c) == 0) {
         return;
     }
-    const r3d_span_plane_t height = r3d_span_plane_of(&frame, a->z, b->z, c->z);
     static r3d_span_edge_t edges[3];
     edges[0] = r3d_span_edge(a, b);
     edges[1] = r3d_span_edge(b, c);
@@ -55,20 +48,19 @@ mask_triangle(contact_mask_t* mask, const r3d_span_vertex_t* a, const r3d_span_v
     const recti_t box = r3d_span_extent_limits(a, b, c, 0, 0).centres;
     const int end = mathi_min(mask->side, recti_bottom(box));
     for (int y = mathi_max(0, box.y); y < end; y++) {
-        mask_row(mask, edges, height, y, lift, strength, box);
+        mask_row(mask, edges, y, box);
     }
 }
 
 static void
-mask_cluster(contact_mask_t* mask, const r3d_lit_mesh_t* mesh, const r3d_lit_cluster_t* cluster, const mat4f_t* world,
-             float lift, float strength) {
+mask_cluster(contact_mask_t* mask, const r3d_lit_mesh_t* mesh, const r3d_lit_cluster_t* cluster, const mat4f_t* world) {
     for (int t = cluster->triangle_first; t < cluster->triangle_first + cluster->triangle_count; t++) {
         static r3d_span_vertex_t corners[3];
         for (int i = 0; i < 3; i++) {
             const int v = mesh->triangles[t][i];
             corners[i] = mask_vertex(mask, mesh->positions[v], mesh->position_scale, world);
         }
-        mask_triangle(mask, &corners[0], &corners[1], &corners[2], lift, strength);
+        mask_triangle(mask, &corners[0], &corners[1], &corners[2]);
     }
 }
 
@@ -96,18 +88,18 @@ mask_blur(contact_mask_t* mask) {
 }
 
 void
-contact_mask_build(contact_mask_t* mask, const r3d_lit_mesh_t* mesh, mat4f_t world, box3f_t mover, float ground_y,
-                   float lift, float strength) {
+contact_mask_build(contact_mask_t* mask, const r3d_lit_mesh_t* mesh, const mat4f_t* world, box3f_t mover,
+                   float ground_y) {
     mask->side = CONTACT_MASK_SIDE;
     mask->origin = (vec3f_t){mover.lo.x, ground_y, mover.lo.z};
     mask->u = (vec3f_t){mover.hi.x - mover.lo.x, 0, 0};
     mask->v = (vec3f_t){0, 0, mover.hi.z - mover.lo.z};
     memset(mask->coverage, 0, CONTACT_MASK_BYTES);
-    if (!(mask->u.x > 0 && mask->v.z > 0 && lift > 0)) {
+    if (!(mask->u.x > 0 && mask->v.z > 0)) {
         return;
     }
     for (int i = 0; i < mesh->cluster_count; i++) {
-        mask_cluster(mask, mesh, &mesh->clusters[i], &world, lift, mathf_clamp(strength, 0, 1));
+        mask_cluster(mask, mesh, &mesh->clusters[i], world);
     }
     mask_blur(mask);
 }
