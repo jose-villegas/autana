@@ -43,7 +43,7 @@ draw_row(const r3d_span_target_t* target, const r3d_lens_t* lens, const blob_pla
         const float falloff = fmaxf(0.0F, 1.0F - vec3f_dot(units, units) * blob->inverse_radius_squared);
         const float coverage = blob->strength * falloff * falloff;
         if (coverage * BAYER4_LEVELS > (float)bayer4x4[y & (BAYER4_SIDE - 1)][x & (BAYER4_SIDE - 1)]) {
-            color[x] = rgb565be_unspread(rgb565be_spread(color[x]) >> 1);
+            color[x] = rgb565be_half(color[x]);
         }
     }
 }

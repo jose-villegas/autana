@@ -32,7 +32,7 @@ r3d_skin_light_table_build(const r3d_skin_lights_t* lights, r3d_skin_light_table
     /* Light-change builds use two passes to avoid a large scratch buffer and an allocation failure path. */
     float maximum = 0.0F;
     for (int cell = 0; cell < R3D_SKIN_LIGHT_TABLE_CELLS; cell++) {
-        const vec3f_t sum = light_direct_irradiance(light_table_directions[cell], lights, lights->ambient);
+        const vec3f_t sum = light_irradiance(light_table_directions[cell], lights);
         if (sum.x > maximum) {
             maximum = sum.x;
         }
@@ -51,7 +51,7 @@ r3d_skin_light_table_build(const r3d_skin_lights_t* lights, r3d_skin_light_table
     const float scale = maximum / R3D_SKIN_LIGHT_TABLE_MASK;
     const float encode = R3D_SKIN_LIGHT_TABLE_MASK / maximum;
     for (int cell = 0; cell < R3D_SKIN_LIGHT_TABLE_CELLS; cell++) {
-        const vec3f_t sum = light_direct_irradiance(light_table_directions[cell], lights, lights->ambient);
+        const vec3f_t sum = light_irradiance(light_table_directions[cell], lights);
         const float channels[] = {sum.x, sum.y, sum.z};
         uint32_t packed = 0;
 #pragma GCC unroll R3D_SKIN_LIGHT_CHANNELS

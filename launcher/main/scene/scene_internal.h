@@ -235,6 +235,11 @@ struct scene {
     bool active_renderers_stale; /* an ACTIVE bit flipped since the list was built */
 };
 
+static inline bool
+scene_is_lit(const scene_t* scene) {
+    return scene->probes != NULL || scene->light_count > 0 || scene->ambient_intensity > 0.0F;
+}
+
 #if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
 /* Fault injection exercises allocation rollback without exhausting the heap. */
 extern int scene_fail_allocation_after;
