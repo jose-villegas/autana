@@ -89,9 +89,10 @@ jobs:
           sudo sh scripts/ci/apt_install.sh -y --no-install-recommends llvm
           git submodule update --init --depth 1 third_party/upstream/meshoptimizer third_party/upstream/ufbx
 
-      # test_check_math.mjs renders through GitHub's MathJax.
+      # test_check_math.mjs renders through GitHub's MathJax; the architecture
+      # tests validate what they write with the pinned LikeC4.
       - name: Node gate dependencies
-        run: npm ci --prefix scripts/gates
+        run: npm ci --prefix scripts/gates && npm ci --prefix scripts/architecture
 
       - name: Workflows take no untrusted events on self-hosted jobs and queue shared groups
         run: python3 scripts/gates/check_workflows.py
@@ -239,6 +240,7 @@ jobs:
           pip install -r scripts/gates/requirements.txt -r launcher/tools/render/requirements.txt -r launcher/test/device/requirements.txt -r launcher/tools/audio/requirements.txt -r launcher/tools/audio/mic/requirements.txt -r launcher/tools/r3d/requirements.txt -r launcher/tools/scene/requirements.txt
           git submodule update --init --depth 1 third_party/upstream/meshoptimizer third_party/upstream/ufbx
           npm ci --prefix scripts/gates
+          npm ci --prefix scripts/architecture
       - name: Tool tests
         run: sh scripts/run-tool-tests.sh
       # A native crash past Python's own shutdown, where the faulthandler is off, is named by Windows' crash record.

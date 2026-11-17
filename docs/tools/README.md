@@ -30,6 +30,7 @@ The rest of this index lists the repository's checks and tools.
 | [Doc-Figures.md](Doc-Figures.md) | Declaring the images a script makes; `figures_runner.py` to list, find, build and check them. |
 | [Figures.md](Figures.md) | Every doc image by area, with its thumbnail, the pages that show it and its producer. |
 | [Render-Harness.md](Render-Harness.md) | Rendering real firmware screens on a host: declaring a scene, what its pixels are pinned to, video output, the QEMU backend, and diffing against a device capture. |
+| [Architecture-Diagram.md](Architecture-Diagram.md) | Drawing a C or C++ project's C4 model from its sources and a project file, and building it into a LikeC4 site. |
 | [Pull-Requests.md](Pull-Requests.md) | The pull request description layout, the scaffold that fills its table from the branch, and its check. |
 | [Citing-Sources.md](Citing-Sources.md) | Citing a paper or specification from a document or code: entry keys, shown numbers, "cited by" lists, and the check that rewrites them. |
 | [Mermaid-Diagrams.md](Mermaid-Diagrams.md) | Validating ```` ```mermaid ```` diagrams with mermaid-cli: the command, the pre-commit step, and CI. |
