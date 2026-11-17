@@ -126,6 +126,8 @@ static const stress_goal_t stress_goals[] = {
     {"stress-skinned-sh-blobs", "landscape", "default", {0, 0, 0, 0, 0, 0, 0, 0}, {0, 0}},
     {"stress-skinned-feet-blobs", "portrait", "default", {0, 0, 0, 0, 0, 0, 0, 0}, {0, 0}},
     {"stress-skinned-feet-blobs", "landscape", "default", {0, 0, 0, 0, 0, 0, 0, 0}, {0, 0}},
+    {"stress-skinned-shape-blobs", "portrait", "default", {0, 0, 0, 0, 0, 0, 0, 0}, {0, 0}},
+    {"stress-skinned-shape-blobs", "landscape", "default", {0, 0, 0, 0, 0, 0, 0, 0}, {0, 0}},
 };
 
 static const char*

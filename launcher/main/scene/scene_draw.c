@@ -255,7 +255,7 @@ contact_scale(const scene_t* scene, const scene_renderer_t* r) {
 static bool
 contact_uses_feet(const scene_t* scene, const scene_renderer_t* r) {
     const scene_skinned_renderer_t* skin = &scene->skinned_renderers[r->entity];
-    return r->contact_blob_shape == SCENE_CONTACT_FEET && skin->bound && skin->contacts.count > 0;
+    return r->contact_blob_shape != SCENE_CONTACT_BODY && skin->bound && skin->contacts.count > 0;
 }
 
 contact_reach_t
@@ -448,8 +448,21 @@ scene_set_contact_blob(entity_t renderer, float ground_y, float strength, scene_
     r->contact_blob_ground_y = ground_y;
     r->contact_blob_strength = strength;
     r->contact_blob_shape = shape;
+    scene_skin_contact_refresh(scene, row);
     r->changed = true;
     render_context_forget(render_context_main());
+}
+
+const contact_mask_t*
+scene_contact_mask(const scene_t* scene, const scene_renderer_t* r, contact_mask_t* placed) {
+    *placed = scene->skinned_renderers[r->entity].contact_mask;
+    if (r->contact_blob_shape != SCENE_CONTACT_SHAPE || placed->coverage == NULL) {
+        return NULL;
+    }
+    placed->origin = (vec3f_t){r->world_bounds.lo.x, r->contact_blob_ground_y, r->world_bounds.lo.z};
+    placed->u = (vec3f_t){r->world_bounds.hi.x - r->world_bounds.lo.x, 0, 0};
+    placed->v = (vec3f_t){0, 0, r->world_bounds.hi.z - r->world_bounds.lo.z};
+    return placed->u.x > 0 && placed->v.z > 0 ? placed : NULL;
 }
 
 static void
@@ -470,9 +483,10 @@ post_draw(const r3d_span_target_t* target, const r3d_lens_t* lens, void* user) {
                 if (box3f_outside_planes(bounds, planes, PLANE_FRUSTUM_COUNT, &mask)) {
                     continue;
                 }
-                contact_disc_t discs[SKIN_CONTACTS_MAX];
+                static contact_disc_t discs[SKIN_CONTACTS_MAX];
                 const int count = scene_contact_discs(scene, r, light, discs);
-                contact_blob_draw(target, lens, vec3f_unit_y(), discs, count);
+                static contact_mask_t contact;
+                contact_blob_draw(target, lens, vec3f_unit_y(), discs, count, scene_contact_mask(scene, r, &contact));
             }
         }
     }

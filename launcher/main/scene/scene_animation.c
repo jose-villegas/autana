@@ -292,6 +292,7 @@ scene_animation_repose(scene_t* scene, uint32_t dt_ms) {
         if (scene->skinned_renderers[e].storage != NULL && scene->animators[e].posed) {
             r3d_skin_refit_nodes(&scene->skinned_renderers[e].output);
             scene_renderer_bound(&scene->renderers[scene_renderer_index(scene, e)]);
+            scene_skin_contact_refresh(scene, e);
         }
     }
     FRAME_COST_END(refit_from, SCENE_ANIM_STAGE_REFIT_NAME);
@@ -328,6 +329,8 @@ scene_animation_checkpoint_capture(checkpoint_t* saved, scene_t* scene) {
                 : (size_t)((uint8_t*)(skin->normal_palette + joints) - (uint8_t*)skin->light_storage);
         checkpoint_capture_at(saved, &skin->storage, internal_bytes);
         checkpoint_capture_at(saved, &skin->light_storage, light_bytes);
+        checkpoint_capture_at(saved, &skin->contact_mask.coverage,
+                              skin->contact_mask.coverage == NULL ? 0 : CONTACT_MASK_BYTES);
     }
 }
 #endif

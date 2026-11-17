@@ -4934,6 +4934,78 @@ test_contact_light_choice_and_shadow_invalidation(void) {
 }
 
 static void
+test_shape_mask_repose_and_lifetime(void) {
+    fixture_with_skin(&SKIN_OPTIONS);
+    const entity_t root = load("test_skin");
+    const entity_t entity = entity_find(root, name_hash("red"));
+    scene_t* scene = columns(root);
+    transformf_t tilted = transform_local(entity);
+    transformf_set_rotation(&tilted, quatf_from_axis_angle(vec3f_unit_x(), MATH_PI / 4));
+    transform_set_local(entity, tilted);
+    scene_resolve(scene);
+    scene_skinned_renderer_t* skin = skin_of(entity);
+    TEST_ASSERT_NULL(skin->contact_mask.coverage);
+    scene_set_contact_blob(entity, 0, 1, SCENE_CONTACT_SHAPE);
+    scene_animation_repose(scene, 0);
+    TEST_ASSERT_NOT_NULL(skin->contact_mask.coverage);
+    memset(skin->contact_mask.coverage, UINT8_MAX, CONTACT_MASK_BYTES);
+    scene_animation_repose(scene, 0);
+    TEST_ASSERT_EQUAL_UINT8(UINT8_MAX, skin->contact_mask.coverage[0]);
+    scene->animators[row_of(entity)].dirty = true;
+    scene_animation_repose(scene, 0);
+    TEST_ASSERT_NOT_EQUAL(UINT8_MAX, skin->contact_mask.coverage[0]);
+    const scene_renderer_t* r = &scene->renderers[scene_renderer_index(scene, row_of(entity))];
+    const box3f_t bounds = contact_blob_bounds(r->world_bounds, 0, scene_contact_reach(scene, r), vec3f_unit_y());
+    TEST_ASSERT_GREATER_OR_EQUAL_FLOAT(bounds.lo.x, skin->contact_mask.origin.x);
+    TEST_ASSERT_GREATER_OR_EQUAL_FLOAT(bounds.lo.z, skin->contact_mask.origin.z);
+    TEST_ASSERT_LESS_OR_EQUAL_FLOAT(bounds.hi.x, skin->contact_mask.origin.x + skin->contact_mask.u.x);
+    TEST_ASSERT_LESS_OR_EQUAL_FLOAT(bounds.hi.z, skin->contact_mask.origin.z + skin->contact_mask.v.z);
+    uint8_t* saved = malloc(CONTACT_MASK_BYTES);
+    TEST_ASSERT_NOT_NULL(saved);
+    memcpy(saved, skin->contact_mask.coverage, CONTACT_MASK_BYTES);
+    contact_mask_t before, after;
+    TEST_ASSERT_NOT_NULL(scene_contact_mask(scene, r, &before));
+    transformf_t moved = transform_local(entity);
+    moved.position.x += RIG_TRAVEL;
+    transform_set_local(entity, moved);
+    scene_resolve(scene);
+    TEST_ASSERT_NOT_NULL(scene_contact_mask(scene, r, &after));
+    TEST_ASSERT_FLOAT_WITHIN(0.001F, before.origin.x + RIG_TRAVEL, after.origin.x);
+    TEST_ASSERT_EQUAL_MEMORY(saved, skin->contact_mask.coverage, CONTACT_MASK_BYTES);
+    const box3f_t moved_bounds = contact_blob_bounds(r->world_bounds, 0, scene_contact_reach(scene, r), vec3f_unit_y());
+    TEST_ASSERT_GREATER_OR_EQUAL_FLOAT(moved_bounds.lo.x, after.origin.x);
+    TEST_ASSERT_LESS_OR_EQUAL_FLOAT(moved_bounds.hi.x, after.origin.x + after.u.x);
+    free(saved);
+    entity_set_enabled(entity, false);
+    TEST_ASSERT_NULL(skin->contact_mask.coverage);
+}
+
+static void
+test_shape_allocation_failure_keeps_feet(void) {
+    fixture_with_skin(&SKIN_OPTIONS);
+    const entity_t root = load("test_skin");
+    const entity_t entity = entity_find(root, name_hash("red"));
+    scene_t* scene = columns(root);
+    scene_skins_settle(scene);
+    scene_skinned_renderer_t* skin = skin_of(entity);
+    scene_fail_allocation_after = 0;
+    scene_set_contact_blob(entity, 0, 1, SCENE_CONTACT_SHAPE);
+    scene_animation_repose(scene, 0);
+    scene_fail_allocation_after = -1;
+    TEST_ASSERT_NULL(skin->contact_mask.coverage);
+    TEST_ASSERT_TRUE(skin->contact_mask_failed);
+    scene_renderer_t* r = &scene->renderers[scene_renderer_index(scene, row_of(entity))];
+    skin->contacts = (skin_contacts_t){.joints = {0}, .radius = 1, .lift = 2, .count = 1};
+    skin->model[0] = mat4f_identity();
+    contact_disc_t shape[SKIN_CONTACTS_MAX], feet[SKIN_CONTACTS_MAX];
+    const int count = scene_contact_discs(scene, r, vec3f_unit_y(), shape);
+    TEST_ASSERT_GREATER_THAN_INT(0, count);
+    scene_set_contact_blob(entity, 0, 1, SCENE_CONTACT_FEET);
+    TEST_ASSERT_EQUAL_INT(count, scene_contact_discs(scene, r, vec3f_unit_y(), feet));
+    TEST_ASSERT_EQUAL_MEMORY(shape, feet, (size_t)count * sizeof *shape);
+}
+
+static void
 test_contact_world_scale_clamp_and_fallback(void) {
     fixture_with_skin(&SKIN_OPTIONS);
     const entity_t root = load("test_skin");
@@ -5021,7 +5093,7 @@ test_contact_warp_and_bounds_sweep(void) {
     scene_skinned_renderer_t* skin = &scene->skinned_renderers[row];
     scene_renderer_t* r = &scene->renderers[scene_renderer_index(scene, row)];
     skin->contacts = (skin_contacts_t){.joints = {0}, .rest_y = {0}, .radius = 1, .lift = 2, .count = 1};
-    scene_set_contact_blob(entity, 0, 1, SCENE_CONTACT_FEET);
+    scene_set_contact_blob(entity, 0, 1, SCENE_CONTACT_SHAPE);
     r->world_bounds = (box3f_t){{-1, 0, -1}, {1, 2, 1}};
     scene_skins_settle(scene);
     TEST_ASSERT_NOT_NULL(skin->model);
@@ -5073,7 +5145,7 @@ test_contact_receiver_light_and_bounds(void) {
     r->world_bounds = (box3f_t){{-1, 0, -1}, {1, 2, 1}};
     scene_skinned_renderer_t* skin = skin_of(mover);
     skin->contacts = (skin_contacts_t){.joints = {0}, .rest_y = {0}, .radius = 1, .lift = 2, .count = 1};
-    static const scene_contact_shape_t shapes[] = {SCENE_CONTACT_BODY, SCENE_CONTACT_FEET};
+    static const scene_contact_shape_t shapes[] = {SCENE_CONTACT_BODY, SCENE_CONTACT_FEET, SCENE_CONTACT_SHAPE};
     for (size_t shape = 0; shape < sizeof shapes / sizeof shapes[0]; shape++) {
         scene_set_contact_blob(mover, 0, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, shapes[shape]);
         frame(0);
@@ -8330,6 +8402,8 @@ run_scene_suite(void) {
     RUN_TEST(test_probes_sample_last_resolved_bounds_without_allocating);
     RUN_TEST(test_forgetting_another_scene_keeps_the_contact_draw_hook);
     RUN_TEST(test_contact_light_choice_and_shadow_invalidation);
+    RUN_TEST(test_shape_mask_repose_and_lifetime);
+    RUN_TEST(test_shape_allocation_failure_keeps_feet);
     RUN_TEST(test_contact_world_scale_clamp_and_fallback);
     RUN_TEST(test_contact_warp_and_bounds_sweep);
     RUN_TEST(test_contact_receiver_light_and_bounds);
