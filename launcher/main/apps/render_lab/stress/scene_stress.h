@@ -7,7 +7,7 @@
  */
 #pragma once
 
-#include "apps/render_lab/render_lab_scene.h"
 #include "apps/render_lab/stress/stress_preset.h"
+#include "lab/lab_scene.h"
 
-extern const render_lab_scene_t scene_stress[STRESS_PRESET_COUNT];
+extern const lab_scene_t scene_stress[STRESS_PRESET_COUNT];

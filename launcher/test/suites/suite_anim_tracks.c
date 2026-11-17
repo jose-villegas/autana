@@ -9,7 +9,7 @@
 #include "asset/asset_bytes.h"
 #include "asset/asset_store.h"
 #include "boot/boot_anim.h"
-#include "scene/camera/camera.h"
+#include "scene/camera/lens.h"
 #include "suites.h"
 #include "test_alloc.h"
 #include "test_anim_tracks.h"

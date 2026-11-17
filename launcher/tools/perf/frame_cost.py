@@ -13,6 +13,7 @@ US_PER_MS = 1000
 US_PER_SECOND = US_PER_MS * MS_PER_SECOND
 BRACKET = re.compile(r"(\S+) ([\d.]+)/([\d.]+)")
 TOTAL = re.compile(r"\| total ([\d.]+)")
+DROPPED = re.compile(r"\+(\d+) dropped")  # brackets frame_cost_report() refused a slot
 EXTERNAL = re.compile(r"(\S+) ([\d.]+)/([\d.]+) ms/block n=(\d+)")
 LAPS_PREFIX = "ms/frame laps:"
 LAP_COST = re.compile(r"lap (\d+) ns")
@@ -26,7 +27,9 @@ def frame_cost_window(line):
         return None
     frame, *external = line.split(REPORT_PREFIX, 1)[1].split("||")
     total = TOTAL.search(frame)
-    return {"brackets": {name: (float(avg), float(worst)) for name, avg, worst in BRACKET.findall(frame)},
+    dropped = DROPPED.search(frame)
+    return {"dropped": int(dropped[1]) if dropped else 0,
+            "brackets": {name: (float(avg), float(worst)) for name, avg, worst in BRACKET.findall(frame)},
             "total": float(total[1]) if total else None,
             "external": {name: (float(avg), float(worst), int(n))
                          for section in external for name, avg, worst, n in EXTERNAL.findall(section)}}

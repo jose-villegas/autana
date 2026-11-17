@@ -165,10 +165,11 @@ lapses or its owner dies. Another caller may take the board immediately.
 
 ## Heavy host work
 
-Every firmware compile and full GPU stage takes the host's `heavy` key.
+Every firmware compile and the doc-images GPU stage take the host's `heavy` key.
+A Bakes GPU fit takes none: it runs beside builds on half the host's CPUs.
 It uses the board lock's FIFO tickets, heartbeat, stale recovery and holds.
 Flash writes and captures do not take heavy.
-Builds and flashes during a GPU stage wait `DEFAULT_LOCK_WAIT_SECONDS`
+Builds and flashes during a doc-images stage wait `DEFAULT_LOCK_WAIT_SECONDS`
 (600 s, `scripts/lib/autana_config.py`), then exit busy naming the heavy holder.
 
 ```sh
@@ -465,7 +466,10 @@ across holders.
 
 Prefer `autana --owner NAME`. Run `scripts/device/device.py`
 directly only for what `autana` does not offer: a
-`send` with its own `--reply` and `--until`, or `report`. It runs under
+`send` with its own `--reply` and `--until`, `stream`, or `report`. `stream`
+holds the lock and the open port until its standard input ends, writing each
+line to the board as it arrives and printing every line the board writes: a
+desktop tool steering the board live pipes into it. It runs under
 ESP-IDF's Python (a different interpreter re-runs it under that one). On
 Windows, `flash`, `suite --flash` and `selftest` run `build.sh` and
 `flash_image.sh` with Git for Windows' own `bash.exe`, never whatever `bash`

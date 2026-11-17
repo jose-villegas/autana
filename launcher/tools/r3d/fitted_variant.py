@@ -29,7 +29,7 @@ from types import SimpleNamespace
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from r3d.reference_set import (ReferenceInputs, TRACED_ON, POSE_SPACING, canonical,
+from r3d.reference_set import (ReferenceInputs, POSE_SPACING, canonical,
                                poses_text, split_poses, reference_inputs, prepare_references)
 from r3d import log  # noqa: E402
 from r3d.import_settings import SettingsError, load_scene, source_digest  # noqa: E402
@@ -253,7 +253,7 @@ def sweep_main(argv):
 
         work = point_dir / "work"
         mesh = fit(scene_path, scene, job, work, budget=point["budget"], cost_weight=point["cost_weight"],
-                   smoke=args.smoke, target=point_dir / f"{variant.name}.mesh", inputs=reference_work)
+                   smoke=args.smoke, target=point_dir / f"{variant.name}.bundle", inputs=reference_work)
         mean, p95 = held_out_score(job, mesh, work, host, inputs=reference_work, scene=scene_path)
         from r3d.cost_model import load, mesh_rows, predict
         from r3d.lit_mesh import finest_triangles, read_lit_mesh

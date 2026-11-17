@@ -125,6 +125,28 @@ test_sphere_long_segment_entry(void) {
 }
 
 static void
+test_spheres_ticks(void) {
+    static const spheres_t ticks = {{8, -16, 24}, 4};
+    static const float units_per_tick = 0.125F;
+    static const spheref_t units = {{1, -2, 3}, 0.5F};
+    TEST_ASSERT_TRUE(spheres_contains_point(ticks, (vec3s_t){12, -16, 24}));
+    TEST_ASSERT_FALSE(spheres_contains_point(ticks, (vec3s_t){13, -16, 24}));
+    TEST_ASSERT_TRUE(spheres_overlaps(ticks, (spheres_t){{16, -16, 24}, 4}));
+    TEST_ASSERT_FALSE(spheres_overlaps(ticks, (spheres_t){{17, -16, 24}, 4}));
+    const spheref_t converted = spheref_from_spheres(ticks, units_per_tick);
+    TEST_ASSERT_TRUE(vec3f_equal(units.centre, converted.centre));
+    TEST_ASSERT_EQUAL_FLOAT(units.radius, converted.radius);
+    /* far + reach ticks apart: more than an int16 holds, where a saturated
+     * difference would land just inside; the test widens. */
+    static const int16_t far = 30000, reach = 3000;
+    const spheres_t east = {{far, 0, 0}, INT16_MAX};
+    TEST_ASSERT_FALSE(spheres_contains_ball(east, (spheres_t){{(int16_t)-reach, 0, 0}, 0}, 0));
+    const spheres_t touching = {{(int16_t)(far - INT16_MAX + 1), 0, 0}, 1};
+    TEST_ASSERT_TRUE(spheres_contains_ball(east, touching, 0));
+    TEST_ASSERT_FALSE(spheres_contains_ball(east, touching, 1));
+}
+
+static void
 test_sphere_contains_ball_depth(void) {
     const spheref_t outer = {{2, -3, 4}, 10};
     const spheref_t touching = {{2, -3, 9}, 5};
@@ -136,6 +158,7 @@ test_sphere_contains_ball_depth(void) {
 
 void
 suite_sphere(void) {
+    RUN_TEST(test_spheres_ticks);
     RUN_TEST(test_spheref_contains_ball);
     RUN_TEST(test_sphere_contains_ball_depth);
     RUN_TEST(test_sphere_closest_point);

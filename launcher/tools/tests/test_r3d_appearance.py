@@ -85,7 +85,7 @@ def grid(count, z=0.0):
 def write_start(directory, count=4):
     positions, rgb, tris = grid(count)
     write_lit_mesh(directory, "card", positions, rgb, tris, np.zeros(len(tris), dtype=int), position_scale=64)
-    return pathlib.Path(directory) / "card.mesh"
+    return pathlib.Path(directory) / "card.bundle"
 
 
 def write_flat_start(directory, count=4):
@@ -94,7 +94,7 @@ def write_flat_start(directory, count=4):
     left = positions[tris].mean(axis=1)[:, 0] < 0
     face = np.where(left[:, None], [[200.0, 60.0, 40.0]], [[40.0, 90.0, 200.0]])
     write_lit_mesh(directory, "flat", positions, None, tris, np.zeros(len(tris), dtype=int), position_scale=64, face_rgb=face)
-    return pathlib.Path(directory) / "flat.mesh"
+    return pathlib.Path(directory) / "flat.bundle"
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
@@ -581,7 +581,7 @@ class AppearanceMeshTests(unittest.TestCase):
             mesh = start_mesh(write_start(directory))
             points, rgb = mesh[0] + [0.25, -0.5, 0.125], 1.0 - mesh[1]
             write_mesh(pathlib.Path(directory) / "out", "card", mesh._replace(points=points, rgb=rgb))
-            back = read_lit_mesh(pathlib.Path(directory) / "out" / "card.mesh")
+            back = read_lit_mesh(pathlib.Path(directory) / "out" / "card.bundle")
         q, colours, _tris, _double, _face = finest_triangles(back)
         written = {(tuple(p), tuple(c)) for p, c in zip(q, colours)}
         wanted = {(tuple(np.rint(p * back.position_scale).astype(int)), tuple(np.rint(c * 255).astype(int)))
@@ -605,7 +605,7 @@ class AppearanceMeshTests(unittest.TestCase):
             self.assertEqual(len(mesh.points), len(mesh.vertex_point), "a flat start welds by position alone")
             points, rgb = mesh.points + [0.25, 0.0, 0.0], 1.0 - mesh.rgb
             write_mesh(pathlib.Path(directory) / "out", "flat", mesh._replace(points=points, rgb=rgb))
-            back = read_lit_mesh(pathlib.Path(directory) / "out" / "flat.mesh")
+            back = read_lit_mesh(pathlib.Path(directory) / "out" / "flat.bundle")
         q, colours, tris, _double, face = finest_triangles(back)
         self.assertIsNone(colours)
         written = {tuple(map(tuple, q[t])): tuple(c) for t, c in zip(tris, face)}
@@ -621,7 +621,7 @@ class AppearanceMeshTests(unittest.TestCase):
             points, rgb = mesh[0] + np.random.default_rng(3).normal(0.0, 0.05, mesh[0].shape), mesh[1][::-1].copy()
             count = write_mesh(pathlib.Path(directory) / "out", "card", mesh._replace(points=points, rgb=rgb))
             self.assertLessEqual(count, len(mesh[2]))
-            back = read_lit_mesh(pathlib.Path(directory) / "out" / "card.mesh")
+            back = read_lit_mesh(pathlib.Path(directory) / "out" / "card.bundle")
             q, _rgb, tris, _double, _face = finest_triangles(back)
             self.assertLessEqual(len(tris), len(mesh[2]))
             corners = q[tris]
@@ -661,7 +661,7 @@ class PruneAndCostTests(unittest.TestCase):
                         calls.coverage.return_value = np.ones(len(mesh.tris))
                         calls.prune.return_value = (pruned, np.arange(len(pruned.tris)))
                         calls.write_mesh.return_value = len(pruned.tris)
-                        appearance.main(["--scene", "scene.toml", "--start", "start.mesh", "--poses", "poses.txt",
+                        appearance.main(["--scene", "scene.toml", "--start", "start.bundle", "--poses", "poses.txt",
                                          "--reference", "reference", "--coverage-poses", "coverage.txt",
                                          "--budget", str(len(pruned.tris)), "--out", directory])
                     self.assertEqual(calls.optimise.call_args.kwargs["seam_margin"], appearance.SEAM_MARGIN)
@@ -690,7 +690,7 @@ class PruneAndCostTests(unittest.TestCase):
                       *(["--seam-margin", value] for value in ("-1", "nan", "inf"))):
             with self.subTest(flags=flags), mock.patch.object(appearance, "load_scene") as scene:
                 with self.assertRaises(SystemExit), mock.patch("sys.stderr"):
-                    appearance.main(["--scene", "scene.toml", "--start", "start.mesh", "--poses", "poses.txt",
+                    appearance.main(["--scene", "scene.toml", "--start", "start.bundle", "--poses", "poses.txt",
                                      "--reference", "reference", "--out", "out", *flags])
                 scene.assert_not_called()
 
@@ -712,7 +712,7 @@ class PruneAndCostTests(unittest.TestCase):
                         "r3d.reference_render": SimpleNamespace(source_for=source_for)}):
                 calls["optimise"].return_value = (points, rgb, [1.0])
                 calls["write_mesh"].return_value = len(mesh.tris)
-                appearance.main(["--scene", "scene.toml", "--start", "start.mesh", "--poses", "poses.txt",
+                appearance.main(["--scene", "scene.toml", "--start", "start.bundle", "--poses", "poses.txt",
                                  "--reference", "reference", "--out", directory,
                                  "--object", "card", "--surface-weight", "10", "--surface-margin", "0.25",
                                  "--seam-margin", "0.25"])
@@ -975,7 +975,7 @@ class AppearanceFitTests(unittest.TestCase):
                         outputs = [pathlib.Path(directory) / name for name in ("first", "second")]
                         for output, (positions, colours, _history) in zip(outputs, (first, second)):
                             write_mesh(output, "card", mesh._replace(points=positions, rgb=colours))
-                        self.assertEqual((outputs[0] / "card.mesh").read_bytes(), (outputs[1] / "card.mesh").read_bytes())
+                        self.assertEqual((outputs[0] / "card.bundle").read_bytes(), (outputs[1] / "card.bundle").read_bytes())
 
     def test_image_error_falls(self):
         from r3d.appearance_simplify import Renderer, optimise
@@ -1097,7 +1097,7 @@ class AppearanceFitTests(unittest.TestCase):
             tris = np.concatenate([front_tris, front_tris + len(front)])
             write_lit_mesh(directory, "pair", positions, np.full((len(positions), 3), 128.0), tris, np.zeros(len(tris), dtype=int),
                            position_scale=64)
-            mesh = start_mesh(pathlib.Path(directory) / "pair.mesh")
+            mesh = start_mesh(pathlib.Path(directory) / "pair.bundle")
         matrix = projection([0.0, 0.0, 3.0], [0.0, 0.0, -1.0], 24, 20, 0.62, 0.5)
         shown = coverage(mesh, [(matrix, None)], (48, 40))
         pruned, _kept = prune(mesh, shown, len(front_tris))

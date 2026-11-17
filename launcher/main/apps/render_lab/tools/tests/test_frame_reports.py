@@ -241,9 +241,9 @@ class FrameReports(unittest.TestCase):
             result = subprocess.run([*command, "--check"], cwd=ROOT, capture_output=True)
             self.assertEqual(result.returncode, 1)
             with self.assertRaisesRegex(ValueError, "no frame-profile-north-board.log"):
-                tables.timing_tables(data, None, ["south"], "north", images, False)
+                tables.timing_tables(data, ["south"], "north", images, False)
             with self.assertRaisesRegex(ValueError, "no frame peaks for gallery"):
-                tables.timing_tables(data, None, None, "north", images, False)
+                tables.timing_tables(data, None, "north", images, False)
 
 
 if __name__ == "__main__":

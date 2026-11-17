@@ -31,18 +31,18 @@ check_path(void) {
     if (scene_provider.path_ms == NULL || scene_provider.seek == NULL) {
         return false;
     }
-    const uint32_t duration = scene_animator_clip_duration_ms(shown, camera, 0);
+    const uint32_t duration = animator_clip_duration_ms(camera, 0);
     if (duration == 0 || scene_provider.path_ms() != duration) {
         return false;
     }
-    const transformf_t initial = scene_entity_world(shown, camera);
+    const transformf_t initial = transform_world(camera);
     const input_t input = {0};
     for (int i = 0; i < FIXTURE_STEPS; i++) {
         render_host_step(FIXTURE_STEP_MS, &input);
     }
-    const transformf_t expected = scene_entity_world(shown, camera);
+    const transformf_t expected = transform_world(camera);
     scene_provider.seek(0);
-    const transformf_t reset = scene_entity_world(shown, camera);
+    const transformf_t reset = transform_world(camera);
     if (!pose_near(reset, initial) || pose_near(reset, expected)) {
         return false;
     }
@@ -51,7 +51,7 @@ check_path(void) {
     context->paying = true;
     context->drawn_in_row = FRAMEGEN_RETRY_DRAWN;
     scene_provider.seek(FIXTURE_STEP_MS * FIXTURE_STEPS);
-    const transformf_t actual = scene_entity_world(shown, camera);
+    const transformf_t actual = transform_world(camera);
     if (!pose_near(actual, expected)) {
         return false;
     }
@@ -84,6 +84,35 @@ check_video_fit(int64_t fit, const char* out) {
     return render_host_close();
 }
 
+/* --set render.FIELD=value reaches the main context's settings as a pack's
+ * would; an unknown field refuses the run. The runs write beside `out`. */
+#define FIXTURE_TOLERANCE_TEXT "render.lod.tolerance_px=4.5"
+#define FIXTURE_TOLERANCE_PX   4.5F
+
+static bool
+check_settings(const char* out) {
+    char image[1024];
+    (void)snprintf(image, sizeof image, "%s.settings.bmp", out);
+    char* set[] = {"settings", "--scene", "room", "--frames", "1", "--set", FIXTURE_TOLERANCE_TEXT, "-o", image};
+    int exit_code;
+    if (!render_host_open(&scene_provider, (int)(sizeof set / sizeof set[0]), set, &exit_code)) {
+        fprintf(stderr, "--set %s refused\n", FIXTURE_TOLERANCE_TEXT);
+        return false;
+    }
+    const bool reached = render_context_settings(render_context_main())->lod.tolerance_px == FIXTURE_TOLERANCE_PX;
+    if (!render_host_close() || !reached) {
+        fprintf(stderr, "--set %s did not reach the settings\n", FIXTURE_TOLERANCE_TEXT);
+        return false;
+    }
+    char* unknown[] = {"settings", "--scene", "room", "--frames", "1", "--set", "render.lod.none=1", "-o", image};
+    if (render_host_open(&scene_provider, (int)(sizeof unknown / sizeof unknown[0]), unknown, &exit_code)) {
+        (void)render_host_close();
+        fprintf(stderr, "an unknown render setting opened\n");
+        return false;
+    }
+    return true;
+}
+
 int
 main(int argc, char** argv) {
     int exit_code;
@@ -101,5 +130,5 @@ main(int argc, char** argv) {
             out = argv[i + 1];
         }
     }
-    return render_host_close() && ok && check_video_fit(fit, out) ? 0 : 1;
+    return render_host_close() && ok && check_video_fit(fit, out) && check_settings(out) ? 0 : 1;
 }

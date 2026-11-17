@@ -100,8 +100,7 @@ def ms(us):
     return f"{us / 1000:.1f}"
 
 
-STAGES = (("cull", "r3d.cull"), ("transform", "r3d.transform"), ("draw", "r3d.draw"),
-          ("resolve", "r3d.resolve"), ("upscale", "r3d.upscale"))
+STAGES = (("cull", "r3d.cull"), ("transform", "r3d.transform"), ("draw", "r3d.draw"), ("upscale", "r3d.upscale"))
 SPAN_STAGES = ("setup", "edges", "carry", "fill")
 STAGE_FIGURE = "dynamic-resolution-stages.png"
 ONE_CORE_FIGURE = "dynamic-resolution-one-core.png"
@@ -117,13 +116,14 @@ def by_pixels(sizes):
 
 def stages_table(splits):
     headers = ["Render size", "Divisor", "Pixels", "Frame mean", "p50", "max"]
-    lines = ["| " + " | ".join(headers) + " |", "|" + "---|" * len(headers)]
+    lines = ["<details>", f"<summary>Frame time at each of the {len(splits)} render sizes, both cores</summary>", "",
+             "| " + " | ".join(headers) + " |", "|" + "---|" * len(headers)]
     full = DESTINATION[0] * DESTINATION[1]
     for size in by_pixels(splits):
         s = splits[size]
         lines.append(f"| {size[0]}x{size[1]} | {divisor(size)} | {100 * size[0] * size[1] / full:.0f}% "
                      f"| {ms(s['mean'])} | {ms(s['p50'])} | {ms(s['max'])} |")
-    return "\n".join(lines) + "\n\nMilliseconds, both cores."
+    return "\n".join(lines) + "\n\nMilliseconds.\n\n</details>"
 
 
 def stage_figures(splits, spans, directory):

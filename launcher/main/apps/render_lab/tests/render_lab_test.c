@@ -1,18 +1,7 @@
 #include "apps/render_lab/tests/render_lab_test.h"
 #ifdef DEVICE_BUILD
 #include <stdio.h>
-#include <string.h>
-#include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/render_lab_dynres.h"
-#include "apps/render_lab/render_lab_view.h"
-#include "core/timing.h"
-#include "frame/test_frame.h"
-#include "gfx_shared_state.h"
-#include "render/context/render_context.h"
-#include "scene/scene_internal.h"
-#include "scene/scene_shell.h"
-#include "ui/ui.h"
-#include "unity.h"
 
 const char*
 render_lab_test_step_name(int step) {
@@ -21,69 +10,4 @@ render_lab_test_step_name(int step) {
     (void)snprintf(name, sizeof name, "%dx%d", size.width, size.height);
     return name;
 }
-
-scene_t*
-render_lab_test_loaded_scene(const char* key) {
-    for (int i = 0; i < scene_loaded_count(); i++) {
-        scene_t* scene = scene_loaded_at(i);
-        if (strcmp(scene->id, key) == 0) {
-            return scene;
-        }
-    }
-    return NULL;
-}
-
-void
-render_lab_test_enter(render_lab_test_t* saved, const char* scene) {
-    *saved = (render_lab_test_t){render_lab_start_scene_key, render_lab_start_camera, render_lab_show_hud};
-    ui_init();
-    render_lab_start_scene_key = scene;
-    render_lab_start_camera = NULL;
-    render_lab_show_hud = false;
-    test_hold_quarter(DISPLAY_DEFAULT_QUARTER);
-    app_render_lab.enter();
-}
-
-void
-render_lab_test_exit(const render_lab_test_t* saved) {
-    if (gfx_present_guard_in_flight) {
-        test_present_wait();
-    }
-    app_render_lab.exit();
-    scene_unload_all();
-    render_lab_start_scene_key = saved->scene;
-    render_lab_start_camera = saved->camera;
-    render_lab_show_hud = saved->hud;
-    test_release_quarter();
-}
-
-int64_t
-render_lab_test_frame_dt(uint32_t dt_ms, bool switching, const input_t* input) {
-    TEST_ASSERT_TRUE_MESSAGE(test_quarter_held(), "a test frame needs a held quarter");
-    static const input_t idle = {0};
-    if (input == NULL) {
-        input = &idle;
-    }
-    test_present_begin();
-    app_render_lab.update(dt_ms, input);
-    render_lab_apply_raster_settings();
-    const int64_t render_start = timing_now_us();
-    scene_shell_render(dt_ms);
-    const int64_t render_us = timing_now_us() - render_start;
-    test_present_wait();
-    ui_clear_band_overlay();
-    scene_shell_compose(dt_ms);
-    if (switching) {
-        TEST_ASSERT_TRUE_MESSAGE(gfx_frame_expanded(), "the switch must encounter an expanded picture");
-    }
-    app_render_lab.frame(dt_ms, input);
-    if (switching) {
-        TEST_ASSERT_FALSE_MESSAGE(gfx_frame_expanded(), "the new scene must discard the expanded picture");
-        TEST_ASSERT_TRUE_MESSAGE(gfx_fb_guard_available, "the new scene must allow full-framebuffer writes");
-        TEST_ASSERT_NOT_NULL(gfx_framebuffer());
-    }
-    test_present();
-    return render_us;
-}
-
 #endif

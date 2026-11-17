@@ -20,7 +20,8 @@ try:
     import numpy as np
     from tests import soup
 
-    from r3d.geometry import closest_point_on_triangles, triangle_areas, weld
+    from r3d import geometry
+    from r3d.geometry import closest_point_on_triangles, nearest_triangles, triangle_areas, triangle_search, weld
     from r3d.light import adaptive_sample_counts, face_colours, light, merge_matching_colours, to_srgb8
     from r3d import lit_mesh, rebake
     from r3d.lit_mesh import (MESHLET_TRIANGLES, POSITION_SCALE, WELD_PER_TICK, bake_lit_mesh, read_lit_mesh, validate,
@@ -34,6 +35,7 @@ try:
 except ImportError:
     np = None
 
+from asset.asset_pack import parse_pack
 from tests.r3d_env import needs_mitsuba  # noqa: E402
 
 
@@ -59,6 +61,7 @@ def grid(n):
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
+
 class SplitTests(unittest.TestCase):
     def test_a_split_keeps_the_mesh_conforming_facing_and_the_same_area(self):
         p, tris = grid(2)
@@ -73,6 +76,27 @@ class SplitTests(unittest.TestCase):
                 or {out_p[a][1], out_p[b][1]} <= {0.0} or {out_p[a][1], out_p[b][1]} <= {2.0}
             if not boundary:
                 self.assertIn((b, a), edges, "an inner edge has no neighbour across it: a T-junction")
+
+
+@unittest.skipIf(np is None, "the r3d environment is not installed")
+class NearestTrianglesTests(unittest.TestCase):
+    def test_nearest_is_the_closest_triangle(self):
+        # Slivers next to coarse triangles: the centroid of a long thin triangle sits far from most of its area.
+        rng = np.random.default_rng(3)
+        points = np.vstack([rng.random((40, 3)) * [10, 1, 0.2], [[0, 0, 0], [10, 0, 0], [10, 0.01, 0], [0, 0.02, 1]]])
+        triangles = np.vstack([rng.integers(0, 40, (60, 3)), [[40, 41, 42], [40, 42, 43], [41, 42, 43]]])
+        triangles = triangles[(np.diff(np.sort(triangles, axis=1), axis=1) > 0).all(axis=1)]
+        corners = points[triangles]
+        queries = rng.random((300, 3)) * [12, 3, 2] - [1, 1, 0.5]
+        brute = np.array([closest_point_on_triangles(queries, *np.broadcast_to(t[:, None], (3, len(queries), 3)))[1]
+                          for t in corners])
+        with mock.patch.object(geometry, 'QUERY_CHUNK', 64):
+            tri, bary, distance = nearest_triangles(queries, triangle_search(corners))
+        np.testing.assert_allclose(distance, brute.min(axis=0), atol=1e-12)
+        np.testing.assert_allclose(brute[tri, np.arange(len(queries))], distance, atol=1e-12)
+        point = np.einsum('ni,nij->nj', bary, corners[tri])
+        np.testing.assert_allclose(np.linalg.norm(point - queries, axis=1), distance, atol=1e-9)
+
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
@@ -276,15 +300,9 @@ def banded_plane(cells=40, size=400.0):
 def against_plane(pos, rgb, sp, sc, st):
     """(mean colour difference, uncovered): for each input vertex the simplified surface's colour at the nearest
     point, over the vertices the surface still covers, and how many it no longer does."""
-    n, m = len(pos), len(st)
-    q = np.repeat(pos, m, axis=0)
-    a, b, c = (np.tile(sp[st[:, k]], (n, 1)) for k in range(3))
-    bary, distance = closest_point_on_triangles(q, a, b, c)
-    distance = distance.reshape(n, m)
-    k = distance.argmin(axis=1)
-    w = bary.reshape(n, m, 3)[np.arange(n), k]
-    colour = (w[:, :, None] * sc[st[k]]).sum(axis=1)
-    covered = distance[np.arange(n), k] < 1e-3
+    tri, bary, distance = nearest_triangles(pos, triangle_search(sp[st]))
+    colour = np.einsum('ni,nij->nj', bary, sc[st[tri]])
+    covered = distance < 1e-3
     return np.abs(colour - rgb)[covered].mean(), int((~covered).sum())
 
 
@@ -378,7 +396,7 @@ class LitMeshTests(unittest.TestCase):
         p, tris = grid(1)
         with tempfile.TemporaryDirectory() as directory:
             mesh = write_lit_mesh(directory, "shape", p, None, tris, np.zeros(len(tris), dtype=int))
-            read = read_lit_mesh(pathlib.Path(directory) / "shape.mesh")
+            read = read_lit_mesh(pathlib.Path(directory) / "shape.bundle")
         self.assertIsNone(read.rgb)
         self.assertIsNone(read.face_colors)
         np.testing.assert_array_equal(read.pos, mesh.pos)
@@ -401,7 +419,7 @@ class LitMeshTests(unittest.TestCase):
         expected += b''.join(array + bytes(-len(array) % struct.calcsize('<I')) for array in arrays)
         with tempfile.TemporaryDirectory() as directory:
             write_lit_mesh(directory, 'triangle', p, None, np.array([[0, 1, 2]]), np.zeros(1, dtype=int))
-            self.assertEqual((pathlib.Path(directory) / 'triangle.mesh').read_bytes(), expected)
+            self.assertEqual(parse_pack((pathlib.Path(directory) / 'triangle.bundle').read_bytes())['triangle'][1], expected)
 
     def test_a_flat_bake_keeps_one_centre_colour_per_triangle_and_welds_positions(self):
         p = np.array([(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 0), (1, 1, 0)])
@@ -452,8 +470,8 @@ class LitMeshTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as out:
             write_lit_mesh(out, "smooth", p, np.full((len(p), 3), 128), tris, double)
             write_lit_mesh(out, "solid", p, None, tris, double, face_rgb=np.full((len(tris), 3), 64))
-            smooth = (pathlib.Path(out) / "smooth.mesh").read_bytes()
-            solid = (pathlib.Path(out) / "solid.mesh").read_bytes()
+            smooth = parse_pack((pathlib.Path(out) / "smooth.bundle").read_bytes())["smooth"][1]
+            solid = parse_pack((pathlib.Path(out) / "solid.bundle").read_bytes())["solid"][1]
         smooth_at = lit_mesh.BLOB_HEADER.unpack_from(smooth)[5:]
         solid_at = lit_mesh.BLOB_HEADER.unpack_from(solid)[5:]
         self.assertEqual((smooth_at[1] != 0, smooth_at[5] != 0), (True, False))
@@ -467,7 +485,7 @@ class LitMeshTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as out:
             mesh = write_lit_mesh(out, "demo", p * 50.0, rgb, tris, np.zeros(len(tris), dtype=np.int64),
                                   leaf_triangles=16, max_depth=4)
-            blob = (pathlib.Path(out) / "demo.mesh").read_bytes()
+            blob = parse_pack((pathlib.Path(out) / "demo.bundle").read_bytes())["demo"][1]
         vertices, triangles, clusters, nodes, scale, *at = lit_mesh.BLOB_HEADER.unpack_from(blob)
         self.assertEqual((vertices, triangles, clusters, nodes), (len(mesh.pos), len(tris), len(mesh.clusters), len(mesh.nodes)))
         sizes = (vertices * 6, vertices * 3, triangles * 6, clusters * lit_mesh.CLUSTER.size, nodes * lit_mesh.NODE.size, 0)
@@ -480,7 +498,7 @@ class LitMeshTests(unittest.TestCase):
         face_rgb = np.arange(len(tris) * 3).reshape(-1, 3) * 20
         with tempfile.TemporaryDirectory() as out:
             write_lit_mesh(out, "demo", p, None, tris, np.zeros(len(tris), dtype=int), face_rgb=face_rgb)
-            entry = pathlib.Path(out) / "demo.mesh"
+            entry = pathlib.Path(out) / "demo.bundle"
             rebake.main([str(entry)])
             once = entry.read_bytes()
             rebake.main([str(entry)])
@@ -712,7 +730,7 @@ class MeshletTests(unittest.TestCase):
         for m, mesh in list(self.each()):
             with tempfile.TemporaryDirectory() as out:
                 write_lit_mesh(out, "demo", *m)
-                back = read_lit_mesh(pathlib.Path(out) / "demo.mesh")
+                back = read_lit_mesh(pathlib.Path(out) / "demo.bundle")
             self.assertTrue(np.array_equal(back.pos, mesh.pos) and np.array_equal(back.tris, mesh.tris))
             self.assertEqual([(n["first"], n["count"], n["leaf"]) for n in back.nodes],
                              [(n["first"], n["count"], n["leaf"]) for n in mesh.nodes])
@@ -729,7 +747,7 @@ class MeshletTests(unittest.TestCase):
         for m, mesh in list(self.each()):
             with tempfile.TemporaryDirectory() as out:
                 write_lit_mesh(out, "demo", *m)
-                entry = pathlib.Path(out) / "demo.mesh"
+                entry = pathlib.Path(out) / "demo.bundle"
                 rebake.main([str(entry), "--meshlet-triangles", "24"])
                 once = entry.read_bytes()
                 rebake.main([str(entry), "--meshlet-triangles", "24"])

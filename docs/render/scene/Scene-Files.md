@@ -245,7 +245,7 @@ normal_weight = 1.0
 `bake = true` writes this renderer's lit mesh; otherwise it draws the shared
 imported albedo mesh. `shading`, `visibility`, `fit`, and `indirect` require
 `bake = true`. A baked renderer's transform must be identity. Its output is
-`<scene>.<object>.mesh`; an albedo renderer uses `<variant>.mesh`. An import is
+`<scene>.<object>.bundle`; an albedo renderer uses `<variant>.bundle`. An import is
 packed only through the scenes that place it. The same import can have
 independent bakes in several scenes; an albedo renderer's mesh is shared and
 may be placed anywhere, by many scenes.
@@ -409,7 +409,7 @@ keeps the brighter.
 #### camera
 
 A scene may hold many cameras; only one renders at a time, the active one
-selected by `scene_activate()`. Camera-region visibility, camera-path
+selected by `camera_activate()`. Camera-region visibility, camera-path
 visibility and fitted variants read the scene's first camera. A region on
 any other camera is refused because no bake step reads it.
 

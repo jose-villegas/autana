@@ -146,8 +146,9 @@ other exit codes, incomplete captures, wrong builds and table errors are
 failures. Two consecutive failures stop measurement, and so does a suite
 whose first flash on each side gives no timing rows; that error names the
 suite and its table. A stop writes the summary so far, with decisions and
-errors, and marks it incomplete, as does any row not measured. A success
-resets the failure count. Failed attempts consume the cap.
+errors, and marks it incomplete with the stop's reason, as does any row
+not measured. A success resets the failure count. Failed attempts consume
+the cap.
 
 ## Reading the result
 
@@ -314,7 +315,7 @@ The GPU stage yields green when bakes are queued or running.
 Every Bakes GPU completion triggers a fresh image check.
 
 The plan waits for two polls without queued, waiting or running jobs carrying
-`gpu` in either GPU workflow. Hosted jobs waiting for a later marker do not count.
+`gpu` in the doc-images GPU workflow. Bakes GPU fits run beside the board night. Hosted jobs waiting for a later marker do not count.
 
 This check requires a host GPU runner marker fresh within `GPU_HOST_MARKER_DAYS`.
 Otherwise it reports “GPU runner not on this host” and continues.

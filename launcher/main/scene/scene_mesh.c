@@ -1,20 +1,21 @@
-/* scene_mesh: static mesh arrays (positions, triangles, colours) kept in one scene-owned PSRAM block. */
+/* scene_mesh: static mesh arrays (positions, triangles, colours) and the
+ * batches' copy places kept in one scene-owned PSRAM block. */
 #include <assert.h>
 #include <stddef.h>
 #include <string.h>
 
 #include "scene/scene_internal.h"
 
-#define MESH_ARRAY(member, per_vertex)                                                                                 \
+#define MESH_ARRAY(member, per_vertex, colours)                                                                        \
     {offsetof(r3d_lit_mesh_t, member), sizeof *((r3d_lit_mesh_t*)0)->member,                                           \
-     _Alignof(__typeof__(*((r3d_lit_mesh_t*)0)->member)), per_vertex}
+     _Alignof(__typeof__(*((r3d_lit_mesh_t*)0)->member)), per_vertex, colours}
 
 /* One table keeps sizing, copying and repointing in agreement about which arrays exist. */
 static const struct {
     size_t offset, size, alignment;
-    bool per_vertex;
-} mesh_arrays[] = {MESH_ARRAY(positions, true), MESH_ARRAY(triangles, false), MESH_ARRAY(colors, true),
-                   MESH_ARRAY(face_colors, false)};
+    bool per_vertex, colours; /* colours: a batch's copies' sets follow the one opened */
+} mesh_arrays[] = {MESH_ARRAY(positions, true, false), MESH_ARRAY(triangles, false, false),
+                   MESH_ARRAY(colors, true, true), MESH_ARRAY(face_colors, false, true)};
 
 /* Offsets and memcpy avoid aliasing the differently typed pointer-to-const members. */
 static const void*
@@ -24,28 +25,39 @@ mesh_array(const r3d_lit_mesh_t* mesh, size_t offset) {
     return source;
 }
 
+/* The elements of `array` renderer `r` draws from: a batch's colours run
+ * through every copy's set. */
+static size_t
+mesh_array_count(const scene_renderer_t* r, size_t array) {
+    const int one = mesh_arrays[array].per_vertex ? r->mesh.vertex_count : r->mesh.triangle_count;
+    return (size_t)one * (mesh_arrays[array].colours ? r->colour_sets : 1U);
+}
+
+/* Whether renderer `r` draws `count` elements of `array` from `source`. */
 static bool
-mesh_is_first(const scene_t* scene, int index, size_t offset) {
+mesh_array_is(const scene_renderer_t* r, size_t array, const void* source, size_t count) {
+    return mesh_array(&r->mesh, mesh_arrays[array].offset) == source && mesh_array_count(r, array) == count;
+}
+
+static bool
+mesh_is_first(const scene_t* scene, int index, size_t array) {
+    const scene_renderer_t* r = &scene->renderers[index];
+    const void* source = mesh_array(&r->mesh, mesh_arrays[array].offset);
     for (int i = 0; i < index; i++) {
-        if (mesh_array(&scene->renderers[i].mesh, offset) == mesh_array(&scene->renderers[index].mesh, offset)) {
+        if (mesh_array_is(&scene->renderers[i], array, source, mesh_array_count(r, array))) {
             return false;
         }
     }
     return true;
 }
 
-static int
-mesh_array_count(const r3d_lit_mesh_t* mesh, size_t array) {
-    return mesh_arrays[array].per_vertex ? mesh->vertex_count : mesh->triangle_count;
-}
-
 static void
 mesh_array_repoint(scene_t* scene, int index, size_t array, const void* source, void* copy) {
+    const size_t count = mesh_array_count(&scene->renderers[index], array);
     for (int j = index; j < scene->asset.renderer_count; j++) {
-        r3d_lit_mesh_t* target = &scene->renderers[j].mesh;
-        if (mesh_array(target, mesh_arrays[array].offset) == source) {
-            assert(mesh_array_count(target, array) == mesh_array_count(&scene->renderers[index].mesh, array));
-            memcpy((uint8_t*)target + mesh_arrays[array].offset, &copy, sizeof copy);
+        scene_renderer_t* target = &scene->renderers[j];
+        if (mesh_array_is(target, array, source, count)) {
+            memcpy((uint8_t*)&target->mesh + mesh_arrays[array].offset, &copy, sizeof copy);
         }
     }
 }
@@ -57,10 +69,10 @@ resident_walk(scene_t* scene, void* block) {
         for (int i = scene->asset.renderer_count - 1; i >= 0; i--) {
             const r3d_lit_mesh_t* mesh = &scene->renderers[i].mesh;
             const void* source = mesh_array(mesh, mesh_arrays[a].offset);
-            if (source == NULL || !mesh_is_first(scene, i, mesh_arrays[a].offset)) {
+            if (source == NULL || !mesh_is_first(scene, i, a)) {
                 continue;
             }
-            const size_t bytes = (size_t)mesh_array_count(mesh, a) * mesh_arrays[a].size;
+            const size_t bytes = mesh_array_count(&scene->renderers[i], a) * mesh_arrays[a].size;
             const size_t at = scene_storage_carve(&end, bytes, mesh_arrays[a].alignment);
             if (block == NULL) {
                 continue;
@@ -70,6 +82,17 @@ resident_walk(scene_t* scene, void* block) {
             mesh_array_repoint(scene, i, a, source, copy);
         }
     }
+    /* What the cull reads of every copy. */
+    for (int i = 0; i < scene->asset.batch_count; i++) {
+        r3d_batch_t* batch = &scene->batches[i];
+        const size_t bytes = sizeof *batch->places * batch->copy_count;
+        const size_t at = scene_storage_carve(&end, bytes, _Alignof(r3d_copy_place_t));
+        if (block != NULL) {
+            r3d_copy_place_t* copy = (r3d_copy_place_t*)(void*)((uint8_t*)block + at);
+            memcpy(copy, batch->places, bytes);
+            batch->places = copy;
+        }
+    }
     return end;
 }
 
@@ -77,12 +100,12 @@ scene_failure_t
 scene_mesh_make_resident(scene_t* scene) {
     const size_t total = resident_walk(scene, NULL);
     if (total == 0) {
-        return scene_failure_make(SCENE_OK, ASSET_OK, scene->id);
+        return scene_failure_make(SCENE_OK, ASSET_OK, scene->root->id);
     }
     scene->resident = scene_allocate_kept(total);
     if (scene->resident == NULL) {
-        return scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, scene->id);
+        return scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, scene->root->id);
     }
     (void)resident_walk(scene, scene->resident);
-    return scene_failure_make(SCENE_OK, ASSET_OK, scene->id);
+    return scene_failure_make(SCENE_OK, ASSET_OK, scene->root->id);
 }

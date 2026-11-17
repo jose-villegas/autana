@@ -213,19 +213,25 @@ NULL_RECORDER = NullRecorder()
 
 
 class StepRecorder:
-    """Wall time and process RSS peaks; GPU boundaries also include torch's reserved peak."""
+    """Wall time and process RSS peaks; GPU boundaries also include torch's reserved peak. A name is
+    recorded once, unless each entry passes `summed` (a step run once per part): its entries then add
+    into one row, triangles and time summed, the largest peaks kept."""
 
     def __init__(self, clock=time.monotonic, probe=step_memory, interval=0.1):
         self.clock, self.probe, self.interval = clock, probe, interval
-        self.rows = []
+        self.rows, self.summed = [], set()
 
     @contextlib.contextmanager
-    def step(self, name, triangles_in, gpu=False):
-        if any(row["step"] == name for row in self.rows):
+    def step(self, name, triangles_in, gpu=False, summed=False):
+        earlier = next((row for row in self.rows if row["step"] == name), None)
+        if earlier is not None and not (summed and name in self.summed):
             raise ValueError(f"repeated step: {name}")
         row = {"step": name, "triangles_in": triangles_in, "triangles_out": triangles_in,
                "wall_s": 0.0, "peak_ram_bytes": None, "peak_vram_bytes": None}
-        self.rows.append(row)
+        if earlier is None:
+            self.rows.append(row)
+            if summed:
+                self.summed.add(name)
         torch = sys.modules.get("torch")
         cuda = getattr(torch, "cuda", None)
         if gpu and cuda and getattr(cuda, "is_initialized", lambda: False)():
@@ -241,6 +247,11 @@ class StepRecorder:
                     row["wall_s"] = self.clock() - started
         finally:
             row["peak_ram_bytes"], row["peak_vram_bytes"] = sampler.peaks
+            if earlier is not None:
+                for key in ("triangles_in", "triangles_out", "wall_s"):
+                    earlier[key] += row[key]
+                for key in ("peak_ram_bytes", "peak_vram_bytes"):
+                    earlier[key] = max((v for v in (earlier[key], row[key]) if v is not None), default=None)
 
 
 def function_name(function):
