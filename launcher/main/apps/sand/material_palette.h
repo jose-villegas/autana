@@ -14,7 +14,7 @@
  */
 #pragma once
 
-#include "gfx/target/gfx_color.h"
+#include "gfx/gfx.h"
 #include "material.h"
 
 static inline unsigned
