@@ -263,7 +263,7 @@ place_copies(void) {
                 floor.scale = (vec3f_t){width, width, width};
                 transform_set_local(grounds[i], floor);
                 static const scene_contact_shape_t contact_shapes[] = {
-                    [STRESS_SURFACE_SKINNED_SH_BLOBS] = SCENE_CONTACT_BODY,
+                    [STRESS_SURFACE_SKINNED_SH_BLOBS] = SCENE_CONTACT_BLOB,
                     [STRESS_SURFACE_SKINNED_SHAPE_BLOBS] = SCENE_CONTACT_SHAPE,
                     [STRESS_SURFACE_SKINNED_SHAPE_WARPED] = SCENE_CONTACT_SHAPE,
                     [STRESS_SURFACE_SKINNED_FEET_BLOBS] = SCENE_CONTACT_FEET};

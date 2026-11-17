@@ -4913,7 +4913,7 @@ test_contact_light_choice_and_shadow_invalidation(void) {
     transform_set_local(entity, pose);
     scene_lights_prepare(scene);
     TEST_ASSERT_TRUE(render_context_main()->partial.kept);
-    scene_set_contact_blob(entity, 0, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, SCENE_CONTACT_BODY);
+    scene_set_contact_blob(entity, 0, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, SCENE_CONTACT_BLOB);
     render_context_main()->partial.kept = true;
     scene_lights_prepare(scene);
     TEST_ASSERT_TRUE(render_context_main()->partial.kept);
@@ -4925,7 +4925,7 @@ test_contact_light_choice_and_shadow_invalidation(void) {
     TEST_ASSERT_TRUE(light_set_intensity(entity, 2));
     scene_lights_prepare(scene);
     TEST_ASSERT_TRUE(render_context_main()->partial.kept);
-    scene_set_contact_blob(entity, 0, 0, SCENE_CONTACT_BODY);
+    scene_set_contact_blob(entity, 0, 0, SCENE_CONTACT_BLOB);
     render_context_main()->partial.kept = true;
     transformf_set_rotation(&pose, quatf_identity());
     transform_set_local(entity, pose);
@@ -4981,7 +4981,7 @@ test_shape_mask_repose_and_lifetime(void) {
 }
 
 static void
-test_shape_allocation_failure_uses_body(void) {
+test_shape_allocation_failure_uses_blob(void) {
     fixture_with_skin(&SKIN_OPTIONS);
     const entity_t root = load("test_skin");
     const entity_t entity = entity_find(root, name_hash("red"));
@@ -4996,12 +4996,12 @@ test_shape_allocation_failure_uses_body(void) {
     TEST_ASSERT_TRUE(skin->contact_mask_failed);
     scene_renderer_t* r = &scene->renderers[scene_renderer_index(scene, row_of(entity))];
     r->world_bounds = (box3f_t){{-1, 0, -1}, {1, 2, 1}};
-    contact_blob_t shape, body;
+    contact_blob_t shape, blob;
     TEST_ASSERT_TRUE(scene_contact_blob(scene, r, vec3f_unit_y(), &shape));
     TEST_ASSERT_NULL(shape.mask);
-    scene_set_contact_blob(entity, 0, 1, SCENE_CONTACT_BODY);
-    TEST_ASSERT_TRUE(scene_contact_blob(scene, r, vec3f_unit_y(), &body));
-    TEST_ASSERT_EQUAL_MEMORY(&shape, &body, sizeof body);
+    scene_set_contact_blob(entity, 0, 1, SCENE_CONTACT_BLOB);
+    TEST_ASSERT_TRUE(scene_contact_blob(scene, r, vec3f_unit_y(), &blob));
+    TEST_ASSERT_EQUAL_MEMORY(&shape, &blob, sizeof blob);
 }
 
 static void
@@ -5012,7 +5012,7 @@ test_contact_default_is_unwarped(void) {
     scene_t* scene = columns(root);
     scene_renderer_t* r = &scene->renderers[scene_renderer_index(scene, row_of(entity))];
     scene_skins_settle(scene);
-    scene_set_contact_blob(entity, 0, 1, SCENE_CONTACT_BODY);
+    scene_set_contact_blob(entity, 0, 1, SCENE_CONTACT_BLOB);
     r->world_bounds = (box3f_t){{-1, 0, -2}, {1, 2, 2}};
     contact_blob_t blob;
     TEST_ASSERT_TRUE(scene_contact_blob(scene, r, vec3f_unit_x(), &blob));
@@ -5077,13 +5077,13 @@ test_feet_follow_pose_without_height_fade(void) {
     for (int i = 0; i < skin->contacts.count; i++) {
         const vec3f_t joint = mat4f_apply(&skin->model[skin->contacts.joints[i]], vec3f_zero());
         r->world_bounds = (box3f_t){{joint.x - radius, 0, joint.z - radius}, {joint.x + radius, 0, joint.z + radius}};
-        contact_blob_t body;
-        scene_set_contact_blob(entity, 0, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, SCENE_CONTACT_BODY);
-        TEST_ASSERT_TRUE(scene_contact_blob(scene, r, light, &body));
-        TEST_ASSERT_EQUAL_MEMORY(&body, &blobs[i], sizeof body);
-        const float x = fabsf(body.u.x) + fabsf(body.v.x), z = fabsf(body.u.z) + fabsf(body.v.z);
-        TEST_ASSERT_TRUE(bounds.lo.x <= body.centre.x - x && bounds.hi.x >= body.centre.x + x);
-        TEST_ASSERT_TRUE(bounds.lo.z <= body.centre.z - z && bounds.hi.z >= body.centre.z + z);
+        contact_blob_t blob;
+        scene_set_contact_blob(entity, 0, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, SCENE_CONTACT_BLOB);
+        TEST_ASSERT_TRUE(scene_contact_blob(scene, r, light, &blob));
+        TEST_ASSERT_EQUAL_MEMORY(&blob, &blobs[i], sizeof blob);
+        const float x = fabsf(blob.u.x) + fabsf(blob.v.x), z = fabsf(blob.u.z) + fabsf(blob.v.z);
+        TEST_ASSERT_TRUE(bounds.lo.x <= blob.centre.x - x && bounds.hi.x >= blob.centre.x + x);
+        TEST_ASSERT_TRUE(bounds.lo.z <= blob.centre.z - z && bounds.hi.z >= blob.centre.z + z);
     }
     free(blobs);
 }
@@ -5115,7 +5115,7 @@ test_contact_warp_and_bounds_sweep(void) {
     scene_t* scene = columns(root);
     scene_renderer_t* r = &scene->renderers[scene_renderer_index(scene, row_of(entity))];
     scene_skins_settle(scene);
-    static const scene_contact_shape_t shapes[] = {SCENE_CONTACT_BODY, SCENE_CONTACT_SHAPE};
+    static const scene_contact_shape_t shapes[] = {SCENE_CONTACT_BLOB, SCENE_CONTACT_SHAPE};
     for (int warp = 0; warp <= 1; warp++) {
         for (size_t shape = 0; shape < sizeof shapes / sizeof shapes[0]; shape++) {
             scene_set_contact_blob(entity, 0, 1, shapes[shape]);
@@ -5150,7 +5150,7 @@ test_contact_receiver_light_and_bounds(void) {
     transformf_t pose = transform_local(sun);
     transformf_set_rotation(&pose, quatf_from_axis_angle(vec3f_unit_z(), MATH_PI / 3));
     transform_set_local(sun, pose);
-    scene_set_contact_blob(mover, 0, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, SCENE_CONTACT_BODY);
+    scene_set_contact_blob(mover, 0, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, SCENE_CONTACT_BLOB);
     scene_set_contact_warp(mover, true);
     frame(0);
     scene_renderer_t* r = &scene->renderers[scene_renderer_index(scene, row_of(mover))];
@@ -5163,7 +5163,7 @@ test_contact_receiver_light_and_bounds(void) {
     const vec3f_t selected = scene_contact_light(scene, box3f_centre(r->world_bounds), drawn, 2);
     TEST_ASSERT_EQUAL_MEMORY(&want, &selected, sizeof want);
     r->world_bounds = (box3f_t){{-1, 0, -1}, {1, 2, 1}};
-    static const scene_contact_shape_t shapes[] = {SCENE_CONTACT_BODY, SCENE_CONTACT_SHAPE};
+    static const scene_contact_shape_t shapes[] = {SCENE_CONTACT_BLOB, SCENE_CONTACT_SHAPE};
     for (size_t shape = 0; shape < sizeof shapes / sizeof shapes[0]; shape++) {
         scene_set_contact_blob(mover, 0, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, shapes[shape]);
         frame(0);
@@ -5201,7 +5201,7 @@ test_contact_receiver_direction_invalidates_mover_shadow(void) {
     const entity_t mover = entity_find(mover_root, name_hash("red"));
     scene_t* receiver = columns(receiver_root);
     TEST_ASSERT_TRUE(light_set_intensity(sun, 1));
-    scene_set_contact_blob(mover, 0, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, SCENE_CONTACT_BODY);
+    scene_set_contact_blob(mover, 0, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, SCENE_CONTACT_BLOB);
     frame(0);
     transformf_t pose = transform_local(sun);
     render_context_main()->partial.kept = true;
@@ -5213,17 +5213,17 @@ test_contact_receiver_direction_invalidates_mover_shadow(void) {
 
 static void
 test_contact_footprint_and_partial_redraw(void) {
-    enum { BODY_HALF_X = 4, BODY_HALF_Z = 1, GROUND_Y = -2 };
+    enum { BLOB_HALF_X = 4, BLOB_HALF_Z = 1, GROUND_Y = -2 };
 
     fixture();
     const entity_t root = show("test_solo");
     const entity_t mover = entity_find(root, name_hash("blue"));
     r3d_lit_mesh_t mesh = *renderer_mesh(mover);
     r3d_lit_node_t node = mesh.nodes[0];
-    node.bounds = (box3s_t){{-BODY_HALF_X, -1, -BODY_HALF_Z}, {BODY_HALF_X, 1, BODY_HALF_Z}};
+    node.bounds = (box3s_t){{-BLOB_HALF_X, -1, -BLOB_HALF_Z}, {BLOB_HALF_X, 1, BLOB_HALF_Z}};
     mesh.nodes = &node;
     TEST_ASSERT_TRUE(renderer_set_mesh(mover, &mesh));
-    scene_set_contact_blob(mover, GROUND_Y, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, SCENE_CONTACT_BODY);
+    scene_set_contact_blob(mover, GROUND_Y, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, SCENE_CONTACT_BLOB);
     settle_the_picture();
     for (int step = 1; step <= MOVER_STEPS; step++) {
         put_at(mover, (float)step * 0.25F, (float)step * 0.5F);
@@ -5241,7 +5241,7 @@ test_forgetting_another_scene_keeps_the_contact_draw_hook(void) {
     fixture();
     const entity_t root = show("test_pair");
     const entity_t renderer = entity_find(root, name_hash("red"));
-    scene_set_contact_blob(renderer, 0, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, SCENE_CONTACT_BODY);
+    scene_set_contact_blob(renderer, 0, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, SCENE_CONTACT_BLOB);
     frame(0);
     const struct raster_post* post = render_context_main()->raster.post;
     TEST_ASSERT_NOT_NULL(post);
@@ -8416,7 +8416,7 @@ run_scene_suite(void) {
     RUN_TEST(test_forgetting_another_scene_keeps_the_contact_draw_hook);
     RUN_TEST(test_contact_light_choice_and_shadow_invalidation);
     RUN_TEST(test_shape_mask_repose_and_lifetime);
-    RUN_TEST(test_shape_allocation_failure_uses_body);
+    RUN_TEST(test_shape_allocation_failure_uses_blob);
     RUN_TEST(test_feet_follow_pose_without_height_fade);
     RUN_TEST(test_contact_default_is_unwarped);
     RUN_TEST(test_contact_warp_and_bounds_sweep);
