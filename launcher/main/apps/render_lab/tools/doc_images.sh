@@ -20,7 +20,7 @@ W=$2
 run mkdir -p "$W" "$OUT"
 
 contact_images() {
-    # The low contact light makes the BODY and posed SHAPE coverage visible on the floor pads.
+    # The low contact light makes the BLOB and posed SHAPE coverage visible on the floor pads.
     CONTACT_FRAMES=6
     CONTACT_DT=16
     CONTACT_CROPS=3
@@ -32,7 +32,7 @@ contact_images() {
     done
     run "$PYTHON" launcher/tools/render/render_compare.py --out "$OUT_TREE/render/contact-shape.png" \
         --row "Ground contact" "$W/contact-sh.bmp" "$W/contact-shape.bmp" \
-        --label-a BODY --label-b SHAPE --crops "$CONTACT_CROPS" > "$W/contact-shape-compare.log"
+        --label-a BLOB --label-b SHAPE --crops "$CONTACT_CROPS" > "$W/contact-shape-compare.log"
 
     for key in skinned-feet-blobs skinned-shape-warped; do
         run "$W/render_lab_render" --quarter 1 --no-hud --scene "stress-$key" --frames 2 \
@@ -55,7 +55,7 @@ contact_images() {
         done
     done
     run "$PYTHON" launcher/tools/render/render_compare.py --out "$OUT_TREE/render/contact-warp.gif" \
-        --video-row BODY "$W/contact-0-0.avi" "$W/contact-0-1.avi" \
+        --video-row BLOB "$W/contact-0-0.avi" "$W/contact-0-1.avi" \
         --video-row FEET "$W/contact-1-0.avi" "$W/contact-1-1.avi" \
         --video-row SHAPE "$W/contact-2-0.avi" "$W/contact-2-1.avi" \
         --label-a "warp off" --label-b "warp on" --fps "$CONTACT_VIDEO_FPS" --crop-box $CONTACT_VIDEO_CROP \

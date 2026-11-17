@@ -235,7 +235,7 @@ scene_skin_contact_refresh(scene_t* scene, scene_row_t entity) {
         skin->contact_mask.coverage = scene_allocate(CONTACT_MASK_BYTES, MEMORY_FAST);
         if (skin->contact_mask.coverage == NULL) {
             skin->contact_mask_failed = true;
-            (void)fprintf(stderr, "scene: no memory for contact mask; using body\n");
+            (void)fprintf(stderr, "scene: no memory for contact mask; using blob\n");
             return;
         }
     }

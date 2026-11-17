@@ -199,20 +199,20 @@ job's stack; scenes keep no per-entity SH cache.
 contact shadows after geometry, before composition. Zero strength disables
 them. The light-directed projection follows Blinn's planar-shadow idea.<sup>[[130]](../../Citations.md#blinn-1988)</sup>
 
-![BODY and SHAPE under the same low contact light](../../images/render/contact-shape.png)
+![BLOB and SHAPE under the same low contact light](../../images/render/contact-shape.png)
 
-![Enlarged BODY and SHAPE contact coverage](../../images/render/contact-shape.crops.png)
+![Enlarged BLOB and SHAPE contact coverage](../../images/render/contact-shape.crops.png)
 
 | Shape | Coverage |
 |---|---|
-| `SCENE_CONTACT_BODY` | Squared disc falloff `(1 − d²)²`, with radius the smaller horizontal half extent of the world box. |
+| `SCENE_CONTACT_BLOB` | Squared disc falloff `(1 − d²)²`, with radius the smaller horizontal half extent of the world box. |
 | `SCENE_CONTACT_FEET` | Generic bind-space leaf contacts near the lowest leaf; one constant-radius disc under each posed joint. |
-| `SCENE_CONTACT_SHAPE` | Top-down posed silhouette over the world box’s xz footprint. Missing skin or mask allocation failure uses BODY. |
+| `SCENE_CONTACT_SHAPE` | Top-down posed silhouette over the world box’s xz footprint. Missing skin or mask allocation failure uses BLOB. |
 
 `scene_set_contact_warp(renderer, warp)` defaults off: footprints stay
 centred at the mover or posed contact joint, with no stretch.
 
-![BODY, FEET and SHAPE during one run, with warp off and on](../../images/render/contact-warp.gif)
+![BLOB, FEET and SHAPE during one run, with warp off and on](../../images/render/contact-warp.gif)
 
 With warp on, each footprint shifts away from the light by `r tan(θ)`
 and stretches along it by `1/e`. The elevation cosine `e` is clamped to
