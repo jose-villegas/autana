@@ -1,8 +1,8 @@
 /* Render real firmware drawing code on a host, to a BMP, with synthetic time
  * and input (no live board data); options are in docs/tools/Render-Harness.md.
  * Provider adapters supply shell stubs such as shell_home_edge when linking
- * hardware-facing screen entry code; the scene and stream providers share
- * provider_quarter.c's display_quarter_now, the run's quarter. */
+ * hardware-facing screen entry code; render_host answers display_quarter_now
+ * with the run's quarter (render_host_quarter.c). */
 #ifndef RENDER_HOST_H
 #define RENDER_HOST_H
 
