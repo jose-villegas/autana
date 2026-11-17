@@ -34,6 +34,8 @@ integer coordinates have y down.
 | `P_scale(a, s)` | every component times the scalar `s` | $`s\,a = (s\,a_x,\ s\,a_y)`$ |
 | `P_dot(a, b)` | dot product, in the wide type of the number type | $`a \cdot b = a_x b_x + a_y b_y`$ |
 | `P_equal(a, b)` | exact component equality | $`a_x = b_x \land a_y = b_y`$ |
+| `P_length(a)` | length; `f` only | $`\lVert a\rVert = \sqrt{a \cdot a}`$ |
+| `P_clamp_length(a, m)` | `a` cut to length `m` when longer, direction kept; `f` only | $`a \min(1, m / \lVert a\rVert)`$ |
 | `P_<c1><c2>(v)` | swizzle, each `c` one of `x y`: `vec2f_yx(v)` swaps | $`(v_{c_1},\ v_{c_2})`$ |
 | `P_<c1><c2><c3>(v)` | swizzle to the vec3 of the same number type, each `c` one of `x y` | $`(v_{c_1},\ v_{c_2},\ v_{c_3})`$ |
 
@@ -116,6 +118,7 @@ Always an explicit call named for destination and source, both `vec2` and `vec3`
 | `P_conjugate(q)` | inverse of a unit rotation | $`(-q_x, -q_y, -q_z, q_w)`$ |
 | `P_mul(a, b)` | composition: `b` first, then `a` | $`a\,b = (a_w \vec b + b_w \vec a + \vec a \times \vec b,\ a_w b_w - \vec a \cdot \vec b)`$<br> with $`\vec a = (a_x, a_y, a_z)`$ |
 | `P_from_euler(angles)` | Z, then X, then Y; `angles` is a vec3 of radians (`f`) or turns (`x`) | $`q_y\,q_x\,q_z`$<br> with $`q_k`$ the rotation by $`\mathit{angles}_k`$ about axis $`k`$ |
+| `quatf_to_euler(q)` | the angles `quatf_from_euler` takes back from unit `q` (`quatf_euler.h`; `f` only); at pitch $`\pm\frac{\pi}{2}`$ (cos pitch below `QUATF_EULER_LOCK`) roll is 0 and yaw takes the whole turn | with $`R = R_y R_x R_z`$:<br> $`\mathit{pitch} = \mathrm{atan2}(-R_{12},\ \sqrt{R_{10}^2 + R_{11}^2})`$<br> $`\mathit{yaw} = \mathrm{atan2}(R_{02}, R_{22})`$, $`\mathit{roll} = \mathrm{atan2}(R_{10}, R_{11})`$<br> locked: $`\mathit{yaw} = \mathrm{atan2}(-R_{20}, R_{00})`$ |
 | `P_rotate(q, v)` | rotates the vec3 `v` by unit `q` | $`v + 2 q_w\,(u \times v) + 2\,u \times (u \times v)`$<br> with $`u = (q_x, q_y, q_z)`$ |
 | `P_normalize(q)` | unit length; `q` must not be zero | $`\frac{q}{\sqrt{q_x^2 + q_y^2 + q_z^2 + q_w^2}}`$ |
 | `P_from_basis(r, u, f)` | the rotation whose right, up and forward axes are `r`, `u`, `f`; when the trace is not positive, `s` comes from the largest diagonal entry instead<sup>[[53]](../Citations.md#shepperd-1978)</sup> | $`s = 2\sqrt{1 + r_x + u_y + f_z}`$<br> $`\left(\frac{u_z - f_y}{s},\ \frac{f_x - r_z}{s},\ \frac{r_y - u_x}{s},\ \frac{s}{4}\right)`$ |
@@ -160,6 +163,7 @@ the columns of `L = [a c; b d]` and its translation.
 | `P_map_rect(&t, r)` | bounding box in the scalar type | $`\mathrm{bbox}(t(\mathrm{corners}(r)))`$ |
 | `affine2f_map_pixel(&t, p)`, `affine2x_map_pixel(&t, p)` | vec2i result, nearest, ties away from zero | $`\mathrm{round}(L p + o)`$ |
 | `P_map_recti(&t, r)` | recti bounding box of mapped pixels | $`\mathrm{bbox}(\mathrm{round}(t(\mathrm{corners}(r))))`$ |
+| `affine2x_quarter_turn(k, w, h)` | `k` quarter turns clockwise onto a `w` x `h` frame, exact | $`k=1: (x, y) \mapsto (w - y, x)`$ |
 | `P_equal(a, b)` | exact comparison of axes and origin | $`L_a = L_b \land o_a = o_b`$ |
 
 ## mat3 (`f`)

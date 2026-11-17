@@ -133,7 +133,7 @@ is in [Mesh-Import.md](../offline/Mesh-Import.md#import-options).
 source it is at least the reduction's error, or two shells moved across each
 other shadow one another. `colour_merge_step` controls colour merging after
 the bake. The image compares albedo with the result of a renderer whose
-`bake = true` light is then [fitted](Appearance-Fit.md).
+`bake = true` light is then [fitted](../offline/Appearance-Fit.md).
 
 ![Albedo against the fitted bake](../../images/render/import-light.png)
 
@@ -369,8 +369,9 @@ wrap = "loop"
 # clips = ["idle", "walk"]
 ```
 
-The mesh id is `<scene>.<object>`; the skin id appends `.skin` and the skeleton
-id comes from the imported rig. The mesh holds unlit albedo. `bake` is refused.
+The mesh id is the import's variant, as an albedo renderer's is, so every
+renderer that places one import shares one mesh and skin; the skin id appends
+`.skin` and the skeleton id comes from the imported rig. The mesh holds unlit albedo. `bake` is refused.
 
 #### animator
 

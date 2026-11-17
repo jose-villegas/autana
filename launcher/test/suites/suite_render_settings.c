@@ -131,7 +131,13 @@ test_the_default_is_every_setting_on_as_the_raster_drew_before(void) {
                                           .pick_every = 4,
                                           .triangle_budget = 0,
                                           .blend = RENDER_LOD_BLEND_SWITCH,
-                                          .blend_px = 0.25F}};
+                                          .blend_px = 0.25F},
+                                  .anim = {.mid_px = (RENDER_SETTINGS_DEFAULT.anim.mid_px),
+                                           .far_px = (RENDER_SETTINGS_DEFAULT.anim.far_px),
+                                           .mid_every = (RENDER_SETTINGS_DEFAULT.anim.mid_every),
+                                           .far_every = (RENDER_SETTINGS_DEFAULT.anim.far_every),
+                                           .hysteresis_px = (RENDER_SETTINGS_DEFAULT.anim.hysteresis_px)},
+                                  .texture = RENDER_SETTINGS_DEFAULT.texture};
     assert_settings(&on, &RENDER_SETTINGS_DEFAULT);
     const render_settings_t bare = raster_settings(&r->raster);
     assert_settings(&on, &bare);
@@ -192,22 +198,20 @@ assert_only_off(render_settings_t s, size_t off) {
 
 static void
 test_each_field_and_each_knob_reach_only_their_own_slot(void) {
-    raster_rig_t* r = open_rig();
     static const char* const knobs[] = {TUNE_NAME(render, cull), TUNE_NAME(render, depth_fit),
                                         TUNE_NAME(render, batched)};
     render_settings_t set;
     bool* const fields[] = {&set.cull, &set.depth_fit, &set.batched};
     _Static_assert(sizeof fields / sizeof fields[0] == sizeof knobs / sizeof knobs[0], "a field per knob");
-    r->raster.settings = &set;
     for (size_t k = 0; k < sizeof knobs / sizeof knobs[0]; k++) {
         set = RENDER_SETTINGS_DEFAULT;
         *fields[k] = false;
-        assert_only_off(raster_settings(&r->raster), k);
+        assert_only_off(render_settings_tuned(&set), k);
         TEST_ASSERT_TRUE(tune_set(tune_shared(), knobs[k], 1));
-        assert_only_off(raster_settings(&r->raster), SIZE_MAX);
+        assert_only_off(render_settings_tuned(&set), SIZE_MAX);
         set = RENDER_SETTINGS_DEFAULT;
         TEST_ASSERT_TRUE(tune_set(tune_shared(), knobs[k], 0));
-        assert_only_off(raster_settings(&r->raster), k);
+        assert_only_off(render_settings_tuned(&set), k);
         TEST_ASSERT_TRUE(tune_reset(tune_shared(), knobs[k]));
     }
 }
@@ -223,28 +227,24 @@ test_a_release_build_carries_no_override(void) {
  * reset gives the caller's value back. */
 static void
 test_the_partial_redraw_knob_overrides_the_callers_value(void) {
-    raster_rig_t* r = open_rig();
     render_settings_t set = RENDER_SETTINGS_DEFAULT;
-    r->raster.settings = &set;
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, partial_redraw), 1));
-    TEST_ASSERT_TRUE(raster_settings(&r->raster).partial_redraw);
+    TEST_ASSERT_TRUE(render_settings_tuned(&set).partial_redraw);
     set.partial_redraw = true;
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, partial_redraw), 0));
-    TEST_ASSERT_FALSE(raster_settings(&r->raster).partial_redraw);
+    TEST_ASSERT_FALSE(render_settings_tuned(&set).partial_redraw);
     TEST_ASSERT_TRUE(tune_reset(tune_shared(), TUNE_NAME(render, partial_redraw)));
-    TEST_ASSERT_TRUE(raster_settings(&r->raster).partial_redraw);
+    TEST_ASSERT_TRUE(render_settings_tuned(&set).partial_redraw);
 }
 
 /* The coverage cap's knob changes that field of what a draw uses and no other, and a reset gives the caller's
  * value back. */
 static void
 test_the_coverage_knob_overrides_only_the_coverage_cap(void) {
-    raster_rig_t* r = open_rig();
     render_settings_t set = RENDER_SETTINGS_DEFAULT;
     set.lod = (render_lod_settings_t){3.0F, 0.25F, 100, 2, 7, RENDER_LOD_BLEND_ON, 0.5F};
-    r->raster.settings = &set;
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, lod_coverage_permille), 500));
-    render_settings_t used = raster_settings(&r->raster);
+    render_settings_t used = render_settings_tuned(&set);
     TEST_ASSERT_EQUAL_INT(500, used.lod.coverage_permille);
     TEST_ASSERT_EQUAL_FLOAT(3.0F, used.lod.tolerance_px);
     TEST_ASSERT_EQUAL_FLOAT(0.25F, used.lod.hysteresis_px);
@@ -252,11 +252,44 @@ test_the_coverage_knob_overrides_only_the_coverage_cap(void) {
     TEST_ASSERT_EQUAL_INT(7, used.lod.triangle_budget);
     TEST_ASSERT_EQUAL_INT(100, set.lod.coverage_permille);
     TEST_ASSERT_TRUE(tune_reset(tune_shared(), TUNE_NAME(render, lod_coverage_permille)));
-    used = raster_settings(&r->raster);
+    used = render_settings_tuned(&set);
     TEST_ASSERT_EQUAL_INT(100, used.lod.coverage_permille);
 }
 
-enum { FIELDS = RENDER_SETTINGS_FIELD_COUNT, ROW_BYTES = ASSET_TABLE_NAME_SIZE + sizeof(int16_t), PACK_BYTES = 512 };
+/* Each texture knob changes its own field of what a draw uses and no other; 0 is a value, not
+ * unset; the bend knob counts R3D_SPAN_BEND_STEPS to the texel; a reset gives the caller's back. */
+#define CALLER_DIVIDE_PX 7
+#define CALLER_BEND      3.0F
+#define KNOB_BEND_STEPS  (3 * R3D_SPAN_BEND_STEPS / 2)
+
+static void
+test_each_texture_knob_overrides_only_its_own_field(void) {
+    render_settings_t set = RENDER_SETTINGS_DEFAULT;
+    set.texture = (render_texture_settings_t){CALLER_DIVIDE_PX, CALLER_BEND};
+    render_settings_t expected = set;
+    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, texture_divide_px), 0));
+    expected.texture.divide_px = 0;
+    render_settings_t used = render_settings_tuned(&set);
+    assert_settings(&expected, &used);
+    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, texture_bend_steps), KNOB_BEND_STEPS));
+    expected.texture.affine_bend = (float)KNOB_BEND_STEPS / R3D_SPAN_BEND_STEPS;
+    used = render_settings_tuned(&set);
+    assert_settings(&expected, &used);
+    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, texture_bend_steps), 0));
+    expected.texture.affine_bend = 0.0F;
+    used = render_settings_tuned(&set);
+    assert_settings(&expected, &used);
+    TEST_ASSERT_TRUE(tune_reset(tune_shared(), TUNE_NAME(render, texture_divide_px)));
+    expected.texture.divide_px = CALLER_DIVIDE_PX;
+    used = render_settings_tuned(&set);
+    assert_settings(&expected, &used);
+    TEST_ASSERT_TRUE(tune_reset(tune_shared(), TUNE_NAME(render, texture_bend_steps)));
+    used = render_settings_tuned(&set);
+    assert_settings(&set, &used);
+    TEST_ASSERT_EQUAL_FLOAT(CALLER_BEND, used.texture.affine_bend);
+}
+
+enum { FIELDS = RENDER_SETTINGS_FIELD_COUNT, ROW_BYTES = ASSET_TABLE_NAME_SIZE + sizeof(int16_t), PACK_BYTES = 1024 };
 
 /* Every field's row name in struct order, then one no field has. */
 #define FIELD_NAME(field, type, valid) #field,
@@ -300,8 +333,24 @@ read_entry(int rows, const int16_t* values, int frac, render_settings_t* out) {
 
 static void
 test_a_packs_render_entry_reads_every_field(void) {
-    static const int16_t values[FIELDS] = {
-        0, 1, 0, 1, (3 * STEP) + (STEP / 2), STEP / 4, 100, 2, 12000, RENDER_LOD_BLEND_ON, STEP / 2};
+    const int16_t values[FIELDS] = {0,
+                                    1,
+                                    0,
+                                    1,
+                                    (3 * STEP) + (STEP / 2),
+                                    STEP / 4,
+                                    100,
+                                    2,
+                                    12000,
+                                    RENDER_LOD_BLEND_ON,
+                                    STEP / 2,
+                                    (int16_t)(RENDER_SETTINGS_DEFAULT.anim.mid_px * STEP),
+                                    (int16_t)(RENDER_SETTINGS_DEFAULT.anim.far_px * STEP),
+                                    (RENDER_SETTINGS_DEFAULT.anim.mid_every),
+                                    (RENDER_SETTINGS_DEFAULT.anim.far_every),
+                                    (int16_t)(RENDER_SETTINGS_DEFAULT.anim.hysteresis_px * STEP),
+                                    RENDER_TEXTURE_DIVIDE_PX_MAX,
+                                    STEP / 4};
     render_settings_t read;
     TEST_ASSERT_EQUAL(ASSET_OK, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
     TEST_ASSERT_FALSE(read.cull);
@@ -315,14 +364,38 @@ test_a_packs_render_entry_reads_every_field(void) {
     TEST_ASSERT_EQUAL_INT(12000, read.lod.triangle_budget); /* an int is held as itself, past 2047 */
     TEST_ASSERT_EQUAL_INT(RENDER_LOD_BLEND_ON, read.lod.blend);
     TEST_ASSERT_EQUAL_FLOAT(0.5F, read.lod.blend_px);
+    TEST_ASSERT_EQUAL_INT(RENDER_TEXTURE_DIVIDE_PX_MAX, read.texture.divide_px);
+    TEST_ASSERT_EQUAL_FLOAT(0.25F, read.texture.affine_bend);
 }
 
-/* Row indexes of the LOD blend fields in field_names. */
-enum { BLEND_ROW = FIELDS - 2, BLEND_PX_ROW = FIELDS - 1 };
+/* Rows by place: the lod blend pair, then the anim fields (mid_px, far_px, mid_every, far_every, hysteresis_px),
+ * then the texture pair (divide_px, affine_bend). */
+enum {
+    TEXTURE_ROWS = 2,
+    ANIM_ROWS = 5,
+    BLEND_ROW = FIELDS - TEXTURE_ROWS - ANIM_ROWS - 2,
+    BLEND_PX_ROW,
+    MID_PX_ROW = FIELDS - TEXTURE_ROWS - ANIM_ROWS,
+    FAR_PX_ROW,
+    MID_EVERY_ROW,
+    FAR_EVERY_ROW,
+    HYSTERESIS_PX_ROW,
+    DIVIDE_PX_ROW,
+    AFFINE_BEND_ROW,
+};
+
+/* Rows of zeros but for the anim intervals, whose least is RENDER_ANIM_EVERY_MIN. */
+static void
+zero_rows(int16_t values[FIELDS]) {
+    memset(values, 0, sizeof(int16_t) * FIELDS);
+    values[MID_EVERY_ROW] = RENDER_ANIM_EVERY_MIN;
+    values[FAR_EVERY_ROW] = RENDER_ANIM_EVERY_MIN;
+}
 
 static void
 test_a_blend_outside_its_values_or_range_is_refused_unread(void) {
-    int16_t values[FIELDS] = {0};
+    int16_t values[FIELDS];
+    zero_rows(values);
     values[BLEND_PX_ROW] = (int16_t)(RENDER_LOD_BLEND_PX_MAX * STEP);
     render_settings_t read;
     TEST_ASSERT_EQUAL(ASSET_OK, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
@@ -335,6 +408,71 @@ test_a_blend_outside_its_values_or_range_is_refused_unread(void) {
     TEST_ASSERT_EQUAL(ASSET_ERR_FORMAT, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
     values[BLEND_PX_ROW] = (int16_t)(RENDER_LOD_BLEND_PX_MAX * STEP) + 1;
     TEST_ASSERT_EQUAL(ASSET_ERR_FORMAT, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
+}
+
+/* Pixel limits apply to every animation threshold, including the hysteresis band. */
+static void
+test_anim_pixel_ranges_refuse_negative_and_above_max(void) {
+    int16_t values[FIELDS] = {0};
+    values[MID_EVERY_ROW] = values[FAR_EVERY_ROW] = RENDER_ANIM_EVERY_MIN;
+    values[BLEND_PX_ROW] = STEP;
+    const int rows[] = {MID_PX_ROW, FAR_PX_ROW, HYSTERESIS_PX_ROW};
+    render_settings_t read;
+    TEST_ASSERT_EQUAL(ASSET_OK, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
+    for (size_t i = 0; i < sizeof rows / sizeof rows[0]; i++) {
+        const int row = rows[i];
+        values[row] = -1;
+        TEST_ASSERT_EQUAL(ASSET_ERR_FORMAT, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
+        values[row] = 0;
+    }
+    /* The TABL encoding cannot represent the upper limit; exercise its typed predicate. */
+    const float value = (float)RENDER_ANIM_PIXELS_MAX + 1.0F / STEP;
+#define CHECK_MAX(field, type, valid)                                                                                  \
+    if (strcmp(#field, field_names[MID_PX_ROW]) == 0 || strcmp(#field, field_names[FAR_PX_ROW]) == 0                   \
+        || strcmp(#field, field_names[HYSTERESIS_PX_ROW]) == 0) {                                                      \
+        TEST_ASSERT_FALSE(valid);                                                                                      \
+    }
+    RENDER_SETTINGS_FIELDS(CHECK_MAX)
+#undef CHECK_MAX
+}
+
+/* An anim interval of none, or past RENDER_ANIM_EVERY_MAX, is refused: a pose every 0th frame has no meaning. */
+static void
+test_an_anim_interval_outside_its_range_is_refused_unread(void) {
+    int16_t values[FIELDS];
+    zero_rows(values);
+    values[BLEND_PX_ROW] = STEP;
+    render_settings_t read;
+    TEST_ASSERT_EQUAL(ASSET_OK, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
+    for (int row = MID_EVERY_ROW; row <= FAR_EVERY_ROW; row++) {
+        values[row] = RENDER_ANIM_EVERY_MIN - 1;
+        TEST_ASSERT_EQUAL(ASSET_ERR_FORMAT, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
+        values[row] = RENDER_ANIM_EVERY_MAX + 1;
+        TEST_ASSERT_EQUAL(ASSET_ERR_FORMAT, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
+        values[row] = RENDER_ANIM_EVERY_MAX;
+    }
+    TEST_ASSERT_EQUAL(ASSET_OK, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
+}
+
+/* A divide spacing or affine bend below none or past its max is refused; each limit itself reads. */
+static void
+test_a_texture_setting_outside_its_range_is_refused_unread(void) {
+    int16_t values[FIELDS];
+    zero_rows(values);
+    values[BLEND_PX_ROW] = STEP;
+    values[DIVIDE_PX_ROW] = RENDER_TEXTURE_DIVIDE_PX_MAX;
+    values[AFFINE_BEND_ROW] = (int16_t)(RENDER_TEXTURE_BEND_MAX * STEP);
+    render_settings_t read;
+    TEST_ASSERT_EQUAL(ASSET_OK, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
+    const int rows[] = {DIVIDE_PX_ROW, AFFINE_BEND_ROW};
+    for (size_t i = 0; i < sizeof rows / sizeof rows[0]; i++) {
+        const int16_t kept = values[rows[i]];
+        values[rows[i]] = -1;
+        TEST_ASSERT_EQUAL(ASSET_ERR_FORMAT, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
+        values[rows[i]] = (int16_t)(kept + 1);
+        TEST_ASSERT_EQUAL(ASSET_ERR_FORMAT, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
+        values[rows[i]] = kept;
+    }
 }
 
 static void
@@ -380,9 +518,11 @@ render_system(void) {
 
 static void
 test_an_app_starts_with_its_packs_settings_and_without_one_the_default(void) {
-    int16_t values[FIELDS] = {0};
+    int16_t values[FIELDS];
+    zero_rows(values);
     values[BLEND_PX_ROW] = STEP;
-    const render_settings_t off = {.lod.blend_px = 1.0F};
+    const render_settings_t off = {.lod.blend_px = 1.0F,
+                                   .anim = {.mid_every = RENDER_ANIM_EVERY_MIN, .far_every = RENDER_ANIM_EVERY_MIN}};
     void* raw = NULL;
     asset_pack_t opened;
     open_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &opened, &raw);
@@ -395,16 +535,20 @@ test_an_app_starts_with_its_packs_settings_and_without_one_the_default(void) {
 
 void
 suite_render_settings(void) {
+    RUN_TEST(test_anim_pixel_ranges_refuse_negative_and_above_max);
     RUN_TEST(test_the_default_is_every_setting_on_as_the_raster_drew_before);
     RUN_TEST(test_release_returns_the_settings_to_the_default);
     RUN_TEST(test_the_call_and_the_knob_each_take_effect_the_next_frame);
     RUN_TEST(test_an_override_beats_the_callers_value_until_a_reset_brings_it_back);
     RUN_TEST(test_each_field_and_each_knob_reach_only_their_own_slot);
     RUN_TEST(test_the_coverage_knob_overrides_only_the_coverage_cap);
+    RUN_TEST(test_each_texture_knob_overrides_only_its_own_field);
     RUN_TEST(test_the_partial_redraw_knob_overrides_the_callers_value);
     RUN_TEST(test_a_release_build_carries_no_override);
     RUN_TEST(test_a_packs_render_entry_reads_every_field);
     RUN_TEST(test_a_blend_outside_its_values_or_range_is_refused_unread);
+    RUN_TEST(test_an_anim_interval_outside_its_range_is_refused_unread);
+    RUN_TEST(test_a_texture_setting_outside_its_range_is_refused_unread);
     RUN_TEST(test_an_entry_missing_a_field_with_another_or_fixed_point_is_refused_unread);
     RUN_TEST(test_a_pack_without_the_entry_reads_not_found);
     RUN_TEST(test_an_app_starts_with_its_packs_settings_and_without_one_the_default);

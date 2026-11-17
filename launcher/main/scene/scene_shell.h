@@ -37,6 +37,8 @@ bool scene_compose(uint32_t dt_ms, int quarter, const scene_target_t* target);
  * it does nothing without an active camera. */
 void scene_shell_render(uint32_t dt_ms);
 void scene_shell_compose(uint32_t dt_ms);
+/* Composes a frame already drawn through the main context; true for the half picture. */
+bool scene_shell_compose_drawn(void);
 
 /* Allocates the world's entity table, kept for the run; does nothing once it
  * exists. Boot calls it before any app, so no visit's memory holds it; a host

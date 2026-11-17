@@ -6,72 +6,14 @@
 #include <string.h>
 
 #include "core/job.h"
-#include "core/tune.h"
 #include "profile/frame_cost.h"
 #include "profile/frame_laps.h"
 #include "render/batch/r3d_batch.h"
+#include "render/code_layout.h"
 #include "render/lod/r3d_lod.h"
+#include "render/r3d_stages.h"
 #include "render/raster_internal.h"
 #include "render/upscale.h"
-
-TUNE_OWNER(render);
-/* Development overrides of the raster's settings (TUNE_OVERRIDE). */
-/* The generated meshlet-size table measures both culling settings. */
-TUNE_OVERRIDE(render, cull, 1);
-/* 0 encodes depth with the clip plane's near_z: the depth-precision figures
- * render both. */
-TUNE_OVERRIDE(render, depth_fit, 1);
-/* Off draws one instance a batch. */
-TUNE_OVERRIDE(render, batched, 1);
-/* Set, overrides the app's partial redraw setting either way: the board compares both. */
-TUNE_OVERRIDE(render, partial_redraw, 1);
-/* Overrides lod.coverage_permille (INT32_MAX lifts the cap); coverage_table.py
- * sets it once per cap. */
-TUNE_OVERRIDE(render, lod_coverage_permille, INT32_MAX);
-/* Overrides lod.blend; morph_table.py sets it once per arm. */
-TUNE_OVERRIDE(render, lod_blend, RENDER_LOD_BLEND_COUNT - 1);
-/* Overrides lod.blend_px in hundredths of a pixel; morph_table.py sweeps it. */
-#define LOD_BLEND_CENTI 100
-TUNE_OVERRIDE(render, lod_blend_centipixels, (int32_t)(RENDER_LOD_BLEND_PX_MAX * LOD_BLEND_CENTI));
-/* Overrides lod.pick_every; 1 picks every instance every frame. */
-TUNE_OVERRIDE(render, lod_pick_every, R3D_LOD_PICK_EVERY_MAX);
-/* Overrides lod.triangle_budget. */
-TUNE_OVERRIDE(render, lod_triangle_budget, INT32_MAX);
-
-render_settings_t
-raster_settings(const raster_t* raster) {
-    const render_settings_t s = raster->settings != NULL ? *raster->settings : RENDER_SETTINGS_DEFAULT;
-    return (render_settings_t){
-        tune_override(cull, s.cull) != 0,
-        tune_override(depth_fit, s.depth_fit) != 0,
-        tune_override(batched, s.batched) != 0,
-        tune_override(partial_redraw, s.partial_redraw) != 0,
-        {s.lod.tolerance_px, s.lod.hysteresis_px, tune_override(lod_coverage_permille, s.lod.coverage_permille),
-         tune_override(lod_pick_every, s.lod.pick_every), tune_override(lod_triangle_budget, s.lod.triangle_budget),
-         tune_override(lod_blend, s.lod.blend),
-         lod_blend_centipixels == TUNE_UNSET ? s.lod.blend_px : (float)lod_blend_centipixels / LOD_BLEND_CENTI}};
-}
-
-bool
-raster_partial_redraw(const raster_t* raster) {
-    const bool set =
-        raster->settings != NULL ? raster->settings->partial_redraw : RENDER_SETTINGS_DEFAULT.partial_redraw;
-    return tune_override(partial_redraw, set) != 0;
-}
-
-int
-raster_pick_every(const raster_t* raster) {
-    const int set =
-        raster->settings != NULL ? raster->settings->lod.pick_every : RENDER_SETTINGS_DEFAULT.lod.pick_every;
-    return tune_override(lod_pick_every, set);
-}
-
-int
-raster_triangle_budget(const raster_t* raster) {
-    const int set =
-        raster->settings != NULL ? raster->settings->lod.triangle_budget : RENDER_SETTINGS_DEFAULT.lod.triangle_budget;
-    return tune_override(lod_triangle_budget, set);
-}
 
 /* One instance of a batch: its lens, the clusters culling kept, where its
  * vertices and cluster rows start in the shared buffers, and its writers. */
@@ -204,7 +146,8 @@ typedef struct {
     slice_t mine, other;
     r3d_span_target_t targets[2];
     r3d_span_small_fill_t small_fill;
-    bool skip_hidden;         /* the view's */
+    bool skip_hidden; /* the view's */
+    render_texture_settings_t texture;
     int first_row, end_row;   /* the rows this draw redraws */
     bool levels_changed;      /* a level pick this draw changed an instance's cut */
     bool blends;              /* lod.blend is on: each instance's blend is set up */
@@ -374,6 +317,7 @@ draw_slice(void* ctx) {
     gfx_target_window(&target->rows, &b->picture, s->first, s->first + s->count);
     target->small_fill = &((const draw_work_t*)b->draw)->small_fill;
     target->skip_hidden = ((const draw_work_t*)b->draw)->skip_hidden;
+    r3d_span_set_texture(target, &((const draw_work_t*)b->draw)->texture);
 
     if (s->clear) {
         const size_t pixels = (size_t)s->count * (size_t)r->width;
@@ -453,7 +397,7 @@ raster_scratch_bytes(const raster_t* raster) {
 
 /* The view's lens fitted to the size drawn at, so a render scaled more
  * in one axis than the other still shows the same view. */
-void
+RENDER_IRAM_ATTR __attribute__((noinline)) void
 raster_lens(const raster_t* raster, const render_view_t* view, int position_scale, r3d_lens_t* lens) {
     r3d_lens_init(lens, view, position_scale);
     r3d_lens_fit(lens, raster->width, raster->height);
@@ -566,7 +510,7 @@ world_bounds_outside(box3f_t box, const planef_t planes[PLANE_FRUSTUM_COUNT], fl
     return box3f_outside_planes(grown, planes, PLANE_FRUSTUM_COUNT, &mask);
 }
 
-static void
+static RENDER_IRAM_ATTR void
 world_cull_init(world_cull_t* world, picture_lens_t* picture, const render_view_t* view, bool cull) {
     world->cull = cull;
     r3d_lens_frustum(picture_lens_at(picture, 1), world->planes);
@@ -595,7 +539,7 @@ drawn_scale(const r3d_lens_t* lens, const render_view_t* view) {
 
 /* The picture uses the current pick's limits even when its completed round
  * has already steered the next pick. */
-static render_lod_settings_t
+static RENDER_IRAM_ATTR __attribute__((noinline)) render_lod_settings_t
 picture_lod_settings(const raster_t* raster, const render_lod_settings_t* configured, float drawn, bool picking) {
     render_lod_settings_t lod = *configured;
     if (raster->steer != NULL && lod.triangle_budget > 0) {
@@ -671,14 +615,11 @@ expand_batch(const world_cull_t* world, const r3d_batch_draw_t* draw, r3d_batch_
 }
 
 /* Keeps, after the instances in the drawn list, each batch's copies its
- * spheres keep, none when its world box is outside. Not inlined: the
- * batches' locals stay off the cull's frame. */
+ * spheres keep, none when its world box is outside; the caller has checked
+ * there are batches. Not inlined: the batches' locals stay off the cull's
+ * frame, and its code in flash, as a frame without batches never calls it. */
 static __attribute__((noinline)) void
 expand_batches(const raster_t* raster, const world_cull_t* world, const raster_buffers_t* buffers) {
-    raster_census_head(raster)->copy_count = 0;
-    if (raster->batch_count == 0) {
-        return; /* placing the copies walks every instance */
-    }
     r3d_batch_draw_t* copies = raster_census_place(raster);
     int count = 0;
     for (int i = 0; i < raster->batch_count; i++) {
@@ -689,7 +630,7 @@ expand_batches(const raster_t* raster, const world_cull_t* world, const raster_b
     raster_census_head(raster)->copy_count = count;
 }
 
-static level_pick_t
+static RENDER_IRAM_ATTR level_pick_t
 level_pick_init(const raster_t* raster, picture_lens_t* picture, const render_view_t* view,
                 const render_lod_settings_t* lod) {
     const float drawn = drawn_scale(picture_lens_at(picture, 1), view);
@@ -787,7 +728,7 @@ cull_slice(void* ctx, int from, int to) {
 /* Sets up the cull's job in the draw's scratch: what both cores read, and
  * each one's empty counts and depth fit. Out of line, so none of it is on
  * the stack the steered cull runs from. */
-static __attribute__((noinline)) void
+static RENDER_IRAM_ATTR __attribute__((noinline)) void
 cull_begin(draw_work_t* work, const raster_t* raster, const render_view_t* view, bool fitted) {
     cull_job_t* job = &work->cull;
     job->raster = raster;
@@ -798,7 +739,10 @@ cull_begin(draw_work_t* work, const raster_t* raster, const render_view_t* view,
     picture_lens_t* picture = &work->picture;
     picture_lens_init(picture, raster, view, fitted);
     world_cull_init(&job->world, picture, view, job->settings.cull);
-    expand_batches(raster, &job->world, &work->buffers);
+    raster_census_head(raster)->copy_count = 0;
+    if (raster->batch_count != 0) { /* placing the copies walks every instance */
+        expand_batches(raster, &job->world, &work->buffers);
+    }
     job->drawn_count = raster_census_count(raster);
     job->pick = level_pick_init(raster, picture, view, &job->settings.lod);
     for (int h = 0; h < 2; h++) {
@@ -842,7 +786,6 @@ cull_instances(const raster_t* raster, const render_view_t* view, bool fitted, r
     CULL_LAP(FRAME_LAP, fitted, "split");
     cull_begin(work, raster, view, fitted);
     int16_t* share = raster->split != NULL ? &raster->split->cull_offset : NULL;
-    FRAME_LAP_END();
     (void)job_run_range_in(share, cull_slice, &work->cull, work->cull.drawn_count, work->cull.ranges);
     CULL_LAP(FRAME_LAP_SINCE, fitted, "wait");
     CULL_LAP(FRAME_LAP, fitted, "split");
@@ -855,7 +798,7 @@ cull_instances(const raster_t* raster, const render_view_t* view, bool fitted, r
     return depth_near;
 }
 
-/* The writers of the attachments that write while instance `index` is
+/* The writers of the attachments that write while drawn-list entry `index` is
  * drawn; returns how many. */
 static int
 instance_writers(const raster_t* raster, int index, r3d_span_writer_t out[GFX_ATTACHMENTS_FURTHER_MAX]) {
@@ -936,18 +879,16 @@ draw_batch(const raster_t* raster, int index, draw_work_t* work) {
     *other = *mine;
     other->first = half;
     other->count = count - half;
-    FRAME_LAP_END();
     job_run_steered(transform_share, transform_slice, mine, other, sizeof *mine);
     FRAME_LAP_SINCE("r3d.transform.wait");
-    FRAME_COST_END(transformed_from, "r3d.transform");
+    FRAME_COST_END(transformed_from, R3D_STAGE_TRANSFORM_NAME);
 
     FRAME_COST_BEGIN(drawn_from);
     FRAME_LAP("r3d.draw.split");
     draw_share = plan_draw_rows(raster, work, draw_share);
-    FRAME_LAP_END();
     job_run_steered(draw_share, draw_slice, mine, other, sizeof *mine);
     FRAME_LAP_SINCE("r3d.draw.wait");
-    FRAME_COST_END(drawn_from, "r3d.draw");
+    FRAME_COST_END(drawn_from, R3D_STAGE_DRAW_NAME);
 }
 
 /* Frame validation stays outside the inlined draw chain. */
@@ -1049,7 +990,7 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
     if (stats != NULL) {
         FRAME_COST_BEGIN(culled_from);
         *work->buffers.depth_near = cull_instances(raster, view, true, stats, work);
-        FRAME_COST_END(culled_from, "r3d.cull");
+        FRAME_COST_END(culled_from, R3D_STAGE_CULL_NAME);
     }
     /* Kept rows hold depth at the last draw's scale and the cuts it drew: a
      * new scale, or a level pick that changed a cut, redraws them all. */
@@ -1065,6 +1006,7 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
     }
     r3d_span_small_fill_resolve(&work->small_fill, view->small_fill);
     work->skip_hidden = view->skip_hidden;
+    work->texture = raster_settings(raster).texture;
     /* A list drawn with no census, or rewritten without its scale, fails here. */
     assert(*work->buffers.depth_near >= view->lens.near_z);
     uint16_t* culled = work->buffers.culled;
@@ -1238,5 +1180,5 @@ raster_upscale_picture(raster_t* raster, const gfx_target_t* picture, uint16_t* 
                                    .seams = seams,
                                    .picture = picture};
     job_run_steered(share, upscale_slice, &mine, &other, sizeof mine);
-    FRAME_COST_END(upscaled_from, "r3d.upscale");
+    FRAME_COST_END(upscaled_from, R3D_STAGE_UPSCALE_NAME);
 }

@@ -47,13 +47,36 @@ lod_view(const r3d_lens_t* lens) {
     return out;
 }
 
+static float
+bounds_nearest(const lod_view_t* v, vec3f_t centre, float radius, float near_z) {
+    centre = mat4f_apply(&v->view, centre);
+    return mathf_max(mathf_sqrt(vec3f_dot(centre, centre)) - (radius * v->units_per_tick), near_z);
+}
+
+r3d_lod_measure_t
+r3d_lod_measure(const r3d_lens_t* lens) {
+    r3d_lod_measure_t out = {.view = lod_view(lens), .near_z = lens->project.near_z};
+    r3d_lens_frustum(lens, out.planes);
+    return out;
+}
+
+float
+r3d_lod_bounds_pixels(box3f_t bounds, const r3d_lod_measure_t* measure) {
+    unsigned mask = (1U << PLANE_FRUSTUM_COUNT) - 1U;
+    if (box3f_outside_planes(bounds, measure->planes, PLANE_FRUSTUM_COUNT, &mask)) {
+        return 0.0F;
+    }
+    const lod_view_t v = measure->view;
+    const vec3f_t extent = box3f_half_extent(bounds);
+    const float radius = mathf_sqrt(vec3f_dot(extent, extent));
+    return radius * v.units_per_tick * v.focal / bounds_nearest(&v, box3f_centre(bounds), radius, measure->near_z);
+}
+
 /* How far group `g`'s bounds come to the eye, no nearer than `near_z`: the
  * depth both its error and its radius project at. */
 static float
 group_nearest(const lod_view_t* v, const r3d_lit_lod_group_t* g, float near_z) {
-    const vec3f_t centre = mat4f_apply(&v->view, vec3f_from_vec3s(g->bounds.centre, 1.0F));
-    const float distance = mathf_sqrt(vec3f_dot(centre, centre)) - ((float)g->bounds.radius * v->units_per_tick);
-    return mathf_max(distance, near_z);
+    return bounds_nearest(v, vec3f_from_vec3s(g->bounds.centre, 1.0F), (float)g->bounds.radius, near_z);
 }
 
 static float
@@ -160,9 +183,9 @@ close_coarse(const r3d_lit_mesh_t* mesh, uint32_t* coarse) {
         changed = false;
         for (int c = mesh->lod_coarse_first; c < mesh->cluster_count; c++) {
             const r3d_lit_cluster_lod_t lod = mesh->cluster_lod[c];
-            if (lod.own != R3D_LOD_NONE && lod.parent != R3D_LOD_NONE && r3d_lod_coarse(coarse, lod.parent)
-                && !r3d_lod_coarse(coarse, lod.own)) {
-                coarse[lod.own / R3D_LOD_WORD_BITS] |= 1U << (lod.own % R3D_LOD_WORD_BITS);
+            if (lod.own != R3D_LOD_NONE && lod.parent != R3D_LOD_NONE && bits32_get(coarse, lod.parent)
+                && !bits32_get(coarse, lod.own)) {
+                bits32_set(coarse, lod.own);
                 changed = true;
             }
         }
@@ -177,7 +200,7 @@ r3d_lod_morph_init(r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, const r3d
         return;
     }
     assert(state != NULL);
-    const uint32_t* arrived = state + R3D_LOD_WORDS(mesh->lod_group_count);
+    const uint32_t* arrived = state + BITS32_WORDS(mesh->lod_group_count);
     const uint32_t* blending = r3d_lod_blending(arrived, mesh->lod_group_count);
     if (!r3d_lod_any(blending, mesh->lod_group_count)) {
         *morph = (r3d_lod_morph_t){.enabled = false};
@@ -228,7 +251,7 @@ r3d_lod_morph_group_weight(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* m
     if (pixels != NULL) {
         *pixels = error_px;
     }
-    const float whole = r3d_lod_coarse(morph->arrived, group) ? morph->leave : morph->enter;
+    const float whole = bits32_get(morph->arrived, group) ? morph->leave : morph->enter;
     const float weight =
         mathf_min(ramp_weight(error_px, whole, morph->ramp), ramp_weight(radius_px, morph->covered, morph->cover_ramp));
     return (int)((weight * (float)R3D_LOD_MORPH_ONE) + 0.5F);
@@ -237,7 +260,7 @@ r3d_lod_morph_group_weight(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* m
 /* Group `group`'s weight when it blends, else 0. */
 static int
 blending_weight(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, uint16_t group) {
-    if (group == R3D_LOD_NONE || !r3d_lod_coarse(morph->blending, group)) {
+    if (group == R3D_LOD_NONE || !bits32_get(morph->blending, group)) {
         return 0;
     }
     return r3d_lod_morph_group_weight(morph, mesh, group, NULL);
@@ -271,7 +294,7 @@ r3d_lod_dither_band(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, in
     }
     const r3d_lit_cluster_lod_t lod = mesh->cluster_lod[c];
     /* A cluster simplified from a group still fine is drawn only while that group blends. */
-    const bool fading_in = lod.own != R3D_LOD_NONE && r3d_lod_coarse(morph->blending, lod.own);
+    const bool fading_in = lod.own != R3D_LOD_NONE && bits32_get(morph->blending, lod.own);
     const int lo = bayer_level(blending_weight(morph, mesh, lod.parent), R3D_LOD_MORPH_ONE);
     const int hi = fading_in ? bayer_level(r3d_lod_morph_group_weight(morph, mesh, lod.own, NULL), R3D_LOD_MORPH_ONE)
                              : R3D_LOD_DITHER_LEVELS;
@@ -375,7 +398,7 @@ blend_bits(uint32_t* arrived, uint32_t* blending, int g, bool was, const reach_t
     } else if (was) {
         changed |= bits32_put(arrived, g, true);
     }
-    const bool has_arrived = r3d_lod_coarse(arrived, (uint16_t)g);
+    const bool has_arrived = bits32_get(arrived, (uint16_t)g);
     return changed
            | bits32_put(blending, g,
                         blends(at, group, scale, limits->covered, lod, has_arrived ? limits->leave : limits->enter));
@@ -410,7 +433,7 @@ pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lod_settin
      uint32_t* arrived, r3d_lod_histogram_t* histogram) {
     const lod_view_t v = lod_view(lens);
     const lod_limits_t limits = lod_limits(lod, lens, 1.0F);
-    const int words = R3D_LOD_WORDS(mesh->lod_group_count);
+    const int words = (int)BITS32_WORDS(mesh->lod_group_count);
     uint32_t* blending = arrived != NULL ? arrived + words : NULL;
     const int sets = arrived != NULL ? R3D_LOD_STATE_SETS : 1;
     histogram_add_finest(histogram, mesh);
@@ -430,7 +453,7 @@ pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lod_settin
                             lens->project.near_z};
         const float error = (float)group->error * scale;
         const float radius = (float)group->bounds.radius * scale;
-        const bool was = r3d_lod_coarse(coarse, (uint16_t)g);
+        const bool was = bits32_get(coarse, (uint16_t)g);
         const bool coarse_now = turns_coarse(&at, error, radius, was, &limits);
         changed |= bits32_put(coarse, g, coarse_now);
         histogram_add(histogram, group, &at, error, radius, limits.covered, lod->tolerance_px);

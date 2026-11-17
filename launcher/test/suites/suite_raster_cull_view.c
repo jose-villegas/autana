@@ -254,6 +254,104 @@ test_triangles_are_sorted_into_exactly_one_fate_each(void) {
 }
 
 static void
+test_counted_pixels_are_clipped_centres_and_zero_without_setup(void) {
+    const r3d_lens_t lens = lens_for(&looking_at_origin);
+    r3d_lit_mesh_t mesh = sort_mesh();
+    r3d_lit_cluster_t cluster = sort_clusters[0];
+    cluster.triangle_count = 1;
+    cluster.double_sided = true;
+    mesh.clusters = &cluster;
+    const uint16_t kept[] = {0};
+    const int side = R3D_SIZES_SMALL_MAX * R3D_SUBPIXEL;
+    const r3d_pipeline_vertex_t cs[SORT_VERTICES] = {{0, 0, 1.0F}, {side, 0, 1.0F}, {0, side, 1.0F}};
+    r3d_pipeline_counts_t counts = {0};
+    r3d_pipeline_count_triangles(&mesh, &lens, kept, 0, cs, &counts, NULL);
+    TEST_ASSERT_EQUAL_INT(0, counts.pixels[R3D_SIZES_FACE]);
+    r3d_pipeline_count_triangles(&mesh, &lens, kept, 1, cs, &counts, NULL);
+    const int expected = R3D_SIZES_SMALL_MAX * (R3D_SIZES_SMALL_MAX - 1) / 2;
+    TEST_ASSERT_EQUAL_INT(expected, counts.pixels[R3D_SIZES_FACE]);
+    TEST_ASSERT_EQUAL_INT(1, counts.triangles_sized[R3D_SIZES_FACE][R3D_SIZES_MORE]);
+    TEST_ASSERT_EQUAL_INT(0, counts.pixels[R3D_SIZES_UNIFORM]);
+    TEST_ASSERT_EQUAL_INT(0, counts.pixels[R3D_SIZES_SHADED]);
+    r3d_lens_t clipped = lens;
+    clipped.width = R3D_SIZES_SMALL_MAX / 2;
+    r3d_pipeline_counts_t partial = {0};
+    r3d_pipeline_count_triangles(&mesh, &clipped, kept, 1, cs, &partial, NULL);
+    TEST_ASSERT_EQUAL_INT(expected - 1, partial.pixels[R3D_SIZES_FACE]);
+}
+
+static void
+test_uniform_mode_uses_quantized_colour_steps(void) {
+    const int side = R3D_SUBPIXEL * 2 * (UINT8_MAX + 1);
+    const r3d_span_vertex_t a = {0, 0, 1.0F, 0, 0, 0};
+    r3d_span_vertex_t b = {side, 0, 1.0F, 1, 0, 0};
+    const r3d_span_vertex_t c = {0, side, 1.0F, 0, 0, 0};
+    TEST_ASSERT_TRUE(r3d_span_uniform(&a, &b, &c));
+    b.r = UINT8_MAX;
+    TEST_ASSERT_FALSE(r3d_span_uniform(&a, &b, &c));
+}
+
+static void
+test_off_frustum_clusters_and_subtrees_are_separate(void) {
+    r3d_lit_mesh_t mesh = tree_mesh();
+    r3d_lit_node_t leaf = tree_nodes[0];
+    leaf.first = 0;
+    leaf.count = mesh.cluster_count;
+    leaf.leaf = true;
+    mesh.nodes = &leaf;
+    mesh.node_count = 1;
+    const r3d_lens_t lens = lens_for(&looking_at_origin);
+    uint16_t kept[3];
+    r3d_pipeline_counts_t counts = {0};
+    TEST_ASSERT_EQUAL_INT(2, r3d_pipeline_cull_counted(&mesh, &lens, NULL, NULL, kept, count_walk(), &counts));
+    TEST_ASSERT_EQUAL_INT(1, counts.clusters_off_frustum);
+    TEST_ASSERT_EQUAL_INT(0, counts.nodes_cut);
+    TEST_ASSERT_EQUAL_INT(counts.clusters_tested, counts.clusters_kept + counts.clusters_off_frustum);
+}
+
+static void
+test_size_pixels_accepts_either_winding(void) {
+    enum { SIDE = 4, COVERED = SIDE * (SIDE - 1) / 2 };
+
+    r3d_size_point_t points[] = {{0, 0}, {SIDE, 0}, {0, SIDE}};
+    const recti_t box = r3d_size_centre_box(points);
+    TEST_ASSERT_EQUAL_INT(COVERED, r3d_size_pixels(points, box, SIDE, SIDE));
+    const r3d_size_point_t swap = points[1];
+    points[1] = points[2];
+    points[2] = swap;
+    TEST_ASSERT_EQUAL_INT(COVERED, r3d_size_pixels(points, box, SIDE, SIDE));
+    TEST_ASSERT_EQUAL_INT(R3D_SIZES_MORE, r3d_size_bin_of(COVERED));
+}
+
+static void
+test_size_modes_follow_face_and_corner_colours_in_both_windings(void) {
+    const uint16_t kept[] = {0};
+    const r3d_lens_t lens = lens_for(&looking_at_origin);
+    uint8_t colors[SORT_VERTICES][3] = {0};
+    r3d_lit_cluster_t cluster = sort_clusters[0];
+    cluster.triangle_count = 1;
+    cluster.double_sided = true;
+    r3d_lit_mesh_t mesh = sort_mesh();
+    mesh.clusters = &cluster;
+    mesh.colors = (const uint8_t (*)[3])colors;
+    r3d_pipeline_vertex_t cs[SORT_VERTICES];
+    r3d_pipeline_transform(&mesh, &lens, kept, 1, cs, NULL, false);
+    for (int winding = 0; winding < 2; winding++) {
+        for (int mode = 0; mode < R3D_SIZES_MODES; mode++) {
+            colors[1][0] = mode == R3D_SIZES_UNIFORM ? 0 : UINT8_MAX;
+            mesh.face_colors = mode == R3D_SIZES_FACE ? sort_colors : NULL;
+            r3d_pipeline_counts_t counts = {0};
+            r3d_pipeline_count_triangles(&mesh, &lens, kept, 1, cs, &counts, NULL);
+            TEST_ASSERT_EQUAL_INT(1, counts.triangles_set_up);
+            TEST_ASSERT_EQUAL_INT(1, counts.triangles_sized[mode][R3D_SIZES_MORE]);
+        }
+        const r3d_pipeline_vertex_t swap = cs[0];
+        cs[0] = cs[2];
+        cs[2] = swap;
+    }
+}
+
+static void
 test_set_up_per_cluster_counts_set_up_and_clipped_triangles(void) {
     enum { UNLISTED = 3, SENTINEL = 0xABCD };
 
@@ -568,7 +666,8 @@ static void
 test_cull_view_frame_counts_clusters_by_fate(void) {
     scene_t* s = scene_open();
     scene_draw(s);
-    const raster_cull_frame_t frame = raster_cull_frame(scene_state(s));
+    raster_cull_frame_t frame;
+    raster_cull_frame(scene_state(s), &frame);
     TEST_ASSERT_EQUAL_INT(1, frame.clusters[RASTER_FATE_CULLED]);
     TEST_ASSERT_EQUAL_INT(1, frame.clusters[RASTER_FATE_NOT_SET_UP]);
     TEST_ASSERT_EQUAL_INT(1, frame.clusters[RASTER_FATE_HIDDEN]);
@@ -580,11 +679,82 @@ test_cull_view_frame_counts_clusters_by_fate(void) {
     TEST_ASSERT_EQUAL_INT(SCENE_QUADS, total);
 }
 
+/* Each scene quad's vertex_count: its four corners plus unused padding the
+ * transform still works through. All differ, so a sum cannot be mistaken
+ * for a count of clusters or for another cluster's vertices. */
+#define PADDED_VERTICES_MAX 8
+#define CORNERS_PER_QUAD    4
+#define QUAD_TRIANGLES      2
+
+static const int padded_vertex_count[SCENE_QUADS] = {
+    [SCENE_WALL] = 4, [SCENE_CARD] = 6, [SCENE_HIDDEN] = 5, [SCENE_AWAY] = 7, [SCENE_SIDE] = PADDED_VERTICES_MAX};
+static const uint16_t padded_face_colors[QUAD_TRIANGLES] = {UINT16_MAX, UINT16_MAX};
+
+/* Gives each quad of `s` its padded vertex_count, its corners first and the
+ * padding copies of the first corner, lit per face so no vertex colour is
+ * read. `positions` holds them while the scene draws. */
+static void
+pad_scene_vertices(scene_t* s, int16_t (*positions)[PADDED_VERTICES_MAX][3]) {
+    for (int i = 0; i < SCENE_QUADS; i++) {
+        for (int v = 0; v < PADDED_VERTICES_MAX; v++) {
+            const int16_t* corner = scene_corners[i][v < CORNERS_PER_QUAD ? v : 0];
+            positions[i][v][0] = corner[0];
+            positions[i][v][1] = corner[1];
+            positions[i][v][2] = corner[2];
+        }
+        s->quad[i].cluster.vertex_count = (uint16_t)padded_vertex_count[i];
+        s->quad[i].mesh.positions = (const int16_t (*)[3])positions[i];
+        s->quad[i].mesh.vertex_count = (uint16_t)padded_vertex_count[i];
+        s->quad[i].mesh.colors = NULL;
+        s->quad[i].mesh.face_colors = padded_face_colors;
+    }
+}
+
+static void
+assert_vertices_of_kept_clusters_only(const raster_cull_frame_t* frame) {
+    const int kept = padded_vertex_count[SCENE_WALL] + padded_vertex_count[SCENE_CARD]
+                     + padded_vertex_count[SCENE_HIDDEN] + padded_vertex_count[SCENE_AWAY];
+    TEST_ASSERT_EQUAL_INT(kept, frame->counts.vertices_transformed);
+    TEST_ASSERT_TRUE(frame->counts.vertices_transformed < kept + padded_vertex_count[SCENE_SIDE]);
+    /* No morph weight, dither band or stacked pixels in this scene. */
+    TEST_ASSERT_EQUAL_INT(0, frame->counts.vertices_blended);
+    TEST_ASSERT_EQUAL_INT(0, frame->counts.vertices_stacked);
+    TEST_ASSERT_EQUAL_INT(0, frame->counts.stacked_centipixels);
+}
+
+static void
+test_cull_view_frame_counts_the_vertices_of_kept_clusters_only(void) {
+    scene_t* s = scene_open();
+    int16_t positions[SCENE_QUADS][PADDED_VERTICES_MAX][3];
+    pad_scene_vertices(s, positions);
+    scene_draw(s);
+    raster_cull_frame_t camera_only;
+    raster_cull_frame(scene_state(s), &camera_only);
+    TEST_ASSERT_EQUAL_UINT8(RASTER_FATE_CULLED, scene_state(s)->fate[SCENE_SIDE]);
+    assert_vertices_of_kept_clusters_only(&camera_only);
+
+    /* From the top the culled cluster is drawn too, yet the count is the camera's. */
+    set_cull_from(RASTER_CULL_FROM_TOP);
+    scene_draw(s);
+    raster_cull_frame_t from_top;
+    raster_cull_frame(scene_state(s), &from_top);
+    assert_vertices_of_kept_clusters_only(&from_top);
+}
+
 static void
 test_cull_view_frame_counts_the_walk_and_the_sort_of_every_instance(void) {
     scene_t* s = scene_open();
     scene_draw(s);
-    const r3d_pipeline_counts_t c = raster_cull_frame(scene_state(s)).counts;
+    raster_cull_frame_t frame;
+    raster_cull_frame(scene_state(s), &frame);
+    const r3d_pipeline_counts_t c = frame.counts;
+    int sized = 0;
+    for (int mode = 0; mode < R3D_SIZES_MODES; mode++) {
+        for (int bin = 0; bin < R3D_SIZES_BINS; bin++) {
+            sized += c.triangles_sized[mode][bin];
+        }
+    }
+    TEST_ASSERT_EQUAL_INT(c.triangles_set_up, sized);
     const int survivors = SCENE_QUADS - 1;
     TEST_ASSERT_EQUAL_INT(survivors, c.clusters_kept);
     TEST_ASSERT_EQUAL_INT(survivors, c.clusters_tested);
@@ -601,7 +771,8 @@ static void
 test_cull_view_triangles_covering_counts_only_triangles_owning_pixels(void) {
     scene_t* s = scene_open();
     scene_draw(s);
-    const raster_cull_frame_t frame = raster_cull_frame(scene_state(s));
+    raster_cull_frame_t frame;
+    raster_cull_frame(scene_state(s), &frame);
 
     TEST_ASSERT_EQUAL_INT(2 * TRIANGLES_PER_QUAD, frame.triangles_covering);
     TEST_ASSERT_TRUE(frame.triangles_covering < frame.counts.triangles_set_up);
@@ -612,7 +783,8 @@ static void
 test_cull_view_from_the_top_draws_again_with_every_cluster_and_the_same_counts(void) {
     scene_t* s = scene_open();
     scene_draw(s);
-    const raster_cull_frame_t camera_only = raster_cull_frame(scene_state(s));
+    raster_cull_frame_t camera_only;
+    raster_cull_frame(scene_state(s), &camera_only);
     TEST_ASSERT_TRUE(culling_on());
     TEST_ASSERT_EQUAL_INT(0, pixels_of(s, CULLED_RGB));
 
@@ -626,7 +798,9 @@ test_cull_view_from_the_top_draws_again_with_every_cluster_and_the_same_counts(v
     TEST_ASSERT_TRUE(state->spectator.position.y > state->camera.position.y);
     TEST_ASSERT_TRUE(pixels_of(s, CULLED_RGB) > 0);
 
-    const raster_cull_frame_t from_top = raster_cull_frame(state);
+    raster_cull_frame_t from_top;
+
+    raster_cull_frame(state, &from_top);
     TEST_ASSERT_EQUAL_MEMORY(&camera_only, &from_top, sizeof from_top);
     TEST_ASSERT_EQUAL_UINT8(RASTER_FATE_CULLED, state->fate[SCENE_SIDE]);
 }
@@ -819,7 +993,8 @@ test_cull_view_counts_only_the_level_drawn(void) {
     const raster_cull_t* state = lod_draw(l, 1);
     TEST_ASSERT_EQUAL_INT(LOD_FINEST, state->clusters);
     TEST_ASSERT_EQUAL_INT(LOD_FINEST * TRIANGLES_PER_QUAD, state->triangles);
-    const raster_cull_frame_t frame = raster_cull_frame(state);
+    raster_cull_frame_t frame;
+    raster_cull_frame(state, &frame);
     TEST_ASSERT_EQUAL_INT(LOD_FINEST, fates_total(&frame));
     TEST_ASSERT_EQUAL_INT(LOD_FINEST, frame.clusters[RASTER_FATE_DRAWN]);
     TEST_ASSERT_EQUAL_INT(LOD_FINEST * TRIANGLES_PER_QUAD, frame.triangles_covering);
@@ -842,8 +1017,10 @@ test_cull_view_paints_the_coarse_level_picked_and_not_the_finest(void) {
     }
     TEST_ASSERT_EQUAL_INT(LOD_COARSE, state->clusters);
     TEST_ASSERT_EQUAL_INT(LOD_COARSE * LOD_COARSE_TRIS, state->triangles);
-    const raster_cull_frame_t frame = raster_cull_frame(state);
+    raster_cull_frame_t frame;
+    raster_cull_frame(state, &frame);
     TEST_ASSERT_EQUAL_INT(LOD_COARSE, fates_total(&frame));
+    TEST_ASSERT_EQUAL_INT(frame.counts.clusters_tested, frame.counts.clusters_kept + frame.counts.clusters_off_frustum);
     TEST_ASSERT_EQUAL_INT(0, frame.clusters[RASTER_FATE_CULLED]);
     TEST_ASSERT_TRUE(pixels_of(scene_now, DRAWN_RGB) > 0);
     TEST_ASSERT_EQUAL_INT(0, pixels_of(scene_now, CULLED_RGB));
@@ -877,7 +1054,8 @@ test_cull_view_counts_each_drawn_triangle_once_after_an_odd_instance(void) {
     const int triangles = LOD_PAIR * ((LOD_MERGE * 2) + LOD_COARSE_TRIS);
     TEST_ASSERT_EQUAL_INT(clusters, state->clusters);
     TEST_ASSERT_EQUAL_INT(triangles, state->triangles);
-    const raster_cull_frame_t frame = raster_cull_frame(state);
+    raster_cull_frame_t frame;
+    raster_cull_frame(state, &frame);
     TEST_ASSERT_EQUAL_INT(clusters, fates_total(&frame));
     TEST_ASSERT_EQUAL_INT(clusters, frame.clusters[RASTER_FATE_DRAWN]);
     TEST_ASSERT_EQUAL_INT(triangles, frame.triangles_covering);
@@ -891,7 +1069,8 @@ test_cull_view_has_room_for_the_levels_drawn_not_every_level(void) {
     lod_scene_t* l = lod_open(LOD_CROWD);
     const raster_cull_t* state = lod_draw(l, LOD_CROWD);
     TEST_ASSERT_EQUAL_INT(LOD_CROWD * LOD_FINEST, state->clusters);
-    const raster_cull_frame_t frame = raster_cull_frame(state);
+    raster_cull_frame_t frame;
+    raster_cull_frame(state, &frame);
     TEST_ASSERT_EQUAL_INT(LOD_CROWD * LOD_FINEST, fates_total(&frame));
     TEST_ASSERT_TRUE(frame.clusters[RASTER_FATE_DRAWN] > 0);
 }
@@ -1126,11 +1305,45 @@ test_overlay_draws_the_frustum_from_the_observer(void) {
 }
 #endif
 
+static void
+test_compose_counts_can_describe_the_shaded_half_picture(void) {
+    raster_t raster = {.width = W / 2,
+                       .height = H / 2,
+                       .destination_width = W,
+                       .destination_height = H,
+                       .upscale = {.destination_width = W,
+                                   .destination_height = H,
+                                   .path = UPSCALE_DOUBLED,
+                                   .filter = UPSCALE_FILTER_SURFACE}};
+    raster_cull_frame_t frame = {0};
+    raster_cull_frame_compose(&frame, &raster, true);
+    TEST_ASSERT_EQUAL_INT(W / 2, frame.render_width);
+    TEST_ASSERT_EQUAL_INT(H / 2, frame.render_height);
+    TEST_ASSERT_EQUAL_INT(W / 2, frame.output_width);
+    TEST_ASSERT_EQUAL_INT(H / 2, frame.output_height);
+    TEST_ASSERT_EQUAL_INT(UPSCALE_KEPT, frame.upscale_path);
+    TEST_ASSERT_TRUE(frame.upscale_surface);
+    raster.upscale.destination_width = W;
+    raster.upscale.destination_height = H;
+    raster.upscale.path = UPSCALE_DOUBLED;
+    raster_cull_frame_compose(&frame, &raster, false);
+    TEST_ASSERT_EQUAL_INT(W, frame.output_width);
+    TEST_ASSERT_EQUAL_INT(H, frame.output_height);
+    TEST_ASSERT_EQUAL_INT(UPSCALE_DOUBLED, frame.upscale_path);
+    TEST_ASSERT_FALSE(frame.upscale_surface);
+}
+
 void
 run_raster_cull_view_suite(void) {
+    RUN_TEST(test_compose_counts_can_describe_the_shaded_half_picture);
     RUN_TEST(test_counted_cull_returns_the_list_cull_returns);
     RUN_TEST(test_counted_cull_counts_agree_with_the_list);
     RUN_TEST(test_counted_cull_cuts_a_mesh_wholly_outside_the_frustum);
+    RUN_TEST(test_uniform_mode_uses_quantized_colour_steps);
+    RUN_TEST(test_off_frustum_clusters_and_subtrees_are_separate);
+    RUN_TEST(test_counted_pixels_are_clipped_centres_and_zero_without_setup);
+    RUN_TEST(test_size_pixels_accepts_either_winding);
+    RUN_TEST(test_size_modes_follow_face_and_corner_colours_in_both_windings);
     RUN_TEST(test_triangles_are_sorted_into_exactly_one_fate_each);
     RUN_TEST(test_set_up_per_cluster_counts_set_up_and_clipped_triangles);
     RUN_TEST(test_triangle_sort_adds_to_the_counts_it_is_given);
@@ -1138,6 +1351,7 @@ run_raster_cull_view_suite(void) {
     RUN_TEST(test_per_triangle_writer_tags_the_triangle_that_won_each_pixel);
     RUN_TEST(test_cull_view_gives_each_cluster_its_fate);
     RUN_TEST(test_cull_view_frame_counts_clusters_by_fate);
+    RUN_TEST(test_cull_view_frame_counts_the_vertices_of_kept_clusters_only);
     RUN_TEST(test_cull_view_frame_counts_the_walk_and_the_sort_of_every_instance);
     RUN_TEST(test_cull_view_triangles_covering_counts_only_triangles_owning_pixels);
     RUN_TEST(test_cull_view_from_the_top_draws_again_with_every_cluster_and_the_same_counts);

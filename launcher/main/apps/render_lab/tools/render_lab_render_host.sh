@@ -73,7 +73,26 @@ stress-tiny-copies|--quarter 1 --no-hud --scene stress-tiny-copies --frames 2|44
 stress-big-tris|--quarter 1 --no-hud --scene stress-big-tris --frames 2|448x368|nopin
 stress-per-frame|--quarter 1 --no-hud --scene stress-per-frame --frames 2|448x368|nopin
 stress-two-sided|--quarter 1 --no-hud --scene stress-two-sided --frames 2|448x368|nopin
+stress-mix|--quarter 1 --no-hud --scene stress-mix --frames 2|448x368|nopin
+stress-static-copies|--quarter 1 --no-hud --scene stress-static-copies --frames 2|448x368|nopin
+stress-uniform-mid|--quarter 1 --no-hud --scene stress-uniform-mid --frames 2|448x368|nopin
+stress-uniform-full|--quarter 1 --no-hud --scene stress-uniform-full --frames 2|448x368|nopin
+stress-card|--quarter 1 --no-hud --scene stress-card --frames 2|448x368|nopin
+stress-culled|--quarter 1 --no-hud --scene stress-culled --frames 2|448x368|nopin
+stress-near|--quarter 1 --no-hud --scene stress-near --frames 2|448x368|nopin
+stress-few-copies|--quarter 1 --no-hud --scene stress-few-copies --frames 2|448x368|nopin
+stress-foliage-near|--quarter 1 --no-hud --scene stress-foliage-near --frames 2|448x368|nopin
+stress-foliage-near-opaque|--quarter 1 --no-hud --scene stress-foliage-near-opaque --frames 2|448x368|nopin
+stress-foliage-far|--quarter 1 --no-hud --scene stress-foliage-far --frames 2|448x368|nopin
+stress-foliage-far-opaque|--quarter 1 --no-hud --scene stress-foliage-far-opaque --frames 2|448x368|nopin
+stress-cull-setup|--quarter 1 --no-hud --scene stress-cull-setup --frames 2|448x368|nopin
 stress-noisy-tiny|--quarter 1 --no-hud --scene stress-noisy-tiny --frames 2|448x368|nopin
+stress-textured|--quarter 1 --no-hud --scene stress-textured --frames 2|448x368|nopin
+stress-record|--quarter 1 --no-hud --scene stress-record --frames 2|448x368|nopin
+stress-baked-tree|--quarter 1 --no-hud --scene stress-baked-tree --frames 2|448x368|nopin
+herd-1|--quarter 1 --no-hud --scene herd-1 --frames 60|448x368|nopin
+herd-4|--quarter 1 --no-hud --scene herd-4 --frames 60|448x368|nopin
+herd-8|--quarter 1 --no-hud --scene herd-8 --frames 60|448x368|nopin
 "
 
 # The scenes read their meshes from asset packs of the baked meshes in the tree.

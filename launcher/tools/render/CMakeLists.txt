@@ -52,11 +52,12 @@ foreach(package_list IN LISTS package_lists)
 endforeach()
 target_link_libraries(render_engine INTERFACE ${launcher_packages})
 
-# Consumers of the renderer define display_quarter_now (display/display.h).
+# The renderer and its scene shell, which asks display_quarter_now (display/display.h):
+# render_host_quarter.c answers with the run's quarter. A render_host_core consumer defines its own.
 add_library(render_host INTERFACE)
 add_library(autana::render_host ALIAS render_host)
 target_sources(render_host INTERFACE ${renderer_sources} "${CMAKE_CURRENT_LIST_DIR}/render_counts.c"
-    "${CMAKE_CURRENT_LIST_DIR}/render_host_settings.c")
+    "${CMAKE_CURRENT_LIST_DIR}/render_host_settings.c" "${CMAKE_CURRENT_LIST_DIR}/render_host_quarter.c")
 target_link_libraries(render_host INTERFACE autana::render_host_core)
 
 # The scene-file provider, scene_provider (scene_viewer.c), for a consumer
@@ -67,7 +68,16 @@ target_sources(scene_provider INTERFACE "${CMAKE_CURRENT_LIST_DIR}/scene_viewer.
 target_compile_definitions(scene_provider INTERFACE TUNE_HOT_LIVE=1)
 target_link_libraries(scene_provider INTERFACE autana::render_host)
 
+add_library(stream_provider INTERFACE)
+add_library(autana::stream_provider ALIAS stream_provider)
+target_sources(stream_provider INTERFACE "${CMAKE_CURRENT_LIST_DIR}/stream/stream_provider.c")
+target_compile_definitions(stream_provider INTERFACE TUNE_HOT_LIVE=1)
+target_link_libraries(stream_provider INTERFACE autana::render_host)
+
 if(PROJECT_IS_TOP_LEVEL)
+    add_executable(stream_render)
+    target_compile_definitions(stream_render PRIVATE RENDER_HOST_PROVIDER=stream_provider)
+    target_link_libraries(stream_render PRIVATE autana::stream_provider)
     add_library(render_host_check OBJECT)
     target_link_libraries(render_host_check PRIVATE autana::scene_provider)
     # A C++ consumer includes these headers inside extern "C".

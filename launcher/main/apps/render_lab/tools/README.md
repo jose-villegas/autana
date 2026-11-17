@@ -70,6 +70,9 @@ Each frame, while the last one goes out to the panel:
 `run_water_perf_suite` plays the tour ([`tests/suite_water_perf.c`](../tests/suite_water_perf.c))
 under each experiment's tunables and times every stage of the update, `flip3_step()`'s
 own stages and r3d's; [`tools/water_tables.py`](water_tables.py) turns its capture into tables.
+It then plays the base tour once more through the cull view, untimed, and logs one
+`frame_replay` line per phase: its mean counts and its timed report, so
+`stress_predict.py --scenes` scores water too (`--scene-quarter landscape`).
 
 <!-- generated: water-stages check: python launcher/main/apps/render_lab/tools/water_tables.py --check -->
 ### Measured stages
@@ -135,14 +138,17 @@ Source: `water-stages-board.log`
 
 ### Stress
 
-The Stress family is one generated shape, shown in copies before a camera
-that swings round them. Each preset is the case where a render option should
-lose, beside one where it should win. Hierarchical Z-buffer visibility was
-tested on one module replicated on a grid<sup>[[112]](../../../../../docs/Citations.md#greene-1993)</sup>;
-here the copies are generated at run time, and what is judged is r3d's render
-options, each by where it stops paying.
+The Stress family shows a generated primitive or a static pack mesh in copies,
+or a baked mesh of its own pack, before a moving camera. Each preset ties down
+one behaviour with its own pegged goal. The presets are the per-PR perf check
+for r3d work. Scenes run nightly, on request, and for bake and fit changes; a
+scene regression with no preset moving is a coverage gap and becomes a new
+preset.
 
-| Scene key | As the swing starts | Made of | Loss case of |
+Repeated geometry exercises hierarchical visibility<sup>[[112]](../../../../../docs/Citations.md#greene-1993)</sup>;
+the presets vary the copies' geometry, layout and colour modes.
+
+| Scene key | As the camera starts | Made of | Ties down |
 |---|---|---|---|
 | `stress-open` | ![Stress open: a wall of planes side by side](../../../../../docs/images/overview/render-lab-stress-open.png) | a wall of planes side by side | hidden-cluster skip and cluster cull: nothing hides and nothing is off screen |
 | `stress-stack` | ![Stress stack: planes one behind another](../../../../../docs/images/overview/render-lab-stress-stack.png) | planes one behind another | the skip's win, and the depth cost of the debug views |
@@ -151,20 +157,201 @@ options, each by where it stops paying.
 | `stress-per-frame` | ![Stress per frame: one plane with a wave running over it](../../../../../docs/images/overview/render-lab-stress-per-frame.png) | one plane made again every frame, a wave running over it | the mesh build, every frame |
 | `stress-two-sided` | ![Stress two-sided: a wall of cubes drawn from both sides](../../../../../docs/images/overview/render-lab-stress-two-sided.png) | a wall of closed cubes drawn from both sides | backface cull: half of each cube faces away and none of it is skipped |
 | `stress-noisy-tiny` | ![Stress noisy tiny: cylinders end on, their fans of slivers](../../../../../docs/images/overview/render-lab-stress-noisy-tiny.png) | many small cylinders end on, each end a fan of slivers whose corners are far apart in colour | the small-fill gate: every sliver is tested and none passes |
+| `stress-mix` | ![Stress mix: planes with several tessellations and colour modes](../../../../../docs/images/overview/render-lab-stress-mix.png) | copies cycling through tessellations; a named share of triangles has equal corner colours | a single triangle size or colour mode standing for a scene's draw cost |
+| `stress-static-copies` | ![Static triangle copies](../../../../../docs/images/overview/render-lab-stress-static-copies.png) | the stress pack's LMSH triangle, retained in each renderer | static asset residency and small transform batches |
+| `stress-uniform-mid` | ![Uniform plane with intermediate coverage](../../../../../docs/images/overview/render-lab-stress-uniform-mid.png) | equal-colour large triangles | intermediate uniform fill without shaded pixels |
+| `stress-uniform-full` | ![Uniform plane covering the view](../../../../../docs/images/overview/render-lab-stress-uniform-full.png) | equal-colour large triangles spanning the view | uniform fill beyond the water workload at full-width render sizes |
+| `stress-card` | ![Card copies with ragged edges and sampled colours](../../../../../docs/images/overview/render-lab-stress-card.png) | copies sharing a generated perforated quad with uneven tessellation and procedural texture samples at its corners | scene-like small triangles with irregular edges and colour steps |
+| `stress-culled` | ![Plane before the camera turns away](../../../../../docs/images/overview/render-lab-stress-culled.png) | a tessellated plane and a camera pitching beyond its edge | varying cluster rejection by the frustum |
+| `stress-near` | ![Spheres along the camera path](../../../../../docs/images/overview/render-lab-stress-near.png) | stacked spheres and a camera passing through their front surfaces | triangles behind and crossing the near plane |
+| `stress-few-copies` | ![Stress few copies: two dense spheres](../../../../../docs/images/overview/render-lab-stress-few-copies.png) | two dense spheres side by side | the two-core cull split: with one instance a core, its fork and join cost more than the halved walk saves |
+| `stress-textured` | ![Stress textured: big triangles under a brick texture](../../../../../docs/images/overview/render-lab-stress-textured.png) | the big-tris layout, its banded light multiplied by a generated 4-bit brick texture ([LTEX](../../../../../docs/assets/formats/LTEX.md)) | the textured span fill against the same pixels drawn plain in `stress-big-tris` |
+| `stress-foliage-near` | ![Stress foliage near: three bushes of masked cards over the view](../../../../../docs/images/overview/render-lab-stress-foliage-near.png) | three bushes one behind another over the whole view, each 24 small cards turned and overlapping several deep, cut by a generated MASK1 texture ([LTEX](../../../../../docs/assets/formats/LTEX.md)) keeping about 0.7 | the masked textured fill at its largest: foliage cards' overdraw near the camera |
+| `stress-foliage-near-opaque` | ![Stress foliage near opaque: the same cards under the brick](../../../../../docs/images/overview/render-lab-stress-foliage-near-opaque.png) | `stress-foliage-near`'s cards under the INDEX4 brick, whole | the twin: against it, the near cards' mask costs alone |
+| `stress-foliage-far` | ![Stress foliage far: a wall of small bushes of masked cards](../../../../../docs/images/overview/render-lab-stress-foliage-far.png) | 36 small bushes side by side, their cards a few pixels across | the masked textured fill on small triangles, as distant foliage draws |
+| `stress-foliage-far-opaque` | ![Stress foliage far opaque: the same cards under the brick](../../../../../docs/images/overview/render-lab-stress-foliage-far-opaque.png) | `stress-foliage-far`'s cards under the INDEX4 brick, whole | the twin: against it, the far cards' mask costs alone |
+| `stress-record` | ![Stress record: four planes with a wave running over them](../../../../../docs/images/overview/render-lab-stress-record.png) | four planes made again every frame, a wave running over them, while the frame recorder runs | the recorder: each frame's four built meshes written whole, a keyframe's meshes every 30 frames |
+| `stress-cull-setup` | ![Stress cull setup: one small cube](../../../../../docs/images/overview/render-lab-stress-cull-setup.png) | one small cube of a few triangles | the cull's setup before it walks anything: the lens, frustum, settings and pick setup every cull pays once |
+| `stress-baked-tree` | ![Stress baked tree: the inside of a ring](../../../../../docs/images/overview/render-lab-stress-baked-tree.png) | a ring baked by the bake tools in its own pack, the camera at its centre turning half a turn; [`torus_obj.py`](torus_obj.py) writes the ring into [`ring.obj`](../../../../demo/stress_ring/ring.obj) | the baked cluster tree the cull walks, which no generated copy has |
+
+A change is judged by each preset's own readout, stage by stage. The sum over
+presets is a summary line only. A draw change can win on two-sided and static
+copies and lose on card, noisy-tiny and per-frame: the sum says win, and a
+scene of small triangles follows the losing presets.
+
+A small preset still counts. Its behaviour may weigh little in a scene, and a
+win on it is still worth taking.
+
+The presets move with the scenes. Each change below was switched off in one
+build and timed against the build with it, presets and scenes alike:
+
+| Change | Switched off by | Presets against scenes |
+|---|---|---|
+| [Uniform solid fill](https://github.com/jose-villegas/autana/pull/1406) | its test made false | draw: the sum agrees on 4 of 5 scenes; Sponza follows its small-triangle presets |
+| [Two-core cull](https://github.com/jose-villegas/autana/pull/1475) | the cull on one core | cull: Sponza and Bistro agree; capybara's one instance a core is the `few-copies` case |
+
+A comment-only control moved nothing beyond same-build noise. The rule: only
+an opposite sign beyond noise fails; a scene that moves with no preset moving
+is a coverage gap, closed by a new preset.
+
+The card's holes, uneven cells and fixed procedural texture are generated in
+`stress_preset.c`. Its mesh is built once and shared by the copies. Procedural
+geometry keeps the stress bake independent of imported scene sources.
+
+The host renderer's path means compare its triangle-size mix with the scene
+means in [`scene-triangle-bins.json`](../../../../../docs/render/data/scene-triangle-bins.json).
+Regenerate the card means with:
+
+```sh
+python launcher/main/apps/render_lab/tools/scene_triangle_bins.py --scene stress-card 600 --out docs/render/data/stress-triangle-bins.json
+```
+
+Card path means are in [`stress-triangle-bins.json`](../../../../../docs/render/data/stress-triangle-bins.json).
+
+The culled camera samples each quarter's frustum edge; the near camera
+traverses the stacked surfaces. Their sweeps are claims of
+[`tests/suite_stress_preset.c`](../tests/suite_stress_preset.c).
 
 | Part | Owner |
 |---|---|
 | Presets: each ID, key and surface | `stress/stress_preset.h` `STRESS_PRESETS` |
 | Each preset's shape, copies and layout | `stress/stress_preset.c` `stress_presets` |
-| Each copy's shape | `math/geometry/primitive_mesh.h` |
-| One mesh every copy draws | `render/dynamic/r3d_dynamic_mesh.h` |
-| The camera's swing, a still camera at its start, and a pool of copies | `launcher/demo/stress/` |
+| Primitive shapes | `math/geometry/primitive_mesh.h` |
+| Shared dynamic meshes for the copies | `render/dynamic/r3d_dynamic_mesh.h` |
+| The camera tracks, a still camera, and a pool of copies | `launcher/demo/stress/` |
 | Each preset's sizes, by the renderer's own limits | [`tests/suite_stress_preset.c`](../tests/suite_stress_preset.c) |
 | Each preset's corner in a render, by the cull counts | [`tools/tests/test_stress_corners.py`](tests/test_stress_corners.py) |
+| Scene mean triangle bins | [`tools/scene_triangle_bins.py`](scene_triangle_bins.py), [`scene-triangle-bins.json`](../../../../../docs/render/data/scene-triangle-bins.json) |
+| Each preset's stage times and goals on the board | [`tests/suite_stress_perf.c`](../tests/suite_stress_perf.c) |
+| Stage cost model and held-out scoring | [`tools/stress_predict.py`](stress_predict.py) |
 
-`render_lab_render --view cull --counts FILE` writes the cull view's counts
-(`raster_cull_frame_t`), one CSV row a frame; `--camera still` holds the
-camera, so a frame differs from the last only where the mesh moved.
+The `run_stress_perf_suite` suite replays both `lab_perf_quarters` along each
+preset's swing. `stress_presets[].perf_poses` owns sampling density.
+Uniform presets also replay the full and half-height render_lab ladder steps.
+
+Every row uses `LAB_LAYOUT_FULL`, composing from the half picture when it fits.
+Double-buffer presentation runs asynchronously on core 1 and can delay the
+transform worker's fork/join.
+
+`transform_batches` counts the shaded draw's transform fork/joins, empty ones
+included, read from the census by `raster_batch_count()`. Each pays the split,
+worker dispatch, cluster work and join; picture clearing belongs to `r3d.draw`.
+
+Each suite row (preset, quarter, size) has a goal per r3d stage, which reports
+its distance only, and a goal and board ceiling on the stages' sum, all on the
+mean over the row's poses. The suite's goal table says which preset stays unpegged.
+
+[`stress_goals.py`](stress_goals.py) prints that table from the suite's
+`PERF TARGET` lines: per row, the worst capture of five layout seeds on every
+perf board, plus the script's margins. Regenerate it with:
+
+```sh
+python launcher/main/apps/render_lab/tools/stress_goals.py --unpegged stress-uniform-full CAPTURE...
+```
+
+Each pose draws one counted frame, one warm frame and `FRAME_PROFILE_REPLAY_DRAWS`
+measured frames. The pose counts and size loops in the suite own its frame
+budget.
+
+Static copies retain the pack's mesh and its scene-owned PSRAM arrays.
+Dynamic copies also use PSRAM and the same packed-int16 transform loop;
+`vertices_transformed` therefore serves both without a storage-kind split.
+
+`stress_predict.py` is a diagnostic: it fits stage costs to the counts and
+reads stage deltas between two arms. The goals are the bar, never the fit.
+Its per-stage inputs are owned by `STAGE_INPUTS` in [stress_predict.py](stress_predict.py).
+
+The fit under-predicts draw, misses cull's per-call cost and never trains the
+doubled, mapped or blocks upscale paths, so its frame estimate is no scene time.
+
+| Flags | Input or selection |
+|---|---|
+| `--a`, `--scenes` | stress training capture and held-out scene capture |
+| `--b`, `--scenes-a`, `--scenes-b` | second stress arm and paired scene arms for stage deltas |
+| `--noise-a`, `--noise-b` | same-build pair for the measured noise floor |
+| `--layout-a`, `--layout-b` | matching poses with different layout seeds |
+| `--scene KEY ...` | selected scene rows |
+| `--quarter`, `--scene-quarter` | training and held-out quarters |
+
+Pairs require shared pose keys for every scene. Captures must contain every
+model count and stage; unsupported inputs and failed scoring rows fail the run.
+
+Replay counts describe the timed shaded compose. `render_width/height` and
+`output_width/height` give its sizes; `upscale_path` is `upscale_path_t`, and
+`upscale_surface` records surface filtering. The scorer derives pixel areas.
+
+```sh
+python launcher/main/apps/render_lab/tools/stress_predict.py --a stress-a.log \
+    --scenes scenes-a.log
+python launcher/main/apps/render_lab/tools/stress_predict.py \
+    --a stress-a.log --b stress-b.log \
+    --scenes-a scenes-a.log --scenes-b scenes-b.log \
+    --noise-a repeat-a.log --noise-b repeat-b.log \
+    --layout-a layout-a.log --layout-b layout-b.log
+```
+
+`render_lab_render --view cull --counts FILE` writes every
+`RASTER_CULL_FRAME_FIELDS` count per frame. The `sized_*` fields use
+`R3D_SIZES_FIELDS`: face, uniform and shaded modes, each split by covered
+pixel centres. Their sum is `triangles_set_up`; clipped triangles stay separate.
+
+`--camera still` holds the camera, so a frame differs from the last only
+where the mesh moved. Mixed copies share meshes by tessellation;
+`STRESS_MIX_UNIFORM_PERIOD` owns their equal-colour share.
+
+### Herd
+
+The Herd family is N skinned capybaras walking the capybara's meadow. Each
+takes legs to seeded points in a 6 m circle, at the speed of one of its clips
+or grazing in place, keeps apart from the others and plays the clip and rate
+its ground speed calls for. One finger orbits the camera round that circle, as
+in the Capybara scene; zoomed in, copies fall off the frame and behind the
+camera, so the per-copy costs of posing, skinning and culling all show.
+
+| Step, every 20 ms | Owner |
+|---|---|
+| Each copy's leg: a target and speed, or a graze | `herd/herd_wander.h` |
+| Keep apart, look ahead, stay inside; then arrive with what acceleration is left | `math/motion/steer2f.h` ([Motion](../../../../../docs/math/Motion.md)) |
+| The clip and rate for the copy's speed | `scene/animator/gait.h`, from each clip's `ground_mm_s` ([TRCK](../../../../../docs/assets/formats/TRCK.md)) |
+
+`pose <ms>` seeks the whole herd: it walks again from its seed to that time,
+so two seeks to one time draw the same frame. Played on from there, clip phases
+can differ slightly from an unbroken run, which steps clips by frame time.
+
+| Scene key | Copies shown |
+|---|---|
+| `herd-1` | the centre one |
+| `herd-4` | centre, near, far out and to the side |
+| `herd-8` | the whole pool |
+
+![Herd 8: eight capybaras walking, each clip at the pace of its ground speed](../../../../../docs/images/overview/render-lab-herd.gif)
+
+| Part | Owner |
+|---|---|
+| Sizes: each ID, key and copy count | `herd/scene_herd.h` `HERD_SIZES` |
+| The pool, and each copy's start | `launcher/demo/capybara/herd.scene.toml` |
+| The walk: area, legs, steering limits and gait rates | `herd/scene_herd.c` |
+| The camera, orbited round the area | [`lab/lab_orbit.h`](../../../lab/lab_orbit.h) |
+| Each size's copies, and a turn's frame and animation-step cost with their stages (`herd.wander`, `herd.gait`, the animation step's and r3d's); a paced row steps each frame by the last one's time | [`tests/suite_herd_perf.c`](../tests/suite_herd_perf.c) |
+| The suite's timing table for `perf_compare.sh` | [`herd_tables.py`](herd_tables.py) `--perf-table CAPTURE TABLE` |
+
+### Capybara in Sponza
+
+`capybara-sponza` loads Sponza's fitted full bake and the capybara as two
+scenes, both drawn through Sponza's camera. The capybara rests between the
+first pair of columns, gallops down the atrium and rests between the last
+pair; its clip and rate come from its ground speed. A third-person camera
+starts a little round from its face, turns slowly toward its back as it runs,
+never reaching it, and comes back as it stops. With frame generation on, a
+generated frame shows the capybara where the last drawn frame put it.
+
+![Capybara in Sponza: the capybara's run down the atrium, rest to rest, under a third-person camera](../../../../../docs/images/overview/render-lab-capybara-sponza.gif)
+
+| What | Owner |
+|---|---|
+| The run's place and speed in time | `kinematics/profile/motion_profile.h` ([Profile](../../../../../docs/kinematics/Profile.md)) |
+| The clip and rate for its speed, read a blend ahead | `scene/animator/gait.h` |
+| The run's ends, the camera and the scenes | `capybara_sponza/scene_capybara_sponza.c` |
 
 ### Small fill
 

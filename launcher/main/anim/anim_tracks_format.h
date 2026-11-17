@@ -4,7 +4,7 @@
 #include "asset/asset_pack.h"
 
 #define ANIM_TRACKS_ASSET           ASSET_TYPE('T', 'R', 'C', 'K')
-#define ANIM_TRACKS_VERSION         3U
+#define ANIM_TRACKS_VERSION         4U
 #define ANIM_COMPONENT_TRANSFORM    ASSET_TYPE('T', 'R', 'N', 'S')
 #define ANIM_BINDING_STRING_MAX     255U
 
@@ -19,7 +19,11 @@
 #define ANIM_TRACKS_AT_STRINGS_SIZE 12
 #define ANIM_TRACKS_AT_ROOT         16
 #define ANIM_TRACKS_AT_PAD          17
-#define ANIM_TRACKS_HEADER_PAD_SIZE 3
+#define ANIM_TRACKS_HEADER_PAD_SIZE 1
+/* u16: the ground speed the clip shows at playback 1, in metres per second
+ * times ANIM_TRACKS_GROUND_PER_M; 0 for a clip that shows none. */
+#define ANIM_TRACKS_AT_GROUND       18
+#define ANIM_TRACKS_GROUND_PER_M    1000
 
 #define ANIM_TRACKS_ROW_SIZE        28
 #define ANIM_TRACKS_ROW_PATH        0

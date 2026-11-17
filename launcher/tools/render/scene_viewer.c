@@ -18,7 +18,8 @@ static const char* scene_id;
 static const char* camera_name;
 static char** object_names;
 static int object_count;
-static int shell_quarter;
+static const char* textured_name; /* the renderer drawn with its textures, or NULL */
+static bool generating;
 static recti_t size_rect;
 static camera_present_t present;
 static small_fill_t small_fill = SMALL_FILL_SMOOTH;
@@ -34,9 +35,11 @@ static entity_t camera;
 static void
 reset_options(void) {
     scene_id = NULL;
+    generating = false;
     camera_name = NULL;
     object_names = NULL;
     object_count = 0;
+    textured_name = NULL;
     size_rect = recti_empty();
     present = CAMERA_PRESENT_NEAREST;
     small_fill = SMALL_FILL_SMOOTH;
@@ -62,6 +65,8 @@ options(int argc, char** argv) {
             camera_name = value;
         } else if (strcmp(flag, "--object") == 0) {
             object_names[object_count++] = argv[i + 1];
+        } else if (strcmp(flag, "--textured") == 0) {
+            textured_name = value;
         } else if (strcmp(flag, "--size") == 0) {
             if (!recti_parse(value, NULL, &size_rect) || size_rect.x != 0 || size_rect.y != 0 || size_rect.w <= 0
                 || size_rect.h <= 0 || size_rect.w > GFX_WIDTH || size_rect.h > GFX_HEIGHT) {
@@ -89,6 +94,12 @@ options(int argc, char** argv) {
                 fprintf(stderr, "scene_viewer: --present is nearest, scanline or double\n");
                 return false;
             }
+        } else if (strcmp(flag, "--framegen") == 0) {
+            if (strcmp(value, "0") != 0 && strcmp(value, "1") != 0) {
+                fprintf(stderr, "scene_viewer: --framegen is 0 or 1, not %s\n", value);
+                return false;
+            }
+            generating = strcmp(value, "1") == 0;
         } else if (strcmp(flag, "--counts") == 0) {
             counts_path = value;
         } else if (strcmp(flag, "--poses") == 0) {
@@ -152,20 +163,30 @@ select_objects(entity_t scene) {
     return true;
 }
 
+/* Draws the renderer --textured names with its textures. */
+static bool
+texture_object(entity_t scene) {
+    if (textured_name == NULL) {
+        return true;
+    }
+    scene_failure_t why;
+    if (renderer_set_textured(entity_find(scene, name_hash(textured_name)), true, &why)) {
+        return true;
+    }
+    fprintf(stderr, "scene_viewer: renderer '%s' has no textures to draw (status %d, asset %s)\n", textured_name,
+            (int)why.status, asset_status_text(why.asset));
+    return false;
+}
+
 /* The camera entity to activate: the named one, or the scene's first. */
 static entity_t
 chosen_camera(entity_t scene) {
     return camera_name != NULL ? entity_find(scene, name_hash(camera_name)) : camera_first(scene);
 }
 
-int
-display_quarter_now(void) {
-    return shell_quarter;
-}
-
 static bool
 setup(int quarter) {
-    shell_quarter = quarter;
+    (void)quarter;
     scene_failure_t why;
     entity_t scene = scene_load(scene_id);
     if (scene_state(scene) != PENDING_READY) {
@@ -175,7 +196,7 @@ setup(int quarter) {
         scene_release(scene);
         return false;
     }
-    const bool selected = select_objects(scene);
+    const bool selected = select_objects(scene) && texture_object(scene);
     object_names = NULL;
     if (!selected || !camera_activate(chosen_camera(scene))) {
         if (selected) {
@@ -206,6 +227,7 @@ setup(int quarter) {
     fprintf(stderr, "scene_viewer: camera path %u ms\n", (unsigned)animator_clip_duration_ms(camera, 0));
     render_context_t* context = render_context_main();
     render_context_set_debug_view(context, view);
+    render_context_set_frame_generation(context, generating);
     if (counts_path != NULL && (counts = render_counts_open(counts_path, "scene_viewer")) == NULL) {
         scene_release(scene);
         return false;

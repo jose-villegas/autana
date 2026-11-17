@@ -75,6 +75,7 @@ typedef struct {
     r3d_instance_t instance; /* the one drawn, with coarse bits when its mesh has levels */
     uint32_t* coarse;
     raster_t raster;
+    render_settings_t settings; /* the default under the overrides set when it opened */
     r3d_lens_t lens;
     char* report;
     int32_t* frame_us;
@@ -126,6 +127,8 @@ bench_open(const r3d_instance_t* instance) {
         .destination_width = GFX_WIDTH,
         .destination_height = GFX_HEIGHT,
     };
+    b->settings = render_settings_tuned(&RENDER_SETTINGS_DEFAULT);
+    b->raster.settings = &b->settings;
     b->raster.present = lab_view_present(&render_lab_view_tunables);
     b->scratch = memory_alloc(raster_scratch_bytes(&b->raster), MEMORY_APP);
     TEST_ASSERT_NOT_NULL(b->scratch);
@@ -196,7 +199,7 @@ draw_half_on_core1(void* ctx) {
 /* Each half of the rows alone, then both at once on the two cores: equal
  * times mean the halves are independent; longer times together mean the
  * cores are waiting on something they share. */
-static void
+static __attribute__((noinline)) void
 report_core_contention(const raster_t* raster, const r3d_lens_t* lens, int visible) {
     const int mid = raster->height / 2;
     half_job_t top = {raster, lens, visible, 0, mid, 0};
@@ -232,7 +235,7 @@ open_the_meshes(void) {
 
 /* Each bake's draw split into its stages, one core, as the mean over the
  * flythrough's poses: each stage is the difference of two stopped draws. */
-static void
+static __attribute__((noinline)) void
 report_stage_split(int bake) {
     const r3d_instance_t instance = {&meshes[bake], NULL, NULL, NULL};
     bench_t* b = bench_open(&instance);
@@ -259,6 +262,22 @@ report_stage_split(int bake) {
              (long long)((stopped[3] - stopped[2]) / poses), (long long)((stopped[0] - stopped[3]) / poses),
              perf_quarter->name);
     bench_close();
+}
+
+/* A view of nothing but sky: what a frame costs before any geometry. Its
+ * own frame, so the view is off the test's stack while the frame draws. */
+static __attribute__((noinline)) void
+report_empty_frame(bench_t* b) {
+    const transformf_t sky_pose =
+        transformf_looking((vec3f_t){0.0F, 20000.0F, 0.0F}, (vec3f_t){0.0F, 1.0F, 0.01F}, vec3f_unit_y());
+    const int64_t start = timing_now_us();
+    const render_view_t frame_view =
+        render_view_make(&sky_pose, 1.0F, 1.0F, (viewport_t){GFX_WIDTH, GFX_HEIGHT, perf_quarter->quarter});
+    const raster_stats_t none = raster_draw(&b->raster, &frame_view);
+    const resolution_step_t composed = raster_compose_size(&b->raster);
+    raster_upscale(&b->raster, b->panel, composed.width, composed.height);
+    ESP_LOGI(TAG, "stage, both cores: %-20s %7lldus (%d clusters)" LAB_PERF_QUARTER_FORMAT, "empty frame",
+             (long long)(timing_now_us() - start), none.clusters, perf_quarter->name);
 }
 
 void
@@ -289,19 +308,7 @@ test_sponza_draw_stage_breakdown(void) {
     }
     r3d_span_stop_after = 0;
     report_core_contention(&b->raster, lens, visible);
-
-    /* A view of nothing but sky: what a frame costs before any geometry. */
-    const transformf_t sky_pose =
-        transformf_looking((vec3f_t){0.0F, 20000.0F, 0.0F}, (vec3f_t){0.0F, 1.0F, 0.01F}, vec3f_unit_y());
-    start = timing_now_us();
-    const render_view_t frame_view =
-        render_view_make(&sky_pose, 1.0F, 1.0F, (viewport_t){GFX_WIDTH, GFX_HEIGHT, perf_quarter->quarter});
-    const raster_stats_t none = raster_draw(&b->raster, &frame_view);
-    const resolution_step_t composed = raster_compose_size(&b->raster);
-    raster_upscale(&b->raster, b->panel, composed.width, composed.height);
-    ESP_LOGI(TAG, "stage, both cores: %-20s %7lldus (%d clusters)" LAB_PERF_QUARTER_FORMAT, "empty frame",
-             (long long)(timing_now_us() - start), none.clusters, perf_quarter->name);
-
+    report_empty_frame(b);
     bench_close();
     TEST_PASS();
 }

@@ -16,15 +16,16 @@ flowchart LR
     Asset["the app's pack: entry render<br/>set by the shell at start"] --> Settings
     App["app<br/>render_context_set_settings()"] --> Settings["the context's settings<br/>render_context_settings() reads them back"]
     Settings --> Pick{"knob set?<br/>development builds only"}
-    Knob["TUNE render.cull, render.depth_fit,<br/>render.batched, render.partial_redraw,<br/>render.lod_coverage_permille, render.lod_pick_every,<br/>render.lod_triangle_budget"] -->|SET| Pick
+    Knob["TUNE render.* and anim.*:<br/>every TUNE_OVERRIDE in render_settings.c"] -->|SET| Pick
     Knob -->|RESET| Unset["unset"]
     Unset --> Pick
-    Pick -->|"no"| Frame["the frame draws with<br/>raster_settings()"]
+    Pick -->|"no"| Frame["the frame draws with them,<br/>resolved once (render_settings_tuned())"]
     Pick -->|"yes: the knob's value"| Frame
 ```
 
 A release build has no knobs, so it draws with the app's settings only. A raster
-drawn without a context uses `RENDER_SETTINGS_DEFAULT`.
+drawn without a context uses its own settings as they are, or
+`RENDER_SETTINGS_DEFAULT`, and no knob.
 
 ## The settings
 
@@ -46,6 +47,13 @@ that field's table in the asset.
 | `lod.triangle_budget` | `0` | basic | the triangles a frame aims to draw, the tolerance rising past tolerance_px to keep within; 0 never rises |
 | `lod.blend` | `0` | basic | 0 switches at once; 1 blends each switch, by morph where a mesh was imported with geometry.morph, else by dither |
 | `lod.blend_px` | `0.25` | advanced | the error past a switch over which a blend fades out; longer is softer, moves more |
+| `anim.mid_px` | `48.0` | basic | projected radius in pixels below which a copy is posed every mid_every frames |
+| `anim.far_px` | `20.0` | basic | projected radius in pixels below which a copy is posed every far_every frames |
+| `anim.mid_every` | `2` | basic | frames between mid-sized poses; 1 poses every frame |
+| `anim.far_every` | `4` | basic | frames between far poses; 1 poses every frame |
+| `anim.hysteresis_px` | `4.0` | advanced | pixels past a tier boundary before switching |
+| `texture.divide_px` | `16` | basic | fewest pixels between divides by depth, fewer cost more; 0 is affine, near surfaces bend |
+| `texture.affine_bend` | `1.0` | advanced | texels a triangle may bend and still step affine; larger is faster, bends more |
 <!-- /generated: render-settings -->
 
 ## cull

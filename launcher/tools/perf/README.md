@@ -63,6 +63,9 @@ measured by two requests stops the comparison. Commands run from the current rep
 `@TABLE@` become this flash's capture and table files, `@PROJECT@` the revision's
 project tree. A table command requiring budgets must read them from that tree,
 for example with `--source @PROJECT@/path/to/suite.c`.
+A suite that prints only `PERF TARGET` lines, pegged or not, such as
+`run_stress_perf_suite`, takes
+`'python3 launcher/tools/perf/perf_target_table.py @CAPTURE@ @TABLE@'`.
 
 ```sh
 launcher/tools/perf/perf_compare.sh A B -o comparison --rng-seed 42 \
@@ -316,6 +319,8 @@ Every Bakes GPU completion triggers a fresh image check.
 
 The plan waits for two polls without queued, waiting or running jobs carrying
 `gpu` in the doc-images GPU workflow. Bakes GPU fits run beside the board night. Hosted jobs waiting for a later marker do not count.
+At the night's `BOARD_LAST_START` it warns and plans anyway; board builds still wait
+for the heavy lock a GPU stage holds.
 
 This check requires a host GPU runner marker fresh within `GPU_HOST_MARKER_DAYS`.
 Otherwise it reports “GPU runner not on this host” and continues.
@@ -362,7 +367,9 @@ an anchor always measures.
 
 | Guard | Owner |
 |---|---|
+| GPU stage progress | `GPU_STAGE_PROGRESS_SECONDS` in `scripts/lib/local_schedule.py` |
 | GPU process tree | `GPU_STAGE_HANG_SECONDS` in `scripts/lib/local_schedule.py` |
+| A worker after its result | `WORKER_EXIT_SECONDS` in `launcher/tools/r3d/task_executor.py` |
 | Lock wait | `NIGHT_STEP_HANG_SECONDS` in `scripts/lib/local_schedule.py` |
 | Lane process tree | `LANE_HANG_FACTOR` times the lane estimate in `nightly/scoped_chain.py`, and `BOARD_END` |
 | Build, capture and self-test | Their timeout constants in `nightly/scoped_chain.py` |

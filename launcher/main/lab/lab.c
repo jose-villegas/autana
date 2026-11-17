@@ -15,6 +15,7 @@
 #include "lab/ui/lab_menu_screen.h"
 #include "math/scalar/units.h"
 #include "scene/animator/animator.h"
+#include "scene/entity/entity.h"
 #include "ui/ui.h"
 
 /* How long a scene's name stays on screen after the scene is entered. The
@@ -357,7 +358,7 @@ lab_update(lab_t* lab, uint32_t dt_ms, const input_t* input) {
 static lab_path_t
 shown_path(const lab_t* lab) {
     const lab_scene_t* scene = lab_current(lab);
-    return scene->path == NULL ? (lab_path_t){ENTITY_NONE, ENTITY_NONE, NULL} : scene->path();
+    return scene->path == NULL ? (lab_path_t){.scene = ENTITY_NONE, .entity = ENTITY_NONE} : scene->path();
 }
 
 /* The path's clip, -1 when the scene has none or lacks the clip it names. */
@@ -377,6 +378,9 @@ path_clip(const lab_path_t* path) {
 uint32_t
 lab_path_duration_ms(const lab_t* lab) {
     const lab_path_t path = shown_path(lab);
+    if (path.seek != NULL) {
+        return path.duration_ms;
+    }
     const int clip = path_clip(&path);
     return clip < 0 ? 0 : animator_clip_duration_ms(path.entity, clip);
 }
@@ -384,29 +388,43 @@ lab_path_duration_ms(const lab_t* lab) {
 bool
 lab_seek_path(const lab_t* lab, uint32_t t_ms) {
     const lab_path_t path = shown_path(lab);
-    const int clip = path_clip(&path);
     const uint32_t duration_ms = lab_path_duration_ms(lab);
+    if (path.seek != NULL) {
+        assert(path.play != NULL);
+        return duration_ms > 0 && path.seek(t_ms % duration_ms);
+    }
+    const int clip = path_clip(&path);
     if (duration_ms == 0 || (clip != animator_current_clip(path.entity) && !animator_play(path.entity, clip, 0))) {
         return false;
     }
-    return animator_seek(path.entity, ANIMATOR_CURRENT, t_ms % duration_ms);
+    return animator_seek(path.entity, ANIMATOR_CURRENT, t_ms % duration_ms)
+           && animator_set_paused(path.entity, ANIMATOR_CURRENT, true);
+}
+
+void
+lab_play_path(const lab_t* lab) {
+    const lab_path_t path = shown_path(lab);
+    if (path.seek != NULL) {
+        path.play();
+    } else {
+        (void)animator_set_paused(path.entity, ANIMATOR_CURRENT, false);
+    }
 }
 
 /* "pose <ms> | play": the reply to the words after "pose ". */
 static void
 pose_console(const lab_t* lab, const char* rest) {
     const char* tag = lab->reply_tag;
-    const lab_path_t path = shown_path(lab);
     const bool play = strcmp(rest, "play") == 0;
     char* end;
     const unsigned long t_ms = strtoul(rest, &end, 10);
     if (lab_path_duration_ms(lab) == 0) {
         (void)printf("%s_ERR scene %s has no path\n", tag, lab_current(lab)->key);
     } else if (play) {
-        (void)animator_set_paused(path.entity, ANIMATOR_CURRENT, false);
+        lab_play_path(lab);
         (void)printf("%s pose=play\n%s_END\n", tag, tag);
     } else if (!isdigit((unsigned char)rest[0]) || *end != '\0' || t_ms > UINT32_MAX
-               || !lab_seek_path(lab, (uint32_t)t_ms) || !animator_set_paused(path.entity, ANIMATOR_CURRENT, true)) {
+               || !lab_seek_path(lab, (uint32_t)t_ms)) {
         (void)printf("%s_ERR usage: %s pose <ms> | %s pose play\n", tag, lab->console_word, lab->console_word);
     } else {
         (void)printf("%s pose=%lu\n%s_END\n", tag, t_ms, tag);
@@ -494,4 +512,34 @@ lab_scene_load(const char* tag, char* failure, size_t size, const char* id, cons
 void*
 lab_scene_take(size_t bytes) {
     return app_arena_take(bytes, _Alignof(max_align_t));
+}
+
+/* The longest copy name a lab_scene_copies() format makes, with its terminator. */
+#define LAB_COPY_NAME_SIZE 16
+
+/* The copy `scene` names `format` with `index`, or ENTITY_NONE. */
+static entity_t
+find_copy(entity_t scene, const char* format, int index) {
+    char name[LAB_COPY_NAME_SIZE];
+    const int length = snprintf(name, sizeof name, format, index);
+    return length > 0 && (size_t)length < sizeof name ? entity_find(scene, name_hash(name)) : ENTITY_NONE;
+}
+
+entity_t*
+lab_scene_copies(entity_t scene, const char* format, int* count) {
+    assert(strchr(format, '%') != NULL); /* the copy's number */
+    *count = 0;
+    int found = 0;
+    while (!handle_is_none(find_copy(scene, format, found))) {
+        found++;
+    }
+    entity_t* copies = lab_scene_take(sizeof *copies * (size_t)(found > 0 ? found : 1));
+    if (copies == NULL) {
+        return NULL;
+    }
+    for (int i = 0; i < found; i++) {
+        copies[i] = find_copy(scene, format, i);
+    }
+    *count = found;
+    return copies;
 }

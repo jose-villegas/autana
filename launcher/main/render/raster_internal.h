@@ -126,6 +126,18 @@ raster_census_count(const raster_t* raster) {
  * RASTER_BATCH_INSTANCES, and one with render.batched off. */
 int raster_batch_end(const raster_t* raster, int first);
 
+/* Transform fork/joins for the census, including empty batches and the clearing draw. */
+static inline int
+raster_batch_count(const raster_t* raster) {
+    int batches = 0;
+    int first = 0;
+    do {
+        first = raster_batch_end(raster, first);
+        batches++;
+    } while (first < raster_census_count(raster));
+    return batches;
+}
+
 /* The lens `raster` draws through: framed on its picture's shape, fitted to
  * the size it renders at, for a mesh of `position_scale`. */
 void raster_lens(const raster_t* raster, const render_view_t* view, int position_scale, r3d_lens_t* lens);
