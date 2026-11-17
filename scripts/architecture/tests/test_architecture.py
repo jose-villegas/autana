@@ -43,7 +43,8 @@ def git(root, *args):
 
 def fixture(names=('a', 'b', 'c')):
     """Model data for a drill container `firmware` holding one component per
-    name, each with one module, as a caller with build images would give it."""
+    name, each with one module, with tag colours and a release view as a
+    caller with several build images would give them."""
     system = dict(id='autana', name='Fixture', type='system', desc='System', src='README.md')
     return dict(system=system, source=dict(repo='https://github.com/example/repo', commit='abc'),
                 context=dict(nodes=[system], edges=[]),
@@ -54,19 +55,24 @@ def fixture(names=('a', 'b', 'c')):
                             for n in sorted({p for n in names for p in ('/'.join(n.split('/')[:i]) for i in range(1, len(n.split('/')) + 1))})],
                 files=[dict(path='launcher/main/' + n + '/icon.c', comp=n, kind='src',
                             lines=7, summary='Draws icons.', inc=[], ext=[]) for n in names],
-                tags=dict(app='green', engine='blue', iram='red', dev='amber', diag='secondary', devcode=None),
-                roles=('app', 'engine'), release_hidden=('dev', 'diag'))
+                tag_colours=dict(app='green', engine='blue', iram='red', dev='amber', diag='secondary', devcode=None),
+                views=[dict(suffix='release', title='release image only', hide=['dev', 'diag'])],
+                link_notation='Build requirement')
 
 
 def edge(text, a, b):
     return next(line for line in text.splitlines() if f'{a} -[includes]-> {b} ' in line)
 
 
-def validate(case, text):
+def validate(case, text, beside=None):
+    """Run the installed LikeC4 validator on `text`, with `beside` (another
+    .c4 file's text) in the same folder when given."""
     with tempfile.TemporaryDirectory() as temp:
         root = pathlib.Path(temp)
         (root / 'likec4.config.json').write_text('{"name": "fixture"}')
         (root / 'fixture.c4').write_text(text, encoding='utf-8')
+        if beside:
+            (root / 'beside.c4').write_text(beside, encoding='utf-8')
         site.validate(root, {'name': 'fixture'})
 
 
@@ -102,6 +108,11 @@ class Docs(unittest.TestCase):
         best = self.best(docs, {'pkg/include/math/linear/x.h'})
         self.assertEqual((best['path'], best['anchor'], best['heading']), ('docs/Linear.md', 'api--types', 'API & types'))
         self.assertEqual(docs[-1]['anchor'], 'api--types-1')
+
+    def test_a_heading_with_a_link_slugs_to_its_text_as_github_does(self):
+        tree = write_tree(self, {'docs/Api.md': '# [API](types.md) and `x.h`\n\n`x.h`\n'})
+        docs = model.doc_references(tree, {'docs/Api.md', 'x.h'}, (), C[0] + C[1])
+        self.assertEqual(docs[0]['anchor'], 'api-and-xh')
 
     def test_sections_need_a_strict_majority_of_references(self):
         tracked, docs = self.docs()
@@ -199,6 +210,14 @@ class PublishedCommit(unittest.TestCase):
         self.assertNotEqual(run("rev-parse", "HEAD"), main)
         self.assertEqual(tree.published_commit(), main)
 
+    def test_the_remote_default_branch_is_followed_whatever_its_name(self):
+        tree, run = self.repo()
+        trunk = run("rev-parse", "HEAD")
+        run("update-ref", "refs/remotes/origin/trunk", trunk)
+        run("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/trunk")
+        run("commit", "-q", "--allow-empty", "-m", "local only")
+        self.assertEqual(tree.published_commit(), trunk)
+
     def test_without_a_remote_main_the_checkout_itself_is_linked(self):
         tree, run = self.repo()
         self.assertEqual(tree.published_commit(), run("rev-parse", "HEAD"))
@@ -262,6 +281,9 @@ class Words(unittest.TestCase):
             ("launcher/test/suites/suite_gfx.c", "test"),
             ("launcher/main/render/suite_inline.c", "test"),
             ("tests/view_test.cpp", "test"),
+            ("src/window/test_window.cpp", "test"),
+            ("src/window/WindowTest.cpp", "test"),
+            ("src/window/contest.cpp", "src"),
             ("launcher/main/apps/sand/tools/sand_sim_render_host.c", "tool"),
             ("launcher/main/apps/sand/sand.h", "src"),
             ("src/window/panels.cpp", "src"),
@@ -357,6 +379,27 @@ class Modules(unittest.TestCase):
                             "m/a/x.h": "/* X API. */\n"})
         self.assertNotIn("module", files["m/b/x.c"])
 
+    def test_several_suffixes_pair_whatever_the_mix(self):
+        suffixes = (('.h', '.hpp'), ('.c', '.cc', '.cpp'))
+        files = self.files({
+            "m/a/x.cc": '/* X. */\n#include "x.hpp"\n', "m/a/x.hpp": "// X API.\n",
+            "m/a/y.c": '/* Y. */\n#include "y.h"\n', "m/a/y.h": "/* Y API. */\n",
+            "m/a/only.hpp": "// Header only.\n",
+        }, *suffixes)
+        self.assertEqual((files["m/a/x.cc"]["module"], files["m/a/y.c"]["module"]), ("m/a/x", "m/a/y"))
+        self.assertNotIn("module", files["m/a/only.hpp"])
+
+    def test_a_header_owned_by_a_source_of_another_suffix_is_not_taken(self):
+        files = self.files({"m/a/x.cpp": '// X.\n#include "x.h"\n', "m/a/x.h": "/* X API. */\n",
+                            "m/b/x.c": '/* Other X. */\n#include "../a/x.h"\n'}, ('.h',), ('.c', '.cpp'))
+        self.assertEqual(files["m/a/x.cpp"]["module"], "m/a/x")
+        self.assertNotIn("module", files["m/b/x.c"])
+
+    def test_two_same_stem_headers_fail_naming_both(self):
+        with self.assertRaisesRegex(model.Undescribed, r"more than one.*m/a/x\.h.*m/a/x\.hpp"):
+            self.files({"m/a/x.cpp": '// X.\n#include "x.h"\n#include "x.hpp"\n',
+                        "m/a/x.h": "/* X. */\n", "m/a/x.hpp": "// X.\n"}, ('.h', '.hpp'), ('.cpp',))
+
     def test_a_module_with_no_words_fails_naming_it(self):
         with self.assertRaisesRegex(model.Undescribed, "m/a/x.c has no description"):
             self.files({"m/a/x.c": '#include "x.h"\n', "m/a/x.h": "#pragma once\n"})
@@ -396,8 +439,8 @@ class Emitter(unittest.TestCase):
         self.assertEqual((indent(inp), indent(deep)), (indent(ui) + 2, indent(inp) + 2))
         self.assertIn("component 'ui/input'", lines[inp])
         # a component's size counts what is nested in it
-        self.assertEqual(lines[ui + 2].strip(), "technology '3 files · 21 lines'")
-        self.assertEqual(lines[deep + 2].strip(), "technology '1 file · 7 lines'")
+        self.assertEqual(lines[ui + 1].strip(), "technology '3 files · 21 lines'")
+        self.assertEqual(lines[deep + 1].strip(), "technology '1 file · 7 lines'")
 
     def test_an_empty_parent_component_still_nests_children(self):
         text = likec4.emit(fixture(('apps/sand', 'apps/sand/ui')))
@@ -413,35 +456,78 @@ class Emitter(unittest.TestCase):
         self.assertIn('#indirect_c_ui ', line)
         self.assertNotIn('#indirect_c_ui_input ', line)
 
-    def test_role_and_flag_tags_come_from_the_files(self):
+    def test_file_tags_reach_their_module_and_are_declared(self):
         data = fixture(('game', 'game/ui', 'gfx'))
-        data['files'][0]['app'] = True
-        data['files'][-1]['iram'] = True
+        data['files'][0]['tags'] = ['app']
+        data['files'][-1]['tags'] = ['iram', 'hot']
         text = likec4.emit(data)
         self.assertIn('#app', text)
-        self.assertIn('#engine #iram', text)
+        self.assertIn('#hot #iram', text)
         self.assertIn('tag iram { color red }', text)
+        self.assertIn('  tag hot\n', text)
+        validate(self, text)
 
-    def test_without_roles_tags_or_release_view_none_are_written(self):
+    def test_without_colours_or_views_none_are_written(self):
         data = fixture(('a',))
-        for key in ('tags', 'roles', 'release_hidden'):
+        for key in ('tag_colours', 'views'):
             data.pop(key)
         text = likec4.emit(data)
-        for absent in ('#engine', 'tag engine', 'indirect_release', 'firmware_release'):
+        for absent in ('indirect_release', 'firmware_release'):
             self.assertNotIn(absent, text)
+        self.assertNotRegex(text, r"tag \w+ \{ color")
         self.assertIn('view firmware_all of autana.firmware', text)
+
+    def test_each_optional_key_stands_alone(self):
+        optional = ('tag_colours', 'views', 'links')
+        for kept in optional:
+            with self.subTest(kept=kept):
+                data = fixture(('game', 'gfx'))
+                data['files'][0]['tags'] = ['app']
+                data['files'][1]['tags'] = ['dev']
+                data['context']['nodes'].append(dict(id='lib_x', name='x', type='ext', desc='X.', src=None))
+                data['libraries'] = {'vendor:x': 'lib_x'}
+                data['links'] = [dict({'from': 'firmware', 'to': 'vendor:x'}, components=['x'])]
+                for key in set(optional) - {kept}:
+                    data.pop(key)
+                text = likec4.emit(data)
+                self.assertEqual('tag app { color green }' in text, kept == 'tag_colours')
+                self.assertEqual('view firmware_release' in text, kept == 'views')
+                self.assertEqual('relationship links' in text, kept == 'links')
+                validate(self, text)
+
+    def test_links_are_drawn_under_the_callers_notation(self):
+        data = fixture(('a',))
+        data['links'] = [dict({'from': 'firmware', 'to': 'firmware'}, components=['a'])]
+        self.assertIn("relationship links { notation 'Build requirement';", likec4.emit(data))
+
+    def test_a_link_tag_is_declared_and_a_link_to_a_library_resolves(self):
+        data = fixture(('a',))
+        data['context']['nodes'].append(dict(id='lib_x', name='x', type='ext', desc='X.', src=None))
+        data['libraries'] = {'vendor:x': 'lib_x'}
+        data['tag_colours'] = {}
+        data['links'] = [dict({'from': 'firmware', 'to': 'vendor:x'}, tag='late', components=['x'])]
+        text = likec4.emit(data)
+        self.assertIn('  tag late\n', text)
+        self.assertIn("autana.firmware -[links]-> lib_x 'requires x' { #late", text)
+        validate(self, text)
+
+    def test_a_link_to_an_unknown_box_fails_naming_it(self):
+        data = fixture(('a',))
+        data['links'] = [dict({'from': 'firmware', 'to': 'vendor:gone'}, components=['gone'])]
+        with self.assertRaisesRegex(ValueError, 'no box for vendor:gone'):
+            likec4.emit(data)
 
     def test_tags_and_default_counts(self):
         data = fixture()
         a, b, c = data['files']
-        a.update(variant='release', devcode=True)
-        b.update(variant='dev', kind='test', gen=True)
-        c.update(variant='diag', kind='tool')
+        a.update(tags=['devcode'])
+        b.update(tags=['dev'], kind='test', gen=True)
+        c.update(tags=['diag'], kind='tool')
         a['inc'] = [[b['path'], 2]]
         text = likec4.emit(data)
         self.assertIn('#devcode', text)
-        self.assertIn('#dev #engine #generated #test', text)
-        self.assertIn('#diag #engine #tool', text)
+        self.assertIn('#dev #generated #test', text)
+        self.assertIn('#diag #tool', text)
         line = edge(text, 'autana.firmware.c_a.m_icon', 'autana.firmware.c_b.m_icon')
         for tag in ('#dev', '#devcode', '#generated', '#test'):
             self.assertIn(tag, line)
@@ -449,21 +535,20 @@ class Emitter(unittest.TestCase):
         self.assertIn("technology '0 files · 0 lines'", text)
         self.assertIn('exclude * where tag is #dev or tag is #diag', text)
 
-    def test_module_pair_aggregation_and_component_tag_intersection(self):
+    def test_module_pairs_sum_their_includes_and_take_every_files_tags(self):
         data = fixture(('a', 'b'))
         a, b = data['files']
-        a.update(variant='dev', inc=[[b['path'], 2]])
-        data['files'].append(dict(a, path=a['path'][:-1] + 'h', variant='diag'))
+        a.update(tags=['dev'], inc=[[b['path'], 2]])
+        data['files'].append(dict(a, path=a['path'][:-1] + 'h', tags=['diag']))
         line = edge(likec4.emit(data), 'autana.firmware.c_a.m_icon', 'autana.firmware.c_b.m_icon')
         self.assertIn("includes '4'", line)
-        self.assertNotIn('#dev', line)
-        self.assertNotIn('#diag', line)
+        self.assertIn('#dev #diag', line)
 
     def test_reduction_is_per_view_and_keeps_all_arrows(self):
         data = fixture()
         a, b, c = data['files']
         a['inc'] = [[b['path'], 1], [c['path'], 1]]
-        b.update(inc=[[c['path'], 1]], variant='dev')
+        b.update(inc=[[c['path'], 1]], tags=['dev'])
         line = edge(likec4.emit(data), 'autana.firmware.c_a.m_icon', 'autana.firmware.c_c.m_icon')
         self.assertIn('#indirect ', line)
         self.assertNotIn('#indirect_release', line)
@@ -503,17 +588,17 @@ class Emitter(unittest.TestCase):
 
     def test_component_tags_ignore_hidden_modules(self):
         for kind, gen in (('test', False), ('tool', False), ('src', True)):
-            for variant in ('release', None):
+            for tags in ([], ['release']):
                 data = fixture(('a',))
                 a = data['files'][0]
-                a['variant'] = 'dev'
+                a['tags'] = ['dev']
                 data['files'].append(dict(a, path='launcher/main/a/hidden.c', kind=kind,
-                                          gen=gen, variant=variant))
+                                          gen=gen, tags=tags))
                 header = likec4.emit(data).split("c_a = component 'a' {", 1)[1].split('m_', 1)[0]
                 self.assertIn('#dev', header)
         data['files'] = [dict(a, kind='test')]
         header = likec4.emit(data).split("c_a = component 'a' {", 1)[1].split('m_', 1)[0]
-        self.assertIn('#dev #engine #test', header)
+        self.assertIn('#dev #test', header)
 
     def test_the_drill_view_folds_apps_to_the_parent_component(self):
         data = fixture(('apps/sand', 'apps/other', 'b', 'c'))
@@ -550,18 +635,19 @@ class Emitter(unittest.TestCase):
                                       styles=dict(defaults=dict(view=dict(routing='ortho')))))
         self.assertIn('sizing fixed', likec4.emit(fixture()))
 
-    def test_a_deployment_adds_its_kinds_block_and_views(self):
-        class Deployment:
-            kinds = ('computer',)
-
-            def emit(self, out, base, containers):
-                out.extend(['', 'deployment {', "  pc = computer 'PC' {", f'    image = instanceOf {base}', '  }', '}'])
-                return ['  deployment view pc {', '    include pc', '  }']
-        text = likec4.emit(fixture(), Deployment())
-        self.assertIn("deploymentNode computer { notation 'Computer' }", text)
-        self.assertIn('image = instanceOf autana.firmware', text)
-        self.assertTrue(text.rstrip().endswith('  deployment view pc {\n    include pc\n  }\n}'))
-        validate(self, text)
+    def test_place_names_each_container_for_a_file_beside_the_model(self):
+        data = fixture(('apps',))
+        data['packages'] = [dict(id='math', folder='launcher/packages/math', desc='math', src='README.md')]
+        data['packages_box'] = dict(id='packages', name='Packages', desc='Libraries.', src='README.md', members=['math'])
+        containers, where = likec4.place(data)
+        self.assertEqual([c['id'] for c in containers], ['firmware', 'math'])
+        self.assertEqual(where, {'firmware': 'autana.firmware', 'math': 'autana.packages.math'})
+        text = likec4.emit(data)
+        self.assertNotIn('deployment', text)
+        validate(self, text, "specification {\n  deploymentNode computer { notation 'Computer' }\n}\n"
+                             "deployment {\n  pc = computer 'PC' {\n"
+                             f"    image = instanceOf {where['firmware']}\n    lib = instanceOf {where['math']}\n  }}\n}}\n"
+                             "views {\n  deployment view pc {\n    include pc, pc.*\n  }\n}\n")
 
     def test_installed_validator_accepts_fixture_tree_and_rejects_broken_model(self):
         data = fixture(('apps/sand', 'render'))
@@ -708,11 +794,11 @@ class Packages(unittest.TestCase):
 class Command(unittest.TestCase):
     """build.py on a C++ project file: a fixture checkout read through git."""
     PROJECT = dict(
-        people=[["user", "User", "Opens captures."]],
-        systems=[["engine", "Engine", "The engine it reads.", "third_party/engine"]],
-        containers=[["app", "Viewer", "C++20", "src/main.cpp"]],
-        relations=[["user", "app", "opens"], ["app", "engine", "reads"]],
-        drill="app", scan=["src", "tests"], include_roots=["src", "tests"],
+        people=[dict(id="user", name="User", description="Opens captures.")],
+        systems=[dict(id="engine", name="Engine", description="The engine it reads.", folder="third_party/engine")],
+        containers=[dict(id="app", name="Viewer", technology="C++20", file="src/main.cpp")],
+        relations=[{"from": "user", "to": "app", "label": "opens"}, {"from": "app", "to": "engine", "label": "reads"}],
+        detail="app", scan=["src", "tests"], include_roots=["src", "tests"],
         headers=[".hpp", ".h"], sources=[".cpp"], vendor_includes="^(SDL3/|imgui)")
     FILES = {
         "README.md": "# Viewer\n\nShows what the engine drew.\n",
@@ -752,13 +838,69 @@ class Command(unittest.TestCase):
         self.assertEqual(json.loads((out / "likec4.config.json").read_text())["title"], "Viewer architecture")
         validate(self, text)
 
+    def test_only_tracked_sources_with_the_project_suffixes_are_drawn(self):
+        tree, project = self.checkout(files={
+            "src/window/frame.h": '/* A frame. */\n',
+            "src/window/frame.cpp": '#include "window/frame.h"\n',
+            "src/window/shader.glsl": "void main() {}\n",
+        })
+        (tree.root / "src/window/untracked.cpp").write_text("// Not committed.\n", encoding="utf-8")
+        out = tree.root / "out"
+        with mock.patch("sys.stdout"):
+            build.main(["--project", str(project), "--root", str(tree.root), "-o", str(out)])
+        text = (out / "viewer.c4").read_text(encoding="utf-8")
+        self.assertIn("technology 'frame.cpp, frame.h'", text)
+        for absent in ("shader", "untracked", "#engine", "_release", "indirect_release"):
+            self.assertNotIn(absent, text)
+
+    def test_a_submodule_stands_for_its_outside_system_and_no_remote_means_no_links(self):
+        project = dict(self.PROJECT, systems=[dict(self.PROJECT["systems"][0], description="The engine.")])
+        tree = write_tree(self, dict(self.FILES))
+        (tree.root / "third_party/engine/README.md").unlink()
+        git(tree.root, "init", "-q", "-b", "main")
+        git(tree.root, "add", ".")
+        git(tree.root, "update-index", "--add", "--cacheinfo", "160000," + "1" * 40 + ",third_party/engine")
+        git(tree.root, "commit", "-q", "-m", "fixture")
+        path = tree.root / "project.json"
+        path.write_text(json.dumps(project), encoding="utf-8")
+        with mock.patch("sys.stdout"):
+            build.main(["--project", str(path), "--root", str(tree.root), "-o", str(tree.root / "out")])
+        text = (tree.root / "out/viewer.c4").read_text(encoding="utf-8")
+        self.assertIn("engine = external 'Engine'", text)
+        self.assertNotIn("link ", text)
+
+    def test_a_tree_with_no_source_under_the_scan_roots_fails_naming_them(self):
+        tree, project = self.checkout(project=dict(self.PROJECT, scan=["lib"]))
+        with self.assertRaisesRegex(SystemExit, r"no .*source is tracked under \['lib'\]"):
+            build.main(["--project", str(project), "--root", str(tree.root), "-o", str(tree.root / "out")])
+
+    def test_a_detail_container_that_is_not_listed_fails_naming_it(self):
+        tree, project = self.checkout(project=dict(self.PROJECT, detail="viewer"))
+        with self.assertRaisesRegex(SystemExit, "detail container viewer"):
+            build.main(["--project", str(project), "--root", str(tree.root), "-o", str(tree.root / "out")])
+
+    def test_the_readme_title_names_the_system_and_must_be_there(self):
+        for readme, expected in (("# 3D Viewer\n\nShows captures.\n", "s_3d_viewer.c4"),
+                                 ("Shows captures.\n", None)):
+            with self.subTest(readme=readme):
+                tree, project = self.checkout(files={"README.md": readme})
+                args = ["--project", str(project), "--root", str(tree.root), "-o", str(tree.root / "out")]
+                if expected is None:
+                    with self.assertRaisesRegex(SystemExit, "README.md names the system"):
+                        build.main(args)
+                    continue
+                with mock.patch("sys.stdout"):
+                    build.main(args)
+                site.validate(tree.root / "out", {"name": json.loads((tree.root / "out/likec4.config.json").read_text())["name"]})
+                self.assertTrue((tree.root / "out" / expected).is_file())
+
     def test_a_project_file_with_a_missing_or_unknown_key_fails_naming_it(self):
-        _, project = self.checkout(project={k: v for k, v in self.PROJECT.items() if k != "drill"} | {"extra": 1})
-        with self.assertRaisesRegex(SystemExit, r"missing \['drill'\], unknown \['extra'\]"):
+        _, project = self.checkout(project={k: v for k, v in self.PROJECT.items() if k != "detail"} | {"extra": 1})
+        with self.assertRaisesRegex(SystemExit, r"missing \['detail'\], unknown \['extra'\]"):
             build.main(["--project", str(project), "-o", "unused"])
 
     def test_a_system_the_tree_no_longer_holds_fails_naming_its_folder(self):
-        project = dict(self.PROJECT, systems=[["engine", "Engine", "Gone.", "third_party/gone"]])
+        project = dict(self.PROJECT, systems=[dict(self.PROJECT["systems"][0], folder="third_party/gone")])
         tree, path = self.checkout(project=project)
         with self.assertRaisesRegex(SystemExit, "third_party/gone/"):
             build.main(["--project", str(path), "--root", str(tree.root), "-o", str(tree.root / "out")])
@@ -784,6 +926,23 @@ class Site(unittest.TestCase):
             with self.assertRaises(FileNotFoundError):
                 site.main([temp, '-o', str(pathlib.Path(temp) / 'out')])
             run.assert_not_called()
+
+    def test_open_makes_the_root_open_a_view(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            (root / 'likec4.config.json').write_text(json.dumps(dict(name='fixture', title='T')), encoding='utf-8')
+            index = root / 'site' / 'index.html'
+
+            def built(args, check):
+                if 'build' in args:
+                    index.parent.mkdir()
+                    index.write_text('<html><head><title>T</title></head></html>', encoding='utf-8')
+            with mock.patch.object(site.subprocess, 'run', side_effect=built):
+                site.main([temp, '-o', str(root / 'site'), '--open', 'index'])
+            self.assertIn('<head><script>if (!location.hash || location.hash === "#/") '
+                          'location.replace("#/view/index/");</script><title>', index.read_text(encoding='utf-8'))
+            with self.assertRaisesRegex(SystemExit, 'view id'):
+                site.open_view(root / 'site', 'index"); alert("x')
 
     def test_build_arguments_use_project_config(self):
         with tempfile.TemporaryDirectory() as temp:
