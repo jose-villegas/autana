@@ -1,6 +1,7 @@
-# Signal: goertzel.h and pitch.h
+# Signal: goertzel.h, pitch.h and smooth.h
 
-Single-bin detection on sample blocks; unlike the other legs it is compiled C, not header-only. [Math index](README.md).
+Single-bin detection, pitch conversion and exponential smoothing.
+Goertzel and pitch are compiled C; smoothing is header-only. [Math index](README.md).
 
 `goertzel_t` accumulates one frequency across sample blocks with a float
 recurrence, including non-integer DFT bins.<sup>[[72]](../Citations.md#goertzel-1958)</sup>
@@ -81,3 +82,25 @@ f=f_r 2^{s/O}, \qquad s=O\log_2(f/f_r)
 ```
 
 ![Equal-temperament frequency from 440 Hz across two octaves either way, with octave marks doubling frequency](../images/math/pitch-curve.png)
+
+## smooth.h
+
+Exact exponential steps use nonnegative `dt` and positive `tau` or
+`half_life`, in matching time units. For a fixed half-life,
+`smooth_decay(a) * smooth_decay(b) = smooth_decay(a + b)`.
+
+For a fixed time constant, the shares left compose likewise:
+`(1 - smooth_alpha(a)) * (1 - smooth_alpha(b)) = 1 - smooth_alpha(a + b)`.
+
+| Function | Result |
+|---|---|
+| `smooth_alpha(dt, tau)` | Share of the gap closed toward a target; `expm1f` preserves small-step precision |
+| `smooth_decay(dt, half_life)` | Share left of a quantity halving every half-life |
+
+```math
+\alpha = 1 - e^{-\Delta t/\tau}
+```
+
+```math
+r = 2^{-\Delta t/h}, \qquad \tau = h/\ln 2, \qquad \alpha = 1-r
+```

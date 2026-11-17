@@ -18,9 +18,9 @@
 
 #include "core/timing.h"
 #include "esp_log.h"
+#include "frame/test_frame.h"
 #include "frame_profile.h"
 #include "gfx/gfx.h"
-#include "gfx/present/gfx_mode.h"
 #include "render/context/render_context.h"
 #include "render/framegen/framegen.h"
 #include "scene/camera/camera.h"
@@ -134,7 +134,7 @@ static scenario_path_t
 enter_path(void) {
     render_lab_test_enter(&saved, scenario->scene->key);
     suite_set_test_cleanup(release_fixture);
-    render_lab_test_hold_quarter(r3d_perf_quarters[0].quarter);
+    test_hold_quarter(r3d_perf_quarters[0].quarter);
     scenario_path_t path = {.scene = render_lab_test_loaded_scene(scenario->pack)};
     TEST_ASSERT_NOT_NULL(path.scene);
     const char* camera_name = scenario->camera == NULL ? sponza_cameras[0] : scenario->camera;

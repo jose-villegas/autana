@@ -41,7 +41,7 @@ void gfx_deinit(void);
 #endif
 
 /* True while the framebuffer is known to hold `colour` and nothing else: a
- * send filled it (gfx_set_clear_on_send()) and nothing has drawn into it or
+ * send filled it (gfx_mode_request_t's clear_on_send) and nothing has drawn into it or
  * asked for it since. */
 bool gfx_framebuffer_holds(gfx_color_t colour);
 
@@ -84,10 +84,6 @@ void gfx_mark_rows_dirty(int y0, int y1);
 void gfx_set_interlace(bool enabled);
 bool gfx_interlace_enabled(void);
 
-/* Forces every band on the next band frame. Needed when an app opens,
- * closes, or rotates. */
-void gfx_invalidate(void);
-
 /* True from a gfx_request_full_redraw() call until the shell clears it for
  * the pass that follows. */
 bool gfx_full_redraw_pending(void);
@@ -119,14 +115,6 @@ void gfx_present(void);
  */
 void gfx_present_begin(void);
 void gfx_present_wait(void);
-
-/* GFX_LAYOUT_DOUBLE_FB only: once a frame is sent, core 1 fills it with
- * `colour`, so the frame after next starts out filled and draw_clear(colour)
- * costs core 0 nothing (gfx_framebuffer_holds()). The shown frame is
- * then gone from memory, so readback is unavailable until a send that keeps
- * its frame. Off again at mode exit. Returns false when asked to turn it on
- * in another layout, which leaves it off. */
-bool gfx_set_clear_on_send(bool on, gfx_color_t colour);
 
 void gfx_set_present_async(bool on);
 bool gfx_present_async_enabled(void);

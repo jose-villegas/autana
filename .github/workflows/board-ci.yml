@@ -104,6 +104,7 @@ jobs:
     permissions:
       issues: write
       actions: read
+      checks: read
       contents: read
     env:
       GH_TOKEN: ${{ github.token }}
@@ -118,8 +119,8 @@ jobs:
         if: needs.board.result == 'cancelled' || (needs.board.result == 'failure' && needs.board.outputs.prepared != 'failure' && needs.board.outputs.boards_ran != 'true')
         env:
           BOARD_RESULT: ${{ needs.board.result }}
-        run: python3 scripts/ci/board_alarm.py raise --reason "board job $BOARD_RESULT; the board did not run every suite"
+        run: python3 scripts/ci/board_alarm.py raise --kind down --errors --reason "board job $BOARD_RESULT; the board did not run every suite"
 
       - name: Clear the board-ci-down alarm
         if: (needs.board.result == 'success' || needs.board.result == 'failure') && needs.board.outputs.boards_ran == 'true'
-        run: python3 scripts/ci/board_alarm.py clear
+        run: python3 scripts/ci/board_alarm.py clear --kind down

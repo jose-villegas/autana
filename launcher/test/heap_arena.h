@@ -26,8 +26,8 @@ size_t heap_arena_peak_bytes(void);
  * so heap_caps_get_minimum_free_size() answers for the time since. */
 void heap_arena_reset_peak(void);
 
-/* The PSRAM heap a PSRAM size leaves: `override` as the environment variable
- * would carry it, or the device profile's size when NULL. */
+/* The PSRAM heap: `override` as the environment variable would carry it, or
+ * the device profile's size when NULL. */
 size_t heap_arena_psram_heap_bytes(const char* override);
 
 /* The internal heap, the same way. */

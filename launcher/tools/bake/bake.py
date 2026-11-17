@@ -32,7 +32,7 @@ references are keyed on what they read (reference_set.ReferenceInputs), not on t
 row for into the cache (produce.py), and with `--out` also copies each one there as it is made, the folder a CI
 run uploads, so a run cut short still uploads what it finished; `--from-run N` first takes run N's uploads made on a
 host like this one into the cache, so a rerun makes only what is left; `--only` limits it to the named outputs and
-`--again` re-makes them even when locked, to compare a new make with the lock
+`--again` re-makes them even when locked, a fit from fresh references, to compare a new make with the lock
 (the lock keeps its row). `lock` drops the rows nothing needs, writes the rows it has and then fails naming the bakes still
 without one;
 `--from-run N` adds the rows CI run N made, from its uploads, and is the only
@@ -1237,6 +1237,10 @@ def main(argv=None):
         elif args.command == "bake":
             from bake import produce
 
+            produce.prune_references(cache)
+            # A run made again renders each reference set it reads once more, in a folder of its own.
+            fresh_references = tempfile.TemporaryDirectory(prefix="references-again-") if args.again else None
+
             unknown = sorted(set(args.only or ()) - {bake.output for bake in found})
             if unknown:
                 parser.error(f"--only: no bake makes {', '.join(unknown)}")
@@ -1287,7 +1291,8 @@ def main(argv=None):
                         if bake.key is None:
                             raise BakeMissing(describe(bake, unlocked(bake), "bake its start first: bake.py bake --kind mesh"))
                         rows.append(keep((None if args.again else produce.made(bake.key, cache)) or produce.produce(
-                            bake, cache, lock, args.blender)))
+                            bake, cache, lock, args.blender,
+                            fresh_references and fresh_references.name)))
             for row in rows:
                 locked = lock.get(row["key"])
                 versus = "" if locked is None else (

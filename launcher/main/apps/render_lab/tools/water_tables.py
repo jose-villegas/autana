@@ -83,6 +83,24 @@ def mean(readings, pick):
     return sum(pick(reading) for reading in readings) / len(readings)
 
 
+def perf_table(text):
+    """Base tour means in integer microseconds for perf_compare's table reader."""
+    readings = {}
+    for lines in runs(text):
+        rows, _ = parse(lines)
+        for (config, phase), row in rows.items():
+            if config == BASE and "frame" in row:
+                readings.setdefault(phase, []).append(row)
+    if not readings:
+        raise ValueError(f"no {BASE} timing rows")
+    lines = ["| Test | Mean us |", "|---|---:|"]
+    for phase, rows in readings.items():
+        for part in ("frame", "update", "draw"):
+            value = round(mean(rows, lambda row: row[part]["mean"]) * US_PER_MS)
+            lines.append(f"| water {phase} {part} | {value} |")
+    return "\n".join(lines) + "\n"
+
+
 def tables(text):
     parsed = [parse(lines) for lines in runs(text)]
     if not parsed:
@@ -152,10 +170,15 @@ def main():
     parser.add_argument("--capture", type=pathlib.Path, default=ROOT / CAPTURE)
     parser.add_argument("--document", type=pathlib.Path, default=ROOT / DOCUMENT)
     parser.add_argument("--check", action="store_true")
+    parser.add_argument("--perf-table", nargs=2, type=pathlib.Path, metavar=("CAPTURE", "TABLE"))
     argv = sys.argv[1:]
     args = parser.parse_args(argv)
     command = shlex.join(["python", SCRIPT, *(arg for arg in argv if arg != "--check"), "--check"])
     try:
+        if args.perf_table:
+            capture, table = args.perf_table
+            table.write_text(perf_table(capture.read_text(encoding="utf-8")), encoding="utf-8")
+            return 0
         text = args.capture.read_text(encoding="utf-8")
         build_id(text)
         body = tables(text) + f"\n\nSource: `{args.capture.name}`"

@@ -87,7 +87,7 @@ test_quarter_select_matches_scalar(void) {
 static void
 test_quarter_select_cost(void) {
     void* blocks[4];
-    uint16_t* frame = aligned((size_t)ROW_PIXELS * (ROWS + 1) * sizeof(uint16_t), MEMORY_PSRAM, &blocks[0]);
+    uint16_t* frame = aligned((size_t)ROW_PIXELS * (ROWS + 1) * sizeof(uint16_t), MEMORY_APP, &blocks[0]);
     uint16_t* out = aligned(ROW_PIXELS * sizeof(uint16_t), MEMORY_INTERNAL, &blocks[1]);
     uint8_t* keep = aligned((size_t)ROW_STEPS * ROWS, MEMORY_INTERNAL, &blocks[2]);
     for (size_t i = 0; i < (size_t)ROW_PIXELS * (ROWS + 1); i++) {

@@ -9,18 +9,13 @@
 #include <math.h>
 
 #include "math/scalar/math_const.h"
-
-/* What is left of anything halving every half_life after dt. */
-static inline float
-follow_halved_over(float dt, float half_life) {
-    return exp2f(-dt / half_life);
-}
+#include "math/signal/smooth.h"
 
 /* Speed *v halving every half_life, and *x moved by the exact distance that
  * covers in dt: v(t) = v 2^(-t/h) and x(t) = x + v h / ln 2 (1 - 2^(-t/h)). */
 static inline void
 follow_coast(float* x, float* v, float dt, float half_life) {
-    const float left = follow_halved_over(dt, half_life);
+    const float left = smooth_decay(dt, half_life);
     *x += *v * half_life / MATH_LN2 * (1.0F - left);
     *v *= left;
 }

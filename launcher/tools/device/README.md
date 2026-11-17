@@ -2,6 +2,7 @@
 
 | File | Purpose |
 |---|---|
+| [board.py](board.py) | Reads the built board's `board.toml`: panel size, chip mount, geometry. |
 | [device_profile.py](device_profile.py) | Reads board profile values for Python tools. |
 | [device_profile.sh](device_profile.sh) | Reads board profile values for shell tools. |
 | [device_profiles/](device_profiles/) | Board profile data. |

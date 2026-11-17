@@ -32,12 +32,12 @@ table, so a board flashed without them cannot gain them over the air.
 
 | | Today |
 |---|---|
-| Partitions (`launcher/partitions.csv`) | `nvs`, `phy_init`, one `factory` app slot (8 MB less 64 KB), `coredump` |
+| Partitions (`launcher/partitions.csv`) | `nvs`, `phy_init`, one 4 MB `factory` app slot, `coredump`, `assets` |
 | Flash (`launcher/sdkconfig.defaults`) | 16 MB |
-| Image size | about 1.0 MB release, 1.7 MB diagnostics |
+| Image size | about 0.9 MB release, 2.9 MB diagnostics |
 
 - **First step, still over USB:** two app slots (`otadata`, `ota_0`, `ota_1`;
-  about 6 MB each fits) and rollback
+  4 MB each, the second taken from `assets`) and rollback
   (`CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE`: a new image boots pending-verify
   and confirms itself after a check, so a crash or power loss reverts). While
   every board is on the maintainer's desk this costs one USB flash each; it

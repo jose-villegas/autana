@@ -87,7 +87,7 @@
 3801	ui_face_tile
 3771	ui_face_toggle
 1989	ui_face_window
-3550	ui_mu_button
+3569	ui_mu_button
 2579	ui_mu_caption
 5413	ui_mu_dropdown
 5622	ui_mu_dropdown_icons
@@ -98,12 +98,12 @@
 2471	ui_mu_outline
 2639	ui_mu_panel
 2156	ui_mu_row
-1301	ui_mu_screen
+1311	ui_mu_screen
 3918	ui_mu_slider
 2314	ui_mu_swatches
 2579	ui_mu_text
 2580	ui_mu_text_centre
-2578	ui_mu_text_right
+2591	ui_mu_text_right
 3543	ui_mu_tile
 3304	ui_mu_toggle
-1236	ui_mu_window
+1246	ui_mu_window

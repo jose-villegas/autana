@@ -12,5 +12,10 @@
       "microui.h": "include/microui.h"
     },
     "taken_from": "0850aba860959c3e75fb3e97120ca92957f9d057"
+  },
+  "third_party/tlsf": {
+    "upstream": "third_party/upstream/tlsf",
+    "from": ".",
+    "taken_from": "2867f6883a12920b1969ff9624c0ab0e4185c2ce"
   }
 }

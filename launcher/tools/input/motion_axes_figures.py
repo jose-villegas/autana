@@ -67,7 +67,7 @@ def rotation_figure(data, model, output):
     style_axes(speed, "turn_speed")
     animation.legend([Line2D([], [], color=ACCELERATION, label="acceleration (1 g)"),
                       Line2D([], [], color=ROTATION, label="rotation axis, right-hand rule")]
-                     + legend_handles()[1:])
+                     + legend_handles(chip_axes=False))
 
     def draw(index):
         frame = frames[index]
@@ -85,7 +85,7 @@ def rotation_figure(data, model, output):
 
 def main():
     data, output, cc = probe_data(__file__, None, __doc__)
-    model = DeviceModel(cc)
+    model = DeviceModel()
     axes_figure(model, np.array(data["frames"][0]["pose"]), output / "motion-axes.png")
     rotation_figure(data, model, output / "motion-rotation.gif")
 

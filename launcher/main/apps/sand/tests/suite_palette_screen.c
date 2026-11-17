@@ -43,7 +43,7 @@ cleanup(void) {
 static sand_ui_t
 fixture(bool landscape, int selected) {
     suite_set_test_cleanup(cleanup);
-    modes = memory_alloc(SAND_BRUSH_COUNT * sizeof *modes, MEMORY_PSRAM);
+    modes = memory_alloc(SAND_BRUSH_COUNT * sizeof *modes, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(modes);
     for (int i = 0; i < SAND_BRUSH_COUNT; i++) {
         modes[i] = BRUSH_POUR;

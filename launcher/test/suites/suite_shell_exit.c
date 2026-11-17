@@ -2,6 +2,7 @@
 #include "unity.h"
 
 #include "app/app_arena.h"
+#include "core/app_heap.h"
 
 #ifdef DEVICE_BUILD
 void shell_test_fixture(void);
@@ -16,6 +17,8 @@ bool shell_test_leaving_runs_the_systems_app_exit_after_the_apps_exit(void);
 static void
 fixture(void) {
     TEST_ASSERT_EQUAL_UINT_MESSAGE(0, app_arena_mark(), "the app running the suites holds arena memory");
+    TEST_ASSERT_EQUAL_size_t(0, app_heap_blocks());
+    app_arena_exit();
     shell_test_fixture();
 }
 

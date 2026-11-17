@@ -50,8 +50,8 @@ report_case(const scale_case_t* test_case) {
     const int source_height = scaled_size(GFX_HEIGHT, test_case);
     const size_t source_pixels = (size_t)source_width * source_height;
     const size_t destination_pixels = (size_t)GFX_WIDTH * GFX_HEIGHT;
-    uint16_t* source = memory_alloc(source_pixels * sizeof(*source), MEMORY_PSRAM);
-    uint16_t* destination = memory_alloc(destination_pixels * sizeof(*destination), MEMORY_PSRAM);
+    uint16_t* source = memory_alloc(source_pixels * sizeof(*source), MEMORY_APP);
+    uint16_t* destination = memory_alloc(destination_pixels * sizeof(*destination), MEMORY_APP);
     uint16_t* columns = memory_alloc(GFX_WIDTH * sizeof(*columns), MEMORY_INTERNAL);
     uint16_t* rows = memory_alloc(GFX_HEIGHT * sizeof(*rows), MEMORY_INTERNAL);
     TEST_ASSERT_NOT_NULL(source);

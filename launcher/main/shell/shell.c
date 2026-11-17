@@ -45,6 +45,7 @@
 
 #if CONFIG_LAUNCHER_SELFTEST
 #include "selftest/console_runsuite.h"
+#include "selftest/selftest.h"
 #include "suites.h"
 #include "unity.h"
 #endif
@@ -187,6 +188,7 @@ run_pending_selftest_suite(void) {
     }
     const console_runsuite_request_t* request = console_runsuite_slot.taken;
     static suite_run_t run;
+    const bool own_visit = selftest_visit_begin();
     UNITY_BEGIN();
     suites_run_request(request->suite, &run);
     if (!run.found) {
@@ -194,6 +196,7 @@ run_pending_selftest_suite(void) {
     }
     suite_report_frame_watch();
     (void)UNITY_END();
+    selftest_visit_end(own_visit);
     /* On its own line, so a harness knows the suite ended without having to
      * guess from how long the console has been quiet. */
     suites_print_run(&run);

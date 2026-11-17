@@ -4,6 +4,7 @@
 #include "heap_arena.h"
 #include "perf_budget.h"
 #include "suites.h"
+#include "test_alloc.h"
 #include "unity.h"
 
 typedef struct {
@@ -133,11 +134,11 @@ test_sample_capacity_fails_without_overrun(void) {
 #ifdef HOST_HEAP_ARENA
 static void
 test_allocation_failure(void) {
-    void* held = memory_alloc(memory_largest_block(MEMORY_PSRAM), MEMORY_PSRAM);
-    TEST_ASSERT_NOT_NULL(held);
+    /* The samples come from the app heap: hold all of it. */
+    void* held = test_app_heap_fill();
     fixture_t f = {0};
     const frame_profile_t p = play(&f, CLIP_US);
-    memory_free(held);
+    test_app_heap_release(held);
     TEST_ASSERT_EQUAL_INT(0, f.calls);
     TEST_ASSERT_EQUAL_INT(0, p.frames);
     TEST_ASSERT_EQUAL_INT64(0, p.total_us);

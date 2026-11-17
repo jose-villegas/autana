@@ -1,45 +1,98 @@
-/*
- * app_arena: see app_arena.h. Portable: on a host the block is ordinary
- * static memory, so the allocator is tested there as it runs on the board.
- */
+/* app_arena: chunked bump allocation from the visit's app heap. */
 #include "app/app_arena.h"
 
 #include <assert.h>
-#include <stdbool.h>
 #include <stdint.h>
 
-#if defined(ESP_PLATFORM)
-#include "esp_attr.h"
-#include "sdkconfig.h"
-#if !CONFIG_SPIRAM_ALLOW_NOINIT_SEG_EXTERNAL_MEMORY
-#error "app_arena needs CONFIG_SPIRAM_ALLOW_NOINIT_SEG_EXTERNAL_MEMORY, or its block lands in internal RAM"
-#endif
-#define APP_ARENA_PLACEMENT EXT_RAM_NOINIT_ATTR
-#else
-#define APP_ARENA_PLACEMENT
-#endif
+#include "core/memory.h"
 
-APP_ARENA_PLACEMENT static _Alignas(64) unsigned char block[APP_ARENA_BYTES];
+typedef struct arena_chunk {
+    struct arena_chunk* previous;
+    size_t start;
+    size_t capacity;
+    unsigned char data[];
+} arena_chunk_t;
+
+static unsigned char* block;
+static size_t block_bytes;
 static size_t used;
+static arena_chunk_t* current;
 
-static bool
-is_power_of_two(size_t n) {
-    return n != 0 && (n & (n - 1)) == 0;
+static size_t
+psram_heap_bytes(void) {
+#if MEMORY_HEAP_CAPS
+    return memory_total_bytes(MEMORY_PSRAM);
+#else
+    return APP_ARENA_HOST_PSRAM_BYTES;
+#endif
+}
+
+bool
+app_arena_init(void) {
+    assert(block == NULL);
+    const size_t heap = psram_heap_bytes();
+    if (heap <= APP_ARENA_SYSTEM_RESERVE_BYTES) {
+        return false;
+    }
+#if MEMORY_HEAP_CAPS
+    const size_t bytes = memory_unrounded_bytes(heap - APP_ARENA_SYSTEM_RESERVE_BYTES);
+#else
+    const size_t bytes = heap - APP_ARENA_SYSTEM_RESERVE_BYTES;
+#endif
+    /* TLSF aligns its own blocks inside the region. */
+    block = memory_alloc(bytes, MEMORY_PSRAM);
+    if (block == NULL) {
+        return false;
+    }
+    block_bytes = bytes;
+    return true;
+}
+
+size_t
+app_arena_bytes(void) {
+    return block_bytes;
+}
+
+void
+app_arena_enter(void) {
+    assert(current == NULL && used == 0);
+    app_heap_enter(block, block_bytes);
+}
+
+void
+app_arena_exit(void) {
+    app_arena_rewind(0);
+    app_heap_exit();
 }
 
 void*
 app_arena_take(size_t size, size_t align) {
-    if (size == 0 || !is_power_of_two(align)) {
+    if (block == NULL || size == 0 || align == 0 || (align & (align - 1)) != 0 || size > SIZE_MAX - align) {
         return NULL;
     }
-    const uintptr_t base = (uintptr_t)block;
-    const uintptr_t start = (base + used + (align - 1)) & ~(uintptr_t)(align - 1);
-    const size_t offset = (size_t)(start - base);
-    if (offset > APP_ARENA_BYTES || size > APP_ARENA_BYTES - offset) {
+    if (current != NULL) {
+        const uintptr_t base = (uintptr_t)current->data;
+        const size_t offset = used - current->start;
+        const size_t padding = (-(base + offset)) & (align - 1);
+        if (padding <= current->capacity - offset && size <= current->capacity - offset - padding) {
+            used += padding + size;
+            return current->data + offset + padding;
+        }
+    }
+    const size_t requested = size + align;
+    const size_t capacity = requested > APP_ARENA_CHUNK_BYTES ? requested : APP_ARENA_CHUNK_BYTES;
+    if (capacity > SIZE_MAX - sizeof(arena_chunk_t)) {
         return NULL;
     }
-    used = offset + size;
-    return &block[offset];
+    arena_chunk_t* chunk = app_heap_lend(sizeof *chunk + capacity);
+    if (chunk == NULL) {
+        return NULL;
+    }
+    *chunk = (arena_chunk_t){.previous = current, .start = used, .capacity = capacity};
+    const size_t padding = (-(uintptr_t)chunk->data) & (align - 1);
+    current = chunk;
+    used += padding + size;
+    return chunk->data + padding;
 }
 
 size_t
@@ -50,5 +103,10 @@ app_arena_mark(void) {
 void
 app_arena_rewind(size_t mark) {
     assert(mark <= used);
+    while (current != NULL && mark <= current->start) {
+        arena_chunk_t* previous = current->previous;
+        app_heap_reclaim(current);
+        current = previous;
+    }
     used = mark;
 }

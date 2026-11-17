@@ -2,39 +2,21 @@
 #include "testkit/suite.h"
 
 #include <stdbool.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
-static suite_entry_t suites[TESTKIT_SUITE_MAX];
+static suite_entry_t* head;
 static size_t suite_count;
 static int dropped;
-static bool sorted;
 
-static void
-register_suite(const char* name, suite_fn run, bool on_request) {
-    if (suite_count == TESTKIT_SUITE_MAX) {
-        printf("SUITE OVERFLOW: '%s' was not registered (max %d)\n", name, TESTKIT_SUITE_MAX);
-        suites_record_drop();
-        return;
+void
+suite_link(suite_entry_t* entry) {
+    suite_entry_t** at = &head;
+    while (*at != NULL && strcmp((*at)->name, entry->name) <= 0) {
+        at = &(*at)->next;
     }
-    sorted = false;
-    suites[suite_count++] = (suite_entry_t){name, run, on_request};
-}
-
-void
-suite_register(const char* name, suite_fn run) {
-    register_suite(name, run, false);
-}
-
-void
-suite_register_on_request(const char* name, suite_fn run) {
-    register_suite(name, run, true);
-}
-
-static int
-by_name(const void* a, const void* b) {
-    return strcmp(((const suite_entry_t*)a)->name, ((const suite_entry_t*)b)->name);
+    entry->next = *at;
+    *at = entry;
+    suite_count++;
 }
 
 size_t
@@ -44,11 +26,20 @@ suites_count(void) {
 
 const suite_entry_t*
 suites_at(size_t i) {
-    if (!sorted) {
-        qsort(suites, suite_count, sizeof suites[0], by_name);
-        sorted = true;
+    /* Callers walk 0..count, so resume from the last entry reached. */
+    static const suite_entry_t* cursor;
+    static size_t cursor_index;
+    if (i >= suite_count) {
+        return NULL;
     }
-    return i < suite_count ? &suites[i] : NULL;
+    if (cursor == NULL || i < cursor_index) {
+        cursor = head;
+        cursor_index = 0;
+    }
+    for (; cursor_index < i; cursor_index++) {
+        cursor = cursor->next;
+    }
+    return cursor;
 }
 
 void

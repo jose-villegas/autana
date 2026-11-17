@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "device"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "render"))
 
 from docs.plot_style import INK, SLOTS  # noqa: E402
-from panel_size import PANEL_HEIGHT, PANEL_WIDTH  # noqa: E402
+from board import PANEL_HEIGHT, PANEL_WIDTH  # noqa: E402
 from r3d.appearance_simplify import projection  # noqa: E402
 from r3d.cost_model import clusters_in_view  # noqa: E402
 from r3d.import_settings import load_scene  # noqa: E402

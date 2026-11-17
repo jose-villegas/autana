@@ -14,6 +14,15 @@
 #include "gfx/present/send/gfx_dirty.h"
 #include "gfx/target/gfx_target.h"
 
+/* Forces every band on the next band frame. gfx_request_full_redraw() is
+ * the public call. */
+void gfx_invalidate(void);
+
+/* gfx_mode_enter()'s clear_on_send: GFX_LAYOUT_DOUBLE_FB only, off again at
+ * mode exit. Returns false when asked to turn it on in another layout, which
+ * leaves it off. */
+bool gfx_set_clear_on_send(bool on, gfx_color_t colour);
+
 #ifdef ESP_PLATFORM
 #include "esp_lcd_panel_ops.h"
 #include "freertos/FreeRTOS.h"

@@ -249,6 +249,7 @@ jobs:
     permissions:
       issues: write
       actions: read
+      checks: read
       contents: read
     env:
       GH_TOKEN: ${{ github.token }}
@@ -263,8 +264,17 @@ jobs:
         if: needs.nightly.result == 'cancelled' || (needs.nightly.result != 'skipped' && needs.nightly.outputs.boards_ran != 'true')
         env:
           BOARD_RESULT: ${{ needs.nightly.result }}
-        run: python3 scripts/ci/board_alarm.py raise --reason "nightly job $BOARD_RESULT; the boards did not run every suite"
+        run: python3 scripts/ci/board_alarm.py raise --kind down --errors --reason "nightly job $BOARD_RESULT; the boards did not run every suite"
 
       - name: Clear the board-ci-down alarm
         if: (needs.nightly.result == 'success' || needs.nightly.result == 'failure') && needs.nightly.outputs.boards_ran == 'true'
-        run: python3 scripts/ci/board_alarm.py clear
+        run: python3 scripts/ci/board_alarm.py clear --kind down
+
+      # On main only: a branch's own failures are its pull request's to fix.
+      - name: Raise the board-ci-red alarm
+        if: github.ref == 'refs/heads/main' && needs.nightly.result == 'failure' && needs.nightly.outputs.boards_ran == 'true'
+        run: python3 scripts/ci/board_alarm.py raise --kind red --errors --reason "nightly job failed on main with the boards up"
+
+      - name: Clear the board-ci-red alarm
+        if: github.ref == 'refs/heads/main' && needs.nightly.result == 'success' && needs.nightly.outputs.boards_ran == 'true'
+        run: python3 scripts/ci/board_alarm.py clear --kind red

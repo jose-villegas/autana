@@ -1,0 +1,50 @@
+# A swing round the origin, 10 units out and a little above it: 20 degrees
+# each side of the z axis and back, looking at the origin throughout.
+# Keys every 10 degrees keep the distance within 1% between them.
+node = "camera"
+animation = "orbit"
+
+[[keys]]
+t = 0
+eye = [0.0000, 1.0, 10.0000]
+look_at = [0.0, 0.0, 0.0]
+
+[[keys]]
+t = 1
+eye = [1.7365, 1.0, 9.8481]
+look_at = [0.0, 0.0, 0.0]
+
+[[keys]]
+t = 2
+eye = [3.4202, 1.0, 9.3969]
+look_at = [0.0, 0.0, 0.0]
+
+[[keys]]
+t = 3
+eye = [1.7365, 1.0, 9.8481]
+look_at = [0.0, 0.0, 0.0]
+
+[[keys]]
+t = 4
+eye = [0.0000, 1.0, 10.0000]
+look_at = [0.0, 0.0, 0.0]
+
+[[keys]]
+t = 5
+eye = [-1.7365, 1.0, 9.8481]
+look_at = [0.0, 0.0, 0.0]
+
+[[keys]]
+t = 6
+eye = [-3.4202, 1.0, 9.3969]
+look_at = [0.0, 0.0, 0.0]
+
+[[keys]]
+t = 7
+eye = [-1.7365, 1.0, 9.8481]
+look_at = [0.0, 0.0, 0.0]
+
+[[keys]]
+t = 8
+eye = [0.0000, 1.0, 10.0000]
+look_at = [0.0, 0.0, 0.0]

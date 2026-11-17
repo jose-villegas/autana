@@ -29,11 +29,12 @@ from device_lock import normalise_board, short_id, write_json
 from layout_measure import autana_command, capture_for, run_flash, run_stamped, REPORT_LINE, latest_build
 from device_report import parse_suite_results, read_capture_text
 from device_capture import board_steps_completed
+from ci_step import output, summarize
 from process_tree import (launch_process_tree, stop_process_tree, close_process_tree, install_console_interrupt_handler,
                           terminate_unwinds)
 from local_schedule import (Clock, wait_idle, gpu_pending, gpu_on_host, GPU_NOT_ON_HOST,
                             NIGHT_STEP_HANG_SECONDS, MARKER_KEY_FORMAT, heavy_root, night_cutoff, night_end)
-from nightly.lnt import (lnt_report, night_manifest, night_ran, read_night, read_last_night, last_manifests,
+from nightly.lnt import (lnt_report, night_manifest, night_ran, read_night, read_last_night,
                          manifests_since, night_record_path, read_last_night_record, VARIANT, BUILD_FLAGS,
                          LAYOUT_SEED)
 
@@ -95,11 +96,16 @@ class StepResult:
     report: str | None = None
 
 
-def lane_failures(manifest):
-    """Why a lane's night manifest failed, one line per cause: each failed step, then the self-test with the
-    first failed tests of the capture beside its report. Empty when the lane passed."""
+def lane_failures(manifest, deadline=None):
+    """Why a lane's night manifest failed, one line per cause: each failed step, an end past the plan's
+    `deadline`, then the self-test with the first failed tests of the capture beside its report. Empty when
+    the lane passed."""
     lines = [f"step {step['position']} {step['commit'][:REPORT_SHA_DIGITS]}: {step['outcome']}"
              for step in manifest["steps"] if step["outcome"] in FAILED_STEPS]
+    late = (datetime.fromisoformat(manifest["ended"]) - datetime.fromisoformat(deadline)
+            if deadline and manifest.get("ended") else timedelta())
+    if late > timedelta():
+        lines.append(f"ended {math.ceil(late.total_seconds() / 60)} min past the deadline {deadline}")
     selftest = manifest["selftest"]
     if selftest["outcome"] not in FAILED_SELFTEST:
         return lines
@@ -173,14 +179,7 @@ def night_queue(repo, tip, data, from_sha=None):
                 *(step.commit for step in history[through:])}
         settled = attempted(manifests_since(data, key))
     else:
-        # Before the night kept a record, each board resumed after its own cursor; a step any manifest lists
-        # unsettled, a failed capture behind a later one, is owed too. The first night ever takes the tip.
-        cursors = [night.get("last_attempted") or night.get("last_measured") for night in last_manifests(data).values()]
-        cursors = [on_history(history, commit, "last_attempted").position for commit in cursors if commit]
-        nights = manifests_since(data, "")
-        owed = {step["commit"] for night in nights for step in night["steps"]}
-        owed |= {step.commit for step in (history[min(cursors):] if cursors else history[-1:])}
-        settled = attempted(nights)
+        owed, settled = {history[-1].commit}, set()  # the first night ever takes the tip
     return [step for step in history if step.commit in owed and step.commit not in settled]
 
 
@@ -195,6 +194,14 @@ def step_seconds(previous):
     seconds = [step["wait_seconds"] + step["build_seconds"] + step["measure_seconds"]
                for step in (previous or {}).get("steps", []) if step["outcome"] == "measured"]
     return statistics.median(seconds) if seconds else FIRST_STEP_SECONDS
+
+
+def lane_pace(results, previous):
+    """The seconds a lane's next step is taken to need: its slowest measured step this night, so a slow step
+    in the last slot still ends by the deadline; else the pace its board's last night manifest gives."""
+    tonight = [result.wait_seconds + result.build_seconds + result.measure_seconds
+               for result in results if result.outcome == "measured"]
+    return max(tonight) if tonight else step_seconds(previous)
 
 
 def lane_capacity(previous, start, deadline, selftest=False):
@@ -253,8 +260,10 @@ def run_chain(steps, args, runner=None, clock=None):
     last_measured = previous.get("last_measured")
     last_attempted = previous.get("last_attempted") or last_measured
     previous_hash = previous.get("last_image_hash")
+    deadline = getattr(args, "deadline", None)
+    deadline = deadline and datetime.fromisoformat(deadline)
     positions = {step.commit: step.position for step in history_steps(args.repo, "HEAD")}
-    results, failures, stop_reason = [], 0, None
+    results, failures, stop_reason, current = [], 0, None, None
     ended = None
     selftest = dict(board=board, outcome="not_run", report=None, started=None, seconds=0)
     manifest = Path(args.data) / "scoped" / board / night_started.strftime(MARKER_KEY_FORMAT) / "night.json"
@@ -305,12 +314,17 @@ def run_chain(steps, args, runner=None, clock=None):
         for index, step in enumerate(steps):
             if not stop_reason and gone():
                 stop_reason = "unplugged"
-            outcome = {"capture_failures": "not_run_stopped", "unplugged": "not_run_unplugged", "busy": "not_run_busy"}
+            # A step that would end past the deadline is left to the next night.
+            if not stop_reason and deadline and clock.now() + timedelta(seconds=lane_pace(results, previous)) > deadline:
+                stop_reason = "deadline"
+            outcome = {"capture_failures": "not_run_stopped", "unplugged": "not_run_unplugged", "busy": "not_run_busy",
+                       "deadline": "not_run_deadline"}
             result = StepResult(step, outcome.get(stop_reason, "not_run"))
             results.append(result)
             if stop_reason:
                 save()
                 continue
+            current = result
             def run_step(command, log, timeout, **options):
                 response = runner(command, log, timeout, **options)
                 result.wait_seconds += sum(float(line.removeprefix(autana_config.HEAVY_WAIT_PREFIX))
@@ -389,9 +403,13 @@ def run_chain(steps, args, runner=None, clock=None):
             if result.outcome in ATTEMPTED:
                 if step.position >= positions.get(last_attempted, 0):
                     last_attempted = step.commit
+            current = None
             save()
     except KeyboardInterrupt:
         stop_reason = "interrupted"
+        if current and current.outcome in FAILED_STEPS:
+            # A step stopped part way settles nothing: the next night owes it again.
+            current.outcome = "not_run_interrupted"
         raise
     finally:
         errors = []
@@ -529,10 +547,12 @@ def run_night(args, clock=None, launch=None):
     clock, launch = clock or Clock(), launch or launch_process_tree
     planned = json.loads(args.plan.read_text(encoding="utf-8"))
     cutoff = datetime.fromisoformat(planned["cutoff"])
+    deadline = planned.get("deadline") and datetime.fromisoformat(planned["deadline"])
     processes, skipped = [], set()
     # Failed: a lane's tests failed or its board could not run; down: only the latter.
     failed, down, interrupted = False, False, False
-    hung = set()
+    # Lanes stopped by a guard: hung ones past LANE_HANG_FACTOR, late ones still running at the deadline.
+    hung, late = set(), set()
     unreachable, seen = [], bool(planned["listed"])
 
     def start(board, lane, lane_plan, wait=NIGHT_STEP_HANG_SECONDS):
@@ -576,22 +596,29 @@ def run_night(args, clock=None, launch=None):
         process = launch(command, cwd=args.repo, env=env)
         processes.append((process, clock.now(), lane["estimate"], board))
 
-    def stop(process, board, grace):
-        # A remote lane is asked to stop first, so its host restores the board and the folder comes back.
-        lane = planned["lanes"].get(board, {})
-        if lane.get("host"):
+    def stop(lanes, grace):
+        """Stops each (process, board) lane. Remote lanes are all asked first, so their hosts restore the boards
+        and the folders come back within one shared `grace`; what is still running then is stopped here."""
+        asked = []
+        for process, board in lanes:
+            host = planned["lanes"].get(board, {}).get("host")
+            if not host:
+                continue
             try:
-                subprocess.run([*remote_command(), "stop", lane["host"], board], timeout=RESCAN_SECONDS,
+                subprocess.run([*remote_command(), "stop", host, board], timeout=RESCAN_SECONDS,
                                stdin=subprocess.DEVNULL)
+                asked.append(process)
             except (OSError, subprocess.SubprocessError) as error:
                 print(f"lane {board}: remote stop: {error}", file=sys.stderr)
-            else:
-                try:
-                    process.wait(timeout=grace)
-                    return
-                except subprocess.TimeoutExpired:
-                    pass
-        stop_process_tree(process)
+        until = clock.now() + timedelta(seconds=grace)
+        for process, _ in lanes:
+            try:
+                if process in asked:
+                    process.wait(timeout=max(0, (until - clock.now()).total_seconds()))
+                    continue
+            except subprocess.TimeoutExpired:
+                pass
+            stop_process_tree(process)
 
     previous_handler = signal.signal(signal.SIGTERM, signal.default_int_handler)
     try:
@@ -605,14 +632,28 @@ def run_night(args, clock=None, launch=None):
                 skipped.add(board)
         # Before the cut-off the night watches the fleet even with no lane running; after it, only its lanes.
         while (clock.now() < cutoff
-               or any(id(process) not in hung and process.poll() is None for process, *_ in processes)):
+               or any(id(process) not in hung and board not in late and process.poll() is None
+                      for process, _, _, board in processes)):
             clock.sleep(RESCAN_SECONDS)
+            stopping = []
             for process, started, estimate, board in processes:
-                if id(process) not in hung and process.poll() is None and (clock.now() - started).total_seconds() >= LANE_HANG_FACTOR * max(estimate, FIRST_STEP_SECONDS):
+                if id(process) in hung or board in late or process.poll() is not None:
+                    continue
+                if (clock.now() - started).total_seconds() >= LANE_HANG_FACTOR * max(estimate, FIRST_STEP_SECONDS):
                     print(f"LANE_HANG_FACTOR expired for board {board}", file=sys.stderr)
-                    stop(process, board, REMOTE_STOP_SECONDS)
                     hung.add(id(process))
                     failed = down = True
+                elif deadline and clock.now() >= deadline:
+                    # The board is the day's from the deadline: a lane whose step overran its pace is cut there.
+                    print(f"::warning::lane {board} still running at the deadline {deadline.isoformat()}; stopped",
+                          file=sys.stderr)
+                    late.add(board)
+                    failed = True
+                else:
+                    continue
+                stopping.append((process, board))
+            if stopping:
+                stop(stopping, REMOTE_STOP_SECONDS)
             if clock.now() >= cutoff:
                 continue
             try:
@@ -657,10 +698,9 @@ def run_night(args, clock=None, launch=None):
             while pending:
                 try:
                     if interrupted:
-                        for process, _, _, board in processes:
-                            if process in pending and process.poll() is None:
-                                # A cancelled job has seconds: the remote board is freed, its data may not return.
-                                stop(process, board, 0)
+                        # A cancelled job has seconds: the remote board is freed, its data may not return.
+                        stop([(process, board) for process, _, _, board in processes
+                              if process in pending and process.poll() is None], 0)
                     if pending[0].wait():
                         failed = True
                     close_process_tree(pending.pop(0))
@@ -682,11 +722,14 @@ def run_night(args, clock=None, launch=None):
         failed = down = True
     if planned["lanes"]:
         key = datetime.fromisoformat(planned["started"]).strftime(MARKER_KEY_FORMAT)
-        down |= not all(night_ran(read_night(args.data, board, key)) for board in planned["lanes"])
+        # A lane cut at the deadline is judged as one that stopped there itself; a lane stopped here
+        # without unwinding saved no end.
+        manifests = {board: read_night(args.data, board, key) for board in planned["lanes"]}
+        down |= not all(night_ran(dict(manifest, stop_reason="deadline", ended=manifest.get("ended") or deadline.isoformat())
+                                  if board in late and manifest else manifest)
+                        for board, manifest in manifests.items())
     # For the board outage alarm: a night whose lanes all ran is no outage, whatever their tests reported.
-    if os.environ.get("GITHUB_OUTPUT"):
-        with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
-            output.write(f"boards_ran={str(not down).lower()}\n")
+    output({"boards_ran": not down})
     return int(failed)
 
 
@@ -697,9 +740,7 @@ def plan(args, clock=None, request=None):
         wait_idle(lambda: gpu_pending(request=request), clock, idle_polls=2)
     else:
         print(GPU_NOT_ON_HOST, file=sys.stderr)
-        if os.environ.get("GITHUB_STEP_SUMMARY"):
-            with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
-                summary.write(GPU_NOT_ON_HOST + "\n")
+        summarize(GPU_NOT_ON_HOST)
     now = clock.now()
     discovered = not args.boards
     # A discovered night takes boards as they free until BOARD_LAST_START; named boards are the whole night.
@@ -770,7 +811,7 @@ def timeline(args):
         if record is None:
             lanes.append(f"{board}: no night manifest\n\n")
             continue
-        failures = lane_failures(record)
+        failures = lane_failures(record, planned.get("deadline"))
         steps.append(dict(name="board " + board, started=record["started"], ended=record["ended"],
                           outcome="failed" if failures else "passed" if record["ended"] else "running"))
         counts = Counter(step["outcome"] for step in record["steps"])
@@ -860,6 +901,7 @@ def main():
         parser.error("lane differs from the shared plan")
     args.previous = lane["previous"]
     args.night, args.started = (planned[key] for key in ("night", "started"))
+    args.deadline = planned.get("deadline")
     steps = [Step(**step) for step in lane["steps"]]
     if args.from_sha is not None or args.max_steps is not None:
         steps = rerange(args.repo, planned["tip"], steps, args.from_sha, args.max_steps)
@@ -868,7 +910,7 @@ def main():
     with terminate_unwinds():
         results = run_chain(steps, args)
     manifest = read_last_night(args.data, short_id(args.board))
-    failures = lane_failures(manifest)
+    failures = lane_failures(manifest, planned.get("deadline"))
     for line in failures:
         print(f"::error::lane {short_id(args.board)}: {line}", file=sys.stderr)
     return int(bool(failures))

@@ -32,10 +32,8 @@
 #include "apps/sand/sand_palette256.h"
 #include "core/memory.h"
 #include "core/timing.h"
+#include "frame/test_frame.h"
 #include "gfx/gfx.h"
-#include "gfx/present/gfx_debug.h"
-#include "gfx/present/gfx_mode.h"
-#include "gfx/present/gfx_present.h"
 
 static const char* const TAG = "device_tests";
 
@@ -353,8 +351,8 @@ measure_mode_frame(sand_t* sim, uint8_t* grid, int i, const colour_scene_t* scen
     }
     const int64_t t1 = timing_now_us();
 
-    gfx_present_begin();
-    gfx_present_wait();
+    test_present_begin();
+    test_present_wait();
     const int64_t t2 = timing_now_us();
 
     *draw_total += t1 - t0;
@@ -366,7 +364,7 @@ measure_mode_frame(sand_t* sim, uint8_t* grid, int i, const colour_scene_t* scen
 static void
 measure_mode(const colour_scene_t* scene, colour_mode_t mode, gfx_dither_mode_t dither_mode, mode_result_t* out) {
     uint8_t* grid = malloc((size_t)CM_GRID_W * CM_GRID_H);
-    prev_grid = memory_alloc((size_t)CM_GRID_W * CM_GRID_H, MEMORY_PSRAM);
+    prev_grid = memory_alloc((size_t)CM_GRID_W * CM_GRID_H, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(grid);
     TEST_ASSERT_NOT_NULL(prev_grid);
     prev_grid_valid = false;
@@ -387,7 +385,7 @@ measure_mode(const colour_scene_t* scene, colour_mode_t mode, gfx_dither_mode_t 
                                           &cell_table);
     }
 
-    gfx_reset_strip_send_counts();
+    test_send_stats_reset();
     int64_t draw_total = 0;
     int64_t present_total = 0;
     int64_t cells_marked_total = 0;
@@ -399,7 +397,7 @@ measure_mode(const colour_scene_t* scene, colour_mode_t mode, gfx_dither_mode_t 
 
     out->draw_us = draw_total / CM_MEASURED_FRAMES;
     out->present_us = present_total / CM_MEASURED_FRAMES;
-    out->bytes_per_frame = gfx_get_bytes_sent() / CM_MEASURED_FRAMES;
+    out->bytes_per_frame = test_send_stats().bytes / CM_MEASURED_FRAMES;
     out->cells_marked_per_frame = cells_marked_total / CM_MEASURED_FRAMES;
 
     if (indexed) {

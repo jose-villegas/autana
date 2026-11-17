@@ -9,6 +9,7 @@
 #include "gfx/gfx.h"
 #include "scene/scene_internal.h"
 #include "suites.h"
+#include "test_alloc.h"
 #include "testkit/cleanup.h"
 #include "ui/ui.h"
 #include "ui_probe.h"
@@ -43,7 +44,7 @@ release_fixture(void) {
 
 static clip_fixture_t*
 fixture(void) {
-    clip_fixture_t* f = memory_alloc(sizeof *f, MEMORY_PSRAM);
+    clip_fixture_t* f = memory_alloc(sizeof *f, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(f);
     shown = f;
     suite_set_test_cleanup(release_fixture);
@@ -212,6 +213,7 @@ test_picker_init_takes_items_from_the_arena(void) {
     }
     TEST_ASSERT_GREATER_OR_EQUAL_size_t(f->arena_mark + (TEST_CLIP_COUNT * sizeof *f->choice.items), app_arena_mark());
     TEST_ASSERT_EQUAL_size_t(psram_before, memory_free_bytes(MEMORY_PSRAM));
+    TEST_ASSERT_TRUE(app_heap_contains(f->choice.items));
     render_lab_clips_destroy(&f->choice);
     TEST_ASSERT_NULL(f->choice.items);
     TEST_ASSERT_EQUAL_INT(0, f->choice.count);
@@ -222,7 +224,7 @@ static void
 test_picker_init_reports_allocation_failure(void) {
     clip_fixture_t* f = fixture();
     ui_probe_widgets_start();
-    TEST_ASSERT_NOT_NULL(app_arena_take(APP_ARENA_BYTES - app_arena_mark(), 1)); /* the arena full */
+    test_arena_fill();
     TEST_ASSERT_FALSE(render_lab_clips_init(&f->choice, &f->scene, 0, "gallop"));
     TEST_ASSERT_EQUAL_INT(1, f->animator.layer.current.clip);
     request(f, "clips");
@@ -339,7 +341,7 @@ test_menu_dropdown_plays_with_selected_blend(void) {
     TEST_ASSERT_TRUE(render_lab_clips_init(&f->choice, &f->scene, 0, "idle"));
     const char* const* items = f->choice.items;
     ui_probe_widgets_start();
-    const size_t free_before = memory_free_bytes(MEMORY_PSRAM);
+    const size_t free_before = memory_free_bytes(MEMORY_APP);
     ui_init();
     menu_frame(NULL);
     menu_frame(NULL);
@@ -353,7 +355,7 @@ test_menu_dropdown_plays_with_selected_blend(void) {
     TEST_ASSERT_EQUAL_INT(1, f->animator.layer.current.clip);
     TEST_ASSERT_EQUAL_INT(TEST_BLEND_MS, f->animator.layer.blend_ms);
     TEST_ASSERT_EQUAL_PTR(items, f->choice.items);
-    TEST_ASSERT_EQUAL(free_before, memory_free_bytes(MEMORY_PSRAM));
+    TEST_ASSERT_EQUAL(free_before, memory_free_bytes(MEMORY_APP));
 }
 
 static void

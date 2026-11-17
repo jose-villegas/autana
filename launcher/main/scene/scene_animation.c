@@ -23,7 +23,7 @@ targets_for(scene_t* scene, scene_entity_t owner) {
     const size_t targets = scene_storage_carve(&end, sizeof(anim_target_t) * (size_t)entities, alignof(anim_target_t));
     const size_t components =
         scene_storage_carve(&end, sizeof(anim_component_ref_t) * (size_t)entities * 2, alignof(anim_component_ref_t));
-    uint8_t* block = memory_alloc(end, MEMORY_PSRAM);
+    uint8_t* block = memory_alloc(end, MEMORY_APP);
     targets_t out = {.block = block, .count = entities};
     if (block == NULL) {
         return out;

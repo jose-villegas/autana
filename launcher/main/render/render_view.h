@@ -67,3 +67,7 @@ void render_view_set_shift(render_view_t* view, vec2f_t shift);
 
 /* Reprojects a retained pose through this picture's shape and turn. */
 void render_view_refit(render_view_t* view, viewport_t viewport);
+
+/* The pose `view` was made from, render_view_make()'s inverse to rounding:
+ * unit scale, whatever scale the pose had. */
+transformf_t render_view_pose(const render_view_t* view);

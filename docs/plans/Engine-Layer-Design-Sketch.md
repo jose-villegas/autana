@@ -108,10 +108,9 @@ Every item in this section is approved.
 
 | Include in an app | Call | Moves to |
 |---|---|---|
-| `gfx/present/gfx_present.h` | `gfx_invalidate()`, `gfx_set_clear_on_send()` in a bench app | `gfx_request_full_redraw()` and the mode request on `gfx/gfx.h`; an app that runs in one mode declares it on `app_t` and the shell enters it `[M]` |
 | `gfx/present/gfx_present.h` | `gfx_present_begin()`, `gfx_present_wait()` in bench scenes | the scene system, which already overlaps the present |
 | `gfx/present/gfx_debug.h` | `gfx_debug_overlay()` in diagnostics | system band, with diagnostics (below) |
-| `input/motion/imu.h` | `imu_init()`, `imu_read()`, `imu_gravity_screen()` | `input_start()` (the shell's) and `input_read_motion()` (done in S1); diagnostics' raw reads go to the system band with it |
+| `input/motion/imu.h` | `imu_init()`, `imu_read()`, `imu_gravity_screen()` | `input_start()` (the shell's) and `input_read_motion()` (done in S1) |
 | `scene/scene_shell.h` ("Apps never include this") in a host tool | `scene_shell_render()`, `scene_shell_compose()` | one public host-frame call on the scene's face |
 | `render/r3d_pipeline.h` in perf suites | `r3d_pipeline_*` | render's own tests |
 | `selftest/*` in diagnostics | self-test results | diagnostics becomes a system app under `shell/apps/` `[M]` |
