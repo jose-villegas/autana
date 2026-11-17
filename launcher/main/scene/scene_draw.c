@@ -252,6 +252,15 @@ contact_blob_bounds(box3f_t mover, float ground_y) {
     return (box3f_t){vec3f_sub(ground, extent), vec3f_add(ground, extent)};
 }
 
+static box3f_t
+changed_bounds(const scene_renderer_t* r) {
+    box3f_t bounds = box3f_union(r->drawn_bounds, r->world_bounds);
+    if (r->contact_blob_strength > 0.0F) {
+        bounds = box3f_union(bounds, contact_blob_bounds(bounds, r->contact_blob_ground_y));
+    }
+    return bounds;
+}
+
 /* `scene`'s part of fill_changed(): its changed renderers' boxes into
  * `changed` from `changes` on (-1 once more than fit), each drawn renderer
  * hashed into `*set` with its root slot. Returns the new `changes`. */
@@ -269,11 +278,7 @@ fill_scene_changed(scene_t* scene, int changes, name_hash64_t* set) {
         if (r->changed && changes >= 0) {
             changes = changes < RENDER_PARTIAL_CHANGES_MAX ? changes : -1;
             if (changes >= 0) {
-                box3f_t bounds = box3f_union(r->drawn_bounds, r->world_bounds);
-                if (r->contact_blob_strength > 0.0F) {
-                    bounds = box3f_union(bounds, contact_blob_bounds(bounds, r->contact_blob_ground_y));
-                }
-                changed[changes++] = bounds;
+                changed[changes++] = changed_bounds(r);
             }
         }
         r->changed = false;
