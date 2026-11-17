@@ -16,11 +16,6 @@ typedef struct {
     float radius_squared[BAYER4_LEVELS];
 } blob_plane_t;
 
-static const float bayer_radius[] = {0.0F,         0.25F,        0.353553391F, 0.433012702F, 0.5F,         0.559016994F,
-                                     0.612372436F, 0.661437828F, 0.707106781F, 0.75F,        0.790569415F, 0.829156198F,
-                                     0.866025404F, 0.901387819F, 0.935414347F, 0.968245837F};
-_Static_assert(sizeof bayer_radius / sizeof bayer_radius[0] == BAYER4_LEVELS, "one radius per Bayer level");
-
 enum { CONTACT_BLOB_CORNERS = 4, CONTACT_BLOB_CLIPPED_CORNERS = CONTACT_BLOB_CORNERS + 2 };
 
 typedef struct {
@@ -150,7 +145,7 @@ contact_blob_draw(const r3d_span_target_t* target, const r3d_lens_t* lens, vec3f
     const float inverse_strength_root = 1.0F / sqrtf(fminf(strength, 1.0F));
     /* Inverting the squared falloff keeps the Bayer decision homogeneous, with no pixel reciprocal. */
     for (unsigned i = 0; i < BAYER4_LEVELS; i++) {
-        blob.radius_squared[i] = 1.0F - bayer_radius[i] * inverse_strength_root;
+        blob.radius_squared[i] = 1.0F - sqrtf((float)i / BAYER4_LEVELS) * inverse_strength_root;
     }
     for (int y = bounds.box.y; y < recti_bottom(bounds.box); y++) {
         draw_bounded_row(target, lens, &blob, &bounds, y);
