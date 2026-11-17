@@ -813,25 +813,6 @@ test_laps_are_per_core_and_per_frame_and_survive_a_counter_wrap(void) {
 }
 
 static void
-test_forgetting_the_window_drops_its_laps_but_not_the_running_lap(void) {
-    laps_fixture_t* const laps = laps_fixture();
-    frame_laps_core_t* const cores = laps->cores;
-    frame_laps_switch(&cores[0], 0, 1);
-    frame_laps_switch(&cores[0], 4000, 2); /* a scene load's laps, before the take */
-    frame_laps_switch(&cores[1], 0, 1);
-    frame_laps_switch(&cores[1], 3000, 0);
-    frame_laps_forget(cores, FRAME_LAPS_CORES);
-    TEST_ASSERT_EQUAL_INT(0, laps_report(laps, 1));
-    TEST_ASSERT_EQUAL_UINT8(2, cores[0].running);
-
-    frame_laps_switch(&cores[0], 5000, 1); /* the running lap, its start and its cycles since, still count */
-    frame_laps_switch(&cores[0], 6000, 0); /* a lap that ran before: only its starts since */
-    laps_report(laps, 1);
-    TEST_ASSERT_EQUAL_STRING("lap 3000 ns | cpu0 set_up 1.000/1 fill 1.000/1", laps->line);
-    free(laps);
-}
-
-static void
 test_a_lap_report_forgets_the_window_but_not_the_running_lap(void) {
     laps_fixture_t* const laps = laps_fixture();
     frame_laps_core_t* const cores = laps->cores;
@@ -840,9 +821,10 @@ test_a_lap_report_forgets_the_window_but_not_the_running_lap(void) {
     laps_report(laps, 1);
     TEST_ASSERT_EQUAL_STRING("lap 3000 ns | cpu0 set_up 1.000/1", laps->line);
 
-    frame_laps_switch(&cores[0], 1500, 0);
+    frame_laps_switch(&cores[0], 1500, 1); /* the running lap, its start and its cycles since, still count */
+    frame_laps_switch(&cores[0], 2000, 0); /* a lap that ran before: only its starts since */
     laps_report(laps, 1);
-    TEST_ASSERT_EQUAL_STRING("lap 3000 ns | cpu0 fill 0.500/1", laps->line);
+    TEST_ASSERT_EQUAL_STRING("lap 3000 ns | cpu0 set_up 0.500/1 fill 0.500/1", laps->line);
     TEST_ASSERT_EQUAL_INT(0, laps_report(laps, 1));
     free(laps);
 }
@@ -915,7 +897,6 @@ suite_frame_cost(void) {
     RUN_TEST(test_a_lap_report_counts_the_call_sites_a_full_table_dropped);
     RUN_TEST(test_a_wait_is_charged_from_the_last_boundary_with_no_lap_running);
     RUN_TEST(test_laps_are_per_core_and_per_frame_and_survive_a_counter_wrap);
-    RUN_TEST(test_forgetting_the_window_drops_its_laps_but_not_the_running_lap);
     RUN_TEST(test_a_lap_report_forgets_the_window_but_not_the_running_lap);
 }
 
