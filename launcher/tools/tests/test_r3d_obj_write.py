@@ -15,6 +15,12 @@ from r3d.obj import load_obj, write_obj  # noqa: E402
 
 POSITIONS = [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0, 1.0, 0.0), (0.0, 1.0, 0.0)]
 UVS = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
+# Uvs a texel apart on a large texture, differing only past the third decimal.
+FINE_UVS = [(0.12345, 0.54321), (0.12351, 0.54329), (0.12399, 0.54377), (0.5, 0.5)]
+# write_obj's default uv precision, and the coarser and finer settings the tests give it.
+DEFAULT_UV_DECIMALS = 5
+COARSE_UV_DECIMALS = 2
+FINER_UV_DECIMALS = 4
 
 
 class WriteObj(unittest.TestCase):
@@ -47,6 +53,36 @@ class WriteObj(unittest.TestCase):
         _, uvs, _, _, _, _, _, objects = load_obj(self.path)
         self.assertEqual(0, len(uvs))
         self.assertEqual(["quad"], objects)  # no o line: the file's own name
+
+
+    def test_a_group_without_an_object_closes_the_object_before_it(self):
+        """None writes no o line, so its faces stay in the file's current object; the next named group opens its
+        object again, the same name or not."""
+        groups = [("left", "stone", [(0, 1, 2)]), (None, "wood", [(0, 2, 3)]), ("left", "stone", [(3, 2, 1)])]
+        write_obj(self.path, "quad.mtl", POSITIONS, groups)
+        text = self.path.read_text(encoding="utf-8")
+        self.assertEqual(["o left", "o left"], [line for line in text.splitlines() if line.startswith("o ")])
+        self.assertLess(text.index("usemtl wood"), text.rindex("o left"))
+        _, _, tri_v, _, _, _, tri_o, objects = load_obj(self.path)
+        self.assertEqual(["left", "left"], objects)
+        self.assertEqual([0, 0, 1], tri_o.tolist())  # the unnamed group's triangle belongs to the first
+        self.assertEqual([[0, 1, 2], [0, 2, 3], [3, 2, 1]], tri_v.tolist())
+
+    def test_uvs_that_differ_below_three_decimals_read_back_distinct(self):
+        write_obj(self.path, "quad.mtl", POSITIONS, [(None, "stone", [(0, 1, 2)])], uvs=FINE_UVS)
+        uvs = load_obj(self.path)[1]
+        np.testing.assert_allclose(uvs, FINE_UVS, atol=0.5 * 10.0 ** -DEFAULT_UV_DECIMALS)
+        self.assertEqual(len(FINE_UVS), len({tuple(uv) for uv in uvs.tolist()}))
+
+    def test_uv_decimals_sets_how_many_decimals_a_uv_is_written_with(self):
+        for decimals in (COARSE_UV_DECIMALS, FINER_UV_DECIMALS):
+            with self.subTest(decimals=decimals):
+                write_obj(self.path, "quad.mtl", POSITIONS, [(None, "stone", [(0, 1, 2)])], uvs=FINE_UVS,
+                          uv_decimals=decimals)
+                lines = [line for line in self.path.read_text(encoding="utf-8").splitlines() if line.startswith("vt ")]
+                u, v = FINE_UVS[0]
+                self.assertEqual(f"vt {u:.{decimals}f} {v:.{decimals}f}", lines[0])
+                self.assertEqual(len(FINE_UVS), len(lines))
 
 
 if __name__ == "__main__":
