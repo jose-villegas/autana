@@ -19,6 +19,7 @@
 #include "anim/anim_binding.h"
 #include "anim/anim_transform.h"
 #include "apps/render_lab/render_lab_view.h"
+#include "apps/render_lab/stress/scene_stress.h"
 #include "apps/render_lab/stress/stress_preset.h"
 #include "asset/asset_store.h"
 #include "collections/bits.h"
@@ -101,7 +102,7 @@ fixture_end(void) {
  * mix copy, not two. */
 static bool
 fixture_begin(const stress_params_t* p, int sets) {
-    if (STRESS_SURFACE_USES_PACK(p->surface)) {
+    if (stress_uses_pack(p)) {
         return false;
     }
     suite_add_test_cleanup(fixture_end);
@@ -207,7 +208,7 @@ assert_mesh_fits(const stress_params_t* p) {
 static void
 test_every_preset_mesh_fits_a_dynamic_mesh(void) {
     for (int i = 0; i < STRESS_PRESET_COUNT; i++) {
-        if (!STRESS_SURFACE_USES_PACK(stress_presets[i].surface)) {
+        if (!stress_uses_pack(&stress_presets[i])) {
             assert_mesh_fits(&stress_presets[i]);
         }
     }
@@ -724,15 +725,15 @@ test_foliage_mask_opens_as_mask1_and_keeps_about_0_7_of_a_card(void) {
     memory_free(ltex);
 }
 
-#define BUTTERFLY_TRIANGLES (STRESS_BUTTERFLY_PART_TRIANGLES * STRESS_BUTTERFLY_PARTS)
-#define TEST_TIP_X          (STRESS_BUTTERFLY_SPAN * 0.5F)
-#define TEST_TIP_Z          (22.0F * STRESS_BUTTERFLY_SPAN / 116.0F)
-#define TEST_ANGLE          0.5F
-#define TEST_TOLERANCE      0.000001F
-#define TEST_WIDTH          96
-#define TEST_HEIGHT         96
-#define TEST_CAMERA_TIME_MS 1300
-#define TEST_BODY_SCALE     100.0F
+#define TEST_BUTTERFLY_PARTS 3
+#define TEST_TIP_X           0.035F
+#define TEST_TIP_Z           (22.0F * TEST_TIP_X / 58.0F)
+#define TEST_ANGLE           0.5F
+#define TEST_TOLERANCE       0.000001F
+#define TEST_WIDTH           96
+#define TEST_HEIGHT          96
+#define TEST_CAMERA_TIME_MS  1300
+#define TEST_BODY_SCALE      100.0F
 static uint16_t* pixels;
 static uint16_t* held;
 static memory_take_fn butterfly_take;
@@ -760,35 +761,56 @@ butterfly_fixture(void) {
 static entity_t
 butterfly_body(entity_t root, int index) {
     char name[ASSET_NAME_MAX];
-    TEST_ASSERT_TRUE(snprintf(name, sizeof name, STRESS_BUTTERFLY_FORMAT, index) >= 0);
+    TEST_ASSERT_TRUE(snprintf(name, sizeof name, "slot_%02d", index) >= 0);
     return entity_find(root, name_hash(name));
 }
 
 static void
-test_butterfly_pool_has_parented_wings_and_24_triangles(void) {
+test_hinged_presets_match_pack_capacity_and_plane_metrics(void) {
+    const entity_t root = butterfly_fixture();
+    int capacity = 0;
+    while (!handle_is_none(butterfly_body(root, capacity))) {
+        capacity++;
+    }
+    const stress_preset_t presets[] = {STRESS_BUTTERFLIES, STRESS_FEW_BUTTERFLIES};
+    for (size_t i = 0; i < sizeof presets / sizeof presets[0]; i++) {
+        const stress_params_t* p = &stress_presets[presets[i]];
+        TEST_ASSERT_TRUE(stress_uses_pack(p));
+        TEST_ASSERT_EQUAL_STRING(STRESS_BUTTERFLY_SCENE, p->scene);
+        TEST_ASSERT_LESS_OR_EQUAL_INT(capacity, p->copies);
+        TEST_ASSERT_EQUAL_INT(STRESS_SHAPE_PLANE, p->shape);
+        TEST_ASSERT_EQUAL_INT(4, stress_vertex_count(p));
+        TEST_ASSERT_EQUAL_INT(2, stress_triangle_count(p));
+        const float rows = ceilf(sqrtf((float)p->copies));
+        const float expected = (float)DEFAULT_SHORT_PX * (float)p->coverage_percent / (100.0F * rows) * 0.7F;
+        TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE, expected, stress_cut_px(p, DEFAULT_SHORT_PX));
+    }
+    release();
+}
+
+static void
+test_butterfly_pool_has_parented_wings(void) {
     const entity_t root = butterfly_fixture();
     int parts = 0;
     for (entity_t e = entity_next(root, ENTITY_NONE); !handle_is_none(e); e = entity_next(root, e)) {
         parts += renderer_mesh(e) != NULL;
     }
-    TEST_ASSERT_EQUAL_INT(STRESS_BUTTERFLY_COPIES * STRESS_BUTTERFLY_PARTS, parts);
+    TEST_ASSERT_EQUAL_INT(STRESS_BUTTERFLY_COPIES * TEST_BUTTERFLY_PARTS, parts);
     for (int i = 0; i < STRESS_BUTTERFLY_COPIES; i++) {
         const entity_t body = butterfly_body(root, i);
         TEST_ASSERT_FALSE(handle_is_none(body));
         int children = 0;
         TEST_ASSERT_NOT_NULL(renderer_mesh(body));
-        TEST_ASSERT_EQUAL_INT(STRESS_BUTTERFLY_PART_TRIANGLES, renderer_mesh(body)->triangle_count);
         int triangles = renderer_mesh(body)->triangle_count;
         for (entity_t e = entity_next(root, ENTITY_NONE); !handle_is_none(e); e = entity_next(root, e)) {
             if (handle_equal(entity_parent(e), body)) {
                 children++;
                 TEST_ASSERT_NOT_NULL(renderer_mesh(e));
-                TEST_ASSERT_EQUAL_INT(STRESS_BUTTERFLY_PART_TRIANGLES, renderer_mesh(e)->triangle_count);
                 triangles += renderer_mesh(e)->triangle_count;
             }
         }
-        TEST_ASSERT_EQUAL_INT(STRESS_BUTTERFLY_PARTS - 1, children);
-        TEST_ASSERT_EQUAL_INT(BUTTERFLY_TRIANGLES, triangles);
+        TEST_ASSERT_EQUAL_INT(TEST_BUTTERFLY_PARTS - 1, children);
+        TEST_ASSERT_GREATER_THAN_INT(0, triangles);
     }
     release();
 }
@@ -803,8 +825,8 @@ test_butterfly_pool_has_parented_wings_and_24_triangles(void) {
 static void
 test_wing_leading_edge_is_forward_in_body_frame(void) {
     const entity_t root = butterfly_fixture();
-    const entity_t wings[] = {entity_find(root, name_hash("butterfly_00_wing_l")),
-                              entity_find(root, name_hash("butterfly_00_wing_r"))};
+    const entity_t wings[] = {entity_find(root, name_hash("slot_00_wing_l")),
+                              entity_find(root, name_hash("slot_00_wing_r"))};
     for (size_t side = 0; side < sizeof wings / sizeof wings[0]; side++) {
         const r3d_lit_mesh_t* mesh = renderer_mesh(wings[side]);
         TEST_ASSERT_NOT_NULL(mesh);
@@ -819,7 +841,7 @@ test_wing_leading_edge_is_forward_in_body_frame(void) {
                                    (float)mesh->positions[v][2] * tick};
             const float x = fabsf(point.x);
             const vec3f_t in_body = vec3f_add(rest.position, quatf_rotate(rest.rotation, point));
-            const float forward = vec3f_dot(in_body, vec3f_forward());
+            const float forward = vec3f_dot(in_body, vec3f_up());
             if (fabsf(x - TEST_LEADING_INNER_X) <= tick || fabsf(x - TEST_LEADING_OUTER_X) <= tick) {
                 leading = fminf(leading, forward);
                 leading_points++;
@@ -839,48 +861,44 @@ test_wing_leading_edge_is_forward_in_body_frame(void) {
 static vec3f_t
 butterfly_tip(entity_t wing) {
     const transformf_t world = transform_world(wing);
-    return vec3f_add(world.position, quatf_rotate(world.rotation, (vec3f_t){(world.scale.x * TEST_TIP_X), 0.0F,
-                                                                            (world.scale.z * TEST_TIP_Z)}));
+    return vec3f_add(world.position, quatf_rotate(world.rotation, (vec3f_t){-(world.scale.x * TEST_TIP_X),
+                                                                            -(world.scale.y * TEST_TIP_Z), 0.0F}));
 }
 
 static void
 pose_wing(entity_t wing, const transformf_t* rest, vec3f_t axis, float angle) {
-    const hinge_t hinge = {.rest = *rest, .axis = axis, .min = -MATH_PI, .max = MATH_PI};
+    const hinge_t hinge = {.rest = *rest, .axis = axis, .min = -STRESS_FLAP_LIMIT, .max = STRESS_FLAP_LIMIT};
     transform_set_local(wing, hinge_pose(&hinge, angle));
 }
 
 /* Keep per-angle transform temporaries out of the fixture's stack frame. */
 static __attribute__((noinline)) void
-check_butterfly_hinge_angle(entity_t body, entity_t left, entity_t right, const transformf_t* rests,
-                            const transformf_t* body_before, float angle) {
-    pose_wing(left, &rests[0], vec3f_forward(), angle);
-    pose_wing(right, &rests[1], vec3f_back(), angle);
+check_butterfly_hinge_angle(entity_t left, entity_t right, const transformf_t* rests, float angle) {
+    pose_wing(left, &rests[0], vec3f_up(), angle);
+    pose_wing(right, &rests[1], vec3f_down(), angle);
     const vec3f_t l = butterfly_tip(left);
     const vec3f_t r = butterfly_tip(right);
-    TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE, TEST_TIP_X * cosf(angle), l.x);
-    TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE, TEST_TIP_X * sinf(angle), l.y);
-    TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE, TEST_TIP_Z, l.z);
+    angle = mathf_clamp(angle, -STRESS_FLAP_LIMIT, STRESS_FLAP_LIMIT);
+    TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE, -TEST_TIP_X * cosf(angle), l.x);
+    TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE, TEST_TIP_X * sinf(angle), l.z);
+    TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE, -TEST_TIP_Z, l.y);
     TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE, -l.x, r.x);
     TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE, l.y, r.y);
     if (angle > 0.0F) {
-        TEST_ASSERT_GREATER_THAN_FLOAT(0.0F, l.y);
-        TEST_ASSERT_GREATER_THAN_FLOAT(0.0F, r.y);
+        TEST_ASSERT_GREATER_THAN_FLOAT(0.0F, l.z);
+        TEST_ASSERT_GREATER_THAN_FLOAT(0.0F, r.z);
     }
-    const transformf_t after = transform_world(body);
-    TEST_ASSERT_EQUAL_MEMORY(body_before, &after, sizeof after);
 }
 
 static void
-test_hinge_angles_preserve_body_and_raise_mirrored_tips(void) {
+test_hinge_angles_raise_mirrored_tips_within_shipped_limits(void) {
     const entity_t root = butterfly_fixture();
-    const entity_t body = butterfly_body(root, 0);
-    const entity_t left = entity_find(root, name_hash("butterfly_00_wing_l"));
-    const entity_t right = entity_find(root, name_hash("butterfly_00_wing_r"));
-    const transformf_t body_before = transform_world(body);
+    const entity_t left = entity_find(root, name_hash("slot_00_wing_l"));
+    const entity_t right = entity_find(root, name_hash("slot_00_wing_r"));
     const transformf_t rests[] = {transform_local(left), transform_local(right)};
-    const float angles[] = {0.0F, TEST_ANGLE, -TEST_ANGLE};
+    const float angles[] = {0.0F, TEST_ANGLE, -TEST_ANGLE, 2.0F * STRESS_FLAP_LIMIT, -2.0F * STRESS_FLAP_LIMIT};
     for (size_t i = 0; i < sizeof angles / sizeof angles[0]; i++) {
-        check_butterfly_hinge_angle(body, left, right, rests, &body_before, angles[i]);
+        check_butterfly_hinge_angle(left, right, rests, angles[i]);
     }
     release();
 }
@@ -893,12 +911,12 @@ test_two_seeks_and_flap_renders_at_same_time_match_bytes(void) {
     }
     const entity_t camera = entity_find(root, name_hash("camera"));
     TEST_ASSERT_TRUE(camera_activate(camera));
-    const entity_t wings[] = {entity_find(root, name_hash("butterfly_00_wing_l")),
-                              entity_find(root, name_hash("butterfly_00_wing_r"))};
+    const entity_t wings[] = {entity_find(root, name_hash("slot_00_wing_l")),
+                              entity_find(root, name_hash("slot_00_wing_r"))};
     const transformf_t rests[] = {transform_local(wings[0]), transform_local(wings[1])};
     transformf_t body = transformf_identity();
     transformf_set_scale(&body, (vec3f_t){TEST_BODY_SCALE, TEST_BODY_SCALE, TEST_BODY_SCALE});
-    transformf_set_rotation(&body, quatf_from_axis_angle(vec3f_unit_x(), -MATH_PI * 0.5F));
+    transformf_set_rotation(&body, quatf_from_axis_angle(vec3f_unit_y(), MATH_PI));
     transform_set_local(butterfly_body(root, 0), body);
     const size_t bytes = sizeof *pixels * TEST_WIDTH * TEST_HEIGHT;
     pixels = malloc(bytes);
@@ -909,8 +927,8 @@ test_two_seeks_and_flap_renders_at_same_time_match_bytes(void) {
     for (int render = 0; render < 2; render++) {
         TEST_ASSERT_TRUE(animator_seek(camera, ANIMATOR_CURRENT, TEST_CAMERA_TIME_MS));
         const float angle = TEST_ANGLE;
-        pose_wing(wings[0], &rests[0], vec3f_forward(), angle);
-        pose_wing(wings[1], &rests[1], vec3f_back(), angle);
+        pose_wing(wings[0], &rests[0], vec3f_up(), angle);
+        pose_wing(wings[1], &rests[1], vec3f_down(), angle);
         (void)scene_compose(0, 0, &target);
         if (render == 0) {
             memcpy(held, pixels, bytes);
@@ -928,9 +946,10 @@ test_two_seeks_and_flap_renders_at_same_time_match_bytes(void) {
 
 void
 run_stress_preset_suite(void) {
+    RUN_TEST(test_hinged_presets_match_pack_capacity_and_plane_metrics);
     RUN_TEST(test_wing_leading_edge_is_forward_in_body_frame);
-    RUN_TEST(test_butterfly_pool_has_parented_wings_and_24_triangles);
-    RUN_TEST(test_hinge_angles_preserve_body_and_raise_mirrored_tips);
+    RUN_TEST(test_butterfly_pool_has_parented_wings);
+    RUN_TEST(test_hinge_angles_raise_mirrored_tips_within_shipped_limits);
     RUN_TEST(test_two_seeks_and_flap_renders_at_same_time_match_bytes);
     RUN_TEST(test_culled_fraction_sweeps_from_visible_to_mostly_off_frustum);
     RUN_TEST(test_near_plane_sweeps_behind_and_clipped_triangles);

@@ -25,18 +25,11 @@
 #include "scene/transform/transform.h"
 #include "ui/ui.h"
 
-#define STRESS_FLAP_HZ            4.0F
-#define STRESS_FLAP_AMPLITUDE     (55.0F * MATH_PI / 180.0F)
-#define STRESS_FLAP_BIAS          (10.0F * MATH_PI / 180.0F)
-#define STRESS_FLAP_PHASE_STEP    (MATH_PI * 0.618034F)
-#define STRESS_FLAP_MS_PER_SECOND 1000.0F
-
-#define STRESS_FLAP_LIMIT         (STRESS_FLAP_AMPLITUDE + STRESS_FLAP_BIAS)
-
 static const char* TAG = "stress";
 
 /* Copies are named consecutively from zero. */
 #define STRESS_SLOT_FORMAT "slot_%02d"
+#define STRESS_WING_FORMAT STRESS_SLOT_FORMAT "_wing_%c"
 
 static const stress_params_t* shown;
 static entity_t loaded;
@@ -68,7 +61,7 @@ static bool
 find_wings(int copy) {
     for (int side = 0; side < STRESS_WING_SIDES; side++) {
         char name[ASSET_NAME_MAX];
-        if (snprintf(name, sizeof name, STRESS_BUTTERFLY_WING_FORMAT, copy, wing_suffix[side]) < 0) {
+        if (snprintf(name, sizeof name, STRESS_WING_FORMAT, copy, wing_suffix[side]) < 0) {
             return false;
         }
         const int at = (copy * STRESS_WING_SIDES) + side;
@@ -77,7 +70,7 @@ find_wings(int copy) {
             return false;
         }
         wing_hinges[at] = (hinge_t){.rest = transform_local(wings[at]),
-                                    .axis = side == 0 ? vec3f_forward() : vec3f_back(),
+                                    .axis = side == 0 ? vec3f_up() : vec3f_down(),
                                     .min = -STRESS_FLAP_LIMIT,
                                     .max = STRESS_FLAP_LIMIT};
     }
@@ -87,8 +80,7 @@ find_wings(int copy) {
 /* The pool is every copy the pack names, from 0 up to the first it lacks. */
 static bool
 find_pool(void) {
-    slots = lab_scene_copies(
-        loaded, shown->surface == STRESS_SURFACE_HINGED ? STRESS_BUTTERFLY_FORMAT : STRESS_SLOT_FORMAT, &pool);
+    slots = lab_scene_copies(loaded, STRESS_SLOT_FORMAT, &pool);
     if (slots == NULL || shown->surface != STRESS_SURFACE_HINGED) {
         return slots != NULL;
     }
@@ -99,6 +91,7 @@ find_pool(void) {
     }
     for (int i = 0; i < pool; i++) {
         if (!find_wings(i)) {
+            fail("missing or misparented stress wing");
             return false;
         }
     }
@@ -197,15 +190,15 @@ build(void) {
 /* The asset's longest side becomes one unit, centred like a generated primitive. */
 static transformf_t
 static_shape(void) {
-    if (shown->surface == STRESS_SURFACE_HINGED) {
-        transformf_t shape = transformf_identity();
-        const float scale = 1.0F / STRESS_BUTTERFLY_SPAN;
-        transformf_set_scale(&shape, (vec3f_t){scale, scale, scale});
-        transformf_set_rotation(&shape, quatf_from_axis_angle(vec3f_unit_x(), -MATH_PI * 0.5F));
-        return shape;
-    }
     const r3d_lit_mesh_t* asset = renderer_mesh(slots[0]);
-    const box3f_t box = r3d_lit_mesh_world_bounds(asset, NULL);
+    box3f_t box = r3d_lit_mesh_world_bounds(asset, NULL);
+    for (entity_t e = entity_next(loaded, ENTITY_NONE); !handle_is_none(e); e = entity_next(loaded, e)) {
+        const r3d_lit_mesh_t* part = renderer_mesh(e);
+        if (part != NULL && handle_equal(entity_parent(e), slots[0])) {
+            const mat4f_t model = transform_world_matrix(e);
+            box = box3f_union(box, r3d_lit_mesh_world_bounds(part, &model));
+        }
+    }
     const vec3f_t span = vec3f_sub(box.hi, box.lo);
     const float width = fmaxf(span.x, fmaxf(span.y, span.z));
     transformf_t shape = transformf_identity();
@@ -229,13 +222,13 @@ place_copies(void) {
     const stress_framing_t seen = {sqrtf(vec3f_dot(eye, eye)), lens->half_fov_short_tan};
     transformf_t facing = transformf_identity();
     transformf_set_rotation(&facing, quatf_from_axis_angle(vec3f_unit_y(), atan2f(eye.x, eye.z)));
-    const transformf_t shape = STRESS_SURFACE_USES_PACK(shown->surface) ? static_shape() : transformf_identity();
+    const transformf_t shape = stress_uses_pack(shown) ? static_shape() : transformf_identity();
     for (int i = 0; i < pool; i++) {
         const bool used = i < shown->copies;
         entity_set_enabled(slots[i], used);
         if (used) {
             transformf_t place = stress_copy_place(shown, i, seen);
-            if (STRESS_SURFACE_USES_PACK(shown->surface)) {
+            if (stress_uses_pack(shown)) {
                 place = transformf_compose(&place, &shape);
             }
             transform_set_local(slots[i], transformf_compose(&facing, &place));
@@ -266,7 +259,13 @@ load(void) {
         return false;
     }
     viewer = render_lab.start_camera == NULL ? camera : entity_find(loaded, name_hash(render_lab.start_camera));
-    if (!find_pool() || (!STRESS_SURFACE_USES_PACK(shown->surface) && !take_mesh())) {
+    if (!find_pool()) {
+        if (failure[0] == '\0') {
+            fail("no memory for stress");
+        }
+        return false;
+    }
+    if (!stress_uses_pack(shown) && !take_mesh()) {
         fail("no memory for stress");
         return false;
     }
@@ -278,7 +277,7 @@ load(void) {
         fail("no memory for the stress texture");
         return false;
     }
-    if (!STRESS_SURFACE_USES_PACK(shown->surface) && !build()) {
+    if (!stress_uses_pack(shown) && !build()) {
         fail("stress mesh did not fit");
         return false;
     }
@@ -313,10 +312,10 @@ scene_stress_exit(void) {
 static void
 flap(void) {
     FRAME_COST_BEGIN(flap_from);
+    const float seconds = (float)wave_ms / STRESS_FLAP_MS_PER_SECOND;
+    /* A fixed sine, phase-stepped per copy, so the wings move out of step
+     * and a replay at the same time gives the same frame. */
     for (int i = 0; i < shown->copies; i++) {
-        /* The sine stands in for Loupe's scene timeline (E3): when it keys wing rotations,
-         * the presets play that instead. */
-        const float seconds = (float)wave_ms / STRESS_FLAP_MS_PER_SECOND;
         const float phase = STRESS_FLAP_PHASE_STEP * (float)i;
         const float angle =
             (STRESS_FLAP_AMPLITUDE * sinf((2.0F * MATH_PI * STRESS_FLAP_HZ * seconds) + phase)) + STRESS_FLAP_BIAS;
@@ -325,10 +324,11 @@ flap(void) {
             transform_set_local(wings[at], hinge_pose(&wing_hinges[at], angle));
         }
     }
-    FRAME_COST_END(flap_from, "stress.flap");
+    FRAME_COST_END(flap_from, STRESS_FLAP_STAGE_NAME);
 }
 
-/* Advance the wave mesh or the wing hinges each frame. */
+/* A per-frame preset's wave and a hinged preset's flap move on by the frame's time,
+ * so a replay at the same steps draws the same frames. */
 static void
 scene_stress_update(uint32_t dt_ms) {
     if (handle_is_none(loaded) || failure[0] != '\0') {
@@ -339,6 +339,13 @@ scene_stress_update(uint32_t dt_ms) {
         flap();
     } else if (stress_per_frame(shown) && !build()) {
         ESP_LOGW(TAG, "the mesh did not fit");
+    }
+}
+
+void
+scene_stress_seek(uint32_t time_ms) {
+    if (shown != NULL && shown->surface == STRESS_SURFACE_HINGED) {
+        wave_ms = time_ms;
     }
 }
 

@@ -21,6 +21,7 @@ GOAL_MARGIN = Fraction("1.01")
 CEILING_MARGIN = Fraction("1.15")
 GOAL_QUANTUM_US = 10
 DEFAULT_SIZE = read_define(SUITE, "STRESS_PERF_DEFAULT_SIZE")
+FLAP_STAGE = read_define(SUITE.parent.parent / "stress/scene_stress.h", "STRESS_FLAP_STAGE_NAME")
 TABLE_ROW = re.compile(r'\{"(stress-[^"]+)",\s*"([^"]+)",\s*"([^"]+)",\s*\{([^}]+)\},\s*\{[^}]+\}\}')
 
 
@@ -68,6 +69,8 @@ def capture_targets(path, expected):
     for target in parse_perf_targets(text)[0] + parse_unpegged_targets(text):
         name, measured = target["name"], int(target["measured"])
         if name.startswith("stress-"):
+            if name.endswith(" " + FLAP_STAGE) and name.removesuffix(" " + FLAP_STAGE) in expected:
+                continue
             if name not in expected:
                 raise ValueError(f"{path}: target {name} has no goal row")
             found[name] = max(found.get(name, 0), measured)

@@ -11,18 +11,16 @@
 #include "render/texture/r3d_texture.h"
 
 typedef enum {
-    STRESS_SHAPE_BUTTERFLY, /* the pack's body and wing meshes */
-    STRESS_SHAPE_PLANE,     /* primitive_plane(): a square facing the camera */
-    STRESS_SHAPE_SPHERE,    /* primitive_sphere(): closed, half of it facing away */
-    STRESS_SHAPE_CUBE,      /* primitive_cube(): closed, its back face facing away */
-    STRESS_SHAPE_CYLINDER,  /* primitive_cylinder(): its axis toward the camera, an end's fan of slivers in view */
-    STRESS_SHAPE_GRID,      /* independent triangle corners on a tessellated square */
-    STRESS_SHAPE_CARD,      /* perforated square with uneven tessellation */
-    STRESS_SHAPE_FOLIAGE,   /* a bush: `cuts` small square cards scattered, turned and overlapping several deep */
+    STRESS_SHAPE_PLANE,    /* primitive_plane(): a square facing the camera */
+    STRESS_SHAPE_SPHERE,   /* primitive_sphere(): closed, half of it facing away */
+    STRESS_SHAPE_CUBE,     /* primitive_cube(): closed, its back face facing away */
+    STRESS_SHAPE_CYLINDER, /* primitive_cylinder(): its axis toward the camera, an end's fan of slivers in view */
+    STRESS_SHAPE_GRID,     /* independent triangle corners on a tessellated square */
+    STRESS_SHAPE_CARD,     /* perforated square with uneven tessellation */
+    STRESS_SHAPE_FOLIAGE,  /* a bush: `cuts` small square cards scattered, turned and overlapping several deep */
 } stress_shape_t;
 
 typedef enum {
-    STRESS_SURFACE_HINGED,    /* the butterfly pack's body and two wings per copy, hinges turned every frame */
     STRESS_SURFACE_BANDED,    /* still colour bands up the copy, each triangle's corners close */
     STRESS_SURFACE_WAVE,      /* the bands run up it, pushing it out: the mesh made again every frame */
     STRESS_SURFACE_NOISY,     /* neighbouring vertices at opposite colours: every triangle's corners far apart */
@@ -33,6 +31,7 @@ typedef enum {
     STRESS_SURFACE_TWO_SIDED, /* banded, and drawn from both sides: nothing faces away */
     STRESS_SURFACE_TEXTURED,  /* banded light under a generated INDEX4 brick texture (render/texture) */
     STRESS_SURFACE_MASKED,    /* banded light, each foliage card cut by a generated MASK1 texture */
+    STRESS_SURFACE_HINGED,    /* the butterfly pack's body and two wings per copy, hinges turned every frame */
 } stress_surface_t;
 
 typedef enum {
@@ -40,21 +39,19 @@ typedef enum {
     STRESS_LAYOUT_STACK, /* one behind another, each the arrangement's size: depth complexity = copies */
 } stress_layout_t;
 
-#define STRESS_BUTTERFLY_SCENE          "butterfly"
-#define STRESS_BUTTERFLY_FORMAT         "butterfly_%02d"
-#define STRESS_BUTTERFLY_WING_FORMAT    "butterfly_%02d_wing_%c"
-#define STRESS_BUTTERFLY_COPIES         32
-#define STRESS_FEW_BUTTERFLY_COPIES     4
-#define STRESS_BUTTERFLY_PART_TRIANGLES 8
-#define STRESS_BUTTERFLY_PARTS          3
-#define STRESS_BUTTERFLY_SPAN           0.07F
-#define STRESS_SCENE                    "stress"
-#define STRESS_CAMERA                   "camera"
-#define STRESS_ORBIT_CLIP               "orbit"
-#define STRESS_CAMERA_CULLED            "culled"
-#define STRESS_CAMERA_NEAR              "near"
-#define STRESS_CAMERA_SWEEP             "sweep"
-#define STRESS_RING_SCENE               "stress_ring"
+/* Pack key for the hinged presets. */
+#define STRESS_BUTTERFLY_SCENE      "butterfly"
+/* Copies in the full hinged wall. */
+#define STRESS_BUTTERFLY_COPIES     32
+/* Copies in the sparse hinged wall. */
+#define STRESS_FEW_BUTTERFLY_COPIES 4
+#define STRESS_SCENE                "stress"
+#define STRESS_CAMERA               "camera"
+#define STRESS_ORBIT_CLIP           "orbit"
+#define STRESS_CAMERA_CULLED        "culled"
+#define STRESS_CAMERA_NEAR          "near"
+#define STRESS_CAMERA_SWEEP         "sweep"
+#define STRESS_RING_SCENE           "stress_ring"
 
 typedef struct {
     stress_shape_t shape;
@@ -109,13 +106,17 @@ extern const stress_params_t stress_presets[STRESS_PRESET_COUNT];
 /* Whether a surface's mesh is made again every frame: a constant
  * expression, so a static table can read it. */
 #define STRESS_SURFACE_IS_PER_FRAME(surface_) ((surface_) == STRESS_SURFACE_WAVE)
-#define STRESS_SURFACE_USES_PACK(surface_)    ((surface_) == STRESS_SURFACE_STATIC || (surface_) == STRESS_SURFACE_HINGED)
 #define STRESS_SURFACE_GENERATES_FRAMES(surface_)                                                                      \
     (!STRESS_SURFACE_IS_PER_FRAME(surface_) && (surface_) != STRESS_SURFACE_HINGED)
 
 static inline bool
 stress_per_frame(const stress_params_t* p) {
     return STRESS_SURFACE_IS_PER_FRAME(p->surface);
+}
+
+static inline bool
+stress_uses_pack(const stress_params_t* p) {
+    return p->surface == STRESS_SURFACE_STATIC || p->surface == STRESS_SURFACE_HINGED;
 }
 
 /* A copy's mesh: the shape's vertex and triangle counts. */

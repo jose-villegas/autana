@@ -40,7 +40,7 @@ static const lab_perf_quarter_t* quarter;
 static int size_step;
 
 /* r3d's stages, then the recorder's: a goal row's stage goals in this order. */
-enum { STRESS_PERF_STAGES = R3D_STAGE_COUNT + 1 };
+enum { STRESS_PERF_STAGES = R3D_STAGE_COUNT + 1, STRESS_PERF_SAMPLED_STAGES };
 
 static const char* const stress_perf_stages[STRESS_PERF_STAGES] = {
     R3D_STAGE_CULL_NAME, R3D_STAGE_TRANSFORM_NAME, R3D_STAGE_DRAW_NAME, R3D_STAGE_UPSCALE_NAME, FRAME_RECORD_STAGE_NAME,
@@ -142,11 +142,11 @@ stress_goal(void) {
 }
 
 static void
-report_goals(const stress_goal_t* goal, const int64_t sums[STRESS_PERF_STAGES], int poses) {
+report_goals(const stress_goal_t* goal, const int64_t sums[STRESS_PERF_SAMPLED_STAGES], int poses) {
     char row[LAB_PERF_ROW_NAME_SIZE];
-    const bool own_size = size_step == STRESS_PERF_NO_STEP;
-    int length = snprintf(row, sizeof row, "%s %s%s%s", preset->key, quarter->name, own_size ? "" : " ",
-                          own_size ? "" : size_name());
+    const bool own_size = strcmp(goal->size, STRESS_PERF_DEFAULT_SIZE) == 0;
+    int length = snprintf(row, sizeof row, "%s %s%s%s", goal->key, goal->quarter, own_size ? "" : " ",
+                          own_size ? "" : goal->size);
     TEST_ASSERT_TRUE(length > 0 && (size_t)length < sizeof row);
     int64_t total = 0;
     for (int i = 0; i < STRESS_PERF_STAGES; i++) {
@@ -154,13 +154,15 @@ report_goals(const stress_goal_t* goal, const int64_t sums[STRESS_PERF_STAGES], 
         length = snprintf(stage, sizeof stage, "%s %s", row, stress_perf_stages[i]);
         TEST_ASSERT_TRUE(length > 0 && (size_t)length < sizeof stage);
         const int64_t mean = sums[i] / poses;
-        (void)perf_goal(stage, mean, goal == NULL ? 0 : goal->stage_us[i]);
+        (void)perf_goal(stage, mean, goal->stage_us[i]);
         total += mean;
     }
-    if (goal == NULL) {
-        (void)perf_goal(row, total, 0);
-    } else {
-        lab_perf_named_budget(row, total, total, &goal->sum, true);
+    lab_perf_named_budget(row, total, total, &goal->sum, true);
+    if (((const stress_params_t*)preset->data)->surface == STRESS_SURFACE_HINGED) {
+        char stage[LAB_PERF_ROW_NAME_SIZE];
+        length = snprintf(stage, sizeof stage, "%s %s", row, STRESS_FLAP_STAGE_NAME);
+        TEST_ASSERT_TRUE(length > 0 && (size_t)length < sizeof stage);
+        (void)perf_goal(stage, sums[STRESS_PERF_STAGES] / poses, 0);
     }
 }
 
@@ -212,12 +214,17 @@ test_stress_stages(void) {
     TEST_ASSERT_TRUE(animator_seek(camera, ANIMATOR_CURRENT, 0));
     const uint32_t duration_ms = animator_clip_duration_ms(camera, animator_current_clip(camera));
     TEST_ASSERT_GREATER_THAN_UINT32(0, duration_ms);
-    int64_t sums[STRESS_PERF_STAGES] = {0};
+    const char* stages[STRESS_PERF_SAMPLED_STAGES];
+    memcpy(stages, stress_perf_stages, sizeof stress_perf_stages);
+    stages[STRESS_PERF_STAGES] = STRESS_FLAP_STAGE_NAME;
+    int64_t sums[STRESS_PERF_SAMPLED_STAGES] = {0};
     for (int i = 0; i < params->perf_poses; i++) {
-        int64_t stage_us[STRESS_PERF_STAGES];
-        render_lab_test_replay_pose(TAG, camera, duration_ms, (int32_t)((int64_t)duration_ms * i / params->perf_poses),
-                                    preset->key, quarter->name, stress_perf_stages, STRESS_PERF_STAGES, stage_us);
-        for (int stage = 0; stage < STRESS_PERF_STAGES; stage++) {
+        int64_t stage_us[STRESS_PERF_SAMPLED_STAGES];
+        const uint32_t pose_ms = (uint32_t)((int64_t)duration_ms * i / params->perf_poses);
+        scene_stress_seek(pose_ms);
+        render_lab_test_replay_pose(TAG, camera, duration_ms, (int32_t)pose_ms, preset->key, quarter->name, stages,
+                                    STRESS_PERF_SAMPLED_STAGES, stage_us);
+        for (int stage = 0; stage < STRESS_PERF_SAMPLED_STAGES; stage++) {
             sums[stage] += stage_us[stage];
         }
     }
