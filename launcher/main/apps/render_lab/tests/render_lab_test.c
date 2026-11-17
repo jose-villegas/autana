@@ -81,6 +81,14 @@ render_lab_test_write_counts(const int64_t sums[RENDER_LAB_TEST_COUNTS], int fra
     RASTER_CULL_FRAME_FIELDS(COUNT_PAIR)
 }
 
+/* The path's struct return slot must leave the stack before the replay draws. */
+static __attribute__((noinline)) bool
+replay_path_seeks_itself(void) {
+    const lab_scene_t* current = lab_current(&render_lab);
+    const lab_path_t path = current->path != NULL ? current->path() : (lab_path_t){0};
+    return path.seek != NULL;
+}
+
 void
 render_lab_test_replay_pose(const char* tag, entity_t entity, uint32_t duration_ms, int32_t path_ms, const char* row,
                             const char* quarter, const char* const* stages, int count, int64_t* stage_us) {
@@ -90,9 +98,7 @@ render_lab_test_replay_pose(const char* tag, entity_t entity, uint32_t duration_
     }
     TEST_ASSERT_NOT_NULL(pose_line);
     pose_line_t* out = pose_line;
-    const lab_scene_t* current = lab_current(&render_lab);
-    const lab_path_t path = current->path != NULL ? current->path() : (lab_path_t){0};
-    if (path.seek != NULL) {
+    if (replay_path_seeks_itself()) {
         TEST_ASSERT_TRUE(lab_seek_path(&render_lab, (uint32_t)path_ms));
     } else {
         TEST_ASSERT_TRUE(animator_seek(entity, ANIMATOR_CURRENT, (uint32_t)path_ms % duration_ms));
