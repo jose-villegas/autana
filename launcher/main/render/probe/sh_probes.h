@@ -6,7 +6,7 @@
 
 typedef struct sh_probes {
     vec3f_t origin, spacing;
-    uint16_t dims[3]; /* nonzero, x fastest; a singleton axis ignores its spacing */
+    uint16_t dims[MAT3F_AXES]; /* nonzero, x fastest; a singleton axis ignores its spacing */
     float scale;
     const int16_t (*coefficients)[SH_PROBES_COMPONENTS];
 } sh_probes_t;

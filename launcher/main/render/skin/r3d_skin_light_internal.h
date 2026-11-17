@@ -4,18 +4,6 @@
 #include "math/scalar/mathf.h"
 #include "render/skin/r3d_skin_light.h"
 
-static inline bool
-light_has_gradient(const sh1_irradiance_t* ambient) {
-    for (int row = 0; row < SH1_CHANNELS; row++) {
-        for (int column = 0; column < SH1_CHANNELS; column++) {
-            if (ambient->gradient.m[row][column] != 0.0F) {
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
 static inline __attribute__((always_inline)) vec3f_t
 light_renormalise(vec3f_t normal) {
     const float length_squared = vec3f_dot(normal, normal);

@@ -47,6 +47,7 @@ static uint32_t wave_ms;
 #define STRESS_PROBE_STEP         0.1F
 #define STRESS_PROBE_UP           0.25F
 #define STRESS_GROUND_WIDTH_SCALE 1.5F
+#define STRESS_GROUND_ROTATION    (-0.25F * MATH_TAU)
 static int16_t probe_coefficients[STRESS_PROBE_COUNT][SH_PROBES_COMPONENTS];
 static sh_probes_t probes;
 static int skinned_count;
@@ -254,7 +255,7 @@ place_copies(void) {
                 transformf_t floor = transformf_identity();
                 floor.position = box3f_centre(bounds);
                 floor.position.y = bounds.lo.y;
-                floor.rotation = quatf_from_axis_angle(vec3f_unit_x(), -0.25F * MATH_TAU);
+                floor.rotation = quatf_from_axis_angle(vec3f_unit_x(), STRESS_GROUND_ROTATION);
                 floor.scale = (vec3f_t){width, width, width};
                 transform_set_local(grounds[i], floor);
                 entity_set_enabled(grounds[i], true);
