@@ -32,7 +32,9 @@ class FakeAutana:
         def arg(name):
             return command[command.index(name)+1]
         project = pathlib.Path(arg('--project'))
-        seed, runs = int(arg('--layout-seed')), int(arg('--runs'))
+        # A flash's later suites name its build instead of its seed.
+        seed = int(arg('--layout-seed') if '--layout-seed' in command else arg('--expect-build-id').split('-')[0])
+        runs = int(arg('--runs'))
         suite = command[command.index('suite')+1]
         build = f'{seed}-diag'
         directory = project/'launcher/build.diag'

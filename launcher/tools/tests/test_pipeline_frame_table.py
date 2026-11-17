@@ -265,8 +265,8 @@ class PipelineFrameTableTests(unittest.TestCase):
         body = frame_stages.table(["stage.a"], base, {"depth": {"stage.a": 1.0}}, ["depth"], [1, 1], "frame.png",
                                   inside)
         views = body.index("<summary>Debug views")
-        self.assertLess(body.index("![Frame stages as shipped]"), body.index("![Inside transform and draw]"))
-        self.assertLess(body.index("![Inside transform and draw]"), views)
+        self.assertLess(body.index("![Frame stages as shipped]"), body.index("![Inside outer and inner]"))
+        self.assertLess(body.index("![Inside outer and inner]"), views)
         self.assertGreater(body.index("![Frame stages with the depth view]"), views)
 
     def test_view_names_come_from_the_view_table(self):

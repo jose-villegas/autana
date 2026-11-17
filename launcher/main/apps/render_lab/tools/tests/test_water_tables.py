@@ -53,7 +53,7 @@ class WaterTables(unittest.TestCase):
 
     def test_a_window_that_dropped_brackets_fails(self):
         lines = capture((("base", 0),), 1000, tail=" +3 dropped")
-        with self.assertRaisesRegex(ValueError, "^base rest: its frame-cost window dropped 3 brackets"):
+        with self.assertRaisesRegex(ValueError, "^a frame-cost window dropped 3 brackets"):
             water_tables.parse(lines)
 
     def test_perf_table_without_base_fails(self):

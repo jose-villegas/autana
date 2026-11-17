@@ -131,7 +131,7 @@ test_an_unknown_version_is_refused(void) {
 static void
 test_an_unread_format_or_an_empty_image_is_a_format_error(void) {
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, with_u16(AT_FORMAT, 0));
-    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, with_u16(AT_FORMAT, DRAW_IMAGE_FORMAT_MONO1 + 1));
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, with_u16(AT_FORMAT, DRAW_IMAGE_FORMAT_RGB565A8 + 1));
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, with_u16(AT_WIDTH, 0));
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, with_u16(AT_HEIGHT, 0));
 }
@@ -203,6 +203,75 @@ test_one_bit_rows_one_byte_past_the_entry_are_out_of_bounds(void) {
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_BOUNDS, open_mono(MONO_STRIDE, MONO_BYTES - 1, &image, &in_place));
 }
 
+/* A 3 x 2 RGB565A8 picture with a stride of one step: two whole colour rows,
+ * then the alpha rows, whose last byte ends the entry. */
+enum {
+    A8_STRIDE = DRAW_IMAGE_RGB565A8_STRIDE_STEP,
+    A8_ALPHA = HEADER + ((int)sizeof(gfx_color_t) * A8_STRIDE * HEIGHT),
+    A8_BYTES = A8_ALPHA + A8_STRIDE + WIDTH,
+    A8_MARK = 0x7F,
+};
+
+/* Opens the RGB565A8 fixture, its second alpha row's second byte A8_MARK;
+ * `in_place` says whether both planes point at the entry's own bytes. */
+static asset_status_t
+open_covered(uint32_t stride, uint32_t size, image_t* color, image_t* alpha, bool* in_place) {
+    fixture_t f = fixture();
+    test_pack_put16(f.entry + AT_FORMAT, DRAW_IMAGE_FORMAT_RGB565A8);
+    test_pack_put32(f.entry + AT_STRIDE, stride);
+    f.entry[A8_ALPHA + A8_STRIDE + 1] = A8_MARK;
+    const asset_status_t status = draw_image_open_alpha((asset_view_t){f.entry, size}, color, alpha);
+    *in_place = color->pixels == f.entry + HEADER && alpha->pixels == f.entry + A8_ALPHA;
+    const uint8_t marked = alpha->pixels == NULL ? 0 : ((const uint8_t*)image_row(alpha, 1))[1];
+    test_free_aligned(f.raw);
+    TEST_ASSERT_TRUE(status != ASSET_OK || marked == A8_MARK);
+    return status;
+}
+
+static void
+test_an_rgb565a8_entry_opens_its_alpha_rows_after_every_colour_row(void) {
+    image_t color, alpha;
+    bool in_place = false;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, open_covered(A8_STRIDE, A8_BYTES, &color, &alpha, &in_place));
+    TEST_ASSERT_TRUE_MESSAGE(in_place, "the planes were not the entry's own bytes");
+    TEST_ASSERT_EQUAL_INT(IMAGE_RGB565BE, color.format);
+    TEST_ASSERT_EQUAL_INT(IMAGE_A8, alpha.format);
+    TEST_ASSERT_EQUAL_UINT16(WIDTH, alpha.width);
+    TEST_ASSERT_EQUAL_UINT16(HEIGHT, alpha.height);
+    TEST_ASSERT_EQUAL_UINT32(A8_STRIDE * sizeof(rgb565be_t), color.pitch);
+    TEST_ASSERT_EQUAL_UINT32(A8_STRIDE, alpha.pitch);
+}
+
+static void
+test_rgb565a8_alpha_one_byte_past_the_entry_is_out_of_bounds(void) {
+    image_t color, alpha;
+    bool in_place = false;
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_BOUNDS, open_covered(A8_STRIDE, A8_BYTES - 1, &color, &alpha, &in_place));
+    TEST_ASSERT_NULL(alpha.pixels);
+}
+
+static void
+test_an_rgb565a8_stride_off_its_step_is_a_format_error(void) {
+    image_t color, alpha;
+    bool in_place = false;
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, open_covered(A8_STRIDE + 1, BUFFER_BYTES, &color, &alpha, &in_place));
+}
+
+static void
+test_an_opaque_entry_has_no_alpha_and_the_opaque_reader_refuses_alpha(void) {
+    fixture_t f = fixture();
+    image_t color, alpha;
+    const asset_status_t opaque = draw_image_open_alpha((asset_view_t){f.entry, ENTRY_BYTES}, &color, &alpha);
+    test_pack_put16(f.entry + AT_FORMAT, DRAW_IMAGE_FORMAT_RGB565A8);
+    image_t image;
+    const asset_status_t covered = draw_image_open((asset_view_t){f.entry, A8_BYTES}, &image);
+    test_free_aligned(f.raw);
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, opaque);
+    TEST_ASSERT_NULL(alpha.pixels);
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, covered);
+    TEST_ASSERT_NULL(image.pixels);
+}
+
 static void
 test_the_boot_picture_s_pack_opens_as_one_panel(void) {
     const handle_t load = asset_store_load(BOOT_PHOTO);
@@ -255,6 +324,10 @@ suite_draw_image(void) {
     RUN_TEST(test_a_one_bit_image_opens_unaligned_with_its_bits_in_place);
     RUN_TEST(test_a_one_bit_stride_of_part_of_a_byte_is_a_format_error);
     RUN_TEST(test_one_bit_rows_one_byte_past_the_entry_are_out_of_bounds);
+    RUN_TEST(test_an_rgb565a8_entry_opens_its_alpha_rows_after_every_colour_row);
+    RUN_TEST(test_rgb565a8_alpha_one_byte_past_the_entry_is_out_of_bounds);
+    RUN_TEST(test_an_rgb565a8_stride_off_its_step_is_a_format_error);
+    RUN_TEST(test_an_opaque_entry_has_no_alpha_and_the_opaque_reader_refuses_alpha);
     RUN_TEST(test_the_boot_picture_s_pack_opens_as_one_panel);
 }
 

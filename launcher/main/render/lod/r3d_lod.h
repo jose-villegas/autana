@@ -23,7 +23,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "collections/bits.h"
 #include "image/pixel/bayer.h"
+#include "math/geometry/box3f.h"
 #include "render/r3d_lit_mesh.h"
 #include "render/settings/render_settings.h"
 
@@ -35,36 +37,28 @@ typedef struct r3d_lens r3d_lens_t; /* r3d_pipeline.h */
 /* The most frames lod.pick_every may spread the pick over. */
 #define R3D_LOD_PICK_EVERY_MAX      8
 
-#define R3D_LOD_WORD_BITS           32
-/* The words of coarse bits a mesh's groups need. */
-#define R3D_LOD_WORDS(groups)       (((groups) + R3D_LOD_WORD_BITS - 1) / R3D_LOD_WORD_BITS)
 /* An instance's level state, R3D_LOD_STATE_SETS sets of bits: its coarse
  * bits, then the blend's arrived and blending bits (r3d_lod_pick()). */
 #define R3D_LOD_STATE_SETS          3
-#define R3D_LOD_STATE_WORDS(groups) (R3D_LOD_STATE_SETS * R3D_LOD_WORDS(groups))
+#define R3D_LOD_STATE_WORDS(groups) (R3D_LOD_STATE_SETS * BITS32_WORDS(groups))
 
 /* The arrived bits of the state whose coarse bits are `coarse`; the
  * blending bits follow them (r3d_lod_blending()). */
 static inline uint32_t*
 r3d_lod_arrived(uint32_t* coarse, int groups) {
-    return coarse + R3D_LOD_WORDS(groups);
+    return coarse + BITS32_WORDS(groups);
 }
 
 /* The blending bits after `arrived`: groups whose blend weighs more than none. */
 static inline const uint32_t*
 r3d_lod_blending(const uint32_t* arrived, int groups) {
-    return arrived + R3D_LOD_WORDS(groups);
-}
-
-static inline bool
-r3d_lod_coarse(const uint32_t* coarse, uint16_t group) {
-    return ((coarse[group / R3D_LOD_WORD_BITS] >> (group % R3D_LOD_WORD_BITS)) & 1U) != 0;
+    return arrived + BITS32_WORDS(groups);
 }
 
 /* Whether any of a mesh's `groups` is coarse in `coarse`. */
 static inline bool
 r3d_lod_any(const uint32_t* coarse, int groups) {
-    for (int w = 0; w < R3D_LOD_WORDS(groups); w++) {
+    for (int w = 0; w < (int)BITS32_WORDS(groups); w++) {
         if (coarse[w] != 0) {
             return true;
         }
@@ -94,9 +88,9 @@ r3d_lod_drawn_blending(const r3d_lit_mesh_t* mesh, int c, const uint32_t* coarse
     if (coarse == NULL) {
         return lod.own == R3D_LOD_NONE;
     }
-    return (lod.own == R3D_LOD_NONE || r3d_lod_coarse(coarse, lod.own)
-            || (blending != NULL && r3d_lod_coarse(blending, lod.own)))
-           && (lod.parent == R3D_LOD_NONE || !r3d_lod_coarse(coarse, lod.parent));
+    return (lod.own == R3D_LOD_NONE || bits32_get(coarse, lod.own)
+            || (blending != NULL && bits32_get(blending, lod.own)))
+           && (lod.parent == R3D_LOD_NONE || !bits32_get(coarse, lod.parent));
 }
 
 /* r3d_lod_drawn_blending() of one level at a time. */
@@ -177,6 +171,19 @@ typedef struct {
     float focal;          /* pixels a view unit spans at unit depth, the larger axis */
 } r3d_lod_view_t;
 
+/* Prepared once per lens so measuring copies does not rebuild its view or planes. */
+typedef struct {
+    r3d_lod_view_t view;
+    planef_t planes[PLANE_FRUSTUM_COUNT];
+    float near_z;
+} r3d_lod_measure_t;
+
+r3d_lod_measure_t r3d_lod_measure(const r3d_lens_t* lens);
+
+/* Pixel radius of the box's half diagonal through the lens, measured where
+ * it comes nearest, clamped at near, zero outside the frustum. */
+float r3d_lod_bounds_pixels(box3f_t bounds, const r3d_lod_measure_t* measure);
+
 /* One instance's blend through one lens; `enabled` false draws no blend. */
 typedef struct r3d_lod_morph {
     r3d_lod_view_t view; /* set only when enabled */
@@ -202,8 +209,8 @@ r3d_lod_cluster_blends(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh,
         return false;
     }
     const r3d_lit_cluster_lod_t lod = mesh->cluster_lod[c];
-    return (lod.parent != R3D_LOD_NONE && r3d_lod_coarse(morph->blending, lod.parent))
-           || (lod.own != R3D_LOD_NONE && r3d_lod_coarse(morph->blending, lod.own));
+    return (lod.parent != R3D_LOD_NONE && bits32_get(morph->blending, lod.parent))
+           || (lod.own != R3D_LOD_NONE && bits32_get(morph->blending, lod.own));
 }
 
 /* Reorders `clusters` so those that blend nothing come first, in their own

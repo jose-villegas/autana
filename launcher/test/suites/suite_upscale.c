@@ -215,7 +215,7 @@ assert_matches_the_maps(const path_case_t* c) {
     TEST_ASSERT_NOT_NULL(held.columns);
     TEST_ASSERT_NOT_NULL(held.rows);
     for (size_t i = 0; i < source_pixels; i++) {
-        held.source[i] = (uint16_t)(0x1000 + i);
+        held.source[i] = (uint16_t)(0x1000 + i); /* magic: a distinct pixel per index, not a size */
         held.depth[i] = (uint16_t)(i % 3 == 0 ? 0 : i);
     }
     upscale_t scale;
@@ -552,7 +552,7 @@ reference_seam(const upscale_t* scale, const uint16_t* depth, int x, int y) {
  * two ranges. */
 static void
 check_seam_case(const seam_case_t* c) {
-    const uint16_t levels[] = {0, 0x1000, 0x1080, 0x8000, 0x8900};
+    const uint16_t levels[] = {0, 0x1000, 0x1080, 0x8000, 0x8900}; /* magic: arbitrary depth levels */
     const size_t pixels = (size_t)c->width * c->source;
     const size_t bytes = GFX_SEAM_BYTES(c->width, c->destination);
     uint16_t* color = calloc(pixels, sizeof(*color));

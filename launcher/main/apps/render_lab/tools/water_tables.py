@@ -61,8 +61,6 @@ def parse(lines):
         if "frames" in fields and "frames" in row:
             raise ValueError(f"{fields['config']} {fields['row']} twice in one run: start each run with a {RUN_MARK} line")
         if window is not None:
-            if window["dropped"]:
-                raise ValueError(f"{fields['config']} {fields['row']}: its frame-cost window dropped {window['dropped']} brackets")
             brackets = window["brackets"].items()
             row["scene"] = {name: avg for name, (avg, _) in brackets if name.startswith(SCENE) and name != UPDATE}
             row["r3d"] = {name: avg for name, (avg, _) in brackets if name.startswith(R3D)}

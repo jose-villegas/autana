@@ -8,7 +8,8 @@
 #include "anim/anim_tracks_format.h"
 #include "asset/asset_bytes.h"
 
-_Static_assert(ANIM_TRACKS_AT_PAD + ANIM_TRACKS_HEADER_PAD_SIZE == ANIM_TRACKS_HEADER_SIZE,
+_Static_assert(ANIM_TRACKS_AT_PAD + ANIM_TRACKS_HEADER_PAD_SIZE == ANIM_TRACKS_AT_GROUND
+                   && ANIM_TRACKS_AT_GROUND + sizeof(uint16_t) == ANIM_TRACKS_HEADER_SIZE,
                "TRCK header fields fill the header");
 _Static_assert(ANIM_TRACKS_ROW_INTERP + sizeof(uint8_t) == ANIM_TRACKS_ROW_SIZE, "TRCK row fields fill the row");
 
@@ -108,7 +109,8 @@ anim_tracks_open(asset_view_t entry, anim_tracks_t* out) {
         .size = entry.size,
         .count = asset_read_u16(entry.data + ANIM_TRACKS_AT_COUNT),
         .root = entry.data[ANIM_TRACKS_AT_ROOT],
-        .clip = {asset_read_u32(entry.data + ANIM_TRACKS_AT_DURATION)},
+        .clip = {.duration_ms = asset_read_u32(entry.data + ANIM_TRACKS_AT_DURATION),
+                 .ground_mm_s = asset_read_u16(entry.data + ANIM_TRACKS_AT_GROUND)},
     };
     const uint32_t table_end = ANIM_TRACKS_HEADER_SIZE + ((uint32_t)tracks.count * ANIM_TRACKS_ROW_SIZE);
     const uint32_t strings = asset_read_u32(entry.data + ANIM_TRACKS_AT_STRINGS);
@@ -120,7 +122,7 @@ anim_tracks_open(asset_view_t entry, anim_tracks_t* out) {
     if (tracks.root > ANIM_ROOT_SKELETON) {
         return ASSET_ERR_FORMAT;
     }
-    for (int i = ANIM_TRACKS_AT_PAD; i < ANIM_TRACKS_HEADER_SIZE; i++) {
+    for (int i = ANIM_TRACKS_AT_PAD; i < ANIM_TRACKS_AT_PAD + ANIM_TRACKS_HEADER_PAD_SIZE; i++) {
         if (entry.data[i] != 0) {
             return ASSET_ERR_FORMAT;
         }

@@ -14,6 +14,7 @@ watch` lists the same commands.
 | `autana codec <reg> [value]` | development builds: read, or write then read back, one codec register (hex or decimal) |
 | `autana screenshot [--as-shown\|--framebuffer] [-o PATH]` | PATH.png plus a PATH.json state snapshot; landscape by default |
 | `autana screenshot --frames N -o PATH` | N frames as PATH-00 on: the loop is frozen and stepped a frame between captures, then resumed |
+| `autana record [-o PATH] [--seconds S]` | each frame's render input as records (FRAMEREC), to PATH or stdout; console lines from stdin go to the board, so FREEZE, STEP and RESUME pause and step it; stops when stdin ends or after S seconds; development builds |
 | `autana battery [--json]` | fresh voltage, percentage, USB, charge phase and flow, plus raw PMU status bytes; development builds |
 | `autana battery --log [--json]` | persistent battery records oldest first (JSON is an array); reasons: periodic, transition, boot, shutdown-warning; development builds |
 | `autana battery --log --clear` | erase the battery history namespace |

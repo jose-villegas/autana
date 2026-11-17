@@ -1,7 +1,6 @@
 /*
  * triangle_sizes: how many of a lit mesh's drawn triangles cover 0, 1, 2-4
- * or more pixel centres from a lens, counted by the top-left rule from the
- * view itself, so any version of the pipeline means the same; the bounding
+ * or more pixel centres from a lens, binned by r3d_triangle_size.h; the bounding
  * boxes of the triangles the rasterizer chooses a path for, by shading mode;
  * and the poses file the triangle_sizes tool reads.
  */
@@ -15,8 +14,7 @@
 #include "math/linear/vec3f.h"
 #include "render/r3d_pipeline.h"
 #include "render/r3d_span.h"
-
-enum { R3D_SIZES_ZERO, R3D_SIZES_ONE, R3D_SIZES_TWO_TO_FOUR, R3D_SIZES_MORE, R3D_SIZES_BINS };
+#include "render/view/r3d_triangle_size.h"
 
 typedef struct {
     long drawn;     /* wholly in front, facing, touching the screen */

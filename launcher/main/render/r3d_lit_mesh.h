@@ -103,6 +103,10 @@ typedef struct {
     const int8_t (*morph_delta)[3];              /* one per vertex */
     const struct r3d_lit_landing* morph_landing; /* one per vertex, or NULL */
     int lod_finest_triangles;                    /* the finest level's, with cluster_lod set */
+    /* Textures over some clusters (render/texture/r3d_texture.h), or NULL:
+     * every cluster draws its vertex colours alone. Lit by vertex colours,
+     * so set only on a mesh without face colours. */
+    const struct r3d_mesh_texturing* texturing;
 } r3d_lit_mesh_t;
 
 /* Where a vertex lands on the coarse level: triangle `triangle`'s corners
@@ -138,6 +142,11 @@ asset_status_t r3d_lit_mesh_morph_from_asset(const asset_view_t* morph, r3d_lit_
 
 /* The same for the lit mesh entry named `id` in `pack`. */
 asset_status_t r3d_lit_mesh_open(const asset_pack_t* pack, const char* id, r3d_lit_mesh_t* mesh);
+
+/* The mesh's sibling entry: its id with `suffix`, of `type`. One that is not
+ * `required` and is absent leaves `entry` empty. */
+asset_status_t r3d_lit_mesh_open_sibling(const asset_pack_t* pack, const char* id, const char* suffix, uint32_t type,
+                                         bool required, asset_view_t* entry);
 
 /* Colour ownership: docs/assets/formats/LCOL.md. */
 asset_status_t r3d_lit_mesh_open_colours(const asset_pack_t* pack, const char* mesh_id, uint16_t set,

@@ -10,9 +10,13 @@ from audio_doc_blocks import figures_main
 from audio.mic.eq_probe_sweep import CAPTURE
 from audio.mic.mic_eq_probe_tables import (
     probe_data, response, hpf_reference, CURVE_POINTS, slot_case, slot_results, order_case, decided_layout,
+    scale_checks,
 )
-from audio.mic.eq_design import AMPLITUDE_DB, ORDER_HZ, eq_order_response
+from audio.mic.eq_design import ORDER_HZ, eq_order_response
 from docs.plot_style import FIGURE_SIZE, SLOTS, subplots, save_themed_plot
+
+CHECK_MARKER_SIZE = 10  # the first coefficient check's marker; each later check's is smaller
+CHECK_LINE_WIDTH = 3
 
 
 def render(capture, output):
@@ -50,17 +54,19 @@ def render_slots(data, output):
         axis.set(xscale='log', xlabel='Frequency (Hz)', ylabel='Response relative to bypass (dB)')
         save_themed_plot(fig, axis, output / ('mic-eq-slots-' + owner + '.png'), owner.upper() + ' isolated slots')
         fig, axis = subplots(1, 1, FIGURE_SIZE)
-        scale = []
-        for (kind, case, path), tones in data.items():
-            match = slot_case(case)
-            if kind == owner and match and match[1] == 'scale':
-                scale.append((float(match[3]), next(iter(tones.values()))))
-        if scale:
-            values, levels = zip(*sorted(scale))
-            axis.plot(values, levels, 'o-', label='Measured')
-            axis.plot(values, AMPLITUDE_DB * np.log10(values), label='Q2.28 reference')
-        axis.set(xscale='log', xlabel='Encoded value (Q2.28)', ylabel='Response relative to bypass (dB)')
-        save_themed_plot(fig, axis, output / ('mic-eq-scale-' + owner + '.png'), owner.upper() + ' scale')
+        cases = {}
+        for case, hz, measured, expected in scale_checks(data, owner):
+            cases.setdefault(case, []).append((hz, measured, expected))
+        for index, (case, rows) in enumerate(cases.items()):
+            color = SLOTS[index % len(SLOTS)]
+            # Each case's markers sit inside the last's, so cases that measure alike stay visible.
+            axis.plot([hz for hz, _, _ in rows], [measured for _, measured, _ in rows], 'o-', color=color, label=case,
+                      markersize=CHECK_MARKER_SIZE / (index + 1), linewidth=CHECK_LINE_WIDTH / (index + 1))
+            expected = [(hz, value) for hz, _, value in rows if not isinstance(value, str)]
+            if expected:
+                axis.plot(*zip(*expected), '--', color=color, label=case + ' expected')
+        axis.set(xscale='log', xlabel='Frequency (Hz)', ylabel='Response relative to bypass (dB)')
+        save_themed_plot(fig, axis, output / ('mic-eq-scale-' + owner + '.png'), owner.upper() + ' coefficient checks')
         render_slot_checks(data, owner, output)
 
 

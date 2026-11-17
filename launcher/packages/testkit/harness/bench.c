@@ -3,6 +3,7 @@
 #define _POSIX_C_SOURCE 200809L
 #endif
 #include "testkit/bench.h"
+#include "math/scalar/units.h"
 #include "unity.h"
 
 #ifdef ESP_PLATFORM
@@ -28,7 +29,6 @@ extern char _instruction_reserved_start[], _instruction_reserved_end[];
 #endif
 
 #define BENCH_BUILD_HASH_CHARS 12
-#define BENCH_NS_PER_US        1000
 #define BENCH_NS_PER_SECOND    1000000000
 
 #ifndef ESP_PLATFORM
@@ -85,7 +85,7 @@ bench_now_us(void) {
 #ifdef ESP_PLATFORM
     return esp_timer_get_time();
 #else
-    return monotonic_ns() / BENCH_NS_PER_US;
+    return monotonic_ns() / MATH_NS_PER_US;
 #endif
 }
 

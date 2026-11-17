@@ -23,6 +23,10 @@ list(APPEND render_engine_sources
      "${launcher}/main/core/app_heap.c"
      "${launcher}/main/app/app_arena.c"
      "${launcher}/../third_party/tlsf/tlsf.c")
+# render_host.c records frames (--record) with or without the renderer linked.
+set(frame_record_source "${launcher}/main/render/record/frame_record.c")
+list(REMOVE_ITEM renderer_sources "${frame_record_source}")
+list(APPEND render_engine_sources "${frame_record_source}")
 list(SORT render_engine_sources)
 
 if(CMAKE_SCRIPT_MODE_FILE STREQUAL CMAKE_CURRENT_LIST_FILE)

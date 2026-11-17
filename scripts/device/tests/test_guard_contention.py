@@ -144,12 +144,12 @@ class GuardContentionTests(unittest.TestCase):
     @unittest.skipUnless(os.name == "nt" and shutil.which("wsl.exe"), "needs Windows with WSL")
     def test_windows_and_wsl_takers_share_a_guard(self):
         with tempfile.TemporaryDirectory() as root:
-            wsl_path = subprocess.run(["wsl.exe", "-e", "wslpath", "-u", str(Path(__file__).resolve().parents[1])],
-                                      capture_output=True, text=True).stdout.strip()
-            wsl_root = subprocess.run(["wsl.exe", "-e", "wslpath", "-u", root],
-                                      capture_output=True, text=True).stdout.strip()
-            if not wsl_path or not wsl_root:
+            # Without a distribution wsl.exe exits non-zero and prints its own UTF-16 message, not a path.
+            paths = [subprocess.run(["wsl.exe", "-e", "wslpath", "-u", path], capture_output=True, text=True)
+                     for path in (str(Path(__file__).resolve().parents[1]), root)]
+            if any(found.returncode or not found.stdout.strip() for found in paths):
                 self.skipTest("WSL has no distribution to run in")
+            wsl_path, wsl_root = (found.stdout.strip() for found in paths)
             for name, device, locks in (("windows.py", str(Path(__file__).resolve().parents[1]), str(Path(root) / "locks")),
                                         ("wsl.py", wsl_path, wsl_root + "/locks")):
                 (Path(root) / name).write_text(WORKER.format(device=device, root=locks, board=BOARD, seconds=6))

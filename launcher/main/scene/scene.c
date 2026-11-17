@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "asset/asset_id.h"
 #include "asset/asset_store.h"
 #include "core/memory.h"
 #include "esp_log.h"
@@ -24,13 +25,6 @@ int scene_fail_allocation_after = -1;
 #endif
 static uint64_t requests; /* scene_root_t.order of the latest request */
 static memory_take_fn kept_take;
-
-size_t
-scene_storage_carve(size_t* end, size_t bytes, size_t align) {
-    const size_t at = mathi_size_ceil(*end, align);
-    *end = at + bytes;
-    return at;
-}
 
 /* What one of the scene's arrays is counted in. */
 enum { PER_RENDERER, PER_CAMERA, PER_ENTITY, PER_BATCH, PER_COUNT };
@@ -47,14 +41,12 @@ static const struct {
              PART(flags, PER_ENTITY),
              PART(locals, PER_ENTITY),
              PART(world_slots, PER_ENTITY),
-             PART(instances, PER_RENDERER),
              PART(animators, PER_ENTITY),
              PART(skinned_renderers, PER_ENTITY),
              PART(lights, PER_ENTITY),
              PART(staged, PER_ENTITY),
              PART(active_renderers, PER_RENDERER),
-             PART(batches, PER_BATCH),
-             PART(batch_draws, PER_BATCH)};
+             PART(batches, PER_BATCH)};
 
 /* Carves the scene's arrays after its header, each on its own alignment, and
  * points them into `scene`'s block; a NULL scene only measures. Returns the
@@ -67,7 +59,7 @@ place(const scene_asset_t* asset, scene_t* scene) {
                                       [PER_BATCH] = asset->batch_count};
     size_t end = sizeof(scene_t);
     for (size_t i = 0; i < sizeof PARTS / sizeof *PARTS; i++) {
-        const size_t at = scene_storage_carve(&end, PARTS[i].size * counts[PARTS[i].per], PARTS[i].align);
+        const size_t at = mem_carve(&end, PARTS[i].size * counts[PARTS[i].per], PARTS[i].align);
         if (scene != NULL) {
             void* array = (uint8_t*)scene + at;
             memcpy((uint8_t*)scene + PARTS[i].member, &array, sizeof array);
@@ -97,11 +89,13 @@ scene_allocate(size_t bytes, memory_kind_t kind) {
 }
 
 void*
-scene_allocate_kept(size_t bytes) {
-    if (injected_failure()) {
-        return NULL;
-    }
+scene_allocate_kept_optional(size_t bytes) {
     return kept_take != NULL ? kept_take(bytes, _Alignof(max_align_t)) : memory_alloc(bytes, MEMORY_APP);
+}
+
+void*
+scene_allocate_kept(size_t bytes) {
+    return injected_failure() ? NULL : scene_allocate_kept_optional(bytes);
 }
 
 void
@@ -155,6 +149,23 @@ instantiate(const scene_asset_t* asset) {
     return scene;
 }
 
+/* Requests the pack `parts` names in `id`; a bare id names a pack of its own
+ * name. Kept out of line, as is request_pack_async(), so the copy of the name
+ * is off the stack while the scene opens. */
+static __attribute__((noinline)) handle_t
+request_pack(const char* id, asset_id_t parts) {
+    char pack[ASSET_NAME_MAX];
+    asset_id_pack(id, parts, id, pack);
+    return asset_store_load(pack);
+}
+
+static __attribute__((noinline)) handle_t
+request_pack_async(const char* id, asset_id_t parts, entity_t root) {
+    char pack[ASSET_NAME_MAX];
+    asset_id_pack(id, parts, id, pack);
+    return asset_store_load_async(pack, NULL, root);
+}
+
 /* `id`, cut to what a pack name holds: an id from the pack always fits, a
  * caller's may not. */
 static void
@@ -196,7 +207,7 @@ open_lod_bits(scene_t* scene) {
     size_t words = 0;
     for (int i = 0; i < scene->renderer_count; i++) {
         const scene_renderer_t* r = &scene->renderers[i];
-        words += (size_t)R3D_LOD_STATE_WORDS(r->mesh.lod_group_count) * drawn_copies(r);
+        words += R3D_LOD_STATE_WORDS(r->mesh.lod_group_count) * (size_t)drawn_copies(r);
     }
     if (words == 0) {
         return scene_failure_make(SCENE_OK, ASSET_OK, scene->root->id);
@@ -209,7 +220,7 @@ open_lod_bits(scene_t* scene) {
     uint32_t* next = scene->lod_bits;
     for (int i = 0; i < scene->renderer_count; i++) {
         scene_renderer_t* r = &scene->renderers[i];
-        const int copy_words = R3D_LOD_STATE_WORDS(r->mesh.lod_group_count);
+        const size_t copy_words = R3D_LOD_STATE_WORDS(r->mesh.lod_group_count);
         r->lod_words = (uint32_t)copy_words * (uint32_t)drawn_copies(r);
         r->lod_coarse = r->lod_words > 0 ? next : NULL;
         if (r->batch != NULL) {
@@ -256,42 +267,42 @@ open_batches(scene_t* scene, const asset_pack_t* pack) {
             return scene_failure_make(SCENE_ERR_ASSET, status, mesh);
         }
         r3d_batch_t* batch = &scene->batches[i];
-        *batch = (r3d_batch_t){.chunks = scene->chunks + row->first_chunk,
-                               .places = asset->places + row->first_copy,
-                               .turns = asset->turns + row->first_copy,
-                               .colour_stride =
-                                   (uint32_t)(r->mesh.colors != NULL ? r->mesh.vertex_count : r->mesh.triangle_count),
-                               .copy_radius = r3d_batch_copy_radius(&r->mesh),
-                               .copy_count = row->copy_count,
-                               .chunk_count = (uint16_t)r3d_batch_chunks(row->copy_count)};
+        *batch = scene_asset_batch(asset, i, &r->mesh, scene->chunks);
         r->batch = batch;
         r->colour_sets = sets;
     }
     return scene_failure_make(SCENE_OK, ASSET_OK, scene->root->id);
 }
 
+/* Opens renderer `i`'s mesh and its colours. */
+static scene_failure_t
+open_mesh(scene_t* scene, const asset_pack_t* pack, int i) {
+    const bool lit = i < scene->asset.renderer_count;
+    const char* mesh =
+        lit ? scene->asset.renderers[i].mesh : scene->asset.skinned_renderers[i - scene->asset.renderer_count].mesh;
+    r3d_lit_mesh_t* view = &scene->renderers[i].mesh;
+    asset_status_t status = r3d_lit_mesh_open(pack, mesh, view);
+    if (status == ASSET_OK && lit && scene->asset.renderers[i].colour_set != SCENE_ASSET_COLOUR_SET_OWN) {
+        status = r3d_lit_mesh_open_colours(pack, mesh, scene->asset.renderers[i].colour_set, view);
+    }
+    if (status == ASSET_OK && view->colors == NULL && view->face_colors == NULL) {
+        status = ASSET_ERR_FORMAT;
+    }
+    if (status != ASSET_OK) {
+        return scene_failure_make(SCENE_ERR_ASSET, status, mesh);
+    }
+    scene->renderers[i].colour_sets = 1;
+    return scene_failure_make(SCENE_OK, ASSET_OK, mesh);
+}
+
 /* Opens every renderer's mesh, then their coarse bits; stops at the first that fails. */
 static scene_failure_t
 open_meshes(scene_t* scene, const asset_pack_t* pack) {
     for (int i = 0; i < scene->renderer_count; i++) {
-        const char* mesh = i < scene->asset.renderer_count
-                               ? scene->asset.renderers[i].mesh
-                               : scene->asset.skinned_renderers[i - scene->asset.renderer_count].mesh;
-        r3d_lit_mesh_t* view = &scene->renderers[i].mesh;
-        asset_status_t status = r3d_lit_mesh_open(pack, mesh, view);
-        if (status == ASSET_OK && i < scene->asset.renderer_count) {
-            const uint16_t set = scene->asset.renderers[i].colour_set;
-            if (set != SCENE_ASSET_COLOUR_SET_OWN) {
-                status = r3d_lit_mesh_open_colours(pack, mesh, set, view);
-            }
+        const scene_failure_t opened = open_mesh(scene, pack, i);
+        if (opened.status != SCENE_OK) {
+            return opened;
         }
-        if (status == ASSET_OK && view->colors == NULL && view->face_colors == NULL) {
-            status = ASSET_ERR_FORMAT;
-        }
-        if (status != ASSET_OK) {
-            return scene_failure_make(SCENE_ERR_ASSET, status, mesh);
-        }
-        scene->renderers[i].colour_sets = 1;
     }
     const scene_failure_t batches = open_batches(scene, pack);
     return batches.status != SCENE_OK ? batches : open_lod_bits(scene);
@@ -428,7 +439,16 @@ free_columns(scene_t* scene) {
     memory_free(scene->light_transfer);
     memory_free(scene->lod_bits);
     memory_free(scene->chunks);
+    for (int i = 0; i < scene->renderer_count; i++) {
+        scene_renderer_texturing_free(&scene->renderers[i]);
+    }
     scene_hierarchy_release(scene);
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+    if (scene->copies != NULL) {
+        asset_store_copies_remove(scene->copies);
+        scene_free_kept(scene->copies);
+    }
+#endif
     scene_free_kept(scene->resident);
     scene_free_kept(scene);
 }
@@ -465,6 +485,9 @@ open_scene(scene_root_t* record, const asset_pack_t* pack) {
                                        : scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, record->id);
     if (done.status == SCENE_OK) {
         done = scene_mesh_make_resident(scene);
+    }
+    if (done.status == SCENE_OK) {
+        done = scene_renderer_open_cuts(scene);
     }
     if (done.status == SCENE_OK) {
         done = open_transforms(scene);
@@ -572,11 +595,18 @@ scene_load_from(const asset_pack_t* pack, const char* id) {
 
 entity_t
 scene_load(const char* id) {
-    scene_root_t* record = claim(id);
+    asset_id_t parts;
+    const bool named = asset_id_split(id, &parts);
+    /* The record holds the scene's entry; its load holds the pack. */
+    scene_root_t* record = claim(named ? parts.name : id);
     if (record == NULL) {
         return ENTITY_NONE;
     }
-    record->load = asset_store_load(id);
+    if (!named) {
+        settle(record, scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_FORMAT, id));
+        return record->root;
+    }
+    record->load = request_pack(id, parts);
     settle(record, open_scene(record, asset_store_loaded(record->load)));
     return record->root;
 }
@@ -591,15 +621,21 @@ record_of(entity_t root) {
 
 entity_t
 scene_load_async(const char* id, pending_fn done, handle_t owner) {
-    scene_root_t* record = claim(id);
+    asset_id_t parts;
+    const bool named = asset_id_split(id, &parts);
+    scene_root_t* record = claim(named ? parts.name : id);
     if (record == NULL) {
         return ENTITY_NONE;
     }
     record->async = true;
     record->done = done;
     record->owner = owner;
+    if (!named) {
+        settle(record, scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_FORMAT, id));
+        return record->root;
+    }
     /* The root owns its pack request: releasing the root cancels it. */
-    record->load = asset_store_load_async(id, NULL, record->root);
+    record->load = request_pack_async(id, parts, record->root);
     if (!pending_owner_alive(owner)) {
         scene_cancel(record->root);
     }

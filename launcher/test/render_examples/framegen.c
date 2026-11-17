@@ -1,6 +1,6 @@
 /* Frame generation with dynamic resolution: while it pays, every second frame
- * is warped from the one drawn before it, and each drawn frame is priced for
- * the pair. */
+ * is warped from the one drawn before it, and each drawn frame is priced at
+ * one shown frame's budget. */
 #include "render/context/render_context.h"
 
 static void

@@ -136,6 +136,13 @@ class ResolutionTests(unittest.TestCase):
             python.touch()
         self.assertEqual(self.resolve(True)[1], fallback)
 
+    def test_a_checkout_where_the_install_commands_put_it_is_found(self):
+        clone = espressif.install_commands(self.pin, self.root).splitlines()[0]
+        name = Path(clone.split("'")[1]).parent.name
+        installed = self.root / 'esp' / name
+        (self.root / 'esp/v6.1').rename(installed)
+        self.assertEqual(self.resolve(), (installed / 'esp-idf', installed / 'tools'))
+
     def test_missing_tools_message_is_install_only(self):
         (self.tools / 'python_env/idf6.1_py3.14_env').rmdir()
         with self.assertRaisesRegex(ValueError, 'install') as failure:
@@ -214,6 +221,21 @@ with mock.patch.object(espressif, 'PROJECT_ROOT', Path(sys.argv[2])), \\
     def test_python_ignores_right_minor_outside_paired_tools(self):
         chosen, good = self.python_with_env(self.root / 'elsewhere/python_env/idf6.1_py3.14_env/Scripts/python.exe')
         self.assertEqual(chosen, good)
+
+
+class InstallCommandTests(unittest.TestCase):
+    PIN = {'commit': 'f0114250e205e33a945e2f3e7ec40085c5a029a2',
+           'image': 'espressif/idf:release-v6.1@sha256:test'}
+
+    def test_two_pins_of_one_release_get_their_own_folders(self):
+        older = dict(self.PIN, commit='9a97' + '0' * 36)
+        new, old = (espressif.install_commands(pin, Path(tempfile.gettempdir())) for pin in (self.PIN, older))
+        self.assertIn(f"v6.1-{self.PIN['commit'][:espressif.INSTALL_COMMIT_DIGITS]}", new.splitlines()[0])
+        self.assertNotEqual(new.splitlines()[0], old.splitlines()[0])
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows installer')
+    def test_the_windows_installer_drops_git_bashs_msystem(self):
+        self.assertIn('$env:MSYSTEM=$null;', espressif.install_commands(self.PIN))
 
 
 @unittest.skipUnless(os.name == 'nt', 'real winreg reads')

@@ -49,5 +49,6 @@ Look the plain name up on a page in the [pages table](#pages); read `*_template.
 | [Geometry](Geometry.md) | Rectangles, planes and frustum queries |
 | [Stats](Stats.md) | Percentiles and medians of sample arrays |
 | [Text](Text.md) | Canonical format and parse pairs, round trips and buffer capacities |
+| [Motion](Motion.md) | Steering for agents on a ground plane: arrive, separation, a limited step |
 | [Signal](Signal.md) | Goertzel single-bin detection, pitch conversion and exponential smoothing |
 | [Benchmark](Benchmark.md) | Board cycles, retired instructions and QEMU counts |

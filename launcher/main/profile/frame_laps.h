@@ -12,6 +12,10 @@
  * join the console as ms per frame per core, on a line of their own under
  * frame_cost's.
  *
+ * A fork across the cores keeps the caller's split lap running into the
+ * job: the dispatch is the split's, and the caller's slice opens its own
+ * first lap, which ends it.
+ *
  * Pure here, on a frame_laps_core_t a test can own; the shared laps exist
  * only in a lapped perf-scope build on the chip
  * (`autana flash diag --perf-scope --frame-laps`), elsewhere every

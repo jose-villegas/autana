@@ -187,3 +187,8 @@ asset_status_text(asset_status_t status) {
     }
     return "unknown";
 }
+
+uint32_t
+asset_pack_checksum(const asset_pack_t* pack) {
+    return asset_read_u32(pack->base + HEADER_CRC);
+}

@@ -67,8 +67,8 @@ print_step(const r3d_lit_mesh_t* mesh, const render_lod_settings_t* lod, float d
     r3d_lod_morph_init(&dither, mesh, &lens, lod, state, RENDER_LOD_BLEND_ON);
     printf("%s{\"px\": %s, \"coarse\": %d, \"arrived\": %d, \"blending\": %d, \"weight\": %d, \"fine_band\": %d, "
            "\"coarse_band\": %d}",
-           first ? "" : ", ", mathf_text(r3d_lod_group_pixels(mesh, &lens, 0)).chars, r3d_lod_coarse(state, 0),
-           r3d_lod_coarse(arrived, 0), r3d_lod_coarse(r3d_lod_blending(arrived, 1), 0),
+           first ? "" : ", ", mathf_text(r3d_lod_group_pixels(mesh, &lens, 0)).chars, bits32_get(state, 0),
+           bits32_get(arrived, 0), bits32_get(r3d_lod_blending(arrived, 1), 0),
            r3d_lod_morph_weight(&morph, &morphing, FINE_CLUSTER), r3d_lod_dither_band(&dither, mesh, FINE_CLUSTER),
            r3d_lod_dither_band(&dither, mesh, COARSE_CLUSTER));
 }

@@ -10,10 +10,13 @@
 
 #include "render/r3d_lit_mesh.h"
 #include "render/r3d_pipeline.h"
+#include "render/view/r3d_triangle_size.h"
 
 typedef struct {
     int nodes_visited, nodes_cut; /* nodes the walk reached; those whose box dropped their subtree */
     int clusters_tested, clusters_kept;
+    int clusters_off_frustum; /* tested clusters rejected by the frustum; nodes_cut counts subtrees */
+    int pixels[R3D_SIZES_MODES];
     int clusters_coarse;       /* the kept ones from a coarser level than the finest */
     int triangles_submitted;   /* every triangle of the kept clusters */
     int triangles_behind;      /* every corner behind the near plane */
@@ -21,10 +24,11 @@ typedef struct {
     int triangles_missed;      /* no pixel centre inside: off the screen or between centres */
     int triangles_facing_away; /* single-sided, back-facing */
     int triangles_set_up;      /* handed to r3d_span whole */
-    int vertices_transformed;  /* every vertex of the kept clusters */
-    int vertices_blended;      /* those morphing or dithered between two levels (render/lod/r3d_lod.h) */
-    int vertices_stacked;      /* those whose targets' level is itself blending */
-    int stacked_centipixels;   /* the most r3d_pipeline_count_stacked_px() of any, hundredths of a pixel */
+    int triangles_sized[R3D_SIZES_MODES][R3D_SIZES_BINS];
+    int vertices_transformed; /* every vertex of the kept clusters */
+    int vertices_blended;     /* those morphing or dithered between two levels (render/lod/r3d_lod.h) */
+    int vertices_stacked;     /* those whose targets' level is itself blending */
+    int stacked_centipixels;  /* the most r3d_pipeline_count_stacked_px() of any, hundredths of a pixel */
 } r3d_pipeline_counts_t;
 
 /* The pending nodes of a counted walk and the frustum it tests them against. */

@@ -297,7 +297,11 @@ class RenderSettingsPackTests(unittest.TestCase):
                                                     "lod.tolerance_px": [32],
                                                     "lod.hysteresis_px": [8], "lod.coverage_permille": [250],
                                                     "lod.pick_every": [4], "lod.triangle_budget": [0],
-                                                    "lod.blend": [0], "lod.blend_px": [4]}, 4))
+                                                    "lod.blend": [0], "lod.blend_px": [4],
+                                                    "anim.mid_px": [768], "anim.far_px": [320],
+                                                    "anim.mid_every": [2], "anim.far_every": [4],
+                                                    "anim.hysteresis_px": [64],
+                                                    "texture.divide_px": [16], "texture.affine_bend": [16]}, 4))
 
     def test_each_app_pack_has_its_own_render_entry_whichever_root_selects_it(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -385,9 +389,11 @@ class DemoAssetTests(unittest.TestCase):
                 self.assertIn("must be letters", str(caught.exception))
 
     def test_relative_and_absolute_searches_produce_one_pack(self):
-        relative = pathlib.Path(os.path.relpath(self.demo))
-        self.assertEqual(contents(build_pack.pack_bytes([relative, self.demo.resolve()])),
-                         {"sample": {"one": self.entry}})
+        # From inside the tree: a checkout and the temporary folder can be on different Windows drives.
+        with contextlib.chdir(self.demo.parent):
+            relative = pathlib.Path(os.path.relpath(self.demo))
+            self.assertEqual(contents(build_pack.pack_bytes([relative, self.demo.resolve()])),
+                             {"sample": {"one": self.entry}})
 
     def test_a_demo_manifest_is_refused_naming_its_file(self):
         write(self.main / "demo_assets.toml", 'demo = ["sample"]')
@@ -439,8 +445,10 @@ class TreeTests(unittest.TestCase):
         self.assertTrue(scenes, "no scene file found: the tree test would pass for nothing")
         for path in scenes:
             name = scene_name.scene_id(path)
-            self.assertIn(name, packs, f"{path.name} makes no pack")
-            entries = parse_pack(packs[name])
+            folder = build_pack.folder_pack(path)  # a folder pack holds the scene under its own name
+            pack = name if folder is None else folder.name.removesuffix(build_pack.FOLDER_PACK)
+            self.assertIn(pack, packs, f"{path.name} makes no pack")
+            entries = parse_pack(packs[pack])
             self.assertEqual(entries[name][0], scene_asset.TYPE)
             scene = scene_asset.decode(entries[name][1])
             self.assertTrue(scene["renderers"], f"{path.name} names no mesh")

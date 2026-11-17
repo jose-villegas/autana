@@ -26,5 +26,8 @@ bool animator_seek(entity_t entity, animator_slot_t slot, uint32_t t_ms);
 int animator_clip_count(entity_t entity);
 const char* animator_clip_name(entity_t entity, int clip);
 uint32_t animator_clip_duration_ms(entity_t entity, int clip);
+/* Metres per second the clip shows a planted foot covering at playback 1, as
+ * its import measured; 0 for a clip that shows none or no such clip. */
+float animator_clip_ground_mps(entity_t entity, int clip);
 /* The clip the current slot plays, or -1 when none does. */
 int animator_current_clip(entity_t entity);

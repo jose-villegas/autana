@@ -49,3 +49,13 @@
                                                                                                                        \
     /* P_c1c2(v) = (v.c1, v.c2), each c one of x, y. */                                                                \
     MATH_DEFINE_SWIZZLE2(P, P, 2)
+
+#define MATH_DEFINE_VEC2_LENGTH(P, T, OPS)                                                                             \
+    /* length = sqrt(dot(a, a)). */                                                                                    \
+    static inline T P##_length(P##_t a) { return OPS##_sqrt(P##_dot(a, a)); }                                          \
+                                                                                                                       \
+    /* a shortened to `most` when longer, its direction kept; otherwise a. */                                          \
+    static inline P##_t P##_clamp_length(P##_t a, T most) {                                                            \
+        const T len = P##_length(a);                                                                                   \
+        return len > most ? P##_scale(a, OPS##_div(most, len)) : a;                                                    \
+    }

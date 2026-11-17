@@ -3,12 +3,16 @@
 
 import hashlib
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 
 LAUNCHER = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(LAUNCHER.parent / "scripts" / "lib"))
+from native_path import git_bash  # noqa: E402
+
 WRITER = LAUNCHER / "tools" / "build" / "write_build_id.sh"
 SDKCONFIG_DEFAULTS = LAUNCHER / "sdkconfig.defaults"
 
@@ -25,7 +29,7 @@ class BuildIdTest(unittest.TestCase):
             elf = build / "launcher.elf"
             elf.write_bytes(b"test ELF contents\0")
 
-            subprocess.run(["bash", str(WRITER), str(build), "diag"], check=True)
+            subprocess.run([git_bash(), str(WRITER), str(build), "diag"], check=True)
 
             expected = hashlib.sha256(elf.read_bytes()).hexdigest()[:12] + "-diag"
             self.assertEqual(expected, (build / "build_id.txt").read_text(encoding="ascii").strip())

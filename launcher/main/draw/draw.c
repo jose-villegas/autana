@@ -1,5 +1,6 @@
 #include "draw/draw.h"
 #include "core/tune.h"
+#include "draw/draw_blend.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
 #include "gfx/target/gfx_segment_clip.h"
@@ -254,13 +255,15 @@ fill_rect_alpha(const gfx_surface_t* state, int x, int y, int w, int h, gfx_colo
     char* pixels = state->target->attachment[0].pixels;
     const size_t pitch = state->target->attachment[0].pitch;
     const int first = state->target->first_row;
+    const rgb565_mix_toward_t toward = rgb565be_mix_toward(color, alpha);
     for (int row = rect.y; row < recti_bottom(rect); row++) {
         gfx_color_t* dst = (gfx_color_t*)(pixels + ((size_t)(row - first) * pitch));
-        for (int i = 0; i < rect.w; i++) {
-            const int col = rect.x + i;
-            if (blend) {
-                dst[col] = rgb565be_mix(dst[col], color, alpha);
-            } else if (bayer_covers(col, row, alpha)) {
+        if (blend) {
+            draw_blend_row(dst + rect.x, &toward, (size_t)mathi_max(rect.w, 0));
+            continue;
+        }
+        for (int col = rect.x; col < recti_right(rect); col++) {
+            if (bayer_covers(col, row, alpha)) {
                 dst[col] = color;
             }
         }

@@ -42,6 +42,7 @@
 #include "render/context/render_context.h"
 #include "render/r3d_lit_mesh.h"
 #include "render/r3d_span_internal.h"
+#include "render/r3d_stages.h"
 #include "render/raster_internal.h"
 #include "render/resolution/resolution.h"
 #include "scene/animator/animator.h"
@@ -96,11 +97,10 @@ typedef struct {
     raster_buffers_t buffers;
 } span_split_t;
 
-/* One core, one pose: each stage as the difference of two stopped draws;
- * not inlined, so its frame is gone before the raster draws. */
+/* One core, at the pose just seeked: each stage as the difference of two
+ * stopped draws; not inlined, so its frame is gone before the raster draws. */
 static __attribute__((noinline)) void
-add_span_split(raster_t* raster, uint32_t t_ms, span_split_t* sum) {
-    (void)animator_seek(camera_entity, ANIMATOR_CURRENT, t_ms);
+add_span_split(raster_t* raster, span_split_t* sum) {
     r3d_lens_t* draw_lens = &sum->lens;
     {
         const render_view_t view =
@@ -160,7 +160,8 @@ measure_size(raster_t* raster, gfx_color_t* destination, resolution_step_t size,
     TEST_ASSERT_NOT_NULL(spans);
     *spans = (span_split_t){0};
     for (uint32_t t_ms = 0; t_ms < period && t_ms / POSE_EVERY_MS < POSES_MAX; t_ms += POSE_EVERY_MS) {
-        add_span_split(raster, t_ms, spans);
+        (void)animator_seek(camera_entity, ANIMATOR_CURRENT, t_ms);
+        add_span_split(raster, spans);
     }
 
     int64_t sum = 0;
@@ -291,7 +292,7 @@ test_raster_counters(void) {
     TEST_ASSERT_NOT_NULL(report);
     const int64_t mean_us = measure_size(&raster, destination, size, frame_us, report);
     ESP_LOGI(TAG, "raster both cores: mean %lldus" LAB_PERF_QUARTER_FORMAT, (long long)mean_us, perf_quarter->name);
-    const int bracket = frame_cost_shared_name_index("r3d.draw");
+    const int bracket = frame_cost_shared_name_index(R3D_STAGE_DRAW_NAME);
     TEST_ASSERT_TRUE(bracket >= 0);
     /* Counters cover core 0's half of the draw. */
     for (size_t event = 0; event < sizeof counter_events / sizeof counter_events[0]; event++) {
@@ -329,6 +330,8 @@ calibrate(const resolution_config_t* config, resolution_model_t* model) {
     raster_t* raster = &context->raster;
     raster->instances = &instance;
     raster->instance_count = 1;
+    context->drawn_settings = render_settings_tuned(&context->settings);
+    raster->settings = &context->drawn_settings;
     raster->upscaled = true;
     raster->present = lab_view_present(&render_lab_view_tunables);
     raster->width = config->steps[0].width;

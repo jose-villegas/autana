@@ -3,6 +3,7 @@
 #include "core/memory.h"
 
 #include <limits.h>
+#include <stdio.h>
 
 #include "esp_memory_utils.h"
 #include "esp_psram.h"
@@ -78,11 +79,64 @@ memory_in_psram(const void* p) {
     return esp_ptr_external_ram(p);
 }
 
+/* The first call sites MEMORY_FAST fell back at, each counted; one past
+ * them counts only in the total. Either core may allocate, so each count is
+ * atomic and a site claims its slot by compare-and-swap. */
+#define MEMORY_FALLBACK_SITES 8
+
+typedef struct {
+    const void* site;
+    memory_fallbacks_t taken;
+} fallback_site_t;
+
+static fallback_site_t fallback_sites[MEMORY_FALLBACK_SITES];
+static memory_fallbacks_t fallback_total;
+
+static void
+count(memory_fallbacks_t* into, size_t bytes) {
+    (void)__atomic_fetch_add(&into->count, 1, __ATOMIC_RELAXED);
+    (void)__atomic_fetch_add(&into->bytes, bytes, __ATOMIC_RELAXED);
+}
+
+__attribute__((noinline)) void*
+memory_fast_fallback(size_t bytes) {
+    const void* site = __builtin_return_address(0);
+    void* block = heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (block == NULL) {
+        return NULL;
+    }
+    count(&fallback_total, bytes);
+    for (size_t i = 0; i < MEMORY_FALLBACK_SITES; i++) {
+        const void* seen = NULL;
+        if (__atomic_compare_exchange_n(&fallback_sites[i].site, &seen, site, false, __ATOMIC_RELAXED, __ATOMIC_RELAXED)
+            || seen == site) {
+            count(&fallback_sites[i].taken, bytes);
+            break;
+        }
+    }
+    return block;
+}
+
+memory_fallbacks_t
+memory_fast_fallbacks(void) {
+    return (memory_fallbacks_t){__atomic_load_n(&fallback_total.count, __ATOMIC_RELAXED),
+                                __atomic_load_n(&fallback_total.bytes, __ATOMIC_RELAXED)};
+}
+
 void
 memory_dump(memory_kind_t kind) {
     if (kind == MEMORY_APP) {
         app_heap_dump();
-        return;
+    } else {
+        heap_caps_dump(memory_caps(kind));
     }
-    heap_caps_dump(memory_caps(kind));
+    const memory_fallbacks_t total = memory_fast_fallbacks();
+    (void)printf("MEMORY_FAST fell back to external RAM %u times, %zu bytes\n", (unsigned)total.count, total.bytes);
+    for (size_t i = 0; i < MEMORY_FALLBACK_SITES; i++) {
+        const void* site = __atomic_load_n(&fallback_sites[i].site, __ATOMIC_RELAXED);
+        if (site != NULL) {
+            (void)printf("  at %p: %u times, %zu bytes\n", site, (unsigned)fallback_sites[i].taken.count,
+                         fallback_sites[i].taken.bytes);
+        }
+    }
 }

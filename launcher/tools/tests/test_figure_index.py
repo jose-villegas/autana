@@ -74,7 +74,7 @@ class IndexTests(Tree):
     def setUp(self):
         super().setUp()
         write(self.root / "docs/math/One.md", "![](../images/math/wide.png)\n![Spinning](../images/anim/spin.gif)\n")
-        write(self.root / "docs/math/Two.md", "![Wide | white](../images/math/wide.png)\n![x](../images/math/gone.png)\n")
+        write(self.root / "docs/math/Two.md", "![Wide | white](../images/math/wide.png)\n")
 
     def index(self, check=False):
         owner = {"docs/images/math/wide.png": "launcher/tools/math/plots.py"}.get

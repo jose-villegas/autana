@@ -806,6 +806,14 @@ void f(void) {
         })
         self.assertEqual([f.path for f in findings], ["launcher/tools/r3d/otter_lighting.py"])
 
+    def test_a_model_name_inside_another_word_names_no_tool(self):
+        findings = self.audit("MODEL-NAMED-TOOL", {
+            "launcher/demo/stress_ring/ring.obj": "model",
+            "launcher/tools/physics/spring_figures.py": "pass\n",
+            "launcher/tools/r3d/ring_bake.py": "pass\n",
+        })
+        self.assertEqual([f.path for f in findings], ["launcher/tools/r3d/ring_bake.py"])
+
     def test_app_runtime_code_and_generic_tools_may_name_or_skip_models(self):
         findings = self.audit("MODEL-NAMED-TOOL", {
             "launcher/main/apps/lab/assets/otter.glb": "model",

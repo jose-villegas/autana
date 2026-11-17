@@ -7,7 +7,7 @@
 
 static anim_layer_t
 fixture(void) {
-    static const anim_clip_t CLIPS[] = {{1000}, {2000}};
+    static const anim_clip_t CLIPS[] = {{.duration_ms = 1000}, {.duration_ms = 2000}};
     anim_layer_t layer;
     transformf_t* shown = calloc(1, sizeof *shown);
     transformf_t* frozen = calloc(1, sizeof *frozen);

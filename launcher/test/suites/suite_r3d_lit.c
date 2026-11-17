@@ -16,15 +16,16 @@
 #include "unity.h"
 
 #include "core/memory.h"
-#include "core/tune.h"
 #include "display/viewport.h"
 #include "gfx/gfx.h"
 #include "gfx/target/gfx_color.h"
 #include "image/pixel/rgb565.h"
 #include "math/linear/transformf.h"
+#include "r3d_pixel_lens.h"
 #include "render/r3d_lit_mesh.h"
 #include "render/r3d_span_internal.h"
 #include "render/raster_internal.h"
+#include "render/view/raster_cull_view.h"
 #include "render/view/raster_show.h"
 
 #define W 64
@@ -34,17 +35,11 @@ static gfx_color_t* color;
 static uint16_t* depth;
 static r3d_pipeline_work_t* work;
 
-static bool cull_changed;
-static bool batched_changed;
-
 /* The panel takes pixels big-endian: the byte swap back to the native 16 bits. */
 static uint16_t
 native_of(gfx_color_t stored) {
     return (uint16_t)((stored >> 8) | (stored << 8)); /* magic: swaps the two bytes of a 16-bit pixel */
 }
-
-static int32_t saved_cull;
-static int32_t saved_batched;
 
 /* The screen-door tests' own buffers, allocated per test and freed by release_fixture(). */
 typedef struct {
@@ -1371,20 +1366,6 @@ typedef struct {
     r3d_lit_node_t node;
 } screen_mesh_t;
 
-static r3d_lens_t
-subpixel_view(void) {
-    const float s = 1.0f / (float)R3D_SUBPIXEL;
-    return (r3d_lens_t){{{{s, 0, 0, 0}, {0, s, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}},
-                        {1.0F, -1.0F, 0.0F, 0.0F, 0.5F},
-                        W,
-                        H,
-                        R3D_SNAP_BIAS,
-                        R3D_SNAP_BIAS,
-                        0.5f / (float)R3D_SUBPIXEL,
-                        1.0F,
-                        1.0F};
-}
-
 static r3d_lit_mesh_t
 screen_mesh(screen_mesh_t* m, int vertices, int triangles) {
     for (int v = 0; v < vertices; v++) {
@@ -1408,7 +1389,7 @@ screen_mesh(screen_mesh_t* m, int vertices, int triangles) {
 /* Transforms the mesh with cluster rows and draws it as two windows. */
 static void
 draw_screen_mesh(const r3d_lit_mesh_t* mesh, int split) {
-    const r3d_lens_t lens = subpixel_view();
+    const r3d_lens_t lens = r3d_pixel_lens(W, H);
     const uint16_t visible[1] = {0};
     r3d_pipeline_vertex_t cs[9];
     r3d_pipeline_rows_t rows[1];
@@ -1498,7 +1479,7 @@ test_a_triangle_whose_only_centre_is_at_a_window_edge_is_drawn(void) {
             m.triangles[0][k] = (uint16_t)k;
         }
         const r3d_lit_mesh_t mesh = screen_mesh(&m, 3, 1);
-        const r3d_lens_t lens = subpixel_view();
+        const r3d_lens_t lens = r3d_pixel_lens(W, H);
         const uint16_t visible[1] = {0};
         r3d_pipeline_vertex_t cs[3];
         r3d_pipeline_rows_t rows[1];
@@ -1526,7 +1507,7 @@ slanted_quad(screen_mesh_t* m, r3d_pipeline_vertex_t cs[4], r3d_pipeline_rows_t*
     }
     memcpy(m->triangles, corners, sizeof corners);
     const r3d_lit_mesh_t mesh = screen_mesh(m, 4, 2);
-    const r3d_lens_t lens = subpixel_view();
+    const r3d_lens_t lens = r3d_pixel_lens(W, H);
     const uint16_t visible[1] = {0};
     r3d_pipeline_transform(&mesh, &lens, visible, 1, cs, rows, true);
     return mesh;
@@ -1541,7 +1522,7 @@ test_a_cluster_writes_no_depth_nearer_than_its_limit(void) {
     const r3d_lit_mesh_t mesh = slanted_quad(&m, cs, &rows);
     const r3d_span_target_t target = fixture();
     const uint16_t visible[1] = {0};
-    const r3d_lens_t lens = subpixel_view();
+    const r3d_lens_t lens = r3d_pixel_lens(W, H);
     r3d_pipeline_draw(&mesh, &lens, visible, 1, cs, &rows, &target, pipeline_work());
     int nearest = R3D_DEPTH_EMPTY;
     for (int i = 0; i < W * H; i++) {
@@ -1567,7 +1548,7 @@ test_a_cluster_behind_drawn_depth_is_hidden_and_draws_nothing(void) {
     depth[0] = R3D_DEPTH_EMPTY; /* outside the quad's box */
     TEST_ASSERT_TRUE(r3d_pipeline_cluster_hidden(&rows, &target));
     const uint16_t visible[1] = {0};
-    const r3d_lens_t lens = subpixel_view();
+    const r3d_lens_t lens = r3d_pixel_lens(W, H);
     r3d_pipeline_draw(&mesh, &lens, visible, 1, cs, &rows, &target, pipeline_work());
     for (int i = 0; i < W * H; i++) {
         TEST_ASSERT_EQUAL_MESSAGE(0, color[i], "a hidden cluster drew a pixel");
@@ -1586,7 +1567,7 @@ test_an_unbounded_cluster_is_never_hidden(void) {
     r3d_pipeline_rows_t rows;
     const r3d_lit_mesh_t mesh = slanted_quad(&m, cs, &rows);
     m.positions[3][2] = -1; /* behind the near plane */
-    const r3d_lens_t lens = subpixel_view();
+    const r3d_lens_t lens = r3d_pixel_lens(W, H);
     const uint16_t visible[1] = {0};
     r3d_pipeline_transform(&mesh, &lens, visible, 1, cs, &rows, true);
     TEST_ASSERT_TRUE(rows.unbounded);
@@ -2375,6 +2356,54 @@ test_the_frame_carves_its_scratch_without_overlap(void) {
     free(b);
 }
 
+/* The view and the reference at one eye height, each in a frame of its own
+ * that is gone before the draw it serves runs. */
+static __attribute__((noinline)) render_view_t*
+view_down_plus_z(float eye_height, const raster_t* raster) {
+    render_view_t* view = malloc(sizeof *view);
+    TEST_ASSERT_NOT_NULL(view);
+    const fixture_camera_t camera = camera_down_plus_z(eye_height, -400, 1.0f);
+    *view = render_view_fixture(&camera, raster, 0);
+    return view;
+}
+
+static __attribute__((noinline)) void
+reference_down_plus_z(const parts_t* p, float eye_height, gfx_color_t* want) {
+    const r3d_lens_t lens = look_down_plus_z(eye_height, -400, 1.0f);
+    reference_frame(p, &lens, want);
+}
+
+/* One eye height of the two-core frame: drawn over stale pixels, upscaled and
+ * checked against one full draw. */
+static void
+check_two_core_frame_at(const parts_t* p, raster_t* raster, float eye_height, gfx_color_t* upscaled,
+                        gfx_color_t* want) {
+    render_view_t* view = view_down_plus_z(eye_height, raster);
+    for (int i = 0; i < W * H; i++) {
+        raster_color(raster)[i] = 0xBEEF;
+    }
+    raster_draw(raster, view);
+    raster_upscale(raster, upscaled, raster->destination_width, raster->destination_height);
+    free(view);
+    reference_down_plus_z(p, eye_height, want);
+    TEST_ASSERT_EQUAL_HEX16_ARRAY_MESSAGE(want, upscaled, 4 * W * H, "the upscaled frame differs from one full draw");
+}
+
+/* The same frame with nothing to upscale into: the raster's own colour target
+ * holds every other pixel of the upscaled reference. */
+static void
+check_unscaled_frame(const parts_t* p, raster_t* raster, gfx_color_t* want) {
+    render_view_t* view = view_down_plus_z(150.0f, raster);
+    raster_draw(raster, view);
+    free(view);
+    reference_down_plus_z(p, 150.0f, want);
+    for (int y = 0; y < H; y++) {
+        for (int x = 0; x < W; x++) {
+            TEST_ASSERT_EQUAL_HEX16(want[2 * y * 2 * W + 2 * x], raster_color(raster)[y * W + x]);
+        }
+    }
+}
+
 /* Split between the cores at whatever row balances them, then upscaled: the
  * same picture as one full draw upscaled, over a colour target left full of
  * stale pixels. */
@@ -2395,31 +2424,12 @@ test_the_two_core_frame_matches_one_full_draw(void) {
 
     static const float eye_heights[] = {-100.0f, 0.0f, 150.0f, 230.0f, 300.0f};
     for (int e = 0; e < (int)(sizeof eye_heights / sizeof eye_heights[0]); e++) {
-        const fixture_camera_t camera = camera_down_plus_z(eye_heights[e], -400, 1.0f);
-        const r3d_lens_t lens = look_down_plus_z(eye_heights[e], -400, 1.0f);
-        for (int i = 0; i < W * H; i++) {
-            raster_color(&raster)[i] = 0xBEEF;
-        }
-        const render_view_t frame_view = render_view_fixture(&camera, &raster, 0);
-        raster_draw(&raster, &frame_view);
-        raster_upscale(&raster, upscaled, raster.destination_width, raster.destination_height);
-        reference_frame(p, &lens, want);
-        TEST_ASSERT_EQUAL_HEX16_ARRAY_MESSAGE(want, upscaled, 4 * W * H,
-                                              "the upscaled frame differs from one full draw");
+        check_two_core_frame_at(p, &raster, eye_heights[e], upscaled, want);
     }
 
     /* With nothing to upscale into, the raster clears its own colour target. */
     raster.upscaled = false;
-    const fixture_camera_t camera = camera_down_plus_z(150.0f, -400, 1.0f);
-    const r3d_lens_t lens = look_down_plus_z(150.0f, -400, 1.0f);
-    const render_view_t frame_view = render_view_fixture(&camera, &raster, 0);
-    raster_draw(&raster, &frame_view);
-    reference_frame(p, &lens, want);
-    for (int y = 0; y < H; y++) {
-        for (int x = 0; x < W; x++) {
-            TEST_ASSERT_EQUAL_HEX16(want[2 * y * 2 * W + 2 * x], raster_color(&raster)[y * W + x]);
-        }
-    }
+    check_unscaled_frame(p, &raster, want);
     free(scratch);
     free(want);
     free(upscaled);
@@ -2465,13 +2475,10 @@ test_cull_off_keeps_every_cluster(void) {
     raster_t raster = census_raster(&instance, 1);
     const fixture_camera_t camera = camera_down_plus_z(10000.0f, -400, 1.0f);
     const render_view_t view = render_view_fixture(&camera, &raster, 0);
-    const tune_entry_t* entry = tune_find(tune_shared(), TUNE_NAME(render, cull));
-    TEST_ASSERT_NOT_NULL(entry);
-    saved_cull = *entry->value;
-    cull_changed = true;
-    (void)tune_reset(tune_shared(), TUNE_NAME(render, cull));
     const raster_stats_t on = raster_draw(&raster, &view);
-    (void)tune_set(tune_shared(), TUNE_NAME(render, cull), 0);
+    render_settings_t cull_off = RENDER_SETTINGS_DEFAULT;
+    cull_off.cull = false;
+    raster.settings = &cull_off;
     const raster_stats_t off = raster_draw(&raster, &view);
     TEST_ASSERT_LESS_THAN_INT(p->mesh.cluster_count, on.clusters);
     TEST_ASSERT_EQUAL_INT(p->mesh.cluster_count, off.clusters);
@@ -2592,16 +2599,6 @@ test_a_census_list_steps_by_each_instances_own_mesh(void) {
 
 enum { BATCH_COPIES = 6 };
 
-/* The batches a draw of `raster` runs. */
-static int
-batch_count(const raster_t* raster) {
-    int batches = 0;
-    for (int first = 0; first < raster->instance_count; first = raster_batch_end(raster, first)) {
-        batches++;
-    }
-    return batches;
-}
-
 /* A large mesh and copies of a small one: the copies fit one batch beside
  * the buffers sized for the large mesh, and draw the same picture and depth
  * as one fork/join per instance (render.batched off). */
@@ -2627,22 +2624,48 @@ test_batched_copies_draw_what_one_instance_at_a_time_draws(void) {
     TEST_ASSERT_NOT_NULL(want);
     const fixture_camera_t camera = camera_down_plus_z(150.0f, -400, 1.0f);
     const render_view_t view = render_view_fixture(&camera, &raster, 0);
-    saved_batched = *tune_find(tune_shared(), TUNE_NAME(render, batched))->value;
-    batched_changed = true;
-    (void)tune_set(tune_shared(), TUNE_NAME(render, batched), 0);
+    render_settings_t one_at_a_time = RENDER_SETTINGS_DEFAULT;
+    one_at_a_time.batched = false;
+    raster.settings = &one_at_a_time;
     (void)raster_census(&raster, &view); /* batches run over its drawn list */
-    TEST_ASSERT_EQUAL_INT(1 + BATCH_COPIES, batch_count(&raster));
+    TEST_ASSERT_EQUAL_INT(1 + BATCH_COPIES, raster_batch_count(&raster));
     raster_draw(&raster, &view);
     memcpy(want, raster_color(&raster), sizeof(*want) * W * H);
     memcpy(want + (W * H), raster_depth(&raster), sizeof(*want) * W * H);
-    (void)tune_reset(tune_shared(), TUNE_NAME(render, batched));
+    raster.settings = NULL;
     /* The large mesh alone, then as many copies a batch as its clusters hold. */
     const int per_batch = mathi_min(BATCH_COPIES, wall->mesh.cluster_count / card->mesh.cluster_count);
     TEST_ASSERT_EQUAL_INT(1 + per_batch, raster_batch_end(&raster, 1));
-    TEST_ASSERT_LESS_THAN_INT(1 + BATCH_COPIES, batch_count(&raster));
+    TEST_ASSERT_LESS_THAN_INT(1 + BATCH_COPIES, raster_batch_count(&raster));
     raster_draw(&raster, &view);
+    raster_cull_frame_t frame = {0};
+    raster_cull_frame_compose(&frame, &raster, false);
+    TEST_ASSERT_EQUAL_INT(raster_batch_count(&raster), frame.transform_batches);
     TEST_ASSERT_EQUAL_HEX16_ARRAY(want, raster_color(&raster), W * H);
     TEST_ASSERT_EQUAL_HEX16_ARRAY(want + (W * H), raster_depth(&raster), W * H);
+}
+
+static void
+test_batch_count_keeps_empty_batches_and_the_clearing_draw(void) {
+    parts_t* const p = parts_buffer(&shared_parts);
+    build_wall_and_stack(p);
+    const r3d_instance_t instances[] = {{.mesh = &p->mesh}, {.mesh = &p->mesh}};
+    raster_t raster = census_raster(instances, 2);
+    const fixture_camera_t camera = camera_down_plus_z(10000.0F, -400, 1.0F);
+    const render_view_t view = render_view_fixture(&camera, &raster, 0);
+    render_settings_t one_at_a_time = RENDER_SETTINGS_DEFAULT;
+    one_at_a_time.batched = false;
+    raster.settings = &one_at_a_time;
+    const raster_stats_t stats = raster_draw(&raster, &view);
+    TEST_ASSERT_EQUAL_INT(0, stats.clusters);
+    TEST_ASSERT_EQUAL_INT(2, raster_batch_count(&raster));
+    const r3d_batch_t empty = {0};
+    const r3d_batch_draw_t batch = {.instance = {.mesh = &p->mesh}, .batch = &empty};
+    raster.instance_count = 0;
+    raster.batch_count = 1;
+    raster.batches = &batch;
+    (void)raster_draw(&raster, &view);
+    TEST_ASSERT_EQUAL_INT(1, raster_batch_count(&raster));
 }
 
 /* A destination the raster's own size is a copy of it, taking
@@ -3047,14 +3070,6 @@ test_show_reads_the_depth_of_the_frame_just_rendered_and_leaves_it_alone(void) {
 
 static void
 release_fixture(void) {
-    if (cull_changed) {
-        (void)tune_set(tune_shared(), TUNE_NAME(render, cull), saved_cull);
-        cull_changed = false;
-    }
-    if (batched_changed) {
-        (void)tune_set(tune_shared(), TUNE_NAME(render, batched), saved_batched);
-        batched_changed = false;
-    }
     free(canvases);
     canvases = NULL;
     free(writer_hits_base);
@@ -3263,6 +3278,7 @@ run_r3d_lit_suite(void) {
     RUN_TEST(test_a_census_list_draws_what_raster_draw_draws_at_any_size);
     RUN_TEST(test_a_census_list_steps_by_each_instances_own_mesh);
     RUN_TEST(test_batched_copies_draw_what_one_instance_at_a_time_draws);
+    RUN_TEST(test_batch_count_keeps_empty_batches_and_the_clearing_draw);
     RUN_TEST(test_a_destination_of_the_same_size_is_a_copy);
     RUN_TEST(test_a_fractional_destination_upscales_a_drawn_frame);
     RUN_TEST(test_a_tile_holds_its_minimum_depth_not_its_maximum);

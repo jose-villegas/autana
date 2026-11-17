@@ -3,9 +3,9 @@
     python -m unittest discover -s launcher/main/apps/render_lab/tools/tests -p test_framegen_scenes.py
 
 Builds the host renderer once and draws each scene's first frames with
-render_lab.framegen off and on. A scene whose objects move on their own (the
-water, the capybara) must draw the same frames either way; a baked scene
-must not, since every second frame there is generated.
+render_lab.framegen off and on. A scene that does not declare
+generates_frames (the water, the capybara) must draw the same frames either
+way; a baked scene must not, since every second frame there is generated.
 """
 import pathlib
 import shutil

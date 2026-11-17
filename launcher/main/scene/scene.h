@@ -32,10 +32,13 @@ typedef struct {
     char what[ASSET_NAME_MAX];
 } scene_failure_t;
 
-/* Loads the scene `id` from the asset pack `id`, or for scene_load_from()
+/* Loads the scene `id` from the asset pack it names, or for scene_load_from()
  * from `pack`, which outlives it, beside any already loaded, and returns its
- * root: READY or FAILED, or ENTITY_NONE when as many scenes are held as the
- * world holds. A failure logs one reason. Release every root. */
+ * root: READY or FAILED, or ENTITY_NONE when the world holds no more. A
+ * failure logs one reason. Release every root. Every ready scene draws
+ * through the active camera; hide one kept for later with
+ * entity_set_enabled(root, false). The id (asset_id.h) is "pack/scene" or
+ * "scene" in its own pack; others fail with SCENE_ERR_ASSET, ASSET_ERR_FORMAT. */
 entity_t scene_load(const char* id);
 entity_t scene_load_from(const asset_pack_t* pack, const char* id);
 

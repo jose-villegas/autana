@@ -5,6 +5,7 @@ import pathlib
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from types import SimpleNamespace
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
@@ -23,6 +24,7 @@ try:
 except ImportError:
     np = None
 
+from tests import r3d_env  # noqa: E402
 from tests.r3d_env import needs_mitsuba  # noqa: E402
 
 LOOK_DOWN = None if np is None else np.array([0.0, 0.0, 3.0, 0.0, 0.0, -1.0])
@@ -303,3 +305,13 @@ class TextureDtypeTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PinLlvmTest(unittest.TestCase):
+    def test_a_loaded_library_is_pinned_on_windows_only(self):
+        with unittest.mock.patch.object(r3d_env, "LLVM_LIBRARY", "kernel32.dll"):
+            self.assertEqual(r3d_env.pin_llvm(), sys.platform == "win32")
+
+    def test_a_library_never_loaded_is_not_pinned(self):
+        with unittest.mock.patch.object(r3d_env, "LLVM_LIBRARY", "no-such-library.dll"):
+            self.assertFalse(r3d_env.pin_llvm())

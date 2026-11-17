@@ -15,9 +15,11 @@ paired tools on every build, and prints a drift note when it is off-pin.
 | Known folders | Under `C:\Espressif` (including `frameworks/`) and `~/esp`, matching the pin. |
 
 With no match, a build stops and prints the clone, checkout, submodule and
-install commands. Tools come from `IDF_TOOLS_PATH`, else the checkout's
-sibling `tools/`, the installer's tools root, then `~/.espressif`, and need a
-Python environment for the checkout's major.minor.
+install commands, into a folder named for the release and the first 8
+digits of the pin's commit, so an older pin's checkout stays. Tools come from
+`IDF_TOOLS_PATH`, else the checkout's sibling `tools/`, the installer's tools
+root, then `~/.espressif`, and need a Python environment for the checkout's
+major.minor.
 
 autana never changes environment variables or the registry. To override for
 one command:

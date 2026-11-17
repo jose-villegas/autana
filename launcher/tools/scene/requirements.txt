@@ -1,0 +1,2 @@
+# scene_edit.py writes .scene.toml files through tomlkit; pinned exactly, as it calls one private method.
+tomlkit==0.15.2

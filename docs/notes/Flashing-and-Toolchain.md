@@ -142,7 +142,9 @@ stabilizes timing; it does not select the fastest loop offsets. Explicit functio
 alignment attributes take precedence and their offsets are baseline-checked. The draw
 path's entry functions carry `RENDER_IRAM_ATTR` from
 `launcher/main/render/code_layout.h` and run from IRAM, where no cache line
-applies. A hot flash function can carry `CODE_ENTRY_OFFSET` from the same header: it
+applies. Cold flash code compiled beside them carries `RENDER_TAIL_ATTR`, which
+links it after all other flash text, so it cannot shift the hot flash functions'
+cache placement. A hot flash function can carry `CODE_ENTRY_OFFSET` from the same header: it
 starts the function on a cache line, whatever code links ahead of it, and
 never-executed `nop.n` padding ahead of the entry places its loops at the
 offsets measured fastest on the board. The release build workflow runs

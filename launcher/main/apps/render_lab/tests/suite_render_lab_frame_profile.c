@@ -67,10 +67,11 @@ static const profile_scenario_t profile_scenarios[] = {
     {.scene = &scene_sponza[SCENE_BAKED_FITTED_FULL], .quarters = {{48826, 60160}, {46066, 56159}}},
     {.scene = &scene_sponza[SCENE_BAKED_FITTED], .quarters = {{40510, 48377}, {38679, 45264}}},
     {.scene = &scene_sponza[SCENE_BAKED_FLAT_FITTED], .quarters = {{39384, 49012}, {37997, 46878}}},
-    CAPYBARA_ROW(capybara_home, {{20531, 20793}, {21164, 21432}}),
-    CAPYBARA_ROW(capybara_close, {{22108, 22455}, {23064, 23340}}),
-    CAPYBARA_ROW(capybara_blend, {{21079, 21407}, {21735, 22015}}),
+    CAPYBARA_ROW(capybara_home, {{20845, 21185}, {21592, 22018}}),
+    CAPYBARA_ROW(capybara_close, {{22561, 23064}, {23551, 23948}}),
+    CAPYBARA_ROW(capybara_blend, {{21149, 22049}, {21812, 22708}}),
     {&scene_bistro[SCENE_BAKED_FITTED_FULL], BISTRO_SCENE, BISTRO_CAMERA, NULL, {{36375, 54681}, {38062, 51881}}},
+    {&scene_bistro_textured, BISTRO_SCENE, BISTRO_CAMERA, NULL, {{39282, 58474}, {41835, 54808}}},
 };
 
 static const char* TAG = "render_lab_profile";
@@ -89,61 +90,11 @@ static const char* TAG = "render_lab_profile";
 static lab_test_t saved;
 static frame_profile_trace_t played; /* the row playing now, freed with the fixture */
 
-/* The scene applies render_lab.view after it draws, so the view is also set here for the next draw. */
-static void
-show_view(int view) {
-    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render_lab, view), view));
-    render_context_set_debug_view(render_context_main(), view);
-    TEST_ASSERT_EQUAL_INT(view, render_context_main()->debug_view);
-}
-
 static void
 release_fixture(void) {
     frame_profile_trace_free(&played);
-    show_view(RENDER_DEBUG_VIEW_SHADED);
+    render_lab_test_show_view(RENDER_DEBUG_VIEW_SHADED);
     lab_test_exit(&saved);
-}
-
-/* A replayed pose's log line parts, too big for the stack its draws run on. */
-#define COUNT_BYTES(name, member) char name[sizeof(" " #name "=-2147483648")];
-
-typedef struct {
-    char counts[sizeof(struct { RASTER_CULL_FRAME_FIELDS(COUNT_BYTES) char end; })];
-    char report[FRAME_COST_REPORT_MAX];
-} pose_line_t;
-
-/* The cull view's counts of the frame just drawn, in a frame of their own
- * that is gone before the next draw. */
-static __attribute__((noinline)) void
-write_cull_counts(pose_line_t* out) {
-    const raster_cull_t* cull = render_context_debug_view_state(render_context_main());
-    TEST_ASSERT_NOT_NULL(cull);
-    const raster_cull_frame_t f = raster_cull_frame(cull);
-    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, f.counts.nodes_visited, "the cull view did not draw");
-    strbuf_t line = strbuf_make(out->counts, sizeof out->counts);
-#define COUNT_PAIR(name, member) strbuf_appendf(&line, "%s" #name "=%d", line.length == 0 ? "" : " ", f.member);
-    RASTER_CULL_FRAME_FIELDS(COUNT_PAIR)
-}
-
-/* Draws the pose `path_ms` along the played path, paused there (dt 0, so a skinned
- * subject is not skinned again): one frame through the cull view for its
- * counts, then FRAME_PROFILE_REPLAY_DRAWS shaded frames for their frame-cost
- * report. */
-static void
-replay_pose(entity_t scene, entity_t entity, uint32_t duration_ms, int32_t path_ms, const char* row,
-            const char* quarter, pose_line_t* out) {
-    TEST_ASSERT_TRUE(animator_seek(entity, ANIMATOR_CURRENT, (uint32_t)path_ms % duration_ms));
-    show_view(render_context_debug_view_named("cull"));
-    (void)lab_test_frame_dt(0, false, NULL);
-    write_cull_counts(out);
-    show_view(RENDER_DEBUG_VIEW_SHADED);
-    (void)lab_test_frame_dt(0, false, NULL);
-    frame_cost_take_clear(); /* forget whatever ran before */
-    for (int i = 0; i < FRAME_PROFILE_REPLAY_DRAWS; i++) {
-        (void)lab_test_frame_dt(0, false, NULL);
-    }
-    (void)frame_cost_take_report(FRAME_PROFILE_REPLAY_DRAWS, out->report, sizeof out->report);
-    ESP_LOGI(TAG, FRAME_PROFILE_REPLAY LAB_PERF_QUARTER_FORMAT, row, (int)path_ms, out->counts, out->report, quarter);
 }
 
 /* The scenario and quarter the next test plays: one test each, so a row over its
@@ -171,14 +122,11 @@ typedef struct {
 
 /* report_path()'s heap, freed after a failed assertion too. */
 static frame_profile_peak_t* peaks;
-static pose_line_t* pose_line;
 
 static void
 release_report(void) {
     memory_free(peaks);
-    memory_free(pose_line);
     peaks = NULL;
-    pose_line = NULL;
 }
 
 /* The played profile, its traced frames and peaks, then each replayed pose:
@@ -193,18 +141,17 @@ report_path(const scenario_path_t* path, const frame_profile_t* p) {
     const int count = frame_profile_peaks(&played, NULL, 0);
     suite_add_test_cleanup(release_report);
     peaks = memory_alloc((size_t)count * sizeof *peaks, MEMORY_APP);
-    pose_line = memory_alloc(sizeof *pose_line, MEMORY_INTERNAL);
     TEST_ASSERT_NOT_NULL_MESSAGE(peaks, "frame peak allocation failed");
-    TEST_ASSERT_NOT_NULL_MESSAGE(pose_line, "frame peak allocation failed");
     TEST_ASSERT_EQUAL_INT(count, frame_profile_peaks(&played, peaks, count));
     frame_profile_log_trace(TAG, row, &played, peaks, count, quarter);
     for (int i = 0; i < FRAME_PROFILE_PATH_POSES; i++) {
-        replay_pose(path->scene, path->entity, path->duration_ms,
-                    (int32_t)((int64_t)path->duration_ms * i / FRAME_PROFILE_PATH_POSES), row, quarter, pose_line);
+        render_lab_test_replay_pose(TAG, path->entity, path->duration_ms,
+                                    (int32_t)((int64_t)path->duration_ms * i / FRAME_PROFILE_PATH_POSES), row, quarter,
+                                    NULL, 0, NULL);
     }
     for (int rank = 0; rank < count; rank++) {
-        replay_pose(path->scene, path->entity, path->duration_ms, played.frame[peaks[rank].frame].path_ms, row, quarter,
-                    pose_line);
+        render_lab_test_replay_pose(TAG, path->entity, path->duration_ms, played.frame[peaks[rank].frame].path_ms, row,
+                                    quarter, NULL, 0, NULL);
     }
     release_report();
 }
@@ -252,18 +199,38 @@ judge_profile(const frame_profile_t* p) {
                     &scenario->quarters[quarter_index], true);
 }
 
+/* The test's scenario, its playback and its played profile, freed by the
+ * cleanup: on the heap, so the frames under the played and replayed draws
+ * stay small. */
+typedef struct {
+    scenario_path_t path;
+    frame_profile_scenario_t playback;
+    int64_t remainder_us;
+} profile_run_t;
+
+static profile_run_t* run;
+
+static void
+release_run(void) {
+    memory_free(run);
+    run = NULL;
+}
+
 static void
 test_real_time_frame_profile(void) {
-    const scenario_path_t path = enter_scenario();
-    const frame_profile_scenario_t playback = {
-        scenario_row(),
-        (int64_t)path.duration_ms * MATH_US_PER_MS,
-    };
-    int64_t remainder_us = 0;
-    const frame_profile_t p = frame_profile_play(&playback, lab_test_profile_frame, &remainder_us, &played);
+    {
+        /* Its own scope, so its slot is the profile's below. */
+        const scenario_path_t path = enter_scenario(); /* it sets the cleanups afresh */
+        suite_add_test_cleanup(release_run);
+        run = memory_alloc(sizeof *run, MEMORY_INTERNAL);
+        TEST_ASSERT_NOT_NULL(run);
+        *run = (profile_run_t){path, {scenario_row(), (int64_t)path.duration_ms * MATH_US_PER_MS}, 0};
+    }
+    const frame_profile_t p = frame_profile_play(&run->playback, lab_test_profile_frame, &run->remainder_us, &played);
     /* The peaks first: a row over its budget is the one they explain. */
-    report_path(&path, &p);
+    report_path(&run->path, &p);
     judge_profile(&p);
+    release_run();
     release_fixture();
     suite_clear_test_cleanup();
 }

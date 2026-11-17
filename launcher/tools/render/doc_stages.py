@@ -482,9 +482,9 @@ class Keeper:
         from bake import bake
         keys = bake.stage_keys(job, scene, self.tools, poses=self.poses)
         if start is not None and references is not None:
-            from r3d.reference_set import pack_references
-            starts = {keys["start"]: bake.file_sha256(start),
-                      keys["reference"]: hashlib.sha256(pack_references(references)).hexdigest()}
+            from r3d.reference_set import pack_references, reference_inputs
+            packed = pack_references(references, reference_inputs(job, scene).sets())
+            starts = {keys["start"]: bake.file_sha256(start), keys["reference"]: hashlib.sha256(packed).hexdigest()}
             keys = bake.stage_keys(job, scene, self.tools, starts, self.poses)
         if keys.get("reason"):
             raise ValueError(keys["reason"])

@@ -11,8 +11,10 @@ from gfx import image_asset
 from asset import table_asset
 from anim import tracks_asset, skeleton_asset
 from r3d import mesh_asset, scene_asset, skin_asset, lcol_asset, lod_asset, morph_asset
+from r3d.texture import texture_asset
 
-FRAMELESS = frozenset((image_asset.TYPE, table_asset.TYPE, sound_asset.TYPE, lcol_asset.TYPE))
+FRAMELESS = frozenset((image_asset.TYPE, image_asset.SPRITE_TYPE, table_asset.TYPE, sound_asset.TYPE, lcol_asset.TYPE,
+                       texture_asset.TYPE, texture_asset.UVS_TYPE))
 
 AXIS_SIGNS = (1, 1, -1)
 ROTATION_SIGNS = (-1, -1, 1, 1)
@@ -70,7 +72,7 @@ def _mirror_point(*point):
 
 
 def to_engine(kind, entry):
-    """A source entry mirrored once into the engine frame, preserving its layout; an image, table or sound entry has no frame and comes back as it is."""
+    """A source entry mirrored once into the engine frame, preserving its layout; an image, sprite, table or sound entry has no frame and comes back as it is."""
     if kind in FRAMELESS:
         return entry
     out = bytearray(entry)
@@ -136,7 +138,8 @@ def to_engine(kind, entry):
                 if len(track["values"][0]) != len(signs):
                     raise ValueError("coordinate track has an invalid width")
                 track["values"] = [tuple(value * sign for value, sign in zip(row, signs)) for row in track["values"]]
-        return tracks_asset.encode(tracks, duration_ms, tracks[0]["root"] if tracks else tracks_asset.ROOT_SCENE)
+        ground = tracks_asset.HEADER.unpack_from(entry)[-1]  # a speed, the same in either frame
+        return tracks_asset.encode(tracks, duration_ms, tracks[0]["root"] if tracks else tracks_asset.ROOT_SCENE, ground)
     else:
         raise ValueError("entry has no source-to-engine conversion")
     return bytes(out)

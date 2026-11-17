@@ -21,7 +21,7 @@ static const float TIMES[] = {0.0F, 1.0F, 3.0F};
 /* A clip of this one track, as a baked animation of it alone would be. */
 static void
 sample_at(const anim_track_t* track, uint32_t t_ms, anim_wrap_t wrap, float out[ANIM_WIDTH_MAX]) {
-    const anim_clip_t clip = {(uint32_t)((track->times[track->count - 1] * 1000.0F) + 0.5F)};
+    const anim_clip_t clip = {.duration_ms = (uint32_t)((track->times[track->count - 1] * 1000.0F) + 0.5F)};
     anim_playhead_t playhead;
     anim_playhead_init(&playhead, wrap);
     anim_playhead_advance(&playhead, &clip, t_ms);
@@ -101,7 +101,7 @@ test_tracks_with_different_key_ranges_stay_in_step_looped(void) {
     const float late_values[] = {100.0F, 130.0F};
     const anim_track_t early = {early_times, early_values, 2, 1, ANIM_LINEAR, 0};
     const anim_track_t late = {late_times, late_values, 2, 1, ANIM_LINEAR, 0};
-    const anim_clip_t clip = {4000};
+    const anim_clip_t clip = {.duration_ms = 4000};
     float a[ANIM_WIDTH_MAX];
     float b[ANIM_WIDTH_MAX];
     /* 5 s into a looping 4 s clip is 1 s: the early track is at 10, the late one at its start. */

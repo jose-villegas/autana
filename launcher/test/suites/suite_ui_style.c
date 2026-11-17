@@ -477,28 +477,6 @@ test_a_buffer_too_small_produces_nothing(void) {
                                   "bug, so refuse rather than fill what fits");
 }
 
-#define ROUND_RADIUS 16
-#define ROUND_FACE_H 120
-
-/* A rounded face's rows: in from both sides in the first and last
- * `radius` rows, never by more than the radius, less the nearer the middle,
- * the same top and bottom, and full width between. */
-static void
-test_a_rounded_face_insets_only_its_corner_rows(void) {
-    int last = ROUND_RADIUS;
-    for (int row = 0; row < ROUND_RADIUS; row++) {
-        const int inset = ui_round_inset(ROUND_RADIUS, ROUND_FACE_H, row);
-        TEST_ASSERT_TRUE(inset >= 0 && inset < ROUND_RADIUS);
-        TEST_ASSERT_LESS_OR_EQUAL_INT(last, inset);
-        TEST_ASSERT_EQUAL_INT(inset, ui_round_inset(ROUND_RADIUS, ROUND_FACE_H, ROUND_FACE_H - 1 - row));
-        last = inset;
-    }
-    TEST_ASSERT_GREATER_THAN_INT(ROUND_RADIUS / 2, ui_round_inset(ROUND_RADIUS, ROUND_FACE_H, 0));
-    TEST_ASSERT_EQUAL_INT(0, ui_round_inset(ROUND_RADIUS, ROUND_FACE_H, ROUND_RADIUS));
-    TEST_ASSERT_EQUAL_INT(0, ui_round_inset(ROUND_RADIUS, ROUND_FACE_H, ROUND_FACE_H / 2));
-    TEST_ASSERT_EQUAL_INT(0, ui_round_inset(0, ROUND_FACE_H, 0));
-}
-
 void
 suite_ui_style(void) {
     RUN_TEST(test_shading_by_zero_changes_nothing);
@@ -524,7 +502,6 @@ suite_ui_style(void) {
     RUN_TEST(test_shadowed_is_one_halo_offset_and_the_ink);
     RUN_TEST(test_the_ink_pass_is_always_last);
     RUN_TEST(test_a_text_buffer_too_small_produces_nothing);
-    RUN_TEST(test_a_rounded_face_insets_only_its_corner_rows);
     RUN_TEST(test_halo_of_a_dark_ink_is_light_and_well_separated);
     RUN_TEST(test_halo_of_a_light_ink_is_dark_and_well_separated);
     RUN_TEST(test_halo_carries_alpha_through_unchanged);

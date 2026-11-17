@@ -18,8 +18,14 @@
 
 /* Checks the entry and returns the first failure: ASSET_ERR_VERSION,
  * ASSET_ERR_FORMAT (a format this does not read, an empty image, a stride shorter
- * than a row or, for MONO1, not whole bytes, rows over the header) or
+ * than a row or off its format's step, rows over the header) or
  * ASSET_ERR_BOUNDS (rows leaving the entry, or RGB565 rows misaligned). Else
- * fills `out`; a caller that draws one format checks `format`.
- * out->pixels points into the entry: read-only, valid while the pack is mapped. */
+ * fills `color` (RGB565BE or MONO1) and, for an RGB565A8 entry, `alpha` (A8);
+ * an opaque entry leaves alpha->pixels NULL. Both point into the entry:
+ * read-only, valid while the pack is mapped. */
+asset_status_t draw_image_open_alpha(asset_view_t entry, image_t* color, image_t* alpha);
+
+/* draw_image_open_alpha() for a caller that draws opaque pictures only: an
+ * entry with alpha is ASSET_ERR_FORMAT. A caller that draws one format checks
+ * out->format. */
 asset_status_t draw_image_open(asset_view_t entry, image_t* out);
