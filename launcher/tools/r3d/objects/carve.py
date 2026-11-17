@@ -11,22 +11,24 @@ the camera path counts a view only where it looks at a copy. A derived shape's c
 the seams its source splits at (texture coordinates, materials) do not hold its level back.
 """
 
-import sys
 from pathlib import Path
 from dataclasses import asdict
 from types import SimpleNamespace
 
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "device"))
+from build.c_header import read_define
+from r3d.geometry import weld_map
+from r3d.mesh_source import camera_path_poses
+from r3d.objects import detail
+from r3d.objects.contact import contact_pairs
+from r3d.objects.instances import match_instances, source_objects
+from r3d.poses import focal_px
 
-from board import PANEL_HEIGHT, PANEL_WIDTH  # noqa: E402
-from r3d.geometry import weld_map  # noqa: E402
-from r3d.mesh_source import camera_path_poses  # noqa: E402
-from r3d.objects import detail  # noqa: E402
-from r3d.objects.contact import contact_pairs  # noqa: E402
-from r3d.objects.instances import match_instances, source_objects  # noqa: E402
-from r3d.poses import focal_px  # noqa: E402
+# The panel a copy's size on screen is measured for: the header alone, so a mesh's key does not follow the build.
+GFX_OWNER = Path(__file__).resolve().parents[3] / "main/gfx/gfx.h"
+PANEL_WIDTH = read_define(GFX_OWNER, "GFX_WIDTH")
+PANEL_HEIGHT = read_define(GFX_OWNER, "GFX_HEIGHT")
 
 # The rule a free repeat is carved by: its seams free, since it touches nothing.
 FREE_REPEAT = {"match": {"repeat": "touches nothing"}, "seam": "free"}
