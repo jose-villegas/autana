@@ -25,9 +25,46 @@ typedef struct {
     int x0, x1, y0, y1;
 } lens_disc_t;
 
+typedef struct {
+    const contact_mask_t* mask;
+    vec3f_t origin, u, v;
+} lens_mask_t;
+
+static float
+mask_sample(const lens_mask_t* projected, vec3f_t point) {
+    const contact_mask_t* mask = projected->mask;
+    if (mask == NULL) {
+        return 0;
+    }
+    const vec3f_t delta = vec3f_sub(point, projected->origin);
+    const float s = vec3f_dot(delta, projected->u), t = vec3f_dot(delta, projected->v);
+    if (!(s >= 0 && s < 1 && t >= 0 && t < 1)) {
+        return 0;
+    }
+    return (float)mask->coverage[(int)(t * mask->side) * mask->side + (int)(s * mask->side)] / UINT8_MAX;
+}
+
+static lens_mask_t
+project_mask(const r3d_lens_t* lens, const contact_mask_t* mask) {
+    lens_mask_t out = {.mask = mask};
+    if (mask == NULL) {
+        return out;
+    }
+    out.origin = mat4f_apply(&lens->m, mask->origin);
+    const float u2 = vec3f_dot(mask->u, mask->u), v2 = vec3f_dot(mask->v, mask->v);
+    float* u[] = {&out.u.x, &out.u.y, &out.u.z};
+    float* v[] = {&out.v.x, &out.v.y, &out.v.z};
+    for (int r = 0; r < 3; r++) {
+        const float focal = r == 0 ? lens->focal_x : r == 1 ? lens->focal_y : 1;
+        *u[r] = vec3f_dot(lens_axis(lens, r), mask->u) / (u2 * focal * focal);
+        *v[r] = vec3f_dot(lens_axis(lens, r), mask->v) / (v2 * focal * focal);
+    }
+    return out;
+}
+
 static void
 draw_row(const r3d_span_target_t* target, const r3d_lens_t* lens, const blob_plane_t* blob, const lens_disc_t* discs,
-         int count, int y, int x0, int x1) {
+         int count, const lens_mask_t* mask, int y, int x0, int x1) {
     gfx_color_t* color = gfx_target_color(&target->rows, y);
     const uint16_t* depth = gfx_target_depth(&target->rows, y);
     const float row_y = (float)y + 0.5F - lens->project.cy;
@@ -46,7 +83,7 @@ draw_row(const r3d_span_target_t* target, const r3d_lens_t* lens, const blob_pla
         const float z = lens->depth_near * R3D_DEPTH_NEAREST / encoded;
         const vec3f_t ray = {(float)x + 0.5F - lens->project.cx, row_y, 1.0F};
         const vec3f_t point = vec3f_scale(ray, z);
-        float coverage = 0;
+        float coverage = mask_sample(mask, point);
         for (int i = 0; i < count; i++) {
             const lens_disc_t* d = &discs[i];
             if (y < d->y0 || y >= d->y1 || x < d->x0 || x >= d->x1) {
@@ -134,11 +171,11 @@ row_interval(const lens_disc_t* discs, int count, int y, int cursor, int width, 
 
 void
 contact_blob_draw(const r3d_span_target_t* target, const r3d_lens_t* lens, vec3f_t up, const contact_disc_t* discs,
-                  int count) {
-    if (count <= 0 || count > CONTACT_BLOB_DISCS_MAX) {
+                  int count, const contact_mask_t* mask) {
+    if ((count <= 0 && mask == NULL) || count > CONTACT_BLOB_DISCS_MAX) {
         return;
     }
-    const vec3f_t centre = mat4f_apply(&lens->m, discs[0].centre);
+    const vec3f_t centre = mat4f_apply(&lens->m, count > 0 ? discs[0].centre : mask->origin);
     const float inverse_fx = 1 / lens->focal_x, inverse_fy = 1 / lens->focal_y;
     const vec3f_t normal = {vec3f_dot(lens_axis(lens, 0), up) * inverse_fx * inverse_fx,
                             vec3f_dot(lens_axis(lens, 1), up) * inverse_fy * inverse_fy,
@@ -148,18 +185,32 @@ contact_blob_draw(const r3d_span_target_t* target, const r3d_lens_t* lens, vec3f
         return;
     }
     const blob_plane_t blob = {.normal = normal, .distance = plane, .inverse_fx = inverse_fx, .inverse_fy = inverse_fy};
-    lens_disc_t projected[CONTACT_BLOB_DISCS_MAX];
+    /* The post pass runs after the row workers join; its scratch need not consume the task stack. */
+    static lens_mask_t projected_mask;
+    static lens_disc_t projected[CONTACT_BLOB_DISCS_MAX + 1];
+    projected_mask = project_mask(lens, mask);
     for (int i = 0; i < count; i++) {
         projected[i] = project_disc(target, lens, up, &discs[i]);
+    }
+    int intervals = count;
+    if (mask != NULL) {
+        const vec3f_t diagonal = vec3f_add(mask->u, mask->v);
+        const float radius2 = vec3f_dot(diagonal, diagonal) * 0.25F;
+        const contact_disc_t rectangle = {.centre = vec3f_add(mask->origin, vec3f_scale(diagonal, 0.5F)),
+                                          .axis = vec3f_unit_x(),
+                                          .inverse_long2 = 1 / radius2,
+                                          .inverse_short2 = 1 / radius2,
+                                          .strength = 1};
+        projected[intervals++] = project_disc(target, lens, up, &rectangle);
     }
     for (int y = target->rows.first_row; y < gfx_target_end_row(&target->rows); y++) {
         int cursor = 0;
         while (cursor < lens->width) {
             int x0, x1;
-            if (!row_interval(projected, count, y, cursor, lens->width, &x0, &x1)) {
+            if (!row_interval(projected, intervals, y, cursor, lens->width, &x0, &x1)) {
                 break;
             }
-            draw_row(target, lens, &blob, projected, count, y, x0, x1);
+            draw_row(target, lens, &blob, projected, count, &projected_mask, y, x0, x1);
             cursor = x1;
         }
     }

@@ -74,13 +74,10 @@ find_pool(void) {
 
 static void
 set_contact_light(entity_t root) {
-    if (shown->surface == STRESS_SURFACE_SKINNED_FEET_BLOBS) {
-        const entity_t light = entity_find(root, name_hash(CAPYBARA_LIGHT));
-        transformf_t pose = transform_local(light);
-        transformf_set_rotation(&pose,
-                                quatf_from_axis_angle(vec3f_unit_x(), MATH_PI / 2 - STRESS_CONTACT_LIGHT_ELEVATION));
-        transform_set_local(light, pose);
-    }
+    const entity_t light = entity_find(root, name_hash(CAPYBARA_LIGHT));
+    transformf_t pose = transform_local(light);
+    transformf_set_rotation(&pose, quatf_from_axis_angle(vec3f_unit_x(), MATH_PI / 2 - STRESS_CONTACT_LIGHT_ELEVATION));
+    transform_set_local(light, pose);
 }
 
 static bool
@@ -121,9 +118,6 @@ load_skins(void) {
             }
         }
         scene_set_probes(slots[i], &probes);
-        scene_set_contact_blob(skin, transform_world(grounds[i]).position.y, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT,
-                               shown->surface == STRESS_SURFACE_SKINNED_FEET_BLOBS ? SCENE_CONTACT_FEET
-                                                                                   : SCENE_CONTACT_BODY);
         set_contact_light(slots[i]);
     }
     return true;
@@ -268,6 +262,13 @@ place_copies(void) {
                 floor.rotation = quatf_from_axis_angle(vec3f_unit_x(), -0.25F * MATH_TAU);
                 floor.scale = (vec3f_t){width, width, width};
                 transform_set_local(grounds[i], floor);
+                static const scene_contact_shape_t contact_shapes[] = {
+                    [STRESS_SURFACE_SKINNED_SH_BLOBS] = SCENE_CONTACT_BODY,
+                    [STRESS_SURFACE_SKINNED_FEET_BLOBS] = SCENE_CONTACT_FEET,
+                    [STRESS_SURFACE_SKINNED_SHAPE_BLOBS] = SCENE_CONTACT_SHAPE};
+                scene_set_contact_blob(entity_find(slots[i], name_hash(CAPYBARA_SUBJECT)), floor.position.y,
+                                       SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, contact_shapes[shown->surface]);
+
                 entity_set_enabled(grounds[i], true);
             }
         }

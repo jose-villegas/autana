@@ -3,7 +3,9 @@
 
 #include <float.h>
 #include <math.h>
+#include <stdio.h>
 #include "math/linear/mat4f.h"
+#include "scene/scene_internal.h"
 
 vec3f_t
 skin_contact_bind_position(const r3d_skin_t* skin, int joint) {
@@ -99,4 +101,28 @@ skin_contacts_find(const anim_skeleton_t* skeleton, const r3d_skin_t* skin, skin
     out->radius = CONTACT_RADIUS_FRACTION * (out->count > 1 ? nearest : height);
     out->lift = CONTACT_LIFT_FRACTION * height;
     return out->count;
+}
+
+void
+scene_skin_contact_refresh(scene_t* scene, scene_row_t entity) {
+    scene_skinned_renderer_t* skin = &scene->skinned_renderers[entity];
+    const scene_renderer_t* r = &scene->renderers[scene_renderer_index(scene, entity)];
+    if (r->contact_blob_shape != SCENE_CONTACT_SHAPE || skin->storage == NULL
+        || !(scene->flags[entity] & SCENE_FLAG_ACTIVE) || skin->contact_mask_failed) {
+        return;
+    }
+    if (skin->contact_mask.coverage == NULL) {
+        skin->contact_mask.coverage = scene_allocate(CONTACT_MASK_BYTES, MEMORY_FAST);
+        if (skin->contact_mask.coverage == NULL) {
+            skin->contact_mask_failed = true;
+            (void)fprintf(stderr, "scene: no memory for contact mask; using feet\n");
+            return;
+        }
+    }
+    const mat4f_t world = scene_row_world_matrix(scene->root, entity);
+    const box3f_t bounds = r3d_lit_mesh_world_bounds(&skin->output.mesh, &world);
+    const vec3f_t scale = scene_row_world(scene->root, entity).scale;
+    const float largest = fmaxf(fabsf(scale.x), fmaxf(fabsf(scale.y), fabsf(scale.z)));
+    contact_mask_build(&skin->contact_mask, &skin->output.mesh, world, bounds, r->contact_blob_ground_y,
+                       skin->contacts.lift * largest, r->contact_blob_strength);
 }

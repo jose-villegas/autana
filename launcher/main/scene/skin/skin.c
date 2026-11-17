@@ -129,6 +129,7 @@ scene_skin_take(scene_t* scene, scene_row_t entity, scene_skinned_renderer_t* sk
     r3d_skin_clusters(&skin->skin, &skin->bind, skin->palette, 0, skin->bind.cluster_count, &skin->output);
     frame_record_note_skin(&skin->output.mesh, &skin->bind, &skin->skin, skin->palette, skin->skin.joint_count);
     r3d_skin_refit_nodes(&skin->output);
+    scene_skin_contact_refresh(scene, entity);
     if (skin->light_storage != NULL) {
         skin->output.mesh.colors = skin->colors;
     }
@@ -140,6 +141,8 @@ scene_skin_give(scene_t* scene, scene_skinned_renderer_t* skin) {
     scene_skin_light_table_release(scene, skin);
     memory_free(skin->light_storage);
     memory_free(skin->storage);
+    memory_free(skin->contact_mask.coverage);
+    skin->contact_mask = (contact_mask_t){0};
     skin->light_storage = NULL;
     skin->storage = NULL;
     skin->colors = NULL;

@@ -22,7 +22,7 @@ draw_round(const r3d_span_target_t* target, const r3d_lens_t* lens, vec3f_t cent
                                  .inverse_long2 = 1 / (radius * radius),
                                  .inverse_short2 = 1 / (radius * radius),
                                  .strength = strength};
-    contact_blob_draw(target, lens, up, &disc, 1);
+    contact_blob_draw(target, lens, up, &disc, 1, NULL);
 }
 
 static void
@@ -181,7 +181,7 @@ test_overlapping_discs_and_elongation(void) {
     contact_disc_t discs[2] = {
         {.centre = {0, 0, BLOB_DEPTH}, .axis = {1, 0, 0}, .inverse_long2 = 0.25F, .inverse_short2 = 1, .strength = 1}};
     discs[1] = discs[0];
-    contact_blob_draw(&f.target, &f.lens, vec3f_unit_z(), discs, 2);
+    contact_blob_draw(&f.target, &f.lens, vec3f_unit_z(), discs, 2, NULL);
     TEST_ASSERT_EQUAL_HEX16(rgb565be_pack(15, 31, 15), f.color[MIDDLE * SIZE + MIDDLE]);
     TEST_ASSERT_NOT_EQUAL(RGB565BE(0xffffff), f.color[MIDDLE * SIZE + ALONG_X]);
     TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xffffff), f.color[ACROSS_Y * SIZE + MIDDLE]);
@@ -189,8 +189,37 @@ test_overlapping_discs_and_elongation(void) {
     free(f.color);
 }
 
+static void
+test_mask_disc_overlap_and_outside(void) {
+    enum { SIZE = 32, MIDDLE = 16 };
+
+    blob_fixture_t f = blob_fixture_make(SIZE);
+    contact_mask_t mask = {.coverage = malloc(CONTACT_MASK_BYTES),
+                           .side = CONTACT_MASK_SIDE,
+                           .origin = {-1, -1, BLOB_DEPTH},
+                           .u = {2, 0, 0},
+                           .v = {0, 2, 0}};
+    TEST_ASSERT_NOT_NULL(mask.coverage);
+    memset(mask.coverage, UINT8_MAX, CONTACT_MASK_BYTES);
+    const contact_disc_t disc = {
+        .centre = {0, 0, BLOB_DEPTH}, .axis = {1, 0, 0}, .inverse_long2 = 1, .inverse_short2 = 1, .strength = 1};
+    contact_blob_draw(&f.target, &f.lens, vec3f_unit_z(), &disc, 1, &mask);
+    TEST_ASSERT_EQUAL_HEX16(rgb565be_pack(15, 31, 15), f.color[MIDDLE * SIZE + MIDDLE]);
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xffffff), f.color[0]);
+    for (int i = 0; i < SIZE * SIZE; i++) {
+        f.color[i] = RGB565BE(0xffffff);
+    }
+    contact_blob_draw(&f.target, &f.lens, vec3f_unit_z(), NULL, 0, &mask);
+    TEST_ASSERT_EQUAL_HEX16(rgb565be_pack(15, 31, 15), f.color[MIDDLE * SIZE + MIDDLE]);
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xffffff), f.color[0]);
+    free(mask.coverage);
+    free(f.depth);
+    free(f.color);
+}
+
 void
 suite_contact_blob(void) {
+    RUN_TEST(test_mask_disc_overlap_and_outside);
     RUN_TEST(test_round_disc_golden);
     RUN_TEST(test_overlapping_discs_and_elongation);
     RUN_TEST(test_blob_depth_radius_rows_strength);
