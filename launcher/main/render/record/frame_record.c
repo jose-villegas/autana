@@ -85,9 +85,9 @@ typedef struct {
     uint8_t* lod_state;
     size_t lod_size, lod_capacity;
     recorded_slot_t* slots;
-    uint32_t packs_named;                       /* bit per asset_store slot, since the last keyframe */
-    uint32_t named_crc[ASSET_STORE_MOUNTS_MAX]; /* the pack each named slot held when named */
-    int32_t* tuned;                             /* each tunable's value as last recorded, in registry order */
+    uint32_t packs_named; /* bit per asset_store slot, since the last keyframe or mount change */
+    uint32_t mounts_seen; /* asset_store_mount_epoch() when the meshes were last all recorded */
+    int32_t* tuned;       /* each tunable's value as last recorded, in registry order */
     int tunables;
     bool check_due; /* the last frame was a keyframe the sink took: hash what composes from it */
     bool checked;   /* `check` holds a hash for the next frame's records */
@@ -251,20 +251,18 @@ record(frame_record_type_t type, const void* body, size_t length) {
 _Static_assert(ASSET_STORE_MOUNTS_MAX <= 32, "packs_named holds a bit per asset_store slot");
 
 /* Where `address` sits in a pack, naming the pack first if this keyframe
- * interval has not, or if another pack has taken its slot since (a scene
- * switch unmounts one pack and mounts the next in the slot it freed). */
+ * interval has not. */
 static frame_record_where_t
 where(const void* address) {
     asset_location_t at;
     if (address == NULL || !asset_store_locate(address, &at)) {
         return (frame_record_where_t){FRAME_RECORD_NO_PACK, FRAME_RECORD_NO_ENTRY, 0};
     }
-    if ((rec->packs_named & (1U << at.slot)) == 0 || rec->named_crc[at.slot] != at.pack_crc) {
+    if ((rec->packs_named & (1U << at.slot)) == 0) {
         frame_record_pack_t pack = {.slot = (uint8_t)at.slot, .crc32 = at.pack_crc};
         (void)strncpy(pack.name, at.pack_name, sizeof pack.name - 1);
         record(FRAME_RECORD_PACK, &pack, sizeof pack);
         rec->packs_named |= 1U << at.slot;
-        rec->named_crc[at.slot] = at.pack_crc;
     }
     return (frame_record_where_t){(uint8_t)at.slot, at.entry, at.offset};
 }
@@ -458,6 +456,7 @@ frame_record_start(const frame_record_out_t* out, uint32_t keyframe_every) {
         return false;
     }
     rec->capacity = FRAME_BYTES_FIRST;
+    rec->mounts_seen = asset_store_mount_epoch();
     record_header();
     if (!rec->out.write(rec->out.sink, rec->bytes, rec->size)) {
         frame_record_stop();
@@ -641,6 +640,16 @@ frame_record_frame(const render_context_t* context, const raster_t* raster, uint
     const bool keyframe = due && !generated;
     rec->size = 0;
     rec->overflowed = false;
+    /* A pack mounted or unmounted since the last frame may hold a recorded
+     * address now, or the same address in another pack (a scene switch frees
+     * a slot and mounts the next scene there): every mesh and pack is
+     * recorded again, as at a keyframe. */
+    const uint32_t mounts = asset_store_mount_epoch();
+    if (mounts != rec->mounts_seen) {
+        rec->mounts_seen = mounts;
+        memset(rec->slots, 0, RECORDED_SLOTS_MAX * sizeof *rec->slots);
+        rec->packs_named = 0;
+    }
     if (keyframe) {
         rec->packs_named = 0;
     }
