@@ -1144,11 +1144,13 @@ class NightlyTests(unittest.TestCase):
         results, _, _ = self.run_chain()
         self.assertEqual(results[0].outcome, "measured")
 
-    def test_main_hands_the_plans_deadline_to_the_chain(self):
+    def test_main_hands_the_plans_deadline_and_tip_to_the_chain(self):
+        # The plan's tip, not HEAD nor the lane's last step: the step that must run every suite.
+        tip = self.commits[2]
         for deadline in ("2026-10-18T10:00:00+00:00", None):
             with self.subTest(deadline=deadline):
                 path = self.root / "plan.json"
-                chain.write_json(path, dict(tip=self.commits[-1], night="2026-10-18", started=self.clock.now().isoformat(), deadline=deadline,
+                chain.write_json(path, dict(tip=tip, night="2026-10-18", started=self.clock.now().isoformat(), deadline=deadline,
                                             lanes={"20E8": dict(lane="0", previous=None, steps=[])}))
                 argv = ["scoped_chain.py", "run", "--plan", str(path), "--board", "20E8", "--lane", "0",
                         "--data", str(self.args.data), "--out", str(self.args.out), "--suite", "suite", "-", "-"]
@@ -1158,6 +1160,7 @@ class NightlyTests(unittest.TestCase):
                         patch.object(chain, "read_last_night", return_value=dict(steps=[], selftest=dict(outcome="not_run"))):
                     self.assertEqual(chain.main(), 0)
                 self.assertEqual(run.call_args.args[1].deadline, deadline)
+                self.assertEqual(run.call_args.args[1].tip, tip)
 
     def test_the_night_stops_a_lane_still_running_at_the_deadline(self):
         ran = dict(ended="2026-10-18T10:01:00+00:00", stop_reason="interrupted",
