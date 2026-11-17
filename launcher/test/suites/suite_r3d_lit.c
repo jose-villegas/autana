@@ -16,7 +16,6 @@
 #include "unity.h"
 
 #include "core/memory.h"
-#include "core/tune.h"
 #include "display/viewport.h"
 #include "gfx/gfx.h"
 #include "gfx/target/gfx_color.h"
@@ -36,17 +35,11 @@ static gfx_color_t* color;
 static uint16_t* depth;
 static r3d_pipeline_work_t* work;
 
-static bool cull_changed;
-static bool batched_changed;
-
 /* The panel takes pixels big-endian: the byte swap back to the native 16 bits. */
 static uint16_t
 native_of(gfx_color_t stored) {
     return (uint16_t)((stored >> 8) | (stored << 8)); /* magic: swaps the two bytes of a 16-bit pixel */
 }
-
-static int32_t saved_cull;
-static int32_t saved_batched;
 
 /* The screen-door tests' own buffers, allocated per test and freed by release_fixture(). */
 typedef struct {
@@ -2363,6 +2356,54 @@ test_the_frame_carves_its_scratch_without_overlap(void) {
     free(b);
 }
 
+/* The view and the reference at one eye height, each in a frame of its own
+ * that is gone before the draw it serves runs. */
+static __attribute__((noinline)) render_view_t*
+view_down_plus_z(float eye_height, const raster_t* raster) {
+    render_view_t* view = malloc(sizeof *view);
+    TEST_ASSERT_NOT_NULL(view);
+    const fixture_camera_t camera = camera_down_plus_z(eye_height, -400, 1.0f);
+    *view = render_view_fixture(&camera, raster, 0);
+    return view;
+}
+
+static __attribute__((noinline)) void
+reference_down_plus_z(const parts_t* p, float eye_height, gfx_color_t* want) {
+    const r3d_lens_t lens = look_down_plus_z(eye_height, -400, 1.0f);
+    reference_frame(p, &lens, want);
+}
+
+/* One eye height of the two-core frame: drawn over stale pixels, upscaled and
+ * checked against one full draw. */
+static void
+check_two_core_frame_at(const parts_t* p, raster_t* raster, float eye_height, gfx_color_t* upscaled,
+                        gfx_color_t* want) {
+    render_view_t* view = view_down_plus_z(eye_height, raster);
+    for (int i = 0; i < W * H; i++) {
+        raster_color(raster)[i] = 0xBEEF;
+    }
+    raster_draw(raster, view);
+    raster_upscale(raster, upscaled, raster->destination_width, raster->destination_height);
+    free(view);
+    reference_down_plus_z(p, eye_height, want);
+    TEST_ASSERT_EQUAL_HEX16_ARRAY_MESSAGE(want, upscaled, 4 * W * H, "the upscaled frame differs from one full draw");
+}
+
+/* The same frame with nothing to upscale into: the raster's own colour target
+ * holds every other pixel of the upscaled reference. */
+static void
+check_unscaled_frame(const parts_t* p, raster_t* raster, gfx_color_t* want) {
+    render_view_t* view = view_down_plus_z(150.0f, raster);
+    raster_draw(raster, view);
+    free(view);
+    reference_down_plus_z(p, 150.0f, want);
+    for (int y = 0; y < H; y++) {
+        for (int x = 0; x < W; x++) {
+            TEST_ASSERT_EQUAL_HEX16(want[2 * y * 2 * W + 2 * x], raster_color(raster)[y * W + x]);
+        }
+    }
+}
+
 /* Split between the cores at whatever row balances them, then upscaled: the
  * same picture as one full draw upscaled, over a colour target left full of
  * stale pixels. */
@@ -2383,31 +2424,12 @@ test_the_two_core_frame_matches_one_full_draw(void) {
 
     static const float eye_heights[] = {-100.0f, 0.0f, 150.0f, 230.0f, 300.0f};
     for (int e = 0; e < (int)(sizeof eye_heights / sizeof eye_heights[0]); e++) {
-        const fixture_camera_t camera = camera_down_plus_z(eye_heights[e], -400, 1.0f);
-        const r3d_lens_t lens = look_down_plus_z(eye_heights[e], -400, 1.0f);
-        for (int i = 0; i < W * H; i++) {
-            raster_color(&raster)[i] = 0xBEEF;
-        }
-        const render_view_t frame_view = render_view_fixture(&camera, &raster, 0);
-        raster_draw(&raster, &frame_view);
-        raster_upscale(&raster, upscaled, raster.destination_width, raster.destination_height);
-        reference_frame(p, &lens, want);
-        TEST_ASSERT_EQUAL_HEX16_ARRAY_MESSAGE(want, upscaled, 4 * W * H,
-                                              "the upscaled frame differs from one full draw");
+        check_two_core_frame_at(p, &raster, eye_heights[e], upscaled, want);
     }
 
     /* With nothing to upscale into, the raster clears its own colour target. */
     raster.upscaled = false;
-    const fixture_camera_t camera = camera_down_plus_z(150.0f, -400, 1.0f);
-    const r3d_lens_t lens = look_down_plus_z(150.0f, -400, 1.0f);
-    const render_view_t frame_view = render_view_fixture(&camera, &raster, 0);
-    raster_draw(&raster, &frame_view);
-    reference_frame(p, &lens, want);
-    for (int y = 0; y < H; y++) {
-        for (int x = 0; x < W; x++) {
-            TEST_ASSERT_EQUAL_HEX16(want[2 * y * 2 * W + 2 * x], raster_color(&raster)[y * W + x]);
-        }
-    }
+    check_unscaled_frame(p, &raster, want);
     free(scratch);
     free(want);
     free(upscaled);
@@ -2453,13 +2475,10 @@ test_cull_off_keeps_every_cluster(void) {
     raster_t raster = census_raster(&instance, 1);
     const fixture_camera_t camera = camera_down_plus_z(10000.0f, -400, 1.0f);
     const render_view_t view = render_view_fixture(&camera, &raster, 0);
-    const tune_entry_t* entry = tune_find(tune_shared(), TUNE_NAME(render, cull));
-    TEST_ASSERT_NOT_NULL(entry);
-    saved_cull = *entry->value;
-    cull_changed = true;
-    (void)tune_reset(tune_shared(), TUNE_NAME(render, cull));
     const raster_stats_t on = raster_draw(&raster, &view);
-    (void)tune_set(tune_shared(), TUNE_NAME(render, cull), 0);
+    render_settings_t cull_off = RENDER_SETTINGS_DEFAULT;
+    cull_off.cull = false;
+    raster.settings = &cull_off;
     const raster_stats_t off = raster_draw(&raster, &view);
     TEST_ASSERT_LESS_THAN_INT(p->mesh.cluster_count, on.clusters);
     TEST_ASSERT_EQUAL_INT(p->mesh.cluster_count, off.clusters);
@@ -2605,15 +2624,15 @@ test_batched_copies_draw_what_one_instance_at_a_time_draws(void) {
     TEST_ASSERT_NOT_NULL(want);
     const fixture_camera_t camera = camera_down_plus_z(150.0f, -400, 1.0f);
     const render_view_t view = render_view_fixture(&camera, &raster, 0);
-    saved_batched = *tune_find(tune_shared(), TUNE_NAME(render, batched))->value;
-    batched_changed = true;
-    (void)tune_set(tune_shared(), TUNE_NAME(render, batched), 0);
+    render_settings_t one_at_a_time = RENDER_SETTINGS_DEFAULT;
+    one_at_a_time.batched = false;
+    raster.settings = &one_at_a_time;
     (void)raster_census(&raster, &view); /* batches run over its drawn list */
     TEST_ASSERT_EQUAL_INT(1 + BATCH_COPIES, raster_batch_count(&raster));
     raster_draw(&raster, &view);
     memcpy(want, raster_color(&raster), sizeof(*want) * W * H);
     memcpy(want + (W * H), raster_depth(&raster), sizeof(*want) * W * H);
-    (void)tune_reset(tune_shared(), TUNE_NAME(render, batched));
+    raster.settings = NULL;
     /* The large mesh alone, then as many copies a batch as its clusters hold. */
     const int per_batch = mathi_min(BATCH_COPIES, wall->mesh.cluster_count / card->mesh.cluster_count);
     TEST_ASSERT_EQUAL_INT(1 + per_batch, raster_batch_end(&raster, 1));
@@ -2634,9 +2653,9 @@ test_batch_count_keeps_empty_batches_and_the_clearing_draw(void) {
     raster_t raster = census_raster(instances, 2);
     const fixture_camera_t camera = camera_down_plus_z(10000.0F, -400, 1.0F);
     const render_view_t view = render_view_fixture(&camera, &raster, 0);
-    saved_batched = *tune_find(tune_shared(), TUNE_NAME(render, batched))->value;
-    batched_changed = true;
-    (void)tune_set(tune_shared(), TUNE_NAME(render, batched), 0);
+    render_settings_t one_at_a_time = RENDER_SETTINGS_DEFAULT;
+    one_at_a_time.batched = false;
+    raster.settings = &one_at_a_time;
     const raster_stats_t stats = raster_draw(&raster, &view);
     TEST_ASSERT_EQUAL_INT(0, stats.clusters);
     TEST_ASSERT_EQUAL_INT(2, raster_batch_count(&raster));
@@ -3051,14 +3070,6 @@ test_show_reads_the_depth_of_the_frame_just_rendered_and_leaves_it_alone(void) {
 
 static void
 release_fixture(void) {
-    if (cull_changed) {
-        (void)tune_set(tune_shared(), TUNE_NAME(render, cull), saved_cull);
-        cull_changed = false;
-    }
-    if (batched_changed) {
-        (void)tune_set(tune_shared(), TUNE_NAME(render, batched), saved_batched);
-        batched_changed = false;
-    }
     free(canvases);
     canvases = NULL;
     free(writer_hits_base);

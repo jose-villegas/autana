@@ -341,7 +341,8 @@ asset_store_locate(const void* address, asset_location_t* out) {
             asset_entry_t entry;
             if (asset_pack_entry(pack, e, &entry) == ASSET_OK && at >= entry.view.data
                 && at < entry.view.data + entry.view.size) {
-                *out = (asset_location_t){i, e, mounts[i].name, asset_pack_checksum(pack)};
+                *out = (asset_location_t){i, e, (uint32_t)(at - entry.view.data), mounts[i].name,
+                                          asset_pack_checksum(pack)};
                 return true;
             }
         }
