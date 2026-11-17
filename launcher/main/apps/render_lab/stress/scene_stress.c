@@ -25,9 +25,8 @@
 
 static const char* TAG = "stress";
 
-/* Copies are named consecutively from zero: the generated presets' slots, the carved presets' props. */
+/* Copies are named consecutively from zero. */
 #define STRESS_SLOT_FORMAT "slot_%02d"
-#define STRESS_PROP_FORMAT "prop_%02d"
 
 static const stress_params_t* shown;
 static entity_t loaded;
@@ -51,18 +50,11 @@ fail(const char* what) {
     lab_scene_fail(TAG, failure, sizeof failure, what);
 }
 
-/* The pool is every copy of the preset's kind the pack names, from 0 up to
- * the first it lacks; every copy of the other kind is hidden. */
+/* The pool is every copy the pack names, from 0 up to the first it lacks. */
 static bool
 find_pool(void) {
-    const bool carved = shown->surface == STRESS_SURFACE_CARVED;
-    int others = 0;
-    entity_t* hidden = lab_scene_copies(loaded, carved ? STRESS_SLOT_FORMAT : STRESS_PROP_FORMAT, &others);
-    for (int i = 0; hidden != NULL && i < others; i++) {
-        entity_set_enabled(hidden[i], false);
-    }
-    slots = lab_scene_copies(loaded, carved ? STRESS_PROP_FORMAT : STRESS_SLOT_FORMAT, &pool);
-    return hidden != NULL && slots != NULL;
+    slots = lab_scene_copies(loaded, STRESS_SLOT_FORMAT, &pool);
+    return slots != NULL;
 }
 
 static int
@@ -182,13 +174,13 @@ place_copies(void) {
     const stress_framing_t seen = {sqrtf(vec3f_dot(eye, eye)), lens->half_fov_short_tan};
     transformf_t facing = transformf_identity();
     transformf_set_rotation(&facing, quatf_from_axis_angle(vec3f_unit_y(), atan2f(eye.x, eye.z)));
-    const transformf_t shape = stress_baked(shown) ? static_shape() : transformf_identity();
+    const transformf_t shape = shown->surface == STRESS_SURFACE_STATIC ? static_shape() : transformf_identity();
     for (int i = 0; i < pool; i++) {
         const bool used = i < shown->copies;
         entity_set_enabled(slots[i], used);
         if (used) {
             transformf_t place = stress_copy_place(shown, i, seen);
-            if (stress_baked(shown)) {
+            if (shown->surface == STRESS_SURFACE_STATIC) {
                 place = transformf_compose(&place, &shape);
             }
             transform_set_local(slots[i], transformf_compose(&facing, &place));
@@ -219,7 +211,7 @@ load(void) {
         return false;
     }
     viewer = render_lab.start_camera == NULL ? camera : entity_find(loaded, name_hash(render_lab.start_camera));
-    if (!find_pool() || (!stress_baked(shown) && !take_mesh())) {
+    if (!find_pool() || (shown->surface != STRESS_SURFACE_STATIC && !take_mesh())) {
         fail("no memory for stress");
         return false;
     }
@@ -231,7 +223,7 @@ load(void) {
         fail("no memory for the stress texture");
         return false;
     }
-    if (!stress_baked(shown) && !build()) {
+    if (shown->surface != STRESS_SURFACE_STATIC && !build()) {
         fail("stress mesh did not fit");
         return false;
     }
