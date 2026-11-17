@@ -815,8 +815,8 @@ test_wing_leading_edge_is_forward_in_body_frame(void) {
         int hind_points = 0;
         const float tick = 1.0F / (float)mesh->position_scale;
         for (int v = 0; v < mesh->vertex_count; v++) {
-            const vec3f_t point = {mesh->positions[v][0] * tick, mesh->positions[v][1] * tick,
-                                   mesh->positions[v][2] * tick};
+            const vec3f_t point = {(float)mesh->positions[v][0] * tick, (float)mesh->positions[v][1] * tick,
+                                   (float)mesh->positions[v][2] * tick};
             const float x = fabsf(point.x);
             const vec3f_t in_body = vec3f_add(rest.position, quatf_rotate(rest.rotation, point));
             const float forward = vec3f_dot(in_body, vec3f_forward());

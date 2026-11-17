@@ -14,7 +14,7 @@ main(void) {
     const hinge_t hinge = {.rest = transformf_identity(), .axis = vec3f_forward(), .min = -LIMIT, .max = LIMIT};
     printf("{\"plates\":[");
     for (int i = 0; i <= SWEEP_STEPS; i++) {
-        const float angle = hinge.min + (hinge.max - hinge.min) * (float)i / SWEEP_STEPS;
+        const float angle = hinge.min + ((hinge.max - hinge.min) * (float)i / SWEEP_STEPS);
         const transformf_t pose = hinge_pose(&hinge, angle);
         printf("%s[", i ? "," : "");
         for (size_t p = 0; p < sizeof plate / sizeof plate[0]; p++) {
