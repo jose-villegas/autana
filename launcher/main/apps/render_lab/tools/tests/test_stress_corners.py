@@ -69,10 +69,10 @@ class StressCorners(unittest.TestCase):
         cls.build_output = run.stdout + run.stderr
         cls.built = run.returncode == 0
         probe = cls.out / "flap_constants.c"
-        probe.write_text('#include <stdio.h>\n#include "apps/render_lab/stress/scene_stress.h"\n'
+        probe.write_text('#include <stdio.h>\n#include "apps/render_lab/stress/scene_stress.h"\n#include "math/scalar/units.h"\n'
                          'int main(void) { printf("%.9g %.9g %.9g %.9g %.9g\\n", (double)STRESS_FLAP_AMPLITUDE, '
                          '(double)STRESS_FLAP_BIAS, (double)STRESS_FLAP_HZ, (double)STRESS_FLAP_PHASE_STEP, '
-                         '(double)STRESS_FLAP_MS_PER_SECOND); }\n')
+                         '(double)MATH_MS_PER_S); }\n')
         root = HERE.parents[5]
         includes = [root / "launcher/main"] + list((root / "launcher/packages").glob("*/include"))
         binary = cls.out / "flap_constants"
@@ -88,12 +88,13 @@ class StressCorners(unittest.TestCase):
     def setUp(self):
         self.assertTrue(self.built, self.build_output[-2000:])
 
-    def frames(self, key, tag=None, dt=None, frames=FRAMES + 1, transforms=False):
+    def frames(self, key, tag=None, dt=None, frames=FRAMES + 1, transforms=False, console=()):
         """Raster frames before a still camera, optionally with each update's local transforms."""
         dump = self.out / (tag or "still-" + key)
         dump.mkdir()
         poses = dump / "transforms.csv"
         options = (["--dt", str(dt)] if dt is not None else []) + (["--transforms", str(poses)] if transforms else [])
+        options += [option for command in console for option in ("--console", command)]
         run = subprocess.run([str(self.binary), "--quarter", "1", "--no-hud", "--frames", str(frames), "--scene",
                               "stress-" + key, "--camera", "still", "--dump", str(dump), *options, "-o",
                               str(dump / "last.bmp")], capture_output=True, text=True, timeout=120)
@@ -117,6 +118,20 @@ class StressCorners(unittest.TestCase):
     def last_counts(self, key, *options):
         """The last frame's counts of preset `key`, by name."""
         return self.counts(key, *options)[-1]
+
+    def test_path_replay_moves_wings_holds_and_repeats(self):
+        rows, frames = self.frames("few-butterflies", tag="path-replay", dt=MOTION_DT, frames=7, transforms=True,
+                                   console=("0:pose 0", f"1:pose {MOTION_DT}", "3:pose play", f"5:pose {MOTION_DT}"))
+        wing = "slot_00_wing_l"
+        rotations = [tuple(rows[i, wing][key] for key in ("qx", "qy", "qz", "qw")) for i in range(7)]
+        self.assertNotEqual(rotations[0], rotations[1])
+        self.assertEqual(rotations[1], rotations[2])
+        self.assertNotEqual(rotations[2], rotations[3])
+        self.assertEqual(rotations[1], rotations[5])
+        # The host composes before its provider runs the console command.
+        self.assertNotEqual(frames[1], frames[2])
+        self.assertEqual(frames[2], frames[3])
+        self.assertEqual(frames[2], frames[6])
 
     def test_shipped_update_raises_mirrored_wings_with_limits_and_copy_phases(self):
         rows, _ = self.frames("few-butterflies", tag="wing-tips", dt=MOTION_DT, frames=MOTION_FRAMES, transforms=True)

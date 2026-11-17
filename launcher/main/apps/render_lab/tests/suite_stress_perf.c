@@ -221,7 +221,6 @@ test_stress_stages(void) {
     for (int i = 0; i < params->perf_poses; i++) {
         int64_t stage_us[STRESS_PERF_SAMPLED_STAGES];
         const uint32_t pose_ms = (uint32_t)((int64_t)duration_ms * i / params->perf_poses);
-        scene_stress_seek(pose_ms);
         render_lab_test_replay_pose(TAG, camera, duration_ms, (int32_t)pose_ms, preset->key, quarter->name, stages,
                                     STRESS_PERF_SAMPLED_STAGES, stage_us);
         for (int stage = 0; stage < STRESS_PERF_SAMPLED_STAGES; stage++) {

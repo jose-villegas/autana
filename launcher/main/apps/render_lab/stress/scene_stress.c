@@ -16,6 +16,7 @@
 #include "image/pixel/rgb565.h"
 #include "kinematics/hinge/hinge.h"
 #include "math/scalar/math_const.h"
+#include "math/scalar/units.h"
 #include "profile/frame_cost.h"
 #include "render/context/render_context.h"
 #include "scene/animator/animator.h"
@@ -44,6 +45,7 @@ static hinge_t* wing_hinges;
 static stress_buffers_t buffers[STRESS_MIX_LEVELS];
 static r3d_dynamic_mesh_t mesh[STRESS_MIX_LEVELS];
 static uint32_t wave_ms;
+static bool held;
 
 /* A textured preset's texture and its texturing of the one mesh. */
 static r3d_texture_t* texture;
@@ -195,7 +197,8 @@ static_shape(void) {
     for (entity_t e = entity_next(loaded, ENTITY_NONE); !handle_is_none(e); e = entity_next(loaded, e)) {
         const r3d_lit_mesh_t* part = renderer_mesh(e);
         if (part != NULL && handle_equal(entity_parent(e), slots[0])) {
-            const mat4f_t model = transform_world_matrix(e);
+            transformf_t local = transform_local(e);
+            const mat4f_t model = transformf_matrix(&local);
             box = box3f_union(box, r3d_lit_mesh_world_bounds(part, &model));
         }
     }
@@ -290,6 +293,7 @@ scene_stress_enter(const lab_scene_t* self) {
     draw_clear(RGB565BE(UI_BACKGROUND));
     failure[0] = '\0';
     wave_ms = 0;
+    held = false;
     if (!load()) {
         return;
     }
@@ -312,13 +316,13 @@ scene_stress_exit(void) {
 static void
 flap(void) {
     FRAME_COST_BEGIN(flap_from);
-    const float seconds = (float)wave_ms / STRESS_FLAP_MS_PER_SECOND;
+    const float seconds = (float)wave_ms / (float)MATH_MS_PER_S;
     /* A fixed sine, phase-stepped per copy, so the wings move out of step
      * and a replay at the same time gives the same frame. */
     for (int i = 0; i < shown->copies; i++) {
         const float phase = STRESS_FLAP_PHASE_STEP * (float)i;
         const float angle =
-            (STRESS_FLAP_AMPLITUDE * sinf((2.0F * MATH_PI * STRESS_FLAP_HZ * seconds) + phase)) + STRESS_FLAP_BIAS;
+            (STRESS_FLAP_AMPLITUDE * sinf((MATH_TAU * STRESS_FLAP_HZ * seconds) + phase)) + STRESS_FLAP_BIAS;
         for (int side = 0; side < STRESS_WING_SIDES; side++) {
             const int at = (i * STRESS_WING_SIDES) + side;
             transform_set_local(wings[at], hinge_pose(&wing_hinges[at], angle));
@@ -334,7 +338,9 @@ scene_stress_update(uint32_t dt_ms) {
     if (handle_is_none(loaded) || failure[0] != '\0') {
         return;
     }
-    wave_ms += dt_ms;
+    if (!held) {
+        wave_ms += dt_ms;
+    }
     if (shown->surface == STRESS_SURFACE_HINGED) {
         flap();
     } else if (stress_per_frame(shown) && !build()) {
@@ -342,11 +348,22 @@ scene_stress_update(uint32_t dt_ms) {
     }
 }
 
-void
-scene_stress_seek(uint32_t time_ms) {
-    if (shown != NULL && shown->surface == STRESS_SURFACE_HINGED) {
-        wave_ms = time_ms;
+static bool
+seek_flap(uint32_t time_ms) {
+    if (handle_is_none(loaded) || failure[0] != '\0' || !animator_seek(camera, ANIMATOR_CURRENT, time_ms)) {
+        return false;
     }
+    (void)animator_set_paused(camera, ANIMATOR_CURRENT, true);
+    wave_ms = time_ms;
+    held = true;
+    flap();
+    return true;
+}
+
+static void
+play_flap(void) {
+    held = false;
+    (void)animator_set_paused(camera, ANIMATOR_CURRENT, false);
 }
 
 /* The shell has already drawn the scene into the framebuffer. */
@@ -365,7 +382,13 @@ scene_stress_status(void) {
 /* The camera shown: swinging, unless the start named a still one. */
 static lab_path_t
 scene_stress_path(void) {
-    return (lab_path_t){.scene = loaded, .entity = handle_is_none(loaded) ? ENTITY_NONE : viewer};
+    lab_path_t path = {.scene = loaded, .entity = handle_is_none(loaded) ? ENTITY_NONE : viewer};
+    if (!handle_is_none(loaded) && shown->surface == STRESS_SURFACE_HINGED) {
+        path.seek = seek_flap;
+        path.play = play_flap;
+        path.duration_ms = animator_clip_duration_ms(camera, animator_current_clip(camera));
+    }
+    return path;
 }
 
 /* A still preset can have frames generated: only the camera moves. */

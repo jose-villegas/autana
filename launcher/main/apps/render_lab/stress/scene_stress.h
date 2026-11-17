@@ -13,22 +13,17 @@
 
 extern const lab_scene_t scene_stress[STRESS_PRESET_COUNT];
 
-/* Seek a hinged preset to a replay pose's time before its zero-dt draws. */
-void scene_stress_seek(uint32_t time_ms);
-
 /* Wing excursion about its bias, in radians. */
-#define STRESS_FLAP_AMPLITUDE     (55.0F * MATH_RADIANS_PER_DEGREE)
+#define STRESS_FLAP_AMPLITUDE  (55.0F * MATH_RADIANS_PER_DEGREE)
 /* Mean wing angle, in radians. */
-#define STRESS_FLAP_BIAS          (10.0F * MATH_RADIANS_PER_DEGREE)
+#define STRESS_FLAP_BIAS       (10.0F * MATH_RADIANS_PER_DEGREE)
 /* Largest absolute wing angle, in radians. */
-#define STRESS_FLAP_LIMIT         (STRESS_FLAP_AMPLITUDE + STRESS_FLAP_BIAS)
+#define STRESS_FLAP_LIMIT      (STRESS_FLAP_AMPLITUDE + STRESS_FLAP_BIAS)
 
 /* Flap cycles per second. */
-#define STRESS_FLAP_HZ            4.0F
+#define STRESS_FLAP_HZ         4.0F
 /* Angular phase between neighbouring copies, in radians. */
-#define STRESS_FLAP_PHASE_STEP    (MATH_PI * 0.618034F)
-/* Frame-time ticks per second. */
-#define STRESS_FLAP_MS_PER_SECOND 1000.0F
+#define STRESS_FLAP_PHASE_STEP (MATH_PI * 0.618034F)
 
 /* Frame-cost stage for prescribing all wing poses. */
-#define STRESS_FLAP_STAGE_NAME    "stress.flap"
+#define STRESS_FLAP_STAGE_NAME "stress.flap"

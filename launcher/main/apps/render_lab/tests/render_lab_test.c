@@ -1,6 +1,7 @@
 #include "apps/render_lab/tests/render_lab_test.h"
 #ifdef DEVICE_BUILD
 #include <stdio.h>
+#include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/render_lab_dynres.h"
 #include "apps/render_lab/render_lab_view.h"
 #include "collections/strbuf.h"
@@ -89,7 +90,13 @@ render_lab_test_replay_pose(const char* tag, entity_t entity, uint32_t duration_
     }
     TEST_ASSERT_NOT_NULL(pose_line);
     pose_line_t* out = pose_line;
-    TEST_ASSERT_TRUE(animator_seek(entity, ANIMATOR_CURRENT, (uint32_t)path_ms % duration_ms));
+    const lab_scene_t* current = lab_current(&render_lab);
+    const lab_path_t path = current->path != NULL ? current->path() : (lab_path_t){0};
+    if (path.seek != NULL) {
+        TEST_ASSERT_TRUE(lab_seek_path(&render_lab, (uint32_t)path_ms));
+    } else {
+        TEST_ASSERT_TRUE(animator_seek(entity, ANIMATOR_CURRENT, (uint32_t)path_ms % duration_ms));
+    }
     render_lab_test_show_view(render_context_debug_view_named("cull"));
     (void)lab_test_frame_dt(0, false, NULL);
     memset(out->sums, 0, sizeof out->sums);
