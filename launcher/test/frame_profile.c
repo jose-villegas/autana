@@ -6,6 +6,7 @@
 #include "collections/strbuf.h"
 #include "core/memory.h"
 #include "esp_log.h"
+#include "profile/frame_laps.h"
 #ifdef DEVICE_BUILD
 #include "console/console.h"
 #endif
@@ -20,6 +21,9 @@ play(const frame_profile_scenario_t* s, frame_profile_frame_fn frame, void* ctx,
         ESP_LOGE("frame_profile", "%s: invalid warm-up frame time", s->row);
         return;
     }
+#if FRAME_LAPS_ENABLED
+    frame_laps_take_forget(); /* the sampled frames' laps only, as p->frames counts them */
+#endif
     int64_t elapsed_us = 0;
     while (elapsed_us < s->duration_us) {
         if (p->frames == capacity) {
@@ -245,4 +249,22 @@ frame_profile_log(const char* tag, const char* row, const frame_profile_t* p, co
              row, p->frames, (long long)p->frame_us.avg, (long long)p->frame_us.med, (long long)p->frame_us.p95,
              (long long)p->frame_us.max, (long long)p->frame_us.min, (double)MATH_US_PER_S * p->frames / p->total_us,
              (double)MATH_US_PER_S / p->frame_us.p95, (double)MATH_US_PER_S / p->frame_us.max, quarter);
+}
+
+void
+frame_profile_log_laps(const char* tag, const char* row, const frame_profile_t* p, const char* quarter) {
+#if FRAME_LAPS_ENABLED
+    /* Too big for the frame task's stack. */
+    char* const line = memory_alloc(FRAME_LAPS_REPORT_MAX, MEMORY_INTERNAL);
+    if (line == NULL) {
+        ESP_LOGE(tag, "%s: lap line allocation failed", row);
+        return;
+    }
+    if (p->frames > 0 && frame_laps_take_report((uint32_t)p->frames, line, FRAME_LAPS_REPORT_MAX) > 0) {
+        ESP_LOGI(tag, FRAME_PROFILE_LAPS FRAME_LAPS_PREFIX " %s " FRAME_PROFILE_QUARTER "%s", row, line, quarter);
+    }
+    memory_free(line);
+#else
+    (void)tag, (void)row, (void)p, (void)quarter;
+#endif
 }
