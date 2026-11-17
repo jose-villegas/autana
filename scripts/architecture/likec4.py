@@ -1,10 +1,11 @@
 """Write model data (model.py's shape) as a standalone LikeC4 model; no Node
 required.
 
-  * modules carry test/tool and generated tags, plus any the caller's files
-    carry (module_tags); a component carries the tags shared by the modules
-    a default view shows, falling back to all its modules when every module
-    is hidden. Default views and counts omit tests, tools and generated files;
+  * a module carries every tag its files carry (a file's optional `tags`),
+    test or tool by its files' kind, and generated when all its files are;
+    a component carries the tags shared by the modules a default view shows,
+    falling back to all its modules when every module is hidden. Default
+    views and counts omit tests, tools and generated files;
   * arrows aggregate per-file include counts by module pair, with both ends'
     tags. Each view folds modules to the boxes it draws: the ancestor that
     is a direct child of the view's scope, or of the enclosing scope for an
@@ -12,16 +13,16 @@ required.
     path still joins its ends. Arrows are checked in sorted order, and each
     hidden arrow leaves the graph before the next check, so cycles never
     lose reachability. Every arrow stays in the model;
-  * the drill container's components nest by folder; bands, when given, are
+  * the detail container's (`drill`) components nest by folder; bands, when given, are
     boxes of their own holding their folders row by row, each with a scoped
     view. Every element view describes its scope.
 
-Optional data keys: `tags` (tag -> colour or None, beyond the defaults),
-`roles` ((marked, other): a component whose subtree holds a file flagged
-`marked`, and its descendants, carry `marked`; the rest `other`),
-`release_hidden` (tags a release-only view of the drill container also
-hides), `bands`, `packages`, `packages_box`, `doc_links`, `links` and
-`libraries`. A `deployment` object adds deployment nodes and views.
+Optional data keys: `tag_colours` (tag -> colour or None), `views` (more
+views of the detail container, each {suffix, title, hide: tags it hides too}),
+`bands`, `packages`, `packages_box`, `doc_links`, `links` with the
+`link_notation` their arrows are drawn under, and `libraries`. Another .c4
+file in the same folder may add deployment nodes and views on top; place()
+gives the names to point them at.
 """
 import json
 import pathlib
@@ -38,15 +39,10 @@ def quote(text):
 
 
 def module_tags(files):
-    variants = {f.get('variant') for f in files}
-    tags = variants & {'dev', 'diag'} if len(variants) == 1 else set()
+    tags = set().union(*(f.get('tags', ()) for f in files))
     tags |= {f['kind'] for f in files} & {'test', 'tool'}
-    if any(f.get('iram') for f in files):
-        tags.add('iram')
     if all(f.get('gen') for f in files):
         tags.add('generated')
-    if any(f.get('variant') == 'release' and f.get('devcode') for f in files):
-        tags.add('devcode')
     return tags
 
 
@@ -82,20 +78,27 @@ def shortlist(names):
     return ', '.join(names[:TITLE_NAMES] + ([f'+{len(names) - TITLE_NAMES}'] if len(names) > TITLE_NAMES else []))
 
 
-def emit(data, deployment=None):
-    """The model text. `deployment`, when given, has `kinds` (deployment node
-    kinds for the specification) and `emit(out, base, containers)`, which
-    appends a deployment block and returns the view lines to add."""
-    components = data['components']
-    packages = data.get('packages', [])
+def place(data):
+    """The containers emit() draws, packages included, and each one's full
+    name in the model."""
     containers = [n for n in data['containers']['nodes'] if n['type'] == 'container']
-    containers += [dict(p, type='container', name=p['id'], package=True) for p in packages]
+    containers += [dict(p, type='container', name=p['id'], package=True) for p in data.get('packages', [])]
+    system = next(n for n in data['context']['nodes'] if n['type'] == 'system')
+    box = data.get('packages_box')
+    members = set(box['members']) if box else set()
+    containers.sort(key=lambda c: c['id'] in members)
+    return containers, {c['id']: system['id'] + '.' + (box['id'] + '.' if c['id'] in members else '') + c['id']
+                        for c in containers}
+
+
+def emit(data):
+    """The model text."""
+    components = data['components']
+    containers, where = place(data)
     system = next(n for n in data['context']['nodes'] if n['type'] == 'system')
     drill = next(c for c in containers if c.get('drill'))
     box = data.get('packages_box')
     members = set(box['members']) if box else set()
-    containers.sort(key=lambda c: c['id'] in members)
-    where = {c['id']: system['id'] + '.' + (box['id'] + '.' if c['id'] in members else '') + c['id'] for c in containers}
     base = where[drill['id']]
     paths, modules, file_module = {}, {}, {}
     by_id = {c['id']: c for c in components}
@@ -117,33 +120,32 @@ def emit(data, deployment=None):
     for f in data['files']:
         stem = f.get('module', f['path'].rsplit('.', 1)[0])
         modules.setdefault((f['comp'], stem), []).append(f)
-    roles = data.get('roles')
-    marked = set().union(*(ids for ids in subtree.values()
-                           if roles and any(f.get(roles[0]) and f['comp'] in ids for f in data['files'])))
     tags, module_names = {}, {}
     for (cid, stem), files in modules.items():
         folder = next(c['folder'] for c in components if c['id'] == cid)
         name = stem[len(folder) + 1:] if stem.startswith(folder + '/') else stem.rsplit('/', 1)[-1]
         full = paths[cid] + '.' + identifier('m_', name)
         module_names[full] = name
-        tags[full] = module_tags(files) | ({roles[0] if cid in marked else roles[1]} if roles else set())
+        tags[full] = module_tags(files)
         for f in files:
             file_module[f['path']] = full
     view_tags = {c['id']: identifier('indirect_c_', c['id']) for c in components}
     band_tags = {b['id']: identifier('indirect_b_', b['id']) for b in bands}
     box_path = system['id'] + '.' + box['id'] if box else None
     box_tags = {box['id']: identifier('indirect_p_', box['id'])} if box else {}
-    release_hidden = tuple(data.get('release_hidden', ()))
-    colours = data.get('tags', {})
-    all_tags = DEFAULT_HIDDEN | {'indirect'} | set(colours) | ({'indirect_release'} if release_hidden else set())
+    extra_views = data.get('views', [])
+    colours = data.get('tag_colours', {})
+    links = data.get('links', [])
+    all_tags = DEFAULT_HIDDEN | {'indirect'} | set(colours)
+    all_tags |= {'indirect_' + v['suffix'] for v in extra_views} | {t for v in extra_views for t in v['hide']}
+    all_tags |= set().union(*tags.values()) | {edge['tag'] for edge in links if edge.get('tag')}
     out = ['specification {']
     styles = {'person': 'shape person', 'external': 'color gray', 'module': 'color slate; sizing fixed', 'component': 'sizing fixed', 'band': 'color indigo'}
     for kind in ('person', 'system', 'external', 'container', 'band', 'component', 'module'):
         out.append(f'  element {kind} {{ notation {quote(kind.capitalize())}' + (f' style {{ {styles[kind]} }}' if kind in styles else '') + ' }')
-    out.extend(["  relationship includes { notation 'Source header include'; color slate; line solid }",
-                "  relationship links { notation 'CMake component requirement'; color blue; line dashed; multiple true }"])
-    for kind in (deployment.kinds if deployment else ()):
-        out.append(f'  deploymentNode {kind} {{ notation {quote(kind.capitalize())} }}')
+    out.append("  relationship includes { notation 'Source header include'; color slate; line solid }")
+    if links:
+        out.append(f"  relationship links {{ notation {quote(data['link_notation'])}; color blue; line dashed; multiple true }}")
     out.extend('  tag ' + t + (' { color ' + colours[t] + ' }' if colours.get(t) else '')
                for t in sorted(all_tags | set(view_tags.values()) | set(band_tags.values()) | set(box_tags.values())))
     out.extend(['}', '', 'model {'])
@@ -284,8 +286,8 @@ def emit(data, deployment=None):
 
     shown = [p for p in counts if not relationship_tags[p] & DEFAULT_HIDDEN]
     reduce(shown, base, 'indirect')
-    if release_hidden:
-        reduce([p for p in shown if not relationship_tags[p] & set(release_hidden)], base, 'indirect_release')
+    for v in extra_views:
+        reduce([p for p in shown if not relationship_tags[p] & set(v['hide'])], base, 'indirect_' + v['suffix'])
     for cid, scope in paths.items():
         reduce(shown, scope, view_tags[cid])
     for bid, scope in band_paths.items():
@@ -304,13 +306,14 @@ def emit(data, deployment=None):
     for container in containers:
         if container.get('folder'):
             targets['code:' + container['folder']] = fqns[container['id']]
-    for edge in data.get('links', []):
+    for edge in links:
+        unknown = [end for end in (edge['from'], edge['to']) if end not in targets]
+        if unknown:
+            raise ValueError(f"link {edge['from']} -> {edge['to']}: no box for {', '.join(unknown)}")
         a, b = targets[edge['from']], targets[edge['to']]
         mark = ' #' + edge['tag'] if edge.get('tag') else ''
         out.append(f"  {a} -[links]-> {b} {quote('requires ' + shortlist(edge['components']))} {{{mark} metadata {{ components {quote(', '.join(edge['components']))} }} }}")
-    out.append('}')
-    deployment_views = deployment.emit(out, base, containers) if deployment else []
-    out.extend(['', 'views {'])
+    out.extend(['}', '', 'views {'])
 
     def view(name, scope, title, hidden=(), indirect=None):
         out.append(f'  view {name}' + (f' of {scope}' if scope else '') + ' {')
@@ -325,9 +328,9 @@ def emit(data, deployment=None):
     view('containers', system['id'], 'Containers')
     hidden = tuple(sorted(DEFAULT_HIDDEN))
     view(drill['id'], base, drill['name'] + ': components', hidden, 'indirect')
-    if release_hidden:
-        view(drill['id'] + '_release', base, drill['name'] + ': components, release image only',
-             release_hidden + hidden, 'indirect_release')
+    for v in extra_views:
+        view(drill['id'] + '_' + v['suffix'], base, drill['name'] + ': components, ' + v['title'],
+             tuple(v['hide']) + hidden, 'indirect_' + v['suffix'])
     view(drill['id'] + '_all', base, drill['name'] + ': components, with tests and tools')
     if box:
         view(box['id'], box_path, box['name'], hidden, box_tags[box['id']])
@@ -335,7 +338,6 @@ def emit(data, deployment=None):
         view(identifier('b_', b['id']), band_paths[b['id']], b['id'], hidden, band_tags[b['id']])
     for c in components:
         view(identifier('c_', c['id']), paths[c['id']], c['id'], hidden, view_tags[c['id']])
-    out.extend(deployment_views)
     out.append('}')
     return '\n'.join(out) + '\n'
 

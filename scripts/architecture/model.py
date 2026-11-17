@@ -3,8 +3,8 @@ around the system, one component per source folder, one module per source
 and its header, the includes between them, and the words for each box.
 
 Everything here takes the tree and its layout as arguments; build.py reads
-them from a project file, and a caller with more to say (build images,
-deployment) adds to the data before likec4.emit() writes it.
+them from a project file, and a caller with more to say (file tags,
+packages, deployment) adds to the data before likec4.emit() writes it.
 
   * a box whose words came from a file links to it. A file's words are its
     opening: a Markdown file's first prose paragraph, a C or C++ file's top
@@ -32,11 +32,13 @@ import sys
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "gates"))
 from c_comments import SOURCE_EXTENSIONS, file_header  # noqa: E402
+from check_doc_index import slugify  # noqa: E402
 from check_generated_files import is_generated  # noqa: E402
+from tracked import tracked_files  # noqa: E402
 
 INCLUDE = re.compile(r'^\s*#\s*include\s*[<"]([^>"]+)[>"]', re.M)
 RUN_TEST = re.compile(r"\bRUN_TEST\((\w+)\)")
-# The longest summary LikeC4 shows whole.
+# Summaries are cut here to fit LikeC4's summary field.
 SUMMARY_LENGTH = 150
 
 
@@ -56,23 +58,27 @@ class Tree:
 
     def files(self, *paths):
         """Tracked paths, under `paths` when given."""
-        return self.git("ls-files", *paths).split()
+        return list(tracked_files(self.root, paths))
 
     def read(self, rel):
         return (self.root / rel).read_text(encoding="utf-8", errors="replace")
 
     def published_commit(self):
         """The commit the page's links point at: the newest one HEAD holds that
-        the remote's main has too. A build on a merge made only in the runner
-        would otherwise link to a commit GitHub never saw, and every source
-        link would 404."""
-        if subprocess.run(["git", "-C", str(self.root), "rev-parse", "--verify", "-q", "origin/main"],
-                          capture_output=True).returncode != 0:
-            return self.git("rev-parse", "HEAD").strip()
-        return self.git("merge-base", "HEAD", "origin/main").strip()
+        the remote's default branch (origin/HEAD, else origin/main) has too. A
+        build on a merge made only in the runner would otherwise link to a
+        commit GitHub never saw, and every source link would 404."""
+        for ref in ("origin/HEAD", "origin/main"):
+            if subprocess.run(["git", "-C", str(self.root), "rev-parse", "--verify", "-q", ref],
+                              capture_output=True).returncode == 0:
+                return self.git("merge-base", "HEAD", ref).strip()
+        return self.git("rev-parse", "HEAD").strip()
 
     def repository(self):
-        url = self.git("remote", "get-url", "origin").strip()
+        """The GitHub page of `origin`, or "" without one."""
+        found = subprocess.run(["git", "-C", str(self.root), "remote", "get-url", "origin"],
+                               capture_output=True, text=True)
+        url = found.stdout.strip() if found.returncode == 0 else ""
         m = re.search(r"github\.com[:/]([^/]+/[^/]+?)(?:\.git)?$", url)
         return f"https://github.com/{m.group(1)}" if m else ""
 
@@ -139,52 +145,64 @@ def readme_system(tree):
     """The system box: the README's title and opening paragraph."""
     readme = tree.read("README.md")
     title = re.search(r"^#\s+(.+)$", readme, re.M)
-    return {"name": title.group(1).strip() if title else "", "desc": paragraph(readme), "src": "README.md"}
+    if not title or not paragraph(readme):
+        raise Undescribed("README.md names the system: open it with a # title and a paragraph")
+    return {"name": title.group(1).strip(), "desc": paragraph(readme), "src": "README.md"}
 
 
 def outside_systems(tracked, systems):
-    """Software systems around this one, each (id, name, words, folder it stands
-    for or None); a folder the tree no longer holds fails."""
+    """Software systems around this one, each {id, name, description,
+    folder} (folder: what it stands for, or null); a folder the tree no
+    longer holds fails. A submodule's folder is tracked as the one path."""
     nodes = []
-    for i, n, d, src in systems:
-        if src and not any(p.startswith(src + "/") for p in tracked):
-            raise Undescribed(f"{n} stands for {src}/, which the tree no longer holds")
-        nodes.append({"id": i, "name": n, "type": "ext", "tech": "Software system", "desc": d, "src": src})
+    for s in systems:
+        src = s["folder"]
+        if src and not any(p == src or p.startswith(src + "/") for p in tracked):
+            raise Undescribed(f"{s['name']} stands for {src}/, which the tree no longer holds")
+        nodes.append({"id": s["id"], "name": s["name"], "type": "ext", "tech": "Software system",
+                      "desc": s["description"], "src": src})
     return nodes
 
 
-def context(tree, tracked, system, people, outside, containers, relations, drill):
-    """Levels 1 and 2: their boxes and what flows between them. `containers`
-    are (id, name, technology, file whose opening describes it); `drill` is
-    the container whose components level 3 draws."""
-    people = [{"id": i, "name": n, "type": "person", "tech": "Person", "desc": d, "src": None}
-              for i, n, d in people]
+def context(tree, tracked, system, people, outside, containers, relations, detail):
+    """Levels 1 and 2: their boxes and what flows between them. `people` are
+    {id, name, description}; `containers` {id, name, technology, file whose
+    opening describes it}; `relations` {from, to, label}; `detail` is the
+    container whose components level 3 draws."""
+    people = [{"id": p["id"], "name": p["name"], "type": "person", "tech": "Person",
+               "desc": p["description"], "src": None} for p in people]
     nodes = []
-    for i, n, tech, src in containers:
+    for c in containers:
+        src = c["file"]
         desc = opening(src, tree.read(src)) if src in tracked else ""
         if not desc:
-            raise Undescribed(f"container {n} reads its description from {src}: give it an opening sentence")
-        nodes.append({"id": i, "name": n, "type": "container", "tech": tech, "desc": desc, "src": src,
-                      "drill": i if i == drill else None})
+            raise Undescribed(f"container {c['name']} reads its description from {src}: give it an opening sentence")
+        nodes.append({"id": c["id"], "name": c["name"], "type": "container", "tech": c["technology"],
+                      "desc": desc, "src": src, "drill": c["id"] if c["id"] == detail else None})
+    if not any(n["drill"] for n in nodes):
+        raise Undescribed(f"the detail container {detail} is not among the containers")
     ids = {b["id"] for b in people + outside + nodes}
-    for a, b, _ in relations:
-        if a not in ids or b not in ids:
-            raise Undescribed(f"relation {a} -> {b} names a box that does not exist")
-    top = dict(system, id=identifier("", system["name"].lower()), type="system",
+    for r in relations:
+        if r["from"] not in ids or r["to"] not in ids:
+            raise Undescribed(f"relation {r['from']} -> {r['to']} names a box that does not exist")
+    name = identifier("", system["name"].lower())
+    top = dict(system, id=name if name[:1].isalpha() else "s_" + name, type="system",
                tech="Software system", drill="containers")
     return {
         "context": {"nodes": people + [top] + outside},
-        "containers": {"nodes": people + nodes + outside, "edges": [list(r) for r in relations]},
+        "containers": {"nodes": people + nodes + outside,
+                       "edges": [[r["from"], r["to"], r["label"]] for r in relations]},
     }
 
 
 def kind(rel):
     """What a file is for, by where it sits and what it is called: "test" (a
-    test/ or tests/ folder, a suite_ file, a _test name), "tool" (a tools/
-    folder: host programs the product never links), or "src"."""
+    test/ or tests/ folder, a test_ or suite_ file, a _test or Test name),
+    "tool" (a tools/ folder: host programs the product never links), or "src"."""
     path = pathlib.PurePosixPath(rel)
     folders = set(path.parts[:-1])
-    if folders & {"test", "tests"} or path.name.startswith("suite_") or path.stem.endswith("_test"):
+    if (folders & {"test", "tests"} or path.name.startswith(("test_", "suite_"))
+            or path.stem.endswith(("_test", "Test"))):
         return "test"
     if "tools" in folders:
         return "tool"
@@ -271,7 +289,7 @@ def doc_references(tree, tracked, includes, suffixes):
             heading = re.match(r'^#{1,6}\s+(.+?)(?:\s+#+)?$', line) if not fenced else None
             if heading or section is None:
                 title = heading[1] if heading else pathlib.PurePosixPath(path).stem
-                slug = re.sub(r'[^\w\- ]', '', title.lower()).replace(' ', '-')
+                slug = slugify(title)
                 anchor, suffix = slug, 0
                 while anchor in slugs:
                     suffix += 1

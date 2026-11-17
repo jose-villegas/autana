@@ -6,20 +6,9 @@
 The checkout (default: the current folder) is read through git: only
 tracked files count. site.py turns the written folder into the explorer.
 
-The project file names what the code cannot say, and where to read the rest:
-
-    {
-      "people":     [["id", "Name", "what they do with it"]],
-      "systems":    [["id", "Name", "what it is", "folder it stands for, or null"]],
-      "containers": [["id", "Name", "technology", "file whose opening describes it"]],
-      "relations":  [["from id", "to id", "what flows"]],
-      "drill":      "id of the container whose components level 3 draws",
-      "scan":       ["source roots: each folder under them is a component"],
-      "include_roots": ["where a quoted include is looked up after its own folder"],
-      "headers":    [".h"],
-      "sources":    [".c"],
-      "vendor_includes": "regex: outside headers listed in a module's metadata"
-    }
+The project file names what the code cannot say (the people, outside
+systems, containers and what flows between them) and where the sources lie;
+docs/tools/Architecture-Diagram.md lists its keys, every one required.
 
 The system box is the README's title and opening paragraph.
 """
@@ -32,7 +21,7 @@ import sys
 import likec4
 import model
 
-KEYS = ("people", "systems", "containers", "relations", "drill", "scan", "include_roots",
+KEYS = ("people", "systems", "containers", "relations", "detail", "scan", "include_roots",
         "headers", "sources", "vendor_includes")
 
 
@@ -45,28 +34,36 @@ def load(path):
     return project
 
 
-def build_data(tree, project):
-    """The model data for likec4.emit()."""
+def build_data(tree, project, packages=None, vendored=(), outside=()):
+    """The model data for likec4.emit(). A caller that knows more passes
+    `packages` (scan root -> name: a folder drawn as a container of its own,
+    whose words are required), `vendored` (tracked files an outside include
+    may name) and `outside` (more outside-system boxes), then adds to the
+    result."""
     headers, sources = tuple(project["headers"]), tuple(project["sources"])
     scans, includes = tuple(project["scan"]), tuple(project["include_roots"])
+    packages = packages or {}
     tracked = set(tree.files())
     paths = sorted(p for p in tree.files(*scans) if p.endswith(headers + sources))
     if not paths:
         raise model.Undescribed(f"no {headers + sources} source is tracked under {list(scans)}")
-    folders, comp_of, parent_of = model.components_of(paths, scans, headers)
+    folders, comp_of, parent_of = model.components_of(paths, scans, headers, packages, includes)
     texts = {rel: tree.read(rel) for rel in paths}
-    files = model.source_files(texts, comp_of, tracked, includes, re.compile(project["vendor_includes"]))
+    files = model.source_files(texts, comp_of, tracked, includes, re.compile(project["vendor_includes"]), vendored)
     model.pair_modules(files, comp_of, headers, sources)
     docs = model.doc_references(tree, tracked, includes, headers + sources)
     doc_links = model.assign_docs(docs, [dict(id=cid, folder=folder) for cid, folder in folders.items()], files)
     components = []
     for cid, folder in sorted(folders.items()):
-        desc, src = model.describe(tree, folder, tracked, headers, sources, required=False, doc=doc_links.get(cid))
-        components.append({"id": cid, "folder": folder, "desc": desc, "src": src, "parent": parent_of[cid]})
+        desc, src = model.describe(tree, folder, tracked, headers, sources, required=folder in packages,
+                                   doc=doc_links.get(cid))
+        package = next((name for root, name in packages.items() if folder == root or folder.startswith(root + "/")), None)
+        components.append({**({"package": package} if package else {}), "id": cid, "folder": folder,
+                           "desc": desc, "src": src, "parent": parent_of[cid]})
     system = model.readme_system(tree)
     levels = model.context(tree, tracked, system, project["people"],
-                           model.outside_systems(tracked, project["systems"]),
-                           project["containers"], project["relations"], project["drill"])
+                           list(outside) + model.outside_systems(tracked, project["systems"]),
+                           project["containers"], project["relations"], project["detail"])
     return {"system": system, **levels, "doc_links": doc_links, "components": components,
             "files": files, "source": tree.source()}
 
