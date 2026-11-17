@@ -30,15 +30,18 @@ import tempfile
 import time
 
 from check_generated_files import is_generated
-from tracked import revision_contents
+from c_comments import SOURCE_EXTENSIONS
+from tracked import repository, revision_contents
 
-ROOT = Path(__file__).resolve().parents[2]
-ENGINE = ROOT / "scripts/gates/node_modules/jscpd/run-jscpd.js"
+# The tree this gate ships in, which holds its clone engine and scratch space;
+# the tree it checks is the repository it is run from.
+GATE_TREE = Path(__file__).resolve().parents[2]
+ENGINE = GATE_TREE / "scripts/gates/node_modules/jscpd/run-jscpd.js"
 MIN_TOKENS = 80
 # Below this many AST nodes a same-shape function is an idiom (`return self`,
 # `self.directory.cleanup()`), not a helper worth an owner.
 MIN_FUNCTION_NODES = 20
-SUFFIXES = {".c", ".h", ".cc", ".cpp", ".cxx", ".hpp", ".py"}
+SUFFIXES = {*SOURCE_EXTENSIONS, ".py"}
 
 
 def eligible_name(name):
@@ -82,7 +85,7 @@ PYTHON_TOKENS = re.compile(
 # A word or one punctuation character: what same_fragment and a short function count.
 CODE_TOKEN = re.compile(r"\w+|[^\w\s]")
 
-# A suite's list of RUN_TEST lines, or the rows of a data table, matches any
+# A suite's list of RUN_TEST or RUN_TEST_CASE lines, or the rows of a data table, matches any
 # other long list once identifiers are ignored, and has no shared owner to
 # extract; a pair counts only if what remains without them is still a
 # clone's length in itself. A table row is a braced initializer holding no
@@ -90,7 +93,8 @@ CODE_TOKEN = re.compile(r"\w+|[^\w\s]")
 # is the same: with literals ignored, its run of string lines matches any other
 # such run, its own shifted by a line included.
 STRING_RUN = r'(?:"(?:\\.|[^"\\])*"\s*(?:/\*.*?\*/\s*|//[^\n]*\s*)*){2,}'
-TEST_REGISTRATION = re.compile(r"\bRUN_TEST\s*\(\s*\w+\s*\)\s*;|\{[^{};]*\}\s*,|" + STRING_RUN, re.DOTALL)
+TEST_REGISTRATION = re.compile(r"\bRUN_TEST\s*\(\s*\w+\s*\)\s*;|\bRUN_TEST_CASE\s*\(\s*\w+\s*,[^;{}]*\)\s*;|"
+                               r"\{[^{};]*\}\s*,|" + STRING_RUN, re.DOTALL)
 INCLUDE_DIRECTIVE = re.compile(r"(?m)^[ \t]*#[ \t]*include\b(?:[^\n]*\\\n)*[^\n]*")
 OBJECT_DEFINE = re.compile(r"(?m)^[ \t]*#[ \t]*define[ \t]+[A-Za-z_]\w*[ \t]+((?:[^\n]*\\\n)*[^\n]*)")
 C_LITERAL = (r'''(?:[+-]?(?:0[xX][0-9a-fA-F]+|\d+(?:\.\d*)?(?:[eE][+-]?\d+)?|'''
@@ -252,9 +256,8 @@ def scan(root, minimum, names=None, revision="HEAD", renames=None):
     if problem:
         raise RuntimeError(problem)
     if names is None:
-        names = sorted(git(root, "ls-tree", "-r", "--name-only", revision, "--",
-                           "launcher", "scripts").decode().splitlines())
-    scratch_parent = ROOT / "launcher/test/build"
+        names = sorted(git(root, "ls-tree", "-r", "--name-only", revision).decode().splitlines())
+    scratch_parent = GATE_TREE / "launcher/test/build"
     scratch_parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="clones-", dir=scratch_parent) as folder:
         scratch = Path(folder)
@@ -377,7 +380,8 @@ def check_pairs(pairs, base_pairs, moved=()):
     return 0
 
 
-def main(argv=None, root=ROOT):
+def main(argv=None, root=None):
+    root = root or repository()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--report", action="store_true")
     parser.add_argument("--min-tokens", type=int, default=MIN_TOKENS)

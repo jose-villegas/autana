@@ -6,6 +6,7 @@ A capture that measured nothing must FAIL rather than turn into a clean-
 looking table - that is what these pin down, since the device itself cannot
 be asked for an empty capture on demand.
 """
+import gzip
 import os
 import pathlib
 import subprocess
@@ -28,10 +29,11 @@ MEASURED = (
 
 
 class ReportPerformanceTest(unittest.TestCase):
-    def run_reporter(self, capture_text):
-        handle, capture = tempfile.mkstemp(suffix=".txt")
+    def run_reporter(self, capture_text, suffix=".txt"):
+        handle, capture = tempfile.mkstemp(suffix=suffix)
         os.close(handle)
-        pathlib.Path(capture).write_text(capture_text, encoding="utf-8")
+        data = capture_text.encode("utf-8")
+        pathlib.Path(capture).write_bytes(gzip.compress(data) if suffix.endswith(".gz") else data)
         self.addCleanup(os.unlink, capture)
         handle, out = tempfile.mkstemp(suffix=".md")
         os.close(handle)
@@ -66,6 +68,12 @@ class ReportPerformanceTest(unittest.TestCase):
         budget_rows = [row for row in rows if len(row) == 7]
         self.assertEqual(len(budget_rows), 1, report)
         self.assertEqual(budget_rows[0][3].strip(), "5210")
+
+    def test_a_compressed_capture_reports_like_a_plain_one(self):
+        plain, gzipped = (self.run_reporter(BOOT + MEASURED + COMPLETE, suffix) for suffix in (".log", ".log.gz"))
+        self.assertEqual(gzipped[0].returncode, 0, gzipped[0].stderr)
+        table = lambda report: [line for line in report.splitlines() if line.startswith("|")]
+        self.assertEqual(table(gzipped[1]), table(plain[1]))
 
     def test_a_step_line_naming_a_gas_pass_after_it_tables_the_step(self):
         capture = BOOT + MEASURED.replace(

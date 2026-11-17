@@ -8,19 +8,12 @@ import re
 import sys
 
 from complexity_gate import report
+from py_constant import module_constant
 
 ROOT = Path(__file__).resolve().parents[3]
 BASELINE_PATH = Path(__file__).with_name("icount_baseline.txt")
 SUPPORT_PATH = ROOT / "launcher/packages/testkit/include/testkit/bench.h"
 QEMU_PATH = ROOT / "launcher/test/qemu_run.py"
-
-
-def source_constant(path, name):
-    for node in ast.parse(path.read_text(encoding="utf-8")).body:
-        if isinstance(node, ast.Assign) and any(
-                isinstance(target, ast.Name) and target.id == name for target in node.targets):
-            return ast.literal_eval(node.value)
-    raise ValueError(f"{path}: missing {name}")
 
 
 def support_define(name):
@@ -35,7 +28,7 @@ INFO_PREFIX = support_define("BENCH_ICOUNT_INFO_PREFIX")
 INFO_MARKER = "info"
 TOLERANCE = 1 / support_define("BENCH_ICOUNT_TOLERANCE_DENOMINATOR")
 NS_PER_US = 1000
-ICOUNT_SHIFT = source_constant(QEMU_PATH, "ICOUNT_SHIFT")
+ICOUNT_SHIFT = module_constant(QEMU_PATH, "ICOUNT_SHIFT")
 ROW = re.compile(rf"({LINE_PREFIX}|{INFO_PREFIX}) (\S+) us=(\d+) reps=(\d+)")
 
 

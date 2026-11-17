@@ -156,8 +156,10 @@ class NightlyTests(unittest.TestCase):
         self.clock.value = schedule.night_cutoff(self.clock.now()) - timedelta(seconds=scans * chain.RESCAN_SECONDS)
 
     def window(self, *listed):
-        """What a plan hands its night: the clock's BOARD_LAST_START as the cut-off, and the boards it listed."""
-        return dict(cutoff=schedule.night_cutoff(self.clock.now()).isoformat(), listed=list(listed))
+        """What a plan hands its night: the clock's BOARD_LAST_START as the cut-off, the boards it listed and a
+        queue holding the tip for joiners."""
+        return dict(cutoff=schedule.night_cutoff(self.clock.now()).isoformat(), listed=list(listed),
+                    queue=[vars(step) for step in self.steps((len(self.commits) - 1,))])
 
     @staticmethod
     def row(board, **fields):
@@ -179,7 +181,7 @@ class NightlyTests(unittest.TestCase):
         return [chain.Step(self.commits[i], 100 + i, "anchor" if anchor and n == 0 else "new", i + 1)
                 for n, i in enumerate(indices)]
 
-    def run_chain(self, steps=None, **options):
+    def run_chain(self, steps=None, machine=MACHINE, **options):
         replay = Replay(self.root, self.clock, **options)
         writes = []
         original = chain.write_json
@@ -189,7 +191,7 @@ class NightlyTests(unittest.TestCase):
             if path.name == "night.json":
                 writes.append(json.loads(path.read_text()))
 
-        with patch("layout_measure.capture_board", return_value=MACHINE), \
+        with patch("layout_measure.capture_board", return_value=machine), \
                 patch.dict(os.environ, _AUTANA_DEVICE_LOCK_TOKEN="outer-hold"), \
                 patch.object(chain, "write_json", side_effect=record):
             results = chain.run_chain(self.steps() if steps is None else steps, self.args, replay, self.clock)
@@ -551,8 +553,10 @@ class NightlyTests(unittest.TestCase):
     def test_supervisor_lane_settings_and_plan_selection(self):
         self.before_cutoff(2)
         path = self.root / "plan.json"
-        chain.write_json(path, dict(tip=self.commits[-1], started=self.clock.now().isoformat(), marker=self.clock.now().isoformat(), **self.window(),
-            from_sha=self.commits[3], max_steps=1, lanes={"20E8": dict(lane="0/2", estimate=42)}))
+        # A plan with --from and --max-steps leaves the range's queue to its joiners.
+        window = dict(self.window(), queue=[vars(step) for step in self.steps((3, 4, 5))])
+        chain.write_json(path, dict(tip=self.commits[-1], started=self.clock.now().isoformat(), marker=self.clock.now().isoformat(), **window,
+            from_sha=self.commits[3], max_steps=1, lanes={"20E8": dict(lane="0", estimate=42)}))
         args = SimpleNamespace(plan=path, repo=self.repo, data=self.args.data,
                                out=self.args.out, suite=[("suite", "-", "table with spaces")])
         polls = iter((None, None))
@@ -583,11 +587,10 @@ class NightlyTests(unittest.TestCase):
         self.assertEqual(status, 0)
         self.assertEqual([command[2] for command in commands], ["20E8", "2124"])
         joiner = planned["lanes"]["2124"]
-        self.assertEqual(joiner["lane"], "0/1")
+        self.assertEqual(joiner["lane"], "1")
         self.assertEqual(joiner["steps"][0]["commit"], self.commits[2])
         self.assertEqual(joiner["steps"][0]["role"], "anchor")
         self.assertEqual([step["commit"] for step in joiner["steps"]], [self.commits[2], self.commits[5]])
-        self.assertEqual(planned["lanes"]["20E8"]["lane"], "0/2")
         self.assertEqual(manifests["2124"]["machine"], OTHER_MACHINE)
         summary = self.root / "summary"
         chain.timeline(SimpleNamespace(plan=self.root / "plan.json", data=self.args.data, summary=summary))
@@ -642,7 +645,7 @@ class NightlyTests(unittest.TestCase):
 
     @staticmethod
     def fak1_lane():
-        return {"FAK1": dict(lane="0/1", estimate=chain.FIRST_STEP_SECONDS)}
+        return {"FAK1": dict(lane="0", estimate=chain.FIRST_STEP_SECONDS, steps=[])}
 
     def running_until(self, finish, launched):
         """A launch whose lanes run until `finish`, recording each board it starts in `launched`."""
@@ -652,8 +655,13 @@ class NightlyTests(unittest.TestCase):
         return launch
 
     def test_night_starts_lanes_on_any_hosts_boards_as_they_free_until_the_cutoff(self):
-        args = self.empty_night(4)
+        self.before_cutoff(4)
         cutoff = schedule.night_cutoff(self.clock.now())
+        last_scan = cutoff - timedelta(seconds=chain.RESCAN_SECONDS)
+        queue = self.steps((2, 3, 4, 5))
+        deadline = last_scan + timedelta(seconds=chain.FIRST_STEP_SECONDS * 3 / 2)
+        args = self.night(window=dict(self.window(), deadline=deadline.isoformat(),
+                                      queue=[vars(step) for step in queue]))
         launched = {}
 
         def launch(command, **options):
@@ -673,11 +681,13 @@ class NightlyTests(unittest.TestCase):
                 patch("builtins.print") as said:
             self.assertEqual(chain.run_night(args, clock=self.clock, launch=launch), 0)
         # Each board starts at the first scan that finds it free, and queues on its lock no later than the cut-off.
-        last_scan = cutoff - timedelta(seconds=chain.RESCAN_SECONDS)
         self.assertEqual(launched, {board: (last_scan, str(chain.RESCAN_SECONDS)) for board in ("2124", "20E8", "A308")})
         lanes = json.loads(args.plan.read_text())["lanes"]
-        self.assertEqual({board: (lane["lane"], lane.get("host")) for board, lane in lanes.items()},
-                         {"2124": ("0/1", None), "20E8": ("0/1", "book2"), "A308": ("0/1", "legion")})
+        self.assertEqual({board: (lane["lane"], lane.get("host"), [step["commit"] for step in lane["steps"]])
+                          for board, lane in lanes.items()},
+                         {"2124": ("0", None, [queue[0].commit]), "20E8": ("1", "book2", [queue[1].commit]),
+                          "A308": ("2", "legion", [queue[2].commit])})
+        self.assertEqual(json.loads(args.plan.read_text())["queue"], [vars(queue[3])])
         self.assertEqual(scans.call_count, 3)
         said = [c.args[0] for c in said.call_args_list]
         self.assertEqual([line for line in said if "legion" in line],
@@ -898,21 +908,21 @@ class NightlyTests(unittest.TestCase):
         (build / "assets.bin").write_bytes(b"other")
         self.assertNotEqual(chain.image_hash(build), changed)
 
-    def test_plan_parity_anchor_order_baseline_and_carryover(self):
+    def test_queue_starts_at_the_tip_then_after_the_cursors_and_each_lane_leads_with_its_anchor(self):
         tip = self.commits[-1]
-        for lane in range(2):
-            baseline = chain.plan_steps(self.repo, tip, None, lane, 2)
-            self.assertEqual(len(baseline), 1)
-            self.assertEqual(baseline[0].position, 6 if lane == 0 else 5)
-            previous = {"last_measured": self.commits[lane + 1]}
-            steps = chain.plan_steps(self.repo, tip, previous, lane, 2)
-            self.assertEqual(steps[0].role, "anchor")
-            self.assertEqual(steps[0].commit, previous["last_measured"])
-            self.assertTrue(all(step.position % 2 == lane for step in steps[1:]))
-            self.assertEqual([s.position for s in steps], sorted(s.position for s in steps))
-            self.assertEqual(steps[-1].pr, 105 if lane == 0 else 104)
-            carried = chain.plan_steps(self.repo, tip, previous, lane, 2)
-            self.assertEqual(steps, carried)
+        # The first night ever measures the tip only.
+        self.assertEqual([step.commit for step in chain.night_queue(self.repo, tip, self.args.data)], [tip])
+        for index in range(2):
+            with self.subTest(cursor=index):
+                previous = dict(last_measured=self.commits[index], steps=[])
+                chain.write_json(self.args.data / "scoped/20E8/2026-10-17-0300/night.json", previous)
+                queue = chain.night_queue(self.repo, tip, self.args.data)
+                self.assertEqual([step.commit for step in queue], self.commits[index + 1:])
+                self.assertEqual([step.position for step in queue], list(range(index + 2, len(self.commits) + 1)))
+                steps, rest = chain.deal(self.repo, tip, previous, queue, None)
+                self.assertEqual([(step.role, step.commit) for step in steps],
+                                 [("anchor", previous["last_measured"])] + [("new", step.commit) for step in queue])
+                self.assertEqual((steps[-1].pr, rest), (105, []))
 
     def test_plan_uses_first_parent_and_merge_pr(self):
         chain.git(self.repo, "checkout", "-qb", "side", self.commits[2])
@@ -922,7 +932,9 @@ class NightlyTests(unittest.TestCase):
         side = chain.git(self.repo, "rev-parse", "HEAD")
         chain.git(self.repo, "checkout", "--detach", self.commits[-1])
         chain.git(self.repo, "merge", "--no-ff", "-m", "Merge pull request #999", "side")
-        steps = chain.plan_steps(self.repo, "HEAD", {"last_measured": self.commits[0]}, 1, 2)
+        chain.write_json(self.args.data / "scoped/20E8/2026-10-17-0300/night.json",
+                         dict(last_measured=self.commits[0], steps=[]))
+        steps = chain.night_queue(self.repo, "HEAD", self.args.data)
         self.assertNotIn(side, [s.commit for s in steps])
         self.assertEqual((steps[-1].position, steps[-1].pr), (7, 999))
 
@@ -942,16 +954,17 @@ class NightlyTests(unittest.TestCase):
             self.assertEqual(len(lane["steps"]), 2)
             self.assertLessEqual(lane["steps"][-1]["position"], 6)
         self.assertEqual(plan["marker"], args.marker)
-        previous = {"last_measured": self.commits[0]}
-        limited = chain.select_steps(self.repo, "HEAD", previous, 0, 2, self.commits[1], 1)
-        self.assertEqual([step.role for step in limited], ["anchor", "new"])
-        self.assertEqual(limited[-1].commit, self.commits[1])
+        # A person's range is not the night's: the next night owes nothing for it.
+        self.assertIsNone(lnt.read_last_night_record(self.args.data))
+        dealt = [step["commit"] for lane in plan["lanes"].values() for step in lane["steps"]]
+        self.assertEqual(sorted(dealt), sorted(set(dealt)))
 
     @staticmethod
     def paced(seconds, last_measured=None, outcomes=("measured",)):
         """A last night manifest whose steps of each outcome took `seconds` to queue, build and measure."""
         part = seconds / 3
-        return dict(last_measured=last_measured, steps=[dict(outcome=outcome, wait_seconds=part, build_seconds=part,
+        return dict(last_measured=last_measured, steps=[dict(commit=last_measured, outcome=outcome, wait_seconds=part,
+                                                             build_seconds=part,
                                                              measure_seconds=seconds - 2 * part)
                                                         for outcome in outcomes])
 
@@ -1002,12 +1015,11 @@ class NightlyTests(unittest.TestCase):
         self.assertIn(call(f"::notice::board 2124 fits no step before the deadline {deadline.isoformat()}; "
                            "it stays free", file=sys.stderr), said.call_args_list)
         self.assertIn(call("SCOPED_BOARDS=20E8"), said.call_args_list)
-        # The board with room keeps its own share of the split, and only its oldest new steps; the other
-        # board's share waits on that board's cursor.
+        # The board with room takes the queue's oldest steps it fits; the rest stays queued for joiners.
         lane = planned["lanes"]["20E8"]
-        self.assertEqual((lane["lane"], lane["capacity"]), ("1/2", fits))
-        share = [commit for position, commit in enumerate(self.commits[1:], start=2) if position % 2 == 1]
-        self.assertEqual([step["commit"] for step in lane["steps"]], [self.commits[0], *share[:fits]])
+        self.assertEqual((lane["lane"], lane["capacity"]), ("0", fits))
+        self.assertEqual([step["commit"] for step in lane["steps"]], self.commits[:fits + 1])
+        self.assertEqual([step["commit"] for step in planned["queue"]], self.commits[fits + 1:])
         self.assertEqual(lane["estimate"], math.ceil((fits + 1) * pace))
         # --max-steps bounds a lane under the cap, never above it.
         for max_steps, count in ((fits - 1, fits - 1), (fits + 1, fits)):
@@ -1029,7 +1041,8 @@ class NightlyTests(unittest.TestCase):
                          dict(last_measured=self.commits[0], steps=[]))
         chain.write_json(self.args.data / "scoped/20E8/2026-10-17-0300/night.json",
                          self.paced(2 * chain.FIRST_STEP_SECONDS, self.commits[0]))
-        args = self.night(window=dict(self.window(), deadline=deadline.isoformat()))
+        args = self.night(window=dict(self.window(), deadline=deadline.isoformat(),
+                                      queue=[vars(step) for step in self.steps(range(1, len(self.commits)))]))
         launched = []
         with self.fleet(([self.row("2124"), self.row("20E8")], [])), patch("builtins.print") as said:
             self.assertEqual(chain.run_night(args, clock=self.clock, launch=self.running_until(joined, launched)), 0)
@@ -1047,8 +1060,9 @@ class NightlyTests(unittest.TestCase):
         pace = (chain.LANE_HANG_FACTOR + 1) * chain.FIRST_STEP_SECONDS
         previous = self.paced(pace, self.commits[0])
         chain.write_json(self.args.data / "scoped/2124/2026-10-17-0300/night.json", previous)
-        lane = chain.plan_lane(SimpleNamespace(repo=self.repo, data=self.args.data), dict(tip=self.commits[-1]),
-                               "2124", 0, 1, self.clock.now())
+        lane, _ = chain.plan_lane(SimpleNamespace(repo=self.repo, data=self.args.data),
+                                  dict(tip=self.commits[-1], lanes={}), "2124", self.clock.now(),
+                                  self.steps(range(1, len(self.commits))))
         # Every step at the median, then one at three times it: a slow rebuild is not a hang.
         slow = (chain.LANE_HANG_FACTOR + 1) * pace
         for seconds in (len(lane["steps"]) * pace, (len(lane["steps"]) - 1) * pace + slow):
@@ -1060,15 +1074,15 @@ class NightlyTests(unittest.TestCase):
                 self.assertGreaterEqual(self.clock.now(), finish)
                 self.stop_tree.assert_not_called()
 
-    def capped_plan(self, marker, boards, **options):
-        """plan() for `boards`, all free here and alike in pace, at the test clock; returns the plan and what it
-        printed."""
-        args = SimpleNamespace(repo=self.repo, tip="HEAD", boards=[], data=self.args.data,
-                               out=self.root / "plan.json", marker=marker.isoformat(),
-                               from_sha=None, max_steps=None, selftest_board=None, **options)
+    def capped_plan(self, marker, free, **options):
+        """plan() with the `free` boards, all free here and alike in pace, at the test clock; returns the plan and what it
+        printed. `options` override the plan's arguments: named `boards` take no self-test."""
+        args = SimpleNamespace(**dict(dict(repo=self.repo, tip="HEAD", boards=[], data=self.args.data,
+                                           out=self.root / "plan.json", marker=marker.isoformat(),
+                                           from_sha=None, max_steps=None, selftest_board=None), **options))
         self.local_patch.stop()
-        local = patch.object(chain, "local_boards", return_value=[self.row(board) for board in boards])
-        with local, patch.object(chain, "board_listing", return_value=dict(boards=[self.row(board) for board in boards],
+        local = patch.object(chain, "local_boards", return_value=[self.row(board) for board in free])
+        with local, patch.object(chain, "board_listing", return_value=dict(boards=[self.row(board) for board in free],
                                                                            unreachable=[])), \
                 patch.object(chain, "gpu_on_host", return_value=True), patch.object(chain, "wait_idle"), \
                 patch("builtins.print") as said:
@@ -1112,7 +1126,8 @@ class NightlyTests(unittest.TestCase):
         self.before_cutoff(2)
         joined = self.clock.now() + timedelta(seconds=chain.RESCAN_SECONDS)
         deadline = joined + timedelta(seconds=chain.SELFTEST_ALLOWANCE_SECONDS + (fits + 1) * pace)
-        args = self.night(window=dict(self.window(), deadline=deadline.isoformat()))
+        args = self.night(window=dict(self.window(), deadline=deadline.isoformat(),
+                                      queue=[vars(step) for step in self.steps(range(1, len(self.commits)))]))
         with self.fleet(([self.row("2124"), self.row("20E8")], [])), patch("builtins.print"), \
                 patch.dict(os.environ, SELFTEST_BOARD="2124"), \
                 patch.object(chain.shutil, "which", side_effect=lambda name: name if name == "bash" else None):
@@ -1133,37 +1148,195 @@ class NightlyTests(unittest.TestCase):
             chain.run_night(args, clock=self.clock, launch=self.running_until(planned_at, launched))
         self.assertEqual(launched, [])
 
-    def test_a_lane_rerun_with_a_range_keeps_its_cap(self):
-        fits = 1
+    def test_a_lane_rerun_with_a_range_works_on_its_own_steps(self):
+        dealt = self.steps((0, 2, 4), anchor=True)
         planned = dict(tip=self.commits[-1], night="2026-10-18", started=self.clock.now().isoformat(),
                        marker=self.clock.now().isoformat(),
-                       lanes={"20E8": dict(lane="0/1", previous=dict(last_measured=self.commits[0]),
-                                           capacity=fits, steps=[])})
+                       lanes={"20E8": dict(lane="0", previous=dict(last_measured=self.commits[0]),
+                                           steps=[vars(step) for step in dealt])})
         path = self.root / "plan.json"
         path.write_text(json.dumps(planned))
-        command = ["chain", "run", "--plan", str(path), "--board", "20E8", "--lane", "0/1",
+        command = ["chain", "run", "--plan", str(path), "--board", "20E8", "--lane", "0",
                    "--repo", str(self.repo), "--data", str(self.args.data), "--out", str(self.args.out),
                    "--suite", "suite", "-", "-"]
-        for extra in (["--from", self.commits[1]], ["--max-steps", str(fits + 1)]):
+        # The lane never takes a commit it was not dealt: another lane may have it.
+        for extra, kept in ((["--from", self.commits[3]], [dealt[0], dealt[2]]),
+                            (["--max-steps", "1"], dealt[:2]), (["--from", self.commits[1], "--max-steps", "1"], dealt[:2])):
             with self.subTest(extra=extra), patch.object(sys, "argv", command + extra), \
                     patch.dict(os.environ, _AUTANA_DEVICE_LOCK_TOKEN="token"), \
                     patch.object(chain, "run_chain", return_value=[]) as run, \
                     patch.object(chain, "read_last_night", return_value={"steps": [], "selftest": {"outcome": "not_run"}}):
                 self.assertEqual(chain.main(), 0)
-                steps = run.call_args.args[0]
-                self.assertEqual([step.role for step in steps], ["anchor"] + ["new"] * fits)
+                self.assertEqual(run.call_args.args[0], kept)
 
-    def test_a_capped_night_carries_its_rest_to_the_next(self):
+    def queue_night(self, boards, max_steps, run=lambda board, steps: steps, day=0, **replay):
+        """One night: plan() for the named `boards` with each lane dealt `max_steps`, then each lane runs the
+        steps `run` picks of its own (None: the lane never starts), replayed with `replay`. Returns the plan."""
+        self.clock.value = Clock(22, 30).now() + timedelta(days=day)
+        planned, _ = self.capped_plan(self.clock.now(), list(boards), boards=list(boards), max_steps=max_steps)
+        for board, lane in planned["lanes"].items():
+            self.args.board, self.args.previous, self.args.started = board, lane["previous"], planned["started"]
+            steps = run(board, [chain.Step(**step) for step in lane["steps"]])
+            if steps is None:
+                continue
+            self.run_chain(steps, MACHINE if board == "20E8" else OTHER_MACHINE, **replay)
+        return planned
+
+    @staticmethod
+    def new_commits(planned):
+        return [step["commit"] for lane in planned["lanes"].values() for step in lane["steps"] if step["role"] == "new"]
+
+    def legacy_night(self, board, measured, attempted=None):
+        """A board's last manifest from before the night queue: its cursors only."""
+        chain.write_json(self.args.data / f"scoped/{board}/2026-10-17-0300/night.json",
+                         dict(self.paced(chain.FIRST_STEP_SECONDS, measured), last_attempted=attempted or measured))
+
+    def test_a_capped_night_carries_its_undealt_rest_to_the_next(self):
         fits = 2
-        self.args.previous = dict(last_measured=self.commits[0])
-        tonight = chain.select_steps(self.repo, "HEAD", self.args.previous, 0, 1, capacity=fits)
-        self.run_chain(tonight)
-        # The next night needs no state beyond the manifest: it starts at the first commit left unmeasured.
-        tomorrow = chain.select_steps(self.repo, "HEAD", lnt.read_last_night(self.args.data, "20E8"), 0, 1,
-                                      capacity=fits)
-        self.assertEqual([step.commit for step in tonight], self.commits[:fits + 1])
-        self.assertEqual([(step.role, step.commit) for step in tomorrow],
-                         [("anchor", self.commits[fits])] + [("new", commit) for commit in self.commits[fits + 1:2 * fits + 1]])
+        self.legacy_night("20E8", self.commits[0])
+        tonight = self.queue_night(["20E8"], fits)
+        # The next night needs no state beyond the saved queue: it starts at the first commit left unmeasured.
+        tomorrow = self.queue_night(["20E8"], fits, day=1)
+        self.assertEqual(self.new_commits(tonight), self.commits[1:fits + 1])
+        self.assertEqual([(step["role"], step["commit"]) for step in tomorrow["lanes"]["20E8"]["steps"]],
+                         [("anchor", self.commits[fits])] + [("new", c) for c in self.commits[fits + 1:2 * fits + 1]])
+
+    def test_no_commit_is_dealt_twice_in_a_night_and_none_is_skipped_across_nights(self):
+        boards, fits = ("20E8", "2124"), 1
+        for board in boards:
+            self.legacy_night(board, self.commits[0])
+        dealt = []
+        for day in range(len(self.commits)):
+            planned = self.queue_night(boards, fits, day=day)
+            self.assertEqual(len(self.new_commits(planned)), len(set(self.new_commits(planned))))
+            dealt += self.new_commits(planned)
+        self.assertEqual(sorted(dealt, key=self.commits.index), self.commits[1:])
+
+    def test_a_lane_that_never_wrote_a_manifest_has_its_steps_owed_again(self):
+        boards = ("20E8", "2124")
+        for board in boards:
+            self.legacy_night(board, self.commits[0])
+        # 2124's lane never starts: its launch failed, or its remote folder never came back.
+        tonight = self.queue_night(boards, 1, run=lambda board, steps: None if board == "2124" else steps)
+        tomorrow = self.queue_night(boards, 1, day=1)
+        self.assertEqual([lane["steps"][-1]["commit"] for lane in tonight["lanes"].values()], self.commits[1:3])
+        self.assertEqual(self.new_commits(tomorrow), [self.commits[2], self.commits[3]])
+
+    def test_joiners_take_what_the_plan_left_and_never_each_others(self):
+        fits = 1
+        for board in ("2124", "20E8", "A308"):
+            self.legacy_night(board, self.commits[0])
+        marker = datetime(2026, 10, 18, *schedule.local_time("BOARD_START"), tzinfo=timezone.utc)
+        self.clock.value = schedule.night_cutoff(marker) - timedelta(seconds=2 * chain.RESCAN_SECONDS)
+        # Each board fits its anchor and one step, measured from when the joiners start.
+        joined = self.clock.now() + timedelta(seconds=chain.RESCAN_SECONDS)
+        with patch.dict(os.environ, BOARD_END=(joined + timedelta(seconds=(fits + 1.5) * chain.FIRST_STEP_SECONDS))
+                        .strftime("%H:%M")):
+            planned, _ = self.capped_plan(marker, ["2124"], boards=["2124"])
+            plan = self.root / "plan.json"
+            planned["cutoff"] = schedule.night_cutoff(marker).isoformat()
+            chain.write_json(plan, planned)
+            args = SimpleNamespace(plan=plan, repo=self.repo, data=self.args.data, out=self.args.out,
+                                   suite=self.args.suite)
+            with self.fleet(([self.row("2124"), self.row("20E8"), self.row("A308")], [])), patch("builtins.print"):
+                chain.run_night(args, clock=self.clock, launch=self.running_until(joined, []))
+        night = json.loads(plan.read_text())
+        dealt = {board: [step["commit"] for step in lane["steps"] if step["role"] == "new"]
+                 for board, lane in night["lanes"].items()}
+        self.assertEqual(dealt, {"2124": self.commits[1:2], "20E8": self.commits[2:3], "A308": self.commits[3:4]})
+        self.assertEqual([step["commit"] for step in night["queue"]], self.commits[4:])
+        # The night record holds the same: what each lane was dealt and what is left.
+        _, record = lnt.read_last_night_record(self.args.data)
+        self.assertEqual((record["dealt"], record["rest"]), (dealt, self.commits[4:]))
+
+    def test_a_range_night_leaves_the_night_record_alone(self):
+        self.legacy_night("20E8", self.commits[0])
+        tonight = self.queue_night(["20E8"], 1)
+        key, record = lnt.read_last_night_record(self.args.data)
+        # A person reruns an old range: it is measured, but the night keeps its own record.
+        self.clock.value += timedelta(hours=1)
+        self.capped_plan(self.clock.now(), ["20E8"], boards=["20E8"], from_sha=self.commits[0])
+        self.assertEqual(lnt.read_last_night_record(self.args.data), (key, record))
+        tomorrow = self.queue_night(["20E8"], 1, day=1)
+        self.assertEqual(self.new_commits(tonight) + self.new_commits(tomorrow), self.commits[1:3])
+        # The record folder is not a board.
+        self.assertEqual(list(lnt.last_manifests(self.args.data)), ["20E8"])
+
+    def test_an_unsized_night_deals_each_board_an_even_run(self):
+        boards = ("20E8", "2124", "A308")
+        self.legacy_night("20E8", self.commits[0])
+        planned, _ = self.capped_plan(self.clock.now(), list(boards), boards=list(boards))
+        self.assertIsNone(planned["deadline"])
+        runs = [[step["commit"] for step in planned["lanes"][board]["steps"] if step["role"] == "new"]
+                for board in boards]
+        queue = self.commits[1:]
+        sizes = [math.ceil(len(queue) / len(boards))] * (len(queue) % len(boards))
+        sizes += [len(queue) // len(boards)] * (len(boards) - len(sizes))
+        starts = [sum(sizes[:index]) for index in range(len(boards))]
+        self.assertEqual(runs, [queue[start:start + size] for start, size in zip(starts, sizes)])
+
+    def test_steps_a_lane_never_reached_lead_the_next_night(self):
+        self.legacy_night("20E8", self.commits[0])
+        # The lane stops after its first step: the board was taken away, or the lane was killed.
+        tonight = self.queue_night(["20E8"], 3, run=lambda board, steps: steps[:2])
+        tomorrow = self.queue_night(["20E8"], 3, day=1)
+        self.assertEqual(self.new_commits(tonight), self.commits[1:4])
+        self.assertEqual(self.new_commits(tomorrow), self.commits[2:5])
+
+    def test_a_failed_capture_behind_a_measured_step_is_owed_again(self):
+        self.legacy_night("20E8", self.commits[0])
+        # The anchor measures, the first new step's capture fails, the second measures and moves the cursor past it.
+        tonight = self.queue_night(["20E8"], 2, captures=(False, True, False))
+        tomorrow = self.queue_night(["20E8"], 2, day=1)
+        self.assertEqual(self.new_commits(tonight), self.commits[1:3])
+        self.assertEqual(self.new_commits(tomorrow), [self.commits[1], self.commits[3]])
+
+    def test_a_queue_no_lane_had_room_for_is_owed_to_the_next_night(self):
+        self.legacy_night("20E8", self.commits[0])
+        self.clock.value = Clock(22, 30).now()
+        # No board is free tonight: nothing is dealt, all of it is owed.
+        with patch.object(chain, "board_listing", return_value=dict(boards=[], unreachable=[])), \
+                patch.object(chain, "gpu_on_host", return_value=True), patch.object(chain, "wait_idle"), \
+                patch("builtins.print"):
+            chain.plan(SimpleNamespace(repo=self.repo, tip="HEAD", boards=[], data=self.args.data,
+                                       out=self.root / "plan.json", marker=self.clock.now().isoformat(),
+                                       from_sha=None, max_steps=None, selftest_board=None), self.clock)
+        tomorrow = self.queue_night(["20E8"], None, day=1)
+        self.assertEqual(self.new_commits(tomorrow), self.commits[1:])
+
+    def test_the_first_queued_night_owes_every_commit_a_capped_modulo_share_never_listed(self):
+        # Two boards on the old modulo split, capped: 20E8 took odd positions to 5, 2124 even ones to 2 only.
+        odd, even = (self.commits[i - 1] for i in (1, 3, 5)), (self.commits[i - 1] for i in (2,))
+        chain.write_json(self.args.data / "scoped/20E8/2026-10-17-0300/night.json",
+                         dict(last_measured=self.commits[4], last_attempted=self.commits[4],
+                              steps=[dict(commit=commit, outcome="measured") for commit in odd]))
+        chain.write_json(self.args.data / "scoped/2124/2026-10-17-0300/night.json",
+                         dict(last_measured=self.commits[1], last_attempted=self.commits[1],
+                              steps=[dict(commit=commit, outcome="measured") for commit in even]))
+        queue = [step.commit for step in chain.night_queue(self.repo, "HEAD", self.args.data)]
+        # Position 4 lies behind the newest cursor but neither board measured it.
+        self.assertEqual(queue, [self.commits[3], self.commits[5]])
+
+    def test_the_first_queued_night_owes_a_failed_step_behind_every_cursor(self):
+        failed = self.commits[1]
+        for cursors in ((self.commits[4], self.commits[5]), (None, None)):
+            with self.subTest(cursors=cursors):
+                for board, cursor in zip(("20E8", "2124"), cursors):
+                    steps = [dict(commit=failed, outcome="capture_failed")] if board == "20E8" else []
+                    chain.write_json(self.args.data / f"scoped/{board}/2026-10-17-0300/night.json",
+                                     dict(last_measured=cursor, last_attempted=cursor, steps=steps))
+                queue = [step.commit for step in chain.night_queue(self.repo, "HEAD", self.args.data)]
+                # Both boards past it, or neither with a cursor at all: the failed capture still comes first,
+                # then the tip, which 20E8's cursor is behind and no manifest settled.
+                self.assertEqual(queue, [failed, self.commits[-1]])
+        # Only an older manifest lists the failure; the board's last one measured past it.
+        chain.write_json(self.args.data / "scoped/20E8/2026-10-18-0300/night.json",
+                         dict(last_measured=self.commits[4], last_attempted=self.commits[4],
+                              steps=[dict(commit=self.commits[4], outcome="measured")]))
+        chain.write_json(self.args.data / "scoped/2124/2026-10-17-0300/night.json",
+                         dict(last_measured=self.commits[5], last_attempted=self.commits[5],
+                              steps=[dict(commit=self.commits[5], outcome="measured")]))
+        self.assertEqual([step.commit for step in chain.night_queue(self.repo, "HEAD", self.args.data)], [failed])
 
     def test_equal_image_skips_but_anchor_measures(self):
         steps = self.steps(indices=(1, 1, 1), anchor=True)
@@ -1262,13 +1435,15 @@ class NightlyTests(unittest.TestCase):
                 self.assertEqual([row["outcome"] for row in previous["steps"]], [outcome] * 2)
                 self.assertEqual(previous["last_attempted"], self.commits[5])
                 self.assertEqual(previous["last_measured"], self.commits[1])
-                planned = chain.plan_steps(self.repo, "HEAD", previous, 0, 2)
+                queue = chain.night_queue(self.repo, "HEAD", self.args.data)
+                planned, _ = chain.deal(self.repo, "HEAD", previous, queue, None)
                 self.assertEqual([(step.commit, step.role) for step in planned], [(self.commits[1], "anchor")])
 
     def test_explicit_earlier_range_preserves_cursors_and_hash(self):
         self.args.previous = dict(last_measured=self.commits[3], last_attempted=self.commits[5],
                                   machine=MACHINE, last_image_hash="newest")
-        selected = chain.select_steps(self.repo, "HEAD", self.args.previous, 0, 2, self.commits[0])
+        queue = chain.night_queue(self.repo, "HEAD", self.args.data, self.commits[0])
+        selected, _ = chain.deal(self.repo, "HEAD", self.args.previous, queue, None)
         self.assertEqual(sum(step.commit == self.commits[3] for step in selected), 1)
         _, _, writes = self.run_chain(self.steps(indices=(1,)))
         for key in ("last_measured", "last_attempted", "last_image_hash"):
@@ -1295,7 +1470,7 @@ class NightlyTests(unittest.TestCase):
         results, _, writes = self.run_chain(self.steps(indices=(1,)), captures=(True,))
         self.assertEqual(results[0].outcome, "capture_failed")
         self.assertEqual(writes[-1]["last_attempted"], self.commits[0])
-        planned = chain.plan_steps(self.repo, "HEAD", writes[-1], 0, 2)
+        planned = chain.night_queue(self.repo, "HEAD", self.args.data)
         self.assertIn(self.commits[1], [step.commit for step in planned])
         results, _, _ = self.run_chain(self.steps(indices=(1, 2, 3, 4)), captures=(True, False, True, False))
         self.assertEqual([r.outcome for r in results], ["capture_failed", "measured", "capture_failed", "measured"])
@@ -1331,7 +1506,7 @@ class NightlyTests(unittest.TestCase):
                         return {"jobs": [dict(status="in_progress", labels=[schedule.GPU_LABEL])]}
                     return {"workflow_runs": [dict(id=1, status="in_progress")] if clock.now() < released else []}
                 with patch.object(chain, "read_last_night", return_value=None), \
-                        patch.object(chain, "select_steps", return_value=[]):
+                        patch.object(chain, "night_queue", return_value=[]):
                     chain.plan(args, clock, request=request)
                 planned = json.loads(args.out.read_text())
                 self.assertTrue(planned["lanes"])
@@ -1351,7 +1526,7 @@ class NightlyTests(unittest.TestCase):
                 summary.unlink(missing_ok=True)
                 with patch.dict(os.environ, GITHUB_STEP_SUMMARY=str(summary)), \
                         patch.object(chain, "read_last_night", return_value=None), \
-                        patch.object(chain, "select_steps", return_value=[]), \
+                        patch.object(chain, "night_queue", return_value=[]), \
                         patch.object(chain, "gpu_pending", side_effect=AssertionError("remote GPU queue queried")):
                     chain.plan(args, clock)
                 self.assertEqual(clock.sleeps, [])
@@ -1383,7 +1558,7 @@ class NightlyTests(unittest.TestCase):
             chain.plan(args, self.clock)
         lanes = json.loads(args.out.read_text())["lanes"]
         self.assertEqual({board: (lane["lane"], lane.get("host"), lane.get("host_name")) for board, lane in lanes.items()},
-                         {"2124": ("0/2", None, None), "20E8": ("1/2", "book2", "Book2")})
+                         {"2124": ("0", None, None), "20E8": ("1", "book2", "Book2")})
         self.assertIn(call("SCOPED_BOARDS=2124 20E8"), said.call_args_list)
         self.assertIn(call("SELFTEST_BOARD=2124"), said.call_args_list)
 
@@ -1546,21 +1721,21 @@ class NightlyTests(unittest.TestCase):
         self.assertTrue(suites)
         self.assertEqual(suites[0][suites[0].index("--runs") + 1], "1")
 
-    def test_invalid_history_lane_and_range(self):
-        for previous in ({"last_measured": "missing"}, {"last_attempted": "missing"}):
-            with self.assertRaisesRegex(ValueError, next(iter(previous))):
-                chain.plan_steps(self.repo, "HEAD", previous, 0, 2)
-        with self.assertRaises(ValueError):
-            chain.plan_steps(self.repo, "HEAD", None, 2, 2)
-        with self.assertRaises(ValueError):
-            chain.select_steps(self.repo, "HEAD", None, 0, 2, max_steps=-1)
+    def test_invalid_history_and_range(self):
+        with self.assertRaisesRegex(ValueError, "last_measured"):
+            chain.deal(self.repo, "HEAD", {"last_measured": "missing"}, [], None)
+        chain.write_json(self.args.data / "scoped/20E8/2026-10-17-0300/night.json",
+                         dict(last_attempted="missing", steps=[]))
+        with self.assertRaisesRegex(ValueError, "last_attempted"):
+            chain.night_queue(self.repo, "HEAD", self.args.data)
         chain.git(self.repo, "checkout", "-qb", "off", self.commits[0])
         chain.git(self.repo, "commit", "--allow-empty", "-qm", "off history")
         off = chain.git(self.repo, "rev-parse", "HEAD")
         with self.assertRaisesRegex(ValueError, "first-parent"):
-            chain.select_steps(self.repo, self.commits[-1], None, 0, 2, from_sha=off)
-        selected = chain.select_steps(self.repo, self.commits[-1], {"last_measured": self.commits[0]}, 0, 2, self.commits[0])
-        self.assertEqual([s.position for s in selected], [1, 2, 4, 6])
+            chain.night_queue(self.repo, self.commits[-1], self.args.data, from_sha=off)
+        queue = chain.night_queue(self.repo, self.commits[-1], self.args.data, self.commits[0])
+        selected, _ = chain.deal(self.repo, self.commits[-1], {"last_measured": self.commits[0]}, queue, None)
+        self.assertEqual([s.position for s in selected], list(range(1, len(self.commits) + 1)))
 
     def test_invalid_images_fail_build_and_hash_length(self):
         valid = app_image()
@@ -1598,7 +1773,8 @@ class NightlyTests(unittest.TestCase):
         suite = ["--suite", "suite", "-", "-"]
         for command, token in ((base + suite, ""), (base, "token"),
                                (base + suite + ["--selftest-at", "01:00"], "token"),
-                               (base + suite + ["--lane", "1/2"], "token")):
+                               (base + suite + ["--lane", "1/2"], "token"),
+                               (base + suite + ["--max-steps", "-1"], "token")):
             with patch.object(sys, "argv", command), patch.dict(os.environ, _AUTANA_DEVICE_LOCK_TOKEN=token), \
                     patch.object(chain, "run_chain", return_value=[]), \
                     patch.object(chain, "read_last_night", return_value={"steps": [], "selftest": {"outcome": "not_run"}}), \
@@ -1607,11 +1783,11 @@ class NightlyTests(unittest.TestCase):
             self.assertEqual(caught.exception.code, 2)
         with patch.object(sys, "argv", base + suite + ["--max-steps", "0"]), \
                 patch.dict(os.environ, _AUTANA_DEVICE_LOCK_TOKEN="token"), \
-                patch.object(chain, "select_steps", return_value=[]) as select, \
+                patch.object(chain, "rerange", return_value=[]) as select, \
                 patch.object(chain, "run_chain", return_value=[]), \
                 patch.object(chain, "read_last_night", return_value={"steps": [], "selftest": {"outcome": "not_run"}}):
             self.assertEqual(chain.main(), 0)
-            self.assertEqual(select.call_args.args[-2:], (0, None))
+            self.assertEqual(select.call_args.args[-2:], (None, 0))
     def test_plan_reads_each_boards_manifest(self):
         previous = {"20E8": {"last_measured": self.commits[0]}, "2124": {"last_measured": self.commits[2]}}
         args = SimpleNamespace(repo=self.repo, tip="HEAD", boards=list(previous), data=self.args.data,
@@ -1642,7 +1818,7 @@ class NightlyTests(unittest.TestCase):
             chain.plan(args, self.clock, request=lambda *a: {"workflow_runs": []})
         planned = json.loads(args.out.read_text())
         self.assertEqual({board: lane["lane"] for board, lane in planned["lanes"].items()},
-                         {"20E8": "0/2", "A308": "1/2"})
+                         {"20E8": "0", "A308": "1"})
         self.assertEqual(output.getvalue().splitlines(), ["SCOPED_BOARDS=20E8 A308", "SELFTEST_BOARD=20E8"])
         planned = json.loads(args.out.read_text())
         self.assertEqual(planned["cutoff"], schedule.night_cutoff(self.clock.now()).isoformat())

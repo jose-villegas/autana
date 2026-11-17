@@ -8,8 +8,8 @@
 #include "core/timing.h"
 #include "core/tune.h"
 
-#include "bsp/esp-bsp.h"
-#include "bsp/touch.h"
+#include "board/board.h"
+#include "board/board_panel.h"
 #include "driver/gpio.h"
 #include "esp_attr.h"
 #include "esp_lcd_touch.h"
@@ -200,7 +200,7 @@ poll_controller(bool* have_point, vec2i_t* point) {
      * timeout; polling blindly at this rate would swamp the system. */
     const bool pending = report_pending;
     report_pending = false;
-    if (panel != NULL && (pending || was_touching || probe != 0 || gpio_get_level(BSP_LCD_TOUCH_INT) == 0)) {
+    if (panel != NULL && (pending || was_touching || probe != 0 || gpio_get_level(panel->config.int_gpio_num) == 0)) {
         const int64_t start_us = timing_now_us();
         const esp_err_t read = esp_lcd_touch_read_data(panel);
         count_read(timing_now_us() - start_us, read == ESP_OK);
@@ -230,9 +230,9 @@ poll_once(void) {
     poll_controller(&have_point, &point);
 #endif
 #if CONFIG_LAUNCHER_DEVELOPMENT
-    touch_calib_prepare_point(injected, have_point, &point, calibrate, &calib, BSP_LCD_H_RES, BSP_LCD_V_RES);
+    touch_calib_prepare_point(injected, have_point, &point, calibrate, &calib, BOARD_PANEL_WIDTH, BOARD_PANEL_HEIGHT);
 #else
-    touch_calib_prepare_point(false, have_point, &point, calibrate, &calib, BSP_LCD_H_RES, BSP_LCD_V_RES);
+    touch_calib_prepare_point(false, have_point, &point, calibrate, &calib, BOARD_PANEL_WIDTH, BOARD_PANEL_HEIGHT);
 #endif
 
     portENTER_CRITICAL(&lock);
@@ -281,7 +281,7 @@ touch_start(void) {
     touch_fsm_init(&fsm);
     calib = touch_calib_from_fit(PANEL_FIT);
 
-    if (bsp_touch_new(NULL, &panel) != ESP_OK) {
+    if (board_touch_open(&panel) != ESP_OK) {
 #if CONFIG_LAUNCHER_QEMU
         ESP_LOGW(TAG, "No touch controller; input comes from touch_inject()");
 #else

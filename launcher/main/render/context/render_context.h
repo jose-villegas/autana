@@ -77,7 +77,7 @@ typedef struct {
 
 #define RENDER_DEBUG_VIEW_UNKNOWN -2
 #define RENDER_DEBUG_VIEW_SHADED  0
-#define RENDER_DEBUG_VIEW_COUNT   7 /* table rows; views run 0 to this */
+#define RENDER_DEBUG_VIEW_COUNT   8 /* table rows; views run 0 to this */
 
 typedef struct {
     raster_split_t split;
@@ -159,6 +159,8 @@ void render_context_set_debug_view(render_context_t* context, int view);
 /* The declared row, or NULL for shaded, an unknown index or a release build. */
 const render_debug_view_t* render_context_debug_view(int view);
 
+/* A view's name, "shaded" for RENDER_DEBUG_VIEW_SHADED; NULL for an unknown index or a release build's rows. */
+const char* render_context_debug_view_name(int view);
 /* A debug view number, RENDER_DEBUG_VIEW_SHADED, or RENDER_DEBUG_VIEW_UNKNOWN for an unknown name. */
 int render_context_debug_view_named(const char* name);
 
