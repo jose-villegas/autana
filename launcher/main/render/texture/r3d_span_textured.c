@@ -147,6 +147,9 @@ typedef struct {
     int x0, y0;   /* the origin pixel */
     int qx0, qy0; /* the dividing planes' origin pixel: the unclipped box's, alike in every window */
     int divide;   /* pixels between divides, 0 when the triangle steps affine */
+    /* A dividing triangle whose corners read different levels: s and t are
+     * in level-0 texels and each span picks its own level. */
+    bool span_level;
     sampler_t sampler;
 } setup_t;
 
@@ -214,6 +217,18 @@ sampler_at(const r3d_texture_t* texture, int level) {
     return (sampler_t){texture->texels[level], mask, mask << side_log2, (uint32_t)(V_INT_SHIFT - side_log2), texture};
 }
 
+/* The level the true texel step reads where a dividing triangle's u and v,
+ * in level-0 texels, are `u` and `v` and 1 / q is `r`. */
+static inline int
+true_level(const setup_t* su, float u, float v, float r) {
+    const float dudx = (su->s.dx - (u * su->q.dx)) * r;
+    const float dvdx = (su->t.dx - (v * su->q.dx)) * r;
+    const float dudy = (su->s.dy - (u * su->q.dy)) * r;
+    const float dvdy = (su->t.dy - (v * su->q.dy)) * r;
+    return level_for(mathf_max((dudx * dudx) + (dvdx * dvdx), (dudy * dudy) + (dvdy * dvdy)),
+                     su->sampler.texture->levels);
+}
+
 /* An INDEX4 span whose u and v divide by depth every su->divide pixels,
  * from s = u q, t = v q and q at its first pixel. u and v wrap once at the
  * start and then step in fixed point; each divide aims the next segment's
@@ -223,24 +238,23 @@ sampler_at(const r3d_texture_t* texture, int level) {
 static RENDER_TAIL_ATTR __attribute__((noinline)) void
 fill_divided(const setup_t* su, uint16_t* depth, uint16_t* color, int count, carry_t* c, float s, float t, float q,
              int x, int y) {
-    /* The span's level, from the true texel step at its centre: s, t and q
-     * are in level-0 texels until the level scales them. */
-    const float half = (float)(count - 1) * 0.5F;
-    const float rc = mathf_recip_approx(q + (su->q.dx * half));
-    const float uc = (s + (su->s.dx * half)) * rc;
-    const float vc = (t + (su->t.dx * half)) * rc;
-    const float dudx = (su->s.dx - (uc * su->q.dx)) * rc;
-    const float dvdx = (su->t.dx - (vc * su->q.dx)) * rc;
-    const float dudy = (su->s.dy - (uc * su->q.dy)) * rc;
-    const float dvdy = (su->t.dy - (vc * su->q.dy)) * rc;
-    const int level =
-        level_for(mathf_max((dudx * dudx) + (dvdx * dvdx), (dudy * dudy) + (dvdy * dvdy)), su->sampler.texture->levels);
-    const sampler_t sampler = sampler_at(su->sampler.texture, level);
-    const float k = level_scale(level);
-    s *= k;
-    t *= k;
-    const float ds = su->s.dx * k;
-    const float dt = su->t.dx * k;
+    const sampler_t* sampler = &su->sampler;
+    sampler_t own;
+    float ds = su->s.dx;
+    float dt = su->t.dx;
+    if (su->span_level) {
+        /* The span's level, from the true texel step at its centre. */
+        const float half = (float)(count - 1) * 0.5F;
+        const float rc = mathf_recip_approx(q + (su->q.dx * half));
+        const int level = true_level(su, (s + (ds * half)) * rc, (t + (dt * half)) * rc, rc);
+        const float k = level_scale(level);
+        own = sampler_at(su->sampler.texture, level);
+        sampler = &own;
+        s *= k;
+        t *= k;
+        ds *= k;
+        dt *= k;
+    }
     float r = mathf_recip_approx(q);
     float u_at = s * r * (float)UV_ONE;
     float v_at = t * r * (float)UV_ONE;
@@ -256,7 +270,7 @@ fill_divided(const setup_t* su, uint16_t* depth, uint16_t* color, int count, car
         const int32_t du = (int32_t)(((s * r * (float)UV_ONE) - u_at) * inverse);
         const int32_t dv = (int32_t)(((t * r * (float)UV_ONE) - v_at) * inverse);
         c->duv = pack_uv(du, 0) + (uint32_t)dv;
-        fill_with(depth + done, color + done, n, c, &sampler, x + done, y, false);
+        fill_with(depth + done, color + done, n, c, sampler, x + done, y, false);
         u_at += (float)(du * n);
         v_at += (float)(dv * n);
         done += n;
@@ -357,10 +371,10 @@ r3d_texture_segment_px(int divide_px, float affine_bend, float extent, float z_n
 /* Whether an INDEX4 triangle set up affine in `su` divides, and how far
  * apart, judged on `whole`, its unclipped box, so every window that draws a
  * part of it maps u and v alike. When it does, its u and v planes become
- * u q and v q in level-0 texels, from the texture's tile holding vertex 0,
- * so a far tile's large u keeps its fraction through the products and
- * divides; each span picks its own level. It sits at the flash tail, apart
- * from set_up(). */
+ * u q and v q, from the texture's tile holding vertex 0, so a far tile's
+ * large u keeps its fraction through the products and divides. Its level is
+ * the one the true step reads at its corners; where they differ, each span
+ * picks its own. At the flash tail, apart from set_up(). */
 static RENDER_TAIL_ATTR __attribute__((noinline)) void
 set_up_divide(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[CORNERS], const vec2f_t uv[CORNERS],
               const r3d_texture_t* texture, recti_t whole, setup_t* su) {
@@ -391,6 +405,20 @@ set_up_divide(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[
     su->q = r3d_span_plane_of(&f, v[0]->z, v[1]->z, v[2]->z);
     su->s = r3d_span_plane_of(&f, s_q[0], s_q[1], s_q[2]);
     su->t = r3d_span_plane_of(&f, t_q[0], t_q[1], t_q[2]);
+    int nearest = texture->levels;
+    int farthest = 0;
+    for (int i = 0; i < CORNERS; i++) {
+        const int level = true_level(su, uv[i].x - origin.x, uv[i].y - origin.y, mathf_recip_approx(v[i]->z));
+        nearest = mathi_min(nearest, level);
+        farthest = mathi_max(farthest, level);
+    }
+    su->span_level = nearest != farthest;
+    if (!su->span_level) {
+        const float k = level_scale(nearest);
+        su->s = (r3d_span_plane_t){su->s.base * k, su->s.dx * k, su->s.dy * k};
+        su->t = (r3d_span_plane_t){su->t.base * k, su->t.dx * k, su->t.dy * k};
+        su->sampler = sampler_at(texture, nearest);
+    }
 }
 
 /* Sets `su` up to fill the triangle's part in window box `box` affine, off
