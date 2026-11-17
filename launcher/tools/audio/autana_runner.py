@@ -1,4 +1,10 @@
 """Command execution and line records for held audio captures."""
+import argparse
+from contextlib import contextmanager
+from datetime import date
+from functools import partial
+from pathlib import Path
+import json
 import shlex
 import shutil
 import subprocess
@@ -34,6 +40,61 @@ def autana_run(command, *words):
             time.sleep(AUTANA_RUN_RETRY_SECONDS)
 
 
+OUTPUT_FLAGS = ("-o", "--out")
+
+
 def record_line(output, key, payload):
     output.write(f"{key}\t{payload}\n")
     output.flush()
+
+
+def record_reply(output, runner, command, *words):
+    reply = runner(command, *words).strip()
+    payload = json.loads(reply) if words[0] in ("tone", "buildid") else reply
+    record_line(output, " ".join(record_key(words)).removesuffix(" --json"),
+                json.dumps(payload, allow_nan=False))
+    return payload
+
+
+def recorded_take(capture, words, reply):
+    filename = words[words.index('-o') + 1]
+    if Path(filename).name != filename or '\\' in filename:
+        raise ValueError('take must be beside capture')
+    return capture.parent / filename, json.loads(reply) if isinstance(reply, str) else reply
+
+
+def record_key(words):
+    """The words a capture records: an output path keeps only its file name, so no machine path lands in docs."""
+    words = [str(word) for word in words]
+    return [Path(word.replace("\\", "/")).name if i and words[i - 1] in OUTPUT_FLAGS else word
+            for i, word in enumerate(words)]
+
+
+def reset_tunables(record, owner, names):
+    failures = []
+    for name in names:
+        try:
+            record("tune", "reset", owner + "." + name)
+        except (OSError, subprocess.CalledProcessError) as error:
+            failures.append(error)
+    if failures:
+        raise RuntimeError(owner + " tunable reset failed") from failures[0]
+
+
+def capture_parser(description, capture):
+    parser = argparse.ArgumentParser(description=description)
+    parser.add_argument("--autana", default="autana")
+    parser.add_argument("--board", required=True)
+    parser.add_argument("--out", type=Path, default=capture)
+    return parser
+
+
+@contextmanager
+def capture_records(args, description, runner):
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    with args.out.open("w", encoding="utf-8", newline="\n") as output:
+        output.write(f"# autana --json replies on {args.board}, {date.today()}, {description}\n")
+        record = partial(record_reply, output, runner, args.autana)
+        record.note = lambda key, payload: record_line(output, key, json.dumps(payload, allow_nan=False))
+        record("buildid", "--json")
+        yield record

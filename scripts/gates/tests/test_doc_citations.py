@@ -111,6 +111,16 @@ class DocCitationTest(unittest.TestCase):
                          [(2, "WHOLE", 8, 7)])
         self.assertIn(("docs/Guide.md", 3, "skipped-on-formula"), skipped)
 
+    def test_constant_checker_reads_cpp_constexpr_but_not_c_const(self):
+        with gate_tree.temporary_tree([
+                ("src/frames.hpp", "class Frames {\n    static constexpr int EVERY = 30;\n};\n"),
+                ("src/limits.c", "static const int C_LIMIT = 30;\n"),
+                ("docs/Guide.md", "`EVERY` is 31.\n`C_LIMIT` is 31.\n"),
+        ]) as root:
+            found = check_doc_constants.check(root)
+        self.assertEqual([(item.name, item.claimed, item.defined) for item in found],
+                         [("EVERY", 31, 30)])
+
     def test_constant_checker_reads_only_tracked_sources(self):
         # A build downloads third-party components into managed_components/.
         # One of them (a rapidjson header) declares `enum { value = 1 }`, which

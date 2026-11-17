@@ -343,6 +343,11 @@ class CloneTests(unittest.TestCase):
         listing = "}\n\nvoid\nsuite_a(void) {\n" + "".join(f"    RUN_TEST(test_{i});\n" for i in range(24)) + "}\n"
         self.assert_ignored_declaration(listing)
 
+    def test_a_run_test_case_list_is_ignored_but_a_copy_beside_it_is_not(self):
+        listing = "}\n\nvoid\nsuite_a(void) {\n" + "".join(
+            f"    RUN_TEST_CASE(test_{i}, quarter->name, rows[{i}].key);\n" for i in range(24)) + "}\n"
+        self.assert_ignored_declaration(listing)
+
     def test_an_asm_body_is_ignored_but_a_copy_beside_it_is_not(self):
         body = "".join(f'        "    ee.andq q{i % 8}, q1, q2\\n" /* step {i} */\n' for i in range(40))
         self.assert_ignored_declaration('__asm__(".text\\n"\n' + body + '        "    retw.n\\n");\n')
@@ -493,7 +498,7 @@ class CloneTests(unittest.TestCase):
                 mock.patch.object(gate, "scan", return_value=[pair]) as scan, \
                 contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(gate.main([]), 0)
-        scan.assert_called_once_with(gate.ROOT, 80, revision="head")
+        scan.assert_called_once_with(gate.repository(), 80, revision="head")
 
     def test_missing_node_message(self):
         with mock.patch.object(gate.shutil, "which", return_value=None):

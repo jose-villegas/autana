@@ -32,6 +32,17 @@ class ProblemsTest(unittest.TestCase):
             found = check_comment_symbols.problems(str(root), outside, unchecked)
             return [line.split(": ", 1)[1] for line in found]
 
+    def test_cpp_sources_at_any_root_declare_and_cite(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            (root / "src").mkdir()
+            (root / "src/frames.hpp").write_text(
+                "// One frame at a time: seek() moves, ghost() does not exist.\n"
+                "class Frames {\n  public:\n    bool seek(int frame);\n};\n", encoding="utf-8")
+            found = check_comment_symbols.problems(str(root), NO_OUTSIDE_NAMES)
+        self.assertEqual([line.split(": ", 1)[1] for line in found],
+                         ["comment names ghost(), which does not exist"])
+
     def test_a_name_only_esp_idf_defines_resolves_and_one_in_neither_fails(self):
         def outside(base):
             return idf_vocabulary.outside_vocabulary(

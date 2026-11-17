@@ -535,7 +535,9 @@ class StageTests(unittest.TestCase):
 
     def test_a_stage_counts_its_entries_and_what_they_import(self):
         self.assertTrue({"r3d/mesh_import.py", "r3d/light.py", "r3d/__init__.py"} <= self.names("mesh"))
-        self.assertTrue({"r3d/appearance_simplify.py", "r3d/fitted_variant.py"} <= self.names("fit"))
+        self.assertTrue({"r3d/appearance_simplify.py", "r3d/fit/stage.py", "r3d/fit/copies.py"} <= self.names("fit"))
+        # The reference stage's entry is named by the fit's key through the reference key, so the fit stops there.
+        self.assertNotIn("r3d/fitted_variant.py", self.names("fit"))
 
     def test_modules_reached_through_sys_path_are_in_the_stages_that_import_them(self):
         for stage in ("mesh", "reference", "fit"):
@@ -2008,3 +2010,12 @@ class SkipUnlockedTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_reference_closure_traces_source_only():
+    files = {path.relative_to(bake.TOOLS).as_posix() for path in bake.stage_files("reference")}
+    assert "r3d/reference_render.py" in files
+    assert "r3d/mesh_source.py" in files
+    assert "r3d/simplify.py" not in files
+    assert "r3d/meshopt.py" not in files
+    assert not any(path.startswith("r3d/objects/") for path in files)

@@ -17,6 +17,7 @@ from unittest.mock import patch
 
 from test_perf_compare import FakeAutana, arguments
 import layout_measure as capture
+from device_capture import test_matches
 import perf_compare as tool
 import seed_statistics as stats
 
@@ -82,6 +83,17 @@ class AcquisitionTests(unittest.TestCase):
         self.assertEqual(tool.selected_suites([('s', '-', '-')], {'s/row'},
                                              {'s/row': ('s', 'alpha')}, (3, 2),
                                              {'s': ['alpha', 'ab']}), [('s', 'l', '-')])
+
+    def test_case_names_narrow_to_patterns_that_pick_one_case_by_segment(self):
+        names = [f'test_profile/{scene}/{quarter}' for scene in ('scene', 'scene-full')
+                 for quarter in ('portrait', 'landscape')]
+        owners = {'s/' + name: ('s', name) for name in names}
+        selected = tool.selected_suites([('s', '-', '-')], set(owners), owners, (31, 4), {'s': names})
+        patterns = [p for _, filters, _ in selected for p in filters.split(',')]
+        self.assertEqual(len(patterns), len(names))
+        for pattern in patterns:
+            self.assertEqual(sum(test_matches(pattern, name) for name in names), 1, pattern)
+        self.assertEqual({next(n for n in names if test_matches(p, n)) for p in patterns}, set(names))
 
     def test_filter_limits_preflight_both_projects(self):
         with tempfile.TemporaryDirectory() as root:

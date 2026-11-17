@@ -275,12 +275,6 @@ struct render_host_checkpoint {
     checkpoint_t state;
 };
 
-const uint8_t*
-render_host_pixels(size_t* bytes) {
-    *bytes = (size_t)host.stride * host.out_h;
-    return host.frame_buf;
-}
-
 render_host_checkpoint_t*
 render_host_save(void) {
     render_host_checkpoint_t* saved = calloc(1, sizeof(*saved));
@@ -314,7 +308,18 @@ render_host_checkpoint_free(render_host_checkpoint_t* saved) {
         free(saved);
     }
 }
+
+size_t
+render_host_checkpoint_bytes(const render_host_checkpoint_t* saved) {
+    return sizeof(*saved) + checkpoint_bytes(&saved->state);
+}
 #endif
+
+render_host_image_t
+render_host_image(void) {
+    return (render_host_image_t){
+        .bgr = host.frame_buf, .width = host.out_w, .height = host.out_h, .stride = (size_t)host.stride};
+}
 
 bool
 render_host_open(const frame_provider_t* provider, int argc, char** argv, int* exit_code) {

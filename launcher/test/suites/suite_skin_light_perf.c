@@ -355,7 +355,7 @@ measure_xtperf_kernel(kernel_t kind, const char* row) {
 }
 
 static void
-test_xtensa_counters(void) {
+test_skin_light_xtensa_counters(void) {
 #if CONFIG_LAUNCHER_QEMU
     TEST_IGNORE_MESSAGE("QEMU does not model the performance monitor");
 #endif
@@ -383,7 +383,7 @@ LIGHT_COUNT_TESTS(exact_separate, EXACT_SEPARATE)
 
 void
 suite_skin_light_perf(void) {
-    RUN_TEST(test_xtensa_counters);
+    RUN_TEST(test_skin_light_xtensa_counters);
     RUN_TEST(test_normal_palette_build);
     RUN_TEST(test_skin_only);
     RUN_TEST(test_fused_direct_1);

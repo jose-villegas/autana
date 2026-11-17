@@ -14,6 +14,7 @@
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 #include "render/view/raster_boxes.h"
+#include "render/view/raster_copies.h"
 #include "render/view/raster_cull_view.h"
 #include "render/view/raster_meshlets.h"
 #include "render/view/raster_motion.h"
@@ -40,6 +41,7 @@ static const render_debug_view_t views[] = {
      .attachment = raster_boxes_view,
      .overlay = raster_boxes_overlay},
     {.name = "overdraw", .state_bytes = sizeof(raster_overdraw_t), .attachment = raster_overdraw_view},
+    {.name = "copies", .state_bytes = sizeof(raster_copies_t), .attachment = raster_copies_view},
 };
 _Static_assert(RENDER_DEBUG_VIEW_COUNT == sizeof views / sizeof views[0], "view table length");
 #endif
@@ -54,14 +56,20 @@ render_context_debug_view(int view) {
 #endif
 }
 
+const char*
+render_context_debug_view_name(int view) {
+    if (view == RENDER_DEBUG_VIEW_SHADED) {
+        return "shaded";
+    }
+    const render_debug_view_t* row = render_context_debug_view(view);
+    return row == NULL ? NULL : row->name;
+}
+
 int
 render_context_debug_view_named(const char* name) {
-    if (strcmp(name, "shaded") == 0) {
-        return RENDER_DEBUG_VIEW_SHADED;
-    }
-    for (int i = 1; i <= RENDER_DEBUG_VIEW_COUNT; i++) {
-        const render_debug_view_t* row = render_context_debug_view(i);
-        if (row != NULL && strcmp(name, row->name) == 0) {
+    for (int i = RENDER_DEBUG_VIEW_SHADED; i <= RENDER_DEBUG_VIEW_COUNT; i++) {
+        const char* row = render_context_debug_view_name(i);
+        if (row != NULL && strcmp(name, row) == 0) {
             return i;
         }
     }
@@ -70,11 +78,11 @@ render_context_debug_view_named(const char* name) {
 
 void
 render_context_print_debug_views(FILE* out) {
-    (void)fputs("shaded", out);
-    for (int i = 1; i <= RENDER_DEBUG_VIEW_COUNT; i++) {
-        const render_debug_view_t* row = render_context_debug_view(i);
-        if (row != NULL) {
-            (void)fprintf(out, ", %s", row->name);
+    (void)fputs(render_context_debug_view_name(RENDER_DEBUG_VIEW_SHADED), out);
+    for (int i = RENDER_DEBUG_VIEW_SHADED + 1; i <= RENDER_DEBUG_VIEW_COUNT; i++) {
+        const char* name = render_context_debug_view_name(i);
+        if (name != NULL) {
+            (void)fprintf(out, ", %s", name);
         }
     }
 }

@@ -6,6 +6,7 @@
 #include "board/board_panel.h"
 #include "board/board.h"
 
+#include "bsp/esp-bsp.h"
 #include "driver/gpio.h"
 #include "driver/spi_master.h"
 #include "esp_check.h"
@@ -14,6 +15,8 @@
 #include "esp_log.h"
 
 static const char* TAG = "board_panel";
+
+_Static_assert(BOARD_PANEL_WIDTH == BSP_LCD_H_RES && BOARD_PANEL_HEIGHT == BSP_LCD_V_RES, "the vendor's panel size");
 
 /* Copied from the Waveshare BSP (Apache-2.0, (c) 2026 Waveshare Team),
  * where it is a private static; needed here because the panel is brought

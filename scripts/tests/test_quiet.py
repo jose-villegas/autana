@@ -38,5 +38,21 @@ class QuietSummaryTests(unittest.TestCase):
         self.assertIn("QUIET_ERROR_PATTERN=", text)
 
 
+class QuietTeeTests(unittest.TestCase):
+    def test_the_command_status_survives_the_pipe_and_both_streams_are_kept(self):
+        for code in (0, 3):
+            with self.subTest(code=code), tempfile.TemporaryDirectory() as directory:
+                log = Path(directory) / "run.log"
+                log.write_text("before\n", encoding="utf-8")
+                script = (f'set -eu\n. "{SCRIPTS / "quiet.sh"}"\n'
+                          f'quiet_tee "{log}" sh -c "echo out; echo err >&2; exit {code}"\n'
+                          'echo "status=$QUIET_TEE_STATUS"\n')
+                done = subprocess.run(["sh", "-c", script], capture_output=True, text=True)
+                self.assertEqual(done.returncode, 0)
+                self.assertEqual(done.stdout.splitlines(), ["out", "err", f"status={code}"])
+                self.assertEqual(log.read_text(encoding="utf-8"), "before\nout\nerr\n")
+                self.assertEqual(list(Path(directory).iterdir()), [log])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -23,19 +23,19 @@ class SnapshotDataTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
             def git_output(command, **kwargs):
-                if command[1:] == ["rev-parse", "--show-toplevel"]:
-                    return str(root)
                 if command[1] == "diff":
                     return b"capture.log.gz\0"
                 if command[1] == "show":
                     return b'jobs:\n  gate:\n    steps:\n      - run: python3 generated.py\n        env: {STAGED_TEXT_GATE: snapshot}\n'
                 if command[1] == "ls-files":
-                    return b"100644 capture-sha 0\tcapture.log.gz\000100644 image-sha 0\timage.png\0"
-                if command[1:] == ["rev-parse", "--absolute-git-dir"]:
-                    return str(root / ".git")
+                    return (b"100644 capture-sha 0\tcapture.log.gz\000100644 image-sha 0\timage.png\0"
+                            b"100644 flow-sha 0\t.github/workflows/gate.yml\0")
+                if command[1] == "rev-parse":
+                    return f"{root / '.git'}\n{root / '.git/index'}\n"
                 if command[1] == "cat-file":
-                    self.assertEqual(b"capture-sha\n", kwargs["input"])
-                    return b"capture-sha blob " + str(len(capture)).encode() + b"\n" + capture + b"\n"
+                    self.assertEqual(b"capture-sha\nflow-sha\n", kwargs["input"])
+                    return (b"capture-sha blob " + str(len(capture)).encode() + b"\n" + capture + b"\n"
+                            + b"flow-sha blob 0\n\n")
                 self.fail(command)
             def gate(command, **kwargs):
                 snapshot = kwargs["cwd"]
@@ -44,7 +44,8 @@ class SnapshotDataTests(unittest.TestCase):
                 process = mock.Mock(returncode=0)
                 process.communicate.return_value = (b"", None)
                 return process
-            with mock.patch.object(staged.subprocess, "check_output", side_effect=git_output), \
+            with mock.patch.object(staged, "repository", return_value=str(root)), \
+                 mock.patch.object(staged.subprocess, "check_output", side_effect=git_output), \
                  mock.patch.object(staged.subprocess, "Popen", side_effect=gate):
                 self.assertEqual(0, staged.main())
 

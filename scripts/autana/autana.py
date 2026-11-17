@@ -1239,7 +1239,10 @@ def mic(args):
     parser.add_argument("action", choices=("record",))
     parser.add_argument("ms", type=int)
     parser.add_argument("--settle", type=int)
-    parser.add_argument("--at", nargs=3, action="append", type=lambda word: int(word, 0), default=[])
+    parser.add_argument("--at", nargs="+", action="append",
+                             help="offset ms from take start; negative offsets fall in settling; "
+                                  "followed by reg value or tone hz duration_ms gain",
+                             type=lambda word: word if word == "tone" else int(word, 0), default=[])
     parser.add_argument("-o", "--out", required=True)
     parser.add_argument("--json", action="store_true")
     parsed = parser.parse_args(args)
@@ -1253,6 +1256,24 @@ def mic(args):
     if parsed.json:
         command.append("--json")
     return call_device(command)
+
+
+CODEC_FAILURES = ("CODEC error", "CODEC usage")
+
+
+def codec(args):
+    """codec <reg> [value]: the firmware's one-line register reply, or its error, on a development build."""
+    if not 1 <= len(args) <= 2:
+        print("usage: autana codec <reg> [value]", file=sys.stderr)
+        return 2
+    code, replies = send("codec " + " ".join(args), reply="CODEC")
+    if code or not replies:
+        return code or 1
+    if replies[-1].startswith(CODEC_FAILURES):
+        print(replies[-1], file=sys.stderr)
+        return 1
+    print(replies[-1])
+    return 0
 
 
 def freeze(args):
@@ -1785,7 +1806,8 @@ COMMAND_GROUPS = (
              "run suites under one lock, N times each (1 when omitted); seconds caps each capture "
              "(1800 when omitted); --flash builds and flashes the diagnostics image first, so nobody flashes between captures"),
             ("suite <name> --test PATTERN[,PATTERN]",
-             "only the tests whose name contains a pattern (case-sensitive); --test repeats"),
+             "only the tests a pattern picks: part of a function name or a whole case segment, "
+             "a/b for segments in order (case-sensitive); --test repeats"),
             ("suite <name> --send LINE",
              "send a console line after tunables, before every capture; --send repeats in order; the sequence should be idempotent, and an error or incomplete reply stops the batch"),
             ("suite <name> --set NAME=VALUE",
@@ -1805,8 +1827,10 @@ COMMAND_GROUPS = (
             ("coredump [--elf PATH]", "the last panic's core dump, saved to the records and decoded against the build that crashed; resets the board"),
             ("coredump --core FILE [--elf PATH]", "decode a saved dump; no board"),
             ("coredump --erase", "clear the dump so the next crash's is told apart; resets the board"),)),
-        one("mic", mic, "mic record <ms> [--settle ms] [--at ms reg value]... -o take.wav [--json]",
-            "record microphone PCM and codec state; --at writes a codec register during the take"),
+        one("mic", mic, "mic record <ms> [--settle ms] [--at offset reg value | --at offset tone hz duration_ms gain]... -o take.wav [--json]",
+            "record microphone PCM and codec state; --at offsets are ms from take start; negative offsets fall in settling"),
+        one("codec", codec, "codec <reg> [value]",
+            "development builds: read, or write then read back, one codec register (hex or decimal)"),
         Command("screenshot", screenshot, (
             ("screenshot [--as-shown|--framebuffer] [-o PATH]", "PATH.png plus a PATH.json state snapshot; landscape by default"),
             ("screenshot --frames N -o PATH", "N frames as PATH-00 on: the loop is frozen and stepped a frame between captures, then resumed"),)),

@@ -21,7 +21,7 @@ from device_report import find_manifest_entry, read_capture_text
 from doc_tables import markdown
 from generated_blocks import replace_blocks
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from audio_doc_blocks import caption
+from audio_doc_blocks import caption, number
 
 DATA = ROOT / "docs/audio/data/sound_gate.json"
 DOCUMENT = ROOT / "docs/audio/Mixer-Cost.md"
@@ -111,10 +111,6 @@ def extract(directory, allow_incomplete=False, command=None, label_a=None, label
 
 def delta(ratio):
     return (ratio - 1) * PERCENT
-
-
-def number(value):
-    return "n/a" if value is None else f"{value:.2f}"
 
 
 def render(path):

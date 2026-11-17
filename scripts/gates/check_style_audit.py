@@ -27,7 +27,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from c_includes import resolve_include as resolve_quoted_include  # noqa: E402
-from c_comments import excluded, blank_comments, scan  # noqa: E402
+from c_comments import SOURCE_EXTENSIONS, SOURCE_GLOBS, excluded, blank_comments, is_cpp, scan  # noqa: E402
 from check_doc_citations import documentation  # noqa: E402
 from check_doc_constants import ESCAPE as DOC_CONSTANTS_ESCAPE  # noqa: E402
 from check_doc_index import blank_fences  # noqa: E402
@@ -114,11 +114,11 @@ def _doc_walk(root, files=None):
 
 
 def _c_walk(root, files=None):
-    """First-party .c/.h files: vendored trees and generated files keep
+    """First-party C and C++ files: vendored trees and generated files keep
     their upstream or generator-owned form, the same exemption
     check-format.sh and c_comments.excluded() give them."""
     root = pathlib.Path(root)
-    for rel in tracked_files(root, ["*.c", "*.h"]):
+    for rel in tracked_files(root, SOURCE_GLOBS):
         if files is not None and rel not in files:
             continue
         if any(rel.startswith(e) for e in excluded()):
@@ -422,7 +422,7 @@ def rule_include_direction(root, path, text):
 # INCLUDE-DIRECTION but ships with the shell, so it may reach the system
 # band. Both include rules below read C and C++ sources alike.
 
-INCLUDE_RULE_SUFFIXES = (".c", ".h", ".cpp")
+INCLUDE_RULE_SUFFIXES = SOURCE_EXTENSIONS
 
 SYSTEM_ROWS = dict(LAYER_BANDS)["system"]
 APPS_ROW = SYSTEM_ROWS[0].split()
@@ -624,7 +624,7 @@ def rule_package_config(root, path, text):
     package = package_of(root, path)
     if package is None:
         return
-    if path.suffix in (".c", ".h"):
+    if path.suffix in SOURCE_EXTENSIONS:
         code = blank_comments(text)
     elif path.name in ("CMakeLists.txt", "Kconfig"):
         code = PACKAGE_BUILD_TOKEN.sub(
@@ -674,7 +674,7 @@ def rule_personal_path(root, path, text):
 # scripts/. An app's own runtime code may name the content it shows.
 
 MODEL_SUFFIXES = (".blend", ".glb", ".gltf", ".obj", ".fbx")
-TOOL_CODE_SUFFIXES = {".py", ".c", ".h", ".cc", ".cpp", ".sh", ".mjs", ".js", ".ps1"}
+TOOL_CODE_SUFFIXES = {".py", *SOURCE_EXTENSIONS, ".sh", ".mjs", ".js", ".ps1"}
 
 
 def _model_names(root):
@@ -977,14 +977,14 @@ def rule_drawn_comment(root, path, text, comments):
 LABEL = re.compile(r"^[A-Z][a-z]+(?:\s[A-Za-z][a-z]*){0,4}$")
 
 
-def _function_body_comments(text, comments):
+def _function_body_comments(path, text, comments):
     """The subset of `comments` sitting inside a real function body: a '{'
     at brace-depth 0 opens one only when the character before it is ')',
     the one shape a struct/array/enum initializer's '{' never has, since
     those follow '=' or a bare type keyword. Everything nested inside that
     frame (if/for/switch blocks, compound literals) inherits its state,
     counted in the one loop below."""
-    blanked = blank_comments(text, mode="code")
+    blanked = blank_comments(text, mode="code", cpp=is_cpp(path))
     spans = {start: c for c in comments for start, _ in c.spans}
     inside = {}
     depth_is_fn, last_nonspace = [], ""
@@ -1006,7 +1006,7 @@ def rule_undef_placement(root, path, text):
     if not relpath(root, path).startswith(packages.FIRST_PARTY):
         return
     comments = scan(relpath(root, path), text)
-    code = blank_comments(text, mode="code")
+    code = blank_comments(text, mode="code", cpp=is_cpp(path))
     stack = []
     for number, line in enumerate(code.splitlines(), 1):
         directive = re.match(r"\s*#\s*(if|ifdef|ifndef|else|elif|endif|undef)\b(.*)", line)
@@ -1025,7 +1025,7 @@ def rule_undef_placement(root, path, text):
 
 @c_comment_rule("HEADING-COMMENT", severity=WARN)
 def rule_heading_comment(root, path, text, comments):
-    in_function = _function_body_comments(text, comments)
+    in_function = _function_body_comments(path, text, comments)
     for c in comments:
         if c.is_banner or c.kind != "block" or c.lines != 1 or c not in in_function:
             continue

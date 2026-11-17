@@ -26,6 +26,7 @@ _Static_assert(sizeof(imu_sample_t) == 12, "FIFO order is six little-endian int1
 
 #define IMU_COUNTS_PER_G   4096
 #define IMU_COUNTS_PER_DPS 64
+#define IMU_SAMPLE_UPRIGHT {.ax = IMU_COUNTS_PER_G}
 
 /* Sensor axes to the screen labels x right, y down, z out. The chip sits with X
  * up the screen, Y right and Z out of the back (board/board_geometry.h). It reads

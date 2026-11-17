@@ -29,11 +29,14 @@ In launcher/main/, launcher/test/suites/ and launcher/tools/, these names
 are code only in their owner's files (core/timing.* and core/timing_*.*, the
 same for memory) or in a driver: anything under board/, or a *_device.c in
 launcher/main/ outside a tests/ folder, where the name means a suite that runs
-on the board. launcher/test/ outside suites/ (the host heap model, the stubs,
-the harness the board also builds) stands in for the vendor code or measures
-from beneath it, so it is not checked; nor is the shell, which the rule above
-holds to more. Standalone packages under launcher/packages/ have their own
-platform shims and do not use the engine's clock and heap owners.
+on the board. The board support package is one board's, so it belongs to
+board/ alone, drivers included: a bsp/ include or a bsp_, BSP_ or CONFIG_BSP_
+name anywhere else fails. launcher/test/ outside suites/ (the host heap model,
+the stubs, the harness the board also builds) stands in for the vendor code
+or measures from beneath it, so it is not checked; nor is the shell, which
+the rule above holds to more. Standalone packages under launcher/packages/
+have their own platform shims and do not use the engine's clock and heap
+owners.
 """
 import pathlib
 import re
@@ -47,7 +50,7 @@ SHELL = "launcher/main/shell/"
 INCLUDE_RE = re.compile(r'^\s*#\s*include\s*[<"]([^>"]+)[>"]')
 VENDOR_INCLUDE_RE = re.compile(r"^(esp_(?!log\.h$)|nvs|freertos/|bsp/|driver/|hal/|soc/|rom/|multi_heap)")
 VENDOR_NAME_RE = re.compile(
-    r"^(esp_|ESP_(?!LOG[A-Z]$)|nvs_|NVS_|heap_caps_|MALLOC_CAP_|multi_heap_|bsp_|BSP_"
+    r"^(esp_|ESP_(?!LOG[A-Z]$)|nvs_|NVS_|heap_caps_|MALLOC_CAP_|multi_heap_|bsp_|BSP_|CONFIG_BSP_"
     r"|(v|x|ux|ul|pv|pc)[A-Z]|(port|config)[A-Z]|pd[A-Z]"
     r"|(Task|Queue|Semaphore|Event|Timer|Stream|Message)\w*Handle_t$|(U?Base|Tick|Stack)Type_t$)")
 
@@ -98,16 +101,22 @@ def problems(root="."):
 
 
 OWNED_NAME_RE = re.compile(r"\b(?:(?P<timing>esp_timer_\w*|vTaskDelay\b)"
-                           r"|(?P<memory>(?:heap_caps_|MALLOC_CAP_|multi_heap_|esp_psram_)\w*|esp_get_\w*heap_size\b))")
+                           r"|(?P<memory>(?:heap_caps_|MALLOC_CAP_|multi_heap_|esp_psram_)\w*|esp_get_\w*heap_size\b)"
+                           r"|(?P<board>(?:bsp_|BSP_|CONFIG_BSP_)\w*))")
+BSP_INCLUDE_RE = re.compile(r"^bsp/")
 CHECKED = ("launcher/main/", "launcher/test/suites/", "launcher/tools/")
 CORE = "launcher/main/core/"
+BOARD = "launcher/main/board/"
 
 
 def may_use(rel, module):
     """True when `rel` is one of core/`module`'s files, or is a driver. A
-    suite's *_device.c is a test that runs on the board, not a driver."""
-    if rel.startswith("launcher/main/board/"):
+    suite's *_device.c is a test that runs on the board, not a driver. The
+    BSP is board/'s alone."""
+    if rel.startswith(BOARD):
         return True
+    if module == "board":
+        return False
     if rel.startswith("launcher/main/") and rel.endswith("_device.c") and "/tests/" not in rel:
         return True
     if not rel.startswith(CORE) or "/" in rel[len(CORE):]:
@@ -116,19 +125,29 @@ def may_use(rel, module):
     return stem == module or stem.startswith(module + "_")
 
 
+def owner_reason(module):
+    return "only board/ may" if module == "board" else f"only core/{module} and a driver may"
+
+
 def owner_problems(root="."):
-    """The `path:line: reason` lines for clock and heap names outside their
-    owners and the drivers, in path then line order."""
+    """The `path:line: reason` lines for clock, heap and BSP names outside
+    their owners, in path then line order."""
     found = []
     for rel in tracked_files(root):
         if not rel.startswith(CHECKED) or not rel.endswith((".c", ".h")) or is_shell(rel):
             continue
         text = (pathlib.Path(root) / rel).read_text(encoding="utf-8", errors="replace")
+        without_comments = COMMENT_RE.sub(blank, text).splitlines()
         code = COMMENT_OR_STRING_RE.sub(blank, text).splitlines()
         for number, line in enumerate(code, 1):
+            include = INCLUDE_RE.match(without_comments[number - 1])
+            if include:
+                if BSP_INCLUDE_RE.match(include.group(1)) and not may_use(rel, "board"):
+                    found.append(f"{rel}:{number}: includes {include.group(1)}; {owner_reason('board')}")
+                continue
             for name, module in dict.fromkeys((m.group(0), m.lastgroup) for m in OWNED_NAME_RE.finditer(line)):
                 if not may_use(rel, module):
-                    found.append(f"{rel}:{number}: uses {name}; only core/{module} and a driver may")
+                    found.append(f"{rel}:{number}: uses {name}; {owner_reason(module)}")
     return found
 
 
@@ -143,7 +162,7 @@ def main(argv):
     owned = owner_problems(".")
     for line in owned:
         print(line)
-    print(f"{len(owned)} clock or heap use(s) outside core/timing, core/memory and the drivers")
+    print(f"{len(owned)} clock, heap or BSP use(s) outside their owners")
     return 1 if found or owned else 0
 
 

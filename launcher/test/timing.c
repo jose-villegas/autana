@@ -17,8 +17,10 @@
 
 #include "suites.h"
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 
 #ifdef DEVICE_BUILD
 #include "core/timing.h"
@@ -269,6 +271,39 @@ suite_run_test_timed(void (*func)(void), const char* name, int line) {
            stack_free_bytes
 #endif
     );
+}
+
+/* Static, not on the stack: the name outlives this call, and Unity keeps a
+ * pointer to it until the test it names returns. */
+static char case_name[SUITE_TEST_NAME_MAX + 1];
+
+const char*
+suite_test_case_name(const char* name, const char* const* segments, size_t count) {
+    size_t length = strlen(name);
+    bool named = length <= SUITE_TEST_NAME_MAX;
+    if (named) {
+        memcpy(case_name, name, length);
+    }
+    for (size_t i = 0; named && i < count; i++) {
+        const size_t segment = segments[i] != NULL ? strlen(segments[i]) : 0;
+        if (segment == 0) {
+            continue;
+        }
+        named = length + 1 + segment <= SUITE_TEST_NAME_MAX && strspn(segments[i], SUITE_TEST_SEGMENT_CHARS) == segment;
+        if (named) {
+            case_name[length] = SUITE_TEST_SEPARATOR;
+            memcpy(case_name + length + 1, segments[i], segment);
+            length += 1 + segment;
+        }
+    }
+    if (!named) {
+        suites_record_drop();
+        printf("SUITE OVERFLOW: a case of %s is past SUITE_TEST_NAME_MAX %d or not of SUITE_TEST_SEGMENT_CHARS\n", name,
+               SUITE_TEST_NAME_MAX);
+        return NULL;
+    }
+    case_name[length] = '\0';
+    return case_name;
 }
 
 void

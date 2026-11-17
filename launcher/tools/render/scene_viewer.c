@@ -276,4 +276,5 @@ const frame_provider_t scene_provider = {
     .draw = draw,
     .path_ms = path_ms,
     .seek = seek,
+    .render_context = render_context_main,
 };

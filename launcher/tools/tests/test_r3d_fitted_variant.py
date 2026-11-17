@@ -14,6 +14,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "render"))
 
 try:
     from r3d import fitted_variant
+    from r3d.fit import stage
     from r3d.fitted_variant import poses_text, split_poses
     from r3d.poses import either_way, parse_poses
 except ImportError:
@@ -21,9 +22,9 @@ except ImportError:
     parse_poses = None
 
 try:
-    from r3d import mesh_import, reference_render
+    from r3d import mesh_import, mesh_source, reference_render
 except ImportError:
-    mesh_import = reference_render = None
+    mesh_import = mesh_source = reference_render = None
 
 try:
     from PIL import Image
@@ -181,7 +182,7 @@ class SweepTests(unittest.TestCase):
                 mock.patch.object(fitted_variant, "placed_variant", return_value=job), \
                 mock.patch.object(fitted_variant, "sweep_references"), \
                 mock.patch.object(fitted_variant, "run_sweep_points", side_effect=run_points), \
-                mock.patch.object(fitted_variant, "fit", return_value=pathlib.Path("scratch.mesh")), \
+                mock.patch.object(stage, "fit", return_value=pathlib.Path("scratch.mesh")), \
                 mock.patch.object(fitted_variant, "held_out_score", return_value=(1, 2)), \
                 mock.patch.object(fitted_variant, "plot_pareto"), mock.patch.object(fitted_variant, "sweep_rows", return_value=[]), \
                 mock.patch.object(bake_fidelity, "build_host", return_value=pathlib.Path("host")) as build, \
@@ -199,8 +200,8 @@ class SweepTests(unittest.TestCase):
             point_dir = pathlib.Path(directory) / "budget-42-cost-0.5"
             target = point_dir.parent / (point_dir.name + ".mesh")
             scene_path, scene, job, inputs = "scene.toml", object(), object(), pathlib.Path(directory) / "inputs"
-            with unittest.mock.patch.object(fitted_variant, "fit", return_value=target) as fit:
-                result = fitted_variant.fit_point(
+            with unittest.mock.patch.object(stage, "fit", return_value=target) as fit:
+                result = stage.fit_point(
                     {"budget": 42, "cost_weight": 0.5}, point_dir, scene_path, scene, job, inputs)
             fit.assert_called_once_with(scene_path, scene, job, point_dir, budget=42,
                                         cost_weight=0.5, smoke=False, target=target, inputs=inputs)
@@ -214,9 +215,9 @@ class SweepTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             point_dir = pathlib.Path(directory) / "point"
-            with unittest.mock.patch.object(fitted_variant, "fit", side_effect=fail_fit):
+            with unittest.mock.patch.object(stage, "fit", side_effect=fail_fit):
                 with self.assertRaises(RuntimeError) as caught:
-                    fitted_variant.fit_point({"budget": 42}, point_dir, "scene", None, None, directory)
+                    stage.fit_point({"budget": 42}, point_dir, "scene", None, None, directory)
             log_path = point_dir / "fit.log"
             log = log_path.read_text()
             self.assertIn("Traceback (most recent call last):", log)
@@ -295,7 +296,7 @@ class SweepTests(unittest.TestCase):
             work = pathlib.Path(directory)
             with unittest.mock.patch.object(fitted_variant, "reference_digest", return_value="same"), \
                  unittest.mock.patch.object(mesh_import, "write_baked", return_value=start), \
-                 unittest.mock.patch.object(mesh_import, "camera_path_poses", return_value=poses), \
+                 unittest.mock.patch.object(mesh_source, "camera_path_poses", return_value=poses), \
                  unittest.mock.patch.object(fitted_variant, "prepare_references", wraps=fitted_variant.prepare_references) as prepare, \
                  unittest.mock.patch.object(reference_render, "render_sets", return_value="traced_here") as render:
                 fitted_variant.sweep_references("scene", scene, job, work)
@@ -330,8 +331,7 @@ class SweepTests(unittest.TestCase):
             work.mkdir()
             target = work / "target.mesh"
             with unittest.mock.patch.dict(sys.modules, {"r3d.appearance_simplify": SimpleNamespace(main=fitter)}):
-                fitted_variant.fit("scene.toml", None, job, work, target=target, inputs=work,
-                                   start=work / start_name)
+                stage.fit("scene.toml", None, job, work, target=target, inputs=work, start=work / start_name)
             self.assertEqual(target.read_bytes(), fitted_bytes)
 
     def test_reference_inputs_read_fit_pose_size_for_any_visibility(self):

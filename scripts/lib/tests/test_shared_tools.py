@@ -2,6 +2,7 @@
 import io
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -228,6 +229,50 @@ class SuiteFailureSignTests(unittest.TestCase):
         self.assertEqual(capture.suite_failure_signs(
             'SUITE OVERFLOW: run_extra_suite\nSELFTEST_COMPLETE failures=2 elapsed_ms=30', 0),
             ['SUITE OVERFLOW: run_extra_suite', 'SELFTEST_COMPLETE failures=2, but 0 FAIL lines'])
+
+    def test_a_name_reported_twice_is_a_sign_once_whatever_its_status(self):
+        text = ('a.c:1:test_one:PASS\nb.c:9:test_one:FAIL: again\n:3:test_two/x/portrait:IGNORE\n'
+                ':4:test_two/x/portrait:PASS\n:5:test_two/x/landscape:PASS\n:6:test_one:PASS\n')
+        self.assertEqual(capture.suite_failure_signs(text, 1),
+                         ['test name reported twice: test_one', 'test name reported twice: test_two/x/portrait'])
+
+    def test_case_names_are_results_of_their_own(self):
+        text = 'C:/w/f.c:12:test_profile/capybara/front/portrait:PASS\n:13:test_profile/sponza-fitted:FAIL: slow\n'
+        self.assertEqual([(r['name'], r['status']) for r in capture.results(text)],
+                         [('test_profile/capybara/front/portrait', 'PASS'), ('test_profile/sponza-fitted', 'FAIL')])
+        self.assertEqual(capture.suite_failure_signs(text, 1), [])
+
+    def test_lines_that_only_look_like_results_are_not_results(self):
+        text = ('I (12) app: f.c:3:mode x:PASS\n:4:a//b:PASS\n:5:/a:PASS\n:6:a/:FAIL\n'
+                'f.c:7:test_one:FAIL: expected f.c:8:test_two:PASS\n:9:test_three/x:PASS  \r\n')
+        self.assertEqual([(r['name'], r['status'], r['message']) for r in capture.results(text)],
+                         [('test_one', 'FAIL', 'expected f.c:8:test_two:PASS'), ('test_three/x', 'PASS', None)])
+
+    def test_the_host_run_check_fails_on_a_sign_and_passes_without_one(self):
+        log = Path(tempfile.mkdtemp()) / 'host_run.log'
+        self.addCleanup(shutil.rmtree, log.parent)
+        for text, code in [(':1:test_one:PASS\n:2:test_two:PASS\n', 0), (':1:test_one:PASS\n:2:test_one:PASS\n', 1)]:
+            with self.subTest(text=text):
+                log.write_text(text, encoding='utf-8')
+                result = subprocess.run([sys.executable, str(LIB / 'device_capture.py'), str(log)],
+                                        capture_output=True, text=True)
+                self.assertEqual(result.returncode, code)
+                self.assertEqual(result.stdout, '' if code == 0 else 'FAIL: test name reported twice: test_one\n')
+
+
+# The cases suite_test_matches() is held to (launcher/test/suites/suite_filter_cases.inc).
+FILTER_CASES = LIB.parents[1] / 'launcher' / 'test' / 'suites' / 'suite_filter_cases.inc'
+FILTER_CASE = re.compile(r'^SUITE_FILTER_CASE\("([^"]*)", "([^"]*)", (true|false)\)$', re.M)
+
+
+class TestMatchTests(unittest.TestCase):
+    def test_each_pattern_picks_exactly_the_names_its_case_says(self):
+        text = FILTER_CASES.read_text(encoding='utf-8')
+        cases = FILTER_CASE.findall(text)
+        self.assertEqual(len(cases), text.count('SUITE_FILTER_CASE('))
+        for pattern, name, picks in cases:
+            with self.subTest(pattern=pattern, name=name):
+                self.assertEqual(capture.test_matches(pattern, name), picks == 'true')
 
 
 class CrashSignTests(unittest.TestCase):

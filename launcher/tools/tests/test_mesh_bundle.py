@@ -11,7 +11,8 @@ import unittest
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 import numpy as np
-from r3d import build_pack, fitted_variant, lcol_asset, mesh_bundle, mesh_import, mesh_asset, scene_asset
+from r3d.fit import stage
+from r3d import build_pack, lcol_asset, mesh_bundle, mesh_import, mesh_asset, scene_asset
 from build.name_hash import name_hash
 from asset.asset_pack import NAME_BYTES, PackError, build_pack as encode_pack, parse_pack
 from test_scene_asset import SceneFiles
@@ -155,16 +156,82 @@ class MeshBundleTests(unittest.TestCase):
             def fit_main(args):
                 raw = pathlib.Path(args[args.index('--start') + 1])
                 self.assertEqual(raw.suffix, '.mesh')
+                self.assertEqual(args[args.index('--copies') + 1], str(start))
+                self.assertEqual(args[args.index('--copy-poses') + 1], str(work / 'held_out.txt'))
                 blob = bytearray(raw.read_bytes())
                 blob[mesh_asset.read_mesh_header(blob).colors_at] ^= 1
                 out = pathlib.Path(args[args.index('--out') + 1])
                 out.mkdir()
                 (out / raw.name).write_bytes(blob)
             with mock.patch.dict(sys.modules, {'r3d.appearance_simplify': SimpleNamespace(main=fit_main)}):
-                fitted_variant.fit(work / 'scene.scene.toml', scene, job, work, start=start, target=target)
+                stage.fit(work / 'scene.scene.toml', scene, job, work, start=start, target=target)
             before, after = parse_pack(data), parse_pack(target.read_bytes())
             self.assertNotEqual(before.pop(job.asset_name), after.pop(job.asset_name))
             self.assertEqual(before, after)
+
+
+class FitCopiesTests(unittest.TestCase):
+    """The fit draws a carved start's copies where the board does, and gates what the fit did to them."""
+
+    def placed(self, flat=False):
+        from r3d.fit.copies import placed_copies
+
+        with tempfile.TemporaryDirectory() as directory:
+            data, copies, _geometry, job, _scene = bundle_fixture(directory, flat=flat)
+            start = pathlib.Path(directory) / ('start' + mesh_bundle.SUFFIX)
+            start.write_bytes(data)
+            return placed_copies(start, flat), copies
+
+    def test_each_copy_is_placed_under_its_transform_with_its_own_colours(self):
+        mesh, copies = self.placed()
+        drawn = {(tuple(np.round(corner, 6)), tuple(np.round(colour * 255))) for tri in mesh.tris
+                 for corner, colour in zip(mesh.points[mesh.vertex_point[tri]], mesh.rgb[tri])}
+        expected = {(tuple(np.round(corner, 6)), tuple(colour)) for _instance, (p, rgb, t, _labels) in copies
+                    for tri in t for corner, colour in zip(p[tri], rgb[tri])}
+        self.assertEqual(drawn, expected)
+        self.assertFalse(mesh.flat)
+
+    def test_a_flat_start_draws_each_copy_triangle_in_its_face_colour(self):
+        from r3d.lit_mesh import panel_colour, rgb888
+
+        mesh, copies = self.placed(flat=True)
+        self.assertTrue(mesh.flat)
+        self.assertEqual((len(mesh.rgb), len(mesh.tris)), (len(copies), len(copies)))
+        face = rgb888(panel_colour(np.full((1, 3), 80)))[0]
+        np.testing.assert_array_equal(np.rint(mesh.rgb * 255), np.tile(face, (len(copies), 1)))
+
+    def test_copies_must_be_shaded_as_their_rest_is(self):
+        from r3d.fit.copies import placed_copies
+
+        with tempfile.TemporaryDirectory() as directory:
+            start = pathlib.Path(directory) / ('start' + mesh_bundle.SUFFIX)
+            start.write_bytes(bundle_fixture(directory, flat=True)[0])
+            with self.assertRaisesRegex(ValueError, "flat"):
+                placed_copies(start, flat=False)
+
+    def test_joined_copies_index_their_own_vertices_and_points_after_the_rest(self):
+        from r3d.fit.copies import joined
+
+        mesh, _copies = self.placed()
+        both = joined(mesh, mesh)
+        np.testing.assert_array_equal(both.points[both.vertex_point[both.tris[len(mesh.tris):]]],
+                                      mesh.points[mesh.vertex_point[mesh.tris]])
+        np.testing.assert_array_equal(both.rgb[both.tris[len(mesh.tris):]], mesh.rgb[mesh.tris])
+        self.assertIs(joined(mesh, None), mesh)
+
+    def test_the_gate_fails_a_fit_that_hides_more_copy_pixels_than_its_start(self):
+        from r3d.fit.copies import HIDDEN_MEAN_GROWTH, HIDDEN_WORST_GROWTH, check_hidden_copies
+
+        # A hundred held-out poses, so one pose's growth moves the mean by a hundredth of it.
+        start = np.linspace(0.0, 0.002, 100)
+        worst = start.copy()
+        worst[-1] += 0.99 * HIDDEN_WORST_GROWTH
+        for fitted in (start + 0.99 * HIDDEN_MEAN_GROWTH, start - 0.001, worst):
+            check_hidden_copies(start, fitted)
+        worst[-1] += 0.02 * HIDDEN_WORST_GROWTH
+        for fitted in (start + 1.01 * HIDDEN_MEAN_GROWTH, worst):
+            with self.subTest(fitted=fitted), self.assertRaisesRegex(ValueError, "hides the copies"):
+                check_hidden_copies(start, fitted)
 
 
 class BundlePackTests(SceneFiles):

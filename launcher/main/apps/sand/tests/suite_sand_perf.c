@@ -264,6 +264,7 @@ build_full_size_step_scene(sand_t* real, uint8_t* big) {
 #include "panel_clock_pin.h"
 #include "profile/frame_cost.h"
 #include "testkit/bench.h"
+#include "testkit/cleanup.h"
 
 /* Each pass's time for one step, summed over a window, and the split of the
  * window's dearest step. */
@@ -3539,6 +3540,7 @@ test_water_slope_captured_scene_diagonal_flip_logs_a_per_step_table(void) {
  */
 
 #include "app/app.h"
+#include "input/motion/motion_reader.h"
 
 extern app_t app_sand;
 extern int sand_app_enter_running_for_test(void);
@@ -3617,6 +3619,9 @@ clock_row_run(int brush, clock_row_t row, clock_row_window_t* pour, clock_row_wi
 
 static void
 test_present_cost_at_40_and_80_mhz_on_a_real_pour(void) {
+    const imu_sample_t upright = IMU_SAMPLE_UPRIGHT;
+    input_motion_pin(&upright);
+    suite_add_test_cleanup(input_motion_unpin);
     static const char* const brush_names[] = {"sand", "water"};
     static const char* const row_names[CLOCK_ROW_COUNT] = {"40", "80"};
     const two_core_scope_t core = two_core_scope_begin(true);

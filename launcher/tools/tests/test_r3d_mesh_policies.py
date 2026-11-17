@@ -4,7 +4,8 @@ import pathlib
 import sys
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
+from contextlib import contextmanager
+from unittest.mock import Mock, patch
 
 import numpy as np
 from scipy.spatial import ConvexHull
@@ -15,6 +16,16 @@ from r3d.import_settings import SettingsError
 from r3d import import_settings
 from r3d.simplify import Allocation, simplify
 from soup import edge_counts, sphere, split_sphere
+
+
+@contextmanager
+def watched_simplify():
+    """One mock over every simplify_with_update call, the rest's passes and the carved stand-ins' alike, in order."""
+    from r3d import meshopt, simplify as owner
+    from r3d.objects import stand_ins
+    run = Mock(wraps=meshopt.simplify_with_update)
+    with patch.object(owner, 'simplify_with_update', run), patch.object(stand_ins, 'simplify_with_update', run):
+        yield run
 
 CARVED_RULE = 40  # triangles a carved mesh asks for
 REST_ASK = 80  # triangles the rest asks for
@@ -85,10 +96,9 @@ class MeshPolicyTests(unittest.TestCase):
             np.testing.assert_array_equal(a.vertices_b, b.vertices_b)
 
     def test_weld_adds_to_touched_rest_pass(self):
-        from r3d import simplify as owner
         report = {}
         p, t, _, allocation = split_sphere(11, 40, 'weld', report)
-        with patch.object(owner, 'simplify_with_update', wraps=owner.simplify_with_update) as run:
+        with watched_simplify() as run:
             q, _, faces, _ = simplify(p, np.full_like(p, 100), t, np.zeros(len(t), dtype=int), 80,
                                        colour_deviation=1, allocation=allocation)
         self.assertEqual([call.args[3] for call in run.call_args_list], [120])
@@ -168,7 +178,6 @@ class MeshPolicyTests(unittest.TestCase):
 
     def test_shared_lock_unions_contacts_from_all_copies(self):
         from scipy.spatial import cKDTree
-        from r3d import simplify as owner
         from r3d.objects.contact import contact_graph
         p, t = sphere(13)
         reflected = p * [-1, 1, 1] + [6, 0, 0]
@@ -185,7 +194,7 @@ class MeshPolicyTests(unittest.TestCase):
         self.assertGreater(np.count_nonzero(expected), np.count_nonzero(locks[:len(p)]))
         allocation = Allocation(tri_o=owners, object_names=('vase_a', 'vase_b', 'rest'), material_names=('plain',),
                                 meshes=({'match': {'object': 'vase*'}, 'triangles': 40},))
-        with patch.object(owner, 'simplify_with_update', wraps=owner.simplify_with_update) as run:
+        with watched_simplify() as run:
             simplify(points, np.full_like(points, 100), faces, np.zeros(len(faces), dtype=int), 20,
                      colour_deviation=1, allocation=allocation)
         shared = next(call for call in run.call_args_list if len(call.args[0]) == len(p))
@@ -193,7 +202,7 @@ class MeshPolicyTests(unittest.TestCase):
         _, mapping = cKDTree(p).query(shared.args[0] + centre)
         np.testing.assert_array_equal(shared.kwargs['vertex_lock'], expected[mapping])
         # Only the first placement touches; the isolated copy shares its local locks.
-        with patch.object(owner, 'simplify_with_update', wraps=owner.simplify_with_update) as run:
+        with watched_simplify() as run:
             simplify(points, np.full_like(points, 100), faces[:-1], np.zeros(len(faces) - 1, dtype=int), 20,
                      colour_deviation=1, allocation=Allocation(tri_o=owners[:-1], object_names=allocation.object_names,
                                                               material_names=allocation.material_names, meshes=allocation.meshes))
@@ -202,19 +211,18 @@ class MeshPolicyTests(unittest.TestCase):
         self.assertTrue(np.any(shared[0].kwargs['vertex_lock']))
 
     def test_weld_pins_vertex_to_face_contact(self):
-        from r3d import simplify as owner
         p = np.array([[0., 0, 0], [4, 0, 0], [0, 4, 0], [1, 1, 0], [1, 1, 2], [2, 1, 2]])
         t = np.arange(6).reshape(-1, 3)
         allocation = Allocation(tri_o=np.arange(2), object_names=('floor', 'column'), material_names=('plain',),
                                 meshes=({'match': {'object': 'column'}, 'triangles': 1, 'seam': 'weld'},))
-        with patch.object(owner, 'simplify_with_update', wraps=owner.simplify_with_update) as run:
+        with watched_simplify() as run:
             simplify(p, np.full_like(p, 100), t, np.zeros(len(t), dtype=int), 1, colour_deviation=1, allocation=allocation)
         self.assertEqual(run.call_count, 1)
         self.assertEqual(run.call_args.args[3], 2)
         np.testing.assert_array_equal(run.call_args.kwargs['vertex_lock'], [True, True, True, True, False, False])
 
     def test_shared_bake_uses_albedo_then_placed_light(self):
-        from r3d import mesh_import, simplify as owner
+        from r3d import mesh_import
         p, t = sphere(9)
         points = np.concatenate([p, p * [-1, 1, 1] + [6, 0, 0]])
         faces = np.concatenate([t, t[:, ::-1] + len(p)])
@@ -231,7 +239,7 @@ class MeshPolicyTests(unittest.TestCase):
         query = SimpleNamespace(blocked=lambda origin, direction: np.zeros(len(origin), dtype=bool))
         with patch.object(mesh_import, 'load_source', return_value=src), \
              patch.object(mesh_import, 'RayQuery', return_value=query) as rays, \
-             patch.object(owner, 'simplify_with_update', wraps=owner.simplify_with_update) as run, \
+             watched_simplify() as run, \
              patch.object(mesh_import, 'shade_placed', wraps=mesh_import.shade_placed) as shade:
             result = mesh_import.bake_geometry(job, scene)
         self.assertEqual(run.call_count, 1)
@@ -250,7 +258,7 @@ class MeshPolicyTests(unittest.TestCase):
         with patch.object(mesh_import, 'load_source', return_value=src), \
              patch.object(mesh_import, 'RayQuery', return_value=query), \
              patch.object(mesh_import, 'visible_triangles', return_value=visible), \
-             patch.object(owner, 'simplify_with_update', wraps=owner.simplify_with_update) as run:
+             watched_simplify() as run:
             result = mesh_import.bake_geometry(job, scene)
         self.assertEqual(run.call_count, 1)
         self.assertLess(len(run.call_args.args[2]), len(t))
@@ -258,7 +266,6 @@ class MeshPolicyTests(unittest.TestCase):
         self.assertTrue(np.any(result.positions[:, 0] > 3))
 
     def test_shared_mirror_decimates_once_and_places_before_shading(self):
-        from r3d import simplify as owner
         p, t = sphere(8)
         reflected = p * [-1, 1, 1] + [6, 0, 0]
         points = np.concatenate([p, reflected])
@@ -270,7 +277,7 @@ class MeshPolicyTests(unittest.TestCase):
             return q, np.full_like(q, q[:, 0].mean()), out, labels
         allocation = Allocation(tri_o=owners, object_names=('vase_a', 'vase_b'), material_names=('plain',),
                                 meshes=({'match': {'object': 'vase*'}, 'triangles': 40},), shade=shade)
-        with patch.object(owner, 'simplify_with_update', wraps=owner.simplify_with_update) as run:
+        with watched_simplify() as run:
             q, c, out, _ = simplify(points, np.full_like(points, 100), faces, np.zeros(len(faces), dtype=int), 80,
                                      colour_deviation=1, allocation=allocation)
         self.assertEqual(run.call_count, 1)
@@ -307,8 +314,7 @@ class MeshPolicyTests(unittest.TestCase):
 
     def _run(self, points, faces, labels, rest, allocation, **args):
         """Simplify; return the output labels and the budget of every simplify_with_update call, in order."""
-        from r3d import simplify as owner
-        with patch.object(owner, 'simplify_with_update', wraps=owner.simplify_with_update) as run:
+        with watched_simplify() as run:
             try:
                 *_, out = simplify(points, np.full_like(points, 100), faces, labels, rest, colour_deviation=1,
                                    allocation=allocation, **args)

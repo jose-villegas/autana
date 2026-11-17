@@ -82,7 +82,7 @@ import device_profile  # noqa: E402  (path must be set up first)
 from espressif import espressif_tools_root, idf_python, idf_path  # noqa: E402  (path must be set up first)
 from device_report import SUITE_COMPLETE_RE  # noqa: E402  (the board tool's own reading)
 from device_capture import (BOOTS_FROM_RESET, BUILD_ID_RE, BUILD_ID_REQUEST,  # noqa: E402
-                            crash_signs, suite_failure_signs)  # (the board tool's own crash verdict)
+                            crash_signs, results, suite_failure_signs)  # (the board tool's own verdict)
 from console_protocol import ANSI  # noqa: E402
 import screenshot as wire  # noqa: E402  (the board tool's own protocol)
 import patched_qemu  # noqa: E402  (path must be set up first)
@@ -92,7 +92,6 @@ ICOUNT_SHIFT = 0
 
 QEMU_PASS_RE = re.compile(r":PASS$", re.M)
 QEMU_IGNORE_RE = re.compile(r":IGNORE")
-QEMU_FAIL_RE = re.compile(r"^\S*:\d+:(\w+):FAIL:? ?(.*)$", re.M)
 
 SENTINEL = "SELFTEST_COMPLETE"
 LISTENING = "listening for 'screenshot'"
@@ -403,7 +402,7 @@ def summarise(log_path):
     text = text.replace("\r", "")
     passed = len(QEMU_PASS_RE.findall(text))
     ignored = len(QEMU_IGNORE_RE.findall(text))
-    failed = QEMU_FAIL_RE.findall(text)
+    failed = [(r["name"], r["message"] or "") for r in results(text) if r["status"] == "FAIL"]
     for line in re.findall(r"device_tests: (.*us per step.*)$", text,
                            flags=re.M):
         print("  " + line)

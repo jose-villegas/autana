@@ -2,6 +2,7 @@
 
 #include "core/tune.h"
 #include "render/r3d_pipeline.h"
+#include "render/view/raster_copies.h"
 #include "render/view/raster_lines.h"
 #include "render/view/raster_meshlets.h"
 
@@ -27,23 +28,6 @@ raster_boxes_view(void* state) {
     return (raster_attachment_t){.begin = begin, .state = state};
 }
 
-/* The first instance drawing instance `i`'s mesh, and how many instances draw
- * it. Each renderer holds its own view of a mesh, so copies are the instances
- * whose views map the same positions. A skinned or dynamic mesh writes its
- * own positions, so it is a shape of its own. */
-static int
-instance_shape(const raster_t* raster, int i, int* copies) {
-    int first = -1;
-    *copies = 0;
-    for (int j = 0; j < raster->instance_count; j++) {
-        if (raster->instances[j].mesh->positions == raster->instances[i].mesh->positions) {
-            first = first < 0 ? j : first;
-            ++*copies;
-        }
-    }
-    return first;
-}
-
 void
 raster_boxes_overlay(void* state, int width, int height) {
     raster_boxes_t* s = state;
@@ -58,7 +42,7 @@ raster_boxes_overlay(void* state, int width, int height) {
     const raster_lines_depth_t* tested = behind == RASTER_BOXES_BEHIND_FULL ? NULL : &depth;
     for (int i = 0; i < raster->instance_count; i++) {
         int shape_copies;
-        const int shape = instance_shape(raster, i, &shape_copies);
+        const int shape = raster_copies_shape(raster, i, &shape_copies);
         if (shape_copies < copies) {
             continue;
         }

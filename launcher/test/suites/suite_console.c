@@ -971,7 +971,7 @@ test_quarter_injection_matches_forward_mapping(void) {
             &display, (vec3f_t){(float)gravity.x / IMU_COUNTS_PER_G, (float)gravity.y / IMU_COUNTS_PER_G, 0.0F}, 0));
         TEST_ASSERT_EQUAL_INT(quarter, display_quarter(&display));
     }
-    imu_sample_t sample = {.ax = IMU_COUNTS_PER_G};
+    imu_sample_t sample = IMU_SAMPLE_UPRIGHT;
     char past_end[CONSOLE_LINE_MAX];
     snprintf(past_end, sizeof past_end, "quarter %d", DISPLAY_QUARTER_COUNT);
     const char* invalid[] = {"quarter -1", "quarter", "quarter 0 extra", past_end};

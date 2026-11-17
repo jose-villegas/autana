@@ -108,7 +108,7 @@ if os.environ.get("FAKE_REPOINT"):
             tools = root / "launcher" / "tools" / "build"
             tools.mkdir(parents=True)
             (root / "scripts/lib").mkdir(parents=True)
-            for name in ("python.sh", "python-min-version", "autana_config.py", "terminal.sh"):
+            for name in ("python.sh", "python-min-version", "autana_config.py", "git_env.py", "terminal.sh"):
                 shutil.copy(ENGINE / "scripts/lib" / name, root / "scripts/lib" / name)
             (root / "autana.local.toml").write_text(f"build_root = '{(root / 'b').as_posix()}'\n")
             for name in ("build.sh", "idf.sh", "idf_shim.bat", "idf_variant.sh", "write_build_id.sh", "espressif.py", "build_paths.py"):

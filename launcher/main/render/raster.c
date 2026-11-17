@@ -114,16 +114,16 @@ clear_color(const raster_attachment_t* self, const raster_t* raster, void* pixel
     }
 }
 
-/* And from no depth. */
-static void
-clear_depth(const raster_attachment_t* self, const raster_t* raster, void* pixels, size_t count) {
+void
+raster_attachment_clear_u16(const raster_attachment_t* self, const raster_t* raster, void* pixels, size_t count) {
     (void)self;
     (void)raster;
     memset(pixels, 0, count * sizeof(uint16_t));
 }
 
 static const raster_attachment_t color_attachment = {GFX_PIXEL_FORMAT, clear_color, NULL, NULL, NULL, NULL, NULL};
-static const raster_attachment_t depth_attachment = {IMAGE_U16, clear_depth, NULL, NULL, NULL, NULL, NULL};
+static const raster_attachment_t depth_attachment = {IMAGE_U16, raster_attachment_clear_u16, NULL, NULL, NULL, NULL,
+                                                     NULL};
 _Static_assert(R3D_DEPTH_EMPTY == 0, "depth is cleared with memset");
 
 /* Colour, depth, then the caller's, in the order raster_picture() lays them. */

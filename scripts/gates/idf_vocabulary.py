@@ -38,7 +38,7 @@ import re
 import sys
 import tempfile
 
-from c_comments import blank_comments
+from c_comments import C_EXTENSIONS, blank_comments
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher" / "tools" / "build"))
 from espressif import IDF_PIN, espressif_tools_root, idf_path  # noqa: E402  (path must be set up first)
@@ -47,8 +47,7 @@ SCANNED = ("components", "tools")
 # Files per worker task; a smaller scan is read in-process, cheaper than
 # starting a pool.
 CHUNK = 500
-C_SUFFIXES = {".c", ".h"}
-CITABLE_SUFFIXES = {".c", ".h", ".py", ".sh", ".cmake", ".md"}
+CITABLE_SUFFIXES = {*C_EXTENSIONS, ".py", ".sh", ".cmake", ".md"}
 DIRECTIVE = re.compile(r"^[ \t]*#(?:[^\n]*\\\n)*[^\n]*", re.M)
 DEFINE = re.compile(r"^[ \t]*#[ \t]*define[ \t]+([A-Za-z_]\w*)(\()?", re.M)
 # A statement that opens with words and ends its last word in `(`: a
@@ -146,7 +145,7 @@ def c_declarations(text):
 def _scan_files(paths):
     functions, constants, types = set(), set(), set()
     for path in paths:
-        if path.suffix in C_SUFFIXES:
+        if path.suffix in C_EXTENSIONS:
             found_functions, found_constants, found_types = c_declarations(_read(path))
             functions |= found_functions
             constants |= found_constants

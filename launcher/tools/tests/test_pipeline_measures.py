@@ -189,14 +189,15 @@ class PipelineMeasuresTests(unittest.TestCase):
 
     def test_measured_fit_records_actual_input_output_triangles(self):
         from types import SimpleNamespace as NS
-        from r3d import fitted_variant, lit_mesh
+        from r3d import lit_mesh
+        from r3d.fit import stage
         job = NS(renderer=NS(variant=NS(name="fixture")))
         recorder = process_budget.StepRecorder(probe=lambda gpu: (100, 200), interval=None)
         with tempfile.TemporaryDirectory() as directory, \
                 patch.object(lit_mesh, "read_lit_mesh", side_effect=[NS(tris=[0]*12), NS(tris=[0]*8)]), \
-                patch.object(fitted_variant, "fit", return_value=pathlib.Path(directory) / "fit.mesh"):
-            result = fitted_variant.fit_point({}, pathlib.Path(directory) / "work", None, None, job,
-                                              pathlib.Path(directory), recorder=recorder)
+                patch.object(stage, "fit", return_value=pathlib.Path(directory) / "fit.mesh"):
+            result = stage.fit_point({}, pathlib.Path(directory) / "work", None, None, job,
+                                     pathlib.Path(directory), recorder=recorder)
         self.assertEqual([(row["step"], row["triangles_in"], row["triangles_out"])
                           for row in recorder.rows], [("fit", 12, 8)])
         self.assertEqual(recorder.rows[0]["peak_vram_bytes"], 200)

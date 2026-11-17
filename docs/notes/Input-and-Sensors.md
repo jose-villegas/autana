@@ -5,7 +5,7 @@ each input feature behaves is in [input/](../input/README.md).
 
 ## Touch controller
 
-Both board revisions go through the BSP. An idle controller can NACK register
+Both board revisions open through `board_touch_open()`. An idle controller can NACK register
 reads, logging `i2c transaction failed` and `FT5x06 ... I2C read error!`; use
 these as console search terms and do not poll blindly.
 

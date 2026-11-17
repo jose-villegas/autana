@@ -35,6 +35,7 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from code_vocabulary import CONSTANT, family, vocabulary  # noqa: E402
 from c_comments import sources, scan  # noqa: E402
+from tracked import repository_from_here  # noqa: E402
 from idf_vocabulary import not_verified_notice, outside_vocabulary, required_missing  # noqa: E402
 
 CITED = re.compile(r"\b([a-z_][a-z0-9_]*)\(\)")
@@ -106,7 +107,7 @@ def main(argv):
         files, argv = argv[at + 1:], argv[:at]
     require_idf = "--require-idf" in argv
     argv = [arg for arg in argv if arg != "--require-idf"]
-    root = argv[0] if argv else "launcher"
+    root = argv[0] if argv else repository_from_here()
     outside = outside_vocabulary()
     if require_idf and required_missing(outside):
         print(required_missing(outside), file=sys.stderr)

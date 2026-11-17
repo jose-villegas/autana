@@ -69,7 +69,7 @@ are split into their sub-stages, the laps named after the code they time:
 The dropdown has each debug view's hatched bar, what it adds, and every stage
 in ms.
 
-<!-- generated: pipeline-frame-stages sha256=ec5ccaa6435e5e9ab983f97c208eb9cc57447abc392c97480eb51ad3f339d838 -->
+<!-- generated: pipeline-frame-stages sha256=538b89d11b0d1848624538f798415fcf88a773d2002afe049dacad2a9d778afc -->
 ![Frame stages as shipped](../../images/render/pipeline-frame-stages.png)
 
 ![Inside transform and draw](../../images/render/pipeline-frame-stages.sub-stages.png)
@@ -125,7 +125,7 @@ Board ms per frame from a perf-scope image, mean of 79 lap windows. A parent is 
 | frame.rest | 1.07 | 2% | +0.06 | +0.05 | +0.11 | +0.12 |
 | total | 51.23 | 100% | +7.47 | +5.04 | +25.70 | +34.40 |
 
-Board ms per frame, mean of 78 to 79 report windows per capture; a view adds the difference between its capture and the scene as shipped. Not captured: cull.
+Board ms per frame, mean of 78 to 79 report windows per capture; a view adds the difference between its capture and the scene as shipped. Not captured: cull, boxes, overdraw, copies.
 
 </details>
 <!-- /generated: pipeline-frame-stages -->

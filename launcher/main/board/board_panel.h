@@ -10,6 +10,10 @@
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_ops.h"
 
+/* The panel's size in pixels. */
+#define BOARD_PANEL_WIDTH  368
+#define BOARD_PANEL_HEIGHT 448
+
 /* Claims the QSPI bus for transfers up to `max_transfer_bytes`, opens the
  * panel at `hz` and sends the detected revision's init sequence. `on_sent`
  * runs from the interrupt as each transfer lands. */

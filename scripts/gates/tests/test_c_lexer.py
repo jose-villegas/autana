@@ -56,6 +56,47 @@ class LexerTests(unittest.TestCase):
                          ["// p", "// q\\", "continued", "// r"])
         self.assertEqual(comments[0].line, 1)
 
+    def test_digit_separator_opens_no_literal(self):
+        text = "int n = 1'000'000; /* p */ char c = 'x'; /* q */\n"
+        self.assertEqual([c.text for c in scan("test.cpp", text)], ["p", "q"])
+        hex_text = "auto m = 0xFF'FF; // r\n"
+        self.assertEqual([c.text for c in scan("test.cpp", hex_text)], ["r"])
+
+    def test_prefixed_char_literal_still_opens_a_literal(self):
+        text = "auto c = u8'/'; /* p */\n"
+        spans = list(tokens(text))
+        self.assertEqual([kind for kind, _, _ in spans], ["literal", "block"])
+        self.assertEqual(text[spans[0][1]:spans[0][2]], "'/'")
+
+    def test_raw_string_hides_comment_markers_and_quotes(self):
+        text = 'auto s = R"x(a "/* not */" b)x"; /* p */\nauto t = u8R"(// no)"; // q\n'
+        self.assertEqual([c.text for c in scan("test.cpp", text)], ["p", "q"])
+        spans = [text[a:b] for kind, a, b in tokens(text, cpp=True) if kind == "literal"]
+        self.assertEqual(spans, ['"x(a "/* not */" b)x"', '"(// no)"'])
+
+    def test_raw_string_spans_lines(self):
+        text = 'auto s = R"(\n/* not */\n)";\n/* p */\n'
+        comments = scan("test.cpp", text)
+        self.assertEqual([c.text for c in comments], ["p"])
+        self.assertEqual(comments[0].line, 4)
+
+    def test_identifier_ending_in_r_is_no_raw_prefix(self):
+        text = 'f(BAR"/* x */");\n'
+        self.assertEqual([kind for kind, _, _ in tokens(text, cpp=True)], ["literal"])
+
+    def test_raw_delimiter_may_hold_a_quote(self):
+        text = 'auto s = R"a"(/* not */)a""; /* p */\n'
+        self.assertEqual([c.text for c in scan("test.cpp", text)], ["p"])
+
+    def test_c_reads_neither_raw_strings_nor_separators(self):
+        # A C macro R before a string, and a character literal after a digit.
+        raw = '#define R\nconst char *s = R"(a "/* q */" b)"; /* p */\n'
+        self.assertEqual([c.text for c in scan("test.c", raw)], ["q", "p"])
+        self.assertEqual([c.text for c in scan("test.cpp", raw)], ["p"])
+        quoted = "STR(1'/*'); /* p */\n"
+        self.assertEqual([c.text for c in scan("test.c", quoted)], ["p"])
+        self.assertEqual([c.text for c in scan("test.h", quoted)], ["p"])
+
 
 if __name__ == "__main__":
     unittest.main()

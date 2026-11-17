@@ -1,19 +1,60 @@
-"""C comment and literal spans and normalized code for source comparisons.
+"""C and C++ comment and literal spans and normalized code for source comparisons.
 
 The output of c_code is part of every bake key, so changing it requires a rebake.
 """
+import re
 
 
-def tokens(source, literals=True):
+# The prefixes that make a C++ string raw: R"delim( ... )delim".
+RAW_PREFIXES = ("R", "u8R", "uR", "UR", "LR")
+# A raw string's delimiter: up to 16 characters, none of them space, a
+# parenthesis or a backslash.
+RAW_DELIMITER = re.compile(r'[^\s()\\]{0,16}\(')
+PP_NUMBER = re.compile(r"\.?[0-9]")
+
+
+def run_before(source, i, chars):
+    """The run of letters, digits and `chars` that ends just before `i`."""
+    start = i
+    while start > 0 and (source[start - 1].isalnum() or source[start - 1] in chars):
+        start -= 1
+    return source[start:i]
+
+
+def raw_string_end(source, i):
+    """Where the raw string whose quote is at `i` ends, or None when the
+    quote does not open one: no raw prefix, or no valid delimiter."""
+    if run_before(source, i, "_") not in RAW_PREFIXES:
+        return None
+    opening = RAW_DELIMITER.match(source, i + 1)
+    if not opening:
+        return None
+    closing = ")" + opening.group()[:-1] + '"'
+    end = source.find(closing, opening.end())
+    return len(source) if end < 0 else end + len(closing)
+
+
+def digit_separator(source, i):
+    """A `'` inside a number (C++14 1'000) separates digits; it opens no literal."""
+    return PP_NUMBER.match(run_before(source, i, "_.'")) is not None
+
+
+def tokens(source, literals=True, cpp=False):
     """Comment and literal spans, respecting escapes and line continuations.
 
-    A C23 digit separator (1'000) opens a char literal, which can hide a
-    comment inside a later string on that line.
+    C++ (`cpp`) adds raw strings and digit separators. C keeps neither: a
+    C11 `R` macro before a string and `1'` inside a macro argument stay what
+    a C compiler reads.
     """
     i, n = 0, len(source)
     while i < n:
         start = i
-        if literals and source[i] in "\"'":
+        if cpp and literals and source[i] == '"' and (end := raw_string_end(source, i)) is not None:
+            i = end
+            yield "literal", start, i
+        elif cpp and literals and source[i] == "'" and digit_separator(source, i):
+            i += 1
+        elif literals and source[i] in "\"'":
             quote = source[i]
             i += 1
             while i < n and source[i] not in (quote, "\n"):
@@ -35,13 +76,13 @@ def tokens(source, literals=True):
             i += 1
 
 
-def c_code(text) -> str:
+def c_code(text, cpp=False) -> str:
     """Code with comments removed and outside-literal line spacing normalized."""
     content = []
     space = False
     line_start = True
     at = 0
-    for kind, start, end in [*tokens(text), ("end", len(text), len(text))]:
+    for kind, start, end in [*tokens(text, cpp=cpp), ("end", len(text), len(text))]:
         for byte in text[at:start]:
             if byte in " \t":
                 space = not line_start

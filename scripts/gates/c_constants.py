@@ -1,4 +1,4 @@
-"""Integer constants defined in tracked C sources, and which of them each file can see."""
+"""Integer constants defined in tracked C and C++ sources, and which of them each file can see."""
 import ast
 from collections import Counter, defaultdict
 from dataclasses import dataclass
@@ -6,30 +6,33 @@ import operator
 import pathlib
 import re
 
-from c_comments import balanced_end, blank_comments
+from c_comments import SOURCE_GLOBS, balanced_end, blank_comments, is_cpp
 from tracked import tracked_files
 
 DEFINE = re.compile(r"^[ \t]*#[ \t]*define[ \t]+([A-Za-z_]\w*)\b((?:[^\n]*\\\r?\n)*[^\n]*)", re.M)
-ENUM = re.compile(r"\benum\s*(?:[A-Za-z_]\w*\s*)?\{([^{}]*)\}", re.S)
+# C's enum, and C++'s scoped `enum class Name : type`.
+ENUM = re.compile(r"\benum\s*(?:(?:class|struct)\s+)?(?:[A-Za-z_]\w*\s*)?(?::\s*[\w:\s]+?)?\{([^{}]*)\}", re.S)
 MEMBER = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*(.+?)\s*$", re.S)
-INTEGER = re.compile(r"(?<![\w.])(?:0[xX][0-9a-fA-F]+|0|[1-9]\d*)[uUlL]*(?![\w.])")
+# C++ digit separators (1'024) included; spelling() drops them.
+INTEGER = re.compile(r"(?<![\w.'])(?:0[xX][0-9a-fA-F](?:'?[0-9a-fA-F])*|0|[1-9](?:'?\d)*)[uUlL]*(?![\w.'])")
 FUNCTION_BODY = re.compile(
     r"\)(?:\s*(?!(?:enum|typedef|struct|class|union|namespace)\b)[A-Za-z_]\w*\b)*\s*$"
 )
-SCALAR = re.compile(r"\b(?:static\s+)?const\s+(?:[A-Za-z_]\w*\s+)+([A-Za-z_]\w*)\s*=\s*([^;{},]+);", re.S)
+SCALAR = re.compile(r"\b(?:(?:static|inline)\s+)*(?:const|constexpr|constinit)\s+(?:[A-Za-z_][\w:]*\s+)+"
+                    r"([A-Za-z_]\w*)\s*(?:=\s*([^;{},]+)|\{\s*([^;{},]+?)\s*\});", re.S)
 OPERATORS = {ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul,
              ast.LShift: operator.lshift, ast.RShift: operator.rshift,
              ast.BitOr: operator.or_, ast.BitAnd: operator.and_, ast.BitXor: operator.xor}
 
 
 def source_files(root):
-    """Tracked C under launcher/. Build and component-manager output is not
-    this project's definition of a constant; reading it would make the verdict
+    """Tracked C and C++. Build and component-manager output is not this
+    project's definition of a constant; reading it would make the verdict
     depend on whether the checkout had been built."""
     root = pathlib.Path(root)
-    for name in sorted(tracked_files(root, ("launcher",))):
+    for name in sorted(tracked_files(root, SOURCE_GLOBS)):
         path = root / name
-        if (path.suffix in {".c", ".h"} and path.is_file()
+        if (path.is_file()
                 and "managed_components" not in path.parts
                 and not any(part.startswith("build") for part in path.relative_to(root).parts)):
             yield path
@@ -45,7 +48,7 @@ class Definition:
 
 
 def definitions(path, text):
-    code = blank_comments(text, "code")
+    code = blank_comments(text, "code", cpp=is_cpp(path))
     for match in DEFINE.finditer(code):
         expression = match[2].strip()
         if match[2].startswith("("):
@@ -67,7 +70,7 @@ def definitions(path, text):
             yield Definition(name, expression, path, code.count("\n", 0, name_offset) + 1, "enum")
             offset += len(field) + 1
     for match in SCALAR.finditer(scope):
-        yield Definition(match[1], match[2], path, code.count("\n", 0, match.start(1)) + 1, "scalar")
+        yield Definition(match[1], match[2] or match[3], path, code.count("\n", 0, match.start(1)) + 1, "scalar")
 
 
 def file_scope(code):
@@ -84,9 +87,14 @@ def file_scope(code):
     return "".join(masked)
 
 
+def spelling(literal):
+    """An INTEGER match as Python reads it: no suffix, no digit separators."""
+    return re.sub(r"[uUlL]+$", "", literal).replace("'", "")
+
+
 def fold(expression, values):
     expression = re.sub(r"\\\r?\n", "", expression)
-    expression = INTEGER.sub(lambda match: re.sub(r"[uUlL]+$", "", match[0]), expression)
+    expression = INTEGER.sub(lambda match: spelling(match[0]), expression)
 
     def evaluate(node):
         if isinstance(node, ast.Constant) and type(node.value) is int:
@@ -112,9 +120,9 @@ def fold(expression, values):
 
 
 class ConstantIndex:
-    def __init__(self, texts, kinds=None):
+    def __init__(self, texts, keep=None):
         self.by_file = {path: tuple(record for record in definitions(path, text)
-                                    if kinds is None or record.kind in kinds)
+                                    if keep is None or keep(record))
                         for path, text in texts.items()}
 
     def visible(self, paths):
@@ -144,11 +152,17 @@ class ConstantIndex:
         return resolved
 
 
+def documented(record):
+    return record.kind in ("define", "enum") or (record.kind == "scalar" and is_cpp(record.path))
+
+
 def constants(root, *, decimal_only=False):
     texts = {path.relative_to(root).as_posix(): path.read_text(encoding="utf-8", errors="replace")
              for path in source_files(root)}
-    # Documentation claims match decimal #define and enum values, folded; hex and const scalars are left out.
-    index = ConstantIndex(texts, kinds={"define", "enum"} if decimal_only else None)
+    # Documentation claims match decimal #define and enum values, folded, and
+    # C++'s constexpr scalars, its spelling of a named constant; hex and C's
+    # const scalars are left out.
+    index = ConstantIndex(texts, keep=documented if decimal_only else None)
     counts = {}
     for records in index.by_file.values():
         for record in records:

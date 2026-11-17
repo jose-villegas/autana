@@ -20,7 +20,7 @@ try:
     from tests import soup
     from tests.test_r3d_ray_query import all_hits
 
-    from r3d import mesh_import
+    from r3d import mesh_import, mesh_source
     from r3d.light import coincident_faces, visible_from_path, visible_from_region
     from r3d.poses import camera_rays
 except ImportError:
@@ -180,7 +180,7 @@ class ImportWiringTests(unittest.TestCase):
         path = SimpleNamespace(source="camera_path", every_ms=100, size=(184, 224), samples=3, margin=8)
         region = SimpleNamespace(source="camera_region", rounds=4)
         poses = (184, 224, 0.62, 6.0, ["pose"])
-        with mock.patch.object(mesh_import, "sample_camera_path", return_value=poses) as sampled, \
+        with mock.patch.object(mesh_source, "sample_camera_path", return_value=poses) as sampled, \
                 mock.patch.object(mesh_import, "visible_from_path", return_value="path") as by_path, \
                 mock.patch.object(mesh_import, "visible_from_region", return_value="region") as by_region:
             self.assertEqual(mesh_import.visible_triangles(path, scene_, "p", "t", "d", "i", "rng"), "path")

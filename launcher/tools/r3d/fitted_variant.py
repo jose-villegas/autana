@@ -13,25 +13,25 @@ scene camera's path for training,
 held-out and pruning poses, and renders the training references with their
 normals into DIR. `fit`, in the GPU environment of appearance_simplify.py,
 fits the start with the recipe's settings, prunes it to the recipe's budget
-and writes the renderer's mesh into DIR. bake/bake.py bakes the start as a mesh
+and writes the renderer's mesh into DIR (r3d/fit/stage.py). bake/bake.py bakes the start as a mesh
 of its own and the references once per ReferenceInputs into the bake cache,
 keyed, and its lock records what the start and the fit made.
 """
 
 import argparse
 import csv
-import dataclasses
 import hashlib
 import json
 import math
 import pathlib
-import shutil
 import sys
 from types import SimpleNamespace
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from r3d import mesh_bundle, log  # noqa: E402
+from r3d.reference_set import (ReferenceInputs, TRACED_ON, POSE_SPACING, canonical,
+                               poses_text, split_poses, reference_inputs, prepare_references)
+from r3d import log  # noqa: E402
 from r3d.import_settings import SettingsError, load_scene, source_digest  # noqa: E402
 
 CSV_FIELDS = ("budget", "cost_weight", "triangles", "mean_delta_e", "p95_delta_e", "predicted_ms", "board_ms")
@@ -53,104 +53,11 @@ def placed_variant(scene, name):
     return jobs[0]
 
 
-def poses_text(width, height, lens, near, poses):
-    lines = [f"size {width} {height}", f"lens {lens!r} {near!r}"]
-    lines += ["pose " + " ".join("%.9g" % value for value in pose) for pose in poses]
-    return "\n".join(lines) + "\n"
-
-
-def split_poses(fit, poses):
-    """(training, held out): the poses sampled every train_every_ms, those at
-    multiples of held_out_every_ms (time 0 aside) held out."""
-    training, held_out = [], []
-    for index, pose in enumerate(poses):
-        time = index * fit.train_every_ms
-        (held_out if time and time % fit.held_out_every_ms == 0 else training).append(pose)
-    return training, held_out
-
-
 def viewer_args(job, frames, dt_ms, scene):
     """The scene viewer's arguments that draw `job`'s object alone, portrait,
     for `frames` frames `dt_ms` apart along the scene camera's path."""
     from r3d.scene_name import scene_id
     return f"--scene {scene_id(scene)} --object {job.object.name} --quarter 0 --frames {frames} --dt {dt_ms}"
-
-
-def canonical(value):
-    """A JSON-ready form of parsed settings, independent of parser layout.
-    The digest hashes parser fields, so an explicit default differs from an omitted one; the stamp test catches it."""
-    if isinstance(value, pathlib.Path):
-        return None
-    if isinstance(value, SimpleNamespace):
-        return {name: canonical(item) for name, item in sorted(vars(value).items())
-                if name != "seed_given" and not isinstance(item, pathlib.Path)}
-    if isinstance(value, dict):
-        return {name: canonical(item) for name, item in sorted(value.items())}
-    if isinstance(value, (list, tuple)):
-        return [canonical(item) for item in value]
-    if isinstance(value, (set, frozenset)):
-        return sorted(canonical(item) for item in value)
-    return value
-
-
-@dataclasses.dataclass(frozen=True)
-class ReferenceInputs:
-    """Everything a fit's reference set reads, and so everything its bake key counts (bake/bake.py): the
-    import, the scene's bake light, tone map and camera, and the size and spacing of the poses. Nothing of
-    the start or its renderer, so fits that differ only there share one set. The set is rendered from
-    these fields alone (`job()`, `scene()`): one the render reads and this lacks fails there."""
-    settings: SimpleNamespace     # the import
-    bake: SimpleNamespace         # the renderer's [bake]: ray offset, occlusion, bounced light
-    lights: list
-    indirect: SimpleNamespace
-    tonemap_white: float
-    camera: SimpleNamespace       # the scene camera: lens, background and path
-    size: tuple                   # the fit recipe's pose size
-    poses: dict                   # the fit recipe's POSE_SPACING fields
-
-    def job(self):
-        return SimpleNamespace(settings=self.settings, bake=self.bake)
-
-    def scene(self):
-        return SimpleNamespace(lights=self.lights, indirect=self.indirect, tonemap_white=self.tonemap_white,
-                               camera=SimpleNamespace(component=self.camera))
-
-
-# The file of a reference set naming the Mitsuba variant it was traced on.
-TRACED_ON = "traced_on.txt"
-POSE_SPACING = ("train_every_ms", "held_out_every_ms", "coverage_every_ms")
-
-
-def reference_inputs(job, scene):
-    """The reference inputs of a fitted renderer, with its recipe's pose size."""
-    renderer = job.renderer
-    size = tuple(renderer.fit.size)
-    return ReferenceInputs(settings=job.settings, bake=job.bake, lights=scene.lights, indirect=scene.indirect,
-                           tonemap_white=scene.tonemap_white, camera=scene.camera.component, size=size,
-                           poses={name: getattr(renderer.fit, name) for name in POSE_SPACING})
-
-
-def prepare_references(inputs, work):
-    """The reference set of `inputs` into `work`: the training, held-out and pruning poses sampled from the
-    camera path, the training and held-out references with their normals, and in `TRACED_ON` the Mitsuba variant
-    they were traced on, for the record: the reference key names the light model, not the device."""
-    from r3d.mesh_import import camera_path_poses
-    from r3d.reference_render import render_sets
-
-    scene, spacing = inputs.scene(), SimpleNamespace(**inputs.poses)
-    visibility = SimpleNamespace(size=inputs.size, every_ms=None)
-    work.mkdir(parents=True, exist_ok=True)
-    w, h, lens, near, poses = camera_path_poses(scene, visibility, spacing.train_every_ms, either_way_up=False)
-    training, held_out = split_poses(spacing, poses)
-    (work / "train.txt").write_text(poses_text(w, h, lens, near, training))
-    (work / "held_out.txt").write_text(poses_text(w, h, lens, near, held_out))
-    (work / "train_landscape.txt").write_text(poses_text(h, w, lens, near, training))
-    (work / "coverage.txt").write_text(poses_text(*camera_path_poses(scene, visibility, spacing.coverage_every_ms)))
-    variant = render_sets(inputs, [(work / poses, work / reference) for poses, reference in
-                                   (("train.txt", "reference"), ("train_landscape.txt", "reference_landscape"),
-                                    ("held_out.txt", "reference_held_out"))])
-    (work / TRACED_ON).write_text(variant + "\n")
-    return len(training)
 
 
 def prepare(scene_path, scene, job, work, recorder=None):
@@ -180,70 +87,6 @@ def sweep_references(scene_path, scene, job, work):
         return
     prepare(scene_path, scene, job, work)
     marker.write_text(json.dumps({"digest": digest}, sort_keys=True) + "\n")
-
-
-def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False, target=None, inputs=None,
-        start=None):
-    from r3d.appearance_simplify import main as fit_main
-
-    renderer = job.renderer
-    variant, recipe = renderer.variant, renderer.fit
-    inputs = pathlib.Path(work) if inputs is None else pathlib.Path(inputs)
-    start = inputs / f"{variant.name}.mesh" if start is None else pathlib.Path(start)
-    bundle_entries = copies = None
-    if start.suffix == mesh_bundle.SUFFIX:
-        bundle_entries, copies = mesh_bundle.decode(start.read_bytes())
-        rest = next((data for name, kind, data in bundle_entries if name == job.asset_name), None)
-        if rest is None:
-            raise SettingsError("a fitted carved renderer needs a rest mesh")
-        start = pathlib.Path(work) / f"{job.asset_name}.mesh"
-        start.write_bytes(rest)
-    out = work / "fitted"
-    steps = min(recipe.steps, 8) if smoke else recipe.steps
-    command = ["--scene", str(scene_path), "--start", str(start), "--poses", str(inputs / "train.txt"), "--reference",
-              str(inputs / "reference"), "--poses", str(inputs / "train_landscape.txt"), "--reference",
-              str(inputs / "reference_landscape"), "--out", str(out), "--budget", str(recipe.budget if budget is None else budget),
-              "--coverage-poses", str(inputs / "coverage.txt"), "--steps", str(steps), "--batch", str(recipe.batch), "--laplacian",
-              str(recipe.laplacian), "--normal-weight", str(recipe.normal_weight), "--object", job.object.name,
-              "--surface-weight", str(recipe.surface_weight), "--surface-margin", str(recipe.surface_margin)]
-    if cost_weight:
-        command += ["--cost-model", str(pathlib.Path(__file__).with_name("board_cost_weights.txt")), "--cost-weight", str(cost_weight)]
-    fit_main(command)
-    if target is None:
-        target = pathlib.Path(work) / f"{job.asset_name}.mesh"
-    if bundle_entries is None:
-        shutil.copyfile(out / start.name, target)
-    else:
-        fitted = (out / start.name).read_bytes()
-        target.write_bytes(mesh_bundle.encode([(name, kind, fitted if name == job.asset_name else data)
-                                               for name, kind, data in bundle_entries], copies))
-    log(f"wrote {target}")
-    return target
-
-
-def fit_point(point, point_dir, scene_path, scene, job, inputs, smoke=False, target=None, recorder=None):
-    import contextlib
-    import traceback
-    from r3d.process_budget import NULL_RECORDER
-    from r3d.lit_mesh import read_lit_mesh
-    target = pathlib.Path(point_dir).parent / f"{pathlib.Path(point_dir).name}.mesh" if target is None else target
-    log_path = pathlib.Path(point_dir) / "fit.log"
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-    recording = recorder is not None
-    recorder = NULL_RECORDER if recorder is None else recorder
-    triangles = len(read_lit_mesh(pathlib.Path(inputs) / f"{job.renderer.variant.name}.mesh").tris) if recording else 0
-    try:
-        with recorder.step("fit", triangles, gpu=True) as step:
-            with log_path.open("w") as output, contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
-                mesh = fit(scene_path, scene, job, pathlib.Path(point_dir), budget=point.get("budget"),
-                       cost_weight=point.get("cost_weight", 0.0), smoke=smoke, target=target, inputs=inputs)
-            if recording:
-                step["triangles_out"] = len(read_lit_mesh(mesh).tris)
-        return {"mesh": str(mesh)}
-    except Exception as error:
-        with log_path.open("a") as output:
-            traceback.print_exc(file=output)
-        raise RuntimeError(f"fit failed: {log_path}\n" + "\n".join(log_path.read_text().splitlines()[-30:])) from error
 
 
 def non_dominated_front(points):
@@ -406,6 +249,8 @@ def sweep_main(argv):
             from r3d.bake_fidelity import build_host
 
             host = build_host(VIEWER, out / "host", scene_path)
+        from r3d.fit.stage import fit
+
         work = point_dir / "work"
         mesh = fit(scene_path, scene, job, work, budget=point["budget"], cost_weight=point["cost_weight"],
                    smoke=args.smoke, target=point_dir / f"{variant.name}.mesh", inputs=reference_work)
@@ -450,6 +295,8 @@ def main(argv=None):
     if args.step == "prepare":
         prepare(scene_path, scene, job, work)
     else:
+        from r3d.fit.stage import fit
+
         fit(scene_path, scene, job, work)
     return 0
 

@@ -1,7 +1,7 @@
 # View Modes
 
 Development builds select one row from the `render_debug_view_t` table in
-`render/context/render_context.c`: depth, tiles, motion, meshlets, cull, boxes or overdraw.
+`render/context/render_context.c`: depth, tiles, motion, meshlets, cull, boxes, overdraw or copies.
 
 Every view, drawn at the same pose:
 
@@ -15,6 +15,7 @@ Every view, drawn at the same pose:
 | cull | ![The cull view](../../images/render/sponza-view-cull.png) | each cluster in the colour of its fate this frame; see [The cull, seen](Culling.md#the-cull-seen) |
 | boxes | ![The boxes view](../../images/render/sponza-view-boxes.png) | untouched; its overlay draws each instance's box as the frame placed it, one hue per mesh, for meshes drawn at least `boxview.copies` times; edges behind the drawn depth hidden, dimmed or full by `boxview.behind` |
 | overdraw | ![The overdraw view](../../images/render/sponza-view-overdraw.png) | each pixel by how many triangle spans tested it, on a fixed ramp; how to read it: [Overdraw.md](Overdraw.md) |
+| copies | not pictured | each shape drawn more than once in its own hue, the one its boxes view uses; a shape drawn once grey |
 
 The depth and depth-tile views along a flythrough:
 
