@@ -5,7 +5,7 @@
 #
 #   doc_images.sh <out-tree> <work-dir>
 #
-# <out-tree> holds the app's images in overview/.
+# <out-tree> holds the app's images in overview/ and render/.
 #
 # Run from the repository root with $PYTHON set to a Python that has Pillow and numpy.
 # Renderer output goes to logs under <work-dir>.
@@ -14,7 +14,8 @@ set -eu
 
 . scripts/lib/run.sh
 
-OUT=$1/overview
+OUT_TREE=$1
+OUT=$OUT_TREE/overview
 W=$2
 run mkdir -p "$W" "$OUT"
 
@@ -89,6 +90,20 @@ for key in $(sed -n 's/^ *X([A-Z_]*, "\([^"]*\)".*/\1/p' launcher/main/apps/rend
         2> "$W/stress-$key.log"
     run "$PYTHON" launcher/tools/docs/figures.py png "$W/stress-$key.bmp" "$OUT/render-lab-stress-$key.png"
 done
+
+# The low contact light makes the BODY and posed SHAPE coverage visible on the floor pads.
+CONTACT_FRAMES=6
+CONTACT_DT=16
+CONTACT_CROPS=3
+run mkdir -p "$OUT_TREE/render"
+for shape in sh shape; do
+    run "$W/render_lab_render" --quarter 1 --no-hud --scene "stress-skinned-$shape-blobs" \
+        --frames "$CONTACT_FRAMES" --dt "$CONTACT_DT" \
+        -o "$W/contact-$shape.bmp" > "$W/contact-$shape-console.log" 2> "$W/contact-$shape.log"
+done
+run "$PYTHON" launcher/tools/render/render_compare.py --out "$OUT_TREE/render/contact-shape.png" \
+    --row "Ground contact" "$W/contact-sh.bmp" "$W/contact-shape.bmp" \
+    --label-a BODY --label-b SHAPE --crops "$CONTACT_CROPS" > "$W/contact-shape-compare.log"
 
 # The biggest herd walking for 12 s at its own pace, so each gait's feet keep
 # to the ground, while the orbit makes a fifth of a turn.
