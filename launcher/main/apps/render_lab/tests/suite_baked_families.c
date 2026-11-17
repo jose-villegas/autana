@@ -32,11 +32,11 @@ test_every_family_places_each_variant_and_its_camera(void) {
     }
 }
 
-/* What a loaded family must leave free of the app heap: what a visit takes
- * beside the scene at its fullest, the frame profile of the longest camera
- * path (suite_render_lab_frame_profile.c). Its frame scratch with a debug
- * view's pixels is about 0.9 MB, its two trace buffers 1.5 MB and the cull
- * view's state 60 KB. */
+/* The block a loaded family must leave free in the app heap: room for what
+ * a visit takes beside the scene at its fullest, the frame profile of the
+ * longest camera path (suite_render_lab_frame_profile.c): its frame scratch,
+ * its two trace buffers and the cull view's state. One block, since the
+ * scratch is one take. */
 #define FAMILY_VISIT_BYTES (2560u * 1024u)
 
 /* A scene's meshes are resident for every variant at once, so a bake that
@@ -49,7 +49,7 @@ test_every_family_leaves_a_profiled_visit_its_room(void) {
         const size_t mark = app_arena_mark();
         entity_t scene = scene_load(family->scene);
         TEST_ASSERT_EQUAL_INT_MESSAGE(PENDING_READY, scene_state(scene), family->scene);
-        const size_t left = memory_free_bytes(MEMORY_APP);
+        const size_t left = memory_largest_block(MEMORY_APP);
         scene_release(scene);
         app_arena_rewind(mark);
         TEST_ASSERT_GREATER_OR_EQUAL_size_t_MESSAGE(FAMILY_VISIT_BYTES, left, family->scene);

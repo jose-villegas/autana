@@ -238,22 +238,38 @@ current_step(const render_context_t* c) {
     return c->policy == RENDER_STEPPED ? c->control.step : c->predict.step;
 }
 
-/* The scratch the raster needs as it stands, or with one debug view's pixels
- * when it has none attached and a build can show one: showing a view then
- * needs no larger block. */
+image_format_t
+render_context_debug_view_widest(void) {
+    image_format_t widest = 0;
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+    for (size_t i = 0; i < sizeof views / sizeof views[0]; i++) {
+        const image_format_t format = views[i].attachment(NULL).format;
+        if (IMAGE_PITCH(format, 1) > IMAGE_PITCH(widest, 1)) {
+            widest = format;
+        }
+    }
+#endif
+    return widest;
+}
+
+/* The scratch the raster needs as it stands, and in a build that can show a
+ * debug view no less than with the widest view's pixels: showing a view, or
+ * another after it, then needs no larger block. */
 static size_t
 scratch_bytes_with_view(render_context_t* c) {
     size_t needed = raster_scratch_bytes(&c->raster);
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-    if (c->raster.attachment_count == 0) {
-        static const raster_attachment_t widest = {.format = IMAGE_U32};
-        static const raster_attachment_t* const attached[] = {&widest};
-        const raster_attachment_t* const* none = c->raster.attachments;
+    if (c->raster.attachment_count <= (int)(sizeof c->debug_view_attached / sizeof c->debug_view_attached[0])) {
+        const raster_attachment_t widest = {.format = render_context_debug_view_widest()};
+        const raster_attachment_t* const attached[] = {&widest};
+        const raster_attachment_t* const* shown = c->raster.attachments;
+        const int count = c->raster.attachment_count;
         c->raster.attachments = attached;
         c->raster.attachment_count = 1;
-        needed = raster_scratch_bytes(&c->raster);
-        c->raster.attachment_count = 0;
-        c->raster.attachments = none;
+        const size_t with_widest = raster_scratch_bytes(&c->raster);
+        c->raster.attachment_count = count;
+        c->raster.attachments = shown;
+        needed = with_widest > needed ? with_widest : needed;
     }
 #endif
     return needed;
@@ -288,6 +304,7 @@ fit_scratch(render_context_t* c) {
         }
         if (grown == NULL) {
             c->raster.scratch = NULL;
+            render_partial_forget(&c->partial); /* this frame's changes go undrawn */
             return false;
         }
         render_context_drop_scratch(c);
