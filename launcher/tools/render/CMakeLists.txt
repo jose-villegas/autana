@@ -67,7 +67,16 @@ target_sources(scene_provider INTERFACE "${CMAKE_CURRENT_LIST_DIR}/scene_viewer.
 target_compile_definitions(scene_provider INTERFACE TUNE_HOT_LIVE=1)
 target_link_libraries(scene_provider INTERFACE autana::render_host)
 
+add_library(stream_provider INTERFACE)
+add_library(autana::stream_provider ALIAS stream_provider)
+target_sources(stream_provider INTERFACE "${CMAKE_CURRENT_LIST_DIR}/stream/stream_provider.c")
+target_compile_definitions(stream_provider INTERFACE TUNE_HOT_LIVE=1)
+target_link_libraries(stream_provider INTERFACE autana::render_host)
+
 if(PROJECT_IS_TOP_LEVEL)
+    add_executable(stream_render)
+    target_compile_definitions(stream_render PRIVATE RENDER_HOST_PROVIDER=stream_provider)
+    target_link_libraries(stream_render PRIVATE autana::stream_provider)
     add_library(render_host_check OBJECT)
     target_link_libraries(render_host_check PRIVATE autana::scene_provider)
     # A C++ consumer includes these headers inside extern "C".

@@ -177,7 +177,7 @@ Target: portable; Xtensa needs fused `madd.s`, `msub.s`.
 
 Builds: `CONFIG_MATH_FPU_FUSED_MADD`; QEMU plain; host fast.
 
-Callers: none.
+Callers: `render`.
 
 Bench rows `wrap_f` vs `wrap_fmodf_f`; limit `MATHF_WRAP_ULP_LIMIT` (0 steps); sweep.
 

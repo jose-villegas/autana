@@ -5,6 +5,7 @@
 #include "core/tune.h"
 #include "math/scalar/mathi.h"
 #include "render/lod/r3d_lod.h"
+#include "render/r3d_span.h"
 
 asset_status_t
 render_settings_read(const asset_pack_t* pack, render_settings_t* out) {
@@ -65,6 +66,10 @@ TUNE_OVERRIDE(render, lod_blend_centipixels, (int32_t)(RENDER_LOD_BLEND_PX_MAX *
 TUNE_OVERRIDE(render, lod_pick_every, R3D_LOD_PICK_EVERY_MAX);
 /* Overrides lod.triangle_budget. */
 TUNE_OVERRIDE(render, lod_triangle_budget, INT32_MAX);
+/* Override texture.divide_px, and texture.affine_bend in 1/R3D_SPAN_BEND_STEPS
+ * texel; texture_figures.py sets both for its true divide. */
+TUNE_OVERRIDE(render, texture_divide_px, RENDER_TEXTURE_DIVIDE_PX_MAX);
+TUNE_OVERRIDE(render, texture_bend_steps, (int32_t)(RENDER_TEXTURE_BEND_MAX * R3D_SPAN_BEND_STEPS));
 
 TUNE_OWNER(anim);
 /* Override the pose-rate tiers in whole pixels and frames; an interval below
@@ -97,7 +102,9 @@ render_settings_tuned(const render_settings_t* set) {
          tune_override(lod_pick_every, s.lod.pick_every), tune_override(lod_triangle_budget, s.lod.triangle_budget),
          tune_override(lod_blend, s.lod.blend),
          lod_blend_centipixels == TUNE_UNSET ? s.lod.blend_px : (float)lod_blend_centipixels / LOD_BLEND_CENTI},
-        s.anim};
+        s.anim,
+        {tune_override(texture_divide_px, s.texture.divide_px),
+         texture_bend_steps == TUNE_UNSET ? s.texture.affine_bend : (float)texture_bend_steps / R3D_SPAN_BEND_STEPS}};
     render_anim_settings_tune(&tuned.anim);
     return tuned;
 }

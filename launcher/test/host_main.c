@@ -19,9 +19,9 @@
 #include "pack_reads.h"
 #include "render/record/frame_record.h"
 #include "scene/scene_shell.h"
+#include "shell/ui/ui_launcher.h"
 #include "shell/ui/ui_ridge.h"
 #include "suites.h"
-#include "ui/ui.h"
 #include "unity.h"
 
 /* Unity requires these once per binary. The runner owns the memory audit. */
@@ -96,7 +96,7 @@ main(int argc, char** argv) {
         return 1;
     }
     app_arena_enter();
-    ui_init();
+    ui_launcher_init();
     ui_ridge_load();
     if (!scene_world_init()) {
         (void)printf("FAIL: the entity table did not fit the modeled PSRAM heap\n");

@@ -7,6 +7,7 @@
 
 #include "asset/asset_bytes.h"
 #include "asset/asset_entry.h"
+#include "scene/scene_asset.h"
 #include "scene/scene_internal.h"
 
 enum {
@@ -300,4 +301,16 @@ scene_asset_open(asset_view_t entry, scene_asset_t* out) {
         *out = scene;
     }
     return checked;
+}
+
+r3d_batch_t
+scene_asset_batch(const scene_asset_t* asset, int row, const r3d_lit_mesh_t* mesh, const r3d_copy_chunk_t* chunks) {
+    const scene_asset_batch_t* batch = &asset->batches[row];
+    return (r3d_batch_t){.chunks = chunks + batch->first_chunk,
+                         .places = asset->places + batch->first_copy,
+                         .turns = asset->turns + batch->first_copy,
+                         .colour_stride = (uint32_t)(mesh->colors != NULL ? mesh->vertex_count : mesh->triangle_count),
+                         .copy_radius = r3d_batch_copy_radius(mesh),
+                         .copy_count = batch->copy_count,
+                         .chunk_count = (uint16_t)r3d_batch_chunks(batch->copy_count)};
 }

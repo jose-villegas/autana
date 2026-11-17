@@ -36,7 +36,7 @@ ui_launcher_frame(const input_t* input, uint32_t dt_ms) {
     /* Repaints only what looks different from what is already on screen, so
      * a home screen nobody is touching, its ridge at rest, costs no bus time
      * at all. */
-    ui_end_over(ui_ridge_paint);
+    ui_end_over(ui_ridge_paint, ui_ridge_fresh());
 
     return chosen;
 }

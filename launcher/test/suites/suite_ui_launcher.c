@@ -84,7 +84,7 @@ turn(void) {
 static void
 fixture(int app_count, int quarter) {
     suite_set_test_cleanup(ui_probe_widgets_stop);
-    ui_init();
+    ui_launcher_init();
     test_quarter = quarter;
     ui_set_transform(turn());
     set_app_count(app_count);
@@ -231,36 +231,35 @@ test_a_seventh_app_starts_the_grid_at_the_top(void) {
     TEST_ASSERT_EQUAL_INT(top, tile(0).y);
 }
 
-/* A tile's face: the one rounded face command at its rect. */
-static uint32_t
-tile_face_rgb(recti_t r) {
+/* A tile's face: the one sprite face command at its rect. */
+static const sprite_t*
+tile_face(recti_t r) {
     mu_Command* cmd = NULL;
     while (mu_next_command(ui_context(), &cmd)) {
-        const ui_round_command_t* face = (const ui_round_command_t*)cmd;
-        if (cmd->type == UI_COMMAND_ROUND_RECT && memcmp(&face->rect, &r, sizeof r) == 0) {
-            TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, face->radius, "a home tile's corners are rounded");
-            return ui_rgb_value(face->color);
+        const ui_sprite_command_t* face = (const ui_sprite_command_t*)cmd;
+        if (cmd->type == UI_COMMAND_SPRITE && memcmp(&face->rect, &r, sizeof r) == 0) {
+            return face->sprite;
         }
     }
-    TEST_FAIL_MESSAGE("a tile draws one rounded face");
-    return 0;
+    TEST_FAIL_MESSAGE("a home tile is drawn from the engine pack's tile skin");
+    return NULL;
 }
 
-/* A held tile lightens; its neighbours keep their face. */
+/* A held tile takes the pressed face; its neighbours keep theirs. */
 static void
-test_a_held_tile_lightens_and_its_neighbours_do_not(void) {
+test_a_held_tile_takes_the_pressed_face_and_its_neighbours_do_not(void) {
     fixture(SHORT_GRID_APPS, QUARTER_LANDSCAPE);
     idle_frames(SETTLE_FRAMES);
-    const uint32_t rest = tile_face_rgb(tile(0));
-    TEST_ASSERT_EQUAL_HEX32(rest, tile_face_rgb(tile(1)));
+    const sprite_t* rest = tile_face(tile(0));
+    TEST_ASSERT_EQUAL_PTR(rest, tile_face(tile(1)));
 
     const recti_t held = tile(1);
     for (int i = 0; i <= TAP_HOLD_FRAMES; i++) {
         launcher_frame(true, i == 0, false, held.x + held.w / 2, held.y + held.h / 2);
     }
-    TEST_ASSERT_NOT_EQUAL_MESSAGE(rest, tile_face_rgb(tile(1)), "the held tile lightens");
-    TEST_ASSERT_EQUAL_HEX32_MESSAGE(rest, tile_face_rgb(tile(0)), "its neighbour keeps its face");
-    TEST_ASSERT_EQUAL_HEX32_MESSAGE(rest, tile_face_rgb(tile(2)), "its neighbour keeps its face");
+    TEST_ASSERT_TRUE_MESSAGE(tile_face(tile(1)) != rest, "the held tile takes the pressed face");
+    TEST_ASSERT_EQUAL_PTR_MESSAGE(rest, tile_face(tile(0)), "its neighbour keeps its face");
+    TEST_ASSERT_EQUAL_PTR_MESSAGE(rest, tile_face(tile(2)), "its neighbour keeps its face");
 }
 
 static void
@@ -285,7 +284,7 @@ run_ui_launcher_suite(void) {
     RUN_TEST(test_six_apps_are_two_across_three_down_held_portrait);
     RUN_TEST(test_fewer_apps_sit_centred_down_the_screen);
     RUN_TEST(test_a_seventh_app_starts_the_grid_at_the_top);
-    RUN_TEST(test_a_held_tile_lightens_and_its_neighbours_do_not);
+    RUN_TEST(test_a_held_tile_takes_the_pressed_face_and_its_neighbours_do_not);
     RUN_TEST(test_the_last_app_is_reachable_once_enough_apps_overflow);
 }
 

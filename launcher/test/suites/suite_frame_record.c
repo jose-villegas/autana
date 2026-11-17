@@ -190,11 +190,19 @@ test_a_stream_opens_with_its_header_then_each_frame_with_frame_view_and_choice(v
     TEST_ASSERT_EQUAL_UINT16(FRAME_RECORD_VIEW, found[2].type);
     TEST_ASSERT_EQUAL_UINT32(sizeof(render_view_t), found[2].length);
     TEST_ASSERT_EQUAL_UINT16(FRAME_RECORD_CHOICE, found[3].type);
+    frame_record_choice_t choice;
+    TEST_ASSERT_EQUAL_UINT32(sizeof choice, found[3].length);
+    memcpy(&choice, found[3].body, sizeof choice);
+    /* The size it drew at: scale 100 draws the whole viewport. */
+    TEST_ASSERT_EQUAL_UINT16(W, choice.width);
+    TEST_ASSERT_EQUAL_UINT16(H, choice.height);
     const frame_record_frame_t frame = frame_of(0);
     TEST_ASSERT_EQUAL_UINT32(0, frame.index);
     TEST_ASSERT_EQUAL_UINT32(DT_MS, frame.dt_ms);
     TEST_ASSERT_EQUAL_UINT8(FRAME_RECORD_KEYFRAME, frame.flags);
     TEST_ASSERT_EQUAL_UINT16(RASTER_RIG_QUADS, frame.instances);
+    /* The records after its FRAME, to the stream's end: it is the only frame. */
+    TEST_ASSERT_EQUAL_UINT32((uint32_t)(sink->bytes + sink->size - (found[1].body + found[1].length)), frame.bytes);
 }
 
 static void
@@ -372,18 +380,26 @@ test_a_posed_mesh_names_its_bind_and_its_palette_rides_each_keyframe_and_each_ne
     palette[1].m[3][0] = 0.25F;
     const r3d_lit_mesh_t* posed = &rig->quad[0].mesh;
     const r3d_lit_mesh_t* bind = &rig->quad[1].mesh; /* the same vertex count, elsewhere */
-    frame_record_note_skin(posed, bind, palette, 2);
+    /* No pack holds the rig's skin: the POSE names none. */
+    const r3d_skin_t skin = {.joint_count = 2, .vertices = (const uint8_t*)palette};
+    frame_record_note_skin(posed, bind, &skin, palette, 2);
     draw_frame();
     draw_frame();
-    frame_record_note_skin(posed, bind, palette, 2);
+    frame_record_note_skin(posed, bind, &skin, palette, 2);
     draw_frame();
     find_records();
     const found_t* pose = carried(0, FRAME_RECORD_SKINNED, FRAME_RECORD_POSE);
     frame_record_pose_t head;
     memcpy(&head, pose->body, sizeof head);
     TEST_ASSERT_EQUAL_UINT16(2, head.joints);
-    TEST_ASSERT_EQUAL_UINT32(sizeof head + sizeof palette, pose->length);
+    /* The rig's colours are its own, no pack's: they ride as the pose lit them. */
+    TEST_ASSERT_NOT_NULL(posed->colors);
+    TEST_ASSERT_EQUAL_UINT16(posed->vertex_count, head.lit);
+    TEST_ASSERT_EQUAL_UINT8(FRAME_RECORD_NO_PACK, head.skin.pack);
+    const size_t colours = (size_t)head.lit * sizeof posed->colors[0];
+    TEST_ASSERT_EQUAL_UINT32(sizeof head + sizeof palette + colours, pose->length);
     TEST_ASSERT_EQUAL_MEMORY(palette, pose->body + sizeof head, sizeof palette);
+    TEST_ASSERT_EQUAL_MEMORY(posed->colors, pose->body + sizeof head + sizeof palette, colours);
     TEST_ASSERT_NULL(mesh_record(1, FRAME_RECORD_POSE, 0));
     TEST_ASSERT_NOT_NULL(mesh_record(2, FRAME_RECORD_POSE, 0));
     TEST_ASSERT_NULL(mesh_record(0, FRAME_RECORD_POSE, 1));
@@ -467,16 +483,20 @@ test_a_generated_frame_on_a_keyframes_turn_hands_the_keyframe_to_the_next_drawn_
 }
 
 static void
-test_a_generated_frame_after_a_drop_is_no_keyframe_and_the_next_drawn_frame_is(void) {
+test_generated_frames_after_a_drop_wait_for_a_drawn_keyframe(void) {
     open_recording(2); /* the header, frame 0, then frame 1 */
     draw_frame();
     draw_frame();
     generate_frame();
+    generate_frame();
     draw_frame();
+    generate_frame();
     find_records();
-    TEST_ASSERT_EQUAL_UINT8(FRAME_RECORD_AFTER_DROP | FRAME_RECORD_GENERATED, frame_of(1).flags);
-    TEST_ASSERT_EQUAL_UINT8(FRAME_RECORD_KEYFRAME, frame_of(2).flags);
-    TEST_ASSERT_EQUAL_INT(RASTER_RIG_QUADS, count_in_frame(2, FRAME_RECORD_MESH));
+    TEST_ASSERT_EQUAL_UINT32(3, frame_record_counts().dropped);
+    TEST_ASSERT_EQUAL_UINT8(FRAME_RECORD_AFTER_DROP | FRAME_RECORD_KEYFRAME, frame_of(1).flags);
+    TEST_ASSERT_EQUAL_UINT32(4, frame_of(1).index);
+    TEST_ASSERT_EQUAL_INT(RASTER_RIG_QUADS, count_in_frame(1, FRAME_RECORD_MESH));
+    TEST_ASSERT_EQUAL_UINT8(FRAME_RECORD_GENERATED, frame_of(2).flags);
 }
 
 static void
@@ -565,13 +585,30 @@ test_a_mesh_made_in_a_block_forgets_the_notes_of_meshes_that_lived_there(void) {
     suite_set_test_cleanup(forget_notes);
     const r3d_lit_mesh_t* mesh = &rig->quad[1].mesh;
     frame_record_note_built(mesh, &triangle, true);
-    frame_record_note_skin(&rig->quad[0].mesh, mesh, NULL, 0);
+    const r3d_skin_t skin = {0};
+    frame_record_note_skin(&rig->quad[0].mesh, mesh, &skin, NULL, 0);
     frame_record_forget(mesh->positions, sizeof mesh->positions[0]);
     frame_record_forget(rig->quad[0].mesh.positions, sizeof mesh->positions[0]);
     draw_frame();
     find_records();
     TEST_ASSERT_EQUAL_UINT8(FRAME_RECORD_STATIC, kind_of(0, 0));
     TEST_ASSERT_EQUAL_UINT8(FRAME_RECORD_STATIC, kind_of(0, 1));
+}
+
+static void
+test_a_keyframe_without_a_snapshot_drops_instead_of_reusing_lod_state(void) {
+    open_recording(-1);
+    for (int i = 0; i < KEYFRAME_EVERY; i++) {
+        draw_frame();
+    }
+    const size_t before = sink->size;
+    frame_record_frame(context, &context->raster, DT_MS);
+    TEST_ASSERT_EQUAL_UINT32(before, sink->size);
+    TEST_ASSERT_EQUAL_UINT32(1, frame_record_counts().dropped);
+    draw_frame();
+    find_records();
+    TEST_ASSERT_EQUAL_UINT8(FRAME_RECORD_KEYFRAME | FRAME_RECORD_AFTER_DROP, frame_of(KEYFRAME_EVERY).flags);
+    TEST_ASSERT_EQUAL_INT(1, count_in_frame(KEYFRAME_EVERY, FRAME_RECORD_LODSTATE));
 }
 
 static void
@@ -591,13 +628,14 @@ run_frame_record_suite(void) {
     RUN_TEST(test_a_refused_frame_is_dropped_whole_and_counted_and_the_next_is_a_keyframe);
     RUN_TEST(test_a_changed_tunable_rides_in_the_next_frame_and_every_keyframe_while_off_its_initial);
     RUN_TEST(test_a_keyframes_picture_is_hashed_into_the_next_frame_and_the_last_one_at_stop);
+    RUN_TEST(test_a_keyframe_without_a_snapshot_drops_instead_of_reusing_lod_state);
     RUN_TEST(test_a_second_start_is_refused_while_recording);
     RUN_TEST(test_a_mesh_in_no_pack_is_named_by_no_pack_and_no_pack_is_named);
     RUN_TEST(test_a_posed_mesh_names_its_bind_and_its_palette_rides_each_keyframe_and_each_new_pose);
     RUN_TEST(test_a_built_mesh_carries_its_source_whole_each_keyframe_and_each_build);
     RUN_TEST(test_a_textured_built_mesh_carries_its_uvs_after_its_triangles);
     RUN_TEST(test_a_generated_frame_on_a_keyframes_turn_hands_the_keyframe_to_the_next_drawn_frame);
-    RUN_TEST(test_a_generated_frame_after_a_drop_is_no_keyframe_and_the_next_drawn_frame_is);
+    RUN_TEST(test_generated_frames_after_a_drop_wait_for_a_drawn_keyframe);
     RUN_TEST(test_a_hash_whose_frame_is_dropped_rides_the_next_frame_taken);
     RUN_TEST(test_a_mesh_struct_rewritten_in_place_with_new_arrays_is_recorded_again);
     RUN_TEST(test_each_instance_drawing_a_rebuilt_mesh_carries_the_build);

@@ -175,11 +175,11 @@ skinned renderer's last resolved bounds centre. The grid is borrowed through
 `scene_set_probes()`; `NULL` restores the scene's flat ambient.
 
 Cosine convolution gives `E(n) = constant + gradient * n`, with
-`A0 = π` and `A1 = 2π/3`.<sup>[[126]](../../Citations.md#ramamoorthi-hanrahan-2001)</sup>
+`A0 = π` and `A1 = 2π/3`.<sup>[[128]](../../Citations.md#ramamoorthi-hanrahan-2001)</sup>
 Four RGB radiance coefficients become one constant and a channel-row matrix.
 
 `sh1_rgb_t` uses the real basis order Y00, Y1−1 (+y), Y10 (+z), Y11 (+x),
-with normalisation `SH1_Y00` and `SH1_Y1`.<sup>[[127]](../../Citations.md#sloan-2008)</sup>
+with normalisation `SH1_Y00` and `SH1_Y1`.<sup>[[129]](../../Citations.md#sloan-2008)</sup>
 
 | Input | Per mover | Per vertex |
 |---|---|---|
@@ -197,7 +197,7 @@ job's stack; scenes keep no per-entity SH cache.
 
 `scene_set_contact_blob(renderer, ground_y, strength, shape)` draws planar
 contact shadows after geometry, before composition. Zero strength disables
-them. The light-directed projection follows Blinn's planar-shadow idea.<sup>[[128]](../../Citations.md#blinn-1988)</sup>
+them. The light-directed projection follows Blinn's planar-shadow idea.<sup>[[130]](../../Citations.md#blinn-1988)</sup>
 
 | Part | Rule |
 |---|---|

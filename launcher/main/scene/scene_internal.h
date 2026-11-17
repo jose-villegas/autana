@@ -10,6 +10,7 @@
 #include "anim/playback/anim_layer.h"
 #include "asset/asset_store.h"
 #include "build/build_variant.h"
+#include "collections/mem.h"
 #include "core/checkpoint.h"
 #include "core/handle.h"
 #include "core/memory.h"
@@ -69,84 +70,7 @@ typedef uint16_t scene_row_t;
 #define SCENE_ROW_NONE ((scene_row_t)0xFFFFU)
 #define SCENE_ROW_ROOT ((scene_row_t)0xFFFEU) /* the scene's root entity, outside its columns */
 
-typedef struct {
-    mat3f_t linear;
-    vec3f_t position;
-} scene_asset_transform_t;
-
-/* The rows of the SCNE entry (scene_format.h) are read in place, so they are
- * the entry's bytes, little-endian as the device is. */
-typedef struct {
-    name_hash_t hash; /* name_hash(name), never NAME_HASH_NONE */
-    char name[ASSET_NAME_MAX];
-} scene_asset_name_t;
-
-typedef struct {
-    uint16_t entity, colour_set;
-    char mesh[ASSET_NAME_MAX];
-} scene_asset_renderer_t;
-
-/* A renderer that draws copies of its mesh from the packed rows below
- * (docs/assets/formats/SCNE.md#batches). */
-typedef struct {
-    uint16_t renderer, copy_count;
-    uint32_t first_copy, first_chunk; /* into places and turns, and into chunks */
-} scene_asset_batch_t;
-
-typedef struct {
-    uint16_t entity, pad;
-    float half_fov_short_tan, near_z;
-    uint32_t clear_rgb; /* 0xRRGGBB */
-} scene_asset_camera_t;
-
-typedef struct {
-    vec3f_t ambient_color;
-    float ambient_intensity, tonemap_white;
-} scene_asset_settings_t;
-
-typedef struct {
-    uint16_t entity;
-    uint8_t kind, pad;
-    vec3f_t color;
-    float intensity;
-} scene_asset_light_t;
-
-typedef struct {
-    uint16_t entity, pad;
-    char mesh[ASSET_NAME_MAX], skin[ASSET_NAME_MAX], skeleton[ASSET_NAME_MAX];
-} scene_asset_skinned_renderer_t;
-
-typedef struct {
-    uint16_t entity, clip_count;
-    uint32_t first_clip;
-    uint16_t default_clip;
-    uint8_t wrap, pad;
-} scene_asset_animator_t;
-
-/* An opened entry. Holds no copy: the pack must outlive it. */
-typedef struct {
-    uint16_t entity_count, renderer_count, camera_count;
-    uint16_t light_count, skinned_renderer_count, animator_count, clip_count;
-    uint16_t batch_count, chunk_count, copy_count;
-    const scene_asset_name_t* names;
-    const scene_asset_transform_t* transforms;
-    const scene_asset_renderer_t* renderers;
-    const scene_asset_camera_t* cameras;
-    const scene_asset_light_t* lights;
-    const scene_asset_skinned_renderer_t* skinned_renderers;
-    const scene_asset_animator_t* animators;
-    const char (*clips)[ASSET_NAME_MAX];
-    const scene_asset_settings_t* settings;
-    const uint16_t* parents; /* one per entity: SCENE_ASSET_PARENT_ROOT or a lower entity */
-    const scene_asset_batch_t* batches;
-    const r3d_copy_chunk_t* chunks;
-    const r3d_copy_place_t* places; /* copy_count */
-    const r3d_copy_turn_t* turns;   /* copy_count */
-} scene_asset_t;
-
-/* Checks every row once and returns the first failure: ASSET_ERR_VERSION,
- * ASSET_ERR_BOUNDS or ASSET_ERR_FORMAT. Else fills `out`. */
-asset_status_t scene_asset_open(asset_view_t entry, scene_asset_t* out);
+#include "scene/scene_asset.h"
 
 /* A mesh view and its world matrix: its parents' transforms times its entity's own. */
 typedef struct {
@@ -204,7 +128,7 @@ typedef struct {
     int* counts;
     uint8_t root;
     anim_wrap_t wrap;
-    float drawn_radius_px; /* last draw's size; cleared each step so undrawn scenes use the far tier */
+    float drawn_radius_px; /* last draw's size when due; cleared each step so undrawn scenes use the far tier */
     uint32_t owed_ms;      /* skipped time is charged at the next pose, before playback controls change */
     uint32_t phase;        /* stable slot spreads copies' poses across frames */
     int interval;          /* zero selects the first tier without a hysteresis history */
@@ -385,9 +309,8 @@ void scene_hierarchy_update_active(scene_t* scene, scene_row_t entity);
 /* True when drawing the mesh as it is gives the same picture. */
 bool scene_transform_is_identity(const mat4f_t* transform);
 
-size_t scene_storage_carve(size_t* end, size_t bytes, size_t align);
 #define SCENE_STORAGE_RESERVE(layout, end, member, type, count)                                                        \
-    ((layout).member = scene_storage_carve(&(end), sizeof(type) * (size_t)(count), _Alignof(type)))
+    ((layout).member = mem_carve(&(end), sizeof(type) * (size_t)(count), _Alignof(type)))
 int scene_renderer_index(const scene_t* scene, scene_row_t entity);
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 void scene_draw_checkpoint_capture(checkpoint_t* saved);
@@ -403,6 +326,14 @@ void scene_stage_add(scene_t* scene, scene_row_t entity);
 void scene_animation_step(scene_t* scene, uint32_t dt_ms);
 /* The same without settling: a seek re-poses what is shown and takes no buffers. */
 void scene_animation_repose(scene_t* scene, uint32_t dt_ms);
+
+/* Whether `a` picks its pose tier, and so needs its drawn size, at the next
+ * step: on the frames its current tier poses it, or before it has a tier. */
+static inline bool
+scene_animator_due(const scene_t* scene, const scene_animator_t* a) {
+    return a->interval == 0 || (scene->animation_frame + a->phase) % (uint32_t)a->interval == 0;
+}
+
 /* Animates staged[first, first + count). */
 void scene_animate_range(scene_t* scene, int first, int count, uint32_t dt_ms, const render_anim_settings_t* settings);
 bool scene_skin_light_apply_mode(scene_t* scene, scene_row_t entity, scene_skinned_renderer_t* skin,

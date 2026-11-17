@@ -1,0 +1,3 @@
+# The launcher's tile face at rest; home_tile_art.py draws it.
+source = "home_tile.png"
+border = [16, 16, 16, 16]

@@ -223,6 +223,12 @@ present counts against it.
 What the cull drops, stage by stage, what it keeps along two camera paths and
 what each stage costs: [Culling.md](frame/Culling.md).
 
+## Textured triangles
+
+A mesh whose [LUVS](../assets/formats/LUVS.md) entry names textures draws
+those triangles through the textured span fill: its texels, mip levels and
+perspective divide are [frame/Texture-Mapping.md](frame/Texture-Mapping.md).
+
 ## Memory
 
 The layer allocates nothing. Raster draw work owns the resolved camera
@@ -261,5 +267,7 @@ all its renderers.
 ## Related
 
 - [firmware/README.md](../firmware/README.md): the layers and the frame loop
+- [LTEX.md](../assets/formats/LTEX.md), [LUVS.md](../assets/formats/LUVS.md): a textured mesh's textures and UVs
+- [frame/Texture-Mapping.md](frame/Texture-Mapping.md): how a textured triangle's pixels take their texels
 - [gfx/Present.md](../gfx/Present.md#present-who-runs-it): the split present `update()` overlaps
 - [Building-an-App.md](../firmware/Building-an-App.md#app-memory): the app arena, one place a frame's scratch block can come from

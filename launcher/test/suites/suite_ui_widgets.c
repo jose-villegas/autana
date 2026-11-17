@@ -860,51 +860,372 @@ test_open_list_stays_on_top_during_held_and_idle_band_frames(void) {
     menu_repaint_frames(true);
 }
 
-#define UNDER_FACE_RGB 0x2040A0
-#define UNDER_STALE    RGB565BE(0xFF00FF)
-#define UNDER_BACKDROP RGB565BE(0x00FF00)
-static const mu_Rect UNDER_LEFT = {20, 40, 60, 60};
-static const mu_Rect UNDER_RIGHT = {220, 40, 60, 60};
+/* A half see-through skin, SKIN_SIDE square with a one-pixel border, one
+ * colour at rest and another held. */
+#define SKIN_SIDE       3
+#define SKIN_BORDER     1
+#define SKIN_HALF_COVER 128
+#define SKIN_REST_RGB   0xF0F0F0
+#define SKIN_HELD_RGB   0x2040A0
+#define UNDER_BACKDROP  RGB565BE(0x00A040)
+/* Frames an unchanged skinned UI is put back over a backdrop drawn under it. */
+#define UNDER_FRAMES    8
+static const recti_t UNDER_BUTTON = {40, 100, 240, 60};
+
+typedef struct {
+    gfx_color_t rest[SKIN_SIDE * SKIN_SIDE], held[SKIN_SIDE * SKIN_SIDE];
+    uint8_t cover[SKIN_SIDE * SKIN_SIDE];
+    sprite_t normal, pressed;
+} half_skin_t;
+
+static sprite_t
+half_sprite(gfx_color_t* color, uint32_t rgb, uint8_t* cover) {
+    for (int i = 0; i < SKIN_SIDE * SKIN_SIDE; i++) {
+        color[i] = RGB565BE(rgb);
+        cover[i] = SKIN_HALF_COVER;
+    }
+    const uint32_t pitch = SKIN_SIDE * sizeof *color;
+    return (sprite_t){.color = {color, IMAGE_RGB565BE, SKIN_SIDE, SKIN_SIDE, pitch},
+                      .alpha = {cover, IMAGE_A8, SKIN_SIDE, SKIN_SIDE, SKIN_SIDE},
+                      .border = {SKIN_BORDER, SKIN_BORDER, SKIN_BORDER, SKIN_BORDER}};
+}
+
+/* What the skinned-face tests hold, released by face_fixture_release()
+ * even when an assert ends the test early. */
+static half_skin_t* face_skin;
+static gfx_color_t* face_frame;
 
 static void
-under_frame(void) {
-    ui_begin(NULL);
-    if (ui_begin_screen(ui_context(), "Under", MU_OPT_NOTITLE | MU_OPT_NOFRAME)) {
-        mu_draw_rect(ui_context(), UNDER_LEFT, ui_rgb(UNDER_FACE_RGB));
-        mu_draw_rect(ui_context(), UNDER_RIGHT, ui_rgb(UNDER_FACE_RGB));
-        mu_end_window(ui_context());
+face_fixture_release(void) {
+    memory_free(face_frame);
+    face_frame = NULL;
+    memory_free(face_skin);
+    face_skin = NULL;
+    gfx_reset_for_test();
+}
+
+/* gfx up, a half see-through skin, and a frame's worth of pixels to keep. */
+static void
+face_fixture(void) {
+    TEST_ASSERT_TRUE(gfx_init());
+    fixture();
+    suite_set_test_cleanup(face_fixture_release);
+    face_skin = memory_alloc(sizeof *face_skin, MEMORY_PSRAM);
+    face_frame = memory_alloc(GFX_FRAMEBUFFER_BYTES, MEMORY_PSRAM);
+    TEST_ASSERT_NOT_NULL(face_skin);
+    TEST_ASSERT_NOT_NULL(face_frame);
+    face_skin->normal = half_sprite(face_skin->rest, SKIN_REST_RGB, face_skin->cover);
+    face_skin->pressed = half_sprite(face_skin->held, SKIN_HELD_RGB, face_skin->cover);
+}
+
+static void
+face_fixture_end(void) {
+    suite_clear_test_cleanup();
+    face_fixture_release();
+}
+
+static void
+paint_under_backdrop(recti_t area) {
+    draw_rect(area.x, area.y, area.w, area.h, UNDER_BACKDROP);
+}
+
+/* One frame of a skinned button with the finger as `in` says, painted over
+ * the backdrop, then sent. */
+static void
+skinned_frame(const half_skin_t* skin, const input_t* in) {
+    const ui_skin_t faces = {.normal = &skin->normal, .pressed = &skin->pressed};
+    ui_begin(in);
+    ui_screen();
+    ui_skin(&faces);
+    (void)ui_button(UNDER_BUTTON, "GO");
+    (void)ui_end_over(paint_under_backdrop, NULL);
+    gfx_present();
+}
+
+static input_t
+on_skinned_button(bool down, bool pressed, bool released) {
+    return (input_t){.down = down,
+                     .pressed = pressed,
+                     .released = released,
+                     .point = {UNDER_BUTTON.x + UNDER_BUTTON.w / 2, UNDER_BUTTON.y + UNDER_BUTTON.h / 2}};
+}
+
+/* A translucent face put back over a backdrop that drew under part of it
+ * blends over the backdrop each time, never over its own last paint: the
+ * picture holds frame after frame, and a press and its release give the
+ * same pixels back. */
+static void
+test_a_translucent_face_put_back_over_its_backdrop_holds_its_pixels(void) {
+    face_fixture();
+    const half_skin_t* skin = face_skin;
+    gfx_color_t* first = face_frame;
+    const size_t frame_bytes = GFX_FRAMEBUFFER_BYTES;
+    const input_t idle = {0};
+    skinned_frame(skin, &idle);
+    memcpy(first, gfx_framebuffer(), frame_bytes);
+
+    for (int i = 0; i < UNDER_FRAMES; i++) {
+        /* The backdrop moving under the button's left half only. */
+        draw_rect(UNDER_BUTTON.x, UNDER_BUTTON.y, UNDER_BUTTON.w / 2, UNDER_BUTTON.h, UNDER_BACKDROP);
+        skinned_frame(skin, &idle);
+        TEST_ASSERT_EQUAL_MEMORY_MESSAGE(first, gfx_framebuffer(), frame_bytes, "an unchanged frame holds its pixels");
+    }
+
+    const input_t press = on_skinned_button(true, true, false);
+    const input_t release = on_skinned_button(false, false, true);
+    skinned_frame(skin, &press);
+    TEST_ASSERT_TRUE_MESSAGE(memcmp(first, gfx_framebuffer(), frame_bytes) != 0, "the held face shows");
+    skinned_frame(skin, &release);
+    skinned_frame(skin, &idle);
+    TEST_ASSERT_EQUAL_MEMORY_MESSAGE(first, gfx_framebuffer(), frame_bytes, "the release gives the pixels back");
+    face_fixture_end();
+}
+
+/* A backdrop that differs at every pixel, with a stripe across it that
+ * moves STRIPE_STEP rows a frame: the part a frame draws under the UI. */
+#define STRIPE_TOP       90
+#define STRIPE_H         23
+#define STRIPE_STEP      9
+#define STRIPE_FRAMES    12
+#define STRIPE_TINT      0xF81Fu
+#define BACKDROP_STEP_X  131
+#define BACKDROP_STEP_Y  7919
+#define OPAQUE_PANEL_RGB 0x305070
+static const recti_t OPAQUE_PANEL = {20, 80, 280, 120};
+static const recti_t OVER_BUTTON = {120, 120, 160, 70};
+static const recti_t NARROW_CLIP = {60, 90, 90, 90};
+/* A window short of the screen, and a pixel just left of it: outside the
+ * window, inside the dirt tracker's leaf its left edge lies in (leaves are
+ * GFX_WIDTH / 16 = 23 wide, so 46 to 69). */
+static const recti_t SMALL_WINDOW = {50, 100, 100, 60};
+static const recti_t BESIDE_WINDOW = {47, 110, 1, 1};
+static int stripe_phase;
+/* Where the step painted, given to ui_end_over() when `stripe_says_fresh`. */
+static ui_fresh_t stripe_fresh;
+static bool stripe_says_fresh;
+
+static recti_t
+stripe_rect(void) {
+    return (recti_t){0, STRIPE_TOP + (stripe_phase * STRIPE_STEP), GFX_WIDTH, STRIPE_H};
+}
+
+static void
+paint_stripe_backdrop(recti_t area) {
+    area = recti_intersect(area, GFX_SCREEN_RECT);
+    const recti_t stripe = stripe_rect();
+    gfx_surface_t surface;
+    TEST_ASSERT_TRUE(gfx_draw_begin(&surface));
+    for (int y = area.y; y < recti_bottom(area); y++) {
+        gfx_color_t* row = gfx_target_color(surface.target, y);
+        for (int x = area.x; x < recti_right(area); x++) {
+            const gfx_color_t base = (gfx_color_t)((x * BACKDROP_STEP_X) + (y * BACKDROP_STEP_Y));
+            row[x] = y >= stripe.y && y < recti_bottom(stripe) ? (gfx_color_t)(base ^ STRIPE_TINT) : base;
+        }
+    }
+    gfx_mark_drawn(area.x, area.y, area.w, area.h);
+}
+
+typedef enum {
+    STEP_STRIPE,            /* the stripe moves */
+    STEP_STRIPE_ROWS,       /* the stripe moves, its rows marked whole */
+    STEP_BESIDE_WINDOW,     /* one pixel beside SMALL_WINDOW drawn again */
+    STEP_FRESH_PAST_MAX,    /* the stripe moves, said in more pieces than fit */
+    STEP_FRESH_OVERLAPPING, /* the stripe moves, said in two pieces sharing a row */
+} backdrop_step_t;
+
+/* The rows [y0, y1) said fresh in enough pieces a row that together they
+ * pass UI_FRESH_MAX. */
+static void
+add_row_pieces(int y0, int y1) {
+    const int pieces = (UI_FRESH_MAX / (y1 - y0)) + 1;
+    for (int y = y0; y < y1; y++) {
+        for (int i = 0; i < pieces; i++) {
+            const int x0 = GFX_WIDTH * i / pieces;
+            ui_fresh_add(&stripe_fresh, recti_from_edges(x0, y, GFX_WIDTH * (i + 1) / pieces, y + 1));
+        }
     }
 }
 
+/* What the backdrop draws before a frame, as an animated backdrop draws
+ * only what changed: a moving stripe where it was and where it is. It says
+ * where in `stripe_fresh`. */
 static void
-no_backdrop(void) {}
-
-static gfx_color_t*
-pixel_in(mu_Rect r) {
-    return &gfx_framebuffer()[((r.y + (r.h / 2)) * GFX_WIDTH) + r.x + (r.w / 2)];
+step_backdrop(backdrop_step_t step) {
+    ui_fresh_clear(&stripe_fresh);
+    if (step == STEP_BESIDE_WINDOW) {
+        paint_stripe_backdrop(BESIDE_WINDOW);
+        ui_fresh_add(&stripe_fresh, BESIDE_WINDOW);
+        return;
+    }
+    const recti_t was = stripe_rect();
+    stripe_phase++;
+    const recti_t now = stripe_rect();
+    paint_stripe_backdrop(was);
+    paint_stripe_backdrop(now);
+    if (step == STEP_STRIPE_ROWS) {
+        gfx_mark_rows_dirty(was.y, recti_bottom(now));
+    }
+    const recti_t moved = recti_union(was, now);
+    if (step == STEP_FRESH_PAST_MAX) {
+        add_row_pieces(moved.y, recti_bottom(moved));
+        TEST_ASSERT_TRUE(stripe_fresh.overflow);
+    } else if (step == STEP_FRESH_OVERLAPPING) {
+        const int shared = moved.y + (moved.h / 2);
+        ui_fresh_add(&stripe_fresh, recti_from_edges(0, moved.y, GFX_WIDTH, shared + 1));
+        ui_fresh_add(&stripe_fresh, recti_from_edges(0, shared, GFX_WIDTH, recti_bottom(moved)));
+        TEST_ASSERT_TRUE(stripe_fresh.overflow);
+    } else {
+        ui_fresh_add(&stripe_fresh, moved);
+    }
 }
 
-/* An unchanged UI drawn under in one place paints back only what covers
- * that place: a face the backdrop never reached is left as it stands. */
+static const ui_fresh_t*
+stripe_fresh_given(void) {
+    return stripe_says_fresh ? &stripe_fresh : NULL;
+}
+
+typedef enum {
+    REPLAY_OPAQUE_UNDER, /* a translucent face over an opaque rect */
+    REPLAY_OVERLAP,      /* two translucent faces, one over the other */
+    REPLAY_NARROW_CLIP,  /* a face cut by a clip narrower than it */
+    REPLAY_SMALL_WINDOW, /* a face filling a window short of the screen */
+} replay_scene_t;
+
 static void
-test_an_unchanged_ui_repaints_only_the_commands_drawn_under(void) {
-    TEST_ASSERT_TRUE(gfx_init());
-    fixture();
-    draw_clear(RGB565BE(UI_BACKGROUND));
-    under_frame();
-    (void)ui_end_over(no_backdrop);
+replay_scene_frame(const half_skin_t* skin, replay_scene_t scene) {
+    const ui_skin_t faces = {.normal = &skin->normal, .pressed = &skin->pressed};
+    const input_t idle = {0};
+    mu_Context* ctx = ui_context();
+    ui_begin(&idle);
+    if (scene == REPLAY_SMALL_WINDOW) {
+        ui_window(SMALL_WINDOW);
+        ui_skin(&faces);
+        (void)ui_button(SMALL_WINDOW, "IN");
+        (void)ui_end_over(paint_stripe_backdrop, stripe_fresh_given());
+        gfx_present();
+        return;
+    }
+    ui_screen();
+    ui_skin(&faces);
+    if (scene == REPLAY_OPAQUE_UNDER) {
+        mu_draw_rect(ctx, (mu_Rect){OPAQUE_PANEL.x, OPAQUE_PANEL.y, OPAQUE_PANEL.w, OPAQUE_PANEL.h},
+                     ui_rgb(OPAQUE_PANEL_RGB));
+    }
+    if (scene == REPLAY_NARROW_CLIP) {
+        mu_push_clip_rect(ctx, (mu_Rect){NARROW_CLIP.x, NARROW_CLIP.y, NARROW_CLIP.w, NARROW_CLIP.h});
+    }
+    (void)ui_button(UNDER_BUTTON, "GO");
+    if (scene == REPLAY_NARROW_CLIP) {
+        mu_pop_clip_rect(ctx);
+    }
+    if (scene == REPLAY_OVERLAP) {
+        (void)ui_button(OVER_BUTTON, "UP");
+    }
+    (void)ui_end_over(paint_stripe_backdrop, stripe_fresh_given());
     gfx_present();
+}
 
-    /* Stale pixels no draw marks: only a repaint would replace them. */
-    *pixel_in(UNDER_LEFT) = UNDER_STALE;
-    *pixel_in(UNDER_RIGHT) = UNDER_STALE;
-    draw_rect(UNDER_RIGHT.x, UNDER_RIGHT.y, UNDER_RIGHT.w / 4, UNDER_RIGHT.h / 4, UNDER_BACKDROP);
-    under_frame();
-    TEST_ASSERT_TRUE(ui_end_over(no_backdrop));
+/* An unchanged UI replayed over a moving backdrop leaves every pixel as a
+ * whole repaint of the same frame would, frame after frame: over the dirt,
+ * and over the places the backdrop says it painted. */
+static void
+assert_replay_matches_a_whole_repaint_given(replay_scene_t scene, int turns, backdrop_step_t step, bool says_fresh) {
+    stripe_says_fresh = says_fresh;
+    face_fixture();
+    ui_set_transform(ui_transform_quarter_turn(turns, GFX_WIDTH, GFX_HEIGHT));
+    stripe_phase = 0;
+    const half_skin_t* skin = face_skin;
+    gfx_color_t* replayed = face_frame;
+    const size_t frame_bytes = GFX_FRAMEBUFFER_BYTES;
+    replay_scene_frame(skin, scene);
+    for (int i = 0; i < STRIPE_FRAMES; i++) {
+        step_backdrop(step);
+        replay_scene_frame(skin, scene);
+        memcpy(replayed, gfx_framebuffer(), frame_bytes);
+        ui_invalidate();
+        replay_scene_frame(skin, scene);
+        TEST_ASSERT_EQUAL_MEMORY_MESSAGE(gfx_framebuffer(), replayed, frame_bytes,
+                                         "a replay leaves what a whole repaint leaves");
+    }
+    face_fixture_end();
+}
 
-    TEST_ASSERT_EQUAL_HEX16_MESSAGE(RGB565BE(UNDER_FACE_RGB), *pixel_in(UNDER_RIGHT), "the face drawn under repaints");
-    TEST_ASSERT_EQUAL_HEX16_MESSAGE(UNDER_STALE, *pixel_in(UNDER_LEFT), "the face not drawn under is left alone");
-    gfx_reset_for_test();
+static void
+assert_replay_matches_a_whole_repaint(replay_scene_t scene, int turns, backdrop_step_t step) {
+    assert_replay_matches_a_whole_repaint_given(scene, turns, step, false);
+    assert_replay_matches_a_whole_repaint_given(scene, turns, step, true);
+}
+
+static void
+test_a_face_over_an_opaque_rect_replays_as_a_whole_repaint(void) {
+    assert_replay_matches_a_whole_repaint(REPLAY_OPAQUE_UNDER, 0, STEP_STRIPE);
+}
+
+static void
+test_overlapping_faces_replay_as_a_whole_repaint(void) {
+    assert_replay_matches_a_whole_repaint(REPLAY_OVERLAP, 0, STEP_STRIPE);
+}
+
+static void
+test_a_face_in_a_narrower_clip_replays_as_a_whole_repaint(void) {
+    assert_replay_matches_a_whole_repaint(REPLAY_NARROW_CLIP, 0, STEP_STRIPE);
+}
+
+static void
+test_a_quarter_turned_ui_replays_as_a_whole_repaint(void) {
+    assert_replay_matches_a_whole_repaint(REPLAY_OVERLAP, 1, STEP_STRIPE);
+    assert_replay_matches_a_whole_repaint(REPLAY_OPAQUE_UNDER, 1, STEP_STRIPE);
+}
+
+static void
+test_a_replay_over_rows_marked_whole_matches_a_whole_repaint(void) {
+    assert_replay_matches_a_whole_repaint(REPLAY_OPAQUE_UNDER, 0, STEP_STRIPE_ROWS);
+}
+
+/* Dirt in a leaf a window shares, outside the window: the backdrop goes
+ * back over that whole leaf, so the window's face there is drawn again. */
+static void
+test_dirt_beside_a_window_replays_its_face_as_a_whole_repaint(void) {
+    assert_replay_matches_a_whole_repaint(REPLAY_SMALL_WINDOW, 0, STEP_BESIDE_WINDOW);
+}
+
+/* Said in more pieces than the list holds, or in pieces that overlap, the
+ * places are not used: the replay goes over the dirt. */
+static void
+test_fresh_places_past_the_max_replay_as_a_whole_repaint(void) {
+    assert_replay_matches_a_whole_repaint_given(REPLAY_OVERLAP, 0, STEP_FRESH_PAST_MAX, true);
+}
+
+static void
+test_fresh_places_sharing_a_row_replay_as_a_whole_repaint(void) {
+    assert_replay_matches_a_whole_repaint_given(REPLAY_OVERLAP, 0, STEP_FRESH_OVERLAPPING, true);
+}
+
+/* Places that touch along an edge share no pixel and stay; one more than
+ * the list holds, or one sharing a pixel, overflows it; an empty one is no
+ * place. */
+static void
+test_the_fresh_list_keeps_disjoint_places_only(void) {
+    ui_fresh_t* fresh = memory_alloc(sizeof *fresh, MEMORY_APP);
+    TEST_ASSERT_NOT_NULL(fresh);
+    ui_fresh_clear(fresh);
+    ui_fresh_add(fresh, (recti_t){0, 0, 10, 10});
+    ui_fresh_add(fresh, (recti_t){10, 0, 10, 10});
+    ui_fresh_add(fresh, (recti_t){0, 10, 20, 10});
+    ui_fresh_add(fresh, (recti_t){5, 5, 0, 10});
+    TEST_ASSERT_FALSE(fresh->overflow);
+    TEST_ASSERT_EQUAL_INT(3, fresh->count);
+    ui_fresh_add(fresh, (recti_t){19, 19, 1, 1});
+    TEST_ASSERT_TRUE(fresh->overflow);
+
+    ui_fresh_clear(fresh);
+    for (int i = 0; i < UI_FRESH_MAX; i++) {
+        ui_fresh_add(fresh, (recti_t){i, 0, 1, 1});
+    }
+    TEST_ASSERT_FALSE(fresh->overflow);
+    ui_fresh_add(fresh, (recti_t){UI_FRESH_MAX, 0, 1, 1});
+    TEST_ASSERT_TRUE(fresh->overflow);
+    memory_free(fresh);
 }
 
 static void
@@ -1620,7 +1941,16 @@ run_ui_widgets_suite(void) {
     RUN_TEST(test_menu_band_frame_cost);
     RUN_TEST(test_options_band_frame_cost);
     RUN_TEST(test_dense_bands_match_a_full_repaint);
-    RUN_TEST(test_an_unchanged_ui_repaints_only_the_commands_drawn_under);
+    RUN_TEST(test_a_translucent_face_put_back_over_its_backdrop_holds_its_pixels);
+    RUN_TEST(test_a_face_over_an_opaque_rect_replays_as_a_whole_repaint);
+    RUN_TEST(test_overlapping_faces_replay_as_a_whole_repaint);
+    RUN_TEST(test_a_face_in_a_narrower_clip_replays_as_a_whole_repaint);
+    RUN_TEST(test_a_quarter_turned_ui_replays_as_a_whole_repaint);
+    RUN_TEST(test_a_replay_over_rows_marked_whole_matches_a_whole_repaint);
+    RUN_TEST(test_dirt_beside_a_window_replays_its_face_as_a_whole_repaint);
+    RUN_TEST(test_fresh_places_past_the_max_replay_as_a_whole_repaint);
+    RUN_TEST(test_fresh_places_sharing_a_row_replay_as_a_whole_repaint);
+    RUN_TEST(test_the_fresh_list_keeps_disjoint_places_only);
     RUN_TEST(test_closing_the_list_restores_the_pixels_under_it);
     RUN_TEST(test_ui_end_in_band_mode_is_replayed_over_each_band);
     RUN_TEST(test_changed_ui_over_a_held_expanded_picture_dirties_its_band);

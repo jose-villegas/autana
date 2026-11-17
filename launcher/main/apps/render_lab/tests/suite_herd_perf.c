@@ -285,6 +285,11 @@ test_herd_fixed_animation_rates(void) {
                                   arm == 0 ? RENDER_ANIM_EVERY_MIN : (RENDER_SETTINGS_DEFAULT.anim.mid_every)));
         TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(anim, far_every),
                                   arm == 0 ? RENDER_ANIM_EVERY_MIN : (RENDER_SETTINGS_DEFAULT.anim.far_every)));
+        /* A copy is measured, and its tier picked, on the frames it poses:
+         * the slowest tier's interval in frames re-tiers every placed copy. */
+        for (int f = 0; f < (RENDER_SETTINGS_DEFAULT.anim.far_every); f++) {
+            (void)lab_test_frame_dt(0, false, NULL);
+        }
         scene_animation_step(scene, 0);
         const int intervals[] = {RENDER_ANIM_EVERY_MIN, (RENDER_SETTINGS_DEFAULT.anim.mid_every),
                                  (RENDER_SETTINGS_DEFAULT.anim.far_every)};

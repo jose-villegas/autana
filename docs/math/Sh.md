@@ -2,7 +2,7 @@
 
 `sh1_rgb_t` stores RGB radiance in the real L1 basis order Y00,
 Y1−1 (+y), Y10 (+z), Y11 (+x), normalised by `SH1_Y00` and `SH1_Y1`.
-The convention follows Sloan.<sup>[[127]](../Citations.md#sloan-2008)</sup>
+The convention follows Sloan.<sup>[[129]](../Citations.md#sloan-2008)</sup>
 [Math index](README.md).
 
 `sh1_irradiance_t` holds the cosine-convolved constant and channel-row

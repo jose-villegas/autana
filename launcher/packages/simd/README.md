@@ -59,7 +59,7 @@ of the reference and of the call at each length.
 |---|---|
 | [include/simd/copy.h](include/simd/copy.h) | copy: bytes from one array to another, memcpy's contract. |
 | [include/simd/fill.h](include/simd/fill.h) | fill: one value written over an array. |
-| [include/simd/pie_asm.h](include/simd/pie_asm.h) | pie_asm: the frame every PIE kernel (a .S file under src/pie/) opens and closes, so no kernel picks its own stack offsets. |
+| [include/simd/pie_asm.h](include/simd/pie_asm.h) | pie_asm: the frame every PIE kernel (a .S file) opens and closes, so no kernel picks its own stack offsets, and the macros kernels share. |
 | [include/simd/repeat.h](include/simd/repeat.h) | repeat: every element of an array written more than once, side by side. |
 | [include/simd/simd.h](include/simd/simd.h) | simd: what every call and kernel shares, the vector width and whether the PIE kernels are built. |
 <!-- /generated: package-simd-headers -->

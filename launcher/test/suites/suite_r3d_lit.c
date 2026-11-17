@@ -2356,6 +2356,54 @@ test_the_frame_carves_its_scratch_without_overlap(void) {
     free(b);
 }
 
+/* The view and the reference at one eye height, each in a frame of its own
+ * that is gone before the draw it serves runs. */
+static __attribute__((noinline)) render_view_t*
+view_down_plus_z(float eye_height, const raster_t* raster) {
+    render_view_t* view = malloc(sizeof *view);
+    TEST_ASSERT_NOT_NULL(view);
+    const fixture_camera_t camera = camera_down_plus_z(eye_height, -400, 1.0f);
+    *view = render_view_fixture(&camera, raster, 0);
+    return view;
+}
+
+static __attribute__((noinline)) void
+reference_down_plus_z(const parts_t* p, float eye_height, gfx_color_t* want) {
+    const r3d_lens_t lens = look_down_plus_z(eye_height, -400, 1.0f);
+    reference_frame(p, &lens, want);
+}
+
+/* One eye height of the two-core frame: drawn over stale pixels, upscaled and
+ * checked against one full draw. */
+static void
+check_two_core_frame_at(const parts_t* p, raster_t* raster, float eye_height, gfx_color_t* upscaled,
+                        gfx_color_t* want) {
+    render_view_t* view = view_down_plus_z(eye_height, raster);
+    for (int i = 0; i < W * H; i++) {
+        raster_color(raster)[i] = 0xBEEF;
+    }
+    raster_draw(raster, view);
+    raster_upscale(raster, upscaled, raster->destination_width, raster->destination_height);
+    free(view);
+    reference_down_plus_z(p, eye_height, want);
+    TEST_ASSERT_EQUAL_HEX16_ARRAY_MESSAGE(want, upscaled, 4 * W * H, "the upscaled frame differs from one full draw");
+}
+
+/* The same frame with nothing to upscale into: the raster's own colour target
+ * holds every other pixel of the upscaled reference. */
+static void
+check_unscaled_frame(const parts_t* p, raster_t* raster, gfx_color_t* want) {
+    render_view_t* view = view_down_plus_z(150.0f, raster);
+    raster_draw(raster, view);
+    free(view);
+    reference_down_plus_z(p, 150.0f, want);
+    for (int y = 0; y < H; y++) {
+        for (int x = 0; x < W; x++) {
+            TEST_ASSERT_EQUAL_HEX16(want[2 * y * 2 * W + 2 * x], raster_color(raster)[y * W + x]);
+        }
+    }
+}
+
 /* Split between the cores at whatever row balances them, then upscaled: the
  * same picture as one full draw upscaled, over a colour target left full of
  * stale pixels. */
@@ -2376,31 +2424,12 @@ test_the_two_core_frame_matches_one_full_draw(void) {
 
     static const float eye_heights[] = {-100.0f, 0.0f, 150.0f, 230.0f, 300.0f};
     for (int e = 0; e < (int)(sizeof eye_heights / sizeof eye_heights[0]); e++) {
-        const fixture_camera_t camera = camera_down_plus_z(eye_heights[e], -400, 1.0f);
-        const r3d_lens_t lens = look_down_plus_z(eye_heights[e], -400, 1.0f);
-        for (int i = 0; i < W * H; i++) {
-            raster_color(&raster)[i] = 0xBEEF;
-        }
-        const render_view_t frame_view = render_view_fixture(&camera, &raster, 0);
-        raster_draw(&raster, &frame_view);
-        raster_upscale(&raster, upscaled, raster.destination_width, raster.destination_height);
-        reference_frame(p, &lens, want);
-        TEST_ASSERT_EQUAL_HEX16_ARRAY_MESSAGE(want, upscaled, 4 * W * H,
-                                              "the upscaled frame differs from one full draw");
+        check_two_core_frame_at(p, &raster, eye_heights[e], upscaled, want);
     }
 
     /* With nothing to upscale into, the raster clears its own colour target. */
     raster.upscaled = false;
-    const fixture_camera_t camera = camera_down_plus_z(150.0f, -400, 1.0f);
-    const r3d_lens_t lens = look_down_plus_z(150.0f, -400, 1.0f);
-    const render_view_t frame_view = render_view_fixture(&camera, &raster, 0);
-    raster_draw(&raster, &frame_view);
-    reference_frame(p, &lens, want);
-    for (int y = 0; y < H; y++) {
-        for (int x = 0; x < W; x++) {
-            TEST_ASSERT_EQUAL_HEX16(want[2 * y * 2 * W + 2 * x], raster_color(&raster)[y * W + x]);
-        }
-    }
+    check_unscaled_frame(p, &raster, want);
     free(scratch);
     free(want);
     free(upscaled);

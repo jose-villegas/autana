@@ -128,10 +128,13 @@ overlay_any_on(void) {
 void mark_rect_border(gfx_color_t* buf, int stride, int w, int h, gfx_color_t colour);
 void mark_band_overlay(gfx_color_t* buf, int row0, int height);
 #ifdef ESP_PLATFORM
-extern uint32_t overlay_bordered_rows;
+extern recti_t overlay_bordered[STRIP_COUNT];
+void overlay_note_bordered(recti_t box);
+void overlay_border_gathered(gfx_color_t* slot, recti_t box, int run_start, int run_end, bool refined,
+                             gfx_color_t border);
 void mark_strip_overlay(gfx_color_t* slot, int row);
 bool send_row_with_overlays(int row, int y);
-void send_overlay_bordered_rows_clean(bool (*send_rows)(int y0, int y1), int* queued);
+void overlay_take_off_last_borders(bool (*send_rows)(int y0, int y1), int* queued);
 void send_audit_capture(int x0, int y0, int w, int h, const gfx_color_t* buf);
 void send_audit_check(void);
 #endif

@@ -28,6 +28,14 @@ bits8_set(uint8_t* bits, size_t index) {
 #define BITS32_SET(words, index)                                                                                       \
     ((words)[(size_t)(index) / BITS32_WORD_BITS] |= UINT32_C(1) << ((size_t)(index) % BITS32_WORD_BITS))
 
+/* `count` set bits from bit `first` up, in one word; count may be the whole
+ * word. */
+static inline uint32_t
+bits32_run(unsigned first, unsigned count) {
+    const uint32_t ones = count >= BITS32_WORD_BITS ? UINT32_MAX : (UINT32_C(1) << count) - 1U;
+    return ones << first;
+}
+
 static inline bool
 bits32_get(const uint32_t* bits, size_t index) {
     return BITS32_GET(bits, index);

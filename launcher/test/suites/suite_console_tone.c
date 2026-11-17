@@ -7,6 +7,7 @@
 #include "input/motion/imu_vibration.h"
 #include "input_fake.h"
 #include "math/scalar/math_db.h"
+#include "math/scalar/units.h"
 #include "sound/console/console_melody.h"
 #include "sound/console/console_tone_parse.h"
 #include "sound/console/console_tone_reply.h"
@@ -143,7 +144,6 @@ test_tone_parse_invalid(void) {
 
 #define TEST_TONE_REGISTER_OLD        0x58u
 #define TEST_TONE_IO_ERROR            (-1)
-#define TEST_NS_PER_US                1000u
 #define TEST_MELODY_FAIL_NOTE         2u
 #define TEST_MELODY_MEASURES_PER_NOTE 2u
 #define TEST_MELODY_START_MS          3u
@@ -235,7 +235,7 @@ TEST_CLOCK_WRAP(struct timespec* ts, int base) {
         return TEST_CLOCK_REAL(ts, base);
     }
     ts->tv_sec = device.melody.clock_us / MATH_US_PER_S;
-    ts->tv_nsec = (device.melody.clock_us % MATH_US_PER_S) * TEST_NS_PER_US;
+    ts->tv_nsec = (device.melody.clock_us % MATH_US_PER_S) * MATH_NS_PER_US;
     return base;
 }
 

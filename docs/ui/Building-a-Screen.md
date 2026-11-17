@@ -75,7 +75,7 @@ must hold:
 | controls | [`ui_button`](button.md), [`ui_button_icon`](button_icon.md), [`ui_tile`](tile.md), [`ui_tile_icon`](tile_icon.md), [`ui_toggle`](toggle.md), [`ui_slider`](slider.md), [`ui_dropdown`](dropdown.md), [`ui_dropdown_icons`](dropdown_icons.md) |
 | text | [`ui_text`, `ui_text_right`, `ui_text_centre`, `ui_caption`, `ui_caption_centre`](text.md), [`ui_header`](header.md) |
 | marks | [`ui_panel`](panel.md), `ui_fill`, `ui_outline`, `ui_bevel`, [`ui_icon`, `ui_check`](icon.md), [`ui_swatches`](swatches.md) |
-| a look for the screen | `ui_theme(&theme)` once per screen; `NULL` restores the shell look; `ui_corner_radius(r)` for flat, rounded buttons |
+| a look for the screen | `ui_theme(&theme)` once per screen for the ink; `ui_skin(&skin)` for button and tile faces drawn from [sprites](../assets/Image-Entries.md#sprites); `NULL` restores either |
 | a look for a few widgets | [scopes](scopes.md): `ui_color_begin/end`, `ui_scale_begin/end`, `ui_alpha_begin/end`, `ui_disabled_begin/end` |
 
 Four rules hold for every verb:
@@ -286,14 +286,15 @@ accumulators the pause built up.
 
 ### A screen over a backdrop that is drawn
 
-`ui_end_over(paint_backdrop)` is `ui_end()` for a backdrop that is a picture,
-not a colour. The launcher's ridge (`shell/ui/ui_ridge.c`) is the model. It
-needs a framebuffer, so it does not run in band mode.
+`ui_end_over(paint_backdrop, fresh)` is `ui_end()` for a backdrop that is a
+picture, not a colour. The launcher's ridge (`shell/ui/ui_ridge.c`) is the
+model. It needs a framebuffer, so it does not run in band mode.
 
 | Situation | What happens |
 |---|---|
 | the UI changed | `paint_backdrop` paints the whole screen, then every window is painted over it |
-| the UI is unchanged and the backdrop animates | the backdrop draws its own changed part **before** `ui_end_over()`; the unchanged UI is put back on top with no backdrop call |
+| the UI is unchanged and the backdrop animates | the backdrop draws its own changed part **before** `ui_end_over()`; the unchanged UI is replayed over just those places, the backdrop first put back there under every command but an opaque rect, so nothing translucent blends over its own last paint |
+| the backdrop also says where it painted | it passes up to `UI_FRESH_MAX` disjoint rects as `fresh` (`ui_fresh_add()`), each painted whole and together holding every changed pixel; the UI is replayed over just those and nothing is put back. `NULL`, or a list that overflowed, falls back to the row above |
 | nothing changed | the backdrop must draw nothing: an identical redraw dirties the screen and the launcher stops being free while idle |
 
 Feedback on a press should react to the raw `input_t`, not to the controls: a
