@@ -757,6 +757,13 @@ butterfly_fixture(void) {
     return root;
 }
 
+static entity_t
+butterfly_body(entity_t root, int index) {
+    char name[ASSET_NAME_MAX];
+    TEST_ASSERT_TRUE(snprintf(name, sizeof name, STRESS_BUTTERFLY_FORMAT, index) >= 0);
+    return entity_find(root, name_hash(name));
+}
+
 static void
 test_butterfly_pool_has_parented_wings_and_24_triangles(void) {
     const entity_t root = butterfly_fixture();
@@ -766,9 +773,7 @@ test_butterfly_pool_has_parented_wings_and_24_triangles(void) {
     }
     TEST_ASSERT_EQUAL_INT(STRESS_BUTTERFLY_COPIES * STRESS_BUTTERFLY_PARTS, parts);
     for (int i = 0; i < STRESS_BUTTERFLY_COPIES; i++) {
-        char name[ASSET_NAME_MAX];
-        snprintf(name, sizeof name, STRESS_BUTTERFLY_FORMAT, i);
-        const entity_t body = entity_find(root, name_hash(name));
+        const entity_t body = butterfly_body(root, i);
         TEST_ASSERT_FALSE(handle_is_none(body));
         int children = 0;
         TEST_ASSERT_NOT_NULL(renderer_mesh(body));
@@ -868,7 +873,7 @@ check_butterfly_hinge_angle(entity_t body, entity_t left, entity_t right, const 
 static void
 test_hinge_angles_preserve_body_and_raise_mirrored_tips(void) {
     const entity_t root = butterfly_fixture();
-    const entity_t body = entity_find(root, name_hash("butterfly_00"));
+    const entity_t body = butterfly_body(root, 0);
     const entity_t left = entity_find(root, name_hash("butterfly_00_wing_l"));
     const entity_t right = entity_find(root, name_hash("butterfly_00_wing_r"));
     const transformf_t body_before = transform_world(body);
@@ -884,9 +889,7 @@ static void
 test_two_seeks_and_flap_renders_at_same_time_match_bytes(void) {
     const entity_t root = butterfly_fixture();
     for (int i = 1; i < STRESS_BUTTERFLY_COPIES; i++) {
-        char name[ASSET_NAME_MAX];
-        snprintf(name, sizeof name, STRESS_BUTTERFLY_FORMAT, i);
-        entity_set_enabled(entity_find(root, name_hash(name)), false);
+        entity_set_enabled(butterfly_body(root, i), false);
     }
     const entity_t camera = entity_find(root, name_hash("camera"));
     TEST_ASSERT_TRUE(camera_activate(camera));
@@ -896,7 +899,7 @@ test_two_seeks_and_flap_renders_at_same_time_match_bytes(void) {
     transformf_t body = transformf_identity();
     transformf_set_scale(&body, (vec3f_t){TEST_BODY_SCALE, TEST_BODY_SCALE, TEST_BODY_SCALE});
     transformf_set_rotation(&body, quatf_from_axis_angle(vec3f_unit_x(), -MATH_PI * 0.5F));
-    transform_set_local(entity_find(root, name_hash("butterfly_00")), body);
+    transform_set_local(butterfly_body(root, 0), body);
     const size_t bytes = sizeof *pixels * TEST_WIDTH * TEST_HEIGHT;
     pixels = malloc(bytes);
     held = malloc(bytes);

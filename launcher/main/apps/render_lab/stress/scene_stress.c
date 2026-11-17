@@ -80,7 +80,9 @@ find_pool(void) {
     for (int i = 0; i < pool; i++) {
         for (int side = 0; side < STRESS_WING_SIDES; side++) {
             char name[ASSET_NAME_MAX];
-            snprintf(name, sizeof name, STRESS_BUTTERFLY_WING_FORMAT, i, wing_suffix[side]);
+            if (snprintf(name, sizeof name, STRESS_BUTTERFLY_WING_FORMAT, i, wing_suffix[side]) < 0) {
+                return false;
+            }
             const int at = (i * STRESS_WING_SIDES) + side;
             wings[at] = entity_find(loaded, name_hash(name));
             if (handle_is_none(wings[at]) || !handle_equal(entity_parent(wings[at]), slots[i])) {
