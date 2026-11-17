@@ -17,7 +17,7 @@ if (ui_button(ui, "Start")) {
 | Rule | Behavior |
 |---|---|
 | Strength | `HAPTIC_LIGHT` uses `HAPTIC_LIGHT_GAIN_PCT` (30%); `HAPTIC_FIRM` uses `HAPTIC_FIRM_GAIN_PCT` (60%) |
-| Length | `HAPTIC_LIGHT_MS` (60 ms) and `HAPTIC_FIRM_MS` (100 ms) are provisional placeholders until the short-pulse shake measurement sets them |
+| Length | `HAPTIC_FIRM_MS` (100 ms) is the shortest 202 Hz pulse whose shake at firm gain reaches a 400 ms tone's; `HAPTIC_LIGHT_MS` uses the same 100 ms, so the strengths differ by gain only |
 | Frequency | `HAPTIC_HZ` (202 Hz), the measured case resonance |
 | Overlap | a new pulse stops the previous pulse and restarts its duration |
 | Bus | `SOUND_BUS_HAPTIC`, independent of the SYSTEM UI volume; its gain resets on app exit |
