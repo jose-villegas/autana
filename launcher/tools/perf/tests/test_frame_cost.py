@@ -37,6 +37,11 @@ class FrameCostTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "dropped 3 laps"):
                 frame_cost.frame_laps_means(capture)
 
+    def test_a_profile_takes_lap_line_reads_as_the_shells_does(self):
+        shell = "ms/frame laps: lap 179 ns | cpu0 r3d.cull 1.250/3 r3d.fill 9.000/40 | cpu1 r3d.fill 8.500/38"
+        take = f"I (7719) render_lab_profile: frame_laps: capybara-close {shell} quarter=landscape"
+        self.assertEqual(frame_cost.frame_laps_window(take), frame_cost.frame_laps_window(shell))
+
     def test_order_new_bracket_and_missing_captures(self):
         with tempfile.TemporaryDirectory() as directory:
             capture = pathlib.Path(directory) / "frame.log"

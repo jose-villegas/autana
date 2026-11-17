@@ -30,6 +30,9 @@
 #include "build/build_variant.h"
 #include "collections/strbuf.h"
 
+/* What a lap report line starts with on the console, for its readers (launcher/tools/perf/frame_cost.py). */
+#define FRAME_LAPS_PREFIX     "ms/frame laps:"
+
 /* Distinct lap names, across every core. */
 #define FRAME_LAPS_NAMES      24
 #define FRAME_LAPS_CORES      2
@@ -77,6 +80,21 @@ frame_laps_charge_since(frame_laps_core_t* core, uint32_t now, frame_laps_slot_t
     frame_laps_switch(core, now, 0);
 }
 
+/* Forgets every core's window, so the next report covers only what runs from here: each lap that ran, its
+ * cycles and starts. A lap still running keeps running, and one started but not yet charged keeps its start
+ * for the window it will be charged in. */
+static inline void
+frame_laps_forget(frame_laps_core_t cores[], int core_count) {
+    for (int c = 0; c < core_count; c++) {
+        for (int i = 0; i < FRAME_LAPS_NAMES; i++) {
+            if (cores[c].cycles[i] != 0) {
+                cores[c].cycles[i] = 0;
+                cores[c].starts[i] = 0;
+            }
+        }
+    }
+}
+
 /* "lap N ns", one lap's own cost, then "cpuN name ms/starts ..." for each
  * core: its laps that ran, in ms per frame to the microsecond and starts per
  * frame, cores apart by " | ", and " +N dropped" for `dropped` lap call
@@ -105,10 +123,9 @@ frame_laps_report(frame_laps_core_t cores[], int core_count, const char* const n
             const uint32_t starts = frames == 0 ? 0 : cores[c].starts[i] / frames;
             strbuf_appendf(&line, " %s %u.%03u/%u", names[i], (unsigned)(us / 1000), (unsigned)(us % 1000),
                            (unsigned)starts);
-            cores[c].cycles[i] = 0;
-            cores[c].starts[i] = 0;
         }
     }
+    frame_laps_forget(cores, core_count);
     if (any && dropped > 0) {
         strbuf_appendf(&line, " +%d dropped", dropped);
     }
@@ -133,6 +150,9 @@ frame_laps_slot_t frame_laps_slot(const char* name);
 /* The window's laps as ms per frame, from the frame task between frames,
  * while no other core runs a lap. Returns the line's length. */
 int frame_laps_take_report(uint32_t frames, char* out, size_t out_size);
+
+/* Forgets the window, from the frame task between frames, while no other core runs a lap. */
+void frame_laps_take_forget(void);
 
 static inline __attribute__((always_inline)) void
 frame_laps_to(frame_laps_slot_t next) {

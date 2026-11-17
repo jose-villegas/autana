@@ -33,6 +33,8 @@
 #define FRAME_PROFILE_TRACE_FRAME  " %d:%d" /* path ms, frame us */
 #define FRAME_PROFILE_PEAK         "frame_peak: %s rank=%d t=%dms frame=%dus prominence=%dus"
 #define FRAME_PROFILE_REPLAY       "frame_replay: %s t=%dms %s | %s"
+/* A lapped build's take: its row, then its laps as the shell's lap line reads (frame_laps.h). */
+#define FRAME_PROFILE_LAPS         "frame_laps: %s "
 
 /* A bump is a frame peak when its prominence is at least this share of its own height:
  * relative, so it reads alike on a 20 ms scene and a 60 ms one. */

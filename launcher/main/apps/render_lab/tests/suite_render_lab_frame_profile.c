@@ -28,6 +28,7 @@
 #include "lab/test/lab_test.h"
 #include "perf_budget.h"
 #include "profile/frame_cost.h"
+#include "profile/frame_laps.h"
 #include "render/context/render_context.h"
 #include "render/view/raster_cull_view.h"
 #include "scene/animator/animator.h"
@@ -192,6 +193,21 @@ enter_scenario(void) {
     return (scenario_path_t){scene, entity, duration_ms};
 }
 
+#if FRAME_LAPS_ENABLED
+/* The take's laps, one line on a lapped build, before the replays add theirs: a frame of its own, the line on
+ * the heap, as it is too big for the frame task's stack. */
+static __attribute__((noinline)) void
+report_laps(const frame_profile_t* p) {
+    char* const line = memory_alloc(FRAME_LAPS_REPORT_MAX, MEMORY_INTERNAL);
+    TEST_ASSERT_NOT_NULL(line);
+    if (frame_laps_take_report((uint32_t)p->frames, line, FRAME_LAPS_REPORT_MAX) > 0) {
+        ESP_LOGI(TAG, FRAME_PROFILE_LAPS FRAME_LAPS_PREFIX " %s" LAB_PERF_QUARTER_FORMAT, scenario_row(), line,
+                 lab_perf_quarters[quarter_index].name);
+    }
+    memory_free(line);
+}
+#endif
+
 /* The played profile against its budget, in a frame of its own for the same reason. */
 static __attribute__((noinline)) void
 judge_profile(const frame_profile_t* p) {
@@ -226,7 +242,13 @@ test_real_time_frame_profile(void) {
         TEST_ASSERT_NOT_NULL(run);
         *run = (profile_run_t){path, {scenario_row(), (int64_t)path.duration_ms * MATH_US_PER_MS}, 0};
     }
+#if FRAME_LAPS_ENABLED
+    frame_laps_take_forget(); /* the take's laps only, not the scene's load */
+#endif
     const frame_profile_t p = frame_profile_play(&run->playback, lab_test_profile_frame, &run->remainder_us, &played);
+#if FRAME_LAPS_ENABLED
+    report_laps(&p);
+#endif
     /* The peaks first: a row over its budget is the one they explain. */
     report_path(&run->path, &p);
     judge_profile(&p);
