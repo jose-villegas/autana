@@ -85,8 +85,9 @@ typedef struct {
     uint8_t* lod_state;
     size_t lod_size, lod_capacity;
     recorded_slot_t* slots;
-    uint32_t packs_named; /* bit per asset_store slot, since the last keyframe */
-    int32_t* tuned;       /* each tunable's value as last recorded, in registry order */
+    uint32_t packs_named;                       /* bit per asset_store slot, since the last keyframe */
+    uint32_t named_crc[ASSET_STORE_MOUNTS_MAX]; /* the pack each named slot held when named */
+    int32_t* tuned;                             /* each tunable's value as last recorded, in registry order */
     int tunables;
     bool check_due; /* the last frame was a keyframe the sink took: hash what composes from it */
     bool checked;   /* `check` holds a hash for the next frame's records */
@@ -250,18 +251,20 @@ record(frame_record_type_t type, const void* body, size_t length) {
 _Static_assert(ASSET_STORE_MOUNTS_MAX <= 32, "packs_named holds a bit per asset_store slot");
 
 /* Where `address` sits in a pack, naming the pack first if this keyframe
- * interval has not. */
+ * interval has not, or if another pack has taken its slot since (a scene
+ * switch unmounts one pack and mounts the next in the slot it freed). */
 static frame_record_where_t
 where(const void* address) {
     asset_location_t at;
     if (address == NULL || !asset_store_locate(address, &at)) {
         return (frame_record_where_t){FRAME_RECORD_NO_PACK, FRAME_RECORD_NO_ENTRY, 0};
     }
-    if ((rec->packs_named & (1U << at.slot)) == 0) {
+    if ((rec->packs_named & (1U << at.slot)) == 0 || rec->named_crc[at.slot] != at.pack_crc) {
         frame_record_pack_t pack = {.slot = (uint8_t)at.slot, .crc32 = at.pack_crc};
         (void)strncpy(pack.name, at.pack_name, sizeof pack.name - 1);
         record(FRAME_RECORD_PACK, &pack, sizeof pack);
         rec->packs_named |= 1U << at.slot;
+        rec->named_crc[at.slot] = at.pack_crc;
     }
     return (frame_record_where_t){(uint8_t)at.slot, at.entry, at.offset};
 }

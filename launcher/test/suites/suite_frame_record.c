@@ -25,6 +25,14 @@
 #include "render/record/frame_record.h"
 #include "render/record/frame_record_format.h"
 
+#ifndef DEVICE_BUILD
+#include <stdio.h>
+
+#include "asset/asset_store.h"
+#include "test_asset_dir.h"
+#include "test_pack.h"
+#endif
+
 #define W              64
 #define H              48
 /* Short, so a few frames hold two keyframe intervals. */
@@ -621,6 +629,65 @@ test_a_second_start_is_refused_while_recording(void) {
     TEST_ASSERT_FALSE(frame_record_active());
 }
 
+#ifndef DEVICE_BUILD
+/* A pack named `name` whose one entry holds the rig's first quad's
+ * positions, after `pad` bytes of another entry so two such packs place
+ * them at different offsets. */
+static void
+write_positions_pack(const char* name, uint32_t pad) {
+    const r3d_lit_mesh_t* quad = &rig->quad[0].mesh;
+    const uint32_t bytes = (uint32_t)(sizeof(*quad->positions) * (size_t)quad->vertex_count);
+    const uint32_t capacity = ASSET_PACK_HEADER_SIZE + (2U * ASSET_PACK_ENTRY_SIZE) + (uint32_t)test_pack_aligned(pad)
+                              + (uint32_t)test_pack_aligned(bytes);
+    uint8_t* pack_bytes = malloc(capacity);
+    TEST_ASSERT_NOT_NULL(pack_bytes);
+    test_pack_t pack = test_pack_begin(pack_bytes, capacity, 2);
+    (void)test_pack_add(&pack, "pad", ASSET_TYPE('P', 'A', 'D', ' '), pad);
+    memcpy(test_pack_add(&pack, "pos", ASSET_TYPE('P', 'O', 'S', ' '), bytes), quad->positions, bytes);
+    const uint32_t size = test_pack_finish(&pack);
+    char path[64];
+    (void)snprintf(path, sizeof path, "./%s.apak", name);
+    test_write_file(path, pack_bytes, size);
+    free(pack_bytes);
+}
+
+/* The rig's first quad drawn from pack `name`'s positions; the load to release. */
+static handle_t
+draw_from_pack(const char* name) {
+    const handle_t load = asset_store_load(name);
+    const asset_pack_t* pack = asset_store_loaded(load);
+    TEST_ASSERT_NOT_NULL(pack);
+    asset_view_t view;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_find(pack, "pos", ASSET_TYPE('P', 'O', 'S', ' '), &view));
+    rig->quad[0].mesh.positions = (const int16_t (*)[3])view.data;
+    draw_frame();
+    return load;
+}
+
+static void
+test_a_pack_mounted_in_a_freed_slot_between_keyframes_is_named_again(void) {
+    open_recording(-1);
+    const int16_t (*own)[3] = rig->quad[0].mesh.positions;
+    test_asset_dir_use(".");
+    write_positions_pack("suite_record_first", 4);
+    write_positions_pack("suite_record_second", 64);
+    asset_store_release(draw_from_pack("suite_record_first"));
+    const handle_t second = draw_from_pack("suite_record_second");
+    rig->quad[0].mesh.positions = own;
+    asset_store_release(second);
+    (void)remove("./suite_record_first.apak");
+    (void)remove("./suite_record_second.apak");
+    find_records();
+    frame_record_pack_t first_pack, second_pack;
+    memcpy(&first_pack, first_in_frame(0, FRAME_RECORD_PACK)->body, sizeof first_pack);
+    memcpy(&second_pack, first_in_frame(1, FRAME_RECORD_PACK)->body, sizeof second_pack);
+    TEST_ASSERT_EQUAL_UINT8(first_pack.slot, second_pack.slot);
+    TEST_ASSERT_EQUAL_STRING("suite_record_first", first_pack.name);
+    TEST_ASSERT_EQUAL_STRING("suite_record_second", second_pack.name);
+    TEST_ASSERT_NOT_EQUAL(first_pack.crc32, second_pack.crc32);
+}
+#endif
+
 void
 run_frame_record_suite(void) {
     RUN_TEST(test_a_stream_opens_with_its_header_then_each_frame_with_frame_view_and_choice);
@@ -631,6 +698,9 @@ run_frame_record_suite(void) {
     RUN_TEST(test_a_keyframe_without_a_snapshot_drops_instead_of_reusing_lod_state);
     RUN_TEST(test_a_second_start_is_refused_while_recording);
     RUN_TEST(test_a_mesh_in_no_pack_is_named_by_no_pack_and_no_pack_is_named);
+#ifndef DEVICE_BUILD
+    RUN_TEST(test_a_pack_mounted_in_a_freed_slot_between_keyframes_is_named_again);
+#endif
     RUN_TEST(test_a_posed_mesh_names_its_bind_and_its_palette_rides_each_keyframe_and_each_new_pose);
     RUN_TEST(test_a_built_mesh_carries_its_source_whole_each_keyframe_and_each_build);
     RUN_TEST(test_a_textured_built_mesh_carries_its_uvs_after_its_triangles);
