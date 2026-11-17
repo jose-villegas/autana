@@ -221,3 +221,25 @@ skin_set_light_mode(entity_t entity, skin_light_mode_t mode) {
     }
     return scene_skin_light_apply_mode(scene, row, &scene->skinned_renderers[row], mode);
 }
+
+void
+scene_skin_contact_refresh(scene_t* scene, scene_row_t entity) {
+    scene_skinned_renderer_t* skin = &scene->skinned_renderers[entity];
+    const scene_renderer_t* r = &scene->renderers[scene_renderer_index(scene, entity)];
+    if (r->contact_blob_shape != SCENE_CONTACT_SHAPE || skin->storage == NULL
+        || !(scene->flags[entity] & SCENE_FLAG_ACTIVE) || skin->contact_mask_failed) {
+        return;
+    }
+    if (skin->contact_mask.coverage == NULL) {
+        skin->contact_mask.coverage = scene_allocate(CONTACT_MASK_BYTES, MEMORY_FAST);
+        if (skin->contact_mask.coverage == NULL) {
+            skin->contact_mask_failed = true;
+            (void)fprintf(stderr, "scene: no memory for contact mask; using body\n");
+            return;
+        }
+    }
+    static mat4f_t world;
+    world = scene_row_world_matrix(scene->root, entity);
+    const box3f_t bounds = r3d_lit_mesh_world_bounds(&skin->output.mesh, &world);
+    contact_mask_build(&skin->contact_mask, &skin->output.mesh, &world, bounds, r->contact_blob_ground_y);
+}

@@ -199,38 +199,36 @@ job's stack; scenes keep no per-entity SH cache.
 contact shadows after geometry, before composition. Zero strength disables
 them. The light-directed projection follows Blinn's planar-shadow idea.<sup>[[130]](../../Citations.md#blinn-1988)</sup>
 
-![Feet and silhouette contact coverage](../../images/render/contact-shape.png)
+![BODY and SHAPE under the same low contact light](../../images/render/contact-shape.png)
 
-[Enlarged contact crops](../../images/render/contact-shape.crops.png) show
-the added silhouette coverage beside the feet discs.
+![Enlarged BODY and SHAPE contact coverage](../../images/render/contact-shape.crops.png)
 
-| Part | Rule |
+| Shape | Coverage |
 |---|---|
-| `SCENE_CONTACT_BODY` | One disc under the world box, radius the smaller horizontal half extent. |
-| `SCENE_CONTACT_FEET` | Lowest bind-space leaves within `CONTACT_JOINT_BAND` times rig height; at most `SKIN_CONTACTS_MAX`, lowest first. No contacts or skin falls back to BODY. |
-| `SCENE_CONTACT_SHAPE` | Top-down posed silhouette plus FEET discs. A renderer without a skin uses BODY; mask allocation failure keeps FEET. |
-| Bind dimensions | Radius is half the nearest contact spacing in xz, or half rig height for one contact. Lift is a quarter rig height. Renderer world scale applies to all lengths. |
-| Light | Brightest directional light by luminance in the active camera’s scene, else the first other drawn scene with one, else the mover’s sampled SH L1 dominant direction, else overhead. |
-| Warp | A sphere of radius r with centre h + r above ground projects away from the light: offset (h + r) tan, long radius r/e, short radius r. Elevation cosine e is clamped to `CONTACT_LIGHT_ELEVATION_MIN`. |
-| Lift | Height above the scaled bind height gives t = min(h/lift, 1). Radius grows by 1 + t; strength falls by (1 - t)². At t = 1 the contact disappears. |
-| Coverage | Maximum coverage across the mask and squared radial falloff across discs, one Bayer test and at most one RGB565 halve per pixel. Overlap adds no darkness. |
-| Redraw bounds | The world box grows by the maximum radius, plus (lift + radius) tan + radius/e along the axis away from light; vertical reach is ground ± radius. Both partial redraw and the post pass use this rule. |
+| `SCENE_CONTACT_BODY` | Squared disc falloff `(1 − d²)²`, with radius the smaller horizontal half extent of the world box. |
+| `SCENE_CONTACT_SHAPE` | Top-down posed silhouette over the world box’s xz footprint. Missing skin or mask allocation failure uses BODY. |
 
-Partial redraw keeps both previous and current shadow bounds. A change in
-the selected light direction forgets the retained picture while shadows
-are enabled. Each target row visits only the union of its contact spans.
+Both use one ground rectangle, shifted away from the light by `r tan(θ)`
+and stretched along it by `1/e`: `r` is the smaller horizontal half extent,
+with elevation cosine `e` clamped to `CONTACT_LIGHT_ELEVATION_MIN`.
 
-SHAPE projects posed triangles orthographically onto the world box’s xz
-footprint at ground height. Each cell keeps the lowest world height h:
-coverage is strength × (1 − clamp(h/lift, 0, 1))², then one 3×3 box blur.
+The receiver scene’s brightest directional light wins, then another drawn
+scene’s light, the mover’s sampled SH L1 dominant direction, or overhead.
 
-The mask has no light warp and uses nearest-cell sampling. Its cells
-refresh with the pose tier and follow the current world footprint between
-reposes; orientation can lag one pose interval.
+Each pixel intersects the ground plane and maps through two rectangle
+dots to a mask byte or disc falloff. One Bayer test chooses a RGB565 halve.
+SHAPE uses integer byte thresholds and has no height fade.
 
-The rectangle and FEET reach share the redraw bounds rule. Each active
-shaped renderer holds `CONTACT_MASK_SIDE`² bytes through `MEMORY_FAST`,
-released with its skin buffers.
+Draw and partial redraw use the same warped rectangle. Its projected
+corners bound the visited screen rows. Partial redraw retains previous and
+current bounds; a selected-light direction change forgets the picture.
+
+SHAPE fills a cell with full coverage when any posed triangle covers it,
+then applies a 3×3 box blur. Nearest-cell sampling follows the current
+world footprint between reposes. The mask rebuilds only with the pose.
+
+Each active SHAPE renderer allocates `CONTACT_MASK_SIDE`² bytes through
+`MEMORY_FAST`, released with its skin buffers.
 
 ## 6. Current limits
 

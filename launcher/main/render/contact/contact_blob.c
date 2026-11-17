@@ -1,4 +1,4 @@
-/* contact_blob: coplanar discs darken covered RGB565 pixels once by one half. */
+/* contact_blob: one warped ground rectangle darkens covered RGB565 pixels once. */
 #include "render/contact/contact_blob.h"
 
 #include <math.h>
@@ -11,60 +11,30 @@ lens_axis(const r3d_lens_t* lens, int row) {
 }
 
 typedef struct {
-    vec3f_t normal;
-    float distance, inverse_fx, inverse_fy;
+    vec3f_t normal, centre, u, v;
+    float distance, strength;
+    const contact_mask_t* mask;
+    unsigned thresholds[BAYER4_LEVELS];
 } blob_plane_t;
 
-/* Projected vertex snapping shifts coplanar depth by up to one pixel; stored depth has whole units. */
+/* Vertex snapping shifts coplanar depth by up to one pixel; stored depth has whole units. */
 #define CONTACT_BLOB_DEPTH_BIAS_PIXELS 1.0F
 #define CONTACT_BLOB_DEPTH_BIAS_UNITS  1.0F
 
-typedef struct {
-    vec3f_t centre, axis, short_axis;
-    float inverse_long2, inverse_short2, strength;
-    int x0, x1, y0, y1;
-} lens_disc_t;
-
-typedef struct {
-    const contact_mask_t* mask;
-    vec3f_t origin, u, v;
-} lens_mask_t;
-
-static float
-mask_sample(const lens_mask_t* projected, vec3f_t point) {
-    const contact_mask_t* mask = projected->mask;
-    if (mask == NULL) {
-        return 0;
+static unsigned
+sample_coverage(const blob_plane_t* blob, float s, float t) {
+    if (blob->mask != NULL) {
+        const contact_mask_t* mask = blob->mask;
+        const int col = (int)((s + 1) * 0.5F * mask->side);
+        const int row = (int)((t + 1) * 0.5F * mask->side);
+        return mask->coverage[row * mask->side + col] * BAYER4_LEVELS;
     }
-    const vec3f_t delta = vec3f_sub(point, projected->origin);
-    const float s = vec3f_dot(delta, projected->u), t = vec3f_dot(delta, projected->v);
-    if (!(s >= 0 && s < 1 && t >= 0 && t < 1)) {
-        return 0;
-    }
-    return (float)mask->coverage[(int)(t * mask->side) * mask->side + (int)(s * mask->side)] / UINT8_MAX;
-}
-
-static lens_mask_t
-project_mask(const r3d_lens_t* lens, const contact_mask_t* mask) {
-    lens_mask_t out = {.mask = mask};
-    if (mask == NULL) {
-        return out;
-    }
-    out.origin = mat4f_apply(&lens->m, mask->origin);
-    const float u2 = vec3f_dot(mask->u, mask->u), v2 = vec3f_dot(mask->v, mask->v);
-    float* u[] = {&out.u.x, &out.u.y, &out.u.z};
-    float* v[] = {&out.v.x, &out.v.y, &out.v.z};
-    for (int r = 0; r < 3; r++) {
-        const float focal = r == 0 ? lens->focal_x : r == 1 ? lens->focal_y : 1;
-        *u[r] = vec3f_dot(lens_axis(lens, r), mask->u) / (u2 * focal * focal);
-        *v[r] = vec3f_dot(lens_axis(lens, r), mask->v) / (v2 * focal * focal);
-    }
-    return out;
+    const float falloff = fmaxf(0, 1 - s * s - t * t);
+    return (unsigned)ceilf(BAYER4_LEVELS * blob->strength * falloff * falloff) * UINT8_MAX;
 }
 
 static void
-draw_row(const r3d_span_target_t* target, const r3d_lens_t* lens, const blob_plane_t* blob, const lens_disc_t* discs,
-         int count, const lens_mask_t* mask, int y, int x0, int x1) {
+draw_row(const r3d_span_target_t* target, const r3d_lens_t* lens, const blob_plane_t* blob, int y, int x0, int x1) {
     gfx_color_t* color = gfx_target_color(&target->rows, y);
     const uint16_t* depth = gfx_target_depth(&target->rows, y);
     const float row_y = (float)y + 0.5F - lens->project.cy;
@@ -83,135 +53,102 @@ draw_row(const r3d_span_target_t* target, const r3d_lens_t* lens, const blob_pla
         const float z = lens->depth_near * R3D_DEPTH_NEAREST / encoded;
         const vec3f_t ray = {(float)x + 0.5F - lens->project.cx, row_y, 1.0F};
         const vec3f_t point = vec3f_scale(ray, z);
-        float coverage = mask_sample(mask, point);
-        for (int i = 0; i < count; i++) {
-            const lens_disc_t* d = &discs[i];
-            if (y < d->y0 || y >= d->y1 || x < d->x0 || x >= d->x1) {
-                continue;
-            }
-            const vec3f_t delta = vec3f_sub(point, d->centre);
-            const vec3f_t units = {delta.x * blob->inverse_fx, delta.y * blob->inverse_fy, delta.z};
-            const float along = vec3f_dot(units, d->axis), across = vec3f_dot(units, d->short_axis);
-            const float d2 = d->inverse_long2 == d->inverse_short2
-                                 ? vec3f_dot(units, units) * d->inverse_long2
-                                 : along * along * d->inverse_long2 + across * across * d->inverse_short2;
-            const float falloff = fmaxf(0, 1 - d2);
-            coverage = fmaxf(coverage, d->strength * falloff * falloff);
+        const vec3f_t delta = vec3f_sub(point, blob->centre);
+        const float s = vec3f_dot(delta, blob->u), t = vec3f_dot(delta, blob->v);
+        if (!(fabsf(s) < 1 && fabsf(t) < 1)) {
+            continue;
         }
-        if (coverage * BAYER4_LEVELS > (float)bayer4x4[y & (BAYER4_SIDE - 1)][x & (BAYER4_SIDE - 1)]) {
+        const unsigned threshold = bayer4x4[y & (BAYER4_SIDE - 1)][x & (BAYER4_SIDE - 1)];
+        const unsigned coverage = sample_coverage(blob, s, t);
+        if (coverage > blob->thresholds[threshold]) {
             color[x] = rgb565be_unspread(rgb565be_spread(color[x]) >> 1);
         }
     }
 }
 
-static lens_disc_t
-project_disc(const r3d_span_target_t* target, const r3d_lens_t* lens, vec3f_t up, const contact_disc_t* disc) {
-    const vec3f_t centre = mat4f_apply(&lens->m, disc->centre);
-    const vec3f_t short_axis = vec3f_cross(up, disc->axis);
-    lens_disc_t out = {.centre = centre,
-                       .inverse_long2 = disc->inverse_long2,
-                       .inverse_short2 = disc->inverse_short2,
-                       .strength = fminf(disc->strength, 1),
-                       .x1 = mathi_min(lens->width, target->rows.attachment[GFX_ATTACHMENT_COLOR].width),
-                       .y0 = target->rows.first_row,
-                       .y1 = gfx_target_end_row(&target->rows)};
-    float* axis[] = {&out.axis.x, &out.axis.y, &out.axis.z};
-    float* across[] = {&out.short_axis.x, &out.short_axis.y, &out.short_axis.z};
-    for (int r = 0; r < 3; r++) {
-        const float focal = r == 0 ? lens->focal_x : r == 1 ? lens->focal_y : 1;
-        *axis[r] = vec3f_dot(lens_axis(lens, r), disc->axis) / focal;
-        *across[r] = vec3f_dot(lens_axis(lens, r), short_axis) / focal;
-    }
-    const float radius = 1 / sqrtf(fminf(disc->inverse_long2, disc->inverse_short2));
-    if (!(disc->strength > 0) || centre.z + radius <= lens->project.near_z) {
-        out.y1 = out.y0;
-        return out;
-    }
-    if (centre.z - radius > lens->project.near_z) {
-        const float near_z = centre.z - radius, far_z = centre.z + radius;
-        const float left = centre.x - fabsf(lens->focal_x) * radius;
-        const float right = centre.x + fabsf(lens->focal_x) * radius;
-        const float top = centre.y - fabsf(lens->focal_y) * radius;
-        const float bottom = centre.y + fabsf(lens->focal_y) * radius;
-        out.x0 = (int)fmaxf((float)out.x0, floorf(lens->project.cx + fminf(left / near_z, left / far_z)));
-        out.x1 = (int)fminf((float)out.x1, ceilf(lens->project.cx + fmaxf(right / near_z, right / far_z)));
-        out.y0 = (int)fmaxf((float)out.y0, floorf(lens->project.cy + fminf(top / near_z, top / far_z)));
-        out.y1 = (int)fminf((float)out.y1, ceilf(lens->project.cy + fmaxf(bottom / near_z, bottom / far_z)));
-    }
-    return out;
-}
-
 static bool
-row_interval(const lens_disc_t* discs, int count, int y, int cursor, int width, int* left, int* right) {
-    int x0 = width, x1 = 0;
-    for (int i = 0; i < count; i++) {
-        const lens_disc_t* d = &discs[i];
-        if (y >= d->y0 && y < d->y1 && d->x1 > cursor && d->x0 < x0) {
-            x0 = mathi_max(cursor, d->x0);
-            x1 = d->x1;
-        }
-    }
-    if (x0 >= x1) {
+project_blob(const r3d_lens_t* lens, const contact_blob_t* footprint, blob_plane_t* blob) {
+    const vec3f_t up = vec3f_normalize(vec3f_cross(footprint->u, footprint->v));
+    const vec3f_t centre = mat4f_apply(&lens->m, footprint->centre);
+    const float uu = vec3f_dot(footprint->u, footprint->u), vv = vec3f_dot(footprint->v, footprint->v);
+    const float uv = vec3f_dot(footprint->u, footprint->v), determinant = uu * vv - uv * uv;
+    if (!(determinant > 0 && footprint->strength > 0)) {
         return false;
     }
-    int end;
-    do {
-        end = x1;
-        for (int i = 0; i < count; i++) {
-            const lens_disc_t* d = &discs[i];
-            if (y >= d->y0 && y < d->y1 && d->x0 <= x1) {
-                x1 = mathi_max(x1, d->x1);
-            }
-        }
-    } while (end != x1);
-    *left = x0;
-    *right = x1;
+    const vec3f_t u =
+        vec3f_scale(vec3f_sub(vec3f_scale(footprint->u, vv), vec3f_scale(footprint->v, uv)), 1 / determinant);
+    const vec3f_t v =
+        vec3f_scale(vec3f_sub(vec3f_scale(footprint->v, uu), vec3f_scale(footprint->u, uv)), 1 / determinant);
+    *blob = (blob_plane_t){.centre = centre, .strength = fminf(footprint->strength, 1), .mask = footprint->mask};
+    for (unsigned i = 0; i < BAYER4_LEVELS; i++) {
+        blob->thresholds[i] = footprint->mask != NULL
+                                  ? (unsigned)fminf(UINT8_MAX * BAYER4_LEVELS, floorf(i * UINT8_MAX / blob->strength))
+                                  : i * UINT8_MAX;
+    }
+    float* normal[] = {&blob->normal.x, &blob->normal.y, &blob->normal.z};
+    float* du[] = {&blob->u.x, &blob->u.y, &blob->u.z};
+    float* dv[] = {&blob->v.x, &blob->v.y, &blob->v.z};
+    for (int r = 0; r < 3; r++) {
+        const float focal = r == 0 ? lens->focal_x : r == 1 ? lens->focal_y : 1;
+        *normal[r] = vec3f_dot(lens_axis(lens, r), up) / (focal * focal);
+        *du[r] = vec3f_dot(lens_axis(lens, r), u) / (focal * focal);
+        *dv[r] = vec3f_dot(lens_axis(lens, r), v) / (focal * focal);
+    }
+    blob->distance = vec3f_dot(blob->normal, centre);
+    if (blob->distance == 0) {
+        return false;
+    }
     return true;
 }
 
-void
-contact_blob_draw(const r3d_span_target_t* target, const r3d_lens_t* lens, vec3f_t up, const contact_disc_t* discs,
-                  int count, const contact_mask_t* mask) {
-    if ((count <= 0 && mask == NULL) || count > CONTACT_BLOB_DISCS_MAX) {
-        return;
+static void
+include_projection(box3f_t* bounds, const r3d_lens_t* lens, vec3f_t p) {
+    const vec3f_t screen = {lens->project.cx + p.x / p.z, lens->project.cy + p.y / p.z, 0};
+    *bounds = box3f_union(*bounds, box3f_from_point(screen));
+}
+
+static recti_t
+project_bounds(const r3d_span_target_t* target, const r3d_lens_t* lens, const contact_blob_t* footprint) {
+    enum { CORNERS = 4 };
+
+    static vec3f_t corners[CORNERS];
+    for (int i = 0; i < CORNERS; i++) {
+        const int index = i ^ (i >> 1);
+        const vec3f_t corner = vec3f_add(footprint->centre, vec3f_add(vec3f_scale(footprint->u, index & 1 ? 1 : -1),
+                                                                      vec3f_scale(footprint->v, index & 2 ? 1 : -1)));
+        corners[i] = mat4f_apply(&lens->m, corner);
     }
-    const vec3f_t centre = mat4f_apply(&lens->m, count > 0 ? discs[0].centre : mask->origin);
-    const float inverse_fx = 1 / lens->focal_x, inverse_fy = 1 / lens->focal_y;
-    const vec3f_t normal = {vec3f_dot(lens_axis(lens, 0), up) * inverse_fx * inverse_fx,
-                            vec3f_dot(lens_axis(lens, 1), up) * inverse_fy * inverse_fy,
-                            vec3f_dot(lens_axis(lens, 2), up)};
-    const float plane = vec3f_dot(normal, centre);
-    if (plane == 0) {
-        return;
-    }
-    const blob_plane_t blob = {.normal = normal, .distance = plane, .inverse_fx = inverse_fx, .inverse_fy = inverse_fy};
-    /* The post pass runs after the row workers join; its scratch need not consume the task stack. */
-    static lens_mask_t projected_mask;
-    static lens_disc_t projected[CONTACT_BLOB_DISCS_MAX + 1];
-    projected_mask = project_mask(lens, mask);
-    for (int i = 0; i < count; i++) {
-        projected[i] = project_disc(target, lens, up, &discs[i]);
-    }
-    int intervals = count;
-    if (mask != NULL) {
-        const vec3f_t diagonal = vec3f_add(mask->u, mask->v);
-        const float radius2 = vec3f_dot(diagonal, diagonal) * 0.25F;
-        const contact_disc_t rectangle = {.centre = vec3f_add(mask->origin, vec3f_scale(diagonal, 0.5F)),
-                                          .axis = vec3f_unit_x(),
-                                          .inverse_long2 = 1 / radius2,
-                                          .inverse_short2 = 1 / radius2,
-                                          .strength = 1};
-        projected[intervals++] = project_disc(target, lens, up, &rectangle);
-    }
-    for (int y = target->rows.first_row; y < gfx_target_end_row(&target->rows); y++) {
-        int cursor = 0;
-        while (cursor < lens->width) {
-            int x0, x1;
-            if (!row_interval(projected, intervals, y, cursor, lens->width, &x0, &x1)) {
-                break;
-            }
-            draw_row(target, lens, &blob, projected, count, &projected_mask, y, x0, x1);
-            cursor = x1;
+    box3f_t screen = box3f_empty();
+    for (int i = 0; i < CORNERS; i++) {
+        const vec3f_t a = corners[i], b = corners[(i + 1) % CORNERS];
+        const float near = lens->project.near_z;
+        if (a.z >= near) {
+            include_projection(&screen, lens, a);
         }
+        if ((a.z < near) != (b.z < near)) {
+            include_projection(&screen, lens, vec3f_add(a, vec3f_scale(vec3f_sub(b, a), (near - a.z) / (b.z - a.z))));
+        }
+    }
+    if (box3f_is_empty(screen)) {
+        return recti_empty();
+    }
+    const int width = mathi_min(lens->width, target->rows.attachment[GFX_ATTACHMENT_COLOR].width);
+    const int x0 = (int)mathf_clamp(floorf(screen.lo.x), 0, width);
+    const int x1 = (int)mathf_clamp(ceilf(screen.hi.x), 0, width);
+    const int y0 = (int)mathf_clamp(floorf(screen.lo.y), target->rows.first_row, gfx_target_end_row(&target->rows));
+    const int y1 = (int)mathf_clamp(ceilf(screen.hi.y), target->rows.first_row, gfx_target_end_row(&target->rows));
+    return recti_from_edges(x0, y0, x1, y1);
+}
+
+void
+contact_blob_draw(const r3d_span_target_t* target, const r3d_lens_t* lens, const contact_blob_t* footprint) {
+    /* The post pass runs serially after the row workers join. */
+    static blob_plane_t blob;
+    if (!project_blob(lens, footprint, &blob)) {
+        return;
+    }
+    const recti_t box = project_bounds(target, lens, footprint);
+    for (int y = box.y; y < recti_bottom(box); y++) {
+        draw_row(target, lens, &blob, y, box.x, recti_right(box));
     }
 }

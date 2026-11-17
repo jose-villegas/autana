@@ -11,5 +11,5 @@ typedef struct {
 } contact_mask_t;
 
 /* Serial pose refit; coverage holds CONTACT_MASK_BYTES caller-owned bytes. */
-void contact_mask_build(contact_mask_t* mask, const r3d_lit_mesh_t* mesh, mat4f_t world, box3f_t mover, float ground_y,
-                        float lift, float strength);
+void contact_mask_build(contact_mask_t* mask, const r3d_lit_mesh_t* mesh, const mat4f_t* world, box3f_t mover,
+                        float ground_y);

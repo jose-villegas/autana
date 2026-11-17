@@ -1,3 +1,4 @@
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 #include "hash/crc32.h"
@@ -17,12 +18,11 @@ static void
 draw_round(const r3d_span_target_t* target, const r3d_lens_t* lens, vec3f_t centre, vec3f_t up, float radius,
            float strength) {
     const vec3f_t axis = up.y == 0 ? vec3f_unit_y() : vec3f_unit_x();
-    const contact_disc_t disc = {.centre = centre,
-                                 .axis = axis,
-                                 .inverse_long2 = 1 / (radius * radius),
-                                 .inverse_short2 = 1 / (radius * radius),
+    const contact_blob_t blob = {.centre = centre,
+                                 .u = vec3f_scale(axis, radius),
+                                 .v = vec3f_scale(vec3f_cross(up, axis), radius),
                                  .strength = strength};
-    contact_blob_draw(target, lens, up, &disc, 1, NULL);
+    contact_blob_draw(target, lens, &blob);
 }
 
 static void
@@ -174,23 +174,7 @@ test_round_disc_golden(void) {
 }
 
 static void
-test_overlapping_discs_and_elongation(void) {
-    enum { SIZE = 32, ALONG_X = 20, ACROSS_Y = 20, MIDDLE = 16 };
-
-    blob_fixture_t f = blob_fixture_make(SIZE);
-    contact_disc_t discs[2] = {
-        {.centre = {0, 0, BLOB_DEPTH}, .axis = {1, 0, 0}, .inverse_long2 = 0.25F, .inverse_short2 = 1, .strength = 1}};
-    discs[1] = discs[0];
-    contact_blob_draw(&f.target, &f.lens, vec3f_unit_z(), discs, 2, NULL);
-    TEST_ASSERT_EQUAL_HEX16(rgb565be_pack(15, 31, 15), f.color[MIDDLE * SIZE + MIDDLE]);
-    TEST_ASSERT_NOT_EQUAL(RGB565BE(0xffffff), f.color[MIDDLE * SIZE + ALONG_X]);
-    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xffffff), f.color[ACROSS_Y * SIZE + MIDDLE]);
-    free(f.depth);
-    free(f.color);
-}
-
-static void
-test_mask_disc_overlap_and_outside(void) {
+test_full_mask_rectangle(void) {
     enum { SIZE = 32, MIDDLE = 16 };
 
     blob_fixture_t f = blob_fixture_make(SIZE);
@@ -201,17 +185,17 @@ test_mask_disc_overlap_and_outside(void) {
                            .v = {0, 2, 0}};
     TEST_ASSERT_NOT_NULL(mask.coverage);
     memset(mask.coverage, UINT8_MAX, CONTACT_MASK_BYTES);
-    const contact_disc_t disc = {
-        .centre = {0, 0, BLOB_DEPTH}, .axis = {1, 0, 0}, .inverse_long2 = 1, .inverse_short2 = 1, .strength = 1};
-    contact_blob_draw(&f.target, &f.lens, vec3f_unit_z(), &disc, 1, &mask);
-    TEST_ASSERT_EQUAL_HEX16(rgb565be_pack(15, 31, 15), f.color[MIDDLE * SIZE + MIDDLE]);
-    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xffffff), f.color[0]);
-    for (int i = 0; i < SIZE * SIZE; i++) {
-        f.color[i] = RGB565BE(0xffffff);
+    const contact_blob_t blob = {
+        .centre = {0, 0, BLOB_DEPTH}, .u = {1, 0, 0}, .v = {0, 1, 0}, .strength = 1, .mask = &mask};
+    contact_blob_draw(&f.target, &f.lens, &blob);
+    for (int y = 0; y < SIZE; y++) {
+        for (int x = 0; x < SIZE; x++) {
+            const float s = (x + 0.5F - f.lens.project.cx) * BLOB_DEPTH / f.lens.focal_x;
+            const float t = (y + 0.5F - f.lens.project.cy) * BLOB_DEPTH / f.lens.focal_y;
+            const bool inside = fabsf(s) < 1 && fabsf(t) < 1;
+            TEST_ASSERT_EQUAL_HEX16(inside ? rgb565be_pack(15, 31, 15) : RGB565BE(0xffffff), f.color[y * SIZE + x]);
+        }
     }
-    contact_blob_draw(&f.target, &f.lens, vec3f_unit_z(), NULL, 0, &mask);
-    TEST_ASSERT_EQUAL_HEX16(rgb565be_pack(15, 31, 15), f.color[MIDDLE * SIZE + MIDDLE]);
-    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xffffff), f.color[0]);
     free(mask.coverage);
     free(f.depth);
     free(f.color);
@@ -219,9 +203,8 @@ test_mask_disc_overlap_and_outside(void) {
 
 void
 suite_contact_blob(void) {
-    RUN_TEST(test_mask_disc_overlap_and_outside);
+    RUN_TEST(test_full_mask_rectangle);
     RUN_TEST(test_round_disc_golden);
-    RUN_TEST(test_overlapping_discs_and_elongation);
     RUN_TEST(test_blob_depth_radius_rows_strength);
     RUN_TEST(test_blob_squared_falloff);
     RUN_TEST(test_blob_coplanar_floor_matches_unoccluded_disc);
