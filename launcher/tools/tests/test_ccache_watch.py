@@ -251,6 +251,23 @@ class LockWatchTests(unittest.TestCase):
         self.addCleanup(path.chmod, 0o666)
         self.assertTrue(ccache_watch.windows_held(path))
 
+    @unittest.skipUnless(os.name == "nt", "Windows open semantics")
+    def test_windows_lock_open_elsewhere_is_held(self):
+        # Even a handle that shares everything makes ccache's exclusive open fail.
+        import ctypes
+        from ctypes import wintypes
+        path = self.lock("lock/subdir_00.lock")
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.CreateFileW.restype = wintypes.HANDLE
+        generic_read, share_all, open_existing = 0x80000000, 0x7, 3
+        handle = kernel.CreateFileW(str(path), generic_read, share_all, None, open_existing, 0, None)
+        self.assertNotEqual(handle, wintypes.HANDLE(-1).value)
+        try:
+            self.assertTrue(ccache_watch.windows_held(path))
+        finally:
+            kernel.CloseHandle(handle)
+        self.assertFalse(ccache_watch.windows_held(path))
+
     def test_unheld_lock_is_not_stuck(self):
         self.lock("lock/subdir_00.lock")
         watch = ccache_watch.LockWatch(self.cache, STUCK_AFTER)
@@ -271,6 +288,15 @@ class LockWatchTests(unittest.TestCase):
         stale = time.time() - ccache_watch.POSIX_ALIVE_SECONDS - 1
         os.utime(alive, (stale, stale))
         self.assertFalse(ccache_watch.posix_held(path))
+
+
+class CommandTests(unittest.TestCase):
+    def test_python_script_runs_through_the_interpreter(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            script = Path(scratch) / "tool.py"
+            script.write_text("raise SystemExit(5)")
+            with mock.patch.object(ccache_watch, "run", lambda command, stuck_after: command):
+                self.assertEqual(ccache_watch.main([str(script)]), [sys.executable, str(script)])
 
 
 class UnwatchedTests(unittest.TestCase):

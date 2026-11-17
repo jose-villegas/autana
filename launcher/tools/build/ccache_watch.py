@@ -32,7 +32,7 @@ LOCK_PATTERNS = ("lock/subdir_*.lock", "*/stats.lock", "*/*/stats.lock")
 STATS_PATTERNS = ("*/stats", "*/*/stats")
 # POSIX ccache refreshes a held long-lived lock's <name>.alive and breaks a lock idle for 2 s.
 POSIX_ALIVE_SECONDS = 10
-# A held lock refuses a shared open; a read-only one refuses write access, and ccache retries both.
+# An open lock refuses an exclusive open; a read-only one refuses write access; ccache retries both.
 ERROR_ACCESS_DENIED = 5
 ERROR_SHARING_VIOLATION = 32
 CCACHE_QUERY_SECONDS = 30
@@ -53,16 +53,17 @@ def cache_dir():
 
 
 def windows_held(path):
-    """Whether ccache would wait on `path`: another process has it open sharing nothing, or it refuses
-    write access."""
+    """Whether ccache would wait on `path`: its own exclusive open fails because another process has the file
+    open, or because it refuses write access. The probe holds it exclusively for an instant, without ccache's
+    delete-on-close; a ccache trying meanwhile retries."""
     import ctypes
     from ctypes import wintypes
     kernel = ctypes.WinDLL("kernel32", use_last_error=True)
     kernel.CreateFileW.restype = wintypes.HANDLE
     kernel.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p,
                                    wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
-    write_and_delete, share_all, open_existing = 0x40000000 | 0x10000, 0x7, 3
-    handle = kernel.CreateFileW(str(path), write_and_delete, share_all, None, open_existing, 0, None)
+    read_write_delete, share_none, open_existing = 0x80000000 | 0x40000000 | 0x10000, 0, 3
+    handle = kernel.CreateFileW(str(path), read_write_delete, share_none, None, open_existing, 0, None)
     if handle == wintypes.HANDLE(-1).value:
         return ctypes.get_last_error() in (ERROR_SHARING_VIOLATION, ERROR_ACCESS_DENIED)
     kernel.CloseHandle(handle)
@@ -199,6 +200,9 @@ def main(argv=None):
     if not command:
         parser.error("no command to run")
     command[0] = shutil.which(command[0]) or command[0]
+    if command[0].lower().endswith(".py"):
+        # Windows starts no .py file itself; ESP-IDF's idf.py.exe is absent from some installations.
+        command.insert(0, sys.executable)
     return run(command, args.stuck_after)
 
 
