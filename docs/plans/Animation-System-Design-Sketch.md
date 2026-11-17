@@ -88,7 +88,7 @@ Skeleton clips use joint paths from each root joint. SKIN normals hold the
 bind normals; LMSH colors for skinned meshes are unlit albedo (`COLOR_0`).
 
 SCNE v3 carries authored skinned-renderer, animator and light rows, plus ambient
-and tone-map settings. [Scene-Files.md](../render/Scene-Files.md#scne-v5)
+and tone-map settings. [SCNE.md](../assets/formats/SCNE.md)
 owns the layout and syntax. SKIN v2 supplies the renderer's lighting mode;
 [lighting modes](../render/Skinned-Lighting.md#lighting-modes) holds costs and
 quality. Runtime lights shade skinned albedo; static renderers keep baked

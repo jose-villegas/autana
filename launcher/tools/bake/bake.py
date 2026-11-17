@@ -3,6 +3,7 @@
 
     python launcher/tools/bake/bake.py list [PATH ...] [--missing] [--kind mesh|fit|sound]
     python launcher/tools/bake/bake.py bake [PATH ...] [--kind KIND] [--only OUTPUT ...] [--again] [--out DIR]
+                                            [--from-run N ...]
     python launcher/tools/bake/bake.py lock [PATH ...] [--from-run N ... | --seed] [--cache DIR]
     python launcher/tools/bake/bake.py check [PATH ...]
     python launcher/tools/bake/bake.py fetch [PATH ...] [--cache DIR] [--offline]
@@ -28,8 +29,9 @@ fit waits for its start, and the Bakes GPU run fits only once the start's row is
 references are keyed on what they read (fitted_variant.ReferenceInputs), not on the start.
 
 `list` prints every bake with its key, or with `--missing` those LOCK lacks. `bake` makes each bake LOCK has no
-row for into the cache (produce.py), and with `--out` also copies what it made
-there, the folder a CI run uploads; `--only` limits it to the named outputs and
+row for into the cache (produce.py), and with `--out` also copies each one there as it is made, the folder a CI
+run uploads, so a run cut short still uploads what it finished; `--from-run N` first takes run N's uploads made on a
+host like this one into the cache, so a rerun makes only what is left; `--only` limits it to the named outputs and
 `--again` re-makes them even when locked, to compare a new make with the lock
 (the lock keeps its row). `lock` drops the rows nothing needs, writes the rows it has and then fails naming the bakes still
 without one;
@@ -109,10 +111,13 @@ PLACE_WAIT_S = 0.05
 RUN_ARTIFACTS = "bakes-*"
 CACHE_VARIABLE = "AUTANA_BAKE_CACHE"
 # A lock row's fields, in file order: "host" is the system and machine a run made the bytes on, since a
-# bake is reproducible only on one kind of host; a seeded row has none.
-ROW_FIELDS = ("output", "source", "key", "sha256", "size", "run", "host", "seeded")
+# bake is reproducible only on one kind of host, and "gpu" the GPU a fit was made on, since a fit is
+# reproducible only on that GPU model; a seeded row has neither.
+ROW_FIELDS = ("output", "source", "key", "sha256", "size", "run", "host", "gpu", "seeded")
 POSE_FIELDS = ("key", "poses", "count", "clip", "host")
 CPUINFO = pathlib.Path("/proc/cpuinfo")
+NVIDIA_SMI_NAME = ("nvidia-smi", "--query-gpu=name", "--format=csv,noheader")
+GPU_QUERY_TIMEOUT_S = 10
 # Each stage's entry scripts. Its code is their import closure (see stage_files), the C and the
 # submodules its files compile, and the requirements beside them.
 STAGES = {
@@ -1009,6 +1014,16 @@ def cpu_vendor():
     return None
 
 
+def gpu_name():
+    """The first GPU nvidia-smi names (NVIDIA GeForce RTX 2060), None where there is none."""
+    try:
+        names = subprocess.run(NVIDIA_SMI_NAME, capture_output=True, text=True, timeout=GPU_QUERY_TIMEOUT_S,
+                               stdin=subprocess.DEVNULL).stdout.splitlines()
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return names[0].strip() if names and names[0].strip() else None
+
+
 def rerun_on(mesh_cpu_vendor):
     return (f"the lock's meshes are {mesh_cpu_vendor}'s: re-run the failed Bakes CPU job until it lands on a "
             f"{mesh_cpu_vendor} runner")
@@ -1116,8 +1131,9 @@ def publish(found, lock, cache):
         print(f"published {name} ({bake.output})")
 
 
-def _mesh_rows(found, cache, lock, blender, again):
-    """Make each mesh key once, preserving the callers' order for rows and fit starts."""
+def _mesh_rows(found, cache, lock, blender, again, keep):
+    """Make each mesh key once, preserving the callers' order for rows and fit starts. keep(row) takes each row the
+    moment it is had, and on a worker's failure every row the workers still running finish."""
     from bake import produce
     from r3d import process_budget as budget
 
@@ -1127,6 +1143,8 @@ def _mesh_rows(found, cache, lock, blender, again):
             raise BakeMissing(describe(item, unlocked(item), "bake its start first: bake.py bake --kind mesh"))
         unique.setdefault(item.key, item)
     rows = {key: row for key in unique if not again and (row := produce.made(key, cache))}
+    for row in rows.values():
+        keep(row)
     pending = [item for key, item in unique.items() if key not in rows]
     if pending:
         cores = budget.cores_available()
@@ -1139,7 +1157,7 @@ def _mesh_rows(found, cache, lock, blender, again):
         print(f"mesh workers: {workers} ({reason}; {len(pending)} unique meshes)")
         if workers == 1:
             for item in pending:
-                rows[item.key] = produce.produce(item, cache, lock, blender)
+                rows[item.key] = keep(produce.produce(item, cache, lock, blender))
         else:
             executor = concurrent.futures.ProcessPoolExecutor(max_workers=workers,
                                                               mp_context=multiprocessing.get_context("spawn"))
@@ -1153,11 +1171,14 @@ def _mesh_rows(found, cache, lock, blender, again):
                         break
                     done, _ = concurrent.futures.wait(active, return_when=concurrent.futures.FIRST_COMPLETED)
                     for future in done:
-                        rows[active.pop(future)] = future.result()
+                        rows[active.pop(future)] = keep(future.result())
             finally:
                 for future in active:
                     future.cancel()
                 executor.shutdown(wait=True, cancel_futures=True)
+                for future in active:
+                    if not future.cancelled() and future.exception() is None:
+                        keep(future.result())
     return [rows[item.key] for item in found]
 
 
@@ -1168,7 +1189,7 @@ def main(argv=None):
     parser.add_argument("--cache", help="the cache directory; the user cache when omitted")
     parser.add_argument("--seed", action="store_true", help="lock: lock the tree's own files")
     parser.add_argument("--from-run", type=int, action="append", metavar="N",
-                        help="lock: add the rows CI run N made; repeatable")
+                        help="lock: add the rows CI run N made; bake: reuse those made on a host like this; repeatable")
     parser.add_argument("--kind", choices=KINDS, help="list, bake: only this kind")
     parser.add_argument("--blender", help="bake: the Blender to export with; `blender` on PATH when omitted")
     parser.add_argument("--missing", action="store_true", help="list: only the bakes LOCK has no row for")
@@ -1205,6 +1226,11 @@ def main(argv=None):
             unknown = sorted(set(args.only or ()) - {bake.output for bake in found})
             if unknown:
                 parser.error(f"--only: no bake makes {', '.join(unknown)}")
+            # A named output of another kind would make a run that bakes nothing and still passes.
+            other = sorted(bake.output for bake in found
+                           if bake.output in (args.only or ()) and args.kind not in (None, bake.kind))
+            if other:
+                parser.error(f"--only: {', '.join(other)} not of --kind {args.kind}")
 
             def to_make(bake, kind):
                 return (bake.kind == kind and args.kind in (None, kind) and (args.again or bake.key not in lock)
@@ -1217,6 +1243,19 @@ def main(argv=None):
                       f"the lock's meshes: {mesh_cpu_vendor or 'not named'}")
                 if mesh_cpu_vendor and cpu != mesh_cpu_vendor and any(to_make(bake, "mesh") for bake in found):
                     raise BakeMissing(f"this host's CPU is {cpu or 'not named'}, but {rerun_on(mesh_cpu_vendor)}")
+            for run in args.from_run or ():
+                # Each upload apart: two attempts of one run may have made one key on different hosts.
+                with tempfile.TemporaryDirectory() as folder:
+                    reused = [row for upload in sorted(run_files(run, pathlib.Path(folder)).iterdir(),
+                                                         key=lambda upload: (produce.attempt(upload), upload))
+                              for row in produce.adopt(produce.import_run(upload, run, cache).values(), cache)]
+                print(f"run {run}: {len(reused)} bakes made on a host like this one are taken as made here")
+
+            def keep(row):
+                if args.out:
+                    produce.export(row, cache, pathlib.Path(args.out))
+                return row
+
             rows, made_starts = [], {}
             for kind in KINDS:
                 if args.kind not in (None, kind):
@@ -1226,23 +1265,21 @@ def main(argv=None):
                     found = bakes(paths, {**made_starts, **starts}, poses)
                 selected = [bake for bake in found if to_make(bake, kind)]
                 if kind == "mesh":
-                    made_rows = _mesh_rows(selected, cache, lock, args.blender, args.again)
+                    made_rows = _mesh_rows(selected, cache, lock, args.blender, args.again, keep)
                     made_starts.update({bake.key: row["sha256"] for bake, row in zip(selected, made_rows) if not bake.packed})
                     rows.extend(made_rows)
                 else:
                     for bake in selected:
                         if bake.key is None:
                             raise BakeMissing(describe(bake, unlocked(bake), "bake its start first: bake.py bake --kind mesh"))
-                        rows.append((None if args.again else produce.made(bake.key, cache)) or produce.produce(
-                            bake, cache, lock, args.blender))
+                        rows.append(keep((None if args.again else produce.made(bake.key, cache)) or produce.produce(
+                            bake, cache, lock, args.blender)))
             for row in rows:
                 locked = lock.get(row["key"])
                 versus = "" if locked is None else (
                     "; the same bytes as the lock" if locked["sha256"] == row["sha256"]
                     else f"; differs from the lock's {locked['sha256']}, which keeps its row")
                 print(f"made {row['output']}  key {row['key']}  sha256 {row['sha256']}{versus}")
-            if args.out:
-                produce.export(rows, cache, pathlib.Path(args.out))
         elif args.command == "lock":
             mesh_cpu_vendor = runs_mesh_cpu_vendor(found, lock, made, tables.get("mesh_cpu_vendor"))
             if args.seed:

@@ -158,5 +158,4 @@ step in the reference's luma steeper than 0.06 a pixel. Edge ΔE averages over
 them and interior ΔE over the rest.
 
 Appearance fitting, its objective, and its budget and cost choices are
-described by [fit.prune](Scene-Files.md#fitprune) and
-[fit.optimise](Scene-Files.md#fitoptimise).
+in [Appearance-Fit.md](Appearance-Fit.md).

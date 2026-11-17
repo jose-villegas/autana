@@ -34,7 +34,6 @@ mesh. Nothing here runs on the board.
 | [fitted_variant.py](fitted_variant.py) | Remakes a scene renderer's fitted mesh from the `fit` recipe it records; see [A fitted variant](#a-fitted-variant). |
 | [cost_model.py](cost_model.py), [board_cost_weights.txt](board_cost_weights.txt) | A linear model of a mesh's frame time from a pose (submitted and drawn triangles, rows, pixels with overdraw, clusters in view), and its weights with the board frames they were fitted to; see [Cost-aware fit](#cost-aware-fit). |
 | [reference_render.py](reference_render.py) | Traces the undecimated source mesh through the scene's bake lights at supersampled device resolution; writes linear arrays and RGB565-expanded PNGs for fidelity comparisons. |
-| [light_preview.py](light_preview.py) | Tries a scene's directional light at other rotations before a bake: a path-traced still per rotation and camera-path time, the share of chosen materials in direct sun (`--share floor`), the bounced light at other `[indirect]` intensities (`--indirect 2 1`), and `--save` to write the chosen rotation into the scene file; `--live` turns the sun with the arrow keys in a window that refines while idle, Ctrl+S saving it. |
 | [path_bake.py](path_bake.py) | `PathLight`: the bake's bounced light, Mitsuba's path integrator along each point's fixed cosine-weighted rays against the full-detail source; see [Bounced-light implementation](../../../docs/render/Bake-Method.md#bounced-light-implementation). |
 | [ray_query.py](ray_query.py) | First-hit, any-hit and every-hit ray queries against a triangle mesh, traced by Mitsuba; the bake, visibility culling and the reference renderer all use it. |
 | [mitsuba_reference.py](mitsuba_reference.py), [reference_sweep.py](reference_sweep.py) | The path-traced backend of `reference_render.py` (Mitsuba 3, CUDA or CPU), and the measurement of its noise, depth bias, time and GPU memory on one pose; see [Path-traced reference](#path-traced-reference). |
@@ -189,7 +188,7 @@ triangle budget and moves its vertices and changes their colours until its
 renders match the reference along a camera path: appearance-driven
 simplification<sup>[[1]](../../../docs/Citations.md#hasselgren-2021)</sup>. The
 triangles stay as the simplifier left them, so the budget holds.
-[Scene-Files.md](../../../docs/render/Scene-Files.md#against-the-paper) lists
+[Appearance-Fit.md](../../../docs/render/Appearance-Fit.md#against-the-paper) lists
 what the fit changes from the paper.
 
 | | |
@@ -308,7 +307,7 @@ reductions and seeded sampling; the lock pins the bytes a fit made.
 
 The surface term anchors fitted triangles to the alpha-masked source, with a
 recipe weight and a margin in each triangle's start edge scale;
-[Scene-Files describes the surface term](../../../docs/render/Scene-Files.md#fitoptimise).
+[Appearance-Fit.md describes the surface term](../../../docs/render/Appearance-Fit.md#surface).
 
 ### Reference on the GPU
 

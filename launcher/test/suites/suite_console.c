@@ -705,6 +705,8 @@ test_a_malformed_touch_line_changes_nothing(void) {
     TEST_ASSERT_FALSE(console_touch_parse("left 1 2", &down, &point));
     TEST_ASSERT_FALSE(console_touch_parse("down 1", &down, &point));
     TEST_ASSERT_FALSE(console_touch_parse(" ", &down, &point));
+    TEST_ASSERT_FALSE(console_touch_parse("down 1 2 junk", &down, &point));
+    TEST_ASSERT_FALSE(console_touch_parse("down 1 2junk", &down, &point));
     TEST_ASSERT_TRUE(down);
     TEST_ASSERT_EQUAL_INT(11, point.x);
     TEST_ASSERT_EQUAL_INT(22, point.y);
