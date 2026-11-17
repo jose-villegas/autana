@@ -5,7 +5,7 @@ import numpy as np
 
 
 # One node test costs this many cluster tests: the box test, then the depth sort and the push of its children
-# (r3d_pipeline.c's push_children).
+# (r3d_pipeline.c's push_children). Reasoned from that code, not measured.
 NODE_TEST_COST = 4.0
 
 

@@ -29,7 +29,10 @@ Clusters are meshoptimizer's **meshlets**<sup>[[11]](../../Citations.md#meshopti
 at most `geometry.meshlet_triangles` (4 to 256, default 32) of one sidedness.
 The finest clusters' tree is built over their boxes by the surface area heuristic<sup>[[128]](../../Citations.md#macdonald-1990)</sup>:
 a split is kept when the boxes' area-weighted cluster tests, plus `NODE_TEST_COST`
-in [`cluster_tree.py`](../../../launcher/tools/r3d/cluster_tree.py), come below testing the run as one leaf.
+in [`cluster_tree.py`](../../../launcher/tools/r3d/cluster_tree.py), come below testing the run as one leaf;
+a run over `LEAF_TRIANGLES` triangles always splits.
+The binary splits then collapse into nodes of up to `R3D_LIT_NODE_CHILDREN_MAX` children;
+a tree deeper than `R3D_LIT_TREE_DEPTH_MAX` is built again by median splits, and the bake log says so.
 Coarse clusters hang in runs under nodes of their own.
 
 ![The clusterizer cutting a small flat patch into meshlets, one per step](../../images/render/meshlet-build.gif)

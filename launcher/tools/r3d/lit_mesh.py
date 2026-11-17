@@ -143,7 +143,8 @@ def meshlet_entries(q, tris, double, face, meshlet_triangles):
 
 def assemble(q, col, entries, position_scale, leaf_triangles, groups=None):
     """The baked mesh of clusters cut by any means: a surface-area tree over
-    the finest clusters' boxes, the coarse ones in runs under their own nodes, each cluster owning its vertices, checked against the format.
+    the finest clusters' boxes, the coarse ones in runs under their own nodes,
+    each cluster owning its vertices, checked against the format.
     With `groups`, each entry's "own" and "parent" become the cluster's
     group pair. `entry_order` names the entry each laid-out cluster came from."""
     for e in entries:
@@ -155,7 +156,7 @@ def assemble(q, col, entries, position_scale, leaf_triangles, groups=None):
     coarse = np.array([groups is not None and e["own"] != LOD_NONE for e in entries], dtype=bool)
 
     def tree(items):
-        # two_trees() puts a root above the finest tree, a level of the depth limit.
+        # two_trees() adds a root above the finest tree, which costs one level of the depth limit.
         root = build_tree(lo[items], hi[items], weights[items], leaf_triangles, MAX_NODE_CHILDREN, NODE_FANOUT,
                           TREE_DEPTH_MAX - int(coarse.any()))
         order, nodes = flatten_tree(root)

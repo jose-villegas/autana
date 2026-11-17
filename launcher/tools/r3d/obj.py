@@ -141,7 +141,7 @@ def load_textures(root, materials, names, dtype=None):
 
 def write_obj(path, mtllib, positions, groups, uvs=None, banner=(), position_decimals=3, uv_decimals=5):
     """Writes `positions` (and a `vt` per uv, sharing its index) under `mtllib`, then each (object,
-    material, triangles) group: an `o` line when the object changes (None writes none), `usemtl`,
+    material, triangles) group: an `o` line when the object name changes (None writes none), `usemtl`,
     and its 0-based triangles as 1-based faces. `banner` lines go first, as comments."""
     lines = [f"# {line}".rstrip() for line in banner] + [f"mtllib {mtllib}"]
     p = position_decimals
