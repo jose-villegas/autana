@@ -145,6 +145,8 @@ for r3d work. Scenes run nightly, on request, and for bake and fit changes; a
 scene regression with no preset moving is a coverage gap and becomes a new
 preset.
 
+The [contact-disc comparison](contact_blobs.md) covers its homogeneous fill and host pixel checks.
+
 Repeated geometry exercises hierarchical visibility<sup>[[112]](../../../../../docs/Citations.md#greene-1993)</sup>;
 the presets vary the copies' geometry, layout and colour modes.
 
@@ -160,6 +162,7 @@ the presets vary the copies' geometry, layout and colour modes.
 | `stress-mix` | ![Stress mix: planes with several tessellations and colour modes](../../../../../docs/images/overview/render-lab-stress-mix.png) | copies cycling through tessellations; a named share of triangles has equal corner colours | a single triangle size or colour mode standing for a scene's draw cost |
 | `stress-static-copies` | ![Static triangle copies](../../../../../docs/images/overview/render-lab-stress-static-copies.png) | the stress pack's LMSH triangle, retained in each renderer | static asset residency and small transform batches |
 | `stress-skinned-sh-blobs` | ![Skinned copies with probe lighting and contact discs](../../../../../docs/images/overview/render-lab-stress-skinned-sh-blobs.png) | animated skins over floor pads; copy count is `STRESS_SKINNED_COPIES` | Per-mover SH sampling, per-vertex irradiance and depth-tested contact discs. |
+| `stress-contact-blobs` | ![Contact discs on plain floor pads](../../../../../docs/images/overview/render-lab-stress-contact-blobs.png) | static floor pads; copy count is `STRESS_CONTACT_BLOB_COPIES` | Contact-disc clipping, depth and fill, under the near camera swing. |
 | `stress-uniform-mid` | ![Uniform plane with intermediate coverage](../../../../../docs/images/overview/render-lab-stress-uniform-mid.png) | equal-colour large triangles | intermediate uniform fill without shaded pixels |
 | `stress-uniform-full` | ![Uniform plane covering the view](../../../../../docs/images/overview/render-lab-stress-uniform-full.png) | equal-colour large triangles spanning the view | uniform fill beyond the water workload at full-width render sizes |
 | `stress-card` | ![Card copies with ragged edges and sampled colours](../../../../../docs/images/overview/render-lab-stress-card.png) | copies sharing a generated perforated quad with uneven tessellation and procedural texture samples at its corners | scene-like small triangles with irregular edges and colour steps |
