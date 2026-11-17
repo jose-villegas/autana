@@ -1,6 +1,5 @@
 """Seeded capture acquisition and variance estimates shared by performance tools."""
 import json
-import os
 import math
 import re
 import shlex
@@ -20,7 +19,7 @@ sys.path.insert(0, str(REPO / "scripts/lib"))
 sys.path.insert(0, str(REPO / "launcher/tools/render"))
 sys.path.insert(0, str(REPO / "launcher/tools/build"))
 from doc_tables import table_rows  # noqa: E402
-from process_tree import stop_process_tree, launch_process_tree, close_process_tree, terminate_unwinds  # noqa: E402
+from process_tree import run_process_tree, terminate_unwinds  # noqa: E402
 from device_capture import RESULT_RE, BUILD_ID_RE as BUILD_LINE  # noqa: E402
 
 from frame_profile import PROFILE_RE
@@ -97,52 +96,21 @@ def autana_command(*words, override=None):
 def run_stamped(command, log, timeout=1800):
     """Stamp each output line; past the deadline, or on an interrupt or SIGTERM,
     stop the command's whole process tree."""
-    import queue
-    import threading
     started = time.monotonic()
-    deadline = started + timeout
     lines = []
-    messages = queue.Queue()
-    process = launch_process_tree(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                               text=True, bufsize=1, cwd=REPO)
-    def read():
-        for line in process.stdout:
-            messages.put((time.monotonic() - started, line.rstrip("\n")))
-        messages.put(None)
-    reader = threading.Thread(target=read, daemon=True)
-    reader.start()
+
+    def stamp(line):
+        at, line = time.monotonic() - started, line.rstrip("\n")
+        print(line, flush=True)
+        log.write(line + "\n")
+        log.flush()
+        lines.append((at, line))
     try:
-        while True:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                raise subprocess.TimeoutExpired(command, timeout)
-            item = messages.get(timeout=remaining)
-            if item is None:
-                break
-            at, line = item
-            print(line, flush=True)
-            log.write(line + "\n")
-            log.flush()
-            lines.append((at, line))
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            raise subprocess.TimeoutExpired(command, timeout)
-        code = process.wait(timeout=remaining)
-    except (queue.Empty, subprocess.TimeoutExpired):
-        try:
-            stop_process_tree(process)
-        except subprocess.TimeoutExpired:
-            pass
-        raise RuntimeError(f"capture timed out after {timeout}s")
-    except BaseException:
-        stop_process_tree(process)
-        raise
-    finally:
-        close_process_tree(process)
-        reader.join(timeout=2)
-        if not reader.is_alive():
-            process.stdout.close()
-    return code, lines, time.monotonic() - started
+        done = run_process_tree(command, timeout, on_line=stamp, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                text=True, bufsize=1, cwd=REPO)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"capture timed out after {timeout}s") from None
+    return done.returncode, lines, time.monotonic() - started
 
 
 def captured_runs(lines, suite_name, runs):

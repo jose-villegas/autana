@@ -5,6 +5,9 @@ import os
 from pathlib import Path
 import sys
 import subprocess
+import tempfile
+import threading
+import time
 import unittest
 from unittest.mock import Mock, patch
 
@@ -77,3 +80,75 @@ class ProcessTreeTests(unittest.TestCase):
             self.assertEqual(log.getvalue(), '')
             if created:
                 kernel.CloseHandle.assert_called_once_with(created)
+
+
+# A grandchild that outlives its stopped tree touches its marker this long after it starts.
+GRANDCHILD_SECONDS = 2
+DEADLINE_SECONDS = 0.5
+
+
+class RunProcessTreeTests(unittest.TestCase):
+    """run_process_tree on real processes: a child that hangs after starting a grandchild holding its pipes."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.marker = Path(self.temp.name) / "grandchild-outlived-the-tree"
+
+    def hung_child(self):
+        grandchild = (f"import time; from pathlib import Path; time.sleep({GRANDCHILD_SECONDS}); "
+                      f"Path({str(self.marker)!r}).touch()")
+        child = (f"import subprocess, sys, time; subprocess.Popen([sys.executable, '-c', {grandchild!r}]); "
+                 "print('started', flush=True); time.sleep(60)")
+        return [sys.executable, "-c", child]
+
+    def assert_tree_stopped(self, started):
+        self.assertLess(time.monotonic() - started, GRANDCHILD_SECONDS)
+        time.sleep(GRANDCHILD_SECONDS + 1 - (time.monotonic() - started))
+        self.assertFalse(self.marker.exists(), "the grandchild outlived the stopped tree")
+
+    def test_deadline_stops_child_and_grandchild_in_both_output_modes(self):
+        for on_line in (None, Mock()):
+            with self.subTest(on_line=on_line):
+                started = time.monotonic()
+                with self.assertRaises(subprocess.TimeoutExpired):
+                    process_tree.run_process_tree(self.hung_child(), DEADLINE_SECONDS, on_line=on_line,
+                                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                self.assert_tree_stopped(started)
+                if on_line:
+                    on_line.assert_called_once_with("started\n")
+
+    def test_watch_raising_stops_the_tree(self):
+        calls = []
+
+        def watch():
+            calls.append(time.monotonic())
+            if len(calls) == 2:
+                raise LookupError("lock lost")
+        started = time.monotonic()
+        with self.assertRaisesRegex(LookupError, "lock lost"):
+            process_tree.run_process_tree(self.hung_child(), watch=watch, stdout=subprocess.DEVNULL)
+        self.assertGreaterEqual(calls[1] - calls[0], process_tree.WATCH_SECONDS * 0.9)
+        self.assert_tree_stopped(started)
+
+    def test_on_line_failure_stops_the_tree(self):
+        started = time.monotonic()
+        with self.assertRaisesRegex(KeyboardInterrupt, "stop"):
+            process_tree.run_process_tree(self.hung_child(), on_line=Mock(side_effect=KeyboardInterrupt("stop")),
+                                          stdout=subprocess.PIPE, text=True)
+        self.assert_tree_stopped(started)
+
+    def test_a_finished_run_returns_its_output_and_failure_code(self):
+        command = [sys.executable, "-c", "import sys; print('a'); print('b'); print('c', file=sys.stderr); sys.exit(3)"]
+        done = process_tree.run_process_tree(command, 30, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        self.assertEqual((done.args, done.returncode, done.stdout, done.stderr), (command, 3, "a\nb\n", "c\n"))
+        seen = []
+        on_line = lambda line: seen.append((line, threading.current_thread()))  # noqa: E731
+        done = process_tree.run_process_tree(command, 30, on_line=on_line, stdout=subprocess.PIPE,
+                                             stderr=subprocess.DEVNULL, text=True)
+        self.assertEqual((done.returncode, done.stdout), (3, None))
+        self.assertEqual(seen, [("a\n", threading.main_thread()), ("b\n", threading.main_thread())])
+
+
+if __name__ == "__main__":
+    unittest.main()
