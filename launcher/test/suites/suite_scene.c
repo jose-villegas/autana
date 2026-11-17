@@ -4890,19 +4890,19 @@ test_contact_light_choice_and_shadow_invalidation(void) {
     const entity_t root = load("test_skin");
     const entity_t entity = entity_find(root, name_hash("red"));
     scene_t* scene = columns(root);
-    vec3f_t light = scene_contact_light(scene, vec3f_zero());
+    vec3f_t light = scene_contact_light(scene, vec3f_zero(), &scene, 1);
     TEST_ASSERT_EQUAL_FLOAT(1, light.y);
     static const int16_t coefficients[1][SH_PROBES_COMPONENTS] = {{0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1}};
     static const sh_probes_t probes = {.dims = {1, 1, 1}, .scale = 1, .coefficients = coefficients};
     scene_set_probes(root, &probes);
-    light = scene_contact_light(scene, vec3f_zero());
+    light = scene_contact_light(scene, vec3f_zero(), &scene, 1);
     TEST_ASSERT_FLOAT_WITHIN(0.001F, 1, light.x);
     scene->world_lights.count = 2;
     scene->world_lights.direction[0] = vec3f_unit_y();
     scene->world_lights.direction[1] = vec3f_unit_z();
     scene->world_lights.color[0] = vec3f_unit_x();
     scene->world_lights.color[1] = vec3f_unit_y();
-    light = scene_contact_light(scene, vec3f_zero());
+    light = scene_contact_light(scene, vec3f_zero(), &scene, 1);
     TEST_ASSERT_EQUAL_FLOAT(1, light.z);
     (void)scene_bounds(root);
     TEST_ASSERT_TRUE(light_set_intensity(entity, 1));
@@ -5043,6 +5043,87 @@ test_contact_warp_and_bounds_sweep(void) {
             assert_contact_lifts(scene, r, skin, light, bounds, e);
         }
     }
+}
+
+static void
+test_contact_receiver_light_and_bounds(void) {
+    fixture_with_skin(&SKIN_OPTIONS);
+    const entity_t receiver_root = show("test_pair");
+    const entity_t mover_root = load("test_skin");
+    const entity_t sun = entity_find(receiver_root, name_hash("red"));
+    const entity_t mover = entity_find(mover_root, name_hash("red"));
+    scene_t* receiver = columns(receiver_root);
+    scene_t* scene = columns(mover_root);
+    TEST_ASSERT_TRUE(light_set_intensity(sun, 1));
+    TEST_ASSERT_TRUE(light_set_intensity(mover, 2));
+    transformf_t pose = transform_local(sun);
+    transformf_set_rotation(&pose, quatf_from_axis_angle(vec3f_unit_z(), MATH_PI / 3));
+    transform_set_local(sun, pose);
+    scene_set_contact_blob(mover, 0, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, SCENE_CONTACT_BODY);
+    frame(0);
+    scene_renderer_t* r = &scene->renderers[scene_renderer_index(scene, row_of(mover))];
+    TEST_ASSERT_EQUAL_INT(1, receiver->world_lights.count);
+    const vec3f_t want = receiver->world_lights.direction[0];
+    const box3f_t bounds = contact_blob_bounds(r->world_bounds, 0, scene_contact_reach(scene, r), want);
+    TEST_ASSERT_FLOAT_WITHIN(0.001F, bounds.hi.x, r->drawn_bounds.hi.x);
+    TEST_ASSERT_FLOAT_WITHIN(0.001F, bounds.lo.x, r->drawn_bounds.lo.x);
+    scene_t* drawn[] = {receiver, scene};
+    const vec3f_t selected = scene_contact_light(scene, box3f_centre(r->world_bounds), drawn, 2);
+    TEST_ASSERT_EQUAL_MEMORY(&want, &selected, sizeof want);
+    r->world_bounds = (box3f_t){{-1, 0, -1}, {1, 2, 1}};
+    scene_skinned_renderer_t* skin = skin_of(mover);
+    skin->contacts = (skin_contacts_t){.joints = {0}, .rest_y = {0}, .radius = 1, .lift = 2, .count = 1};
+    static const scene_contact_shape_t shapes[] = {SCENE_CONTACT_BODY, SCENE_CONTACT_FEET};
+    for (size_t shape = 0; shape < sizeof shapes / sizeof shapes[0]; shape++) {
+        scene_set_contact_blob(mover, 0, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, shapes[shape]);
+        frame(0);
+        contact_disc_t discs[SKIN_CONTACTS_MAX];
+        const int count = scene_contact_discs(scene, r, selected, discs);
+        TEST_ASSERT_GREATER_THAN_INT(0, count);
+        const vec3f_t axis = vec3f_normalize((vec3f_t){-want.x, 0, -want.z});
+        for (int i = 0; i < count; i++) {
+            TEST_ASSERT_FLOAT_WITHIN(0.001F, 1, vec3f_dot(axis, discs[i].axis));
+            assert_contact_disc_bounds(discs[i], r->drawn_bounds);
+        }
+    }
+    entity_set_enabled(sun, false);
+    frame(0);
+    const box3f_t fallback =
+        contact_blob_bounds(r->world_bounds, 0, scene_contact_reach(scene, r), scene->world_lights.direction[0]);
+    TEST_ASSERT_FLOAT_WITHIN(0.001F, fallback.hi.x, r->drawn_bounds.hi.x);
+    TEST_ASSERT_FLOAT_WITHIN(0.001F, fallback.lo.z, r->drawn_bounds.lo.z);
+    const vec3f_t other = scene_contact_light(scene, vec3f_zero(), drawn, 2);
+    TEST_ASSERT_EQUAL_MEMORY(&scene->world_lights.direction[0], &other, sizeof other);
+    entity_set_enabled(mover, false);
+    scene_lights_prepare(scene);
+    frame(0);
+    static const int16_t coefficients[1][SH_PROBES_COMPONENTS] = {{0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1}};
+    static const sh_probes_t probes = {.dims = {1, 1, 1}, .scale = 1, .coefficients = coefficients};
+    scene_set_probes(mover_root, &probes);
+    const vec3f_t probe = scene_contact_light(scene, vec3f_zero(), drawn, 2);
+    TEST_ASSERT_FLOAT_WITHIN(0.001F, 1, probe.x);
+    scene_set_probes(mover_root, NULL);
+    const vec3f_t overhead = scene_contact_light(scene, vec3f_zero(), drawn, 2);
+    TEST_ASSERT_EQUAL_FLOAT(1, overhead.y);
+}
+
+static void
+test_contact_receiver_direction_invalidates_mover_shadow(void) {
+    fixture_with_skin(&SKIN_OPTIONS);
+    const entity_t receiver_root = show("test_pair");
+    const entity_t mover_root = load("test_skin");
+    const entity_t sun = entity_find(receiver_root, name_hash("red"));
+    const entity_t mover = entity_find(mover_root, name_hash("red"));
+    scene_t* receiver = columns(receiver_root);
+    TEST_ASSERT_TRUE(light_set_intensity(sun, 1));
+    scene_set_contact_blob(mover, 0, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, SCENE_CONTACT_BODY);
+    frame(0);
+    transformf_t pose = transform_local(sun);
+    render_context_main()->partial.kept = true;
+    transformf_set_rotation(&pose, quatf_from_axis_angle(vec3f_unit_x(), MATH_PI / 3));
+    transform_set_local(sun, pose);
+    scene_lights_prepare(receiver);
+    TEST_ASSERT_FALSE(render_context_main()->partial.kept);
 }
 
 static void
@@ -8251,6 +8332,8 @@ run_scene_suite(void) {
     RUN_TEST(test_contact_light_choice_and_shadow_invalidation);
     RUN_TEST(test_contact_world_scale_clamp_and_fallback);
     RUN_TEST(test_contact_warp_and_bounds_sweep);
+    RUN_TEST(test_contact_receiver_light_and_bounds);
+    RUN_TEST(test_contact_receiver_direction_invalidates_mover_shadow);
     RUN_TEST(test_contact_footprint_and_partial_redraw);
     RUN_TEST(test_authored_skin_modes_animation_and_ambient);
     RUN_TEST(test_authored_light_preserves_static_mesh_colors);

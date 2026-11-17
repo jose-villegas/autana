@@ -373,7 +373,8 @@ fill_scene_changed(scene_t* scene, int changes, name_hash64_t* set) {
         if (r->contact_blob_strength > 0) {
             current = box3f_union(current,
                                   contact_blob_bounds(current, r->contact_blob_ground_y, scene_contact_reach(scene, r),
-                                                      scene_contact_light(scene, box3f_centre(current))));
+                                                      scene_contact_light(scene, box3f_centre(current), drawn_scenes,
+                                                                          drawn_scene_count)));
         }
         if (r->changed && changes >= 0) {
             changes = changes < RENDER_PARTIAL_CHANGES_MAX ? changes : -1;
@@ -459,7 +460,8 @@ post_draw(const r3d_span_target_t* target, const r3d_lens_t* lens, void* user) {
         for (int i = 0; i < scene->active_renderer_count; i++) {
             const scene_renderer_t* r = &scene->renderers[scene->active_renderers[i]];
             if (r->contact_blob_strength > 0.0F && r->mesh.node_count > 0) {
-                const vec3f_t light = scene_contact_light(scene, box3f_centre(r->world_bounds));
+                const vec3f_t light =
+                    scene_contact_light(scene, box3f_centre(r->world_bounds), drawn_scenes, drawn_scene_count);
                 const box3f_t bounds = contact_blob_bounds(r->world_bounds, r->contact_blob_ground_y,
                                                            scene_contact_reach(scene, r), light);
                 planef_t planes[PLANE_FRUSTUM_COUNT];
@@ -485,6 +487,7 @@ draw_active(uint32_t dt_ms, int quarter, int width, int height) {
     list_drawn_scenes();
     for (int k = 0; k < drawn_scene_count; k++) {
         scene_resolve(drawn_scenes[k]);
+        scene_lights_prepare(drawn_scenes[k]);
     }
     /* Size measurements must use this draw's lens, including its viewport. */
     active_view(scene, camera, (viewport_t){width, height, quarter});
