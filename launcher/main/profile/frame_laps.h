@@ -10,7 +10,8 @@
  * cost, a few cycles each, can be taken back out: a lap around a vertex or a
  * triangle is not free next to the work it times. Once a window the laps
  * join the console as ms per frame per core, on a line of their own under
- * frame_cost's.
+ * frame_cost's; a frame profile take logs its own frames' laps the same way
+ * (launcher/test/frame_profile.h).
  *
  * A fork across the cores keeps the caller's split lap running into the
  * job: the dispatch is the split's, and the caller's slice opens its own
@@ -81,8 +82,9 @@ frame_laps_charge_since(frame_laps_core_t* core, uint32_t now, frame_laps_slot_t
 }
 
 /* Forgets every core's window, so the next report covers only what runs from here: each lap that ran, its
- * cycles and starts. A lap still running keeps running, and one started but not yet charged keeps its start
- * for the window it will be charged in. */
+ * cycles and starts. A lap that started and has not yet run any cycles keeps its start. A lap still running
+ * keeps running and charges its cycles since its start to the next window, so forget between frames, where
+ * every frame has ended its laps (FRAME_LAP_END()). */
 static inline void
 frame_laps_forget(frame_laps_core_t cores[], int core_count) {
     for (int c = 0; c < core_count; c++) {

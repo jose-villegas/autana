@@ -824,9 +824,10 @@ test_forgetting_the_window_drops_its_laps_but_not_the_running_lap(void) {
     TEST_ASSERT_EQUAL_INT(0, laps_report(laps, 1));
     TEST_ASSERT_EQUAL_UINT8(2, cores[0].running);
 
-    frame_laps_switch(&cores[0], 5000, 0); /* the running lap, its start and its cycles since, still count */
+    frame_laps_switch(&cores[0], 5000, 1); /* the running lap, its start and its cycles since, still count */
+    frame_laps_switch(&cores[0], 6000, 0); /* a lap that ran before: only its starts since */
     laps_report(laps, 1);
-    TEST_ASSERT_EQUAL_STRING("lap 3000 ns | cpu0 fill 1.000/1", laps->line);
+    TEST_ASSERT_EQUAL_STRING("lap 3000 ns | cpu0 set_up 1.000/1 fill 1.000/1", laps->line);
     free(laps);
 }
 
