@@ -63,13 +63,15 @@ target_link_libraries(render_host INTERFACE autana::render_host_core)
 # drawing a .scene.toml; tunables stay settable while it runs.
 add_library(scene_provider INTERFACE)
 add_library(autana::scene_provider ALIAS scene_provider)
-target_sources(scene_provider INTERFACE "${CMAKE_CURRENT_LIST_DIR}/scene_viewer.c")
+target_sources(scene_provider INTERFACE "${CMAKE_CURRENT_LIST_DIR}/scene_viewer.c"
+    "${CMAKE_CURRENT_LIST_DIR}/provider_quarter.c")
 target_compile_definitions(scene_provider INTERFACE TUNE_HOT_LIVE=1)
 target_link_libraries(scene_provider INTERFACE autana::render_host)
 
 add_library(stream_provider INTERFACE)
 add_library(autana::stream_provider ALIAS stream_provider)
-target_sources(stream_provider INTERFACE "${CMAKE_CURRENT_LIST_DIR}/stream/stream_provider.c")
+target_sources(stream_provider INTERFACE "${CMAKE_CURRENT_LIST_DIR}/stream/stream_provider.c"
+    "${CMAKE_CURRENT_LIST_DIR}/provider_quarter.c")
 target_compile_definitions(stream_provider INTERFACE TUNE_HOT_LIVE=1)
 target_link_libraries(stream_provider INTERFACE autana::render_host)
 
