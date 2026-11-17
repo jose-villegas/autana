@@ -64,6 +64,26 @@ fail(const char* what) {
     lab_scene_fail(TAG, failure, sizeof failure, what);
 }
 
+static bool
+find_wings(int copy) {
+    for (int side = 0; side < STRESS_WING_SIDES; side++) {
+        char name[ASSET_NAME_MAX];
+        if (snprintf(name, sizeof name, STRESS_BUTTERFLY_WING_FORMAT, copy, wing_suffix[side]) < 0) {
+            return false;
+        }
+        const int at = (copy * STRESS_WING_SIDES) + side;
+        wings[at] = entity_find(loaded, name_hash(name));
+        if (handle_is_none(wings[at]) || !handle_equal(entity_parent(wings[at]), slots[copy])) {
+            return false;
+        }
+        wing_hinges[at] = (hinge_t){.rest = transform_local(wings[at]),
+                                    .axis = side == 0 ? vec3f_forward() : vec3f_back(),
+                                    .min = -STRESS_FLAP_LIMIT,
+                                    .max = STRESS_FLAP_LIMIT};
+    }
+    return true;
+}
+
 /* The pool is every copy the pack names, from 0 up to the first it lacks. */
 static bool
 find_pool(void) {
@@ -78,20 +98,8 @@ find_pool(void) {
         return false;
     }
     for (int i = 0; i < pool; i++) {
-        for (int side = 0; side < STRESS_WING_SIDES; side++) {
-            char name[ASSET_NAME_MAX];
-            if (snprintf(name, sizeof name, STRESS_BUTTERFLY_WING_FORMAT, i, wing_suffix[side]) < 0) {
-                return false;
-            }
-            const int at = (i * STRESS_WING_SIDES) + side;
-            wings[at] = entity_find(loaded, name_hash(name));
-            if (handle_is_none(wings[at]) || !handle_equal(entity_parent(wings[at]), slots[i])) {
-                return false;
-            }
-            wing_hinges[at] = (hinge_t){.rest = transform_local(wings[at]),
-                                        .axis = side == 0 ? vec3f_forward() : vec3f_back(),
-                                        .min = -STRESS_FLAP_LIMIT,
-                                        .max = STRESS_FLAP_LIMIT};
+        if (!find_wings(i)) {
+            return false;
         }
     }
     return true;
