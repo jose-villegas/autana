@@ -6,6 +6,8 @@ validation. Skipped where the
 pinned environment (tools/r3d/requirements.txt) is not installed."""
 
 import collections
+import contextlib
+import io
 import pathlib
 import struct
 import sys
@@ -27,7 +29,7 @@ try:
     from r3d.lit_mesh import (MESHLET_TRIANGLES, POSITION_SCALE, TREE_DEPTH_MAX, WELD_PER_TICK, bake_lit_mesh,
                               read_lit_mesh, validate, weld_quantised, write_lit_mesh)
     from r3d.meshopt import build_meshlets, simplify_with_update
-    from r3d.cluster_tree import build_tree, flatten_tree
+    from r3d.cluster_tree import build_tree, flatten_tree, node_bounds
     from r3d.repair import _weld_borders, repair
     from r3d import simplify as simplify_module
     from r3d.simplify import SEAM_COLOUR_TOLERANCE, _label_after, colour_weight, merge_close_colours, simplify
@@ -37,6 +39,33 @@ except ImportError:
 
 from asset.asset_pack import parse_pack
 from tests.r3d_env import needs_mitsuba  # noqa: E402
+
+
+MEDIAN_LINE = "built by median splits"
+UNIT_BOX = 1.0
+# Items at doubling distances along x split off one at a time, so the tree is deep and lopsided: collapsed into
+# WIDE_FANOUT children a node, it stays deeper than a balanced one.
+LOPSIDED_ITEMS = 12
+WIDE_FANOUT = 4
+# The depth bound of the cutoff tests: a balanced tree of 1 << (CUTOFF_DEPTH * log2(fanout)) identical boxes
+# needs exactly the cutoff's binary levels.
+CUTOFF_DEPTH = 2
+# What a leaf holds and weighs in the median tests: a median tree of MEDIAN_ITEMS items under MEDIAN_DEPTH levels
+# of two fills every leaf.
+MEDIAN_LEAF_ITEMS = 3
+MEDIAN_DEPTH = 2
+MEDIAN_ITEMS = MEDIAN_LEAF_ITEMS << MEDIAN_DEPTH
+SHUFFLE_SEED = 20260517
+# Four groups of GROUP_SIZE items, GROUP_GAP apart along x and y, each spread over GROUP_SPREAD.
+GROUP_COUNT = 4
+GROUP_SIZE = 3
+GROUP_GAP = 1000.0
+GROUP_SPREAD = 10.0
+# Items spaced along x: a few NEAR_SPACING apart, then one FAR_OFFSET away (near_and_far()).
+NEAR_SPACING = 100.0
+FAR_OFFSET = 1000.0
+SPREAD_ITEMS = 16
+SPREAD_GAP = 100.0
 
 
 def z_normals(p, tris):
@@ -440,6 +469,161 @@ class ClusterTreeTests(unittest.TestCase):
         split = self.tree(apart, apart + 1.0, leaf_weight=100)[1]
         self.assertEqual(len(tight), 1)
         self.assertEqual([n["count"] for n in split if n["leaf"]], [9, 9])
+
+    def built(self, lo, hi=None, weights=None, leaf_weight=1, max_items=255, fanout=8, max_depth=TREE_DEPTH_MAX,
+              **options):
+        """(order, nodes, what build_tree printed): boxes of one unit from `lo` unless `hi` is given, one weight
+        each unless `weights` is."""
+        lo = np.asarray(lo, dtype=np.float64)
+        hi = lo + UNIT_BOX if hi is None else hi
+        weights = np.ones(len(lo), dtype=np.int64) if weights is None else weights
+        printed = io.StringIO()
+        with contextlib.redirect_stdout(printed):
+            root = build_tree(lo, hi, weights, leaf_weight, max_items, fanout, max_depth, **options)
+        order, nodes = flatten_tree(root)
+        return order, nodes, printed.getvalue()
+
+    @staticmethod
+    def along(axis, positions):
+        """A box corner per position, on one axis."""
+        lo = np.zeros((len(positions), 3))
+        lo[:, axis] = positions
+        return lo
+
+    def leaf_items(self, order, nodes):
+        return [order[n["first"] : n["first"] + n["count"]] for n in nodes if n["leaf"]]
+
+    def test_a_collapsed_depth_past_the_bound_is_rebuilt_even_when_the_binary_levels_are_within_it(self):
+        lo = self.along(0, 2.0 ** np.arange(LOPSIDED_ITEMS))
+        _, natural_nodes, said = self.built(lo, fanout=WIDE_FANOUT)
+        natural = self.depth(natural_nodes)
+        self.assertEqual("", said)
+        self.assertGreater(natural, 1)
+        bound = natural - 1
+        order, nodes, said = self.built(lo, fanout=WIDE_FANOUT, max_depth=bound)
+        # "depth": the binary levels stayed within the recursion cutoff, so only the collapsed depth tripped it.
+        self.assertRegex(said, rf"surface area tree depth {natural} past {bound}; {MEDIAN_LINE}")
+        self.assertLessEqual(self.depth(nodes), bound)
+        self.assertEqual(sorted(order), list(range(LOPSIDED_ITEMS)))
+
+    def test_a_collapsed_depth_equal_to_the_bound_is_kept_as_built(self):
+        lo = self.along(0, 2.0 ** np.arange(LOPSIDED_ITEMS))
+        wide = self.built(lo, fanout=WIDE_FANOUT)
+        natural = self.depth(wide[1])
+        order, nodes, said = self.built(lo, fanout=WIDE_FANOUT, max_depth=natural)
+        self.assertEqual("", said)
+        self.assertEqual((wide[0], wide[1]), (order, nodes))
+
+    def test_the_recursion_cutoff_is_the_bound_in_binary_levels_and_one_more_level_goes_to_median(self):
+        for fanout in (2, WIDE_FANOUT):
+            levels = CUTOFF_DEPTH * int(np.log2(fanout))
+            count = 1 << levels
+            with self.subTest(fanout=fanout):
+                # Identical boxes split in halves, one item a leaf: the tree needs exactly `levels` binary levels.
+                order, nodes, said = self.built(self.along(0, np.zeros(count)), max_items=count, fanout=fanout,
+                                                max_depth=CUTOFF_DEPTH)
+                self.assertEqual("", said)
+                self.assertEqual([1] * count, [len(items) for items in self.leaf_items(order, nodes)])
+                order, nodes, said = self.built(self.along(0, np.zeros(count + 1)), max_items=count, fanout=fanout,
+                                                max_depth=CUTOFF_DEPTH)
+                self.assertIn(f"over {levels} binary levels past {CUTOFF_DEPTH}; {MEDIAN_LINE}", said)
+                self.assertLessEqual(self.depth(nodes), CUTOFF_DEPTH)
+                self.assertEqual(sorted(order), list(range(count + 1)))
+
+    def test_median_splits_cut_along_the_widest_axis(self):
+        positions = np.random.default_rng(SHUFFLE_SEED).permutation(MEDIAN_ITEMS)
+        for axis in range(3):
+            with self.subTest(axis=axis):
+                order, nodes, said = self.built(self.along(axis, positions), leaf_weight=0, max_items=MEDIAN_LEAF_ITEMS,
+                                                fanout=2, max_depth=MEDIAN_DEPTH)
+                self.assertIn(MEDIAN_LINE, said)
+                runs = sorted(sorted(positions[items].tolist()) for items in self.leaf_items(order, nodes))
+                starts = range(0, MEDIAN_ITEMS, MEDIAN_LEAF_ITEMS)
+                self.assertEqual([list(range(i, i + MEDIAN_LEAF_ITEMS)) for i in starts], runs)
+
+    def test_median_splits_make_no_split_where_every_item_fits_one_leaf(self):
+        lo = self.along(0, np.arange(SPREAD_ITEMS) * SPREAD_GAP)
+        order, nodes, said = self.built(lo, leaf_weight=SPREAD_ITEMS, max_items=SPREAD_ITEMS, fanout=2, max_depth=1)
+        self.assertIn(MEDIAN_LINE, said, "the surface area tree was not too deep for the median rebuild to matter")
+        self.assertEqual([{"leaf": True, "first": 0, "count": SPREAD_ITEMS}], nodes)
+        self.assertEqual(list(range(SPREAD_ITEMS)), sorted(order))
+
+    def near_and_far(self, near_count=3):
+        """near_count items NEAR_SPACING apart, then one FAR_OFFSET away."""
+        return self.along(0, [*(NEAR_SPACING * i for i in range(near_count)), FAR_OFFSET])
+
+    def test_a_fanout_that_fits_only_some_children_opens_the_largest_inner_child(self):
+        # The left three open into one node of three leaves, the right two into one of two: the root takes
+        # either, but not both, and the wide one first.
+        lo = self.along(0, [0.0, NEAR_SPACING, 2 * NEAR_SPACING, FAR_OFFSET, FAR_OFFSET + UNIT_BOX])
+        order, nodes, _ = self.built(lo, fanout=WIDE_FANOUT, max_depth=CUTOFF_DEPTH)
+        self.assertEqual(WIDE_FANOUT, nodes[0]["count"])
+        children = nodes[nodes[0]["first"] : nodes[0]["first"] + nodes[0]["count"]]
+        self.assertEqual([True, True, True, False], sorted((c["leaf"] for c in children), reverse=True))
+        (inner,) = [c for c in children if not c["leaf"]]
+        held = [self.leaf_items(order, [nodes[i]])[0] for i in range(inner["first"], inner["first"] + inner["count"])]
+        self.assertEqual([[3], [4]], sorted(held))
+
+    def test_an_opening_that_lands_exactly_on_the_fanout_is_taken(self):
+        order, nodes, _ = self.built(self.near_and_far(), fanout=WIDE_FANOUT, max_depth=CUTOFF_DEPTH)
+        self.assertEqual([{"leaf": False, "first": 1, "count": WIDE_FANOUT}] + [{"leaf": True, "first": i, "count": 1}
+                                                                              for i in range(WIDE_FANOUT)], nodes)
+
+    def test_a_node_stays_a_leaf_when_testing_its_items_costs_exactly_what_splitting_does(self):
+        count = WIDE_FANOUT
+        lo = self.along(0, np.zeros(count))
+        # Identical boxes make every cut cost node_cost plus the count: at node_cost 0 the leaf costs the same.
+        _, nodes, _ = self.built(lo, leaf_weight=count, max_items=count, node_cost=0.0)
+        self.assertEqual([{"leaf": True, "first": 0, "count": count}], nodes)
+        _, nodes, _ = self.built(lo, leaf_weight=count, max_items=count - 1, node_cost=0.0)
+        self.assertGreater(len(nodes), 1)
+
+    def test_a_leaf_whose_weight_equals_the_leaf_weight_is_accepted(self):
+        weights = np.arange(1, WIDE_FANOUT + 1)
+        lo = self.along(0, np.zeros(WIDE_FANOUT))
+        _, nodes, _ = self.built(lo, weights=weights, leaf_weight=int(weights.sum()))
+        self.assertEqual([{"leaf": True, "first": 0, "count": WIDE_FANOUT}], nodes)
+        _, nodes, _ = self.built(lo, weights=weights, leaf_weight=int(weights.sum()) - 1)
+        self.assertGreater(len(nodes), 1)
+
+    def test_two_axes_cutting_at_equal_cost_cut_along_the_first(self):
+        # The corners of a square in x and y: cutting along x costs what cutting along y or z does.
+        corners = [(0.0, 0.0, 0.0), (GROUP_GAP, 0.0, 0.0), (0.0, GROUP_GAP, 0.0), (GROUP_GAP, GROUP_GAP, 0.0)]
+        order, nodes, _ = self.built(np.array(corners), fanout=2, max_depth=CUTOFF_DEPTH)
+        self.assertEqual({0, 2}, set(order[:2]), "the first cut was not along x")
+
+    def test_the_input_order_does_not_change_the_tree_and_separated_groups_get_their_own_leaves(self):
+        rng = np.random.default_rng(SHUFFLE_SEED)
+        origins = np.array([(GROUP_GAP * (g % 2), GROUP_GAP * (g // 2), 0.0) for g in range(GROUP_COUNT)])
+        lo = (origins[:, None, :] + rng.uniform(0.0, GROUP_SPREAD, (GROUP_COUNT, GROUP_SIZE, 3))).reshape(-1, 3)
+        group_of = {tuple(row): i // GROUP_SIZE for i, row in enumerate(lo)}
+
+        def tree_of(rows):
+            order, nodes, _ = self.built(rows, leaf_weight=GROUP_SIZE, max_items=GROUP_SIZE, fanout=WIDE_FANOUT)
+            return [tuple(rows[i]) for i in order], nodes
+
+        shuffled = tree_of(lo[rng.permutation(len(lo))])
+        self.assertEqual(tree_of(lo[np.lexsort(lo.T)]), shuffled)
+        leaves = [shuffled[0][n["first"] : n["first"] + n["count"]] for n in shuffled[1] if n["leaf"]]
+        self.assertEqual(GROUP_COUNT, len(leaves))
+        for leaf in leaves:
+            self.assertEqual(1, len({group_of[row] for row in leaf}), "a leaf mixes two groups")
+
+    def test_node_bounds_are_the_tight_box_of_a_leafs_clusters_and_hold_every_child(self):
+        def cluster(lo, hi):
+            return (0, 0, 0, 0, np.array(lo, dtype=float), np.array(hi, dtype=float), False)
+
+        clusters = [cluster((0, 0, 0), (1, 1, 1)), cluster((-3, 2, 5), (4, 3, 6)),
+                    cluster((10, 10, 10), (11, 12, 13)), cluster((-1, -1, -1), (2, 2, 2))]
+        nodes = [{"leaf": False, "first": 1, "count": 2}, {"leaf": True, "first": 0, "count": 2},
+                 {"leaf": True, "first": 2, "count": 2}]
+        node_bounds(nodes, clusters)
+        np.testing.assert_array_equal([-3, 0, 0], nodes[1]["lo"])
+        np.testing.assert_array_equal([4, 3, 6], nodes[1]["hi"])
+        np.testing.assert_array_equal([-1, -1, -1], nodes[2]["lo"])
+        np.testing.assert_array_equal([11, 12, 13], nodes[2]["hi"])
+        np.testing.assert_array_equal([-3, -1, -1], nodes[0]["lo"])
+        np.testing.assert_array_equal([11, 12, 13], nodes[0]["hi"])
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
