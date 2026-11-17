@@ -1059,7 +1059,7 @@ test_tone_pulse_gap_placement(void) {
             TEST_ASSERT_NOT_NULL(line);
             TEST_ASSERT_NULL(console_tone_check(&args, line));
             TEST_ASSERT_NOT_NULL(strstr(line, lost ? "imu_gaps 0" : "imu_gaps 1"));
-            if (burst <= last_pulse_burst) {
+            if (!lost && burst <= last_pulse_burst) {
                 TEST_ASSERT_NOT_NULL(strstr(line, "shake n/a"));
                 TEST_ASSERT_NOT_NULL(strstr(line, "shake_reason gap inside pulse"));
             } else {
@@ -1068,7 +1068,7 @@ test_tone_pulse_gap_placement(void) {
             }
             TEST_ASSERT_NOT_NULL(strstr(line, ", tone_pulse clean"));
             TEST_ASSERT_NOT_NULL(
-                strstr(line, burst <= last_pulse_burst ? ", silence_pulse gap" : ", silence_pulse clean"));
+                strstr(line, !lost && burst <= last_pulse_burst ? ", silence_pulse gap" : ", silence_pulse clean"));
             TEST_ASSERT_NOT_NULL(strstr(line, lost ? "silence_take_gaps 0" : "silence_take_gaps 1"));
             TEST_ASSERT_NOT_NULL(
                 strstr(line, lost && burst <= last_pulse_burst ? "silence_lost_samples 1" : "silence_lost_samples 0"));

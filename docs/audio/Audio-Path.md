@@ -79,8 +79,8 @@ remains. The chip driver counts whole configured-rate periods inside each confir
 read interval; fractions from separate drains cannot establish a lost sample.
 
 Pulse shake needs `IMU_VIBRATION_MIN_SAMPLES` samples in the pulse span.
-Gaps and lost samples invalidate shake only when their placed interval intersects
-that span. `imu_gaps` counts queue gap reports across both capture windows.
+Take gaps inside that span invalidate shake; read-mode loss is counted while
+RMS uses the samples that arrived. `imu_gaps` counts queue gap reports across both windows.
 
 Unavailable shake carries `shake_reason`, the warning text, in the reply and JSON.
 Old replies without these fields parse with null values.
