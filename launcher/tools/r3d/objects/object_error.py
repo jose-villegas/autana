@@ -38,16 +38,25 @@ FRAME_INCHES = 1.2
 CSV_DIGITS = 6
 # The held-out score prints four decimals; the mean over the parts' pixels must round to it.
 SCORE_TOLERANCE = 1e-4
+# A part is planar when this share of its source area faces within PLANAR_DEGREES of its mean normal: a gently
+# curved surface counts; a few steep edge triangles do not undo it.
+PLANAR_DEGREES = 5.0
+PLANAR_AREA_SHARE = 0.99
+# A drawn triangle is a sheet when its area exceeds this many times the median drawn triangle of its part and its
+# normal stands more than SHEET_DEGREES off the nearest source triangle's.
+SHEET_GROWTH = 4.0
+SHEET_DEGREES = 30.0
 # A row's fields in error.csv's column order, each with the type read turns its text back into.
 FIELDS = dict(object=str, source_object=str, material=str, pixel_share=float, error_share=float,
               mean_delta_e=float, source_triangles=int, source_share=float, drawn_triangles=int, drawn_share=float,
               shape=int, copies=int, parts_of_object=int, welded=lambda text: text == "True",
-              segment=lambda text: text == "True")
+              segment=lambda text: text == "True", planar=lambda text: text == "True", sheet_triangles=int)
 
 
 class Parts(NamedTuple):
     """Per part: its name, its source object's name, how many parts that object has, whether it shares a welded
-    position with another object, its most common material, and its source and drawn triangle counts."""
+    position with another object, its most common material, its source and drawn triangle counts, whether it is
+    planar and how many of its drawn triangles are sheets."""
     names: list
     objects: list
     parts_of_object: np.ndarray
@@ -55,6 +64,8 @@ class Parts(NamedTuple):
     materials: list
     source_triangles: np.ndarray
     drawn_triangles: np.ndarray
+    planar: np.ndarray
+    sheet_triangles: np.ndarray
 
 
 def part_labels(p, tri_v, tri_o):
@@ -108,12 +119,43 @@ def main_materials(labels, tri_m, material_names, count):
     return [material_names[m] for m in best]
 
 
-def drawn_parts(source_p, tri_v, labels, drawn, count):
-    """Per part, the drawn triangles nearest its source triangles by centre: where the fitted mesh spent them."""
+def nearest_source(source_p, tri_v, drawn_p, drawn_tris):
+    """Per drawn triangle, the source triangle nearest it by centre: the part the fitted mesh spent it on."""
     from scipy.spatial import cKDTree
 
-    _, near = cKDTree(source_p[tri_v].mean(axis=1)).query(drawn.mean(axis=1))
-    return np.bincount(labels[near], minlength=count)
+    return cKDTree(source_p[tri_v].mean(axis=1)).query(drawn_p[drawn_tris].mean(axis=1))[1]
+
+
+def face_normals(p, tris):
+    """Each triangle's unit normal and its area."""
+    normal = np.cross(p[tris[:, 1]] - p[tris[:, 0]], p[tris[:, 2]] - p[tris[:, 0]])
+    length = np.linalg.norm(normal, axis=1)
+    return normal / np.maximum(length, 1e-30)[:, None], 0.5 * length
+
+
+def planar_parts(source_p, tri_v, labels, count):
+    """Per part, whether PLANAR_AREA_SHARE of its source area faces within PLANAR_DEGREES of its area-weighted
+    mean normal."""
+    unit, area = face_normals(source_p, tri_v)
+    mean = np.stack([np.bincount(labels, unit[:, axis] * area, minlength=count) for axis in range(3)], axis=1)
+    mean /= np.maximum(np.linalg.norm(mean, axis=1, keepdims=True), 1e-30)
+    facing = (unit * mean[labels]).sum(axis=1) >= np.cos(np.radians(PLANAR_DEGREES))
+    return np.bincount(labels, area * facing, minlength=count) >= PLANAR_AREA_SHARE * np.bincount(
+        labels, area, minlength=count)
+
+
+def sheet_triangles(source_p, tri_v, drawn_p, drawn_tris, near, labels):
+    """Per drawn triangle, whether its area exceeds SHEET_GROWTH times the median drawn triangle of its part (the
+    part of its nearest source triangle, `labels[near]`) and its normal is turned more than SHEET_DEGREES from that
+    source triangle's, either side."""
+    unit, area = face_normals(drawn_p, drawn_tris)
+    source_unit, _ = face_normals(source_p, tri_v[near])
+    part = labels[near]
+    median = np.zeros(part.max() + 1 if len(part) else 0)
+    for label in np.unique(part):
+        median[label] = np.median(area[part == label])
+    turned = np.abs((unit * source_unit).sum(axis=1)) < np.cos(np.radians(SHEET_DEGREES))
+    return (area > SHEET_GROWTH * median[part]) & turned
 
 
 def accumulate(frames, reference_dir, scale, ids_for):
@@ -152,7 +194,7 @@ def rows_for(parts, shapes, totals):
     rows = [dict(object=SKY, source_object=SKY, material="", pixel_share=pixels[count] / total_pixels,
                  error_share=error[count] / error_scale, mean_delta_e=error[count] / max(pixels[count], 1),
                  source_triangles=0, source_share=0.0, drawn_triangles=0, drawn_share=0.0, shape=-1, copies=0,
-                 parts_of_object=0, welded=False, segment=False)]
+                 parts_of_object=0, welded=False, segment=False, planar=False, sheet_triangles=0)]
     for part in seen:
         name = parts.names[part]
         rows.append(dict(
@@ -163,7 +205,8 @@ def rows_for(parts, shapes, totals):
             drawn_triangles=int(parts.drawn_triangles[part]),
             drawn_share=parts.drawn_triangles[part] / total_drawn if total_drawn else 0.0,
             shape=shape_of[name], copies=copies[name], parts_of_object=int(parts.parts_of_object[part]),
-            welded=bool(parts.shared[part]), segment=bool(parts.parts_of_object[part] == 1 and parts.shared[part])))
+            welded=bool(parts.shared[part]), segment=bool(parts.parts_of_object[part] == 1 and parts.shared[part]),
+            planar=bool(parts.planar[part]), sheet_triangles=int(parts.sheet_triangles[part])))
     rows.sort(key=lambda row: row["error_share"], reverse=True)
     unseen = 1 - parts.drawn_triangles[seen].sum() / total_drawn if total_drawn else 0.0
     return rows, total_error / total_pixels, unseen
@@ -247,10 +290,18 @@ def group_table(groups, score, text, label, count, top=TOP_ROWS):
     return lines
 
 
+def surface_text(rows):
+    """How many drawn triangles of the parts in view sit on planar parts, and how many are sheets."""
+    planar = sum(row["drawn_triangles"] for row in rows if row["planar"])
+    sheets = sum(row["sheet_triangles"] for row in rows)
+    return (f" {planar} drawn triangles sit on planar parts in view; {sheets} are sheets (over {SHEET_GROWTH:g} "
+            f"times their part's median triangle, turned over {SHEET_DEGREES:g}° from the source).")
+
+
 def report_body(rows, score, unseen):
     """The three ranked tables."""
     lines = [f"Mean dE76 over the held-out path {score:.3f}, over {len(rows) - 1} object parts in view. "
-             f"{unseen:.1%} of the drawn triangles sit on parts no held-out pixel shows.", ""]
+             f"{unseen:.1%} of the drawn triangles sit on parts no held-out pixel shows.{surface_text(rows)}", ""]
     lines += part_table(rows) + [""]
     lines += group_table(object_rows(rows), score, "Source objects, every part summed.", "Source object",
                          "Parts seen / all") + [""]
@@ -335,10 +386,13 @@ def held_out_error(scene_path, scene, job, bundle, inputs, work):
     path.write_bytes(next(data for name, _kind, data in entries if name == job.asset_name))
     rest = start_mesh(path)
     fitted = joined(rest, placed_copies(bundle, rest.flat))
-    drawn = fitted.points[fitted.vertex_point][fitted.tris]
+    drawn = fitted.points[fitted.vertex_point], fitted.tris
+    near = nearest_source(p, tri_v, *drawn)
+    sheets = sheet_triangles(p, tri_v, *drawn, near, labels)
     parts = Parts(names, [source.object_names[o] for o in owner], parts_of_object, shared,
                   main_materials(labels, tri_m, source.names, count), np.bincount(labels, minlength=count),
-                  drawn_parts(p, tri_v, labels, drawn, count))
+                  np.bincount(labels[near], minlength=count), planar_parts(p, tri_v, labels, count),
+                  np.bincount(labels[near], sheets, minlength=count).astype(np.int64))
     host = build_host(fv.VIEWER, work / "host", scene_path)
     held_out_mean, _p95 = fv.held_out_score(job, bundle, work, host, scene_path, inputs=inputs)
     totals = accumulate(work / "score" / "frames.avi", inputs / "reference_held_out", fv.BOARD_SCALE, ids_for)

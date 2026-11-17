@@ -127,11 +127,123 @@ class PackageRequires(FixtureLauncher):
         self.assertEqual(["gamma"], [Path(line).name for line in self.shell("package_reachable", "gamma")])
 
 
+BOARD_KCONFIG = """menu "Board"
+    choice BOARD
+        prompt "Board"
+        default BOARD_SECOND
+        config BOARD_FIRST
+            bool "First"
+        config BOARD_SECOND
+            bool "Second"
+    endchoice
+    config BOARD_DIR
+        string
+        default "first_board" if BOARD_FIRST
+        default "second_board" if BOARD_SECOND
+endmenu
+menu "Other"
+    choice OTHER
+        default OTHER_ONE
+    endchoice
+endmenu
+"""
+
+
+class BoardFolder(FixtureLauncher):
+    def setUp(self):
+        super().setUp()
+        for folder in ("first_board", "second_board", "second_board_v2"):
+            (self.launcher / "main/board" / folder).mkdir(parents=True)
+        shutil.copy(ROOT / "launcher/main/board/board_dir.cmake", self.launcher / "main/board/board_dir.cmake")
+        self.write("packages/alpha/include/alpha/alpha.h")
+
+    def cmake_folder(self, *defines):
+        """board_dir.cmake's board_dir, or None when it fails; `defines` are -D arguments, as the
+        device build's CONFIG_* are."""
+        self.write("print.cmake", f'include("{(self.launcher / "main/board/board_dir.cmake").as_posix()}")\n'
+                   'message(STATUS "board_dir=${board_dir} at ${board_include_dir}")\n')
+        result = subprocess.run(["cmake", *defines, "-P", str(self.launcher / "print.cmake")],
+                                capture_output=True, text=True, timeout=120)
+        if result.returncode:
+            return None
+        folder, path = result.stdout.split("board_dir=")[1].strip().split(" at ")
+        self.assertEqual(Path(path), self.launcher / "main/board" / folder)
+        return folder
+
+    def shell_folder(self):
+        script = f'. "{(BUILD / "packages.sh").as_posix()}"\nboard_include_dir "{self.launcher.as_posix()}"\n'
+        result = run_shell("-c", script)
+        return Path(result.stdout.strip()).name if result.returncode == 0 else None
+
+    def python_folder(self):
+        try:
+            return packages.board_include_dir(self.launcher).name
+        except ValueError:
+            return None
+
+    def folders(self, kconfig):
+        self.write("main/Kconfig.projbuild", kconfig)
+        return [self.python_folder(), self.shell_folder(), self.cmake_folder()]
+
+    def test_the_choices_default_names_the_folder_in_all_three_readers(self):
+        self.assertEqual(["second_board"] * 3, self.folders(BOARD_KCONFIG))
+
+    def test_the_readers_agree_on_every_shape_of_the_kconfig(self):
+        shapes = {
+            "the default after the entries": (BOARD_KCONFIG.replace("        default BOARD_SECOND\n", "").replace(
+                "    endchoice\n    config BOARD_DIR", "        default BOARD_SECOND\n    endchoice\n    config BOARD_DIR", 1),
+                "second_board"),
+            "the folders before the choice": (
+                'config BOARD_DIR\n    default "second_board" if BOARD_SECOND\n' + BOARD_KCONFIG, "second_board"),
+            "a longer name that starts the same": (BOARD_KCONFIG.replace(
+                '        default "first_board" if BOARD_FIRST\n',
+                '        default "second_board_v2" if BOARD_SECOND_V2\n'), "second_board"),
+            "another choice's default": (BOARD_KCONFIG.replace("        default BOARD_SECOND\n", ""), None),
+            "text after the default": (BOARD_KCONFIG.replace("default BOARD_SECOND", "default BOARD_SECOND # why"), None),
+            "a folder name no reader takes": (BOARD_KCONFIG.replace('"second_board"', '"Second-board"'), None),
+            "a folder that does not exist": (BOARD_KCONFIG.replace('"second_board"', '"third_board"'), None),
+        }
+        for shape, (kconfig, folder) in shapes.items():
+            with self.subTest(shape=shape):
+                self.assertEqual([folder] * 3, self.folders(kconfig))
+
+    def test_the_devices_config_wins_over_the_default(self):
+        self.write("main/Kconfig.projbuild", BOARD_KCONFIG)
+        self.assertEqual("first_board", self.cmake_folder("-DCONFIG_BOARD_DIR=first_board"))
+        self.assertIsNone(self.cmake_folder("-DCONFIG_BOARD_DIR="))
+
+    def test_the_firmware_search_path_agrees_with_the_python_twin(self):
+        self.write("main/Kconfig.projbuild", BOARD_KCONFIG)
+        twin = [path.relative_to(self.launcher).as_posix() for path in packages.include_roots(self.launcher)]
+        self.assertEqual(["main", "main/board/second_board", "packages/alpha/include"], twin)
+        self.assertEqual(twin, self.names("firmware_include_dirs"))
+        flags = " ".join(self.lines("firmware_includes")).split()
+        self.assertEqual(["-I"] * 3, flags[::2])
+        self.assertEqual(twin, [Path(flag).relative_to(self.launcher.as_posix()).as_posix() for flag in flags[1::2]])
+
+    def test_the_firmware_search_path_fails_without_a_board(self):
+        self.write("main/Kconfig.projbuild", BOARD_KCONFIG.replace('"second_board"', '"third_board"'))
+        with self.assertRaises(ValueError):
+            packages.include_roots(self.launcher)
+        for function in ("firmware_include_dirs", "firmware_includes"):
+            with self.subTest(function=function):
+                result = run_shell("-c", f'. "{(BUILD / "packages.sh").as_posix()}"\n'
+                                         f'{function} "{self.launcher.as_posix()}"\n')
+                self.assertNotEqual(0, result.returncode)
+                self.assertIn("no board folder", result.stderr)
+
+    def test_the_repository_names_a_folder_that_exists(self):
+        folder = packages.board_include_dir()
+        self.assertTrue((folder / "board_config.h").is_file(), folder)
+
+
 class EngineSources(FixtureLauncher):
     def sources(self):
-        for name in ("tools/render/engine_sources.cmake", "main/renderer_sources.cmake"):
+        for name in ("tools/render/engine_sources.cmake", "main/renderer_sources.cmake",
+                     "main/board/board_dir.cmake", "main/Kconfig.projbuild"):
             (self.launcher / name).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(ROOT / "launcher" / name, self.launcher / name)
+        (self.launcher / packages.board_include_dir().relative_to(ROOT / "launcher")).mkdir(parents=True)
         result = subprocess.run(["cmake", "-P", str(self.launcher / "tools/render/engine_sources.cmake")],
                                 capture_output=True, text=True, timeout=120)
         self.assertEqual(0, result.returncode, result.stderr)

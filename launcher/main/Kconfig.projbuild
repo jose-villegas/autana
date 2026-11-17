@@ -1,3 +1,23 @@
+menu "Board"
+
+    choice BOARD
+        prompt "Board"
+        default BOARD_WAVESHARE_AMOLED_1_8
+        help
+            The board this firmware runs on. Each entry names a folder under
+            main/board/ whose board_config.h states the board's values and
+            whose sources bind board.h; the build compiles that folder only.
+
+        config BOARD_WAVESHARE_AMOLED_1_8
+            bool "Waveshare ESP32-S3-Touch-AMOLED-1.8"
+    endchoice
+
+    config BOARD_DIR
+        string
+        default "waveshare_amoled_1_8" if BOARD_WAVESHARE_AMOLED_1_8
+
+endmenu
+
 menu "Launcher"
 
     choice LAUNCHER_BUILD_TYPE

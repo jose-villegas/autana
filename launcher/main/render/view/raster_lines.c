@@ -8,8 +8,6 @@
 #include "render/r3d_span.h"
 #include "render/raster_internal.h"
 
-/* A box's corners, box3f_corner()'s k, each bit an axis. */
-#define BOX_CORNERS  8
 /* A box's edges lie on the surfaces they bound: a point counts as behind
  * only past this share of the drawn depth. */
 #define BEHIND_SLACK 0.02F
@@ -90,12 +88,12 @@ raster_lines_segment(const r3d_lens_t* lens, const raster_lines_depth_t* depth, 
 
 void
 raster_lines_box(const r3d_lens_t* lens, const raster_lines_depth_t* depth, box3f_t box, gfx_color_t color) {
-    vec3f_t corner[BOX_CORNERS];
-    for (int k = 0; k < BOX_CORNERS; k++) {
+    vec3f_t corner[BOX3_CORNERS];
+    for (int k = 0; k < BOX3_CORNERS; k++) {
         corner[k] = mat4f_apply(&lens->m, box3f_corner(box, k));
     }
-    for (int a = 0; a < BOX_CORNERS; a++) {
-        for (int bit = 1; bit < BOX_CORNERS; bit <<= 1) {
+    for (int a = 0; a < BOX3_CORNERS; a++) {
+        for (int bit = 1; bit < BOX3_CORNERS; bit <<= 1) {
             if ((a & bit) == 0) {
                 raster_lines_segment(lens, depth, corner[a], corner[a | bit], color);
             }

@@ -38,6 +38,7 @@ set(app_srcs
     "input/buttons/buttons.c"
     "input/touch/gesture.c"
     "input/motion/imu.c"
+    "input/motion/qmi8658/qmi8658.c"
     "input/motion/imu_queue.c"
     "power/power_decode.c"
     "power/power_cache.c"
@@ -125,8 +126,10 @@ if(CONFIG_LAUNCHER_SELFTEST)
     list(APPEND app_srcs "selftest/console_runsuite.c")
 endif()
 
-# board/board.h binds this target's hardware facts to board_esp32s3.c.
-list(APPEND app_srcs "board/board_esp32s3.c" "board/board_panel.c")
+# board/board.h's functions and values come from the chosen board's folder.
+include("${CMAKE_CURRENT_LIST_DIR}/board/board_dir.cmake")
+launcher_glob(board_srcs "${board_include_dir}/*.c")
+list(APPEND app_srcs ${board_srcs})
 # At 120 MHz, PSRAM tuning runs with the USB port off the bus; the wrap that
 # routes it through board_usb.c is added after idf_component_register below.
 if(CONFIG_SPIRAM_SPEED_120M)
@@ -202,9 +205,11 @@ endif()
 # SPI2. "sdmmc" itself is still needed for sdmmc_card_t and the protocol
 # layer underneath the host driver.
 #
-# esp_lcd_co5300 brings up the V2 (CO5300 panel) revision; see board/board_panel.c. It is
+# esp_lcd_co5300 brings up the V2 (CO5300 panel) revision; see the board's board_panel.c. It is
 # a PRIVATE dependency of the BSP's own idf_component.yml, so main needs its
 # own declaration (main/idf_component.yml) to see its headers.
+# esp32_s3_touch_amoled_1_8 is the board's BSP. REQUIRES is read before any
+# CONFIG_* is set, so a second board brings its BSP in its own component.
 set(app_reqs esp_codec_dev esp_driver_i2s math simd kinematics physics image hash collections microui esp32_s3_touch_amoled_1_8 esp_lcd heap esp_timer
              esp_driver_i2c esp_driver_tsens esp_hw_support esp_psram spi_flash esp_partition
              fatfs esp_driver_sdmmc sdmmc
@@ -329,7 +334,7 @@ endif()
 
 idf_component_register(
     SRCS ${app_srcs}
-    INCLUDE_DIRS "."
+    INCLUDE_DIRS "." "${board_include_dir}"
     PRIV_INCLUDE_DIRS ${app_private_include_dirs}
     LDFRAGMENTS "linker.lf"
     REQUIRES ${app_reqs}

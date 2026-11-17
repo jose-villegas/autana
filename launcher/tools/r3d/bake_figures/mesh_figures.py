@@ -56,8 +56,6 @@ END_FRAMES = 12
 EDGE_WIDTH = 0.4
 NEW_EDGE_WIDTH = 1.6
 OLD_FADE = 0.55
-# Many cluster hues plus their fades: the 64 of an orbit tint the titles, so these GIFs take the format's most.
-HUE_GIF_COLORS = 256
 
 
 def view_hash():
@@ -159,7 +157,7 @@ def tree(mesh, path):
         frame(0)
         save(figure, path)
     else:
-        save_gif(figure, frame, ORBIT_FRAMES, path, GIF_FPS, colors=HUE_GIF_COLORS)
+        save_gif(figure, frame, ORBIT_FRAMES, path, GIF_FPS)
 
 
 def ranges(mesh, path):
@@ -251,7 +249,7 @@ def build(path):
         frame(frames // 2)
         save(figure, path)
     else:
-        save_gif(figure, frame, frames, path, GIF_FPS, colors=HUE_GIF_COLORS)
+        save_gif(figure, frame, frames, path, GIF_FPS)
 
 
 def read_baked_mesh(path, rest):

@@ -21,7 +21,7 @@ anim_transform_sample(const anim_node_tracks_t* node, float seconds) {
     anim_track_sample(&node->rotation, seconds, q);
     anim_track_sample(&node->scale, seconds, s);
 
-    transformf_t pose = TRANSFORMF_IDENTITY;
+    transformf_t pose = transformf_identity();
     transformf_set_position(&pose, (vec3f_t){t[0], t[1], t[2]});
     transformf_set_rotation(&pose, quatf_normalize((quatf_t){q[0], q[1], q[2], q[3]}));
     transformf_set_scale(&pose, (vec3f_t){s[0], s[1], s[2]});

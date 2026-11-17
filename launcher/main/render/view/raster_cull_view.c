@@ -51,8 +51,6 @@ static const unsigned FATE_KEEP[RASTER_FATE_COUNT] = {
 #define CHASE_UP       0.15F
 /* A spectator's near plane: this share of the bounds' radius, or the camera's. */
 #define SPECTATOR_NEAR 0.001F
-/* A box's corners, box3f_corner()'s k, each bit an axis. */
-#define BOX_CORNERS    8
 
 #define BITS           (sizeof(uint32_t) * CHAR_BIT)
 
@@ -120,7 +118,9 @@ culling(void) {
 
 /* After the camera's draw, its scratch lists and vertices are free: each
  * instance is culled, counted and transformed again into them, through the
- * lens the draw used, and its kept clusters are not set up or hidden. */
+ * lens the draw used, and its kept clusters are not set up or hidden. The
+ * walk starts at each root, so its node counts include instances the frame's
+ * world-box test dropped; the fates are the same. */
 static void
 count_frame(raster_cull_t* s, const raster_t* raster) {
     const raster_buffers_t b = raster_carve(raster);
@@ -252,15 +252,7 @@ world_bounds(const raster_t* raster) {
     box3f_t bounds = box3f_empty();
     for (int i = 0; i < raster->instance_count; i++) {
         const r3d_instance_t* instance = &raster->instances[i];
-        const box3f_t local =
-            box3f_from_box3s(instance->mesh->nodes[0].bounds, 1.0F / (float)instance->mesh->position_scale);
-        for (int k = 0; k < BOX_CORNERS; k++) {
-            vec3f_t p = box3f_corner(local, k);
-            if (instance->model != NULL) {
-                p = mat4f_apply(instance->model, p);
-            }
-            bounds = box3f_extend(bounds, p);
-        }
+        bounds = box3f_union(bounds, r3d_lit_mesh_world_bounds(instance->mesh, instance->model));
     }
     return bounds;
 }
@@ -277,13 +269,12 @@ spectator_view(const raster_cull_t* s, const raster_t* raster) {
     transformf_t pose;
     if (s->from == RASTER_CULL_FROM_TOP) {
         const float height = (TOP_MARGIN * mathf_max(half.x, half.z) / tan_half) + half.y;
-        pose = transformf_looking((vec3f_t){centre.x, centre.y + height, centre.z}, (vec3f_t){0.0F, -1.0F, 0.0F},
-                                  (vec3f_t){0.0F, 0.0F, 1.0F});
+        pose = transformf_looking((vec3f_t){centre.x, centre.y + height, centre.z}, vec3f_down(), vec3f_unit_z());
     } else {
         const vec3f_t ahead = vec3f_add(camera->position, vec3f_scale(camera->forward, CHASE_BACK * radius));
         const vec3f_t eye = vec3f_add(vec3f_sub(camera->position, vec3f_scale(camera->forward, CHASE_BACK * radius)),
                                       (vec3f_t){0.0F, CHASE_UP * radius, 0.0F});
-        pose = transformf_looking(eye, vec3f_sub(ahead, eye), (vec3f_t){0.0F, 1.0F, 0.0F});
+        pose = transformf_looking(eye, vec3f_sub(ahead, eye), vec3f_unit_y());
     }
     render_view_t view = render_view_make(&pose, tan_half, near_z, camera->viewport);
     view.present = camera->present;

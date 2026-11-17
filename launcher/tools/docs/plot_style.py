@@ -5,10 +5,13 @@ and keep its category labels from overlapping (grouped bars or turned labels).
 """
 
 import pathlib
+import sys
 
 import matplotlib
 import numpy as np
-from PIL import Image
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+from docs import figures  # noqa: E402
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -31,7 +34,7 @@ def subplots(rows, columns, size, **options):
 
 
 def save(fig, path, dpi=DPI):
-    """Write the PNG (or GIF frame) without the version stamp, so a regeneration diffs clean, then free it."""
+    """Write the PNG without the version stamp, so a regeneration diffs clean, then free the figure."""
     path = pathlib.Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=dpi, metadata={"Software": None})
@@ -76,11 +79,8 @@ def style_axes(axis, title, *, square=False):
         spine.set_color(FAINT)
 
 
-GIF_COLORS = 32
 GIF_FRAMES = 60
 GIF_FPS = 10
-# Translucent orbit faces need more palette entries than flat charts.
-ORBIT_GIF_COLORS = 64
 GIF_MILLISECONDS_PER_SECOND = 1000
 WIRE_SAMPLES = 49
 WIRE_STRIDE = 8
@@ -88,10 +88,8 @@ WIRE_ALPHA = 0.45
 WIRE_WIDTH = 0.6
 
 
-def save_gif(fig, draw_frame, frames, path, fps, colors=GIF_COLORS):
-    """Use one adaptive palette for the whole loop to keep static chart colours stable."""
-    path = pathlib.Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
+def save_gif(fig, draw_frame, frames, path, fps):
+    """Draw `frames` frames of the figure on white and write them as a looping GIF on the global palette."""
     images = []
     try:
         fig.set_dpi(min(fig.dpi, DPI))
@@ -99,17 +97,10 @@ def save_gif(fig, draw_frame, frames, path, fps, colors=GIF_COLORS):
         for index in range(frames):
             draw_frame(index)
             fig.canvas.draw()
-            images.append(Image.fromarray(np.asarray(fig.canvas.buffer_rgba())[:, :, :3].copy()))
-        atlas = Image.new("RGB", (images[0].width, images[0].height * frames))
-        for index, image in enumerate(images):
-            atlas.paste(image, (0, index * image.height))
-        palette = atlas.quantize(colors=colors, dither=Image.Dither.NONE)
-        quantized = [image.quantize(palette=palette, dither=Image.Dither.NONE) for image in images]
-        quantized[0].save(path, save_all=True, append_images=quantized[1:], loop=0,
-                          duration=round(GIF_MILLISECONDS_PER_SECOND / fps), optimize=False,
-                          palette=palette.getpalette()[:colors * 3])
+            images.append(np.asarray(fig.canvas.buffer_rgba())[:, :, :3].copy())
     finally:
         plt.close(fig)
+    figures.save_gif(images, path, GIF_MILLISECONDS_PER_SECOND / fps)
 
 
 DARK_BACKGROUND = "#0d1117"
@@ -152,6 +143,13 @@ def save_themes(fig, path, dpi=DPI):
 FIGURE_SIZE = (8, 4.5)
 LEGEND_ANCHOR = (0.5, -0.18)
 LEGEND_COLUMNS = 2
+
+
+def save_plot(fig, axis, path, title):
+    """A one-theme plot with its legend, styled and saved."""
+    axis.legend()
+    style_axes(axis, title)
+    save(fig, path)
 
 
 def save_themed_plot(fig, axis, path, title, *, legend_columns=LEGEND_COLUMNS):

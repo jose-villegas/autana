@@ -16,12 +16,11 @@
 #
 # Run from the repository root with $PYTHON set to a Python that has Pillow and numpy
 # (the fidelity sheet also needs launcher/tools/r3d/requirements.txt, found by find_r3d_python);
-# ffmpeg must be on PATH. Renderer output goes to logs under <work-dir>.
+# ffmpeg must be on PATH for the comparison videos. Renderer output goes to logs under <work-dir>.
 
 set -eu
 
 . scripts/lib/run.sh
-. launcher/tools/render/gif_from_avi.sh
 
 [ "$#" = 4 ] || { [ "$#" = 5 ] && { [ "$5" = --meshlets-only ] || [ "$5" = --small-fill-only ] || [ "$5" = --present-only ]; }; } || {
     echo "$0: needs OUT WORK SCENE OBJECT [--meshlets-only|--small-fill-only|--present-only]" >&2
@@ -51,16 +50,14 @@ EOF
     small_fill_frames=60
     small_fill_dt=100
     small_fill_fps=6
-    small_fill_window="trim=start_frame=$small_fill_first:end_frame=$small_fill_end,setpts=PTS-STARTPTS,fps=$small_fill_fps"
-    small_fill_palette="max_colors=256:reserve_transparent=0:stats_mode=full"
-    # The table comes in on fd 3: the renderer and ffmpeg inherit stdin and may read it.
+    # The table comes in on fd 3: the renderer and Python inherit stdin and may read it.
     while IFS='|' read -r look label object settings gif diff <&3; do
         # Settings are whitespace-separated command arguments from the table above.
         set -- $settings
         run "$HOST" --scene "$ID" --quarter 1 --frames "$small_fill_frames" --dt "$small_fill_dt" --object "$object" "$@" \
             -o "$W/small-fill-$look.bmp" --video "$W/small-fill-$look.avi" 2> "$W/small-fill-$look.log"
-        gif_from_avi "$W/small-fill-$look.avi" "$RENDER/$gif.gif" \
-            "$small_fill_window" "$small_fill_palette"
+        run "$PYTHON" launcher/tools/docs/figures.py gif "$W/small-fill-$look.avi" "$RENDER/$gif.gif" \
+            --first "$small_fill_first" --end "$small_fill_end" --fps "$small_fill_fps"
     done 3< "$W/small-fill-looks.tsv"
     if cmp -s "$W/small-fill-smooth.bmp" "$W/small-fill-fast.bmp"; then
         echo "small-fill: --small-fill did not change the render" >&2
@@ -75,33 +72,26 @@ EOF
             --video "$W/small-fill-smooth.avi" "$W/small-fill-$look.avi" \
             --csv "$W/small-fill-$look.frames.csv" >> "$W/small-fill-$look-compare.log"
     done 3< "$W/small-fill-looks.tsv"
-    run "$PYTHON" - "$W" <<'PY'
+    run "$PYTHON" - "$W" "$RENDER" "$small_fill_first" "$small_fill_end" "$small_fill_fps" <<'PY'
 import pathlib
-import subprocess
 import sys
 from PIL import Image
-sys.path.insert(0, "launcher/tools/render")
-from render_compare import GAIN, heatmap, read_video
-work = pathlib.Path(sys.argv[1])
-fps, baseline = read_video(work / "small-fill-smooth.avi")
+sys.path[:0] = ["launcher/tools", "launcher/tools/render"]
+from docs.figures import clip, save_gif
+from check_avi import read_video
+from render_compare import GAIN, heatmap
+work, render = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+first, end, fps = map(int, sys.argv[3:6])
+rate, baseline = read_video(work / "small-fill-smooth.avi")
 baseline = list(baseline)
 for row in (work / "small-fill-looks.tsv").read_text().splitlines():
-    look, label, _, _, _, _ = row.split("|")
+    look, _, _, _, _, diff = row.split("|")
     if look == "smooth":
         continue
     _, variant = read_video(work / f"small-fill-{look}.avi")
-    frames = [heatmap(Image.fromarray(a), Image.fromarray(b), None, GAIN)
-              for a, b in zip(baseline, variant)]
-    subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "rawvideo",
-                    "-pix_fmt", "rgb24", "-s", "%dx%d" % frames[0].size, "-r", str(fps), "-i", "-",
-                    "-c:v", "rawvideo", "-pix_fmt", "bgr24", str(work / f"small-fill-{look}-diff.avi")],
-                   input=b"".join(frame.tobytes() for frame in frames), check=True)
+    frames = [heatmap(Image.fromarray(a), Image.fromarray(b), None, GAIN) for a, b in zip(baseline, variant)]
+    save_gif(clip(frames, rate, fps, first=first, end=end), render / f"{diff}.gif", 1000 / fps)
 PY
-    while IFS='|' read -r look label object settings gif diff <&3; do
-        [ "$look" != smooth ] || continue
-        gif_from_avi "$W/small-fill-$look-diff.avi" "$RENDER/$diff.gif" \
-            "$small_fill_window" "$small_fill_palette"
-    done 3< "$W/small-fill-looks.tsv"
     run "$PYTHON" launcher/tools/render/doc_tables.py "$W" "$TABLES" "$ID" "$FULL" \
         --small-fill-data docs/render/data/small-fill
 }
@@ -126,7 +116,7 @@ fi
 
 # One looping flythrough per demo target and view, the same three seconds of
 # it so the GIFs compare. Each keeps every rendered frame at the
-# render size, on 128 colours so smooth shading does not band.
+# render size.
 DEMO_GIF_FRAMES=30
 DEMO_GIF_DT=100
 demo_gif() {
@@ -134,8 +124,7 @@ demo_gif() {
     shift
     run "$HOST" --quarter 1 --frames "$DEMO_GIF_FRAMES" --dt "$DEMO_GIF_DT" \
         -o "$W/$name.bmp" --video "$W/$name.avi" "$@" 2> "$W/$name.log"
-    gif_from_avi "$W/$name.avi" "$RENDER/$name.gif" "fps=$((1000 / DEMO_GIF_DT))" \
-        "max_colors=128:stats_mode=diff"
+    run "$PYTHON" launcher/tools/docs/figures.py gif "$W/$name.avi" "$RENDER/$name.gif" --fps "$((1000 / DEMO_GIF_DT))"
 }
 demo_gif ${ID}-present-nearest --scene "$ID" --object "$SHOWCASE" --present nearest
 demo_gif ${ID}-present-scanline --scene "$ID" --object "$SHOWCASE" --present scanline
@@ -148,31 +137,6 @@ demo_gif ${ID}-flat --scene "$ID" --object "${FULL}_flat"
 demo_gif ${ID}-fitted --scene "$ID" --object "${FULL}_fitted"
 demo_gif ${ID}-fitted-full --scene "$ID" --object "${FULL}_fitted_full"
 demo_gif ${ID}-flat-fitted --scene "$ID" --object "${FULL}_flat_fitted"
-# One frame of scene_viewer.sh --compare's video over the same seconds, fitted
-# against its source, halfway through: drawn as the video draws it, unencoded.
-run "$PYTHON" launcher/tools/render/scene_path.py video --out "$W/compare.mp4" --work "$W/compare" \
-    --frames "$DEMO_GIF_FRAMES" --dt "$DEMO_GIF_DT" \
-    --side "fitted" "$HOST" "$(dirname "$HOST")/assets" "--scene
-$ID
---object
-${FULL}_fitted" \
-    --side "source" "$HOST" "$(dirname "$HOST")/assets" "--scene
-$ID
---object
-$FULL" 2> "$W/compare.log"
-run "$PYTHON" - "$W/compare" "$RENDER/${ID}-compare.png" $((DEMO_GIF_FRAMES / 2)) <<'PY'
-import pathlib
-import sys
-from PIL import Image
-sys.path.insert(0, "launcher/tools/render")
-from render_compare import GAIN, compose_frame, frame_note, measure, read_video
-work, out, index = pathlib.Path(sys.argv[1]), sys.argv[2], int(sys.argv[3])
-fps, a = read_video(work / "a.avi")
-_, b = read_video(work / "b.avi")
-a, b = Image.fromarray(list(a)[index]), Image.fromarray(list(b)[index])
-note = frame_note(index, 1000.0 / fps, measure(a, b, None))
-compose_frame(a, b, None, GAIN, "fitted", "source", note).save(out)
-PY
 demo_gif ${ID}-depth --scene "$ID" --object "$SHOWCASE" --view depth
 demo_gif ${ID}-tiles --scene "$ID" --object "$SHOWCASE" --view tiles
 demo_gif ${ID}-motion-vectors --scene "$ID" --object "$SHOWCASE" --view motion
@@ -184,8 +148,7 @@ views=$("$HOST" --scene "$ID" --view none 2>&1 >/dev/null | sed -n 's/^scene_vie
 for view in $views; do
     run "$HOST" --quarter 1 --frames "$DEMO_GIF_FRAMES" --dt "$DEMO_GIF_DT" --scene "$ID" --object "$SHOWCASE" \
         --view "$view" -o "$W/view-$view.bmp" 2> "$W/view-$view.log"
-    run "$PYTHON" -c 'import sys; from PIL import Image; Image.open(sys.argv[1]).save(sys.argv[2])' \
-        "$W/view-$view.bmp" "$RENDER/${ID}-view-$view.png"
+    run "$PYTHON" launcher/tools/docs/figures.py png "$W/view-$view.bmp" "$RENDER/${ID}-view-$view.png"
 done
 
 # The targets' differences at the pose the GIFs end on: each pair side by side
