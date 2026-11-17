@@ -24,7 +24,8 @@ import urllib.parse
 from tracked import tracked_files
 
 LINK = re.compile(r"\]\(([^)\s]+)\)")
-HEADING = re.compile(r"^(#{1,6})\s+(.+?)\s*#*$")
+# A closing run of #s counts only after a space, so "C#" keeps its #.
+HEADING = re.compile(r"^(#{1,6})\s+(.+?)(?:\s+#+)?\s*$")
 # An explicit anchor, as a table row that cannot be a heading carries one.
 ANCHOR = re.compile(r'<a\s+id="([^"]+)"\s*>')
 TABLE_CELL = re.compile(r"^\s*\|(.+)\|\s*$")
@@ -42,16 +43,38 @@ def blank_fences(lines):
     included, replaced by an empty string. Same length and positions as
     `lines`, so a line number computed against the result still matches
     the original file; a shell transcript's own "```"-shaped text can
-    never be mistaken for prose this way either."""
-    fenced = False
+    never be mistaken for prose this way either. A block opened by ```
+    closes only on ```, and one opened by ~~~ only on ~~~."""
+    fence = None
     out = []
     for line in lines:
-        if line.lstrip().startswith("```"):
-            fenced = not fenced
+        marker = line.lstrip()[:3]
+        if marker in ("```", "~~~") and fence in (None, marker):
+            fence = None if fence else marker
             out.append("")
             continue
-        out.append("" if fenced else line)
+        out.append("" if fence else line)
     return out
+
+
+def heading_anchors(lines):
+    """(line index, heading text, id) for each heading outside fenced
+    blocks, with GitHub's ids (github-slugger): a slug already taken gets
+    -1, -2 and so on until it is free, so headings A, A, A-1 are a, a-1,
+    a-1-1."""
+    taken, found = set(), []
+    for index, line in enumerate(blank_fences(lines)):
+        m = HEADING.match(line)
+        if m:
+            text = m.group(2).strip()
+            slug = anchor = slugify(text)
+            n = 0
+            while anchor in taken:
+                n += 1
+                anchor = f"{slug}-{n}"
+            taken.add(anchor)
+            found.append((index, text, anchor))
+    return found
 
 
 def doc_headings(path):
@@ -128,16 +151,11 @@ def slugify(text):
 def heading_slugs(path):
     """Every fragment a link into `path` may name: its headings' ids and
     its explicit `<a id>` anchors. None if `path` is not a file."""
-    heads = doc_headings(path)
-    if heads is None:
+    if not path.is_file():
         return None
-    slugs, counts = set(), {}
-    for text in heads:
-        slug = slugify(text)
-        n = counts.get(slug, 0)
-        counts[slug] = n + 1
-        slugs.add(slug if n == 0 else f"{slug}-{n}")
-    for line in blank_fences(path.read_text(encoding="utf-8", errors="replace").splitlines()):
+    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    slugs = {anchor for _, _, anchor in heading_anchors(lines)}
+    for line in blank_fences(lines):
         slugs.update(ANCHOR.findall(line))
     return slugs
 

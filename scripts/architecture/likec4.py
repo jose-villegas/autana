@@ -26,6 +26,7 @@ gives the names to point them at.
 """
 import json
 import pathlib
+import re
 
 from model import identifier, summary
 
@@ -136,6 +137,11 @@ def emit(data):
     extra_views = data.get('views', [])
     colours = data.get('tag_colours', {})
     links = data.get('links', [])
+    for v in extra_views:
+        if not re.fullmatch(r'[A-Za-z]\w*', v['suffix']):
+            raise ValueError(f"view suffix {v['suffix']!r}: a letter, then letters, digits or _")
+    if links and 'link_notation' not in data:
+        raise ValueError('links need a link_notation to draw their arrows under')
     all_tags = DEFAULT_HIDDEN | {'indirect'} | set(colours)
     all_tags |= {'indirect_' + v['suffix'] for v in extra_views} | {t for v in extra_views for t in v['hide']}
     all_tags |= set().union(*tags.values()) | {edge['tag'] for edge in links if edge.get('tag')}

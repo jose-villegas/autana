@@ -1,4 +1,5 @@
-"""check_doc_index.resolved_link turns a link on a page into the repository path it names."""
+"""check_doc_index.resolved_link turns a link on a page into the repository path it names;
+heading_anchors gives each heading the id GitHub does."""
 import pathlib
 import sys
 import unittest
@@ -43,6 +44,22 @@ class ResolvedLinkTests(unittest.TestCase):
 
     def test_a_link_from_a_page_at_the_top_resolves_there(self):
         self.assertEqual(check_doc_index.resolved_link("README.md", "docs/a.md#x"), "docs/a.md")
+
+
+
+class HeadingAnchorTests(unittest.TestCase):
+    def test_a_repeat_is_numbered_by_occurrence(self):
+        anchors = check_doc_index.heading_anchors(["# A", "## A", "### A-1", "# [B](b.md) `c`"])
+        self.assertEqual([a for _, _, a in anchors], ["a", "a-1", "a-1-1", "b-c"])
+
+    def test_headings_inside_either_fence_are_not_headings(self):
+        lines = ["# Out", "~~~", "# In tilde", "```", "# Still in", "~~~", "```", "# In backticks", "```", "# After"]
+        self.assertEqual([(i, t) for i, t, _ in check_doc_index.heading_anchors(lines)],
+                         [(0, "Out"), (9, "After")])
+
+    def test_a_closing_run_needs_a_space_before_it(self):
+        texts = [t for _, t, _ in check_doc_index.heading_anchors(["# C#", "# Title ##", "# Tail #  "])]
+        self.assertEqual(texts, ["C#", "Title", "Tail"])
 
 
 if __name__ == "__main__":

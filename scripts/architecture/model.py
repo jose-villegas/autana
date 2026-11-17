@@ -2,7 +2,7 @@
 around the system, one component per source folder, one module per source
 and its header, the includes between them, and the words for each box.
 
-Everything here takes the tree and its layout as arguments; build.py reads
+Everything here takes the tree and its layout as arguments; draw.py reads
 them from a project file, and a caller with more to say (file tags,
 packages, deployment) adds to the data before likec4.emit() writes it.
 
@@ -32,7 +32,7 @@ import sys
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "gates"))
 from c_comments import SOURCE_EXTENSIONS, file_header  # noqa: E402
-from check_doc_index import slugify  # noqa: E402
+from check_doc_index import heading_anchors, slugify  # noqa: E402
 from check_generated_files import is_generated  # noqa: E402
 from tracked import tracked_files  # noqa: E402
 
@@ -282,19 +282,13 @@ def doc_references(tree, tracked, includes, suffixes):
     for source in sorted(p for p in tracked if p.endswith(suffixes)):
         basenames.setdefault(source.rsplit('/', 1)[-1], []).append(source)
     for path in sorted(p for p in tracked if p.startswith('docs/') and p.endswith('.md')):
-        text, slugs, section, fenced = tree.read(path), set(), None, False
-        for line in text.splitlines():
-            if re.match(r'^\s*(`{3,}|~{3,})', line):
-                fenced = not fenced
-            heading = re.match(r'^#{1,6}\s+(.+?)(?:\s+#+)?$', line) if not fenced else None
+        lines, section = tree.read(path).splitlines(), None
+        headings = {index: (title, anchor) for index, title, anchor in heading_anchors(lines)}
+        for index, line in enumerate(lines):
+            heading = headings.get(index)
             if heading or section is None:
-                title = heading[1] if heading else pathlib.PurePosixPath(path).stem
-                slug = slugify(title)
-                anchor, suffix = slug, 0
-                while anchor in slugs:
-                    suffix += 1
-                    anchor = f'{slug}-{suffix}'
-                slugs.add(anchor)
+                stem = pathlib.PurePosixPath(path).stem
+                title, anchor = heading or (stem, slugify(stem))
                 section = dict(path=path, heading=title, anchor=anchor, refs=[], text=[])
                 sections.append(section)
             if not heading:
@@ -352,7 +346,14 @@ def assign_docs(docs, components, files):
 def source_files(texts, comp_of, tracked, includes, vendor, vendored=()):
     """One record per source: where it sits, its words, the scanned files it
     includes and the outside headers matching `vendor`, each with the tracked
-    file in `vendored` it names, if any."""
+    file in `vendored` it names when exactly one does."""
+    by_name = {}
+    for p in vendored:
+        by_name.setdefault(p.rsplit("/", 1)[-1], []).append(p)
+
+    def named(e):
+        found = [p for p in by_name.get(e.rsplit("/", 1)[-1], ()) if p.endswith("/" + e)]
+        return found[0] if len(found) == 1 else None
     files = []
     for rel, text in texts.items():
         inc, ext = {}, {}
@@ -366,7 +367,7 @@ def source_files(texts, comp_of, tracked, includes, vendor, vendored=()):
                       "summary": summary(rel, text), "desc": opening(rel, text),
                       **({"gen": True} if is_generated(text) else {}),
                       "inc": [[t, n] for t, n in sorted(inc.items())],
-                      "ext": [[e, n, next((p for p in vendored if p.endswith("/" + e)), None)]
+                      "ext": [[e, n, named(e)]
                               for e, n in sorted(ext.items())]})
     return files
 

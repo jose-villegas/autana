@@ -6,7 +6,7 @@ any checkout that holds this repository (as a submodule, say) can draw itself wi
 
 ```mermaid
 flowchart LR
-    P["project file<br/>(JSON)"] --> B["build.py"]
+    P["project file<br/>(JSON)"] --> B["draw.py"]
     T["tracked sources,<br/>README, docs/"] --> B
     B --> M["model folder<br/>&lt;system&gt;.c4 + likec4.config.json"]
     M --> S["site.py"]
@@ -15,11 +15,11 @@ flowchart LR
 
 ```sh
 npm ci --prefix scripts/architecture
-python3 scripts/architecture/build.py --project <project.json> --root <checkout> -o build/model
+python3 scripts/architecture/draw.py --project <project.json> --root <checkout> -o build/model
 python3 scripts/architecture/site.py build/model -o build/site --base /<repository>/ --open index
 ```
 
-[`build.py`](../../scripts/architecture/build.py) writes the model folder;
+[`draw.py`](../../scripts/architecture/draw.py) writes the model folder;
 [`site.py`](../../scripts/architecture/site.py) validates it and builds the site. The site's root
 lists every view; `--open index` makes it open the context diagram instead.
 
@@ -76,11 +76,14 @@ A test is a file in a `test/` or `tests/` folder, or one named `test_*`, `suite_
 ## Building on it
 
 A project that knows more than its tree, such as which build image compiles each file, calls
-`build.build_data()` from its own script and adds to the data before
+`draw.build_data()` from its own script and adds to the data before
 [`likec4.py`](../../scripts/architecture/likec4.py) writes it:
 
 | Adds | How |
 |---|---|
+| packages | `build_data(..., packages={root: name})`: each root becomes a container of its own, its words required; its headers sit under an include root inside it, its sources under `src/` |
+| vendored headers | `vendored`: tracked files an outside include may name; a module's metadata links one when exactly one matches |
+| more outside boxes | `outside`: boxes beside the project file's `systems` that relations may name |
 | tags on modules | a `tags` list on any file record; a module carries every tag its files carry |
 | colours for tags | `tag_colours`: tag to colour |
 | more component views | `views`: each `{suffix, title, hide}` draws the detail container again without the tags in `hide` |
