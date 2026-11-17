@@ -22,6 +22,15 @@ run = 44006103129
 host = "Linux x86_64"
 
 [[bake]]
+output = "bistro.street_fitted.bundle"
+source = "launcher/demo/bistro/bistro.scene.toml"
+key = "ba77cf2890372aace808d39617ad5c602929f005c40af9d5c0d6f65a048cfe1d"
+sha256 = "0015d49549d980a7fef55d0193f0d64f6cc2586f10afd073d44df77effb8a4e5"
+size = 399842
+run = 44042064972
+host = "Linux x86_64"
+
+[[bake]]
 output = "bistro.street_fitted.fit.bundle"
 source = "launcher/demo/bistro/bistro.scene.toml"
 key = "e409b76cde314ab45817fe1bcd0595bf6572164fec53ff99dc5b3db7e7d570da"
@@ -50,6 +59,15 @@ run = 44006103129
 host = "Linux x86_64"
 
 [[bake]]
+output = "bistro.street_fitted_full.bundle"
+source = "launcher/demo/bistro/bistro.scene.toml"
+key = "7ce1f23620dd0998ab7ce152c5ad898bac0b5b48d92dd63aec9f7d97ed92db5c"
+sha256 = "6b0f0b6a479d1450a9cca1482e8cbf63858b61d8edeec7d822bd033f54569425"
+size = 787671
+run = 44042064972
+host = "Linux x86_64"
+
+[[bake]]
 output = "bistro.street_fitted_full.fit.bundle"
 source = "launcher/demo/bistro/bistro.scene.toml"
 key = "96d9b680d29e7d5f9978529b78b83939c0c668edf1ed28ed97b2a41617a8b8c3"
@@ -75,6 +93,15 @@ key = "ca28f24cc3b22009344c91bf3936809126473eb3f5117d97ef05e1f566724cd1"
 sha256 = "bf8ca29623fc0952155e4c6b068dcdf7ca14c0a277180f3930544bbb44d94f89"
 size = 617488
 run = 44006103129
+host = "Linux x86_64"
+
+[[bake]]
+output = "bistro.street_flat_fitted.bundle"
+source = "launcher/demo/bistro/bistro.scene.toml"
+key = "a9d3f57bf1db4c0b6328bb42975227e584cf9756e125c4b4147d5bab564f899f"
+sha256 = "a8b1d5a5d0db96fa174e2e421008510bdee8c02aefd89281a5988d141a148a57"
+size = 660375
+run = 44042064972
 host = "Linux x86_64"
 
 [[bake]]
@@ -160,6 +187,15 @@ run = 44006103129
 host = "Linux x86_64"
 
 [[bake]]
+output = "sponza.atrium_fitted.bundle"
+source = "launcher/demo/sponza/sponza.scene.toml"
+key = "1f286cf8f7af7eaa3b72a88a3e7fcd46f4ebb260652d424c24976995f71972d6"
+sha256 = "5dc0f08e685481978eb59c1585a898959b82f19acc6e3c0742fa9585f0f70b91"
+size = 260832
+run = 44042064972
+host = "Linux x86_64"
+
+[[bake]]
 output = "sponza.atrium_fitted.fit.bundle"
 source = "launcher/demo/sponza/sponza.scene.toml"
 key = "de926d2485821b0a1ff3d108316d02a31c044d3e5dea6a0bfd8ecb261eea47b2"
@@ -188,6 +224,15 @@ run = 44006103129
 host = "Linux x86_64"
 
 [[bake]]
+output = "sponza.atrium_fitted_full.bundle"
+source = "launcher/demo/sponza/sponza.scene.toml"
+key = "72239ebca803e3c905f0a5cad33d68cd5ed66ba937a49d8afa03cd0aa0b9950d"
+sha256 = "57da3deb967d47ef7827471034138a74fd9d7b57121a967fcabb61ac9d326e1b"
+size = 510252
+run = 44042064972
+host = "Linux x86_64"
+
+[[bake]]
 output = "sponza.atrium_fitted_full.fit.bundle"
 source = "launcher/demo/sponza/sponza.scene.toml"
 key = "eab610640d3dbb02a45e52401340261a7e20ab775b557bd51fa89dfd86f2fe79"
@@ -213,6 +258,15 @@ key = "c683dc45a7f6e2c706082932df8b1bd27a53bab18575a600c254fec63ca6bfe4"
 sha256 = "b886cc78562e7b4cf9a34a2fb40828d6a717b8781695ca193d34cb4669c5943e"
 size = 442244
 run = 44006103129
+host = "Linux x86_64"
+
+[[bake]]
+output = "sponza.atrium_flat_fitted.bundle"
+source = "launcher/demo/sponza/sponza.scene.toml"
+key = "9cca7f1e0a499af7833e74b3c7309bf5c81c74efd8887c0ba6f107b63ee1e8b6"
+sha256 = "15ac6925e5b2ae491fa3430481ee462dbf3176a3e4454d63814a5357aafa76f3"
+size = 447788
+run = 44042064972
 host = "Linux x86_64"
 
 [[bake]]
