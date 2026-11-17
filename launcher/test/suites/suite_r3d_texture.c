@@ -2001,6 +2001,67 @@ test_a_triangle_whole_tiles_away_draws_the_same_pixels(void) {
     }
 }
 
+/* The steep floor's v steps 64 / 44 texels a row stepped affine, level 0;
+ * divided, a row at depth q steps that times FLOOR_Z_NEAR FLOOR_Z_STEEP over
+ * q squared: 4 texels and over down to row 3, 2 and over down to row 10,
+ * under 2 below. Levels 1 and 2 hold their own index in every texel, level 0
+ * a pattern. */
+#define LEVEL_2_ROWS_FIRST 1
+#define LEVEL_2_ROWS_LAST  2
+#define LEVEL_1_ROWS_FIRST 5
+#define LEVEL_1_ROWS_LAST  9
+#define LEVEL_0_ROWS_FIRST 14
+#define PATTERN_GREENS     4 /* level 0's rows show more greens than this */
+
+/* The green a texel of index `index` draws at full light. */
+static int
+index_green(int index) {
+    return ((index * 16 * 255) / R3D_TEXTURE_ONE) >> 2;
+}
+
+/* How many of target `which`'s covered pixels in floor rows `first` to
+ * `last` are within one of `green`, of how many are `covered`. */
+static int
+floor_rows_green(int which, int first, int last, int green, int* covered) {
+    int n = 0;
+    *covered = 0;
+    for (int y = FLOOR_Y0 + first; y <= FLOOR_Y0 + last; y++) {
+        for (int x = 0; x < SIDE; x++) {
+            const int i = (y * SIDE) + x;
+            if (depths_of(which)[i] == R3D_DEPTH_EMPTY) {
+                continue;
+            }
+            (*covered)++;
+            n += abs((int)rgb565_g6(rgb565_swap(colours_of(which)[i])) - green) <= 1;
+        }
+    }
+    return n;
+}
+
+static void
+test_a_dividing_floor_s_far_rows_take_coarser_levels_than_its_near_rows(void) {
+    fixture();
+    clear();
+    draw_floor(0, RENDER_SETTINGS_DEFAULT.texture, FLOOR_Z_STEEP, vec2f_zero());
+    int covered = 0;
+    int drawn = floor_rows_green(0, LEVEL_2_ROWS_FIRST, LEVEL_2_ROWS_LAST, index_green(2), &covered);
+    TEST_ASSERT_GREATER_THAN_MESSAGE(0, covered, "the far rows cover nothing");
+    TEST_ASSERT_EQUAL_MESSAGE(covered, drawn, "a row stepping 4 texels and over is not on level 2");
+    drawn = floor_rows_green(0, LEVEL_1_ROWS_FIRST, LEVEL_1_ROWS_LAST, index_green(1), &covered);
+    TEST_ASSERT_GREATER_THAN_MESSAGE(0, covered, "the middle rows cover nothing");
+    TEST_ASSERT_EQUAL_MESSAGE(covered, drawn, "a row stepping 2 to under 4 texels is not on level 1");
+    bool seen[RGB565_G6_MAX + 1] = {false};
+    int greens = 0;
+    for (int i = (FLOOR_Y0 + LEVEL_0_ROWS_FIRST) * SIDE; i < PIXELS; i++) {
+        const int green = (int)rgb565_g6(rgb565_swap(colours_of(0)[i]));
+        if (depths_of(0)[i] != R3D_DEPTH_EMPTY && !seen[green]) {
+            seen[green] = true;
+            greens++;
+        }
+    }
+    TEST_ASSERT_GREATER_THAN_MESSAGE(PATTERN_GREENS, greens, "the near rows left level 0's pattern");
+}
+
 /* MASK1 never divides: a strongly bent one draws the same with divide_px 0
  * and the default, as the affine walk, showing kept and cut pixels. */
 static void
@@ -2469,6 +2530,7 @@ run_r3d_texture_suite(void) {
     RUN_TEST(test_a_triangle_whose_width_is_divide_px_steps_affine_and_one_pixel_wider_divides);
     RUN_TEST(test_a_triangle_whose_height_is_divide_px_steps_affine_and_one_pixel_taller_divides);
     RUN_TEST(test_a_triangle_whole_tiles_away_draws_the_same_pixels);
+    RUN_TEST(test_a_dividing_floor_s_far_rows_take_coarser_levels_than_its_near_rows);
     RUN_TEST(test_a_bent_mask1_triangle_draws_the_same_at_any_divide_px);
     RUN_TEST(test_the_rasters_texture_settings_reach_the_fill);
     RUN_TEST(test_set_texture_keeps_divide_px_and_the_bend_in_steps_and_rounds_a_fine_bend_up);

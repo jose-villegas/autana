@@ -1,7 +1,8 @@
 /* mip_figures_probe: a receding floor drawn through the span fill with a
  * texture whose every mip level is one solid colour, so each pixel's colour
- * names the level its triangle picked; beside it, each pixel's own level
- * from the texels one screen step moves there. Prints both maps as JSON. */
+ * names the level it read: once stepping affine, a level a triangle, and
+ * once dividing, a level a span; beside them, each pixel's own level from the
+ * texels one screen step moves there. Prints the three maps as JSON. */
 #include <limits.h>
 #include <math.h>
 #include <stdint.h>
@@ -193,11 +194,18 @@ main(void) {
         fprintf(stderr, "mip_figures_probe: the solid-level texture did not open\n");
         return 1;
     }
-    const r3d_span_target_t target = r3d_span_target(&color[0][0], &depth[0][0], WIDTH, 0, HEIGHT);
-    draw_floor(&target, &texture);
+    r3d_span_target_t target = r3d_span_target(&color[0][0], &depth[0][0], WIDTH, 0, HEIGHT);
     printf("{\"width\":%d,\"height\":%d,\"levels\":%d,\"texels\":%d", WIDTH, HEIGHT, LEVELS, 1 << SIZE_LOG2);
-    print_map("picked", picked_at, &texture);
+    render_texture_settings_t settings = RENDER_SETTINGS_DEFAULT.texture;
+    draw_floor(&target, &texture);
+    print_map("span", picked_at, &texture);
     print_map("ideal", ideal_at, &texture);
+    memset(color, 0, sizeof color);
+    memset(depth, 0, sizeof depth);
+    settings.divide_px = 0;
+    r3d_span_set_texture(&target, &settings);
+    draw_floor(&target, &texture);
+    print_map("triangle", picked_at, &texture);
     printf("}\n");
     free(ltex);
     return 0;

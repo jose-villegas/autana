@@ -6,8 +6,8 @@
 Top: the source texture's mip chain as the LTEX baker makes it (texture_asset.py), level 0 at the size the
 textures file's first renderer gives it, each level at its true size beside the last. Below: a receding floor drawn
 by the span fill (mip_figures_probe.c) with a texture whose every level is one solid colour, so each pixel shows the
-level its triangle picked; beside it, the pixels whose triangle picked a finer level than their own step reads, the
-far part of each triangle, where it aliases.
+level it read, stepping affine (a level a triangle) and dividing (a level a span); over each, the pixels that read a
+finer level than their own step, where the texture aliases.
 """
 import argparse
 import pathlib
@@ -74,8 +74,9 @@ def baked_texture(textures, source):
 
 def mip_figure(data, args):
     shape = (data["height"], data["width"])
-    picked = np.array(data["picked"]).reshape(shape)
     ideal = np.array(data["ideal"]).reshape(shape)
+    walks = (("Affine, a level a triangle", np.array(data["triangle"]).reshape(shape)),
+             ("Dividing, a level a span", np.array(data["span"]).reshape(shape)))
     count = data["levels"]
     strip, sides = chain_image(baked_texture(args.textures, args.source))
     fig, axes = subplots(2, 2, FIGURE_SIZE, height_ratios=(CHAIN_HEIGHT_SHARE, 1))
@@ -93,22 +94,23 @@ def mip_figure(data, args):
         x += side + CHAIN_GAP
     chain.set_title(args.title)
     chain.axis("off")
-    axes[1, 0].imshow(level_image(picked, count), interpolation="nearest")
-    axes[1, 0].set_title("The level each triangle picked")
-    aliased = (picked != NONE) & (picked < ideal)
-    shown = level_image(picked, count) * 0.35 + 0.65
-    shown[aliased] = [int(ALIASED[i:i + 2], 16) / 255 for i in (1, 3, 5)]
-    axes[1, 1].imshow(shown, interpolation="nearest")
-    share = aliased.sum() / max(1, (picked != NONE).sum())
-    axes[1, 1].set_title(f"Finer than the pixel's own step: {share:.0%} of the floor")
+    for axis, (name, picked) in zip(axes[1], walks):
+        aliased = (picked != NONE) & (picked < ideal)
+        shown = level_image(picked, count)
+        shown[aliased] = [int(ALIASED[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+        axis.imshow(shown, interpolation="nearest")
+        share = aliased.sum() / max(1, (picked != NONE).sum())
+        axis.set_title(name)
+        axis.set_xlabel(f"{share:.1%} of the floor reads a finer level than its own step", fontsize=LABEL_SIZE,
+                        color=MUTED)
     for axis in axes[1]:
         axis.set_xticks([])
         axis.set_yticks([])
         for spine in axis.spines.values():
             spine.set_color(FAINT)
-    used = sorted(set(np.unique(picked)) - {NONE})
+    used = sorted(set(np.unique(np.stack([picked for _, picked in walks]))) - {NONE})
     handles = [Patch(color=SLOTS[level], label=f"level {level}") for level in used]
-    handles.append(Patch(color=ALIASED, label="aliases"))
+    handles.append(Patch(color=ALIASED, label="finer than its step"))
     fig.legend(handles=handles, loc="lower center", ncol=len(handles), fontsize=LABEL_SIZE, frameon=False)
     fig.get_layout_engine().set(rect=(0, 0.05, 1, 0.95))
     save(fig, args.out / IMAGE)
