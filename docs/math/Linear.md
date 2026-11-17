@@ -66,6 +66,7 @@ The left-handed frame has x right, y up and z forward; right cross up is forward
 | `P_dot(a, b)` | dot product, in the wide type of the number type | $`a \cdot b = a_x b_x + a_y b_y + a_z b_z`$ |
 | `P_equal(a, b)` | exact component equality | $`a_x = b_x \land a_y = b_y \land a_z = b_z`$ |
 | `P_cross(a, b)` | cross product; x × y = z | $`(a \times b)_x = a_y b_z - a_z b_y`$<br> $`(a \times b)_y = a_z b_x - a_x b_z`$<br> $`(a \times b)_z = a_x b_y - a_y b_x`$ |
+| `P_length(a)` | length; `f` only | $`\lVert a\rVert = \sqrt{a \cdot a}`$ |
 | `P_normalize(a)` | unit vector; `f` and `x` only; `f` needs `a` nonzero | $`\hat a = \frac{a}{\sqrt{a \cdot a}}`$ |
 | `P_normalize_divide(a, t, &q)` | normalize and divide a scalar by the same length; `f` and `x` only | $`\mathrm{out}=a/\lVert a\rVert,\ q=t/\lVert a\rVert`$ |
 | `P_<c1><c2><c3>(v)` | swizzle, each `c` one of `x y z`: `vec3f_zyx(v)` reverses | $`(v_{c_1},\ v_{c_2},\ v_{c_3})`$ |
@@ -182,6 +183,8 @@ the columns of `L = [a c; b d]` and its translation.
 | `P_row_dot_column3(row, &b, c)` | dot of three row entries with column `c` of `b`; used by the matrix products | $`\sum_{k=0}^{2} \mathit{row}_k\,b_{kc}`$ |
 | `P_mul(a, b)` | matrix product `a * b` | $`(a\,b)_{rc} = \sum_{k=0}^{3} a_{rk}\,b_{kc}`$ |
 | `P_mul_affine(a, b)` | `a * b`, with `b` applied first; both bottom rows must be (0, 0, 0, 1) | $`\begin{pmatrix} A & a \\ 0 & 1 \end{pmatrix}\begin{pmatrix} B & b \\ 0 & 1 \end{pmatrix}`$<br> $`= \begin{pmatrix} A B & A b + a \\ 0 & 1 \end{pmatrix}`$ |
+| `P_post_mul_affine(&a, &b)` | `a = a * b` in place, bit for bit as `P_mul_affine`; no matrix copies | row $`r`$ of $`a\,b`$ reads row $`r`$ of $`a`$ only |
+| `P_pre_mul_affine(&a, &b)` | `b = a * b` in place, bit for bit as `P_mul_affine`; no matrix copies | column $`c`$ of $`a\,b`$ reads column $`c`$ of $`b`$ only |
 | `P_invert_affine(m)` | float only (opt-in); inverse; bottom row (0, 0, 0, 1), invertible 3x3 part; one divide | $`\begin{pmatrix} M & t \\ 0 & 1 \end{pmatrix}^{-1}`$<br> $`= \begin{pmatrix} M^{-1} & -M^{-1} t \\ 0 & 1 \end{pmatrix}`$<br> $`M^{-1} = \frac{\mathrm{adj} M}{\det M}`$ |
 | `P_apply(&m, p)` | transforms the point `p`, translation included | $`p'_r = m_{r0}\,p_x + m_{r1}\,p_y + m_{r2}\,p_z + m_{r3}`$, for $`r = 0, 1, 2`$ |
 | `P_from_trs(position, rotation, scale)` | scale, rotate, translate; `rotation` must be unit | $`T\,R\,S = \begin{pmatrix} R\,\mathrm{diag}(\mathit{scale}) & \mathit{position} \\ 0 & 1 \end{pmatrix}`$ |

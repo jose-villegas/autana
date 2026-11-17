@@ -25,6 +25,7 @@ from device_capture import PERF_SEGMENT
 sys.path.insert(0, str(REPO / "launcher/tools/r3d"))
 sys.path.insert(0, str(REPO / "launcher/tools"))
 from build.c_header import read_define
+from build.layout_pad import LAYOUT_SEED_MAX
 from dynres_report import SPANS, SPAN_FIELDS, STAGE
 
 DEFAULT_RUNS = 5
@@ -36,7 +37,6 @@ SET_REFUSED = "device: SET "
 
 class SweepStop(RuntimeError):
     """The board refused a knob: every later capture would meet the same."""
-LAYOUT_SEED_MAX = 2**32 - 1
 TUNE_VALUE_MIN = -(2**31)
 TUNE_VALUE_MAX = 2**31 - 1
 TUNE_NAME_MAX = read_define(REPO / "launcher/main/core/tune.h", "TUNE_NAME_MAX")
@@ -76,7 +76,7 @@ def parse_args(argv=None):
         if not 0 < args.threshold < 100 or not 0 < args.alpha < 1 or min(args.runs, args.timeout, args.wait) <= 0:
             parser.error("threshold, alpha, runs and time limits must be positive and in range")
         if len(set(args.seeds)) != len(args.seeds) or any(seed < 0 or seed > LAYOUT_SEED_MAX for seed in args.seeds):
-            parser.error("layout seeds must be distinct uint32 values")
+            parser.error(f"layout seeds must be distinct, from 0 to {LAYOUT_SEED_MAX}")
         if len({name for name, _ in args.knob}) != len(args.knob):
             parser.error("knob names must be unique")
         try:

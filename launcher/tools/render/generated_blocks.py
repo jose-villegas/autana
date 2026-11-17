@@ -141,6 +141,21 @@ def apply_tables(root, tables, check=False):
     return changed
 
 
+def block_main(page, name, command, body, description, argv=None):
+    """A generator's command line: write `body()` into block `name` of `page`,
+    or with --check fail when the block is stale. `command` is the --check run
+    the marker names."""
+    parser = argparse.ArgumentParser(description=description)
+    parser.add_argument("--check", action="store_true")
+    args = parser.parse_args(argv)
+    try:
+        if replace_block(page, name, body(), check=args.check, command=command) and args.check:
+            raise ValueError(f"{page.name}#{name} is stale: run {command.replace(' --check', '')}")
+    except (OSError, ValueError) as error:
+        parser.exit(1, f"{pathlib.Path(sys.argv[0]).stem}: {error}\n")
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=pathlib.Path, default=pathlib.Path.cwd())

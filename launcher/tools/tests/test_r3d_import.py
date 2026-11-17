@@ -33,6 +33,8 @@ from tests.r3d_env import needs_mitsuba  # noqa: E402
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 SOURCE = '[source]\npath = "m.obj"\ncredit = "c"\n'
 OUTPUT = '[output]\nname = "mesh"\n'
+# The geometry a skinned renderer's import needs: skinning has no weights for coarser levels.
+NO_LEVELS = '[geometry]\nlod = false\n'
 AMBIENT = '[ambient]\ncolor = [1.0, 1.0, 1.0]\nintensity = 0.1\n'
 TONEMAP = 'tonemap_white = 0.3\n'
 SIMPLIFY = '[geometry]\nsimplify = { dense_edge = 1.0, props = [], props_share = 0.3, seal_seams = true, colour_deviation = 1.0 }\n'
@@ -104,12 +106,14 @@ def tree_scenes():
 
 
 def fit_key(job, scene):
-    """A fit's bake key (bake/bake.py) with fixed tool digests: what its recipe alone decides."""
+    """A fit's bake key (bake/bake.py) with fixed tool digests: what its recipe alone decides. Its reference set's
+    bytes stand in as a digest of the reference key, as other inputs render other bytes."""
     from bake import bake
 
     tools = {stage: stage for stage in bake.STAGES}
-    start = bake.stage_keys(job, scene, tools)["start"]
-    return bake.stage_keys(job, scene, tools, {start: "5" * 64})["fit"]
+    keys = bake.stage_keys(job, scene, tools)
+    reference = hashlib.sha256(keys["reference"].encode()).hexdigest()
+    return bake.stage_keys(job, scene, tools, {keys["start"]: "5" * 64, keys["reference"]: reference})["fit"]
 
 
 class ImportTests(unittest.TestCase):
@@ -142,6 +146,13 @@ class ImportTests(unittest.TestCase):
     def test_a_copy_budget_names_a_variant(self):
         rule = '[[objects.meshes]]\nmatch = { material = "m" }\ntriangles = 4\nvariants = { other = 2 }\n'
         self.rejects(r"objects\.meshes\[0\]\.variants\.other names no variant", SIMPLIFY + rule + VARIANT)
+
+    def test_morph_targets_are_off_unless_asked_and_need_levels(self):
+        with tempfile.TemporaryDirectory() as directory:
+            plain = load_import_settings(write_import(directory))
+            asked = load_import_settings(write_import(directory, body='[geometry]\nmorph = true\n'))
+        self.assertEqual((plain.morph, asked.morph), (False, True))
+        self.rejects("geometry.morph needs geometry.lod", '[geometry]\nlod = false\nmorph = true\n')
 
     def test_a_seed_requires_the_geometry_step_that_draws_it(self):
         self.rejects("process.seed needs geometry.thin", '[process]\nseed = 3\n')
@@ -591,8 +602,8 @@ class SceneTests(unittest.TestCase):
                                             TONEMAP + AMBIENT + BAKE, "hall.scene.toml"))
         self.assertEqual(plain.renderers[0].asset_name, "mesh")
         self.assertEqual(baked.renderers[0].asset_name, "hall.copy")
-        self.assertEqual(plain.renderers[0].asset_path.name, "mesh.mesh")
-        self.assertEqual(baked.renderers[0].asset_path.name, "hall.copy.mesh")
+        self.assertEqual(plain.renderers[0].asset_path.name, "mesh.bundle")
+        self.assertEqual(baked.renderers[0].asset_path.name, "hall.copy.bundle")
 
     def test_asset_names_are_limited_by_the_pack(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -655,7 +666,7 @@ class AuthoredImportTests(unittest.TestCase):
     def test_a_bare_import_runs_the_albedo_bake(self):
         with tempfile.TemporaryDirectory() as directory:
             self.assertEqual(self.bake(directory), 0)
-            mesh = read_lit_mesh(pathlib.Path(directory) / "mesh.mesh")
+            mesh = read_lit_mesh(pathlib.Path(directory) / "mesh.bundle")
         self.assertEqual(len(mesh.tris), 12)
         target = 255.0 * np.array([0.5, 0.25, 0.125])
         self.assertTrue((np.abs(mesh.rgb - target) <= 8).all(), mesh.rgb[:2])
@@ -663,7 +674,7 @@ class AuthoredImportTests(unittest.TestCase):
     def test_an_unbaked_renderer_runs_the_same_albedo_bake(self):
         with tempfile.TemporaryDirectory() as directory:
             self.assertEqual(self.bake(directory, renderer()), 0)
-            mesh = read_lit_mesh(pathlib.Path(directory) / "mesh.mesh")
+            mesh = read_lit_mesh(pathlib.Path(directory) / "mesh.bundle")
         self.assertEqual(len(mesh.tris), 12)
 
     def test_an_albedo_bake_runs_no_step(self):
@@ -674,16 +685,16 @@ class AuthoredImportTests(unittest.TestCase):
                 for name in steps:
                     stack.enter_context(mock.patch(f"r3d.mesh_import.{name}", side_effect=AssertionError(name)))
                 self.assertEqual(self.bake(directory, scene), 0)
-                mesh = read_lit_mesh(pathlib.Path(directory) / "mesh.mesh")
+                mesh = read_lit_mesh(pathlib.Path(directory) / "mesh.bundle")
             self.assertEqual((len(mesh.tris), len(mesh.pos)), (12, 8))
 
     def test_an_import_outside_the_repository_writes_its_mesh_beside_it_or_into_out(self):
         with tempfile.TemporaryDirectory() as directory:
             self.assertEqual(self.bake(directory), 0)
-            self.assertTrue((pathlib.Path(directory) / "mesh.mesh").is_file())
+            self.assertTrue((pathlib.Path(directory) / "mesh.bundle").is_file())
             out = pathlib.Path(directory, "elsewhere")
             self.assertEqual(mesh_import.main([str(pathlib.Path(directory) / "mesh.import.toml"), "--out", str(out)]), 0)
-            self.assertTrue((out / "mesh.mesh").is_file())
+            self.assertTrue((out / "mesh.bundle").is_file())
 
     def test_an_import_in_the_repository_is_a_bake_product(self):
         inside = mesh_import.REPO / "launcher" / "demo" / "capybara" / "meadow.import.toml"
@@ -701,9 +712,9 @@ class AuthoredImportTests(unittest.TestCase):
         objects = renderer(extra="bake = true\n") + sun_object()
         with tempfile.TemporaryDirectory() as directory:
             self.assertEqual(self.bake(directory, objects, head=HEAD, name="hall.scene.toml"), 0)
-            written = sorted(item.name for item in pathlib.Path(directory).glob("*.mesh"))
-            lit = read_lit_mesh(pathlib.Path(directory) / "hall.mesh.mesh")
-        self.assertEqual(written, ["hall.mesh.mesh"])
+            written = sorted(item.name for item in pathlib.Path(directory).glob("*.bundle"))
+            lit = read_lit_mesh(pathlib.Path(directory) / "hall.mesh.bundle")
+        self.assertEqual(written, ["hall.mesh.bundle"])
         target = 255.0 * np.array([0.5, 0.25, 0.125])
         self.assertFalse((np.abs(lit.rgb - target) <= 8).all(), "a lit mesh is not its albedo")
 
@@ -717,7 +728,7 @@ class AuthoredImportTests(unittest.TestCase):
             output = f'[output]\nname = "mesh"\nposition_scale = {scale}\n'
             self.assertEqual(self.bake(directory, objects, output=output, head=HEAD.replace("0.5", str(size / 100)),
                                        name="hall.scene.toml", obj=scaled_cube(size)), 0)
-            lit = read_lit_mesh(root / "hall.mesh.mesh")
+            lit = read_lit_mesh(root / "hall.mesh.bundle")
         self.assertEqual(len(lit.tris), 12)
 
 
@@ -919,7 +930,7 @@ class JobTests(unittest.TestCase):
             jobs = albedo_jobs(settings)
         self.assertEqual([(job.asset_name, job.bake, job.object, job.renderer.bake) for job in jobs],
                          [("mesh", None, None, False)])
-        self.assertEqual(jobs[0].asset_path, settings.mesh_dir / "mesh.mesh")
+        self.assertEqual(jobs[0].asset_path, settings.mesh_dir / "mesh.bundle")
         self.assertEqual(set(vars(jobs[0])), {"settings", "renderer", "object", "asset_name", "asset_path", "bake"})
 
 

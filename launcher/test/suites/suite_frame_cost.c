@@ -747,9 +747,26 @@ laps_fixture(void) {
 #define LAPS_LAP_CYCLES 3
 
 static int
-laps_report(laps_fixture_t* laps, uint32_t frames) {
+laps_report_dropped(laps_fixture_t* laps, uint32_t frames, int dropped) {
     return frame_laps_report(laps->cores, FRAME_LAPS_CORES, lap_names, frames, LAPS_CYCLES_PER_US, LAPS_LAP_CYCLES,
-                             laps->line, sizeof laps->line);
+                             dropped, laps->line, sizeof laps->line);
+}
+
+static int
+laps_report(laps_fixture_t* laps, uint32_t frames) {
+    return laps_report_dropped(laps, frames, 0);
+}
+
+static void
+test_a_lap_report_counts_the_call_sites_a_full_table_dropped(void) {
+    laps_fixture_t* const laps = laps_fixture();
+    frame_laps_switch(&laps->cores[0], 0, 1);
+    frame_laps_switch(&laps->cores[0], 2000, 0);
+
+    laps_report_dropped(laps, 1, 2);
+    TEST_ASSERT_EQUAL_STRING("lap 3000 ns | cpu0 set_up 2.000/1 +2 dropped", laps->line);
+    TEST_ASSERT_EQUAL_INT(0, laps_report_dropped(laps, 1, 2)); /* no laps, no line */
+    free(laps);
 }
 
 static void
@@ -858,6 +875,7 @@ suite_frame_cost(void) {
     RUN_TEST(test_a_name_is_remembered_across_windows_and_found_by_its_text);
     RUN_TEST(test_more_names_than_the_memory_holds_are_counted_not_lost_silently);
     RUN_TEST(test_laps_tile_a_core_each_charged_up_to_the_next);
+    RUN_TEST(test_a_lap_report_counts_the_call_sites_a_full_table_dropped);
     RUN_TEST(test_a_wait_is_charged_from_the_last_boundary_with_no_lap_running);
     RUN_TEST(test_laps_are_per_core_and_per_frame_and_survive_a_counter_wrap);
     RUN_TEST(test_a_lap_report_forgets_the_window_but_not_the_running_lap);

@@ -1,7 +1,7 @@
 /*
  * sponza_content: the Sponza scene's id and its bakes, the size it is seen
  * at, and what its camera loop is held to. The loop is the scene's camera:
- * its lens from scene_camera_lens() and its entity's animated transform once
+ * its lens from camera_lens() and its entity's animated transform once
  * the scene has loaded. Model units are centimetres; y is up.
  */
 #pragma once

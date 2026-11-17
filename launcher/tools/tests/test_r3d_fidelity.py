@@ -111,7 +111,7 @@ class DeclaredVariantTests(unittest.TestCase):
                 job = scene.renderers[0]
                 geometry = mesh_import.bake_geometry(job, scene)
                 written = write_variant(job, scene, geometry, "", root / "scratch")
-            tracked = (root / "mesh.mesh.mesh").read_bytes()
+            tracked = (root / "mesh.mesh.bundle").read_bytes()
             self.assertEqual(written.read_bytes(), tracked)
             self.assertGreater(len(set(np.unique(geometry.tri_mat))), 0)
 

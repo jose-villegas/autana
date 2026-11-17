@@ -44,8 +44,25 @@ test_bits32_sets_only_its_own_flag_bit_zero_first(void) {
     }
 }
 
+static void
+test_bits32_put_reports_changes_and_preserves_neighbours(void) {
+    uint32_t bits[BITS32_WORDS(FLAGS)] = {0};
+    for (size_t index = 0; index < FLAGS; index++) {
+        TEST_ASSERT_TRUE(bits32_put(bits, index, true));
+        TEST_ASSERT_FALSE(bits32_put(bits, index, true));
+    }
+    for (size_t index = 0; index < FLAGS; index++) {
+        TEST_ASSERT_TRUE(bits32_put(bits, index, false));
+        TEST_ASSERT_FALSE(bits32_put(bits, index, false));
+        for (size_t other = 0; other < FLAGS; other++) {
+            TEST_ASSERT_EQUAL(other > index, bits32_get(bits, other));
+        }
+    }
+}
+
 void
 run_bits_suite(void) {
+    RUN_TEST(test_bits32_put_reports_changes_and_preserves_neighbours);
     RUN_TEST(test_bits_counts_round_up_to_whole_storage);
     RUN_TEST(test_bits8_sets_only_its_own_flag_bit_zero_first);
     RUN_TEST(test_bits32_sets_only_its_own_flag_bit_zero_first);

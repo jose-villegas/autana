@@ -18,6 +18,7 @@ on:
 concurrency:
   group: idf-refresh
   cancel-in-progress: false
+  queue: max
 
 permissions:
   contents: write

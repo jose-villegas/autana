@@ -5,7 +5,9 @@ The triangles are cut into meshlets, compact clusters of a few dozen
 triangles, under an octree over the meshlets' centres. Positions are
 quantized to int16 ticks and the result is checked against the format's
 invariants before a byte is written. A mesh's triangles are put in a canonical
-order first, so the same triangles always bake to the same bytes."""
+order first, so the same triangles always bake to the same bytes. With levels
+of detail (lod/bake_levels.py) the meshlets are clusterlod's finest clusters,
+and the coarser levels' clusters and group records come with them."""
 
 import pathlib
 import sys
@@ -15,10 +17,12 @@ import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "device"))
 import gfx_color  # noqa: E402  (path must be set up first)
-from r3d.mesh_asset import BLOB_HEADER, CLUSTER, NODE, TYPE  # noqa: E402,F401
+from build.c_header import read_define  # noqa: E402
+from r3d.mesh_asset import BLOB_HEADER, CLUSTER, LOD_NONE, NODE, TYPE  # noqa: E402
 from r3d.geometry import distinct_corners
 from r3d.process_budget import NULL_RECORDER
 from r3d.meshopt import build_meshlets  # noqa: E402
+from r3d import mesh_bundle
 from r3d.import_settings import MESHLET_TRIANGLES
 from r3d.octree import build_octree, flatten_octree, node_bounds  # noqa: E402
 
@@ -28,6 +32,9 @@ MAX_NODES = 65535
 MAX_TRIANGLES = 65535  # uint16 triangle_first
 MAX_CLUSTERS = 65535  # uint16 leaf first cluster
 MAX_NODE_CHILDREN = 255
+# Children of a node that is not a leaf, as the cull walk sorts them.
+NODE_FANOUT = read_define(pathlib.Path(__file__).resolve().parents[2] / "main/render/r3d_lit_mesh.h",
+                          "R3D_LIT_NODE_CHILDREN_MAX")
 
 LEAF_TRIANGLES = 320
 MAX_DEPTH = 10
@@ -132,21 +139,88 @@ def meshlet_entries(q, tris, double, face, meshlet_triangles):
     return entries
 
 
-def assemble(q, col, entries, position_scale, leaf_triangles, max_depth):
+def assemble(q, col, entries, position_scale, leaf_triangles, max_depth, groups=None):
     """The baked mesh of clusters cut by any means: an octree over their
-    centres, each cluster owning its vertices, checked against the format."""
+    centres, each cluster owning its vertices, checked against the format.
+    With `groups`, each entry's "own" and "parent" become the cluster's
+    group pair."""
     for e in entries:
         e["box"] = box_of(q, e["tris"])
     centres = np.array([(lo + hi) / 2.0 for lo, hi in (e["box"] for e in entries)])
-    root = build_octree(centres, [len(e["tris"]) for e in entries], leaf_triangles, max_depth)
-    order, nodes = flatten_octree(root)
+    weights = np.array([len(e["tris"]) for e in entries])
+
+    def tree(items):
+        order, nodes = flatten_octree(build_octree(centres[items], weights[items], leaf_triangles, max_depth))
+        return [int(items[i]) for i in order], nodes
+
+    coarse = np.array([groups is not None and e["own"] != LOD_NONE for e in entries], dtype=bool)
+    if coarse.any():
+        by_own = sorted(np.flatnonzero(coarse), key=lambda i: entries[i]["own"])
+        order, nodes = two_trees(*tree(np.flatnonzero(~coarse)), *run_tree(by_own, weights, leaf_triangles))
+    else:
+        order, nodes = tree(np.arange(len(entries)))
 
     out = SimpleNamespace(position_scale=position_scale)
-    out.pos, out.rgb, out.tris, out.clusters, out.face_colors = lay_out(q, col, [entries[i] for i in order])
+    ordered = [entries[i] for i in order]
+    out.pos, out.rgb, out.tris, out.clusters, out.face_colors = lay_out(q, col, ordered)
     node_bounds(nodes, out.clusters)
     out.nodes = nodes
+    out.lod = None if groups is None else [(e["own"], e["parent"]) for e in ordered]
+    out.groups = None if groups is None else with_saves(out.lod, np.asarray(groups, dtype=np.int64).reshape(-1, 5),
+                                                         out.clusters)
     validate(out.pos, out.rgb, out.tris, out.clusters, out.nodes, out.face_colors)
+    validate_levels(out.lod, out.groups, out.clusters)
     return out
+
+
+def run_tree(items, weights, leaf_weight):
+    """(order, nodes): `items` kept in their order, under leaves of
+    consecutive items up to `leaf_weight` (and MAX_NODE_CHILDREN items), and
+    those under nodes of up to NODE_FANOUT children, breadth first."""
+    leaves, start, weight = [], 0, 0
+    for i, item in enumerate(items):
+        if i > start and (weight + weights[item] > leaf_weight or i - start == MAX_NODE_CHILDREN):
+            leaves.append({"leaf": True, "first": start, "count": i - start})
+            start, weight = i, 0
+        weight += weights[item]
+    leaves.append({"leaf": True, "first": start, "count": len(items) - start})
+    level = leaves
+    while len(level) > 1:
+        level = [{"leaf": False, "children": level[i:i + NODE_FANOUT]} for i in range(0, len(level), NODE_FANOUT)]
+    queue, nodes = [level[0]], []
+    for node in queue:
+        if node["leaf"]:
+            nodes.append(node)
+        else:
+            nodes.append({"leaf": False, "first": len(queue), "count": len(node["children"])})
+            queue.extend(node["children"])
+    return [int(i) for i in items], nodes
+
+
+def two_trees(finest_order, finest_nodes, coarse_order, coarse_nodes):
+    """One tree whose root's first child is the finest clusters' tree and its
+    second the coarse clusters', in the order of the group simplified into
+    each: the cull walks the first, then takes the coarse clusters of the
+    picked cut straight from their groups (r3d_lit_mesh_finest_root()). Each
+    tree keeps its own node order after the two roots, and its clusters stay
+    one run."""
+    finest_count = len(finest_nodes)
+
+    def placed(node, nodes_at, items_at):
+        if node["leaf"]:
+            return dict(node, first=node["first"] + items_at)
+        return dict(node, first=nodes_at(node["first"]))
+
+    def finest_at(j):
+        return 1 if j == 0 else 2 + j
+
+    def coarse_at(k):
+        return 2 if k == 0 else finest_count + 1 + k
+
+    root = {"leaf": False, "first": 1, "count": 2}
+    finest = [placed(n, finest_at, 0) for n in finest_nodes]
+    coarse = [placed(n, coarse_at, len(finest_order)) for n in coarse_nodes]
+    return finest_order + coarse_order, [root, finest[0], coarse[0], *finest[1:], *coarse[1:]]
 
 
 def box_of(q, tris):
@@ -210,22 +284,51 @@ def validate(pos, rgb, tris, clusters, nodes, face_colors=None):
     assert len(nodes) <= MAX_NODES
 
 
-def write_lit_mesh(out_dir, name, positions, rgb, tris, double, recorder=None, colourless=False, **options):
-    """Writes <name>.mesh into out_dir, the pack entry main/render/
-    r3d_lit_mesh.h reads. positions are model units, rgb 0..255 per vertex
-    (None for a flat mesh), tris counter-clockwise seen from the front,
-    double one flag per triangle; options, face_rgb among them, go to
-    bake_lit_mesh. With colourless, colour columns are weld keys returned in
-    colour_keys or face_keys; neither colour array is written. Returns the baked mesh."""
+def with_saves(lod, groups, clusters):
+    """Group rows (centre, radius, error) with each one's saves column
+    (lod_asset.group_saves()) from the clusters' triangle counts."""
+    from r3d import lod_asset
+    saves = lod_asset.group_saves(lod, [c[3] for c in clusters], len(groups))
+    return np.column_stack([groups, np.asarray(saves, dtype=np.int64)])
+
+
+def validate_levels(lod, groups, clusters):
+    """Check the level records with their entry-format owner, each group's
+    saves among them."""
+    from r3d import lod_asset
+    if lod is None:
+        assert groups is None
+    else:
+        assert len(lod) == len(clusters)
+        assert np.array_equal(np.asarray(groups)[:, 5], lod_asset.group_saves(lod, [c[3] for c in clusters],
+                                                                               len(groups))), "group saves are stale"
+        lod_asset.encode(lod, groups)
+
+
+def build_lit_mesh(positions, rgb, tris, double, recorder=None, colourless=False, mesh_builder=bake_lit_mesh, **options):
+    """The baked mesh main/render/r3d_lit_mesh.h reads. positions are model units, rgb 0..255 per
+    vertex (None for a flat mesh), tris counter-clockwise seen from the front, double one flag per
+    triangle; options, face_rgb among them, go to bake_lit_mesh. With colourless, colour columns are
+    weld keys returned in colour_keys or face_keys, and the mesh holds neither colour array. A bundle
+    builds each of its meshes here, so the meshlets step sums over them."""
     recorder = NULL_RECORDER if recorder is None else recorder
-    with recorder.step("meshlets", len(tris)) as step:
-        mesh = bake_lit_mesh(positions, rgb, tris, double, **options)
+    with recorder.step("meshlets", len(tris), summed=True) as step:
+        mesh = mesh_builder(positions, rgb, tris, double, **options)
         step["triangles_out"] = len(mesh.tris)
     if colourless:
         mesh.colour_keys, mesh.face_keys = mesh.rgb, mesh.face_colors
         mesh.rgb = mesh.face_colors = None
+    return mesh
+
+
+def write_lit_mesh(out_dir, name, positions, rgb, tris, double, recorder=None, morph=None, **options):
+    """build_lit_mesh's mesh written alone as <name>.bundle into out_dir, with `morph` its morph targets
+    too (bundle_entries); returns the mesh."""
+    recorder = NULL_RECORDER if recorder is None else recorder
+    mesh = build_lit_mesh(positions, rgb, tris, double, recorder=recorder, **options)
     with recorder.step("write", len(mesh.tris)):
-        (pathlib.Path(out_dir) / f"{name}.mesh").write_bytes(mesh_blob(mesh))
+        (pathlib.Path(out_dir) / f"{name}{mesh_bundle.SUFFIX}").write_bytes(
+            mesh_bundle.encode(bundle_entries(name, mesh, morph), []))
     return mesh
 
 
@@ -264,9 +367,106 @@ def mesh_blob(mesh):
     return head + body
 
 
-def read_lit_mesh(path):
-    """Reads a <name>.mesh back into what bake_lit_mesh returns."""
-    blob = pathlib.Path(path).read_bytes()
+def morph_targets(pos, clusters, entry):
+    """Each row's target in ticks as LMOR `entry` decodes it: its position plus
+    its delta times its cluster's step."""
+    from r3d import morph_asset
+    shifts, deltas, _ = morph_asset.decode(entry)
+    deltas = np.asarray(deltas, dtype=np.int64).reshape(-1, morph_asset.AXES)
+    target = np.asarray(pos, dtype=np.int64).copy()
+    for (first, count, *_), shift in zip(clusters, shifts):
+        target[first:first + count] += deltas[first:first + count] << shift
+    return target
+
+
+def cover_targets(mesh, entry):
+    """Grows `mesh`'s cluster and node boxes, in place, to hold the targets of
+    LMOR `entry` too, so a cull by those boxes keeps every cluster however far
+    it morphs. Returns whether a box grew."""
+    from r3d.octree import node_bounds
+    target = morph_targets(mesh.pos, mesh.clusters, entry)
+    grown = False
+    for c, (first, count, tb, tc, lo, hi, double) in enumerate(mesh.clusters):
+        rows = target[first:first + count]
+        if not len(rows):
+            continue
+        new_lo, new_hi = np.minimum(lo, rows.min(axis=0)), np.maximum(hi, rows.max(axis=0))
+        if np.any(new_lo != lo) or np.any(new_hi != hi):
+            mesh.clusters[c] = (first, count, tb, tc, new_lo, new_hi, double)
+            grown = True
+    if grown:
+        node_bounds(mesh.nodes, mesh.clusters)
+    return grown
+
+
+def morph_deltas(pos, target, clusters, parents):
+    """(shift per cluster, int8 delta per row): the least shift that fits the
+    largest move of every cluster under one parent group in an int8, and each
+    move rounded to it. Clusters under one parent share their shift, so rows
+    they share land on one target."""
+    from r3d import morph_asset
+    move = np.asarray(target, dtype=np.int64) - np.asarray(pos, dtype=np.int64)
+    reach = {}
+    for (first, count, *_), parent in zip(clusters, parents):
+        reach[parent] = max(reach.get(parent, 0), int(np.abs(move[first:first + count]).max(initial=0)))
+    shifts, deltas = [], np.zeros_like(move)
+    for (first, count, *_), parent in zip(clusters, parents):
+        shift = 0
+        while (reach[parent] + (1 << shift >> 1)) >> shift > morph_asset.DELTA_MAX:
+            shift += 1
+        half = (1 << shift) >> 1
+        deltas[first:first + count] = np.clip(np.floor_divide(move[first:first + count] + half, 1 << shift),
+                                              morph_asset.DELTA_MIN, morph_asset.DELTA_MAX)
+        shifts.append(shift)
+    return shifts, deltas
+
+
+def lod_blob(mesh):
+    """The sibling LLOD bytes, or None for a mesh without levels."""
+    from r3d import lod_asset
+    return None if mesh.lod is None else lod_asset.encode(mesh.lod, mesh.groups)
+
+
+def bundle_entries(name, mesh, morph=None):
+    """A bundle's entries for one assembled mesh: its LMSH, with levels its LLOD sibling, and with `morph`
+    (lod/morph.py's morph_blob) its LMOR sibling too; then the LMSH's boxes hold the targets too
+    (cover_targets). Passed in, so the stages that read meshes do not key on the morph code."""
+    from r3d import lod_asset, morph_asset
+    blob = mesh_blob(mesh)
+    levels = lod_blob(mesh)
+    extra = []
+    if levels is not None:
+        extra.append((lod_asset.name_for_mesh(name), lod_asset.TYPE, levels))
+        if morph is not None:
+            targets = morph(blob, levels)
+            if cover_targets(mesh, targets):
+                blob = mesh_blob(mesh)
+            extra.append((morph_asset.name_for_mesh(name), morph_asset.TYPE, targets))
+    return [(name, TYPE, blob)] + extra
+
+
+def read_bundle_mesh(entries, name):
+    """A bundle mesh read together with its optional LLOD sibling."""
+    from r3d import lod_asset
+    blobs = {key: blob for key, _, blob in entries}
+    return read_lit_mesh(blobs[name], blobs.get(lod_asset.name_for_mesh(name)))
+
+
+def read_one_bundle_mesh(data, name):
+    """Mesh `name` of the bundle `data`, with its LLOD sibling if any, decoding no other entry: a fit's rest
+    beside the copies its start kept, which may hold an older LLOD."""
+    entries = mesh_bundle.parse_pack(data)
+    if name not in entries or entries[name][0] != TYPE:
+        raise mesh_bundle.PackError(f"mesh bundle has no mesh {name}")
+    return read_bundle_mesh([(key, kind, blob) for key, (kind, blob) in entries.items()], name)
+
+
+def read_lit_mesh(path, levels=None):
+    """Reads a <name>.bundle back into what bake_lit_mesh returns."""
+    if not isinstance(path, (bytes, bytearray)):
+        entries, copies = mesh_bundle.decode(pathlib.Path(path).read_bytes())
+        return read_bundle_mesh(entries, mesh_bundle.rest_name(entries, copies))
+    blob = path
     vertices, triangles, clusters, nodes, scale, *at = BLOB_HEADER.unpack_from(blob)
     pos_at, col_at, tri_at, cl_at, node_at, face_at = at
 
@@ -286,14 +486,31 @@ def read_lit_mesh(path):
     for i in range(nodes):
         *box, first, count, leaf = NODE.unpack_from(blob, node_at + i * NODE.size)
         mesh.nodes.append({"lo": np.array(box[:3]), "hi": np.array(box[3:]), "first": first, "count": count, "leaf": bool(leaf)})
+    mesh.lod = mesh.groups = None
+    if levels is not None:
+        from r3d import lod_asset
+        lod_asset.validate_mesh(levels, blob)
+        mesh.lod, groups = lod_asset.decode(levels)
+        mesh.groups = np.asarray(groups, dtype=np.int64)
+        validate_levels(mesh.lod, mesh.groups, mesh.clusters)
     return mesh
 
 
+def finest(mesh):
+    """Whether each cluster of a read mesh is on its finest level."""
+    if mesh.lod is None:
+        return np.ones(len(mesh.clusters), dtype=bool)
+    return np.array([own == LOD_NONE for own, _ in mesh.lod], dtype=bool)
+
+
 def finest_triangles(mesh):
-    """(pos, rgb, tris, double, face) of a read mesh with the per-cluster
-    vertex copies welded back together: one vertex per position and colour, or
-    per position alone for a flat mesh, whose rgb is None."""
+    """(pos, rgb, tris, double, face) of a read mesh's finest level with the
+    per-cluster vertex copies welded back together: one vertex per position
+    and colour, or per position alone for a flat mesh, whose rgb is None."""
     double = np.zeros(len(mesh.tris), dtype=np.int64)
-    for _, _, tbase, tcount, _, _, is_double in mesh.clusters:
+    shown = np.zeros(len(mesh.tris), dtype=bool)
+    for (_, _, tbase, tcount, _, _, is_double), level0 in zip(mesh.clusters, finest(mesh)):
         double[tbase : tbase + tcount] = int(is_double)
-    return weld_quantised(mesh.pos, mesh.rgb, mesh.tris, double, mesh.face_colors)
+        shown[tbase : tbase + tcount] = level0
+    face = None if mesh.face_colors is None else mesh.face_colors[shown]
+    return weld_quantised(mesh.pos, mesh.rgb, mesh.tris[shown], double[shown], face)

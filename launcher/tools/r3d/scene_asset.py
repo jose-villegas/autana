@@ -1,4 +1,4 @@
-"""SCNE v5 entities, parents, settings, lights, renderers and animators, validated against the mapped C reader."""
+"""SCNE v6 entities, parents, settings, lights, renderers, animators and copy batches, validated against the mapped C reader."""
 
 import math
 import pathlib
@@ -13,6 +13,7 @@ from build.c_header import read_define
 from build.name_hash import NONE as HASH_NONE, name_hash
 from r3d.import_settings import ANIM_WRAPS, SettingsError, color_fits, load_scene
 from r3d import skin_pack
+from r3d.batch import copy_batches
 from r3d.scene_rows import (CLIP, COLOUR_SET_OWN, NAME, RENDERER, TRANSFORM, TRANSFORM_AXES, U16_MAX,
                             SceneError, decode_transform, field, text_at)
 
@@ -32,7 +33,7 @@ SCALE_TOLERANCE = read_define(OWNER.parents[2] / "packages/math/include/math/lin
                               "TRANSFORMF_MATRIX_TOLERANCE")
 WRAPS = {name: read_define(ANIM_OWNER, "ANIM_WRAP_" + name.upper()) for name in ANIM_WRAPS}
 PARTS = ("names", "transforms", "renderers", "cameras", "lights", "skinned_renderers", "animators", "clips", "settings",
-         "parents")
+         "parents", "batches", "chunks", "places", "turns")
 ALIGN = 4
 HEADER = struct.Struct(f"<{1 + len(PARTS)}H{-2 * (1 + len(PARTS)) % ALIGN}x{len(PARTS)}I")
 CAMERA = struct.Struct("<HHffI")
@@ -41,7 +42,10 @@ SKINNED_RENDERER = struct.Struct(f"<HH{NAME_BYTES}s{NAME_BYTES}s{NAME_BYTES}s")
 ANIMATOR = struct.Struct("<HHIHBB")
 SETTINGS = struct.Struct("<5f")
 PARENT = struct.Struct("<H")
-ROWS = (NAME, TRANSFORM, RENDERER, CAMERA, LIGHT, SKINNED_RENDERER, ANIMATOR, CLIP, SETTINGS, PARENT)
+ROWS = (NAME, TRANSFORM, RENDERER, CAMERA, LIGHT, SKINNED_RENDERER, ANIMATOR, CLIP, SETTINGS, PARENT,
+        copy_batches.BATCH, copy_batches.CHUNK, copy_batches.PLACE, copy_batches.TURN)
+# A batch's renderer row opens its mesh at this colour set; each copy names its own.
+BATCH_COLOUR_SET = 0
 
 
 def check_header(owner_size):
@@ -73,6 +77,13 @@ def encode(scene, cache=None, offline=False):
             skin, skeleton = skin_pack.rig_ids(mesh, item.settings, cache, offline)
             rows["skinned_renderers"].append((entity, 0, field(mesh, "mesh id"),
                 field(skin, "skin id"), field(skeleton, "skeleton id")))
+        elif getattr(item.renderer, "copies", None):
+            chunks, places, turns = copy_batches.pack(item.renderer.copies)
+            rows["batches"].append((len(rows["renderers"]), len(places), len(rows["places"]), len(rows["chunks"])))
+            rows["renderers"].append((entity, BATCH_COLOUR_SET, field(mesh, "mesh id")))
+            rows["chunks"].extend(chunks)
+            rows["places"].extend(places)
+            rows["turns"].extend(turns)
         else:
             colour_set = getattr(item.renderer, "colour_set", None)
             rows["renderers"].append((entity, COLOUR_SET_OWN if colour_set is None else colour_set, field(mesh, "mesh id")))
@@ -282,9 +293,42 @@ def decode(entry):
                 out[part].append(dict(entity=entity, **{key: text_at(raw, key + " id") for key, raw in zip(names, row[2:])}))
                 if part == "renderers":
                     out[part][-1]["colour_set"] = row[1]
+    out["batches"] = decode_batches(rows, out["renderers"])
+    for part in ("chunks", "places", "turns"):
+        del out[part]
     out["clips"] = [text_at(raw, "clip id") for (raw,) in rows["clips"]]
     color, intensity, white = rows["settings"][0][:3], *rows["settings"][0][3:]
     if not color_fits(color) or not nonnegative(intensity) or not nonnegative(white):
         raise SceneError("settings: invalid ambient or tonemap_white")
     out["settings"] = dict(ambient_color=list(color), ambient_intensity=intensity, tonemap_white=white)
+    return out
+
+
+def decode_batches(rows, renderers):
+    """Each batch's renderer and copies, (matrix rows, position, colour_set), checked as scene_asset_open() does."""
+    if len(rows["turns"]) != len(rows["places"]):
+        raise SceneError("batches: places and turns differ in count")
+    out, copies, chunks, seen = [], 0, 0, set()
+    for renderer, count, first_copy, first_chunk in rows["batches"]:
+        if renderer >= len(renderers) or renderer in seen or count == 0:
+            raise SceneError("batch: renderer out of range or repeated, or no copies")
+        if first_copy != copies or first_chunk != chunks:
+            raise SceneError("batch: copies or chunks out of turn")
+        if renderers[renderer]["colour_set"] != BATCH_COLOUR_SET:
+            raise SceneError(f"batch: renderer {renderer} must open colour set {BATCH_COLOUR_SET}")
+        seen.add(renderer)
+        runs = copy_batches.chunk_count(count)
+        chunk_rows = rows["chunks"][chunks:chunks + runs]
+        for *centre, reach in chunk_rows:
+            if not all(math.isfinite(v) for v in centre) or not nonnegative(reach):
+                raise SceneError("chunk: a centre is not finite or a reach is negative")
+        turn_rows = rows["turns"][copies:copies + count]
+        if any(turn[-1] >= copy_batches.QUATERNION for turn in turn_rows):
+            raise SceneError("turn: largest names no quaternion component")
+        out.append(dict(renderer=renderer, copies=copy_batches.unpack(
+            chunk_rows, rows["places"][copies:copies + count], turn_rows)))
+        copies += count
+        chunks += runs
+    if copies != len(rows["places"]) or chunks != len(rows["chunks"]):
+        raise SceneError("batches: copies or chunks left over")
     return out

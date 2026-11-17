@@ -206,6 +206,14 @@ class LocalScheduleTests(unittest.TestCase):
                     self.assertIn('start -- render', result.stdout)
                 else:
                     self.assertEqual(result.stdout, '')
+            # A fit takes no heavy: autana (exit 75 here) is never asked; the stage starts beside board work.
+            python.write_text('#!/bin/sh\nif [ "$2" = ready ]; then exit 0; fi\n'
+                              'if [ "$2" = start ]; then printf "%s\\n" "$*"; exit 0; fi\n'
+                              + f'exec "{sys.executable}" "$@"\n')
+            result = subprocess.run(['sh', str(root / 'scripts/ci/gpu_stage.sh'), 'fit'], cwd=fixture,
+                                    env=dict(env, GPU_WORKFLOW=schedule.BAKES_WORKFLOW), capture_output=True, text=True)
+            self.assertEqual((result.returncode, result.stdout), (0, 'scripts/lib/local_schedule.py start -- fit\n'),
+                             result.stderr)
 
     def test_start_records_result_and_stops_tree_on_guard(self):
         for expired in (False, True):

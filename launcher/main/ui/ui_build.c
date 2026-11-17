@@ -46,6 +46,7 @@ mu_Context ui_ctx;
 bool ui_invalidated = true;
 ui_text_style_t ui_text_style;
 ui_pointer_t ui_pointer_state;
+int ui_text_clipped;
 
 /* Repaint-only boot frames have no input to feed or pointer state to report. */
 static bool paint_only;
@@ -342,6 +343,7 @@ ui_begin(const input_t* input) {
         feed_input(input);
     }
     snap_rect_count = 0;
+    ui_text_clipped = 0;
     mu_begin(&ui_ctx);
     UI_FACE_COST_END(backend_from, "ui.backend");
 }
@@ -351,6 +353,11 @@ ui_end_pointer_frame(void) {
     if (!paint_only) {
         ui_bridge_end(&ui_ctx, &ui_pointer_state);
     }
+}
+
+int
+ui_clipped_text(void) {
+    return ui_text_clipped;
 }
 
 int

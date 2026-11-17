@@ -2,14 +2,15 @@
 #ifdef DEVICE_BUILD
 #include <math.h>
 #include <string.h>
-#include "apps/render_lab/render_lab_scene.h"
+#include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/scene_water.h"
-#include "apps/render_lab/tests/render_lab_test.h"
 #include "apps/render_lab/tests/water_perf_log.h"
 #include "core/memory.h"
 #include "core/timing.h"
 #include "core/tune.h"
 #include "esp_log.h"
+#include "lab/lab_scene.h"
+#include "lab/test/lab_test.h"
 #include "profile/frame_cost.h"
 #include "testkit/bench.h"
 #include "testkit/cleanup.h"
@@ -49,13 +50,13 @@ typedef struct {
     scene_water_stats_t sums;
 } water_row_t;
 
-static render_lab_test_t saved;
+static lab_test_t saved;
 static water_row_t row;
 static char* report;
 
 static void
 release_fixture(void) {
-    render_lab_test_exit(&saved);
+    lab_test_exit(&saved);
     if (playing != NULL && playing->tune != NULL) {
         (void)tune_reset(tune_shared(), playing->tune);
     }
@@ -118,7 +119,7 @@ play(const water_config_t* config) {
     playing = config;
     TEST_ASSERT_TRUE(config->tune == NULL || tune_set(tune_shared(), config->tune, config->value));
     heap(config->name, WATER_PERF_BEFORE);
-    render_lab_test_enter(&saved, scene_water.key);
+    lab_test_enter(&saved, &render_lab, scene_water.key);
     suite_set_test_cleanup(release_fixture);
     TEST_ASSERT_TRUE(app_render_lab.console->handle("water tour"));
     const int capacity = (int)(scene_water_tour_length_ms() / WATER_PERF_FRAME_MS);
@@ -128,9 +129,11 @@ play(const water_config_t* config) {
     report = memory_alloc(FRAME_COST_REPORT_MAX, MEMORY_INTERNAL);
     TEST_ASSERT_TRUE(row.frame_us != NULL && row.update_us != NULL && row.draw_us != NULL && report != NULL);
     /* Untimed: the tour's upright refill. */
-    (void)render_lab_test_frame_dt(0, false, NULL);
+    (void)lab_test_frame_dt(0, false, NULL);
     (void)scene_water_take_stats();
-    (void)frame_cost_take_report(0, report, 0);
+    /* The first phase's report holds only its own frames, not the enter's
+     * or the previous config's. */
+    frame_cost_take_clear();
     heap(config->name, WATER_PERF_RUNNING);
     /* A frame belongs to the phase it starts in, so a row closes, with its
      * frame_cost window, before the next phase's first frame. */
@@ -142,7 +145,7 @@ play(const water_config_t* config) {
             phase = now;
         }
         const int64_t start = timing_now_us();
-        const int64_t draw_us = render_lab_test_frame_dt(WATER_PERF_FRAME_MS, false, NULL);
+        const int64_t draw_us = lab_test_frame_dt(WATER_PERF_FRAME_MS, false, NULL);
         const int64_t frame_us = timing_now_us() - start;
         const scene_water_stats_t s = scene_water_take_stats();
         row.frame_us[row.frames] = (int32_t)frame_us;

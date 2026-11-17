@@ -7,6 +7,9 @@ A baked mesh is an entry of type `LMSH` in the [asset pack](../README.md).
 entry, once, and nothing is allocated or copied; the rasterizer reads that
 struct.
 
+Levels are an optional sibling [LLOD](LLOD.md) entry, resolved once by `r3d_lit_mesh_open()`, and
+their morph targets an optional sibling [LMOR](LMOR.md) entry beside them.
+
 ```mermaid
 ---
 config:

@@ -166,6 +166,17 @@ frame_cost_take_counts(char* out, size_t out_size) {
     return frame_cost_counts_line(&shared, events[shared.armed_event].name, out, out_size);
 }
 
+void
+frame_cost_take_clear(void) {
+    (void)frame_cost_report(&shared, 1, NULL, 0);
+    portENTER_CRITICAL(&external_lock);
+    external.total_us = 0;
+    external.worst_us = 0;
+    external.n = 0;
+    portEXIT_CRITICAL(&external_lock);
+    foreign_task_calls = 0;
+}
+
 int
 frame_cost_take_report(uint32_t frames, char* out, size_t out_size) {
     int length = frame_cost_report(&shared, frames, out, out_size);

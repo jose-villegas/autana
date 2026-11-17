@@ -1,7 +1,7 @@
 /*
  * Scene playback figure numbers from the library, emitted as JSON for playback_figures.py: a skeleton's clips
- * played on a scene entity through scene_animator_play(), scene_animator_set_speed() and
- * scene_animator_set_paused() and stepped by scene_animation_step() frame by frame as a script says, with each
+ * played on a scene entity through animator_play(), animator_set_speed() and
+ * animator_set_paused() and stepped by scene_animation_step() frame by frame as a script says, with each
  * slot's clip time, the blend weight, and every joint's pose and position shown, sampled from the current clip
  * alone and held in the previous slot.
  *
@@ -10,7 +10,7 @@
  *
  * SCRIPT, written by playback_figures.py: "clips N NAME...", "wrap 0|1" (loop or clamp), "frame DT_MS END_MS",
  * then calls in time order, "MS play CLIP BLEND_MS", "MS speed SLOT X" and "MS pause SLOT 0|1", SLOT a
- * scene_animator_slot_t; each runs before that frame steps, and a call the scene refuses fails the run. --nlerp
+ * animator_slot_t; each runs before that frame steps, and a call the scene refuses fails the run. --nlerp
  * turns about one axis by DEGREES in STEPS through quatf_nlerp() and quatf_slerp().
  */
 #include <stdio.h>
@@ -72,19 +72,19 @@ nlerp(float degrees, int steps) {
 
 /* Runs the script's next call; false when the scene refuses it or the line does not parse. */
 static bool
-call(FILE* in, scene_t* scene, scene_entity_t entity) {
+call(FILE* in, entity_t entity) {
     char what[CALL_CHARS + 1];
     float a = 0.0F, b = 0.0F;
     if (fscanf(in, " %" WIDTH(CALL_CHARS) "s %f %f", what, &a, &b) != 3) {
         return false;
     }
     if (strcmp(what, "play") == 0) {
-        return scene_animator_play(scene, entity, (int)a, (uint32_t)b);
+        return animator_play(entity, (int)a, (uint32_t)b);
     }
     if (strcmp(what, "speed") == 0) {
-        return scene_animator_set_speed(scene, entity, (scene_animator_slot_t)a, b);
+        return animator_set_speed(entity, (animator_slot_t)a, b);
     }
-    return strcmp(what, "pause") == 0 && scene_animator_set_paused(scene, entity, (scene_animator_slot_t)a, b != 0.0F);
+    return strcmp(what, "pause") == 0 && animator_set_paused(entity, (animator_slot_t)a, b != 0.0F);
 }
 
 static void
@@ -122,12 +122,12 @@ print_frame(const scene_animator_t* a, uint32_t ms, bool first, anim_pose_t* alo
 }
 
 static void
-print_rig(const scene_t* scene, scene_entity_t entity, char (*names)[ASSET_NAME_MAX], int count) {
-    const anim_skeleton_t* skeleton = &scene->animators[entity].skeleton;
+print_rig(const scene_animator_t* a, entity_t entity, char (*names)[ASSET_NAME_MAX], int count) {
+    const anim_skeleton_t* skeleton = &a->skeleton;
     printf("{\"clips\":[");
     for (int c = 0; c < count; c++) {
         printf("%s{\"name\":\"%s\",\"duration_ms\":%u}", c ? "," : "", names[c],
-               (unsigned)scene_animator_clip_duration_ms(scene, entity, c));
+               (unsigned)animator_clip_duration_ms(entity, c));
     }
     printf("],\"parents\":[");
     for (int j = 0; j < skeleton->joint_count; j++) {
@@ -142,7 +142,7 @@ print_rig(const scene_t* scene, scene_entity_t entity, char (*names)[ASSET_NAME_
 }
 
 static int
-play(FILE* in, scene_t* scene, scene_entity_t entity, const char* skeleton) {
+play(FILE* in, entity_t entity, const char* skeleton) {
     int count = 0, wrap = 0;
     if (fscanf(in, " clips %d", &count) != 1 || count < 1 || count > ANIM_LAYER_CLIP_NONE) {
         return fail("script: no clips line");
@@ -159,7 +159,7 @@ play(FILE* in, scene_t* scene, scene_entity_t entity, const char* skeleton) {
         ids[c] = names[c];
     }
     scene_failure_t why;
-    if (!scene_animator_set_clips(scene, entity, skeleton, ids, count, &why)) {
+    if (!animator_set_clips(entity, skeleton, ids, count, &why)) {
         fprintf(stderr, "playback_figures_probe: %s does not bind: %s\n", why.what, asset_status_text(why.asset));
         return 2;
     }
@@ -167,24 +167,29 @@ play(FILE* in, scene_t* scene, scene_entity_t entity, const char* skeleton) {
     if (fscanf(in, " wrap %d frame %u %u", &wrap, &dt_ms, &end_ms) != 3 || dt_ms == 0) {
         return fail("script: no wrap and frame lines");
     }
-    scene_animator_t* a = &scene->animators[entity];
+    scene_row_t row;
+    scene_t* columns = scene_entity_row(entity, &row);
+    if (columns == NULL) {
+        return fail("the entity is not in the scene");
+    }
+    scene_animator_t* a = &columns->animators[row];
     a->wrap = wrap ? ANIM_CLAMP : ANIM_LOOP; /* what scene.c's open_animator() sets from a scene file's wrap */
     anim_pose_t alone = {calloc(a->skeleton.joint_count, sizeof(transformf_t)), a->skeleton.joint_count};
     mat4f_t* model = calloc(a->skeleton.joint_count, sizeof *model);
     if (alone.local == NULL || model == NULL) {
         return fail("out of memory");
     }
-    print_rig(scene, entity, names, count);
+    print_rig(a, entity, names, count);
     unsigned at = 0;
     bool pending = fscanf(in, " %u", &at) == 1, first = true;
     for (uint32_t ms = 0; ms <= end_ms; ms += dt_ms) {
         for (; pending && at <= ms; pending = fscanf(in, " %u", &at) == 1) {
-            if (!call(in, scene, entity)) {
+            if (!call(in, entity)) {
                 fprintf(stderr, "playback_figures_probe: the call at %u ms failed\n", at);
                 return 2;
             }
         }
-        scene_animation_step(scene, ms == 0 ? 0 : dt_ms);
+        scene_animation_step(columns, ms == 0 ? 0 : dt_ms);
         if (a->layer.current.clip != ANIM_LAYER_CLIP_NONE) {
             print_frame(a, ms, first, &alone, model);
             first = false;
@@ -215,14 +220,14 @@ main(int argc, char** argv) {
     if (in == NULL || asset_file_open(argv[1], &pack, &buffer) != ASSET_OK) {
         return fail("cannot open the pack or the script");
     }
-    scene_failure_t why;
-    scene_t* scene = scene_load_from(&pack, argv[2], &why);
-    if (scene == NULL) {
+    entity_t scene = scene_load_from(&pack, argv[2]);
+    if (scene_state(scene) != PENDING_READY) {
+        scene_release(scene);
         return fail("the scene does not load");
     }
-    const int status = play(in, scene, scene_find(scene, name_hash(argv[3])), argv[4]);
+    const int status = play(in, entity_find(scene, name_hash(argv[3])), argv[4]);
     fclose(in);
-    scene_unload(scene);
+    scene_release(scene);
     asset_file_release(buffer);
     return status;
 }

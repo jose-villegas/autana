@@ -50,7 +50,7 @@ def card_mesh(directory, count=2):
     tris += [[index[r, c], index[r + 1, c + 1], index[r + 1, c]] for r in range(count) for c in range(count)]
     write_lit_mesh(directory, "card", positions, np.full((len(positions), 3), 100.0), np.array(tris), np.zeros(len(tris), dtype=int),
                    position_scale=64)
-    return pathlib.Path(directory) / "card.mesh", len(tris)
+    return pathlib.Path(directory) / "card.bundle", len(tris)
 
 
 def poses_file(directory, *poses):

@@ -19,6 +19,7 @@ from r3d.fitted_variant import poses_text
 
 ROWS = ("16", "32", "64")  # the cluster sizes a capture measures; the scene's shipped size is one of them
 STAGES = ("r3d.cull", "r3d.transform", "r3d.draw")  # magic: the frame-cost stages the table shows, as raster.c names them
+COLUMNS = ("Cull ms", "Transform ms", "Draw ms", "Frame ms")  # STAGES' means, then the whole frame's
 REST = "rest of frame"  # the frame's time outside STAGES
 CHART_WIDTH = 8  # inches
 CHART_ROW_HEIGHT = 0.45  # inches per bar
@@ -162,7 +163,15 @@ def trade_chart(rows, path):
     save(figure, path)
 
 
-def table(scene_path, captures, bakes, chart_path):
+def cull_saving(means, shipped):
+    """docs/render/Render-Settings.md's table: the shipped size's means with culling on and off, then off less on."""
+    from doc_stages import markdown
+    on, off = means[shipped], means["cull-off"]
+    rows = [("`cull` on", *on), ("`cull` off", *off), ("off - on", *(b - a for a, b in zip(on, off)))]
+    return markdown(["Setting", *COLUMNS], [(label, *(f"{value:.2f}" for value in values)) for label, *values in rows])
+
+
+def table(scene_path, captures, bakes, chart_path, cull_table=None):
     """The block of the scene's showcase: the chart, written to `chart_path`, then its rows collapsed."""
     from meshlet_capture import rebake_scene
     from showcase import showcase
@@ -207,8 +216,9 @@ def table(scene_path, captures, bakes, chart_path):
     chart(rows, chart_path)
     trade_chart(rows[1:], pathlib.Path(chart_path).with_name(TRADE_CHART))
     from render.doc_tables import collapsed
-    body = markdown(["Row", "Clusters", "Vertices/triangle", "Mean submitted triangles", "Cull ms", "Transform ms",
-                     "Draw ms", "Frame ms"],
+    if cull_table is not None:
+        cull_table.write_text(cull_saving(means, shipped), encoding="utf-8")
+    body = markdown(["Row", "Clusters", "Vertices/triangle", "Mean submitted triangles", *COLUMNS],
                     [(label, clusters, f"{ratio:.3f}", f"{submitted:.1f}", *(f"{value:.2f}" for value in measured))
                      for label, clusters, ratio, submitted, *measured in rows])
     return (f"![Frame cost by meshlet size](../images/render/meshlets/{pathlib.Path(chart_path).name})\n\n"

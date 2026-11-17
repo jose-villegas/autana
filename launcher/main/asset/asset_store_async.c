@@ -102,7 +102,10 @@ void
 asset_store_app_exit(void) {
     for (uint32_t i = 0; i < ASSET_STORE_REQUESTS_MAX; i++) {
         asset_store_request_t* request = asset_store_request_at(i);
-        if (request->async && is_live(request)) {
+        /* An entity's requests end with its scene, which the scene system
+         * releases at app exit after this: a scene's pack stays mapped
+         * until its columns are freed. */
+        if (request->async && is_live(request) && handle_owner(request->owner) != HANDLE_OWNER_ENTITY) {
             asset_store_request_cancel(request);
         }
     }

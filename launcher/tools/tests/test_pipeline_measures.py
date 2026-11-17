@@ -1,4 +1,5 @@
 """Pipeline costs use recorded stages and injected machine probes."""
+import itertools
 import pathlib
 import sys
 import tempfile
@@ -134,6 +135,25 @@ class PipelineMeasuresTests(unittest.TestCase):
                 pass
         self.assertEqual(recorder.rows[0]["triangles_in"], 12)
 
+    def test_summed_entries_add_into_one_row_and_a_plain_repeat_still_raises(self):
+        peaks = itertools.chain([(5, None), (9, None), (7, 30), (2, 40)], itertools.repeat((0, None)))
+        clock = itertools.chain([0, 2, 10, 13], itertools.repeat(0))
+        recorder = process_budget.StepRecorder(clock=clock.__next__, probe=lambda gpu: next(peaks), interval=None)
+        with recorder.step("meshlets", 4, summed=True) as step:
+            step["triangles_out"] = 3
+        with recorder.step("meshlets", 6, summed=True, gpu=True) as step:
+            step["triangles_out"] = 5
+        self.assertEqual(recorder.rows, [{"step": "meshlets", "triangles_in": 10, "triangles_out": 8, "wall_s": 5,
+                                          "peak_ram_bytes": 9, "peak_vram_bytes": 40}])
+        with self.assertRaises(ValueError):
+            with recorder.step("meshlets", 1):
+                pass
+        with recorder.step("light", 1):
+            pass
+        with self.assertRaises(ValueError):
+            with recorder.step("light", 1, summed=True):
+                pass
+
     def test_missing_memory_is_not_available(self):
         row = dict(step="fit", wall_s=1, triangles_in=2, triangles_out=1,
                    peak_ram_bytes=None, peak_vram_bytes=None)
@@ -160,7 +180,8 @@ class PipelineMeasuresTests(unittest.TestCase):
                     tri_v=np.array([[0, 1, 2], [1, 3, 2], [0, 1, 2], [0, 1, 2]]), tri_t=np.zeros((4, 3), dtype=int),
                     tri_m=np.array([0, 1, 0, 0]), uv=[], textures={}, names=["surface", "foliage"])
         settings = NS(seed=5, position_scale=None, alpha_keep=.5, thin=NS(material="foliage", keep=0),
-                      simplify=None, double_sided=[], meshes=(), meshlet_triangles=lit_mesh.MESHLET_TRIANGLES)
+                      simplify=None, double_sided=[], meshes=(), meshlet_triangles=lit_mesh.MESHLET_TRIANGLES, lod=False,
+                      morph=False)
         job = NS(settings=settings, renderer=NS(visibility=object(), face_samples=None, variant=NS(triangles=None, ceiling=None)), bake=None)
         recorder = process_budget.StepRecorder(probe=lambda gpu: (100, None), interval=None)
         with patch.object(mesh_import, "load_source", return_value=source), \
@@ -169,7 +190,7 @@ class PipelineMeasuresTests(unittest.TestCase):
                 patch.object(mesh_import, "visible_triangles", return_value=np.array([True, True, False])), \
                 patch.object(mesh_import, "shade_unlit", side_effect=lambda src, mat, p, t: (p, np.zeros_like(p), t)):
             geometry = mesh_import.bake_geometry(job, None, recorder=recorder)
-        mesh = NS(tris=geometry.tris)
+        mesh = NS(tris=geometry.tris, lod=None, groups=None)
         with tempfile.TemporaryDirectory() as directory, patch.object(lit_mesh, "bake_lit_mesh", return_value=mesh), \
                 patch.object(lit_mesh, "mesh_blob", return_value=b"mesh"):
             mesh_import.write_baked(job, None, pathlib.Path(directory), "fixture", geometry, recorder=recorder)
@@ -195,7 +216,7 @@ class PipelineMeasuresTests(unittest.TestCase):
         recorder = process_budget.StepRecorder(probe=lambda gpu: (100, 200), interval=None)
         with tempfile.TemporaryDirectory() as directory, \
                 patch.object(lit_mesh, "read_lit_mesh", side_effect=[NS(tris=[0]*12), NS(tris=[0]*8)]), \
-                patch.object(stage, "fit", return_value=pathlib.Path(directory) / "fit.mesh"):
+                patch.object(stage, "fit", return_value=pathlib.Path(directory) / "fit.bundle"):
             result = stage.fit_point({}, pathlib.Path(directory) / "work", None, None, job,
                                      pathlib.Path(directory), recorder=recorder)
         self.assertEqual([(row["step"], row["triangles_in"], row["triangles_out"])

@@ -72,6 +72,7 @@ set(app_srcs
     "asset/asset_store_async.c"
     "asset/asset_store_flash.c"
     "input/mapping/orbit_motion_touch.c"
+    "shell/render_system.c"
     "shell/scene_system.c"
     "shell/shell.c"
     "shell/shell_apps.c"
@@ -161,6 +162,10 @@ foreach(app_root IN LISTS app_roots)
     launcher_glob(root_apps "${app_root}/*.c")
     list(APPEND discovered_apps ${root_apps})
 endforeach()
+# The lab shell (lab/lab.h), the scene picker, HUD and fixtures every lab app
+# hosts its scenes behind, is split from its suites the same way.
+launcher_glob(lab_srcs "${CMAKE_CURRENT_LIST_DIR}/lab/*.c")
+list(APPEND discovered_apps ${lab_srcs})
 
 # apps/<name>/tools/ is an app's host-side tooling, not firmware. The glob
 # above is recursive and WHOLE_ARCHIVE force-links whatever it finds, so a
@@ -301,23 +306,36 @@ endif()
 # LAUNCHER_LAYOUT_SEED > 0 pads every source of this component by a size its
 # seed picks (tools/build/layout_pad.py), up to one cache way less a line each
 # for code and flash rodata, to sample the layouts a timing could have landed
-# on. Seed 0 changes nothing.
-if(NOT CMAKE_SCRIPT_MODE_FILE AND LAUNCHER_LAYOUT_SEED)
-    idf_build_get_property(layout_python PYTHON)
-    set(layout_sources "")
-    foreach(src IN LISTS app_srcs)
-        get_filename_component(src "${src}" ABSOLUTE BASE_DIR "${CMAKE_CURRENT_LIST_DIR}")
-        file(RELATIVE_PATH src "${CMAKE_CURRENT_LIST_DIR}" "${src}")
-        list(APPEND layout_sources "${src}")
-    endforeach()
-    set(layout_tools "${CMAKE_CURRENT_LIST_DIR}/../tools/build")
+# on. Seed 0 changes nothing. Every build writes the inputs to
+# layout_pad_inputs.txt, so `layout_pad.py --worst` can name the seed that
+# builds the largest image without a seeded configure.
+#
+# Only the perf scope takes a seed: pads average half a way per source, and over
+# every source of the full diagnostics image they push it past the app
+# partition.
+if(NOT CMAKE_SCRIPT_MODE_FILE)
+    set(layout_inputs "${CMAKE_BINARY_DIR}/layout_pad_inputs.txt")
     set(text_line ${CONFIG_ESP32S3_INSTRUCTION_CACHE_LINE_SIZE})
     set(rodata_line ${CONFIG_ESP32S3_DATA_CACHE_LINE_SIZE})
     math(EXPR text_way "${CONFIG_ESP32S3_INSTRUCTION_CACHE_SIZE} / ${CONFIG_ESP32S3_ICACHE_ASSOCIATED_WAYS}")
     math(EXPR rodata_way "${CONFIG_ESP32S3_DATA_CACHE_SIZE} / ${CONFIG_ESP32S3_DCACHE_ASSOCIATED_WAYS}")
+    set(layout_lines "${text_line} ${text_way} ${rodata_line} ${rodata_way}")
+    foreach(src IN LISTS app_srcs)
+        get_filename_component(src "${src}" ABSOLUTE BASE_DIR "${CMAKE_CURRENT_LIST_DIR}")
+        file(RELATIVE_PATH src "${CMAKE_CURRENT_LIST_DIR}" "${src}")
+        string(APPEND layout_lines "\n${src}")
+    endforeach()
+    file(CONFIGURE OUTPUT "${layout_inputs}" CONTENT "${layout_lines}\n" @ONLY)
+endif()
+if(NOT CMAKE_SCRIPT_MODE_FILE AND LAUNCHER_LAYOUT_SEED)
+    if(NOT CONFIG_LAUNCHER_SELFTEST_SCOPE_PERF)
+        message(FATAL_ERROR "--layout-seed needs --perf-scope: a seed pads every source, and only the "
+                            "perf scope's image has room for that in the app partition")
+    endif()
+    idf_build_get_property(layout_python PYTHON)
+    set(layout_tools "${CMAKE_CURRENT_LIST_DIR}/../tools/build")
     execute_process(
-        COMMAND ${layout_python} "${layout_tools}/layout_pad.py" "${LAUNCHER_LAYOUT_SEED}"
-                ${text_line} ${text_way} ${rodata_line} ${rodata_way} ${layout_sources}
+        COMMAND ${layout_python} "${layout_tools}/layout_pad.py" "${LAUNCHER_LAYOUT_SEED}" "${layout_inputs}"
         OUTPUT_VARIABLE layout_pads
         COMMAND_ERROR_IS_FATAL ANY)
     foreach(row IN LISTS layout_pads)

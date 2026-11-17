@@ -2,7 +2,7 @@
 """Bake an albedo import or a scene renderer's mesh.
 
 An import writes its named mesh, and a scene each baked renderer as
-<scene>.<object>.mesh, into --out DIR, or beside the file when it is outside
+<scene>.<object>.bundle, into --out DIR, or beside the file when it is outside
 this repository (a scratch copy). Inside it a mesh is a bake product: made by
 bake/bake.py into the bake cache and locked, so without --out the bake refuses.
 
@@ -40,7 +40,9 @@ from r3d.light import (  # noqa: E402
     visible_from_path,
     visible_from_region,
 )
-from r3d.lit_mesh import POSITION_SCALE, WELD_PER_TICK, panel_colour, write_lit_mesh  # noqa: E402
+from r3d.lod.bake_levels import bake_lit_mesh
+from r3d.lod.morph import morph_blob
+from r3d.lit_mesh import POSITION_SCALE, WELD_PER_TICK, bundle_entries, panel_colour, build_lit_mesh  # noqa: E402
 from r3d.mesh_source import load_source, load_glb_source, path_light_for, camera_path_poses
 from r3d.process_budget import NULL_RECORDER
 from r3d.ray_query import RayQuery  # noqa: E402
@@ -220,10 +222,10 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
                                                    allocation=Allocation(tri_o=np.concatenate(all_obj), object_names=src.object_names,
                                                                          material_names=src.names, meshes=meshes, selection=selected,
                                                                          ceiling=getattr(renderer.variant, 'ceiling', None),
-                                                                         shade=(lambda p, c, t, m: shade_placed(src, job, scene, p, c, t, m,
-                                                                                                             intersector, bounce)) if job.bake else None,
-                                                                         shade_shared=(lambda p, c, t, m: shade_placed(src, job, scene, p, c, t, m,
-                                                                                                             intersector, bounce, preserve_corners=True))
+                                                                         shade=(lambda p, c, t, m, **kw: shade_placed(src, job, scene, p, c, t, m,
+                                                                                                             intersector, bounce, **kw)) if job.bake else None,
+                                                                         shade_shared=(lambda p, c, t, m, **kw: shade_placed(src, job, scene, p, c, t, m,
+                                                                                                             intersector, bounce, preserve_corners=True, **kw))
                                                                                       if job.bake and carve else None,
                                                                          report=mesh_report, shapes=shapes),
                                                    reserved=[(frozenset(i for i, name in enumerate(src.names) if name in steps.props),
@@ -237,12 +239,16 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
                            tri_mat=tri_mat, scale=scale, bounce=bounce, mesh_report=mesh_report, shapes=shapes)
 
 
-def shade_placed(src, job, scene, positions, rgb, tris, labels, intersector, bounce, *, preserve_corners=False):
-    """Light the simplified placed geometry against the full source occluder."""
+def shade_placed(src, job, scene, positions, rgb, tris, labels, intersector, bounce, *, preserve_corners=False,
+                 groups=None):
+    """Light the simplified placed geometry against the full source occluder, one group of triangles at a time. A
+    group holds equal `groups` values (`labels` by default) and is lit as its first triangle's material."""
     out_p, out_c, out_t, out_m = [], [], [], []
     base = 0
-    for material in np.unique(labels):
-        selected = labels == material
+    groups = labels if groups is None else groups
+    for group in np.unique(groups):
+        selected = groups == group
+        material = labels[selected][0]
         p, t = compact(positions, tris[selected])
         double = src.names[material] in job.settings.double_sided
         p, c, t, m = shade_lit(src, job, scene, material, p, t, double, intersector, bounce,
@@ -274,9 +280,9 @@ def flat_colours(job, scene, geometry, face_samples, **knobs):
 
 
 def write_baked(job, scene, out_dir, name, geometry=None, recorder=None):
-    """Writes `job`'s bake as <name>.mesh in `out_dir`, flat when the renderer
-    is and smooth otherwise, from `geometry` when bake_geometry already made it.
-    Returns the baked mesh."""
+    """Write a mesh bundle from prepared geometry or its source, returning the rest mesh.
+    A fitted renderer's rest is its plain CPU start; the later CPU levels stage builds its hierarchy.
+    Copy prototypes retain their levels and colour sets."""
     renderer = job.renderer
     out_dir = pathlib.Path(out_dir)
     recorder = NULL_RECORDER if recorder is None else recorder
@@ -287,29 +293,33 @@ def write_baked(job, scene, out_dir, name, geometry=None, recorder=None):
             face_rgb = flat_colours(job, scene, geometry, renderer.face_samples)
     mesh = SimpleNamespace(pos=geometry.positions, tris=geometry.tris, clusters=[], nodes=[])
     if len(geometry.tris):
-        mesh = write_lit_mesh(out_dir, name, geometry.positions, None if renderer.face_samples else geometry.rgb,
-                              geometry.tris, geometry.tri_double, face_rgb=face_rgb, recorder=recorder,
-                              meshlet_triangles=job.settings.meshlet_triangles, **geometry.scale)
-    if getattr(geometry, "shapes", None) is not None:
-        entries = [(name, mesh_asset.TYPE, (out_dir / f"{name}.mesh").read_bytes())] if len(mesh.tris) else []
-        copies = []
-        for shape in geometry.shapes:
-            products, placed = write_shape(job, scene, out_dir, name, geometry, shape, recorder)
-            entries.extend(products)
-            copies.extend(placed)
+        mesh = build_lit_mesh(geometry.positions, None if renderer.face_samples else geometry.rgb,
+                              geometry.tris, geometry.tri_double, face_rgb=face_rgb, recorder=recorder, mesh_builder=bake_lit_mesh,
+                              meshlet_triangles=job.settings.meshlet_triangles,
+                              lod=job.settings.lod and getattr(renderer, "fit", None) is None,
+                              **geometry.scale)
+    entries = bundle_entries(name, mesh, morph_blob if job.settings.morph else None) if len(mesh.tris) else []
+    copies = []
+    for shape in getattr(geometry, "shapes", None) or ():
+        products, placed = write_shape(job, scene, out_dir, name, geometry, shape, recorder)
+        entries.extend(products)
+        copies.extend(placed)
+    with recorder.step("write", len(mesh.tris)):
         (out_dir / f"{name}{mesh_bundle.SUFFIX}").write_bytes(mesh_bundle.encode(entries, copies))
     return mesh
 
 
 def write_shape(job, scene, out_dir, name, geometry, shape, recorder):
-    """One local mesh per handedness, with colour sets following its baked array order."""
+    """One local mesh per handedness and double-sided mask (copies joined by surface keep their own materials,
+    which may differ in sidedness), with colour sets following its baked array order."""
     from r3d.objects.instances import place
 
+    double_sided = [i for i, material in enumerate(geometry.src.names) if material in job.settings.double_sided]
+    groups = {}
+    for instance, lit in shape['copies']:
+        groups.setdefault((instance.mirrored, np.isin(lit[3], double_sided).tobytes()), []).append((instance, lit))
     entries, rows = [], []
-    for mirrored in (False, True):
-        copies = [(instance, lit) for instance, lit in shape['copies'] if instance.mirrored == mirrored]
-        if not copies:
-            continue
+    for (mirrored, _), copies in sorted(groups.items(), key=lambda group: group[0][0]):
         first, lit = copies[0]
         first_name = geometry.src.object_names[int(first.object_name)]
         mesh_id = mesh_bundle.shape_id(name, shape['rule'], first_name)
@@ -317,8 +327,7 @@ def write_shape(job, scene, out_dir, name, geometry, shape, recorder):
         p, _, t, labels = lit
         local = place(p[t].reshape(-1, 3) - first.position, first.linear.T, 0.0) * np.diag(reflect)
         tris = np.arange(len(local)).reshape(-1, 3)
-        double = np.isin(labels, [i for i, material in enumerate(geometry.src.names)
-                                if material in job.settings.double_sided]).astype(int)
+        double = np.isin(labels, double_sided).astype(int)
         colours = []
         for instance, (p, rgb, t, labels) in copies:
             if job.renderer.face_samples:
@@ -328,16 +337,17 @@ def write_shape(job, scene, out_dir, name, geometry, shape, recorder):
             else:
                 colours.append(rgb[t].reshape(-1, 3))
         keys = np.concatenate(colours, axis=1)
-        mesh = write_lit_mesh(out_dir, mesh_id, local, None if job.renderer.face_samples else keys,
+        mesh = build_lit_mesh(local, None if job.renderer.face_samples else keys,
                               tris, double, face_rgb=keys if job.renderer.face_samples else None,
-                              colourless=True, recorder=recorder,
-                              meshlet_triangles=job.settings.meshlet_triangles, **geometry.scale)
+                              colourless=True, recorder=recorder, mesh_builder=bake_lit_mesh,
+                              meshlet_triangles=job.settings.meshlet_triangles, lod=job.settings.lod,
+                              **geometry.scale)
         encoding = lcol_asset.RGB565 if job.renderer.face_samples else lcol_asset.RGB888
         keys = mesh.face_keys if job.renderer.face_samples else mesh.colour_keys
         channels = lcol_asset.STRIDES[lcol_asset.RGB888]
         sets = [panel_colour(keys[:, k:k + channels]).tobytes() if job.renderer.face_samples
                 else keys[:, k:k + channels].astype('u1').tobytes() for k in range(0, keys.shape[1], channels)]
-        entries.append((mesh_id, mesh_asset.TYPE, (out_dir / f"{mesh_id}.mesh").read_bytes()))
+        entries.extend(bundle_entries(mesh_id, mesh, morph_blob if job.settings.morph else None))
         entries.append((lcol_asset.name_for_mesh(mesh_id), lcol_asset.TYPE,
                         lcol_asset.encode(encoding, len(keys), sets)))
         for index, (instance, _) in enumerate(copies):

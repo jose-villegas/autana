@@ -159,7 +159,7 @@ class GltfImportTests(unittest.TestCase):
             path = pathlib.Path(directory) / "m.import.toml"
             path.write_text('[source]\npath = "m.glb"\ncredit = "c"\n[output]\nname = "m"\n')
             self.assertEqual(mesh_import.main([str(path)]), 0)
-            mesh = read_lit_mesh(pathlib.Path(directory) / "m.mesh")
+            mesh = read_lit_mesh(pathlib.Path(directory) / "m.bundle")
         self.assertEqual(len(mesh.tris), 4)
         near = mesh.pos[:, 2] < mesh.pos[:, 2].max() / 2
         self.assertTrue((mesh.rgb[near] == (255, 0, 0)).all(), mesh.rgb)
@@ -171,7 +171,7 @@ class GltfImportTests(unittest.TestCase):
             path = pathlib.Path(directory) / "m.import.toml"
             path.write_text('[source]\npath = "m.fbx"\ncredit = "c"\n[output]\nname = "m"\n')
             self.assertEqual(mesh_import.main([str(path)]), 0)
-            mesh = read_lit_mesh(pathlib.Path(directory) / "m.mesh")
+            mesh = read_lit_mesh(pathlib.Path(directory) / "m.bundle")
         self.assertGreater(len(mesh.tris), 0)
 
     def test_the_mitsuba_export_refuses_vertex_colours_it_would_drop(self):

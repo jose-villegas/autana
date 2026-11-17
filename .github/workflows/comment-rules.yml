@@ -76,8 +76,7 @@ jobs:
       # pyserial among them: the exclusive-open tests drive the real serial library on a pty.
       - name: Workflow gate dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libportaudio2
+          sudo sh scripts/ci/apt_install.sh -y libportaudio2
           pip install -r scripts/gates/requirements.txt -r launcher/tools/render/requirements.txt -r launcher/test/device/requirements.txt -r launcher/tools/audio/requirements.txt -r launcher/tools/audio/mic/requirements.txt
 
       # test_r3d_bake.py skips itself without numpy and scipy, and builds
@@ -87,15 +86,15 @@ jobs:
       - name: r3d bake environment
         run: |
           pip install -r launcher/tools/r3d/requirements.txt
-          sudo apt-get install -y --no-install-recommends llvm
+          sudo sh scripts/ci/apt_install.sh -y --no-install-recommends llvm
           git submodule update --init --depth 1 third_party/upstream/meshoptimizer third_party/upstream/ufbx
 
       # test_check_math.mjs renders through GitHub's MathJax.
       - name: Node gate dependencies
         run: npm ci --prefix scripts/gates
 
-      - name: Self-hosted workflows reject untrusted pull request and comment events
-        run: python3 scripts/gates/check_self_hosted_workflows.py
+      - name: Workflows take no untrusted events on self-hosted jobs and queue shared groups
+        run: python3 scripts/gates/check_workflows.py
 
       - name: Length beside code, and header height
         env:

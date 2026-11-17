@@ -7,7 +7,11 @@
 #include "math/text/math_text.h"
 #include "render/context/render_context.h"
 #include "render_counts.h"
+#include "scene/animator/animator.h"
+#include "scene/camera/camera.h"
+#include "scene/renderer/renderer.h"
 #include "scene/scene.h"
+#include "scene/transform/transform.h"
 #include "scene_viewer.h"
 
 static const char* scene_id;
@@ -23,8 +27,8 @@ static const char* counts_path;
 static FILE* counts;
 static const char* poses_path;
 static FILE* poses;
-static scene_t* shown;
-static scene_entity_t camera;
+static entity_t shown;
+static entity_t camera;
 
 /* Every option back to what a fresh process starts with, for an open after a closed run. */
 static void
@@ -114,16 +118,16 @@ options(int argc, char** argv) {
 }
 
 static bool
-select_objects(scene_t* scene) {
+select_objects(entity_t scene) {
     for (int i = 0; i < object_count; i++) {
-        const scene_entity_t entity = scene_find(scene, name_hash(object_names[i]));
-        if (entity != SCENE_ENTITY_NONE && scene_entity_mesh_id(scene, entity) != NULL) {
+        const entity_t entity = entity_find(scene, name_hash(object_names[i]));
+        if (!handle_is_none(entity) && renderer_mesh_id(entity) != NULL) {
             continue;
         }
         fprintf(stderr, "scene_viewer: unknown renderer '%s'; renderers:", object_names[i]);
-        for (int j = 0; j < scene_entity_count(scene); j++) {
-            if (scene_entity_mesh_id(scene, (scene_entity_t)j) != NULL) {
-                fprintf(stderr, " %s", scene_entity_name(scene, (scene_entity_t)j));
+        for (entity_t e = entity_next(scene, ENTITY_NONE); !handle_is_none(e); e = entity_next(scene, e)) {
+            if (renderer_mesh_id(e) != NULL) {
+                fprintf(stderr, " %s", entity_name(e));
             }
         }
         fprintf(stderr, "\n");
@@ -132,35 +136,26 @@ select_objects(scene_t* scene) {
     if (object_count == 0) {
         return true;
     }
-    for (int i = 0; i < scene_entity_count(scene); i++) {
-        const scene_entity_t entity = (scene_entity_t)i;
-        if (scene_entity_mesh_id(scene, entity) == NULL) {
+    for (entity_t entity = entity_next(scene, ENTITY_NONE); !handle_is_none(entity);
+         entity = entity_next(scene, entity)) {
+        if (renderer_mesh_id(entity) == NULL) {
             continue;
         }
         /* Enabled is parent AND own, so a named renderer needs its ancestors on and takes its descendants along. */
         bool enabled = false;
         for (int j = 0; j < object_count; j++) {
-            const scene_entity_t named = scene_find(scene, name_hash(object_names[j]));
-            enabled |= scene_entity_is_within(scene, entity, named) || scene_entity_is_within(scene, named, entity);
+            const entity_t named = entity_find(scene, name_hash(object_names[j]));
+            enabled |= entity_is_within(entity, named) || entity_is_within(named, entity);
         }
-        scene_entity_set_enabled(scene, entity, enabled);
+        entity_set_enabled(entity, enabled);
     }
     return true;
 }
 
-/* The camera entity scene_activate() chose: the named one, or the first whose lens is the first camera's. */
-static scene_entity_t
-active_camera(const scene_t* scene) {
-    if (camera_name != NULL) {
-        return scene_find(scene, name_hash(camera_name));
-    }
-    const camera_t* first = scene_camera_lens(scene, SCENE_CAMERA_FIRST);
-    for (int i = 0; i < scene_entity_count(scene); i++) {
-        if (scene_camera_lens(scene, name_hash(scene_entity_name(scene, (scene_entity_t)i))) == first) {
-            return (scene_entity_t)i;
-        }
-    }
-    return SCENE_ENTITY_NONE;
+/* The camera entity to activate: the named one, or the scene's first. */
+static entity_t
+chosen_camera(entity_t scene) {
+    return camera_name != NULL ? entity_find(scene, name_hash(camera_name)) : camera_first(scene);
 }
 
 int
@@ -172,46 +167,47 @@ static bool
 setup(int quarter) {
     shell_quarter = quarter;
     scene_failure_t why;
-    scene_t* scene = scene_load(scene_id, &why);
-    if (scene == NULL) {
+    entity_t scene = scene_load(scene_id);
+    if (scene_state(scene) != PENDING_READY) {
+        (void)scene_failure(scene, &why);
         fprintf(stderr, "scene_viewer: scene '%s' failed loading '%s' (status %d, asset %s)\n", scene_id, why.what,
                 (int)why.status, asset_status_text(why.asset));
+        scene_release(scene);
         return false;
     }
     const bool selected = select_objects(scene);
     object_names = NULL;
-    if (!selected || !scene_activate(scene, camera_name == NULL ? SCENE_CAMERA_FIRST : name_hash(camera_name))) {
+    if (!selected || !camera_activate(chosen_camera(scene))) {
         if (selected) {
             fprintf(stderr, "scene_viewer: scene '%s' has no camera '%s'\n", scene_id,
                     camera_name == NULL ? "default" : camera_name);
         }
-        scene_unload(scene);
+        scene_release(scene);
         return false;
     }
     if (view != RENDER_DEBUG_VIEW_SHADED) {
         bool has_mesh = false;
-        for (int i = 0; i < scene_entity_count(scene); i++) {
-            const scene_entity_t entity = (scene_entity_t)i;
-            has_mesh |= scene_entity_enabled(scene, entity) && scene_entity_mesh_id(scene, entity) != NULL;
+        for (entity_t e = entity_next(scene, ENTITY_NONE); !handle_is_none(e); e = entity_next(scene, e)) {
+            has_mesh |= entity_enabled(e) && renderer_mesh_id(e) != NULL;
         }
         if (!has_mesh) {
             fprintf(stderr, "scene_viewer: scene '%s' has no enabled mesh for --view\n", scene_id);
-            scene_unload(scene);
+            scene_release(scene);
             return false;
         }
     }
-    for (int i = 0; i < scene_entity_count(scene); i++) {
-        (void)scene_camera_set_present(scene, (scene_entity_t)i, present);
-        (void)scene_camera_set_small_fill(scene, (scene_entity_t)i, small_fill);
+    for (entity_t e = entity_next(scene, ENTITY_NONE); !handle_is_none(e); e = entity_next(scene, e)) {
+        (void)camera_set_present(e, present);
+        (void)camera_set_small_fill(e, small_fill);
     }
     shown = scene;
-    camera = active_camera(scene);
+    camera = chosen_camera(scene);
     /* What a caller sampling the path along its length reads. */
-    fprintf(stderr, "scene_viewer: camera path %u ms\n", (unsigned)scene_animator_clip_duration_ms(scene, camera, 0));
+    fprintf(stderr, "scene_viewer: camera path %u ms\n", (unsigned)animator_clip_duration_ms(camera, 0));
     render_context_t* context = render_context_main();
     render_context_set_debug_view(context, view);
     if (counts_path != NULL && (counts = render_counts_open(counts_path, "scene_viewer")) == NULL) {
-        scene_unload(scene);
+        scene_release(scene);
         return false;
     }
     if (poses_path != NULL
@@ -220,7 +216,7 @@ setup(int quarter) {
             fclose(counts);
             counts = NULL;
         }
-        scene_unload(scene);
+        scene_release(scene);
         return false;
     }
     if (size_rect.w > 0) {
@@ -239,7 +235,7 @@ draw(const provider_frame_t* frame) {
         render_counts_row(&counts, frame);
     }
     if (poses != NULL) {
-        const transformf_t world = scene_entity_world(shown, camera);
+        const transformf_t world = transform_world(camera);
         fprintf(poses, "%d,%u,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g\n", frame->index, (unsigned)frame->elapsed_ms,
                 (double)world.position.x, (double)world.position.y, (double)world.position.z, (double)world.rotation.x,
                 (double)world.rotation.y, (double)world.rotation.z, (double)world.rotation.w);
@@ -261,19 +257,19 @@ teardown(void) {
         fclose(poses);
         poses = NULL;
     }
-    shown = NULL;
-    camera = SCENE_ENTITY_NONE;
+    shown = ENTITY_NONE;
+    camera = ENTITY_NONE;
 }
 
 static uint32_t
 path_ms(void) {
-    return scene_animator_clip_duration_ms(shown, camera, 0);
+    return animator_clip_duration_ms(camera, 0);
 }
 
 static void
 seek(uint32_t t_ms) {
-    for (int i = 0; i < scene_entity_count(shown); i++) {
-        (void)scene_animator_seek(shown, (scene_entity_t)i, SCENE_ANIMATOR_CURRENT, t_ms);
+    for (entity_t e = entity_next(shown, ENTITY_NONE); !handle_is_none(e); e = entity_next(shown, e)) {
+        (void)animator_seek(e, ANIMATOR_CURRENT, t_ms);
     }
     /* Seeking cuts only when the active camera itself is animated; objects
      * or a camera parent moving under a still camera need the cut too. */

@@ -1,9 +1,8 @@
 """LCOL v1 colour sets; layout constants belong to render/lcol_format.h."""
 import pathlib
-import struct
 from asset.asset_pack import NAME_BYTES, PackError
 from build.c_header import read_define
-from r3d.mesh_asset import read_mesh_header
+from r3d.mesh_asset import read_mesh_header, checked_struct
 
 OWNER = pathlib.Path(__file__).resolve().parents[2] / "main/render/lcol_format.h"
 TYPE = b"LCOL"
@@ -13,23 +12,16 @@ RGB565 = read_define(OWNER, "LCOL_ENCODING_RGB565")
 STRIDES = {RGB888: read_define(OWNER, "LCOL_RGB888_BYTES"), RGB565: read_define(OWNER, "LCOL_RGB565_BYTES")}
 NAME_SUFFIX = read_define(OWNER, "LCOL_NAME_SUFFIX")
 HEADER_FIELDS = (("VERSION", "H"), ("ENCODING", "H"), ("SET_COUNT", "I"), ("COUNT", "I"))
-HEADER = struct.Struct("<" + "".join(layout for _, layout in HEADER_FIELDS))
-offset = 0
-for field, layout in HEADER_FIELDS:
-    if offset != read_define(OWNER, "LCOL_AT_" + field):
-        raise ValueError("LCOL header field offset disagrees with its C owner")
-    offset += struct.calcsize("<" + layout)
-if HEADER.size != read_define(OWNER, "LCOL_HEADER_SIZE") or offset != HEADER.size:
-    raise ValueError("LCOL header size disagrees with its C owner")
+HEADER = checked_struct(OWNER, "LCOL", HEADER_FIELDS)
 
 
-def name_for_mesh(mesh):
+def sibling_name(mesh, suffix):
     """Invalid ids raise ValueError; overflow raises PackError so own-colour ids may omit LCOL."""
-    name = mesh + NAME_SUFFIX
+    name = mesh + suffix
     if not mesh or "\0" in name:
-        raise ValueError("LCOL name has an empty stem or embedded NUL")
+        raise ValueError("sibling name has an empty stem or embedded NUL")
     if len(name.encode("ascii")) >= NAME_BYTES:
-        raise PackError("LCOL name does not fit the pack name field")
+        raise PackError("sibling name does not fit the pack name field")
     return name
 
 
@@ -59,3 +51,7 @@ def validate_mesh(entry, mesh, colour_set):
     expected = header.vertices if encoding == RGB888 else header.triangles
     if colour_set >= len(sets) or count != expected or header.colors_at or header.face_at:
         raise ValueError("LCOL set, count or mesh colour ownership is invalid")
+
+
+def name_for_mesh(mesh):
+    return sibling_name(mesh, NAME_SUFFIX)

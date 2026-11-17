@@ -159,8 +159,8 @@ LMSH first.
 ## Runtime
 
 The scene owns animator and skinned-renderer components, indexed by entity.
-`scene_animator_set_clips()` takes a skeleton id and clip ids;
-`scene_renderer_set_skin()` binds a skin to the entity's mesh, checking joint
+`animator_set_clips()` takes a skeleton id and clip ids;
+`renderer_set_skin()` binds a skin to the entity's mesh, checking joint
 and vertex counts. Property animators use no skeleton.
 
 | Block | Where | Sized by | Holds |
@@ -204,8 +204,8 @@ ranges. Job contexts are checked against `JOB_CTX_MAX` at compile time.
 | Skin and node refit | the pose changed, or for a lit skin `SCENE_FLAG_SKIN_DIRTY` is set on it or a light | no posed clusters, or an unchanged pose |
 | Placement | the active scene, for renderers with dirty entities | inactive scenes |
 
-Light setters, `scene_entity_set_local()`, `scene_entity_set_enabled()` and
-`scene_renderer_set_skin()` set `SCENE_FLAG_SKIN_DIRTY`. The skin stage
+Light setters, `transform_set_local()`, `entity_set_enabled()` and
+`renderer_set_skin()` set `SCENE_FLAG_SKIN_DIRTY`. The skin stage
 consumes it apart from the draw's `SCENE_FLAG_DIRTY`, inactive scenes
 included. What skinning costs on the board is in [Skinned
 lighting](Skinned-Lighting.md#lighting-modes) (the skin-only bar).

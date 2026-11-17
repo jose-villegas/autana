@@ -1134,6 +1134,7 @@ input_lab_exit(void) {
 
 app_t app_input_lab = {
     .name = "Input Lab",
+    .kind = APP_KIND_LAB,
     .summary = "Touch precision: tap the magenta squares",
     .enter = input_lab_enter,
     .frame = input_lab_frame,

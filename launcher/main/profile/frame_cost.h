@@ -386,6 +386,10 @@ void frame_cost_external(const char* name, int64_t us);
 int frame_cost_begin(void);
 int64_t frame_cost_end(int mark, const char* name);
 int frame_cost_take_report(uint32_t frames, char* out, size_t out_size);
+/* Forgets everything since the last report: the brackets, the external
+ * stage and the foreign-task count, so the next report holds only what
+ * runs after. */
+void frame_cost_take_clear(void);
 
 int frame_cost_take_counts(char* out, size_t out_size);
 

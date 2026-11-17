@@ -11,7 +11,7 @@ with content.
 
 ```mermaid
 flowchart TB
-    Import["mesh_import.py"] -->|source frame| Entry["name.mesh in bake cache"]
+    Import["mesh_import.py"] -->|source frame| Entry["name.bundle in bake cache"]
     Entry -->|source frame| Mirror["engine_frame.to_engine"]
     Authored["scene / clip bake"] -->|source frame| Mirror
     Mirror -->|engine frame| Build["build_pack.py"]

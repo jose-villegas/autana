@@ -876,19 +876,19 @@ show_sample(const field_work_t* w, const int at[3], float far) {
     *v = *v > shown ? *v : shown;
 }
 
-/* Every particle shows as a sample of water, after the smoothing: one
- * whose nearest sample already reads inside is left; every other one
- * raises its cell's samples to 1 less their Chebyshev distance from it in
- * samples, its nearest to FIELD_NEAREST_LEAST, so even from a midpoint it
- * is a drop inside the surface.
- * Without it, a film or lone drop thinner than the smoothing averages
- * below the level. One pass on this core: split by lines, each core would
- * read every particle. */
+/* Every particle outside the surface and at least show_speed fast raises
+ * its cell's samples to 1 less their Chebyshev distance from it in
+ * samples, its nearest to FIELD_NEAREST_LEAST: even from a midpoint, a
+ * drop inside the surface. A slower one rests on the surface and would
+ * only hold a spike. Without it, a film or lone drop thinner than the
+ * smoothing averages below the level. One pass on this core: split by
+ * lines, each core would read every particle. */
 static void
 show_particles(const field_work_t* w) {
     const float inv_step[3] = {1.0F / w->step[0], 1.0F / w->step[1], 1.0F / w->step[2]};
+    const float least_sq = w->f->tuning.show_speed * w->f->tuning.show_speed;
     for (int i = 0; i < w->f->count; i++) {
-        if (particle_inside(w, inv_step, w->f->pos[i])) {
+        if (particle_inside(w, inv_step, w->f->pos[i]) || vec3f_dot(w->f->vel[i], w->f->vel[i]) < least_sq) {
             continue;
         }
         const field_spot_t s = particle_spot(w, inv_step, w->f->pos[i]);

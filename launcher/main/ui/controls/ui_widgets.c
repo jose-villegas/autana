@@ -16,6 +16,8 @@
 #define BUTTON_ICON_GAP 8
 #define TILE_PAD        8
 #define TILE_LABEL_GAP  4
+/* Between the two lines of a wrapped label. */
+#define LINE_GAP        4
 #define CHEVRON_SIDE    24
 #define LIST_GAP        4
 
@@ -64,10 +66,13 @@ text_in_clip(mu_Context* ctx, mu_Rect r, mu_Rect clip, const char* str, int len,
     ui_set_font_scaled(draw_font_ui(), scale);
     const int tw = ctx->text_width(ctx->style->font, str, len);
     const int th = draw_font_height(draw_font_ui(), scale);
+    if (tw > clip.w) {
+        ui_text_clipped++;
+    }
     int x = r.x;
     if (align == UI_ALIGN_CENTRE) {
         x = r.x + ((r.w - tw) / 2);
-    } else if (align == UI_ALIGN_RIGHT) {
+    } else if (align == UI_ALIGN_END) {
         x = r.x + r.w - tw;
     }
 
@@ -101,6 +106,22 @@ typedef struct {
     mu_Color ink;
 } control_t;
 
+/* A rounded face is flat, lighter while held; a square one is bevelled. */
+static void
+draw_face(mu_Context* ctx, mu_Rect r, mu_Color face, bool pressed, int corner_radius) {
+    if (corner_radius > 0) {
+        ui_round_command_t* cmd = ui_push_clipped_command(ctx, UI_COMMAND_ROUND_RECT, sizeof *cmd, r);
+        if (cmd != NULL) {
+            cmd->rect = r;
+            cmd->color = pressed ? ui_shade(face, UI_BEZEL_HIGHLIGHT) : face;
+            cmd->radius = mu_min(corner_radius, mu_min(r.w, r.h) / 2);
+        }
+        return;
+    }
+    ui_span_t spans[UI_BEZEL_MAX_SPANS];
+    draw_spans(ctx, spans, ui_bezel_spans(r, face, pressed, spans, UI_BEZEL_MAX_SPANS));
+}
+
 /* The hit, the face and the ink every button-shaped widget shares. */
 static control_t
 begin_control(mu_Context* ctx, mu_Id mid, mu_Rect r, bool enabled, bool selected, const ui_mu_theme_t* theme) {
@@ -114,9 +135,7 @@ begin_control(mu_Context* ctx, mu_Id mid, mu_Rect r, bool enabled, bool selected
     }
 
     const bool on_accent = enabled && selected;
-    ui_span_t spans[UI_BEZEL_MAX_SPANS];
-    const mu_Color face = on_accent ? theme->accent_face : theme->button_face;
-    draw_spans(ctx, spans, ui_bezel_spans(r, face, c.pressed, spans, UI_BEZEL_MAX_SPANS));
+    draw_face(ctx, r, on_accent ? theme->accent_face : theme->button_face, c.pressed, theme->corner_radius);
 
     if (!enabled) {
         c.ink = theme->muted;
@@ -129,6 +148,34 @@ begin_control(mu_Context* ctx, mu_Id mid, mu_Rect r, bool enabled, bool selected
 int
 ui_icon_button_label_width(int button_w, bool has_icon, const ui_mu_theme_t* theme) {
     return button_w - (2 * BUTTON_PAD) - (has_icon ? theme->icon_side + BUTTON_ICON_GAP : 0);
+}
+
+/* A label alone fills the button: one line centred, or, too wide, two
+ * lines split at the last space that lets the first fit. */
+static void
+wrapped_label(mu_Context* ctx, mu_Rect r, const char* str, int len, mu_Color ink, int scale) {
+    if (len < 0) {
+        len = (int)strlen(str);
+    }
+    const mu_Rect slot = {r.x + BUTTON_PAD, r.y, r.w - (2 * BUTTON_PAD), r.h};
+    ui_set_font_scaled(draw_font_ui(), scale);
+    int split = -1;
+    if (ctx->text_width(ctx->style->font, str, len) > slot.w) {
+        for (int i = 0; i < len; i++) {
+            if (str[i] == ' ' && (split < 0 || ctx->text_width(ctx->style->font, str, i) <= slot.w)) {
+                split = i;
+            }
+        }
+    }
+    if (split < 0) {
+        control_label(ctx, slot, BUTTON_PAD, BUTTON_PAD, str, len, ink, scale);
+        return;
+    }
+    const int line_h = draw_font_height(draw_font_ui(), scale);
+    const int top = r.y + ((r.h - (2 * line_h) - LINE_GAP) / 2);
+    control_label(ctx, mu_rect(slot.x, top, slot.w, line_h), BUTTON_PAD, BUTTON_PAD, str, split, ink, scale);
+    control_label(ctx, mu_rect(slot.x, top + line_h + LINE_GAP, slot.w, line_h), BUTTON_PAD, BUTTON_PAD,
+                  str + split + 1, len - split - 1, ink, scale);
 }
 
 /* The icon at the left and the label centred in `label_w` after it. */
@@ -148,7 +195,11 @@ bool
 ui_icon_button_id(mu_Context* ctx, mu_Id id, mu_Rect r, const ui_widget_button_t* button, int label_len,
                   const ui_mu_theme_t* theme) {
     const control_t c = begin_control(ctx, id, r, button->enabled, button->selected, theme);
-    const int label_w = ui_icon_button_label_width(r.w, button->icon != NULL, theme);
+    if (button->icon == NULL) {
+        wrapped_label(ctx, r, button->label, label_len, c.ink, theme->text_scale);
+        return c.clicked;
+    }
+    const int label_w = ui_icon_button_label_width(r.w, true, theme);
     draw_icon_and_label(ctx, r, button->icon, button->label, label_len, label_w, c.ink, theme);
     return c.clicked;
 }
@@ -446,7 +497,6 @@ bool
 ui_tile_button_id(mu_Context* ctx, mu_Id id, mu_Rect r, const ui_widget_button_t* button, int label_len,
                   const ui_mu_theme_t* theme) {
     const control_t c = begin_control(ctx, id, r, button->enabled, button->selected, theme);
-
     const mu_Rect icon = ui_mu_tile_icon_rect(r, theme);
     if (button->icon != NULL) {
         ui_draw_icon(ctx, icon, button->icon, NULL, c.ink);

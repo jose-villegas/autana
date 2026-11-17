@@ -9,7 +9,7 @@ whole meshlet.
 
     python launcher/tools/r3d/bake_figures/mesh_figures.py --mesh MESH [--rest NAME] --out DIR
 
-MESH is a baked .mesh, or a carved .bundle with --rest naming its rest mesh (bake.py path OUTPUT). Needs launcher/tools/r3d/requirements.txt.
+MESH is a baked .bundle with --rest naming its rest mesh (bake.py path OUTPUT). Needs launcher/tools/r3d/requirements.txt.
 launcher/tools/render/render_doc_images.sh runs it.
 """
 
@@ -18,7 +18,6 @@ import colorsys
 import pathlib
 import re
 import sys
-import tempfile
 
 import numpy as np
 from matplotlib.collections import PolyCollection
@@ -29,7 +28,7 @@ TOOLS = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(TOOLS))
 from docs.plot_style import FAINT, GIF_FPS, INK, LABEL_SIZE, MUTED, TITLE_SIZE, save, save_gif, subplots  # noqa: E402
 from r3d import mesh_asset, mesh_bundle  # noqa: E402
-from r3d.lit_mesh import read_lit_mesh  # noqa: E402
+from r3d.lit_mesh import read_bundle_mesh  # noqa: E402
 from r3d.meshopt import build_meshlets  # noqa: E402
 
 VIEW = TOOLS.parents[0] / "main/render/view/raster_meshlets.c"
@@ -253,17 +252,9 @@ def build(path):
 
 
 def read_baked_mesh(path, rest):
-    """A .mesh, or a carved .bundle's rest mesh: its entry named `rest`, the bundle's own asset name."""
-    if path.suffix != mesh_bundle.SUFFIX:
-        return read_lit_mesh(path)
+    """The named rest mesh of a baked bundle, with its levels sibling."""
     entries, _ = mesh_bundle.decode(path.read_bytes())
-    blob = next((data for name, kind, data in entries if name == rest and kind == mesh_asset.TYPE), None)
-    if blob is None:
-        raise SystemExit(f"{path}: no {rest} mesh in the bundle")
-    with tempfile.TemporaryDirectory() as work:
-        mesh = pathlib.Path(work) / f"{rest}.mesh"
-        mesh.write_bytes(blob)
-        return read_lit_mesh(mesh)
+    return read_bundle_mesh(entries, rest)
 
 
 def main(argv=None):

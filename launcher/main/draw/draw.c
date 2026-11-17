@@ -345,7 +345,7 @@ draw_blit_dither(int x, int y, const image_t* src, uint8_t alpha) {
         return;
     }
 
-    const int level = bayer_level(alpha);
+    const int level = bayer_level(alpha, UINT8_MAX);
     const size_t step = src->pitch;
 
     char* pixels = state.target->attachment[0].pixels;

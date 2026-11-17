@@ -78,6 +78,9 @@
     MATH_DEFINE_SWIZZLE3(P, P, 3)
 
 #define MATH_DEFINE_VEC3_NORMALIZE(P, T, OPS)                                                                          \
+    /* length = sqrt(dot(a, a)). */                                                                                    \
+    static inline T P##_length(P##_t a) { return OPS##_sqrt(P##_dot(a, a)); }                                          \
+                                                                                                                       \
     /* out = a/|a|, *q = t/|a|. Precondition: a is nonzero. */                                                         \
     static inline P##_t P##_normalize_divide(P##_t a, T t, T* q) {                                                     \
         const T k = OPS##_rsqrt(P##_dot(a, a));                                                                        \

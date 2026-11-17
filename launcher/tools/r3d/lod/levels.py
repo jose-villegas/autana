@@ -5,7 +5,7 @@ simplifies. Input is welded and position-only, so the simplifier sees one
 surface rather than a strip per colour.
 
 The library is meshoptimizer's sources and lod/clusterlod.cpp, built into
-.cache/ beside meshopt.py's own, which mesh bakes key on and this does not.
+.cache/ beside meshopt.py's own; a mesh baked with levels keys on both.
 
 pick.py picks among the levels.
 """
@@ -23,6 +23,9 @@ from r3d.meshopt import CACHE, SOURCE
 # clusterlod takes 4..256 triangles a cluster.
 CLUSTER_TRIANGLES_MIN = 4
 CLUSTER_TRIANGLES_MAX = 256
+# meshoptimizer.h's meshopt_SimplifyVertex_Lock.
+SIMPLIFY_VERTEX_LOCK = 1
+CLUSTERLOD = pathlib.Path(__file__).with_name("clusterlod.cpp")
 
 
 _lib = None
@@ -34,7 +37,7 @@ def _library():
         demo = SOURCE.parent / "demo"
         if not (demo / "clusterlod.h").exists():
             raise SystemExit(f"{demo} is missing: run `git submodule update --init third_party/upstream/meshoptimizer`")
-        _lib = build_shared("clusterlod", CACHE, [*sorted(SOURCE.glob("*.cpp")), pathlib.Path(__file__).with_name("clusterlod.cpp")],
+        _lib = build_shared("clusterlod", CACHE, [*sorted(SOURCE.glob("*.cpp")), CLUSTERLOD],
                             find_compiler("CXX", ("c++", "g++", "clang++"), "C++"), flags=(f"-I{SOURCE}", f"-I{demo}"),
                             depends=(demo / "clusterlod.h",), log=log)
     return _lib
@@ -57,17 +60,25 @@ class Levels(NamedTuple):
     cluster_group: np.ndarray   # C: the group it belongs to
 
 
-def build_levels(positions, triangles, cluster_triangles):
+def build_levels(positions, triangles, cluster_triangles, locked=None, finest=None):
     """The levels of a welded mesh (V x 3 positions, T x 3 triangles) with
-    clusters of at most `cluster_triangles`."""
+    clusters of at most `cluster_triangles`; `locked`, one flag per vertex,
+    keeps those vertices at every level. `finest`, triangles per cluster with
+    each cluster's triangles consecutive, is the finest level as given; without
+    it clusterlod cuts its own."""
     lib = _library()
     size = int(np.clip(cluster_triangles, CLUSTER_TRIANGLES_MIN, CLUSTER_TRIANGLES_MAX))
     p = np.ascontiguousarray(positions, dtype=np.float32)
     i = np.ascontiguousarray(triangles, dtype=np.uint32).reshape(-1)
     c = ctypes.c_void_p
+    locks = None if locked is None else np.ascontiguousarray(np.where(locked, SIMPLIFY_VERTEX_LOCK, 0), dtype=np.uint8)
+    given = None if finest is None else np.ascontiguousarray(finest, dtype=np.uint32)
     lib.lod_build.restype = c
     handle = lib.lod_build(p.ctypes.data_as(c), ctypes.c_size_t(len(p)), i.ctypes.data_as(c), ctypes.c_size_t(len(i)),
-                           ctypes.c_size_t(size))
+                           ctypes.c_size_t(size), None if locks is None else locks.ctypes.data_as(c),
+                           None if given is None else given.ctypes.data_as(c), ctypes.c_size_t(0 if given is None else len(given)))
+    if not handle:
+        raise ValueError(f"the given finest clusters do not fit clusterlod's clusters of {size} triangles and vertices")
     try:
         counts = [ctypes.c_size_t() for _ in range(3)]
         lib.lod_sizes(c(handle), *(ctypes.byref(n) for n in counts))

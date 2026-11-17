@@ -23,7 +23,7 @@
 #include "ui/ui.h"
 #include "ui/ui_canvas_marks.h"
 
-enum { UI_COMMAND_IMAGE = MU_COMMAND_MAX, UI_COMMAND_SWATCHES };
+enum { UI_COMMAND_IMAGE = MU_COMMAND_MAX, UI_COMMAND_SWATCHES, UI_COMMAND_ROUND_RECT };
 
 typedef struct {
     mu_BaseCommand base;
@@ -31,6 +31,15 @@ typedef struct {
     mu_Color color;
     const image_t* image;
 } ui_image_command_t;
+
+/* A flat face with rounded corners: one command, filled in panel rows after
+ * the transform, so a turned screen still writes rows, not columns. */
+typedef struct {
+    mu_BaseCommand base;
+    mu_Rect rect;
+    mu_Color color;
+    int radius;
+} ui_round_command_t;
 
 typedef struct {
     mu_BaseCommand base;
@@ -75,7 +84,7 @@ ui_transform_mu_rect(affine2x_t t, mu_Rect r) {
 /* What a mu_Font actually points at; see ui_build.c's ui_set_font() comment
  * for why the scale rides inside the font rather than a separate
  * render-time setting. Shared because ui.c's draw_command() and
- * command_row_range() both resolve a command's font the same way. */
+ * command_rect() both resolve a command's font the same way. */
 typedef struct {
     const draw_font_t* font;
     int scale;
@@ -124,7 +133,7 @@ extern ui_canvas_marks_t ui_canvas_marks;
 
 /* The transform in force, or identity while none set is valid; see
  * ui_set_transform() (ui_build.c). Both draw_command() and
- * canvas_physical_rect()/command_row_range() (ui.c) map through it. */
+ * canvas_physical_rect()/command_rect() (ui.c) map through it. */
 affine2x_t ui_effective_transform(void);
 
 /* A point on the panel as the logical canvas sees it: what a raw input_t
@@ -133,7 +142,7 @@ vec2i_t ui_to_logical(vec2i_t point);
 
 /* The (font, scale) pair `font` was interned as by ui_set_font_scaled(), or
  * the shell default if `font` is NULL (asked for before ui_init() has run).
- * draw_command() and command_row_range() (ui.c) both need this to know what
+ * draw_command() and command_rect() (ui.c) both need this to know what
  * a MU_COMMAND_TEXT command actually measures as. */
 ui_font_scaled_t ui_resolve_font_scaled(mu_Font font);
 
@@ -179,6 +188,11 @@ bool ui_slider_int(mu_Context* ctx, int* value, int lo, int hi, int step);
 void ui_face_init(void);
 void ui_face_begin(const input_t* input);
 void ui_face_end(void);
+/* Text this frame drew wider than its clip; ui_clipped_text() reads it. */
+extern int ui_text_clipped;
+/* Closes the open window; false if an aligned scroll window this frame was
+ * placed off where its own flow now puts it. */
+bool ui_face_settle(void);
 
 /* Closes the frame's command list: the open face window, microui's frame and
  * the pointer frame. Every ui_end*() starts with it; a test reading the list
