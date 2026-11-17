@@ -149,7 +149,7 @@ class NightlyTests(unittest.TestCase):
             self.commits.append(chain.git(self.repo, "rev-parse", "HEAD"))
         self.clock = Clock(22, 30)
         self.args = SimpleNamespace(repo=self.repo, out=self.root / "out", data=self.root / "data",
-                                    board="20E8", lane="0/2", previous=None,
+                                    board="20E8", lane="0/2", previous=None, tip=self.commits[-1],
                                     suite=[("suite", "-", "-")], selftest=None)
 
     def before_cutoff(self, scans):
@@ -222,15 +222,21 @@ class NightlyTests(unittest.TestCase):
         chain.git(self.repo, "add", ".")
         chain.git(self.repo, "commit", "-qm", "a late suite (#106)")
         self.commits.append(chain.git(self.repo, "rev-parse", "HEAD"))
+        self.args.tip = self.commits[-1]
         # The anchor, last night's commit, predates a suite added since as any older step does.
         for anchor in (False, True):
             with self.subTest(anchor=anchor):
                 self.assertEqual(self.night_suites(("suite", "late"), self.steps((1, 6), anchor=anchor)),
                                  (["suite", "suite", "late"], ["measured", "measured"]))
 
-    def test_the_newest_step_without_a_suite_fails_its_capture(self):
+    def test_the_tip_without_a_suite_fails_its_capture(self):
         self.assertEqual(self.night_suites(("suite", "missing"), self.steps((1, 5))),
                          (["suite"], ["measured", "capture_failed"]))
+
+    def test_a_lane_that_ends_before_the_tip_measures_its_last_step_without_a_later_suite(self):
+        # A lane measures a slice of the night's history: its last step is older than the tip, as an anchor is.
+        self.assertEqual(self.night_suites(("suite", "missing"), self.steps((1, 3))),
+                         (["suite", "suite"], ["measured", "measured"]))
 
     def test_a_step_that_registers_none_of_the_suites_fails_its_capture(self):
         self.assertEqual(self.night_suites(("missing",), self.steps((1, 5))), ([], ["capture_failed", "capture_failed"]))
@@ -340,7 +346,7 @@ class NightlyTests(unittest.TestCase):
 
     def test_cleanup_warning_does_not_change_lane_exit_status(self):
         plan = self.root / "plan.json"
-        plan.write_text(json.dumps(dict(night="2026-10-18", started=self.clock.now().isoformat(), marker=self.clock.now().isoformat(),
+        plan.write_text(json.dumps(dict(tip=self.commits[-1], night="2026-10-18", started=self.clock.now().isoformat(), marker=self.clock.now().isoformat(),
                                        lanes={"20E8": dict(lane="0/2", previous=None,
                                                           steps=[vars(self.steps()[0])])})))
         command = ["scoped_chain", "run", "--plan", str(plan), "--board", "20E8", "--lane", "0/2",
@@ -433,7 +439,7 @@ class NightlyTests(unittest.TestCase):
 
     def test_unplugged_lane_preserves_failure_exit(self):
         path = self.root / "plan.json"
-        path.write_text(json.dumps(dict(night="2026-10-18", started=self.clock.now().isoformat(),
+        path.write_text(json.dumps(dict(tip=self.commits[-1], night="2026-10-18", started=self.clock.now().isoformat(),
                                        marker=self.clock.now().isoformat(), lanes={"20E8": dict(
                                            lane=self.args.lane, previous=None,
                                            steps=[vars(step) for step in self.steps()])})))
@@ -1142,7 +1148,7 @@ class NightlyTests(unittest.TestCase):
         for deadline in ("2026-10-18T10:00:00+00:00", None):
             with self.subTest(deadline=deadline):
                 path = self.root / "plan.json"
-                chain.write_json(path, dict(night="2026-10-18", started=self.clock.now().isoformat(), deadline=deadline,
+                chain.write_json(path, dict(tip=self.commits[-1], night="2026-10-18", started=self.clock.now().isoformat(), deadline=deadline,
                                             lanes={"20E8": dict(lane="0", previous=None, steps=[])}))
                 argv = ["scoped_chain.py", "run", "--plan", str(path), "--board", "20E8", "--lane", "0",
                         "--data", str(self.args.data), "--out", str(self.args.out), "--suite", "suite", "-", "-"]

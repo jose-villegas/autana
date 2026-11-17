@@ -160,8 +160,8 @@ def registered_suites(worktree, suites):
 
 
 def step_suites(worktree, suites, complete):
-    """The night's suites this step can run. An older step, the anchor included, may predate one; the newest
-    (`complete`) lacking one, or a step that registers none, is a capture failure."""
+    """The night's suites this step can run. Any older step, the anchor and a lane's last step included, may
+    predate one; the night's tip (`complete`) lacking one, or a step that registers none, is a capture failure."""
     registered = registered_suites(worktree, suites)
     dropped = [suite[0] for suite in suites if suite not in registered]
     if not registered or (dropped and complete):
@@ -391,7 +391,7 @@ def run_chain(steps, args, runner=None, clock=None):
                     try:
                         capture_args = SimpleNamespace(project=worktree, out=output / f"{index:0{STEP_INDEX_DIGITS}}-capture",
                                                        suite=step_suites(worktree, args.suite,
-                                                                         index == len(steps) - 1),
+                                                                         step.commit == args.tip),
                                                        runs=1,
                                                        timeout=CAPTURE_TIMEOUT_SECONDS,
                                                        wait=NIGHT_STEP_HANG_SECONDS)
@@ -933,7 +933,7 @@ def main():
     if lane["lane"] != args.lane:
         parser.error("lane differs from the shared plan")
     args.previous = lane["previous"]
-    args.night, args.started = (planned[key] for key in ("night", "started"))
+    args.night, args.started, args.tip = (planned[key] for key in ("night", "started", "tip"))
     args.deadline = planned.get("deadline")
     steps = [Step(**step) for step in lane["steps"]]
     if args.from_sha is not None or args.max_steps is not None:
