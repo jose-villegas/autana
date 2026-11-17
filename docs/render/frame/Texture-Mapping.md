@@ -49,9 +49,10 @@ averaged over the triangle. Where it recedes the true step grows
 <sup>[[127]](../../Citations.md#heckbert-1989)</sup>, so far pixels read a
 finer level than they need and alias.
 
-A span that divides ([Perspective](#perspective)) picks its own level, from the
-true step at its centre pixel: the far rows of a receding triangle take
-coarser levels than its near rows.
+A triangle that divides ([Perspective](#perspective)) reads the true step at
+its three corners. Where they agree it takes that level; where they differ,
+each span picks its own from the true step at its centre pixel, so the far
+rows of a receding triangle take coarser levels than its near rows.
 
 ![A Bistro cobblestone's mip chain at true size; below, a receding floor tinted by the level each pixel read, stepping affine with a level a triangle and dividing with a level a span, and the pixels that read a finer level than their own step](../../images/render/texture-mip-levels.png)
 
