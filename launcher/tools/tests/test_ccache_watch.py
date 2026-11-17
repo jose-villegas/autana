@@ -116,6 +116,7 @@ class CcacheWatchTests(unittest.TestCase):
         named = [line for line in result.stderr.splitlines() if line.startswith("ccache lock ")]
         self.assertTrue(named, result.stderr)
         self.assertIn(str(self.cache / "lock" / "subdir_"), named[0].replace("/", os.sep))
+        self.assertIn(f"pid {holder.pid}" if os.name == "nt" else f"holder-{holder.pid}", result.stderr)
         # A ccache the watch left running would store its result once the lock is free.
         holder.stdin.close()
         holder.wait(10)
@@ -174,10 +175,12 @@ class LockWatchTests(unittest.TestCase):
         path.write_text("")
         return path
 
-    def test_each_lock_pattern_is_watched(self):
-        names = ["lock/subdir_3f.lock", "lock/auto_cleanup.lock", "7/stats.lock", "7/5/stats.lock"]
+    def test_each_lock_a_compile_waits_on_is_watched(self):
+        names = ["lock/subdir_3f.lock", "7/stats.lock", "7/5/stats.lock"]
         for name in names:
             self.lock(name)
+        # ccache only tries the cleanup lock, so a long cleanup keeps no compile waiting.
+        self.lock("lock/auto_cleanup.lock")
         self.lock("7/5/result.tmp")
         watch = ccache_watch.LockWatch(self.cache, STUCK_AFTER)
         self.assertEqual(watch.stuck(), [])
@@ -197,6 +200,28 @@ class LockWatchTests(unittest.TestCase):
             self.assertEqual(watch.stuck(), [])
         self.now += STUCK_AFTER
         self.assertEqual(watch.stuck(), [path])
+
+    def test_finishing_compiles_keep_a_held_lock_from_stopping_the_build(self):
+        # Another process's long hold on one subdirectory while this build's compiles still finish.
+        path = self.lock("lock/subdir_00.lock")
+        stats = self.lock("5/c/stats")
+        watch = ccache_watch.LockWatch(self.cache, STUCK_AFTER)
+        watch.stuck()
+        for step in range(1, 4):
+            self.now += STUCK_AFTER / 2
+            os.utime(stats, ns=(step * 10**9, step * 10**9))
+            self.assertEqual(watch.stuck(), [])
+        self.now += STUCK_AFTER
+        self.assertEqual(watch.stuck(), [path])
+
+    @unittest.skipUnless(os.name == "nt", "Windows open semantics")
+    def test_windows_read_only_lock_is_held(self):
+        # ccache cannot open it for writing and retries without end.
+        path = self.lock("lock/subdir_00.lock")
+        self.assertFalse(ccache_watch.windows_held(path))
+        path.chmod(0o444)
+        self.addCleanup(path.chmod, 0o666)
+        self.assertTrue(ccache_watch.windows_held(path))
 
     def test_unheld_lock_is_not_stuck(self):
         self.lock("lock/subdir_00.lock")
