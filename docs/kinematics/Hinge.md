@@ -26,6 +26,29 @@ q(\theta) = q_{\mathrm{rest}}\,q_{\mathrm{axis}}(\theta_c)
 Zero gives the rest pose when the limits contain zero. Opposite axes on
 mirrored joints let one prescribed angle raise both far sides together.
 
+## Example
+
+A plate turns about its local z axis while its pivot stays one unit up.
+Angles outside its asymmetric stops give the nearest limit's pose.
+
+<!-- generated: kinematics-hinge-example check: python launcher/tools/gen/examples_doc.py --check -->
+```c
+/* Pose a plate about its rest-frame z axis, within asymmetric stops. */
+#include "kinematics/hinge/hinge.h"
+
+#define PLATE_MIN_ANGLE (-0.2F)
+#define PLATE_MAX_ANGLE 1.0F
+
+transformf_t
+hinge_example(float angle) {
+    hinge_t plate = {
+        .rest = transformf_identity(), .axis = vec3f_forward(), .min = PLATE_MIN_ANGLE, .max = PLATE_MAX_ANGLE};
+    transformf_set_position(&plate.rest, vec3f_up());
+    return hinge_pose(&plate, angle);
+}
+```
+<!-- /generated: kinematics-hinge-example -->
+
 The [figure producer](../../launcher/tools/kinematics/hinge_figures.py)
 samples `hinge_pose` through a C probe:
 

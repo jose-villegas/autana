@@ -178,16 +178,9 @@ the presets vary the copies' geometry, layout and colour modes.
 
 ![Butterfly wing motion](../../../../../docs/images/overview/render-lab-butterflies.gif)
 
-The butterfly pack uses unlit material colours. Its wing outline traces
+The butterfly pack uses unbaked vertex colour. Its wing outline traces
 miziziziz's CC0 texture<sup>[[128]](../../../../../docs/Citations.md#miziziziz-butterfly-2019)</sup>.
-`scene_stress.c` feeds prescribed sine angles to `hinge_pose`; when Loupe's
-scene timeline (E3) keys wing rotations, the presets play that instead.
-
-Regenerate only the butterfly images with:
-
-```sh
-PYTHON=python sh launcher/main/apps/render_lab/tools/doc_images.sh docs/images /tmp/butterfly-images butterflies
-```
+`scene_stress.c` feeds a fixed sine flap, one phase per copy, to `hinge_pose`.
 
 A change is judged by each preset's own readout, stage by stage. The sum over
 presets is a summary line only. A draw change can win on two-sided and static
@@ -485,6 +478,9 @@ selects a scene camera; omitted, it draws the first camera.
 `--dump DIR` writes each frame's raster colour and depth, before the
 upscale, to `DIR/NNNN.raw` for the frame generation experiment
 ([Frame-Generation.md](../../../../../docs/render/frame/Frame-Generation.md)).
+
+`--transforms PATH` writes each entity's local position and quaternion after
+every update to a CSV, keyed by frame and entity name.
 
 `dynres_quality.sh [--scene-file F --scene KEY] [--args "ARGS"] WORK OUT.csv CAMERA WxH [WxH ...]`
 scores each size against the reference along that camera's clip, at

@@ -66,8 +66,29 @@ test_opposite_axes_raise_mirrored_points_together(void) {
     TEST_ASSERT_GREATER_THAN_FLOAT(0.0F, lp.y);
 }
 
+static void
+test_asymmetric_locked_and_exact_limits(void) {
+    hinge_t hinge = fixture();
+    hinge.min = -0.2F;
+    hinge.max = 1.0F;
+    const float angles[] = {-LIMIT * 2.0F, hinge.min, hinge.max, LIMIT * 2.0F};
+    const float expected[] = {hinge.min, hinge.min, hinge.max, hinge.max};
+    for (size_t i = 0; i < sizeof angles / sizeof angles[0]; i++) {
+        const transformf_t pose = hinge_pose(&hinge, angles[i]);
+        const quatf_t rotation = quatf_mul(hinge.rest.rotation, quatf_from_axis_angle(hinge.axis, expected[i]));
+        assert_vector(quatf_rotate(rotation, vec3f_unit_x()), quatf_rotate(pose.rotation, vec3f_unit_x()));
+    }
+    hinge.min = hinge.max;
+    const transformf_t locked = hinge_pose(&hinge, hinge.min);
+    for (size_t i = 0; i < sizeof angles / sizeof angles[0]; i++) {
+        const transformf_t pose = hinge_pose(&hinge, angles[i]);
+        assert_vector(quatf_rotate(locked.rotation, vec3f_unit_x()), quatf_rotate(pose.rotation, vec3f_unit_x()));
+    }
+}
+
 void
 suite_hinge(void) {
+    RUN_TEST(test_asymmetric_locked_and_exact_limits);
     RUN_TEST(test_zero_gives_rest_without_mutating_hinge);
     RUN_TEST(test_far_point_turns_in_rest_frame_and_clamps);
     RUN_TEST(test_opposite_axes_raise_mirrored_points_together);

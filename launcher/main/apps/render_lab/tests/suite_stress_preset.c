@@ -862,7 +862,7 @@ static vec3f_t
 butterfly_tip(entity_t wing) {
     const transformf_t world = transform_world(wing);
     return vec3f_add(world.position, quatf_rotate(world.rotation, (vec3f_t){-(world.scale.x * TEST_TIP_X),
-                                                                            -(world.scale.y * TEST_TIP_Z), 0.0F}));
+                                                                            (world.scale.y * TEST_TIP_Z), 0.0F}));
 }
 
 static void
@@ -881,7 +881,7 @@ check_butterfly_hinge_angle(entity_t left, entity_t right, const transformf_t* r
     angle = mathf_clamp(angle, -STRESS_FLAP_LIMIT, STRESS_FLAP_LIMIT);
     TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE, -TEST_TIP_X * cosf(angle), l.x);
     TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE, TEST_TIP_X * sinf(angle), l.z);
-    TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE, -TEST_TIP_Z, l.y);
+    TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE, TEST_TIP_Z, l.y);
     TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE, -l.x, r.x);
     TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE, l.y, r.y);
     if (angle > 0.0F) {
