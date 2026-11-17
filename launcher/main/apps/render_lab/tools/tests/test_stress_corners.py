@@ -31,6 +31,7 @@ sys.path.insert(0, str(HERE.parents[5] / "launcher/tools"))
 from build.c_header import read_define  # noqa: E402
 from build.find_cc import host_cc  # noqa: E402
 from geometry.vectors import qrot  # noqa: E402
+from r3d.framegen.warp import R3D_DEPTH_EMPTY, read_dump  # noqa: E402
 
 PRESETS = HERE.parents[1] / "stress" / "stress_preset.h"
 TABLE = HERE.parents[1] / "stress" / "stress_preset.c"
@@ -120,7 +121,7 @@ class StressCorners(unittest.TestCase):
         return self.counts(key, *options)[-1]
 
     def test_path_replay_moves_wings_holds_and_repeats(self):
-        rows, frames = self.frames("few-butterflies", tag="path-replay", dt=MOTION_DT, frames=7, transforms=True,
+        rows, _ = self.frames("few-butterflies", tag="path-replay", dt=MOTION_DT, frames=7, transforms=True,
                                    console=("0:pose 0", f"1:pose {MOTION_DT}", "3:pose play", f"5:pose {MOTION_DT}"))
         wing = "slot_00_wing_l"
         rotations = [tuple(rows[i, wing][key] for key in ("qx", "qy", "qz", "qw")) for i in range(7)]
@@ -128,6 +129,11 @@ class StressCorners(unittest.TestCase):
         self.assertEqual(rotations[1], rotations[2])
         self.assertNotEqual(rotations[2], rotations[3])
         self.assertEqual(rotations[1], rotations[5])
+        # Empty-depth colour is scratch; the upscaler supplies the background.
+        frames = []
+        for index in range(7):
+            colour, depth = read_dump(self.out / "path-replay" / ("%04d.raw" % index))
+            frames.append((depth.tobytes(), colour[depth != R3D_DEPTH_EMPTY].tobytes()))
         # The host composes before its provider runs the console command.
         self.assertNotEqual(frames[1], frames[2])
         self.assertEqual(frames[2], frames[3])
