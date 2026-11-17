@@ -197,7 +197,10 @@ job's stack; scenes keep no per-entity SH cache.
 
 Contact discs run after geometry and before composition, sharing its lens
 and depth scale. Bayer coverage falls with squared radius; covered pixels
-halve their RGB565 channels. The disc draws only the target's rows.
+halve their RGB565 channels.
+
+Rows are bounded by the near-clipped footprint; off-screen or behind-camera discs visit nothing.
+Bayer coverage uses a homogeneous squared-distance compare with no per-pixel divide.
 
 `scene_set_contact_blob(renderer, ground_y, strength)` uses the renderer's
 world bounds for the disc's centre and radius. Partial redraw covers the

@@ -222,6 +222,37 @@ static_shape(void) {
     return shape;
 }
 
+static transformf_t
+copy_local(int i, stress_framing_t seen, const transformf_t* shape) {
+    transformf_t place = stress_copy_place(shown, i, seen);
+    if (shown->surface == STRESS_SURFACE_STATIC || shown->surface == STRESS_SURFACE_SKINNED_SH_BLOBS) {
+        place = transformf_compose(&place, shape);
+    }
+    if (shown->surface == STRESS_SURFACE_CONTACT_BLOBS) {
+        place.rotation = quatf_from_axis_angle(vec3f_unit_x(), STRESS_GROUND_ROTATION);
+    }
+    return place;
+}
+
+static void
+copy_extras(int i) {
+    if (shown->surface == STRESS_SURFACE_CONTACT_BLOBS) {
+        scene_set_contact_blob(slots[i], transform_world(slots[i]).position.y, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT);
+    }
+    if (stress_skinned(shown)) {
+        const box3f_t bounds = scene_bounds(slots[i]);
+        const vec3f_t span = vec3f_sub(bounds.hi, bounds.lo);
+        const float width = fmaxf(span.x, span.z) * STRESS_GROUND_WIDTH_SCALE;
+        transformf_t floor = transformf_identity();
+        floor.position = box3f_centre(bounds);
+        floor.position.y = bounds.lo.y;
+        floor.rotation = quatf_from_axis_angle(vec3f_unit_x(), STRESS_GROUND_ROTATION);
+        floor.scale = (vec3f_t){width, width, width};
+        transform_set_local(grounds[i], floor);
+        entity_set_enabled(grounds[i], true);
+    }
+}
+
 /* The arrangement is sized to where the camera's swing starts, and turned
  * about the origin's up so its +z faces it there. */
 static void
@@ -243,30 +274,9 @@ place_copies(void) {
         const bool used = i < shown->copies;
         entity_set_enabled(slots[i], used);
         if (used) {
-            transformf_t place = stress_copy_place(shown, i, seen);
-            if (shown->surface == STRESS_SURFACE_STATIC || shown->surface == STRESS_SURFACE_SKINNED_SH_BLOBS) {
-                place = transformf_compose(&place, &shape);
-            }
-            if (shown->surface == STRESS_SURFACE_CONTACT_BLOBS) {
-                place.rotation = quatf_from_axis_angle(vec3f_unit_x(), STRESS_GROUND_ROTATION);
-            }
+            const transformf_t place = copy_local(i, seen, &shape);
             transform_set_local(slots[i], transformf_compose(&facing, &place));
-            if (shown->surface == STRESS_SURFACE_CONTACT_BLOBS) {
-                scene_set_contact_blob(slots[i], transform_world(slots[i]).position.y,
-                                       SCENE_CONTACT_BLOB_STRENGTH_DEFAULT);
-            }
-            if (stress_skinned(shown)) {
-                const box3f_t bounds = scene_bounds(slots[i]);
-                const vec3f_t span = vec3f_sub(bounds.hi, bounds.lo);
-                const float width = fmaxf(span.x, span.z) * STRESS_GROUND_WIDTH_SCALE;
-                transformf_t floor = transformf_identity();
-                floor.position = box3f_centre(bounds);
-                floor.position.y = bounds.lo.y;
-                floor.rotation = quatf_from_axis_angle(vec3f_unit_x(), STRESS_GROUND_ROTATION);
-                floor.scale = (vec3f_t){width, width, width};
-                transform_set_local(grounds[i], floor);
-                entity_set_enabled(grounds[i], true);
-            }
+            copy_extras(i);
         }
     }
 }

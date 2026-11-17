@@ -18,7 +18,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | [overview](#overview) | 35 | 0 | 0 |
 | [physics](#physics) | 2 | 0 | 0 |
 | [power](#power) | 2 | 0 | 0 |
-| [render](#render) | 133 | 8 | 0 |
+| [render](#render) | 132 | 8 | 0 |
 | [ui](#ui) | 62 | 0 | 0 |
 
 ## anim
@@ -220,7 +220,6 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/render/compare-full-lite.png"><img src="../images/render/compare-full-lite.png" width="160" alt=""></a> | full against lite | [render/offline/Bake-Quality](../render/offline/Bake-Quality.md) | not declared yet |
 | <a href="../images/render/compare-lite-fitted.crops.png"><img src="../images/render/compare-lite-fitted.crops.png" width="160" alt=""></a> | lite against fitted, the places they differ most | [render/offline/Bake-Quality](../render/offline/Bake-Quality.md) | not declared yet |
 | <a href="../images/render/compare-lite-fitted.png"><img src="../images/render/compare-lite-fitted.png" width="160" alt=""></a> | lite against fitted | [render/offline/Bake-Quality](../render/offline/Bake-Quality.md) | not declared yet |
-| <a href="../images/render/contact-blobs-compare.png"><img src="../images/render/contact-blobs-compare.png" width="160" alt=""></a> | Point reconstruction and homogeneous thresholds, with difference maps | [launcher/main/apps/render_lab/tools/contact_blobs](../../launcher/main/apps/render_lab/tools/contact_blobs.md) | not declared yet |
 | <a href="../images/render/cull-bistro-chase.gif"><img src="figure-thumbnails/render/cull-bistro-chase.gif" width="160" alt=""></a> | Bistro's fates from behind the camera | [render/Render-Settings](../render/Render-Settings.md), [render/frame/Culling](../render/frame/Culling.md) | not declared yet |
 | <a href="../images/render/cull-bistro-counts.png"><img src="../images/render/cull-bistro-counts.png" width="160" alt=""></a> | Bistro's counts along its path | [render/frame/Culling](../render/frame/Culling.md) | not declared yet |
 | <a href="../images/render/cull-bistro-sheet.png"><img src="../images/render/cull-bistro-sheet.png" width="160" alt=""></a> | Bistro's cull along its path | [render/frame/Culling](../render/frame/Culling.md) | not declared yet |
