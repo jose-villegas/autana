@@ -306,7 +306,8 @@ draw_active(uint32_t dt_ms, int quarter, int width, int height) {
         }
     }
     if (!rendered && !refused) {
-        ESP_LOGE("scene", "no memory to draw '%s'; it stays blank", scene->root->id);
+        ESP_LOGE("scene", "no memory to draw '%s' (%u bytes free, largest block %u); it stays blank", scene->root->id,
+                 (unsigned)memory_free_bytes(MEMORY_APP), (unsigned)memory_largest_block(MEMORY_APP));
         refused = true;
     }
 }

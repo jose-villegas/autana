@@ -1210,6 +1210,43 @@ test_a_refused_take_loads_nothing_and_a_refused_scratch_draws_nothing(void) {
     scene_release(scene);
 }
 
+/* Showing a debug view after a lent scene's first frame takes nothing more:
+ * the scratch already holds a view's pixels. A larger scratch the lender
+ * refuses draws nothing and keeps the block, which draws again at the size
+ * it fits. */
+static void
+test_a_debug_view_takes_no_second_scratch_and_a_refused_larger_one_keeps_the_first(void) {
+    fixture();
+    fx.lent = memory_alloc(LENT_BYTES, MEMORY_APP);
+    TEST_ASSERT_NOT_NULL(fx.lent);
+    (void)scene_set_take(lend);
+    render_context_t* context = render_context_main();
+    entity_t scene = show("test_pair");
+    render_context_set_scale(context, 50);
+    frame(16);
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(0.0F));
+    const void* scratch = context->scratch;
+    const size_t taken = fx.lent_used;
+
+    render_context_set_debug_view(context, render_context_debug_view_named("cull"));
+    frame(16);
+    TEST_ASSERT_NOT_NULL(render_context_debug_view_state(context));
+    TEST_ASSERT_NOT_EQUAL_HEX16(SENTINEL, pixel(0.0F));
+    TEST_ASSERT_EQUAL_PTR(scratch, context->scratch);
+    TEST_ASSERT_EQUAL_size_t(taken, fx.lent_used);
+    render_context_set_debug_view(context, RENDER_DEBUG_VIEW_SHADED);
+
+    fx.lent_used = LENT_BYTES;
+    render_context_set_scale(context, 100);
+    frame(16);
+    TEST_ASSERT_EQUAL_HEX16(SENTINEL, pixel(0.0F));
+    TEST_ASSERT_EQUAL_PTR(scratch, context->scratch);
+    render_context_set_scale(context, 50);
+    frame(16);
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(0.0F));
+    scene_release(scene);
+}
+
 static void
 test_a_camera_clears_to_the_colour_its_scene_gives(void) {
     fixture();
@@ -3549,8 +3586,8 @@ test_a_predicted_draw_is_the_fixed_draw_at_the_step_it_chose(void) {
     }
 }
 
-/* The scratch block is taken once for the finest step, wherever the
- * predictor stands when it is taken. */
+/* The scratch block is taken once for the finest step with a debug view's
+ * pixels, wherever the predictor stands when it is taken. */
 static void
 test_the_scratch_is_the_finest_steps_raster_block(void) {
     fixture();
@@ -3571,6 +3608,10 @@ test_the_scratch_is_the_finest_steps_raster_block(void) {
     raster_t finest = c->raster;
     finest.width = LADDER[0].width;
     finest.height = LADDER[0].height;
+    static const raster_attachment_t view_pixels = {.format = IMAGE_U32};
+    static const raster_attachment_t* const attached[] = {&view_pixels};
+    finest.attachments = attached;
+    finest.attachment_count = 1;
     const size_t needed = raster_scratch_bytes(&finest);
     TEST_ASSERT_TRUE(taken >= needed);
     TEST_ASSERT_TRUE(c->scratch_bytes == needed);
@@ -7941,6 +7982,7 @@ run_scene_suite(void) {
     RUN_TEST(test_a_scene_loads_by_name_and_unloading_gives_back_everything_it_took);
     RUN_TEST(test_a_lent_scene_takes_from_its_lender_and_unloading_returns_it_to_the_lender);
     RUN_TEST(test_a_refused_take_loads_nothing_and_a_refused_scratch_draws_nothing);
+    RUN_TEST(test_a_debug_view_takes_no_second_scratch_and_a_refused_larger_one_keeps_the_first);
     RUN_TEST(test_a_camera_clears_to_the_colour_its_scene_gives);
     RUN_TEST(test_a_load_that_fails_says_what_it_was_about);
     RUN_TEST(test_each_failed_root_keeps_its_own_reason);
