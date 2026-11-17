@@ -15,10 +15,10 @@ is stale, so rerun it after changing an image or the pages that show one.
 | [input](#input) | 11 | 0 | 0 |
 | [kinematics](#kinematics) | 6 | 2 | 0 |
 | [math](#math) | 25 | 25 | 0 |
-| [overview](#overview) | 34 | 0 | 0 |
+| [overview](#overview) | 35 | 0 | 0 |
 | [physics](#physics) | 2 | 0 | 0 |
 | [power](#power) | 2 | 0 | 0 |
-| [render](#render) | 132 | 8 | 0 |
+| [render](#render) | 133 | 8 | 0 |
 | [ui](#ui) | 62 | 0 | 0 |
 
 ## anim
@@ -147,6 +147,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/overview/render-lab-stress-baked-tree.png"><img src="../images/overview/render-lab-stress-baked-tree.png" width="160" alt=""></a> | Stress baked tree: the inside of a ring | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-big-tris.png"><img src="../images/overview/render-lab-stress-big-tris.png" width="160" alt=""></a> | Stress big tris: a few triangles over most of the picture | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-card.png"><img src="../images/overview/render-lab-stress-card.png" width="160" alt=""></a> | Card copies with ragged edges and sampled colours | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
+| <a href="../images/overview/render-lab-stress-contact-blobs.png"><img src="../images/overview/render-lab-stress-contact-blobs.png" width="160" alt=""></a> | Contact discs on plain floor pads | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-cull-setup.png"><img src="../images/overview/render-lab-stress-cull-setup.png" width="160" alt=""></a> | Stress cull setup: one small cube | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-culled.png"><img src="../images/overview/render-lab-stress-culled.png" width="160" alt=""></a> | Plane before the camera turns away | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-few-copies.png"><img src="../images/overview/render-lab-stress-few-copies.png" width="160" alt=""></a> | Stress few copies: two dense spheres | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
@@ -219,6 +220,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/render/compare-full-lite.png"><img src="../images/render/compare-full-lite.png" width="160" alt=""></a> | full against lite | [render/offline/Bake-Quality](../render/offline/Bake-Quality.md) | not declared yet |
 | <a href="../images/render/compare-lite-fitted.crops.png"><img src="../images/render/compare-lite-fitted.crops.png" width="160" alt=""></a> | lite against fitted, the places they differ most | [render/offline/Bake-Quality](../render/offline/Bake-Quality.md) | not declared yet |
 | <a href="../images/render/compare-lite-fitted.png"><img src="../images/render/compare-lite-fitted.png" width="160" alt=""></a> | lite against fitted | [render/offline/Bake-Quality](../render/offline/Bake-Quality.md) | not declared yet |
+| <a href="../images/render/contact-blobs-compare.png"><img src="../images/render/contact-blobs-compare.png" width="160" alt=""></a> | Point reconstruction and homogeneous thresholds, with difference maps | [launcher/main/apps/render_lab/tools/contact_blobs](../../launcher/main/apps/render_lab/tools/contact_blobs.md) | not declared yet |
 | <a href="../images/render/cull-bistro-chase.gif"><img src="figure-thumbnails/render/cull-bistro-chase.gif" width="160" alt=""></a> | Bistro's fates from behind the camera | [render/Render-Settings](../render/Render-Settings.md), [render/frame/Culling](../render/frame/Culling.md) | not declared yet |
 | <a href="../images/render/cull-bistro-counts.png"><img src="../images/render/cull-bistro-counts.png" width="160" alt=""></a> | Bistro's counts along its path | [render/frame/Culling](../render/frame/Culling.md) | not declared yet |
 | <a href="../images/render/cull-bistro-sheet.png"><img src="../images/render/cull-bistro-sheet.png" width="160" alt=""></a> | Bistro's cull along its path | [render/frame/Culling](../render/frame/Culling.md) | not declared yet |
