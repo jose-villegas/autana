@@ -225,7 +225,7 @@ class RemoteCalls(unittest.TestCase):
 
     def test_a_hung_call_is_stopped_with_its_children_and_tried_again(self):
         started = time.monotonic()
-        with self.assertRaises(subprocess.CalledProcessError):
+        with self.assertRaises(subprocess.TimeoutExpired):
             self.call("echo started >> count; sleep 60", seconds=1)
         # The shell's sleep holds the output pipe: had only git been stopped, this would wait the full minute.
         self.assertLess(time.monotonic() - started, 30)
