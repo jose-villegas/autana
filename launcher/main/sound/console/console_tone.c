@@ -114,7 +114,6 @@ tone_pulse_collect_sample(tone_pulse_buffer_t* pulse, int index) {
     const int64_t sample_us = pulse->fifo->sample_us[index] - pulse->start_us;
     const int64_t lost_us = (int64_t)pulse->fifo->lost_before[index] * IMU_BUZZ_SAMPLE_US;
     if (lost_us && sample_us - IMU_BUZZ_SAMPLE_US >= 0 && sample_us - lost_us <= pulse_us) {
-        pulse->gap = true;
         if (!pulse->result.lost_samples) {
             pulse->result.lost_us = sample_us - lost_us;
         }

@@ -21,12 +21,12 @@ class ToneReplyTest(unittest.TestCase):
         results = [autana.parse_tone(line) for line in lines]
         self.assertEqual([row["imu_gaps"] for row in results], [1, 1, 1, 0, 0, 0])
         self.assertEqual([row["shake_reason"] for row in results],
-                         ["gap inside pulse", "gap inside pulse", None] * 2)
+                         ["gap inside pulse", "gap inside pulse", None, None, None, None])
         for index, result in enumerate(results):
             silence = result["silence_pulse"]
             tone = result["tone_pulse"]
             inside = index % 3 != 2
-            self.assertEqual(silence["status"], "gap" if inside else "clean")
+            self.assertEqual(silence["status"], "gap" if index < 3 and inside else "clean")
             self.assertEqual(tone["status"], "clean")
             self.assertEqual(tone["take_gaps"], 0)
             self.assertIsNone(tone["take_ms"])
@@ -34,6 +34,9 @@ class ToneReplyTest(unittest.TestCase):
             self.assertEqual(silence["take_gaps"], 1 if index < 3 else 0)
             self.assertEqual(silence["pulse_gaps"], int(index < 3 and inside))
             self.assertEqual(silence["lost_samples"], int(index >= 3 and inside))
+            if index >= 3:
+                self.assertIsNotNone(result["shake_rms_mg"])
+                self.assertIsNotNone(result["silence_shake_rms_mg"])
             time = silence["pulse_gap_ms"] if index < 3 else silence["lost_ms"]
             if inside:
                 self.assertGreaterEqual(time, 0)
