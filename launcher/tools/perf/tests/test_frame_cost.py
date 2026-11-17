@@ -47,7 +47,7 @@ class FrameCostTests(unittest.TestCase):
         quarter = " " + read_define(header, "FRAME_PROFILE_QUARTER")
 
         def laps(cull_ms):
-            return f"{frame_cost.LAPS_PREFIX} lap 1000 ns | cpu0 r3d.cull {cull_ms}/2 | cpu1 r3d.fill 8.000/0"
+            return f"{frame_cost.LAPS_PREFIX} lap 1000 ns | cpu0 a.b {cull_ms}/2 | cpu1 c.d 8.000/0"
 
         lines = [laps("1.000"), "I (7719) render_lab_profile: " + row + laps("3.000") + quarter + "landscape",
                  row + laps("5.000") + quarter + "landscape", row + laps("9.000") + quarter + "portrait",
@@ -56,11 +56,11 @@ class FrameCostTests(unittest.TestCase):
             capture = pathlib.Path(directory) / "laps.log"
             capture.write_text("\n".join(lines), encoding="utf-8")
             self.assertEqual(frame_cost.frame_laps_means(capture),
-                             {0: {"r3d.cull": (0.998, 0.002)}, 1: {"r3d.fill": (8.0, 0.0)}})
+                             {0: {"a.b": (0.998, 0.002)}, 1: {"c.d": (8.0, 0.0)}})
             takes = frame_cost.frame_laps_takes(capture)
         self.assertEqual(set(takes), {"capybara-close quarter=landscape", "capybara-close quarter=portrait"})
-        self.assertEqual(takes["capybara-close quarter=landscape"][0]["r3d.cull"], (3.998, 0.002))
-        self.assertEqual(takes["capybara-close quarter=portrait"][0]["r3d.cull"], (8.998, 0.002))
+        self.assertEqual(takes["capybara-close quarter=landscape"][0]["a.b"], (3.998, 0.002))
+        self.assertEqual(takes["capybara-close quarter=portrait"][0]["a.b"], (8.998, 0.002))
 
     def test_order_new_bracket_and_missing_captures(self):
         with tempfile.TemporaryDirectory() as directory:
