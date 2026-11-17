@@ -28,6 +28,7 @@
 #include "scene/entity/entity.h"
 #include "scene/scene.h"
 #include "scene/skin/skin.h"
+#include "scene/skin/skin_contact.h"
 
 typedef struct scene scene_t;
 #include "scene/scene_conventions.h"
@@ -78,6 +79,7 @@ typedef struct {
     box3f_t world_bounds; /* the mesh's root box through `model`, kept with it */
     float contact_blob_ground_y, contact_blob_strength;
     scene_contact_shape_t contact_blob_shape;
+    bool contact_warp;
     box3f_t drawn_bounds; /* geometry and contact bounds when last drawn (render/partial) */
     scene_row_t entity;
     bool placed;        /* false while the transform is the identity: drawn as it is */
@@ -101,6 +103,9 @@ scene_failure_t scene_renderer_open_cuts(scene_t* scene);
 
 /* Sets `r`'s world box from its mesh and model; call after either changes,
  * a skinned mesh's refit included. */
+int scene_contact_blobs(const scene_t* scene, const scene_renderer_t* renderer, vec3f_t light, contact_blob_t* blobs);
+box3f_t scene_contact_bounds(const scene_t* scene, const scene_renderer_t* renderer, vec3f_t light);
+
 void scene_renderer_bound(scene_renderer_t* r);
 
 typedef struct {
@@ -138,6 +143,7 @@ typedef struct {
 typedef struct {
     r3d_skin_t skin;
     contact_mask_t contact_mask;
+    skin_contacts_t contacts;
     bool contact_mask_failed;
     r3d_lit_mesh_t bind;
     r3d_skin_output_t output;
@@ -377,5 +383,4 @@ typedef struct {
 
 vec3f_t scene_contact_light(const scene_t* scene, vec3f_t world, scene_t* const* drawn_scenes, int drawn_scene_count);
 contact_reach_t scene_contact_reach(const scene_t* scene, const scene_renderer_t* renderer);
-box3f_t contact_blob_bounds(box3f_t mover, float ground_y, contact_reach_t reach, vec3f_t light);
 bool scene_contact_blob(const scene_t* scene, const scene_renderer_t* renderer, vec3f_t light, contact_blob_t* blob);

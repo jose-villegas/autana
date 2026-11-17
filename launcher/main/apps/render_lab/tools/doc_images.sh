@@ -19,6 +19,56 @@ OUT=$OUT_TREE/overview
 W=$2
 run mkdir -p "$W" "$OUT"
 
+contact_images() {
+    # The low contact light makes the BODY and posed SHAPE coverage visible on the floor pads.
+    CONTACT_FRAMES=6
+    CONTACT_DT=16
+    CONTACT_CROPS=3
+    run mkdir -p "$OUT_TREE/render"
+    for shape in sh shape; do
+        run "$W/render_lab_render" --quarter 1 --no-hud --scene "stress-skinned-$shape-blobs" \
+            --frames "$CONTACT_FRAMES" --dt "$CONTACT_DT" \
+            -o "$W/contact-$shape.bmp" > "$W/contact-$shape-console.log" 2> "$W/contact-$shape.log"
+    done
+    run "$PYTHON" launcher/tools/render/render_compare.py --out "$OUT_TREE/render/contact-shape.png" \
+        --row "Ground contact" "$W/contact-sh.bmp" "$W/contact-shape.bmp" \
+        --label-a BODY --label-b SHAPE --crops "$CONTACT_CROPS" > "$W/contact-shape-compare.log"
+
+    for key in skinned-feet-blobs skinned-shape-warped; do
+        run "$W/render_lab_render" --quarter 1 --no-hud --scene "stress-$key" --frames 2 \
+            -o "$W/stress-$key.bmp" 2> "$W/stress-$key.log"
+        run "$PYTHON" launcher/tools/docs/figures.py png "$W/stress-$key.bmp" "$OUT/render-lab-stress-$key.png"
+    done
+
+    # Each tile samples the same run time and camera; the crop keeps the subject and ground contact.
+    CONTACT_VIDEO_FRAMES=185
+    CONTACT_VIDEO_DT=100
+    CONTACT_VIDEO_FPS=5
+    CONTACT_VIDEO_CROP="112 96 336 320"
+    for shape in 0 1 2; do
+        for warp in 0 1; do
+            run "$W/render_lab_render" --quarter 1 --no-hud --scene capybara-sponza \
+                --frames "$CONTACT_VIDEO_FRAMES" --dt "$CONTACT_VIDEO_DT" \
+                --contact-shape "$shape" --contact-warp "$warp" \
+                -o "$W/contact-$shape-$warp.bmp" --video "$W/contact-$shape-$warp.avi" \
+                > "$W/contact-$shape-$warp-console.log" 2> "$W/contact-$shape-$warp.log"
+        done
+    done
+    run "$PYTHON" launcher/tools/render/render_compare.py --out "$OUT_TREE/render/contact-warp.gif" \
+        --video-row BODY "$W/contact-0-0.avi" "$W/contact-0-1.avi" \
+        --video-row FEET "$W/contact-1-0.avi" "$W/contact-1-1.avi" \
+        --video-row SHAPE "$W/contact-2-0.avi" "$W/contact-2-1.avi" \
+        --label-a "warp off" --label-b "warp on" --fps "$CONTACT_VIDEO_FPS" --crop-box $CONTACT_VIDEO_CROP \
+        > "$W/contact-warp.log"
+
+}
+
+if [ "${3:-}" = --contacts-only ]; then
+    run sh launcher/main/apps/render_lab/tools/render_lab_render_host.sh --build-only -o "$W" > "$W/scenes.log"
+    contact_images
+    exit 0
+fi
+
 run sh launcher/main/apps/render_lab/tools/render_lab_render_host.sh -o "$W" > "$W/scenes.log"
 
 # The start of the flythrough, on the fitted full mesh.
@@ -91,19 +141,7 @@ for key in $(sed -n 's/^ *X([A-Z_]*, "\([^"]*\)".*/\1/p' launcher/main/apps/rend
     run "$PYTHON" launcher/tools/docs/figures.py png "$W/stress-$key.bmp" "$OUT/render-lab-stress-$key.png"
 done
 
-# The low contact light makes the BODY and posed SHAPE coverage visible on the floor pads.
-CONTACT_FRAMES=6
-CONTACT_DT=16
-CONTACT_CROPS=3
-run mkdir -p "$OUT_TREE/render"
-for shape in sh shape; do
-    run "$W/render_lab_render" --quarter 1 --no-hud --scene "stress-skinned-$shape-blobs" \
-        --frames "$CONTACT_FRAMES" --dt "$CONTACT_DT" \
-        -o "$W/contact-$shape.bmp" > "$W/contact-$shape-console.log" 2> "$W/contact-$shape.log"
-done
-run "$PYTHON" launcher/tools/render/render_compare.py --out "$OUT_TREE/render/contact-shape.png" \
-    --row "Ground contact" "$W/contact-sh.bmp" "$W/contact-shape.bmp" \
-    --label-a BODY --label-b SHAPE --crops "$CONTACT_CROPS" > "$W/contact-shape-compare.log"
+contact_images
 
 # The biggest herd walking for 12 s at its own pace, so each gait's feet keep
 # to the ground, while the orbit makes a fifth of a turn.

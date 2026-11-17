@@ -264,9 +264,13 @@ place_copies(void) {
                 transform_set_local(grounds[i], floor);
                 static const scene_contact_shape_t contact_shapes[] = {
                     [STRESS_SURFACE_SKINNED_SH_BLOBS] = SCENE_CONTACT_BODY,
-                    [STRESS_SURFACE_SKINNED_SHAPE_BLOBS] = SCENE_CONTACT_SHAPE};
+                    [STRESS_SURFACE_SKINNED_SHAPE_BLOBS] = SCENE_CONTACT_SHAPE,
+                    [STRESS_SURFACE_SKINNED_SHAPE_WARPED] = SCENE_CONTACT_SHAPE,
+                    [STRESS_SURFACE_SKINNED_FEET_BLOBS] = SCENE_CONTACT_FEET};
                 scene_set_contact_blob(entity_find(slots[i], name_hash(CAPYBARA_SUBJECT)), floor.position.y,
                                        SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, contact_shapes[shown->surface]);
+                scene_set_contact_warp(entity_find(slots[i], name_hash(CAPYBARA_SUBJECT)),
+                                       shown->surface == STRESS_SURFACE_SKINNED_SHAPE_WARPED);
 
                 entity_set_enabled(grounds[i], true);
             }

@@ -124,6 +124,7 @@ scene_skin_take(scene_t* scene, scene_row_t entity, scene_skinned_renderer_t* sk
     skin->model = (mat4f_t*)(void*)((uint8_t*)storage + layout.model);
     skin->palette = (mat4f_t*)(void*)((uint8_t*)storage + layout.palette);
     const scene_animator_t* animator = &scene->animators[entity];
+    (void)skin_contacts_find(&animator->skeleton, &skin->skin, &skin->contacts);
     anim_pose_model(&animator->skeleton, &animator->layer.shown, skin->model);
     r3d_skin_palette(&skin->skin, skin->model, skin->bind.position_scale, skin->palette);
     r3d_skin_clusters(&skin->skin, &skin->bind, skin->palette, 0, skin->bind.cluster_count, &skin->output);

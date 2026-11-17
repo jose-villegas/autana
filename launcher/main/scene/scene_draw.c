@@ -279,23 +279,54 @@ warped_blob(box3f_t mover, float ground_y, contact_reach_t reach, vec3f_t light)
                             .v = vec3f_add(v, vec3f_scale(axis, vec3f_dot(v, axis) * (1 / e - 1)))};
 }
 
-box3f_t
-contact_blob_bounds(box3f_t mover, float ground_y, contact_reach_t reach, vec3f_t light) {
-    const contact_blob_t blob = warped_blob(mover, ground_y, reach, light);
-    const vec3f_t extent = {fabsf(blob.u.x) + fabsf(blob.v.x), 0, fabsf(blob.u.z) + fabsf(blob.v.z)};
-    return (box3f_t){vec3f_sub(blob.centre, extent), vec3f_add(blob.centre, extent)};
-}
-
 bool
 scene_contact_blob(const scene_t* scene, const scene_renderer_t* r, vec3f_t light, contact_blob_t* blob) {
     const contact_reach_t reach = scene_contact_reach(scene, r);
-    *blob = warped_blob(r->world_bounds, r->contact_blob_ground_y, reach, light);
+    *blob = warped_blob(r->world_bounds, r->contact_blob_ground_y, reach, r->contact_warp ? light : vec3f_unit_y());
     blob->strength = r->contact_blob_strength;
     if (r->contact_blob_shape == SCENE_CONTACT_SHAPE) {
         const contact_mask_t* mask = &scene->skinned_renderers[r->entity].contact_mask;
         blob->mask = mask->coverage != NULL ? mask : NULL;
     }
     return reach.x > 0 && reach.z > 0 && blob->strength > 0;
+}
+
+int
+scene_contact_blobs(const scene_t* scene, const scene_renderer_t* r, vec3f_t light, contact_blob_t* blobs) {
+    if (r->contact_blob_shape != SCENE_CONTACT_FEET) {
+        return scene_contact_blob(scene, r, light, blobs) ? 1 : 0;
+    }
+    const scene_skinned_renderer_t* skin = &scene->skinned_renderers[r->entity];
+    if (skin->storage == NULL || r->contact_blob_strength <= 0) {
+        return 0;
+    }
+    const mat4f_t world = scene_row_world_matrix(scene->root, r->entity);
+    const vec3f_t scale = scene_row_world(scene->root, r->entity).scale;
+    const float radius = skin->contacts.radius * fmaxf(fabsf(scale.x), fabsf(scale.z));
+    if (!(radius > 0)) {
+        return 0;
+    }
+    for (int i = 0; i < skin->contacts.count; i++) {
+        const vec3f_t joint = mat4f_apply(&skin->model[skin->contacts.joints[i]], vec3f_zero());
+        const vec3f_t centre = mat4f_apply(&world, joint);
+        blobs[i] = warped_blob(box3f_from_point(centre), r->contact_blob_ground_y, (contact_reach_t){radius, radius},
+                               r->contact_warp ? light : vec3f_unit_y());
+        blobs[i].strength = r->contact_blob_strength;
+    }
+    return skin->contacts.count;
+}
+
+box3f_t
+scene_contact_bounds(const scene_t* scene, const scene_renderer_t* r, vec3f_t light) {
+    static contact_blob_t blobs[SKIN_CONTACTS_MAX];
+    const int count = scene_contact_blobs(scene, r, light, blobs);
+    box3f_t bounds = box3f_empty();
+    for (int i = 0; i < count; i++) {
+        const contact_blob_t* blob = &blobs[i];
+        const vec3f_t extent = {fabsf(blob->u.x) + fabsf(blob->v.x), 0, fabsf(blob->u.z) + fabsf(blob->v.z)};
+        bounds = box3f_union(bounds, (box3f_t){vec3f_sub(blob->centre, extent), vec3f_add(blob->centre, extent)});
+    }
+    return bounds;
 }
 
 /* `scene`'s part of fill_changed(): its changed renderers' boxes into
@@ -314,10 +345,9 @@ fill_scene_changed(scene_t* scene, int changes, name_hash64_t* set) {
         *set = name_hash64_n(*set, &scene->active_renderers[i], sizeof scene->active_renderers[i]);
         box3f_t current = r->world_bounds;
         if (r->contact_blob_strength > 0) {
-            current = box3f_union(current,
-                                  contact_blob_bounds(current, r->contact_blob_ground_y, scene_contact_reach(scene, r),
-                                                      scene_contact_light(scene, box3f_centre(current), drawn_scenes,
-                                                                          drawn_scene_count)));
+            current = box3f_union(current, scene_contact_bounds(scene, r,
+                                                                scene_contact_light(scene, box3f_centre(current),
+                                                                                    drawn_scenes, drawn_scene_count)));
         }
         if (r->changed && changes >= 0) {
             changes = changes < RENDER_PARTIAL_CHANGES_MAX ? changes : -1;
@@ -396,6 +426,22 @@ scene_set_contact_blob(entity_t renderer, float ground_y, float strength, scene_
     render_context_forget(render_context_main());
 }
 
+void
+scene_set_contact_warp(entity_t renderer, bool warp) {
+    scene_row_t row;
+    scene_t* scene = scene_entity_row(renderer, &row);
+    if (scene == NULL) {
+        return;
+    }
+    const int index = scene_renderer_index(scene, row);
+    if (index < 0 || scene->renderers[index].contact_warp == warp) {
+        return;
+    }
+    scene->renderers[index].contact_warp = warp;
+    scene->renderers[index].changed = true;
+    render_context_forget(render_context_main());
+}
+
 static void
 post_draw(const r3d_span_target_t* target, const r3d_lens_t* lens, void* user) {
     (void)user;
@@ -406,18 +452,16 @@ post_draw(const r3d_span_target_t* target, const r3d_lens_t* lens, void* user) {
             if (r->contact_blob_strength > 0.0F && r->mesh.node_count > 0) {
                 const vec3f_t light =
                     scene_contact_light(scene, box3f_centre(r->world_bounds), drawn_scenes, drawn_scene_count);
-                const box3f_t bounds = contact_blob_bounds(r->world_bounds, r->contact_blob_ground_y,
-                                                           scene_contact_reach(scene, r), light);
+                const box3f_t bounds = scene_contact_bounds(scene, r, light);
                 static planef_t planes[PLANE_FRUSTUM_COUNT];
                 r3d_lens_frustum(lens, planes);
                 unsigned mask = 0;
                 if (box3f_outside_planes(bounds, planes, PLANE_FRUSTUM_COUNT, &mask)) {
                     continue;
                 }
-                static contact_blob_t blob;
-                if (scene_contact_blob(scene, r, light, &blob)) {
-                    contact_blob_draw(target, lens, &blob);
-                }
+                static contact_blob_t blobs[SKIN_CONTACTS_MAX];
+                const int count = scene_contact_blobs(scene, r, light, blobs);
+                contact_blobs_draw(target, lens, blobs, count);
             }
         }
     }

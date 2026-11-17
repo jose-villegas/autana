@@ -201,8 +201,44 @@ test_full_mask_rectangle(void) {
     free(f.color);
 }
 
+static void
+test_multiple_footprints_union_without_double_darkening(void) {
+    enum { SIZE = 32, DISCS = 3 };
+
+    static const contact_blob_t blobs[DISCS] = {
+        {.centre = {-BLOB_RADIUS, 0, BLOB_DEPTH}, .u = {BLOB_RADIUS, 0, 0}, .v = {0, BLOB_RADIUS, 0}, .strength = 1},
+        {.centre = {0, 0, BLOB_DEPTH}, .u = {BLOB_RADIUS, 0, 0}, .v = {0, BLOB_RADIUS, 0}, .strength = 1},
+        {.centre = {BLOB_DEPTH, 0, BLOB_DEPTH}, .u = {BLOB_RADIUS, 0, 0}, .v = {0, BLOB_RADIUS, 0}, .strength = 1}};
+    blob_fixture_t f = blob_fixture_make(SIZE);
+    uint16_t* expected = malloc(SIZE * SIZE * sizeof *expected);
+    TEST_ASSERT_NOT_NULL(expected);
+    for (int p = 0; p < SIZE * SIZE; p++) {
+        expected[p] = RGB565BE(0xffffff);
+    }
+    for (int i = 0; i < DISCS; i++) {
+        for (int p = 0; p < SIZE * SIZE; p++) {
+            f.color[p] = RGB565BE(0xffffff);
+        }
+        contact_blob_draw(&f.target, &f.lens, &blobs[i]);
+        for (int p = 0; p < SIZE * SIZE; p++) {
+            if (f.color[p] != RGB565BE(0xffffff)) {
+                expected[p] = f.color[p];
+            }
+        }
+    }
+    for (int p = 0; p < SIZE * SIZE; p++) {
+        f.color[p] = RGB565BE(0xffffff);
+    }
+    contact_blobs_draw(&f.target, &f.lens, blobs, DISCS);
+    TEST_ASSERT_EQUAL_MEMORY(expected, f.color, SIZE * SIZE * sizeof *expected);
+    free(expected);
+    free(f.color);
+    free(f.depth);
+}
+
 void
 suite_contact_blob(void) {
+    RUN_TEST(test_multiple_footprints_union_without_double_darkening);
     RUN_TEST(test_full_mask_rectangle);
     RUN_TEST(test_round_disc_golden);
     RUN_TEST(test_blob_depth_radius_rows_strength);
