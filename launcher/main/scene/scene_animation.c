@@ -6,7 +6,6 @@
 #include "anim/anim_tracks_format.h"
 #include "core/job.h"
 #include "core/memory.h"
-#include "core/tune.h"
 #include "math/scalar/mathi.h"
 #include "profile/frame_cost.h"
 #include "render/context/render_context.h"
@@ -14,24 +13,13 @@
 #include "scene/scene_anim_stages.h"
 #include "scene/scene_internal.h"
 
-TUNE_OWNER(anim);
-TUNE_OVERRIDE(anim, mid_px, RENDER_ANIM_PIXELS_MAX);
-TUNE_OVERRIDE(anim, far_px, RENDER_ANIM_PIXELS_MAX);
-TUNE_OVERRIDE(anim, mid_every, RENDER_ANIM_EVERY_MAX);
-TUNE_OVERRIDE(anim, far_every, RENDER_ANIM_EVERY_MAX);
-TUNE_OVERRIDE(anim, hysteresis_px, RENDER_ANIM_PIXELS_MAX);
-
-/* Resolve overrides before the parallel slices so every copy sees one policy. */
-static render_anim_settings_t
-animation_settings(void) {
-    render_anim_settings_t s = render_context_settings(render_context_main())->anim;
-    s.mid_px = mid_px == TUNE_UNSET ? s.mid_px : (float)mathi_clamp(mid_px, 0, RENDER_ANIM_PIXELS_MAX);
-    s.far_px = far_px == TUNE_UNSET ? s.far_px : (float)mathi_clamp(far_px, 0, RENDER_ANIM_PIXELS_MAX);
-    s.hysteresis_px =
-        hysteresis_px == TUNE_UNSET ? s.hysteresis_px : (float)mathi_clamp(hysteresis_px, 0, RENDER_ANIM_PIXELS_MAX);
-    s.mid_every = mathi_clamp(tune_override(mid_every, s.mid_every), RENDER_ANIM_EVERY_MIN, RENDER_ANIM_EVERY_MAX);
-    s.far_every = mathi_clamp(tune_override(far_every, s.far_every), RENDER_ANIM_EVERY_MIN, RENDER_ANIM_EVERY_MAX);
-    return s;
+/* The pose interval of tier `tier` under `s`. */
+static int
+tier_every(int tier, const render_anim_settings_t* s) {
+    const int every[] = {[SCENE_ANIM_TIER_NEAR] = RENDER_ANIM_EVERY_MIN,
+                         [SCENE_ANIM_TIER_MID] = s->mid_every,
+                         [SCENE_ANIM_TIER_FAR] = s->far_every};
+    return every[tier];
 }
 
 /* Keep a tier inside its band so camera jitter does not alternate pose rates:
@@ -43,10 +31,7 @@ animation_interval(scene_animator_t* a, const render_anim_settings_t* s) {
     const float far = a->tier == SCENE_ANIM_TIER_FAR ? s->far_px + band : s->far_px - band;
     const float px = a->drawn_radius_px;
     a->tier = px < far ? SCENE_ANIM_TIER_FAR : px < mid ? SCENE_ANIM_TIER_MID : SCENE_ANIM_TIER_NEAR;
-    const int every[] = {[SCENE_ANIM_TIER_NEAR] = RENDER_ANIM_EVERY_MIN,
-                         [SCENE_ANIM_TIER_MID] = s->mid_every,
-                         [SCENE_ANIM_TIER_FAR] = s->far_every};
-    a->interval = every[a->tier];
+    a->interval = tier_every(a->tier, s);
     return a->interval;
 }
 
@@ -95,6 +80,19 @@ paced(const scene_t* scene, scene_row_t e) {
            && (scene->flags[e] & SCENE_FLAG_ACTIVE);
 }
 
+/* Whether copy `e` poses this step. A bound copy's tier changes only on the
+ * frames the draw measured it for, and its interval follows the settings
+ * every step; a copy with no skin bound poses every step. */
+static bool
+pose_due(const scene_t* scene, scene_row_t e, const render_anim_settings_t* settings) {
+    if (!scene->skinned_renderers[e].bound) {
+        return true;
+    }
+    scene_animator_t* a = &scene->animators[e];
+    a->interval = scene_animator_due(scene, a) ? animation_interval(a, settings) : tier_every(a->tier, settings);
+    return scene_animator_due(scene, a);
+}
+
 void
 scene_animate_range(scene_t* scene, int first, int count, uint32_t dt_ms, const render_anim_settings_t* settings) {
     for (int i = first; i < first + count; i++) {
@@ -104,10 +102,8 @@ scene_animate_range(scene_t* scene, int first, int count, uint32_t dt_ms, const 
         if (!paced(scene, e)) {
             continue;
         }
-        const int interval =
-            scene->skinned_renderers[e].bound ? animation_interval(a, settings) : RENDER_ANIM_EVERY_MIN;
         const bool force = a->dirty;
-        const bool due = (scene->animation_frame + a->phase) % (uint32_t)interval == 0;
+        const bool due = pose_due(scene, e, settings);
         /* A zero-time repose belongs to its dirty copy; others keep their debt. */
         if (!force && (dt_ms == 0 || !due)) {
             a->owed_ms += dt_ms;
@@ -168,7 +164,7 @@ scene_skin_range(scene_t* scene, int first, int count) {
             r3d_skin_clusters(&skin->skin, &skin->bind, skin->palette, start, end - start, &skin->output);
         }
         if (start == 0 && end > 0) { /* the range from the first cluster tells the recorder once per pose */
-            frame_record_note_skin(&skin->output.mesh, &skin->bind, skin->palette, skin->skin.joint_count);
+            frame_record_note_skin(&skin->output.mesh, &skin->bind, &skin->skin, skin->palette, skin->skin.joint_count);
         }
         offset += clusters;
     }
@@ -191,12 +187,16 @@ skin_slice(void* ctx, int from, int to) {
     scene_skin_range(ctx, from, to - from);
 }
 
+/* The tiers resolve under the overrides before the parallel slices, so every
+ * copy sees one policy; in place, so no second copy shares the repose's frame,
+ * which the skin and draw slices run beneath. */
 static void
-animate_entities(scene_t* scene, uint32_t dt_ms, render_anim_settings_t settings) {
+animate_entities(scene_t* scene, uint32_t dt_ms) {
     if (scene->skeleton_animator_count == 0) {
         return;
     }
-    animate_work_t w = {scene, dt_ms, settings};
+    animate_work_t w = {scene, dt_ms, render_context_settings(render_context_main())->anim};
+    render_anim_settings_tune(&w.settings);
     (void)job_run_range(&scene->animate_share, animate_slice, &w, scene->staged_count);
 }
 
@@ -261,7 +261,7 @@ scene_animation_repose(scene_t* scene, uint32_t dt_ms) {
             apply_property(scene, animator, dt_ms);
         }
     }
-    animate_entities(scene, dt_ms, animation_settings());
+    animate_entities(scene, dt_ms);
     FRAME_COST_END(posed_from, SCENE_ANIM_STAGE_POSE_NAME);
     FRAME_COST_BEGIN(lit_from);
     const int clusters = skin_stage_prepare(scene);

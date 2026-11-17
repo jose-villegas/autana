@@ -20,6 +20,9 @@ colour 1.
 CIE76 is the distance between two colours in CIELAB; the error panels' scale
 runs from black (matches the source) through red to yellow.
 
+How the span fill maps these texels onto a triangle, picks a level and
+divides by depth: [Texture-Mapping.md](../../render/frame/Texture-Mapping.md).
+
 ```mermaid
 ---
 config:

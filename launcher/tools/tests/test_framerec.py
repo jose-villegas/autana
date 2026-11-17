@@ -34,7 +34,7 @@ def header(keyframe_every=30):
 
 
 def frame(index, flags=0):
-    return record("FRAME", framerec.FRAME.pack(index, 16, flags, 0, 0))
+    return record("FRAME", framerec.FRAME.pack(index, 16, flags, 0, 0, 0))
 
 
 class FormatTests(unittest.TestCase):
@@ -47,6 +47,8 @@ class FormatTests(unittest.TestCase):
         for name in ("KEYFRAME", "AFTER_DROP", "GENERATED"):
             with self.subTest(flag=name):
                 self.assertEqual(getattr(framerec, name), read_define(FORMAT_HEADER, "FRAME_RECORD_" + name))
+
+        self.assertEqual(framerec.MESH.size, read_define(FORMAT_HEADER, "FRAME_RECORD_MESH_BYTES"))
 
 
 class RecordTests(unittest.TestCase):
@@ -64,6 +66,17 @@ class RecordTests(unittest.TestCase):
     def test_a_type_the_reader_does_not_know_passes_by_its_number(self):
         stream = framerec.parse(header() + frame(0) + record(200, b"later"))
         self.assertEqual(stream.frames[0].records, [(200, b"later")])
+
+    def test_truncated_frame_is_not_counted(self):
+        incomplete = record("FRAME", framerec.FRAME.pack(1, 16, 0, 0, 0, 100))
+        stream = framerec.parse(header() + frame(0) + incomplete)
+        self.assertEqual([f.index for f in stream.frames], [0])
+
+    def test_record_cannot_cross_declared_frame_boundary(self):
+        payload = record(200, b"later")
+        framed = record("FRAME", framerec.FRAME.pack(0, 16, 0, 0, 0, len(payload) - 1))
+        with self.assertRaisesRegex(framerec.StreamError, "frame"):
+            framerec.parse(header() + framed + payload)
 
     def test_a_stream_that_does_not_open_with_its_header_is_refused(self):
         with self.assertRaisesRegex(framerec.StreamError, "opens with HEADER"):

@@ -15,10 +15,10 @@ is stale, so rerun it after changing an image or the pages that show one.
 | [input](#input) | 11 | 0 | 0 |
 | [kinematics](#kinematics) | 6 | 2 | 0 |
 | [math](#math) | 25 | 25 | 0 |
-| [overview](#overview) | 31 | 0 | 0 |
+| [overview](#overview) | 33 | 0 | 0 |
 | [physics](#physics) | 2 | 0 | 0 |
 | [power](#power) | 2 | 0 | 0 |
-| [render](#render) | 130 | 6 | 0 |
+| [render](#render) | 132 | 8 | 0 |
 | [ui](#ui) | 62 | 0 | 0 |
 
 ## anim
@@ -144,8 +144,10 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/overview/render-lab-capybara.gif"><img src="figure-thumbnails/overview/render-lab-capybara.gif" width="160" alt=""></a> | A skinned capybara on a meadow blending through each of its animation clips in turn, then back to the first | [README](../../README.md) | not declared yet |
 | <a href="../images/overview/render-lab-herd.gif"><img src="figure-thumbnails/overview/render-lab-herd.gif" width="160" alt=""></a> | Herd 8: eight capybaras walking, each clip at the pace of its ground speed | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-sponza.gif"><img src="figure-thumbnails/overview/render-lab-sponza.gif" width="160" alt=""></a> | A camera moving through the Crytek Sponza atrium with baked lighting on the fitted full mesh | [README](../../README.md) | not declared yet |
+| <a href="../images/overview/render-lab-stress-baked-tree.png"><img src="../images/overview/render-lab-stress-baked-tree.png" width="160" alt=""></a> | Stress baked tree: the inside of a ring | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-big-tris.png"><img src="../images/overview/render-lab-stress-big-tris.png" width="160" alt=""></a> | Stress big tris: a few triangles over most of the picture | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-card.png"><img src="../images/overview/render-lab-stress-card.png" width="160" alt=""></a> | Card copies with ragged edges and sampled colours | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
+| <a href="../images/overview/render-lab-stress-cull-setup.png"><img src="../images/overview/render-lab-stress-cull-setup.png" width="160" alt=""></a> | Stress cull setup: one small cube | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-culled.png"><img src="../images/overview/render-lab-stress-culled.png" width="160" alt=""></a> | Plane before the camera turns away | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-few-copies.png"><img src="../images/overview/render-lab-stress-few-copies.png" width="160" alt=""></a> | Stress few copies: two dense spheres | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-foliage-far-opaque.png"><img src="../images/overview/render-lab-stress-foliage-far-opaque.png" width="160" alt=""></a> | Stress foliage far opaque: the same cards under the brick | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
@@ -200,6 +202,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/render/bake-scores.png"><img src="../images/render/bake-scores.png" width="160" alt=""></a> | A test picture made brighter, blurred and blocky, each with its heatmap and five scores | [render/offline/Bake-Method](../render/offline/Bake-Method.md) | not declared yet |
 | <a href="../images/render/baked-mesh-ranges.png"><img src="../images/render/baked-mesh-ranges.png" width="160" alt=""></a> | The first leaves' clusters as runs of the triangle and vertex arrays | [render/offline/Baked-Mesh](../render/offline/Baked-Mesh.md) | not declared yet |
 | <a href="../images/render/baked-mesh-tree.gif"><img src="figure-thumbnails/render/baked-mesh-tree.gif" width="160" alt=""></a> | A baked mesh's clusters, then the tree level by level with one root-to-leaf path bold | [render/offline/Baked-Mesh](../render/offline/Baked-Mesh.md) | not declared yet |
+| <a href="../images/render/bistro-street-divide.png"><img src="../images/render/bistro-street-divide.png" width="160" alt=""></a> | The near floor's squares where affine differs most from a divide every pixel, with each column's CIE76 colour distance from that divide | [render/frame/Texture-Mapping](../render/frame/Texture-Mapping.md) | [bistro_figures.py](../../launcher/demo/bistro/bistro_figures.py) |
 | <a href="../images/render/bistro-street-fitted-full-object-error.png"><img src="../images/render/bistro-street-fitted-full-object-error.png" width="160" alt=""></a> | Bistro error share against pixel share for parts, objects and shapes | [render/offline/Mesh-Import](../render/offline/Mesh-Import.md) | not declared yet |
 | <a href="../images/render/bistro-street-textured.crops.png"><img src="../images/render/bistro-street-textured.crops.png" width="160" alt=""></a> | The same frame's squares that differ most, zoomed: source, vertex colours and textured | [assets/formats/LTEX](../assets/formats/LTEX.md) | [bistro_figures.py](../../launcher/demo/bistro/bistro_figures.py) |
 | <a href="../images/render/bistro-street-textured.png"><img src="../images/render/bistro-street-textured.png" width="160" alt=""></a> | Bistro's street on host: the source render, the vertex colours alone, and the cobblestones and beige brick textured, with each one's CIE76 error against the source | [assets/formats/LTEX](../assets/formats/LTEX.md) | [bistro_figures.py](../../launcher/demo/bistro/bistro_figures.py) |
@@ -315,6 +318,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/render/sponza-view-overdraw.png"><img src="../images/render/sponza-view-overdraw.png" width="160" alt=""></a> | The overdraw view | [render/frame/View-Modes](../render/frame/View-Modes.md) | not declared yet |
 | <a href="../images/render/sponza-view-shaded.png"><img src="../images/render/sponza-view-shaded.png" width="160" alt=""></a> | The shaded view | [render/frame/View-Modes](../render/frame/View-Modes.md) | not declared yet |
 | <a href="../images/render/sponza-view-tiles.png"><img src="../images/render/sponza-view-tiles.png" width="160" alt=""></a> | The tiles view | [render/frame/View-Modes](../render/frame/View-Modes.md) | not declared yet |
+| <a href="../images/render/texture-mip-levels.png"><img src="../images/render/texture-mip-levels.png" width="160" alt=""></a> | A Bistro cobblestone's mip chain at true size; below, a receding floor with each triangle tinted by the level it picked, and the pixels that read a finer level than their own step | [render/frame/Texture-Mapping](../render/frame/Texture-Mapping.md) | [bistro_figures.py](../../launcher/demo/bistro/bistro_figures.py) |
 | <a href="../images/render/upscale-surface.crops.png"><img src="../images/render/upscale-surface.crops.png" width="160" alt=""></a> | Edge crops: reference, nearest, surface | [render/frame/Dynamic-Resolution](../render/frame/Dynamic-Resolution.md) | not declared yet |
 | <a href="../images/render/upscale-surface.png"><img src="../images/render/upscale-surface.png" width="160" alt=""></a> | Nearest and surface against the reference, with each one's dE | [render/frame/Dynamic-Resolution](../render/frame/Dynamic-Resolution.md) | not declared yet |
 

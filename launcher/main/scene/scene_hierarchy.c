@@ -34,8 +34,8 @@ scene_hierarchy_open(scene_t* scene) {
         return true;
     }
     size_t end = 0;
-    const size_t worlds = scene_storage_carve(&end, sizeof(mat4f_t) * (size_t)worlds_needed, alignof(mat4f_t));
-    const size_t owners = scene_storage_carve(&end, sizeof(scene_row_t) * (size_t)worlds_needed, alignof(scene_row_t));
+    const size_t worlds = mem_carve(&end, sizeof(mat4f_t) * (size_t)worlds_needed, alignof(mat4f_t));
+    const size_t owners = mem_carve(&end, sizeof(scene_row_t) * (size_t)worlds_needed, alignof(scene_row_t));
     uint8_t* block = scene_allocate_kept(end);
     if (block == NULL) {
         return false;

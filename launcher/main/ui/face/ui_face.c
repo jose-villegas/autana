@@ -17,6 +17,8 @@
 #define UI_FACE_DROPDOWN_NAME_FORMAT "ui.dropdown.%u"
 
 static ui_mu_theme_t theme;
+/* ui_skin()'s copy, which theme.skin points at while a skin is set. */
+static ui_skin_t face_skin;
 static unsigned window_ordinal;
 static bool window_open;
 /* ui_row_centre()'s width for the current row; 0 for the window's width. */
@@ -124,18 +126,19 @@ ui_face_end(void) {
 void
 ui_theme(const ui_theme_t* t) {
     UI_FACE_COST_BEGIN(face_from);
-    if (!t) {
-        theme = ui_theme_from_style(ui_context()->style);
-        UI_FACE_COST_END(face_from, "ui.face");
-        return;
-    }
-    theme = UI_THEME_FROM_FACE(t);
+    const ui_skin_t* const skin = theme.skin;
+    theme = t != NULL ? UI_THEME_FROM_FACE(t) : ui_theme_from_style(ui_context()->style);
+    theme.skin = skin;
     UI_FACE_COST_END(face_from, "ui.face");
 }
 
 void
-ui_corner_radius(int radius) {
-    theme.corner_radius = radius > 0 ? radius : 0;
+ui_skin(const ui_skin_t* skin) {
+    assert(skin == NULL || (skin->normal != NULL && skin->pressed != NULL));
+    if (skin != NULL) {
+        face_skin = *skin;
+    }
+    theme.skin = skin != NULL ? &face_skin : NULL;
 }
 
 /* The innermost recorded slot of a scope `depth` deep, or -1 with none open;

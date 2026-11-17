@@ -15,6 +15,7 @@
 #endif
 
 #include "draw/draw_font.h"
+#include "draw/draw_sprite.h"
 #include "math/geometry/recti.h"
 #include "microui.h"
 #include "ui/controls/ui_style.h"
@@ -23,7 +24,7 @@
 #include "ui/ui.h"
 #include "ui/ui_canvas_marks.h"
 
-enum { UI_COMMAND_IMAGE = MU_COMMAND_MAX, UI_COMMAND_SWATCHES, UI_COMMAND_ROUND_RECT };
+enum { UI_COMMAND_IMAGE = MU_COMMAND_MAX, UI_COMMAND_SWATCHES, UI_COMMAND_SPRITE };
 
 typedef struct {
     mu_BaseCommand base;
@@ -32,14 +33,12 @@ typedef struct {
     const image_t* image;
 } ui_image_command_t;
 
-/* A flat face with rounded corners: one command, filled in panel rows after
- * the transform, so a turned screen still writes rows, not columns. */
+/* A skinned face: the sprite nine-sliced into the rect. */
 typedef struct {
     mu_BaseCommand base;
     mu_Rect rect;
-    mu_Color color;
-    int radius;
-} ui_round_command_t;
+    const sprite_t* sprite;
+} ui_sprite_command_t;
 
 typedef struct {
     mu_BaseCommand base;

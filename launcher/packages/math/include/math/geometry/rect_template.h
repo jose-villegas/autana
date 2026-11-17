@@ -37,6 +37,9 @@
     /* empty = (w <= 0 || h <= 0). */                                                                                  \
     static inline bool P##_is_empty(P##_t r) { return r.w <= 0 || r.h <= 0; }                                          \
                                                                                                                        \
+    /* area = w * h in the type's own multiply, zero when empty. */                                                    \
+    static inline T P##_area(P##_t r) { return P##_is_empty(r) ? OPS##_zero() : OPS##_mul(r.w, r.h); }                 \
+                                                                                                                       \
     /* intersection = (max(left), max(top), min(right), min(bottom)), clamped to empty. */                             \
     static inline P##_t P##_intersect(P##_t a, P##_t b) { return MATH_RECT_FOLD(P, OPS, max, min, a, b); }             \
                                                                                                                        \

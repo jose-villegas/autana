@@ -63,6 +63,7 @@ header's opening comment; `--check` verifies it.
 | [include/math/geometry/planef.h](include/math/geometry/planef.h) | planef: an oriented plane of a float. |
 | [include/math/geometry/planex.h](include/math/geometry/planex.h) | planex: an oriented plane of a Q16.16. |
 | [include/math/geometry/primitive_mesh.h](include/math/geometry/primitive_mesh.h) | primitive_mesh: the standard shapes as indexed triangle meshes, for geometry made at run time or baked: a plane, a sphere, a cube, a capsule and a cylinder, each about the origin and each from a struct of its named parameters. |
+| [include/math/geometry/rect_overlap.h](include/math/geometry/rect_overlap.h) | rect_overlap: overlaps within a list of recti, found by one sort and sweep, and what is left of a rectangle once another is taken out of it. |
 | [include/math/geometry/rect_template.h](include/math/geometry/rect_template.h) | rect_template: the half-open rectangle for one number type; see docs/math/Conventions.md#templates for the macro arguments. |
 | [include/math/geometry/rectf.h](include/math/geometry/rectf.h) | rectf: a half-open rectangle of a float. |
 | [include/math/geometry/recti.h](include/math/geometry/recti.h) | recti: a half-open rectangle of an int. |
@@ -81,6 +82,7 @@ header's opening comment; `--check` verifies it.
 | [include/math/linear/mat4x.h](include/math/linear/mat4x.h) | mat4x: a 4x4 matrix of a Q16.16. |
 | [include/math/linear/quat_template.h](include/math/linear/quat_template.h) | quat_template: a rotation as x, y, z, w, unit length, Hamilton product, acting on a vector as q * v * q^-1, for one number type; see docs/math/Conventions.md#templates for the macro arguments. |
 | [include/math/linear/quatf.h](include/math/linear/quatf.h) | quatf: a float rotation with host-exact, halved-arc polynomial slerp. |
+| [include/math/linear/quatf_euler.h](include/math/linear/quatf_euler.h) | quatf_euler: a float rotation read back as the Euler angles quatf_from_euler takes. |
 | [include/math/linear/quatx.h](include/math/linear/quatx.h) | quatx: a Q16.16 rotation; angles are turns (mathx.h). |
 | [include/math/linear/transform_template.h](include/math/linear/transform_template.h) | transform_template: where a thing is, as a position, a rotation and a scale, for one number type; see docs/math/Conventions.md#templates for the macro arguments. |
 | [include/math/linear/transformf.h](include/math/linear/transformf.h) | transformf: a transform of a float: position, rotation, scale and the cached model matrix. |
