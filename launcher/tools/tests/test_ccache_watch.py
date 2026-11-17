@@ -7,6 +7,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 from pathlib import Path
 
 BUILD = Path(__file__).resolve().parents[1] / "build"
@@ -140,6 +141,89 @@ class CcacheWatchTests(unittest.TestCase):
     def test_command_status_passes_through(self):
         result = self.watch(sys.executable, "-c", "raise SystemExit(7)")
         self.assertEqual(result.returncode, 7, result.stderr)
+
+    def test_held_lock_hangs_ccache_unwatched(self):
+        # The premise: without the watch, ccache waits on the held lock.
+        self.holder(SUBDIR_LOCKS)
+        compile = subprocess.Popen(["ccache", CC, "-c", "a.c", "-o", "a.o"], cwd=self.root, env=self.env)
+        try:
+            with self.assertRaises(subprocess.TimeoutExpired):
+                compile.wait(STUCK_AFTER)
+        finally:
+            compile.kill()
+            compile.wait()
+
+
+class LockWatchTests(unittest.TestCase):
+    """The rules on a cache directory alone, with the clock and the held probe in the test's hands."""
+
+    def setUp(self):
+        self.cache = Path(tempfile.mkdtemp(prefix="ccache watch "))
+        self.addCleanup(shutil.rmtree, self.cache, ignore_errors=True)
+        self.now = 0.0
+        clock = mock.patch.object(ccache_watch.time, "monotonic", lambda: self.now)
+        held = mock.patch.object(ccache_watch, "is_held", lambda path: True)
+        clock.start()
+        held.start()
+        self.addCleanup(clock.stop)
+        self.addCleanup(held.stop)
+
+    def lock(self, name):
+        path = self.cache / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("")
+        return path
+
+    def test_each_lock_pattern_is_watched(self):
+        names = ["lock/subdir_3f.lock", "lock/auto_cleanup.lock", "7/stats.lock", "7/5/stats.lock"]
+        for name in names:
+            self.lock(name)
+        self.lock("7/5/result.tmp")
+        watch = ccache_watch.LockWatch(self.cache, STUCK_AFTER)
+        self.assertEqual(watch.stuck(), [])
+        self.now += STUCK_AFTER
+        self.assertEqual(watch.stuck(), sorted(self.cache / name for name in names))
+
+    def test_lock_taken_anew_restarts_its_clock(self):
+        # Many short holds of one lock are a busy build, not a stuck one.
+        path = self.lock("lock/subdir_00.lock")
+        watch = ccache_watch.LockWatch(self.cache, STUCK_AFTER)
+        watch.stuck()
+        for _ in range(3):
+            self.now += STUCK_AFTER / 2
+            path.unlink()
+            time.sleep(0.05)
+            self.lock("lock/subdir_00.lock")
+            self.assertEqual(watch.stuck(), [])
+        self.now += STUCK_AFTER
+        self.assertEqual(watch.stuck(), [path])
+
+    def test_unheld_lock_is_not_stuck(self):
+        self.lock("lock/subdir_00.lock")
+        watch = ccache_watch.LockWatch(self.cache, STUCK_AFTER)
+        watch.stuck()
+        self.now += STUCK_AFTER
+        with mock.patch.object(ccache_watch, "is_held", lambda path: False):
+            self.assertEqual(watch.stuck(), [])
+
+    @unittest.skipIf(os.name == "nt", "POSIX keepalive")
+    def test_posix_lock_is_held_while_its_keepalive_is_fresh(self):
+        path = self.lock("lock/subdir_00.lock")
+        alive = path.with_suffix(".alive")
+        self.assertFalse(ccache_watch.posix_held(path))
+        alive.write_text("")
+        fresh = time.time() - ccache_watch.POSIX_ALIVE_SECONDS + 1
+        os.utime(alive, (fresh, fresh))
+        self.assertTrue(ccache_watch.posix_held(path))
+        stale = time.time() - ccache_watch.POSIX_ALIVE_SECONDS - 1
+        os.utime(alive, (stale, stale))
+        self.assertFalse(ccache_watch.posix_held(path))
+
+
+class UnwatchedTests(unittest.TestCase):
+    def test_without_ccache_the_command_runs_unwatched(self):
+        with mock.patch.object(ccache_watch.shutil, "which", lambda name: None):
+            self.assertEqual(ccache_watch.run([sys.executable, "-c", "raise SystemExit(7)"]), 7)
 
 
 if __name__ == "__main__":
