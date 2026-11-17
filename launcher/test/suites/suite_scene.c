@@ -1210,8 +1210,9 @@ test_a_refused_take_loads_nothing_and_a_refused_scratch_draws_nothing(void) {
     scene_release(scene);
 }
 
-/* Showing a debug view after a lent scene's first frame takes nothing more:
- * the scratch already holds a view's pixels. A larger scratch the lender
+/* Showing a debug view after a lent scene's first frame, then a view with
+ * larger pixels, takes nothing more: the scratch already holds the widest
+ * view's pixels. A larger scratch the lender
  * refuses draws nothing and keeps the block, which draws again at the size
  * it fits. */
 static void
@@ -1228,6 +1229,9 @@ test_a_debug_view_takes_no_second_scratch_and_a_refused_larger_one_keeps_the_fir
     const void* scratch = context->scratch;
     const size_t taken = fx.lent_used;
 
+    render_context_set_debug_view(context, render_context_debug_view_named("overdraw"));
+    frame(16);
+    TEST_ASSERT_EQUAL_PTR(scratch, context->scratch);
     render_context_set_debug_view(context, render_context_debug_view_named("cull"));
     frame(16);
     TEST_ASSERT_NOT_NULL(render_context_debug_view_state(context));
@@ -3608,8 +3612,8 @@ test_the_scratch_is_the_finest_steps_raster_block(void) {
     raster_t finest = c->raster;
     finest.width = LADDER[0].width;
     finest.height = LADDER[0].height;
-    static const raster_attachment_t view_pixels = {.format = IMAGE_U32};
-    static const raster_attachment_t* const attached[] = {&view_pixels};
+    const raster_attachment_t view_pixels = {.format = render_context_debug_view_widest()};
+    const raster_attachment_t* const attached[] = {&view_pixels};
     finest.attachments = attached;
     finest.attachment_count = 1;
     const size_t needed = raster_scratch_bytes(&finest);

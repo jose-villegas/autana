@@ -7,19 +7,17 @@ rungs, the one that removes the most triangles per pixel of error first. needs_a
 whose kept level still errs above the threshold up close, with the reason.
 """
 
-import pathlib
-import tomllib
 from dataclasses import dataclass
 
 import numpy as np
 
 from r3d.geometry import bounds_diagonal, nearest_triangles, triangle_search
 from r3d.meshopt import simplify_to_error
+from render.settings import settings_toml
 
 # The screen error the level pick allows, in pixels: the default render settings' value r3d.lod.pick reads. Read
-# from the file itself: the settings encoder would bring the pack's table format into every mesh's key.
-RENDER_DEFAULT = pathlib.Path(__file__).resolve().parents[3] / "main/render/settings/default.render.toml"
-TOLERANCE_PX = tomllib.loads(RENDER_DEFAULT.read_text(encoding="utf-8"))["lod"]["tolerance_px"]
+# without the settings encoder, which would bring the pack's table format into every mesh's key.
+TOLERANCE_PX = settings_toml.default_value("lod.tolerance_px")
 
 # Each rung of a shape's ladder allows this many times the screen error of the rung before.
 LADDER_STEP = 2.0
