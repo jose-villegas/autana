@@ -106,8 +106,7 @@ def run_stamped(command, log, timeout=1800):
         log.flush()
         lines.append((at, line))
     try:
-        done = run_process_tree(command, timeout, on_line=stamp, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                text=True, bufsize=1, cwd=REPO)
+        done = run_process_tree(command, timeout, on_line=stamp, cwd=REPO)
     except subprocess.TimeoutExpired:
         raise RuntimeError(f"capture timed out after {timeout}s") from None
     return done.returncode, lines, time.monotonic() - started

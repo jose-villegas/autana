@@ -2,6 +2,7 @@
 import contextlib
 import io
 import os
+import queue
 from pathlib import Path
 import sys
 import subprocess
@@ -82,9 +83,10 @@ class ProcessTreeTests(unittest.TestCase):
                 kernel.CloseHandle.assert_called_once_with(created)
 
 
-# A grandchild that outlives its stopped tree touches its marker this long after it starts.
-GRANDCHILD_SECONDS = 2
-DEADLINE_SECONDS = 0.5
+# A grandchild that outlives its stopped tree touches its marker this long after it starts; the deadline leaves
+# a loaded Windows runner time to start Python twice before it.
+GRANDCHILD_SECONDS = 4
+DEADLINE_SECONDS = 2
 
 
 class RunProcessTreeTests(unittest.TestCase):
@@ -111,12 +113,14 @@ class RunProcessTreeTests(unittest.TestCase):
         for on_line in (None, Mock()):
             with self.subTest(on_line=on_line):
                 started = time.monotonic()
-                with self.assertRaises(subprocess.TimeoutExpired):
-                    process_tree.run_process_tree(self.hung_child(), DEADLINE_SECONDS, on_line=on_line,
-                                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                pipes = {} if on_line else dict(stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                with self.assertRaises(subprocess.TimeoutExpired) as late:
+                    process_tree.run_process_tree(self.hung_child(), DEADLINE_SECONDS, on_line=on_line, **pipes)
                 self.assert_tree_stopped(started)
                 if on_line:
                     on_line.assert_called_once_with("started\n")
+                else:
+                    self.assertEqual(late.exception.output, "started\n")
 
     def test_watch_raising_stops_the_tree(self):
         calls = []
@@ -134,20 +138,57 @@ class RunProcessTreeTests(unittest.TestCase):
     def test_on_line_failure_stops_the_tree(self):
         started = time.monotonic()
         with self.assertRaisesRegex(KeyboardInterrupt, "stop"):
-            process_tree.run_process_tree(self.hung_child(), on_line=Mock(side_effect=KeyboardInterrupt("stop")),
-                                          stdout=subprocess.PIPE, text=True)
+            process_tree.run_process_tree(self.hung_child(), on_line=Mock(side_effect=KeyboardInterrupt("stop")))
         self.assert_tree_stopped(started)
 
+    def test_on_line_errors_of_the_wait_types_still_end_the_run(self):
+        for error in (subprocess.TimeoutExpired("probe", 1), queue.Empty()):
+            with self.subTest(error=type(error).__name__), self.assertRaises(type(error)):
+                process_tree.run_process_tree(self.hung_child(), 30, on_line=Mock(side_effect=error))
+
+    def test_an_undecodable_line_fails_the_run(self):
+        # 0x81 is neither UTF-8 nor cp1252, the two text encodings these runs meet.
+        command = [sys.executable, "-c", "import sys, time; sys.stdout.buffer.write(bytes([0x81, 10])); "
+                   "sys.stdout.flush(); time.sleep(60)"]
+        started = time.monotonic()
+        with self.assertRaises(UnicodeDecodeError):
+            process_tree.run_process_tree(command, 30, on_line=Mock())
+        self.assertLess(time.monotonic() - started, DEADLINE_SECONDS)
+
+    def test_on_line_owns_the_pipes(self):
+        for pipe in ("stdout", "stderr"):
+            with self.subTest(pipe=pipe), patch.object(process_tree, "launch_process_tree") as launch,                     self.assertRaises(ValueError):
+                process_tree.run_process_tree(["never"], on_line=Mock(), **{pipe: subprocess.PIPE})
+            launch.assert_not_called()
+
+    def test_a_spent_deadline_never_starts_waiting(self):
+        command = [sys.executable, "-c", "import time; time.sleep(60)"]
+        for timeout in (0, -1):
+            started = time.monotonic()
+            with self.subTest(timeout=timeout), self.assertRaises(subprocess.TimeoutExpired):
+                process_tree.run_process_tree(command, timeout)
+            self.assertLess(time.monotonic() - started, DEADLINE_SECONDS)
+
+    def test_a_child_that_closes_its_output_is_still_waited_for_and_watched(self):
+        quiet = ("import os, sys, time; print('closing', flush=True); os.close(1); os.close(2); "
+                 "time.sleep({}); sys.exit(4)")
+        watch = Mock()
+        done = process_tree.run_process_tree([sys.executable, "-c", quiet.format(1)], 30, watch=watch, on_line=Mock())
+        self.assertEqual(done.returncode, 4)
+        self.assertGreater(watch.call_count, 1)
+        with self.assertRaises(subprocess.TimeoutExpired):
+            process_tree.run_process_tree([sys.executable, "-c", quiet.format(60)], DEADLINE_SECONDS, on_line=Mock())
+
     def test_a_finished_run_returns_its_output_and_failure_code(self):
-        command = [sys.executable, "-c", "import sys; print('a'); print('b'); print('c', file=sys.stderr); sys.exit(3)"]
+        command = [sys.executable, "-c", "import sys; print('a', flush=True); print('b', file=sys.stderr, flush=True); "
+                   "print('c', flush=True); sys.exit(3)"]
         done = process_tree.run_process_tree(command, 30, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        self.assertEqual((done.args, done.returncode, done.stdout, done.stderr), (command, 3, "a\nb\n", "c\n"))
+        self.assertEqual((done.args, done.returncode, done.stdout, done.stderr), (command, 3, "a\nc\n", "b\n"))
         seen = []
         on_line = lambda line: seen.append((line, threading.current_thread()))  # noqa: E731
-        done = process_tree.run_process_tree(command, 30, on_line=on_line, stdout=subprocess.PIPE,
-                                             stderr=subprocess.DEVNULL, text=True)
+        done = process_tree.run_process_tree(command, 30, on_line=on_line)
         self.assertEqual((done.returncode, done.stdout), (3, None))
-        self.assertEqual(seen, [("a\n", threading.main_thread()), ("b\n", threading.main_thread())])
+        self.assertEqual(seen, [(line, threading.main_thread()) for line in ("a\n", "b\n", "c\n")])
 
 
 if __name__ == "__main__":

@@ -204,9 +204,13 @@ def stop_process_tree(process):
 
 def run_process_tree(command, timeout=None, *, watch=None, on_line=None, **options):
     """Run command as one tree to its end, as subprocess.run does without check. Past `timeout` seconds it
-    raises TimeoutExpired; `watch`, called at least every WATCH_SECONDS, stops the run by raising; `on_line`,
-    given stdout=PIPE, takes each output line in this thread as it comes. Any exception stops the whole tree
-    first, a stop's own timeout never hiding it, and the Windows job is always closed."""
+    raises TimeoutExpired carrying the output so far; `watch`, called every WATCH_SECONDS, stops the run by
+    raising; `on_line` takes each line of stdout and stderr together, as text, in this thread as it comes.
+    Any exception stops the whole tree first, a stop's own timeout never hiding it; the job is always closed."""
+    if on_line:
+        if {"stdout", "stderr"} & options.keys():
+            raise ValueError("on_line reads stdout and stderr itself")
+        options.update(stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
     deadline = None if timeout is None else time.monotonic() + timeout
     process = launch_process_tree(command, **options)
     output = errors = lines = reader = None
@@ -217,41 +221,51 @@ def run_process_tree(command, timeout=None, *, watch=None, on_line=None, **optio
             try:
                 for line in process.stdout:
                     lines.put(line)
-            finally:
                 lines.put(None)
+            except BaseException as error:  # an undecodable line fails the run in the caller's thread
+                lines.put(error)
         reader = threading.Thread(target=read, daemon=True)
         reader.start()
     try:
         while True:
             if watch:
                 watch()
-            step = None if deadline is None else deadline - time.monotonic()
-            if step is not None and step <= 0:
-                raise subprocess.TimeoutExpired(command, timeout)
-            if watch and (step is None or step > WATCH_SECONDS):
-                step = WATCH_SECONDS
-            try:
-                if lines is None:
+            step = WATCH_SECONDS
+            if deadline is not None:
+                if deadline <= time.monotonic():
+                    raise subprocess.TimeoutExpired(command, timeout)
+                step = min(step, deadline - time.monotonic())
+            if lines is None:
+                with contextlib.suppress(subprocess.TimeoutExpired):
                     output, errors = process.communicate(timeout=step)
                     break
+                continue
+            try:
                 line = lines.get(timeout=step)
-                if line is not None:
-                    on_line(line)
-                    continue
-                lines.put(None)  # the end stays seen should the wait below time out
+            except queue.Empty:
+                continue
+            if isinstance(line, BaseException):
+                raise line
+            if line is not None:
+                on_line(line)
+                continue
+            lines.put(None)  # the end stays seen should the wait time out
+            with contextlib.suppress(subprocess.TimeoutExpired):
                 process.wait(step)
                 break
-            except (subprocess.TimeoutExpired, queue.Empty):
-                pass
-    except BaseException:
+    except BaseException as error:
         with contextlib.suppress(subprocess.TimeoutExpired):
             stop_process_tree(process)
+        if lines is None:  # drain and close the pipes, unless a holder escaped the tree
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                drained = process.communicate(timeout=READER_SECONDS)
+                if isinstance(error, subprocess.TimeoutExpired):
+                    error.output, error.stderr = drained
         raise
     finally:
         close_process_tree(process)
         if reader:
             reader.join(timeout=READER_SECONDS)
-        for stream in (process.stdin, process.stdout, process.stderr):
-            if stream and not (reader and reader.is_alive() and stream is process.stdout):
-                stream.close()
+            if not reader.is_alive():
+                process.stdout.close()
     return subprocess.CompletedProcess(command, process.returncode, output, errors)

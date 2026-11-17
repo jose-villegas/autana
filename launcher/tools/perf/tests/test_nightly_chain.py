@@ -112,8 +112,8 @@ class NightlyTests(unittest.TestCase):
         cache = patch.object(autana_config, "user_cache_dir", return_value=self.root / "cache")
         cache.start()
         self.addCleanup(cache.stop)
-        for owner in (chain, layout_measure):
-            guard = patch.object(owner, "launch_process_tree",
+        for owner, launch in ((chain, "launch_process_tree"), (layout_measure, "run_process_tree")):
+            guard = patch.object(owner, launch,
                                  side_effect=AssertionError("test attempted a real process launch"))
             guard.start()
             self.addCleanup(guard.stop)
