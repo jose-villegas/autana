@@ -131,7 +131,7 @@ class RunProcessTreeTests(unittest.TestCase):
                 raise LookupError("lock lost")
         started = time.monotonic()
         with self.assertRaisesRegex(LookupError, "lock lost"):
-            process_tree.run_process_tree(self.hung_child(), watch=watch, stdout=subprocess.DEVNULL)
+            process_tree.run_process_tree(self.hung_child(), 60, watch=watch, stdout=subprocess.DEVNULL)
         self.assertGreaterEqual(calls[1] - calls[0], process_tree.WATCH_SECONDS * 0.9)
         self.assert_tree_stopped(started)
 
@@ -139,6 +139,36 @@ class RunProcessTreeTests(unittest.TestCase):
         started = time.monotonic()
         with self.assertRaisesRegex(KeyboardInterrupt, "stop"):
             process_tree.run_process_tree(self.hung_child(), on_line=Mock(side_effect=KeyboardInterrupt("stop")))
+        self.assert_tree_stopped(started)
+
+    def test_a_stop_that_times_out_never_hides_the_error_that_stopped_the_run(self):
+        stop = process_tree.stop_process_tree
+
+        def timed_out_stop(process):
+            stop(process)
+            raise subprocess.TimeoutExpired("taskkill", 10)
+        started = time.monotonic()
+        with patch.object(process_tree, "stop_process_tree", side_effect=timed_out_stop), \
+                self.assertRaisesRegex(KeyboardInterrupt, "stop"):
+            process_tree.run_process_tree(self.hung_child(), on_line=Mock(side_effect=KeyboardInterrupt("stop")))
+        self.assert_tree_stopped(started)
+
+    def test_a_run_ends_with_its_output_so_a_grandchild_holding_the_pipe_meets_the_deadline(self):
+        # The child exits at once; its grandchild keeps the output pipe, so the run is not over until the deadline
+        # stops the grandchild too, and the line reader's pipe is closed once it has seen the end.
+        grandchild = (f"import time; from pathlib import Path; time.sleep({GRANDCHILD_SECONDS}); "
+                      f"Path({str(self.marker)!r}).touch()")
+        child = (f"import subprocess, sys; subprocess.Popen([sys.executable, '-c', {grandchild!r}]); "
+                 "print('done', flush=True); sys.exit(5)")
+        launched = []
+        launch = process_tree.launch_process_tree
+        started = time.monotonic()
+        with patch.object(process_tree, "launch_process_tree",
+                          side_effect=lambda *args, **kwargs: launched.append(launch(*args, **kwargs)) or launched[-1]), \
+                self.assertRaises(subprocess.TimeoutExpired):
+            process_tree.run_process_tree([sys.executable, "-c", child], DEADLINE_SECONDS, on_line=Mock())
+        self.assertEqual(launched[0].returncode, 5)
+        self.assertTrue(launched[0].stdout.closed)
         self.assert_tree_stopped(started)
 
     def test_on_line_errors_of_the_wait_types_still_end_the_run(self):
@@ -156,8 +186,9 @@ class RunProcessTreeTests(unittest.TestCase):
         self.assertLess(time.monotonic() - started, DEADLINE_SECONDS)
 
     def test_on_line_owns_the_pipes(self):
-        for pipe in ("stdout", "stderr"):
-            with self.subTest(pipe=pipe), patch.object(process_tree, "launch_process_tree") as launch,                     self.assertRaises(ValueError):
+        for pipe in ("stdin", "stdout", "stderr"):
+            with self.subTest(pipe=pipe), patch.object(process_tree, "launch_process_tree") as launch, \
+                    self.assertRaises(ValueError):
                 process_tree.run_process_tree(["never"], on_line=Mock(), **{pipe: subprocess.PIPE})
             launch.assert_not_called()
 

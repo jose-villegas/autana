@@ -204,12 +204,12 @@ def stop_process_tree(process):
 
 def run_process_tree(command, timeout=None, *, watch=None, on_line=None, **options):
     """Run command as one tree to its end, as subprocess.run does without check. Past `timeout` seconds it
-    raises TimeoutExpired carrying the output so far; `watch`, called every WATCH_SECONDS, stops the run by
-    raising; `on_line` takes each line of stdout and stderr together, as text, in this thread as it comes.
+    raises TimeoutExpired carrying the output so far; `watch`, called at least every WATCH_SECONDS, stops the
+    run by raising; `on_line` takes each line of stdout and stderr together, as text, in this thread as it comes.
     Any exception stops the whole tree first, a stop's own timeout never hiding it; the job is always closed."""
     if on_line:
-        if {"stdout", "stderr"} & options.keys():
-            raise ValueError("on_line reads stdout and stderr itself")
+        if {"stdout", "stderr"} & options.keys() or options.get("stdin") == subprocess.PIPE:
+            raise ValueError("on_line reads stdout and stderr itself and writes no stdin")
         options.update(stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
     deadline = None if timeout is None else time.monotonic() + timeout
     process = launch_process_tree(command, **options)
