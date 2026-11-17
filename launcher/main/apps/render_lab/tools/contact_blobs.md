@@ -17,7 +17,7 @@ Depth bias, Bayer phase and `rgb565be_half()` determine visibility and colour.
 
 Each scene is sampled at 100 ms intervals in portrait and landscape, with the host's warm-up.
 The point-reconstruction comparison has no changed pixels across either capture.
-The maximum sampled absolute coverage error is below 0.000004 for both scenes.
+The maximum sampled absolute coverage error is below 0.000011 for both scenes.
 
 | Scene | Portrait visited-pixel reduction | Landscape visited-pixel reduction |
 |---|---:|---:|
