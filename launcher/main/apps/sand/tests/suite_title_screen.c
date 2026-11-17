@@ -154,8 +154,8 @@ static void
 tap_fixture(bool landscape) {
     ui_init();
     ui_set_transform(ui_transform_quarter_turn(landscape ? 1 : 0, GFX_WIDTH, GFX_HEIGHT));
-    title_frame(false, false, false, (vec2i_t){0, 0});
-    title_frame(false, false, false, (vec2i_t){0, 0});
+    title_frame(false, false, false, vec2i_zero());
+    title_frame(false, false, false, vec2i_zero());
 }
 
 static void
@@ -209,7 +209,7 @@ test_a_landscape_tap_reports_the_button_under_it(void) {
 static void
 test_disabled_buttons_are_inked_muted(void) {
     tap_fixture(false);
-    title_frame(false, false, false, (vec2i_t){0, 0});
+    title_frame(false, false, false, vec2i_zero());
 
     for (int i = 0; i < SAND_TITLE_BUTTON_COUNT; i++) {
         const char* label = title_screen_label((sand_title_button_t)i);

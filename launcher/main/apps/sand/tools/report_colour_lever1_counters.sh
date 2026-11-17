@@ -34,7 +34,7 @@ mkdir -p "$BUILD_DIR"
 OUT_BIN="$BUILD_DIR/colour_lever1_counters"
 
 # shellcheck disable=SC2086
-"$CC_BIN" $CFLAGS -I "$MAIN_DIR" $(package_includes "$LAUNCHER_DIR") -I "$SAND_DIR" \
+"$CC_BIN" $CFLAGS $(firmware_includes "$LAUNCHER_DIR") -I "$SAND_DIR" \
     "$SCRIPT_DIR/colour_lever1_counters.c" \
     "$MAIN_DIR/core/job.c" \
     "$SAND_DIR/sand.c" \

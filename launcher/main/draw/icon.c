@@ -12,7 +12,7 @@
  * inked. */
 static bool
 ink_box(const image_t* icon, recti_t* out) {
-    *out = (recti_t){0};
+    *out = recti_empty();
     const size_t step = icon->pitch;
     const uint8_t* row = icon->pixels;
     for (int y = 0; y < icon->height; y++, row += step) {

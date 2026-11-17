@@ -27,7 +27,7 @@ static void
 console_verb_touch(const char* args, console_reply_fn reply) {
     (void)reply;
     bool down = false;
-    vec2i_t point = {0};
+    vec2i_t point = vec2i_zero();
     if (console_touch_parse(args, &down, &point)) {
         touch_inject(down, point);
     } else {

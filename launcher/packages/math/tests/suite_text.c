@@ -165,8 +165,8 @@ test_all_types(void) {
     CHECK_TEXT_FAMILY(i, I, INT32_MIN, INT32_MAX);
     CHECK_TEXT_FAMILY(s, S, INT16_MIN, INT16_MAX);
     CHECK_TEXT_FAMILY(x, X, INT32_MIN, INT32_MAX);
-    CHECK_TEXT_CASES(quatf, QUATF_TEXT_MAX, quatf_t, ((quatf_t){0}), ((quatf_t){0, 0, 0, 1}),
-                     ((quatf_t){-FLT_MAX, FLT_MAX, 1, -2}));
+    CHECK_TEXT_CASES(quatf, QUATF_TEXT_MAX, quatf_t, ((quatf_t){0}), ((quatf_t){-FLT_MAX, FLT_MAX, 1, -2}));
+    CHECK_TEXT(quatf, QUATF_TEXT_MAX, quatf_t, quatf_identity());
     CHECK_TEXT_CASES(quatx, QUATX_TEXT_MAX, quatx_t, ((quatx_t){0}), ((quatx_t){0, 0, 0, 1}),
                      ((quatx_t){INT32_MIN, INT32_MAX, 1, -2}));
     CHECK_TEXT_CASES(mat3f, MAT3F_TEXT_MAX, mat3f_t, ((mat3f_t){0}), ((mat3f_t){{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}}),
@@ -270,7 +270,7 @@ test_examples_and_failure(void) {
     TEST_ASSERT_EQUAL_STRING("12,-3", text);
     vec3f_format(text, VEC3F_TEXT_MAX, (vec3f_t){0.1F, 1, -2.5F});
     TEST_ASSERT_EQUAL_STRING("0.1,1,-2.5", text);
-    quatf_format(text, QUATF_TEXT_MAX, (quatf_t){0, 0, 0, 1});
+    quatf_format(text, QUATF_TEXT_MAX, quatf_identity());
     TEST_ASSERT_EQUAL_STRING("0,0,0,1", text);
     mat3f_format(text, MAT3F_TEXT_MAX, (mat3f_t){{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}});
     TEST_ASSERT_EQUAL_STRING("1,0,0;0,1,0;0,0,1", text);

@@ -16,8 +16,8 @@ SPEC.loader.exec_module(replay)
 class OrientationReplayTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        sys.path.insert(0, str(ROOT / "launcher/tools/math"))
-        from math_figures import build_probe
+        sys.path.insert(0, str(ROOT / "launcher/tools"))
+        from docs.figures import build_probe
         cls.directory = tempfile.TemporaryDirectory()
         cls.addClassCleanup(cls.directory.cleanup)
         sys.path.insert(0, str(ROOT / "launcher/tools/native"))

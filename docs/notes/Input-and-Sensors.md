@@ -18,7 +18,7 @@ held contact keeps being read without another pulse. Delivery and calibration:
 
 | Fact | Value |
 |---|---|
-| Ranges | set in `input/motion/imu.c` |
+| Ranges | set by the chip driver, `input/motion/qmi8658/qmi8658.c` |
 | Rate and buffer | `IMU_ODR_HZ` with a stream FIFO of `IMU_FIFO_SAMPLES`, in `input/motion/imu.h` |
 | Axes | not the screen's; [Motion-Axes.md](../input/Motion-Axes.md) |
 | Calibration | offsets and gyro zero-rate: [Motion-Calibration.md](../input/Motion-Calibration.md) |

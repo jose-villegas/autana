@@ -6,8 +6,8 @@
 #pragma once
 #include "math/geometry/ball_template.h"
 
-#define MATH_DEFINE_SPHERE(P, V, B, T, OPS)                                                                            \
-    MATH_DEFINE_BALL(P, V, T, OPS)                                                                                     \
+#define MATH_DEFINE_SPHERE(P, V, WV, WIDEN, B, T, OPS)                                                                 \
+    MATH_DEFINE_BALL(P, V, WV, WIDEN, T, OPS)                                                                          \
     MATH_DEFINE_BALL_REAL(P, V, T, OPS)                                                                                \
     /* from_box = (box centre, length(box half extent)). */                                                            \
     static inline P##_t P##_from_box(B##_t b) {                                                                        \

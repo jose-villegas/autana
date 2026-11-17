@@ -29,8 +29,6 @@
 #define CALL_CHARS   7
 _Static_assert(NAME_CHARS + 1 == ASSET_NAME_MAX, "scanf width follows ASSET_NAME_MAX");
 
-static const vec3f_t TURN_AXIS = {0.0F, 0.0F, 1.0F};
-
 static int
 fail(const char* why) {
     fprintf(stderr, "playback_figures_probe: %s\n", why);
@@ -52,15 +50,15 @@ print_joints(const anim_skeleton_t* skeleton, const anim_pose_t* pose, mat4f_t* 
     anim_pose_model(skeleton, pose, model);
     printf("[");
     for (int j = 0; j < pose->joint_count; j++) {
-        printf("%s[%s]", j ? "," : "", vec3f_text(mat4f_apply(&model[j], (vec3f_t){0})).chars);
+        printf("%s[%s]", j ? "," : "", vec3f_text(mat4f_apply(&model[j], vec3f_zero())).chars);
     }
     printf("]");
 }
 
 static int
 nlerp(float degrees, int steps) {
-    const quatf_t from = quatf_from_axis_angle(TURN_AXIS, 0.0F);
-    const quatf_t to = quatf_from_axis_angle(TURN_AXIS, degrees * MATH_RADIANS_PER_DEGREE);
+    const quatf_t from = quatf_from_axis_angle(vec3f_unit_z(), 0.0F);
+    const quatf_t to = quatf_from_axis_angle(vec3f_unit_z(), degrees * MATH_RADIANS_PER_DEGREE);
     printf("{\"degrees\":%.7g,\"steps\":[", (double)degrees);
     for (int s = 0; s <= steps; s++) {
         const float t = (float)s / (float)steps;

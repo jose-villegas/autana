@@ -5,7 +5,7 @@
 static void
 test_trs_matrix_decomposition_and_refusals(void) {
     const vec3f_t position = {3, 4, 5}, scale = {2, 3, 4};
-    const quatf_t rotation = quatf_from_axis_angle((vec3f_t){0, 1, 0}, 0.7F);
+    const quatf_t rotation = quatf_from_axis_angle(vec3f_unit_y(), 0.7F);
     const mat4f_t matrix = mat4f_from_trs(position, rotation, scale);
     transformf_t out;
     TEST_ASSERT_TRUE(transformf_from_mat(matrix, &out));
@@ -33,13 +33,13 @@ test_trs_matrix_decomposition_and_refusals(void) {
  * its child 1 along x, turned about z and stretched along y. */
 static void
 compose_pair(vec3f_t scale, transformf_t* parent, transformf_t* child) {
-    *parent = (transformf_t)TRANSFORMF_IDENTITY;
+    *parent = transformf_identity();
     transformf_set_position(parent, (vec3f_t){1.0F, 2.0F, 3.0F});
-    transformf_set_rotation(parent, quatf_from_axis_angle((vec3f_t){0.0F, 0.0F, 1.0F}, MATH_PI / 2.0F));
+    transformf_set_rotation(parent, quatf_from_axis_angle(vec3f_unit_z(), MATH_PI / 2.0F));
     transformf_set_scale(parent, scale);
-    *child = (transformf_t)TRANSFORMF_IDENTITY;
-    transformf_set_position(child, (vec3f_t){1.0F, 0.0F, 0.0F});
-    transformf_set_rotation(child, quatf_from_axis_angle((vec3f_t){0.0F, 0.0F, 1.0F}, MATH_PI / 3.0F));
+    *child = transformf_identity();
+    transformf_set_position(child, vec3f_unit_x());
+    transformf_set_rotation(child, quatf_from_axis_angle(vec3f_unit_z(), MATH_PI / 3.0F));
     transformf_set_scale(child, (vec3f_t){1.0F, 3.0F, 1.0F});
 }
 

@@ -7,8 +7,8 @@
 #
 # <out-tree> mirrors docs/images/; these images go in its overview/.
 #
-# Run from the repository root with $PYTHON set to a Python that has Pillow;
-# ffmpeg must be on PATH. Renderer output goes to logs under <work-dir>.
+# Run from the repository root with $PYTHON set to a Python that has Pillow and numpy.
+# Renderer output goes to logs under <work-dir>.
 
 set -Eeuo pipefail
 trap 'echo "$0: failed (exit $?): $BASH_COMMAND" >&2' ERR
@@ -18,7 +18,6 @@ W=$2
 mkdir -p "$W"
 
 sh launcher/main/apps/sand/tools/sand_menu_render_host.sh -o "$W" > "$W/menu.log"
-"$PYTHON" -c 'import sys; from PIL import Image; Image.open(sys.argv[1]).save(sys.argv[2])' \
-    "$W/title-landscape.bmp" "$OUT/sand-menu.png"
+"$PYTHON" launcher/tools/docs/figures.py png "$W/title-landscape.bmp" "$OUT/sand-menu.png"
 
 "$PYTHON" launcher/main/apps/sand/tools/make_volcano_clip.py -o "$OUT/sand-simulation.gif" > "$W/clip.log"

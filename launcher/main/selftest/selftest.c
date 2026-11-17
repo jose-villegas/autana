@@ -22,7 +22,7 @@
 #include "unity.h"
 
 #include "core/timing.h"
-#include "display/display.h"
+#include "display/display_shell.h"
 #include "suites.h"
 #include "test_harness.h"
 

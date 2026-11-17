@@ -8,7 +8,7 @@
 # Usage: source this file and pass the launcher directory:
 #
 #   . "$LAUNCHER_DIR/tools/build/packages.sh"
-#   "$CC_BIN" -I "$MAIN_DIR" $(package_includes "$LAUNCHER_DIR") \
+#   "$CC_BIN" $(firmware_includes "$LAUNCHER_DIR") \
 #       $(package_sources "$LAUNCHER_DIR") ...
 #
 # package_include_dirs prints each package's include root, package_includes
@@ -27,6 +27,38 @@ package_include_dirs() {
 
 package_includes() {
     for include_dir in $(package_include_dirs "$1"); do
+        printf -- '-I %s ' "$include_dir"
+    done
+}
+
+# board_include_dir prints main/board/<folder> of the board a host build
+# compiles, the BOARD_DIR of the Kconfig choice BOARD's default
+# (packages.py's board_include_dir()), and fails when that folder is missing.
+board_include_dir() {
+    board_choice=$(sed -n '/^ *choice BOARD$/,/^ *endchoice/s/^ *default \([A-Z0-9_]*\)$/\1/p' \
+        "$1/main/Kconfig.projbuild" | head -n 1)
+    board_folder=""
+    [ -n "$board_choice" ] && board_folder=$(sed -n "s/^ *default \"\([a-z0-9_]*\)\" if $board_choice\$/\1/p" \
+        "$1/main/Kconfig.projbuild" | head -n 1)
+    if [ -z "$board_folder" ] || [ ! -d "$1/main/board/$board_folder" ]; then
+        echo "no board folder: main/Kconfig.projbuild's choice BOARD names none that exists" >&2
+        return 1
+    fi
+    printf '%s\n' "$1/main/board/$board_folder"
+}
+
+# firmware_include_dirs prints the firmware's quoted-include search path: main/,
+# the board's folder and every package's include root (packages.py's
+# include_roots()); firmware_includes the same as "-I <dir>" flags.
+firmware_include_dirs() {
+    printf '%s\n' "$1/main"
+    board_include_dir "$1" || return 1
+    package_include_dirs "$1"
+}
+
+firmware_includes() {
+    firmware_dirs=$(firmware_include_dirs "$1") || return 1
+    for include_dir in $firmware_dirs; do
         printf -- '-I %s ' "$include_dir"
     done
 }

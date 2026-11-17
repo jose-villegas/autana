@@ -12,7 +12,7 @@
 MATH_DEFINE_MAT4(mat4f, vec3f, quatf, float, mathf)
 MATH_DEFINE_MAT4_INVERT_AFFINE(mat4f, float, mathf)
 
-/* An initializer, for a constant mat4f_identity() cannot make: `static const mat4f_t m = MAT4F_IDENTITY;`. */
+/* Only for static-storage initializers, where C11 cannot call mat4f_identity(). */
 #define MAT4F_IDENTITY                                                                                                 \
     {                                                                                                                  \
         .m = {                                                                                                         \

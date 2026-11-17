@@ -468,8 +468,8 @@ motion_log_vector(vec3f_t value, int scale) {
 static void
 integrate_turn_gyro(const input_motion_batch_t* batch) {
     if (imu_round.step != IMU_PROBE_TURN && imu_round.step != IMU_PROBE_TRACE) {
-        turn_gyro_deg = (vec3f_t){0};
-        turn_gyro_rate = (vec3f_t){0};
+        turn_gyro_deg = vec3f_zero();
+        turn_gyro_rate = vec3f_zero();
         return;
     }
     const float dt = (float)INPUT_MOTION_SAMPLE_US / (float)MATH_US_PER_S;
@@ -700,7 +700,7 @@ update_imu_round(uint32_t dt_ms, const input_t* input) {
         const vec3f_t down = imu_round.trace_down;
         const vec3f_t acceleration = vec3f_from_vec3i(motion.acceleration);
         const vec3f_t direction =
-            vec3f_dot(acceleration, acceleration) > 0.0F ? vec3f_normalize(acceleration) : (vec3f_t){0};
+            vec3f_dot(acceleration, acceleration) > 0.0F ? vec3f_normalize(acceleration) : vec3f_zero();
         LOG_IMU_LINE("turn ms %u down %.*f %.*f %.*f accel %.*f %.*f %.*f gyro_deg %.1f", (unsigned)imu_round.trace_ms,
                      IMU_GRAVITY_DIGITS, (double)down.x, IMU_GRAVITY_DIGITS, (double)down.y, IMU_GRAVITY_DIGITS,
                      (double)down.z, IMU_GRAVITY_DIGITS, (double)direction.x, IMU_GRAVITY_DIGITS, (double)direction.y,
@@ -925,7 +925,7 @@ store_imu_result(imu_action_t action) {
         return;
     }
     const bool clear = action == IMU_ACTION_CLEAR;
-    const vec3i_t offset = clear ? (vec3i_t){0} : imu_probe_saved_offset(input_accel_offset(), &imu_round.fit);
+    const vec3i_t offset = clear ? vec3i_zero() : imu_probe_saved_offset(input_accel_offset(), &imu_round.fit);
     if (!input_set_accel_offset(offset)) {
         ESP_LOGW(TAG, "imu_calib could not save offset");
         return;

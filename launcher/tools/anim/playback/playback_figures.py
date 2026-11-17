@@ -18,8 +18,7 @@ import tempfile
 
 TOOLS = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(TOOLS))
-sys.path.insert(0, str(TOOLS / "math"))
-from math_figures import build_probe, probe_json  # noqa: E402
+from docs.figures import build_probe, probe_json  # noqa: E402
 from anim import skeleton_asset, tracks_asset  # noqa: E402
 from asset.asset_pack import build_pack  # noqa: E402
 from docs.plot_style import (FAINT, INK, LABEL_SIZE, MUTED, SLOTS, TITLE_SIZE, style_axes, figure as new_figure,  # noqa: E402

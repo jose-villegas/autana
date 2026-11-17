@@ -1,11 +1,12 @@
-"""Writes a .png beside every .bmp in a directory, if Pillow is installed.
+"""Writes a .png beside every .bmp in a directory, if Pillow and numpy are installed.
 
 A convenience, never a gate: tools/render/render_scene.sh already checked that each
 BMP has the size its scene declared, so this adds nothing to the verdict and
-says so once when Pillow is absent rather than failing the run that produced
+says so once when either is absent rather than failing the run that produced
 the images.
 """
 import os
+import pathlib
 import sys
 
 
@@ -14,9 +15,10 @@ def main(argv):
         raise SystemExit("usage: render_png.py <directory>")
 
     try:
-        from PIL import Image
+        sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+        from docs.figures import save_png
     except ImportError:
-        print("Pillow not installed - BMP only, no PNG written")
+        print("Pillow or numpy not installed - BMP only, no PNG written")
         return
 
     directory = argv[0]
@@ -25,7 +27,7 @@ def main(argv):
             continue
         path = os.path.join(directory, name)
         png = path[:-4] + ".png"
-        Image.open(path).save(png)
+        save_png(path, png)
         print("png %s" % png)
 
 

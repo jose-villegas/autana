@@ -132,7 +132,7 @@ test_pose_upright_turn_order(void) {
     imu_probe_round_t* round = calloc(1, sizeof *round);
     TEST_ASSERT_NOT_NULL(round);
     imu_probe_start(round, 0);
-    const vec3f_t down = {0, 0, -1};
+    const vec3f_t down = vec3f_back();
     input_motion_t sample = fixture();
     sample.rotation.x = IMU_PROBE_TURN_THRESHOLD + 1;
     TEST_ASSERT_FALSE(imu_probe_turn_update(round, &sample, down, TEST_DT_MS));
@@ -166,7 +166,7 @@ test_turn_threshold_window_and_decimation(void) {
     round->step = IMU_PROBE_TURN;
     round->pose = IMU_PROBE_POSE_COUNT;
     input_motion_t sample = fixture();
-    vec3f_t down = {1, 0, 0};
+    vec3f_t down = vec3f_unit_x();
     sample.rotation.y = -IMU_PROBE_TURN_THRESHOLD;
     TEST_ASSERT_FALSE(imu_probe_turn_update(round, &sample, down, TEST_DT_MS));
     TEST_ASSERT_EQUAL_INT(IMU_PROBE_TURN, round->step);
@@ -183,7 +183,7 @@ test_turn_threshold_window_and_decimation(void) {
         imu_probe_turn_update(round, &sample, down, TEST_DT_MS);
         TEST_ASSERT_EQUAL_INT(IMU_PROBE_TRACE, round->step);
     }
-    down = (vec3f_t){0, 1, 0};
+    down = vec3f_unit_y();
     TEST_ASSERT_TRUE(imu_probe_turn_update(round, &sample, down, TEST_DT_MS));
     TEST_ASSERT_EQUAL_INT(IMU_PROBE_DONE, round->step);
     TEST_ASSERT_EQUAL_INT(IMU_PROBE_TURN_SAMPLES, round->trace_count);
@@ -244,7 +244,7 @@ upright_fixture(int quarter, input_motion_t* rest) {
     *rest = (input_motion_t){
         .acceleration = vec3i_scale(imu_probe_pose_direction(IMU_PROBE_BOTTOM_DOWN, quarter), INPUT_ACCEL_ONE_G)};
     for (unsigned ms = 0; ms <= IMU_REST_SETTLE_MS / 2; ms += TEST_DT_MS) {
-        imu_probe_turn_update(round, rest, (vec3f_t){0, 0, -1}, TEST_DT_MS);
+        imu_probe_turn_update(round, rest, vec3f_back(), TEST_DT_MS);
     }
     TEST_ASSERT_TRUE(round->turn_ms > 0);
     return round;
@@ -252,15 +252,15 @@ upright_fixture(int quarter, input_motion_t* rest) {
 
 static void
 check_upright_restart(imu_probe_round_t* round, input_motion_t rest, const input_motion_t* disturbed, uint32_t dt_ms) {
-    imu_probe_turn_update(round, disturbed, (vec3f_t){0, 0, -1}, dt_ms);
+    imu_probe_turn_update(round, disturbed, vec3f_back(), dt_ms);
     TEST_ASSERT_EQUAL_UINT32(0, round->turn_ms);
     TEST_ASSERT_EQUAL_INT(IMU_PROBE_UPRIGHT, round->step);
     for (unsigned ms = 0; ms < IMU_REST_SETTLE_MS / 2; ms += TEST_DT_MS) {
-        imu_probe_turn_update(round, &rest, (vec3f_t){0, 0, -1}, TEST_DT_MS);
+        imu_probe_turn_update(round, &rest, vec3f_back(), TEST_DT_MS);
         TEST_ASSERT_EQUAL_INT(IMU_PROBE_UPRIGHT, round->step);
     }
     for (unsigned ms = 0; ms < IMU_REST_SETTLE_MS * 2; ms += TEST_DT_MS) {
-        imu_probe_turn_update(round, &rest, (vec3f_t){0, 0, -1}, TEST_DT_MS);
+        imu_probe_turn_update(round, &rest, vec3f_back(), TEST_DT_MS);
     }
     TEST_ASSERT_EQUAL_INT(IMU_PROBE_TURN, round->step);
     free(round);
@@ -312,7 +312,7 @@ test_upright_nonzero_quarter_arms(void) {
         input_motion_t rest;
         imu_probe_round_t* round = upright_fixture(quarter, &rest);
         for (unsigned ms = 0; ms < IMU_REST_SETTLE_MS; ms += TEST_DT_MS) {
-            imu_probe_turn_update(round, &rest, (vec3f_t){0, 0, -1}, TEST_DT_MS);
+            imu_probe_turn_update(round, &rest, vec3f_back(), TEST_DT_MS);
         }
         TEST_ASSERT_EQUAL_INT(IMU_PROBE_TURN, round->step);
         free(round);
@@ -345,7 +345,7 @@ test_upright_hand_tremor_arms(void) {
             const int sign = (ms / TEST_DT_MS) % 2 ? 1 : -1;
             tremor.acceleration.z = sign * (IMU_REST_ACCEL_DEPARTURE + 1);
             tremor.rotation.x = sign * (IMU_REST_GYRO_DEPARTURE + 1);
-            imu_probe_turn_update(round, &tremor, (vec3f_t){0, 0, -1}, TEST_DT_MS);
+            imu_probe_turn_update(round, &tremor, vec3f_back(), TEST_DT_MS);
             if (ms + TEST_DT_MS < IMU_REST_SETTLE_MS) {
                 TEST_ASSERT_EQUAL_INT(IMU_PROBE_UPRIGHT, round->step);
             }
@@ -360,7 +360,7 @@ test_trace_missing_reading_deadline_and_period(void) {
     imu_probe_round_t* round = calloc(1, sizeof *round);
     TEST_ASSERT_NOT_NULL(round);
     const input_motion_t sample = fixture();
-    const vec3f_t down = {0, 1, 0};
+    const vec3f_t down = vec3f_unit_y();
     round->step = IMU_PROBE_TRACE;
     round->trace_count = 1;
     TEST_ASSERT_FALSE(imu_probe_turn_update(round, NULL, down, IMU_PROBE_TURN_PERIOD_MS));

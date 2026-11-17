@@ -15,6 +15,7 @@ from unittest import mock
 
 from test_doc_stages import stages, PATH
 from bake import bake
+from docs.inputs import named_files
 
 ROOT = PATH.parents[3]
 sys.path.insert(0, str(ROOT / 'scripts/ci'))
@@ -34,7 +35,8 @@ tools = root / 'launcher/tools'
 stages.ROOT = bake.REPO = root
 stages.TOOLS = bake.TOOLS = tools
 stages.__file__ = str(tools / 'entry.py')
-stages.tracked_files = lambda *args: json.loads((root / 'tracked.json').read_text())
+from docs import inputs
+inputs.tracked_files = lambda *args: json.loads((root / 'tracked.json').read_text())
 stages.host_inputs = lambda scene: {'host flags': (root / 'flags').read_text(),
     'host host.c': stages.content_checksum(root / 'host.c').decode()}
 bake.read_lock = lambda: ({(root / 'key').read_text(): {'sha256': (root / 'lock').read_text()}}
@@ -192,8 +194,7 @@ class InputContractTests(unittest.TestCase):
         entry = own / 'entry.py'
         entry.write_text('A="root.txt"\nB="tools.txt"\nC="own.txt"\n'
                          'D="untracked.txt"\nE="""own.txt\n"""\n')
-        with mock.patch.object(stages, 'ROOT', self.root), mock.patch.object(stages, 'TOOLS', tools):
-            self.assertEqual(list(stages.named_files(entry, set(paths))), paths)
+        self.assertEqual(list(named_files(entry, set(paths), (self.root, tools))), paths)
 
     @unittest.skipUnless(sys.platform == 'linux', 'POSIX compiler listing required')
     def test_host_flags_and_deps_relative_and_invalid_listing_refused(self):

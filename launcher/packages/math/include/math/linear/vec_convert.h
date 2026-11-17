@@ -23,6 +23,8 @@
 #include "math/scalar/maths.h"
 #include "math/scalar/mathx.h"
 
+#define MATH_WIDEN_NONE(v) (v)
+
 static inline vec2f_t
 vec2f_from_vec2i(vec2i_t v) {
     return (vec2f_t){(float)v.x, (float)v.y};

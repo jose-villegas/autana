@@ -268,7 +268,8 @@ def score_table(rows):
 def write_tables(work, out, scene_id, object_name, found):
     """The CPU fidelity tables of `found`, the (object, fitted) variants `variants` lists."""
     from PIL import Image
-    from render_compare import read_video, reference_video
+    from check_avi import read_video
+    from render_compare import reference_video
     from r3d.bake_fidelity import table
 
     out.mkdir(parents=True, exist_ok=True)

@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "device"))
 
 from build.c_header import read_define  # noqa: E402
+from build.packages import board_include_dir  # noqa: E402
 import panel_size  # noqa: E402
 
 
@@ -63,6 +64,14 @@ class ReadDefineTests(unittest.TestCase):
 
     def test_the_board_header_gives_a_portrait_panel(self):
         self.assertGreater(panel_size.PANEL_HEIGHT, panel_size.PANEL_WIDTH)
+
+    def test_the_size_is_the_chosen_boards_and_the_framebuffers(self):
+        config = board_include_dir() / "board_config.h"
+        gfx = Path(__file__).resolve().parents[2] / "main" / "gfx" / "gfx.h"
+        self.assertEqual((panel_size.PANEL_WIDTH, panel_size.PANEL_HEIGHT),
+                         (read_define(config, "BOARD_PANEL_WIDTH"), read_define(config, "BOARD_PANEL_HEIGHT")))
+        self.assertEqual((panel_size.PANEL_WIDTH, panel_size.PANEL_HEIGHT),
+                         (read_define(gfx, "GFX_WIDTH"), read_define(gfx, "GFX_HEIGHT")))
 
 
 if __name__ == "__main__":

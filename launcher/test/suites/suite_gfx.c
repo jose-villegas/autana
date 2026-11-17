@@ -139,7 +139,7 @@ void
 test_an_injected_touch_reaches_the_input_state(void) {
     fixture();
     touch_start();
-    touch_inject(false, (vec2i_t){0, 0});
+    touch_inject(false, vec2i_zero());
     (void)input_after_polls();
 
     touch_inject(true, (vec2i_t){120, 300});

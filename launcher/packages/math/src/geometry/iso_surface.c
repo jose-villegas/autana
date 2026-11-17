@@ -75,7 +75,7 @@ cell_vertex(nets_t* n, int x, int y, int z) {
         n->full = true;
         return NO_VERTEX;
     }
-    vec3f_t sum = {0};
+    vec3f_t sum = vec3f_zero();
     int crossings = 0;
     for (int e = 0; e < EDGES; e++) {
         const int a = EDGE_CORNERS[e][0];
@@ -94,7 +94,7 @@ cell_vertex(nets_t* n, int x, int y, int z) {
         (vec3f_t){f->origin.x + (((float)x + local.x) * f->step.x), f->origin.y + (((float)y + local.y) * f->step.y),
                   f->origin.z + (((float)z + local.z) * f->step.z)};
     const float length = sqrtf(vec3f_dot(grad, grad));
-    out->normals[index] = length > 0.0F ? vec3f_scale(grad, -1.0F / length) : (vec3f_t){0};
+    out->normals[index] = length > 0.0F ? vec3f_scale(grad, -1.0F / length) : vec3f_zero();
     return index;
 }
 

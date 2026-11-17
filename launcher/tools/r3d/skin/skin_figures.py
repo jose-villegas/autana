@@ -16,8 +16,7 @@ import tempfile
 
 TOOLS = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(TOOLS))
-sys.path.insert(0, str(TOOLS / "math"))
-from math_figures import run_probe  # noqa: E402
+from docs.figures import run_probe  # noqa: E402
 from docs.plot_style import FAINT, INK, LABEL_SIZE, MUTED, SLOTS, style_axes, subplots, save  # noqa: E402
 from r3d import skin_asset  # noqa: E402
 

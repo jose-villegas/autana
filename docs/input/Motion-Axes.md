@@ -1,6 +1,6 @@
 # Motion axes
 
-`input/motion/imu.c` configures the QMI8658 (+/-8 g, +/-512 dps) and reads all
+`input/motion/qmi8658/qmi8658.c` configures the QMI8658 (+/-8 g, +/-512 dps) and reads all
 six axes in one burst. Keep the burst intact: separate reads can straddle
 sample updates. A stream FIFO holds up to `IMU_FIFO_SAMPLES` at the rate
 `IMU_ODR_HZ`; see [Gravity.md](Gravity.md#update) for the drain.
@@ -9,7 +9,7 @@ sample updates. A stream FIFO holds up to `IMU_FIFO_SAMPLES` at the rate
 
 The IMU sits on the PCB's back (the faint outline inside the case) near the centre:
 chip X runs up the screen, Y right, Z out of the back
-(`board/board_geometry.h`).<sup>[[89]](../Citations.md#waveshare-amoled-3d-model)</sup>
+(`board/waveshare_amoled_1_8/board_geometry.h`).<sup>[[89]](../Citations.md#waveshare-amoled-3d-model)</sup>
 
 It reads specific force, which points up at rest; the code treats that vector as down,
 so each screen label is a chip axis negated:

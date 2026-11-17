@@ -212,7 +212,7 @@ place_below(flip3_t* f, const lattice_t* l, vec3f_t down, float level, int targe
         const vec3f_t p = lattice_point(l, i / (l->n[1] * l->n[2]), (i / l->n[2]) % l->n[1], i % l->n[2]);
         if (vec3f_dot(p, down) >= level) {
             f->pos[f->count] = p;
-            f->vel[f->count] = (vec3f_t){0};
+            f->vel[f->count] = vec3f_zero();
             f->count++;
         }
     }

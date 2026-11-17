@@ -240,7 +240,7 @@ test_gap_backwards_and_zero_restart_prediction(void) {
             display_update(&d, a, base);
             const int64_t now = reset == 0 ? base * 2 + 1 : base - TEST_STEP_US;
             if (reset == 2) {
-                display_update(&d, (vec3f_t){0}, base + TEST_STEP_US);
+                display_update(&d, vec3f_zero(), base + TEST_STEP_US);
             }
             TEST_ASSERT_FALSE(display_update(&d, a, now));
             TEST_ASSERT_EQUAL_INT(q, d.quarter);

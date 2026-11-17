@@ -2,8 +2,8 @@
 
     compare_images.py <a> <b>
 
-Encoders write different bytes for the same picture (Pillow, ffmpeg and their
-palette quantizers all change between versions), so files are never compared as
+Encoders write different bytes for the same picture (Pillow changes between
+versions), so files are never compared as
 bytes: every frame is decoded to RGB and the frames are compared one by one.
 Size and frame count are compared first; a frame counts as different when any
 channel of any pixel differs.

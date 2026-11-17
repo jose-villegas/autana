@@ -8,6 +8,14 @@ typedef struct {
     float m[MAT3F_AXES][MAT3F_AXES];
 } mat3f_t;
 
+/* identity: m[r][c] = (r == c ? 1 : 0). */
+static inline mat3f_t
+mat3f_identity(void) {
+    return (mat3f_t){{{mathf_one(), mathf_zero(), mathf_zero()},
+                      {mathf_zero(), mathf_one(), mathf_zero()},
+                      {mathf_zero(), mathf_zero(), mathf_one()}}};
+}
+
 static inline __attribute__((always_inline)) mat3f_t
 mat3f_from_mat4(mat4f_t matrix) {
     mat3f_t out;

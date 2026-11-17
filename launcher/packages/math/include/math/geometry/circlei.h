@@ -1,10 +1,15 @@
-/* circlei: a closed disc of an int. */
+/*
+ * circlei: a closed disc of an int.
+ * contains_ball requires centre components in [INT_MIN/2, INT_MAX/2];
+ * nonnegative room squared must fit int64_t. Other queries require arithmetic to fit.
+ */
 #pragma once
 #include "math/geometry/circle_template.h"
 #include "math/geometry/recti.h"
 #include "math/linear/vec2i.h"
+#include "math/linear/vec_convert.h"
 
-MATH_DEFINE_CIRCLE(circlei, vec2i, recti, int, mathi, mathi_one())
+MATH_DEFINE_CIRCLE(circlei, vec2i, vec2i, MATH_WIDEN_NONE, recti, int, mathi, mathi_one())
 
 /* cell_count = sum(dy=-r..r, 2*floor(sqrt(r^2-dy^2))+1); negative r gives zero, result must fit int. */
 static inline int

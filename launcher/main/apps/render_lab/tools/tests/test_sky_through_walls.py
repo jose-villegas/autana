@@ -28,7 +28,8 @@ try:
     from r3d.poses import sample_camera_rows
     from r3d.import_settings import load_scene
     from pinhole_rays import enclosed_sky
-    from render_compare import expand_565, read_video
+    from check_avi import read_video
+    from render_compare import expand_565
 except ImportError:  # pragma: no cover - the tool tests' environment has them
     np = None
 

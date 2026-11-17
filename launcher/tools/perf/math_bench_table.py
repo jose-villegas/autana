@@ -10,7 +10,9 @@ import sys
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[3]
-sys.path[:0] = [str(ROOT / "launcher/tools" / folder) for folder in ("render", "quality", "perf")]
+sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
+sys.path.insert(0, str(ROOT / "launcher/tools/quality"))
+sys.path.insert(0, str(ROOT / "launcher/tools/render"))
 from icount_gate import load_baseline
 from code_layout import LayoutError, find_tool, instructions, parse_objdump, run, skip_pools, symbols
 import bench_capture

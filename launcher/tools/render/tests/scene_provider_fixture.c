@@ -58,6 +58,32 @@ check_path(void) {
     return !context->kept && !context->paying && context->drawn_in_row == 0;
 }
 
+/* One --video of the room holds the fit the run before reported: that many
+ * frames open, one more is refused. The runs write beside `out`. */
+static bool
+check_video_fit(int64_t fit, const char* out) {
+    char frames[24];
+    char video[1024];
+    char image[1024];
+    (void)snprintf(video, sizeof video, "%s.avi", out);
+    (void)snprintf(image, sizeof image, "%s.fit.bmp", out);
+    char* args[] = {"fit", "--scene", "room", "--frames", frames, "--video", video, "-o", image};
+    const int count = (int)(sizeof args / sizeof args[0]);
+    int exit_code;
+    (void)snprintf(frames, sizeof frames, "%lld", (long long)fit + 1);
+    if (render_host_open(&scene_provider, count, args, &exit_code)) {
+        (void)render_host_close();
+        fprintf(stderr, "%s frames opened a video past the fit\n", frames);
+        return false;
+    }
+    (void)snprintf(frames, sizeof frames, "%lld", (long long)fit);
+    if (!render_host_open(&scene_provider, count, args, &exit_code)) {
+        fprintf(stderr, "%s frames, the fit, did not open a video\n", frames);
+        return false;
+    }
+    return render_host_close();
+}
+
 int
 main(int argc, char** argv) {
     int exit_code;
@@ -68,5 +94,12 @@ main(int argc, char** argv) {
     if (!ok) {
         fprintf(stderr, "scene provider path, pose or history check failed\n");
     }
-    return render_host_close() && ok ? 0 : 1;
+    const int64_t fit = render_host_video_frames_fit();
+    const char* out = "hooks.bmp";
+    for (int i = 1; i + 1 < argc; i++) {
+        if (strcmp(argv[i], "-o") == 0) {
+            out = argv[i + 1];
+        }
+    }
+    return render_host_close() && ok && check_video_fit(fit, out) ? 0 : 1;
 }

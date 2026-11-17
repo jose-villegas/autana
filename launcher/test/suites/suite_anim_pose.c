@@ -73,7 +73,7 @@ test_transition_blend_endpoints_midpoint_and_hemisphere(void) {
     anim_pose_blend(&a.pose, &b.pose, 0.5F, &out.pose);
     TEST_ASSERT_EQUAL_FLOAT(4, out.local[0].position.x);
     TEST_ASSERT_EQUAL_FLOAT(3, out.local[0].scale.x);
-    const vec3f_t turned = quatf_rotate(out.local[0].rotation, (vec3f_t){1, 0, 0});
+    const vec3f_t turned = quatf_rotate(out.local[0].rotation, vec3f_unit_x());
     TEST_ASSERT_FLOAT_WITHIN(1e-5F, 0, turned.x);
     TEST_ASSERT_FLOAT_WITHIN(1e-5F, 1, turned.y);
     transformf_set_rotation(&b.local[0], (quatf_t){0, 0, 0, -1});

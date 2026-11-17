@@ -129,7 +129,7 @@ test_cached_read(void) {
     input_fake_motion(&motion);
     const vec3f_t first = input_gravity();
     const float shake = input_shake();
-    motion.acceleration = (vec3i_t){0};
+    motion.acceleration = vec3i_zero();
     clock_fake_set(TEST_LONG_GAP_US);
     const vec3f_t cached = input_gravity();
     TEST_ASSERT_EQUAL_MEMORY(&first, &cached, sizeof first);
@@ -194,7 +194,7 @@ test_free_fall_and_held_recovery(void) {
     fixture();
     input_motion_t motion = {0};
     input_fake_motion(&motion);
-    const vec3f_t zero = {0};
+    const vec3f_t zero = vec3f_zero();
     vec3f_t down = input_gravity();
     TEST_ASSERT_EQUAL_MEMORY(&zero, &down, sizeof zero);
     motion.acceleration.y = INPUT_ACCEL_ONE_G;
@@ -218,7 +218,7 @@ test_sensor_loss_clears_shake(void) {
     input_fake_motion(NULL);
     clock_fake_set(GRAVITY_MAX_DT_US + TEST_STEP_US);
     TEST_ASSERT_EQUAL_FLOAT(0, input_shake());
-    const vec3f_t fallback = {0, 1, 0};
+    const vec3f_t fallback = vec3f_unit_y();
     vec3f_t down = input_gravity();
     TEST_ASSERT_EQUAL_MEMORY(&fallback, &down, sizeof fallback);
     motion.acceleration.x = 0;
@@ -384,7 +384,7 @@ test_learning_window_interruptions(void) {
             now += TEST_STEP_US;
             input_fake_motion(&raw);
             input_gravity();
-            TEST_ASSERT_TRUE(vec3i_equal((vec3i_t){0}, input_gyro_offset()));
+            TEST_ASSERT_TRUE(vec3i_equal(vec3i_zero(), input_gyro_offset()));
         }
         input_fake_reset();
     }
@@ -405,7 +405,7 @@ test_rejected_learning_preserves_filter_bias(void) {
         TEST_ASSERT_FLOAT_WITHIN(TEST_EPSILON, expected.y, actual.y);
         TEST_ASSERT_FLOAT_WITHIN(TEST_EPSILON, expected.z, actual.z);
     }
-    TEST_ASSERT_TRUE(vec3i_equal((vec3i_t){0}, input_gyro_offset()));
+    TEST_ASSERT_TRUE(vec3i_equal(vec3i_zero(), input_gyro_offset()));
     TEST_ASSERT_GREATER_THAN_FLOAT(0, fabsf(reference.gyro_bias.x));
 }
 

@@ -11,7 +11,7 @@
 
 MATH_DEFINE_MAT4(mat4x, vec3x, quatx, int32_t, mathx)
 
-/* An initializer, for a constant mat4x_identity() cannot make: `static const mat4x_t m = MAT4X_IDENTITY;`. */
+/* Only for static-storage initializers, where C11 cannot call mat4x_identity(). */
 #define MAT4X_IDENTITY                                                                                                 \
     {                                                                                                                  \
         .m = {                                                                                                         \

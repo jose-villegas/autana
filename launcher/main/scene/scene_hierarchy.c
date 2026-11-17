@@ -74,7 +74,28 @@ world_from_parent(const scene_t* scene, scene_entity_t entity) {
 }
 
 void
+scene_renderer_bound(scene_renderer_t* r) {
+    if (r->mesh.node_count > 0) {
+        r->world_bounds = r3d_lit_mesh_world_bounds(&r->mesh, r->placed ? &r->model : NULL);
+    }
+}
+
+static void
+list_active_renderers(scene_t* scene) {
+    scene->active_renderer_count = 0;
+    for (int i = 0; i < scene->renderer_count; i++) {
+        if ((scene->flags[scene->renderers[i].entity] & SCENE_FLAG_ACTIVE) != 0) {
+            scene->active_renderers[scene->active_renderer_count++] = (uint16_t)i;
+        }
+    }
+    scene->active_renderers_stale = false;
+}
+
+void
 scene_resolve(scene_t* scene) {
+    if (scene->active_renderers_stale) {
+        list_active_renderers(scene);
+    }
     for (int i = 0; i < scene->world_count; i++) {
         const scene_entity_t e = scene->world_entities[i];
         if (changed(scene, e)) {
@@ -82,12 +103,13 @@ scene_resolve(scene_t* scene) {
             scene->flags[e] |= SCENE_FLAG_MOVED;
         }
     }
-    for (int i = 0; i < scene->renderer_count; i++) {
-        scene_renderer_t* r = &scene->renderers[i];
+    for (int i = 0; i < scene->active_renderer_count; i++) {
+        scene_renderer_t* r = &scene->renderers[scene->active_renderers[i]];
         if (changed(scene, r->entity)) {
             const uint16_t slot = scene->world_slots[r->entity];
             r->model = slot != SCENE_WORLD_SLOT_NONE ? scene->worlds[slot] : world_from_parent(scene, r->entity);
             r->placed = !scene_transform_is_identity(&r->model);
+            scene_renderer_bound(r);
         }
     }
     for (int i = 0; i < scene->asset.entity_count; i++) {
@@ -104,6 +126,7 @@ scene_hierarchy_update_active(scene_t* scene, scene_entity_t entity) {
         if (active != ((scene->flags[e] & SCENE_FLAG_ACTIVE) != 0)) {
             scene->flags[e] ^= SCENE_FLAG_ACTIVE;
             scene->flags[e] |= SCENE_FLAG_CHANGED;
+            scene->active_renderers_stale = true;
         }
     }
 }

@@ -16,8 +16,10 @@ first column is `Option` and last is `Option link` is an option reference: each
 row must link to the one heading its option names.
 """
 import pathlib
+import posixpath
 import re
 import sys
+import urllib.parse
 
 from tracked import tracked_files
 
@@ -67,20 +69,27 @@ def doc_headings(path):
     return heads
 
 
+# A link with a scheme (https:, mailto:) leaves the repository.
+SCHEME = re.compile(r"[a-z][a-z0-9+.-]*:", re.I)
+
+
+def resolved_link(page, target):
+    """The repository path a link `target` on `page` names (both repository-relative, posix), or None for
+    an empty link, one with a scheme (https:, mailto:) or one climbing out of the repository."""
+    target = urllib.parse.unquote(target.split("#", 1)[0].split("?", 1)[0])
+    if not target or SCHEME.match(target):
+        return None
+    path = posixpath.normpath(posixpath.join(posixpath.dirname(page), target))
+    return None if path == ".." or path.startswith("../") else path
+
+
 def link_targets(root, doc):
     path = root / doc
     for line in blank_fences(path.read_text(encoding="utf-8", errors="replace").splitlines()):
         for target in LINK.findall(line):
-            target = target.split("#", 1)[0]
-            if not target or "://" in target or target.startswith("mailto:"):
-                continue
-            resolved = (path.parent / target).resolve()
-            if resolved.is_dir():
-                resolved = resolved / "README.md"
-            try:
-                yield resolved.relative_to(root.resolve()).as_posix()
-            except ValueError:
-                continue
+            link = resolved_link(doc, target)
+            if link is not None:
+                yield posixpath.normpath(posixpath.join(link, "README.md")) if (root / link).is_dir() else link
 
 
 def reachable(root):

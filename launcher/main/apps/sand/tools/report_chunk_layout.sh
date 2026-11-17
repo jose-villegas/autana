@@ -50,7 +50,7 @@ OUT_BIN="$BUILD_DIR/chunk_layout"
 # one rather than globbed: a file appearing under apps/sand/ is not by itself
 # a reason for this tool to link it.
 # shellcheck disable=SC2086
-"$CC_BIN" $CFLAGS -I "$MAIN_DIR" $(package_includes "$LAUNCHER_DIR") -I "$SAND_DIR" \
+"$CC_BIN" $CFLAGS $(firmware_includes "$LAUNCHER_DIR") -I "$SAND_DIR" \
     -I "$LAUNCHER_DIR/test" $(testkit_includes "$LAUNCHER_DIR") \
     "$SCRIPT_DIR/chunk_layout.c" \
     "$SAND_DIR/tests/suite_sand_scenes.c" \

@@ -12,6 +12,7 @@
 #include "app/app_arena.h"
 #include "core/memory.h"
 #include "display/display.h"
+#include "display/display_shell.h"
 #include "draw/draw.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"

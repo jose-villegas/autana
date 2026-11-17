@@ -1,10 +1,15 @@
+#include "ball_cases.h"
 #include "math/geometry/circlef.h"
 #include "math/geometry/circlei.h"
 #include "testkit/suite.h"
 #include "unity.h"
 
+#include <limits.h>
 #include <math.h>
 #include <stddef.h>
+
+DEFINE_BALL_CONTAINMENT_TEST(circlef, vec2f, float)
+DEFINE_BALL_CONTAINMENT_TEST(circlei, vec2i, int)
 
 static const float CIRCLE_TOLERANCE = 0.0001F;
 
@@ -139,8 +144,25 @@ test_cell_counts(void) {
     }
 }
 
+static void
+test_circlei_contains_ball_range_edge(void) {
+    enum { CENTRE_MIN = INT_MIN / 2, CENTRE_MAX = INT_MAX / 2 };
+
+    const circlei_t outer = {{CENTRE_MIN, CENTRE_MIN}, INT_MAX};
+    const circlei_t touching = {{CENTRE_MAX, CENTRE_MIN}, 0};
+    const circlei_t diagonal = {{CENTRE_MAX, CENTRE_MAX}, 0};
+    TEST_ASSERT_TRUE(circlei_contains_ball(outer, touching, 0));
+    TEST_ASSERT_FALSE(circlei_contains_ball(outer, touching, 1));
+    TEST_ASSERT_TRUE(circlei_contains_ball(outer, touching, -1));
+    TEST_ASSERT_FALSE(circlei_contains_ball(outer, diagonal, 0));
+    TEST_ASSERT_FALSE(circlei_contains_ball((circlei_t){{0, 0}, 0}, (circlei_t){{0, 0}, INT_MAX}, INT_MAX));
+}
+
 void
 suite_circle(void) {
+    RUN_TEST(test_circlef_contains_ball);
+    RUN_TEST(test_circlei_contains_ball);
+    RUN_TEST(test_circlei_contains_ball_range_edge);
     RUN_TEST(test_circlef_closed_queries);
     RUN_TEST(test_circlei_closed_queries);
     RUN_TEST(test_circlef_real_queries);

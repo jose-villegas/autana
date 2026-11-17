@@ -272,11 +272,12 @@ def imported_names(tree):
             yield from (((node.module + "." if node.module else "") + alias.name, node.level) for alias in node.names)
 
 
-def closure(entries, stop=(), consumers=False):
-    """The entries' import closure, including packages, under TOOLS or sys.path roots the code adds.
-    A file in `stop`, any file under bake/, and, unless `consumers`, a file that imports this tool
-    (it consumes bakes, so it makes none) are neither counted nor followed. Unplaced tracked imports fail."""
-    roots = [TOOLS]
+def closure(entries, stop=(), consumers=False, roots=()):
+    """The entries' import closure, including packages, under TOOLS, `roots` (the folders of entries run as
+    scripts) or sys.path roots the code adds. A file in `stop`, any file under bake/, and, unless `consumers`,
+    a file that imports this tool (it consumes bakes, so it makes none) are neither counted nor followed.
+    Unplaced tracked imports fail."""
+    roots = [TOOLS, *roots]
     while True:
         known = len(roots)
         found, pending, unplaced = set(), [(TOOLS / entry).resolve() for entry in entries], []
@@ -630,11 +631,12 @@ def stage_keys(job, scene, tools, starts=None, poses=None):
     return keys
 
 
-def bakes(paths, starts=None, poses=None):
-    """Every bake the packs under `paths` hold, in pack and entry order."""
-    from r3d.build_pack import pack_jobs
+def bakes(paths=None, starts=None, poses=None):
+    """Every bake the packs under `paths` (build_pack.py's default search when None) hold, in pack and entry
+    order."""
+    from r3d.build_pack import DEFAULT_SEARCH, pack_jobs
 
-    return bakes_in(*pack_jobs(paths), starts, poses)
+    return bakes_in(*pack_jobs(paths or [DEFAULT_SEARCH]), starts, poses)
 
 
 def blend_export(settings, tools):
@@ -835,6 +837,18 @@ def download(row, suffix, cache):
     if hashlib.sha256(data).hexdigest() != row["sha256"]:
         raise BakeMissing(f"{RELEASE_URL}{name} does not have the SHA-256 its name and the lock give")
     return place(data, cached(row, suffix, cache), row["sha256"])
+
+
+def locked_fit(scene_path, object_name):
+    """The fit bake of the renderer `object_name` in the scene at `scene_path`, keyed by the lock."""
+    tables = read_lock_tables()
+    found = bakes([scene_path], locked_starts(tables["bake"]), Poses(tables["poses"]))
+    return next(item for item in found if item.kind == "fit" and item.job.object.name == object_name)
+
+
+def fetch(bake, cache=None):
+    """One bake's file in `cache` (the default cache when None), fetched as fetch_all does."""
+    return fetch_all([bake], read_lock_tables()["bake"], cache or default_cache())[bake]
 
 
 def fetch_all(found, lock, cache, offline=False):

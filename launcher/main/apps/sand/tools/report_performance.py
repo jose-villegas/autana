@@ -50,7 +50,7 @@ BUDGET_RES = (
 DEFINE_RE = re.compile(r"#define\s+(\w+)\s+(\d+)")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[5] / "scripts/lib"))
-from device_capture import RESULT_RE, SELFTEST_COMPLETE_RE  # noqa: E402
+from device_capture import RESULT_RE, SELFTEST_COMPLETE_RE, TEST_NAME  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parents[5] / "scripts/device"))
 from device_report import read_capture_text  # noqa: E402
 
@@ -70,7 +70,7 @@ from device_report import read_capture_text  # noqa: E402
 # "no timing data" with no error to notice. New fields go on the END of that
 # line, and are ignored here until something needs them.
 TEST_TIME_RE = re.compile(
-    r"^TEST_TIME name=(?P<name>\w+) elapsed_ms=(?P<ms>\d+)(?:\s.*)?$")
+    rf"^TEST_TIME name=(?P<name>{TEST_NAME}) elapsed_ms=(?P<ms>\d+)(?:\s.*)?$")
 
 # selftest.c's own sentinel, printed once at the very end of the run - the
 # one total this file cannot get by summing TEST_TIME lines, because a
@@ -114,7 +114,7 @@ FRAME_TIME_PHASE_RE = re.compile(
 # A run narrowed with `autana suite --test` lists every test of the suite and
 # whether it was selected (test/suites.c); the unselected ones were asked not
 # to run, so they are not "missing" from this capture.
-SUITE_TEST_RE = re.compile(r"^SUITE_TEST name=(?P<name>\w+) selected=(?P<selected>[01])\s*$", re.MULTILINE)
+SUITE_TEST_RE = re.compile(rf"^SUITE_TEST name=(?P<name>{TEST_NAME}) selected=(?P<selected>[01])\s*$", re.MULTILINE)
 
 
 def parse_unselected(capture_path: str) -> set:

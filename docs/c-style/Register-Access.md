@@ -4,7 +4,7 @@ How first-party C touches hardware. Part of the [C style guide](README.md).
 
 | Level | Use | Where in the tree |
 |---|---|---|
-| ESP-IDF driver (`gpio_config`, `i2c_master_*`, `esp_lcd_*`) | the default | [`board_esp32s3.c`](../../launcher/main/board/board_esp32s3.c) |
+| ESP-IDF driver (`gpio_config`, `i2c_master_*`, `esp_lcd_*`) | the default | [`board.c`](../../launcher/main/board/waveshare_amoled_1_8/board.c) |
 | HAL low-level (`hal/*_ll.h`) | a field the driver does not expose | [`board_usb.c:45`](../../launcher/main/board/board_usb.c#L45) |
 | Peripheral struct (`USB_SERIAL_JTAG.conf0.val`) | save and restore a whole register around a driver call | [`board_usb.c:41`](../../launcher/main/board/board_usb.c#L40) |
 | Raw address or `REG_READ` / `REG_WRITE` | none today | |

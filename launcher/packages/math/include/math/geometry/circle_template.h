@@ -7,8 +7,8 @@
 #pragma once
 #include "math/geometry/ball_template.h"
 
-#define MATH_DEFINE_CIRCLE(P, V, R, T, OPS, EDGE)                                                                      \
-    MATH_DEFINE_BALL(P, V, T, OPS)                                                                                     \
+#define MATH_DEFINE_CIRCLE(P, V, WV, WIDEN, R, T, OPS, EDGE)                                                           \
+    MATH_DEFINE_BALL(P, V, WV, WIDEN, T, OPS)                                                                          \
     /* overlaps_rect = |clamp(c, lo, hi)-c|^2 <= r^2; hi = right/bottom (-1 for int, closure for real) (Arvo 1990). */ \
     static inline bool P##_overlaps_rect(P##_t c, R##_t rect) {                                                        \
         const V##_t lo = {rect.x, rect.y};                                                                             \

@@ -144,23 +144,19 @@ depth_cap_max(uint16_t cap) {
  * than it allows either: such a plane cannot pass its vertices' limit. */
 #define DEPTH_STEPS_EXACT (INT32_MAX / (R3D_SPAN_RANGE / R3D_SUBPIXEL))
 
-/* Whether the depth plane stays inside [0, DEPTH_MAX] over `box`; when
- * `capped`, also under r3d_span_depth_limit() of the nearest vertex. Every
- * centre a fill covers lies inside the triangle, where the plane peaks at a
- * vertex; a steep sliver's set-up can tilt it past the limit there, and then
- * its spans clamp to it. */
-static inline __attribute__((always_inline)) void
-depth_range(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c, recti_t box,
-            gradients_t* g, bool capped) {
-    if (!capped) {
-        g->in_range = r3d_span_plane_in_range(g->base[0], g->dx[0], g->dy[0], DEPTH_MAX, box);
-        return;
-    }
-    int64_t low;
-    int64_t high;
-    plane_limits(g->base[0], g->dx[0], g->dy[0], box, &low, &high);
+/* A capped fill's depth plane, set up and range-checked as any other: keeps
+ * it under r3d_span_depth_limit() of the nearest vertex. Every centre a fill
+ * covers lies inside the triangle, where the plane peaks at a vertex; a steep
+ * sliver's set-up can tilt it past the limit there, and then its spans clamp
+ * to it. */
+static void
+cap_depth(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c, recti_t box,
+          gradients_t* g) {
     g->depth_cap = R3D_DEPTH_NEAREST;
     if (mathi_abs(g->dx[0]) + mathi_abs(g->dy[0]) >= DEPTH_STEPS_EXACT) {
+        int64_t low;
+        int64_t high;
+        plane_limits(g->base[0], g->dx[0], g->dy[0], box, &low, &high);
         const uint16_t limit = r3d_span_depth_limit(mathf_max(a->z, mathf_max(b->z, c->z)));
         const int32_t max = depth_cap_max(limit);
         if (limit < R3D_DEPTH_NEAREST && high > max
@@ -168,7 +164,7 @@ depth_range(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_sp
             g->depth_cap = limit;
         }
     }
-    g->in_range = g->depth_cap == R3D_DEPTH_NEAREST && low >= 0 && high <= DEPTH_MAX;
+    g->in_range = g->in_range && g->depth_cap == R3D_DEPTH_NEAREST;
 }
 
 /* A pixel centre just outside the triangle extrapolates past the vertex
@@ -869,10 +865,10 @@ r3d_span_hidden(const r3d_span_target_t* target, int32_t bound, recti_t box) {
 
 /* The colour planes, unless a face colour stands in for them, and whether
  * every plane stays in range across the box so spans need no clamp. */
-static inline __attribute__((always_inline)) void
+static void
 set_up_planes(const fill_t* f, const r3d_span_vertex_t* const v[TRIANGLE_VERTICES], const plane_t* p, recti_t box,
-              int y_anchor, gradients_t* g, bool capped) {
-    depth_range(v[0], v[1], v[2], box, g, capped);
+              int y_anchor, gradients_t* g) {
+    g->in_range = r3d_span_plane_in_range(g->base[0], g->dx[0], g->dy[0], value_max[0], box);
     if (f->shading == FILL_FACE) {
         return;
     }
@@ -886,9 +882,9 @@ set_up_planes(const fill_t* f, const r3d_span_vertex_t* const v[TRIANGLE_VERTICE
 /* The depth plane first, then the colour planes only for a triangle not
  * already hidden; false when it would write nothing. Setup temporaries
  * must leave the stack before the row walk. */
-static inline __attribute__((always_inline)) bool
-set_up_fill_of(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[TRIANGLE_VERTICES], recti_t box,
-               int y_anchor, const uint16_t* face, fill_t* f, gradients_t* g, bool capped) {
+static __attribute__((noinline)) bool
+set_up_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[TRIANGLE_VERTICES], recti_t box,
+            int y_anchor, const uint16_t* face, fill_t* f, gradients_t* g) {
     plane_t p;
     g->x_origin = box.x;
     if (f->shading == FILL_FLAT) {
@@ -909,21 +905,23 @@ set_up_fill_of(const r3d_span_target_t* target, const r3d_span_vertex_t* const v
         return false;
     }
     if (f->shading != FILL_FLAT) {
-        set_up_planes(f, v, &p, box, y_anchor, g, capped);
+        set_up_planes(f, v, &p, box, y_anchor, g);
     }
     return true;
 }
 
-static __attribute__((noinline)) bool
-set_up_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[TRIANGLE_VERTICES], recti_t box,
-            int y_anchor, const uint16_t* face, fill_t* f, gradients_t* g) {
-    return set_up_fill_of(target, v, box, y_anchor, face, f, g, false);
-}
-
-static __attribute__((noinline)) bool
+/* set_up_fill() with its depth capped, so the fill that is not capped keeps
+ * its own set-up. */
+static bool
 set_up_capped_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[TRIANGLE_VERTICES], recti_t box,
                    int y_anchor, const uint16_t* face, fill_t* f, gradients_t* g) {
-    return set_up_fill_of(target, v, box, y_anchor, face, f, g, true);
+    if (!set_up_fill(target, v, box, y_anchor, face, f, g)) {
+        return false;
+    }
+    if (f->shading != FILL_FLAT) {
+        cap_depth(v[0], v[1], v[2], box, g);
+    }
+    return true;
 }
 
 static inline __attribute__((always_inline)) void
@@ -1030,7 +1028,10 @@ triangle_write_of(const r3d_span_target_t* target, const r3d_span_vertex_t* a, c
     } else if (plane_of(a, b, c, box.x, y_anchor, &p)) {
         gradient(&p, a->z * DEPTH_SCALE, b->z * DEPTH_SCALE, c->z * DEPTH_SCALE, 0, &g);
         g.base[0] = first_row_value(&g, 0, box.y, y_anchor);
-        depth_range(a, b, c, box, &g, capped);
+        g.in_range = r3d_span_plane_in_range(g.base[0], g.dx[0], g.dy[0], value_max[0], box);
+        if (capped) {
+            cap_depth(a, b, c, box, &g);
+        }
     } else {
         return;
     }

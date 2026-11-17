@@ -11,7 +11,7 @@
 
 static recti_t
 empty_rect(void) {
-    const recti_t r = {0, 0, 0, 0};
+    const recti_t r = recti_empty();
     return r;
 }
 
