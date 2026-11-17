@@ -145,8 +145,6 @@ for r3d work. Scenes run nightly, on request, and for bake and fit changes; a
 scene regression with no preset moving is a coverage gap and becomes a new
 preset.
 
-The [contact-disc comparison](contact_blobs.md) covers its homogeneous fill and host pixel checks.
-
 Repeated geometry exercises hierarchical visibility<sup>[[112]](../../../../../docs/Citations.md#greene-1993)</sup>;
 the presets vary the copies' geometry, layout and colour modes.
 
