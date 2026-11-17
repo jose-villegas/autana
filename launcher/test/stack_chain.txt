@@ -37,5 +37,3 @@ indirect frame_record_frame : console_framerec.c:sink_write suite_stress_perf.c:
 indirect scene_allocate_kept scene_allocate_kept_optional : app_arena_take
 
 indirect draw_post : scene_draw.c:post_draw
-indirect scene_draw.c:post_draw : suite_scene.c:moving_blob
-indirect scene_draw.c:fill_changed : suite_scene.c:moving_blob_bounds

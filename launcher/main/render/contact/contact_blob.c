@@ -27,10 +27,10 @@ draw_row(const r3d_span_target_t* target, const r3d_lens_t* lens, const blob_pla
     const float depth_scale = lens->depth_near * R3D_DEPTH_NEAREST / blob->distance;
     const float step = blob->normal.x * depth_scale;
     const float bias = CONTACT_BLOB_DEPTH_BIAS_UNITS
-                       + CONTACT_BLOB_DEPTH_BIAS_PIXELS * (fabsf(step) + fabsf(blob->normal.y * depth_scale));
+                       + (CONTACT_BLOB_DEPTH_BIAS_PIXELS * (fabsf(step) + fabsf(blob->normal.y * depth_scale)));
     const float row = ((blob->normal.y * row_y) + blob->normal.z) * depth_scale;
     const float first_x = (float)x0 + 0.5F - lens->project.cx;
-    float encoded = row + first_x * step;
+    float encoded = row + (first_x * step);
     const float near_limit = lens->depth_near * R3D_DEPTH_NEAREST / lens->project.near_z;
     for (int x = x0; x < x1; x++, encoded += step) {
         if (!(encoded > 0.0F) || encoded >= near_limit || encoded + bias < (float)depth[x]) {
@@ -40,7 +40,7 @@ draw_row(const r3d_span_target_t* target, const r3d_lens_t* lens, const blob_pla
         const vec3f_t ray = {(float)x + 0.5F - lens->project.cx, row_y, 1.0F};
         const vec3f_t delta = vec3f_sub(vec3f_scale(ray, z), blob->centre);
         const vec3f_t units = {delta.x * blob->inverse_fx, delta.y * blob->inverse_fy, delta.z};
-        const float falloff = fmaxf(0.0F, 1.0F - vec3f_dot(units, units) * blob->inverse_radius_squared);
+        const float falloff = fmaxf(0.0F, 1.0F - (vec3f_dot(units, units) * blob->inverse_radius_squared));
         const float coverage = blob->strength * falloff * falloff;
         if (coverage * BAYER4_LEVELS > (float)bayer4x4[y & (BAYER4_SIDE - 1)][x & (BAYER4_SIDE - 1)]) {
             color[x] = rgb565be_half(color[x]);
