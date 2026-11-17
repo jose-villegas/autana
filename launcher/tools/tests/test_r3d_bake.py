@@ -618,12 +618,10 @@ class ClusterTreeTests(unittest.TestCase):
         nodes = [{"leaf": False, "first": 1, "count": 2}, {"leaf": True, "first": 0, "count": 2},
                  {"leaf": True, "first": 2, "count": 2}]
         node_bounds(nodes, clusters)
-        np.testing.assert_array_equal([-3, 0, 0], nodes[1]["lo"])
-        np.testing.assert_array_equal([4, 3, 6], nodes[1]["hi"])
-        np.testing.assert_array_equal([-1, -1, -1], nodes[2]["lo"])
-        np.testing.assert_array_equal([11, 12, 13], nodes[2]["hi"])
-        np.testing.assert_array_equal([-3, -1, -1], nodes[0]["lo"])
-        np.testing.assert_array_equal([11, 12, 13], nodes[0]["hi"])
+        expected = {1: ([-3, 0, 0], [4, 3, 6]), 2: ([-1, -1, -1], [11, 12, 13]), 0: ([-3, -1, -1], [11, 12, 13])}
+        for index, (lo, hi) in expected.items():
+            np.testing.assert_array_equal(lo, nodes[index]["lo"])
+            np.testing.assert_array_equal(hi, nodes[index]["hi"])
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
