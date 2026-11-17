@@ -61,7 +61,7 @@ frame(bool touching, bool pressed) {
 
 static gfx_color_t*
 snapshot(void) {
-    gfx_color_t* copy = memory_alloc(PIXELS * sizeof *copy, MEMORY_PSRAM);
+    gfx_color_t* copy = memory_alloc(PIXELS * sizeof *copy, MEMORY_APP);
     if (copy != NULL) {
         memcpy(copy, gfx_framebuffer(), PIXELS * sizeof *copy);
     }
@@ -246,7 +246,7 @@ test_launcher_backdrop_motion_and_rest(void) {
 static void
 test_boot_flat_without_initial_sample_keeps_landscape(void) {
     fixture(NULL, 0);
-    steady_frames = memory_alloc(FRAMES_TO_REST * sizeof *steady_frames, MEMORY_PSRAM);
+    steady_frames = memory_alloc(FRAMES_TO_REST * sizeof *steady_frames, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(steady_frames);
     for (int run = 0; run < 2; run++) {
         ui_ridge_release_for_test();
@@ -279,7 +279,7 @@ test_boot_flat_without_initial_sample_keeps_landscape(void) {
 
 static void
 compare_shake_runs(float acceleration_g, bool ambient, bool expect_difference) {
-    steady_frames = memory_alloc(VIBRATION_FRAMES * sizeof *steady_frames, MEMORY_PSRAM);
+    steady_frames = memory_alloc(VIBRATION_FRAMES * sizeof *steady_frames, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(steady_frames);
     bool differs = false;
     for (int run = 0; run < 2; run++) {

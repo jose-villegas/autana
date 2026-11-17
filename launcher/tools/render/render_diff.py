@@ -32,7 +32,7 @@ import sys
 import zlib
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "device"))
-from panel_size import PANEL_HEIGHT, PANEL_WIDTH  # noqa: E402  (path must be set up first)
+from board import PANEL_HEIGHT, PANEL_WIDTH  # noqa: E402  (path must be set up first)
 from screenshot import encode_png, turn_png  # noqa: E402
 
 BMP_HEADER_SIZE = 54

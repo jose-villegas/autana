@@ -1,0 +1,406 @@
+# The stress scene: a camera swinging round the origin and a pool of copies.
+# render_lab generates one mesh at run time, shows it in as many copies as
+# the preset asks for and hides the rest; each copy starts as a stand-in.
+[[objects]]
+name = "camera"
+position = [0.0, 1.0, 10.0]
+
+[objects.camera]
+half_fov_short_tan = 0.5
+near_z = 0.5
+background = 0x0B0D12
+path = { animation = "orbit.anim.toml", node = "camera" }
+
+# The swing's first pose, held: a frame differs from the last only where the mesh moved.
+[[objects]]
+name = "still"
+position = [0.0, 1.0, 10.0]
+
+[objects.camera]
+half_fov_short_tan = 0.5
+near_z = 0.5
+background = 0x0B0D12
+
+[[objects]]
+name = "slot_00"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_01"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_02"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_03"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_04"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_05"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_06"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_07"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_08"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_09"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_10"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_11"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_12"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_13"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_14"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_15"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_16"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_17"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_18"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_19"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_20"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_21"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_22"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_23"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_24"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_25"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_26"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_27"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_28"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_29"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_30"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_31"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_32"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_33"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_34"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_35"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_36"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_37"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_38"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_39"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_40"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_41"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_42"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_43"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_44"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_45"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_46"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_47"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_48"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_49"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_50"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_51"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_52"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_53"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_54"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_55"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_56"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_57"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_58"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_59"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_60"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_61"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_62"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"
+
+[[objects]]
+name = "slot_63"
+
+[objects.mesh_renderer]
+mesh = "slot.import.toml"

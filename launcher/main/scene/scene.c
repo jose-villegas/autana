@@ -90,7 +90,7 @@ scene_allocate_kept(size_t bytes) {
     if (injected_failure()) {
         return NULL;
     }
-    return kept_take != NULL ? kept_take(bytes, _Alignof(max_align_t)) : memory_alloc(bytes, MEMORY_PSRAM);
+    return kept_take != NULL ? kept_take(bytes, _Alignof(max_align_t)) : memory_alloc(bytes, MEMORY_APP);
 }
 
 void
@@ -207,7 +207,7 @@ open_animator(scene_t* scene, const scene_asset_animator_t* row) {
     }
     const char** clips = NULL;
     if (row->clip_count > 0) {
-        clips = scene_allocate(sizeof *clips * row->clip_count, MEMORY_PSRAM);
+        clips = scene_allocate(sizeof *clips * row->clip_count, MEMORY_APP);
         if (clips == NULL) {
             return scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, scene->id);
         }
@@ -337,6 +337,9 @@ scene_load_from(const asset_pack_t* pack, const char* id, scene_failure_t* why) 
     scene_failure_t done =
         scene_hierarchy_open(scene) ? open_meshes(scene, pack) : scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, id);
     if (done.status == SCENE_OK) {
+        done = scene_mesh_make_resident(scene);
+    }
+    if (done.status == SCENE_OK) {
         done = open_transforms(scene);
     }
     if (done.status == SCENE_OK) {
@@ -355,6 +358,7 @@ scene_load_from(const asset_pack_t* pack, const char* id, scene_failure_t* why) 
         scene_animation_release(scene);
         memory_free(scene->light_transfer);
         scene_hierarchy_release(scene);
+        scene_free_kept(scene->resident);
         scene_free_kept(scene);
         return NULL;
     }
@@ -392,6 +396,7 @@ scene_unload(scene_t* scene) {
         scene_animation_release(scene);
         memory_free(scene->light_transfer);
         scene_hierarchy_release(scene);
+        scene_free_kept(scene->resident);
         scene_free_kept(scene);
         if (loaded_count == 0) {
             /* Nothing left to draw: drop the scratch, so whoever lent it can
@@ -558,7 +563,8 @@ void
 scene_entity_set_local(scene_t* scene, scene_entity_t entity, transformf_t local) {
     assert(entity < scene->asset.entity_count);
     /* A parent scales evenly, so every world below it is an exact TRS; the
-     * loader and the importer keep content so. */
+     * loader and importer keep static content so, and the pack build keeps
+     * clip-driven scale so. */
     assert(scene->world_slots[entity] == SCENE_WORLD_SLOT_NONE || transformf_scale_is_even(&local));
     scene->locals[entity] = local;
     scene->flags[entity] |= SCENE_FLAG_CHANGED;

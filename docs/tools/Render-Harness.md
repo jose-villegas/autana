@@ -21,25 +21,9 @@ checked, and compared with device captures.
 
 ## Viewing a scene file
 
-To look at a scene, use [Loupe](https://github.com/jose-villegas/loupe), the frame
-debugger. Build it once, with autana as its submodule:
-
-```sh
-git clone --recurse-submodules https://github.com/jose-villegas/loupe
-cd loupe
-pip install -r tools/ci/requirements.txt
-cmake --workflow --preset default
-```
-
-```sh
-build/default/loupe PATH.scene.toml
-build/default/loupe PATH.scene.toml --view meshlets --frames 60 -o out.bmp
-build/default/loupe PATH.scene.toml --video out.avi
-```
-
-With `-o` or `--video`, Loupe writes the frames and exits without a window. The
-rest of this section covers the headless `scene_viewer.sh`, which bakes, doc
-figures and tests call:
+`scene_viewer.sh` renders a scene file headlessly; bakes, doc figures and
+tests call it. To look at the same file interactively, use
+[Loupe](https://github.com/jose-villegas/loupe), the frame debugger.
 
 ```sh
 sh launcher/tools/render/scene_viewer.sh PATH.scene.toml --object NAME --frames 2 -o out.bmp
@@ -125,7 +109,7 @@ and compares decoded pixels with `compare_images.py`, never bytes: another
 Pillow can write different bytes for the same pixels. It prints
 `same` or `changed` per image, and `orphan` for a file nothing makes.
 `--orphans` renders nothing and reports an image whose name no script
-mentions; the Comment Rules workflow runs it on every pull request. The
+mentions, whole or as a loop's name ending in its variable (`name-$key`); the Comment Rules workflow runs it on every pull request. The
 `doc-images` workflow runs it on pushes to main that touch `launcher/` or
 `docs/`, and opens one pull request when an image or table changed. It needs the
 repository setting Actions > "Allow GitHub Actions to create and approve pull

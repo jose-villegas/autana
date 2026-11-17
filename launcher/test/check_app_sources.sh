@@ -61,9 +61,9 @@ done
 
 status=0
 found=0
-for app_dir in $(app_directories "$HERE/.."); do
-for f in "$app_dir"app_*.c "$app_dir"scene_*.c; do
-    [ -e "$f" ] || continue
+# Every app_*.c and scene_*.c below an app, in subfolders too, except under
+# tools/: run_tests.sh skips the same files, so this is their only check.
+for f in $(find $(app_directories "$HERE/..") \( -name 'app_*.c' -o -name 'scene_*.c' \) ! -path '*/tools/*' | sort); do
     found=$((found + 1))
     # shellcheck disable=SC2086
     if "$CC_BIN" $CFLAGS $DEFS $INCS "$f"; then
@@ -72,7 +72,6 @@ for f in "$app_dir"app_*.c "$app_dir"scene_*.c; do
         echo "  FAIL $(basename "$f")"
         status=1
     fi
-done
 done
 
 if [ "$found" -eq 0 ]; then

@@ -392,6 +392,9 @@ gfx_mode_enter(const gfx_mode_request_t* request) {
     }
 
     current_mode = granted;
+    if (request->clear_on_send) {
+        (void)gfx_set_clear_on_send(true, request->clear_colour);
+    }
     return &current_mode;
 }
 

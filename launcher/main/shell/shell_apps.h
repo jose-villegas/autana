@@ -30,6 +30,14 @@ void shell_leave_app(const app_t** current, input_t* input, gesture_edge_t exit_
  * home, leaves before its frame() sees this pass's input. */
 void shell_step_app(const app_t** current, input_t* input, uint32_t dt_ms);
 
+/* The app half of gfx_request_full_redraw() (gfx.h): an app's own cache
+ * beyond the framebuffer, if it keeps one, or the launcher's ui.c canvas
+ * cache while none is running (`app` NULL). Consumes the pending flag
+ * before whichever of the two draws next, not after: a request made inside
+ * that very frame() call (an app invalidating itself) must reach the
+ * FOLLOWING pass's check, not be cleared out from under it unread. */
+void shell_apply_full_redraw(const app_t* app);
+
 /* Presents this pass's frame, unless the running app's present is deferred
  * to overlap its next update(). */
 void shell_present_unless_deferred(const app_t* current);

@@ -1,19 +1,42 @@
-/* console_heap: HEAP prints the free bytes, largest free block and total size
- * of MEMORY_DMA, the heap POST and HEAPMARK report. Development builds only. */
+/* console_heap: HEAP prints the free bytes, largest free block, total size and
+ * low-water mark of MEMORY_DMA, the heap POST and HEAPMARK report, with
+ * "psram" of MEMORY_PSRAM, or with "app" of MEMORY_APP, the running app's
+ * heap (HEAP_ERR when none runs). "HEAP reset" restarts every low-water mark, so the
+ * next reading's min= covers only what ran since. Development builds only. */
 
 #include "console/console_verbs.h"
 
+#include "core/app_heap.h"
 #include "core/memory.h"
 
 #include <stdio.h>
+#include <string.h>
+
+static void
+print_heap(memory_kind_t kind) {
+    (void)printf("HEAP free=%zu largest=%zu total=%zu min=%zu\n", memory_free_bytes(kind), memory_largest_block(kind),
+                 memory_total_bytes(kind), memory_min_free_bytes(kind));
+}
 
 static void
 console_verb_heap(const char* args, console_reply_fn reply) {
-    (void)args;
-    (void)reply;
-    (void)printf("HEAP free=%zu largest=%zu total=%zu\n", memory_free_bytes(MEMORY_DMA),
-                 memory_largest_block(MEMORY_DMA), memory_total_bytes(MEMORY_DMA));
+    if (args[0] == '\0') {
+        print_heap(MEMORY_DMA);
+    } else if (strcmp(args, "psram") == 0) {
+        print_heap(MEMORY_PSRAM);
+    } else if (strcmp(args, "app") == 0) {
+        if (app_heap_active()) {
+            print_heap(MEMORY_APP);
+        } else {
+            reply("HEAP_ERR no app is running");
+        }
+    } else if (strcmp(args, "reset") == 0) {
+        memory_min_free_restart();
+        (void)printf("HEAP reset\n");
+    } else {
+        reply("HEAP_ERR want nothing, psram, app or reset");
+    }
     (void)fflush(stdout);
 }
 
-CONSOLE_VERB(heap, 0, console_verb_heap)
+CONSOLE_VERB(heap, sizeof "psram" - 1, console_verb_heap)

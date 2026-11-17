@@ -65,7 +65,7 @@ so a scrim in it would walk the frozen backdrop toward black.
 ## Why microui, not LVGL
 
 The Waveshare BSP lives in `components/esp32_s3_touch_amoled_1_8/` with its
-LVGL interface removed; LVGL is not built. `board/waveshare_amoled_1_8/board_panel.c` brings the
+LVGL interface removed; LVGL is not built. `board/waveshare/esp32_s3_touch_amoled_1_8/board_panel.c` brings the
 panel up, `gfx/present/gfx_present.c` sends to it, and `board/` wraps the BSP for
 board services and touch setup.
 
@@ -76,9 +76,10 @@ board services and touch setup.
 | The pipeline skips unchanged frames, because a full transfer is bus-bound | a command list is the shape that needs ([dirty bands](#immediate-mode-versus-dirty-bands)); LVGL would add a second damage tracker to reconcile |
 
 **The cost:** microui encodes a mouse (point, then click) and a touchscreen
-cannot produce the "point". The shell synthesizes it, at a frame of latency on
-every tap ([hover frame](#touch-needs-one-synthesized-hover-frame)). A
-touch-native toolkit would not pay that.
+cannot produce the "point". The shell looks the press up in the last frame and
+patches microui to take hover on the press itself
+([press on contact](#a-press-lands-on-the-frame-of-contact)), so a tap still
+answers on its first frame.
 
 ## Two things to know before touching it
 
@@ -90,40 +91,44 @@ The sizes are reduced in `components/microui/include/microui.h`, upstream values
 trailing comments, rather than overridden from our side: they fix the struct's
 layout, and two translation units disagreeing would corrupt it silently.
 
-### Touch needs one synthesized hover frame
+### A press lands on the frame of contact
 
-A control is hovered only on a frame where the button is *not* held, and
-submits only once focused, so a press needs a frame with the finger present and
-no DOWN before the DOWN. Hover also needs `hover_root`, which `mu_begin()` copies
-from the *previous* frame.
+microui hovers a control only on a frame where the button is *not* held, and
+submits only once it is focused. A local change lets the first control under a
+press take hover on the frame the button goes down, so overlapping controls
+never share one press. First means first built, the one drawn underneath: a
+control acts while it is built, before any later one exists, so where controls
+overlap in one window the one on top cannot take the press on contact. Put a
+control meant to sit on top in its own window instead. Hover also needs `hover_root`, which `mu_begin()` copies from the
+*previous* frame, before the finger existed.
 
 | Step | Owner | Does |
 |---|---|---|
-| seed | `ui/input/ui_bridge.c` | on the press frame, `mu_seed_hover_root()` sets it from the roots the last frame left in `root_list` |
-| compare | `ui_bridge.c` | after the frame, compares the seed with the root microui found and records `hover_unsettled` |
-| send | `ui/input/ui_pointer.c` | sends the DOWN only once `hover_unsettled` is clear |
+| look up | `ui/input/ui_bridge.c` | on the press frame, before the pointer steps: `mu_seed_hover_root()` picks the root from the last frame's `root_list`, `mu_scrollable_at()` asks whether the point is on content in that root that scrolls |
+| press | `ui/input/ui_pointer.c` | sends MOVE and DOWN at once; on scrollable content only the MOVE, the press waiting for the lift or a sideways move |
+| confirm | `ui_bridge.c` | after the frame, records `press_missed` (the seed was not the root the frame found, and nothing took focus) and asks `mu_scrollable_at()` again |
+| again | `ui_pointer.c` | a missed press is made again on the next frame until it lands; on content that scrolls it is taken back and waits |
 
 ```mermaid
 sequenceDiagram
     participant P as ui_pointer
     participant B as ui_bridge
     participant M as microui
-    Note over P,M: press frame
-    P->>B: MOVE to the finger
-    B->>M: seed hover root from last frame's roots
-    Note over M: build frame, hover the control
-    B->>P: hover_unsettled = seed differs from root found
-    Note over P,M: next frame, once settled
-    P->>B: DOWN
-    B->>M: mouse down over the hovered control
-    Note over M: focus and submit
+    Note over P,M: frame of contact
+    B->>M: seed hover root, look for scrollable content
+    P->>B: MOVE and DOWN
+    Note over M: hover, focus and submit
+    B->>P: press_missed = stale seed and no focus
+    Note over P,M: next frame, only if missed
+    P->>B: MOVE and DOWN again
+    Note over M: hover, focus and submit
 ```
 
 - A screen switch, a list closing or a window's first build leaves the seed
-  different from the root found; the DOWN waits frame by frame and the tap is
-  never lost.
-- Without the hover frame nothing takes focus: every button draws pressed while
-  returning 0. A press and release inside one frame on an unsettled root is lost.
+  stale; the press is made again on the next frame and the tap is never lost,
+  except a press and release inside that one frame.
+- A stale seed whose root was still built presses what was on screen there; it
+  counts as landed, so a tap never clicks twice.
 - A repaint-only frame (`ui_begin(NULL)`, the boot backdrop) feeds no input and
   does not step the pointer. It runs before `input_start()`, with no touch.
 - `ui_pointer.c` also holds the `DOWN` a slider needs to track a drag, and the

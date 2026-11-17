@@ -1,4 +1,4 @@
-"""Plot gravity correction trust, and the device rocking while the filter learns a gyro bias; --cc CC --out DIR."""
+"""Plot gravity readers, motion rejection and gyro bias learning; --cc CC --out DIR."""
 import numpy as np
 from matplotlib.lines import Line2D
 
@@ -11,6 +11,11 @@ VIEW_SWING = 35
 TRUE_DOWN = INK
 ESTIMATE = SLOTS[1]
 ESTIMATE_WIDTH = 3
+ACCELERATION = SLOTS[6]
+LINEAR = SLOTS[2]
+PLOT_HEADROOM = 1.15
+MOTION_ANGLE_HEADROOM = 2.0
+FALL_ALPHA = 0.3
 
 
 def bias_errors(data, model):
@@ -65,6 +70,105 @@ def bias_figure(data, model, output):
     animation.save(output, len(data["frames"]), draw)
 
 
+def scenario_animation(model, times, titles):
+    """Two zero-based signal plots sharing the animation's time cursors."""
+    animation = DeviceAnimation(model, plots=2)
+    for plot, title in zip(animation.plots, titles):
+        plot.set_xlim(0, times[-1])
+        style_axes(plot, title)
+    animation.plots[-1].set_xlabel("Time (s)", fontsize=LABEL_SIZE)
+    return animation
+
+
+def reader_figure(data, model, output):
+    """The reader's full down and glass-plane vectors, suppressed during free fall."""
+    frames = data["reader"]
+    times = np.array([frame["t"] for frame in frames])
+    strength = np.array([frame["strength"] for frame in frames])
+    magnitude = np.array([np.linalg.norm(np.array(frame["linear"]) + frame["down"]) for frame in frames])
+    animation = scenario_animation(model, times, ("In-plane strength", "|linear + down| (g)"))
+    for plot, values, threshold, label in zip(animation.plots, (strength, magnitude),
+                                              (data["min_direction"], data["free_fall_g"]),
+                                              ("MIN_DIRECTION", "FREE_FALL")):
+        plot.plot(times, values, color=ESTIMATE)
+        plot.axhline(threshold, color=MUTED, linestyle=":", label=label)
+        plot.axvspan(*data["fall_span"], color=FAINT, alpha=FALL_ALPHA)
+        plot.set_ylim(0, max(1, values.max()) * PLOT_HEADROOM)
+        plot.legend(fontsize=LABEL_SIZE, loc="lower left", frameon=False)
+    animation.legend([Line2D([], [], color=ESTIMATE, label="gravity_down()"),
+                      Line2D([], [], color=LINEAR, label="In-plane gravity")] + legend_handles(screen_axes=False))
+
+    def draw(index):
+        frame = frames[index]
+        pose = np.array(frame["pose"])
+        vectors = []
+        if not frame["free_fall"]:
+            down = np.array(frame["down"])
+            plane = down.copy()
+            plane[2] = 0
+            vectors = [(animation.beside, pose @ model.to_device(down) * animation.unit,
+                        ESTIMATE, ESTIMATE_WIDTH),
+                       (np.zeros(3), pose @ model.to_device(plane) * animation.unit, LINEAR, ESTIMATE_WIDTH)]
+        swing = VIEW_SWING * np.sin(2 * np.pi * index / len(frames))
+        state = "    free fall" if frame["free_fall"] else ""
+        animation.frame(pose, vectors, frame["t"],
+                        f"t = {frame['t']:4.1f} s    strength {frame['strength']:.2f}{state}",
+                        azimuth=VIEW_AZIMUTH + swing, screen_axes=False)
+
+    animation.save(output, len(frames), draw)
+
+
+def angle_from_down(vectors, truth):
+    """Angular separation in degrees, with both vector magnitudes removed."""
+    cosine = np.sum(vectors * truth, axis=1) / (np.linalg.norm(vectors, axis=1) * np.linalg.norm(truth, axis=1))
+    return np.degrees(np.arccos(np.clip(cosine, -1, 1)))
+
+
+def motion_figure(data, model, output):
+    """True down, raw acceleration and the gyro-led estimate while the device is carried."""
+    frames = data["motion"]
+    times = np.array([frame["t"] for frame in frames])
+    truth = np.array([frame["true_down"] for frame in frames])
+    acceleration = np.array([model.to_device(np.array(frame["linear"]) + frame["down"]) for frame in frames])
+    estimate = np.array([model.to_device(frame["down"]) for frame in frames])
+    raw_angle = angle_from_down(acceleration, estimate)
+    estimate_angle = angle_from_down(estimate, truth)
+    deviation = abs(np.linalg.norm(acceleration, axis=1) - 1)
+    animation = scenario_animation(model, times, ("Magnitude deviation from 1 g (g)", "Angular separation (deg)"))
+    top, bottom = animation.plots
+    top.plot(times, deviation, color=ACCELERATION)
+    for key, label, linestyle in (("full_g", "FULL", ":"), ("none_g", "NONE", "--")):
+        top.axhline(data[key], color=MUTED, linestyle=linestyle, label=label)
+    top.set_ylim(0, max(data["none_g"], deviation.max()) * PLOT_HEADROOM)
+    top.legend(fontsize=LABEL_SIZE, loc="center right", frameon=False)
+    bottom.plot(times, raw_angle, color=ACCELERATION, label="Acceleration from estimate")
+    bottom.plot(times, estimate_angle, color=ESTIMATE, label="Estimate from true down")
+    bottom.axhline(data["reject_deg"], color=MUTED, linestyle=":", label="REJECT")
+    bottom.set_ylim(0, max(data["reject_deg"], raw_angle.max(), estimate_angle.max()) * MOTION_ANGLE_HEADROOM)
+    bottom.legend(fontsize=LABEL_SIZE, loc="upper right", frameon=False)
+    animation.legend([Line2D([], [], color=TRUE_DOWN, label="True down"),
+                      Line2D([], [], color=ACCELERATION, label="Raw acceleration"),
+                      Line2D([], [], color=ESTIMATE, label="Filter estimate"),
+                      Line2D([], [], color=LINEAR, label="gravity_linear()")] + legend_handles(screen_axes=False))
+
+    def draw(index):
+        frame = frames[index]
+        pose = np.array(frame["pose"])
+        down = pose @ truth[index] * animation.unit
+        raw = pose @ acceleration[index] * animation.unit
+        filtered = pose @ estimate[index] * animation.unit
+        swing = VIEW_SWING * np.sin(2 * np.pi * index / len(frames))
+        animation.frame(pose, [(animation.beside, filtered, ESTIMATE, ESTIMATE_WIDTH),
+                               (animation.beside, down, TRUE_DOWN, None),
+                               (animation.beside, raw, ACCELERATION, None),
+                               (animation.beside + filtered, raw - filtered, LINEAR, None)], frame["t"],
+                        f"t = {frame['t']:4.1f} s    acceleration from estimate {raw_angle[index]:4.1f} deg    "
+                        f"estimate from true down {estimate_angle[index]:3.1f} deg",
+                        azimuth=VIEW_AZIMUTH + swing, screen_axes=False)
+
+    animation.save(output, len(frames), draw)
+
+
 def main():
     data, output, cc = probe_data(__file__, "gravity.c", __doc__)
     fig, axis = subplots(1, 1, (7, 3))
@@ -76,7 +180,10 @@ def main():
              ylim=(0, 1.1), xlim=(0, None))
     style_axes(axis, "Acceleration trust weight against magnitude deviation")
     save(fig, output / "gravity-trust.png")
-    bias_figure(data, DeviceModel(cc), output / "gravity-bias.gif")
+    model = DeviceModel()
+    bias_figure(data, model, output / "gravity-bias.gif")
+    reader_figure(data, model, output / "gravity-reader.gif")
+    motion_figure(data, model, output / "gravity-motion.gif")
 
 
 if __name__ == "__main__":

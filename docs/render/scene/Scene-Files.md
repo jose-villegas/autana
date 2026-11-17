@@ -379,6 +379,12 @@ animator's clips. `default_clip` names one of those clips; absent, nothing plays
 `wrap` is `loop` (default) or `clamp`. Without an animator the skin uses its
 rest pose. Each component occurs once per entity.
 
+A clip may animate the scale of an entity with children only if its three axes
+stay equal (within the scale tolerance) at every key and every cubic tangent.
+
+Child worlds compose as exact TRS only under an even parent scale; pack builds
+refuse clips that break this rule.
+
 ### Light options
 
 | Option | Keys | What it does | Default | Option link |

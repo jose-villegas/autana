@@ -509,9 +509,10 @@ class Keeper:
         return self.keep(folder, make_kept, folder, write_start, job, scene, estimates=PREPARE_BYTES, priority=True)
 
     def references(self, job, scene):
-        from bake.produce import REFERENCES
+        from bake.produce import REFERENCES, read_references
         from r3d.process_budget import PREPARE_BYTES
         key = self.keys(job, scene)["reference"]
+        read_references(self.cache / REFERENCES / key)  # keep's done shortcut reads it too
         return self.keep(self.cache / REFERENCES / key, kept_references, key, job, scene, self.cache,
                          estimates=PREPARE_BYTES, priority=True)
 
