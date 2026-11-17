@@ -19,7 +19,8 @@ from frame_cost import MS_PER_SECOND, US_PER_MS
 LOG_HEADER = pathlib.Path(__file__).resolve().parents[1] / "tests/skin_perf_log.h"
 PREFIX = read_define(LOG_HEADER, "SKIN_PERF_PREFIX")
 BUDGET_NS_PER_VERTEX = read_define(LOG_HEADER, "SKIN_PERF_BUDGET_NS_PER_VERTEX")
-NANOSECONDS_PER_MICROSECOND = read_define(LOG_HEADER, "SKIN_PERF_NS_PER_US")
+NANOSECONDS_PER_MICROSECOND = read_define(LOG_HEADER.parents[4] / "packages/math/include/math/scalar/units.h",
+                                          "MATH_NS_PER_US")
 CORES_ONE = read_define(LOG_HEADER, "SKIN_PERF_CORES_ONE")
 CORES_TWO = read_define(LOG_HEADER, "SKIN_PERF_CORES_TWO")
 CORES_UNKNOWN = read_define(LOG_HEADER, "SKIN_PERF_CORES_UNKNOWN")
