@@ -139,7 +139,8 @@ def identities(cache, patterns):
 
 
 class StuckLocks(Exception):
-    """Raised by a LockWatch with the locks held past its limit."""
+    """Raised by a LockWatch with the locks held past its limit and their holders, named while the build,
+    which may hold them itself, still runs."""
 
 
 class LockWatch:
@@ -166,7 +167,7 @@ class LockWatch:
     def __call__(self):
         stuck = self.stuck()
         if stuck:
-            raise StuckLocks(stuck)
+            raise StuckLocks(stuck, holders(stuck[:HOLDER_QUERY_LOCKS]))
 
 
 def run(command, stuck_after=STUCK_SECONDS):
@@ -178,13 +179,12 @@ def run(command, stuck_after=STUCK_SECONDS):
         with terminate_unwinds():
             return run_process_tree(command, watch=LockWatch(cache, stuck_after), parent_lifetime=True).returncode
     except StuckLocks as stuck:
-        paths = stuck.args[0]
+        paths, held_by = stuck.args
         for path in paths:
             print(f"ccache lock {path} held for over {stuck_after:g} s with no compile finishing: ccache "
                   "waits on it without end.", file=sys.stderr)
-        held_by = ", ".join(holders(paths[:HOLDER_QUERY_LOCKS]))
-        print(f"Stopped the build. Held by {held_by}: end that process." if held_by else
-              "Stopped the build. No process named as the holder: remove the lock file.",
+        print(f"Stopped the build. Held by {', '.join(held_by)}: if that is not gone with the build, end it."
+              if held_by else "Stopped the build. No process named as the holder: remove the lock file.",
               file=sys.stderr, flush=True)
         return EXIT_STUCK
 

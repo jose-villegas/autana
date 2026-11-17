@@ -22,6 +22,7 @@ STUCK_AFTER = 3
 # Generous for a slow runner, and a twentieth of a hang's wait.
 RUN_TIMEOUT = 60
 HELD = "held"
+UNTIL_KILLED = "until-killed"
 
 
 def pinned_ccache():
@@ -41,9 +42,9 @@ CCACHE = pinned_ccache()
 CC = shutil.which("gcc") or shutil.which("cc")
 
 
-def hold(cache, paths, keepalive):
-    """Hold each lock as ccache does until stdin closes: Windows opens it sharing nothing; POSIX makes the
-    symlink and keeps its .alive fresh."""
+def hold(cache, paths, keepalive, until_killed=False):
+    """Hold each lock as ccache does until stdin closes, or until killed: Windows opens it sharing nothing;
+    POSIX makes the symlink and keeps its .alive fresh."""
     files = []
     for name in paths:
         path = Path(cache) / name
@@ -64,6 +65,9 @@ def hold(cache, paths, keepalive):
     if os.name != "nt" and keepalive:
         import threading
         threading.Thread(target=refresh, args=(files,), daemon=True).start()
+    if until_killed:
+        while True:
+            time.sleep(1)
     sys.stdin.read()
 
 
@@ -102,7 +106,8 @@ class CcacheWatchTests(unittest.TestCase):
 
     def watch(self, *command):
         return subprocess.run([sys.executable, str(WATCH), "--stuck-after", str(STUCK_AFTER), "--", *command],
-                              cwd=self.root, env=self.env, capture_output=True, text=True, timeout=RUN_TIMEOUT)
+                              cwd=self.root, env=self.env, capture_output=True, text=True, timeout=RUN_TIMEOUT,
+                              stdin=subprocess.DEVNULL)
 
     def compile(self):
         return self.watch("ccache", CC, "-c", "a.c", "-o", "a.o")
@@ -123,6 +128,12 @@ class CcacheWatchTests(unittest.TestCase):
         time.sleep(STUCK_AFTER)
         self.assertEqual(self.results(), [], "a ccache outlived the stopped build")
 
+    def test_holder_inside_the_build_is_named(self):
+        # The build itself holds the lock: named before the stop ends it.
+        result = self.watch(sys.executable, __file__, str(self.cache), UNTIL_KILLED, SUBDIR_LOCKS[0])
+        self.assertEqual(result.returncode, ccache_watch.EXIT_STUCK, result.stderr)
+        self.assertIn("Held by " + ("pid " if os.name == "nt" else "holder-"), result.stderr)
+
     def test_free_cache_builds(self):
         result = self.compile()
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -142,6 +153,23 @@ class CcacheWatchTests(unittest.TestCase):
     def test_command_status_passes_through(self):
         result = self.watch(sys.executable, "-c", "raise SystemExit(7)")
         self.assertEqual(result.returncode, 7, result.stderr)
+
+    def test_every_compile_changes_the_stats_the_watch_reads(self):
+        # A miss and then a hit each rewrite a stats file: the progress the watch waits for.
+        for outcome in ("miss", "hit"):
+            before = ccache_watch.identities(self.cache, ccache_watch.STATS_PATTERNS)
+            time.sleep(0.05)
+            result = subprocess.run(["ccache", CC, "-c", "a.c", "-o", "a.o"], cwd=self.root, env=self.env,
+                                    capture_output=True, text=True, timeout=RUN_TIMEOUT)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertNotEqual(ccache_watch.identities(self.cache, ccache_watch.STATS_PATTERNS), before, outcome)
+
+    def test_held_cleanup_lock_keeps_no_compile_waiting(self):
+        # Why the watch leaves auto_cleanup.lock alone.
+        self.holder(["lock/auto_cleanup.lock"])
+        result = subprocess.run(["ccache", CC, "-c", "a.c", "-o", "a.o"], cwd=self.root, env=self.env,
+                                capture_output=True, text=True, timeout=RUN_TIMEOUT)
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_held_lock_hangs_ccache_unwatched(self):
         # The premise: without the watch, ccache waits on the held lock.
@@ -252,4 +280,4 @@ class UnwatchedTests(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    hold(sys.argv[1], sys.argv[3:], sys.argv[2] == "1")
+    hold(sys.argv[1], sys.argv[3:], sys.argv[2] != "0", until_killed=sys.argv[2] == UNTIL_KILLED)
