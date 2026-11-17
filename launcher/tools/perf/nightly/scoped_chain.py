@@ -585,7 +585,8 @@ def run_night(args, clock=None, launch=None):
     unreachable, seen = [], bool(planned["listed"])
     # Every step measures without the suites it predates, so a suite the tip lacks (renamed, dropped, mistyped)
     # would go unmeasured without a word: the night fails for it here, once, and its lanes still run.
-    missing = [suite[0] for suite in args.suite if suite not in registered_suites(args.repo, args.suite, planned["tip"])]
+    registered = registered_suites(args.repo, args.suite, planned["tip"])
+    missing = [suite[0] for suite in args.suite if suite not in registered]
     if missing:
         print(f"::error::night: the tip {planned['tip'][:12]} does not register suite(s) {', '.join(missing)}",
               file=sys.stderr)

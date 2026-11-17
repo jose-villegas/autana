@@ -545,15 +545,21 @@ class NightlyTests(unittest.TestCase):
         self.assertEqual(json.loads(path.read_text()), planned)
 
     def test_a_suite_the_tip_does_not_register_fails_the_night_and_its_lanes_still_run(self):
+        (self.repo / "launcher/test/suite_late.c").write_text("SUITE_REGISTER_ON_REQUEST(late);")
+        chain.git(self.repo, "add", ".")
+        chain.git(self.repo, "commit", "-qm", "a late suite (#106)")
+        self.commits.append(chain.git(self.repo, "rev-parse", "HEAD"))
         process = SimpleNamespace(poll=lambda: 0, wait=lambda: 0)
-        for suites, status in (((("suite", "-", "-"),), 0), ((("suite", "-", "-"), ("missing", "-", "-")), 1)):
-            with self.subTest(suites=suites):
-                args = self.night(self.fak1_lane())
-                args.suite = list(suites)
-                with patch.object(chain, "launch_process_tree", return_value=process) as launch,                         patch.object(chain, "close_process_tree"), patch("sys.stderr", new=io.StringIO()) as said:
+        # The plan's tip is read, not the checkout: an older tip lacks the suite the checked-out HEAD registers.
+        for tip, status in ((self.commits[-1], 0), (self.commits[-2], 1)):
+            with self.subTest(tip=tip):
+                args = self.night(self.fak1_lane(), tip=tip)
+                args.suite = [("suite", "-", "-"), ("late", "-", "-")]
+                with patch.object(chain, "launch_process_tree", return_value=process) as launch, \
+                        patch.object(chain, "close_process_tree"), patch("sys.stderr", new=io.StringIO()) as said:
                     self.assertEqual(chain.run_night(args, clock=self.clock), status)
                 launch.assert_called_once()
-                self.assertEqual("does not register suite(s) missing" in said.getvalue(), bool(status))
+                self.assertEqual("does not register suite(s) late" in said.getvalue(), bool(status))
 
     def test_supervisor_default_launch_owns_and_closes_process_tree(self):
         args = self.night(self.fak1_lane())
@@ -677,10 +683,11 @@ class NightlyTests(unittest.TestCase):
         self.assertEqual(len(commands), 2)
         self.assertEqual([step["outcome"] for step in manifests["2124"]["steps"]], ["measured"] * 2)
 
-    def night(self, lanes=None, window=None):
-        """The night's arguments, with a plan written from the clock: `lanes` (none) and `window` (self.window())."""
+    def night(self, lanes=None, window=None, tip=None):
+        """The night's arguments, with a plan written from the clock: `lanes` (none), `window` (self.window()) and
+        `tip` (the newest commit)."""
         path = self.root / "plan.json"
-        chain.write_json(path, dict(tip=self.commits[-1], night="2026-10-18", started=self.clock.now().isoformat(),
+        chain.write_json(path, dict(tip=tip or self.commits[-1], night="2026-10-18", started=self.clock.now().isoformat(),
                                     marker=self.clock.now().isoformat(), **(window or self.window()),
                                     lanes=lanes or {}))
         return SimpleNamespace(plan=path, repo=self.repo, data=self.args.data, out=self.args.out,
