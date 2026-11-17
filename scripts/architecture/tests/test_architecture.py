@@ -14,7 +14,7 @@ from unittest import mock
 
 HERE = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(HERE))
-import build  # noqa: E402
+import draw  # noqa: E402
 import likec4  # noqa: E402
 import model  # noqa: E402
 
@@ -511,6 +511,17 @@ class Emitter(unittest.TestCase):
         self.assertIn("autana.firmware -[links]-> lib_x 'requires x' { #late", text)
         validate(self, text)
 
+    def test_bad_view_suffixes_and_links_without_a_notation_fail_naming_them(self):
+        data = fixture(('a',))
+        data['views'] = [dict(suffix='release only', title='t', hide=[])]
+        with self.assertRaisesRegex(ValueError, "view suffix 'release only'"):
+            likec4.emit(data)
+        data = fixture(('a',))
+        data.pop('link_notation')
+        data['links'] = [dict({'from': 'firmware', 'to': 'firmware'}, components=['a'])]
+        with self.assertRaisesRegex(ValueError, 'link_notation'):
+            likec4.emit(data)
+
     def test_a_link_to_an_unknown_box_fails_naming_it(self):
         data = fixture(('a',))
         data['links'] = [dict({'from': 'firmware', 'to': 'vendor:gone'}, components=['gone'])]
@@ -792,7 +803,7 @@ class Packages(unittest.TestCase):
 
 
 class Command(unittest.TestCase):
-    """build.py on a C++ project file: a fixture checkout read through git."""
+    """draw.py on a C++ project file: a fixture checkout read through git."""
     PROJECT = dict(
         people=[dict(id="user", name="User", description="Opens captures.")],
         systems=[dict(id="engine", name="Engine", description="The engine it reads.", folder="third_party/engine")],
@@ -823,7 +834,7 @@ class Command(unittest.TestCase):
         tree, project = self.checkout()
         out = tree.root / "out"
         with mock.patch("sys.stdout"):
-            build.main(["--project", str(project), "--root", str(tree.root), "-o", str(out)])
+            draw.main(["--project", str(project), "--root", str(tree.root), "-o", str(out)])
         text = (out / "viewer.c4").read_text(encoding="utf-8")
         self.assertIn("viewer = system 'Viewer'", text)
         self.assertIn("app = container 'Viewer'", text)
@@ -847,7 +858,7 @@ class Command(unittest.TestCase):
         (tree.root / "src/window/untracked.cpp").write_text("// Not committed.\n", encoding="utf-8")
         out = tree.root / "out"
         with mock.patch("sys.stdout"):
-            build.main(["--project", str(project), "--root", str(tree.root), "-o", str(out)])
+            draw.main(["--project", str(project), "--root", str(tree.root), "-o", str(out)])
         text = (out / "viewer.c4").read_text(encoding="utf-8")
         self.assertIn("technology 'frame.cpp, frame.h'", text)
         for absent in ("shader", "untracked", "#engine", "_release", "indirect_release"):
@@ -864,7 +875,7 @@ class Command(unittest.TestCase):
         path = tree.root / "project.json"
         path.write_text(json.dumps(project), encoding="utf-8")
         with mock.patch("sys.stdout"):
-            build.main(["--project", str(path), "--root", str(tree.root), "-o", str(tree.root / "out")])
+            draw.main(["--project", str(path), "--root", str(tree.root), "-o", str(tree.root / "out")])
         text = (tree.root / "out/viewer.c4").read_text(encoding="utf-8")
         self.assertIn("engine = external 'Engine'", text)
         self.assertNotIn("link ", text)
@@ -872,12 +883,35 @@ class Command(unittest.TestCase):
     def test_a_tree_with_no_source_under_the_scan_roots_fails_naming_them(self):
         tree, project = self.checkout(project=dict(self.PROJECT, scan=["lib"]))
         with self.assertRaisesRegex(SystemExit, r"no .*source is tracked under \['lib'\]"):
-            build.main(["--project", str(project), "--root", str(tree.root), "-o", str(tree.root / "out")])
+            draw.main(["--project", str(project), "--root", str(tree.root), "-o", str(tree.root / "out")])
+
+    def test_a_caller_adds_a_package_vendored_headers_and_an_outside_box(self):
+        tree, _ = self.checkout(files={
+            "lib/geo/README.md": "# geo\n\nShapes and distances.\n",
+            "lib/geo/include/geo/shape.hpp": "// A shape.\n#pragma once\n",
+            "lib/geo/src/shape.cpp": '// Shapes.\n#include "geo/shape.hpp"\n#include "dup.h"\n#include "only.h"\n',
+            "vendor/a/dup.h": "", "vendor/b/dup.h": "", "vendor/c/only.h": "",
+        })
+        project = dict(self.PROJECT, scan=["src", "tests", "lib/geo"],
+                       include_roots=["src", "tests", "lib/geo/include"], vendor_includes="^(dup|only)")
+        board = {"id": "board", "name": "Board", "type": "ext", "tech": "Hardware", "desc": "A board.", "src": None}
+        project["relations"] = project["relations"] + [{"from": "app", "to": "board", "label": "runs on"}]
+        data = draw.build_data(tree, project, {"lib/geo": "geo"},
+                               ["vendor/a/dup.h", "vendor/b/dup.h", "vendor/c/only.h"], [board])
+        self.assertEqual(data["packages"], [{"id": "geo", "folder": "lib/geo", "desc": "Shapes and distances.",
+                                             "src": "lib/geo/README.md"}])
+        shape = next(f for f in data["files"] if f["path"] == "lib/geo/src/shape.cpp")
+        self.assertEqual(shape["ext"], [["dup.h", 1, None], ["only.h", 1, "vendor/c/only.h"]])
+        self.assertEqual(shape["module"], "lib/geo/include/geo/shape")
+        text = likec4.emit(data)
+        self.assertIn("geo = container 'geo'", text)
+        self.assertIn("board = external 'Board'", text)
+        validate(self, text)
 
     def test_a_detail_container_that_is_not_listed_fails_naming_it(self):
         tree, project = self.checkout(project=dict(self.PROJECT, detail="viewer"))
         with self.assertRaisesRegex(SystemExit, "detail container viewer"):
-            build.main(["--project", str(project), "--root", str(tree.root), "-o", str(tree.root / "out")])
+            draw.main(["--project", str(project), "--root", str(tree.root), "-o", str(tree.root / "out")])
 
     def test_the_readme_title_names_the_system_and_must_be_there(self):
         for readme, expected in (("# 3D Viewer\n\nShows captures.\n", "s_3d_viewer.c4"),
@@ -887,23 +921,23 @@ class Command(unittest.TestCase):
                 args = ["--project", str(project), "--root", str(tree.root), "-o", str(tree.root / "out")]
                 if expected is None:
                     with self.assertRaisesRegex(SystemExit, "README.md names the system"):
-                        build.main(args)
+                        draw.main(args)
                     continue
                 with mock.patch("sys.stdout"):
-                    build.main(args)
+                    draw.main(args)
                 site.validate(tree.root / "out", {"name": json.loads((tree.root / "out/likec4.config.json").read_text())["name"]})
                 self.assertTrue((tree.root / "out" / expected).is_file())
 
     def test_a_project_file_with_a_missing_or_unknown_key_fails_naming_it(self):
         _, project = self.checkout(project={k: v for k, v in self.PROJECT.items() if k != "detail"} | {"extra": 1})
         with self.assertRaisesRegex(SystemExit, r"missing \['detail'\], unknown \['extra'\]"):
-            build.main(["--project", str(project), "-o", "unused"])
+            draw.main(["--project", str(project), "-o", "unused"])
 
     def test_a_system_the_tree_no_longer_holds_fails_naming_its_folder(self):
         project = dict(self.PROJECT, systems=[dict(self.PROJECT["systems"][0], folder="third_party/gone")])
         tree, path = self.checkout(project=project)
         with self.assertRaisesRegex(SystemExit, "third_party/gone/"):
-            build.main(["--project", str(path), "--root", str(tree.root), "-o", str(tree.root / "out")])
+            draw.main(["--project", str(path), "--root", str(tree.root), "-o", str(tree.root / "out")])
 
 
 class Site(unittest.TestCase):
