@@ -92,7 +92,7 @@ class StressCorners(unittest.TestCase):
         return self.counts(key, *options)[-1]
 
     def test_skinned_contacts_darken_each_receiver(self):
-        for key in ("skinned-sh-blobs", "skinned-shape-blobs"):
+        for key in ("skinned-sh-blobs", "skinned-feet-blobs", "skinned-shape-blobs", "skinned-shape-warped"):
             with self.subTest(preset=key):
                 image = self.out / (key + "-contacts.bmp")
                 run = subprocess.run([str(self.binary), "--quarter", "1", "--no-hud", "--frames", str(FRAMES),
@@ -121,7 +121,7 @@ class StressCorners(unittest.TestCase):
         self.assertEqual({"open", "stack", "tiny-copies", "big-tris", "per-frame", "two-sided", "noisy-tiny", "mix",
                           "static-copies", "uniform-mid", "uniform-full", "card", "culled", "near",
                           "few-copies", "textured", "record", "foliage-near", "foliage-near-opaque", "foliage-far",
-                          "foliage-far-opaque", "skinned-sh-blobs", "skinned-shape-blobs",
+                          "foliage-far-opaque", "skinned-sh-blobs", "skinned-feet-blobs", "skinned-shape-blobs", "skinned-shape-warped",
                           "cull-setup", "baked-tree"}, set(preset_copies()))
 
     def test_the_baked_ring_is_culled_through_its_tree(self):

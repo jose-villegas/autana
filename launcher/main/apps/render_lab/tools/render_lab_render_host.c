@@ -24,9 +24,13 @@
 #include "render/view/raster_overdraw.h"
 #include "render_counts.h"
 #include "render_host.h"
+#include "scene/scene_internal.h"
 #include "scene/scene_shell.h"
 #include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
+
+static int contact_shape = -1;
+static int contact_warp = -1;
 
 static int shell_quarter;
 static int option_count;
@@ -198,6 +202,13 @@ size_option(const char* size) {
     return true;
 }
 
+static bool
+contact_options(const char* shape, const char* warp) {
+    contact_shape = shape == NULL ? -1 : atoi(shape);
+    contact_warp = warp == NULL ? -1 : atoi(warp);
+    return contact_shape >= -1 && contact_shape <= SCENE_CONTACT_SHAPE && contact_warp >= -1 && contact_warp <= 1;
+}
+
 /* Which names are valid is app_render_lab.c's own knowledge (each scene's
  * .key, lab/lab_scene.h) - this only hands the string through. */
 static bool
@@ -207,6 +218,8 @@ options(int argc, char** argv) {
     const char* scale;
     const char* size;
     const char* small_fill;
+    const char* shape;
+    const char* warp;
     if (!tap_option(argc, argv)) {
         return false;
     }
@@ -215,9 +228,10 @@ options(int argc, char** argv) {
         const char* name;
         const char** out;
     } values[] = {
-        {"--scene", &scene},   {"--view", &view},          {"--camera", &render_lab.start_camera},
-        {"--scale", &scale},   {"--size", &size},          {"--small-fill", &small_fill},
-        {"--dump", &dump_dir}, {"--counts", &counts_path},
+        {"--scene", &scene},       {"--view", &view},          {"--camera", &render_lab.start_camera},
+        {"--scale", &scale},       {"--size", &size},          {"--small-fill", &small_fill},
+        {"--dump", &dump_dir},     {"--counts", &counts_path}, {"--contact-shape", &shape},
+        {"--contact-warp", &warp},
     };
 
     for (size_t i = 0; i < sizeof values / sizeof values[0]; i++) {
@@ -234,6 +248,9 @@ options(int argc, char** argv) {
     }
     if (counts_path != NULL && (view == NULL || strcmp(view, "cull") != 0)) {
         (void)fprintf(stderr, "render_lab_render_host: --counts needs --view cull\n");
+        return false;
+    }
+    if (!contact_options(shape, warp)) {
         return false;
     }
     option_count = argc;
@@ -315,6 +332,30 @@ dump_raster(int index) {
 }
 
 static void
+apply_contact_options(void) {
+    const lab_scene_t* shown = render_lab.scenes[render_lab.state.scene];
+    if (shown->path == NULL || (contact_shape < 0 && contact_warp < 0)) {
+        return;
+    }
+    const lab_path_t path = shown->path();
+    const entity_t entity = path.entity;
+    scene_row_t row;
+    scene_t* scene = scene_entity_row(entity, &row);
+    const int index = scene == NULL ? -1 : scene_renderer_index(scene, row);
+    if (index < 0) {
+        return;
+    }
+    const scene_renderer_t* r = &scene->renderers[index];
+    if (contact_shape >= 0) {
+        scene_set_contact_blob(entity, r->contact_blob_ground_y, r->contact_blob_strength,
+                               (scene_contact_shape_t)contact_shape);
+    }
+    if (contact_warp >= 0) {
+        scene_set_contact_warp(entity, contact_warp != 0);
+    }
+}
+
+static void
 draw(const provider_frame_t* frame) {
     ui_clear_band_overlay();
     input_t in = tap ? frame->input : (input_t){0};
@@ -323,6 +364,9 @@ draw(const provider_frame_t* frame) {
         if (console_steps[i].frame == frame->index) {
             (void)render_lab_console(console_steps[i].words);
         }
+    }
+    if (frame->index == 0) {
+        apply_contact_options();
     }
     app_list()->frame(frame->dt_ms, &in);
     report_overdraw(frame);

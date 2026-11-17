@@ -32,6 +32,8 @@ typedef enum {
     STRESS_SURFACE_TEXTURED,         /* banded light under a generated INDEX4 brick texture (render/texture) */
     STRESS_SURFACE_SKINNED_SH_BLOBS, /* animated pack skins with sampled irradiance and contact discs */
     STRESS_SURFACE_SKINNED_SHAPE_BLOBS,
+    STRESS_SURFACE_SKINNED_FEET_BLOBS,
+    STRESS_SURFACE_SKINNED_SHAPE_WARPED,
     STRESS_SURFACE_MASKED, /* banded light, each foliage card cut by a generated MASK1 texture */
 } stress_surface_t;
 
@@ -89,6 +91,8 @@ typedef struct {
     X(FOLIAGE_FAR, "foliage-far", MASKED)                                                                              \
     X(FOLIAGE_FAR_OPAQUE, "foliage-far-opaque", TEXTURED)                                                              \
     X(SKINNED_SH_BLOBS, "skinned-sh-blobs", SKINNED_SH_BLOBS)                                                          \
+    X(SKINNED_FEET_BLOBS, "skinned-feet-blobs", SKINNED_FEET_BLOBS)                                                    \
+    X(SKINNED_SHAPE_WARPED, "skinned-shape-warped", SKINNED_SHAPE_WARPED)                                              \
     X(SKINNED_SHAPE_BLOBS, "skinned-shape-blobs", SKINNED_SHAPE_BLOBS)                                                 \
     X(RECORD, "record", WAVE)                                                                                          \
     X(CULL_SETUP, "cull-setup", BANDED)                                                                                \
@@ -102,7 +106,8 @@ extern const stress_params_t stress_presets[STRESS_PRESET_COUNT];
 
 static inline bool
 stress_skinned(const stress_params_t* p) {
-    return p->surface == STRESS_SURFACE_SKINNED_SH_BLOBS || p->surface == STRESS_SURFACE_SKINNED_SHAPE_BLOBS;
+    return p->surface == STRESS_SURFACE_SKINNED_SH_BLOBS || p->surface == STRESS_SURFACE_SKINNED_SHAPE_BLOBS
+           || p->surface == STRESS_SURFACE_SKINNED_FEET_BLOBS || p->surface == STRESS_SURFACE_SKINNED_SHAPE_WARPED;
 }
 
 /* Whether a surface's mesh is made again every frame: a constant

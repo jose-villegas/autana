@@ -1,7 +1,8 @@
-/* contact_blob: one warped ground rectangle darkens covered RGB565 pixels once. */
+/* contact_blob: ground footprints darken covered RGB565 pixels once. */
 #include "render/contact/contact_blob.h"
 
 #include <math.h>
+#include "collections/sort.h"
 #include "image/pixel/rgb565.h"
 #include "math/scalar/mathf.h"
 
@@ -15,7 +16,11 @@ typedef struct {
     float distance, strength;
     const contact_mask_t* mask;
     unsigned thresholds[BAYER4_LEVELS];
+    recti_t box;
 } blob_plane_t;
+
+#define CONTACT_BLOB_BEFORE(a, b) ((a).box.x < (b).box.x)
+SORT_DEFINE_INSERTION(blob_screen, blob_plane_t, CONTACT_BLOB_BEFORE)
 
 /* Vertex snapping shifts coplanar depth by up to one pixel; stored depth has whole units. */
 #define CONTACT_BLOB_DEPTH_BIAS_PIXELS 1.0F
@@ -33,8 +38,27 @@ sample_coverage(const blob_plane_t* blob, float s, float t) {
     return (unsigned)ceilf(BAYER4_LEVELS * blob->strength * falloff * falloff) * UINT8_MAX;
 }
 
+static unsigned
+footprint_coverage(const blob_plane_t* blobs, int count, vec3f_t point, int x, int y) {
+    unsigned coverage = 0;
+    for (int i = 0; i < count; i++) {
+        const blob_plane_t* disc = &blobs[i];
+        if (x < disc->box.x || x >= recti_right(disc->box) || y < disc->box.y || y >= recti_bottom(disc->box)) {
+            continue;
+        }
+        const vec3f_t delta = vec3f_sub(point, disc->centre);
+        const float s = vec3f_dot(delta, disc->u), t = vec3f_dot(delta, disc->v);
+        if (fabsf(s) < 1 && fabsf(t) < 1) {
+            coverage = mathi_max((int)coverage, (int)sample_coverage(disc, s, t));
+        }
+    }
+    return coverage;
+}
+
 static void
-draw_row(const r3d_span_target_t* target, const r3d_lens_t* lens, const blob_plane_t* blob, int y, int x0, int x1) {
+draw_row(const r3d_span_target_t* target, const r3d_lens_t* lens, const blob_plane_t* blobs, int count, int y, int x0,
+         int x1) {
+    const blob_plane_t* blob = &blobs[0];
     gfx_color_t* color = gfx_target_color(&target->rows, y);
     const uint16_t* depth = gfx_target_depth(&target->rows, y);
     const float row_y = (float)y + 0.5F - lens->project.cy;
@@ -53,13 +77,8 @@ draw_row(const r3d_span_target_t* target, const r3d_lens_t* lens, const blob_pla
         const float z = lens->depth_near * R3D_DEPTH_NEAREST / encoded;
         const vec3f_t ray = {(float)x + 0.5F - lens->project.cx, row_y, 1.0F};
         const vec3f_t point = vec3f_scale(ray, z);
-        const vec3f_t delta = vec3f_sub(point, blob->centre);
-        const float s = vec3f_dot(delta, blob->u), t = vec3f_dot(delta, blob->v);
-        if (!(fabsf(s) < 1 && fabsf(t) < 1)) {
-            continue;
-        }
+        const unsigned coverage = footprint_coverage(blobs, count, point, x, y);
         const unsigned threshold = bayer4x4[y & (BAYER4_SIDE - 1)][x & (BAYER4_SIDE - 1)];
-        const unsigned coverage = sample_coverage(blob, s, t);
         if (coverage > blob->thresholds[threshold]) {
             color[x] = rgb565be_unspread(rgb565be_spread(color[x]) >> 1);
         }
@@ -140,15 +159,44 @@ project_bounds(const r3d_span_target_t* target, const r3d_lens_t* lens, const co
     return recti_from_edges(x0, y0, x1, y1);
 }
 
+static void
+draw_union_row(const r3d_span_target_t* target, const r3d_lens_t* lens, const blob_plane_t* blobs, int count, int y) {
+    int x0 = 0, x1 = 0;
+    for (int i = 0; i < count; i++) {
+        const recti_t box = blobs[i].box;
+        if (y < box.y || y >= recti_bottom(box)) {
+            continue;
+        }
+        if (box.x > x1) {
+            draw_row(target, lens, blobs, count, y, x0, x1);
+            x0 = box.x;
+        }
+        x1 = mathi_max(x1, recti_right(box));
+    }
+    draw_row(target, lens, blobs, count, y, x0, x1);
+}
+
+void
+contact_blobs_draw(const r3d_span_target_t* target, const r3d_lens_t* lens, const contact_blob_t* footprints,
+                   int count) {
+    /* The post pass runs serially after the row workers join. */
+    static blob_plane_t blobs[CONTACT_BLOBS_MAX];
+    recti_t bounds = recti_empty();
+    int used = 0;
+    for (int i = 0; i < count && used < CONTACT_BLOBS_MAX; i++) {
+        if (project_blob(lens, &footprints[i], &blobs[used])) {
+            blobs[used].box = project_bounds(target, lens, &footprints[i]);
+            bounds = recti_union(bounds, blobs[used].box);
+            used++;
+        }
+    }
+    blob_screen_sort(blobs, (size_t)used);
+    for (int y = bounds.y; y < recti_bottom(bounds); y++) {
+        draw_union_row(target, lens, blobs, used, y);
+    }
+}
+
 void
 contact_blob_draw(const r3d_span_target_t* target, const r3d_lens_t* lens, const contact_blob_t* footprint) {
-    /* The post pass runs serially after the row workers join. */
-    static blob_plane_t blob;
-    if (!project_blob(lens, footprint, &blob)) {
-        return;
-    }
-    const recti_t box = project_bounds(target, lens, footprint);
-    for (int y = box.y; y < recti_bottom(box); y++) {
-        draw_row(target, lens, &blob, y, box.x, recti_right(box));
-    }
+    contact_blobs_draw(target, lens, footprint, 1);
 }

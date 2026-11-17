@@ -206,20 +206,30 @@ them. The light-directed projection follows Blinn's planar-shadow idea.<sup>[[13
 | Shape | Coverage |
 |---|---|
 | `SCENE_CONTACT_BODY` | Squared disc falloff `(1 − d²)²`, with radius the smaller horizontal half extent of the world box. |
+| `SCENE_CONTACT_FEET` | Generic bind-space leaf contacts near the lowest leaf; one constant-radius disc under each posed joint. |
 | `SCENE_CONTACT_SHAPE` | Top-down posed silhouette over the world box’s xz footprint. Missing skin or mask allocation failure uses BODY. |
 
-Both use one ground rectangle, shifted away from the light by `r tan(θ)`
-and stretched along it by `1/e`: `r` is the smaller horizontal half extent,
-with elevation cosine `e` clamped to `CONTACT_LIGHT_ELEVATION_MIN`.
+`scene_set_contact_warp(renderer, warp)` defaults off: footprints stay
+centred at the mover or posed contact joint, with no stretch.
+
+![BODY, FEET and SHAPE during one run, with warp off and on](../../images/render/contact-warp.gif)
+
+With warp on, each footprint shifts away from the light by `r tan(θ)`
+and stretches along it by `1/e`. The elevation cosine `e` is clamped to
+`CONTACT_LIGHT_ELEVATION_MIN`; `r` is the smaller horizontal half extent.
+
+FEET finds leaf joints within `CONTACT_JOINT_BAND` times the rig height of
+the lowest leaf. Its radius is `CONTACT_RADIUS_FRACTION` times the nearest
+contact spacing. Joint height changes neither radius nor strength.
 
 The receiver scene’s brightest directional light wins, then another drawn
 scene’s light, the mover’s sampled SH L1 dominant direction, or overhead.
 
 Each pixel intersects the ground plane and maps through two rectangle
-dots to a mask byte or disc falloff. One Bayer test chooses a RGB565 halve.
+dots to a mask byte or disc falloff. Overlapping footprints use maximum coverage; one Bayer test chooses a RGB565 halve.
 SHAPE uses integer byte thresholds and has no height fade.
 
-Draw and partial redraw use the same warped rectangle. Its projected
+Draw and partial redraw use the union of the same footprints. Their projected
 corners bound the visited screen rows. Partial redraw retains previous and
 current bounds; a selected-light direction change forgets the picture.
 

@@ -260,6 +260,7 @@ load_capybara(void) {
     entity_set_enabled(entity_find(capybara, name_hash(CAPYBARA_MEADOW)), false);
     runner = entity_find(capybara, name_hash(CAPYBARA_SUBJECT));
     scene_set_contact_blob(runner, RUN_FLOOR_Y, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, SCENE_CONTACT_SHAPE);
+    scene_set_contact_warp(runner, true);
     if (handle_is_none(runner) || !build_gait()) {
         fail("no capybara gallop");
         return false;
