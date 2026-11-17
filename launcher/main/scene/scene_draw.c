@@ -150,3 +150,18 @@ scene_compose(uint32_t dt_ms, int quarter, const scene_target_t* target) {
     stepped = false;
     return expanded;
 }
+
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+void
+scene_draw_checkpoint_capture(checkpoint_t* saved) {
+    CHECKPOINT_CAPTURE(saved, active);
+    CHECKPOINT_CAPTURE(saved, paused);
+    CHECKPOINT_CAPTURE(saved, expanded);
+    CHECKPOINT_CAPTURE(saved, stepped);
+    CHECKPOINT_CAPTURE(saved, rendered);
+    CHECKPOINT_CAPTURE(saved, refused);
+    for (int i = 0; i < scene_loaded_count(); i++) {
+        scene_checkpoint_capture(saved, scene_loaded_at(i));
+    }
+}
+#endif

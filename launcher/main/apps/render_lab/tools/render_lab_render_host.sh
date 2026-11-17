@@ -19,12 +19,11 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 scene_name=render_lab
 
 scene_ui=1
-scene_renderer=1
+scene_target=render_host
 scene_sources="
 main/app/app_arena.c
 main/console/console_words.c
 main/app/app_registry.c
-main/core/job.c
 main/input/touch/gesture.c
 main/input/mapping/orbit_motion_touch.c
 main/input/motion/gravity.c
@@ -35,7 +34,7 @@ $(CDPATH= cd -- "$SCRIPT_DIR/../../../../" &&
 "
 scene_defines="-DCONFIG_LAUNCHER_DEVELOPMENT=0"
 
-# The lit-mesh scene's views (--view shaded|depth|tiles|motion|meshlets) are raster_show()
+# The lit-mesh scene's views (--view shaded|depth|tiles|motion|meshlets|cull|overdraw) are raster_show()
 # over the same frame, so each is unpinned for the reason the shaded one is: its
 # camera path is float, so which pixels a triangle reaches is not identical on
 # every compiler. The tests in tools/tests compare the views with each other.

@@ -1,0 +1,62 @@
+{
+  "note": "Every figure is copied from a datasheet page or derived from one; none is measured. mA at the part's own supply; typ or max null = the datasheet gives none.",
+  "blocks": ["ESP32-S3", "ES8311 codec", "NS4150B amp", "AMOLED driver", "Touch", "IMU", "PMIC and RTC"],
+  "sources": {
+    "espressif-esp32-s3-datasheet": "ESP32-S3 Series Datasheet v2.2",
+    "x-powers-axp2101": "AXP2101 datasheet",
+    "everest-es8311": "ES8311 datasheet, revision 10.0",
+    "nsiway-ns4150b": "NS4150B datasheet",
+    "shenghe-sh8601a": "SH8601A datasheet, version 0.0",
+    "chipone-co5300": "CO5300 datasheet, V0.00",
+    "focaltech-ft3168": "FT3168 datasheet, version 0.6",
+    "qst-qmi8658c": "QMI8658C datasheet, Rev 0.6",
+    "nxp-pcf85063a": "PCF85063A datasheet"
+  },
+  "figures": {
+    "cpu_busy": {"block": "ESP32-S3", "label": "CPU 240 MHz, both cores busy", "typ": 66.2, "max": 107.9, "source": "espressif-esp32-s3-datasheet", "page": "67-68", "table": "Table 5-9", "note": "typ: 32-bit data access, peripheral clocks off; max: 128-bit access, all clocks on; Wi-Fi gated; no PSRAM"},
+    "cpu_idle": {"block": "ESP32-S3", "label": "CPU 240 MHz, WAITI (idle)", "typ": 32.9, "max": 47.6, "source": "espressif-esp32-s3-datasheet", "page": "67", "table": "Table 5-9", "note": "max: all peripheral clocks on; no PSRAM"},
+    "light_sleep": {"block": "ESP32-S3", "label": "Light sleep", "typ": 0.24, "max": null, "source": "espressif-esp32-s3-datasheet", "page": "68", "table": "Table 5-10", "note": "VDD_SPI and Wi-Fi off"},
+    "psram_light_sleep": {"block": "ESP32-S3", "label": "8 MB octal PSRAM in light sleep", "typ": 0.14, "max": null, "source": "espressif-esp32-s3-datasheet", "page": "68", "table": "Table 5-10, note 1", "note": "3.3 V octal PSRAM (S3R8, Table 1-1, p. 14)"},
+    "deep_rtc_memory": {"block": "ESP32-S3", "label": "Deep sleep, RTC memory only", "typ": 0.007, "max": null, "source": "espressif-esp32-s3-datasheet", "page": "68", "table": "Table 5-10", "note": "no PSRAM figure is given for deep sleep"},
+    "deep_ulp_riscv": {"block": "ESP32-S3", "label": "Deep sleep, ULP-RISC-V powered", "typ": 0.19, "max": null, "source": "espressif-esp32-s3-datasheet", "page": "68", "table": "Table 5-10", "note": "replaces the 7 uA figure, not added to it"},
+    "es8311_normal": {"block": "ES8311 codec", "label": "Normal operation", "typ": 8.0, "max": null, "source": "everest-es8311", "page": "12", "table": "DC characteristics", "note": "tested at DVDD/PVDD 1.8 V, AVDD 3.3 V; the board runs DVDD/PVDD at 3.3 V; ADC and DAC split not given"},
+    "es8311_power_down": {"block": "ES8311 codec", "label": "Power-down mode", "typ": 0.0, "max": null, "source": "everest-es8311", "page": "12", "table": "DC characteristics", "note": "printed as 0 uA, a rounded figure"},
+    "amp_idle": {"block": "NS4150B amp", "label": "Enabled, no load", "typ": 3.0, "max": 4.0, "source": "nsiway-ns4150b", "page": "3, 1", "table": "electrical characteristics", "note": "typ: IDD at 3.6 V supply (p. 3); max: the 4 mA of the feature list (p. 1), the table has no max"},
+    "amp_shutdown": {"block": "NS4150B amp", "label": "Shut down (CTRL low)", "typ": 0.0001, "max": 0.01, "source": "nsiway-ns4150b", "page": "3", "table": "electrical characteristics", "note": "ISD 0.1 uA typ, 10 uA max"},
+    "amp_drive_600mw": {"block": "NS4150B amp", "label": "Driving 0.6 W", "typ": 202.0, "max": 337.0, "source": "nsiway-ns4150b", "page": "3", "table": "electrical characteristics", "note": "derived: output power / 90 % efficiency / 3.3 V; 0.6 W is the efficiency test condition; max is the speaker's 1 W rating (schematic H2) at the same efficiency", "derived": true},
+    "sh8601_run": {"block": "AMOLED driver", "label": "SH8601 driver, display running (V1)", "typ": null, "max": 8.305, "source": "shenghe-sh8601a", "page": "19", "table": "Table 8", "note": "IVDDI 2.805 + IVCI 5.5 mA max, 60 Hz, DSI, no load; the panel's own emission is not included; the board's interface is QSPI"},
+    "sh8601_sleep": {"block": "AMOLED driver", "label": "SH8601 driver, sleep (LP11)", "typ": null, "max": 0.9, "source": "shenghe-sh8601a", "page": "19", "table": "Table 8", "note": "IVDDI 850 + IVCI 50 uA max"},
+    "sh8601_deep_standby": {"block": "AMOLED driver", "label": "SH8601 driver, deep standby", "typ": null, "max": 0.006, "source": "shenghe-sh8601a", "page": "19", "table": "Table 8", "note": "IVDDI 4 + IVCI 2 uA max"},
+    "co5300_sleep": {"block": "AMOLED driver", "label": "CO5300 driver, sleep (V2)", "typ": 0.135, "max": null, "source": "chipone-co5300", "page": "103", "table": "DC characteristics", "note": "DSI LP mode: VDDI 110 + VCI 25 uA; the table has no operating current"},
+    "co5300_ultra_low": {"block": "AMOLED driver", "label": "CO5300 driver, ultra-low-power sleep (V2)", "typ": 0.11, "max": null, "source": "chipone-co5300", "page": "103", "table": "DC characteristics", "note": "DSI ULP: VDDI 85 + VCI 25 uA"},
+    "ft3168_normal": {"block": "Touch", "label": "FT3168, normal operation (V1)", "typ": 1.5, "max": null, "source": "focaltech-ft3168", "page": "9", "table": "Table 3-2", "note": "AVDD 2.8 V"},
+    "ft3168_monitor": {"block": "Touch", "label": "FT3168, monitor mode (V1)", "typ": 0.03, "max": null, "source": "focaltech-ft3168", "page": "9", "table": "Table 3-2", "note": "AVDD 2.8 V"},
+    "ft3168_sleep": {"block": "Touch", "label": "FT3168, sleep (V1)", "typ": 0.01, "max": null, "source": "focaltech-ft3168", "page": "9", "table": "Table 3-2", "note": "AVDD 2.8 V"},
+    "imu_accel_250": {"block": "IMU", "label": "QMI8658C, accelerometer only, 250 Hz", "typ": 0.142, "max": null, "source": "qst-qmi8658c", "page": "19", "table": "Table 14", "note": "VDD 1.8 V; gyroscope off; 250 Hz is the listed rate nearest the firmware's 200 Hz"},
+    "imu_gyro_250": {"block": "IMU", "label": "QMI8658C, gyroscope only, 250 Hz", "typ": 0.656, "max": null, "source": "qst-qmi8658c", "page": "19", "table": "Table 15", "note": "VDD 1.8 V; a run with the gyroscope on adds about this much"},
+    "imu_low_power_3hz": {"block": "IMU", "label": "QMI8658C, low-power accelerometer, 3 Hz", "typ": 0.03, "max": null, "source": "qst-qmi8658c", "page": "19", "table": "Table 14", "note": "VDD 1.8 V; the nearest listed figure to a wake-on-motion watch, whose own current is not given"},
+    "imu_power_down": {"block": "IMU", "label": "QMI8658C, power-down", "typ": 0.02, "max": null, "source": "qst-qmi8658c", "page": "42", "table": "Table 31", "note": "registers kept; sensorDisable = 1"},
+    "pmic_floor": {"block": "PMIC and RTC", "label": "AXP2101, battery only, RTCLDO on", "typ": 0.04, "max": null, "source": "x-powers-axp2101", "page": "10", "table": "Table 5-5", "note": "BATFET disabled, no VBUS: a floor, since DCDC1 and ALDO1 quiescent current is not given"},
+    "rtc": {"block": "PMIC and RTC", "label": "PCF85063A RTC", "typ": 0.00022, "max": null, "source": "nxp-pcf85063a", "page": "1", "table": "features", "note": "typical, 3.3 V, 25 C"}
+  },
+  "states": [
+    {"id": "playing", "title": "Playing a sound", "kind": "awake", "text": "Display on, both cores busy, codec running, amplifier driving the speaker.",
+     "figures": ["cpu_busy", "es8311_normal", "amp_drive_600mw", "sh8601_run", "ft3168_normal", "imu_accel_250", "pmic_floor", "rtc"]},
+    {"id": "display-on", "title": "Display on, idle", "kind": "awake", "text": "Display on, CPU waiting, codec running, amplifier kept enabled and silent while the screen is on.",
+     "figures": ["cpu_idle", "es8311_normal", "amp_idle", "sh8601_run", "ft3168_normal", "imu_accel_250", "pmic_floor", "rtc"]},
+    {"id": "display-off", "title": "Display off, CPU awake", "kind": "awake", "text": "Panel asleep, CPU waiting, codec still clocked, amplifier shut down.",
+     "figures": ["cpu_idle", "es8311_normal", "amp_shutdown", "sh8601_sleep", "ft3168_monitor", "imu_accel_250", "pmic_floor", "rtc"]},
+    {"id": "light-sleep", "title": "Light sleep", "kind": "sleep", "text": "CPU in light sleep, codec powered down, amplifier shut down, panel asleep, touch in monitor mode, IMU in low-power mode.",
+     "figures": ["light_sleep", "psram_light_sleep", "es8311_power_down", "amp_shutdown", "sh8601_sleep", "ft3168_monitor", "imu_low_power_3hz", "pmic_floor", "rtc"]},
+    {"id": "deep-sleep", "title": "Deep sleep, external wake", "kind": "sleep", "text": "Only RTC memory powered; the touch interrupt wakes it. The datasheet gives no PSRAM figure for deep sleep.",
+     "figures": ["deep_rtc_memory", "es8311_power_down", "amp_shutdown", "sh8601_deep_standby", "ft3168_sleep", "imu_power_down", "pmic_floor", "rtc"]},
+    {"id": "deep-sleep-ulp", "title": "Deep sleep, ULP-RISC-V watching the IMU", "kind": "sleep", "text": "As deep sleep, with the ULP-RISC-V powered and the IMU in its low-power mode.",
+     "figures": ["deep_ulp_riscv", "es8311_power_down", "amp_shutdown", "sh8601_deep_standby", "ft3168_sleep", "imu_low_power_3hz", "pmic_floor", "rtc"]}
+  ],
+  "unknown": [
+    ["AMOLED panel emission", "Neither driver datasheet covers the panel itself (SH8601A p. 19 says the table shows only the driver IC's power), and no panel datasheet is held."],
+    ["AXP2101 DCDC1 and ALDO1 quiescent current, converter efficiency", "The datasheet gives the 40 uA off-state figure and no converter or LDO quiescent current or efficiency."],
+    ["Flash, IO expander, microSD card, microphone", "Their datasheets are not held. The ESP32-S3 datasheet adds about 10 mA while flash is read in 2-line mode (Table 5-9 note 3, p. 68)."],
+    ["V2 touch controller (CST820)", "No datasheet is held."]
+  ]
+}

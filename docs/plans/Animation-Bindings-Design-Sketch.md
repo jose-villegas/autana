@@ -1,8 +1,8 @@
 # Animation clips as bindings: design sketch
 
 **Status:** approved; steps 1, 2 and 4 are built
-([Animation-Tracks.md](../render/Animation-Tracks.md),
-[Skeleton-and-Skin.md](../render/Skeleton-and-Skin.md), `scene/scene.h`);
+([Animation-Tracks.md](../render/animation/Animation-Tracks.md),
+[Skeleton-and-Skin.md](../render/animation/Skeleton-and-Skin.md), `scene/scene.h`);
 camera paths load as animator rows,
 and step 3 (boot) is not built.
 
@@ -41,7 +41,7 @@ entry's header says which root a clip's paths start from
 ## 2. The pack entry, TRCK version 2
 
 The layout and reader checks are in
-[The pack entry](../render/Animation-Tracks.md#the-pack-entry) and
+[The pack entry](../render/animation/Animation-Tracks.md#the-pack-entry) and
 `launcher/main/anim/anim_tracks.h`.
 
 **The baker** (`tracks_asset.py`) maps glTF to bindings in the field's own
@@ -66,7 +66,7 @@ nothing outside it can be bound. The declaration types are in
 `launcher/main/anim/anim_binding.h`, and any component declares its list the
 same way (the camera's is `CAMERA_FIELDS` in
 `launcher/main/scene/camera/camera.h`). See
-[Binding any field](../render/Animation-Tracks.md#binding-any-field).
+[Binding any field](../render/animation/Animation-Tracks.md#binding-any-field).
 
 Materials are baked into vertex colours, and runtime lights declare no
 animatable fields yet. A clip that binds a light's intensity fails at load
@@ -80,7 +80,7 @@ plays a clip on an entity) owns playback. This sketch gives it the resolved
 form:
 
 The resolved form and binding API are in `launcher/main/anim/anim_binding.h`,
-documented in [The pack entry](../render/Animation-Tracks.md#the-pack-entry).
+documented in [The pack entry](../render/animation/Animation-Tracks.md#the-pack-entry).
 `anim_bind()` looks up paths in the caller's target table; `anim_bind_field()`
 finds components and fields and checks their types. `anim_apply()` samples
 curves into fields and sets supplied dirty bits. The sampler normalizes

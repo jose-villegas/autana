@@ -168,7 +168,7 @@ test_off_axis_lens_projection_and_anisotropic_fit(void) {
             TEST_ASSERT_FLOAT_WITHIN(EPSILON, x, screen.x);
             TEST_ASSERT_FLOAT_WITHIN(EPSILON, y, screen.y);
             TEST_ASSERT_EQUAL_FLOAT(NEAR_Z, lens.project.near_z);
-            TEST_ASSERT_EQUAL_FLOAT(NEAR_Z / (float)R3D_SUBPIXEL, lens.depth_subpixels);
+            TEST_ASSERT_EQUAL_FLOAT(NEAR_Z, lens.depth_near);
             r3d_lens_fit(&lens, width / 2, height / 4);
             screen = projectf_screen(&lens.project, mat4f_apply(&lens.m, ticks));
             TEST_ASSERT_FLOAT_WITHIN(EPSILON, x * 0.5F, screen.x);

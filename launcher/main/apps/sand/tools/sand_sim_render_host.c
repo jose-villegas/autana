@@ -171,7 +171,7 @@ board_angle(int frame) {
 #define SIM_GRAVITY_ONE 256
 
 static void
-drive_tilt(const render_frame_t* frame, int* gx, int* gy) {
+drive_tilt(const provider_frame_t* frame, int* gx, int* gy) {
     const double radians = board_angle(frame->index) * MATH_RADIANS_PER_DEGREE;
     const int sx = (int)lround(INPUT_ACCEL_ONE_G * sin(radians));
     const int sy = (int)lround(INPUT_ACCEL_ONE_G * cos(radians));
@@ -197,7 +197,7 @@ drive_tilt(const render_frame_t* frame, int* gx, int* gy) {
 }
 
 static void
-paint_grid(const render_frame_t* frame, int gx, int gy) {
+paint_grid(const provider_frame_t* frame, int gx, int gy) {
     sand_paint_frame_t pf = {
         .shine_offset = frame->index / 2, .wood_leaf_wind_sign = 1, .wood_leaf_time_ms = frame->elapsed_ms};
     material_frame_set_gravity(&pf.material, gx, gy);
@@ -213,7 +213,7 @@ paint_grid(const render_frame_t* frame, int gx, int gy) {
 }
 
 static void
-draw(const render_frame_t* frame) {
+draw(const provider_frame_t* frame) {
     int gx;
     int gy;
     drive_tilt(frame, &gx, &gy);
@@ -240,7 +240,7 @@ draw(const render_frame_t* frame) {
     }
 }
 
-const render_scene_t render_scene = {
+const frame_provider_t sand_sim_provider = {
     .name = "sand_sim",
     .quarter = 1,
     .frames = 240,

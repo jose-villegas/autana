@@ -8,7 +8,16 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "core/checkpoint.h"
 #include "core/registry.h"
+
+void
+tune_checkpoint_capture(checkpoint_t* saved, const tune_registry_t* registry) {
+    for (const tune_entry_t* e = registry->first; e != NULL; e = e->next) {
+        checkpoint_capture(saved, e->value, sizeof(*e->value));
+        checkpoint_capture(saved, e->owner, sizeof(*e->owner));
+    }
+}
 
 static tune_registry_t shared;
 

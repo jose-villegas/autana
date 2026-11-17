@@ -86,7 +86,7 @@ sweep_gravity(uint32_t elapsed_ms) {
 }
 
 static void
-draw(const render_frame_t* frame) {
+draw(const provider_frame_t* frame) {
     if (tilt_sweep) {
         sweep_gravity(frame->elapsed_ms);
     }
@@ -94,7 +94,7 @@ draw(const render_frame_t* frame) {
     ui_launcher_frame(&frame->input, frame->dt_ms);
 }
 
-const render_scene_t render_scene = {
+const frame_provider_t launcher_home_provider = {
     .name = "launcher_home",
     .quarter = 1,
     .frames = 5,

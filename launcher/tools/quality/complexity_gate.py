@@ -475,6 +475,9 @@ def build_idf_entries(toolchain_root, vendored=False):
         parts = rel.parts
         if str(path.resolve()) in entries:
             continue
+        # Assembly (a package's src/*.S kernels) has no C functions to score.
+        if path.suffix.lower() == ".s":
+            continue
         if vendored:
             if ("launcher/" + rel.as_posix()) not in VENDORED_REFERENCES:
                 continue

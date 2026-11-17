@@ -1,6 +1,6 @@
 /*
  * framegen: a generated frame, the last drawn picture forward-warped from the
- * view it was drawn through to a later one, by its depth (docs/render/Frame-Generation.md).
+ * view it was drawn through to a later one, by its depth (docs/render/frame/Frame-Generation.md).
  * Removable as this folder plus the render context's frame generation setting.
  */
 #pragma once

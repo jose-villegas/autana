@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "math/scalar/float_bits.h"
 #include "math/scalar/rng.h"
 #include "math/text/math_text.h"
 #include "testkit/suite.h"
@@ -72,8 +73,7 @@ test_float_round_trips(void) {
         rng_seed(&random, seeds[seed]);
         for (int i = 0; i < TEXT_RANDOM_SAMPLES; ++i) {
             uint32_t bits = rng_next(&random);
-            float value;
-            memcpy(&value, &bits, sizeof value);
+            const float value = mathf_from_bits(bits);
             check_float(value, text, text + MATHF_TEXT_MAX);
         }
     }

@@ -8,6 +8,14 @@
 #include "apps/render_lab/ui/render_lab_menu_screen.h"
 #include "build/build_variant.h"
 #include "input/input.h"
+#include "scene/scene.h"
+
+/* What the scene plays along a clip: the entity animated, in its loaded scene. */
+typedef struct {
+    scene_t* scene; /* NULL when the scene has not loaded */
+    scene_entity_t entity;
+    const char* clip; /* the clip a frame profile plays; NULL keeps the entity's current one */
+} render_lab_path_t;
 
 typedef struct render_lab_scene {
     const char* name; /* the HUD title */
@@ -46,6 +54,8 @@ typedef struct render_lab_scene {
     /* Optional. Handles `render <args>` that Render Lab's scene commands did not;
      * false means the command is not this scene's. */
     bool (*console)(const char* args, console_reply_fn reply);
+    /* Optional. The clip a frame profile plays: its camera's flight, or the subject's motion. */
+    render_lab_path_t (*path)(void);
 } render_lab_scene_t;
 
 /* A scene that could not load: logs `what` under `tag` and keeps it in

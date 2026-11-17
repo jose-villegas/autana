@@ -330,22 +330,7 @@ test_math_board_rows(void) {
     for (size_t j = 0; j < sizeof rows / sizeof *rows; j++) {
         const row_t* row = &rows[j];
         cycle_context_t ctx = {.row = row, .fixture = f};
-        const float warm = bench_cycle_median(run_cycles, &ctx, false) / (float)row->ops;
-        const bool cold = bench_cache_cold();
-        printf("MATHBENCH name=%s type=%s ops=%d warm=%.1f", row->name, row->type, row->ops, (double)warm);
-        if (cold) {
-            printf(" cold=%.1f", (double)bench_cycle_median(run_cycles, &ctx, true));
-        }
-        row->fn(f);
-        const bool counting = bench_insn_begin();
-        row->fn(f);
-        if (counting) {
-            uint32_t value;
-            TEST_ASSERT_TRUE(bench_insn_end(&value));
-            printf(" insn=%.1f", (double)((float)value / (float)row->ops));
-        }
-        printf("\n");
-        bench_yield();
+        bench_report_cycles("MATHBENCH", row->name, row->type, row->ops, run_cycles, &ctx);
     }
     release();
     suite_clear_test_cleanup();

@@ -1,4 +1,4 @@
-"""The scene playback figures of docs/render/Animation-Tracks.md: clip time against app time as wrap, speed and pause
+"""The scene playback figures of docs/render/animation/Animation-Tracks.md: clip time against app time as wrap, speed and pause
 change it; a transition blend and an interrupted one, as weight and as one joint's turn; nlerp beside slerp;
 and the skeleton itself through those blends, animated. The numbers come from playback_figures_probe.c, which
 plays a skinned glTF's clips, baked by the pack's own writers, on a scene entity through the scene's own calls.

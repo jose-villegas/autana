@@ -29,7 +29,7 @@ id but an icon. Every scene, clip and mesh is mirrored into the engine frame
 on the way in (asset/engine_frame.py); a picture, an icon, a curve or a sound
 has no 3D frame. Ids are unique within a pack, whatever their type. A skinned mesh also brings
 its <mesh id>.skin, its rig's skeleton and each clip in its source.clips
-(docs/render/Skeleton-and-Skin.md). Each pack is written to DIR/<name>.apak;
+(docs/render/animation/Skeleton-and-Skin.md). Each pack is written to DIR/<name>.apak;
 --image also writes the partition image, the pack directory and every pack.
 Every mesh and sound come from the bake cache by launcher/bakes.lock (bake/bake.py):
 the user cache, or --bake-cache DIR, or AUTANA_BAKE_CACHE when a process sets

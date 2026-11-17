@@ -226,7 +226,7 @@ sort_sample(r3d_pipeline_counts_t* counts, uint16_t* set_up) {
     const r3d_lens_t lens = lens_for(&looking_at_origin);
     const uint16_t clusters[] = {0, 1};
     r3d_pipeline_vertex_t cs[SORT_VERTICES];
-    r3d_pipeline_transform(&mesh, &lens, clusters, 2, cs, NULL);
+    r3d_pipeline_transform(&mesh, &lens, clusters, 2, cs, NULL, false);
     r3d_pipeline_count_triangles(&mesh, &lens, clusters, 2, cs, counts, set_up);
 }
 
@@ -257,7 +257,7 @@ test_set_up_per_cluster_counts_set_up_and_clipped_triangles(void) {
     const r3d_lens_t lens = lens_for(&looking_at_origin);
     const uint16_t second[] = {1};
     r3d_pipeline_vertex_t cs[SORT_VERTICES];
-    r3d_pipeline_transform(&mesh, &lens, second, 1, cs, NULL);
+    r3d_pipeline_transform(&mesh, &lens, second, 1, cs, NULL, false);
     r3d_pipeline_counts_t only = {0};
     uint16_t alone[UNLISTED] = {SENTINEL, SENTINEL, SENTINEL};
     r3d_pipeline_count_triangles(&mesh, &lens, second, 1, cs, &only, alone);
@@ -300,7 +300,7 @@ test_the_draw_fills_the_triangles_the_count_sets_up(void) {
     const r3d_lens_t lens = lens_for(&looking_at_origin);
     const uint16_t in_front[] = {0}; /* cluster 0: no corner behind the eye */
     r3d_pipeline_vertex_t cs[SORT_VERTICES];
-    r3d_pipeline_transform(&mesh, &lens, in_front, 1, cs, NULL);
+    r3d_pipeline_transform(&mesh, &lens, in_front, 1, cs, NULL, false);
     r3d_pipeline_counts_t counts = {0};
     r3d_pipeline_count_triangles(&mesh, &lens, in_front, 1, cs, &counts, NULL);
 

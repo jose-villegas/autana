@@ -4,12 +4,15 @@
  */
 #pragma once
 
+#include <stdbool.h>
+
 #include "apps/render_lab/scene_baked_variant.h"
 
 typedef struct {
     const char* scene;        /* the scene's id, and its pack's name */
     const char* const* bakes; /* the renderer of each variant, by scene_baked_variant_t */
     const char* camera;       /* followed when the start names no camera */
+    bool skip_hidden;         /* its camera skips clusters behind drawn depth: much of it hides */
 } scene_baked_t;
 
 /* An open street with a far plane, walked and flown over on a loop. */

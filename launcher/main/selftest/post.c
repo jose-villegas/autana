@@ -15,6 +15,7 @@
 #include "core/memory.h"
 #include "core/timing.h"
 #include "gfx/gfx.h"
+#include "gfx/present/gfx_present.h"
 #include "power/power_decode.h"
 #include "sound/sound_status.h"
 

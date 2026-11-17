@@ -1,6 +1,6 @@
 # TRCK v3 animation tracks
 
-One animation clip: keyed fields bound by object path ([Animation-Tracks.md](../../render/Animation-Tracks.md)). Layout defines: [`anim/anim_tracks_format.h`](../../../launcher/main/anim/anim_tracks_format.h).
+One animation clip: keyed fields bound by object path ([Animation-Tracks.md](../../render/animation/Animation-Tracks.md)). Layout defines: [`anim/anim_tracks_format.h`](../../../launcher/main/anim/anim_tracks_format.h).
 
 ```mermaid
 ---
@@ -72,4 +72,4 @@ A row's `component` and `field` name what it drives. The components a scene bind
 | `TRNS` | `ANIM_COMPONENT_TRANSFORM`, `anim/anim_tracks_format.h` | `position` vec3, `rotation` quaternion, `scale` vec3 (`anim/pose/anim_pose.c`) |
 | `CAMR` | `ANIM_COMPONENT_CAMERA`, `scene/camera/camera.h` | `half_fov_short_tan` float, `near_z` float (`CAMERA_FIELDS` in `camera.c`); the glTF bake writes only `half_fov_short_tan` |
 
-[Binding any field](../../render/Animation-Tracks.md#binding-any-field) adds a component.
+[Binding any field](../../render/animation/Animation-Tracks.md#binding-any-field) adds a component.

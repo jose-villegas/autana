@@ -108,7 +108,7 @@ setup(int quarter) {
 }
 
 static void
-draw(const render_frame_t* frame) {
+draw(const provider_frame_t* frame) {
     const post_ui_report_t report = {
         .title = failures_only ? POST_LAYOUT_FAULT_TITLE : POST_LAYOUT_TITLE,
         .footer = failures_only ? POST_LAYOUT_FAULT_FOOTER : NULL,
@@ -118,7 +118,7 @@ draw(const render_frame_t* frame) {
     post_ui_draw_report(&report);
 }
 
-const render_scene_t render_scene = {
+const frame_provider_t post_ui_provider = {
     .name = "post_ui",
     .quarter = 1,
     .frames = 1,

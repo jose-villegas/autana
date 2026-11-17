@@ -25,6 +25,8 @@ typedef struct {
 void scene_baked_enter(const render_lab_scene_t* self);
 void scene_baked_frame(uint32_t dt_ms);
 void scene_baked_exit(void);
+/* The camera the scene follows, flying its clip. */
+render_lab_path_t scene_baked_path(void);
 
 /* The menu rows of a baked scene: FRAME GEN, whose warp suits a scene whose
  * objects do not move on their own. */
@@ -56,7 +58,7 @@ scene_baked_controls(int width) {
                            .status = RENDER_LAB_SCENE_DEV(scene_baked_status),                                         \
                            .controls = scene_baked_controls,                                                           \
                            .generates_frames = true,                                                                   \
-                           .console = RENDER_LAB_SCENE_DEV(scene_baked_console)},
+                           .path = scene_baked_path},
 
 /* Defines `id`, family `family_`'s scenes indexed by variant: the menu family
  * `name_`, each titled `name_` and its variant and keyed `key_prefix_` and its

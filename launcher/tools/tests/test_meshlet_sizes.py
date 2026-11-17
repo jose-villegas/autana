@@ -436,13 +436,13 @@ int main(void) {
         from unittest import mock
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
-            doc = root / "docs/render/Render-Pipeline.md"
+            doc = root / "docs/render/offline/Baked-Mesh.md"
             doc.parent.mkdir(parents=True)
             doc.write_text(f"<!-- generated: meshlet-sizes sha256={generated_blocks.digest(chr(10) + 'fixture' + chr(10))} -->\nfixture\n<!-- /generated: meshlet-sizes -->\n")
             args = ["--stage", "meshlets", "--check", "--scene", "fixture.scene.toml", "--object", "atrium"]
             with mock.patch.object(doc_stages, "ROOT", root), mock.patch.object(doc_stages, "RESULTS", root / "results"), \
                     mock.patch.object(meshlet_sizes, "table", return_value="fixture\n"), \
-                    mock.patch.object(generated_blocks, "tracked_files", return_value=["docs/render/Render-Pipeline.md"]):
+                    mock.patch.object(generated_blocks, "tracked_files", return_value=["docs/render/offline/Baked-Mesh.md"]):
                 self.assertEqual(doc_stages.main(args), 0)
                 doc.write_text(doc.read_text().replace("fixture", "stale"))
                 self.assertEqual(doc_stages.main(args), 1)

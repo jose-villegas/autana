@@ -19,7 +19,8 @@ DEMO_SCENE = ROOT / "launcher/demo/sponza/sponza.scene.toml"
 DEMO_IMPORT = ROOT / "launcher/demo/sponza/sponza.import.toml"
 APP_SCRIPT = ROOT / "launcher/tools/render/doc_images_demo.sh"
 # The variants a scene places for "painting", as doc_tables.variants lists them.
-VARIANTS = [("painting", False), ("painting_lite", False), ("painting_flat", False), ("painting_fitted", True)]
+VARIANTS = [("painting", False), ("painting_lite", False), ("painting_flat", False), ("painting_fitted", True),
+            ("painting_fitted_full", True)]
 
 
 @unittest.skipUnless(shutil.which("sh"), "needs sh")
@@ -141,9 +142,9 @@ class DocImageFailureTest(unittest.TestCase):
         full = min((item["name"] for item in objects if "mesh_renderer" in item), key=len)
         names = [name for name, _ in doc_tables.variants(DEMO_SCENE, full)]
         pairs = doc_tables.variant_pairs(list(reversed(names)), full)
-        self.assertEqual([name for _, name in pairs],
-                         [name for name in reversed(names) if doc_tables.variant_note(name, full)[1]])
-        self.assertTrue(all(base in names for base, _ in pairs))
+        self.assertEqual([name for _, name, _ in pairs],
+                         [name for name in reversed(names) for _ in doc_tables.variant_note(name, full)[1]])
+        self.assertTrue(all(base in names for base, _, _ in pairs))
         with self.assertRaisesRegex(ValueError, "VARIANT_NOTES"):
             doc_tables.variant_note(full + "_unknown", full)
 

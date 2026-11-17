@@ -7,8 +7,8 @@
 #include "math/text/math_text.h"
 #include "render/context/render_context.h"
 #include "render/view/raster_cull_view.h"
-#include "render_host.h"
 #include "scene/scene.h"
+#include "scene_viewer.h"
 
 static const char* scene_id;
 static const char* camera_name;
@@ -23,7 +23,7 @@ static const char* counts_path;
 static FILE* counts;
 static const char* poses_path;
 static FILE* poses;
-static const scene_t* shown;
+static scene_t* shown;
 static scene_entity_t camera;
 
 static bool
@@ -226,7 +226,7 @@ setup(int quarter) {
 
 /* One row per frame of what the cull view counted from the camera, and of where the camera stood. */
 static void
-draw(const render_frame_t* frame) {
+draw(const provider_frame_t* frame) {
     const bool last = frame->index + 1 == frame->count;
     if (counts != NULL) {
         const raster_cull_frame_t f = raster_cull_frame(render_context_debug_view_state(render_context_main()));
@@ -251,7 +251,22 @@ draw(const render_frame_t* frame) {
     }
 }
 
-const render_scene_t render_scene = {
+static uint32_t
+path_ms(void) {
+    return scene_animator_clip_duration_ms(shown, camera, 0);
+}
+
+static void
+seek(uint32_t t_ms) {
+    for (int i = 0; i < scene_entity_count(shown); i++) {
+        (void)scene_animator_seek(shown, (scene_entity_t)i, SCENE_ANIMATOR_CURRENT, t_ms);
+    }
+    /* Seeking cuts only when the active camera itself is animated; objects
+     * or a camera parent moving under a still camera need the cut too. */
+    render_context_forget(render_context_main());
+}
+
+const frame_provider_t scene_provider = {
     .name = "scene_viewer",
     .quarter = 1,
     .frames = 30,
@@ -259,4 +274,6 @@ const render_scene_t render_scene = {
     .options = options,
     .setup = setup,
     .draw = draw,
+    .path_ms = path_ms,
+    .seek = seek,
 };

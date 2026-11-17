@@ -9,6 +9,7 @@
 #include "suites.h"
 #include "unity.h"
 
+#include "gfx/present/gfx_present.h"
 #include "gfx/present/modes/band/gfx_band.h"
 
 #define BAND_HEIGHT 32

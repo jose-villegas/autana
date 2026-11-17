@@ -76,6 +76,12 @@ jobs:
             ctest --test-dir "build/packages/$name" --output-on-failure --no-tests=error
           done
 
+      - name: Standalone render host
+        if: ${{ !cancelled() }}
+        run: |
+          cmake -S launcher/tools/render -B build/render-host -DCMAKE_C_COMPILER=gcc
+          cmake --build build/render-host --parallel
+
       - name: Exhaustive reciprocal-root proof
         if: ${{ !cancelled() }}
         run: |

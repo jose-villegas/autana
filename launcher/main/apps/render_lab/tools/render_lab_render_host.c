@@ -21,6 +21,7 @@
 #include "math/text/math_text.h"
 #include "render/context/render_context.h"
 #include "render/resolution/resolution.h"
+#include "render/view/raster_overdraw.h"
 #include "render_host.h"
 #include "scene/scene_shell.h"
 #include "ui/layout/ui_transform.h"
@@ -256,6 +257,18 @@ setup(int quarter) {
     return tune_options(option_count, option_args, "--live-tune");
 }
 
+/* With --view overdraw, the last frame's totals on stderr, beside its image. */
+static void
+report_overdraw(const provider_frame_t* frame) {
+    const render_context_t* context = render_context_main();
+    if (frame->index + 1 != frame->count || context->debug_view != render_context_debug_view_named("overdraw")
+        || context->debug_view_state == NULL) {
+        return;
+    }
+    const raster_overdraw_frame_t f = raster_overdraw_frame(context->debug_view_state);
+    (void)fprintf(stderr, RASTER_OVERDRAW_LINE "\n", f.pixels, f.tested, f.written, f.tested_max, f.written_max);
+}
+
 static void
 dump_raster(int index) {
     const raster_t* raster = &render_context_main()->raster;
@@ -275,7 +288,7 @@ dump_raster(int index) {
 }
 
 static void
-draw(const render_frame_t* frame) {
+draw(const provider_frame_t* frame) {
     ui_clear_band_overlay();
     input_t in = tap ? frame->input : (input_t){0};
     in.boot.pressed = menu && frame->index == 0;
@@ -285,6 +298,7 @@ draw(const render_frame_t* frame) {
         }
     }
     app_list()->frame(frame->dt_ms, &in);
+    report_overdraw(frame);
     if (dump_dir != NULL) {
         dump_raster(frame->index);
     }
@@ -293,7 +307,7 @@ draw(const render_frame_t* frame) {
     app_list()->update(frame->dt_ms, &in);
 }
 
-const render_scene_t render_scene = {
+const frame_provider_t render_lab_provider = {
     .name = "render_lab",
     .quarter = 1,
     .frames = 30,

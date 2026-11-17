@@ -1,5 +1,6 @@
 #include "suites.h"
 #ifdef DEVICE_BUILD
+#include <stdarg.h>
 #include <stdio.h>
 #include "apps/render_lab/baked_families.h"
 #include "apps/render_lab/capybara_content.h"
@@ -24,12 +25,32 @@
 #include "testkit/cleanup.h"
 #include "unity.h"
 
+/* A capybara row: the view it is seen from and how the gallop comes in. A
+ * cut times one gallop cycle; a blend times only the blend, so every timed
+ * frame samples and mixes two clips. */
+typedef struct {
+    const char* row;
+    const char* view;
+    int blend_ms;
+} capybara_take_t;
+
 typedef struct {
     const render_lab_scene_t* scene;
     const char* pack;
     const char* entity;
+    const capybara_take_t* take;
     perf_budget_t quarters[R3D_PERF_QUARTER_COUNT];
 } profile_scenario_t;
+
+static const capybara_take_t capybara_home = {CAPYBARA_SCENE, CAPYBARA_VIEW_HOME, CAPYBARA_CLIP_CUT_MS};
+static const capybara_take_t capybara_front = {"capybara-front", CAPYBARA_VIEW_FRONT, CAPYBARA_CLIP_CUT_MS};
+static const capybara_take_t capybara_side = {"capybara-side", CAPYBARA_VIEW_SIDE, CAPYBARA_CLIP_CUT_MS};
+static const capybara_take_t capybara_back = {"capybara-back", CAPYBARA_VIEW_BACK, CAPYBARA_CLIP_CUT_MS};
+static const capybara_take_t capybara_close = {"capybara-close", CAPYBARA_VIEW_CLOSE, CAPYBARA_CLIP_CUT_MS};
+static const capybara_take_t capybara_blend = {"capybara-blend", CAPYBARA_VIEW_HOME, CAPYBARA_CLIP_BLEND_MS};
+
+/* A capybara scenario: its take and budgets. */
+#define CAPYBARA_ROW(take, ...) {&scene_capybara, CAPYBARA_SCENE, CAPYBARA_SUBJECT, &(take), __VA_ARGS__}
 
 /* Worst of a 5-seed capture on A308 (before and after its move), 20E8 and
  * 2124, + 1%; per quarter, portrait then landscape. */
@@ -40,8 +61,13 @@ static const profile_scenario_t profile_scenarios[] = {
     {.scene = &scene_sponza[SCENE_BAKED_FITTED], .quarters = {{41341, 49565}, {39726, 46664}}},
     {.scene = &scene_sponza[SCENE_BAKED_FITTED_FULL], .quarters = {{49536, 62165}, {47469, 58108}}},
     {.scene = &scene_sponza[SCENE_BAKED_FLAT_FITTED], .quarters = {{40285, 50300}, {39053, 48179}}},
-    {&scene_capybara, CAPYBARA_SCENE, CAPYBARA_SUBJECT, {{20941, 21286}, {21500, 21803}}},
-    {&scene_bistro[SCENE_BAKED_FITTED_FULL], BISTRO_SCENE, BISTRO_CAMERA, {{41782, 62092}, {40404, 57696}}},
+    CAPYBARA_ROW(capybara_home, {{20941, 21286}, {21500, 21803}}),
+    CAPYBARA_ROW(capybara_front, {{20907, 21289}, {21305, 21590}}),
+    CAPYBARA_ROW(capybara_side, {{20921, 21268}, {21591, 21909}}),
+    CAPYBARA_ROW(capybara_back, {{20352, 20994}, {20989, 21423}}),
+    CAPYBARA_ROW(capybara_close, {{23002, 23384}, {23807, 24080}}),
+    CAPYBARA_ROW(capybara_blend, {{21806, 22738}, {22438, 22866}}),
+    {&scene_bistro[SCENE_BAKED_FITTED_FULL], BISTRO_SCENE, BISTRO_CAMERA, NULL, {{41782, 62092}, {40404, 57696}}},
 };
 
 static const char* TAG = "render_lab_profile";
@@ -133,6 +159,12 @@ replay_pose(scene_t* scene, scene_entity_t entity, uint32_t duration_ms, int32_t
 static const profile_scenario_t* scenario;
 static size_t quarter_index;
 
+/* The row the scenario reports as. */
+static const char*
+scenario_row(void) {
+    return scenario->take == NULL ? scenario->scene->key : scenario->take->row;
+}
+
 /* The scenario's path as the render lab shows it, in the current quarter, its clip from the start. */
 typedef struct {
     scene_t* scene;
@@ -157,7 +189,7 @@ release_report(void) {
  * of its own, so the test's stays small under the played frames. */
 static __attribute__((noinline)) void
 report_path(const scenario_path_t* path, const frame_profile_t* p) {
-    const char* row = scenario->scene->key;
+    const char* row = scenario_row();
     const char* quarter = r3d_perf_quarters[quarter_index].name;
     frame_profile_log(TAG, row, p, quarter);
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, p->frames, "frame profile failed");
@@ -180,6 +212,18 @@ report_path(const scenario_path_t* path, const frame_profile_t* p) {
     release_report();
 }
 
+/* One console line, formatted, for the showing scene. */
+static void
+send(const char* format, ...) {
+    char command[ASSET_NAME_MAX];
+    va_list args;
+    va_start(args, format);
+    const int length = vsnprintf(command, sizeof command, format, args);
+    va_end(args);
+    TEST_ASSERT_TRUE(length > 0 && (size_t)length < sizeof command);
+    TEST_ASSERT_TRUE(app_render_lab.console->handle(command));
+}
+
 static scenario_path_t
 enter_scenario(void) {
     render_lab_test_enter(&saved, scenario->scene->key);
@@ -190,15 +234,17 @@ enter_scenario(void) {
     const scene_entity_t entity =
         scene_find(scene, name_hash(scenario->entity == NULL ? sponza_cameras[0] : scenario->entity));
     TEST_ASSERT_NOT_EQUAL(SCENE_ENTITY_NONE, entity);
-    if (scenario->scene == &scene_capybara) {
-        char command[sizeof(CAPYBARA_CLIP_COMMAND)];
-        const int length = snprintf(command, sizeof command, CAPYBARA_CLIP_COMMAND, CAPYBARA_CLIP_CUT_MS);
-        TEST_ASSERT_TRUE(length > 0 && (size_t)length < sizeof command);
-        TEST_ASSERT_TRUE(app_render_lab.console->handle(command));
+    const capybara_take_t* take = scenario->take;
+    if (take != NULL) {
+        send(CAPYBARA_VIEW_COMMAND, take->view);
+        TEST_ASSERT_TRUE(scene_animator_seek(scene, entity, SCENE_ANIMATOR_CURRENT, 0));
+        send(CAPYBARA_CLIP_COMMAND, take->blend_ms);
     }
     TEST_ASSERT_TRUE(scene_animator_seek(scene, entity, SCENE_ANIMATOR_CURRENT, 0));
     const int clip = scene->animators[entity].layer.current.clip;
-    const uint32_t duration_ms = scene_animator_clip_duration_ms(scene, entity, clip);
+    const uint32_t duration_ms = take != NULL && take->blend_ms > 0
+                                     ? (uint32_t)take->blend_ms
+                                     : scene_animator_clip_duration_ms(scene, entity, clip);
     TEST_ASSERT_GREATER_THAN_UINT32(0, duration_ms);
     return (scenario_path_t){scene, entity, duration_ms};
 }
@@ -206,7 +252,7 @@ enter_scenario(void) {
 /* The played profile against its budget, in a frame of its own for the same reason. */
 static __attribute__((noinline)) void
 judge_profile(const frame_profile_t* p) {
-    r3d_perf_budget(scenario->scene->key, &r3d_perf_quarters[quarter_index], p->frame_us.avg, p->frame_us.p95,
+    r3d_perf_budget(scenario_row(), &r3d_perf_quarters[quarter_index], p->frame_us.avg, p->frame_us.p95,
                     &scenario->quarters[quarter_index], true);
 }
 
@@ -214,7 +260,7 @@ static void
 test_real_time_frame_profile(void) {
     const scenario_path_t path = enter_scenario();
     const frame_profile_scenario_t playback = {
-        scenario->scene->key,
+        scenario_row(),
         (int64_t)path.duration_ms * MATH_US_PER_MS,
     };
     int64_t remainder_us = 0;
@@ -244,7 +290,7 @@ log_step_frames(const step_frame_t* frames, int count, resolution_step_t size) {
     for (int first = 0; first < count; first += FRAME_PROFILE_LINE_FRAMES) {
         strbuf_t text = strbuf_make(line, line_size);
         const int n = count - first < FRAME_PROFILE_LINE_FRAMES ? count - first : FRAME_PROFILE_LINE_FRAMES;
-        strbuf_appendf(&text, DYNRES_STEPS_LINE, scenario->scene->key, ladder_step, size.width, size.height,
+        strbuf_appendf(&text, DYNRES_STEPS_LINE, scenario_row(), ladder_step, size.width, size.height,
                        DYNRES_STEPS_FRAME_DT_MS, first, n);
         for (int i = first; i < first + n; i++) {
             const step_frame_t* f = &frames[i];

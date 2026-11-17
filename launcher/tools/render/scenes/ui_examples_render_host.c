@@ -104,7 +104,7 @@ setup(int quarter) {
 /* The finger for `frame`, at the centre of what the frame before the press
  * drew, in panel coordinates. */
 static input_t
-finger(const render_frame_t* frame) {
+finger(const provider_frame_t* frame) {
     input_t in = {0};
     if (frame->index == press_frame) {
         tap_at = affine2x_map_pixel(
@@ -121,7 +121,7 @@ finger(const render_frame_t* frame) {
 }
 
 static void
-draw(const render_frame_t* frame) {
+draw(const provider_frame_t* frame) {
     const input_t in = finger(frame);
     ui_begin(&in);
     ui_screen();
@@ -140,7 +140,7 @@ draw(const render_frame_t* frame) {
     }
 }
 
-const render_scene_t render_scene = {
+const frame_provider_t ui_examples_provider = {
     .name = "ui_examples",
     .quarter = 0,
     .frames = IMAGE_FRAMES,

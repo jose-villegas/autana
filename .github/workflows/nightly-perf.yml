@@ -30,6 +30,7 @@ env:
   NIGHT_START: ${{ vars.NIGHT_START }}
   NIGHT_ZONE: ${{ vars.NIGHT_ZONE }}
   BOARD_LAST_START: ${{ vars.BOARD_LAST_START }}
+  BOARD_END: ${{ vars.BOARD_END }}
   GH_TOKEN: ${{ github.token }}
   GIT_CONFIG_COUNT: '4'
   GIT_CONFIG_KEY_0: core.hooksPath
@@ -146,26 +147,6 @@ jobs:
         if: always() && env.PERF_DATA != ''
         run: |
           PY=$(. scripts/lib/python.sh && find_python)
-          "$PY" - <<'PY'
-          from collections import Counter
-          from datetime import datetime
-          import json
-          import os
-          from pathlib import Path
-          plan = json.loads((Path(os.environ["PERF_OUT"]) / "plan.json").read_text())
-          night = datetime.fromisoformat(plan["started"]).strftime("%Y-%m-%d-%H%M")
-          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
-              for board in plan["lanes"]:
-                  path = Path(os.environ["PERF_DATA"]) / "scoped" / board / night / "night.json"
-                  if not path.is_file():
-                      summary.write(f"{board}: no night manifest\n\n")
-                      continue
-                  manifest = json.loads(path.read_text())
-                  counts = Counter(step["outcome"] for step in manifest["steps"])
-                  summary.write(f"{board}: " + ", ".join(f"{key}={value}" for key, value in sorted(counts.items())) + "\n\n")
-                  test = manifest["selftest"]
-                  summary.write(f"Self-test {board}: {test['outcome']}; report: {test['report']}\n\n")
-          PY
           "$PY" launcher/tools/perf/nightly/scoped_chain.py timeline \
             --plan "$PERF_OUT/plan.json" --data "$PERF_DATA" --summary "$GITHUB_STEP_SUMMARY"
 

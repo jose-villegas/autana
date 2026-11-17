@@ -4,6 +4,7 @@
 #define CONFIG_LAUNCHER_DEVELOPMENT 1
 
 #include "gfx/gfx.h"
+#include "gfx/present/gfx_present.h"
 #include "gfx/present/gfx_test.h"
 #include "testkit/cleanup.h"
 #include "unity.h"

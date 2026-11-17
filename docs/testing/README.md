@@ -8,8 +8,8 @@ run `launcher/test/run_tests.sh`.
 
 - It needs a host C compiler, not ESP-IDF or a board.
 - A good run ends with `0 Failures` and `OK`; most of the wait is compiling.
- On Windows you need three installs first: [Git for Windows](https://git-scm.com/download/win)
-(provides Git Bash), a compiler (WinLibs, which includes `make`) and
+ On Windows you need four installs first: [Git for Windows](https://git-scm.com/download/win)
+(provides Git Bash), a compiler (WinLibs, which includes `make`), CMake and
 Python 3; [Host tests](Host-Tests.md#install-what-you-need) has the
 commands.
 

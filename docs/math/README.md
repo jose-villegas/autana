@@ -6,7 +6,7 @@ in `scalar/`, vectors and transforms in `linear/`, shapes and queries in
 sample blocks in `signal/`. [Text conversion](Text.md) lives in `text/`.
 
 <!-- generated: math-fast-links-readme check: python launcher/tools/perf/fast_paths.py --check -->
-[Fast-path evidence](Fast-Paths.md) pairs costs, bounds and callers.
+[Fast-path evidence](../packages/Fast-Paths.md) pairs costs, bounds and callers.
 <!-- /generated: math-fast-links-readme -->
 
 The arithmetic and geometry headers are:

@@ -4,7 +4,7 @@
 rolling-ball game with physics and lighting, and a platformer with parallax
 and 2D lighting. The renderer and scene runtime are documented in
 [Mesh Rendering](../render/Mesh-Rendering.md) and
-[Scene Files](../render/Scene-Files.md). This plan describes future work;
+[Scene Files](../render/scene/Scene-Files.md). This plan describes future work;
 the source tree and those references define the available runtime.
 
 ## Runtime foundations

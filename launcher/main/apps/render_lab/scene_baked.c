@@ -15,10 +15,8 @@
 
 #include "esp_log.h"
 
-#include "console/console_words.h"
 #include "core/tune.h"
 #include "draw/draw.h"
-#include "gfx/present/gfx_present.h"
 #include "image/pixel/rgb565.h"
 #include "render/context/render_context.h"
 #include "render_lab.h"
@@ -62,6 +60,11 @@ camera_entity(void) {
                       name_hash(render_lab_start_camera == NULL ? shown_family->camera : render_lab_start_camera));
 }
 
+render_lab_path_t
+scene_baked_path(void) {
+    return (render_lab_path_t){loaded, loaded == NULL ? SCENE_ENTITY_NONE : camera_entity(), NULL};
+}
+
 static void
 apply_settings(void) {
     render_lab_apply_raster_settings();
@@ -99,6 +102,7 @@ scene_baked_enter(const render_lab_scene_t* self) {
     }
     (void)scene_activate(loaded,
                          render_lab_start_camera == NULL ? SCENE_CAMERA_FIRST : name_hash(render_lab_start_camera));
+    (void)scene_camera_set_skip_hidden(loaded, camera_entity(), family->skip_hidden);
     apply_settings();
 }
 
@@ -128,37 +132,6 @@ scene_baked_status(void) {
         buf[0] = '\0';
     }
     return buf;
-}
-
-/* "render pose <ms>" holds the camera at that time along its path, so a view
- * can be compared at several sizes; "render pose play" lets it move again. */
-static inline bool
-scene_baked_console(const char* args, console_reply_fn reply) {
-    const char* rest;
-    if (!console_word_match(args, "pose", &rest)) {
-        return false;
-    }
-    const scene_entity_t camera = loaded == NULL ? SCENE_ENTITY_NONE : camera_entity();
-    char* end;
-    const long t_ms = strtol(rest, &end, 10);
-    const bool play = strcmp(rest, "play") == 0;
-    if (camera == SCENE_ENTITY_NONE) {
-        reply("RENDER_ERR no camera path");
-    } else if (play) {
-        (void)scene_animator_set_paused(loaded, camera, SCENE_ANIMATOR_CURRENT, false);
-        reply("RENDER pose=play");
-        reply("RENDER_END");
-    } else if (end == rest || *end != '\0' || t_ms < 0
-               || !scene_animator_seek(loaded, camera, SCENE_ANIMATOR_CURRENT, (uint32_t)t_ms)
-               || !scene_animator_set_paused(loaded, camera, SCENE_ANIMATOR_CURRENT, true)) {
-        reply("RENDER_ERR usage: render pose <ms> | render pose play");
-    } else {
-        char line[sizeof("RENDER pose=-2147483648")];
-        (void)snprintf(line, sizeof line, "RENDER pose=%ld", t_ms);
-        reply(line);
-        reply("RENDER_END");
-    }
-    return true;
 }
 
 SCENE_BAKED_FAMILY(scene_sponza, sponza_shown, &baked_sponza, "Sponza", "sponza");

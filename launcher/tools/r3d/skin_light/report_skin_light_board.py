@@ -174,7 +174,7 @@ def main():
              "|---|---|---:|---|---:|---:|---:|"]
     table.extend("| " + " | ".join(row) + " |" for row in rows(capture))
     command = ("python launcher/tools/r3d/skin_light/report_skin_light_board.py "
-               "docs/render/data/skin-light-board.txt docs/render/Skinned-Lighting.md --check")
+               "docs/render/data/skin-light-board.txt docs/render/animation/Skinned-Lighting.md --check")
     changed = replace_blocks(args.document, {"skin-light-board": "\n".join(table), "skin-light-modes": modes},
                              check=args.check, command=command)
     if not args.check:

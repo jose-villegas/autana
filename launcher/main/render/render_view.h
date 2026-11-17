@@ -2,6 +2,7 @@
  * Pose: +z forward, +y up, scale ignored. Picture: +y down. */
 #pragma once
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "display/viewport.h"
@@ -10,7 +11,13 @@
 
 typedef enum { CAMERA_PRESENT_NEAREST, CAMERA_PRESENT_SCANLINE, CAMERA_PRESENT_DOUBLE } camera_present_t;
 
-typedef enum { SMALL_FILL_FLAT, SMALL_FILL_GRAIN, SMALL_FILL_DITHER, SMALL_FILL_STYLE_COUNT } small_fill_style_t;
+/* One byte, so small_fill_t packs beside a view's flags. */
+typedef enum __attribute__((packed)) {
+    SMALL_FILL_FLAT,
+    SMALL_FILL_GRAIN,
+    SMALL_FILL_DITHER,
+    SMALL_FILL_STYLE_COUNT
+} small_fill_style_t;
 
 #define SMALL_FILL_CEILING_MAX    16
 #define SMALL_FILL_CEILING_SMOOTH 4
@@ -37,6 +44,11 @@ typedef struct {
     viewport_t viewport;
     camera_present_t present;
     small_fill_t small_fill;
+    /* Skip each cluster wholly behind depth already drawn, before any of its
+     * triangles is set up. It pays where much geometry hides behind nearer
+     * geometry; elsewhere the test costs more than it skips, so it is off
+     * unless a scene turns it on. It changes no pixel the view keeps. */
+    bool skip_hidden;
     /* The lens shift: the optical centre's offset from the picture's middle,
      * along the camera's right and up, in picture short sides. Zero looks
      * straight ahead; a window onto a fixed rectangle moves the eye and shifts

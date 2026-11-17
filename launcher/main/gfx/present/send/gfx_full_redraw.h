@@ -1,6 +1,6 @@
 /*
  * gfx_full_redraw: the two latches behind gfx_request_full_redraw()
- * (gfx_present.h) that gfx_dirty.h does not already own: band mode's own
+ * (gfx.h) that gfx_dirty.h does not already own: band mode's own
  * "force every band next frame" signal, and the shell-facing "a redraw
  * was requested and not yet consumed" flag.
  *

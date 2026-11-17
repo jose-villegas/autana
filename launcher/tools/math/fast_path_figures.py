@@ -36,7 +36,7 @@ def main(argv=None):
     parser.add_argument("--out", type=Path, default=ROOT / "docs/images/math")
     args = parser.parse_args(argv)
     try:
-        items = fast_paths.annotations()
+        items = [item for item in fast_paths.annotations() if item.unit != "bit"]
         text = args.capture.read_text(encoding="utf-8")
         bins = bench.parse_bins(text)
         if not bins:

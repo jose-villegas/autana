@@ -82,9 +82,17 @@ report_fps(int64_t now_us, int64_t* window_start, uint32_t* frames) {
         uint32_t points = 0;
         uint32_t moved = 0;
         touch_take_sample_counts(&points, &moved);
+        unsigned reads = 0;
+        unsigned failed = 0;
+        int64_t read_p95_us = 0;
+        int64_t read_max_us = 0;
+        touch_take_read_times(&reads, &failed, &read_p95_us, &read_max_us);
         const double per_s = 1000000.0 / (double)since;
-        ESP_LOGI(TAG, "%.1f fps, %.1f drawn/s, touch %.1f points/s %.1f moved/s", (double)*frames * per_s,
-                 (double)drawn * per_s, (double)points * per_s, (double)moved * per_s);
+        ESP_LOGI(TAG,
+                 "%.1f fps, %.1f drawn/s, touch %.1f points/s %.1f moved/s, reads %u failed %u read_p95_us %lld "
+                 "read_max_us %lld",
+                 (double)*frames * per_s, (double)drawn * per_s, (double)points * per_s, (double)moved * per_s, reads,
+                 failed, (long long)read_p95_us, (long long)read_max_us);
         static char cost[FRAME_COST_REPORT_MAX];
         static char counts[FRAME_COST_COUNTS_MAX];
         /* Before the report, which forgets the window the counts come from. */

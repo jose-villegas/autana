@@ -52,10 +52,8 @@ header's opening comment; `--check` verifies it.
 | Header | Purpose |
 |---|---|
 | [include/math/geometry/ball_template.h](include/math/geometry/ball_template.h) | ball_template: closed balls in any dimension for one number type; see docs/math/Conventions.md#templates for macro arguments. |
-| [include/math/geometry/box3_plane_template.h](include/math/geometry/box3_plane_template.h) | box3_plane_template: how far a real box reaches along a plane: its least and greatest signed distance, and its least objective inside a half-space. |
 | [include/math/geometry/box3_template.h](include/math/geometry/box3_template.h) | box3_template: closed axis-aligned boxes for one number type; see docs/math/Conventions.md#templates for macro arguments. |
 | [include/math/geometry/box3f.h](include/math/geometry/box3f.h) | box3f: a closed axis-aligned box of a float. |
-| [include/math/geometry/box3f_plane.h](include/math/geometry/box3f_plane.h) | box3f_plane: a float box against a float plane (box3_plane_template.h). |
 | [include/math/geometry/box3s.h](include/math/geometry/box3s.h) | box3s: a closed axis-aligned box of int16 position ticks. |
 | [include/math/geometry/circle_template.h](include/math/geometry/circle_template.h) | circle_template: closed discs for one number type; see docs/math/Conventions.md#templates for macro arguments. |
 | [include/math/geometry/circlef.h](include/math/geometry/circlef.h) | circlef: a closed disc of a float. |
@@ -103,6 +101,7 @@ header's opening comment; `--check` verifies it.
 | [include/math/projection/projectx.h](include/math/projection/projectx.h) | projectx: Q16.16 pinhole lens and near clipping in any fixed camera-space scale. |
 | [include/math/scalar/ease.h](include/math/scalar/ease.h) | ease: timeline ramps and easing curves. |
 | [include/math/scalar/fixed.h](include/math/scalar/fixed.h) | fixed: shift-based fixed-point arithmetic at caller-selected scales. |
+| [include/math/scalar/float_bits.h](include/math/scalar/float_bits.h) | float_bits: bit-preserving transfers between float and uint32_t. |
 | [include/math/scalar/math_const.h](include/math/scalar/math_const.h) | math_const: float circle constants, degree/radian conversion factors, and the natural log of 2, which turns a half-life into a rate. |
 | [include/math/scalar/math_db.h](include/math/scalar/math_db.h) | Floored decibel conversions for nonnegative ratios. |
 | [include/math/scalar/mathf.h](include/math/scalar/mathf.h) | mathf: single-precision float's scalar operations for the math templates (docs/math/Scalar.md). |

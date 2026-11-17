@@ -20,7 +20,7 @@
 #include <stdint.h>
 
 #include "build/build_variant.h"
-#include "gfx/gfx.h"
+#include "gfx/present/gfx_present.h"
 #include "math/scalar/mathi.h"
 
 /* The frame is sent in full-width bands. Full width matters: it makes each
@@ -353,7 +353,7 @@ dirty_row_is_dirty(int row) {
  * those cells' own (already-narrowed, see dirty_mark()) x-extents, rounded
  * to even panel-window edges. Unlike dirty_row_is_dirty(), the caller's
  * range need not align to a whole strip: a band ring's own band height
- * (gfx.h) is a divisor of STRIP_HEIGHT but is not necessarily equal to it. */
+ * (gfx_present.h) is a divisor of STRIP_HEIGHT but is not necessarily equal to it. */
 static inline bool
 dirty_band_extent(int y0, int y1, int* out_x0, int* out_x1) {
     const int row_first = y0 / STRIP_HEIGHT;

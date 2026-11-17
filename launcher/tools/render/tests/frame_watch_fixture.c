@@ -147,7 +147,7 @@ do_work(work_t work, int turn, int index) {
 }
 
 static void
-draw(const render_frame_t* frame) {
+draw(const provider_frame_t* frame) {
     for (int work = 0; work < WORK_KINDS; work++) {
         const how_often_t when = work_when[work];
         const bool due = when == EVERY || when == TURNS || (when == ONCE && frame->index == ONCE_AT_FRAME);
@@ -161,7 +161,7 @@ draw(const render_frame_t* frame) {
     draw_rect(0, 0, GFX_WIDTH, GFX_HEIGHT, RGB565BE(0x203040));
 }
 
-const render_scene_t render_scene = {
+const frame_provider_t frame_watch_fixture_provider = {
     .name = "frame_watch_fixture",
     .frames = 4,
     .dt_ms = 16,

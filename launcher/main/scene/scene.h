@@ -80,6 +80,8 @@ bool scene_camera_set_present(scene_t* scene, scene_entity_t camera, camera_pres
 
 /* Returns false for a non-camera entity or an invalid style. */
 bool scene_camera_set_small_fill(scene_t* scene, scene_entity_t camera, small_fill_t fill);
+/* render_view_t.skip_hidden for the camera's views. False for a non-camera entity. */
+bool scene_camera_set_skip_hidden(scene_t* scene, scene_entity_t camera, bool skip);
 /* Sets the camera's lens shift (render_view_t.shift): an off-axis view, as a
  * window onto a fixed rectangle needs. False for a non-camera entity or a
  * shift that is not finite. */
@@ -144,6 +146,8 @@ bool scene_animator_set_speed(scene_t* scene, scene_entity_t entity, scene_anima
 bool scene_animator_set_paused(scene_t* scene, scene_entity_t entity, scene_animator_slot_t slot, bool paused);
 int scene_animator_clip_count(const scene_t* scene, scene_entity_t entity);
 const char* scene_animator_clip_name(const scene_t* scene, scene_entity_t entity, int clip);
+/* The clip the current slot plays, or -1 when none does. */
+int scene_animator_current_clip(const scene_t* scene, scene_entity_t entity);
 
 uint32_t scene_animator_clip_duration_ms(const scene_t* scene, scene_entity_t entity, int clip);
 /* Seek samples the scene systems immediately, without drawing. */

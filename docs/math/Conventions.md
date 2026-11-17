@@ -4,7 +4,7 @@ Axes, composition, templates and float build rules. [Math index](README.md).
 
 | | |
 |---|---|
-| Axes | left-handed, local +x right, +y up, +z forward; a camera looks down +z; source assets are right-handed and mirrored at the pack ([Mesh-Import.md](../render/Mesh-Import.md#the-offline-tools)) |
+| Axes | left-handed, local +x right, +y up, +z forward; a camera looks down +z; source assets are right-handed and mirrored at the pack ([Mesh-Import.md](../render/offline/Mesh-Import.md#the-offline-tools)) |
 | Rotation sense | left-handed, +y up: a positive angle about +y turns +z toward +x |
 | Quaternion | `x, y, z, w` with `w` the scalar, unit length, Hamilton product; `mul(a, b)` applies `b` first |
 | Euler | `from_euler` applies Z, then X, then Y about the fixed axes |
