@@ -229,12 +229,8 @@ class NightlyTests(unittest.TestCase):
                 self.assertEqual(self.night_suites(("suite", "late"), self.steps((1, 6), anchor=anchor)),
                                  (["suite", "suite", "late"], ["measured", "measured"]))
 
-    def test_the_tip_without_a_suite_fails_its_capture(self):
-        self.assertEqual(self.night_suites(("suite", "missing"), self.steps((1, 5))),
-                         (["suite"], ["measured", "capture_failed"]))
-
-    def test_a_lane_that_ends_before_the_tip_measures_its_last_step_without_a_later_suite(self):
-        # A lane measures a slice of the night's history: its last step is older than the tip, as an anchor is.
+    def test_a_lanes_last_step_measures_without_a_suite_it_predates(self):
+        # A lane measures a slice of the night's history: its last step may be older than a suite, as an anchor is.
         self.assertEqual(self.night_suites(("suite", "missing"), self.steps((1, 3))),
                          (["suite", "suite"], ["measured", "measured"]))
 
@@ -497,7 +493,7 @@ class NightlyTests(unittest.TestCase):
 
     def test_supervisor_empty_lane_can_finish_after_multiple_rescans(self):
         path = self.root / "plan.json"
-        chain.write_json(path, dict(started=self.clock.now().isoformat(), marker=self.clock.now().isoformat(), **self.window(),
+        chain.write_json(path, dict(tip=self.commits[-1], started=self.clock.now().isoformat(), marker=self.clock.now().isoformat(), **self.window(),
                                    lanes={"FAK1": dict(lane="0/1", steps=[], estimate=0)}))
         args = SimpleNamespace(plan=path, repo=self.repo, data=self.args.data, out=self.args.out,
                                suite=self.args.suite)
@@ -510,7 +506,7 @@ class NightlyTests(unittest.TestCase):
 
     def test_supervisor_hang_guard_stops_each_lane_and_waits_for_all(self):
         path = self.root / "plan.json"
-        chain.write_json(path, dict(started=self.clock.now().isoformat(), marker=self.clock.now().isoformat(), **self.window(),
+        chain.write_json(path, dict(tip=self.commits[-1], started=self.clock.now().isoformat(), marker=self.clock.now().isoformat(), **self.window(),
                                    lanes={board: dict(lane=f"{i}/2", estimate=42) for i, board in enumerate(("FAK1", "FAK2"))}))
         args = SimpleNamespace(plan=path, repo=self.repo, data=self.args.data, out=self.args.out,
                                suite=self.args.suite)
@@ -548,6 +544,17 @@ class NightlyTests(unittest.TestCase):
             self.assertEqual(chain.run_night(args, clock=self.clock, launch=launch), 1)
         self.assertEqual(json.loads(path.read_text()), planned)
 
+    def test_a_suite_the_tip_does_not_register_fails_the_night_and_its_lanes_still_run(self):
+        process = SimpleNamespace(poll=lambda: 0, wait=lambda: 0)
+        for suites, status in (((("suite", "-", "-"),), 0), ((("suite", "-", "-"), ("missing", "-", "-")), 1)):
+            with self.subTest(suites=suites):
+                args = self.night(self.fak1_lane())
+                args.suite = list(suites)
+                with patch.object(chain, "launch_process_tree", return_value=process) as launch,                         patch.object(chain, "close_process_tree"), patch("sys.stderr", new=io.StringIO()) as said:
+                    self.assertEqual(chain.run_night(args, clock=self.clock), status)
+                launch.assert_called_once()
+                self.assertEqual("does not register suite(s) missing" in said.getvalue(), bool(status))
+
     def test_supervisor_default_launch_owns_and_closes_process_tree(self):
         args = self.night(self.fak1_lane())
         process = SimpleNamespace(poll=lambda: 0, wait=lambda: 0)
@@ -577,7 +584,7 @@ class NightlyTests(unittest.TestCase):
 
     def test_supervisor_interrupt_terminates_and_waits_every_child(self):
         path = self.root / "plan.json"
-        chain.write_json(path, dict(marker=self.clock.now().isoformat(), **self.window(),
+        chain.write_json(path, dict(tip=self.commits[-1], marker=self.clock.now().isoformat(), **self.window(),
                                    lanes={"20E8": dict(lane="0/1", estimate=42)}))
         args = SimpleNamespace(plan=path, repo=self.repo, data=self.args.data,
                                out=self.args.out, suite=self.args.suite)
@@ -1752,6 +1759,13 @@ class NightlyTests(unittest.TestCase):
                          [("44:BD:8D:78:21:24", None), ("20E8", "book2")])
         self.assertEqual(listing["unreachable"], ["legion"])
 
+    @staticmethod
+    def remote_stops(stop=None):
+        """Replaces subprocess.run for the remote lanes' stop calls; the night's own git calls still run."""
+        run = subprocess.run
+        return patch.object(chain.subprocess, "run", side_effect=lambda command, **options: run(command, **options)
+                            if command[0] == "git" else stop and stop(command, **options))
+
     def remote_night(self, launch, lanes=None, deadline=None):
         lane = dict(lane="1/2", previous=None, steps=[], estimate=chain.FIRST_STEP_SECONDS, host="book2",
                     host_name="Book2")
@@ -1813,7 +1827,7 @@ class NightlyTests(unittest.TestCase):
         def stopped(command, **options):
             stops.append(command)
             process.poll.return_value = 0
-        with patch.object(chain.subprocess, "run", side_effect=stopped):
+        with self.remote_stops(stopped):
             status, _ = self.remote_night(lambda *a, **kw: process)
         self.assertEqual(status, 1)
         self.assertEqual(stops, [["bash", "remote-lane.sh", "stop", "book2", "20E8"]])
@@ -1831,7 +1845,7 @@ class NightlyTests(unittest.TestCase):
         deadline = self.clock.now() + timedelta(seconds=chain.RESCAN_SECONDS)
         def stop(command, **options):
             events.append("stop " + command[-1])
-        with patch.object(chain.subprocess, "run", side_effect=stop), patch("builtins.print"), \
+        with self.remote_stops(stop), patch("builtins.print"), \
                 patch.object(chain, "fleet_scan", return_value=([], dict(boards=[], unreachable=[]))):
             self.remote_night(launch, lanes={"20E8": lane, "2124": dict(lane, lane="2/2")}, deadline=deadline.isoformat())
         # One shared grace: a second remote lane is not cut a whole grace after the first.
@@ -1842,7 +1856,7 @@ class NightlyTests(unittest.TestCase):
         process = Mock()
         process.poll.return_value = None
         process.wait.side_effect = [subprocess.TimeoutExpired("lane", 0), 0]
-        with patch.object(chain.subprocess, "run"), \
+        with self.remote_stops(), \
                 patch.object(self.clock, "sleep", side_effect=KeyboardInterrupt), \
                 self.assertRaises(KeyboardInterrupt):
             self.remote_night(lambda *a, **kw: process)
