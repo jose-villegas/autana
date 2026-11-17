@@ -55,8 +55,8 @@ main(void) {
                (double)acceleration.x / INPUT_ACCEL_ONE_G, (double)acceleration.y / INPUT_ACCEL_ONE_G,
                (double)acceleration.z / INPUT_ACCEL_ONE_G, (double)rotation.x / INPUT_ROTATION_ONE_DPS,
                (double)rotation.y / INPUT_ROTATION_ONE_DPS, (double)rotation.z / INPUT_ROTATION_ONE_DPS,
-               imu_turn_speed(&chip), (double)(rate[0] / PROBE_DEG_TO_RAD), (double)(rate[1] / PROBE_DEG_TO_RAD),
-               (double)(rate[2] / PROBE_DEG_TO_RAD));
+               imu_turn_speed((vec3i_t){chip.gx, chip.gy, chip.gz}), (double)(rate[0] / PROBE_DEG_TO_RAD),
+               (double)(rate[1] / PROBE_DEG_TO_RAD), (double)(rate[2] / PROBE_DEG_TO_RAD));
     }
     puts("]}");
     return 0;

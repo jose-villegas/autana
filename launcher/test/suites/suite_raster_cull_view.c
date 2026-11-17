@@ -136,7 +136,7 @@ test_counted_cull_returns_the_list_cull_returns(void) {
     uint16_t plain[3] = {0};
     uint16_t counted[3] = {0};
     r3d_pipeline_counts_t counts = {0};
-    const int expected = r3d_pipeline_cull(&mesh, &lens, plain, pipeline_work());
+    const int expected = r3d_pipeline_cull(&mesh, &lens, plain, pipeline_work(), NULL);
     const int actual = r3d_pipeline_cull_counted(&mesh, &lens, counted, count_walk(), &counts);
     TEST_ASSERT_EQUAL_INT(2, expected);
     TEST_ASSERT_EQUAL_INT(expected, actual);

@@ -20,7 +20,8 @@ fixture(void) {
                                         TUNE_NAME(render_lab, small_fill_ceiling),
                                         TUNE_NAME(render_lab, small_fill_gate),
                                         TUNE_NAME(render_lab, small_fill_style),
-                                        TUNE_NAME(render_lab, budget)};
+                                        TUNE_NAME(render_lab, budget),
+                                        TUNE_NAME(render_lab, upscale)};
     for (size_t i = 0; i < sizeof tuned / sizeof tuned[0]; i++) {
         TEST_ASSERT_TRUE(tune_reset(tune_shared(), tuned[i]));
     }
@@ -95,7 +96,7 @@ test_small_fill_menu_choice_moves_the_tunables(void) {
     fixture();
 }
 
-/* The toggle is the budget: on sets RENDER_LAB_BUDGET_ON_MS, any budget a
+/* The toggle is the budget: on sets RENDER_LAB_TARGET_MS, any budget a
  * console sets reads as on, and apply hands it to the context with the
  * render_lab ladder, for whichever scene is showing. */
 static void
@@ -109,10 +110,10 @@ test_dynamic_resolution_toggle_moves_the_budget_into_the_context(void) {
 
     TEST_ASSERT_TRUE(render_lab_dynres_set_on(true));
     TEST_ASSERT_TRUE(render_lab_dynres_on());
-    TEST_ASSERT_EQUAL_INT(RENDER_LAB_BUDGET_ON_MS, render_lab_budget_ms());
+    TEST_ASSERT_EQUAL_INT(RENDER_LAB_TARGET_MS, render_lab_budget_ms());
     render_lab_dynres_apply();
     TEST_ASSERT_EQUAL_INT(RENDER_PREDICTED, context->policy);
-    TEST_ASSERT_EQUAL_INT(RENDER_LAB_BUDGET_ON_MS * MATH_US_PER_MS, context->ladder.budget_us);
+    TEST_ASSERT_EQUAL_INT(RENDER_LAB_TARGET_MS * MATH_US_PER_MS, context->ladder.budget_us);
     TEST_ASSERT_EQUAL_INT(RENDER_LAB_LADDER_STEPS, context->ladder.step_count);
     TEST_ASSERT_EQUAL_INT(RENDER_LAB_LADDER_HALF, context->predict.step);
 
@@ -131,6 +132,31 @@ test_dynamic_resolution_toggle_moves_the_budget_into_the_context(void) {
     TEST_ASSERT_FALSE(render_lab_dynres_on());
     render_lab_dynres_apply();
     TEST_ASSERT_EQUAL_INT(RENDER_FIXED, context->policy);
+    fixture();
+}
+
+/* The UPSCALE choice is the context's filter at the next raster apply, and a
+ * console SET shows as the menu's choice. */
+static void
+test_upscale_menu_choice_sets_the_context_filter(void) {
+    fixture();
+    int count = 0;
+    const char* const* names = render_lab_upscale_names(&count);
+    TEST_ASSERT_EQUAL_INT(UPSCALE_FILTER_SURFACE + 1, count);
+    TEST_ASSERT_EQUAL_STRING("SHARP", names[UPSCALE_FILTER_NEAREST]);
+    TEST_ASSERT_EQUAL_STRING("SMOOTH", names[UPSCALE_FILTER_SURFACE]);
+    TEST_ASSERT_EQUAL_INT(UPSCALE_FILTER_NEAREST, render_lab_upscale_selected());
+
+    TEST_ASSERT_TRUE(render_lab_upscale_select(UPSCALE_FILTER_SURFACE));
+    render_lab_apply_raster_settings();
+    TEST_ASSERT_EQUAL_INT(UPSCALE_FILTER_SURFACE, render_context_upscale_filter(render_context_main()));
+    TEST_ASSERT_FALSE(render_lab_upscale_select(count));
+    TEST_ASSERT_EQUAL_INT(UPSCALE_FILTER_SURFACE, render_lab_upscale_selected());
+
+    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render_lab, upscale), UPSCALE_FILTER_NEAREST));
+    TEST_ASSERT_EQUAL_INT(UPSCALE_FILTER_NEAREST, render_lab_upscale_selected());
+    render_lab_apply_raster_settings();
+    TEST_ASSERT_EQUAL_INT(UPSCALE_FILTER_NEAREST, render_context_upscale_filter(render_context_main()));
     fixture();
 }
 
@@ -171,6 +197,7 @@ void
 run_render_size_suite(void) {
     RUN_TEST(test_dynamic_resolution_toggle_moves_the_budget_into_the_context);
     RUN_TEST(test_small_fill_menu_choice_moves_the_tunables);
+    RUN_TEST(test_upscale_menu_choice_sets_the_context_filter);
 #ifndef ESP_PLATFORM
     RUN_TEST(test_small_fill_labels_fit_their_dropdown);
 #endif

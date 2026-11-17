@@ -157,24 +157,82 @@ test_trace_is_empty_when_the_profile_fails(void) {
     TEST_ASSERT_EQUAL_INT(0, trace.frames);
 }
 
+/* A bump this tall needs exactly this prominence to be a frame peak. */
+#define PEAK_US    ((int32_t)(FRAME_PROFILE_PERCENT * MATH_US_PER_MS))
+#define PEAK_NEEDS (PEAK_US * FRAME_PROFILE_PEAK_PERCENT / FRAME_PROFILE_PERCENT)
+#define TALLEST_US (2 * PEAK_US)
+#define FLOOR_US   (PEAK_US / 2)
+#define MAX_FRAMES 8
+
+static frame_profile_trace_t
+trace_of(frame_profile_frame_t* frames, const int32_t* us, int count) {
+    TEST_ASSERT_LESS_OR_EQUAL_INT(MAX_FRAMES, count);
+    for (int i = 0; i < count; i++) {
+        frames[i] = (frame_profile_frame_t){i, us[i]};
+    }
+    return (frame_profile_trace_t){frames, count};
+}
+
 static void
-test_worst_frames_slowest_first(void) {
-    frame_profile_frame_t frames[] = {{0, 4}, {1, 9}, {2, 1}, {3, 9}, {4, 7}, {5, 2}};
-    const frame_profile_trace_t trace = {frames, sizeof frames / sizeof frames[0]};
+test_peak_split_by_the_wrap_is_one(void) {
+    const int32_t us[] = {TALLEST_US, FLOOR_US, FLOOR_US, TALLEST_US - 1};
+    frame_profile_frame_t frames[MAX_FRAMES];
+    const frame_profile_trace_t trace = trace_of(frames, us, sizeof us / sizeof us[0]);
+    frame_profile_peak_t peak[MAX_FRAMES];
+    TEST_ASSERT_EQUAL_INT(1, frame_profile_peaks(&trace, peak, MAX_FRAMES));
+    TEST_ASSERT_EQUAL_INT(0, peak[0].frame);
+    TEST_ASSERT_EQUAL_INT32(TALLEST_US - FLOOR_US, peak[0].prominence_us);
+}
 
-    enum { K = 3 };
+/* The bump's saddles are the valley before it and the floor after; the higher one counts. */
+static int
+peaks_beside(int32_t valley_us, frame_profile_peak_t* peak) {
+    const int32_t us[] = {TALLEST_US, valley_us, PEAK_US, FLOOR_US};
+    frame_profile_frame_t frames[MAX_FRAMES];
+    const frame_profile_trace_t trace = trace_of(frames, us, sizeof us / sizeof us[0]);
+    return frame_profile_peaks(&trace, peak, MAX_FRAMES);
+}
 
-    int index[K + 1] = {-1, -1, -1, -1};
-    TEST_ASSERT_EQUAL_INT(K, frame_profile_worst(&trace, K, index));
-    const int expected[] = {1, 3, 4};
-    TEST_ASSERT_EQUAL_INT_ARRAY(expected, index, K);
-    TEST_ASSERT_EQUAL_INT(-1, index[K]);
-    int all[sizeof frames / sizeof frames[0] + 1];
-    const int count = (int)(sizeof frames / sizeof frames[0]);
-    TEST_ASSERT_EQUAL_INT(count, frame_profile_worst(&trace, count + 1, all));
-    const int ranked[] = {1, 3, 4, 0, 5, 2};
-    TEST_ASSERT_EQUAL_INT_ARRAY(ranked, all, count);
-    TEST_ASSERT_EQUAL_INT(0, frame_profile_worst(&trace, 0, index));
+static void
+test_peak_passes_at_its_prominence_share(void) {
+    frame_profile_peak_t peak[MAX_FRAMES];
+    TEST_ASSERT_EQUAL_INT(2, peaks_beside(PEAK_US - PEAK_NEEDS, peak));
+    TEST_ASSERT_EQUAL_INT(0, peak[0].frame);
+    TEST_ASSERT_EQUAL_INT(2, peak[1].frame);
+    TEST_ASSERT_EQUAL_INT32(PEAK_NEEDS, peak[1].prominence_us);
+    TEST_ASSERT_EQUAL_INT(1, peaks_beside(PEAK_US - PEAK_NEEDS + 1, peak));
+    TEST_ASSERT_EQUAL_INT(0, peak[0].frame);
+}
+
+static void
+test_flat_trace_gives_its_slowest_frame(void) {
+    const int32_t us[] = {PEAK_US, PEAK_US, PEAK_US - PEAK_NEEDS + 1, PEAK_US};
+    frame_profile_frame_t frames[MAX_FRAMES];
+    const frame_profile_trace_t trace = trace_of(frames, us, sizeof us / sizeof us[0]);
+    frame_profile_peak_t peak[MAX_FRAMES];
+    TEST_ASSERT_EQUAL_INT(1, frame_profile_peaks(&trace, NULL, 0));
+    TEST_ASSERT_EQUAL_INT(1, frame_profile_peaks(&trace, peak, MAX_FRAMES));
+    TEST_ASSERT_EQUAL_INT(0, peak[0].frame);
+    TEST_ASSERT_EQUAL_INT32(PEAK_NEEDS - 1, peak[0].prominence_us);
+    TEST_ASSERT_EQUAL_INT(0, frame_profile_peaks(&(frame_profile_trace_t){frames, 0}, peak, MAX_FRAMES));
+}
+
+static void
+test_peaks_ranked_by_height_and_counted_past_capacity(void) {
+    const int32_t us[] = {FLOOR_US, PEAK_US, FLOOR_US, TALLEST_US, FLOOR_US, PEAK_US, FLOOR_US};
+    frame_profile_frame_t frames[MAX_FRAMES];
+    const frame_profile_trace_t trace = trace_of(frames, us, sizeof us / sizeof us[0]);
+    frame_profile_peak_t peak[MAX_FRAMES];
+    const int count = frame_profile_peaks(&trace, NULL, 0);
+    TEST_ASSERT_EQUAL_INT(3, count);
+    TEST_ASSERT_EQUAL_INT(count, frame_profile_peaks(&trace, peak, count));
+    const int ranked[] = {3, 1, 5};
+    for (int i = 0; i < count; i++) {
+        TEST_ASSERT_EQUAL_INT(ranked[i], peak[i].frame);
+    }
+    frame_profile_peak_t first[1];
+    TEST_ASSERT_EQUAL_INT(count, frame_profile_peaks(&trace, first, 1));
+    TEST_ASSERT_EQUAL_INT(ranked[0], first[0].frame);
 }
 
 static void
@@ -203,7 +261,10 @@ suite_frame_profile(void) {
     RUN_TEST(test_invalid_duration);
     RUN_TEST(test_sample_capacity_fails_without_overrun);
     RUN_TEST(test_trace_is_empty_when_the_profile_fails);
-    RUN_TEST(test_worst_frames_slowest_first);
+    RUN_TEST(test_peak_split_by_the_wrap_is_one);
+    RUN_TEST(test_peak_passes_at_its_prominence_share);
+    RUN_TEST(test_flat_trace_gives_its_slowest_frame);
+    RUN_TEST(test_peaks_ranked_by_height_and_counted_past_capacity);
 #ifdef HOST_HEAP_ARENA
     RUN_TEST(test_allocation_failure);
 #endif

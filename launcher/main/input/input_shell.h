@@ -28,3 +28,6 @@ vec3i_t input_accel_offset(void);
 /* Stores the offset and applies it from the next input_read_motion(); zero clears. False, leaving the live
  * offset unchanged, if an axis exceeds IMU_CALIB_OFFSET_MAX or a write fails. */
 bool input_set_accel_offset(vec3i_t offset);
+
+/* The Q6 deg/s screen-axis offset subtracted on every motion read. */
+vec3i_t input_gyro_offset(void);

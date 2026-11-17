@@ -116,7 +116,7 @@ entry (bake = `gltf_read` + the current `bake_tracks.py` checks, moved in).
 
 **As built:** SCNE v3 carries directional lights, ambient, tone map, skinned
 renderers and animators. Region and sky are bake inputs. The mapped layout
-and its writer are documented in [Scene files](../render/Scene-Files.md#scne-v5).
+and its writer are documented in [SCNE.md](../assets/formats/SCNE.md).
 
 ```c fragment
 /* scene.h: changes only */

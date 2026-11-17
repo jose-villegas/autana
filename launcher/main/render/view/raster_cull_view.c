@@ -291,10 +291,14 @@ spectator_view(const raster_cull_t* s, const raster_t* raster) {
     return view;
 }
 
-/* The census list of each instance: its culled clusters, or its kept ones. */
+/* The census list of each instance: its culled clusters, or its kept ones.
+ * The list was never fitted, so the spectator encodes depth with its own
+ * clip plane. */
 static void
 list_clusters(const raster_cull_t* s, const raster_t* raster, bool culled) {
-    uint16_t* list = raster_carve(raster).culled;
+    const raster_buffers_t buffers = raster_carve(raster);
+    *buffers.depth_near = s->spectator.lens.near_z;
+    uint16_t* list = buffers.culled;
     int offset = 0;
     for (int i = 0; i < raster->instance_count; i++) {
         const r3d_lit_mesh_t* mesh = raster->instances[i].mesh;

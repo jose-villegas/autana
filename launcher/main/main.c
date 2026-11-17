@@ -56,8 +56,10 @@ heap_mark(const char* where) {
 #define heap_mark(where) ((void)0)
 #endif
 
-/* Holds failing checks until touch. Prevents dead hardware diagnosis from
- * scrolling to launcher. */
+/* Draws the failure report and holds it on screen for a fixed 8 s, then
+ * returns so boot continues to the launcher. Touch is not started yet at
+ * this point in app_boot_init(), so the report cannot be dismissed early.
+ * The wait keeps dead hardware diagnosis from scrolling to launcher. */
 static void
 show_post_failures(void) {
     ESP_LOGE(TAG, "POST failed - showing report");

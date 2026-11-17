@@ -1,15 +1,13 @@
 /* Pack sound arguments share the asset name limit and percent-volume contract. */
 #pragma once
 
-#include <ctype.h>
-#include <errno.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 #include "asset/asset_store.h"
 #include "audio/audio_out.h"
 #include "console/console_verbs.h"
+#include "math/text/math_text.h"
 #include "sound/console/console_sound.h"
 
 #define CONSOLE_SOUND_WORD_COUNT_MAX 4
@@ -21,15 +19,11 @@ static const char* const console_sound_events[] = {"amp-on", "start", "stop", "s
 
 static inline bool
 console_sound_number(const char* text, uint32_t max, uint32_t* out) {
-    if (!*text || strspn(text, "0123456789") != strlen(text)) {
+    uint32_t value;
+    if (!mathu_parse(text, NULL, &value) || value > max) {
         return false;
     }
-    errno = 0;
-    const unsigned long value = strtoul(text, NULL, 10);
-    if (errno == ERANGE || value > max) {
-        return false;
-    }
-    *out = (uint32_t)value;
+    *out = value;
     return true;
 }
 

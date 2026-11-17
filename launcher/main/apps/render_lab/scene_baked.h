@@ -11,6 +11,8 @@
 
 #include "baked_families.h"
 #include "render_lab_scene.h"
+#include "render_lab_view.h"
+#include "ui/ui.h"
 
 /* What a family's scene shows: its family, and which of its bakes. */
 typedef struct {
@@ -23,8 +25,17 @@ typedef struct {
 void scene_baked_enter(const render_lab_scene_t* self);
 void scene_baked_frame(uint32_t dt_ms);
 void scene_baked_exit(void);
-/* The size drawn at and the triangle count, or why the scene did not load. */
-const char* scene_baked_status(void);
+
+/* The menu rows of a baked scene: FRAME GEN, whose warp suits a scene whose
+ * objects do not move on their own. */
+static inline void
+scene_baked_controls(int width) {
+    bool generating = render_lab_framegen_on();
+    ui_row_centre(width, UI_ROW_HEIGHT);
+    if (ui_toggle(ui_next(), "FRAME GEN", &generating)) {
+        (void)render_lab_framegen_set_on(generating);
+    }
+}
 
 /* One variant's rows of SCENE_BAKED_FAMILY, with its family's fields as `f_`:
  * (shown table, family, name, key prefix). */
@@ -42,7 +53,10 @@ const char* scene_baked_status(void);
                            .enter = scene_baked_enter,                                                                 \
                            .frame = scene_baked_frame,                                                                 \
                            .exit = scene_baked_exit,                                                                   \
-                           .status = scene_baked_status},
+                           .status = RENDER_LAB_SCENE_DEV(scene_baked_status),                                         \
+                           .controls = scene_baked_controls,                                                           \
+                           .generates_frames = true,                                                                   \
+                           .console = RENDER_LAB_SCENE_DEV(scene_baked_console)},
 
 /* Defines `id`, family `family_`'s scenes indexed by variant: the menu family
  * `name_`, each titled `name_` and its variant and keyed `key_prefix_` and its

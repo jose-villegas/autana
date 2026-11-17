@@ -9,7 +9,7 @@ searching, so no list is kept:
 
 | Root | Pack | Holds |
 |---|---|---|
-| `NAME.scene.toml` | `NAME` | its [scene entry](../render/Scene-Files.md#scne-v5) `NAME`, every mesh, skin, skeleton and clip it names |
+| `NAME.scene.toml` | `NAME` | its [scene entry](formats/SCNE.md) `NAME`, every mesh, skin, skeleton and clip it names |
 | `NAME.import.toml` that no scene places | `NAME` | its variants' meshes |
 | `NAME.anim.toml` that no scene names | `NAME` | its one clip, baked from its source |
 | `NAME.sound.toml` | `NAME` | its one [sound](../audio/Sound-Assets.md), fetched as a locked `sound` bake of its WAV, FLAC, OGG or MP3 source |

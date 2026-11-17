@@ -326,6 +326,7 @@ slider_drag(int blend_ms) {
     drag.point.x = slider_rect.x + (UI_SLIDER_KNOB_W / 2)
                    + ((slider_rect.w - UI_SLIDER_KNOB_W) * blend_ms / RENDER_LAB_BLEND_MAX_MS);
     menu_frame(&drag);
+    menu_frame(&drag);
     drag.down = false;
     drag.released = true;
     menu_frame(&drag);

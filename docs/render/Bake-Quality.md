@@ -142,7 +142,7 @@ runtime work.
 ### Appearance fit of the lite and full meshes
 
 The fit is appearance-driven simplification<sup>[[1]](../Citations.md#hasselgren-2021)</sup>;
-[Against the paper](Scene-Files.md#against-the-paper) lists what it changes.
+[Against the paper](Appearance-Fit.md#against-the-paper) lists what it changes.
 The GPU stage rebuilds the bakes and fitted meshes from the scene's recipes and
 scores them against held-out poses. These are scratch outputs; the board table
 measures the committed assets.
@@ -202,7 +202,7 @@ where the geometry's normals leave the source's.
 
 ### Appearance fit of the flat mesh
 
-[A flat fit](Scene-Files.md#a-flat-fit) fits a colour per triangle and the
+[A flat fit](Appearance-Fit.md#a-flat-fit) fits a colour per triangle and the
 positions. The GPU stage scores it against the flat bake and the smooth fit at
 lite's budget, over the same held-out poses. Predicted time is left out: the
 cost model has no shading term.

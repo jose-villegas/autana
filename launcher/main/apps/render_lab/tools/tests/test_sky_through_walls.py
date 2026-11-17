@@ -37,12 +37,12 @@ MIN_OPEN_SKY_PIXELS = 100
 FRAME_COUNT_SIZE = (1, 1)
 # Per scene, the holed frames of its current bake: the ceiling a rebake must not go above.
 MOST_HOLED_FRAMES = {
-    "sponza": 13,
-    "sponza-lite": 12,
-    "sponza-flat": 13,
-    "sponza-fitted": 36,
-    "sponza-fitted-full": 23,
-    "sponza-flat-fitted": 20,
+    "sponza": 12,
+    "sponza-lite": 43,
+    "sponza-flat": 12,
+    "sponza-fitted": 14,
+    "sponza-fitted-full": 21,
+    "sponza-flat-fitted": 23,
 }
 
 

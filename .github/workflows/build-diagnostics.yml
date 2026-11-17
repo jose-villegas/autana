@@ -96,12 +96,7 @@ jobs:
             && idf.py -C packages/math/test_apps -D IDF_TARGET=esp32s3 build
             && python "$IDF_PATH/tools/idf_tools.py" install esp-clang
             && cd ..
-            && python3 launcher/tools/quality/complexity_gate.py
-            && python "$IDF_PATH/tools/idf_size.py" --files --format csv launcher/build.diag/launcher.map | python3 launcher/tools/quality/suite_static_data_gate.py
-            && python3 launcher/tools/quality/stack_chain_gate.py
-            && python3 launcher/tools/quality/misra_tidy_gate.py
-            && python3 launcher/tools/build/check_no_soft_double.py launcher/build.diag
-            && python3 launcher/tools/build/memory_map.py --check --require-pin launcher/build.diag
+            && launcher/tools/build/build_diag_check.sh --gates-only --ci
 
       - uses: ./.github/actions/job-inputs
         if: ${{ !cancelled() }}

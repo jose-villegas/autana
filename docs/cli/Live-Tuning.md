@@ -1,12 +1,11 @@
-# Live tuning
+#Live tuning
 
-Changing a number on a running device, by name, with no build and no flash.
-For a constant that is judged by eye: how a theme starts, how high a
-wave is, where each guess otherwise costs a build and a flash.
+Changing a number on a running device, by name,
+    with no build and no flash.For a constant that is judged by eye : how a theme starts, how high a wave is,
+    where each guess otherwise costs a build and a flash.
 
-`autana` alone opens a console session with the device, and everything below
-works in it without the prefix. A bare word is never an implicit tunable
-lookup; `tune` is always the way to one, in the session and on the command
+`autana` alone opens a console session with the device,
+    and everything below works in it without the prefix.A bare word is never an implicit tunable lookup; `tune` is always the way to one, in the session and on the command
 line alike:
 
 ```
@@ -129,6 +128,10 @@ TUNE(glow, theme_rgb, 0x1199C8, 0, 0xffffff);
   build, live only on an image built with `--hot-tunables`
   ([Build-Variants.md](../tools/Build-Variants.md)), which is what
   `launcher/tools/perf/perf_sweep.sh` flashes.
+- `TUNE_SETTING` is the same declaration for a value the image's own
+  controls also set, such as a menu toggle: a variable in release too, with
+  no registry there. `TUNE_SETTING_SET(what, value)` writes it within its
+  range, and on a development build through the registry, so `GET` sees it.
 - A value read every frame takes effect at once. One baked into a table needs
   its owner to notice:
   `TUNE_GENERATION(ridge)` goes up on every `SET` or `RESET` of one of that

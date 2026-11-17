@@ -23,12 +23,12 @@ test_settle_and_window(void) {
     imu_probe_start(round, 0);
     const input_motion_t sample = fixture();
     TEST_ASSERT_FALSE(imu_probe_update(round, &sample, TEST_DT_MS));
-    for (int ms = 0; ms < IMU_PROBE_SETTLE_MS + IMU_PROBE_WINDOW_MS - TEST_DT_MS; ms += TEST_DT_MS) {
+    for (int ms = 0; ms < IMU_REST_SETTLE_MS + IMU_REST_WINDOW_MS - TEST_DT_MS; ms += TEST_DT_MS) {
         TEST_ASSERT_FALSE(imu_probe_update(round, &sample, TEST_DT_MS));
     }
     TEST_ASSERT_TRUE(imu_probe_update(round, &sample, TEST_DT_MS));
     TEST_ASSERT_EQUAL_INT(1, round->pose);
-    TEST_ASSERT_EQUAL_INT(IMU_PROBE_WINDOW_MS / TEST_DT_MS, round->poses[0].n);
+    TEST_ASSERT_EQUAL_INT(IMU_REST_WINDOW_MS / TEST_DT_MS, round->poses[0].n);
     free(round);
 }
 
@@ -77,7 +77,7 @@ check_departure_sample(int axis, bool gyro, int sign, int side) {
     imu_probe_start(round, 0);
     input_motion_t sample = fixture();
     imu_probe_update(round, &sample, TEST_DT_MS);
-    const int departure = sign * ((gyro ? IMU_PROBE_GYRO_DEPARTURE : IMU_PROBE_ACCEL_DEPARTURE) + side);
+    const int departure = sign * ((gyro ? IMU_REST_GYRO_DEPARTURE : IMU_REST_ACCEL_DEPARTURE) + side);
     const vec3i_t delta = {axis == 0 ? departure : 0, axis == 1 ? departure : 0, axis == 2 ? departure : 0};
     if (gyro) {
         sample.rotation = vec3i_add(sample.rotation, delta);
@@ -85,7 +85,7 @@ check_departure_sample(int axis, bool gyro, int sign, int side) {
         sample.acceleration = vec3i_add(sample.acceleration, delta);
     }
     imu_probe_update(round, &sample, TEST_DT_MS);
-    TEST_ASSERT_EQUAL_UINT32(side < 0 ? TEST_DT_MS : 0, round->settle_ms);
+    TEST_ASSERT_EQUAL_UINT32(side < 0 ? TEST_DT_MS : 0, (round->rest.settle_us / MATH_US_PER_MS));
     free(round);
 }
 
@@ -116,7 +116,7 @@ test_gravity_gate_and_wrong_pose(void) {
         sample.acceleration.z = -(IMU_PROBE_GRAVITY_MIN + side);
         imu_probe_update(round, &sample, TEST_DT_MS);
         imu_probe_update(round, &sample, TEST_DT_MS);
-        TEST_ASSERT_EQUAL_UINT32(side < 0 ? 0 : TEST_DT_MS, round->settle_ms);
+        TEST_ASSERT_EQUAL_UINT32(side < 0 ? 0 : TEST_DT_MS, (round->rest.settle_us / MATH_US_PER_MS));
         free(round);
     }
     imu_probe_round_t* round = calloc(1, sizeof *round);
@@ -124,10 +124,10 @@ test_gravity_gate_and_wrong_pose(void) {
     imu_probe_start(round, 0);
     input_motion_t sample = fixture();
     sample.acceleration.z = INPUT_ACCEL_ONE_G;
-    for (int ms = 0; ms < IMU_PROBE_SETTLE_MS + IMU_PROBE_WINDOW_MS; ms += TEST_DT_MS) {
+    for (int ms = 0; ms < IMU_REST_SETTLE_MS + IMU_REST_WINDOW_MS; ms += TEST_DT_MS) {
         TEST_ASSERT_FALSE(imu_probe_update(round, &sample, TEST_DT_MS));
     }
-    TEST_ASSERT_EQUAL_UINT32(0, round->settle_ms);
+    TEST_ASSERT_EQUAL_UINT32(0, (round->rest.settle_us / MATH_US_PER_MS));
     free(round);
 }
 
@@ -137,14 +137,14 @@ test_movement_resets_window(void) {
     TEST_ASSERT_NOT_NULL(round);
     imu_probe_start(round, 0);
     input_motion_t sample = fixture();
-    for (int ms = 0; ms < IMU_PROBE_SETTLE_MS + (2 * TEST_DT_MS); ms += TEST_DT_MS) {
+    for (int ms = 0; ms < IMU_REST_SETTLE_MS + (2 * TEST_DT_MS); ms += TEST_DT_MS) {
         imu_probe_update(round, &sample, TEST_DT_MS);
     }
-    TEST_ASSERT_TRUE(round->window.n > 0);
-    sample.rotation.x += IMU_PROBE_GYRO_DEPARTURE;
+    TEST_ASSERT_TRUE(round->rest.n > 0);
+    sample.rotation.x += IMU_REST_GYRO_DEPARTURE;
     imu_probe_update(round, &sample, TEST_DT_MS);
-    TEST_ASSERT_EQUAL_INT(0, round->window.n);
-    TEST_ASSERT_EQUAL_UINT32(0, round->settle_ms);
+    TEST_ASSERT_EQUAL_INT(0, round->rest.n);
+    TEST_ASSERT_EQUAL_UINT32(0, (round->rest.settle_us / MATH_US_PER_MS));
     free(round);
 }
 
@@ -155,10 +155,10 @@ test_gap_boundary(void) {
     const input_motion_t sample = fixture();
     imu_probe_start(round, 0);
     imu_probe_update(round, &sample, TEST_DT_MS);
-    imu_probe_update(round, &sample, IMU_PROBE_MAX_GAP_MS);
-    TEST_ASSERT_EQUAL_UINT32(IMU_PROBE_MAX_GAP_MS, round->settle_ms);
-    imu_probe_update(round, &sample, IMU_PROBE_MAX_GAP_MS + 1);
-    TEST_ASSERT_EQUAL_UINT32(0, round->settle_ms);
+    imu_probe_update(round, &sample, IMU_REST_MAX_GAP_MS);
+    TEST_ASSERT_EQUAL_UINT32(IMU_REST_MAX_GAP_MS, (round->rest.settle_us / MATH_US_PER_MS));
+    imu_probe_update(round, &sample, IMU_REST_MAX_GAP_MS + 1);
+    TEST_ASSERT_EQUAL_UINT32(0, (round->rest.settle_us / MATH_US_PER_MS));
     free(round);
 }
 
@@ -183,16 +183,16 @@ test_missing_reading(void) {
     TEST_ASSERT_NOT_NULL(round);
     imu_probe_start(round, 0);
     const input_motion_t sample = fixture();
-    for (int ms = 0; ms < IMU_PROBE_SETTLE_MS + (2 * TEST_DT_MS); ms += TEST_DT_MS) {
+    for (int ms = 0; ms < IMU_REST_SETTLE_MS + (2 * TEST_DT_MS); ms += TEST_DT_MS) {
         imu_probe_update(round, &sample, TEST_DT_MS);
     }
-    TEST_ASSERT_TRUE(round->window.n > 0);
+    TEST_ASSERT_TRUE(round->rest.n > 0);
     imu_probe_update(round, NULL, TEST_DT_MS);
-    TEST_ASSERT_FALSE(round->primed);
-    TEST_ASSERT_EQUAL_INT(0, round->window.n);
+    TEST_ASSERT_FALSE(round->rest.primed);
+    TEST_ASSERT_EQUAL_INT(0, round->rest.n);
     imu_probe_update(round, &sample, TEST_DT_MS);
-    TEST_ASSERT_EQUAL_UINT32(0, round->settle_ms);
-    TEST_ASSERT_TRUE(round->primed);
+    TEST_ASSERT_EQUAL_UINT32(0, (round->rest.settle_us / MATH_US_PER_MS));
+    TEST_ASSERT_TRUE(round->rest.primed);
     free(round);
 }
 
@@ -206,14 +206,14 @@ test_restart(void) {
     imu_probe_start(round, DISPLAY_DEFAULT_QUARTER);
     TEST_ASSERT_EQUAL_INT(0, round->pose);
     TEST_ASSERT_EQUAL_INT(DISPLAY_DEFAULT_QUARTER, round->quarter);
-    TEST_ASSERT_FALSE(round->primed);
+    TEST_ASSERT_FALSE(round->rest.primed);
     free(round);
 }
 
 static void
 test_average_empty(void) {
-    const imu_probe_average_t average = {0};
-    const input_motion_t mean = imu_probe_average_read(&average);
+    const imu_rest_t average = {0};
+    const input_motion_t mean = imu_rest_mean(&average);
     TEST_ASSERT_EQUAL_INT(0, mean.acceleration.x);
     TEST_ASSERT_EQUAL_INT(0, mean.acceleration.y);
     TEST_ASSERT_EQUAL_INT(0, mean.acceleration.z);
@@ -225,11 +225,9 @@ test_average_empty(void) {
 static void
 test_average_rounding(void) {
     for (int sign = -1; sign <= 1; sign += 2) {
-        imu_probe_average_t average = {0};
-        imu_probe_average_add(&average, (input_motion_t){0});
-        imu_probe_average_add(&average,
-                              (input_motion_t){.acceleration = {sign, -sign, sign}, .rotation = {-sign, sign, -sign}});
-        const input_motion_t mean = imu_probe_average_read(&average);
+        imu_rest_t average = {0};
+        average = (imu_rest_t){.acceleration = {sign, -sign, sign}, .rotation = {-sign, sign, -sign}, .n = 2};
+        const input_motion_t mean = imu_rest_mean(&average);
         TEST_ASSERT_EQUAL_INT(sign, mean.acceleration.x);
         TEST_ASSERT_EQUAL_INT(-sign, mean.acceleration.y);
         TEST_ASSERT_EQUAL_INT(sign, mean.acceleration.z);
@@ -253,25 +251,25 @@ test_recent_mean_drift_and_recovery(void) {
         uint32_t elapsed = 0;
         int step = 0;
         bool reset = false;
-        while (elapsed < IMU_PROBE_SETTLE_MS / 2) {
+        while (elapsed < IMU_REST_SETTLE_MS / 2) {
             const uint32_t dt = steps[timing][step++ % 3];
             elapsed += dt;
             sample.rotation.x =
-                fixture().rotation.x + (int)(elapsed * IMU_PROBE_GYRO_DEPARTURE / IMU_PROBE_RECENT_MS * 2);
+                fixture().rotation.x + (int)(elapsed * IMU_REST_GYRO_DEPARTURE / IMU_REST_RECENT_MS * 2);
             imu_probe_update(round, &sample, dt);
-            reset = reset || (elapsed > IMU_PROBE_RECENT_MS && round->settle_ms == 0);
+            reset = reset || (elapsed > IMU_REST_RECENT_MS && (round->rest.settle_us / MATH_US_PER_MS) == 0);
         }
         TEST_ASSERT_TRUE(reset);
-        sample.rotation.x += 4 * IMU_PROBE_GYRO_DEPARTURE;
+        sample.rotation.x += 4 * IMU_REST_GYRO_DEPARTURE;
         imu_probe_update(round, &sample, TEST_DT_MS);
-        TEST_ASSERT_EQUAL_UINT32(0, round->settle_ms);
+        TEST_ASSERT_EQUAL_UINT32(0, (round->rest.settle_us / MATH_US_PER_MS));
         elapsed = 0;
-        while (elapsed < 4 * IMU_PROBE_RECENT_MS) {
+        while (elapsed < 4 * IMU_REST_RECENT_MS) {
             const uint32_t dt = steps[timing][step++ % 3];
             elapsed += dt;
             imu_probe_update(round, &sample, dt);
         }
-        TEST_ASSERT_TRUE(round->settle_ms > 0);
+        TEST_ASSERT_TRUE((round->rest.settle_us / MATH_US_PER_MS) > 0);
         TEST_ASSERT_EQUAL_INT(0, round->pose);
         free(round);
     }
@@ -293,7 +291,7 @@ test_lateral_gravity_gate(void) {
                 sample.acceleration = vec3i_scale(imu_probe_pose_direction(pose, other), INPUT_ACCEL_ONE_G);
                 imu_probe_update(round, &sample, TEST_DT_MS);
                 imu_probe_update(round, &sample, TEST_DT_MS);
-                TEST_ASSERT_EQUAL_UINT32(0, round->settle_ms);
+                TEST_ASSERT_EQUAL_UINT32(0, (round->rest.settle_us / MATH_US_PER_MS));
             }
             imu_probe_start(round, q);
             round->pose = pose;
@@ -303,7 +301,7 @@ test_lateral_gravity_gate(void) {
             sample.acceleration.z = INPUT_ACCEL_ONE_G;
             imu_probe_update(round, &sample, TEST_DT_MS);
             imu_probe_update(round, &sample, TEST_DT_MS);
-            TEST_ASSERT_EQUAL_UINT32(0, round->settle_ms);
+            TEST_ASSERT_EQUAL_UINT32(0, (round->rest.settle_us / MATH_US_PER_MS));
         }
     }
     free(round);
@@ -311,7 +309,7 @@ test_lateral_gravity_gate(void) {
 
 static void
 test_empty_fit(void) {
-    imu_probe_average_t* poses = calloc(IMU_PROBE_POSE_COUNT, sizeof *poses);
+    imu_rest_t* poses = calloc(IMU_PROBE_POSE_COUNT, sizeof *poses);
     TEST_ASSERT_NOT_NULL(poses);
     const imu_probe_fit_t fit = imu_probe_fit(poses, 0);
     const vec3i_t values[] = {imu_probe_mg(fit.calib.offset), fit.scale_ppm, fit.gyro_mdps};
@@ -325,10 +323,13 @@ test_empty_fit(void) {
 
 static void
 test_empty_pose_ignored(void) {
-    imu_probe_average_t* poses = calloc(IMU_PROBE_POSE_COUNT, sizeof *poses);
+    imu_rest_t* poses = calloc(IMU_PROBE_POSE_COUNT, sizeof *poses);
     TEST_ASSERT_NOT_NULL(poses);
     const input_motion_t sample = fixture();
-    imu_probe_average_add(&poses[IMU_PROBE_FACE_UP], sample);
+    poses[IMU_PROBE_FACE_UP] =
+        (imu_rest_t){.acceleration = {sample.acceleration.x, sample.acceleration.y, sample.acceleration.z},
+                     .rotation = {sample.rotation.x, sample.rotation.y, sample.rotation.z},
+                     .n = 1};
     const imu_probe_fit_t expected = imu_probe_fit(poses, 0);
     poses[IMU_PROBE_LEFT_DOWN].acceleration[0] = INPUT_ACCEL_ONE_G;
     poses[IMU_PROBE_LEFT_DOWN].rotation[0] = INPUT_ROTATION_ONE_DPS;
@@ -355,9 +356,13 @@ test_synthetic_fit(void) {
                 (vec3i_t){offset[0] + (d.x * span[0]), offset[1] + (d.y * span[1]), offset[2] + (d.z * span[2])};
             sample.rotation = (vec3i_t){(pose + 1) * INPUT_ROTATION_ONE_DPS, -2 * (pose + 1) * INPUT_ROTATION_ONE_DPS,
                                         3 * (pose + 1) * INPUT_ROTATION_ONE_DPS};
-            for (int n = 0; n <= pose; n++) {
-                imu_probe_average_add(&round->poses[pose], sample);
-            }
+            const int n = pose + 1;
+            round->poses[pose] =
+                (imu_rest_t){.acceleration = {(int64_t)sample.acceleration.x * n, (int64_t)sample.acceleration.y * n,
+                                              (int64_t)sample.acceleration.z * n},
+                             .rotation = {(int64_t)sample.rotation.x * n, (int64_t)sample.rotation.y * n,
+                                          (int64_t)sample.rotation.z * n},
+                             .n = n};
         }
         round->fit = imu_probe_fit(round->poses, q);
         const vec3i_t stored = {offset[0] / 2, offset[1] / 2, offset[2] / 2};
@@ -402,7 +407,7 @@ static void
 test_fit_fractional_pose_means(void) {
     const int positive_pose_sum_bias = 8;
     const int other_pose_sum_bias = 1;
-    imu_probe_average_t* poses = calloc(IMU_PROBE_POSE_COUNT, sizeof *poses);
+    imu_rest_t* poses = calloc(IMU_PROBE_POSE_COUNT, sizeof *poses);
     TEST_ASSERT_NOT_NULL(poses);
     for (int sign = -1; sign <= 1; sign += 2) {
         for (int pose = 0; pose < IMU_PROBE_POSE_COUNT; pose++) {
@@ -431,9 +436,9 @@ test_saved_offset_exceeds_limit(void) {
             const vec3i_t stored = {axes[0], axes[1], axes[2]};
             axes[axis] = sign * 2;
             const imu_probe_fit_t fit = {.calib = {.offset = {axes[0], axes[1], axes[2]}}};
-            TEST_ASSERT_TRUE(imu_calib_valid(stored));
-            TEST_ASSERT_TRUE(imu_calib_valid(fit.calib.offset));
-            TEST_ASSERT_FALSE(imu_calib_valid(imu_probe_saved_offset(stored, &fit)));
+            TEST_ASSERT_TRUE(imu_calib_valid(stored, IMU_CALIB_OFFSET_MAX));
+            TEST_ASSERT_TRUE(imu_calib_valid(fit.calib.offset, IMU_CALIB_OFFSET_MAX));
+            TEST_ASSERT_FALSE(imu_calib_valid(imu_probe_saved_offset(stored, &fit), IMU_CALIB_OFFSET_MAX));
         }
     }
 }
@@ -447,15 +452,15 @@ test_complete_round(void) {
         for (int pose = 0; pose < IMU_PROBE_POSE_COUNT; pose++) {
             input_motion_t sample = fixture();
             sample.acceleration = vec3i_scale(imu_probe_pose_direction(pose, q), INPUT_ACCEL_ONE_G);
-            for (int ms = 0; ms < IMU_PROBE_SETTLE_MS + IMU_PROBE_WINDOW_MS; ms += TEST_DT_MS) {
+            for (int ms = 0; ms < IMU_REST_SETTLE_MS + IMU_REST_WINDOW_MS; ms += TEST_DT_MS) {
                 TEST_ASSERT_FALSE(imu_probe_update(round, &sample, TEST_DT_MS));
             }
             TEST_ASSERT_TRUE(imu_probe_update(round, &sample, TEST_DT_MS));
-            TEST_ASSERT_FALSE(round->primed);
+            TEST_ASSERT_FALSE(round->rest.primed);
             if (round->step == IMU_PROBE_POSES) {
                 TEST_ASSERT_FALSE(imu_probe_update(round, &sample, TEST_DT_MS));
-                TEST_ASSERT_TRUE(round->primed);
-                TEST_ASSERT_EQUAL_UINT32(0, round->settle_ms);
+                TEST_ASSERT_TRUE(round->rest.primed);
+                TEST_ASSERT_EQUAL_UINT32(0, (round->rest.settle_us / MATH_US_PER_MS));
                 imu_probe_update(round, NULL, TEST_DT_MS);
             }
         }
@@ -484,10 +489,10 @@ test_zero_acceleration_cannot_arm_upright(void) {
     round->step = IMU_PROBE_UPRIGHT;
     round->pose = IMU_PROBE_POSE_COUNT;
     const input_motion_t zero = {0};
-    for (int ms = 0; ms <= IMU_PROBE_SETTLE_MS; ms += TEST_DT_MS) {
+    for (int ms = 0; ms <= IMU_REST_SETTLE_MS; ms += TEST_DT_MS) {
         TEST_ASSERT_FALSE(imu_probe_turn_update(round, &zero, (vec3f_t){0}, TEST_DT_MS));
         TEST_ASSERT_EQUAL_INT(IMU_PROBE_UPRIGHT, round->step);
-        TEST_ASSERT_EQUAL_UINT32(0, round->settle_ms);
+        TEST_ASSERT_EQUAL_UINT32(0, (round->rest.settle_us / MATH_US_PER_MS));
     }
     free(round);
 }

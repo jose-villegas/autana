@@ -3,7 +3,7 @@
 Per-type arithmetic, fixed point, random draws and units. [Math index](README.md).
 
 <!-- generated: math-fast-links-scalar check: python launcher/tools/perf/fast_paths.py --check -->
-Fast-path evidence: [mathf_recip](Fast-Paths.md#mathf-recip), [mathf_rsqrt](Fast-Paths.md#mathf-rsqrt), [mathf_rsqrt_approx](Fast-Paths.md#mathf-rsqrt-approx), [mathx_rsqrt_q30](Fast-Paths.md#mathx-rsqrt-q30), [mathf_repeat](Fast-Paths.md#mathf-repeat), [trig_sin](Fast-Paths.md#trig-sin).
+Fast-path evidence: [mathf_recip](Fast-Paths.md#mathf-recip), [mathf_rsqrt](Fast-Paths.md#mathf-rsqrt), [mathf_rsqrt_approx](Fast-Paths.md#mathf-rsqrt-approx), [mathx_rsqrt_q30](Fast-Paths.md#mathx-rsqrt-q30), [mathf_repeat](Fast-Paths.md#mathf-repeat), [trig_sin](Fast-Paths.md#trig-sin), [mathf_recip_approx](Fast-Paths.md#mathf-recip-approx).
 <!-- /generated: math-fast-links-scalar -->
 
 `math/scalar/` holds per-type arithmetic, fixed point, random draws, trigonometry
@@ -123,6 +123,15 @@ test $`m(y+\tfrac12)^2 \le 2^{92}`$ for rounding to nearest.
 | `mathf_round_s(v, scale)` | int16, rounded and saturated | $`\mathrm{round}(v/scale)`$ |
 
 `MATH_FLOAT_INT_LIMIT` is the largest float below 2^31 that converts to int32.
+
+## Reciprocal (`mathf.h`)
+
+| Function | Board formula | Bound source |
+|---|---|---|
+| `mathf_recip(x)` | `recip0.s` seed, two Newton steps | `MATHF_RECIP_ULP_LIMIT` in `mathf.h` |
+| `mathf_recip_approx(x)` | `recip0.s` seed, one Newton step | `MATHF_RECIP_APPROX_RELATIVE_LIMIT` / `MATHF_RECIP_APPROX_BITS` in `mathf.h` |
+
+Both accept normal inputs with normal reciprocals, of either sign; host and QEMU use `1.0F / x`.
 
 ## Reciprocal square root (`mathf.h`)
 

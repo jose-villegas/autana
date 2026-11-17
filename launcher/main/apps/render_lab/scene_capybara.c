@@ -166,7 +166,7 @@ scene_capybara_frame(uint32_t dt_ms) {
 #endif
 }
 
-static const char*
+static inline const char*
 capybara_status(void) {
     static char buf[RENDER_LAB_STATUS_LEN];
     if (failure[0] != '\0') {
@@ -199,7 +199,7 @@ const render_lab_scene_t scene_capybara = {.name = "Capybara",
                                            .enter = scene_capybara_enter,
                                            .frame = scene_capybara_frame,
                                            .exit = scene_capybara_exit,
-                                           .status = capybara_status,
+                                           .status = RENDER_LAB_SCENE_DEV(capybara_status),
                                            .steer = scene_capybara_steer,
                                            .controls = scene_capybara_controls,
-                                           .console = RENDER_LAB_SCENE_CONSOLE(scene_capybara_console)};
+                                           .console = RENDER_LAB_SCENE_DEV(scene_capybara_console)};

@@ -122,7 +122,7 @@ python launcher/tools/r3d/mesh_import.py path/to/hall.scene.toml
 This bakes each renderer's mesh into the [bake cache](../assets/Bakes.md); a
 mesh without `bake = true` can also be imported on its own. The firmware build writes the
 scene's [pack](../assets/Building-Packs.md#packs), named after the scene: its
-[scene entry](Scene-Files.md#scne-v5), baked from the scene file, its
+[scene entry](../assets/formats/SCNE.md), baked from the scene file, its
 every mesh, skin, skeleton and clip it names. It flashes the pack with the app
 ([assets/README.md](../assets/Building-Packs.md#flashing)).
 

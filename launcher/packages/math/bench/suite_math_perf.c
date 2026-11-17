@@ -184,6 +184,9 @@ nlerp_div(quatx_t a, quatx_t b, int32_t t) {
     X(nlerp, "nlerp", type, "quaternion", false, q##type, quat##type##_nlerp(f->q##type[j].a, f->q##type[j].b, lerp))  \
     X(quat_mul, "quat mul", type, "quaternion", false, q##type, quat##type##_mul(f->q##type[j].a, f->q##type[j].b))
 
+/* A float scalar function of the first input lane. */
+#define MATH_SCALAR_F_ROW(X, fn) X(fn, #fn, f, "scalar", false, f, fn(f->vf[j].a.x))
+
 #define MATH_ROWS(X, DOT)                                                                                              \
     MATH_VECTOR_ROWS(X, f, vf, f, true, MATH_BENCH_LERP_F)                                                             \
     MATH_VECTOR_ROWS(X, i, vi, i, false, MATH_BENCH_LERP_NUMERATOR, MATH_BENCH_LERP_DENOMINATOR)                       \
@@ -211,9 +214,10 @@ nlerp_div(quatx_t a, quatx_t b, int32_t t) {
     X(transform_compute_matrix, "transform compute_matrix", x, "matrix", false, mx,                                    \
       transformx_compute_matrix(&f->tx[j]))                                                                            \
     X(maths_saturate, "maths_saturate", s, "scalar", false, i, maths_saturate(f->saturate[j]))                         \
-    X(mathf_recip, "mathf_recip", f, "scalar", false, f, mathf_recip(f->vf[j].a.x))                                    \
-    X(mathf_rsqrt, "mathf_rsqrt", f, "scalar", false, f, mathf_rsqrt(f->vf[j].a.x))                                    \
-    X(mathf_rsqrt_approx, "mathf_rsqrt_approx", f, "scalar", false, f, mathf_rsqrt_approx(f->vf[j].a.x))               \
+    MATH_SCALAR_F_ROW(X, mathf_recip)                                                                                  \
+    MATH_SCALAR_F_ROW(X, mathf_recip_approx)                                                                           \
+    MATH_SCALAR_F_ROW(X, mathf_rsqrt)                                                                                  \
+    MATH_SCALAR_F_ROW(X, mathf_rsqrt_approx)                                                                           \
     X(wrap_fmodf, "wrap_fmodf", f, "libm", false, f,                                                                   \
       wrap_fmodf(f->angle[j], -MATH_BENCH_WRAP_LIMIT, MATH_BENCH_WRAP_LIMIT))                                          \
     X(normalize_div, "normalize_div", x, "vector", false, vx, normalize_div(f->vx[j].a))                               \

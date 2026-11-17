@@ -48,10 +48,7 @@ typedef struct {
 static inline r3d_span_target_t
 r3d_span_target(gfx_color_t* color, uint16_t* depth, int width, int row0, int row1) {
     r3d_span_target_t target = {.small_fill = &r3d_span_small_fill_default};
-    gfx_target_of_color(&target.rows, color, width, row1 - row0, row0);
-    target.rows.count = GFX_ATTACHMENT_FURTHER;
-    target.rows.attachment[GFX_ATTACHMENT_DEPTH] =
-        (image_t){depth, IMAGE_U16, width, row1 - row0, IMAGE_PITCH(IMAGE_U16, width)};
+    gfx_target_of_color_depth(&target.rows, color, depth, width, row1 - row0, row0);
     assert(target.rows.attachment[GFX_ATTACHMENT_DEPTH].pitch == target.rows.attachment[GFX_ATTACHMENT_COLOR].pitch);
     return target;
 }

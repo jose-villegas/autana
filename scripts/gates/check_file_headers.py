@@ -76,7 +76,7 @@ def module_of(rp):
 def module_problems(root, files):
     selected = {module_of(rp) for rp in files} if files is not None else None
     modules = {}
-    for path in sources(root, tracked=True):
+    for path in sources(root):
         rp = path.relative_to(root).as_posix()
         if in_scope(rp, root):
             modules.setdefault(module_of(rp), []).append(rp)
@@ -95,7 +95,7 @@ def module_problems(root, files):
 
 def purpose_problems(root, files):
     found = []
-    for path in sources(root, tracked=True, extensions=(*HEADERS, ".py")):
+    for path in sources(root, extensions=(*HEADERS, ".py")):
         rp = path.relative_to(root).as_posix()
         if files is not None and rp not in files:
             continue

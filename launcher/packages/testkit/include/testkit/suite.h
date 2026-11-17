@@ -5,6 +5,8 @@
 #include <stddef.h>
 
 #define TESTKIT_SUITE_MAX 256
+/* The longest suite name a RUNSUITE request can carry; a longer one is refused at compile time. */
+#define SUITE_NAME_MAX    38
 
 typedef void (*suite_fn)(void);
 
@@ -28,7 +30,9 @@ void suite_register(const char* name, suite_fn fn);
 void suite_register_on_request(const char* name, suite_fn fn);
 
 #define SUITE_REGISTER(fn)                                                                                             \
+    _Static_assert(sizeof #fn <= SUITE_NAME_MAX + 1, #fn " is over SUITE_NAME_MAX");                                   \
     __attribute__((constructor)) static void fn##_register(void) { suite_register(#fn, fn); }
 
 #define SUITE_REGISTER_ON_REQUEST(fn)                                                                                  \
+    _Static_assert(sizeof #fn <= SUITE_NAME_MAX + 1, #fn " is over SUITE_NAME_MAX");                                   \
     __attribute__((constructor)) static void fn##_register(void) { suite_register_on_request(#fn, fn); }

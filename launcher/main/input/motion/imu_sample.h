@@ -45,13 +45,13 @@ imu_gravity_screen(const imu_sample_t* s) {
 /* Smooth rotation can read high without linear acceleration.
  * Use input_shake() for deliberate shaking, not summed gyro rate. */
 static inline int
-imu_turn_speed(const imu_sample_t* s) {
+imu_turn_speed(vec3i_t rotation) {
     /* Sum of absolute rates rather than a true vector magnitude: it needs no
      * square root, and for "how fast is this turning" the difference is not
      * perceptible. */
-    const int gx = s->gx < 0 ? -s->gx : s->gx;
-    const int gy = s->gy < 0 ? -s->gy : s->gy;
-    const int gz = s->gz < 0 ? -s->gz : s->gz;
+    const int gx = rotation.x < 0 ? -rotation.x : rotation.x;
+    const int gy = rotation.y < 0 ? -rotation.y : rotation.y;
+    const int gz = rotation.z < 0 ? -rotation.z : rotation.z;
 
     return (gx + gy + gz) / IMU_COUNTS_PER_DPS;
 }

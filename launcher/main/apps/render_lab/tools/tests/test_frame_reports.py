@@ -15,11 +15,11 @@ from render.cull_counts import fields
 from device_report import build_budget_section, count_budget_rows
 
 
-def profile(scene="probe", quarter="portrait"):
+def profile(scene="probe", quarter="portrait", frames=751):
     header = ROOT / "launcher/test/frame_profile.h"
     token = lambda name: read_define(header, "FRAME_PROFILE_" + name)
     values = dict(MEAN=48333, MED=48890, P95=58515, WORST=59854, BEST=32574)
-    return (f"I (134838) render_lab_profile: {token('PREFIX')} {scene} {token('FRAMES')}751 "
+    return (f"I (134838) render_lab_profile: {token('PREFIX')} {scene} {token('FRAMES')}{frames} "
             + " ".join(f"{token(name)} {value}us" for name, value in values.items())
             + f" | {token('FPS')} {token('MEAN')} 20.69 {token('LOW')} 17.09 "
             + f"{token('WORST')} 16.71 {token('QUARTER')}{quarter}")
@@ -32,23 +32,25 @@ COUNTS = fields()
 PATH_POSES = read_define(FRAME_PROFILE_HEADER, "FRAME_PROFILE_PATH_POSES")
 PATH_MS = [0, 40, 80, 120]
 FRAME_US = [40000, 52000, 61000, 45000]
-RANKED = [(80, 2), (40, 1)]  # (path ms, frame index), slowest first
-COUNT, WORST_SET_UP = 100, 180
-PATH_DRAW_MS, WORST_DRAW_MS = 40.0, 47.5
+PEAKS = [(80, 2), (40, 1)]  # (path ms, frame index), highest first
+PROMINENCE_US = 9000
+COUNT, PEAK_SET_UP = 100, 180
+PATH_DRAW_MS, PEAK_DRAW_MS = 40.0, 47.5
 
 
 def traced(scene, quarter):
-    """A traced playback of `scene`: its profile, frames, worst frames and their replays."""
-    lines = [profile(scene, quarter)]
+    """A traced playback of `scene`: its profile, frames, frame peaks and their replays."""
+    lines = [profile(scene, quarter, len(PATH_MS))]
     frames = "".join(FRAME % pair for pair in zip(PATH_MS, FRAME_US))
     lines.append(FORMAT("TRACE") % (scene, len(PATH_MS), frames, quarter))
-    lines += [FORMAT("RANKED") % (scene, rank, t, FRAME_US[i], quarter) for rank, (t, i) in enumerate(RANKED, 1)]
+    lines += [FORMAT("PEAK") % (scene, rank, t, FRAME_US[i], PROMINENCE_US, quarter)
+              for rank, (t, i) in enumerate(PEAKS, 1)]
     def replay(t, draw, set_up):
         counts = " ".join(f"{name}={set_up if name == 'triangles_set_up' else COUNT}" for name in COUNTS)
         return FORMAT("REPLAY") % (scene, t, counts, f"r3d.cull 0.75/0.7  r3d.draw {draw:.2f}/{draw:.1f} | total 51.0",
                                    quarter)
     lines += [replay(i, PATH_DRAW_MS, COUNT) for i in range(PATH_POSES)]
-    lines += [replay(t, WORST_DRAW_MS, WORST_SET_UP) for t, _ in RANKED]
+    lines += [replay(t, PEAK_DRAW_MS, PEAK_SET_UP) for t, _ in PEAKS]
     return "\n".join(lines)
 
 
@@ -101,36 +103,43 @@ class FrameReports(unittest.TestCase):
         self.assertEqual(row["time_ms"], 2000)
 
     def test_traced_lines_parse_from_the_header_formats(self):
-        from frame_profile import trace, worst, replays
+        from frame_profile import trace, peaks, replays
         text = traced("probe", "landscape")
         self.assertEqual(trace(text)[1], dict(row="probe", t_ms=PATH_MS[1], frame_us=FRAME_US[1], quarter="landscape"))
         self.assertEqual(len(trace(text)), len(PATH_MS))
         cut = text.replace(FRAME % (PATH_MS[-1], FRAME_US[-1]), "", 1)
-        self.assertEqual(trace(cut), [], "a line short of its count was cut in transfer")
-        self.assertEqual([row["rank"] for row in worst(text)], list(range(1, len(RANKED) + 1)))
+        with self.assertRaisesRegex(ValueError, "probe landscape: a trace line holds"):
+            trace(cut)
+        lost = text.replace(f" n={len(PATH_MS)}", f" n={len(PATH_MS) - 1}", 1).replace(FRAME % (PATH_MS[-1], FRAME_US[-1]), "", 1)
+        with self.assertRaisesRegex(ValueError, f"probe landscape: {len(PATH_MS) - 1} frames traced of the {len(PATH_MS)}"):
+            trace(lost)
+        self.assertEqual([row["rank"] for row in peaks(text)], list(range(1, len(PEAKS) + 1)))
+        self.assertEqual({row["prominence_us"] for row in peaks(text)}, {PROMINENCE_US})
         pose = replays(text)[0]
         self.assertEqual(pose["counts"], {name: COUNT for name in COUNTS})
         self.assertEqual(pose["stages"], {"r3d.cull": 0.75, "r3d.draw": PATH_DRAW_MS})
         self.assertEqual(pose["quarter"], "landscape")
 
-    def test_worst_frames_name_the_stage_and_count_above_the_path(self):
+    def test_frame_peaks_name_the_stage_and_count_above_the_path(self):
         report = report_performance.performance_report(traced("probe", "portrait"))
-        self.assertIn("## Worst frames", report)
+        self.assertIn("## Frame peaks", report)
         row = next(line for line in report.splitlines() if line.startswith("| probe | portrait | 1 |"))
-        self.assertIn(f"| {RANKED[0][0] / 1000:.2f} | {FRAME_US[RANKED[0][1]] / 1000:.1f} |", row)
-        self.assertIn(f"r3d.draw +{WORST_DRAW_MS - PATH_DRAW_MS:.1f} ms; triangles set up ×{WORST_SET_UP / COUNT:.2f}", row)
+        self.assertIn(f"| {PEAKS[0][0] / 1000:.2f} | {FRAME_US[PEAKS[0][1]] / 1000:.1f} | {PROMINENCE_US / 1000:.1f} |", row)
+        self.assertIn(f"r3d.draw +{PEAK_DRAW_MS - PATH_DRAW_MS:.1f} ms; triangles set up ×{PEAK_SET_UP / COUNT:.2f}", row)
 
     def test_a_second_run_for_the_heap_is_not_reported(self):
         first = traced("probe", "portrait")
-        second = first.replace(str(FRAME_US[RANKED[0][1]]), "99999").replace("751", "752", 1)
+        frames = read_define(FRAME_PROFILE_HEADER, "FRAME_PROFILE_FRAMES")
+        second = first.replace(str(FRAME_US[PEAKS[0][1]]), "99999").replace(f"{frames}{len(PATH_MS)} ",
+                                                                            f"{frames}752 ", 1)
         report = report_performance.performance_report("\n".join([first, second, traced("other", "portrait")]))
-        self.assertIn("| probe | portrait | 751 |", report)
+        self.assertIn(f"| probe | portrait | {len(PATH_MS)} |", report)
         self.assertNotIn("752", report)
         self.assertNotIn("100.0", report)
         self.assertEqual(report.count("| probe | portrait | 1 |"), 1)
         self.assertIn("| other | portrait | 1 |", report)
 
-    def test_worst_frames_fail_without_their_replays(self):
+    def test_frame_peaks_fail_without_their_replays(self):
         text = traced("probe", "portrait")
         cut = text.rsplit("\n", 1)[0]
         with self.assertRaisesRegex(ValueError, "probe portrait: .* replays"):
@@ -152,7 +161,7 @@ class FrameReports(unittest.TestCase):
                 "BUILD_ID=north-diag\n" + "\n".join(profile("gallery", q) for q in tables.QUARTERS))
             (data / "frame-profile-south-board.log").write_text(
                 "BUILD_ID=south-diag\n" + "\n".join(traced("gallery", q) for q in tables.QUARTERS))
-            argv = ["--data-dir", str(data), "--document", str(document), "--worst-board", "south",
+            argv = ["--data-dir", str(data), "--document", str(document), "--peak-board", "south",
                     "--images", str(images)]
             command = [sys.executable, str(pathlib.Path(tables.__file__)), *argv]
             try:
@@ -183,7 +192,7 @@ class FrameReports(unittest.TestCase):
             self.assertEqual(result.returncode, 1)
             with self.assertRaisesRegex(ValueError, "no frame-profile-north-board.log"):
                 tables.timing_tables(data, None, ["south"], "north", images, False)
-            with self.assertRaisesRegex(ValueError, "no worst frames for gallery"):
+            with self.assertRaisesRegex(ValueError, "no frame peaks for gallery"):
                 tables.timing_tables(data, None, None, "north", images, False)
 
 

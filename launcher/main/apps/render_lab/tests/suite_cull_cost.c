@@ -64,7 +64,7 @@ time_stages(const raster_t* raster, const r3d_lit_mesh_t* mesh, const r3d_lens_t
     stage_us_t us = {INT64_MAX, INT64_MAX, INT64_MAX, INT64_MAX};
     for (int run = 0; run < CULL_COST_RUNS; run++) {
         int64_t start = timing_now_us();
-        *visible = r3d_pipeline_cull(mesh, lens, b.culled + 1, b.work[0]);
+        *visible = r3d_pipeline_cull(mesh, lens, b.culled + 1, b.work[0], NULL);
         us.cull = best(us.cull, timing_now_us() - start);
         start = timing_now_us();
         r3d_pipeline_transform(mesh, lens, b.culled + 1, *visible, b.cs, b.rows);

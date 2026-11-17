@@ -158,10 +158,14 @@ Each `[[objects.meshes]]` rule carves out matching source objects:
 |---|---|
 | `match` | Exactly `{ object = "glob" }` or `{ material = "glob" }`; must match. |
 | `triangles` | Mesh budget per copy, separate from the variant's rest budget. |
+| `variants` | Optional `{ variant = triangles }`: a variant's own per-copy budget. |
+| `min_triangles` | Optional floor on the scaled budget, at most `triangles`. Default 1. |
 | `seam` | Optional policy; touching defaults to `lock`, otherwise `free`. |
 
-The variant's `triangles` budgets the rest, retaining `props` shares and the
-global pass. Its optional `ceiling` caps emitted triangles, including copies;
+A variant draws each copy with its entry in `variants`, or else
+round(`triangles` x its `objects_scale`), never below `min_triangles`;
+`import_settings.variant_meshes()` owns this rule. The variant's `triangles`
+budgets the rest, retaining `props` shares and the global pass. Its optional `ceiling` caps emitted triangles, including copies;
 `simplify.check_ceiling` owns this check. Overlapping rules are rejected.
 
 Objects touch when a vertex lies within `repair.seal_tolerance` of the other's
@@ -172,7 +176,7 @@ The tolerance is the reciprocal of `output.position_scale`.
 |---|---|---|
 | `weld` | Join touched passes and sum budgets; shared vertices collapse together, touching unshared contacts are pinned. | Closed |
 | `lock` | Own pass; fix contact vertices on both sides. | Closed |
-| `free` | Own pass without locks. | May open |
+| `free` | Own pass; only the rest's side of a contact is fixed. | May open on the mesh's side; the rest stays closed |
 
 ![Free and locked pillar contacts](images/import-mesh-contact.png)
 
@@ -240,6 +244,7 @@ off above on: a pixel-sized hole that shows the sky is sealed.
 |---|---|---|---|---|---|
 | `[[variants]]` | `name`; `triangles` | Names a geometry budget. | Required with `geometry.simplify`; otherwise optional (one mesh named by `output.name`). | Seconds each / set by the budget. | [variants](#variants) |
 | `[[variants]].triangles` | — | Sets a simplified mesh's triangle budget. | Required with `geometry.simplify`. | Seconds / set by the budget. | [variants triangles](#variants-triangles) |
+| `[[variants]].objects_scale` | — | Scales each `[[objects.meshes]]` copy budget. | 1. | — / set by the budgets. | [variants objects_scale](#variants-objects_scale) |
 
 #### variants
 
@@ -250,6 +255,12 @@ triangle budget. Without variants, `output.name` names the single output.
 
 `[[variants]].triangles` is the triangle budget `simplify` brings a variant to;
 a `fit` budget may not exceed it.
+
+#### variants objects_scale
+
+`[[variants]].objects_scale` multiplies each `[[objects.meshes]]` copy budget
+for this variant, so one set of rules serves every tier; a rule's `variants`
+entry or `min_triangles` overrides or floors the result.
 
 ## Objects and instances
 
@@ -328,7 +339,7 @@ unknown key is an error.
 | `python launcher/tools/r3d/mesh_import.py IMPORT` | The import's authored albedo mesh into the bake cache. |
 | `python launcher/tools/r3d/mesh_import.py SCENE` | Each renderer's mesh: a `bake = true` renderer traced with the scene's lights, camera visibility and tone map; an albedo renderer its import's shared mesh. |
 | `python launcher/tools/r3d/mesh_import.py PATH --mesh NAME` | That one mesh only. |
-| `python launcher/tools/r3d/build_pack.py -o DIR` | One [pack](../assets/Building-Packs.md#packs) per root from the `.mesh` entries it names, baking each scene's [entry](Scene-Files.md#scne-v5) on the way. |
+| `python launcher/tools/r3d/build_pack.py -o DIR` | One [pack](../assets/Building-Packs.md#packs) per root from the `.mesh` entries it names, baking each scene's [entry](../assets/formats/SCNE.md) on the way. |
 | `python launcher/tools/r3d/rebake.py MESH.mesh` | That cached `.mesh` in place, its clusters and octree only; rerun `build_pack.py` to pack it. |
 
 A cached `<name>.mesh` is an entry of the [asset pack](../assets/README.md),

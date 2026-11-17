@@ -67,7 +67,7 @@ class DocImageFailureTest(unittest.TestCase):
                     mock.patch("r3d.bake_fidelity.pack_bytes", return_value={}) as pack, \
                     mock.patch("r3d.bake_fidelity.write_packs"), \
                     mock.patch.object(examples.subprocess, "run") as run:
-                examples.main(scene_path, "painting", pathlib.Path("viewer"), work, work, 3, 17)
+                examples.main(scene_path, "painting", "painting_flat_fitted", pathlib.Path("viewer"), work, work, 3, 17)
             pack.assert_called_once_with([scene_path], [f"gallery.paint={work / 'albedo/paint.mesh'}"])
             args = run.call_args_list[0].args[0]
             for flag, value in (("--scene", "gallery"), ("--object", "painting"), ("--frames", "3"), ("--dt", "17")):
@@ -83,7 +83,7 @@ class DocImageFailureTest(unittest.TestCase):
             done = subprocess.run(["sh", "-c", script], cwd=work, capture_output=True, text=True)
             self.assertEqual(done.returncode, 0, done.stderr)
             self.assertEqual((work / "argv").read_text().splitlines(),
-                             ["gallery.scene.toml", "painting", "viewer", ".", "out", "3", "17"])
+                             ["gallery.scene.toml", "painting_fitted_full", "painting_flat_fitted", "viewer", ".", "out", "3", "17"])
 
     def test_tables_use_the_callers_scene_and_object(self):
         sys.path.insert(0, str(ROOT / "launcher/tools/render"))

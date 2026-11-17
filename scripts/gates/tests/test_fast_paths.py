@@ -198,6 +198,57 @@ class FastPathTests(unittest.TestCase):
             self.assertEqual(figures.main(['--out', str(self.root)]), 0)
         save.assert_not_called()
 
+    def test_bits_owned_limit_is_evaluated_and_labelled(self):
+        self.header.write_text(self.header.read_text().replace('#define EXAMPLE_LIMIT 1',
+            '#define EXAMPLE_BITS 13\n#define EXAMPLE_LIMIT (1.0F / (float)(1UL << EXAMPLE_BITS))'))
+        source = self.root / 'launcher/packages/math/tests/suite_math_numbers.c'
+        source.write_text(source.read_text().replace('unit=ulp', 'unit=relative'))
+        item = paths.annotations(self.root)[0]
+        self.assertEqual(item.limit, 2 ** -13)
+        self.assertEqual(paths.limit_label(item), '2^-13 rel, 13 bits')
+        self.header.write_text(self.header.read_text().replace('EXAMPLE_BITS 13', 'EXAMPLE_BITS 14'))
+        self.assertEqual(paths.annotations(self.root)[0].limit, 2 ** -14)
+
+    def test_worst_period_bin_uses_edges_and_a_rounded_up_bound_for_the_rest(self):
+        points = [(1.015625 + i / 32, 2 ** -16, 'relative') for i in range(32)]
+        points[-1] = (points[-1][0], 2 ** -14, 'relative')
+        points[0] = (points[0][0], 3.124e-5, 'relative')
+        self.assertEqual(paths.worst_bin_line(points),
+            'Worst bin: mantissa 1.97-2.00 at 6.1e-5; every other bin <= 3.2e-5.')
+        points[10] = (points[10][0], 2 ** -13, 'relative')
+        self.assertIn('mantissa 1.31-1.34 at 0.00012', paths.worst_bin_line(points))
+        for missing in ([], points[:1]):
+            with self.subTest(missing=missing), self.assertRaises(ValueError):
+                paths.worst_bin_line(missing)
+
+    def test_the_bound_for_the_rest_never_rounds_below_a_bin(self):
+        points = [(1.25, 2 ** -13, 'relative'), (1.75, 3.0001e-5, 'relative'), (1.5, 0, 'relative')]
+        self.assertTrue(paths.worst_bin_line(points).endswith('every other bin <= 3.1e-5.'))
+        self.assertEqual(paths.ceil_measurement(0), '0')
+
+    def test_relative_period_sections_render_and_require_their_bins(self):
+        items = [item for item in paths.annotations()
+                 if item.key in ('mathf_recip_approx', 'mathf_rsqrt_approx')]
+        self.assertEqual(len(items), 2)
+        self.assertTrue(all(item.period_bins for item in items))
+        errors = {(item.key, item.kind): '0.00006103515625 relative (proof)' for item in items}
+        bins = {key: [(1.25, 2 ** -15, 'relative'), (1.75, 2 ** -14, 'relative')] for key in errors}
+        fpu = {item.fast: 'recip0.s rsqrt0.s' for item in items}
+        text = paths.render(ROOT, items, [], {}, errors, bins, {}, fpu, 'test target')
+        self.assertIn(f"rel, {next(item.bits for item in items if item.bits)} bits", text)
+        self.assertEqual(text.count(
+            'Worst bin: mantissa 1.50-2.00 at 6.1e-5; every other bin <= 3.1e-5.'), 2)
+        for item in items:
+            with self.subTest(key=item.key), self.assertRaisesRegex(ValueError, 'missing.*bins'):
+                paths.render(ROOT, [item], [], {}, errors, {}, {}, fpu, 'test target')
+
+    def test_relative_period_contract_rejects_missing_bins(self):
+        from dataclasses import replace
+        item = replace(self.annotations[0], unit='relative', period_bins=True)
+        with self.assertRaisesRegex(ValueError, 'missing.*bins'):
+            paths.validate([item], self.rows,
+                'MATHERROR name=example type=f max=0.5 unit=relative method=sweep')
+
     def test_annotation_parser(self):
         self.assertEqual(len(self.annotations), 1)
         item = self.annotations[0]
@@ -394,7 +445,7 @@ class FastPathTests(unittest.TestCase):
         measured = {row[0]: (10.0, 20.0, 5.0) for row in rows}
         measured["div_recip_f"] = (25.0, 40.0, 15.0)
         errors = {(item.key, item.kind): "0 ulp" for item in items}
-        bins = {(item.key, item.kind): [(1.0, 0.0, item.unit)] for item in items}
+        bins = {(item.key, item.kind): [(1.0, 0.0, item.unit), (1.5, 0.0, item.unit)] for item in items}
         text = paths.render(ROOT, items, rows, measured, errors, bins, sizes, fpu, "test target")
         summary, details = text.split('<a id="mathf-recip"></a>', 1)
         self.assertEqual(summary.count("| [`"), len(items) * 3)

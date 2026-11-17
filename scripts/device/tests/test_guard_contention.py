@@ -1,8 +1,10 @@
 """The lock's guard file under contention. On Windows, creating or deleting a
-file another process is deleting or has open fails with PermissionError, so
-the guard and the lock-file write must read that as busy and retry."""
+file another process is deleting or has open fails with PermissionError (and,
+from WSL on a Windows drive, creating it fails with FileNotFoundError), so the
+guard and the lock-file write must read that as busy and retry."""
 
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -26,7 +28,7 @@ def refuse_once(real, error=PermissionError):
     def call(*args, **kwargs):
         calls.append(args)
         if len(calls) == 1:
-            raise error(13, "Permission denied")
+            raise error()
         return real(*args, **kwargs)
     return call
 
@@ -42,6 +44,31 @@ class GuardRetryTests(unittest.TestCase):
             with self.store.guard(BOARD):
                 self.assertTrue(self.store.guard_path(BOARD).exists())
         self.assertFalse(self.store.guard_path(BOARD).exists())
+
+    def test_a_create_refused_as_missing_is_retried(self):
+        with mock.patch.object(device_lock.os, "open", side_effect=refuse_once(REAL_OPEN, FileNotFoundError)) as create:
+            with self.store.guard(BOARD):
+                self.assertTrue(self.store.guard_path(BOARD).exists())
+        self.assertEqual(create.call_count, 2)
+
+    def test_a_guard_folder_removed_under_a_taker_is_made_again(self):
+        folder = self.store.guard_path(BOARD).parent
+        calls = []
+
+        def remove_folder_once(*args, **kwargs):
+            calls.append(args)
+            if len(calls) == 1:
+                shutil.rmtree(folder)
+            return REAL_OPEN(*args, **kwargs)
+        with mock.patch.object(device_lock.os, "open", side_effect=remove_folder_once):
+            with self.store.guard(BOARD):
+                self.assertTrue(self.store.guard_path(BOARD).exists())
+
+    def test_a_guard_that_cannot_be_taken_fails_naming_it(self):
+        refuse = mock.Mock(side_effect=FileNotFoundError(2, "No such file or directory"))
+        with mock.patch.object(device_lock, "GUARD_STALE_SECONDS", 0),              mock.patch.object(device_lock.os, "open", refuse),              self.assertRaisesRegex(TimeoutError, "cannot take .*guard"):
+            with self.store.guard(BOARD):
+                pass
 
     def test_a_delete_refused_as_busy_is_retried(self):
         with self.store.guard(BOARD):
@@ -89,6 +116,16 @@ WORKER = textwrap.dedent("""
 """)
 
 
+def failures(workers):
+    """The last stderr line of each worker that failed."""
+    found = []
+    for worker in workers:
+        _, stderr = worker.communicate(timeout=60)
+        if worker.returncode:
+            found.append(stderr.strip().splitlines()[-1] if stderr.strip() else f"exit {worker.returncode}")
+    return found
+
+
 class GuardContentionTests(unittest.TestCase):
     """Real processes on the real filesystem: the failure is an OS behaviour,
     so a mock cannot stand in for it."""
@@ -102,13 +139,25 @@ class GuardContentionTests(unittest.TestCase):
             workers = [subprocess.Popen([sys.executable, str(script), role],
                                         stderr=subprocess.PIPE, text=True)
                        for role in ("a", "b", "c", "stat", "stat")]
-            failures = []
-            for worker in workers:
-                _, stderr = worker.communicate(timeout=60)
-                if worker.returncode:
-                    failures.append(stderr.strip().splitlines()[-1] if stderr.strip() else "exit "
-                                    + str(worker.returncode))
-            self.assertEqual(failures, [])
+            self.assertEqual(failures(workers), [])
+
+    @unittest.skipUnless(os.name == "nt" and shutil.which("wsl.exe"), "needs Windows with WSL")
+    def test_windows_and_wsl_takers_share_a_guard(self):
+        with tempfile.TemporaryDirectory() as root:
+            wsl_path = subprocess.run(["wsl.exe", "-e", "wslpath", "-u", str(Path(__file__).resolve().parents[1])],
+                                      capture_output=True, text=True).stdout.strip()
+            wsl_root = subprocess.run(["wsl.exe", "-e", "wslpath", "-u", root],
+                                      capture_output=True, text=True).stdout.strip()
+            if not wsl_path or not wsl_root:
+                self.skipTest("WSL has no distribution to run in")
+            for name, device, locks in (("windows.py", str(Path(__file__).resolve().parents[1]), str(Path(root) / "locks")),
+                                        ("wsl.py", wsl_path, wsl_root + "/locks")):
+                (Path(root) / name).write_text(WORKER.format(device=device, root=locks, board=BOARD, seconds=6))
+            workers = [subprocess.Popen([sys.executable, str(Path(root) / "windows.py"), "windows"],
+                                        stderr=subprocess.PIPE, text=True),
+                       subprocess.Popen(["wsl.exe", "-e", "python3", wsl_root + "/wsl.py", "wsl"],
+                                        stderr=subprocess.PIPE, text=True)]
+            self.assertEqual(failures(workers), [])
 
 
 if __name__ == "__main__":
