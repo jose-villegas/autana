@@ -186,21 +186,24 @@ contact_light_direction_changed(const scene_t* scene, const r3d_skin_lights_t* w
 }
 
 static void
-forget_contact_lighting(const scene_t* scene) {
-    for (int i = 0; i < scene->active_renderer_count; i++) {
-        const scene_renderer_t* r = &scene->renderers[scene->active_renderers[i]];
-        if (r->contact_blob_strength > 0 && r->mesh.node_count > 0) {
-            render_context_forget(render_context_main());
-            break;
+forget_contact_lighting(void) {
+    for (int k = 0; k < SCENE_ROOTS_MAX; k++) {
+        const scene_t* scene = scene_ready_at(k);
+        if (scene == NULL) {
+            continue;
+        }
+        for (int i = 0; i < scene->active_renderer_count; i++) {
+            const scene_renderer_t* r = &scene->renderers[scene->active_renderers[i]];
+            if (r->contact_blob_strength > 0 && r->mesh.node_count > 0) {
+                render_context_forget(render_context_main());
+                return;
+            }
         }
     }
 }
 
 void
 scene_lights_prepare(scene_t* scene) {
-    if (scene->light_transfer == NULL) {
-        return;
-    }
     r3d_skin_lights_t world = {.ambient = vec3f_scale(scene->ambient_color, scene->ambient_intensity),
                                .transfer = scene->light_transfer};
     for (int i = 0; i < scene->staged_count; i++) {
@@ -221,7 +224,7 @@ scene_lights_prepare(scene_t* scene) {
         world.table_scale = scene->world_lights.table_scale;
     }
     if (contact_light_direction_changed(scene, &world)) {
-        forget_contact_lighting(scene);
+        forget_contact_lighting();
     }
     scene->world_lights = world;
 }
@@ -257,9 +260,12 @@ scene_set_probes(entity_t root, const sh_probes_t* probes) {
 }
 
 vec3f_t
-scene_contact_light(const scene_t* scene, vec3f_t world) {
-    if (scene->world_lights.count > 0) {
-        return scene->world_lights.direction[brightest_light(&scene->world_lights)];
+scene_contact_light(const scene_t* scene, vec3f_t world, scene_t* const* drawn_scenes, int drawn_scene_count) {
+    for (int k = 0; k < drawn_scene_count; k++) {
+        const r3d_skin_lights_t* lights = &drawn_scenes[k]->world_lights;
+        if (lights->count > 0) {
+            return lights->direction[brightest_light(lights)];
+        }
     }
     if (scene->probes != NULL) {
         const sh1_rgb_t radiance = sh_probes_sample(scene->probes, world);

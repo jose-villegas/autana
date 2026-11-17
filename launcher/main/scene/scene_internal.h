@@ -375,7 +375,7 @@ typedef struct {
     float radius, lift;
 } contact_reach_t;
 
-vec3f_t scene_contact_light(const scene_t* scene, vec3f_t world);
+vec3f_t scene_contact_light(const scene_t* scene, vec3f_t world, scene_t* const* drawn_scenes, int drawn_scene_count);
 contact_reach_t scene_contact_reach(const scene_t* scene, const scene_renderer_t* renderer);
 box3f_t contact_blob_bounds(box3f_t mover, float ground_y, contact_reach_t reach, vec3f_t light);
 int scene_contact_discs(const scene_t* scene, const scene_renderer_t* renderer, vec3f_t light, contact_disc_t* discs);

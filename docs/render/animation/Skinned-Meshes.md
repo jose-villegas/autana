@@ -204,7 +204,7 @@ them. The light-directed projection follows Blinn's planar-shadow idea.<sup>[[13
 | `SCENE_CONTACT_BODY` | One disc under the world box, radius the smaller horizontal half extent. |
 | `SCENE_CONTACT_FEET` | Lowest bind-space leaves within `CONTACT_JOINT_BAND` times rig height; at most `SKIN_CONTACTS_MAX`, lowest first. No contacts or skin falls back to BODY. |
 | Bind dimensions | Radius is half the nearest contact spacing in xz, or half rig height for one contact. Lift is a quarter rig height. Renderer world scale applies to all lengths. |
-| Light | Brightest directional light by luminance, else the sampled SH L1 dominant direction, else overhead. |
+| Light | Brightest directional light by luminance in the active camera’s scene, else the first other drawn scene with one, else the mover’s sampled SH L1 dominant direction, else overhead. |
 | Warp | A sphere of radius r with centre h + r above ground projects away from the light: offset (h + r) tan, long radius r/e, short radius r. Elevation cosine e is clamped to `CONTACT_LIGHT_ELEVATION_MIN`. |
 | Lift | Height above the scaled bind height gives t = min(h/lift, 1). Radius grows by 1 + t; strength falls by (1 - t)². At t = 1 the contact disappears. |
 | Coverage | Maximum squared radial falloff across discs, one Bayer test and at most one RGB565 halve per pixel. Overlap adds no darkness. |
