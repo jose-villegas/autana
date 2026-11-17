@@ -247,7 +247,14 @@ place_copies(void) {
             if (shown->surface == STRESS_SURFACE_STATIC || shown->surface == STRESS_SURFACE_SKINNED_SH_BLOBS) {
                 place = transformf_compose(&place, &shape);
             }
+            if (shown->surface == STRESS_SURFACE_CONTACT_BLOBS) {
+                place.rotation = quatf_from_axis_angle(vec3f_unit_x(), STRESS_GROUND_ROTATION);
+            }
             transform_set_local(slots[i], transformf_compose(&facing, &place));
+            if (shown->surface == STRESS_SURFACE_CONTACT_BLOBS) {
+                scene_set_contact_blob(slots[i], transform_world(slots[i]).position.y,
+                                       SCENE_CONTACT_BLOB_STRENGTH_DEFAULT);
+            }
             if (stress_skinned(shown)) {
                 const box3f_t bounds = scene_bounds(slots[i]);
                 const vec3f_t span = vec3f_sub(bounds.hi, bounds.lo);

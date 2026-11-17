@@ -13,7 +13,6 @@
 #include "gfx/target/gfx_target.h"
 #include "render/batch/r3d_batch.h"
 #include "render/r3d_instance.h"
-#include "render/r3d_span.h"
 #include "render/raster_attachment.h"
 #include "render/raster_split.h"
 #include "render/render_view.h"
@@ -21,8 +20,11 @@
 #include "render/settings/render_settings.h"
 #include "render/upscale.h"
 
+struct r3d_span_target;
+struct r3d_lens;
+
 typedef struct raster_post {
-    void (*draw)(const r3d_span_target_t* target, const r3d_lens_t* lens, void* user);
+    void (*draw)(const struct r3d_span_target* target, const struct r3d_lens* lens, void* user);
     void* user;
 } raster_post_t;
 
@@ -154,7 +156,7 @@ const r3d_instance_t* raster_drawn_at(const raster_t* raster, int i);
 const r3d_batch_draw_t* raster_drawn_copy(const raster_t* raster, int i);
 /* r3d_lens_place() for where entry `i` sits: its model, and a kept copy's
  * own placement after it. */
-void raster_drawn_place(const raster_t* raster, int i, r3d_lens_t* lens);
+void raster_drawn_place(const raster_t* raster, int i, struct r3d_lens* lens);
 raster_stats_t raster_census(const raster_t* raster, const render_view_t* view);
 void raster_draw_culled(const raster_t* raster, const render_view_t* view);
 
