@@ -287,6 +287,46 @@ test_a_far_level_draws_as_the_plain_fill(void) {
     TEST_ASSERT_EQUAL_UINT16_ARRAY(buffers + (2 * PIXELS), buffers, 2 * PIXELS);
 }
 
+/* A sliver tall enough that the plain fill's clamped depth step overshoots
+ * its nearest vertex, its u, v steep enough to pick a level from LEVEL_2. */
+#define FAR_SLIVER_ROWS   401
+#define FAR_SLIVER_COLS   32
+#define FAR_SLIVER_NEAR_Z 0.25F
+#define FAR_SLIVER_FAR_Z  0.125F
+#define FAR_SLIVER_RIGHT  (22.0F + (1.0F / R3D_SUBPIXEL))
+
+/* With skip_hidden, a far triangle is the capped plain fill: over depth one
+ * above its limit everywhere it changes no pixel, as a skipped cluster. */
+static void
+test_a_far_level_under_skip_hidden_is_capped(void) {
+    fixture();
+    const int pixels = FAR_SLIVER_COLS * FAR_SLIVER_ROWS;
+    uint16_t* color = calloc((size_t)pixels, sizeof *color);
+    uint16_t* depth = malloc(sizeof *depth * (size_t)pixels);
+    TEST_ASSERT_NOT_NULL(color);
+    TEST_ASSERT_NOT_NULL(depth);
+    const uint16_t above = (uint16_t)(r3d_span_depth_limit(FAR_SLIVER_NEAR_Z) + 1);
+    for (int i = 0; i < pixels; i++) {
+        depth[i] = above;
+    }
+    r3d_span_target_t target = r3d_span_target(color, depth, FAR_SLIVER_COLS, 0, FAR_SLIVER_ROWS);
+    target.skip_hidden = true;
+    target.texture_far_level = LEVEL_2;
+    const float bottom = (float)(FAR_SLIVER_ROWS - 1);
+    const r3d_span_vertex_t a = vertex(20.0F, 0.0F, FAR_SLIVER_FAR_Z, FAR_GREY),
+                            b = vertex(22.0F, bottom, FAR_SLIVER_NEAR_Z, FAR_GREY),
+                            c = vertex(FAR_SLIVER_RIGHT, bottom, FAR_SLIVER_FAR_Z, FAR_GREY);
+    const vec2f_t uv[3] = {{0, 0}, {0, 10.0F * bottom}, {SIDE, 10.0F * bottom}};
+    r3d_span_textured_triangle(&target, &a, &b, &c, uv, texture);
+    bool changed = false;
+    for (int i = 0; i < pixels; i++) {
+        changed = changed || depth[i] != above || color[i] != 0;
+    }
+    free(color);
+    free(depth);
+    TEST_ASSERT_FALSE_MESSAGE(changed, "a capped far sliver changed a pixel");
+}
+
 /* far_level 0, or one past the triangle's level, reads its texels: the same
  * pixels either way, unlike far_level at its level, which draws untextured. */
 static void
@@ -2576,6 +2616,7 @@ run_r3d_texture_suite(void) {
     RUN_TEST(test_affine_samples_the_texel_under_each_centre);
     RUN_TEST(test_minified_triangle_takes_the_matching_level);
     RUN_TEST(test_a_far_level_draws_as_the_plain_fill);
+    RUN_TEST(test_a_far_level_under_skip_hidden_is_capped);
     RUN_TEST(test_a_level_before_far_level_reads_its_texels);
     RUN_TEST(test_a_mask1_triangle_at_the_far_level_keeps_its_holes);
     RUN_TEST(test_writers_mark_exactly_the_pixels_a_far_fill_drew);

@@ -10,12 +10,14 @@ its texture type is
 
 ```mermaid
 flowchart LR
-    Tri["triangle<br/>with u, v"] --> Setup["set-up: light plane,<br/>mip level, u, v planes"]
-    Setup --> Format{format}
-    Format -- MASK1 --> Cut["cut walk,<br/>affine"]
+    Tri["triangle<br/>with u, v"] --> Mip["mip level<br/>from u, v"]
+    Mip --> Format{format}
+    Format -- MASK1 --> Setup["set-up: light,<br/>u, v planes"]
+    Setup -- MASK1 --> Cut["cut walk,<br/>affine"]
     Format -- INDEX4 --> Far{"level from<br/>far_level on?"}
     Far -- yes --> Plain["plain fill:<br/>vertex colour,<br/>no u, v or texel"]
-    Far -- no --> Tests{"divide<br/>tests"}
+    Far -- no --> Setup
+    Setup -- INDEX4 --> Tests{"divide<br/>tests"}
     Tests -- "any fails" --> Affine["affine walk"]
     Tests -- "all hold" --> Divided["divided walk:<br/>u, v by depth<br/>every segment"]
     Cut --> Pixel["pixel: colormap<br/>at the dithered<br/>light level"]

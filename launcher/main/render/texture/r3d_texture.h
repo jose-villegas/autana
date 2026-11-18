@@ -106,9 +106,9 @@ r3d_texture_level_bytes(unsigned format, int side_log2) {
  * test, capped as r3d_span_capped_triangle() when target->skip_hidden. The
  * level is chosen once per triangle from the texels a pixel steps; an INDEX4
  * level from target->texture_far_level on (0: none) is drawn by
- * r3d_span_triangle() instead, in the vertex colour, reading no texel. A MASK1 texel 0 leaves its pixel
- * as it was. The target's writers follow each span over the pixels it drew,
- * as after r3d_span_triangle_write(). */
+ * r3d_span_triangle() instead, in the vertex colour, reading no texel. A
+ * MASK1 texel 0 leaves its pixel as it was. The target's writers follow each
+ * span over the pixels it drew, as after r3d_span_triangle_write(). */
 void r3d_span_textured_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                                 const r3d_span_vertex_t* c, const vec2f_t uv[3], const r3d_texture_t* texture);
 
