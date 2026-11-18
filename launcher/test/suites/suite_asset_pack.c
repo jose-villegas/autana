@@ -15,6 +15,7 @@
 
 #include "asset/asset_pack.h"
 #include "hash/crc32.h"
+#include "math/scalar/mathi.h"
 #include "render/r3d_lit_mesh.h"
 #include "test_alloc.h"
 #include "test_pack.h"
@@ -31,12 +32,15 @@
 /* The arrays of the one-triangle mesh below: each starts where the last ends,
  * on a 4-byte boundary, after the header. */
 enum {
+    CLUSTER_ROW_BYTES = sizeof(r3d_lit_cluster_t),
+    NODE_ROW_BYTES = sizeof(r3d_lit_node_t),
+    ARRAY_ALIGN = 4,
     POSITIONS_AT = R3D_LIT_MESH_HEADER_BYTES,
     COLORS_AT = POSITIONS_AT + 20,
     TRIANGLES_AT = COLORS_AT + 12,
     CLUSTERS_AT = TRIANGLES_AT + 8,
     NODES_AT = CLUSTERS_AT + 24,
-    ENTRY_END = NODES_AT + 16,
+    ENTRY_END = NODES_AT + NODE_ROW_BYTES,
     ENTRY_BYTES = ENTRY_END + 4
 };
 
@@ -391,36 +395,26 @@ test_an_inner_node_whose_children_are_not_after_it_is_refused(void) {
  * by its node, before the clusters are checked to own their vertices. */
 static asset_status_t
 open_leaf_of(int clusters) {
-    enum {
-        VERTICES = 3,
-        POSITIONS = R3D_LIT_MESH_HEADER_BYTES,
-        COLORS = POSITIONS + 20,
-        TRIANGLES = COLORS + 12,
-        CLUSTERS = TRIANGLES + 8,
-        CLUSTER_BYTES = 22,
-        NODE_BYTES = 16,
-        SCALE = 8,
-        HI = 20
-    };
+    enum { VERTICES = 3, SCALE = 8, HI = 20 };
 
-    const uint32_t nodes = (uint32_t)(CLUSTERS + (clusters * CLUSTER_BYTES) + 3) & ~3U;
-    const uint32_t size = nodes + NODE_BYTES;
+    const uint32_t nodes = (uint32_t)mathi_size_ceil(CLUSTERS_AT + ((size_t)clusters * CLUSTER_ROW_BYTES), ARRAY_ALIGN);
+    const uint32_t size = nodes + NODE_ROW_BYTES;
     uint8_t* entry = calloc(1, size);
     void* raw = NULL;
     const uint32_t capacity = size + BUFFER_BYTES;
     uint8_t* pack = test_alloc_aligned(capacity, ASSET_PACK_BASE_ALIGN, &raw);
     TEST_ASSERT_NOT_NULL(entry);
     TEST_ASSERT_NOT_NULL(pack);
-    const uint32_t words[] = {VERTICES, 1,         (uint32_t)clusters, 1,     SCALE, POSITIONS,
-                              COLORS,   TRIANGLES, CLUSTERS,           nodes, 0};
+    const uint32_t words[] = {
+        VERTICES, 1, (uint32_t)clusters, 1, SCALE, POSITIONS_AT, COLORS_AT, TRIANGLES_AT, CLUSTERS_AT, nodes, 0};
     for (size_t i = 0; i < sizeof words / sizeof words[0]; i++) {
         test_pack_put32(entry + (4 * i), words[i]);
     }
     for (int v = 0; v < VERTICES; v++) {
-        test_pack_put16(entry + TRIANGLES + (2 * v), (uint16_t)v);
+        test_pack_put16(entry + TRIANGLES_AT + (2 * v), (uint16_t)v);
     }
     for (int c = 0; c < clusters; c++) {
-        uint8_t* cluster = entry + CLUSTERS + (c * CLUSTER_BYTES);
+        uint8_t* cluster = entry + CLUSTERS_AT + (c * CLUSTER_ROW_BYTES);
         test_pack_put16(cluster + 2, VERTICES); /* vertex_count */
         test_pack_put16(cluster + 6, 1);        /* triangle_count */
         test_pack_put16(cluster + 14, HI);      /* hi[0]: lo is the origin */
