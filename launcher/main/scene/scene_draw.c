@@ -271,8 +271,9 @@ warped_blob(box3f_t mover, float ground_y, contact_reach_t reach, vec3f_t light)
     vec3f_t centre = box3f_centre(mover);
     centre.y = ground_y;
     const float radius = fminf(reach.x, reach.z);
-    centre = vec3f_add(centre, vec3f_scale(axis, radius * sqrtf(1 - e * e) / e));
-    const vec3f_t u = {reach.x, 0, 0}, v = {0, 0, reach.z};
+    centre = vec3f_add(centre, vec3f_scale(axis, radius * sqrtf(1 - (e * e)) / e));
+    const vec3f_t u = {reach.x, 0, 0};
+    const vec3f_t v = {0, 0, reach.z};
     return (contact_blob_t){.centre = centre,
                             .u = vec3f_add(u, vec3f_scale(axis, vec3f_dot(u, axis) * (1 / e - 1))),
                             .v = vec3f_add(v, vec3f_scale(axis, vec3f_dot(v, axis) * (1 / e - 1)))};

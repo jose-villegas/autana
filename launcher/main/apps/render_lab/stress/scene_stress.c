@@ -77,7 +77,8 @@ static void
 set_contact_light(entity_t root) {
     const entity_t light = entity_find(root, name_hash(CAPYBARA_LIGHT));
     transformf_t pose = transform_local(light);
-    transformf_set_rotation(&pose, quatf_from_axis_angle(vec3f_unit_x(), MATH_PI / 2 - STRESS_CONTACT_LIGHT_ELEVATION));
+    transformf_set_rotation(&pose,
+                            quatf_from_axis_angle(vec3f_unit_x(), (MATH_PI / 2) - STRESS_CONTACT_LIGHT_ELEVATION));
     transform_set_local(light, pose);
 }
 
@@ -241,7 +242,7 @@ copy_local(int i, stress_framing_t seen, const transformf_t* shape) {
     return place;
 }
 
-static void
+static void __attribute__((noinline))
 copy_extras(int i) {
     if (shown->surface == STRESS_SURFACE_CONTACT_BLOBS) {
         scene_set_contact_blob(slots[i], transform_world(slots[i]).position.y, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT,
@@ -291,7 +292,6 @@ place_copies(void) {
         if (used) {
             const transformf_t place = copy_local(i, seen, &shape);
             transform_set_local(slots[i], transformf_compose(&facing, &place));
-            copy_extras(i);
         }
     }
 }
@@ -358,6 +358,11 @@ scene_stress_enter(const lab_scene_t* self) {
     (void)camera_activate(
         entity_find(loaded, name_hash(render_lab.start_camera == NULL ? shown->camera : render_lab.start_camera)));
     place_copies();
+    for (int i = 0; i < pool; i++) {
+        if (i < shown->copies) {
+            copy_extras(i);
+        }
+    }
     apply_settings();
 }
 
