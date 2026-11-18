@@ -15,6 +15,9 @@ from unittest.mock import Mock, patch
 
 from scripts.lib import local_schedule as schedule
 
+# A grandchild that outlives its stopped stage touches its marker this long after it starts running.
+GRANDCHILD_SECONDS = 4
+
 
 class Clock:
     def __init__(self, hour, minute=0, *, day=21, tzinfo=None):
@@ -272,11 +275,12 @@ class LocalScheduleTests(unittest.TestCase):
                 stalled, touch, _ = self.stalled(root, clock, workflow)
                 backstop = schedule.GPU_STAGE_HANG_SECONDS[workflow]
                 self.assertGreater(backstop, 2 * schedule.GPU_STAGE_PROGRESS_SECONDS)
-                for _ in range(backstop // schedule.QUEUE_POLL_SECONDS - 1):
-                    clock.sleep(schedule.QUEUE_POLL_SECONDS)
+                stride = schedule.GPU_STAGE_PROGRESS_SECONDS // 4  # any step under the progress limit
+                for _ in range(backstop // stride - 1):
+                    clock.sleep(stride)
                     touch()
                     stalled()
-                clock.sleep(schedule.QUEUE_POLL_SECONDS)
+                clock.sleep(stride)
                 touch()
                 with self.assertRaisesRegex(schedule.StageHung, f'GPU_STAGE_HANG_SECONDS expired for {workflow}'):
                     stalled()
@@ -307,28 +311,23 @@ class LocalScheduleTests(unittest.TestCase):
             self.assertTrue(seen.exists())
 
     def test_start_stops_a_hung_stage_with_its_grandchild(self):
-        # The child starts a grandchild, says so, and hangs; the clock jumps past the progress limit once it has
-        # said so, and the grandchild touches its marker only if it outlives the stopped tree.
-        grandchild_seconds = 4
+        # The child starts a grandchild and hangs; the grandchild says it runs, then touches its marker only if it
+        # outlives the stopped tree. The clock jumps past the progress limit once the grandchild runs.
         with tempfile.TemporaryDirectory() as root:
-            ready, outlived = Path(root) / 'ready', Path(root) / 'grandchild-outlived-the-tree'
-            grandchild = (f"import time; from pathlib import Path; time.sleep({grandchild_seconds}); "
-                          f"Path({str(outlived)!r}).touch()")
-            command = [sys.executable, '-c',
-                       "import subprocess, sys, time; from pathlib import Path; "
-                       f"subprocess.Popen([sys.executable, '-c', {grandchild!r}]); "
-                       f"Path({str(ready)!r}).touch(); time.sleep(60)"]
+            running, outlived = Path(root) / 'grandchild-running', Path(root) / 'grandchild-outlived-the-tree'
+            grandchild = (f"import time; from pathlib import Path; Path({str(running)!r}).touch(); "
+                          f"time.sleep({GRANDCHILD_SECONDS}); Path({str(outlived)!r}).touch()")
+            command = [sys.executable, '-c', "import subprocess, sys, time; "
+                       f"subprocess.Popen([sys.executable, '-c', {grandchild!r}]); time.sleep(60)"]
 
             class Hangs(schedule.Clock):
                 def now(self):
-                    late = timedelta(seconds=schedule.GPU_STAGE_PROGRESS_SECONDS) if ready.exists() else timedelta()
+                    late = timedelta(seconds=schedule.GPU_STAGE_PROGRESS_SECONDS) if running.exists() else timedelta()
                     return super().now() + late
-            began = time.monotonic()
             code, said = self.start(root, command, Hangs())
             self.assertEqual(code, schedule.EXIT_HUNG)
             self.assertIn('GPU_STAGE_PROGRESS_SECONDS expired', said)
-            self.assertLess(time.monotonic() - began, grandchild_seconds)
-            time.sleep(grandchild_seconds + 1 - (time.monotonic() - began))
+            time.sleep(GRANDCHILD_SECONDS + 1)
             self.assertFalse(outlived.exists(), 'the grandchild outlived the stopped tree')
 
     def test_wait_idle_gives_up_at_its_deadline(self):
