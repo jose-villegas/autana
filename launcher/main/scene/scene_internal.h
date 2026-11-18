@@ -19,6 +19,7 @@
 #include "math/linear/mat3f.h"
 #include "render/batch/r3d_batch.h"
 #include "render/lod/r3d_lod.h"
+#include "render/probe/sh_probes.h"
 #include "render/r3d_instance.h"
 #include "render/skin/r3d_skin_light.h"
 #include "scene/animator/animator.h"
@@ -74,6 +75,7 @@ typedef struct {
     r3d_lit_mesh_t mesh;
     mat4f_t model;
     box3f_t world_bounds; /* the mesh's root box through `model`, kept with it */
+    float contact_blob_ground_y, contact_blob_strength;
     box3f_t drawn_bounds; /* world_bounds when last drawn (render/partial) */
     scene_row_t entity;
     bool placed;        /* false while the transform is the identity: drawn as it is */
@@ -213,6 +215,7 @@ struct scene {
     r3d_skin_light_table_t* light_table;
     int light_table_users;
     bool light_table_dirty;
+    const sh_probes_t* probes;
     bool skins_pending; /* a bound skin may be ACTIVE without its buffers */
     int starved_count;  /* skins and renderers whose memory did not fit; root->failure says which */
     uint8_t* flags;     /* one per entity: SCENE_FLAG_* */
@@ -237,6 +240,11 @@ struct scene {
     int active_renderer_count;
     bool active_renderers_stale; /* an ACTIVE bit flipped since the list was built */
 };
+
+static inline bool
+scene_is_lit(const scene_t* scene) {
+    return scene->probes != NULL || scene->light_count > 0 || scene->ambient_intensity > 0.0F;
+}
 
 #if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
 /* Fault injection exercises allocation rollback without exhausting the heap. */
