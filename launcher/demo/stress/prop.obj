@@ -1,6 +1,5 @@
 # A bumpy sphere, written by launcher/main/apps/render_lab/tools/bumpy_sphere.py.
 mtllib prop.mtl
-o prop
 v 0.000000 1.051845 0.000000
 v 0.083274 1.058102 0.000000
 v 0.082591 1.052665 0.006500
@@ -3123,6 +3122,7 @@ v 0.076726 -1.002592 -0.018420
 v 0.078526 -1.010201 -0.012437
 v 0.080901 -1.031119 -0.006367
 v 0.000000 -1.051845 0.000000
+o prop
 usemtl band_0
 f 3122 3042 3043
 f 2402 2403 2483

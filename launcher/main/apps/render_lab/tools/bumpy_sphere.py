@@ -13,6 +13,10 @@ Deterministic: run again, the files come out byte for byte the same.
 import argparse
 import math
 import pathlib
+import sys
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[4] / "tools"))
+from r3d.obj import write_obj  # noqa: E402
 
 RINGS = 40
 # Each octave doubles the bumps' frequency and halves their height.
@@ -44,17 +48,17 @@ def ball():
             r = radius(theta, phi)
             vertices.append((r * math.sin(theta) * math.cos(phi), r * math.cos(theta), r * math.sin(theta) * math.sin(phi)))
     vertices.append((0.0, -radius(math.pi, 0.0), 0.0))
-    south = len(vertices)
+    south = len(vertices) - 1
     bands = [[] for _ in range(BANDS)]
 
     def at(ring, s):
-        return 2 + (ring - 1) * slices + s % slices
+        return 1 + (ring - 1) * slices + s % slices
 
     def band(ring):
         return min(BANDS - 1, (RINGS - ring) * BANDS // RINGS)
 
     for s in range(slices):
-        bands[band(0)].append((1, at(1, s + 1), at(1, s)))
+        bands[band(0)].append((0, at(1, s + 1), at(1, s)))
         bands[band(RINGS - 1)].append((south, at(RINGS - 1, s), at(RINGS - 1, s + 1)))
         for ring in range(1, RINGS - 1):
             a, b, c, d = at(ring, s), at(ring, s + 1), at(ring + 1, s + 1), at(ring + 1, s)
@@ -68,13 +72,9 @@ def main():
     out = parser.parse_args().out
     mtl = out.with_suffix(".mtl")
     vertices, bands = ball()
-    lines = ["# A bumpy sphere, written by launcher/main/apps/render_lab/tools/bumpy_sphere.py.",
-             f"mtllib {mtl.name}", f"o {out.stem}"]
-    lines += [f"v {x:.6f} {y:.6f} {z:.6f}" for x, y, z in vertices]
-    for index, triangles in enumerate(bands):
-        lines.append(f"usemtl band_{index}")
-        lines += [f"f {a} {b} {c}" for a, b, c in triangles]
-    out.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+    write_obj(out, mtl.name, vertices, [(out.stem, f"band_{index}", triangles) for index, triangles in enumerate(bands)],
+              banner=("A bumpy sphere, written by launcher/main/apps/render_lab/tools/bumpy_sphere.py.",),
+              position_decimals=6)
     materials = []
     for index, (r, g, b) in enumerate(BAND_COLOURS):
         materials += [f"newmtl band_{index}", f"Kd {r} {g} {b}"]

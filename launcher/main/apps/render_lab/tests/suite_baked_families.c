@@ -39,9 +39,10 @@ test_every_family_places_each_variant_and_its_camera(void) {
  * scratch is one take. */
 #define FAMILY_VISIT_BYTES (2560u * 1024u)
 
-/* A scene's meshes are resident for every variant at once, so a bake that
- * grows any of them takes from every visit: this names the family and the
- * bytes short, where the visit itself would only fail to draw. */
+/* Every variant once shown keeps its meshes' copies until the scene closes,
+ * so a bake that grows any of them takes from a visit that has shown them
+ * all: this names the family and the bytes short, where the visit itself
+ * would only fail to draw. */
 static void
 test_every_family_leaves_a_profiled_visit_its_room(void) {
     for (int f = 0; f < BAKED_FAMILY_COUNT; f++) {
@@ -49,6 +50,9 @@ test_every_family_leaves_a_profiled_visit_its_room(void) {
         const size_t mark = app_arena_mark();
         entity_t scene = scene_load(family->scene);
         TEST_ASSERT_EQUAL_INT_MESSAGE(PENDING_READY, scene_state(scene), family->scene);
+        (void)scene_bounds(scene); /* resolves the scene: every variant, active at load, takes its copies */
+        scene_failure_t why;
+        TEST_ASSERT_FALSE_MESSAGE(scene_failure(scene, &why), family->scene);
         const size_t left = memory_largest_block(MEMORY_APP);
         scene_release(scene);
         app_arena_rewind(mark);
