@@ -98,6 +98,10 @@ A warm reset keeps RTC memory, and the app reports its real cause
   activation alone is insufficient: `export.bat` must have batch-compatible
   line endings and a Python environment it can locate. ESP-IDF's
   `install.bat` prepares that environment.
+- ccache has no lock timeout, so `idf.sh` runs `idf.py` under
+  `launcher/tools/build/ccache_watch.py`. A lock held for 60 s while no
+  compile finishes stops the build with exit 3, naming the lock and, where
+  the system can tell, its holder (`STUCK_SECONDS`, `EXIT_STUCK`).
 - **`IDF_TOOLS_PATH` is the root, not the `tools/` inside it.** Point it one
   level too deep and `idf_tools.py` installs a second copy of every toolchain
   under `tools/tools/`.
