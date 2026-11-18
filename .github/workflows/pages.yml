@@ -15,8 +15,9 @@ name: Pages
 # The explorer's generator lives in the private development repository,
 # checked out as .dev the way a local checkout holds it, and runs in the
 # pinned ESP-IDF image (launcher/idf-pin.json) beside the firmware variants
-# it reads. It writes a LikeC4 model; the LikeC4 version its package.json
-# pins validates the model and builds the explorer from it. Needs the
+# it reads. It adds what the build knows to c4tree, the C4 model builder
+# .dev holds as a submodule at third_party/c4tree; the LikeC4 version
+# c4tree pins validates the model and builds the explorer from it. Needs the
 # repository setting Pages > Source set to "GitHub Actions", and a secret
 # AUTANA_DEV_TOKEN that can read jose-villegas/autana-dev.
 #
@@ -66,8 +67,15 @@ jobs:
           cp -r _front/. _site/
           sh launcher/main/apps/sand/tools/web/build_web.sh _site/sand
       - uses: ./.github/actions/host-tools
-      - name: Install the explorer's LikeC4
-        run: npm ci --prefix .dev/launcher/tools/architecture
+      - name: c4tree, the only .dev submodule the explorer reads
+        run: git -C .dev submodule update --init --depth 1 third_party/c4tree
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .dev/third_party/c4tree/.node-version
+      - name: Install c4tree's Python packages and LikeC4
+        run: >-
+          python3 -m pip install -q -r .dev/third_party/c4tree/requirements.txt
+          && npm ci --prefix .dev/third_party/c4tree
       - name: Test the explorer's generator
         run: python3 .dev/launcher/tools/architecture/test_build.py
       # The explorer marks what only the dev and diag images compile, read
@@ -86,6 +94,7 @@ jobs:
             && tools/build/build.sh --configure --dev
             && tools/build/build.sh --configure --diag
             && cd ..
+            && python3 -m pip install -q -r .dev/third_party/c4tree/requirements.txt
             && python3 .dev/launcher/tools/architecture/build.py
             --compile-db release=launcher/build/compile_commands.json
             --compile-db dev=launcher/build.dev/compile_commands.json
@@ -93,7 +102,7 @@ jobs:
             -o build/architecture-model
       - name: Architecture explorer
         run: >-
-          python3 .dev/launcher/tools/architecture/site.py build/architecture-model
+          python3 .dev/third_party/c4tree/site.py build/architecture-model
           -o _site/architecture --base "/${{ github.event.repository.name }}/architecture/"
       - name: Usage page
         run: >-
