@@ -25,7 +25,8 @@ under [Writing a test](Writing-a-Test.md#finding-the-suite-for-an-area)).
 A good run ends with the suite's Unity summary and writes `shot.png`. It builds the image without autorun
 (`build.qemu.shell/`), boots into the shell, then speaks the board's console
 protocol: `runsuite <name>` per `--suite`, waited out to `RUNSUITE_COMPLETE`,
-then `screenshot`, decoded to a PNG and a `.json` state.
+then `screenshot`, decoded to a PNG and a `.json` state. `--test a,b` runs
+only each suite's tests whose name contains `a` or `b`, as on a board.
 
 | | Time |
 |---|---|
