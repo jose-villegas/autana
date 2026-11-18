@@ -647,7 +647,6 @@ scene_starve(scene_t* scene, scene_row_t entity, bool* starved, const char* doin
     const char* name = scene->asset.names[entity].name;
     *starved = true;
     scene->starved_count++;
-    scene->root->failure = scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, name);
     scene->active_renderers_stale = true;
     (void)fprintf(stderr, "scene: no memory to %s %s; it is not drawn\n", doing, name);
 }
@@ -658,6 +657,19 @@ scene_unstarve(scene_t* scene, bool* starved) {
     *starved = false;
 }
 
+/* The first entity starved now: a skin without its buffers or a renderer
+ * without its copies. */
+static const char*
+starved_name(const scene_t* scene) {
+    for (int i = 0; i < scene->renderer_count; i++) {
+        const scene_row_t e = scene->renderers[i].entity;
+        if (scene->renderers[i].starved || scene->skinned_renderers[e].starved) {
+            return scene->asset.names[e].name;
+        }
+    }
+    return scene->root->id;
+}
+
 bool
 scene_failure(entity_t root, scene_failure_t* why) {
     const scene_root_t* record = record_of(root);
@@ -666,7 +678,7 @@ scene_failure(entity_t root, scene_failure_t* why) {
     if (record == NULL || (record->state != PENDING_FAILED && !starved)) {
         return false;
     }
-    *why = record->failure;
+    *why = starved ? scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, starved_name(record->scene)) : record->failure;
     return true;
 }
 

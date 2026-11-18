@@ -2731,6 +2731,29 @@ assert_lcol_scene(const lcol_case_t* spec, const char* message) {
     }
 }
 
+/* With two renderers starved, scene_failure() names one still starved as
+ * the other recovers, and nothing once both have. */
+static void
+test_scene_failure_names_a_renderer_still_starved(void) {
+    fixture();
+    fx.lent = memory_alloc(LENT_BYTES, MEMORY_APP);
+    TEST_ASSERT_NOT_NULL(fx.lent);
+    (void)scene_set_take(lend);
+    const entity_t root = load("test_pair");
+    fx.lent_used = LENT_BYTES;
+    scene_resolve(columns(root));
+    scene_failure_t why;
+    TEST_ASSERT_TRUE(scene_failure(root, &why));
+    TEST_ASSERT_EQUAL_STRING("red", why.what);
+    entity_set_enabled(entity_find(root, name_hash("red")), false);
+    TEST_ASSERT_TRUE(scene_failure(root, &why));
+    TEST_ASSERT_EQUAL_INT(SCENE_ERR_MEMORY, why.status);
+    TEST_ASSERT_EQUAL_STRING("green", why.what);
+    entity_set_enabled(entity_find(root, name_hash("green")), false);
+    TEST_ASSERT_FALSE(scene_failure(root, &why));
+    fx.lent_used = 0;
+}
+
 /* An array two renderers share is copied by the first shown and only
  * pointed at by the other, which takes just its own arrays when it is shown
  * later: here the pair's quad, each renderer with its own colour set. */
@@ -8156,6 +8179,7 @@ run_scene_suite(void) {
     RUN_TEST(test_static_face_colours_are_resident_and_equal_the_pack);
     RUN_TEST(test_only_static_mesh_arrays_are_made_resident);
     RUN_TEST(test_only_shown_renderers_take_resident_copies);
+    RUN_TEST(test_scene_failure_names_a_renderer_still_starved);
     RUN_TEST(test_a_shared_array_is_copied_once_whichever_renderer_is_shown_first);
     RUN_TEST(test_a_mesh_set_before_the_first_show_takes_no_copies);
     RUN_TEST(test_a_refused_resident_take_hides_only_its_renderer_until_enabled_again);
