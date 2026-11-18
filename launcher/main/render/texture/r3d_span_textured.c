@@ -149,7 +149,7 @@ typedef struct {
     int qx0, qy0; /* the dividing planes' origin pixel: the unclipped box's, alike in every window */
     int divide;   /* pixels between divides, 0 when the triangle steps affine */
     /* A dividing triangle whose corners read different levels: s and t are
-     * in level-0 texels and each span picks its own level. */
+     * in level-0 texels and each span picks its own level, into `sampler`. */
     bool span_level;
     sampler_t sampler;
 } setup_t;
@@ -226,9 +226,8 @@ true_level(const setup_t* su, float u, float v, float r) {
  * At the flash tail, with the rest of the divide, so the affine path keeps
  * its cache placement. */
 static RENDER_TAIL_ATTR __attribute__((noinline)) void
-fill_divided(const setup_t* su, uint16_t* depth, uint16_t* color, int count, carry_t* c, float s, float t, float q,
-             int x, int y) {
-    sampler_t sampler = su->sampler; /* by value: a second one beside a pointer costs the frame 32 bytes */
+fill_divided(setup_t* su, uint16_t* depth, uint16_t* color, int count, carry_t* c, float s, float t, float q, int x,
+             int y) {
     float ds = su->s.dx;
     float dt = su->t.dx;
     if (su->span_level) {
@@ -237,7 +236,7 @@ fill_divided(const setup_t* su, uint16_t* depth, uint16_t* color, int count, car
         const float rc = mathf_recip_approx(q + (su->q.dx * half));
         const int level = true_level(su, (s + (ds * half)) * rc, (t + (dt * half)) * rc, rc);
         const float k = mathf_pow2(-level);
-        sampler = sampler_at(sampler.texture, level);
+        su->sampler = sampler_at(su->sampler.texture, level);
         s *= k;
         t *= k;
         ds *= k;
@@ -258,7 +257,7 @@ fill_divided(const setup_t* su, uint16_t* depth, uint16_t* color, int count, car
         const int32_t du = (int32_t)(((s * r * (float)UV_ONE) - u_at) * inverse);
         const int32_t dv = (int32_t)(((t * r * (float)UV_ONE) - v_at) * inverse);
         c->duv = pack_uv(du, 0) + (uint32_t)dv;
-        fill_with(depth + done, color + done, n, c, &sampler, x + done, y, false);
+        fill_with(depth + done, color + done, n, c, &su->sampler, x + done, y, false);
         u_at += (float)(du * n);
         v_at += (float)(dv * n);
         done += n;
@@ -296,7 +295,7 @@ typedef enum {
 } walk_t;
 
 static inline __attribute__((always_inline)) void
-walk_span(const r3d_span_target_t* target, const setup_t* su, int y, int first, int last, walk_t walk) {
+walk_span(const r3d_span_target_t* target, setup_t* su, int y, int first, int last, walk_t walk) {
     carry_t c;
     span_carry(su, y, first, last, walk != WALK_DIVIDED, &c);
     if (walk == WALK_WRITE) {
@@ -442,7 +441,7 @@ set_up(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[CORNERS
  * right of it when v0-v1-v2 winds positive; the short edge is v0-v1 above
  * v1's row and v1-v2 from it. */
 static inline __attribute__((always_inline)) void
-walk_rows(const r3d_span_target_t* target, const setup_t* su, recti_t box, const r3d_span_vertex_t* v0,
+walk_rows(const r3d_span_target_t* target, setup_t* su, recti_t box, const r3d_span_vertex_t* v0,
           const r3d_span_vertex_t* v1, const r3d_span_vertex_t* v2, bool long_on_left, walk_t walk) {
     const int end = recti_bottom(box);
     const int split = mathi_clamp(r3d_span_first_centre(v1->y), box.y, end);
@@ -467,21 +466,21 @@ walk_rows(const r3d_span_target_t* target, const setup_t* su, recti_t box, const
 }
 
 static __attribute__((noinline)) void
-walk_plain(const r3d_span_target_t* target, const setup_t* su, recti_t box, const r3d_span_vertex_t* v0,
+walk_plain(const r3d_span_target_t* target, setup_t* su, recti_t box, const r3d_span_vertex_t* v0,
            const r3d_span_vertex_t* v1, const r3d_span_vertex_t* v2, bool long_on_left) {
     walk_rows(target, su, box, v0, v1, v2, long_on_left, WALK_FILL);
 }
 
 /* At the flash tail, as fill_divided(). */
 static RENDER_TAIL_ATTR __attribute__((noinline)) void
-walk_divided(const r3d_span_target_t* target, const setup_t* su, recti_t box, const r3d_span_vertex_t* v0,
+walk_divided(const r3d_span_target_t* target, setup_t* su, recti_t box, const r3d_span_vertex_t* v0,
              const r3d_span_vertex_t* v1, const r3d_span_vertex_t* v2, bool long_on_left) {
     walk_rows(target, su, box, v0, v1, v2, long_on_left, WALK_DIVIDED);
 }
 
 /* At the flash tail, as fill_masked(). */
 static RENDER_TAIL_ATTR __attribute__((noinline)) void
-walk_cut(const r3d_span_target_t* target, const setup_t* su, recti_t box, const r3d_span_vertex_t* v0,
+walk_cut(const r3d_span_target_t* target, setup_t* su, recti_t box, const r3d_span_vertex_t* v0,
          const r3d_span_vertex_t* v1, const r3d_span_vertex_t* v2, bool long_on_left) {
     walk_rows(target, su, box, v0, v1, v2, long_on_left, WALK_CUT);
 }
@@ -489,7 +488,7 @@ walk_cut(const r3d_span_target_t* target, const setup_t* su, recti_t box, const 
 /* After the fill, as r3d_span's writers: each pixel's depth is then the
  * triangle's where it drew. At the flash tail: only debug views write. */
 static RENDER_TAIL_ATTR __attribute__((noinline, cold)) void
-walk_writers(const r3d_span_target_t* target, const setup_t* su, recti_t box, const r3d_span_vertex_t* v0,
+walk_writers(const r3d_span_target_t* target, setup_t* su, recti_t box, const r3d_span_vertex_t* v0,
              const r3d_span_vertex_t* v1, const r3d_span_vertex_t* v2, bool long_on_left) {
     walk_rows(target, su, box, v0, v1, v2, long_on_left, WALK_WRITE);
 }
