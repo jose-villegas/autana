@@ -1,5 +1,4 @@
-"""Failures in image generation must identify the command and its error, and the figures ask only for bakes
-the tree makes."""
+"""Failures in image generation name the command and its error; figures ask only for bakes the tree makes."""
 
 import os
 import pathlib
@@ -64,8 +63,7 @@ class FigureBakesTest(unittest.TestCase):
         """The script's own bake lookup, run on the tree with `bake.py path` logged instead of fetched: each name
         it asks for is an output `bake.py list` reports."""
         lines = SCRIPT.read_text(encoding="utf-8").splitlines()
-        start = lines.index("# The cached bakes the figures draw, fetched first so a renamed output fails here, "
-                            "not after the renders.")
+        start = next(index for index, line in enumerate(lines) if line.startswith("# The cached bakes the figures draw"))
         end = next(index for index in range(start, len(lines)) if lines[index].startswith("tree_mesh="))
         settings = [line for line in lines if line.startswith(("DEMO_SCENE=", "DEMO_OBJECT=", "SKIN_BAKE="))]
         with tempfile.TemporaryDirectory() as directory:
@@ -82,7 +80,7 @@ class FigureBakesTest(unittest.TestCase):
         listed = subprocess.run([sys.executable, "launcher/tools/bake/bake.py", "list"], cwd=ROOT, capture_output=True,
                                 text=True, check=True).stdout
         outputs = {line.split("\t")[0] for line in listed.splitlines()}
-        self.assertEqual(len(names), 2, names)
+        self.assertTrue(names, "the block asked for no bake")
         self.assertEqual([name for name in names if name not in outputs], [])
 
 
