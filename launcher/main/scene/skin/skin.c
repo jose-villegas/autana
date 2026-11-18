@@ -161,15 +161,6 @@ scene_skin_show(scene_t* scene, scene_row_t entity) {
     scene->active_renderers_stale = true;
 }
 
-static void
-starve(scene_t* scene, scene_row_t entity, scene_skinned_renderer_t* skin) {
-    skin->starved = true;
-    scene->starved_count++;
-    scene->root->failure = scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, scene->asset.names[entity].name);
-    scene->active_renderers_stale = true;
-    (void)fprintf(stderr, "scene: no memory to skin %s; it is not drawn\n", scene->asset.names[entity].name);
-}
-
 void
 scene_skins_settle(scene_t* scene) {
     if (!scene->skins_pending) {
@@ -185,7 +176,7 @@ scene_skins_settle(scene_t* scene) {
         if (scene_skin_take(scene, e, skin)) {
             scene_skin_show(scene, e);
         } else {
-            starve(scene, e, skin);
+            scene_starve(scene, e, &skin->starved, "skin");
         }
     }
 }
@@ -193,10 +184,7 @@ scene_skins_settle(scene_t* scene) {
 void
 scene_skin_deactivate(scene_t* scene, scene_row_t entity) {
     scene_skinned_renderer_t* skin = &scene->skinned_renderers[entity];
-    if (skin->starved) {
-        skin->starved = false;
-        scene->starved_count--;
-    }
+    scene_unstarve(scene, &skin->starved);
     if (skin->storage != NULL) {
         scene_skin_give(scene, skin);
         scene_skin_show(scene, entity);

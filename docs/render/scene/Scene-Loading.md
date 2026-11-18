@@ -93,11 +93,13 @@ scene keeps in PSRAM, and the render context's scratch, are taken from it:
 - The pack outlives the scene, which reads its entry and every skin, skeleton
   and clip it names in place.
 - A static renderer copies its positions, triangles and colours into PSRAM
-  the first time it is drawn active, so a renderer never shown (an unshown
-  variant) takes nothing. An array renderers share is copied once.
+  the first time it is active, so a renderer that is never enabled, such as
+  an alternative model an app switches in later, takes nothing. An array
+  renderers share is copied once.
 - The copies stay until the scene is released: disabling keeps them, and
   enabling again takes nothing. A renderer whose copies do not fit is not
-  drawn, and `scene_failure()` reports it, until it is next enabled.
+  drawn, and `scene_failure()` names it, until it stops being active;
+  becoming active again retries the copy.
 - Skinned meshes, and meshes an app sets with `renderer_set_mesh()`, are
   drawn where they are.
 - The entry is validated before its components attach. Settings supply

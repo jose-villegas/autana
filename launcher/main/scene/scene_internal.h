@@ -368,5 +368,10 @@ void scene_lights_prepare(scene_t* scene);
 void scene_skin_range(scene_t* scene, int first, int count);
 
 scene_failure_t scene_failure_make(scene_status_t status, asset_status_t asset, const char* what);
+/* Entity `entity`'s memory for `doing` did not fit when it became ACTIVE: it
+ * is not drawn, and scene_failure() names it, until scene_unstarve() as it
+ * stops being ACTIVE. */
+void scene_starve(scene_t* scene, scene_row_t entity, bool* starved, const char* doing);
+void scene_unstarve(scene_t* scene, bool* starved);
 /* Stores the failure in `why`, which may be NULL; true for SCENE_OK. */
 bool scene_report(scene_failure_t* why, scene_status_t status, asset_status_t asset, const char* what);

@@ -19,9 +19,7 @@ static const struct {
                    MESH_ARRAY(colors, true, true), MESH_ARRAY(face_colors, false, true)};
 
 #define MESH_ARRAY_COUNT (sizeof mesh_arrays / sizeof mesh_arrays[0])
-/* The resident_arrays bit of a batch's copy places, after the arrays'. */
-#define RESIDENT_PLACES  (1U << MESH_ARRAY_COUNT)
-_Static_assert(RESIDENT_PLACES <= SCENE_RESIDENT_ALL, "a renderer's resident bits fit its byte");
+_Static_assert(MESH_ARRAY_COUNT <= 8, "a renderer's resident bits fit its byte");
 
 /* Offsets and memcpy avoid aliasing the differently typed pointer-to-const members. */
 static const void*
@@ -95,8 +93,8 @@ resident_walk(scene_t* scene, int index, void* block, asset_copy_t* told, int* c
             mesh_array_repoint(scene, r, a, source, copy);
         }
     }
-    /* What the cull reads of every copy. */
-    if (r->batch != NULL && (r->resident_arrays & RESIDENT_PLACES) == 0) {
+    /* What the cull reads of every copy: its renderer's own batch. */
+    if (r->batch != NULL) {
         r3d_batch_t* batch = r->batch;
         const size_t bytes = sizeof *batch->places * batch->copy_count;
         void* copy = copy_in(block, &end, _Alignof(r3d_copy_place_t), batch->places, bytes, told, count);
@@ -116,22 +114,21 @@ scene_mesh_take(scene_t* scene, int index) {
         r->resident_arrays = SCENE_RESIDENT_ALL;
         return true;
     }
+    /* Taken first, so a refusal leaves nothing taken. */
+    r->resident = scene_allocate_kept(total);
+    if (r->resident == NULL) {
+        return false;
+    }
     asset_copy_t* told = NULL;
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
     /* The copies' sources, so a frame record names a resident mesh by the
-     * pack entry it copies; without the memory, it names none. Taken first,
-     * so the copies themselves are the renderer's last take. */
+     * pack entry it copies; without the memory, it names none. */
     r->copies = scene_allocate_kept_optional(sizeof *r->copies + (sizeof *told * (size_t)count));
     if (r->copies != NULL) {
         told = (asset_copy_t*)(void*)(r->copies + 1);
         *r->copies = (asset_copies_t){.copies = told, .count = count};
     }
 #endif
-    r->resident = scene_allocate_kept(total);
-    if (r->resident == NULL) {
-        scene_mesh_release(r);
-        return false;
-    }
     (void)resident_walk(scene, index, r->resident, told, &count);
     r->resident_arrays = SCENE_RESIDENT_ALL;
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST

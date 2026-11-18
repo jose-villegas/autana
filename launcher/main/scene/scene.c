@@ -7,6 +7,7 @@
 #include <math.h>
 #include <stdalign.h>
 #include <stddef.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -639,6 +640,22 @@ scene_state(entity_t root) {
     scene_row_t row;
     const scene_root_t* record = scene_entity_peek(root, &row);
     return record == NULL || row != SCENE_ROW_ROOT ? PENDING_NONE : record->state;
+}
+
+void
+scene_starve(scene_t* scene, scene_row_t entity, bool* starved, const char* doing) {
+    const char* name = scene->asset.names[entity].name;
+    *starved = true;
+    scene->starved_count++;
+    scene->root->failure = scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, name);
+    scene->active_renderers_stale = true;
+    (void)fprintf(stderr, "scene: no memory to %s %s; it is not drawn\n", doing, name);
+}
+
+void
+scene_unstarve(scene_t* scene, bool* starved) {
+    scene->starved_count -= *starved;
+    *starved = false;
 }
 
 bool

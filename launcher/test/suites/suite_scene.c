@@ -1167,6 +1167,7 @@ test_only_static_mesh_arrays_are_made_resident(void) {
     }
 }
 
+/* Across, in units from the centre: the pair's red at 0 and green at 4; nothing else drawn. */
 static void
 assert_the_pair_alone(void) {
     TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(0.0F));
@@ -1221,6 +1222,26 @@ test_only_shown_renderers_take_resident_copies(void) {
     assert_the_pair_alone();
 }
 
+/* A mesh an app sets before the renderer is first shown is drawn where it
+ * is: the renderer takes no copies, nor is it pointed at another's. */
+static void
+test_a_mesh_set_before_the_first_show_takes_no_copies(void) {
+    fixture();
+    fx.lent = memory_alloc(LENT_BYTES, MEMORY_APP);
+    TEST_ASSERT_NOT_NULL(fx.lent);
+    (void)scene_set_take(lend);
+    const entity_t root = load("test_pair");
+    r3d_lit_mesh_t given;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_open(&fx.pack, "red", &given));
+    TEST_ASSERT_TRUE(renderer_set_mesh(entity_find(root, name_hash("green")), &given));
+    const scene_t* scene = resolved(root);
+    TEST_ASSERT_NOT_NULL(scene->renderers[0].resident);
+    TEST_ASSERT_NULL(scene->renderers[1].resident);
+    TEST_ASSERT_EQUAL_PTR(given.positions, scene->renderers[1].mesh.positions);
+    TEST_ASSERT_EQUAL_PTR(given.colors, scene->renderers[1].mesh.colors);
+    TEST_ASSERT_NOT_EQUAL(given.positions, scene->renderers[0].mesh.positions);
+}
+
 /* A shown renderer whose copies do not fit is not drawn and is reported
  * through scene_failure(); the rest draw, and it takes them again when it is
  * next enabled. */
@@ -1238,6 +1259,8 @@ test_a_refused_resident_take_hides_only_its_renderer_until_enabled_again(void) {
     fx.lent_used = LENT_BYTES;
     entity_set_enabled(green, true);
     scene_resolve(columns(root));
+    TEST_ASSERT_NULL(columns(root)->renderers[1].resident);
+    TEST_ASSERT_NULL(columns(root)->renderers[1].copies);
     fx.lent_used = used;
     frame(16);
     TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(0.0F));
@@ -1249,9 +1272,8 @@ test_a_refused_resident_take_hides_only_its_renderer_until_enabled_again(void) {
     TEST_ASSERT_TRUE(reads_the_pack(columns(root), 1));
 
     entity_set_enabled(green, false);
-    frame(16);
     TEST_ASSERT_FALSE(scene_failure(root, &why));
-    entity_set_enabled(green, true);
+    entity_set_enabled(green, true); /* no resolve between: the retry still comes */
     frame(16);
     assert_the_pair_alone();
     TEST_ASSERT_FALSE(scene_failure(root, &why));
@@ -1262,6 +1284,7 @@ test_a_scene_loads_by_name_and_unloading_gives_back_everything_it_took(void) {
     fixture();
     const size_t before = memory_free_bytes(MEMORY_APP);
     entity_t scene = load("test_pair");
+    TEST_ASSERT_NOT_NULL(resolved(scene)->renderers[1].resident); /* both renderers took copies */
     TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_APP) < before);
     scene_release(scene);
     TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_APP) == before);
@@ -2706,6 +2729,39 @@ assert_lcol_scene(const lcol_case_t* spec, const char* message) {
         TEST_ASSERT_EQUAL_PTR_MESSAGE(scene->renderers[0].mesh.face_colors, scene->renderers[1].mesh.face_colors,
                                       message);
     }
+}
+
+/* An array two renderers share is copied by the first shown and only
+ * pointed at by the other, which takes just its own arrays when it is shown
+ * later: here the pair's quad, each renderer with its own colour set. */
+static void
+test_a_shared_array_is_copied_once_whichever_renderer_is_shown_first(void) {
+    fixture();
+    fx.lent = memory_alloc(LENT_BYTES, MEMORY_APP);
+    TEST_ASSERT_NOT_NULL(fx.lent);
+    (void)scene_set_take(lend);
+    const lcol_case_t spec = {.second_set = LCOL_TEST_SETS - 1};
+    make_lcol_pack(&spec, LCOL_ENCODING_RGB888, "shared quad");
+    const entity_t root = load("test_pair");
+    scene_t* scene = columns(root);
+    const r3d_lit_mesh_t* red = &scene->renderers[0].mesh;
+    const r3d_lit_mesh_t* green = &scene->renderers[1].mesh;
+    TEST_ASSERT_EQUAL_PTR(red->positions, green->positions);
+    const void* red_colours = red->colors;
+    const entity_t first = entity_find(root, name_hash("red"));
+    entity_set_enabled(first, false);
+    scene_resolve(scene);
+    TEST_ASSERT_EQUAL_size_t(resident_mesh_bytes(green), lent_size(scene->renderers[1].resident));
+    TEST_ASSERT_NULL(scene->renderers[0].resident);
+    TEST_ASSERT_EQUAL_PTR(green->positions, red->positions);
+    TEST_ASSERT_EQUAL_PTR(green->triangles, red->triangles);
+    TEST_ASSERT_EQUAL_PTR(red_colours, red->colors);
+
+    entity_set_enabled(first, true);
+    scene_resolve(scene);
+    const size_t colours = (size_t)red->vertex_count * sizeof *red->colors;
+    TEST_ASSERT_EQUAL_size_t(colours, lent_size(scene->renderers[0].resident));
+    assert_resident_mesh_arrays(scene, resident_mesh_bytes(green) + colours);
 }
 
 static void
@@ -8100,6 +8156,8 @@ run_scene_suite(void) {
     RUN_TEST(test_static_face_colours_are_resident_and_equal_the_pack);
     RUN_TEST(test_only_static_mesh_arrays_are_made_resident);
     RUN_TEST(test_only_shown_renderers_take_resident_copies);
+    RUN_TEST(test_a_shared_array_is_copied_once_whichever_renderer_is_shown_first);
+    RUN_TEST(test_a_mesh_set_before_the_first_show_takes_no_copies);
     RUN_TEST(test_a_refused_resident_take_hides_only_its_renderer_until_enabled_again);
     RUN_TEST(test_table_later_frames_mode_changes_and_light_enable);
     RUN_TEST(test_skin_modes_share_table_transactionally_and_rebuild_only_for_lights);
