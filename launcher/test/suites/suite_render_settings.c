@@ -116,6 +116,15 @@ cull_off(void) {
     return off;
 }
 
+#define SHIPPED_FAR_LEVEL 2 /* the first mip level the default draws as its texture's mean */
+
+/* The shipped default draws mip level 2 on as the mean, not 0 (off): a
+ * texture's far levels read no texels unless a pack or knob says otherwise. */
+static void
+test_the_default_far_level_is_two(void) {
+    TEST_ASSERT_EQUAL_INT(SHIPPED_FAR_LEVEL, RENDER_SETTINGS_DEFAULT.texture.far_level);
+}
+
 static void
 test_the_default_is_every_setting_on_as_the_raster_drew_before(void) {
     raster_rig_t* r = open_rig();
@@ -550,6 +559,7 @@ void
 suite_render_settings(void) {
     RUN_TEST(test_anim_pixel_ranges_refuse_negative_and_above_max);
     RUN_TEST(test_the_default_is_every_setting_on_as_the_raster_drew_before);
+    RUN_TEST(test_the_default_far_level_is_two);
     RUN_TEST(test_release_returns_the_settings_to_the_default);
     RUN_TEST(test_the_call_and_the_knob_each_take_effect_the_next_frame);
     RUN_TEST(test_an_override_beats_the_callers_value_until_a_reset_brings_it_back);

@@ -1834,6 +1834,104 @@ test_a_spans_last_pixel_matches_the_truth_at_every_length_around_a_segment(void)
     }
 }
 
+/* A MASK1 entry of two levels whose level 1 keeps the texels mask_kept() does,
+ * opened into mask_texture; level 0 stays all holes. */
+static void
+mask_two_levels_open(void) {
+    uint32_t size;
+    uint8_t* b = mask_entry(MASK_BIG_LOG2, 2, false, &size);
+    uint8_t* level_1 =
+        b + R3D_TEXTURE_HEADER_SIZE + MASK_PALETTE_BYTES + r3d_texture_level_bytes(R3D_TEXTURE_MASK1, MASK_BIG_LOG2);
+    const int side = 1 << (MASK_BIG_LOG2 - 1);
+    for (int y = 0; y < side; y++) {
+        for (int x = 0; x < side; x++) {
+            if (mask_kept(x, y)) {
+                bits8_set(level_1, (size_t)((y * side) + x));
+            }
+        }
+    }
+    TEST_ASSERT_EQUAL(ASSET_OK, mask_open(size));
+}
+
+/* A MASK1 triangle whose level is at far_level is cut as at far_level 0: the
+ * holes keep their pixel's colour and depth, not the mean. */
+static void
+test_a_mask1_triangle_at_the_far_level_keeps_its_holes(void) {
+    fixture();
+    mask_two_levels_open();
+    background(0);
+    background(1);
+    background(2);
+    r3d_span_target_t off = target_at(0);
+    r3d_span_target_t far = target_at(1);
+    off.texture_far_level = 0;
+    far.texture_far_level = 1;
+    draw_masked_stepping(&off, MASK_LEVEL_1_STEP);
+    draw_masked_stepping(&far, MASK_LEVEL_1_STEP);
+    plain_corner(2);
+    int drawn = 0;
+    int covered = 0;
+    for (int i = 0; i < PIXELS; i++) {
+        drawn += depths_of(0)[i] != BG_DEPTH;
+        covered += depths_of(2)[i] != BG_DEPTH;
+    }
+    TEST_ASSERT_GREATER_THAN_MESSAGE(0, drawn, "nothing kept: the pattern tells nothing");
+    TEST_ASSERT_LESS_THAN_MESSAGE(covered, drawn, "no hole: the pattern tells nothing");
+    TEST_ASSERT_EQUAL_UINT16_ARRAY_MESSAGE(colours_of(0), colours_of(1), PIXELS, "a far MASK1 colour differs");
+    TEST_ASSERT_EQUAL_UINT16_ARRAY_MESSAGE(depths_of(0), depths_of(1), PIXELS, "a far MASK1 depth differs");
+}
+
+#define NEARER_DEPTH     0xF000 /* in front of every depth a test triangle draws */
+#define NEARER_FIRST_COL 8      /* the columns of a prefilled nearer stripe */
+#define NEARER_LAST_COL  19
+
+/* Target `which` as a window's background: colour BG_COLOUR, depth BG_DEPTH,
+ * but a stripe of columns already nearer than any triangle. */
+static void
+background_with_nearer_stripe(int which) {
+    background(which);
+    uint16_t* depth = buffers + (which * 2 * PIXELS) + PIXELS;
+    for (int y = 0; y < SIDE; y++) {
+        for (int x = NEARER_FIRST_COL; x <= NEARER_LAST_COL; x++) {
+            depth[(y * SIDE) + x] = NEARER_DEPTH;
+        }
+    }
+}
+
+/* The writer follows a far INDEX4 triangle over the pixels the far fill drew
+ * and no other: those drawn at the triangle's depth, none behind the nearer
+ * stripe the depth test rejected. */
+static void
+test_writers_mark_exactly_the_pixels_a_far_fill_drew(void) {
+    fixture();
+    background_with_nearer_stripe(0);
+    background_with_nearer_stripe(1);
+    r3d_span_target_t target = target_at(0);
+    r3d_span_writer_t writer;
+    with_marking_writer(&target, &writer);
+    target.texture_far_level = LEVEL_2;
+    const r3d_span_vertex_t a = vertex(0, 0, 0.5F, BRIGHTEST), b = vertex(SIDE, 0, 0.5F, BRIGHTEST),
+                            c = vertex(0, SIDE, 0.5F, BRIGHTEST);
+    r3d_span_textured_triangle(&target, &a, &b, &c, minified, texture);
+    plain_corner(1);
+    int marked = 0;
+    int rejected = 0;
+    for (int y = 0; y < SIDE; y++) {
+        for (int x = 0; x < SIDE; x++) {
+            const int i = (y * SIDE) + x;
+            const bool far_drew = colours_of(0)[i] != BG_COLOUR;
+            rejected += depths_of(0)[i] == NEARER_DEPTH && x < SIDE - y;
+            TEST_ASSERT_EQUAL_MESSAGE(far_drew, marks[i], "a pixel's mark against the far fill");
+            if (far_drew) {
+                marked++;
+                TEST_ASSERT_EQUAL_HEX16_MESSAGE(depths_of(1)[i], depths_of(0)[i], "a far pixel's depth");
+            }
+        }
+    }
+    TEST_ASSERT_GREATER_THAN_MESSAGE(PIXELS / 4, marked, "too little drawn: the triangle tells nothing");
+    TEST_ASSERT_GREATER_THAN_MESSAGE(0, rejected, "no rejected pixel: the stripe tells nothing");
+}
+
 /* A narrow steep triangle drawn whole, and again through row windows as
  * draw_slice cuts them: the bend estimate is judged on the whole triangle, so
  * every pixel agrees. WINDOW_BEND allows what a window seeing only a few
@@ -2488,6 +2586,8 @@ run_r3d_texture_suite(void) {
     RUN_TEST(test_a_far_level_draws_the_mean_where_a_mean_texel_would);
     RUN_TEST(test_a_level_before_far_level_reads_its_texels);
     RUN_TEST(test_the_mean_is_the_mean_colour_at_every_light_level);
+    RUN_TEST(test_a_mask1_triangle_at_the_far_level_keeps_its_holes);
+    RUN_TEST(test_writers_mark_exactly_the_pixels_a_far_fill_drew);
     RUN_TEST(test_moved_texels_draw_without_the_entry);
     RUN_TEST(test_texel_at_the_mean_draws_the_vertex_colour);
     RUN_TEST(test_entry_rejects_bad_headers);

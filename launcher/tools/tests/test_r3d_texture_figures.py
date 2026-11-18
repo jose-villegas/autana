@@ -5,6 +5,7 @@ import pathlib
 import sys
 import unittest
 from types import SimpleNamespace
+from unittest import mock
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS))
@@ -36,6 +37,39 @@ class ReferenceMemberTests(unittest.TestCase):
         fit = texture_figures.object_fit(BISTRO, "street_fitted_full")
         # LTEX.md's sheet draws frame 10 at 1000 ms, the pose at 11000 ms: training pose 9.
         self.assertEqual(texture_figures.reference_member(fit, 10, 1000), "reference/0009.png")
+
+
+@unittest.skipIf(texture_figures is None, "needs NumPy and Pillow")
+class MainRefusalTests(unittest.TestCase):
+    FIT = SimpleNamespace(train_every_ms=1000, held_out_every_ms=5000)
+    BASE = ["--scene", "s.toml", "--object", "o", "--reference", "r", "--dt", "1000", "--title", "t",
+            "--image", "a.png", "--out", "out"]
+    FAR = ["--far-frame", "0", "--far-image", "far.png", "--far-title", "far"]
+
+    def refused(self, args):
+        """Runs main() with the viewer and every subprocess mocked; returns the mocks, the call count of each."""
+        with mock.patch.object(texture_figures, "object_fit", return_value=self.FIT),                 mock.patch.object(texture_figures, "draw") as draw,                 mock.patch.object(texture_figures, "run") as run,                 mock.patch.object(texture_figures, "reference") as reference:
+            with self.assertRaises(SystemExit):
+                texture_figures.main(args)
+        self.assertEqual(0, draw.call_count + run.call_count + reference.call_count)
+
+    def test_a_partial_set_of_the_far_flags_is_refused(self):
+        for given in range(0, 6, 2):
+            for flags in ([self.FAR[given:given + 2]], [self.FAR[:given] + self.FAR[given + 2:]]):
+                with self.subTest(flags=flags):
+                    self.refused(["--frame", "0", *self.BASE, *flags[0]])
+
+    def test_a_held_out_frame_is_refused_before_any_draw(self):
+        self.refused(["--frame", "4", *self.BASE])
+
+    def test_a_held_out_far_frame_is_refused_before_any_draw(self):
+        self.refused(["--frame", "0", *self.BASE, "--far-frame", "4", "--far-image", "f.png", "--far-title", "f"])
+
+    def test_a_training_frame_with_all_three_far_flags_is_drawn(self):
+        with mock.patch.object(texture_figures, "object_fit", return_value=self.FIT),                 mock.patch.object(texture_figures, "draw", side_effect=RuntimeError("drawn")) as draw:
+            with self.assertRaises(RuntimeError):
+                texture_figures.main(["--frame", "0", *self.BASE, *self.FAR])
+        self.assertEqual(1, draw.call_count)
 
 
 if __name__ == "__main__":
