@@ -66,6 +66,7 @@ mesh = "sponza.import.toml"
 variant = "sponza_fitted_full"
 bake = true
 visibility = { source = "camera_region", rounds = 160 }
+seal_views = { every_ms = 33, size = [184, 224] }
 
 [objects.mesh_renderer.fit.prune]
 budget = 13313
@@ -92,6 +93,7 @@ mesh = "sponza.import.toml"
 variant = "sponza_fitted"
 bake = true
 visibility = { source = "camera_region", rounds = 160 }
+seal_views = { every_ms = 33, size = [184, 224] }
 
 [objects.mesh_renderer.fit.prune]
 budget = 6761
@@ -119,6 +121,7 @@ variant = "sponza_fitted_full"
 bake = true
 shading = { flat = { auto = { min = 1, max = 16, area = "median" } } }
 visibility = { source = "camera_region", rounds = 160 }
+seal_views = { every_ms = 33, size = [184, 224] }
 
 [objects.mesh_renderer.fit.prune]
 budget = 13313
@@ -145,6 +148,7 @@ mesh = "sponza.import.toml"
 variant = "sponza"
 bake = true
 visibility = { source = "camera_region", rounds = 160 }
+seal_views = { every_ms = 33, size = [184, 224] }
 
 [[objects]]
 name = "atrium_lite"
@@ -154,6 +158,7 @@ mesh = "sponza.import.toml"
 variant = "sponza_lite"
 bake = true
 visibility = { source = "camera_region", rounds = 160 }
+seal_views = { every_ms = 33, size = [184, 224] }
 
 [[objects]]
 name = "atrium_flat"
@@ -164,3 +169,4 @@ variant = "sponza"
 bake = true
 shading = { flat = { auto = { min = 1, max = 16, area = "median" } } }
 visibility = { source = "camera_region", rounds = 160 }
+seal_views = { every_ms = 33, size = [184, 224] }

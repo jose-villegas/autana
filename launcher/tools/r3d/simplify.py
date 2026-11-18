@@ -97,6 +97,9 @@ class Allocation:
     shade_shared: object = None
     report: object = None
     shapes: object = None
+    # With seal_seams, where the probes that look for sky through walls stand: (camera region or None, near plane),
+    # then optionally the camera path's views, as leaks.LeakProbes takes them.
+    camera: object = None
 
 
 def object_groups(pos, tris, tri_o):
@@ -127,9 +130,14 @@ def simplify(pos, rgb, tris, labels, triangles, reserved=(), *, colour_deviation
         options = REGULARIZE_LIGHT | PERMISSIVE
     labels = np.asarray(labels)
     parts, taken = [], np.zeros(len(tris), dtype=bool)
+    probes = None
+    if seal_seams and allocation.camera is not None:
+        from .leaks import LeakProbes
+
+        probes = LeakProbes(pos, tris, *allocation.camera)
     if allocation.meshes:
         return _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, reserved, allocation,
-                                colour_deviation, options, position_scale)
+                                colour_deviation, options, position_scale, probes)
     for group, share in reserved:
         sel = np.isin(labels, list(group)) & ~taken
         parts.append((sel, max(1, int(triangles * share))))
@@ -140,7 +148,8 @@ def simplify(pos, rgb, tris, labels, triangles, reserved=(), *, colour_deviation
     for sel, budget in parts:
         if budget == 0 or not np.any(sel):
             continue
-        p, c, t, m = _run_pass(pos, rgb, tris[sel], labels[sel], budget, colour_deviation, options)
+        p, c, t, m = _run_pass(pos, rgb, tris[sel], labels[sel], budget, colour_deviation, options,
+                               leaks=None if probes is None else (probes, np.flatnonzero(sel)))
         out_pos.append(p)
         out_rgb.append(c)
         out_tris.append(t + base)
@@ -155,13 +164,30 @@ def simplify(pos, rgb, tris, labels, triangles, reserved=(), *, colour_deviation
     return out_pos, out_rgb, np.concatenate(out_tris), np.concatenate(out_labels)
 
 
-def _run_pass(pos, rgb, tris, labels, budget, deviation, options, locks=None):
+def _run_pass(pos, rgb, tris, labels, budget, deviation, options, locks=None, leaks=None):
+    """One meshoptimizer pass over `tris`. `leaks` is (the scene's LeakProbes, this pass's rows of its triangles):
+    while a probe sees sky through the result, the pass runs again with one more source vertex locked per hole."""
+    from .leaks import ROUNDS
+
     used, local = np.unique(tris, return_inverse=True)
     local = local.reshape(-1, 3)
     weight = colour_weight(pos[used], local, budget, deviation)
-    kwargs = {} if locks is None else {'vertex_lock': locks[used]}
-    p, c, t, kept = simplify_with_update(pos[used], rgb[used], local, budget, weight, options, **kwargs)
-    log(f"  simplified {len(tris)} -> {len(t)} triangles (budget {budget}, colour weight {weight:.3g})")
+    held = None if locks is None else locks[used].copy()
+    for round_ in range(ROUNDS + 1):
+        kwargs = {} if held is None else {'vertex_lock': held}
+        p, c, t, kept = simplify_with_update(pos[used], rgb[used], local, budget, weight, options, **kwargs)
+        log(f"  simplified {len(tris)} -> {len(t)} triangles (budget {budget}, colour weight {weight:.3g})")
+        if leaks is None:
+            break
+        probes, rows = leaks
+        free = np.zeros(len(pos), dtype=bool)
+        free[used] = True if held is None else ~held
+        holes, pinned = probes.pins(rows, p, t, free)
+        log(f"  {holes} holes seen by the probes, {len(pinned)} vertices to lock")
+        if round_ == ROUNDS or not len(pinned):
+            break
+        held = np.zeros(len(used), dtype=bool) if held is None else held
+        held[np.searchsorted(used, pinned)] = True
     return p, c, t, _label_after(local, labels, kept, t)
 
 
@@ -307,7 +333,8 @@ def own_materials(placed, faces, materials, pos, own_tris, own_labels):
     return majority(materials, found, int(materials.max()) + 1)[materials].astype(np.asarray(materials).dtype)
 
 
-def _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, reserved, allocation, deviation, options, position_scale):
+def _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, reserved, allocation, deviation, options, position_scale,
+                     probes=None):
     from .objects.contact import contact_graph
     from .objects.instances import Instance
 
@@ -356,7 +383,8 @@ def _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, reserved, allocat
             result = stand_in.positions, stand_in.rgb, stand_in.tris, stand_in.materials
         else:
             result = _run_pass(pos, rgb, tris[sel], labels[sel], budget, deviation, options,
-                               locks if np.any(locks) else None)
+                               locks if np.any(locks) else None,
+                               None if probes is None else (probes, np.flatnonzero(sel)))
         shade = (allocation.shade_shared or allocation.shade) if carved else allocation.shade
         if shade is not None and np.any(np.isin(tri_o[sel], list(selected))):
             result = shade(*result)

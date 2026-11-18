@@ -664,6 +664,13 @@ def mesh_recipe(job, scene, tools, poses=None, unavailable=None):
             camera = recipe["camera"] = camera_inputs(scene)
             if visibility.source == "camera_path":
                 camera["poses"] = poses.digest(scene.camera.component, visibility.every_ms, visibility.size, tools, unavailable)
+        simplify = job.settings.simplify
+        if simplify and simplify.seal_seams and scene.camera is not None:
+            # A sealed import's probes stand in the camera's region and, with seal_views, along its path.
+            camera = recipe.setdefault("camera", camera_inputs(scene))
+            views = job.renderer.seal_views
+            if views is not None:
+                camera["seal_poses"] = poses.digest(scene.camera.component, views.every_ms, views.size, tools, unavailable)
     return recipe
 
 
