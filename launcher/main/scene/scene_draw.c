@@ -6,6 +6,7 @@
 #include <assert.h>
 #include <stdlib.h>
 
+#include "core/app_heap.h"
 #include "esp_log.h"
 #include "hash/name_hash64.h"
 
@@ -325,7 +326,7 @@ draw_active(uint32_t dt_ms, int quarter, int width, int height) {
     }
     if (!rendered && !refused) {
         ESP_LOGE("scene", "no memory to draw '%s' (%u bytes free, largest block %u); it stays blank", scene->root->id,
-                 (unsigned)memory_free_bytes(MEMORY_APP), (unsigned)memory_largest_block(MEMORY_APP));
+                 (unsigned)app_heap_free_bytes(), (unsigned)app_heap_largest_block());
         refused = true;
     }
 }
