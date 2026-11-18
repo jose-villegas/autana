@@ -4914,6 +4914,7 @@ test_contact_light_choice_and_shadow_invalidation(void) {
     scene_lights_prepare(scene);
     TEST_ASSERT_TRUE(render_context_main()->partial.kept);
     scene_set_contact_blob(entity, 0, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, SCENE_CONTACT_BLOB);
+    scene_set_contact_warp(entity, true);
     render_context_main()->partial.kept = true;
     scene_lights_prepare(scene);
     TEST_ASSERT_TRUE(render_context_main()->partial.kept);
@@ -5022,6 +5023,8 @@ test_contact_default_is_unwarped(void) {
     const box3f_t unwarped = scene_contact_bounds(scene, r, vec3f_unit_x());
     TEST_ASSERT_EQUAL_FLOAT(-1, unwarped.lo.x);
     TEST_ASSERT_EQUAL_FLOAT(1, unwarped.hi.x);
+    TEST_ASSERT_EQUAL_FLOAT(-1, unwarped.lo.y);
+    TEST_ASSERT_EQUAL_FLOAT(1, unwarped.hi.y);
     render_context_main()->partial.kept = true;
     scene_set_contact_warp(entity, true);
     TEST_ASSERT_FALSE(render_context_main()->partial.kept);
@@ -5202,6 +5205,7 @@ test_contact_receiver_direction_invalidates_mover_shadow(void) {
     scene_t* receiver = columns(receiver_root);
     TEST_ASSERT_TRUE(light_set_intensity(sun, 1));
     scene_set_contact_blob(mover, 0, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, SCENE_CONTACT_BLOB);
+    scene_set_contact_warp(mover, true);
     frame(0);
     transformf_t pose = transform_local(sun);
     render_context_main()->partial.kept = true;
@@ -5231,7 +5235,7 @@ test_contact_footprint_and_partial_redraw(void) {
         TEST_ASSERT_GREATER_THAN_INT(0, rows_the_last_frame_drew());
         TEST_ASSERT_LESS_THAN_INT(SIZE, rows_the_last_frame_drew());
         const render_partial_t* partial = &render_context_main()->partial;
-        TEST_ASSERT_EQUAL_FLOAT(GROUND_Y, partial->changed[0].lo.y);
+        TEST_ASSERT_EQUAL_FLOAT(GROUND_Y - BLOB_HALF_Z, partial->changed[0].lo.y);
         assert_the_picture_is_the_whole_draw();
     }
 }

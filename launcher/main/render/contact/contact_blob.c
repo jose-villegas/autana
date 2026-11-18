@@ -17,7 +17,8 @@ lens_axis(const r3d_lens_t* lens, int row) {
 
 typedef struct {
     vec3f_t centre, normal, inverse_scale;
-    float distance, strength, inverse_strength_root;
+    float distance, inverse_strength_root;
+    float strength;
     vec3f_t u, v;
     const contact_mask_t* mask;
     unsigned thresholds[BAYER4_LEVELS];
@@ -48,7 +49,7 @@ project_edge(blob_bounds_t* bounds, const r3d_lens_t* lens, vec3f_t a, vec3f_t b
     }
 }
 
-static void
+static inline __attribute__((always_inline)) void
 project_bounds(blob_bounds_t* bounds, const r3d_span_target_t* target, const r3d_lens_t* lens, vec3f_t ground,
                vec3f_t u, vec3f_t v) {
     *bounds = (blob_bounds_t){0};
@@ -83,7 +84,7 @@ typedef struct {
     float row_y, depth_units, step, bias, encoded, near_limit, first_x;
 } blob_row_t;
 
-static blob_row_t
+static inline __attribute__((always_inline)) blob_row_t
 project_row(const r3d_lens_t* lens, const blob_plane_t* blob, int y, int x0) {
     const float row_y = (float)y + 0.5F - lens->project.cy;
     const float depth_units = lens->depth_near * R3D_DEPTH_NEAREST;
@@ -98,8 +99,9 @@ project_row(const r3d_lens_t* lens, const blob_plane_t* blob, int y, int x0) {
     return (blob_row_t){row_y, depth_units, step, bias, encoded, near_limit, first_x};
 }
 
-static void
-draw_row(const r3d_span_target_t* target, const r3d_lens_t* lens, const blob_plane_t* blob, int y, int x0, int x1) {
+static inline __attribute__((always_inline)) void
+draw_row(const r3d_span_target_t* target, const r3d_lens_t* lens, const blob_plane_t* blob, int y, int x0, int x1,
+         bool circular) {
     gfx_color_t* color = gfx_target_color(&target->rows, y);
     const uint16_t* depth = gfx_target_depth(&target->rows, y);
     const blob_row_t row = project_row(lens, blob, y, x0);
@@ -110,7 +112,7 @@ draw_row(const r3d_span_target_t* target, const r3d_lens_t* lens, const blob_pla
     vec3f_t delta = {(row.first_x * row.depth_units - blob->centre.x * encoded) * blob->inverse_scale.x,
                      (row.row_y * row.depth_units - blob->centre.y * encoded) * blob->inverse_scale.y,
                      (row.depth_units - blob->centre.z * encoded) * blob->inverse_scale.z};
-    if (!blob->circular) {
+    if (!circular) {
         const vec3f_t first = {(row.first_x * row.depth_units) - (blob->centre.x * encoded),
                                (row.row_y * row.depth_units) - (blob->centre.y * encoded),
                                row.depth_units - (blob->centre.z * encoded)};
@@ -179,8 +181,8 @@ draw_coverage_row(const r3d_span_target_t* target, const r3d_lens_t* lens, const
     }
 }
 
-static recti_t
-bounded_row(const blob_bounds_t* bounds, int width, int y) {
+static inline __attribute__((always_inline)) void
+bounded_row(const blob_bounds_t* bounds, int width, int y, int* x0, int* x1) {
     const float row = (float)y + 0.5F;
     float left = (float)width;
     float right = 0.0F;
@@ -193,29 +195,74 @@ bounded_row(const blob_bounds_t* bounds, int width, int y) {
             right = fmaxf(right, x);
         }
     }
-    const int x0 = mathi_max(0, (int)floorf(left));
-    const int x1 = mathi_min(width, (int)ceilf(right));
-    return recti_from_edges(x0, y, mathi_max(x0, x1), y + 1);
+    *x0 = mathi_max(0, (int)floorf(left));
+    *x1 = mathi_min(width, (int)ceilf(right));
 }
 
-static void
-draw_bounded_row(const r3d_span_target_t* target, const r3d_lens_t* lens, const blob_plane_t* blobs,
-                 const blob_bounds_t* bounds, int count, int y) {
-    const int width = mathi_min(lens->width, target->rows.attachment[GFX_ATTACHMENT_COLOR].width);
+static inline __attribute__((always_inline)) void
+bounded_rows(const blob_bounds_t* bounds, int count, int width, int y, int* x0, int* x1) {
+    if (count == 1) {
+        bounded_row(bounds, width, y, x0, x1);
+        return;
+    }
     recti_t interval = recti_empty();
     for (int i = 0; i < count; i++) {
         if (y >= bounds[i].first_row && y < bounds[i].end_row) {
-            interval = recti_union(interval, bounded_row(&bounds[i], width, y));
+            bounded_row(&bounds[i], width, y, x0, x1);
+            interval = recti_union(interval, (recti_t){*x0, y, *x1 - *x0, 1});
         }
     }
-    if (interval.w <= 0) {
+    *x0 = interval.x;
+    *x1 = recti_right(interval);
+}
+
+/* Constant single-disc arguments remove union and shape dispatch from its rows. */
+static inline __attribute__((always_inline)) void
+draw_rows(const r3d_span_target_t* target, const r3d_lens_t* lens, const blob_plane_t* blobs,
+          const blob_bounds_t* bounds, int count, int first_row, int end_row, bool radial, bool circular) {
+    const int width = mathi_min(lens->width, target->rows.attachment[GFX_ATTACHMENT_COLOR].width);
+    for (int y = first_row; y < end_row; y++) {
+        int x0;
+        int x1;
+        bounded_rows(bounds, count, width, y, &x0, &x1);
+        if (x0 < x1) {
+            if (radial) {
+                draw_row(target, lens, blobs, y, x0, x1, circular);
+            } else {
+                draw_coverage_row(target, lens, blobs, count, y, x0, x1);
+            }
+        }
+    }
+}
+
+void
+contact_disc_draw(const r3d_span_target_t* target, const r3d_lens_t* lens, vec3f_t ground, vec3f_t up, float radius,
+                  float strength) {
+    if (!(radius > 0.0F) || !(strength > 0.0F)) {
         return;
     }
-    if (count == 1 && blobs->mask == NULL) {
-        draw_row(target, lens, blobs, y, interval.x, recti_right(interval));
-    } else {
-        draw_coverage_row(target, lens, blobs, count, y, interval.x, recti_right(interval));
+    const vec3f_t axis = fabsf(up.x) < fabsf(up.y) ? vec3f_unit_x() : vec3f_unit_y();
+    const vec3f_t u = vec3f_scale(vec3f_normalize(vec3f_cross(up, axis)), radius);
+    const vec3f_t v = vec3f_scale(vec3f_normalize(vec3f_cross(up, u)), radius);
+    blob_bounds_t bounds;
+    project_bounds(&bounds, target, lens, ground, u, v);
+    const vec3f_t centre = mat4f_apply(&lens->m, ground);
+    const float inverse_fx = 1.0F / lens->focal_x;
+    const float inverse_fy = 1.0F / lens->focal_y;
+    const vec3f_t normal = {vec3f_dot(lens_axis(lens, 0), up) * inverse_fx * inverse_fx,
+                            vec3f_dot(lens_axis(lens, 1), up) * inverse_fy * inverse_fy,
+                            vec3f_dot(lens_axis(lens, 2), up)};
+    const float plane = vec3f_dot(normal, centre);
+    if (plane == 0.0F) {
+        return;
     }
+    blob_plane_t blob;
+    blob.centre = centre;
+    blob.normal = normal;
+    blob.distance = plane;
+    blob.inverse_scale = (vec3f_t){inverse_fx / radius, inverse_fy / radius, 1.0F / radius};
+    blob.inverse_strength_root = 1.0F / sqrtf(fminf(strength, 1.0F));
+    draw_rows(target, lens, &blob, &bounds, 1, bounds.first_row, bounds.end_row, true, true);
 }
 
 static bool
@@ -279,9 +326,7 @@ contact_blobs_draw(const r3d_span_target_t* target, const r3d_lens_t* lens, cons
             used++;
         }
     }
-    for (int y = first_row; y < end_row; y++) {
-        draw_bounded_row(target, lens, blobs, bounds, used, y);
-    }
+    draw_rows(target, lens, blobs, bounds, used, first_row, end_row, used == 1 && blobs->mask == NULL, blobs->circular);
 }
 
 void

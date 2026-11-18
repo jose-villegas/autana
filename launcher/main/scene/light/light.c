@@ -224,7 +224,7 @@ scene_lights_prepare(scene_t* scene) {
     } else {
         world.table_scale = scene->world_lights.table_scale;
     }
-    if (contact_light_direction_changed(scene, &world)) {
+    if (scene_contact_warp_users > 0 && contact_light_direction_changed(scene, &world)) {
         forget_contact_lighting();
     }
     scene->world_lights = world;

@@ -11,6 +11,9 @@ typedef struct {
     const contact_mask_t* mask;
 } contact_blob_t;
 
+void contact_disc_draw(const r3d_span_target_t* target, const r3d_lens_t* lens, vec3f_t ground, vec3f_t up,
+                       float radius, float strength);
+
 void contact_blob_draw(const r3d_span_target_t* target, const r3d_lens_t* lens, const contact_blob_t* blob);
 
 void contact_blobs_draw(const r3d_span_target_t* target, const r3d_lens_t* lens, const contact_blob_t* blobs,

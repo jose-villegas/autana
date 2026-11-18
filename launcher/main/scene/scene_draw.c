@@ -242,6 +242,25 @@ fill_instances(int* batches) {
     return count;
 }
 
+static box3f_t
+contact_blob_bounds(box3f_t mover, float ground_y) {
+    vec3f_t ground = box3f_centre(mover);
+    ground.y = ground_y;
+    const vec3f_t half = box3f_half_extent(mover);
+    const float radius = fminf(half.x, half.z);
+    const vec3f_t extent = {radius, radius, radius};
+    return (box3f_t){vec3f_sub(ground, extent), vec3f_add(ground, extent)};
+}
+
+static box3f_t
+changed_bounds(const scene_renderer_t* r) {
+    box3f_t bounds = box3f_union(r->drawn_bounds, r->world_bounds);
+    if (r->contact_blob_strength > 0.0F) {
+        bounds = box3f_union(bounds, contact_blob_bounds(bounds, r->contact_blob_ground_y));
+    }
+    return bounds;
+}
+
 #define CONTACT_AXIS_EPSILON 0.000001F
 
 contact_reach_t
@@ -318,6 +337,9 @@ scene_contact_blobs(const scene_t* scene, const scene_renderer_t* r, vec3f_t lig
 
 box3f_t
 scene_contact_bounds(const scene_t* scene, const scene_renderer_t* r, vec3f_t light) {
+    if (r->contact_blob_shape == SCENE_CONTACT_BLOB && !r->contact_warp) {
+        return contact_blob_bounds(r->world_bounds, r->contact_blob_ground_y);
+    }
     static contact_blob_t blobs[SKIN_CONTACTS_MAX];
     const int count = scene_contact_blobs(scene, r, light, blobs);
     box3f_t bounds = box3f_empty();
@@ -327,6 +349,17 @@ scene_contact_bounds(const scene_t* scene, const scene_renderer_t* r, vec3f_t li
         bounds = box3f_union(bounds, (box3f_t){vec3f_sub(blob->centre, extent), vec3f_add(blob->centre, extent)});
     }
     return bounds;
+}
+
+static inline __attribute__((always_inline)) box3f_t
+current_bounds(const scene_t* scene, const scene_renderer_t* r) {
+    if (r->contact_blob_strength <= 0 || (r->contact_blob_shape == SCENE_CONTACT_BLOB && !r->contact_warp)) {
+        return r->world_bounds;
+    }
+    const vec3f_t light =
+        r->contact_warp ? scene_contact_light(scene, box3f_centre(r->world_bounds), drawn_scenes, drawn_scene_count)
+                        : vec3f_unit_y();
+    return box3f_union(r->world_bounds, scene_contact_bounds(scene, r, light));
 }
 
 /* `scene`'s part of fill_changed(): its changed renderers' boxes into
@@ -343,17 +376,13 @@ fill_scene_changed(scene_t* scene, int changes, name_hash64_t* set) {
         contact_blobs |= r->contact_blob_strength > 0.0F;
         *set = name_hash64_n(*set, &slot, sizeof slot);
         *set = name_hash64_n(*set, &scene->active_renderers[i], sizeof scene->active_renderers[i]);
-        box3f_t current = r->world_bounds;
-        if (r->contact_blob_strength > 0) {
-            current = box3f_union(current, scene_contact_bounds(scene, r,
-                                                                scene_contact_light(scene, box3f_centre(current),
-                                                                                    drawn_scenes, drawn_scene_count)));
-        }
+        const box3f_t current = current_bounds(scene, r);
         if (r->changed && changes >= 0) {
-            changes = changes < RENDER_PARTIAL_CHANGES_MAX ? changes : -1;
-            if (changes >= 0) {
-                const box3f_t bounds = box3f_union(r->drawn_bounds, current);
-                changed[changes++] = bounds;
+            if (changes < RENDER_PARTIAL_CHANGES_MAX) {
+                const bool disc = r->contact_blob_shape == SCENE_CONTACT_BLOB && !r->contact_warp;
+                changed[changes++] = disc ? changed_bounds(r) : box3f_union(r->drawn_bounds, current);
+            } else {
+                changes = -1;
             }
         }
         r->changed = false;
@@ -437,31 +466,51 @@ scene_set_contact_warp(entity_t renderer, bool warp) {
     if (index < 0 || scene->renderers[index].contact_warp == warp) {
         return;
     }
+    scene->contact_warp_users += warp ? 1 : -1;
+    scene_contact_warp_users += warp ? 1 : -1;
     scene->renderers[index].contact_warp = warp;
     scene->renderers[index].changed = true;
     render_context_forget(render_context_main());
+}
+
+static __attribute__((noinline)) void
+draw_footprints(const r3d_span_target_t* target, const r3d_lens_t* lens, const scene_t* scene,
+                const scene_renderer_t* r, vec3f_t light) {
+    const box3f_t bounds = scene_contact_bounds(scene, r, light);
+    static planef_t planes[PLANE_FRUSTUM_COUNT];
+    r3d_lens_frustum(lens, planes);
+    unsigned mask = 0;
+    if (box3f_outside_planes(bounds, planes, PLANE_FRUSTUM_COUNT, &mask)) {
+        return;
+    }
+    static contact_blob_t blobs[SKIN_CONTACTS_MAX];
+    const int count = scene_contact_blobs(scene, r, light, blobs);
+    contact_blobs_draw(target, lens, blobs, count);
+}
+
+static inline __attribute__((always_inline)) void
+draw_contact(const r3d_span_target_t* target, const r3d_lens_t* lens, const scene_t* scene, const scene_renderer_t* r) {
+    if (r->contact_blob_shape == SCENE_CONTACT_BLOB && !r->contact_warp) {
+        const box3f_t bounds = contact_blob_bounds(r->world_bounds, r->contact_blob_ground_y);
+        contact_disc_draw(target, lens, box3f_centre(bounds), vec3f_unit_y(), box3f_half_extent(bounds).x,
+                          r->contact_blob_strength);
+        return;
+    }
+    const vec3f_t light =
+        r->contact_warp ? scene_contact_light(scene, box3f_centre(r->world_bounds), drawn_scenes, drawn_scene_count)
+                        : vec3f_unit_y();
+    draw_footprints(target, lens, scene, r, light);
 }
 
 static void
 post_draw(const r3d_span_target_t* target, const r3d_lens_t* lens, void* user) {
     (void)user;
     for (int k = 0; k < drawn_scene_count; k++) {
-        const scene_t* scene = drawn_scenes[k];
+        scene_t* scene = drawn_scenes[k];
         for (int i = 0; i < scene->active_renderer_count; i++) {
             const scene_renderer_t* r = &scene->renderers[scene->active_renderers[i]];
             if (r->contact_blob_strength > 0.0F && r->mesh.node_count > 0) {
-                const vec3f_t light =
-                    scene_contact_light(scene, box3f_centre(r->world_bounds), drawn_scenes, drawn_scene_count);
-                const box3f_t bounds = scene_contact_bounds(scene, r, light);
-                static planef_t planes[PLANE_FRUSTUM_COUNT];
-                r3d_lens_frustum(lens, planes);
-                unsigned mask = 0;
-                if (box3f_outside_planes(bounds, planes, PLANE_FRUSTUM_COUNT, &mask)) {
-                    continue;
-                }
-                static contact_blob_t blobs[SKIN_CONTACTS_MAX];
-                const int count = scene_contact_blobs(scene, r, light, blobs);
-                contact_blobs_draw(target, lens, blobs, count);
+                draw_contact(target, lens, scene, r);
             }
         }
     }
@@ -476,7 +525,11 @@ draw_active(uint32_t dt_ms, int quarter, int width, int height) {
     list_drawn_scenes();
     for (int k = 0; k < drawn_scene_count; k++) {
         scene_resolve(drawn_scenes[k]);
-        scene_lights_prepare(drawn_scenes[k]);
+    }
+    if (scene_contact_warp_users > 0) {
+        for (int k = 0; k < drawn_scene_count; k++) {
+            scene_lights_prepare(drawn_scenes[k]);
+        }
     }
     /* Size measurements must use this draw's lens, including its viewport. */
     active_view(scene, camera, (viewport_t){width, height, quarter});
@@ -542,6 +595,7 @@ scene_compose(uint32_t dt_ms, int quarter, const scene_target_t* target) {
 void
 scene_draw_checkpoint_capture(checkpoint_t* saved) {
     CHECKPOINT_CAPTURE(saved, active);
+    CHECKPOINT_CAPTURE(saved, scene_contact_warp_users);
     CHECKPOINT_CAPTURE(saved, paused);
     CHECKPOINT_CAPTURE(saved, expanded);
     CHECKPOINT_CAPTURE(saved, stepped);

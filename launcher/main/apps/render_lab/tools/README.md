@@ -348,8 +348,8 @@ first pair of columns, gallops down the atrium and rests between the last
 pair; its clip and rate come from its ground speed. A third-person camera
 starts a little round from its face, turns slowly toward its back as it runs,
 never reaching it, and comes back as it stops. With frame generation on, a
-generated frame shows the capybara where the last drawn frame put it. Each
-planted foot casts a light-warped contact disc; lifted feet spread and fade.
+generated frame shows the capybara where the last drawn frame put it.
+The capybara uses BLOB contact coverage with warp off.
 
 ![Capybara in Sponza: the capybara's run down the atrium, rest to rest, under a third-person camera](../../../../../docs/images/overview/render-lab-capybara-sponza.gif)
 

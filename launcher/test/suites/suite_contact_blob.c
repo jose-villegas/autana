@@ -15,17 +15,6 @@ enum { BLOB_WIDTH = 9, BLOB_HEIGHT = 9, BLOB_CENTRE = 4, BLOB_DEPTH = 4 };
 #define BLOB_RADIUS 1.0F
 
 static void
-draw_round(const r3d_span_target_t* target, const r3d_lens_t* lens, vec3f_t centre, vec3f_t up, float radius,
-           float strength) {
-    const vec3f_t axis = up.y == 0 ? vec3f_unit_y() : vec3f_unit_x();
-    const contact_blob_t blob = {.centre = centre,
-                                 .u = vec3f_scale(axis, radius),
-                                 .v = vec3f_scale(vec3f_cross(up, axis), radius),
-                                 .strength = strength};
-    contact_blob_draw(target, lens, &blob);
-}
-
-static void
 test_blob_depth_radius_rows_strength(void) {
     uint16_t* color = malloc(BLOB_WIDTH * BLOB_HEIGHT * sizeof *color);
     uint16_t* depth = calloc(BLOB_WIDTH * BLOB_HEIGHT, sizeof *depth);
@@ -42,10 +31,10 @@ test_blob_depth_radius_rows_strength(void) {
     const vec3f_t ground = {(BLOB_CENTRE + 0.5F - lens.project.cx) * BLOB_DEPTH / lens.focal_x,
                             -(BLOB_CENTRE + 0.5F - lens.project.cy) * BLOB_DEPTH / lens.focal_y, BLOB_DEPTH};
     r3d_span_target_t target = r3d_span_target(color, depth, BLOB_WIDTH, 0, BLOB_HEIGHT);
-    draw_round(&target, &lens, ground, vec3f_unit_z(), BLOB_RADIUS, 0);
+    contact_disc_draw(&target, &lens, ground, vec3f_unit_z(), BLOB_RADIUS, 0);
     TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xffffff), color[BLOB_CENTRE * BLOB_WIDTH + BLOB_CENTRE]);
     depth[BLOB_CENTRE * BLOB_WIDTH + BLOB_CENTRE] = R3D_DEPTH_NEAREST;
-    draw_round(&target, &lens, ground, vec3f_unit_z(), BLOB_RADIUS, 1);
+    contact_disc_draw(&target, &lens, ground, vec3f_unit_z(), BLOB_RADIUS, 1);
     TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xffffff), color[BLOB_CENTRE * BLOB_WIDTH + BLOB_CENTRE]);
     depth[BLOB_CENTRE * BLOB_WIDTH + BLOB_CENTRE] = R3D_DEPTH_EMPTY;
     for (int i = 0; i < BLOB_WIDTH * BLOB_HEIGHT; i++) {
@@ -53,7 +42,7 @@ test_blob_depth_radius_rows_strength(void) {
     }
     target = r3d_span_target(color + BLOB_CENTRE * BLOB_WIDTH, depth + BLOB_CENTRE * BLOB_WIDTH, BLOB_WIDTH,
                              BLOB_CENTRE, BLOB_CENTRE + 1);
-    draw_round(&target, &lens, ground, vec3f_unit_z(), BLOB_RADIUS, 1);
+    contact_disc_draw(&target, &lens, ground, vec3f_unit_z(), BLOB_RADIUS, 1);
     TEST_ASSERT_EQUAL_HEX16(rgb565be_pack(15, 31, 15), color[BLOB_CENTRE * BLOB_WIDTH + BLOB_CENTRE]);
     TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xffffff), color[0]);
     TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xffffff), color[(BLOB_CENTRE - 1) * BLOB_WIDTH + BLOB_CENTRE]);
@@ -84,7 +73,7 @@ test_blob_squared_falloff(void) {
                 const vec3f_t ground = {distances[d] * BLOB_RADIUS, 0, BLOB_DEPTH};
                 const int pixel = y * BLOB_WIDTH + x;
                 color[pixel] = RGB565BE(0xffffff);
-                draw_round(&target, &lens, ground, vec3f_unit_z(), BLOB_RADIUS, 1);
+                contact_disc_draw(&target, &lens, ground, vec3f_unit_z(), BLOB_RADIUS, 1);
                 count += color[pixel] != RGB565BE(0xffffff);
             }
         }
@@ -106,7 +95,7 @@ floor_blob(const r3d_span_target_t* target, const r3d_lens_t* lens, void* user) 
             }
         }
     }
-    draw_round(target, lens, vec3f_zero(), vec3f_unit_y(), 2, 1);
+    contact_disc_draw(target, lens, vec3f_zero(), vec3f_unit_y(), 2, 1);
 }
 
 static void
@@ -165,7 +154,7 @@ test_round_disc_golden(void) {
     enum { SIZE = 32 };
 
     blob_fixture_t f = blob_fixture_make(SIZE);
-    draw_round(&f.target, &f.lens, (vec3f_t){0, 0, BLOB_DEPTH}, vec3f_unit_z(), BLOB_RADIUS, 1);
+    contact_disc_draw(&f.target, &f.lens, (vec3f_t){0, 0, BLOB_DEPTH}, vec3f_unit_z(), BLOB_RADIUS, 1);
     const uint32_t crc = crc32_update(0, f.color, SIZE * SIZE * sizeof *f.color);
     free(f.depth);
     free(f.color);
