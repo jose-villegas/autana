@@ -290,6 +290,14 @@ pick_level(const setup_t* su, const r3d_texture_t* texture) {
     return level;
 }
 
+/* Whether set_up()'s mip is an INDEX4 level from target->texture_far_level
+ * on (0: none), drawn untextured. */
+static inline bool
+is_far(const r3d_span_target_t* target, const r3d_texture_t* texture, const setup_t* su) {
+    return texture->format == R3D_TEXTURE_INDEX4 && target->texture_far_level != 0
+           && su->mip >= target->texture_far_level;
+}
+
 /* A vertex colour's luminance, 0..255, as an 8.8 level, 255 the last. */
 static inline float
 light_level(const r3d_span_vertex_t* v) {
@@ -356,13 +364,21 @@ set_up_divide(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[
 }
 
 /* Sets `su` up to fill the triangle's part in window box `box` affine, off
- * the row walks' stack chain: the frame lives only here. */
+ * the row walks' stack chain: the frame lives only here. A far INDEX4 level
+ * (is_far()) stops at its mip: the plain fill draws it. */
 static __attribute__((noinline)) bool
 set_up(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[CORNERS], const vec2f_t uv[CORNERS],
        const r3d_texture_t* texture, recti_t box, setup_t* su) {
     r3d_span_frame_t f;
     if (!r3d_span_frame_of(v[0], v[1], v[2], box.x, box.y, &f)) {
         return false;
+    }
+    su->s = r3d_span_plane_of(&f, uv[0].x, uv[1].x, uv[2].x);
+    su->t = r3d_span_plane_of(&f, uv[0].y, uv[1].y, uv[2].y);
+    const int level = pick_level(su, texture);
+    su->mip = level;
+    if (is_far(target, texture, su)) {
+        return true;
     }
     su->x0 = box.x;
     su->y0 = box.y;
@@ -371,10 +387,6 @@ set_up(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[CORNERS
     const uint16_t cap =
         target->skip_hidden ? r3d_span_depth_limit(mathf_max(v[0]->z, mathf_max(v[1]->z, v[2]->z))) : R3D_DEPTH_NEAREST;
     su->depth_max = cap == R3D_DEPTH_NEAREST ? DEPTH_MAX : (((int32_t)cap << R3D_DEPTH_SHIFT) | 0xFF);
-    su->s = r3d_span_plane_of(&f, uv[0].x, uv[1].x, uv[2].x);
-    su->t = r3d_span_plane_of(&f, uv[0].y, uv[1].y, uv[2].y);
-    const int level = pick_level(su, texture);
-    su->mip = level;
     const float scale = 1.0F / (float)(1U << level);
     su->s = (r3d_span_plane_t){su->s.base * scale, su->s.dx * scale, su->s.dy * scale};
     su->t = (r3d_span_plane_t){su->t.base * scale, su->t.dx * scale, su->t.dy * scale};
@@ -460,14 +472,7 @@ r3d_span_textured_triangle(const r3d_span_target_t* target, const r3d_span_verte
     if (!set_up(target, corners, uv, texture, box, &su)) {
         return;
     }
-    const r3d_span_vertex_t* v0 = a;
-    const r3d_span_vertex_t* v1 = b;
-    const r3d_span_vertex_t* v2 = c;
-    const bool long_on_left = (area2 > 0) != r3d_span_sort_by_y(&v0, &v1, &v2);
-    FRAME_LAP("r3d.draw.fill");
-    if (texture->format == R3D_TEXTURE_MASK1) {
-        walk_cut(target, &su, box, v0, v1, v2, long_on_left);
-    } else if (target->texture_far_level != 0 && su.mip >= target->texture_far_level) {
+    if (is_far(target, texture, &su)) {
         if (target->skip_hidden) {
             r3d_span_capped_triangle(target, a, b, c, NULL);
         } else {
@@ -477,6 +482,14 @@ r3d_span_textured_triangle(const r3d_span_target_t* target, const r3d_span_verte
             r3d_span_triangle_write(target, a, b, c, false);
         }
         return;
+    }
+    const r3d_span_vertex_t* v0 = a;
+    const r3d_span_vertex_t* v1 = b;
+    const r3d_span_vertex_t* v2 = c;
+    const bool long_on_left = (area2 > 0) != r3d_span_sort_by_y(&v0, &v1, &v2);
+    FRAME_LAP("r3d.draw.fill");
+    if (texture->format == R3D_TEXTURE_MASK1) {
+        walk_cut(target, &su, box, v0, v1, v2, long_on_left);
     } else {
         /* A triangle no wider than one segment steps affine: its bend is at
          * most one segment's. */
