@@ -174,7 +174,8 @@ static bool
 contact_light_direction_changed(const scene_t* scene, const r3d_skin_lights_t* world) {
     bool direction_changed = world->count != scene->world_lights.count;
     for (int i = 0; i < world->count && !direction_changed; i++) {
-        const vec3f_t before = scene->world_lights.direction[i], after = world->direction[i];
+        const vec3f_t before = scene->world_lights.direction[i];
+        const vec3f_t after = world->direction[i];
         direction_changed = before.x != after.x || before.y != after.y || before.z != after.z;
     }
     if (!direction_changed && world->count > 0) {

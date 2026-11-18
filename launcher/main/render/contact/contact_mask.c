@@ -11,22 +11,24 @@
 
 static r3d_span_vertex_t
 mask_vertex(const contact_mask_t* mask, const int16_t position[3], int scale, const mat4f_t* world) {
-    const vec3f_t local = {(float)position[0] / scale, (float)position[1] / scale, (float)position[2] / scale};
+    const vec3f_t local = {(float)position[0] / (float)scale, (float)position[1] / (float)scale,
+                           (float)position[2] / (float)scale};
     const vec3f_t p = vec3f_sub(mat4f_apply(world, local), mask->origin);
-    return (r3d_span_vertex_t){
-        .x = r3d_span_snap(p.x * mask->side / mask->u.x), .y = r3d_span_snap(p.z * mask->side / mask->v.z), .z = p.y};
+    return (r3d_span_vertex_t){.x = r3d_span_snap(p.x * (float)mask->side / mask->u.x),
+                               .y = r3d_span_snap(p.z * (float)mask->side / mask->v.z),
+                               .z = p.y};
 }
 
 static void
 mask_row(contact_mask_t* mask, const r3d_span_edge_t edges[3], int y, recti_t box) {
-    const int cy = y * R3D_SUBPIXEL + R3D_SPAN_HALF_PIXEL;
+    const int cy = (y * R3D_SUBPIXEL) + R3D_SPAN_HALF_PIXEL;
     for (int x = mathi_max(0, box.x), end = mathi_min(mask->side, recti_right(box)); x < end; x++) {
-        const int cx = x * R3D_SUBPIXEL + R3D_SPAN_HALF_PIXEL;
+        const int cx = (x * R3D_SUBPIXEL) + R3D_SPAN_HALF_PIXEL;
         if ((r3d_span_side(&edges[0], cx, cy) | r3d_span_side(&edges[1], cx, cy) | r3d_span_side(&edges[2], cx, cy))
             < 0) {
             continue;
         }
-        mask->coverage[y * mask->side + x] = UINT8_MAX;
+        mask->coverage[(y * mask->side) + x] = UINT8_MAX;
     }
 }
 
@@ -82,7 +84,7 @@ mask_blur(contact_mask_t* mask) {
                     sum += rows[r][xx];
                 }
             }
-            mask->coverage[y * mask->side + x] = (uint8_t)(sum / CONTACT_MASK_BLUR_AREA);
+            mask->coverage[(y * mask->side) + x] = (uint8_t)(sum / CONTACT_MASK_BLUR_AREA);
         }
     }
 }

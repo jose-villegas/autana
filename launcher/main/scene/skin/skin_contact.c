@@ -10,7 +10,7 @@ skin_contact_bind_position(const r3d_skin_t* skin, int joint) {
     mat4f_t inverse = mat4f_identity();
     for (int r = 0; r < 3; r++) {
         for (int c = 0; c < 4; c++) {
-            inverse.m[r][c] = skin->inverse_binds[joint][r * 4 + c];
+            inverse.m[r][c] = skin->inverse_binds[joint][(r * 4) + c];
         }
     }
     const mat4f_t bind = mat4f_invert_affine(inverse);
@@ -29,7 +29,9 @@ leaf(const anim_skeleton_t* skeleton, int joint) {
 
 static bool
 contact_heights(const anim_skeleton_t* skeleton, const r3d_skin_t* skin, float* height, float* lowest) {
-    float low = FLT_MAX, high = -FLT_MAX, lowest_leaf = FLT_MAX;
+    float low = FLT_MAX;
+    float high = -FLT_MAX;
+    float lowest_leaf = FLT_MAX;
     for (int j = 0; j < skin->joint_count; j++) {
         const vec3f_t p = skin_contact_bind_position(skin, j);
         if (!isfinite(p.x) || !isfinite(p.y) || !isfinite(p.z)) {
@@ -85,13 +87,14 @@ skin_contacts_find(const anim_skeleton_t* skeleton, const r3d_skin_t* skin, skin
     if (skeleton->joint_count != skin->joint_count || skin->joint_count == 0) {
         return 0;
     }
-    float height, lowest_leaf;
+    float height;
+    float lowest_leaf;
     if (!contact_heights(skeleton, skin, &height, &lowest_leaf)) {
         return 0;
     }
     for (int j = 0; j < skin->joint_count; j++) {
         const float y = skin_contact_bind_position(skin, j).y;
-        if (leaf(skeleton, j) && y <= lowest_leaf + CONTACT_JOINT_BAND * height) {
+        if (leaf(skeleton, j) && y <= lowest_leaf + (CONTACT_JOINT_BAND * height)) {
             contact_insert(out, j, y);
         }
     }
