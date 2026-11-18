@@ -436,12 +436,15 @@ reserve(void** block, size_t* capacity, size_t bytes) {
     if (*capacity >= bytes && *block != NULL) {
         return true;
     }
-    void* grown = realloc(*block, bytes > 0 ? bytes : 1);
+    /* Doubled at least: a mesh rebuilt each frame (water) grows a little at
+     * a time, and a realloc per frame is what the frame watch reports. */
+    const size_t want = bytes > *capacity * 2 ? bytes : *capacity * 2;
+    void* grown = realloc(*block, want > 0 ? want : 1);
     if (grown == NULL) {
         return refuse("no memory for replay mesh");
     }
     *block = grown;
-    *capacity = bytes;
+    *capacity = want;
     return true;
 }
 
