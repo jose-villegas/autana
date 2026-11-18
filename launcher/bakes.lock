@@ -78,10 +78,10 @@ host = "Linux x86_64"
 [[bake]]
 output = "capybara.glb"
 source = "launcher/demo/capybara/capybara.import.toml"
-key = "e6cd6da2117fddc062cb3f6aff1404d7b3797bf84cf395ef5594978bde3f2618"
-sha256 = "bbbb63e802570a6b421c9fe3f96390c672e613183cf921158efea45c96a534c8"
-size = 343012
-run = 38152622664
+key = "55b3a299778ec80110e5a45aecb918a3fb53c7d12d5e1b6124fa0a486ed69328"
+sha256 = "e24df3205ae08d2073e1a5f8187d6a2c03e4c0ff39677c0acdbaa70f8c3aa947"
+size = 479896
+run = 44299346701
 host = "Linux x86_64"
 
 [[bake]]
@@ -96,10 +96,10 @@ host = "Linux x86_64"
 [[bake]]
 output = "capybara_body.bundle"
 source = "launcher/demo/capybara/herd.scene.toml"
-key = "e5ec3c46435a6ae8d1006ef0f506b8ddfa355a6a283efab935647fd82666e6d8"
+key = "3bdfb9ab8619ff0ab2a1deba0005ed707daceecd3003657e3325143d59ddd574"
 sha256 = "c4c7cf5d741b0820e8bf5bae9e46dee7cda09560212b2a9c842d9b60df4ea47b"
 size = 14128
-run = 44305549847
+run = 44299346701
 host = "Linux x86_64"
 
 [[bake]]
