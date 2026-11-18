@@ -1,16 +1,18 @@
-/* The numbers behind ambient_figures.py, through the runtime's own SH, probe-grid and contact-disc code.
- * Prints JSON: one probe projected from a sky, the grid's blend over a plane, and contact discs. */
+/* The numbers behind light_probe_figures.py, through the runtime's own SH and probe-grid code. Prints JSON.
+ *
+ *     probe                    one probe projected from a sky, and an example grid's blend over a plane
+ *     probe GRID.shpr [X,Y,Z ...]  a baked grid: each probe's irradiance along the six axes, then a lit
+ *                                  sphere sampled from the grid at each point */
 
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "math/scalar/math_const.h"
 #include "math/sh/sh1.h"
-#include "render/contact/contact_blob.h"
 #include "render/probe/sh_probes.h"
 #include "render/skin/r3d_skin_light.h"
-#include "scene/scene.h"
 
 /* The sky a probe sees: a blue zenith fading to a warm ground bounce, plus a small bright sun. */
 #define SKY_DIRECTIONS 4096
@@ -35,15 +37,6 @@ static const vec3f_t PROBE_COLOURS[PROBES_X * PROBES_Z] = {
 };
 /* The point whose eight-corner weights the blend figure labels. */
 static const vec3f_t BLEND_POINT = {1.3F, 0.0F, 0.6F};
-
-/* The contact-disc pictures: a camera looking straight down a ground plane at depth DISC_DEPTH. */
-#define DISC_SIDE   72
-#define DISC_FOCAL  72.0F
-#define DISC_DEPTH  4.0F
-#define DISC_RADIUS 1.75F
-static const float DISC_STRENGTHS[] = {0.25F, 0.5F, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, 1.0F};
-#define DISC_COUNT ((int)(sizeof DISC_STRENGTHS / sizeof DISC_STRENGTHS[0]))
-#define WHITE      0xffffU
 
 static vec3f_t
 sky(vec3f_t direction) {
@@ -213,52 +206,105 @@ print_blend(void) {
     printf("]}");
 }
 
-static void
-print_discs(void) {
-    uint16_t* color = malloc(DISC_SIDE * DISC_SIDE * sizeof *color);
-    uint16_t* depth = calloc(DISC_SIDE * DISC_SIDE, sizeof *depth);
-    if (color == NULL || depth == NULL) {
+/* SHPR v1 (docs/assets/formats/SHPR.md): a 40-byte little-endian header, then 12 int16 a probe. */
+#define SHPR_HEADER  40
+#define SHPR_ORIGIN  4
+#define SHPR_SPACING 16
+#define SHPR_DIMS    32
+#define SHPR_SCALE   28
+#define AXES         3
+static const vec3f_t AXIS_NORMALS[] = {{0, 1, 0}, {0, -1, 0}, {1, 0, 0}, {-1, 0, 0}, {0, 0, 1}, {0, 0, -1}};
+#define AXIS_NORMAL_COUNT ((int)(sizeof AXIS_NORMALS / sizeof AXIS_NORMALS[0]))
+
+static unsigned char*
+read_file(const char* path, long* size) {
+    FILE* file = fopen(path, "rb");
+    if (file == NULL || fseek(file, 0, SEEK_END) != 0 || (*size = ftell(file)) < SHPR_HEADER
+        || fseek(file, 0, SEEK_SET) != 0) {
         exit(1);
     }
-    r3d_lens_t lens = {.width = DISC_SIDE, .height = DISC_SIDE, .focal_x = DISC_FOCAL, .focal_y = DISC_FOCAL};
-    lens.m = mat4f_identity();
-    lens.m.m[0][0] = DISC_FOCAL;
-    lens.m.m[1][1] = -DISC_FOCAL;
-    lens.project = (projectf_t){.cx = DISC_SIDE / 2.0F, .cy = DISC_SIDE / 2.0F, .near_z = 1.0F};
-    lens.depth_near = 1.0F;
-    printf("\"disc\": {\"radius_px\": %g, \"side\": %d, \"strengths\": [", DISC_RADIUS * DISC_FOCAL / DISC_DEPTH,
-           DISC_SIDE);
-    for (int s = 0; s < DISC_COUNT; s++) {
-        printf("%s%g", s ? ", " : "", DISC_STRENGTHS[s]);
+    unsigned char* bytes = malloc((size_t)*size);
+    if (bytes == NULL || fread(bytes, 1, (size_t)*size, file) != (size_t)*size) {
+        exit(1);
     }
-    printf("], \"default\": %g, \"covered\": [", SCENE_CONTACT_BLOB_STRENGTH_DEFAULT);
-    for (int s = 0; s < DISC_COUNT; s++) {
-        for (int i = 0; i < DISC_SIDE * DISC_SIDE; i++) {
-            color[i] = WHITE;
-        }
-        r3d_span_target_t target = {0};
-        gfx_target_of_color_depth(&target.rows, color, depth, DISC_SIDE, DISC_SIDE, 0);
-        contact_blob_draw(&target, &lens, (vec3f_t){0.0F, 0.0F, DISC_DEPTH}, vec3f_unit_z(), DISC_RADIUS,
-                          DISC_STRENGTHS[s]);
-        printf("%s[", s ? ", " : "");
-        for (int i = 0; i < DISC_SIDE * DISC_SIDE; i++) {
-            printf("%s%d", i ? "," : "", color[i] != WHITE);
-        }
-        printf("]");
+    fclose(file);
+    return bytes;
+}
+
+static sh_probes_t
+load_grid(const unsigned char* bytes, long size) {
+    sh_probes_t probes = {0};
+    float fields[AXES];
+    memcpy(fields, bytes + SHPR_ORIGIN, sizeof fields);
+    probes.origin = (vec3f_t){fields[0], fields[1], fields[2]};
+    memcpy(fields, bytes + SHPR_SPACING, sizeof fields);
+    probes.spacing = (vec3f_t){fields[0], fields[1], fields[2]};
+    memcpy(probes.dims, bytes + SHPR_DIMS, sizeof probes.dims);
+    memcpy(&probes.scale, bytes + SHPR_SCALE, sizeof probes.scale);
+    const long count = (long)probes.dims[0] * probes.dims[1] * probes.dims[2];
+    if (size != SHPR_HEADER + (count * (long)sizeof probes.coefficients[0])) {
+        exit(1);
     }
-    printf("]}");
-    free(depth);
-    free(color);
+    probes.coefficients = (const int16_t (*)[SH_PROBES_COMPONENTS])(bytes + SHPR_HEADER);
+    return probes;
+}
+
+/* Each probe's irradiance over pi along the six axes, x fastest, then a lit sphere at each "X,Y,Z" point. */
+static void
+print_grid(const sh_probes_t* probes, int points, char** point) {
+    printf("\"origin\": ");
+    print_vec(probes->origin);
+    printf(", \"spacing\": ");
+    print_vec(probes->spacing);
+    printf(", \"dims\": [%d, %d, %d], \"bytes_per_probe\": %zu, \"irradiance\": [", probes->dims[0], probes->dims[1],
+           probes->dims[2], sizeof probes->coefficients[0]);
+    int printed = 0;
+    for (int z = 0; z < probes->dims[2]; z++) {
+        for (int y = 0; y < probes->dims[1]; y++) {
+            for (int x = 0; x < probes->dims[0]; x++) {
+                const vec3f_t at =
+                    vec3f_add(probes->origin, (vec3f_t){(float)x * probes->spacing.x, (float)y * probes->spacing.y,
+                                                        (float)z * probes->spacing.z});
+                const sh1_rgb_t radiance = sh_probes_sample(probes, at);
+                const sh1_irradiance_t ambient = r3d_skin_light_ambient_sh(&radiance);
+                printf("%s[", printed++ ? ", " : "");
+                for (int n = 0; n < AXIS_NORMAL_COUNT; n++) {
+                    printf("%s", n ? ", " : "");
+                    print_vec(sh1_irradiance_eval(&ambient, AXIS_NORMALS[n]));
+                }
+                printf("]");
+            }
+        }
+    }
+    printf("], \"spheres\": [");
+    for (int i = 0; i < points; i++) {
+        vec3f_t at;
+        if (sscanf(point[i], "%f,%f,%f", &at.x, &at.y, &at.z) != AXES) {
+            exit(1);
+        }
+        const sh1_rgb_t radiance = sh_probes_sample(probes, at);
+        const sh1_irradiance_t ambient = r3d_skin_light_ambient_sh(&radiance);
+        printf("%s{", i ? ", " : "");
+        print_sphere("lit", 2, &ambient, &ambient);
+        printf("}");
+    }
+    printf("]");
 }
 
 int
-main(void) {
+main(int argc, char** argv) {
     printf("{");
-    print_probe();
-    printf(", ");
-    print_blend();
-    printf(", ");
-    print_discs();
+    if (argc > 1) {
+        long size = 0;
+        unsigned char* bytes = read_file(argv[1], &size);
+        const sh_probes_t probes = load_grid(bytes, size);
+        print_grid(&probes, argc - 2, argv + 2);
+        free(bytes);
+    } else {
+        print_probe();
+        printf(", ");
+        print_blend();
+    }
     printf("}\n");
     return 0;
 }

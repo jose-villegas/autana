@@ -166,18 +166,18 @@ at once.
 [`rate_figures.py`](../../../launcher/tools/anim/playback/rate_figures.py) measures the lag above from
 the glTF clips and the default settings.
 
-### Ambient irradiance and contact discs
+### Light probes and contact discs
 
-Ambient is flat, or sampled from a probe grid given by `scene_set_probes()`
-at each skinned renderer's bounds centre. `scene_set_contact_blob()` puts a
-dithered disc on the ground under a renderer. Both are broken down step by
-step in [Ambient Irradiance](../frame/Ambient-Irradiance.md).
+Ambient is flat, or sampled from a baked probe grid given by
+`scene_set_probes()` at each skinned renderer's bounds centre
+([Light Probes](../frame/Light-Probes.md)). `scene_set_contact_blob()` puts a
+dithered disc on the ground under a renderer ([Contact Shadows](../frame/Contact-Shadows.md)).
 
 ## 6. Current limits
 
 - Loop or clamp is set per animator in the scene file, not per clip.
 - A skin whose colours are per face (no vertex colours) cannot be lit.
-- Indirect lighting requires a supplied probe grid; no tool bakes one yet ([limits](../frame/Ambient-Irradiance.md#7-limits)).
+- Indirect lighting requires a probe grid, baked only for a scene whose import asks for one ([limits](../frame/Light-Probes.md#8-limits)).
 - Influences per vertex are set per pack build, not per rig.
 
 The frame perf harness holds the display quarter, so gravity cannot change
