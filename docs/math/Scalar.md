@@ -22,6 +22,7 @@ These take and return plain integers, not structs.
 | `mathi_clamp_u32(v, lo, hi)`, `mathi_clamp_u64(v, lo, hi)` | inclusive bounds, full unsigned range | $`\min(\max(v,lo),hi)`$ |
 | `mathi_min(a, b)`, `mathi_max(a, b)` | smaller or larger value by comparison | $`\min(a,b)`$, $`\max(a,b)`$ |
 | `mathi_clamp(v, lo, hi)` | inclusive bounds | $`\min(\max(v,lo),hi)`$ |
+| `mathi_ceil_div(a, b)` | quotient rounded up, $`a \ge 0`$, $`b > 0`$ | $`\lceil a/b \rceil`$ |
 | `mathi_lerp(a, b, t, n)` | `t` of `n` steps from `a` to `b`, the step truncated toward `a`; `n > 0`, `0 <= t <= n` | $`a + \mathrm{trunc}((b-a)t/n)`$ |
 | `mathi_lerp_u8(a, b, w)` | `mathi_lerp` with `n = UINT8_MAX` | $`a + \mathrm{trunc}((b-a)w/255)`$ |
 | `mathi_isqrt64(v)` | floor square root over the full uint64 range | $`\lfloor\sqrt v\rfloor`$ |

@@ -1,4 +1,4 @@
-"""Rewrites a baked mesh's clusters and octree from the triangles and colours
+"""Rewrites a baked mesh's clusters and cluster tree from the triangles and colours
 it holds, without lighting the model again: what a change to the clustering or
 the data format costs.
 
@@ -22,7 +22,7 @@ from r3d.lit_mesh import read_bundle_mesh
 from r3d.lod.levels_stage import levels  # noqa: E402
 from r3d.import_settings import MESHLET_TRIANGLES, load_import_settings  # noqa: E402
 
-OPTIONS = ("meshlet_triangles", "leaf_triangles", "max_depth")
+OPTIONS = ("meshlet_triangles", "leaf_triangles")
 
 
 def main(argv=None):
@@ -31,8 +31,7 @@ def main(argv=None):
     parser.add_argument("--import", dest="settings", help="geometry settings for clustering")
     parser.add_argument("--out-dir", help="where to write; the mesh's own directory when omitted")
     parser.add_argument("--meshlet-triangles", type=int, help="most triangles in a cluster")
-    parser.add_argument("--leaf-triangles", type=int, help="most triangles an octree leaf holds")
-    parser.add_argument("--max-depth", type=int, help="deepest octree")
+    parser.add_argument("--leaf-triangles", type=int, help="most triangles a tree leaf holds")
     args = parser.parse_args(argv)
     options = {key: getattr(args, key) for key in OPTIONS if getattr(args, key) is not None}
 

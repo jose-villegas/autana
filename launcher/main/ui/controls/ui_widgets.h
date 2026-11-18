@@ -21,9 +21,9 @@ typedef struct {
     mu_Color caption;
     mu_Color muted; /* a disabled control's ink */
     int text_scale;
-    int icon_side;      /* beside a label; a tile sizes its own to fill it */
-    bool native_toggle; /* retain the style's checkbox frame palette */
-    int corner_radius;  /* 0: a bevelled face; above: a flat face, corners rounded */
+    int icon_side;         /* beside a label; a tile sizes its own to fill it */
+    bool native_toggle;    /* retain the style's checkbox frame palette */
+    const ui_skin_t* skin; /* buttons' and tiles' faces, set by ui_skin(); NULL draws the bevel */
 } ui_mu_theme_t;
 
 ui_mu_theme_t ui_theme_from_style(const mu_Style* style);

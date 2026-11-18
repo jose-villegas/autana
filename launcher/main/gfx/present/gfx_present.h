@@ -97,6 +97,28 @@ void gfx_full_redraw_clear_pending(void);
  * leaf-sized regions for precise marks and full cells for band marks. */
 bool gfx_region_dirty(int x, int y, int w, int h);
 
+/* The dirt tracker's grid: bands GFX_DIRTY_STRIP_HEIGHT rows tall, each
+ * split into GFX_DIRTY_LEAF_SUB rows of leaves (send/gfx_dirty.h). */
+#define GFX_DIRTY_STRIP_HEIGHT 64
+#define GFX_DIRTY_LEAF_SUB     4
+#define GFX_DIRTY_LEAF_ROWS    (GFX_HEIGHT / GFX_DIRTY_STRIP_HEIGHT * GFX_DIRTY_LEAF_SUB)
+
+/* The dirt recorded so far this frame, kept apart from whatever is drawn
+ * after: one bit a leaf, a word a leaf row. */
+typedef struct {
+    uint16_t rows[GFX_DIRTY_LEAF_ROWS];
+} gfx_dirty_leaves_t;
+
+void gfx_dirty_leaves(gfx_dirty_leaves_t* out);
+
+/* Adds to `to` the leaves of `from` that `area` touches. */
+void gfx_dirty_leaves_add(gfx_dirty_leaves_t* to, const gfx_dirty_leaves_t* from, recti_t area);
+
+/* Takes one rect of `left`'s leaves inside `area` off it, clipped to
+ * `area`; false once none is left there. The rects taken never overlap
+ * and together cover every leaf `area` touches. */
+bool gfx_dirty_leaves_take(gfx_dirty_leaves_t* left, recti_t area, recti_t* out);
+
 /* Exactly gfx_present_begin() followed by gfx_present_wait(). In
  * GFX_LAYOUT_DOUBLE_FB this drains the previous send, swaps front and back,
  * and dispatches every strip; wait returns immediately so drawing can
