@@ -276,7 +276,6 @@ place_copies(void) {
         if (used) {
             const transformf_t place = copy_local(i, seen, &shape);
             transform_set_local(slots[i], transformf_compose(&facing, &place));
-            copy_extras(i);
         }
     }
 }
@@ -343,6 +342,11 @@ scene_stress_enter(const lab_scene_t* self) {
     (void)camera_activate(
         entity_find(loaded, name_hash(render_lab.start_camera == NULL ? shown->camera : render_lab.start_camera)));
     place_copies();
+    for (int i = 0; i < pool; i++) {
+        if (i < shown->copies) {
+            copy_extras(i);
+        }
+    }
     apply_settings();
 }
 

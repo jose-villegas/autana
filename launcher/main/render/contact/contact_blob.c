@@ -34,6 +34,18 @@ typedef struct {
 #define CONTACT_BLOB_DEPTH_BIAS_UNITS  1.0F
 
 static void
+project_edge(blob_bounds_t* bounds, const r3d_lens_t* lens, vec3f_t a, vec3f_t b) {
+    const float near = lens->project.near_z;
+    if (a.z >= near) {
+        bounds->corners[bounds->count++] = (vec2f_t){lens->project.cx + (a.x / a.z), lens->project.cy + (a.y / a.z)};
+    }
+    if ((a.z < near) != (b.z < near)) {
+        const vec3f_t p = vec3f_add(a, vec3f_scale(vec3f_sub(b, a), (near - a.z) / (b.z - a.z)));
+        bounds->corners[bounds->count++] = (vec2f_t){lens->project.cx + (p.x / p.z), lens->project.cy + (p.y / p.z)};
+    }
+}
+
+static void
 project_bounds(blob_bounds_t* bounds, const r3d_span_target_t* target, const r3d_lens_t* lens, vec3f_t ground,
                vec3f_t up, float radius) {
     const vec3f_t axis = fabsf(up.x) < fabsf(up.y) ? vec3f_unit_x() : vec3f_unit_y();
@@ -47,29 +59,21 @@ project_bounds(blob_bounds_t* bounds, const r3d_span_target_t* target, const r3d
         const vec3f_t offset = vec3f_add(vec3f_scale(u, index & 1 ? 1 : -1), vec3f_scale(v, index & 2 ? 1 : -1));
         const vec3f_t current = mat4f_apply(&lens->m, vec3f_add(ground, offset));
         if (i > 0) {
-            const vec3f_t a = previous, b = current;
-            const float near = lens->project.near_z;
-            if (a.z >= near) {
-                bounds->corners[bounds->count++] =
-                    (vec2f_t){lens->project.cx + a.x / a.z, lens->project.cy + a.y / a.z};
-            }
-            if ((a.z < near) != (b.z < near)) {
-                const vec3f_t p = vec3f_add(a, vec3f_scale(vec3f_sub(b, a), (near - a.z) / (b.z - a.z)));
-                bounds->corners[bounds->count++] =
-                    (vec2f_t){lens->project.cx + p.x / p.z, lens->project.cy + p.y / p.z};
-            }
+            project_edge(bounds, lens, previous, current);
         }
         previous = current;
     }
     if (bounds->count == 0) {
         return;
     }
-    float top = bounds->corners[0].y, bottom = top;
+    float top = bounds->corners[0].y;
+    float bottom = top;
     for (int i = 1; i < bounds->count; i++) {
         top = mathf_min(top, bounds->corners[i].y);
         bottom = mathf_max(bottom, bounds->corners[i].y);
     }
-    const int first = target->rows.first_row, end = gfx_target_end_row(&target->rows);
+    const float first = (float)target->rows.first_row;
+    const float end = (float)gfx_target_end_row(&target->rows);
     bounds->first_row = (int16_t)mathf_clamp(floorf(top), first, end);
     bounds->end_row = (int16_t)mathf_clamp(ceilf(bottom), first, end);
     return;
@@ -84,10 +88,10 @@ draw_row(const r3d_span_target_t* target, const r3d_lens_t* lens, const blob_pla
     const float depth_scale = depth_units / blob->distance;
     const float step = blob->normal.x * depth_scale;
     const float bias = CONTACT_BLOB_DEPTH_BIAS_UNITS
-                       + CONTACT_BLOB_DEPTH_BIAS_PIXELS * (fabsf(step) + fabsf(blob->normal.y * depth_scale));
+                       + (CONTACT_BLOB_DEPTH_BIAS_PIXELS * (fabsf(step) + fabsf(blob->normal.y * depth_scale)));
     const float row = (blob->normal.y * row_y + blob->normal.z) * depth_scale;
     const float first_x = (float)x0 + 0.5F - lens->project.cx;
-    float encoded = row + first_x * step;
+    float encoded = row + (first_x * step);
     const float near_limit = depth_units / lens->project.near_z;
     const vec3f_t delta_step = {(depth_units - blob->centre.x * step) * blob->inverse_scale.x,
                                 -blob->centre.y * step * blob->inverse_scale.y,
@@ -112,11 +116,13 @@ draw_bounded_row(const r3d_span_target_t* target, const r3d_lens_t* lens, const 
                  const blob_bounds_t* bounds, int y) {
     const float row = (float)y + 0.5F;
     const int width = mathi_min(lens->width, target->rows.attachment[GFX_ATTACHMENT_COLOR].width);
-    float left = (float)width, right = 0.0F;
+    float left = (float)width;
+    float right = 0.0F;
     for (int i = 0; i < bounds->count; i++) {
-        const vec2f_t a = bounds->corners[i], b = bounds->corners[(i + 1) % bounds->count];
+        const vec2f_t a = bounds->corners[i];
+        const vec2f_t b = bounds->corners[(i + 1) % bounds->count];
         if ((a.y <= row && b.y > row) || (b.y <= row && a.y > row)) {
-            const float x = a.x + (b.x - a.x) * (row - a.y) / (b.y - a.y);
+            const float x = a.x + ((b.x - a.x) * (row - a.y) / (b.y - a.y));
             left = fminf(left, x);
             right = fmaxf(right, x);
         }
