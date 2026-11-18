@@ -225,11 +225,12 @@ class CaptureRulesTests(unittest.TestCase):
             self.assertEqual(line.split('|')[8].strip(), '0')
 
     def test_timeout_cleanup_cannot_replace_capture_error(self):
-        stop = capture.stop_process_tree
+        import process_tree
+        stop = process_tree.stop_process_tree
         def timed_out_stop(process):
             stop(process)
             raise subprocess.TimeoutExpired('taskkill', 10)
-        with patch.object(capture, 'stop_process_tree', side_effect=timed_out_stop), \
+        with patch.object(process_tree, 'stop_process_tree', side_effect=timed_out_stop), \
                 contextlib.redirect_stdout(io.StringIO()), self.assertRaisesRegex(RuntimeError, 'capture timed out'):
             capture.run_stamped([sys.executable, '-c', 'import time; time.sleep(.3)'], io.StringIO(), timeout=.05)
 
