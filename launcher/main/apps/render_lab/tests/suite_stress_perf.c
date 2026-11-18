@@ -122,10 +122,10 @@ static const stress_goal_t stress_goals[] = {
     {"stress-cull-setup", "landscape", "default", {140, 70, 980, 2250, 0}, {3410, 3930}},
     {"stress-baked-tree", "portrait", "default", {370, 580, 6090, 2200, 10}, {9150, 10530}},
     {"stress-baked-tree", "landscape", "default", {390, 650, 7230, 2310, 10}, {10550, 12140}},
-    {"stress-skinned-sh-blobs", "portrait", "default", {320, 1240, 8550, 2110, 10, 1520, 240, 2920}, {16700, 19210}},
-    {"stress-skinned-sh-blobs", "landscape", "default", {310, 1260, 8880, 2160, 10, 1520, 230, 2910}, {17160, 19740}},
-    {"stress-contact-blobs", "portrait", "default", {0, 0, 0, 0, 0}, {0, 0}},
-    {"stress-contact-blobs", "landscape", "default", {0, 0, 0, 0, 0}, {0, 0}},
+    {"stress-skinned-sh-blobs", "portrait", "default", {330, 1250, 7060, 2130, 10, 1550, 240, 2930}, {15340, 17650}},
+    {"stress-skinned-sh-blobs", "landscape", "default", {320, 1250, 7790, 2180, 10, 1540, 240, 2920}, {16080, 18500}},
+    {"stress-contact-blobs", "portrait", "default", {190, 720, 4160, 2180, 10}, {7190, 8270}},
+    {"stress-contact-blobs", "landscape", "default", {200, 700, 7320, 2210, 10}, {10320, 11870}},
 };
 
 static const char*
