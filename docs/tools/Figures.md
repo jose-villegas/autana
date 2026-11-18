@@ -18,7 +18,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | [overview](#overview) | 35 | 0 | 0 |
 | [physics](#physics) | 2 | 0 | 0 |
 | [power](#power) | 2 | 0 | 0 |
-| [render](#render) | 132 | 8 | 0 |
+| [render](#render) | 135 | 11 | 0 |
 | [ui](#ui) | 62 | 0 | 0 |
 
 ## anim
@@ -191,6 +191,9 @@ is stale, so rerun it after changing an image or the pages that show one.
 
 | Picture | What it shows | Shown in | Made by |
 |---|---|---|---|
+| <a href="../images/render/ambient-contact-disc.png"><img src="../images/render/ambient-contact-disc.png" width="160" alt=""></a> | The dithered disc at strengths 0.25, 0.5, 0.75 and 1, then the share of pixels halved against distance from the centre, drawn and modelled | [render/frame/Ambient-Irradiance](../render/frame/Ambient-Irradiance.md) | [ambient_figures.py](../../launcher/tools/r3d/ambient/ambient_figures.py) |
+| <a href="../images/render/ambient-probe-blend.png"><img src="../images/render/ambient-probe-blend.png" width="160" alt=""></a> | A 4x1x3 grid from above: each probe coloured by its constant band, the blended constant band between and past them, and one point's four corner weights | [render/frame/Ambient-Irradiance](../render/frame/Ambient-Irradiance.md) | [ambient_figures.py](../../launcher/tools/r3d/ambient/ambient_figures.py) |
+| <a href="../images/render/ambient-probe-sphere.png"><img src="../images/render/ambient-probe-sphere.png" width="160" alt=""></a> | One probe projected from a sky with a sun: the sky, then a white diffuse sphere lit by the exact irradiance, by the probe's L1 evaluation and by its constant band alone, with a meridian of all three below | [render/frame/Ambient-Irradiance](../render/frame/Ambient-Irradiance.md) | [ambient_figures.py](../../launcher/tools/r3d/ambient/ambient_figures.py) |
 | <a href="../images/render/appearance-chosen-heat.png"><img src="../images/render/appearance-chosen-heat.png" width="160" alt=""></a> | Fitted mesh against the reference | [render/offline/Appearance-Fit](../render/offline/Appearance-Fit.md) | not declared yet |
 | <a href="../images/render/appearance-lite-fitted-reference.crops.png"><img src="../images/render/appearance-lite-fitted-reference.crops.png" width="160" alt=""></a> | Simplifier and fitted mesh, largest differences | [render/offline/Appearance-Fit](../render/offline/Appearance-Fit.md) | not declared yet |
 | <a href="../images/render/appearance-lite-reference.png"><img src="../images/render/appearance-lite-reference.png" width="160" alt=""></a> | Simplifier against the reference | [render/offline/Appearance-Fit](../render/offline/Appearance-Fit.md) | not declared yet |
