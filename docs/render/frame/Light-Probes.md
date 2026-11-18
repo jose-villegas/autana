@@ -174,14 +174,15 @@ depends on the renderer's lighting mode (that page describes the three):
 Static meshes never read the grid: the same transport is already in their
 baked colours.
 
-### The sun comes from the probes only
+### Baked and realtime lights
 
-The bake puts the sun into every probe, so a probe-lit renderer skips the
-scene's directional lights. This is Unity's
-Baked light mode<sup>[[135]](../../Citations.md#unity-light-modes)</sup>:
-a moving object takes a baked light only through the probes.
+A light is realtime or baked, as in Unity's light
+modes<sup>[[135]](../../Citations.md#unity-light-modes)</sup>. A baked
+light goes into the probe bake, direct and bounced, and a probe-lit
+renderer skips it, so a mover takes it only through the probes. A realtime
+light is not baked and lights the mover per vertex. Sponza's sun is baked.
 
-| | Sun from the probes (this engine) | Sun as a direct light |
+| | Baked sun, through the probes | Realtime sun |
 |---|---|---|
 | Occlusion | the probe's shadow ray: a mover under the arcades is out of the sun | none without shadow maps: a mover indoors is sunlit |
 | Response | L1's soft lobe: no sharp terminator, no highlight | a sharp `max(0, N.L)` terminator |
