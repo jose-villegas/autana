@@ -187,12 +187,12 @@ span_carry(const setup_t* su, int y, int first, int last, bool affine, carry_t* 
     c->duv = pack_uv((int32_t)(su->s.dx * (float)UV_ONE), 0) + (uint32_t)(int32_t)(su->t.dx * (float)UV_ONE);
 }
 
-/* The level whose texels a step of sqrt(rho2 / unit2) level-0 texels crosses
- * about one of: floor(log2) of the step, at most the texture's last. */
+/* The level whose texels a step of sqrt(rho2) level-0 texels crosses about
+ * one of: floor(log2) of the step, at most the texture's last. */
 static inline int
-level_for(float rho2, float unit2, int levels) {
+level_for(float rho2, int levels) {
     int level = 0;
-    while (level + 1 < levels && rho2 >= unit2 * (float)(1U << (2 * (level + 1)))) {
+    while (level + 1 < levels && rho2 >= (float)(1U << (2 * (level + 1)))) {
         level++;
     }
     return level;
@@ -217,17 +217,15 @@ sampler_at(const r3d_texture_t* texture, int level) {
     return (sampler_t){texture->texels[level], mask, mask << side_log2, (uint32_t)(V_INT_SHIFT - side_log2), texture};
 }
 
-/* The level the true texel step reads where a dividing triangle's planes,
- * in level-0 texels, are `s`, `t` and `q`. The step of u = s / q is
- * (s.dx q - s q.dx) / q^2, so the q^2 scales the levels' steps: no divide. */
+/* The level the true texel step reads where a dividing triangle's u and v,
+ * in level-0 texels, are `u` and `v` and 1 / q is `r`. */
 static inline int
-true_level(const setup_t* su, float s, float t, float q) {
-    const float dudx = (su->s.dx * q) - (s * su->q.dx);
-    const float dvdx = (su->t.dx * q) - (t * su->q.dx);
-    const float dudy = (su->s.dy * q) - (s * su->q.dy);
-    const float dvdy = (su->t.dy * q) - (t * su->q.dy);
-    const float q2 = q * q;
-    return level_for(mathf_max((dudx * dudx) + (dvdx * dvdx), (dudy * dudy) + (dvdy * dvdy)), q2 * q2,
+true_level(const setup_t* su, float u, float v, float r) {
+    const float dudx = (su->s.dx - (u * su->q.dx)) * r;
+    const float dvdx = (su->t.dx - (v * su->q.dx)) * r;
+    const float dudy = (su->s.dy - (u * su->q.dy)) * r;
+    const float dvdy = (su->t.dy - (v * su->q.dy)) * r;
+    return level_for(mathf_max((dudx * dudx) + (dvdx * dvdx), (dudy * dudy) + (dvdy * dvdy)),
                      su->sampler.texture->levels);
 }
 
@@ -247,7 +245,8 @@ fill_divided(const setup_t* su, uint16_t* depth, uint16_t* color, int count, car
     if (su->span_level) {
         /* The span's level, from the true texel step at its centre. */
         const float half = (float)(count - 1) * 0.5F;
-        const int level = true_level(su, s + (ds * half), t + (dt * half), q + (su->q.dx * half));
+        const float rc = mathf_recip_approx(q + (su->q.dx * half));
+        const int level = true_level(su, (s + (ds * half)) * rc, (t + (dt * half)) * rc, rc);
         const float k = level_scale(level);
         own = sampler_at(su->sampler.texture, level);
         sampler = &own;
@@ -342,7 +341,7 @@ pick_level(const setup_t* su, const r3d_texture_t* texture) {
     const float dvdx = su->t.dx;
     const float dudy = su->s.dy;
     const float dvdy = su->t.dy;
-    return level_for(mathf_max((dudx * dudx) + (dvdx * dvdx), (dudy * dudy) + (dvdy * dvdy)), 1.0F, texture->levels);
+    return level_for(mathf_max((dudx * dudx) + (dvdx * dvdx), (dudy * dudy) + (dvdy * dvdy)), texture->levels);
 }
 
 /* A vertex colour's luminance, 0..255, as an 8.8 level, 255 the last. */
@@ -409,7 +408,7 @@ set_up_divide(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[
     int nearest = texture->levels;
     int farthest = 0;
     for (int i = 0; i < CORNERS; i++) {
-        const int level = true_level(su, s_q[i], t_q[i], v[i]->z);
+        const int level = true_level(su, uv[i].x - origin.x, uv[i].y - origin.y, mathf_recip_approx(v[i]->z));
         nearest = mathi_min(nearest, level);
         farthest = mathi_max(farthest, level);
     }
