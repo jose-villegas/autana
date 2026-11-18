@@ -59,7 +59,7 @@ typedef struct {
 typedef struct {
     int divide_px; /* basic: fewest pixels between divides by depth, fewer cost more; 0 is affine, near surfaces bend */
     float affine_bend; /* advanced: texels a triangle may bend and still step affine; larger is faster, bends more */
-    int far_level; /* basic: first mip level drawn as its texture's mean, reading no texel; less is faster; 0 reads all */
+    int far_level; /* basic: first mip level drawn as its texture's mean, reading no texel; lower is faster; 0 reads every level's texels */
 } render_texture_settings_t;
 
 typedef struct {

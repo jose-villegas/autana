@@ -6,8 +6,8 @@
  * between; 0 steps affine across the span. A pixel is one colormap load: the
  * texel's colour at the vertex light's dithered level. An INDEX4 level from
  * texture.far_level on draws the texture's mean at that level, with no u, v
- * or texel. A MASK1 texture's span steps affine, skips the pixels
- * whose texel is 0 and draws the rest in its one colour.
+ * or texel. A MASK1 texture's span steps affine, skips the pixels whose
+ * texel is 0 and draws the rest in its one colour.
  */
 #include "render/texture/r3d_texture.h"
 
@@ -107,7 +107,8 @@ typedef enum {
 } colour_t;
 
 /* The colormap row of the level, dithered between levels by the screen's
- * 4x4 Bayer threshold at absolute coordinates, at the column `from` names. */
+ * 4x4 Bayer threshold at absolute coordinates; `from` says where the colour
+ * comes from: a texel, a kept MASK1 texel or the texture's mean. */
 static inline __attribute__((always_inline)) void
 fill_with(uint16_t* depth, uint16_t* color, int count, carry_t* c, const sampler_t* s, int x, int y, colour_t from) {
     int32_t z = c->z;

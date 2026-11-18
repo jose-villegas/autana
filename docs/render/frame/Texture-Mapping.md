@@ -64,13 +64,14 @@ texture's mean, its tint at the pixel's dithered light level, from a row the
 texture builds at open beside its colormap. The span steps no u or v and the
 triangle never divides. 0 reads every level's texels.
 
-The default, level 2, is where the textured fill stops being closer to the
-source than its mean along Bistro's path. The pattern is gone there, the
-colour is the same:
+The default, level 2, is the first level where, along Bistro's path, the
+mean is no further from the source than the texels. The pattern is gone
+there, the colour is the same:
 
 ![Bistro's street from above: the source, the street with every level's texels, with its far levels as their mean, and each one's CIE76 against the source](../../images/render/bistro-street-far-levels.png)
 
-Where the two differ most: a far triangle meets a nearer one at a hard edge.
+The crops are where the two differ most: a far triangle meeting a nearer one
+at a hard edge.
 
 ![The places the far levels change most, the source above every level's texels and the far levels as their mean](../../images/render/bistro-street-far-levels.crops.png)
 
