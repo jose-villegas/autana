@@ -16,6 +16,7 @@
 #include "esp_log.h"
 #include "image/pixel/rgb565.h"
 #include "math/scalar/math_const.h"
+#include "math/scalar/mathi.h"
 #include "render/context/render_context.h"
 #include "render/probe/sh_probes.h"
 #include "scene/animator/animator.h"
@@ -342,10 +343,8 @@ scene_stress_enter(const lab_scene_t* self) {
     (void)camera_activate(
         entity_find(loaded, name_hash(render_lab.start_camera == NULL ? shown->camera : render_lab.start_camera)));
     place_copies();
-    for (int i = 0; i < pool; i++) {
-        if (i < shown->copies) {
-            copy_extras(i);
-        }
+    for (int i = 0; i < mathi_min(shown->copies, pool); i++) {
+        copy_extras(i);
     }
     apply_settings();
 }
