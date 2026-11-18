@@ -4,9 +4,10 @@
         --frame N --dt MS --title TEXT --image NAME.png [--divides 1,0,16,8 --divide-image NAME.png] --out DIR
 
 Renders frame N of the object's path on host (scene_viewer.sh) plain and with the object's textures (--textured),
-takes the same frame from the reference bake BAKE (a .reference.tar.xz, bake.py path), scaled to the render's size,
+takes the same pose from the reference bake BAKE (a .reference.tar.xz, bake.py path), scaled to the render's size,
 and lays the three out with render_compare.py: the source, the plain draw, the textured draw and each one's error
-against the source.
+against the source. Frame N is the pose at (N + 1) * MS, as the viewer steps the path before it draws; it must be
+one of the fit's training poses, the only ones the bake holds.
 
 --divides draws the textured frame at each texture.divide_px value, the first the truth (1, with affine_bend 0, so
 every triangle divides). --divide-image writes the squares of the frame's lowest third where the second value differs
@@ -27,9 +28,12 @@ VIEWER = ROOT / "launcher/tools/render/scene_viewer.sh"
 COMPARE = ROOT / "launcher/tools/render/render_compare.py"
 BAKE = ROOT / "launcher/tools/bake/bake.py"
 sys.path.insert(0, str(COMPARE.parent))
+sys.path.insert(0, str(ROOT / "launcher/tools"))
 import render_compare  # noqa: E402
-# The reference archive's portrait frames, one PNG per path frame.
-REFERENCE_FRAME = "reference/{frame:04d}.png"
+from r3d.import_settings import load_scene  # noqa: E402
+from r3d.reference_set import TRAINING, training_index  # noqa: E402
+# The reference archive's portrait training references, one PNG per training pose.
+REFERENCE_FRAME = TRAINING[0][1] + "/{index:04d}.png"
 # The draws compared: whether textured, and its label.
 DRAWS = ((False, "vertex colours"), (True, "textured"))
 # Squares render_compare.py zooms on.
@@ -71,13 +75,32 @@ def draw(args, value, work, divide=None):
     return png
 
 
-def reference(args, size, work):
-    """The reference bake's frame args.frame, scaled to `size`."""
+def reference_member(fit, frame, dt_ms):
+    """The reference archive's picture of the pose the viewer draws as path frame `frame`, `dt_ms` apart: the
+    viewer steps the path by dt_ms before each draw, so frame N is at (N + 1) * dt_ms."""
+    time_ms = (frame + 1) * dt_ms
+    index = training_index(fit, time_ms)
+    if index is None:
+        raise SystemExit(f"frame {frame} is the pose at {time_ms} ms, not one of the fit's training poses "
+                         f"(every {fit.train_every_ms} ms, those at multiples of {fit.held_out_every_ms} ms held out)")
+    return REFERENCE_FRAME.format(index=index)
+
+
+def object_fit(scene, name):
+    """The fit settings of the scene's object `name`."""
+    for item in load_scene(scene).objects:
+        if item.name == name:
+            return item.component.fit
+    raise SystemExit(f"{scene} has no object {name}")
+
+
+def reference(args, name, size, work):
+    """The reference bake's picture `name`, scaled to `size`."""
     archive = run([sys.executable, BAKE, "path", args.reference]).strip().splitlines()[-1]
     with tarfile.open(archive) as tar:
-        member = tar.extractfile(REFERENCE_FRAME.format(frame=args.frame))
+        member = tar.extractfile(name)
         if member is None:
-            raise SystemExit(f"{args.reference} has no {REFERENCE_FRAME.format(frame=args.frame)}")
+            raise SystemExit(f"{args.reference} has no {name}")
         image = Image.open(member).convert("RGB")
         image.load()
     png = work / "reference.png"
@@ -130,10 +153,11 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if bool(args.divides) != bool(args.divide_image):
         parser.error("--divides and --divide-image go together")
+    name = reference_member(object_fit(args.scene, args.object), args.frame, args.dt)
     with tempfile.TemporaryDirectory() as folder:
         work = pathlib.Path(folder)
         plain, textured = (draw(args, value, work) for value, _ in DRAWS)
-        source = reference(args, Image.open(plain).size, work)
+        source = reference(args, name, Image.open(plain).size, work)
         args.out.mkdir(parents=True, exist_ok=True)
         run([sys.executable, COMPARE, "--out", args.out / args.image, "--reference-stills", args.title, source,
              plain, textured, "--label-a", DRAWS[0][1], "--label-b", DRAWS[1][1], "--crops", CROPS])
