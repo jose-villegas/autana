@@ -386,6 +386,66 @@ test_an_inner_node_whose_children_are_not_after_it_is_refused(void) {
     release(&f);
 }
 
+/* How the walk opens a leaf of `clusters` one-triangle clusters, all over
+ * the same three vertices: a leaf past R3D_LIT_LEAF_CLUSTERS_MAX is refused
+ * by its node, before the clusters are checked to own their vertices. */
+static asset_status_t
+open_leaf_of(int clusters) {
+    enum {
+        VERTICES = 3,
+        POSITIONS = R3D_LIT_MESH_HEADER_BYTES,
+        COLORS = POSITIONS + 20,
+        TRIANGLES = COLORS + 12,
+        CLUSTERS = TRIANGLES + 8,
+        CLUSTER_BYTES = 22,
+        NODE_BYTES = 16,
+        SCALE = 8,
+        HI = 20
+    };
+
+    const uint32_t nodes = (uint32_t)(CLUSTERS + (clusters * CLUSTER_BYTES) + 3) & ~3U;
+    const uint32_t size = nodes + NODE_BYTES;
+    uint8_t* entry = calloc(1, size);
+    void* raw = NULL;
+    const uint32_t capacity = size + BUFFER_BYTES;
+    uint8_t* pack = test_alloc_aligned(capacity, ASSET_PACK_BASE_ALIGN, &raw);
+    TEST_ASSERT_NOT_NULL(entry);
+    TEST_ASSERT_NOT_NULL(pack);
+    const uint32_t words[] = {VERTICES, 1,         (uint32_t)clusters, 1,     SCALE, POSITIONS,
+                              COLORS,   TRIANGLES, CLUSTERS,           nodes, 0};
+    for (size_t i = 0; i < sizeof words / sizeof words[0]; i++) {
+        test_pack_put32(entry + (4 * i), words[i]);
+    }
+    for (int v = 0; v < VERTICES; v++) {
+        test_pack_put16(entry + TRIANGLES + (2 * v), (uint16_t)v);
+    }
+    for (int c = 0; c < clusters; c++) {
+        uint8_t* cluster = entry + CLUSTERS + (c * CLUSTER_BYTES);
+        test_pack_put16(cluster + 2, VERTICES); /* vertex_count */
+        test_pack_put16(cluster + 6, 1);        /* triangle_count */
+        test_pack_put16(cluster + 14, HI);      /* hi[0]: lo is the origin */
+    }
+    test_pack_put16(entry + nodes + 6, HI);
+    entry[nodes + 14] = (uint8_t)clusters; /* count */
+    entry[nodes + 15] = 1;                 /* leaf */
+    test_pack_t built = test_pack_begin(pack, capacity, 1);
+    memcpy(test_pack_add(&built, "tri", R3D_LIT_MESH_ASSET, size), entry, size);
+    const uint32_t total = test_pack_finish(&built);
+    asset_pack_t opened;
+    r3d_lit_mesh_t mesh;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_open(&opened, pack, total));
+    const asset_status_t status = r3d_lit_mesh_open(&opened, "tri", &mesh);
+    free(entry);
+    test_free_aligned(raw);
+    return status;
+}
+
+static void
+test_a_leaf_past_the_walks_cluster_limit_is_refused(void) {
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, open_leaf_of(R3D_LIT_LEAF_CLUSTERS_MAX));
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_BOUNDS, open_leaf_of(R3D_LIT_LEAF_CLUSTERS_MAX + 1));
+}
+
 #ifndef DEVICE_BUILD
 #define PACK_FILE "suite_asset_pack.apak"
 
@@ -482,6 +542,7 @@ suite_asset_pack(void) {
     RUN_TEST(test_a_base_that_is_not_16_byte_aligned_is_refused);
     RUN_TEST(test_a_header_with_reserved_bytes_in_use_is_refused);
     RUN_TEST(test_an_inner_node_whose_children_are_not_after_it_is_refused);
+    RUN_TEST(test_a_leaf_past_the_walks_cluster_limit_is_refused);
 #ifndef DEVICE_BUILD
     RUN_TEST(test_a_count_the_table_cannot_hold_is_refused_before_a_row_is_read);
     RUN_TEST(test_the_host_reader_reads_a_pack_file_and_refuses_a_missing_one);

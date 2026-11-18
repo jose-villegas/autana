@@ -99,7 +99,7 @@ nodes_are_inside(const r3d_lit_mesh_t* mesh) {
     for (int n = 0; n < mesh->node_count; n++) {
         const r3d_lit_node_t* node = &mesh->nodes[n];
         const int limit = node->leaf ? mesh->cluster_count : mesh->node_count;
-        if ((int)node->first + node->count > limit) {
+        if ((int)node->first + node->count > limit || (node->leaf && node->count > R3D_LIT_LEAF_CLUSTERS_MAX)) {
             return false;
         }
         /* An inner node's children come after it, so a walk down the tree

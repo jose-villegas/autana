@@ -33,6 +33,9 @@ typedef struct {
  * leaf lies more than R3D_LIT_TREE_DEPTH_MAX edges below the root. */
 #define R3D_LIT_NODE_CHILDREN_MAX 8
 #define R3D_LIT_TREE_DEPTH_MAX    10
+/* The most clusters a leaf holds: the walk orders a leaf's kept clusters
+ * on its stack. A mesh with a larger leaf is refused when opened. */
+#define R3D_LIT_LEAF_CLUSTERS_MAX 32
 /* What a depth-first walk of a tree within R3D_LIT_TREE_DEPTH_MAX holds
  * pending at most: each level's unvisited siblings, and the node in hand. */
 #define R3D_LIT_WALK_DEEPEST      ((R3D_LIT_TREE_DEPTH_MAX * (R3D_LIT_NODE_CHILDREN_MAX - 1)) + 1)
