@@ -33,6 +33,8 @@
 #define FRAME_PROFILE_TRACE_FRAME  " %d:%d" /* path ms, frame us */
 #define FRAME_PROFILE_PEAK         "frame_peak: %s rank=%d t=%dms frame=%dus prominence=%dus"
 #define FRAME_PROFILE_REPLAY       "frame_replay: %s t=%dms %s | %s"
+/* A lapped build's take: its row, then its laps as the shell's lap line reads (frame_laps.h), then its quarter. */
+#define FRAME_PROFILE_LAPS         "frame_laps: %s "
 
 /* A bump is a frame peak when its prominence is at least this share of its own height:
  * relative, so it reads alike on a 20 ms scene and a 60 ms one. */
@@ -77,6 +79,10 @@ frame_profile_t frame_profile_play(const frame_profile_scenario_t* s, frame_prof
                                    frame_profile_trace_t* trace);
 void frame_profile_trace_free(frame_profile_trace_t* trace);
 void frame_profile_log(const char* tag, const char* row, const frame_profile_t* p, const char* quarter);
+/* On a lapped perf-scope build (`autana flash diag --perf-scope --frame-laps`), the laps of the frames `p`
+ * sampled, per frame, on one line: frame_profile_play() forgets the lap window after its warm-up frame. Call it
+ * straight after the play, before anything else draws. Nothing on any other build. */
+void frame_profile_log_laps(const char* tag, const char* row, const frame_profile_t* p, const char* quarter);
 
 /* The frame peaks of `trace`, read as a loop so a peak split by the wrap is one: each peak whose
  * prominence reaches FRAME_PROFILE_PEAK_PERCENT of its height, or the slowest frame when none does.
