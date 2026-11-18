@@ -318,10 +318,10 @@ host = "Linux x86_64"
 [[bake]]
 output = "stress_prop.bundle"
 source = "launcher/demo/stress/stress.scene.toml"
-key = "8ab7730c1965e74306f1f808a02353e51dd0d499190374c9a53633dcf6933823"
+key = "e8b39d6cea9522d89c661331aee53bde5d695c0b73fffa98cdffa76b980594ca"
 sha256 = "6ea9b99aa6128f787a3bfb12e8042183eb7431fdf9ebab4c72951f3a54bb08d6"
 size = 180008
-run = 44305549847
+run = 44393001118
 host = "Linux x86_64"
 
 [[bake]]
