@@ -31,6 +31,12 @@ struct asset_store_mount {
 static asset_store_mount_t mounts[ASSET_STORE_MOUNTS_MAX];
 static asset_store_request_t requests[ASSET_STORE_REQUESTS_MAX];
 static uint64_t next_order;
+static uint32_t mount_epoch;
+
+uint32_t
+asset_store_mount_epoch(void) {
+    return mount_epoch;
+}
 
 static asset_store_mount_t*
 find(const char* name) {
@@ -47,6 +53,7 @@ unmount_unused(asset_store_mount_t* mount) {
     if (mount->uses == 0 && mount->waiting == 0) {
         asset_store_backend_unmount(mount->mapping);
         *mount = (asset_store_mount_t){0};
+        mount_epoch++;
     }
 }
 
@@ -131,6 +138,7 @@ static void
 complete_mount(asset_store_mount_t* mount) {
     if (mount->status == ASSET_OK) {
         mount->pack = mount->opener.pack;
+        mount_epoch++;
 #if CONFIG_LAUNCHER_DEVELOPMENT
         ESP_LOGI("asset", "pack %s: %u entries, %u bytes", mount->name, (unsigned)mount->pack.count,
                  (unsigned)mount->pack.size);
