@@ -6,6 +6,16 @@ itself is [`docs/tools/Render-Harness.md`](../../../../../docs/tools/Render-Harn
 Before a source bake or reference render, pull the
 [mesh source files](../../../../tools/r3d/README.md).
 
+## SH probes
+
+Sponza's import requests an incident-radiance grid. Its sampling settings live
+in `launcher/demo/sponza/sponza.import.toml`; the bake logs cost and cell counts.
+See [SH probe baking](../../../../../docs/render/offline/SH-Probes.md).
+
+```sh
+python launcher/tools/bake/bake.py bake launcher/demo/sponza --kind sh_probes
+```
+
 ## Host renders
 
 ```sh
