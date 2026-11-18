@@ -8,8 +8,8 @@ Before a source bake or reference render, pull the
 
 ## SH probes
 
-Sponza's import requests an incident-radiance grid. Its sampling settings live
-in `launcher/demo/sponza/sponza.import.toml`; the bake logs cost and cell counts.
+Sponza's scene requests an incident-radiance grid. Its sampling settings live
+in `launcher/demo/sponza/sponza.probes.toml`; the bake logs cost and cell counts.
 See [SH probe baking](../../../../../docs/render/offline/SH-Probes.md).
 
 ```sh
