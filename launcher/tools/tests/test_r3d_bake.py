@@ -761,6 +761,27 @@ class LitMeshTests(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError, "deeper"):
             validate(pos, np.zeros((3, 3)), tris, clusters, chain(TREE_DEPTH_MAX + 1))
 
+    def test_validation_refuses_a_leaf_of_more_clusters_than_the_walk_orders(self):
+        def leaf_of(count):
+            """`count` one-triangle clusters, three vertices each, under one leaf."""
+            pos = np.tile([[0, 0, 0], [1, 0, 0], [0, 1, 0]], (count, 1))
+            tris = np.arange(3 * count).reshape(-1, 3)
+            clusters = [(3 * c, 3, c, 1, np.zeros(3), np.ones(3), False) for c in range(count)]
+            return pos, np.zeros((3 * count, 3)), tris, clusters, [{"leaf": True, "first": 0, "count": count}]
+
+        validate(*leaf_of(lit_mesh.LEAF_CLUSTERS_MAX))
+        with self.assertRaisesRegex(AssertionError, "more than the walk"):
+            validate(*leaf_of(lit_mesh.LEAF_CLUSTERS_MAX + 1))
+
+    def test_a_run_of_light_clusters_fills_no_leaf_past_the_walks_limit(self):
+        """Coarse runs fill leaves by weight: clusters of one triangle would
+        put leaf_triangles of them in one leaf, past what the walk orders."""
+        light = lit_mesh.LEAF_TRIANGLES
+        _, nodes = lit_mesh.run_tree(list(range(light)), np.ones(light, dtype=np.int64), lit_mesh.LEAF_TRIANGLES)
+        leaves = [node["count"] for node in nodes if node["leaf"]]
+        self.assertEqual(sum(leaves), light)
+        self.assertEqual(max(leaves), lit_mesh.LEAF_CLUSTERS_MAX)
+
     def test_validation_refuses_more_triangles_than_uint16_offsets_hold(self):
         pos = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]])
         tris = np.tile([0, 1, 2], (65536, 1))
