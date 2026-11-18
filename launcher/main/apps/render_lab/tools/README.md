@@ -179,7 +179,7 @@ the presets vary the copies' geometry, layout and colour modes.
 ![Butterfly wing motion](../../../../../docs/images/overview/render-lab-butterflies.gif)
 
 The butterfly pack uses unbaked vertex colour. Its wing outline traces
-miziziziz's CC0 texture<sup>[[129]](../../../../../docs/Citations.md#miziziziz-butterfly-2019)</sup>.
+miziziziz's CC0 texture<sup>[[130]](../../../../../docs/Citations.md#miziziziz-butterfly-2019)</sup>.
 `scene_stress.c` feeds a fixed sine flap, one phase per copy, to `hinge_pose`.
 
 A change is judged by each preset's own readout, stage by stage. The sum over
@@ -626,11 +626,12 @@ python launcher/tools/anim/track_host.py \
 
 `launcher/demo/capybara/capybara.blend` is a hand-modelled low-poly capybara
 with a control rig and in-place loops at 30 fps: `idle`, `walk`, `walk_fast`,
-`gallop` and `half_bound`. It is the source asset for skinned-mesh import;
-nothing in the build reads it.
+`gallop` and `half_bound`, and the one-shot idle gestures `glance` and
+`ear_flick` ([Idle gestures](../../../../demo/capybara/Idle-Gestures.md)). It is
+the source asset for skinned-mesh import; nothing in the build reads it.
 
 Its glTF export, `capybara.glb`, is a cached bake: deform bones only,
-every loop as an animation, four influences per vertex. Host tools that read
+every clip as an animation, four influences per vertex. Host tools that read
 glTF use it, such as the
 [skinned-mesh lighting](../../../../../docs/render/animation/Skinned-Lighting.md)
 measurement; `bake.py path capybara.glb` prints where it is.
@@ -642,7 +643,7 @@ exporter in Blender. By hand, it is:
 ```sh
 blender --background --factory-startup --python launcher/tools/gltf/blend_skin_to_glb.py -- \
     launcher/demo/capybara/capybara.blend capybara.glb \
-    --clips idle,walk,walk_fast,gallop,half_bound
+    --clips idle,walk,walk_fast,gallop,half_bound,glance,ear_flick
 ```
 
 and measure the lighting again:
