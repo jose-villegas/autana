@@ -14,12 +14,11 @@ flowchart LR
     Setup --> Format{format}
     Format -- MASK1 --> Cut["cut walk,<br/>affine"]
     Format -- INDEX4 --> Far{"level from<br/>far_level on?"}
-    Far -- yes --> Mean["far walk:<br/>no u, v or texel"]
+    Far -- yes --> Plain["plain fill:<br/>vertex colour,<br/>no u, v or texel"]
     Far -- no --> Tests{"divide<br/>tests"}
     Tests -- "any fails" --> Affine["affine walk"]
     Tests -- "all hold" --> Divided["divided walk:<br/>u, v by depth<br/>every segment"]
     Cut --> Pixel["pixel: colormap<br/>at the dithered<br/>light level"]
-    Mean --> Pixel
     Affine --> Pixel
     Divided --> Pixel
 ```
@@ -33,7 +32,7 @@ its tint, from black at level 0 up to `R3D_TEXTURE_LIGHT_LEVELS - 1`.
 | | INDEX4 | MASK1 |
 |---|---|---|
 | Texel | 4 bits: a palette colour | 1 bit: kept or not |
-| Pixel | the colormap at the texel's colour; a far level, the mean | texel 0 leaves the pixel; texel 1 draws palette colour 1 |
+| Pixel | the colormap at the texel's colour; a far level, the vertex colour | texel 0 leaves the pixel; texel 1 draws palette colour 1 |
 | Steps | affine, or dividing by depth | affine |
 
 The light level is the vertex light's luminance, stepped across the triangle
@@ -59,21 +58,21 @@ remove them.
 
 ## Far levels
 
-A level from `texture.far_level` on reads no texel: each pixel takes the
-texture's mean, its tint at the pixel's dithered light level, from a row the
-texture builds at open beside its colormap. The span steps no u or v and the
-triangle never divides. 0 reads every level's texels.
+A level from `texture.far_level` on reads no texel: the triangle goes to
+the plain fill, `r3d_span_triangle()`, in its vertex colour, which is the
+surface's mean lit colour. It steps no u or v and never divides. 0 textures
+every level.
 
-The default, level 2, is the first level where, along Bistro's path, the
-mean is no further from the source than the texels. The pattern is gone
-there, the colour is the same:
+The default, level 2, starts where a pixel steps four texels or more, so
+the texels it would read average out towards that colour. The pattern is
+gone there, the colour is the same:
 
-![Bistro's street from above: the source, the street with every level's texels, with its far levels as their mean, and each one's CIE76 against the source](../../images/render/bistro-street-far-levels.png)
+![Bistro's street from above: the source, the street with every level's texels, with its far levels untextured, and each one's CIE76 against the source](../../images/render/bistro-street-far-levels.png)
 
 The crops are where the two differ most: a far triangle meeting a nearer one
 at a hard edge.
 
-![The places the far levels change most, the source above every level's texels and the far levels as their mean](../../images/render/bistro-street-far-levels.crops.png)
+![The places the far levels change most, the source above every level's texels and the far levels untextured](../../images/render/bistro-street-far-levels.crops.png)
 
 ## Perspective
 

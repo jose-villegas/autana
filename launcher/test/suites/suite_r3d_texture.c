@@ -142,7 +142,7 @@ vertex(float x, float y, float z, float grey) {
 
 /* The triangle over the target's top-left half, every corner `grey`, drawn
  * into target `which` with the corners' `uv`, levels from `far_level` on
- * drawing the mean (0: none). */
+ * drawn untextured (0: none). */
 static void
 draw_corner_far(int which, float grey, const vec2f_t uv[3], int far_level) {
     r3d_span_target_t target = target_at(which);
@@ -272,22 +272,23 @@ test_minified_triangle_takes_the_matching_level(void) {
 #define DARK_INDEX    1      /* a colour far from the mean */
 static const vec2f_t minified[3] = {{0, 0}, {4 * SIDE, 0}, {0, 4 * SIDE}};
 
-/* A level from far_level on draws the mean at each pixel's dithered light,
- * the pixels a texel at the mean draws, and reads no texel: its texels are
- * made dark first. */
+/* A level from far_level on draws what the plain fill draws for the same
+ * corners, and reads no texel: its texels are made dark first. */
 static void
-test_a_far_level_draws_the_mean_where_a_mean_texel_would(void) {
+test_a_far_level_draws_as_the_plain_fill(void) {
     fixture();
-    const vec2f_t mean_texel[3] = {{7.5F, 1.5F}, {7.5F, 1.5F}, {7.5F, 1.5F}}; /* texel (7, 1): MEAN_INDEX */
     clear();
-    draw_corner(1, FAR_GREY, mean_texel);
+    r3d_span_target_t plain = target_at(1);
+    const r3d_span_vertex_t a = vertex(0, 0, 0.5F, FAR_GREY), b = vertex(SIDE, 0, 0.5F, FAR_GREY),
+                            c = vertex(0, SIDE, 0.5F, FAR_GREY);
+    r3d_span_triangle(&plain, &a, &b, &c);
     memset(ltex + LEVEL_2_OFF, (DARK_INDEX << 4) | DARK_INDEX, LEVEL_2_BYTES);
     draw_corner_far(0, FAR_GREY, minified, LEVEL_2);
     TEST_ASSERT_EQUAL_UINT16_ARRAY(buffers + (2 * PIXELS), buffers, 2 * PIXELS);
 }
 
 /* far_level 0, or one past the triangle's level, reads its texels: the same
- * pixels either way, unlike far_level at its level. */
+ * pixels either way, unlike far_level at its level, which draws untextured. */
 static void
 test_a_level_before_far_level_reads_its_texels(void) {
     fixture();
@@ -298,15 +299,6 @@ test_a_level_before_far_level_reads_its_texels(void) {
     draw_corner_far(2, FAR_GREY, minified, LEVEL_2);
     TEST_ASSERT_FALSE_MESSAGE(memcmp(buffers, buffers + (4 * PIXELS), PIXELS * sizeof *buffers) == 0,
                               "the far level drew its texels");
-}
-
-/* The mean row is a palette colour at R3D_TEXTURE_ONE lit at each level. */
-static void
-test_the_mean_is_the_mean_colour_at_every_light_level(void) {
-    fixture();
-    for (int l = 0; l < R3D_TEXTURE_LIGHT_LEVELS; l++) {
-        TEST_ASSERT_EQUAL_HEX16(texture->colormap[l][MEAN_INDEX], texture->mean[l]);
-    }
 }
 
 /* Moved texels draw what the entry's did, and the entry is no longer read:
@@ -1854,7 +1846,7 @@ mask_two_levels_open(void) {
 }
 
 /* A MASK1 triangle whose level is at far_level is cut as at far_level 0: the
- * holes keep their pixel's colour and depth, not the mean. */
+ * holes keep their pixel's colour and depth, not the plain fill's. */
 static void
 test_a_mask1_triangle_at_the_far_level_keeps_its_holes(void) {
     fixture();
@@ -2583,9 +2575,8 @@ run_r3d_texture_suite(void) {
     RUN_TEST(test_shared_edge_neither_cracks_nor_overlaps);
     RUN_TEST(test_affine_samples_the_texel_under_each_centre);
     RUN_TEST(test_minified_triangle_takes_the_matching_level);
-    RUN_TEST(test_a_far_level_draws_the_mean_where_a_mean_texel_would);
+    RUN_TEST(test_a_far_level_draws_as_the_plain_fill);
     RUN_TEST(test_a_level_before_far_level_reads_its_texels);
-    RUN_TEST(test_the_mean_is_the_mean_colour_at_every_light_level);
     RUN_TEST(test_a_mask1_triangle_at_the_far_level_keeps_its_holes);
     RUN_TEST(test_writers_mark_exactly_the_pixels_a_far_fill_drew);
     RUN_TEST(test_moved_texels_draw_without_the_entry);

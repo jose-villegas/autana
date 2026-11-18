@@ -116,7 +116,7 @@ cull_off(void) {
     return off;
 }
 
-#define SHIPPED_FAR_LEVEL 2 /* the first mip level the default draws as its texture's mean */
+#define SHIPPED_FAR_LEVEL 2 /* the first mip level the default draws untextured */
 
 /* The shipped default draws mip level 2 on as the mean, not 0 (off): a
  * texture's far levels read no texels unless a pack or knob says otherwise. */
