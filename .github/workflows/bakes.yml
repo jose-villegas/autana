@@ -75,11 +75,12 @@ jobs:
           python launcher/tools/bake/bake.py list --missing --kind sound | tee "$RUNNER_TEMP/sound.txt"
           python launcher/tools/bake/bake.py list --missing --kind levels | tee "$RUNNER_TEMP/levels.txt"
           python launcher/tools/bake/bake.py list --missing --kind texture | tee -a "$RUNNER_TEMP/levels.txt"
-          echo "mesh=$(cat "$RUNNER_TEMP/mesh.txt" "$RUNNER_TEMP/levels.txt" | wc -l)" >> "$GITHUB_OUTPUT"
-          echo "traced=$(wc -l < "$RUNNER_TEMP/mesh.txt")" >> "$GITHUB_OUTPUT"
+          python launcher/tools/bake/bake.py list --missing --kind sh_probes | tee "$RUNNER_TEMP/sh_probes.txt"
+          echo "mesh=$(cat "$RUNNER_TEMP/mesh.txt" "$RUNNER_TEMP/levels.txt" "$RUNNER_TEMP/sh_probes.txt" | wc -l)" >> "$GITHUB_OUTPUT"
+          echo "traced=$(cat "$RUNNER_TEMP/mesh.txt" "$RUNNER_TEMP/sh_probes.txt" | wc -l)" >> "$GITHUB_OUTPUT"
           echo "sound=$(wc -l < "$RUNNER_TEMP/sound.txt")" >> "$GITHUB_OUTPUT"
           echo "blend=$(wc -l < "$RUNNER_TEMP/blend.txt")" >> "$GITHUB_OUTPUT"
-          echo "count=$(cat "$RUNNER_TEMP/blend.txt" "$RUNNER_TEMP/mesh.txt" "$RUNNER_TEMP/levels.txt" "$RUNNER_TEMP/sound.txt" | wc -l)" >> "$GITHUB_OUTPUT"
+          echo "count=$(cat "$RUNNER_TEMP/blend.txt" "$RUNNER_TEMP/mesh.txt" "$RUNNER_TEMP/levels.txt" "$RUNNER_TEMP/sound.txt" "$RUNNER_TEMP/sh_probes.txt" | wc -l)" >> "$GITHUB_OUTPUT"
 
       # Before any install: a runner of another CPU vendor than the lock's fails in seconds.
       - name: This runner's CPU vendor is the lock's
@@ -125,6 +126,7 @@ jobs:
           earlier=()
           if [ "$GITHUB_RUN_ATTEMPT" -gt 1 ]; then earlier=(--from-run "$GITHUB_RUN_ID"); fi
           python launcher/tools/bake/bake.py bake --kind blend --out "$RUNNER_TEMP/bakes" "${earlier[@]}"
+          python launcher/tools/bake/bake.py bake --kind sh_probes --out "$RUNNER_TEMP/bakes"
           python launcher/tools/bake/bake.py bake --kind mesh --out "$RUNNER_TEMP/bakes"
           python launcher/tools/bake/bake.py bake --kind levels --out "$RUNNER_TEMP/bakes"
           python launcher/tools/bake/bake.py bake --kind texture --out "$RUNNER_TEMP/bakes"

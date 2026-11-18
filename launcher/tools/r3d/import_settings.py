@@ -272,7 +272,10 @@ def load_process(process, steps):
 def load_geometry(table, steps):
     """The optional steps that decide which source triangles remain."""
     check_keys(table, (), "geometry", optional=("alpha_mask", "thin", "simplify", "meshlet_triangles", "lod", "morph",
-                                                "probes", "budget"))
+                                                "probes", "budget", "sh_probes"))
+    from r3d.sh_probe_settings import load as load_sh_probes
+
+    steps.sh_probes = load_sh_probes(table["sh_probes"]) if "sh_probes" in table else None
     steps.meshlet_triangles = count(table.get("meshlet_triangles", MESHLET_TRIANGLES), "geometry.meshlet_triangles")
     steps.lod = boolean(table.get("lod", LOD), "geometry.lod")
     steps.morph = boolean(table.get("morph", MORPH), "geometry.morph")
@@ -307,7 +310,7 @@ def load_geometry(table, steps):
 
 
 def load_probes(table, where="geometry.probes"):
-    """Extra fit views from probes spread through the camera's region (r3d/fit/probes.py): `spacing`
+    """Extra fit views from probes spread through the camera's region (r3d/views/probes.py): `spacing`
     world units apart, each face `face` pixels square; an unset one is the probes' own default."""
     check_keys(table, (), where, optional=("spacing", "face"))
     probes = SimpleNamespace(spacing=number(table["spacing"], f"{where}.spacing") if "spacing" in table else None,
@@ -466,7 +469,7 @@ def load_import_settings(path):
         position_scale=count(output["position_scale"], "output.position_scale") if "position_scale" in output else None,
         double_sided=set(strings(materials.get("double_sided", []), "materials.double_sided")), seed=steps.seed,
         alpha_keep=steps.alpha_keep, thin=steps.thin, simplify=steps.simplify, named=("variants" in values),
-        meshes=meshes,
+        meshes=meshes, sh_probes=steps.sh_probes,
         meshlet_triangles=steps.meshlet_triangles, lod=steps.lod, morph=steps.morph, fit=steps.fit,
         variants=variants, skin_lighting=lighting)
 
