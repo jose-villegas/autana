@@ -1814,6 +1814,13 @@ test_scalar_exponent_matches_frexpf_across_the_normal_range(void) {
 }
 
 static void
+test_scalar_pow2_matches_ldexpf_across_the_normal_range(void) {
+    for (int e = FLT_MIN_EXP - 1; e < FLT_MAX_EXP; e++) {
+        TEST_ASSERT_EQUAL_HEX32(mathf_bits(ldexpf(1.0F, e)), mathf_bits(mathf_pow2(e)));
+    }
+}
+
+static void
 test_scalar_half_and_absolute_value(void) {
     static const float half = 0.5F;
     TEST_ASSERT_EQUAL_FLOAT(half, mathf_half());
@@ -2148,6 +2155,7 @@ suite_math_numbers(void) {
     RUN_TEST(test_integer_half_chords_round);
     RUN_TEST(test_integer_half_chords_int16_radius_edges);
     RUN_TEST(test_scalar_exponent_matches_frexpf_across_the_normal_range);
+    RUN_TEST(test_scalar_pow2_matches_ldexpf_across_the_normal_range);
     RUN_TEST(test_scalar_half_and_absolute_value);
 #if !defined(ESP_PLATFORM) || (defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP)
     RUN_TEST(test_recip_approx_mantissas_and_normal_exponent_edges);

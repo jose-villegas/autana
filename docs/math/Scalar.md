@@ -119,6 +119,7 @@ test $`m(y+\tfrac12)^2 \le 2^{92}`$ for rounding to nearest.
 |---|---|
 | `mathf_bits(value)`, `mathf_from_bits(bits)` | bit-preserving float / uint32 transfers, including NaN payloads |
 | `mathf_exponent(a)` | `frexpf`'s exponent of a positive normal `a`, read from its bits |
+| `mathf_pow2(e)` | exact 2^e for a normal result, built from its bits |
 
 ## mathf_round.h
 

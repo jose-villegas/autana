@@ -39,3 +39,10 @@ mathf_exponent(float a) {
     const uint32_t field = ((uint32_t)FLT_MAX_EXP * 2U) - 1U; /* the exponent's bits, all ones */
     return (int)((mathf_bits(a) >> (FLT_MANT_DIG - 1)) & field) - (FLT_MAX_EXP - 2);
 }
+
+/* 2^e, exactly, for a normal result: e from FLT_MIN_EXP - 1 to
+ * FLT_MAX_EXP - 1. No divide and no libm call. */
+static inline __attribute__((always_inline)) float
+mathf_pow2(int e) {
+    return mathf_from_bits((uint32_t)(e + (FLT_MAX_EXP - 1)) << (FLT_MANT_DIG - 1));
+}

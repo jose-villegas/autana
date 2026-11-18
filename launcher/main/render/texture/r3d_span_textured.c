@@ -16,6 +16,7 @@
 
 #include "collections/bits.h"
 #include "image/pixel/bayer.h"
+#include "math/scalar/float_bits.h"
 #include "math/scalar/mathf.h"
 #include "math/scalar/mathi.h"
 #include "profile/frame_laps.h"
@@ -140,7 +141,7 @@ fill_masked(uint16_t* depth, uint16_t* color, int count, carry_t* c, const sampl
 /* What the set-up hands the row walk. */
 typedef struct {
     r3d_span_plane_t z;     /* 16.8 depth */
-    r3d_span_plane_t s, t;  /* u, v in the level's texels */
+    r3d_span_plane_t s, t;  /* u, v in the sampler's level's texels; level 0's under span_level */
     r3d_span_plane_t level; /* 8.8 light level */
     r3d_span_plane_t q;     /* inverse depth, when the triangle divides */
     int32_t depth_max;
@@ -198,17 +199,6 @@ level_for(float rho2, int levels) {
     return level;
 }
 
-/* 2^-level, exactly, without a divide. */
-static inline float
-level_scale(int level) {
-    union {
-        uint32_t bits;
-        float value;
-    } scale = {.bits = (uint32_t)(127 - level) << 23};
-
-    return scale.value;
-}
-
 /* The sampler of `texture`'s level `level`. */
 static inline sampler_t
 sampler_at(const r3d_texture_t* texture, int level) {
@@ -247,7 +237,7 @@ fill_divided(const setup_t* su, uint16_t* depth, uint16_t* color, int count, car
         const float half = (float)(count - 1) * 0.5F;
         const float rc = mathf_recip_approx(q + (su->q.dx * half));
         const int level = true_level(su, (s + (ds * half)) * rc, (t + (dt * half)) * rc, rc);
-        const float k = level_scale(level);
+        const float k = mathf_pow2(-level);
         own = sampler_at(su->sampler.texture, level);
         sampler = &own;
         s *= k;
@@ -414,7 +404,7 @@ set_up_divide(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[
     }
     su->span_level = nearest != farthest;
     if (!su->span_level) {
-        const float k = level_scale(nearest);
+        const float k = mathf_pow2(-nearest);
         su->s = (r3d_span_plane_t){su->s.base * k, su->s.dx * k, su->s.dy * k};
         su->t = (r3d_span_plane_t){su->t.base * k, su->t.dx * k, su->t.dy * k};
         su->sampler = sampler_at(texture, nearest);
@@ -440,7 +430,7 @@ set_up(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[CORNERS
     su->s = r3d_span_plane_of(&f, uv[0].x, uv[1].x, uv[2].x);
     su->t = r3d_span_plane_of(&f, uv[0].y, uv[1].y, uv[2].y);
     const int level = pick_level(su, texture);
-    const float scale = 1.0F / (float)(1U << level);
+    const float scale = mathf_pow2(-level);
     su->s = (r3d_span_plane_t){su->s.base * scale, su->s.dx * scale, su->s.dy * scale};
     su->t = (r3d_span_plane_t){su->t.base * scale, su->t.dx * scale, su->t.dy * scale};
     su->sampler = sampler_at(texture, level);
@@ -531,6 +521,7 @@ r3d_span_textured_triangle(const r3d_span_target_t* target, const r3d_span_verte
         /* A triangle no wider than one segment steps affine: its bend is at
          * most one segment's. */
         su.divide = 0;
+        su.span_level = false;
         if (target->texture_divide_px != 0 && mathi_max(whole.w, whole.h) > target->texture_divide_px) {
             set_up_divide(target, corners, uv, texture, whole, &su);
         }

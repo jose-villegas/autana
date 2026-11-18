@@ -6,7 +6,7 @@
 Top: the source texture's mip chain as the LTEX baker makes it (texture_asset.py), level 0 at the size the
 textures file's first renderer gives it, each level at its true size beside the last. Below: a receding floor drawn
 by the span fill (mip_figures_probe.c) with a texture whose every level is one solid colour, so each pixel shows the
-level it read, stepping affine (a level a triangle) and dividing (a level a span); over each, the pixels that read a
+level it read, stepping affine (one level for the triangle) and dividing (a level for each span); over each, the pixels that read a
 finer level than their own step, where the texture aliases.
 """
 import argparse
@@ -75,8 +75,8 @@ def baked_texture(textures, source):
 def mip_figure(data, args):
     shape = (data["height"], data["width"])
     ideal = np.array(data["ideal"]).reshape(shape)
-    walks = (("Affine, a level a triangle", np.array(data["triangle"]).reshape(shape)),
-             ("Dividing, a level a span", np.array(data["span"]).reshape(shape)))
+    walks = (("Affine, one level for the triangle", np.array(data["triangle"]).reshape(shape)),
+             ("Dividing, a level for each span", np.array(data["span"]).reshape(shape)))
     count = data["levels"]
     strip, sides = chain_image(baked_texture(args.textures, args.source))
     fig, axes = subplots(2, 2, FIGURE_SIZE, height_ratios=(CHAIN_HEIGHT_SHARE, 1))

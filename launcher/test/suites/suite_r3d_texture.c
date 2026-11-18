@@ -2001,11 +2001,12 @@ test_a_triangle_whole_tiles_away_draws_the_same_pixels(void) {
     }
 }
 
-/* The steep floor's v steps 64 / 44 texels a row stepped affine, level 0;
- * divided, a row at depth q steps that times FLOOR_Z_NEAR FLOOR_Z_STEEP over
- * q squared: 4 texels and over down to row 3, 2 and over down to row 10,
- * under 2 below. Levels 1 and 2 hold their own index in every texel, level 0
- * a pattern. */
+/* The steep floor's v steps FLOOR_V_TEXELS / FLOOR_SPAN texels a row
+ * affine, level 0. Divided, a row at depth q steps that times FLOOR_Z_NEAR
+ * FLOOR_Z_STEEP over q squared: 4 texels or more down to row 3 (level 2),
+ * 2 or more down to row 10 (level 1), under 2 below. The row ranges sit
+ * inside those, clear of the edges. Levels 1 and 2 hold their own index in
+ * every texel, level 0 a pattern. */
 #define LEVEL_2_ROWS_FIRST 1
 #define LEVEL_2_ROWS_LAST  2
 #define LEVEL_1_ROWS_FIRST 5
@@ -2060,6 +2061,80 @@ test_a_dividing_floor_s_far_rows_take_coarser_levels_than_its_near_rows(void) {
         }
     }
     TEST_ASSERT_GREATER_THAN_MESSAGE(PATTERN_GREENS, greens, "the near rows left level 0's pattern");
+}
+
+/* A window of TALL_WINDOW rows judges the triangle on its unclipped box, so
+ * its spans pick the levels the whole draw's do. */
+static void
+test_four_row_windows_of_a_floor_of_three_levels_draw_the_whole_ones_pixels(void) {
+    fixture();
+    clear();
+    const render_texture_settings_t settings = RENDER_SETTINGS_DEFAULT.texture;
+    r3d_span_vertex_t v[3];
+    vec2f_t uv[3];
+    floor_triangle_sized(v, uv, FLOOR_Z_STEEP, vec2f_zero(), FLOOR_SPAN, FLOOR_SPAN);
+    draw_floor(0, settings, FLOOR_Z_STEEP, vec2f_zero());
+    for (int row0 = 0; row0 < SIDE; row0 += TALL_WINDOW) {
+        uint16_t* color = buffers + (2 * PIXELS) + ((size_t)row0 * SIDE);
+        r3d_span_target_t window = r3d_span_target(color, color + PIXELS, SIDE, row0, row0 + TALL_WINDOW);
+        r3d_span_set_texture(&window, &settings);
+        r3d_span_textured_triangle(&window, &v[0], &v[1], &v[2], uv, texture);
+    }
+    TEST_ASSERT_GREATER_THAN_MESSAGE(COVERED_MIN, covered_pixels(0), "the floor covers too little to tell");
+    TEST_ASSERT_EQUAL_UINT16_ARRAY_MESSAGE(buffers, buffers + (2 * PIXELS), PIXELS, "a window's colour differs");
+}
+
+/* A mildly receding floor stepping LEVEL_1_U_STEP texels a pixel along u:
+ * 2 to under 4 at every corner, so the whole triangle is on level 1. */
+#define LEVEL_1_U_STEP   2.25F
+#define LEVEL_1_V_TEXELS 24.0F
+#define LEVEL_1_BYTES    ((TEX_SIDE / 2) * (TEX_SIDE / 2) / 2)
+
+/* The level-1 floor, its UVs times `uv_scale`, drawn dividing into target `which`. */
+static void
+draw_level_1_floor(int which, const r3d_texture_t* tex, float uv_scale) {
+    r3d_span_vertex_t v[3];
+    vec2f_t uv[3];
+    floor_triangle_sized(v, uv, Z_FAR_BENT, vec2f_zero(), FLOOR_SPAN, FLOOR_SPAN);
+    const float u = LEVEL_1_U_STEP * FLOOR_SPAN * uv_scale;
+    const float t = LEVEL_1_V_TEXELS * uv_scale;
+    uv[0] = (vec2f_t){u / 2, 0};
+    uv[1] = (vec2f_t){u, t};
+    uv[2] = (vec2f_t){0, t};
+    r3d_span_target_t target = target_at(which);
+    r3d_span_set_texture(&target, &(render_texture_settings_t){RENDER_SETTINGS_DEFAULT.texture.divide_px, TRUTH_BEND});
+    r3d_span_textured_triangle(&target, &v[0], &v[1], &v[2], uv, tex);
+}
+
+/* A dividing triangle whose corners all read level 1 draws that level's
+ * texels where a texture holding them as its only level draws them at half
+ * the UVs: the level, and its scale of u and v, exactly. */
+static void
+test_a_dividing_triangle_whose_corners_read_level_1_draws_that_level_s_texels(void) {
+    fixture();
+    clear();
+    /* Two copies of the texture, off the stack, then level 1's pattern. */
+    spare = calloc(1, (2 * sizeof *texture) + LEVEL_1_BYTES);
+    TEST_ASSERT_NOT_NULL(spare);
+    r3d_texture_t* patterned = (r3d_texture_t*)(void*)spare;
+    r3d_texture_t* alone = patterned + 1;
+    uint8_t* pattern = (uint8_t*)(alone + 1);
+    for (int o = 0; o < LEVEL_1_BYTES * 2; o++) {
+        const int index = ((o % (TEX_SIDE / 2)) + (2 * (o / (TEX_SIDE / 2))) + 3) & 15;
+        pattern[o >> 1] |= (uint8_t)(index << ((o & 1) * 4));
+    }
+    *patterned = *texture;
+    patterned->texels[1] = pattern;
+    *alone = *texture;
+    alone->texels[0] = pattern;
+    alone->size_log2 = TEX_LOG2 - 1;
+    alone->levels = 1;
+    draw_level_1_floor(0, patterned, 1.0F);
+    draw_level_1_floor(1, alone, 0.5F);
+    draw_level_1_floor(2, texture, 1.0F);
+    TEST_ASSERT_GREATER_THAN_MESSAGE(COVERED_MIN, covered_pixels(0), "the floor covers too little to tell");
+    TEST_ASSERT_EQUAL_MESSAGE(0, colours_differing(0, 1), "a pixel is not level 1's texel");
+    TEST_ASSERT_GREATER_THAN_MESSAGE(COVERED_MIN, colours_differing(0, 2), "the pattern is too flat to tell");
 }
 
 /* MASK1 never divides: a strongly bent one draws the same with divide_px 0
@@ -2531,6 +2606,8 @@ run_r3d_texture_suite(void) {
     RUN_TEST(test_a_triangle_whose_height_is_divide_px_steps_affine_and_one_pixel_taller_divides);
     RUN_TEST(test_a_triangle_whole_tiles_away_draws_the_same_pixels);
     RUN_TEST(test_a_dividing_floor_s_far_rows_take_coarser_levels_than_its_near_rows);
+    RUN_TEST(test_four_row_windows_of_a_floor_of_three_levels_draw_the_whole_ones_pixels);
+    RUN_TEST(test_a_dividing_triangle_whose_corners_read_level_1_draws_that_level_s_texels);
     RUN_TEST(test_a_bent_mask1_triangle_draws_the_same_at_any_divide_px);
     RUN_TEST(test_the_rasters_texture_settings_reach_the_fill);
     RUN_TEST(test_set_texture_keeps_divide_px_and_the_bend_in_steps_and_rounds_a_fine_bend_up);
