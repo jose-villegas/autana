@@ -27,6 +27,8 @@ RINGS = 6
 WALL_HALF_WIDTH, WALL_HEIGHT = 200.0, 300.0
 # Too few triangles to keep the half disc round: its chords pull inside the opening.
 BUDGET = 24
+# Budgets at which the locks a hole asks for would leave more triangles than the pass was given.
+OVERSHOOT_BUDGETS = (40,)
 # Where the camera can be, in front of the wall, and its near plane.
 CAMERA = ((np.array([60.0, 10.0, -90.0]), np.array([260.0, 110.0, 90.0])), 2.0) if np is not None else None
 
@@ -106,9 +108,9 @@ class LeakProbeTests(unittest.TestCase):
         cls.pos, cls.tris = arch()
         cls.probes = leaks.LeakProbes(cls.pos, cls.tris, *CAMERA)
 
-    def simplified(self, allocation):
+    def simplified(self, allocation, budget=BUDGET):
         rgb = np.full((len(self.pos), 3), 128.0)
-        p, _, t, _ = simplify(self.pos, rgb, self.tris, np.zeros(len(self.tris), dtype=int), BUDGET, colour_deviation=1.0,
+        p, _, t, _ = simplify(self.pos, rgb, self.tris, np.zeros(len(self.tris), dtype=int), budget, colour_deviation=1.0,
                               seal_seams=True, position_scale=8, allocation=allocation)
         return p, t
 
@@ -126,6 +128,12 @@ class LeakProbeTests(unittest.TestCase):
         p, t = self.simplified(Allocation(camera=CAMERA))
         self.assertEqual(self.probes.holes(p, t), [])
         self.assertLessEqual(len(t), BUDGET)
+
+    def test_locks_never_leave_a_pass_more_triangles_than_it_had(self):
+        for budget in OVERSHOOT_BUDGETS:
+            with self.subTest(budget=budget):
+                plain = len(self.simplified(Allocation(), budget)[1])
+                self.assertLessEqual(len(self.simplified(Allocation(camera=CAMERA), budget)[1]), plain)
 
 
 if __name__ == "__main__":
