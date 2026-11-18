@@ -3,7 +3,6 @@ import argparse
 from datetime import datetime, timedelta, timezone
 import os
 import re
-import subprocess
 import sys
 from pathlib import Path
 import time
@@ -13,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "device"))
 from scripts.ci.github_api import PER_PAGE, call, pages
 from device_lock import LockStore, board_read_root, heavy_root, write_json
-from process_tree import STAGE_PROGRESS_ENV, launch_process_tree, stop_process_tree, close_process_tree
+from process_tree import STAGE_PROGRESS_ENV, run_process_tree
 from ci_step import output, summarize
 
 NIGHT_START = "01:00"
@@ -161,23 +160,22 @@ def wait_idle(busy, clock, idle_polls=1, until=None):
         clock.sleep(QUEUE_POLL_SECONDS)
 
 
-def guard_stage(process, progress, started, clock, workflow):
-    """The stage's exit code, or EXIT_HUNG once it stops progressing (nothing touched `progress` for
-    GPU_STAGE_PROGRESS_SECONDS) or passes GPU_STAGE_HANG_SECONDS; a hung stage's process tree is stopped."""
-    while True:
-        try:
-            return process.wait(timeout=QUEUE_POLL_SECONDS)
-        except subprocess.TimeoutExpired:
-            pass
+class StageHung(Exception):
+    """A stage stopped progressing or passed its backstop; the message names the limit that expired."""
+
+
+def guard_stage(progress, started, clock, workflow):
+    """The stage's watch for run_process_tree: it raises StageHung once nothing touched `progress` for
+    GPU_STAGE_PROGRESS_SECONDS or the stage passes GPU_STAGE_HANG_SECONDS."""
+    def stalled():
         now = clock.now()
         # A lost progress file counts as no progress since the start, never as a crash of the guard.
         idle = now.timestamp() - (progress.stat().st_mtime if progress.exists() else started.timestamp())
         expired = ("GPU_STAGE_PROGRESS_SECONDS" if idle >= GPU_STAGE_PROGRESS_SECONDS else
                    "GPU_STAGE_HANG_SECONDS" if (now - started).total_seconds() >= GPU_STAGE_HANG_SECONDS[workflow] else None)
         if expired:
-            print(f"{expired} expired for {workflow}: last progress {idle / 60:.0f} min ago", flush=True)
-            stop_process_tree(process)
-            return EXIT_HUNG
+            raise StageHung(f"{expired} expired for {workflow}: last progress {idle / 60:.0f} min ago")
+    return stalled
 
 
 def quiet_host(workflow):
@@ -247,14 +245,13 @@ def main():
     progress.parent.mkdir(parents=True, exist_ok=True)
     progress.touch()
     os.environ[STAGE_PROGRESS_ENV] = str(progress)
-    process = None
     try:
-        process = launch_process_tree(command)
-        code = guard_stage(process, progress, started, clock, workflow)
+        code = run_process_tree(command, watch=guard_stage(progress, started, clock, workflow)).returncode
         return code
+    except StageHung as hung:
+        print(hung, flush=True)
+        return EXIT_HUNG
     finally:
-        if process is not None:
-            close_process_tree(process)
         progress.unlink(missing_ok=True)
         write_json(steps / (workflow + ".json"),
                    dict(workflow=workflow, run=os.environ.get("GITHUB_RUN_ID"), marker=marker,
