@@ -146,7 +146,8 @@ typedef struct {
     slice_t mine, other;
     r3d_span_target_t targets[2];
     r3d_span_small_fill_t small_fill;
-    bool skip_hidden;         /* the view's */
+    bool skip_hidden; /* the view's */
+    render_texture_settings_t texture;
     int first_row, end_row;   /* the rows this draw redraws */
     bool levels_changed;      /* a level pick this draw changed an instance's cut */
     bool blends;              /* lod.blend is on: each instance's blend is set up */
@@ -316,6 +317,7 @@ draw_slice(void* ctx) {
     gfx_target_window(&target->rows, &b->picture, s->first, s->first + s->count);
     target->small_fill = &((const draw_work_t*)b->draw)->small_fill;
     target->skip_hidden = ((const draw_work_t*)b->draw)->skip_hidden;
+    r3d_span_set_texture(target, &((const draw_work_t*)b->draw)->texture);
 
     if (s->clear) {
         const size_t pixels = (size_t)s->count * (size_t)r->width;
@@ -1004,6 +1006,7 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
     }
     r3d_span_small_fill_resolve(&work->small_fill, view->small_fill);
     work->skip_hidden = view->skip_hidden;
+    work->texture = raster_settings(raster).texture;
     /* A list drawn with no census, or rewritten without its scale, fails here. */
     assert(*work->buffers.depth_near >= view->lens.near_z);
     uint16_t* culled = work->buffers.culled;
