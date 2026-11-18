@@ -64,6 +64,7 @@ int main(void) {
             owners = ("core/job.c", "core/tune.c", "asset/asset_pack.c", "asset/asset_table.c", "asset/asset_store.c",
                       "asset/asset_store_file.c", "asset/asset_file.c")
             sources = [*sorted((main / "render").rglob("*.c")), *(main / name for name in owners)]
+            sources += sorted((ROOT / "launcher/packages").glob("*/src/**/*.c"))
             command = ["gcc", "-std=gnu11", "-ffunction-sections", "-fdata-sections",
                        "-I", str(work), *(arg for root in packages.include_roots() for arg in ("-I", str(root))),
                        "-I", str(ROOT / "launcher/test/stubs"), str(source),

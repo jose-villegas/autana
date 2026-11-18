@@ -66,6 +66,12 @@ rgb565be_unspread(uint32_t spread) {
     return rgb565_swap((uint16_t)(spread | (spread >> 16)));
 }
 
+/* The generic half scale costs extra instructions on Xtensa. */
+static inline rgb565be_t
+rgb565be_half(rgb565be_t pixel) {
+    return rgb565be_unspread(rgb565be_spread(pixel) >> 1);
+}
+
 /* Fast truncating fade-to-black form of rgb565be_mix: keep/UNIT of each channel. */
 static inline rgb565be_t
 rgb565be_scale(rgb565be_t pixel, unsigned keep) {

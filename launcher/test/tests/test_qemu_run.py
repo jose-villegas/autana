@@ -201,6 +201,11 @@ class RunSuiteTest(unittest.TestCase):
         self.assertFalse(self.run_suite(
             "RUNSUITE_COMPLETE name=run_sand_suite found=1 selected=0 unmatched=1"))
 
+    def test_tests_narrow_the_suite_on_the_console(self):
+        console = FakeConsole(["RUNSUITE_COMPLETE name=run_sand_suite found=1 selected=1 unmatched=0"])
+        self.assertTrue(qemu_run.run_suite(console, "run_sand_suite", "bistro/portrait,quiet"))
+        self.assertEqual(console.sent, ["RUNSUITE run_sand_suite bistro/portrait,quiet"])
+
     def test_another_suites_completion_is_not_this_ones(self):
         self.assertFalse(self.run_suite(
             "RUNSUITE_COMPLETE name=run_sand_suite_perf found=1 selected=3 unmatched=0"))

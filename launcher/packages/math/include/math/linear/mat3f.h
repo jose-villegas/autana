@@ -56,3 +56,13 @@ mat3f_cofactor(mat3f_t matrix) {
     }
     return out;
 }
+
+static inline mat3f_t
+mat3f_scale(mat3f_t matrix, float scale) {
+    for (int row = 0; row < MAT3F_AXES; row++) {
+        for (int col = 0; col < MAT3F_AXES; col++) {
+            matrix.m[row][col] *= scale;
+        }
+    }
+    return matrix;
+}

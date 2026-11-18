@@ -4,8 +4,8 @@
 #
 #   ./launcher/test/run_qemu_tests.sh [--perf-scope] [--icount] [--timeout S] [--no-build]
 #   ./launcher/test/run_qemu_tests.sh --icount-ratchet [--no-build]
-#   ./launcher/test/run_qemu_tests.sh --suite <name> [--suite ...] \
-#                                     [--touch <down|up>,<x>,<y> ...] [--screenshot <png>]
+#   ./launcher/test/run_qemu_tests.sh --suite <name> [--suite ...] [--test <pattern>[,...]] \
+#                                 [--touch <down|up>,<x>,<y> ...] [--screenshot <png>]
 #   ./launcher/test/run_qemu_tests.sh --perf-scope --suite <name> --build-only
 #
 # The image is the diagnostics build with sdkconfig.defaults.qemu layered
@@ -36,34 +36,33 @@ AUTORUN=1
 PERF=0
 BUILD=1
 RUN=1
-RUN_ARGS=""
-while [ $# -gt 0 ]; do
+# What qemu_run.py takes is moved to the end of "$@", each value one word
+# however many spaces it holds ('--do "tap 120 200"'), and passed on as is.
+left=$#
+while [ "$left" -gt 0 ]; do
     case "$1" in
         --perf-scope) PERF=1 ;;
-        --icount-ratchet) AUTORUN=0; RUN_ARGS="$RUN_ARGS --icount-ratchet" ;;
-        --icount) RUN_ARGS="$RUN_ARGS --icount" ;;
+        --icount-ratchet) AUTORUN=0; set -- "$@" "$1" ;;
+        --icount) set -- "$@" "$1" ;;
         --no-build) BUILD=0 ;;
         # One image serves however many instances a driver then starts
         # against it by hand, each with its own qemu_run.py --workdir.
         --build-only) RUN=0 ;;
-        --timeout | --log | --workdir)
-            [ $# -ge 2 ] || { echo "$1 needs a value" >&2; exit 2; }
-            RUN_ARGS="$RUN_ARGS $1 $2"
+        --timeout | --log | --workdir | --test | --suite | --touch | --do | --screenshot)
+            [ "$left" -ge 2 ] || { echo "$1 needs a value" >&2; exit 2; }
+            case "$1" in --suite | --touch | --do | --screenshot) AUTORUN=0 ;; esac
+            set -- "$@" "$1" "$2"
             shift
-            ;;
-        --suite | --touch | --do | --screenshot)
-            [ $# -ge 2 ] || { echo "$1 needs a value" >&2; exit 2; }
-            AUTORUN=0
-            RUN_ARGS="$RUN_ARGS $1 $2"
-            shift
+            left=$((left - 1))
             ;;
         *)
             echo "usage: run_qemu_tests.sh [--perf-scope] [--icount | --icount-ratchet] [--timeout S] [--no-build] [--build-only]" >&2
-            echo "       run_qemu_tests.sh --suite <name> [--suite ...] [--screenshot <png>]" >&2
+            echo "       run_qemu_tests.sh --suite <name> [--suite ...] [--test <pattern>[,<pattern>...]] [--screenshot <png>]" >&2
             exit 2
             ;;
     esac
     shift
+    left=$((left - 1))
 done
 if [ "$AUTORUN" != 1 ]; then
     BUILD_DIR=build.qemu.shell
@@ -103,5 +102,4 @@ fi
 # shellcheck source=../../scripts/lib/python.sh
 . "$LAUNCHER_DIR/../scripts/lib/python.sh"
 PYTHON=$(find_python) || exit 1
-# shellcheck disable=SC2086
-"$PYTHON" "$TEST_DIR/qemu_run.py" "$LAUNCHER_DIR/$BUILD_DIR" $RUN_ARGS
+"$PYTHON" "$TEST_DIR/qemu_run.py" "$LAUNCHER_DIR/$BUILD_DIR" "$@"

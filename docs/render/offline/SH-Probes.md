@@ -48,7 +48,7 @@ using one shadow ray per outside probe and sun.
 
 The SH basis follows Sloan 2008<sup>[[129]](../../Citations.md#sloan-2008)</sup>;
 the separation of lighting coefficients and diffuse convolution follows
-Ramamoorthi and Hanrahan 2001<sup>[[130]](../../Citations.md#ramamoorthi-2001)</sup>.
+Ramamoorthi and Hanrahan 2001<sup>[[128]](../../Citations.md#ramamoorthi-hanrahan-2001)</sup>.
 These are radiance coefficients; a diffuse consumer applies the cosine kernel.
 
 The bake log reports cells, inside cells, wall time, bytes, primary paths

@@ -978,6 +978,21 @@ batch_fill(const raster_t* raster, draw_work_t* work, int first, int end, uint16
     return culled;
 }
 
+/* Keep the post-draw lens and target off the geometry draw chain's frame. */
+static __attribute__((noinline)) void
+draw_post(const raster_t* raster, const render_view_t* view, const draw_work_t* work) {
+    if (raster->post != NULL) {
+        FRAME_COST_BEGIN(post_from);
+        r3d_lens_t lens;
+        raster_lens(raster, view, 1, &lens);
+        r3d_lens_set_depth_near(&lens, *work->buffers.depth_near);
+        r3d_span_target_t target = {0};
+        gfx_target_window(&target.rows, &work->buffers.picture, work->first_row, work->end_row);
+        raster->post->draw(&target, &lens, raster->post->user);
+        FRAME_COST_END(post_from, R3D_STAGE_DRAW_NAME);
+    }
+}
+
 /* A NULL stats pointer uses the census list; otherwise each instance is
  * culled. Inlining keeps the draw chain to one entry's stack frame. */
 static inline __attribute__((always_inline)) void
@@ -1027,6 +1042,7 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
         draw_batch(raster, index, work);
         index++;
     } while (first < raster_census_count(raster));
+    draw_post(raster, view, work);
 }
 
 raster_stats_t

@@ -16,6 +16,16 @@ scene_light_transfer_take(const scene_t* scene) {
     return transfer;
 }
 
+static void
+show_lit_skins(scene_t* scene) {
+    for (int r = 0; r < scene->renderer_count; r++) {
+        const scene_row_t e = scene->renderers[r].entity;
+        if (scene->skinned_renderers[e].storage != NULL) {
+            scene_skin_show(scene, e);
+        }
+    }
+}
+
 bool
 scene_lights_allocate(scene_t* scene) {
     bool has_skin = false;
@@ -54,6 +64,7 @@ scene_lights_allocate(scene_t* scene) {
         return false;
     }
     scene->light_transfer = transfer;
+    show_lit_skins(scene);
     return true;
 }
 
@@ -76,13 +87,6 @@ light_attach(scene_t* scene, scene_row_t entity) {
     *light = (scene_light_t){SCENE_LIGHT_DIRECTIONAL, SCENE_LIGHT_COLOR_DEFAULT, SCENE_LIGHT_INTENSITY_DEFAULT};
     scene->light_count++;
     scene_stage_add(scene, entity);
-    for (int r = 0; r < scene->renderer_count; r++) {
-        scene_skinned_renderer_t* skin = &scene->skinned_renderers[scene->renderers[r].entity];
-        if (skin->storage != NULL) {
-            skin->output.mesh.colors = skin->colors;
-            scene->renderers[r].mesh.colors = skin->colors;
-        }
-    }
     return light;
 }
 
@@ -179,4 +183,34 @@ scene_lights_prepare(scene_t* scene) {
         world.table_scale = scene->world_lights.table_scale;
     }
     scene->world_lights = world;
+}
+
+void
+scene_set_probes(entity_t root, const sh_probes_t* probes) {
+    scene_row_t row;
+    scene_root_t* record = scene_entity_lookup(root, &row);
+    if (record == NULL || row != SCENE_ROW_ROOT || record->scene == NULL) {
+        return;
+    }
+    scene_t* scene = record->scene;
+    if (probes != NULL && scene->light_transfer == NULL && !scene_lights_allocate(scene)) {
+        return;
+    }
+    scene->probes = probes;
+    const bool unlit = !scene_is_lit(scene);
+    if (unlit) {
+        memory_free(scene->light_transfer);
+        scene->light_transfer = NULL;
+        scene->world_lights.transfer = NULL;
+    }
+    for (int r = 0; r < scene->renderer_count; r++) {
+        const scene_row_t e = scene->renderers[r].entity;
+        if (unlit) {
+            scene_skin_deactivate(scene, e);
+        }
+        if (scene->skinned_renderers[e].bound) {
+            scene->flags[e] |= SCENE_FLAG_SKIN_DIRTY;
+        }
+    }
+    scene->skins_pending = true;
 }

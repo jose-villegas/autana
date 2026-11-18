@@ -35,3 +35,5 @@ indirect render_context_draw : app_arena_take
 # A recording's sink: the board's stream, the stress suite's and this suite's.
 indirect frame_record_frame : console_framerec.c:sink_write suite_stress_perf.c:discard_frame suite_frame_record.c:take
 indirect scene_allocate_kept scene_allocate_kept_optional : app_arena_take
+
+indirect draw_post : scene_draw.c:post_draw
