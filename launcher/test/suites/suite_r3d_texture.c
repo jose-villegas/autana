@@ -1912,22 +1912,28 @@ static const r3d_span_vertex_t FAR_REACHING[3] = {
 };
 static const vec2f_t FAR_REACHING_UV[3] = {{7.8125F, -1.125F}, {6.375F, 5.75F}, {2.0F, -7.3125F}};
 
+/* The triangle drawn with the default settings whole into target 0 and in
+ * windows of TALL_WINDOW rows into target 1. */
+static void
+draw_whole_and_in_tall_windows(const r3d_span_vertex_t v[3], const vec2f_t uv[3]) {
+    const render_texture_settings_t settings = RENDER_SETTINGS_DEFAULT.texture;
+    r3d_span_target_t whole = target_at(0);
+    r3d_span_set_texture(&whole, &settings);
+    r3d_span_textured_triangle(&whole, &v[0], &v[1], &v[2], uv, texture);
+    for (int row0 = 0; row0 < SIDE; row0 += TALL_WINDOW) {
+        uint16_t* color = buffers + (2 * PIXELS) + ((size_t)row0 * SIDE);
+        r3d_span_target_t window = r3d_span_target(color, color + PIXELS, SIDE, row0, row0 + TALL_WINDOW);
+        r3d_span_set_texture(&window, &settings);
+        r3d_span_textured_triangle(&window, &v[0], &v[1], &v[2], uv, texture);
+    }
+}
+
 static void
 test_four_row_windows_of_a_dividing_triangle_sample_the_whole_ones_texels(void) {
     fixture();
     clear();
     texture->levels = 1; /* the sliver's steep planes would pick a mip of one index; level 0 tells texels apart */
-    const render_texture_settings_t settings = RENDER_SETTINGS_DEFAULT.texture;
-    r3d_span_target_t whole = target_at(0);
-    r3d_span_set_texture(&whole, &settings);
-    r3d_span_textured_triangle(&whole, &FAR_REACHING[0], &FAR_REACHING[1], &FAR_REACHING[2], FAR_REACHING_UV, texture);
-    for (int row0 = 0; row0 < SIDE; row0 += TALL_WINDOW) {
-        uint16_t* color = buffers + (2 * PIXELS) + ((size_t)row0 * SIDE);
-        r3d_span_target_t window = r3d_span_target(color, color + PIXELS, SIDE, row0, row0 + TALL_WINDOW);
-        r3d_span_set_texture(&window, &settings);
-        r3d_span_textured_triangle(&window, &FAR_REACHING[0], &FAR_REACHING[1], &FAR_REACHING[2], FAR_REACHING_UV,
-                                   texture);
-    }
+    draw_whole_and_in_tall_windows(FAR_REACHING, FAR_REACHING_UV);
     TEST_ASSERT_GREATER_THAN_MESSAGE(0, covered_pixels(0), "the sliver draws nothing");
     TEST_ASSERT_EQUAL_UINT16_ARRAY_MESSAGE(buffers, buffers + (2 * PIXELS), PIXELS, "a window's colour differs");
 }
@@ -2069,17 +2075,10 @@ static void
 test_four_row_windows_of_a_floor_of_three_levels_draw_the_whole_ones_pixels(void) {
     fixture();
     clear();
-    const render_texture_settings_t settings = RENDER_SETTINGS_DEFAULT.texture;
     r3d_span_vertex_t v[3];
     vec2f_t uv[3];
     floor_triangle_sized(v, uv, FLOOR_Z_STEEP, vec2f_zero(), FLOOR_SPAN, FLOOR_SPAN);
-    draw_floor(0, settings, FLOOR_Z_STEEP, vec2f_zero());
-    for (int row0 = 0; row0 < SIDE; row0 += TALL_WINDOW) {
-        uint16_t* color = buffers + (2 * PIXELS) + ((size_t)row0 * SIDE);
-        r3d_span_target_t window = r3d_span_target(color, color + PIXELS, SIDE, row0, row0 + TALL_WINDOW);
-        r3d_span_set_texture(&window, &settings);
-        r3d_span_textured_triangle(&window, &v[0], &v[1], &v[2], uv, texture);
-    }
+    draw_whole_and_in_tall_windows(v, uv);
     TEST_ASSERT_GREATER_THAN_MESSAGE(COVERED_MIN, covered_pixels(0), "the floor covers too little to tell");
     TEST_ASSERT_EQUAL_UINT16_ARRAY_MESSAGE(buffers, buffers + (2 * PIXELS), PIXELS, "a window's colour differs");
 }

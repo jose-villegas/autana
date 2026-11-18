@@ -332,6 +332,15 @@ pick_level(const setup_t* su, const r3d_texture_t* texture) {
     return level_for(mathf_max((dudx * dudx) + (dvdx * dvdx), (dudy * dudy) + (dvdy * dvdy)), texture->levels);
 }
 
+/* Puts `su`'s s and t planes, in level-0 texels, in `level`'s, with its sampler. */
+static inline void
+take_level(setup_t* su, const r3d_texture_t* texture, int level) {
+    const float k = mathf_pow2(-level);
+    su->s = (r3d_span_plane_t){su->s.base * k, su->s.dx * k, su->s.dy * k};
+    su->t = (r3d_span_plane_t){su->t.base * k, su->t.dx * k, su->t.dy * k};
+    su->sampler = sampler_at(texture, level);
+}
+
 /* A vertex colour's luminance, 0..255, as an 8.8 level, 255 the last. */
 static inline float
 light_level(const r3d_span_vertex_t* v) {
@@ -402,10 +411,7 @@ set_up_divide(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[
     }
     su->span_level = nearest != farthest;
     if (!su->span_level) {
-        const float k = mathf_pow2(-nearest);
-        su->s = (r3d_span_plane_t){su->s.base * k, su->s.dx * k, su->s.dy * k};
-        su->t = (r3d_span_plane_t){su->t.base * k, su->t.dx * k, su->t.dy * k};
-        su->sampler = sampler_at(texture, nearest);
+        take_level(su, texture, nearest);
     }
 }
 
@@ -427,11 +433,7 @@ set_up(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[CORNERS
     su->depth_max = cap == R3D_DEPTH_NEAREST ? DEPTH_MAX : (((int32_t)cap << R3D_DEPTH_SHIFT) | 0xFF);
     su->s = r3d_span_plane_of(&f, uv[0].x, uv[1].x, uv[2].x);
     su->t = r3d_span_plane_of(&f, uv[0].y, uv[1].y, uv[2].y);
-    const int level = pick_level(su, texture);
-    const float scale = mathf_pow2(-level);
-    su->s = (r3d_span_plane_t){su->s.base * scale, su->s.dx * scale, su->s.dy * scale};
-    su->t = (r3d_span_plane_t){su->t.base * scale, su->t.dx * scale, su->t.dy * scale};
-    su->sampler = sampler_at(texture, level);
+    take_level(su, texture, pick_level(su, texture));
     su->level = r3d_span_plane_of(&f, light_level(v[0]), light_level(v[1]), light_level(v[2]));
     return true;
 }
