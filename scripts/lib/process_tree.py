@@ -1,16 +1,21 @@
 """Start and stop commands as one process tree, so children holding pipes or locks die with them."""
 import contextlib
 import os
+import queue
 import signal
 import subprocess
 import sys
 import threading
+import time
 
 JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
 JOB_OBJECT_LIMIT_BREAKAWAY_OK = 0x800
 JOB_OBJECT_EXTENDED_LIMIT_INFORMATION = 9
 CREATE_SUSPENDED = 0x4
 PR_SET_PDEATHSIG = 1
+WATCH_SECONDS = 0.5
+STOP_SECONDS = 10
+READER_SECONDS = 2
 
 # The environment variable naming the file a stage's guard (local_schedule.guard_stage) times progress by; a
 # tool under the guard calls progressed() each time a task or bake finishes.
@@ -190,8 +195,77 @@ def stop_process_tree(process):
     """Stop a tree started by launch_process_tree, then release its job."""
     terminate_tree(process)
     try:
-        process.wait(timeout=10)
+        process.wait(timeout=STOP_SECONDS)
     except subprocess.TimeoutExpired:
         pass
     finally:
         close_process_tree(process)
+
+
+def run_process_tree(command, timeout=None, *, watch=None, on_line=None, **options):
+    """Run command as one tree to its end, as subprocess.run does without check. Past `timeout` seconds it
+    raises TimeoutExpired carrying the output so far; `watch`, called at least every WATCH_SECONDS, stops the
+    run by raising; `on_line` takes each line of stdout and stderr together, as text, in this thread as it comes.
+    Any exception stops the whole tree first, a stop's own timeout never hiding it; the job is always closed."""
+    if on_line:
+        if {"stdout", "stderr"} & options.keys() or options.get("stdin") == subprocess.PIPE:
+            raise ValueError("on_line reads stdout and stderr itself and writes no stdin")
+        options.update(stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+    deadline = None if timeout is None else time.monotonic() + timeout
+    process = launch_process_tree(command, **options)
+    output = errors = lines = reader = None
+    if on_line:
+        lines = queue.Queue()
+
+        def read():
+            try:
+                for line in process.stdout:
+                    lines.put(line)
+                lines.put(None)
+            except BaseException as error:  # an undecodable line fails the run in the caller's thread
+                lines.put(error)
+        reader = threading.Thread(target=read, daemon=True)
+        reader.start()
+    try:
+        while True:
+            if watch:
+                watch()
+            step = WATCH_SECONDS
+            if deadline is not None:
+                if deadline <= time.monotonic():
+                    raise subprocess.TimeoutExpired(command, timeout)
+                step = min(step, deadline - time.monotonic())
+            if lines is None:
+                with contextlib.suppress(subprocess.TimeoutExpired):
+                    output, errors = process.communicate(timeout=step)
+                    break
+                continue
+            try:
+                line = lines.get(timeout=step)
+            except queue.Empty:
+                continue
+            if isinstance(line, BaseException):
+                raise line
+            if line is not None:
+                on_line(line)
+                continue
+            lines.put(None)  # the end stays seen should the wait time out
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                process.wait(step)
+                break
+    except BaseException as error:
+        with contextlib.suppress(subprocess.TimeoutExpired):
+            stop_process_tree(process)
+        if lines is None:  # drain and close the pipes, unless a holder escaped the tree
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                drained = process.communicate(timeout=READER_SECONDS)
+                if isinstance(error, subprocess.TimeoutExpired):
+                    error.output, error.stderr = drained
+        raise
+    finally:
+        close_process_tree(process)
+        if reader:
+            reader.join(timeout=READER_SECONDS)
+            if not reader.is_alive():
+                process.stdout.close()
+    return subprocess.CompletedProcess(command, process.returncode, output, errors)
