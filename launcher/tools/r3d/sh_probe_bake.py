@@ -121,7 +121,7 @@ def bake(job, scene):
     """SHPR bytes for one import and light rig; classification uses the full source with alpha-tested hits."""
     started = time.perf_counter()
     settings, camera = job.settings, scene.camera.component
-    requested = load(settings.path)
+    requested = load(scene.path)
     source = load_source(settings)
     hit_filter = AlphaTest(source, settings.alpha_keep) if settings.alpha_keep is not None else None
     query = RayQuery(source.p, source.tri_v, hit_filter=hit_filter)

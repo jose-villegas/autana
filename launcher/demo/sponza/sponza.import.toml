@@ -12,7 +12,6 @@ double_sided = ["fabric_a", "fabric_c", "fabric_d", "fabric_e", "fabric_f", "fab
 seed = 1
 
 [geometry]
-sh_probes = {}
 alpha_mask = { keep_alpha = 0.5 }
 thin = { material = "leaf", keep = 0.35 }
 simplify = { dense_edge = 45.0, props = [], props_share = 0.0, seal_seams = true, colour_deviation = 1.0 }

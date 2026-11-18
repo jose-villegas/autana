@@ -1,12 +1,12 @@
 # Baking SH probes
 
-An import's `geometry.sh_probes` requests one scene-level incident-radiance
-grid beside its mesh bakes. The `sh_probes` bake kind writes
+A scene's sibling `<scene>.probes.toml` requests an incident-radiance grid
+beside its mesh bakes. The `sh_probes` bake kind writes
 [`SHPR`](../../assets/formats/SHPR.md), without changing mesh or reference keys.
 
 ```toml
-[geometry]
-sh_probes = { directions = 512, spp = 4 }
+directions = 512
+spp = 4
 ```
 
 | Option | Meaning |

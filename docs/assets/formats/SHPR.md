@@ -7,7 +7,7 @@ The [probe baker](../../../launcher/tools/r3d/sh_probe_bake.py) owns the encodin
 ```mermaid
 ---
 config:
-  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #8fb3ee !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #c7aaee !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #a8d5a2 !important; } g:nth-of-type(3) rect { fill: #a8d5a2 !important; } g:nth-of-type(4) rect { fill: #9edbd5 !important; } g:nth-of-type(5) rect:nth-of-type(1) { fill: #9edbd5 !important; } g:nth-of-type(5) rect:nth-of-type(2) { fill: #f4df8a !important; } g:nth-of-type(6) rect:nth-of-type(1) { fill: #efbb8c !important; } g:nth-of-type(6) rect:nth-of-type(2) { fill: #e3e3e3 !important; } .packetLabel { fill: #1b1b1b !important; }"
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #8fb3ee !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #ffffff !important; stroke-dasharray: 4 3 !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #e3e3e3 !important; } g:nth-of-type(3) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(4) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(5) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(5) rect:nth-of-type(2) { fill: #e3e3e3 !important; } g:nth-of-type(6) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(6) rect:nth-of-type(2) { fill: #ffffff !important; stroke-dasharray: 4 3 !important; } .packetLabel { fill: #1b1b1b !important; }"
   packet:
     bitsPerRow: 8
     bitWidth: 100
@@ -20,13 +20,13 @@ title Header, 40 bytes, one cell a byte
 16-27: "spacing: f32 xyz"
 28-31: "scale: f32"
 32-37: "dims: u16 xyz"
-38-39: "padding"
+38-39: "0 (reserved)"
 ```
 
 ```mermaid
 ---
 config:
-  themeCSS: "g:nth-of-type(2) rect { fill: #8fb3ee !important; } g:nth-of-type(3) rect { fill: #a8d5a2 !important; } g:nth-of-type(4) rect { fill: #efbb8c !important; } g:nth-of-type(5) rect { fill: #c7aaee !important; } .packetLabel { fill: #1b1b1b !important; }"
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(3) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(4) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(5) rect:nth-of-type(1) { fill: #e3e3e3 !important; } .packetLabel { fill: #1b1b1b !important; }"
   packet:
     bitsPerRow: 6
     bitWidth: 120
