@@ -70,6 +70,7 @@ renderer_set_mesh(entity_t entity, const r3d_lit_mesh_t* mesh) {
         return false;
     }
     r->mesh = *mesh;
+    r->resident_arrays = SCENE_RESIDENT_ALL; /* the caller's arrays, drawn where they are */
     if (!given) {
         r->mesh.texturing = cuts ? &block->texturing : NULL;
     }
