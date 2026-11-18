@@ -196,6 +196,29 @@ reference_light(const fixture_t* f, int vertex, uint8_t out[3]) {
 typedef enum { SKIN, DIRECT, RENORMALISED, TABLE, EXACT_SEPARATE, NORMAL_PALETTE, TABLE_BUILD } kernel_t;
 
 static void
+lit_kernel(fixture_t* f, kernel_t kind) {
+    r3d_skin_light_kernel_t function = r3d_skin_clusters_lit;
+    unsigned mode = R3D_SKIN_LIGHT_DIRECT;
+    switch (kind) {
+        case RENORMALISED:
+            function = r3d_skin_clusters_renormalised;
+            mode = R3D_SKIN_LIGHT_RENORMALISED;
+            break;
+        case TABLE:
+            function = r3d_skin_clusters_table;
+            mode = R3D_SKIN_LIGHT_TABLE;
+            break;
+        default: break;
+    }
+    if (f->probes) {
+        r3d_skin_clusters_ambient(&f->skin, &f->bind, f->palette, 0, f->bind.cluster_count, &f->posed, f->normals,
+                                  &f->lights, f->light, &f->ambient, mode);
+    } else {
+        function(&f->skin, &f->bind, f->palette, 0, f->bind.cluster_count, &f->posed, f->normals, &f->lights, f->light);
+    }
+}
+
+static void
 kernel(fixture_t* f, kernel_t kind) {
     if (kind == NORMAL_PALETTE) {
         r3d_skin_normal_palette(f->palette, f->skin.joint_count, mat4f_identity(), f->normals);
@@ -206,19 +229,7 @@ kernel(fixture_t* f, kernel_t kind) {
         return;
     }
     if (kind == DIRECT || kind == RENORMALISED || kind == TABLE) {
-        const r3d_skin_light_kernel_t function = kind == DIRECT         ? r3d_skin_clusters_lit
-                                                 : kind == RENORMALISED ? r3d_skin_clusters_renormalised
-                                                                        : r3d_skin_clusters_table;
-        if (f->probes) {
-            const unsigned mode = kind == DIRECT         ? R3D_SKIN_LIGHT_DIRECT
-                                  : kind == RENORMALISED ? R3D_SKIN_LIGHT_RENORMALISED
-                                                         : R3D_SKIN_LIGHT_TABLE;
-            r3d_skin_clusters_ambient(&f->skin, &f->bind, f->palette, 0, f->bind.cluster_count, &f->posed, f->normals,
-                                      &f->lights, f->light, &f->ambient, mode);
-        } else {
-            function(&f->skin, &f->bind, f->palette, 0, f->bind.cluster_count, &f->posed, f->normals, &f->lights,
-                     f->light);
-        }
+        lit_kernel(f, kind);
         return;
     }
     r3d_skin_clusters(&f->skin, &f->bind, f->palette, 0, f->bind.cluster_count, &f->posed);

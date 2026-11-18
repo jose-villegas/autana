@@ -68,10 +68,38 @@ class SceneEditTests(unittest.TestCase):
         objects = {item["name"]: item for item in json.loads(out)["objects"]}
         self.assertEqual(list(objects), ["ground", "sun", "camera", "box", "lid", "shelf", "pet"])
         self.assertEqual(objects["box"], dict(name="box", parent=None, kind="mesh_renderer", baked=False,
-                                              position=[1.0, 2.0, 3.0], rotation=[0.0] * 3, scale=[1.0] * 3))
+                                              locked=None, position=[1.0, 2.0, 3.0], rotation=[0.0] * 3,
+                                              scale=[1.0] * 3))
         self.assertEqual(objects["lid"]["parent"], "box")
         self.assertTrue(objects["ground"]["baked"])
         self.assertEqual((objects["sun"]["kind"], objects["sun"]["rotation"]), ("light", [40.0, 30.0, 0.0]))
+
+    def test_read_says_why_set_would_refuse_each_object(self):
+        _, out, _ = run("read", self.scene)
+        locked = {item["name"]: item["locked"] for item in json.loads(out)["objects"]}
+        self.assertEqual([name for name, why in locked.items() if why is None], ["box", "lid", "shelf", "pet"])
+        self.assertRegex(locked["ground"], "baked")
+        self.assertRegex(locked["sun"], "light")
+        self.assertRegex(locked["camera"], "camera")
+        # What read says is what set does: each locked object is refused for the reason read gave.
+        for name, why in locked.items():
+            if why is not None:
+                code, _, err = run("set", self.scene, "--set", f"{name}.position=1,2,3")
+                self.assertEqual(code, 1)
+                self.assertIn(why, err)
+
+    def test_read_writes_its_json_to_a_file_when_asked(self):
+        out_path = self.folder / "objects.json"
+        code, out, _ = run("read", self.scene, "-o", out_path)
+        self.assertEqual((code, out), (0, ""))
+        self.assertEqual(json.loads(out_path.read_text(encoding="utf-8")), json.loads(run("read", self.scene)[1]))
+
+    def test_read_into_a_missing_folder_fails_saying_where(self):
+        out_path = self.folder / "missing" / "objects.json"
+        code, out, err = run("read", self.scene, "-o", out_path)
+        self.assertEqual((code, out), (1, ""))
+        self.assertIn("objects.json", err)
+        self.assertNotIn("Traceback", err)
 
     def test_an_existing_value_changes_in_place_and_keeps_its_comment(self):
         before = self.lines()

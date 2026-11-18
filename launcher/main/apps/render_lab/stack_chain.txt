@@ -42,6 +42,3 @@ indirect render_context_draw : app_arena_take
 root test_real_time_frame_profile test
 indirect frame_profile_play : lab_test_profile_frame
 indirect suite_render_lab_frame_profile.c:send : render_lab_console
-
-indirect scene_draw.c:post_draw : scene_capybara_sponza.c:contact scene_stress.c:skin_blob
-indirect scene_draw.c:fill_changed : scene_capybara_sponza.c:contact_bounds scene_stress.c:skin_blob_bounds

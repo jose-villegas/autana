@@ -241,7 +241,7 @@ scene_set_probes(entity_t root, const sh_probes_t* probes) {
         return;
     }
     scene->probes = probes;
-    const bool unlit = probes == NULL && scene->light_count == 0 && scene->ambient_intensity == 0.0F;
+    const bool unlit = !scene_is_lit(scene);
     if (unlit) {
         memory_free(scene->light_transfer);
         scene->light_transfer = NULL;

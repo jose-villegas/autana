@@ -9,6 +9,7 @@
 #include "core/checkpoint.h"
 #include "render_host.h"
 
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -137,8 +138,8 @@ convert_frame(affine2x_t t, bool panel, int out_w, int out_h, int32_t stride, ui
             uint8_t* dst = buf + (size_t)(out_h - 1 - mapped.y) * stride + mapped.x * 3;
             const uint32_t rgb = rgb565be_to_rgb888(pixels[px]);
             dst[0] = (uint8_t)rgb;
-            dst[1] = (uint8_t)(rgb >> 8);
-            dst[2] = (uint8_t)(rgb >> 16);
+            dst[1] = (uint8_t)(rgb >> CHAR_BIT);
+            dst[2] = (uint8_t)(rgb >> (2 * CHAR_BIT));
         }
     }
 }
