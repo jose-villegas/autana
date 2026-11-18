@@ -283,8 +283,8 @@ def take_screenshot(console, out_path):
 TOUCH_SETTLE_S = 0.6
 
 
-def run_suite(console, name):
-    console.send("RUNSUITE %s" % name)
+def run_suite(console, name, tests=None):
+    console.send("RUNSUITE %s %s" % (name, tests) if tests else "RUNSUITE %s" % name)
     for line in console.lines():
         complete = SUITE_COMPLETE_RE.search(line)
         if complete is None or complete.group("name") != name:
@@ -335,8 +335,8 @@ def run_action(console, action):
     words = action.split()
     verb, args = words[0], words[1:]
     try:
-        if verb == "suite" and len(args) == 1:
-            return run_suite(console, args[0])
+        if verb == "suite" and len(args) in (1, 2):
+            return run_suite(console, *args)
         if verb == "screenshot" and len(args) == 1:
             return take_screenshot(console, args[0])
         if verb == "touch" and len(args) == 3 and args[0] in ("down", "up"):
@@ -456,6 +456,9 @@ def parse_args(argv):
     parser.add_argument("--suite", action="append", default=[],
                         help="run this registered suite by name (repeatable); "
                              "needs an image that boots into the shell")
+    parser.add_argument("--test", default=None, metavar="PATTERN[,PATTERN...]",
+                        help="run only each --suite's tests whose name contains "
+                             "a pattern, as the board tool's --test does")
     parser.add_argument("--touch", action="append", default=[],
                         metavar="down|up,X,Y",
                         help="leave this touch sample in place, in panel "
@@ -464,7 +467,7 @@ def parse_args(argv):
                              "answers and the injected sample is all the polling "
                              "task has to read")
     parser.add_argument("--do", action="append", default=[], metavar="ACTION",
-                        help="one step, in order (repeatable): 'suite NAME', "
+                        help="one step, in order (repeatable): 'suite NAME [TESTS]', "
                              "'tap X Y', 'swipe X0 Y0 X1 Y1', 'touch down|up "
                              "X Y', 'tilt AX AY AZ', 'send LINE', 'wait MS', "
                              "'screenshot PNG'. A tap or swipe takes pixels of the "
@@ -494,7 +497,7 @@ def main(argv):
     args = parse_args(argv)
     args.idf_path = args.idf_path or str(idf_path())
 
-    actions = ["suite %s" % name for name in args.suite]
+    actions = [" ".join(["suite", name] + ([args.test] if args.test else [])) for name in args.suite]
     actions += ["touch " + spec.replace(",", " ") for spec in args.touch]
     actions += args.do
     if args.screenshot:
