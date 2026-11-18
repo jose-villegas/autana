@@ -48,22 +48,9 @@ def split_poses(fit, poses):
     multiples of held_out_every_ms (time 0 aside) held out."""
     training, held_out = [], []
     for index, pose in enumerate(poses):
-        (held_out if is_held_out(fit, index * fit.train_every_ms) else training).append(pose)
+        time = index * fit.train_every_ms
+        (held_out if time and time % fit.held_out_every_ms == 0 else training).append(pose)
     return training, held_out
-
-
-def is_held_out(fit, time_ms):
-    """Whether split_poses() holds out the pose at `time_ms`."""
-    return time_ms != 0 and time_ms % fit.held_out_every_ms == 0
-
-
-def training_index(fit, time_ms):
-    """The index among split_poses()'s training poses, and so of the training references, of the pose at
-    `time_ms`; None when that pose is held out or between two training poses."""
-    if time_ms % fit.train_every_ms or is_held_out(fit, time_ms):
-        return None
-    index = time_ms // fit.train_every_ms
-    return index - sum(is_held_out(fit, i * fit.train_every_ms) for i in range(index))
 
 
 def canonical(value):

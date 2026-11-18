@@ -260,12 +260,13 @@ test_the_coverage_knob_overrides_only_the_coverage_cap(void) {
  * unset; the bend knob counts R3D_SPAN_BEND_STEPS to the texel; a reset gives the caller's back. */
 #define CALLER_DIVIDE_PX 7
 #define CALLER_BEND      3.0F
+#define CALLER_FAR_LEVEL 3
 #define KNOB_BEND_STEPS  (3 * R3D_SPAN_BEND_STEPS / 2)
 
 static void
 test_each_texture_knob_overrides_only_its_own_field(void) {
     render_settings_t set = RENDER_SETTINGS_DEFAULT;
-    set.texture = (render_texture_settings_t){CALLER_DIVIDE_PX, CALLER_BEND};
+    set.texture = (render_texture_settings_t){CALLER_DIVIDE_PX, CALLER_BEND, CALLER_FAR_LEVEL};
     render_settings_t expected = set;
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, texture_divide_px), 0));
     expected.texture.divide_px = 0;
@@ -277,6 +278,14 @@ test_each_texture_knob_overrides_only_its_own_field(void) {
     assert_settings(&expected, &used);
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, texture_bend_steps), 0));
     expected.texture.affine_bend = 0.0F;
+    used = render_settings_tuned(&set);
+    assert_settings(&expected, &used);
+    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, texture_far_level), 0));
+    expected.texture.far_level = 0;
+    used = render_settings_tuned(&set);
+    assert_settings(&expected, &used);
+    TEST_ASSERT_TRUE(tune_reset(tune_shared(), TUNE_NAME(render, texture_far_level)));
+    expected.texture.far_level = CALLER_FAR_LEVEL;
     used = render_settings_tuned(&set);
     assert_settings(&expected, &used);
     TEST_ASSERT_TRUE(tune_reset(tune_shared(), TUNE_NAME(render, texture_divide_px)));
@@ -350,7 +359,8 @@ test_a_packs_render_entry_reads_every_field(void) {
                                     (RENDER_SETTINGS_DEFAULT.anim.far_every),
                                     (int16_t)(RENDER_SETTINGS_DEFAULT.anim.hysteresis_px * STEP),
                                     RENDER_TEXTURE_DIVIDE_PX_MAX,
-                                    STEP / 4};
+                                    STEP / 4,
+                                    RENDER_TEXTURE_FAR_LEVEL_MAX};
     render_settings_t read;
     TEST_ASSERT_EQUAL(ASSET_OK, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
     TEST_ASSERT_FALSE(read.cull);
@@ -366,12 +376,13 @@ test_a_packs_render_entry_reads_every_field(void) {
     TEST_ASSERT_EQUAL_FLOAT(0.5F, read.lod.blend_px);
     TEST_ASSERT_EQUAL_INT(RENDER_TEXTURE_DIVIDE_PX_MAX, read.texture.divide_px);
     TEST_ASSERT_EQUAL_FLOAT(0.25F, read.texture.affine_bend);
+    TEST_ASSERT_EQUAL_INT(RENDER_TEXTURE_FAR_LEVEL_MAX, read.texture.far_level);
 }
 
 /* Rows by place: the lod blend pair, then the anim fields (mid_px, far_px, mid_every, far_every, hysteresis_px),
- * then the texture pair (divide_px, affine_bend). */
+ * then the texture fields (divide_px, affine_bend, far_level). */
 enum {
-    TEXTURE_ROWS = 2,
+    TEXTURE_ROWS = 3,
     ANIM_ROWS = 5,
     BLEND_ROW = FIELDS - TEXTURE_ROWS - ANIM_ROWS - 2,
     BLEND_PX_ROW,
@@ -382,6 +393,7 @@ enum {
     HYSTERESIS_PX_ROW,
     DIVIDE_PX_ROW,
     AFFINE_BEND_ROW,
+    FAR_LEVEL_ROW,
 };
 
 /* Rows of zeros but for the anim intervals, whose least is RENDER_ANIM_EVERY_MIN. */
@@ -454,7 +466,7 @@ test_an_anim_interval_outside_its_range_is_refused_unread(void) {
     TEST_ASSERT_EQUAL(ASSET_OK, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
 }
 
-/* A divide spacing or affine bend below none or past its max is refused; each limit itself reads. */
+/* A divide spacing, affine bend or far level below none or past its max is refused; each limit itself reads. */
 static void
 test_a_texture_setting_outside_its_range_is_refused_unread(void) {
     int16_t values[FIELDS];
@@ -462,9 +474,10 @@ test_a_texture_setting_outside_its_range_is_refused_unread(void) {
     values[BLEND_PX_ROW] = STEP;
     values[DIVIDE_PX_ROW] = RENDER_TEXTURE_DIVIDE_PX_MAX;
     values[AFFINE_BEND_ROW] = (int16_t)(RENDER_TEXTURE_BEND_MAX * STEP);
+    values[FAR_LEVEL_ROW] = RENDER_TEXTURE_FAR_LEVEL_MAX;
     render_settings_t read;
     TEST_ASSERT_EQUAL(ASSET_OK, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
-    const int rows[] = {DIVIDE_PX_ROW, AFFINE_BEND_ROW};
+    const int rows[] = {DIVIDE_PX_ROW, AFFINE_BEND_ROW, FAR_LEVEL_ROW};
     for (size_t i = 0; i < sizeof rows / sizeof rows[0]; i++) {
         const int16_t kept = values[rows[i]];
         values[rows[i]] = -1;

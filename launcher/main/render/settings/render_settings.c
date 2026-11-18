@@ -70,6 +70,8 @@ TUNE_OVERRIDE(render, lod_triangle_budget, INT32_MAX);
  * texel; texture_figures.py sets both for its true divide. */
 TUNE_OVERRIDE(render, texture_divide_px, RENDER_TEXTURE_DIVIDE_PX_MAX);
 TUNE_OVERRIDE(render, texture_bend_steps, (int32_t)(RENDER_TEXTURE_BEND_MAX * R3D_SPAN_BEND_STEPS));
+/* Overrides texture.far_level; 0 reads every level's texels. */
+TUNE_OVERRIDE(render, texture_far_level, RENDER_TEXTURE_FAR_LEVEL_MAX);
 
 TUNE_OWNER(anim);
 /* Override the pose-rate tiers in whole pixels and frames; an interval below
@@ -104,7 +106,8 @@ render_settings_tuned(const render_settings_t* set) {
          lod_blend_centipixels == TUNE_UNSET ? s.lod.blend_px : (float)lod_blend_centipixels / LOD_BLEND_CENTI},
         s.anim,
         {tune_override(texture_divide_px, s.texture.divide_px),
-         texture_bend_steps == TUNE_UNSET ? s.texture.affine_bend : (float)texture_bend_steps / R3D_SPAN_BEND_STEPS}};
+         texture_bend_steps == TUNE_UNSET ? s.texture.affine_bend : (float)texture_bend_steps / R3D_SPAN_BEND_STEPS,
+         tune_override(texture_far_level, s.texture.far_level)}};
     render_anim_settings_tune(&tuned.anim);
     return tuned;
 }

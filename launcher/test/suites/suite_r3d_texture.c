@@ -141,13 +141,20 @@ vertex(float x, float y, float z, float grey) {
 }
 
 /* The triangle over the target's top-left half, every corner `grey`, drawn
- * into target `which` with the corners' `uv`. */
+ * into target `which` with the corners' `uv`, levels from `far_level` on
+ * drawing the mean (0: none). */
 static void
-draw_corner(int which, float grey, const vec2f_t uv[3]) {
-    const r3d_span_target_t target = target_at(which);
+draw_corner_far(int which, float grey, const vec2f_t uv[3], int far_level) {
+    r3d_span_target_t target = target_at(which);
+    target.texture_far_level = (uint8_t)far_level;
     const r3d_span_vertex_t a = vertex(0, 0, 0.5F, grey), b = vertex(SIDE, 0, 0.5F, grey),
                             c = vertex(0, SIDE, 0.5F, grey);
     r3d_span_textured_triangle(&target, &a, &b, &c, uv, texture);
+}
+
+static void
+draw_corner(int which, float grey, const vec2f_t uv[3]) {
+    draw_corner_far(which, grey, uv, 0);
 }
 
 static void
@@ -254,6 +261,52 @@ test_minified_triangle_takes_the_matching_level(void) {
     draw_corner(0, UINT8_MAX, uv);
     const int expected = (2 * 16 * 255) / R3D_TEXTURE_ONE;
     TEST_ASSERT_INT_WITHIN(1, expected >> 2, (int)rgb565_g6(rgb565_swap(buffers[(4 * SIDE) + 4])));
+}
+
+/* The fixture's level 2: a minified corner's uv, four texels a pixel, its
+ * level 2 texels all index 2, at bytes from LEVEL_2_OFF. */
+#define LEVEL_2       2
+#define LEVEL_2_OFF   (TEXELS_OFF + 32 + 8)
+#define LEVEL_2_BYTES 2
+#define FAR_GREY      180.0F /* a light between levels, so the dither shows */
+#define DARK_INDEX    1      /* a colour far from the mean */
+static const vec2f_t minified[3] = {{0, 0}, {4 * SIDE, 0}, {0, 4 * SIDE}};
+
+/* A level from far_level on draws the mean at each pixel's dithered light,
+ * the pixels a texel at the mean draws, and reads no texel: its texels are
+ * made dark first. */
+static void
+test_a_far_level_draws_the_mean_where_a_mean_texel_would(void) {
+    fixture();
+    const vec2f_t mean_texel[3] = {{7.5F, 1.5F}, {7.5F, 1.5F}, {7.5F, 1.5F}}; /* texel (7, 1): MEAN_INDEX */
+    clear();
+    draw_corner(1, FAR_GREY, mean_texel);
+    memset(ltex + LEVEL_2_OFF, (DARK_INDEX << 4) | DARK_INDEX, LEVEL_2_BYTES);
+    draw_corner_far(0, FAR_GREY, minified, LEVEL_2);
+    TEST_ASSERT_EQUAL_UINT16_ARRAY(buffers + (2 * PIXELS), buffers, 2 * PIXELS);
+}
+
+/* far_level 0, or one past the triangle's level, reads its texels: the same
+ * pixels either way, unlike far_level at its level. */
+static void
+test_a_level_before_far_level_reads_its_texels(void) {
+    fixture();
+    clear();
+    draw_corner_far(0, FAR_GREY, minified, 0);
+    draw_corner_far(1, FAR_GREY, minified, LEVEL_2 + 1);
+    TEST_ASSERT_EQUAL_UINT16_ARRAY(buffers, buffers + (2 * PIXELS), 2 * PIXELS);
+    draw_corner_far(2, FAR_GREY, minified, LEVEL_2);
+    TEST_ASSERT_FALSE_MESSAGE(memcmp(buffers, buffers + (4 * PIXELS), PIXELS * sizeof *buffers) == 0,
+                              "the far level drew its texels");
+}
+
+/* The mean row is a palette colour at R3D_TEXTURE_ONE lit at each level. */
+static void
+test_the_mean_is_the_mean_colour_at_every_light_level(void) {
+    fixture();
+    for (int l = 0; l < R3D_TEXTURE_LIGHT_LEVELS; l++) {
+        TEST_ASSERT_EQUAL_HEX16(texture->colormap[l][MEAN_INDEX], texture->mean[l]);
+    }
 }
 
 /* Moved texels draw what the entry's did, and the entry is no longer read:
@@ -1567,7 +1620,7 @@ test_near_clipped_textured_triangle_keeps_its_coverage_and_its_pattern(void) {
 
 static render_texture_settings_t
 settings_of(int divide_px, float bend) {
-    return (render_texture_settings_t){divide_px, bend};
+    return (render_texture_settings_t){divide_px, bend, 0}; /* every level reads its texels */
 }
 
 #define FLOOR_SPAN 44 /* the floor's width and height in pixels */
@@ -1756,7 +1809,8 @@ last_pixels_straying(int n, int divide_px) {
     for (int k = 0; k < 2; k++) {
         uint16_t* color = both + (k * 2 * pixels);
         r3d_span_target_t target = r3d_span_target(color, color + pixels, n, 0, SPAN_ROWS);
-        r3d_span_set_texture(&target, &(render_texture_settings_t){k == 0 ? TRUTH_DIVIDE_PX : divide_px, TRUTH_BEND});
+        r3d_span_set_texture(&target,
+                             &(render_texture_settings_t){k == 0 ? TRUTH_DIVIDE_PX : divide_px, TRUTH_BEND, 0});
         r3d_span_textured_triangle(&target, &v[0], &v[1], &v[2], uv, texture);
     }
     int straying = 0;
@@ -2057,13 +2111,17 @@ rig_cleanup(void) {
     cleanup();
 }
 
-static void
-test_the_rasters_texture_settings_reach_the_fill(void) {
+/* The rig's pixels that differ between its floor drawn with `a` and with
+ * `b`, its UVs `scale` times RIG_U_UNITS and RIG_V_UNITS. */
+static int
+rig_pixels_differing(int scale, render_texture_settings_t a, render_texture_settings_t b) {
     fixture();
     raster_rig_t* r = raster_rig_open(rig_floors, 1, 0, RIG_W, RIG_H, sizeof(rig_texturing_t));
     suite_set_test_cleanup(rig_cleanup);
     rig_texturing_t* t = (rig_texturing_t*)r->own;
-    const int16_t uvs[4][2] = {{0, 0}, {RIG_U_UNITS, 0}, {RIG_U_UNITS, RIG_V_UNITS}, {0, RIG_V_UNITS}};
+    const int16_t u = (int16_t)(RIG_U_UNITS * scale);
+    const int16_t v = (int16_t)(RIG_V_UNITS * scale);
+    const int16_t uvs[4][2] = {{0, 0}, {u, 0}, {u, v}, {0, v}};
     memcpy(t->uvs, uvs, sizeof uvs);
     t->cluster_material[0][0] = 0;
     t->cluster_material[0][1] = R3D_TEXTURE_NONE;
@@ -2085,7 +2143,7 @@ test_the_rasters_texture_settings_reach_the_fill(void) {
     render_settings_t set = RENDER_SETTINGS_DEFAULT;
     r->raster.settings = &set;
     for (int k = 0; k < 2; k++) {
-        set.texture = settings_of(k == 0 ? 0 : DIVIDE_PX_16, RENDER_SETTINGS_DEFAULT.texture.affine_bend);
+        set.texture = k == 0 ? a : b;
         const render_view_t view = render_view_fixture(&raster_rig_camera, &r->raster, 0);
         (void)raster_draw(&r->raster, &view);
         drawn[k] = malloc(pixels * sizeof *drawn[k]);
@@ -2098,21 +2156,42 @@ test_the_rasters_texture_settings_reach_the_fill(void) {
     }
     free(drawn[0]);
     free(drawn[1]);
-    TEST_ASSERT_GREATER_THAN_MESSAGE(0, differing, "the raster's divide_px does not reach the textured fill");
+    return differing;
+}
+
+static void
+test_the_rasters_texture_settings_reach_the_fill(void) {
+    const float bend = RENDER_SETTINGS_DEFAULT.texture.affine_bend;
+    TEST_ASSERT_GREATER_THAN_MESSAGE(0, rig_pixels_differing(1, settings_of(0, bend), settings_of(DIVIDE_PX_16, bend)),
+                                     "the raster's divide_px does not reach the textured fill");
+}
+
+/* The floor's UVs this many times longer: it minifies past level 1. */
+#define RIG_FAR_SCALE 8
+
+static void
+test_the_rasters_far_level_reaches_the_fill(void) {
+    render_texture_settings_t far = settings_of(0, RENDER_SETTINGS_DEFAULT.texture.affine_bend);
+    far.far_level = RENDER_SETTINGS_DEFAULT.texture.far_level;
+    TEST_ASSERT_GREATER_THAN_MESSAGE(
+        0, rig_pixels_differing(RIG_FAR_SCALE, settings_of(0, RENDER_SETTINGS_DEFAULT.texture.affine_bend), far),
+        "the raster's far_level does not reach the textured fill");
 }
 
 /* r3d_span_set_texture() keeps the settings' exact values in its bytes. */
 static void
 test_set_texture_keeps_divide_px_and_the_bend_in_steps_and_rounds_a_fine_bend_up(void) {
     r3d_span_target_t t = {0};
-    r3d_span_set_texture(&t, &(render_texture_settings_t){RENDER_TEXTURE_DIVIDE_PX_MAX, RENDER_TEXTURE_BEND_MAX});
+    r3d_span_set_texture(&t, &(render_texture_settings_t){RENDER_TEXTURE_DIVIDE_PX_MAX, RENDER_TEXTURE_BEND_MAX, 0});
     TEST_ASSERT_EQUAL_UINT8(RENDER_TEXTURE_DIVIDE_PX_MAX, t.texture_divide_px);
     TEST_ASSERT_EQUAL_UINT8((int)(RENDER_TEXTURE_BEND_MAX * R3D_SPAN_BEND_STEPS), t.texture_bend_steps);
-    r3d_span_set_texture(&t, &(render_texture_settings_t){1, 1.0F / (2.0F * R3D_SPAN_BEND_STEPS)});
+    r3d_span_set_texture(&t, &(render_texture_settings_t){1, 1.0F / (2.0F * R3D_SPAN_BEND_STEPS), 0});
     TEST_ASSERT_EQUAL_UINT8(1, t.texture_bend_steps);
-    r3d_span_set_texture(&t, &(render_texture_settings_t){0, 1.0F / (4.0F * R3D_SPAN_BEND_STEPS)});
+    r3d_span_set_texture(&t, &(render_texture_settings_t){0, 1.0F / (4.0F * R3D_SPAN_BEND_STEPS), 0});
     TEST_ASSERT_EQUAL_UINT8(0, t.texture_bend_steps);
     TEST_ASSERT_EQUAL_UINT8(0, t.texture_divide_px);
+    r3d_span_set_texture(&t, &(render_texture_settings_t){0, 0.0F, RENDER_TEXTURE_FAR_LEVEL_MAX});
+    TEST_ASSERT_EQUAL_UINT8(RENDER_TEXTURE_FAR_LEVEL_MAX, t.texture_far_level);
 }
 
 /* Both triangles on chart 0, a MASK1 texture, the target with a writer: the
@@ -2406,6 +2485,9 @@ run_r3d_texture_suite(void) {
     RUN_TEST(test_shared_edge_neither_cracks_nor_overlaps);
     RUN_TEST(test_affine_samples_the_texel_under_each_centre);
     RUN_TEST(test_minified_triangle_takes_the_matching_level);
+    RUN_TEST(test_a_far_level_draws_the_mean_where_a_mean_texel_would);
+    RUN_TEST(test_a_level_before_far_level_reads_its_texels);
+    RUN_TEST(test_the_mean_is_the_mean_colour_at_every_light_level);
     RUN_TEST(test_moved_texels_draw_without_the_entry);
     RUN_TEST(test_texel_at_the_mean_draws_the_vertex_colour);
     RUN_TEST(test_entry_rejects_bad_headers);
@@ -2471,6 +2553,7 @@ run_r3d_texture_suite(void) {
     RUN_TEST(test_a_triangle_whole_tiles_away_draws_the_same_pixels);
     RUN_TEST(test_a_bent_mask1_triangle_draws_the_same_at_any_divide_px);
     RUN_TEST(test_the_rasters_texture_settings_reach_the_fill);
+    RUN_TEST(test_the_rasters_far_level_reaches_the_fill);
     RUN_TEST(test_set_texture_keeps_divide_px_and_the_bend_in_steps_and_rounds_a_fine_bend_up);
     RUN_TEST(test_a_mask1_chart_draws_textured_under_a_writer_marking_only_kept_pixels);
     RUN_TEST(test_an_index4_chart_under_a_writer_draws_exactly_as_plain);

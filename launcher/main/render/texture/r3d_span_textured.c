@@ -4,9 +4,10 @@
  * u and v packed in one word. An INDEX4 span divides u and v by depth every
  * texture.divide_px pixels or more (render settings) and steps affine
  * between; 0 steps affine across the span. A pixel is one colormap load: the
- * texel's colour at the vertex light's dithered level. A MASK1 texture's span
- * steps affine, skips the pixels whose texel is 0 and draws the rest in its
- * one colour.
+ * texel's colour at the vertex light's dithered level. An INDEX4 level from
+ * texture.far_level on draws the texture's mean at that level, with no u, v
+ * or texel. A MASK1 texture's span steps affine, skips the pixels
+ * whose texel is 0 and draws the rest in its one colour.
  */
 #include "render/texture/r3d_texture.h"
 
@@ -56,6 +57,7 @@ static const float segment_inverse[] = {0.0F, INVERSE_8(1) INVERSE_8(9) INVERSE_
 _Static_assert(sizeof segment_inverse / sizeof segment_inverse[0] == RENDER_TEXTURE_DIVIDE_PX_MAX + 1,
                "an inverse for every segment length");
 
+_Static_assert(RENDER_TEXTURE_FAR_LEVEL_MAX == R3D_TEXTURE_LEVELS_MAX - 1, "texture.far_level reaches the last level");
 _Static_assert(BAYER4_LEVELS << DITHER_SHIFT == 1 << LIGHT_FRAC, "a threshold stays under one level");
 _Static_assert((1 << (UV_HALF_BITS - UV_FRAC)) == (int)UV_WRAP, "u and v wrap at their integer bits");
 
@@ -97,11 +99,17 @@ kept(const sampler_t* s, uint32_t uv) {
     return bits8_get(s->texels, texel_offset(s, uv));
 }
 
+/* What a pixel's colour comes from. */
+typedef enum {
+    COLOUR_TEXEL, /* the INDEX4 texel under u, v */
+    COLOUR_KEPT,  /* MASK1: colour 1 where the texel is kept, nothing where not */
+    COLOUR_MEAN,  /* the texture's mean: no u, v or texel */
+} colour_t;
+
 /* The colormap row of the level, dithered between levels by the screen's
- * 4x4 Bayer threshold at absolute coordinates; `masked`, only the pixels
- * whose MASK1 texel is kept. */
+ * 4x4 Bayer threshold at absolute coordinates, at the column `from` names. */
 static inline __attribute__((always_inline)) void
-fill_with(uint16_t* depth, uint16_t* color, int count, carry_t* c, const sampler_t* s, int x, int y, bool masked) {
+fill_with(uint16_t* depth, uint16_t* color, int count, carry_t* c, const sampler_t* s, int x, int y, colour_t from) {
     int32_t z = c->z;
     uint32_t uv = c->uv;
     int32_t level = c->level;
@@ -110,15 +118,20 @@ fill_with(uint16_t* depth, uint16_t* color, int count, carry_t* c, const sampler
     const int32_t dlevel = c->dlevel;
     const uint8_t* threshold = bayer4x4[y & (BAYER4_SIDE - 1)];
     const uint16_t (*colormap)[R3D_TEXTURE_COLOURS] = s->texture->colormap;
+    const uint16_t* mean = s->texture->mean;
     for (int i = 0; i < count; i++) {
         const uint16_t zq = (uint16_t)(z >> R3D_DEPTH_SHIFT);
-        if (zq > depth[i] && (!masked || kept(s, uv))) {
+        if (zq > depth[i] && (from != COLOUR_KEPT || kept(s, uv))) {
             const int32_t l = (level + ((int32_t)threshold[(x + i) & (BAYER4_SIDE - 1)] << DITHER_SHIFT)) >> LIGHT_FRAC;
             depth[i] = zq;
-            color[i] = colormap[l][masked ? MASK1_KEPT : texel(s, uv)];
+            color[i] = from == COLOUR_MEAN   ? mean[l]
+                       : from == COLOUR_KEPT ? colormap[l][MASK1_KEPT]
+                                             : colormap[l][texel(s, uv)];
         }
         z += dz;
-        uv += duv;
+        if (from != COLOUR_MEAN) {
+            uv += duv;
+        }
         level += dlevel;
     }
     c->z = z;
@@ -128,13 +141,18 @@ fill_with(uint16_t* depth, uint16_t* color, int count, carry_t* c, const sampler
 
 static __attribute__((noinline)) void
 fill_colormap(uint16_t* depth, uint16_t* color, int count, carry_t* c, const sampler_t* s, int x, int y) {
-    fill_with(depth, color, count, c, s, x, y, false);
+    fill_with(depth, color, count, c, s, x, y, COLOUR_TEXEL);
+}
+
+static __attribute__((noinline)) void
+fill_mean(uint16_t* depth, uint16_t* color, int count, carry_t* c, const sampler_t* s, int x, int y) {
+    fill_with(depth, color, count, c, s, x, y, COLOUR_MEAN);
 }
 
 /* At the flash tail: a cut texture is rare beside a plain one. */
 static RENDER_TAIL_ATTR __attribute__((noinline)) void
 fill_masked(uint16_t* depth, uint16_t* color, int count, carry_t* c, const sampler_t* s, int x, int y) {
-    fill_with(depth, color, count, c, s, x, y, true);
+    fill_with(depth, color, count, c, s, x, y, COLOUR_KEPT);
 }
 
 /* What the set-up hands the row walk. */
@@ -147,6 +165,7 @@ typedef struct {
     int x0, y0;   /* the origin pixel */
     int qx0, qy0; /* the dividing planes' origin pixel: the unclipped box's, alike in every window */
     int divide;   /* pixels between divides, 0 when the triangle steps affine */
+    int mip;      /* the mip level u and v count texels of */
     sampler_t sampler;
 } setup_t;
 
@@ -208,7 +227,7 @@ fill_divided(const setup_t* su, uint16_t* depth, uint16_t* color, int count, car
         const int32_t du = (int32_t)(((s * r * (float)UV_ONE) - u_at) * inverse);
         const int32_t dv = (int32_t)(((t * r * (float)UV_ONE) - v_at) * inverse);
         c->duv = pack_uv(du, 0) + (uint32_t)dv;
-        fill_with(depth + done, color + done, n, c, &su->sampler, x + done, y, false);
+        fill_with(depth + done, color + done, n, c, &su->sampler, x + done, y, COLOUR_TEXEL);
         u_at += (float)(du * n);
         v_at += (float)(dv * n);
         done += n;
@@ -241,6 +260,7 @@ write_kept_runs(const r3d_span_target_t* target, const sampler_t* s, int y, int 
 typedef enum {
     WALK_FILL,    /* the INDEX4 fill, affine */
     WALK_DIVIDED, /* the INDEX4 fill, dividing by depth */
+    WALK_FAR,     /* the INDEX4 fill of a far level: the mean */
     WALK_CUT,     /* the MASK1 fill: kept texels only */
     WALK_WRITE,   /* the target's writers over what a fill walk drew */
 } walk_t;
@@ -248,7 +268,7 @@ typedef enum {
 static inline __attribute__((always_inline)) void
 walk_span(const r3d_span_target_t* target, const setup_t* su, int y, int first, int last, walk_t walk) {
     carry_t c;
-    span_carry(su, y, first, last, walk != WALK_DIVIDED, &c);
+    span_carry(su, y, first, last, walk != WALK_DIVIDED && walk != WALK_FAR, &c);
     if (walk == WALK_WRITE) {
         if (su->sampler.texture->format == R3D_TEXTURE_MASK1) {
             write_kept_runs(target, &su->sampler, y, first, last, &c);
@@ -265,6 +285,8 @@ walk_span(const r3d_span_target_t* target, const setup_t* su, int y, int first, 
         const float fy = (float)(y - su->qy0);
         fill_divided(su, row.depth + first, row.color + first, last - first + 1, &c, plane_at(&su->s, fx, fy),
                      plane_at(&su->t, fx, fy), plane_at(&su->q, fx, fy), first, y);
+    } else if (walk == WALK_FAR) {
+        fill_mean(row.depth + first, row.color + first, last - first + 1, &c, &su->sampler, first, y);
     } else {
         fill_colormap(row.depth + first, row.color + first, last - first + 1, &c, &su->sampler, first, y);
     }
@@ -371,6 +393,7 @@ set_up(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[CORNERS
     su->s = r3d_span_plane_of(&f, uv[0].x, uv[1].x, uv[2].x);
     su->t = r3d_span_plane_of(&f, uv[0].y, uv[1].y, uv[2].y);
     const int level = pick_level(su, texture);
+    su->mip = level;
     const float scale = 1.0F / (float)(1U << level);
     su->s = (r3d_span_plane_t){su->s.base * scale, su->s.dx * scale, su->s.dy * scale};
     su->t = (r3d_span_plane_t){su->t.base * scale, su->t.dx * scale, su->t.dy * scale};
@@ -416,6 +439,12 @@ walk_plain(const r3d_span_target_t* target, const setup_t* su, recti_t box, cons
     walk_rows(target, su, box, v0, v1, v2, long_on_left, WALK_FILL);
 }
 
+static __attribute__((noinline)) void
+walk_far(const r3d_span_target_t* target, const setup_t* su, recti_t box, const r3d_span_vertex_t* v0,
+         const r3d_span_vertex_t* v1, const r3d_span_vertex_t* v2, bool long_on_left) {
+    walk_rows(target, su, box, v0, v1, v2, long_on_left, WALK_FAR);
+}
+
 /* At the flash tail, as fill_divided(). */
 static RENDER_TAIL_ATTR __attribute__((noinline)) void
 walk_divided(const r3d_span_target_t* target, const setup_t* su, recti_t box, const r3d_span_vertex_t* v0,
@@ -439,7 +468,8 @@ walk_writers(const r3d_span_target_t* target, const setup_t* su, recti_t box, co
 }
 
 /* Sets up `texture` over the triangle, then walks its rows: the INDEX4
- * fill or MASK1's cut, then the target's writers over what it drew. */
+ * fill, its far level's mean or MASK1's cut, then the target's writers over
+ * what it drew. */
 void
 r3d_span_textured_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                            const r3d_span_vertex_t* c, const vec2f_t uv[CORNERS], const r3d_texture_t* texture) {
@@ -461,6 +491,8 @@ r3d_span_textured_triangle(const r3d_span_target_t* target, const r3d_span_verte
     FRAME_LAP("r3d.draw.fill");
     if (texture->format == R3D_TEXTURE_MASK1) {
         walk_cut(target, &su, box, v0, v1, v2, long_on_left);
+    } else if (target->texture_far_level != 0 && su.mip >= target->texture_far_level) {
+        walk_far(target, &su, box, v0, v1, v2, long_on_left);
     } else {
         /* A triangle no wider than one segment steps affine: its bend is at
          * most one segment's. */

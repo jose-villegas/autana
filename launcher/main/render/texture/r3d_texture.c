@@ -13,24 +13,32 @@ luma(int r, int g, int b) {
     return ((R3D_TEXTURE_LUMA_R * r) + (R3D_TEXTURE_LUMA_G * g) + (R3D_TEXTURE_LUMA_B * b)) >> R3D_TEXTURE_LUMA_SHIFT;
 }
 
-/* Level l lights colour i as a vertex colour of the tint's hue and
- * luminance l * 255 / (LEVELS - 1) would: the tint, scaled to that
- * luminance, times the pattern. */
+/* Light level l of a pattern colour `rgb` (R3D_TEXTURE_ONE the mean): as a
+ * vertex colour of the tint's hue and luminance l * 255 / (LEVELS - 1)
+ * would, the tint scaled to that luminance, times the pattern. */
+static uint16_t
+lit_colour(const uint8_t tint[3], int tint_luma, const uint8_t rgb[3], int l) {
+    int32_t channel[3];
+    for (int k = 0; k < 3; k++) {
+        /* tint (0..255) * pattern * l * 255 / (LEVELS - 1) / tint_luma */
+        const int64_t albedo = (int64_t)tint[k] * rgb[k];
+        const int64_t lit =
+            (albedo * l * UINT8_MAX) / ((int64_t)R3D_TEXTURE_ONE * (R3D_TEXTURE_LIGHT_LEVELS - 1) * tint_luma);
+        channel[k] = (int32_t)mathi_min((int)lit, UINT8_MAX) << R3D_SPAN_COLOR_FRAC_BITS;
+    }
+    return r3d_span_pack(channel[0], channel[1], channel[2]);
+}
+
+/* Each palette colour and the mean at every light level. */
 static void
 build_colormap(r3d_texture_t* t, const uint8_t* palette, const uint8_t tint[3]) {
+    static const uint8_t mean[3] = {R3D_TEXTURE_ONE, R3D_TEXTURE_ONE, R3D_TEXTURE_ONE};
     const int tint_luma = mathi_max(luma(tint[0], tint[1], tint[2]), 1);
     for (int l = 0; l < R3D_TEXTURE_LIGHT_LEVELS; l++) {
         for (int i = 0; i < r3d_texture_colours(t->format); i++) {
-            int32_t channel[3];
-            for (int k = 0; k < 3; k++) {
-                /* tint (0..255) * pattern * l * 255 / (LEVELS - 1) / tint_luma */
-                const int64_t albedo = (int64_t)tint[k] * palette[(i * R3D_TEXTURE_PALETTE_STRIDE) + k];
-                const int64_t lit =
-                    (albedo * l * UINT8_MAX) / ((int64_t)R3D_TEXTURE_ONE * (R3D_TEXTURE_LIGHT_LEVELS - 1) * tint_luma);
-                channel[k] = (int32_t)mathi_min((int)lit, UINT8_MAX) << R3D_SPAN_COLOR_FRAC_BITS;
-            }
-            t->colormap[l][i] = r3d_span_pack(channel[0], channel[1], channel[2]);
+            t->colormap[l][i] = lit_colour(tint, tint_luma, palette + (i * R3D_TEXTURE_PALETTE_STRIDE), l);
         }
+        t->mean[l] = lit_colour(tint, tint_luma, mean, l);
     }
 }
 

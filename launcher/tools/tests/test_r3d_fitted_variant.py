@@ -17,7 +17,6 @@ try:
     from r3d.fit import stage
     from r3d.fitted_variant import poses_text, split_poses
     from r3d.poses import either_way, parse_poses
-    from r3d.reference_set import training_index
 except ImportError:
     fitted_variant = None
     parse_poses = None
@@ -84,15 +83,6 @@ class FittedVariantTests(unittest.TestCase):
         training, held_out = split_poses(fit, list(range(12)))
         self.assertEqual(held_out, [5, 10])
         self.assertEqual(training, [0, 1, 2, 3, 4, 6, 7, 8, 9, 11])
-
-    def test_a_training_index_is_the_pose_s_place_among_the_training_poses(self):
-        fit = SimpleNamespace(train_every_ms=1000, held_out_every_ms=5000)
-        times = [index * fit.train_every_ms for index in range(13)]
-        training, _ = split_poses(fit, times)
-        for place, time_ms in enumerate(training):
-            self.assertEqual(training_index(fit, time_ms), place)
-        self.assertIsNone(training_index(fit, 5000))  # held out
-        self.assertIsNone(training_index(fit, 1500))  # between two training poses
 
     def test_the_coverage_view_is_as_wide_as_either_orientation(self):
         width, height, lens, near, poses = either_way(184, 224, 0.62, 6.0, ["pose"])
