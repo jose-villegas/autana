@@ -82,7 +82,8 @@ render_lab_test_write_counts(const int64_t sums[RENDER_LAB_TEST_COUNTS], int fra
 
 void
 render_lab_test_replay_pose(const char* tag, entity_t entity, uint32_t duration_ms, int32_t path_ms, const char* row,
-                            const char* quarter, const char* const* stages, int count, int64_t* stage_us) {
+                            const char* quarter, const char* const* stages, int count, int64_t* stage_us,
+                            uint32_t dt_ms) {
     suite_add_test_cleanup(release_pose_line);
     if (pose_line == NULL) {
         pose_line = memory_alloc(sizeof *pose_line, MEMORY_INTERNAL);
@@ -100,7 +101,7 @@ render_lab_test_replay_pose(const char* tag, entity_t entity, uint32_t duration_
     (void)lab_test_frame_dt(0, false, NULL);
     frame_cost_take_clear(); /* forget whatever ran before */
     for (int i = 0; i < FRAME_PROFILE_REPLAY_DRAWS; i++) {
-        (void)lab_test_frame_dt(0, false, NULL);
+        (void)lab_test_frame_dt(dt_ms, false, NULL);
     }
     for (int i = 0; stage_us != NULL && i < count; i++) {
         stage_us[i] = frame_cost_take_mean_us(stages[i], FRAME_PROFILE_REPLAY_DRAWS);

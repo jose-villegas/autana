@@ -1,5 +1,6 @@
 /* scene_mesh: static mesh arrays (positions, triangles, colours) and the
- * batches' copy places kept in one scene-owned PSRAM block. */
+ * batches' copy places, copied into scene-owned PSRAM when a renderer is
+ * first drawn: one take per renderer, an array it shares copied once. */
 #include <assert.h>
 #include <stddef.h>
 #include <string.h>
@@ -16,6 +17,9 @@ static const struct {
     bool per_vertex, colours; /* colours: a batch's copies' sets follow the one opened */
 } mesh_arrays[] = {MESH_ARRAY(positions, true, false), MESH_ARRAY(triangles, false, false),
                    MESH_ARRAY(colors, true, true), MESH_ARRAY(face_colors, false, true)};
+
+#define MESH_ARRAY_COUNT (sizeof mesh_arrays / sizeof mesh_arrays[0])
+_Static_assert(MESH_ARRAY_COUNT <= 8, "a renderer's resident bits fit its byte");
 
 /* Offsets and memcpy avoid aliasing the differently typed pointer-to-const members. */
 static const void*
@@ -39,25 +43,16 @@ mesh_array_is(const scene_renderer_t* r, size_t array, const void* source, size_
     return mesh_array(&r->mesh, mesh_arrays[array].offset) == source && mesh_array_count(r, array) == count;
 }
 
-static bool
-mesh_is_first(const scene_t* scene, int index, size_t array) {
-    const scene_renderer_t* r = &scene->renderers[index];
-    const void* source = mesh_array(&r->mesh, mesh_arrays[array].offset);
-    for (int i = 0; i < index; i++) {
-        if (mesh_array_is(&scene->renderers[i], array, source, mesh_array_count(r, array))) {
-            return false;
-        }
-    }
-    return true;
-}
-
+/* Points every renderer that draws `array` from `source` and is not yet
+ * resident in it at `copy`, so a shared array is copied once. */
 static void
-mesh_array_repoint(scene_t* scene, int index, size_t array, const void* source, void* copy) {
-    const size_t count = mesh_array_count(&scene->renderers[index], array);
-    for (int j = index; j < scene->asset.renderer_count; j++) {
+mesh_array_repoint(scene_t* scene, const scene_renderer_t* r, size_t array, const void* source, void* copy) {
+    const size_t count = mesh_array_count(r, array);
+    for (int j = 0; j < scene->asset.renderer_count; j++) {
         scene_renderer_t* target = &scene->renderers[j];
-        if (mesh_array_is(target, array, source, count)) {
+        if ((target->resident_arrays & (1U << array)) == 0 && mesh_array_is(target, array, source, count)) {
             memcpy((uint8_t*)&target->mesh + mesh_arrays[array].offset, &copy, sizeof copy);
+            target->resident_arrays |= (uint8_t)(1U << array);
         }
     }
 }
@@ -79,29 +74,28 @@ copy_in(void* block, size_t* end, size_t alignment, const void* source, size_t b
     return copy;
 }
 
-/* Lays the copies out from offset 0, copying into `block` when given and
- * telling each copy's source into `told`, when given; `*count` copies. */
+/* Lays renderer `index`'s arrays not yet resident, and its batch's copy
+ * places, out from offset 0, copying into `block` when given and telling
+ * each copy's source into `told`, when given; `*count` copies. */
 static size_t
-resident_walk(scene_t* scene, void* block, asset_copy_t* told, int* count) {
+resident_walk(scene_t* scene, int index, void* block, asset_copy_t* told, int* count) {
+    scene_renderer_t* r = &scene->renderers[index];
     size_t end = 0;
     *count = 0;
-    for (size_t a = 0; a < sizeof mesh_arrays / sizeof mesh_arrays[0]; a++) {
-        for (int i = scene->asset.renderer_count - 1; i >= 0; i--) {
-            const r3d_lit_mesh_t* mesh = &scene->renderers[i].mesh;
-            const void* source = mesh_array(mesh, mesh_arrays[a].offset);
-            if (source == NULL || !mesh_is_first(scene, i, a)) {
-                continue;
-            }
-            const size_t bytes = mesh_array_count(&scene->renderers[i], a) * mesh_arrays[a].size;
-            void* copy = copy_in(block, &end, mesh_arrays[a].alignment, source, bytes, told, count);
-            if (copy != NULL) {
-                mesh_array_repoint(scene, i, a, source, copy);
-            }
+    for (size_t a = 0; a < MESH_ARRAY_COUNT; a++) {
+        const void* source = mesh_array(&r->mesh, mesh_arrays[a].offset);
+        if (source == NULL || (r->resident_arrays & (1U << a)) != 0) {
+            continue;
+        }
+        const size_t bytes = mesh_array_count(r, a) * mesh_arrays[a].size;
+        void* copy = copy_in(block, &end, mesh_arrays[a].alignment, source, bytes, told, count);
+        if (copy != NULL) {
+            mesh_array_repoint(scene, r, a, source, copy);
         }
     }
-    /* What the cull reads of every copy. */
-    for (int i = 0; i < scene->asset.batch_count; i++) {
-        r3d_batch_t* batch = &scene->batches[i];
+    /* What the cull reads of every copy: its renderer's own batch. */
+    if (r->batch != NULL) {
+        r3d_batch_t* batch = r->batch;
         const size_t bytes = sizeof *batch->places * batch->copy_count;
         void* copy = copy_in(block, &end, _Alignof(r3d_copy_place_t), batch->places, bytes, told, count);
         if (copy != NULL) {
@@ -111,33 +105,49 @@ resident_walk(scene_t* scene, void* block, asset_copy_t* told, int* count) {
     return end;
 }
 
-scene_failure_t
-scene_mesh_make_resident(scene_t* scene) {
+bool
+scene_mesh_take(scene_t* scene, int index) {
+    scene_renderer_t* r = &scene->renderers[index];
     int count;
-    const size_t total = resident_walk(scene, NULL, NULL, &count);
+    const size_t total = resident_walk(scene, index, NULL, NULL, &count);
     if (total == 0) {
-        return scene_failure_make(SCENE_OK, ASSET_OK, scene->root->id);
+        r->resident_arrays = SCENE_RESIDENT_ALL;
+        return true;
+    }
+    /* Taken first, so a refusal leaves nothing taken. */
+    r->resident = scene_allocate_kept(total);
+    if (r->resident == NULL) {
+        return false;
     }
     asset_copy_t* told = NULL;
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
     /* The copies' sources, so a frame record names a resident mesh by the
-     * pack entry it copies; without the memory, it names none. Taken first,
-     * so the copies themselves are the scene's last take. */
-    scene->copies = scene_allocate_kept_optional(sizeof *scene->copies + (sizeof *told * (size_t)count));
-    if (scene->copies != NULL) {
-        told = (asset_copy_t*)(void*)(scene->copies + 1);
-        *scene->copies = (asset_copies_t){.copies = told, .count = count};
+     * pack entry it copies; without the memory, it names none. */
+    r->copies = scene_allocate_kept_optional(sizeof *r->copies + (sizeof *told * (size_t)count));
+    if (r->copies != NULL) {
+        told = (asset_copy_t*)(void*)(r->copies + 1);
+        *r->copies = (asset_copies_t){.copies = told, .count = count};
     }
 #endif
-    scene->resident = scene_allocate_kept(total);
-    if (scene->resident == NULL) {
-        return scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, scene->root->id);
-    }
-    (void)resident_walk(scene, scene->resident, told, &count);
+    (void)resident_walk(scene, index, r->resident, told, &count);
+    r->resident_arrays = SCENE_RESIDENT_ALL;
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-    if (scene->copies != NULL) {
-        asset_store_copies_add(scene->copies);
+    if (r->copies != NULL) {
+        asset_store_copies_add(r->copies);
     }
 #endif
-    return scene_failure_make(SCENE_OK, ASSET_OK, scene->root->id);
+    return true;
+}
+
+void
+scene_mesh_release(scene_renderer_t* r) {
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+    if (r->copies != NULL) {
+        asset_store_copies_remove(r->copies);
+        scene_free_kept(r->copies);
+        r->copies = NULL;
+    }
+#endif
+    scene_free_kept(r->resident);
+    r->resident = NULL;
 }
