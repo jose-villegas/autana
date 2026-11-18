@@ -18,6 +18,7 @@ except ImportError:
 
 ROOT = TOOLS.parents[1]
 BISTRO = ROOT / "launcher/demo/bistro/bistro.scene.toml"
+sys.path.insert(0, str(ROOT / "launcher/demo/bistro"))
 
 
 @unittest.skipIf(texture_figures is None, "needs NumPy and Pillow")
@@ -34,7 +35,9 @@ class ReferenceMemberTests(unittest.TestCase):
             texture_figures.reference_member(self.FIT, 4, 1000)
 
     def test_the_bistro_street_sheet_pairs_its_frame_with_its_own_pose(self):
-        fit = texture_figures.object_fit(BISTRO, "street_fitted_full")
+        import bistro_figures
+        street = bistro_figures.STREET
+        fit = texture_figures.object_fit(BISTRO, street[street.index("--object") + 1])
         # LTEX.md's sheet draws frame 10 at 1000 ms, the pose at 11000 ms: training pose 9.
         self.assertEqual(texture_figures.reference_member(fit, 10, 1000), "reference/0009.png")
 

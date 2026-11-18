@@ -282,7 +282,7 @@ test_a_far_level_draws_as_the_plain_fill(void) {
     const r3d_span_vertex_t a = vertex(0, 0, 0.5F, FAR_GREY), b = vertex(SIDE, 0, 0.5F, FAR_GREY),
                             c = vertex(0, SIDE, 0.5F, FAR_GREY);
     r3d_span_triangle(&plain, &a, &b, &c);
-    memset(ltex + LEVEL_2_OFF, (DARK_INDEX << 4) | DARK_INDEX, LEVEL_2_BYTES);
+    memset(ltex + LEVEL_2_OFF, (DARK_INDEX << 4) | DARK_INDEX, LEVEL_2_BYTES); /* magic: two INDEX4 texels a byte */
     draw_corner_far(0, FAR_GREY, minified, LEVEL_2);
     TEST_ASSERT_EQUAL_UINT16_ARRAY(buffers + (2 * PIXELS), buffers, 2 * PIXELS);
 }
