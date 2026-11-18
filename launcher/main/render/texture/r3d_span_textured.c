@@ -55,8 +55,7 @@ static const float segment_inverse[] = {0.0F, INVERSE_8(1) INVERSE_8(9) INVERSE_
 _Static_assert(sizeof segment_inverse / sizeof segment_inverse[0] == RENDER_TEXTURE_DIVIDE_PX_MAX + 1,
                "an inverse for every segment length");
 
-_Static_assert(RENDER_TEXTURE_DIVIDE_LEVELS_MAX == R3D_TEXTURE_LEVELS_MAX,
-               "texture.divide_levels can name every level");
+_Static_assert(RENDER_TEXTURE_LEVEL_MAX == R3D_TEXTURE_LEVELS_MAX - 1, "texture.affine_level can name every level");
 _Static_assert(BAYER4_LEVELS << DITHER_SHIFT == 1 << LIGHT_FRAC, "a threshold stays under one level");
 _Static_assert((1 << (UV_HALF_BITS - UV_FRAC)) == (int)UV_WRAP, "u and v wrap at their integer bits");
 
@@ -465,10 +464,11 @@ r3d_span_textured_triangle(const r3d_span_target_t* target, const r3d_span_verte
         walk_cut(target, &su, box, v0, v1, v2, long_on_left);
     } else {
         /* A triangle no wider than one segment steps affine: its bend is at
-         * most one segment's. So does one reading a level past
-         * texture.divide_levels: its pattern shifts rather than bends. */
+         * most one segment's. So does one reading texture.affine_level
+         * or coarser, when set: its pattern shifts rather than bends. */
         su.divide = 0;
-        if (target->texture_divide_px != 0 && su.mip < target->texture_divide_levels
+        if (target->texture_divide_px != 0
+            && (target->texture_affine_level == 0 || su.mip < target->texture_affine_level)
             && mathi_max(whole.w, whole.h) > target->texture_divide_px) {
             set_up_divide(target, corners, uv, texture, whole, &su);
         }

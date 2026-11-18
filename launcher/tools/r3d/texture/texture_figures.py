@@ -27,9 +27,7 @@ VIEWER = ROOT / "launcher/tools/render/scene_viewer.sh"
 COMPARE = ROOT / "launcher/tools/render/render_compare.py"
 BAKE = ROOT / "launcher/tools/bake/bake.py"
 sys.path.insert(0, str(COMPARE.parent))
-sys.path.insert(0, str(ROOT / "launcher/tools"))
 import render_compare  # noqa: E402
-from build.c_header import read_define  # noqa: E402
 # The reference archive's portrait frames, one PNG per path frame.
 REFERENCE_FRAME = "reference/{frame:04d}.png"
 # The draws compared: whether textured, and its label.
@@ -44,9 +42,8 @@ NEAR_SHARE = 1 / 3
 # the truth so every triangle divides.
 DIVIDE_TUNABLE = "render.texture_divide_px"
 AFFINE_TUNABLE = "render.texture_bend_steps"
-LEVELS_TUNABLE = "render.texture_divide_levels"
-# Every level a texture can have may divide in the truth.
-ALL_LEVELS = read_define(ROOT / "launcher/main/render/settings/render_settings.h", "RENDER_TEXTURE_DIVIDE_LEVELS_MAX")
+# texture.affine_level 0: no level steps affine for its coarseness.
+LEVEL_TUNABLE = "render.texture_affine_level"
 TRUTH = 1
 # Squares the divide sheet zooms on.
 DIVIDE_CROPS = 4
@@ -68,7 +65,7 @@ def draw(args, value, work, divide=None):
     bmp = work / f"{name}.bmp"
     tune = [] if divide is None else ["--set", f"{DIVIDE_TUNABLE}={divide}"]
     if divide == TRUTH:
-        tune += ["--set", f"{AFFINE_TUNABLE}=0", "--set", f"{LEVELS_TUNABLE}={ALL_LEVELS}"]
+        tune += ["--set", f"{AFFINE_TUNABLE}=0", "--set", f"{LEVEL_TUNABLE}=0"]
     run(["sh", VIEWER, args.scene, "--object", args.object, "--quarter", PORTRAIT, "--frames", args.frame + 1,
          "--dt", args.dt, *(["--textured", args.object] if value else []), *tune, "-o", bmp])
     png = work / f"{name}.png"
