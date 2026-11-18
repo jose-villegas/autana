@@ -200,8 +200,9 @@ def main(argv=None):
     if not command:
         parser.error("no command to run")
     command[0] = shutil.which(command[0]) or command[0]
-    if command[0].lower().endswith(".py"):
+    if os.name == "nt" and command[0].lower().endswith(".py"):
         # Windows starts no .py file itself; ESP-IDF's idf.py.exe is absent from some installations.
+        # POSIX runs it by its own #! line.
         command.insert(0, sys.executable)
     return run(command, args.stuck_after)
 

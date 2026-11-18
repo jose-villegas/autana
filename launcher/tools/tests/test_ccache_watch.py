@@ -291,12 +291,16 @@ class LockWatchTests(unittest.TestCase):
 
 
 class CommandTests(unittest.TestCase):
-    def test_python_script_runs_through_the_interpreter(self):
+    """A .py command starts as the platform starts it: Windows through the interpreter, POSIX by its #! line,
+    which for ESP-IDF's stand-ins may be a shell."""
+
+    def test_python_script_runs_where_the_platform_runs_it(self):
         with tempfile.TemporaryDirectory() as scratch:
             script = Path(scratch) / "tool.py"
-            script.write_text("raise SystemExit(5)")
-            with mock.patch.object(ccache_watch, "run", lambda command, stuck_after: command):
-                self.assertEqual(ccache_watch.main([str(script)]), [sys.executable, str(script)])
+            script.write_text("raise SystemExit(5)\n" if os.name == "nt" else "#!/bin/sh\nexit 5\n")
+            script.chmod(0o755)
+            with mock.patch.object(ccache_watch, "cache_dir", lambda: None):
+                self.assertEqual(ccache_watch.main([str(script)]), 5)
 
 
 class UnwatchedTests(unittest.TestCase):
