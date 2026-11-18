@@ -188,9 +188,8 @@ span_carry(const setup_t* su, int y, int first, int last, bool affine, carry_t* 
  * from s = u q, t = v q and q at its first pixel. u and v wrap once at the
  * start and then step in fixed point; each divide aims the next segment's
  * step at the true u and v, unwrapped, from where the steps so far reached.
- * At the flash tail, with the rest of the divide, so the affine path keeps
- * its cache placement. */
-static RENDER_TAIL_ATTR __attribute__((noinline)) void
+ * In IRAM, so the affine path's flash keeps its cache placement. */
+static RENDER_DIVIDE_ATTR __attribute__((noinline)) void
 fill_divided(const setup_t* su, uint16_t* depth, uint16_t* color, int count, carry_t* c, float s, float t, float q,
              int x, int y) {
     float r = mathf_recip_approx(q);
@@ -416,8 +415,8 @@ walk_plain(const r3d_span_target_t* target, const setup_t* su, recti_t box, cons
     walk_rows(target, su, box, v0, v1, v2, long_on_left, WALK_FILL);
 }
 
-/* At the flash tail, as fill_divided(). */
-static RENDER_TAIL_ATTR __attribute__((noinline)) void
+/* In IRAM, as fill_divided(). */
+static RENDER_DIVIDE_ATTR __attribute__((noinline)) void
 walk_divided(const r3d_span_target_t* target, const setup_t* su, recti_t box, const r3d_span_vertex_t* v0,
              const r3d_span_vertex_t* v1, const r3d_span_vertex_t* v2, bool long_on_left) {
     walk_rows(target, su, box, v0, v1, v2, long_on_left, WALK_DIVIDED);
