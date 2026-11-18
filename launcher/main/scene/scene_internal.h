@@ -242,6 +242,7 @@ struct scene {
     int staged_count;
     uint16_t* active_renderers; /* renderers whose entity is ACTIVE, in renderer order */
     int active_renderer_count;
+    int contact_warp_users;
     bool active_renderers_stale; /* an ACTIVE bit flipped since the list was built */
 };
 
@@ -372,6 +373,8 @@ void scene_skin_light_prepare(scene_t* scene, scene_row_t entity);
 bool scene_light_color_fits(vec3f_t linear_rgb);
 r3d_skin_light_transfer_t* scene_light_transfer_take(const scene_t* scene);
 bool scene_lights_allocate(scene_t* scene);
+extern int scene_contact_warp_users;
+
 void scene_lights_prepare(scene_t* scene);
 void scene_skin_range(scene_t* scene, int first, int count);
 void scene_skin_contact_refresh(scene_t* scene, scene_row_t entity);

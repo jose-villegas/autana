@@ -433,8 +433,11 @@ open_asset(const asset_pack_t* pack, const char* id, scene_asset_t* asset) {
     return scene_failure_make(status == ASSET_OK ? SCENE_OK : SCENE_ERR_ASSET, status, id);
 }
 
+int scene_contact_warp_users;
+
 static void
 free_columns(scene_t* scene) {
+    scene_contact_warp_users -= scene->contact_warp_users;
     scene_animation_release(scene);
     memory_free(scene->light_transfer);
     memory_free(scene->lod_bits);

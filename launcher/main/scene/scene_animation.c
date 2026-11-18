@@ -291,8 +291,11 @@ scene_animation_repose(scene_t* scene, uint32_t dt_ms) {
         const scene_row_t e = scene->staged[i];
         if (scene->skinned_renderers[e].storage != NULL && scene->animators[e].posed) {
             r3d_skin_refit_nodes(&scene->skinned_renderers[e].output);
-            scene_renderer_bound(&scene->renderers[scene_renderer_index(scene, e)]);
-            scene_skin_contact_refresh(scene, e);
+            scene_renderer_t* r = &scene->renderers[scene_renderer_index(scene, e)];
+            scene_renderer_bound(r);
+            if (r->contact_blob_shape == SCENE_CONTACT_SHAPE) {
+                scene_skin_contact_refresh(scene, e);
+            }
         }
     }
     FRAME_COST_END(refit_from, SCENE_ANIM_STAGE_REFIT_NAME);

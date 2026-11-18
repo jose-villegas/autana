@@ -124,7 +124,6 @@ scene_skin_take(scene_t* scene, scene_row_t entity, scene_skinned_renderer_t* sk
     skin->model = (mat4f_t*)(void*)((uint8_t*)storage + layout.model);
     skin->palette = (mat4f_t*)(void*)((uint8_t*)storage + layout.palette);
     const scene_animator_t* animator = &scene->animators[entity];
-    (void)skin_contacts_find(&animator->skeleton, &skin->skin, &skin->contacts);
     anim_pose_model(&animator->skeleton, &animator->layer.shown, skin->model);
     r3d_skin_palette(&skin->skin, skin->model, skin->bind.position_scale, skin->palette);
     r3d_skin_clusters(&skin->skin, &skin->bind, skin->palette, 0, skin->bind.cluster_count, &skin->output);
@@ -227,6 +226,9 @@ void
 scene_skin_contact_refresh(scene_t* scene, scene_row_t entity) {
     scene_skinned_renderer_t* skin = &scene->skinned_renderers[entity];
     const scene_renderer_t* r = &scene->renderers[scene_renderer_index(scene, entity)];
+    if (r->contact_blob_shape == SCENE_CONTACT_FEET && skin->storage != NULL) {
+        (void)skin_contacts_find(&scene->animators[entity].skeleton, &skin->skin, &skin->contacts);
+    }
     if (r->contact_blob_shape != SCENE_CONTACT_SHAPE || skin->storage == NULL
         || !(scene->flags[entity] & SCENE_FLAG_ACTIVE) || skin->contact_mask_failed) {
         return;

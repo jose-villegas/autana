@@ -217,6 +217,7 @@ Single discs use a homogeneous squared-distance compare with no per-pixel divide
 
 `scene_set_contact_warp(renderer, warp)` defaults off: footprints stay
 centred at the mover or posed contact joint, with no stretch.
+The capybara-sponza demo uses BLOB with warp off.
 
 ![BLOB, FEET and SHAPE during one run, with warp off and on](../../images/render/contact-warp.gif)
 
