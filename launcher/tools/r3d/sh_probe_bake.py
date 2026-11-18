@@ -9,18 +9,19 @@ import numpy as np
 from r3d.geometry import face_normals
 from r3d.light import AlphaTest
 from r3d.mesh_source import load_source
+from r3d.mitsuba_reference import integrator
 from r3d.path_bake import PathLight, BATCH, SEED
 from r3d.ray_query import RayQuery
-from r3d.sh_probe_settings import DIRECTIONS, SPP, SUFFIX
+from r3d.sh_probe_settings import load
 from r3d.views.probes import classify, probe_points, spacing_for, sphere_directions
 
 VERSION = 1
-DIRECT_INCLUDED = 1
+RESERVED_FLAGS = 0
 CHANNELS = 3
 COEFFICIENTS = 4
 Y00 = 0.5 * math.sqrt(1 / math.pi)
 Y1 = 0.5 * math.sqrt(3 / math.pi)
-HEADER = struct.Struct('<BB3f3f3Hf')
+HEADER = struct.Struct('<HH3f3ff3H2x')
 QUANT_MAX = np.iinfo(np.int16).max
 DIM_MAX = np.iinfo(np.uint16).max
 
@@ -87,16 +88,16 @@ def encode(origin, spacing, dims, coefficients):
     if float(scale) * QUANT_MAX < maximum:
         scale = np.nextafter(scale, np.float32(np.inf))
     quantized = np.rint(coefficients / scale).astype('<i2')
-    return HEADER.pack(VERSION, DIRECT_INCLUDED, *origin, *spacing, *dims, scale) + quantized.tobytes()
+    return HEADER.pack(VERSION, RESERVED_FLAGS, *origin, *spacing, scale, *dims) + quantized.tobytes()
 
 
 def decode(data):
     if len(data) < HEADER.size:
         raise ValueError('truncated SHPR header')
     version, flags, *fields = HEADER.unpack_from(data)
-    origin, spacing, dims, scale = fields[:3], fields[3:6], fields[6:9], fields[9]
+    origin, spacing, dims, scale = fields[:3], fields[3:6], fields[7:10], fields[6]
     expected = HEADER.size + math.prod(dims) * COEFFICIENTS * CHANNELS * np.dtype('<i2').itemsize
-    if version != VERSION or flags != DIRECT_INCLUDED or not all(dims) or len(data) != expected:
+    if version != VERSION or flags != RESERVED_FLAGS or not all(dims) or len(data) != expected:
         raise ValueError('invalid SHPR version, flags, dimensions or length')
     if not np.isfinite([*origin, *spacing, scale]).all() or min(*spacing, scale) <= 0:
         raise ValueError('invalid SHPR origin, spacing or scale')
@@ -120,7 +121,7 @@ def bake(job, scene):
     """SHPR bytes for one import and light rig; classification uses the full source with alpha-tested hits."""
     started = time.perf_counter()
     settings, camera = job.settings, scene.camera.component
-    requested = settings.sh_probes
+    requested = load(scene.path)
     source = load_source(settings)
     hit_filter = AlphaTest(source, settings.alpha_keep) if settings.alpha_keep is not None else None
     query = RayQuery(source.p, source.tri_v, hit_filter=hit_filter)
@@ -129,7 +130,6 @@ def bake(job, scene):
     outside = state != 'inside'
     transport = PathLight(source, scene.lights, settings.double_sided, job.bake.indirect,
                           scene.indirect.albedo_boost)
-    from r3d.mitsuba_reference import integrator
     transport.integrator = transport.mi.load_dict({**integrator(job.bake.indirect.bounces + 1), 'hide_emitters': False})
     directions = sphere_directions(requested.directions)
     coefficients = np.zeros((len(points), COEFFICIENTS, CHANNELS))

@@ -647,7 +647,7 @@ def import_recipe(settings, tools):
     """An import's settings without paths and its sources by content: a credit line or a moved file does not
     rebake, and a .blend counts by its export's key. Its `fit` shapes only fits, so only fit keys count it."""
     recipe = {name: canonical(value) for name, value in vars(settings).items()
-              if name not in ("path", "source", "out_dir", "mesh_dir", "named", "variants", "fit", "sh_probes")}
+              if name not in ("path", "source", "out_dir", "mesh_dir", "named", "variants", "fit")}
     return recipe, {"blend": blend_key(settings, tools)} if is_blend(settings) else source_digest(settings)
 
 
@@ -808,8 +808,9 @@ def bakes_in(packs, jobs, starts=None, poses=None):
             if is_blend(job.settings):
                 export = blend_export(job.settings, tools)
                 exports.setdefault(export.key, export)
-            if scene is not None and getattr(job.settings, "sh_probes", None) is not None:
-                from r3d.sh_probe_settings import recipe, SUFFIX
+            from r3d.sh_probe_settings import load as load_sh_probes, recipe, SUFFIX
+
+            if scene is not None and load_sh_probes(scene.path) is not None:
                 from r3d.scene_name import scene_id
 
                 probe_recipe = recipe(job, scene, import_recipe(job.settings, tools)[1])

@@ -1,12 +1,12 @@
 # Baking SH probes
 
-An import's `geometry.sh_probes` requests one scene-level incident-radiance
-grid beside its mesh bakes. The `sh_probes` bake kind writes
+A scene's sibling `<scene>.probes.toml` requests an incident-radiance grid
+beside its mesh bakes. The `sh_probes` bake kind writes
 [`SHPR`](../../assets/formats/SHPR.md), without changing mesh or reference keys.
 
 ```toml
-[geometry]
-sh_probes = { directions = 512, spp = 4 }
+directions = 512
+spp = 4
 ```
 
 | Option | Meaning |
@@ -26,15 +26,20 @@ seed, alpha threshold, two-sided materials, camera region and near plane,
 scene lights, bounce depth, albedo boost and the reached tool code and pins.
 The payload is a bake artifact; pack loading is a separate consumer.
 
-ProbeViews supplies the camera-region cell grid, jitter, DDGI classification
-and relocation. The record addresses regular cell centres; each cell's
-radiance is sampled at its jittered, relocated position. Inside cells are
-filled by synchronous six-neighbour dilation from outside cells.
+```mermaid
+flowchart LR
+    grid[Grid] --> classify[Classify] --> trace[Trace] --> project[Project]
+    project --> sun[Add sun] --> dilate[Dilate] --> encode[Encode]
+```
 
-A path integrator sees emitters directly and follows the same bounce depth
-as the surface bake. Scene sky radiance and bounced sunlight enter these
-paths. Ambient, artistic indirect intensity, tone mapping and AO do not
-alter the transport coefficients.
+Only the requesting import's source is traced.
+
+ProbeViews supplies the jittered cell grid, classification and relocation.
+The record addresses regular cell centres; tracing uses relocated positions.
+Inside cells receive synchronous six-neighbour dilation from outside cells.
+
+Paths include direct sky and bounced sunlight at the surface bake's bounce depth.
+Ambient, artistic indirect intensity, tone mapping and AO do not alter transport.
 
 For each RGB channel, projection is
 `c_lm = (4*pi/N) sum L(w) Y_lm(w)`. A directional sun contributes
