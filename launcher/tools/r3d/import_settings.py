@@ -272,7 +272,7 @@ def load_process(process, steps):
 def load_geometry(table, steps):
     """The optional steps that decide which source triangles remain."""
     check_keys(table, (), "geometry", optional=("alpha_mask", "thin", "simplify", "meshlet_triangles", "lod", "morph",
-                                                "probes", "budget", "sh_probes"))
+                                                "probes", "budget"))
     steps.meshlet_triangles = count(table.get("meshlet_triangles", MESHLET_TRIANGLES), "geometry.meshlet_triangles")
     steps.lod = boolean(table.get("lod", LOD), "geometry.lod")
     steps.morph = boolean(table.get("morph", MORPH), "geometry.morph")

@@ -3,6 +3,7 @@ import math
 import pathlib
 import struct
 import sys
+import tempfile
 import unittest
 from unittest import mock
 
@@ -34,7 +35,7 @@ class ProbeTests(unittest.TestCase):
         indirect = SimpleNamespace(bounces=2, rays=1)
         job = SimpleNamespace(settings=settings, bake=SimpleNamespace(indirect=indirect))
         colour = np.array([0.4, 0.6, 1.0])
-        scene = SimpleNamespace(lights=[dict(type='sky', color=colour.tolist(), intensity=1.0)],
+        scene = SimpleNamespace(path=None, lights=[dict(type='sky', color=colour.tolist(), intensity=1.0)],
                                 camera=SimpleNamespace(component=SimpleNamespace(near_z=0.001)),
                                 indirect=SimpleNamespace(albedo_boost=1.0))
         lattice = (points, 1.0, points[0], np.ones(3), np.ones(3, dtype=int))
@@ -58,7 +59,7 @@ class ProbeTests(unittest.TestCase):
         settings = SimpleNamespace(path=None, seed=0, alpha_keep=None, double_sided=set())
         indirect = SimpleNamespace(bounces=2)
         job = SimpleNamespace(settings=settings, bake=SimpleNamespace(indirect=indirect))
-        scene = SimpleNamespace(lights=[], camera=SimpleNamespace(component=SimpleNamespace(near_z=0.001)),
+        scene = SimpleNamespace(path=None, lights=[], camera=SimpleNamespace(component=SimpleNamespace(near_z=0.001)),
                                 indirect=SimpleNamespace(albedo_boost=1.0))
         transport = mock.Mock()
         transport._radiance.side_effect = lambda origins, rays, seed: origins
@@ -132,6 +133,41 @@ class ProbeTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 sh.decode(bad)
 
+    def test_scene_sibling_request_keys_only_sh(self):
+        from r3d import sh_probe_settings
+        from r3d.build_pack import pack_jobs
+        from tests.test_bake import AnyStart
+
+        scene_path = bake.REPO / 'launcher/demo/sponza/sponza.scene.toml'
+        packs, jobs = pack_jobs([scene_path])
+        tables = bake.read_lock_tables()
+        poses = bake.Poses(tables['poses'])
+        with tempfile.TemporaryDirectory() as work:
+            scene = pathlib.Path(work) / scene_path.name
+            request = scene.with_name('sponza' + sh_probe_settings.REQUEST_SUFFIX)
+            self.assertIsNone(sh_probe_settings.load(scene))
+            request.write_text('directions = 16\nspp = 1\n', encoding='utf-8')
+            first = sh_probe_settings.load(scene)
+            self.assertEqual(first.directions, 16)
+            request.write_text('directions = 32\nspp = 2\n', encoding='utf-8')
+            second = sh_probe_settings.load(scene)
+
+        def requested(path, value):
+            self.assertEqual(path, scene_path)
+            return value
+
+        with mock.patch.object(sh_probe_settings, 'load', side_effect=lambda path: requested(path, first)):
+            before = bake.bakes_in(packs, jobs, AnyStart(), poses)
+        with mock.patch.object(sh_probe_settings, 'load', side_effect=lambda path: requested(path, second)):
+            after = bake.bakes_in(packs, jobs, AnyStart(), poses)
+        keys = {item.output: item.key for item in before}
+        for item in after:
+            with self.subTest(output=item.output):
+                if item.kind == 'sh_probes':
+                    self.assertNotEqual(keys[item.output], item.key)
+                else:
+                    self.assertEqual(keys[item.output], item.key)
+
     def test_existing_tool_closures_exclude_sh(self):
         forbidden = {'sh_probe_settings.py', 'sh_probe_bake.py'}
         for stage in bake.STAGES:
@@ -152,6 +188,10 @@ class ProbeTests(unittest.TestCase):
             sh.decode(data[:2] + struct.pack('<H', 1) + data[4:])
 
     def test_tool_key_is_local(self):
+        from tests.test_bake import AnyStart
+
+        poses = bake.Poses(bake.read_lock_tables()['poses'])
+        recipes_before = bake.bakes(starts=AnyStart(), poses=poses)
         before = {stage: bake.tool_digest(stage) for stage in bake.STAGES}
         original = bake.code_tokens
         def changed(path, *args, **kwargs):
@@ -160,7 +200,12 @@ class ProbeTests(unittest.TestCase):
         bake.tool_digest.cache_clear()
         with mock.patch.object(bake, 'code_tokens', changed):
             after = {stage: bake.tool_digest(stage) for stage in bake.STAGES}
+            recipes_after = bake.bakes(starts=AnyStart(), poses=poses)
         bake.tool_digest.cache_clear()
+        self.assertEqual({item.output: item.key for item in recipes_before if item.kind != 'sh_probes'},
+                         {item.output: item.key for item in recipes_after if item.kind != 'sh_probes'})
+        self.assertNotEqual([item.key for item in recipes_before if item.kind == 'sh_probes'],
+                            [item.key for item in recipes_after if item.kind == 'sh_probes'])
         self.assertNotEqual(before['sh_probes'], after['sh_probes'])
         self.assertEqual({k: v for k, v in before.items() if k != 'sh_probes'},
                          {k: v for k, v in after.items() if k != 'sh_probes'})

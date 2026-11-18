@@ -1,21 +1,26 @@
-"""Validate and key the import's incident-radiance probe grid request."""
+"""Validate and key a scene's sibling incident-radiance probe grid request."""
 
+import pathlib
 import tomllib
 from types import SimpleNamespace
 
 from r3d.import_settings import SettingsError, check_keys, count, number
+from r3d.scene_name import scene_id
 
 DIRECTIONS = 512
 SPP = 4
 SUFFIX = '.shpr'
+REQUEST_SUFFIX = '.probes.toml'
 
 
 def load(path):
-    with open(path, 'rb') as source:
-        table = tomllib.load(source).get('geometry', {}).get('sh_probes')
-    if table is None:
+    path = pathlib.Path(path)
+    request = path.with_name(scene_id(path) + REQUEST_SUFFIX)
+    if not request.is_file():
         return None
-    where = 'geometry.sh_probes'
+    with request.open('rb') as source:
+        table = tomllib.load(source)
+    where = str(request)
     check_keys(table, (), where, optional=('spacing', 'directions', 'spp'))
     spacing = number(table['spacing'], f'{where}.spacing') if 'spacing' in table else None
     if spacing is not None and spacing <= 0:
@@ -29,9 +34,9 @@ def recipe(job, scene, sources):
     from r3d.reference_set import canonical
 
     if job.bake is None or job.bake.indirect is None:
-        raise SettingsError('geometry.sh_probes needs scene bake.indirect')
+        raise SettingsError('SH probes need scene bake.indirect')
     settings = job.settings
-    return canonical(dict(probes=load(settings.path), sources=sources,
+    return canonical(dict(probes=load(scene.path), sources=sources,
                           seed=settings.seed, alpha_keep=settings.alpha_keep,
                           double_sided=settings.double_sided, camera=scene.camera.component.region,
                           near=scene.camera.component.near_z, lights=scene.lights,
