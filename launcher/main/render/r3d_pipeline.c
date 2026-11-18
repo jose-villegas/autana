@@ -136,6 +136,13 @@ lens_depth_plane(const r3d_lens_t* lens) {
     return (planef_t){{f[0], f[1], f[2]}, f[3]};
 }
 
+/* The view depth of a box's centre. The lens maps ticks, so the bounds
+ * scale is one. */
+static inline float
+centre_depth(planef_t depth, box3s_t bounds) {
+    return planef_distance(depth, box3f_centre(box3f_from_box3s(bounds, 1.0F)));
+}
+
 /* Children go on the stack farthest first, so the nearest pops first and
  * the walk visits leaves roughly front to back. Inlined into each walk: the
  * blending copy made GCC call it from the plain one. */
@@ -148,9 +155,7 @@ push_children(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit_
     assert(n <= R3D_LIT_NODE_CHILDREN_MAX);
     for (int i = 0; i < n; i++) {
         const uint16_t child = (uint16_t)(node->first + i);
-        /* The lens maps ticks, so the bounds scale is one. */
-        const float d = planef_distance(depth, box3f_centre(box3f_from_box3s(mesh->nodes[child].bounds, 1.0F)));
-        children_insert(order, (size_t)i, (child_depth_t){d, child});
+        children_insert(order, (size_t)i, (child_depth_t){centre_depth(depth, mesh->nodes[child].bounds), child});
     }
     assert(top + n <= R3D_LIT_WALK_STACK_MAX);
     for (int i = 0; i < n; i++) {
@@ -258,6 +263,25 @@ r3d_pipeline_cull_cut(const r3d_lit_mesh_t* mesh, const uint32_t* lod_coarse, co
                             : cull_cut(mesh, lod_coarse, blending, planes, depth, out, count, fit, tested);
 }
 
+/* Puts a leaf's kept clusters `kept[0..n)` nearest first, by their box
+ * centres as push_children() orders nodes. The bake lays a leaf's clusters
+ * out in no view's order, and a leaf holds several, so drawn as laid out a
+ * far one often fills pixels a near one then writes again. A leaf holds
+ * few, so each comparison works its neighbour's depth out again. */
+static inline __attribute__((always_inline)) void
+sort_nearest_first(const r3d_lit_mesh_t* mesh, planef_t depth, uint16_t* kept, int n) {
+    for (int i = 1; i < n; i++) {
+        const uint16_t c = kept[i];
+        const float d = centre_depth(depth, mesh->clusters[c].bounds);
+        int at = i;
+        while (at > 0 && centre_depth(depth, mesh->clusters[kept[at - 1]].bounds) > d) {
+            kept[at] = kept[at - 1];
+            at--;
+        }
+        kept[at] = c;
+    }
+}
+
 /* The walk, inlined into one copy per caller as cull_cut() is. */
 static inline __attribute__((always_inline)) int
 cull_walk(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint32_t* lod_coarse, const uint32_t* blending,
@@ -291,7 +315,9 @@ cull_walk(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint32_t* lo
             top = push_children(mesh, lens, node, mask, stack, top);
             continue;
         }
+        const int first = count;
         count = cull_leaf(mesh, lod_coarse, blending, every, node, mask, planes, depth, out, count, fit);
+        sort_nearest_first(mesh, depth, out + first, count - first);
     }
     if (start != 0 && cut) {
         int tested = 0;

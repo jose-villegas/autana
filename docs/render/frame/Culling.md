@@ -54,7 +54,9 @@ There is no far plane. The boxes and the tree are the bake's
   parent's box crossed. A box wholly inside a plane drops it from the mask
   for everything under it, and an empty mask keeps a subtree untested.
 - **Nearest first.** Children go on the stack farthest first, by their box
-  centres' view depth, so leaves come out roughly front to back.
+  centres' view depth, so leaves come out roughly front to back. A leaf's
+  kept clusters are put in the same order, so a near one's depth is there
+  before a far one behind it fills.
 - **Depth bound.** Each kept cluster lowers a bound on the nearest view depth
   of its box inside the frustum, which sets the picture's
   [depth scale](Attachments.md#depth).

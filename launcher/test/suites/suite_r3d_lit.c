@@ -2114,6 +2114,25 @@ draw_parts(const parts_t* p, const r3d_lens_t* lens, const r3d_span_target_t* t,
     free(visible);
 }
 
+/* Three squares in one leaf, laid out far, near, middle: the cull keeps
+ * them nearest first, so the near one's depth is there before the others
+ * fill. */
+static void
+test_a_leafs_clusters_are_kept_nearest_first(void) {
+    enum { FAR_Z = 300, NEAR_Z = 100, MIDDLE_Z = 200, HALF = 50, SQUARES = 3 };
+
+    parts_t* const p = parts_buffer(&shared_parts);
+    parts_begin(p);
+    parts_add_rect(p, -HALF, -HALF, HALF, HALF, FAR_Z, 0);
+    parts_add_rect(p, -HALF, -HALF, HALF, HALF, NEAR_Z, 0);
+    parts_add_rect(p, -HALF, -HALF, HALF, HALF, MIDDLE_Z, 0);
+    const r3d_lens_t lens = look_down_plus_z(0, 0, 1.0f);
+    uint16_t kept[SQUARES];
+    TEST_ASSERT_EQUAL_INT(SQUARES, r3d_pipeline_cull(&p->mesh, &lens, NULL, kept, pipeline_work(), NULL));
+    const uint16_t nearest_first[SQUARES] = {1, 2, 0};
+    TEST_ASSERT_EQUAL_UINT16_ARRAY(nearest_first, kept, SQUARES);
+}
+
 /* One corner 50 away, in front of the camera but behind a near plane at
  * 100; the other two 300 away. The near plane cuts the triangle into a
  * quad whose corners are all on screen. */
@@ -3261,6 +3280,7 @@ run_r3d_lit_suite(void) {
     RUN_TEST(test_a_lens_fitted_to_half_the_width_keeps_the_view);
     RUN_TEST(test_a_face_turned_away_is_culled_unless_double_sided);
     RUN_TEST(test_a_cluster_behind_the_camera_is_culled);
+    RUN_TEST(test_a_leafs_clusters_are_kept_nearest_first);
     RUN_TEST(test_a_floor_crossing_the_near_plane_draws_only_below_the_horizon);
     RUN_TEST(test_a_mesh_with_face_colours_draws_each_triangle_in_its_own);
     RUN_TEST(test_face_colours_survive_a_triangle_clipped_by_the_near_plane);
