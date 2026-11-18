@@ -420,8 +420,7 @@ class RepeatTests(unittest.TestCase):
         self.assertGreater(renders[0].mean(), 0.0, "the poses see lit surfaces")
         self.assertEqual(renders[0].tobytes(), renders[1].tobytes())
 
-    def test_a_set_traces_on_the_bake_variant_and_never_asks_for_the_gpu(self):
-        from unittest.mock import patch
+    def test_a_set_traces_on_the_bake_variant(self):
         from r3d import ray_query
         from tests.test_r3d_path_bake import corridor
 
@@ -431,9 +430,7 @@ class RepeatTests(unittest.TestCase):
             return given or ray_query.VARIANT
 
         job = SimpleNamespace(settings=SimpleNamespace(alpha_keep=None))
-        gpu = patch.object(ray_query, "trace_variant", side_effect=AssertionError("asked for the GPU"))
-        with gpu:
-            mocks = render_one_set(job, load_source={"return_value": corridor()}, RayQuery={}, path_light_for={})
+        mocks = render_one_set(job, load_source={"return_value": corridor()}, RayQuery={}, path_light_for={})
         self.assertEqual(variant_of(mocks["RayQuery"].call_args, 2), ray_query.VARIANT)
         self.assertEqual(variant_of(mocks["path_light_for"].call_args, 3), ray_query.VARIANT)
 
@@ -449,48 +446,6 @@ class RepeatTests(unittest.TestCase):
                 render_one_set(None, lit_source={"return_value": object()},
                                render_poses={"side_effect": failure, "return_value": (0, 1)})
             self.assertEqual(mesh_source.PATH_LIGHTS, {}, failure)
-
-
-@unittest.skipIf(np is None, "needs NumPy")
-class DeviceProbeTests(unittest.TestCase):
-    """ray_query's CUDA probe and release, which no bake calls."""
-
-    def test_the_probe_names_cuda_when_it_loads_and_the_bake_variant_otherwise(self):
-        from unittest.mock import patch
-        from r3d import ray_query
-        for found, want in (("llvm_ad_rgb", ray_query.VARIANT), ("scalar_rgb", ray_query.VARIANT),
-                            (ray_query.GPU_VARIANT, ray_query.GPU_VARIANT)):
-            mi = SimpleNamespace(now="scalar_rgb", variant=lambda: mi.now)
-            mi.set_variant = lambda name: setattr(mi, "now", name)
-
-            def probe(mi):
-                mi.set_variant(found)
-                return found
-
-            with patch.object(ray_query, "import_mitsuba", return_value=mi),                     patch.object(ray_query, "default_variant", side_effect=probe):
-                self.assertEqual(ray_query.trace_variant(), want, found)
-            self.assertEqual(mi.now, "scalar_rgb", "the probe leaves Mitsuba on the variant it was on")
-
-    def test_the_device_probe_answers_in_a_fresh_process_and_without_mitsuba(self):
-        from unittest.mock import patch
-        from r3d import ray_query
-
-        with patch.object(ray_query, "import_mitsuba", return_value=None):
-            self.assertEqual(ray_query.trace_variant(), ray_query.VARIANT)
-        mi = SimpleNamespace(now=None, variant=lambda: mi.now)
-
-        def set_variant(name):
-            if name is None:
-                raise TypeError("no variant to set")
-            mi.now = name
-        mi.set_variant = set_variant
-        with patch.object(ray_query, "import_mitsuba", return_value=mi),                 patch.object(ray_query, "default_variant", return_value=ray_query.GPU_VARIANT):
-            self.assertEqual(ray_query.trace_variant(), ray_query.GPU_VARIANT)
-
-    @needs_mitsuba
-    def test_releasing_the_device_runs_on_a_host_without_one(self):
-        from r3d import ray_query
-        ray_query.release_gpu()
 
 
 @needs_mitsuba

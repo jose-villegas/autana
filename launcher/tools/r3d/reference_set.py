@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 POSE_SPACING = ("train_every_ms", "held_out_every_ms", "coverage_every_ms")
 # A reference set's files, by role: each (poses, references) pair the fit trains on, the poses its prune counts
-# shown pixels over, and the held-out pair that scores a fit; the camera path's, then the probes' (r3d/fit/probes.py).
+# shown pixels over, and the held-out pair that scores a fit; the camera path's, then the probes' (r3d/views/probes.py).
 TRAINING = (("train.txt", "reference"), ("train_landscape.txt", "reference_landscape"))
 COVERAGE = "coverage.txt"
 HELD_OUT = ("held_out.txt", "reference_held_out")
@@ -131,17 +131,25 @@ def prepare_references(inputs, work):
 
 
 def probe_poses(inputs, work, path):
-    """Writes the probes' training and held-out faces (r3d/fit/probes.py) and their record; returns the
-    training faces."""
+    """Writes the probes' training and held-out faces (r3d/views/probes.py) and their record; returns the
+    training faces. An alpha-masked import keeps its masked triangles and lets rays through their cut texels."""
     import json
-    from r3d.fit import probes
-    from r3d.reference_render import lit_source
 
-    camera = inputs.scene().camera.component
+    import numpy as np
+
+    from r3d.light import AlphaTest
+    from r3d.mesh_source import load_source
+    from r3d.ray_query import RayQuery
+    from r3d.views import probes
+
+    settings, camera = inputs.job().settings, inputs.scene().camera.component
     face = probes.PROBE_FACE if inputs.probes.face is None else inputs.probes.face
-    source = lit_source(inputs.job(), inputs.scene(), lit=False)
+    source = load_source(settings, np.float32)
+    query = None
+    if settings.alpha_keep is not None:
+        query = RayQuery(source.p, source.tri_v, hit_filter=AlphaTest(source, settings.alpha_keep))
     training, held_out, record = probes.select(source.p, source.tri_v, camera.region, camera.near_z,
-                                               inputs.probes.spacing, PROBE_SEED, path)
+                                               inputs.probes.spacing, PROBE_SEED, path, query=query)
     for (poses, _), faces in ((PROBE_TRAINING, training), (PROBE_HELD_OUT, held_out)):
         (work / poses).write_text(poses_text(face, face, probes.FACE_LENS, camera.near_z, faces))
     (work / PROBE_RECORD).write_text(json.dumps(record) + "\n")
