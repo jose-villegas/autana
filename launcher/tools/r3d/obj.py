@@ -4,6 +4,8 @@ import os
 import pathlib
 
 TEXTURE_KEYS = ("map_Kd", "map_d")
+# A texture whose every texel's alpha is above this is opaque: nothing of it is cut away.
+ALPHA_OPAQUE = 0.99
 
 
 def load_mtl(path):
@@ -137,6 +139,13 @@ def load_textures(root, materials, names, dtype=None):
         else:
             textures.append(None)
     return textures
+
+
+def alpha_tested(textures):
+    """Per material of `load_textures`: does its texture cut texels away (leaves, chains, glass panes)?"""
+    import numpy as np
+
+    return np.array([tex is not None and tex.levels[0][..., 3].min() <= ALPHA_OPAQUE for tex in textures], dtype=bool)
 
 
 def write_obj(path, mtllib, positions, groups, uvs=None, banner=(), position_decimals=3, uv_decimals=5):
