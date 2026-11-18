@@ -60,7 +60,7 @@
 43534	span_gouraud
 63120	span_masked
 15884	span_solid
-95955	span_textured
+97198	span_textured
 2160	ui_face_alpha
 3836	ui_face_button
 2687	ui_face_caption
