@@ -31,10 +31,12 @@ MAX_VERTICES = 65535  # uint16 indices
 MAX_NODES = 65535
 MAX_TRIANGLES = 65535  # uint16 triangle_first
 MAX_CLUSTERS = 65535  # uint16 leaf first cluster
-MAX_NODE_CHILDREN = 255
 # Children of a node that is not a leaf, as the cull walk sorts them.
 NODE_FANOUT = read_define(pathlib.Path(__file__).resolve().parents[2] / "main/render/r3d_lit_mesh.h",
                           "R3D_LIT_NODE_CHILDREN_MAX")
+# Clusters of a leaf, as the cull walk orders them; the runtime refuses a larger leaf.
+LEAF_CLUSTERS_MAX = read_define(pathlib.Path(__file__).resolve().parents[2] / "main/render/r3d_lit_mesh.h",
+                                "R3D_LIT_LEAF_CLUSTERS_MAX")
 # Edges from the root to the deepest leaf the runtime's walk stack holds.
 TREE_DEPTH_MAX = read_define(pathlib.Path(__file__).resolve().parents[2] / "main/render/r3d_lit_mesh.h",
                              "R3D_LIT_TREE_DEPTH_MAX")
@@ -157,7 +159,7 @@ def assemble(q, col, entries, position_scale, leaf_triangles, groups=None):
 
     def tree(items):
         # two_trees() adds a root above the finest tree, which costs one level of the depth limit.
-        root = build_tree(lo[items], hi[items], weights[items], leaf_triangles, MAX_NODE_CHILDREN, NODE_FANOUT,
+        root = build_tree(lo[items], hi[items], weights[items], leaf_triangles, LEAF_CLUSTERS_MAX, NODE_FANOUT,
                           TREE_DEPTH_MAX - int(coarse.any()))
         order, nodes = flatten_tree(root)
         return [int(items[i]) for i in order], nodes
@@ -184,11 +186,11 @@ def assemble(q, col, entries, position_scale, leaf_triangles, groups=None):
 
 def run_tree(items, weights, leaf_weight):
     """(order, nodes): `items` kept in their order, under leaves of
-    consecutive items up to `leaf_weight` (and MAX_NODE_CHILDREN items), and
+    consecutive items up to `leaf_weight` (and LEAF_CLUSTERS_MAX items), and
     those under nodes of up to NODE_FANOUT children, breadth first."""
     leaves, start, weight = [], 0, 0
     for i, item in enumerate(items):
-        if i > start and (weight + weights[item] > leaf_weight or i - start == MAX_NODE_CHILDREN):
+        if i > start and (weight + weights[item] > leaf_weight or i - start == LEAF_CLUSTERS_MAX):
             leaves.append({"leaf": True, "first": start, "count": i - start})
             start, weight = i, 0
         weight += weights[item]
@@ -285,7 +287,7 @@ def validate(pos, rgb, tris, clusters, nodes, face_colors=None):
     while stack:
         index, depth = stack.pop()
         node = nodes[index]
-        assert node["count"] <= MAX_NODE_CHILDREN
+        assert node["count"] <= (LEAF_CLUSTERS_MAX if node["leaf"] else NODE_FANOUT), "a node holds more than the walk"
         assert depth <= TREE_DEPTH_MAX, "the tree is deeper than the runtime walks"
         if node["leaf"]:
             reached[node["first"] : node["first"] + node["count"]] += 1
