@@ -301,6 +301,14 @@ scene_bounds(entity_t entity) {
     return bounds;
 }
 
+/* Not inlined: the log's arguments stay out of the draw's frame, which every
+ * span below it stands on. */
+static __attribute__((noinline)) void
+log_refused(const scene_t* scene) {
+    ESP_LOGE("scene", "no memory to draw '%s' (%u bytes free, largest block %u); it stays blank", scene->root->id,
+             (unsigned)app_heap_free_bytes(), (unsigned)app_heap_largest_block());
+}
+
 static void
 draw_active(uint32_t dt_ms, int quarter, int width, int height) {
     scene_t* scene = active.scene;
@@ -325,8 +333,7 @@ draw_active(uint32_t dt_ms, int quarter, int width, int height) {
         }
     }
     if (!rendered && !refused) {
-        ESP_LOGE("scene", "no memory to draw '%s' (%u bytes free, largest block %u); it stays blank", scene->root->id,
-                 (unsigned)app_heap_free_bytes(), (unsigned)app_heap_largest_block());
+        log_refused(scene);
         refused = true;
     }
 }
