@@ -9,7 +9,7 @@ drawn after the geometry.
 
 ## Placing a disc
 
-`scene_set_contact_blob(renderer, ground_y, strength)` puts a disc on the
+[`scene_set_contact_blob(renderer, ground_y, strength)`](../../../launcher/main/scene/scene.h) puts a disc on the
 plane `y = ground_y`, under the centre of the renderer's world bounds, with
 a radius of the bounds' smaller horizontal half extent. A strength of 0
 turns it off; `SCENE_CONTACT_BLOB_STRENGTH_DEFAULT` is 0.75.
