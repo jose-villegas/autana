@@ -2114,23 +2114,97 @@ draw_parts(const parts_t* p, const r3d_lens_t* lens, const r3d_span_target_t* t,
     free(visible);
 }
 
+/* Squares facing the camera, at the depths the order tests set them. */
+enum { SQUARE_HALF = 50, SQUARE_OFF_SCREEN = 5000 };
+
+static void
+parts_add_square(parts_t* p, int x, int z) {
+    parts_add_rect(p, x - SQUARE_HALF, -SQUARE_HALF, x + SQUARE_HALF, SQUARE_HALF, z, 0);
+}
+
+/* The order the cull keeps p's clusters in, seen from the origin down +z;
+ * returns how many it keeps. */
+static int
+kept_order(const parts_t* p, uint16_t* kept) {
+    const r3d_lens_t lens = look_down_plus_z(0, 0, 1.0f);
+    return r3d_pipeline_cull(&p->mesh, &lens, NULL, kept, pipeline_work(), NULL);
+}
+
 /* Three squares in one leaf, laid out far, near, middle: the cull keeps
  * them nearest first, so the near one's depth is there before the others
  * fill. */
 static void
 test_a_leafs_clusters_are_kept_nearest_first(void) {
-    enum { FAR_Z = 300, NEAR_Z = 100, MIDDLE_Z = 200, HALF = 50, SQUARES = 3 };
+    enum { FAR_Z = 300, NEAR_Z = 100, MIDDLE_Z = 200, SQUARES = 3 };
 
     parts_t* const p = parts_buffer(&shared_parts);
     parts_begin(p);
-    parts_add_rect(p, -HALF, -HALF, HALF, HALF, FAR_Z, 0);
-    parts_add_rect(p, -HALF, -HALF, HALF, HALF, NEAR_Z, 0);
-    parts_add_rect(p, -HALF, -HALF, HALF, HALF, MIDDLE_Z, 0);
-    const r3d_lens_t lens = look_down_plus_z(0, 0, 1.0f);
+    parts_add_square(p, 0, FAR_Z);
+    parts_add_square(p, 0, NEAR_Z);
+    parts_add_square(p, 0, MIDDLE_Z);
     uint16_t kept[SQUARES];
-    TEST_ASSERT_EQUAL_INT(SQUARES, r3d_pipeline_cull(&p->mesh, &lens, NULL, kept, pipeline_work(), NULL));
+    TEST_ASSERT_EQUAL_INT(SQUARES, kept_order(p, kept));
     const uint16_t nearest_first[SQUARES] = {1, 2, 0};
     TEST_ASSERT_EQUAL_UINT16_ARRAY(nearest_first, kept, SQUARES);
+}
+
+/* Squares at one depth keep the order the bake laid them out in, behind a
+ * nearer one: equal depths are not swapped. */
+static void
+test_a_leafs_clusters_at_one_depth_keep_their_order(void) {
+    enum { TIED_Z = 200, NEAR_Z = 100, APART = 150, SQUARES = 3 };
+
+    parts_t* const p = parts_buffer(&shared_parts);
+    parts_begin(p);
+    parts_add_square(p, -APART, TIED_Z);
+    parts_add_square(p, APART, TIED_Z);
+    parts_add_square(p, 0, NEAR_Z);
+    uint16_t kept[SQUARES];
+    TEST_ASSERT_EQUAL_INT(SQUARES, kept_order(p, kept));
+    const uint16_t nearest_first[SQUARES] = {2, 0, 1};
+    TEST_ASSERT_EQUAL_UINT16_ARRAY(nearest_first, kept, SQUARES);
+}
+
+/* A square off screen between a far and a near one in a leaf: the two
+ * kept come out nearest first, and nothing stands in for the dropped one. */
+static void
+test_a_leafs_kept_clusters_are_ordered_without_those_culled(void) {
+    enum { FAR_Z = 300, NEAR_Z = 100, MIDDLE_Z = 200, SQUARES = 3, KEPT = 2 };
+
+    parts_t* const p = parts_buffer(&shared_parts);
+    parts_begin(p);
+    parts_add_square(p, 0, FAR_Z);
+    parts_add_square(p, SQUARE_OFF_SCREEN, MIDDLE_Z);
+    parts_add_square(p, 0, NEAR_Z);
+    uint16_t kept[SQUARES];
+    TEST_ASSERT_EQUAL_INT(KEPT, kept_order(p, kept));
+    const uint16_t nearest_first[KEPT] = {2, 0};
+    TEST_ASSERT_EQUAL_UINT16_ARRAY(nearest_first, kept, KEPT);
+}
+
+/* Two leaves under a root: the first's centre is nearer, though it holds
+ * the farthest square. Each leaf's clusters are ordered among themselves
+ * and the leaves keep the walk's order: the order is not one sort of all
+ * kept clusters. */
+static void
+test_leaves_are_ordered_apart(void) {
+    enum { FIRST_NEAR_Z = 100, FIRST_FAR_Z = 400, SECOND_NEAR_Z = 300, SECOND_FAR_Z = 320, SQUARES = 4, LEAF = 2 };
+
+    parts_t* const p = parts_buffer(&shared_parts);
+    parts_begin(p);
+    parts_add_square(p, 0, FIRST_FAR_Z);
+    parts_add_square(p, 0, FIRST_NEAR_Z);
+    parts_add_square(p, 0, SECOND_FAR_Z);
+    parts_add_square(p, 0, SECOND_NEAR_Z);
+    r3d_lit_node_t nodes[3] = {{p->node.bounds, 1, 2, false},
+                               {box3s_union(p->clusters[0].bounds, p->clusters[1].bounds), 0, LEAF, true},
+                               {box3s_union(p->clusters[2].bounds, p->clusters[3].bounds), LEAF, LEAF, true}};
+    p->mesh.nodes = nodes;
+    p->mesh.node_count = 3;
+    uint16_t kept[SQUARES];
+    TEST_ASSERT_EQUAL_INT(SQUARES, kept_order(p, kept));
+    const uint16_t leaf_by_leaf[SQUARES] = {1, 0, 3, 2};
+    TEST_ASSERT_EQUAL_UINT16_ARRAY(leaf_by_leaf, kept, SQUARES);
 }
 
 /* One corner 50 away, in front of the camera but behind a near plane at
@@ -3281,6 +3355,9 @@ run_r3d_lit_suite(void) {
     RUN_TEST(test_a_face_turned_away_is_culled_unless_double_sided);
     RUN_TEST(test_a_cluster_behind_the_camera_is_culled);
     RUN_TEST(test_a_leafs_clusters_are_kept_nearest_first);
+    RUN_TEST(test_a_leafs_clusters_at_one_depth_keep_their_order);
+    RUN_TEST(test_a_leafs_kept_clusters_are_ordered_without_those_culled);
+    RUN_TEST(test_leaves_are_ordered_apart);
     RUN_TEST(test_a_floor_crossing_the_near_plane_draws_only_below_the_horizon);
     RUN_TEST(test_a_mesh_with_face_colours_draws_each_triangle_in_its_own);
     RUN_TEST(test_face_colours_survive_a_triangle_clipped_by_the_near_plane);
