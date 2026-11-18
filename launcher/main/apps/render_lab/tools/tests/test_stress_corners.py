@@ -121,7 +121,7 @@ class StressCorners(unittest.TestCase):
         self.assertEqual({"open", "stack", "tiny-copies", "big-tris", "per-frame", "two-sided", "noisy-tiny", "mix",
                           "static-copies", "uniform-mid", "uniform-full", "card", "culled", "near",
                           "few-copies", "textured", "record", "foliage-near", "foliage-near-opaque", "foliage-far",
-                          "foliage-far-opaque", "skinned-sh-blobs", "skinned-feet-blobs", "skinned-shape-blobs", "skinned-shape-warped",
+                          "foliage-far-opaque", "skinned-sh-blobs", "skinned-feet-blobs", "skinned-shape-blobs", "skinned-shape-warped", "contact-blobs",
                           "cull-setup", "baked-tree"}, set(preset_copies()))
 
     def test_the_baked_ring_is_culled_through_its_tree(self):

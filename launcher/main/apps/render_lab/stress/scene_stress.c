@@ -48,6 +48,7 @@ static uint32_t wave_ms;
 #define STRESS_PROBE_UP                0.25F
 #define STRESS_CONTACT_LIGHT_ELEVATION (35.0F * MATH_PI / 180.0F)
 #define STRESS_GROUND_WIDTH_SCALE      1.5F
+#define STRESS_GROUND_ROTATION         (-0.25F * MATH_TAU)
 static int16_t probe_coefficients[STRESS_PROBE_COUNT][SH_PROBES_COMPONENTS];
 static sh_probes_t probes;
 static int skinned_count;
@@ -228,6 +229,47 @@ static_shape(void) {
     return shape;
 }
 
+static transformf_t
+copy_local(int i, stress_framing_t seen, const transformf_t* shape) {
+    transformf_t place = stress_copy_place(shown, i, seen);
+    if (shown->surface == STRESS_SURFACE_STATIC || stress_skinned(shown)) {
+        place = transformf_compose(&place, shape);
+    }
+    if (shown->surface == STRESS_SURFACE_CONTACT_BLOBS) {
+        place.rotation = quatf_from_axis_angle(vec3f_unit_x(), STRESS_GROUND_ROTATION);
+    }
+    return place;
+}
+
+static void
+copy_extras(int i) {
+    if (shown->surface == STRESS_SURFACE_CONTACT_BLOBS) {
+        scene_set_contact_blob(slots[i], transform_world(slots[i]).position.y, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT,
+                               SCENE_CONTACT_BLOB);
+    }
+    if (stress_skinned(shown)) {
+        const box3f_t bounds = scene_bounds(slots[i]);
+        const vec3f_t span = vec3f_sub(bounds.hi, bounds.lo);
+        const float width = fmaxf(span.x, span.z) * STRESS_GROUND_WIDTH_SCALE;
+        transformf_t floor = transformf_identity();
+        floor.position = box3f_centre(bounds);
+        floor.position.y = bounds.lo.y;
+        floor.rotation = quatf_from_axis_angle(vec3f_unit_x(), STRESS_GROUND_ROTATION);
+        floor.scale = (vec3f_t){width, width, width};
+        transform_set_local(grounds[i], floor);
+        static const scene_contact_shape_t contact_shapes[] = {
+            [STRESS_SURFACE_SKINNED_SH_BLOBS] = SCENE_CONTACT_BLOB,
+            [STRESS_SURFACE_SKINNED_SHAPE_BLOBS] = SCENE_CONTACT_SHAPE,
+            [STRESS_SURFACE_SKINNED_FEET_BLOBS] = SCENE_CONTACT_FEET,
+            [STRESS_SURFACE_SKINNED_SHAPE_WARPED] = SCENE_CONTACT_SHAPE};
+        const entity_t subject = entity_find(slots[i], name_hash(CAPYBARA_SUBJECT));
+        scene_set_contact_blob(subject, floor.position.y, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT,
+                               contact_shapes[shown->surface]);
+        scene_set_contact_warp(subject, shown->surface == STRESS_SURFACE_SKINNED_SHAPE_WARPED);
+        entity_set_enabled(grounds[i], true);
+    }
+}
+
 /* The arrangement is sized to where the camera's swing starts, and turned
  * about the origin's up so its +z faces it there. */
 static void
@@ -247,33 +289,9 @@ place_copies(void) {
         const bool used = i < shown->copies;
         entity_set_enabled(slots[i], used);
         if (used) {
-            transformf_t place = stress_copy_place(shown, i, seen);
-            if (shown->surface == STRESS_SURFACE_STATIC || stress_skinned(shown)) {
-                place = transformf_compose(&place, &shape);
-            }
+            const transformf_t place = copy_local(i, seen, &shape);
             transform_set_local(slots[i], transformf_compose(&facing, &place));
-            if (stress_skinned(shown)) {
-                const box3f_t bounds = scene_bounds(slots[i]);
-                const vec3f_t span = vec3f_sub(bounds.hi, bounds.lo);
-                const float width = fmaxf(span.x, span.z) * STRESS_GROUND_WIDTH_SCALE;
-                transformf_t floor = transformf_identity();
-                floor.position = box3f_centre(bounds);
-                floor.position.y = bounds.lo.y;
-                floor.rotation = quatf_from_axis_angle(vec3f_unit_x(), -0.25F * MATH_TAU);
-                floor.scale = (vec3f_t){width, width, width};
-                transform_set_local(grounds[i], floor);
-                static const scene_contact_shape_t contact_shapes[] = {
-                    [STRESS_SURFACE_SKINNED_SH_BLOBS] = SCENE_CONTACT_BLOB,
-                    [STRESS_SURFACE_SKINNED_SHAPE_BLOBS] = SCENE_CONTACT_SHAPE,
-                    [STRESS_SURFACE_SKINNED_SHAPE_WARPED] = SCENE_CONTACT_SHAPE,
-                    [STRESS_SURFACE_SKINNED_FEET_BLOBS] = SCENE_CONTACT_FEET};
-                scene_set_contact_blob(entity_find(slots[i], name_hash(CAPYBARA_SUBJECT)), floor.position.y,
-                                       SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, contact_shapes[shown->surface]);
-                scene_set_contact_warp(entity_find(slots[i], name_hash(CAPYBARA_SUBJECT)),
-                                       shown->surface == STRESS_SURFACE_SKINNED_SHAPE_WARPED);
-
-                entity_set_enabled(grounds[i], true);
-            }
+            copy_extras(i);
         }
     }
 }

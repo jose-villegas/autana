@@ -197,7 +197,13 @@ job's stack; scenes keep no per-entity SH cache.
 
 `scene_set_contact_blob(renderer, ground_y, strength, shape)` draws planar
 contact shadows after geometry, before composition. Zero strength disables
-them. The light-directed projection follows Blinn's planar-shadow idea.<sup>[[130]](../../Citations.md#blinn-1988)</sup>
+them. The projection follows Blinn's planar-shadow idea.<sup>[[130]](../../Citations.md#blinn-1988)</sup>
+
+Contact shadows share geometry's lens and depth scale. Covered pixels
+halve their RGB565 channels.
+
+Rows are bounded by the near-clipped footprint; off-screen or behind-camera discs visit nothing.
+Single discs use a homogeneous squared-distance compare with no per-pixel divide, including stretched ellipses.
 
 ![BLOB and SHAPE under the same low contact light](../../images/render/contact-shape.png)
 
@@ -225,8 +231,8 @@ contact spacing. Joint height changes neither radius nor strength.
 The receiver scene’s brightest directional light wins, then another drawn
 scene’s light, the mover’s sampled SH L1 dominant direction, or overhead.
 
-Each pixel intersects the ground plane and maps through two rectangle
-dots to a mask byte or disc falloff. Overlapping footprints use maximum coverage; one Bayer test chooses a RGB565 halve.
+FEET and SHAPE map ground-plane intersections to disc falloff or mask bytes.
+Overlapping footprints use maximum coverage and darken each pixel once.
 SHAPE uses integer byte thresholds and has no height fade.
 
 Draw and partial redraw use the union of the same footprints. Their projected
