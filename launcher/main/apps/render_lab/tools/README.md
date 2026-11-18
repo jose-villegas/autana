@@ -179,7 +179,7 @@ the presets vary the copies' geometry, layout and colour modes.
 ![Butterfly wing motion](../../../../../docs/images/overview/render-lab-butterflies.gif)
 
 The butterfly pack uses unbaked vertex colour. Its wing outline traces
-miziziziz's CC0 texture<sup>[[128]](../../../../../docs/Citations.md#miziziziz-butterfly-2019)</sup>.
+miziziziz's CC0 texture<sup>[[129]](../../../../../docs/Citations.md#miziziziz-butterfly-2019)</sup>.
 `scene_stress.c` feeds a fixed sine flap, one phase per copy, to `hinge_pose`.
 
 A change is judged by each preset's own readout, stage by stage. The sum over
