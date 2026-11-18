@@ -27,7 +27,6 @@
 #include "render_watch.h"
 #include "ui/layout/ui_transform.h"
 
-#include "display/display.h"
 #include "render/context/render_context.h"
 #include "render/record/frame_record.h"
 #include "scene/scene_shell.h"
@@ -307,13 +306,6 @@ static struct {
     recti_t drawn;
     affine2x_t canvas_from_panel;
 } host;
-
-/* The panel quarter the run opened with, where a provider did not define the shell's: providers draw at
- * the run's quarter, so they need no copy of it. */
-__attribute__((weak)) int
-display_quarter_now(void) {
-    return host.frame.quarter;
-}
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 /* Replaced by scene/scene_shell.c when linked. */
