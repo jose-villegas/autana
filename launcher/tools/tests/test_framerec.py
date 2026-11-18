@@ -30,7 +30,7 @@ def record(name, body):
 
 
 def header(keyframe_every=30):
-    return record("HEADER", framerec.HEADER.pack(1, 368, 448, keyframe_every, b"host"))
+    return record("HEADER", framerec.HEADER.pack(framerec.VERSION, 368, 448, keyframe_every, b"host"))
 
 
 def frame(index, flags=0):
@@ -81,6 +81,11 @@ class RecordTests(unittest.TestCase):
     def test_a_stream_that_does_not_open_with_its_header_is_refused(self):
         with self.assertRaisesRegex(framerec.StreamError, "opens with HEADER"):
             framerec.parse(frame(0))
+
+    def test_a_stream_of_another_version_is_refused(self):
+        older = record("HEADER", framerec.HEADER.pack(framerec.VERSION - 1, 368, 448, 30, b"host"))
+        with self.assertRaisesRegex(framerec.StreamError, "frame record version"):
+            framerec.parse(older + frame(0))
 
     def test_a_record_cut_short_is_refused(self):
         with self.assertRaisesRegex(framerec.StreamError, "cut short"):

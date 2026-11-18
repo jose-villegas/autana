@@ -1,7 +1,7 @@
 /* The host harness enters the registered screen with synthetic time and
  * input. Hardware-facing entry code links here because it needs no board
- * access. display_quarter_now returns the requested orientation; shell_home_edge
- * returns the bottom edge because synthetic input has no home gesture. */
+ * access. shell_home_edge returns the bottom edge because synthetic input has
+ * no home gesture. */
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -29,7 +29,6 @@
 #include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
 
-static int shell_quarter;
 static int option_count;
 static char** option_args;
 
@@ -250,11 +249,6 @@ options(int argc, char** argv) {
            && tune_options(argc, argv, "--tune");
 }
 
-int
-display_quarter_now(void) {
-    return shell_quarter;
-}
-
 /* No finger touches a host render, so no touch ever lands near this edge. */
 gesture_edge_t
 shell_home_edge(void) {
@@ -268,7 +262,6 @@ setup(int quarter) {
         (void)fprintf(stderr, "no app registered itself\n");
         return false;
     }
-    shell_quarter = quarter;
     ui_init();
     gfx_set_frame_overlay(ui_replay_band);
     ui_set_transform(ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT));
