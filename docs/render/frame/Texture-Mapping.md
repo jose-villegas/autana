@@ -71,8 +71,7 @@ A dividing triangle starts from segments of `texture.divide_px` pixels. It
 doubles them, up to `RENDER_TEXTURE_DIVIDE_PX_MAX`, while one segment would
 still bend no more than `texture.affine_bend`.
 
-The dividing fill and its row walk run from IRAM, with the draw path's other
-fills; the affine fill stays in flash
+The dividing fill and its row walk run from IRAM
 ([Internal-Memory-Map.md](../../memory/Internal-Memory-Map.md)).
 
 ![The near floor's squares where affine differs most from a divide every pixel, with each column's CIE76 colour distance from that divide](../../images/render/bistro-street-divide.png)

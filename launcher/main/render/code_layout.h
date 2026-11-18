@@ -27,9 +27,9 @@
  * IRAM budget: release 4475 B, dev 4479 B, diag 4479 B */
 #define RENDER_SKIP_ATTR   RENDER_IRAM_ATTR
 /* The fill and row walk of a textured triangle that divides u and v by
- * depth, placed with the draw path: from flash their fetch stalls cost a
- * near textured wall about a twentieth of its draw.
- * IRAM budget: 1363 B */
+ * depth, placed with the draw path as RENDER_SKIP_ATTR is: in IRAM they take
+ * about a twentieth off the draw of near textured cards, all dividing.
+ * IRAM budget: 1799 B */
 #define RENDER_DIVIDE_ATTR RENDER_IRAM_ATTR
 /* Flash code off the hot draw (a masked texture's fill): linker.lf places it
  * after all other flash text, so it never sits between the per-triangle
