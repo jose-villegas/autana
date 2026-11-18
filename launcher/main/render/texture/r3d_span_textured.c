@@ -454,21 +454,6 @@ walk_writers(const r3d_span_target_t* target, const setup_t* su, recti_t box, co
     walk_rows(target, su, box, v0, v1, v2, long_on_left, WALK_WRITE);
 }
 
-/* A far level's triangle: the plain fill in its vertex colour, capped as the
- * textured fill would be, then its writers. */
-static __attribute__((noinline)) void
-draw_far(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
-         const r3d_span_vertex_t* c) {
-    if (target->skip_hidden) {
-        r3d_span_capped_triangle(target, a, b, c, NULL);
-    } else {
-        r3d_span_triangle(target, a, b, c);
-    }
-    if (target->writer_count != 0) {
-        r3d_span_triangle_write(target, a, b, c, false);
-    }
-}
-
 /* Whether a triangle with window box `box` and doubled area `area2` draws
  * nothing: off the window, degenerate, or past a debug stop. */
 static inline bool
@@ -478,24 +463,23 @@ draws_nothing(recti_t box, int32_t area2) {
 
 /* Sets up `texture` over the triangle, then walks its rows: the INDEX4
  * fill or MASK1's cut, then the target's writers over what it drew. An
- * INDEX4 level from far_level on is draw_far()'s instead. */
-void
-r3d_span_textured_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
-                           const r3d_span_vertex_t* c, const vec2f_t uv[CORNERS], const r3d_texture_t* texture) {
+ * INDEX4 level from far_level on returns false, set up no further. */
+bool
+r3d_span_textured_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
+                       const r3d_span_vertex_t* c, const vec2f_t uv[CORNERS], const r3d_texture_t* texture) {
     const recti_t whole = r3d_span_extent_limits(a, b, c, 0, 0).centres;
     const recti_t box = r3d_span_window_box(target, whole);
     const int32_t area2 = r3d_span_area2(a, b, c);
     if (draws_nothing(box, area2)) {
-        return;
+        return true;
     }
     setup_t su;
     const r3d_span_vertex_t* const corners[CORNERS] = {a, b, c};
     if (!set_up(target, corners, uv, texture, box, &su)) {
-        return;
+        return true;
     }
     if (is_far(target, texture, &su)) {
-        draw_far(target, a, b, c);
-        return;
+        return false;
     }
     const r3d_span_vertex_t* v0 = a;
     const r3d_span_vertex_t* v1 = b;
@@ -520,4 +504,5 @@ r3d_span_textured_triangle(const r3d_span_target_t* target, const r3d_span_verte
     if (target->writer_count != 0) {
         walk_writers(target, &su, box, v0, v1, v2, long_on_left);
     }
+    return true;
 }
