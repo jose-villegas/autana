@@ -174,6 +174,19 @@ depends on the renderer's lighting mode (that page describes the three):
 Static meshes never read the grid: the same transport is already in their
 baked colours.
 
+### The sun comes from the probes only
+
+The bake puts the sun into every probe, so a probe-lit renderer skips the
+scene's directional lights. This is Unity's
+Baked light mode<sup>[[135]](../../Citations.md#unity-light-modes)</sup>:
+a moving object takes a baked light only through the probes.
+
+| | Sun from the probes (this engine) | Sun as a direct light |
+|---|---|---|
+| Occlusion | the probe's shadow ray: a mover under the arcades is out of the sun | none without shadow maps: a mover indoors is sunlit |
+| Response | L1's soft lobe: no sharp terminator, no highlight | a sharp `max(0, N.L)` terminator |
+| Cost | none past the probe sample | an `N.L` term per vertex |
+
 ## 7. Cost and goals
 
 The bake prints its path and sun-ray counts, the grid's bytes and its time
@@ -201,9 +214,9 @@ over flat ambient is not measured.
 - A scene has a grid only when it has a `<scene>.probes.toml` beside it and
   a `bake.indirect` section.
 - One sample per mover: a mover half in shadow is lit as one.
-- L1 holds a gradient only. A strong sun blurs into it, and the side facing
-  away from it can go dark, past zero (the brightest sphere above); nothing
-  windows or clamps the coefficients.
+- L1 holds a gradient only, so the sun on a mover is soft, and the side
+  facing away from it can go dark, past zero (the brightest sphere above);
+  nothing windows or clamps the coefficients.
 - Probes inside geometry hold their neighbours' mean, not their own light.
 - The sample uses the bounds from the mover's last pose, so its light trails
   a fast move by a pose.
