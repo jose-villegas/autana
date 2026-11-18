@@ -666,11 +666,13 @@ def mesh_recipe(job, scene, tools, poses=None, unavailable=None):
                 camera["poses"] = poses.digest(scene.camera.component, visibility.every_ms, visibility.size, tools, unavailable)
         simplify = job.settings.simplify
         if simplify and simplify.seal_seams and scene.camera is not None:
-            # A sealed import's probes stand in the camera's region and, with seal_views, along its path.
+            # The seal step's views are bake inputs: the camera, and the flight's poses with seal_views.
+            from r3d.poses import flight_camera
+
             camera = recipe.setdefault("camera", camera_inputs(scene))
             views = job.renderer.seal_views
             if views is not None:
-                camera["seal_poses"] = poses.digest(scene.camera.component, views.every_ms, views.size, tools, unavailable)
+                camera["seal_poses"] = poses.digest(flight_camera(scene), views.every_ms, views.size, tools, unavailable)
     return recipe
 
 

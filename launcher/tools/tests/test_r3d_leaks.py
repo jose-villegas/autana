@@ -4,13 +4,18 @@ that lock a vertex per hole: an arch covered by a separate sheet behind it stays
 import pathlib
 import sys
 import unittest
+from types import SimpleNamespace
+from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 try:
     import numpy as np
 
-    from r3d import leaks
+    from r3d import leaks, mesh_import
+    from r3d import simplify as simplify_module
+    from r3d.meshopt import PERMISSIVE, REGULARIZE_LIGHT
+    from r3d.repair import repair, seal_tolerance
     from r3d.simplify import Allocation, simplify
 except ImportError:
     np = None
@@ -27,8 +32,16 @@ RINGS = 6
 WALL_HALF_WIDTH, WALL_HEIGHT = 200.0, 300.0
 # Too few triangles to keep the half disc round: its chords pull inside the opening.
 BUDGET = 24
-# Budgets at which the locks a hole asks for would leave more triangles than the pass was given.
-OVERSHOOT_BUDGETS = (40,)
+# Too few triangles for the half disc alone to stay round: its locks stop at the budget with holes left.
+SHEET_ALONE_BUDGET = 24
+# A budget for the wall and the half disc simplified as two passes, and the half disc's share of it.
+TWO_PASS_BUDGET, SHEET_SHARE = 96, 0.5
+# A path view straight at the wall, its size unlike a probe face's, and a batch too small for two probe faces.
+PATH_VIEW = (192, 128, 0.25)
+PATH_EYE = (150.0, 150.0, 150.0)
+SMALL_BATCH = 50000
+# Quantisation steps per source unit, which sets the join step's tolerance.
+POSITION_SCALE = 8
 # Where the camera can be, in front of the wall, and its near plane.
 CAMERA = ((np.array([60.0, 10.0, -90.0]), np.array([260.0, 110.0, 90.0])), 2.0) if np is not None else None
 
@@ -66,8 +79,14 @@ class PinTests(unittest.TestCase):
     def test_a_hole_is_answered_by_its_vertex_farthest_from_the_result(self):
         free = np.ones(len(self.pos), dtype=bool)
         np.testing.assert_array_equal(leaks.pins(self.pos, self.tris, [np.array([1])], *self.result, free), [3])
+        # The farthest first: vertex 4 stands 9 off the result, vertex 3 only 3.
         np.testing.assert_array_equal(leaks.pins(self.pos, self.tris, [np.array([1]), np.array([2])], *self.result, free),
-                                      [3, 4])
+                                      [4, 3])
+
+    def test_holes_that_choose_one_vertex_lock_it_once(self):
+        free = np.ones(len(self.pos), dtype=bool)
+        picked = leaks.pins(self.pos, self.tris, [np.array([1]), np.array([1]), np.array([2])], *self.result, free)
+        np.testing.assert_array_equal(picked, [4, 3])
 
     def test_a_locked_vertex_is_passed_over_and_a_hole_with_none_free_gets_none(self):
         free = np.ones(len(self.pos), dtype=bool)
@@ -107,11 +126,14 @@ class LeakProbeTests(unittest.TestCase):
     def setUpClass(cls):
         cls.pos, cls.tris = arch()
         cls.probes = leaks.LeakProbes(cls.pos, cls.tris, *CAMERA)
+        # What simplify() hands its passes: the fixture after the join step, and the probes over that.
+        rgb = np.full((len(cls.pos), 3), 128.0)
+        cls.joined = repair(cls.pos, rgb, cls.tris, np.zeros(len(cls.tris), dtype=int), seal_tolerance(POSITION_SCALE))
 
     def simplified(self, allocation, budget=BUDGET):
         rgb = np.full((len(self.pos), 3), 128.0)
         p, _, t, _ = simplify(self.pos, rgb, self.tris, np.zeros(len(self.tris), dtype=int), budget, colour_deviation=1.0,
-                              seal_seams=True, position_scale=8, allocation=allocation)
+                              seal_seams=True, position_scale=POSITION_SCALE, allocation=allocation)
         return p, t
 
     def test_the_source_shows_no_hole_and_a_missing_triangle_inside_the_wall_is_one(self):
@@ -129,11 +151,113 @@ class LeakProbeTests(unittest.TestCase):
         self.assertEqual(self.probes.holes(p, t), [])
         self.assertLessEqual(len(t), BUDGET)
 
-    def test_locks_never_leave_a_pass_more_triangles_than_it_had(self):
-        for budget in OVERSHOOT_BUDGETS:
-            with self.subTest(budget=budget):
-                plain = len(self.simplified(Allocation(), budget)[1])
-                self.assertLessEqual(len(self.simplified(Allocation(camera=CAMERA), budget)[1]), plain)
+    def one_pass(self, budget, rows=None):
+        """(result triangles, the pass's leak record) of the fixture's triangles `rows`, all of them without any,
+        as one probed pass."""
+        record = {}
+        pos, rgb, tris, labels = self.joined
+        rows = np.arange(len(tris)) if rows is None else rows
+        probes = leaks.LeakProbes(pos, tris, *CAMERA)
+        _, _, t, _ = simplify_module._run_pass(pos, rgb, tris[rows], labels[rows], budget, 1.0, REGULARIZE_LIGHT | PERMISSIVE,
+                                               leaks=(probes, rows), record=record)
+        return t, record
+
+    def test_locks_stop_at_the_budget_and_the_holes_left_are_recorded(self):
+        sheet = np.arange(len(self.tris) // 2, len(self.tris))
+        t, record = self.one_pass(SHEET_ALONE_BUDGET, sheet)
+        self.assertLessEqual(len(t), SHEET_ALONE_BUDGET)
+        self.assertGreater(record["leak_holes"], 0, "the budget never stopped the locks: the fixture proves nothing")
+        self.assertLess(record["leak_rounds"], leaks.ROUNDS)
+        self.assertGreater(record["leak_locks"], 0, "locks that fit the budget were not taken")
+        with mock.patch.object(leaks, "ROUNDS", 0):
+            self.assertGreater(self.one_pass(SHEET_ALONE_BUDGET, sheet)[1]["leak_holes"], record["leak_holes"])
+
+    def test_a_sealed_pass_records_its_rounds_and_locks(self):
+        t, record = self.one_pass(BUDGET)
+        self.assertEqual(record["leak_holes"], 0)
+        self.assertGreater(record["leak_rounds"], 0)
+        self.assertGreater(record["leak_locks"], 0)
+
+    def test_with_no_round_left_the_first_run_stands_and_its_holes_are_recorded(self):
+        plain = self.simplified(Allocation())
+        with mock.patch.object(leaks, "ROUNDS", 0):
+            t, record = self.one_pass(BUDGET)
+        self.assertEqual(len(t), len(plain[1]))
+        self.assertEqual((record["leak_rounds"], record["leak_locks"]), (0, 0))
+        self.assertEqual(record["leak_holes"], len(leaks.LeakProbes(self.joined[0], self.joined[2], *CAMERA).holes(*plain)))
+
+    def test_the_wall_and_the_sheet_as_two_passes_close_what_each_can_within_their_budgets(self):
+        """The sheet's pass comes first and is sealed against the wall's source; the wall's pass then sees the
+        sheet as simplified, and cannot lock the sheet's vertices."""
+        labels = (np.arange(len(self.tris)) >= len(self.tris) // 2).astype(int)
+        rgb = np.full((len(self.pos), 3), 128.0)
+
+        def two_passes(allocation):
+            p, _, t, _ = simplify(self.pos, rgb, self.tris, labels, TWO_PASS_BUDGET, [({1}, SHEET_SHARE)],
+                                  colour_deviation=1.0, seal_seams=True, position_scale=POSITION_SCALE, allocation=allocation)
+            return p, t
+
+        plain = len(self.probes.holes(*two_passes(Allocation())))
+        self.assertGreater(plain, 0, "the fixture does not leak in two passes")
+        p, t = two_passes(Allocation(camera=CAMERA))
+        self.assertLess(len(self.probes.holes(p, t)), plain / 4)
+        self.assertLessEqual(len(t), TWO_PASS_BUDGET)
+
+    def test_the_same_input_seals_to_the_same_mesh(self):
+        first, second = self.simplified(Allocation(camera=CAMERA)), self.simplified(Allocation(camera=CAMERA))
+        np.testing.assert_array_equal(first[0], second[0])
+        np.testing.assert_array_equal(first[1], second[1])
+
+    def test_an_unsealed_import_builds_no_probes_even_with_a_camera(self):
+        rgb = np.full((len(self.pos), 3), 128.0)
+        with mock.patch.object(leaks, "LeakProbes", side_effect=AssertionError("probes built")):
+            simplify(self.pos, rgb, self.tris, np.zeros(len(self.tris), dtype=int), BUDGET, colour_deviation=1.0,
+                     position_scale=POSITION_SCALE, allocation=Allocation(camera=CAMERA))
+            self.simplified(Allocation())
+
+    def test_a_path_view_finds_a_hole_of_its_own_across_small_batches(self):
+        inside = 2 * (ARC_SEGMENTS + ARC_SEGMENTS // 2)
+        holed = self.pos, np.delete(self.tris, inside, axis=0)
+        target = self.pos[self.tris[inside]].mean(axis=0)
+        eye = np.array(PATH_EYE)
+        pose = np.concatenate([eye, (target - eye) / np.linalg.norm(target - eye)])
+        whole_batches = len(self.probes.holes(*holed))
+        with mock.patch.object(leaks, "BATCH", SMALL_BATCH):
+            without = leaks.LeakProbes(self.pos, self.tris, *CAMERA)
+            with_path = leaks.LeakProbes(self.pos, self.tris, *CAMERA, path=(*PATH_VIEW, [pose]))
+            self.assertEqual(len(with_path.views), len(without.views) + 1)
+            self.assertEqual(with_path.holes(self.pos, self.tris), [])
+            self.assertEqual(len(without.holes(*holed)), whole_batches, "a batch edge lost a view")
+            self.assertGreater(len(with_path.holes(*holed)), len(without.holes(*holed)))
+
+    def test_a_region_left_out_falls_back_to_the_sources_bounds(self):
+        probes = leaks.LeakProbes(self.pos, self.tris, None, CAMERA[1])
+        self.assertGreater(len(probes.views), 0)
+        eyes = np.array([pose[:3] for _, _, _, pose in probes.views])
+        self.assertTrue(np.all(eyes >= self.pos.min(axis=0) - 1e-6) and np.all(eyes <= self.pos.max(axis=0) + 1e-6))
+
+
+@unittest.skipIf(np is None, "the r3d environment is not installed")
+class SealCameraTests(unittest.TestCase):
+    def scene(self, camera=True):
+        component = SimpleNamespace(near_z=2.0)
+        return SimpleNamespace(region="the region", camera=SimpleNamespace(component=component) if camera else None)
+
+    def test_no_scene_or_no_camera_gives_none(self):
+        renderer = SimpleNamespace(seal_views=None)
+        self.assertIsNone(mesh_import.seal_camera(None, renderer))
+        self.assertIsNone(mesh_import.seal_camera(self.scene(camera=False), renderer))
+
+    def test_the_region_and_near_plane_come_alone_without_seal_views(self):
+        self.assertEqual(mesh_import.seal_camera(self.scene(), SimpleNamespace(seal_views=None)), ("the region", 2.0))
+        self.assertEqual(mesh_import.seal_camera(self.scene(), SimpleNamespace()), ("the region", 2.0))
+
+    def test_seal_views_add_the_paths_views_at_their_size_and_lens(self):
+        views = SimpleNamespace(every_ms=33, size=(8, 6))
+        with mock.patch.object(mesh_import, "camera_path_poses", return_value=(8, 8, 0.8, 2.0, ["a pose"])) as sampled:
+            camera = mesh_import.seal_camera(self.scene(), SimpleNamespace(seal_views=views))
+        self.assertEqual(camera, ("the region", 2.0, (8, 8, 0.8, ["a pose"])))
+        self.assertIs(sampled.call_args.args[1], views)
 
 
 if __name__ == "__main__":

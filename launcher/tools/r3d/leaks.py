@@ -2,12 +2,13 @@
 
 A source built from pieces that only overlap is not one surface: wherever a simplified piece moves off its source,
 at a border or across a curve, the piece behind may no longer cover the gap. `LeakProbes` looks at the source from
-probes spread through the camera's region (fit/probes.py's placement), each through six cube faces, and from the
-camera path's poses when the scene has one. In a view, the pixels where a simplified mesh shows sky form connected
+probes spread through the camera's region (fit/probes.py's placement), each through six cube faces, and from
+`path` views when given. In a view, the pixels where a simplified mesh shows sky form connected
 regions; a region with no pixel of the source's own sky is a hole. `pins` answers each hole with one source vertex
 to lock: the vertex of the source triangles seen through the hole that lies farthest from the simplified surface,
 the farthest-point step of Douglas and Peucker's line reduction, taken on a surface and only where sky shows.
-simplify.py locks the pins and simplifies again until no view has a hole.
+simplify.py locks the pins and simplifies again until no view has a hole, ROUNDS run out or the locks would
+break the pass's budget.
 """
 
 import numpy as np
@@ -16,16 +17,13 @@ from scipy import ndimage
 from r3d.fit import probes
 from r3d.geometry import face_normals, nearest_triangles, triangle_search
 from r3d.poses import camera_rays
-from r3d.ray_query import RayQuery
+from r3d.ray_query import BATCH, RayQuery
 
 # The seed of the probes' jitter.
 PROBE_SEED = 1
-# Rays traced in one batch of views.
-RAYS_PER_BATCH = 1 << 22
 # Sky pixels touching at a corner are one region.
 CONNECTED = np.ones((3, 3), dtype=int)
-# Most times a pass is simplified again: each round halves the holes or better on the meshes measured, and a
-# pass that still leaks after these keeps what it has.
+# Most times a pass is simplified again; a pass that still leaks after these keeps its last accepted run.
 ROUNDS = 24
 
 
@@ -37,21 +35,23 @@ class LeakProbes:
         self.positions, self.tris = np.asarray(positions, dtype=float), np.asarray(tris)
         lo, hi = region if region is not None else (self.positions.min(axis=0), self.positions.max(axis=0))
         self.query = RayQuery(self.positions, self.tris)
-        points, cell = probes.probe_points(lo, hi, probes.spacing_for(lo, hi, None, near), PROBE_SEED)
-        moved, state = probes.classify(self.query, face_normals(self.positions, self.tris)[0], points, cell, near)
+        poses, _ = probes.region_poses(self.query, face_normals(self.positions, self.tris)[0], lo, hi,
+                                       probes.spacing_for(lo, hi, None, near), near, PROBE_SEED)
         face = probes.PROBE_FACE
-        self.views = [(face, face, probes.FACE_LENS, pose) for pose in probes.cube_poses(moved[state == "kept"])]
+        self.views = [(face, face, probes.FACE_LENS, pose) for pose in poses]
         if path is not None:
             width, height, lens, poses = path
             self.views += [(width, height, lens, pose) for pose in poses]
         self.source_sky = [~self.query.first_hits(origins, directions)[0] for _, origins, directions in self._batches()]
+        self.source = np.ones(len(self.tris), dtype=bool)
+        self.finished = []
 
     def _batches(self):
-        """(views, origins, directions) for runs of views of at most RAYS_PER_BATCH rays, a view's rays in rows."""
+        """(views, origins, directions) for runs of views of at most BATCH rays, a view's rays in rows."""
         start = 0
         while start < len(self.views):
             end, rays = start, 0
-            while end < len(self.views) and (end == start or rays + self.views[end][0] * self.views[end][1] <= RAYS_PER_BATCH):
+            while end < len(self.views) and (end == start or rays + self.views[end][0] * self.views[end][1] <= BATCH):
                 rays += self.views[end][0] * self.views[end][1]
                 end += 1
             traced = [camera_rays(width, height, lens, pose[:3], pose[3:6], 1) for width, height, lens, pose in self.views[start:end]]
@@ -78,14 +78,26 @@ class LeakProbes:
                     holes.extend(np.unique(seen[mask.reshape(-1)]) for mask in masks)
         return holes
 
-    def pins(self, rows, result_positions, result_tris, free):
-        """(holes, vertices to lock) for a pass that simplified the source triangles `rows` into the result: the
-        holes of the scene with the result in their place, among the source vertices `free` allows. The rest of
-        the scene stands as the source has it, so every triangle seen through a hole is one of the pass's."""
-        elsewhere = np.ones(len(self.tris), dtype=bool)
+    def repair(self, rows, result_positions, result_tris, free):
+        """(number of holes, vertices to lock) for a pass that simplified the source triangles `rows` into the result: the
+        holes of the scene with the result in their place, among the source vertices `free` allows. The passes
+        finished before it stand as their results, the rest of the scene as the source has it."""
+        return self._look(rows, result_positions, result_tris, free)
+
+    def finish(self, rows, result_positions, result_tris):
+        """The pass over `rows` is done: its result stands in the scene for the passes after it."""
+        self.source[rows] = False
+        self.finished.append((np.asarray(result_positions, dtype=float), np.asarray(result_tris)))
+
+    def _look(self, rows, result_positions, result_tris, free):
+        elsewhere = self.source.copy()
         elsewhere[rows] = False
-        scene_tris = np.concatenate([result_tris, self.tris[elsewhere] + len(result_positions)])
-        holes = self.holes(np.concatenate([result_positions, self.positions]), scene_tris)
+        positions, tris, base = [self.positions], [self.tris[elsewhere]], len(self.positions)
+        for done_positions, done_tris in [(result_positions, result_tris), *self.finished]:
+            positions.append(done_positions)
+            tris.append(done_tris + base)
+            base += len(done_positions)
+        holes = self.holes(np.concatenate(positions), np.concatenate(tris))
         return len(holes), pins(self.positions, self.tris, holes, result_positions, result_tris, free)
 
 
@@ -98,14 +110,15 @@ def view_holes(sky, source_sky):
 
 
 def pins(positions, tris, holes, result_positions, result_tris, free):
-    """One vertex per hole: of the vertices of its triangles (rows of `tris`) that `free` allows, the one farthest
-    from the result's surface. A hole with no free vertex gets none."""
+    """One vertex per hole, the farthest first: of the vertices of its triangles (rows of `tris`) that `free`
+    allows, the one farthest from the result's surface. A hole with no free vertex gets none, and holes that choose
+    one vertex share it."""
     search = triangle_search(result_positions[result_tris])
-    picked = set()
+    picked = {}
     for seen in holes:
         candidates = np.unique(tris[seen])
         candidates = candidates[free[candidates]]
         if len(candidates):
             distance = nearest_triangles(positions[candidates], search)[2]
-            picked.add(int(candidates[np.argmax(distance)]))
-    return np.array(sorted(picked), dtype=np.int64)
+            picked[int(candidates[np.argmax(distance)])] = float(distance.max())
+    return np.array(sorted(picked, key=lambda vertex: (-picked[vertex], vertex)), dtype=np.int64)

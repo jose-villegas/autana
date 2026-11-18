@@ -1032,7 +1032,10 @@ class PosesTests(FittedBakeCase):
         self.assertNotEqual(sealed["start"], viewed["start"])
         self.assertTrue(rows.used, "the path's frames are counted by their sampled poses")
         self.job.renderer.seal_views.every_ms += 1
-        self.assertNotEqual(viewed["start"], self.keys()["start"])
+        spaced = self.keys()
+        self.assertNotEqual(viewed["start"], spaced["start"])
+        self.job.renderer.seal_views.size = (6, 8)
+        self.assertNotEqual(spaced["start"], self.keys()["start"])
 
     def test_clip_rename_keeps_keys_and_different_clip_or_node_rekeys(self):
         from anim_probe import write_camera_clip

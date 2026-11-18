@@ -164,11 +164,13 @@ def simplify(pos, rgb, tris, labels, triangles, reserved=(), *, colour_deviation
     return out_pos, out_rgb, np.concatenate(out_tris), np.concatenate(out_labels)
 
 
-def _run_pass(pos, rgb, tris, labels, budget, deviation, options, locks=None, leaks=None):
+def _run_pass(pos, rgb, tris, labels, budget, deviation, options, locks=None, leaks=None, record=None):
     """One meshoptimizer pass over `tris`. `leaks` is (the scene's LeakProbes, this pass's rows of its triangles):
     while a view shows sky through the result, the pass runs again with one more source vertex locked per hole.
-    Locks that leave the pass more triangles than its budget, or than its first run when that is already over,
-    are not taken: the run before them stands."""
+    A round whose locks leave the pass more triangles than its budget, or than its first run when that is
+    already over, is tried again with the half that answers the widest holes, and ends the pass when not one lock
+    fits. `record`, a dict, takes the rounds run, the vertices locked and
+    the holes the result still shows."""
     used, local = np.unique(tris, return_inverse=True)
     local = local.reshape(-1, 3)
     weight = colour_weight(pos[used], local, budget, deviation)
@@ -186,20 +188,35 @@ def _run_pass(pos, rgb, tris, labels, budget, deviation, options, locks=None, le
 
         probes, rows = leaks
         most = max(len(t), budget)
-        for _ in range(ROUNDS):
+        rounds = locked = 0
+
+        def look():
             free = np.zeros(len(pos), dtype=bool)
             free[used] = True if held is None else ~held
-            holes, pinned = probes.pins(rows, p, t, free)
+            return probes.repair(rows, p, t, free)
+
+        holes, pinned = look()
+        while len(pinned) and rounds < ROUNDS:
             log(f"  {holes} holes seen, {len(pinned)} vertices to lock")
+            before = np.zeros(len(used), dtype=bool) if held is None else held
+            while len(pinned):
+                held = before.copy()
+                held[np.searchsorted(used, pinned)] = True
+                again = run()
+                if len(again[2]) <= most:
+                    break
+                log(f"  {len(pinned)} locks leave {len(again[2])} triangles, over the pass's {most}: trying half")
+                pinned = pinned[:len(pinned) // 2]
             if not len(pinned):
-                break
-            held = np.zeros(len(used), dtype=bool) if held is None else held
-            held[np.searchsorted(used, pinned)] = True
-            again = run()
-            if len(again[2]) > most:
-                log(f"  the locks leave {len(again[2])} triangles, over the pass's {most}: not taken")
+                held = before
                 break
             p, c, t, kept = again
+            rounds, locked = rounds + 1, locked + len(pinned)
+            holes, pinned = look()
+        log(f"  {holes} holes left after {rounds} rounds, {locked} vertices locked")
+        probes.finish(rows, p, t)
+        if record is not None:
+            record.update(leak_rounds=rounds, leak_locks=locked, leak_holes=holes)
     return p, c, t, _label_after(local, labels, kept, t)
 
 
@@ -384,6 +401,8 @@ def _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, reserved, allocat
     def run_part(sel, budget):
         from .objects.stand_ins import best_stand_in
 
+        leaks = {}
+
         objects = np.unique(tri_o[sel])
         carved = allocation.shapes is not None and len(objects) == 1 and objects[0] in selected
         candidates = None
@@ -396,7 +415,7 @@ def _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, reserved, allocat
         else:
             result = _run_pass(pos, rgb, tris[sel], labels[sel], budget, deviation, options,
                                locks if np.any(locks) else None,
-                               None if probes is None else (probes, np.flatnonzero(sel)))
+                               None if probes is None else (probes, np.flatnonzero(sel)), leaks)
         shade = (allocation.shade_shared or allocation.shade) if carved else allocation.shade
         if shade is not None and np.any(np.isin(tri_o[sel], list(selected))):
             result = shade(*result)
@@ -405,6 +424,7 @@ def _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, reserved, allocat
                      locked_border_excess=max(0, len(result[2]) - budget) if np.any(locks[tris[sel]]) else 0)
         if candidates is not None:
             entry.update(stand_in=stand_in.kind, stand_ins=candidates)
+        entry.update(leaks)
         report['passes'].append(entry)
         for row in report['meshes']:
             if row.get('object') in entry['objects']:

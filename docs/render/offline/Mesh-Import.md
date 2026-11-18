@@ -310,27 +310,38 @@ flowchart LR
 |---|---|
 | Join | Welds border vertices within one quantisation step and splits border edges at the vertices lying on them, so a shared edge is one edge. |
 | Pass | Runs meshoptimizer with light regularizing instead of regularizing. |
-| Probe | Looks for holes from the views below and locks one source vertex per hole; the pass then runs again, at most `leaks.ROUNDS` times. |
+| Probe | Looks for holes (defined below) in views of the source and locks one source vertex per hole; the pass then runs again, up to [`ROUNDS`](../../../launcher/tools/r3d/leaks.py) times. |
 | Merge | Gives vertices at one quantised position one colour when they differ by at most one and a half RGB565 steps. |
 
-Joining cannot make one surface of pieces that only overlap: a vault's end rim
-behind an arch ring shares no edge with it. The simplifier keeps the copies of a
-seam vertex together, but it turns each piece's curved border into chords and
-flattens curved pieces, and the piece behind stops covering the gap.
+Joining cannot unite pieces that only overlap: a vault's end rim behind an arch
+ring shares no edge with it. The simplifier keeps a seam vertex's copies together
+but chords curved borders and flattens curved pieces, so the piece behind stops
+covering the gap.
 
-The probe step needs a scene camera. Its views are the cube faces of probes
-spread through the camera's region<sup>[[119]](../../Citations.md#majercik-2021)</sup>, placed as the fit's probes are
-([probes](#probes)), and the camera path's frames when the renderer has
-[`seal_views`](../scene/Scene-Files.md#seal_views).
+The probe step runs for baked renderers of a scene with a camera. Its views are
+the cube faces of [probes](#probes) in the camera's region<sup>[[119]](../../Citations.md#majercik-2021)</sup>, and the camera
+path's frames when the renderer has [`seal_views`](../scene/Scene-Files.md#seal_views).
 
 | Term | Meaning |
 |---|---|
 | Hole | In one view, a connected region of pixels where the simplified mesh shows sky that holds no pixel of the source's own sky. A region that reaches the source's sky is the outline moving. |
 | Lock | Of the source triangles seen through the hole, the vertex farthest from the simplified surface: the farthest-point step of line reduction<sup>[[130]](../../Citations.md#douglas-1973)</sup>, on a surface. meshoptimizer keeps a locked vertex in place. |
 
-A lock takes its triangles from the pass's own budget, so the rest of the mesh
-is a little coarser. A gap no view sees stays open: the probes bound what a free
-camera meets, and the path's frames close what the path shows.
+A lock keeps triangles the rest of the mesh then goes without, so the rest is a
+little coarser. A round whose locks would leave the pass over its budget is tried again
+with half of them, the widest holes first, and the pass ends when none fits. Each round adds a ray trace and a
+simplify run to the bake.
+
+A gap no view sees stays open: the probes bound what a free camera meets, and
+the path's frames close what the path shows. A pass is checked against the
+results of the passes before it and the source of those after it. A pass row of the allocation
+report says how it ended:
+
+| Field | Meaning |
+|---|---|
+| `leak_rounds` | Times the pass ran again with more locks. |
+| `leak_locks` | Source vertices those rounds locked. |
+| `leak_holes` | Holes the views still show in the result. |
 
 The same import with `seal_seams` off against on, at a pose where it shows,
 off above on: a pixel-sized hole that shows the sky is sealed.
