@@ -145,6 +145,7 @@ instantiate(const scene_asset_t* asset) {
     }
     for (int i = 0; i < asset->skinned_renderer_count; i++) {
         scene->renderers[asset->renderer_count + i].entity = asset->skinned_renderers[i].entity;
+        scene->renderers[asset->renderer_count + i].resident_arrays = SCENE_RESIDENT_ALL; /* skins read the pack */
     }
     return scene;
 }
@@ -441,15 +442,9 @@ free_columns(scene_t* scene) {
     memory_free(scene->chunks);
     for (int i = 0; i < scene->renderer_count; i++) {
         scene_renderer_texturing_free(&scene->renderers[i]);
+        scene_mesh_release(&scene->renderers[i]);
     }
     scene_hierarchy_release(scene);
-#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-    if (scene->copies != NULL) {
-        asset_store_copies_remove(scene->copies);
-        scene_free_kept(scene->copies);
-    }
-#endif
-    scene_free_kept(scene->resident);
     scene_free_kept(scene);
 }
 
@@ -483,9 +478,6 @@ open_scene(scene_root_t* record, const asset_pack_t* pack) {
     scene_hierarchy_update_active(scene, SCENE_ROW_ROOT);
     done = scene_hierarchy_open(scene) ? open_meshes(scene, pack)
                                        : scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, record->id);
-    if (done.status == SCENE_OK) {
-        done = scene_mesh_make_resident(scene);
-    }
     if (done.status == SCENE_OK) {
         done = scene_renderer_open_cuts(scene);
     }

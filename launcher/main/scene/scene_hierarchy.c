@@ -6,6 +6,7 @@
  */
 #include <assert.h>
 #include <stdalign.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "scene/scene_internal.h"
@@ -99,14 +100,36 @@ scene_renderer_bound(scene_renderer_t* r) {
         r->batch == NULL ? r3d_lit_mesh_world_bounds(&r->mesh, model) : batch_world_bounds(r->batch, model);
 }
 
+/* Whether renderer `i`, ACTIVE, has its static arrays resident: taken at
+ * its first activation, kept until the scene closes. One whose take did not
+ * fit is starved until it stops being ACTIVE. */
+static bool
+resident(scene_t* scene, int i) {
+    scene_renderer_t* r = &scene->renderers[i];
+    if (r->starved || r->resident_arrays == SCENE_RESIDENT_ALL || scene_mesh_take(scene, i)) {
+        return !r->starved;
+    }
+    const char* name = scene->asset.names[r->entity].name;
+    r->starved = true;
+    scene->starved_count++;
+    scene->root->failure = scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, name);
+    (void)fprintf(stderr, "scene: no memory to make %s resident; it is not drawn\n", name);
+    return false;
+}
+
 static void
 list_active_renderers(scene_t* scene) {
     scene->active_renderer_count = 0;
     for (int i = 0; i < scene->renderer_count; i++) {
-        const scene_row_t e = scene->renderers[i].entity;
+        scene_renderer_t* r = &scene->renderers[i];
+        const scene_row_t e = r->entity;
+        if ((scene->flags[e] & SCENE_FLAG_ACTIVE) == 0) {
+            scene->starved_count -= r->starved;
+            r->starved = false;
+            continue;
+        }
         /* A skin settled without its buffers did not fit: it is not drawn. */
-        const bool starved = scene->skinned_renderers[e].starved;
-        if ((scene->flags[e] & SCENE_FLAG_ACTIVE) != 0 && !starved) {
+        if (!scene->skinned_renderers[e].starved && resident(scene, i)) {
             scene->active_renderers[scene->active_renderer_count++] = (uint16_t)i;
         }
     }

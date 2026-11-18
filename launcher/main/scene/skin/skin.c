@@ -154,6 +154,7 @@ scene_skin_show(scene_t* scene, scene_row_t entity) {
     const scene_skinned_renderer_t* skin = &scene->skinned_renderers[entity];
     scene_renderer_t* r = &scene->renderers[scene_renderer_index(scene, entity)];
     r->mesh = skin->storage != NULL ? skin->output.mesh : skin->bind;
+    r->resident_arrays = SCENE_RESIDENT_ALL; /* a skin's output changes; its bind reads the pack */
     scene_renderer_bound(r);
     scene->animators[entity].dirty = true;
     scene->flags[entity] |= SCENE_FLAG_SKIN_DIRTY;
