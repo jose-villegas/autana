@@ -85,7 +85,8 @@ typedef struct {
     uint8_t* lod_state;
     size_t lod_size, lod_capacity;
     recorded_slot_t* slots;
-    uint32_t packs_named; /* bit per asset_store slot, since the last keyframe */
+    uint32_t packs_named; /* bit per asset_store slot, since the last keyframe or mount change */
+    uint32_t mounts_seen; /* asset_store_mount_epoch() when the meshes were last all recorded */
     int32_t* tuned;       /* each tunable's value as last recorded, in registry order */
     int tunables;
     bool check_due; /* the last frame was a keyframe the sink took: hash what composes from it */
@@ -455,6 +456,7 @@ frame_record_start(const frame_record_out_t* out, uint32_t keyframe_every) {
         return false;
     }
     rec->capacity = FRAME_BYTES_FIRST;
+    rec->mounts_seen = asset_store_mount_epoch();
     record_header();
     if (!rec->out.write(rec->out.sink, rec->bytes, rec->size)) {
         frame_record_stop();
@@ -638,6 +640,16 @@ frame_record_frame(const render_context_t* context, const raster_t* raster, uint
     const bool keyframe = due && !generated;
     rec->size = 0;
     rec->overflowed = false;
+    /* A pack mounted or unmounted since the last frame may hold a recorded
+     * address now, or the same address in another pack (a scene switch frees
+     * a slot and mounts the next scene there): every mesh and pack is
+     * recorded again, as at a keyframe. */
+    const uint32_t mounts = asset_store_mount_epoch();
+    if (mounts != rec->mounts_seen) {
+        rec->mounts_seen = mounts;
+        memset(rec->slots, 0, RECORDED_SLOTS_MAX * sizeof *rec->slots);
+        rec->packs_named = 0;
+    }
     if (keyframe) {
         rec->packs_named = 0;
     }

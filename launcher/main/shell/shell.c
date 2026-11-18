@@ -106,7 +106,7 @@ report_fps(int64_t now_us, int64_t* window_start, uint32_t* frames) {
 #if FRAME_LAPS_ENABLED
         static char laps[FRAME_LAPS_REPORT_MAX];
         if (frame_laps_take_report(*frames, laps, sizeof laps) > 0) {
-            ESP_LOGI(TAG, "ms/frame laps: %s", laps);
+            ESP_LOGI(TAG, FRAME_LAPS_PREFIX " %s", laps);
         }
 #endif
         *frames = 0;

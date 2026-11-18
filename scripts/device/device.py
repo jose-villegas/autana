@@ -4,7 +4,6 @@ USB serial number."""
 import argparse
 import collections
 import contextlib
-import errno
 import gzip
 from functools import partial
 import json
@@ -33,12 +32,11 @@ import autana_config  # noqa: E402
 from native_path import git_bash  # noqa: E402,F401  (callers and tests reach it as device.git_bash)
 import board_serial
 from console_protocol import FRAMED_ENDINGS, replies_to, require_development, reply_prefix
-from device_capture import (BOOTS_FROM_RESET, BOOTS_ON_RUNNING, BUILD_ID_BYTES_RE as BUILD_ID, BUILD_ID_REQUEST,
+from device_capture import (BOOTS_FROM_RESET, BOOTS_ON_RUNNING, BUILD_ID_BYTES_RE as BUILD_ID,
                             CAPTURE_COMPLETE, ERROR_LINE_RE, TEST_NAME, capture_ended_line, crash_signs,
                             suite_failure_signs, test_matches)
 
-from process_tree import (stop_process_tree, launch_process_tree, close_process_tree,
-                          install_console_interrupt_handler)
+from process_tree import run_process_tree, install_console_interrupt_handler
 SUITE_RESULT = re.compile(rb":\d+:.*:(PASS|FAIL)(?:\r?$|:)", re.MULTILINE)
 BOARD_ENV = autana_config.BOARD_ENV
 TOKEN_ENV = autana_config.TOKEN_ENV
@@ -1169,32 +1167,14 @@ def holding(store, board, args, held_lock, kind):
                                     error or nested.error, store.root, board=board)
 
 
-FLASH_POLL_SECONDS = 0.5
-
-
 def run_to_end(command, lost=None, timeout=None, **options):
     """Runs `command` to its end, stopping its whole process tree on any
     error, on Ctrl+C, or the moment `lost`, a held lock's event, None for a
     command that holds none, is set."""
-    deadline = None if timeout is None else time.monotonic() + timeout
-    process = launch_process_tree(command, **options)
-    try:
-        while True:
-            try:
-                code = process.wait(timeout=FLASH_POLL_SECONDS)
-                break
-            except subprocess.TimeoutExpired:
-                if lost is not None and lost.is_set():
-                    raise LockLost("device lock was lost during the command; the command was stopped")
-                if deadline is not None and time.monotonic() >= deadline:
-                    raise subprocess.TimeoutExpired(command, timeout)
-    except BaseException:
-        stop_process_tree(process)
-        raise
-    finally:
-        close_process_tree(process)
-    if code:
-        raise subprocess.CalledProcessError(code, command)
+    def still_held():
+        if lost.is_set():
+            raise LockLost("device lock was lost during the command; the command was stopped")
+    run_process_tree(command, timeout, watch=None if lost is None else still_held, **options).check_returncode()
 
 
 BUILD_SCRIPT = Path("launcher") / "tools" / "build" / "build.sh"

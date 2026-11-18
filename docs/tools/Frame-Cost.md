@@ -90,6 +90,16 @@ below show the line's shape and are not measurements):
 ms/frame laps: lap 90 ns | cpu0 r3d.draw.set_up 15.000/9000 r3d.draw.fill 24.700/8000 | cpu1 r3d.draw.set_up 15.500/9100
 ```
 
+A frame-profile take (`frame_profile_play()`) forgets the laps after its
+warm-up frame, and `frame_profile_log_laps()` logs its sampled frames' laps
+once after the take, the same line behind its row and before its quarter.
+`frame_cost.py`'s `frame_laps_takes()` averages those per row and quarter,
+apart from the shell's windows:
+
+```
+frame_laps: capybara-close ms/frame laps: lap 90 ns | cpu0 r3d.draw.fill 24.700/8000 quarter=landscape
+```
+
 A lap around a vertex or a triangle is not free next to the work it times.
 Starts times one lap's cost is what the laps cost themselves; the frame-stages
 chart takes it out of each lap and shows it apart. A lapped image's

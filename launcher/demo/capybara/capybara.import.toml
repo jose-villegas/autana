@@ -3,7 +3,8 @@
 [source]
 path = "capybara.blend"
 credit = "The hand-rigged capybara of capybara.blend."
-clips = ["idle", "walk", "walk_fast", "gallop", "half_bound"]
+clips = ["idle", "walk", "walk_fast", "gallop", "half_bound",
+         "glance", "ear_flick"]
 
 [output]
 name = "capybara_body"

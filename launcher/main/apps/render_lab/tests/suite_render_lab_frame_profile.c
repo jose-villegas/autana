@@ -227,6 +227,7 @@ test_real_time_frame_profile(void) {
         *run = (profile_run_t){path, {scenario_row(), (int64_t)path.duration_ms * MATH_US_PER_MS}, 0};
     }
     const frame_profile_t p = frame_profile_play(&run->playback, lab_test_profile_frame, &run->remainder_us, &played);
+    frame_profile_log_laps(TAG, scenario_row(), &p, lab_perf_quarters[quarter_index].name); /* before the replays */
     /* The peaks first: a row over its budget is the one they explain. */
     report_path(&run->path, &p);
     judge_profile(&p);

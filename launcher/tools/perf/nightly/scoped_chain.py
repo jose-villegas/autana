@@ -149,22 +149,23 @@ def git(repo, *words):
     return subprocess.check_output(["git", "-C", str(repo), "-c", "core.longpaths=true", *words], text=True, stderr=subprocess.STDOUT).strip()
 
 
-def registered_suites(worktree, suites):
-    """The suites the checked-out commit registers (device_report.registration_re): a step older than a suite
-    measures without it."""
-    found = subprocess.run(["git", "-C", str(worktree), "grep", "-h", "-F", "SUITE_REGISTER", "--", "launcher/*.c"],
-                           capture_output=True, text=True)
-    if found.returncode not in (0, 1):  # 1: no line matched
-        raise RuntimeError(f"git grep for suite registrations failed: {found.stderr.strip()}")
-    return [suite for suite in suites if registration_re(suite[0]).search(found.stdout)]
+def registered_suites(repo, suites, commit=None):
+    """The suites `commit` registers (device_report.registration_re), the checked-out one by default."""
+    try:
+        found = git(repo, "grep", "-h", "-F", "SUITE_REGISTER", *([commit] if commit else []), "--", "launcher/*.c")
+    except subprocess.CalledProcessError as error:
+        if error.returncode != 1:  # 1: no line matched
+            raise RuntimeError(f"git grep for suite registrations failed: {error.output.strip()}") from error
+        found = ""
+    return [suite for suite in suites if registration_re(suite[0]).search(found)]
 
 
-def step_suites(worktree, suites, complete):
-    """The night's suites this step can run. An older step, the anchor included, may predate one; the newest
-    (`complete`) lacking one, or a step that registers none, is a capture failure."""
+def step_suites(worktree, suites):
+    """The night's suites this step can run: a step measures without the ones it predates (the night checks that
+    its tip registers them all), and one that registers none is a capture failure."""
     registered = registered_suites(worktree, suites)
     dropped = [suite[0] for suite in suites if suite not in registered]
-    if not registered or (dropped and complete):
+    if not registered:
         raise ValueError(f"commit does not register suite(s) {', '.join(dropped)}")
     if dropped:
         print(f"scoped_chain: step predates suite(s) {', '.join(dropped)}; measured without them", file=sys.stderr)
@@ -288,7 +289,7 @@ def run_chain(steps, args, runner=None, clock=None):
     previous_hash = previous.get("last_image_hash")
     deadline = getattr(args, "deadline", None)
     deadline = deadline and datetime.fromisoformat(deadline)
-    positions = {step.commit: step.position for step in history_steps(args.repo, "HEAD")}
+    positions = {step.commit: step.position for step in history_steps(args.repo, args.tip)}
     results, failures, stop_reason, current = [], 0, None, None
     ended = None
     selftest = dict(board=board, outcome="not_run", report=None, started=None, seconds=0)
@@ -390,8 +391,7 @@ def run_chain(steps, args, runner=None, clock=None):
                     result.outcome = "capture_failed"
                     try:
                         capture_args = SimpleNamespace(project=worktree, out=output / f"{index:0{STEP_INDEX_DIGITS}}-capture",
-                                                       suite=step_suites(worktree, args.suite,
-                                                                         index == len(steps) - 1),
+                                                       suite=step_suites(worktree, args.suite),
                                                        runs=1,
                                                        timeout=CAPTURE_TIMEOUT_SECONDS,
                                                        wait=NIGHT_STEP_HANG_SECONDS)
@@ -583,6 +583,14 @@ def run_night(args, clock=None, launch=None):
     # Lanes stopped by a guard: hung ones past LANE_HANG_FACTOR, late ones still running at the deadline.
     hung, late = set(), set()
     unreachable, seen = [], bool(planned["listed"])
+    # Every step measures without the suites it predates, so a suite the tip lacks (renamed, dropped, mistyped)
+    # would go unmeasured without a word: the night fails for it here, once, and its lanes still run.
+    registered = registered_suites(args.repo, args.suite, planned["tip"])
+    missing = [suite[0] for suite in args.suite if suite not in registered]
+    if missing:
+        print(f"::error::night: the tip {planned['tip'][:12]} does not register suite(s) {', '.join(missing)}",
+              file=sys.stderr)
+        failed = True
 
     def start(board, lane, lane_plan, wait=NIGHT_STEP_HANG_SECONDS):
         if lane.get("host"):
@@ -933,7 +941,7 @@ def main():
     if lane["lane"] != args.lane:
         parser.error("lane differs from the shared plan")
     args.previous = lane["previous"]
-    args.night, args.started = (planned[key] for key in ("night", "started"))
+    args.night, args.started, args.tip = (planned[key] for key in ("night", "started", "tip"))
     args.deadline = planned.get("deadline")
     steps = [Step(**step) for step in lane["steps"]]
     if args.from_sha is not None or args.max_steps is not None:

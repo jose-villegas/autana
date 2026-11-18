@@ -29,6 +29,9 @@ from build.c_header import read_define  # noqa: E402
 
 # The packets' tag, as the verb sends them.
 TAG = read_define(Path(__file__).resolve().parents[2] / "main/shell/console/console_framerec.c", "FRAMEREC_TAG")
+# The stream version this reader reads; a HEADER of another is refused.
+VERSION = read_define(Path(__file__).resolve().parents[2] / "main/render/record/frame_record_format.h",
+                      "FRAME_RECORD_VERSION")
 
 # frame_record_type_t
 RECORD_TYPES = {
@@ -168,6 +171,8 @@ def parse(data):
             if name != "HEADER":
                 raise StreamError(f"a stream opens with HEADER, not {name}")
             version, width, height, keyframe_every, build_id = HEADER.unpack(body)
+            if version != VERSION:
+                raise StreamError(f"frame record version {version}, expected {VERSION}")
             stream = Stream({"version": version, "panel_width": width, "panel_height": height,
                              "keyframe_every": keyframe_every, "build_id": text(build_id)})
             continue

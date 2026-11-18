@@ -40,7 +40,7 @@ from device_lock import short_id  # noqa: E402
 from device_report import parse_perf_targets, parse_unpegged_targets, read_capture_text, read_index, records_root  # noqa: E402
 from layout_measure import timing_samples  # noqa: E402
 from nightly.scoped_chain import git  # noqa: E402
-from process_tree import launch_process_tree, stop_process_tree, close_process_tree  # noqa: E402
+from process_tree import run_process_tree  # noqa: E402
 import autana_config  # noqa: E402
 
 BRANCH = "perf-data"
@@ -190,30 +190,22 @@ def write_lines(store, lines):
 
 def network_git(store, *words):
     """`git` on the remote, its stdout: stopped with its children after NETWORK_SECONDS, tried NETWORK_ATTEMPTS
-    times, never prompting. Raises CalledProcessError when the last attempt fails too."""
+    times, never prompting. Raises the last attempt's CalledProcessError or TimeoutExpired when it fails too."""
     command = ["git", "-C", str(store), "-c", "core.longpaths=true", *words]
     for attempt in range(1, NETWORK_ATTEMPTS + 1):
-        process = launch_process_tree(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                                      stderr=subprocess.PIPE, text=True,
-                                      env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
         try:
-            output, errors = process.communicate(timeout=NETWORK_SECONDS)
-            failure = f"exit {process.returncode}" if process.returncode else None
-        except subprocess.TimeoutExpired:
-            stop_process_tree(process)
-            output, errors = process.communicate()
-            failure = f"no answer in {NETWORK_SECONDS} s"
-        except BaseException:
-            stop_process_tree(process)
-            raise
-        finally:
-            close_process_tree(process)
-        if failure is None:
-            return output.strip()
+            done = run_process_tree(command, NETWORK_SECONDS, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE, text=True, env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
+            if not done.returncode:
+                return done.stdout.strip()
+            failure, error = f"exit {done.returncode}", subprocess.CalledProcessError(
+                done.returncode, command, done.stdout, done.stderr)
+        except subprocess.TimeoutExpired as late:
+            failure, error = f"no answer in {NETWORK_SECONDS} s", late
+        errors = (error.stderr or "").strip()
         print(f"perf_index: git {' '.join(words)}: attempt {attempt} of {NETWORK_ATTEMPTS}: {failure}"
-              + (f": {errors.strip()}" if errors.strip() else ""), file=sys.stderr)
-        if attempt == NETWORK_ATTEMPTS:
-            raise subprocess.CalledProcessError(process.returncode, command, output, errors)
+              + (f": {errors}" if errors else ""), file=sys.stderr)
+    raise error
 
 
 def remote_has_branch(store):

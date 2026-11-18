@@ -35,7 +35,7 @@ import numpy as np
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from r3d.meshopt import _library  # noqa: E402
-from r3d.obj import load_obj  # noqa: E402
+from r3d.obj import load_obj, write_obj  # noqa: E402
 from r3d.objects.instances import match_instances, place, source_objects  # noqa: E402
 
 HERE = pathlib.Path(__file__).resolve().parent
@@ -81,22 +81,6 @@ def simplify(positions, triangles, error):
            ctypes.c_size_t(len(p)), ctypes.c_size_t(12), ctypes.c_size_t(0), ctypes.c_float(error),
            ctypes.c_uint(ERROR_ABSOLUTE | PRUNE), None)
     return out[:n].reshape(-1, 3).astype(np.int64)
-
-
-def write_obj(path, mtllib, positions, uvs, triangles, objects, object_names, materials, names):
-    used = np.unique(triangles)
-    remap = np.full(len(positions), -1, dtype=np.int64)
-    remap[used] = np.arange(len(used))
-    lines = [f"mtllib {mtllib}"]
-    lines += [f"v {x:.3f} {y:.3f} {z:.3f}" for x, y, z in positions[used]]
-    lines += [f"vt {u:.5f} {v:.5f}" for u, v in uvs[used]]
-    for obj in np.unique(objects):
-        lines.append(f"o {object_names[obj]}")
-        for material in np.unique(materials[objects == obj]):
-            lines.append(f"usemtl {names[material]}")
-            for a, b, c in remap[triangles[(objects == obj) & (materials == material)]] + 1:
-                lines.append(f"f {a}/{a} {b}/{b} {c}/{c}")
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def material_errors(names, error, error_for):
@@ -156,8 +140,12 @@ def reduce(exported, name, out, error, error_for=()):
     shutil.copyfile(exported / f"{name}.mtl", out / f"{name}.mtl")
     if (exported / "textures").is_dir():
         shutil.copytree(exported / "textures", out / "textures", dirs_exist_ok=True)
-    write_obj(out / f"{name}.obj", f"{name}.mtl", positions, uvs, kept, objects, object_names,
-              materials, names)
+    used = np.unique(kept)
+    remap = np.full(len(positions), -1, dtype=np.int64)
+    remap[used] = np.arange(len(used))
+    groups = [(object_names[obj], names[material], remap[kept[(objects == obj) & (materials == material)]])
+              for obj in np.unique(objects) for material in np.unique(materials[objects == obj])]
+    write_obj(out / f"{name}.obj", f"{name}.mtl", positions[used], groups, uvs=uvs[used])
     return len(tri_v), len(kept)
 
 

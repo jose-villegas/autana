@@ -5,8 +5,11 @@ import tempfile
 import unittest
 
 PERF = pathlib.Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(PERF))
+sys.path[:0] = [str(PERF), str(PERF.parent)]
 import frame_cost
+from build.c_header import read_define
+
+LAUNCHER = PERF.parents[1]
 
 
 class FrameCostTests(unittest.TestCase):
@@ -36,6 +39,28 @@ class FrameCostTests(unittest.TestCase):
             capture.write_text(whole + "\n" + whole + " +3 dropped\n", encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "dropped 3 laps"):
                 frame_cost.frame_laps_means(capture)
+
+    def test_takes_lap_lines_average_per_row_and_quarter_apart_from_the_shells(self):
+        # Built from the C formats, so a prefix changed on one side only goes red here.
+        header = LAUNCHER / "test/frame_profile.h"
+        row = read_define(header, "FRAME_PROFILE_LAPS").replace("%s", "capybara-close")
+        quarter = " " + read_define(header, "FRAME_PROFILE_QUARTER")
+
+        def laps(cull_ms):
+            return f"{frame_cost.LAPS_PREFIX} lap 1000 ns | cpu0 a.b {cull_ms}/2 | cpu1 c.d 8.000/0"
+
+        lines = [laps("1.000"), "I (7719) render_lab_profile: " + row + laps("3.000") + quarter + "landscape",
+                 row + laps("5.000") + quarter + "landscape", row + laps("9.000") + quarter + "portrait",
+                 "ms/frame avg/worst: a 1/1 | total 1"]
+        with tempfile.TemporaryDirectory() as directory:
+            capture = pathlib.Path(directory) / "laps.log"
+            capture.write_text("\n".join(lines), encoding="utf-8")
+            self.assertEqual(frame_cost.frame_laps_means(capture),
+                             {0: {"a.b": (0.998, 0.002)}, 1: {"c.d": (8.0, 0.0)}})
+            takes = frame_cost.frame_laps_takes(capture)
+        self.assertEqual(set(takes), {"capybara-close quarter=landscape", "capybara-close quarter=portrait"})
+        self.assertEqual(takes["capybara-close quarter=landscape"][0]["a.b"], (3.998, 0.002))
+        self.assertEqual(takes["capybara-close quarter=portrait"][0]["a.b"], (8.998, 0.002))
 
     def test_order_new_bracket_and_missing_captures(self):
         with tempfile.TemporaryDirectory() as directory:
