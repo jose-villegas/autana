@@ -2,10 +2,13 @@
 the groups keep the format's ordering after rounding to ticks, coarse vertices only move outward, and the
 engine frame mirrors the group records."""
 
+import contextlib
+import io
 import pathlib
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 import numpy as np
 from scipy.spatial.transform import Rotation
@@ -78,6 +81,14 @@ class BakedLevelsTest(unittest.TestCase):
         points, rgb, triangles, double = wavy_grid()
         cls.levelled = read_back(bake_lit_mesh(points, rgb, triangles, double, lod=True))
         cls.plain = read_back(lit_mesh.bake_lit_mesh(points, rgb, triangles, double))
+
+    def test_the_levels_do_not_depend_on_the_tree(self):
+        """A smaller leaf gives the finest clusters another tree; the levels group the same meshlets."""
+        points, rgb, triangles, double = wavy_grid()
+        other = read_back(bake_lit_mesh(points, rgb, triangles, double, leaf_triangles=lit_mesh.MESHLET_TRIANGLES,
+                                        lod=True))
+        self.assertNotEqual(len(other.nodes), len(self.levelled.nodes), "the leaf size did not change the tree")
+        np.testing.assert_array_equal(other.groups, self.levelled.groups)
 
     def test_level_zero_is_the_plain_bake_with_its_colours(self):
         self.assertEqual(corner_set(lit_mesh.finest_triangles(self.plain)),
@@ -239,6 +250,94 @@ class CrowdedLevelsTest(unittest.TestCase):
         self.assertLessEqual(len(mesh.tris), MAX_TRIANGLES)
         finest = lit_mesh.finest(mesh)
         self.assertTrue(len(mesh.groups) and not finest.all(), "no coarser level was kept")
+
+
+def tree_depth(nodes):
+    """Edges from the root to the deepest leaf."""
+    deepest, stack = 0, [(0, 0)]
+    while stack:
+        index, depth = stack.pop()
+        deepest = max(deepest, depth)
+        if not nodes[index]["leaf"]:
+            first = nodes[index]["first"]
+            stack.extend((c, depth + 1) for c in range(first, first + nodes[index]["count"]))
+    return deepest
+
+
+def node_shape(nodes):
+    return [(n["leaf"], n["first"], n["count"]) for n in nodes]
+
+
+class TreeDepthBoundTest(unittest.TestCase):
+    def baked(self, bound, levelled):
+        """(mesh, what the bake printed) with the runtime's depth bound at `bound`, a small leaf making the finest
+        clusters' tree as deep as the grid allows."""
+        points, rgb, triangles, double = wavy_grid()
+        printed = io.StringIO()
+        with mock.patch.object(lit_mesh, "TREE_DEPTH_MAX", bound), contextlib.redirect_stdout(printed):
+            if levelled:
+                mesh = bake_lit_mesh(points, rgb, triangles, double, leaf_triangles=lit_mesh.MESHLET_TRIANGLES,
+                                     lod=True)
+            else:
+                mesh = lit_mesh.bake_lit_mesh(points, rgb, triangles, double, leaf_triangles=lit_mesh.MESHLET_TRIANGLES)
+        return mesh, printed.getvalue()
+
+    def test_a_levelled_mesh_whose_finest_tree_hits_the_bound_keeps_a_level_for_its_root(self):
+        natural = tree_depth(self.baked(lit_mesh.TREE_DEPTH_MAX, levelled=False)[0].nodes)
+        self.assertGreater(natural, 1)
+        mesh, printed = self.baked(natural, levelled=True)  # the root above both trees must still fit the bound
+        self.assertIn("built by median splits", printed, "the finest tree did not reach the bound")
+        self.assertLessEqual(tree_depth(mesh.nodes), natural)
+        self.assertEqual((False, 2), (mesh.nodes[0]["leaf"], mesh.nodes[0]["count"]))
+
+    def test_a_mesh_without_coarse_clusters_uses_the_whole_bound(self):
+        free = self.baked(lit_mesh.TREE_DEPTH_MAX, levelled=False)[0]
+        natural = tree_depth(free.nodes)
+        mesh, printed = self.baked(natural, levelled=False)
+        self.assertEqual("", printed)
+        self.assertEqual(node_shape(free.nodes), node_shape(mesh.nodes))
+
+
+# A flat mesh's colour a triangle: two channels count the triangles, so no two share one.
+FACE_CHANNEL = 256
+FACE_BLUE = 77
+
+
+def flat_grid():
+    """wavy_grid() as a flat mesh: positions, triangles, sidedness and a face colour of its own for each triangle."""
+    points, _, triangles, double = wavy_grid()
+    index = np.arange(len(triangles))
+    face = np.column_stack([index % FACE_CHANNEL, index // FACE_CHANNEL, np.full(len(index), FACE_BLUE)])
+    return points, triangles, double, face
+
+
+def coloured_corners(q, tris, face):
+    """Each triangle's corners (quantised positions, turned to start at the lowest) with its face colour."""
+    out = {}
+    for t, colour in zip(tris, face):
+        corners = [tuple(int(c) for c in q[v]) for v in t]
+        k = corners.index(min(corners))
+        out[tuple(corners[k:] + corners[:k])] = tuple(int(c) for c in colour)
+    return out
+
+
+class FlatLevelsTest(unittest.TestCase):
+    def test_every_finest_triangle_keeps_its_own_face_colour_through_the_cut_order(self):
+        points, triangles, double, face = flat_grid()
+        mesh = bake_lit_mesh(points, None, triangles, double, face_rgb=face, lod=True)
+        self.assertGreater(len(mesh.groups), 1, "no coarser level was baked")
+        q, _, tris, _, shown = lit_mesh.finest_triangles(mesh)
+        quantised = np.round(points * lit_mesh.POSITION_SCALE).astype(np.int64)
+        self.assertEqual(len(triangles), len(tris))
+        self.assertEqual(coloured_corners(quantised, triangles, face), coloured_corners(q, tris, shown))
+
+    def test_the_finest_clusters_are_the_plain_flat_bakes_triangle_for_triangle(self):
+        points, triangles, double, face = flat_grid()
+        mesh = bake_lit_mesh(points, None, triangles, double, face_rgb=face, lod=True)
+        plain = lit_mesh.bake_lit_mesh(points, None, triangles, double, face_rgb=face)
+        self.assertGreater(len(mesh.tris), len(plain.tris))
+        np.testing.assert_array_equal(plain.face_colors, mesh.face_colors[:len(plain.tris)])
+        np.testing.assert_array_equal(plain.tris, mesh.tris[:len(plain.tris)])
 
 
 class PushOutwardTest(unittest.TestCase):
