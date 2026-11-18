@@ -32,7 +32,7 @@ flowchart LR
 
 | Function | Does |
 |---|---|
-| `run_process_tree(command, timeout=None, *, watch=None, on_line=None, **options)` | runs the command to its end like `subprocess.run`; past `timeout` raises `TimeoutExpired`, `watch` is called every `WATCH_SECONDS` and stops the run by raising, `on_line` gets each output line in the caller's thread; any exception stops the tree |
+| `run_process_tree(command, timeout=None, *, watch=None, on_line=None, **options)` | runs the command to its end like `subprocess.run`; past `timeout` raises `TimeoutExpired`, `watch` is called at least every `WATCH_SECONDS` and stops the run by raising, `on_line` gets each output line in the caller's thread; any exception stops the tree |
 | `launch_process_tree(command, parent_lifetime=False, new_session=True, **options)` | starts the command as a stoppable tree; `options` go to `Popen` |
 | `stop_process_tree(process)` | terminates the tree, waits up to 10 s, then releases the job |
 | `close_process_tree(process)` | releases the Windows job, killing any descendant still in it; a no-op on POSIX |
