@@ -234,7 +234,7 @@ copy_local(int i, stress_framing_t seen, const transformf_t* shape) {
     return place;
 }
 
-static void
+static void __attribute__((noinline))
 copy_extras(int i) {
     if (shown->surface == STRESS_SURFACE_CONTACT_BLOBS) {
         scene_set_contact_blob(slots[i], transform_world(slots[i]).position.y, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT);

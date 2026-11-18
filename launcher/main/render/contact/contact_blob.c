@@ -5,13 +5,10 @@
 #include "image/pixel/rgb565.h"
 #include "math/scalar/mathf.h"
 
+/* Square roots of the Bayer thresholds divided by BAYER4_LEVELS, rounded to float. */
 static const float radius_roots[BAYER4_LEVELS] = {
-    sqrtf(0.0F / BAYER4_LEVELS),  sqrtf(1.0F / BAYER4_LEVELS),  sqrtf(2.0F / BAYER4_LEVELS),
-    sqrtf(3.0F / BAYER4_LEVELS),  sqrtf(4.0F / BAYER4_LEVELS),  sqrtf(5.0F / BAYER4_LEVELS),
-    sqrtf(6.0F / BAYER4_LEVELS),  sqrtf(7.0F / BAYER4_LEVELS),  sqrtf(8.0F / BAYER4_LEVELS),
-    sqrtf(9.0F / BAYER4_LEVELS),  sqrtf(10.0F / BAYER4_LEVELS), sqrtf(11.0F / BAYER4_LEVELS),
-    sqrtf(12.0F / BAYER4_LEVELS), sqrtf(13.0F / BAYER4_LEVELS), sqrtf(14.0F / BAYER4_LEVELS),
-    sqrtf(15.0F / BAYER4_LEVELS)};
+    0.0F,         0.25F, 0.353553385F, 0.433012694F, 0.5F,         0.559017003F, 0.612372458F, 0.661437809F,
+    0.707106769F, 0.75F, 0.790569425F, 0.82915622F,  0.866025388F, 0.901387811F, 0.935414374F, 0.968245864F};
 
 static vec3f_t
 lens_axis(const r3d_lens_t* lens, int row) {
