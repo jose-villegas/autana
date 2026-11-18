@@ -9,7 +9,8 @@ spherical harmonics (SH).
 This is the established light-probe technique: Unity's Light Probes<sup>[[133]](../../Citations.md#unity-light-probes)</sup>
 and Unreal's Volumetric Lightmaps<sup>[[134]](../../Citations.md#epic-volumetric-lightmaps)</sup>
 (which replaced its Indirect Lighting Cache) both light moving objects from
-a precomputed probe volume. The grid is the irradiance volume<sup>[[132]](../../Citations.md#greger-1998)</sup>;
+a precomputed probe volume; here each mover takes one sample, with no
+per-pixel probe lookup. The grid is the irradiance volume<sup>[[132]](../../Citations.md#greger-1998)</sup>;
 its convolution is Ramamoorthi and Hanrahan's<sup>[[128]](../../Citations.md#ramamoorthi-hanrahan-2001)</sup>.
 
 ```mermaid
@@ -31,8 +32,8 @@ flowchart LR
 
 | Step | What happens | Owner |
 |---|---|---|
-| [1. Placement](#1-placement) | one probe per cell of the camera region, moved out of walls | `r3d/views/probes.py` |
-| [2. The bake](#2-the-bake) | path-traced radiance and the sun, projected to SH | `r3d/sh_probe_bake.py`, [SH-Probes](../offline/SH-Probes.md) |
+| [1. Placement](#1-placement) | one probe per cell of the camera region, moved out of walls | [`probes.py`](../../../launcher/tools/r3d/views/probes.py) |
+| [2. The bake](#2-the-bake) | path-traced radiance and the sun, projected to SH | [`sh_probe_bake.py`](../../../launcher/tools/r3d/sh_probe_bake.py), [SH-Probes](../offline/SH-Probes.md) |
 | [3. What a probe stores](#3-what-a-probe-stores) | four RGB L1 coefficients, 24 bytes | [SHPR](../../assets/formats/SHPR.md), `sh_probes_t` |
 | [4. Attaching a grid](#4-attaching-a-grid) | a scene borrows the grid | `scene_set_probes()` |
 | [5. Finding and blending probes](#5-finding-and-blending-probes) | trilinear blend of 8 probes | `sh_probes_sample()` |
@@ -46,8 +47,8 @@ flowchart LR
 
 The grid covers the scene camera's region (the source's bounds without
 one). Its spacing is the request's `spacing`, or 32 camera near planes,
-widened until the region holds at most 1024 cells. Sponza's region at 192
-units a cell gives 14 × 7 × 7 = 686 probes.
+widened until the region holds at most 1024 cells. At the default spacing
+Sponza's region holds 14 × 7 × 7 = 686 probes.
 
 Each cell's probe starts at the cell centre, jittered by up to 0.4 of a
 cell. The DDGI classification<sup>[[119]](../../Citations.md#majercik-2021)</sup>
@@ -56,8 +57,9 @@ is inside geometry; a front face nearer than 2 near planes means it is
 against a wall.
 
 Either moves the probe, by at most 0.45 of a cell, and it is tested again.
-A probe still inside is not traced. This placement is ProbeViews', the same
-code that chooses the appearance fit's extra views.
+A probe still inside is not traced. The constants are
+[`probes.py`](../../../launcher/tools/r3d/views/probes.py)'s, shared with
+the offline fitter's choice of extra camera views.
 
 ## 2. The bake
 
@@ -110,6 +112,12 @@ the entity its pack loaded as. Each field of `sh_probes_t` is the SHPR
 header field of the same name, and `coefficients` points at the record's
 probes in place.
 
+```c fragment
+const sh_probes_t grid = {.origin = origin, .spacing = spacing, .dims = {nx, ny, nz},
+                          .scale = scale, .coefficients = probes};
+scene_set_probes(root, &grid);
+```
+
 The scene keeps the pointer, so the record must stay loaded. `NULL` returns
 the scene to its flat ambient colour. Every lit skinned renderer under
 `root` samples the same grid, and a grid turns skin lighting on even in a
@@ -122,15 +130,15 @@ scene with no direct lights.
 A point's grid coordinate is `(world - origin) / spacing` per axis, clamped
 to the grid. Its integer part picks the lower corner, its fraction the
 weight. The 8 surrounding probes' coefficients blend trilinearly into one
-`sh1_rgb_t`; a 1-probe axis takes its one probe.
+[`sh1_rgb_t`](../../../launcher/packages/math/include/math/sh/sh1.h); a 1-probe axis takes its one probe.
 
 Past the last probe the coordinate clamps, so the edge probes' value carries
 on (the figure's margin). Blending coefficients, then convolving, equals
 convolving each probe and blending the results, since both steps are linear.
 
 The scene samples at the centre of each skinned renderer's last resolved
-world bounds, once per pose for each range of clusters a core skins. The
-whole mover gets one sample.
+world bounds, once per range of clusters a core skins; every vertex of the
+mover shares that value.
 
 ## 6. From SH to shading
 
@@ -142,16 +150,20 @@ linear in the normal $`n`$:<sup>[[128]](../../Citations.md#ramamoorthi-hanrahan-
 ```
 
 The bands are reordered to x, y, z ($`L_3, L_1, L_2`$) so the gradient
-multiplies the normal directly. `sh1_rgb_irradiance()` builds the constant
+multiplies the normal directly; the two factors are 0.282095 and 0.325735.
+[`sh1_rgb_irradiance()`](../../../launcher/packages/math/include/math/sh/sh1.h) builds the constant
 and that 3×3 gradient (a row per channel); `r3d_skin_light_ambient_sh()`
 divides by $`\pi`$, as the direct lights are, once per mover.
 
 ![A white diffuse sphere in Sponza: the scene's flat ambient, then the grid at the brightest, median and darkest probe of the first layer above the floor](../../images/render/light-probe-sponza-spheres.png)
 
+The brightest probe sits in the sunlit atrium: its sphere clips on the sun
+side and turns black on the far side, where L1's gradient passes zero.
+
 Per vertex, `sh1_irradiance_eval()` is 9 multiply-adds. The sum takes the
 same albedo, tone map and gamma as the direct lights
 ([Skinned-Lighting](../animation/Skinned-Lighting.md)); how it joins them
-depends on the renderer's lighting mode:
+depends on the renderer's lighting mode (that page describes the three):
 
 | Mode | Ambient per vertex |
 |---|---|
@@ -164,10 +176,9 @@ baked colours.
 
 ## 7. Cost and goals
 
-The bake traces 512 × 4 primary paths and one sun ray for each probe outside
-geometry, and prints those counts, the grid's bytes and its time; its time
-is not recorded here. A grid is rebaked only when its key changes
-([Bakes](../../assets/Bakes.md)).
+The bake prints its path and sun-ray counts, the grid's bytes and its time
+([SH-Probes](../offline/SH-Probes.md)); a grid is rebaked only when its key
+changes ([Bakes](../../assets/Bakes.md)).
 
 On the board, the grid costs its record's bytes and nothing per frame
 beyond the movers. The skinned stress preset's goals, in microseconds per
@@ -183,15 +194,16 @@ panel's orientation, each stage a [frame-cost](../../tools/Frame-Cost.md) bracke
 
 The sample, the convolution and the per-vertex evaluation run inside
 `anim.skin`; they are not timed apart from it, so the cost of probe ambient
-over flat ambient is not measured. A probe-ambient kernel in the skin-light
-benchmark would measure it.
+over flat ambient is not measured.
 
 ## 8. Limits
 
-- A scene has a grid only when it has a `<scene>.probes.toml` beside it.
+- A scene has a grid only when it has a `<scene>.probes.toml` beside it and
+  a `bake.indirect` section.
 - One sample per mover: a mover half in shadow is lit as one.
 - L1 holds a gradient only. A strong sun blurs into it, and the side facing
-  away from it can go dark, past zero (the brightest sphere above).
+  away from it can go dark, past zero (the brightest sphere above); nothing
+  windows or clamps the coefficients.
 - Probes inside geometry hold their neighbours' mean, not their own light.
 - The sample uses the bounds from the mover's last pose, so its light trails
   a fast move by a pose.
