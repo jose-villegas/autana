@@ -151,6 +151,17 @@ scene_resolve(scene_t* scene) {
     }
 }
 
+/* Entity `e` stops being ACTIVE: its skin gives its buffers back, and a
+ * skin or renderer starved for memory may try again at its next activation. */
+static void
+deactivate(scene_t* scene, scene_row_t e) {
+    scene_skin_deactivate(scene, e);
+    const int r = scene->starved_count > 0 ? scene_renderer_index(scene, e) : -1;
+    if (r >= 0) {
+        scene_unstarve(scene, &scene->renderers[r].starved);
+    }
+}
+
 void
 scene_hierarchy_update_active(scene_t* scene, scene_row_t entity) {
     const bool root_active = (scene->root->flags & SCENE_FLAG_ACTIVE) != 0;
@@ -166,11 +177,7 @@ scene_hierarchy_update_active(scene_t* scene, scene_row_t entity) {
             /* A skin holds its buffers only while ACTIVE. */
             scene->skins_pending |= active && scene->skinned_renderers[e].bound;
             if (!active) {
-                scene_skin_deactivate(scene, (scene_row_t)e);
-                const int r = scene->starved_count > 0 ? scene_renderer_index(scene, (scene_row_t)e) : -1;
-                if (r >= 0) {
-                    scene_unstarve(scene, &scene->renderers[r].starved);
-                }
+                deactivate(scene, (scene_row_t)e);
             }
         }
     }
