@@ -113,7 +113,7 @@ def visible_triangles(visibility, scene, p, tri_v, double, intersector, rng):
 
 def seal_camera(scene, renderer):
     """Where a sealed import's probes stand (simplify's Allocation.camera): the scene camera's region and near
-    plane, then the path's views when the renderer has `seal_views`. None without a scene camera."""
+    plane, then the flight's views when the renderer has `seal_views`. None without a scene camera."""
     if scene is None or scene.camera is None:
         return None
     camera = (scene.region, scene.camera.component.near_z)
@@ -241,7 +241,7 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
                                                                                                              intersector, bounce, preserve_corners=True, **kw))
                                                                                       if job.bake and carve else None,
                                                                          report=mesh_report, shapes=shapes,
-                                                                         camera=seal_camera(scene, renderer) if steps.seal_seams else None),
+                                                                         camera=seal_camera(scene, renderer)),
                                                    reserved=[(frozenset(i for i, name in enumerate(src.names) if name in steps.props),
                                                               steps.props_share)],
                                                    colour_deviation=steps.colour_deviation, seal_seams=steps.seal_seams, **scale)

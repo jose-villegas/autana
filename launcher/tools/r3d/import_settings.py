@@ -874,8 +874,8 @@ def load_scene(path):
             raise SettingsError(f"scene {name} is read by no placed mesh")
     if "camera_path" in sources and camera_path is None:
         raise SettingsError("scene camera path is required: a placed mesh keeps what the camera path sees")
-    if camera_path is None and any(item.renderer.seal_views for item in jobs):
-        raise SettingsError("scene camera path is required: a placed mesh seals what the camera path sees")
+    if any(item.renderer.seal_views for item in jobs) and not any(camera.component.path for camera in cameras):
+        raise SettingsError("a camera path is required: a placed mesh seals what the camera path sees")
     for item in jobs:
         if item.renderer.bake and not item.object.identity:
             raise SettingsError(f"scene.objects {item.object.name!r}: a baked renderer is traced where it "

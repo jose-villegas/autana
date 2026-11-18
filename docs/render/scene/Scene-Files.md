@@ -406,8 +406,9 @@ keeps the brighter.
 
 An import with [`seal_seams`](../offline/Mesh-Import.md#seal_seams) is checked for sky showing through its
 walls from probes in the camera's `region`. `seal_views` adds the camera path's own frames to those views:
-one every `every_ms`, `size` pixels, square as for [path visibility](#visibility-camera_path). A gap only a
-path pose sees is then closed too. It needs the camera's `path`.
+one every `every_ms`. `size` is the panel's width and height in pixels, and each frame is traced through a
+square view that covers it, as for [path visibility](#visibility-camera_path). A gap only a path pose sees is
+then closed too. It needs a camera with a `path`.
 
 ### Camera options
 
