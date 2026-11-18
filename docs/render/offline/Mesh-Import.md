@@ -17,7 +17,7 @@ flowchart TB
     end
     subgraph Finish["3 · Reduce and write"]
     direction LR
-    Simp["Simplify to the budget<br/><i>import, opt in</i>"] --> Face["Light per face<br/><i>scene, flat only</i>"] --> Write["Write: quantise,<br/>meshlets, octree"] --> Pack["name.bundle into<br/>build_pack.py"]
+    Simp["Simplify to the budget<br/><i>import, opt in</i>"] --> Face["Light per face<br/><i>scene, flat only</i>"] --> Write["Write: quantise,<br/>meshlets, cluster tree"] --> Pack["name.bundle into<br/>build_pack.py"]
     Simp -. smooth .-> Write
     end
     Cut --> Light --> Finish
@@ -295,7 +295,7 @@ flowchart LR
     load[Load and light] --> join[Join touching pieces]
     join --> pass[Simplify pass]
     pass --> merge[Merge near colours]
-    merge --> bake[Quantise, meshlets, octree]
+    merge --> bake[Quantise, meshlets, cluster tree]
     subgraph seal_seams
         join
         pass
@@ -637,7 +637,7 @@ unknown key is an error.
 | `python launcher/tools/r3d/mesh_import.py SCENE` | Each renderer's mesh: a `bake = true` renderer traced with the scene's lights, camera visibility and tone map; an albedo renderer its import's shared mesh. |
 | `python launcher/tools/r3d/mesh_import.py PATH --mesh NAME` | That one mesh only. |
 | `python launcher/tools/r3d/build_pack.py -o DIR` | One [pack](../../assets/Building-Packs.md#packs) per root from the `.bundle` entries it names, baking each scene's [entry](../../assets/formats/SCNE.md) on the way. |
-| `python launcher/tools/r3d/rebake.py MESH.bundle` | The bundle's rest clusters and octree in place, retaining copies; rerun `build_pack.py` to pack it. |
+| `python launcher/tools/r3d/rebake.py MESH.bundle` | The bundle's rest clusters and cluster tree in place, retaining copies; rerun `build_pack.py` to pack it. |
 
 A cached `<name>.bundle` holds LMSH entries, their LCOL/LLOD siblings and a
 copies manifest. `build_pack.py` expands it into the [asset pack](../../assets/README.md).
