@@ -808,8 +808,9 @@ def bakes_in(packs, jobs, starts=None, poses=None):
             if is_blend(job.settings):
                 export = blend_export(job.settings, tools)
                 exports.setdefault(export.key, export)
-            if scene is not None and getattr(job.settings, "sh_probes", None) is not None:
-                from r3d.sh_probe_settings import recipe, SUFFIX
+            from r3d.sh_probe_settings import load as load_sh_probes, recipe, SUFFIX
+
+            if scene is not None and load_sh_probes(job.settings.path) is not None:
                 from r3d.scene_name import scene_id
 
                 probe_recipe = recipe(job, scene, import_recipe(job.settings, tools)[1])
