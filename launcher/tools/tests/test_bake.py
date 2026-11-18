@@ -1015,6 +1015,25 @@ class PosesTests(FittedBakeCase):
         self.assertNotEqual(spaced["reference"], trained["reference"])
         self.assertNotEqual(spaced["fit"], trained["fit"])
 
+    def test_a_sealed_start_is_keyed_by_the_camera_and_by_its_seal_views_poses(self):
+        self.job.renderer.visibility = None
+        self.job.settings.simplify.seal_seams = False
+        unsealed = self.keys()
+        self.scene.camera.component.near_z += 1.0
+        self.assertEqual(unsealed["start"], self.keys()["start"], "an unsealed start without visibility reads no camera")
+        self.job.settings.simplify.seal_seams = True
+        sealed = self.keys()
+        self.scene.camera.component.near_z += 1.0
+        self.assertNotEqual(sealed["start"], self.keys()["start"], "the probes stand by the camera's near plane")
+        sealed = self.keys()
+        rows = bake.Poses({})
+        self.job.renderer.seal_views = types.SimpleNamespace(every_ms=33, size=(8, 6))
+        viewed = self.keys(rows)
+        self.assertNotEqual(sealed["start"], viewed["start"])
+        self.assertTrue(rows.used, "the path's frames are counted by their sampled poses")
+        self.job.renderer.seal_views.every_ms += 1
+        self.assertNotEqual(viewed["start"], self.keys()["start"])
+
     def test_clip_rename_keeps_keys_and_different_clip_or_node_rekeys(self):
         from anim_probe import write_camera_clip
 
