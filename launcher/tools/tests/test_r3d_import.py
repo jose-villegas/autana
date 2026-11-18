@@ -924,15 +924,16 @@ class PathLightForTests(unittest.TestCase):
         self.assertEqual(built.call_count, 1)
 
     def test_a_scene_is_kept_per_variant_and_the_default_is_the_bake_variant(self):
+        other_variant = "llvm_ad_rgb" if ray_query.VARIANT == "scalar_rgb" else "scalar_rgb"
         indirect = SimpleNamespace(bounces=1, rays=8)
         scene = SimpleNamespace(lights=[], indirect=SimpleNamespace(albedo_boost=1.0, intensity=1.0))
         with mock.patch.object(mesh_source, "PathLight", side_effect=lambda *args: object()) as built:
             bake = mesh_import.path_light_for(None, self.job(indirect), scene)
             self.assertIs(mesh_import.path_light_for(None, self.job(indirect), scene, ray_query.VARIANT), bake,
                           "no variant is the bake's variant")
-            gpu = mesh_import.path_light_for(None, self.job(indirect), scene, ray_query.GPU_VARIANT)
-        self.assertIsNot(gpu, bake, "a scene traced on one variant is not reused on another")
-        self.assertEqual([call.args[-1] for call in built.call_args_list], [ray_query.VARIANT, ray_query.GPU_VARIANT])
+            other = mesh_import.path_light_for(None, self.job(indirect), scene, other_variant)
+        self.assertIsNot(other, bake, "a scene traced on one variant is not reused on another")
+        self.assertEqual([call.args[-1] for call in built.call_args_list], [ray_query.VARIANT, other_variant])
 
 
 class JobTests(unittest.TestCase):
