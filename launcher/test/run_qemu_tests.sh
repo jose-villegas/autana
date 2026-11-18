@@ -102,5 +102,4 @@ fi
 # shellcheck source=../../scripts/lib/python.sh
 . "$LAUNCHER_DIR/../scripts/lib/python.sh"
 PYTHON=$(find_python) || exit 1
-# shellcheck disable=SC2086
 "$PYTHON" "$TEST_DIR/qemu_run.py" "$LAUNCHER_DIR/$BUILD_DIR" "$@"

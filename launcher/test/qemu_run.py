@@ -484,6 +484,8 @@ def parse_args(argv):
     parser.add_argument("--idf-path", default=None,
                         help="the ESP-IDF checkout (default: resolved install)")
     args = parser.parse_args(argv)
+    if args.test and not args.suite:
+        parser.error("--test narrows a --suite; give one")
     if args.icount_ratchet:
         args.icount = True
         try:
