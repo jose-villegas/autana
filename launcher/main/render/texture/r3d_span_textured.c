@@ -228,8 +228,7 @@ true_level(const setup_t* su, float u, float v, float r) {
 static RENDER_TAIL_ATTR __attribute__((noinline)) void
 fill_divided(const setup_t* su, uint16_t* depth, uint16_t* color, int count, carry_t* c, float s, float t, float q,
              int x, int y) {
-    const sampler_t* sampler = &su->sampler;
-    sampler_t own;
+    sampler_t sampler = su->sampler; /* by value: a second one beside a pointer costs the frame 32 bytes */
     float ds = su->s.dx;
     float dt = su->t.dx;
     if (su->span_level) {
@@ -238,8 +237,7 @@ fill_divided(const setup_t* su, uint16_t* depth, uint16_t* color, int count, car
         const float rc = mathf_recip_approx(q + (su->q.dx * half));
         const int level = true_level(su, (s + (ds * half)) * rc, (t + (dt * half)) * rc, rc);
         const float k = mathf_pow2(-level);
-        own = sampler_at(su->sampler.texture, level);
-        sampler = &own;
+        sampler = sampler_at(sampler.texture, level);
         s *= k;
         t *= k;
         ds *= k;
@@ -260,7 +258,7 @@ fill_divided(const setup_t* su, uint16_t* depth, uint16_t* color, int count, car
         const int32_t du = (int32_t)(((s * r * (float)UV_ONE) - u_at) * inverse);
         const int32_t dv = (int32_t)(((t * r * (float)UV_ONE) - v_at) * inverse);
         c->duv = pack_uv(du, 0) + (uint32_t)dv;
-        fill_with(depth + done, color + done, n, c, sampler, x + done, y, false);
+        fill_with(depth + done, color + done, n, c, &sampler, x + done, y, false);
         u_at += (float)(du * n);
         v_at += (float)(dv * n);
         done += n;
