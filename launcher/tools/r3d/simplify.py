@@ -166,28 +166,40 @@ def simplify(pos, rgb, tris, labels, triangles, reserved=(), *, colour_deviation
 
 def _run_pass(pos, rgb, tris, labels, budget, deviation, options, locks=None, leaks=None):
     """One meshoptimizer pass over `tris`. `leaks` is (the scene's LeakProbes, this pass's rows of its triangles):
-    while a probe sees sky through the result, the pass runs again with one more source vertex locked per hole."""
-    from .leaks import ROUNDS
-
+    while a view shows sky through the result, the pass runs again with one more source vertex locked per hole.
+    Locks that leave the pass more triangles than its budget, or than its first run when that is already over,
+    are not taken: the run before them stands."""
     used, local = np.unique(tris, return_inverse=True)
     local = local.reshape(-1, 3)
     weight = colour_weight(pos[used], local, budget, deviation)
     held = None if locks is None else locks[used].copy()
-    for round_ in range(ROUNDS + 1):
+
+    def run():
         kwargs = {} if held is None else {'vertex_lock': held}
-        p, c, t, kept = simplify_with_update(pos[used], rgb[used], local, budget, weight, options, **kwargs)
-        log(f"  simplified {len(tris)} -> {len(t)} triangles (budget {budget}, colour weight {weight:.3g})")
-        if leaks is None:
-            break
+        result = simplify_with_update(pos[used], rgb[used], local, budget, weight, options, **kwargs)
+        log(f"  simplified {len(tris)} -> {len(result[2])} triangles (budget {budget}, colour weight {weight:.3g})")
+        return result
+
+    p, c, t, kept = run()
+    if leaks is not None:
+        from .leaks import ROUNDS
+
         probes, rows = leaks
-        free = np.zeros(len(pos), dtype=bool)
-        free[used] = True if held is None else ~held
-        holes, pinned = probes.pins(rows, p, t, free)
-        log(f"  {holes} holes seen by the probes, {len(pinned)} vertices to lock")
-        if round_ == ROUNDS or not len(pinned):
-            break
-        held = np.zeros(len(used), dtype=bool) if held is None else held
-        held[np.searchsorted(used, pinned)] = True
+        most = max(len(t), budget)
+        for _ in range(ROUNDS):
+            free = np.zeros(len(pos), dtype=bool)
+            free[used] = True if held is None else ~held
+            holes, pinned = probes.pins(rows, p, t, free)
+            log(f"  {holes} holes seen, {len(pinned)} vertices to lock")
+            if not len(pinned):
+                break
+            held = np.zeros(len(used), dtype=bool) if held is None else held
+            held[np.searchsorted(used, pinned)] = True
+            again = run()
+            if len(again[2]) > most:
+                log(f"  the locks leave {len(again[2])} triangles, over the pass's {most}: not taken")
+                break
+            p, c, t, kept = again
     return p, c, t, _label_after(local, labels, kept, t)
 
 
