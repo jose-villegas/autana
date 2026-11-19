@@ -241,9 +241,16 @@ contact_disc_draw(const r3d_span_target_t* target, const r3d_lens_t* lens, vec3f
     if (!(radius > 0.0F) || !(strength > 0.0F)) {
         return;
     }
-    const vec3f_t axis = fabsf(up.x) < fabsf(up.y) ? vec3f_unit_x() : vec3f_unit_y();
-    const vec3f_t u = vec3f_scale(vec3f_normalize(vec3f_cross(up, axis)), radius);
-    const vec3f_t v = vec3f_scale(vec3f_normalize(vec3f_cross(up, u)), radius);
+    vec3f_t u;
+    vec3f_t v;
+    if (up.x == 0 && up.y == 1 && up.z == 0) {
+        u = vec3f_scale(vec3f_unit_z(), -radius);
+        v = vec3f_scale(vec3f_unit_x(), -radius);
+    } else {
+        const vec3f_t axis = fabsf(up.x) < fabsf(up.y) ? vec3f_unit_x() : vec3f_unit_y();
+        u = vec3f_scale(vec3f_normalize(vec3f_cross(up, axis)), radius);
+        v = vec3f_scale(vec3f_normalize(vec3f_cross(up, u)), radius);
+    }
     blob_bounds_t bounds;
     project_bounds(&bounds, target, lens, ground, u, v);
     const vec3f_t centre = mat4f_apply(&lens->m, ground);
