@@ -10,7 +10,7 @@ Ask of each setting:
 | Question | If yes, it lives in | Unity's counterpart |
 |---|---|---|
 | Is it per view: would two cameras on the same scene want different values? | the **camera** (`lens_t`) | Camera component |
-| Is it in scene units (metres, scene colours), or does its right value depend on what the scene holds? | the **scene** (scene file, SCNE) | Lighting / Environment / Fog, per scene |
+| Is it in scene units (distances, scene colours), or does its right value depend on what the scene holds? | the **scene**: its scene file (lighting, components) or its pack overlay (render keys) | Lighting / Environment / Fog, per scene |
 | Otherwise it costs pixels, frames or counts and means the same thing in any scene | **render settings** (`render_settings_t`, the app's pack) | Quality settings / pipeline asset |
 
 Light and renderer modes are component fields (a light's mode, a renderer's GI), so they sit on that component
@@ -23,9 +23,9 @@ flowchart LR
     subgraph App["App pack: NAME.render.toml"]
         Q["render_settings_t<br/>cull, depth_fit, batched, partial_redraw<br/>lod, anim, texture<br/>small_fill (moved), output (step 2)"]
     end
-    subgraph Scene["Scene file: NAME.scene.toml"]
-        S["[render] render_scene_t<br/>skip_hidden (moved), far_z (new)<br/>later fog, draw_z"]
-        L["tonemap_white, ambient, sky, indirect<br/>lights + mode, renderers + GI, bake"]
+    subgraph Scene["Scene: its pack and scene file"]
+        S["pack overlay NAME.render.toml<br/>[scene] only: skip_hidden, far_z<br/>later fog, draw_z"]
+        L["scene.toml<br/>tonemap_white, ambient, sky, indirect<br/>lights + mode, renderers + GI, bake"]
     end
     subgraph Cam["Camera component"]
         C["lens_t<br/>half_fov_short_tan, near_z, shift<br/>background"]
@@ -45,9 +45,9 @@ Settings missing from this table stay where they are today. The full list is the
 |---|---|---|---|
 | `small_fill` ceiling, gate, style | camera (`lens_t`, `camera_set_small_fill`), set only by render_lab's TUNE knobs | render settings `[small_fill]` | pixels and a colour kernel: cost and look, the same in any scene |
 | `small_fill.far_ceiling` (far-band) | render settings on its branch | render settings `[small_fill]` | pixels |
-| `far_z` (far-band) | render settings on its branch | scene `[render] far_z` | metres: right for Bistro is wrong for Sponza |
-| `skip_hidden` | render_lab C table `scene_baked_t` → `camera_set_skip_hidden` | scene `[render] skip_hidden` | pays only where much of the scene hides behind nearer geometry |
-| fog band, draw distance (k3qt) | not built | scene `[render]` (`fog_*`, `draw_z`) | metres and the scene's colours; fog must reach full at the draw distance, so they sit together |
+| `far_z` (far-band) | render settings on its branch | scene pack overlay `[scene] far_z` | scene units: Sponza tunes 800 to 1200, Bistro differs |
+| `skip_hidden` | render_lab C table `scene_baked_t` → `camera_set_skip_hidden` | scene pack overlay `[scene] skip_hidden` | pays only where much of the scene hides behind nearer geometry |
+| fog band, draw distance (k3qt) | not built | scene pack overlay `[scene]` (`fog_*`, `draw_z`) | scene units and the scene's colours; fog must reach full at the draw distance, so they sit together |
 | light mode realtime/baked (bb3uy) | not built | scene `objects.light.mode` | a property of that light |
 | renderer receives/contributes (2u9br) | not built | scene `objects.mesh_renderer.*` | a property of that renderer |
 | `present`, `scale`, `upscale_filter`, `frame_generation` | camera / `render_context_set_*`, set by render_lab | render settings `[output]` (**step 2**) | cost choices for the whole picture |
@@ -66,87 +66,92 @@ These stay:
 
 ## Sketch
 
-### Scene values: a `[render]` table in the scene file, not a scene pack's render file
+### Scene values: the approved scene pack overlay (B, partial)
 
-The scene file already owns the scene's drawn values: `tonemap_white` and `ambient` reach the device in SCNE's
-settings row (`scene_asset_settings_t`). The scene's render keys join that row. This is a better owner than
-far-band's proposal B (a scene pack's `.render.toml` applied over the app's), for three reasons:
+The maintainer approved B, and far-band is building it now (`render_settings_overlay_t`, `set` mask). The
+pieces are:
 
-- The values sit beside the lights and camera they belong with.
-- A scene's keys and the app's keys are two disjoint structs. Nothing is overlaid on anything else, so no
-  precedence rule is needed.
-- A folder pack can hold several scenes (capybara and herd), and a pack-wide render entry cannot tell them
-  apart.
+- A scene's pack carries a `.render.toml` that lists only the keys it changes.
+- On scene load, `render_system` sets the context to the app's settings with the scene's overlay on top, and
+  puts the app's settings back when the scene is released.
+
+This layout plugs into it in two places:
+
+- the struct that decides which keys a scene may set;
+- what an additive load does.
 
 ```toml
-# demo/bistro/bistro.scene.toml
-[render]            # render_scene_t's fields; absent keys keep their defaults
+# the Bistro pack's bistro.render.toml: only [scene] keys are allowed here
+[scene]
 skip_hidden = true
-far_z = 1000.0
+far_z = 1000.0      # scene units (Sponza's are cm-like: 800 to 1200)
 ```
 
 ```c fragment
-/* render/settings/render_settings.h. A scene's drawn values: what its content
- * and scale decide. Its keys are the scene file's [render] table. */
+/* render/settings/render_settings.h. A scene's values: what its content and
+ * scale decide. A scene pack's render file may set these and nothing else. */
 typedef struct {
     bool skip_hidden; /* scene: skip clusters behind drawn depth; pays where much of it hides */
-    float far_z;      /* scene: metres past which small_fill.far_ceiling applies; 0 is off */
+    float far_z;      /* scene: scene units past which small_fill.far_ceiling applies; 0 is off */
     /* k3qt later: draw_z, fog_start_z, fog_rgb */
-} render_scene_t;
-#define RENDER_SCENE_DEFAULT ((render_scene_t){0}) /* generated, like RENDER_SETTINGS_DEFAULT */
+} render_scene_settings_t;
 
 typedef struct {
     uint8_t ceiling, gate;    /* basic: was lens_t.small_fill */
     small_fill_style_t style; /* basic */
-    uint8_t far_ceiling;      /* advanced: far-band; the ceiling past render_scene_t.far_z */
+    uint8_t far_ceiling;      /* advanced: the ceiling past scene.far_z (far-band: 24 fits both scenes) */
 } render_small_fill_settings_t;
-/* render_settings_t gains: render_small_fill_settings_t small_fill; */
 
-/* scene_asset.h: the SCNE settings row gains the scene's values (SCNE version + 1). */
-typedef struct {
-    vec3f_t ambient_color;
-    float ambient_intensity, tonemap_white;
-    render_scene_t render;
-} scene_asset_settings_t;
+/* render_settings_t gains:
+ *     render_small_fill_settings_t small_fill;   app: [small_fill]
+ *     render_scene_settings_t scene;             scene pack overlay: [scene] */
 
-/* render_view.h: render_view_t drops small_fill and skip_hidden and gains
- *     render_scene_t scene;   RENDER_SCENE_DEFAULT from render_view_make(); the scene's from lens_view() */
-render_view_t lens_view(const lens_t* lens, const transformf_t* pose, viewport_t viewport,
-                        const render_scene_t* scene);
+/* render_settings_default.h (generated): the RENDER_SETTINGS_FIELDS bits under `scene.`. */
+#define RENDER_SETTINGS_SCENE_KEYS (...)
 ```
 
-- `lens_t` drops `small_fill` and `skip_hidden`. `camera_set_small_fill()`, `camera_set_skip_hidden()` and
-  `scene_baked_t.skip_hidden` go.
+- `lens_t` drops `small_fill` and `skip_hidden`. `render_view_t` drops `small_fill` and `skip_hidden`, so the
+  raster reads them from the settings it already resolves. `camera_set_small_fill()`,
+  `camera_set_skip_hidden()` and `scene_baked_t.skip_hidden` go.
 - render_lab's small-fill picker writes `render_settings_t.small_fill` through `render_context_set_settings()`.
   Its three `TUNE_SETTING`s become `TUNE_OVERRIDE(render, small_fill_*)` beside the others.
+- Bistro's `skip_hidden = true` moves from render_lab's C table into Bistro's render file.
 
-### Which keys a scene may set: the struct it is declared in
+### Which keys a scene may set: the struct each key is declared in
 
-There is no list. `render_asset.fields()` already reads `render_settings_t` from the header, and it would read
-`render_scene_t` the same way. A key is an app key because it is declared in `render_settings_t`, and a scene key
-because it is declared in `render_scene_t`. `import_settings.load_scene()` checks `[render]` against
-`render_asset.fields("render_scene_t")`, so an app key in a scene file fails the build with "not a scene
-setting". The rule decides which struct a new field goes in, and the struct enforces it.
+`RENDER_SETTINGS_SCENE_KEYS` is generated, not written by hand. `render_asset.py` already walks the header's
+structs. Every field under `render_settings_t.scene` gets a scene bit, so adding a field to
+`render_scene_settings_t` makes it scene-settable, and nothing else does.
+
+A scene pack's file that names any key outside `[scene]` is **refused**, not masked:
+
+- the pack build fails with "not a scene setting: small_fill.ceiling";
+- the C reader returns ASSET_ERR_FORMAT for a row outside the mask.
+
+A silently masked key would leave the author thinking it took effect.
+
+An app pack may set `[scene]` keys too. That is its default for scenes whose file does not set them.
+
+### Additive scenes
+
+One overlay per context: the scene that holds the **active camera** supplies it. This matches Unity, where the
+active scene's Lighting and Fog apply. An additive scene loaded under it brings content, not settings. When
+the active camera moves to another scene, that scene's overlay applies.
+
+`render_system` keys the overlay on the camera's scene, not on load order.
 
 ### One resolved value per frame
 
-```c fragment
-/* render_context.c, once a frame (render_settings_tuned() is called here already) */
-typedef struct {
-    render_settings_t settings; /* the app's, under TUNE */
-    render_scene_t scene;       /* view->scene, under TUNE (far_z sweeps) */
-} render_resolved_t;
-render_scene_t render_scene_tuned(const render_scene_t* scene); /* render_settings.c, beside render_settings_tuned() */
-```
-
-A draw, the selector and the kernels read plain fields of `render_resolved_t`. Partial redraw compares
-`view->scene` byte for byte, where it compares `skip_hidden` today.
+There is nothing new to build. The context holds one `render_settings_t`: the app's, with the active scene's
+overlay on top. `render_settings_tuned()` resolves it under TUNE once a frame, as it does today, and
+`render_scene_settings_t` rides inside it. A draw, the selector and the kernels read plain fields.
 
 ### `[ranges]`: derived from the header
 
 The 41-line `[ranges]` table in `default.render.toml` repeats bounds that are already named constants in
 `render_settings.h`. Each field's tier comment would carry its interval instead, in standard notation, and the
-generator reads it. That removes the table, `field_ranges()` and the string-constant lookup.
+generator reads it. That removes the table, `field_ranges()` and the string-constant lookup. Far-band's two new
+range rows are not needed either.
 
 ```c fragment
 int divide_px; /* basic [0, RENDER_TEXTURE_DIVIDE_PX_MAX]: fewest pixels between divides ... */
@@ -154,35 +159,28 @@ float blend_px; /* advanced (0, RENDER_LOD_BLEND_PX_MAX]: the error past a switc
 int blend; /* basic [0, RENDER_LOD_BLEND_COUNT): 0 switches at once ... */
 ```
 
-`render_scene_t` gets the same bounds for free. The generated docs table in Render-Settings.md gains a scene
-table from the same reader.
-
-### Line count (estimate from today's files, not measured)
+### Line count (estimate from today's files, not measured; the overlay itself is far-band's)
 
 | Change | Lines |
 |---|---|
 | `[ranges]` table + `field_ranges()`/`range_predicate()` → interval parse | −71 / +12 |
 | `camera_set_small_fill/skip_hidden`, `lens_t`/`render_view_t` fields, render_lab table and calls, 3 TUNE_SETTINGs | −45 |
-| `render_small_fill_settings_t` + its TOML and TUNE overrides | +17 |
-| `render_scene_t`, generated default, `render_scene_tuned()` | +18 |
-| `[render]` in `load_scene()`, SCNE row packer and reader | +14 |
-| **Net (code and TOML; docs not counted)** | **about −55** |
+| `render_small_fill_settings_t`, `render_scene_settings_t`, their TOML and TUNE overrides | +22 |
+| generated `RENDER_SETTINGS_SCENE_KEYS`, scene-pack refusal, active-camera keying | +12 |
+| **Net (code and TOML; docs not counted)** | **about −70** |
 
 ### Costs to state
 
-- SCNE version bump: every scene pack rebuilds.
-- `load_scene()` is in the bake tools' closure, so this probably re-keys every scene's bakes once.
-  `bake.py check` measures it in the PR, and the rebake runs there. Changing `far_z` later re-keys nothing, since
-  no bake recipe reads it.
+- No SCNE format change and no change to `import_settings.py`, so no bake re-key from this layout.
 - Step 2 (`[output]`: present, scale, upscale, frame generation) is a separate PR after this one.
 
 ## Pending settings, checked with their owners
 
 | Setting | Owner session | Fits? |
 |---|---|---|
-| far_z, far_ceiling | far-band | asked; reply pending |
-| light mode realtime/baked | demo M4 | asked; reply pending |
-| fog, draw distance | k3qt (parked) | scene `[render]`, as above |
+| far_z, far_ceiling | far-band | fits: far_ceiling 24 suits both scenes (32 bought 0.4% / 0.1%, board-job-ba91ebd3), far_z is the per-scene knob; no per-camera need measured |
+| light mode realtime/baked | demo M4 | fits: already `objects.light.mode` in #1579 (SCNE light row pad byte) |
+| fog, draw distance | k3qt (parked) | scene pack overlay `[scene]`, as above |
 | renderer GI | 2u9br (not started) | renderer component fields |
 
 ## Inventory
