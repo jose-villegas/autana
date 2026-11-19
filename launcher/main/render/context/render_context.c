@@ -238,8 +238,47 @@ current_step(const render_context_t* c) {
     return c->policy == RENDER_STEPPED ? c->control.step : c->predict.step;
 }
 
-/* Dynamic resolution needs the finest step's scratch so a step never allocates. */
-static void
+image_format_t
+render_context_debug_view_widest(void) {
+    image_format_t widest = 0;
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+    for (size_t i = 0; i < sizeof views / sizeof views[0]; i++) {
+        const image_format_t format = views[i].attachment(NULL).format;
+        if (IMAGE_PITCH(format, 1) > IMAGE_PITCH(widest, 1)) {
+            widest = format;
+        }
+    }
+#endif
+    return widest;
+}
+
+/* The scratch the raster needs as it stands, and in a build that can show a
+ * debug view no less than with the widest view's pixels: showing a view, or
+ * another after it, then needs no larger block. */
+static size_t
+scratch_bytes_with_view(render_context_t* c) {
+    size_t needed = raster_scratch_bytes(&c->raster);
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+    if (c->raster.attachment_count <= (int)(sizeof c->debug_view_attached / sizeof c->debug_view_attached[0])) {
+        const raster_attachment_t widest = {.format = render_context_debug_view_widest()};
+        const raster_attachment_t* const attached[] = {&widest};
+        const raster_attachment_t* const* shown = c->raster.attachments;
+        const int count = c->raster.attachment_count;
+        c->raster.attachments = attached;
+        c->raster.attachment_count = 1;
+        const size_t with_widest = raster_scratch_bytes(&c->raster);
+        c->raster.attachment_count = count;
+        c->raster.attachments = shown;
+        needed = with_widest > needed ? with_widest : needed;
+    }
+#endif
+    return needed;
+}
+
+/* Dynamic resolution needs the finest step's scratch so a step never
+ * allocates. False when the scratch is too small for this draw and no larger
+ * one could be had. */
+static bool
 fit_scratch(render_context_t* c) {
     const int width = c->raster.width;
     const int height = c->raster.height;
@@ -247,19 +286,33 @@ fit_scratch(render_context_t* c) {
         c->raster.width = c->ladder.steps[0].width;
         c->raster.height = c->ladder.steps[0].height;
     }
-    const size_t needed = raster_scratch_bytes(&c->raster);
+    const size_t needed = scratch_bytes_with_view(c);
     c->raster.width = width;
     c->raster.height = height;
     if (needed > c->scratch_bytes) {
         /* A taken block cannot grow or be freed: a larger need takes a new
-         * one and abandons the old to its lender. The need only grows, at
-         * most to the destination's size, so a lender that gives back per
-         * scene loses a few blocks at most. */
+         * one and abandons the old to its lender. The need grows with the
+         * instances and the size drawn at, at most to the destination's, so
+         * a lender that gives back per scene loses a few blocks at most. A
+         * refused take keeps the old block for the draws it still fits. */
+        void* grown = NULL;
+        if (c->take != NULL) {
+            grown = c->take(needed, _Alignof(max_align_t));
+        } else {
+            render_context_drop_scratch(c); /* the heap may need its bytes for the larger one */
+            grown = memory_alloc(needed, MEMORY_APP);
+        }
+        if (grown == NULL) {
+            c->raster.scratch = NULL;
+            render_partial_forget(&c->partial); /* this frame's changes go undrawn */
+            return false;
+        }
         render_context_drop_scratch(c);
-        c->scratch = c->take != NULL ? c->take(needed, _Alignof(max_align_t)) : memory_alloc(needed, MEMORY_APP);
-        c->scratch_bytes = c->scratch == NULL ? 0 : needed;
+        c->scratch = grown;
+        c->scratch_bytes = needed;
     }
     c->raster.scratch = c->scratch;
+    return true;
 }
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
@@ -515,8 +568,7 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     frame_record_before_draw(c, instances, count);
     begin_draw(c);
     aim_raster(c, instances, count, view, clear);
-    fit_scratch(c);
-    if (c->scratch == NULL) {
+    if (!fit_scratch(c)) {
         return false;
     }
     raster_t* r = &c->raster;
