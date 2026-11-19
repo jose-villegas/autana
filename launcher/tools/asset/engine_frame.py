@@ -6,6 +6,8 @@ under "The offline tools".
 
 import struct
 
+import numpy as np
+
 from audio import sound_asset
 from gfx import image_asset
 from asset import table_asset
@@ -90,20 +92,20 @@ def to_engine(kind, entry):
             *box, first, count, leaf = mesh_asset.NODE.unpack_from(entry, at)
             mesh_asset.NODE.pack_into(out, at, *_mirror_box(box), first, count, leaf)
     elif kind == sh.TYPE:
-        import numpy as np
-
-        origin, spacing, dims, _, _ = sh.decode(entry)
-        origin = list(origin)
-        coefficients = np.frombuffer(entry, dtype='<i2', offset=sh.HEADER.size).reshape(
-            *reversed(dims), sh.COEFFICIENTS, sh.CHANNELS).copy()
-        for axis, sign in enumerate(AXIS_SIGNS):
-            if sign < 0:
-                origin[axis] = -(origin[axis] + spacing[axis] * (dims[axis] - 1))
-                coefficients = np.flip(coefficients, axis=AXIS_COUNT - 1 - axis)
-                coefficients[..., sh.L1_AXES.index(axis) + 1, :] *= sign
-        fields = list(sh.HEADER.unpack_from(entry))
-        fields[2:2 + AXIS_COUNT] = origin
-        return sh.HEADER.pack(*fields) + coefficients.tobytes()
+        origin, spacing, dims, scale, coefficients, inside = sh.decode(entry)
+        slices = tuple(slice(None, None, sign) for sign in reversed(AXIS_SIGNS))
+        shape = tuple(reversed(dims))
+        quantized = np.rint(coefficients / scale).astype('<i2').reshape(
+            *shape, sh.COEFFICIENTS, sh.CHANNELS)[slices].copy()
+        signs = (1, *(AXIS_SIGNS[axis] for axis in sh.L1_AXES))
+        quantized *= np.asarray(signs, dtype=np.int16)[:, None]
+        origin = tuple(value if sign > 0 else -(value + (count - 1) * step)
+                       for value, step, count, sign in zip(origin, spacing, dims, AXIS_SIGNS))
+        version, flags, *_ = sh.HEADER.unpack_from(entry)
+        header = sh.HEADER.pack(version, flags, *origin, *spacing, scale, *dims)
+        mask = (np.packbits(inside.reshape(shape)[slices].ravel(), bitorder='little').tobytes()
+                if flags & sh.SH_PROBES_FLAG_INSIDE_MASK else b'')
+        return header + quantized.tobytes() + mask
     elif kind == lod_asset.TYPE:
         pairs, groups = lod_asset.decode(entry)
         groups_at = lod_asset.HEADER.size + len(pairs) * mesh_asset.CLUSTER_LOD.size
@@ -144,6 +146,7 @@ def to_engine(kind, entry):
         for index, (_, _, normal) in enumerate(vertices):
             skin_asset.NORMAL.pack_into(out, vertices_at + index * record_size + influences * 2,
                                         *(value * sign for value, sign in zip(normal, AXIS_SIGNS)))
+
     elif kind == tracks_asset.TYPE:
         tracks, duration_ms = tracks_asset.decode(entry)
         for track in tracks:
