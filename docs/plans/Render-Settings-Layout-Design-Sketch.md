@@ -62,7 +62,7 @@ These stay:
 | `bake.*`, camera `region` / `path` | scene file, bake inputs | build time; not drawn values |
 | `dynamic_resolution` | `render_context_set_dynamic_resolution()` | a controller with a model, not a value |
 | `debug_view`, `budget` | dev only | not settings |
-| `scene_set_probes`, `scene_set_contact_blob` | scene API | runtime data, not settings |
+| `scene_set_probes`, `scene_set_contact` | scene API | runtime data, not settings |
 
 ## Sketch
 

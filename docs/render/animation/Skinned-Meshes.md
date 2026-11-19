@@ -195,7 +195,7 @@ job's stack; scenes keep no per-entity SH cache.
 
 ### Contact shadows
 
-`scene_set_contact_blob(renderer, ground_y, strength, shape)` draws contact
+`scene_set_contact(renderer, &contact)` draws contact
 shadows after geometry, before composition. Zero strength disables them.
 Covered pixels halve their RGB565 channels, using geometry's lens and fitted depth scale.
 
@@ -221,7 +221,7 @@ flowchart LR
 
 ![Enlarged BLOB and SHAPE contact coverage](../../images/render/contact-shape.crops.png)
 
-`scene_set_contact_warp(renderer, warp)` defaults off: footprints stay
+`scene_contact_t.warp` defaults off: footprints stay
 centred at the mover or posed contact joint, with no stretch.
 
 ![BLOB, FEET and SHAPE during one run, with warp off and on](../../images/render/contact-warp.gif)
