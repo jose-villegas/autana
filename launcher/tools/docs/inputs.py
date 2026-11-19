@@ -4,6 +4,7 @@ import ast
 import functools
 import os
 from pathlib import Path
+import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -71,3 +72,24 @@ def bake_inputs(found, lock):
         row = lock.get(item.key)
         entries[f"bake {item.output}"] = f"{item.key} {row['sha256']}" if row else f"unlocked {item.key}"
     return entries
+
+
+def tree_inputs(folder, root=ROOT):
+    """{input: digest} of every tracked file under `folder`, for code that builds from a folder it lists itself (a
+    shell script handing CMake a source glob): git's blob id per file, an LFS file's pointer included, and the
+    bytes of each file the working tree has changed. Outside git, every file's bytes."""
+    from bake import bake
+    from r3d.import_settings import content_checksum
+
+    def git(*args):
+        return subprocess.run(["git", "-C", str(root), *args, "--", folder], capture_output=True, text=True,
+                              stdin=subprocess.DEVNULL)
+
+    listing = git("ls-files", "--stage")
+    if listing.returncode != 0:
+        files = sorted(path for path in (root / folder).rglob("*") if path.is_file())
+        return {f"tree {folder}": bake.digest([[path.relative_to(root).as_posix(), content_checksum(path).decode()]
+                                               for path in files])}
+    edited = sorted(name for name in git("diff", "--name-only").stdout.splitlines() if (root / name).is_file())
+    return {f"tree {folder}": bake.digest([listing.stdout, *([name, content_checksum(root / name).decode()]
+                                                             for name in edited)])}

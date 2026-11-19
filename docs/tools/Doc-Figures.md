@@ -7,9 +7,9 @@ source which images it makes and how it is run.
 those statements, so it can tell you who makes an image and rebuild just that
 image, without a list kept anywhere else.
 
-Producers exist for the `math` area. Every other area runs from
+Images no producer declares are made by
 [`render_doc_images.sh`](../../launcher/tools/render/render_doc_images.sh),
-which also calls this runner for the declared ones.
+which also calls this runner with `--changed` for the declared ones.
 
 ## Declaring a producer
 
@@ -70,11 +70,26 @@ every producer. `--needs host,bakes` keeps the producers whose needs are all
 listed: what one machine without a GPU or a board can run.
 
 With `--changed`, a run is skipped when its inputs match those recorded at its
-last good run: its arguments and item, its code (import closure, the C and
-requirements it counts, the tracked files that code names), the C its probes
-compiled, its `reads` files and its bake's lock row. Records go to
+last good run:
+
+| Input | What counts |
+|---|---|
+| The run | its arguments and item |
+| Code | the import closure, the C and requirements it counts, the tracked files that code names |
+| Shell builds | every tracked file under `launcher/`, when its code or arguments name a shell script |
+| Probes | the C they compiled |
+| Data | its `reads` files |
+| Bakes | its bake's lock row; every row when it needs bakes without an `each` |
+| Toolchain | Python, the host modules' and pinned packages' installed versions, the C compiler, CMake |
+| Images | the committed images it claims |
+
+A good run is one whose images are now in `docs/images/`: every run of a
+`build` into it, and the runs of a `check`, or of a `build --into` elsewhere,
+whose images were all same. A skipped run's images are the committed ones, and
+a `build --into` copies them there. Records go to
 `launcher/tools/results/doc_images/fingerprints.json`, which is not tracked
-(`--fingerprints FILE` names another). A command that fails records nothing.
+(`--fingerprints FILE` names another); deleting it runs everything. A command
+that fails records nothing.
 
 ```mermaid
 flowchart LR
@@ -84,7 +99,7 @@ flowchart LR
   F -- no --> P["check needs<br/>all, first"]
   P --> R["run<br/>parallel; gpu, board<br/>one at a time"]
   R --> D["build: copy<br/>check: compare"]
-  D --> W["record: build into docs/images,<br/>every run; check, runs all same"]
+  D --> W["record: build into docs/images,<br/>every run; otherwise runs all same"]
 ```
 
 | Step | What happens | On failure |

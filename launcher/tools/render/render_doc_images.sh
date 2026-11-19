@@ -287,8 +287,10 @@ run "$PYTHON" launcher/tools/input/motion_axes_figures.py --cc "$cc" --out "$OUT
     > "$WORK/motion_axes_figures.log"
 # --orphans scans this runner: motion-axes.png, motion-rotation.gif
 # The producers that declare their images (launcher/tools/docs/producer.py) and need only this machine and the
-# bake cache, in parallel.
-run "$PYTHON" launcher/tools/docs/figures_runner.py build --needs host,bakes --into "$OUT" > "$WORK/figures.log"
+# bake cache, in parallel. A run whose inputs match its record is skipped and leaves the committed images in
+# $OUT; deleting launcher/tools/results/doc_images/fingerprints.json runs them all.
+run "$PYTHON" launcher/tools/docs/figures_runner.py build --needs host,bakes --changed --into "$OUT" \
+    > "$WORK/figures.log"
 run "$PYTHON" launcher/tools/physics/spring_figures.py --cc "$cc" --out "$OUT/physics" > "$WORK/spring_figures.log"
 # --orphans scans this runner: spring-line-wave.gif, spring-line-spacetime.png
 run "$PYTHON" launcher/tools/kinematics/orbit_figures.py --cc "$cc" --out "$OUT/kinematics" > "$WORK/orbit_figures.log"
