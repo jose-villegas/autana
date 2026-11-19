@@ -34,7 +34,7 @@ contact_images() {
         --row "Ground contact" "$W/contact-0.bmp" "$W/contact-2.bmp" \
         --label-a BLOB --label-b SILHOUETTE --crops "$CONTACT_CROPS" > "$W/contact-silhouette-compare.log"
 
-    for key in skinned-feet-blobs skinned-silhouette-warped; do
+    for key in skinned-feet-blobs skinned-blob-warped skinned-silhouette-blobs skinned-silhouette-warped; do
         run "$W/render_lab_render" --quarter 1 --no-hud --scene "stress-$key" --frames 2 \
             -o "$W/stress-$key.bmp" 2> "$W/stress-$key.log"
         run "$PYTHON" launcher/tools/docs/figures.py png "$W/stress-$key.bmp" "$OUT/render-lab-stress-$key.png"
