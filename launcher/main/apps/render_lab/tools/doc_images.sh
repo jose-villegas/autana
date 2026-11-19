@@ -30,11 +30,11 @@ contact_images() {
             --frames "$CONTACT_FRAMES" --dt "$CONTACT_DT" \
             -o "$W/contact-$shape.bmp" > "$W/contact-$shape-console.log" 2> "$W/contact-$shape.log"
     done
-    run "$PYTHON" launcher/tools/render/render_compare.py --out "$OUT_TREE/render/contact-shape.png" \
+    run "$PYTHON" launcher/tools/render/render_compare.py --out "$OUT_TREE/render/contact-silhouette.png" \
         --row "Ground contact" "$W/contact-0.bmp" "$W/contact-2.bmp" \
-        --label-a BLOB --label-b SHAPE --crops "$CONTACT_CROPS" > "$W/contact-shape-compare.log"
+        --label-a BLOB --label-b SILHOUETTE --crops "$CONTACT_CROPS" > "$W/contact-silhouette-compare.log"
 
-    for key in skinned-feet-blobs skinned-shape-warped; do
+    for key in skinned-feet-blobs skinned-silhouette-warped; do
         run "$W/render_lab_render" --quarter 1 --no-hud --scene "stress-$key" --frames 2 \
             -o "$W/stress-$key.bmp" 2> "$W/stress-$key.log"
         run "$PYTHON" launcher/tools/docs/figures.py png "$W/stress-$key.bmp" "$OUT/render-lab-stress-$key.png"
@@ -57,7 +57,7 @@ contact_images() {
     run "$PYTHON" launcher/tools/render/render_compare.py --out "$OUT_TREE/render/contact-warp.gif" \
         --video-row BLOB "$W/contact-0-0.avi" "$W/contact-0-1.avi" \
         --video-row FEET "$W/contact-1-0.avi" "$W/contact-1-1.avi" \
-        --video-row SHAPE "$W/contact-2-0.avi" "$W/contact-2-1.avi" \
+        --video-row SILHOUETTE "$W/contact-2-0.avi" "$W/contact-2-1.avi" \
         --label-a "warp off" --label-b "warp on" --fps "$CONTACT_VIDEO_FPS" --crop-box $CONTACT_VIDEO_CROP \
         > "$W/contact-warp.log"
 

@@ -205,7 +205,7 @@ static bool
 contact_options(const char* shape, const char* warp) {
     contact_shape = shape == NULL ? -1 : atoi(shape);
     contact_warp = warp == NULL ? -1 : atoi(warp);
-    return contact_shape >= -1 && contact_shape <= SCENE_CONTACT_SHAPE && contact_warp >= -1 && contact_warp <= 1;
+    return contact_shape >= -1 && contact_shape <= SCENE_CONTACT_SILHOUETTE && contact_warp >= -1 && contact_warp <= 1;
 }
 
 /* Which names are valid is app_render_lab.c's own knowledge (each scene's
