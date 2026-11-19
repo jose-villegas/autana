@@ -61,6 +61,8 @@ A probe still inside is not traced. The constants are
 [`probes.py`](../../../launcher/tools/r3d/views/probes.py)'s, shared with
 the offline fitter's choice of extra camera views.
 
+*Figure to come: Sponza's baked probes drawn as SH-shaded spheres over its host render.*
+
 ## 2. The bake
 
 Each probe outside geometry traces 512 Fibonacci-sphere directions with 4
