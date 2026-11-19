@@ -112,6 +112,8 @@ static const stress_goal_t stress_goals[] = {
     {"stress-carved-far", "landscape", "default", {0, 0, 0, 0, 0}, {0, 0}},
     {"stress-textured", "portrait", "default", {0, 0, 0, 0, 0}, {0, 0}},
     {"stress-textured", "landscape", "default", {0, 0, 0, 0, 0}, {0, 0}},
+    {"stress-textured-far", "portrait", "default", {0, 0, 0, 0, 0}, {0, 0}},
+    {"stress-textured-far", "landscape", "default", {0, 0, 0, 0, 0}, {0, 0}},
     {"stress-record", "portrait", "default", {290, 1070, 9790, 2420, 1330}, {14810, 17040}},
     {"stress-record", "landscape", "default", {290, 1070, 10620, 2420, 1320}, {15650, 18000}},
     {"stress-foliage-near", "portrait", "default", {200, 200, 24720, 2430, 0}, {27520, 31650}},

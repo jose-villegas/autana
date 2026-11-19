@@ -15,7 +15,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | [input](#input) | 11 | 0 | 0 |
 | [kinematics](#kinematics) | 6 | 2 | 0 |
 | [math](#math) | 25 | 25 | 0 |
-| [overview](#overview) | 37 | 0 | 0 |
+| [overview](#overview) | 38 | 0 | 0 |
 | [physics](#physics) | 2 | 0 | 0 |
 | [power](#power) | 2 | 0 | 0 |
 | [render](#render) | 134 | 10 | 0 |
@@ -166,6 +166,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/overview/render-lab-stress-skinned-sh-blobs.png"><img src="../images/overview/render-lab-stress-skinned-sh-blobs.png" width="160" alt=""></a> | Skinned copies with probe lighting and contact discs | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-stack.png"><img src="../images/overview/render-lab-stress-stack.png" width="160" alt=""></a> | Stress stack: planes one behind another | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-static-copies.png"><img src="../images/overview/render-lab-stress-static-copies.png" width="160" alt=""></a> | Static triangle copies | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
+| <a href="../images/overview/render-lab-stress-textured-far.png"><img src="../images/overview/render-lab-stress-textured-far.png" width="160" alt=""></a> | Stress textured far: a wall of small brick planes | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-textured.png"><img src="../images/overview/render-lab-stress-textured.png" width="160" alt=""></a> | Stress textured: big triangles under a brick texture | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-tiny-copies.png"><img src="../images/overview/render-lab-stress-tiny-copies.png" width="160" alt=""></a> | Stress tiny copies: many small spheres | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-two-sided.png"><img src="../images/overview/render-lab-stress-two-sided.png" width="160" alt=""></a> | Stress two-sided: a wall of cubes drawn from both sides | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |

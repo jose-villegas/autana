@@ -54,6 +54,10 @@ const stress_params_t stress_presets[STRESS_PRESET_COUNT] = {
                            STRESS_CAMERA, 6},
     [STRESS_TEXTURED] = {STRESS_SHAPE_PLANE, 2, 1, STRESS_LAYOUT_WALL, 100, STRESS_SURFACE_OF(TEXTURED), STRESS_CAMERA,
                          6},
+    /* stress-textured's plane, small and many, as carved-far is to carved-near:
+     * its brick a few texels a pixel, so most of it picks far mip levels. */
+    [STRESS_TEXTURED_FAR] = {STRESS_SHAPE_PLANE, 2, 64, STRESS_LAYOUT_WALL, 50, STRESS_SURFACE_OF(TEXTURED_FAR),
+                             STRESS_CAMERA, 6},
     /* Foliage cards near, a few bushes over the whole view, and far, many small
      * ones; each cut by a MASK1 texture beside its twin, whose cards draw the
      * INDEX4 brick whole: the same cards, under a cut against a whole fill. */

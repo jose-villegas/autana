@@ -588,6 +588,19 @@ test_foliage_presets_differ_from_their_twins_by_the_mask_alone(void) {
                                    stress_cut_px(&stress_presets[STRESS_FOLIAGE_NEAR], short_px));
 }
 
+/* stress-textured-far is stress-textured's plane, many and small: the same
+ * shape, surface and camera, its copies drawn smaller than the one plane. */
+static void
+test_the_textured_far_twin_differs_by_its_copies_and_size_alone(void) {
+    const stress_params_t* near = &stress_presets[STRESS_TEXTURED];
+    stress_params_t far = stress_presets[STRESS_TEXTURED_FAR];
+    TEST_ASSERT_GREATER_THAN_INT(near->copies, far.copies);
+    TEST_ASSERT_GREATER_THAN_FLOAT(stress_cut_px(&far, DEFAULT_SHORT_PX), stress_cut_px(near, DEFAULT_SHORT_PX));
+    far.copies = near->copies;
+    far.coverage_percent = near->coverage_percent;
+    TEST_ASSERT_EQUAL_MEMORY(near, &far, sizeof far);
+}
+
 /* Cards of `source` over sample (sx, sy) of a FOLIAGE_SAMPLES grid on the unit square. */
 static int
 cards_over(const r3d_dynamic_source_t* source, int sx, int sy) {
@@ -733,6 +746,7 @@ run_stress_preset_suite(void) {
     RUN_TEST(test_two_sided_is_a_closed_shape_drawn_from_both_sides);
     RUN_TEST(test_noisy_tiny_slivers_are_gated_and_fail_the_gate);
     RUN_TEST(test_foliage_presets_differ_from_their_twins_by_the_mask_alone);
+    RUN_TEST(test_the_textured_far_twin_differs_by_its_copies_and_size_alone);
     RUN_TEST(test_foliage_cards_overlap_and_span_their_texture_corner_to_corner);
     RUN_TEST(test_foliage_mask_opens_as_mask1_and_keeps_about_0_7_of_a_card);
 }
