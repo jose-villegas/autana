@@ -15,12 +15,14 @@
 #include <math.h>
 #include <stdbool.h>
 #include <string.h>
+#include "esp_log.h"
 
 #include "apps/render_lab/baked_families.h"
 #include "apps/render_lab/capybara_content.h"
 #include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/scene_baked.h"
+#include "asset/asset_store.h"
 #include "core/tune.h"
 #include "draw/draw.h"
 #include "image/pixel/rgb565.h"
@@ -30,6 +32,7 @@
 #include "math/scalar/math_const.h"
 #include "math/scalar/units.h"
 #include "render/context/render_context.h"
+#include "render/probe/sh_probes.h"
 #include "scene/animator/animator.h"
 #include "scene/animator/gait.h"
 #include "scene/camera/camera.h"
@@ -40,6 +43,7 @@
 
 static const char* TAG = "capybara_sponza";
 
+#define RUN_PROBES          "sponza.shpr"
 #define RUN_KEY             "capybara-sponza"
 #define CAPYBARA_MEADOW     "meadow" /* the capybara pack's ground, hidden in Sponza */
 
@@ -85,6 +89,8 @@ static entity_t sponza;
 static entity_t capybara;
 static entity_t runner; /* the capybara's skinned entity */
 static entity_t camera;
+static handle_t probe_pack;
+static sh_probes_t probes;
 static motion_profile_t run;
 static gait_step_t steps[RUN_GAIT_STEPS_MAX];
 static gait_t gait;
@@ -275,6 +281,17 @@ scene_capybara_sponza_enter(const lab_scene_t* self) {
     if (!load_sponza() || !load_capybara()) {
         return;
     }
+    probe_pack = asset_store_load(baked_sponza.scene);
+    const asset_pack_t* pack = asset_store_loaded(probe_pack);
+    asset_view_t entry;
+    if (pack != NULL && asset_pack_find(pack, RUN_PROBES, SH_PROBES_ASSET, &entry) == ASSET_OK
+        && sh_probes_read(entry, &probes) == ASSET_OK) {
+        scene_set_probes(capybara, &probes);
+        ESP_LOGI(TAG, "SH probes: %u bytes", (unsigned)entry.size);
+    } else {
+        asset_store_release(probe_pack);
+        probe_pack = HANDLE_NONE;
+    }
     path_ms = 0;
     held = false;
     applied = (gait_pick_t){-1, 1.0F};
@@ -287,6 +304,8 @@ static void
 scene_capybara_sponza_exit(void) {
     scene_release(capybara);
     scene_release(sponza);
+    asset_store_release(probe_pack);
+    probe_pack = HANDLE_NONE;
     capybara = ENTITY_NONE;
     sponza = ENTITY_NONE;
 }
