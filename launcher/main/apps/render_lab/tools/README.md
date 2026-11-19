@@ -16,6 +16,22 @@ See [SH probe baking](../../../../../docs/render/offline/SH-Probes.md).
 python launcher/tools/bake/bake.py bake launcher/demo/sponza --kind sh_probes
 ```
 
+The capybara uses the packed grid when `sponza.shpr` is present. Without it,
+the scene uses its sun and ambient lighting. Successful loading logs
+`SH probes:` and the record size.
+
+The comparison uses the tracked lock's meshes and the same camera and frame.
+The rightmost panel amplifies the pixel difference.
+
+![Capybara in Sponza: no probe asset, baked SH probes, and amplified difference](../../../../../docs/images/render/sh-probes.png)
+
+<details>
+<summary>Enlarged differences</summary>
+
+![The changed capybara lighting, enlarged](../../../../../docs/images/render/sh-probes.crops.png)
+
+</details>
+
 ## Host renders
 
 ```sh
