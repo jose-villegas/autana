@@ -64,7 +64,7 @@ PLAYBACK_CLIPS="walk gallop idle"
 RATE_CLIPS="idle walk gallop"
 # The tree depth whose node boxes the cull figures draw.
 CULL_LEVEL=2
-# The atrium path pose the cards composition figures show: the pillar-front vine near the camera.
+# The atrium path pose the cards composition figures show: foliage fills much of the view.
 CARDS_POSE_MS=8000
 # The cull chase GIFs play one path sample per frame at this rate.
 CULL_GIF_FPS=8
@@ -358,7 +358,8 @@ run "$R3D_PYTHON" launcher/tools/r3d/bake_figures/bake_figures.py --out "$OUT/re
 run "$R3D_PYTHON" launcher/tools/r3d/bake_figures/contact_figures.py --out "$OUT/render" > "$WORK/contact_figures.log" 2>&1
 # --orphans scans this runner: import-mesh-contact.png
 # How carded foliage composes: the source, the foliage light-only, the cards alone and the composite at one path pose.
-run "$R3D_PYTHON" launcher/tools/r3d/cards/composition_figures.py launcher/demo/sponza/sponza.scene.toml     --object atrium_fitted_full --time-ms "$CARDS_POSE_MS" --out "$OUT/render" > "$WORK/composition_figures.log" 2>&1
+run "$R3D_PYTHON" launcher/tools/r3d/cards/composition_figures.py launcher/demo/sponza/sponza.scene.toml \
+    --object atrium_fitted_full --time-ms "$CARDS_POSE_MS" --out "$OUT/render" > "$WORK/composition_figures.log" 2>&1
 # --orphans scans this runner: cards-atrium_fitted_full-source.png, cards-atrium_fitted_full-light-only.png,
 # cards-atrium_fitted_full-cards.png, cards-atrium_fitted_full-composite.png
 
