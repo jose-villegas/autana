@@ -99,12 +99,11 @@ scene_skin_take(scene_t* scene, scene_row_t entity, scene_skinned_renderer_t* sk
     size_t end = size;
 
     struct {
-        size_t model, palette, contact_joints;
+        size_t model, palette;
     } layout;
 
     SCENE_STORAGE_RESERVE(layout, end, model, mat4f_t, skin->skin.joint_count);
     SCENE_STORAGE_RESERVE(layout, end, palette, mat4f_t, skin->skin.joint_count);
-    SCENE_STORAGE_RESERVE(layout, end, contact_joints, contact_joint_t, skin->skin.joint_count);
     void* storage = memory_alloc(end, MEMORY_FAST);
     if (storage == NULL) {
         return false;
@@ -124,8 +123,6 @@ scene_skin_take(scene_t* scene, scene_row_t entity, scene_skinned_renderer_t* sk
     (void)r3d_skin_output_init(&skin->bind, storage, size, &skin->output);
     skin->model = (mat4f_t*)(void*)((uint8_t*)storage + layout.model);
     skin->palette = (mat4f_t*)(void*)((uint8_t*)storage + layout.palette);
-    skin->contact_joints = (contact_joint_t*)(void*)((uint8_t*)storage + layout.contact_joints);
-    contact_mask_bind(skin->contact_joints, &skin->bind, &skin->skin);
     const scene_animator_t* animator = &scene->animators[entity];
     anim_pose_model(&animator->skeleton, &animator->layer.shown, skin->model);
     r3d_skin_palette(&skin->skin, skin->model, skin->bind.position_scale, skin->palette);
@@ -145,6 +142,7 @@ scene_skin_give(scene_t* scene, scene_skinned_renderer_t* skin) {
     memory_free(skin->light_storage);
     memory_free(skin->storage);
     memory_free(skin->contact_mask.coverage);
+    memory_free(skin->contact_joints);
     skin->contact_mask = (contact_mask_t){0};
     skin->light_storage = NULL;
     skin->storage = NULL;
@@ -219,12 +217,21 @@ void
 scene_skin_contact_refresh(scene_t* scene, scene_row_t entity) {
     scene_skinned_renderer_t* skin = &scene->skinned_renderers[entity];
     const scene_renderer_t* r = &scene->renderers[scene_renderer_index(scene, entity)];
-    if (r->contact_blob_shape == SCENE_CONTACT_FEET && skin->storage != NULL) {
+    if (r->contact_blob_strength > 0 && r->contact_blob_shape == SCENE_CONTACT_FEET && skin->storage != NULL) {
         (void)skin_contacts_find(&scene->animators[entity].skeleton, &skin->skin, &skin->contacts);
     }
-    if (r->contact_blob_shape != SCENE_CONTACT_SHAPE || skin->storage == NULL
+    if (r->contact_blob_strength <= 0 || r->contact_blob_shape != SCENE_CONTACT_SHAPE || skin->storage == NULL
         || !(scene->flags[entity] & SCENE_FLAG_ACTIVE) || skin->contact_mask_failed) {
         return;
+    }
+    if (skin->contact_joints == NULL) {
+        skin->contact_joints = scene_allocate(skin->skin.joint_count * sizeof *skin->contact_joints, MEMORY_FAST);
+        if (skin->contact_joints == NULL) {
+            skin->contact_mask_failed = true;
+            (void)fprintf(stderr, "scene: no memory for contact joints; using blob\n");
+            return;
+        }
+        contact_mask_bind(skin->contact_joints, &skin->bind, &skin->skin);
     }
     if (skin->contact_mask.coverage == NULL) {
         skin->contact_mask.coverage = scene_allocate(CONTACT_MASK_BYTES, MEMORY_FAST);

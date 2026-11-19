@@ -351,15 +351,42 @@ scene_contact_bounds(const scene_t* scene, const scene_renderer_t* r, vec3f_t li
     return bounds;
 }
 
-static inline __attribute__((always_inline)) box3f_t
-current_bounds(const scene_t* scene, const scene_renderer_t* r) {
-    if (r->contact_blob_strength <= 0 || (r->contact_blob_shape == SCENE_CONTACT_BLOB && !r->contact_warp)) {
-        return r->world_bounds;
-    }
+static __attribute__((noinline)) int
+fill_contact_changed(const scene_t* scene, scene_renderer_t* r, int changes) {
     const vec3f_t light =
         r->contact_warp ? scene_contact_light(scene, box3f_centre(r->world_bounds), drawn_scenes, drawn_scene_count)
                         : vec3f_unit_y();
-    return box3f_union(r->world_bounds, scene_contact_bounds(scene, r, light));
+    const box3f_t current = box3f_union(r->world_bounds, scene_contact_bounds(scene, r, light));
+    if (r->changed && changes >= 0) {
+        if (changes < RENDER_PARTIAL_CHANGES_MAX) {
+            changed[changes++] = box3f_union(r->drawn_bounds, current);
+        } else {
+            changes = -1;
+        }
+    }
+    r->changed = false;
+    r->drawn_bounds = current;
+    return changes;
+}
+
+static inline __attribute__((always_inline)) int
+fill_renderer_changed(const scene_t* scene, scene_renderer_t* r, int changes) {
+    if (r->contact_blob_strength > 0.0F) {
+        contact_blobs = true;
+        if (r->contact_blob_shape != SCENE_CONTACT_BLOB || r->contact_warp) {
+            changes = fill_contact_changed(scene, r, changes);
+            return changes;
+        }
+    }
+    if (r->changed && changes >= 0) {
+        changes = changes < RENDER_PARTIAL_CHANGES_MAX ? changes : -1;
+        if (changes >= 0) {
+            changed[changes++] = changed_bounds(r);
+        }
+    }
+    r->changed = false;
+    r->drawn_bounds = r->world_bounds;
+    return changes;
 }
 
 /* `scene`'s part of fill_changed(): its changed renderers' boxes into
@@ -373,20 +400,9 @@ fill_scene_changed(scene_t* scene, int changes, name_hash64_t* set) {
         if (r->mesh.node_count == 0) {
             continue;
         }
-        contact_blobs |= r->contact_blob_strength > 0.0F;
         *set = name_hash64_n(*set, &slot, sizeof slot);
         *set = name_hash64_n(*set, &scene->active_renderers[i], sizeof scene->active_renderers[i]);
-        const box3f_t current = current_bounds(scene, r);
-        if (r->changed && changes >= 0) {
-            if (changes < RENDER_PARTIAL_CHANGES_MAX) {
-                const bool disc = r->contact_blob_shape == SCENE_CONTACT_BLOB && !r->contact_warp;
-                changed[changes++] = disc ? changed_bounds(r) : box3f_union(r->drawn_bounds, current);
-            } else {
-                changes = -1;
-            }
-        }
-        r->changed = false;
-        r->drawn_bounds = current;
+        changes = fill_renderer_changed(scene, r, changes);
     }
     return changes;
 }
@@ -447,6 +463,13 @@ scene_set_contact_blob(entity_t renderer, float ground_y, float strength, scene_
         return;
     }
     scene_renderer_t* r = &scene->renderers[index];
+    const int enabled_delta = (strength > 0) - (r->contact_blob_strength > 0);
+    if (r->contact_warp) {
+        scene->contact_warp_users += enabled_delta;
+        scene_contact_warp_users += enabled_delta;
+    }
+    scene->contact_shape_users += (strength > 0 && shape == SCENE_CONTACT_SHAPE)
+                                  - (r->contact_blob_strength > 0 && r->contact_blob_shape == SCENE_CONTACT_SHAPE);
     r->contact_blob_ground_y = ground_y;
     r->contact_blob_strength = strength;
     r->contact_blob_shape = shape;
@@ -466,8 +489,10 @@ scene_set_contact_warp(entity_t renderer, bool warp) {
     if (index < 0 || scene->renderers[index].contact_warp == warp) {
         return;
     }
-    scene->contact_warp_users += warp ? 1 : -1;
-    scene_contact_warp_users += warp ? 1 : -1;
+    if (scene->renderers[index].contact_blob_strength > 0) {
+        scene->contact_warp_users += warp ? 1 : -1;
+        scene_contact_warp_users += warp ? 1 : -1;
+    }
     scene->renderers[index].contact_warp = warp;
     scene->renderers[index].changed = true;
     render_context_forget(render_context_main());

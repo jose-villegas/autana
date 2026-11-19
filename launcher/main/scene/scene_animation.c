@@ -258,6 +258,19 @@ skin_stage_prepare(scene_t* scene) {
     return clusters;
 }
 
+static void
+refresh_posed_contacts(scene_t* scene) {
+    for (int i = 0; i < scene->staged_count; i++) {
+        const scene_row_t e = scene->staged[i];
+        if (scene->skinned_renderers[e].storage != NULL && scene->animators[e].posed) {
+            const scene_renderer_t* r = &scene->renderers[scene_renderer_index(scene, e)];
+            if (r->contact_blob_strength > 0 && r->contact_blob_shape == SCENE_CONTACT_SHAPE) {
+                scene_skin_contact_refresh(scene, e);
+            }
+        }
+    }
+}
+
 void
 scene_animation_repose(scene_t* scene, uint32_t dt_ms) {
     if (scene->animator_count == 0) {
@@ -291,12 +304,11 @@ scene_animation_repose(scene_t* scene, uint32_t dt_ms) {
         const scene_row_t e = scene->staged[i];
         if (scene->skinned_renderers[e].storage != NULL && scene->animators[e].posed) {
             r3d_skin_refit_nodes(&scene->skinned_renderers[e].output);
-            scene_renderer_t* r = &scene->renderers[scene_renderer_index(scene, e)];
-            scene_renderer_bound(r);
-            if (r->contact_blob_shape == SCENE_CONTACT_SHAPE) {
-                scene_skin_contact_refresh(scene, e);
-            }
+            scene_renderer_bound(&scene->renderers[scene_renderer_index(scene, e)]);
         }
+    }
+    if (scene->contact_shape_users > 0) {
+        refresh_posed_contacts(scene);
     }
     FRAME_COST_END(refit_from, SCENE_ANIM_STAGE_REFIT_NAME);
 }
@@ -332,6 +344,8 @@ scene_animation_checkpoint_capture(checkpoint_t* saved, scene_t* scene) {
                 : (size_t)((uint8_t*)(skin->normal_palette + joints) - (uint8_t*)skin->light_storage);
         checkpoint_capture_at(saved, &skin->storage, internal_bytes);
         checkpoint_capture_at(saved, &skin->light_storage, light_bytes);
+        checkpoint_capture_at(saved, &skin->contact_joints,
+                              skin->contact_joints == NULL ? 0 : joints * sizeof *skin->contact_joints);
         checkpoint_capture_at(saved, &skin->contact_mask.coverage,
                               skin->contact_mask.coverage == NULL ? 0 : CONTACT_MASK_BYTES);
     }
