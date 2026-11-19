@@ -157,7 +157,8 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
             step["triangles_out"] = sum(report['triangles'] for _, _, report in accepted_cards)
         for name, report in card_report.items():
             share = "always" if report['forced'] else f"{report['see_through']:.3f}"
-            log(f"cards: {name}: see-through={share}, covered={report['covered']:.3f}, "
+            log(f"cards: {name}: see-through={share}, covered={report['covered']:.3f} "
+                f"(all area {report['covered_area']:.3f}), "
                 f"accepted={report['accepted']}")
         selected_cards = np.isin(tri_m, [material for material, _, _ in accepted_cards])
         if selected_cards.any():

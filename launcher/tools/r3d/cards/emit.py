@@ -4,7 +4,7 @@ import numpy as np
 
 from r3d import log
 from r3d.cards.bake import bake_card, corner_colours
-from r3d.cards.choose import choose_cards, samples, split_cards
+from r3d.cards.choose import choose_cards, probe_weights, samples, split_cards
 from r3d.cards import decide
 from r3d.cards.pages import PAGE_SIDE
 from r3d.mesh_source import with_triangles
@@ -25,6 +25,12 @@ UV_SCALE = 1 << UV_SHIFT
 SIDE_PERCENTILES = dict(min=0, median=50, p90=90, max=100)
 
 
+def share(weight, chosen):
+    """`chosen`'s share of the total `weight`, 0 when there is none."""
+    total = weight.sum()
+    return float(weight[chosen].sum() / total) if total else 0.0
+
+
 def make_shape(src, material, settings, seed, keep_alpha, *, views, query):
     name = src.names[material]
     ids = np.flatnonzero(src.tri_m == material)
@@ -33,8 +39,8 @@ def make_shape(src, material, settings, seed, keep_alpha, *, views, query):
     sub = with_triangles(src, triangles, tri_uv, src.tri_m[ids])
     sampled = samples(sub, rng, keep_alpha)
     points, _, area = sampled
-    selected = choose_cards(sampled, rng, epsilon=settings.epsilon, area_cost=settings.area_cost,
-                            views=views.training, query=query, face_lens=views.face_lens)
+    weights = probe_weights(points, views.training, query, views.face_lens)
+    selected = choose_cards(sampled, rng, weights=weights, epsilon=settings.epsilon, area_cost=settings.area_cost)
     long_sides = np.array([max(card['hi'] - card['lo']) for card in selected])
     distribution = (dict(zip(SIDE_PERCENTILES, np.percentile(long_sides, list(SIDE_PERCENTILES.values())).tolist()))
                     if len(selected) else {})
@@ -76,7 +82,7 @@ def make_shape(src, material, settings, seed, keep_alpha, *, views, query):
     count = len(positions)
     report = dict(candidates=len(selected), split_cards=len(cards), cards=count,
                   triangles=count * len(QUAD_TRIANGLES), splits=splits, long_sides=distribution,
-                  covered=float(area[represented].sum() / area.sum()) if area.sum() else 0.0,
+                  covered=share(area * weights, represented), covered_area=share(area, represented),
                   pages=len(pages), texture_bytes=sum(len(pack_ltex(texture)) for texture in textures),
                   texel_size=cards[0]['texel_size'] if cards else None, probes=views.record)
     log(f"cards: {len(selected)} selected, {len(cards)} after splitting, {count} baked, "

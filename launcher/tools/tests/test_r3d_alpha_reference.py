@@ -98,7 +98,7 @@ class AlphaReferenceTests(unittest.TestCase):
                                       epsilon=CARD_Z, area_cost=0.0)))
         with patch.object(reference_render, 'load_source', return_value=self.source),                 patch.object(reference_render, 'path_light_for', return_value=None), \
                 patch('r3d.cards.emit.material_views', return_value=(None, None)), \
-                patch('r3d.cards.emit.make_shape', return_value=({}, {'covered': 1.0})):
+                patch('r3d.cards.emit.make_shape', return_value=({}, {'covered': 1.0, 'covered_area': 1.0})):
             source = reference_render.lit_source(job, NS(), hide_cards=True)
         where, rays, _ = reference_render.drawn_hits(source, [], origins, directions)
         np.testing.assert_array_equal(rays, np.arange(len(origins)))
