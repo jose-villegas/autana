@@ -215,7 +215,7 @@ flowchart LR
 |---|---|---|---|
 | `SCENE_CONTACT_BLOB` | Squared disc falloff `(1 − d²)²`; radius is the smaller horizontal half extent of the world box. | One ellipse at fill. | None. |
 | `SCENE_CONTACT_FEET` | Constant-radius discs at posed leaf joints within `CONTACT_JOINT_BAND` times rig height of the lowest leaf. Radius is `CONTACT_RADIUS_FRACTION` times the nearest positive contact spacing (rig height when there is one contact or all contacts coincide). | Bind-space leaf selection on activation; joint positions at fill. | No footprint without usable contacts. |
-| `SCENE_CONTACT_SILHOUETTE` | Union of posed joint ellipses over the world box's xz rectangle; soft cell-width edges, with no blur or height fade. | Skin-weighted bind ellipsoids on activation; mask cells on repose or world change. | BLOB when skin or mask allocation is unavailable. |
+| `SCENE_CONTACT_SILHOUETTE` | Union of posed joint ellipses over the world box's xz rectangle; soft cell-width edges, with no blur or height fade. | Skin-weighted bind ellipsoids on first silhouette fill; mask cells at fill after pose or world changes. | BLOB when skin or mask allocation is unavailable. |
 
 ![BLOB and SILHOUETTE under the same low contact light](../../images/render/contact-silhouette.png)
 
@@ -229,12 +229,14 @@ centred at the mover or posed contact joint, with no stretch.
 Warp is a ground-plane approximation of Blinn's planar projection: it shifts a footprint ellipse
 away from the light and stretches it along that direction.<sup>[[132]](../../Citations.md#blinn-1988)</sup>
 
-The offset is `r tan(θ)` and the stretch is `1/e`. Here θ is the angle from
-vertical, `e = cos θ` clamped to `CONTACT_LIGHT_ELEVATION_MIN`, and `r` is
-the smaller horizontal half extent.
+The offset is `r tan(θ)`, with θ measured from vertical; the stretch is `1/e`,
+where `e = cos θ` is clamped to `CONTACT_LIGHT_ELEVATION_MIN`.
 
-The brightest light of the first drawn scene with lights wins. Otherwise,
-the mover's sampled SH L1 dominant direction supplies the direction;
+`r` is the footprint's radius: the smaller horizontal half extent of the world
+box, or the contact radius for FEET.
+
+The brightest positive-luminance light in the first drawn scene with one wins.
+Otherwise, the mover's sampled SH L1 dominant direction supplies the direction;
 an isotropic or absent probe field uses straight up.
 
 Radial footprints share a divide-free homogeneous ellipse test. SILHOUETTE maps
