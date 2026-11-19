@@ -810,6 +810,20 @@ test_mat3_from_nonsymmetric_mat4_preserves_rows(void) {
 }
 
 static void
+test_mat3_scale_multiplies_every_entry(void) {
+    const mat3f_t matrix = {{{1, -2, 3}, {-4, 5, -6}, {7, -8, 9}}};
+    static const float scales[] = {0, 1, -2, 0.5F};
+    for (size_t i = 0; i < sizeof scales / sizeof scales[0]; i++) {
+        const mat3f_t scaled = mat3f_scale(matrix, scales[i]);
+        for (int row = 0; row < MAT3F_AXES; row++) {
+            for (int col = 0; col < MAT3F_AXES; col++) {
+                TEST_ASSERT_EQUAL_FLOAT(matrix.m[row][col] * scales[i], scaled.m[row][col]);
+            }
+        }
+    }
+}
+
+static void
 test_mat3_product_applies_right_operand_first(void) {
     const mat3f_t left = {{{1, 2, 3}, {4, 5, 6}, {7, 8, 10}}};
     const mat3f_t right = {{{2, -1, 4}, {3, 5, 0}, {-2, 6, 1}}};
@@ -889,6 +903,7 @@ suite_math(void) {
 
     RUN_TEST(test_view_from_axes_maps_the_eye_and_frame_axes);
     RUN_TEST(test_scale_rows_and_columns_match_diagonal_products_exactly);
+    RUN_TEST(test_mat3_scale_multiplies_every_entry);
     RUN_TEST(test_mat3_product_applies_right_operand_first);
     RUN_TEST(test_mat3_from_nonsymmetric_mat4_preserves_rows);
     RUN_TEST(test_cofactor_random_matrices_and_reflection);
