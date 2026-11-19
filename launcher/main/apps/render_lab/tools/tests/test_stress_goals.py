@@ -98,6 +98,14 @@ class StressGoalsTest(unittest.TestCase):
         b = goals.generate([self.write("pegged", capture_text(pegged=True))])
         self.assertEqual(a, b)
 
+    def test_flap_information_keeps_the_goal_columns_unchanged(self):
+        row = next(row for row in goals.table_rows() if row[0] == "stress-butterflies")
+        stage = read_define(PRESETS.with_name("scene_stress.h"), "STRESS_FLAP_STAGE_NAME")
+        ordinary = capture_text()
+        with_flap = ordinary + UNPEGGED_LINE % (goals.row_name(row) + " " + stage, STAGE_US) + "\n"
+        self.assertEqual(goals.generate([self.write("ordinary", ordinary)]),
+                         goals.generate([self.write("flap", with_flap)]))
+
     def test_unpegged_preset_prints_zeros_and_others_do_not(self):
         output = goals.generate([self.write("c", capture_text())], [UNPEGGED])
         rows = goals.table_rows()

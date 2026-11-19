@@ -76,6 +76,24 @@ run = 44515597794
 host = "Linux x86_64"
 
 [[bake]]
+output = "butterfly_body.bundle"
+source = "launcher/demo/butterfly/butterfly.scene.toml"
+key = "26f2795ca0f154f74bc4db3487050ae29f553b1b41e9e1d47e4443dda44982fc"
+sha256 = "6c89f09ccd5329b3b5d96e9da76327108369eb81d15aa47634ad42de4cf082e5"
+size = 336
+run = 44516727571
+host = "Linux x86_64"
+
+[[bake]]
+output = "butterfly_wing.bundle"
+source = "launcher/demo/butterfly/butterfly.scene.toml"
+key = "a7f84a0254dc449c11b82ae7e0c8b72c3d149f70a6a96b7e33b4f2a60ee02969"
+sha256 = "cb8df75442d61e3c7873f9dce84c529afaeb9f6ed8539c5a512e0943e6dfc2ba"
+size = 368
+run = 44516727571
+host = "Linux x86_64"
+
+[[bake]]
 output = "capybara.glb"
 source = "launcher/demo/capybara/capybara.import.toml"
 key = "55b3a299778ec80110e5a45aecb918a3fb53c7d12d5e1b6124fa0a486ed69328"
@@ -234,18 +252,32 @@ key = "30e112b7136dd869632295b3ac5536fa4d45f6124ba979364b095dd15c454fbb"
 poses = "d22bd63bb589a7fcbd9126cc96d9d65ee9bd7f2d66560aec6e9d6b938397755f"
 count = 6605
 clip = "launcher/demo/bistro/street.anim.toml"
-host = "Windows AMD64"
+host = "Linux x86_64"
 
 [[poses]]
 key = "5db2eaa51e9a9b2f0d3b1feb926ae1ef3dfde77d073b4add9456bea940160760"
 poses = "9ead88ddf14f89d2451a12a9e69686f4eeb66075f3ed042f999511be8e6e0998"
 count = 265
 clip = "launcher/demo/bistro/street.anim.toml"
-host = "Windows AMD64"
+host = "Linux x86_64"
+
+[[poses]]
+key = "9963dfb6ba65156869be1d43e95bdfb28745ef490fd58bf4e9541d1d0226fd9f"
+poses = "bc608ce3264275d892202b270ad05e255c7878431cbea66d907ba0e927ecf8da"
+count = 37
+clip = "launcher/demo/sponza/flythrough.anim.toml"
+host = "Linux x86_64"
 
 [[poses]]
 key = "f1b27efdba1618235cc9ff0b54f1a607ad684efe6452ef7b940d8b4dc9d75d42"
 poses = "4e6038b04307b2374f3c90ae507e576d2cfd82d7508b742ba134ebfe01ceb18d"
 count = 133
 clip = "launcher/demo/bistro/street.anim.toml"
-host = "Windows AMD64"
+host = "Linux x86_64"
+
+[[poses]]
+key = "fc190b7715b45193f1d9f339f25b3d5049957e85231d10522be4e5e52ed30065"
+poses = "7f5a1e528b63cc2ebea4ea3c6795518dc30bb47befc15345be563a2d9a4ddd10"
+count = 1816
+clip = "launcher/demo/sponza/flythrough.anim.toml"
+host = "Linux x86_64"
