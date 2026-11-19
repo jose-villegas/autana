@@ -16,6 +16,12 @@ from r3d.views.probes import sphere_directions
 from bake import bake
 
 
+def golden_record():
+    coefficients = np.arange(-12, 12, dtype='<i2')
+    return (sh.HEADER.pack(sh.VERSION, sh.SH_PROBES_FLAG_INSIDE_MASK, 1, 2, 3, 4, 5, 6, 0.25, 2, 1, 1)
+            + coefficients.tobytes() + np.packbits([True, False], bitorder='little').tobytes())
+
+
 class ProbeTests(unittest.TestCase):
     def test_constant_sphere(self):
         directions = sphere_directions(DIRECTIONS)
@@ -45,7 +51,7 @@ class ProbeTests(unittest.TestCase):
         directions = sphere_directions(DIRECTIONS)
         visible = (directions[:, 0] > 0) & (directions[:, 1] > 0)
         expected = sh.project(directions, visible[:, None] * colour)
-        got = sh.decode(data)[-1][0]
+        got = sh.decode(data)[4][0]
         np.testing.assert_allclose(got, expected, atol=0.02)
 
     def test_grid_wire_order(self):
@@ -70,7 +76,7 @@ class ProbeTests(unittest.TestCase):
                 mock.patch.object(sh, 'classify', return_value=(points, np.full(len(points), 'kept'))), \
                 mock.patch.object(sh, 'PathLight', return_value=transport):
             data = sh.bake(job, scene)
-        _, _, _, scale, coefficients = sh.decode(data)
+        _, _, _, scale, coefficients, _ = sh.decode(data)
         for x, y, z in cells:
             index = x + dims[0] * (y + dims[1] * z)
             np.testing.assert_allclose(coefficients[index, 0], np.array([x, y, z]) * math.sqrt(4 * math.pi),
@@ -116,22 +122,93 @@ class ProbeTests(unittest.TestCase):
     def test_record_round_trip_and_golden(self):
         coefficients = np.arange(24).reshape(2, sh.COEFFICIENTS, sh.CHANNELS) - 12
         data = sh.encode([1, 2, 3], [4, 5, 6], [2, 1, 1], coefficients)
-        origin, spacing, dims, scale, decoded = sh.decode(data)
+        origin, spacing, dims, scale, decoded, inside = sh.decode(data)
         np.testing.assert_array_equal(origin, [1, 2, 3])
         np.testing.assert_array_equal(spacing, [4, 5, 6])
         self.assertEqual(tuple(dims), (2, 1, 1))
         np.testing.assert_allclose(decoded, coefficients, atol=scale / 2 + 1e-6)
-        self.assertEqual(len(data), sh.HEADER.size + coefficients.size * np.dtype('<i2').itemsize)
+        self.assertEqual(len(data), sh.HEADER.size + coefficients.size * np.dtype('<i2').itemsize + 1)
+        np.testing.assert_array_equal(inside, [False, False])
         fixture = pathlib.Path(__file__).parent / 'data/sh_probes.shpr'
         golden = fixture.read_bytes()
-        self.assertEqual(golden[:4], struct.pack('<HH', sh.VERSION, sh.RESERVED_FLAGS))
-        _, _, dims, scale, decoded = sh.decode(golden)
+        self.assertEqual(golden, golden_record())
+        self.assertEqual(golden[:4], struct.pack('<HH', sh.VERSION, sh.SH_PROBES_FLAG_INSIDE_MASK))
+        _, _, dims, scale, decoded, inside = sh.decode(golden)
         self.assertEqual(tuple(dims), (2, 1, 1))
         self.assertEqual(scale, 0.25)
+        np.testing.assert_array_equal(inside, [True, False])
         np.testing.assert_array_equal(decoded, coefficients * scale)
         for bad in (data[:-1], data + b'\0', bytes([0]) + data[1:]):
             with self.assertRaises(ValueError):
                 sh.decode(bad)
+
+    def test_inside_mask_round_trip_and_padding(self):
+        inside = np.array([True, False, True, False, False, True, False, True, True, False])
+        coefficients = np.arange(len(inside) * sh.COEFFICIENTS * sh.CHANNELS).reshape(-1, sh.COEFFICIENTS, sh.CHANNELS)
+        data = sh.encode([0, 0, 0], [1, 1, 1], [5, 2, 1], coefficients, inside)
+        np.testing.assert_array_equal(sh.decode(data)[5], inside)
+        self.assertEqual(data[-2:], bytes([0b10100101, 0b00000001]))
+        self.assertEqual(sh.HEADER.unpack_from(data)[1], sh.SH_PROBES_FLAG_INSIDE_MASK)
+        for bad in (data[:-1], data + b'\0'):
+            with self.assertRaises(ValueError):
+                sh.decode(bad)
+        with self.assertRaises(ValueError):
+            sh.decode(data[:2] + struct.pack('<H', sh.SH_PROBES_FLAG_INSIDE_MASK << 1) + data[4:])
+        legacy = data[:2] + bytes(2) + data[4:-2]
+        np.testing.assert_array_equal(sh.decode(legacy)[5], np.zeros(len(inside), dtype=bool))
+        np.testing.assert_array_equal(sh.decode(legacy)[4], sh.decode(data)[4])
+
+    def test_engine_mirror_moves_mask_with_probes(self):
+        from asset import engine_frame
+
+        dims = (2, 3, 4)
+        count = math.prod(dims)
+        coefficients = np.arange(count * sh.COEFFICIENTS * sh.CHANNELS).reshape(count, sh.COEFFICIENTS, sh.CHANNELS)
+        inside = np.arange(count) % 5 == 0
+        data = sh.encode([1, 2, 3], [4, 5, 6], dims, coefficients, inside)
+        before = sh.decode(data)
+        for signs in ((1, 1, -1), (-1, 1, 1), (1, -1, 1), (-1, -1, -1)):
+            with self.subTest(signs=signs), mock.patch.object(engine_frame, 'AXIS_SIGNS', signs):
+                mirrored = engine_frame.to_engine(sh.TYPE, data)
+                origin, spacing, got_dims, scale, got, mask = sh.decode(mirrored)
+                slices = tuple(slice(None, None, sign) for sign in reversed(signs))
+                expected = before[4].reshape(*reversed(dims), sh.COEFFICIENTS, sh.CHANNELS)[slices].copy()
+                expected *= np.array([1, signs[1], signs[2], signs[0]])[:, None]
+                np.testing.assert_array_equal(got, expected.reshape(got.shape))
+                np.testing.assert_array_equal(mask, inside.reshape(tuple(reversed(dims)))[slices].ravel())
+                np.testing.assert_array_equal(origin, [v if sign > 0 else -(v + (n - 1) * step)
+                                                       for v, n, step, sign in zip(before[0], dims, before[1], signs)])
+                self.assertEqual(scale, before[3])
+                self.assertEqual(tuple(got_dims), dims)
+                np.testing.assert_array_equal(spacing, before[1])
+                self.assertEqual(engine_frame.to_engine(sh.TYPE, mirrored), data)
+
+    def test_closed_box_inside_and_coefficient_bytes(self):
+        from types import SimpleNamespace
+        from tests.soup import box
+        import hashlib
+
+        solid = box([4, 4, 4])
+        source = SimpleNamespace(p=solid.vertices, tri_v=solid.faces)
+        dims = np.array([2, 2, 3])
+        points = np.stack(np.meshgrid([-5., 0.], [-5., 0.], [-5., 0., 5.], indexing='ij'), axis=-1).reshape(-1, 3)
+        settings = SimpleNamespace(seed=0, alpha_keep=None, double_sided=set())
+        requested = SimpleNamespace(spacing=None, directions=DIRECTIONS, spp=1)
+        job = SimpleNamespace(settings=settings, bake=SimpleNamespace(indirect=SimpleNamespace(bounces=2)))
+        scene = SimpleNamespace(path=None, lights=[], camera=SimpleNamespace(component=SimpleNamespace(near_z=0.001)),
+                                indirect=SimpleNamespace(albedo_boost=1.0))
+        transport = mock.Mock()
+        transport._radiance.side_effect = lambda origins, rays, seed: np.abs(origins)
+        lattice = (points, 1.0, points[0], np.ones(3), dims)
+        with mock.patch.object(sh, 'load', return_value=requested), \
+                mock.patch.object(sh, 'load_source', return_value=source), \
+                mock.patch.object(sh, 'grid', return_value=lattice), \
+                mock.patch.object(sh, 'PathLight', return_value=transport):
+            data = sh.bake(job, scene)
+        payload = data[sh.HEADER.size:sh.HEADER.size + len(points) * sh.COEFFICIENTS * sh.CHANNELS * np.dtype('<i2').itemsize]
+        self.assertEqual(hashlib.sha256(payload).hexdigest(), 'ef0d5b63871fea7307f47677709ed5bc1100022055a8eaaa78ac2f6e52f78d71')
+        expected = np.all(points == 0, axis=1).reshape(tuple(dims)).transpose(2, 1, 0).ravel()
+        np.testing.assert_array_equal(sh.decode(data)[5], expected)
 
     def test_scene_sibling_request_keys_only_sh(self):
         from r3d import sh_probe_settings
@@ -178,14 +255,14 @@ class ProbeTests(unittest.TestCase):
     def test_header_alignment(self):
         data = sh.encode([1, 2, 3], [4, 5, 6], [1, 1, 1], np.ones((1, sh.COEFFICIENTS, sh.CHANNELS)))
         self.assertEqual(sh.HEADER.size, 40)
-        self.assertEqual(struct.unpack_from('<HH', data), (sh.VERSION, 0))
+        self.assertEqual(struct.unpack_from('<HH', data), (sh.VERSION, sh.SH_PROBES_FLAG_INSIDE_MASK))
         self.assertEqual(struct.unpack_from('<3f', data, 4), (1, 2, 3))
         self.assertEqual(struct.unpack_from('<3f', data, 16), (4, 5, 6))
         self.assertEqual(struct.unpack_from('<f', data, 28)[0], sh.decode(data)[3])
         self.assertEqual(struct.unpack_from('<3H', data, 32), (1, 1, 1))
         self.assertEqual(data[38:40], bytes(2))
         with self.assertRaises(ValueError):
-            sh.decode(data[:2] + struct.pack('<H', 1) + data[4:])
+            sh.decode(data[:2] + struct.pack('<H', sh.SH_PROBES_FLAG_INSIDE_MASK << 1) + data[4:])
 
     def test_tool_key_is_local(self):
         from tests.test_bake import AnyStart
@@ -219,4 +296,7 @@ class ProbeTests(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main()
+    if sys.argv[1:] == ['--write-golden']:
+        (pathlib.Path(__file__).parent / 'data/sh_probes.shpr').write_bytes(golden_record())
+    else:
+        unittest.main()
