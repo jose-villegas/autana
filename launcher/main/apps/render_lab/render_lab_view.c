@@ -91,11 +91,19 @@ render_lab_upscale_select(int index) {
     return TUNE_SETTING_SET(upscale, index);
 }
 
+/* The picker's choice last written into the main context: until it changes, the
+ * small fill an app's pack or a host --set gave holds. */
+static render_small_fill_settings_t applied_small_fill = SMALL_FILL_SMOOTH;
+
 bool
 render_lab_apply_camera_settings(entity_t camera) {
-    render_settings_t settings = *render_context_settings(render_context_main());
-    settings.small_fill = render_lab_small_fill();
-    render_context_set_settings(render_context_main(), &settings);
+    const render_small_fill_settings_t picked = render_lab_small_fill();
+    if (memcmp(&picked, &applied_small_fill, sizeof picked) != 0) {
+        applied_small_fill = picked;
+        render_settings_t settings = *render_context_settings(render_context_main());
+        settings.small_fill = picked;
+        render_context_set_settings(render_context_main(), &settings);
+    }
     return camera_set_present(camera, lab_view_present(&render_lab_view_tunables));
 }
 

@@ -22,7 +22,6 @@ static const char* textured_name; /* the renderer drawn with its textures, or NU
 static bool generating;
 static recti_t size_rect;
 static camera_present_t present;
-static render_small_fill_settings_t small_fill = SMALL_FILL_SMOOTH;
 static int view = RENDER_DEBUG_VIEW_SHADED;
 static const char* counts_path;
 static FILE* counts;
@@ -42,7 +41,6 @@ reset_options(void) {
     textured_name = NULL;
     size_rect = recti_empty();
     present = CAMERA_PRESENT_NEAREST;
-    small_fill = SMALL_FILL_SMOOTH;
     view = RENDER_DEBUG_VIEW_SHADED;
     counts_path = NULL;
     poses_path = NULL;
@@ -73,16 +71,6 @@ options(int argc, char** argv) {
                 fprintf(stderr, "scene_viewer: --size is WxH within %dx%d, not %s\n", GFX_WIDTH, GFX_HEIGHT, value);
                 return false;
             }
-        } else if (strcmp(flag, "--small-fill") == 0) {
-            unsigned ceiling, gate, style;
-            char trailing;
-            if (sscanf(value, "%u,%u,%u%c", &ceiling, &gate, &style, &trailing) != 3 || ceiling > SMALL_FILL_CEILING_MAX
-                || gate > SMALL_FILL_GATE_MAX || style >= SMALL_FILL_STYLE_COUNT) {
-                fprintf(stderr, "scene_viewer: --small-fill is CEILING,GATE,STYLE within 0..%u,0..%u,0..%u\n",
-                        SMALL_FILL_CEILING_MAX, SMALL_FILL_GATE_MAX, SMALL_FILL_STYLE_COUNT - 1);
-                return false;
-            }
-            small_fill = (render_small_fill_settings_t){(int)ceiling, (int)gate, (int)style};
         } else if (strcmp(flag, "--present") == 0) {
             if (strcmp(value, "nearest") == 0) {
                 present = CAMERA_PRESENT_NEAREST;
@@ -220,9 +208,6 @@ setup(int quarter) {
     for (entity_t e = entity_next(scene, ENTITY_NONE); !handle_is_none(e); e = entity_next(scene, e)) {
         (void)camera_set_present(e, present);
     }
-    render_settings_t settings = *render_context_settings(render_context_main());
-    settings.small_fill = small_fill;
-    render_context_set_settings(render_context_main(), &settings);
     shown = scene;
     camera = chosen_camera(scene);
     /* What a caller sampling the path along its length reads. */

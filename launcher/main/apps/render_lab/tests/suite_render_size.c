@@ -191,6 +191,23 @@ test_apply_camera_settings_hands_the_picked_small_fill_to_the_context(void) {
     fixture();
 }
 
+/* With the pick unchanged, apply leaves a small fill the app set on its own. */
+static void
+test_apply_camera_settings_keeps_the_apps_small_fill_until_a_pick(void) {
+    fixture();
+    render_context_t* context = render_context_main();
+    const render_settings_t before = *render_context_settings(context);
+    (void)render_lab_apply_camera_settings(ENTITY_NONE);
+    render_settings_t app = before;
+    app.small_fill = SMALL_FILL_FAST_GRAIN;
+    render_context_set_settings(context, &app);
+    (void)render_lab_apply_camera_settings(ENTITY_NONE);
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_GRAIN, render_context_settings(context)->small_fill.style);
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_CEILING_FAST, render_context_settings(context)->small_fill.ceiling);
+    render_context_set_settings(context, &before);
+    fixture();
+}
+
 #ifndef ESP_PLATFORM
 /* Every preset label, shown as the chosen one, fits the SMALL FILL
  * dropdown's label room in both orientations. */
@@ -230,6 +247,7 @@ run_render_size_suite(void) {
     RUN_TEST(test_small_fill_menu_choice_moves_the_tunables);
     RUN_TEST(test_upscale_menu_choice_sets_the_context_filter);
     RUN_TEST(test_apply_camera_settings_hands_the_picked_small_fill_to_the_context);
+    RUN_TEST(test_apply_camera_settings_keeps_the_apps_small_fill_until_a_pick);
 #ifndef ESP_PLATFORM
     RUN_TEST(test_small_fill_labels_fit_their_dropdown);
 #endif

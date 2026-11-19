@@ -15,6 +15,7 @@ steps, so it must be a multiple of one, and a bool or an int as itself.
 
 Run as above, it writes the header that holds RENDER_SETTINGS_DEFAULT.
 """
+import collections
 import pathlib
 import re
 import sys
@@ -40,13 +41,16 @@ FIELD = re.compile(r"^\s*(\w+) (\w+);\s*/\*(.*?)\*/$", re.M)
 TIER = re.compile(r"^ (\w+)(?: ([\[(])([\w.-]+), ([\w.-]+)([\])]))?: (.*) $")
 BOUND = re.compile(r"-?\d+(\.\d+)?|[A-Z][A-Z0-9_]*")
 TYPES = {"bool": (bool,), "int": (int,), "float": (int, float)}
+# A field: its C type, tier and trade, the C test of a typed `value`, and its
+# (opening, low, high, closing) interval as the comment writes it, or None.
+Field = collections.namedtuple("Field", "kind tier trade valid interval")
 COMMAND = "python tools/render/settings/render_asset.py main/render/settings/render_settings_default.h"
 
 
 def fields(source=None):
-    """{field: (C type, tier, trade, valid)} of render_settings_t in order, a struct field's own
-    as `field.member`. Each is declared on its own line with its tier comment, which may give
-    the field's interval after the tier; `valid` is its C test of the typed `value`."""
+    """{field: Field} of render_settings_t in order, a struct field's own as `field.member`.
+    Each is declared on its own line with its tier comment, which may give the field's
+    interval after the tier."""
     source = HEADER.read_text(encoding="utf-8") if source is None else source
     structs = {}
     for body, name in STRUCTS.findall(source):
@@ -65,7 +69,8 @@ def fields(source=None):
             if kind not in TYPES or tier is None:
                 raise ValueError(f"{HEADER.name}: {prefix}{field} needs a bool, int or float and /* tier: trade */")
             name, opening, low, high, closing, trade = tier.groups()
-            found[prefix + field] = (kind, name, trade, interval(kind, opening, low, high, closing, prefix + field))
+            bounds = None if opening is None else (opening, low, high, closing)
+            found[prefix + field] = Field(kind, name, trade, interval(kind, bounds, prefix + field, source), bounds)
         return found
 
     if "render_settings_t" not in structs:
@@ -73,21 +78,24 @@ def fields(source=None):
     return expand("render_settings_t", "")
 
 
-def read(path):
-    """The validated keys of one settings file, flattened."""
+def read(path, source=None):
+    """The validated keys of one settings file, flattened; `source` is render_settings.h's text."""
     path = pathlib.Path(path)
     try:
         values = flatten(settings_toml.tables(path))
     except tomllib.TOMLDecodeError as error:
         raise ValueError(f"{path}: {error}") from None
-    known = fields()
+    source = HEADER.read_text(encoding="utf-8") if source is None else source
+    known = fields(source)
     unknown = values.keys() - known.keys()
     if unknown:
         raise ValueError(f"{path}: {', '.join(sorted(unknown))} is not a render setting")
     for key, value in values.items():
-        kind = known[key][0]
+        kind = known[key].kind
         if type(value) not in TYPES[kind]:
             raise ValueError(f"{path}: {key} must be a TOML {kind}")
+        if not within(value, known[key].interval, source):
+            raise ValueError(f"{path}: {key} = {value} is outside {span(known[key].interval)}")
     return values
 
 
@@ -121,7 +129,7 @@ def bake(path):
     rows = {}
     kinds = fields()
     for key, value in load(path).items():
-        scale = 1 << FRAC_BITS if kinds[key][0] == "float" else 1
+        scale = 1 << FRAC_BITS if kinds[key].kind == "float" else 1
         steps = float(value) * scale
         if steps != int(steps) or not table_asset.VALUE_MIN <= steps <= table_asset.VALUE_MAX:
             raise ValueError(f"{key} = {value}: not a multiple of 1/{scale} "
@@ -130,23 +138,60 @@ def bake(path):
     return table_asset.encode(rows, FRAC_BITS)
 
 
-def interval(kind, opening, low, high, closing, field):
-    """The C test of a typed `value` in [low, high] (a parenthesis leaves that end open); none accepts any."""
-    if opening is None:
+def constant(bound, source):
+    """A bound's number: a literal, a #define in `source`, or an enum member's position there."""
+    if not bound[0].isalpha():
+        return float(bound)
+    define = re.search(rf"^#define {bound}\s+(-?\d+(?:\.\d+)?)F?\b", source, re.M)
+    if define:
+        return float(define.group(1))
+    for members in re.findall(r"typedef enum \{(.*?)\}", source, re.S):
+        names = re.findall(r"([A-Z][A-Z0-9_]*)\s*,", re.sub(r"/\*.*?\*/", "", members, flags=re.S) + ",")
+        if bound in names:
+            return float(names.index(bound))
+    raise ValueError(f"{HEADER.name}: {bound} is not a numeric #define or an enum member of this header")
+
+
+def interval(kind, bounds, field, source):
+    """The C test of a typed `value` in its (opening, low, high, closing) bounds, a parenthesis
+    leaving that end open; None accepts any."""
+    if bounds is None:
         return "true"
+    opening, low, high, closing = bounds
+    if kind == "bool":
+        raise ValueError(f"{HEADER.name}: {field} is a bool and takes no interval")
     for bound in (low, high):
         if not BOUND.fullmatch(bound):
             raise ValueError(f"{HEADER.name}: {field}'s bound {bound!r} is not a number or a C constant")
+        if kind == "int" and "." in bound:
+            raise ValueError(f"{HEADER.name}: {field} is an int and its bound {bound} is not")
+    if constant(low, source) > constant(high, source):
+        raise ValueError(f"{HEADER.name}: {field}'s interval starts above its end")
     limit = {bound: bound if bound[0].isalpha() else literal(kind, bound, "F") for bound in (low, high)}
     return (f"value >{'=' if opening == '[' else ''} {limit[low]} && "
             f"value <{'=' if closing == ']' else ''} {limit[high]}")
 
 
+def within(value, bounds, source=None):
+    """Whether `value` lies in a field's bounds, their C constants read from render_settings.h."""
+    if bounds is None:
+        return True
+    source = HEADER.read_text(encoding="utf-8") if source is None else source
+    opening, low, high, closing = bounds
+    low, high = constant(low, source), constant(high, source)
+    return (value >= low if opening == "[" else value > low) and (value <= high if closing == "]" else value < high)
+
+
+def span(bounds):
+    """A field's interval as its comment writes it; "any" when it has none."""
+    return "any" if bounds is None else f"{bounds[0]}{bounds[1]}, {bounds[2]}{bounds[3]}"
+
+
 def header():
     """render_settings_default.h's text."""
     values, known = load(DEFAULT), fields()
-    kinds = {key: kind for key, (kind, _, _, _) in known.items()}
-    declarations = " ".join(f"X({key}, {kinds[key]}, {known[key][3]})" for key in values)
+    kinds = {key: field.kind for key, field in known.items()}
+    declarations = " ".join(f"X({key}, {kinds[key]}, {known[key].valid})" for key in values)
     return (f"/* GENERATED FILE - do not edit.\n *     {COMMAND}\n */\n#pragma once\n\n"
             f"#define RENDER_SETTINGS_DEFAULT ((render_settings_t){{{nested(values, kinds)}}})\n"
             "/* X(field, type, valid) in struct order; valid tests the typed field as `value`. */\n"

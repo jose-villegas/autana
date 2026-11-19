@@ -76,7 +76,7 @@ typedef enum { SMALL_FILL_FLAT, SMALL_FILL_GRAIN, SMALL_FILL_DITHER, SMALL_FILL_
 typedef struct {
     int ceiling; /* basic [0, SMALL_FILL_CEILING_MAX]: largest bounding-box side in pixel centres filled in one colour; 0 is off; more saves, blurs small detail */
     int gate; /* advanced [0, SMALL_FILL_GATE_MAX]: RGB565 per-channel spread, in packed channel units, a box at the ceiling may span and still fill; 0 lets any */
-    int style; /* advanced [0, SMALL_FILL_STYLE_COUNT): a small_fill_style_t, how a filled box above the always-flat side is coloured */
+    int style; /* advanced [0, SMALL_FILL_STYLE_COUNT): 0 flat, 1 grain, 2 dither (a small_fill_style_t): how a filled box above the always-flat side is coloured */
 } render_small_fill_settings_t;
 
 #define SMALL_FILL_SMOOTH      ((render_small_fill_settings_t){SMALL_FILL_CEILING_SMOOTH, SMALL_FILL_GATE_SMOOTH, SMALL_FILL_FLAT})
@@ -109,9 +109,7 @@ typedef struct {
 #define RENDER_SETTINGS_FRAC_BITS 4
 
 /* Reads `pack`'s RENDER_SETTINGS_ENTRY: a row for every field and no other,
- * lod.blend a render_lod_blend_t, lod.blend_px above 0 and at most
- * RENDER_LOD_BLEND_PX_MAX, the anim intervals RENDER_ANIM_EVERY_MIN to _MAX
- * and its pixels 0 to RENDER_ANIM_PIXELS_MAX (else ASSET_ERR_FORMAT). ASSET_ERR_NOT_FOUND when
+ * each within the interval its field comment gives (else ASSET_ERR_FORMAT). ASSET_ERR_NOT_FOUND when
  * the pack has none; `out` is written only on ASSET_OK. */
 asset_status_t render_settings_read(const asset_pack_t* pack, render_settings_t* out);
 

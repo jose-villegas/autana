@@ -16,13 +16,13 @@
 #include "render/render_view.h"
 #include "render/settings/render_settings.h"
 
-/* Largest bounding-box side, in pixel centres, always filled flat; the camera gate and style apply only above it. */
+/* Largest bounding-box side, in pixel centres, always filled flat; the small_fill gate and style apply only above it. */
 #define R3D_SPAN_SMALL_MAX_SIDE 4
 
 /* Resolved once per frame and shared read-only by row workers. */
 typedef struct {
     uint8_t ceiling;
-    small_fill_style_t style;
+    uint8_t style; /* a small_fill_style_t, a byte so row workers read a small struct */
     uint8_t spread[SMALL_FILL_CEILING_MAX + 1];
 } r3d_span_small_fill_t;
 
