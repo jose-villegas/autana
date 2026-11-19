@@ -65,7 +65,7 @@ the plain fill, `r3d_span_triangle()`, in its vertex colour, which is the
 surface's mean lit colour. It steps no u or v and never divides. 0 textures
 every level.
 
-The default, level 2, starts where a pixel steps four texels or more, so
+The default, level 3, starts where a pixel steps eight texels or more, so
 the texels it would read average out towards that colour. The pattern is
 gone there, the colour is the same:
 

@@ -2296,13 +2296,15 @@ test_the_rasters_texture_settings_reach_the_fill(void) {
                                      "the raster's divide_px does not reach the textured fill");
 }
 
-/* The floor's UVs this many times longer: it minifies past level 1. */
+/* The floor's UVs this many times longer: it minifies past level 1, so
+ * part of it picks RIG_FAR_LEVEL, a far level whatever the default is. */
 #define RIG_FAR_SCALE 8
+#define RIG_FAR_LEVEL 2
 
 static void
 test_the_rasters_far_level_reaches_the_fill(void) {
     render_texture_settings_t far = settings_of(0, RENDER_SETTINGS_DEFAULT.texture.affine_bend);
-    far.far_level = RENDER_SETTINGS_DEFAULT.texture.far_level;
+    far.far_level = RIG_FAR_LEVEL;
     TEST_ASSERT_GREATER_THAN_MESSAGE(
         0, rig_pixels_differing(RIG_FAR_SCALE, settings_of(0, RENDER_SETTINGS_DEFAULT.texture.affine_bend), far),
         "the raster's far_level does not reach the textured fill");
