@@ -184,9 +184,7 @@ jobs:
         run: |
           shards=$(python launcher/tools/bake/bake.py shards)
           echo "shards=$shards" >> "$GITHUB_OUTPUT"
-          count=$(echo "$shards" | python -c 'import json, sys; print(len(json.load(sys.stdin)))')
-          echo "count=$count" >> "$GITHUB_OUTPUT"
-          echo "candidates=$(python scripts/ci/runner_vendor.py candidates "$count")" >> "$GITHUB_OUTPUT"
+          python scripts/ci/runner_vendor.py plan "$shards"
 
   # A reference set takes hours on one hosted runner; each shard traces a share of every missing set's poses.
   # A shard starts on several candidate runners, since a wrong-vendor one would otherwise wait for a re-run.
@@ -220,7 +218,7 @@ jobs:
           path: ${{ runner.temp }}/vendor
           retention-days: 1
 
-      # Fails, for bakes-vendor-rerun.yml, only when no candidate is the lock's vendor.
+      # Fails, for bakes-vendor-rerun.yml, only when no candidate of this attempt is the lock's vendor.
       - name: Whether this candidate traces the shard
         id: claim
         if: steps.vendor.outputs.marker != ''
@@ -255,7 +253,7 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: steps.claim.outputs.trace == 'true'
         with:
-          name: reference-shard-${{ matrix.shard }}-${{ github.run_attempt }}
+          name: ${{ steps.vendor.outputs.shard_artifact }}
           path: ${{ runner.temp }}/shard
 
   reference:
@@ -278,6 +276,7 @@ jobs:
 
       - name: Join the shards and pack each set
         run: |
+          python scripts/ci/runner_vendor.py dedupe "$RUNNER_TEMP/shards"
           python launcher/tools/bake/bake.py bake --kind reference --shards "$RUNNER_TEMP/shards" --out "$RUNNER_TEMP/bakes"
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
