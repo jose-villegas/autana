@@ -19,12 +19,12 @@ are all among --needs (host,bakes: what one machine without a GPU or board
 can run), or the named scripts. A producer with an `each` runs once per item.
 With --changed, a run whose inputs are those recorded at its last good run
 is skipped: its arguments and item, its code (import closure, the C and
-requirements it counts, and the tracked files that code names), the C its
-probes compiled, its `reads` files, its bake's lock row (every row for a
-producer that needs bakes without an `each`), every tracked file under
-launcher/ when it names a shell script, the toolchain (Python, the installed
-modules and pinned packages, the C compiler, CMake) and the committed images
-it claims.
+requirements it counts, and the tracked files that code names), what its
+probes and renderer builds read (the dependency lists docs.figures.build_probe,
+render_scene.sh and build_pack.py write; Python in them with its imports),
+its `reads` files, its bake's lock row (every row for a producer that needs
+bakes without an `each`), the toolchain (Python, the installed modules and
+pinned packages, the C compiler, CMake) and the committed images it claims.
 
 Before running any, they check what the runs need: Pillow, numpy and
 matplotlib, a C compiler when a `run` uses {cc}, a file for each `reads`
@@ -33,7 +33,8 @@ bake cache; every problem is printed at once and nothing runs. The runs then
 go in parallel, those needing a GPU or a board one at a time, each into its
 own folder with its own log under launcher/tools/results/doc_images/work/figures/.
 A run that fails, leaves out a declared image or writes one it does not
-declare stops the command.
+declare, or that uses {cc} or a shell script and lists nothing it read, stops
+the command.
 
 build copies the images into docs/images/, or into DIR with --into, where a
 skipped run's committed images are copied too. check compares each with the committed image by decoded pixels (compare_images.py)

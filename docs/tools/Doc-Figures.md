@@ -76,8 +76,7 @@ last good run:
 |---|---|
 | The run | its arguments and item |
 | Code | the import closure, the C and requirements it counts, the tracked files that code names |
-| Shell builds | every tracked file under `launcher/`, when its code or arguments name a shell script |
-| Probes | the C they compiled |
+| Builds | what its probes and renderer builds read: the dependency lists `build_probe`, `render_scene.sh` and `build_pack.py` write while the runner runs them; Python in them with its imports |
 | Data | its `reads` files |
 | Bakes | its bake's lock row; every row when it needs bakes without an `each` |
 | Toolchain | Python, the host modules' and pinned packages' installed versions, the C compiler, CMake |
@@ -105,7 +104,7 @@ flowchart LR
 | Step | What happens | On failure |
 |---|---|---|
 | Check | The C compiler, the Python modules, each `reads` file, an item for each `each`, and every bake drawn (fetched into the bake cache), for all chosen producers | every problem printed, nothing runs, exit 2 |
-| Run | The runs in parallel (`--jobs N`, the core count by default), those needing a GPU or a board one at a time, each into its own folder and log under `launcher/tools/results/doc_images/work/figures/` | a run failed, left out a declared image or wrote an undeclared one: its log end, exit 2 |
+| Run | The runs in parallel (`--jobs N`, the core count by default), those needing a GPU or a board one at a time, each into its own folder and log under `launcher/tools/results/doc_images/work/figures/` | a run failed, left out a declared image, wrote an undeclared one, or used `{cc}` or a shell script and listed nothing it read: its log end, exit 2 |
 | Compare | Each image against `docs/images/` by decoded pixels | `changed IMAGE: how`, `changed IMAGE: new image`, or `orphan IMAGE` for a committed image a glob claims but no run made or skipped; exit 1 |
 
 ## The figure index
