@@ -1567,7 +1567,7 @@ test_near_clipped_textured_triangle_keeps_its_coverage_and_its_pattern(void) {
 
 static render_texture_settings_t
 settings_of(int divide_px, float bend) {
-    return (render_texture_settings_t){divide_px, bend};
+    return (render_texture_settings_t){divide_px, bend, RENDER_SETTINGS_DEFAULT.texture.affine_level};
 }
 
 #define FLOOR_SPAN 44 /* the floor's width and height in pixels */
@@ -1666,6 +1666,82 @@ test_a_floor_divides_only_past_the_bend_the_setting_allows(void) {
     TEST_ASSERT_GREATER_THAN_MESSAGE(0, colours_differing(0, 1), "a bend over the allowance stepped affine");
 }
 
+/* The steep floor with its UVs times COARSE_UV_TIMES reads level 1, which the
+ * test fills with a pattern. By default it steps affine; with
+ * texture.affine_level 0 it divides. */
+#define COARSE_UV_TIMES 2.0F
+#define COARSE_LEVEL    1
+
+static void
+draw_floor_reading(int which, render_texture_settings_t settings, float uv_times) {
+    r3d_span_vertex_t v[3];
+    vec2f_t uv[3];
+    floor_triangle_sized(v, uv, FLOOR_Z_STEEP, vec2f_zero(), FLOOR_SPAN, FLOOR_SPAN);
+    for (int i = 0; i < 3; i++) {
+        uv[i] = vec2f_scale(uv[i], uv_times);
+    }
+    r3d_span_target_t target = target_at(which);
+    r3d_span_set_texture(&target, &settings);
+    r3d_span_textured_triangle(&target, &v[0], &v[1], &v[2], uv, texture);
+}
+
+static void
+draw_coarse_floor(int which, render_texture_settings_t settings) {
+    draw_floor_reading(which, settings, COARSE_UV_TIMES);
+}
+
+static void
+test_a_floor_reading_a_coarse_level_divides_only_under_affine_level(void) {
+    fixture();
+    /* Level 0's first rows as level 1's texels: a pattern at the coarse level. */
+    const int side = TEX_SIDE >> COARSE_LEVEL;
+    memcpy((uint8_t*)texture->texels[COARSE_LEVEL], texture->texels[0], (size_t)(side * side) / 2);
+    clear();
+    render_texture_settings_t every = RENDER_SETTINGS_DEFAULT.texture;
+    every.affine_level = 0;
+    draw_coarse_floor(0, settings_of(0, RENDER_SETTINGS_DEFAULT.texture.affine_bend));
+    draw_coarse_floor(1, RENDER_SETTINGS_DEFAULT.texture);
+    draw_coarse_floor(2, every);
+    TEST_ASSERT_GREATER_THAN_MESSAGE(COVERED_MIN, covered_pixels(0), "the floor covers too little to tell");
+    TEST_ASSERT_EQUAL_MESSAGE(0, colours_differing(0, 1), "a level from affine_level on divided");
+    TEST_ASSERT_GREATER_THAN_MESSAGE(0, colours_differing(0, 2), "affine_level 0 stepped a level affine");
+}
+
+/* The edge of texture.affine_level 2: the floor reading level 1 is under it
+ * and divides, the one reading level 2 is at it and steps affine. */
+#define EDGE_AFFINE_LEVEL 2
+#define EDGE_LEVEL_BELOW  1
+#define EDGE_LEVEL_AT     2
+#define EDGE_UV_TIMES_AT  4.0F /* twice COARSE_UV_TIMES: one level coarser */
+
+static void
+test_affine_level_divides_the_level_below_it_and_steps_the_level_at_it_affine(void) {
+    fixture();
+    /* Level 0's first rows as the texels of the two levels read: a pattern at each. */
+    for (int l = EDGE_LEVEL_BELOW; l <= EDGE_LEVEL_AT; l++) {
+        const int side = TEX_SIDE >> l;
+        memcpy((uint8_t*)texture->texels[l], texture->texels[0], (size_t)(side * side) / 2);
+    }
+    render_texture_settings_t edge = RENDER_SETTINGS_DEFAULT.texture;
+    edge.affine_level = EDGE_AFFINE_LEVEL;
+    render_texture_settings_t every = RENDER_SETTINGS_DEFAULT.texture;
+    every.affine_level = 0;
+    const render_texture_settings_t affine = settings_of(0, RENDER_SETTINGS_DEFAULT.texture.affine_bend);
+
+    clear();
+    draw_floor_reading(0, affine, COARSE_UV_TIMES);
+    draw_floor_reading(1, edge, COARSE_UV_TIMES);
+    TEST_ASSERT_GREATER_THAN_MESSAGE(COVERED_MIN, covered_pixels(0), "the floor covers too little to tell");
+    TEST_ASSERT_GREATER_THAN_MESSAGE(0, colours_differing(0, 1), "a level under affine_level stepped affine");
+
+    clear();
+    draw_floor_reading(0, affine, EDGE_UV_TIMES_AT);
+    draw_floor_reading(1, edge, EDGE_UV_TIMES_AT);
+    draw_floor_reading(2, every, EDGE_UV_TIMES_AT);
+    TEST_ASSERT_GREATER_THAN_MESSAGE(0, colours_differing(0, 2), "the level at affine_level has no pattern to tell by");
+    TEST_ASSERT_EQUAL_MESSAGE(0, colours_differing(0, 1), "the level at affine_level divided");
+}
+
 /* divide_px 0 steps affine, whatever the depth: the colours are what the
  * same UVs give with no depth spread at all. */
 static void
@@ -1756,7 +1832,8 @@ last_pixels_straying(int n, int divide_px) {
     for (int k = 0; k < 2; k++) {
         uint16_t* color = both + (k * 2 * pixels);
         r3d_span_target_t target = r3d_span_target(color, color + pixels, n, 0, SPAN_ROWS);
-        r3d_span_set_texture(&target, &(render_texture_settings_t){k == 0 ? TRUTH_DIVIDE_PX : divide_px, TRUTH_BEND});
+        const render_texture_settings_t settings = settings_of(k == 0 ? TRUTH_DIVIDE_PX : divide_px, TRUTH_BEND);
+        r3d_span_set_texture(&target, &settings);
         r3d_span_textured_triangle(&target, &v[0], &v[1], &v[2], uv, texture);
     }
     int straying = 0;
@@ -2105,12 +2182,14 @@ test_the_rasters_texture_settings_reach_the_fill(void) {
 static void
 test_set_texture_keeps_divide_px_and_the_bend_in_steps_and_rounds_a_fine_bend_up(void) {
     r3d_span_target_t t = {0};
-    r3d_span_set_texture(&t, &(render_texture_settings_t){RENDER_TEXTURE_DIVIDE_PX_MAX, RENDER_TEXTURE_BEND_MAX});
+    r3d_span_set_texture(&t, &(render_texture_settings_t){RENDER_TEXTURE_DIVIDE_PX_MAX, RENDER_TEXTURE_BEND_MAX,
+                                                          RENDER_TEXTURE_LEVEL_MAX});
     TEST_ASSERT_EQUAL_UINT8(RENDER_TEXTURE_DIVIDE_PX_MAX, t.texture_divide_px);
+    TEST_ASSERT_EQUAL_UINT8(RENDER_TEXTURE_LEVEL_MAX, t.texture_affine_level);
     TEST_ASSERT_EQUAL_UINT8((int)(RENDER_TEXTURE_BEND_MAX * R3D_SPAN_BEND_STEPS), t.texture_bend_steps);
-    r3d_span_set_texture(&t, &(render_texture_settings_t){1, 1.0F / (2.0F * R3D_SPAN_BEND_STEPS)});
+    r3d_span_set_texture(&t, &(render_texture_settings_t){1, 1.0F / (2.0F * R3D_SPAN_BEND_STEPS), 0});
     TEST_ASSERT_EQUAL_UINT8(1, t.texture_bend_steps);
-    r3d_span_set_texture(&t, &(render_texture_settings_t){0, 1.0F / (4.0F * R3D_SPAN_BEND_STEPS)});
+    r3d_span_set_texture(&t, &(render_texture_settings_t){0, 1.0F / (4.0F * R3D_SPAN_BEND_STEPS), 0});
     TEST_ASSERT_EQUAL_UINT8(0, t.texture_bend_steps);
     TEST_ASSERT_EQUAL_UINT8(0, t.texture_divide_px);
 }
@@ -2459,6 +2538,8 @@ run_r3d_texture_suite(void) {
     RUN_TEST(test_near_clipped_textured_triangle_keeps_its_coverage_and_its_pattern);
     RUN_TEST(test_a_steep_floor_dividing_samples_near_the_per_pixel_truth_and_affine_does_not);
     RUN_TEST(test_a_floor_divides_only_past_the_bend_the_setting_allows);
+    RUN_TEST(test_a_floor_reading_a_coarse_level_divides_only_under_affine_level);
+    RUN_TEST(test_affine_level_divides_the_level_below_it_and_steps_the_level_at_it_affine);
     RUN_TEST(test_divide_px_0_draws_the_same_at_any_depth);
     RUN_TEST(test_the_segment_grows_past_divide_px_for_a_mild_bend_and_no_further_than_the_max);
     RUN_TEST(test_the_segment_stays_put_when_it_cannot_double_and_divide_px_0_is_affine);

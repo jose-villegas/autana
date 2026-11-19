@@ -58,6 +58,8 @@ colour and depth, then any further attachment the caller lists in
   size, so a picture drawn at a new size carves anew, and none keeps pixels
   from one picture to the next.
 - A view with `format == 0` reserves no scratch pixels.
+- A development build's render context sizes its scratch for one debug
+  view's pixels from the first frame, so showing a view takes no larger block.
 - One whose `clear` hook is NULL is not cleared. Depth and tiles have NULL
   clear hooks and use only colour and depth in their `show` hooks.
 

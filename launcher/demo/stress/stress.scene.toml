@@ -1,6 +1,7 @@
-# The stress scene: a camera swinging round the origin and a pool of copies.
-# render_lab generates one mesh at run time, shows it in as many copies as
-# the preset asks for and hides the rest; each copy starts as a stand-in.
+# The stress scene: a camera swinging round the origin and two pools of
+# copies. render_lab generates one mesh at run time, shows it in as many
+# slot copies as the preset asks for and hides the rest; each slot starts as
+# a stand-in. A carved preset shows the baked prop's copies instead.
 [[objects]]
 name = "camera"
 position = [0.0, 1.0, 10.0]
@@ -424,3 +425,389 @@ name = "slot_63"
 
 [objects.mesh_renderer]
 mesh = "slot.import.toml"
+
+# The carved presets' copies: the prop baked with its levels, one per copy.
+
+[[objects]]
+name = "prop_00"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_01"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_02"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_03"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_04"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_05"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_06"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_07"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_08"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_09"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_10"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_11"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_12"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_13"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_14"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_15"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_16"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_17"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_18"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_19"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_20"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_21"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_22"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_23"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_24"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_25"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_26"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_27"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_28"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_29"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_30"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_31"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_32"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_33"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_34"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_35"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_36"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_37"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_38"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_39"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_40"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_41"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_42"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_43"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_44"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_45"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_46"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_47"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_48"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_49"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_50"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_51"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_52"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_53"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_54"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_55"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_56"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_57"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_58"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_59"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_60"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_61"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_62"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"
+
+[[objects]]
+name = "prop_63"
+
+[objects.mesh_renderer]
+mesh = "prop.import.toml"

@@ -24,10 +24,12 @@ TOOLS = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(TOOLS))
 from asset import table_asset  # noqa: E402
 from build.c_header import read_define  # noqa: E402
+from render.settings import settings_toml  # noqa: E402
+from render.settings.settings_toml import flatten  # noqa: E402, F401
 
 SETTINGS = TOOLS.parent / "main/render/settings"
 HEADER = SETTINGS / "render_settings.h"
-DEFAULT = SETTINGS / "default.render.toml"
+DEFAULT = settings_toml.DEFAULT
 SUFFIX = ".render.toml"
 TYPE = table_asset.TYPE
 ENTRY = read_define(HEADER, "RENDER_SETTINGS_ENTRY")
@@ -67,21 +69,13 @@ def fields(source=None):
     return expand("render_settings_t", "")
 
 
-def flatten(values, prefix=""):
-    """{key: value} of a TOML table, a nested table's keys as `table.key`."""
-    flat = {}
-    for key, value in values.items():
-        flat.update(flatten(value, f"{prefix}{key}.") if isinstance(value, dict) else {prefix + key: value})
-    return flat
-
-
 def read(path):
     """The validated keys of one settings file, flattened."""
     path = pathlib.Path(path)
     try:
-        declared = tomllib.loads(path.read_text(encoding="utf-8"))
+        declared = settings_toml.tables(path)
         if path.resolve() == DEFAULT.resolve():
-            declared.pop("ranges", None)
+            declared.pop(settings_toml.RANGES, None)
         values = flatten(declared)
     except tomllib.TOMLDecodeError as error:
         raise ValueError(f"{path}: {error}") from None
@@ -137,7 +131,7 @@ def bake(path):
 
 def field_ranges():
     """The default file's optional bounds, keyed by a field's member path."""
-    ranges = tomllib.loads(DEFAULT.read_text(encoding="utf-8")).get("ranges", {})
+    ranges = settings_toml.tables(DEFAULT).get(settings_toml.RANGES, {})
     for field, bounds in ranges.items():
         if field not in fields() or not isinstance(bounds, dict):
             raise ValueError(f"{DEFAULT}: unknown range field {field}")

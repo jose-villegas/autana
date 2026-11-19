@@ -14,15 +14,17 @@ import numpy as np
 from . import log
 from .geometry import distinct_corners, nearest_triangles, triangle_areas, triangle_search
 from .import_settings import LIGHT_FIELDS
+from .obj import alpha_tested
 
 
 def drop_masked(p, uv, tri_v, tri_t, tri_m, textures, keep_alpha=0.5):
     """Alpha-tested cards (leaves, chains) keep only triangles mostly opaque."""
     keep = np.ones(len(tri_v), dtype=bool)
     bary = np.array([[1 / 3, 1 / 3, 1 / 3], [0.6, 0.2, 0.2], [0.2, 0.6, 0.2], [0.2, 0.2, 0.6]])
+    tested = alpha_tested(textures)
     for m, tex in enumerate(textures):
         sel = np.nonzero(tri_m == m)[0]
-        if tex is None or len(sel) == 0 or tex.levels[0][..., 3].min() > 0.99:
+        if not tested[m] or len(sel) == 0:
             continue
         alpha = np.zeros(len(sel))
         for b in bary:
