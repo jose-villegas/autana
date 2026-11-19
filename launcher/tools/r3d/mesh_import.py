@@ -271,6 +271,8 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
             rgb = np.clip(np.round(rgb), 0, 255).astype(np.int64)
             tri_double = np.isin(tri_mat, [index for index, name in enumerate(src.names) if name in double_names]).astype(np.int64)
         step["triangles_out"] = len(tris)
+    from r3d.objects.instances import Instance
+
     for _, card_shape, _ in accepted_cards:
         p, albedo = card_shape['positions'], card_shape['albedo']
         if job.bake:
@@ -280,8 +282,8 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
             colours = to_srgb8(albedo * radiance, scene.tonemap_white)
         else:
             colours = encode_srgb8(albedo)
-        instance, (_, _, t, labels) = card_shape['copies'][0]
-        card_shape['copies'] = [(instance, (p, colours, t, labels))]
+        instance = Instance(card_shape['owner'], np.eye(3), np.zeros(3), False, 0.0)
+        card_shape['copies'] = [(instance, (p, colours, card_shape['tris'], card_shape['labels']))]
         shapes = [] if shapes is None else shapes
         shapes.append(card_shape)
     if card_report is not None:

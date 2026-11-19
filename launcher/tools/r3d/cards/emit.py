@@ -17,7 +17,6 @@ from r3d.cards.pages import pack_pages
 from r3d.texture.texture_asset import mask_texture, pack_ltex
 from r3d.texture.uv_transfer import UV_SHIFT
 from r3d.light import AlphaTest, albedo_from_uv
-from r3d.objects.instances import Instance
 from r3d.ray_query import RayQuery
 
 QUAD_TRIANGLES = np.array([[0, 1, 2], [2, 1, 3]])
@@ -89,11 +88,10 @@ def make_shape(src, material, settings, seed, keep_alpha, *, views, query):
     t = np.concatenate([QUAD_TRIANGLES + k * len(QUAD_CORNERS) for k in range(count)])
     labels = np.full(len(t), material)
     normal = np.repeat([card['n'] for card in planes], len(QUAD_CORNERS), axis=0)
-    instance = Instance(str(src.tri_o[ids[0]]), np.eye(3), np.zeros(3), False, 0.0)
     shape = dict(positions=p, tris=t, materials=labels, normals=normal, albedo=np.concatenate(colours),
                  vertex_uvs=np.asarray(uvs), pages=textures, page_of_card=[r[0] for r in rects],
                  name=name, rule=dict(match=dict(material=name)),
-                 copies=[(instance, (p, None, t, labels))])
+                 owner=str(src.tri_o[ids[0]]), labels=labels)
     report["held_out"] = score_views(src, material, shape, query_source, views.held_out, keep_alpha, views.face_lens)
     return shape, report
 
