@@ -62,10 +62,10 @@ style; `render_view_t.small_fill` carries them to the frame's row workers.
 | `SMALL_FILL_FAST_DITHER` | 12/16 DITHER | FAST's ceiling and gate with the DITHER style |
 | `SMALL_FILL_FAST_GRAIN` | 12/16 GRAIN | FAST's ceiling and gate with the GRAIN style |
 
-<!-- generated: small-fill-levers sha256=46ed813c7858d86cdd5da15850ac97079edbfa75daf563de4d3405d5a429d84d -->
+<!-- generated: small-fill-levers sha256=92e4b2df93aacb80c7a2ac1b0658c99f8a06bc1fe5acde93d1321a705cd3ba8a -->
 | Camera field | Range | Default | Effect |
 |---|---|---|---|
-| `ceiling` | 0..16 | 4 | Largest bounding-box side in pixel centres; 0 disables small fill |
+| `ceiling` | 0..32 | 4 | Largest bounding-box side in pixel centres; 0 disables small fill |
 | `gate` | 0..255 | 0 | Vertex RGB565 spread limit at the ceiling; 0 disables the colour gate |
 | `style` | 0..2 | 0 | FLAT (0), GRAIN (1), DITHER (2) |
 <!-- /generated: small-fill-levers -->

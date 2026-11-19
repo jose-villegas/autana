@@ -19,7 +19,7 @@ typedef enum __attribute__((packed)) {
     SMALL_FILL_STYLE_COUNT
 } small_fill_style_t;
 
-#define SMALL_FILL_CEILING_MAX    16
+#define SMALL_FILL_CEILING_MAX    32
 #define SMALL_FILL_CEILING_SMOOTH 4
 #define SMALL_FILL_GATE_SMOOTH    0
 #define SMALL_FILL_CEILING_FAST   12
