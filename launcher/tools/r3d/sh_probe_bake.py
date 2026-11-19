@@ -15,10 +15,13 @@ from r3d.ray_query import RayQuery
 from r3d.sh_probe_settings import load
 from r3d.views.probes import classify, probe_points, spacing_for, sphere_directions
 
+TYPE = b'SHPR'
 VERSION = 1
-RESERVED_FLAGS = 0
+SH_PROBES_FLAG_INSIDE_MASK = 1 << 0
+MASK_BITS_PER_BYTE = np.iinfo(np.uint8).bits
 CHANNELS = 3
-COEFFICIENTS = 4
+L1_AXES = (1, 2, 0)
+COEFFICIENTS = 1 + len(L1_AXES)
 Y00 = 0.5 * math.sqrt(1 / math.pi)
 Y1 = 0.5 * math.sqrt(3 / math.pi)
 HEADER = struct.Struct('<HH3f3ff3H2x')
@@ -72,7 +75,7 @@ def dilate(values, inside):
     return out
 
 
-def encode(origin, spacing, dims, coefficients):
+def encode(origin, spacing, dims, coefficients, inside=None):
     dims = np.asarray(dims)
     coefficients = np.asarray(coefficients, dtype=float)
     if dims.shape != (3,) or np.any(dims < 1) or np.any(dims > DIM_MAX) or np.any(dims != dims.astype(int)):
@@ -81,6 +84,10 @@ def encode(origin, spacing, dims, coefficients):
         raise ValueError('SH coefficients must be finite and match dimensions')
     if not np.isfinite(origin).all() or not np.isfinite(spacing).all() or np.any(np.asarray(spacing) <= 0):
         raise ValueError('SH origin and positive spacing must be finite')
+    count = int(np.prod(dims))
+    inside = np.zeros(count, dtype=bool) if inside is None else np.asarray(inside, dtype=bool).ravel()
+    if inside.size != count:
+        raise ValueError('SH inside mask must match dimensions')
     maximum = float(np.max(np.abs(coefficients)))
     scale = np.float32(maximum / QUANT_MAX if maximum else 1.0)
     if scale == 0 or not np.isfinite(scale):
@@ -88,7 +95,8 @@ def encode(origin, spacing, dims, coefficients):
     if float(scale) * QUANT_MAX < maximum:
         scale = np.nextafter(scale, np.float32(np.inf))
     quantized = np.rint(coefficients / scale).astype('<i2')
-    return HEADER.pack(VERSION, RESERVED_FLAGS, *origin, *spacing, scale, *dims) + quantized.tobytes()
+    mask = np.packbits(inside, bitorder='little').tobytes()
+    return HEADER.pack(VERSION, SH_PROBES_FLAG_INSIDE_MASK, *origin, *spacing, scale, *dims) + quantized.tobytes() + mask
 
 
 def decode(data):
@@ -96,13 +104,17 @@ def decode(data):
         raise ValueError('truncated SHPR header')
     version, flags, *fields = HEADER.unpack_from(data)
     origin, spacing, dims, scale = fields[:3], fields[3:6], fields[7:10], fields[6]
-    expected = HEADER.size + math.prod(dims) * COEFFICIENTS * CHANNELS * np.dtype('<i2').itemsize
-    if version != VERSION or flags != RESERVED_FLAGS or not all(dims) or len(data) != expected:
+    count = math.prod(dims)
+    mask_at = HEADER.size + count * COEFFICIENTS * CHANNELS * np.dtype('<i2').itemsize
+    mask_size = (count + MASK_BITS_PER_BYTE - 1) // MASK_BITS_PER_BYTE if flags & SH_PROBES_FLAG_INSIDE_MASK else 0
+    if version != VERSION or flags & ~SH_PROBES_FLAG_INSIDE_MASK or not all(dims) or len(data) != mask_at + mask_size:
         raise ValueError('invalid SHPR version, flags, dimensions or length')
     if not np.isfinite([*origin, *spacing, scale]).all() or min(*spacing, scale) <= 0:
         raise ValueError('invalid SHPR origin, spacing or scale')
-    coefficients = np.frombuffer(data, dtype='<i2', offset=HEADER.size).reshape(-1, COEFFICIENTS, CHANNELS) * scale
-    return origin, spacing, dims, scale, coefficients
+    coefficients = np.frombuffer(data, dtype='<i2', count=count * COEFFICIENTS * CHANNELS, offset=HEADER.size).reshape(-1, COEFFICIENTS, CHANNELS) * scale
+    inside = (np.unpackbits(np.frombuffer(data, dtype=np.uint8, offset=mask_at), bitorder='little')[:count].astype(bool)
+              if mask_size else np.zeros(count, dtype=bool))
+    return origin, spacing, dims, scale, coefficients, inside
 
 
 def grid(source, camera, requested, seed):
@@ -146,8 +158,9 @@ def bake(job, scene):
     coefficients[outside] += sun_term(query, moved[outside], scene.lights)
     # ProbeViews enumerates z fastest; SHPR's x-fastest order is the transposed cell lattice.
     shape = tuple(dims) + (COEFFICIENTS, CHANNELS)
-    filled = dilate(coefficients.reshape(shape), (state == 'inside').reshape(tuple(dims)))
-    data = encode(origin, step, dims, filled.transpose(2, 1, 0, 3, 4).copy())
+    inside = (state == 'inside').reshape(tuple(dims))
+    filled = dilate(coefficients.reshape(shape), inside)
+    data = encode(origin, step, dims, filled.transpose(2, 1, 0, 3, 4).copy(), inside.transpose(2, 1, 0))
     sun_rays = sum(light['type'] == 'directional' for light in scene.lights)
     paths = int(outside.sum()) * requested.directions * requested.spp
     print(f'SH probes: {len(points)} probes, {np.count_nonzero(~outside)} inside, '

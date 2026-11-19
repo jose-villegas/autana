@@ -6,11 +6,14 @@ under "The offline tools".
 
 import struct
 
+import numpy as np
+
 from audio import sound_asset
 from gfx import image_asset
 from asset import table_asset
 from anim import tracks_asset, skeleton_asset
 from r3d import mesh_asset, scene_asset, skin_asset, lcol_asset, lod_asset, morph_asset
+from r3d import sh_probe_bake
 from r3d.texture import texture_asset
 
 FRAMELESS = frozenset((image_asset.TYPE, image_asset.SPRITE_TYPE, table_asset.TYPE, sound_asset.TYPE, lcol_asset.TYPE,
@@ -129,6 +132,21 @@ def to_engine(kind, entry):
         for index, (_, _, normal) in enumerate(vertices):
             skin_asset.NORMAL.pack_into(out, vertices_at + index * record_size + influences * 2,
                                         *(value * sign for value, sign in zip(normal, AXIS_SIGNS)))
+    elif kind == sh_probe_bake.TYPE:
+        origin, spacing, dims, scale, coefficients, inside = sh_probe_bake.decode(entry)
+        slices = tuple(slice(None, None, sign) for sign in reversed(AXIS_SIGNS))
+        shape = tuple(reversed(dims))
+        quantized = np.rint(coefficients / scale).astype('<i2').reshape(
+            *shape, sh_probe_bake.COEFFICIENTS, sh_probe_bake.CHANNELS)[slices].copy()
+        signs = (1, *(AXIS_SIGNS[axis] for axis in sh_probe_bake.L1_AXES))
+        quantized *= np.asarray(signs, dtype=np.int16)[:, None]
+        origin = tuple(value if sign > 0 else -(value + (count - 1) * step)
+                       for value, step, count, sign in zip(origin, spacing, dims, AXIS_SIGNS))
+        version, flags, *_ = sh_probe_bake.HEADER.unpack_from(entry)
+        header = sh_probe_bake.HEADER.pack(version, flags, *origin, *spacing, scale, *dims)
+        mask = (np.packbits(inside.reshape(shape)[slices].ravel(), bitorder='little').tobytes()
+                if flags & sh_probe_bake.SH_PROBES_FLAG_INSIDE_MASK else b'')
+        return header + quantized.tobytes() + mask
     elif kind == tracks_asset.TYPE:
         tracks, duration_ms = tracks_asset.decode(entry)
         for track in tracks:
