@@ -634,6 +634,10 @@ class RecordTests(TreeTest):
         self.assertEqual(code, 2)
         self.assertIn("launcher/a/one.py compiled C the runner could not see", err)
 
+    def test_the_renderer_build_reads_the_depends_folder_by_the_name_the_runner_sets(self):
+        script = (pathlib.Path(figures_runner.ROOT) / "launcher/tools/render/render_scene.sh").read_text()
+        self.assertIn(f"${{{producer.DEPENDS_FOLDER}:-}}", script)
+
     def test_a_docs_file_the_code_names_is_an_input(self):
         self.tree.write("docs/math/order.txt", "a b")
         self.tree.producer("a/one.py", ["fig/one.png"], ["one.png"], prologue='ORDER = "docs/math/order.txt"')

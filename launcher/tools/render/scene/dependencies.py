@@ -1,8 +1,8 @@
-"""Print a configured scene's flags and compiler dependencies from its CMake build, or, with --into DIR, write
-what the build read into DIR as dependency lists (.d): each source's headers, the CMake files the configure
-read (CMake's file API; render_scene.sh places the cmakeFiles query before configuring) and each FILE.
+"""Print a configured scene's flags and what its build reads, or with --into DIR write the second as dependency
+lists (.d) into DIR: each source's headers, then one rule naming the CMake files the configure read (CMake's file
+API; render_scene.sh places the cmakeFiles query before configuring) and each FILE.
 
-    python dependencies.py BUILD
+    python dependencies.py BUILD [FILE ...]
     python dependencies.py BUILD --into DIR [FILE ...]
 """
 import json
@@ -34,6 +34,12 @@ def cmake_inputs(build):
             if not item.get("isCMake") and not item.get("isGenerated")]
 
 
+def inputs_rule(build, files):
+    """The make rule naming the CMake files the configure read and `files`."""
+    names = [Path(name).resolve().as_posix().replace(" ", ESCAPED_SPACE) for name in (*cmake_inputs(build), *files)]
+    return "host: " + " ".join(names) + chr(10)
+
+
 def write_lists(build, into, files):
     """The lists --into writes."""
     _, found = entries(build)
@@ -41,14 +47,13 @@ def write_lists(build, into, files):
         listing = into / f"host-{number}.d"
         subprocess.run([*compile_flags(entry), "-MM", "-MF", str(listing.resolve()), entry["file"]],
                        cwd=entry["directory"], check=True)
-    names = [Path(name).resolve().as_posix().replace(" ", ESCAPED_SPACE) for name in (*cmake_inputs(build), *files)]
-    (into / "host-inputs.d").write_text("host: " + " ".join(names) + chr(10), newline=chr(10))
+    (into / "host-inputs.d").write_text(inputs_rule(build, files), newline=chr(10))
 
 
 def main():
-    build = Path(sys.argv[1])
-    if sys.argv[2:3] == ["--into"]:
-        write_lists(build, Path(sys.argv[3]), sys.argv[4:])
+    build, files = Path(sys.argv[1]), sys.argv[2:]
+    if files[:1] == ["--into"]:
+        write_lists(build, Path(files[1]), files[2:])
         return
     names, found = entries(build)
     # render_scene's sources come first (scene/CMakeLists.txt), all compiled with the scene's one flag set.
@@ -59,6 +64,7 @@ def main():
     print("flags " + " ".join(flags), flush=True)
     for entry in found:
         subprocess.run([*compile_flags(entry), "-MM", entry["file"]], cwd=entry["directory"], check=True)
+    print(inputs_rule(build, files), end="", flush=True)
 
 
 if __name__ == "__main__":
