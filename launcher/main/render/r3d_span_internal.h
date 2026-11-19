@@ -159,6 +159,13 @@ r3d_span_pack_rgb(float r, float g, float b) {
                          (int32_t)(mathf_clamp(b, 0.0F, UINT8_MAX) * R3D_SPAN_COLOR_SCALE));
 }
 
+/* A triangle's face colour: its corners' mean, packed. */
+static inline uint16_t
+r3d_span_mean_rgb(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c) {
+    const float third = 1.0F / 3.0F; /* magic: a triangle's three corners */
+    return r3d_span_pack_rgb((a->r + b->r + c->r) * third, (a->g + b->g + c->g) * third, (a->b + b->b + c->b) * third);
+}
+
 static inline int32_t
 r3d_span_min3(int32_t a, int32_t b, int32_t c) {
     return a < b ? (a < c ? a : c) : (b < c ? b : c);

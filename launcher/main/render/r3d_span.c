@@ -458,8 +458,7 @@ static inline void
 set_flat(fill_t* f, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c) {
     const float third = 1.0F / (float)TRIANGLE_VERTICES;
     f->flat_z = (uint16_t)(mathf_clamp((a->z + b->z + c->z) * third, 0.0F, 1.0F) * (float)R3D_DEPTH_NEAREST);
-    f->flat_color =
-        r3d_span_pack_rgb((a->r + b->r + c->r) * third, (a->g + b->g + c->g) * third, (a->b + b->b + c->b) * third);
+    f->flat_color = r3d_span_mean_rgb(a, b, c);
 }
 
 static inline int32_t
@@ -952,4 +951,18 @@ void
 r3d_span_capped_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                          const r3d_span_vertex_t* c, const uint16_t* face) {
     r3d_span_capped_triangle_impl(target, a, b, c, face);
+}
+
+void
+r3d_span_triangle_mean(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
+                       const r3d_span_vertex_t* c) {
+    const uint16_t face = r3d_span_mean_rgb(a, b, c);
+    if (target->skip_hidden) {
+        r3d_span_capped_triangle_impl(target, a, b, c, &face);
+    } else {
+        r3d_span_triangle_impl(target, a, b, c, &face);
+    }
+    if (target->writer_count != 0) {
+        r3d_span_triangle_write(target, a, b, c, true);
+    }
 }

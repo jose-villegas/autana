@@ -16,7 +16,7 @@ most from it: a row per square, a column per value, each headed with its CIE76 d
 Its draws read every level's texels (texture.far_level 0), so they differ by the divide alone.
 
 --far-image writes path frame --far-frame textured with every level's texels and with the default texture.far_level,
-whose far levels draw untextured, in the vertex colour, beside the source, as the first sheet, with its crops.
+whose far levels draw untextured, one colour a triangle, beside the source, as the first sheet, with its crops.
 """
 import argparse
 import pathlib
@@ -52,7 +52,7 @@ NEAR_SHARE = 1 / 3
 DIVIDE_TUNABLE = "render.texture_divide_px"
 AFFINE_TUNABLE = "render.texture_bend_steps"
 TRUTH = 1
-# The tunable of the first level drawn untextured, in the vertex colour; 0 textures every level.
+# The tunable of the first level drawn untextured, one colour a triangle; 0 textures every level.
 FAR_TUNABLE = "render.texture_far_level"
 EVERY_LEVEL = 0
 # Squares the divide sheet zooms on.
@@ -159,7 +159,7 @@ def far_sheet(args, fit, work):
     far = draw(args, True, work, "far_default", args.far_frame)
     source = reference(args, name, Image.open(every).size, work)
     run([sys.executable, COMPARE, "--out", args.out / args.far_image, "--reference-stills", args.far_title, source,
-         every, far, "--label-a", "every level's texels", "--label-b", "far levels: vertex colour", "--crops", CROPS])
+         every, far, "--label-a", "every level's texels", "--label-b", "far levels: one colour", "--crops", CROPS])
 
 
 def main(argv=None):

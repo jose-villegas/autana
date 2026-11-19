@@ -272,18 +272,27 @@ test_minified_triangle_takes_the_matching_level(void) {
 #define DARK_INDEX    1      /* a colour far from the mean */
 static const vec2f_t minified[3] = {{0, 0}, {4 * SIDE, 0}, {0, 4 * SIDE}};
 
-/* A level from far_level on draws what the plain fill draws for the same
- * corners, and reads no texel: its texels are made dark first. */
+/* Corner greys apart, so their mean is none of them. */
+#define FAR_GREY_A 60.0F
+#define FAR_GREY_B 120.0F
+#define FAR_GREY_C 240.0F
+
+/* A level from far_level on draws one colour, its corners' mean, over the
+ * pixels the solid fill covers, and reads no texel: its texels are made dark
+ * first. */
 static void
-test_a_far_level_draws_as_the_plain_fill(void) {
+test_a_far_level_draws_flat_in_its_corners_mean(void) {
     fixture();
     clear();
-    r3d_span_target_t plain = target_at(1);
-    const r3d_span_vertex_t a = vertex(0, 0, 0.5F, FAR_GREY), b = vertex(SIDE, 0, 0.5F, FAR_GREY),
-                            c = vertex(0, SIDE, 0.5F, FAR_GREY);
-    r3d_span_triangle(&plain, &a, &b, &c);
+    const r3d_span_vertex_t a = vertex(0, 0, 0.5F, FAR_GREY_A), b = vertex(SIDE, 0, 0.5F, FAR_GREY_B),
+                            c = vertex(0, SIDE, 0.5F, FAR_GREY_C);
+    const float mean = (FAR_GREY_A + FAR_GREY_B + FAR_GREY_C) / 3.0F; /* magic: three corners */
+    r3d_span_target_t solid = target_at(1);
+    r3d_span_triangle_solid(&solid, &a, &b, &c, r3d_span_pack_rgb(mean, mean, mean));
     memset(ltex + LEVEL_2_OFF, (DARK_INDEX << 4) | DARK_INDEX, LEVEL_2_BYTES); /* magic: two INDEX4 texels a byte */
-    draw_corner_far(0, FAR_GREY, minified, LEVEL_2);
+    r3d_span_target_t far = target_at(0);
+    far.texture_far_level = LEVEL_2;
+    r3d_span_textured_triangle(&far, &a, &b, &c, minified, texture);
     TEST_ASSERT_EQUAL_UINT16_ARRAY(buffers + (2 * PIXELS), buffers, 2 * PIXELS);
 }
 
@@ -2617,7 +2626,7 @@ run_r3d_texture_suite(void) {
     RUN_TEST(test_shared_edge_neither_cracks_nor_overlaps);
     RUN_TEST(test_affine_samples_the_texel_under_each_centre);
     RUN_TEST(test_minified_triangle_takes_the_matching_level);
-    RUN_TEST(test_a_far_level_draws_as_the_plain_fill);
+    RUN_TEST(test_a_far_level_draws_flat_in_its_corners_mean);
     RUN_TEST(test_a_far_level_under_skip_hidden_is_capped);
     RUN_TEST(test_a_level_before_far_level_reads_its_texels);
     RUN_TEST(test_a_mask1_triangle_at_the_far_level_keeps_its_holes);

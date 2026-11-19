@@ -15,7 +15,7 @@ flowchart LR
     Format -- MASK1 --> Setup["set-up: light,<br/>u, v planes"]
     Setup -- MASK1 --> Cut["cut walk,<br/>affine"]
     Format -- INDEX4 --> Far{"level from<br/>far_level on?"}
-    Far -- yes --> Plain["plain fill:<br/>vertex colour,<br/>no u, v or texel"]
+    Far -- yes --> Plain["solid fill:<br/>corners' mean,<br/>no u, v or texel"]
     Far -- no --> Setup
     Setup -- INDEX4 --> Tests{"divide<br/>tests"}
     Tests -- "any fails" --> Affine["affine walk"]
@@ -34,7 +34,7 @@ its tint, from black at level 0 up to `R3D_TEXTURE_LIGHT_LEVELS - 1`.
 | | INDEX4 | MASK1 |
 |---|---|---|
 | Texel | 4 bits: a palette colour | 1 bit: kept or not |
-| Pixel | the colormap at the texel's colour; a far level, the vertex colour | texel 0 leaves the pixel; texel 1 draws palette colour 1 |
+| Pixel | the colormap at the texel's colour; a far level, the corners' mean | texel 0 leaves the pixel; texel 1 draws palette colour 1 |
 | Steps | affine, or dividing by depth | affine |
 
 The light level is the vertex light's luminance, stepped across the triangle
@@ -61,9 +61,9 @@ remove them.
 ## Far levels
 
 A level from `texture.far_level` on reads no texel: the triangle goes to
-the plain fill, `r3d_span_triangle()`, in its vertex colour, which is the
-surface's mean lit colour. It steps no u or v and never divides. 0 textures
-every level.
+the solid fill, `r3d_span_triangle_mean()`, in one colour, its corners'
+mean, which is the surface's mean lit colour. It steps no u, v or light,
+and never divides. 0 textures every level.
 
 The default, level 3, starts where a pixel steps eight texels or more, so
 the texels it would read average out towards that colour. The pattern is

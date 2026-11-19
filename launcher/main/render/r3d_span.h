@@ -128,6 +128,12 @@ void r3d_span_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t*
 void r3d_span_triangle_solid(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                              const r3d_span_vertex_t* c, uint16_t color);
 
+/* The solid fill in one colour, the corners' mean, capped as
+ * r3d_span_capped_triangle() when target->skip_hidden, then the target's
+ * writers over it. */
+void r3d_span_triangle_mean(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
+                            const r3d_span_vertex_t* c);
+
 /* Either fill, `face` NULL or its colour, writing no depth nearer than
  * r3d_span_depth_limit() of the nearest vertex: what a skip of whole clusters
  * behind drawn depth relies on. */

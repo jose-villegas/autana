@@ -112,24 +112,16 @@ r3d_texture_level_bytes(unsigned format, int side_log2) {
 bool r3d_span_textured_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                             const r3d_span_vertex_t* c, const vec2f_t uv[3], const r3d_texture_t* texture);
 
-/* r3d_span_textured_fill(), and a far level it leaves drawn by the plain
- * fill in the vertex colour, capped when target->skip_hidden, then its
- * writers. Inline, so the textured fill's frame is gone before the plain
- * fill's stacks up. */
+/* r3d_span_textured_fill(), and a far level it leaves to
+ * r3d_span_triangle_mean(). Inline, so the textured fill's frame is gone
+ * before the solid fill's stacks up. */
 static inline __attribute__((always_inline)) void
 r3d_span_textured_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                            const r3d_span_vertex_t* c, const vec2f_t uv[3], const r3d_texture_t* texture) {
     if (r3d_span_textured_fill(target, a, b, c, uv, texture)) {
         return;
     }
-    if (target->skip_hidden) {
-        r3d_span_capped_triangle(target, a, b, c, NULL);
-    } else {
-        r3d_span_triangle(target, a, b, c);
-    }
-    if (target->writer_count != 0) {
-        r3d_span_triangle_write(target, a, b, c, false);
-    }
+    r3d_span_triangle_mean(target, a, b, c);
 }
 
 /* The pixels between u and v's divides by depth that r3d_span_textured_fill()

@@ -54,7 +54,7 @@ that field's table in the asset.
 | `anim.hysteresis_px` | `4.0` | advanced | pixels past a tier boundary before switching |
 | `texture.divide_px` | `16` | basic | fewest pixels between divides by depth, fewer cost more; 0 is affine, near surfaces bend |
 | `texture.affine_bend` | `1.0` | advanced | texels a triangle may bend and still step affine; larger is faster, bends more |
-| `texture.far_level` | `3` | basic | first mip level drawn untextured, in the vertex colour; lower is faster; 0 textures every level |
+| `texture.far_level` | `3` | basic | first mip level drawn untextured, one colour a triangle; lower is faster; 0 textures every level |
 <!-- /generated: render-settings -->
 
 ## cull

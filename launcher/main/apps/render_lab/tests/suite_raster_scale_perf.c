@@ -141,6 +141,29 @@ timed_pose(raster_t* raster, gfx_color_t* destination, int32_t* frame_us) {
     return stats.triangles;
 }
 
+/* The log lines of one measured size; its mean frame time. Out of line, so
+ * the varargs frames are off the stack while the raster draws. */
+static __attribute__((noinline)) int64_t
+report_size(resolution_step_t size, int poses, int64_t triangles, int32_t* frame_us, const char* report,
+            const span_split_t* spans) {
+    int64_t sum = 0;
+    for (int i = 0; i < poses; i++) {
+        sum += frame_us[i];
+    }
+    ESP_LOGI(TAG,
+             "scale_split: %dx%d poses=%d tris=%lld frame mean/p50/max us %lld/%ld/%ld | %s" LAB_PERF_QUARTER_FORMAT,
+             size.width, size.height, poses, (long long)(triangles / poses), (long long)(sum / poses),
+             (long)statsi_median(frame_us, (size_t)poses), (long)statsi_percentile(frame_us, (size_t)poses, 100),
+             report, perf_quarter->name);
+    ESP_LOGI(TAG,
+             "scale_spans: %dx%d one core us/pose setup %lld edges %lld carry %lld fill %lld clear "
+             "%lld" LAB_PERF_QUARTER_FORMAT,
+             size.width, size.height, (long long)(spans->setup / poses), (long long)(spans->edges / poses),
+             (long long)(spans->carry / poses), (long long)(spans->fill / poses), (long long)(spans->clear / poses),
+             perf_quarter->name);
+    return sum / poses;
+}
+
 static int64_t
 measure_size(raster_t* raster, gfx_color_t* destination, resolution_step_t size, int32_t* frame_us, char* report) {
     size = raster_present_size(size, lab_view_present(&render_lab_view_tunables));
@@ -164,23 +187,9 @@ measure_size(raster_t* raster, gfx_color_t* destination, resolution_step_t size,
         add_span_split(raster, spans);
     }
 
-    int64_t sum = 0;
-    for (int i = 0; i < poses; i++) {
-        sum += frame_us[i];
-    }
-    ESP_LOGI(TAG,
-             "scale_split: %dx%d poses=%d tris=%lld frame mean/p50/max us %lld/%ld/%ld | %s" LAB_PERF_QUARTER_FORMAT,
-             size.width, size.height, poses, (long long)(triangles / poses), (long long)(sum / poses),
-             (long)statsi_median(frame_us, (size_t)poses), (long)statsi_percentile(frame_us, (size_t)poses, 100),
-             report, perf_quarter->name);
-    ESP_LOGI(TAG,
-             "scale_spans: %dx%d one core us/pose setup %lld edges %lld carry %lld fill %lld clear "
-             "%lld" LAB_PERF_QUARTER_FORMAT,
-             size.width, size.height, (long long)(spans->setup / poses), (long long)(spans->edges / poses),
-             (long long)(spans->carry / poses), (long long)(spans->fill / poses), (long long)(spans->clear / poses),
-             perf_quarter->name);
+    const int64_t mean = report_size(size, poses, triangles, frame_us, report, spans);
     memory_free(spans);
-    return sum / poses;
+    return mean;
 }
 
 /* Whether step `step` of ladder `ladder` is a size an earlier step, of this

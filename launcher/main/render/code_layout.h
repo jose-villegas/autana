@@ -19,12 +19,12 @@
  * flash each of its calls missed the instruction cache. IRAM has no cache
  * line to place a loop on, so the render sources' cache-line function
  * alignment would only waste IRAM; 4 bytes keeps entries aligned.
- * IRAM budget: release 7389 B, dev 7385 B, diag 7385 B */
+ * IRAM budget: 7408 B */
 #define RENDER_IRAM_ATTR   IRAM_ATTR __attribute__((aligned(4)))
 /* The draw path's copies for a view that skips clusters behind drawn depth
  * (render_view_t.skip_hidden), placed with the draw path. IRAM is granted per
  * measured ms saved per KB, the largest free internal block noted with it.
- * IRAM budget: release 4475 B, dev 4479 B, diag 4479 B */
+ * IRAM budget: release 4463 B, dev 4467 B, diag 4467 B */
 #define RENDER_SKIP_ATTR   RENDER_IRAM_ATTR
 /* The fill and row walk of a textured triangle that divides u and v by
  * depth, placed with the draw path as RENDER_SKIP_ATTR is: in IRAM they take
