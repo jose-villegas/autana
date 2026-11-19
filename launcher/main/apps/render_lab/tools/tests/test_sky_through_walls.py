@@ -4,8 +4,9 @@
 
 Builds the host renderer once and samples the scene camera clip with sample_camera_rows
 at DT_MS intervals to determine the frame count. ANY clear-colour pixel not
-connected to the top row makes a frame holed, including four-pixel pinholes.
-The roof opening also counts when enclosed.
+connected to the top row makes a frame holed, including four-pixel pinholes,
+unless a ray through that pixel misses the source mesh too: sky the source
+shows, as the roof opening closed in by a beam, is no hole of the bake.
 Needs the r3d environment (launcher/tools/r3d/requirements.txt).
 """
 import pathlib
@@ -25,9 +26,12 @@ import host_render  # noqa: E402
 try:
     import numpy as np
 
-    from r3d.poses import sample_camera_rows
+    from anim import track_host
+    from r3d.obj import load_obj
+    from r3d.poses import parse_poses, sample_camera_rows
     from r3d.import_settings import load_scene
-    from pinhole_rays import enclosed_sky
+    from r3d.ray_query import RayQuery
+    from pinhole_rays import SCALAR_VARIANT, VIDEO_SCALE, enclosed_sky, pose_rays
     from check_avi import read_video
     from render_compare import expand_565
 except ImportError:  # pragma: no cover - the tool tests' environment has them
@@ -53,11 +57,41 @@ def clear_colour():
     return expand_565((rgb >> 16, (rgb >> 8) & 0xFF, rgb & 0xFF))
 
 
-def sky_pixels(frame, sky):
-    """(enclosed, open): the pixels of colour `sky` in an (h, w, 3) RGB frame not connected to its top row, and
-    those that are."""
+def sky_pixels(frame, sky, source_sky=None):
+    """(holes, open): the pixels of colour `sky` in an (h, w, 3) RGB frame not connected to its top row, and
+    those that are. With `source_sky`, which answers for the (ys, xs) it is given whether the source shows sky
+    there, an enclosed pixel the source shows as sky is not a hole."""
     mask, enclosed = enclosed_sky(frame, sky)
-    return int(enclosed.sum()), int(mask.sum() - enclosed.sum())
+    open_ = int(mask.sum() - enclosed.sum())
+    ys, xs = np.nonzero(enclosed)
+    if source_sky is not None and len(ys):
+        return int((~source_sky(ys, xs)).sum()), open_
+    return len(ys), open_
+
+
+class SourceSky:
+    """Where the scene's source mesh leaves a flythrough frame's pixel empty, by one ray through the centre of the
+    render pixel a video pixel was drawn from."""
+
+    def __init__(self, scene, frames, video_size):
+        camera = scene.camera.component
+        sources = {job.settings.source["path"] for job in scene.renderers}
+        if len(sources) != 1:
+            raise ValueError(f"the scene's renderers draw {len(sources)} sources; the test traces one")
+        positions, _, tri_v, *_ = load_obj(sources.pop())
+        self.query = RayQuery(positions, tri_v, variant=SCALAR_VARIANT)
+        # Frame i is drawn at (i + 1) * DT_MS, so the last frame's pose is one step past the clip's samples.
+        self.width, self.height, self.lens, self.near, self.poses = parse_poses(track_host.poses(
+            camera.path.animation, camera.path.node, DT_MS, video_size[0] // VIDEO_SCALE, video_size[1] // VIDEO_SCALE,
+            camera.half_fov_short_tan, camera.near_z, until_ms=(frames + 1) * DT_MS, number_format=".9g"))
+
+    def of_frame(self, frame):
+        """`source_sky` of sky_pixels for the flythrough's frame `frame`."""
+        def source_sky(ys, xs):
+            origins, directions = pose_rays(self.width, self.height, self.lens, self.near, self.poses[frame + 1])
+            rays = (ys // VIDEO_SCALE) * self.width + xs // VIDEO_SCALE
+            return ~self.query.blocked(origins[rays], directions[rays])
+        return source_sky
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
@@ -80,6 +114,17 @@ class SkyCount(unittest.TestCase):
                 frame[3:3 + side, 2:2 + side] = sky
                 self.assertEqual(sky_pixels(frame, sky), (side * side, 6))
 
+    def test_enclosed_sky_the_source_shows_too_is_not_a_hole(self):
+        sky = (156, 195, 231)
+        frame = np.zeros((8, 8, 3), dtype=np.uint8)
+        frame[:1] = sky
+        frame[2:4, 2:6] = sky  # the roof opening, closed in by a beam: the source shows sky here
+        frame[6, 3] = sky  # a pinhole in the floor: the source has the floor here
+        self.assertEqual(sky_pixels(frame, sky, lambda ys, xs: ys < 4), (1, 8))
+        frame[6, 3] = 0
+        self.assertEqual(sky_pixels(frame, sky, lambda ys, xs: ys < 4), (0, 8))
+        self.assertEqual(sky_pixels(frame, sky), (8, 8))
+
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class SkyThroughWalls(unittest.TestCase):
@@ -90,6 +135,7 @@ class SkyThroughWalls(unittest.TestCase):
         cls.frames = len(sample_camera_rows(
             camera.path.animation, camera.path.node, DT_MS, *FRAME_COUNT_SIZE,
             camera.half_fov_short_tan, camera.near_z)[4])
+        cls.scene, cls.source = scene, None
         cls.out = pathlib.Path(tempfile.mkdtemp(prefix="sky_through_walls_"))
         run, cls.binary = host_render.run(cls.out, "--build-only")
         cls.build_output = run.stdout + run.stderr
@@ -111,14 +157,18 @@ class SkyThroughWalls(unittest.TestCase):
                              capture_output=True, text=True, timeout=600)
         self.assertEqual(run.returncode, 0, run.stderr[-2000:])
         sky = clear_colour()
-        counts = [sky_pixels(frame, sky) for frame in read_video(video)[1]]
+        counts = []
+        for index, frame in enumerate(read_video(video)[1]):
+            if type(self).source is None:
+                type(self).source = SourceSky(self.scene, self.frames, frame.shape[1::-1])
+            counts.append(sky_pixels(frame, sky, self.source.of_frame(index)))
         video.unlink()
         self.assertEqual(len(counts), self.frames)
         # The path looks up at the open roof, so sky open to the top must turn up: that proves the clear colour
         # matched, so a count of no holes is real.
         self.assertTrue(any(open_ >= MIN_OPEN_SKY_PIXELS for _, open_ in counts), f"{scene}: no sky found")
-        holed = [frame for frame, (enclosed, _) in enumerate(counts) if enclosed > 0]
-        print(f"{scene}: {len(holed)}/{self.frames} holed frames (ceiling {most})", flush=True)
+        holed = [frame for frame, (holes, _) in enumerate(counts) if holes > 0]
+        print(f"{scene}: {len(holed)}/{self.frames} holed frames (ceiling {most}): {holed}", flush=True)
         self.assertLessEqual(len(holed), most, f"{scene}: {len(holed)} holed frames exceeds {most}")
 
 
