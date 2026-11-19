@@ -55,18 +55,18 @@ test_python_probe_grid(void) {
     enum {
         GOLDEN_PROBES = 2,
         GOLDEN_FIRST = -12,
-        GOLDEN_BYTES = SH_PROBES_HEADER_SIZE + GOLDEN_PROBES * SH_PROBES_RECORD_SIZE
+        GOLDEN_BYTES = SH_PROBES_HEADER_SIZE + GOLDEN_PROBES * SH_PROBES_RECORD_SIZE + sizeof(uint8_t)
     };
 
     const float golden_scale = 0.25F;
-    static const uint8_t golden[] = "\x01\x00\x00\x00\x00\x00\x80\x3f\x00\x00\x00\x40\x00\x00\x40\x40"
+    static const uint8_t golden[] = "\x01\x00\x01\x00\x00\x00\x80\x3f\x00\x00\x00\x40\x00\x00\x40\x40"
                                     "\x00\x00\x80\x40\x00\x00\xa0\x40\x00\x00\xc0\x40\x00\x00\x80\x3e"
                                     "\x02\x00\x01\x00\x01\x00\x00\x00\xf4\xff\xf5\xff\xf6\xff\xf7\xff"
                                     "\xf8\xff\xf9\xff\xfa\xff\xfb\xff\xfc\xff\xfd\xff\xfe\xff\xff\xff"
                                     "\x00\x00\x01\x00\x02\x00\x03\x00\x04\x00\x05\x00\x06\x00\x07\x00"
-                                    "\x08\x00\x09\x00\x0a\x00\x0b\x00";
+                                    "\x08\x00\x09\x00\x0a\x00\x0b\x00\x01";
     _Static_assert(sizeof golden == GOLDEN_BYTES + sizeof "", "golden string terminator");
-    uint16_t bytes[GOLDEN_BYTES / sizeof(uint16_t)];
+    _Alignas(int16_t) uint8_t bytes[GOLDEN_BYTES];
     memcpy(bytes, golden, sizeof bytes);
 #ifndef DEVICE_BUILD
     const char* path = getenv("AUTANA_SH_PROBES");
@@ -82,6 +82,9 @@ test_python_probe_grid(void) {
     sh_probes_t grid;
     TEST_ASSERT_EQUAL_INT(ASSET_OK, sh_probes_read(entry, &grid));
     TEST_ASSERT_EQUAL_PTR(entry.data + SH_PROBES_HEADER_SIZE, grid.coefficients);
+    TEST_ASSERT_EQUAL_PTR(entry.data + GOLDEN_BYTES - sizeof(uint8_t), grid.inside);
+    TEST_ASSERT_TRUE(sh_probes_inside(&grid, 0, 0, 0));
+    TEST_ASSERT_FALSE(sh_probes_inside(&grid, 1, 0, 0));
     TEST_ASSERT_EQUAL_FLOAT(1, grid.origin.x);
     TEST_ASSERT_EQUAL_FLOAT(2, grid.origin.y);
     TEST_ASSERT_EQUAL_FLOAT(3, grid.origin.z);
@@ -107,6 +110,20 @@ test_python_probe_grid(void) {
     }
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_SIZE, sh_probes_read((asset_view_t){entry.data, entry.size - 1}, &grid));
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_SIZE, sh_probes_read((asset_view_t){entry.data, entry.size + 1}, &grid));
+    bytes[GOLDEN_BYTES - sizeof(uint8_t)] |= 1U << GOLDEN_PROBES;
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, sh_probes_read(entry, &grid));
+    memcpy(bytes, golden, sizeof bytes);
+    bytes[SH_PROBES_FLAGS_OFFSET] = SH_PROBES_FLAG_INSIDE_MASK << 1;
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, sh_probes_read(entry, &grid));
+    bytes[SH_PROBES_FLAGS_OFFSET] = 0;
+    const asset_view_t unmasked = {entry.data, entry.size - sizeof(uint8_t)};
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, sh_probes_read(unmasked, &grid));
+    TEST_ASSERT_NULL(grid.inside);
+    for (int x = 0; x < GOLDEN_PROBES; x++) {
+        TEST_ASSERT_FALSE(sh_probes_inside(&grid, x, 0, 0));
+    }
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_SIZE, sh_probes_read(entry, &grid));
+    memcpy(bytes, golden, sizeof bytes);
     ((uint8_t*)bytes)[SH_PROBES_VERSION_OFFSET] = 0;
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_VERSION, sh_probes_read(entry, &grid));
     ((uint8_t*)bytes)[SH_PROBES_VERSION_OFFSET] = SH_PROBES_VERSION;
@@ -135,7 +152,7 @@ test_probe_reader_bounds(void) {
     data[SH_PROBES_VERSION_OFFSET + 1] = 1;
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_VERSION, sh_probes_read(entry, &grid));
     data[SH_PROBES_VERSION_OFFSET + 1] = 0;
-    data[SH_PROBES_FLAGS_OFFSET] = 1;
+    data[SH_PROBES_FLAGS_OFFSET] = SH_PROBES_FLAG_INSIDE_MASK << 1;
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, sh_probes_read(entry, &grid));
     data[SH_PROBES_FLAGS_OFFSET] = 0;
     data[SH_PROBES_PADDING_OFFSET] = 1;

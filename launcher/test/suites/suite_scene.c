@@ -5126,9 +5126,12 @@ test_scene_adopts_its_pack_probe_grid(void) {
     char longest[ASSET_NAME_MAX];
     memset(longest, 's', sizeof longest - 1);
     longest[sizeof longest - 1] = '\0';
-    const scene_spec_t spec = {.id = longest, .entity_count = 1, .entities = {{"root", IDENTITY}}};
+    scene_spec_t* spec = malloc(sizeof *spec);
+    TEST_ASSERT_NOT_NULL(spec);
+    *spec = (scene_spec_t){.id = longest, .entity_count = 1, .entities = {{"root", IDENTITY}}};
     test_pack_t pack = test_pack_begin(fx.bytes, PACK_MAX, 1);
-    make_scene_entry(test_pack_add(&pack, longest, SCENE_ASSET, scene_entry_size(&spec)), &spec);
+    make_scene_entry(test_pack_add(&pack, longest, SCENE_ASSET, scene_entry_size(spec)), spec);
+    free(spec);
     TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_open(&fx.pack, fx.bytes, test_pack_finish(&pack)));
     root = load(longest);
     TEST_ASSERT_NULL(scene_probes(root));
