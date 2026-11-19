@@ -1,7 +1,7 @@
 # SHPR v1 probe grid
 
 Incident radiance in a regular grid of real L1 spherical harmonics.
-The [probe baker](../../../launcher/tools/r3d/sh_probe_bake.py) owns the encoding;
+The [probe baker](../../../launcher/tools/r3d/sh_probe_asset.py) owns the encoding;
 [baking](../../render/offline/SH-Probes.md) describes the sampling.
 
 ```mermaid
@@ -43,8 +43,8 @@ title Probe, 24 bytes, one cell a byte
 |---|---|---|
 | Version | 0 | u16, `VERSION` |
 | Flags | 2 | u16; bit 0 is `SH_PROBES_FLAG_INSIDE_MASK`, other bits must be zero |
-| Origin | 4 | Three f32, first cell centre in source coordinates |
-| Spacing | 16 | Three positive f32, cell step in source units |
+| Origin | 4 | Three f32, first cell centre in engine coordinates |
+| Spacing | 16 | Three positive f32, cell step in engine units |
 | Scale | 28 | Positive f32; coefficient = signed integer × scale |
 | Dimensions | 32 | Three positive u16, x/y/z cell counts |
 | Padding | 38 | Two zero bytes |
