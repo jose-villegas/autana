@@ -170,6 +170,38 @@ reference_selector(const r3d_span_vertex_t v[TRIANGLE_VERTICES], int side, bool 
     return fill.style;
 }
 
+/* Past the far depth a triangle above the camera's ceiling is judged as if
+ * its own side were the ceiling: the camera's gate, held. Nearer, or within
+ * the camera's ceiling, it is the camera's selector. */
+static int
+reference_far_selector(const r3d_span_vertex_t v[TRIANGLE_VERTICES], int side, bool solid, small_fill_t fill,
+                       int far_ceiling, float far_iz) {
+    const bool far = mathf_max(v[0].z, mathf_max(v[1].z, v[2].z)) < far_iz;
+    if (side <= fill.ceiling || !far) {
+        return reference_selector(v, side, solid, fill);
+    }
+    if (side > far_ceiling) {
+        return SMALL_FILL_WALK;
+    }
+    return reference_selector(v, side, solid, (small_fill_t){(uint8_t)side, fill.gate, fill.style});
+}
+
+static void
+assert_selector_samples(rng_t* random, int side, small_fill_t fill,
+                        int (*expected)(const r3d_span_vertex_t*, int, bool, small_fill_t, int, float), int far_ceiling,
+                        float far_iz) {
+    for (int sample = 0; sample < ORACLE_SAMPLES; sample++) {
+        r3d_span_vertex_t v[TRIANGLE_VERTICES];
+        oracle_vertices(v, random, side);
+        for (int solid = 0; solid < 2; solid++) {
+            const r3d_span_extent_t e = r3d_span_extent(v, v + 1, v + 2);
+            const int box_side = mathi_max(e.centres.w, e.centres.h);
+            TEST_ASSERT_EQUAL_INT(expected(v, box_side, solid != 0, fill, far_ceiling, far_iz),
+                                  select_small(v, v + 1, v + 2, e.centres, solid != 0, resolved));
+        }
+    }
+}
+
 static void
 test_selector_random_triangles_and_gate_boundaries(void) {
     (void)fixture();
@@ -182,16 +214,7 @@ test_selector_random_triangles_and_gate_boundaries(void) {
                 const small_fill_t fill = {(uint8_t)ceiling, gates[gate], style};
                 resolve_fill(fill);
                 for (int side = 1; side <= ORACLE_MAX_SIDE + 1; side++) {
-                    for (int sample = 0; sample < ORACLE_SAMPLES; sample++) {
-                        r3d_span_vertex_t v[TRIANGLE_VERTICES];
-                        oracle_vertices(v, &random, side);
-                        for (int solid = 0; solid < 2; solid++) {
-                            const r3d_span_extent_t e = r3d_span_extent(v, v + 1, v + 2);
-                            const int box_side = mathi_max(e.centres.w, e.centres.h);
-                            TEST_ASSERT_EQUAL_INT(reference_selector(v, box_side, solid != 0, fill),
-                                                  select_small(v, v + 1, v + 2, e.centres, solid != 0, resolved));
-                        }
-                    }
+                    assert_selector_samples(&random, side, fill, reference_far_selector, 0, 0.0F);
                     /* Exercise both sides of every representable green-channel limit. */
                     for (unsigned spread = 0; spread <= RGB565_G6_MAX; spread++) {
                         r3d_span_vertex_t v[TRIANGLE_VERTICES] = {{0}};
@@ -238,22 +261,6 @@ reference_shade(uint16_t color) {
     return color;
 }
 
-/* Past the far depth a triangle above the camera's ceiling is judged as if
- * its own side were the ceiling: the camera's gate, held. Nearer, or within
- * the camera's ceiling, it is the camera's selector. */
-static int
-reference_far_selector(const r3d_span_vertex_t v[TRIANGLE_VERTICES], int side, bool solid, small_fill_t fill,
-                       int far_ceiling, float far_iz) {
-    const bool far = mathf_max(v[0].z, mathf_max(v[1].z, v[2].z)) < far_iz;
-    if (side <= fill.ceiling || !far) {
-        return reference_selector(v, side, solid, fill);
-    }
-    if (side > far_ceiling) {
-        return SMALL_FILL_WALK;
-    }
-    return reference_selector(v, side, solid, (small_fill_t){(uint8_t)side, fill.gate, fill.style});
-}
-
 static void
 test_far_ceiling_applies_past_the_far_depth_under_the_cameras_gate(void) {
     (void)fixture();
@@ -273,17 +280,7 @@ test_far_ceiling_applies_past_the_far_depth_under_the_cameras_gate(void) {
                 settings = fill;
                 hot_resolve_far(resolved, fill, far_ceilings[f], far_z, depth_near);
                 for (int side = 1; side <= ORACLE_MAX_SIDE + 1; side++) {
-                    for (int sample = 0; sample < ORACLE_SAMPLES; sample++) {
-                        r3d_span_vertex_t v[TRIANGLE_VERTICES];
-                        oracle_vertices(v, &random, side);
-                        for (int solid = 0; solid < 2; solid++) {
-                            const r3d_span_extent_t e = r3d_span_extent(v, v + 1, v + 2);
-                            const int box_side = mathi_max(e.centres.w, e.centres.h);
-                            TEST_ASSERT_EQUAL_INT(
-                                reference_far_selector(v, box_side, solid != 0, fill, far_ceilings[f], far_iz),
-                                select_small(v, v + 1, v + 2, e.centres, solid != 0, resolved));
-                        }
-                    }
+                    assert_selector_samples(&random, side, fill, reference_far_selector, far_ceilings[f], far_iz);
                 }
             }
         }
