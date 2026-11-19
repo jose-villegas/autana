@@ -148,7 +148,6 @@ typedef struct {
     int x0, y0;   /* the origin pixel */
     int qx0, qy0; /* the dividing planes' origin pixel: the unclipped box's, alike in every window */
     int divide;   /* pixels between divides, 0 when the triangle steps affine */
-    int mip;      /* the mip level u and v count texels of */
     sampler_t sampler;
 } setup_t;
 
@@ -288,13 +287,17 @@ pick_level(const setup_t* su, const r3d_texture_t* texture) {
     return level;
 }
 
-/* Whether set_up()'s mip is an INDEX4 level from target->texture_far_level
- * on (0: none), drawn untextured. */
+/* Whether mip `level` is an INDEX4 level from target->texture_far_level on
+ * (0: none), drawn untextured. */
 static inline bool
-is_far(const r3d_span_target_t* target, const r3d_texture_t* texture, const setup_t* su) {
+is_far(const r3d_span_target_t* target, const r3d_texture_t* texture, int level) {
     return texture->format == R3D_TEXTURE_INDEX4 && target->texture_far_level != 0
-           && su->mip >= target->texture_far_level;
+           && level >= target->texture_far_level;
 }
+
+/* What set_up() left: nothing to draw, a far level for the plain fill, or
+ * `su` set up. */
+typedef enum { SET_UP_EMPTY, SET_UP_FAR, SET_UP_DONE } set_up_result_t;
 
 /* A vertex colour's luminance, 0..255, as an 8.8 level, 255 the last. */
 static inline float
@@ -364,19 +367,18 @@ set_up_divide(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[
 /* Sets `su` up to fill the triangle's part in window box `box` affine, off
  * the row walks' stack chain: the frame lives only here. A far INDEX4 level
  * (is_far()) stops at its mip: the plain fill draws it. */
-static __attribute__((noinline)) bool
+static __attribute__((noinline)) set_up_result_t
 set_up(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[CORNERS], const vec2f_t uv[CORNERS],
        const r3d_texture_t* texture, recti_t box, setup_t* su) {
     r3d_span_frame_t f;
     if (!r3d_span_frame_of(v[0], v[1], v[2], box.x, box.y, &f)) {
-        return false;
+        return SET_UP_EMPTY;
     }
     su->s = r3d_span_plane_of(&f, uv[0].x, uv[1].x, uv[2].x);
     su->t = r3d_span_plane_of(&f, uv[0].y, uv[1].y, uv[2].y);
     const int level = pick_level(su, texture);
-    su->mip = level;
-    if (is_far(target, texture, su)) {
-        return true;
+    if (is_far(target, texture, level)) {
+        return SET_UP_FAR;
     }
     su->x0 = box.x;
     su->y0 = box.y;
@@ -393,7 +395,7 @@ set_up(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[CORNERS
     su->sampler =
         (sampler_t){texture->texels[level], mask, mask << side_log2, (uint32_t)(V_INT_SHIFT - side_log2), texture};
     su->level = r3d_span_plane_of(&f, light_level(v[0]), light_level(v[1]), light_level(v[2]));
-    return true;
+    return SET_UP_DONE;
 }
 
 /* r3d_span's walk: the long edge v0-v2 runs the whole height, and v1 lies
@@ -473,11 +475,9 @@ r3d_span_textured_fill(const r3d_span_target_t* target, const r3d_span_vertex_t*
     }
     setup_t su;
     const r3d_span_vertex_t* const corners[CORNERS] = {a, b, c};
-    if (!set_up(target, corners, uv, texture, box, &su)) {
-        return true;
-    }
-    if (is_far(target, texture, &su)) {
-        return false;
+    const set_up_result_t set = set_up(target, corners, uv, texture, box, &su);
+    if (set != SET_UP_DONE) {
+        return set == SET_UP_EMPTY;
     }
     const r3d_span_vertex_t* v0 = a;
     const r3d_span_vertex_t* v1 = b;
