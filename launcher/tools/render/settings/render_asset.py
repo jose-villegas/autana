@@ -47,11 +47,11 @@ Field = collections.namedtuple("Field", "kind tier trade valid interval")
 COMMAND = "python tools/render/settings/render_asset.py main/render/settings/render_settings_default.h"
 
 
-def fields(source=None):
+def fields(source=None, header=HEADER):
     """{field: Field} of render_settings_t in order, a struct field's own as `field.member`.
     Each is declared on its own line with its tier comment, which may give the field's
-    interval after the tier."""
-    source = HEADER.read_text(encoding="utf-8") if source is None else source
+    interval after the tier; `header` holds its bounds' C constants."""
+    source = pathlib.Path(header).read_text(encoding="utf-8") if source is None else source
     structs = {}
     for body, name in STRUCTS.findall(source):
         rows = FIELD.findall(body.strip())
@@ -70,7 +70,7 @@ def fields(source=None):
                 raise ValueError(f"{HEADER.name}: {prefix}{field} needs a bool, int or float and /* tier: trade */")
             name, opening, low, high, closing, trade = tier.groups()
             bounds = None if opening is None else (opening, low, high, closing)
-            found[prefix + field] = Field(kind, name, trade, interval(kind, bounds, prefix + field, source), bounds)
+            found[prefix + field] = Field(kind, name, trade, interval(kind, bounds, prefix + field, header), bounds)
         return found
 
     if "render_settings_t" not in structs:
@@ -78,15 +78,14 @@ def fields(source=None):
     return expand("render_settings_t", "")
 
 
-def read(path, source=None):
-    """The validated keys of one settings file, flattened; `source` is render_settings.h's text."""
+def read(path, header=HEADER):
+    """The validated keys of one settings file, flattened, against `header`'s fields."""
     path = pathlib.Path(path)
     try:
         values = flatten(settings_toml.tables(path))
     except tomllib.TOMLDecodeError as error:
         raise ValueError(f"{path}: {error}") from None
-    source = HEADER.read_text(encoding="utf-8") if source is None else source
-    known = fields(source)
+    known = fields(pathlib.Path(header).read_text(encoding="utf-8"), header)
     unknown = values.keys() - known.keys()
     if unknown:
         raise ValueError(f"{path}: {', '.join(sorted(unknown))} is not a render setting")
@@ -94,7 +93,7 @@ def read(path, source=None):
         kind = known[key].kind
         if type(value) not in TYPES[kind]:
             raise ValueError(f"{path}: {key} must be a TOML {kind}")
-        if not within(value, known[key].interval, source):
+        if not within(value, known[key].interval, header):
             raise ValueError(f"{path}: {key} = {value} is outside {span(known[key].interval)}")
     return values
 
@@ -138,21 +137,36 @@ def bake(path):
     return table_asset.encode(rows, FRAC_BITS)
 
 
-def constant(bound, source):
-    """A bound's number: a literal, a #define in `source`, or an enum member's position there."""
+def enum_member(text, name):
+    """`name`'s value in a typedef enum of `text`, counting on from an `= N` literal; None if no enum has it."""
+    for body in re.findall(r"typedef enum[^{]*\{(.*?)\}", text, re.S):
+        value = -1
+        for entry in re.sub(r"/\*.*?\*/|//[^\n]*", "", body, flags=re.S).split(","):
+            member, _, given = (part.strip() for part in entry.partition("="))
+            if member:
+                value = int(given, 0) if given else value + 1
+                if member == name:
+                    return value
+    return None
+
+
+def constant(bound, header):
+    """A bound's number: a literal, a numeric #define in `header` or one of its enum members."""
     if not bound[0].isalpha():
         return float(bound)
-    define = re.search(rf"^#define {bound}\s+(-?\d+(?:\.\d+)?)F?\b", source, re.M)
-    if define:
-        return float(define.group(1))
-    for members in re.findall(r"typedef enum \{(.*?)\}", source, re.S):
-        names = re.findall(r"([A-Z][A-Z0-9_]*)\s*,", re.sub(r"/\*.*?\*/", "", members, flags=re.S) + ",")
-        if bound in names:
-            return float(names.index(bound))
-    raise ValueError(f"{HEADER.name}: {bound} is not a numeric #define or an enum member of this header")
+    member = enum_member(pathlib.Path(header).read_text(encoding="utf-8"), bound)
+    if member is not None:
+        return float(member)
+    try:
+        value = read_define(header, bound)
+    except RuntimeError as error:
+        raise ValueError(f"{pathlib.Path(header).name}: {bound} is not a numeric #define or an enum member") from error
+    if not isinstance(value, (int, float)):
+        raise ValueError(f"{pathlib.Path(header).name}: {bound} is not a number")
+    return float(value)
 
 
-def interval(kind, bounds, field, source):
+def interval(kind, bounds, field, header=HEADER):
     """The C test of a typed `value` in its (opening, low, high, closing) bounds, a parenthesis
     leaving that end open; None accepts any."""
     if bounds is None:
@@ -165,20 +179,19 @@ def interval(kind, bounds, field, source):
             raise ValueError(f"{HEADER.name}: {field}'s bound {bound!r} is not a number or a C constant")
         if kind == "int" and "." in bound:
             raise ValueError(f"{HEADER.name}: {field} is an int and its bound {bound} is not")
-    if constant(low, source) > constant(high, source):
+    if constant(low, header) > constant(high, header):
         raise ValueError(f"{HEADER.name}: {field}'s interval starts above its end")
     limit = {bound: bound if bound[0].isalpha() else literal(kind, bound, "F") for bound in (low, high)}
     return (f"value >{'=' if opening == '[' else ''} {limit[low]} && "
             f"value <{'=' if closing == ']' else ''} {limit[high]}")
 
 
-def within(value, bounds, source=None):
-    """Whether `value` lies in a field's bounds, their C constants read from render_settings.h."""
+def within(value, bounds, header=HEADER):
+    """Whether `value` lies in a field's bounds, their C constants read from `header`."""
     if bounds is None:
         return True
-    source = HEADER.read_text(encoding="utf-8") if source is None else source
     opening, low, high, closing = bounds
-    low, high = constant(low, source), constant(high, source)
+    low, high = constant(low, header), constant(high, header)
     return (value >= low if opening == "[" else value > low) and (value <= high if closing == "]" else value < high)
 
 

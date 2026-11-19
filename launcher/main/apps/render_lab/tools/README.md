@@ -362,8 +362,7 @@ contact blob under it darkens the floor, sized from its footprint.
 
 `render_lab.small_fill_ceiling`, `render_lab.small_fill_gate` and
 `render_lab.small_fill_style` set the main render context's `small_fill`
-render settings on the frame they change; until then the app's own
-`small_fill` holds.
+render settings every frame, so in the lab the picker owns small fill.
 The BOOT menu has a SMALL FILL dropdown with every `SMALL_FILL_` preset;
 picking one sets the three tunables. Every menu option is in a release
 image too.

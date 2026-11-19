@@ -4,17 +4,17 @@
     python3 scripts/gates/check_render_settings.py           # check
     python3 scripts/gates/check_render_settings.py --table   # every render-related setting, as Markdown
 
-A setting lives with one engine owner, read from its header: the app's render
-settings (render_settings_t and its nested structs), the camera (lens_t and
-camera_set_*), the render context (render_context_set_*) or the scene
-(scene_set_*). A name two owners both declare is one setting with two override
-paths. Every tracked *.render.toml must set only render_settings_t fields.
+A render setting (a render_settings_t field, nested structs included) has one
+owner. A lens_t field named for its path joined by `_` or for its group, or a
+NAME_set_X setter in a header under main/render or main/scene named for its
+path, is a second override path. Every tracked *.render.toml sets only declared
+fields, each within its interval. Where a setting belongs (its unit) is not
+checked here; that stays a review rule.
 
 --table lists those settings with the scene file's keys (tools/r3d/import_settings.py),
-TUNE knobs in main/apps and app struct fields named like an engine setting.
+TUNE knobs in main/apps and app struct fields named like a render setting or lens field.
 """
 import argparse
-import collections
 import pathlib
 import re
 import subprocess
@@ -29,6 +29,8 @@ import render_asset  # noqa: E402
 SETTINGS_HEADER = "main/render/settings/render_settings.h"
 LENS_HEADER = "main/scene/camera/lens.h"
 CAMERA_HEADER = "main/scene/camera/camera.h"
+# Below these, every header's NAME_set_X setters are owners a render setting must not share.
+OWNER_ROOTS = ("main/render", "main/scene")
 CONTEXT_HEADER = "main/render/context/render_context.h"
 SCENE_HEADER = "main/scene/scene.h"
 # The scene file tables whose keys change what is drawn (load_scene's, the look's and the bake's).
@@ -58,19 +60,26 @@ def setters(source, prefix):
     return re.findall(rf"\w+ {prefix}(\w+)\(", source)
 
 
-def owners(launcher=LAUNCHER):
-    """{owner: {name: where}}: each engine owner's setting names, from its header."""
-    settings = {}
-    for field in render_asset.fields(text(launcher, SETTINGS_HEADER)):
-        for name in field.split("."):
-            settings.setdefault(name, f"render_settings_t {field}")
-    camera = {name: f"lens_t.{name}" for _, name in struct_fields(text(launcher, LENS_HEADER), "lens_t")}
-    for name in setters(text(launcher, CAMERA_HEADER), "camera_set_"):
-        camera.setdefault(name, f"camera_set_{name}()")
-    return {"render settings": settings, "camera": camera,
-            "render context": {n: f"render_context_set_{n}()"
-                               for n in setters(text(launcher, CONTEXT_HEADER), "render_context_set_")},
-            "scene": {n: f"scene_set_{n}()" for n in setters(text(launcher, SCENE_HEADER), "scene_set_")}}
+def setting_names(launcher=LAUNCHER):
+    """({name: field}, {group: field}): each render setting's path joined by `_` (lod_blend),
+    and each struct group's name (lod)."""
+    names, groups = {}, {}
+    for field in render_asset.fields(text(launcher, SETTINGS_HEADER), launcher / SETTINGS_HEADER):
+        names[field.replace(".", "_")] = field
+        for group in field.split(".")[:-1]:
+            groups.setdefault(group, field)
+    return names, groups
+
+
+def other_owners(launcher=LAUNCHER):
+    """[(name, where)]: lens_t's fields, and every NAME_set_X setter declared in a header
+    under OWNER_ROOTS as X."""
+    found = [(name, f"lens_t.{name}") for _, name in struct_fields(text(launcher, LENS_HEADER), "lens_t")]
+    for root in OWNER_ROOTS:
+        for header in sorted((launcher / root).rglob("*.h")):
+            for setter, name in re.findall(r"\w[\w *]* \**(\w+?_set_(\w+))\(", header.read_text(encoding="utf-8")):
+                found.append((name, f"{setter}()"))
+    return found
 
 
 def git_files(pattern, where="."):
@@ -80,18 +89,16 @@ def git_files(pattern, where="."):
 
 def problems(launcher=LAUNCHER, settings_files=None):
     found = []
-    declared = collections.defaultdict(list)
-    for owner, names in owners(launcher).items():
-        for name, where in names.items():
-            declared[name].append(where)
-    for name, wheres in sorted(declared.items()):
-        if len(wheres) > 1:
-            found.append(f"{name} has two owners: {' and '.join(wheres)}")
+    names, groups = setting_names(launcher)
+    for name, where in other_owners(launcher):
+        field = names.get(name) or (groups.get(name) if where.startswith("lens_t.") else None)
+        if field is not None:
+            found.append(f"{field} has two owners: render_settings_t and {where}")
     if settings_files is None:
         settings_files = [ROOT / p for p in git_files("*" + render_asset.SUFFIX, ROOT)]
     for path in settings_files:
         try:
-            render_asset.read(path, text(launcher, SETTINGS_HEADER))
+            render_asset.read(path, launcher / SETTINGS_HEADER)
         except ValueError as error:
             found.append(str(error))
     return found
@@ -153,8 +160,8 @@ def scene_rows():
 
 
 def app_rows():
-    """App struct fields named like an engine setting, and the apps' TUNE knobs."""
-    engine = set().union(*owners().values())
+    """App struct fields named like a render setting or a lens field, and the apps' TUNE knobs."""
+    engine = {*setting_names()[0], *(name for name, where in other_owners() if where.startswith("lens_t."))}
     for path in grep_files(r"typedef struct", "main/apps"):
         for body, name in re.findall(r"typedef struct \{(.*?)\} (\w+);", text(LAUNCHER, path), re.S):
             for field in re.findall(r"^\s*\w+ (\w+);", body, re.M):
