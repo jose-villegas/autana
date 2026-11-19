@@ -52,10 +52,13 @@ typedef struct {
 #define RENDER_TEXTURE_DIVIDE_PX_MAX 32
 /* The largest texture.affine_bend a pack may set, in texels. */
 #define RENDER_TEXTURE_BEND_MAX      15.0F
+/* The last mip level a texture has: the largest level setting a pack may name. */
+#define RENDER_TEXTURE_LEVEL_MAX     7
 
 typedef struct {
     int divide_px; /* basic: fewest pixels between divides by depth, fewer cost more; 0 is affine, near surfaces bend */
     float affine_bend; /* advanced: texels a triangle may bend and still step affine; larger is faster, bends more */
+    int affine_level; /* advanced: first mip level that steps affine, its pattern shifting rather than bending; 0 lets every level divide */
 } render_texture_settings_t;
 
 typedef struct {

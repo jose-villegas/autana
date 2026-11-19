@@ -538,7 +538,8 @@ class Keeper:
         baked = next(item for item in scene.renderers if item.object.name == baked_name)
         cull = None
         if path_cull:
-            poses = self.poses.digest(scene.camera.component, PATH_CULL_SAMPLING.every_ms, PATH_CULL_SAMPLING.size,
+            from r3d.poses import flight_camera
+            poses = self.poses.digest(flight_camera(scene), PATH_CULL_SAMPLING.every_ms, PATH_CULL_SAMPLING.size,
                                       self.tools, set())
             if poses is None:
                 raise ValueError(self.poses.reason(self.poses.missing))

@@ -27,7 +27,7 @@ class PinholeRays(unittest.TestCase):
                                  half_fov_short_tan=1.0, near_z=0.1)
         fit = SimpleNamespace(size=(5, 3), coverage_every_ms=100)
         job = SimpleNamespace(object=SimpleNamespace(name='wall'), renderer=SimpleNamespace(fit=fit))
-        self.scene = SimpleNamespace(camera=SimpleNamespace(component=camera), renderers=[job])
+        self.scene = SimpleNamespace(objects=[SimpleNamespace(kind='camera', component=camera)], renderers=[job])
 
     def mesh(self, name, positions, double=None):
         np = self.np
