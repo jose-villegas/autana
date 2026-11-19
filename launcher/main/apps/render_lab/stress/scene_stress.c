@@ -108,11 +108,16 @@ find_pool(void) {
     }
     slots = lab_scene_copies(loaded, carved ? STRESS_PROP_FORMAT : STRESS_SLOT_FORMAT, &pool);
     if (slots == NULL || shown->surface != STRESS_SURFACE_HINGED) {
-        return slots != NULL && hidden != NULL;
+        const bool found = slots != NULL && hidden != NULL;
+        if (!found) {
+            fail("no stress copies");
+        }
+        return found;
     }
     wings = lab_scene_take(sizeof *wings * (size_t)pool * STRESS_WING_SIDES);
     wing_hinges = lab_scene_take(sizeof *wing_hinges * (size_t)pool * STRESS_WING_SIDES);
     if (wings == NULL || wing_hinges == NULL) {
+        fail("no stress copies");
         return false;
     }
     for (int i = 0; i < pool; i++) {
@@ -361,9 +366,6 @@ load(void) {
     }
     viewer = render_lab.start_camera == NULL ? camera : entity_find(loaded, name_hash(render_lab.start_camera));
     if (!find_pool()) {
-        if (failure[0] == '\0') {
-            fail("no stress copies");
-        }
         return false;
     }
     if (stress_skinned(shown)) {
