@@ -39,9 +39,10 @@ STATIC_VERTICES = sum(line.startswith("v ") for line in STATIC_COPY.read_text().
 
 def preset_copies():
     """Each preset's copy count by its key, in the order STRESS_PRESETS lists them."""
+    constants = dict(re.findall(r"^#define\s+(\w+)\s+(\d+)$", PRESETS.read_text(), re.MULTILINE))
     keys = re.findall(r'^\s*X\((\w+), "([^"]+)"', PRESETS.read_text(), re.MULTILINE)
-    rows = dict(re.findall(r'^\s*\[STRESS_(\w+)\] = \{\w+, \d+, (\d+),', TABLE.read_text(), re.MULTILINE))
-    return {key: int(rows[name]) for name, key in keys}
+    rows = dict(re.findall(r'^\s*\[STRESS_(\w+)\] = \{\w+, \d+, (\w+),', TABLE.read_text(), re.MULTILINE))
+    return {key: int(constants.get(rows[name], rows[name])) for name, key in keys}
 
 
 class StressCorners(unittest.TestCase):
@@ -87,7 +88,8 @@ class StressCorners(unittest.TestCase):
         self.assertEqual({"open", "stack", "tiny-copies", "big-tris", "per-frame", "two-sided", "noisy-tiny", "mix",
                           "static-copies", "uniform-mid", "uniform-full", "card", "culled", "near",
                           "few-copies", "carved-near", "carved-far", "textured", "record", "foliage-near",
-                          "foliage-near-opaque", "foliage-far", "foliage-far-opaque", "cull-setup", "baked-tree"}, set(preset_copies()))
+                          "foliage-near-opaque", "foliage-far", "foliage-far-opaque", "skinned-sh-blobs", "contact-blobs",
+                          "cull-setup", "baked-tree"}, set(preset_copies()))
 
     def test_the_baked_ring_is_culled_through_its_tree(self):
         """The ring alone, one mesh and no copy, culled through its tree at every pose of the turn."""
