@@ -19,6 +19,7 @@ mesh. Nothing here runs on the board.
 | [mesh_asset.py](mesh_asset.py) | The lit mesh entry's type and byte layout, shared by the baker and the pack builder. Standard library only. |
 | [lit_mesh.py](lit_mesh.py) | `write_lit_mesh()`: cuts a lit mesh into meshlets under a cluster tree, quantizes it, checks it against `r3d_lit_mesh.h`'s invariants and writes it as a `<name>.bundle` pack entry; a flat import carries one RGB565 colour per face and welds positions without colour seams. The size defaults live here and nowhere else. `read_lit_mesh()` reads an entry back. |
 | [import_settings.py](import_settings.py) | Reads and validates an import file and a scene file; standard library only, every table closed. |
+| [cards/](cards/) | Selects cut-out materials with probe-weighted billboard clouds, bakes MASK1 pages and LUVS, and reports their coverage and budget. |
 | [mesh_import.py](mesh_import.py) | Bakes an import file, or the meshes a scene file places: loads the local source, runs the steps the import opts into, lights with the scene's lights, then writes each `.bundle` entry into `--out DIR`, or beside a file outside the repository; inside it, bake/bake.py makes a mesh into the bake cache. |
 | [rebake.py](rebake.py) | Rewrites a baked `.bundle`'s clusters from its own triangles and colours, with no relighting. |
 | [gltf_skin.py](gltf_skin.py) | Reads a binary glTF 2.0 and poses its skinned mesh on the CPU: accessors, node tree, one skin, animation sampling (LINEAR, STEP, CUBICSPLINE), linear-blend skinning; reads through [`tools/gltf/`](../gltf/gltf_read.py), the reader and reference sampler [`tools/anim/`](../anim/README.md) shares. Standard library only. |
@@ -88,8 +89,9 @@ what ships.
 ## Fidelity reference
 
 `reference_render.py` takes a scene and the pose file its camera path emits.
-It uses the source mesh after alpha masking, before simplification, and the
-same lights, albedo sampling, tone map and RGB565 quantisation as the bake.
+It keeps the full source before simplification and alpha-tests masked
+materials per hit, including shadow and bounce rays. It shares the bake's
+lights, albedo sampler, tone map and RGB565 quantisation.
 A camera ray passes a single-sided face seen from behind, as the device culls
 it, so where a reduced source's two shells cross the outer one shows.
 The .npy output retains the linear, box-filtered image; the PNG is the form a
