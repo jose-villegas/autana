@@ -231,18 +231,41 @@ stress_params_of(const char* key) {
     return NULL;
 }
 
+/* --stress-runs: a line per run suite_stress_perf makes on a board, a stress
+ * scene's key and a quarter it is drawn at. */
+static void
+print_stress_runs(void) {
+    for (int i = 0; i < STRESS_PRESET_COUNT; i++) {
+        for (size_t q = 0; q < LAB_PERF_QUARTER_COUNT; q++) {
+            (void)printf("%s %d\n", scene_stress[i].key, (int)lab_perf_quarters[q].quarter);
+        }
+    }
+}
+
+/* The options that need a scene, or a kind of scene or view. */
+static bool
+scene_options(int argc, char** argv, const char* scene, const char* view) {
+    if (scene == NULL) {
+        (void)fprintf(stderr, "render_lab_render_host needs --scene <key>\n");
+        return false;
+    }
+    if (counts_path != NULL && (view == NULL || strcmp(view, "cull") != 0)) {
+        (void)fprintf(stderr, "render_lab_render_host: --counts needs --view cull\n");
+        return false;
+    }
+    if (flag(argc, argv, "--perf-poses") && (perf_poses = stress_params_of(scene)) == NULL) {
+        (void)fprintf(stderr, "render_lab_render_host: --perf-poses needs a stress scene, not %s\n", scene);
+        return false;
+    }
+    return true;
+}
+
 /* Which names are valid is app_render_lab.c's own knowledge (each scene's
  * .key, lab/lab_scene.h) - this only hands the string through. */
 static bool
 options(int argc, char** argv) {
-    /* --stress-runs: a line per run suite_stress_perf makes on a board, a
-     * stress scene's key and a quarter it is drawn at, and nothing drawn. */
     if (flag(argc, argv, "--stress-runs")) {
-        for (int i = 0; i < STRESS_PRESET_COUNT; i++) {
-            for (size_t q = 0; q < LAB_PERF_QUARTER_COUNT; q++) {
-                (void)printf("%s %d\n", scene_stress[i].key, (int)lab_perf_quarters[q].quarter);
-            }
-        }
+        print_stress_runs();
         exit(EXIT_SUCCESS);
     }
     const char* scene;
@@ -271,16 +294,7 @@ options(int argc, char** argv) {
     if (size != NULL && !size_option(size)) {
         return false;
     }
-    if (scene == NULL) {
-        (void)fprintf(stderr, "render_lab_render_host needs --scene <key>\n");
-        return false;
-    }
-    if (counts_path != NULL && (view == NULL || strcmp(view, "cull") != 0)) {
-        (void)fprintf(stderr, "render_lab_render_host: --counts needs --view cull\n");
-        return false;
-    }
-    if (flag(argc, argv, "--perf-poses") && (perf_poses = stress_params_of(scene)) == NULL) {
-        (void)fprintf(stderr, "render_lab_render_host: --perf-poses needs a stress scene, not %s\n", scene);
+    if (!scene_options(argc, argv, scene, view)) {
         return false;
     }
     option_count = argc;
