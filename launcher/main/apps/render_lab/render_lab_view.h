@@ -20,11 +20,12 @@ extern lab_view_t render_lab_view_tunables;
 /* The selected render context view, RENDER_DEBUG_VIEW_SHADED by default. */
 int render_lab_debug_view(void);
 
-small_fill_t render_lab_small_fill(void);
+render_small_fill_settings_t render_lab_small_fill(void);
 
 /* The menu's small-fill choice: every SMALL_FILL_ preset. select writes its
- * three tunables, which the scene camera reads every frame, so a console SET
- * or a saved tune takes effect too; selected is the preset last picked. */
+ * three tunables, which render_lab_apply_camera_settings() puts in the main
+ * context's render settings every frame, so a console SET or a saved tune
+ * takes effect too; selected is the preset last picked. */
 const char* const* render_lab_small_fill_names(int* count);
 int render_lab_small_fill_selected(void);
 bool render_lab_small_fill_select(int index);
@@ -35,6 +36,7 @@ const char* const* render_lab_upscale_names(int* count);
 int render_lab_upscale_selected(void);
 bool render_lab_upscale_select(int index);
 
+/* The lab's present on `camera`, and its picker's small fill in the main context's render settings. */
 bool render_lab_apply_camera_settings(entity_t camera);
 
 /* Applies the tunables to destination dimensions. */
