@@ -98,3 +98,11 @@ uint8_t
 r3d_skin_light_encode(float radiance, const r3d_skin_light_transfer_t* transfer) {
     return light_encode(radiance, transfer);
 }
+
+sh1_irradiance_t
+r3d_skin_light_ambient_sh(const sh1_rgb_t* radiance) {
+    sh1_irradiance_t ambient = sh1_rgb_irradiance(radiance);
+    ambient.constant = vec3f_scale(ambient.constant, R3D_SKIN_LIGHT_LAMBERT_SCALE);
+    ambient.gradient = mat3f_scale(ambient.gradient, R3D_SKIN_LIGHT_LAMBERT_SCALE);
+    return ambient;
+}

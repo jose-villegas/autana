@@ -151,7 +151,11 @@ scene_skin_give(scene_t* scene, scene_skinned_renderer_t* skin) {
 
 void
 scene_skin_show(scene_t* scene, scene_row_t entity) {
-    const scene_skinned_renderer_t* skin = &scene->skinned_renderers[entity];
+    scene_skinned_renderer_t* skin = &scene->skinned_renderers[entity];
+    skin->output.mesh.colors = skin->bind.colors;
+    if (skin->light_storage != NULL) {
+        skin->output.mesh.colors = skin->colors;
+    }
     scene_renderer_t* r = &scene->renderers[scene_renderer_index(scene, entity)];
     r->mesh = skin->storage != NULL ? skin->output.mesh : skin->bind;
     r->resident_arrays = SCENE_RESIDENT_ALL; /* a skin's output changes; its bind reads the pack */
