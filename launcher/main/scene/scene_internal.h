@@ -25,6 +25,7 @@
 #include "scene/animator/animator.h"
 #include "scene/camera/camera.h"
 #include "scene/entity/entity.h"
+#include "scene/light/light.h"
 #include "scene/scene.h"
 #include "scene/skin/skin.h"
 
@@ -43,6 +44,7 @@ typedef enum { SCENE_LIGHT_NONE, SCENE_LIGHT_DIRECTIONAL } scene_light_kind_t;
 
 typedef struct {
     scene_light_kind_t kind;
+    light_mode_t mode;
     vec3f_t color;
     float intensity;
 } scene_light_t;

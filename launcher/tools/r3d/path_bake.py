@@ -14,7 +14,7 @@ import numpy as np
 
 from r3d import ray_query
 from r3d.geometry import corner_normals
-from r3d.light import sky_directions, tangent_frame
+from r3d.light import baked_lights, sky_directions, tangent_frame
 from r3d.mitsuba_reference import integrator, prepare
 
 SEED = 0
@@ -27,7 +27,7 @@ class PathLight:
         """`indirect` is the scene's `[bake].indirect` (bounces, rays) and `albedo_boost` its `[indirect]` boost, which
         belongs to the exported materials. Pure transport: the intensity is applied where the light is summed.
         Ambient has no transport meaning and stays with `light.light`."""
-        emitters = [item for item in lights if item["type"] != "ambient"]
+        emitters = [item for item in baked_lights(lights) if item["type"] != "ambient"]
         source.corner_normals = corner_normals(source.p, source.tri_v)
         variant = variant or ray_query.VARIANT
         self.scene = prepare(source, emitters, double_sided, variant=variant, keep_textures=True,

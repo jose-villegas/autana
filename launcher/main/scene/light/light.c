@@ -69,24 +69,32 @@ scene_lights_allocate(scene_t* scene) {
 }
 
 static scene_light_t*
-light_attach(scene_t* scene, scene_row_t entity) {
+light_attach(entity_t entity) {
+    scene_row_t row;
+    scene_t* scene = scene_entity_row(entity, &row);
+    if (scene == NULL) {
+        return NULL;
+    }
     /* Its direction is its own rotation under the scene root, so a light has no other parent. */
-    if (scene_row_parent(scene, entity) != SCENE_ROW_NONE) {
+    if (scene_row_parent(scene, row) != SCENE_ROW_NONE) {
         return NULL;
     }
-    scene_light_t* light = &scene->lights[entity];
-    if (light->kind != SCENE_LIGHT_NONE) {
-        return light;
+    scene_light_t* light = &scene->lights[row];
+    if (light->kind == SCENE_LIGHT_NONE) {
+        if (scene->light_count == R3D_SKIN_LIGHT_MAX) {
+            return NULL;
+        }
+        if (scene->light_transfer == NULL && !scene_lights_allocate(scene)) {
+            return NULL;
+        }
+        *light = (scene_light_t){.kind = SCENE_LIGHT_DIRECTIONAL,
+                                 .mode = LIGHT_MODE_REALTIME,
+                                 .color = SCENE_LIGHT_COLOR_DEFAULT,
+                                 .intensity = SCENE_LIGHT_INTENSITY_DEFAULT};
+        scene->light_count++;
+        scene_stage_add(scene, row);
     }
-    if (scene->light_count == R3D_SKIN_LIGHT_MAX) {
-        return NULL;
-    }
-    if (scene->light_transfer == NULL && !scene_lights_allocate(scene)) {
-        return NULL;
-    }
-    *light = (scene_light_t){SCENE_LIGHT_DIRECTIONAL, SCENE_LIGHT_COLOR_DEFAULT, SCENE_LIGHT_INTENSITY_DEFAULT};
-    scene->light_count++;
-    scene_stage_add(scene, entity);
+    scene->flags[row] |= SCENE_FLAG_SKIN_DIRTY;
     return light;
 }
 
@@ -102,40 +110,48 @@ scene_light_color_fits(vec3f_t linear_rgb) {
 
 bool
 light_set_color(entity_t entity, vec3f_t linear_rgb) {
-    scene_row_t row;
-    scene_t* scene = scene_entity_row(entity, &row);
-    if (scene == NULL) {
-        return false;
-    }
     if (!scene_light_color_fits(linear_rgb)) {
         return false;
     }
-    scene_light_t* light = light_attach(scene, row);
+    scene_light_t* light = light_attach(entity);
     if (light == NULL) {
         return false;
     }
     light->color = linear_rgb;
-    scene->flags[row] |= SCENE_FLAG_SKIN_DIRTY;
     return true;
 }
 
 bool
 light_set_intensity(entity_t entity, float intensity) {
-    scene_row_t row;
-    scene_t* scene = scene_entity_row(entity, &row);
-    if (scene == NULL) {
-        return false;
-    }
     if (!isfinite(intensity) || intensity < 0.0F) {
         return false;
     }
-    scene_light_t* light = light_attach(scene, row);
+    scene_light_t* light = light_attach(entity);
     if (light == NULL) {
         return false;
     }
     light->intensity = intensity;
-    scene->flags[row] |= SCENE_FLAG_SKIN_DIRTY;
     return true;
+}
+
+bool
+light_set_mode(entity_t entity, light_mode_t mode) {
+    if (mode != LIGHT_MODE_REALTIME && mode != LIGHT_MODE_BAKED) {
+        return false;
+    }
+    scene_light_t* light = light_attach(entity);
+    if (light == NULL) {
+        return false;
+    }
+    light->mode = mode;
+    return true;
+}
+
+light_mode_t
+light_mode(entity_t entity) {
+    scene_row_t row;
+    const scene_t* scene = scene_entity_row(entity, &row);
+    return scene == NULL || scene->lights[row].kind == SCENE_LIGHT_NONE ? LIGHT_MODE_REALTIME : scene->lights[row].mode;
 }
 
 vec3f_t
@@ -168,7 +184,8 @@ scene_lights_prepare(scene_t* scene) {
     for (int i = 0; i < scene->staged_count; i++) {
         const scene_row_t l = scene->staged[i];
         const scene_light_t* light = &scene->lights[l];
-        if (light->kind == SCENE_LIGHT_NONE || !(scene->flags[l] & SCENE_FLAG_ACTIVE)) {
+        if (light->kind == SCENE_LIGHT_NONE || !(scene->flags[l] & SCENE_FLAG_ACTIVE)
+            || (scene->probes != NULL && light->mode == LIGHT_MODE_BAKED)) {
             continue;
         }
         const int at = world.count++;
@@ -197,6 +214,7 @@ scene_set_probes(entity_t root, const sh_probes_t* probes) {
         return;
     }
     scene->probes = probes;
+    scene->light_table_dirty = true;
     const bool unlit = !scene_is_lit(scene);
     if (unlit) {
         memory_free(scene->light_transfer);

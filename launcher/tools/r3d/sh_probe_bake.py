@@ -8,7 +8,7 @@ import numpy as np
 
 from asset.engine_axes import AXIS_SIGNS, Z_AXIS
 from r3d.geometry import face_normals
-from r3d.light import AlphaTest
+from r3d.light import AlphaTest, baked_lights
 from r3d.mesh_source import load_source
 from r3d.mitsuba_reference import integrator
 from r3d.path_bake import PathLight, BATCH, SEED
@@ -41,7 +41,7 @@ def project(directions, radiance):
 
 def sun_term(query, points, lights):
     out = np.zeros((len(points), COEFFICIENTS, CHANNELS))
-    for light in lights:
+    for light in baked_lights(lights):
         if light['type'] != 'directional':
             continue
         direction = np.asarray(light['direction'], dtype=float)
@@ -130,7 +130,8 @@ def bake(job, scene):
     points, cell, origin, step, dims = grid(source, camera, requested.spacing, settings.seed)
     moved, state = classify(query, face_normals(source.p, source.tri_v)[0], points, cell, camera.near_z)
     outside = state != 'inside'
-    transport = PathLight(source, scene.lights, settings.double_sided, job.bake.indirect,
+    lights = baked_lights(scene.lights)
+    transport = PathLight(source, lights, settings.double_sided, job.bake.indirect,
                           scene.indirect.albedo_boost)
     transport.integrator = transport.mi.load_dict({**integrator(job.bake.indirect.bounces + 1), 'hide_emitters': False})
     directions = sphere_directions(requested.directions)
@@ -145,7 +146,7 @@ def bake(job, scene):
                        for sample in range(requested.spp)) / requested.spp
         coefficients[indices] = project(
             directions, radiance.reshape(len(indices), requested.directions, CHANNELS))
-    coefficients[outside] += sun_term(query, moved[outside], scene.lights)
+    coefficients[outside] += sun_term(query, moved[outside], lights)
     # ProbeViews enumerates z fastest; SHPR's x-fastest order is the transposed cell lattice.
     shape = tuple(dims) + (COEFFICIENTS, CHANNELS)
     filled = dilate(coefficients.reshape(shape), (state == 'inside').reshape(tuple(dims)))
@@ -154,7 +155,7 @@ def bake(job, scene):
     filled = np.flip(filled, axis=Z_AXIS).copy()
     filled[..., Z_COEFFICIENT, :] *= AXIS_SIGNS[Z_AXIS]
     data = encode(origin, step, dims, filled.transpose(2, 1, 0, 3, 4).copy())
-    sun_rays = sum(light['type'] == 'directional' for light in scene.lights)
+    sun_rays = sum(light['type'] == 'directional' for light in lights)
     paths = int(outside.sum()) * requested.directions * requested.spp
     print(f'SH probes: {len(points)} probes, {np.count_nonzero(~outside)} inside, '
           f'{paths} primary paths, {int(outside.sum()) * sun_rays} sun rays, '
