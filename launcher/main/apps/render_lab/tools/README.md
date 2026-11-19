@@ -304,6 +304,12 @@ python launcher/main/apps/render_lab/tools/stress_predict.py \
 `R3D_SIZES_FIELDS`: face, uniform and shaded modes, each split by covered
 pixel centres. Their sum is `triangles_set_up`; clipped triangles stay separate.
 
+`--perf-poses` draws a stress scene at the poses the stress perf suite
+replays, one frame each. `--path-hits FILE` writes each r3d fill path's hits
+after the last frame. `--stress-runs` prints every stress preset and quarter,
+one `key quarter` line each. `stress_path_hits.sh --check` uses all three and
+fails naming any path no preset reaches; Host Tests runs it.
+
 `--camera still` holds the camera, so a frame differs from the last only
 where the mesh moved. Mixed copies share meshes by tessellation;
 `STRESS_MIX_UNIFORM_PERIOD` owns their equal-colour share.

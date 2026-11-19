@@ -400,6 +400,11 @@ colour_and_wave(const stress_params_t* p, uint32_t t_ms, int vertex_count, const
 
 static void texture_uvs(const stress_params_t* p, int vertex_count, const stress_buffers_t* b);
 
+uint32_t
+stress_pose_ms(const stress_params_t* p, uint32_t duration_ms, int pose) {
+    return (uint32_t)((uint64_t)duration_ms * (uint64_t)pose / (uint64_t)p->perf_poses);
+}
+
 bool
 stress_source(const stress_params_t* p, uint32_t t_ms, const stress_buffers_t* b, r3d_dynamic_source_t* out) {
     primitive_mesh_t m = {b->positions, stress_vertex_count(p), b->triangles, stress_triangle_count(p), 0, 0};

@@ -173,15 +173,22 @@ console_options(int argc, char** argv) {
     return true;
 }
 
-static void
-apply_flags(int argc, char** argv) {
+static bool
+flag(int argc, char** argv, const char* name) {
     for (int i = 0; i < argc; i++) {
-        if (strcmp(argv[i], "--no-hud") == 0) {
-            render_lab.show_hud = false;
-        } else if (strcmp(argv[i], "--menu") == 0) {
-            menu = true;
+        if (strcmp(argv[i], name) == 0) {
+            return true;
         }
     }
+    return false;
+}
+
+static void
+apply_flags(int argc, char** argv) {
+    if (flag(argc, argv, "--no-hud")) {
+        render_lab.show_hud = false;
+    }
+    menu = flag(argc, argv, "--menu");
 }
 
 static bool
@@ -211,16 +218,6 @@ size_option(const char* size) {
         return false;
     }
     return true;
-}
-
-static bool
-flag(int argc, char** argv, const char* name) {
-    for (int i = 0; i < argc; i++) {
-        if (strcmp(argv[i], name) == 0) {
-            return true;
-        }
-    }
-    return false;
 }
 
 /* The stress preset whose scene key is `key`, NULL for another scene. */
@@ -364,8 +361,7 @@ seek_perf_pose(int index) {
     const lab_path_t path = lab_current(&render_lab)->path();
     const uint32_t duration_ms = animator_clip_duration_ms(path.entity, animator_current_clip(path.entity));
     if (duration_ms == 0
-        || !animator_seek(path.entity, ANIMATOR_CURRENT,
-                          (uint32_t)((uint64_t)duration_ms * (uint64_t)index / (uint64_t)perf_poses->perf_poses))) {
+        || !animator_seek(path.entity, ANIMATOR_CURRENT, stress_pose_ms(perf_poses, duration_ms, index))) {
         (void)fprintf(stderr, "render_lab_render_host: --perf-poses: the camera's clip did not seek\n");
         exit(EXIT_FAILURE);
     }

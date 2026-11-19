@@ -24,18 +24,6 @@ find(const char* name) {
     return NULL;
 }
 
-/* `path` without its folders, either separator. */
-static const char*
-file_name(const char* path) {
-    const char* name = path;
-    for (const char* c = path; *c != 0; c++) {
-        if (*c == '/' || *c == '\\') {
-            name = c + 1;
-        }
-    }
-    return name;
-}
-
 /* A path joins the list when the program starts, before anything takes it:
  * a path nothing reached is still there to be named. */
 static void
@@ -54,7 +42,7 @@ test_the_list_is_in_name_order_and_copies_are_neighbours(void) {
         const int order = strcmp(p->name, p->next->name);
         TEST_ASSERT_TRUE_MESSAGE(order <= 0, p->next->name);
         if (order == 0) {
-            TEST_ASSERT_EQUAL_STRING(file_name(p->file), file_name(p->next->file));
+            TEST_ASSERT_EQUAL_STRING(p->file, p->next->file);
         }
     }
 }

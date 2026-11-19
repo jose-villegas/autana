@@ -171,6 +171,10 @@ typedef struct {
  * made. Equal arguments give equal bytes. */
 bool stress_source(const stress_params_t* p, uint32_t t_ms, const stress_buffers_t* b, r3d_dynamic_source_t* out);
 
+/* Where perf pose `pose` sits along a camera clip of `duration_ms`: pose i of
+ * perf_poses is i / perf_poses of the way, the poses the perf suite replays. */
+uint32_t stress_pose_ms(const stress_params_t* p, uint32_t duration_ms, int pose);
+
 /* Where the arrangement is seen from: the camera's distance from the
  * origin, which it looks at, and its lens's half field of view across the
  * picture's short side, as a tangent. */

@@ -234,7 +234,7 @@ test_stress_stages(void) {
     int64_t sums[STRESS_PERF_STAGES] = {0};
     for (int i = 0; i < params->perf_poses; i++) {
         int64_t stage_us[STRESS_PERF_STAGES];
-        render_lab_test_replay_pose(TAG, camera, duration_ms, (int32_t)((int64_t)duration_ms * i / params->perf_poses),
+        render_lab_test_replay_pose(TAG, camera, duration_ms, (int32_t)stress_pose_ms(params, duration_ms, i),
                                     preset->key, quarter->name, stress_perf_stages, stages, stage_us, dt_ms);
         for (int stage = 0; stage < stages; stage++) {
             sums[stage] += stage_us[stage];

@@ -41,11 +41,20 @@ fi
 
 # A Windows build prints CRLF lines.
 "$built" --stress-runs | tr -d '\r' > "$out_dir/runs.txt"
+# No runs, or a run that counted no path, would pass with nothing checked.
+if [ ! -s "$out_dir/runs.txt" ]; then
+    echo "stress_path_hits: $built --stress-runs listed no stress preset" >&2
+    exit 1
+fi
 while read -r key quarter; do
     run="$out_dir/runs/$key-$quarter"
     if ! "$built" --scene "$key" --quarter "$quarter" --no-hud --perf-poses --dt 0 --path-hits "$run.csv" \
-        -o "$run.bmp" > "$run.log" 2>&1; then
+        -o "$run.bmp" < /dev/null > "$run.log" 2>&1; then
         echo "stress_path_hits: $key at quarter $quarter failed; see $run.log" >&2
+        exit 1
+    fi
+    if [ "$(wc -l < "$run.csv")" -le 1 ]; then
+        echo "stress_path_hits: $key at quarter $quarter counted no r3d path; is r3d_path linked?" >&2
         exit 1
     fi
 done < "$out_dir/runs.txt"
