@@ -77,16 +77,6 @@ camera_set_shift(entity_t camera, vec2f_t shift) {
 }
 
 bool
-camera_set_small_fill(entity_t camera, small_fill_t fill) {
-    lens_t* found = camera_of(camera);
-    if (found == NULL || fill.ceiling > SMALL_FILL_CEILING_MAX || fill.style >= SMALL_FILL_STYLE_COUNT) {
-        return false;
-    }
-    found->small_fill = fill;
-    return true;
-}
-
-bool
 camera_set_skip_hidden(entity_t camera, bool skip) {
     lens_t* found = camera_of(camera);
     if (found == NULL) {
