@@ -5116,6 +5116,48 @@ test_contact_light_choice_and_shadow_invalidation(void) {
 }
 
 static void
+test_disabled_contact_skips_shape_and_warp_work(void) {
+    fixture_with_skin(&SKIN_OPTIONS);
+    const entity_t root = load("test_skin");
+    const entity_t entity = entity_find(root, name_hash("red"));
+    scene_t* scene = columns(root);
+    scene_resolve(scene);
+    scene_skinned_renderer_t* skin = skin_of(entity);
+    scene_set_contact_warp(entity, true);
+    TEST_ASSERT_EQUAL_INT(0, scene_contact_warp_users);
+    scene_set_contact_blob(entity, 0, 0, SCENE_CONTACT_SHAPE);
+    scene_animation_repose(scene, 0);
+    TEST_ASSERT_NULL(skin->contact_joints);
+    TEST_ASSERT_NULL(skin->contact_mask.coverage);
+    scene_set_contact_blob(entity, 0, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, SCENE_CONTACT_BLOB);
+    TEST_ASSERT_EQUAL_INT(1, scene_contact_warp_users);
+    scene_set_contact_blob(entity, 0, 0, SCENE_CONTACT_BLOB);
+    TEST_ASSERT_EQUAL_INT(0, scene_contact_warp_users);
+    scene_set_contact_warp(entity, false);
+    TEST_ASSERT_EQUAL_INT(0, scene_contact_warp_users);
+}
+
+static void
+test_contact_joints_allocate_only_for_shape(void) {
+    fixture_with_skin(&SKIN_OPTIONS);
+    const entity_t root = load("test_skin");
+    const entity_t entity = entity_find(root, name_hash("red"));
+    scene_resolve(columns(root));
+    scene_skinned_renderer_t* skin = skin_of(entity);
+    TEST_ASSERT_NULL(skin->contact_joints);
+    scene_set_contact_blob(entity, 0, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, SCENE_CONTACT_BLOB);
+    TEST_ASSERT_NULL(skin->contact_joints);
+    scene_set_contact_blob(entity, 0, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, SCENE_CONTACT_FEET);
+    TEST_ASSERT_NULL(skin->contact_joints);
+    scene_set_contact_blob(entity, 0, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, SCENE_CONTACT_SHAPE);
+    TEST_ASSERT_NOT_NULL(skin->contact_joints);
+    TEST_ASSERT_NOT_NULL(skin->contact_mask.coverage);
+    entity_set_enabled(entity, false);
+    TEST_ASSERT_NULL(skin->contact_joints);
+    TEST_ASSERT_NULL(skin->contact_mask.coverage);
+}
+
+static void
 test_shape_mask_repose_and_lifetime(void) {
     fixture_with_skin(&SKIN_OPTIONS);
     const entity_t root = load("test_skin");
@@ -8601,6 +8643,8 @@ run_scene_suite(void) {
     RUN_TEST(test_probes_sample_last_resolved_bounds_without_allocating);
     RUN_TEST(test_forgetting_another_scene_keeps_the_contact_draw_hook);
     RUN_TEST(test_contact_light_choice_and_shadow_invalidation);
+    RUN_TEST(test_disabled_contact_skips_shape_and_warp_work);
+    RUN_TEST(test_contact_joints_allocate_only_for_shape);
     RUN_TEST(test_shape_mask_repose_and_lifetime);
     RUN_TEST(test_shape_allocation_failure_uses_blob);
     RUN_TEST(test_feet_follow_pose_without_height_fade);
