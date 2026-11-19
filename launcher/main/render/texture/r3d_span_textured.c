@@ -340,7 +340,7 @@ set_up_divide(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[
         return;
     }
     /* The level's side over level 0's: the scale set_up() gave u and v. */
-    const float scale = (float)(su->sampler.mask + 1U) / (float)(1U << texture->size_log2);
+    const float scale = 1.0F / (float)(1U << sampler_level(&su->sampler));
     /* The start of the tile holding vertex 0. */
     const float tile = (float)(1U << texture->size_log2);
     const vec2f_t origin = {uv[0].x - mathf_repeat(uv[0].x, tile), uv[0].y - mathf_repeat(uv[0].y, tile)};
@@ -468,8 +468,8 @@ r3d_span_textured_triangle(const r3d_span_target_t* target, const r3d_span_verte
         walk_cut(target, &su, box, v0, v1, v2, long_on_left);
     } else {
         /* A triangle no wider than one segment steps affine: its bend is at
-         * most one segment's. So does one reading texture.affine_level
-         * or coarser, when set: its pattern shifts rather than bends. */
+         * most one segment's. So does one reading a level from
+         * texture.affine_level on (0: none): its pattern shifts rather than bends. */
         su.divide = 0;
         if (target->texture_divide_px != 0
             && (target->texture_affine_level == 0 || sampler_level(&su.sampler) < target->texture_affine_level)

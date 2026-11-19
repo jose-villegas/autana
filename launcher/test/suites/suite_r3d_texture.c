@@ -1666,9 +1666,9 @@ test_a_floor_divides_only_past_the_bend_the_setting_allows(void) {
     TEST_ASSERT_GREATER_THAN_MESSAGE(0, colours_differing(0, 1), "a bend over the allowance stepped affine");
 }
 
-/* The steep floor with its UVs times COARSE_UV_TIMES reads level 1, given a
- * pattern, the fixture's level 1 being one colour: by default it steps
- * affine, and divides with texture.affine_level 0, no level cutoff. */
+/* The steep floor with its UVs times COARSE_UV_TIMES reads level 1, which the
+ * test fills with a pattern. By default it steps affine; with
+ * texture.affine_level 0 it divides. */
 #define COARSE_UV_TIMES 2.0F
 #define COARSE_LEVEL    1
 

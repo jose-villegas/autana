@@ -464,8 +464,7 @@ test_an_anim_interval_outside_its_range_is_refused_unread(void) {
     TEST_ASSERT_EQUAL(ASSET_OK, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
 }
 
-/* A divide spacing, affine bend or divide level count below none or past its max is refused; each limit itself
- * reads. */
+/* A divide spacing, affine bend or affine level below 0 or past its max is refused; each limit itself reads. */
 static void
 test_a_texture_setting_outside_its_range_is_refused_unread(void) {
     int16_t values[FIELDS];
