@@ -18,9 +18,6 @@ class RenderAssetTests(unittest.TestCase):
         path.write_text(text, encoding="utf-8")
         return path
 
-    def header(self, text):
-        return self.settings(text, "constants.h")
-
     def test_a_file_changes_only_its_keys(self):
         self.assertEqual(render_asset.load(self.settings("batched = false\n")),
                          {"cull": True, "depth_fit": True, "batched": False, "partial_redraw": True, "lod.tolerance_px": 2.0,
@@ -87,7 +84,6 @@ class RenderAssetTests(unittest.TestCase):
                 render_asset.fields(source)
 
     def test_an_interval_is_the_c_test_its_brackets_and_bounds_give(self):
-        source = self.header("#define RANGE_MAX 9\ntypedef enum { A, B, C_COUNT } c_t;\n")
         for kind, bounds, test in (("float", ("[", "-2", "-0.5", "]"), "value >= -2.0F && value <= -0.5F"),
                                    ("float", ("(", "0", "8", ")"), "value > 0.0F && value < 8.0F"),
                                    ("float", ("(", "0", "RANGE_MAX", "]"), "value > 0.0F && value <= RANGE_MAX"),
@@ -95,27 +91,31 @@ class RenderAssetTests(unittest.TestCase):
                                    ("int", ("[", "0", "C_COUNT", ")"), "value >= 0 && value < C_COUNT"),
                                    ("float", None, "true")):
             with self.subTest(bounds=bounds):
-                self.assertEqual(render_asset.interval(kind, bounds, "field", source), test)
+                self.assertEqual(render_asset.interval(kind, bounds, "field"), test)
 
     def test_an_interval_that_cannot_hold_its_field_is_refused(self):
-        source = self.header("#define RANGE_MAX 9\n")
         for kind, bounds, message in (("bool", ("[", "0", "1", "]"), "is a bool and takes no interval"),
                                       ("int", ("[", "0", "1.5", "]"), "is an int and its bound 1.5 is not"),
                                       ("float", ("[", "5", "2", "]"), "starts above its end"),
-                                      ("float", ("[", "RANGE_MAX", "2", "]"), "starts above its end"),
-                                      ("float", ("[", "0", "NO_SUCH", "]"), "NO_SUCH is not a numeric")):
+                                      ("float", ("[", "-1", "-2.5", "]"), "starts above its end")):
             with self.subTest(bounds=bounds), self.assertRaisesRegex(ValueError, message):
-                render_asset.interval(kind, bounds, "field", source)
+                render_asset.interval(kind, bounds, "field")
+
+    def test_an_enum_member_counts_on_from_its_given_value(self):
+        text = "typedef enum {\n    A = 4, /* a, b */\n    B, // c,\n    C_COUNT\n} c_t;\n"
+        for name, value in (("A", 4), ("B", 5), ("C_COUNT", 6), ("D", None)):
+            with self.subTest(name=name):
+                self.assertEqual(render_asset.enum_member(text, name), value)
 
     def test_a_bound_is_its_constants_c_value(self):
-        source = self.header("#define HALF 0.5f\n#define TOP (12)\n"
-                             "typedef enum {\n    A = 4, /* a, b */\n    B, // c,\n    C_COUNT\n} c_t;\n")
-        for bound, value in (("HALF", 0.5), ("TOP", 12.0), ("B", 5.0), ("C_COUNT", 6.0), ("-2", -2.0)):
+        for bound, value in (("RENDER_LOD_BLEND_PX_MAX", 4.0), ("SMALL_FILL_STYLE_COUNT", 3.0),
+                             ("RENDER_LOD_BLEND_COUNT", 2.0), ("-2", -2.0)):
             with self.subTest(bound=bound):
-                self.assertEqual(render_asset.constant(bound, source), value)
-        self.assertTrue(render_asset.within(5, ("[", "A", "C_COUNT", ")"), source))
-        self.assertFalse(render_asset.within(6, ("[", "A", "C_COUNT", ")"), source))
-        self.assertFalse(render_asset.within(0.5, ("(", "HALF", "TOP", "]"), source))
+                self.assertEqual(render_asset.constant(bound), value)
+        self.assertTrue(render_asset.within(2, ("[", "0", "SMALL_FILL_STYLE_COUNT", ")")))
+        self.assertFalse(render_asset.within(3, ("[", "0", "SMALL_FILL_STYLE_COUNT", ")")))
+        with self.assertRaisesRegex(ValueError, "NO_SUCH is not a numeric #define or an enum member"):
+            render_asset.constant("NO_SUCH")
 
     def test_a_file_value_outside_its_fields_interval_is_refused(self):
         path = self.settings("[lod]\nblend_px = 1000.0\n")

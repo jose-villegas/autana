@@ -47,11 +47,11 @@ Field = collections.namedtuple("Field", "kind tier trade valid interval")
 COMMAND = "python tools/render/settings/render_asset.py main/render/settings/render_settings_default.h"
 
 
-def fields(source=None, header=HEADER):
+def fields(source=None):
     """{field: Field} of render_settings_t in order, a struct field's own as `field.member`.
     Each is declared on its own line with its tier comment, which may give the field's
-    interval after the tier; `header` holds its bounds' C constants."""
-    source = pathlib.Path(header).read_text(encoding="utf-8") if source is None else source
+    interval after the tier."""
+    source = HEADER.read_text(encoding="utf-8") if source is None else source
     structs = {}
     for body, name in STRUCTS.findall(source):
         rows = FIELD.findall(body.strip())
@@ -70,7 +70,7 @@ def fields(source=None, header=HEADER):
                 raise ValueError(f"{HEADER.name}: {prefix}{field} needs a bool, int or float and /* tier: trade */")
             name, opening, low, high, closing, trade = tier.groups()
             bounds = None if opening is None else (opening, low, high, closing)
-            found[prefix + field] = Field(kind, name, trade, interval(kind, bounds, prefix + field, header), bounds)
+            found[prefix + field] = Field(kind, name, trade, interval(kind, bounds, prefix + field), bounds)
         return found
 
     if "render_settings_t" not in structs:
@@ -78,14 +78,15 @@ def fields(source=None, header=HEADER):
     return expand("render_settings_t", "")
 
 
-def read(path, header=HEADER):
-    """The validated keys of one settings file, flattened, against `header`'s fields."""
+def read(path, source=None):
+    """The validated keys of one settings file, flattened, against `source`'s fields
+    (render_settings.h's text by default)."""
     path = pathlib.Path(path)
     try:
         values = flatten(settings_toml.tables(path))
     except tomllib.TOMLDecodeError as error:
         raise ValueError(f"{path}: {error}") from None
-    known = fields(pathlib.Path(header).read_text(encoding="utf-8"), header)
+    known = fields(source)
     unknown = values.keys() - known.keys()
     if unknown:
         raise ValueError(f"{path}: {', '.join(sorted(unknown))} is not a render setting")
@@ -93,7 +94,7 @@ def read(path, header=HEADER):
         kind = known[key].kind
         if type(value) not in TYPES[kind]:
             raise ValueError(f"{path}: {key} must be a TOML {kind}")
-        if not within(value, known[key].interval, header):
+        if not within(value, known[key].interval):
             raise ValueError(f"{path}: {key} = {value} is outside {span(known[key].interval)}")
     return values
 
@@ -150,23 +151,23 @@ def enum_member(text, name):
     return None
 
 
-def constant(bound, header):
-    """A bound's number: a literal, a numeric #define in `header` or one of its enum members."""
+def constant(bound):
+    """A bound's number: a literal, or a numeric #define or enum member of render_settings.h."""
     if not bound[0].isalpha():
         return float(bound)
-    member = enum_member(pathlib.Path(header).read_text(encoding="utf-8"), bound)
+    member = enum_member(HEADER.read_text(encoding="utf-8"), bound)
     if member is not None:
         return float(member)
     try:
-        value = read_define(header, bound)
+        value = read_define(HEADER, bound)
     except RuntimeError as error:
-        raise ValueError(f"{pathlib.Path(header).name}: {bound} is not a numeric #define or an enum member") from error
+        raise ValueError(f"{HEADER.name}: {bound} is not a numeric #define or an enum member") from error
     if not isinstance(value, (int, float)):
-        raise ValueError(f"{pathlib.Path(header).name}: {bound} is not a number")
+        raise ValueError(f"{HEADER.name}: {bound} is not a number")
     return float(value)
 
 
-def interval(kind, bounds, field, header=HEADER):
+def interval(kind, bounds, field):
     """The C test of a typed `value` in its (opening, low, high, closing) bounds, a parenthesis
     leaving that end open; None accepts any."""
     if bounds is None:
@@ -179,19 +180,19 @@ def interval(kind, bounds, field, header=HEADER):
             raise ValueError(f"{HEADER.name}: {field}'s bound {bound!r} is not a number or a C constant")
         if kind == "int" and "." in bound:
             raise ValueError(f"{HEADER.name}: {field} is an int and its bound {bound} is not")
-    if constant(low, header) > constant(high, header):
+    if not (low[0].isalpha() or high[0].isalpha()) and float(low) > float(high):
         raise ValueError(f"{HEADER.name}: {field}'s interval starts above its end")
     limit = {bound: bound if bound[0].isalpha() else literal(kind, bound, "F") for bound in (low, high)}
     return (f"value >{'=' if opening == '[' else ''} {limit[low]} && "
             f"value <{'=' if closing == ']' else ''} {limit[high]}")
 
 
-def within(value, bounds, header=HEADER):
-    """Whether `value` lies in a field's bounds, their C constants read from `header`."""
+def within(value, bounds):
+    """Whether `value` lies in a field's bounds, their C constants read from render_settings.h."""
     if bounds is None:
         return True
     opening, low, high, closing = bounds
-    low, high = constant(low, header), constant(high, header)
+    low, high = constant(low), constant(high)
     return (value >= low if opening == "[" else value > low) and (value <= high if closing == "]" else value < high)
 
 

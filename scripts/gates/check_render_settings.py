@@ -64,7 +64,7 @@ def setting_names(launcher=LAUNCHER):
     """({name: field}, {group: field}): each render setting's path joined by `_` (lod_blend),
     and each struct group's name (lod)."""
     names, groups = {}, {}
-    for field in render_asset.fields(text(launcher, SETTINGS_HEADER), launcher / SETTINGS_HEADER):
+    for field in render_asset.fields(text(launcher, SETTINGS_HEADER)):
         names[field.replace(".", "_")] = field
         for group in field.split(".")[:-1]:
             groups.setdefault(group, field)
@@ -98,7 +98,7 @@ def problems(launcher=LAUNCHER, settings_files=None):
         settings_files = [ROOT / p for p in git_files("*" + render_asset.SUFFIX, ROOT)]
     for path in settings_files:
         try:
-            render_asset.read(path, launcher / SETTINGS_HEADER)
+            render_asset.read(path, text(launcher, SETTINGS_HEADER))
         except ValueError as error:
             found.append(str(error))
     return found
