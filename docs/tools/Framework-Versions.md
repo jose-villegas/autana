@@ -97,8 +97,8 @@ derives from it. It pulls the newest image of the pin's tag, has
 `scripts/deps/idf_pin.py write` read the commit and esp-clang release from
 inside it, copies the image to `ghcr.io/<owner>/esp-idf` with the same
 digest, runs `idf.py update-dependencies`, builds each variant and rewrites
-its IRAM budgets. A pull request opened by a workflow starts no checks of its
-own: close and reopen it to run CI.
+its IRAM budgets. The [refresh GitHub App](Render-Harness.md#refresh-pull-requests)
+pushes the branch and opens the pull request, so its checks start.
 
 CI pulls the image through [`scripts/ci/idf_image.sh`](../../scripts/ci/idf_image.sh):
 the mirror when it holds the pinned digest, else Docker Hub with a warning,

@@ -34,7 +34,7 @@ class PathLight:
                              albedo_boost=albedo_boost)
         self.mi = self.scene.mi
         # Mitsuba counts the ray itself as depth 1, so each bounce adds one.
-        self.integrator = self.mi.load_dict(integrator(indirect.bounces + 1))
+        self.integrator = self.mi.load_dict(integrator(indirect.bounces + 1, self.scene.masked))
         self.rays = indirect.rays
         self.scalar = variant.startswith("scalar")
 

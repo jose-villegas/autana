@@ -44,10 +44,10 @@
 
 static uint16_t* pixels;
 static r3d_span_small_fill_t* resolved;
-static small_fill_t settings;
+static render_small_fill_settings_t settings;
 
 static void
-resolve_fill(small_fill_t fill) {
+resolve_fill(render_small_fill_settings_t fill) {
     settings = fill;
     r3d_span_small_fill_resolve(resolved, fill);
 }
@@ -102,7 +102,7 @@ static uint32_t
 span_checksum(bool dither) {
     const r3d_span_target_t target = fixture();
     if (dither) {
-        resolve_fill((small_fill_t){ORACLE_MAX_SIDE, 0, SMALL_FILL_DITHER});
+        resolve_fill((render_small_fill_settings_t){ORACLE_MAX_SIDE, 0, SMALL_FILL_DITHER});
     }
     uint32_t checksum = ORACLE_SEED;
     for (int side = 1; side <= ORACLE_MAX_SIDE; side++) {
@@ -140,7 +140,8 @@ test_whole_triangle_dither_is_bit_identical(void) {
 }
 
 static int
-reference_selector(const r3d_span_vertex_t v[TRIANGLE_VERTICES], int side, bool solid, small_fill_t fill) {
+reference_selector(const r3d_span_vertex_t v[TRIANGLE_VERTICES], int side, bool solid,
+                   render_small_fill_settings_t fill) {
     if (side > fill.ceiling) {
         return SMALL_FILL_WALK;
     }
@@ -178,7 +179,7 @@ test_selector_random_triangles_and_gate_boundaries(void) {
     for (int ceiling = 0; ceiling <= ORACLE_MAX_SIDE; ceiling++) {
         for (size_t gate = 0; gate < sizeof gates / sizeof gates[0]; gate++) {
             for (small_fill_style_t style = SMALL_FILL_FLAT; style < SMALL_FILL_STYLE_COUNT; style++) {
-                const small_fill_t fill = {(uint8_t)ceiling, gates[gate], style};
+                const render_small_fill_settings_t fill = {ceiling, gates[gate], style};
                 resolve_fill(fill);
                 for (int side = 1; side <= ORACLE_MAX_SIDE + 1; side++) {
                     for (int sample = 0; sample < ORACLE_SAMPLES; sample++) {
@@ -203,7 +204,7 @@ test_selector_random_triangles_and_gate_boundaries(void) {
             }
         }
     }
-    resolve_fill((small_fill_t){UINT8_MAX, SMALL_FILL_GATE_FAST, SMALL_FILL_GRAIN});
+    resolve_fill((render_small_fill_settings_t){UINT8_MAX, SMALL_FILL_GATE_FAST, SMALL_FILL_GRAIN});
     TEST_ASSERT_EQUAL_INT(SMALL_FILL_CEILING_MAX, resolved->ceiling);
     const r3d_span_vertex_t v[TRIANGLE_VERTICES] = {{0}};
     TEST_ASSERT_EQUAL_INT(SMALL_FILL_GRAIN,
@@ -328,7 +329,7 @@ test_style_kernels_randomized_reference(void) {
     static const uint8_t gates[] = {0, SMALL_FILL_GATE_FAST, 1};
     for (small_fill_style_t style = SMALL_FILL_FLAT; style < SMALL_FILL_STYLE_COUNT; style++) {
         for (size_t gate = 0; gate < sizeof gates / sizeof gates[0]; gate++) {
-            resolve_fill((small_fill_t){ORACLE_MAX_SIDE, gates[gate], style});
+            resolve_fill((render_small_fill_settings_t){ORACLE_MAX_SIDE, gates[gate], style});
             for (int side = 1; side <= ORACLE_MAX_SIDE + 1; side++) {
                 for (int sample = 0; sample < ORACLE_SAMPLES; sample++) {
                     rng_t random;
@@ -367,7 +368,7 @@ test_grain_screen_phase_with_odd_window_and_known_shades(void) {
     }
     actual.rows.attachment[GFX_ATTACHMENT_COLOR].pixels = pixels + TEST_SIDE;
     actual.rows.attachment[GFX_ATTACHMENT_DEPTH].pixels = pixels + TEST_PIXELS + TEST_SIDE;
-    resolve_fill((small_fill_t){ORACLE_MAX_SIDE, 0, SMALL_FILL_GRAIN});
+    resolve_fill((render_small_fill_settings_t){ORACLE_MAX_SIDE, 0, SMALL_FILL_GRAIN});
     const r3d_span_vertex_t v[TRIANGLE_VERTICES] = {{-R3D_SUBPIXEL, 0, 0.5F, 0, 0, 0},
                                                     {(ORACLE_MAX_SIDE - 1) * R3D_SUBPIXEL, 0, 0.5F, 0, 0, 0},
                                                     {-R3D_SUBPIXEL, ORACLE_MAX_SIDE * R3D_SUBPIXEL, 0.5F, 0, 0, 0}};
@@ -387,12 +388,12 @@ test_dither_equal_packed_colours_and_equal_edges_use_flat(void) {
     r3d_span_vertex_t v[TRIANGLE_VERTICES] = {{0, 0, 0.5F, 80, 80, 80},
                                               {ORACLE_MAX_SIDE * R3D_SUBPIXEL, 0, 0.5F, 81, 81, 81},
                                               {0, ORACLE_MAX_SIDE * R3D_SUBPIXEL, 0.5F, 82, 82, 82}};
-    resolve_fill((small_fill_t){ORACLE_MAX_SIDE, 0, SMALL_FILL_DITHER});
+    resolve_fill((render_small_fill_settings_t){ORACLE_MAX_SIDE, 0, SMALL_FILL_DITHER});
     draw_triangle(&actual, v, false);
     r3d_span_target_t expected =
         r3d_span_target(pixels + TEST_PIXELS * 2, pixels + TEST_PIXELS * 3, TEST_SIDE, 0, TEST_SIDE);
     expected.small_fill = resolved;
-    resolve_fill((small_fill_t){ORACLE_MAX_SIDE, 0, SMALL_FILL_FLAT});
+    resolve_fill((render_small_fill_settings_t){ORACLE_MAX_SIDE, 0, SMALL_FILL_FLAT});
     draw_triangle(&expected, v, false);
     TEST_ASSERT_EQUAL_MEMORY(pixels + TEST_PIXELS * 2, pixels, TEST_PIXELS * 2 * sizeof(*pixels));
     memset(pixels, 0, TEST_PIXELS * 4 * sizeof(*pixels));
@@ -405,9 +406,9 @@ test_dither_equal_packed_colours_and_equal_edges_use_flat(void) {
         const r3d_span_edge_t line = r3d_span_edge(v + edge, v + (edge + 1) % TRIANGLE_VERTICES);
         TEST_ASSERT_EQUAL_INT(reach - 1, r3d_span_side(&line, centre, centre));
     }
-    resolve_fill((small_fill_t){ORACLE_MAX_SIDE, 0, SMALL_FILL_DITHER});
+    resolve_fill((render_small_fill_settings_t){ORACLE_MAX_SIDE, 0, SMALL_FILL_DITHER});
     draw_triangle(&actual, v, false);
-    resolve_fill((small_fill_t){ORACLE_MAX_SIDE, 0, SMALL_FILL_FLAT});
+    resolve_fill((render_small_fill_settings_t){ORACLE_MAX_SIDE, 0, SMALL_FILL_FLAT});
     draw_triangle(&expected, v, false);
     const int pixel = (ORACLE_MAX_SIDE / 2) * (TEST_SIDE + 1);
     TEST_ASSERT_NOT_EQUAL(R3D_DEPTH_EMPTY, pixels[TEST_PIXELS + pixel]);
@@ -428,7 +429,7 @@ test_writer_and_draw_select_the_same_depth_under_every_style(void) {
     static const uint8_t gates[] = {0, SMALL_FILL_GATE_FAST, UINT8_MAX};
     for (small_fill_style_t style = SMALL_FILL_FLAT; style < SMALL_FILL_STYLE_COUNT; style++) {
         for (size_t gate = 0; gate < sizeof gates / sizeof gates[0]; gate++) {
-            resolve_fill((small_fill_t){ORACLE_MAX_SIDE, gates[gate], style});
+            resolve_fill((render_small_fill_settings_t){ORACLE_MAX_SIDE, gates[gate], style});
             for (int spread = SMALL_FILL_GATE_FAST - 1; spread <= SMALL_FILL_GATE_FAST + 1; spread++) {
                 memset(pixels, 0, TEST_PIXELS * 4 * sizeof(*pixels));
                 const r3d_span_vertex_t v[TRIANGLE_VERTICES] = {

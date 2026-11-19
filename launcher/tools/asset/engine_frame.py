@@ -6,8 +6,6 @@ under "The offline tools".
 
 import struct
 
-import numpy as np
-
 from audio import sound_asset
 from gfx import image_asset
 from asset import table_asset
@@ -92,6 +90,8 @@ def to_engine(kind, entry):
             *box, first, count, leaf = mesh_asset.NODE.unpack_from(entry, at)
             mesh_asset.NODE.pack_into(out, at, *_mirror_box(box), first, count, leaf)
     elif kind == sh.TYPE:
+        import numpy as np  # here, not at the top: bake.py list and check run where only the standard library is
+
         origin, spacing, dims, scale, coefficients, inside = sh.decode(entry)
         slices = tuple(slice(None, None, sign) for sign in reversed(AXIS_SIGNS))
         shape = tuple(reversed(dims))

@@ -103,7 +103,7 @@ def local_vertices(tris):
 
 
 def bake_lit_mesh(positions, rgb, tris, double, position_scale=POSITION_SCALE, leaf_triangles=LEAF_TRIANGLES,
-                  meshlet_triangles=MESHLET_TRIANGLES, face_rgb=None):
+                  meshlet_triangles=MESHLET_TRIANGLES, face_rgb=None, vertex_uvs=None, vertex_pages=None):
     """Bakes positions (model units), rgb (0..255 per vertex) and tris
     (counter-clockwise seen from the front, `double` one flag per triangle)
     into a SimpleNamespace holding pos, rgb, tris, clusters, nodes, the
@@ -118,10 +118,29 @@ def bake_lit_mesh(positions, rgb, tris, double, position_scale=POSITION_SCALE, l
     col = None if flat or rgb is None else np.clip(np.rint(rgb), 0, 255).astype(np.int64)
     face = np.clip(np.rint(face_rgb), 0, 255).astype(np.int64) if flat else None
     assert not flat or len(face) == len(tris), "a flat bake needs one face colour per triangle"
-    q, col, tris, double, face = weld_quantised(q, col, np.asarray(tris, dtype=np.int64), double, face)
+    channels = 0 if col is None else col.shape[1]
+    if vertex_uvs is not None:
+        keys = np.column_stack([np.empty((len(q), 0)) if col is None else col, vertex_uvs, vertex_pages])
+        q, keys, tris, double, face = weld_quantised(q, keys, np.asarray(tris, dtype=np.int64), double, face)
+        col = keys[:, :channels] if channels else None
+        vertex_uvs, vertex_pages = keys[:, channels:channels + 2], keys[:, -1].astype(int)
+    else:
+        q, col, tris, double, face = weld_quantised(q, col, np.asarray(tris, dtype=np.int64), double, face)
     tris, double, face = canonical_order(tris, double, face)
-    return assemble(q, col, meshlet_entries(q, tris, double, face, meshlet_triangles), position_scale,
-                    leaf_triangles)
+    if vertex_uvs is None:
+        entries = meshlet_entries(q, tris, double, face, meshlet_triangles)
+    else:
+        pages = vertex_pages[tris]
+        if np.any(pages != pages[:, :1]):
+            raise ValueError("a card triangle spans texture pages")
+        entries = []
+        for page in np.unique(pages):
+            keep = pages[:, 0] == page
+            part = meshlet_entries(q, tris[keep], double[keep], None if face is None else face[keep], meshlet_triangles)
+            for entry in part:
+                entry["page"] = int(page)
+            entries.extend(part)
+    return assemble(q, col, entries, position_scale, leaf_triangles, vertex_uvs=vertex_uvs)
 
 
 def meshlet_entries(q, tris, double, face, meshlet_triangles):
@@ -141,7 +160,7 @@ def meshlet_entries(q, tris, double, face, meshlet_triangles):
     return entries
 
 
-def assemble(q, col, entries, position_scale, leaf_triangles, groups=None):
+def assemble(q, col, entries, position_scale, leaf_triangles, groups=None, vertex_uvs=None):
     """The baked mesh of clusters cut by any means: a surface-area tree over
     the finest clusters' boxes, the coarse ones in runs under their own nodes,
     each cluster owning its vertices, checked against the format.
@@ -171,6 +190,9 @@ def assemble(q, col, entries, position_scale, leaf_triangles, groups=None):
     out = SimpleNamespace(position_scale=position_scale)
     ordered = [entries[i] for i in order]
     out.pos, out.rgb, out.tris, out.clusters, out.face_colors = lay_out(q, col, ordered)
+    if vertex_uvs is not None:
+        out.vertex_uvs = np.concatenate([vertex_uvs[local_vertices(e["tris"])[0]] for e in ordered])
+        out.page_of_cluster = [e["page"] for e in ordered]
     node_bounds(nodes, out.clusters)
     out.nodes = nodes
     out.entry_order = order

@@ -101,6 +101,13 @@ class Texture:
             level = 0.25 * (level[0::2, 0::2] + level[1::2, 0::2] + level[0::2, 1::2] + level[1::2, 1::2])
             self.levels.append(level)
 
+    @classmethod
+    def from_levels(cls, levels):
+        """A texture from an existing linear RGBA mip chain."""
+        texture = cls.__new__(cls)
+        texture.levels = list(levels)
+        return texture
+
     @property
     def size(self):
         return self.levels[0].shape[1], self.levels[0].shape[0]

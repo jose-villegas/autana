@@ -13,7 +13,6 @@ seed = 1
 
 [geometry]
 alpha_mask = { keep_alpha = 0.5 }
-thin = { material = "leaf", keep = 0.35 }
 simplify = { dense_edge = 45.0, props = [], props_share = 0.0, seal_seams = true, colour_deviation = 1.0 }
 # The fits train on probes over the whole atrium (the scene camera has no path).
 probes = {}
@@ -41,11 +40,6 @@ triangles = 19
 seam = "free"
 
 [[objects.meshes]]
-match = { material = "leaf" }
-triangles = 45
-seam = "free"
-
-[[objects.meshes]]
 match = { material = "Material__298" }
 triangles = 484
 seam = "free"
@@ -55,18 +49,17 @@ match = { material = "Material__47" }
 triangles = 45
 seam = "free"
 
-# The chains draw a triangle each, as little as the pooled share gave them,
-# so their triangles go to the rest's walls and arches.
+# Chains budget one triangle per copy to leave room for walls and arches.
 [[objects.meshes]]
 match = { material = "chain" }
 triangles = 1
 seam = "free"
 
-# Each variant's triangles budget the rest; its ceiling caps the rest plus
-# every stored copy prototype. Unpinned free repeats derive their detail
-# from the camera's closest view within that ceiling. The fitted variants'
-# triangles are their fits' budgets, so a probe fit stays closed
-# (Appearance-Fit.md).
+# Each variant's triangles budget the rest, apart from its props and cards;
+# its ceiling caps the rest plus every stored copy prototype. Unpinned free
+# repeats derive their detail from the camera's closest view within that
+# ceiling. The fitted variants' triangles are their fits' budgets, so a probe
+# fit stays closed (Appearance-Fit.md).
 [[variants]]
 name = "sponza"
 triangles = 12948

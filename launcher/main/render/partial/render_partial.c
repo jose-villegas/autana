@@ -32,9 +32,8 @@ static bool
 same_view(const render_view_t* a, const render_view_t* b) {
     return SAME_BYTES(position) && SAME_BYTES(screen_x) && SAME_BYTES(screen_y) && SAME_BYTES(forward)
            && SAME_BYTES(lens) && a->viewport.width == b->viewport.width && a->viewport.height == b->viewport.height
-           && a->viewport.quarter == b->viewport.quarter && a->present == b->present
-           && a->small_fill.ceiling == b->small_fill.ceiling && a->small_fill.gate == b->small_fill.gate
-           && a->small_fill.style == b->small_fill.style && a->skip_hidden == b->skip_hidden && SAME_BYTES(shift);
+           && a->viewport.quarter == b->viewport.quarter && a->present == b->present && a->skip_hidden == b->skip_hidden
+           && SAME_BYTES(shift);
 }
 
 #define SAME_FIELD(field, type, valid) &&a.field == b.field

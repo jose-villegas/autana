@@ -13,6 +13,8 @@ import re
 import tomllib
 from types import SimpleNamespace
 
+from r3d.cards import CARD_EPSILON, CARD_AREA_COST
+
 from anim import clip_name
 from build.c_header import read_define
 from asset.asset_pack import NAME_BYTES
@@ -66,6 +68,12 @@ def check_keys(table, required, where, optional=()):
     for name in table:
         if name not in required and name not in optional:
             raise SettingsError(f"{where}.{name} is not a known setting")
+
+
+def load_fields(table, fields, where):
+    """Read a closed table of required, typed fields as a namespace."""
+    check_keys(table, tuple(fields), where)
+    return SimpleNamespace(**{name: reader(table[name], f"{where}.{name}") for name, reader in fields.items()})
 
 
 def text(value, where):
@@ -277,7 +285,7 @@ def load_process(process, steps):
 
 def load_geometry(table, steps):
     """The optional steps that decide which source triangles remain."""
-    check_keys(table, (), "geometry", optional=("alpha_mask", "thin", "simplify", "meshlet_triangles", "lod", "morph",
+    check_keys(table, (), "geometry", optional=("alpha_mask", "cards", "thin", "simplify", "meshlet_triangles", "lod", "morph",
                                                 "probes"))
     steps.meshlet_triangles = count(table.get("meshlet_triangles", MESHLET_TRIANGLES), "geometry.meshlet_triangles")
     steps.lod = boolean(table.get("lod", LOD), "geometry.lod")
@@ -290,20 +298,30 @@ def load_geometry(table, steps):
         alpha_mask = table["alpha_mask"]
         check_keys(alpha_mask, ("keep_alpha",), "geometry.alpha_mask")
         steps.alpha_keep = number(alpha_mask["keep_alpha"], "geometry.alpha_mask.keep_alpha")
+    steps.cards = None
+    if "cards" in table or steps.alpha_keep is not None:
+        cards = table.get("cards", {})
+        where = "geometry.cards"
+        check_keys(cards, (), where, optional=("epsilon", "area_cost", "never", "always"))
+        if steps.alpha_keep is None:
+            raise SettingsError("geometry.cards needs geometry.alpha_mask")
+        epsilon = number(cards.get("epsilon", CARD_EPSILON), f"{where}.epsilon")
+        cost = number(cards.get("area_cost", CARD_AREA_COST), f"{where}.area_cost")
+        if epsilon <= 0:
+            raise SettingsError(f"{where}.epsilon must be positive")
+        if cost < 0:
+            raise SettingsError(f"{where}.area_cost must be nonnegative")
+        never = strings(cards.get("never", []), f"{where}.never")
+        always = strings(cards.get("always", []), f"{where}.always")
+        if set(never) & set(always):
+            raise SettingsError("geometry.cards names a material in both never and always")
+        steps.cards = SimpleNamespace(never=never, always=always, epsilon=epsilon, area_cost=cost)
     if "thin" in table:
-        thin = table["thin"]
-        check_keys(thin, ("material", "keep"), "geometry.thin")
-        steps.thin = SimpleNamespace(material=text(thin["material"], "geometry.thin.material"),
-                                     keep=number(thin["keep"], "geometry.thin.keep"))
+        steps.thin = load_fields(table["thin"], {"material": text, "keep": number}, "geometry.thin")
     if "simplify" in table:
-        simplify = table["simplify"]
-        check_keys(simplify, ("dense_edge", "props", "props_share", "seal_seams", "colour_deviation"), "geometry.simplify")
-        steps.simplify = SimpleNamespace(
-            dense_edge=number(simplify["dense_edge"], "geometry.simplify.dense_edge"),
-            props=set(strings(simplify["props"], "geometry.simplify.props")),
-            props_share=number(simplify["props_share"], "geometry.simplify.props_share"),
-            seal_seams=boolean(simplify["seal_seams"], "geometry.simplify.seal_seams"),
-            colour_deviation=number(simplify["colour_deviation"], "geometry.simplify.colour_deviation"))
+        steps.simplify = load_fields(table["simplify"], {
+            "dense_edge": number, "props": lambda value, where: set(strings(value, where)),
+            "props_share": number, "seal_seams": boolean, "colour_deviation": number}, "geometry.simplify")
         if steps.simplify.colour_deviation <= 0:
             raise SettingsError("geometry.simplify.colour_deviation must be above 0")
     steps.fit = SimpleNamespace(probes=load_probes(table["probes"]) if "probes" in table else None)
@@ -431,8 +449,8 @@ def load_import_settings(path):
     steps = SimpleNamespace(seed=0, seed_given=False, alpha_keep=None, thin=None, simplify=None, fit=None)
     load_process(values.get("process", {}), steps)
     load_geometry(values.get("geometry", {}), steps)
-    if steps.seed_given and not steps.thin:
-        raise SettingsError("process.seed needs geometry.thin")
+    if steps.seed_given and not steps.thin and steps.alpha_keep is None:
+        raise SettingsError("process.seed needs geometry.thin or geometry.alpha_mask")
     if "variants" in values:
         variants = values["variants"]
         if not isinstance(variants, list) or not variants:
@@ -464,7 +482,8 @@ def load_import_settings(path):
         alpha_keep=steps.alpha_keep, thin=steps.thin, simplify=steps.simplify, named=("variants" in values),
         meshes=meshes,
         meshlet_triangles=steps.meshlet_triangles, lod=steps.lod, morph=steps.morph, fit=steps.fit,
-        variants=variants, skin_lighting=lighting)
+        variants=variants, skin_lighting=lighting,
+        cards=steps.cards)
 
 
 def source_files(settings):
@@ -744,10 +763,7 @@ def load_bake(table):
                            colour_merge_step=count(table["colour_merge_step"], "scene.bake.colour_merge_step"),
                            indirect=None, ao=None)
     if "indirect" in table:
-        indirect = table["indirect"]
-        check_keys(indirect, ("bounces", "rays"), "scene.bake.indirect")
-        bake.indirect = SimpleNamespace(bounces=count(indirect["bounces"], "scene.bake.indirect.bounces"),
-                                        rays=count(indirect["rays"], "scene.bake.indirect.rays"))
+        bake.indirect = load_fields(table["indirect"], {"bounces": count, "rays": count}, "scene.bake.indirect")
     if "ao" in table:
         ao = table["ao"]
         check_keys(ao, ("distance", "rays"), "scene.bake.ao", optional=("strength", "indirect"))

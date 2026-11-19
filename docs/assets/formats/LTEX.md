@@ -9,9 +9,9 @@ The palette holds the pattern divided by its mean on screen, so a vertex
 colour keeps its meaning (the surface's mean lit colour) and the texture only
 modulates it. A mesh names its textures through its [LUVS](LUVS.md) entry.
 
-A MASK1 texture cuts a triangle instead of patterning it, as a foliage card's
-leaves: its texel 0 leaves the pixel as it was, and texel 1 draws palette
-colour 1.
+A card cluster names one MASK1 page on chart 0 and every triangle draws with
+it: the mask, rather than the plane test, cuts the card. Texel 0 preserves
+the pixel; texel 1 draws palette colour 1.
 
 ![Bistro's street on host: the source render, the vertex colours alone, and the cobblestones and beige brick textured, with each one's CIE76 error against the source](../../images/render/bistro-street-textured.png)
 

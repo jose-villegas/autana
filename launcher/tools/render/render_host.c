@@ -60,7 +60,7 @@ static render_settings_t settings = RENDER_SETTINGS_DEFAULT;
 static bool settings_set;
 
 /* Sets `field`, a RENDER_SETTINGS_FIELDS name such as lod.tolerance_px, from
- * `text`; false when no field has that name or the text is not its value. */
+ * `text`; false when no field has that name or the text is not a value in its interval. */
 static bool
 set_setting(const char* field, const char* text) {
     char* end = NULL;
@@ -69,8 +69,9 @@ set_setting(const char* field, const char* text) {
 #define PARSE_int(text)   (int)strtol((text), &end, 10)
 #define SET_FIELD(name, type, valid)                                                                                   \
     if (strcmp(field, #name) == 0) {                                                                                   \
-        settings.name = PARSE_##type(text);                                                                            \
-        return end != text && *end == '\0';                                                                            \
+        const type value = PARSE_##type(text);                                                                         \
+        settings.name = value;                                                                                         \
+        return end != text && *end == '\0' && (valid);                                                                 \
     }
     RENDER_SETTINGS_FIELDS(SET_FIELD)
 #undef SET_FIELD

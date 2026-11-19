@@ -93,6 +93,19 @@ class AlphaTestTests(unittest.TestCase):
         np.testing.assert_array_equal(light.AlphaTest(self.source, KEEP_ALPHA)(triangles + 2, locations), True)
         np.testing.assert_array_equal(alpha(np.zeros(0, dtype=int), np.zeros((0, 3))), [])
 
+    def test_opaque_colour_is_sampled_and_untextured_hits_are_white(self):
+        hits, points = self.card_hits()
+        colour = np.array([[[0.2, 0.4, 0.6, 1.0]]])
+        texture = Texture.from_levels([colour])
+        self.source.textures[0] = texture
+        alpha = light.AlphaTest(self.source, KEEP_ALPHA)
+        with mock.patch.object(texture, "sample", wraps=texture.sample) as sample:
+            actual = alpha.rgba(hits, points)
+        self.assertEqual(sample.call_count, 1)
+        np.testing.assert_allclose(actual, np.repeat(colour[0], len(hits), axis=0))
+        self.source.textures[0] = None
+        np.testing.assert_array_equal(alpha.rgba(hits, points), 1.)
+
     def test_a_material_is_alpha_tested_when_any_texel_is_at_or_under_the_opaque_line(self):
         def texture(alpha_min):
             level = np.ones((2, 2, 4))

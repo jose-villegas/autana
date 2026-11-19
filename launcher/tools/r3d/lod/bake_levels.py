@@ -327,15 +327,15 @@ def finish(q, col, level0, entries, coarse, rows, kept):
 
 
 def bake_lit_mesh(positions, rgb, tris, double, position_scale=None, leaf_triangles=None,
-                  meshlet_triangles=None, face_rgb=None, lod=True):
+                  meshlet_triangles=None, face_rgb=None, lod=True, vertex_uvs=None, vertex_pages=None):
     """Assemble a plain mesh or its CPU-built hierarchy from the same welded triangles."""
     from r3d import lit_mesh
     position_scale = lit_mesh.POSITION_SCALE if position_scale is None else position_scale
     leaf_triangles = lit_mesh.LEAF_TRIANGLES if leaf_triangles is None else leaf_triangles
     meshlet_triangles = lit_mesh.MESHLET_TRIANGLES if meshlet_triangles is None else meshlet_triangles
     plain = lit_mesh.bake_lit_mesh(positions, rgb, tris, double, position_scale, leaf_triangles,
-                                  meshlet_triangles, face_rgb)
-    if not lod:
+                                  meshlet_triangles, face_rgb, vertex_uvs, vertex_pages)
+    if not lod or vertex_uvs is not None:
         return plain
     q, col, tris, double, face = lit_mesh.finest_triangles(plain)
     counts = np.array([c[3] for c in plain.clusters])
