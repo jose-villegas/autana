@@ -34,6 +34,7 @@ typedef enum {
     STRESS_SURFACE_CONTACT_BLOBS,    /* static floor pads with contact discs */
     STRESS_SURFACE_SKINNED_SH_BLOBS, /* animated pack skins with sampled irradiance and contact discs */
     STRESS_SURFACE_MASKED,           /* banded light, each foliage card cut by a generated MASK1 texture */
+    STRESS_SURFACE_HINGED,           /* the butterfly pack's body and two wings per copy, hinges turned every frame */
 } stress_surface_t;
 
 typedef enum {
@@ -41,16 +42,22 @@ typedef enum {
     STRESS_LAYOUT_STACK, /* one behind another, each the arrangement's size: depth complexity = copies */
 } stress_layout_t;
 
-#define STRESS_SKINNED_COPIES      6
-#define STRESS_CONTACT_BLOB_COPIES 24
+/* Pack key for the hinged presets. */
+#define STRESS_BUTTERFLY_SCENE      "butterfly"
+/* Copies in the full hinged wall. */
+#define STRESS_BUTTERFLY_COPIES     32
+/* Copies in the sparse hinged wall. */
+#define STRESS_FEW_BUTTERFLY_COPIES 4
+#define STRESS_SKINNED_COPIES       6
+#define STRESS_CONTACT_BLOB_COPIES  24
 
-#define STRESS_SCENE               "stress"
-#define STRESS_CAMERA              "camera"
-#define STRESS_ORBIT_CLIP          "orbit"
-#define STRESS_CAMERA_CULLED       "culled"
-#define STRESS_CAMERA_NEAR         "near"
-#define STRESS_CAMERA_SWEEP        "sweep"
-#define STRESS_RING_SCENE          "stress_ring"
+#define STRESS_SCENE                "stress"
+#define STRESS_CAMERA               "camera"
+#define STRESS_ORBIT_CLIP           "orbit"
+#define STRESS_CAMERA_CULLED        "culled"
+#define STRESS_CAMERA_NEAR          "near"
+#define STRESS_CAMERA_SWEEP         "sweep"
+#define STRESS_RING_SCENE           "stress_ring"
 
 typedef struct {
     stress_shape_t shape;
@@ -94,6 +101,8 @@ typedef struct {
     X(FOLIAGE_FAR_OPAQUE, "foliage-far-opaque", TEXTURED)                                                              \
     X(SKINNED_SH_BLOBS, "skinned-sh-blobs", SKINNED_SH_BLOBS)                                                          \
     X(CONTACT_BLOBS, "contact-blobs", CONTACT_BLOBS)                                                                   \
+    X(BUTTERFLIES, "butterflies", HINGED)                                                                              \
+    X(FEW_BUTTERFLIES, "few-butterflies", HINGED)                                                                      \
     X(RECORD, "record", WAVE)                                                                                          \
     X(CULL_SETUP, "cull-setup", BANDED)                                                                                \
     X(BAKED_TREE, "baked-tree", STATIC)
@@ -112,6 +121,8 @@ stress_skinned(const stress_params_t* p) {
 /* Whether a surface's mesh is made again every frame: a constant
  * expression, so a static table can read it. */
 #define STRESS_SURFACE_IS_PER_FRAME(surface_) ((surface_) == STRESS_SURFACE_WAVE)
+#define STRESS_SURFACE_GENERATES_FRAMES(surface_)                                                                      \
+    (!STRESS_SURFACE_IS_PER_FRAME(surface_) && (surface_) != STRESS_SURFACE_HINGED)
 
 static inline bool
 stress_per_frame(const stress_params_t* p) {
@@ -121,7 +132,8 @@ stress_per_frame(const stress_params_t* p) {
 /* Whether a preset shows a mesh baked into the pack rather than one it generates. */
 static inline bool
 stress_baked(const stress_params_t* p) {
-    return p->surface == STRESS_SURFACE_STATIC || p->surface == STRESS_SURFACE_CARVED;
+    return p->surface == STRESS_SURFACE_STATIC || p->surface == STRESS_SURFACE_CARVED
+           || p->surface == STRESS_SURFACE_HINGED;
 }
 
 /* A copy's mesh: the shape's vertex and triangle counts. */
