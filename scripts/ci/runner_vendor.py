@@ -2,13 +2,26 @@
 mesh_cpu_vendor). GitHub offers no way to ask for a vendor, so a tracing job checks its runner first and a
 finished run whose only failures are that check is run again, up to VENDOR_TRIES attempts.
 
+A reference shard runs on SHARD_CANDIDATES runners at once, so a wrong-vendor runner rarely costs a re-run,
+which waits for the run's slowest shard. Each candidate marks its vendor with an artifact; the earliest
+marked on the lock's vendor traces, the rest finish green, and the shard fails only when no candidate of
+the attempt is the lock's vendor and none is still to mark.
+
     python scripts/ci/runner_vendor.py check          # first step of a tracing job; fails in seconds
+    python scripts/ci/runner_vendor.py mark SHARD CANDIDATE DIR   # a shard candidate's marker, into DIR
+    python scripts/ci/runner_vendor.py claim SHARD CANDIDATE      # whether this candidate traces the shard
+    python scripts/ci/runner_vendor.py candidates COUNT   # the candidate matrix for COUNT shards, as JSON
     python scripts/ci/runner_vendor.py rerun RUN_ID   # after a Bakes run: re-run its wrong-vendor jobs
 
-Reads GH_TOKEN and GITHUB_REPOSITORY for `rerun`. Standard library only.
+Reads GH_TOKEN and GITHUB_REPOSITORY for `rerun`, `mark` and `claim`, and GITHUB_RUN_ID, GITHUB_RUN_ATTEMPT and
+GITHUB_OUTPUT for `mark` and `claim`, which also reads VENDOR_MARKER, `mark`'s output. Standard library only.
 """
 import argparse
+import json
+import os
+import re
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -19,6 +32,17 @@ import github_api  # noqa: E402
 WRONG_VENDOR = "Wrong CPU vendor"
 # Attempts a run gets in all; each draws its failed jobs' runners again.
 VENDOR_TRIES = 5
+# Runners that start on one reference shard; the first of the lock's vendor traces it.
+SHARD_CANDIDATES = 3
+# Seconds a candidate waits after marking before it reads its siblings' markers, so two that start together
+# both see both.
+MARKER_SETTLE_SECONDS = 20
+# A traced shard's artifact (bakes.yml's upload), a candidate's vendor marker, and its job's name.
+SHARD_ARTIFACT = re.compile(r"reference-shard-(\d+)-\d+")
+MARKER = re.compile(r"reference-vendor-(\d+)-(\d+)-(\d+)-(ok|wrong)")
+CANDIDATE_JOB = re.compile(r"Trace reference shard (\d+) \(candidate (\d+)\)")
+# What `claim` decides for a candidate.
+TRACE, OTHER, LOST = "trace", "other", "lost"
 
 
 def check(lock_vendor, host_vendor):
@@ -29,6 +53,87 @@ def check(lock_vendor, host_vendor):
         print(f"::error title={WRONG_VENDOR}::{refusal}; {Path(__file__).name} re-runs it")
         return 1
     print(f"CPU vendor {host_vendor or 'not named'}; the lock's: {lock_vendor or 'not named'}")
+    return 0
+
+
+def marker_name(shard, candidate, attempt, ok):
+    return f"reference-vendor-{shard}-{candidate}-{attempt}-{'ok' if ok else 'wrong'}"
+
+
+def shard_done(artifacts, shard):
+    """Whether any attempt of the run uploaded `shard` traced; `artifacts` are the run's (name, created_at)."""
+    return any((m := SHARD_ARTIFACT.fullmatch(name)) and int(m[1]) == shard for name, _ in artifacts)
+
+
+def decide(artifacts, running, shard, candidate, attempt, ok):
+    """TRACE, OTHER or LOST for a candidate of `shard` whose runner is (`ok`) or is not the lock's vendor.
+
+    Of this attempt's candidates on the lock's vendor, the earliest marked traces. A wrong-vendor one is LOST
+    when none of the attempt is the lock's and none still to mark is `running` (the candidates whose jobs of
+    this attempt have not completed)."""
+    markers = [(int(m[2]), m[4] == "ok", created) for name, created in artifacts
+               if (m := MARKER.fullmatch(name)) and int(m[1]) == shard and int(m[3]) == attempt]
+    claims = sorted((created, index) for index, good, created in markers if good)
+    if ok:
+        return TRACE if not claims or claims[0][1] == candidate else OTHER
+    if claims:
+        return OTHER
+    marked = {index for index, _, _ in markers}
+    return OTHER if set(running) - marked - {candidate} else LOST
+
+
+def running_candidates(shard, request=github_api.call):
+    """The candidates of `shard` whose jobs of this attempt have not completed."""
+    path = f"/actions/runs/{os.environ['GITHUB_RUN_ID']}/attempts/{os.environ['GITHUB_RUN_ATTEMPT']}/jobs"
+    return {int(m[2]) for job in github_api.pages(path, "jobs", request=request)
+            if job.get("status") != "completed" and (m := CANDIDATE_JOB.fullmatch(job["name"])) and int(m[1]) == shard}
+
+
+def candidates(count):
+    """The candidate numbers for `count` shards: SHARD_CANDIDATES, or fewer when the matrix would pass its cap."""
+    from bake import bake
+    return list(range(max(1, min(SHARD_CANDIDATES, bake.MATRIX_JOBS // count))))
+
+
+def run_artifacts(request=github_api.call):
+    path = f"/actions/runs/{os.environ['GITHUB_RUN_ID']}/artifacts"
+    return [(item["name"], item["created_at"]) for item in github_api.pages(path, "artifacts", request=request)]
+
+
+def output(**values):
+    with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+        out.writelines(f"{key}={value}\n" for key, value in values.items())
+
+
+def mark(shard, candidate, folder, lock_vendor, host_vendor, request=github_api.call):
+    """Writes this candidate's marker into `folder` and names it in the output `marker`; none when an earlier
+    attempt traced the shard already."""
+    if shard_done(run_artifacts(request), shard):
+        print(f"shard {shard} was traced by an earlier attempt")
+        output(marker="")
+        return 0
+    from bake import bake
+    refusal = bake.wrong_vendor(lock_vendor, host_vendor)
+    name = marker_name(shard, candidate, int(os.environ["GITHUB_RUN_ATTEMPT"]), not refusal)
+    Path(folder).mkdir(parents=True, exist_ok=True)
+    (Path(folder) / name).write_text(f"{host_vendor}\n")
+    print(f"CPU vendor {host_vendor or 'not named'}; the lock's: {lock_vendor or 'not named'}")
+    output(marker=name)
+    return 0
+
+
+def claim(shard, candidate, marker, request=github_api.call, sleep=time.sleep):
+    """Sets the output `trace` for this candidate; fails with WRONG_VENDOR when no candidate can trace the shard."""
+    sleep(MARKER_SETTLE_SECONDS)
+    attempt, ok = int(os.environ["GITHUB_RUN_ATTEMPT"]), marker.endswith("-ok")
+    verdict = decide(run_artifacts(request), running_candidates(shard, request), shard, candidate, attempt, ok)
+    output(trace="true" if verdict == TRACE else "false")
+    if verdict == LOST:
+        print(f"::error title={WRONG_VENDOR}::every candidate for shard {shard} ran on another CPU vendor than "
+              f"the lock's; {Path(__file__).name} re-runs it")
+        return 1
+    print({TRACE: f"candidate {candidate} traces shard {shard}",
+           OTHER: f"another candidate traces shard {shard}"}[verdict])
     return 0
 
 
@@ -56,15 +161,29 @@ def rerun(run, request=github_api.call):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("command", choices=("check", "rerun"))
-    parser.add_argument("run", nargs="?", type=int)
+    parser.add_argument("command", choices=("check", "mark", "claim", "candidates", "rerun"))
+    parser.add_argument("args", nargs="*")
     args = parser.parse_args(argv)
-    if args.command == "check":
+    if args.command == "candidates":
+        if len(args.args) != 1:
+            parser.error("candidates takes COUNT")
+        print(json.dumps(candidates(int(args.args[0]))))
+        return 0
+    if args.command in ("check", "mark"):
         from bake import bake
-        return check(bake.read_lock_tables().get("mesh_cpu_vendor"), bake.cpu_vendor())
-    if args.run is None:
+        lock_vendor, host_vendor = bake.read_lock_tables().get("mesh_cpu_vendor"), bake.cpu_vendor()
+        if args.command == "check":
+            return check(lock_vendor, host_vendor)
+        if len(args.args) != 3:
+            parser.error("mark takes SHARD CANDIDATE DIR")
+        return mark(int(args.args[0]), int(args.args[1]), args.args[2], lock_vendor, host_vendor)
+    if args.command == "claim":
+        if len(args.args) != 2:
+            parser.error("claim takes SHARD CANDIDATE")
+        return claim(int(args.args[0]), int(args.args[1]), os.environ["VENDOR_MARKER"])
+    if len(args.args) != 1:
         parser.error("rerun takes RUN_ID")
-    return rerun(args.run)
+    return rerun(int(args.args[0]))
 
 
 if __name__ == "__main__":
