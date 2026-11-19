@@ -111,7 +111,7 @@ class ProbeTests(unittest.TestCase):
                 mock.patch.object(sh, 'classify', return_value=(points, np.full(len(points), 'kept'))), \
                 mock.patch.object(sh, 'PathLight', return_value=transport):
             from asset.engine_frame import to_engine
-            from r3d.build_pack import SH_PROBES
+            from r3d.sh_probe_asset import TYPE as SH_PROBES
             data = to_engine(SH_PROBES, sh.bake(job, scene))
         origin, step, _, scale, coefficients, _ = asset.decode(data)
         for x, y, z in cells:

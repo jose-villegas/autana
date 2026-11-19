@@ -10,6 +10,7 @@ from types import SimpleNamespace
 
 from r3d import mesh_bundle, mesh_asset, log
 from r3d.reference_set import fit_sets
+from r3d.fit.copies import drawn_copies, hidden_materials
 
 # A carved start's rest is fitted with the reference G-buffer terms (fit/gbuffer.py) at these weights: the front
 # term pushes it behind the copies, the depth term holds it to the source's surface. Front 1e4 cut street_fitted's
@@ -54,7 +55,8 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
     out = work / "fitted"
     steps = min(recipe.steps, 8) if smoke else recipe.steps
     shaping = job.settings.fit
-    command = ["--scene", str(scene_path), "--start", str(start)]
+    command = ["--scene", str(scene_path), "--start", str(start),
+               "--hidden-materials", *sorted(hidden_materials(bundle_entries, copies))]
     sets = fit_sets(scene.camera.component.path is not None, shaping.probes is not None)
     for poses, reference in sets.training:
         command += ["--poses", str(inputs / poses), "--reference", str(inputs / reference)]
@@ -69,7 +71,7 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
                 "--laplacian", str(recipe.laplacian), "--normal-weight", str(recipe.normal_weight),
                 "--object", job.object.name, "--surface-weight", str(recipe.surface_weight),
                 "--surface-margin", str(recipe.surface_margin)]
-    if copies:
+    if drawn_copies(bundle_entries, copies):
         # The copy gate checks the path's held-out views, or the probes' when the camera has no path.
         command += ["--copies", str(bundle), "--copy-poses", str(inputs / sets.held_out[0][0]),
                     "--front-weight", str(FRONT_WEIGHT), "--depth-weight", str(DEPTH_WEIGHT)]

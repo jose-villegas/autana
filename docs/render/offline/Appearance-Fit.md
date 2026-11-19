@@ -57,6 +57,19 @@ flat meshes, so visibility is judged on the geometry that is drawn.
 A warm start splits the worst fitted triangles along their longest edge, grows
 the mesh to a larger budget, and fits it again.
 
+## Alpha and cards
+
+References use [per-hit alpha testing](Bake-Method.md#fidelity-against-a-reference).
+The depth and copy G-buffers trace the same source, preserving source
+triangle and carved flags.
+
+Materials accepted by the card baker are hidden from camera references and
+the fit, while remaining in the light bake. MASK1 card copies are excluded
+from the fit's frozen-copy draw and copy-coverage gate.
+
+The fitted candidate carries baked colours, with no texture alpha to test.
+The importer's `alpha_mask` triangle drop applies to its drawn geometry.
+
 ## Poses
 
 `size = [width, height]` is two positive integers. Coverage widens this view to

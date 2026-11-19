@@ -29,7 +29,6 @@ void camera_deactivate(void);
 
 /* False for a non-camera entity or an invalid value; refusals change nothing. */
 bool camera_set_present(entity_t camera, camera_present_t present);
-bool camera_set_small_fill(entity_t camera, small_fill_t fill);
 /* render_view_t.skip_hidden for the camera's views. */
 bool camera_set_skip_hidden(entity_t camera, bool skip);
 /* The lens shift (render_view_t.shift): an off-axis view, as a window onto a

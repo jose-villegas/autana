@@ -430,7 +430,7 @@ class RepeatTests(unittest.TestCase):
             given = kwargs.get("variant", args[at] if len(args) > at else None)
             return given or ray_query.VARIANT
 
-        job = SimpleNamespace(settings=SimpleNamespace(alpha_keep=None))
+        job = SimpleNamespace(settings=SimpleNamespace(alpha_keep=None, cards=None))
         mocks = render_one_set(job, load_source={"return_value": corridor()}, RayQuery={}, path_light_for={})
         self.assertEqual(variant_of(mocks["RayQuery"].call_args, 2), ray_query.VARIANT)
         self.assertEqual(variant_of(mocks["path_light_for"].call_args, 3), ray_query.VARIANT)

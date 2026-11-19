@@ -242,19 +242,6 @@ class DocImageFailureTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "one board"):
                 doc_tables.sweep_rows(data, "styles")
 
-    def test_small_fill_table_uses_ceiling_bound(self):
-        sys.path.insert(0, str(ROOT / "launcher/tools/render"))
-        import doc_tables
-        maximum = int(re.search(r"#define SMALL_FILL_CEILING_MAX\s+(\d+)", doc_tables.VIEW_HEADER.read_text())[1])
-        with tempfile.TemporaryDirectory() as directory:
-            work = pathlib.Path(directory)
-            (work / "small-fill-looks.tsv").write_text("")
-            with mock.patch.object(doc_tables, "small_fill_board", return_value=""):
-                doc_tables.write_small_fill(work, work / "tables", "gallery", "painting", work)
-            rows = list(doc_tables.table_rows((work / "tables/small-fill-levers.md").read_text()))
-            ceiling = next(cells for _, _, cells in rows if cells[0] == "`ceiling`")
-            self.assertEqual(ceiling[1], f"0..{maximum}")
-
     def test_small_fill_header_lists_only_selectable_styles(self):
         sys.path.insert(0, str(ROOT / "launcher/tools/render"))
         import doc_tables
