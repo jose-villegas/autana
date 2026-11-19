@@ -31,6 +31,10 @@ void r3d_span_small_fill_resolve(r3d_span_small_fill_t* resolved, small_fill_t f
 
 typedef struct r3d_span_writer r3d_span_writer_t;
 
+/* A fill's face colour by value, in the target's format, or this for the
+ * vertex colours: never a pointer, so no caller's frame holds it in memory. */
+#define R3D_SPAN_FACE_NONE  UINT32_MAX
+
 /* Bits of a level setting in r3d_span_target_t: levels 0..15. */
 #define R3D_SPAN_LEVEL_BITS 4
 
@@ -141,11 +145,11 @@ void r3d_span_triangle_solid(const r3d_span_target_t* target, const r3d_span_ver
 void r3d_span_triangle_mean(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                             const r3d_span_vertex_t* c);
 
-/* Either fill, `face` NULL or its colour, writing no depth nearer than
+/* Either fill, `face` R3D_SPAN_FACE_NONE or its colour, writing no depth nearer than
  * r3d_span_depth_limit() of the nearest vertex: what a skip of whole clusters
  * behind drawn depth relies on. */
 void r3d_span_capped_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
-                              const r3d_span_vertex_t* c, const uint16_t* face);
+                              const r3d_span_vertex_t* c, uint32_t face);
 
 /* Right after either fill of the same triangle into the same target: its
  * writers over the pixels it covers. `solid` must say whether that fill used a
@@ -161,7 +165,7 @@ void r3d_span_triangle_write(const r3d_span_target_t* target, const r3d_span_ver
  * Capped as r3d_span_capped_triangle() when target->skip_hidden. The rarer
  * path, for a level fading in over another; the fast fills test no mask. */
 void r3d_span_screen_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
-                              const r3d_span_vertex_t* c, const uint16_t* face, uint16_t mask, bool write);
+                              const r3d_span_vertex_t* c, uint32_t face, uint16_t mask, bool write);
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 /* Whether the fill's quantized colour planes have no steps. */

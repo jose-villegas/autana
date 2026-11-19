@@ -539,10 +539,6 @@ small_visible(const r3d_span_edge_t edges[R3D_SPAN_CORNERS], const r3d_span_row_
            && depth > row->depth[x];
 }
 
-/* A fill's face colour by value, or FACE_NONE for the vertex colours: never
- * a pointer, so no caller's frame has to hold it in memory. */
-#define FACE_NONE UINT32_MAX
-
 /* Pineda 1988 [32]: test pixel centres against three edge functions.
  * Keep small-triangle temporaries off the row-walk call chain. */
 static __attribute__((noinline)) void
@@ -550,7 +546,7 @@ fill_small(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3
            const r3d_span_vertex_t* c, bool positive, recti_t box, uint32_t face) {
     fill_t f;
     set_flat(&f, a, b, c);
-    if (face != FACE_NONE) {
+    if (face != R3D_SPAN_FACE_NONE) {
         f.flat_color = (uint16_t)face;
     }
     if (r3d_span_stop_after != 0) {
@@ -679,7 +675,7 @@ fill_small_styled(const r3d_span_target_t* target, const r3d_span_vertex_t* a, c
     if (style == SMALL_FILL_GRAIN) {
         fill_small_grain(target, a, b, c, positive, box);
     } else if (fill_small_dither(target, a, b, c, positive, box)) {
-        fill_small(target, a, b, c, positive, box, FACE_NONE);
+        fill_small(target, a, b, c, positive, box, R3D_SPAN_FACE_NONE);
     }
 }
 
@@ -777,7 +773,7 @@ set_up_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[R3
     } else {
         return false;
     }
-    if (face != FACE_NONE) {
+    if (face != R3D_SPAN_FACE_NONE) {
         f->flat_color = (uint16_t)face;
     }
     const int32_t bound =
@@ -818,7 +814,7 @@ triangle_of(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r
         return;
     }
 
-    const int style = select_small(a, b, c, e.centres, face != FACE_NONE, target->small_fill);
+    const int style = select_small(a, b, c, e.centres, face != R3D_SPAN_FACE_NONE, target->small_fill);
     if (style != SMALL_FILL_WALK) {
         FRAME_LAP("r3d.draw.fill");
         if (style == SMALL_FILL_GRAIN || style == SMALL_FILL_DITHER) {
@@ -829,9 +825,9 @@ triangle_of(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r
         return;
     }
 
-    fill_t f = {e.flat              ? FILL_FLAT
-                : face != FACE_NONE ? FILL_FACE
-                                    : FILL_GOURAUD,
+    fill_t f = {e.flat                       ? FILL_FLAT
+                : face != R3D_SPAN_FACE_NONE ? FILL_FACE
+                                             : FILL_GOURAUD,
                 0, 0, NULL, target->rows.attachment[GFX_ATTACHMENT_COLOR].width - 1};
     /* Attributes anchor at the triangle's first row, or at screen row 0 for
      * one starting above the screen: never at a window's own edge. */
@@ -941,7 +937,7 @@ r3d_span_triangle_write(const r3d_span_target_t* target, const r3d_span_vertex_t
 void
 r3d_span_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                   const r3d_span_vertex_t* c) {
-    r3d_span_triangle_impl(target, a, b, c, FACE_NONE);
+    r3d_span_triangle_impl(target, a, b, c, R3D_SPAN_FACE_NONE);
 }
 
 void
@@ -952,8 +948,8 @@ r3d_span_triangle_solid(const r3d_span_target_t* target, const r3d_span_vertex_t
 
 void
 r3d_span_capped_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
-                         const r3d_span_vertex_t* c, const uint16_t* face) {
-    r3d_span_capped_triangle_impl(target, a, b, c, face == NULL ? FACE_NONE : *face);
+                         const r3d_span_vertex_t* c, uint32_t face) {
+    r3d_span_capped_triangle_impl(target, a, b, c, face);
 }
 
 void

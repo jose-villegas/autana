@@ -56,7 +56,7 @@ counted_triangle_solid(const r3d_span_target_t* target, const r3d_span_vertex_t*
 
 static void
 counted_capped_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
-                        const r3d_span_vertex_t* c, const uint16_t* face) {
+                        const r3d_span_vertex_t* c, uint32_t face) {
     fills.capped++;
     constant_r3d_span_capped_triangle(target, a, b, c, face);
 }
@@ -171,7 +171,7 @@ test_styles_match_pipeline_colours(void) {
         expected.small_fill = actual.small_fill = &resolved;
         memset(pixels, 0, TEST_PIXELS * 4 * sizeof(*pixels));
         r3d_span_triangle(&expected, reference, reference + 1, reference + 2);
-        draw_in_front(&mesh, vertices, triangle, NULL, true, &actual, 0U, 0, 0);
+        draw_in_front(&mesh, vertices, triangle, R3D_SPAN_FACE_NONE, true, &actual, 0U, 0, 0);
         TEST_ASSERT_EQUAL_MEMORY(pixels, pixels + TEST_PIXELS * 2, TEST_PIXELS * 2 * sizeof(*pixels));
         int coloured = 0;
         for (int i = 0; i < TEST_PIXELS; i++) {
