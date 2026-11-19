@@ -558,7 +558,7 @@ def load_environment_light(kind, table, where):
     """Sky and ambient are scene settings, not objects."""
     fields = LIGHT_FIELDS[kind]
     check_keys(table, tuple(fields), where)
-    light = {"type": kind}
+    light = {"type": kind, "mode": LIGHT_MODE_BAKED}
     for name, reader in fields.items():
         light[name] = READERS[reader](table[name], f"{where}.{name}")
     return light_values(light, where)

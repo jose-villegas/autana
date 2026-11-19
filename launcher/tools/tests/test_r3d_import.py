@@ -14,7 +14,7 @@ from unittest import mock
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-from r3d.import_settings import LIGHT_FIELDS, SettingsError, albedo_jobs, load_import_settings, load_scene
+from r3d.import_settings import LIGHT_MODE_BAKED, LIGHT_FIELDS, SettingsError, albedo_jobs, load_import_settings, load_scene
 from r3d import build_pack
 from anim_probe import write_camera_clip  # noqa: E402
 
@@ -791,8 +791,8 @@ class LightListTests(unittest.TestCase):
 
     def test_the_order_of_every_light_type_does_not_change_the_radiance(self):
         lights = [sun([0, 1, 0], [1, 0, 0], 2), sun([1, 0.1, 0], [0, 1, 0], 1),
-                  {"type": "sky", "color": [0, 0, 1], "intensity": 1, "rays": 1},
-                  {"type": "ambient", "color": [1, 1, 1], "intensity": 0.1}]
+                  {"type": "sky", "mode": LIGHT_MODE_BAKED, "color": [0, 0, 1], "intensity": 1, "rays": 1},
+                  {"type": "ambient", "mode": LIGHT_MODE_BAKED, "color": [1, 1, 1], "intensity": 0.1}]
         for normal in ([0.0, -1.0, 0.0], [-1.0, 0.0, 0.0], [0.0, 1.0, 0.0]):
             for double_sided in (False, True):
                 forward = radiance(lights, normal, double_sided)

@@ -6,11 +6,10 @@ from types import SimpleNamespace
 
 from r3d.import_settings import SettingsError, check_keys, count, number
 from r3d.scene_name import scene_id
+from r3d.sh_probe_asset import SUFFIX
 
 DIRECTIONS = 512
 SPP = 4
-SUFFIX = '.shpr'
-TYPE = b'SHPR'
 REQUEST_SUFFIX = '.probes.toml'
 
 

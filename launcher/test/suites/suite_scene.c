@@ -702,8 +702,10 @@ make_rig_entries(test_pack_t* pack, const skin_fixture_options_t* options) {
 /* The pack of every quad, scene and the clip, with the CRC set. */
 static uint32_t
 make_pack(uint8_t* bytes, const skin_fixture_options_t* options, bool probes) {
-    test_pack_t pack =
-        test_pack_begin(bytes, PACK_MAX, QUAD_COUNT + SCENE_COUNT + 1 + CLIP_COUNT + RIG_ENTRIES + probes);
+    static const char* const probe_names[] = {"test_pair" SH_PROBES_NAME_SUFFIX, "test_skin" SH_PROBES_NAME_SUFFIX};
+    const int probe_count = sizeof probe_names / sizeof *probe_names;
+    test_pack_t pack = test_pack_begin(
+        bytes, PACK_MAX, QUAD_COUNT + SCENE_COUNT + 1 + CLIP_COUNT + RIG_ENTRIES + (probes ? probe_count : 0));
     for (int i = 0; i < QUAD_COUNT; i++) {
         uint8_t* entry = test_pack_add(&pack, QUADS[i].name, R3D_LIT_MESH_ASSET, QUAD_BYTES);
         make_quad_entry(entry, QUADS[i].red, QUADS[i].green, QUADS[i].blue, 1);
@@ -722,9 +724,9 @@ make_pack(uint8_t* bytes, const skin_fixture_options_t* options, bool probes) {
                         CLIPS[i].track_count);
     }
     make_rig_entries(&pack, options);
-    if (probes) {
+    for (int grid = 0; probes && grid < probe_count; grid++) {
         uint8_t* entry =
-            test_pack_add(&pack, "arbitrary-grid", SH_PROBES_ASSET, SH_PROBES_HEADER_SIZE + SH_PROBES_RECORD_SIZE);
+            test_pack_add(&pack, probe_names[grid], SH_PROBES_ASSET, SH_PROBES_HEADER_SIZE + SH_PROBES_RECORD_SIZE);
         test_pack_put16(entry + SH_PROBES_VERSION_OFFSET, SH_PROBES_VERSION);
         const float spacing[] = {1, 1, 1};
         test_pack_put_floats(entry + SH_PROBES_SPACING_OFFSET, spacing, MAT3F_AXES);
@@ -732,7 +734,7 @@ make_pack(uint8_t* bytes, const skin_fixture_options_t* options, bool probes) {
         for (int axis = 0; axis < MAT3F_AXES; axis++) {
             test_pack_put16(entry + SH_PROBES_DIMS_OFFSET + axis * sizeof(uint16_t), 1);
         }
-        test_pack_put16(entry + SH_PROBES_HEADER_SIZE, 1);
+        test_pack_put16(entry + SH_PROBES_HEADER_SIZE, grid + 1);
     }
     return test_pack_finish(&pack);
 }
@@ -5111,10 +5113,25 @@ test_scene_adopts_its_pack_probe_grid(void) {
     root = load("test_skin");
     const sh_probes_t* probes = scene_probes(root);
     TEST_ASSERT_NOT_NULL(probes);
-    TEST_ASSERT_EQUAL_FLOAT(1, sh_probes_sample(probes, vec3f_zero()).c[0].x);
+    TEST_ASSERT_EQUAL_FLOAT(2, sh_probes_sample(probes, vec3f_zero()).c[0].x);
+    entity_t other = load("test_pair");
+    TEST_ASSERT_NOT_NULL(scene_probes(other));
+    TEST_ASSERT_EQUAL_FLOAT(1, sh_probes_sample(scene_probes(other), vec3f_zero()).c[0].x);
+    entity_t missing = load("test_solo");
+    TEST_ASSERT_NULL(scene_probes(missing));
     scene_release(root);
     TEST_ASSERT_NULL(scene_probes(root));
     TEST_ASSERT_NULL(scene_probes(ENTITY_NONE));
+    scene_unload_all();
+    char longest[ASSET_NAME_MAX];
+    memset(longest, 's', sizeof longest - 1);
+    longest[sizeof longest - 1] = '\0';
+    const scene_spec_t spec = {.id = longest, .entity_count = 1, .entities = {{"root", IDENTITY}}};
+    test_pack_t pack = test_pack_begin(fx.bytes, PACK_MAX, 1);
+    make_scene_entry(test_pack_add(&pack, longest, SCENE_ASSET, scene_entry_size(&spec)), &spec);
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_open(&fx.pack, fx.bytes, test_pack_finish(&pack)));
+    root = load(longest);
+    TEST_ASSERT_NULL(scene_probes(root));
 }
 
 static void

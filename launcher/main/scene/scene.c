@@ -382,23 +382,21 @@ open_skins(scene_t* scene) {
 
 static scene_failure_t
 open_probes(scene_t* scene, const asset_pack_t* pack) {
-    for (uint32_t i = 0; i < pack->count; i++) {
-        asset_entry_t entry;
-        asset_status_t status = asset_pack_entry(pack, i, &entry);
-        if (status != ASSET_OK) {
-            return scene_failure_make(SCENE_ERR_ASSET, status, scene->root->id);
-        }
-        if (entry.type != SH_PROBES_ASSET) {
-            continue;
-        }
-        status = sh_probes_read(entry.view, &scene->owned_probes);
-        if (status != ASSET_OK) {
-            return scene_failure_make(SCENE_ERR_ASSET, status, entry.name);
-        }
-        scene_set_probes(scene->root->root, &scene->owned_probes);
-        return scene_failure_make(scene->probes != NULL ? SCENE_OK : SCENE_ERR_MEMORY, ASSET_OK, entry.name);
+    if (strlen(scene->root->id) + sizeof SH_PROBES_NAME_SUFFIX > ASSET_NAME_MAX) {
+        return scene_failure_make(SCENE_OK, ASSET_OK, scene->root->id);
     }
-    return scene_failure_make(SCENE_OK, ASSET_OK, scene->root->id);
+    asset_view_t entry;
+    asset_status_t status =
+        r3d_lit_mesh_open_sibling(pack, scene->root->id, SH_PROBES_NAME_SUFFIX, SH_PROBES_ASSET, false, &entry);
+    if (status != ASSET_OK || entry.data == NULL) {
+        return scene_failure_make(status == ASSET_OK ? SCENE_OK : SCENE_ERR_ASSET, status, scene->root->id);
+    }
+    status = sh_probes_read(entry, &scene->owned_probes);
+    if (status != ASSET_OK) {
+        return scene_failure_make(SCENE_ERR_ASSET, status, scene->root->id);
+    }
+    scene_set_probes(scene->root->root, &scene->owned_probes);
+    return scene_failure_make(scene->probes != NULL ? SCENE_OK : SCENE_ERR_MEMORY, ASSET_OK, scene->root->id);
 }
 
 static scene_failure_t

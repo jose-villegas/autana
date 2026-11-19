@@ -2,9 +2,11 @@
 #pragma once
 #include <stdint.h>
 #include "math/sh/sh1.h"
-#define SH_PROBES_COMPONENTS (SH1_COEFFICIENTS * SH1_CHANNELS)
+#define SH_PROBES_COMPONENTS  (SH1_COEFFICIENTS * SH1_CHANNELS)
 
-#define SH_PROBES_VERSION    1U
+#define SH_PROBES_NAME_SUFFIX ".shpr"
+
+#define SH_PROBES_VERSION     1U
 
 enum {
     SH_PROBES_VERSION_OFFSET = 0,

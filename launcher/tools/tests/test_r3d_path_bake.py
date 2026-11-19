@@ -36,7 +36,7 @@ def have_llvm():
 
 needs_llvm = unittest.skipIf(not have_llvm(), "the LLVM variant needs libLLVM")
 
-SKY = {"type": "sky", "color": [1.0, 1.0, 1.0], "intensity": 1.5, "rays": 16}
+SKY = {"type": "sky", "mode": LIGHT_MODE_BAKED, "color": [1.0, 1.0, 1.0], "intensity": 1.5, "rays": 16}
 
 
 def floor_only():
@@ -117,7 +117,7 @@ class BounceTests(unittest.TestCase):
         self.assertEqual(bounce_at_the_wall_foot(bounces=2).tobytes(), bounce_at_the_wall_foot(bounces=2).tobytes())
 
     def test_ambient_is_left_to_the_bake(self):
-        ambient = {"type": "ambient", "color": [1.0, 1.0, 1.0], "intensity": 1.0}
+        ambient = {"type": "ambient", "mode": LIGHT_MODE_BAKED, "color": [1.0, 1.0, 1.0], "intensity": 1.0}
         np.testing.assert_array_equal(bounce_at_the_wall_foot(lights=[ambient]), [0.0, 0.0, 0.0])
 
     def test_points_split_over_many_chunks_each_get_their_own_answer(self):

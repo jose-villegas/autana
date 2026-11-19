@@ -306,7 +306,7 @@ def open_side_occlusion(points, normals, double_sided, intersector, ao, ray_offs
 
 def baked_lights(lights):
     """The surface and probe bakes share the baked rig; sky and ambient are bake settings."""
-    return [light for light in lights if light["type"] in ("sky", "ambient") or light["mode"] == LIGHT_MODE_BAKED]
+    return [light for light in lights if light["mode"] == LIGHT_MODE_BAKED]
 
 
 def face_towards_light(normals, double_sided, lights):

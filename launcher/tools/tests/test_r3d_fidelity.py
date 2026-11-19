@@ -65,8 +65,8 @@ class SunTests(unittest.TestCase):
 class SkyRaysKnobTests(unittest.TestCase):
     def test_sky_rays_replaces_the_sky_lights_ray_count_only_and_leaves_the_scene_alone(self):
         from types import SimpleNamespace
-        lights = [sun_only()[0], {"type": "sky", "color": [1.0, 1.0, 1.0], "intensity": 1.0, "rays": 48},
-                  {"type": "ambient", "color": [1.0, 1.0, 1.0], "intensity": 0.1}]
+        lights = [sun_only()[0], {"type": "sky", "mode": LIGHT_MODE_BAKED, "color": [1.0, 1.0, 1.0], "intensity": 1.0, "rays": 48},
+                  {"type": "ambient", "mode": LIGHT_MODE_BAKED, "color": [1.0, 1.0, 1.0], "intensity": 0.1}]
         scene = SimpleNamespace(lights=lights, tonemap_white=0.35, indirect=SimpleNamespace(intensity=1.0))
         job = SimpleNamespace(settings=SimpleNamespace(double_sided=set()), bake=SimpleNamespace(ray_offset=0.5, ao=None))
         geometry = SimpleNamespace(src=SimpleNamespace(names=["m"]), positions=None, tris=None, tri_mat=None, intersector=None,
