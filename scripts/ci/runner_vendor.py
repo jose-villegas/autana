@@ -138,9 +138,9 @@ def output(**values):
 
 def mark(shard, candidate, folder, lock_vendor, host_vendor, request=github_api.call):
     """Writes this candidate's marker into `folder` and names it in the output `marker`, and its traced shard's
-    artifact in `shard_artifact`; no marker when an earlier attempt traced the shard already."""
+    artifact in `shard_artifact`; no marker when the shard is traced already, by this attempt or an earlier one."""
     if shard_done(run_artifacts(request), shard):
-        print(f"shard {shard} was traced by an earlier attempt")
+        print(f"shard {shard} is traced already")
         output(marker="")
         return 0
     from bake import bake
