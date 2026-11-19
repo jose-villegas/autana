@@ -134,6 +134,28 @@ that the path and the faces kept before it do not<sup>[[120]](../../Citations.md
 | `spacing` | World units between probes. | `PROBE_SPACING_NEAR_PLANES` near planes of the scene camera, widened to at most `PROBE_COUNT_MAX` probes. |
 | `face` | A kept face's square size in pixels. | `PROBE_FACE`. |
 
+Every probe ends in one of four fates:
+
+| Fate | Why |
+|---|---|
+| kept | At least one of its faces shows triangles nothing kept before it shows. |
+| dropped by the greedy pick | Its faces show nothing new. |
+| dropped: inside geometry | More than `BACKFACE` of its rays still hit back faces after the move. |
+| dropped: a surface too near | A front face is still nearer than `MIN_FRONT_NEARS` near planes. |
+
+The views below show Sponza's atrium at the default spacing, from above each top
+corner of the camera's region. The source is cut through the region's centre and
+drawn see-through, as the [cull view](../frame/View-Modes.md) draws a culled
+cluster. The camera path and the probes behind the cut sit on top, each probe in
+its fate's colour; a kept probe's arrows are its kept faces.
+
+| | |
+|---|---|
+| ![Probes from above the first corner](../../images/render/sponza-atrium_fitted_full-probes-1.png) | ![Probes from above the second corner](../../images/render/sponza-atrium_fitted_full-probes-2.png) |
+| ![Probes from above the third corner](../../images/render/sponza-atrium_fitted_full-probes-3.png) | ![Probes from above the fourth corner](../../images/render/sponza-atrium_fitted_full-probes-4.png) |
+
+![Probe fates and their counts](../../images/render/sponza-atrium_fitted_full-probes-legend.png)
+
 A camera without a path fits on probes alone. Probes reach surface seen from
 somewhere off the path, never surface seen from nowhere. The fit's prune keeps
 what the path shows before what only a probe shows; see
