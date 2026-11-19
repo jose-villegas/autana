@@ -22,6 +22,16 @@ run = 44423062359
 host = "Linux x86_64"
 
 [[bake]]
+output = "bistro.street_fitted.fit.bundle"
+source = "launcher/demo/bistro/bistro.scene.toml"
+key = "5d4aaefcc992e79fab88ec9b834748d9a9fb582db4d970d65de96bf06936f5c6"
+sha256 = "11173a66ebc7407c5da2d45e670b176a921ec4ceab01cc1edf11e296f3f912e9"
+size = 214242
+run = 44496463151
+host = "Linux x86_64"
+gpu = "NVIDIA GeForce RTX 2060"
+
+[[bake]]
 output = "bistro.street_fitted.reference.tar.xz"
 source = "launcher/demo/bistro/bistro.scene.toml"
 key = "bd3de22936fd7aa4b8e9214f800738b4539df968e4dab3dae948d0be2d564746"
@@ -40,6 +50,16 @@ run = 44423062359
 host = "Linux x86_64"
 
 [[bake]]
+output = "bistro.street_fitted_full.fit.bundle"
+source = "launcher/demo/bistro/bistro.scene.toml"
+key = "11e8a30e8e220a102482a83b42a95d66a14a59b330c07761818852db405905ff"
+sha256 = "dee5bc4e1c729b8b2660a6ab4185f80c7444e9c4fbfc1922f7d7c35dc578ab1a"
+size = 421175
+run = 44496463151
+host = "Linux x86_64"
+gpu = "NVIDIA GeForce RTX 2060"
+
+[[bake]]
 output = "bistro.street_fitted_full.start.bundle"
 source = "launcher/demo/bistro/bistro.scene.toml"
 key = "cfe04962ee0cb3486cc91ca8ccb97cda703ada9363a10bf5e65773d5da189c6b"
@@ -56,6 +76,16 @@ sha256 = "bf8ca29623fc0952155e4c6b068dcdf7ca14c0a277180f3930544bbb44d94f89"
 size = 617488
 run = 44423062359
 host = "Linux x86_64"
+
+[[bake]]
+output = "bistro.street_flat_fitted.fit.bundle"
+source = "launcher/demo/bistro/bistro.scene.toml"
+key = "715c17a2f5ca7aca610b3f4e1f19059de1f8a89955712f4512cc9f3c57925992"
+sha256 = "772613cd959481c7e60bbdd842490067df48c85d50b145e5f1c0f1be6a26005a"
+size = 328455
+run = 44496463151
+host = "Linux x86_64"
+gpu = "NVIDIA GeForce RTX 2060"
 
 [[bake]]
 output = "bistro.street_flat_fitted.start.bundle"
@@ -130,6 +160,16 @@ run = 44423062359
 host = "Linux x86_64"
 
 [[bake]]
+output = "sponza.atrium_fitted.fit.bundle"
+source = "launcher/demo/sponza/sponza.scene.toml"
+key = "c196442021b83a99d451b541a01789c6950fa25eb7e93f34cd19f878116e05c8"
+sha256 = "aebb5160ed63a5eda6484573c5222b43a8fb18bf2304b69c7c30d047d130adee"
+size = 144624
+run = 44496463151
+host = "Linux x86_64"
+gpu = "NVIDIA GeForce RTX 2060"
+
+[[bake]]
 output = "sponza.atrium_fitted.reference.tar.xz"
 source = "launcher/demo/sponza/sponza.scene.toml"
 key = "42c9be87dbbf972489f3a2721b3c52410c9e0aabb7e091b0de3af8df44b95601"
@@ -148,6 +188,16 @@ run = 44423062359
 host = "Linux x86_64"
 
 [[bake]]
+output = "sponza.atrium_fitted_full.fit.bundle"
+source = "launcher/demo/sponza/sponza.scene.toml"
+key = "1ae5833961f8a9e3168c0f7f0de4f14fda70658402dc0a70e4780308ed19b8c4"
+sha256 = "2e61f656493657a7def00958a6ebcfdbcb5cde72c193cc88e91e035713590bcb"
+size = 275484
+run = 44496463151
+host = "Linux x86_64"
+gpu = "NVIDIA GeForce RTX 2060"
+
+[[bake]]
 output = "sponza.atrium_fitted_full.start.bundle"
 source = "launcher/demo/sponza/sponza.scene.toml"
 key = "6131ac0df95b55e91fb14d2c3d153e8d7887e51a2584562ff775336dabe85eab"
@@ -164,6 +214,16 @@ sha256 = "b886cc78562e7b4cf9a34a2fb40828d6a717b8781695ca193d34cb4669c5943e"
 size = 442244
 run = 44423062359
 host = "Linux x86_64"
+
+[[bake]]
+output = "sponza.atrium_flat_fitted.fit.bundle"
+source = "launcher/demo/sponza/sponza.scene.toml"
+key = "e9d131d03cd9275cdf3ed5b00e82fb615ad7f72d0b004e42fbd0f463c50f70a7"
+sha256 = "26e1fe996483e70ae2162dc6d4fde94ef5744b2e9ed70ec6088736fc6b1541d5"
+size = 232412
+run = 44496463151
+host = "Linux x86_64"
+gpu = "NVIDIA GeForce RTX 2060"
 
 [[bake]]
 output = "sponza.atrium_flat_fitted.start.bundle"
