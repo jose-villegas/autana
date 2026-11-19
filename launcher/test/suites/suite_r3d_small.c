@@ -28,14 +28,14 @@
 #include "suites.h"
 #include "unity.h"
 
-#define TEST_SIDE                  24
+#define TEST_SIDE                  (ORACLE_MAX_SIDE + 2) /* a side-ORACLE_MAX_SIDE triangle spans side + 1 pixels from x 1 */
 #define TEST_PIXELS                (TEST_SIDE * TEST_SIDE)
 
 #define ORACLE_SEED                937U
 #define ORACLE_SAMPLES             32
 #define ORACLE_MAX_SIDE            SMALL_FILL_CEILING_MAX
-#define CEILING_FOUR_FLAT_CHECKSUM 0x57208113U
-#define VERTEX_DITHER_CHECKSUM     0xDA4716C8U
+#define CEILING_FOUR_FLAT_CHECKSUM 0xB1C88484U
+#define VERTEX_DITHER_CHECKSUM     0xE2148977U
 #define TEST_SOLID_COLOR           RGB565BE(0x123456)
 #define TEST_CHANNELS              3
 #define TEST_RB_MAX                ((int)RGB565_G6_MAX >> 1)
