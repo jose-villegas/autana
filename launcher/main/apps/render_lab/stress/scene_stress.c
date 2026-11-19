@@ -55,6 +55,10 @@ static sh_probes_t probes;
 static int skinned_count;
 static entity_t* grounds;
 
+/* What the preset's settings replaced, in its order, and how many it set. */
+static int32_t settings_before[STRESS_SETTINGS_MAX];
+static int settings_set;
+
 /* A textured preset's texture and its texturing of the one mesh. */
 static r3d_texture_t* texture;
 static r3d_mesh_texturing_t texturing;
@@ -297,6 +301,38 @@ apply_settings(void) {
 #endif
 }
 
+/* The preset's settings, each through the registry SET writes, keeping the
+ * value it replaces. False, naming the setting, when one is unknown or out of
+ * its range, or when the image has no registry to set it through. */
+static bool
+set_preset_settings(void) {
+    for (int i = 0; i < STRESS_SETTINGS_MAX && shown->settings[i].name != NULL; i++) {
+#if TUNE_ENABLED
+        const tune_entry_t* entry = tune_find(tune_shared(), shown->settings[i].name);
+        if (entry != NULL) {
+            settings_before[i] = *entry->value;
+        }
+        if (entry != NULL && tune_set(tune_shared(), shown->settings[i].name, shown->settings[i].value)) {
+            settings_set = i + 1;
+            continue;
+        }
+#endif
+        fail(shown->settings[i].name);
+        return false;
+    }
+    return true;
+}
+
+static void
+put_back_settings(void) {
+#if TUNE_ENABLED
+    for (int i = settings_set - 1; i >= 0; i--) {
+        (void)tune_set(tune_shared(), shown->settings[i].name, settings_before[i]);
+    }
+#endif
+    settings_set = 0;
+}
+
 static bool
 load(void) {
     loaded = lab_scene_load(TAG, failure, sizeof failure, shown->scene != NULL ? shown->scene : STRESS_SCENE, "stress");
@@ -342,9 +378,10 @@ scene_stress_enter(const lab_scene_t* self) {
     failure[0] = '\0';
     wave_ms = 0;
     skinned_count = 0;
-    if (!load()) {
+    if (!set_preset_settings() || !load()) {
         return;
     }
+    (void)camera_set_skip_hidden(viewer, shown->skip_hidden);
     (void)camera_activate(
         entity_find(loaded, name_hash(render_lab.start_camera == NULL ? shown->camera : render_lab.start_camera)));
     place_copies();
@@ -356,6 +393,7 @@ scene_stress_enter(const lab_scene_t* self) {
 
 static void
 scene_stress_exit(void) {
+    put_back_settings();
     for (int i = 0; i < skinned_count; i++) {
         scene_release(slots[i]);
     }
