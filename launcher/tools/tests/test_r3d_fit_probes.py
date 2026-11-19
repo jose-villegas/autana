@@ -2,6 +2,7 @@
 
 import contextlib
 import io
+import json
 import pathlib
 import sys
 import tempfile
@@ -97,12 +98,12 @@ class FitArgumentTests(unittest.TestCase):
 class PrepareReferencesTests(unittest.TestCase):
     PROBES = SimpleNamespace(face=8, spacing=1.0)
 
-    def prepare(self, probes, path=None, plan=False):
+    def prepare(self, settings, path=None, plan=False):
         camera = SimpleNamespace(path=path, region=None, near_z=0.1)
         inputs = SimpleNamespace(scene=lambda: SimpleNamespace(camera=SimpleNamespace(component=camera)),
                                  poses=dict(train_every_ms=1, held_out_every_ms=2, coverage_every_ms=1), size=(4, 4),
-                                 probes=probes, job=lambda: SimpleNamespace(settings=SimpleNamespace(alpha_keep=None)),
-                                 sets=lambda: reference_set.fit_sets(path is not None, probes is not None))
+                                 probes=settings, job=lambda: SimpleNamespace(settings=SimpleNamespace(alpha_keep=None)),
+                                 sets=lambda: reference_set.fit_sets(path is not None, settings is not None))
         rendered = []
         with tempfile.TemporaryDirectory() as directory:
             work = pathlib.Path(directory) / "work"
@@ -111,7 +112,7 @@ class PrepareReferencesTests(unittest.TestCase):
             with mock.patch("r3d.reference_render.render_sets", autospec=True,
                             side_effect=lambda _inputs, sets: rendered.append(sets)), \
                  mock.patch("r3d.mesh_source.load_source", lambda *a, **k: SimpleNamespace(p=None, tri_v=None)), \
-                 mock.patch("r3d.views.probes.select", lambda *a, **k: ([[1.0] * 6], [[2.0] * 6] * 2, {})), \
+                 mock.patch("r3d.views.probes.select", lambda *a, **k: probes.ProbeViews([[1.0] * 6], [[2.0] * 6] * 2, {})), \
                  mock.patch("r3d.mesh_source.camera_path_poses", lambda *a, **k: path_poses):
                 if plan:
                     from bake import produce
@@ -147,6 +148,25 @@ class PrepareReferencesTests(unittest.TestCase):
         self.assertEqual([name for name, _ in rendered[0]],
                          ["train.txt", "train_landscape.txt", "probes.txt", "held_out.txt", "probes_held_out.txt"])
 
+    def test_the_probe_files_hold_the_faces_select_returns_at_its_face_lens(self):
+        camera = SimpleNamespace(region=None, near_z=0.1)
+        inputs = SimpleNamespace(scene=lambda: SimpleNamespace(camera=SimpleNamespace(component=camera)),
+                                 probes=self.PROBES,
+                                 job=lambda: SimpleNamespace(settings=SimpleNamespace(alpha_keep=None)))
+        views = probes.ProbeViews([[1.0] * 6], [[2.0] * 6] * 2, {"probes": 3}, probes.FACE_LENS / 2)
+        with tempfile.TemporaryDirectory() as directory, \
+             mock.patch("r3d.mesh_source.load_source", lambda *a, **k: SimpleNamespace(p=None, tri_v=None)), \
+             mock.patch("r3d.views.probes.select", lambda *a, **k: views):
+            work = pathlib.Path(directory)
+            count = reference_set.probe_poses(inputs, work, None)
+            for (poses, _), faces in ((reference_set.PROBE_TRAINING, views.training),
+                                      (reference_set.PROBE_HELD_OUT, views.held_out)):
+                self.assertEqual((work / poses).read_text(),
+                                 reference_set.poses_text(self.PROBES.face, self.PROBES.face, views.face_lens,
+                                                          camera.near_z, faces))
+            self.assertEqual(json.loads((work / reference_set.PROBE_RECORD).read_text()), views.record)
+        self.assertEqual(count, len(views.training))
+
 
     def test_an_alpha_masked_import_traces_probes_through_cut_texels_of_the_unmasked_source(self):
         from r3d.light import AlphaTest
@@ -161,7 +181,7 @@ class PrepareReferencesTests(unittest.TestCase):
 
             def select(*args, **kwargs):
                 selected.update(args=args, **kwargs)
-                return [], [], {}
+                return probes.ProbeViews([], [], {})
 
             with self.subTest(keep_alpha=keep_alpha), tempfile.TemporaryDirectory() as directory, \
                  mock.patch("r3d.mesh_source.load_source", return_value=source), \
@@ -206,7 +226,7 @@ class ProbeSourceTests(unittest.TestCase):
 
             def select(positions, tris, *args, **kwargs):
                 selected.update(tris=tris, **kwargs)
-                return [], [], {}
+                return probes.ProbeViews([], [], {})
 
             with mock.patch("r3d.views.probes.select", select):
                 reference_set.probe_poses(inputs, root, None)
