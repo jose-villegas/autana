@@ -98,3 +98,8 @@ The lock's `[[poses]]` rows hold the digest and count of each camera-path sampli
 | a key whose row is missing | samples through `track_host` (a host C compiler), or leaves the bake unlocked, naming `bake.py lock` |
 | `bake.py lock` | samples every needed row again and writes it with its `host`, dropping the rest; the only writer |
 | `bake.py check` | samples every needed row again; a missing, unneeded or differing row fails, exactly |
+
+SH incident-radiance grids are a CPU bake kind, `sh_probes`, requested by a
+scene's sibling `<scene>.probes.toml`. They produce one `.shpr` payload per scene,
+keyed independently of mesh and reference bakes. See
+[SH probe baking](../render/offline/SH-Probes.md) for sampling and commands.

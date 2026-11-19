@@ -12,7 +12,7 @@ from scipy.spatial import ConvexHull
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from r3d.import_settings import SettingsError
+from r3d.import_settings import SettingsError, LIGHT_MODE_BAKED
 from r3d import import_settings
 from r3d.simplify import Allocation, simplify
 from r3d.objects.object_error import nearest_source
@@ -264,7 +264,7 @@ class MeshPolicyTests(unittest.TestCase):
                      simplify=SimpleNamespace(dense_edge=10, props=set(), props_share=0, seal_seams=False, colour_deviation=1))
         job = SimpleNamespace(settings=settings, renderer=SimpleNamespace(visibility=None, variant=SimpleNamespace(name="mesh", triangles=80, objects_scale=1.0)),
                               bake=SimpleNamespace(indirect=None, ray_offset=0.01, ao=None, colour_merge_step=6))
-        scene = SimpleNamespace(lights=[{'type': 'directional', 'direction': [1, 0, 0], 'color': [1, 1, 1], 'intensity': 1}],
+        scene = SimpleNamespace(lights=[{'type': 'directional', 'mode': LIGHT_MODE_BAKED, 'direction': [1, 0, 0], 'color': [1, 1, 1], 'intensity': 1}],
                                 tonemap_white=1, indirect=SimpleNamespace(intensity=1))
         query = SimpleNamespace(blocked=lambda origin, direction: np.zeros(len(origin), dtype=bool))
         with patch.object(mesh_import, 'load_source', return_value=src), \
