@@ -9,7 +9,6 @@ from r3d.cards import (CARD_AREA_COST, CARD_EPSILON, CARD_FLOOR_EPS2, CARD_LIMIT
                       SAMPLES_PER_TRIANGLE, W_PENALTY)
 from r3d.cards import CARD_MASK_TEXELS, CARD_MAX_SIDE, CARD_MIP_LEVELS
 from r3d.cards.pages import PAGE_SIDE
-from r3d.views.probes import FACE_LENS
 from r3d.poses import camera_basis
 from r3d.light import AlphaTest
 from r3d.surface_samples import uniform_barycentric
@@ -118,11 +117,13 @@ def card_from(centre, normal, points, epsilon):
     return dict(c=c, a=a, b=b, n=normal, lo=xy.min(axis=0), hi=xy.max(axis=0), depth=(-epsilon, epsilon))
 
 
-def choose_cards(sampled, rng, *, views, query, face_lens=FACE_LENS, epsilon=CARD_EPSILON, area_cost=CARD_AREA_COST):
+def choose_cards(sampled, rng, *, weights, epsilon=CARD_EPSILON, area_cost=CARD_AREA_COST):
+    """The greedy's planes over `sampled`, each sample's area scored times its probe weight (probe_weights);
+    a refit plane centres on the raw area."""
     points, normals, area = sampled
     if not len(points):
         return []
-    weighted_area = area * probe_weights(points, views, query, face_lens)
+    weighted_area = area * weights
     tree = cKDTree(points)
     base = candidates(points, normals, rng)
     near = {tuple(c): np.asarray(tree.query_ball_point(c, CARD_RADIUS), dtype=np.int64) for c, _ in base}

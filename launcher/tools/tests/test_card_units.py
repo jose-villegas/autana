@@ -70,12 +70,13 @@ class SharedOwnerTests(unittest.TestCase):
         sampled = (np.eye(3), np.eye(3), np.ones(3))
         views = ProbeViews([], [], {}, face_lens=2.)
         with patch.object(emit, 'samples', return_value=sampled) as sample, \
-                patch.object(emit, 'choose_cards', return_value=[]) as choose, patch.object(emit, 'RayQuery'):
+                patch.object(emit, 'choose_cards', return_value=[]) as choose, patch.object(emit, 'RayQuery'),                 patch.object(emit, 'probe_weights', return_value=np.ones(3)) as weigh:
             emit.make_shape(source, 0, NS(epsilon=1., area_cost=0.), 0, .5, views=views, query=None)
         sample.assert_called_once()
         self.assertIs(choose.call_args.args[0], sampled)
         self.assertIs(choose.call_args.args[1], sample.call_args.args[1])
-        self.assertEqual(choose.call_args.kwargs['face_lens'], views.face_lens)
+        self.assertEqual(weigh.call_args.args[3], views.face_lens)
+        self.assertIs(choose.call_args.kwargs['weights'], weigh.return_value)
 
 
     def test_reference_sets_accept_materials_once(self):
