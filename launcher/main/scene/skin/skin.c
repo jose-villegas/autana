@@ -243,7 +243,6 @@ scene_skin_contact_refresh(scene_t* scene, scene_row_t entity) {
         }
     }
     const mat4f_t world = scene_row_world_matrix(scene->root, entity);
-    const box3f_t bounds = r3d_lit_mesh_world_bounds(&skin->output.mesh, &world);
     contact_mask_build(&skin->contact_mask, skin->contact_joints, skin->skin.joint_count, skin->palette,
-                       skin->bind.position_scale, &world, bounds, r->contact_blob_ground_y);
+                       skin->bind.position_scale, &world, r->world_bounds);
 }

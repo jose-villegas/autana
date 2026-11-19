@@ -21,7 +21,7 @@ typedef struct {
     float strength;
     vec3f_t u, v;
     const contact_mask_t* mask;
-    unsigned thresholds[BAYER4_LEVELS];
+    vec2f_t delta, delta_step;
     bool circular;
 } blob_plane_t;
 
@@ -99,8 +99,24 @@ project_row(const r3d_lens_t* lens, const blob_plane_t* blob, int y, int x0) {
     return (blob_row_t){row_y, depth_units, step, bias, encoded, near_limit, first_x};
 }
 
+static void
+project_ellipse_row(blob_plane_t* blob, const blob_row_t* row) {
+    const vec3f_t first = {(row->first_x * row->depth_units) - (blob->centre.x * row->encoded),
+                           (row->row_y * row->depth_units) - (blob->centre.y * row->encoded),
+                           row->depth_units - (blob->centre.z * row->encoded)};
+    const vec3f_t step = {row->depth_units - (blob->centre.x * row->step), -blob->centre.y * row->step,
+                          -blob->centre.z * row->step};
+    blob->delta = (vec2f_t){vec3f_dot(first, blob->u), vec3f_dot(first, blob->v)};
+    blob->delta_step = (vec2f_t){vec3f_dot(step, blob->u), vec3f_dot(step, blob->v)};
+}
+
+static inline bool
+radial_coverage(float distance_squared, float encoded, float inverse_strength_root, unsigned threshold) {
+    return distance_squared < (1.0F - radius_roots[threshold] * inverse_strength_root) * encoded * encoded;
+}
+
 static inline __attribute__((always_inline)) void
-draw_row(const r3d_span_target_t* target, const r3d_lens_t* lens, const blob_plane_t* blob, int y, int x0, int x1,
+draw_row(const r3d_span_target_t* target, const r3d_lens_t* lens, blob_plane_t* blob, int y, int x0, int x1,
          bool circular) {
     gfx_color_t* color = gfx_target_color(&target->rows, y);
     const uint16_t* depth = gfx_target_depth(&target->rows, y);
@@ -113,69 +129,66 @@ draw_row(const r3d_span_target_t* target, const r3d_lens_t* lens, const blob_pla
                      (row.row_y * row.depth_units - blob->centre.y * encoded) * blob->inverse_scale.y,
                      (row.depth_units - blob->centre.z * encoded) * blob->inverse_scale.z};
     if (!circular) {
-        const vec3f_t first = {(row.first_x * row.depth_units) - (blob->centre.x * encoded),
-                               (row.row_y * row.depth_units) - (blob->centre.y * encoded),
-                               row.depth_units - (blob->centre.z * encoded)};
-        const vec3f_t step_delta = {row.depth_units - (blob->centre.x * row.step), -blob->centre.y * row.step,
-                                    -blob->centre.z * row.step};
-        delta = (vec3f_t){vec3f_dot(first, blob->u), vec3f_dot(first, blob->v), 0};
-        delta_step = (vec3f_t){vec3f_dot(step_delta, blob->u), vec3f_dot(step_delta, blob->v), 0};
+        project_ellipse_row(blob, &row);
+        delta = (vec3f_t){blob->delta.x, blob->delta.y, 0};
+        delta_step = (vec3f_t){blob->delta_step.x, blob->delta_step.y, 0};
     }
     for (int x = x0; x < x1; x++, encoded += row.step, delta = vec3f_add(delta, delta_step)) {
         if (!(encoded > 0.0F) || encoded >= row.near_limit || encoded + row.bias < (float)depth[x]) {
             continue;
         }
         const unsigned threshold = bayer4x4[y & (BAYER4_SIDE - 1)][x & (BAYER4_SIDE - 1)];
-        if (vec3f_dot(delta, delta)
-            < (1.0F - radius_roots[threshold] * blob->inverse_strength_root) * encoded * encoded) {
+        if (radial_coverage(vec3f_dot(delta, delta), encoded, blob->inverse_strength_root, threshold)) {
             color[x] = rgb565be_half(color[x]);
         }
     }
 }
 
 static unsigned
-sample_coverage(const blob_plane_t* blob, float s, float t) {
-    if (blob->mask != NULL) {
-        const contact_mask_t* mask = blob->mask;
-        const int col = mathi_min(mask->side - 1, (int)((s + 1) * 0.5F * (float)mask->side));
-        const int row = mathi_min(mask->side - 1, (int)((t + 1) * 0.5F * (float)mask->side));
-        return mask->coverage[(row * mask->side) + col] * BAYER4_LEVELS;
-    }
-    const float falloff = fmaxf(0, 1 - (s * s) - (t * t));
-    return (unsigned)ceilf(BAYER4_LEVELS * blob->strength * falloff * falloff) * UINT8_MAX;
+sample_coverage(const contact_mask_t* mask, float s, float t) {
+    const int col = mathi_min(CONTACT_MASK_SIDE - 1, (int)((s + 1) * 0.5F * CONTACT_MASK_SIDE));
+    const int row = mathi_min(CONTACT_MASK_SIDE - 1, (int)((t + 1) * 0.5F * CONTACT_MASK_SIDE));
+    return mask->coverage[(row * CONTACT_MASK_SIDE) + col] * BAYER4_LEVELS;
 }
 
-static unsigned
-footprint_coverage(const blob_plane_t* blobs, int count, vec3f_t point) {
-    unsigned coverage = 0;
+static bool
+footprint_coverage(blob_plane_t* blobs, int count, float encoded, unsigned threshold, const unsigned* thresholds,
+                   bool visible) {
+    bool covered = false;
+    const float reciprocal = visible && blobs->mask != NULL ? 1.0F / encoded : 0;
     for (int i = 0; i < count; i++) {
-        const blob_plane_t* disc = &blobs[i];
-        const vec3f_t delta = vec3f_sub(point, disc->centre);
-        const float s = vec3f_dot(delta, disc->u);
-        const float t = vec3f_dot(delta, disc->v);
-        if (fabsf(s) < 1 && fabsf(t) < 1) {
-            coverage = mathi_max((int)coverage, (int)sample_coverage(disc, s, t));
+        blob_plane_t* blob = &blobs[i];
+        if (visible && !covered) {
+            if (blob->mask == NULL) {
+                covered = radial_coverage(vec2f_dot(blob->delta, blob->delta), encoded, blob->inverse_strength_root,
+                                          threshold);
+            } else {
+                const float s = blob->delta.x * reciprocal;
+                const float t = blob->delta.y * reciprocal;
+                covered = fabsf(s) < 1 && fabsf(t) < 1 && sample_coverage(blob->mask, s, t) > thresholds[threshold];
+            }
         }
+        blob->delta = vec2f_add(blob->delta, blob->delta_step);
     }
-    return coverage;
+    return covered;
 }
 
+/* Coplanar footprints share strength, so one depth test and threshold cover their union. */
 static void
-draw_coverage_row(const r3d_span_target_t* target, const r3d_lens_t* lens, const blob_plane_t* blobs, int count, int y,
-                  int x0, int x1) {
-    const blob_plane_t* blob = blobs;
+draw_coverage_row(const r3d_span_target_t* target, const r3d_lens_t* lens, blob_plane_t* blobs, int count,
+                  const unsigned* thresholds, int y, int x0, int x1) {
     gfx_color_t* color = gfx_target_color(&target->rows, y);
     const uint16_t* depth = gfx_target_depth(&target->rows, y);
-    const blob_row_t row = project_row(lens, blob, y, x0);
+    const blob_row_t row = project_row(lens, blobs, y, x0);
     float encoded = row.encoded;
+    for (int i = 0; i < count; i++) {
+        project_ellipse_row(&blobs[i], &row);
+    }
     for (int x = x0; x < x1; x++, encoded += row.step) {
-        if (!(encoded > 0.0F) || encoded >= row.near_limit || encoded + row.bias < (float)depth[x]) {
-            continue;
-        }
-        const vec3f_t ray = {(float)x + 0.5F - lens->project.cx, row.row_y, 1.0F};
-        const unsigned coverage = footprint_coverage(blobs, count, vec3f_scale(ray, row.depth_units / encoded));
         const unsigned threshold = bayer4x4[y & (BAYER4_SIDE - 1)][x & (BAYER4_SIDE - 1)];
-        if (coverage > blob->thresholds[threshold]) {
+        const bool visible = encoded > 0.0F && encoded < row.near_limit && encoded + row.bias >= (float)depth[x];
+        const bool covered = footprint_coverage(blobs, count, encoded, threshold, thresholds, visible);
+        if (covered) {
             color[x] = rgb565be_half(color[x]);
         }
     }
@@ -218,8 +231,8 @@ bounded_rows(const blob_bounds_t* bounds, int count, int width, int y, int* x0, 
 
 /* Constant single-disc arguments remove union and shape dispatch from its rows. */
 static inline __attribute__((always_inline)) void
-draw_rows(const r3d_span_target_t* target, const r3d_lens_t* lens, const blob_plane_t* blobs,
-          const blob_bounds_t* bounds, int count, int first_row, int end_row, bool radial, bool circular) {
+draw_rows(const r3d_span_target_t* target, const r3d_lens_t* lens, blob_plane_t* blobs, const blob_bounds_t* bounds,
+          const unsigned* thresholds, int count, int first_row, int end_row, bool radial, bool circular) {
     const int width = mathi_min(lens->width, target->rows.attachment[GFX_ATTACHMENT_COLOR].width);
     for (int y = first_row; y < end_row; y++) {
         int x0;
@@ -229,52 +242,14 @@ draw_rows(const r3d_span_target_t* target, const r3d_lens_t* lens, const blob_pl
             if (radial) {
                 draw_row(target, lens, blobs, y, x0, x1, circular);
             } else {
-                draw_coverage_row(target, lens, blobs, count, y, x0, x1);
+                draw_coverage_row(target, lens, blobs, count, thresholds, y, x0, x1);
             }
         }
     }
 }
 
-void
-contact_disc_draw(const r3d_span_target_t* target, const r3d_lens_t* lens, vec3f_t ground, vec3f_t up, float radius,
-                  float strength) {
-    if (!(radius > 0.0F) || !(strength > 0.0F)) {
-        return;
-    }
-    vec3f_t u;
-    vec3f_t v;
-    if (up.x == 0 && up.y == 1 && up.z == 0) {
-        u = vec3f_scale(vec3f_unit_z(), -radius);
-        v = vec3f_scale(vec3f_unit_x(), -radius);
-    } else {
-        const vec3f_t axis = fabsf(up.x) < fabsf(up.y) ? vec3f_unit_x() : vec3f_unit_y();
-        u = vec3f_scale(vec3f_normalize(vec3f_cross(up, axis)), radius);
-        v = vec3f_scale(vec3f_normalize(vec3f_cross(up, u)), radius);
-    }
-    blob_bounds_t bounds;
-    project_bounds(&bounds, target, lens, ground, u, v);
-    const vec3f_t centre = mat4f_apply(&lens->m, ground);
-    const float inverse_fx = 1.0F / lens->focal_x;
-    const float inverse_fy = 1.0F / lens->focal_y;
-    const vec3f_t normal = {vec3f_dot(lens_axis(lens, 0), up) * inverse_fx * inverse_fx,
-                            vec3f_dot(lens_axis(lens, 1), up) * inverse_fy * inverse_fy,
-                            vec3f_dot(lens_axis(lens, 2), up)};
-    const float plane = vec3f_dot(normal, centre);
-    if (plane == 0.0F) {
-        return;
-    }
-    blob_plane_t blob;
-    blob.centre = centre;
-    blob.normal = normal;
-    blob.distance = plane;
-    blob.inverse_scale = (vec3f_t){inverse_fx / radius, inverse_fy / radius, 1.0F / radius};
-    blob.inverse_strength_root = 1.0F / sqrtf(fminf(strength, 1.0F));
-    draw_rows(target, lens, &blob, &bounds, 1, bounds.first_row, bounds.end_row, true, true);
-}
-
 static bool
-project_blob(const r3d_lens_t* lens, const contact_blob_t* footprint, blob_plane_t* blob) {
-    const vec3f_t up = vec3f_normalize(vec3f_cross(footprint->u, footprint->v));
+project_blob(const r3d_lens_t* lens, const contact_blob_t* footprint, blob_plane_t* blob, bool single) {
     const vec3f_t centre = mat4f_apply(&lens->m, footprint->centre);
     const float uu = vec3f_dot(footprint->u, footprint->u);
     const float vv = vec3f_dot(footprint->v, footprint->v);
@@ -283,60 +258,79 @@ project_blob(const r3d_lens_t* lens, const contact_blob_t* footprint, blob_plane
     if (!(determinant > 0 && footprint->strength > 0)) {
         return false;
     }
-    const vec3f_t u =
-        vec3f_scale(vec3f_sub(vec3f_scale(footprint->u, vv), vec3f_scale(footprint->v, uv)), 1 / determinant);
-    const vec3f_t v =
-        vec3f_scale(vec3f_sub(vec3f_scale(footprint->v, uu), vec3f_scale(footprint->u, uv)), 1 / determinant);
     *blob = (blob_plane_t){.centre = centre, .strength = fminf(footprint->strength, 1), .mask = footprint->mask};
-    for (unsigned i = 0; i < BAYER4_LEVELS; i++) {
-        blob->thresholds[i] = footprint->mask != NULL ? (unsigned)fminf(UINT8_MAX * BAYER4_LEVELS,
-                                                                        floorf((float)(i * UINT8_MAX) / blob->strength))
-                                                      : i * UINT8_MAX;
-    }
     const float inverse_fx = 1.0F / lens->focal_x;
     const float inverse_fy = 1.0F / lens->focal_y;
+    blob->circular = uu == vv && uv == 0;
+    const vec3f_t cross = vec3f_cross(footprint->u, footprint->v);
+    const vec3f_t up = vec3f_normalize(cross);
     blob->normal =
         (vec3f_t){vec3f_dot(lens_axis(lens, 0), up) * inverse_fx * inverse_fx,
                   vec3f_dot(lens_axis(lens, 1), up) * inverse_fy * inverse_fy, vec3f_dot(lens_axis(lens, 2), up)};
-    float* du[] = {&blob->u.x, &blob->u.y, &blob->u.z};
-    float* dv[] = {&blob->v.x, &blob->v.y, &blob->v.z};
-    for (int r = 0; r < 3; r++) {
-        const float focal = r == 0 ? lens->focal_x : r == 1 ? lens->focal_y : 1;
-        *du[r] = vec3f_dot(lens_axis(lens, r), u) / (focal * focal);
-        *dv[r] = vec3f_dot(lens_axis(lens, r), v) / (focal * focal);
+    if (!(single && blob->mask == NULL && blob->circular)) {
+        const vec3f_t u =
+            vec3f_scale(vec3f_sub(vec3f_scale(footprint->u, vv), vec3f_scale(footprint->v, uv)), 1 / determinant);
+        const vec3f_t v =
+            vec3f_scale(vec3f_sub(vec3f_scale(footprint->v, uu), vec3f_scale(footprint->u, uv)), 1 / determinant);
+        float* du[] = {&blob->u.x, &blob->u.y, &blob->u.z};
+        float* dv[] = {&blob->v.x, &blob->v.y, &blob->v.z};
+        for (int r = 0; r < 3; r++) {
+            const float focal = r == 0 ? lens->focal_x : r == 1 ? lens->focal_y : 1;
+            *du[r] = vec3f_dot(lens_axis(lens, r), u) / (focal * focal);
+            *dv[r] = vec3f_dot(lens_axis(lens, r), v) / (focal * focal);
+        }
     }
     blob->distance = vec3f_dot(blob->normal, centre);
     if (blob->distance == 0) {
         return false;
     }
-    blob->circular = uu == vv && uv == 0;
     const float radius = sqrtf(uu);
     blob->inverse_scale = (vec3f_t){inverse_fx / radius, inverse_fy / radius, 1.0F / radius};
     blob->inverse_strength_root = 1.0F / sqrtf(blob->strength);
     return true;
 }
 
+typedef struct {
+    blob_plane_t blobs[CONTACT_BLOBS_MAX];
+    blob_bounds_t bounds[CONTACT_BLOBS_MAX];
+    unsigned thresholds[BAYER4_LEVELS];
+} blob_work_t;
+
+size_t
+contact_blobs_work_bytes(void) {
+    return sizeof(blob_work_t);
+}
+
 void
-contact_blobs_draw(const r3d_span_target_t* target, const r3d_lens_t* lens, const contact_blob_t* footprints,
-                   int count) {
-    /* The post pass runs serially after the row workers join. */
-    static blob_plane_t blobs[CONTACT_BLOBS_MAX];
-    static blob_bounds_t bounds[CONTACT_BLOBS_MAX];
+contact_blobs_draw(const r3d_span_target_t* target, const r3d_lens_t* lens, const contact_blob_t* footprints, int count,
+                   void* scratch) {
+    blob_work_t* work = scratch;
+    blob_plane_t* blobs = work->blobs;
+    blob_bounds_t* bounds = work->bounds;
     int first_row = gfx_target_end_row(&target->rows);
     int end_row = target->rows.first_row;
     int used = 0;
     for (int i = 0; i < count && used < CONTACT_BLOBS_MAX; i++) {
-        if (project_blob(lens, &footprints[i], &blobs[used])) {
+        if (project_blob(lens, &footprints[i], &blobs[used], count == 1)) {
             project_bounds(&bounds[used], target, lens, footprints[i].centre, footprints[i].u, footprints[i].v);
             first_row = mathi_min(first_row, bounds[used].first_row);
             end_row = mathi_max(end_row, bounds[used].end_row);
             used++;
         }
     }
-    draw_rows(target, lens, blobs, bounds, used, first_row, end_row, used == 1 && blobs->mask == NULL, blobs->circular);
-}
-
-void
-contact_blob_draw(const r3d_span_target_t* target, const r3d_lens_t* lens, const contact_blob_t* footprint) {
-    contact_blobs_draw(target, lens, footprint, 1);
+    if (used == 0) {
+        return;
+    }
+    if (blobs->mask != NULL) {
+        for (unsigned i = 0; i < BAYER4_LEVELS; i++) {
+            work->thresholds[i] =
+                (unsigned)fminf(UINT8_MAX * BAYER4_LEVELS, floorf((float)(i * UINT8_MAX) / blobs->strength));
+        }
+    }
+    if (used == 1 && blobs->mask == NULL && blobs->circular) {
+        draw_rows(target, lens, blobs, bounds, work->thresholds, 1, first_row, end_row, true, true);
+    } else {
+        draw_rows(target, lens, blobs, bounds, work->thresholds, used, first_row, end_row,
+                  used == 1 && blobs->mask == NULL, false);
+    }
 }

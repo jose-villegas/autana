@@ -9,6 +9,7 @@
 #include "math/linear/vec3f.h"
 #include "render/dynamic/r3d_dynamic_mesh.h"
 #include "render/texture/r3d_texture.h"
+#include "scene/scene.h"
 
 typedef enum {
     STRESS_SHAPE_PLANE,    /* primitive_plane(): a square facing the camera */
@@ -33,10 +34,7 @@ typedef enum {
     STRESS_SURFACE_TEXTURED,  /* banded light under a generated INDEX4 brick texture (render/texture) */
     STRESS_SURFACE_CONTACT_BLOBS,    /* static floor pads with contact discs */
     STRESS_SURFACE_SKINNED_SH_BLOBS, /* animated pack skins with sampled irradiance and contact discs */
-    STRESS_SURFACE_SKINNED_SHAPE_BLOBS,
-    STRESS_SURFACE_SKINNED_FEET_BLOBS,
-    STRESS_SURFACE_SKINNED_SHAPE_WARPED,
-    STRESS_SURFACE_MASKED, /* banded light, each foliage card cut by a generated MASK1 texture */
+    STRESS_SURFACE_MASKED,           /* banded light, each foliage card cut by a generated MASK1 texture */
 } stress_surface_t;
 
 typedef enum {
@@ -66,6 +64,8 @@ typedef struct {
     int perf_poses;    /* poses the stress perf suite replays along the swing */
     bool record;       /* the stress perf suite runs the frame recorder over it: its stage too */
     const char* scene; /* the pack shown: NULL is STRESS_SCENE's copy pool, another its own meshes as placed */
+    scene_contact_shape_t contact_shape;
+    bool contact_warp;
 } stress_params_t;
 
 /* X(ID, key, surface): each preset, its key the scene key's suffix and its
@@ -96,9 +96,10 @@ typedef struct {
     X(FOLIAGE_FAR, "foliage-far", MASKED)                                                                              \
     X(FOLIAGE_FAR_OPAQUE, "foliage-far-opaque", TEXTURED)                                                              \
     X(SKINNED_SH_BLOBS, "skinned-sh-blobs", SKINNED_SH_BLOBS)                                                          \
-    X(SKINNED_FEET_BLOBS, "skinned-feet-blobs", SKINNED_FEET_BLOBS)                                                    \
-    X(SKINNED_SHAPE_WARPED, "skinned-shape-warped", SKINNED_SHAPE_WARPED)                                              \
-    X(SKINNED_SHAPE_BLOBS, "skinned-shape-blobs", SKINNED_SHAPE_BLOBS)                                                 \
+    X(SKINNED_FEET_BLOBS, "skinned-feet-blobs", SKINNED_SH_BLOBS)                                                      \
+    X(SKINNED_SHAPE_WARPED, "skinned-shape-warped", SKINNED_SH_BLOBS)                                                  \
+    X(SKINNED_SHAPE_BLOBS, "skinned-shape-blobs", SKINNED_SH_BLOBS)                                                    \
+    X(SKINNED_BLOB_WARPED, "skinned-blob-warped", SKINNED_SH_BLOBS)                                                    \
     X(CONTACT_BLOBS, "contact-blobs", CONTACT_BLOBS)                                                                   \
     X(RECORD, "record", WAVE)                                                                                          \
     X(CULL_SETUP, "cull-setup", BANDED)                                                                                \
@@ -112,8 +113,7 @@ extern const stress_params_t stress_presets[STRESS_PRESET_COUNT];
 
 static inline bool
 stress_skinned(const stress_params_t* p) {
-    return p->surface == STRESS_SURFACE_SKINNED_SH_BLOBS || p->surface == STRESS_SURFACE_SKINNED_SHAPE_BLOBS
-           || p->surface == STRESS_SURFACE_SKINNED_FEET_BLOBS || p->surface == STRESS_SURFACE_SKINNED_SHAPE_WARPED;
+    return p->surface == STRESS_SURFACE_SKINNED_SH_BLOBS;
 }
 
 /* Whether a surface's mesh is made again every frame: a constant
