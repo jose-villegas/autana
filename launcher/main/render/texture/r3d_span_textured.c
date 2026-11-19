@@ -10,7 +10,6 @@
  */
 #include "render/texture/r3d_texture.h"
 
-#include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -56,6 +55,7 @@ static const float segment_inverse[] = {0.0F, INVERSE_8(1) INVERSE_8(9) INVERSE_
 _Static_assert(sizeof segment_inverse / sizeof segment_inverse[0] == RENDER_TEXTURE_DIVIDE_PX_MAX + 1,
                "an inverse for every segment length");
 
+_Static_assert(RENDER_TEXTURE_LEVEL_MAX == R3D_TEXTURE_LEVELS_MAX - 1, "texture.affine_level can name every level");
 _Static_assert(BAYER4_LEVELS << DITHER_SHIFT == 1 << LIGHT_FRAC, "a threshold stays under one level");
 _Static_assert((1 << (UV_HALF_BITS - UV_FRAC)) == (int)UV_WRAP, "u and v wrap at their integer bits");
 
@@ -72,6 +72,12 @@ typedef struct {
     uint32_t v_shift;  /* what lands v's integer bits at that place */
     const r3d_texture_t* texture;
 } sampler_t;
+
+/* The mip level a sampler reads: level 0's side over its side, in powers of two. */
+static inline int
+sampler_level(const sampler_t* sampler) {
+    return (int)sampler->texture->size_log2 - __builtin_ctz(sampler->mask + 1U);
+}
 
 /* The values a span carries from one segment to the next. */
 typedef struct {
@@ -153,7 +159,7 @@ typedef struct {
 /* u as 8.8, wrapped into [0, UV_WRAP) first so the half word holds it. */
 static inline int32_t
 fixed_uv(float u) {
-    const float wrapped = u - (floorf(u * (1.0F / UV_WRAP)) * UV_WRAP);
+    const float wrapped = mathf_repeat(u, UV_WRAP);
     return (int32_t)(wrapped * (float)UV_ONE) & (int32_t)UV_LOW_MASK;
 }
 
@@ -188,9 +194,8 @@ span_carry(const setup_t* su, int y, int first, int last, bool affine, carry_t* 
  * from s = u q, t = v q and q at its first pixel. u and v wrap once at the
  * start and then step in fixed point; each divide aims the next segment's
  * step at the true u and v, unwrapped, from where the steps so far reached.
- * At the flash tail, with the rest of the divide, so the affine path keeps
- * its cache placement. */
-static RENDER_TAIL_ATTR __attribute__((noinline)) void
+ * In IRAM (RENDER_DIVIDE_ATTR). */
+static RENDER_DIVIDE_ATTR __attribute__((noinline)) void
 fill_divided(const setup_t* su, uint16_t* depth, uint16_t* color, int count, carry_t* c, float s, float t, float q,
              int x, int y) {
     float r = mathf_recip_approx(q);
@@ -335,7 +340,7 @@ set_up_divide(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[
         return;
     }
     /* The level's side over level 0's: the scale set_up() gave u and v. */
-    const float scale = (float)(su->sampler.mask + 1U) / (float)(1U << texture->size_log2);
+    const float scale = 1.0F / (float)(1U << sampler_level(&su->sampler));
     /* The start of the tile holding vertex 0. */
     const float tile = (float)(1U << texture->size_log2);
     const vec2f_t origin = {uv[0].x - mathf_repeat(uv[0].x, tile), uv[0].y - mathf_repeat(uv[0].y, tile)};
@@ -416,8 +421,8 @@ walk_plain(const r3d_span_target_t* target, const setup_t* su, recti_t box, cons
     walk_rows(target, su, box, v0, v1, v2, long_on_left, WALK_FILL);
 }
 
-/* At the flash tail, as fill_divided(). */
-static RENDER_TAIL_ATTR __attribute__((noinline)) void
+/* In IRAM (RENDER_DIVIDE_ATTR). */
+static RENDER_DIVIDE_ATTR __attribute__((noinline)) void
 walk_divided(const r3d_span_target_t* target, const setup_t* su, recti_t box, const r3d_span_vertex_t* v0,
              const r3d_span_vertex_t* v1, const r3d_span_vertex_t* v2, bool long_on_left) {
     walk_rows(target, su, box, v0, v1, v2, long_on_left, WALK_DIVIDED);
@@ -463,9 +468,12 @@ r3d_span_textured_triangle(const r3d_span_target_t* target, const r3d_span_verte
         walk_cut(target, &su, box, v0, v1, v2, long_on_left);
     } else {
         /* A triangle no wider than one segment steps affine: its bend is at
-         * most one segment's. */
+         * most one segment's. So does one reading a level from
+         * texture.affine_level on (0: none): its pattern shifts rather than bends. */
         su.divide = 0;
-        if (target->texture_divide_px != 0 && mathi_max(whole.w, whole.h) > target->texture_divide_px) {
+        if (target->texture_divide_px != 0
+            && (target->texture_affine_level == 0 || sampler_level(&su.sampler) < target->texture_affine_level)
+            && mathi_max(whole.w, whole.h) > target->texture_divide_px) {
             set_up_divide(target, corners, uv, texture, whole, &su);
         }
         if (su.divide != 0) {

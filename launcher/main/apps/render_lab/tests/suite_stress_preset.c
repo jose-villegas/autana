@@ -102,7 +102,7 @@ fixture_end(void) {
  * mix copy, not two. */
 static bool
 fixture_begin(const stress_params_t* p, int sets) {
-    if (stress_uses_pack(p)) {
+    if (stress_baked(p)) {
         return false;
     }
     suite_add_test_cleanup(fixture_end);
@@ -208,7 +208,7 @@ assert_mesh_fits(const stress_params_t* p) {
 static void
 test_every_preset_mesh_fits_a_dynamic_mesh(void) {
     for (int i = 0; i < STRESS_PRESET_COUNT; i++) {
-        if (!stress_uses_pack(&stress_presets[i])) {
+        if (!stress_baked(&stress_presets[i])) {
             assert_mesh_fits(&stress_presets[i]);
         }
     }
@@ -775,7 +775,7 @@ test_hinged_presets_match_pack_capacity_and_plane_metrics(void) {
     const stress_preset_t presets[] = {STRESS_BUTTERFLIES, STRESS_FEW_BUTTERFLIES};
     for (size_t i = 0; i < sizeof presets / sizeof presets[0]; i++) {
         const stress_params_t* p = &stress_presets[presets[i]];
-        TEST_ASSERT_TRUE(stress_uses_pack(p));
+        TEST_ASSERT_TRUE(stress_baked(p));
         TEST_ASSERT_EQUAL_STRING(STRESS_BUTTERFLY_SCENE, p->scene);
         TEST_ASSERT_LESS_OR_EQUAL_INT(capacity, p->copies);
         TEST_ASSERT_EQUAL_INT(STRESS_SHAPE_PLANE, p->shape);
@@ -944,8 +944,26 @@ test_two_seeks_and_flap_renders_at_same_time_match_bytes(void) {
     release();
 }
 
+static void
+test_contact_blob_preset_is_static_floor_work(void) {
+    bool found = false;
+    for (int i = 0; i < STRESS_PRESET_COUNT; i++) {
+        const stress_params_t* p = &stress_presets[i];
+        if (p->surface == STRESS_SURFACE_CONTACT_BLOBS) {
+            found = true;
+            TEST_ASSERT_EQUAL_INT(STRESS_CONTACT_BLOB_COPIES, p->copies);
+            TEST_ASSERT_FALSE(stress_skinned(p));
+            TEST_ASSERT_FALSE(stress_per_frame(p));
+            TEST_ASSERT_EQUAL_INT(STRESS_SHAPE_PLANE, p->shape);
+            TEST_ASSERT_GREATER_THAN_INT(STRESS_SKINNED_COPIES, p->copies);
+        }
+    }
+    TEST_ASSERT_TRUE(found);
+}
+
 void
 run_stress_preset_suite(void) {
+    RUN_TEST(test_contact_blob_preset_is_static_floor_work);
     RUN_TEST(test_hinged_presets_match_pack_capacity_and_plane_metrics);
     RUN_TEST(test_wing_leading_edge_is_forward_in_body_frame);
     RUN_TEST(test_butterfly_pool_has_parented_wings);

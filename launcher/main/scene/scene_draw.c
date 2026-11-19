@@ -5,10 +5,13 @@
  */
 #include <assert.h>
 #include <stdlib.h>
+#include <string.h>
 
+#include "core/app_heap.h"
 #include "esp_log.h"
 #include "hash/name_hash64.h"
 
+#include "render/contact/contact_blob.h"
 #include "render/context/render_context.h"
 #include "render/lod/r3d_lod.h"
 #include "render/r3d_pipeline.h"
@@ -32,7 +35,8 @@ static bool paused;
 static bool expanded;
 static bool stepped;  /* scene_render() ran, and scene_compose() has not yet */
 static bool rendered; /* it drew, and scene_compose() has not upscaled it */
-static bool refused;  /* the context had no scratch for the active camera, logged once */
+static bool contact_blobs;
+static bool refused; /* the context had no scratch for the active camera, logged once */
 /* The active camera's view: here, not on the draw's stack. */
 static render_view_t drawn_view;
 /* The scenes this frame draws: the active camera's first, then every other
@@ -93,6 +97,13 @@ drop_drawn(void) {
 
 void
 scene_draw_forget(const scene_t* scene) {
+    for (int i = 0; i < drawn_scene_count; i++) {
+        if (drawn_scenes[i] == scene) {
+            memmove(&drawn_scenes[i], &drawn_scenes[i + 1], (size_t)(drawn_scene_count - i - 1) * sizeof *drawn_scenes);
+            drawn_scene_count--;
+            break;
+        }
+    }
     drop_drawn();
     if (active.scene == scene) {
         camera_deactivate();
@@ -232,6 +243,25 @@ fill_instances(int* batches) {
     return count;
 }
 
+static box3f_t
+contact_blob_bounds(box3f_t mover, float ground_y) {
+    vec3f_t ground = box3f_centre(mover);
+    ground.y = ground_y;
+    const vec3f_t half = box3f_half_extent(mover);
+    const float radius = fminf(half.x, half.z);
+    const vec3f_t extent = {radius, radius, radius};
+    return (box3f_t){vec3f_sub(ground, extent), vec3f_add(ground, extent)};
+}
+
+static box3f_t
+changed_bounds(const scene_renderer_t* r) {
+    box3f_t bounds = box3f_union(r->drawn_bounds, r->world_bounds);
+    if (r->contact_blob_strength > 0.0F) {
+        bounds = box3f_union(bounds, contact_blob_bounds(bounds, r->contact_blob_ground_y));
+    }
+    return bounds;
+}
+
 /* `scene`'s part of fill_changed(): its changed renderers' boxes into
  * `changed` from `changes` on (-1 once more than fit), each drawn renderer
  * hashed into `*set` with its root slot. Returns the new `changes`. */
@@ -243,12 +273,13 @@ fill_scene_changed(scene_t* scene, int changes, name_hash64_t* set) {
         if (r->mesh.node_count == 0) {
             continue;
         }
+        contact_blobs |= r->contact_blob_strength > 0.0F;
         *set = name_hash64_n(*set, &slot, sizeof slot);
         *set = name_hash64_n(*set, &scene->active_renderers[i], sizeof scene->active_renderers[i]);
         if (r->changed && changes >= 0) {
             changes = changes < RENDER_PARTIAL_CHANGES_MAX ? changes : -1;
             if (changes >= 0) {
-                changed[changes++] = box3f_union(r->drawn_bounds, r->world_bounds);
+                changed[changes++] = changed_bounds(r);
             }
         }
         r->changed = false;
@@ -263,6 +294,7 @@ fill_scene_changed(scene_t* scene, int changes, name_hash64_t* set) {
 static __attribute__((noinline)) int
 fill_changed(void) {
     int changes = 0;
+    contact_blobs = false;
     name_hash64_t set = NAME_HASH64_OFFSET_BASIS;
     for (int k = 0; k < drawn_scene_count; k++) {
         changes = fill_scene_changed(drawn_scenes[k], changes, &set);
@@ -300,6 +332,50 @@ scene_bounds(entity_t entity) {
     return bounds;
 }
 
+/* Not inlined: the log's arguments stay out of the draw's frame, which every
+ * span below it stands on. */
+static __attribute__((noinline)) void
+log_refused(const scene_t* scene) {
+    ESP_LOGE("scene", "no memory to draw '%s' (%u bytes free, largest block %u); it stays blank", scene->root->id,
+             (unsigned)app_heap_free_bytes(), (unsigned)app_heap_largest_block());
+}
+
+void
+scene_set_contact_blob(entity_t renderer, float ground_y, float strength) {
+    scene_row_t row;
+    scene_t* scene = scene_entity_row(renderer, &row);
+    if (scene == NULL) {
+        return;
+    }
+    const int index = scene_renderer_index(scene, row);
+    if (index < 0) {
+        return;
+    }
+    scene_renderer_t* r = &scene->renderers[index];
+    r->contact_blob_ground_y = ground_y;
+    r->contact_blob_strength = strength;
+    r->changed = true;
+    render_context_forget(render_context_main());
+}
+
+static void
+post_draw(const r3d_span_target_t* target, const r3d_lens_t* lens, void* user) {
+    (void)user;
+    for (int k = 0; k < drawn_scene_count; k++) {
+        const scene_t* scene = drawn_scenes[k];
+        for (int i = 0; i < scene->active_renderer_count; i++) {
+            const scene_renderer_t* r = &scene->renderers[scene->active_renderers[i]];
+            if (r->contact_blob_strength > 0.0F && r->mesh.node_count > 0) {
+                const box3f_t bounds = contact_blob_bounds(r->world_bounds, r->contact_blob_ground_y);
+                contact_blob_draw(target, lens, box3f_centre(bounds), vec3f_unit_y(), box3f_half_extent(bounds).x,
+                                  r->contact_blob_strength);
+            }
+        }
+    }
+}
+
+static const raster_post_t CONTACT_POST = {.draw = post_draw};
+
 static void
 draw_active(uint32_t dt_ms, int quarter, int width, int height) {
     scene_t* scene = active.scene;
@@ -317,6 +393,8 @@ draw_active(uint32_t dt_ms, int quarter, int width, int height) {
             return;
         }
         render_context_set_changed(render_context_main(), changed, fill_changed());
+        raster_t* raster = &render_context_main()->raster;
+        raster->post = contact_blobs ? &CONTACT_POST : NULL;
         render_context_set_batches(render_context_main(), drawn.batch_draws, batches);
         rendered = render_context_draw(render_context_main(), drawn.instances, count, &drawn_view, camera->clear);
         if (rendered) {
@@ -324,7 +402,7 @@ draw_active(uint32_t dt_ms, int quarter, int width, int height) {
         }
     }
     if (!rendered && !refused) {
-        ESP_LOGE("scene", "no memory to draw '%s'; it stays blank", scene->root->id);
+        log_refused(scene);
         refused = true;
     }
 }

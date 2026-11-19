@@ -40,6 +40,17 @@ def stage_names():
 
 
 STAGES = stage_names()
+ANIMATION_HEADER = MAIN / "scene/scene_anim_stages.h"
+STATIC_STAGES = STAGES.index(read_define(ANIMATION_HEADER, "SCENE_ANIM_STAGE_POSE_NAME"))
+
+
+def stages_for(row):
+    """The stage prefix a row stores: raster only or raster plus animation."""
+    table = SUITE.read_text(encoding="utf-8").split("static const stress_goal_t stress_goals[] = {", 1)[1].split("};", 1)[0]
+    for key, quarter, size, stages in TABLE_ROW.findall(table):
+        if (key, quarter, size) == row:
+            return STAGES[:len(stages.split(","))]
+    raise ValueError(f"{SUITE}: no goal row {row}")
 
 
 def table_rows():
@@ -47,7 +58,7 @@ def table_rows():
     table = SUITE.read_text(encoding="utf-8").split("static const stress_goal_t stress_goals[] = {", 1)[1].split("};", 1)[0]
     rows = []
     for key, quarter, size, stages in TABLE_ROW.findall(table):
-        if len(stages.split(",")) != len(STAGES):
+        if len(stages.split(",")) not in (STATIC_STAGES, len(STAGES)):
             raise ValueError(f"{SUITE}: {key} {quarter} {size} holds {len(stages.split(','))} stage goals, "
                              f"the stages are {len(STAGES)}")
         rows.append((key, quarter, size))
@@ -96,14 +107,14 @@ def generate(paths, unpegged=(), presets=()):
         rows = [row for row in rows if row[0] in presets]
     if not paths:
         raise ValueError("no captures")
-    names = {row: [row_name(row)] + [f"{row_name(row)} {stage}" for stage in STAGES] for row in rows}
+    names = {row: [row_name(row)] + [f"{row_name(row)} {stage}" for stage in stages_for(row)] for row in rows}
     expected = {name for row_names in names.values() for name in row_names}
     captures = [capture_targets(path, expected) for path in paths]
     lines = []
     for row in rows:
         key, quarter, size = row
         if key in unpegged:
-            goal, ceiling, goals = 0, 0, [0] * len(STAGES)
+            goal, ceiling, goals = 0, 0, [0] * len(stages_for(row))
         else:
             worst = [max(capture[name] for capture in captures) for name in names[row]]
             goal = ceil_goal(worst[0] * GOAL_MARGIN)
