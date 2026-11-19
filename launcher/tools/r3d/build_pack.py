@@ -64,6 +64,7 @@ from asset.asset_directory import build_directory, parse_directory  # noqa: E402
 from r3d import mesh_bundle, mesh_asset, scene_asset, scene_name, skin_asset, skin_pack, lcol_asset  # noqa: E402
 from r3d.import_settings import SettingsError, albedo_jobs, load_demo_assets, load_import_settings, load_scene  # noqa: E402
 from r3d.mesh_asset import TYPE as LIT_MESH  # noqa: E402
+from r3d.sh_probe_settings import TYPE as SH_PROBES  # noqa: E402
 from render.settings import render_asset  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
@@ -252,7 +253,8 @@ def pack_bytes(paths, replace=(), cache=None, offline=False, unlocked=None,
         if found.packed and found.output.removesuffix(found.suffix) not in replaced:
             # A texture bake joins the pack of the mesh it textures.
             entry = found.start if found.kind == "texture" else found
-            wanted.setdefault(owner[entry.tree.resolve()], []).append(found)
+            source = found.scene.path if found.kind == "sh_probes" else entry.tree
+            wanted.setdefault(owner[source.resolve()], []).append(found)
     lock, cache = bake.read_lock(), cache or bake.default_cache()
     fetched, errors = {}, []
     for name in sorted(packs):
@@ -320,6 +322,9 @@ def pack_bytes(paths, replace=(), cache=None, offline=False, unlocked=None,
                 mirrored.append((key, kind, to_engine(kind, data)))
             except ValueError as error:
                 raise SettingsError(f"entry {key!r}: {error}") from error
+        mirrored.extend((found.output, SH_PROBES,
+                         fetched[found.tree.resolve()].read_bytes())
+                        for found in wanted.get(name, []) if found.kind == "sh_probes")
         validate_colour_sets(mirrored)
         validate_clip_scales(mirrored)
         result[name] = build_pack(sorted(mirrored))

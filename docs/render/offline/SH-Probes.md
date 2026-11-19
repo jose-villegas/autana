@@ -24,7 +24,10 @@ The CPU Bakes workflow produces these rows; `bake.py lock --from-run RUN`
 locks its artifacts. The key names the source bytes, requested sampling,
 seed, alpha threshold, two-sided materials, camera region and near plane,
 scene lights, bounce depth, albedo boost and the reached tool code and pins.
-The payload is a bake artifact; pack loading is a separate consumer.
+
+The baker writes engine coordinates using the mesh mirror in
+`asset/engine_frame.py`: z cells reverse and the +z coefficient changes sign.
+The pack holds `<scene>.shpr` unchanged.
 
 ```mermaid
 flowchart LR

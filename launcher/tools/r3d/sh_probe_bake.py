@@ -6,6 +6,7 @@ import time
 
 import numpy as np
 
+from asset.engine_frame import AXIS_SIGNS, Z_AXIS
 from r3d.geometry import face_normals
 from r3d.light import AlphaTest
 from r3d.mesh_source import load_source
@@ -19,6 +20,7 @@ VERSION = 1
 RESERVED_FLAGS = 0
 CHANNELS = 3
 COEFFICIENTS = 4
+Z_COEFFICIENT = 2
 Y00 = 0.5 * math.sqrt(1 / math.pi)
 Y1 = 0.5 * math.sqrt(3 / math.pi)
 HEADER = struct.Struct('<HH3f3ff3H2x')
@@ -147,6 +149,10 @@ def bake(job, scene):
     # ProbeViews enumerates z fastest; SHPR's x-fastest order is the transposed cell lattice.
     shape = tuple(dims) + (COEFFICIENTS, CHANNELS)
     filled = dilate(coefficients.reshape(shape), (state == 'inside').reshape(tuple(dims)))
+    last = origin + step * (dims - 1)
+    origin = np.minimum(origin * AXIS_SIGNS, last * AXIS_SIGNS)
+    filled = np.flip(filled, axis=Z_AXIS).copy()
+    filled[..., Z_COEFFICIENT, :] *= AXIS_SIGNS[Z_AXIS]
     data = encode(origin, step, dims, filled.transpose(2, 1, 0, 3, 4).copy())
     sun_rays = sum(light['type'] == 'directional' for light in scene.lights)
     paths = int(outside.sum()) * requested.directions * requested.spp

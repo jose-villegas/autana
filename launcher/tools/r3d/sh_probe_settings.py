@@ -10,6 +10,7 @@ from r3d.scene_name import scene_id
 DIRECTIONS = 512
 SPP = 4
 SUFFIX = '.shpr'
+TYPE = b'SHPR'
 REQUEST_SUFFIX = '.probes.toml'
 
 
