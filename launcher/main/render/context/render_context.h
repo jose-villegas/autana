@@ -202,6 +202,9 @@ void render_context_set_dynamic_resolution(render_context_t* context, const reso
 
 /* Development views, or RENDER_DEBUG_VIEW_SHADED to detach the debug view. */
 void render_context_set_debug_view(render_context_t* context, int view);
+/* The pixel format of the debug view with the largest pixels, which the
+ * scratch always has room for; 0 in a release build. */
+image_format_t render_context_debug_view_widest(void);
 /* The declared row, or NULL for shaded, an unknown index or a release build. */
 const render_debug_view_t* render_context_debug_view(int view);
 

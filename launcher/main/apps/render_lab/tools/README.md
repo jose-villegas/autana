@@ -169,12 +169,16 @@ the presets vary the copies' geometry, layout and colour modes.
 | `stress-noisy-tiny` | ![Stress noisy tiny: cylinders end on, their fans of slivers](../../../../../docs/images/overview/render-lab-stress-noisy-tiny.png) | many small cylinders end on, each end a fan of slivers whose corners are far apart in colour | the small-fill gate: every sliver is tested and none passes |
 | `stress-mix` | ![Stress mix: planes with several tessellations and colour modes](../../../../../docs/images/overview/render-lab-stress-mix.png) | copies cycling through tessellations; a named share of triangles has equal corner colours | a single triangle size or colour mode standing for a scene's draw cost |
 | `stress-static-copies` | ![Static triangle copies](../../../../../docs/images/overview/render-lab-stress-static-copies.png) | the stress pack's LMSH triangle, retained in each renderer | static asset residency and small transform batches |
+| `stress-skinned-sh-blobs` | ![Skinned copies with probe lighting and contact discs](../../../../../docs/images/overview/render-lab-stress-skinned-sh-blobs.png) | animated skins over floor pads; copy count is `STRESS_SKINNED_COPIES` | Per-mover SH sampling, per-vertex irradiance and depth-tested contact discs. |
+| `stress-contact-blobs` | ![Contact discs on plain floor pads](../../../../../docs/images/overview/render-lab-stress-contact-blobs.png) | static floor pads; copy count is `STRESS_CONTACT_BLOB_COPIES` | Contact-disc clipping, depth and fill, under the near camera swing. |
 | `stress-uniform-mid` | ![Uniform plane with intermediate coverage](../../../../../docs/images/overview/render-lab-stress-uniform-mid.png) | equal-colour large triangles | intermediate uniform fill without shaded pixels |
 | `stress-uniform-full` | ![Uniform plane covering the view](../../../../../docs/images/overview/render-lab-stress-uniform-full.png) | equal-colour large triangles spanning the view | uniform fill beyond the water workload at full-width render sizes |
 | `stress-card` | ![Card copies with ragged edges and sampled colours](../../../../../docs/images/overview/render-lab-stress-card.png) | copies sharing a generated perforated quad with uneven tessellation and procedural texture samples at its corners | scene-like small triangles with irregular edges and colour steps |
 | `stress-culled` | ![Plane before the camera turns away](../../../../../docs/images/overview/render-lab-stress-culled.png) | a tessellated plane and a camera pitching beyond its edge | varying cluster rejection by the frustum |
 | `stress-near` | ![Spheres along the camera path](../../../../../docs/images/overview/render-lab-stress-near.png) | stacked spheres and a camera passing through their front surfaces | triangles behind and crossing the near plane |
 | `stress-few-copies` | ![Stress few copies: two dense spheres](../../../../../docs/images/overview/render-lab-stress-few-copies.png) | two dense spheres side by side | the two-core cull split: with one instance a core, its fork and join cost more than the halved walk saves |
+| `stress-carved-near` | ![Stress carved near: a few bumpy balls close up](../../../../../docs/images/overview/render-lab-stress-carved-near.png) | a few copies of a banded bumpy ball, baked with levels of detail, close to the camera | the carve's finest levels: each copy draws near its full shape |
+| `stress-carved-far` | ![Stress carved far: a wall of bumpy balls in the distance](../../../../../docs/images/overview/render-lab-stress-carved-far.png) | many copies of the same ball, small in the distance | per-copy level picks: far copies draw their coarse levels |
 | `stress-textured` | ![Stress textured: big triangles under a brick texture](../../../../../docs/images/overview/render-lab-stress-textured.png) | the big-tris layout, its banded light multiplied by a generated 4-bit brick texture ([LTEX](../../../../../docs/assets/formats/LTEX.md)) | the textured span fill against the same pixels drawn plain in `stress-big-tris` |
 | `stress-foliage-near` | ![Stress foliage near: three bushes of masked cards over the view](../../../../../docs/images/overview/render-lab-stress-foliage-near.png) | three bushes one behind another over the whole view, each 24 small cards turned and overlapping several deep, cut by a generated MASK1 texture ([LTEX](../../../../../docs/assets/formats/LTEX.md)) keeping about 0.7 | the masked textured fill at its largest: foliage cards' overdraw near the camera |
 | `stress-foliage-near-opaque` | ![Stress foliage near opaque: the same cards under the brick](../../../../../docs/images/overview/render-lab-stress-foliage-near-opaque.png) | `stress-foliage-near`'s cards under the INDEX4 brick, whole | the twin: against it, the near cards' mask costs alone |
@@ -353,7 +357,8 @@ first pair of columns, gallops down the atrium and rests between the last
 pair; its clip and rate come from its ground speed. A third-person camera
 starts a little round from its face, turns slowly toward its back as it runs,
 never reaching it, and comes back as it stops. With frame generation on, a
-generated frame shows the capybara where the last drawn frame put it.
+generated frame shows the capybara where the last drawn frame put it. A
+contact blob under it darkens the floor, sized from its footprint.
 
 ![Capybara in Sponza: the capybara's run down the atrium, rest to rest, under a third-person camera](../../../../../docs/images/overview/render-lab-capybara-sponza.gif)
 
@@ -625,11 +630,12 @@ python launcher/tools/anim/track_host.py \
 
 `launcher/demo/capybara/capybara.blend` is a hand-modelled low-poly capybara
 with a control rig and in-place loops at 30 fps: `idle`, `walk`, `walk_fast`,
-`gallop` and `half_bound`. It is the source asset for skinned-mesh import;
-nothing in the build reads it.
+`gallop` and `half_bound`, and the one-shot idle gestures `glance` and
+`ear_flick` ([Idle gestures](../../../../demo/capybara/Idle-Gestures.md)). It is
+the source asset for skinned-mesh import; nothing in the build reads it.
 
 Its glTF export, `capybara.glb`, is a cached bake: deform bones only,
-every loop as an animation, four influences per vertex. Host tools that read
+every clip as an animation, four influences per vertex. Host tools that read
 glTF use it, such as the
 [skinned-mesh lighting](../../../../../docs/render/animation/Skinned-Lighting.md)
 measurement; `bake.py path capybara.glb` prints where it is.
@@ -641,7 +647,7 @@ exporter in Blender. By hand, it is:
 ```sh
 blender --background --factory-startup --python launcher/tools/gltf/blend_skin_to_glb.py -- \
     launcher/demo/capybara/capybara.blend capybara.glb \
-    --clips idle,walk,walk_fast,gallop,half_bound
+    --clips idle,walk,walk_fast,gallop,half_bound,glance,ear_flick
 ```
 
 and measure the lighting again:
