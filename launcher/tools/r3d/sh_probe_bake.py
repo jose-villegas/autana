@@ -1,39 +1,28 @@
 """Bake scene incident radiance into an L1 spherical-harmonic probe grid."""
 
 import math
-import struct
 import time
 
 import numpy as np
 
 from r3d.geometry import face_normals
-from r3d.light import AlphaTest
+from r3d.light import AlphaTest, baked_lights
 from r3d.mesh_source import load_source
 from r3d.mitsuba_reference import integrator
 from r3d.path_bake import PathLight, BATCH, SEED
 from r3d.ray_query import RayQuery
 from r3d.sh_probe_settings import load
+from r3d.sh_probe_asset import CHANNELS, COEFFICIENTS, L1_AXES, encode
 from r3d.views.probes import classify, probe_points, spacing_for, sphere_directions
 
-TYPE = b'SHPR'
-VERSION = 1
-SH_PROBES_FLAG_INSIDE_MASK = 1 << 0
-MASK_BITS_PER_BYTE = np.iinfo(np.uint8).bits
-CHANNELS = 3
-L1_AXES = (1, 2, 0)
-COEFFICIENTS = 1 + len(L1_AXES)
 Y00 = 0.5 * math.sqrt(1 / math.pi)
 Y1 = 0.5 * math.sqrt(3 / math.pi)
-HEADER = struct.Struct('<HH3f3ff3H2x')
-QUANT_MAX = np.iinfo(np.int16).max
-DIM_MAX = np.iinfo(np.uint16).max
 
 
 def basis(directions):
     """Real SH in Sloan's order: constant, +y, +z, +x."""
     directions = np.asarray(directions)
-    return np.column_stack((np.full(len(directions), Y00), Y1 * directions[:, 1],
-                            Y1 * directions[:, 2], Y1 * directions[:, 0]))
+    return np.column_stack((np.full(len(directions), Y00), *(Y1 * directions[:, axis] for axis in L1_AXES)))
 
 
 def project(directions, radiance):
@@ -42,7 +31,7 @@ def project(directions, radiance):
 
 def sun_term(query, points, lights):
     out = np.zeros((len(points), COEFFICIENTS, CHANNELS))
-    for light in lights:
+    for light in baked_lights(lights):
         if light['type'] != 'directional':
             continue
         direction = np.asarray(light['direction'], dtype=float)
@@ -75,48 +64,6 @@ def dilate(values, inside):
     return out
 
 
-def encode(origin, spacing, dims, coefficients, inside=None):
-    dims = np.asarray(dims)
-    coefficients = np.asarray(coefficients, dtype=float)
-    if dims.shape != (3,) or np.any(dims < 1) or np.any(dims > DIM_MAX) or np.any(dims != dims.astype(int)):
-        raise ValueError('SH grid dimensions must fit positive u16')
-    if coefficients.size != int(np.prod(dims)) * COEFFICIENTS * CHANNELS or not np.isfinite(coefficients).all():
-        raise ValueError('SH coefficients must be finite and match dimensions')
-    if not np.isfinite(origin).all() or not np.isfinite(spacing).all() or np.any(np.asarray(spacing) <= 0):
-        raise ValueError('SH origin and positive spacing must be finite')
-    count = int(np.prod(dims))
-    inside = np.zeros(count, dtype=bool) if inside is None else np.asarray(inside, dtype=bool).ravel()
-    if inside.size != count:
-        raise ValueError('SH inside mask must match dimensions')
-    maximum = float(np.max(np.abs(coefficients)))
-    scale = np.float32(maximum / QUANT_MAX if maximum else 1.0)
-    if scale == 0 or not np.isfinite(scale):
-        raise ValueError('SH scale cannot be represented as f32')
-    if float(scale) * QUANT_MAX < maximum:
-        scale = np.nextafter(scale, np.float32(np.inf))
-    quantized = np.rint(coefficients / scale).astype('<i2')
-    mask = np.packbits(inside, bitorder='little').tobytes()
-    return HEADER.pack(VERSION, SH_PROBES_FLAG_INSIDE_MASK, *origin, *spacing, scale, *dims) + quantized.tobytes() + mask
-
-
-def decode(data):
-    if len(data) < HEADER.size:
-        raise ValueError('truncated SHPR header')
-    version, flags, *fields = HEADER.unpack_from(data)
-    origin, spacing, dims, scale = fields[:3], fields[3:6], fields[7:10], fields[6]
-    count = math.prod(dims)
-    mask_at = HEADER.size + count * COEFFICIENTS * CHANNELS * np.dtype('<i2').itemsize
-    mask_size = (count + MASK_BITS_PER_BYTE - 1) // MASK_BITS_PER_BYTE if flags & SH_PROBES_FLAG_INSIDE_MASK else 0
-    if version != VERSION or flags & ~SH_PROBES_FLAG_INSIDE_MASK or not all(dims) or len(data) != mask_at + mask_size:
-        raise ValueError('invalid SHPR version, flags, dimensions or length')
-    if not np.isfinite([*origin, *spacing, scale]).all() or min(*spacing, scale) <= 0:
-        raise ValueError('invalid SHPR origin, spacing or scale')
-    coefficients = np.frombuffer(data, dtype='<i2', count=count * COEFFICIENTS * CHANNELS, offset=HEADER.size).reshape(-1, COEFFICIENTS, CHANNELS) * scale
-    inside = (np.unpackbits(np.frombuffer(data, dtype=np.uint8, offset=mask_at), bitorder='little')[:count].astype(bool)
-              if mask_size else np.zeros(count, dtype=bool))
-    return origin, spacing, dims, scale, coefficients, inside
-
-
 def grid(source, camera, requested, seed):
     lo, hi = camera.region if camera.region is not None else (source.p.min(axis=0), source.p.max(axis=0))
     lo, hi = np.asarray(lo), np.asarray(hi)
@@ -140,7 +87,8 @@ def bake(job, scene):
     points, cell, origin, step, dims = grid(source, camera, requested.spacing, settings.seed)
     moved, state = classify(query, face_normals(source.p, source.tri_v)[0], points, cell, camera.near_z)
     outside = state != 'inside'
-    transport = PathLight(source, scene.lights, settings.double_sided, job.bake.indirect,
+    lights = baked_lights(scene.lights)
+    transport = PathLight(source, lights, settings.double_sided, job.bake.indirect,
                           scene.indirect.albedo_boost)
     transport.integrator = transport.mi.load_dict({**integrator(job.bake.indirect.bounces + 1), 'hide_emitters': False})
     directions = sphere_directions(requested.directions)
@@ -155,13 +103,13 @@ def bake(job, scene):
                        for sample in range(requested.spp)) / requested.spp
         coefficients[indices] = project(
             directions, radiance.reshape(len(indices), requested.directions, CHANNELS))
-    coefficients[outside] += sun_term(query, moved[outside], scene.lights)
+    coefficients[outside] += sun_term(query, moved[outside], lights)
     # ProbeViews enumerates z fastest; SHPR's x-fastest order is the transposed cell lattice.
     shape = tuple(dims) + (COEFFICIENTS, CHANNELS)
     inside = (state == 'inside').reshape(tuple(dims))
     filled = dilate(coefficients.reshape(shape), inside)
     data = encode(origin, step, dims, filled.transpose(2, 1, 0, 3, 4).copy(), inside.transpose(2, 1, 0))
-    sun_rays = sum(light['type'] == 'directional' for light in scene.lights)
+    sun_rays = sum(light['type'] == 'directional' for light in lights)
     paths = int(outside.sum()) * requested.directions * requested.spp
     print(f'SH probes: {len(points)} probes, {np.count_nonzero(~outside)} inside, '
           f'{paths} primary paths, {int(outside.sum()) * sun_rays} sun rays, '

@@ -13,7 +13,7 @@ import numpy as np
 
 from . import log
 from .geometry import distinct_corners, hit_barycentrics, nearest_triangles, triangle_areas, triangle_search
-from .import_settings import LIGHT_FIELDS
+from .import_settings import LIGHT_FIELDS, LIGHT_MODE_BAKED
 from .obj import alpha_tested
 
 
@@ -304,6 +304,11 @@ def open_side_occlusion(points, normals, double_sided, intersector, ao, ray_offs
     return factor
 
 
+def baked_lights(lights):
+    """The surface and probe bakes share the baked rig; sky and ambient are bake settings."""
+    return [light for light in lights if light["mode"] == LIGHT_MODE_BAKED]
+
+
 def face_towards_light(normals, double_sided, lights):
     """The orientation a double-sided surface is first lit on: the side the directional lights, summed, shine on. One
     orientation for every light, so their order cannot matter. It also keeps the copies of a vertex at one position
@@ -329,6 +334,7 @@ def light(points, normals, double_sided, intersector, lights, ray_offset, bounce
     on both sides and keeps the brighter, so a card in the sun takes its sunlit side and a curtain in shade takes
     its open side, not the back that faces the wall. Point and spot lights are reserved and not baked yet.
     """
+    lights = baked_lights(lights)
     n = face_towards_light(normals, double_sided, lights)
     occlusion = None if ao is None else open_side_occlusion(points, normals, double_sided, intersector, ao, ray_offset)
     radiance = lit_side(points, n, intersector, lights, ray_offset, occlusion, bounce, bounce_groups, ao, bounce_intensity)

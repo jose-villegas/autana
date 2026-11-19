@@ -14,12 +14,13 @@ from unittest import mock
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-from r3d.import_settings import LIGHT_FIELDS, SettingsError, albedo_jobs, load_import_settings, load_scene
+from r3d.import_settings import LIGHT_MODE_BAKED, LIGHT_FIELDS, SettingsError, albedo_jobs, load_import_settings, load_scene
 from r3d import build_pack
 from anim_probe import write_camera_clip  # noqa: E402
 
 try:
     import numpy as np
+    from tests.soup import sun
     from tests import soup  # noqa: F401  (traces the bake's rays on the scalar variant)
 
     from r3d import mesh_import, mesh_source, ray_query
@@ -89,9 +90,10 @@ def renderer(mesh="mesh.import.toml", extra="", transform="", name=None):
     return f'[[objects]]\nname = "{name}"\n{transform}[objects.mesh_renderer]\nmesh = "{mesh}"\n{extra}'
 
 
-def sun_object(rotation="[0.0, 0.0, 0.0]"):
+def sun_object(rotation="[0.0, 0.0, 0.0]", *, mode=None):
     return (f'[[objects]]\nname = "sun"\nrotation = {rotation}\n[objects.light]\ntype = "directional"\n'
-            'color = [1.0, 1.0, 1.0]\nintensity = 1.0\n')
+            + (f'mode = "{mode}"\n' if mode is not None else '')
+            + 'color = [1.0, 1.0, 1.0]\nintensity = 1.0\n')
 
 
 def camera(path=False, region=True):
@@ -765,9 +767,6 @@ class ClearIntersector:
         return np.zeros(len(origins), dtype=bool)
 
 
-def sun(direction, color, intensity):
-    return {"type": "directional", "direction": direction, "color": color, "intensity": intensity}
-
 
 def radiance(lights, normal, double_sided):
     return light(np.array([[0.0, 0.0, 0.0]]), np.array([normal]), np.array([double_sided]), ClearIntersector(),
@@ -778,8 +777,8 @@ def radiance(lights, normal, double_sided):
 class LightListTests(unittest.TestCase):
     def test_directional_lights_add_their_radiance_and_order_does_not_matter(self):
         lights = [
-            {"type": "directional", "direction": [0, 1, 0], "color": [1, 0, 0], "intensity": 2},
-            {"type": "directional", "direction": [0, 1, 0], "color": [0, 1, 0], "intensity": 3},
+            sun([0, 1, 0], [1, 0, 0], 2),
+            sun([0, 1, 0], [0, 1, 0], 3),
         ]
         args = (np.array([[0.0, 0.0, 0.0]]), np.array([[0.0, 1.0, 0.0]]), np.array([False]), ClearIntersector())
         first = light(*args, lights, 0.5)
@@ -792,8 +791,8 @@ class LightListTests(unittest.TestCase):
 
     def test_the_order_of_every_light_type_does_not_change_the_radiance(self):
         lights = [sun([0, 1, 0], [1, 0, 0], 2), sun([1, 0.1, 0], [0, 1, 0], 1),
-                  {"type": "sky", "color": [0, 0, 1], "intensity": 1, "rays": 1},
-                  {"type": "ambient", "color": [1, 1, 1], "intensity": 0.1}]
+                  {"type": "sky", "mode": LIGHT_MODE_BAKED, "color": [0, 0, 1], "intensity": 1, "rays": 1},
+                  {"type": "ambient", "mode": LIGHT_MODE_BAKED, "color": [1, 1, 1], "intensity": 0.1}]
         for normal in ([0.0, -1.0, 0.0], [-1.0, 0.0, 0.0], [0.0, 1.0, 0.0]):
             for double_sided in (False, True):
                 forward = radiance(lights, normal, double_sided)

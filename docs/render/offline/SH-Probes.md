@@ -24,7 +24,10 @@ The CPU Bakes workflow produces these rows; `bake.py lock --from-run RUN`
 locks its artifacts. The key names the source bytes, requested sampling,
 seed, alpha threshold, two-sided materials, camera region and near plane,
 scene lights, bounce depth, albedo boost and the reached tool code and pins.
-The payload is a bake artifact; pack loading is a separate consumer.
+
+The baker caches source coordinates. At pack time, `asset/engine_frame.py`
+mirrors the origin, cell lattice and L1 coefficients along each reflected axis,
+matching the mesh frame.
 
 ```mermaid
 flowchart LR
@@ -38,7 +41,8 @@ ProbeViews supplies the jittered cell grid, classification and relocation.
 The record addresses regular cell centres; tracing uses relocated positions.
 Inside cells receive synchronous six-neighbour dilation from outside cells.
 
-Paths include direct sky and bounced sunlight at the surface bake's bounce depth.
+Paths include direct sky and baked sunlight bounced at the surface bake's depth.
+Realtime lights contribute neither paths nor analytic sun terms.
 Ambient, artistic indirect intensity, tone mapping and AO do not alter transport.
 
 For each RGB channel, projection is
