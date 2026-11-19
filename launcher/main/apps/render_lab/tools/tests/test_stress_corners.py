@@ -39,9 +39,10 @@ STATIC_VERTICES = sum(line.startswith("v ") for line in STATIC_COPY.read_text().
 
 def preset_copies():
     """Each preset's copy count by its key, in the order STRESS_PRESETS lists them."""
+    constants = dict(re.findall(r"^#define\s+(\w+)\s+(\d+)$", PRESETS.read_text(), re.MULTILINE))
     keys = re.findall(r'^\s*X\((\w+), "([^"]+)"', PRESETS.read_text(), re.MULTILINE)
-    rows = dict(re.findall(r'^\s*\[STRESS_(\w+)\] = \{\w+, \d+, (\d+),', TABLE.read_text(), re.MULTILINE))
-    return {key: int(rows[name]) for name, key in keys}
+    rows = dict(re.findall(r'^\s*\[STRESS_(\w+)\] = \{\w+, \d+, (\w+),', TABLE.read_text(), re.MULTILINE))
+    return {key: int(constants.get(rows[name], rows[name])) for name, key in keys}
 
 
 class StressCorners(unittest.TestCase):
@@ -86,8 +87,9 @@ class StressCorners(unittest.TestCase):
     def test_every_preset_is_held_here(self):
         self.assertEqual({"open", "stack", "tiny-copies", "big-tris", "per-frame", "two-sided", "noisy-tiny", "mix",
                           "static-copies", "uniform-mid", "uniform-full", "card", "culled", "near",
-                          "few-copies", "textured", "record", "foliage-near", "foliage-near-opaque", "foliage-far",
-                          "foliage-far-opaque", "cull-setup", "baked-tree"}, set(preset_copies()))
+                          "few-copies", "carved-near", "carved-far", "textured", "record", "foliage-near",
+                          "foliage-near-opaque", "foliage-far", "foliage-far-opaque", "skinned-sh-blobs", "contact-blobs",
+                          "cull-setup", "baked-tree"}, set(preset_copies()))
 
     def test_the_baked_ring_is_culled_through_its_tree(self):
         """The ring alone, one mesh and no copy, culled through its tree at every pose of the turn."""
@@ -185,6 +187,16 @@ class StressCorners(unittest.TestCase):
         # Equal weight: the same shape twice, so every total splits evenly between the two copies.
         for name in ("clusters_kept", "triangles_submitted", "vertices_transformed"):
             self.assertEqual(0, c[name] % copies, name)
+
+    def test_carved_copies_draw_a_coarser_level_far_than_near(self):
+        """The carved prop's copies each pick a level: far copies draw fewer triangles apiece than near ones."""
+        near = self.last_counts("carved-near")
+        far = self.last_counts("carved-far")
+        for c in (near, far):
+            self.assertGreater(c["triangles_submitted"], 0)
+        per_copy = {key: c["triangles_submitted"] / preset_copies()[key]
+                    for key, c in (("carved-near", near), ("carved-far", far))}
+        self.assertLess(per_copy["carved-far"], per_copy["carved-near"])
 
     def test_two_sided_skips_nothing_facing_away(self):
         """A closed shape drawn from both sides: the one-sided spheres skip their far half, these cubes none."""

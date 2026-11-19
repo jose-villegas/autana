@@ -45,12 +45,14 @@ middle|1500|368x448
 late|3000|368x448
 crossfade|3900|368x448
 photograph|4500|368x448
+launcher|$whole_ms|368x448
 "
 
 # The camera and space come from the boot clip's pack and the photograph from
-# the boot picture's; AUTANA_ASSET_DIR set to a folder without them renders the
-# rest pose without the photograph.
-scene_assets=main/boot
+# the boot picture's; the launcher it ends on takes its tile skin from the
+# engine pack. AUTANA_ASSET_DIR set to a folder without them renders the rest
+# pose without the photograph, and the launcher's tiles as plain boxes.
+scene_assets="$launcher_home_assets main/boot"
 
 # shellcheck source=./render_scene.sh
 . "$SCRIPT_DIR/../render_scene.sh"
