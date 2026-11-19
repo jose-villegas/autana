@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Write the render settings table in docs/render/Render-Settings.md: one row
-per field of render_settings_t, with the tier and trade its comment in
+per field of render_settings_t, with the range, tier and trade its comment in
 launcher/main/render/settings/render_settings.h states and the default
 default.render.toml sets.
 
@@ -29,11 +29,12 @@ def render(source=None, values=None):
     found = render_asset.fields(source)
     values = render_asset.load(render_asset.DEFAULT) if values is None else values
     rows = []
-    for field, (_, tier, trade) in found.items():
-        if tier not in TIERS:
-            raise ValueError(f"{render_asset.HEADER.name}: {field}'s tier {tier!r} is not one of {', '.join(TIERS)}")
-        rows.append((f"`{field}`", f"`{str(values[field]).lower()}`", tier, trade))
-    return markdown(["Field", "Default", "Tier", "What it trades"], rows).rstrip()
+    for field, row in found.items():
+        if row.tier not in TIERS:
+            raise ValueError(f"{render_asset.HEADER.name}: {field}'s tier {row.tier!r} is not one of {', '.join(TIERS)}")
+        rows.append((f"`{field}`", f"`{str(values[field]).lower()}`", f"`{render_asset.span(row.interval)}`",
+                     row.tier, row.trade))
+    return markdown(["Field", "Default", "Range", "Tier", "What it trades"], rows).rstrip()
 
 
 def main(argv=None):

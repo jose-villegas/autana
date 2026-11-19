@@ -69,7 +69,6 @@
 #include "../scene_examples/hall.c"
 #include "../scene_examples/load_scene_async.c"
 #include "../scene_examples/present.c"
-#include "../scene_examples/small_fill.c"
 #include "anim/anim_skeleton_format.h"
 #include "asset/asset_file.h"
 #include "image/pixel/rgb565.h"
@@ -2446,22 +2445,6 @@ test_doc_present_modes_reach_camera(void) {
     TEST_ASSERT_FALSE(present_example(entity_find(loaded, name_hash("red"))));
 }
 
-static void
-test_doc_small_fill_reaches_camera(void) {
-    fixture();
-    entity_t loaded = show("test_pair");
-    const small_fill_t before = camera_lens(camera_first(loaded))->small_fill;
-    const small_fill_t expected = SMALL_FILL_FAST;
-    TEST_ASSERT_TRUE(before.ceiling != expected.ceiling || before.gate != expected.gate
-                     || before.style != expected.style);
-    TEST_ASSERT_TRUE(small_fill_example(entity_find(loaded, name_hash("camera"))));
-    const small_fill_t actual = camera_lens(camera_first(loaded))->small_fill;
-    TEST_ASSERT_EQUAL_INT(expected.ceiling, actual.ceiling);
-    TEST_ASSERT_EQUAL_INT(expected.gate, actual.gate);
-    TEST_ASSERT_EQUAL_INT(expected.style, actual.style);
-    TEST_ASSERT_FALSE(small_fill_example(entity_find(loaded, name_hash("red"))));
-}
-
 /* scene_load() reads the pack named after the scene once and holds it while
  * a scene loaded from it stays: damage to the file goes unseen until the last
  * one unloads and the next load reads it again. */
@@ -4107,11 +4090,12 @@ test_camera_present_default_setter_and_dynamic_size(void) {
     assert_composed_scanlines(render_context_main(), 0, CAMERA_PRESENT_SCANLINE);
 }
 
+/* The main context's small fill reaches a scene's draw: the smooth default
+ * keeps the picture, and each fast style draws its own. */
 static void
-test_camera_small_fill_changes_scene_pixels(void) {
+test_render_settings_small_fill_changes_scene_pixels(void) {
     expanded_fixture();
     entity_t scene = loaded_root(0);
-    const entity_t camera = entity_find(scene, name_hash("camera"));
     static const uint8_t colors[QUAD_VERTICES][3] = {{32, 80, 96}, {128, 112, 48}, {224, 160, 144}, {48, 96, 80}};
     for (int i = 0; i < columns(scene)->renderer_count; i++) {
         columns(scene)->renderers[i].mesh.colors = colors;
@@ -4119,15 +4103,18 @@ test_camera_small_fill_changes_scene_pixels(void) {
     render_context_t* context = render_context_main();
     scene_render(0, 0, SIZE, SIZE);
     memcpy(fx.held, raster_color(&context->raster), SIZE * SIZE * sizeof(*fx.held));
-    TEST_ASSERT_TRUE(camera_set_small_fill(camera, SMALL_FILL_SMOOTH));
+    render_settings_t settings = RENDER_SETTINGS_DEFAULT;
+    settings.small_fill = SMALL_FILL_SMOOTH;
+    render_context_set_settings(context, &settings);
     scene_render(0, 0, SIZE, SIZE);
     TEST_ASSERT_EQUAL_MEMORY(fx.held, raster_color(&context->raster), SIZE * SIZE * sizeof(*fx.held));
     uint32_t checksums[SMALL_FILL_STYLE_COUNT];
-    for (small_fill_style_t style = SMALL_FILL_FLAT; style < SMALL_FILL_STYLE_COUNT; style++) {
-        TEST_ASSERT_TRUE(camera_set_small_fill(camera, (small_fill_t){SMALL_FILL_CEILING_FAST, 0, style}));
+    for (int style = SMALL_FILL_FLAT; style < SMALL_FILL_STYLE_COUNT; style++) {
+        settings.small_fill = (render_small_fill_settings_t){SMALL_FILL_CEILING_FAST, 0, style};
+        render_context_set_settings(context, &settings);
         scene_render(0, 0, SIZE, SIZE);
         checksums[style] = crc32_update(0, raster_color(&context->raster), SIZE * SIZE * sizeof(uint16_t));
-        for (int previous = SMALL_FILL_FLAT; previous < (int)style; previous++) {
+        for (int previous = SMALL_FILL_FLAT; previous < style; previous++) {
             TEST_ASSERT_NOT_EQUAL(checksums[previous], checksums[style]);
         }
     }
@@ -4151,36 +4138,6 @@ test_camera_skip_hidden_setter_changes_no_pixel(void) {
     TEST_ASSERT_TRUE(lens->skip_hidden);
     scene_render(0, 0, SIZE, SIZE);
     TEST_ASSERT_EQUAL_MEMORY(fx.held, raster_color(&context->raster), SIZE * SIZE * sizeof(*fx.held));
-}
-
-static void
-test_camera_small_fill_default_setter_and_view(void) {
-    expanded_fixture();
-    entity_t scene = loaded_root(0);
-    const entity_t camera = entity_find(scene, name_hash("camera"));
-    const lens_t* lens = camera_lens(camera_first(scene));
-    TEST_ASSERT_EQUAL_INT(SMALL_FILL_SMOOTH.ceiling, lens->small_fill.ceiling);
-    TEST_ASSERT_EQUAL_INT(SMALL_FILL_SMOOTH.gate, lens->small_fill.gate);
-    TEST_ASSERT_EQUAL_INT(SMALL_FILL_FLAT, lens->small_fill.style);
-    const small_fill_t limit = {SMALL_FILL_CEILING_MAX, 0, SMALL_FILL_DITHER};
-    TEST_ASSERT_TRUE(camera_set_small_fill(camera, limit));
-    TEST_ASSERT_FALSE(camera_set_small_fill(camera, (small_fill_t){SMALL_FILL_CEILING_MAX + 1, 0, SMALL_FILL_DITHER}));
-    TEST_ASSERT_FALSE(camera_set_small_fill(camera, (small_fill_t){UINT8_MAX, 0, SMALL_FILL_DITHER}));
-    TEST_ASSERT_EQUAL_INT(SMALL_FILL_CEILING_MAX, lens->small_fill.ceiling);
-    TEST_ASSERT_TRUE(camera_set_small_fill(camera, (small_fill_t){0, 0, SMALL_FILL_FLAT}));
-    const small_fill_t fill = SMALL_FILL_FAST;
-    TEST_ASSERT_FALSE(camera_set_small_fill(entity_find(scene, name_hash("red")), fill));
-    TEST_ASSERT_FALSE(camera_set_small_fill(ENTITY_NONE, fill));
-    TEST_ASSERT_FALSE(camera_set_small_fill(camera, (small_fill_t){4, 0, SMALL_FILL_STYLE_COUNT}));
-    TEST_ASSERT_TRUE(camera_set_small_fill(camera, fill));
-    const transformf_t pose = transformf_identity();
-    const render_view_t view = lens_view(lens, &pose, (viewport_t){64, 48, 0});
-    TEST_ASSERT_EQUAL_INT(fill.ceiling, view.small_fill.ceiling);
-    TEST_ASSERT_EQUAL_INT(fill.gate, view.small_fill.gate);
-    TEST_ASSERT_EQUAL_INT(fill.style, view.small_fill.style);
-    TEST_ASSERT_EQUAL_INT(fill.ceiling, lens->small_fill.ceiling);
-    TEST_ASSERT_EQUAL_INT(fill.gate, lens->small_fill.gate);
-    TEST_ASSERT_EQUAL_INT(fill.style, lens->small_fill.style);
 }
 
 static void
@@ -8819,9 +8776,8 @@ run_scene_suite(void) {
     RUN_TEST(test_camera_present_composes_half_picture_at_any_height);
     RUN_TEST(test_camera_present_scanline_and_double_compose_both_quarters);
     RUN_TEST(test_camera_present_default_setter_and_dynamic_size);
-    RUN_TEST(test_camera_small_fill_default_setter_and_view);
     RUN_TEST(test_camera_skip_hidden_setter_changes_no_pixel);
-    RUN_TEST(test_camera_small_fill_changes_scene_pixels);
+    RUN_TEST(test_render_settings_small_fill_changes_scene_pixels);
     RUN_TEST(test_non_half_compose_upscales_to_the_full_destination);
     RUN_TEST(test_failed_half_allocation_keeps_full_upscale_unexpanded);
     RUN_TEST(test_expanded_frame_without_ui_does_not_replay_the_previous_hud);
@@ -8851,7 +8807,6 @@ run_scene_suite(void) {
     RUN_TEST(test_doc_scene_missing_leaves_entities_and_camera_alone);
     RUN_TEST(test_doc_animator_blends_to_selected_clip);
     RUN_TEST(test_doc_present_modes_reach_camera);
-    RUN_TEST(test_doc_small_fill_reaches_camera);
     RUN_TEST(test_scene_load_holds_its_pack_until_the_last_scene_from_it_unloads);
     RUN_TEST(test_a_scene_that_fails_to_load_does_not_hold_its_pack);
     RUN_TEST(test_scene_load_reads_a_scene_from_the_pack_its_id_names);

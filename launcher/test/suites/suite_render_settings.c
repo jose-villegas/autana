@@ -137,7 +137,9 @@ test_the_default_is_every_setting_on_as_the_raster_drew_before(void) {
                                            .mid_every = (RENDER_SETTINGS_DEFAULT.anim.mid_every),
                                            .far_every = (RENDER_SETTINGS_DEFAULT.anim.far_every),
                                            .hysteresis_px = (RENDER_SETTINGS_DEFAULT.anim.hysteresis_px)},
-                                  .texture = RENDER_SETTINGS_DEFAULT.texture};
+                                  .texture = RENDER_SETTINGS_DEFAULT.texture,
+                                  /* Small fill keeps the smooth picture exact, as the camera's default did. */
+                                  .small_fill = SMALL_FILL_SMOOTH};
     assert_settings(&on, &RENDER_SETTINGS_DEFAULT);
     const render_settings_t bare = raster_settings(&r->raster);
     assert_settings(&on, &bare);
@@ -256,6 +258,19 @@ test_the_coverage_knob_overrides_only_the_coverage_cap(void) {
     TEST_ASSERT_EQUAL_INT(100, used.lod.coverage_permille);
 }
 
+/* The small fill is the caller's alone: tuning other knobs keeps it whole. */
+static void
+test_tuned_settings_keep_the_callers_small_fill(void) {
+    render_settings_t set = RENDER_SETTINGS_DEFAULT;
+    set.small_fill = SMALL_FILL_FAST_DITHER;
+    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, lod_coverage_permille), 500));
+    const render_settings_t used = render_settings_tuned(&set);
+    TEST_ASSERT_TRUE(tune_reset(tune_shared(), TUNE_NAME(render, lod_coverage_permille)));
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_FAST_DITHER.ceiling, used.small_fill.ceiling);
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_FAST_DITHER.gate, used.small_fill.gate);
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_DITHER, used.small_fill.style);
+}
+
 /* Each texture knob changes its own field of what a draw uses and no other; 0 is a value, not
  * unset; the bend knob counts R3D_SPAN_BEND_STEPS to the texel; a reset gives the caller's back. */
 #define CALLER_DIVIDE_PX 7
@@ -358,7 +373,10 @@ test_a_packs_render_entry_reads_every_field(void) {
                                     (int16_t)(RENDER_SETTINGS_DEFAULT.anim.hysteresis_px * STEP),
                                     RENDER_TEXTURE_DIVIDE_PX_MAX,
                                     STEP / 4,
-                                    RENDER_TEXTURE_LEVEL_MAX};
+                                    RENDER_TEXTURE_LEVEL_MAX,
+                                    SMALL_FILL_CEILING_MAX,
+                                    SMALL_FILL_GATE_MAX,
+                                    SMALL_FILL_DITHER};
     render_settings_t read;
     TEST_ASSERT_EQUAL(ASSET_OK, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
     TEST_ASSERT_FALSE(read.cull);
@@ -375,16 +393,20 @@ test_a_packs_render_entry_reads_every_field(void) {
     TEST_ASSERT_EQUAL_INT(RENDER_TEXTURE_DIVIDE_PX_MAX, read.texture.divide_px);
     TEST_ASSERT_EQUAL_FLOAT(0.25F, read.texture.affine_bend);
     TEST_ASSERT_EQUAL_INT(RENDER_TEXTURE_LEVEL_MAX, read.texture.affine_level);
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_CEILING_MAX, read.small_fill.ceiling);
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_GATE_MAX, read.small_fill.gate);
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_DITHER, read.small_fill.style);
 }
 
 /* Rows by place: the lod blend pair, then the anim fields (mid_px, far_px, mid_every, far_every, hysteresis_px),
- * then the texture fields (divide_px, affine_bend, affine_level). */
+ * the texture fields (divide_px, affine_bend, affine_level), then the small fill (ceiling, gate, style). */
 enum {
+    SMALL_FILL_ROWS = 3,
     TEXTURE_ROWS = 3,
     ANIM_ROWS = 5,
-    BLEND_ROW = FIELDS - TEXTURE_ROWS - ANIM_ROWS - 2,
+    BLEND_ROW = FIELDS - SMALL_FILL_ROWS - TEXTURE_ROWS - ANIM_ROWS - 2,
     BLEND_PX_ROW,
-    MID_PX_ROW = FIELDS - TEXTURE_ROWS - ANIM_ROWS,
+    MID_PX_ROW = FIELDS - SMALL_FILL_ROWS - TEXTURE_ROWS - ANIM_ROWS,
     FAR_PX_ROW,
     MID_EVERY_ROW,
     FAR_EVERY_ROW,
@@ -392,6 +414,9 @@ enum {
     DIVIDE_PX_ROW,
     AFFINE_BEND_ROW,
     AFFINE_LEVEL_ROW,
+    CEILING_ROW,
+    GATE_ROW,
+    STYLE_ROW,
 };
 
 /* Rows of zeros but for the anim intervals, whose least is RENDER_ANIM_EVERY_MIN. */
@@ -486,6 +511,26 @@ test_a_texture_setting_outside_its_range_is_refused_unread(void) {
     }
 }
 
+/* A small-fill ceiling, gate or style below 0 or past its limit is refused; each limit itself reads. */
+static void
+test_a_small_fill_setting_outside_its_range_is_refused_unread(void) {
+    int16_t values[FIELDS];
+    zero_rows(values);
+    values[BLEND_PX_ROW] = STEP;
+    const int rows[] = {CEILING_ROW, GATE_ROW, STYLE_ROW};
+    const int16_t limits[] = {SMALL_FILL_CEILING_MAX, SMALL_FILL_GATE_MAX, SMALL_FILL_STYLE_COUNT - 1};
+    render_settings_t read;
+    for (size_t i = 0; i < sizeof rows / sizeof rows[0]; i++) {
+        values[rows[i]] = limits[i];
+        TEST_ASSERT_EQUAL(ASSET_OK, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
+        values[rows[i]] = -1;
+        TEST_ASSERT_EQUAL(ASSET_ERR_FORMAT, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
+        values[rows[i]] = (int16_t)(limits[i] + 1);
+        TEST_ASSERT_EQUAL(ASSET_ERR_FORMAT, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
+        values[rows[i]] = 0;
+    }
+}
+
 static void
 test_an_entry_missing_a_field_with_another_or_fixed_point_is_refused_unread(void) {
     static const int16_t values[FIELDS + 1] = {0};
@@ -560,6 +605,8 @@ suite_render_settings(void) {
     RUN_TEST(test_a_blend_outside_its_values_or_range_is_refused_unread);
     RUN_TEST(test_an_anim_interval_outside_its_range_is_refused_unread);
     RUN_TEST(test_a_texture_setting_outside_its_range_is_refused_unread);
+    RUN_TEST(test_a_small_fill_setting_outside_its_range_is_refused_unread);
+    RUN_TEST(test_tuned_settings_keep_the_callers_small_fill);
     RUN_TEST(test_an_entry_missing_a_field_with_another_or_fixed_point_is_refused_unread);
     RUN_TEST(test_a_pack_without_the_entry_reads_not_found);
     RUN_TEST(test_an_app_starts_with_its_packs_settings_and_without_one_the_default);
