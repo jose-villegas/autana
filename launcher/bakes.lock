@@ -144,19 +144,19 @@ host = "Linux x86_64"
 [[bake]]
 output = "butterfly_body.bundle"
 source = "launcher/demo/butterfly/butterfly.scene.toml"
-key = "82a8ed6f66258791f2a1e9599d01e3d68df351f2a1bcdb27337543196360af88"
+key = "26f2795ca0f154f74bc4db3487050ae29f553b1b41e9e1d47e4443dda44982fc"
 sha256 = "6c89f09ccd5329b3b5d96e9da76327108369eb81d15aa47634ad42de4cf082e5"
 size = 336
-run = 44299908829
+run = 44516727571
 host = "Linux x86_64"
 
 [[bake]]
 output = "butterfly_wing.bundle"
 source = "launcher/demo/butterfly/butterfly.scene.toml"
-key = "45cdea0956a836284639dcdd7266729e021320bf965b657cc5b664413725ea97"
+key = "a7f84a0254dc449c11b82ae7e0c8b72c3d149f70a6a96b7e33b4f2a60ee02969"
 sha256 = "cb8df75442d61e3c7873f9dce84c529afaeb9f6ed8539c5a512e0943e6dfc2ba"
 size = 368
-run = 44299908829
+run = 44516727571
 host = "Linux x86_64"
 
 [[bake]]
