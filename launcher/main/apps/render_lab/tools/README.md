@@ -369,7 +369,8 @@ contact blob under it darkens the floor, sized from its footprint.
 ### Small fill
 
 `render_lab.small_fill_ceiling`, `render_lab.small_fill_gate` and
-`render_lab.small_fill_style` apply to the scene camera each frame.
+`render_lab.small_fill_style` set the main render context's `small_fill`
+render settings every frame, so in the lab the picker owns small fill.
 The BOOT menu has a SMALL FILL dropdown with every `SMALL_FILL_` preset;
 picking one sets the three tunables. Every menu option is in a release
 image too.
@@ -386,14 +387,15 @@ depth edges sharp
 ([Dynamic-Resolution.md](../../../../../docs/render/frame/Dynamic-Resolution.md#upscaling-within-a-surface)).
 It sets `render_lab.upscale`.
 
-The generic scene viewer accepts `--small-fill CEILING,GATE,STYLE`; its defaults
-come from `SMALL_FILL_SMOOTH`. Styles use the `small_fill_style_t` values.
+The generic scene viewer sets small fill like any render setting, with
+`--set render.small_fill.FIELD=VALUE`; a value outside the field's range fails the run.
 The [engine feature](../../../../../docs/render/frame/Coverage.md#small-fill)
 defines the axes and defaults.
 
 ```sh
 sh launcher/tools/render/scene_viewer.sh launcher/demo/sponza/sponza.scene.toml \
-    --object atrium_fitted_full --small-fill 12,16,1 -o grain.bmp
+    --object atrium_fitted_full --set render.small_fill.ceiling=12 \
+    --set render.small_fill.gate=16 --set render.small_fill.style=1 -o grain.bmp
 ```
 
 The app host accepts `--tune` before entry or `--live-tune` after entry.
