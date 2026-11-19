@@ -195,69 +195,67 @@ job's stack; scenes keep no per-entity SH cache.
 
 ### Contact shadows
 
-`scene_set_contact_blob(renderer, ground_y, strength, shape)` draws planar
-contact shadows after geometry, before composition. Zero strength disables
-them. The projection follows Blinn's planar-shadow idea.<sup>[[130]](../../Citations.md#blinn-1988)</sup>
+`scene_set_contact_blob(renderer, ground_y, strength, shape)` draws contact
+shadows after geometry, before composition. Zero strength disables them.
+Covered pixels halve their RGB565 channels, using geometry's lens and fitted depth scale.
 
-Contact shadows share geometry's lens and depth scale. Covered pixels
-halve their RGB565 channels.
+```mermaid
+flowchart LR
+    Repose["Repose or world change"] --> Mask["Build SHAPE mask"]
+    Mask --> Fill["Fill"]
+    Lights["First drawn scene with lights"] -->|none| SH["Mover SH L1"]
+    SH -->|isotropic or absent| Up["Straight up"]
+    Lights --> Fill
+    SH --> Fill
+    Up --> Fill
+    Fill --> Bounds["Cache footprints and bounds"] --> Draw["Draw"]
+```
 
-Rows are bounded by the near-clipped footprint; off-screen or behind-camera discs visit nothing.
-Single discs use a homogeneous squared-distance compare with no per-pixel divide, including stretched ellipses.
+| Shape | Footprint | Build cost | Fallback |
+|---|---|---|---|
+| `SCENE_CONTACT_BLOB` | Squared disc falloff `(1 − d²)²`; radius is the smaller horizontal half extent of the world box. | One ellipse at fill. | None. |
+| `SCENE_CONTACT_FEET` | Constant-radius discs at posed leaf joints within `CONTACT_JOINT_BAND` times rig height of the lowest leaf. Radius is `CONTACT_RADIUS_FRACTION` times the nearest positive contact spacing (rig height when there is one contact or all contacts coincide). | Bind-space leaf selection on activation; joint positions at fill. | No footprint without usable contacts. |
+| `SCENE_CONTACT_SHAPE` | Union of posed joint ellipses over the world box's xz rectangle; soft cell-width edges, with no blur or height fade. | Skin-weighted bind ellipsoids on activation; mask cells on repose or world change. | BLOB when skin or mask allocation is unavailable. |
 
 ![BLOB and SHAPE under the same low contact light](../../images/render/contact-shape.png)
 
 ![Enlarged BLOB and SHAPE contact coverage](../../images/render/contact-shape.crops.png)
-
-| Shape | Coverage |
-|---|---|
-| `SCENE_CONTACT_BLOB` | Squared disc falloff `(1 − d²)²`, with radius the smaller horizontal half extent of the world box. |
-| `SCENE_CONTACT_FEET` | Generic bind-space leaf contacts near the lowest leaf; one constant-radius disc under each posed joint. |
-| `SCENE_CONTACT_SHAPE` | Union of posed joint ellipses over the world box’s xz footprint. Missing skin or mask allocation failure uses BLOB. |
 
 `scene_set_contact_warp(renderer, warp)` defaults off: footprints stay
 centred at the mover or posed contact joint, with no stretch.
 
 ![BLOB, FEET and SHAPE during one run, with warp off and on](../../images/render/contact-warp.gif)
 
-With warp on, each footprint shifts away from the light by `r tan(θ)`
-and stretches along it by `1/e`. The elevation cosine `e` is clamped to
-`CONTACT_LIGHT_ELEVATION_MIN`; `r` is the smaller horizontal half extent.
+Warp is a ground-plane approximation of Blinn's planar projection: it shifts a footprint ellipse
+away from the light and stretches it along that direction.<sup>[[132]](../../Citations.md#blinn-1988)</sup>
 
-FEET finds leaf joints within `CONTACT_JOINT_BAND` times the rig height of
-the lowest leaf. Its radius is `CONTACT_RADIUS_FRACTION` times the nearest
-contact spacing. Joint height changes neither radius nor strength.
+The offset is `r tan(θ)` and the stretch is `1/e`. Here θ is the angle from
+vertical, `e = cos θ` clamped to `CONTACT_LIGHT_ELEVATION_MIN`, and `r` is
+the smaller horizontal half extent.
 
-The receiver scene’s brightest directional light wins, then another drawn
-scene’s light, the mover’s sampled SH L1 dominant direction, or overhead.
+The brightest light of the first drawn scene with lights wins. Otherwise,
+the mover's sampled SH L1 dominant direction supplies the direction;
+an isotropic or absent probe field uses straight up.
 
-FEET and SHAPE map ground-plane intersections to disc falloff or mask bytes.
-Overlapping footprints use maximum coverage and darken each pixel once.
-SHAPE uses integer byte thresholds and has no height fade.
+Radial footprints share a divide-free homogeneous ellipse test. SHAPE maps
+ground intersections to mask bytes with one reciprocal per pixel.
+Overlapping footprints darken once; joint height changes neither radius nor strength.
 
-Draw and partial redraw use the union of the same footprints. Their projected
-corners bound the visited screen rows. Partial redraw retains previous and
-current bounds; a selected-light direction change forgets the picture.
+Fill caches the footprints used by draw and their union with geometry bounds.
+Partial redraw unions previous and current bounds, including light-direction changes.
+Near-clipped projected corners bound the visited rows.
 
-SHAPE fits one axis-aligned bind-space ellipsoid per joint from skin-weighted
-vertex means and spreads. Its radii are `CONTACT_MASK_SPREAD` standard deviations.
-The skin allocation retains this table; fitting visits vertices only on activation.
-
-Each pose projects the ellipsoids through the skin palette onto the ground.
-Their ellipse union has a soft cell-width edge, without a blur pass.
-Work scales with joints and covered mask cells, independently of triangles.
+SHAPE fits axis-aligned bind-space ellipsoids from skin-weighted vertex means
+and spreads, with radii of `CONTACT_MASK_SPREAD` standard deviations.
+Mask building projects them through the skin palette and world transform.
 
 The proxy approximates bulk contact: thin details and articulated gaps need
-not match the mesh silhouette. Nearest-cell sampling follows the current
-world footprint between reposes. The mask rebuilds only with the pose.
+not match the mesh silhouette. Work scales with joints and covered mask cells,
+independently of triangles. Sampling uses the renderer's world rectangle.
 
-![Triangle reference and joint proxy contact coverage](../../images/render/contact-shape-proxy.png)
-
-![Enlarged triangle reference and joint proxy contact coverage](../../images/render/contact-shape-proxy.crops.png)
-
-Each active SHAPE renderer allocates `CONTACT_MASK_SIDE`² bytes through
-`MEMORY_FAST`, released with its skin buffers. The skin allocation also holds
-one `contact_joint_t` per joint; mask building needs no static scratch.
+Each active SHAPE renderer has a `CONTACT_MASK_SIDE`²-byte mask and a separate
+`MEMORY_FAST` allocation of one `contact_joint_t` per joint. Both allocations
+are freed with the skin buffers.
 
 ## 6. Current limits
 

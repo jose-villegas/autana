@@ -159,10 +159,11 @@ the presets vary the copies' geometry, layout and colour modes.
 | `stress-noisy-tiny` | ![Stress noisy tiny: cylinders end on, their fans of slivers](../../../../../docs/images/overview/render-lab-stress-noisy-tiny.png) | many small cylinders end on, each end a fan of slivers whose corners are far apart in colour | the small-fill gate: every sliver is tested and none passes |
 | `stress-mix` | ![Stress mix: planes with several tessellations and colour modes](../../../../../docs/images/overview/render-lab-stress-mix.png) | copies cycling through tessellations; a named share of triangles has equal corner colours | a single triangle size or colour mode standing for a scene's draw cost |
 | `stress-static-copies` | ![Static triangle copies](../../../../../docs/images/overview/render-lab-stress-static-copies.png) | the stress pack's LMSH triangle, retained in each renderer | static asset residency and small transform batches |
-| `stress-skinned-sh-blobs` | ![Skinned copies with probe lighting and contact discs](../../../../../docs/images/overview/render-lab-stress-skinned-sh-blobs.png) | animated skins over floor pads; copy count is `STRESS_SKINNED_COPIES` | Per-mover SH sampling, per-vertex irradiance and BLOB contact discs under the same low light as SHAPE. |
-| `stress-skinned-feet-blobs` | ![Constant discs under generic contact joints](../../../../../docs/images/overview/render-lab-stress-skinned-feet-blobs.png) | Same copies and low light, with FEET and warp off | Contact discovery and posed discs. |
+| `stress-skinned-sh-blobs` | ![Skinned copies with probe lighting and contact discs](../../../../../docs/images/overview/render-lab-stress-skinned-sh-blobs.png) | animated skins over floor pads; copy count is `STRESS_SKINNED_COPIES` | Per-mover SH sampling, per-vertex irradiance and BLOB contact discs. |
+| `stress-skinned-feet-blobs` | ![Constant discs under generic contact joints](../../../../../docs/images/overview/render-lab-stress-skinned-feet-blobs.png) | Same copies and low light as `stress-skinned-shape-blobs`, with FEET and warp off | Contact discovery and posed discs. |
+| `stress-skinned-blob-warped` | Warped radial ellipse | BLOB with the low contact light and warp on | Divide-free ellipse path. |
 | `stress-skinned-shape-warped` | ![Warped silhouette contacts](../../../../../docs/images/overview/render-lab-stress-skinned-shape-warped.png) | `stress-skinned-shape-blobs` with warp on | Warp cost against its unwarped twin. |
-| `stress-skinned-shape-blobs` | Top-down silhouette | Same copies, pose tiers and light as `stress-skinned-sh-blobs` | Mask refresh cost and redraw bounds. |
+| `stress-skinned-shape-blobs` | Top-down joint-proxy silhouette | Same copies and pose tiers as `stress-skinned-sh-blobs`, with a low directional light | Mask refresh cost and redraw bounds. |
 | `stress-contact-blobs` | ![Contact discs on plain floor pads](../../../../../docs/images/overview/render-lab-stress-contact-blobs.png) | static floor pads; copy count is `STRESS_CONTACT_BLOB_COPIES` | Contact-disc clipping, depth and fill, under the near camera swing. |
 | `stress-uniform-mid` | ![Uniform plane with intermediate coverage](../../../../../docs/images/overview/render-lab-stress-uniform-mid.png) | equal-colour large triangles | intermediate uniform fill without shaded pixels |
 | `stress-uniform-full` | ![Uniform plane covering the view](../../../../../docs/images/overview/render-lab-stress-uniform-full.png) | equal-colour large triangles spanning the view | uniform fill beyond the water workload at full-width render sizes |
@@ -588,32 +589,13 @@ be checked to have measured the same thing.
 | `render-lab-capybara.gif` | every clip the capybara scene lists, in its order and for an equal time, each blended into the next and, more slowly, back to the first, as the camera turns once around it |
 | `render-lab-water.gif` | the water scene's swing (`render water swing`): rocked side to side, hard and then calmer, flipped over and straight back twice on the way, leaned back so the surface shows, in the `FAST - DITHER` small fill; landscape, as the other clips |
 
-`../render/contact-warp.gif` compares BLOB, FEET and SHAPE over the same
+[contact-warp.gif](../../../../../docs/images/render/contact-warp.gif) compares BLOB, FEET and SHAPE over the same
 capybara-sponza run, with warp off and on. Refresh only the contact figures
 with `doc_images.sh OUT WORK --contacts-only`. The host harness accepts
 `--contact-shape 0|1|2` (BLOB, FEET, SHAPE) and `--contact-warp 0|1`.
 
-`../render/contact-shape.png` and its crops compare BLOB and SHAPE on
-capybara-sponza at the same pose, with warp off. The proxy comparison uses
-`render_compare.py` with triangle-reference and joint-proxy captures:
-
-```sh
-python launcher/tools/render/render_compare.py --out docs/images/render/contact-shape-proxy.png \
-    --row "Ground contact" REFERENCE/capybara.bmp CURRENT/contact-2.bmp \
-    --label-a "Triangle reference" --label-b "Joint proxy" --crops 3
-```
-
-Both captures use `--quarter 1 --no-hud --scene capybara-sponza --frames 60
---dt 100 --contact-shape 2 --contact-warp 0`. The timing fixture uses those
-arguments and `--scene stress-skinned-shape-blobs`, measuring each
-`contact_mask_build` call with the host process CPU clock.
-
-| Host mask builder | capybara-sponza median | Stress median |
-|---|---|---|
-| Joint proxy / triangle reference | 0.11× | 0.07× |
-
-These ratios describe mask construction on the host, including ellipse
-edge softness without a blur pass. Board frame goals require a device run.
+[contact-shape.png](../../../../../docs/images/render/contact-shape.png) and its crops compare BLOB and SHAPE on
+capybara-sponza at the same pose, with warp off.
 
 Run the app shots from the repository root with Python, Pillow and numpy:
 
