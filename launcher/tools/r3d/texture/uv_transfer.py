@@ -126,6 +126,22 @@ def cluster_uvs(mesh, source, material_ids, sizes):
     return Luvs(np.concatenate(uvs), shifts, materials, codes, len(points), len(material_ids))
 
 
+def card_luvs(mesh, uvs, page_of_cluster):
+    """Card UVs already in UV_SHIFT units, one MASK1 page on each cluster's chart 0."""
+    pages = np.asarray(page_of_cluster, dtype=np.int64)
+    uv = np.asarray(uvs)
+    if len(pages) != len(mesh.clusters) or uv.shape != (len(mesh.pos), 2):
+        raise ValueError("card UVs or page assignments do not match the mesh")
+    if not len(pages) or pages.min() < 0 or pages.max() >= MATERIALS_MAX:
+        raise ValueError("card pages exceed LUVS materials")
+    if uv.min() < INT16.min or uv.max() > INT16.max:
+        raise ValueError("card UVs exceed int16")
+    materials = np.full((len(pages), CHARTS), NONE, dtype=np.uint8)
+    materials[:, 0] = pages
+    return Luvs(uv.astype(np.int16), np.zeros(len(pages), dtype=np.int32), materials,
+                np.ones(len(mesh.tris), dtype=np.uint8), len(mesh.pos), int(pages.max()) + 1)
+
+
 def cluster_chart(points, own, own_area, left, near, source_corners, source, sizes):
     """The next chart of a cluster whose `points` are its vertices and whose triangles lie on materials `own` with
     areas `own_area` and nearest source triangles `near`, of those `left` no chart took: (material, source triangle,
