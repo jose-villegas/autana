@@ -51,14 +51,21 @@ test_probe_corners_mean_clamp_scale(void) {
 
 static void
 test_python_probe_grid(void) {
-    enum { GOLDEN_PROBES = 2, GOLDEN_FIRST = -12 };
+    enum {
+        GOLDEN_PROBES = 2,
+        GOLDEN_FIRST = -12,
+        GOLDEN_BYTES = SH_PROBES_HEADER_SIZE + GOLDEN_PROBES * SH_PROBES_RECORD_SIZE
+    };
 
     const float golden_scale = 0.25F;
-    static const uint16_t golden[] = {1,     0,     0,     16256, 0,     16384, 0,     16448, 0,     16512, 0,
-                                      16544, 0,     16576, 0,     16000, 2,     1,     1,     0,     65524, 65525,
-                                      65526, 65527, 65528, 65529, 65530, 65531, 65532, 65533, 65534, 65535, 0,
-                                      1,     2,     3,     4,     5,     6,     7,     8,     9,     10,    11};
-    uint16_t bytes[sizeof golden / sizeof *golden];
+    static const uint8_t golden[] = "\x01\x00\x00\x00\x00\x00\x80\x3f\x00\x00\x00\x40\x00\x00\x40\x40"
+                                    "\x00\x00\x80\x40\x00\x00\xa0\x40\x00\x00\xc0\x40\x00\x00\x80\x3e"
+                                    "\x02\x00\x01\x00\x01\x00\x00\x00\xf4\xff\xf5\xff\xf6\xff\xf7\xff"
+                                    "\xf8\xff\xf9\xff\xfa\xff\xfb\xff\xfc\xff\xfd\xff\xfe\xff\xff\xff"
+                                    "\x00\x00\x01\x00\x02\x00\x03\x00\x04\x00\x05\x00\x06\x00\x07\x00"
+                                    "\x08\x00\x09\x00\x0a\x00\x0b\x00";
+    _Static_assert(sizeof golden == GOLDEN_BYTES + sizeof "", "golden string terminator");
+    uint16_t bytes[GOLDEN_BYTES / sizeof(uint16_t)];
     memcpy(bytes, golden, sizeof bytes);
 #ifndef DEVICE_BUILD
     const char* path = getenv("AUTANA_SH_PROBES");
