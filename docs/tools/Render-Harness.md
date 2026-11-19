@@ -195,15 +195,12 @@ the bake-steps chart shows. Measures, sheets and the occlusion map run every
 time.
 
 The `doc-images-gpu` workflow fingerprints inputs on every main push.
-Changed images remain pending for the next NIGHT_START; pushes do not render.
+Changed images remain pending until the board night ends; pushes do not render.
 
-The daily cron triggers at 20:17Z. A hosted marker job computes the start in
-the NIGHT_ZONE repository variable (IANA name; UTC when unset).
-Hosted wait legs sleep until it, and work gets a fresh token.
-
-The [night order](../../launcher/tools/perf/README.md#nightly-scoped-chain)
-owns the marker, bake priority and board-plan handoff. The hosted job
-only fingerprints. Every Bakes GPU completion triggers a fresh check.
+The render starts when the scheduled [nightly](../../launcher/tools/perf/README.md#nightly-scoped-chain)
+run completes, whatever it reported, so it never runs while the night waits for the GPU;
+a dispatched nightly starts no render.
+Bakes that land during the day render after the next night.
 
 The doc-images GPU stage waits for active board locks, then takes heavy and runs to completion.
 A board claimed between these steps waits for heavy before building.
@@ -211,24 +208,20 @@ Human reservations do not block the GPU stage.
 
 `scripts/lib/local_schedule.py` stops a stage's process tree once no task or
 bake has finished for `GPU_STAGE_PROGRESS_SECONDS`, and in any case after
-`GPU_STAGE_HANG_SECONDS`. `override` starts at once while retaining the board-lock
+`GPU_STAGE_HANG_SECONDS`. A dispatch starts at once and keeps the board-lock
 wait; `force` controls freshness independently.
 
 The images are current only when the newest unexpired record from main is a rendered record for this fingerprint. A
 failed attempt is a record too, so a newer failed one makes them stale
 and the next run renders again.
 
-A dispatch with `force` bypasses both record checks but still skips an
-obsolete run. The hosted lookup defers to the GPU gate while another run of
-this workflow on main is unfinished.
+A dispatch with `force` bypasses both record checks. The hosted lookup defers
+to the GPU gate while another run of this workflow on main is unfinished.
 
-The gate holds the concurrency group, skips runs whose trigger SHA is no
-longer main's head, then checks only the latest record. Refresh jobs queue
-instead of replacing each other (`queue: max`).
-
-An obsolete job skips in seconds, so the head's job still runs. The nightly
-run covers missed or failed triggers. A forced dispatch that becomes
-obsolete must be dispatched again on main.
+The gate holds the concurrency group, then checks only the latest record.
+Refresh jobs queue instead of replacing each other (`queue: max`). A run
+renders its trigger commit even after main moves; the refresh branch is built
+on main's head, and inputs changed since render after the next night.
 
 The first refresh step, `scripts/ci/gpu_refresh_gate.sh`, is the flowchart's
 GPU half, persisting `GPU_ENV` through `GITHUB_ENV` for later steps.
@@ -242,9 +235,7 @@ flowchart LR
     Latest -->|no or force| Refresh["gpu_refresh_gate.sh<br/>holds GPU concurrency group"]
     Refresh --> Check{"GPU runner's fingerprint matches hosted?"}
     Check -->|no| Error["Fail with both fingerprints"]
-    Check -->|yes| Head{"Trigger SHA is main head?"}
-    Head -->|no| Obsolete["Skip obsolete run, record nothing"]
-    Head -->|yes| Again{"Latest main record rendered<br/>and matches?"}
+    Check -->|yes| Again{"Latest main record rendered<br/>and matches?"}
     Again -->|yes| Skip
     Again -->|no or force| Render["Render"]
     Render -->|success| Push["Push changed images to the refresh branch"]
