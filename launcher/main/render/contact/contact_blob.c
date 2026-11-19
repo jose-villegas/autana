@@ -137,8 +137,8 @@ static unsigned
 sample_coverage(const blob_plane_t* blob, float s, float t) {
     if (blob->mask != NULL) {
         const contact_mask_t* mask = blob->mask;
-        const int col = (int)((s + 1) * 0.5F * (float)mask->side);
-        const int row = (int)((t + 1) * 0.5F * (float)mask->side);
+        const int col = mathi_min(mask->side - 1, (int)((s + 1) * 0.5F * (float)mask->side));
+        const int row = mathi_min(mask->side - 1, (int)((t + 1) * 0.5F * (float)mask->side));
         return mask->coverage[(row * mask->side) + col] * BAYER4_LEVELS;
     }
     const float falloff = fmaxf(0, 1 - (s * s) - (t * t));

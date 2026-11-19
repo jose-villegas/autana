@@ -191,6 +191,24 @@ test_full_mask_rectangle(void) {
 }
 
 static void
+test_mask_last_float_inside_edge(void) {
+    enum { SIZE = 1 };
+
+    const float inside = 0.9999999404F;
+    blob_fixture_t f = blob_fixture_make(SIZE);
+    contact_mask_t mask = {.coverage = calloc(CONTACT_MASK_BYTES, 1), .side = CONTACT_MASK_SIDE};
+    TEST_ASSERT_NOT_NULL(mask.coverage);
+    mask.coverage[CONTACT_MASK_BYTES - 1] = UINT8_MAX;
+    const contact_blob_t blob = {
+        .centre = {-inside, -inside, BLOB_DEPTH}, .u = {1, 0, 0}, .v = {0, 1, 0}, .strength = 1, .mask = &mask};
+    contact_blobs_draw(&f.target, &f.lens, &blob, 1);
+    TEST_ASSERT_EQUAL_HEX16(rgb565be_pack(15, 31, 15), f.color[0]);
+    free(mask.coverage);
+    free(f.color);
+    free(f.depth);
+}
+
+static void
 test_multiple_footprints_union_without_double_darkening(void) {
     enum { SIZE = 32, DISCS = 3 };
 
@@ -229,6 +247,7 @@ void
 suite_contact_blob(void) {
     RUN_TEST(test_multiple_footprints_union_without_double_darkening);
     RUN_TEST(test_full_mask_rectangle);
+    RUN_TEST(test_mask_last_float_inside_edge);
     RUN_TEST(test_round_disc_golden);
     RUN_TEST(test_blob_depth_radius_rows_strength);
     RUN_TEST(test_blob_squared_falloff);
