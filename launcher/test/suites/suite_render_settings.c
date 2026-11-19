@@ -258,6 +258,19 @@ test_the_coverage_knob_overrides_only_the_coverage_cap(void) {
     TEST_ASSERT_EQUAL_INT(100, used.lod.coverage_permille);
 }
 
+/* The small fill is the caller's alone: tuning other knobs keeps it whole. */
+static void
+test_tuned_settings_keep_the_callers_small_fill(void) {
+    render_settings_t set = RENDER_SETTINGS_DEFAULT;
+    set.small_fill = SMALL_FILL_FAST_DITHER;
+    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, lod_coverage_permille), 500));
+    const render_settings_t used = render_settings_tuned(&set);
+    TEST_ASSERT_TRUE(tune_reset(tune_shared(), TUNE_NAME(render, lod_coverage_permille)));
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_FAST_DITHER.ceiling, used.small_fill.ceiling);
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_FAST_DITHER.gate, used.small_fill.gate);
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_DITHER, used.small_fill.style);
+}
+
 /* Each texture knob changes its own field of what a draw uses and no other; 0 is a value, not
  * unset; the bend knob counts R3D_SPAN_BEND_STEPS to the texel; a reset gives the caller's back. */
 #define CALLER_DIVIDE_PX 7
@@ -593,6 +606,7 @@ suite_render_settings(void) {
     RUN_TEST(test_an_anim_interval_outside_its_range_is_refused_unread);
     RUN_TEST(test_a_texture_setting_outside_its_range_is_refused_unread);
     RUN_TEST(test_a_small_fill_setting_outside_its_range_is_refused_unread);
+    RUN_TEST(test_tuned_settings_keep_the_callers_small_fill);
     RUN_TEST(test_an_entry_missing_a_field_with_another_or_fixed_point_is_refused_unread);
     RUN_TEST(test_a_pack_without_the_entry_reads_not_found);
     RUN_TEST(test_an_app_starts_with_its_packs_settings_and_without_one_the_default);

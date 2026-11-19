@@ -76,11 +76,41 @@ class RenderAssetTests(unittest.TestCase):
         self.assertEqual(render_asset.fields(source)["lod.tolerance_px"][3], "value >= 1.0F && value < 2.5F")
 
     def test_an_interval_bound_must_be_a_number_or_a_c_constant(self):
-        for bound in ("max", "1 + 2"):
+        for bound in ("max", "1.2.3"):  # each passes the tier comment's shape and fails BOUND
             source = render_asset.HEADER.read_text(encoding="utf-8").replace(
                 "float tolerance_px;  /* basic:", f"float tolerance_px;  /* basic [0.0, {bound}]:")
-            with self.subTest(bound=bound), self.assertRaisesRegex(ValueError, "tolerance_px"):
+            with self.subTest(bound=bound), self.assertRaisesRegex(
+                    ValueError, f"tolerance_px's bound '{bound}' is not a number or a C constant"):
                 render_asset.fields(source)
+
+    def test_an_interval_is_the_c_test_its_brackets_and_bounds_give(self):
+        source = "#define RANGE_MAX 9\ntypedef enum { A, B, C_COUNT } c_t;\n"
+        for kind, bounds, test in (("float", ("[", "-2", "-0.5", "]"), "value >= -2.0F && value <= -0.5F"),
+                                   ("float", ("(", "0", "8", ")"), "value > 0.0F && value < 8.0F"),
+                                   ("float", ("(", "0", "RANGE_MAX", "]"), "value > 0.0F && value <= RANGE_MAX"),
+                                   ("int", ("[", "-3", "4", ")"), "value >= -3 && value < 4"),
+                                   ("int", ("[", "0", "C_COUNT", ")"), "value >= 0 && value < C_COUNT"),
+                                   ("float", None, "true")):
+            with self.subTest(bounds=bounds):
+                self.assertEqual(render_asset.interval(kind, bounds, "field", source), test)
+
+    def test_an_interval_that_cannot_hold_its_field_is_refused(self):
+        source = "#define RANGE_MAX 9\n"
+        for kind, bounds, message in (("bool", ("[", "0", "1", "]"), "is a bool and takes no interval"),
+                                      ("int", ("[", "0", "1.5", "]"), "is an int and its bound 1.5 is not"),
+                                      ("float", ("[", "5", "2", "]"), "starts above its end"),
+                                      ("float", ("[", "RANGE_MAX", "2", "]"), "starts above its end"),
+                                      ("float", ("[", "0", "NO_SUCH", "]"), "NO_SUCH is not a numeric")):
+            with self.subTest(bounds=bounds), self.assertRaisesRegex(ValueError, message):
+                render_asset.interval(kind, bounds, "field", source)
+
+    def test_a_file_value_outside_its_fields_interval_is_refused(self):
+        path = self.settings("[lod]\nblend_px = 1000.0\n")
+        with self.assertRaisesRegex(ValueError, "lod.blend_px = 1000.0 is outside"):
+            render_asset.read(path)
+        with self.assertRaisesRegex(ValueError, "lod.blend_px = 0.0 is outside"):
+            render_asset.read(self.settings("[lod]\nblend_px = 0.0\n"))
+        self.assertEqual(render_asset.read(self.settings("[lod]\nblend_px = 0.5\n"))["lod.blend_px"], 0.5)
 
     def test_the_generated_default_matches_the_tree(self):
         header = render_asset.SETTINGS / "render_settings_default.h"

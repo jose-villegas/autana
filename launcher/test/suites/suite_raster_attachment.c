@@ -889,7 +889,7 @@ assert_small_fill_sequence(raster_rig_t* r, render_small_fill_settings_t fill) {
 }
 
 static void
-test_view_small_fill_styles_and_frame_isolation(void) {
+test_settings_small_fill_styles_and_frame_isolation(void) {
     raster_rig_t* r = small_fill_fixture(false);
     TEST_ASSERT_EQUAL_INT(SMALL_FILL_SMOOTH.ceiling, raster_settings(&r->raster).small_fill.ceiling);
     TEST_ASSERT_EQUAL_INT(SMALL_FILL_SMOOTH.gate, raster_settings(&r->raster).small_fill.gate);
@@ -915,7 +915,7 @@ test_view_small_fill_styles_and_frame_isolation(void) {
 }
 
 static void
-test_view_small_fill_frame_transition_limits(void) {
+test_settings_small_fill_frame_transition_limits(void) {
     raster_rig_t* r = small_fill_fixture(true);
     static const int ceilings[] = {0, R3D_SPAN_SMALL_MAX_SIDE, R3D_SPAN_SMALL_MAX_SIDE + 1, UINT8_MAX};
     static const int gates[] = {0, SMALL_FILL_GATE_FAST, SMALL_FILL_GATE_MAX};
@@ -1100,8 +1100,8 @@ run_raster_attachment_suite(void) {
 #endif
     RUN_TEST(test_split_state_forgets_every_share);
     RUN_TEST(test_split_feedback_preserves_pixels_and_null_uses_even_rows);
-    RUN_TEST(test_view_small_fill_styles_and_frame_isolation);
-    RUN_TEST(test_view_small_fill_frame_transition_limits);
+    RUN_TEST(test_settings_small_fill_styles_and_frame_isolation);
+    RUN_TEST(test_settings_small_fill_frame_transition_limits);
 #ifndef DEVICE_BUILD
     RUN_TEST(test_printed_views_match_the_declared_names);
 #endif
