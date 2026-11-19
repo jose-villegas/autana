@@ -1728,6 +1728,15 @@ class TuneSetTests(unittest.TestCase):
 
 
 class ConsoleSetupTests(unittest.TestCase):
+    def test_set_setup_uses_tune_reply_before_runsuite(self):
+        self.run_setup([b"TUNE_OK render.cull=0\n", b"RUNSUITE_COMPLETE name=sand found=1\n"],
+                       ["SET render.cull 0"])
+        self.assertEqual(self.writes[0], b"\nSET render.cull 0\n")
+        self.assertIn(b"RUNSUITE", self.writes[1])
+        with self.assertRaisesRegex(device.ConsoleRefused, "TUNE_ERR range"):
+            self.run_setup([b"TUNE_ERR range render.cull\n"], ["SET render.cull 2"])
+        self.assertEqual(self.writes, [b"\nSET render.cull 2\n"])
+
     def run_setup(self, replies, lines):
         connection = FakeConnection(replies)
         args = suite_args()

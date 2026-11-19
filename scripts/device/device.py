@@ -31,7 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import autana_config  # noqa: E402
 from native_path import git_bash  # noqa: E402,F401  (callers and tests reach it as device.git_bash)
 import board_serial
-from console_protocol import FRAMED_ENDINGS, replies_to, require_development, reply_prefix
+from console_protocol import FRAMED_ENDINGS, TUNE_REPLY_ENDS, replies_to, require_development, reply_prefix
 from device_capture import (BOOTS_FROM_RESET, BOOTS_ON_RUNNING, BUILD_ID_BYTES_RE as BUILD_ID,
                             CAPTURE_COMPLETE, ERROR_LINE_RE, TEST_NAME, capture_ended_line, crash_signs,
                             suite_failure_signs, test_matches)
@@ -1839,7 +1839,6 @@ def exchange(connection, line, reply, until, seconds):
     return found, False, bool(found or partial)
 
 
-TUNE_REPLY_ENDS = ("TUNE_OK", "TUNE_ERR", "TUNE_END")
 EXCHANGE_SECONDS = 3.0
 EXCHANGE_ATTEMPTS = 3
 

@@ -13,6 +13,7 @@ from statistics import mean
 from types import SimpleNamespace
 
 from layout_measure import analyse, autana_command, required_seeds, run_flash, filter_limits, validate_filters, split_filters, FilterOverlap
+from layout_measure import flash_needs_hot_tunables
 from device_capture import test_matches
 from capture import require_same_board
 from seed_statistics import compare, minimum_seeds, permutation_samples
@@ -153,6 +154,8 @@ def look_seconds(records, seeds, runs):
 
 def measure(args, runner=None, clock=time.monotonic):
     """Acquire seeded observations and save decisions even after capture failure."""
+    args.hot_tunables = flash_needs_hot_tunables(
+        (getattr(args, "send_a", None) or []) + (getattr(args, "send_b", None) or []))
     started = clock()
     budget = 60 * args.max_minutes
     budget_stop = None
@@ -173,7 +176,7 @@ def measure(args, runner=None, clock=time.monotonic):
     destination.mkdir(parents=True, exist_ok=True)
 
     def save_plan():
-        payload = dict(rng_seed=args.rng_seed, plan=plan)
+        payload = dict(rng_seed=args.rng_seed, hot_tunables=args.hot_tunables, plan=plan)
         (destination / "plan.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
     for look, target in enumerate(sizes):
@@ -213,7 +216,7 @@ def measure(args, runner=None, clock=time.monotonic):
                 save_plan()
                 flash_args = SimpleNamespace(out=destination / side,
                     project=getattr(args, "project_" + side), runs=actual_runs, suite=suites,
-                    send=console_lines,
+                    send=console_lines, hot_tunables=args.hot_tunables,
                     timeout=args.timeout, wait=args.wait, autana=getattr(args, "autana", None))
                 try:
                     flash_started = clock()
@@ -331,6 +334,8 @@ def write_summary(path, args, records, rows, estimates, sizes, plan, incomplete=
              f"Intervals are {100 * (1 - args.alpha / len(sizes) / 2):g}% two-sided Welch intervals on log seed means. "
              "Holm corrects difference and equivalence tests separately over all rows. "
              "Inconclusive rows alone receive more seeds at the planned looks.", ""]
+    if getattr(args, "hot_tunables", False):
+        lines += ["knobs live: built with --hot-tunables (both sides)", ""]
     if getattr(args, "send_a", None) or getattr(args, "send_b", None):
         for side in ("a", "b"):
             setup = getattr(args, "send_" + side, None) or []
@@ -413,6 +418,10 @@ def main(argv=None):
                                              "--project", str(args.restore_project), override=args.autana))
     if not 0 < args.threshold < 100 or not 0 < args.alpha < 1 or min(args.timeout, args.wait) <= 0 or not args.max_minutes > 0:
         parser.error("threshold, alpha and time limits must be positive and in range")
+    try:
+        args.hot_tunables = flash_needs_hot_tunables((args.send_a or []) + (args.send_b or []))
+    except ValueError as error:
+        parser.error(str(error))
     if args.validate_plan or args.estimate_plan:
         if not args.suite:
             parser.error("--suite is required")
