@@ -325,7 +325,7 @@ path's frames when the renderer has [`seal_views`](../scene/Scene-Files.md#seal_
 | Term | Meaning |
 |---|---|
 | Hole | In one view, a connected region of pixels where the simplified mesh shows sky that holds no pixel of the source's own sky. A region that reaches the source's sky is the outline moving. |
-| Lock | Of the source triangles seen through the hole, the vertex farthest from the simplified surface: the farthest-point step of line reduction<sup>[[130]](../../Citations.md#douglas-1973)</sup>, on a surface. meshoptimizer keeps a locked vertex in place. |
+| Lock | Of the source triangles seen through the hole, the vertex farthest from the simplified surface: the farthest-point step of line reduction<sup>[[132]](../../Citations.md#douglas-1973)</sup>, on a surface. meshoptimizer keeps a locked vertex in place. |
 
 A lock keeps triangles the rest of the mesh then goes without, so the rest is a
 little coarser. A round whose locks would leave the pass over its budget is tried again

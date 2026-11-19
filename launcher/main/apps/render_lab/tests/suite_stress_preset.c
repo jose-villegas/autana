@@ -694,8 +694,26 @@ test_foliage_mask_opens_as_mask1_and_keeps_about_0_7_of_a_card(void) {
     memory_free(ltex);
 }
 
+static void
+test_contact_blob_preset_is_static_floor_work(void) {
+    bool found = false;
+    for (int i = 0; i < STRESS_PRESET_COUNT; i++) {
+        const stress_params_t* p = &stress_presets[i];
+        if (p->surface == STRESS_SURFACE_CONTACT_BLOBS) {
+            found = true;
+            TEST_ASSERT_EQUAL_INT(STRESS_CONTACT_BLOB_COPIES, p->copies);
+            TEST_ASSERT_FALSE(stress_skinned(p));
+            TEST_ASSERT_FALSE(stress_per_frame(p));
+            TEST_ASSERT_EQUAL_INT(STRESS_SHAPE_PLANE, p->shape);
+            TEST_ASSERT_GREATER_THAN_INT(STRESS_SKINNED_COPIES, p->copies);
+        }
+    }
+    TEST_ASSERT_TRUE(found);
+}
+
 void
 run_stress_preset_suite(void) {
+    RUN_TEST(test_contact_blob_preset_is_static_floor_work);
     RUN_TEST(test_culled_fraction_sweeps_from_visible_to_mostly_off_frustum);
     RUN_TEST(test_near_plane_sweeps_behind_and_clipped_triangles);
     RUN_TEST(test_card_has_holes_colour_steps_and_scene_size_bins);

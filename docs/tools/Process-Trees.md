@@ -39,7 +39,8 @@ flowchart LR
 | `install_console_interrupt_handler()` | turns Windows Ctrl-Break into `KeyboardInterrupt` so locks and ports unwind |
 
 `run_to_end()` in `scripts/device/device.py` is `run_process_tree` with a `watch` that raises the
-moment the held lock is lost.
+moment the held lock is lost. `guard_stage()` in `scripts/lib/local_schedule.py` is the `watch` of a GPU stage:
+it raises once the stage stops progressing or passes its backstop.
 
 ## Using it
 

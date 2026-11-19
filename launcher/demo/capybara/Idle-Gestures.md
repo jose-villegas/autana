@@ -9,7 +9,7 @@
 
 Inaka and Kimura classify forward, slightly pulled-back, and strongly
 pulled-back sideways-facing ears in photographs. These postures guide the
-flick; the study does not measure its speed.<sup>[[129]](../../../docs/Citations.md#inaka-2021)</sup>
+flick; the study does not measure its speed.<sup>[[131]](../../../docs/Citations.md#inaka-2021)</sup>
 
 [Nagasaki Biopark's footage](https://www.youtube.com/watch?v=J_lkQfeN4rE&t=50)
 shows head reorientation during tactile interaction. Keeper contact and
