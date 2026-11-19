@@ -229,7 +229,9 @@ static int
 skin_stage_prepare(scene_t* scene) {
     const int entities = scene->asset.entity_count;
     int clusters = 0;
-    const bool lights_dirty = skin_lights_changed(scene);
+    const uint32_t revision = render_skin_lights_tune(NULL);
+    const bool lights_dirty = skin_lights_changed(scene) || revision != scene->light_revision;
+    scene->light_revision = revision;
     scene->light_table_dirty |= lights_dirty;
     for (int i = 0; i < scene->staged_count; i++) {
         const scene_row_t e = scene->staged[i];

@@ -9,6 +9,7 @@
 #include <stdbool.h>
 
 #include "asset/asset_pack.h"
+#include "render/skin/r3d_skin_light.h"
 
 /* Each field, then its tier and what it trades: docs/render/Render-Settings.md
  * reads these lines. Basic is for any app; advanced needs the renderer's
@@ -94,3 +95,10 @@ render_settings_t render_settings_tuned(const render_settings_t* set);
 /* `anim` under the anim overrides, in place: render_settings_tuned()'s tiers,
  * for a caller holding only them. */
 void render_anim_settings_tune(render_anim_settings_t* anim);
+
+enum { RENDER_SKIN_ALBEDO_SOURCE, RENDER_SKIN_ALBEDO_WHITE };
+
+enum { RENDER_SKIN_DIRECT_OFF, RENDER_SKIN_DIRECT_ON };
+
+/* The frame's skin lights under development overrides; returns their revision. */
+uint32_t render_skin_lights_tune(r3d_skin_lights_t* lights);

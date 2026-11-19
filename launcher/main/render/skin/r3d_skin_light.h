@@ -57,6 +57,7 @@ typedef struct {
 
 typedef struct {
     int count;
+    bool white_albedo;
     vec3f_t direction[R3D_SKIN_LIGHT_MAX];
     vec3f_t color[R3D_SKIN_LIGHT_MAX];
     vec3f_t ambient;

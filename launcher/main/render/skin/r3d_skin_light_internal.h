@@ -51,6 +51,13 @@ light_irradiance(vec3f_t normal, const r3d_skin_lights_t* lights) {
 static inline __attribute__((always_inline)) void
 light_shade(vec3f_t sum, const r3d_skin_lights_t* lights, const uint8_t albedo[3], uint8_t out[3]) {
     const r3d_skin_light_transfer_t* transfer = lights->transfer;
+    if (lights->white_albedo) {
+        const float white = light_decode(R3D_SKIN_LIGHT_BYTE_SCALE, transfer);
+        out[0] = light_encode(white * sum.x, transfer);
+        out[1] = light_encode(white * sum.y, transfer);
+        out[2] = light_encode(white * sum.z, transfer);
+        return;
+    }
     out[0] = light_encode(light_decode(albedo[0], transfer) * sum.x, transfer);
     out[1] = light_encode(light_decode(albedo[1], transfer) * sum.y, transfer);
     out[2] = light_encode(light_decode(albedo[2], transfer) * sum.z, transfer);

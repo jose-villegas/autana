@@ -192,6 +192,7 @@ scene_lights_prepare(scene_t* scene) {
         world.direction[at] = quatf_rotate(scene_row_world(scene->root, l).rotation, SCENE_LIGHT_AXIS);
         world.color[at] = vec3f_scale(light->color, light->intensity);
     }
+    (void)render_skin_lights_tune(&world);
     world.table = scene->light_table;
     if (scene->light_table != NULL && scene->light_table_dirty) {
         world.table_scale = r3d_skin_light_table_build(&world, scene->light_table);
