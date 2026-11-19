@@ -1578,6 +1578,8 @@ class FlashImageScriptTests(unittest.TestCase):
         for relative in ("scripts/device/flash_image.sh", "launcher/tools/build/idf.sh",
                          "launcher/tools/build/idf_shim.bat", "launcher/tools/build/espressif.py",
                          "launcher/tools/build/build_paths.py",
+                         "launcher/tools/build/c_header.py", "launcher/tools/build/math_constants.py",
+                         "launcher/main/console/console_tune.h",
                          "scripts/lib/python.sh", "scripts/lib/python-min-version",
                          "scripts/device/device.py", "scripts/device/device_lock.py",
                          "scripts/device/device_hook.py", "scripts/device/device_report.py",
