@@ -1,97 +1,103 @@
-/* contact_mask: top-down posed triangles filled with the span rasterizer's edges. */
+/* contact_mask: weighted bind-space joint ellipsoids projected into a ground mask. */
 #include "render/contact/contact_mask.h"
 
 #include <math.h>
 #include <string.h>
-#include "render/r3d_span_internal.h"
+#include "math/linear/mat3f.h"
 
-/* Pose refits build masks serially after the skin workers join, keeping scratch off the main task stack. */
-#define CONTACT_MASK_BLUR_SIDE 3
-#define CONTACT_MASK_BLUR_AREA (CONTACT_MASK_BLUR_SIDE * CONTACT_MASK_BLUR_SIDE)
-
-static r3d_span_vertex_t
-mask_vertex(const contact_mask_t* mask, const int16_t position[3], int scale, const mat4f_t* world) {
-    const vec3f_t local = {(float)position[0] / (float)scale, (float)position[1] / (float)scale,
-                           (float)position[2] / (float)scale};
-    const vec3f_t p = vec3f_sub(mat4f_apply(world, local), mask->origin);
-    return (r3d_span_vertex_t){.x = r3d_span_snap(p.x * (float)mask->side / mask->u.x),
-                               .y = r3d_span_snap(p.z * (float)mask->side / mask->v.z),
-                               .z = p.y};
-}
-
-static void
-mask_row(contact_mask_t* mask, const r3d_span_edge_t edges[3], int y, recti_t box) {
-    const int cy = (y * R3D_SUBPIXEL) + R3D_SPAN_HALF_PIXEL;
-    for (int x = mathi_max(0, box.x), end = mathi_min(mask->side, recti_right(box)); x < end; x++) {
-        const int cx = (x * R3D_SUBPIXEL) + R3D_SPAN_HALF_PIXEL;
-        if ((r3d_span_side(&edges[0], cx, cy) | r3d_span_side(&edges[1], cx, cy) | r3d_span_side(&edges[2], cx, cy))
-            < 0) {
-            continue;
+void
+contact_mask_bind(contact_joint_t* joints, const r3d_lit_mesh_t* bind, const r3d_skin_t* skin) {
+    memset(joints, 0, (size_t)skin->joint_count * sizeof *joints);
+    for (int v = 0; v < bind->vertex_count; v++) {
+        const uint8_t* record = skin->vertices + ((size_t)v * skin->vertex_stride);
+        const vec3f_t p = {(float)bind->positions[v][0], (float)bind->positions[v][1], (float)bind->positions[v][2]};
+        for (int i = 0; i < skin->influences; i++) {
+            contact_joint_t* joint = &joints[record[i]];
+            const float w = (float)record[skin->influences + i] * R3D_SKIN_WEIGHT_RECIP;
+            joint->weight += w;
+            joint->centre = vec3f_add(joint->centre, vec3f_scale(p, w));
         }
-        mask->coverage[(y * mask->side) + x] = UINT8_MAX;
     }
-}
-
-static void
-mask_triangle(contact_mask_t* mask, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
-              const r3d_span_vertex_t* c) {
-    if (r3d_span_area2(a, b, c) < 0) {
-        const r3d_span_vertex_t* swap = b;
-        b = c;
-        c = swap;
-    }
-    if (r3d_span_area2(a, b, c) == 0) {
-        return;
-    }
-    static r3d_span_edge_t edges[3];
-    edges[0] = r3d_span_edge(a, b);
-    edges[1] = r3d_span_edge(b, c);
-    edges[2] = r3d_span_edge(c, a);
-    const recti_t box = r3d_span_extent_limits(a, b, c, 0, 0).centres;
-    const int end = mathi_min(mask->side, recti_bottom(box));
-    for (int y = mathi_max(0, box.y); y < end; y++) {
-        mask_row(mask, edges, y, box);
-    }
-}
-
-static void
-mask_cluster(contact_mask_t* mask, const r3d_lit_mesh_t* mesh, const r3d_lit_cluster_t* cluster, const mat4f_t* world) {
-    for (int t = cluster->triangle_first; t < cluster->triangle_first + cluster->triangle_count; t++) {
-        static r3d_span_vertex_t corners[3];
-        for (int i = 0; i < 3; i++) {
-            const int v = mesh->triangles[t][i];
-            corners[i] = mask_vertex(mask, mesh->positions[v], mesh->position_scale, world);
+    for (int j = 0; j < skin->joint_count; j++) {
+        if (joints[j].weight > 0) {
+            joints[j].centre = vec3f_scale(joints[j].centre, 1.0F / joints[j].weight);
         }
-        mask_triangle(mask, &corners[0], &corners[1], &corners[2]);
+    }
+    for (int v = 0; v < bind->vertex_count; v++) {
+        const uint8_t* record = skin->vertices + ((size_t)v * skin->vertex_stride);
+        const vec3f_t p = {(float)bind->positions[v][0], (float)bind->positions[v][1], (float)bind->positions[v][2]};
+        for (int i = 0; i < skin->influences; i++) {
+            contact_joint_t* joint = &joints[record[i]];
+            const float w = (float)record[skin->influences + i] * R3D_SKIN_WEIGHT_RECIP;
+            const vec3f_t d = vec3f_sub(p, joint->centre);
+            joint->radius = vec3f_add(joint->radius, vec3f_scale((vec3f_t){d.x * d.x, d.y * d.y, d.z * d.z}, w));
+        }
+    }
+    for (int j = 0; j < skin->joint_count; j++) {
+        contact_joint_t* joint = &joints[j];
+        if (joint->weight > 0) {
+            joint->radius = (vec3f_t){CONTACT_MASK_SPREAD * sqrtf(joint->radius.x / joint->weight),
+                                      CONTACT_MASK_SPREAD * sqrtf(joint->radius.y / joint->weight),
+                                      CONTACT_MASK_SPREAD * sqrtf(joint->radius.z / joint->weight)};
+        }
     }
 }
 
 static void
-mask_blur(contact_mask_t* mask) {
-    static uint8_t rows[CONTACT_MASK_BLUR_SIDE][CONTACT_MASK_SIDE];
-    memset(rows, 0, sizeof rows);
-    memcpy(rows[1], mask->coverage, (size_t)mask->side);
-    for (int y = 0; y < mask->side; y++) {
-        uint8_t* next = rows[(y + 2) % CONTACT_MASK_BLUR_SIDE];
-        memset(next, 0, (size_t)mask->side);
-        if (y + 1 < mask->side) {
-            memcpy(next, &mask->coverage[(y + 1) * mask->side], (size_t)mask->side);
-        }
-        for (int x = 0; x < mask->side; x++) {
-            unsigned sum = 0;
-            for (int r = 0; r < CONTACT_MASK_BLUR_SIDE; r++) {
-                for (int xx = mathi_max(0, x - 1); xx <= mathi_min(mask->side - 1, x + 1); xx++) {
-                    sum += rows[r][xx];
-                }
+mask_ellipse(contact_mask_t* mask, vec2f_t centre, float xx, float xz, float zz) {
+    /* A half-cell floor keeps flat or line-like joint bounds sampleable. */
+    const float floor_variance = CONTACT_MASK_CELL_HALF * CONTACT_MASK_CELL_HALF;
+    xx += floor_variance;
+    zz += floor_variance;
+    const float rx = sqrtf(xx), rz = sqrtf(zz);
+    const float inverse = 1.0F / ((xx * zz) - (xz * xz));
+    const float edge = fminf(rx, rz);
+    const int left = mathi_max(0, (int)floorf(centre.x - rx));
+    const int right = mathi_min(mask->side, (int)ceilf(centre.x + rx));
+    const int top = mathi_max(0, (int)floorf(centre.y - rz));
+    const int bottom = mathi_min(mask->side, (int)ceilf(centre.y + rz));
+    const float quadratic = zz * inverse;
+    const float second_difference = 2.0F * quadratic;
+    for (int y = top; y < bottom; y++) {
+        const float z = (float)y + CONTACT_MASK_CELL_HALF - centre.y;
+        const float dx = (float)left + CONTACT_MASK_CELL_HALF - centre.x;
+        const float cross = 2.0F * xz * z * inverse;
+        float d2 = (quadratic * dx * dx) - (cross * dx) + (xx * z * z * inverse);
+        float step = quadratic * ((2.0F * dx) + 1.0F) - cross;
+        for (int x = left; x < right; x++, d2 += step, step += second_difference) {
+            uint8_t* cell = &mask->coverage[(y * mask->side) + x];
+            if (*cell == UINT8_MAX || d2 >= 1.0F) {
+                continue;
             }
-            mask->coverage[(y * mask->side) + x] = (uint8_t)(sum / CONTACT_MASK_BLUR_AREA);
+            const float coverage = (1.0F - d2) * edge;
+            const uint8_t value = coverage >= 1.0F ? UINT8_MAX : (uint8_t)(coverage * UINT8_MAX);
+            *cell = *cell > value ? *cell : value;
         }
     }
+}
+
+static void
+mask_joint(contact_mask_t* mask, const contact_joint_t* joint, const mat4f_t* palette, int scale,
+           const mat4f_t* world) {
+    const mat3f_t linear = mat3f_mul(mat3f_from_mat4(*world), mat3f_from_mat4(*palette));
+    const float reciprocal = 1.0F / (float)scale;
+    const vec3f_t local = vec3f_scale(mat4f_apply(palette, joint->centre), reciprocal);
+    const vec3f_t p = mat4f_apply(world, local);
+    const float sx = (float)mask->side / mask->u.x;
+    const float sz = (float)mask->side / mask->v.z;
+    const vec2f_t centre = {(p.x - mask->origin.x) * sx, (p.z - mask->origin.z) * sz};
+    const vec3f_t x = {linear.m[0][0] * joint->radius.x * sx * reciprocal,
+                       linear.m[0][1] * joint->radius.y * sx * reciprocal,
+                       linear.m[0][2] * joint->radius.z * sx * reciprocal};
+    const vec3f_t z = {linear.m[2][0] * joint->radius.x * sz * reciprocal,
+                       linear.m[2][1] * joint->radius.y * sz * reciprocal,
+                       linear.m[2][2] * joint->radius.z * sz * reciprocal};
+    mask_ellipse(mask, centre, vec3f_dot(x, x), vec3f_dot(x, z), vec3f_dot(z, z));
 }
 
 void
-contact_mask_build(contact_mask_t* mask, const r3d_lit_mesh_t* mesh, const mat4f_t* world, box3f_t mover,
-                   float ground_y) {
+contact_mask_build(contact_mask_t* mask, const contact_joint_t* joints, int count, const mat4f_t* palette,
+                   int position_scale, const mat4f_t* world, box3f_t mover, float ground_y) {
     mask->side = CONTACT_MASK_SIDE;
     mask->origin = (vec3f_t){mover.lo.x, ground_y, mover.lo.z};
     mask->u = (vec3f_t){mover.hi.x - mover.lo.x, 0, 0};
@@ -100,8 +106,9 @@ contact_mask_build(contact_mask_t* mask, const r3d_lit_mesh_t* mesh, const mat4f
     if (!(mask->u.x > 0 && mask->v.z > 0)) {
         return;
     }
-    for (int i = 0; i < mesh->cluster_count; i++) {
-        mask_cluster(mask, mesh, &mesh->clusters[i], world);
+    for (int j = 0; j < count; j++) {
+        if (joints[j].weight > 0) {
+            mask_joint(mask, &joints[j], &palette[j], position_scale, world);
+        }
     }
-    mask_blur(mask);
 }

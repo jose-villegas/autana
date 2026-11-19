@@ -18,7 +18,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | [overview](#overview) | 37 | 0 | 0 |
 | [physics](#physics) | 2 | 0 | 0 |
 | [power](#power) | 2 | 0 | 0 |
-| [render](#render) | 135 | 8 | 0 |
+| [render](#render) | 137 | 8 | 0 |
 | [ui](#ui) | 62 | 0 | 0 |
 
 ## anim
@@ -222,6 +222,8 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/render/compare-full-lite.png"><img src="../images/render/compare-full-lite.png" width="160" alt=""></a> | full against lite | [render/offline/Bake-Quality](../render/offline/Bake-Quality.md) | not declared yet |
 | <a href="../images/render/compare-lite-fitted.crops.png"><img src="../images/render/compare-lite-fitted.crops.png" width="160" alt=""></a> | lite against fitted, the places they differ most | [render/offline/Bake-Quality](../render/offline/Bake-Quality.md) | not declared yet |
 | <a href="../images/render/compare-lite-fitted.png"><img src="../images/render/compare-lite-fitted.png" width="160" alt=""></a> | lite against fitted | [render/offline/Bake-Quality](../render/offline/Bake-Quality.md) | not declared yet |
+| <a href="../images/render/contact-shape-proxy.crops.png"><img src="../images/render/contact-shape-proxy.crops.png" width="160" alt=""></a> | Enlarged triangle reference and joint proxy contact coverage | [render/animation/Skinned-Meshes](../render/animation/Skinned-Meshes.md) | not declared yet |
+| <a href="../images/render/contact-shape-proxy.png"><img src="../images/render/contact-shape-proxy.png" width="160" alt=""></a> | Triangle reference and joint proxy contact coverage | [render/animation/Skinned-Meshes](../render/animation/Skinned-Meshes.md) | not declared yet |
 | <a href="../images/render/contact-shape.crops.png"><img src="../images/render/contact-shape.crops.png" width="160" alt=""></a> | Enlarged BLOB and SHAPE contact coverage | [render/animation/Skinned-Meshes](../render/animation/Skinned-Meshes.md) | not declared yet |
 | <a href="../images/render/contact-shape.png"><img src="../images/render/contact-shape.png" width="160" alt=""></a> | BLOB and SHAPE under the same low contact light | [render/animation/Skinned-Meshes](../render/animation/Skinned-Meshes.md) | not declared yet |
 | <a href="../images/render/contact-warp.gif"><img src="figure-thumbnails/render/contact-warp.gif" width="160" alt=""></a> | BLOB, FEET and SHAPE during one run, with warp off and on | [render/animation/Skinned-Meshes](../render/animation/Skinned-Meshes.md) | not declared yet |

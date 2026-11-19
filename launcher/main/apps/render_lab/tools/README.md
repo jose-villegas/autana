@@ -591,6 +591,28 @@ capybara-sponza run, with warp off and on. Refresh only the contact figures
 with `doc_images.sh OUT WORK --contacts-only`. The host harness accepts
 `--contact-shape 0|1|2` (BLOB, FEET, SHAPE) and `--contact-warp 0|1`.
 
+`../render/contact-shape.png` and its crops compare BLOB and SHAPE on
+capybara-sponza at the same pose, with warp off. The proxy comparison uses
+`render_compare.py` with triangle-reference and joint-proxy captures:
+
+```sh
+python launcher/tools/render/render_compare.py --out docs/images/render/contact-shape-proxy.png \
+    --row "Ground contact" REFERENCE/capybara.bmp CURRENT/contact-2.bmp \
+    --label-a "Triangle reference" --label-b "Joint proxy" --crops 3
+```
+
+Both captures use `--quarter 1 --no-hud --scene capybara-sponza --frames 60
+--dt 100 --contact-shape 2 --contact-warp 0`. The timing fixture uses those
+arguments and `--scene stress-skinned-shape-blobs`, measuring each
+`contact_mask_build` call with the host process CPU clock.
+
+| Host mask builder | capybara-sponza median | Stress median |
+|---|---|---|
+| Joint proxy / triangle reference | 0.11× | 0.07× |
+
+These ratios describe mask construction on the host, including ellipse
+edge softness without a blur pass. Board frame goals require a device run.
+
 Run the app shots from the repository root with Python, Pillow and numpy:
 
 ```sh
