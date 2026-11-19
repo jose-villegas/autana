@@ -41,6 +41,7 @@
 #endif
 #include "asset/asset_store.h"
 #include "asset/asset_store_shell.h"
+#include "asset/asset_table_format.h"
 #include "lcol_name_vectors.h"
 #include "math/scalar/mathi.h"
 #include "render/context/render_context.h"
@@ -57,6 +58,7 @@
 #include "scene/scene_shell.h"
 #include "scene/skin/skin.h"
 #include "scene/transform/transform.h"
+#include "shell/shell_system.h"
 #include "test_alloc.h"
 #include "test_anim_tracks.h"
 #include "test_pack.h"
@@ -701,8 +703,9 @@ make_rig_entries(test_pack_t* pack, const skin_fixture_options_t* options) {
 
 /* The pack of every quad, scene and the clip, with the CRC set. */
 static uint32_t
-make_pack(uint8_t* bytes, const skin_fixture_options_t* options) {
-    test_pack_t pack = test_pack_begin(bytes, PACK_MAX, QUAD_COUNT + SCENE_COUNT + 1 + CLIP_COUNT + RIG_ENTRIES);
+make_pack(uint8_t* bytes, const skin_fixture_options_t* options, const char* render_key, int render_value) {
+    test_pack_t pack = test_pack_begin(bytes, PACK_MAX,
+                                       QUAD_COUNT + SCENE_COUNT + 1 + CLIP_COUNT + RIG_ENTRIES + (render_key != NULL));
     for (int i = 0; i < QUAD_COUNT; i++) {
         uint8_t* entry = test_pack_add(&pack, QUADS[i].name, R3D_LIT_MESH_ASSET, QUAD_BYTES);
         make_quad_entry(entry, QUADS[i].red, QUADS[i].green, QUADS[i].blue, 1);
@@ -719,6 +722,16 @@ make_pack(uint8_t* bytes, const skin_fixture_options_t* options) {
     for (int i = 0; i < CLIP_COUNT; i++) {
         make_clip_entry(test_pack_add(&pack, CLIPS[i].id, ANIM_TRACKS_ASSET, FLIGHT_BYTES), CLIPS[i].position_type,
                         CLIPS[i].track_count);
+    }
+    if (render_key != NULL) {
+        uint8_t* entry = test_pack_add(&pack, RENDER_SETTINGS_ENTRY, ASSET_TABLE_ASSET,
+                                       ASSET_TABLE_HEADER_SIZE + ASSET_TABLE_NAME_SIZE + sizeof(int16_t));
+        test_pack_put16(entry, ASSET_TABLE_VERSION);
+        test_pack_put16(entry + ASSET_TABLE_AT_ROWS, 1);
+        test_pack_put16(entry + ASSET_TABLE_AT_COLUMNS, 1);
+        entry[ASSET_TABLE_AT_FRAC_BITS] = RENDER_SETTINGS_FRAC_BITS;
+        memcpy(entry + ASSET_TABLE_HEADER_SIZE, render_key, strlen(render_key));
+        test_pack_put16(entry + ASSET_TABLE_HEADER_SIZE + ASSET_TABLE_NAME_SIZE, render_value);
     }
     make_rig_entries(&pack, options);
     return test_pack_finish(&pack);
@@ -786,7 +799,7 @@ fixture_with_skin(const skin_fixture_options_t* options) {
     TEST_ASSERT_NOT_NULL(fx.pixels);
     TEST_ASSERT_NOT_NULL(fx.held);
     TEST_ASSERT_NOT_NULL(fx.instances);
-    const uint32_t total = make_pack(fx.bytes, options);
+    const uint32_t total = make_pack(fx.bytes, options, NULL, 0);
     TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_open(&fx.pack, fx.bytes, total));
     fx.target = (scene_target_t){fx.pixels, SIZE, SIZE, NULL, NULL};
 }
@@ -912,6 +925,41 @@ frame(uint32_t dt_ms) {
         fx.pixels[i] = SENTINEL;
     }
     scene_compose(dt_ms, 0, &fx.target);
+}
+
+static void
+test_scene_render_overlay_applies_only_allowed_keys_and_releases(void) {
+    fixture();
+    shell_system_t* real = shell_system_swap_for_test(NULL);
+    shell_system_swap_for_test(real);
+    shell_system_t* render = real;
+    while (render != NULL && strcmp(render->name, "render") != 0) {
+        render = render->next;
+    }
+    TEST_ASSERT_NOT_NULL(render);
+    const char* const keys[] = {"small_fill.far_ceiling", "cull"};
+    for (unsigned i = 0; i < sizeof keys / sizeof *keys; i++) {
+        uint32_t total = make_pack(fx.bytes, &SKIN_OPTIONS, "cull", false);
+        TEST_ASSERT_EQUAL(ASSET_OK, asset_pack_open(&fx.pack, fx.bytes, total));
+        render->app_enter(&fx.pack);
+        total = make_pack(fx.bytes, &SKIN_OPTIONS, keys[i], i == 0 ? SMALL_FILL_CEILING_MAX : true);
+        TEST_ASSERT_EQUAL(ASSET_OK, asset_pack_open(&fx.pack, fx.bytes, total));
+        const entity_t root = show("test_pair");
+        frame(0);
+        const render_settings_t drawn = raster_settings(&render_context_main()->raster);
+        TEST_ASSERT_FALSE(drawn.cull);
+        TEST_ASSERT_EQUAL_FLOAT(RENDER_SETTINGS_DEFAULT.lod.tolerance_px, drawn.lod.tolerance_px);
+        TEST_ASSERT_EQUAL_INT(i == 0 ? SMALL_FILL_CEILING_MAX : RENDER_SETTINGS_DEFAULT.small_fill.far_ceiling,
+                              drawn.small_fill.far_ceiling);
+        TEST_ASSERT_EQUAL_HEX32(i == 0 ? RENDER_SETTINGS_BIT_SMALL_FILL_FAR_CEILING : 0,
+                                columns_or_null(root)->render_overlay.set);
+        scene_release(root);
+        TEST_ASSERT_EQUAL_HEX32(0, render_context_main()->scene_overlay.set);
+        TEST_ASSERT_EQUAL_INT(RENDER_SETTINGS_DEFAULT.small_fill.far_ceiling,
+                              render_context_settings(render_context_main())->small_fill.far_ceiling);
+        TEST_ASSERT_FALSE(render_context_settings(render_context_main())->cull);
+        render->app_enter(NULL);
+    }
 }
 
 static void
@@ -8274,6 +8322,7 @@ run_scene_suite(void) {
      * arena, put back once they are done. */
     scene_unload_all();
     const memory_take_fn lender = scene_set_take(NULL);
+    RUN_TEST(test_scene_render_overlay_applies_only_allowed_keys_and_releases);
     RUN_TEST(test_textures_draw_the_quad_other_than_plain);
     RUN_TEST(test_a_mesh_of_other_counts_is_not_drawn_with_the_old_meshs_textures);
     RUN_TEST(test_a_mesh_of_the_same_counts_opens_its_textures_again_after_the_swap);

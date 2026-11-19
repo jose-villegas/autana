@@ -87,8 +87,10 @@ typedef struct {
     memory_take_fn take; /* where the scratch comes from; NULL is the heap */
     int scale_percent;
     resolution_step_t raster_size;
-    render_settings_t settings;       /* the caller's own */
-    render_settings_t drawn_settings; /* this frame's: `settings` under the overrides, read through `raster.settings` */
+    render_settings_overlay_t scene_overlay;
+    render_settings_t settings; /* the caller's own */
+    render_settings_t
+        drawn_settings; /* this frame's app and scene settings under overrides, read through raster.settings */
 
     enum { RENDER_FIXED, RENDER_STEPPED, RENDER_PREDICTED } policy;
 
@@ -220,12 +222,15 @@ void render_context_print_debug_views(FILE* out);
 bool render_context_draw(render_context_t* context, const r3d_instance_t* instances, int count,
                          const render_view_t* view, uint16_t clear);
 
-/* What the next frame draws with; the context keeps its own copy, and
- * RENDER_SETTINGS_DEFAULT until set. A development override goes on top of
- * them once a frame (render_settings_tuned()), never into them, so
- * render_context_settings() returns them as set. */
+/* The app's settings, RENDER_SETTINGS_DEFAULT until set. The context draws
+ * with its copy under the scene overlay and development overrides, resolved
+ * once a frame; render_context_settings() returns the app's copy as set. */
 void render_context_set_settings(render_context_t* context, const render_settings_t* settings);
 const render_settings_t* render_context_settings(const render_context_t* context);
+
+/* One scene overlay per context: the last-loaded scene wins. NULL clears it;
+ * the app's settings stay separate, and development overrides apply last. */
+void render_context_set_scene_overlay(render_context_t* context, const render_settings_overlay_t* overlay);
 
 /* How a kept-width upscale fills its rows; UPSCALE_FILTER_NEAREST until set. */
 void render_context_set_upscale_filter(render_context_t* context, upscale_filter_t filter);

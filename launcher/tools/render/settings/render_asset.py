@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """A NAME.render.toml: render settings, baked into a pack's TABL entry
-RENDER_SETTINGS_ENTRY, one row per field, and the source of
+RENDER_SETTINGS_ENTRY, one row per listed field, and the source of
 RENDER_SETTINGS_DEFAULT.
 
     python tools/render/settings/render_asset.py main/render/settings/render_settings_default.h
@@ -9,7 +9,7 @@ The keys are render_settings_t's fields (launcher/main/render/settings/
 render_settings.h), a field of a struct field under that struct's table, as
 `[lod]` for `lod`. default.render.toml, in the same folder as that header,
 sets every one; another file lists only the values it changes, and the rest
-come from the default. An unknown key or a value of another type than its
+keep the value underneath. An unknown key or a value of another type than its
 field is an error. A table row holds a float in 1/2^RENDER_SETTINGS_FRAC_BITS
 steps, so it must be a multiple of one, and a bool or an int as itself.
 
@@ -45,16 +45,15 @@ def fields(source=None):
     """{field: (C type, tier, trade)} of render_settings_t in order, a struct field's own
     as `field.member`. Each is declared on its own line with its tier comment."""
     source = HEADER.read_text(encoding="utf-8") if source is None else source
-    structs = {}
-    for body, name in STRUCTS.findall(source):
-        rows = FIELD.findall(body.strip())
-        if len(rows) != len([line for line in body.strip().splitlines() if line.strip()]):
-            raise ValueError(f"{HEADER.name}: declare each field on its own line with a /* tier: trade */ comment")
-        structs[name] = rows
+    structs = dict((name, body) for body, name in STRUCTS.findall(source))
 
     def expand(name, prefix):
         found = {}
-        for kind, field, comment in structs[name]:
+        body = structs[name]
+        rows = FIELD.findall(body.strip())
+        if len(rows) != len([line for line in body.strip().splitlines() if line.strip()]):
+            raise ValueError(f"{HEADER.name}: declare each field on its own line with a /* tier: trade */ comment")
+        for kind, field, comment in rows:
             if kind in structs:
                 found.update(expand(kind, f"{prefix}{field}."))
                 continue
@@ -119,7 +118,7 @@ def bake(path):
     """The RENDER_SETTINGS_ENTRY bytes of a settings file."""
     rows = {}
     kinds = fields()
-    for key, value in load(path).items():
+    for key, value in read(path).items():
         scale = 1 << FRAC_BITS if kinds[key][0] == "float" else 1
         steps = float(value) * scale
         if steps != int(steps) or not table_asset.VALUE_MIN <= steps <= table_asset.VALUE_MAX:
@@ -168,7 +167,9 @@ def header():
             f"#define RENDER_SETTINGS_DEFAULT ((render_settings_t){{{nested(values, kinds)}}})\n"
             "/* X(field, type, valid) in struct order; valid tests the typed field as `value`. */\n"
             f"#define RENDER_SETTINGS_FIELDS(X) {declarations}\n"
-            f"#define RENDER_SETTINGS_FIELD_COUNT {len(values)}\n")
+            f"#define RENDER_SETTINGS_FIELD_COUNT {len(values)}\n"
+            + "".join(f"#define RENDER_SETTINGS_BIT_{key.replace('.', '_').upper()} (UINT32_C(1) << {i})\n"
+                      for i, key in enumerate(values)))
 
 
 def main(argv=None):

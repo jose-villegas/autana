@@ -1,7 +1,7 @@
 /*
  * Portable suite: render_settings_t, the choices a render context draws
  * with: its default, the development override on top of it, and a pack's
- * render entry, read only when it holds every field and no other.
+ * render entry, holding only the fields it overrides.
  */
 
 #include <stdint.h>
@@ -53,6 +53,7 @@ release_all(void) {
     (void)tune_reset(tune_shared(), TUNE_NAME(render, depth_fit));
     (void)tune_reset(tune_shared(), TUNE_NAME(render, batched));
     (void)tune_reset(tune_shared(), TUNE_NAME(render, lod_coverage_permille));
+    (void)tune_reset(tune_shared(), TUNE_NAME(render, small_fill_far_z));
     raster_rig_release();
 }
 
@@ -513,11 +514,94 @@ test_a_small_fill_setting_outside_its_range_is_refused_unread(void) {
 }
 
 static void
-test_an_entry_missing_a_field_with_another_or_fixed_point_is_refused_unread(void) {
-    static const int16_t values[FIELDS + 1] = {0};
+test_context_composes_app_scene_and_tuning_without_changing_the_app(void) {
+    raster_rig_t* rig = open_rig();
+    render_context_t* c = open_contexts();
+    render_settings_t app = cull_off();
+    const render_settings_overlay_t overlay = {.values = {.small_fill = {.far_z = FAR_Z_UNITS}},
+                                               .set = RENDER_SETTINGS_BIT_SMALL_FILL_FAR_Z};
+    render_context_set_settings(c, &app);
+    render_context_set_scene_overlay(c, &overlay);
+    (void)draw(c, rig);
+    TEST_ASSERT_FALSE(c->drawn_settings.cull);
+    TEST_ASSERT_EQUAL_FLOAT(FAR_Z_UNITS, c->drawn_settings.small_fill.far_z);
+    assert_settings(&app, render_context_settings(c));
+    app.cull = true;
+    render_context_set_settings(c, &app);
+    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, small_fill_far_z), FAR_Z_UNITS * 2));
+    (void)draw(c, rig);
+    TEST_ASSERT_TRUE(c->drawn_settings.cull);
+    TEST_ASSERT_EQUAL_FLOAT(FAR_Z_UNITS * 2, c->drawn_settings.small_fill.far_z);
+    TEST_ASSERT_TRUE(tune_reset(tune_shared(), TUNE_NAME(render, small_fill_far_z)));
+    render_context_set_scene_overlay(c, NULL);
+    (void)draw(c, rig);
+    assert_settings(&app, &c->drawn_settings);
+    render_context_set_scene_overlay(c, &overlay);
+    render_context_release(c);
+    TEST_ASSERT_EQUAL_HEX32(0, c->scene_overlay.set);
+    (void)draw(c + 1, rig);
+    assert_settings(&RENDER_SETTINGS_DEFAULT, &(c + 1)->drawn_settings);
+}
+
+static void
+test_a_partial_overlay_keeps_the_values_underneath(void) {
+    const int16_t values[] = {0};
+    void* raw = NULL;
+    asset_pack_t pack;
+    open_entry(1, values, RENDER_SETTINGS_FRAC_BITS, &pack, &raw);
+    render_settings_overlay_t overlay = {0};
+    const asset_status_t status = render_settings_overlay_read(&pack, &overlay);
+    test_free_aligned(raw);
+    TEST_ASSERT_EQUAL(ASSET_OK, status);
+    TEST_ASSERT_EQUAL_HEX32(RENDER_SETTINGS_BIT_CULL, overlay.set);
+    TEST_ASSERT_FALSE(overlay.values.cull);
+    render_settings_t base = RENDER_SETTINGS_DEFAULT;
+    base.small_fill.far_z = FAR_Z_UNITS;
+    render_settings_t expected = base;
+    expected.cull = false;
+    render_settings_overlay_apply(&overlay, &base);
+    assert_settings(&expected, &base);
+}
+
+static void
+test_overlay_failure_leaves_the_output_untouched(void) {
+    int16_t values[FIELDS + 1] = {0};
+    zero_rows(values);
+    values[BLEND_PX_ROW] = STEP;
+    const render_settings_overlay_t sentinel = {.values = RENDER_SETTINGS_DEFAULT, .set = RENDER_SETTINGS_BIT_CULL};
+    for (int error = 0; error < 3; error++) {
+        if (error == 2) {
+            values[FAR_Z_ROW] = -1;
+        }
+        void* raw = NULL;
+        asset_pack_t pack;
+        open_entry(error == 0 ? FIELDS + 1 : FIELDS, values, error == 1 ? 0 : RENDER_SETTINGS_FRAC_BITS, &pack, &raw);
+        render_settings_overlay_t overlay = sentinel;
+        const asset_status_t status = render_settings_overlay_read(&pack, &overlay);
+        test_free_aligned(raw);
+        TEST_ASSERT_EQUAL(ASSET_ERR_FORMAT, status);
+        TEST_ASSERT_EQUAL_HEX32(sentinel.set, overlay.set);
+        assert_settings(&sentinel.values, &overlay.values);
+    }
+}
+
+static void
+test_missing_fields_keep_the_default(void) {
+    const int16_t values[] = {0};
     render_settings_t read;
-    TEST_ASSERT_EQUAL(ASSET_ERR_FORMAT, read_entry(FIELDS - 1, values, RENDER_SETTINGS_FRAC_BITS, &read));
+    TEST_ASSERT_EQUAL(ASSET_OK, read_entry(1, values, RENDER_SETTINGS_FRAC_BITS, &read));
+    const render_settings_t expected = cull_off();
+    assert_settings(&expected, &read);
+}
+
+static void
+test_unknown_rows_and_fixed_point_are_refused_unread(void) {
+    int16_t values[FIELDS + 1] = {0};
+    zero_rows(values);
+    values[BLEND_PX_ROW] = STEP;
+    render_settings_t read;
     TEST_ASSERT_EQUAL(ASSET_ERR_FORMAT, read_entry(FIELDS + 1, values, RENDER_SETTINGS_FRAC_BITS, &read));
+    assert_settings(&RENDER_SETTINGS_DEFAULT, &read);
     TEST_ASSERT_EQUAL(ASSET_ERR_FORMAT, read_entry(FIELDS, values, 0, &read));
     assert_settings(&RENDER_SETTINGS_DEFAULT, &read);
 }
@@ -587,7 +671,11 @@ suite_render_settings(void) {
     RUN_TEST(test_an_anim_interval_outside_its_range_is_refused_unread);
     RUN_TEST(test_a_texture_setting_outside_its_range_is_refused_unread);
     RUN_TEST(test_a_small_fill_setting_outside_its_range_is_refused_unread);
-    RUN_TEST(test_an_entry_missing_a_field_with_another_or_fixed_point_is_refused_unread);
+    RUN_TEST(test_context_composes_app_scene_and_tuning_without_changing_the_app);
+    RUN_TEST(test_a_partial_overlay_keeps_the_values_underneath);
+    RUN_TEST(test_overlay_failure_leaves_the_output_untouched);
+    RUN_TEST(test_missing_fields_keep_the_default);
+    RUN_TEST(test_unknown_rows_and_fixed_point_are_refused_unread);
     RUN_TEST(test_a_pack_without_the_entry_reads_not_found);
     RUN_TEST(test_an_app_starts_with_its_packs_settings_and_without_one_the_default);
 }

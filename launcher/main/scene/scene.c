@@ -498,6 +498,18 @@ open_scene(scene_root_t* record, const asset_pack_t* pack) {
         record->scene = NULL;
         free_columns(scene);
     }
+    if (done.status == SCENE_OK) {
+        render_settings_overlay_t overlay = {0};
+        asset_status_t status = render_settings_overlay_read(pack, &overlay);
+        if (status == ASSET_OK && (overlay.set & ~RENDER_SETTINGS_SCENE_KEYS) != 0) {
+            status = ASSET_ERR_FORMAT;
+        }
+        if (status != ASSET_OK && status != ASSET_ERR_NOT_FOUND) {
+            ESP_LOGW("scene", "%s render settings: %s", record->id, asset_status_text(status));
+        }
+        scene->render_overlay = status == ASSET_OK ? overlay : (render_settings_overlay_t){0};
+        render_context_set_scene_overlay(render_context_main(), &scene->render_overlay);
+    }
     return done;
 }
 
@@ -529,6 +541,7 @@ static void
 forget(scene_root_t* record) {
     scene_t* scene = record->scene;
     if (scene != NULL) {
+        render_context_set_scene_overlay(render_context_main(), NULL);
         scene_draw_forget(scene);
         free_columns(scene);
         record->scene = NULL;

@@ -8,37 +8,65 @@
 #include "render/r3d_span.h"
 
 asset_status_t
-render_settings_read(const asset_pack_t* pack, render_settings_t* out) {
+render_settings_overlay_read(const asset_pack_t* pack, render_settings_overlay_t* out) {
     asset_view_t entry;
     asset_table_t table;
     asset_status_t status = asset_pack_find(pack, RENDER_SETTINGS_ENTRY, ASSET_TABLE_ASSET, &entry);
     if (status == ASSET_OK) {
         status = asset_table_open(entry, &table);
     }
-    if (status == ASSET_OK
-        && (table.rows != RENDER_SETTINGS_FIELD_COUNT || table.frac_bits != RENDER_SETTINGS_FRAC_BITS)) {
-        status = ASSET_ERR_FORMAT;
+    if (status != ASSET_OK) {
+        return status;
     }
-    render_settings_t read = {0};
+    if (table.columns != 1 || table.frac_bits != RENDER_SETTINGS_FRAC_BITS) {
+        return ASSET_ERR_FORMAT;
+    }
+    render_settings_overlay_t read = {0};
     const int16_t* encoded = NULL;
+    unsigned index = 0;
+    unsigned rows = 0;
 #define FROM_bool(v)  ((v) != 0)
 #define FROM_float(v) ((float)(v) / (float)(1 << RENDER_SETTINGS_FRAC_BITS))
 #define FROM_int(v)   ((int)(v))
 #define READ_FIELD(field, type, valid)                                                                                 \
-    if (status == ASSET_OK) {                                                                                          \
-        status = asset_table_row(&table, #field, 1, &encoded) == ASSET_OK ? ASSET_OK : ASSET_ERR_FORMAT;               \
-    }                                                                                                                  \
-    if (status == ASSET_OK) {                                                                                          \
-        read.field = FROM_##type(*encoded);                                                                            \
-        const type value = read.field;                                                                                 \
+    if (asset_table_row(&table, #field, 1, &encoded) == ASSET_OK) {                                                    \
+        read.values.field = FROM_##type(*encoded);                                                                     \
+        const type value = read.values.field;                                                                          \
         (void)value;                                                                                                   \
         if (!(valid)) {                                                                                                \
-            status = ASSET_ERR_FORMAT;                                                                                 \
+            return ASSET_ERR_FORMAT;                                                                                   \
         }                                                                                                              \
-    }
+        read.set |= UINT32_C(1) << index;                                                                              \
+        rows++;                                                                                                        \
+    }                                                                                                                  \
+    index++;
     RENDER_SETTINGS_FIELDS(READ_FIELD)
+    if (rows != table.rows) {
+        return ASSET_ERR_FORMAT;
+    }
+    *out = read;
+    return ASSET_OK;
+}
+
+void
+render_settings_overlay_apply(const render_settings_overlay_t* overlay, render_settings_t* inout) {
+    unsigned index = 0;
+#define APPLY_FIELD(field, type, valid)                                                                                \
+    if ((overlay->set & (UINT32_C(1) << index)) != 0) {                                                                \
+        inout->field = overlay->values.field;                                                                          \
+    }                                                                                                                  \
+    index++;
+    RENDER_SETTINGS_FIELDS(APPLY_FIELD)
+}
+
+asset_status_t
+render_settings_read(const asset_pack_t* pack, render_settings_t* out) {
+    render_settings_overlay_t overlay;
+    const asset_status_t status = render_settings_overlay_read(pack, &overlay);
     if (status == ASSET_OK) {
-        *out = read;
+        render_settings_t settings = RENDER_SETTINGS_DEFAULT;
+        render_settings_overlay_apply(&overlay, &settings);
+        *out = settings;
     }
     return status;
 }

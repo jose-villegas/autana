@@ -483,7 +483,9 @@ aim_raster(render_context_t* c, const r3d_instance_t* instances, int count, cons
     r->split = &c->split;
     r->steer = &c->steer;
     r->picks_levels = true;
-    c->drawn_settings = render_settings_tuned(&c->settings);
+    c->drawn_settings = c->settings;
+    render_settings_overlay_apply(&c->scene_overlay, &c->drawn_settings);
+    c->drawn_settings = render_settings_tuned(&c->drawn_settings);
     r->settings = &c->drawn_settings;
     r->instances = instances;
     r->instance_count = count;
@@ -598,6 +600,11 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
 void
 render_context_set_settings(render_context_t* c, const render_settings_t* settings) {
     c->settings = *settings;
+}
+
+void
+render_context_set_scene_overlay(render_context_t* c, const render_settings_overlay_t* overlay) {
+    c->scene_overlay = overlay != NULL ? *overlay : (render_settings_overlay_t){0};
 }
 
 const render_settings_t*

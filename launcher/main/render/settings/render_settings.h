@@ -7,6 +7,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #include "asset/asset_pack.h"
 #include "render/render_view.h"
@@ -84,16 +85,26 @@ typedef struct {
 /* RENDER_SETTINGS_DEFAULT, from default.render.toml beside this header. */
 #include "render/settings/render_settings_default.h"
 
-/* The pack entry a .pack.toml's `render` key bakes: a TABL with one row per field,
+/* The pack entry a .pack.toml's `render` key bakes: a TABL with one row per listed field,
  * a float in 1/2^RENDER_SETTINGS_FRAC_BITS steps, a bool or an int as itself. */
 #define RENDER_SETTINGS_ENTRY     "render"
 #define RENDER_SETTINGS_FRAC_BITS 4
 
-/* Reads `pack`'s RENDER_SETTINGS_ENTRY: a row for every field and no other,
- * lod.blend a render_lod_blend_t, lod.blend_px above 0 and at most
- * RENDER_LOD_BLEND_PX_MAX, the anim intervals RENDER_ANIM_EVERY_MIN to _MAX
- * and its pixels 0 to RENDER_ANIM_PIXELS_MAX (else ASSET_ERR_FORMAT). ASSET_ERR_NOT_FOUND when
- * the pack has none; `out` is written only on ASSET_OK. */
+_Static_assert(RENDER_SETTINGS_FIELD_COUNT <= 32, "render settings overlay fits uint32_t");
+
+typedef struct {
+    render_settings_t values;
+    uint32_t set; /* Bit i follows RENDER_SETTINGS_FIELDS order. */
+} render_settings_overlay_t;
+
+#define RENDER_SETTINGS_SCENE_KEYS (RENDER_SETTINGS_BIT_SMALL_FILL_FAR_Z | RENDER_SETTINGS_BIT_SMALL_FILL_FAR_CEILING)
+
+/* Only present rows are validated; unknown names and a different frac are refused.
+ * Failure leaves out untouched; no entry returns ASSET_ERR_NOT_FOUND. */
+asset_status_t render_settings_overlay_read(const asset_pack_t* pack, render_settings_overlay_t* out);
+void render_settings_overlay_apply(const render_settings_overlay_t* overlay, render_settings_t* inout);
+
+/* The default under the pack's overlay; failure leaves out untouched. */
 asset_status_t render_settings_read(const asset_pack_t* pack, render_settings_t* out);
 
 /* `set` under every development override that is set; a release build's is

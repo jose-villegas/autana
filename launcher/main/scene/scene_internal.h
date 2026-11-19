@@ -21,6 +21,7 @@
 #include "render/lod/r3d_lod.h"
 #include "render/probe/sh_probes.h"
 #include "render/r3d_instance.h"
+#include "render/settings/render_settings.h"
 #include "render/skin/r3d_skin_light.h"
 #include "scene/animator/animator.h"
 #include "scene/camera/camera.h"
@@ -222,6 +223,7 @@ struct scene {
     scene_renderer_t* renderers;
     scene_camera_t* cameras;
     const asset_pack_t* pack;
+    render_settings_overlay_t render_overlay;
     transformf_t* locals;
     scene_animator_t* animators;
     scene_skinned_renderer_t* skinned_renderers;

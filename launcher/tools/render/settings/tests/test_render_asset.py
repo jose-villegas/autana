@@ -1,4 +1,4 @@
-"""render_asset reads a .render.toml over default.render.toml, refuses what render_settings_t lacks,
+"""render_asset reads a partial .render.toml, refuses what render_settings_t lacks,
 and bakes the TABL rows render_settings_read() takes."""
 import pathlib
 import sys
@@ -25,21 +25,14 @@ class RenderAssetTests(unittest.TestCase):
                           "lod.hysteresis_px": 0.5, "lod.coverage_permille": 250, "lod.pick_every": 4,
                           "lod.triangle_budget": 0, "lod.blend": 0, "lod.blend_px": 0.25}
                          | {key: value for key, value in render_asset.read(render_asset.DEFAULT).items()
-                            if key.startswith(("anim.", "texture."))})
+                            if key.startswith(("anim.", "texture.", "small_fill."))})
         lod = render_asset.load(self.settings("[lod]\ncoverage_permille = 100\n"))
         self.assertEqual(lod["lod.coverage_permille"], 100)
 
-    def test_the_bake_is_one_row_per_field_in_struct_order(self):
+    def test_a_partial_bake_holds_only_the_listed_rows(self):
         rows, frac = table_asset.decode(render_asset.bake(self.settings("cull = false\n")))
-        self.assertEqual((list(rows.items()), frac), ([("cull", [0]), ("depth_fit", [1]), ("batched", [1]),
-                                                  ("partial_redraw", [1]), ("lod.tolerance_px", [32]), ("lod.hysteresis_px", [8]),
-                                                  ("lod.coverage_permille", [250]), ("lod.pick_every", [4]),
-                                                  ("lod.triangle_budget", [0]), ("lod.blend", [0]), ("lod.blend_px", [4])]
-                                                  + [(key, [int(value * (1 << render_asset.FRAC_BITS))
-                                                            if render_asset.fields()[key][0] == "float" else value])
-                                                     for key, value in render_asset.read(render_asset.DEFAULT).items()
-                                                     if key.startswith(("anim.", "texture."))],
-                                                 4))
+        self.assertEqual(rows, {"cull": [0]})
+        self.assertEqual(frac, render_asset.FRAC_BITS)
 
     def test_an_int_bakes_as_itself_up_to_a_row_s_most(self):
         for budget in (12000, table_asset.VALUE_MAX):

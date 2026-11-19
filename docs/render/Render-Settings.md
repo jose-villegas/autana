@@ -23,7 +23,7 @@ flowchart LR
     Pick -->|"yes: the knob's value"| Frame
 ```
 
-A release build has no knobs, so it draws with the app's settings only. A raster
+A release build draws with the app and scene settings without knobs. A raster
 drawn without a context uses its own settings as they are, or
 `RENDER_SETTINGS_DEFAULT`, and no knob.
 
@@ -169,8 +169,8 @@ Settings are authored in a `NAME.render.toml`, one key per field, a struct field
 is [`default.render.toml`](../../launcher/main/render/settings/default.render.toml),
 and `RENDER_SETTINGS_DEFAULT` is generated from it
 ([`render_asset.py`](../../launcher/tools/render/settings/render_asset.py)).
-Any other file lists only the values it changes; the rest come from the
-default. A key that is no field, or a value of another type, fails the build.
+Any other file lists only the values it changes; omitted fields keep their
+value underneath. A key that is no field, or a value of another type, fails the build.
 
 ```toml
 # fast.render.toml: the default, but drawn one instance at a time and a coarser LOD
@@ -185,19 +185,24 @@ An app's `.pack.toml` names one with `render = "PATH"`, relative to itself
 as entry `render`. The shell mounts the pack an app names in `app_t.pack`, and
 before `enter()` its render system (`shell/render_system.c`) sets the main
 context's settings from that entry, or to `RENDER_SETTINGS_DEFAULT` without one. So no app starts with the last app's
-settings. Scenes never carry render settings.
+settings.
+
+A scene's pack may set `small_fill.far_z` and `small_fill.far_ceiling`.
+The context keeps its overlay separate from the app's settings and applies it
+while loaded; release clears it. Other scene keys are refused and logged without failing the load.
 
 ```mermaid
 flowchart LR
-    Default["default.render.toml"] -->|render_asset.py| Header["RENDER_SETTINGS_DEFAULT<br/>render_settings_default.h"]
-    File["NAME.render.toml"] -->|"build_pack.py<br/>missing keys from the default"| Entry["the app's pack:<br/>TABL entry render"]
-    Default --> Entry
-    Entry -->|"shell, at app start<br/>render_settings_read()"| Context["render_context_set_settings()<br/>on the main context"]
-    Header -->|"pack without the entry"| Context
+    Default["default.render.toml"] -->|generate| Base["RENDER_SETTINGS_DEFAULT"]
+    File["NAME.render.toml"] -->|"bake listed keys"| Entry["pack: TABL entry render"]
+    Base --> App["app settings"]
+    Entry -->|"app pack at start"| App
+    App --> Context["main context settings"]
+    Entry -->|"scene pack while loaded<br/>small_fill.far_* only"| Context
 ```
 
 The entry is a [TABL v1](../assets/formats/TABL.md) table with one row per
-`render_settings_t` field, named by it, one column and `frac` `RENDER_SETTINGS_FRAC_BITS` (4): a `float` is held in 1/16 steps,
+listed `render_settings_t` field, named by it, one column and `frac` `RENDER_SETTINGS_FRAC_BITS` (4): a `float` is held in 1/16 steps,
 a `bool` as 0 or 1 and an `int` as itself:
 
 ```mermaid
@@ -232,11 +237,11 @@ title A row, 26 bytes from byte 8, one cell a byte
 | Part | At | Size |
 |---|---|---|
 | Header | 0 | 8 bytes |
-| Rows | `8 + i * 26` | 26 bytes a row, one per field in struct order: `8 + 26 * fields` bytes in all |
+| Rows | `8 + i * 26` | 26 bytes a row, one per listed field: `8 + 26 * fields` bytes in all |
 
 | Rule | Detail |
 |---|---|
 | Owners | `RENDER_SETTINGS_ENTRY` and the fields in `render_settings.h`; the table layout in `asset_table_format.h` |
-| Rows | exactly one per `render_settings_t` field, named `field` or `struct.member`; the reader takes any nonzero `bool` as true |
-| Errors | `render_settings_read()`: `ASSET_ERR_NOT_FOUND` without the entry; `ASSET_ERR_FORMAT` for another row count, a missing field, more than one column or a `frac` other than 4; TABL's own errors. `out` is written only on `ASSET_OK` |
+| Rows | one per listed `render_settings_t` field, named `field` or `struct.member`; the reader takes any nonzero `bool` as true |
+| Errors | `render_settings_overlay_read()`: `ASSET_ERR_NOT_FOUND` without the entry; `ASSET_ERR_FORMAT` for unknown or duplicate rows, out-of-range values, more than one column or a `frac` other than 4; TABL's own errors. `out` is written only on `ASSET_OK` |
 | Failure at start | a pack without the entry starts the app with `RENDER_SETTINGS_DEFAULT`; any other read failure is logged and does the same |
