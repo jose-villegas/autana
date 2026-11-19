@@ -85,7 +85,8 @@ class LeakProbes:
         return self._look(rows, result_positions, result_tris, free)
 
     def finish(self, rows, result_positions, result_tris):
-        """The pass over `rows` is done: its result stands in the scene for the passes after it."""
+        """The source triangles `rows` are done, simplified by a pass or replaced by a carved mesh's stand-in: the
+        result stands in the scene for the passes after it."""
         self.source[rows] = False
         self.finished.append((np.asarray(result_positions, dtype=float), np.asarray(result_tris)))
 

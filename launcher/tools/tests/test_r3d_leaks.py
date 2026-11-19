@@ -42,6 +42,8 @@ PATH_EYE = (150.0, 150.0, 150.0)
 SMALL_BATCH = 50000
 # Quantisation steps per source unit, which sets the join step's tolerance.
 POSITION_SCALE = 8
+# The half disc carved out as a mesh of its own, at too few triangles to stay round.
+CARVED_SHEET_BUDGET = 6
 # Where the camera can be, in front of the wall, and its near plane.
 CAMERA = ((np.array([60.0, 10.0, -90.0]), np.array([260.0, 110.0, 90.0])), 2.0) if np is not None else None
 
@@ -202,6 +204,25 @@ class LeakProbeTests(unittest.TestCase):
         p, t = two_passes(Allocation(camera=CAMERA))
         self.assertLess(len(self.probes.holes(p, t)), plain / 4)
         self.assertLessEqual(len(t), TWO_PASS_BUDGET)
+
+    def test_a_carved_mesh_stands_as_its_stand_in_for_the_rest(self):
+        """The sheet is carved to a budget that cannot cover the opening; the wall's pass must see that sheet, not
+        the source's, so it is the stand-in's triangles that the probes are given."""
+        owners = (np.arange(len(self.tris)) >= len(self.tris) // 2).astype(int)
+        rgb = np.full((len(self.pos), 3), 128.0)
+        rule = dict(triangles=CARVED_SHEET_BUDGET, seam="free", match=dict(object="sheet"))
+        allocation = Allocation(tri_o=owners, object_names=("wall", "sheet"), material_names=("stone",), shapes=[],
+                                meshes=(rule,), selection={1: rule}, camera=CAMERA)
+        finished = []
+        real = leaks.LeakProbes.finish
+        with mock.patch.object(leaks.LeakProbes, "finish", autospec=True,
+                               side_effect=lambda probes, rows, p, t: (finished.append((rows, len(t))), real(probes, rows, p, t))[1]):
+            simplify(self.pos, rgb, self.tris, np.zeros(len(self.tris), dtype=int), BUDGET, colour_deviation=1.0,
+                     seal_seams=True, position_scale=POSITION_SCALE, allocation=allocation)
+        sheet = [count for rows, count in finished if np.all(owners[rows] == 1)]
+        self.assertEqual(len(sheet), 1, "the carved sheet never replaced its source in the probes' scene")
+        self.assertLessEqual(sheet[0], CARVED_SHEET_BUDGET)
+        self.assertEqual(len(allocation.shapes), 1)
 
     def test_the_same_input_seals_to_the_same_mesh(self):
         first, second = self.simplified(Allocation(camera=CAMERA)), self.simplified(Allocation(camera=CAMERA))
