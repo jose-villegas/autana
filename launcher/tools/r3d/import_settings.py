@@ -309,7 +309,7 @@ def load_geometry(table, steps):
 
 
 def load_probes(table, where="geometry.probes"):
-    """Extra fit views from probes spread through the camera's region (r3d/fit/probes.py): `spacing`
+    """Extra fit views from probes spread through the camera's region (r3d/views/probes.py): `spacing`
     world units apart, each face `face` pixels square; an unset one is the probes' own default."""
     check_keys(table, (), where, optional=("spacing", "face"))
     probes = SimpleNamespace(spacing=number(table["spacing"], f"{where}.spacing") if "spacing" in table else None,
