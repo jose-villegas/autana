@@ -260,7 +260,8 @@ the present fill the rest. `CAMERA_PRESENT_SCANLINE` dims every second row;
 
 ### Small fill
 
-The render settings' `small_fill` set to `SMALL_FILL_FAST` fills
+Setting the render settings' `small_fill` to a fast preset from
+[Coverage.md](frame/Coverage.md#small-fill) fills
 triangles a few pixels across with one depth and one colour instead of
 walking their planes. `SMALL_FILL_SMOOTH`, the default, keeps the smooth
 picture exact.

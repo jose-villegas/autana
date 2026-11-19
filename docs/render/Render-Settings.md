@@ -172,7 +172,8 @@ and `RENDER_SETTINGS_DEFAULT` is generated from it
 ([`render_asset.py`](../../launcher/tools/render/settings/render_asset.py)).
 Any other file lists only the values it changes; the rest come from the
 default. A key that is no field, or a value of another type, fails the build.
-A field's comment in `render_settings.h` may give the interval it takes, as
+A field's comment in
+[`render_settings.h`](../../launcher/main/render/settings/render_settings.h) may give the interval it takes, as
 `/* basic [0, SMALL_FILL_CEILING_MAX]: ... */`; the generated reader refuses a
 pack whose value falls outside it.
 

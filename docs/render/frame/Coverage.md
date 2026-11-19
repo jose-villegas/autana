@@ -64,11 +64,12 @@ row workers.
 | `SMALL_FILL_FAST_DITHER` | 12/16 DITHER | FAST's ceiling and gate with the DITHER style |
 | `SMALL_FILL_FAST_GRAIN` | 12/16 GRAIN | FAST's ceiling and gate with the GRAIN style |
 
-The presets are defined in `render_settings.h`. An app sets one in its
+The presets are defined in
+[`render_settings.h`](../../../launcher/main/render/settings/render_settings.h). An app sets one in its
 [`.render.toml`](../Render-Settings.md#the-render-asset):
 
 ```toml
-# FAST - DITHER
+# SMALL_FILL_FAST_DITHER
 [small_fill]
 ceiling = 12
 gate = 16

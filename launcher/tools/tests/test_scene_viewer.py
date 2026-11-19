@@ -241,7 +241,7 @@ path = { animation = "fly.anim.toml", node = "camera" }
         self.assertNotEqual(first.tobytes(), small.tobytes())
 
     def test_small_fill_ceiling_range(self):
-        maximum = read_define(TOOLS.parent / "main/render/render_view.h", "SMALL_FILL_CEILING_MAX")
+        maximum = read_define(TOOLS.parent / "main/render/settings/render_settings.h", "SMALL_FILL_CEILING_MAX")
         for ceiling in (0, maximum):
             with self.subTest(ceiling=ceiling):
                 run, _ = self.render("--small-fill", f"{ceiling},16,0")
