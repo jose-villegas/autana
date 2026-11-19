@@ -11,6 +11,7 @@ import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from r3d import sh_probe_bake as sh
+from r3d import sh_probe_asset as asset
 from r3d.import_settings import LIGHT_MODE_BAKED
 from r3d.sh_probe_settings import DIRECTIONS, SPP
 from r3d.views.probes import sphere_directions
@@ -27,11 +28,11 @@ class ProbeTests(unittest.TestCase):
         origin, spacing = (1., 2., 3.), (2., 3., 4.)
         values = np.arange(math.prod(dims) * sh.COEFFICIENTS * sh.CHANNELS).reshape(
             *reversed(dims), sh.COEFFICIENTS, sh.CHANNELS) + 1
-        raw = sh.encode(origin, spacing, dims, values)
+        raw = asset.encode(origin, spacing, dims, values)
         for signs in ((1, 1, -1), (-1, 1, 1), (1, -1, 1), (-1, -1, -1)):
             with self.subTest(signs=signs), mock.patch.object(engine_frame, 'AXIS_SIGNS', signs):
                 converted = engine_frame.to_engine(SH_PROBES, raw)
-                got_origin, got_spacing, got_dims, scale, got = sh.decode(converted)
+                got_origin, got_spacing, got_dims, scale, got = asset.decode(converted)
                 expected_origin = tuple(o if s > 0 else -(o + step * (n - 1))
                                         for o, step, n, s in zip(origin, spacing, dims, signs))
                 self.assertEqual(tuple(got_origin), expected_origin)
@@ -69,7 +70,7 @@ class ProbeTests(unittest.TestCase):
         indirect = SimpleNamespace(bounces=2, rays=1)
         job = SimpleNamespace(settings=settings, bake=SimpleNamespace(indirect=indirect))
         colour = np.array([0.4, 0.6, 1.0])
-        scene = SimpleNamespace(path=None, lights=[dict(type='sky', color=colour.tolist(), intensity=1.0)],
+        scene = SimpleNamespace(path=None, lights=[dict(type='sky', mode=LIGHT_MODE_BAKED, color=colour.tolist(), intensity=1.0)],
                                 camera=SimpleNamespace(component=SimpleNamespace(near_z=0.001)),
                                 indirect=SimpleNamespace(albedo_boost=1.0))
         lattice = (points, 1.0, points[0], np.ones(3), np.ones(3, dtype=int))
@@ -79,7 +80,7 @@ class ProbeTests(unittest.TestCase):
         directions = sphere_directions(DIRECTIONS)
         visible = (directions[:, 0] > 0) & (directions[:, 1] > 0)
         expected = sh.project(directions, visible[:, None] * colour)
-        got = sh.decode(data)[-1][0]
+        got = asset.decode(data)[-1][0]
         np.testing.assert_allclose(got, expected, atol=0.02)
 
     def test_grid_wire_order(self):
@@ -106,7 +107,7 @@ class ProbeTests(unittest.TestCase):
             from asset.engine_frame import to_engine
             from r3d.build_pack import SH_PROBES
             data = to_engine(SH_PROBES, sh.bake(job, scene))
-        origin, step, _, scale, coefficients = sh.decode(data)
+        origin, step, _, scale, coefficients = asset.decode(data)
         for x, y, z in cells:
             engine = np.array([x, y, z]) * AXIS_SIGNS
             at = np.rint((engine - origin) / step).astype(int)
@@ -121,7 +122,7 @@ class ProbeTests(unittest.TestCase):
         from types import SimpleNamespace
         from asset.asset_pack import build_pack, parse_pack
         from asset.engine_frame import to_engine
-        from r3d.sh_probe_settings import TYPE
+        from r3d.sh_probe_asset import TYPE
         from r3d import mesh_asset
         from tests.soup import corridor, sun
         from tests.test_engine_frame import mesh_entry, POSITION
@@ -136,7 +137,7 @@ class ProbeTests(unittest.TestCase):
         with mock.patch.object(sh, 'load', return_value=requested), \
                 mock.patch.object(sh, 'load_source', return_value=source):
             raw = sh.bake(job, scene)
-        source_origin, spacing, dims, _, source_coefficients = sh.decode(raw)
+        source_origin, spacing, dims, _, source_coefficients = asset.decode(raw)
         self.assertTrue(np.all(source_coefficients[:, sh.L1_AXES.index(Z_AXIS) + 1] > 0))
         point = tuple(source_origin)
         position_scale = 4
@@ -144,7 +145,7 @@ class ProbeTests(unittest.TestCase):
         pack = build_pack([('corridor-grid', TYPE, to_engine(TYPE, raw)),
                            ('corridor', mesh_asset.TYPE, to_engine(mesh_asset.TYPE, mesh))])
         entries = parse_pack(pack)
-        origin, step, _, scale, coefficients = sh.decode(entries['corridor-grid'][1])
+        origin, step, _, scale, coefficients = asset.decode(entries['corridor-grid'][1])
         mirrored = np.asarray(point) * AXIS_SIGNS
         cell = np.rint((mirrored - origin) / step).astype(int)
         index = cell[0] + dims[0] * (cell[1] + dims[1] * cell[2])
@@ -219,23 +220,23 @@ class ProbeTests(unittest.TestCase):
 
     def test_record_round_trip_and_golden(self):
         coefficients = np.arange(24).reshape(2, sh.COEFFICIENTS, sh.CHANNELS) - 12
-        data = sh.encode([1, 2, 3], [4, 5, 6], [2, 1, 1], coefficients)
-        origin, spacing, dims, scale, decoded = sh.decode(data)
+        data = asset.encode([1, 2, 3], [4, 5, 6], [2, 1, 1], coefficients)
+        origin, spacing, dims, scale, decoded = asset.decode(data)
         np.testing.assert_array_equal(origin, [1, 2, 3])
         np.testing.assert_array_equal(spacing, [4, 5, 6])
         self.assertEqual(tuple(dims), (2, 1, 1))
         np.testing.assert_allclose(decoded, coefficients, atol=scale / 2 + 1e-6)
-        self.assertEqual(len(data), sh.HEADER.size + coefficients.size * np.dtype('<i2').itemsize)
+        self.assertEqual(len(data), asset.HEADER.size + coefficients.size * np.dtype('<i2').itemsize)
         fixture = pathlib.Path(__file__).parent / 'data/sh_probes.shpr'
         golden = fixture.read_bytes()
-        self.assertEqual(golden[:4], struct.pack('<HH', sh.VERSION, sh.RESERVED_FLAGS))
-        _, _, dims, scale, decoded = sh.decode(golden)
+        self.assertEqual(golden[:4], struct.pack('<HH', asset.VERSION, asset.RESERVED_FLAGS))
+        _, _, dims, scale, decoded = asset.decode(golden)
         self.assertEqual(tuple(dims), (2, 1, 1))
         self.assertEqual(scale, 0.25)
         np.testing.assert_array_equal(decoded, coefficients * scale)
         for bad in (data[:-1], data + b'\0', bytes([0]) + data[1:]):
             with self.assertRaises(ValueError):
-                sh.decode(bad)
+                asset.decode(bad)
 
     def test_scene_sibling_request_keys_only_sh(self):
         from r3d import sh_probe_settings
@@ -278,7 +279,7 @@ class ProbeTests(unittest.TestCase):
         from asset.asset_pack import parse_pack
         from asset import table_asset
         from r3d import build_pack
-        from r3d.sh_probe_settings import SUFFIX, TYPE
+        from r3d.sh_probe_asset import SUFFIX, TYPE
 
         with tempfile.TemporaryDirectory() as work:
             root = pathlib.Path(work)
@@ -306,6 +307,26 @@ class ProbeTests(unittest.TestCase):
         pin = next(line for line in bake.requirement_lines(owner) if bake.package_name(line) == 'pillow')
         self.assertIn((bake.relative(owner), pin), bake.requirement_pins('sh_probes'))
 
+    def test_stage_units_exclude_probe_baker(self):
+        for stage, entries in bake.STAGES.items():
+            if not all(":" in entry for entry in entries):
+                continue
+            with self.subTest(stage=stage):
+                paths = {unit.path.name for unit in bake.stage_units(stage)[0]}
+                self.assertEqual('sh_probe_bake.py' in paths, stage == 'sh_probes')
+
+    def test_environment_modes_are_explicit(self):
+        from r3d.import_settings import load_environment_light
+        from r3d.light import baked_lights
+
+        for kind in ('sky', 'ambient'):
+            table = dict(color=[1, 1, 1], intensity=1)
+            if kind == 'sky':
+                table['rays'] = DIRECTIONS
+            light = load_environment_light(kind, table, kind)
+            self.assertEqual(light['mode'], LIGHT_MODE_BAKED)
+            self.assertEqual(baked_lights([light]), [light])
+
     def test_existing_tool_closures_exclude_sh(self):
         forbidden = {'sh_probe_settings.py', 'sh_probe_bake.py'}
         for stage in bake.STAGES:
@@ -314,16 +335,16 @@ class ProbeTests(unittest.TestCase):
                     self.assertFalse(forbidden & {p.name for p in bake.stage_files(stage)})
 
     def test_header_alignment(self):
-        data = sh.encode([1, 2, 3], [4, 5, 6], [1, 1, 1], np.ones((1, sh.COEFFICIENTS, sh.CHANNELS)))
-        self.assertEqual(sh.HEADER.size, 40)
-        self.assertEqual(struct.unpack_from('<HH', data), (sh.VERSION, 0))
+        data = asset.encode([1, 2, 3], [4, 5, 6], [1, 1, 1], np.ones((1, sh.COEFFICIENTS, sh.CHANNELS)))
+        self.assertEqual(asset.HEADER.size, 40)
+        self.assertEqual(struct.unpack_from('<HH', data), (asset.VERSION, 0))
         self.assertEqual(struct.unpack_from('<3f', data, 4), (1, 2, 3))
         self.assertEqual(struct.unpack_from('<3f', data, 16), (4, 5, 6))
-        self.assertEqual(struct.unpack_from('<f', data, 28)[0], sh.decode(data)[3])
+        self.assertEqual(struct.unpack_from('<f', data, 28)[0], asset.decode(data)[3])
         self.assertEqual(struct.unpack_from('<3H', data, 32), (1, 1, 1))
         self.assertEqual(data[38:40], bytes(2))
         with self.assertRaises(ValueError):
-            sh.decode(data[:2] + struct.pack('<H', 1) + data[4:])
+            asset.decode(data[:2] + struct.pack('<H', 1) + data[4:])
 
     def test_tool_key_is_local(self):
         from tests.test_bake import AnyStart

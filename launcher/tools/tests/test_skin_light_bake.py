@@ -71,7 +71,7 @@ class PatchEquality(unittest.TestCase):
             albedo = np.tile([64, 128, 192], (3, 1)).astype(np.uint8)
             direction = np.array([0.36, 0.8, 0.48])
             directional = sun(direction, [1, 0.8, 0.6], 1.7)
-            ambient = dict(type="ambient", color=[0.7, 0.8, 1], intensity=0.15)
+            ambient = dict(type="ambient", mode=LIGHT_MODE_BAKED, color=[0.7, 0.8, 1], intensity=0.15)
             values = np.array([*direction, *[v * directional["intensity"] for v in directional["color"]],
                                *[v * ambient["intensity"] for v in ambient["color"]]], dtype=np.float32)
             tolerance = 2

@@ -1,7 +1,6 @@
 """Bake scene incident radiance into an L1 spherical-harmonic probe grid."""
 
 import math
-import struct
 import time
 
 import numpy as np
@@ -13,18 +12,11 @@ from r3d.mitsuba_reference import integrator
 from r3d.path_bake import PathLight, BATCH, SEED
 from r3d.ray_query import RayQuery
 from r3d.sh_probe_settings import load
+from r3d.sh_probe_asset import CHANNELS, COEFFICIENTS, L1_AXES, encode
 from r3d.views.probes import classify, probe_points, spacing_for, sphere_directions
 
-VERSION = 1
-RESERVED_FLAGS = 0
-CHANNELS = 3
-COEFFICIENTS = 4
-L1_AXES = (1, 2, 0)
 Y00 = 0.5 * math.sqrt(1 / math.pi)
 Y1 = 0.5 * math.sqrt(3 / math.pi)
-HEADER = struct.Struct('<HH3f3ff3H2x')
-QUANT_MAX = np.iinfo(np.int16).max
-DIM_MAX = np.iinfo(np.uint16).max
 
 
 def basis(directions):
@@ -70,39 +62,6 @@ def dilate(values, inside):
         out[frontier] = sums[frontier] / counts[frontier, None, None]
         valid |= frontier
     return out
-
-
-def encode(origin, spacing, dims, coefficients):
-    dims = np.asarray(dims)
-    coefficients = np.asarray(coefficients, dtype=float)
-    if dims.shape != (3,) or np.any(dims < 1) or np.any(dims > DIM_MAX) or np.any(dims != dims.astype(int)):
-        raise ValueError('SH grid dimensions must fit positive u16')
-    if coefficients.size != int(np.prod(dims)) * COEFFICIENTS * CHANNELS or not np.isfinite(coefficients).all():
-        raise ValueError('SH coefficients must be finite and match dimensions')
-    if not np.isfinite(origin).all() or not np.isfinite(spacing).all() or np.any(np.asarray(spacing) <= 0):
-        raise ValueError('SH origin and positive spacing must be finite')
-    maximum = float(np.max(np.abs(coefficients)))
-    scale = np.float32(maximum / QUANT_MAX if maximum else 1.0)
-    if scale == 0 or not np.isfinite(scale):
-        raise ValueError('SH scale cannot be represented as f32')
-    if float(scale) * QUANT_MAX < maximum:
-        scale = np.nextafter(scale, np.float32(np.inf))
-    quantized = np.rint(coefficients / scale).astype('<i2')
-    return HEADER.pack(VERSION, RESERVED_FLAGS, *origin, *spacing, scale, *dims) + quantized.tobytes()
-
-
-def decode(data):
-    if len(data) < HEADER.size:
-        raise ValueError('truncated SHPR header')
-    version, flags, *fields = HEADER.unpack_from(data)
-    origin, spacing, dims, scale = fields[:3], fields[3:6], fields[7:10], fields[6]
-    expected = HEADER.size + math.prod(dims) * COEFFICIENTS * CHANNELS * np.dtype('<i2').itemsize
-    if version != VERSION or flags != RESERVED_FLAGS or not all(dims) or len(data) != expected:
-        raise ValueError('invalid SHPR version, flags, dimensions or length')
-    if not np.isfinite([*origin, *spacing, scale]).all() or min(*spacing, scale) <= 0:
-        raise ValueError('invalid SHPR origin, spacing or scale')
-    coefficients = np.frombuffer(data, dtype='<i2', offset=HEADER.size).reshape(-1, COEFFICIENTS, CHANNELS) * scale
-    return origin, spacing, dims, scale, coefficients
 
 
 def grid(source, camera, requested, seed):

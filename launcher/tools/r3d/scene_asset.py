@@ -11,7 +11,7 @@ from asset.asset_pack import NAME_BYTES
 from anim import tracks_asset
 from build.c_header import read_define
 from build.name_hash import NONE as HASH_NONE, name_hash
-from r3d.import_settings import ANIM_WRAPS, LIGHT_MODES, LIGHT_MODE_REALTIME, SettingsError, color_fits, load_scene
+from r3d.import_settings import ANIM_WRAPS, LIGHT_MODES, SettingsError, color_fits, load_scene
 from r3d import skin_pack
 from r3d.batch import copy_batches
 from r3d.scene_rows import (CLIP, COLOUR_SET_OWN, NAME, RENDERER, TRANSFORM, TRANSFORM_AXES, U16_MAX,
@@ -95,7 +95,7 @@ def encode(scene, cache=None, offline=False):
             if light["type"] not in LIGHT_KINDS:
                 raise SceneError(f"unknown light kind {light['type']!r}")
             rows["lights"].append((entity, LIGHT_KINDS[light["type"]],
-                                    LIGHT_MODES.index(light.get("mode", LIGHT_MODE_REALTIME)), *light["color"], light["intensity"]))
+                                    LIGHT_MODES.index(light["mode"]), *light["color"], light["intensity"]))
         if obj.kind == "camera":
             lens = obj.component
             rows["cameras"].append((entity, 0, lens.half_fov_short_tan, lens.near_z, lens.background))

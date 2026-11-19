@@ -12,6 +12,7 @@ try:
     import numpy as np
     from tests import soup
 
+    from r3d.import_settings import LIGHT_MODE_BAKED
     from r3d.geometry import corner_normals
     from r3d.light import coincident_faces
     from r3d.reference_render import device_picture, primary_hits, render_linear, trace
@@ -246,7 +247,7 @@ class PooledReferenceTests(unittest.TestCase):
         source.intersector = soup.rays(mesh)
         job, scene = sun_scene([0., 0., -1.])
         job.bake.ao = SimpleNamespace(distance=3., strength=.8, rays=8, indirect=True)
-        scene.lights.append({"type": "ambient", "color": [1., 1., 1.], "intensity": .5})
+        scene.lights.append({"type": "ambient", "mode": LIGHT_MODE_BAKED, "color": [1., 1., 1.], "intensity": .5})
         scene.tonemap_white = 2.
         scene.camera = SimpleNamespace(component=SimpleNamespace(background=0x123456))
         poses = [LOOK_DOWN + np.array([i * .1, 0., 0., 0., 0., 0.]) for i in range(6)]
@@ -456,7 +457,7 @@ class SkyStreamingTests(unittest.TestCase):
         from r3d import light as lighting
         source = plane_source(square())
         original = lighting.unshadowed_count
-        sky = {"type": "sky", "rays": 7, "color": [.5, .7, .9], "intensity": .8}
+        sky = {"type": "sky", "mode": LIGHT_MODE_BAKED, "rays": 7, "color": [.5, .7, .9], "intensity": .8}
         points = np.array([[0., 0., .5], [.2, .3, .1]])
         normals = np.array([[0., 0., -1.], [0., 0., 1.]])
 

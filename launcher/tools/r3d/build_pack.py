@@ -64,7 +64,7 @@ from asset.asset_directory import build_directory, parse_directory  # noqa: E402
 from r3d import mesh_bundle, mesh_asset, scene_asset, scene_name, skin_asset, skin_pack, lcol_asset  # noqa: E402
 from r3d.import_settings import SettingsError, albedo_jobs, load_demo_assets, load_import_settings, load_scene  # noqa: E402
 from r3d.mesh_asset import TYPE as LIT_MESH  # noqa: E402
-from r3d.sh_probe_settings import TYPE as SH_PROBES  # noqa: E402
+from r3d.sh_probe_asset import TYPE as SH_PROBES  # noqa: E402
 from render.settings import render_asset  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parents[3]

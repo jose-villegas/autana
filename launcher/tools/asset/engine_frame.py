@@ -10,9 +10,8 @@ from audio import sound_asset
 from gfx import image_asset
 from asset import table_asset
 from anim import tracks_asset, skeleton_asset
-from r3d import mesh_asset, scene_asset, skin_asset, lcol_asset, lod_asset, morph_asset
+from r3d import mesh_asset, scene_asset, skin_asset, lcol_asset, lod_asset, morph_asset, sh_probe_asset as sh
 from r3d.texture import texture_asset
-from r3d.sh_probe_settings import TYPE as SH_PROBES
 
 FRAMELESS = frozenset((image_asset.TYPE, image_asset.SPRITE_TYPE, table_asset.TYPE, sound_asset.TYPE, lcol_asset.TYPE,
                        texture_asset.TYPE, texture_asset.UVS_TYPE))
@@ -90,9 +89,8 @@ def to_engine(kind, entry):
             at = node_at + index * mesh_asset.NODE.size
             *box, first, count, leaf = mesh_asset.NODE.unpack_from(entry, at)
             mesh_asset.NODE.pack_into(out, at, *_mirror_box(box), first, count, leaf)
-    elif kind == SH_PROBES:
+    elif kind == sh.TYPE:
         import numpy as np
-        from r3d import sh_probe_bake as sh
 
         origin, spacing, dims, _, _ = sh.decode(entry)
         origin = list(origin)
