@@ -7,8 +7,8 @@ probe in its fate's colour (FATES); a kept probe also shows its kept cube faces 
     python launcher/tools/r3d/views/probe_figures.py --scene SCENE.scene.toml --object NAME --out DIR
 
 The reference set's probe_poses picks the probes, as a fit's reference set does: at the import's geometry.probes
-or, for an import that sets none, at their defaults. Writes DIR/SCENE-OBJECT-probes-1.png .. -4.png and DIR/SCENE-OBJECT-probes-legend.png,
-the fates with their counts.
+or, for an import that sets none, at their defaults. Writes DIR/SCENE-OBJECT-probes-1.png .. -4.png, and
+DIR/SCENE-OBJECT-probes-legend.png, the fates with their counts.
 """
 
 import argparse
@@ -178,7 +178,8 @@ def draw(image, found, path, eye, forward, lens, centre, arrow):
     for probe in sorted(behind, key=lambda probe: -np.linalg.norm(np.asarray(probe["at"]) - eye)):
         at, fate, faces = np.asarray(probe["at"]), FATES[probe["fate"]], probe["faces"]
         x, y = project([at], eye, forward, lens)[0][0]
-        tips = project([at + np.asarray(probes.FACES[face]) * arrow for face in faces], eye, forward, lens)[0]             if faces else []
+        tips = (project([at + np.asarray(probes.FACES[face]) * arrow for face in faces], eye, forward, lens)[0]
+                if faces else [])
         for tip in tips:
             canvas.line([(x, y), tuple(tip)], fill=rgb(fate.colour), width=LINE_WIDTH)
         r = KEPT_RADIUS if faces else MARK_RADIUS
