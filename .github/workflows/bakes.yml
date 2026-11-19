@@ -290,6 +290,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: python launcher/tools/bake/bake.py fetch
 
+      # The test asks the source mesh whether enclosed sky is sky there too.
+      - name: Fetch the Sponza source mesh
+        run: git lfs pull --exclude="" --include="launcher/demo/sponza/source/sponza.obj"
+
       - name: Install the r3d requirements
         run: pip install -r launcher/tools/r3d/requirements.txt
 
