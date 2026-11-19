@@ -20,18 +20,18 @@ W=$2
 run mkdir -p "$W" "$OUT"
 
 contact_images() {
-    # The low contact light makes the BLOB and posed SHAPE coverage visible on the floor pads.
-    CONTACT_FRAMES=6
-    CONTACT_DT=16
+    CONTACT_FRAMES=60
+    CONTACT_DT=100
     CONTACT_CROPS=3
     run mkdir -p "$OUT_TREE/render"
-    for shape in sh shape; do
-        run "$W/render_lab_render" --quarter 1 --no-hud --scene "stress-skinned-$shape-blobs" \
+    for shape in 0 2; do
+        run "$W/render_lab_render" --quarter 1 --no-hud --scene capybara-sponza \
+            --contact-shape "$shape" --contact-warp 0 \
             --frames "$CONTACT_FRAMES" --dt "$CONTACT_DT" \
             -o "$W/contact-$shape.bmp" > "$W/contact-$shape-console.log" 2> "$W/contact-$shape.log"
     done
     run "$PYTHON" launcher/tools/render/render_compare.py --out "$OUT_TREE/render/contact-shape.png" \
-        --row "Ground contact" "$W/contact-sh.bmp" "$W/contact-shape.bmp" \
+        --row "Ground contact" "$W/contact-0.bmp" "$W/contact-2.bmp" \
         --label-a BLOB --label-b SHAPE --crops "$CONTACT_CROPS" > "$W/contact-shape-compare.log"
 
     for key in skinned-feet-blobs skinned-shape-warped; do

@@ -213,11 +213,10 @@ Single discs use a homogeneous squared-distance compare with no per-pixel divide
 |---|---|
 | `SCENE_CONTACT_BLOB` | Squared disc falloff `(1 − d²)²`, with radius the smaller horizontal half extent of the world box. |
 | `SCENE_CONTACT_FEET` | Generic bind-space leaf contacts near the lowest leaf; one constant-radius disc under each posed joint. |
-| `SCENE_CONTACT_SHAPE` | Top-down posed silhouette over the world box’s xz footprint. Missing skin or mask allocation failure uses BLOB. |
+| `SCENE_CONTACT_SHAPE` | Union of posed joint ellipses over the world box’s xz footprint. Missing skin or mask allocation failure uses BLOB. |
 
 `scene_set_contact_warp(renderer, warp)` defaults off: footprints stay
 centred at the mover or posed contact joint, with no stretch.
-The capybara-sponza demo uses BLOB with warp off.
 
 ![BLOB, FEET and SHAPE during one run, with warp off and on](../../images/render/contact-warp.gif)
 
@@ -240,12 +239,25 @@ Draw and partial redraw use the union of the same footprints. Their projected
 corners bound the visited screen rows. Partial redraw retains previous and
 current bounds; a selected-light direction change forgets the picture.
 
-SHAPE fills a cell with full coverage when any posed triangle covers it,
-then applies a 3×3 box blur. Nearest-cell sampling follows the current
+SHAPE fits one axis-aligned bind-space ellipsoid per joint from skin-weighted
+vertex means and spreads. Its radii are `CONTACT_MASK_SPREAD` standard deviations.
+The skin allocation retains this table; fitting visits vertices only on activation.
+
+Each pose projects the ellipsoids through the skin palette onto the ground.
+Their ellipse union has a soft cell-width edge, without a blur pass.
+Work scales with joints and covered mask cells, independently of triangles.
+
+The proxy approximates bulk contact: thin details and articulated gaps need
+not match the mesh silhouette. Nearest-cell sampling follows the current
 world footprint between reposes. The mask rebuilds only with the pose.
 
+![Triangle reference and joint proxy contact coverage](../../images/render/contact-shape-proxy.png)
+
+![Enlarged triangle reference and joint proxy contact coverage](../../images/render/contact-shape-proxy.crops.png)
+
 Each active SHAPE renderer allocates `CONTACT_MASK_SIDE`² bytes through
-`MEMORY_FAST`, released with its skin buffers.
+`MEMORY_FAST`, released with its skin buffers. The skin allocation also holds
+one `contact_joint_t` per joint; mask building needs no static scratch.
 
 ## 6. Current limits
 

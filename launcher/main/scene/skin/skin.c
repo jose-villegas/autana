@@ -99,11 +99,12 @@ scene_skin_take(scene_t* scene, scene_row_t entity, scene_skinned_renderer_t* sk
     size_t end = size;
 
     struct {
-        size_t model, palette;
+        size_t model, palette, contact_joints;
     } layout;
 
     SCENE_STORAGE_RESERVE(layout, end, model, mat4f_t, skin->skin.joint_count);
     SCENE_STORAGE_RESERVE(layout, end, palette, mat4f_t, skin->skin.joint_count);
+    SCENE_STORAGE_RESERVE(layout, end, contact_joints, contact_joint_t, skin->skin.joint_count);
     void* storage = memory_alloc(end, MEMORY_FAST);
     if (storage == NULL) {
         return false;
@@ -123,6 +124,8 @@ scene_skin_take(scene_t* scene, scene_row_t entity, scene_skinned_renderer_t* sk
     (void)r3d_skin_output_init(&skin->bind, storage, size, &skin->output);
     skin->model = (mat4f_t*)(void*)((uint8_t*)storage + layout.model);
     skin->palette = (mat4f_t*)(void*)((uint8_t*)storage + layout.palette);
+    skin->contact_joints = (contact_joint_t*)(void*)((uint8_t*)storage + layout.contact_joints);
+    contact_mask_bind(skin->contact_joints, &skin->bind, &skin->skin);
     const scene_animator_t* animator = &scene->animators[entity];
     anim_pose_model(&animator->skeleton, &animator->layer.shown, skin->model);
     r3d_skin_palette(&skin->skin, skin->model, skin->bind.position_scale, skin->palette);
@@ -149,6 +152,7 @@ scene_skin_give(scene_t* scene, scene_skinned_renderer_t* skin) {
     skin->normal_palette = NULL;
     skin->model = NULL;
     skin->palette = NULL;
+    skin->contact_joints = NULL;
     skin->output = (r3d_skin_output_t){0};
 }
 
@@ -233,5 +237,6 @@ scene_skin_contact_refresh(scene_t* scene, scene_row_t entity) {
     static mat4f_t world;
     world = scene_row_world_matrix(scene->root, entity);
     const box3f_t bounds = r3d_lit_mesh_world_bounds(&skin->output.mesh, &world);
-    contact_mask_build(&skin->contact_mask, &skin->output.mesh, &world, bounds, r->contact_blob_ground_y);
+    contact_mask_build(&skin->contact_mask, skin->contact_joints, skin->skin.joint_count, skin->palette,
+                       skin->bind.position_scale, &world, bounds, r->contact_blob_ground_y);
 }

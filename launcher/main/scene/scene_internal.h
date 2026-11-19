@@ -153,6 +153,7 @@ typedef struct {
 typedef struct {
     r3d_skin_t skin;
     contact_mask_t contact_mask;
+    contact_joint_t* contact_joints;
     skin_contacts_t contacts;
     bool contact_mask_failed;
     r3d_lit_mesh_t bind;
