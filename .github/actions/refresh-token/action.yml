@@ -29,4 +29,4 @@ runs:
       run: |
         auth=$(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)
         echo "::add-mask::$auth"
-        git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $auth"
+        git config --local --replace-all http.https://github.com/.extraheader "AUTHORIZATION: basic $auth"

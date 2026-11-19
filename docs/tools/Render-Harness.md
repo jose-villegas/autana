@@ -115,10 +115,15 @@ Pillow can write different bytes for the same pixels. It prints
 `--orphans` renders nothing and reports an image whose name no script
 mentions, whole or as a loop's name ending in its variable (`name-$key`); the Comment Rules workflow runs it on every pull request. The
 `doc-images` workflow runs it on pushes to main that touch `launcher/` or
-`docs/`, and opens one pull request when an image or table changed. A GitHub
-App pushes its branch and opens it, so its checks start; the App's ID and
-private key are the `DOC_REFRESH_APP_ID` and `DOC_REFRESH_APP_PRIVATE_KEY`
-secrets, and without them the run fails.
+`docs/`, and opens one pull request when an image or table changed.
+
+### Refresh pull requests
+
+Every workflow that opens a refresh pull request pushes its branch and opens it
+as a GitHub App, so its checks start; with `GITHUB_TOKEN` they would not. The
+App is installed on this repository only, with Contents and Pull requests read
+and write. Its ID and private key are the `DOC_REFRESH_APP_ID` and
+`DOC_REFRESH_APP_PRIVATE_KEY` secrets; without them the run fails.
 
 | Image | Shows |
 |---|---|
