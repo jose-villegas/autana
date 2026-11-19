@@ -78,5 +78,43 @@ class RefreshPrTests(unittest.TestCase):
                 self.assertTrue(all(item.args[0].full_url.startswith(
                     'https://api.github.com/repos/owner/repo/') for item in http.call_args_list))
 
+WORKFLOWS = Path(__file__).resolve().parents[3] / ".github" / "workflows"
+REFRESH_TOKEN = "./.github/actions/refresh-token"
+APP_TOKEN = "${{ steps.app.outputs.token }}"
+
+
+class RefreshAppTokenTests(unittest.TestCase):
+    """A refresh branch pushed or PR opened with GITHUB_TOKEN starts no checks, so every workflow step
+    that runs refresh_branch.py or refresh_pr.py does it as the refresh App, never GITHUB_TOKEN."""
+
+    def refresh_steps(self):
+        import yaml
+        for path in sorted(WORKFLOWS.glob("*.yml")):
+            for name, job in yaml.safe_load(path.read_text(encoding="utf-8"))["jobs"].items():
+                steps = job.get("steps", [])
+                for index, step in enumerate(steps):
+                    if "refresh_branch.py" in step.get("run", "") or "refresh_pr.py" in step.get("run", ""):
+                        yield f"{path.name} {name}: {step.get('name')}", steps[:index], step
+
+    def test_refresh_workflows_exist(self):
+        self.assertGreater(len(list(self.refresh_steps())), 0)
+
+    def test_the_app_token_is_minted_from_its_secrets_before_every_refresh_step(self):
+        for where, before, _ in self.refresh_steps():
+            with self.subTest(where):
+                mint = [step for step in before if step.get("uses") == REFRESH_TOKEN]
+                self.assertEqual(len(mint), 1)
+                self.assertEqual(mint[0].get("id"), "app")
+                self.assertEqual(mint[0]["with"], {
+                    "client-id": "${{ secrets.DOC_REFRESH_APP_ID }}",
+                    "private-key": "${{ secrets.DOC_REFRESH_APP_PRIVATE_KEY }}"})
+
+    def test_every_refresh_pr_call_takes_the_app_token(self):
+        for where, _, step in self.refresh_steps():
+            if "refresh_pr.py" in step["run"]:
+                with self.subTest(where):
+                    self.assertEqual(step.get("env", {}).get("GH_TOKEN"), APP_TOKEN)
+
+
 if __name__ == "__main__":
     unittest.main()
