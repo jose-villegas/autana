@@ -169,7 +169,7 @@ material becomes a double-sided shape with vertex colours,
 | Ordinary geometry | Non-candidates and rejected candidates remain geometry. |
 | Overrides | `never` excludes a material; `always` bypasses the thresholds. Forcing a carved or thinned material, unknown names, or overlapping overrides is an error. |
 
-The greedy plane score follows Décoret et al.<sup>[[132]](../../Citations.md#decoret-2003)</sup>:
+The greedy plane score follows Décoret et al.<sup>[[133]](../../Citations.md#decoret-2003)</sup>:
 projected sample area earns coverage; an area cost and a per-card floor stop
 selection when another plane would not pay for itself.
 
