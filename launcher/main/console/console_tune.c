@@ -91,8 +91,8 @@ console_tune_line(tune_registry_t* registry, const char* line, console_reply_fn 
         }
         return true;
     }
-    if (strncmp(line, "RESET ", 6) == 0) {
-        const tune_entry_t* entry = named(registry, line + 6, reply);
+    if (strncmp(line, CONSOLE_TUNE_RESET " ", sizeof(CONSOLE_TUNE_RESET)) == 0) {
+        const tune_entry_t* entry = named(registry, line + sizeof(CONSOLE_TUNE_RESET), reply);
         if (entry != NULL) {
             (void)tune_reset(registry, entry->name);
             reply_value(reply, entry);

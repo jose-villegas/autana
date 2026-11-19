@@ -35,7 +35,7 @@ console_verb_get(const char* args, console_reply_fn reply) {
 
 static void
 console_verb_reset(const char* args, console_reply_fn reply) {
-    forward_to_tune("RESET", args, reply);
+    forward_to_tune(CONSOLE_TUNE_RESET, args, reply);
 }
 
 static void

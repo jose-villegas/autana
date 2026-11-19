@@ -1873,7 +1873,7 @@ def apply_tunables(connection, settings):
         name, _, value = setting.partition("=")
         _, found, complete = exchange_retrying(
             connection, [(f"SET {name} {value}", "TUNE", TUNE_REPLY_ENDS)])
-        if not complete or not found or not found[-1].startswith("TUNE_OK " + name + "="):
+        if not complete or not found or not found[-1].startswith(TUNE_REPLY_ENDS[0] + " " + name + "="):
             raise TuneRefused(f"SET {name} {value}: {found[-1] if found else 'no reply'}")
         if found[-1].split("=", 1)[1] != str(int(value, 0)):
             raise TuneRefused(f"SET {name} {value}: board holds {found[-1]}")
