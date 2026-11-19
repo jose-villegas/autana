@@ -503,17 +503,18 @@ const r3d_span_small_fill_t r3d_span_small_fill_default = {
 };
 
 void
-r3d_span_small_fill_resolve(r3d_span_small_fill_t* resolved, small_fill_t fill) {
-    fill.ceiling = (uint8_t)mathi_min(fill.ceiling, SMALL_FILL_CEILING_MAX);
-    resolved->ceiling = fill.ceiling;
-    resolved->style = fill.style;
+r3d_span_small_fill_resolve(r3d_span_small_fill_t* resolved, render_small_fill_settings_t fill) {
+    fill.ceiling = mathi_clamp(fill.ceiling, 0, SMALL_FILL_CEILING_MAX);
+    fill.gate = mathi_clamp(fill.gate, 0, SMALL_FILL_GATE_MAX);
+    resolved->ceiling = (uint8_t)fill.ceiling;
+    resolved->style = (uint8_t)mathi_clamp(fill.style, 0, SMALL_FILL_STYLE_COUNT - 1);
     const int intervals = fill.ceiling - (SMALL_MAX_SIDE + 1);
     for (int side = SMALL_MAX_SIDE + 1; side <= fill.ceiling; side++) {
         const int offset = side - (SMALL_MAX_SIDE + 1);
         const int spread = fill.gate == 0 ? SMALL_SPREAD_OFF
                            : intervals == 0
                                ? fill.gate
-                               : SMALL_SPREAD_OFF + ((((int)fill.gate - SMALL_SPREAD_OFF) * offset) / intervals);
+                               : SMALL_SPREAD_OFF + (((fill.gate - SMALL_SPREAD_OFF) * offset) / intervals);
         resolved->spread[side] = (uint8_t)spread;
     }
 }
