@@ -2,9 +2,7 @@
 record for this fingerprint and FORCE is not "true"; otherwise false. A
 failed-attempt record counts as a record, so a newer one makes the answer
 false. --defer-in-flight prints false while another run of this workflow
-on main is unfinished (hosted lookup; the GPU gate omits it).
---skip-obsolete prints an obsolete-run reason instead if GITHUB_SHA is not
-main's head."""
+on main is unfinished (hosted lookup; the GPU gate omits it)."""
 import argparse
 import os
 
@@ -40,14 +38,7 @@ def main(argv=None, request=call):
     parser.add_argument("fingerprint")
     parser.add_argument("--defer-in-flight", action="store_true",
                         help="hosted lookup: defer while another run is unfinished")
-    parser.add_argument("--skip-obsolete", action="store_true",
-                        help="GPU gate: skip a trigger SHA that is no longer main's head")
     args = parser.parse_args(argv)
-    if args.skip_obsolete:
-        head = request("GET", "/git/ref/heads/main")["object"]["sha"]
-        if os.environ["GITHUB_SHA"] != head:
-            print(f"obsolete: main moved to {head}; dispatch again on main to force")
-            return
     if args.defer_in_flight:
         own_run = os.environ["GITHUB_RUN_ID"]
         workflow_ref = os.environ["GITHUB_WORKFLOW_REF"]
