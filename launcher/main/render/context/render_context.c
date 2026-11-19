@@ -18,6 +18,7 @@
 #include "render/view/raster_cull_view.h"
 #include "render/view/raster_meshlets.h"
 #include "render/view/raster_overdraw.h"
+#include "render/view/raster_probes.h"
 #include "render/view/raster_show.h"
 
 static const render_debug_view_t views[] = {
@@ -33,6 +34,10 @@ static const render_debug_view_t views[] = {
      .state_bytes = sizeof(raster_boxes_t),
      .attachment = raster_boxes_view,
      .overlay = raster_boxes_overlay},
+    {.name = "probes",
+     .state_bytes = sizeof(raster_probes_t),
+     .attachment = raster_probes_view,
+     .overlay = raster_probes_overlay},
     {.name = "overdraw", .state_bytes = sizeof(raster_overdraw_t), .attachment = raster_overdraw_view},
     {.name = "copies", .state_bytes = sizeof(raster_copies_t), .attachment = raster_copies_view},
 };

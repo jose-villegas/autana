@@ -5,6 +5,7 @@
 extern "C" {
 #include "asset/asset_store.h"
 #include "render/context/render_context.h"
+#include "render/view/raster_probes.h"
 #include "render_host.h"
 #include "scene_viewer.h"
 }
