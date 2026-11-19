@@ -22,7 +22,8 @@ from r3d import skin_asset  # noqa: E402
 
 PROBE = pathlib.Path(__file__).with_name("skin_figures_probe.c")
 PROBE_SOURCES = (PROBE, TOOLS.parent / "main/render/skin/r3d_skinning.c",
-                 TOOLS.parent / "main/render/skin/r3d_skin_light.c")
+                 TOOLS.parent / "main/render/skin/r3d_skin_light.c",
+                 TOOLS.parent / "packages/math/src/sh/sh1.c")
 # The limb, in model units: two joints, the second at the hinge, a strip of COLUMNS vertex pairs along x.
 HINGE = 1.0
 LENGTH = 2.0 * HINGE
