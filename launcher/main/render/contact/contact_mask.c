@@ -5,34 +5,35 @@
 #include <string.h>
 #include "math/linear/mat3f.h"
 
-void
-contact_mask_bind(contact_joint_t* joints, const r3d_lit_mesh_t* bind, const r3d_skin_t* skin) {
-    memset(joints, 0, (size_t)skin->joint_count * sizeof *joints);
+static void
+bind_accumulate(contact_joint_t* joints, const r3d_lit_mesh_t* bind, const r3d_skin_t* skin, bool variance) {
     for (int v = 0; v < bind->vertex_count; v++) {
         const uint8_t* record = skin->vertices + ((size_t)v * skin->vertex_stride);
         const vec3f_t p = {(float)bind->positions[v][0], (float)bind->positions[v][1], (float)bind->positions[v][2]};
         for (int i = 0; i < skin->influences; i++) {
             contact_joint_t* joint = &joints[record[i]];
             const float w = (float)record[skin->influences + i] * R3D_SKIN_WEIGHT_RECIP;
-            joint->weight += w;
-            joint->centre = vec3f_add(joint->centre, vec3f_scale(p, w));
+            if (variance) {
+                const vec3f_t d = vec3f_sub(p, joint->centre);
+                joint->radius = vec3f_add(joint->radius, vec3f_scale((vec3f_t){d.x * d.x, d.y * d.y, d.z * d.z}, w));
+            } else {
+                joint->weight += w;
+                joint->centre = vec3f_add(joint->centre, vec3f_scale(p, w));
+            }
         }
     }
+}
+
+void
+contact_mask_bind(contact_joint_t* joints, const r3d_lit_mesh_t* bind, const r3d_skin_t* skin) {
+    memset(joints, 0, (size_t)skin->joint_count * sizeof *joints);
+    bind_accumulate(joints, bind, skin, false);
     for (int j = 0; j < skin->joint_count; j++) {
         if (joints[j].weight > 0) {
             joints[j].centre = vec3f_scale(joints[j].centre, 1.0F / joints[j].weight);
         }
     }
-    for (int v = 0; v < bind->vertex_count; v++) {
-        const uint8_t* record = skin->vertices + ((size_t)v * skin->vertex_stride);
-        const vec3f_t p = {(float)bind->positions[v][0], (float)bind->positions[v][1], (float)bind->positions[v][2]};
-        for (int i = 0; i < skin->influences; i++) {
-            contact_joint_t* joint = &joints[record[i]];
-            const float w = (float)record[skin->influences + i] * R3D_SKIN_WEIGHT_RECIP;
-            const vec3f_t d = vec3f_sub(p, joint->centre);
-            joint->radius = vec3f_add(joint->radius, vec3f_scale((vec3f_t){d.x * d.x, d.y * d.y, d.z * d.z}, w));
-        }
-    }
+    bind_accumulate(joints, bind, skin, true);
     for (int j = 0; j < skin->joint_count; j++) {
         contact_joint_t* joint = &joints[j];
         if (joint->weight > 0) {
