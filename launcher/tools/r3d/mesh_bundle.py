@@ -8,7 +8,7 @@ from asset.asset_pack import NAME_BYTES, PackError, build_pack, parse_pack
 from build.name_hash import name_hash
 from r3d import lcol_asset, lod_asset, mesh_asset, morph_asset
 from r3d.lcol_asset import NAME_SUFFIX
-from r3d.texture import texture_asset, uv_transfer
+from r3d.texture import texture_asset
 
 SUFFIX = ".bundle"
 MANIFEST = "copies"
@@ -27,6 +27,7 @@ HASH_HEX_DIGITS = 8
 
 def shape_id(mesh, rule, first):
     """A bounded shape id, stable under output ordering and copy count."""
+    from r3d.texture import uv_transfer  # numpy; bake.py reads SUFFIX without it
     key = name_hash(json.dumps([mesh, rule, first], sort_keys=True))
     suffix = f".{key:0{HASH_HEX_DIGITS}x}"
     longest = max(len(NAME_SUFFIX), len(uv_transfer.NAME_SUFFIX),
@@ -121,6 +122,7 @@ def encode(entries, copies):
 
 
 def decode(data):
+    from r3d.texture import uv_transfer  # numpy; bake.py reads SUFFIX without it
     entries = parse_pack(data)
     if MANIFEST not in entries:
         raise PackError("mesh bundle has no manifest")
@@ -178,6 +180,7 @@ def rest_name(entries, copies):
 
 def rename_rest(entries, copies, name):
     """Retarget a replacement bundle's sole rest mesh and its siblings to a pack entry id."""
+    from r3d.texture import uv_transfer  # numpy; bake.py reads SUFFIX without it
     old = rest_name(entries, copies)
     if old == name:
         return entries

@@ -3,9 +3,6 @@
 import os
 import pathlib
 
-import numpy as np
-from PIL import Image
-
 TEXTURE_KEYS = ("map_Kd", "map_d")
 # A texture whose every texel's alpha is above this is opaque: nothing of it is cut away.
 ALPHA_OPAQUE = 0.99
@@ -31,6 +28,8 @@ def load_mtl(path):
 
 def load_obj(path):
     """Return mesh arrays, tri_o and object_names; both o and g start an object."""
+    import numpy as np
+
     positions, uvs = [], []
     tri_v, tri_t, tri_m, tri_o = [], [], [], []
     object_names, owner = [], None
@@ -83,6 +82,9 @@ class Texture:
 
     def __init__(self, path, alpha_path=None, dtype=None):
         """`dtype` float32 halves a large scene's footprint where only level 0 is read; the bake keeps float64."""
+        import numpy as np
+        from PIL import Image
+
         dtype = np.float64 if dtype is None else dtype
         image = Image.open(path).convert("RGBA")
         rgba = np.asarray(image, dtype=dtype) / 255.0
@@ -112,6 +114,8 @@ class Texture:
 
     def sample(self, uv, lod):
         """uv (n,2), lod (n,) in mip levels; returns (n,4) linear RGBA."""
+        import numpy as np
+
         out = np.zeros((len(uv), 4))
         lod = np.clip(np.round(lod).astype(np.int64), 0, len(self.levels) - 1)
         for level_index in np.unique(lod):
@@ -146,4 +150,6 @@ def load_textures(root, materials, names, dtype=None):
 
 def alpha_tested(textures):
     """Per material of `load_textures`: does its texture cut texels away (leaves, chains, glass panes)?"""
+    import numpy as np
+
     return np.array([tex is not None and tex.levels[0][..., 3].min() <= ALPHA_OPAQUE for tex in textures], dtype=bool)
