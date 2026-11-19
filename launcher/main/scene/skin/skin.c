@@ -221,7 +221,7 @@ scene_skin_contact_refresh(scene_t* scene, scene_row_t entity) {
     if (r->contact_blob_strength > 0 && r->contact_blob_shape == SCENE_CONTACT_FEET && skin->storage != NULL) {
         (void)skin_contacts_find(&scene->animators[entity].skeleton, &skin->skin, &skin->contacts);
     }
-    if (r->contact_blob_strength <= 0 || r->contact_blob_shape != SCENE_CONTACT_SHAPE || skin->storage == NULL
+    if (r->contact_blob_strength <= 0 || r->contact_blob_shape != SCENE_CONTACT_SILHOUETTE || skin->storage == NULL
         || !(scene->flags[entity] & SCENE_FLAG_ACTIVE) || skin->contact_mask_failed) {
         return;
     }

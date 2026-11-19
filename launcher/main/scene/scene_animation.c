@@ -264,7 +264,7 @@ refresh_posed_contacts(scene_t* scene) {
         const scene_row_t e = scene->staged[i];
         if (scene->skinned_renderers[e].storage != NULL && scene->animators[e].posed) {
             const scene_renderer_t* r = &scene->renderers[scene_renderer_index(scene, e)];
-            if (r->contact_blob_strength > 0 && r->contact_blob_shape == SCENE_CONTACT_SHAPE) {
+            if (r->contact_blob_strength > 0 && r->contact_blob_shape == SCENE_CONTACT_SILHOUETTE) {
                 scene_skin_contact_refresh(scene, e);
             }
         }

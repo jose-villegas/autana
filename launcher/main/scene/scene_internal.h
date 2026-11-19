@@ -249,7 +249,7 @@ struct scene {
     int staged_count;
     uint16_t* active_renderers; /* renderers whose entity is ACTIVE, in renderer order */
     int active_renderer_count;
-    bool contact_warp, contact_shape;
+    bool contact_warp, contact_silhouette;
     bool active_renderers_stale; /* an ACTIVE bit flipped since the list was built */
 };
 

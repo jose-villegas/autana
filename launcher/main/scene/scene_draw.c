@@ -251,9 +251,9 @@ contact_reach_t
 scene_contact_reach(const scene_t* scene, const scene_renderer_t* r) {
     const vec3f_t half = box3f_half_extent(r->world_bounds);
     const float radius = fminf(half.x, half.z);
-    const bool shape = r->contact_blob_shape == SCENE_CONTACT_SHAPE
-                       && scene->skinned_renderers[r->entity].contact_mask.coverage != NULL;
-    return (contact_reach_t){shape ? half.x : radius, shape ? half.z : radius};
+    const bool silhouette = r->contact_blob_shape == SCENE_CONTACT_SILHOUETTE
+                            && scene->skinned_renderers[r->entity].contact_mask.coverage != NULL;
+    return (contact_reach_t){silhouette ? half.x : radius, silhouette ? half.z : radius};
 }
 
 static vec3f_t
@@ -287,7 +287,7 @@ scene_contact_blob(const scene_t* scene, const scene_renderer_t* r, vec3f_t ligh
     const contact_reach_t reach = scene_contact_reach(scene, r);
     *blob = warped_blob(r->world_bounds, r->contact_blob_ground_y, reach, r->contact_warp ? light : vec3f_unit_y());
     blob->strength = r->contact_blob_strength;
-    if (r->contact_blob_shape == SCENE_CONTACT_SHAPE) {
+    if (r->contact_blob_shape == SCENE_CONTACT_SILHOUETTE) {
         const contact_mask_t* mask = &scene->skinned_renderers[r->entity].contact_mask;
         blob->mask = mask->coverage != NULL ? mask : NULL;
     }
@@ -378,7 +378,7 @@ static int
 fill_scene_changed(scene_t* scene, int changes, name_hash64_t* set) {
     const int slot = (int)(scene->root - scene_roots);
     scene->contact_warp = false;
-    scene->contact_shape = false;
+    scene->contact_silhouette = false;
     for (int i = 0; i < scene->active_renderer_count; i++) {
         scene_renderer_t* r = &scene->renderers[scene->active_renderers[i]];
         if (r->mesh.node_count == 0) {
@@ -388,7 +388,7 @@ fill_scene_changed(scene_t* scene, int changes, name_hash64_t* set) {
         *set = name_hash64_n(*set, &scene->active_renderers[i], sizeof scene->active_renderers[i]);
         if (r->contact_blob_strength > 0) {
             scene->contact_warp |= r->contact_warp;
-            scene->contact_shape |= r->contact_blob_shape == SCENE_CONTACT_SHAPE;
+            scene->contact_silhouette |= r->contact_blob_shape == SCENE_CONTACT_SILHOUETTE;
         }
         changes = fill_renderer_changed(scene, r, changes);
     }

@@ -74,7 +74,7 @@ void scene_set_probes(entity_t root, const sh_probes_t* probes);
 
 #define SCENE_CONTACT_BLOB_STRENGTH_DEFAULT 0.75F
 
-typedef enum { SCENE_CONTACT_BLOB, SCENE_CONTACT_FEET, SCENE_CONTACT_SHAPE } scene_contact_shape_t;
+typedef enum { SCENE_CONTACT_BLOB, SCENE_CONTACT_FEET, SCENE_CONTACT_SILHOUETTE } scene_contact_shape_t;
 
 typedef struct {
     float ground_y;

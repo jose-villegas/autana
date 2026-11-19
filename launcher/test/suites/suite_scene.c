@@ -5126,7 +5126,7 @@ test_contact_light_choice_and_shadow_invalidation(void) {
 }
 
 static void
-test_disabled_contact_skips_shape_and_warp_work(void) {
+test_disabled_contact_skips_silhouette_and_warp_work(void) {
     fixture_with_skin(&SKIN_OPTIONS);
     const entity_t root = load("test_skin");
     const entity_t entity = entity_find(root, name_hash("red"));
@@ -5136,7 +5136,7 @@ test_disabled_contact_skips_shape_and_warp_work(void) {
     scene_contact_t contact = {0};
     contact.warp = true;
     scene_set_contact(entity, &contact);
-    contact = (scene_contact_t){0, 0, SCENE_CONTACT_SHAPE, contact.warp};
+    contact = (scene_contact_t){0, 0, SCENE_CONTACT_SILHOUETTE, contact.warp};
     scene_set_contact(entity, &contact);
     scene_animation_repose(scene, 0);
     TEST_ASSERT_NULL(skin->contact_joints);
@@ -5150,7 +5150,7 @@ test_disabled_contact_skips_shape_and_warp_work(void) {
 }
 
 static void
-test_contact_joints_allocate_only_for_shape(void) {
+test_contact_joints_allocate_only_for_silhouette(void) {
     fixture_with_skin(&SKIN_OPTIONS);
     const entity_t root = load("test_skin");
     const entity_t entity = entity_find(root, name_hash("red"));
@@ -5164,7 +5164,7 @@ test_contact_joints_allocate_only_for_shape(void) {
     contact = (scene_contact_t){0, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, SCENE_CONTACT_FEET, contact.warp};
     scene_set_contact(entity, &contact);
     TEST_ASSERT_NULL(skin->contact_joints);
-    contact = (scene_contact_t){0, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, SCENE_CONTACT_SHAPE, contact.warp};
+    contact = (scene_contact_t){0, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, SCENE_CONTACT_SILHOUETTE, contact.warp};
     scene_set_contact(entity, &contact);
     TEST_ASSERT_NOT_NULL(skin->contact_joints);
     TEST_ASSERT_NOT_NULL(skin->contact_mask.coverage);
@@ -5174,7 +5174,7 @@ test_contact_joints_allocate_only_for_shape(void) {
 }
 
 static void
-test_shape_mask_repose_and_lifetime(void) {
+test_silhouette_mask_repose_and_lifetime(void) {
     fixture_with_skin(&SKIN_OPTIONS);
     const entity_t root = load("test_skin");
     const entity_t entity = entity_find(root, name_hash("red"));
@@ -5186,7 +5186,7 @@ test_shape_mask_repose_and_lifetime(void) {
     scene_skinned_renderer_t* skin = skin_of(entity);
     TEST_ASSERT_NULL(skin->contact_mask.coverage);
     scene_contact_t contact = {0};
-    contact = (scene_contact_t){0, 1, SCENE_CONTACT_SHAPE, contact.warp};
+    contact = (scene_contact_t){0, 1, SCENE_CONTACT_SILHOUETTE, contact.warp};
     scene_set_contact(entity, &contact);
     scene_animation_repose(scene, 0);
     TEST_ASSERT_NOT_NULL(skin->contact_mask.coverage);
@@ -5223,14 +5223,14 @@ test_shape_mask_repose_and_lifetime(void) {
 }
 
 static void
-test_shape_mask_refreshes_when_paused_mover_rotates(void) {
+test_silhouette_mask_refreshes_when_paused_mover_rotates(void) {
     fixture_with_skin(&SKIN_OPTIONS);
     const entity_t root = load("test_skin");
     const entity_t entity = entity_find(root, name_hash("red"));
     scene_t* scene = columns(root);
     scene_resolve(scene);
     scene_contact_t contact = {0};
-    contact = (scene_contact_t){0, 1, SCENE_CONTACT_SHAPE, contact.warp};
+    contact = (scene_contact_t){0, 1, SCENE_CONTACT_SILHOUETTE, contact.warp};
     scene_set_contact(entity, &contact);
     TEST_ASSERT_TRUE(animator_set_paused(entity, ANIMATOR_CURRENT, true));
     scene_animation_repose(scene, 0);
@@ -5244,7 +5244,7 @@ test_shape_mask_refreshes_when_paused_mover_rotates(void) {
 }
 
 static void
-test_shape_allocation_failure_uses_blob(void) {
+test_silhouette_allocation_failure_uses_blob(void) {
     fixture_with_skin(&SKIN_OPTIONS);
     const entity_t root = load("test_skin");
     const entity_t entity = entity_find(root, name_hash("red"));
@@ -5253,7 +5253,7 @@ test_shape_allocation_failure_uses_blob(void) {
     scene_skinned_renderer_t* skin = skin_of(entity);
     scene_fail_allocation_after = 0;
     scene_contact_t contact = {0};
-    contact = (scene_contact_t){0, 1, SCENE_CONTACT_SHAPE, contact.warp};
+    contact = (scene_contact_t){0, 1, SCENE_CONTACT_SILHOUETTE, contact.warp};
     scene_set_contact(entity, &contact);
     scene_animation_repose(scene, 0);
     scene_fail_allocation_after = -1;
@@ -5261,14 +5261,14 @@ test_shape_allocation_failure_uses_blob(void) {
     TEST_ASSERT_TRUE(skin->contact_mask_failed);
     scene_renderer_t* r = &scene->renderers[scene_renderer_index(scene, row_of(entity))];
     r->world_bounds = (box3f_t){{-1, 0, -1}, {1, 2, 1}};
-    contact_blob_t shape, blob;
-    TEST_ASSERT_TRUE(scene_contact_blob(scene, r, vec3f_unit_y(), &shape));
-    TEST_ASSERT_NULL(shape.mask);
+    contact_blob_t silhouette, blob;
+    TEST_ASSERT_TRUE(scene_contact_blob(scene, r, vec3f_unit_y(), &silhouette));
+    TEST_ASSERT_NULL(silhouette.mask);
     contact = (scene_contact_t){0, 1, SCENE_CONTACT_BLOB, contact.warp};
     scene_set_contact(entity, &contact);
     TEST_ASSERT_TRUE(scene_contact_blob(scene, r, vec3f_unit_y(), &blob));
-    TEST_ASSERT_EQUAL_MEMORY(&shape, &blob, sizeof blob);
-    contact = (scene_contact_t){0, 1, SCENE_CONTACT_SHAPE, contact.warp};
+    TEST_ASSERT_EQUAL_MEMORY(&silhouette, &blob, sizeof blob);
+    contact = (scene_contact_t){0, 1, SCENE_CONTACT_SILHOUETTE, contact.warp};
     scene_set_contact(entity, &contact);
     entity_set_enabled(entity, false);
     TEST_ASSERT_FALSE(skin->contact_mask_failed);
@@ -5398,7 +5398,7 @@ test_contact_warp_and_bounds_sweep(void) {
     scene_t* scene = columns(root);
     scene_renderer_t* r = &scene->renderers[scene_renderer_index(scene, row_of(entity))];
     scene_skins_settle(scene);
-    static const scene_contact_shape_t shapes[] = {SCENE_CONTACT_BLOB, SCENE_CONTACT_SHAPE};
+    static const scene_contact_shape_t shapes[] = {SCENE_CONTACT_BLOB, SCENE_CONTACT_SILHOUETTE};
     for (int warp = 0; warp <= 1; warp++) {
         for (size_t shape = 0; shape < sizeof shapes / sizeof shapes[0]; shape++) {
             scene_contact_t contact = {0};
@@ -5451,7 +5451,7 @@ test_contact_receiver_light_and_bounds(void) {
     const vec3f_t selected = scene_contact_light(scene, box3f_centre(r->world_bounds), drawn, 2);
     TEST_ASSERT_EQUAL_MEMORY(&want, &selected, sizeof want);
     r->world_bounds = (box3f_t){{-1, 0, -1}, {1, 2, 1}};
-    static const scene_contact_shape_t shapes[] = {SCENE_CONTACT_BLOB, SCENE_CONTACT_SHAPE};
+    static const scene_contact_shape_t shapes[] = {SCENE_CONTACT_BLOB, SCENE_CONTACT_SILHOUETTE};
     for (size_t shape = 0; shape < sizeof shapes / sizeof shapes[0]; shape++) {
         contact = (scene_contact_t){0, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, shapes[shape], contact.warp};
         scene_set_contact(mover, &contact);
@@ -8728,11 +8728,11 @@ run_scene_suite(void) {
     RUN_TEST(test_probes_sample_last_resolved_bounds_without_allocating);
     RUN_TEST(test_forgetting_another_scene_keeps_the_contact_draw_hook);
     RUN_TEST(test_contact_light_choice_and_shadow_invalidation);
-    RUN_TEST(test_disabled_contact_skips_shape_and_warp_work);
-    RUN_TEST(test_contact_joints_allocate_only_for_shape);
-    RUN_TEST(test_shape_mask_repose_and_lifetime);
-    RUN_TEST(test_shape_mask_refreshes_when_paused_mover_rotates);
-    RUN_TEST(test_shape_allocation_failure_uses_blob);
+    RUN_TEST(test_disabled_contact_skips_silhouette_and_warp_work);
+    RUN_TEST(test_contact_joints_allocate_only_for_silhouette);
+    RUN_TEST(test_silhouette_mask_repose_and_lifetime);
+    RUN_TEST(test_silhouette_mask_refreshes_when_paused_mover_rotates);
+    RUN_TEST(test_silhouette_allocation_failure_uses_blob);
     RUN_TEST(test_feet_follow_pose_without_height_fade);
     RUN_TEST(test_contact_default_is_unwarped);
     RUN_TEST(test_contact_warp_and_bounds_sweep);

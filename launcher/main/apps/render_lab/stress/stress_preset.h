@@ -97,8 +97,8 @@ typedef struct {
     X(FOLIAGE_FAR_OPAQUE, "foliage-far-opaque", TEXTURED)                                                              \
     X(SKINNED_SH_BLOBS, "skinned-sh-blobs", SKINNED_SH_BLOBS)                                                          \
     X(SKINNED_FEET_BLOBS, "skinned-feet-blobs", SKINNED_SH_BLOBS)                                                      \
-    X(SKINNED_SHAPE_WARPED, "skinned-shape-warped", SKINNED_SH_BLOBS)                                                  \
-    X(SKINNED_SHAPE_BLOBS, "skinned-shape-blobs", SKINNED_SH_BLOBS)                                                    \
+    X(SKINNED_SILHOUETTE_WARPED, "skinned-silhouette-warped", SKINNED_SH_BLOBS)                                        \
+    X(SKINNED_SILHOUETTE_BLOBS, "skinned-silhouette-blobs", SKINNED_SH_BLOBS)                                          \
     X(SKINNED_BLOB_WARPED, "skinned-blob-warped", SKINNED_SH_BLOBS)                                                    \
     X(CONTACT_BLOBS, "contact-blobs", CONTACT_BLOBS)                                                                   \
     X(RECORD, "record", WAVE)                                                                                          \
