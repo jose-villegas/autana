@@ -146,7 +146,7 @@ scene_renderer_bind_skin(scene_t* scene, scene_row_t row, const char* id, bool t
     if (status != ASSET_OK) {
         return scene_report(why, SCENE_ERR_ASSET, status, id);
     }
-    const bool lit = scene->light_count > 0 || scene->ambient_intensity > 0.0F;
+    const bool lit = scene_is_lit(scene);
     if (lit && next.bind.colors == NULL) {
         return scene_report(why, SCENE_ERR_ASSET, ASSET_ERR_FORMAT, SCENE_LIGHT_FAILURE_ALBEDO);
     }
