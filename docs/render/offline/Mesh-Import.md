@@ -143,19 +143,21 @@ Every probe ends in one of four fates:
 | dropped: inside geometry | More than `BACKFACE` of its rays still hit back faces after the move. |
 | dropped: a surface too near | A front face is still nearer than `MIN_FRONT_NEARS` near planes. |
 
-The views below place probes in Sponza's atrium by its import's settings and
-show them from above each top corner of the camera's region.
+The figure places probes by each import's settings: Sponza's atrium fit in the
+first row, Bistro's street fit in the second. The orbit circles the probe region
+uncut; each corner view is cut through the centre and shows only the probes
+behind the cut.
 
-The source is cut through the region's centre and drawn see-through, as the
-[cull view](../frame/View-Modes.md) draws a culled cluster. The camera path and
-the probes behind the cut sit on top; a kept probe's arrows are its kept faces.
+The source is drawn see-through, as the [cull view](../frame/View-Modes.md)
+draws a culled cluster. The camera path and the probes sit on top, each probe in
+its fate's colour; a kept probe's arrows are its kept faces.
 
-| | |
-|---|---|
-| ![Probes seen from above the +x +z corner](../../images/render/sponza-atrium_fitted_full-probes-1.png) | ![Probes seen from above the -x +z corner](../../images/render/sponza-atrium_fitted_full-probes-2.png) |
-| ![Probes seen from above the -x -z corner](../../images/render/sponza-atrium_fitted_full-probes-3.png) | ![Probes seen from above the +x -z corner](../../images/render/sponza-atrium_fitted_full-probes-4.png) |
+| Orbit | +x +z | -x +z | -x -z | +x -z |
+|---|---|---|---|---|
+| ![Sponza probes, circling](../../images/render/sponza-atrium_fitted_full-probes-orbit.gif) | ![Sponza probes from above the +x +z corner](../../images/render/sponza-atrium_fitted_full-probes-1.png) | ![Sponza probes from above the -x +z corner](../../images/render/sponza-atrium_fitted_full-probes-2.png) | ![Sponza probes from above the -x -z corner](../../images/render/sponza-atrium_fitted_full-probes-3.png) | ![Sponza probes from above the +x -z corner](../../images/render/sponza-atrium_fitted_full-probes-4.png) |
+| ![Bistro probes, circling](../../images/render/bistro-street_fitted_full-probes-orbit.gif) | ![Bistro probes from above the +x +z corner](../../images/render/bistro-street_fitted_full-probes-1.png) | ![Bistro probes from above the -x +z corner](../../images/render/bistro-street_fitted_full-probes-2.png) | ![Bistro probes from above the -x -z corner](../../images/render/bistro-street_fitted_full-probes-3.png) | ![Bistro probes from above the +x -z corner](../../images/render/bistro-street_fitted_full-probes-4.png) |
 
-![Probe fates and their counts](../../images/render/sponza-atrium_fitted_full-probes-legend.png)
+![Probe fates and their counts per scene](../../images/render/probe-fates.png)
 
 A camera without a path fits on probes alone. Probes reach surface seen from
 somewhere off the path, never surface seen from nowhere. The fit's prune keeps

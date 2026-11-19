@@ -36,6 +36,22 @@ class ProbeFigureViewTests(unittest.TestCase):
             self.assertLessEqual(edge, 1 - probe_figures.FRAME_MARGIN + 1e-6, "the box behind the cut leaves the view")
             self.assertGreater(edge, 1 - 2 * probe_figures.FRAME_MARGIN, "the view stands farther back than it needs")
 
+    def test_the_orbit_circles_the_centre_at_one_height_and_distance_and_keeps_the_whole_box_in_view(self):
+        lo, hi = np.array([-4.0, 0.0, -2.0]), np.array([4.0, 1.0, 2.0])
+        views = probe_figures.orbit_views(lo, hi, LENS)
+        self.assertEqual(len(views), probe_figures.ORBIT_FRAMES)
+        centre, lattice = (lo + hi) / 2, probe_figures.frame_lattice(lo, hi)
+        offsets = np.array([eye - centre for eye, _ in views])
+        np.testing.assert_allclose(np.linalg.norm(offsets, axis=1), np.linalg.norm(offsets[0]))
+        np.testing.assert_allclose(np.degrees(np.arcsin(offsets[:, 1] / np.linalg.norm(offsets, axis=1))),
+                                   probe_figures.ORBIT_ELEVATION)
+        for eye, forward in views:
+            np.testing.assert_allclose(forward, (centre - eye) / np.linalg.norm(centre - eye))
+            xy, front = probe_figures.project(lattice, eye, forward, LENS, probe_figures.ORBIT_SIZE)
+            self.assertTrue(front.all())
+            edge = np.abs(xy / probe_figures.ORBIT_SIZE * 2 - 1).max()
+            self.assertLessEqual(edge, 1 - probe_figures.FRAME_MARGIN + 1e-6, "the box leaves the orbit's view")
+
     def test_a_point_along_a_pixels_ray_projects_to_that_pixel(self):
         eye, forward = np.array([1.0, 5.0, -2.0]), np.array([0.3, -0.6, 0.7])
         width, height = probe_figures.VIEW_SIZE
