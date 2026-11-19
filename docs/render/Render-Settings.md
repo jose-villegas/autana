@@ -55,6 +55,9 @@ that field's table in the asset.
 | `texture.divide_px` | `16` | basic | fewest pixels between divides by depth, fewer cost more; 0 is affine, near surfaces bend |
 | `texture.affine_bend` | `1.0` | advanced | texels a triangle may bend and still step affine; larger is faster, bends more |
 | `texture.affine_level` | `1` | advanced | first mip level that steps affine, its pattern shifting rather than bending; 0 lets every level divide |
+| `small_fill.ceiling` | `4` | basic | largest bounding-box side in pixel centres filled in one colour; 0 is off; more saves, blurs small detail |
+| `small_fill.gate` | `0` | advanced | RGB565 per-channel spread, in packed channel units, a box at the ceiling may span and still fill; 0 lets any |
+| `small_fill.style` | `0` | advanced | a small_fill_style_t, how a filled box above the always-flat side is coloured |
 <!-- /generated: render-settings -->
 
 ## cull
@@ -169,6 +172,9 @@ and `RENDER_SETTINGS_DEFAULT` is generated from it
 ([`render_asset.py`](../../launcher/tools/render/settings/render_asset.py)).
 Any other file lists only the values it changes; the rest come from the
 default. A key that is no field, or a value of another type, fails the build.
+A field's comment in `render_settings.h` may give the interval it takes, as
+`/* basic [0, SMALL_FILL_CEILING_MAX]: ... */`; the generated reader refuses a
+pack whose value falls outside it.
 
 ```toml
 # fast.render.toml: the default, but drawn one instance at a time and a coarser LOD

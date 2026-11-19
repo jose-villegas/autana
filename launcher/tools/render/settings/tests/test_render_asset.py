@@ -4,7 +4,6 @@ import pathlib
 import sys
 import tempfile
 import unittest
-from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import render_asset  # noqa: E402
@@ -25,7 +24,7 @@ class RenderAssetTests(unittest.TestCase):
                           "lod.hysteresis_px": 0.5, "lod.coverage_permille": 250, "lod.pick_every": 4,
                           "lod.triangle_budget": 0, "lod.blend": 0, "lod.blend_px": 0.25}
                          | {key: value for key, value in render_asset.read(render_asset.DEFAULT).items()
-                            if key.startswith(("anim.", "texture."))})
+                            if key.startswith(("anim.", "texture.", "small_fill."))})
         lod = render_asset.load(self.settings("[lod]\ncoverage_permille = 100\n"))
         self.assertEqual(lod["lod.coverage_permille"], 100)
 
@@ -38,7 +37,7 @@ class RenderAssetTests(unittest.TestCase):
                                                   + [(key, [int(value * (1 << render_asset.FRAC_BITS))
                                                             if render_asset.fields()[key][0] == "float" else value])
                                                      for key, value in render_asset.read(render_asset.DEFAULT).items()
-                                                     if key.startswith(("anim.", "texture."))],
+                                                     if key.startswith(("anim.", "texture.", "small_fill."))],
                                                  4))
 
     def test_an_int_bakes_as_itself_up_to_a_row_s_most(self):
@@ -67,15 +66,21 @@ class RenderAssetTests(unittest.TestCase):
             with self.subTest(body=body), self.assertRaisesRegex(ValueError, "its own line"):
                 render_asset.fields(f"typedef struct {{\n    {body}\n}} render_settings_t;")
 
-    def test_generated_fields_carry_their_ranges(self):
+    def test_generated_fields_carry_the_interval_their_comment_gives(self):
         header = render_asset.header()
         self.assertIn("X(lod.blend, int, value >= 0 && value < RENDER_LOD_BLEND_COUNT)", header)
         self.assertIn("X(lod.blend_px, float, value > 0.0F && value <= RENDER_LOD_BLEND_PX_MAX)", header)
         self.assertIn("X(lod.tolerance_px, float, true)", header)
-        text = render_asset.DEFAULT.read_text(encoding="utf-8")
-        text += '\n[ranges."lod.tolerance_px"]\nmin = 1.0\nmax = 2.0\n'
-        with mock.patch.object(render_asset, "DEFAULT", self.settings(text)):
-            self.assertIn("X(lod.tolerance_px, float, value >= 1.0F && value <= 2.0F)", render_asset.header())
+        source = render_asset.HEADER.read_text(encoding="utf-8").replace(
+            "float tolerance_px;  /* basic:", "float tolerance_px;  /* basic [1.0, 2.5):")
+        self.assertEqual(render_asset.fields(source)["lod.tolerance_px"][3], "value >= 1.0F && value < 2.5F")
+
+    def test_an_interval_bound_must_be_a_number_or_a_c_constant(self):
+        for bound in ("max", "1 + 2"):
+            source = render_asset.HEADER.read_text(encoding="utf-8").replace(
+                "float tolerance_px;  /* basic:", f"float tolerance_px;  /* basic [0.0, {bound}]:")
+            with self.subTest(bound=bound), self.assertRaisesRegex(ValueError, "tolerance_px"):
+                render_asset.fields(source)
 
     def test_the_generated_default_matches_the_tree(self):
         header = render_asset.SETTINGS / "render_settings_default.h"

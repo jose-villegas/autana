@@ -1,6 +1,6 @@
-# Render settings layout (design draft, for approval)
+# Render settings layout (design sketch, approved)
 
-Draft. Nothing here is built yet. It covers where each render-related setting lives, the one rule that decides it,
+Approved by the maintainer. It covers where each render-related setting lives, the one rule that decides it,
 and the types and functions that follow.
 
 ## The rule

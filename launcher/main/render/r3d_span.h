@@ -27,7 +27,7 @@ typedef struct {
 } r3d_span_small_fill_t;
 
 extern const r3d_span_small_fill_t r3d_span_small_fill_default;
-void r3d_span_small_fill_resolve(r3d_span_small_fill_t* resolved, small_fill_t fill);
+void r3d_span_small_fill_resolve(r3d_span_small_fill_t* resolved, render_small_fill_settings_t fill);
 
 typedef struct r3d_span_writer r3d_span_writer_t;
 

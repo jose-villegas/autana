@@ -36,14 +36,17 @@ ENTRY = read_define(HEADER, "RENDER_SETTINGS_ENTRY")
 FRAC_BITS = read_define(HEADER, "RENDER_SETTINGS_FRAC_BITS")
 STRUCTS = re.compile(r"typedef struct \{(.*?)\} (\w+);", re.S)
 FIELD = re.compile(r"^\s*(\w+) (\w+);\s*/\*(.*?)\*/$", re.M)
-TIER = re.compile(r"^ (\w+): (.*) $")
+# ` tier: trade ` or ` tier [min, max]: trade `, each bound a number or a C constant, `(` or `)` open.
+TIER = re.compile(r"^ (\w+)(?: ([\[(])([\w.-]+), ([\w.-]+)([\])]))?: (.*) $")
+BOUND = re.compile(r"-?\d+(\.\d+)?|[A-Z][A-Z0-9_]*")
 TYPES = {"bool": (bool,), "int": (int,), "float": (int, float)}
 COMMAND = "python tools/render/settings/render_asset.py main/render/settings/render_settings_default.h"
 
 
 def fields(source=None):
-    """{field: (C type, tier, trade)} of render_settings_t in order, a struct field's own
-    as `field.member`. Each is declared on its own line with its tier comment."""
+    """{field: (C type, tier, trade, valid)} of render_settings_t in order, a struct field's own
+    as `field.member`. Each is declared on its own line with its tier comment, which may give
+    the field's interval after the tier; `valid` is its C test of the typed `value`."""
     source = HEADER.read_text(encoding="utf-8") if source is None else source
     structs = {}
     for body, name in STRUCTS.findall(source):
@@ -61,7 +64,8 @@ def fields(source=None):
             tier = TIER.match(comment)
             if kind not in TYPES or tier is None:
                 raise ValueError(f"{HEADER.name}: {prefix}{field} needs a bool, int or float and /* tier: trade */")
-            found[prefix + field] = (kind, *tier.groups())
+            name, opening, low, high, closing, trade = tier.groups()
+            found[prefix + field] = (kind, name, trade, interval(kind, opening, low, high, closing, prefix + field))
         return found
 
     if "render_settings_t" not in structs:
@@ -73,10 +77,7 @@ def read(path):
     """The validated keys of one settings file, flattened."""
     path = pathlib.Path(path)
     try:
-        declared = settings_toml.tables(path)
-        if path.resolve() == DEFAULT.resolve():
-            declared.pop(settings_toml.RANGES, None)
-        values = flatten(declared)
+        values = flatten(settings_toml.tables(path))
     except tomllib.TOMLDecodeError as error:
         raise ValueError(f"{path}: {error}") from None
     known = fields()
@@ -129,41 +130,23 @@ def bake(path):
     return table_asset.encode(rows, FRAC_BITS)
 
 
-def field_ranges():
-    """The default file's optional bounds, keyed by a field's member path."""
-    ranges = settings_toml.tables(DEFAULT).get(settings_toml.RANGES, {})
-    for field, bounds in ranges.items():
-        if field not in fields() or not isinstance(bounds, dict):
-            raise ValueError(f"{DEFAULT}: unknown range field {field}")
-        if bounds.keys() - {"min", "max", "min_exclusive", "max_exclusive"}:
-            raise ValueError(f"{DEFAULT}: {field} has an unknown range bound")
-    return ranges
-
-
-def range_predicate(kind, bounds):
-    """A field's C validity expression over its typed `value`; no bounds accepts any value."""
-    checks = []
-    for edge, comparison in (("min", ">"), ("max", "<")):
-        if edge not in bounds:
-            continue
-        bound = bounds[edge]
-        if isinstance(bound, str):
-            if not re.fullmatch(r"[A-Z][A-Z0-9_]*", bound):
-                raise ValueError(f"invalid C range constant {bound!r}")
-            limit = bound
-        else:
-            limit = literal(kind, bound, "F")
-        operator = comparison + ("" if bounds.get(f"{edge}_exclusive", False) else "=")
-        checks.append(f"value {operator} {limit}")
-    return " && ".join(checks) or "true"
+def interval(kind, opening, low, high, closing, field):
+    """The C test of a typed `value` in [low, high] (a parenthesis leaves that end open); none accepts any."""
+    if opening is None:
+        return "true"
+    for bound in (low, high):
+        if not BOUND.fullmatch(bound):
+            raise ValueError(f"{HEADER.name}: {field}'s bound {bound!r} is not a number or a C constant")
+    limit = {bound: bound if bound[0].isalpha() else literal(kind, bound, "F") for bound in (low, high)}
+    return (f"value >{'=' if opening == '[' else ''} {limit[low]} && "
+            f"value <{'=' if closing == ']' else ''} {limit[high]}")
 
 
 def header():
     """render_settings_default.h's text."""
     values, known = load(DEFAULT), fields()
-    kinds = {key: kind for key, (kind, _, _) in known.items()}
-    ranges = field_ranges()
-    declarations = " ".join(f"X({key}, {kinds[key]}, {range_predicate(kinds[key], ranges.get(key, {}))})" for key in values)
+    kinds = {key: kind for key, (kind, _, _, _) in known.items()}
+    declarations = " ".join(f"X({key}, {kinds[key]}, {known[key][3]})" for key in values)
     return (f"/* GENERATED FILE - do not edit.\n *     {COMMAND}\n */\n#pragma once\n\n"
             f"#define RENDER_SETTINGS_DEFAULT ((render_settings_t){{{nested(values, kinds)}}})\n"
             "/* X(field, type, valid) in struct order; valid tests the typed field as `value`. */\n"

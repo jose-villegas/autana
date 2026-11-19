@@ -29,7 +29,7 @@ def render(source=None, values=None):
     found = render_asset.fields(source)
     values = render_asset.load(render_asset.DEFAULT) if values is None else values
     rows = []
-    for field, (_, tier, trade) in found.items():
+    for field, (_, tier, trade, _) in found.items():
         if tier not in TIERS:
             raise ValueError(f"{render_asset.HEADER.name}: {field}'s tier {tier!r} is not one of {', '.join(TIERS)}")
         rows.append((f"`{field}`", f"`{str(values[field]).lower()}`", tier, trade))

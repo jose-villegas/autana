@@ -66,7 +66,7 @@ def callers(function, owner):
 
 def render_settings_rows():
     tuned = text("main/render/settings/render_settings.c")
-    for field, (kind, tier, _) in render_asset.fields().items():
+    for field, (kind, tier, _, _) in render_asset.fields().items():
         knob = re.escape(field.replace(".", "_")) + "|" + re.escape(field.split(".")[-1])
         dev = ", TUNE" if re.search(rf"TUNE_OVERRIDE\((render|anim), ({knob})\b", tuned) else ""
         yield ("render settings", field, kind, "render_settings_t", f"app pack ({tier}){dev}", docs_naming(field))
