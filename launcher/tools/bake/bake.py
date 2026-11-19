@@ -526,7 +526,8 @@ def package_name(text):
 @functools.cache
 def requirement_pins(stage):
     """(file, line) of every requirement a stage's key counts (see pinned_requirements)."""
-    return pinned_requirements(stage_files(stage), include_near=stage != "sh_probes")
+    near_paths = [entry_file(entry) for entry in STAGES[stage]] if stage == "sh_probes" else None
+    return pinned_requirements(stage_files(stage), near_paths=near_paths)
 
 
 @functools.cache
@@ -537,12 +538,12 @@ def tracked_requirements():
             if fnmatch.fnmatch(pathlib.PurePosixPath(line).name, REQUIREMENTS_GLOB)]
 
 
-def pinned_requirements(paths, include_near=True):
-    """Pins of imported packages, including adjacent requirements.txt files when `include_near`."""
+def pinned_requirements(paths, near_paths=None):
+    """Imported-package pins and requirements beside `near_paths`, defaulting to all `paths`."""
     imported = {package_name(name.split(".")[0]) for path in paths
                 for name, level in imported_names(module_facts(path)[0]) if level == 0 and name}
     pins = set()
-    for near in ({path.parent / REQUIREMENTS_NAME for path in paths} if include_near else ()):
+    for near in {path.parent / REQUIREMENTS_NAME for path in (paths if near_paths is None else near_paths)}:
         if near.is_file():
             pins.update((relative(near), line) for line in requirement_lines(near))
     for listed in tracked_requirements():

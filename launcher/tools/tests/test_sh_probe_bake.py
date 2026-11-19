@@ -201,6 +201,11 @@ class ProbeTests(unittest.TestCase):
                 packed = build_pack.pack_bytes([source], offline=True)
             self.assertEqual(parse_pack(packed['scene'])[found.output], (TYPE, record))
 
+    def test_probe_pins_include_source_image_decoder(self):
+        owner = bake.entry_file(bake.STAGES['sh_probes'][0]).parent / bake.REQUIREMENTS_NAME
+        pin = next(line for line in bake.requirement_lines(owner) if bake.package_name(line) == 'pillow')
+        self.assertIn((bake.relative(owner), pin), bake.requirement_pins('sh_probes'))
+
     def test_existing_tool_closures_exclude_sh(self):
         forbidden = {'sh_probe_settings.py', 'sh_probe_bake.py'}
         for stage in bake.STAGES:
