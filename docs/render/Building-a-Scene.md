@@ -75,11 +75,12 @@ python launcher/tools/scene/scene_edit.py set capybara.scene.toml --set capybara
 
 ## 3. Light it
 
-Light is part of the scene file: `[bake]` traces it into baked renderers, and
-skinned renderers apply the directional lights, ambient and `tonemap_white`
-at run time. A
-directional sun is an object whose rotation points it; sky and
-ambient are scene settings; `tonemap_white` sets how bright the result is.
+Light is part of the scene file. A directional object defaults to realtime;
+`mode = "baked"` includes it in surface and probe bakes. Skinned renderers
+apply realtime lights alongside probes, or all lights without probes.
+
+A sun's rotation points it. Sky and ambient are scene settings;
+`tonemap_white` sets how bright the result is.
 
 ```toml
 tonemap_white = 0.35
@@ -103,6 +104,7 @@ rotation = [30.0, -45.0, 0.0]    # pitch, yaw, roll: a sun 30 degrees off overhe
 
 [objects.light]
 type = "directional"
+mode = "baked"
 color = [1.0, 0.92, 0.78]
 intensity = 3.0
 ```

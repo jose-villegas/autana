@@ -2166,7 +2166,8 @@ test_authored_rows_and_refusals(void) {
          ASSET_ERR_FORMAT},
         {"overflow clips", animator + offsetof(scene_asset_animator_t, first_clip), 4, UINT32_MAX, false,
          ASSET_ERR_FORMAT},
-        {"light pad", light + offsetof(scene_asset_light_t, pad), 1, 1, false, ASSET_ERR_FORMAT},
+        {"light mode", light + offsetof(scene_asset_light_t, mode), 1, LIGHT_MODE_BAKED + 1, false, ASSET_ERR_FORMAT},
+        {"light baked", light + offsetof(scene_asset_light_t, mode), 1, LIGHT_MODE_BAKED, false, ASSET_OK},
         {"two lights", light + sizeof(scene_asset_light_t), 2, asset->lights[0].entity, false, ASSET_ERR_FORMAT},
         {"skin pad", skin + offsetof(scene_asset_skinned_renderer_t, pad), 2, 1, false, ASSET_ERR_FORMAT},
         {"two skins", skin + sizeof(scene_asset_skinned_renderer_t), 2, asset->skinned_renderers[0].entity, false,
@@ -5063,6 +5064,66 @@ test_probes_sample_last_resolved_bounds_without_allocating(void) {
     TEST_ASSERT_EQUAL_UINT(slow, memory_free_bytes(MEMORY_PSRAM));
     (void)scene_bounds(root);
     TEST_ASSERT_GREATER_THAN_FLOAT(bounds.lo.x, renderer->world_bounds.lo.x);
+}
+
+static void
+test_light_modes_with_and_without_probes(void) {
+    static const int16_t coefficients[1][SH_PROBES_COMPONENTS] = {{1}};
+    static const sh_probes_t probes = {.dims = {1, 1, 1}, .scale = 1, .coefficients = coefficients};
+    static const skin_light_mode_t modes[] = {SKIN_LIGHT_DIRECT, SKIN_LIGHT_RENORMALISED, SKIN_LIGHT_TABLE};
+    for (size_t mode = 0; mode < sizeof modes / sizeof modes[0]; mode++) {
+        const entity_t root = rig_fixture("rig.skin2", NULL);
+        const entity_t entity = entity_find(root, name_hash("red"));
+        const entity_t sun = entity_find(root, name_hash("camera"));
+        scene_t* scene = columns(root);
+        scene_skinned_renderer_t* skin = skin_of(entity);
+        TEST_ASSERT_EQUAL_INT(LIGHT_MODE_REALTIME, light_mode(entity));
+        TEST_ASSERT_TRUE(light_set_mode(sun, LIGHT_MODE_BAKED));
+        TEST_ASSERT_EQUAL_FLOAT(SCENE_LIGHT_INTENSITY_DEFAULT, light_intensity(sun));
+        TEST_ASSERT_FALSE(light_set_mode(sun, (light_mode_t)-1));
+        TEST_ASSERT_FALSE(light_set_mode(sun, (light_mode_t)(LIGHT_MODE_BAKED + 1)));
+        TEST_ASSERT_EQUAL_INT(LIGHT_MODE_BAKED, light_mode(sun));
+        TEST_ASSERT_TRUE(light_set_intensity(sun, 1));
+        transformf_t pose = transform_local(sun);
+        pose.rotation = quatf_from_euler((vec3f_t){MATH_PI / 2, 0, 0});
+        transform_set_local(sun, pose);
+        TEST_ASSERT_TRUE(skin_set_light_mode(entity, modes[mode]));
+        scene_animation_step(scene, 0);
+        uint8_t direct[RIG_VERTICES][R3D_SKIN_LIGHT_CHANNELS];
+        memcpy(direct, skin->colors, sizeof direct);
+        TEST_ASSERT_GREATER_THAN_UINT8(0, direct[0][0]);
+        TEST_ASSERT_EQUAL_INT(1, scene->world_lights.count);
+        scene_set_probes(root, &probes);
+        scene_animation_step(scene, 0);
+        uint8_t probe_only[RIG_VERTICES][R3D_SKIN_LIGHT_CHANNELS];
+        memcpy(probe_only, skin->colors, sizeof probe_only);
+        TEST_ASSERT_EQUAL_INT(0, scene->world_lights.count);
+        TEST_ASSERT_TRUE(light_set_intensity(sun, 0));
+        scene_animation_step(scene, 0);
+        TEST_ASSERT_EQUAL_MEMORY(probe_only, skin->colors, sizeof probe_only);
+        TEST_ASSERT_TRUE(light_set_intensity(sun, 1));
+        TEST_ASSERT_TRUE(light_set_mode(sun, LIGHT_MODE_REALTIME));
+        scene_animation_step(scene, 0);
+        TEST_ASSERT_EQUAL_INT(1, scene->world_lights.count);
+        TEST_ASSERT_GREATER_THAN_UINT8(probe_only[0][0], skin->colors[0][0]);
+        TEST_ASSERT_TRUE(light_set_mode(sun, LIGHT_MODE_BAKED));
+        scene_animation_step(scene, 0);
+        TEST_ASSERT_EQUAL_MEMORY(probe_only, skin->colors, sizeof probe_only);
+        scene_set_probes(root, NULL);
+        scene_animation_step(scene, 0);
+        TEST_ASSERT_EQUAL_INT(1, scene->world_lights.count);
+        TEST_ASSERT_EQUAL_MEMORY(direct, skin->colors, sizeof direct);
+        release_fixture();
+    }
+}
+
+static void
+test_old_light_pack_defaults_to_realtime(void) {
+    fixture();
+    const entity_t root = load("test_lit");
+    const entity_t sun = entity_find(root, name_hash("sun"));
+    TEST_ASSERT_EQUAL_INT(LIGHT_MODE_REALTIME, light_mode(sun));
+    TEST_ASSERT_EQUAL_INT(LIGHT_MODE_REALTIME, light_mode(ENTITY_NONE));
 }
 
 static void
@@ -8268,6 +8329,8 @@ run_scene_suite(void) {
     RUN_TEST(test_light_attachment_defaults_refusals_and_capacity);
     RUN_TEST(test_scene_light_rotation_shades_only_skin_and_matches_kernel);
     RUN_TEST(test_probes_sample_last_resolved_bounds_without_allocating);
+    RUN_TEST(test_light_modes_with_and_without_probes);
+    RUN_TEST(test_old_light_pack_defaults_to_realtime);
     RUN_TEST(test_forgetting_another_scene_keeps_the_contact_draw_hook);
     RUN_TEST(test_contact_footprint_and_partial_redraw);
     RUN_TEST(test_authored_skin_modes_animation_and_ambient);

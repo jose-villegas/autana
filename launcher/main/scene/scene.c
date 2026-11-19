@@ -385,7 +385,8 @@ open_lights(scene_t* scene) {
     for (int i = 0; i < scene->asset.light_count; i++) {
         const scene_asset_light_t* row = &scene->asset.lights[i];
         if (!light_set_color(scene_row_entity(scene, row->entity), row->color)
-            || !light_set_intensity(scene_row_entity(scene, row->entity), row->intensity)) {
+            || !light_set_intensity(scene_row_entity(scene, row->entity), row->intensity)
+            || !light_set_mode(scene_row_entity(scene, row->entity), (light_mode_t)row->mode)) {
             return scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, scene->asset.names[row->entity].name);
         }
     }

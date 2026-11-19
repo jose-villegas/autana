@@ -41,7 +41,8 @@ ProbeViews supplies the jittered cell grid, classification and relocation.
 The record addresses regular cell centres; tracing uses relocated positions.
 Inside cells receive synchronous six-neighbour dilation from outside cells.
 
-Paths include direct sky and bounced sunlight at the surface bake's bounce depth.
+Paths include direct sky and baked sunlight bounced at the surface bake's depth.
+Realtime lights contribute neither paths nor analytic sun terms.
 Ambient, artistic indirect intensity, tone mapping and AO do not alter transport.
 
 For each RGB channel, projection is

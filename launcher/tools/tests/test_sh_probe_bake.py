@@ -11,6 +11,7 @@ import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from r3d import sh_probe_bake as sh
+from r3d.import_settings import LIGHT_MODE_BAKED
 from r3d.sh_probe_settings import DIRECTIONS, SPP
 from r3d.views.probes import sphere_directions
 from bake import bake
@@ -100,7 +101,7 @@ class ProbeTests(unittest.TestCase):
         targets = np.column_stack((radial * np.cos(angle), np.full(samples, distance), radial * np.sin(angle)))
         directions = targets / np.linalg.norm(targets, axis=1)[:, None]
         query = RayQuery(np.array([[-2, 0.5, -2], [2, 0.5, -2], [0, 0.5, 2]]), np.array([[0, 1, 2]]))
-        sun = {"type": "directional", "direction": [0, 1, 0], "color": [1, 0.5, 0.2], "intensity": 2}
+        sun = {"type": "directional", "mode": LIGHT_MODE_BAKED, "direction": [0, 1, 0], "color": [1, 0.5, 0.2], "intensity": 2}
         irradiance = mitsuba_reference.emitters(mi, [sun])['light_0']['irradiance']['value']
         for origin in ([0, 0, 0], [4, 0, 0]):
             origins = np.broadcast_to(origin, directions.shape)
@@ -109,6 +110,24 @@ class ProbeTests(unittest.TestCase):
                                np.broadcast_to(irradiance, directions.shape)) / samples
             got = sh.sun_term(query, np.array([origin]), [sun])[0]
             np.testing.assert_allclose(got, traced, atol=4e-4)
+
+    def test_sun_uses_only_baked_lights(self):
+        from r3d.import_settings import load_light
+
+        query = mock.Mock()
+        query.blocked.side_effect = lambda points, directions: np.zeros(len(points), dtype=bool)
+        points = np.array([[0., 0., 0.], [1., 0., 0.]])
+        component = dict(type='directional', color=[0.2, 0.4, 0.8], intensity=2)
+        realtime = load_light(component, [0, 0, 0], 'light')
+        baked = load_light(dict(component, mode=LIGHT_MODE_BAKED), [0, 0, 0], 'light')
+        expected = np.broadcast_to(math.pi * sh.basis(np.array([[0., 1., 0.]]))[:, :, None]
+                                   * np.array(component['color']) * component['intensity'],
+                                   (len(points), sh.COEFFICIENTS, sh.CHANNELS)).copy()
+        self.assertEqual(sh.sun_term(query, points, [realtime]).tobytes(), np.zeros_like(expected).tobytes())
+        self.assertEqual(sh.sun_term(query, points, [baked]).tobytes(), expected.tobytes())
+        self.assertEqual(sh.sun_term(query, points, [realtime, baked]).tobytes(), expected.tobytes())
+        with self.assertRaises(ValueError):
+            load_light(dict(component, mode='unknown'), [0, 0, 0], 'light')
 
     def test_dilation_is_synchronous_and_does_not_wrap_edges(self):
         values = np.zeros((1, 1, 5, sh.COEFFICIENTS, sh.CHANNELS))

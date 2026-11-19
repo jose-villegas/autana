@@ -89,9 +89,10 @@ def renderer(mesh="mesh.import.toml", extra="", transform="", name=None):
     return f'[[objects]]\nname = "{name}"\n{transform}[objects.mesh_renderer]\nmesh = "{mesh}"\n{extra}'
 
 
-def sun_object(rotation="[0.0, 0.0, 0.0]"):
+def sun_object(rotation="[0.0, 0.0, 0.0]", *, mode=None):
     return (f'[[objects]]\nname = "sun"\nrotation = {rotation}\n[objects.light]\ntype = "directional"\n'
-            'color = [1.0, 1.0, 1.0]\nintensity = 1.0\n')
+            + (f'mode = "{mode}"\n' if mode is not None else '')
+            + 'color = [1.0, 1.0, 1.0]\nintensity = 1.0\n')
 
 
 def camera(path=False, region=True):

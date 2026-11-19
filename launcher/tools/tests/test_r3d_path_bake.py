@@ -17,6 +17,7 @@ try:
     from r3d.light import bounced_light, light
     from r3d.mitsuba_reference import ALBEDO_CEILING, boosted_albedo
     from r3d.path_bake import PathLight
+    from r3d.import_settings import LIGHT_MODES, LIGHT_MODE_BAKED
     from tests import soup
     from tests.soup import SUN, corridor, path_light
 except ImportError:
@@ -61,6 +62,13 @@ class BounceTests(unittest.TestCase):
         # sun's irradiance over pi: intensity * cos(angle to the wall normal) = 2 * 0.6 / |(0.6, 1, 0)|.
         cos_wall = 0.6 / np.linalg.norm([0.6, 1.0, 0.0])
         np.testing.assert_allclose(bounce_at_the_wall_foot(), [0.5 * 0.5 * 2.0 * cos_wall] * 3, rtol=0.08)
+
+    def test_surface_bounce_omits_realtime_and_preserves_baked_bytes(self):
+        baseline = bounce_at_the_wall_foot()
+        for mode in LIGHT_MODES:
+            got = bounce_at_the_wall_foot(lights=[dict(SUN, mode=mode)])
+            expected = baseline if mode == LIGHT_MODE_BAKED else np.zeros_like(baseline)
+            self.assertEqual(got.tobytes(), expected.tobytes())
 
     def test_a_plane_alone_bounces_nothing(self):
         np.testing.assert_array_equal(bounce_at_the_wall_foot(source=floor_only()), [0.0, 0.0, 0.0])

@@ -111,7 +111,7 @@ camera_fits(const scene_asset_t* scene, const void* row) {
 static bool
 light_fits(const scene_asset_t* scene, const void* row) {
     const scene_asset_light_t* light = row;
-    return light->entity < scene->entity_count && roots(scene, light->entity) && light->pad == 0
+    return light->entity < scene->entity_count && roots(scene, light->entity) && light->mode <= LIGHT_MODE_BAKED
            && light->kind == SCENE_LIGHT_KIND_DIRECTIONAL && scene_light_color_fits(light->color)
            && nonnegative(light->intensity);
 }
