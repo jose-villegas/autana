@@ -2,10 +2,9 @@
 # Decides render=true|false inside the doc-images-gpu concurrency group: fails
 # if this runner's fingerprint differs from the hosted FINGERPRINT. Skips the
 # render only when main's newest unexpired record is a rendered one for this
-# fingerprint; FORCE=true
-# always renders. Writes GPU_ENV to
-# GITHUB_ENV so later steps need not source gpu_env.sh (it puts conda's bin
-# first on PATH). Run from the repository root.
+# fingerprint; FORCE=true always renders. Writes GPU_ENV to GITHUB_ENV so later
+# steps need not source gpu_env.sh (it puts conda's bin first on PATH). Run from
+# the repository root.
 set -eu
 . launcher/tools/r3d/gpu_env.sh
 fingerprint=$(sh launcher/tools/render/render_doc_images.sh --stage gpu --inputs)
