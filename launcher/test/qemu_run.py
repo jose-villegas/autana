@@ -63,6 +63,7 @@ import json
 import os
 from pathlib import Path
 import re
+import signal
 import socket
 import subprocess
 import sys
@@ -420,10 +421,50 @@ def summarise(log_path):
     return sentinel is not None, len(failed) + len(crashes) + len(signs)
 
 
-def verdict(log_path, finished, actions):
+# A console that closed before the run finished gives QEMU this long to exit on
+# its own, so the run reads QEMU's exit status rather than the kill's.
+QEMU_EXIT_GRACE_SECONDS = 5
+# How much of QEMU's own output a run that QEMU ended prints.
+QEMU_OUTPUT_TAIL_LINES = 20
+
+
+def qemu_exit_text(proc, finished):
+    """How QEMU ended a run it did not finish, or None when it was still running
+    (the run then stops it) or the run finished."""
+    if finished:
+        return None
+    try:
+        code = proc.wait(timeout=QEMU_EXIT_GRACE_SECONDS)
+    except subprocess.TimeoutExpired:
+        return None
+    if code < 0:
+        try:
+            return "killed by %s" % signal.Signals(-code).name
+        except ValueError:
+            return "killed by signal %d" % -code
+    return "exit code %d" % code
+
+
+def last_lines(path, count):
+    if not os.path.exists(path):
+        return []
+    with open(path, "rb") as fh:
+        text = ANSI.sub("", fh.read().decode("utf-8", errors="replace"))
+    return [line for line in text.splitlines() if line.strip()][-count:]
+
+
+def verdict(log_path, finished, actions, qemu_exit=None, qemu_output=None):
     autorun_ended, failures = summarise(log_path)
     if not actions and not autorun_ended:
         print("NO %s - the run did not finish" % SENTINEL)
+    if qemu_exit:
+        print("QEMU stopped on its own (%s) before the run finished" % qemu_exit)
+        for line in last_lines(log_path, 1):
+            print("  console's last line: " + line)
+        if qemu_output:
+            print("  QEMU's own output: %s" % qemu_output)
+            for line in last_lines(qemu_output, QEMU_OUTPUT_TAIL_LINES):
+                print("    " + line)
     return 0 if finished and not failures else 1
 
 
@@ -510,6 +551,7 @@ def main(argv):
     flash = os.path.join(workdir, "qemu_flash.bin")
     efuse = os.path.join(workdir, "qemu_efuse.bin")
     log_path = args.log or os.path.join(workdir, "qemu_serial.log")
+    qemu_output = os.path.join(os.path.dirname(log_path) or ".", "qemu_output.log")
 
     python = idf_python()
     qemu = patched_qemu.installed(args.idf_path)
@@ -531,10 +573,13 @@ def main(argv):
     port = free_port()
     cmd = qemu_command(args, qemu, psram_mib(), flash, efuse, port)
 
+    # QEMU's own messages (an abort, an assertion) go to a file beside the
+    # console log: the guest's console alone cannot say why QEMU stopped.
+    output = open(qemu_output, "wb")
     proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL,
-                            stdout=subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL)
+                            stdout=output, stderr=subprocess.STDOUT)
     finished = False
+    qemu_exit = None
     try:
         console = Console(proc, port, log_path,
                           time.monotonic() + args.timeout)
@@ -545,12 +590,14 @@ def main(argv):
                 finished = console.wait_for(SENTINEL)
         finally:
             console.close()
+        qemu_exit = qemu_exit_text(proc, finished)
     finally:
         proc.kill()
         proc.wait()
+        output.close()
 
     print("console: %s" % log_path)
-    return verdict(log_path, finished, actions)
+    return verdict(log_path, finished, actions, qemu_exit, qemu_output)
 
 
 if __name__ == "__main__":

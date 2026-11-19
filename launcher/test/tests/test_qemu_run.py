@@ -134,6 +134,55 @@ class VerdictTest(unittest.TestCase):
         self.assertEqual(1, self.verdict(BOOT + PASSING + BOOT, actions=["tap 1 1"]))
 
 
+class QemuExitTest(unittest.TestCase):
+    """A run QEMU ends names how it ended and what QEMU said, from a real
+    process: the job otherwise reports only that the run did not finish."""
+
+    def run_child(self, code):
+        proc = qemu_run.subprocess.Popen([sys.executable, "-c", code])
+        self.addCleanup(proc.wait)
+        self.addCleanup(lambda: proc.poll() is None and proc.kill())
+        return proc
+
+    def test_an_exit_code_is_named(self):
+        self.assertEqual("exit code 3", qemu_run.qemu_exit_text(self.run_child("raise SystemExit(3)"), False))
+
+    @unittest.skipIf(os.name == "nt", "Windows reports no signal for a process that dies by one")
+    def test_a_signal_is_named(self):
+        proc = self.run_child("import os, signal; os.kill(os.getpid(), signal.SIGSEGV)")
+        self.assertEqual("killed by SIGSEGV", qemu_run.qemu_exit_text(proc, False))
+
+    def test_a_qemu_still_running_is_not_reported_as_ended(self):
+        proc = self.run_child("import time; time.sleep(60)")
+        with unittest.mock.patch.object(qemu_run, "QEMU_EXIT_GRACE_SECONDS", 0.2):
+            self.assertIsNone(qemu_run.qemu_exit_text(proc, False))
+
+    def test_a_finished_run_reports_no_exit(self):
+        self.assertIsNone(qemu_run.qemu_exit_text(self.run_child("raise SystemExit(3)"), True))
+
+    def test_the_verdict_names_the_exit_the_last_console_line_and_qemu_output(self):
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        log, output = Path(folder.name, "serial.log"), Path(folder.name, "qemu_output.log")
+        log.write_text(PASSING + "TEST_TIME name=test_blit elapsed_ms=3\n", encoding="utf-8")
+        output.write_text("qemu-system-xtensa: cache.c:42: assertion failed\n", encoding="utf-8")
+        with unittest.mock.patch("builtins.print") as printed:
+            self.assertEqual(1, qemu_run.verdict(log, False, [], "killed by SIGABRT", output))
+        text = "\n".join(" ".join(map(str, call.args)) for call in printed.call_args_list)
+        self.assertIn("QEMU stopped on its own (killed by SIGABRT)", text)
+        self.assertIn("console's last line: TEST_TIME name=test_blit", text)
+        self.assertIn("qemu-system-xtensa: cache.c:42: assertion failed", text)
+
+    def test_a_run_qemu_did_not_end_says_nothing_about_qemu(self):
+        fd, log = tempfile.mkstemp(suffix=".log")
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(PASSING)
+        self.addCleanup(os.remove, log)
+        with unittest.mock.patch("builtins.print") as printed:
+            qemu_run.verdict(log, False, [])
+        self.assertNotIn("QEMU stopped", " ".join(str(call.args) for call in printed.call_args_list))
+
+
 class FakeConsole:
     def __init__(self, lines):
         self.sent, self._lines = [], lines
