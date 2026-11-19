@@ -122,8 +122,8 @@ mentions, whole or as a loop's name ending in its variable (`name-$key`); the Co
 Every workflow that opens a refresh pull request pushes its branch and opens it
 as a GitHub App, so its checks start; with `GITHUB_TOKEN` they would not. The
 App is installed on this repository only, with Contents and Pull requests read
-and write. Its ID and private key are the `DOC_REFRESH_APP_ID` and
-`DOC_REFRESH_APP_PRIVATE_KEY` secrets; without them the run fails.
+and write. Its ID and private key are `secrets.DOC_REFRESH_APP_ID` and
+`secrets.DOC_REFRESH_APP_PRIVATE_KEY`; without them the run fails.
 
 | Image | Shows |
 |---|---|
