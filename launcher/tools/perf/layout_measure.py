@@ -10,8 +10,8 @@ import time
 from pathlib import Path
 from statistics import mean, stdev
 
-from capture import capture_board, require_same_board, quarter_row
-from device_report import read_capture_text, report_path_for
+from capture import capture_board, require_same_board, quarter_row, require_complete_capture
+from device_report import read_capture_text
 from seed_statistics import t_quantile
 
 REPO = Path(__file__).resolve().parents[3]
@@ -371,9 +371,7 @@ def run_flash(args, seed, runner=None):
                 record["board"] = require_same_board(boards)
                 runs = []
                 for number, capture in enumerate(captures):
-                    completion = report_path_for(capture).read_text(encoding="utf-8", errors="replace")
-                    if "- Ended: complete" not in completion:
-                        raise RuntimeError(f"incomplete capture: {capture}")
+                    require_complete_capture(capture)
                     table = make_table(template, capture, out / f"{stem}_{name}_{index}_{number + 1}.md", project, getattr(args, "timeout", 1800))
                     rows = parse_report(table)
                     owners, instructions = capture_metadata(capture, rows)

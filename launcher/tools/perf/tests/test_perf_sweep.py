@@ -16,12 +16,12 @@ FIXTURE = Path(__file__).parent / "fixtures/sweep_capture.log"
 
 
 class FakeAutana:
-    def __init__(self, root, mismatch=False, failed=False):
+    def __init__(self, root, mismatch=False, incomplete=False):
         self.root = Path(root)
         self.calls = []
         self.build = "seeded-diag"
         self.mismatch = mismatch
-        self.failed = failed
+        self.incomplete = incomplete
 
     def __call__(self, command, log, timeout):
         self.calls.append(command)
@@ -45,9 +45,9 @@ class FakeAutana:
             name = command[command.index("suite") + 1]
             capture = self.root / f"capture_{len(self.calls)}.log"
             capture.write_bytes(FIXTURE.read_bytes())
-            capture.with_suffix(".md").write_text("- Ended: complete\n")
+            capture.with_suffix(".md").write_text("- Ended: timeout\n" if self.incomplete else "- Ended: complete\n")
             lines = [f"batch: {name} run 1/1", "report: " + str(capture.with_suffix(".md"))]
-            code = int(self.failed)
+            code = int(self.incomplete)
         for line in lines:
             log.write(line + "\n")
         return code, list(enumerate(lines)), 1
@@ -223,14 +223,40 @@ class SweepTests(ShellJobTests, unittest.TestCase):
             self.assertEqual(sum("suite" in call and "--flash" not in call for call in fake.calls), 1)
             self.assertTrue((args.out / "sweep.md").exists())
 
-    def test_captures_and_two_failure_stop(self):
-        for failed in (False, True):
-            with self.subTest(failed=failed), tempfile.TemporaryDirectory() as root:
+    def test_complete_failed_baseline_is_measured(self):
+        for rng_seed in (0, 1, 42):
+            with self.subTest(rng_seed=rng_seed), tempfile.TemporaryDirectory() as root:
                 args = arguments(root)
-                fake = FakeAutana(root, failed=failed)
-                self.assertEqual(tool.run(args, fake), int(failed))
+                args.rng_seed = rng_seed
+                fake = FakeAutana(root)
+                baseline = tool.plan(args)["points"][0]
+                failed = []
+
+                def runner(command, log, timeout):
+                    code, lines, wall = fake(command, log, timeout)
+                    settings = {command[index + 1] for index, word in enumerate(command) if word == "--set"}
+                    if settings == {f"{name}={value}" for name, value in baseline.items()}:
+                        failed.append(command)
+                        code = 1
+                    return code, lines, wall
+
+                self.assertEqual(tool.run(args, runner), 0)
+                saved = json.loads((args.out / "plan.json").read_text())
+                captures = saved["captures"]
+                self.assertEqual(len(failed), args.runs)
+                self.assertEqual(len(captures), len(saved["points"]) * args.runs)
+                self.assertTrue(all("metrics" in capture and "error" not in capture for capture in captures))
+                self.assertEqual(sum(capture["point"] == 0 for capture in captures), args.runs)
+                self.assertTrue(all(capture["metrics"]["suite/frame"] == 10000 for capture in captures))
+
+    def test_captures_and_two_failure_stop(self):
+        for incomplete in (False, True):
+            with self.subTest(incomplete=incomplete), tempfile.TemporaryDirectory() as root:
+                args = arguments(root)
+                fake = FakeAutana(root, incomplete=incomplete)
+                self.assertEqual(tool.run(args, fake), int(incomplete))
                 captures = [call for call in fake.calls if "suite" in call and "--flash" not in call]
-                self.assertEqual(len(captures), 2 if failed else 12)
+                self.assertEqual(len(captures), 2 if incomplete else 12)
                 self.assertTrue(all("--expect-build-id" in call for call in captures))
                 self.assertEqual(sum("--flash" in call for call in fake.calls), 1)
                 self.assertTrue(all("--hot-tunables" in call for call in fake.calls if "--flash" in call))

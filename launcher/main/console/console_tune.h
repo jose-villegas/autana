@@ -11,6 +11,8 @@
 #include "console/console_words.h"
 #include "core/tune.h"
 
+#define CONSOLE_TUNE_RESET "RESET"
+
 /* True if `line` was one of these, whatever came of it. Replies, one call
  * each:
  *   SET <name> <value>   TUNE_OK <name>=<value>, or TUNE_ERR <reason> ...

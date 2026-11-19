@@ -6,7 +6,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/device"))
 from device_lock import board_label, normalise_board
-from device_report import find_manifest_entry
+from device_report import find_manifest_entry, report_path_for
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from build.c_header import read_define
@@ -24,6 +24,13 @@ def build_id(text) -> str:
     if len(lines) != 1 or not re.fullmatch(r"BUILD_ID=[\w.-]+", lines[0]):
         raise ValueError("invalid or repeated build id")
     return lines[0].removeprefix("BUILD_ID=")
+
+
+def require_complete_capture(path):
+    """A complete capture measures performance even when its tests exceed a ceiling."""
+    report = report_path_for(path).read_text(encoding="utf-8", errors="replace")
+    if "- Ended: complete" not in report.splitlines():
+        raise RuntimeError(f"incomplete capture: {path}")
 
 
 def capture_board(path) -> str | None:

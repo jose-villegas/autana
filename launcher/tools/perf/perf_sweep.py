@@ -18,7 +18,7 @@ import device_lock
 
 write_json = partial(device_lock.write_json, indent=2)
 from perf_compare import DEFAULT_ALPHA, DEFAULT_THRESHOLD
-from capture import capture_board, require_same_board, quarter_row
+from capture import capture_board, require_same_board, quarter_row, require_complete_capture
 from seed_statistics import compare
 from frame_cost import US_PER_MS
 from device_capture import PERF_SEGMENT
@@ -242,8 +242,7 @@ def run(args, runner=None):
                                 capture = captures[0]
                                 item.update(capture=str(capture), seconds=seconds[0], wall_seconds=wall)
                                 item["board"] = capture_board(capture)
-                                if code or "- Ended: complete" not in capture.with_suffix(".md").read_text(encoding="utf-8", errors="replace"):
-                                    raise RuntimeError(f"{suite}: failed or incomplete capture; exit {code}")
+                                require_complete_capture(capture)
                                 table = make_table(template, capture, args.out / (capture_stem + ".md"),
                                                    build["project"], args.timeout)
                                 item["table"] = str(table)
