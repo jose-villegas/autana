@@ -339,13 +339,10 @@ apply_contact_options(void) {
         return;
     }
     const scene_renderer_t* r = &scene->renderers[index];
-    if (contact_shape >= 0) {
-        scene_set_contact_blob(entity, r->contact_blob_ground_y, r->contact_blob_strength,
-                               (scene_contact_shape_t)contact_shape);
-    }
-    if (contact_warp >= 0) {
-        scene_set_contact_warp(entity, contact_warp != 0);
-    }
+    const scene_contact_t contact = {r->contact_blob_ground_y, r->contact_blob_strength,
+                                     contact_shape >= 0 ? (scene_contact_shape_t)contact_shape : r->contact_blob_shape,
+                                     contact_warp >= 0 ? contact_warp != 0 : r->contact_warp};
+    scene_set_contact(entity, &contact);
 }
 
 static void

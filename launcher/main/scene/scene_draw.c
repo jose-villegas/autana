@@ -448,7 +448,7 @@ log_refused(const scene_t* scene) {
 }
 
 void
-scene_set_contact_blob(entity_t renderer, float ground_y, float strength, scene_contact_shape_t shape) {
+scene_set_contact(entity_t renderer, const scene_contact_t* contact) {
     scene_row_t row;
     scene_t* scene = scene_entity_row(renderer, &row);
     if (scene == NULL) {
@@ -459,27 +459,12 @@ scene_set_contact_blob(entity_t renderer, float ground_y, float strength, scene_
         return;
     }
     scene_renderer_t* r = &scene->renderers[index];
-    r->contact_blob_ground_y = ground_y;
-    r->contact_blob_strength = strength;
-    r->contact_blob_shape = shape;
+    r->contact_blob_ground_y = contact->ground_y;
+    r->contact_blob_strength = contact->strength;
+    r->contact_blob_shape = contact->shape;
+    r->contact_warp = contact->warp;
     scene_skin_contact_refresh(scene, row);
     r->changed = true;
-    render_context_forget(render_context_main());
-}
-
-void
-scene_set_contact_warp(entity_t renderer, bool warp) {
-    scene_row_t row;
-    scene_t* scene = scene_entity_row(renderer, &row);
-    if (scene == NULL) {
-        return;
-    }
-    const int index = scene_renderer_index(scene, row);
-    if (index < 0 || scene->renderers[index].contact_warp == warp) {
-        return;
-    }
-    scene->renderers[index].contact_warp = warp;
-    scene->renderers[index].changed = true;
     render_context_forget(render_context_main());
 }
 

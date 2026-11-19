@@ -257,8 +257,9 @@ copy_local(int i, stress_framing_t seen, const transformf_t* shape) {
 static void __attribute__((noinline))
 copy_extras(int i) {
     if (shown->surface == STRESS_SURFACE_CONTACT_BLOBS) {
-        scene_set_contact_blob(slots[i], transform_world(slots[i]).position.y, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT,
-                               SCENE_CONTACT_BLOB);
+        const scene_contact_t contact = {transform_world(slots[i]).position.y, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT,
+                                         SCENE_CONTACT_BLOB, false};
+        scene_set_contact(slots[i], &contact);
     }
     if (stress_skinned(shown)) {
         const box3f_t bounds = scene_bounds(slots[i]);
@@ -271,8 +272,9 @@ copy_extras(int i) {
         floor.scale = (vec3f_t){width, width, width};
         transform_set_local(grounds[i], floor);
         const entity_t subject = entity_find(slots[i], name_hash(CAPYBARA_SUBJECT));
-        scene_set_contact_blob(subject, floor.position.y, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, shown->contact_shape);
-        scene_set_contact_warp(subject, shown->contact_warp);
+        const scene_contact_t contact = {floor.position.y, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, shown->contact_shape,
+                                         shown->contact_warp};
+        scene_set_contact(subject, &contact);
         entity_set_enabled(grounds[i], true);
     }
 }
