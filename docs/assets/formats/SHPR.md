@@ -43,8 +43,8 @@ title Probe, 24 bytes, one cell a byte
 |---|---|---|
 | Version | 0 | u16, `VERSION` |
 | Flags | 2 | u16, reserved, must be zero |
-| Origin | 4 | Three f32, first cell centre in source coordinates |
-| Spacing | 16 | Three positive f32, cell step in source units |
+| Origin | 4 | Three f32, first cell centre in engine coordinates |
+| Spacing | 16 | Three positive f32, cell step in engine units |
 | Scale | 28 | Positive f32; coefficient = signed integer × scale |
 | Dimensions | 32 | Three positive u16, x/y/z cell counts |
 | Padding | 38 | Two zero bytes |

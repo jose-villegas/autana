@@ -14,6 +14,7 @@ from r3d import sh_probe_bake as sh
 from r3d.sh_probe_settings import DIRECTIONS, SPP
 from r3d.views.probes import sphere_directions
 from bake import bake
+from asset.engine_frame import AXIS_SIGNS, Z_AXIS
 
 
 class ProbeTests(unittest.TestCase):
@@ -62,7 +63,7 @@ class ProbeTests(unittest.TestCase):
         scene = SimpleNamespace(path=None, lights=[], camera=SimpleNamespace(component=SimpleNamespace(near_z=0.001)),
                                 indirect=SimpleNamespace(albedo_boost=1.0))
         transport = mock.Mock()
-        transport._radiance.side_effect = lambda origins, rays, seed: origins
+        transport._radiance.side_effect = lambda origins, rays, seed: origins * (1 + rays[:, Z_AXIS, None])
         lattice = (points, 1.0, np.zeros(3), np.ones(3), dims)
         with mock.patch.object(sh, 'load', return_value=requested), \
                 mock.patch.object(sh, 'load_source', return_value=corridor()), \
@@ -70,11 +71,16 @@ class ProbeTests(unittest.TestCase):
                 mock.patch.object(sh, 'classify', return_value=(points, np.full(len(points), 'kept'))), \
                 mock.patch.object(sh, 'PathLight', return_value=transport):
             data = sh.bake(job, scene)
-        _, _, _, scale, coefficients = sh.decode(data)
+        origin, step, _, scale, coefficients = sh.decode(data)
         for x, y, z in cells:
-            index = x + dims[0] * (y + dims[1] * z)
-            np.testing.assert_allclose(coefficients[index, 0], np.array([x, y, z]) * math.sqrt(4 * math.pi),
-                                       atol=scale / 2 + 1e-6)
+            engine = np.array([x, y, z]) * AXIS_SIGNS
+            at = np.rint((engine - origin) / step).astype(int)
+            self.assertTrue(np.all(at >= 0) and np.all(at < dims))
+            index = at[0] + dims[0] * (at[1] + dims[1] * at[2])
+            expected = sh.project(sphere_directions(DIRECTIONS),
+                                  np.array([x, y, z]) * (1 + sphere_directions(DIRECTIONS)[:, Z_AXIS, None]))
+            expected[sh.Z_COEFFICIENT] *= AXIS_SIGNS[Z_AXIS]
+            np.testing.assert_allclose(coefficients[index], expected, atol=scale / 2 + 1e-6)
 
     def test_single_direction(self):
         direction = np.array([[1, 2, 3]]) / math.sqrt(14)
@@ -164,9 +170,36 @@ class ProbeTests(unittest.TestCase):
         for item in after:
             with self.subTest(output=item.output):
                 if item.kind == 'sh_probes':
+                    self.assertTrue(item.packed)
                     self.assertNotEqual(keys[item.output], item.key)
                 else:
                     self.assertEqual(keys[item.output], item.key)
+
+    def test_pack_copies_engine_record_unchanged(self):
+        from types import SimpleNamespace
+        from asset.asset_pack import parse_pack
+        from asset import table_asset
+        from r3d import build_pack
+        from r3d.sh_probe_settings import SUFFIX, TYPE
+
+        with tempfile.TemporaryDirectory() as work:
+            root = pathlib.Path(work)
+            source = root / 'scene.dat'
+            source.write_bytes(b'')
+            cached = root / 'cached.shpr'
+            record = (pathlib.Path(__file__).parent / 'data/sh_probes.shpr').read_bytes()
+            cached.write_bytes(record)
+            found = bake.Bake(packed=True, output='scene' + SUFFIX, suffix=SUFFIX,
+                              source=source, holder='scene', key='probe',
+                              tree=root / ('scene' + SUFFIX), kind='sh_probes',
+                              scene=SimpleNamespace(path=source))
+            with mock.patch.object(build_pack, 'pack_jobs', return_value=({'scene': {'scene': source}}, {})), \
+                    mock.patch.object(bake, 'bakes_in', return_value=[found]), \
+                    mock.patch.object(bake, 'fetch_all', return_value={found: cached}), \
+                    mock.patch.object(build_pack, 'pack_entry', return_value=('scene', table_asset.TYPE, b'')), \
+                    mock.patch.object(build_pack.skin_pack, 'entries', return_value=[]):
+                packed = build_pack.pack_bytes([source], offline=True)
+            self.assertEqual(parse_pack(packed['scene'])[found.output], (TYPE, record))
 
     def test_existing_tool_closures_exclude_sh(self):
         forbidden = {'sh_probe_settings.py', 'sh_probe_bake.py'}
