@@ -5,10 +5,17 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from console_protocol import replies_to, require_development
+from console_protocol import replies_to, require_development, reply_prefix
 
 
 class ReplyTests(unittest.TestCase):
+    def test_tunable_verbs_use_tune_reply_contract(self):
+        for line in ('SET render.cull 0', 'get render.cull', 'RESET render.cull', 'TUNE'):
+            with self.subTest(line=line):
+                prefix, endings = reply_prefix(line)
+                for reply in ('TUNE_OK render.cull=0', 'TUNE_ERR unknown render.cull', 'TUNE_END count=1'):
+                    self.assertEqual(replies_to((reply + '\n').encode(), prefix, endings), ([reply], True))
+
     def test_prefixed_reply_and_release_refusal(self):
         self.assertEqual(replies_to(b"I (20) console: OPEN_OK\n", "OPEN", ("OPEN_OK",)),
                          (["OPEN_OK"], True))

@@ -7,6 +7,7 @@
 #   -o, --out DIR            output directory
 #   --send-a LINE           repeatable setup before each A capture (idempotent sequence)
 #   --send-b LINE           repeatable setup before each B capture (idempotent sequence)
+#   SET setup builds both sides with --hot-tunables; malformed SET is refused before flash.
 #   --threshold PCT         equivalence margin
 #   --alpha P               nominal family error rate
 #   --max-seeds N           seed cap per side
@@ -61,7 +62,7 @@ while [ "$remaining" -gt 0 ]; do
             set -- "$@" "$arg" "$value" ;;
         --) ;;
         -h|--help)
-            sed -n '3,19s/^# //p' "$0"
+            sed -n '3,20s/^# //p' "$0"
             exit 0 ;;
         -*) echo "unknown option: $arg" >&2; exit 2 ;;
         *)

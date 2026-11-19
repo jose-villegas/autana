@@ -270,6 +270,37 @@ class AcquisitionTest(ShellJobTests, unittest.TestCase):
             self.assertEqual(job_estimate(2, 3, 900, restore=False),
                              2 * DEFAULT_FLASH_SECONDS + 3 * 900)
 
+    def test_setup_set_builds_both_arms_with_live_knobs(self):
+        from shell_job import replay
+        for setup in ((), ('--send-b', 'SET render.cull 0')):
+            with self.subTest(setup=setup):
+                result, calls = replay(self, 'compare', extra=setup)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                flashes = [call['words'] for call in calls if '--flash' in call['words']]
+                self.assertTrue(flashes)
+                self.assertTrue(all(('--hot-tunables' in call) == bool(setup) for call in flashes))
+                if setup:
+                    self.assertIn('knobs live: built with --hot-tunables (both sides)', result.stdout)
+
+        with tempfile.TemporaryDirectory() as root:
+            args = arguments(root, cap=4)
+            args.send_b = ['SET render.cull 0']
+            with contextlib.redirect_stdout(io.StringIO()):
+                tool.measure(args, FakeAutana(root))
+            import json
+            self.assertTrue(json.loads((args.out / 'plan.json').read_text())['hot_tunables'])
+
+    def test_impossible_setup_is_refused_before_any_flash(self):
+        from shell_job import replay
+        for line in ('SET render.cull', 'SET render.cull nope', 'SET render.cull 2147483648',
+                     'SET render.cull 0b1', 'SET render.cull 1_000', 'SET  render.cull 1'):
+            for options in ((), ('--validate-plan',)):
+                with self.subTest(line=line, options=options):
+                    result, calls = replay(self, 'compare', extra=(*options, '--send-b', line))
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn(line, result.stderr)
+                    self.assertEqual(calls, [])
+
     def test_shell_validation_takes_no_hold(self):
         from shell_job import replay
         for options in (("--validate-plan",),

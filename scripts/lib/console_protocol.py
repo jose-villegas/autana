@@ -3,6 +3,7 @@ import re
 
 # Both success and refusal terminate a framed reply, so callers must stop on either.
 FRAMED_ENDINGS = ("_END", "_ERR")
+TUNE_REPLY_ENDS = ("TUNE_OK", "TUNE_ERR", "TUNE_END")
 # Firmware logging can wrap replies; only its leading decoration may be discarded.
 LOG_PREFIX = re.compile(r"^[IWEVD] \(\d+\) [^:]+:\s*")
 
@@ -15,6 +16,8 @@ def reply_prefix(line):
     if not words:
         raise ValueError("empty console line")
     prefix = words[0].upper()
+    if prefix in ("SET", "GET", "RESET", "TUNE"):
+        return "TUNE", TUNE_REPLY_ENDS
     return prefix, tuple(prefix + ending for ending in FRAMED_ENDINGS)
 
 

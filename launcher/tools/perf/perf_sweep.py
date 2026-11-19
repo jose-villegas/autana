@@ -13,6 +13,7 @@ import sys
 from layout_measure import (REPO, autana_command, booted_build_id,
                             capture_metadata, captured_runs, make_table, parse_markdown, timing_samples,
                             run_stamped, split_filters, filter_limits, status_snapshot)
+from layout_measure import flash_needs_hot_tunables, TUNE_VALUE_MIN, TUNE_VALUE_MAX, TUNE_NAME_MAX
 import device_lock
 
 write_json = partial(device_lock.write_json, indent=2)
@@ -24,7 +25,6 @@ from device_capture import PERF_SEGMENT
 
 sys.path.insert(0, str(REPO / "launcher/tools/r3d"))
 sys.path.insert(0, str(REPO / "launcher/tools"))
-from build.c_header import read_define
 from build.layout_pad import LAYOUT_SEED_MAX
 from dynres_report import SPANS, SPAN_FIELDS, STAGE
 
@@ -37,9 +37,6 @@ SET_REFUSED = "device: SET "
 
 class SweepStop(RuntimeError):
     """The board refused a knob: every later capture would meet the same."""
-TUNE_VALUE_MIN = -(2**31)
-TUNE_VALUE_MAX = 2**31 - 1
-TUNE_NAME_MAX = read_define(REPO / "launcher/main/core/tune.h", "TUNE_NAME_MAX")
 
 
 def assignment(text):
@@ -101,6 +98,7 @@ def plan(args):
               for values in itertools.product(*(values for _, values in args.knob))]
     builds = [dict(label=label, project=str(Path(project).resolve()), build_ids={})
               for label, project in args.build]
+    hot_tunables = flash_needs_hot_tunables(knobs=args.knob)
     flashes = []
     for build, entry in enumerate(builds):
         suites = split_filters(args.suite, filter_limits(entry["project"]))
@@ -118,10 +116,10 @@ def plan(args):
                        "--flash", "--perf-scope", "--layout-seed", str(seed)]
             if tests != "-":
                 command += ["--test", tests]
-            if args.knob:
+            if hot_tunables:
                 command.append("--hot-tunables")
             flashes.append(dict(build=build, seed=seed, rounds=rounds, suites=suites, command=command))
-    return dict(builds=builds, points=points, seeds=args.seeds, runs=args.runs, hot_tunables=bool(args.knob),
+    return dict(builds=builds, points=points, seeds=args.seeds, runs=args.runs, hot_tunables=hot_tunables,
                 rng_seed=rng_seed, flashes=flashes, captures=[], threshold=args.threshold,
                 alpha=args.alpha, timeout=args.timeout, wait=args.wait)
 

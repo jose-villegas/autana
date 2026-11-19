@@ -22,7 +22,42 @@ from doc_tables import table_rows  # noqa: E402
 from process_tree import run_process_tree, terminate_unwinds  # noqa: E402
 from device_capture import RESULT_RE, BUILD_ID_RE as BUILD_LINE  # noqa: E402
 
+from c_header import read_define
+from console_protocol import reply_prefix
 from frame_profile import PROFILE_RE
+
+TUNE_VALUE_MIN = -(2**31)
+TUNE_VALUE_MAX = 2**31 - 1
+TUNE_NAME_MAX = read_define(REPO / "launcher/main/core/tune.h", "TUNE_NAME_MAX")
+
+
+def flash_needs_hot_tunables(lines=(), knobs=()):
+    """Validate setup assignments and select live loads for seeded images."""
+    needed = bool(knobs)
+    for line in lines:
+        try:
+            reply_prefix(line)
+            if "\n" in line or "\r" in line:
+                raise ValueError("expected one console line")
+            words = line.split()
+            if words[0].upper() != "SET":
+                continue
+            if len(words) != 3 or not re.fullmatch(r"[a-zA-Z0-9_.]+", words[1]) or len(words[1]) > TUNE_NAME_MAX:
+                raise ValueError("expected SET <console name> <int32 value>")
+            if line != " ".join(words):
+                raise ValueError("SET needs single spaces and no surrounding whitespace")
+            text = words[2]
+            if not re.fullmatch(r"[+-]?(?:0[xX][0-9a-fA-F]+|0[0-7]*|[1-9][0-9]*)", text):
+                raise ValueError("SET value must be a decimal, octal or hexadecimal integer")
+            base = 8 if re.fullmatch(r"[+-]?0[0-7]+", text) else 0
+            value = int(text, base)
+            if not TUNE_VALUE_MIN <= value <= TUNE_VALUE_MAX:
+                raise ValueError("SET value must fit int32")
+            needed = True
+        except ValueError as error:
+            raise ValueError(f"setup line {line!r}: {error}") from error
+    return needed
+
 MEAN_RE = re.compile(r"\b(?P<name>\S+) (?:(?:both cores|one core): )?mean\s+(?P<value>\d+)us\b")
 NUMBER_RE = re.compile(r"^[+-]?\d+$")
 
@@ -291,6 +326,7 @@ def booted_build_id(project, lines):
 
 def run_flash(args, seed, runner=None):
     """Capture repeated suites on one seeded image with status and identity checks."""
+    hot_tunables = flash_needs_hot_tunables(getattr(args, "send", None) or []) or getattr(args, "hot_tunables", False)
     runner = runner or run_stamped
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -318,6 +354,8 @@ def run_flash(args, seed, runner=None):
                     command += ["--test", tests]
                 if index == 0:
                     command += ["--flash", "--perf-scope", "--layout-seed", str(seed)]
+                    if hot_tunables:
+                        command.append("--hot-tunables")
                 if index > 0:
                     command += ["--expect-build-id", record["build_id"]]
                 code, lines, wall = runner(command, log, getattr(args, "timeout", 1800) * args.runs + getattr(args, "wait", 3600))
