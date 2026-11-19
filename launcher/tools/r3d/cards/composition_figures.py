@@ -6,7 +6,8 @@
 cards-<object>-source.png: the source with its foliage drawn, lit as it is baked.
 cards-<object>-light-only.png: the foliage hidden from the camera; its shadows and bounced light stay.
 cards-<object>-cards.png: the accepted cards alone, over the background, in the colours the import bakes into them.
-cards-<object>-composite.png: the cards over the light-only render wherever they are nearer: what the device draws.
+cards-<object>-composite.png: the cards over the light-only render wherever they are nearer: the picture the fitted rest and the cards
+approximate.
 """
 import argparse
 import pathlib

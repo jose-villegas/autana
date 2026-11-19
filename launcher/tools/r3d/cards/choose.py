@@ -118,8 +118,8 @@ def card_from(centre, normal, points, epsilon):
 
 
 def choose_cards(sampled, rng, *, weights, epsilon=CARD_EPSILON, area_cost=CARD_AREA_COST):
-    """The greedy's planes over `sampled`, each sample's area scored times its probe weight (probe_weights);
-    a refit plane centres on the raw area."""
+    """Greedy plane choice over `sampled`, scoring each sample's area times its probe weight (`probe_weights`);
+    a refit plane is centred on the raw area."""
     points, normals, area = sampled
     if not len(points):
         return []
