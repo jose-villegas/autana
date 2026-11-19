@@ -279,9 +279,8 @@ draw_second_view(render_context_t* c) {
         return;
     }
     /* Its own views and clusters: none may steer the frame's core split, and
-     * the hook reads the settings the frame drew with. */
-    render_settings_t unculled = c->drawn_settings;
-    unculled.cull = false;
+     * the hook reads the settings the frame drew with; only its own draw has
+     * cull off, set in place, as a copy would cost the draw chain's stack. */
     const transformf_t* observer = c->observing ? &c->observer : NULL;
     render_view_t* second = &c->second;
     bool listed = false;
@@ -294,9 +293,10 @@ draw_second_view(render_context_t* c) {
         if (listed) {
             raster_draw_culled(&c->raster, second);
         } else {
-            c->raster.settings = &unculled;
+            const bool cull = c->drawn_settings.cull;
+            c->drawn_settings.cull = false;
             (void)raster_draw(&c->raster, second);
-            c->raster.settings = &c->drawn_settings;
+            c->drawn_settings.cull = cull;
         }
         c->raster.split = &c->split;
         c->raster.picks_levels = true;
