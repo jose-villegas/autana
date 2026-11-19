@@ -538,7 +538,8 @@ def tracked_requirements():
 
 
 def pinned_requirements(paths):
-    """Imported-package pins and requirements beside `paths`."""
+    """(file, line) of each line of the requirements.txt beside one of `paths`, and of each line of any
+    tracked requirements*.txt under TOOLS naming a package one of them imports (the fit's GPU packages, for one)."""
     imported = {package_name(name.split(".")[0]) for path in paths
                 for name, level in imported_names(module_facts(path)[0]) if level == 0 and name}
     pins = set()

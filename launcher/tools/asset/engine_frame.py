@@ -6,18 +6,22 @@ under "The offline tools".
 
 import struct
 
-from asset.engine_axes import AXIS_SIGNS, ROTATION_SIGNS, AFFINE_SIGNS, Z_AXIS, AXIS_COUNT
-
 from audio import sound_asset
 from gfx import image_asset
 from asset import table_asset
 from anim import tracks_asset, skeleton_asset
 from r3d import mesh_asset, scene_asset, skin_asset, lcol_asset, lod_asset, morph_asset
 from r3d.texture import texture_asset
+from r3d.sh_probe_settings import TYPE as SH_PROBES
 
 FRAMELESS = frozenset((image_asset.TYPE, image_asset.SPRITE_TYPE, table_asset.TYPE, sound_asset.TYPE, lcol_asset.TYPE,
                        texture_asset.TYPE, texture_asset.UVS_TYPE))
 
+AXIS_SIGNS = (1, 1, -1)
+ROTATION_SIGNS = (-1, -1, 1, 1)
+AFFINE_SIGNS = (*AXIS_SIGNS, 1)
+Z_AXIS = 2
+AXIS_COUNT = len(AXIS_SIGNS)
 POSITION = struct.Struct(f"<{AXIS_COUNT}h")
 INT16_MIN = -(1 << 15)
 
@@ -86,6 +90,22 @@ def to_engine(kind, entry):
             at = node_at + index * mesh_asset.NODE.size
             *box, first, count, leaf = mesh_asset.NODE.unpack_from(entry, at)
             mesh_asset.NODE.pack_into(out, at, *_mirror_box(box), first, count, leaf)
+    elif kind == SH_PROBES:
+        import numpy as np
+        from r3d import sh_probe_bake as sh
+
+        origin, spacing, dims, _, _ = sh.decode(entry)
+        origin = list(origin)
+        coefficients = np.frombuffer(entry, dtype='<i2', offset=sh.HEADER.size).reshape(
+            *reversed(dims), sh.COEFFICIENTS, sh.CHANNELS).copy()
+        for axis, sign in enumerate(AXIS_SIGNS):
+            if sign < 0:
+                origin[axis] = -(origin[axis] + spacing[axis] * (dims[axis] - 1))
+                coefficients = np.flip(coefficients, axis=AXIS_COUNT - 1 - axis)
+                coefficients[..., sh.L1_AXES.index(axis) + 1, :] *= sign
+        fields = list(sh.HEADER.unpack_from(entry))
+        fields[2:2 + AXIS_COUNT] = origin
+        return sh.HEADER.pack(*fields) + coefficients.tobytes()
     elif kind == lod_asset.TYPE:
         pairs, groups = lod_asset.decode(entry)
         groups_at = lod_asset.HEADER.size + len(pairs) * mesh_asset.CLUSTER_LOD.size

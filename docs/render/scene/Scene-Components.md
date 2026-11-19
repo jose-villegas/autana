@@ -46,6 +46,7 @@ relights skins next frame, even while paused. SCNE applies ambient and tone
 map before attaching lights.
 
 Lit skins share world lights; probes exclude baked lights from that table.
+A BAKED light still lights skins when the scene has no probes.
 Normal palettes include entity and joint scale through an inverse-transpose.
 The skin stage consumes dirty bits even when another scene is active.
 

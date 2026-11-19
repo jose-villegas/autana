@@ -316,15 +316,15 @@ def pack_bytes(paths, replace=(), cache=None, offline=False, unlocked=None,
                      if kind == LIT_MESH and key in original_packs[name] and original_packs[name][key].resolve() in jobs]
         additions = skin_pack.entries(mesh_rows, jobs, cache or bake.default_cache(), offline, max_influences)
         skin_pack.append(entry_rows, additions, dict(original_packs[name]))
+        entry_rows.extend((found.output, SH_PROBES,
+                         fetched[found.tree.resolve()].read_bytes())
+                        for found in wanted.get(name, []) if found.kind == "sh_probes")
         mirrored = []
         for key, kind, data in entry_rows:
             try:
                 mirrored.append((key, kind, to_engine(kind, data)))
             except ValueError as error:
                 raise SettingsError(f"entry {key!r}: {error}") from error
-        mirrored.extend((found.output, SH_PROBES,
-                         fetched[found.tree.resolve()].read_bytes())
-                        for found in wanted.get(name, []) if found.kind == "sh_probes")
         validate_colour_sets(mirrored)
         validate_clip_scales(mirrored)
         result[name] = build_pack(sorted(mirrored))

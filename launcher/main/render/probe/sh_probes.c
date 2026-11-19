@@ -3,8 +3,6 @@
 #include <assert.h>
 #include <math.h>
 #include <stddef.h>
-#include <string.h>
-#include "asset/asset_entry.h"
 #include "math/scalar/mathf.h"
 
 sh1_rgb_t
@@ -46,44 +44,3 @@ sh_probes_sample(const sh_probes_t* probes, vec3f_t world) {
 }
 
 _Static_assert(SH_PROBES_HEADER_SIZE % _Alignof(int16_t) == 0, "SHPR coefficient alignment");
-
-asset_status_t
-sh_probes_read(asset_view_t entry, sh_probes_t* out) {
-    *out = (sh_probes_t){0};
-    const asset_status_t status = asset_entry_validate(entry, SH_PROBES_VERSION, SH_PROBES_VERSION_OFFSET,
-                                                       SH_PROBES_HEADER_SIZE, _Alignof(int16_t));
-    if (status != ASSET_OK) {
-        return status;
-    }
-    uint16_t flags;
-    memcpy(&flags, entry.data + SH_PROBES_FLAGS_OFFSET, sizeof flags);
-    if (flags != 0 || !asset_entry_zero(entry, SH_PROBES_PADDING_OFFSET, SH_PROBES_HEADER_SIZE)) {
-        return ASSET_ERR_FORMAT;
-    }
-    sh_probes_t grid = {0};
-    memcpy(&grid.origin, entry.data + SH_PROBES_ORIGIN_OFFSET, sizeof grid.origin);
-    memcpy(&grid.spacing, entry.data + SH_PROBES_SPACING_OFFSET, sizeof grid.spacing);
-    memcpy(grid.dims, entry.data + SH_PROBES_DIMS_OFFSET, sizeof grid.dims);
-    memcpy(&grid.scale, entry.data + SH_PROBES_SCALE_OFFSET, sizeof grid.scale);
-    const float origin[] = {grid.origin.x, grid.origin.y, grid.origin.z};
-    const float spacing[] = {grid.spacing.x, grid.spacing.y, grid.spacing.z};
-    size_t records = (entry.size - SH_PROBES_HEADER_SIZE) / SH_PROBES_RECORD_SIZE;
-    for (int axis = 0; axis < MAT3F_AXES; axis++) {
-        if (grid.dims[axis] == 0 || !isfinite(origin[axis]) || !isfinite(spacing[axis]) || spacing[axis] <= 0) {
-            return ASSET_ERR_FORMAT;
-        }
-        if (records % grid.dims[axis] != 0) {
-            return ASSET_ERR_SIZE;
-        }
-        records /= grid.dims[axis];
-    }
-    if (records != 1 || (entry.size - SH_PROBES_HEADER_SIZE) % SH_PROBES_RECORD_SIZE != 0) {
-        return ASSET_ERR_SIZE;
-    }
-    if (!isfinite(grid.scale) || grid.scale <= 0) {
-        return ASSET_ERR_FORMAT;
-    }
-    grid.coefficients = (const int16_t (*)[SH_PROBES_COMPONENTS])(entry.data + SH_PROBES_HEADER_SIZE);
-    *out = grid;
-    return ASSET_OK;
-}

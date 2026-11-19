@@ -13,6 +13,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "render"))
 
 try:
     import numpy as np
+    from tests.soup import sun
     from tests import soup
     from PIL import Image
 
@@ -60,9 +61,6 @@ def make_source(quads, kd=(1.0, 1.0, 1.0), texture=None, materials=None, uv_scal
     source.intersector = soup.rays(soup.Soup(source.p, source.tri_v))
     return source
 
-
-def sun(direction):
-    return {"type": "directional", "direction": direction, "color": [1.0, 1.0, 1.0], "intensity": 1.0}
 
 
 def sky(intensity=1.0):

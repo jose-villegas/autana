@@ -232,3 +232,10 @@ scene_set_probes(entity_t root, const sh_probes_t* probes) {
     }
     scene->skins_pending = true;
 }
+
+const sh_probes_t*
+scene_probes(entity_t root) {
+    scene_row_t row;
+    scene_root_t* record = scene_entity_lookup(root, &row);
+    return record != NULL && row == SCENE_ROW_ROOT && record->scene != NULL ? record->scene->probes : NULL;
+}

@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "render/probe/sh_probes.h"
+#include "scene/scene_asset.h"
 #include "suites.h"
 #include "unity.h"
 
