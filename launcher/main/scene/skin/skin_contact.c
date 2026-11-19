@@ -75,7 +75,10 @@ contact_spacing(const r3d_skin_t* skin, const skin_contacts_t* out) {
             vec3f_t d = vec3f_sub(skin_contact_bind_position(skin, out->joints[i]),
                                   skin_contact_bind_position(skin, out->joints[j]));
             d.y = 0;
-            nearest = fminf(nearest, vec3f_length(d));
+            const float spacing = vec3f_length(d);
+            if (spacing > 0) {
+                nearest = fminf(nearest, spacing);
+            }
         }
     }
     return nearest;
@@ -99,6 +102,6 @@ skin_contacts_find(const anim_skeleton_t* skeleton, const r3d_skin_t* skin, skin
         }
     }
     const float nearest = contact_spacing(skin, out);
-    out->radius = CONTACT_RADIUS_FRACTION * (out->count > 1 ? nearest : height);
+    out->radius = CONTACT_RADIUS_FRACTION * (nearest < FLT_MAX ? nearest : height);
     return out->count;
 }

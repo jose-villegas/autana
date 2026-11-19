@@ -50,6 +50,24 @@ test_contact_leaves_sorted_and_limited(void) {
 }
 
 static void
+test_coincident_contacts_use_positive_spacing_or_height(void) {
+    anim_skeleton_joint_t joints[3] = {{.parent = ANIM_SKELETON_ROOT}, {.parent = 0}, {.parent = 0}};
+    float inverse[3][R3D_SKIN_MATRIX_WIDTH] = {{0}};
+    for (int j = 0; j < 3; j++) {
+        inverse[j][0] = inverse[j][5] = inverse[j][10] = 1;
+    }
+    inverse[0][7] = -2;
+    const anim_skeleton_t skeleton = {.joint_count = 3, .joints = joints};
+    const r3d_skin_t skin = {.joint_count = 3, .inverse_binds = (const float (*)[R3D_SKIN_MATRIX_WIDTH])inverse};
+    skin_contacts_t contacts;
+    TEST_ASSERT_EQUAL_INT(2, skin_contacts_find(&skeleton, &skin, &contacts));
+    TEST_ASSERT_EQUAL_FLOAT(2 * CONTACT_RADIUS_FRACTION, contacts.radius);
+    inverse[2][3] = -1;
+    TEST_ASSERT_EQUAL_INT(2, skin_contacts_find(&skeleton, &skin, &contacts));
+    TEST_ASSERT_EQUAL_FLOAT(CONTACT_RADIUS_FRACTION, contacts.radius);
+}
+
+static void
 test_pack_contact_leaves(void) {
     const handle_t loaded = asset_store_load("capybara");
     const asset_pack_t* pack = asset_store_loaded(loaded);
@@ -101,6 +119,7 @@ void
 suite_skin_contact(void) {
     RUN_TEST(test_contact_leaves_sorted_and_limited);
     RUN_TEST(test_pack_contact_leaves);
+    RUN_TEST(test_coincident_contacts_use_positive_spacing_or_height);
 }
 
 SUITE_REGISTER(suite_skin_contact);

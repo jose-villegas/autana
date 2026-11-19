@@ -5250,6 +5250,25 @@ test_shape_mask_repose_and_lifetime(void) {
 }
 
 static void
+test_shape_mask_refreshes_when_paused_mover_rotates(void) {
+    fixture_with_skin(&SKIN_OPTIONS);
+    const entity_t root = load("test_skin");
+    const entity_t entity = entity_find(root, name_hash("red"));
+    scene_t* scene = columns(root);
+    scene_resolve(scene);
+    scene_set_contact_blob(entity, 0, 1, SCENE_CONTACT_SHAPE);
+    TEST_ASSERT_TRUE(animator_set_paused(entity, ANIMATOR_CURRENT, true));
+    scene_animation_repose(scene, 0);
+    scene_skinned_renderer_t* skin = skin_of(entity);
+    memset(skin->contact_mask.coverage, UINT8_MAX, CONTACT_MASK_BYTES);
+    transformf_t pose = transform_local(entity);
+    transformf_set_rotation(&pose, quatf_from_axis_angle(vec3f_unit_y(), MATH_PI / 4));
+    transform_set_local(entity, pose);
+    scene_resolve(scene);
+    TEST_ASSERT_NOT_EQUAL(UINT8_MAX, skin->contact_mask.coverage[0]);
+}
+
+static void
 test_shape_allocation_failure_uses_blob(void) {
     fixture_with_skin(&SKIN_OPTIONS);
     const entity_t root = load("test_skin");
@@ -5271,6 +5290,12 @@ test_shape_allocation_failure_uses_blob(void) {
     scene_set_contact_blob(entity, 0, 1, SCENE_CONTACT_BLOB);
     TEST_ASSERT_TRUE(scene_contact_blob(scene, r, vec3f_unit_y(), &blob));
     TEST_ASSERT_EQUAL_MEMORY(&shape, &blob, sizeof blob);
+    scene_set_contact_blob(entity, 0, 1, SCENE_CONTACT_SHAPE);
+    entity_set_enabled(entity, false);
+    TEST_ASSERT_FALSE(skin->contact_mask_failed);
+    entity_set_enabled(entity, true);
+    scene_resolve(scene);
+    TEST_ASSERT_NOT_NULL(skin->contact_mask.coverage);
 }
 
 static void
@@ -8691,6 +8716,7 @@ run_scene_suite(void) {
     RUN_TEST(test_disabled_contact_skips_shape_and_warp_work);
     RUN_TEST(test_contact_joints_allocate_only_for_shape);
     RUN_TEST(test_shape_mask_repose_and_lifetime);
+    RUN_TEST(test_shape_mask_refreshes_when_paused_mover_rotates);
     RUN_TEST(test_shape_allocation_failure_uses_blob);
     RUN_TEST(test_feet_follow_pose_without_height_fade);
     RUN_TEST(test_contact_default_is_unwarped);
