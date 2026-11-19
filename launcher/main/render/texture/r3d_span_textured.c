@@ -73,6 +73,12 @@ typedef struct {
     const r3d_texture_t* texture;
 } sampler_t;
 
+/* The mip level a sampler reads: level 0's side over its side, in powers of two. */
+static inline int
+sampler_level(const sampler_t* sampler) {
+    return (int)sampler->texture->size_log2 - __builtin_ctz(sampler->mask + 1U);
+}
+
 /* The values a span carries from one segment to the next. */
 typedef struct {
     int32_t z, dz;
@@ -147,7 +153,6 @@ typedef struct {
     int x0, y0;   /* the origin pixel */
     int qx0, qy0; /* the dividing planes' origin pixel: the unclipped box's, alike in every window */
     int divide;   /* pixels between divides, 0 when the triangle steps affine */
-    int mip;      /* the mip level it reads */
     sampler_t sampler;
 } setup_t;
 
@@ -371,7 +376,6 @@ set_up(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[CORNERS
     su->s = r3d_span_plane_of(&f, uv[0].x, uv[1].x, uv[2].x);
     su->t = r3d_span_plane_of(&f, uv[0].y, uv[1].y, uv[2].y);
     const int level = pick_level(su, texture);
-    su->mip = level;
     const float scale = 1.0F / (float)(1U << level);
     su->s = (r3d_span_plane_t){su->s.base * scale, su->s.dx * scale, su->s.dy * scale};
     su->t = (r3d_span_plane_t){su->t.base * scale, su->t.dx * scale, su->t.dy * scale};
@@ -468,7 +472,7 @@ r3d_span_textured_triangle(const r3d_span_target_t* target, const r3d_span_verte
          * or coarser, when set: its pattern shifts rather than bends. */
         su.divide = 0;
         if (target->texture_divide_px != 0
-            && (target->texture_affine_level == 0 || su.mip < target->texture_affine_level)
+            && (target->texture_affine_level == 0 || sampler_level(&su.sampler) < target->texture_affine_level)
             && mathi_max(whole.w, whole.h) > target->texture_divide_px) {
             set_up_divide(target, corners, uv, texture, whole, &su);
         }
