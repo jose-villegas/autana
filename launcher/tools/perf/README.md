@@ -261,20 +261,15 @@ rows. Single-viewport render documentation readers select portrait by default;
 sequenceDiagram
     participant Marker as Hosted marker
     participant Wait as Hosted wait legs
-    participant GPU as GPU stage
-    participant Heavy as Heavy lock
     participant Plan as Board plan
     participant Night as Board night
     participant Lanes as Board lanes
+    participant GPU as GPU doc render
+    participant Heavy as Heavy lock
     Marker->>Wait: Compute the marker in NIGHT_ZONE
     Wait->>Wait: Sleep until marker within each leg budget
-    Wait->>GPU: Start work with a fresh token
-    GPU->>GPU: Wait for board locks to clear
-    GPU->>Heavy: Take heavy
-    GPU->>GPU: Render to completion
-    GPU->>Heavy: Release heavy
     Wait->>Plan: Start work with a fresh token
-    Plan->>Plan: Wait for two GPU idle polls
+    Plan->>Plan: Wait for two GPU idle polls (a dispatched render)
     Plan->>Night: Deal the night queue to the free boards, maybe none, and record it
     Night->>Lanes: Start the planned lanes
     loop Every minute until BOARD_LAST_START
@@ -283,9 +278,14 @@ sequenceDiagram
     Night->>Lanes: Stop each lane still running at BOARD_END
     Lanes-->>Night: Lane outcomes and timestamps
     Night->>Night: Record timeline and host free time
+    Night-->>GPU: Scheduled run completes (workflow_run)
+    GPU->>GPU: Wait for board locks to clear
+    GPU->>Heavy: Take heavy
+    GPU->>GPU: Render to completion
+    GPU->>Heavy: Release heavy
 ```
 
-GPU work starts at `vars.NIGHT_START`; the board night starts at `vars.BOARD_START`, later.
+The board night starts at `vars.BOARD_START`; the GPU doc render follows the night.
 It starts no new lane after `vars.BOARD_LAST_START` on the marker's date.
 A lane is given only the new steps that fit before `vars.BOARD_END` on that date.
 Each accepts HH:MM up to the latest hour `LOCAL_TIMES` in `scripts/lib/local_schedule.py` gives it; an empty value

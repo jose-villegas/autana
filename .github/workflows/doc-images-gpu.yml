@@ -3,8 +3,9 @@ name: GPU Doc Images
 # The GPU job renders unless main's newest record is a rendered record of this input
 # fingerprint, or when a dispatch sets force.
 # docs/tools/Render-Harness.md describes the fingerprint and the record.
-# The render starts when the board night ends, so it never holds the night's
-# GPU wait; a push only fingerprints.
+# The render starts when the scheduled board night ends, so it never holds the
+# night's GPU wait; a push only fingerprints. A dispatched nightly may end in
+# the evening, before the scheduled one, so it starts nothing here.
 on:
   workflow_dispatch:
     inputs:
@@ -36,7 +37,9 @@ env:
 
 jobs:
   fingerprint:
-    if: github.ref == 'refs/heads/main'
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name != 'workflow_run' || github.event.workflow_run.event == 'schedule')
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     outputs:

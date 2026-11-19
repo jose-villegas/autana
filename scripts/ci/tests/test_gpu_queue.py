@@ -116,9 +116,14 @@ class GpuQueueTests(unittest.TestCase):
         nightly = yaml.safe_load((root / '.github/workflows/nightly-perf.yml').read_text())['name']
         for filename in schedule.QUIET_HOST_WORKFLOWS:
             with self.subTest(workflow=filename):
-                triggers = yaml.safe_load((root / '.github/workflows' / filename).read_text())[True]
-                self.assertNotIn('schedule', triggers)
-                self.assertEqual(triggers['workflow_run'], {'workflows': [nightly], 'types': ['completed']})
+                workflow = yaml.safe_load((root / '.github/workflows' / filename).read_text())
+                self.assertNotIn('schedule', workflow[True])
+                self.assertEqual(workflow[True]['workflow_run'], {'workflows': [nightly], 'types': ['completed']})
+                # A dispatched nightly can end in the evening, before the scheduled night: every job the
+                # others wait on starts only for the scheduled one.
+                for name, job in workflow['jobs'].items():
+                    if 'needs' not in job:
+                        self.assertIn("github.event.workflow_run.event == 'schedule'", job['if'], name)
 
     def test_pending_counts_only_gpu_jobs_ready_to_run(self):
         for status in ('queued', 'waiting', 'in_progress', 'pending', 'requested', 'completed'):
