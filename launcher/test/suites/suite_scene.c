@@ -5042,6 +5042,72 @@ test_set_transform_reads_back_exactly_and_drives_placement(void) {
 }
 
 static void
+test_probes_sample_last_resolved_bounds_without_allocating(void) {
+    static const int16_t coefficients[1][SH_PROBES_COMPONENTS] = {{1}};
+    static const sh_probes_t probes = {.dims = {1, 1, 1}, .scale = 1, .coefficients = coefficients};
+    fixture_with_skin(&SKIN_OPTIONS);
+    const entity_t root = load("test_skin");
+    const entity_t entity = entity_find(root, name_hash("red"));
+    scene_t* scene = columns(root);
+    (void)scene_bounds(root);
+    scene_renderer_t* renderer = &scene->renderers[scene_renderer_index(scene, row_of(entity))];
+    const box3f_t bounds = renderer->world_bounds;
+    const size_t fast = memory_free_bytes(MEMORY_INTERNAL), slow = memory_free_bytes(MEMORY_PSRAM);
+    scene_set_probes(root, &probes);
+    transformf_t pose = transform_local(entity);
+    transformf_set_position(&pose, (vec3f_t){RIG_TRAVEL, 0, 0});
+    transform_set_local(entity, pose);
+    scene_animation_step(scene, 0);
+    TEST_ASSERT_EQUAL_MEMORY(&bounds, &renderer->world_bounds, sizeof bounds);
+    TEST_ASSERT_EQUAL_UINT(fast, memory_free_bytes(MEMORY_INTERNAL));
+    TEST_ASSERT_EQUAL_UINT(slow, memory_free_bytes(MEMORY_PSRAM));
+    (void)scene_bounds(root);
+    TEST_ASSERT_GREATER_THAN_FLOAT(bounds.lo.x, renderer->world_bounds.lo.x);
+}
+
+static void
+test_contact_footprint_and_partial_redraw(void) {
+    enum { BODY_HALF_X = 4, BODY_HALF_Z = 1, GROUND_Y = -2 };
+
+    fixture();
+    const entity_t root = show("test_solo");
+    const entity_t mover = entity_find(root, name_hash("blue"));
+    r3d_lit_mesh_t mesh = *renderer_mesh(mover);
+    r3d_lit_node_t node = mesh.nodes[0];
+    node.bounds = (box3s_t){{-BODY_HALF_X, -1, -BODY_HALF_Z}, {BODY_HALF_X, 1, BODY_HALF_Z}};
+    mesh.nodes = &node;
+    TEST_ASSERT_TRUE(renderer_set_mesh(mover, &mesh));
+    scene_set_contact_blob(mover, GROUND_Y, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT);
+    settle_the_picture();
+    for (int step = 1; step <= MOVER_STEPS; step++) {
+        put_at(mover, (float)step * 0.25F, (float)step * 0.5F);
+        frame_over_the_last();
+        TEST_ASSERT_GREATER_THAN_INT(0, rows_the_last_frame_drew());
+        TEST_ASSERT_LESS_THAN_INT(SIZE, rows_the_last_frame_drew());
+        const render_partial_t* partial = &render_context_main()->partial;
+        TEST_ASSERT_EQUAL_FLOAT(GROUND_Y - BODY_HALF_Z, partial->changed[0].lo.y);
+        assert_the_picture_is_the_whole_draw();
+    }
+}
+
+static void
+test_forgetting_another_scene_keeps_the_contact_draw_hook(void) {
+    fixture();
+    const entity_t root = show("test_pair");
+    const entity_t renderer = entity_find(root, name_hash("red"));
+    scene_set_contact_blob(renderer, 0, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT);
+    frame(0);
+    const struct raster_post* post = render_context_main()->raster.post;
+    TEST_ASSERT_NOT_NULL(post);
+    const entity_t other = load("test_pair");
+    scene_draw_forget(columns(other));
+    TEST_ASSERT_EQUAL_PTR(post, render_context_main()->raster.post);
+    const scene_t* scene = columns(root);
+    const int index = scene_renderer_index(scene, row_of(renderer));
+    TEST_ASSERT_EQUAL_FLOAT(SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, scene->renderers[index].contact_blob_strength);
+}
+
+static void
 test_authored_skin_modes_animation_and_ambient(void) {
     const size_t before = memory_free_bytes(MEMORY_INTERNAL);
     static const uint8_t modes[] = {R3D_SKIN_LIGHT_DIRECT, R3D_SKIN_LIGHT_RENORMALISED, R3D_SKIN_LIGHT_TABLE};
@@ -8201,6 +8267,9 @@ run_scene_suite(void) {
     RUN_TEST(test_idle_lit_skin_skips_and_transform_changes_run);
     RUN_TEST(test_light_attachment_defaults_refusals_and_capacity);
     RUN_TEST(test_scene_light_rotation_shades_only_skin_and_matches_kernel);
+    RUN_TEST(test_probes_sample_last_resolved_bounds_without_allocating);
+    RUN_TEST(test_forgetting_another_scene_keeps_the_contact_draw_hook);
+    RUN_TEST(test_contact_footprint_and_partial_redraw);
     RUN_TEST(test_authored_skin_modes_animation_and_ambient);
     RUN_TEST(test_authored_light_preserves_static_mesh_colors);
     RUN_TEST(test_authored_tonemap_changes_skin_colors_in_both_attachment_orders);
