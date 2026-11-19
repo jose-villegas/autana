@@ -6,7 +6,7 @@ import time
 
 import numpy as np
 
-from asset.engine_frame import AXIS_SIGNS, Z_AXIS
+from asset.engine_axes import AXIS_SIGNS, Z_AXIS
 from r3d.geometry import face_normals
 from r3d.light import AlphaTest
 from r3d.mesh_source import load_source

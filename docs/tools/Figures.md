@@ -18,7 +18,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | [overview](#overview) | 35 | 0 | 0 |
 | [physics](#physics) | 2 | 0 | 0 |
 | [power](#power) | 2 | 0 | 0 |
-| [render](#render) | 134 | 8 | 0 |
+| [render](#render) | 132 | 8 | 0 |
 | [ui](#ui) | 62 | 0 | 0 |
 
 ## anim
@@ -282,8 +282,6 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/render/pipeline-frame-stages.png"><img src="../images/render/pipeline-frame-stages.png" width="160" alt=""></a> | Frame stages as shipped | [render/frame/README](../render/frame/README.md) | not declared yet |
 | <a href="../images/render/pipeline-frame-stages.sub-stages.png"><img src="../images/render/pipeline-frame-stages.sub-stages.png" width="160" alt=""></a> | Inside cull, transform and draw | [render/frame/README](../render/frame/README.md) | not declared yet |
 | <a href="../images/render/pipeline-frame-stages.tiles.png"><img src="../images/render/pipeline-frame-stages.tiles.png" width="160" alt=""></a> | Frame stages with the tiles view | [render/frame/README](../render/frame/README.md) | not declared yet |
-| <a href="../images/render/sh-probes.crops.png"><img src="../images/render/sh-probes.crops.png" width="160" alt=""></a> | The changed capybara lighting, enlarged | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
-| <a href="../images/render/sh-probes.png"><img src="../images/render/sh-probes.png" width="160" alt=""></a> | Capybara in Sponza: no probe asset, baked SH probes, and amplified difference | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/render/skin-influences.png"><img src="../images/render/skin-influences.png" width="160" alt=""></a> | The engine's skin at four and at two influences on the clip frame where they differ most, seen from below, whole and zoomed on the vertex that moves most; rings mark the moved vertices, red lines run from their four-influence to their two-influence positions | [render/animation/Skeleton-and-Skin](../render/animation/Skeleton-and-Skin.md) | not declared yet |
 | <a href="../images/render/skin-limb.png"><img src="../images/render/skin-limb.png" width="160" alt=""></a> | Weight bytes along a two-joint limb, the limb bent 90 degrees by linear blend and by one joint per vertex, with one hinge vertex carried by each joint and their weighted mix, and the hinge's thickness against the bend angle | [render/animation/Skeleton-and-Skin](../render/animation/Skeleton-and-Skin.md) | not declared yet |
 | <a href="../images/render/skin-skeleton.gif"><img src="figure-thumbnails/render/skin-skeleton.gif" width="160" alt=""></a> | A skinned mesh's joints as dots and each joint's link to its parent, in the bind pose and over one clip | [render/animation/Skeleton-and-Skin](../render/animation/Skeleton-and-Skin.md) | not declared yet |
