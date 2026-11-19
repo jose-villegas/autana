@@ -150,6 +150,18 @@ def greedy_faces(sets, seen, plateau=PLATEAU, limit=None):
     return picked, gains
 
 
+def placed(moved, state, picked):
+    """Each probe as {"at": its moved position, "fate", "faces": its kept face indices into FACES}: fate "kept" with
+    a kept face, "greedy" for a probe outside geometry with none, else its classify state."""
+    live = np.flatnonzero(state == "kept")
+    faces = [[] for _ in moved]
+    for index in sorted(picked):
+        faces[live[index // len(FACES)]].append(index % len(FACES))
+    return [{"at": [float(value) for value in at], "faces": shown,
+             "fate": "kept" if shown else "greedy" if fate == "kept" else str(fate)}
+            for at, fate, shown in zip(moved, state, faces)]
+
+
 class ProbeViews(NamedTuple):
     training: list  # (eye, forward) per kept cube face
     held_out: list
@@ -190,5 +202,6 @@ def select(positions, tris, region, near, spacing, seed, path=None, *, query=Non
         kept[role] = [poses[i] for i in picked]
         record[role] = {"probes": len(points), "inside": int(np.count_nonzero(state == "inside")),
                         "near": int(np.count_nonzero(state == "near")), "faces": len(poses), "kept": len(picked),
-                        "shown_after": int(np.count_nonzero(start & ~unseen)) + int(sum(gains))}
+                        "shown_after": int(np.count_nonzero(start & ~unseen)) + int(sum(gains)),
+                        "placed": placed(moved, state, picked)}
     return ProbeViews(kept["train"], kept["held_out"], record)

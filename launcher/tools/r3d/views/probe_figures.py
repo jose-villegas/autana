@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
 """Where a fit's probes (probes.py) sit in its scene, and what became of each, seen from above the four corners of the
-probe region. The source is cut through the region's centre facing the eye and drawn see-through, as the engine's
-`cull` view draws a culled cluster (render/view/raster_cull_view.c): a wash of the surface colour, one pixel of each
-CULLED_DOOR square at full strength, and borders dashed CULLED_DASH on, CULLED_DASH off where the source object
-changes. The camera path and every probe go on top, each probe in its fate's colour (FATES); a kept probe also
-shows its kept cube faces as arrows.
+probe region: the source cut through the region's centre and drawn see-through as the engine's `cull` view draws a
+culled cluster (render/view/raster_cull_view.c). The camera path and the probes behind the cut go on top, each
+probe in its fate's colour (FATES); a kept probe also shows its kept cube faces as arrows.
 
     python launcher/tools/r3d/views/probe_figures.py --scene SCENE.scene.toml --object NAME --out DIR
 
-The probes are the fit's own: the reference set's probe_poses picks them, at the import's geometry.probes or,
-without one, at its defaults. Writes DIR/SCENE-OBJECT-probes-1.png .. -4.png and DIR/SCENE-OBJECT-probes-legend.png,
+The reference set's probe_poses picks the probes, as a fit's reference set does: at the import's geometry.probes
+or, for an import that sets none, at their defaults. Writes DIR/SCENE-OBJECT-probes-1.png .. -4.png and DIR/SCENE-OBJECT-probes-legend.png,
 the fates with their counts.
 """
 
@@ -19,7 +17,6 @@ import json
 import pathlib
 import sys
 import tempfile
-from types import SimpleNamespace
 
 import numpy as np
 from PIL import Image, ImageDraw
@@ -27,18 +24,18 @@ from PIL import Image, ImageDraw
 ROOT = pathlib.Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT / "launcher/tools"))
 from build.c_header import read_define  # noqa: E402
-from docs.figures import save_png  # noqa: E402
+from docs.figures import rgb, save_png  # noqa: E402
 from docs.plot_style import DPI, LABEL_SIZE, MUTED, SLOTS, figure, save  # noqa: E402
 from docs.producer import Producer  # noqa: E402
 from r3d.fitted_variant import placed_variant  # noqa: E402
-from r3d.geometry import face_normals, hit_barycentrics  # noqa: E402
+from r3d.geometry import hit_barycentrics  # noqa: E402
 from r3d.import_settings import load_probes, load_scene  # noqa: E402
 from r3d.light import AlphaTest, encode_srgb8  # noqa: E402
-from r3d.mesh_source import camera_path_poses, load_source  # noqa: E402
-from r3d.poses import camera_basis, camera_rays, read_poses  # noqa: E402
+from r3d.mesh_source import load_source  # noqa: E402
+from r3d.poses import camera_basis, camera_rays  # noqa: E402
 from r3d.ray_query import RayQuery  # noqa: E402
 from r3d.reference_render import hit_albedo  # noqa: E402
-from r3d.reference_set import PROBE_RECORD, PROBE_SEED, PROBE_TRAINING, probe_poses, reference_inputs  # noqa: E402
+from r3d.reference_set import PROBE_RECORD, coverage_path, probe_poses, reference_inputs  # noqa: E402
 from r3d.scene_name import scene_id  # noqa: E402
 from r3d.views import probes  # noqa: E402
 
@@ -57,8 +54,9 @@ DASH = read_define(CULL_VIEW, "CULLED_DASH")
 VIEW_SIZE = (640, 400)
 # Share of the surface colour every covered pixel takes over the background, so surfaces read between door pixels.
 WASH = 0.4
-BACKGROUND = (246, 246, 246)
-BORDER = (110, 110, 110)
+# The doc figures' white page, and the theme's muted grey for the dashed borders.
+BACKGROUND = rgb("#ffffff")
+BORDER = rgb(MUTED)
 # A kept face's arrow, as a share of the probe spacing.
 ARROW_SPACING = 0.4
 # Probe marks in pixels: a kept probe's disc radius, every other fate's mark radius, and line widths.
@@ -73,17 +71,17 @@ FRAME_STEPS = 24
 FRAME_SAMPLES = 9
 PATH_COLOUR = SLOTS[0]
 # The legend spans two views; its height in inches.
-LEGEND_HEIGHT = 0.6
+LEGEND_HEIGHT = 0.8
 
 
 @dataclasses.dataclass(frozen=True)
 class Fate:
     colour: str
     label: str
-    cross: bool  # drawn as a cross (the probe has no faces) rather than a disc
+    cross: bool  # dropped for where it sits (a cross), not for what it shows (a disc)
 
 
-# What became of a probe, in drawing order: one entry per fate probes.py gives, so a new fate is a new row.
+# What became of a probe, in legend order: one row per fate select records (probes.placed).
 FATES = {
     "kept": Fate(SLOTS[2], "kept (arrows: its kept faces)", False),
     "greedy": Fate(MUTED, "dropped by the greedy pick: shows nothing new", False),
@@ -92,8 +90,10 @@ FATES = {
 }
 
 
-def rgb(colour):
-    return tuple(int(colour[i:i + 2], 16) for i in (1, 3, 5))
+def frame_lattice(lo, hi):
+    """FRAME_SAMPLES points a side through the box lo..hi, its corners among them."""
+    steps = np.linspace(0, 1, FRAME_SAMPLES)
+    return lo + np.stack(np.meshgrid(steps, steps, steps, indexing="ij"), axis=-1).reshape(-1, 3) * (hi - lo)
 
 
 def views(lo, hi, lens):
@@ -102,8 +102,7 @@ def views(lo, hi, lens):
     stands as near as keeps all of it in view with FRAME_MARGIN to spare."""
     lo, hi = np.asarray(lo, float), np.asarray(hi, float)
     centre, radius = (lo + hi) / 2, np.linalg.norm(hi - lo) / 2
-    steps = np.linspace(0, 1, FRAME_SAMPLES)
-    lattice = lo + np.stack(np.meshgrid(steps, steps, steps, indexing="ij"), axis=-1).reshape(-1, 3) * (hi - lo)
+    lattice = frame_lattice(lo, hi)
     result = []
     for x, z in ((hi[0], hi[2]), (lo[0], hi[2]), (lo[0], lo[2]), (hi[0], lo[2])):
         toward = np.array([x, hi[1], z]) - centre
@@ -169,39 +168,20 @@ def see_through(source, query, eye, forward, lens, centre):
     return Image.fromarray(np.round(out).astype(np.uint8))
 
 
-def fates(query, source, record, near, kept_eyes):
-    """(position, fate, kept face directions) per training probe, placed again as select places them; their counts
-    must be the record's."""
-    lo, hi = record["region"]
-    points, cell = probes.probe_points(lo, hi, record["spacing"], PROBE_SEED)
-    moved, state = probes.classify(query, face_normals(source.p, source.tri_v)[0], points, cell, near)
-    found = []
-    for at, placed in zip(moved, state):
-        faces = [pose[3:6] for pose in kept_eyes if np.allclose(pose[:3], at)]
-        found.append((at, "kept" if faces else ("greedy" if placed == "kept" else str(placed)), faces))
-    train = record["train"]
-    counts = {name: sum(fate == name for _, fate, _ in found) for name in FATES}
-    expected = {"inside": train["inside"], "near": train["near"]}
-    if any(counts[name] != value for name, value in expected.items()) or len(found) != train["probes"]:
-        raise RuntimeError(f"placing the probes again gives {counts}, the selection recorded {train}")
-    return found, counts
-
-
 def draw(image, found, path, eye, forward, lens, centre, arrow):
     """The camera path, then the probes behind the cut through `centre`, farthest first."""
     canvas = ImageDraw.Draw(image)
     if path is not None:
         xy, front = project([pose[:3] for pose in path], eye, forward, lens)
         canvas.line([tuple(p) for p in xy[front]], fill=rgb(PATH_COLOUR), width=PATH_WIDTH)
-    behind = [probe for probe in found if (probe[0] - centre) @ cut_normal(forward) >= 0]
-    order = sorted(behind, key=lambda probe: -np.linalg.norm(probe[0] - eye))
-    for at, name, faces in order:
-        fate = FATES[name]
+    behind = [probe for probe in found if (np.asarray(probe["at"]) - centre) @ cut_normal(forward) >= 0]
+    for probe in sorted(behind, key=lambda probe: -np.linalg.norm(np.asarray(probe["at"]) - eye)):
+        at, fate, faces = np.asarray(probe["at"]), FATES[probe["fate"]], probe["faces"]
         x, y = project([at], eye, forward, lens)[0][0]
-        tips = project([at + np.asarray(face) * arrow for face in faces], eye, forward, lens)[0] if faces else []
+        tips = project([at + np.asarray(probes.FACES[face]) * arrow for face in faces], eye, forward, lens)[0]             if faces else []
         for tip in tips:
             canvas.line([(x, y), tuple(tip)], fill=rgb(fate.colour), width=LINE_WIDTH)
-        r = KEPT_RADIUS if name == "kept" else MARK_RADIUS
+        r = KEPT_RADIUS if faces else MARK_RADIUS
         if fate.cross:
             canvas.line([(x - r, y - r), (x + r, y + r)], fill=rgb(fate.colour), width=LINE_WIDTH)
             canvas.line([(x - r, y + r), (x + r, y - r)], fill=rgb(fate.colour), width=LINE_WIDTH)
@@ -210,8 +190,8 @@ def draw(image, found, path, eye, forward, lens, centre, arrow):
     return image
 
 
-def legend(counts, faces, path, out):
-    """The fates with their counts, and the camera path, as one row of keys."""
+def legend(counts, faces, spacing, path, out):
+    """The fates with their counts, and the camera path, as keys under the probe spacing."""
     from matplotlib.lines import Line2D
 
     fig = figure((2 * VIEW_SIZE[0] / DPI, LEGEND_HEIGHT))
@@ -222,7 +202,8 @@ def legend(counts, faces, path, out):
                               label=f"{fate.label}: {counts[name]}{extra}"))
     if path:
         handles.append(Line2D([], [], color=PATH_COLOUR, label="camera path"))
-    fig.legend(handles=handles, loc="center", ncol=3, frameon=False, fontsize=LABEL_SIZE)
+    fig.legend(handles=handles, loc="center", ncol=3, frameon=False, fontsize=LABEL_SIZE,
+               title=f"probes {spacing:g} units apart", title_fontsize=LABEL_SIZE)
     save(fig, out)
 
 
@@ -238,28 +219,27 @@ def main(argv=None):
     if inputs.probes is None:
         inputs = dataclasses.replace(inputs, probes=load_probes({}))
     camera = scene.camera.component
-    path = None
-    if camera.path is not None:
-        visibility = SimpleNamespace(size=inputs.size, every_ms=None)
-        coverage = camera_path_poses(inputs.scene(), visibility, inputs.poses["coverage_every_ms"])
-        path = (coverage[0], coverage[1], coverage[2], coverage[4])
+    coverage = coverage_path(inputs)
     with tempfile.TemporaryDirectory() as work:
         work = pathlib.Path(work)
-        probe_poses(inputs, work, path)
-        kept = read_poses(work / PROBE_TRAINING[0])[4]
+        probe_poses(inputs, work, coverage)
         record = json.loads((work / PROBE_RECORD).read_text())
+    found = record["train"]["placed"]
+    unknown = {probe["fate"] for probe in found} - set(FATES)
+    if unknown:
+        raise ValueError(f"the probes have fates FATES has no row for: {sorted(unknown)}")
+    counts = {name: sum(probe["fate"] == name for probe in found) for name in FATES}
     source = load_source(job.settings, np.float32)
     keep_alpha = job.settings.alpha_keep
     query = RayQuery(source.p, source.tri_v, hit_filter=None if keep_alpha is None else AlphaTest(source, keep_alpha))
-    found, counts = fates(query, source, record, camera.near_z, kept)
     centre, eyes = views(*record["region"], camera.half_fov_short_tan)
     stem = f"{scene_id(args.scene)}-{args.object}-probes"
     for index, (eye, forward) in enumerate(eyes, 1):
         image = see_through(source, query, eye, forward, camera.half_fov_short_tan, centre)
-        draw(image, found, path[3] if path else None, eye, forward, camera.half_fov_short_tan, centre,
+        draw(image, found, None if coverage is None else coverage[4], eye, forward, camera.half_fov_short_tan, centre,
              ARROW_SPACING * record["spacing"])
         save_png(image, args.out / f"{stem}-{index}.png")
-    legend(counts, len(kept), path is not None, args.out / f"{stem}-legend.png")
+    legend(counts, record["train"]["kept"], record["spacing"], coverage is not None, args.out / f"{stem}-legend.png")
 
 
 if __name__ == "__main__":

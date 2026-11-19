@@ -143,16 +143,17 @@ Every probe ends in one of four fates:
 | dropped: inside geometry | More than `BACKFACE` of its rays still hit back faces after the move. |
 | dropped: a surface too near | A front face is still nearer than `MIN_FRONT_NEARS` near planes. |
 
-The views below show Sponza's atrium at the default spacing, from above each top
-corner of the camera's region. The source is cut through the region's centre and
-drawn see-through, as the [cull view](../frame/View-Modes.md) draws a culled
-cluster. The camera path and the probes behind the cut sit on top, each probe in
-its fate's colour; a kept probe's arrows are its kept faces.
+The views below place probes in Sponza's atrium by its import's settings and
+show them from above each top corner of the camera's region.
+
+The source is cut through the region's centre and drawn see-through, as the
+[cull view](../frame/View-Modes.md) draws a culled cluster. The camera path and
+the probes behind the cut sit on top; a kept probe's arrows are its kept faces.
 
 | | |
 |---|---|
-| ![Probes from above the first corner](../../images/render/sponza-atrium_fitted_full-probes-1.png) | ![Probes from above the second corner](../../images/render/sponza-atrium_fitted_full-probes-2.png) |
-| ![Probes from above the third corner](../../images/render/sponza-atrium_fitted_full-probes-3.png) | ![Probes from above the fourth corner](../../images/render/sponza-atrium_fitted_full-probes-4.png) |
+| ![Probes seen from above the +x +z corner](../../images/render/sponza-atrium_fitted_full-probes-1.png) | ![Probes seen from above the -x +z corner](../../images/render/sponza-atrium_fitted_full-probes-2.png) |
+| ![Probes seen from above the -x -z corner](../../images/render/sponza-atrium_fitted_full-probes-3.png) | ![Probes seen from above the +x -z corner](../../images/render/sponza-atrium_fitted_full-probes-4.png) |
 
 ![Probe fates and their counts](../../images/render/sponza-atrium_fitted_full-probes-legend.png)
 
