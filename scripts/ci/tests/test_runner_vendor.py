@@ -78,46 +78,46 @@ def marker(shard, candidate, attempt, ok, created):
 class ShardCandidateTests(unittest.TestCase):
     """Of a shard's candidates, one of the lock's vendor traces, and the shard fails only when none can."""
 
+    def decides(self, artifacts, running, verdicts, attempt=1):
+        """`verdicts` maps (candidate, on the lock's vendor) to what `decide` must say for shard 4."""
+        for (candidate, ok), verdict in verdicts.items():
+            with self.subTest(candidate=candidate, ok=ok):
+                self.assertEqual(runner_vendor.decide(artifacts, running, 4, candidate, attempt, ok), verdict)
+
     def test_the_earliest_marked_on_the_locks_vendor_traces(self):
         artifacts = [marker(4, 2, 1, True, "10:00:01"), marker(4, 0, 1, True, "10:00:05")]
-        self.assertEqual(runner_vendor.decide(artifacts, {0, 1, 2}, 4, 2, 1, True), runner_vendor.TRACE)
-        self.assertEqual(runner_vendor.decide(artifacts, {0, 1, 2}, 4, 0, 1, True), runner_vendor.OTHER)
+        self.decides(artifacts, {0, 1, 2}, {(2, True): runner_vendor.TRACE, (0, True): runner_vendor.OTHER})
 
     def test_a_right_candidate_that_cannot_see_its_marker_yet_traces_alone(self):
-        self.assertEqual(runner_vendor.decide([], {0, 1, 2}, 4, 1, 1, True), runner_vendor.TRACE)
+        self.decides([], {0, 1, 2}, {(1, True): runner_vendor.TRACE})
 
     def test_a_wrong_candidate_finishes_green_while_a_sibling_can_still_trace(self):
         wrong = [marker(4, 0, 1, False, "10:00:00")]
-        self.assertEqual(runner_vendor.decide(wrong + [marker(4, 1, 1, True, "10:00:02")], {0}, 4, 0, 1, False),
-                         runner_vendor.OTHER)
+        self.decides(wrong + [marker(4, 1, 1, True, "10:00:02")], {0}, {(0, False): runner_vendor.OTHER})
         # Candidate 2's job has not marked yet: it may be the lock's vendor.
-        self.assertEqual(runner_vendor.decide(wrong, {0, 2}, 4, 0, 1, False), runner_vendor.OTHER)
+        self.decides(wrong, {0, 2}, {(0, False): runner_vendor.OTHER})
 
     def test_a_shard_is_lost_when_no_candidate_left_can_trace_it(self):
         wrong = [marker(4, 0, 1, False, "10:00:00"), marker(4, 1, 1, False, "10:00:03")]
-        # Candidate 1 is still in its settle wait and candidate 2 finished green before candidate 1 marked.
-        self.assertEqual(runner_vendor.decide(wrong, {0, 1}, 4, 0, 1, False), runner_vendor.LOST)
+        # Candidate 1 is still deciding and candidate 2 finished green before candidate 1 marked.
+        self.decides(wrong, {0, 1}, {(0, False): runner_vendor.LOST})
         # A re-run attempt runs only the failed candidate.
-        self.assertEqual(runner_vendor.decide([marker(4, 1, 2, False, "11:00:00")], {1}, 4, 1, 2, False),
-                         runner_vendor.LOST)
+        self.decides([marker(4, 1, 2, False, "11:00:00")], {1}, {(1, False): runner_vendor.LOST}, attempt=2)
 
     def test_markers_of_another_shard_or_attempt_do_not_count(self):
         others = [marker(5, 1, 1, True, "10:00:00"), marker(4, 1, 1, True, "10:00:00")]
-        self.assertEqual(runner_vendor.decide(others, {0}, 4, 0, 2, False), runner_vendor.LOST)
-        self.assertEqual(runner_vendor.decide(others, {0}, 4, 0, 2, True), runner_vendor.TRACE)
+        self.decides(others, {0}, {(0, False): runner_vendor.LOST, (0, True): runner_vendor.TRACE}, attempt=2)
 
     def test_the_earliest_marked_traces_whatever_order_the_markers_list_in(self):
         # Every candidate on the lock's vendor reads after its own marker is listed; whichever siblings each
         # sees, the earliest-created one traces.
         early, late = marker(4, 3, 1, True, "10:00:01"), marker(4, 0, 1, True, "10:00:04")
-        self.assertEqual(runner_vendor.decide([early], {0, 3}, 4, 3, 1, True), runner_vendor.TRACE)
-        self.assertEqual(runner_vendor.decide([late, early], {0, 3}, 4, 3, 1, True), runner_vendor.TRACE)
-        self.assertEqual(runner_vendor.decide([late, early], {0, 3}, 4, 0, 1, True), runner_vendor.OTHER)
+        self.decides([early], {0, 3}, {(3, True): runner_vendor.TRACE})
+        self.decides([late, early], {0, 3}, {(3, True): runner_vendor.TRACE, (0, True): runner_vendor.OTHER})
 
     def test_equal_marker_times_break_on_the_lower_candidate(self):
         artifacts = [marker(4, 2, 1, True, "10:00:00"), marker(4, 1, 1, True, "10:00:00")]
-        self.assertEqual(runner_vendor.decide(artifacts, {1, 2}, 4, 1, 1, True), runner_vendor.TRACE)
-        self.assertEqual(runner_vendor.decide(artifacts, {1, 2}, 4, 2, 1, True), runner_vendor.OTHER)
+        self.decides(artifacts, {1, 2}, {(1, True): runner_vendor.TRACE, (2, True): runner_vendor.OTHER})
 
     def test_a_shard_an_earlier_attempt_traced_is_done(self):
         traced = runner_vendor.shard_artifact_name(4, 2, 1)
