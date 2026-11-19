@@ -1019,7 +1019,9 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
             a->begin(a, raster, view);
         }
     }
-    r3d_span_small_fill_resolve(&work->small_fill, view->small_fill);
+    const render_small_fill_settings_t far = raster_settings(raster).small_fill;
+    r3d_span_small_fill_resolve_far(&work->small_fill, view->small_fill, far.far_ceiling, far.far_z,
+                                    *work->buffers.depth_near);
     work->skip_hidden = view->skip_hidden;
     work->texture = raster_settings(raster).texture;
     /* A list drawn with no census, or rewritten without its scale, fails here. */

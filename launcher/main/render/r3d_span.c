@@ -484,19 +484,30 @@ colours_within_spread(uint16_t a, uint16_t b, uint16_t c, int limit) {
 
 const r3d_span_small_fill_t r3d_span_small_fill_default = {
     .ceiling = SMALL_FILL_CEILING_SMOOTH,
+    .near_ceiling = SMALL_FILL_CEILING_SMOOTH,
     .style = SMALL_FILL_FLAT,
 };
 
 void
 r3d_span_small_fill_resolve(r3d_span_small_fill_t* resolved, small_fill_t fill) {
-    fill.ceiling = (uint8_t)mathi_min(fill.ceiling, SMALL_FILL_CEILING_MAX);
-    resolved->ceiling = fill.ceiling;
+    r3d_span_small_fill_resolve_far(resolved, fill, 0, 0.0F, 0.0F);
+}
+
+void
+r3d_span_small_fill_resolve_far(r3d_span_small_fill_t* resolved, small_fill_t fill, int far_ceiling, float far_z,
+                                float depth_near) {
+    const int near = mathi_min(fill.ceiling, SMALL_FILL_CEILING_MAX);
+    const int far = far_z > 0.0F ? mathi_min(far_ceiling, SMALL_FILL_CEILING_MAX) : 0;
+    resolved->near_ceiling = (uint8_t)near;
+    resolved->ceiling = (uint8_t)mathi_max(near, far);
+    resolved->far_iz = far > near ? depth_near / far_z : 0.0F;
     resolved->style = fill.style;
-    const int intervals = fill.ceiling - (SMALL_MAX_SIDE + 1);
-    for (int side = SMALL_MAX_SIDE + 1; side <= fill.ceiling; side++) {
-        const int offset = side - (SMALL_MAX_SIDE + 1);
+    /* The camera's ramp to its gate at its own ceiling; past it the gate holds. */
+    const int intervals = near - (SMALL_MAX_SIDE + 1);
+    for (int side = SMALL_MAX_SIDE + 1; side <= resolved->ceiling; side++) {
+        const int offset = mathi_min(side, near) - (SMALL_MAX_SIDE + 1);
         const int spread = fill.gate == 0 ? SMALL_SPREAD_OFF
-                           : intervals == 0
+                           : intervals <= 0
                                ? fill.gate
                                : SMALL_SPREAD_OFF + ((((int)fill.gate - SMALL_SPREAD_OFF) * offset) / intervals);
         resolved->spread[side] = (uint8_t)spread;
@@ -517,6 +528,9 @@ select_small(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_s
              bool solid, const r3d_span_small_fill_t* small_fill) {
     const int side = mathi_max(centres.w, centres.h);
     if (side > small_fill->ceiling) {
+        return SMALL_FILL_WALK;
+    }
+    if (side > small_fill->near_ceiling && mathf_max(a->z, mathf_max(b->z, c->z)) >= small_fill->far_iz) {
         return SMALL_FILL_WALK;
     }
     if (solid) {

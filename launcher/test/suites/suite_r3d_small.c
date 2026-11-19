@@ -1,6 +1,7 @@
 #ifndef DEVICE_BUILD
-#define r3d_span_small_fill_resolve hot_resolve
-#define r3d_span_small_fill_default hot_default
+#define r3d_span_small_fill_resolve     hot_resolve
+#define r3d_span_small_fill_default     hot_default
+#define r3d_span_small_fill_resolve_far hot_resolve_far
 #include "render/r3d_span.h"
 
 /* A private copy exposes selection and kernel invariants without a public test API. */
@@ -237,6 +238,74 @@ reference_shade(uint16_t color) {
     return color;
 }
 
+/* Past the far depth a triangle above the camera's ceiling is judged as if
+ * its own side were the ceiling: the camera's gate, held. Nearer, or within
+ * the camera's ceiling, it is the camera's selector. */
+static int
+reference_far_selector(const r3d_span_vertex_t v[TRIANGLE_VERTICES], int side, bool solid, small_fill_t fill,
+                       int far_ceiling, float far_iz) {
+    const bool far = mathf_max(v[0].z, mathf_max(v[1].z, v[2].z)) < far_iz;
+    if (side <= fill.ceiling || !far) {
+        return reference_selector(v, side, solid, fill);
+    }
+    if (side > far_ceiling) {
+        return SMALL_FILL_WALK;
+    }
+    return reference_selector(v, side, solid, (small_fill_t){(uint8_t)side, fill.gate, fill.style});
+}
+
+static void
+test_far_ceiling_applies_past_the_far_depth_under_the_cameras_gate(void) {
+    (void)fixture();
+    static const uint8_t near_ceilings[] = {0, SMALL_FILL_CEILING_SMOOTH, SMALL_FILL_CEILING_FAST};
+    static const uint8_t far_ceilings[] = {8, 16, SMALL_FILL_CEILING_MAX};
+    static const uint8_t gates[] = {0, SMALL_FILL_GATE_FAST, UINT8_MAX};
+    /* depth_near / far_z: a vertex z below far_iz is past the far depth. */
+    static const float depth_near = 1.0F;
+    static const float far_z = 2.0F;
+    const float far_iz = depth_near / far_z;
+    rng_t random;
+    rng_seed(&random, ORACLE_SEED);
+    for (size_t n = 0; n < sizeof near_ceilings / sizeof near_ceilings[0]; n++) {
+        for (size_t f = 0; f < sizeof far_ceilings / sizeof far_ceilings[0]; f++) {
+            for (size_t g = 0; g < sizeof gates / sizeof gates[0]; g++) {
+                const small_fill_t fill = {near_ceilings[n], gates[g], SMALL_FILL_FLAT};
+                settings = fill;
+                hot_resolve_far(resolved, fill, far_ceilings[f], far_z, depth_near);
+                for (int side = 1; side <= ORACLE_MAX_SIDE + 1; side++) {
+                    for (int sample = 0; sample < ORACLE_SAMPLES; sample++) {
+                        r3d_span_vertex_t v[TRIANGLE_VERTICES];
+                        oracle_vertices(v, &random, side);
+                        for (int solid = 0; solid < 2; solid++) {
+                            const r3d_span_extent_t e = r3d_span_extent(v, v + 1, v + 2);
+                            const int box_side = mathi_max(e.centres.w, e.centres.h);
+                            TEST_ASSERT_EQUAL_INT(
+                                reference_far_selector(v, box_side, solid != 0, fill, far_ceilings[f], far_iz),
+                                select_small(v, v + 1, v + 2, e.centres, solid != 0, resolved));
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/* With no far depth the far ceiling changes nothing: the camera's own selector. */
+static void
+test_far_ceiling_without_a_far_depth_is_the_cameras(void) {
+    (void)fixture();
+    r3d_span_small_fill_t camera;
+    hot_resolve(&camera, SMALL_FILL_FAST);
+    hot_resolve_far(resolved, SMALL_FILL_FAST, SMALL_FILL_CEILING_MAX, 0.0F, 1.0F);
+    TEST_ASSERT_EQUAL_INT(camera.ceiling, resolved->ceiling);
+    TEST_ASSERT_EQUAL_INT(camera.ceiling, resolved->near_ceiling);
+    TEST_ASSERT_EQUAL_INT(camera.style, resolved->style);
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, resolved->far_iz);
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(camera.spread + R3D_SPAN_SMALL_MAX_SIDE + 1,
+                                  resolved->spread + R3D_SPAN_SMALL_MAX_SIDE + 1,
+                                  camera.ceiling - R3D_SPAN_SMALL_MAX_SIDE);
+}
+
 static void
 test_grain_shade_preserves_channel_direction_without_overflow(void) {
     for (unsigned native = 0; native <= UINT16_MAX; native++) {
@@ -457,6 +526,8 @@ run_r3d_small_suite(void) {
     RUN_TEST(test_ceiling_four_flat_is_bit_identical);
     RUN_TEST(test_whole_triangle_dither_is_bit_identical);
     RUN_TEST(test_selector_random_triangles_and_gate_boundaries);
+    RUN_TEST(test_far_ceiling_applies_past_the_far_depth_under_the_cameras_gate);
+    RUN_TEST(test_far_ceiling_without_a_far_depth_is_the_cameras);
     RUN_TEST(test_grain_shade_preserves_channel_direction_without_overflow);
     RUN_TEST(test_style_kernels_randomized_reference);
 }

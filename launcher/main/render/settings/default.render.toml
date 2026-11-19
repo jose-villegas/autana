@@ -27,6 +27,10 @@ divide_px = 16
 affine_bend = 1.0
 affine_level = 1
 
+[small_fill]
+far_z = 0.0
+far_ceiling = 0
+
 [ranges."lod.blend"]
 min = 0
 max = "RENDER_LOD_BLEND_COUNT"
@@ -68,3 +72,10 @@ max = "RENDER_TEXTURE_BEND_MAX"
 [ranges."texture.affine_level"]
 min = 0
 max = "RENDER_TEXTURE_LEVEL_MAX"
+
+[ranges."small_fill.far_z"]
+min = 0.0
+
+[ranges."small_fill.far_ceiling"]
+min = 0
+max = "RENDER_SMALL_FILL_CEILING_MAX"

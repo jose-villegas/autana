@@ -1,29 +1,30 @@
 #ifndef DEVICE_BUILD
-#define r3d_span_small_fill_resolve    constant_resolve
-#define r3d_span_small_fill_default    constant_default
-#define r3d_span_triangle              constant_r3d_span_triangle
-#define r3d_span_triangle_solid        constant_r3d_span_triangle_solid
-#define r3d_span_triangle_write        constant_r3d_span_triangle_write
-#define r3d_span_capped_triangle       constant_r3d_span_capped_triangle
-#define r3d_span_hidden                constant_r3d_span_hidden
-#define r3d_span_plane_bound           constant_r3d_span_plane_bound
-#define r3d_span_plane_in_range        constant_r3d_span_plane_in_range
-#define r3d_span_uniform               constant_uniform
-#define r3d_span_stop_after            constant_r3d_span_stop_after
-#define r3d_lens_init                  constant_r3d_lens_init
-#define r3d_lens_fit                   constant_r3d_lens_fit
-#define r3d_lens_place                 constant_r3d_lens_place
-#define r3d_pipeline_work_bytes        constant_r3d_pipeline_work_bytes
-#define r3d_pipeline_cull              constant_r3d_pipeline_cull
-#define r3d_pipeline_cull_cut          constant_r3d_pipeline_cull_cut
-#define r3d_pipeline_cull_blending     constant_r3d_pipeline_cull_blending
-#define r3d_pipeline_transform         constant_r3d_pipeline_transform
-#define r3d_pipeline_transform_morphed constant_r3d_pipeline_transform_morphed
-#define r3d_pipeline_transform_split   constant_r3d_pipeline_transform_split
-#define r3d_pipeline_draw_split        constant_r3d_pipeline_draw_split
-#define r3d_pipeline_draw              constant_r3d_pipeline_draw
-#define r3d_pipeline_draw_blended      constant_r3d_pipeline_draw_blended
-#define r3d_pipeline_cluster_hidden    constant_r3d_pipeline_cluster_hidden
+#define r3d_span_small_fill_resolve     constant_resolve
+#define r3d_span_small_fill_default     constant_default
+#define r3d_span_small_fill_resolve_far constant_resolve_far
+#define r3d_span_triangle               constant_r3d_span_triangle
+#define r3d_span_triangle_solid         constant_r3d_span_triangle_solid
+#define r3d_span_triangle_write         constant_r3d_span_triangle_write
+#define r3d_span_capped_triangle        constant_r3d_span_capped_triangle
+#define r3d_span_hidden                 constant_r3d_span_hidden
+#define r3d_span_plane_bound            constant_r3d_span_plane_bound
+#define r3d_span_plane_in_range         constant_r3d_span_plane_in_range
+#define r3d_span_uniform                constant_uniform
+#define r3d_span_stop_after             constant_r3d_span_stop_after
+#define r3d_lens_init                   constant_r3d_lens_init
+#define r3d_lens_fit                    constant_r3d_lens_fit
+#define r3d_lens_place                  constant_r3d_lens_place
+#define r3d_pipeline_work_bytes         constant_r3d_pipeline_work_bytes
+#define r3d_pipeline_cull               constant_r3d_pipeline_cull
+#define r3d_pipeline_cull_cut           constant_r3d_pipeline_cull_cut
+#define r3d_pipeline_cull_blending      constant_r3d_pipeline_cull_blending
+#define r3d_pipeline_transform          constant_r3d_pipeline_transform
+#define r3d_pipeline_transform_morphed  constant_r3d_pipeline_transform_morphed
+#define r3d_pipeline_transform_split    constant_r3d_pipeline_transform_split
+#define r3d_pipeline_draw_split         constant_r3d_pipeline_draw_split
+#define r3d_pipeline_draw               constant_r3d_pipeline_draw
+#define r3d_pipeline_draw_blended       constant_r3d_pipeline_draw_blended
+#define r3d_pipeline_cluster_hidden     constant_r3d_pipeline_cluster_hidden
 
 #include <float.h>
 #include <stdlib.h>

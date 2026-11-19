@@ -55,6 +55,8 @@ that field's table in the asset.
 | `texture.divide_px` | `16` | basic | fewest pixels between divides by depth, fewer cost more; 0 is affine, near surfaces bend |
 | `texture.affine_bend` | `1.0` | advanced | texels a triangle may bend and still step affine; larger is faster, bends more |
 | `texture.affine_level` | `1` | advanced | first mip level that steps affine, its pattern shifting rather than bending; 0 lets every level divide |
+| `small_fill.far_z` | `0.0` | advanced | view depth where far_ceiling starts, on a triangle's nearest corner; 0 is off |
+| `small_fill.far_ceiling` | `0` | advanced | small-fill ceiling past far_z, the camera's gate kept; larger is faster, flatter |
 <!-- /generated: render-settings -->
 
 ## cull
