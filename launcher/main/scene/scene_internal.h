@@ -88,9 +88,7 @@ typedef struct {
     uint16_t colour_sets; /* the sets its colour arrays hold from the one opened: 1, or its batch's highest plus one */
     uint8_t contact_blob_shape;
     bool contact_warp;
-    contact_blob_t contact_blobs[CONTACT_BLOBS_MAX];
     vec3f_t contact_light;
-    uint8_t contact_count;
     void* texturing;      /* its pack mesh's textures once opened (render/texture/), at load when they cut, or NULL */
     bool texturing_owner; /* the renderer that opened them: the scene holds one block per mesh id */
     /* Its static arrays are copied into PSRAM when it is first ACTIVE
@@ -249,7 +247,6 @@ struct scene {
     int staged_count;
     uint16_t* active_renderers; /* renderers whose entity is ACTIVE, in renderer order */
     int active_renderer_count;
-    bool contact_warp, contact_silhouette;
     bool active_renderers_stale; /* an ACTIVE bit flipped since the list was built */
 };
 

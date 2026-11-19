@@ -258,19 +258,6 @@ skin_stage_prepare(scene_t* scene) {
     return clusters;
 }
 
-static void
-refresh_posed_contacts(scene_t* scene) {
-    for (int i = 0; i < scene->staged_count; i++) {
-        const scene_row_t e = scene->staged[i];
-        if (scene->skinned_renderers[e].storage != NULL && scene->animators[e].posed) {
-            const scene_renderer_t* r = &scene->renderers[scene_renderer_index(scene, e)];
-            if (r->contact_blob_strength > 0 && r->contact_blob_shape == SCENE_CONTACT_SILHOUETTE) {
-                scene_skin_contact_refresh(scene, e);
-            }
-        }
-    }
-}
-
 void
 scene_animation_repose(scene_t* scene, uint32_t dt_ms) {
     if (scene->animator_count == 0) {
@@ -307,7 +294,6 @@ scene_animation_repose(scene_t* scene, uint32_t dt_ms) {
             scene_renderer_bound(&scene->renderers[scene_renderer_index(scene, e)]);
         }
     }
-    refresh_posed_contacts(scene);
     FRAME_COST_END(refit_from, SCENE_ANIM_STAGE_REFIT_NAME);
 }
 
