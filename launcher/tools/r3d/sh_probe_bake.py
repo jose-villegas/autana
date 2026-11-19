@@ -106,8 +106,9 @@ def bake(job, scene):
     coefficients[outside] += sun_term(query, moved[outside], lights)
     # ProbeViews enumerates z fastest; SHPR's x-fastest order is the transposed cell lattice.
     shape = tuple(dims) + (COEFFICIENTS, CHANNELS)
-    filled = dilate(coefficients.reshape(shape), (state == 'inside').reshape(tuple(dims)))
-    data = encode(origin, step, dims, filled.transpose(2, 1, 0, 3, 4).copy())
+    inside = (state == 'inside').reshape(tuple(dims))
+    filled = dilate(coefficients.reshape(shape), inside)
+    data = encode(origin, step, dims, filled.transpose(2, 1, 0, 3, 4).copy(), inside.transpose(2, 1, 0))
     sun_rays = sum(light['type'] == 'directional' for light in lights)
     paths = int(outside.sum()) * requested.directions * requested.spp
     print(f'SH probes: {len(points)} probes, {np.count_nonzero(~outside)} inside, '
