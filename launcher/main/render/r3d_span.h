@@ -19,15 +19,26 @@
 /* Largest bounding-box side, in pixel centres, always filled flat; the camera gate and style apply only above it. */
 #define R3D_SPAN_SMALL_MAX_SIDE 4
 
-/* Resolved once per frame and shared read-only by row workers. */
+/* Resolved once per frame and shared read-only by row workers. A triangle
+ * whose box side is past near_ceiling fills small only when its nearest
+ * corner's inverse depth is below far_iz, past the far depth. */
 typedef struct {
-    uint8_t ceiling;
+    uint8_t ceiling;      /* the larger of the camera's and the far ceiling */
+    uint8_t near_ceiling; /* the camera's; ceiling when there is no far one */
     small_fill_style_t style;
+    float far_iz; /* the far depth as a span inverse depth; 0 with no far ceiling */
     uint8_t spread[SMALL_FILL_CEILING_MAX + 1];
 } r3d_span_small_fill_t;
 
 extern const r3d_span_small_fill_t r3d_span_small_fill_default;
 void r3d_span_small_fill_resolve(r3d_span_small_fill_t* resolved, small_fill_t fill);
+
+/* As r3d_span_small_fill_resolve(), and past view depth `far_z` (0: none)
+ * the ceiling rises to `far_ceiling` under the camera's gate. `depth_near`
+ * is the draw's inverse-depth scale (r3d_lens_t.depth_near): a vertex's z is
+ * depth_near over its view depth. */
+void r3d_span_small_fill_resolve_far(r3d_span_small_fill_t* resolved, small_fill_t fill, int far_ceiling, float far_z,
+                                     float depth_near);
 
 typedef struct r3d_span_writer r3d_span_writer_t;
 

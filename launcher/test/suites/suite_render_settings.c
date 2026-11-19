@@ -302,7 +302,9 @@ enum { FIELDS = RENDER_SETTINGS_FIELD_COUNT, ROW_BYTES = ASSET_TABLE_NAME_SIZE +
 #define FIELD_NAME(field, type, valid) #field,
 static const char* const field_names[FIELDS + 1] = {RENDER_SETTINGS_FIELDS(FIELD_NAME) "fog"};
 #undef FIELD_NAME
-#define STEP (1 << RENDER_SETTINGS_FRAC_BITS)
+#define STEP        (1 << RENDER_SETTINGS_FRAC_BITS)
+/* A far depth a fixed-point row holds whole. */
+#define FAR_Z_UNITS 300
 
 /* Opens into `opened` a pack whose render entry has the first `rows` of
  * field_names, row i holding `values[i]`, with `frac` fractional bits; free
@@ -358,7 +360,9 @@ test_a_packs_render_entry_reads_every_field(void) {
                                     (int16_t)(RENDER_SETTINGS_DEFAULT.anim.hysteresis_px * STEP),
                                     RENDER_TEXTURE_DIVIDE_PX_MAX,
                                     STEP / 4,
-                                    RENDER_TEXTURE_LEVEL_MAX};
+                                    RENDER_TEXTURE_LEVEL_MAX,
+                                    (int16_t)(FAR_Z_UNITS * STEP),
+                                    RENDER_SMALL_FILL_CEILING_MAX};
     render_settings_t read;
     TEST_ASSERT_EQUAL(ASSET_OK, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
     TEST_ASSERT_FALSE(read.cull);
@@ -375,16 +379,19 @@ test_a_packs_render_entry_reads_every_field(void) {
     TEST_ASSERT_EQUAL_INT(RENDER_TEXTURE_DIVIDE_PX_MAX, read.texture.divide_px);
     TEST_ASSERT_EQUAL_FLOAT(0.25F, read.texture.affine_bend);
     TEST_ASSERT_EQUAL_INT(RENDER_TEXTURE_LEVEL_MAX, read.texture.affine_level);
+    TEST_ASSERT_EQUAL_FLOAT((float)FAR_Z_UNITS, read.small_fill.far_z);
+    TEST_ASSERT_EQUAL_INT(RENDER_SMALL_FILL_CEILING_MAX, read.small_fill.far_ceiling);
 }
 
 /* Rows by place: the lod blend pair, then the anim fields (mid_px, far_px, mid_every, far_every, hysteresis_px),
- * then the texture fields (divide_px, affine_bend, affine_level). */
+ * then the texture fields (divide_px, affine_bend, affine_level), then small_fill (far_z, far_ceiling). */
 enum {
+    SMALL_FILL_ROWS = 2,
     TEXTURE_ROWS = 3,
     ANIM_ROWS = 5,
-    BLEND_ROW = FIELDS - TEXTURE_ROWS - ANIM_ROWS - 2,
+    BLEND_ROW = FIELDS - SMALL_FILL_ROWS - TEXTURE_ROWS - ANIM_ROWS - 2,
     BLEND_PX_ROW,
-    MID_PX_ROW = FIELDS - TEXTURE_ROWS - ANIM_ROWS,
+    MID_PX_ROW = FIELDS - SMALL_FILL_ROWS - TEXTURE_ROWS - ANIM_ROWS,
     FAR_PX_ROW,
     MID_EVERY_ROW,
     FAR_EVERY_ROW,
@@ -392,6 +399,8 @@ enum {
     DIVIDE_PX_ROW,
     AFFINE_BEND_ROW,
     AFFINE_LEVEL_ROW,
+    FAR_Z_ROW,
+    FAR_CEILING_ROW,
 };
 
 /* Rows of zeros but for the anim intervals, whose least is RENDER_ANIM_EVERY_MIN. */
@@ -487,6 +496,23 @@ test_a_texture_setting_outside_its_range_is_refused_unread(void) {
 }
 
 static void
+test_a_small_fill_setting_outside_its_range_is_refused_unread(void) {
+    int16_t values[FIELDS];
+    zero_rows(values);
+    values[BLEND_PX_ROW] = STEP;
+    values[FAR_CEILING_ROW] = RENDER_SMALL_FILL_CEILING_MAX;
+    render_settings_t read;
+    TEST_ASSERT_EQUAL(ASSET_OK, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
+    values[FAR_CEILING_ROW] = RENDER_SMALL_FILL_CEILING_MAX + 1;
+    TEST_ASSERT_EQUAL(ASSET_ERR_FORMAT, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
+    values[FAR_CEILING_ROW] = -1;
+    TEST_ASSERT_EQUAL(ASSET_ERR_FORMAT, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
+    values[FAR_CEILING_ROW] = 0;
+    values[FAR_Z_ROW] = -1;
+    TEST_ASSERT_EQUAL(ASSET_ERR_FORMAT, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
+}
+
+static void
 test_an_entry_missing_a_field_with_another_or_fixed_point_is_refused_unread(void) {
     static const int16_t values[FIELDS + 1] = {0};
     render_settings_t read;
@@ -560,6 +586,7 @@ suite_render_settings(void) {
     RUN_TEST(test_a_blend_outside_its_values_or_range_is_refused_unread);
     RUN_TEST(test_an_anim_interval_outside_its_range_is_refused_unread);
     RUN_TEST(test_a_texture_setting_outside_its_range_is_refused_unread);
+    RUN_TEST(test_a_small_fill_setting_outside_its_range_is_refused_unread);
     RUN_TEST(test_an_entry_missing_a_field_with_another_or_fixed_point_is_refused_unread);
     RUN_TEST(test_a_pack_without_the_entry_reads_not_found);
     RUN_TEST(test_an_app_starts_with_its_packs_settings_and_without_one_the_default);

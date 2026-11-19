@@ -9,6 +9,7 @@
 #include <stdbool.h>
 
 #include "asset/asset_pack.h"
+#include "render/render_view.h"
 
 /* Each field, then its tier and what it trades: docs/render/Render-Settings.md
  * reads these lines. Basic is for any app; advanced needs the renderer's
@@ -61,6 +62,14 @@ typedef struct {
     int affine_level; /* advanced: first mip level that steps affine, its pattern shifting rather than bending; 0 lets every level divide */
 } render_texture_settings_t;
 
+/* small_fill.far_ceiling's largest: the camera's own ceiling's. */
+#define RENDER_SMALL_FILL_CEILING_MAX SMALL_FILL_CEILING_MAX
+
+typedef struct {
+    float far_z;     /* advanced: view depth where far_ceiling starts, on a triangle's nearest corner; 0 is off */
+    int far_ceiling; /* advanced: small-fill ceiling past far_z, the camera's gate kept; larger is faster, flatter */
+} render_small_fill_settings_t;
+
 typedef struct {
     bool cull;                   /* basic: skips clusters and world boxes outside the picture */
     bool depth_fit;              /* advanced: depth steps go where the kept scene is, not to near_z; needs cull */
@@ -68,7 +77,8 @@ typedef struct {
     bool partial_redraw;         /* basic: a still camera redraws only the rows that moved; the picture is the same */
     render_lod_settings_t lod;   /* the level pick (docs/render/frame/Levels-of-Detail.md) */
     render_anim_settings_t anim; /* pose rate by size (docs/render/animation/Skinned-Meshes.md) */
-    render_texture_settings_t texture; /* the textured span fill (docs/assets/formats/LTEX.md) */
+    render_texture_settings_t texture;       /* the textured span fill (docs/assets/formats/LTEX.md) */
+    render_small_fill_settings_t small_fill; /* a far small-fill ceiling (docs/render/frame/Coverage.md#small-fill) */
 } render_settings_t;
 
 /* RENDER_SETTINGS_DEFAULT, from default.render.toml beside this header. */
