@@ -6,6 +6,8 @@ under "The offline tools".
 
 import struct
 
+from asset.engine_axes import AXIS_SIGNS, ROTATION_SIGNS, AFFINE_SIGNS, Z_AXIS, AXIS_COUNT
+
 from audio import sound_asset
 from gfx import image_asset
 from asset import table_asset
@@ -16,11 +18,6 @@ from r3d.texture import texture_asset
 FRAMELESS = frozenset((image_asset.TYPE, image_asset.SPRITE_TYPE, table_asset.TYPE, sound_asset.TYPE, lcol_asset.TYPE,
                        texture_asset.TYPE, texture_asset.UVS_TYPE))
 
-AXIS_SIGNS = (1, 1, -1)
-ROTATION_SIGNS = (-1, -1, 1, 1)
-AFFINE_SIGNS = (*AXIS_SIGNS, 1)
-Z_AXIS = 2
-AXIS_COUNT = len(AXIS_SIGNS)
 POSITION = struct.Struct(f"<{AXIS_COUNT}h")
 INT16_MIN = -(1 << 15)
 
