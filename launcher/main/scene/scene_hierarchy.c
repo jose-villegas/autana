@@ -144,9 +144,6 @@ scene_resolve(scene_t* scene) {
             r->model = slot != SCENE_WORLD_SLOT_NONE ? scene->worlds[slot] : world_from_parent(scene, r->entity);
             r->placed = !scene_transform_is_identity(&r->model);
             scene_renderer_bound(r);
-            if (r->contact_blob_strength > 0 && r->contact_blob_shape == SCENE_CONTACT_SILHOUETTE) {
-                scene_skin_contact_refresh(scene, r->entity);
-            }
         }
     }
     for (int i = 0; i < scene->asset.entity_count; i++) {

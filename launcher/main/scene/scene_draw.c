@@ -321,9 +321,8 @@ scene_contact_blobs(const scene_t* scene, const scene_renderer_t* r, vec3f_t lig
 
 box3f_t
 scene_contact_bounds(const scene_t* scene, scene_renderer_t* r, vec3f_t light) {
-    contact_blob_t* blobs = r->contact_blobs;
+    contact_blob_t blobs[CONTACT_BLOBS_MAX];
     const int count = scene_contact_blobs(scene, r, light, blobs);
-    r->contact_count = (uint8_t)count;
     box3f_t bounds = box3f_empty();
     for (int i = 0; i < count; i++) {
         const contact_blob_t* blob = &blobs[i];
@@ -333,41 +332,34 @@ scene_contact_bounds(const scene_t* scene, scene_renderer_t* r, vec3f_t light) {
     return bounds;
 }
 
-static __attribute__((noinline)) int
-fill_contact_changed(const scene_t* scene, scene_renderer_t* r, int changes) {
+static __attribute__((noinline)) box3f_t
+fill_contact_bounds(scene_t* scene, scene_renderer_t* r) {
+    if (r->changed && r->contact_blob_shape == SCENE_CONTACT_SILHOUETTE) {
+        scene_skin_contact_refresh(scene, r->entity);
+    }
     const vec3f_t light =
         r->contact_warp ? scene_contact_light(scene, box3f_centre(r->world_bounds), drawn_scenes, drawn_scene_count)
                         : vec3f_unit_y();
     r->changed |= light.x != r->contact_light.x || light.y != r->contact_light.y || light.z != r->contact_light.z;
     r->contact_light = light;
-    const box3f_t current = box3f_union(r->world_bounds, scene_contact_bounds(scene, r, light));
+    return scene_contact_bounds(scene, r, light);
+}
+
+static inline __attribute__((always_inline)) int
+fill_renderer_changed(scene_t* scene, scene_renderer_t* r, int changes) {
+    box3f_t current = r->world_bounds;
+    if (r->contact_blob_strength > 0.0F) {
+        contact_blobs = true;
+        current = box3f_union(current, fill_contact_bounds(scene, r));
+    }
     if (r->changed && changes >= 0) {
-        if (changes < RENDER_PARTIAL_CHANGES_MAX) {
+        changes = changes < RENDER_PARTIAL_CHANGES_MAX ? changes : -1;
+        if (changes >= 0) {
             changed[changes++] = box3f_union(r->drawn_bounds, current);
-        } else {
-            changes = -1;
         }
     }
     r->changed = false;
     r->drawn_bounds = current;
-    return changes;
-}
-
-static inline __attribute__((always_inline)) int
-fill_renderer_changed(const scene_t* scene, scene_renderer_t* r, int changes) {
-    if (r->contact_blob_strength > 0.0F) {
-        contact_blobs = true;
-        return fill_contact_changed(scene, r, changes);
-    }
-    r->contact_count = 0;
-    if (r->changed && changes >= 0) {
-        changes = changes < RENDER_PARTIAL_CHANGES_MAX ? changes : -1;
-        if (changes >= 0) {
-            changed[changes++] = box3f_union(r->drawn_bounds, r->world_bounds);
-        }
-    }
-    r->changed = false;
-    r->drawn_bounds = r->world_bounds;
     return changes;
 }
 
@@ -377,8 +369,6 @@ fill_renderer_changed(const scene_t* scene, scene_renderer_t* r, int changes) {
 static int
 fill_scene_changed(scene_t* scene, int changes, name_hash64_t* set) {
     const int slot = (int)(scene->root - scene_roots);
-    scene->contact_warp = false;
-    scene->contact_silhouette = false;
     for (int i = 0; i < scene->active_renderer_count; i++) {
         scene_renderer_t* r = &scene->renderers[scene->active_renderers[i]];
         if (r->mesh.node_count == 0) {
@@ -386,10 +376,6 @@ fill_scene_changed(scene_t* scene, int changes, name_hash64_t* set) {
         }
         *set = name_hash64_n(*set, &slot, sizeof slot);
         *set = name_hash64_n(*set, &scene->active_renderers[i], sizeof scene->active_renderers[i]);
-        if (r->contact_blob_strength > 0) {
-            scene->contact_warp |= r->contact_warp;
-            scene->contact_silhouette |= r->contact_blob_shape == SCENE_CONTACT_SILHOUETTE;
-        }
         changes = fill_renderer_changed(scene, r, changes);
     }
     return changes;
@@ -465,7 +451,8 @@ scene_set_contact(entity_t renderer, const scene_contact_t* contact) {
     r->contact_blob_strength = contact->strength;
     r->contact_blob_shape = contact->shape;
     r->contact_warp = contact->warp;
-    if (refresh) {
+    /* Keep the silhouette buffers for reuse until scene_skin_give releases the skin. */
+    if (refresh && contact->shape == SCENE_CONTACT_FEET) {
         scene_skin_contact_refresh(scene, row);
     }
     r->changed = true;
@@ -481,8 +468,10 @@ post_draw(const r3d_span_target_t* target, const r3d_lens_t* lens, void* user) {
             const scene_renderer_t* r = &scene->renderers[scene->active_renderers[i]];
             if (r->contact_blob_strength > 0.0F && r->mesh.node_count > 0) {
                 render_context_t* context = render_context_main();
-                contact_blobs_draw(target, lens, r->contact_blobs, r->contact_count,
-                                   (char*)context->scratch + context->contact_work_offset);
+                void* work = (char*)context->scratch + context->contact_work_offset;
+                contact_blob_t* footprints = contact_blobs_work_footprints(work);
+                const int count = scene_contact_blobs(scene, r, r->contact_light, footprints);
+                contact_blobs_draw(target, lens, footprints, count, work);
             }
         }
     }

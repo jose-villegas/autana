@@ -5152,6 +5152,7 @@ test_disabled_contact_skips_silhouette_and_warp_work(void) {
 static void
 test_contact_joints_allocate_only_for_silhouette(void) {
     fixture_with_skin(&SKIN_OPTIONS);
+    show("test_pair");
     const entity_t root = load("test_skin");
     const entity_t entity = entity_find(root, name_hash("red"));
     scene_resolve(columns(root));
@@ -5166,6 +5167,7 @@ test_contact_joints_allocate_only_for_silhouette(void) {
     TEST_ASSERT_NULL(skin->contact_joints);
     contact = (scene_contact_t){0, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, SCENE_CONTACT_SILHOUETTE, contact.warp};
     scene_set_contact(entity, &contact);
+    frame(0);
     TEST_ASSERT_NOT_NULL(skin->contact_joints);
     TEST_ASSERT_NOT_NULL(skin->contact_mask.coverage);
     entity_set_enabled(entity, false);
@@ -5176,6 +5178,7 @@ test_contact_joints_allocate_only_for_silhouette(void) {
 static void
 test_silhouette_mask_repose_and_lifetime(void) {
     fixture_with_skin(&SKIN_OPTIONS);
+    show("test_pair");
     const entity_t root = load("test_skin");
     const entity_t entity = entity_find(root, name_hash("red"));
     scene_t* scene = columns(root);
@@ -5188,16 +5191,16 @@ test_silhouette_mask_repose_and_lifetime(void) {
     scene_contact_t contact = {0};
     contact = (scene_contact_t){0, 1, SCENE_CONTACT_SILHOUETTE, contact.warp};
     scene_set_contact(entity, &contact);
-    scene_animation_repose(scene, 0);
+    frame(0);
     TEST_ASSERT_NOT_NULL(skin->contact_mask.coverage);
     uint8_t* saved = malloc(CONTACT_MASK_BYTES);
     TEST_ASSERT_NOT_NULL(saved);
     memcpy(saved, skin->contact_mask.coverage, CONTACT_MASK_BYTES);
     memset(skin->contact_mask.coverage, UINT8_MAX, CONTACT_MASK_BYTES);
-    scene_animation_repose(scene, 0);
+    frame(0);
     TEST_ASSERT_EQUAL_UINT8(UINT8_MAX, skin->contact_mask.coverage[0]);
     scene->animators[row_of(entity)].dirty = true;
-    scene_animation_repose(scene, 0);
+    frame(0);
     TEST_ASSERT_EQUAL_MEMORY(saved, skin->contact_mask.coverage, CONTACT_MASK_BYTES);
     scene_renderer_t* r = &scene->renderers[scene_renderer_index(scene, row_of(entity))];
     const box3f_t bounds = scene_contact_bounds(scene, r, vec3f_unit_y());
@@ -5225,6 +5228,7 @@ test_silhouette_mask_repose_and_lifetime(void) {
 static void
 test_silhouette_mask_refreshes_when_paused_mover_rotates(void) {
     fixture_with_skin(&SKIN_OPTIONS);
+    show("test_pair");
     const entity_t root = load("test_skin");
     const entity_t entity = entity_find(root, name_hash("red"));
     scene_t* scene = columns(root);
@@ -5233,29 +5237,31 @@ test_silhouette_mask_refreshes_when_paused_mover_rotates(void) {
     contact = (scene_contact_t){0, 1, SCENE_CONTACT_SILHOUETTE, contact.warp};
     scene_set_contact(entity, &contact);
     TEST_ASSERT_TRUE(animator_set_paused(entity, ANIMATOR_CURRENT, true));
-    scene_animation_repose(scene, 0);
+    frame(0);
     scene_skinned_renderer_t* skin = skin_of(entity);
     memset(skin->contact_mask.coverage, UINT8_MAX, CONTACT_MASK_BYTES);
     transformf_t pose = transform_local(entity);
     transformf_set_rotation(&pose, quatf_from_axis_angle(vec3f_unit_y(), MATH_PI / 4));
     transform_set_local(entity, pose);
-    scene_resolve(scene);
+    frame(0);
     TEST_ASSERT_NOT_EQUAL(UINT8_MAX, skin->contact_mask.coverage[0]);
 }
 
 static void
 test_silhouette_allocation_failure_uses_blob(void) {
     fixture_with_skin(&SKIN_OPTIONS);
+    show("test_pair");
     const entity_t root = load("test_skin");
     const entity_t entity = entity_find(root, name_hash("red"));
     scene_t* scene = columns(root);
     scene_skins_settle(scene);
+    frame(0);
     scene_skinned_renderer_t* skin = skin_of(entity);
     scene_fail_allocation_after = 0;
     scene_contact_t contact = {0};
     contact = (scene_contact_t){0, 1, SCENE_CONTACT_SILHOUETTE, contact.warp};
     scene_set_contact(entity, &contact);
-    scene_animation_repose(scene, 0);
+    frame(0);
     scene_fail_allocation_after = -1;
     TEST_ASSERT_NULL(skin->contact_mask.coverage);
     TEST_ASSERT_TRUE(skin->contact_mask_failed);
@@ -5273,7 +5279,7 @@ test_silhouette_allocation_failure_uses_blob(void) {
     entity_set_enabled(entity, false);
     TEST_ASSERT_FALSE(skin->contact_mask_failed);
     entity_set_enabled(entity, true);
-    scene_resolve(scene);
+    frame(0);
     TEST_ASSERT_NOT_NULL(skin->contact_mask.coverage);
 }
 
@@ -5477,6 +5483,16 @@ test_contact_receiver_light_and_bounds(void) {
     scene_set_probes(mover_root, &probes);
     const vec3f_t probe = scene_contact_light(scene, vec3f_zero(), drawn, 2);
     TEST_ASSERT_FLOAT_WITHIN(0.001F, 1, probe.x);
+    entity_set_enabled(mover, true);
+    TEST_ASSERT_TRUE(light_set_intensity(mover, 0));
+    frame(0);
+    vec3f_t dark = scene_contact_light(scene, vec3f_zero(), drawn, 2);
+    TEST_ASSERT_FLOAT_WITHIN(0.001F, 1, dark.x);
+    TEST_ASSERT_TRUE(light_set_intensity(mover, 1));
+    TEST_ASSERT_TRUE(light_set_color(mover, vec3f_zero()));
+    frame(0);
+    dark = scene_contact_light(scene, vec3f_zero(), drawn, 2);
+    TEST_ASSERT_FLOAT_WITHIN(0.001F, 1, dark.x);
     scene_set_probes(mover_root, NULL);
     const vec3f_t overhead = scene_contact_light(scene, vec3f_zero(), drawn, 2);
     TEST_ASSERT_EQUAL_FLOAT(1, overhead.y);

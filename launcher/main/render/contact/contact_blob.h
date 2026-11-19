@@ -13,6 +13,7 @@ typedef struct {
 
 /* Caller-owned workspace, aligned as malloc provides; reusable after each draw. */
 size_t contact_blobs_work_bytes(void);
+contact_blob_t* contact_blobs_work_footprints(void* scratch);
 
 /* Uses geometry's lens and fitted depth scale. At most CONTACT_BLOBS_MAX coplanar,
  * equal-strength footprints; overlaps darken once. A NULL mask uses radial falloff. */

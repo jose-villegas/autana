@@ -219,7 +219,7 @@ scene_set_probes(entity_t root, const sh_probes_t* probes) {
 vec3f_t
 scene_light_brightest_direction(const scene_t* scene) {
     scene_row_t brightest = SCENE_ROW_NONE;
-    float luminance = -INFINITY;
+    float luminance = 0;
     for (int i = 0; i < scene->staged_count; i++) {
         const scene_row_t e = scene->staged[i];
         const scene_light_t* light = &scene->lights[e];
@@ -239,6 +239,7 @@ scene_light_brightest_direction(const scene_t* scene) {
 
 vec3f_t
 scene_contact_light(const scene_t* scene, vec3f_t world, scene_t* const* drawn_scenes, int drawn_scene_count) {
+    /* Draw order lets a receiver scene light movers from separately loaded scenes. */
     for (int k = 0; k < drawn_scene_count; k++) {
         const vec3f_t direction = scene_light_brightest_direction(drawn_scenes[k]);
         if (vec3f_dot(direction, direction) > 0) {

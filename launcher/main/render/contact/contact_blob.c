@@ -122,13 +122,16 @@ draw_row(const r3d_span_target_t* target, const r3d_lens_t* lens, blob_plane_t* 
     const uint16_t* depth = gfx_target_depth(&target->rows, y);
     const blob_row_t row = project_row(lens, blob, y, x0);
     float encoded = row.encoded;
-    vec3f_t delta_step = {(row.depth_units - blob->centre.x * row.step) * blob->inverse_scale.x,
-                          -blob->centre.y * row.step * blob->inverse_scale.y,
-                          -blob->centre.z * row.step * blob->inverse_scale.z};
-    vec3f_t delta = {(row.first_x * row.depth_units - blob->centre.x * encoded) * blob->inverse_scale.x,
-                     (row.row_y * row.depth_units - blob->centre.y * encoded) * blob->inverse_scale.y,
-                     (row.depth_units - blob->centre.z * encoded) * blob->inverse_scale.z};
-    if (!circular) {
+    vec3f_t delta_step;
+    vec3f_t delta;
+    if (circular) {
+        delta_step = (vec3f_t){(row.depth_units - blob->centre.x * row.step) * blob->inverse_scale.x,
+                               -blob->centre.y * row.step * blob->inverse_scale.y,
+                               -blob->centre.z * row.step * blob->inverse_scale.z};
+        delta = (vec3f_t){(row.first_x * row.depth_units - blob->centre.x * encoded) * blob->inverse_scale.x,
+                          (row.row_y * row.depth_units - blob->centre.y * encoded) * blob->inverse_scale.y,
+                          (row.depth_units - blob->centre.z * encoded) * blob->inverse_scale.z};
+    } else {
         project_ellipse_row(blob, &row);
         delta = (vec3f_t){blob->delta.x, blob->delta.y, 0};
         delta_step = (vec3f_t){blob->delta_step.x, blob->delta_step.y, 0};
@@ -291,6 +294,7 @@ project_blob(const r3d_lens_t* lens, const contact_blob_t* footprint, blob_plane
 }
 
 typedef struct {
+    contact_blob_t footprints[CONTACT_BLOBS_MAX];
     blob_plane_t blobs[CONTACT_BLOBS_MAX];
     blob_bounds_t bounds[CONTACT_BLOBS_MAX];
     unsigned thresholds[BAYER4_LEVELS];
@@ -299,6 +303,12 @@ typedef struct {
 size_t
 contact_blobs_work_bytes(void) {
     return sizeof(blob_work_t);
+}
+
+contact_blob_t*
+contact_blobs_work_footprints(void* scratch) {
+    blob_work_t* work = scratch;
+    return work->footprints;
 }
 
 void
