@@ -261,7 +261,8 @@ def _mesh_passes(tris, labels, tri_o, triangles, reserved, selected, edges):
     return merged, policies
 
 
-def _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, locks, deviation, options, shade, shapes=None):
+def _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, locks, deviation, options, shade, shapes=None,
+                   probes=None):
     from scipy.spatial import cKDTree
     from .objects.instances import place, source_objects
     from .objects.stand_ins import best_stand_in
@@ -320,6 +321,8 @@ def _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, loc
                 if kept is not None:
                     placed[union[kept]] = pos[indices[kept[union[kept]]]].astype(np.float32)
                 faces = t[:, ::-1] if instance.mirrored else t
+                if probes is not None:
+                    probes.finish(np.flatnonzero(parts[single[int(instance.object_name)]][0]), placed, faces)
                 own = mat
                 if isinstance(instance, JoinedInstance):
                     sel = parts[single[int(instance.object_name)]][0]
@@ -390,7 +393,8 @@ def _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, reserved, allocat
                                locked_vertices=int(locks[np.unique(tris[tri_o == obj])].sum())) for obj, rule in selected.items()])
     log(f"  scene requested triangles {requested}, ceiling {allocation.ceiling}")
     emitted, consumed, shared = _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, locks,
-                                       deviation, options, allocation.shade_shared or allocation.shade, allocation.shapes)
+                                       deviation, options, allocation.shade_shared or allocation.shade, allocation.shapes,
+                                       probes)
     shared_objects = {obj for entry in shared for obj in entry['objects']}
     report['meshes'] = [row for obj, row in zip(selected, report['meshes']) if obj not in shared_objects]
     for entry in shared:
@@ -412,6 +416,8 @@ def _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, reserved, allocat
             stand_in, candidates = best_stand_in(pos[used], rgb[used], local, labels[sel], budget,
                 colour_weight(pos[used], local, budget, deviation), options, locks[used] if np.any(locks[used]) else None)
             result = stand_in.positions, stand_in.rgb, stand_in.tris, stand_in.materials
+            if probes is not None:
+                probes.finish(np.flatnonzero(sel), result[0], result[2])
         else:
             result = _run_pass(pos, rgb, tris[sel], labels[sel], budget, deviation, options,
                                locks if np.any(locks) else None,
