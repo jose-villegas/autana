@@ -149,23 +149,18 @@ class ImportTests(unittest.TestCase):
         rule = '[[objects.meshes]]\nmatch = { material = "m" }\ntriangles = 4\nvariants = { other = 2 }\n'
         self.rejects(r"objects\.meshes\[0\]\.variants\.other names no variant", SIMPLIFY + rule + VARIANT)
 
-    def test_probes_and_a_budget_read_closed_and_need_a_fitted_import(self):
+    def test_probes_read_closed_and_need_a_fitted_import(self):
         geometry = SIMPLIFY.removeprefix("[geometry]\n")
         with tempfile.TemporaryDirectory() as directory:
-            body = ('[geometry]\nprobes = { face = 64 }\nbudget = { step = 2, settle = 0.05 }\n'
+            body = ('[geometry]\nprobes = { face = 64 }\n'
                     + geometry + VARIANT)
             settings = load_import_settings(write_import(directory, output='[output]\n', body=body))
             self.assertEqual(vars(settings.fit.probes), {"spacing": None, "face": 64})
-            self.assertEqual(vars(settings.fit.budget), {"step": 2, "settle": 0.05})
         with tempfile.TemporaryDirectory() as directory:
             settings = load_import_settings(write_import(directory, output='[output]\n', body=SIMPLIFY + VARIANT))
-            self.assertEqual(vars(settings.fit), {"probes": None, "budget": None})
+            self.assertEqual(vars(settings.fit), {"probes": None})
         for pattern, shaping in (("geometry.probes.spacing must be positive", "probes = { spacing = 0.0 }"),
-                                 ("geometry.probes.typo", "probes = { typo = 1 }"),
-                                 ("geometry.budget.policy", 'budget = { policy = "settle", step = 2, settle = 0.1 }'),
-                                 ("geometry.budget.step is required", 'budget = { settle = 0.1 }'),
-                                 ("settle must be at least 0 and below 1",
-                                  'budget = { step = 2, settle = 1.0 }')):
+                                 ("geometry.probes.typo", "probes = { typo = 1 }")):
             with self.subTest(shaping=shaping):
                 self.rejects(pattern, f"[geometry]\n{shaping}\n" + geometry + VARIANT)
         self.rejects("needs geometry.simplify", '[geometry]\nprobes = { spacing = 2.0 }\n')
@@ -384,10 +379,22 @@ class SceneTests(unittest.TestCase):
                 self.lit_rejects(r"mesh.*fit.*camera path", 'variant = "mesh"\n' + REGION + FIT,
                                  body=SIMPLIFY + VARIANT, output=VARIANT_OUTPUT, objects=objects)
 
+    def test_probe_fit_uses_only_the_variant_budget(self):
+        options = dict(body=SIMPLIFY + 'probes = { face = 64 }\n' + VARIANT,
+                       output=VARIANT_OUTPUT, objects=camera(path=True, region=False))
+        extra = 'variant = "mesh"\n' + FIT
+        with self.subTest(budget="explicit"):
+            self.lit_rejects(r"fit.prune.budget.*geometry.probes", extra.replace("budget = 8", "budget = 10"), **options)
+        with self.subTest(budget="absent"):
+            scene = load_scene(self.lit(extra.replace("budget = 8\n", ""), **options))
+            self.assertIsNone(scene.renderers[0].renderer.fit.budget)
+
     def test_a_fit_recipe_reads_and_needs_a_bake_and_room_to_prune(self):
         extra = 'variant = "mesh"\n' + FIT
         scene = load_scene(self.lit(extra, body=SIMPLIFY + VARIANT, output=VARIANT_OUTPUT,
                                          objects=camera(path=True, region=False)))
+        self.lit_rejects(r"fit.prune.budget.*required", extra.replace("budget = 8\n", ""),
+                         body=SIMPLIFY + VARIANT, output=VARIANT_OUTPUT, objects=camera(path=True, region=False))
         fit = scene.renderers[0].renderer.fit
         self.assertEqual((fit.budget, fit.normal_weight), (8, 1.0))
         self.assertEqual(fit.size, (184, 224))
@@ -1054,7 +1061,7 @@ class LocalSourceTests(unittest.TestCase):
             job.renderer.fit.size = (92, 112)
             self.assertNotEqual(reference_digest(job, scene), first)
 
-    def test_geometry_probes_and_budget_move_only_the_keys_they_shape(self):
+    def test_geometry_probes_move_only_the_keys_they_shape(self):
         from bake import bake
         from r3d.fitted_variant import reference_digest
 
@@ -1062,26 +1069,19 @@ class LocalSourceTests(unittest.TestCase):
             with tempfile.TemporaryDirectory() as directory:
                 root = pathlib.Path(directory)
                 write_import(root, output=VARIANT_OUTPUT, body=SIMPLIFY + shaping + VARIANT)
-                objects = renderer(extra='variant = "mesh"\nbake = true\n' + PATH + FIT)
+                objects = renderer(extra='variant = "mesh"\nbake = true\n' + PATH + (FIT.replace('budget = 8\n', '') if shaping else FIT))
                 scene = load_scene(write_scene(root, objects + sun_object() + camera(path=True, region=False), HEAD))
                 job = scene.renderers[0]
                 start = bake.stage_keys(job, scene, {stage: stage for stage in bake.STAGES})["start"]
                 return start, reference_digest(job, scene), fit_key(job, scene), job
 
         start, reference, fit, job = keys("")
-        self.assertEqual(bake.fit_recipe(job.renderer.fit, job.settings.fit.budget), dict(vars(job.renderer.fit)))
+        self.assertEqual(bake.fit_recipe(job.renderer.fit), dict(vars(job.renderer.fit)))
         probed = keys("probes = { spacing = 2.0 }\n")
         self.assertEqual(probed[0], start, "probes moved the start's key")
         self.assertNotEqual(probed[1], reference, "probes left the reference key alone")
         self.assertNotEqual(probed[2], fit)
         self.assertNotEqual(keys("probes = { spacing = 3.0 }\n")[1], probed[1], "the spacing is not in the key")
-        # A budget packs the held-out references its settle reads: the reference key moves once, not by value.
-        settling = keys('budget = { step = 2, settle = 0.1 }\n')
-        self.assertEqual(settling[0], start, "a budget moved the start's key")
-        self.assertNotEqual(settling[1], reference, "the scored references are not in the reference key")
-        self.assertEqual(keys('budget = { step = 3, settle = 0.2 }\n')[1], settling[1],
-                         "the budget's value moved the reference key")
-        self.assertNotEqual(settling[2], fit)
 
     def test_the_camera_clip_s_keys_and_nothing_else_of_its_file_stamp_recipe_and_reference(self):
         from r3d.fitted_variant import reference_digest

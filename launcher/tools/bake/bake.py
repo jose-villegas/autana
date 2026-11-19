@@ -3,8 +3,8 @@
 
     python launcher/tools/bake/bake.py list [PATH ...] [--missing] [--kind mesh|reference|fit|levels|texture|sound]
     python launcher/tools/bake/bake.py bake [PATH ...] [--kind KIND] [--only OUTPUT ...] [--again] [--out DIR]
-                                            [--from-run N ...] [--shard K/N | --shards DIR]
-    python launcher/tools/bake/bake.py shards [PATH ...]
+                                            [--from-run N ...] [--shard K/N --plan DIR | --shards DIR]
+    python launcher/tools/bake/bake.py shards [PATH ...] [--out DIR]
     python launcher/tools/bake/bake.py lock [PATH ...] [--from-run N ... | --seed] [--cache DIR]
     python launcher/tools/bake/bake.py check [PATH ...]
     python launcher/tools/bake/bake.py fetch [PATH ...] [--cache DIR] [--offline]
@@ -52,6 +52,10 @@ missing, unneeded or different, exactly.
 LOCK's `[[poses]]` rows hold the digest and count of each camera-path sampling, keyed on its clip bytes,
 sampling arguments and sampler code. `lock` samples and writes them. A key computed from a held row needs
 no host C compiler.
+
+`shards --out DIR` chooses each missing reference set's poses once, writes them and its render calls to DIR,
+and prints the shard matrix. Every `bake --kind reference --shard K/N --plan DIR` renders that plan's poses
+and copies its pose files byte for byte; shards never select poses. A local unsharded bake selects its own.
 
 `fetch` puts every
 locked file in the cache, from the release when it is not there; `--offline`
@@ -668,19 +672,15 @@ def mesh_recipe(job, scene, tools, poses=None, unavailable=None):
     return recipe
 
 
-def fit_recipe(fit, settle=None):
-    """The renderer's fit and the import's `settle` (geometry.budget), left out when unset so a mesh without it
-    keeps its key; geometry.probes reaches the fit through the reference key."""
-    recipe = dict(vars(fit))
-    if settle is not None:
-        recipe["settle"] = canonical(settle)
-    return recipe
+def fit_recipe(fit):
+    """The renderer's fit settings; probes reach the fit through the reference key."""
+    return dict(vars(fit))
 
 
 def reference_recipe(inputs, tools, poses=None, unavailable=None):
     """A fit's reference set by every field of its reference_set.ReferenceInputs: the import as a mesh counts
     it, the camera by its lens and sampled poses (a camera without a path has none: its views are all probes),
-    probes and shaped only when set, the rest as parsed."""
+    probes only when set, the rest as parsed."""
     recipe = {}
     for field in dataclasses.fields(inputs):
         value = getattr(inputs, field.name)
@@ -696,7 +696,7 @@ def reference_recipe(inputs, tools, poses=None, unavailable=None):
                                for name, field in (("train", "train_every_ms"),
                                                    ("coverage", "coverage_every_ms"))}
             recipe["camera"] = camera
-        elif field.name in ("probes", "shaped"):
+        elif field.name == "probes":
             if value:
                 recipe[field.name] = canonical(value)
         else:
@@ -721,7 +721,7 @@ def stage_keys(job, scene, tools, starts=None, poses=None):
         start_sha256 = None if starts is None else starts.get(start)
         reference_sha256 = None if starts is None or reference is None else starts.get(reference)
         fit = None if start_sha256 is None or reference_sha256 is None else digest(
-            ["fit", reference_sha256, start_sha256, fit_recipe(job.renderer.fit, job.settings.fit.budget),
+            ["fit", reference_sha256, start_sha256, fit_recipe(job.renderer.fit),
              tools["fit"]])
         fit_sha256 = None if starts is None or fit is None else starts.get(fit)
         levels = None if fit_sha256 is None else digest(
@@ -1377,6 +1377,7 @@ def main(argv=None):
     parser.add_argument("--only", action="append", metavar="OUTPUT", help="bake: only this output; repeatable")
     parser.add_argument("--again", action="store_true", help="bake: make them even when locked, and compare")
     parser.add_argument("--shard", metavar="K/N", help="bake --kind reference: trace shard K of N of each set into --out")
+    parser.add_argument("--plan", metavar="DIR", help="bake --shard: render the poses from shards --out DIR")
     parser.add_argument("--shards", metavar="DIR", help="bake --kind reference: join the shards in DIR, then pack")
     parser.add_argument("--offline", action="store_true", help="fetch: never download")
     args = parser.parse_intermixed_args(argv)  # paths may follow options, as a shell user types them
@@ -1402,7 +1403,9 @@ def main(argv=None):
             # The shard numbers a run traces its missing reference sets in, as a JSON list for a job matrix.
             from bake import produce
 
-            rays = [produce.reference_rays(bake) for bake in found if bake.kind == "reference" and bake.key not in lock]
+            rays = [produce.reference_rays(bake, pathlib.Path(args.out) / bake.output) if args.out
+                    else produce.reference_rays(bake)
+                    for bake in found if bake.kind == "reference" and bake.key not in lock]
             print(json.dumps(list(range(reference_shards(sum(rays)))) if rays else []))
         elif args.command == "list":
             for bake in found:
@@ -1449,11 +1452,12 @@ def main(argv=None):
                     raise BakeMissing(refusal)
             if args.shard:
                 shard, count = (int(part) for part in args.shard.split("/"))
-                if args.kind != "reference" or not args.out or not 0 <= shard < count:
-                    parser.error("--shard K/N takes --kind reference, --out DIR and 0 <= K < N")
+                if args.kind != "reference" or not args.out or not args.plan or not 0 <= shard < count:
+                    parser.error("--shard K/N takes --kind reference, --out DIR, --plan DIR and 0 <= K < N")
                 for bake in found:
                     if to_make(bake, "reference"):
-                        produce.reference_shard(bake, pathlib.Path(args.out) / f"{bake.output}.shard-{shard}", shard, count)
+                        produce.reference_shard(bake, pathlib.Path(args.out) / f"{bake.output}.shard-{shard}",
+                                                shard, count, args.plan)
                         print(f"traced shard {shard}/{count} of {bake.output}", flush=True)
                 return 0
             for run in args.from_run or ():

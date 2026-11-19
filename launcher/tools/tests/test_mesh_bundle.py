@@ -49,7 +49,7 @@ def bundle_fixture(directory, flat=False, lod=False, fit=None, positions=None, t
     renderer = SimpleNamespace(face_samples=(1, 1, 1, None) if flat else None, bake=True, fit=fit)
     job = SimpleNamespace(object=obj, renderer=renderer, asset_name='hall.atrium',
                           settings=SimpleNamespace(meshlet_triangles=MESHLET_TRIANGLES, double_sided=['leaf'], lod=lod,
-                                                    morph=False, fit=SimpleNamespace(probes=None, budget=None)))
+                                                    morph=False, fit=SimpleNamespace(probes=None)))
     scene = SimpleNamespace(objects=[obj], renderers=[job], lights=[],
                             camera=SimpleNamespace(component=SimpleNamespace(path='path')))
     with mock.patch.object(mesh_import, 'flat_colours', side_effect=[np.full((1, 3), value) for value in (80, 80, 81, 82)]):
@@ -287,12 +287,11 @@ def run_fit(directory, fit_main, lod=None, path=True, shaping=None):
 
 
 class FitCommandTests(unittest.TestCase):
-    """The command line the fit stage hands the fit: which sets, in which order, and the settle."""
-    SETTLE = SimpleNamespace(step=100, settle=0.05)
+    """The command line the fit stage hands the fit: which sets, in which order, and the closure views."""
 
-    def command(self, path=True, probes=None, budget=None):
+    def command(self, path=True, probes=None):
         asked = []
-        shaping = SimpleNamespace(probes=probes, budget=budget)
+        shaping = SimpleNamespace(probes=probes)
         with tempfile.TemporaryDirectory() as directory:
             run_fit(directory, lambda args: asked.append(args) or keep_start(args), path=path, shaping=shaping)
             work = str(pathlib.Path(directory))
@@ -319,9 +318,8 @@ class FitCommandTests(unittest.TestCase):
         self.assertEqual(self.values(args, '--poses'), ['train.txt', 'train_landscape.txt'])
         self.assertEqual(self.values(args, '--coverage-poses'), ['coverage.txt'])
 
-    def test_held_out_sets_pass_only_when_the_import_sets_probes_or_a_budget_and_pair_up(self):
-        for name, shaping in (('none', {}), ('probes', dict(probes=SimpleNamespace())),
-                              ('budget', dict(budget=self.SETTLE))):
+    def test_held_out_sets_pass_only_when_the_import_sets_probes_and_pair_up(self):
+        for name, shaping in (('none', {}), ('probes', dict(probes=SimpleNamespace()))):
             with self.subTest(shaping=name):
                 args = self.command(**shaping)
                 held_out = ['held_out.txt'] + (['probes_held_out.txt'] if name == 'probes' else [])
@@ -332,12 +330,6 @@ class FitCommandTests(unittest.TestCase):
                 else:
                     self.assertEqual(self.values(args, '--held-out-poses'), held_out)
                     self.assertEqual(self.values(args, '--held-out-reference'), references)
-
-    def test_settle_is_passed_only_with_a_budget(self):
-        args = self.command(budget=self.SETTLE)
-        self.assertEqual(self.values(args, '--settle'), ['100'])
-        self.assertEqual(args[args.index('--settle') + 2], '0.05')
-        self.assertNotIn('--settle', self.command())
 
     def test_the_copy_gate_checks_the_path_held_out_set_unless_the_camera_has_no_path(self):
         for path, probes, expected in ((True, SimpleNamespace(), 'held_out.txt'), (True, None, 'held_out.txt'),

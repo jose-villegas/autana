@@ -118,7 +118,6 @@ Every Geometry table opts its step in; without it the step does not run.
 | `geometry.thin` | `material`, `keep` | Keeps a share of one material's triangles. | Off. | None / fewer triangles. | [thin](#thin) |
 | `geometry.simplify` | `dense_edge`, `seal_seams`, `colour_deviation` | Splits long edges and simplifies each variant to its budget, colour steering the collapses; can seal seams. | Off. | Seconds / set by the budget. | [simplify](#simplify) |
 | `geometry.probes` | `spacing`, `face` | Adds fit views from probes spread through the camera's region, for surface the path never shows. | Off. | Minutes / more triangles kept. | [probes](#probes) |
-| `geometry.budget` | `step`, `settle` | Lets each fitted renderer settle on a prune budget below its own by held-out holes. | The renderer's `fit.prune.budget`. | A prune per step / fewer triangles. | [budget](#budget) |
 
 #### probes
 
@@ -134,18 +133,17 @@ that the path and the faces kept before it do not<sup>[[120]](../../Citations.md
 | `spacing` | World units between probes. | `PROBE_SPACING_NEAR_PLANES` near planes of the scene camera, widened to at most `PROBE_COUNT_MAX` probes. |
 | `face` | A kept face's square size in pixels. | `PROBE_FACE`. |
 
-A camera without a path fits on probes alone. Probes reach surface seen from
-somewhere off the path, never surface seen from nowhere. The fit's prune keeps
-what the path shows before what only a probe shows; see
-[Appearance Fit](Appearance-Fit.md#probes-and-the-settle-budget).
+A camera without a path fits on probes alone.
 
-#### budget
+A probe fit has no `fit.prune.budget`: its variant's `triangles` is the budget.
+The import spends it through [simplify](#simplify) with quadric edge collapse<sup>[[12]](../../Citations.md#garland-1997)</sup>
+and appearance attributes<sup>[[13]](../../Citations.md#hoppe-1999)</sup>.
 
-`geometry.budget` lets each fitted renderer prune to less than its
-`fit.prune.budget`, which it keeps without one. The fit tries `step`, 2 `step`,
-and so on up to that budget, counting hole pixels over the held-out views. It
-keeps the first budget whose holes fall by less than the `settle` share of its
-own to the next, or that has none.
+The prune drops only triangles no coverage view shows.
+
+A hole pixel shows no fitted surface where the reference differs from the clear
+colour by more than `HOLE_DE`. The closure gate rejects held-out hole growth of
+more than `CLOSURE_GROWTH` of the held-out pixels beyond the start's holes.
 
 #### alpha_mask
 
@@ -186,19 +184,40 @@ Each `[[objects.meshes]]` rule carves out matching source objects:
 | Key | Meaning |
 |---|---|
 | `match` | Exactly `{ object = "glob" }` or `{ material = "glob" }`; must match. |
-| `triangles` | Mesh budget per copy, separate from the variant's rest budget. |
+| `triangles` | Optional pin on the shape budget, separate from the variant's rest budget; otherwise derived from the camera. |
 | `variants` | Optional `{ variant = triangles }`: a variant's own per-copy budget. |
-| `min_triangles` | Optional floor on the scaled budget, at most `triangles`. Default 1. |
+| `min_triangles` | Optional floor on the shape budget; at most `triangles` when pinned. Default 1. |
 | `seam` | Optional policy; touching defaults to `lock`, otherwise `free`. |
 | `shape` | Optional: `exact` (the default) matches copies by their vertices and triangles; `surface` also joins copies whose surfaces match within `SURFACE_TOLERANCE`, whatever their triangles and materials ([by surface](#objects-and-instances)). |
 
-A variant draws each copy with its entry in `variants`, or else
-round(`triangles` x its `objects_scale`), never below `min_triangles`;
-`import_settings.variant_meshes()` owns this rule. The variant's `triangles`
-budgets the rest, retaining `props` shares and the global pass. Its optional `ceiling` caps emitted
-triangles, including copies, and is at least `triangles`. Carved meshes are paid first, at what they emit;
-the rest shares what is left. `simplify.check_ceiling` raises when the copies alone leave no room.
+A pinned rule uses its entry in `variants`, or round(`triangles` ×
+`objects_scale`), never below `min_triangles`.
+`import_settings.variant_meshes()` owns this scaling.
+
+The ceiling counts stored triangles: the rest and every copy prototype.
+Mirroring or a different per-face sidedness mask emits another prototype.
+`objects/budget.py` owns the split. The ceiling is hard; the rest floor is soft.
+
+| Renderer | The ceiling caps | Copies' room | Rest floor | Rest target |
+|---|---|---|---|---|
+| no `fit` | the baked mesh | `ceiling` − `triangles` | `triangles` | at most `triangles`, within the ceiling |
+| with `fit` | the fitted bundle; the start is uncapped | `ceiling` − `fit.prune.budget` | `fit.prune.budget` | `ceiling` − stored copies |
+
 Overlapping rules are rejected.
+
+### Free repeats and derived detail
+
+A carved bake automatically carves rigid repeats whose copies touch nothing.
+They need no rule. An uncarved geometry bake stores each placed copy and
+uses neither free repeats nor camera-derived budgets.
+
+| Step | Result |
+|---|---|
+| Near level | At the closest camera view of any copy, measured surface movement stays within `lod.tolerance_px`. With camera-path visibility, only views looking at a copy count. The shape is welded first, so source seams do not hold it back. A scene camera is required. |
+| Balance | Measured stand-ins pay for every emitted prototype. The shape whose next rung removes most triangles per pixel steps down first. |
+| Ceiling | After the last rungs, the rest may shrink below its floor. Copies that leave the rest no triangle fail with the room, total and ceiling. |
+| Authoring | `objects_report.py SCENE --object NAME --out DIR --authoring` writes the derived rows and an authoring table: the split, the rest's shortfall below its floor, the coarsest shapes and the shapes above the near-view tolerance. |
+| Carved | `objects_report.py SCENE --object NAME --out DIR --carved BUNDLE` lists each carved shape of a start or fit: copies, source, baked and drawn triangles, alpha-tested share and nearest eye, any and in view. A sheet sets source beside baked. |
 
 Objects touch when a vertex lies within `repair.seal_tolerance` of the other's
 surface. `objects/contact.py` owns the graph and both sides' border vertices.
@@ -323,7 +342,7 @@ off above on: a pixel-sized hole that shows the sky is sealed.
 |---|---|---|---|---|---|
 | `[[variants]]` | `name`; `triangles` | Names a geometry budget. | Required with `geometry.simplify`; otherwise optional (one mesh named by `output.name`). | Seconds each / set by the budget. | [variants](#variants) |
 | `[[variants]].triangles` | — | Sets a simplified mesh's triangle budget. | Required with `geometry.simplify`. | Seconds / set by the budget. | [variants triangles](#variants-triangles) |
-| `[[variants]].objects_scale` | — | Scales each `[[objects.meshes]]` copy budget. | 1. | — / set by the budgets. | [variants objects_scale](#variants-objects_scale) |
+| `[[variants]].objects_scale` | — | Scales each pinned `[[objects.meshes]]` shape budget. | 1. | — / set by the budgets. | [variants objects_scale](#variants-objects_scale) |
 
 #### variants
 
@@ -337,9 +356,9 @@ a `fit` budget may not exceed it.
 
 #### variants objects_scale
 
-`[[variants]].objects_scale` multiplies each `[[objects.meshes]]` copy budget
-for this variant, so one set of rules serves every tier; a rule's `variants`
-entry or `min_triangles` overrides or floors the result.
+`[[variants]].objects_scale` multiplies each pinned shape budget for this
+variant; a rule's `variants` entry or `min_triangles` overrides or floors the
+result. Derived budgets follow the camera and LOD tolerance instead.
 
 ## Objects and instances
 

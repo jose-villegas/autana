@@ -21,7 +21,7 @@ Measured results are in
 
 | Key | Symbol | What it does |
 |---|---|---|
-| `fit.prune.budget` | | triangles the fitted mesh keeps after pruning, at most the variant's `triangles` |
+| `fit.prune.budget` | | triangles the fitted mesh keeps after pruning, at most the variant's `triangles`; with a variant `ceiling`, the least the rest keeps: it is pruned to the ceiling less the carved shapes ([variants](Mesh-Import.md#variants-triangles)) |
 | `fit.prune.coverage_every_ms` | | camera-path spacing of the dense poses pruning counts pixels over, at `size` widened |
 | `fit.poses.size` | | pose resolution for training, held-out references and coverage |
 | `fit.poses.train_every_ms` | | camera-path spacing of the training poses |
@@ -64,22 +64,21 @@ cover both panel orientations. Of the samples `train_every_ms` takes from the
 camera path, those at multiples of `held_out_every_ms` (time 0 aside) are held
 out of training and used only for scoring.
 
-## Probes and the settle budget
+## Probes and closure
 
-An import's [`geometry.probes`](Mesh-Import.md#probes) adds cube faces of probes to
-the training views and a held-out set of faces from a second seed. Probe
-placement and the faces kept are traced on the source alone, never on the
-start, so the reference set stays keyed on its own inputs.
+An import's [`geometry.probes`](Mesh-Import.md#probes) adds training cube faces
+and held-out faces from a second seed. Placement and face selection use the
+source alone, so the reference set depends only on its own inputs.
 
-The prune ranks coverage: each triangle's pixels over the path's coverage poses,
-then over the probes' training faces. A triangle the path shows outranks every
-one only a probe shows, so probes add surface after the path's surface is kept.
+A probe fit has no `fit.prune.budget`: its variant's `triangles` is the budget.
+The import spends it through simplify with quadric edge collapse<sup>[[12]](../../Citations.md#garland-1997)</sup>
+and appearance attributes<sup>[[13]](../../Citations.md#hoppe-1999)</sup>.
 
-A hole pixel is one where the fit shows the clear colour and the reference is
-more than `HOLE_DE` from it. With either import setting the fit writes the
-held-out holes of each budget it tried to `holes.json`, beside `stretch.json`.
-[`geometry.budget`](Mesh-Import.md#budget) keeps the budget where
-those holes stop falling.
+The prune drops only triangles no coverage view shows.
+
+A hole pixel shows no fitted surface where the reference differs from the clear
+colour by more than `HOLE_DE`. The closure gate rejects held-out hole growth of
+more than `CLOSURE_GROWTH` of the held-out pixels beyond the start's holes.
 
 ## Cost model
 

@@ -166,3 +166,10 @@ def write_obj(path, mtllib, positions, groups, uvs=None, banner=(), position_dec
         lines.append(f"usemtl {material}")
         lines += [face.format(a + 1, b + 1, c + 1) for a, b, c in triangles]
     pathlib.Path(path).write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+
+
+def alpha_tested(textures):
+    """Per material of `load_textures`: does its texture cut texels away (leaves, chains, glass panes)?"""
+    import numpy as np
+
+    return np.array([tex is not None and tex.levels[0][..., 3].min() <= ALPHA_OPAQUE for tex in textures], dtype=bool)

@@ -694,7 +694,7 @@ class PruneAndCostTests(unittest.TestCase):
                                      "--reference", "reference", "--out", "out", *flags])
                 scene.assert_not_called()
 
-    def test_main_without_a_budget_optimises_and_writes_without_pruning(self):
+    def test_main_without_a_budget_optimises_and_keeps_shown_triangles(self):
         from r3d import appearance_simplify as appearance
 
         source = SimpleNamespace()
@@ -711,6 +711,8 @@ class PruneAndCostTests(unittest.TestCase):
                     write_mesh=mock.DEFAULT) as calls, mock.patch.dict(sys.modules, {
                         "r3d.reference_render": SimpleNamespace(source_for=source_for)}):
                 calls["optimise"].return_value = (points, rgb, [1.0])
+                calls["coverage"].return_value = np.ones(len(mesh.tris))
+                calls["prune"].side_effect = prune
                 calls["write_mesh"].return_value = len(mesh.tris)
                 appearance.main(["--scene", "scene.toml", "--start", "start.bundle", "--poses", "poses.txt",
                                  "--reference", "reference", "--out", directory,
@@ -723,8 +725,8 @@ class PruneAndCostTests(unittest.TestCase):
             self.assertIs(options["source"], source)
             self.assertEqual(options["seam_margin"], 0.25)
             self.assertEqual((options["surface_weight"], options["surface_margin"]), (10, 0.25))
-            calls["coverage"].assert_not_called()
-            calls["prune"].assert_not_called()
+            calls["coverage"].assert_called_once()
+            self.assertEqual(calls["prune"].call_args.args[2], len(mesh.tris))
             written = calls["write_mesh"].call_args.args
             self.assertEqual(len(written), 3)
             np.testing.assert_array_equal(written[2].points, points)

@@ -32,8 +32,8 @@ try:
 except ImportError:
     Image = render_compare = None
 
-# An import that sets neither geometry.probes nor geometry.budget.
-UNSHAPED = SimpleNamespace(probes=None, budget=None)
+# An import without geometry.probes.
+UNSHAPED = SimpleNamespace(probes=None)
 
 
 @unittest.skipIf(mesh_import is None, "needs the r3d environment")
@@ -199,6 +199,22 @@ class SweepTests(unittest.TestCase):
         self.assertEqual(build.call_args.args[0], pathlib.Path(__file__).resolve().parents[1] / "render/scene_viewer.sh")
         self.assertEqual(build.call_args.args[2], scene)
 
+    def test_probe_import_refuses_sweep_budgets(self):
+        import contextlib
+        import io
+        job = SimpleNamespace(renderer=SimpleNamespace(variant=SimpleNamespace(triangles=10)),
+                              settings=SimpleNamespace(fit=SimpleNamespace(probes=object())))
+        error = io.StringIO()
+        with unittest.mock.patch.object(fitted_variant, "load_scene"), \
+                unittest.mock.patch.object(fitted_variant, "placed_variant", return_value=job), \
+                unittest.mock.patch.object(fitted_variant, "sweep_references", side_effect=AssertionError("sweep ran")), \
+                contextlib.redirect_stderr(error), self.assertRaises(SystemExit):
+            fitted_variant.sweep_main(["scene.toml", "--variant", "mesh", "--budgets", "5", "--out", "out"])
+        self.assertIn("--budgets", error.getvalue())
+        self.assertIn("geometry.probes", error.getvalue())
+        with self.assertRaisesRegex(ValueError, "budget.*geometry.probes"):
+            stage.fit("scene.toml", None, job, pathlib.Path("out"), budget=5)
+
     def test_fit_point_default_target_and_recipe_arguments(self):
         with tempfile.TemporaryDirectory() as directory:
             point_dir = pathlib.Path(directory) / "budget-42-cost-0.5"
@@ -324,6 +340,8 @@ class SweepTests(unittest.TestCase):
         def fitter(command):
             out = pathlib.Path(command[command.index("--out") + 1])
             out.mkdir(parents=True)
+            self.assertNotIn("--budget", command)
+            self.assertIn("--held-out-poses", command)
             self.assertEqual(command[command.index("--object") + 1], job.object.name)
             for key in ("surface_weight", "surface_margin"):
                 self.assertEqual(float(command[command.index("--" + key.replace("_", "-")) + 1]), getattr(recipe, key))
@@ -331,7 +349,7 @@ class SweepTests(unittest.TestCase):
 
         recipe = SimpleNamespace(steps=3, budget=2, batch=1, laplacian=0.5, normal_weight=0.25, surface_weight=10.0, surface_margin=0.25)
         job = SimpleNamespace(asset_name="scene.entry", object=SimpleNamespace(name="entry"),
-                              settings=SimpleNamespace(fit=UNSHAPED), renderer=SimpleNamespace(
+                              settings=SimpleNamespace(fit=SimpleNamespace(probes=object())), renderer=SimpleNamespace(
             fit=recipe, variant=SimpleNamespace(name="variant_name")))
         with tempfile.TemporaryDirectory() as directory:
             work = pathlib.Path(directory) / "work"
