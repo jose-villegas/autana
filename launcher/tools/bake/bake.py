@@ -145,18 +145,19 @@ STAGES = {
     "blend": ("gltf/blend_skin_to_glb.py",),
     "sound": ("audio/sound_import.py",),
     "texture": ("r3d/texture/texture_stage.py:texture",),
+    "sh_probes": ("r3d/sh_probe_bake.py:bake",),
 }
 BLEND_EXPORT = "gltf/blend_skin_to_glb.py"
 GLB_SUFFIX = ".glb"
 # The order kinds are made in: a mesh reads the export of its .blend, a fit its start and reference set.
-KINDS = ("blend", "mesh", "reference", "fit", "levels", "texture", "sound")
+KINDS = ("blend", "mesh", "reference", "fit", "levels", "texture", "sound", "sh_probes")
 # The kinds whose key names the locked bytes of a packed bake before them, so a run makes them after it.
 FOLLOWING_KINDS = ("levels", "texture")
 # A textured renderer's texture bake: its materials' LTEX entries and its mesh's LUVS (r3d/texture/), as a pack.
 TEXTURE_SUFFIX = ".texture.pack"
 WAITS = {"levels": "waits for its fit", "texture": "waits for its mesh"}
 # The kinds that trace rays on the CPU, whose bytes differ between CPU vendors (LOCK's mesh_cpu_vendor).
-TRACED_KINDS = ("mesh", "reference")
+TRACED_KINDS = ("mesh", "reference", "sh_probes")
 # A run traces its missing reference sets in shards that each take a share of every set's poses, as many as keep a
 # shard near REFERENCE_SHARD_SECONDS on a hosted 4-CPU runner: a quarter of the 6 h cap, room for a scene whose rays
 # cost more than the calibration's. The rate is bistro.street_fitted's primary rays over its hosted trace time.
@@ -788,7 +789,7 @@ def bakes_in(packs, jobs, starts=None, poses=None):
         starts = locked_starts(held) if starts is None else starts
         poses = Poses(rows) if poses is None else poses
     tools = {stage: tool_digest(stage) for stage in STAGES}
-    found, exports, fit_starts, references = [], {}, {}, {}
+    found, exports, fit_starts, references, probes = [], {}, {}, {}, {}
     for name, entries in sorted(packs.items()):
         for entry, source in sorted(entries.items()):
             if source.name.endswith(sound_asset.SUFFIX):
@@ -807,6 +808,20 @@ def bakes_in(packs, jobs, starts=None, poses=None):
             if is_blend(job.settings):
                 export = blend_export(job.settings, tools)
                 exports.setdefault(export.key, export)
+            from r3d.sh_probe_settings import load as load_sh_probes, recipe, SUFFIX
+
+            if scene is not None and load_sh_probes(scene.path) is not None:
+                from r3d.scene_name import scene_id
+
+                probe_recipe = recipe(job, scene, import_recipe(job.settings, tools)[1])
+                probe_key = digest(["sh_probes", probe_recipe, tools["sh_probes"]])
+                probe_output = scene_id(scene.path) + SUFFIX
+                if scene.path in probes and probes[scene.path].key != probe_key:
+                    raise SettingsError(f"{scene.path}: scene has conflicting SH probe requests")
+                probes.setdefault(scene.path, Bake(
+                    output=probe_output, source=asker, holder=job.settings.path.stem, kind="sh_probes",
+                    key=probe_key, suffix=SUFFIX, tree=scene.path.with_name(probe_output),
+                    job=job, scene=scene, packed=False))
             keys = stage_keys(job, scene, tools, starts, poses)
             kind = "fit" if "fit" in keys else "mesh"
             holder = job.object.name if job.object is not None else job.renderer.variant.name
@@ -836,7 +851,7 @@ def bakes_in(packs, jobs, starts=None, poses=None):
             textures = renderer_textures(asker, holder) if job.object is not None else None
             if textures is not None:
                 found.append(texture_bake(found[-1], entry, textures, starts, tools))
-    return list(exports.values()) + list(fit_starts.values()) + list(references.values()) + found
+    return list(exports.values()) + list(fit_starts.values()) + list(references.values()) + list(probes.values()) + found
 
 
 def relative(path):

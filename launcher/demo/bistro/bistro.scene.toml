@@ -31,6 +31,7 @@ rotation = [40.0, -60.0, 0.0]
 
 [objects.light]
 type = "directional"
+mode = "baked"
 color = [1.0, 0.92, 0.78]
 intensity = 3.0
 

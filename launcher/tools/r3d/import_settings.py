@@ -32,6 +32,9 @@ LIGHT_AXIS = read_define(SCENE_OWNER, "SCENE_LIGHT_AXIS")
 SKIN_LIGHTING = ("direct", "renormalised", "table")
 ANIM_WRAPS = ("clamp", "loop")
 
+LIGHT_MODES = ("realtime", "baked")
+LIGHT_MODE_REALTIME, LIGHT_MODE_BAKED = LIGHT_MODES
+
 RESERVED_LIGHTS = ("point", "spot")
 
 # The mesh sources an import reads: an OBJ with its MTL and textures, a binary glTF, or an FBX; or a
@@ -555,7 +558,7 @@ def load_environment_light(kind, table, where):
     """Sky and ambient are scene settings, not objects."""
     fields = LIGHT_FIELDS[kind]
     check_keys(table, tuple(fields), where)
-    light = {"type": kind}
+    light = {"type": kind, "mode": LIGHT_MODE_BAKED}
     for name, reader in fields.items():
         light[name] = READERS[reader](table[name], f"{where}.{name}")
     return light_values(light, where)
@@ -569,8 +572,11 @@ def load_light(component, rotation, where):
     if kind != "directional":
         raise SettingsError(f"{where}.type must be directional: sky and ambient are scene settings")
     fields = {name: reader for name, reader in LIGHT_FIELDS[kind].items() if name != "direction"}
-    check_keys(component, ("type", *fields), where)
-    light = {"type": kind, "direction": rotate(rotation, LIGHT_AXIS)}
+    check_keys(component, ("type", *fields), where, optional=("mode",))
+    mode = component.get("mode", LIGHT_MODE_REALTIME)
+    if mode not in LIGHT_MODES:
+        raise SettingsError(f"{where}.mode must be one of {', '.join(LIGHT_MODES)}")
+    light = {"type": kind, "mode": mode, "direction": rotate(rotation, LIGHT_AXIS)}
     for name, reader in fields.items():
         light[name] = READERS[reader](component[name], f"{where}.{name}")
     return light_values(light, where)

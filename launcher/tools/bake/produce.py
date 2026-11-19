@@ -394,6 +394,16 @@ def produce(bake, cache, lock=None, blender=None, fresh_references=None):
     given `fresh_references`, a run's own folder, renders its set there (reference_set)."""
     if bake.kind == "blend":
         return produce_blend(bake, cache, blender)
+    if bake.kind == "sh_probes":
+        check_environment(("sh_probes",))
+        from r3d.sh_probe_bake import bake as bake_probes
+        job = bake.job
+        if keys.is_blend(job.settings):
+            job = with_source(job, export_file(job.settings, lock or {}, cache))
+        with tempfile.TemporaryDirectory() as work:
+            target = pathlib.Path(work) / bake.output
+            target.write_bytes(bake_probes(job, bake.scene))
+            return record(bake, target, cache)
     if bake.kind == "sound":
         check_environment(("sound",))
         return produce_sound(bake, cache)
