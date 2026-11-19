@@ -459,11 +459,15 @@ scene_set_contact(entity_t renderer, const scene_contact_t* contact) {
         return;
     }
     scene_renderer_t* r = &scene->renderers[index];
+    const bool refresh = r->contact_blob_ground_y != contact->ground_y || r->contact_blob_strength != contact->strength
+                         || r->contact_blob_shape != contact->shape;
     r->contact_blob_ground_y = contact->ground_y;
     r->contact_blob_strength = contact->strength;
     r->contact_blob_shape = contact->shape;
     r->contact_warp = contact->warp;
-    scene_skin_contact_refresh(scene, row);
+    if (refresh) {
+        scene_skin_contact_refresh(scene, row);
+    }
     r->changed = true;
     render_context_forget(render_context_main());
 }
