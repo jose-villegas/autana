@@ -16,11 +16,9 @@ typedef struct {
 
 typedef struct {
     uint8_t* coverage;
-    int side;
-    vec3f_t origin, u, v;
 } contact_mask_t;
 
 /* Caller supplies one entry per joint, retained with the skin's buffers. */
 void contact_mask_bind(contact_joint_t* joints, const r3d_lit_mesh_t* bind, const r3d_skin_t* skin);
 void contact_mask_build(contact_mask_t* mask, const contact_joint_t* joints, int count, const mat4f_t* palette,
-                        int position_scale, const mat4f_t* world, box3f_t mover, float ground_y);
+                        int position_scale, const mat4f_t* world, box3f_t mover);

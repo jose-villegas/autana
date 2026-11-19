@@ -307,9 +307,7 @@ scene_animation_repose(scene_t* scene, uint32_t dt_ms) {
             scene_renderer_bound(&scene->renderers[scene_renderer_index(scene, e)]);
         }
     }
-    if (scene->contact_shape_users > 0) {
-        refresh_posed_contacts(scene);
-    }
+    refresh_posed_contacts(scene);
     FRAME_COST_END(refit_from, SCENE_ANIM_STAGE_REFIT_NAME);
 }
 

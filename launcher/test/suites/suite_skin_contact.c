@@ -103,13 +103,14 @@ test_pack_contact_leaves(void) {
         for (int j = 0; j < skeleton.joint_count; j++) {
             TEST_ASSERT_NOT_EQUAL(contacts.joints[i], skeleton.joints[j].parent);
         }
-        TEST_ASSERT_LESS_OR_EQUAL_FLOAT(lowest + CONTACT_JOINT_BAND * (high - low), contacts.rest_y[i]);
+        TEST_ASSERT_LESS_OR_EQUAL_FLOAT(lowest + CONTACT_JOINT_BAND * (high - low),
+                                        skin_contact_bind_position(&skin, contacts.joints[i]).y);
         const char* path = skeleton.paths + skeleton.joints[contacts.joints[i]].path;
         const char* joint = strrchr(path, '/');
         joint = joint == NULL ? path : joint + 1;
         TEST_ASSERT_TRUE(strcmp(joint, "toes.l") == 0 || strcmp(joint, "toes.r") == 0 || strcmp(joint, "hand.l") == 0
                          || strcmp(joint, "hand.r") == 0);
-        TEST_ASSERT_FLOAT_WITHIN(0.002F, 0.027F, contacts.rest_y[i]);
+        TEST_ASSERT_FLOAT_WITHIN(0.002F, 0.027F, skin_contact_bind_position(&skin, contacts.joints[i]).y);
     }
     TEST_ASSERT_FLOAT_WITHIN(0.002F, 0.133F, contacts.radius);
     asset_store_release(loaded);

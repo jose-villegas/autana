@@ -84,6 +84,9 @@ find_pool(void) {
 
 static void
 set_contact_light(entity_t root) {
+    if (shown->contact_shape == SCENE_CONTACT_BLOB && !shown->contact_warp) {
+        return;
+    }
     const entity_t light = entity_find(root, name_hash(CAPYBARA_LIGHT));
     transformf_t pose = transform_local(light);
     transformf_set_rotation(&pose,
@@ -267,15 +270,9 @@ copy_extras(int i) {
         floor.rotation = quatf_from_axis_angle(vec3f_unit_x(), STRESS_GROUND_ROTATION);
         floor.scale = (vec3f_t){width, width, width};
         transform_set_local(grounds[i], floor);
-        static const scene_contact_shape_t contact_shapes[] = {
-            [STRESS_SURFACE_SKINNED_SH_BLOBS] = SCENE_CONTACT_BLOB,
-            [STRESS_SURFACE_SKINNED_SHAPE_BLOBS] = SCENE_CONTACT_SHAPE,
-            [STRESS_SURFACE_SKINNED_FEET_BLOBS] = SCENE_CONTACT_FEET,
-            [STRESS_SURFACE_SKINNED_SHAPE_WARPED] = SCENE_CONTACT_SHAPE};
         const entity_t subject = entity_find(slots[i], name_hash(CAPYBARA_SUBJECT));
-        scene_set_contact_blob(subject, floor.position.y, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT,
-                               contact_shapes[shown->surface]);
-        scene_set_contact_warp(subject, shown->surface == STRESS_SURFACE_SKINNED_SHAPE_WARPED);
+        scene_set_contact_blob(subject, floor.position.y, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, shown->contact_shape);
+        scene_set_contact_warp(subject, shown->contact_warp);
         entity_set_enabled(grounds[i], true);
     }
 }

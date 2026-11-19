@@ -49,17 +49,19 @@ contact_heights(const anim_skeleton_t* skeleton, const r3d_skin_t* skin, float* 
 }
 
 static void
-contact_insert(skin_contacts_t* out, int joint, float y) {
+contact_insert(skin_contacts_t* out, const r3d_skin_t* skin, int joint, float y) {
     int at = out->count;
-    while (at > 0 && y < out->rest_y[at - 1]) {
+    while (at > 0) {
+        const float rest_y = skin_contact_bind_position(skin, out->joints[at - 1]).y;
+        if (y >= rest_y) {
+            break;
+        }
         if (at < SKIN_CONTACTS_MAX) {
-            out->rest_y[at] = out->rest_y[at - 1];
             out->joints[at] = out->joints[at - 1];
         }
         at--;
     }
     if (at < SKIN_CONTACTS_MAX) {
-        out->rest_y[at] = y;
         out->joints[at] = joint;
     }
     if (out->count < SKIN_CONTACTS_MAX) {
@@ -98,7 +100,7 @@ skin_contacts_find(const anim_skeleton_t* skeleton, const r3d_skin_t* skin, skin
     for (int j = 0; j < skin->joint_count; j++) {
         const float y = skin_contact_bind_position(skin, j).y;
         if (leaf(skeleton, j) && y <= lowest_leaf + (CONTACT_JOINT_BAND * height)) {
-            contact_insert(out, j, y);
+            contact_insert(out, skin, j, y);
         }
     }
     const float nearest = contact_spacing(skin, out);

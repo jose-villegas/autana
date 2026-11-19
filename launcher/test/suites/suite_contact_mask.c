@@ -27,7 +27,7 @@ test_mask_without_triangles(void) {
     TEST_ASSERT_NOT_NULL(mask.coverage);
     const box3f_t box = {{-4, 0, -4}, {4, 4, 4}};
     mat4f_t world = mat4f_identity(), palette = mat4f_identity();
-    contact_mask_build(&mask, &joint, 1, &palette, mesh.position_scale, &world, box, 0);
+    contact_mask_build(&mask, &joint, 1, &palette, mesh.position_scale, &world, box);
     const int middle = CONTACT_MASK_SIDE / 2;
     const int at = middle * CONTACT_MASK_SIDE + middle;
     TEST_ASSERT_EQUAL_UINT8(UINT8_MAX, mask.coverage[at]);
@@ -36,10 +36,10 @@ test_mask_without_triangles(void) {
     TEST_ASSERT_NOT_NULL(saved);
     memcpy(saved, mask.coverage, CONTACT_MASK_BYTES);
     palette.m[1][3] = 4;
-    contact_mask_build(&mask, &joint, 1, &palette, mesh.position_scale, &world, box, 0);
+    contact_mask_build(&mask, &joint, 1, &palette, mesh.position_scale, &world, box);
     TEST_ASSERT_EQUAL_MEMORY(saved, mask.coverage, CONTACT_MASK_BYTES);
     palette.m[0][3] = 2;
-    contact_mask_build(&mask, &joint, 1, &palette, mesh.position_scale, &world, box, 0);
+    contact_mask_build(&mask, &joint, 1, &palette, mesh.position_scale, &world, box);
     TEST_ASSERT_EQUAL_UINT8(0, mask.coverage[at - middle / 2]);
     TEST_ASSERT_EQUAL_UINT8(UINT8_MAX, mask.coverage[at + middle / 2]);
     free(saved);
@@ -79,13 +79,13 @@ test_mask_palette_scale_and_world_transform(void) {
     const box3f_t box = {{-1, 0, -10}, {7, 4, -2}};
     contact_mask_t mask = {.coverage = malloc(CONTACT_MASK_BYTES)};
     TEST_ASSERT_NOT_NULL(mask.coverage);
-    contact_mask_build(&mask, &joint, 1, &palette, scale, &world, box, 0);
+    contact_mask_build(&mask, &joint, 1, &palette, scale, &world, box);
     const int middle = CONTACT_MASK_SIDE / 2;
     const int at = middle * CONTACT_MASK_SIDE + middle;
     TEST_ASSERT_EQUAL_UINT8(UINT8_MAX, mask.coverage[at]);
     TEST_ASSERT_GREATER_THAN_UINT8(0, mask.coverage[at + (CONTACT_MASK_SIDE / 8) * CONTACT_MASK_SIDE]);
     TEST_ASSERT_EQUAL_UINT8(0, mask.coverage[at + CONTACT_MASK_SIDE / 8]);
-    contact_mask_build(&mask, &joint, 1, &palette, scale, &world, (box3f_t){0}, 0);
+    contact_mask_build(&mask, &joint, 1, &palette, scale, &world, (box3f_t){0});
     for (int i = 0; i < CONTACT_MASK_BYTES; i++) {
         TEST_ASSERT_EQUAL_UINT8(0, mask.coverage[i]);
     }

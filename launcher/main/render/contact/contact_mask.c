@@ -50,13 +50,14 @@ mask_ellipse(contact_mask_t* mask, vec2f_t centre, float xx, float xz, float zz)
     const float floor_variance = CONTACT_MASK_CELL_HALF * CONTACT_MASK_CELL_HALF;
     xx += floor_variance;
     zz += floor_variance;
-    const float rx = sqrtf(xx), rz = sqrtf(zz);
+    const float rx = sqrtf(xx);
+    const float rz = sqrtf(zz);
     const float inverse = 1.0F / ((xx * zz) - (xz * xz));
     const float edge = fminf(rx, rz);
     const int left = mathi_max(0, (int)floorf(centre.x - rx));
-    const int right = mathi_min(mask->side, (int)ceilf(centre.x + rx));
+    const int right = mathi_min(CONTACT_MASK_SIDE, (int)ceilf(centre.x + rx));
     const int top = mathi_max(0, (int)floorf(centre.y - rz));
-    const int bottom = mathi_min(mask->side, (int)ceilf(centre.y + rz));
+    const int bottom = mathi_min(CONTACT_MASK_SIDE, (int)ceilf(centre.y + rz));
     const float quadratic = zz * inverse;
     const float second_difference = 2.0F * quadratic;
     for (int y = top; y < bottom; y++) {
@@ -64,9 +65,9 @@ mask_ellipse(contact_mask_t* mask, vec2f_t centre, float xx, float xz, float zz)
         const float dx = (float)left + CONTACT_MASK_CELL_HALF - centre.x;
         const float cross = 2.0F * xz * z * inverse;
         float d2 = (quadratic * dx * dx) - (cross * dx) + (xx * z * z * inverse);
-        float step = quadratic * ((2.0F * dx) + 1.0F) - cross;
+        float step = (quadratic * ((2.0F * dx) + 1.0F)) - cross;
         for (int x = left; x < right; x++, d2 += step, step += second_difference) {
-            uint8_t* cell = &mask->coverage[(y * mask->side) + x];
+            uint8_t* cell = &mask->coverage[(y * CONTACT_MASK_SIDE) + x];
             if (*cell == UINT8_MAX || d2 >= 1.0F) {
                 continue;
             }
@@ -78,15 +79,15 @@ mask_ellipse(contact_mask_t* mask, vec2f_t centre, float xx, float xz, float zz)
 }
 
 static void
-mask_joint(contact_mask_t* mask, const contact_joint_t* joint, const mat4f_t* palette, int scale,
-           const mat4f_t* world) {
+mask_joint(contact_mask_t* mask, const contact_joint_t* joint, const mat4f_t* palette, int scale, const mat4f_t* world,
+           box3f_t mover) {
     const mat3f_t linear = mat3f_mul(mat3f_from_mat4(*world), mat3f_from_mat4(*palette));
     const float reciprocal = 1.0F / (float)scale;
     const vec3f_t local = vec3f_scale(mat4f_apply(palette, joint->centre), reciprocal);
     const vec3f_t p = mat4f_apply(world, local);
-    const float sx = (float)mask->side / mask->u.x;
-    const float sz = (float)mask->side / mask->v.z;
-    const vec2f_t centre = {(p.x - mask->origin.x) * sx, (p.z - mask->origin.z) * sz};
+    const float sx = (float)CONTACT_MASK_SIDE / (mover.hi.x - mover.lo.x);
+    const float sz = (float)CONTACT_MASK_SIDE / (mover.hi.z - mover.lo.z);
+    const vec2f_t centre = {(p.x - mover.lo.x) * sx, (p.z - mover.lo.z) * sz};
     const vec3f_t x = {linear.m[0][0] * joint->radius.x * sx * reciprocal,
                        linear.m[0][1] * joint->radius.y * sx * reciprocal,
                        linear.m[0][2] * joint->radius.z * sx * reciprocal};
@@ -98,18 +99,14 @@ mask_joint(contact_mask_t* mask, const contact_joint_t* joint, const mat4f_t* pa
 
 void
 contact_mask_build(contact_mask_t* mask, const contact_joint_t* joints, int count, const mat4f_t* palette,
-                   int position_scale, const mat4f_t* world, box3f_t mover, float ground_y) {
-    mask->side = CONTACT_MASK_SIDE;
-    mask->origin = (vec3f_t){mover.lo.x, ground_y, mover.lo.z};
-    mask->u = (vec3f_t){mover.hi.x - mover.lo.x, 0, 0};
-    mask->v = (vec3f_t){0, 0, mover.hi.z - mover.lo.z};
+                   int position_scale, const mat4f_t* world, box3f_t mover) {
     memset(mask->coverage, 0, CONTACT_MASK_BYTES);
-    if (!(mask->u.x > 0 && mask->v.z > 0)) {
+    if (!(mover.hi.x > mover.lo.x && mover.hi.z > mover.lo.z)) {
         return;
     }
     for (int j = 0; j < count; j++) {
         if (joints[j].weight > 0) {
-            mask_joint(mask, &joints[j], &palette[j], position_scale, world);
+            mask_joint(mask, &joints[j], &palette[j], position_scale, world, mover);
         }
     }
 }

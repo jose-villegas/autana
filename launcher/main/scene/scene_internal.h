@@ -88,6 +88,9 @@ typedef struct {
     uint16_t colour_sets; /* the sets its colour arrays hold from the one opened: 1, or its batch's highest plus one */
     uint8_t contact_blob_shape;
     bool contact_warp;
+    contact_blob_t contact_blobs[CONTACT_BLOBS_MAX];
+    vec3f_t contact_light;
+    uint8_t contact_count;
     void* texturing;      /* its pack mesh's textures once opened (render/texture/), at load when they cut, or NULL */
     bool texturing_owner; /* the renderer that opened them: the scene holds one block per mesh id */
     /* Its static arrays are copied into PSRAM when it is first ACTIVE
@@ -113,9 +116,6 @@ scene_failure_t scene_renderer_open_cuts(scene_t* scene);
 
 /* Sets `r`'s world box from its mesh and model; call after either changes,
  * a skinned mesh's refit included. */
-int scene_contact_blobs(const scene_t* scene, const scene_renderer_t* renderer, vec3f_t light, contact_blob_t* blobs);
-box3f_t scene_contact_bounds(const scene_t* scene, const scene_renderer_t* renderer, vec3f_t light);
-
 void scene_renderer_bound(scene_renderer_t* r);
 
 typedef struct {
@@ -249,7 +249,7 @@ struct scene {
     int staged_count;
     uint16_t* active_renderers; /* renderers whose entity is ACTIVE, in renderer order */
     int active_renderer_count;
-    int contact_warp_users, contact_shape_users;
+    bool contact_warp, contact_shape;
     bool active_renderers_stale; /* an ACTIVE bit flipped since the list was built */
 };
 
@@ -384,9 +384,9 @@ void scene_skin_light_prepare(scene_t* scene, scene_row_t entity);
 bool scene_light_color_fits(vec3f_t linear_rgb);
 r3d_skin_light_transfer_t* scene_light_transfer_take(const scene_t* scene);
 bool scene_lights_allocate(scene_t* scene);
-extern int scene_contact_warp_users;
 
 void scene_lights_prepare(scene_t* scene);
+vec3f_t scene_light_brightest_direction(const scene_t* scene);
 void scene_skin_range(scene_t* scene, int first, int count);
 void scene_skin_contact_refresh(scene_t* scene, scene_row_t entity);
 
@@ -404,6 +404,9 @@ bool scene_report(scene_failure_t* why, scene_status_t status, asset_status_t as
 typedef struct {
     float x, z;
 } contact_reach_t;
+
+int scene_contact_blobs(const scene_t* scene, const scene_renderer_t* renderer, vec3f_t light, contact_blob_t* blobs);
+box3f_t scene_contact_bounds(const scene_t* scene, scene_renderer_t* renderer, vec3f_t light);
 
 vec3f_t scene_contact_light(const scene_t* scene, vec3f_t world, scene_t* const* drawn_scenes, int drawn_scene_count);
 contact_reach_t scene_contact_reach(const scene_t* scene, const scene_renderer_t* renderer);

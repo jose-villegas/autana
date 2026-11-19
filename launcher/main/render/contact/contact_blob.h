@@ -11,10 +11,10 @@ typedef struct {
     const contact_mask_t* mask;
 } contact_blob_t;
 
-void contact_disc_draw(const r3d_span_target_t* target, const r3d_lens_t* lens, vec3f_t ground, vec3f_t up,
-                       float radius, float strength);
+/* Caller-owned workspace, aligned as malloc provides; reusable after each draw. */
+size_t contact_blobs_work_bytes(void);
 
-void contact_blob_draw(const r3d_span_target_t* target, const r3d_lens_t* lens, const contact_blob_t* blob);
-
-void contact_blobs_draw(const r3d_span_target_t* target, const r3d_lens_t* lens, const contact_blob_t* blobs,
-                        int count);
+/* Uses geometry's lens and fitted depth scale. At most CONTACT_BLOBS_MAX coplanar,
+ * equal-strength footprints; overlaps darken once. A NULL mask uses radial falloff. */
+void contact_blobs_draw(const r3d_span_target_t* target, const r3d_lens_t* lens, const contact_blob_t* blobs, int count,
+                        void* scratch);

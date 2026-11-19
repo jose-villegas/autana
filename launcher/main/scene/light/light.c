@@ -5,19 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "core/memory.h"
-#include "render/context/render_context.h"
 #include "scene/scene_internal.h"
-
-static int
-brightest_light(const r3d_skin_lights_t* lights) {
-    int brightest = 0;
-    for (int i = 1; i < lights->count; i++) {
-        if (sh1_rgb_luminance(lights->color[i]) > sh1_rgb_luminance(lights->color[brightest])) {
-            brightest = i;
-        }
-    }
-    return brightest;
-}
 
 r3d_skin_light_transfer_t*
 scene_light_transfer_take(const scene_t* scene) {
@@ -170,41 +158,11 @@ light_intensity(entity_t entity) {
     return scene->lights[row].kind == SCENE_LIGHT_NONE ? 0.0F : scene->lights[row].intensity;
 }
 
-static bool
-contact_light_direction_changed(const scene_t* scene, const r3d_skin_lights_t* world) {
-    bool direction_changed = world->count != scene->world_lights.count;
-    for (int i = 0; i < world->count && !direction_changed; i++) {
-        const vec3f_t before = scene->world_lights.direction[i];
-        const vec3f_t after = world->direction[i];
-        direction_changed = before.x != after.x || before.y != after.y || before.z != after.z;
-    }
-    if (!direction_changed && world->count > 0) {
-        const vec3f_t before = scene->world_lights.direction[brightest_light(&scene->world_lights)];
-        const vec3f_t after = world->direction[brightest_light(world)];
-        direction_changed = before.x != after.x || before.y != after.y || before.z != after.z;
-    }
-    return direction_changed;
-}
-
-static void
-forget_contact_lighting(void) {
-    for (int k = 0; k < SCENE_ROOTS_MAX; k++) {
-        const scene_t* scene = scene_ready_at(k);
-        if (scene == NULL) {
-            continue;
-        }
-        for (int i = 0; i < scene->active_renderer_count; i++) {
-            const scene_renderer_t* r = &scene->renderers[scene->active_renderers[i]];
-            if (r->contact_blob_strength > 0 && r->mesh.node_count > 0) {
-                render_context_forget(render_context_main());
-                return;
-            }
-        }
-    }
-}
-
 void
 scene_lights_prepare(scene_t* scene) {
+    if (scene->light_transfer == NULL) {
+        return;
+    }
     r3d_skin_lights_t world = {.ambient = vec3f_scale(scene->ambient_color, scene->ambient_intensity),
                                .transfer = scene->light_transfer};
     for (int i = 0; i < scene->staged_count; i++) {
@@ -223,9 +181,6 @@ scene_lights_prepare(scene_t* scene) {
         scene->light_table_dirty = false;
     } else {
         world.table_scale = scene->world_lights.table_scale;
-    }
-    if (scene_contact_warp_users > 0 && contact_light_direction_changed(scene, &world)) {
-        forget_contact_lighting();
     }
     scene->world_lights = world;
 }
@@ -261,11 +216,32 @@ scene_set_probes(entity_t root, const sh_probes_t* probes) {
 }
 
 vec3f_t
+scene_light_brightest_direction(const scene_t* scene) {
+    scene_row_t brightest = SCENE_ROW_NONE;
+    float luminance = -INFINITY;
+    for (int i = 0; i < scene->staged_count; i++) {
+        const scene_row_t e = scene->staged[i];
+        const scene_light_t* light = &scene->lights[e];
+        if (light->kind == SCENE_LIGHT_NONE || !(scene->flags[e] & SCENE_FLAG_ACTIVE)) {
+            continue;
+        }
+        const float value = sh1_rgb_luminance(vec3f_scale(light->color, light->intensity));
+        if (value > luminance) {
+            luminance = value;
+            brightest = e;
+        }
+    }
+    return brightest == SCENE_ROW_NONE
+               ? vec3f_zero()
+               : quatf_rotate(scene_row_world(scene->root, brightest).rotation, SCENE_LIGHT_AXIS);
+}
+
+vec3f_t
 scene_contact_light(const scene_t* scene, vec3f_t world, scene_t* const* drawn_scenes, int drawn_scene_count) {
     for (int k = 0; k < drawn_scene_count; k++) {
-        const r3d_skin_lights_t* lights = &drawn_scenes[k]->world_lights;
-        if (lights->count > 0) {
-            return lights->direction[brightest_light(lights)];
+        const vec3f_t direction = scene_light_brightest_direction(drawn_scenes[k]);
+        if (vec3f_dot(direction, direction) > 0) {
+            return direction;
         }
     }
     if (scene->probes != NULL) {
