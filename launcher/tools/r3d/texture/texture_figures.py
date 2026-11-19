@@ -51,6 +51,8 @@ NEAR_SHARE = 1 / 3
 # the truth so every triangle divides.
 DIVIDE_TUNABLE = "render.texture_divide_px"
 AFFINE_TUNABLE = "render.texture_bend_steps"
+# texture.affine_level 0: no level steps affine for its coarseness.
+LEVEL_TUNABLE = "render.texture_affine_level"
 TRUTH = 1
 # The tunable of the first level drawn untextured, one colour a triangle; 0 textures every level.
 FAR_TUNABLE = "render.texture_far_level"
@@ -82,9 +84,10 @@ def draw(args, textured, work, name, frame=None, sets=()):
 
 
 def divide_sets(divide):
-    """The tunables of a divide sheet's draw: every `divide` pixels, no bend allowed for the truth, every level's
-    texels."""
-    return ((DIVIDE_TUNABLE, divide), (FAR_TUNABLE, EVERY_LEVEL), *(((AFFINE_TUNABLE, 0),) if divide == TRUTH else ()))
+    """The tunables of a divide sheet's draw: every `divide` pixels, every level's texels, and for the truth no bend
+    and no level allowed to step affine."""
+    truth = ((AFFINE_TUNABLE, 0), (LEVEL_TUNABLE, 0)) if divide == TRUTH else ()
+    return ((DIVIDE_TUNABLE, divide), (FAR_TUNABLE, EVERY_LEVEL), *truth)
 
 
 def reference_member(fit, frame, dt_ms):
