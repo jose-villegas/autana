@@ -137,20 +137,6 @@ class ShardCandidateTests(unittest.TestCase):
             with self.subTest(count=count):
                 self.assertLessEqual(count * len(runner_vendor.candidates(count)), bake.MATRIX_JOBS)
 
-    def test_dedupe_keeps_one_artifact_per_shard(self):
-        with tempfile.TemporaryDirectory() as folder:
-            names = [runner_vendor.shard_artifact_name(4, 0, 1), runner_vendor.shard_artifact_name(4, 2, 1),
-                     runner_vendor.shard_artifact_name(14, 1, 1), "reference-plan-1"]
-            for name in names:
-                (Path(folder) / name).mkdir()
-                (Path(folder) / name / "part").write_text(name)
-            with contextlib.redirect_stdout(io.StringIO()):
-                runner_vendor.dedupe(folder)
-            left = sorted(path.name for path in Path(folder).iterdir())
-            self.assertEqual(len([name for name in left if name.startswith("reference-shard-4-")]), 1)
-            self.assertIn(runner_vendor.shard_artifact_name(14, 1, 1), left)
-            self.assertIn("reference-plan-1", left)
-
     def env(self, folder, attempt="1"):
         out_path = Path(folder) / "out"
         out_path.write_text("")

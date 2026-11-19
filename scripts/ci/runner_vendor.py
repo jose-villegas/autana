@@ -6,13 +6,12 @@ A re-run waits for the run's slowest shard, so a reference shard starts on SHARD
 Each candidate marks its vendor with an artifact and waits until it sees its own marker listed; then the
 earliest marked on the lock's vendor traces, the rest finish green, and a wrong-vendor one fails only when
 no candidate of the attempt is the lock's vendor and none is still to mark. Two may trace one shard when a
-marker lists late; each uploads under its own name and the join keeps one (`dedupe`).
+marker lists late; each uploads under its own name, and the join checks they match and keeps one.
 
     python scripts/ci/runner_vendor.py check          # first step of a CPU bake job; fails in seconds
     python scripts/ci/runner_vendor.py plan SHARDS    # the shard count and candidate matrix, as outputs
     python scripts/ci/runner_vendor.py mark SHARD CANDIDATE DIR   # a shard candidate's marker, into DIR
     python scripts/ci/runner_vendor.py claim SHARD CANDIDATE      # whether this candidate traces the shard
-    python scripts/ci/runner_vendor.py dedupe DIR     # one downloaded artifact per shard in DIR
     python scripts/ci/runner_vendor.py rerun RUN_ID   # after a Bakes run: re-run its wrong-vendor jobs
 
 Reads GH_TOKEN and GITHUB_REPOSITORY for `rerun`, `mark` and `claim`; GITHUB_RUN_ID, GITHUB_RUN_ATTEMPT and
@@ -23,7 +22,6 @@ import argparse
 import json
 import os
 import re
-import shutil
 import sys
 import time
 from pathlib import Path
@@ -111,21 +109,6 @@ def plan(shards):
     return 0
 
 
-def dedupe(folder):
-    """Keeps one downloaded shard artifact per shard in `folder`: two candidates' traces of a shard are the same
-    bytes, and the join reads every file it is given."""
-    kept = set()
-    for path in sorted(Path(folder).iterdir()):
-        m = SHARD_ARTIFACT.fullmatch(path.name)
-        if not m:
-            continue
-        if m[1] in kept:
-            print(f"{path.name}: shard {m[1]} traced twice; keeping one")
-            shutil.rmtree(path)
-        kept.add(m[1])
-    return 0
-
-
 def run_artifacts(request=github_api.call):
     path = f"/actions/runs/{os.environ['GITHUB_RUN_ID']}/artifacts"
     return [(item["name"], item["created_at"]) for item in github_api.pages(path, "artifacts", request=request)]
@@ -199,13 +182,13 @@ def rerun(run, request=github_api.call):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("command", choices=("check", "plan", "mark", "claim", "dedupe", "rerun"))
+    parser.add_argument("command", choices=("check", "plan", "mark", "claim", "rerun"))
     parser.add_argument("args", nargs="*")
     args = parser.parse_args(argv)
-    if args.command in ("plan", "dedupe"):
+    if args.command == "plan":
         if len(args.args) != 1:
-            parser.error(f"{args.command} takes {'SHARDS' if args.command == 'plan' else 'DIR'}")
-        return (plan if args.command == "plan" else dedupe)(args.args[0])
+            parser.error("plan takes SHARDS")
+        return plan(args.args[0])
     if args.command in ("check", "mark"):
         from bake import bake
         lock_vendor, host_vendor = bake.read_lock_tables().get("mesh_cpu_vendor"), bake.cpu_vendor()

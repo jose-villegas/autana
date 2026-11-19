@@ -276,7 +276,6 @@ jobs:
 
       - name: Join the shards and pack each set
         run: |
-          python scripts/ci/runner_vendor.py dedupe "$RUNNER_TEMP/shards"
           python launcher/tools/bake/bake.py bake --kind reference --shards "$RUNNER_TEMP/shards" --out "$RUNNER_TEMP/bakes"
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
