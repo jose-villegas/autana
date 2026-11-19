@@ -195,15 +195,11 @@ the bake-steps chart shows. Measures, sheets and the occlusion map run every
 time.
 
 The `doc-images-gpu` workflow fingerprints inputs on every main push.
-Changed images remain pending for the next NIGHT_START; pushes do not render.
+Changed images remain pending until the board night ends; pushes do not render.
 
-The daily cron triggers at 20:17Z. A hosted marker job computes the start in
-the NIGHT_ZONE repository variable (IANA name; UTC when unset).
-Hosted wait legs sleep until it, and work gets a fresh token.
-
-The [night order](../../launcher/tools/perf/README.md#nightly-scoped-chain)
-owns the marker, bake priority and board-plan handoff. The hosted job
-only fingerprints. Every Bakes GPU completion triggers a fresh check.
+The render starts when the [nightly](../../launcher/tools/perf/README.md#nightly-scoped-chain)
+run completes, whatever it reported, so it never runs while the night waits for the GPU.
+Bakes that land during the day render after the next night.
 
 The doc-images GPU stage waits for active board locks, then takes heavy and runs to completion.
 A board claimed between these steps waits for heavy before building.
@@ -211,7 +207,7 @@ Human reservations do not block the GPU stage.
 
 `scripts/lib/local_schedule.py` stops a stage's process tree once no task or
 bake has finished for `GPU_STAGE_PROGRESS_SECONDS`, and in any case after
-`GPU_STAGE_HANG_SECONDS`. `override` starts at once while retaining the board-lock
+`GPU_STAGE_HANG_SECONDS`. A dispatch starts at once and keeps the board-lock
 wait; `force` controls freshness independently.
 
 The images are current only when the newest unexpired record from main is a rendered record for this fingerprint. A

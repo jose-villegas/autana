@@ -306,7 +306,7 @@ checks the step fits, and the night stops a lane still running there.
 The zone is the NIGHT_ZONE repository variable (IANA name; UTC when unset).
 The marker is the first local start at or after the trigger; override starts now.
 
-Both workflows schedule at 20:17Z. The trigger is the latest daily UTC cron slot,
+The nightly schedules at 20:17Z. The trigger is the latest daily UTC cron slot,
 including when GitHub starts it late. Other events use the current time.
 A passed marker starts immediately. Each date uses the configured zone's UTC offset.
 
@@ -315,10 +315,10 @@ legs sleep within `HOSTED_WAIT_SECONDS` in `scripts/lib/local_schedule.py`.
 The work jobs depend on both jobs and start after the marker passes.
 
 The GPU stage yields green when bakes are queued or running.
-Every Bakes GPU completion triggers a fresh image check.
+The doc-images GPU workflow starts when the nightly completes, so a scheduled render never holds the plan.
 
 The plan waits for two polls without queued, waiting or running jobs carrying
-`gpu` in the doc-images GPU workflow. Bakes GPU fits run beside the board night. Hosted jobs waiting for a later marker do not count.
+`gpu` in the doc-images GPU workflow, which only a dispatch during the night can start. Bakes GPU fits run beside the board night.
 At the night's `BOARD_LAST_START` it warns and plans anyway; board builds still wait
 for the heavy lock a GPU stage holds.
 
