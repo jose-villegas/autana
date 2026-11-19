@@ -239,6 +239,14 @@ render_scene_build() {
     fi
     _rs_configure_log="$_rs_build/cmake.log"
     mkdir -p "$_rs_build"
+    # Under figures_runner.py (launcher/tools/docs/producer.py names the variable), the build lists what it read
+    # into that folder, CMake files included: CMake's file API answers this query at configure.
+    _rs_depends=
+    if [ "$_rs_deps" = 0 ] && [ -n "${AUTANA_FIGURES_DEPENDS:-}" ]; then
+        _rs_depends=$AUTANA_FIGURES_DEPENDS
+        mkdir -p "$_rs_build/.cmake/api/v1/query"
+        : > "$_rs_build/.cmake/api/v1/query/cmakeFiles-v1"
+    fi
     if ! cmake -S "$(to_native "$_rs_tools/render/scene")" -B "$(to_native "$_rs_build")" \
         "$@" "-DCMAKE_C_COMPILER=$(to_native "$(command -v "$_rs_cc")")" \
         -DCMAKE_BUILD_TYPE= "-DSCENE_NAME=$scene_name" \
@@ -262,6 +270,21 @@ render_scene_build() {
     _rs_status=0
     cmake --build "$(to_native "$_rs_build")" --target render_scene --parallel > "$_rs_build_log" 2>&1 || _rs_status=$?
     awk '!/^\[[[:space:][:digit:]%/]+\]/ && !/^-- / && !/^Consolidate compiler generated dependencies of target / && !/^ninja: / && !/^[[:alnum:]_-]*make(\[[0-9]+\])?:/' "$_rs_build_log" >&2
+    if [ "$_rs_status" = 0 ] && [ -n "$_rs_depends" ]; then
+        . "$_rs_launcher/../scripts/lib/python.sh"
+        _rs_python=$(find_python) || return 1
+        # The scripts this build sourced or ran.
+        set --
+        for _rs_read in "$0" "$_rs_tools/render/render_scene.sh" "$_rs_tools/build/find_cc.sh" \
+            "$_rs_launcher/../scripts/lib/native_path.sh" "$_rs_launcher/../scripts/lib/python.sh"; do
+            set -- "$@" "$(to_native "$_rs_read")"
+        done
+        if [ "${scene_ui:-0}" = 1 ]; then
+            set -- "$@" "$(to_native "$_rs_tools/build/ui_sources.sh")"
+        fi
+        "$_rs_python" "$(to_native "$_rs_tools/render/scene/dependencies.py")" "$(to_native "$_rs_build")" \
+            --into "$_rs_depends" "$@" || return 1
+    fi
     return "$_rs_status"
 }
 

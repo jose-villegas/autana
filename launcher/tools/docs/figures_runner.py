@@ -172,11 +172,6 @@ def preflight(runs, problems=()):
     return {"cc": cc}
 
 
-# A run that hands its build to a shell script compiles what that script lists, which no import names: every
-# tracked file under this folder counts for it.
-SHELL_BUILT = "launcher"
-
-
 def tool_version(command):
     """The first line `command --version` prints, or "missing"."""
     try:
@@ -212,18 +207,17 @@ def fingerprint(run, probe, code, committed):
     code inputs by script, shared by a producer's runs and filled as needed; `committed`: the images under
     docs/images/ now, so a record vouches for the bytes it was made against."""
     from bake import bake
-    from docs.inputs import bake_inputs, code_inputs, tree_inputs
+    from docs.inputs import bake_inputs, code_inputs
     from r3d.import_settings import content_checksum
 
     def checksum(name):
         return content_checksum(ROOT / name).decode() if (ROOT / name).is_file() else "missing"
 
     if run.found.name not in code:
-        inputs = code_inputs([run.found.script], ROOT)
-        scripts = [argument for argument in run.found.producer.run if argument.endswith(".sh")]
-        if scripts or any(name.startswith("file ") and name.endswith(".sh") for name in inputs):
-            inputs.update(tree_inputs(SHELL_BUILT, ROOT))
-        code[run.found.name] = inputs
+        code[run.found.name] = code_inputs([run.found.script], ROOT)
+    # Python a build listed (build_pack.py) counts with its own imports.
+    listed = sorted(name for name in probe if name.endswith(".py"))
+    ran = code_inputs([ROOT / name for name in listed], ROOT) if listed else {}
     pins = {f"installed {line}": installed(re.match(r"[\w.-]+", line)[0])
             for name, line in code[run.found.name].items() if name.startswith("requirement ")}
     if run.bake is not None:
@@ -231,7 +225,8 @@ def fingerprint(run, probe, code, committed):
     else:
         # Without an each="bakes:", which bakes a run draws is the code's choice: every lock row counts.
         bakes = {"lock": bake.digest(bake.read_lock())} if "bakes" in run.found.producer.needs else {}
-    return bake.digest({"run": [run.item, *run.found.producer.run], **code[run.found.name], **toolchain(), **pins,
+    return bake.digest({"run": [run.item, *run.found.producer.run], **code[run.found.name], **ran, **toolchain(),
+                        **pins,
                         **{f"probe {name}": checksum(name) for name in probe},
                         **{f"reads {path.relative_to(ROOT).as_posix()}": checksum(path.relative_to(ROOT))
                            for pattern in run.found.producer.reads for path in sorted(ROOT.glob(pattern))},
@@ -241,19 +236,27 @@ def fingerprint(run, probe, code, committed):
 
 
 def read_records(path):
+    """The records, or none when the file is missing or unreadable (a cut write): then every run runs."""
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
         return {}
+    except (OSError, ValueError) as error:
+        print(f"warning: unreadable record {path}, running every producer: {error}", file=sys.stderr)
+        return {}
 
 
 def write_records(path, records):
+    """Whole or not at all: written beside the record, then moved over it."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(records, indent=1, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
+    partial = path.with_name(path.name + ".partial")
+    partial.write_text(json.dumps(records, indent=1, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
+    os.replace(partial, path)
 
 
 def probe_sources(depends):
-    """The repository C files the .d lists in `depends` name; outside files (system headers) are not counted."""
+    """The repository files the .d lists in `depends` name: what a run's probes and builds read. Outside files
+    (system headers) and ignored ones (a build's own output) are not counted."""
     from build.compile_db import parse_dependencies
     names = set()
     for listing in sorted(depends.glob("*.d")):
@@ -261,7 +264,9 @@ def probe_sources(depends):
             path = pathlib.Path(token).resolve()
             if path.is_relative_to(ROOT):
                 names.add(path.relative_to(ROOT).as_posix())
-    return sorted(names)
+    ignored = subprocess.run(["git", "-C", str(ROOT), "check-ignore", "--stdin"], input=chr(10).join(sorted(names)),
+                             capture_output=True, text=True).stdout.splitlines()
+    return sorted(names - set(ignored))
 
 
 def claims(images, name):
@@ -298,9 +303,10 @@ def run_one(run, values):
         raise Failed("\n".join([f"{run.name} did not make what it declares:",
                                 *(f"  missing {name}" for name in missing),
                                 *(f"  undeclared {name}" for name in undeclared)]))
-    if any("{cc}" in argument for argument in run.found.producer.run) and not any(depends.iterdir()):
-        raise Failed(f"{run.name} compiled C the runner could not see: build it with docs.figures.build_probe, "
-                     "which lists what it compiled")
+    if any("{cc}" in argument or argument.endswith(".sh") for argument in run.found.producer.run) \
+            and not any(depends.iterdir()):
+        raise Failed(f"{run.name} compiled C the runner could not see: build it with docs.figures.build_probe or "
+                     "render_scene.sh, which list what they read")
     return out, sorted(made), probe_sources(depends)
 
 

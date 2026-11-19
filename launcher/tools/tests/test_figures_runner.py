@@ -38,6 +38,11 @@ PROBE = f'''
 (pathlib.Path(os.environ["{figures_runner.DEPENDS_FOLDER}"]) / "probe.d").write_text("probe.o: data/probe.c\\n")
 '''
 
+# A prologue that lists tools/pack.py as a build would (render_scene.sh, build_pack.py) under the runner.
+BUILT = f'''
+(pathlib.Path(os.environ["{figures_runner.DEPENDS_FOLDER}"]) / "built.d").write_text("built: tools/pack.py\\n")
+'''
+
 
 class Tree:
     """A checkout outside git: producers under launcher/, committed images under docs/images/."""
@@ -352,6 +357,15 @@ class RunnerTests(TreeTest):
         with mock.patch.object(producer, "find", more_arguments):
             self.assertNotIn("unchanged launcher/a/one.py", self.changed())
 
+    def test_an_unreadable_record_runs_everything_and_is_rewritten_whole(self):
+        self.probed()
+        self.tree.root.joinpath("fingerprints.json").write_text('{"launcher/a/one.py": {"fing')
+        code, out, err = self.tree.run("build", "--changed")
+        self.assertEqual(code, 0, err)
+        self.assertIn("unreadable record", err)
+        self.assertNotIn("unchanged launcher/a/one.py", out.splitlines())
+        self.assertIn("unchanged launcher/a/one.py", self.changed())
+
     def test_a_skipped_run_keeps_its_record(self):
         self.probed()
         self.assertIn("unchanged launcher/a/one.py", self.changed())
@@ -397,16 +411,15 @@ class RunnerTests(TreeTest):
         with mock.patch.object(figures_runner, "installed", return_value="2.1"):
             self.assertNotIn("unchanged launcher/a/one.py", self.changed())
 
-    def test_a_run_that_names_a_shell_script_reruns_when_any_file_under_the_shell_built_folder_changes(self):
-        self.tree.write("launcher/render.sh", "cc main/*.c")
-        self.tree.write("launcher/main/draw.c", "int a;")
-        self.tree.producer("a/one.py", ["fig/one.png"], ["one.png"], prologue='RENDER = "launcher/render.sh"')
-        self.tree.producer("b/two.py", ["fig/two.png"], ["two.png"])
+    def test_python_a_build_listed_counts_with_its_imports(self):
+        # As build_pack.py lists itself under render_scene.sh: the runner follows what that script imports.
+        self.tree.write("tools/pack.py", "import helper" + chr(10))
+        self.tree.write("tools/helper.py", "VALUE = 1" + chr(10))
+        self.tree.producer("a/one.py", ["fig/one.png"], ["one.png"], prologue=BUILT)
         self.assertEqual(self.tree.run("build")[0], 0)
-        self.tree.write("launcher/main/draw.c", "int b;")
-        lines = self.changed()
-        self.assertNotIn("unchanged launcher/a/one.py", lines)
-        self.assertIn("unchanged launcher/b/two.py", lines)
+        self.assertIn("unchanged launcher/a/one.py", self.changed())
+        self.tree.write("tools/helper.py", "VALUE = 2" + chr(10))
+        self.assertNotIn("unchanged launcher/a/one.py", self.changed())
 
     def test_a_run_needing_bakes_without_an_each_reruns_when_any_lock_row_changes(self):
         lock = {"k1": {"sha256": "a"}}
@@ -603,6 +616,20 @@ class RecordTests(TreeTest):
         # The fixture writes each argument after --out as an image, so the compiler {cc} names is the image.
         self.tree.producer("a/one.py", ["fig/one.png"], ["{cc}"])
         with mock.patch.object(figures_runner, "host_cc", return_value="one.png"):
+            code, _, err = self.tree.run("build")
+        self.assertEqual(code, 2)
+        self.assertIn("launcher/a/one.py compiled C the runner could not see", err)
+
+    def test_a_run_given_a_shell_script_that_lists_nothing_it_read_fails(self):
+        self.tree.write("launcher/render.sh", "")
+        real = producer.find
+
+        def shell_run(root):
+            return {name: item._replace(producer=item.producer._replace(run=("launcher/render.sh", *item.producer.run)))
+                    for name, item in real(root).items()}
+        # The fixture writes each argument after --out as an image, so the script goes first and is dropped.
+        self.tree.producer("a/one.py", ["fig/one.png"], ["one.png"], prologue='sys.argv.remove("launcher/render.sh")')
+        with mock.patch.object(producer, "find", shell_run):
             code, _, err = self.tree.run("build")
         self.assertEqual(code, 2)
         self.assertIn("launcher/a/one.py compiled C the runner could not see", err)
