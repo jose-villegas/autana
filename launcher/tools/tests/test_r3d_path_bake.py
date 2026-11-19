@@ -166,7 +166,7 @@ class SideBounce:
         return np.where(normals[:, 1:2] > 0, self.up, self.down)
 
 
-SUN_UP = {"type": "directional", "direction": [0.0, 1.0, 0.0], "color": [1.0, 1.0, 1.0], "intensity": 1.0}
+SUN_UP = soup.sun([0.0, 1.0, 0.0], [1.0, 1.0, 1.0], 1.0)
 
 
 def lit(points, normals, double, intersector, lights, **kwargs):

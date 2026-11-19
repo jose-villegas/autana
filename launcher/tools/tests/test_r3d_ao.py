@@ -83,7 +83,7 @@ class LocalOcclusionTest(unittest.TestCase):
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class OccludedLightTest(unittest.TestCase):
     AMBIENT = {"type": "ambient", "color": [1.0, 1.0, 1.0], "intensity": 0.5}
-    SUN = {"type": "directional", "direction": [0.0, 0.0, 1.0], "color": [1.0, 1.0, 1.0], "intensity": 1.0}
+    SUN = soup.sun([0.0, 0.0, 1.0], [1.0, 1.0, 1.0], 1.0)
 
     def lit(self, lights, x, **kwargs):
         points, normals = floor_points(x)

@@ -1,11 +1,9 @@
 /* sh_probes: clamped trilinear sampling of packed RGB L1 radiance grids. */
 #pragma once
 #include <stdint.h>
-#include "asset/asset_pack.h"
 #include "math/sh/sh1.h"
 #define SH_PROBES_COMPONENTS (SH1_COEFFICIENTS * SH1_CHANNELS)
 
-#define SH_PROBES_ASSET      ASSET_TYPE('S', 'H', 'P', 'R')
 #define SH_PROBES_VERSION    1U
 
 enum {
@@ -28,6 +26,3 @@ typedef struct sh_probes {
 } sh_probes_t;
 
 sh1_rgb_t sh_probes_sample(const sh_probes_t* probes, vec3f_t world);
-
-/* The entry bytes must outlive the grid. Failure clears the output. */
-asset_status_t sh_probes_read(asset_view_t entry, sh_probes_t* out);

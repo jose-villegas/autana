@@ -832,8 +832,7 @@ def lighting_lights(**changes):
                   sky_intensity=0.9, ambient=0.06)
     values.update(changes)
     return [
-        {"type": "directional", "direction": values["sun"], "color": [1.0, 0.92, 0.78],
-         "intensity": values["sun_intensity"]},
+        soup.sun(values["sun"], [1.0, 0.92, 0.78], values["sun_intensity"]),
         {"type": "sky", "color": [0.55, 0.68, 0.9], "intensity": values["sky_intensity"], "rays": values["sky_rays"]},
         {"type": "ambient", "color": [1.0, 1.0, 1.0], "intensity": values["ambient"]},
     ]

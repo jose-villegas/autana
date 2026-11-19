@@ -33,7 +33,7 @@ SMALL_FACE = ("v 20 0 0\nv 21 0 0\nv 20 1 0\nf 9 10 11\n"
 
 
 def sun_only():
-    return [{"type": "directional", "direction": [0.8, 1.0, 0.0], "color": [1.0, 1.0, 1.0], "intensity": 1.0}]
+    return [soup.sun([0.8, 1.0, 0.0], [1.0, 1.0, 1.0], 1.0)]
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")

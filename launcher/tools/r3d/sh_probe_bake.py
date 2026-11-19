@@ -6,7 +6,6 @@ import time
 
 import numpy as np
 
-from asset.engine_axes import AXIS_SIGNS, Z_AXIS
 from r3d.geometry import face_normals
 from r3d.light import AlphaTest, baked_lights
 from r3d.mesh_source import load_source
@@ -20,7 +19,7 @@ VERSION = 1
 RESERVED_FLAGS = 0
 CHANNELS = 3
 COEFFICIENTS = 4
-Z_COEFFICIENT = 2
+L1_AXES = (1, 2, 0)
 Y00 = 0.5 * math.sqrt(1 / math.pi)
 Y1 = 0.5 * math.sqrt(3 / math.pi)
 HEADER = struct.Struct('<HH3f3ff3H2x')
@@ -31,8 +30,7 @@ DIM_MAX = np.iinfo(np.uint16).max
 def basis(directions):
     """Real SH in Sloan's order: constant, +y, +z, +x."""
     directions = np.asarray(directions)
-    return np.column_stack((np.full(len(directions), Y00), Y1 * directions[:, 1],
-                            Y1 * directions[:, 2], Y1 * directions[:, 0]))
+    return np.column_stack((np.full(len(directions), Y00), *(Y1 * directions[:, axis] for axis in L1_AXES)))
 
 
 def project(directions, radiance):
@@ -150,10 +148,6 @@ def bake(job, scene):
     # ProbeViews enumerates z fastest; SHPR's x-fastest order is the transposed cell lattice.
     shape = tuple(dims) + (COEFFICIENTS, CHANNELS)
     filled = dilate(coefficients.reshape(shape), (state == 'inside').reshape(tuple(dims)))
-    last = origin + step * (dims - 1)
-    origin = np.minimum(origin * AXIS_SIGNS, last * AXIS_SIGNS)
-    filled = np.flip(filled, axis=Z_AXIS).copy()
-    filled[..., Z_COEFFICIENT, :] *= AXIS_SIGNS[Z_AXIS]
     data = encode(origin, step, dims, filled.transpose(2, 1, 0, 3, 4).copy())
     sun_rays = sum(light['type'] == 'directional' for light in lights)
     paths = int(outside.sum()) * requested.directions * requested.spp

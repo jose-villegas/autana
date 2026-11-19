@@ -701,8 +701,9 @@ make_rig_entries(test_pack_t* pack, const skin_fixture_options_t* options) {
 
 /* The pack of every quad, scene and the clip, with the CRC set. */
 static uint32_t
-make_pack(uint8_t* bytes, const skin_fixture_options_t* options) {
-    test_pack_t pack = test_pack_begin(bytes, PACK_MAX, QUAD_COUNT + SCENE_COUNT + 1 + CLIP_COUNT + RIG_ENTRIES);
+make_pack(uint8_t* bytes, const skin_fixture_options_t* options, bool probes) {
+    test_pack_t pack =
+        test_pack_begin(bytes, PACK_MAX, QUAD_COUNT + SCENE_COUNT + 1 + CLIP_COUNT + RIG_ENTRIES + probes);
     for (int i = 0; i < QUAD_COUNT; i++) {
         uint8_t* entry = test_pack_add(&pack, QUADS[i].name, R3D_LIT_MESH_ASSET, QUAD_BYTES);
         make_quad_entry(entry, QUADS[i].red, QUADS[i].green, QUADS[i].blue, 1);
@@ -721,6 +722,18 @@ make_pack(uint8_t* bytes, const skin_fixture_options_t* options) {
                         CLIPS[i].track_count);
     }
     make_rig_entries(&pack, options);
+    if (probes) {
+        uint8_t* entry =
+            test_pack_add(&pack, "arbitrary-grid", SH_PROBES_ASSET, SH_PROBES_HEADER_SIZE + SH_PROBES_RECORD_SIZE);
+        test_pack_put16(entry + SH_PROBES_VERSION_OFFSET, SH_PROBES_VERSION);
+        const float spacing[] = {1, 1, 1};
+        test_pack_put_floats(entry + SH_PROBES_SPACING_OFFSET, spacing, MAT3F_AXES);
+        test_pack_put_floats(entry + SH_PROBES_SCALE_OFFSET, spacing, 1);
+        for (int axis = 0; axis < MAT3F_AXES; axis++) {
+            test_pack_put16(entry + SH_PROBES_DIMS_OFFSET + axis * sizeof(uint16_t), 1);
+        }
+        test_pack_put16(entry + SH_PROBES_HEADER_SIZE, 1);
+    }
     return test_pack_finish(&pack);
 }
 
@@ -786,7 +799,7 @@ fixture_with_skin(const skin_fixture_options_t* options) {
     TEST_ASSERT_NOT_NULL(fx.pixels);
     TEST_ASSERT_NOT_NULL(fx.held);
     TEST_ASSERT_NOT_NULL(fx.instances);
-    const uint32_t total = make_pack(fx.bytes, options);
+    const uint32_t total = make_pack(fx.bytes, options, false);
     TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_open(&fx.pack, fx.bytes, total));
     fx.target = (scene_target_t){fx.pixels, SIZE, SIZE, NULL, NULL};
 }
@@ -5043,6 +5056,23 @@ test_set_transform_reads_back_exactly_and_drives_placement(void) {
 }
 
 static void
+test_scene_adopts_its_pack_probe_grid(void) {
+    fixture();
+    entity_t root = load("test_skin");
+    TEST_ASSERT_NULL(scene_probes(root));
+    scene_release(root);
+    const uint32_t total = make_pack(fx.bytes, &SKIN_OPTIONS, true);
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_open(&fx.pack, fx.bytes, total));
+    root = load("test_skin");
+    const sh_probes_t* probes = scene_probes(root);
+    TEST_ASSERT_NOT_NULL(probes);
+    TEST_ASSERT_EQUAL_FLOAT(1, sh_probes_sample(probes, vec3f_zero()).c[0].x);
+    scene_release(root);
+    TEST_ASSERT_NULL(scene_probes(root));
+    TEST_ASSERT_NULL(scene_probes(ENTITY_NONE));
+}
+
+static void
 test_probes_sample_last_resolved_bounds_without_allocating(void) {
     static const int16_t coefficients[1][SH_PROBES_COMPONENTS] = {{1}};
     static const sh_probes_t probes = {.dims = {1, 1, 1}, .scale = 1, .coefficients = coefficients};
@@ -8328,6 +8358,7 @@ run_scene_suite(void) {
     RUN_TEST(test_idle_lit_skin_skips_and_transform_changes_run);
     RUN_TEST(test_light_attachment_defaults_refusals_and_capacity);
     RUN_TEST(test_scene_light_rotation_shades_only_skin_and_matches_kernel);
+    RUN_TEST(test_scene_adopts_its_pack_probe_grid);
     RUN_TEST(test_probes_sample_last_resolved_bounds_without_allocating);
     RUN_TEST(test_light_modes_with_and_without_probes);
     RUN_TEST(test_old_light_pack_defaults_to_realtime);

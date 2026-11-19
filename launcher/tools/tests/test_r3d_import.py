@@ -20,6 +20,7 @@ from anim_probe import write_camera_clip  # noqa: E402
 
 try:
     import numpy as np
+    from tests.soup import sun
     from tests import soup  # noqa: F401  (traces the bake's rays on the scalar variant)
 
     from r3d import mesh_import, mesh_source, ray_query
@@ -759,9 +760,6 @@ class ClearIntersector:
         return np.zeros(len(origins), dtype=bool)
 
 
-def sun(direction, color, intensity):
-    return {"type": "directional", "direction": direction, "color": color, "intensity": intensity}
-
 
 def radiance(lights, normal, double_sided):
     return light(np.array([[0.0, 0.0, 0.0]]), np.array([normal]), np.array([double_sided]), ClearIntersector(),
@@ -772,8 +770,8 @@ def radiance(lights, normal, double_sided):
 class LightListTests(unittest.TestCase):
     def test_directional_lights_add_their_radiance_and_order_does_not_matter(self):
         lights = [
-            {"type": "directional", "direction": [0, 1, 0], "color": [1, 0, 0], "intensity": 2},
-            {"type": "directional", "direction": [0, 1, 0], "color": [0, 1, 0], "intensity": 3},
+            sun([0, 1, 0], [1, 0, 0], 2),
+            sun([0, 1, 0], [0, 1, 0], 3),
         ]
         args = (np.array([[0.0, 0.0, 0.0]]), np.array([[0.0, 1.0, 0.0]]), np.array([False]), ClearIntersector())
         first = light(*args, lights, 0.5)

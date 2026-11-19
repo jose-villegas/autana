@@ -25,9 +25,9 @@ locks its artifacts. The key names the source bytes, requested sampling,
 seed, alpha threshold, two-sided materials, camera region and near plane,
 scene lights, bounce depth, albedo boost and the reached tool code and pins.
 
-The baker writes engine coordinates using the mesh mirror in
-`asset/engine_frame.py`: z cells reverse and the +z coefficient changes sign.
-The pack holds `<scene>.shpr` unchanged.
+The baker caches source coordinates. At pack time, `asset/engine_frame.py`
+mirrors the origin, cell lattice and L1 coefficients along each reflected axis,
+matching the mesh frame.
 
 ```mermaid
 flowchart LR
