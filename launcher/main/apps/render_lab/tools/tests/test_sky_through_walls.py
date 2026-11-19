@@ -25,7 +25,7 @@ import host_render  # noqa: E402
 try:
     import numpy as np
 
-    from r3d.poses import sample_camera_rows
+    from r3d.poses import flight_camera, sample_camera_rows
     from r3d.import_settings import load_scene
     from pinhole_rays import enclosed_sky
     from check_avi import read_video
@@ -38,12 +38,12 @@ MIN_OPEN_SKY_PIXELS = 100
 FRAME_COUNT_SIZE = (1, 1)
 # Per scene, the holed frames of its current bake: the ceiling a rebake must not go above.
 MOST_HOLED_FRAMES = {
-    "sponza": 12,
-    "sponza-lite": 13,
-    "sponza-flat": 12,
-    "sponza-fitted": 14,
-    "sponza-fitted-full": 21,
-    "sponza-flat-fitted": 21,
+    "sponza": 27,
+    "sponza-lite": 12,
+    "sponza-flat": 26,
+    "sponza-fitted": 23,
+    "sponza-fitted-full": 27,
+    "sponza-flat-fitted": 24,
 }
 
 
@@ -86,7 +86,7 @@ class SkyThroughWalls(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         scene = load_scene(SCENE)
-        camera = scene.camera.component
+        camera = flight_camera(scene)
         cls.frames = len(sample_camera_rows(
             camera.path.animation, camera.path.node, DT_MS, *FRAME_COUNT_SIZE,
             camera.half_fov_short_tan, camera.near_z)[4])

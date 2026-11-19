@@ -7,6 +7,7 @@
 #include <stddef.h>
 #include <string.h>
 
+#include "apps/render_lab/capybara_content.h"
 #include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/scene_baked.h"
@@ -15,7 +16,9 @@
 #include "esp_log.h"
 #include "image/pixel/rgb565.h"
 #include "math/scalar/math_const.h"
+#include "math/scalar/mathi.h"
 #include "render/context/render_context.h"
+#include "render/probe/sh_probes.h"
 #include "scene/animator/animator.h"
 #include "scene/camera/camera.h"
 #include "scene/renderer/renderer.h"
@@ -25,8 +28,9 @@
 
 static const char* TAG = "stress";
 
-/* Copies are named consecutively from zero. */
+/* Copies are named consecutively from zero: the generated presets' slots, the carved presets' props. */
 #define STRESS_SLOT_FORMAT "slot_%02d"
+#define STRESS_PROP_FORMAT "prop_%02d"
 
 static const stress_params_t* shown;
 static entity_t loaded;
@@ -37,6 +41,19 @@ static int pool;
 static stress_buffers_t buffers[STRESS_MIX_LEVELS];
 static r3d_dynamic_mesh_t mesh[STRESS_MIX_LEVELS];
 static uint32_t wave_ms;
+#define STRESS_PROBE_SIDE         2
+#define STRESS_PROBE_COUNT        (STRESS_PROBE_SIDE * STRESS_PROBE_SIDE * STRESS_PROBE_SIDE)
+#define STRESS_PROBE_SCALE        (1.0F / 1024.0F)
+#define STRESS_PROBE_EXTENT       10.0F
+#define STRESS_PROBE_BASE         0.5F
+#define STRESS_PROBE_STEP         0.1F
+#define STRESS_PROBE_UP           0.25F
+#define STRESS_GROUND_WIDTH_SCALE 1.5F
+#define STRESS_GROUND_ROTATION    (-0.25F * MATH_TAU)
+static int16_t probe_coefficients[STRESS_PROBE_COUNT][SH_PROBES_COMPONENTS];
+static sh_probes_t probes;
+static int skinned_count;
+static entity_t* grounds;
 
 /* A textured preset's texture and its texturing of the one mesh. */
 static r3d_texture_t* texture;
@@ -50,11 +67,61 @@ fail(const char* what) {
     lab_scene_fail(TAG, failure, sizeof failure, what);
 }
 
-/* The pool is every copy the pack names, from 0 up to the first it lacks. */
+/* The pool is every copy of the preset's kind the pack names, from 0 up to
+ * the first it lacks; every copy of the other kind is hidden. */
 static bool
 find_pool(void) {
-    slots = lab_scene_copies(loaded, STRESS_SLOT_FORMAT, &pool);
-    return slots != NULL;
+    const bool carved = shown->surface == STRESS_SURFACE_CARVED;
+    int others = 0;
+    entity_t* hidden = lab_scene_copies(loaded, carved ? STRESS_SLOT_FORMAT : STRESS_PROP_FORMAT, &others);
+    for (int i = 0; hidden != NULL && i < others; i++) {
+        entity_set_enabled(hidden[i], false);
+    }
+    slots = lab_scene_copies(loaded, carved ? STRESS_PROP_FORMAT : STRESS_SLOT_FORMAT, &pool);
+    return hidden != NULL && slots != NULL;
+}
+
+static bool
+load_skins(void) {
+    for (int i = 0; i < pool; i++) {
+        entity_set_enabled(slots[i], false);
+    }
+    grounds = slots;
+    slots = lab_scene_take(STRESS_SKINNED_COPIES * sizeof *slots);
+    if (slots == NULL) {
+        return false;
+    }
+    pool = STRESS_SKINNED_COPIES;
+    probes = (sh_probes_t){.origin = {-STRESS_PROBE_EXTENT, -STRESS_PROBE_EXTENT, -STRESS_PROBE_EXTENT},
+                           .spacing = {2 * STRESS_PROBE_EXTENT, 2 * STRESS_PROBE_EXTENT, 2 * STRESS_PROBE_EXTENT},
+                           .dims = {STRESS_PROBE_SIDE, STRESS_PROBE_SIDE, STRESS_PROBE_SIDE},
+                           .scale = STRESS_PROBE_SCALE,
+                           .coefficients = (const int16_t (*)[SH_PROBES_COMPONENTS])probe_coefficients};
+    memset(probe_coefficients, 0, sizeof probe_coefficients);
+    for (int p = 0; p < STRESS_PROBE_COUNT; p++) {
+        for (int channel = 0; channel < SH1_CHANNELS; channel++) {
+            probe_coefficients[p][channel] =
+                (int16_t)((STRESS_PROBE_BASE + STRESS_PROBE_STEP * (float)p) / STRESS_PROBE_SCALE);
+            probe_coefficients[p][SH1_CHANNELS + channel] = (int16_t)(STRESS_PROBE_UP / STRESS_PROBE_SCALE);
+        }
+    }
+    for (int i = 0; i < pool; i++) {
+        slots[i] = lab_scene_load(TAG, failure, sizeof failure, CAPYBARA_SCENE, CAPYBARA_SCENE);
+        if (handle_is_none(slots[i])) {
+            return false;
+        }
+        skinned_count++;
+        entity_set_enabled(entity_find(slots[i], name_hash(CAPYBARA_MEADOW)), false);
+        const entity_t skin = entity_find(slots[i], name_hash(CAPYBARA_SUBJECT));
+        for (int c = 0; c < animator_clip_count(skin); c++) {
+            if (strcmp(animator_clip_name(skin, c), CAPYBARA_GALLOP) == 0) {
+                (void)animator_play(skin, c, CAPYBARA_CLIP_CUT_MS);
+            }
+        }
+        scene_set_probes(slots[i], &probes);
+        scene_set_contact_blob(skin, transform_world(grounds[i]).position.y, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT);
+    }
+    return true;
 }
 
 static int
@@ -149,7 +216,10 @@ build(void) {
 /* The asset's longest side becomes one unit, centred like a generated primitive. */
 static transformf_t
 static_shape(void) {
-    const r3d_lit_mesh_t* asset = renderer_mesh(slots[0]);
+    const entity_t subject = shown->surface == STRESS_SURFACE_SKINNED_SH_BLOBS
+                                 ? entity_find(slots[0], name_hash(CAPYBARA_SUBJECT))
+                                 : slots[0];
+    const r3d_lit_mesh_t* asset = renderer_mesh(subject);
     const box3f_t box = r3d_lit_mesh_world_bounds(asset, NULL);
     const vec3f_t span = vec3f_sub(box.hi, box.lo);
     const float width = fmaxf(span.x, fmaxf(span.y, span.z));
@@ -159,6 +229,37 @@ static_shape(void) {
     const vec3f_t centre = quatf_rotate(shape.rotation, vec3f_add(box.lo, box.hi));
     transformf_set_position(&shape, vec3f_scale(centre, -0.5F / width));
     return shape;
+}
+
+static transformf_t
+copy_local(int i, stress_framing_t seen, const transformf_t* shape) {
+    transformf_t place = stress_copy_place(shown, i, seen);
+    if (stress_baked(shown) || stress_skinned(shown)) {
+        place = transformf_compose(&place, shape);
+    }
+    if (shown->surface == STRESS_SURFACE_CONTACT_BLOBS) {
+        place.rotation = quatf_from_axis_angle(vec3f_unit_x(), STRESS_GROUND_ROTATION);
+    }
+    return place;
+}
+
+static void __attribute__((noinline))
+copy_extras(int i) {
+    if (shown->surface == STRESS_SURFACE_CONTACT_BLOBS) {
+        scene_set_contact_blob(slots[i], transform_world(slots[i]).position.y, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT);
+    }
+    if (stress_skinned(shown)) {
+        const box3f_t bounds = scene_bounds(slots[i]);
+        const vec3f_t span = vec3f_sub(bounds.hi, bounds.lo);
+        const float width = fmaxf(span.x, span.z) * STRESS_GROUND_WIDTH_SCALE;
+        transformf_t floor = transformf_identity();
+        floor.position = box3f_centre(bounds);
+        floor.position.y = bounds.lo.y;
+        floor.rotation = quatf_from_axis_angle(vec3f_unit_x(), STRESS_GROUND_ROTATION);
+        floor.scale = (vec3f_t){width, width, width};
+        transform_set_local(grounds[i], floor);
+        entity_set_enabled(grounds[i], true);
+    }
 }
 
 /* The arrangement is sized to where the camera's swing starts, and turned
@@ -174,15 +275,12 @@ place_copies(void) {
     const stress_framing_t seen = {sqrtf(vec3f_dot(eye, eye)), lens->half_fov_short_tan};
     transformf_t facing = transformf_identity();
     transformf_set_rotation(&facing, quatf_from_axis_angle(vec3f_unit_y(), atan2f(eye.x, eye.z)));
-    const transformf_t shape = shown->surface == STRESS_SURFACE_STATIC ? static_shape() : transformf_identity();
+    const transformf_t shape = (stress_baked(shown) || stress_skinned(shown)) ? static_shape() : transformf_identity();
     for (int i = 0; i < pool; i++) {
         const bool used = i < shown->copies;
         entity_set_enabled(slots[i], used);
         if (used) {
-            transformf_t place = stress_copy_place(shown, i, seen);
-            if (shown->surface == STRESS_SURFACE_STATIC) {
-                place = transformf_compose(&place, &shape);
-            }
+            const transformf_t place = copy_local(i, seen, &shape);
             transform_set_local(slots[i], transformf_compose(&facing, &place));
         }
     }
@@ -211,7 +309,14 @@ load(void) {
         return false;
     }
     viewer = render_lab.start_camera == NULL ? camera : entity_find(loaded, name_hash(render_lab.start_camera));
-    if (!find_pool() || (shown->surface != STRESS_SURFACE_STATIC && !take_mesh())) {
+    if (!find_pool()) {
+        fail("no stress copies");
+        return false;
+    }
+    if (stress_skinned(shown)) {
+        return take_mesh() && build() && load_skins();
+    }
+    if (!stress_baked(shown) && !take_mesh()) {
         fail("no memory for stress");
         return false;
     }
@@ -223,7 +328,7 @@ load(void) {
         fail("no memory for the stress texture");
         return false;
     }
-    if (shown->surface != STRESS_SURFACE_STATIC && !build()) {
+    if (!stress_baked(shown) && !build()) {
         fail("stress mesh did not fit");
         return false;
     }
@@ -236,17 +341,25 @@ scene_stress_enter(const lab_scene_t* self) {
     draw_clear(RGB565BE(UI_BACKGROUND));
     failure[0] = '\0';
     wave_ms = 0;
+    skinned_count = 0;
     if (!load()) {
         return;
     }
     (void)camera_activate(
         entity_find(loaded, name_hash(render_lab.start_camera == NULL ? shown->camera : render_lab.start_camera)));
     place_copies();
+    for (int i = 0; i < mathi_min(shown->copies, pool); i++) {
+        copy_extras(i);
+    }
     apply_settings();
 }
 
 static void
 scene_stress_exit(void) {
+    for (int i = 0; i < skinned_count; i++) {
+        scene_release(slots[i]);
+    }
+    skinned_count = 0;
     scene_release(loaded);
     loaded = ENTITY_NONE;
     slots = NULL;

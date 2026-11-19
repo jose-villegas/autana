@@ -42,6 +42,8 @@ NEAR_SHARE = 1 / 3
 # the truth so every triangle divides.
 DIVIDE_TUNABLE = "render.texture_divide_px"
 AFFINE_TUNABLE = "render.texture_bend_steps"
+# texture.affine_level 0: no level steps affine for its coarseness.
+LEVEL_TUNABLE = "render.texture_affine_level"
 TRUTH = 1
 # Squares the divide sheet zooms on.
 DIVIDE_CROPS = 4
@@ -63,7 +65,7 @@ def draw(args, value, work, divide=None):
     bmp = work / f"{name}.bmp"
     tune = [] if divide is None else ["--set", f"{DIVIDE_TUNABLE}={divide}"]
     if divide == TRUTH:
-        tune += ["--set", f"{AFFINE_TUNABLE}=0"]
+        tune += ["--set", f"{AFFINE_TUNABLE}=0", "--set", f"{LEVEL_TUNABLE}=0"]
     run(["sh", VIEWER, args.scene, "--object", args.object, "--quarter", PORTRAIT, "--frames", args.frame + 1,
          "--dt", args.dt, *(["--textured", args.object] if value else []), *tune, "-o", bmp])
     png = work / f"{name}.png"

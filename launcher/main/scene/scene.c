@@ -7,6 +7,7 @@
 #include <math.h>
 #include <stdalign.h>
 #include <stddef.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -145,6 +146,7 @@ instantiate(const scene_asset_t* asset) {
     }
     for (int i = 0; i < asset->skinned_renderer_count; i++) {
         scene->renderers[asset->renderer_count + i].entity = asset->skinned_renderers[i].entity;
+        scene->renderers[asset->renderer_count + i].resident_arrays = SCENE_RESIDENT_ALL; /* skins read the pack */
     }
     return scene;
 }
@@ -441,15 +443,9 @@ free_columns(scene_t* scene) {
     memory_free(scene->chunks);
     for (int i = 0; i < scene->renderer_count; i++) {
         scene_renderer_texturing_free(&scene->renderers[i]);
+        scene_mesh_release(&scene->renderers[i]);
     }
     scene_hierarchy_release(scene);
-#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-    if (scene->copies != NULL) {
-        asset_store_copies_remove(scene->copies);
-        scene_free_kept(scene->copies);
-    }
-#endif
-    scene_free_kept(scene->resident);
     scene_free_kept(scene);
 }
 
@@ -483,9 +479,6 @@ open_scene(scene_root_t* record, const asset_pack_t* pack) {
     scene_hierarchy_update_active(scene, SCENE_ROW_ROOT);
     done = scene_hierarchy_open(scene) ? open_meshes(scene, pack)
                                        : scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, record->id);
-    if (done.status == SCENE_OK) {
-        done = scene_mesh_make_resident(scene);
-    }
     if (done.status == SCENE_OK) {
         done = scene_renderer_open_cuts(scene);
     }
@@ -649,6 +642,34 @@ scene_state(entity_t root) {
     return record == NULL || row != SCENE_ROW_ROOT ? PENDING_NONE : record->state;
 }
 
+void
+scene_starve(scene_t* scene, scene_row_t entity, bool* starved, const char* doing) {
+    const char* name = scene->asset.names[entity].name;
+    *starved = true;
+    scene->starved_count++;
+    scene->active_renderers_stale = true;
+    (void)fprintf(stderr, "scene: no memory to %s %s; it is not drawn\n", doing, name);
+}
+
+void
+scene_unstarve(scene_t* scene, bool* starved) {
+    scene->starved_count -= *starved;
+    *starved = false;
+}
+
+/* The first entity starved now: a skin without its buffers or a renderer
+ * without its copies. */
+static const char*
+starved_name(const scene_t* scene) {
+    for (int i = 0; i < scene->renderer_count; i++) {
+        const scene_row_t e = scene->renderers[i].entity;
+        if (scene->renderers[i].starved || scene->skinned_renderers[e].starved) {
+            return scene->asset.names[e].name;
+        }
+    }
+    return scene->root->id;
+}
+
 bool
 scene_failure(entity_t root, scene_failure_t* why) {
     const scene_root_t* record = record_of(root);
@@ -657,7 +678,7 @@ scene_failure(entity_t root, scene_failure_t* why) {
     if (record == NULL || (record->state != PENDING_FAILED && !starved)) {
         return false;
     }
-    *why = record->failure;
+    *why = starved ? scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, starved_name(record->scene)) : record->failure;
     return true;
 }
 

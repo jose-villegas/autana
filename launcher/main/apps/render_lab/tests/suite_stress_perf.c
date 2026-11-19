@@ -25,6 +25,7 @@
 #include "render/context/render_context.h"
 #include "render/record/frame_record.h"
 #include "scene/animator/animator.h"
+#include "scene/scene_anim_stages.h"
 #include "testkit/cleanup.h"
 #include "unity.h"
 
@@ -39,11 +40,16 @@ static const lab_perf_quarter_t* quarter;
 
 static int size_step;
 
-/* r3d's stages, then the recorder's: a goal row's stage goals in this order. */
-enum { STRESS_PERF_STAGES = R3D_STAGE_COUNT + 1 };
+/* Goal rows store raster stages, the recorder and, for skinned presets, animation stages. */
+enum {
+    STRESS_PERF_STATIC_STAGES = R3D_STAGE_COUNT + 1,
+    STRESS_PERF_ANIMATION_STAGES = 3,
+    STRESS_PERF_STAGES = STRESS_PERF_STATIC_STAGES + STRESS_PERF_ANIMATION_STAGES
+};
 
 static const char* const stress_perf_stages[STRESS_PERF_STAGES] = {
-    R3D_STAGE_CULL_NAME, R3D_STAGE_TRANSFORM_NAME, R3D_STAGE_DRAW_NAME, R3D_STAGE_UPSCALE_NAME, FRAME_RECORD_STAGE_NAME,
+    R3D_STAGE_CULL_NAME,     R3D_STAGE_TRANSFORM_NAME,   R3D_STAGE_DRAW_NAME,         R3D_STAGE_UPSCALE_NAME,
+    FRAME_RECORD_STAGE_NAME, SCENE_ANIM_STAGE_POSE_NAME, SCENE_ANIM_STAGE_LIGHT_NAME, SCENE_ANIM_STAGE_SKIN_NAME,
 };
 static int saved_filter;
 static int saved_layout;
@@ -100,6 +106,10 @@ static const stress_goal_t stress_goals[] = {
     {"stress-near", "landscape", "default", {410, 1580, 11130, 2440, 0}, {15490, 17820}},
     {"stress-few-copies", "portrait", "default", {260, 1090, 5290, 1990, 0}, {8600, 9890}},
     {"stress-few-copies", "landscape", "default", {260, 1080, 5720, 2050, 0}, {9080, 10450}},
+    {"stress-carved-near", "portrait", "default", {0, 0, 0, 0, 0}, {0, 0}},
+    {"stress-carved-near", "landscape", "default", {0, 0, 0, 0, 0}, {0, 0}},
+    {"stress-carved-far", "portrait", "default", {0, 0, 0, 0, 0}, {0, 0}},
+    {"stress-carved-far", "landscape", "default", {0, 0, 0, 0, 0}, {0, 0}},
     {"stress-textured", "portrait", "default", {0, 0, 0, 0, 0}, {0, 0}},
     {"stress-textured", "landscape", "default", {0, 0, 0, 0, 0}, {0, 0}},
     {"stress-record", "portrait", "default", {290, 1070, 9790, 2420, 1330}, {14810, 17040}},
@@ -116,6 +126,10 @@ static const stress_goal_t stress_goals[] = {
     {"stress-cull-setup", "landscape", "default", {140, 70, 980, 2250, 0}, {3410, 3930}},
     {"stress-baked-tree", "portrait", "default", {370, 580, 6090, 2200, 10}, {9150, 10530}},
     {"stress-baked-tree", "landscape", "default", {390, 650, 7230, 2310, 10}, {10550, 12140}},
+    {"stress-skinned-sh-blobs", "portrait", "default", {330, 1250, 7060, 2130, 10, 1550, 240, 2930}, {15340, 17650}},
+    {"stress-skinned-sh-blobs", "landscape", "default", {320, 1250, 7790, 2180, 10, 1540, 240, 2920}, {16080, 18500}},
+    {"stress-contact-blobs", "portrait", "default", {190, 720, 4160, 2180, 10}, {7190, 8270}},
+    {"stress-contact-blobs", "landscape", "default", {200, 700, 7320, 2210, 10}, {10320, 11870}},
 };
 
 static const char*
@@ -138,14 +152,14 @@ stress_goal(void) {
 }
 
 static void
-report_goals(const stress_goal_t* goal, const int64_t sums[STRESS_PERF_STAGES], int poses) {
+report_goals(const stress_goal_t* goal, const int64_t sums[STRESS_PERF_STAGES], int poses, int stages) {
     char row[LAB_PERF_ROW_NAME_SIZE];
     const bool own_size = size_step == STRESS_PERF_NO_STEP;
     int length = snprintf(row, sizeof row, "%s %s%s%s", goal->key, goal->quarter, own_size ? "" : " ",
                           own_size ? "" : goal->size);
     TEST_ASSERT_TRUE(length > 0 && (size_t)length < sizeof row);
     int64_t total = 0;
-    for (int i = 0; i < STRESS_PERF_STAGES; i++) {
+    for (int i = 0; i < stages; i++) {
         char stage[LAB_PERF_ROW_NAME_SIZE];
         length = snprintf(stage, sizeof stage, "%s %s", row, stress_perf_stages[i]);
         TEST_ASSERT_TRUE(length > 0 && (size_t)length < sizeof stage);
@@ -204,16 +218,19 @@ test_stress_stages(void) {
     TEST_ASSERT_TRUE(animator_seek(camera, ANIMATOR_CURRENT, 0));
     const uint32_t duration_ms = animator_clip_duration_ms(camera, animator_current_clip(camera));
     TEST_ASSERT_GREATER_THAN_UINT32(0, duration_ms);
+    const bool animated = stress_skinned(params);
+    const int stages = animated ? STRESS_PERF_STAGES : STRESS_PERF_STATIC_STAGES;
+    const uint32_t dt_ms = animated ? LAB_TEST_FRAME_MS : 0;
     int64_t sums[STRESS_PERF_STAGES] = {0};
     for (int i = 0; i < params->perf_poses; i++) {
         int64_t stage_us[STRESS_PERF_STAGES];
         render_lab_test_replay_pose(TAG, camera, duration_ms, (int32_t)((int64_t)duration_ms * i / params->perf_poses),
-                                    preset->key, quarter->name, stress_perf_stages, STRESS_PERF_STAGES, stage_us);
-        for (int stage = 0; stage < STRESS_PERF_STAGES; stage++) {
+                                    preset->key, quarter->name, stress_perf_stages, stages, stage_us, dt_ms);
+        for (int stage = 0; stage < stages; stage++) {
             sums[stage] += stage_us[stage];
         }
     }
-    report_goals(goal, sums, params->perf_poses);
+    report_goals(goal, sums, params->perf_poses, stages);
     release_fixture();
     suite_clear_test_cleanup();
 }
