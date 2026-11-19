@@ -37,7 +37,7 @@ test_every_family_places_each_variant_and_its_camera(void) {
  * longest camera path (suite_render_lab_frame_profile.c): its frame scratch,
  * its two trace buffers and the cull view's state. One block, since the
  * scratch is one take. */
-#define FAMILY_VISIT_BYTES (2560u * 1024u)
+#define FAMILY_VISIT_BYTES (2560U * 1024U)
 
 /* Every variant once shown keeps its meshes' copies until the scene closes,
  * so a bake that grows any of them takes from a visit that has shown them
