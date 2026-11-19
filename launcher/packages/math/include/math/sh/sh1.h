@@ -36,14 +36,5 @@ sh1_irradiance_eval(const sh1_irradiance_t* e, vec3f_t normal) {
     return (vec3f_t){channels[0], channels[1], channels[2]};
 }
 
-#define SH1_LUMINANCE_RED   0.2126F
-#define SH1_LUMINANCE_GREEN 0.7152F
-#define SH1_LUMINANCE_BLUE  0.0722F
-
-static inline float
-sh1_rgb_luminance(vec3f_t rgb) {
-    return SH1_LUMINANCE_RED * rgb.x + SH1_LUMINANCE_GREEN * rgb.y + SH1_LUMINANCE_BLUE * rgb.z;
-}
-
 /* Returns zero for an isotropic field. */
-vec3f_t sh1_rgb_dominant_direction(const sh1_rgb_t* radiance);
+vec3f_t sh1_rgb_dominant_direction(const sh1_rgb_t* radiance, vec3f_t channel_weights);

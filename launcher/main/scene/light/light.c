@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "core/memory.h"
+#include "render/texture/r3d_texture.h"
 #include "scene/scene_internal.h"
 
 r3d_skin_light_transfer_t*
@@ -225,7 +226,7 @@ scene_light_brightest_direction(const scene_t* scene) {
         if (light->kind == SCENE_LIGHT_NONE || !(scene->flags[e] & SCENE_FLAG_ACTIVE)) {
             continue;
         }
-        const float value = sh1_rgb_luminance(vec3f_scale(light->color, light->intensity));
+        const float value = vec3f_dot(vec3f_scale(light->color, light->intensity), R3D_TEXTURE_LUMA_BT709_WEIGHTS);
         if (value > luminance) {
             luminance = value;
             brightest = e;
@@ -246,7 +247,7 @@ scene_contact_light(const scene_t* scene, vec3f_t world, scene_t* const* drawn_s
     }
     if (scene->probes != NULL) {
         const sh1_rgb_t radiance = sh_probes_sample(scene->probes, world);
-        const vec3f_t direction = sh1_rgb_dominant_direction(&radiance);
+        const vec3f_t direction = sh1_rgb_dominant_direction(&radiance, R3D_TEXTURE_LUMA_BT709_WEIGHTS);
         if (vec3f_dot(direction, direction) > 0) {
             return direction;
         }

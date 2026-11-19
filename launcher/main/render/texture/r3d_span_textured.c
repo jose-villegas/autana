@@ -295,9 +295,9 @@ pick_level(const setup_t* su, const r3d_texture_t* texture) {
 /* A vertex colour's luminance, 0..255, as an 8.8 level, 255 the last. */
 static inline float
 light_level(const r3d_span_vertex_t* v) {
-    const float luma =
-        (((float)R3D_TEXTURE_LUMA_R * v->r) + ((float)R3D_TEXTURE_LUMA_G * v->g) + ((float)R3D_TEXTURE_LUMA_B * v->b))
-        * (1.0F / (float)(1 << R3D_TEXTURE_LUMA_SHIFT));
+    const float luma = (((float)R3D_TEXTURE_LUMA_BT601_R * v->r) + ((float)R3D_TEXTURE_LUMA_BT601_G * v->g)
+                        + ((float)R3D_TEXTURE_LUMA_BT601_B * v->b))
+                       * (1.0F / (float)(1 << R3D_TEXTURE_LUMA_BT601_SHIFT));
     return luma * ((float)LEVEL_MAX / (float)UINT8_MAX);
 }
 
