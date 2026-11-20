@@ -273,6 +273,18 @@ test_the_coverage_knob_overrides_only_the_coverage_cap(void) {
 #define CALLER_FAR_LEVEL 3
 #define KNOB_BEND_STEPS  (3 * R3D_SPAN_BEND_STEPS / 2)
 
+/* A level knob at 0 sets its field, `level` in `expected`, to 0 and no other; its reset gives the caller's back. */
+static void
+assert_level_knob(const render_settings_t* set, render_settings_t* expected, const char* knob, int* level) {
+    const int caller = *level;
+    TEST_ASSERT_TRUE(tune_set(tune_shared(), knob, 0));
+    *level = 0;
+    render_settings_t used = render_settings_tuned(set);
+    assert_settings(expected, &used);
+    TEST_ASSERT_TRUE(tune_reset(tune_shared(), knob));
+    *level = caller;
+}
+
 static void
 test_each_texture_knob_overrides_only_its_own_field(void) {
     render_settings_t set = RENDER_SETTINGS_DEFAULT;
@@ -290,18 +302,8 @@ test_each_texture_knob_overrides_only_its_own_field(void) {
     expected.texture.affine_bend = 0.0F;
     used = render_settings_tuned(&set);
     assert_settings(&expected, &used);
-    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, texture_affine_level), 0));
-    expected.texture.affine_level = 0;
-    used = render_settings_tuned(&set);
-    assert_settings(&expected, &used);
-    TEST_ASSERT_TRUE(tune_reset(tune_shared(), TUNE_NAME(render, texture_affine_level)));
-    expected.texture.affine_level = CALLER_LEVEL;
-    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, texture_far_level), 0));
-    expected.texture.far_level = 0;
-    used = render_settings_tuned(&set);
-    assert_settings(&expected, &used);
-    TEST_ASSERT_TRUE(tune_reset(tune_shared(), TUNE_NAME(render, texture_far_level)));
-    expected.texture.far_level = CALLER_FAR_LEVEL;
+    assert_level_knob(&set, &expected, TUNE_NAME(render, texture_affine_level), &expected.texture.affine_level);
+    assert_level_knob(&set, &expected, TUNE_NAME(render, texture_far_level), &expected.texture.far_level);
     TEST_ASSERT_TRUE(tune_reset(tune_shared(), TUNE_NAME(render, texture_divide_px)));
     expected.texture.divide_px = CALLER_DIVIDE_PX;
     used = render_settings_tuned(&set);
