@@ -82,6 +82,21 @@ class MeshBundleTests(unittest.TestCase):
         self.assertEqual([(row['step'], row['triangles_in'], row['triangles_out']) for row in recorder.rows],
                          [('meshlets', len(meshes) * rest, len(meshes) * rest), ('write', rest, rest)])
 
+    def test_a_bundle_without_textures_decodes_without_numpy(self):
+        """The firmware build packs bundles with the ESP-IDF Python, which has no numpy."""
+        import subprocess
+        with tempfile.TemporaryDirectory() as directory:
+            path = pathlib.Path(directory) / "start.bundle"
+            data = bundle_fixture(directory)[0]
+            path.write_bytes(data)
+            script = ("import sys; sys.modules['numpy'] = None; sys.path.insert(0, sys.argv[1]); "
+                      "from r3d import mesh_bundle; import pathlib; "
+                      "print(len(mesh_bundle.decode(pathlib.Path(sys.argv[2]).read_bytes())[1]))")
+            result = subprocess.run([sys.executable, "-c", script, str(pathlib.Path(__file__).parents[1]), str(path)],
+                                    capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(int(result.stdout), len(mesh_bundle.decode(data)[1]))
+
     def test_manifest_has_plain_names_without_hashes(self):
         with tempfile.TemporaryDirectory() as directory:
             data = bundle_fixture(directory)[0]
