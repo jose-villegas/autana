@@ -755,7 +755,7 @@ def surface_loss(samples, centres, normals, scale, margin):
 def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian, seed=1, device="cuda", report=100,
              clear=(0.0, 0.0, 0.0), cost=None, cost_weight=0.0, scale=1, normal_weight=0.0, surface_weight=0.0,
              surface_margin=0.0, source=None, seam_margin=SEAM_MARGIN, copies=None, carved=None, front_weight=0.0,
-             depth_weight=0.0):
+             depth_weight=0.0, geometry_views=None):
     """Fit fixed triangles; return positions, colours and colour-only error history.
     Position steps use bounding diagonals and each vertex's capped local start scale.
     Laplacian drift and the source envelope use capped local start edge scales,
@@ -766,7 +766,7 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
     triangles by default; `seam_margin=0` turns them off.
     `copies` (a FitMesh, fit/copies.py) is drawn after the mesh, unchanged.
     The front and depth terms (fit/gbuffer.py) need the source and `carved`, one flag per source triangle drawn
-    as a copy."""
+    as a copy. `geometry_views` supplies independent probe buffers for these two terms alone."""
     import torch
 
     points0, rgb0, tris, double, _scale, vertex_point, flat, _hidden = mesh
@@ -816,6 +816,14 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
         if source is None or carved is None:
             raise ValueError("front and depth terms need the source and its carved triangles")
         buffers = gbuffer.reference_buffers(source, carved, matrices, [target.shape[1::-1] for target in targets], device)
+    geometry_rng = None
+    if geometry_views is not None and geometry_views.matrices and (front_weight or depth_weight):
+        from r3d.fit.geometry_views import BATCH_SEED_OFFSET
+
+        geometry_rng = np.random.default_rng(seed + BATCH_SEED_OFFSET)
+        if geometry_views.size not in renderers:
+            renderers[geometry_views.size] = Renderer(drawn.tris, drawn.double, drawn.vertex_point,
+                                                      geometry_views.size, device, clear, flat)
     if normal_weight and any(normal is None for normal in normals):
         raise ValueError("a normal term needs the reference's normal buffers: reference_render.py --normals")
     if surface_weight:
@@ -874,6 +882,16 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
                 distance, _angles = normal_l1(render, draw, (matrices[i], None, normals[i], views[i][3]), clip,
                                               angles=False, raster=raster, values=values[..., 3:])
                 error = error + normal_weight * distance / len(chosen)
+        if geometry_rng is not None:
+            count = len(geometry_views.matrices)
+            geometry_chosen = geometry_rng.choice(count, size=min(batch, count), replace=False)
+            render = renderers[geometry_views.size]
+            for i in geometry_chosen:
+                fitted, shown = gbuffer.distance(render, draw, geometry_views.matrices[i])
+                rest_shown = (shown >= 0) & (shown < len(tris))
+                reference, copy = geometry_views.buffers.depth[i], geometry_views.buffers.copy[i]
+                front = front + gbuffer.front_loss(fitted, rest_shown, reference, copy) / len(geometry_chosen)
+                depth = depth + gbuffer.depth_loss(fitted, rest_shown, reference, copy) / len(geometry_chosen)
         drift = ((uniform_laplacian(points, edges) - rest) / point_scale).pow(2).sum(dim=1).mean()
         if surface_weight:
             from r3d.appearance_gather import gather
@@ -1022,6 +1040,13 @@ def main(argv=None):
             carved[list(match_meshes(source.tri_o, source.tri_m, source.object_names, source.names,
                                      job.settings.meshes))] = True
             carved = carved[source.tri_o]
+        geometry = {}
+        if copies is not None and job.settings.fit.probes is not None:
+            from r3d.fit.geometry_views import select
+
+            camera = scene.camera.component
+            geometry["geometry_views"] = select(source, carved, camera.region, camera.near_z,
+                                                 job.settings.fit.probes.spacing)
         fit_start = fitted
         cost = None if args.cost_model is None else load_cost(args.cost_model)[0]
         points, rgb, history = optimise(fitted, views, size, args.steps, args.batch, args.lr_position, args.lr_colour,
@@ -1029,7 +1054,7 @@ def main(argv=None):
                                         scale=args.scale, normal_weight=args.normal_weight, source=source,
                                         surface_weight=args.surface_weight, surface_margin=args.surface_margin,
                                         seam_margin=args.seam_margin, copies=copies, carved=carved,
-                                        front_weight=args.front_weight, depth_weight=args.depth_weight)
+                                        front_weight=args.front_weight, depth_weight=args.depth_weight, **geometry)
         fitted = fitted._replace(points=points, rgb=rgb)
         drawn = joined(fitted, copies)
         rows = [coverage(drawn, *pose_views(poses, args.scale))[:len(fitted.tris)]
