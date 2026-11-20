@@ -562,5 +562,15 @@ class RecordTests(TreeTest):
         self.assertNotIn("unchanged launcher/a/one.py", out.splitlines())
 
 
+class DeclaredProducerTests(unittest.TestCase):
+    def test_the_code_of_every_declared_producer_can_be_keyed(self):
+        # --changed keys each run by its import closure; a producer whose imports the walk cannot place
+        # stops every build, so a new one fails here rather than in the Doc Images job.
+        from docs.inputs import code_inputs
+        for name, found in producer.find().items():
+            with self.subTest(producer=name):
+                self.assertTrue(code_inputs([found.script]))
+
+
 if __name__ == "__main__":
     unittest.main()
