@@ -13,7 +13,6 @@ sys.path.insert(0, str(TOOLS))
 sys.path.insert(0, str(TOOLS / "r3d" / "texture"))
 import mip_figures  # noqa: E402
 import texture_figures  # noqa: E402
-MEASURE_RERUN = 1  # measurement only (769w7): a code change that leaves the images alone; reverted next
 from docs.producer import Producer  # noqa: E402
 
 PRODUCER = Producer(area="render", needs=("host", "bakes"), run=("--cc", "{cc}", "--out", "{out}"),
