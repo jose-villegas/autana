@@ -60,8 +60,9 @@ the mesh to a larger budget, and fits it again.
 ## Alpha and cards
 
 References use [per-hit alpha testing](Bake-Method.md#fidelity-against-a-reference).
-The depth and copy G-buffers trace the same source, preserving source
-triangle and carved flags.
+The depth and copy G-buffers preserve source triangle and carved flags.
+Probe fits add independent, finer-spaced geometry views to front and depth
+losses, so close copies constrain rest movement without colour references.
 
 Materials accepted by the card baker are hidden from camera references and
 the fit, while remaining in the light bake. MASK1 card copies are excluded

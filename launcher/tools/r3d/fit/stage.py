@@ -12,10 +12,8 @@ from r3d import mesh_bundle, mesh_asset, log
 from r3d.reference_set import fit_sets
 from r3d.fit.copies import drawn_copies, hidden_materials
 
-# A carved start's rest is fitted with the reference G-buffer terms (fit/gbuffer.py) at these weights: the front
-# term pushes it behind the copies, the depth term holds it to the source's surface. Front 1e4 cut street_fitted's
-# hidden copy pixels about tenfold; atrium_fitted's probe fit still hid a held-out close-up's copies at 1e4 and not
-# at 3e4, at equal held-out dE (1e5 raised it). Depth 30 lowers held-out dE; heavier depth raised it.
+# The G-buffer front term pushes the rest behind copies; depth holds it to the source surface. Probe fits also
+# use independent close geometry views: colour training views alone can miss rest movement over a nearby copy.
 FRONT_WEIGHT = 3.0e4
 DEPTH_WEIGHT = 30.0
 
