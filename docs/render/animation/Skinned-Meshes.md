@@ -227,7 +227,7 @@ centred at the mover or posed contact joint, with no stretch.
 ![BLOB, FEET and SILHOUETTE during one run, with warp off and on](../../images/render/contact-warp.gif)
 
 Warp is a ground-plane approximation of Blinn's planar projection: it shifts a footprint ellipse
-away from the light and stretches it along that direction.<sup>[[132]](../../Citations.md#blinn-1988)</sup>
+away from the light and stretches it along that direction.<sup>[[133]](../../Citations.md#blinn-1988)</sup>
 
 The offset is `r tan(θ)`, with θ measured from vertical; the stretch is `1/e`,
 where `e = cos θ` is clamped to `CONTACT_LIGHT_ELEVATION_MIN`.

@@ -26,6 +26,7 @@
 #include "render_host.h"
 #include "scene/scene_internal.h"
 #include "scene/scene_shell.h"
+#include "scene/transform/transform.h"
 #include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
 
@@ -79,6 +80,9 @@ static const char* dump_dir;
 /* --counts PATH, with --view cull: a row per frame of what the cull view counted (render_counts.h). */
 static const char* counts_path;
 static FILE* counts;
+
+/* --transforms PATH: local transforms after each update, keyed by entity name. */
+static const char* transforms_path;
 
 /* The value after `name` in `out`, NULL when the option is absent; false,
  * with a message, when it is the last argument and has none. */
@@ -227,10 +231,10 @@ options(int argc, char** argv) {
         const char* name;
         const char** out;
     } values[] = {
-        {"--scene", &scene},       {"--view", &view},          {"--camera", &render_lab.start_camera},
-        {"--scale", &scale},       {"--size", &size},          {"--small-fill", &small_fill},
-        {"--dump", &dump_dir},     {"--counts", &counts_path}, {"--contact-shape", &shape},
-        {"--contact-warp", &warp},
+        {"--scene", &scene},         {"--view", &view},          {"--camera", &render_lab.start_camera},
+        {"--scale", &scale},         {"--size", &size},          {"--small-fill", &small_fill},
+        {"--dump", &dump_dir},       {"--counts", &counts_path}, {"--transforms", &transforms_path},
+        {"--contact-shape", &shape}, {"--contact-warp", &warp},
     };
 
     for (size_t i = 0; i < sizeof values / sizeof values[0]; i++) {
@@ -346,6 +350,33 @@ apply_contact_options(void) {
 }
 
 static void
+dump_transforms(int frame) {
+    FILE* out = fopen(transforms_path, frame == 0 ? "w" : "a");
+    if (out == NULL) {
+        perror(transforms_path);
+        exit(EXIT_FAILURE);
+    }
+    if (frame == 0) {
+        (void)fprintf(out, "frame,name,x,y,z,qx,qy,qz,qw\n");
+    }
+    const lab_scene_t* current = lab_current(&render_lab);
+    const lab_path_t path = current != NULL && current->path != NULL
+                                ? current->path()
+                                : (lab_path_t){.scene = ENTITY_NONE, .entity = ENTITY_NONE};
+    for (entity_t e = entity_next(path.scene, ENTITY_NONE); !handle_is_none(e); e = entity_next(path.scene, e)) {
+        const transformf_t local = transform_local(e);
+        (void)fprintf(out, "%d,%s,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g\n", frame, entity_name(e),
+                      (double)local.position.x, (double)local.position.y, (double)local.position.z,
+                      (double)local.rotation.x, (double)local.rotation.y, (double)local.rotation.z,
+                      (double)local.rotation.w);
+    }
+    if (fclose(out) != 0) {
+        perror(transforms_path);
+        exit(EXIT_FAILURE);
+    }
+}
+
+static void
 draw(const provider_frame_t* frame) {
     ui_clear_band_overlay();
     input_t in = tap ? frame->input : (input_t){0};
@@ -369,6 +400,9 @@ draw(const provider_frame_t* frame) {
     /* The shell's update() runs before it composes a frame; this harness has
      * already composed, so it steers the next one. */
     app_list()->update(frame->dt_ms, &in);
+    if (transforms_path != NULL) {
+        dump_transforms(frame->index);
+    }
 }
 
 const frame_provider_t render_lab_provider = {
