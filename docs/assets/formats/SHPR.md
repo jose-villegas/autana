@@ -82,7 +82,7 @@ title Inside mask byte, one cell a bit, least significant first
 V1 includes direct lighting in the incident-radiance coefficients.
 
 The coefficient order is constant, +y, +z, +x, each with consecutive RGB.
-`Y00 = 0.5 sqrt(1/pi)` and `Y1 = 0.5 sqrt(3/pi)` follow
+$`Y_{00} = \tfrac12\sqrt{1/\pi}`$ and $`Y_1 = \tfrac12\sqrt{3/\pi}`$ follow
 Sloan 2008<sup>[[129]](../../Citations.md#sloan-2008)</sup>.
 Scale covers the largest absolute coefficient without clipping; an all-zero
 grid uses scale 1.

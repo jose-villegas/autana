@@ -205,7 +205,7 @@ chart. No `textures.toml` entry is needed.
 
 | Budget | Rule |
 |---|---|
-| Ceiling | Card triangles are paid first; the rest gets `min(triangles, ceiling − card triangles)`. |
+| Ceiling | Card triangles are paid first; the rest gets `min(triangles, ceiling - card triangles)`. |
 | Fit | Accepted materials leave camera references and the fit; they remain in the light bake as occluders and bounce sources. |
 | Levels | Cards bypass simplification and carry no coarser levels. |
 
