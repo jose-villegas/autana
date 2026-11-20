@@ -243,8 +243,10 @@ class Console:
                 if exited:
                     break
                 continue
+            except (ConnectionResetError, ConnectionAbortedError):
+                chunk = b""  # QEMU exited with a line of ours unread: its end, like a close
             if not chunk:
-                if exited:
+                if exited or self.proc.poll() is not None:
                     break
                 self.ended = CONSOLE_CLOSED
                 return

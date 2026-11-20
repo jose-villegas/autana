@@ -152,6 +152,9 @@ if mode == "sentinel":
     conn.sendall(b"SELFTEST_COMPLETE failures=0 elapsed_ms=1\\n")
 elif mode == "exit":
     sys.exit(3)
+elif mode == "unread":
+    time.sleep(0.5)
+    sys.exit(3)
 elif mode == "close":
     conn.close()
 time.sleep(60)
@@ -203,6 +206,19 @@ class QemuStopTest(unittest.TestCase):
         self.addCleanup(console.close)
         proc.wait(timeout=30)
         self.assertEqual(["/src/suite_gfx.c:40:test_fill:PASS"], list(console.lines()))
+        self.assertEqual(qemu_run.QEMU_EXITED, console.ended)
+
+    def test_qemu_exiting_with_a_line_of_ours_unread_ends_the_console_as_an_exit(self):
+        # Closing a socket with unread bytes resets it: the reader must take that as QEMU's end.
+        port = qemu_run.free_port()
+        proc = subprocess.Popen([sys.executable, str(self.script), str(port), "unread"],
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.addCleanup(proc.wait)
+        console = qemu_run.Console(proc, port, str(self.log), time.monotonic() + 30)
+        self.addCleanup(console.close)
+        console.send("BUILD_ID_REQUEST")
+        proc.wait(timeout=30)
+        list(console.lines())
         self.assertEqual(qemu_run.QEMU_EXITED, console.ended)
 
     def test_a_console_closed_while_qemu_runs_says_so(self):
