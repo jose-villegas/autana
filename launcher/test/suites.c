@@ -213,10 +213,10 @@ suites_run_request(const char* request, suite_run_t* run) {
     const char* space = strchr(request, ' ');
     const size_t name_length = space != NULL ? (size_t)(space - request) : strlen(request);
     const char* list = space != NULL ? space + 1 : "";
+    memcpy(run->name, request, name_length < SUITE_REQUEST_MAX ? name_length : SUITE_REQUEST_MAX);
     if (name_length > SUITE_NAME_MAX) {
         return;
     }
-    memcpy(run->name, request, name_length);
 
     filtering = false;
     selected_count = 0;
