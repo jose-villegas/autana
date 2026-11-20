@@ -1,7 +1,7 @@
 /* The host harness enters the registered screen with synthetic time and
  * input. Hardware-facing entry code links here because it needs no board
- * access. display_quarter_now returns the requested orientation; shell_home_edge
- * returns the bottom edge because synthetic input has no home gesture. */
+ * access. shell_home_edge returns the bottom edge because synthetic input has
+ * no home gesture. */
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -25,10 +25,10 @@
 #include "render_counts.h"
 #include "render_host.h"
 #include "scene/scene_shell.h"
+#include "scene/transform/transform.h"
 #include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
 
-static int shell_quarter;
 static int option_count;
 static char** option_args;
 
@@ -76,6 +76,9 @@ static const char* dump_dir;
 /* --counts PATH, with --view cull: a row per frame of what the cull view counted (render_counts.h). */
 static const char* counts_path;
 static FILE* counts;
+
+/* --transforms PATH: local transforms after each update, keyed by entity name. */
+static const char* transforms_path;
 
 /* The value after `name` in `out`, NULL when the option is absent; false,
  * with a message, when it is the last argument and has none. */
@@ -217,7 +220,7 @@ options(int argc, char** argv) {
     } values[] = {
         {"--scene", &scene},   {"--view", &view},          {"--camera", &render_lab.start_camera},
         {"--scale", &scale},   {"--size", &size},          {"--small-fill", &small_fill},
-        {"--dump", &dump_dir}, {"--counts", &counts_path},
+        {"--dump", &dump_dir}, {"--counts", &counts_path}, {"--transforms", &transforms_path},
     };
 
     for (size_t i = 0; i < sizeof values / sizeof values[0]; i++) {
@@ -246,11 +249,6 @@ options(int argc, char** argv) {
            && tune_options(argc, argv, "--tune");
 }
 
-int
-display_quarter_now(void) {
-    return shell_quarter;
-}
-
 /* No finger touches a host render, so no touch ever lands near this edge. */
 gesture_edge_t
 shell_home_edge(void) {
@@ -264,7 +262,6 @@ setup(int quarter) {
         (void)fprintf(stderr, "no app registered itself\n");
         return false;
     }
-    shell_quarter = quarter;
     ui_init();
     gfx_set_frame_overlay(ui_replay_band);
     ui_set_transform(ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT));
@@ -315,6 +312,33 @@ dump_raster(int index) {
 }
 
 static void
+dump_transforms(int frame) {
+    FILE* out = fopen(transforms_path, frame == 0 ? "w" : "a");
+    if (out == NULL) {
+        perror(transforms_path);
+        exit(EXIT_FAILURE);
+    }
+    if (frame == 0) {
+        (void)fprintf(out, "frame,name,x,y,z,qx,qy,qz,qw\n");
+    }
+    const lab_scene_t* current = lab_current(&render_lab);
+    const lab_path_t path = current != NULL && current->path != NULL
+                                ? current->path()
+                                : (lab_path_t){.scene = ENTITY_NONE, .entity = ENTITY_NONE};
+    for (entity_t e = entity_next(path.scene, ENTITY_NONE); !handle_is_none(e); e = entity_next(path.scene, e)) {
+        const transformf_t local = transform_local(e);
+        (void)fprintf(out, "%d,%s,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g\n", frame, entity_name(e),
+                      (double)local.position.x, (double)local.position.y, (double)local.position.z,
+                      (double)local.rotation.x, (double)local.rotation.y, (double)local.rotation.z,
+                      (double)local.rotation.w);
+    }
+    if (fclose(out) != 0) {
+        perror(transforms_path);
+        exit(EXIT_FAILURE);
+    }
+}
+
+static void
 draw(const provider_frame_t* frame) {
     ui_clear_band_overlay();
     input_t in = tap ? frame->input : (input_t){0};
@@ -335,6 +359,9 @@ draw(const provider_frame_t* frame) {
     /* The shell's update() runs before it composes a frame; this harness has
      * already composed, so it steers the next one. */
     app_list()->update(frame->dt_ms, &in);
+    if (transforms_path != NULL) {
+        dump_transforms(frame->index);
+    }
 }
 
 const frame_provider_t render_lab_provider = {

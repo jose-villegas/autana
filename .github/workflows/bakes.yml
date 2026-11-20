@@ -2,12 +2,14 @@ name: Bakes
 
 # The expensive bakes (launcher/tools/bake/bake.py). On a pull request the CPU
 # job bakes every mesh, fit's levels and sound launcher/bakes.lock has no row for, and the reference
-# shard jobs trace each missing reference set in parts that the reference job joins and packs
-# (bake.py REFERENCE_SHARDS); both upload the files; the lock job then fails until the author runs
+# plan job selects each missing reference set's poses once; shard jobs render that plan,
+# and the reference job joins and packs their files
+# (as many as bake.py reference_shards sizes from their rays); both upload the files; the lock job then fails until the author runs
 # `bake.py lock --from-run N` with that run and commits the lock. A mesh's and a
 # reference set's bytes differ by CPU vendor, so on a runner of another vendor than the lock's
-# `mesh_cpu_vendor` the bake fails before making one; a shard checks its runner first
-# (scripts/ci/runner_vendor.py), and bakes-vendor-rerun.yml re-runs a run failed only that way.
+# `mesh_cpu_vendor` the bake fails before making one; the plan checks its runner first, and each shard
+# starts on several runners and the first of the lock's vendor traces it (scripts/ci/runner_vendor.py),
+# and bakes-vendor-rerun.yml re-runs a run failed only that way.
 # A fit needs
 # the CUDA GPU, so the Bakes GPU workflow (bakes-gpu.yml) makes it from the locked
 # start and reference set, started by hand on the branch; no pull request reaches that runner. On main, publish uploads each locked file the `bakes` release lacks,
@@ -75,11 +77,12 @@ jobs:
           python launcher/tools/bake/bake.py list --missing --kind sound | tee "$RUNNER_TEMP/sound.txt"
           python launcher/tools/bake/bake.py list --missing --kind levels | tee "$RUNNER_TEMP/levels.txt"
           python launcher/tools/bake/bake.py list --missing --kind texture | tee -a "$RUNNER_TEMP/levels.txt"
-          echo "mesh=$(cat "$RUNNER_TEMP/mesh.txt" "$RUNNER_TEMP/levels.txt" | wc -l)" >> "$GITHUB_OUTPUT"
-          echo "traced=$(wc -l < "$RUNNER_TEMP/mesh.txt")" >> "$GITHUB_OUTPUT"
+          python launcher/tools/bake/bake.py list --missing --kind sh_probes | tee "$RUNNER_TEMP/sh_probes.txt"
+          echo "mesh=$(cat "$RUNNER_TEMP/mesh.txt" "$RUNNER_TEMP/levels.txt" "$RUNNER_TEMP/sh_probes.txt" | wc -l)" >> "$GITHUB_OUTPUT"
+          echo "traced=$(cat "$RUNNER_TEMP/mesh.txt" "$RUNNER_TEMP/sh_probes.txt" | wc -l)" >> "$GITHUB_OUTPUT"
           echo "sound=$(wc -l < "$RUNNER_TEMP/sound.txt")" >> "$GITHUB_OUTPUT"
           echo "blend=$(wc -l < "$RUNNER_TEMP/blend.txt")" >> "$GITHUB_OUTPUT"
-          echo "count=$(cat "$RUNNER_TEMP/blend.txt" "$RUNNER_TEMP/mesh.txt" "$RUNNER_TEMP/levels.txt" "$RUNNER_TEMP/sound.txt" | wc -l)" >> "$GITHUB_OUTPUT"
+          echo "count=$(cat "$RUNNER_TEMP/blend.txt" "$RUNNER_TEMP/mesh.txt" "$RUNNER_TEMP/levels.txt" "$RUNNER_TEMP/sound.txt" "$RUNNER_TEMP/sh_probes.txt" | wc -l)" >> "$GITHUB_OUTPUT"
 
       # Before any install: a runner of another CPU vendor than the lock's fails in seconds.
       - name: This runner's CPU vendor is the lock's
@@ -125,6 +128,7 @@ jobs:
           earlier=()
           if [ "$GITHUB_RUN_ATTEMPT" -gt 1 ]; then earlier=(--from-run "$GITHUB_RUN_ID"); fi
           python launcher/tools/bake/bake.py bake --kind blend --out "$RUNNER_TEMP/bakes" "${earlier[@]}"
+          python launcher/tools/bake/bake.py bake --kind sh_probes --out "$RUNNER_TEMP/bakes"
           python launcher/tools/bake/bake.py bake --kind mesh --out "$RUNNER_TEMP/bakes"
           python launcher/tools/bake/bake.py bake --kind levels --out "$RUNNER_TEMP/bakes"
           python launcher/tools/bake/bake.py bake --kind texture --out "$RUNNER_TEMP/bakes"
@@ -148,53 +152,130 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       shards: ${{ steps.plan.outputs.shards }}
+      artifact: ${{ steps.plan.outputs.artifact }}
+      count: ${{ steps.plan.outputs.count }}
+      candidates: ${{ steps.plan.outputs.candidates }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - uses: ./.github/actions/host-tools
 
-      - name: The shards that trace the missing reference sets
-        id: plan
-        run: echo "shards=$(python launcher/tools/bake/bake.py shards)" >> "$GITHUB_OUTPUT"
+      - name: Whether a reference set is missing
+        id: missing
+        shell: bash
+        run: |
+          python launcher/tools/bake/bake.py list --missing --kind reference | tee "$RUNNER_TEMP/reference.txt"
+          echo "count=$(wc -l < "$RUNNER_TEMP/reference.txt")" >> "$GITHUB_OUTPUT"
 
-  # A reference set takes hours on one hosted runner; REFERENCE_SHARDS jobs trace a share of its poses each.
-  reference-shard:
-    needs: reference-plan
-    if: ${{ !cancelled() && needs.reference-plan.outputs.shards != '' && needs.reference-plan.outputs.shards != '[]' }}
-    name: Trace reference shard ${{ matrix.shard }}
-    runs-on: ubuntu-24.04
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: ${{ fromJSON(needs.reference-plan.outputs.shards) }}
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-
-      # Before any install: a runner of another CPU vendor than the lock's fails in seconds.
       - name: This runner's CPU vendor is the lock's
+        if: ${{ steps.missing.outputs.count != '0' }}
         run: python3 scripts/ci/runner_vendor.py check
 
-      - uses: ./.github/actions/host-tools
-
+      # Choosing probe faces traces visibility; all shards render this one selection.
       - name: Fetch source files
+        if: ${{ steps.missing.outputs.count != '0' }}
         run: git lfs pull --exclude=""
 
       - name: Initialize only meshoptimizer
+        if: ${{ steps.missing.outputs.count != '0' }}
         run: git submodule update --init --depth 1 third_party/upstream/meshoptimizer
 
       - name: Install the r3d requirements and LLVM
+        if: ${{ steps.missing.outputs.count != '0' }}
         run: |
           pip install -r launcher/tools/r3d/requirements.txt
           sudo sh scripts/ci/apt_install.sh -y --no-install-recommends llvm
 
-      - name: Trace this shard
+      - name: The shards that trace the missing reference sets
+        id: plan
+        if: ${{ steps.missing.outputs.count != '0' }}
         run: |
-          python launcher/tools/bake/bake.py bake --kind reference --shard "${{ matrix.shard }}/${{ strategy.job-total }}" --out "$RUNNER_TEMP/shard"
+          shards=$(python launcher/tools/bake/bake.py shards --out "$RUNNER_TEMP/reference-plan")
+          echo "shards=$shards" >> "$GITHUB_OUTPUT"
+          echo "artifact=reference-plan-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+          python scripts/ci/runner_vendor.py plan "$shards"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: ${{ steps.missing.outputs.count != '0' }}
+        with:
+          name: reference-plan-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/reference-plan
+          if-no-files-found: error
+
+  # A reference set takes hours on one hosted runner; each shard traces a share of every missing set's poses.
+  # A shard starts on several candidate runners, since a wrong-vendor one would otherwise wait for a re-run.
+  reference-shard:
+    needs: reference-plan
+    if: ${{ !cancelled() && needs.reference-plan.outputs.shards != '' && needs.reference-plan.outputs.shards != '[]' }}
+    name: Trace reference shard ${{ matrix.shard }} (candidate ${{ matrix.candidate }})
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.reference-plan.outputs.shards) }}
+        candidate: ${{ fromJSON(needs.reference-plan.outputs.candidates) }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      # Before any install: which CPU vendor this runner is, as an artifact the shard's other candidates read.
+      - name: This runner's CPU vendor
+        id: vendor
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci/runner_vendor.py mark "${{ matrix.shard }}" "${{ matrix.candidate }}" "$RUNNER_TEMP/vendor"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: steps.vendor.outputs.marker != ''
+        with:
+          name: ${{ steps.vendor.outputs.marker }}
+          path: ${{ runner.temp }}/vendor
+          retention-days: 1
+
+      # Fails, for bakes-vendor-rerun.yml, only when no candidate of this attempt is the lock's vendor.
+      - name: Whether this candidate traces the shard
+        id: claim
+        if: steps.vendor.outputs.marker != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VENDOR_MARKER: ${{ steps.vendor.outputs.marker }}
+        run: python3 scripts/ci/runner_vendor.py claim "${{ matrix.shard }}" "${{ matrix.candidate }}"
+
+      - uses: ./.github/actions/host-tools
+        if: steps.claim.outputs.trace == 'true'
+
+      - name: Fetch source files
+        if: steps.claim.outputs.trace == 'true'
+        run: git lfs pull --exclude=""
+
+      - name: Initialize only meshoptimizer
+        if: steps.claim.outputs.trace == 'true'
+        run: git submodule update --init --depth 1 third_party/upstream/meshoptimizer
+
+      - name: Install the r3d requirements and LLVM
+        if: steps.claim.outputs.trace == 'true'
+        run: |
+          pip install -r launcher/tools/r3d/requirements.txt
+          sudo sh scripts/ci/apt_install.sh -y --no-install-recommends llvm
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        if: steps.claim.outputs.trace == 'true'
+        with:
+          name: ${{ needs.reference-plan.outputs.artifact }}
+          path: ${{ runner.temp }}/reference-plan
+
+      - name: Trace this shard
+        if: steps.claim.outputs.trace == 'true'
+        run: |
+          python launcher/tools/bake/bake.py bake --kind reference --shard "${{ matrix.shard }}/${{ needs.reference-plan.outputs.count }}" --plan "$RUNNER_TEMP/reference-plan" --out "$RUNNER_TEMP/shard"
 
       # Not a bakes-* name: a shard is no bake, so a lock never reads it.
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: steps.claim.outputs.trace == 'true'
         with:
-          name: reference-shard-${{ matrix.shard }}-${{ github.run_attempt }}
+          name: ${{ steps.vendor.outputs.shard_artifact }}
           path: ${{ runner.temp }}/shard
 
   reference:
@@ -227,10 +308,10 @@ jobs:
 
   lock:
     name: Lock is current
-    # Not after a failed shard: the reference row would be missing anyway, and the shard alone failing lets
+    # Not after a failed plan or shard: the reference row would be missing anyway, and the shard alone failing lets
     # bakes-vendor-rerun.yml re-run a wrong-vendor one.
-    if: ${{ !cancelled() && needs.cpu.result != 'failure' && needs.reference-shard.result != 'failure' && needs.reference.result != 'failure' && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.lock == 'true') }}
-    needs: [inputs, cpu, reference-shard, reference]
+    if: ${{ !cancelled() && needs.cpu.result != 'failure' && needs.reference-plan.result != 'failure' && needs.reference-shard.result != 'failure' && needs.reference.result != 'failure' && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.lock == 'true') }}
+    needs: [inputs, cpu, reference-plan, reference-shard, reference]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -251,8 +332,8 @@ jobs:
     name: Sky through walls
     # Not after a failed bake either: a skipped lock is no failure, and the bakes this run did not make cannot
     # be fetched, so this would fail beside a wrong-vendor job and keep bakes-vendor-rerun.yml from re-running it.
-    if: ${{ !cancelled() && needs.cpu.result != 'failure' && needs.reference-shard.result != 'failure' && needs.reference.result != 'failure' && needs.lock.result != 'failure' && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.sky-through-walls == 'true') }}
-    needs: [inputs, cpu, reference-shard, reference, lock]
+    if: ${{ !cancelled() && needs.cpu.result != 'failure' && needs.reference-plan.result != 'failure' && needs.reference-shard.result != 'failure' && needs.reference.result != 'failure' && needs.lock.result != 'failure' && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.sky-through-walls == 'true') }}
+    needs: [inputs, cpu, reference-plan, reference-shard, reference, lock]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0

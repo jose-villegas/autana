@@ -69,7 +69,6 @@
 #include "../scene_examples/hall.c"
 #include "../scene_examples/load_scene_async.c"
 #include "../scene_examples/present.c"
-#include "../scene_examples/small_fill.c"
 #include "anim/anim_skeleton_format.h"
 #include "asset/asset_file.h"
 #include "image/pixel/rgb565.h"
@@ -1006,26 +1005,73 @@ resident_mesh_bytes(const r3d_lit_mesh_t* mesh) {
  * a frame record names the copy by the pack entry it copies. */
 static void
 assert_told(const scene_t* scene, const void* copy, const void* source, size_t size) {
-    TEST_ASSERT_NOT_NULL(scene->copies);
-    for (int i = 0; i < scene->copies->count; i++) {
-        const asset_copy_t* told = &scene->copies->copies[i];
-        if (told->copy == copy) {
-            TEST_ASSERT_EQUAL_PTR(source, told->source);
-            TEST_ASSERT_EQUAL_size_t(size, told->bytes);
-            return;
+    for (int r = 0; r < scene->asset.renderer_count; r++) {
+        const asset_copies_t* copies = scene->renderers[r].copies;
+        for (int i = 0; copies != NULL && i < copies->count; i++) {
+            const asset_copy_t* told = &copies->copies[i];
+            if (told->copy == copy) {
+                TEST_ASSERT_EQUAL_PTR(source, told->source);
+                TEST_ASSERT_EQUAL_size_t(size, told->bytes);
+                return;
+            }
         }
     }
     TEST_FAIL_MESSAGE("a resident copy the scene did not tell");
 }
 
+/* The size of the lender's latest take that starts at `at`. */
+static size_t
+lent_size(const void* at) {
+    for (size_t i = fx.lent_calls < LENT_TAKES_MAX ? fx.lent_calls : LENT_TAKES_MAX; i-- > 0;) {
+        if (fx.lent_takes[i].at == at) {
+            return fx.lent_takes[i].size;
+        }
+    }
+    TEST_FAIL_MESSAGE("not a take of the lender");
+    return 0;
+}
+
+/* Whether `size` bytes at `at` lie in a renderer's resident take: one the
+ * lender sized, else a copy the scene told the asset store. */
+static bool
+in_a_take(const scene_t* scene, uintptr_t at, size_t size) {
+    for (int i = 0; i < scene->asset.renderer_count; i++) {
+        const scene_renderer_t* r = &scene->renderers[i];
+        const uintptr_t begin = (uintptr_t)r->resident;
+        if (fx.lent != NULL && begin != 0 && at >= begin && at + size <= begin + lent_size(r->resident)) {
+            return true;
+        }
+        for (int c = 0; fx.lent == NULL && r->copies != NULL && c < r->copies->count; c++) {
+            const uintptr_t copy = (uintptr_t)r->copies->copies[c].copy;
+            if (at >= copy && at + size <= copy + r->copies->copies[c].bytes) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+/* The columns of `root`'s scene, resolved as its first frame does, which
+ * takes its ACTIVE renderers' resident copies. */
+static scene_t*
+resolved(entity_t root) {
+    scene_t* scene = columns(root);
+    scene_resolve(scene);
+    return scene;
+}
+
+/* Every static renderer draws pack-equal copies from the scene's takes, which
+ * a lender sees sum to `bytes`. */
 static void
 assert_resident_mesh_arrays(const scene_t* scene, size_t bytes) {
-    TEST_ASSERT_NOT_NULL(scene->resident);
-    if (fx.lent != NULL) {
-        TEST_ASSERT_EQUAL_PTR(scene->resident, fx.lent_last);
-        TEST_ASSERT_EQUAL_size_t(bytes, fx.lent_last_size);
+    size_t taken = 0;
+    for (int i = 0; i < scene->asset.renderer_count; i++) {
+        const void* take = scene->renderers[i].resident;
+        taken += take != NULL && fx.lent != NULL ? lent_size(take) : 0U;
     }
-    const uintptr_t begin = (uintptr_t)scene->resident;
+    if (fx.lent != NULL) {
+        TEST_ASSERT_EQUAL_size_t(bytes, taken);
+    }
     for (int i = 0; i < scene->asset.renderer_count; i++) {
         const r3d_lit_mesh_t* mesh = &scene->renderers[i].mesh;
         r3d_lit_mesh_t source;
@@ -1055,8 +1101,7 @@ assert_resident_mesh_arrays(const scene_t* scene, size_t bytes) {
                 continue;
             }
             const uintptr_t at = (uintptr_t)arrays[j].copy;
-            TEST_ASSERT_TRUE(at >= begin);
-            TEST_ASSERT_TRUE(at + arrays[j].size <= begin + bytes);
+            TEST_ASSERT_TRUE(in_a_take(scene, at, arrays[j].size));
             TEST_ASSERT_EQUAL_size_t(0, at % arrays[j].alignment);
             TEST_ASSERT_EQUAL_MEMORY(arrays[j].source, arrays[j].copy, arrays[j].size);
             assert_told(scene, arrays[j].copy, arrays[j].source, arrays[j].size);
@@ -1070,7 +1115,7 @@ test_static_mesh_arrays_are_resident_and_equal_the_pack(void) {
     fx.lent = memory_alloc(LENT_BYTES, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(fx.lent);
     (void)scene_set_take(lend);
-    const scene_t* scene = columns(load("test_pair"));
+    const scene_t* scene = resolved(load("test_pair"));
     const r3d_lit_mesh_t* mesh = &scene->renderers[0].mesh;
     assert_resident_mesh_arrays(scene, scene->asset.renderer_count * resident_mesh_bytes(mesh));
     TEST_ASSERT_NOT_EQUAL(scene->renderers[0].mesh.positions, scene->renderers[1].mesh.positions);
@@ -1080,7 +1125,7 @@ static void
 test_only_static_mesh_arrays_are_made_resident(void) {
     fixture();
     const entity_t root = load("test_mixed");
-    const scene_t* scene = columns(root);
+    const scene_t* scene = resolved(root);
     const r3d_lit_mesh_t* mesh = &scene->renderers[0].mesh;
     const size_t bytes = resident_mesh_bytes(mesh);
     assert_resident_mesh_arrays(scene, bytes);
@@ -1098,11 +1143,10 @@ test_only_static_mesh_arrays_are_made_resident(void) {
     TEST_ASSERT_EQUAL_PTR(skin->output.mesh.colors, posed_mesh->colors);
     TEST_ASSERT_EQUAL_PTR(skin->bind.face_colors, posed_mesh->face_colors);
     const void* arrays[] = {posed_mesh->positions, posed_mesh->triangles, posed_mesh->colors, posed_mesh->face_colors};
-    const uintptr_t begin = (uintptr_t)scene->resident;
+    TEST_ASSERT_NULL(scene->renderers[scene->asset.renderer_count].resident);
     for (size_t i = 0; i < sizeof arrays / sizeof arrays[0]; i++) {
         if (arrays[i] != NULL) {
-            const uintptr_t at = (uintptr_t)arrays[i];
-            TEST_ASSERT_TRUE(at < begin || at >= begin + bytes);
+            TEST_ASSERT_FALSE(in_a_take(scene, (uintptr_t)arrays[i], 1));
         }
     }
     scene_release(root);
@@ -1110,43 +1154,128 @@ test_only_static_mesh_arrays_are_made_resident(void) {
     TEST_ASSERT_NOT_NULL(fx.lent);
     (void)scene_set_take(lend);
     entity_t skin_scene = load("test_skin");
-    TEST_ASSERT_NULL(columns(skin_scene)->resident);
+    TEST_ASSERT_NULL(resolved(skin_scene)->renderers[0].resident);
 
     enum { SCENE_AND_ANIMATOR_TAKES = 2 };
 
     TEST_ASSERT_EQUAL_size_t(SCENE_AND_ANIMATOR_TAKES, fx.lent_calls);
     scene_release(skin_scene);
-    TEST_ASSERT_NULL(columns(load("test_aliases"))->resident);
+    const scene_t* aliases = resolved(load("test_aliases"));
+    for (int i = 0; i < aliases->renderer_count; i++) {
+        TEST_ASSERT_NULL(aliases->renderers[i].resident);
+    }
 }
 
+/* Across, in units from the centre: the pair's red at 0 and green at 4; nothing else drawn. */
 static void
-test_resident_allocation_failure_rolls_back_the_load(void) {
+assert_the_pair_alone(void) {
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(0.0F));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0x00FF00), pixel(4.0F));
+    TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(-2.0F));
+    TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(2.0F));
+}
+
+/* Whether every static array renderer `index` draws is the pack's own. */
+static bool
+reads_the_pack(const scene_t* scene, int index) {
+    const r3d_lit_mesh_t* mesh = &scene->renderers[index].mesh;
+    r3d_lit_mesh_t source;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_open(&fx.pack, scene->asset.renderers[index].mesh, &source));
+    return mesh->positions == source.positions && mesh->triangles == source.triangles && mesh->colors == source.colors
+           && mesh->face_colors == source.face_colors && scene->renderers[index].resident == NULL;
+}
+
+/* Loading takes no copies; the first resolve copies only the renderers
+ * shown, a renderer's first enable takes its own, and a later disable and
+ * enable takes nothing more. */
+static void
+test_only_shown_renderers_take_resident_copies(void) {
     fixture();
-    const size_t psram = memory_free_bytes(MEMORY_APP);
-    const size_t internal = memory_free_bytes(MEMORY_INTERNAL);
+    fx.lent = memory_alloc(LENT_BYTES, MEMORY_APP);
+    TEST_ASSERT_NOT_NULL(fx.lent);
+    (void)scene_set_take(lend);
+    const entity_t root = load("test_pair");
+    scene_t* scene = columns(root);
+    TEST_ASSERT_TRUE(reads_the_pack(scene, 0));
+    TEST_ASSERT_TRUE(reads_the_pack(scene, 1));
+    const entity_t green = entity_find(root, name_hash("green"));
+    entity_set_enabled(green, false);
+    scene_resolve(scene);
+    const size_t red_bytes = resident_mesh_bytes(&scene->renderers[0].mesh);
+    TEST_ASSERT_NOT_NULL(scene->renderers[0].resident);
+    TEST_ASSERT_EQUAL_size_t(red_bytes, lent_size(scene->renderers[0].resident));
+    TEST_ASSERT_TRUE(reads_the_pack(scene, 1));
 
-    enum { SCENE_BLOCK_ALLOCATION_COUNT = 1 };
+    entity_set_enabled(green, true);
+    scene_resolve(scene);
+    assert_resident_mesh_arrays(scene, red_bytes + resident_mesh_bytes(&scene->renderers[1].mesh));
+    const size_t both = fx.lent_used;
+    entity_set_enabled(green, false);
+    scene_resolve(scene);
+    entity_set_enabled(green, true);
+    scene_resolve(scene);
+    TEST_ASSERT_EQUAL_size_t(both, fx.lent_used);
+    TEST_ASSERT_TRUE(camera_activate(camera_first(root)));
+    render_context_set_scale(render_context_main(), 100);
+    frame(16);
+    assert_the_pair_alone();
+}
 
-    const struct {
-        const char* id;
-        int allocation;
-    } cases[] = {{"test_pair", SCENE_BLOCK_ALLOCATION_COUNT}, {"test_flight", SCENE_BLOCK_ALLOCATION_COUNT + 1}};
+/* A mesh an app sets before the renderer is first shown is drawn where it
+ * is: the renderer takes no copies, nor is it pointed at another's. */
+static void
+test_a_mesh_set_before_the_first_show_takes_no_copies(void) {
+    fixture();
+    fx.lent = memory_alloc(LENT_BYTES, MEMORY_APP);
+    TEST_ASSERT_NOT_NULL(fx.lent);
+    (void)scene_set_take(lend);
+    const entity_t root = load("test_pair");
+    r3d_lit_mesh_t given;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_open(&fx.pack, "red", &given));
+    TEST_ASSERT_TRUE(renderer_set_mesh(entity_find(root, name_hash("green")), &given));
+    const scene_t* scene = resolved(root);
+    TEST_ASSERT_NOT_NULL(scene->renderers[0].resident);
+    TEST_ASSERT_NULL(scene->renderers[1].resident);
+    TEST_ASSERT_EQUAL_PTR(given.positions, scene->renderers[1].mesh.positions);
+    TEST_ASSERT_EQUAL_PTR(given.colors, scene->renderers[1].mesh.colors);
+    TEST_ASSERT_NOT_EQUAL(given.positions, scene->renderers[0].mesh.positions);
+}
 
-    const size_t lent = fx.lent_used;
-    for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
-        scene_fail_allocation_after = cases[i].allocation;
-        scene_failure_t why;
-        const bool failed = fails(scene_load_from(&fx.pack, cases[i].id), &why);
-        scene_fail_allocation_after = -1;
-        TEST_ASSERT_TRUE(failed);
-        TEST_ASSERT_EQUAL_INT(SCENE_ERR_MEMORY, why.status);
-        TEST_ASSERT_EQUAL_INT(ASSET_OK, why.asset);
-        TEST_ASSERT_EQUAL_STRING(cases[i].id, why.what);
-        TEST_ASSERT_EQUAL_INT(0, loaded_count());
-        TEST_ASSERT_EQUAL_size_t(psram, memory_free_bytes(MEMORY_APP));
-        TEST_ASSERT_EQUAL_size_t(internal, memory_free_bytes(MEMORY_INTERNAL));
-        TEST_ASSERT_EQUAL_size_t(lent, fx.lent_used);
-    }
+/* A shown renderer whose copies do not fit is not drawn and is reported
+ * through scene_failure(); the rest draw, and it takes them again when it is
+ * next enabled. */
+static void
+test_a_refused_resident_take_hides_only_its_renderer_until_enabled_again(void) {
+    fixture();
+    fx.lent = memory_alloc(LENT_BYTES, MEMORY_APP);
+    TEST_ASSERT_NOT_NULL(fx.lent);
+    (void)scene_set_take(lend);
+    const entity_t root = show("test_pair");
+    const entity_t green = entity_find(root, name_hash("green"));
+    entity_set_enabled(green, false);
+    scene_resolve(columns(root));
+    const size_t used = fx.lent_used;
+    fx.lent_used = LENT_BYTES;
+    entity_set_enabled(green, true);
+    scene_resolve(columns(root));
+    TEST_ASSERT_NULL(columns(root)->renderers[1].resident);
+    TEST_ASSERT_NULL(columns(root)->renderers[1].copies);
+    fx.lent_used = used;
+    frame(16);
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(0.0F));
+    TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(4.0F));
+    scene_failure_t why;
+    TEST_ASSERT_TRUE(scene_failure(root, &why));
+    TEST_ASSERT_EQUAL_INT(SCENE_ERR_MEMORY, why.status);
+    TEST_ASSERT_EQUAL_STRING("green", why.what);
+    TEST_ASSERT_TRUE(reads_the_pack(columns(root), 1));
+
+    entity_set_enabled(green, false);
+    TEST_ASSERT_FALSE(scene_failure(root, &why));
+    entity_set_enabled(green, true); /* no resolve between: the retry still comes */
+    frame(16);
+    assert_the_pair_alone();
+    TEST_ASSERT_FALSE(scene_failure(root, &why));
 }
 
 static void
@@ -1154,6 +1283,7 @@ test_a_scene_loads_by_name_and_unloading_gives_back_everything_it_took(void) {
     fixture();
     const size_t before = memory_free_bytes(MEMORY_APP);
     entity_t scene = load("test_pair");
+    TEST_ASSERT_NOT_NULL(resolved(scene)->renderers[1].resident); /* both renderers took copies */
     TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_APP) < before);
     scene_release(scene);
     TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_APP) == before);
@@ -1178,7 +1308,7 @@ test_a_lent_scene_takes_from_its_lender_and_unloading_returns_it_to_the_lender(v
     frame(16);
     TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(0.0F));
     TEST_ASSERT_TRUE(lent_from(columns(scene)));
-    TEST_ASSERT_TRUE(lent_from(columns(scene)->resident));
+    TEST_ASSERT_TRUE(lent_from(columns(scene)->renderers[0].resident));
     TEST_ASSERT_TRUE(lent_from(render_context_main()->scratch));
     TEST_ASSERT_EQUAL_size_t(before, memory_free_bytes(MEMORY_APP));
     const size_t taken = fx.lent_used;
@@ -1207,6 +1337,47 @@ test_a_refused_take_loads_nothing_and_a_refused_scratch_draws_nothing(void) {
     frame(16);
     TEST_ASSERT_EQUAL_HEX16(SENTINEL, pixel(0.0F));
     TEST_ASSERT_NULL(render_context_main()->scratch);
+    scene_release(scene);
+}
+
+/* Showing a debug view after a lent scene's first frame, then a view with
+ * larger pixels, takes nothing more: the scratch already holds the widest
+ * view's pixels. A larger scratch the lender
+ * refuses draws nothing and keeps the block, which draws again at the size
+ * it fits. */
+static void
+test_a_debug_view_takes_no_second_scratch_and_a_refused_larger_one_keeps_the_first(void) {
+    fixture();
+    fx.lent = memory_alloc(LENT_BYTES, MEMORY_APP);
+    TEST_ASSERT_NOT_NULL(fx.lent);
+    (void)scene_set_take(lend);
+    render_context_t* context = render_context_main();
+    entity_t scene = show("test_pair");
+    render_context_set_scale(context, 50);
+    frame(16);
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(0.0F));
+    const void* scratch = context->scratch;
+    const size_t taken = fx.lent_used;
+
+    render_context_set_debug_view(context, render_context_debug_view_named("overdraw"));
+    frame(16);
+    TEST_ASSERT_EQUAL_PTR(scratch, context->scratch);
+    render_context_set_debug_view(context, render_context_debug_view_named("cull"));
+    frame(16);
+    TEST_ASSERT_NOT_NULL(render_context_debug_view_state(context));
+    TEST_ASSERT_NOT_EQUAL_HEX16(SENTINEL, pixel(0.0F));
+    TEST_ASSERT_EQUAL_PTR(scratch, context->scratch);
+    TEST_ASSERT_EQUAL_size_t(taken, fx.lent_used);
+    render_context_set_debug_view(context, RENDER_DEBUG_VIEW_SHADED);
+
+    fx.lent_used = LENT_BYTES;
+    render_context_set_scale(context, 100);
+    frame(16);
+    TEST_ASSERT_EQUAL_HEX16(SENTINEL, pixel(0.0F));
+    TEST_ASSERT_EQUAL_PTR(scratch, context->scratch);
+    render_context_set_scale(context, 50);
+    frame(16);
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(0.0F));
     scene_release(scene);
 }
 
@@ -2274,22 +2445,6 @@ test_doc_present_modes_reach_camera(void) {
     TEST_ASSERT_FALSE(present_example(entity_find(loaded, name_hash("red"))));
 }
 
-static void
-test_doc_small_fill_reaches_camera(void) {
-    fixture();
-    entity_t loaded = show("test_pair");
-    const small_fill_t before = camera_lens(camera_first(loaded))->small_fill;
-    const small_fill_t expected = SMALL_FILL_FAST;
-    TEST_ASSERT_TRUE(before.ceiling != expected.ceiling || before.gate != expected.gate
-                     || before.style != expected.style);
-    TEST_ASSERT_TRUE(small_fill_example(entity_find(loaded, name_hash("camera"))));
-    const small_fill_t actual = camera_lens(camera_first(loaded))->small_fill;
-    TEST_ASSERT_EQUAL_INT(expected.ceiling, actual.ceiling);
-    TEST_ASSERT_EQUAL_INT(expected.gate, actual.gate);
-    TEST_ASSERT_EQUAL_INT(expected.style, actual.style);
-    TEST_ASSERT_FALSE(small_fill_example(entity_find(loaded, name_hash("red"))));
-}
-
 /* scene_load() reads the pack named after the scene once and holds it while
  * a scene loaded from it stays: damage to the file goes unseen until the last
  * one unloads and the next load reads it again. */
@@ -2543,7 +2698,7 @@ test_static_face_colours_are_resident_and_equal_the_pack(void) {
     (void)scene_set_take(lend);
     const lcol_case_t spec = {.second_set = LCOL_TEST_SETS - 1};
     make_lcol_pack(&spec, LCOL_ENCODING_RGB565, "static face colours");
-    const scene_t* scene = columns(load("test_pair"));
+    const scene_t* scene = resolved(load("test_pair"));
     const r3d_lit_mesh_t* first = &scene->renderers[0].mesh;
     const r3d_lit_mesh_t* second = &scene->renderers[1].mesh;
     TEST_ASSERT_NULL(first->colors);
@@ -2565,7 +2720,7 @@ assert_lcol_scene(const lcol_case_t* spec, const char* message) {
         return;
     }
     TEST_ASSERT_EQUAL_INT_MESSAGE(PENDING_READY, scene_state(root), message);
-    const scene_t* scene = columns(root);
+    const scene_t* scene = resolved(root);
     size_t bytes = resident_mesh_bytes(&scene->renderers[0].mesh);
     if (spec->first_set != spec->second_set) {
         const r3d_lit_mesh_t* mesh = &scene->renderers[1].mesh;
@@ -2600,6 +2755,62 @@ assert_lcol_scene(const lcol_case_t* spec, const char* message) {
     }
 }
 
+/* With two renderers starved, scene_failure() names one still starved as
+ * the other recovers, and nothing once both have. */
+static void
+test_scene_failure_names_a_renderer_still_starved(void) {
+    fixture();
+    fx.lent = memory_alloc(LENT_BYTES, MEMORY_APP);
+    TEST_ASSERT_NOT_NULL(fx.lent);
+    (void)scene_set_take(lend);
+    const entity_t root = load("test_pair");
+    fx.lent_used = LENT_BYTES;
+    scene_resolve(columns(root));
+    scene_failure_t why;
+    TEST_ASSERT_TRUE(scene_failure(root, &why));
+    TEST_ASSERT_EQUAL_STRING("red", why.what);
+    entity_set_enabled(entity_find(root, name_hash("red")), false);
+    TEST_ASSERT_TRUE(scene_failure(root, &why));
+    TEST_ASSERT_EQUAL_INT(SCENE_ERR_MEMORY, why.status);
+    TEST_ASSERT_EQUAL_STRING("green", why.what);
+    entity_set_enabled(entity_find(root, name_hash("green")), false);
+    TEST_ASSERT_FALSE(scene_failure(root, &why));
+    fx.lent_used = 0;
+}
+
+/* An array two renderers share is copied by the first shown and only
+ * pointed at by the other, which takes just its own arrays when it is shown
+ * later: here the pair's quad, each renderer with its own colour set. */
+static void
+test_a_shared_array_is_copied_once_whichever_renderer_is_shown_first(void) {
+    fixture();
+    fx.lent = memory_alloc(LENT_BYTES, MEMORY_APP);
+    TEST_ASSERT_NOT_NULL(fx.lent);
+    (void)scene_set_take(lend);
+    const lcol_case_t spec = {.second_set = LCOL_TEST_SETS - 1};
+    make_lcol_pack(&spec, LCOL_ENCODING_RGB888, "shared quad");
+    const entity_t root = load("test_pair");
+    scene_t* scene = columns(root);
+    const r3d_lit_mesh_t* red = &scene->renderers[0].mesh;
+    const r3d_lit_mesh_t* green = &scene->renderers[1].mesh;
+    TEST_ASSERT_EQUAL_PTR(red->positions, green->positions);
+    const void* red_colours = red->colors;
+    const entity_t first = entity_find(root, name_hash("red"));
+    entity_set_enabled(first, false);
+    scene_resolve(scene);
+    TEST_ASSERT_EQUAL_size_t(resident_mesh_bytes(green), lent_size(scene->renderers[1].resident));
+    TEST_ASSERT_NULL(scene->renderers[0].resident);
+    TEST_ASSERT_EQUAL_PTR(green->positions, red->positions);
+    TEST_ASSERT_EQUAL_PTR(green->triangles, red->triangles);
+    TEST_ASSERT_EQUAL_PTR(red_colours, red->colors);
+
+    entity_set_enabled(first, true);
+    scene_resolve(scene);
+    const size_t colours = (size_t)red->vertex_count * sizeof *red->colors;
+    TEST_ASSERT_EQUAL_size_t(colours, lent_size(scene->renderers[0].resident));
+    assert_resident_mesh_arrays(scene, resident_mesh_bytes(green) + colours);
+}
+
 static void
 test_lcol_instances_and_refusals(void) {
     static const lcol_case_t cases[] = {
@@ -2631,6 +2842,7 @@ test_lcol_instances_and_refusals(void) {
             snprintf(message, sizeof message, "LCOL case %s encoding %u", cases[i].id, encoding);
             scene_unload_all();
             fx.lent_used = 0;
+            fx.lent_calls = 0;
             make_lcol_pack(&cases[i], encoding, message);
             assert_lcol_scene(&cases[i], message);
         }
@@ -2734,15 +2946,15 @@ test_a_batch_draws_its_copies_from_one_renderer(void) {
     const batch_case_t spec = {.id = "valid", .at = SIZE_MAX, .turns = BATCH_COPIES};
     make_batch_pack(&spec);
     const entity_t root = load("test_batch");
-    const scene_t* scene = columns(root);
+    const scene_t* scene = resolved(root);
     TEST_ASSERT_EQUAL_INT(1, scene->renderer_count);
     const scene_renderer_t* r = &scene->renderers[0];
     TEST_ASSERT_NOT_NULL(r->batch);
     TEST_ASSERT_EQUAL_INT(BATCH_COPIES, r->batch->copy_count);
     TEST_ASSERT_EQUAL_INT(LCOL_TEST_SETS, r->colour_sets);
     /* Both colour sets resident in one span, set 1 a mesh's colours after set 0; the places too. */
-    const uintptr_t begin = (uintptr_t)scene->resident;
-    const uintptr_t end = begin + fx.lent_last_size;
+    const uintptr_t begin = (uintptr_t)r->resident;
+    const uintptr_t end = begin + lent_size(r->resident);
     TEST_ASSERT_TRUE((uintptr_t)r->mesh.colors >= begin
                      && (uintptr_t)(r->mesh.colors + (LCOL_TEST_SETS * r->mesh.vertex_count)) <= end);
     TEST_ASSERT_TRUE((uintptr_t)r->batch->places >= begin && (uintptr_t)(r->batch->places + BATCH_COPIES) <= end);
@@ -3210,14 +3422,6 @@ test_as_many_changed_renderers_as_the_cap_over_two_scenes_redraws_only_their_row
 /* Across, in units from the centre: the pair's red at 0 and green at 4, and
  * the family's red at -2 and green at 2. */
 static void
-assert_the_pair_alone(void) {
-    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(0.0F));
-    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0x00FF00), pixel(4.0F));
-    TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(-2.0F));
-    TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(2.0F));
-}
-
-static void
 assert_the_pair_and_the_family(void) {
     TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(0.0F));
     TEST_ASSERT_EQUAL_HEX16(RGB565BE(0x00FF00), pixel(4.0F));
@@ -3272,7 +3476,7 @@ test_the_drawn_list_follows_the_scenes_that_join_and_leave(void) {
 static void
 test_a_drawn_list_with_no_memory_leaves_the_frame_blank_and_the_next_draws(void) {
     fixture();
-    show("test_pair");
+    (void)resolved(show("test_pair"));
     scene_fail_allocation_after = 0;
     frame(16);
     scene_fail_allocation_after = -1;
@@ -3290,6 +3494,7 @@ test_a_drawn_list_that_cannot_grow_leaves_the_frame_blank_and_the_next_draws(voi
     frame(16);
     assert_the_pair_alone();
     const entity_t family = load("test_family");
+    (void)resolved(family);
     scene_fail_allocation_after = 0;
     frame(16);
     scene_fail_allocation_after = -1;
@@ -3549,8 +3754,8 @@ test_a_predicted_draw_is_the_fixed_draw_at_the_step_it_chose(void) {
     }
 }
 
-/* The scratch block is taken once for the finest step, wherever the
- * predictor stands when it is taken. */
+/* The scratch block is taken once for the finest step with a debug view's
+ * pixels, wherever the predictor stands when it is taken. */
 static void
 test_the_scratch_is_the_finest_steps_raster_block(void) {
     fixture();
@@ -3571,6 +3776,10 @@ test_the_scratch_is_the_finest_steps_raster_block(void) {
     raster_t finest = c->raster;
     finest.width = LADDER[0].width;
     finest.height = LADDER[0].height;
+    const raster_attachment_t view_pixels = {.format = render_context_debug_view_widest()};
+    const raster_attachment_t* const attached[] = {&view_pixels};
+    finest.attachments = attached;
+    finest.attachment_count = 1;
     const size_t needed = raster_scratch_bytes(&finest);
     TEST_ASSERT_TRUE(taken >= needed);
     TEST_ASSERT_TRUE(c->scratch_bytes == needed);
@@ -3880,11 +4089,12 @@ test_camera_present_default_setter_and_dynamic_size(void) {
     assert_composed_scanlines(render_context_main(), 0, CAMERA_PRESENT_SCANLINE);
 }
 
+/* The main context's small fill reaches a scene's draw: the smooth default
+ * keeps the picture, and each fast style draws its own. */
 static void
-test_camera_small_fill_changes_scene_pixels(void) {
+test_render_settings_small_fill_changes_scene_pixels(void) {
     expanded_fixture();
     entity_t scene = loaded_root(0);
-    const entity_t camera = entity_find(scene, name_hash("camera"));
     static const uint8_t colors[QUAD_VERTICES][3] = {{32, 80, 96}, {128, 112, 48}, {224, 160, 144}, {48, 96, 80}};
     for (int i = 0; i < columns(scene)->renderer_count; i++) {
         columns(scene)->renderers[i].mesh.colors = colors;
@@ -3892,15 +4102,18 @@ test_camera_small_fill_changes_scene_pixels(void) {
     render_context_t* context = render_context_main();
     scene_render(0, 0, SIZE, SIZE);
     memcpy(fx.held, raster_color(&context->raster), SIZE * SIZE * sizeof(*fx.held));
-    TEST_ASSERT_TRUE(camera_set_small_fill(camera, SMALL_FILL_SMOOTH));
+    render_settings_t settings = RENDER_SETTINGS_DEFAULT;
+    settings.small_fill = SMALL_FILL_SMOOTH;
+    render_context_set_settings(context, &settings);
     scene_render(0, 0, SIZE, SIZE);
     TEST_ASSERT_EQUAL_MEMORY(fx.held, raster_color(&context->raster), SIZE * SIZE * sizeof(*fx.held));
     uint32_t checksums[SMALL_FILL_STYLE_COUNT];
-    for (small_fill_style_t style = SMALL_FILL_FLAT; style < SMALL_FILL_STYLE_COUNT; style++) {
-        TEST_ASSERT_TRUE(camera_set_small_fill(camera, (small_fill_t){SMALL_FILL_CEILING_FAST, 0, style}));
+    for (int style = SMALL_FILL_FLAT; style < SMALL_FILL_STYLE_COUNT; style++) {
+        settings.small_fill = (render_small_fill_settings_t){SMALL_FILL_CEILING_FAST, 0, style};
+        render_context_set_settings(context, &settings);
         scene_render(0, 0, SIZE, SIZE);
         checksums[style] = crc32_update(0, raster_color(&context->raster), SIZE * SIZE * sizeof(uint16_t));
-        for (int previous = SMALL_FILL_FLAT; previous < (int)style; previous++) {
+        for (int previous = SMALL_FILL_FLAT; previous < style; previous++) {
             TEST_ASSERT_NOT_EQUAL(checksums[previous], checksums[style]);
         }
     }
@@ -3924,36 +4137,6 @@ test_camera_skip_hidden_setter_changes_no_pixel(void) {
     TEST_ASSERT_TRUE(lens->skip_hidden);
     scene_render(0, 0, SIZE, SIZE);
     TEST_ASSERT_EQUAL_MEMORY(fx.held, raster_color(&context->raster), SIZE * SIZE * sizeof(*fx.held));
-}
-
-static void
-test_camera_small_fill_default_setter_and_view(void) {
-    expanded_fixture();
-    entity_t scene = loaded_root(0);
-    const entity_t camera = entity_find(scene, name_hash("camera"));
-    const lens_t* lens = camera_lens(camera_first(scene));
-    TEST_ASSERT_EQUAL_INT(SMALL_FILL_SMOOTH.ceiling, lens->small_fill.ceiling);
-    TEST_ASSERT_EQUAL_INT(SMALL_FILL_SMOOTH.gate, lens->small_fill.gate);
-    TEST_ASSERT_EQUAL_INT(SMALL_FILL_FLAT, lens->small_fill.style);
-    const small_fill_t limit = {SMALL_FILL_CEILING_MAX, 0, SMALL_FILL_DITHER};
-    TEST_ASSERT_TRUE(camera_set_small_fill(camera, limit));
-    TEST_ASSERT_FALSE(camera_set_small_fill(camera, (small_fill_t){SMALL_FILL_CEILING_MAX + 1, 0, SMALL_FILL_DITHER}));
-    TEST_ASSERT_FALSE(camera_set_small_fill(camera, (small_fill_t){UINT8_MAX, 0, SMALL_FILL_DITHER}));
-    TEST_ASSERT_EQUAL_INT(SMALL_FILL_CEILING_MAX, lens->small_fill.ceiling);
-    TEST_ASSERT_TRUE(camera_set_small_fill(camera, (small_fill_t){0, 0, SMALL_FILL_FLAT}));
-    const small_fill_t fill = SMALL_FILL_FAST;
-    TEST_ASSERT_FALSE(camera_set_small_fill(entity_find(scene, name_hash("red")), fill));
-    TEST_ASSERT_FALSE(camera_set_small_fill(ENTITY_NONE, fill));
-    TEST_ASSERT_FALSE(camera_set_small_fill(camera, (small_fill_t){4, 0, SMALL_FILL_STYLE_COUNT}));
-    TEST_ASSERT_TRUE(camera_set_small_fill(camera, fill));
-    const transformf_t pose = transformf_identity();
-    const render_view_t view = lens_view(lens, &pose, (viewport_t){64, 48, 0});
-    TEST_ASSERT_EQUAL_INT(fill.ceiling, view.small_fill.ceiling);
-    TEST_ASSERT_EQUAL_INT(fill.gate, view.small_fill.gate);
-    TEST_ASSERT_EQUAL_INT(fill.style, view.small_fill.style);
-    TEST_ASSERT_EQUAL_INT(fill.ceiling, lens->small_fill.ceiling);
-    TEST_ASSERT_EQUAL_INT(fill.gate, lens->small_fill.gate);
-    TEST_ASSERT_EQUAL_INT(fill.style, lens->small_fill.style);
 }
 
 static void
@@ -4861,6 +5044,72 @@ test_set_transform_reads_back_exactly_and_drives_placement(void) {
 }
 
 static void
+test_probes_sample_last_resolved_bounds_without_allocating(void) {
+    static const int16_t coefficients[1][SH_PROBES_COMPONENTS] = {{1}};
+    static const sh_probes_t probes = {.dims = {1, 1, 1}, .scale = 1, .coefficients = coefficients};
+    fixture_with_skin(&SKIN_OPTIONS);
+    const entity_t root = load("test_skin");
+    const entity_t entity = entity_find(root, name_hash("red"));
+    scene_t* scene = columns(root);
+    (void)scene_bounds(root);
+    scene_renderer_t* renderer = &scene->renderers[scene_renderer_index(scene, row_of(entity))];
+    const box3f_t bounds = renderer->world_bounds;
+    const size_t fast = memory_free_bytes(MEMORY_INTERNAL), slow = memory_free_bytes(MEMORY_PSRAM);
+    scene_set_probes(root, &probes);
+    transformf_t pose = transform_local(entity);
+    transformf_set_position(&pose, (vec3f_t){RIG_TRAVEL, 0, 0});
+    transform_set_local(entity, pose);
+    scene_animation_step(scene, 0);
+    TEST_ASSERT_EQUAL_MEMORY(&bounds, &renderer->world_bounds, sizeof bounds);
+    TEST_ASSERT_EQUAL_UINT(fast, memory_free_bytes(MEMORY_INTERNAL));
+    TEST_ASSERT_EQUAL_UINT(slow, memory_free_bytes(MEMORY_PSRAM));
+    (void)scene_bounds(root);
+    TEST_ASSERT_GREATER_THAN_FLOAT(bounds.lo.x, renderer->world_bounds.lo.x);
+}
+
+static void
+test_contact_footprint_and_partial_redraw(void) {
+    enum { BODY_HALF_X = 4, BODY_HALF_Z = 1, GROUND_Y = -2 };
+
+    fixture();
+    const entity_t root = show("test_solo");
+    const entity_t mover = entity_find(root, name_hash("blue"));
+    r3d_lit_mesh_t mesh = *renderer_mesh(mover);
+    r3d_lit_node_t node = mesh.nodes[0];
+    node.bounds = (box3s_t){{-BODY_HALF_X, -1, -BODY_HALF_Z}, {BODY_HALF_X, 1, BODY_HALF_Z}};
+    mesh.nodes = &node;
+    TEST_ASSERT_TRUE(renderer_set_mesh(mover, &mesh));
+    scene_set_contact_blob(mover, GROUND_Y, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT);
+    settle_the_picture();
+    for (int step = 1; step <= MOVER_STEPS; step++) {
+        put_at(mover, (float)step * 0.25F, (float)step * 0.5F);
+        frame_over_the_last();
+        TEST_ASSERT_GREATER_THAN_INT(0, rows_the_last_frame_drew());
+        TEST_ASSERT_LESS_THAN_INT(SIZE, rows_the_last_frame_drew());
+        const render_partial_t* partial = &render_context_main()->partial;
+        TEST_ASSERT_EQUAL_FLOAT(GROUND_Y - BODY_HALF_Z, partial->changed[0].lo.y);
+        assert_the_picture_is_the_whole_draw();
+    }
+}
+
+static void
+test_forgetting_another_scene_keeps_the_contact_draw_hook(void) {
+    fixture();
+    const entity_t root = show("test_pair");
+    const entity_t renderer = entity_find(root, name_hash("red"));
+    scene_set_contact_blob(renderer, 0, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT);
+    frame(0);
+    const struct raster_post* post = render_context_main()->raster.post;
+    TEST_ASSERT_NOT_NULL(post);
+    const entity_t other = load("test_pair");
+    scene_draw_forget(columns(other));
+    TEST_ASSERT_EQUAL_PTR(post, render_context_main()->raster.post);
+    const scene_t* scene = columns(root);
+    const int index = scene_renderer_index(scene, row_of(renderer));
+    TEST_ASSERT_EQUAL_FLOAT(SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, scene->renderers[index].contact_blob_strength);
+}
+
+static void
 test_authored_skin_modes_animation_and_ambient(void) {
     const size_t before = memory_free_bytes(MEMORY_INTERNAL);
     static const uint8_t modes[] = {R3D_SKIN_LIGHT_DIRECT, R3D_SKIN_LIGHT_RENORMALISED, R3D_SKIN_LIGHT_TABLE};
@@ -5001,6 +5250,7 @@ test_authored_light_preserves_static_mesh_colors(void) {
     uint8_t expected[QUAD_VERTICES][R3D_SKIN_LIGHT_CHANNELS];
     memcpy(expected, packed.colors, sizeof expected);
     entity_t scene = load("test_lit");
+    scene_resolve(columns(scene));
     const entity_t entity = entity_find(scene, name_hash("red"));
     TEST_ASSERT_EQUAL_INT(1, columns(scene)->light_count);
     TEST_ASSERT_NULL(columns(scene)->light_transfer);
@@ -5011,11 +5261,7 @@ test_authored_light_preserves_static_mesh_colors(void) {
     TEST_ASSERT_EQUAL_MEMORY(packed.colors, renderer_mesh(entity)->colors,
                              (size_t)packed.vertex_count * sizeof *packed.colors);
     TEST_ASSERT_EQUAL_MEMORY(expected, renderer_mesh(entity)->colors, sizeof expected);
-    TEST_ASSERT_EQUAL_PTR(columns(scene)->resident, fx.lent_last);
-    const uintptr_t begin = (uintptr_t)columns(scene)->resident;
-    const uintptr_t colors = (uintptr_t)renderer_mesh(entity)->colors;
-    TEST_ASSERT_TRUE(colors >= begin);
-    TEST_ASSERT_TRUE(colors + sizeof expected <= begin + fx.lent_last_size);
+    TEST_ASSERT_TRUE(in_a_take(columns(scene), (uintptr_t)renderer_mesh(entity)->colors, sizeof expected));
 }
 
 static void
@@ -5064,6 +5310,22 @@ turned(entity_t entity, int i) {
 }
 
 #define ANIM_RATE_ROUNDS 3
+
+/* Steps `scene` until `a` is due: a copy picks its tier only on its due frames. */
+static void
+until_due(scene_t* scene, const scene_animator_t* a) {
+    while (!scene_animator_due(scene, a)) {
+        scene_animation_step(scene, ANIM_RATE_DT_MS);
+    }
+}
+
+/* One step of a due `a` drawn `px` pixels wide: the step that picks its tier from it. */
+static void
+step_due_at(scene_t* scene, scene_animator_t* a, float px) {
+    until_due(scene, a);
+    a->drawn_radius_px = px;
+    scene_animation_step(scene, ANIM_RATE_DT_MS);
+}
 
 static scene_t*
 rate_fixture(void) {
@@ -5245,6 +5507,7 @@ static void
 test_a_moving_near_copy_relights_every_frame(void) {
     const lit_rig_t rig = lit_rig();
     scene_animator_t* a = &rig.scene->animators[row_of(rig.red)];
+    step_due_at(rig.scene, a, NEAR_DRAWN_PX);
     for (int i = 0; i < RENDER_SETTINGS_DEFAULT.anim.far_every; i++) {
         a->drawn_radius_px = NEAR_DRAWN_PX;
         TEST_ASSERT_TRUE(step_turned(rig, i));
@@ -5262,6 +5525,25 @@ test_a_moving_copy_with_no_clip_relights_at_once(void) {
     }
 }
 
+/* A copy between its due frames keeps its tier however large it is drawn:
+ * the draw measures it, and the step re-picks its tier, only when it is due. */
+static void
+test_a_copy_holds_its_tier_between_its_due_frames(void) {
+    scene_t* scene = rate_fixture();
+    scene_animator_t* a = &scene->animators[0];
+    const render_anim_settings_t s = RENDER_SETTINGS_DEFAULT.anim;
+    step_due_at(scene, a, 0.0F);
+    TEST_ASSERT_EQUAL_INT(SCENE_ANIM_TIER_FAR, a->tier);
+    for (int i = 1; i < s.far_every; i++) {
+        TEST_ASSERT_FALSE(scene_animator_due(scene, a));
+        a->drawn_radius_px = s.mid_px + s.hysteresis_px * 2;
+        scene_animation_step(scene, ANIM_RATE_DT_MS);
+        TEST_ASSERT_EQUAL_INT(SCENE_ANIM_TIER_FAR, a->tier);
+    }
+    step_due_at(scene, a, s.mid_px + s.hysteresis_px * 2);
+    TEST_ASSERT_EQUAL_INT(SCENE_ANIM_TIER_NEAR, a->tier);
+}
+
 static void
 test_animation_rate_tier_hysteresis(void) {
     scene_t* scene = rate_fixture();
@@ -5273,27 +5555,22 @@ test_animation_rate_tier_hysteresis(void) {
                              RENDER_ANIM_EVERY_MIN};
     for (int t = 0; t < (int)(sizeof thresholds / sizeof thresholds[0]); t++) {
         for (int i = 0; i < ANIM_RATE_ROUNDS; i++) {
-            a->drawn_radius_px = thresholds[t] + band / 2;
-            scene_animation_step(scene, ANIM_RATE_DT_MS);
+            step_due_at(scene, a, thresholds[t] + band / 2);
             TEST_ASSERT_EQUAL_INT(intervals[t], a->interval);
             TEST_ASSERT_EQUAL_INT(tiers[t], a->tier);
-            a->drawn_radius_px = thresholds[t] - band / 2;
-            scene_animation_step(scene, ANIM_RATE_DT_MS);
+            step_due_at(scene, a, thresholds[t] - band / 2);
             TEST_ASSERT_EQUAL_INT(intervals[t], a->interval);
             TEST_ASSERT_EQUAL_INT(tiers[t], a->tier);
         }
-        a->drawn_radius_px = thresholds[t] + band * 2;
-        scene_animation_step(scene, ANIM_RATE_DT_MS);
+        step_due_at(scene, a, thresholds[t] + band * 2);
         TEST_ASSERT_EQUAL_INT(intervals[t + 1], a->interval);
         TEST_ASSERT_EQUAL_INT(tiers[t + 1], a->tier);
     }
     for (int t = (int)(sizeof thresholds / sizeof thresholds[0]) - 1; t >= 0; t--) {
-        a->drawn_radius_px = thresholds[t] - band / 2;
-        scene_animation_step(scene, ANIM_RATE_DT_MS);
+        step_due_at(scene, a, thresholds[t] - band / 2);
         TEST_ASSERT_EQUAL_INT(intervals[t + 1], a->interval);
         TEST_ASSERT_EQUAL_INT(tiers[t + 1], a->tier);
-        a->drawn_radius_px = thresholds[t] - band * 2;
-        scene_animation_step(scene, ANIM_RATE_DT_MS);
+        step_due_at(scene, a, thresholds[t] - band * 2);
         TEST_ASSERT_EQUAL_INT(intervals[t], a->interval);
         TEST_ASSERT_EQUAL_INT(tiers[t], a->tier);
     }
@@ -5307,23 +5584,27 @@ test_animation_rate_tier_jumps_and_first_read(void) {
     scene_animator_t* a = &scene->animators[0];
     const render_anim_settings_t s = RENDER_SETTINGS_DEFAULT.anim;
     const float near = s.mid_px + s.hysteresis_px * 2, far = s.far_px - s.hysteresis_px * 2;
-    a->drawn_radius_px = near;
-    scene_animation_step(scene, ANIM_RATE_DT_MS);
+    step_due_at(scene, a, near);
     TEST_ASSERT_EQUAL_INT(SCENE_ANIM_TIER_NEAR, a->tier);
-    a->drawn_radius_px = far;
-    scene_animation_step(scene, ANIM_RATE_DT_MS);
+    step_due_at(scene, a, far);
     TEST_ASSERT_EQUAL_INT(SCENE_ANIM_TIER_FAR, a->tier);
-    a->drawn_radius_px = near;
-    scene_animation_step(scene, ANIM_RATE_DT_MS);
+    step_due_at(scene, a, near);
     TEST_ASSERT_EQUAL_INT(SCENE_ANIM_TIER_NEAR, a->tier);
-    a->drawn_radius_px = s.mid_px - s.hysteresis_px / 2;
-    scene_animation_step(scene, ANIM_RATE_DT_MS);
+    step_due_at(scene, a, s.mid_px - s.hysteresis_px / 2);
     TEST_ASSERT_EQUAL_INT(SCENE_ANIM_TIER_NEAR, a->tier);
     a->interval = 0;
-    a->drawn_radius_px = s.mid_px - s.hysteresis_px / 2;
-    scene_animation_step(scene, ANIM_RATE_DT_MS);
+    step_due_at(scene, a, s.mid_px - s.hysteresis_px / 2);
     TEST_ASSERT_EQUAL_INT(SCENE_ANIM_TIER_MID, a->tier);
     TEST_ASSERT_EQUAL_INT(s.mid_every, a->interval);
+}
+
+/* Composes frames until one draws `a` on its due frame: the draw measures a
+ * copy only then, after the step that makes it due. */
+static void
+frame_due(scene_t* scene, const scene_animator_t* a) {
+    do {
+        frame(0);
+    } while (!scene_animator_due(scene, a));
 }
 
 static void
@@ -5334,7 +5615,7 @@ test_animation_rate_reads_last_drawn_bounds_and_rejects_offscreen(void) {
     scene_animator_t* a = &scene->animators[row_of(red)];
     render_settings_t settings = RENDER_SETTINGS_DEFAULT;
     render_context_set_settings(render_context_main(), &settings);
-    frame(0);
+    frame_due(scene, a);
     TEST_ASSERT_EQUAL_INT((RENDER_SETTINGS_DEFAULT.anim.far_every), a->interval);
     TEST_ASSERT_GREATER_THAN_FLOAT(0.0F, a->drawn_radius_px);
     entity_t camera = camera_first(root);
@@ -5343,7 +5624,7 @@ test_animation_rate_reads_last_drawn_bounds_and_rejects_offscreen(void) {
     transform_set_local(camera, eye);
     scene->cameras[0].lens.half_fov_short_tan =
         (float)SIZE / ((RENDER_SETTINGS_DEFAULT.anim.mid_px) * (RENDER_SETTINGS_DEFAULT.anim.far_every));
-    frame(0);
+    frame_due(scene, a);
     TEST_ASSERT_EQUAL_INT((RENDER_SETTINGS_DEFAULT.anim.far_every), a->interval);
     TEST_ASSERT_GREATER_THAN_FLOAT((RENDER_SETTINGS_DEFAULT.anim.mid_px) + (RENDER_SETTINGS_DEFAULT.anim.hysteresis_px),
                                    a->drawn_radius_px);
@@ -5352,13 +5633,133 @@ test_animation_rate_reads_last_drawn_bounds_and_rejects_offscreen(void) {
     transformf_t pose = transform_local(red);
     pose.position.x = CAMERA_DISTANCE * SIZE;
     transform_set_local(red, pose);
-    frame(0);
+    frame_due(scene, a);
     TEST_ASSERT_EQUAL_FLOAT(0.0F, a->drawn_radius_px);
     scene_animation_step(scene, 0);
     TEST_ASSERT_EQUAL_INT((RENDER_SETTINGS_DEFAULT.anim.far_every), a->interval);
 }
 
 /* Defaults, overrides and reset must select the same tiers in both worker slices. */
+/* `a` tiered at `px` with every tier at `base` frames, then its tier's interval
+ * set to `wanted` in the settings: the next step, not due, takes it at once and
+ * keeps the tier. */
+static void
+interval_follows_settings(float px, int tier, int base, int wanted) {
+    scene_t* scene = rate_fixture();
+    scene_animator_t* a = &scene->animators[0];
+    render_settings_t settings = RENDER_SETTINGS_DEFAULT;
+    settings.anim.mid_every = settings.anim.far_every = base;
+    render_context_set_settings(render_context_main(), &settings);
+    step_due_at(scene, a, px);
+    TEST_ASSERT_EQUAL_INT(tier, a->tier);
+    TEST_ASSERT_EQUAL_INT(base, a->interval);
+    TEST_ASSERT_FALSE(scene_animator_due(scene, a));
+    if (tier == SCENE_ANIM_TIER_MID) {
+        settings.anim.mid_every = wanted;
+    } else {
+        settings.anim.far_every = wanted;
+    }
+    render_context_set_settings(render_context_main(), &settings);
+    a->drawn_radius_px = px;
+    scene_animation_step(scene, ANIM_RATE_DT_MS);
+    TEST_ASSERT_EQUAL_INT(wanted, a->interval);
+    TEST_ASSERT_EQUAL_INT(tier, a->tier);
+}
+
+#define ANIM_MID_PX ((RENDER_SETTINGS_DEFAULT.anim.mid_px + RENDER_SETTINGS_DEFAULT.anim.far_px) / 2)
+
+static void
+test_animation_interval_follows_a_smaller_mid_every_on_a_non_due_step(void) {
+    interval_follows_settings(ANIM_MID_PX, SCENE_ANIM_TIER_MID, 3, 2);
+}
+
+static void
+test_animation_interval_follows_a_larger_mid_every_on_a_non_due_step(void) {
+    interval_follows_settings(ANIM_MID_PX, SCENE_ANIM_TIER_MID, 2, RENDER_ANIM_EVERY_MAX);
+}
+
+static void
+test_animation_interval_follows_a_smaller_far_every_on_a_non_due_step(void) {
+    interval_follows_settings(0.0F, SCENE_ANIM_TIER_FAR, 3, 2);
+}
+
+static void
+test_animation_interval_follows_a_larger_far_every_on_a_non_due_step(void) {
+    interval_follows_settings(0.0F, SCENE_ANIM_TIER_FAR, 2, RENDER_ANIM_EVERY_MAX);
+}
+
+/* The frames after which `a` is not due keep the radius the step cleared; the
+ * due ones carry the draw's measure. */
+static void
+assert_measured_only_when_due(scene_t* scene, const scene_animator_t* a) {
+    for (int i = 0; i < 2 * RENDER_SETTINGS_DEFAULT.anim.far_every; i++) {
+        frame(0);
+        if (scene_animator_due(scene, a)) {
+            TEST_ASSERT_GREATER_THAN_FLOAT(0.0F, a->drawn_radius_px);
+        } else {
+            TEST_ASSERT_EQUAL_FLOAT(0.0F, a->drawn_radius_px);
+        }
+    }
+}
+
+static void
+test_the_draw_measures_a_bound_copy_only_on_its_due_frames(void) {
+    entity_t root = rig_fixture("rig.skin2", NULL);
+    scene_t* scene = columns(root);
+    scene_animator_t* a = &scene->animators[row_of(entity_find(root, name_hash("red")))];
+    render_context_set_settings(render_context_main(), &RENDER_SETTINGS_DEFAULT);
+    frame_due(scene, a);
+    TEST_ASSERT_EQUAL_INT(RENDER_SETTINGS_DEFAULT.anim.far_every, a->interval);
+    assert_measured_only_when_due(scene, a);
+    release_fixture();
+}
+
+static void
+test_the_draw_never_measures_an_unbound_animated_copy(void) {
+    entity_t root = rig_fixture("rig.skin2", NULL);
+    scene_t* scene = columns(root);
+    const entity_t green = entity_find(root, name_hash("green"));
+    static const char* const clips[] = {"rig.move", "rig.move"};
+    entity_set_enabled(green, true);
+    TEST_ASSERT_TRUE(animator_set_clips(green, "rig", clips, 2, NULL));
+    TEST_ASSERT_TRUE(animator_play(green, 0, 0));
+    const scene_animator_t* unbound = &scene->animators[row_of(green)];
+    TEST_ASSERT_FALSE(scene->skinned_renderers[row_of(green)].bound);
+    TEST_ASSERT_EQUAL_UINT32(0, unbound->interval);
+    render_context_set_settings(render_context_main(), &RENDER_SETTINGS_DEFAULT);
+    for (int i = 0; i < 2 * RENDER_SETTINGS_DEFAULT.anim.far_every; i++) {
+        frame(0);
+        TEST_ASSERT_EQUAL_FLOAT(0.0F, unbound->drawn_radius_px);
+    }
+    release_fixture();
+}
+
+static void
+test_the_draw_measures_two_copies_each_on_its_own_due_frames(void) {
+    entity_t root = rig_fixture("rig.skin2", "rig.quad");
+    scene_t* scene = columns(root);
+    const scene_animator_t* red = &scene->animators[row_of(entity_find(root, name_hash("red")))];
+    const scene_animator_t* green = &scene->animators[row_of(entity_find(root, name_hash("green")))];
+    render_context_set_settings(render_context_main(), &RENDER_SETTINGS_DEFAULT);
+    frame_due(scene, red);
+    frame_due(scene, green);
+    TEST_ASSERT_NOT_EQUAL(red->phase, green->phase);
+    TEST_ASSERT_EQUAL_INT(RENDER_SETTINGS_DEFAULT.anim.far_every, red->interval);
+    TEST_ASSERT_EQUAL_INT(RENDER_SETTINGS_DEFAULT.anim.far_every, green->interval);
+    int red_only = 0, green_only = 0;
+    for (int i = 0; i < 2 * RENDER_SETTINGS_DEFAULT.anim.far_every; i++) {
+        frame(0);
+        const bool red_due = scene_animator_due(scene, red), green_due = scene_animator_due(scene, green);
+        TEST_ASSERT_EQUAL(red_due, red->drawn_radius_px > 0.0F);
+        TEST_ASSERT_EQUAL(green_due, green->drawn_radius_px > 0.0F);
+        red_only += red_due && !green_due;
+        green_only += green_due && !red_due;
+    }
+    TEST_ASSERT_GREATER_THAN_INT(0, red_only);
+    TEST_ASSERT_GREATER_THAN_INT(0, green_only);
+    release_fixture();
+}
+
 static void
 test_animation_rate_overrides_and_reset(void) {
     scene_t* scene = rate_fixture();
@@ -5367,15 +5768,19 @@ test_animation_rate_overrides_and_reset(void) {
     settings.anim.far_every = RENDER_ANIM_EVERY_MIN;
     render_context_set_settings(render_context_main(), &settings);
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(anim, far_every), RENDER_ANIM_EVERY_MAX));
+    until_due(scene, a);
     scene_animation_step(scene, ANIM_RATE_DT_MS);
     TEST_ASSERT_EQUAL_INT(RENDER_ANIM_EVERY_MAX, a->interval);
     TEST_ASSERT_FALSE(tune_set(tune_shared(), TUNE_NAME(anim, far_every), RENDER_ANIM_EVERY_MAX + 1));
+    until_due(scene, a);
     scene_animation_step(scene, ANIM_RATE_DT_MS);
     TEST_ASSERT_EQUAL_INT(RENDER_ANIM_EVERY_MAX, a->interval);
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(anim, far_every), 0));
+    until_due(scene, a);
     scene_animation_step(scene, ANIM_RATE_DT_MS);
     TEST_ASSERT_EQUAL_INT(RENDER_ANIM_EVERY_MIN, a->interval);
     TEST_ASSERT_TRUE(tune_reset(tune_shared(), TUNE_NAME(anim, far_every)));
+    until_due(scene, a);
     scene_animation_step(scene, ANIM_RATE_DT_MS);
     TEST_ASSERT_EQUAL_INT(RENDER_ANIM_EVERY_MIN, a->interval);
 }
@@ -5397,6 +5802,7 @@ test_animation_rate_undrawn_and_fractional_speed(void) {
             TEST_ASSERT_EQUAL_UINT16(reference.current.playhead.fraction, a->layer.current.playhead.fraction);
         }
     }
+    until_due(scene, a);
     a->drawn_radius_px = RENDER_SETTINGS_DEFAULT.anim.mid_px * 2;
     scene_animation_step(scene, dt_ms);
     TEST_ASSERT_EQUAL_INT(RENDER_ANIM_EVERY_MIN, a->interval);
@@ -5441,6 +5847,7 @@ test_animation_rate_first_placement_jump_and_debt(void) {
         TEST_ASSERT_EQUAL_INT(tiers[i], a->tier);
         TEST_ASSERT_EQUAL_INT(a->interval == RENDER_ANIM_EVERY_MIN, a->posed);
     }
+    until_due(scene, a);
     TEST_ASSERT_GREATER_THAN_UINT32(0, a->owed_ms);
     anim_layer_t reference = a->layer;
     anim_layer_advance(&reference, a->owed_ms + ANIM_RATE_DT_MS);
@@ -5923,6 +6330,10 @@ test_paused_skin_setters_replacement_and_reenable(void) {
     TEST_ASSERT_UINT8_WITHIN(1, skin->bind.colors[0][0], skin->colors[0][0]);
 }
 
+/* A skin's buffers are two heap blocks, and the device heap rounds each block
+ * by where it lands, so the same buffers taken again match to within that. */
+enum { SKIN_BLOCKS = 2, HEAP_BLOCK_ROUNDING = 8 };
+
 /* A skin holds its buffers only while its entity is active, so memory follows
  * the copies shown, not the pool: the herd loads its pool holding none, one
  * copy shown takes one copy's buffers, and a disabled copy gives its back at once. */
@@ -5954,9 +6365,6 @@ test_a_skin_holds_its_buffers_only_while_its_entity_is_active(void) {
     }
     scene_animation_step(columns(herd), 0);
 
-    /* The device heap rounds each block by where it lands, so copies match to within that. */
-    enum { SKIN_BLOCKS = 2, HEAP_BLOCK_ROUNDING = 8 };
-
     TEST_ASSERT_UINT_WITHIN(HERD_POOL * SKIN_BLOCKS * HEAP_BLOCK_ROUNDING, loaded - one * HERD_POOL,
                             memory_free_bytes(MEMORY_FAST));
     for (int i = 1; i < HERD_POOL; i++) {
@@ -5978,14 +6386,15 @@ test_a_skin_disabled_and_enabled_again_draws_the_same_frame(void) {
     scene_animation_step(columns(scene), RIG_DURATION_MS / RIG_TRAVEL);
     frame(0);
     memcpy(fx.held, fx.pixels, picture);
-    const size_t shown = memory_free_bytes(MEMORY_INTERNAL);
+    /* Counted across both RAMs: MEMORY_FAST puts the buffers off chip once the on-chip reserve is reached. */
+    const size_t shown = memory_free_bytes(MEMORY_FAST);
     entity_set_enabled(green, false);
-    TEST_ASSERT_GREATER_THAN_UINT(shown, memory_free_bytes(MEMORY_INTERNAL));
+    TEST_ASSERT_GREATER_THAN_UINT(shown, memory_free_bytes(MEMORY_FAST));
     frame(0);
     TEST_ASSERT_NOT_EQUAL_INT(0, memcmp(fx.held, fx.pixels, picture));
     entity_set_enabled(green, true);
     frame(0);
-    TEST_ASSERT_EQUAL_UINT(shown, memory_free_bytes(MEMORY_INTERNAL));
+    TEST_ASSERT_UINT_WITHIN(SKIN_BLOCKS * HEAP_BLOCK_ROUNDING, shown, memory_free_bytes(MEMORY_FAST));
     TEST_ASSERT_EQUAL_MEMORY(fx.held, fx.pixels, picture);
 }
 
@@ -7837,7 +8246,11 @@ run_scene_suite(void) {
     RUN_TEST(test_static_mesh_arrays_are_resident_and_equal_the_pack);
     RUN_TEST(test_static_face_colours_are_resident_and_equal_the_pack);
     RUN_TEST(test_only_static_mesh_arrays_are_made_resident);
-    RUN_TEST(test_resident_allocation_failure_rolls_back_the_load);
+    RUN_TEST(test_only_shown_renderers_take_resident_copies);
+    RUN_TEST(test_scene_failure_names_a_renderer_still_starved);
+    RUN_TEST(test_a_shared_array_is_copied_once_whichever_renderer_is_shown_first);
+    RUN_TEST(test_a_mesh_set_before_the_first_show_takes_no_copies);
+    RUN_TEST(test_a_refused_resident_take_hides_only_its_renderer_until_enabled_again);
     RUN_TEST(test_table_later_frames_mode_changes_and_light_enable);
     RUN_TEST(test_skin_modes_share_table_transactionally_and_rebuild_only_for_lights);
     RUN_TEST(test_invalid_normal_transform_skips_lighting_and_recovers);
@@ -7856,6 +8269,9 @@ run_scene_suite(void) {
     RUN_TEST(test_idle_lit_skin_skips_and_transform_changes_run);
     RUN_TEST(test_light_attachment_defaults_refusals_and_capacity);
     RUN_TEST(test_scene_light_rotation_shades_only_skin_and_matches_kernel);
+    RUN_TEST(test_probes_sample_last_resolved_bounds_without_allocating);
+    RUN_TEST(test_forgetting_another_scene_keeps_the_contact_draw_hook);
+    RUN_TEST(test_contact_footprint_and_partial_redraw);
     RUN_TEST(test_authored_skin_modes_animation_and_ambient);
     RUN_TEST(test_authored_light_preserves_static_mesh_colors);
     RUN_TEST(test_authored_tonemap_changes_skin_colors_in_both_attachment_orders);
@@ -7871,6 +8287,7 @@ run_scene_suite(void) {
     RUN_TEST(test_a_light_change_relights_at_once);
     RUN_TEST(test_a_moving_near_copy_relights_every_frame);
     RUN_TEST(test_a_moving_copy_with_no_clip_relights_at_once);
+    RUN_TEST(test_a_copy_holds_its_tier_between_its_due_frames);
     RUN_TEST(test_animation_rate_tier_hysteresis);
     RUN_TEST(test_animation_rate_tier_jumps_and_first_read);
     RUN_TEST(test_animation_rate_first_placement_jump_and_debt);
@@ -7881,6 +8298,13 @@ run_scene_suite(void) {
     RUN_TEST(test_animation_rate_blend_debt_and_phase_rebind);
     RUN_TEST(test_animation_rate_one_one_disables_skips);
     RUN_TEST(test_animation_rate_reads_last_drawn_bounds_and_rejects_offscreen);
+    RUN_TEST(test_animation_interval_follows_a_smaller_mid_every_on_a_non_due_step);
+    RUN_TEST(test_animation_interval_follows_a_larger_mid_every_on_a_non_due_step);
+    RUN_TEST(test_animation_interval_follows_a_smaller_far_every_on_a_non_due_step);
+    RUN_TEST(test_animation_interval_follows_a_larger_far_every_on_a_non_due_step);
+    RUN_TEST(test_the_draw_measures_a_bound_copy_only_on_its_due_frames);
+    RUN_TEST(test_the_draw_never_measures_an_unbound_animated_copy);
+    RUN_TEST(test_the_draw_measures_two_copies_each_on_its_own_due_frames);
     RUN_TEST(test_skin_step_skips_unposed_entities_before_posed_clusters);
     RUN_TEST(test_failed_second_camera_releases_the_first_animator);
     RUN_TEST(test_replacing_skin_clips_drives_the_new_clip_after_one_step);
@@ -7929,9 +8353,8 @@ run_scene_suite(void) {
     RUN_TEST(test_camera_present_composes_half_picture_at_any_height);
     RUN_TEST(test_camera_present_scanline_and_double_compose_both_quarters);
     RUN_TEST(test_camera_present_default_setter_and_dynamic_size);
-    RUN_TEST(test_camera_small_fill_default_setter_and_view);
     RUN_TEST(test_camera_skip_hidden_setter_changes_no_pixel);
-    RUN_TEST(test_camera_small_fill_changes_scene_pixels);
+    RUN_TEST(test_render_settings_small_fill_changes_scene_pixels);
     RUN_TEST(test_non_half_compose_upscales_to_the_full_destination);
     RUN_TEST(test_failed_half_allocation_keeps_full_upscale_unexpanded);
     RUN_TEST(test_expanded_frame_without_ui_does_not_replay_the_previous_hud);
@@ -7939,6 +8362,7 @@ run_scene_suite(void) {
     RUN_TEST(test_a_scene_loads_by_name_and_unloading_gives_back_everything_it_took);
     RUN_TEST(test_a_lent_scene_takes_from_its_lender_and_unloading_returns_it_to_the_lender);
     RUN_TEST(test_a_refused_take_loads_nothing_and_a_refused_scratch_draws_nothing);
+    RUN_TEST(test_a_debug_view_takes_no_second_scratch_and_a_refused_larger_one_keeps_the_first);
     RUN_TEST(test_a_camera_clears_to_the_colour_its_scene_gives);
     RUN_TEST(test_a_load_that_fails_says_what_it_was_about);
     RUN_TEST(test_each_failed_root_keeps_its_own_reason);
@@ -7960,7 +8384,6 @@ run_scene_suite(void) {
     RUN_TEST(test_doc_scene_missing_leaves_entities_and_camera_alone);
     RUN_TEST(test_doc_animator_blends_to_selected_clip);
     RUN_TEST(test_doc_present_modes_reach_camera);
-    RUN_TEST(test_doc_small_fill_reaches_camera);
     RUN_TEST(test_scene_load_holds_its_pack_until_the_last_scene_from_it_unloads);
     RUN_TEST(test_a_scene_that_fails_to_load_does_not_hold_its_pack);
     RUN_TEST(test_scene_load_reads_a_scene_from_the_pack_its_id_names);

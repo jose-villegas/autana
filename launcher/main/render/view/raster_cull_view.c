@@ -4,6 +4,7 @@
 #include <math.h>
 #include <string.h>
 
+#include "core/memory.h"
 #include "core/tune.h"
 #include "image/pixel/rgb565.h"
 #include "math/geometry/box3f.h"
@@ -479,7 +480,6 @@ spectator_view(const raster_cull_t* s, const raster_t* raster, const transformf_
     }
     render_view_t view = render_view_make(pose, tan_half, near_z, camera->viewport);
     view.present = camera->present;
-    view.small_fill = camera->small_fill;
     return view;
 }
 
@@ -515,7 +515,13 @@ keep_under(raster_cull_t* s, const raster_t* raster) {
     const raster_buffers_t b = raster_carve(raster);
     const int index = attachment_index(raster, s);
     paint_picture(s, raster, &b.picture, index);
-    assert(raster->width * raster->height <= RASTER_CULL_PIXELS_MAX);
+    const size_t pixels = (size_t)raster->width * (size_t)raster->height;
+    memory_free(s->under_color);
+    s->under_color = memory_alloc(pixels * (sizeof *s->under_color + sizeof *s->under_depth), MEMORY_APP);
+    if (s->under_color == NULL) {
+        return; /* the kept clusters show alone */
+    }
+    s->under_depth = (uint16_t*)(void*)(s->under_color + pixels);
     for (int y = 0; y < raster->height; y++) {
         const gfx_color_t* color = gfx_target_color(&b.picture, y);
         const uint16_t* depth = gfx_target_depth(&b.picture, y);
@@ -657,9 +663,11 @@ static void
 show(const raster_attachment_t* self, const raster_t* raster, const gfx_target_t* picture, int index) {
     raster_cull_t* s = self->state;
     paint_picture(s, raster, picture, index);
-    if (s->pass == RASTER_CULL_PASS_KEPT) {
+    if (s->pass == RASTER_CULL_PASS_KEPT && s->under_color != NULL) {
         layer_under(s, picture, index);
     }
+    memory_free(s->under_color);
+    s->under_color = NULL;
     s->spectating = false;
     s->pass = RASTER_CULL_PASS_CAMERA;
 }

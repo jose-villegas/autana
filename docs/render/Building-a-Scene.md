@@ -61,6 +61,18 @@ Add more mesh renderers to place more meshes; give one a `position`, a
 `bake = true` must sit at the identity transform, because it is baked where it
 stands ([Scene-Files.md](scene/Scene-Files.md)); one without it may go anywhere.
 
+A program can move a renderer that is not baked without touching the rest of
+the file. [`scene_edit.py`](../../launcher/tools/scene/scene_edit.py) prints
+every object's placement as JSON, with why it may not move when it may not
+(`read`), and rewrites only the values it is
+given (`set`, with `--set NAME.FIELD=X,Y,Z` and FIELD one of position, rotation
+or scale), keeping the comments and layout. It refuses baked renderers, lights and cameras, and any
+result the scene rules reject:
+
+```sh
+python launcher/tools/scene/scene_edit.py set capybara.scene.toml --set capybara.position=0.5,0,-0.25
+```
+
 ## 3. Light it
 
 Light is part of the scene file: `[bake]` traces it into baked renderers, and

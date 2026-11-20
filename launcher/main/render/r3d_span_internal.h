@@ -7,6 +7,7 @@
  */
 #pragma once
 
+#include "image/pixel/rgb565_layout.h"
 #include "math/geometry/recti.h"
 
 #include <stdbool.h>
@@ -146,7 +147,8 @@ r3d_span_centres(int32_t lo_x, int32_t lo_y, int32_t hi_x, int32_t hi_y) {
  * format. */
 static inline uint16_t
 r3d_span_pack(int32_t r, int32_t g, int32_t b) {
-    const uint32_t native = ((uint32_t)r & 0xF800U) | (((uint32_t)g >> 5) & 0x07E0U) | ((uint32_t)b >> 11);
+    const uint32_t native =
+        ((uint32_t)r & RGB565_RED_MASK) | (((uint32_t)g >> 5) & RGB565_GREEN_MASK) | ((uint32_t)b >> 11);
     return (uint16_t)((native >> 8) | (native << 8));
 }
 

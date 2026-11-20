@@ -74,10 +74,11 @@ jobs:
       # Every install comes before the first gate: Tool tests runs after a
       # failed gate too, and a skipped install would fail it for nothing.
       # pyserial among them: the exclusive-open tests drive the real serial library on a pty.
+      # ccache: test_ccache_watch.py holds a real ccache lock (WinLibs carries it on Windows).
       - name: Workflow gate dependencies
         run: |
-          sudo sh scripts/ci/apt_install.sh -y libportaudio2
-          pip install -r scripts/gates/requirements.txt -r launcher/tools/render/requirements.txt -r launcher/test/device/requirements.txt -r launcher/tools/audio/requirements.txt -r launcher/tools/audio/mic/requirements.txt
+          sudo sh scripts/ci/apt_install.sh -y libportaudio2 ccache
+          pip install -r scripts/gates/requirements.txt -r launcher/tools/render/requirements.txt -r launcher/test/device/requirements.txt -r launcher/tools/audio/requirements.txt -r launcher/tools/audio/mic/requirements.txt -r launcher/tools/scene/requirements.txt
 
       # test_r3d_bake.py skips itself without numpy and scipy, and builds
       # meshoptimizer's library from its submodule with the runner's compiler;
@@ -193,6 +194,9 @@ jobs:
       - name: Simulation skip facts are read through the forced-work gate
         run: python3 scripts/gates/check_skip_facts.py
 
+      - name: Each render setting has one owner and every settings file sets only declared keys
+        run: python3 scripts/gates/check_render_settings.py
+
       - name: Each vendored copy is taken from its submodule's pinned commit
         run: python3 scripts/deps/vendored.py check
 
@@ -236,7 +240,7 @@ jobs:
           echo "TMP=$long" >> "$GITHUB_ENV"
       - name: Tool test dependencies
         run: |
-          pip install -r scripts/gates/requirements.txt -r launcher/tools/render/requirements.txt -r launcher/test/device/requirements.txt -r launcher/tools/audio/requirements.txt -r launcher/tools/audio/mic/requirements.txt -r launcher/tools/r3d/requirements.txt
+          pip install -r scripts/gates/requirements.txt -r launcher/tools/render/requirements.txt -r launcher/test/device/requirements.txt -r launcher/tools/audio/requirements.txt -r launcher/tools/audio/mic/requirements.txt -r launcher/tools/r3d/requirements.txt -r launcher/tools/scene/requirements.txt
           git submodule update --init --depth 1 third_party/upstream/meshoptimizer third_party/upstream/ufbx
           npm ci --prefix scripts/gates
       - name: Tool tests

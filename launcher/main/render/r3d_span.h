@@ -14,19 +14,20 @@
 #include "gfx/target/gfx_target.h"
 #include "image/pixel/bayer.h"
 #include "render/render_view.h"
+#include "render/settings/render_settings.h"
 
-/* Largest bounding-box side, in pixel centres, always filled flat; the camera gate and style apply only above it. */
+/* Largest bounding-box side, in pixel centres, always filled flat; the small_fill gate and style apply only above it. */
 #define R3D_SPAN_SMALL_MAX_SIDE 4
 
 /* Resolved once per frame and shared read-only by row workers. */
 typedef struct {
     uint8_t ceiling;
-    small_fill_style_t style;
+    uint8_t style; /* a small_fill_style_t, a byte so row workers read a small struct */
     uint8_t spread[SMALL_FILL_CEILING_MAX + 1];
 } r3d_span_small_fill_t;
 
 extern const r3d_span_small_fill_t r3d_span_small_fill_default;
-void r3d_span_small_fill_resolve(r3d_span_small_fill_t* resolved, small_fill_t fill);
+void r3d_span_small_fill_resolve(r3d_span_small_fill_t* resolved, render_small_fill_settings_t fill);
 
 typedef struct r3d_span_writer r3d_span_writer_t;
 
@@ -34,10 +35,15 @@ typedef struct r3d_span_writer r3d_span_writer_t;
  * own format, RGB565 with its two bytes swapped, so a framebuffer can be its
  * colour as it is, and whose depth is R3D_DEPTH_EMPTY where nothing was
  * drawn; and what a further attachment writes beside them. */
-typedef struct {
+typedef struct r3d_span_target {
     const r3d_span_writer_t* writers; /* writer_count of them; none: colour and depth only */
     int writer_count;
     bool skip_hidden; /* render_view_t.skip_hidden: fills cap their depth, and writers follow */
+    /* The draw's render_texture_settings_t: divide_px, affine_bend in
+     * 1/R3D_SPAN_BEND_STEPS texel, and affine_level. */
+    uint8_t texture_divide_px;
+    uint8_t texture_bend_steps;
+    uint8_t texture_affine_level;
     const r3d_span_small_fill_t* small_fill;
 
     union {
@@ -51,11 +57,26 @@ typedef struct {
 #define R3D_SPAN_SCREEN_BIT(x, y)                                                                                      \
     ((((y) & (R3D_SPAN_SCREEN_SIDE - 1)) * R3D_SPAN_SCREEN_SIDE) + ((x) & (R3D_SPAN_SCREEN_SIDE - 1)))
 
+/* Steps per texel in which texture_bend_steps holds texture.affine_bend, rounded. */
+#define R3D_SPAN_BEND_STEPS 16
+_Static_assert(RENDER_TEXTURE_DIVIDE_PX_MAX <= UINT8_MAX, "texture.divide_px fits its byte");
+_Static_assert(RENDER_TEXTURE_BEND_MAX* R3D_SPAN_BEND_STEPS <= UINT8_MAX, "texture.affine_bend fits its byte");
+_Static_assert(RENDER_TEXTURE_LEVEL_MAX <= UINT8_MAX, "texture.affine_level fits its byte");
+
+/* Sets `target`'s textured fill to `texture`. */
+static inline void
+r3d_span_set_texture(r3d_span_target_t* target, const render_texture_settings_t* texture) {
+    target->texture_divide_px = (uint8_t)texture->divide_px;
+    target->texture_bend_steps = (uint8_t)((texture->affine_bend * (float)R3D_SPAN_BEND_STEPS) + 0.5F);
+    target->texture_affine_level = (uint8_t)texture->affine_level;
+}
+
 /* Colour and depth alone, rows [row0, row1) `width` wide, each buffer
  * starting at row0. */
 static inline r3d_span_target_t
 r3d_span_target(gfx_color_t* color, uint16_t* depth, int width, int row0, int row1) {
     r3d_span_target_t target = {.small_fill = &r3d_span_small_fill_default};
+    r3d_span_set_texture(&target, &RENDER_SETTINGS_DEFAULT.texture);
     gfx_target_of_color_depth(&target.rows, color, depth, width, row1 - row0, row0);
     assert(target.rows.attachment[GFX_ATTACHMENT_DEPTH].pitch == target.rows.attachment[GFX_ATTACHMENT_COLOR].pitch);
     return target;

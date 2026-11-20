@@ -81,6 +81,13 @@ mathi_max(int a, int b) {
     return a < b ? b : a;
 }
 
+/* a / b rounded up, for a >= 0 and b > 0. */
+static inline int
+mathi_ceil_div(int a, int b) {
+    assert(a >= 0 && b > 0);
+    return (a + b - 1) / b;
+}
+
 /* |(x, y)| without a square root, to about 4%: the larger component plus two
  * fifths of the smaller. Nowhere here needs an exact length, only "how hard
  * is this being shaken" or "how far did this turn", and this is far cheaper

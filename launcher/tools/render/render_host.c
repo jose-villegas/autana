@@ -9,6 +9,7 @@
 #include "core/checkpoint.h"
 #include "render_host.h"
 
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -59,7 +60,7 @@ static render_settings_t settings = RENDER_SETTINGS_DEFAULT;
 static bool settings_set;
 
 /* Sets `field`, a RENDER_SETTINGS_FIELDS name such as lod.tolerance_px, from
- * `text`; false when no field has that name or the text is not its value. */
+ * `text`; false when no field has that name or the text is not a value in its interval. */
 static bool
 set_setting(const char* field, const char* text) {
     char* end = NULL;
@@ -68,8 +69,9 @@ set_setting(const char* field, const char* text) {
 #define PARSE_int(text)   (int)strtol((text), &end, 10)
 #define SET_FIELD(name, type, valid)                                                                                   \
     if (strcmp(field, #name) == 0) {                                                                                   \
-        settings.name = PARSE_##type(text);                                                                            \
-        return end != text && *end == '\0';                                                                            \
+        const type value = PARSE_##type(text);                                                                         \
+        settings.name = value;                                                                                         \
+        return end != text && *end == '\0' && (valid);                                                                 \
     }
     RENDER_SETTINGS_FIELDS(SET_FIELD)
 #undef SET_FIELD
@@ -136,8 +138,8 @@ convert_frame(affine2x_t t, bool panel, int out_w, int out_h, int32_t stride, ui
             uint8_t* dst = buf + (size_t)(out_h - 1 - mapped.y) * stride + mapped.x * 3;
             const uint32_t rgb = rgb565be_to_rgb888(pixels[px]);
             dst[0] = (uint8_t)rgb;
-            dst[1] = (uint8_t)(rgb >> 8);
-            dst[2] = (uint8_t)(rgb >> 16);
+            dst[1] = (uint8_t)(rgb >> CHAR_BIT);
+            dst[2] = (uint8_t)(rgb >> (2 * CHAR_BIT));
         }
     }
 }
@@ -291,9 +293,10 @@ refuse(int* exit_code, const char* argv0) {
 /* One open run owns the frame history, readback buffers and output streams. */
 static struct {
     const frame_provider_t* provider;
-    bool panel, crop, video_ok;
+    bool panel, crop, video_ok, failed;
     const char *out_path, *video_path, *record_path;
     FILE* record;
+    uint32_t record_keyframe_every;
     int out_w, out_h;
     affine2x_t t;
     int32_t stride;
@@ -397,7 +400,7 @@ static bool
 record_start(void) {
     host.record = fopen(host.record_path, "wb");
     const frame_record_out_t out = {record_write, host.record};
-    if (host.record == NULL || !frame_record_start(&out, FRAME_RECORD_KEYFRAME_EVERY)) {
+    if (host.record == NULL || !frame_record_start(&out, host.record_keyframe_every)) {
         fprintf(stderr, "%s: cannot record to %s\n", host.provider->name, host.record_path);
         if (host.record != NULL) {
             fclose(host.record);
@@ -427,11 +430,13 @@ render_host_open(const frame_provider_t* provider, int argc, char** argv, int* e
     memset(&host, 0, sizeof host);
     *exit_code = 1;
     host.provider = provider;
+    host.record_keyframe_every = FRAME_RECORD_KEYFRAME_EVERY;
     host.frame.quarter = host.provider->quarter;
     host.frame.count = host.provider->frames > 0 ? host.provider->frames : 1;
     host.frame.dt_ms = host.provider->dt_ms > 0 ? host.provider->dt_ms : DEFAULT_DT_MS;
     char* rest[64];
     int rest_count = 0;
+    bool frames_set = false;
     for (int i = 1; i < argc; i++) {
         const char* a = argv[i];
         const bool has_value = i + 1 < argc;
@@ -449,12 +454,18 @@ render_host_open(const frame_provider_t* provider, int argc, char** argv, int* e
             }
         } else if (strcmp(a, "--frames") == 0 && has_value) {
             host.frame.count = (int)strtol(argv[++i], NULL, 10);
+            frames_set = true;
         } else if (strcmp(a, "--dt") == 0 && has_value) {
             host.frame.dt_ms = (uint32_t)strtoul(argv[++i], NULL, 10);
         } else if (strcmp(a, "-o") == 0 && has_value) {
             host.out_path = argv[++i];
         } else if (strcmp(a, "--video") == 0 && has_value) {
             host.video_path = argv[++i];
+        } else if (strcmp(a, "--record-keyframe-every") == 0 && has_value) {
+            host.record_keyframe_every = (uint32_t)strtoul(argv[++i], NULL, 10);
+            if (host.record_keyframe_every == 0 || host.record_keyframe_every > UINT16_MAX) {
+                return refuse(exit_code, argv[0]);
+            }
         } else if (strcmp(a, "--record") == 0 && has_value) {
             host.record_path = argv[++i];
         } else if (strcmp(a, "--crop") == 0) {
@@ -471,6 +482,10 @@ render_host_open(const frame_provider_t* provider, int argc, char** argv, int* e
     }
     if (host.provider->options != NULL ? !host.provider->options(rest_count, rest) : rest_count > 0) {
         return refuse(exit_code, argv[0]);
+    }
+
+    if (!frames_set && provider->frame_count != NULL) {
+        host.frame.count = provider->frame_count();
     }
 
     output_size(host.frame.quarter, host.panel, &host.out_w, &host.out_h);
@@ -617,6 +632,11 @@ render_host_step(uint32_t dt_ms, const input_t* input) {
     host.frame.elapsed_ms += dt_ms;
 }
 
+void
+render_host_fail(void) {
+    host.failed = true;
+}
+
 bool
 render_host_close(void) {
     const bool recorded = record_stop();
@@ -680,7 +700,7 @@ render_host_close(void) {
         fprintf(stderr, "%s: the frame watch had no room for %lu events, so it may have missed one\n",
                 host.provider->name, (unsigned long)verdict.dropped);
     }
-    return ok && recorded && frame_watch_verdict_clean(verdict);
+    return ok && recorded && !host.failed && frame_watch_verdict_clean(verdict);
 }
 
 /* Selecting a provider builds the CLI; without it this file is a library. */

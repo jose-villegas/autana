@@ -7,6 +7,7 @@
 #include <math.h>
 #include <stdalign.h>
 #include <stddef.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -25,13 +26,6 @@ int scene_fail_allocation_after = -1;
 #endif
 static uint64_t requests; /* scene_root_t.order of the latest request */
 static memory_take_fn kept_take;
-
-size_t
-scene_storage_carve(size_t* end, size_t bytes, size_t align) {
-    const size_t at = mathi_size_ceil(*end, align);
-    *end = at + bytes;
-    return at;
-}
 
 /* What one of the scene's arrays is counted in. */
 enum { PER_RENDERER, PER_CAMERA, PER_ENTITY, PER_BATCH, PER_COUNT };
@@ -66,7 +60,7 @@ place(const scene_asset_t* asset, scene_t* scene) {
                                       [PER_BATCH] = asset->batch_count};
     size_t end = sizeof(scene_t);
     for (size_t i = 0; i < sizeof PARTS / sizeof *PARTS; i++) {
-        const size_t at = scene_storage_carve(&end, PARTS[i].size * counts[PARTS[i].per], PARTS[i].align);
+        const size_t at = mem_carve(&end, PARTS[i].size * counts[PARTS[i].per], PARTS[i].align);
         if (scene != NULL) {
             void* array = (uint8_t*)scene + at;
             memcpy((uint8_t*)scene + PARTS[i].member, &array, sizeof array);
@@ -142,16 +136,16 @@ instantiate(const scene_asset_t* asset) {
     memset(scene->flags, SCENE_FLAG_ENABLED | SCENE_FLAG_ACTIVE | SCENE_FLAG_CHANGED, asset->entity_count);
     for (int i = 0; i < asset->camera_count; i++) {
         const scene_asset_camera_t* c = &asset->cameras[i];
-        scene->cameras[i] = (scene_camera_t){
-            .lens = {.half_fov_short_tan = c->half_fov_short_tan, .near_z = c->near_z, .small_fill = SMALL_FILL_SMOOTH},
-            .entity = c->entity,
-            .clear = RGB565BE(c->clear_rgb)};
+        scene->cameras[i] = (scene_camera_t){.lens = {.half_fov_short_tan = c->half_fov_short_tan, .near_z = c->near_z},
+                                             .entity = c->entity,
+                                             .clear = RGB565BE(c->clear_rgb)};
     }
     for (int i = 0; i < asset->renderer_count; i++) {
         scene->renderers[i].entity = asset->renderers[i].entity;
     }
     for (int i = 0; i < asset->skinned_renderer_count; i++) {
         scene->renderers[asset->renderer_count + i].entity = asset->skinned_renderers[i].entity;
+        scene->renderers[asset->renderer_count + i].resident_arrays = SCENE_RESIDENT_ALL; /* skins read the pack */
     }
     return scene;
 }
@@ -274,14 +268,7 @@ open_batches(scene_t* scene, const asset_pack_t* pack) {
             return scene_failure_make(SCENE_ERR_ASSET, status, mesh);
         }
         r3d_batch_t* batch = &scene->batches[i];
-        *batch = (r3d_batch_t){.chunks = scene->chunks + row->first_chunk,
-                               .places = asset->places + row->first_copy,
-                               .turns = asset->turns + row->first_copy,
-                               .colour_stride =
-                                   (uint32_t)(r->mesh.colors != NULL ? r->mesh.vertex_count : r->mesh.triangle_count),
-                               .copy_radius = r3d_batch_copy_radius(&r->mesh),
-                               .copy_count = row->copy_count,
-                               .chunk_count = (uint16_t)r3d_batch_chunks(row->copy_count)};
+        *batch = scene_asset_batch(asset, i, &r->mesh, scene->chunks);
         r->batch = batch;
         r->colour_sets = sets;
     }
@@ -455,15 +442,9 @@ free_columns(scene_t* scene) {
     memory_free(scene->chunks);
     for (int i = 0; i < scene->renderer_count; i++) {
         scene_renderer_texturing_free(&scene->renderers[i]);
+        scene_mesh_release(&scene->renderers[i]);
     }
     scene_hierarchy_release(scene);
-#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-    if (scene->copies != NULL) {
-        asset_store_copies_remove(scene->copies);
-        scene_free_kept(scene->copies);
-    }
-#endif
-    scene_free_kept(scene->resident);
     scene_free_kept(scene);
 }
 
@@ -497,9 +478,6 @@ open_scene(scene_root_t* record, const asset_pack_t* pack) {
     scene_hierarchy_update_active(scene, SCENE_ROW_ROOT);
     done = scene_hierarchy_open(scene) ? open_meshes(scene, pack)
                                        : scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, record->id);
-    if (done.status == SCENE_OK) {
-        done = scene_mesh_make_resident(scene);
-    }
     if (done.status == SCENE_OK) {
         done = scene_renderer_open_cuts(scene);
     }
@@ -663,6 +641,34 @@ scene_state(entity_t root) {
     return record == NULL || row != SCENE_ROW_ROOT ? PENDING_NONE : record->state;
 }
 
+void
+scene_starve(scene_t* scene, scene_row_t entity, bool* starved, const char* doing) {
+    const char* name = scene->asset.names[entity].name;
+    *starved = true;
+    scene->starved_count++;
+    scene->active_renderers_stale = true;
+    (void)fprintf(stderr, "scene: no memory to %s %s; it is not drawn\n", doing, name);
+}
+
+void
+scene_unstarve(scene_t* scene, bool* starved) {
+    scene->starved_count -= *starved;
+    *starved = false;
+}
+
+/* The first entity starved now: a skin without its buffers or a renderer
+ * without its copies. */
+static const char*
+starved_name(const scene_t* scene) {
+    for (int i = 0; i < scene->renderer_count; i++) {
+        const scene_row_t e = scene->renderers[i].entity;
+        if (scene->renderers[i].starved || scene->skinned_renderers[e].starved) {
+            return scene->asset.names[e].name;
+        }
+    }
+    return scene->root->id;
+}
+
 bool
 scene_failure(entity_t root, scene_failure_t* why) {
     const scene_root_t* record = record_of(root);
@@ -671,7 +677,7 @@ scene_failure(entity_t root, scene_failure_t* why) {
     if (record == NULL || (record->state != PENDING_FAILED && !starved)) {
         return false;
     }
-    *why = record->failure;
+    *why = starved ? scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, starved_name(record->scene)) : record->failure;
     return true;
 }
 

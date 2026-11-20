@@ -13,11 +13,12 @@ mesh. Nothing here runs on the board.
 | [simplify.py](simplify.py) | Appearance-preserving simplification: split evenly, one colour-aware pass per part with reserved budget shares for small props, colour weighted so a colour step buys the same surface deviation in every part. `[objects] overrides` reserve fixed counts per welded group. `seal_seams=True` joins touching pieces first, regularizes lightly and merges near colours. |
 | [meshopt.py](meshopt.py) | [meshoptimizer](https://github.com/zeux/meshoptimizer)'s simplifier and meshlet clusterizer through ctypes, built once from the pinned `third_party/upstream/meshoptimizer` submodule into `.cache/`. |
 | [light.py](light.py) | Baked light from a scene's typed lights (`LIGHTS`): a point sun by shadow rays, sky visibility and ambient, distance-limited local occlusion (`[bake].ao`), albedo from textures, and culling of what no point in a region can see. |
-| [octree.py](octree.py) | Groups weighted items, here meshlets, into an octree whose leaves hold runs of them. |
+| [cluster_tree.py](cluster_tree.py) | Groups weighted boxes, here meshlets, into a tree by the surface area heuristic<sup>[[130]](../../../docs/Citations.md#macdonald-1990)</sup>, its leaves runs of them. |
 | [build_pack.py](build_pack.py) | Writes one [asset pack](../../../docs/assets/README.md) per root from its meshes, scenes, clips, pictures, icons, curves and sounds, using [`tools/asset/`](../asset/asset_pack.py). `-o DIR`, `--image FILE`; standard library only. |
 | [scene_asset.py](scene_asset.py) | The scene entry (`SCNE`): bakes a scene file's entities, renderers and camera, and reads the entry back as `scene_asset_open()` does. Standard library only. |
 | [mesh_asset.py](mesh_asset.py) | The lit mesh entry's type and byte layout, shared by the baker and the pack builder. Standard library only. |
-| [lit_mesh.py](lit_mesh.py) | `write_lit_mesh()`: cuts a lit mesh into meshlets under an octree, quantizes it, checks it against `r3d_lit_mesh.h`'s invariants and writes it as a `<name>.bundle` pack entry; a flat import carries one RGB565 colour per face and welds positions without colour seams. The size defaults live here and nowhere else. `read_lit_mesh()` reads an entry back. |
+| [lit_mesh.py](lit_mesh.py) | `write_lit_mesh()`: cuts a lit mesh into meshlets under a cluster tree, quantizes it, checks it against `r3d_lit_mesh.h`'s invariants and writes it as a `<name>.bundle` pack entry; a flat import carries one RGB565 colour per face and welds positions without colour seams. The size defaults live here and nowhere else. `read_lit_mesh()` reads an entry back. |
+| [sh_probe_bake.py](sh_probe_bake.py) | Incident-radiance L1 probe grids: shared ProbeViews placement, visible sky, path bounces and analytic sun. See [SH probe baking](../../../docs/render/offline/SH-Probes.md) and [SHPR](../../../docs/assets/formats/SHPR.md). |
 | [import_settings.py](import_settings.py) | Reads and validates an import file and a scene file; standard library only, every table closed. |
 | [cards/](cards/) | Selects cut-out materials with probe-weighted billboard clouds, bakes MASK1 pages and LUVS, and reports their coverage and budget. |
 | [mesh_import.py](mesh_import.py) | Bakes an import file, or the meshes a scene file places: loads the local source, runs the steps the import opts into, lights with the scene's lights, then writes each `.bundle` entry into `--out DIR`, or beside a file outside the repository; inside it, bake/bake.py makes a mesh into the bake cache. |
@@ -320,7 +321,8 @@ triangles<sup>[[116]](../../../docs/Citations.md#nvidia-optix-bvh-repeat)</sup>.
 hits or misses by the build, now and then a pixel, and the fit makes that pixel a different mesh. The CPU is slower
 than the GPU, paid once per reference key: the fits that read a set share it.
 
-Since a set differs between CPU models, the bake locks it: the CPU Bakes job renders it and packs what the fit reads
+Since a set differs between CPU models, the bake locks it: the Bakes plan job chooses its poses once,
+its shards render those poses, and the join job packs what the fit reads
 (`pack_references`: the training pictures and normals and the pose files) into `<entry>.reference.tar.xz`, and a
 fit's key names those bytes, as it names its start's ([Bakes](../../../docs/assets/Bakes.md)). Every GPU host fits
 from the same set.

@@ -18,12 +18,12 @@ indirect job_run_steered : transform_slice draw_slice upscale_slice animate_slic
 indirect draw_slice : clear_color raster_attachment_clear_u16 raster_cull_view.c:clear raster_overdraw.c:clear
 indirect raster_show : raster_meshlets.c:show depth_show tiles_show raster_cull_view.c:show raster_overdraw.c:show raster_copies.c:show
 indirect raster_show_map : raster_meshlets.c:pixel_color raster_overdraw.c:pixel_color raster_copies.c:pixel_color
-indirect render_context_set_debug_view : raster_depth_view raster_depth_tiles_view raster_meshlets_view raster_cull_view raster_overdraw_view raster_copies_view
-indirect render_context_overlay : raster_cull_overlay
+indirect render_context_set_debug_view render_context_debug_view_widest : raster_depth_view raster_depth_tiles_view raster_meshlets_view raster_cull_view raster_boxes_view raster_overdraw_view raster_copies_view
+indirect render_context_overlay : raster_cull_overlay raster_boxes_overlay
 indirect job_run_core1 : sweep_one_chunk step_one_gas_chunk equalise_gas_one_chunk equalise_one_chunk react_one_chunk
 indirect replay_overlay : shell_frame_overlay
 indirect job_dispatch job_on_worker_started : frame_watch_add_task
-indirect send_overlay_bordered_rows_clean : send_fb_rows send_picture_rows
+indirect overlay_take_off_last_borders : send_fb_rows send_picture_rows
 indirect ui_end_over : ui_ridge_paint
 indirect icon_walk_blocks : ui_transform_icon_emit
 indirect ui_transform_icon_emit : ui.c:icon_fill_emit
@@ -35,3 +35,5 @@ indirect render_context_draw : app_arena_take
 # A recording's sink: the board's stream, the stress suite's and this suite's.
 indirect frame_record_frame : console_framerec.c:sink_write suite_stress_perf.c:discard_frame suite_frame_record.c:take
 indirect scene_allocate_kept scene_allocate_kept_optional : app_arena_take
+
+indirect draw_post : scene_draw.c:post_draw

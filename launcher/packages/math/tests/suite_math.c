@@ -14,6 +14,7 @@
 #include "unity.h"
 
 #include "math/linear/mat3f.h"
+#include "math/linear/quatf_euler.h"
 #include "math/linear/transformf.h"
 #include "math/linear/transformx.h"
 #include "math/linear/vec_convert.h"
@@ -90,6 +91,63 @@ test_euler_angles_apply_z_then_x_then_y(void) {
     const quatf_t q = quatf_from_euler((vec3f_t){HALF_PI, HALF_PI, HALF_PI});
     assert_vec3(vec3f_unit_x(), quatf_rotate(q, vec3f_unit_x()));
     assert_vec3(vec3f_unit_z(), quatf_rotate(q, vec3f_unit_y()));
+}
+
+/* Angles inside quatf_to_euler's ranges come back as given, each part on its own and all three at once. */
+static void
+test_euler_angles_come_back_from_their_quaternion(void) {
+    const vec3f_t cases[] = {{0.0F, 0.0F, 0.0F},  {0.7F, 0.0F, 0.0F},   {0.0F, -2.5F, 0.0F}, {0.0F, 0.0F, 3.0F},
+                             {-0.2F, 0.8F, 0.3F}, {1.4F, -3.0F, -2.9F}, {-1.5F, 2.2F, 1.1F}};
+    for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+        assert_vec3(cases[i], quatf_to_euler(quatf_from_euler(cases[i])));
+    }
+}
+
+/* At pitch +-90 degrees yaw and roll turn about one axis: the angles that come back differ, the turn does not. */
+static void
+test_euler_angles_at_a_pitch_lock_give_the_same_turn(void) {
+    const vec3f_t locked[] = {{HALF_PI, 0.4F, 0.9F}, {-HALF_PI, -1.0F, 0.5F}};
+    for (size_t i = 0; i < sizeof locked / sizeof locked[0]; i++) {
+        const quatf_t q = quatf_from_euler(locked[i]);
+        const quatf_t again = quatf_from_euler(quatf_to_euler(q));
+        assert_vec3(quatf_rotate(q, vec3f_unit_x()), quatf_rotate(again, vec3f_unit_x()));
+        assert_vec3(quatf_rotate(q, vec3f_unit_y()), quatf_rotate(again, vec3f_unit_y()));
+    }
+    /* A quarter pitch with yaw, built exactly: roll comes back 0 and yaw takes the whole turn. */
+    const float half = sqrtf(0.5F);
+    const quatf_t exact = quatf_mul(quatf_from_axis_angle(vec3f_unit_y(), 0.6F), (quatf_t){half, 0.0F, 0.0F, half});
+    const vec3f_t back = quatf_to_euler(exact);
+    TEST_ASSERT_FLOAT_WITHIN(SLACK, HALF_PI, back.x);
+    TEST_ASSERT_FLOAT_WITHIN(SLACK, 0.6F, back.y);
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, back.z);
+}
+
+/* Pitch where cos pitch is twice and half QUATF_EULER_LOCK. Outside the lock
+ * the angles come back as given. Inside, roll folds into yaw, which moves an
+ * axis by at most cos pitch, so the turn matches within QUATF_EULER_LOCK. */
+static void
+test_euler_angles_beside_the_lock_threshold(void) {
+    const vec3f_t outside = {HALF_PI - (2.0F * QUATF_EULER_LOCK), 0.4F, 0.3F};
+    const vec3f_t back = quatf_to_euler(quatf_from_euler(outside));
+    /* Yaw and roll come from entries scaled by cos pitch, so their noise grows by 1 / cos pitch. */
+    const float split_slack = SLACK / (2.0F * QUATF_EULER_LOCK);
+    TEST_ASSERT_FLOAT_WITHIN(SLACK, outside.x, back.x);
+    TEST_ASSERT_FLOAT_WITHIN(split_slack, outside.y, back.y);
+    TEST_ASSERT_FLOAT_WITHIN(split_slack, outside.z, back.z);
+
+    const vec3f_t inside = {HALF_PI - (0.5F * QUATF_EULER_LOCK), 0.4F, 0.3F};
+    const quatf_t q = quatf_from_euler(inside);
+    const vec3f_t folded = quatf_to_euler(q);
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, folded.z);
+    const quatf_t again = quatf_from_euler(folded);
+    const vec3f_t axes[] = {vec3f_unit_x(), vec3f_unit_y(), vec3f_unit_z()};
+    for (size_t i = 0; i < sizeof axes / sizeof axes[0]; i++) {
+        const vec3f_t want = quatf_rotate(q, axes[i]);
+        const vec3f_t got = quatf_rotate(again, axes[i]);
+        TEST_ASSERT_FLOAT_WITHIN(QUATF_EULER_LOCK, want.x, got.x);
+        TEST_ASSERT_FLOAT_WITHIN(QUATF_EULER_LOCK, want.y, got.y);
+        TEST_ASSERT_FLOAT_WITHIN(QUATF_EULER_LOCK, want.z, got.z);
+    }
 }
 
 static void
@@ -752,6 +810,20 @@ test_mat3_from_nonsymmetric_mat4_preserves_rows(void) {
 }
 
 static void
+test_mat3_scale_multiplies_every_entry(void) {
+    const mat3f_t matrix = {{{1, -2, 3}, {-4, 5, -6}, {7, -8, 9}}};
+    static const float scales[] = {0, 1, -2, 0.5F};
+    for (size_t i = 0; i < sizeof scales / sizeof scales[0]; i++) {
+        const mat3f_t scaled = mat3f_scale(matrix, scales[i]);
+        for (int row = 0; row < MAT3F_AXES; row++) {
+            for (int col = 0; col < MAT3F_AXES; col++) {
+                TEST_ASSERT_EQUAL_FLOAT(matrix.m[row][col] * scales[i], scaled.m[row][col]);
+            }
+        }
+    }
+}
+
+static void
 test_mat3_product_applies_right_operand_first(void) {
     const mat3f_t left = {{{1, 2, 3}, {4, 5, 6}, {7, 8, 10}}};
     const mat3f_t right = {{{2, -1, 4}, {3, 5, 0}, {-2, 6, 1}}};
@@ -831,6 +903,7 @@ suite_math(void) {
 
     RUN_TEST(test_view_from_axes_maps_the_eye_and_frame_axes);
     RUN_TEST(test_scale_rows_and_columns_match_diagonal_products_exactly);
+    RUN_TEST(test_mat3_scale_multiplies_every_entry);
     RUN_TEST(test_mat3_product_applies_right_operand_first);
     RUN_TEST(test_mat3_from_nonsymmetric_mat4_preserves_rows);
     RUN_TEST(test_cofactor_random_matrices_and_reflection);
@@ -840,6 +913,9 @@ suite_math(void) {
     RUN_TEST(test_a_quarter_turn_about_y_takes_z_to_x);
     RUN_TEST(test_a_quarter_turn_about_x_takes_y_to_z_and_about_z_takes_x_to_y);
     RUN_TEST(test_euler_angles_apply_z_then_x_then_y);
+    RUN_TEST(test_euler_angles_come_back_from_their_quaternion);
+    RUN_TEST(test_euler_angles_at_a_pitch_lock_give_the_same_turn);
+    RUN_TEST(test_euler_angles_beside_the_lock_threshold);
     RUN_TEST(test_a_product_applies_the_right_operand_first);
     RUN_TEST(test_slerp_hits_both_ends_and_the_half_angle_between);
     RUN_TEST(test_slerp_takes_the_short_way_when_the_signs_differ);

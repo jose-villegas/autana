@@ -20,6 +20,14 @@
 #include "render/settings/render_settings.h"
 #include "render/upscale.h"
 
+struct r3d_span_target;
+struct r3d_lens;
+
+typedef struct raster_post {
+    void (*draw)(const struct r3d_span_target* target, const struct r3d_lens* lens, void* user);
+    void* user;
+} raster_post_t;
+
 /* The caller's options; the scratch block holds everything else. */
 struct raster {
     /* What is drawn: each instance in turn into the one picture, nearer ones
@@ -56,22 +64,22 @@ struct raster {
     /* Drawn beside colour and depth, at most GFX_ATTACHMENTS_FURTHER_MAX. */
     const raster_attachment_t* const* attachments;
     int attachment_count;
-    const render_settings_t* settings; /* NULL draws with RENDER_SETTINGS_DEFAULT */
+    /* NULL draws with RENDER_SETTINGS_DEFAULT. Read as they are: an owner
+     * that honours the development overrides passes render_settings_tuned(). */
+    const render_settings_t* settings;
     /* Rows [first_row, end_row) a draw redraws over what the last one left,
      * and the destination rows they reach an upscale; equal is every row
      * (render/partial). A draw whose depth scale moved, or whose level picks
      * changed a cut, redraws every row. */
     int first_row, end_row;
+    const raster_post_t* post;
 };
 
-/* What a draw uses: the raster's settings, under any development override. */
-render_settings_t raster_settings(const raster_t* raster);
-
-/* Two of raster_settings() alone, for callers deep in the draw's stack, where
- * the whole settings struct would cost a frame. */
-bool raster_partial_redraw(const raster_t* raster);
-int raster_pick_every(const raster_t* raster);
-int raster_triangle_budget(const raster_t* raster);
+/* What a draw uses: the raster's settings. */
+static inline render_settings_t
+raster_settings(const raster_t* raster) {
+    return raster->settings != NULL ? *raster->settings : RENDER_SETTINGS_DEFAULT;
+}
 
 /* The viewport a view frames: destination size when upscaled, otherwise drawn size. */
 static inline viewport_t
@@ -148,7 +156,7 @@ const r3d_instance_t* raster_drawn_at(const raster_t* raster, int i);
 const r3d_batch_draw_t* raster_drawn_copy(const raster_t* raster, int i);
 /* r3d_lens_place() for where entry `i` sits: its model, and a kept copy's
  * own placement after it. */
-void raster_drawn_place(const raster_t* raster, int i, r3d_lens_t* lens);
+void raster_drawn_place(const raster_t* raster, int i, struct r3d_lens* lens);
 raster_stats_t raster_census(const raster_t* raster, const render_view_t* view);
 void raster_draw_culled(const raster_t* raster, const render_view_t* view);
 
