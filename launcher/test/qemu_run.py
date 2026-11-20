@@ -230,16 +230,22 @@ class Console:
 
     def lines(self, seconds=None):
         """Complete lines as they arrive, until QEMU exits or time runs out:
-        the run's, or `seconds` from now when that comes first."""
+        the run's, or `seconds` from now when that comes first. What QEMU sent
+        before it exited is still read: its last lines say why it stopped."""
         deadline = self.deadline
         if seconds is not None:
             deadline = min(deadline, time.monotonic() + seconds)
-        while time.monotonic() < deadline and self.proc.poll() is None:
+        while time.monotonic() < deadline:
+            exited = self.proc.poll() is not None
             try:
                 chunk = self.sock.recv(65536)
             except socket.timeout:
+                if exited:
+                    break
                 continue
             if not chunk:
+                if exited:
+                    break
                 self.ended = CONSOLE_CLOSED
                 return
             self.log.write(chunk)
