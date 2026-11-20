@@ -168,7 +168,7 @@ material becomes a double-sided shape with vertex colours,
 
 | Decision | Rule |
 |---|---|
-| Candidate | A cut-out texture with at least `CARD_SEE_THROUGH_MIN` of its triangles below `keep_alpha` in mean alpha. Carved and thinned materials are excluded. |
+| Candidate | A cut-out texture whose alpha test cuts at least `CARD_SEE_THROUGH_MIN` of its surface samples, so leaves cut tight around each triangle count. Carved and thinned materials are excluded. |
 | Accepted | Cards cover at least `CARD_COVERED_MIN` of the opaque surface's samples within their slabs, rectangles and kept texels, each weighted by area and by the probe weight the plane choice used. Samples no probe sees do not count. |
 | Ordinary geometry | Non-candidates and rejected candidates remain geometry. |
 | Overrides | `never` excludes a material; `always` bypasses the thresholds. Forcing a carved or thinned material, unknown names, or overlapping overrides is an error. |
@@ -177,7 +177,9 @@ The greedy plane score follows Décoret et al.<sup>[[133]](../../Citations.md#de
 projected sample area earns coverage; an area cost and a per-card floor stop
 selection when another plane would not pay for itself.
 
-Training probe faces weight samples by visible projected size. The grid
+Training probe faces weight samples by visible projected size, with depth
+floored at `PROBE_WEIGHT_FLOOR` probe spacings so samples beside a probe
+cannot outweigh the rest. The grid
 covers the scene camera's region, else the source bounds. Its default
 spacing is `PROBE_SPACING_NEAR_PLANES` near planes (`views/probes.py`).
 

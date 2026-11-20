@@ -4,18 +4,23 @@ import numpy as np
 
 from r3d.cards import CARD_COVERED_MIN, CARD_SEE_THROUGH_MIN
 from r3d.import_settings import SettingsError, match_meshes
-from r3d.light import triangle_alpha
+from r3d.cards.choose import alpha_samples
+from r3d.mesh_source import with_triangles
 from r3d.obj import alpha_tested
 
 
-def see_through_share(src, ids, texture, keep_alpha):
-    """The share of triangles `ids` whose mean texture alpha is under keep_alpha."""
-    return float(np.mean(triangle_alpha(src.uv, src.tri_t[ids], texture) < keep_alpha))
+def see_through_share(src, ids, keep_alpha, seed):
+    """The share of surface samples on triangles `ids` that the alpha test cuts: leaves cut tight around each
+    triangle count as see-through, though no triangle's mean alpha is under keep_alpha."""
+    sub = with_triangles(src, src.tri_v[ids], src.tri_t[ids], src.tri_m[ids])
+    _, _, _, opaque = alpha_samples(sub, np.random.default_rng(seed), keep_alpha)
+    return float(1 - opaque.mean()) if len(opaque) else 0.0
 
 
 def candidates(src, settings):
     """(material, see-through share) for each material the cards may replace: one with a cut-out texture, not
-    carved by an objects.meshes rule nor thinned, see-through enough; or named by `always`, its share None."""
+    carved by an objects.meshes rule nor thinned, see-through enough (`see_through_share`); or named by `always`,
+    its share None."""
     cards = settings.cards
     unknown = sorted((set(cards.never) | set(cards.always)) - set(src.names))
     if unknown:
@@ -34,7 +39,7 @@ def candidates(src, settings):
                 raise SettingsError(f"material {name} is drawn by cards")
             out.append((material, None))
         elif not drawn_apart and tested[material]:
-            share = see_through_share(src, ids, src.textures[material], settings.alpha_keep)
+            share = see_through_share(src, ids, settings.alpha_keep, settings.seed)
             if share >= CARD_SEE_THROUGH_MIN:
                 out.append((material, share))
     return out

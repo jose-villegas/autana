@@ -54,7 +54,7 @@ def choose_cards(p, t, **options):
                          options.pop('tri_uv', t), np.zeros(len(t), int),
                          uv=options.pop('uv', p[:, :2] / SIDE + 0.5))
     sampled = samples(sub, rng, options.pop('keep_alpha', 0.5))
-    weights = probe_weights(sampled[0], views, RayQuery(p, t), FACE_LENS)
+    weights = probe_weights(sampled[0], views, RayQuery(p, t), FACE_LENS, near_floor=0.)
     return split_cards(select_cards(sampled, rng, weights=weights, **options))[0]
 
 
@@ -289,7 +289,7 @@ class CardTests(unittest.TestCase):
             src = load_source(settings)
             leaf = src.names.index('leaf')
             views = SimpleNamespace(training=[np.array([0, 0, SIDE, 0, 0, -1])], held_out=[], face_lens=FACE_LENS,
-                                    record=None)
+                                    record={'spacing': 0.})
             query = RayQuery(src.p, src.tri_v, hit_filter=AlphaTest(src, settings.alpha_keep))
             _, report = make_shape(src, leaf, settings.cards, settings.seed, settings.alpha_keep, views=views,
                                    query=query)

@@ -20,8 +20,10 @@ CARD_LIMIT = 256
 W_PENALTY = 10.0
 # Per-card score floor in squared slab half-depths.
 CARD_FLOOR_EPS2 = 16.0
-# Minimum share of mostly see-through triangles for automatic selection.
+# Minimum share of a material's surface samples its alpha test cuts, for automatic selection.
 CARD_SEE_THROUGH_MIN = 1 / 3
+# Probe weight's distance floor, in probe spacings: a sample nearer a probe weighs as one this far away.
+PROBE_WEIGHT_FLOOR = 0.5
 # Minimum probe-weighted share of opaque samples covered by baked slabs, rectangles and mask texels.
 CARD_COVERED_MIN = 2 / 3
 # Texels along the median parent card's long side.

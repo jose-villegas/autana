@@ -12,7 +12,7 @@ from r3d.obj import Texture
 from r3d.poses import camera_rays
 from r3d.reference_set import PROBE_SEED
 from r3d.views import probes
-from r3d.cards import CARD_MIP_LEVELS
+from r3d.cards import CARD_MIP_LEVELS, PROBE_WEIGHT_FLOOR
 from r3d.cards.pages import pack_pages
 from r3d.texture.texture_asset import mask_texture, pack_ltex
 from r3d.texture.uv_transfer import UV_SHIFT
@@ -39,7 +39,8 @@ def make_shape(src, material, settings, seed, keep_alpha, *, views, query):
     sub = with_triangles(src, triangles, tri_uv, src.tri_m[ids])
     sampled = samples(sub, rng, keep_alpha)
     points, _, area = sampled
-    weights = probe_weights(points, views.training, query, views.face_lens)
+    weights = probe_weights(points, views.training, query, views.face_lens,
+                            near_floor=PROBE_WEIGHT_FLOOR * views.record['spacing'])
     selected = choose_cards(sampled, rng, weights=weights, epsilon=settings.epsilon, area_cost=settings.area_cost)
     long_sides = np.array([max(card['hi'] - card['lo']) for card in selected])
     distribution = (dict(zip(SIDE_PERCENTILES, np.percentile(long_sides, list(SIDE_PERCENTILES.values())).tolist()))

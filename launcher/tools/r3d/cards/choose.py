@@ -21,7 +21,9 @@ VISIBILITY_MARGIN = 1.0
 AXIS_ALIGNMENT_MIN = 0.1
 
 
-def samples(sub, rng, keep_alpha):
+def alpha_samples(sub, rng, keep_alpha):
+    """SAMPLES_PER_TRIANGLE uniform samples on each triangle of `sub` with an area: points, normals, area, and
+    whether the alpha test keeps each."""
     corners = sub.p[sub.tri_v]
     cross = np.cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0])
     lengths = np.linalg.norm(cross, axis=1)
@@ -32,9 +34,13 @@ def samples(sub, rng, keep_alpha):
     normals = np.repeat(cross / lengths[:, None], SAMPLES_PER_TRIANGLE, axis=0)
     area = np.repeat(lengths / (2 * SAMPLES_PER_TRIANGLE), SAMPLES_PER_TRIANGLE)
     hits = np.repeat(np.flatnonzero(keep), SAMPLES_PER_TRIANGLE)
-    opaque = AlphaTest(sub, keep_alpha)(hits, points)
-    points, normals, area = points[opaque], normals[opaque], area[opaque]
-    return points, normals, area
+    return points, normals, area, AlphaTest(sub, keep_alpha)(hits, points)
+
+
+def samples(sub, rng, keep_alpha):
+    """The opaque `alpha_samples`: points, normals, area."""
+    points, normals, area, opaque = alpha_samples(sub, rng, keep_alpha)
+    return points[opaque], normals[opaque], area[opaque]
 
 
 def candidates(points, normals, rng):
@@ -59,8 +65,9 @@ def candidates(points, normals, rng):
     return out
 
 
-def probe_weights(points, faces, query, face_lens):
-    """Projected pixel area per sample over training cube faces, through the source's alpha-tested query."""
+def probe_weights(points, faces, query, face_lens, *, near_floor):
+    """Projected pixel area per sample over training cube faces, through the source's alpha-tested query. A sample
+    nearer a face than `near_floor` weighs as one at that depth, so the few beside a probe cannot outweigh the rest."""
     weight = np.zeros(len(points))
     for pose in faces:
         eye = np.asarray(pose[:3])
@@ -74,7 +81,7 @@ def probe_weights(points, faces, query, face_lens):
         distance = np.linalg.norm(v[ids], axis=1)
         hit, t, _ = query.first_hits(np.repeat(eye[None], len(ids), axis=0), v[ids] / distance[:, None])
         ids = ids[~hit | (t >= distance - VISIBILITY_MARGIN)]
-        weight[ids] += 1 / z[ids] ** 2
+        weight[ids] += 1 / np.maximum(z[ids], near_floor) ** 2
     seen = weight > 0
     if seen.any():
         weight /= weight[seen].mean()
