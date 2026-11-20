@@ -6,6 +6,16 @@ itself is [`docs/tools/Render-Harness.md`](../../../../../docs/tools/Render-Harn
 Before a source bake or reference render, pull the
 [mesh source files](../../../../tools/r3d/README.md).
 
+## SH probes
+
+Sponza's scene requests an incident-radiance grid. Its sampling settings live
+in `launcher/demo/sponza/sponza.probes.toml`; the bake logs cost and cell counts.
+See [SH probe baking](../../../../../docs/render/offline/SH-Probes.md).
+
+```sh
+python launcher/tools/bake/bake.py bake launcher/demo/sponza --kind sh_probes
+```
+
 ## Host renders
 
 ```sh
@@ -138,16 +148,17 @@ Source: `water-stages-board.log`
 
 ### Stress
 
-The Stress family repeats a generated primitive or static pack mesh before a
-swinging camera. Each preset ties down one behaviour with its own pegged goal.
-The presets are the per-PR perf check for r3d work. Scenes run nightly, on
-request, and for bake and fit changes; a scene regression with no preset
-moving is a coverage gap and becomes a new preset.
+The Stress family shows a generated primitive or a static pack mesh in copies,
+or a baked mesh of its own pack, before a moving camera. Each preset ties down
+one behaviour with its own pegged goal. The presets are the per-PR perf check
+for r3d work. Scenes run nightly, on request, and for bake and fit changes; a
+scene regression with no preset moving is a coverage gap and becomes a new
+preset.
 
 Repeated geometry exercises hierarchical visibility<sup>[[112]](../../../../../docs/Citations.md#greene-1993)</sup>;
 the presets vary the copies' geometry, layout and colour modes.
 
-| Scene key | As the swing starts | Made of | Ties down |
+| Scene key | As the camera starts | Made of | Ties down |
 |---|---|---|---|
 | `stress-open` | ![Stress open: a wall of planes side by side](../../../../../docs/images/overview/render-lab-stress-open.png) | a wall of planes side by side | hidden-cluster skip and cluster cull: nothing hides and nothing is off screen |
 | `stress-stack` | ![Stress stack: planes one behind another](../../../../../docs/images/overview/render-lab-stress-stack.png) | planes one behind another | the skip's win, and the depth cost of the debug views |
@@ -158,18 +169,32 @@ the presets vary the copies' geometry, layout and colour modes.
 | `stress-noisy-tiny` | ![Stress noisy tiny: cylinders end on, their fans of slivers](../../../../../docs/images/overview/render-lab-stress-noisy-tiny.png) | many small cylinders end on, each end a fan of slivers whose corners are far apart in colour | the small-fill gate: every sliver is tested and none passes |
 | `stress-mix` | ![Stress mix: planes with several tessellations and colour modes](../../../../../docs/images/overview/render-lab-stress-mix.png) | copies cycling through tessellations; a named share of triangles has equal corner colours | a single triangle size or colour mode standing for a scene's draw cost |
 | `stress-static-copies` | ![Static triangle copies](../../../../../docs/images/overview/render-lab-stress-static-copies.png) | the stress pack's LMSH triangle, retained in each renderer | static asset residency and small transform batches |
+| `stress-skinned-sh-blobs` | ![Skinned copies with probe lighting and contact discs](../../../../../docs/images/overview/render-lab-stress-skinned-sh-blobs.png) | animated skins over floor pads; copy count is `STRESS_SKINNED_COPIES` | Per-mover SH sampling, per-vertex irradiance and depth-tested contact discs. |
+| `stress-contact-blobs` | ![Contact discs on plain floor pads](../../../../../docs/images/overview/render-lab-stress-contact-blobs.png) | static floor pads; copy count is `STRESS_CONTACT_BLOB_COPIES` | Contact-disc clipping, depth and fill, under the near camera swing. |
 | `stress-uniform-mid` | ![Uniform plane with intermediate coverage](../../../../../docs/images/overview/render-lab-stress-uniform-mid.png) | equal-colour large triangles | intermediate uniform fill without shaded pixels |
 | `stress-uniform-full` | ![Uniform plane covering the view](../../../../../docs/images/overview/render-lab-stress-uniform-full.png) | equal-colour large triangles spanning the view | uniform fill beyond the water workload at full-width render sizes |
 | `stress-card` | ![Card copies with ragged edges and sampled colours](../../../../../docs/images/overview/render-lab-stress-card.png) | copies sharing a generated perforated quad with uneven tessellation and procedural texture samples at its corners | scene-like small triangles with irregular edges and colour steps |
 | `stress-culled` | ![Plane before the camera turns away](../../../../../docs/images/overview/render-lab-stress-culled.png) | a tessellated plane and a camera pitching beyond its edge | varying cluster rejection by the frustum |
 | `stress-near` | ![Spheres along the camera path](../../../../../docs/images/overview/render-lab-stress-near.png) | stacked spheres and a camera passing through their front surfaces | triangles behind and crossing the near plane |
 | `stress-few-copies` | ![Stress few copies: two dense spheres](../../../../../docs/images/overview/render-lab-stress-few-copies.png) | two dense spheres side by side | the two-core cull split: with one instance a core, its fork and join cost more than the halved walk saves |
+| `stress-carved-near` | ![Stress carved near: a few bumpy balls close up](../../../../../docs/images/overview/render-lab-stress-carved-near.png) | a few copies of a banded bumpy ball, baked with levels of detail, close to the camera | the carve's finest levels: each copy draws near its full shape |
+| `stress-carved-far` | ![Stress carved far: a wall of bumpy balls in the distance](../../../../../docs/images/overview/render-lab-stress-carved-far.png) | many copies of the same ball, small in the distance | per-copy level picks: far copies draw their coarse levels |
 | `stress-textured` | ![Stress textured: big triangles under a brick texture](../../../../../docs/images/overview/render-lab-stress-textured.png) | the big-tris layout, its banded light multiplied by a generated 4-bit brick texture ([LTEX](../../../../../docs/assets/formats/LTEX.md)) | the textured span fill against the same pixels drawn plain in `stress-big-tris` |
 | `stress-foliage-near` | ![Stress foliage near: three bushes of masked cards over the view](../../../../../docs/images/overview/render-lab-stress-foliage-near.png) | three bushes one behind another over the whole view, each 24 small cards turned and overlapping several deep, cut by a generated MASK1 texture ([LTEX](../../../../../docs/assets/formats/LTEX.md)) keeping about 0.7 | the masked textured fill at its largest: foliage cards' overdraw near the camera |
 | `stress-foliage-near-opaque` | ![Stress foliage near opaque: the same cards under the brick](../../../../../docs/images/overview/render-lab-stress-foliage-near-opaque.png) | `stress-foliage-near`'s cards under the INDEX4 brick, whole | the twin: against it, the near cards' mask costs alone |
 | `stress-foliage-far` | ![Stress foliage far: a wall of small bushes of masked cards](../../../../../docs/images/overview/render-lab-stress-foliage-far.png) | 36 small bushes side by side, their cards a few pixels across | the masked textured fill on small triangles, as distant foliage draws |
 | `stress-foliage-far-opaque` | ![Stress foliage far opaque: the same cards under the brick](../../../../../docs/images/overview/render-lab-stress-foliage-far-opaque.png) | `stress-foliage-far`'s cards under the INDEX4 brick, whole | the twin: against it, the far cards' mask costs alone |
+| `stress-butterflies` | ![Butterfly wall](../../../../../docs/images/overview/render-lab-stress-butterflies.png) | a wall of butterfly bodies with two hinged wings each | static mesh batches, hierarchy propagation and flap transforms |
+| `stress-few-butterflies` | ![Four butterflies](../../../../../docs/images/overview/render-lab-stress-few-butterflies.png) | a smaller wall with the same coverage | larger wing triangles with fewer transform batches |
 | `stress-record` | ![Stress record: four planes with a wave running over them](../../../../../docs/images/overview/render-lab-stress-record.png) | four planes made again every frame, a wave running over them, while the frame recorder runs | the recorder: each frame's four built meshes written whole, a keyframe's meshes every 30 frames |
+| `stress-cull-setup` | ![Stress cull setup: one small cube](../../../../../docs/images/overview/render-lab-stress-cull-setup.png) | one small cube of a few triangles | the cull's setup before it walks anything: the lens, frustum, settings and pick setup every cull pays once |
+| `stress-baked-tree` | ![Stress baked tree: the inside of a ring](../../../../../docs/images/overview/render-lab-stress-baked-tree.png) | a ring baked by the bake tools in its own pack, the camera at its centre turning half a turn; [`torus_obj.py`](torus_obj.py) writes the ring into [`ring.obj`](../../../../demo/stress_ring/ring.obj) | the baked cluster tree the cull walks, which no generated copy has |
+
+![Butterfly wing motion](../../../../../docs/images/overview/render-lab-butterflies.gif)
+
+The butterfly pack uses unbaked vertex colour. Its wing outline traces
+miziziziz's CC0 texture<sup>[[132]](../../../../../docs/Citations.md#miziziziz-butterfly-2019)</sup>.
+`scene_stress.c` feeds a fixed sine flap, one phase per copy, to `hinge_pose`.
 
 A change is judged by each preset's own readout, stage by stage. The sum over
 presets is a summary line only. A draw change can win on two-sided and static
@@ -340,7 +365,8 @@ first pair of columns, gallops down the atrium and rests between the last
 pair; its clip and rate come from its ground speed. A third-person camera
 starts a little round from its face, turns slowly toward its back as it runs,
 never reaching it, and comes back as it stops. With frame generation on, a
-generated frame shows the capybara where the last drawn frame put it.
+generated frame shows the capybara where the last drawn frame put it. A
+contact blob under it darkens the floor, sized from its footprint.
 
 ![Capybara in Sponza: the capybara's run down the atrium, rest to rest, under a third-person camera](../../../../../docs/images/overview/render-lab-capybara-sponza.gif)
 
@@ -353,7 +379,8 @@ generated frame shows the capybara where the last drawn frame put it.
 ### Small fill
 
 `render_lab.small_fill_ceiling`, `render_lab.small_fill_gate` and
-`render_lab.small_fill_style` apply to the scene camera each frame.
+`render_lab.small_fill_style` set the main render context's `small_fill`
+render settings every frame, so in the lab the picker owns small fill.
 The BOOT menu has a SMALL FILL dropdown with every `SMALL_FILL_` preset;
 picking one sets the three tunables. Every menu option is in a release
 image too.
@@ -370,14 +397,15 @@ depth edges sharp
 ([Dynamic-Resolution.md](../../../../../docs/render/frame/Dynamic-Resolution.md#upscaling-within-a-surface)).
 It sets `render_lab.upscale`.
 
-The generic scene viewer accepts `--small-fill CEILING,GATE,STYLE`; its defaults
-come from `SMALL_FILL_SMOOTH`. Styles use the `small_fill_style_t` values.
+The generic scene viewer sets small fill like any render setting, with
+`--set render.small_fill.FIELD=VALUE`; a value outside the field's range fails the run.
 The [engine feature](../../../../../docs/render/frame/Coverage.md#small-fill)
 defines the axes and defaults.
 
 ```sh
 sh launcher/tools/render/scene_viewer.sh launcher/demo/sponza/sponza.scene.toml \
-    --object atrium_fitted_full --small-fill 12,16,1 -o grain.bmp
+    --object atrium_fitted_full --set render.small_fill.ceiling=12 \
+    --set render.small_fill.gate=16 --set render.small_fill.style=1 -o grain.bmp
 ```
 
 The app host accepts `--tune` before entry or `--live-tune` after entry.
@@ -467,6 +495,9 @@ selects a scene camera; omitted, it draws the first camera.
 `--dump DIR` writes each frame's raster colour and depth, before the
 upscale, to `DIR/NNNN.raw` for the frame generation experiment
 ([Frame-Generation.md](../../../../../docs/render/frame/Frame-Generation.md)).
+
+`--transforms PATH` writes each entity's local position and quaternion after
+every update to a CSV, keyed by frame and entity name.
 
 `dynres_quality.sh [--scene-file F --scene KEY] [--args "ARGS"] WORK OUT.csv CAMERA WxH [WxH ...]`
 scores each size against the reference along that camera's clip, at
@@ -612,11 +643,12 @@ python launcher/tools/anim/track_host.py \
 
 `launcher/demo/capybara/capybara.blend` is a hand-modelled low-poly capybara
 with a control rig and in-place loops at 30 fps: `idle`, `walk`, `walk_fast`,
-`gallop` and `half_bound`. It is the source asset for skinned-mesh import;
-nothing in the build reads it.
+`gallop` and `half_bound`, and the one-shot idle gestures `glance` and
+`ear_flick` ([Idle gestures](../../../../demo/capybara/Idle-Gestures.md)). It is
+the source asset for skinned-mesh import; nothing in the build reads it.
 
 Its glTF export, `capybara.glb`, is a cached bake: deform bones only,
-every loop as an animation, four influences per vertex. Host tools that read
+every clip as an animation, four influences per vertex. Host tools that read
 glTF use it, such as the
 [skinned-mesh lighting](../../../../../docs/render/animation/Skinned-Lighting.md)
 measurement; `bake.py path capybara.glb` prints where it is.
@@ -628,7 +660,7 @@ exporter in Blender. By hand, it is:
 ```sh
 blender --background --factory-startup --python launcher/tools/gltf/blend_skin_to_glb.py -- \
     launcher/demo/capybara/capybara.blend capybara.glb \
-    --clips idle,walk,walk_fast,gallop,half_bound
+    --clips idle,walk,walk_fast,gallop,half_bound,glance,ear_flick
 ```
 
 and measure the lighting again:

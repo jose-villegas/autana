@@ -32,7 +32,7 @@ SUM_US = 3000
 
 def names(row):
     sum_name = goals.row_name(row)
-    return [sum_name] + [f"{sum_name} {stage}" for stage in goals.STAGES]
+    return [sum_name] + [f"{sum_name} {stage}" for stage in goals.stages_for(row)]
 
 
 def capture_text(sums=None, stages=None, omit=(), pegged=False):
@@ -43,7 +43,7 @@ def capture_text(sums=None, stages=None, omit=(), pegged=False):
         sum_name, *stage_names = names(row)
         if sum_name not in omit:
             lines.append(form % (sum_name, (sums or {}).get(row, SUM_US)))
-        for stage, name in zip(goals.STAGES, stage_names):
+        for stage, name in zip(goals.stages_for(row), stage_names):
             if name not in omit:
                 lines.append(form % (name, (stages or {}).get((row, stage), STAGE_US)))
     return "\n".join(lines) + "\n"
@@ -66,7 +66,14 @@ class StressGoalsTest(unittest.TestCase):
         return path
 
     def test_the_stages_are_the_suite_s_list_r3d_s_then_the_recorder_s(self):
-        self.assertEqual(goals.STAGES, ("r3d.cull", "r3d.transform", "r3d.draw", "r3d.upscale", "frame.record"))
+        self.assertEqual(goals.stages_for(self.first), ("r3d.cull", "r3d.transform", "r3d.draw", "r3d.upscale", "frame.record"))
+
+    def test_skin_rows_include_animation_stages_and_static_rows_keep_their_shape(self):
+        rows = goals.table_rows()
+        skins = [row for row in rows if row[0] == "stress-skinned-sh-blobs"]
+        self.assertTrue(skins)
+        self.assertEqual(goals.stages_for(skins[0])[-3:], ("anim.pose", "anim.light", "anim.skin"))
+        self.assertEqual(len(goals.stages_for(self.first)), 5)
 
     def test_margin_rounds_up_to_the_quantum_and_a_zero_still_pegs(self):
         stages = {(self.first, goals.STAGES[0]): 0, (self.first, goals.STAGES[1]): 1000,
@@ -91,12 +98,20 @@ class StressGoalsTest(unittest.TestCase):
         b = goals.generate([self.write("pegged", capture_text(pegged=True))])
         self.assertEqual(a, b)
 
+    def test_flap_information_keeps_the_goal_columns_unchanged(self):
+        row = next(row for row in goals.table_rows() if row[0] == "stress-butterflies")
+        stage = read_define(PRESETS.with_name("scene_stress.h"), "STRESS_FLAP_STAGE_NAME")
+        ordinary = capture_text()
+        with_flap = ordinary + UNPEGGED_LINE % (goals.row_name(row) + " " + stage, STAGE_US) + "\n"
+        self.assertEqual(goals.generate([self.write("ordinary", ordinary)]),
+                         goals.generate([self.write("flap", with_flap)]))
+
     def test_unpegged_preset_prints_zeros_and_others_do_not(self):
         output = goals.generate([self.write("c", capture_text())], [UNPEGGED])
         rows = goals.table_rows()
         self.assertEqual(len(rows), len(output.splitlines()))
-        zeros = "{%s}, {0, 0}}," % ", ".join(["0"] * len(goals.STAGES))
         for row, line in zip(rows, output.splitlines()):
+            zeros = "{%s}, {0, 0}}," % ", ".join(["0"] * len(goals.stages_for(row)))
             self.assertTrue(line.startswith('    {"%s", "%s", "%s",' % row), line)
             self.assertEqual(row[0] == UNPEGGED, line.endswith(zeros), line)
 

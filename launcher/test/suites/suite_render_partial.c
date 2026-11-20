@@ -16,18 +16,20 @@
 #include "suites.h"
 #include "unity.h"
 
+#include "image/pixel/rgb565_layout.h"
 #include "math/geometry/box3f.h"
 #include "math/linear/transformf.h"
 #include "render/context/render_context.h"
 #include "render/r3d_lit_mesh.h"
 #include "render/raster.h"
 
-#define W    96
-#define H    64
-#define CARD 1 /* the rig quad the tests move */
+#define W         96
+#define H         64
+#define CARD      1 /* the rig quad the tests move */
+#define FAR_EYE_Z -740.0F
 
 /* The card's two faces, red against the white wall, so every move shows. */
-static const uint16_t card_colors[2] = {0xF800, 0xF800};
+static const uint16_t card_colors[2] = {RGB565_RED_MASK, RGB565_RED_MASK};
 
 /* The card's path, rig units from where it starts: a slide, a hold, a step
  * toward the camera and back (the depth scale may refit), and a drop. */
@@ -191,12 +193,38 @@ test_a_draw_composed_nowhere_or_elsewhere_recomposes_every_row(void) {
     TEST_ASSERT_EQUAL_MEMORY(pair->destination[1], pair->last, sizeof pair->last);
 }
 
+/* A new small fill alone, the card held and the view the same: the kept
+ * picture is not reused, every row redraws, and it is the full picture the
+ * new fill draws (which differs from the old, so a kept one would show). */
+static void
+test_a_new_small_fill_redraws_every_row(void) {
+    static const uint8_t gradient[4][3] = {{32, 80, 96}, {128, 112, 48}, {224, 160, 144}, {48, 96, 80}};
+    raster_rig_t* r = open_pair(true);
+    r->quad[CARD].mesh.face_colors = NULL;
+    r->quad[CARD].mesh.colors = gradient; /* a gradient, which the styles draw differently */
+    fixture_camera_t far = raster_rig_camera;
+    far.eye.z = FAR_EYE_Z; /* the card spans 8 pixels: past the default ceiling, inside the fast one */
+    const render_view_t view = render_view_fixture_at(&far, (viewport_t){W, H, 0});
+    place_card(r, card_path[0]);
+    (void)frame(r, &view, NULL, -1);
+    const box3f_t held = card_box(r);
+    TEST_ASSERT_TRUE(frame(r, &view, &held, 0).unchanged);
+    memcpy(pair->last, raster_color(&pair->context[1].raster), sizeof pair->last);
+    for (int k = 0; k < 2; k++) {
+        pair->settings[k].small_fill = (render_small_fill_settings_t){SMALL_FILL_CEILING_FAST, 0, SMALL_FILL_DITHER};
+        render_context_set_settings(&pair->context[k], &pair->settings[k]);
+    }
+    TEST_ASSERT_EQUAL_INT(H, rows(frame(r, &view, &held, 0)));
+    TEST_ASSERT_NOT_EQUAL(0, memcmp(pair->last, raster_color(&pair->context[1].raster), sizeof pair->last));
+}
+
 void
 run_render_partial_suite(void) {
     RUN_TEST(test_a_moving_card_redraws_only_its_rows_and_matches_a_full_redraw);
     RUN_TEST(test_a_new_view_or_unknown_changes_redraw_every_row);
     RUN_TEST(test_off_redraws_every_row);
     RUN_TEST(test_a_draw_composed_nowhere_or_elsewhere_recomposes_every_row);
+    RUN_TEST(test_a_new_small_fill_redraws_every_row);
 }
 
 SUITE_REGISTER(run_render_partial_suite);

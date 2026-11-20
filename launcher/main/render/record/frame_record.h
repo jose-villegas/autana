@@ -7,7 +7,8 @@
  *
  * A frame is written whole or not at all: the sink's write gets one frame's
  * bytes in one call, and a refusal drops that frame, counts it, and makes the
- * next frame a keyframe. Every keyframe_every-th frame is a keyframe.
+ * next drawn frame a keyframe. Generated frames drop until a drawn keyframe
+ * is accepted. A keyframe due on a generated frame waits for the next draw.
  *
  * A pack mesh is named by its pack and entry. A mesh the app made is told
  * here by whoever made it, before the draw: a skinned copy by the skinning
@@ -25,6 +26,7 @@
 #include "render/context/render_context.h"
 #include "render/dynamic/r3d_dynamic_mesh.h"
 #include "render/r3d_lit_mesh.h"
+#include "render/r3d_skin.h"
 
 typedef struct {
     bool (*write)(void* sink, const uint8_t* bytes, size_t count); /* false: sink full, the frame is dropped */
@@ -46,7 +48,7 @@ typedef struct {
 
 typedef struct {
     uint32_t frames;  /* written */
-    uint32_t dropped; /* refused by the sink */
+    uint32_t dropped; /* not written */
 } frame_record_counts_t;
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
@@ -60,15 +62,18 @@ frame_record_counts_t frame_record_counts(void);
 /* The frame just drawn or generated through `context`. Called by the scene's
  * draw after render_context_draw(), which has made its choices. */
 void frame_record_frame(const render_context_t* context, const raster_t* raster, uint32_t dt_ms);
+/* Captures the state a keyframe's pick will read, before drawing mutates it. */
+void frame_record_before_draw(const render_context_t* context, const r3d_instance_t* instances, int count);
 
 /* Takes the table of notes below in external RAM, kept for the run; until
  * then nothing is noted. A development boot takes it before any scene
  * loads. False when it does not fit; true when already taken. */
 bool frame_record_take_notes(void);
 
-/* `posed` is `bind` posed by `palette`, `joints` matrices kept by the caller. */
-void frame_record_note_skin(const r3d_lit_mesh_t* posed, const r3d_lit_mesh_t* bind, const mat4f_t* palette,
-                            int joints);
+/* `posed` is `bind` posed through `skin` by `palette`, `joints` matrices
+ * kept by the caller. */
+void frame_record_note_skin(const r3d_lit_mesh_t* posed, const r3d_lit_mesh_t* bind, const r3d_skin_t* skin,
+                            const mat4f_t* palette, int joints);
 /* `built` was built from `source`, whose arrays stay until the next build. */
 void frame_record_note_built(const r3d_lit_mesh_t* built, const r3d_dynamic_source_t* source, bool fitted);
 /* A mesh is being made in `block`: notes of meshes that lived there are stale. */
@@ -103,6 +108,13 @@ frame_record_counts(void) {
 }
 
 static inline void
+frame_record_before_draw(const render_context_t* context, const r3d_instance_t* instances, int count) {
+    (void)context;
+    (void)instances;
+    (void)count;
+}
+
+static inline void
 frame_record_frame(const render_context_t* context, const raster_t* raster, uint32_t dt_ms) {
     (void)context;
     (void)raster;
@@ -110,9 +122,11 @@ frame_record_frame(const render_context_t* context, const raster_t* raster, uint
 }
 
 static inline void
-frame_record_note_skin(const r3d_lit_mesh_t* posed, const r3d_lit_mesh_t* bind, const mat4f_t* palette, int joints) {
+frame_record_note_skin(const r3d_lit_mesh_t* posed, const r3d_lit_mesh_t* bind, const r3d_skin_t* skin,
+                       const mat4f_t* palette, int joints) {
     (void)posed;
     (void)bind;
+    (void)skin;
     (void)palette;
     (void)joints;
 }

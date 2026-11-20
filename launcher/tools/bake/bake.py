@@ -3,8 +3,8 @@
 
     python launcher/tools/bake/bake.py list [PATH ...] [--missing] [--kind mesh|reference|fit|levels|texture|sound]
     python launcher/tools/bake/bake.py bake [PATH ...] [--kind KIND] [--only OUTPUT ...] [--again] [--out DIR]
-                                            [--from-run N ...] [--shard K/N | --shards DIR]
-    python launcher/tools/bake/bake.py shards [PATH ...]
+                                            [--from-run N ...] [--shard K/N --plan DIR | --shards DIR]
+    python launcher/tools/bake/bake.py shards [PATH ...] [--out DIR]
     python launcher/tools/bake/bake.py lock [PATH ...] [--from-run N ... | --seed] [--cache DIR]
     python launcher/tools/bake/bake.py check [PATH ...]
     python launcher/tools/bake/bake.py fetch [PATH ...] [--cache DIR] [--offline]
@@ -53,6 +53,10 @@ LOCK's `[[poses]]` rows hold the digest and count of each camera-path sampling, 
 sampling arguments and sampler code. `lock` samples and writes them. A key computed from a held row needs
 no host C compiler.
 
+`shards --out DIR` chooses each missing reference set's poses once, writes them and its render calls to DIR,
+and prints the shard matrix. Every `bake --kind reference --shard K/N --plan DIR` renders that plan's poses
+and copies its pose files byte for byte; shards never select poses. A local unsharded bake selects its own.
+
 `fetch` puts every
 locked file in the cache, from the release when it is not there; `--offline`
 never downloads; `path` fetches one bake by its output's name (`NAME.glb`)
@@ -71,6 +75,7 @@ import functools
 import hashlib
 import io
 import json
+import math
 import multiprocessing
 import os
 import pathlib
@@ -140,26 +145,39 @@ STAGES = {
     "blend": ("gltf/blend_skin_to_glb.py",),
     "sound": ("audio/sound_import.py",),
     "texture": ("r3d/texture/texture_stage.py:texture",),
+    "sh_probes": ("r3d/sh_probe_bake.py:bake",),
 }
 BLEND_EXPORT = "gltf/blend_skin_to_glb.py"
 GLB_SUFFIX = ".glb"
 # The order kinds are made in: a mesh reads the export of its .blend, a fit its start and reference set.
-KINDS = ("blend", "mesh", "reference", "fit", "levels", "texture", "sound")
+KINDS = ("blend", "mesh", "reference", "fit", "levels", "texture", "sound", "sh_probes")
 # The kinds whose key names the locked bytes of a packed bake before them, so a run makes them after it.
 FOLLOWING_KINDS = ("levels", "texture")
 # A textured renderer's texture bake: its materials' LTEX entries and its mesh's LUVS (r3d/texture/), as a pack.
 TEXTURE_SUFFIX = ".texture.pack"
 WAITS = {"levels": "waits for its fit", "texture": "waits for its mesh"}
 # The kinds that trace rays on the CPU, whose bytes differ between CPU vendors (LOCK's mesh_cpu_vendor).
-TRACED_KINDS = ("mesh", "reference")
-# A reference set is traced in REFERENCE_SHARDS jobs, each well under a hosted job's 6 h cap: the longest set, on
-# a hosted 4-CPU runner, split so each shard lands near REFERENCE_SHARD_SECONDS.
+TRACED_KINDS = ("mesh", "reference", "sh_probes")
+# A run traces its missing reference sets in shards that each take a share of every set's poses, as many as keep a
+# shard near REFERENCE_SHARD_SECONDS on a hosted 4-CPU runner: a quarter of the 6 h cap, room for a scene whose rays
+# cost more than the calibration's. The rate is bistro.street_fitted's primary rays over its hosted trace time.
 REFERENCE_SHARD_SECONDS = 90 * 60
-LONGEST_REFERENCE_SECONDS = 5 * 60 * 60  # bistro.street_fitted, CPU Bakes run 43016329421
-REFERENCE_SHARDS = -(-LONGEST_REFERENCE_SECONDS // REFERENCE_SHARD_SECONDS)
+CALIBRATION_RAYS = 158_269_440  # bistro.street_fitted: 240 poses at 184 x 224, 4 x 4 samples (produce.reference_rays)
+CALIBRATION_SECONDS = 5 * 60 * 60  # the same set on one hosted 4-CPU runner, CPU Bakes run 43016329421
+MATRIX_JOBS = 256  # GitHub Actions' most jobs one matrix makes
 # What a fit whose key waits for its inputs asks for, when the same run would make it.
 BAKE_INPUTS_FIRST = "bake its start and reference set first: bake.py bake --kind mesh, then --kind reference"
 SOUND_SUFFIX = ".sond"
+def reference_shards(rays):
+    """The shards that trace `rays` primary rays, each near REFERENCE_SHARD_SECONDS on a hosted runner; at least one,
+    and no more than a job matrix holds."""
+    seconds = rays * CALIBRATION_SECONDS / CALIBRATION_RAYS
+    count = max(1, math.ceil(seconds / REFERENCE_SHARD_SECONDS))
+    if count > MATRIX_JOBS:
+        raise BakeMissing(f"{rays} reference rays need {count} shards; a job matrix holds {MATRIX_JOBS}")
+    return count
+
+
 def entry_file(entry):
     return (TOOLS / entry.partition(":")[0]).resolve()
 
@@ -658,19 +676,15 @@ def mesh_recipe(job, scene, tools, poses=None, unavailable=None):
     return recipe
 
 
-def fit_recipe(fit, settle=None):
-    """The renderer's fit and the import's `settle` (geometry.budget), left out when unset so a mesh without it
-    keeps its key; geometry.probes reaches the fit through the reference key."""
-    recipe = dict(vars(fit))
-    if settle is not None:
-        recipe["settle"] = canonical(settle)
-    return recipe
+def fit_recipe(fit):
+    """The renderer's fit settings; probes reach the fit through the reference key."""
+    return dict(vars(fit))
 
 
 def reference_recipe(inputs, tools, poses=None, unavailable=None):
     """A fit's reference set by every field of its reference_set.ReferenceInputs: the import as a mesh counts
     it, the camera by its lens and sampled poses (a camera without a path has none: its views are all probes),
-    probes and shaped only when set, the rest as parsed."""
+    probes only when set, the rest as parsed."""
     recipe = {}
     for field in dataclasses.fields(inputs):
         value = getattr(inputs, field.name)
@@ -686,7 +700,7 @@ def reference_recipe(inputs, tools, poses=None, unavailable=None):
                                for name, field in (("train", "train_every_ms"),
                                                    ("coverage", "coverage_every_ms"))}
             recipe["camera"] = camera
-        elif field.name in ("probes", "shaped"):
+        elif field.name == "probes":
             if value:
                 recipe[field.name] = canonical(value)
         else:
@@ -711,7 +725,7 @@ def stage_keys(job, scene, tools, starts=None, poses=None):
         start_sha256 = None if starts is None else starts.get(start)
         reference_sha256 = None if starts is None or reference is None else starts.get(reference)
         fit = None if start_sha256 is None or reference_sha256 is None else digest(
-            ["fit", reference_sha256, start_sha256, fit_recipe(job.renderer.fit, job.settings.fit.budget),
+            ["fit", reference_sha256, start_sha256, fit_recipe(job.renderer.fit),
              tools["fit"]])
         fit_sha256 = None if starts is None or fit is None else starts.get(fit)
         levels = None if fit_sha256 is None else digest(
@@ -779,7 +793,7 @@ def bakes_in(packs, jobs, starts=None, poses=None):
         starts = locked_starts(held) if starts is None else starts
         poses = Poses(rows) if poses is None else poses
     tools = {stage: tool_digest(stage) for stage in STAGES}
-    found, exports, fit_starts, references = [], {}, {}, {}
+    found, exports, fit_starts, references, probes = [], {}, {}, {}, {}
     for name, entries in sorted(packs.items()):
         for entry, source in sorted(entries.items()):
             if source.name.endswith(sound_asset.SUFFIX):
@@ -798,6 +812,20 @@ def bakes_in(packs, jobs, starts=None, poses=None):
             if is_blend(job.settings):
                 export = blend_export(job.settings, tools)
                 exports.setdefault(export.key, export)
+            from r3d.sh_probe_settings import load as load_sh_probes, recipe, SUFFIX
+
+            if scene is not None and load_sh_probes(scene.path) is not None:
+                from r3d.scene_name import scene_id
+
+                probe_recipe = recipe(job, scene, import_recipe(job.settings, tools)[1])
+                probe_key = digest(["sh_probes", probe_recipe, tools["sh_probes"]])
+                probe_output = scene_id(scene.path) + SUFFIX
+                if scene.path in probes and probes[scene.path].key != probe_key:
+                    raise SettingsError(f"{scene.path}: scene has conflicting SH probe requests")
+                probes.setdefault(scene.path, Bake(
+                    output=probe_output, source=asker, holder=job.settings.path.stem, kind="sh_probes",
+                    key=probe_key, suffix=SUFFIX, tree=scene.path.with_name(probe_output),
+                    job=job, scene=scene, packed=False))
             keys = stage_keys(job, scene, tools, starts, poses)
             kind = "fit" if "fit" in keys else "mesh"
             holder = job.object.name if job.object is not None else job.renderer.variant.name
@@ -827,7 +855,7 @@ def bakes_in(packs, jobs, starts=None, poses=None):
             textures = renderer_textures(asker, holder) if job.object is not None else None
             if textures is not None:
                 found.append(texture_bake(found[-1], entry, textures, starts, tools))
-    return list(exports.values()) + list(fit_starts.values()) + list(references.values()) + found
+    return list(exports.values()) + list(fit_starts.values()) + list(references.values()) + list(probes.values()) + found
 
 
 def relative(path):
@@ -1353,6 +1381,7 @@ def main(argv=None):
     parser.add_argument("--only", action="append", metavar="OUTPUT", help="bake: only this output; repeatable")
     parser.add_argument("--again", action="store_true", help="bake: make them even when locked, and compare")
     parser.add_argument("--shard", metavar="K/N", help="bake --kind reference: trace shard K of N of each set into --out")
+    parser.add_argument("--plan", metavar="DIR", help="bake --shard: render the poses from shards --out DIR")
     parser.add_argument("--shards", metavar="DIR", help="bake --kind reference: join the shards in DIR, then pack")
     parser.add_argument("--offline", action="store_true", help="fetch: never download")
     args = parser.parse_intermixed_args(argv)  # paths may follow options, as a shell user types them
@@ -1376,8 +1405,12 @@ def main(argv=None):
         found = [] if args.command == "path" else bakes(paths, starts, poses)
         if args.command == "shards":
             # The shard numbers a run traces its missing reference sets in, as a JSON list for a job matrix.
-            print(json.dumps(list(range(REFERENCE_SHARDS)) if any(
-                bake.kind == "reference" and bake.key not in lock for bake in found) else []))
+            from bake import produce
+
+            rays = [produce.reference_rays(bake, pathlib.Path(args.out) / bake.output) if args.out
+                    else produce.reference_rays(bake)
+                    for bake in found if bake.kind == "reference" and bake.key not in lock]
+            print(json.dumps(list(range(reference_shards(sum(rays)))) if rays else []))
         elif args.command == "list":
             for bake in found:
                 if (args.missing and bake.key in lock) or args.kind not in (None, bake.kind):
@@ -1423,11 +1456,12 @@ def main(argv=None):
                     raise BakeMissing(refusal)
             if args.shard:
                 shard, count = (int(part) for part in args.shard.split("/"))
-                if args.kind != "reference" or not args.out or not 0 <= shard < count:
-                    parser.error("--shard K/N takes --kind reference, --out DIR and 0 <= K < N")
+                if args.kind != "reference" or not args.out or not args.plan or not 0 <= shard < count:
+                    parser.error("--shard K/N takes --kind reference, --out DIR, --plan DIR and 0 <= K < N")
                 for bake in found:
                     if to_make(bake, "reference"):
-                        produce.reference_shard(bake, pathlib.Path(args.out) / f"{bake.output}.shard-{shard}", shard, count)
+                        produce.reference_shard(bake, pathlib.Path(args.out) / f"{bake.output}.shard-{shard}",
+                                                shard, count, args.plan)
                         print(f"traced shard {shard}/{count} of {bake.output}", flush=True)
                 return 0
             for run in args.from_run or ():

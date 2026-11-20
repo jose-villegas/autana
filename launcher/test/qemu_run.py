@@ -63,6 +63,7 @@ import json
 import os
 from pathlib import Path
 import re
+import signal
 import socket
 import subprocess
 import sys
@@ -193,12 +194,20 @@ def merge_flash(build_dir, out_path, python):
     subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL)
 
 
+# How a console stopped before the run finished.
+CONSOLE_CLOSED = "QEMU closed the console"
+QEMU_EXITED = "QEMU exited"
+QEMU_EXITED_UNCONNECTED = "QEMU exited before its console opened"
+RUN_TIMED_OUT = "the run's --timeout passed"
+
+
 class Console:
     """QEMU's serial port over TCP: every byte is logged, lines are matched."""
 
     def __init__(self, proc, port, log_path, deadline):
         self.proc = proc
         self.deadline = deadline
+        self.ended = None  # why lines() stopped on its own: one of the console ends above
         self.log = open(log_path, "wb")
         self.pending = b""
         self.sock = None
@@ -207,6 +216,7 @@ class Console:
                 self.sock = socket.create_connection(("127.0.0.1", port), 1.0)
             except OSError:
                 if proc.poll() is not None or time.monotonic() > deadline:
+                    self.log.close()
                     raise
                 time.sleep(0.2)
         self.sock.settimeout(1.0)
@@ -230,6 +240,7 @@ class Console:
             except socket.timeout:
                 continue
             if not chunk:
+                self.ended = CONSOLE_CLOSED
                 return
             self.log.write(chunk)
             self.log.flush()
@@ -238,6 +249,10 @@ class Console:
                 raw, self.pending = self.pending.split(b"\n", 1)
                 text = raw.decode("utf-8", errors="replace").rstrip("\r")
                 yield ANSI.sub("", text)
+        if self.proc.poll() is not None:
+            self.ended = QEMU_EXITED
+        elif time.monotonic() >= self.deadline:
+            self.ended = RUN_TIMED_OUT
 
     def wait_for(self, needle):
         for line in self.lines():
@@ -283,8 +298,8 @@ def take_screenshot(console, out_path):
 TOUCH_SETTLE_S = 0.6
 
 
-def run_suite(console, name):
-    console.send("RUNSUITE %s" % name)
+def run_suite(console, name, tests=None):
+    console.send("RUNSUITE %s %s" % (name, tests) if tests else "RUNSUITE %s" % name)
     for line in console.lines():
         complete = SUITE_COMPLETE_RE.search(line)
         if complete is None or complete.group("name") != name:
@@ -335,8 +350,8 @@ def run_action(console, action):
     words = action.split()
     verb, args = words[0], words[1:]
     try:
-        if verb == "suite" and len(args) == 1:
-            return run_suite(console, args[0])
+        if verb == "suite" and len(args) in (1, 2):
+            return run_suite(console, *args)
         if verb == "screenshot" and len(args) == 1:
             return take_screenshot(console, args[0])
         if verb == "touch" and len(args) == 3 and args[0] in ("down", "up"):
@@ -420,11 +435,91 @@ def summarise(log_path):
     return sentinel is not None, len(failed) + len(crashes) + len(signs)
 
 
-def verdict(log_path, finished, actions):
+# A console that stopped before the run finished gives QEMU this long to exit
+# on its own, so the run reads QEMU's exit status rather than the kill's.
+QEMU_EXIT_GRACE_SECONDS = 5
+# How much of QEMU's own output a run that stopped early prints.
+QEMU_OUTPUT_TAIL_LINES = 20
+# Windows exit codes from here up are NTSTATUS errors (0xC0000005: access
+# violation), searchable only in hex.
+NTSTATUS_ERROR = 0xC0000000
+
+
+def exit_status_text(code):
+    if code < 0:
+        try:
+            return "killed by %s" % signal.Signals(-code).name
+        except ValueError:
+            return "killed by signal %d" % -code
+    if code >= NTSTATUS_ERROR:
+        return "exit code 0x%08X" % code
+    return "exit code %d" % code
+
+
+def stop_text(ended, proc):
+    """Why a run stopped before it finished: how its console ended and, unless
+    its time ran out, whether QEMU exited and how."""
+    if ended == RUN_TIMED_OUT:
+        return ended
+    try:
+        code = proc.wait(timeout=QEMU_EXIT_GRACE_SECONDS)
+    except subprocess.TimeoutExpired:
+        return "%s; QEMU was still running" % ended
+    return "%s; QEMU %s" % (ended, exit_status_text(code))
+
+
+def last_lines(path, count):
+    if not os.path.exists(path):
+        return []
+    with open(path, "rb") as fh:
+        text = ANSI.sub("", fh.read().decode("utf-8", errors="replace"))
+    return [line for line in text.splitlines() if line.strip()][-count:]
+
+
+def verdict(log_path, finished, actions, stopped=None, qemu_output=None):
     autorun_ended, failures = summarise(log_path)
     if not actions and not autorun_ended:
         print("NO %s - the run did not finish" % SENTINEL)
+    if stopped:
+        print("run stopped: %s" % stopped)
+        for line in last_lines(log_path, 1):
+            print("  console's last line: " + line)
+        if qemu_output:
+            print("  QEMU's own output: %s" % qemu_output)
+            for line in last_lines(qemu_output, QEMU_OUTPUT_TAIL_LINES):
+                print("    " + line)
     return 0 if finished and not failures else 1
+
+
+def run_qemu(cmd, port, log_path, qemu_output, timeout, actions):
+    """Start QEMU, follow its console to the sentinel or through `actions`,
+    and stop it: (finished, why it stopped early or None)."""
+    # QEMU's own messages (an abort, an assertion) go to their own file: the
+    # guest's console alone cannot say why QEMU stopped.
+    with open(qemu_output, "wb") as output:
+        proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL,
+                                stdout=output, stderr=subprocess.STDOUT)
+        finished, stopped = False, None
+        try:
+            try:
+                console = Console(proc, port, log_path, time.monotonic() + timeout)
+            except OSError:
+                if proc.poll() is None:
+                    raise
+                return False, stop_text(QEMU_EXITED_UNCONNECTED, proc)
+            try:
+                if actions:
+                    finished = drive_shell(console, actions)
+                else:
+                    finished = console.wait_for(SENTINEL)
+            finally:
+                console.close()
+            if not finished and console.ended:
+                stopped = stop_text(console.ended, proc)
+        finally:
+            proc.kill()
+            proc.wait()
+    return finished, stopped
 
 
 def qemu_machine_args(psram_mib, efuse_path):
@@ -456,6 +551,9 @@ def parse_args(argv):
     parser.add_argument("--suite", action="append", default=[],
                         help="run this registered suite by name (repeatable); "
                              "needs an image that boots into the shell")
+    parser.add_argument("--test", default=None, metavar="PATTERN[,PATTERN...]",
+                        help="run only each --suite's tests whose name contains "
+                             "a pattern, as the board tool's --test does")
     parser.add_argument("--touch", action="append", default=[],
                         metavar="down|up,X,Y",
                         help="leave this touch sample in place, in panel "
@@ -464,7 +562,7 @@ def parse_args(argv):
                              "answers and the injected sample is all the polling "
                              "task has to read")
     parser.add_argument("--do", action="append", default=[], metavar="ACTION",
-                        help="one step, in order (repeatable): 'suite NAME', "
+                        help="one step, in order (repeatable): 'suite NAME [TESTS]', "
                              "'tap X Y', 'swipe X0 Y0 X1 Y1', 'touch down|up "
                              "X Y', 'tilt AX AY AZ', 'send LINE', 'wait MS', "
                              "'screenshot PNG'. A tap or swipe takes pixels of the "
@@ -481,6 +579,8 @@ def parse_args(argv):
     parser.add_argument("--idf-path", default=None,
                         help="the ESP-IDF checkout (default: resolved install)")
     args = parser.parse_args(argv)
+    if args.test and not args.suite:
+        parser.error("--test narrows a --suite; give one")
     if args.icount_ratchet:
         args.icount = True
         try:
@@ -494,7 +594,7 @@ def main(argv):
     args = parse_args(argv)
     args.idf_path = args.idf_path or str(idf_path())
 
-    actions = ["suite %s" % name for name in args.suite]
+    actions = [" ".join(["suite", name] + ([args.test] if args.test else [])) for name in args.suite]
     actions += ["touch " + spec.replace(",", " ") for spec in args.touch]
     actions += args.do
     if args.screenshot:
@@ -505,6 +605,7 @@ def main(argv):
     flash = os.path.join(workdir, "qemu_flash.bin")
     efuse = os.path.join(workdir, "qemu_efuse.bin")
     log_path = args.log or os.path.join(workdir, "qemu_serial.log")
+    qemu_output = os.path.join(workdir, "qemu_output.log")
 
     python = idf_python()
     qemu = patched_qemu.installed(args.idf_path)
@@ -526,26 +627,10 @@ def main(argv):
     port = free_port()
     cmd = qemu_command(args, qemu, psram_mib(), flash, efuse, port)
 
-    proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL,
-                            stdout=subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL)
-    finished = False
-    try:
-        console = Console(proc, port, log_path,
-                          time.monotonic() + args.timeout)
-        try:
-            if actions:
-                finished = drive_shell(console, actions)
-            else:
-                finished = console.wait_for(SENTINEL)
-        finally:
-            console.close()
-    finally:
-        proc.kill()
-        proc.wait()
+    finished, stopped = run_qemu(cmd, port, log_path, qemu_output, args.timeout, actions)
 
     print("console: %s" % log_path)
-    return verdict(log_path, finished, actions)
+    return verdict(log_path, finished, actions, stopped, qemu_output)
 
 
 if __name__ == "__main__":

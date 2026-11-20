@@ -45,6 +45,9 @@ from r3d.lod.bake_levels import bake_lit_mesh
 from r3d.lod.morph import morph_blob
 from r3d.lit_mesh import POSITION_SCALE, WELD_PER_TICK, bundle_entries, panel_colour, build_lit_mesh  # noqa: E402
 from r3d.mesh_source import load_source, load_glb_source, path_light_for, camera_path_poses, with_triangles
+from r3d.obj import alpha_tested
+from r3d.objects.budget import ceiling_split, prototype_groups
+from r3d.objects.carve import derived_budgets, detail_report, free_repeats, views
 from r3d.cards import emit as card_emit
 from r3d.cards.emit import QUAD_CORNERS
 from r3d.texture import texture_asset, uv_transfer
@@ -99,8 +102,9 @@ def fidelity_poses(scene, object_name, frames, dt):
     at the pose size of OBJECT_fitted's `fit.poses.size`, so the traced reference matches the
     one that renderer was fitted against."""
     from anim import track_host
+    from r3d.poses import flight_camera
     job = next(item for item in scene.renderers if item.object.name == object_name + "_fitted")
-    camera = scene.camera.component
+    camera = flight_camera(scene)
     return track_host.poses(camera.path.animation, camera.path.node, dt, *job.renderer.fit.size,
                             camera.half_fov_short_tan, camera.near_z, until_ms=(frames + 1) * dt,
                             number_format=".9g")
@@ -133,6 +137,24 @@ def thin_meshes(src, selected, thin, seed):
             rows = np.flatnonzero(src.tri_o == int(instance.object_name))
             keep[rows[np.asarray(instance.triangle_order, dtype=int)]] = retained
     return keep
+
+
+def carve_selection(src, tri_v, tri_m, selected, settings, job, scene):
+    """The rules' objects plus every free repeat, each carried by one rule per shape whose `triangles` is pinned
+    or derived (objects/carve.py), and the derived shapes for the report."""
+    position_scale = POSITION_SCALE if settings.position_scale is None else settings.position_scale
+    masked = np.flatnonzero(alpha_tested(src.textures))
+    selected = selected | free_repeats(src.p, tri_v, tri_m, src.tri_o, src.object_names, selected, position_scale,
+                                       masked)
+    if not any("triangles" not in rule for rule in selected.values()):
+        return selected, None
+    eyes, focal, near, sight = views(scene, job.renderer)
+    _, shapes = derived_budgets(src.p, tri_v, tri_m, src.tri_o, selected, eyes, focal, near, sight)
+    per_object = {}
+    for shape in shapes:
+        for obj in shape["objects"]:
+            per_object[obj] = shape
+    return selected, SimpleNamespace(shapes=shapes, focal=focal, per_object=per_object)
 
 
 def bake_geometry(job, scene, recorder=None, *, carve=False):
@@ -175,7 +197,12 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
             src.tri_v, src.tri_t, src.tri_m = tri_v, tri_t, tri_m
         step["triangles_out"] = len(tri_v)
     meshes = variant_meshes(settings.meshes, renderer.variant)
+    if not carve or scene is None:
+        meshes = tuple(rule for rule in meshes if "triangles" in rule)
     selected = match_meshes(src.tri_o, tri_m, src.object_names, src.names, meshes) if meshes else {}
+    derived = None
+    if carve and scene is not None:
+        selected, derived = carve_selection(src, tri_v, tri_m, selected, settings, job, scene)
     carved_keep = thin_meshes(src, selected, settings.thin, settings.seed) if selected else None
     with recorder.step("visibility", len(tri_v)) as step:
         intersector = None
@@ -202,7 +229,7 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
         step["triangles_out"] = int(seen.sum())
     shown_v, shown_m, shown_o = tri_v[seen], tri_m[seen], src.tri_o[seen]
     mesh_report = {}
-    shapes = [] if settings.meshes and carve else None
+    shapes = [] if carve else None
     with recorder.step("light", len(shown_v)) as step:
         bounce = path_light_for(light_src, job, scene)
         if settings.simplify:
@@ -247,10 +274,12 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
         tri_double = np.concatenate(all_double) if all_double else np.empty(0, dtype=int)
         tri_mat = np.concatenate(all_mat) if all_mat else np.empty(0, dtype=int)
         step["triangles_out"] = len(tris)
-    ceiling = getattr(renderer.variant, 'ceiling', None)
+    ceiling, room, floor = ceiling_split(renderer)
     card_triangles = sum(report['triangles'] for _, _, report in accepted_cards)
     check_ceiling(card_triangles, ceiling)
+    # Cards are paid first: the rest and the carved copies share what they leave.
     available = None if ceiling is None else ceiling - card_triangles
+    split = (available, None if room is None else room - card_triangles, floor)
     with recorder.step("simplify", len(tris)) as step:
         if settings.simplify and len(tris):
             steps = settings.simplify
@@ -259,6 +288,8 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
             positions, rgb, tris, tri_mat = simplify(positions, rgb.astype(np.float64), tris, tri_mat, budget,
                                                    allocation=Allocation(tri_o=np.concatenate(all_obj), object_names=src.object_names,
                                                                          material_names=src.names, meshes=meshes, selection=selected,
+                                                                         detail=derived, split=split if carve else None,
+                                                                         double_sided=tuple(i for i, name in enumerate(src.names) if name in double_names),
                                                                          ceiling=available,
                                                                          shade=(lambda p, c, t, m, **kw: shade_placed(src, job, scene, p, c, t, m,
                                                                                                              occluder, bounce, **kw)) if job.bake else None,
@@ -294,6 +325,9 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
         mesh_report['scene_total'] = mesh_report['output_triangles'] = (
             mesh_report.get('scene_total', len(tris)) + card_triangles)
     check_ceiling(mesh_report.get('scene_total', len(tris)), ceiling)
+    if derived is not None and "passes" in mesh_report:
+        mesh_report["detail"], mesh_report["authoring"] = detail_report(derived.shapes, mesh_report["passes"],
+                                                                        src.object_names, derived.focal)
     return SimpleNamespace(src=src, intersector=occluder, positions=positions, rgb=rgb, tris=tris, tri_double=tri_double,
                            tri_mat=tri_mat, scale=scale, bounce=bounce, mesh_report=mesh_report, shapes=shapes)
 
@@ -376,9 +410,7 @@ def write_shape(job, scene, out_dir, name, geometry, shape, recorder):
     masked = "vertex_uvs" in shape
     flat = job.renderer.face_samples and not masked
     double_sided = [i for i, material in enumerate(geometry.src.names) if material in job.settings.double_sided]
-    groups = {}
-    for instance, lit in shape['copies']:
-        groups.setdefault((instance.mirrored, np.isin(lit[3], double_sided).tobytes()), []).append((instance, lit))
+    groups = prototype_groups(shape, double_sided)
     entries, rows = [], []
     for (mirrored, _), copies in sorted(groups.items(), key=lambda group: group[0][0]):
         first, lit = copies[0]

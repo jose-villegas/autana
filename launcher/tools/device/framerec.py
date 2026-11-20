@@ -29,11 +29,14 @@ from build.c_header import read_define  # noqa: E402
 
 # The packets' tag, as the verb sends them.
 TAG = read_define(Path(__file__).resolve().parents[2] / "main/shell/console/console_framerec.c", "FRAMEREC_TAG")
+# The stream version this reader reads; a HEADER of another is refused.
+VERSION = read_define(Path(__file__).resolve().parents[2] / "main/render/record/frame_record_format.h",
+                      "FRAME_RECORD_VERSION")
 
 # frame_record_type_t
 RECORD_TYPES = {
     "HEADER": 1, "PACK": 2, "FRAME": 3, "VIEW": 4, "CHOICE": 5,
-    "MESH": 6, "POSE": 7, "DYNMESH": 8, "TUNE": 9, "CHECK": 10,
+    "MESH": 6, "POSE": 7, "DYNMESH": 8, "TUNE": 9, "CHECK": 10, "SETTINGS": 11, "LODSTATE": 12,
 }
 RECORD_NAMES = {number: name for name, number in RECORD_TYPES.items()}
 # frame_record_kind_t: where a MESH's mesh came from
@@ -47,14 +50,17 @@ GENERATED = 4
 HEAD = struct.Struct("<HI")
 HEADER = struct.Struct("<HHHH32s")
 PACK = struct.Struct("<BI32s")
-FRAME = struct.Struct("<IIBHH")
-CHOICE = struct.Struct("<hBBH")
-MESH = struct.Struct("<HBB" + "BI" * 3 + "16f")
-POSE = struct.Struct("<HH")
+FRAME = struct.Struct("<IIBHHI")
+CHOICE = struct.Struct("<hBBHHH")
+MESH = struct.Struct("<HBBB" + "BII" * 3 + "16f")
+POSE = struct.Struct("<HHH" + "BII")
 DYNMESH = struct.Struct("<HBBiIIB")
 TUNE = struct.Struct("<32si")
 CHECK = struct.Struct("<IHHI")
 MATRIX = struct.Struct("<16f")
+# LODSTATE is a packed u32 pick_round, raw r3d_lod_steer_t (padding included),
+# then per-mesh u32 counts and words. HEADER build_id pins the steer size;
+# this reader retains the body as opaque bytes, like VIEW and SETTINGS.
 FIXED = {"HEADER": HEADER, "PACK": PACK, "FRAME": FRAME, "CHOICE": CHOICE, "MESH": MESH,
          "TUNE": TUNE, "CHECK": CHECK}
 
@@ -75,6 +81,7 @@ class Frame:
     flags: int
     instances: int
     batches: int
+    bytes: int  # the frame's records after its FRAME
     records: list = field(default_factory=list)  # (type name, body bytes) after the FRAME
 
     @property
@@ -122,22 +129,50 @@ def decode_tune(body):
 
 def decode_mesh(body):
     fields = MESH.unpack(body)
-    index, kind, placed = fields[:3]
-    where = [(fields[3 + 2 * i], fields[4 + 2 * i]) for i in range(3)]
+    index, kind, placed, faces = fields[:4]
+    where = [tuple(fields[4 + 3 * i:7 + 3 * i]) for i in range(3)]
     kinds = {number: name for name, number in MESH_KINDS.items()}
-    return {"index": index, "kind": kinds.get(kind, kind), "placed": bool(placed), "positions": where[0], "colours": where[1],
-            "batch": where[2], "model": list(fields[9:])}
+    return {"index": index, "kind": kinds.get(kind, kind), "placed": bool(placed), "faces": bool(faces),
+            "positions": where[0], "colours": where[1], "batch": where[2], "model": list(fields[13:])}
+
+
+def framed_records(data):
+    """Yield whole frames only, validating their records within the declared bytes."""
+    at = 0
+    while at < len(data):
+        if len(data) - at < HEAD.size:
+            raise StreamError(f"a record head cut short at byte {at}")
+        _, length = HEAD.unpack_from(data, at)
+        end = at + HEAD.size + length
+        name, body = next(records(data[at:end]))
+        at = end
+        if name != "FRAME":
+            yield name, body
+            continue
+        frame = Frame(*FRAME.unpack(body))
+        end += frame.bytes
+        if end > len(data):
+            return
+        try:
+            rows = list(records(data[at:end]))
+        except StreamError as error:
+            raise StreamError(f"frame {frame.index}: {error}") from error
+        yield name, body
+        yield from rows
+        at = end
 
 
 def parse(data):
     """The stream in `data`: its header, packs, frames with their records, and
     the CHECK hashes by the frame they hash."""
     stream = None
-    for name, body in records(data):
+    for name, body in framed_records(data):
         if stream is None:
             if name != "HEADER":
                 raise StreamError(f"a stream opens with HEADER, not {name}")
             version, width, height, keyframe_every, build_id = HEADER.unpack(body)
+            if version != VERSION:
+                raise StreamError(f"frame record version {version}, expected {VERSION}")
             stream = Stream({"version": version, "panel_width": width, "panel_height": height,
                              "keyframe_every": keyframe_every, "build_id": text(build_id)})
             continue

@@ -45,6 +45,7 @@ int asset_store_mounted(void);
 typedef struct {
     int slot; /* 0 .. ASSET_STORE_MOUNTS_MAX - 1, steady while the pack stays mounted */
     uint32_t entry;
+    uint32_t offset; /* bytes into the entry */
     const char* pack_name;
     uint32_t pack_crc;
 } asset_location_t;
@@ -69,6 +70,9 @@ void asset_store_copies_add(asset_copies_t* copies);
 void asset_store_copies_remove(asset_copies_t* copies);
 /* False when no mounted pack's entry holds it, nor a told copy: memory the app made. */
 bool asset_store_locate(const void* address, asset_location_t* out);
+/* Counts each pack mounted or unmounted: when it moves, an address may sit
+ * in another pack, or another place in one, than asset_store_locate said. */
+uint32_t asset_store_mount_epoch(void);
 #else
 static inline void
 asset_store_copies_add(asset_copies_t* copies) {
