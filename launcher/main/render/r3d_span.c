@@ -14,6 +14,7 @@
 #include "math/scalar/mathi.h"
 #include "profile/frame_laps.h"
 #include "render/code_layout.h"
+#include "render/path/r3d_path.h"
 
 /* Attributes run in fixed point: depth as 16.8, colour channels as 8.8, whose
  * steepest real step (255 levels in one pixel) is far below the clamp. Only a
@@ -47,6 +48,15 @@ TUNE_HOT(r3d_span, flat_max_rows, R3D_SPAN_FLAT_MAX_ROWS, 0, 8);
 TUNE_HOT(r3d_span, flat_max_width, R3D_SPAN_FLAT_MAX_WIDTH, 0, 8 * R3D_SUBPIXEL);
 
 int r3d_span_stop_after;
+
+R3D_PATH(small_flat, "span.small.flat");
+R3D_PATH(small_grain, "span.small.grain");
+R3D_PATH(small_dither, "span.small.dither");
+R3D_PATH(walk_flat, "span.walk.flat");
+R3D_PATH(walk_face, "span.walk.face");
+R3D_PATH(walk_gouraud, "span.walk.gouraud");
+R3D_PATH(walk_gouraud_clipped, "span.walk.gouraud_clipped");
+R3D_PATH(walk_capped, "span.walk.capped");
 
 typedef struct {
     int32_t base[ATTRIBUTES]; /* plane origins during setup, then attributes carried at the left edge */
@@ -297,8 +307,10 @@ fill_carried_span(const r3d_span_target_t* target, const fill_t* f, const uint32
             fill_solid(span->depth, span->color, span->last - span->first + 1, z, dz, f->flat_color);
         }
     } else if (g->in_range && column >= 0) {
+        R3D_PATH_HIT(walk_gouraud);
         fill_gouraud(span->depth, span->color, span->last - span->first + 1, row, g->dx);
     } else {
+        R3D_PATH_HIT(walk_gouraud_clipped);
         fill_clipped_gouraud(g, row, column, span, capped);
     }
 }
@@ -350,8 +362,10 @@ walk_rows_of(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTR
             r3d_span_walk_edge_step(&right);
         }
     } else if (f->shading == FILL_FLAT) {
+        R3D_PATH_HIT(walk_flat);
         flat_rows(target, f, y0, y1, &left, &right, false);
     } else if (f->shading == FILL_FACE) {
+        R3D_PATH_HIT(walk_face);
         carried_rows(target, f, row, y0, y1, &left, &right, 1, false, capped);
     } else {
         carried_rows(target, f, row, y0, y1, &left, &right, ATTRIBUTES, false, capped);
@@ -370,6 +384,7 @@ walk_rows(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTRIBU
 static RENDER_SKIP_ATTR void
 walk_capped_rows(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTRIBUTES], int y0, int y1,
                  r3d_span_walk_edge_t* left_edge, r3d_span_walk_edge_t* right_edge) {
+    R3D_PATH_HIT(walk_capped);
     walk_rows_of(target, f, row, y0, y1, left_edge, right_edge, true);
 }
 
@@ -486,17 +501,18 @@ const r3d_span_small_fill_t r3d_span_small_fill_default = {
 };
 
 void
-r3d_span_small_fill_resolve(r3d_span_small_fill_t* resolved, small_fill_t fill) {
-    fill.ceiling = (uint8_t)mathi_min(fill.ceiling, SMALL_FILL_CEILING_MAX);
-    resolved->ceiling = fill.ceiling;
-    resolved->style = fill.style;
+r3d_span_small_fill_resolve(r3d_span_small_fill_t* resolved, render_small_fill_settings_t fill) {
+    fill.ceiling = mathi_clamp(fill.ceiling, 0, SMALL_FILL_CEILING_MAX);
+    fill.gate = mathi_clamp(fill.gate, 0, SMALL_FILL_GATE_MAX);
+    resolved->ceiling = (uint8_t)fill.ceiling;
+    resolved->style = (uint8_t)mathi_clamp(fill.style, 0, SMALL_FILL_STYLE_COUNT - 1);
     const int intervals = fill.ceiling - (SMALL_MAX_SIDE + 1);
     for (int side = SMALL_MAX_SIDE + 1; side <= fill.ceiling; side++) {
         const int offset = side - (SMALL_MAX_SIDE + 1);
         const int spread = fill.gate == 0 ? SMALL_SPREAD_OFF
                            : intervals == 0
                                ? fill.gate
-                               : SMALL_SPREAD_OFF + ((((int)fill.gate - SMALL_SPREAD_OFF) * offset) / intervals);
+                               : SMALL_SPREAD_OFF + (((fill.gate - SMALL_SPREAD_OFF) * offset) / intervals);
         resolved->spread[side] = (uint8_t)spread;
     }
 }
@@ -544,6 +560,7 @@ small_visible(const r3d_span_edge_t edges[R3D_SPAN_CORNERS], const r3d_span_row_
 static __attribute__((noinline)) void
 fill_small(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
            const r3d_span_vertex_t* c, bool positive, recti_t box, uint32_t face) {
+    R3D_PATH_HIT(small_flat);
     fill_t f;
     set_flat(&f, a, b, c);
     if (face != R3D_SPAN_FACE_NONE) {
@@ -597,6 +614,7 @@ small_store(const r3d_span_edge_t edges[R3D_SPAN_CORNERS], const r3d_span_row_t*
 static __attribute__((noinline)) void
 fill_small_grain(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                  const r3d_span_vertex_t* c, bool positive, recti_t box) {
+    R3D_PATH_HIT(small_grain);
     fill_t f;
     set_flat(&f, a, b, c);
     const uint16_t shade = small_grain_shade(f.flat_color);
@@ -640,6 +658,7 @@ fill_small_dither(const r3d_span_target_t* target, const r3d_span_vertex_t* a, c
     if (colors[0] == colors[1] && colors[1] == colors[2]) {
         return true;
     }
+    R3D_PATH_HIT(small_dither);
     const r3d_span_vertex_t* p = positive ? b : c;
     const r3d_span_vertex_t* q = positive ? c : b;
     const r3d_span_edge_t edges[R3D_SPAN_CORNERS] = {r3d_span_edge(a, p), r3d_span_edge(p, q), r3d_span_edge(q, a)};

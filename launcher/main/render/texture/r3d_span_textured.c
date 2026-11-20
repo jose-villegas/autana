@@ -20,6 +20,7 @@
 #include "math/scalar/mathi.h"
 #include "profile/frame_laps.h"
 #include "render/code_layout.h"
+#include "render/path/r3d_path.h"
 #include "render/r3d_span_internal.h"
 
 /* u and v walk as 8.8 texels, packed u high and v low in one word; a carry
@@ -59,6 +60,11 @@ _Static_assert(RENDER_TEXTURE_LEVEL_MAX == R3D_TEXTURE_LEVELS_MAX - 1,
                "texture.affine_level and far_level can name every level");
 _Static_assert(BAYER4_LEVELS << DITHER_SHIFT == 1 << LIGHT_FRAC, "a threshold stays under one level");
 _Static_assert((1 << (UV_HALF_BITS - UV_FRAC)) == (int)UV_WRAP, "u and v wrap at their integer bits");
+
+R3D_PATH(cut, "texture.cut");
+R3D_PATH(divided, "texture.divided");
+R3D_PATH(affine, "texture.affine");
+R3D_PATH(far, "texture.far");
 
 static inline float
 plane_at(const r3d_span_plane_t* p, float x, float y) {
@@ -389,6 +395,7 @@ set_up(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[R3D_SPA
     su->t = r3d_span_plane_of(&f, uv[0].y, uv[1].y, uv[2].y);
     const int level = pick_level(su, texture);
     if (is_far(target, texture, level)) {
+        R3D_PATH_HIT(far);
         return SET_UP_FAR;
     }
     su->x0 = box.x;
@@ -496,6 +503,7 @@ r3d_span_textured_fill(const r3d_span_target_t* target, const r3d_span_vertex_t*
     const bool long_on_left = (area2 > 0) != r3d_span_sort_by_y(&v0, &v1, &v2);
     FRAME_LAP("r3d.draw.fill");
     if (texture->format == R3D_TEXTURE_MASK1) {
+        R3D_PATH_HIT(cut);
         walk_cut(target, &su, box, v0, v1, v2, long_on_left);
     } else {
         /* A triangle no wider than one segment steps affine: its bend is at
@@ -507,8 +515,10 @@ r3d_span_textured_fill(const r3d_span_target_t* target, const r3d_span_vertex_t*
             set_up_divide(target, corners, uv, texture, whole, &su);
         }
         if (su.divide != 0) {
+            R3D_PATH_HIT(divided);
             walk_divided(target, &su, box, v0, v1, v2, long_on_left);
         } else {
+            R3D_PATH_HIT(affine);
             walk_plain(target, &su, box, v0, v1, v2, long_on_left);
         }
     }

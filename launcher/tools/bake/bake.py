@@ -352,7 +352,8 @@ def closure(entries, stop=(), consumers=False, roots=()):
                    if name in tracked_modules() and module_file(name, "", 0, roots) is None})
     if lost:
         raise SettingsError("imports of tracked modules bake.py cannot place, so their code would be left "
-                            "out of the key: " + ", ".join(f"{name} in {path}" for path, name in lost))
+                            "out of the key (only top-level sys.path calls are read): "
+                            + ", ".join(f"{name} in {path}" for path, name in lost))
     return sorted(found)
 
 
