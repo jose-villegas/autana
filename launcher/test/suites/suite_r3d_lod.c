@@ -780,28 +780,30 @@ move_placed(placed_t* p, const r3d_lit_mesh_t* mesh, float depth) {
     p->boxes[0] = r3d_lit_mesh_world_bounds(mesh, &p->models[0]);
 }
 
-/* A raster drawn at half the view's height, upscaled to it, as a picture
- * presented in half its rows is: scaled more in one axis than the other. */
+/* A raster of `p`'s first instance drawn at `width` by `height`, upscaled
+ * to the view's W by H: scaled more in one axis than the other when the two
+ * shares differ, as a picture presented in half its rows is. */
 static raster_t
-half_height_raster(const placed_t* p) {
+uneven_raster(const placed_t* p, int width, int height) {
     return (raster_t){.instances = p->instances,
                       .instance_count = 1,
-                      .width = W,
-                      .height = H / 2,
+                      .width = width,
+                      .height = height,
                       .picks_levels = true,
                       .upscaled = true,
                       .destination_width = W,
                       .destination_height = H};
 }
 
-/* raster_draw() is the census and a draw from its list: along the fly path,
- * on a raster scaled unevenly, it keeps what the census keeps and picks the
- * levels it picks, each with its own instance's level bits. */
-static void
-test_raster_draw_keeps_what_a_census_keeps_on_an_unevenly_scaled_raster(void) {
+/* The first pose of the fly path where raster_draw() on one raster and
+ * raster_census() on another, both of `mesh` at `width` by `height`, keep
+ * or pick differently; -1 when none does. Each raster draws its own
+ * instance, so each keeps its own level bits. The pictures are
+ * suite_r3d_lit's. */
+static int
+first_pose_census_and_draw_differ(const r3d_lit_mesh_t* mesh, int width, int height) {
     enum { DRAWN, COUNTED, PATHS };
 
-    const r3d_lit_mesh_t* mesh = levelled_mesh();
     const float depth[PLACED_MAX] = {FAR_EYE};
     placed_t* p[PATHS];
     raster_t raster[PATHS];
@@ -809,28 +811,40 @@ test_raster_draw_keeps_what_a_census_keeps_on_an_unevenly_scaled_raster(void) {
         p[i] = malloc(sizeof *p[i]);
         TEST_ASSERT_NOT_NULL(p[i]);
         place(p[i], mesh, 1, depth);
-        raster[i] = half_height_raster(p[i]);
+        raster[i] = uneven_raster(p[i], width, height);
         raster[i].scratch = malloc(raster_scratch_bytes(&raster[i]));
         TEST_ASSERT_NOT_NULL(raster[i].scratch);
     }
     const render_view_t view = axis_view();
     const int steps = steps_in();
-    int first_differing = -1;
-    for (int pose = 0; pose < 2 * steps && first_differing < 0; pose++) {
+    int differing = -1;
+    for (int pose = 0; pose < 2 * steps && differing < 0; pose++) {
         move_placed(p[DRAWN], mesh, eye_at(pose, steps));
         move_placed(p[COUNTED], mesh, eye_at(pose, steps));
         const raster_stats_t drawn = raster_draw(&raster[DRAWN], &view);
         const raster_stats_t counted = raster_census(&raster[COUNTED], &view);
-        if (drawn.triangles != counted.triangles
+        if (drawn.clusters != counted.clusters || drawn.triangles != counted.triangles
             || memcmp(p[DRAWN]->coarse[0], p[COUNTED]->coarse[0], sizeof p[DRAWN]->coarse[0]) != 0) {
-            first_differing = pose;
+            differing = pose;
         }
     }
     for (int i = 0; i < PATHS; i++) {
         free(raster[i].scratch);
         free(p[i]);
     }
-    TEST_ASSERT_EQUAL_INT_MESSAGE(-1, first_differing, "the first pose where raster_draw() and the census differ");
+    return differing;
+}
+
+/* raster_draw() is the census and a draw from its list: along the fly path,
+ * on a raster scaled more in either axis, it keeps and picks what a census
+ * does. */
+static void
+test_raster_draw_keeps_what_a_census_keeps_on_an_unevenly_scaled_raster(void) {
+    const r3d_lit_mesh_t* mesh = levelled_mesh();
+    TEST_ASSERT_EQUAL_INT_MESSAGE(-1, first_pose_census_and_draw_differ(mesh, W, H / 2),
+                                  "half height: first pose differing");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(-1, first_pose_census_and_draw_differ(mesh, W / 2, H),
+                                  "half width: first pose differing");
 }
 
 /* The scratch picked_in_round() draws in. */

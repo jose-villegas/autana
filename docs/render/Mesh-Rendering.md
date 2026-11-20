@@ -36,7 +36,7 @@ and picture basis from `render_view_t`.
 | `r3d_batch_draw_t` | A batch: an instance whose placement and world box hold copies of its mesh drawn from packed rows ([SCNE batches](../assets/formats/SCNE.md#batches)) |
 | `raster_t` | The `r3d_instance_t` array it draws (one mesh is a count of one), then its `r3d_batch_draw_t` array, at one size, into a scratch block the caller hands it. Its options are fields the caller sets: `clear`, and `upscaled` with a destination picture at least as large |
 | `raster_draw()` | Takes a `const render_view_t*` and draws every instance through that frame view: `raster_census()`, then `raster_draw_culled()` |
-| `raster_census()` | The cull, into the scratch block's list, through the view at its own size: on an upscaled raster with unchanged destination dimensions it holds at any render size, so a caller can price sizes first ([one entry](frame/Culling.md#one-entry)) |
+| `raster_census()` | The cull, into the scratch block's list ([one entry](frame/Culling.md#one-entry)) |
 | `raster_draw_culled()` | Draws that list at the raster's size now, through any camera with the same lens |
 | `raster_upscale()` | Nearest-neighbour scales what was drawn up into `destination`; its retained maps change only when either size changes |
 | `raster_upscale_picture()` | The same through the upscale filter, of another colour and depth picture at the drawn size when given one, marking the seams it blends |

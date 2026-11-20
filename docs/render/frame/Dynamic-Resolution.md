@@ -143,7 +143,7 @@ The cost a policy holds is the part that scales: the draw and the compose each s
 
 - Calibration uses the render context's compose decision, including expansion into the half picture.
 - The present and whatever an app draws over the scene are not in it.
-- Every draw culls with the view's own lens, at the view's size, and draws with the lens fitted to the size chosen ([one entry](Culling.md#one-entry)): the predictor culls before it chooses a size and draws from the scratch block's census list.
+- The predictor culls before it chooses a size and draws from the scratch block's census list ([one entry](Culling.md#one-entry)).
 - The list's offset is independent of render size, so the context reserves only the finest step's raster block.
 
 ## Where a frame's time goes at each size

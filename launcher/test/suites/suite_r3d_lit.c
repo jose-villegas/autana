@@ -2577,6 +2577,29 @@ test_a_census_list_draws_what_raster_draw_draws_at_any_size(void) {
     free(moved);
 }
 
+/* A census that moves the depth scale makes the draw from its list redraw
+ * every row, even with rows kept from a partial draw: the kept rows hold
+ * depth at the old scale. */
+static void
+test_a_census_that_moves_the_depth_scale_redraws_every_row(void) {
+    parts_t* const p = parts_buffer(&shared_parts);
+    build_wall_and_stack(p);
+    const r3d_instance_t instance = {.mesh = &p->mesh};
+    raster_t raster = census_raster(&instance, 1);
+    const fixture_camera_t far = camera_down_plus_z(150.0f, -400, 1.0f);
+    const render_view_t far_view = render_view_fixture(&far, &raster, 0);
+    (void)raster_draw(&raster, &far_view);
+    const float far_near = raster_depth_near(&raster);
+    raster.first_row = H / 4;
+    raster.end_row = H / 2;
+    const fixture_camera_t near = camera_down_plus_z(150.0f, -40, 1.0f);
+    const render_view_t near_view = render_view_fixture(&near, &raster, 0);
+    (void)raster_census(&raster, &near_view);
+    TEST_ASSERT_NOT_EQUAL_FLOAT(far_near, raster_depth_near(&raster));
+    raster_draw_culled(&raster, &near_view);
+    TEST_ASSERT_TRUE(raster_drew_every_row(&raster));
+}
+
 /* Each instance's list is as long as its own mesh's clusters: three
  * instances of two meshes, the smaller first, so the list's length and the
  * third one's start both depend on every mesh's own count. */
@@ -3277,6 +3300,7 @@ run_r3d_lit_suite(void) {
     RUN_TEST(test_cull_off_keeps_every_cluster);
     RUN_TEST(test_a_census_list_draws_what_raster_draw_draws_at_any_size);
     RUN_TEST(test_a_census_list_steps_by_each_instances_own_mesh);
+    RUN_TEST(test_a_census_that_moves_the_depth_scale_redraws_every_row);
     RUN_TEST(test_batched_copies_draw_what_one_instance_at_a_time_draws);
     RUN_TEST(test_batch_count_keeps_empty_batches_and_the_clearing_draw);
     RUN_TEST(test_a_destination_of_the_same_size_is_a_copy);

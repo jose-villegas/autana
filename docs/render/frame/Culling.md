@@ -59,7 +59,7 @@ clusters of every instance and kept copy, and returns what it kept.
 |---|---|
 | The cull's lens is the view's, at the view's size, not fitted to the raster's | the list, its counts and its level picks are the same at every render size, so a caller can price sizes before choosing one ([Dynamic-Resolution.md](Dynamic-Resolution.md)) |
 | The draw's lens is fitted to the raster | pixels land on the size drawn |
-| The list holds for the same instances, whatever camera draws it | a spectator draws the camera's list ([the cull, seen](#the-cull-seen)); the draw keeps the census's depth scale, so it needs the same lens |
+| The list holds for the same instances, whatever camera draws it | a spectator draws the camera's list ([the cull, seen](#the-cull-seen)); with the same lens, as the draw keeps the census's [depth scale](Attachments.md#depth) |
 | Every cull is timed under `r3d.cull` | one bracket, whichever entry ran it ([Frame-Cost.md](../../tools/Frame-Cost.md)) |
 
 ## The tree walk
@@ -89,11 +89,11 @@ every side by a slack past float rounding, so it only drops instances the
 root test would drop:
 
 ```math
-s = 2^{-10}\,\max\left(\lVert \mathbf{e} \rVert_\infty,\ \max_i \lvert b_i \rvert\right)
+s = k\,\max\left(\lVert \mathbf{e} \rVert_\infty,\ \max_i \lvert b_i \rvert\right)
 ```
 
-where $`\mathbf{e}`$ is the eye's position and $`b_i`$ the box's six
-coordinates (`WORLD_SLACK` in [raster.c](../../../launcher/main/render/raster.c)).
+where $`k`$ is `WORLD_SLACK` in [raster.c](../../../launcher/main/render/raster.c),
+$`\mathbf{e}`$ the eye's position and $`b_i`$ the box's six coordinates.
 Those then build no lens and read no tree. Kept clusters and pixels are the
 same either way.
 
