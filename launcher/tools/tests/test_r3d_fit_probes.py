@@ -65,7 +65,8 @@ class ClosureTests(unittest.TestCase):
                     stack.enter_context(mock.patch.object(appearance_simplify, "coverage",
                                                          side_effect=[np.array([0, 0]), np.array([1, 0])]))
                     stack.enter_context(mock.patch.object(appearance_simplify, "write_mesh", write_mesh))
-                    args = [*FitArgumentTests.BASE[:-1], str(out), *FitArgumentTests.HELD,
+                    stack.enter_context(mock.patch.object(appearance_simplify, "delta_e_total", return_value=(10.0, 4)))
+                    args = [*FitArgumentTests.BASE[:-1], str(out), *FitArgumentTests.HELD, "--closure",
                             "--coverage-poses", "path.txt", "--coverage-poses", "probes.txt"]
                     if fitted_holes == self.PIXELS:
                         with self.assertRaisesRegex(ValueError, "closure"):
@@ -77,6 +78,33 @@ class ClosureTests(unittest.TestCase):
                     self.assertEqual(holes.call_count, 2)
                     self.assertIs(holes.call_args_list[0].args[0], mesh)
                     self.assertEqual(len(holes.call_args_list[1].args[0].tris), 1)
+
+
+    def test_a_fit_with_held_out_poses_logs_their_de_and_gates_closure_only_when_asked(self):
+        mesh = FitMesh(np.zeros((6, 3)), np.zeros((6, 3)), np.arange(6).reshape(2, 3),
+                       np.zeros(2), 8, np.arange(6))
+        views, size = [object(), object()], self.SIZE
+        for closure in (False, True):
+            with self.subTest(closure=closure), tempfile.TemporaryDirectory() as directory,                     contextlib.ExitStack() as stack:
+                out = pathlib.Path(directory)
+                for name, value in dict(load_scene=SimpleNamespace(camera=SimpleNamespace(
+                        component=SimpleNamespace(background=0))), start_mesh=mesh,
+                        load_views=(views, size), pose_views=(views, size), optimise=(mesh.points, mesh.rgb, [1.0]),
+                        write_mesh=len(mesh.tris), delta_e_total=(10.0, 4),
+                        stretch_report={
+                            "small": dict(stretch=0, area_growth=0, moved=0),
+                            "rest": dict(stretch=0, area_growth=0, moved=0),
+                            "worst": dict(stretch=[], area_growth=[], moved=[])}).items():
+                    stack.enter_context(mock.patch.object(appearance_simplify, name, return_value=value))
+                holes = stack.enter_context(mock.patch.object(appearance_simplify, "hole_pixels", return_value=0))
+                stack.enter_context(mock.patch.object(appearance_simplify, "coverage", return_value=np.array([1, 1])))
+                logged = stack.enter_context(mock.patch.object(appearance_simplify, "log"))
+                args = [*FitArgumentTests.BASE[:-1], str(out), *FitArgumentTests.HELD, *(["--closure"] if closure else [])]
+                self.assertEqual(appearance_simplify.main(args), 0)
+                lines = [call.args[0] for call in logged.call_args_list]
+                # One held-out set of two views, each (10.0 dE over 4 pixels): a mean of 2.5.
+                self.assertIn("held-out dE76 (fit rasteriser): 2.500 over 2 views", lines)
+                self.assertEqual(holes.call_count, 2 if closure else 0)
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")

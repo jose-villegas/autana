@@ -680,6 +680,31 @@ def hole_pixels(mesh, views, size, clear, device="cuda"):
 CLOSURE_GROWTH = 0.0005
 
 
+def delta_e_total(mesh, views, size, clear, device="cuda"):
+    """(dE76 summed over every pixel of every view, pixels): the mesh as the fit's rasteriser draws it against the
+    views' references."""
+    import torch
+
+    render = Renderer(mesh.tris, mesh.double, mesh.vertex_point, size, device, clear, mesh.flat)
+    points = torch.as_tensor(mesh.points, dtype=torch.float32, device=device)
+    colours = torch.as_tensor(mesh.rgb, dtype=torch.float32, device=device)
+    total, pixels = 0.0, 0
+    with torch.no_grad():
+        for matrix, target, *_rest in views:
+            matrix = torch.as_tensor(matrix, dtype=torch.float32, device=device)
+            error = delta_e76(render(points, colours, matrix), torch.as_tensor(target, device=device))
+            total, pixels = total + float(error.sum()), pixels + error.numel()
+    return total, pixels
+
+
+def held_out_line(mesh, held_out, clear):
+    """The log line of the fitted mesh's mean dE76 over its held-out views, [(views, size)], as the fit's rasteriser
+    draws them: not the host viewer's score."""
+    totals = [delta_e_total(mesh, views, size, clear) for views, size in held_out]
+    mean = sum(total for total, _ in totals) / sum(pixels for _, pixels in totals)
+    return f"held-out dE76 (fit rasteriser): {mean:.3f} over {sum(len(views) for views, _ in held_out)} views"
+
+
 def check_closure(start_holes, fitted_holes, pixels):
     """Check held-out hole growth against the start and return the log line."""
     line = f"hole pixels: start {start_holes / pixels:.2%}; fitted {fitted_holes / pixels:.2%} over {pixels} pixels"
@@ -965,8 +990,10 @@ def main(argv=None):
     parser.add_argument("--budget", type=int, help="prune to this many triangles, those that show least first")
     parser.add_argument("--coverage-poses", action="append",
                         help="a poses file to count shown pixels over; repeat to sum coverage, training poses otherwise")
-    parser.add_argument("--held-out-poses", action="append", default=[], help="poses the closure gate checks")
+    parser.add_argument("--held-out-poses", action="append", default=[],
+                        help="held-out poses: the fit logs its dE76 over them, and with --closure gates hole growth")
     parser.add_argument("--held-out-reference", action="append", default=[], help="references for --held-out-poses")
+    parser.add_argument("--closure", action="store_true", help="fail when the fit loses held-out surface (check_closure)")
     parser.add_argument("--cost-model", help="a cost_model.py weights file, such as board_cost_weights.txt")
     parser.add_argument("--cost-weight", type=float, default=0.0, help="dE76 per predicted millisecond")
     parser.add_argument("--object", help="the scene object whose source anchors the fit")
@@ -1062,11 +1089,13 @@ def main(argv=None):
         shown = np.sum(rows, axis=0)
         held_out = [load_views([pair], args.scale) for pair in zip(args.held_out_poses, args.held_out_reference)]
         pruned, kept = prune(fitted, shown, len(fitted.tris) if args.budget is None else args.budget)
-        if held_out:
+        if held_out and args.closure:
             pixels = sum(len(held_views) * held_size[0] * held_size[1] for held_views, held_size in held_out)
             start_holes, fitted_holes = (sum(hole_pixels(joined(candidate, copies), held_views, held_size, clear)
                                              for held_views, held_size in held_out) for candidate in (fit_start, pruned))
             log(check_closure(start_holes, fitted_holes, pixels))
+        if held_out:
+            log(held_out_line(joined(pruned, copies), held_out, clear))
         log(f"pruned {len(fitted.tris) - len(pruned.tris)} triangles: "
             f"{np.count_nonzero(shown == 0)} never shown")
         fitted = pruned
