@@ -705,6 +705,17 @@ def held_out_line(mesh, held_out, clear):
     return f"held-out dE76 (fit rasteriser): {mean:.3f} over {sum(len(views) for views, _ in held_out)} views"
 
 
+def pictured(reference):
+    """Whether a held-out reference folder holds traced pictures: a path fit's packed set carries its held-out poses
+    but not their pictures (reference_set.pack_references), so its dE is not measured."""
+    return any(pathlib.Path(reference).glob("*.png"))
+
+
+def not_measured_line(poses):
+    """The log line of held-out sets, by poses file, the fit has no pictures to score."""
+    return f"held-out dE76 (fit rasteriser): not measured, no held-out pictures for {', '.join(map(str, poses))}"
+
+
 def check_closure(start_holes, fitted_holes, pixels):
     """Check held-out hole growth against the start and return the log line."""
     line = f"hole pixels: start {start_holes / pixels:.2%}; fitted {fitted_holes / pixels:.2%} over {pixels} pixels"
@@ -1017,6 +1028,10 @@ def main(argv=None):
         parser.error("give one --reference per --poses")
     if len(args.held_out_poses) != len(args.held_out_reference):
         parser.error("give one --held-out-reference per --held-out-poses")
+    held_pairs = list(zip(args.held_out_poses, args.held_out_reference))
+    unpictured = [poses for poses, reference in held_pairs if not pictured(reference)]
+    if args.closure and unpictured:
+        parser.error(f"--closure needs held-out pictures; none for {', '.join(unpictured)}")
     if any(not np.isfinite(value) or value < 0 for value in (args.surface_weight, args.surface_margin, args.seam_margin)):
         parser.error("surface weight, surface margin and seam margin must be finite and nonnegative")
     if args.surface_weight and not args.score and not args.object:
@@ -1087,7 +1102,7 @@ def main(argv=None):
         rows = [coverage(drawn, *pose_views(poses, args.scale))[:len(fitted.tris)]
                 for poses in args.coverage_poses] if args.coverage_poses else [coverage(drawn, views, size)[:len(fitted.tris)]]
         shown = np.sum(rows, axis=0)
-        held_out = [load_views([pair], args.scale) for pair in zip(args.held_out_poses, args.held_out_reference)]
+        held_out = [load_views([pair], args.scale) for pair in held_pairs if pictured(pair[1])]
         pruned, kept = prune(fitted, shown, len(fitted.tris) if args.budget is None else args.budget)
         if held_out and args.closure:
             pixels = sum(len(held_views) * held_size[0] * held_size[1] for held_views, held_size in held_out)
@@ -1096,6 +1111,8 @@ def main(argv=None):
             log(check_closure(start_holes, fitted_holes, pixels))
         if held_out:
             log(held_out_line(joined(pruned, copies), held_out, clear))
+        if unpictured:
+            log(not_measured_line(unpictured))
         log(f"pruned {len(fitted.tris) - len(pruned.tris)} triangles: "
             f"{np.count_nonzero(shown == 0)} never shown")
         fitted = pruned

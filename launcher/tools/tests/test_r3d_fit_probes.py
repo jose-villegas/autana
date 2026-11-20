@@ -66,7 +66,7 @@ class ClosureTests(unittest.TestCase):
                                                          side_effect=[np.array([0, 0]), np.array([1, 0])]))
                     stack.enter_context(mock.patch.object(appearance_simplify, "write_mesh", write_mesh))
                     stack.enter_context(mock.patch.object(appearance_simplify, "delta_e_total", return_value=(10.0, 4)))
-                    args = [*FitArgumentTests.BASE[:-1], str(out), *FitArgumentTests.HELD, "--closure",
+                    args = [*FitArgumentTests.BASE[:-1], str(out), *FitArgumentTests.held(out), "--closure",
                             "--coverage-poses", "path.txt", "--coverage-poses", "probes.txt"]
                     if fitted_holes == self.PIXELS:
                         with self.assertRaisesRegex(ValueError, "closure"):
@@ -80,37 +80,64 @@ class ClosureTests(unittest.TestCase):
                     self.assertEqual(len(holes.call_args_list[1].args[0].tris), 1)
 
 
-    def test_a_fit_with_held_out_poses_logs_their_de_and_gates_closure_only_when_asked(self):
+    def logged_fit(self, out, *extra):
+        """The log lines of a stubbed fit into `out` with `extra` arguments, and its hole_pixels mock."""
         mesh = FitMesh(np.zeros((6, 3)), np.zeros((6, 3)), np.arange(6).reshape(2, 3),
                        np.zeros(2), 8, np.arange(6))
         views, size = [object(), object()], self.SIZE
+        with contextlib.ExitStack() as stack:
+            for name, value in dict(load_scene=SimpleNamespace(camera=SimpleNamespace(
+                    component=SimpleNamespace(background=0))), start_mesh=mesh,
+                    load_views=(views, size), pose_views=(views, size), optimise=(mesh.points, mesh.rgb, [1.0]),
+                    write_mesh=len(mesh.tris), delta_e_total=(10.0, 4),
+                    stretch_report={
+                        "small": dict(stretch=0, area_growth=0, moved=0),
+                        "rest": dict(stretch=0, area_growth=0, moved=0),
+                        "worst": dict(stretch=[], area_growth=[], moved=[])}).items():
+                stack.enter_context(mock.patch.object(appearance_simplify, name, return_value=value))
+            holes = stack.enter_context(mock.patch.object(appearance_simplify, "hole_pixels", return_value=0))
+            stack.enter_context(mock.patch.object(appearance_simplify, "coverage", return_value=np.array([1, 1])))
+            logged = stack.enter_context(mock.patch.object(appearance_simplify, "log"))
+            self.assertEqual(appearance_simplify.main([*FitArgumentTests.BASE[:-1], str(out), *extra]), 0)
+        return [call.args[0] for call in logged.call_args_list], holes
+
+    def test_a_fit_with_held_out_pictures_logs_their_de_and_gates_closure_only_when_asked(self):
         for closure in (False, True):
-            with self.subTest(closure=closure), tempfile.TemporaryDirectory() as directory,                     contextlib.ExitStack() as stack:
+            with self.subTest(closure=closure), tempfile.TemporaryDirectory() as directory:
                 out = pathlib.Path(directory)
-                for name, value in dict(load_scene=SimpleNamespace(camera=SimpleNamespace(
-                        component=SimpleNamespace(background=0))), start_mesh=mesh,
-                        load_views=(views, size), pose_views=(views, size), optimise=(mesh.points, mesh.rgb, [1.0]),
-                        write_mesh=len(mesh.tris), delta_e_total=(10.0, 4),
-                        stretch_report={
-                            "small": dict(stretch=0, area_growth=0, moved=0),
-                            "rest": dict(stretch=0, area_growth=0, moved=0),
-                            "worst": dict(stretch=[], area_growth=[], moved=[])}).items():
-                    stack.enter_context(mock.patch.object(appearance_simplify, name, return_value=value))
-                holes = stack.enter_context(mock.patch.object(appearance_simplify, "hole_pixels", return_value=0))
-                stack.enter_context(mock.patch.object(appearance_simplify, "coverage", return_value=np.array([1, 1])))
-                logged = stack.enter_context(mock.patch.object(appearance_simplify, "log"))
-                args = [*FitArgumentTests.BASE[:-1], str(out), *FitArgumentTests.HELD, *(["--closure"] if closure else [])]
-                self.assertEqual(appearance_simplify.main(args), 0)
-                lines = [call.args[0] for call in logged.call_args_list]
+                lines, holes = self.logged_fit(out, *FitArgumentTests.held(out), *(["--closure"] if closure else []))
                 # One held-out set of two views, each (10.0 dE over 4 pixels): a mean of 2.5.
                 self.assertIn("held-out dE76 (fit rasteriser): 2.500 over 2 views", lines)
+                self.assertFalse([line for line in lines if "not measured" in line])
                 self.assertEqual(holes.call_count, 2 if closure else 0)
+
+    def test_a_fit_with_held_out_poses_but_no_pictures_logs_its_de_as_not_measured(self):
+        # A path fit's packed set holds its held-out poses, not their pictures (reference_set.pack_references).
+        with tempfile.TemporaryDirectory() as directory:
+            out = pathlib.Path(directory)
+            lines, holes = self.logged_fit(out, *FitArgumentTests.HELD)
+            self.assertIn("held-out dE76 (fit rasteriser): not measured, no held-out pictures for h.txt", lines)
+            self.assertFalse([line for line in lines if line.startswith("held-out dE76") and "over" in line])
+            self.assertEqual(holes.call_count, 0)
+
+    def test_closure_without_held_out_pictures_is_refused_before_the_fit(self):
+        error = io.StringIO()
+        with contextlib.redirect_stderr(error), self.assertRaises(SystemExit):
+            appearance_simplify.main([*FitArgumentTests.BASE, *FitArgumentTests.HELD, "--closure"])
+        self.assertIn("--closure needs held-out pictures; none for h.txt", error.getvalue())
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class FitArgumentTests(unittest.TestCase):
     BASE = ["--scene", "s.toml", "--start", "a.bundle", "--poses", "p.txt", "--reference", "r", "--out", "o"]
     HELD = ["--held-out-poses", "h.txt", "--held-out-reference", "h"]
+
+    @staticmethod
+    def held(work):
+        """HELD with its reference a folder in `work` holding a traced picture."""
+        (work / "h").mkdir()
+        (work / "h" / "0000.png").touch()
+        return ["--held-out-poses", "h.txt", "--held-out-reference", str(work / "h")]
 
     def refused(self, *extra):
         error = io.StringIO()
