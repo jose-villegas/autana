@@ -189,6 +189,9 @@ test_apply_camera_settings_hands_the_picked_small_fill_to_the_context(void) {
 }
 
 #ifndef ESP_PLATFORM
+/* A scene that generates frames, so the menu draws its FRAME GEN row too. */
+static const lab_scene_t generating = {.name = "Generating", .generates_frames = true};
+
 /* Every preset label, shown as the chosen one, fits the SMALL FILL
  * dropdown's label room in both orientations. */
 static void
@@ -204,7 +207,7 @@ test_small_fill_labels_fit_their_dropdown(void) {
             TEST_ASSERT_TRUE(render_lab_small_fill_select(i));
             const input_t input = {0};
             ui_begin(&input);
-            const lab_menu_screen_state_t state = {.settings = render_lab_settings_draw};
+            const lab_menu_screen_state_t state = {.settings = render_lab_settings_draw, .showing = &generating};
             (void)lab_menu_screen_draw(&state);
             ui_probe_end_frame();
             recti_t dropdown;
@@ -221,11 +224,38 @@ test_small_fill_labels_fit_their_dropdown(void) {
 }
 #endif
 
+#ifdef DEVICE_BUILD
+/* The menu offers FRAME GEN for exactly the scenes that generate frames, drawn
+ * as the lab draws it: the scene's rows, then the lab's for that scene. */
+static void
+test_frame_gen_row_shows_for_every_scene_that_generates_frames(void) {
+    fixture();
+    ui_init();
+    ui_set_transform(ui_transform_quarter_turn(DISPLAY_LANDSCAPE, GFX_WIDTH, GFX_HEIGHT));
+    for (int i = 0; i < render_lab.scene_count; i++) {
+        const lab_scene_t* scene = render_lab.scenes[i];
+        const input_t input = {0};
+        ui_begin(&input);
+        const lab_menu_screen_state_t state = {
+            .controls = scene->controls, .settings = render_lab.hooks.settings, .showing = scene};
+        (void)lab_menu_screen_draw(&state);
+        ui_probe_end_frame();
+        recti_t drawn;
+        TEST_ASSERT_EQUAL_INT_MESSAGE(scene->generates_frames, ui_probe_text(RENDER_LAB_FRAME_GEN_LABEL, &drawn),
+                                      scene->key);
+    }
+    fixture();
+}
+#endif
+
 void
 run_render_size_suite(void) {
     RUN_TEST(test_dynamic_resolution_toggle_moves_the_budget_into_the_context);
     RUN_TEST(test_small_fill_menu_choice_moves_the_tunables);
     RUN_TEST(test_upscale_menu_choice_sets_the_context_filter);
+#ifdef DEVICE_BUILD
+    RUN_TEST(test_frame_gen_row_shows_for_every_scene_that_generates_frames);
+#endif
     RUN_TEST(test_apply_camera_settings_hands_the_picked_small_fill_to_the_context);
 #ifndef ESP_PLATFORM
     RUN_TEST(test_small_fill_labels_fit_their_dropdown);

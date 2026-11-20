@@ -59,7 +59,7 @@ lab_menu_screen_draw(const lab_menu_screen_state_t* state) {
         state->controls(MENU_BTN_W);
     }
     if (state->settings != NULL) {
-        state->settings(MENU_BTN_W);
+        state->settings(state->showing, MENU_BTN_W);
     }
     draw_hint();
 

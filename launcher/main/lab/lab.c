@@ -246,6 +246,7 @@ draw_menu(lab_t* lab, const input_t* input) {
         .variant = variant,
         .controls = lab_current(lab)->controls,
         .settings = lab->hooks.settings,
+        .showing = lab_current(lab),
     };
     const lab_menu_screen_result_t result = lab_menu_screen_draw(&state);
     if (result.family_picked >= 0 && result.family_picked != family) {
