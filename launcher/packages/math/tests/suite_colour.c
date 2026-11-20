@@ -20,6 +20,8 @@
 #define SEGMENT_STEP         1.0E-4F
 #define OUT_OF_GAMUT_CHROMA  0.4F
 
+/* Double references stay on the host: the device build keeps soft double out. */
+#ifndef ESP_PLATFORM
 static double
 reference_encode(double linear) {
     return linear <= 0.0031308 ? linear * 12.92 : (1.055 * pow(linear, 1.0 / 2.4)) - 0.055;
@@ -29,6 +31,7 @@ static double
 reference_decode(double encoded) {
     return encoded <= 0.04045 ? encoded / 12.92 : pow((encoded + 0.055) / 1.055, 2.4);
 }
+#endif
 
 static void
 test_curve_ends_and_reference_points(void) {
@@ -54,6 +57,7 @@ test_encode_clamps_before_the_curve(void) {
     TEST_ASSERT_EQUAL_FLOAT(1.0F, srgbf_encode(INFINITY));
 }
 
+#ifndef ESP_PLATFORM
 static void
 test_each_side_of_the_cutoff_takes_its_own_segment(void) {
     const float points[] = {LINEAR_SEGMENT_INPUT, SRGB_LINEAR_CUTOFF - SEGMENT_STEP, SRGB_LINEAR_CUTOFF + SEGMENT_STEP,
@@ -64,6 +68,7 @@ test_each_side_of_the_cutoff_takes_its_own_segment(void) {
         TEST_ASSERT_FLOAT_WITHIN(CURVE_TOLERANCE, points[i], srgbf_decode(encoded));
     }
 }
+#endif
 
 static void
 test_encode_byte_rounds_and_clamps(void) {
@@ -73,6 +78,7 @@ test_encode_byte_rounds_and_clamps(void) {
     TEST_ASSERT_EQUAL_UINT8(HALF_LINEAR_BYTE, srgbf_encode_byte(0.5F));
 }
 
+#ifndef ESP_PLATFORM
 static void
 test_every_byte_decodes_to_the_curve(void) {
     TEST_ASSERT_FLOAT_WITHIN(CURVE_TOLERANCE, BYTE_128_LINEAR, srgbf_decode_byte(128));
@@ -81,6 +87,7 @@ test_every_byte_decodes_to_the_curve(void) {
         TEST_ASSERT_EQUAL_FLOAT(expected, srgbf_decode_byte((uint8_t)i));
     }
 }
+#endif
 
 static void
 test_every_byte_round_trips(void) {
@@ -139,9 +146,13 @@ suite_colour(void) {
     RUN_TEST(test_curve_ends_and_reference_points);
     RUN_TEST(test_linear_segment_meets_the_power_segment);
     RUN_TEST(test_encode_clamps_before_the_curve);
+#ifndef ESP_PLATFORM
     RUN_TEST(test_each_side_of_the_cutoff_takes_its_own_segment);
+#endif
     RUN_TEST(test_encode_byte_rounds_and_clamps);
+#ifndef ESP_PLATFORM
     RUN_TEST(test_every_byte_decodes_to_the_curve);
+#endif
     RUN_TEST(test_every_byte_round_trips);
     RUN_TEST(test_primaries_match_published_oklab);
     RUN_TEST(test_published_oklab_returns_its_primary);
