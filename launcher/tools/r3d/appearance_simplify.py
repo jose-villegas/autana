@@ -889,9 +889,9 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
             for i in geometry_chosen:
                 fitted, shown = gbuffer.distance(render, draw, geometry_views.matrices[i])
                 rest_shown = (shown >= 0) & (shown < len(tris))
-                reference, copy = geometry_views.buffers.depth[i], geometry_views.buffers.copy[i]
-                front = front + gbuffer.front_loss(fitted, rest_shown, reference, copy) / len(geometry_chosen)
-                depth = depth + gbuffer.depth_loss(fitted, rest_shown, reference, copy) / len(geometry_chosen)
+                held = geometry_views.buffers
+                front = front + gbuffer.front_loss(fitted, rest_shown, held.depth[i], held.copy[i]) / len(geometry_chosen)
+                depth = depth + gbuffer.depth_loss(fitted, rest_shown, held.depth[i], held.copy[i]) / len(geometry_chosen)
         drift = ((uniform_laplacian(points, edges) - rest) / point_scale).pow(2).sum(dim=1).mean()
         if surface_weight:
             from r3d.appearance_gather import gather

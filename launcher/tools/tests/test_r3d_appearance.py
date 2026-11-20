@@ -1198,5 +1198,23 @@ class AppearanceFitTests(unittest.TestCase):
         np.testing.assert_allclose(points[0.0][:, 2], 0.5, err_msg="the colour term alone leaves the rest off the surface")
         self.assertLess(np.abs(points[10.0][:, 2]).max(), 0.05)
 
+    def test_geometry_views_push_the_rest_behind_the_copy_beside_the_surface_term(self):
+        import torch
+
+        from r3d.fit.gbuffer import reference_buffers
+        from r3d.fit.geometry_views import GeometryViews
+
+        copy = self.card(0.0, half=1.0, rgb=0.2)
+        source = SimpleNamespace(p=copy.points, tri_v=copy.tris)
+        carved = np.ones(len(copy.tris), dtype=bool)
+        size = (48, 40)
+        matrices = [torch.as_tensor(projection([0.0, 0.0, 3.0], [0.0, 0.0, -1.0], 24, 20, 0.62, 0.5),
+                                    dtype=torch.float32, device="cuda")]
+        views = GeometryViews([None], matrices, reference_buffers(source, carved, matrices, [size], "cuda"), size)
+        # The surface term reads its own source reference every step the geometry views add their front loss.
+        points = self.gbuffer_fit(self.card(0.5, half=0.5, rgb=0.2), copy, source, carved, copies=copy,
+                                  front_weight=10.0, geometry_views=views, surface_weight=1e-3, surface_margin=0.25)
+        self.assertLess(points[:, 2].max(), 0.3)
+
 if __name__ == "__main__":
     unittest.main()
