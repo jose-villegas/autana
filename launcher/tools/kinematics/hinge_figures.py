@@ -3,9 +3,8 @@
 import pathlib
 import sys
 
-TOOLS = pathlib.Path(__file__).resolve().parents[1]
-for search_path in (TOOLS, TOOLS / "math"):
-    sys.path.insert(0, str(search_path))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "math"))
 from math_figures import PANEL_SIZE, ROOT, VIEW_AZIMUTH, VIEW_ELEVATION
 from docs.figures import probe_into_folder
 from docs.producer import Producer
