@@ -2,7 +2,7 @@
 
 The [math package](../../launcher/packages/math/README.md) holds scalar operations
 in `scalar/`, vectors and transforms in `linear/`, shapes and queries in
-`geometry/`, order statistics in `stats/`, and signal processing in `signal/`.
+`geometry/`, order statistics in `stats/`, colour spaces in `colour/`, and signal processing in `signal/`.
 [Text conversion](Text.md) lives in `text/`.
 
 <!-- generated: math-fast-links-readme check: python launcher/tools/perf/fast_paths.py --check -->
@@ -51,5 +51,6 @@ Look the plain name up on a page in the [pages table](#pages); read `*_template.
 | [Text](Text.md) | Canonical format and parse pairs, round trips and buffer capacities |
 | [Motion](Motion.md) | Steering for agents on a ground plane: arrive, separation, a limited step |
 | [Spherical harmonics](Sh.md) | RGB radiance and cosine-convolved irradiance |
+| [Colour](Colour.md) | The sRGB transfer function and OKLab |
 | [Signal](Signal.md) | Goertzel single-bin detection, pitch conversion and exponential smoothing |
 | [Benchmark](Benchmark.md) | Board cycles, retired instructions and QEMU counts |
