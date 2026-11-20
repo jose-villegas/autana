@@ -59,6 +59,16 @@ typedef enum {
 #define STRESS_CAMERA_SWEEP         "sweep"
 #define STRESS_RING_SCENE           "stress_ring"
 
+/* A tunable a preset draws under, by the name SET gives it (core/tune.h),
+ * for a path only a setting selects. */
+typedef struct {
+    const char* name;
+    int32_t value;
+} stress_setting_t;
+
+/* The most settings one preset sets; a NULL name ends a shorter list. */
+#define STRESS_SETTINGS_MAX 3
+
 typedef struct {
     stress_shape_t shape;
     int cuts; /* the shape's tessellation: subdivisions, sphere rings or cylinder segments */
@@ -70,6 +80,8 @@ typedef struct {
     int perf_poses;    /* poses the stress perf suite replays along the swing */
     bool record;       /* the stress perf suite runs the frame recorder over it: its stage too */
     const char* scene; /* the pack shown: NULL is STRESS_SCENE's copy pool, another its own meshes as placed */
+    bool skip_hidden;  /* its camera skips clusters behind drawn depth, as a baked family's may */
+    stress_setting_t settings[STRESS_SETTINGS_MAX]; /* set on entering, put back on leaving */
 } stress_params_t;
 
 /* X(ID, key, surface): each preset, its key the scene key's suffix and its
@@ -105,7 +117,12 @@ typedef struct {
     X(FEW_BUTTERFLIES, "few-butterflies", HINGED)                                                                      \
     X(RECORD, "record", WAVE)                                                                                          \
     X(CULL_SETUP, "cull-setup", BANDED)                                                                                \
-    X(BAKED_TREE, "baked-tree", STATIC)
+    X(BAKED_TREE, "baked-tree", STATIC)                                                                                \
+    X(SMALL_GRAIN, "small-grain", BANDED)                                                                              \
+    X(SMALL_DITHER, "small-dither", NOISY)                                                                             \
+    X(SMALL_OFF, "small-off", BANDED)                                                                                  \
+    X(STACK_SKIP, "stack-skip", BANDED)                                                                                \
+    X(CARVED_BLEND, "carved-blend", CARVED)
 
 #define STRESS_PRESET_ID(id_, ...) STRESS_##id_,
 
@@ -165,6 +182,10 @@ typedef struct {
  * pushed out along its normal by the wave. False when the shape cannot be
  * made. Equal arguments give equal bytes. */
 bool stress_source(const stress_params_t* p, uint32_t t_ms, const stress_buffers_t* b, r3d_dynamic_source_t* out);
+
+/* Where perf pose `pose` sits along a camera clip of `duration_ms`: pose i of
+ * perf_poses is i / perf_poses of the way, the poses the perf suite replays. */
+uint32_t stress_pose_ms(const stress_params_t* p, uint32_t duration_ms, int pose);
 
 /* Where the arrangement is seen from: the camera's distance from the
  * origin, which it looks at, and its lens's half field of view across the

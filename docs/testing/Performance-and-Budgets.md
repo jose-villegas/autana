@@ -96,3 +96,12 @@ when the watch ran out of room for an event, since a finding could hide there.
 doing each kind of work every frame must fail naming that kind; once must
 pass; three call sites taking turns must not merge; stdout must come back in
 order.
+
+## Every fill path has a stress preset
+
+A perf change is measured on the stress presets before whole scenes. A
+renderer fill path no preset reaches shows no change there, whatever it costs.
+
+| Where | Counted | Fails |
+|---|---|---|
+| Host Tests (CI), `stress_path_hits.sh --check` beside the stress presets | each path declared with `R3D_PATH` ([`r3d_path.h`](../../launcher/main/render/path/r3d_path.h)), hit on a host while every preset draws the poses the board's stress suite replays, at each quarter | the job, naming each path no preset reached. A new path lands with a preset that reaches it; the counters exist only on a host, and `check_release_symbols.sh` fails a release image holding one |

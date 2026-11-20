@@ -136,6 +136,16 @@ static const stress_goal_t stress_goals[] = {
     {"stress-skinned-sh-blobs", "landscape", "default", {320, 1250, 7790, 2180, 10, 1540, 240, 2920}, {16080, 18500}},
     {"stress-contact-blobs", "portrait", "default", {190, 720, 4160, 2180, 10}, {7190, 8270}},
     {"stress-contact-blobs", "landscape", "default", {200, 700, 7320, 2210, 10}, {10320, 11870}},
+    {"stress-small-grain", "portrait", "default", {0, 0, 0, 0, 0}, {0, 0}},
+    {"stress-small-grain", "landscape", "default", {0, 0, 0, 0, 0}, {0, 0}},
+    {"stress-small-dither", "portrait", "default", {0, 0, 0, 0, 0}, {0, 0}},
+    {"stress-small-dither", "landscape", "default", {0, 0, 0, 0, 0}, {0, 0}},
+    {"stress-small-off", "portrait", "default", {0, 0, 0, 0, 0}, {0, 0}},
+    {"stress-small-off", "landscape", "default", {0, 0, 0, 0, 0}, {0, 0}},
+    {"stress-stack-skip", "portrait", "default", {0, 0, 0, 0, 0}, {0, 0}},
+    {"stress-stack-skip", "landscape", "default", {0, 0, 0, 0, 0}, {0, 0}},
+    {"stress-carved-blend", "portrait", "default", {0, 0, 0, 0, 0}, {0, 0}},
+    {"stress-carved-blend", "landscape", "default", {0, 0, 0, 0, 0}, {0, 0}},
 };
 
 static const char*
@@ -239,7 +249,7 @@ test_stress_stages(void) {
     int64_t sums[STRESS_PERF_SAMPLED_STAGES] = {0};
     for (int i = 0; i < params->perf_poses; i++) {
         int64_t stage_us[STRESS_PERF_SAMPLED_STAGES];
-        render_lab_test_replay_pose(TAG, camera, duration_ms, (int32_t)((int64_t)duration_ms * i / params->perf_poses),
+        render_lab_test_replay_pose(TAG, camera, duration_ms, (int32_t)stress_pose_ms(params, duration_ms, i),
                                     preset->key, quarter->name, sampled, STRESS_PERF_SAMPLED_STAGES, stage_us, dt_ms);
         for (int stage = 0; stage < STRESS_PERF_SAMPLED_STAGES; stage++) {
             sums[stage] += stage_us[stage];
