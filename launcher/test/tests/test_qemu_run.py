@@ -178,6 +178,16 @@ class QemuStopTest(unittest.TestCase):
         return qemu_run.run_qemu([sys.executable, str(self.script), str(port), mode], port,
                                  str(self.log), str(self.output), timeout, [])
 
+    def start_fake(self, mode):
+        """The fake QEMU in `mode` and our console on it, both closed after the test."""
+        port = qemu_run.free_port()
+        proc = subprocess.Popen([sys.executable, str(self.script), str(port), mode],
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.addCleanup(proc.wait)
+        console = qemu_run.Console(proc, port, str(self.log), time.monotonic() + 30)
+        self.addCleanup(console.close)
+        return proc, console
+
     def test_a_finished_run_reports_no_stop(self):
         self.assertEqual((True, None), self.run_fake("sentinel"))
 
@@ -198,24 +208,14 @@ class QemuStopTest(unittest.TestCase):
 
     def test_what_qemu_sent_before_it_exited_is_still_read(self):
         # The console is read only after the fake has exited, so its last line waits in the socket.
-        port = qemu_run.free_port()
-        proc = subprocess.Popen([sys.executable, str(self.script), str(port), "exit"],
-                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        self.addCleanup(proc.wait)
-        console = qemu_run.Console(proc, port, str(self.log), time.monotonic() + 30)
-        self.addCleanup(console.close)
+        proc, console = self.start_fake("exit")
         proc.wait(timeout=30)
         self.assertEqual(["/src/suite_gfx.c:40:test_fill:PASS"], list(console.lines()))
         self.assertEqual(qemu_run.QEMU_EXITED, console.ended)
 
     def test_qemu_exiting_with_a_line_of_ours_unread_ends_the_console_as_an_exit(self):
         # Closing a socket with unread bytes resets it: the reader must take that as QEMU's end.
-        port = qemu_run.free_port()
-        proc = subprocess.Popen([sys.executable, str(self.script), str(port), "unread"],
-                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        self.addCleanup(proc.wait)
-        console = qemu_run.Console(proc, port, str(self.log), time.monotonic() + 30)
-        self.addCleanup(console.close)
+        proc, console = self.start_fake("unread")
         console.send("BUILD_ID_REQUEST")
         proc.wait(timeout=30)
         list(console.lines())
