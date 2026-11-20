@@ -168,7 +168,7 @@ material becomes a double-sided shape with vertex colours,
 
 | Decision | Rule |
 |---|---|
-| Candidate | A cut-out texture whose alpha test cuts at least `CARD_SEE_THROUGH_MIN` of its surface samples, so leaves cut tight around each triangle count. Carved and thinned materials are excluded. |
+| Candidate | A cut-out texture whose alpha test cuts at least `CARD_SEE_THROUGH_MIN` of its surface samples, so leaves cut tight around each triangle count. This asks whether the material is a cut-out; `alpha_mask` still drops single triangles by their mean alpha. Carved and thinned materials are excluded. |
 | Accepted | Cards cover at least `CARD_COVERED_MIN` of the opaque surface's samples within their slabs, rectangles and kept texels, each weighted by area and by the probe weight the plane choice used. Samples no probe sees do not count. |
 | Ordinary geometry | Non-candidates and rejected candidates remain geometry. |
 | Overrides | `never` excludes a material; `always` bypasses the thresholds. Forcing a carved or thinned material, unknown names, or overlapping overrides is an error. |

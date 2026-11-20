@@ -11,6 +11,7 @@ from r3d.cards import CARD_MASK_TEXELS, CARD_MAX_SIDE, CARD_MIP_LEVELS
 from r3d.cards.pages import PAGE_SIDE
 from r3d.poses import camera_basis
 from r3d.light import AlphaTest
+from r3d.mesh_source import with_triangles
 from r3d.surface_samples import uniform_barycentric
 
 NORMAL_MIN = 1e-9
@@ -35,6 +36,14 @@ def alpha_samples(sub, rng, keep_alpha):
     area = np.repeat(lengths / (2 * SAMPLES_PER_TRIANGLE), SAMPLES_PER_TRIANGLE)
     hits = np.repeat(np.flatnonzero(keep), SAMPLES_PER_TRIANGLE)
     return points, normals, area, AlphaTest(sub, keep_alpha)(hits, points)
+
+
+def material_samples(src, ids, keep_alpha, seed):
+    """The triangles `ids` of `src` as a sub-source, a generator seeded by `seed`, and their `alpha_samples`
+    drawn from it: the one surface both card candidacy and the card fit read, the fit drawing on from `rng`."""
+    sub = with_triangles(src, src.tri_v[ids], src.tri_t[ids], src.tri_m[ids])
+    rng = np.random.default_rng(seed)
+    return sub, rng, alpha_samples(sub, rng, keep_alpha)
 
 
 def samples(sub, rng, keep_alpha):

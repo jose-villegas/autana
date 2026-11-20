@@ -1,19 +1,17 @@
-"""Select cut-out materials by their see-through triangles and their baked cards' opaque-area coverage."""
+"""Select cut-out materials by their alpha-cut surface samples and their baked cards' opaque-area coverage."""
 
 import numpy as np
 
 from r3d.cards import CARD_COVERED_MIN, CARD_SEE_THROUGH_MIN
 from r3d.import_settings import SettingsError, match_meshes
-from r3d.cards.choose import alpha_samples
-from r3d.mesh_source import with_triangles
+from r3d.cards.choose import material_samples
 from r3d.obj import alpha_tested
 
 
 def see_through_share(src, ids, keep_alpha, seed):
     """The share of surface samples on triangles `ids` that the alpha test cuts: leaves cut tight around each
     triangle count as see-through, though no triangle's mean alpha is under keep_alpha."""
-    sub = with_triangles(src, src.tri_v[ids], src.tri_t[ids], src.tri_m[ids])
-    _, _, _, opaque = alpha_samples(sub, np.random.default_rng(seed), keep_alpha)
+    _, _, (_, _, _, opaque) = material_samples(src, ids, keep_alpha, seed)
     return float(1 - opaque.mean()) if len(opaque) else 0.0
 
 

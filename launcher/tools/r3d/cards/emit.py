@@ -4,7 +4,7 @@ import numpy as np
 
 from r3d import log
 from r3d.cards.bake import bake_card, corner_colours
-from r3d.cards.choose import choose_cards, probe_weights, samples, split_cards
+from r3d.cards.choose import choose_cards, material_samples, probe_weights, split_cards
 from r3d.cards import decide
 from r3d.cards.pages import PAGE_SIDE
 from r3d.mesh_source import with_triangles
@@ -34,11 +34,8 @@ def share(weight, chosen):
 def make_shape(src, material, settings, seed, keep_alpha, *, views, query):
     name = src.names[material]
     ids = np.flatnonzero(src.tri_m == material)
-    triangles, tri_uv = src.tri_v[ids], src.tri_t[ids]
-    rng = np.random.default_rng(seed)
-    sub = with_triangles(src, triangles, tri_uv, src.tri_m[ids])
-    sampled = samples(sub, rng, keep_alpha)
-    points, _, area = sampled
+    sub, rng, (points, normals, area, opaque) = material_samples(src, ids, keep_alpha, seed)
+    sampled = points, normals, area = points[opaque], normals[opaque], area[opaque]
     weights = probe_weights(points, views.training, query, views.face_lens,
                             near_floor=PROBE_WEIGHT_FLOOR * views.record['spacing'])
     selected = choose_cards(sampled, rng, weights=weights, epsilon=settings.epsilon, area_cost=settings.area_cost)
