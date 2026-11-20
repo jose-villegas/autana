@@ -75,6 +75,8 @@ static const char* dump_dir;
 /* --counts PATH, with --view cull: a row per frame of what the cull view counted (render_counts.h). */
 static const char* counts_path;
 static FILE* counts;
+static const char* pose_path;
+static FILE* poses;
 
 /* The value after `name` in `out`, NULL when the option is absent; false,
  * with a message, when it is the last argument and has none. */
@@ -216,7 +218,7 @@ options(int argc, char** argv) {
     } values[] = {
         {"--scene", &scene},   {"--view", &view},          {"--camera", &render_lab.start_camera},
         {"--scale", &scale},   {"--size", &size},          {"--small-fill", &small_fill},
-        {"--dump", &dump_dir}, {"--counts", &counts_path},
+        {"--dump", &dump_dir}, {"--counts", &counts_path}, {"--pose-json", &pose_path},
     };
 
     for (size_t i = 0; i < sizeof values / sizeof values[0]; i++) {
@@ -272,9 +274,20 @@ setup(int quarter) {
         const resolution_config_t one = resolution_config(&size, 1, 1, INT32_MAX);
         render_context_set_dynamic_resolution(render_context_main(), &one, NULL, 0);
     }
-    /* Last, so that no failure after it leaves the file open. */
-    return tune_options(option_count, option_args, "--live-tune")
-           && (counts_path == NULL || (counts = render_counts_open(counts_path, "render_lab_render_host")) != NULL);
+    if (!tune_options(option_count, option_args, "--live-tune")) {
+        return false;
+    }
+    if (pose_path != NULL && (poses = render_rows_open(pose_path, "[", "render_lab_render_host")) == NULL) {
+        return false;
+    }
+    if (counts_path != NULL && (counts = render_counts_open(counts_path, "render_lab_render_host")) == NULL) {
+        if (poses != NULL) {
+            fclose(poses);
+            poses = NULL;
+        }
+        return false;
+    }
+    return true;
 }
 
 /* With --view overdraw, the last frame's totals on stderr, beside its image. */
@@ -309,6 +322,10 @@ dump_raster(int index) {
 
 static void
 draw(const provider_frame_t* frame) {
+    /* The shell composed this picture before console commands can seek the next one. */
+    if (poses != NULL) {
+        render_pose_row(&poses, frame);
+    }
     ui_clear_band_overlay();
     input_t in = tap ? frame->input : (input_t){0};
     in.boot.pressed = menu && frame->index == 0;

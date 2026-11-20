@@ -7,11 +7,23 @@ import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from r3d.gltf_skin import SkinnedAsset
-from r3d.skin_reference import posed_skin
+from r3d.skin_reference import posed_skin, pose_frame
 from tests.skin_probe import POSITIONS, rig
 
 
 class SkinReferenceTests(unittest.TestCase):
+    def test_pose_frame_keeps_exported_values(self):
+        frame = {"frame": 3, "camera": {"world": np.eye(4).tolist(), "lens": 0.7, "near": 0.1},
+                 "skins": [{"name": "subject", "clip": "move", "time": 0.375,
+                            "world": np.eye(4).tolist(), "blend": 1}]}
+        with self.subTest("selection"):
+            skin, camera = pose_frame([frame], 3, "subject")
+            self.assertEqual(skin["time"], 0.375)
+            self.assertEqual(camera["lens"], 0.7)
+        frame["skins"][0]["blend"] = 0.5
+        with self.assertRaisesRegex(ValueError, "blend"):
+            pose_frame([frame], 3, "subject")
+
     def test_triangle_placement(self):
         asset = SkinnedAsset(*rig())
         world, colors, triangles = posed_skin(asset, "move", 0, (10, 20, 30), 90, 2)
