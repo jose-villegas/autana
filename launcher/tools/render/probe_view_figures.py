@@ -5,6 +5,7 @@ import pathlib
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
+GFX_HEADER = ROOT / "launcher/main/gfx/gfx.h"
 sys.path.insert(0, str(ROOT / "launcher/tools"))
 from build.c_header import read_define
 from docs.figures import render_scene, save_png
@@ -35,8 +36,7 @@ def main():
     parser.add_argument("--work", type=pathlib.Path, default=ROOT / "launcher/tools/results/render/probe_view")
     args = parser.parse_args()
     args.work.mkdir(parents=True, exist_ok=True)
-    header = ROOT / "launcher/main/gfx/gfx.h"
-    width, height = (read_define(header, f"GFX_{axis}") for axis in ("WIDTH", "HEIGHT"))
+    width, height = (read_define(GFX_HEADER, f"GFX_{axis}") for axis in ("WIDTH", "HEIGHT"))
     for view, suffix in (("wide", ""), ("close", "-close")):
         picture = args.work / f"{args.stem}{suffix}.bmp"
         render_scene(args.scene, "--object", args.object, "--view", "probes",
