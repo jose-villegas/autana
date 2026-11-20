@@ -1,5 +1,7 @@
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
+#include "hash/crc32.h"
 #include "image/pixel/rgb565.h"
 #include "r3d_quad_mesh.h"
 #include "render/contact/contact_blob.h"
@@ -11,6 +13,19 @@
 enum { BLOB_WIDTH = 9, BLOB_HEIGHT = 9, BLOB_CENTRE = 4, BLOB_DEPTH = 4 };
 
 #define BLOB_RADIUS 1.0F
+
+static void
+draw_disc_fixture(const r3d_span_target_t* target, const r3d_lens_t* lens, vec3f_t centre, vec3f_t up, float radius,
+                  float strength) {
+    void* work = malloc(contact_blobs_work_bytes());
+    TEST_ASSERT_NOT_NULL(work);
+    const vec3f_t axis = fabsf(up.x) < fabsf(up.y) ? vec3f_unit_x() : vec3f_unit_y();
+    const vec3f_t u = vec3f_scale(vec3f_normalize(vec3f_cross(up, axis)), radius);
+    const vec3f_t v = vec3f_scale(vec3f_normalize(vec3f_cross(up, u)), radius);
+    const contact_blob_t blob = {.centre = centre, .u = u, .v = v, .strength = strength};
+    contact_blobs_draw(target, lens, &blob, 1, work);
+    free(work);
+}
 
 static void
 test_blob_depth_radius_rows_strength(void) {
@@ -29,10 +44,10 @@ test_blob_depth_radius_rows_strength(void) {
     const vec3f_t ground = {(BLOB_CENTRE + 0.5F - lens.project.cx) * BLOB_DEPTH / lens.focal_x,
                             -(BLOB_CENTRE + 0.5F - lens.project.cy) * BLOB_DEPTH / lens.focal_y, BLOB_DEPTH};
     r3d_span_target_t target = r3d_span_target(color, depth, BLOB_WIDTH, 0, BLOB_HEIGHT);
-    contact_blob_draw(&target, &lens, ground, vec3f_unit_z(), BLOB_RADIUS, 0);
+    draw_disc_fixture(&target, &lens, ground, vec3f_unit_z(), BLOB_RADIUS, 0);
     TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xffffff), color[BLOB_CENTRE * BLOB_WIDTH + BLOB_CENTRE]);
     depth[BLOB_CENTRE * BLOB_WIDTH + BLOB_CENTRE] = R3D_DEPTH_NEAREST;
-    contact_blob_draw(&target, &lens, ground, vec3f_unit_z(), BLOB_RADIUS, 1);
+    draw_disc_fixture(&target, &lens, ground, vec3f_unit_z(), BLOB_RADIUS, 1);
     TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xffffff), color[BLOB_CENTRE * BLOB_WIDTH + BLOB_CENTRE]);
     depth[BLOB_CENTRE * BLOB_WIDTH + BLOB_CENTRE] = R3D_DEPTH_EMPTY;
     for (int i = 0; i < BLOB_WIDTH * BLOB_HEIGHT; i++) {
@@ -40,7 +55,7 @@ test_blob_depth_radius_rows_strength(void) {
     }
     target = r3d_span_target(color + BLOB_CENTRE * BLOB_WIDTH, depth + BLOB_CENTRE * BLOB_WIDTH, BLOB_WIDTH,
                              BLOB_CENTRE, BLOB_CENTRE + 1);
-    contact_blob_draw(&target, &lens, ground, vec3f_unit_z(), BLOB_RADIUS, 1);
+    draw_disc_fixture(&target, &lens, ground, vec3f_unit_z(), BLOB_RADIUS, 1);
     TEST_ASSERT_EQUAL_HEX16(rgb565be_pack(15, 31, 15), color[BLOB_CENTRE * BLOB_WIDTH + BLOB_CENTRE]);
     TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xffffff), color[0]);
     TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xffffff), color[(BLOB_CENTRE - 1) * BLOB_WIDTH + BLOB_CENTRE]);
@@ -71,7 +86,7 @@ test_blob_squared_falloff(void) {
                 const vec3f_t ground = {distances[d] * BLOB_RADIUS, 0, BLOB_DEPTH};
                 const int pixel = y * BLOB_WIDTH + x;
                 color[pixel] = RGB565BE(0xffffff);
-                contact_blob_draw(&target, &lens, ground, vec3f_unit_z(), BLOB_RADIUS, 1);
+                draw_disc_fixture(&target, &lens, ground, vec3f_unit_z(), BLOB_RADIUS, 1);
                 count += color[pixel] != RGB565BE(0xffffff);
             }
         }
@@ -93,7 +108,7 @@ floor_blob(const r3d_span_target_t* target, const r3d_lens_t* lens, void* user) 
             }
         }
     }
-    contact_blob_draw(target, lens, vec3f_zero(), vec3f_unit_y(), 2, 1);
+    draw_disc_fixture(target, lens, vec3f_zero(), vec3f_unit_y(), 2, 1);
 }
 
 static void
@@ -125,8 +140,131 @@ test_blob_coplanar_floor_matches_unoccluded_disc(void) {
     TEST_ASSERT_TRUE(same);
 }
 
+typedef struct {
+    uint16_t* color;
+    uint16_t* depth;
+    void* work;
+    r3d_lens_t lens;
+    r3d_span_target_t target;
+} blob_fixture_t;
+
+static blob_fixture_t
+blob_fixture_make(int size) {
+    blob_fixture_t f = {.color = malloc(size * size * sizeof *f.color), .depth = calloc(size * size, sizeof *f.depth)};
+    f.work = malloc(contact_blobs_work_bytes());
+    TEST_ASSERT_NOT_NULL(f.work);
+    TEST_ASSERT_NOT_NULL(f.color);
+    TEST_ASSERT_NOT_NULL(f.depth);
+    const transformf_t pose = transformf_identity();
+    const render_view_t view = render_view_make(&pose, 1, 1, (viewport_t){size, size, 0});
+    r3d_lens_init(&f.lens, &view, 1);
+    f.target = r3d_span_target(f.color, f.depth, size, 0, size);
+    for (int i = 0; i < size * size; i++) {
+        f.color[i] = RGB565BE(0xffffff);
+    }
+    return f;
+}
+
+static void
+test_round_disc_golden(void) {
+    enum { SIZE = 32 };
+
+    blob_fixture_t f = blob_fixture_make(SIZE);
+    draw_disc_fixture(&f.target, &f.lens, (vec3f_t){0, 0, BLOB_DEPTH}, vec3f_unit_z(), BLOB_RADIUS, 1);
+    const uint32_t crc = crc32_update(0, f.color, SIZE * SIZE * sizeof *f.color);
+    free(f.work);
+    free(f.depth);
+    free(f.color);
+    static const uint32_t round_disc_golden = 0xD248B59FU;
+    TEST_ASSERT_EQUAL_HEX32(round_disc_golden, crc);
+}
+
+static void
+test_full_mask_rectangle(void) {
+    enum { SIZE = 32, MIDDLE = 16 };
+
+    blob_fixture_t f = blob_fixture_make(SIZE);
+    contact_mask_t mask = {.coverage = malloc(CONTACT_MASK_BYTES)};
+    TEST_ASSERT_NOT_NULL(mask.coverage);
+    memset(mask.coverage, UINT8_MAX, CONTACT_MASK_BYTES);
+    const contact_blob_t blob = {
+        .centre = {0, 0, BLOB_DEPTH}, .u = {1, 0, 0}, .v = {0, 1, 0}, .strength = 1, .mask = &mask};
+    contact_blobs_draw(&f.target, &f.lens, &blob, 1, f.work);
+    for (int y = 0; y < SIZE; y++) {
+        for (int x = 0; x < SIZE; x++) {
+            const float s = (x + 0.5F - f.lens.project.cx) * BLOB_DEPTH / f.lens.focal_x;
+            const float t = (y + 0.5F - f.lens.project.cy) * BLOB_DEPTH / f.lens.focal_y;
+            const bool inside = fabsf(s) < 1 && fabsf(t) < 1;
+            TEST_ASSERT_EQUAL_HEX16(inside ? rgb565be_pack(15, 31, 15) : RGB565BE(0xffffff), f.color[y * SIZE + x]);
+        }
+    }
+    free(mask.coverage);
+    free(f.work);
+    free(f.depth);
+    free(f.color);
+}
+
+static void
+test_mask_last_float_inside_edge(void) {
+    enum { SIZE = 1 };
+
+    const float inside = 0.9999999404F;
+    blob_fixture_t f = blob_fixture_make(SIZE);
+    contact_mask_t mask = {.coverage = calloc(CONTACT_MASK_BYTES, 1)};
+    TEST_ASSERT_NOT_NULL(mask.coverage);
+    mask.coverage[CONTACT_MASK_BYTES - 1] = UINT8_MAX;
+    const contact_blob_t blob = {
+        .centre = {-inside, -inside, BLOB_DEPTH}, .u = {1, 0, 0}, .v = {0, 1, 0}, .strength = 1, .mask = &mask};
+    contact_blobs_draw(&f.target, &f.lens, &blob, 1, f.work);
+    TEST_ASSERT_EQUAL_HEX16(rgb565be_pack(15, 31, 15), f.color[0]);
+    free(mask.coverage);
+    free(f.color);
+    free(f.work);
+    free(f.depth);
+}
+
+static void
+test_multiple_footprints_union_without_double_darkening(void) {
+    enum { SIZE = 32, DISCS = 3 };
+
+    static const contact_blob_t blobs[DISCS] = {
+        {.centre = {-BLOB_RADIUS, 0, BLOB_DEPTH}, .u = {BLOB_RADIUS, 0, 0}, .v = {0, BLOB_RADIUS, 0}, .strength = 1},
+        {.centre = {0, 0, BLOB_DEPTH}, .u = {BLOB_RADIUS, 0, 0}, .v = {0, BLOB_RADIUS, 0}, .strength = 1},
+        {.centre = {BLOB_DEPTH, 0, BLOB_DEPTH}, .u = {BLOB_RADIUS, 0, 0}, .v = {0, BLOB_RADIUS, 0}, .strength = 1}};
+    blob_fixture_t f = blob_fixture_make(SIZE);
+    uint16_t* expected = malloc(SIZE * SIZE * sizeof *expected);
+    TEST_ASSERT_NOT_NULL(expected);
+    for (int p = 0; p < SIZE * SIZE; p++) {
+        expected[p] = RGB565BE(0xffffff);
+    }
+    for (int i = 0; i < DISCS; i++) {
+        for (int p = 0; p < SIZE * SIZE; p++) {
+            f.color[p] = RGB565BE(0xffffff);
+        }
+        contact_blobs_draw(&f.target, &f.lens, &blobs[i], 1, f.work);
+        for (int p = 0; p < SIZE * SIZE; p++) {
+            if (f.color[p] != RGB565BE(0xffffff)) {
+                expected[p] = f.color[p];
+            }
+        }
+    }
+    for (int p = 0; p < SIZE * SIZE; p++) {
+        f.color[p] = RGB565BE(0xffffff);
+    }
+    contact_blobs_draw(&f.target, &f.lens, blobs, DISCS, f.work);
+    TEST_ASSERT_EQUAL_MEMORY(expected, f.color, SIZE * SIZE * sizeof *expected);
+    free(expected);
+    free(f.color);
+    free(f.work);
+    free(f.depth);
+}
+
 void
 suite_contact_blob(void) {
+    RUN_TEST(test_multiple_footprints_union_without_double_darkening);
+    RUN_TEST(test_full_mask_rectangle);
+    RUN_TEST(test_mask_last_float_inside_edge);
+    RUN_TEST(test_round_disc_golden);
     RUN_TEST(test_blob_depth_radius_rows_strength);
     RUN_TEST(test_blob_squared_falloff);
     RUN_TEST(test_blob_coplanar_floor_matches_unoccluded_disc);

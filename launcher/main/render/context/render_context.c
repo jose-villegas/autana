@@ -1,5 +1,6 @@
 #include "render/context/render_context.h"
 #include "core/checkpoint.h"
+#include "render/contact/contact_blob.h"
 
 #include <assert.h>
 #include <stddef.h>
@@ -7,6 +8,7 @@
 #include <string.h>
 
 #include "build/build_variant.h"
+#include "collections/mem.h"
 #include "core/memory.h"
 #include "core/timing.h"
 #include "profile/frame_cost.h"
@@ -286,7 +288,8 @@ fit_scratch(render_context_t* c) {
         c->raster.width = c->ladder.steps[0].width;
         c->raster.height = c->ladder.steps[0].height;
     }
-    const size_t needed = scratch_bytes_with_view(c);
+    size_t needed = scratch_bytes_with_view(c);
+    c->contact_work_offset = mem_carve(&needed, contact_blobs_work_bytes(), _Alignof(max_align_t));
     c->raster.width = width;
     c->raster.height = height;
     if (needed > c->scratch_bytes) {

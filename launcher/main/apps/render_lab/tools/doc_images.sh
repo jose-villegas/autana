@@ -5,7 +5,7 @@
 #
 #   doc_images.sh <out-tree> <work-dir>
 #
-# <out-tree> holds the app's images in overview/.
+# <out-tree> holds the app's images in overview/ and render/.
 #
 # Run from the repository root with $PYTHON set to a Python that has Pillow and numpy.
 # Renderer output goes to logs under <work-dir>.
@@ -14,9 +14,60 @@ set -eu
 
 . scripts/lib/run.sh
 
-OUT=$1/overview
+OUT_TREE=$1
+OUT=$OUT_TREE/overview
 W=$2
 run mkdir -p "$W" "$OUT"
+
+contact_images() {
+    CONTACT_FRAMES=60
+    CONTACT_DT=100
+    CONTACT_CROPS=3
+    run mkdir -p "$OUT_TREE/render"
+    for shape in 0 2; do
+        run "$W/render_lab_render" --quarter 1 --no-hud --scene capybara-sponza \
+            --contact-shape "$shape" --contact-warp 0 \
+            --frames "$CONTACT_FRAMES" --dt "$CONTACT_DT" \
+            -o "$W/contact-$shape.bmp" > "$W/contact-$shape-console.log" 2> "$W/contact-$shape.log"
+    done
+    run "$PYTHON" launcher/tools/render/render_compare.py --out "$OUT_TREE/render/contact-silhouette.png" \
+        --row "Ground contact" "$W/contact-0.bmp" "$W/contact-2.bmp" \
+        --label-a BLOB --label-b SILHOUETTE --crops "$CONTACT_CROPS" > "$W/contact-silhouette-compare.log"
+
+    for key in skinned-feet-blobs skinned-blob-warped skinned-silhouette-blobs skinned-silhouette-warped; do
+        run "$W/render_lab_render" --quarter 1 --no-hud --scene "stress-$key" --frames 2 \
+            -o "$W/stress-$key.bmp" 2> "$W/stress-$key.log"
+        run "$PYTHON" launcher/tools/docs/figures.py png "$W/stress-$key.bmp" "$OUT/render-lab-stress-$key.png"
+    done
+
+    # Each tile samples the same run time and camera; the crop keeps the subject and ground contact.
+    CONTACT_VIDEO_FRAMES=185
+    CONTACT_VIDEO_DT=100
+    CONTACT_VIDEO_FPS=5
+    CONTACT_VIDEO_CROP="112 96 336 320"
+    for shape in 0 1 2; do
+        for warp in 0 1; do
+            run "$W/render_lab_render" --quarter 1 --no-hud --scene capybara-sponza \
+                --frames "$CONTACT_VIDEO_FRAMES" --dt "$CONTACT_VIDEO_DT" \
+                --contact-shape "$shape" --contact-warp "$warp" \
+                -o "$W/contact-$shape-$warp.bmp" --video "$W/contact-$shape-$warp.avi" \
+                > "$W/contact-$shape-$warp-console.log" 2> "$W/contact-$shape-$warp.log"
+        done
+    done
+    run "$PYTHON" launcher/tools/render/render_compare.py --out "$OUT_TREE/render/contact-warp.gif" \
+        --video-row BLOB "$W/contact-0-0.avi" "$W/contact-0-1.avi" \
+        --video-row FEET "$W/contact-1-0.avi" "$W/contact-1-1.avi" \
+        --video-row SILHOUETTE "$W/contact-2-0.avi" "$W/contact-2-1.avi" \
+        --label-a "warp off" --label-b "warp on" --fps "$CONTACT_VIDEO_FPS" --crop-box $CONTACT_VIDEO_CROP \
+        > "$W/contact-warp.log"
+
+}
+
+if [ "${3:-}" = --contacts-only ]; then
+    run sh launcher/main/apps/render_lab/tools/render_lab_render_host.sh --build-only -o "$W" > "$W/scenes.log"
+    contact_images
+    exit 0
+fi
 
 run sh launcher/main/apps/render_lab/tools/render_lab_render_host.sh -o "$W" > "$W/scenes.log"
 
@@ -97,6 +148,8 @@ for key in $(sed -n 's/^ *X([A-Z_]*, "\([^"]*\)".*/\1/p' launcher/main/apps/rend
         2> "$W/stress-$key.log"
     run "$PYTHON" launcher/tools/docs/figures.py png "$W/stress-$key.bmp" "$OUT/render-lab-stress-$key.png"
 done
+
+contact_images
 
 # The biggest herd walking for 12 s at its own pace, so each gait's feet keep
 # to the ground, while the orbit makes a fifth of a turn.

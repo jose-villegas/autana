@@ -15,10 +15,10 @@ is stale, so rerun it after changing an image or the pages that show one.
 | [input](#input) | 11 | 0 | 0 |
 | [kinematics](#kinematics) | 7 | 3 | 0 |
 | [math](#math) | 25 | 25 | 0 |
-| [overview](#overview) | 45 | 0 | 0 |
+| [overview](#overview) | 49 | 0 | 0 |
 | [physics](#physics) | 2 | 0 | 0 |
 | [power](#power) | 2 | 0 | 0 |
-| [render](#render) | 132 | 8 | 0 |
+| [render](#render) | 135 | 8 | 0 |
 | [ui](#ui) | 62 | 0 | 0 |
 
 ## anim
@@ -168,7 +168,11 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/overview/render-lab-stress-open.png"><img src="../images/overview/render-lab-stress-open.png" width="160" alt=""></a> | Stress open: a wall of planes side by side | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-per-frame.png"><img src="../images/overview/render-lab-stress-per-frame.png" width="160" alt=""></a> | Stress per frame: one plane with a wave running over it | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-record.png"><img src="../images/overview/render-lab-stress-record.png" width="160" alt=""></a> | Stress record: four planes with a wave running over them | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
+| <a href="../images/overview/render-lab-stress-skinned-blob-warped.png"><img src="../images/overview/render-lab-stress-skinned-blob-warped.png" width="160" alt=""></a> | Warped radial ellipse | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
+| <a href="../images/overview/render-lab-stress-skinned-feet-blobs.png"><img src="../images/overview/render-lab-stress-skinned-feet-blobs.png" width="160" alt=""></a> | Constant discs under generic contact joints | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-skinned-sh-blobs.png"><img src="../images/overview/render-lab-stress-skinned-sh-blobs.png" width="160" alt=""></a> | Skinned copies with probe lighting and contact discs | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
+| <a href="../images/overview/render-lab-stress-skinned-silhouette-blobs.png"><img src="../images/overview/render-lab-stress-skinned-silhouette-blobs.png" width="160" alt=""></a> | Top-down joint-proxy silhouette | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
+| <a href="../images/overview/render-lab-stress-skinned-silhouette-warped.png"><img src="../images/overview/render-lab-stress-skinned-silhouette-warped.png" width="160" alt=""></a> | Warped silhouette contacts | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-small-dither.png"><img src="../images/overview/render-lab-stress-small-dither.png" width="160" alt=""></a> | Stress small dither: a wall of coarse noisy planes, dithered | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-small-grain.png"><img src="../images/overview/render-lab-stress-small-grain.png" width="160" alt=""></a> | Stress small grain: a wall of coarse planes drawn in grain | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-small-off.png"><img src="../images/overview/render-lab-stress-small-off.png" width="160" alt=""></a> | Stress small off: many small spheres, the small fill off | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
@@ -231,6 +235,9 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/render/compare-full-lite.png"><img src="../images/render/compare-full-lite.png" width="160" alt=""></a> | full against lite | [render/offline/Bake-Quality](../render/offline/Bake-Quality.md) | not declared yet |
 | <a href="../images/render/compare-lite-fitted.crops.png"><img src="../images/render/compare-lite-fitted.crops.png" width="160" alt=""></a> | lite against fitted, the places they differ most | [render/offline/Bake-Quality](../render/offline/Bake-Quality.md) | not declared yet |
 | <a href="../images/render/compare-lite-fitted.png"><img src="../images/render/compare-lite-fitted.png" width="160" alt=""></a> | lite against fitted | [render/offline/Bake-Quality](../render/offline/Bake-Quality.md) | not declared yet |
+| <a href="../images/render/contact-silhouette.crops.png"><img src="../images/render/contact-silhouette.crops.png" width="160" alt=""></a> | Enlarged BLOB and SILHOUETTE contact coverage | [render/animation/Skinned-Meshes](../render/animation/Skinned-Meshes.md) | not declared yet |
+| <a href="../images/render/contact-silhouette.png"><img src="../images/render/contact-silhouette.png" width="160" alt=""></a> | BLOB and SILHOUETTE under the same low contact light | [render/animation/Skinned-Meshes](../render/animation/Skinned-Meshes.md) | not declared yet |
+| <a href="../images/render/contact-warp.gif"><img src="figure-thumbnails/render/contact-warp.gif" width="160" alt=""></a> | BLOB, FEET and SILHOUETTE during one run, with warp off and on | [render/animation/Skinned-Meshes](../render/animation/Skinned-Meshes.md) | not declared yet |
 | <a href="../images/render/cull-bistro-chase.gif"><img src="figure-thumbnails/render/cull-bistro-chase.gif" width="160" alt=""></a> | Bistro's fates from behind the camera | [render/Render-Settings](../render/Render-Settings.md), [render/frame/Culling](../render/frame/Culling.md) | not declared yet |
 | <a href="../images/render/cull-bistro-counts.png"><img src="../images/render/cull-bistro-counts.png" width="160" alt=""></a> | Bistro's counts along its path | [render/frame/Culling](../render/frame/Culling.md) | not declared yet |
 | <a href="../images/render/cull-bistro-sheet.png"><img src="../images/render/cull-bistro-sheet.png" width="160" alt=""></a> | Bistro's cull along its path | [render/frame/Culling](../render/frame/Culling.md) | not declared yet |
