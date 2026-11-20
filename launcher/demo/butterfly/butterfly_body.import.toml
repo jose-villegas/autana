@@ -1,0 +1,10 @@
+[source]
+path = "butterfly_body.obj"
+credit = "Body written for this scene."
+
+[output]
+name = "butterfly_body"
+position_scale = 524288
+
+[geometry]
+lod = false
