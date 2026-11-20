@@ -243,18 +243,12 @@ test_an_unknown_or_overlong_suite_is_not_found(void) {
     TEST_ASSERT_FALSE(request("no_such_suite fire").found);
     char name[SUITE_NAME_MAX + 3];
     pattern_of(name, SUITE_NAME_MAX + 1);
-    TEST_ASSERT_FALSE(request(name).found);
-}
-
-/* The completion line names the suite asked for, even one past
- * SUITE_NAME_MAX: a harness waits for that name, and an emptied one left it
- * waiting until the capture went idle. */
-static void
-test_an_overlong_suite_keeps_its_name_in_the_run(void) {
-    fixture();
-    char name[SUITE_NAME_MAX + 3];
-    pattern_of(name, SUITE_NAME_MAX + 1);
-    TEST_ASSERT_EQUAL_STRING(name, request(name).name);
+    const suite_run_t overlong = request(name);
+    TEST_ASSERT_FALSE(overlong.found);
+    /* The run names it as asked: a harness waits for that name, and an
+     * emptied one left it waiting until the capture went idle. */
+    TEST_ASSERT_EQUAL_INT((int)strlen(name), overlong.name_length);
+    TEST_ASSERT_EQUAL_STRING_LEN(name, overlong.name, overlong.name_length);
 }
 
 typedef struct {
@@ -318,7 +312,6 @@ run_suite_filter_suite(void) {
     RUN_TEST(test_the_pattern_count_at_the_limit_is_accepted_and_one_more_is_refused);
     RUN_TEST(test_an_empty_pattern_is_refused);
     RUN_TEST(test_an_unknown_or_overlong_suite_is_not_found);
-    RUN_TEST(test_an_overlong_suite_keeps_its_name_in_the_run);
     RUN_TEST(test_each_pattern_picks_exactly_the_names_its_case_says);
     RUN_TEST(test_the_listing_names_every_suite_in_order_with_its_on_request_mark);
 }

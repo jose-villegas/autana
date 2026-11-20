@@ -192,7 +192,7 @@ run_pending_selftest_suite(void) {
     UNITY_BEGIN();
     suites_run_request(request->suite, &run);
     if (!run.found) {
-        ESP_LOGE(TAG, "no suite named '%s' is registered", run.name);
+        ESP_LOGE(TAG, "no suite named '%.*s' is registered", run.name_length, run.name);
     }
     suite_report_frame_watch();
     (void)UNITY_END();

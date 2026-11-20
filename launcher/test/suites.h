@@ -65,19 +65,16 @@ void suites_run_all(void);
  * SUITE_FILTER_LEN - 1 characters and a request at most SUITE_FILTER_MAX;
  * one past either is refused. While filtering, suites_test_runs() prints
  * "SUITE_TEST name=... selected=..." for every test reached. */
-#define SUITE_FILTER_MAX  4
-#define SUITE_FILTER_LEN  32
-
-/* The longest request: a name, a space, and SUITE_FILTER_MAX patterns with a
- * comma between each. */
-#define SUITE_REQUEST_MAX (SUITE_NAME_MAX + 1 + (SUITE_FILTER_MAX * SUITE_FILTER_LEN))
+#define SUITE_FILTER_MAX 4
+#define SUITE_FILTER_LEN 32
 
 typedef struct {
-    char name[SUITE_REQUEST_MAX + 1]; /* as asked, even one no suite can have */
-    bool found;                       /* a suite of that exact name is registered */
-    bool refused;                     /* a pattern was too long, empty, or one too many */
-    int selected;                     /* tests that ran */
-    int unmatched;                    /* patterns that matched no test */
+    const char* name; /* the suite asked for, borrowed from the request */
+    int name_length;  /* its characters; the request may go on with patterns */
+    bool found;       /* a suite of that exact name is registered */
+    bool refused;     /* a pattern was too long, empty, or one too many */
+    int selected;     /* tests that ran */
+    int unmatched;    /* patterns that matched no test */
 } suite_run_t;
 
 void suites_run_request(const char* request, suite_run_t* run);
