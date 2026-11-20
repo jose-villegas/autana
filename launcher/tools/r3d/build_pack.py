@@ -47,14 +47,17 @@ products, never committed.
 
 import argparse
 import functools
+import os
 import pathlib
 from types import SimpleNamespace
 import sys
+import tempfile
 import tomllib
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from bake import bake  # noqa: E402
+from docs.producer import DEPENDS_FOLDER  # noqa: E402
 from audio import sound_asset  # noqa: E402
 from anim import tracks_asset  # noqa: E402
 from asset.engine_frame import to_engine  # noqa: E402
@@ -452,6 +455,19 @@ def write_packs(out, packs, image=None):
     return changed
 
 
+def list_reads(paths, folder):
+    """Into `folder`, a dependency list (.d) of what packing `paths` reads beside the bakes the lock pins: this
+    script, the root files and each entry made from a source file. figures_runner.py sets the folder
+    (docs/producer.py DEPENDS_FOLDER) to learn what a run's images were made from."""
+    packs, jobs = pack_jobs(paths)
+    read = {pathlib.Path(__file__).resolve(), *input_files(paths),
+            *(source.resolve() for pack in packs.values() for source in pack.values() if source.resolve() not in jobs)}
+    names = " ".join(path.as_posix().replace(" ", chr(92) + " ") for path in sorted(read))
+    listing = tempfile.NamedTemporaryFile("w", suffix=".d", dir=folder, delete=False, encoding="utf-8", newline=chr(10))
+    with listing:
+        listing.write(f"packs: {names}" + chr(10))
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("paths", nargs="*", help="import, scene, clip or icon set files, or folders; launcher/main when omitted")
@@ -483,6 +499,8 @@ def main(argv=None):
         unlocked = [] if args.skip_unlocked else None
         packs = pack_bytes(paths, args.replace, cache, args.offline, unlocked, args.max_influences,
                            development=args.development or not args.image)
+        if os.environ.get(DEPENDS_FOLDER):
+            list_reads(paths, os.environ[DEPENDS_FOLDER])
         if args.skip_unlocked:
             pathlib.Path(args.skip_unlocked).write_text("".join(f"{name}\n" for name in unlocked), newline="\n")
         for name in write_packs(pathlib.Path(args.out), packs, pathlib.Path(args.image) if args.image else None):
