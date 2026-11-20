@@ -174,8 +174,8 @@ Ambient is either flat or sampled from a world-space L1 SH grid at each
 skinned renderer's last resolved bounds centre. The grid is borrowed through
 `scene_set_probes()`; `NULL` restores the scene's flat ambient.
 
-Cosine convolution gives `E(n) = constant + gradient * n`, with
-`A0 = π` and `A1 = 2π/3`.<sup>[[128]](../../Citations.md#ramamoorthi-hanrahan-2001)</sup>
+Cosine convolution gives $`E(n) = \mathrm{constant} + \mathrm{gradient} \cdot n`$, with
+$`A_0 = \pi`$ and $`A_1 = 2\pi/3`$.<sup>[[128]](../../Citations.md#ramamoorthi-hanrahan-2001)</sup>
 Four RGB radiance coefficients become one constant and a channel-row matrix.
 
 `sh1_rgb_t` uses the real basis order Y00, Y1−1 (+y), Y10 (+z), Y11 (+x),
