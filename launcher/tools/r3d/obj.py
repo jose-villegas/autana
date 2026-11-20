@@ -141,13 +141,6 @@ def load_textures(root, materials, names, dtype=None):
     return textures
 
 
-def alpha_tested(textures):
-    """Per material of `load_textures`: does its texture cut texels away (leaves, chains, glass panes)?"""
-    import numpy as np
-
-    return np.array([tex is not None and tex.levels[0][..., 3].min() <= ALPHA_OPAQUE for tex in textures], dtype=bool)
-
-
 def write_obj(path, mtllib, positions, groups, uvs=None, banner=(), position_decimals=3, uv_decimals=5):
     """Writes `positions` (and a `vt` per uv, sharing its index) under `mtllib`, then each (object,
     material, triangles) group: an `o` line when the object name changes (None writes none), `usemtl`,

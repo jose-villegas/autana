@@ -66,15 +66,6 @@ class FreeRepeatTest(unittest.TestCase):
         self.assertEqual(sorted(carve.free_repeats(pos, tri_v, tri_m, tri_o, names, {}, SCALE, masked=[1])), [])
         self.assertEqual(sorted(carve.free_repeats(pos, tri_v, tri_m, tri_o, names, {}, SCALE, masked=[2])), [0, 1])
 
-    def test_a_material_is_alpha_tested_when_its_texture_cuts_a_texel(self):
-        from r3d.obj import ALPHA_OPAQUE, alpha_tested
-
-        def texture(alpha):
-            return SimpleNamespace(levels=[np.dstack([np.ones((2, 2, 3)), np.full((2, 2), alpha)])])
-        opaque, cut = texture(1.0), texture(1.0)
-        cut.levels[0][0, 0, 3] = ALPHA_OPAQUE
-        self.assertEqual(alpha_tested([None, opaque, cut]).tolist(), [False, False, True])
-
 
 @unittest.skipIf(np is None, "needs the r3d environment")
 class DerivedBudgetTest(unittest.TestCase):
