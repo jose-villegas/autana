@@ -71,8 +71,8 @@ title Landing point, 4 bytes a vertex after the deltas, with LMOR_LANDING
 |---|---|---|
 | Header | 0 | `LMOR_HEADER_SIZE` bytes |
 | Shifts | `LMOR_HEADER_SIZE` | `cluster_count` bytes, padded to 4 |
-| Deltas | after the shifts | `vertex_count × LMOR_AXES` bytes, padded to 4 |
-| Landing points | after the deltas, with `LMOR_LANDING` | `vertex_count × LMOR_LANDING_SIZE` bytes |
+| Deltas | after the shifts | `vertex_count * LMOR_AXES` bytes, padded to 4 |
+| Landing points | after the deltas, with `LMOR_LANDING` | `vertex_count * LMOR_LANDING_SIZE` bytes |
 
 | Rule | Detail |
 |---|---|
