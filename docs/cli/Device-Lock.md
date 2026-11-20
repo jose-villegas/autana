@@ -80,7 +80,7 @@ it guards sessions and CI jobs on one PC, not two PCs plugged into one board.
 | `autana lock take [--for <seconds> \| --until-released [--pid <pid>]] [--estimate <seconds>] <note...>` | wait for the board and print a token; a timed hold lasts at most an hour |
 | `autana lock wait` | wait until the board is free without taking it; --wait caps the wait |
 | `autana lock release [<token>]` | release a hold early; the token is optional inside a hold |
-| `autana lock hand [--until-back <seconds>] <note...>` | reserve the board for a person for an hour; run again to renew |
+| `autana lock hand [--until-back <seconds>] <note...>` | reserve the board for a person for an hour and print its token; run again to renew |
 | `autana lock take-back` | clear that reservation |
 <!-- /generated: cli-lock -->
 
@@ -135,6 +135,12 @@ released or lapsed hold, or a wrong token, fails with exit 1 immediately.
 Borrowed commands reap their own descendants when they end. Commands sharing
 a token may run in parallel; only one of them can have the serial port
 open at a time.
+A person's reservation stops every new command, the person's own too.
+`lock hand` prints its token alone on stdout, as `take` does, and run again
+it renews the reservation and prints the same token. Pass it with
+`--lock-token` to run a command inside the reservation; the reservation stays
+until `take-back` or its hour runs out.
+
 `take`, `hand` and `wait` inside a hold fail immediately. `run --keep-on-failure`
 inside another hold is a usage error.
 

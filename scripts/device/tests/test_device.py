@@ -995,10 +995,29 @@ class DeviceTests(unittest.TestCase):
         store = mock.Mock()
         store.status.return_value = {"human": None, "lock": None, "queue": []}
         store.reserve_human.return_value = ("id", False)
-        with mock.patch.object(device.device_lock, "LockStore", return_value=store):
+        with mock.patch.object(device.device_lock, "LockStore", return_value=store), \
+                contextlib.redirect_stdout(io.StringIO()) as output:
             self.assertEqual(device.main(["--board", BOARD, "--owner", "agent",
                                           "hand-to-human", "--note", "check cable"]), 0)
         store.reserve_human.assert_called_once_with(BOARD, "agent", "check cable", wait=600, on_wait=mock.ANY)
+        self.assertEqual(output.getvalue(), "id\n", "stdout is the token alone, as `take` prints it")
+
+    def test_the_reservations_token_runs_a_command_inside_it(self):
+        """A reservation stops every new command, the person's own too; its
+        token, printed by hand-to-human, lets them borrow it instead."""
+        with tempfile.TemporaryDirectory() as root:
+            store = device_lock.LockStore(root)
+            with mock.patch.object(device.device_lock, "LockStore", return_value=store), \
+                    contextlib.redirect_stdout(io.StringIO()) as output, \
+                    contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(device.main(["--board", BOARD, "--owner", "sam",
+                                              "hand-to-human", "--note", "checking the panel"]), 0)
+            token = output.getvalue().strip()
+            self.assertIsNone(store.acquire(BOARD, "agent", "record", wait=0), "a new command waits")
+            with mock.patch.dict(os.environ, {device.TOKEN_ENV: token}):
+                held = device.HeldLock(store, BOARD, "sam", "record", 0)
+            self.assertTrue(held.borrowed)
+            self.assertEqual(held.held["kind"], "human", "the command runs inside the reservation")
 
     def test_an_unnamed_owner_is_user_at_host_colon_pid_not_unknown(self):
         store = mock.Mock()
