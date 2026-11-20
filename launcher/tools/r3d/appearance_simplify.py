@@ -40,7 +40,7 @@ from r3d.geometry import closest_point_on_triangles, triangle_areas  # noqa: E40
 from r3d.fit.copies import hidden_materials, check_hidden_copies, hidden_copy_pixels, joined, placed_copies  # noqa: E402
 from r3d.fit import gbuffer  # noqa: E402
 from r3d.import_settings import load_scene, match_meshes  # noqa: E402
-from r3d.lit_mesh import finest_triangles, read_bundle_mesh  # noqa: E402
+from r3d.lit_mesh import finest_triangles, read_bundle_mesh, turned  # noqa: E402
 from r3d.cost_model import load as load_cost  # noqa: E402
 from r3d.poses import camera_basis, read_poses  # noqa: E402
 from r3d.repair import _border_edges  # noqa: E402
@@ -347,39 +347,93 @@ def delta_e76(a, b):
     return ((lab(torch, a, 1e-6) - lab(torch, b, 1e-6)) ** 2).sum(dim=-1).add(1e-6).sqrt()
 
 
-def vertex_normals(points, tris, vertex_point):
-    """Per vertex, the unit area-weighted normal of the triangles around its
-    welded position, in torch, differentiable in `points`. A two-sided sheet
-    built from triangle pairs, each on the same welded corners in opposite
-    winding, would sum to zero: each pair counts once, and at each vertex it
-    is turned to agree with the sheet's highest-numbered pair there, so
-    neighbouring pairs add up whichever winding each kept. A vertex whose
-    faces still sum to less than NORMAL_FLOOR of the mean is divided by that
-    floor, so its gradient stays bounded."""
+class NormalSigns(NamedTuple):
+    """How each triangle's normal counts in its vertices' normals (normal_signs)."""
+    sign: np.ndarray  # per triangle +1, -1 or 0
+    pairs: int  # two-sided sheet pairs, each counted once
+    unsettled: int  # kept pair members whose winding disagrees with a neighbour already settled
+
+
+def normal_signs(tris, vertex_point):
+    """Per triangle, how its normal counts in its vertices' normals. A two-sided
+    sheet built from pairs of triangles on the same welded corners in opposite
+    winding would sum to zero there: one member of each pair counts, turned so
+    its winding agrees with its neighbours, the one-sided triangles first (the
+    consistent winding of a surface, spread across shared edges). A sheet with
+    no one-sided neighbour takes its first pair's winding. Where a pair cannot
+    agree with every neighbour (a non-orientable sheet, three sheets on an edge)
+    it keeps the first and counts as unsettled."""
+    from collections import defaultdict, deque
+
+    welded = np.asarray(vertex_point)[np.asarray(tris)]
+    key = turned(welded)
+    whole = (key[:, 0] != key[:, 1]) & (key[:, 1] != key[:, 2])
+    winding = key[:, 1] < key[:, 2]
+    corner_sets, pair = np.unique(np.sort(welded, axis=1), axis=0, return_inverse=True)
+    pair = pair.reshape(-1)
+    both = np.zeros((len(corner_sets), 2), dtype=bool)
+    both[pair[whole], winding[whole].astype(int)] = True
+    sheet = whole & both[pair].all(axis=1)
+    first = np.full(len(both), len(tris))
+    np.minimum.at(first, pair[sheet], np.flatnonzero(sheet))
+    kept = sheet & (first[pair] == np.arange(len(tris)))
+    sign = np.where(sheet, 0, 1).astype(np.int64)
+    edges = defaultdict(list)
+    for face in np.flatnonzero(sign != 0).tolist() + np.flatnonzero(kept).tolist():
+        for k in range(3):
+            a, b = int(welded[face, k]), int(welded[face, (k + 1) % 3])
+            edges[min(a, b), max(a, b)].append((face, 1 if a < b else -1))
+    settled = sign != 0
+    unsettled = np.zeros(len(tris), dtype=bool)
+    queue = deque(np.flatnonzero(settled).tolist())
+    order = iter(np.flatnonzero(kept).tolist())
+    while True:
+        while queue:
+            face = queue.popleft()
+            for k in range(3):
+                a, b = int(welded[face, k]), int(welded[face, (k + 1) % 3])
+                way = sign[face] * (1 if a < b else -1)
+                for other, direction in edges[min(a, b), max(a, b)]:
+                    if other == face or not kept[other]:
+                        continue
+                    agrees = -way * direction
+                    if not settled[other]:
+                        sign[other], settled[other] = agrees, True
+                        queue.append(other)
+                    elif sign[other] != agrees:
+                        unsettled[other] = True
+        seed = next((face for face in order if not settled[face]), None)
+        if seed is None:
+            break
+        sign[seed], settled[seed] = 1, True
+        queue.append(seed)
+    return NormalSigns(sign, int(kept.sum()), int(unsettled.sum()))
+
+
+def normal_sums(points, tris, vertex_point, sign=None):
+    """(per welded position its signed area-weighted face normal sum, the floor
+    under which that sum has no direction: NORMAL_FLOOR of the mean triangle
+    cross product), in torch, differentiable in `points`. `sign` is
+    normal_signs' per triangle, all +1 when None."""
     import torch
 
     welded = vertex_point[tris]
-    sorted_corners, order = welded.sort(dim=1)
-    even = (order[:, 1] - order[:, 0]) % 3 == 1
-    _, pair = torch.unique(sorted_corners, dim=0, return_inverse=True)
-    evens = torch.zeros(len(tris), dtype=torch.long, device=tris.device).index_add_(0, pair, even.long())
-    odds = torch.zeros_like(evens).index_add_(0, pair, (~even).long())
-    sheet = (evens[pair] > 0) & (odds[pair] > 0)
-    counted = even | (evens[pair] == 0)
     corners = points[welded]
-    face = torch.cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0], dim=1) * counted[:, None]
-    corner_face = torch.arange(len(tris), device=tris.device).repeat_interleave(3)
-    corner_point = welded.reshape(-1)
-    on_sheet = sheet & counted
-    sheet_corner = on_sheet[corner_face]
-    agree = torch.full((len(points),), -1, dtype=torch.long, device=tris.device).scatter_reduce(
-        0, corner_point[sheet_corner], corner_face[sheet_corner], "amax")
-    contribution = face[corner_face]
-    reference = face.detach()[agree[corner_point].clamp_min(0)]
-    turned = sheet_corner & ((contribution.detach() * reference).sum(-1) < 0)
-    contribution = torch.where(turned[:, None], -contribution, contribution)
-    around = torch.zeros_like(points).index_add_(0, corner_point, contribution)
-    floor = NORMAL_FLOOR * face[counted].norm(dim=1).mean().detach()
+    face = torch.cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0], dim=1)
+    if sign is not None:
+        face = face * sign[:, None]
+    around = torch.zeros_like(points).index_add_(0, welded.reshape(-1), face.repeat_interleave(3, dim=0))
+    counted = face.norm(dim=1)
+    count = len(tris) if sign is None else sign.abs().sum()
+    return around, NORMAL_FLOOR * counted.detach().sum() / count
+
+
+def vertex_normals(points, tris, vertex_point, sign=None):
+    """Per vertex, the unit normal of normal_sums at its welded position; a sum
+    under the floor is divided by the floor, so its gradient stays bounded."""
+    import torch
+
+    around, floor = normal_sums(points, tris, vertex_point, sign)
     return (around / torch.maximum(around.norm(dim=1, keepdim=True), floor))[vertex_point]
 
 
@@ -406,6 +460,18 @@ class Renderer:
         self.vertex_point = torch.as_tensor(vertex_point, dtype=torch.int64, device=device)
         self.size = size
         self.clear = torch.as_tensor(clear, dtype=torch.float32, device=device)
+        self._normal_signs = None
+
+    @property
+    def normal_signs(self):
+        """normal_signs of the drawn triangles, found on first use: topology alone, fixed for the renderer."""
+        import torch
+
+        if self._normal_signs is None:
+            found = normal_signs(self.tris.cpu().numpy(), self.vertex_point.cpu().numpy())
+            self._normal_signs = found._replace(sign=torch.as_tensor(found.sign, dtype=torch.float32,
+                                                                     device=self.tris.device))
+        return self._normal_signs
 
     def clip(self, points, clip_matrix):
         """Clip-space positions of every vertex, y up."""
@@ -553,7 +619,7 @@ class Renderer:
 
         clip, rast, keep = self.raster(points, clip_matrix, clip) if raster is None else raster
         if values is None:
-            vertex = vertex_normals(points, self.tris.long(), self.vertex_point)
+            vertex = vertex_normals(points, self.tris.long(), self.vertex_point, self.normal_signs.sign)
             values = self.interpolate(torch.cat([vertex, points[self.vertex_point]], dim=1), clip, rast, keep)
         normal = torch.nn.functional.normalize(values[..., :3], dim=-1, eps=NORMAL_FLOOR)
         towards = torch.as_tensor(eye, dtype=normal.dtype, device=normal.device) - values[..., 3:]
@@ -863,6 +929,20 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
         sample_scale = point_scale[:, 0][corners].mean(1).repeat_interleave(SURFACE_SAMPLES_PER_TRIANGLE)[:, None]
         barycentric = torch.as_tensor(uniform_barycentric(surface_rng, (len(tris), SURFACE_SAMPLES_PER_TRIANGLE)),
                                       dtype=start.dtype, device=device)
+    def normals_floored():
+        """Drawn positions whose vertex normal sits under the floor: no direction, so the term ignores them."""
+        render = renderer_for(0)
+        with torch.no_grad():
+            around, floor = normal_sums(with_copies(held_positions(), colours)[0], render.tris.long(),
+                                        render.vertex_point, render.normal_signs.sign)
+            drawn = torch.zeros(len(around), dtype=torch.bool, device=device)
+            drawn[render.vertex_point[render.tris.long()].reshape(-1)] = True
+            return int(((around.norm(dim=1) < floor) & drawn).sum())
+
+    if normal_weight:
+        signs = renderer_for(0).normal_signs
+        log(f"normals: {signs.pairs} two-sided pairs counted once, {signs.unsettled} unsettled, "
+            f"{normals_floored()} positions under the floor")
     adam = torch.optim.Adam([{"params": [delta], "lr": lr_position * diagonal}, {"params": [colours], "lr": lr_colour}])
     schedule = torch.optim.lr_scheduler.LambdaLR(adam, lambda step: 0.1 ** (step / max(steps, 1)))
     history = torch.empty(steps, device=device)
@@ -876,7 +956,7 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
         error, predicted, colour_error, surface, front, depth = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
         if normal_weight:
             render = renderer_for(chosen[0])
-            vertex = vertex_normals(draw, render.tris.long(), render.vertex_point)
+            vertex = vertex_normals(draw, render.tris.long(), render.vertex_point, render.normal_signs.sign)
             attributes = draw_colours.repeat_interleave(3, dim=0) if flat else draw_colours
             attributes = torch.cat([attributes, vertex, draw[render.vertex_point]], dim=1)
         for i in chosen:
@@ -927,6 +1007,8 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
             log(f"step {step}: mean dE76 {float(history[step]):.3f}, predicted {float(predicted):.2f} ms, drift {float(drift):.3e}, "
                 f"surface {float(surface):.6f}, front {float(front):.3e}, depth {float(depth):.3e}, "
                 f"{time.time() - started:.1f} s")
+    if normal_weight:
+        log(f"normals: {normals_floored()} positions under the floor after the fit")
     points = held_positions()
     return points.detach().cpu().numpy().astype(np.float64), colours.detach().cpu().numpy().astype(np.float64), history.cpu().tolist()
 
