@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 
 import {
   checkDocument,
+  codeSpanFormula,
   dependencyProblem,
   extractFormulas,
   markdownHazard,
@@ -197,6 +198,54 @@ test('the page-wide brace budget stops the formulas past it', { skip }, () => {
   assert.ok(problems.length > 0);
   assert.ok(problems.every((p) => /braces/.test(p.message)));
   assert.equal(problems[0].line, 1 + 2 * Math.floor(BRACE_LIMIT_PAGE / 401));
+});
+
+test('a formula written as a code span is refused, pointing at $`...`$', { skip }, () => {
+  const formulas = [
+    ['c_lm = (4*pi/N) sum L(w) Y_lm(w)', /bare `pi`/],
+    ['pi * color * intensity * visibility * Y_lm(sun_direction)', /bare `pi`/],
+    ['exp(-2*pi*250/16000)', /bare `pi`/],
+    ['sum L(w)', /`sum` or `prod` before an operand/],
+    ['arr[i]^2', /`\^` as a power/],
+    ['O(n^2)', /`\^` as a power/],
+    ['1 - a1*z^-1', /`\^` as a power/],
+    ['(a / 255)^2.2', /`\^` as a power/],
+    ['x^n', /`\^` as a power/],
+    ['count × stride', /maths symbol/],
+    ['side² / 2', /maths symbol/],
+    ['A1 = 2π/3', /maths symbol/],
+    ['right−1', /maths symbol/],
+    ['E(n) = constant + gradient * n', /left side is not assignable/],
+    ['dg/dt = -(omega x g)', /left side is not assignable/],
+    ['(1 - f(a)) * (1 - f(b)) = 1 - f(a + b)', /left side is not assignable/],
+  ];
+  for (const [code, sign] of formulas) {
+    const problems = problemsIn(`Text \`${code}\` here.`);
+    assert.equal(problems.length, 1, code);
+    assert.match(problems[0].message, sign, code);
+    assert.match(problems[0].message, /\$`\.\.\.`\$.*docs\/tools\/Math-Formulas\.md/, code);
+  }
+  const page = ['# T', '', 'one', 'two `x^2` end', '', '| a | b |', '|---|---|', '| 1 | `a × b` |', '', '- *see `pi`*'];
+  assert.deepEqual(problemsIn(page.join('\n')).map((p) => p.line), [4, 8, 10]);
+});
+
+test('code in a code span passes: names, paths, flags, commands and C expressions', { skip }, () => {
+  const code = [
+    'launcher/main/apps/', 'npm ci --prefix scripts/gates', '-ffp-contract=off', '--live-tune NAME=VALUE',
+    '-D IDF_TARGET=esp32s3 build', '*_PLACE_*_INTO_FLASH=n', 'Y_lm', 'x = a * b', 'dst[i] = value',
+    '[MAT_YOURS * MATERIAL_VARIANTS] =', 'stride * (height - 1) + width', 'M_PI * r', 'math.pi', 'np.pi',
+    'sum(values)', 'pi_half', 'HEAD^', '[^abc]', '(a ^ b) & m', 'a == b', 'lo <= hi', 'y += (x - y) >> k',
+    'f(x)', 'ceil(frames / block_frames)', 'S = diag(1, 1, -1)', 'simplify(seal_seams=True)', 'TUNE(ridge, …)',
+    '$PATH', '10 µs', 'int sum = 0', 'sum += v[i]', 'return sum;', 'sum / n', 'prod *= x', 'x^0x80',
+  ];
+  for (const text of code) {
+    assert.equal(codeSpanFormula(text), null, text);
+  }
+  assert.deepEqual(problemsIn('Area $`\\pi r^2`$ and code `r * r`.'), []);
+  assert.deepEqual(messagesIn('See [$`x^2`$](http://a).'), [
+    'GitHub shows this as text: it sits in emphasis, a link, <b> or a footnote.',
+  ]);
+  assert.deepEqual(problemsIn('```c\nfloat a = pi * r^2;\n```'), []);
 });
 
 test('formula lines point at the file line', { skip }, () => {
