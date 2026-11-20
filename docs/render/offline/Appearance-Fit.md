@@ -209,6 +209,12 @@ normal angle:
 \theta = \frac{1}{|\Omega^{\cap}|}\sum_{p \in \Omega^{\cap}} \arccos\!\left(\hat{n}_p \cdot n^{\mathrm{ref}}_p\right)
 ```
 
+A vertex normal is the area-weighted sum of its faces' normals. A two-sided
+sheet built from pairs of opposite triangles would sum to zero, which has no
+direction, so each pair counts once and turns to agree with its neighbours.
+A normal still shorter than `NORMAL_FLOOR` of its scale is divided by the
+floor, which bounds its gradient.
+
 ### What is reported
 
 Colour history, `loss.txt` and the printed mean ΔE76 exclude the surface,
