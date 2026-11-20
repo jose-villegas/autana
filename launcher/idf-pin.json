@@ -1,6 +1,6 @@
 {
-  "image": "espressif/idf:release-v6.1@sha256:b01a124db48eec9590d62b17cca58c99956077bac3cbe02b0cfb947f2a9ebf29",
-  "commit": "f0114250e205e33a945e2f3e7ec40085c5a029a2",
-  "image_date": "2026-11-06",
+  "image": "espressif/idf:release-v6.1@sha256:256c3ceab7b16a81f4866194aaecbff1d0ab97f7673d8f90b6dde29026eae4d1",
+  "commit": "c1d1695f8f8310fa7e408ab97f95ab4e76b3be88",
+  "image_date": "2026-11-13",
   "esp_clang": "21.1.3"
 }
