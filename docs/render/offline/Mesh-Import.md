@@ -158,6 +158,10 @@ The image compares triangle removal with it disabled.
 
 #### cards
 
+Cards are what the literature calls a billboard cloud: textured quads with an
+alpha cutout that stand in for geometry, chosen greedily after Décoret et
+al.<sup>[[133]](../../Citations.md#decoret-2003)</sup>
+
 `geometry.alpha_mask` enables automatic billboard clouds. Each accepted
 material becomes a double-sided shape with vertex colours,
 [LUVS](../../assets/formats/LUVS.md) and [MASK1 LTEX](../../assets/formats/LTEX.md) pages.
