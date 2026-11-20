@@ -323,7 +323,11 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
             mesh_report['ceiling'] = ceiling
         mesh_report['scene_total'] = mesh_report['output_triangles'] = (
             mesh_report.get('scene_total', len(tris)) + card_triangles)
-    check_ceiling(mesh_report.get('scene_total', len(tris)), ceiling)
+    # The ceiling caps what is stored: a prototype once however many copies draw it, and each card.
+    stored = mesh_report.get('stored_total', len(tris)) + card_triangles
+    if card_report is not None:
+        mesh_report['stored_total'] = stored
+    check_ceiling(stored, ceiling)
     if derived is not None and "passes" in mesh_report:
         mesh_report["detail"], mesh_report["authoring"] = detail_report(derived.shapes, mesh_report["passes"],
                                                                         src.object_names, derived.focal)
