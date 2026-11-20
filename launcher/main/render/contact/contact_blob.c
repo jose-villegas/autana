@@ -136,12 +136,13 @@ draw_row(const r3d_span_target_t* target, const r3d_lens_t* lens, blob_plane_t* 
         delta = (vec3f_t){blob->delta.x, blob->delta.y, 0};
         delta_step = (vec3f_t){blob->delta_step.x, blob->delta_step.y, 0};
     }
+    const float inverse_strength_root = blob->inverse_strength_root;
     for (int x = x0; x < x1; x++, encoded += row.step, delta = vec3f_add(delta, delta_step)) {
         if (!(encoded > 0.0F) || encoded >= row.near_limit || encoded + row.bias < (float)depth[x]) {
             continue;
         }
         const unsigned threshold = bayer4x4[y & (BAYER4_SIDE - 1)][x & (BAYER4_SIDE - 1)];
-        if (radial_coverage(vec3f_dot(delta, delta), encoded, blob->inverse_strength_root, threshold)) {
+        if (radial_coverage(vec3f_dot(delta, delta), encoded, inverse_strength_root, threshold)) {
             color[x] = rgb565be_half(color[x]);
         }
     }
@@ -252,24 +253,18 @@ draw_rows(const r3d_span_target_t* target, const r3d_lens_t* lens, blob_plane_t*
 }
 
 static bool
-project_blob(const r3d_lens_t* lens, const contact_blob_t* footprint, blob_plane_t* blob, bool single) {
-    const vec3f_t centre = mat4f_apply(&lens->m, footprint->centre);
+project_shape(const r3d_lens_t* lens, const contact_blob_t* footprint, blob_plane_t* blob, bool single, vec3f_t* out_up,
+              float* out_radius) {
     const float uu = vec3f_dot(footprint->u, footprint->u);
     const float vv = vec3f_dot(footprint->v, footprint->v);
     const float uv = vec3f_dot(footprint->u, footprint->v);
     const float determinant = (uu * vv) - (uv * uv);
-    if (!(determinant > 0 && footprint->strength > 0)) {
+    if (!(determinant > 0)) {
         return false;
     }
-    *blob = (blob_plane_t){.centre = centre, .strength = fminf(footprint->strength, 1), .mask = footprint->mask};
-    const float inverse_fx = 1.0F / lens->focal_x;
-    const float inverse_fy = 1.0F / lens->focal_y;
     blob->circular = uu == vv && uv == 0;
-    const vec3f_t cross = vec3f_cross(footprint->u, footprint->v);
-    const vec3f_t up = vec3f_normalize(cross);
-    blob->normal =
-        (vec3f_t){vec3f_dot(lens_axis(lens, 0), up) * inverse_fx * inverse_fx,
-                  vec3f_dot(lens_axis(lens, 1), up) * inverse_fy * inverse_fy, vec3f_dot(lens_axis(lens, 2), up)};
+    *out_up = vec3f_normalize(vec3f_cross(footprint->u, footprint->v));
+    *out_radius = sqrtf(uu);
     if (!(single && blob->mask == NULL && blob->circular)) {
         const vec3f_t u =
             vec3f_scale(vec3f_sub(vec3f_scale(footprint->u, vv), vec3f_scale(footprint->v, uv)), 1 / determinant);
@@ -283,11 +278,41 @@ project_blob(const r3d_lens_t* lens, const contact_blob_t* footprint, blob_plane
             *dv[r] = vec3f_dot(lens_axis(lens, r), v) / (focal * focal);
         }
     }
-    blob->distance = vec3f_dot(blob->normal, centre);
+    return true;
+}
+
+static bool
+project_blob(const r3d_lens_t* lens, const contact_blob_t* footprint, blob_plane_t* blob, bool single) {
+    if (!(footprint->strength > 0)) {
+        return false;
+    }
+    *blob = (blob_plane_t){.centre = mat4f_apply(&lens->m, footprint->centre),
+                           .strength = fminf(footprint->strength, 1),
+                           .mask = footprint->mask};
+    float radius;
+    vec3f_t up;
+    const bool ground_circle = single && blob->mask == NULL && footprint->u.y == 0 && footprint->u.z == 0
+                               && footprint->v.x == 0 && footprint->v.y == 0
+                               && fabsf(footprint->u.x) == fabsf(footprint->v.z);
+    if (ground_circle) {
+        radius = fabsf(footprint->u.x);
+        if (!(radius > 0)) {
+            return false;
+        }
+        up = vec3f_unit_y();
+        blob->circular = true;
+    } else if (!project_shape(lens, footprint, blob, single, &up, &radius)) {
+        return false;
+    }
+    const float inverse_fx = 1.0F / lens->focal_x;
+    const float inverse_fy = 1.0F / lens->focal_y;
+    blob->normal =
+        (vec3f_t){vec3f_dot(lens_axis(lens, 0), up) * inverse_fx * inverse_fx,
+                  vec3f_dot(lens_axis(lens, 1), up) * inverse_fy * inverse_fy, vec3f_dot(lens_axis(lens, 2), up)};
+    blob->distance = vec3f_dot(blob->normal, blob->centre);
     if (blob->distance == 0) {
         return false;
     }
-    const float radius = sqrtf(uu);
     blob->inverse_scale = (vec3f_t){inverse_fx / radius, inverse_fy / radius, 1.0F / radius};
     blob->inverse_strength_root = 1.0F / sqrtf(blob->strength);
     return true;
@@ -315,8 +340,10 @@ void
 contact_blobs_draw(const r3d_span_target_t* target, const r3d_lens_t* lens, const contact_blob_t* footprints, int count,
                    void* scratch) {
     blob_work_t* work = scratch;
-    blob_plane_t* blobs = work->blobs;
-    blob_bounds_t* bounds = work->bounds;
+    blob_plane_t single_blob;
+    blob_bounds_t single_bounds;
+    blob_plane_t* blobs = count == 1 ? &single_blob : work->blobs;
+    blob_bounds_t* bounds = count == 1 ? &single_bounds : work->bounds;
     int first_row = gfx_target_end_row(&target->rows);
     int end_row = target->rows.first_row;
     int used = 0;
@@ -338,7 +365,7 @@ contact_blobs_draw(const r3d_span_target_t* target, const r3d_lens_t* lens, cons
         }
     }
     if (used == 1 && blobs->mask == NULL && blobs->circular) {
-        draw_rows(target, lens, blobs, bounds, work->thresholds, 1, first_row, end_row, true, true);
+        draw_rows(target, lens, blobs, bounds, NULL, 1, first_row, end_row, true, true);
     } else {
         draw_rows(target, lens, blobs, bounds, work->thresholds, used, first_row, end_row,
                   used == 1 && blobs->mask == NULL, false);

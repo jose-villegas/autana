@@ -285,7 +285,13 @@ warped_blob(box3f_t mover, float ground_y, contact_reach_t reach, vec3f_t light)
 bool
 scene_contact_blob(const scene_t* scene, const scene_renderer_t* r, vec3f_t light, contact_blob_t* blob) {
     const contact_reach_t reach = scene_contact_reach(scene, r);
-    *blob = warped_blob(r->world_bounds, r->contact_blob_ground_y, reach, r->contact_warp ? light : vec3f_unit_y());
+    if (r->contact_warp) {
+        *blob = warped_blob(r->world_bounds, r->contact_blob_ground_y, reach, light);
+    } else {
+        vec3f_t centre = box3f_centre(r->world_bounds);
+        centre.y = r->contact_blob_ground_y;
+        *blob = (contact_blob_t){.centre = centre, .u = {reach.x, 0, 0}, .v = {0, 0, reach.z}};
+    }
     blob->strength = r->contact_blob_strength;
     if (r->contact_blob_shape == SCENE_CONTACT_SILHOUETTE) {
         const contact_mask_t* mask = &scene->skinned_renderers[r->entity].contact_mask;
@@ -469,7 +475,9 @@ post_draw(const r3d_span_target_t* target, const r3d_lens_t* lens, void* user) {
             if (r->contact_blob_strength > 0.0F && r->mesh.node_count > 0) {
                 render_context_t* context = render_context_main();
                 void* work = (char*)context->scratch + context->contact_work_offset;
-                contact_blob_t* footprints = contact_blobs_work_footprints(work);
+                contact_blob_t single;
+                contact_blob_t* footprints =
+                    r->contact_blob_shape == SCENE_CONTACT_FEET ? contact_blobs_work_footprints(work) : &single;
                 const int count = scene_contact_blobs(scene, r, r->contact_light, footprints);
                 contact_blobs_draw(target, lens, footprints, count, work);
             }
