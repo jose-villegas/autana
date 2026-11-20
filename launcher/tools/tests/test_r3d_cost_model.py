@@ -250,5 +250,6 @@ class DifferentiablePieceTests(unittest.TestCase):
         self.assertTrue(torch.isfinite(normals).all())
         self.assertLess(gradient, bound)
 
+
 if __name__ == "__main__":
     unittest.main()
