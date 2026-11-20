@@ -11,6 +11,9 @@
 
 #include "math/scalar/mathf.h"
 #include "math/scalar/mathi.h"
+#include "render/path/r3d_path.h"
+
+R3D_PATH(screen, "span.screen");
 
 /* A float plane through three vertices' values, per subpixel from vertex a. */
 typedef struct {
@@ -95,6 +98,9 @@ r3d_span_screen_triangle(const r3d_span_target_t* target, const r3d_span_vertex_
     const int32_t area2 = r3d_span_area2(a, b, c);
     if (recti_is_empty(box) || area2 == 0 || r3d_span_stop_after != 0) {
         return;
+    }
+    if (!writing) {
+        R3D_PATH_HIT(screen);
     }
     const bool positive = area2 > 0;
     const r3d_span_vertex_t* p = positive ? b : c;

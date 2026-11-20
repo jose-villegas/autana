@@ -19,6 +19,7 @@
 #include "math/scalar/mathi.h"
 #include "profile/frame_laps.h"
 #include "render/code_layout.h"
+#include "render/path/r3d_path.h"
 #include "render/r3d_span_internal.h"
 
 /* u and v walk as 8.8 texels, packed u high and v low in one word; a carry
@@ -58,6 +59,10 @@ _Static_assert(sizeof segment_inverse / sizeof segment_inverse[0] == RENDER_TEXT
 _Static_assert(RENDER_TEXTURE_LEVEL_MAX == R3D_TEXTURE_LEVELS_MAX - 1, "texture.affine_level can name every level");
 _Static_assert(BAYER4_LEVELS << DITHER_SHIFT == 1 << LIGHT_FRAC, "a threshold stays under one level");
 _Static_assert((1 << (UV_HALF_BITS - UV_FRAC)) == (int)UV_WRAP, "u and v wrap at their integer bits");
+
+R3D_PATH(cut, "texture.cut");
+R3D_PATH(divided, "texture.divided");
+R3D_PATH(affine, "texture.affine");
 
 static inline float
 plane_at(const r3d_span_plane_t* p, float x, float y) {
@@ -465,6 +470,7 @@ r3d_span_textured_triangle(const r3d_span_target_t* target, const r3d_span_verte
     const bool long_on_left = (area2 > 0) != r3d_span_sort_by_y(&v0, &v1, &v2);
     FRAME_LAP("r3d.draw.fill");
     if (texture->format == R3D_TEXTURE_MASK1) {
+        R3D_PATH_HIT(cut);
         walk_cut(target, &su, box, v0, v1, v2, long_on_left);
     } else {
         /* A triangle no wider than one segment steps affine: its bend is at
@@ -477,8 +483,10 @@ r3d_span_textured_triangle(const r3d_span_target_t* target, const r3d_span_verte
             set_up_divide(target, corners, uv, texture, whole, &su);
         }
         if (su.divide != 0) {
+            R3D_PATH_HIT(divided);
             walk_divided(target, &su, box, v0, v1, v2, long_on_left);
         } else {
+            R3D_PATH_HIT(affine);
             walk_plain(target, &su, box, v0, v1, v2, long_on_left);
         }
     }

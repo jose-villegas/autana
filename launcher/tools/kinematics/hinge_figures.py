@@ -1,12 +1,8 @@
 #!/usr/bin/env python3
 """Plot a plate turning about a hinge axis for docs/kinematics/Hinge.md; --cc CC --out DIR."""
 import pathlib
-import sys
 
-TOOLS = pathlib.Path(__file__).resolve().parents[1]
-for search_path in (TOOLS, TOOLS / "math"):
-    sys.path.insert(0, str(search_path))
-from math_figures import PANEL_SIZE, ROOT, VIEW_AZIMUTH, VIEW_ELEVATION
+from kinematics_figures import PANEL_SIZE, ROOT, VIEW_AZIMUTH, VIEW_ELEVATION
 from docs.figures import probe_into_folder
 from docs.producer import Producer
 from docs.plot_style import FAINT, INK, LABEL_SIZE, SLOTS, figure, save

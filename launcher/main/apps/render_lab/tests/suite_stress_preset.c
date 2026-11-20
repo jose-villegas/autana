@@ -515,7 +515,7 @@ camera_fixture(const stress_params_t* p) {
 
 static r3d_pipeline_counts_t
 count_pose(const stress_params_t* p, int pose_index, int quarter) {
-    const uint32_t t_ms = (uint32_t)((uint64_t)f.duration_ms * (uint32_t)pose_index / (uint32_t)p->perf_poses);
+    const uint32_t t_ms = stress_pose_ms(p, f.duration_ms, pose_index);
     const float seconds = (float)t_ms / STRESS_TEST_MS_PER_SECOND;
     const transformf_t pose = anim_transform_sample(&f.path, seconds);
     const render_view_t view =
