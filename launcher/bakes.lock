@@ -126,7 +126,8 @@ source = "launcher/main/console/sounds/carreno_waltz.sound.toml"
 key = "9577402b051dd1985da9cf9261d7a4d2b1eb147063361a52db6bc9ad81cda1f3"
 sha256 = "1fea397ae21d950e2dc6c9be9eea2a3ba2959e1c587eae9f1f9a8d269aa5798b"
 size = 237600
-seeded = true
+run = 44712078693
+host = "Linux x86_64"
 
 [[bake]]
 output = "herd.meadow.bundle"
@@ -251,7 +252,8 @@ source = "launcher/main/engine/sounds/tap.sound.toml"
 key = "f318a6910593ee908e8f39ab707105aa0e8234bf487e71a349b6ae833e85c7ff"
 sha256 = "2bbe8de22ad6f0b92b93fced1a779933609df85eacac132de553e8b2e51fa2cf"
 size = 2592
-seeded = true
+run = 44712078693
+host = "Linux x86_64"
 
 # [[poses]]: the digest of each camera-path sampling, keyed on its clip bytes, sampling arguments
 # and sampler code. bake.py lock writes them; bake.py check samples them again.
