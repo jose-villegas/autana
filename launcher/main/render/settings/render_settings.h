@@ -67,6 +67,7 @@ typedef struct {
 typedef enum { SMALL_FILL_FLAT, SMALL_FILL_GRAIN, SMALL_FILL_DITHER, SMALL_FILL_STYLE_COUNT } small_fill_style_t;
 
 #define SMALL_FILL_CEILING_MAX    16
+#define SMALL_FILL_CEILING_OFF    0 /* the ceiling with no small fill */
 #define SMALL_FILL_GATE_MAX       255 /* an RGB565 channel's spread fits a byte */
 #define SMALL_FILL_CEILING_SMOOTH 4
 #define SMALL_FILL_GATE_SMOOTH    0
