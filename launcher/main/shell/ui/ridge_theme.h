@@ -38,20 +38,20 @@ ridge_theme_to_oklch(uint32_t rgb) {
 }
 
 static inline vec3f_t
-ridge_theme_linear(float l, float c, float h) {
+ridge_oklch_to_linear(float l, float c, float h) {
     return oklabf_to_linear((oklabf_t){l, c * cosf(h), c * sinf(h)});
 }
 
 static inline uint32_t
 ridge_theme_from_oklch(float l, float c, float h) {
-    const vec3f_t rgb = ridge_theme_linear(l, c, h);
+    const vec3f_t rgb = ridge_oklch_to_linear(l, c, h);
     return ((uint32_t)srgbf_encode_byte(rgb.x) << 16) | ((uint32_t)srgbf_encode_byte(rgb.y) << 8)
            | (uint32_t)srgbf_encode_byte(rgb.z);
 }
 
 static inline bool
 ridge_theme_in_gamut(float l, float c, float h) {
-    const vec3f_t rgb = ridge_theme_linear(l, c, h);
+    const vec3f_t rgb = ridge_oklch_to_linear(l, c, h);
     return rgb.x >= 0.0F && rgb.x <= 1.0F && rgb.y >= 0.0F && rgb.y <= 1.0F && rgb.z >= 0.0F && rgb.z <= 1.0F;
 }
 
