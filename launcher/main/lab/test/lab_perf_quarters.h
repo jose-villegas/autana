@@ -2,21 +2,11 @@
 #pragma once
 
 #include <stdio.h>
-#include "display/display.h"
 #include "frame_profile.h"
+#include "lab/lab_quarters.h"
 #include "perf_budget.h"
 
-typedef struct {
-    const char* name;
-    int quarter;
-} lab_perf_quarter_t;
-
-static const lab_perf_quarter_t lab_perf_quarters[] = {
-    {DISPLAY_PORTRAIT_NAME, DISPLAY_PORTRAIT},
-    {DISPLAY_LANDSCAPE_NAME, DISPLAY_LANDSCAPE},
-};
 #define LAB_PERF_QUARTER_FORMAT " " FRAME_PROFILE_QUARTER "%s"
-#define LAB_PERF_QUARTER_COUNT  (sizeof lab_perf_quarters / sizeof lab_perf_quarters[0])
 
 #define LAB_PERF_ROW_NAME_SIZE  96
 
