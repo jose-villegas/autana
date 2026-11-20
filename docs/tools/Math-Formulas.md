@@ -33,8 +33,12 @@ that spells what code never does:
 |---|---|---|
 | a maths symbol: ×, ·, −, ≤, ², a Greek letter | count × stride | $`n \times s`$, or the code `count * stride` |
 | `^` as a power, not `HEAD^`, `[^a]` or `a ^ b` | O(n^2) | $`O(n^2)`$ |
-| a bare pi, sum or prod, not `M_PI`, `math.pi` or `sum(v)` | 2 pi r | $`2\pi r`$ |
+| a bare pi, not `M_PI` or `math.pi` | 2*pi*r | $`2\pi r`$ |
+| sum or prod before an operand, not `sum(v)` or `sum += v` | sum L(w) | $`\sum L(w)`$ |
 | ` = ` after a call or an operator, not `x = a * b` | E(n) = a + b n | $`E(n) = a + bn`$ |
+
+The last row also refuses C that assigns through a macro call, as in
+REG(x) = v; write such C in a fence.
 
 MathJax refuses what GitHub turned off: `\operatorname`, `\phantom`,
 `\colorbox`, `\DeclareMathOperator`, `\unicode` and the rest of the list in
@@ -66,9 +70,8 @@ the parser here needs `~~`), and a `` $` `` whose code span closes without
 ## Pre-commit and CI
 
 `scripts/gates/check-math-staged.sh` checks the staged blob of every staged
-`.md` file with a `$` or a backtick, as one step of the hook
-`scripts/install-git-hooks.sh` installs. Without the pinned dependencies it
-skips with a warning.
+`.md` file, as one step of the hook `scripts/install-git-hooks.sh` installs.
+Without the pinned dependencies it skips with a warning.
 
 `.github/workflows/math.yml` runs `npm ci --prefix scripts/gates` and the
 script over the whole repo, path-filtered to `.md` files and the gate's own

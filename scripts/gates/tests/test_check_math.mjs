@@ -202,10 +202,11 @@ test('the page-wide brace budget stops the formulas past it', { skip }, () => {
 
 test('a formula written as a code span is refused, pointing at $`...`$', { skip }, () => {
   const formulas = [
-    ['c_lm = (4*pi/N) sum L(w) Y_lm(w)', /bare `pi` or `sum`/],
+    ['c_lm = (4*pi/N) sum L(w) Y_lm(w)', /bare `pi`/],
     ['pi * color * intensity * visibility * Y_lm(sun_direction)', /bare `pi`/],
     ['exp(-2*pi*250/16000)', /bare `pi`/],
-    ['sum L(w)', /bare `pi` or `sum`/],
+    ['sum L(w)', /`sum` or `prod` before an operand/],
+    ['arr[i]^2', /`\^` as a power/],
     ['O(n^2)', /`\^` as a power/],
     ['1 - a1*z^-1', /`\^` as a power/],
     ['(a / 255)^2.2', /`\^` as a power/],
@@ -235,12 +236,15 @@ test('code in a code span passes: names, paths, flags, commands and C expression
     '[MAT_YOURS * MATERIAL_VARIANTS] =', 'stride * (height - 1) + width', 'M_PI * r', 'math.pi', 'np.pi',
     'sum(values)', 'pi_half', 'HEAD^', '[^abc]', '(a ^ b) & m', 'a == b', 'lo <= hi', 'y += (x - y) >> k',
     'f(x)', 'ceil(frames / block_frames)', 'S = diag(1, 1, -1)', 'simplify(seal_seams=True)', 'TUNE(ridge, …)',
-    '$PATH', '10 µs',
+    '$PATH', '10 µs', 'int sum = 0', 'sum += v[i]', 'return sum;', 'sum / n', 'prod *= x', 'x^0x80',
   ];
   for (const text of code) {
     assert.equal(codeSpanFormula(text), null, text);
   }
-  assert.deepEqual(problemsIn('Area $`\pi r^2`$ and code `r * r`.'), []);
+  assert.deepEqual(problemsIn('Area $`\\pi r^2`$ and code `r * r`.'), []);
+  assert.deepEqual(messagesIn('See [$`x^2`$](http://a).'), [
+    'GitHub shows this as text: it sits in emphasis, a link, <b> or a footnote.',
+  ]);
   assert.deepEqual(problemsIn('```c\nfloat a = pi * r^2;\n```'), []);
 });
 

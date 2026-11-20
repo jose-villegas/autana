@@ -29,7 +29,8 @@
 //
 // A formula in a code span is refused: GitHub shows it as code. A span is read as maths
 // when it spells what no programming language does (codeSpanFormula): a maths glyph,
-// `^` as a power, a bare `pi` or `sum`, or an equation whose left side is not assignable.
+// `^` as a power, a bare `pi`, `sum` before an operand, or an equation whose left side is
+// not assignable. Code spans in footnotes go unchecked, as their formulas do.
 //
 // Dependencies are pinned in package.json beside this script: npm ci --prefix scripts/gates.
 // See docs/tools/Math-Formulas.md.
@@ -72,8 +73,9 @@ const FOOTNOTE_DEFINITION = /^\s{0,3}\[\^[^\]]+\]:/;
 // ≤ ≥ ≠ ≈ √ ∑ ∏ ∫ ∞ ∂ ∇, superscript digits and minus, and Greek letters.
 const MATHS_SIGNS = [
   ['a maths symbol', /[×÷·−±≤≥≠≈√∑∏∫∞∂∇²³¹⁰⁴-⁹⁻α-ωΓ-Ω]/u],
-  ['`^` as a power', /[\w)]\^(?:[-+(\d]|[A-Za-z]\b)/],
-  ['a bare `pi` or `sum`', /(?<![\w.$])(?:pi|sum|prod)(?![\w(.])/],
+  ['`^` as a power', /[\w)\]]\^(?:[-+(]|\d(?!x)|[A-Za-z]\b)/],
+  ['a bare `pi`', /(?<![\w.$])pi(?![\w(.])/],
+  ['`sum` or `prod` before an operand', /(?<![\w.$])(?:sum|prod)\s+[\w(]/],
 ];
 // An equation's left side that no language assigns to: a call, or an operator between
 // operands once bracketed parts are emptied.
@@ -243,7 +245,7 @@ function inlineFormulas(children, baseLine, codeSpans) {
     return true;
   };
 
-  const visit = (token, next) => {
+  const visit = (token, prev, next) => {
     if (['em_open', 'em_close', 'link_open', 'link_close'].includes(token.type)) {
       skipDepth = Math.max(0, skipDepth + token.nesting);
     } else if (token.type === 'html_inline') {
@@ -255,15 +257,20 @@ function inlineFormulas(children, baseLine, codeSpans) {
       run = run || { text: '', line: lineInBlock };
       run.text += token.type === 'text' ? token.content : '\n';
       return;
-    } else if (token.type === 'code_inline' && !(skipDepth === 0 && codeForm(token, next))) {
-      codeSpans.push({ line: baseLine + lineInBlock, content: token.content });
+    } else if (token.type === 'code_inline') {
+      // A $`...`$ GitHub leaves as text is reported as such, not as a code span.
+      const dollar = (t, at) => t?.type === 'text' && t.content.at(at) === '$';
+      const wrapped = dollar(prev, -1) && dollar(next, 0);
+      if (!(skipDepth === 0 && codeForm(token, next)) && !wrapped) {
+        codeSpans.push({ line: baseLine + lineInBlock, content: token.content });
+      }
     }
     endRun();
   };
 
   for (let k = 0; k < children.length; k++) {
     const token = children[k];
-    visit(token, children[k + 1]);
+    visit(token, children[k - 1], children[k + 1]);
     const content = token.content || '';
     lineInBlock += token.type === 'softbreak' || token.type === 'hardbreak' ? 1 : lineOf(content, content.length);
   }
