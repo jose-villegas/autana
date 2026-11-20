@@ -26,6 +26,16 @@ GitHub also leaves as text any formula inside emphasis, a link, `<b>` or a
 footnote; the gate reports those. In a fence, write `\lt` or put a space
 after `<`: GitHub reads `<b` as an HTML tag and drops the rest.
 
+A formula in a code span shows as code, so the gate refuses a code span
+that spells what code never does:
+
+| Sign | Refused inside backticks | Write |
+|---|---|---|
+| a maths symbol: ×, ·, −, ≤, ², a Greek letter | count × stride | $`n \times s`$, or the code `count * stride` |
+| `^` as a power, not `HEAD^`, `[^a]` or `a ^ b` | O(n^2) | $`O(n^2)`$ |
+| a bare pi, sum or prod, not `M_PI`, `math.pi` or `sum(v)` | 2 pi r | $`2\pi r`$ |
+| ` = ` after a call or an operator, not `x = a * b` | E(n) = a + b n | $`E(n) = a + bn`$ |
+
 MathJax refuses what GitHub turned off: `\operatorname`, `\phantom`,
 `\colorbox`, `\DeclareMathOperator`, `\unicode` and the rest of the list in
 the script, plus `\newcommand`, `\def`, `\require`, `\bbox`, `\href` and
@@ -56,7 +66,7 @@ the parser here needs `~~`), and a `` $` `` whose code span closes without
 ## Pre-commit and CI
 
 `scripts/gates/check-math-staged.sh` checks the staged blob of every staged
-`.md` file with a `$` or a code fence, as one step of the hook
+`.md` file with a `$` or a backtick, as one step of the hook
 `scripts/install-git-hooks.sh` installs. Without the pinned dependencies it
 skips with a warning.
 

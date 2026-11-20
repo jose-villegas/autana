@@ -27,6 +27,10 @@
 // A code fence that never closes is refused too: GitHub shows the rest of the page as
 // code, formulas included.
 //
+// A formula in a code span is refused: GitHub shows it as code. A span is read as maths
+// when it spells what no programming language does (codeSpanFormula): a maths glyph,
+// `^` as a power, a bare `pi` or `sum`, or an equation whose left side is not assignable.
+//
 // Dependencies are pinned in package.json beside this script: npm ci --prefix scripts/gates.
 // See docs/tools/Math-Formulas.md.
 
@@ -63,6 +67,17 @@ const FENCE_INDENT_LIMIT = 4;
 // Markdown's line ends, as markdown-it counts lines.
 const LINE_BREAK = /\r\n?|\n/;
 const FOOTNOTE_DEFINITION = /^\s{0,3}\[\^[^\]]+\]:/;
+
+// What code never spells, so a code span holding one is maths. The symbols: × · ÷ − ±
+// ≤ ≥ ≠ ≈ √ ∑ ∏ ∫ ∞ ∂ ∇, superscript digits and minus, and Greek letters.
+const MATHS_SIGNS = [
+  ['a maths symbol', /[×÷·−±≤≥≠≈√∑∏∫∞∂∇²³¹⁰⁴-⁹⁻α-ωΓ-Ω]/u],
+  ['`^` as a power', /[\w)]\^(?:[-+(\d]|[A-Za-z]\b)/],
+  ['a bare `pi` or `sum`', /(?<![\w.$])(?:pi|sum|prod)(?![\w(.])/],
+];
+// An equation's left side that no language assigns to: a call, or an operator between
+// operands once bracketed parts are emptied.
+const NOT_ASSIGNABLE = /\)$|[\w\])]\s*[-+*/]\s*[\w(]/;
 
 export const INSTALL_HINT = 'npm ci --prefix scripts/gates';
 
@@ -163,7 +178,37 @@ export function displayLines(text) {
   return text.replace(/\\$/gm, '\\\\');
 }
 
-function inlineFormulas(children, baseLine) {
+// The left side of a code span's ` = `, at bracket depth 0, with brackets emptied; null
+// when it has none. `==`, `<=`, `+=` and the rest are not ` = `.
+function equationLeft(code) {
+  let depth = 0;
+  let left = '';
+  for (let i = 0; i < code.length; i++) {
+    const c = code[i];
+    if (c === '=' && depth === 0 && code[i - 1] === ' ' && code[i + 1] === ' ') {
+      return left.trim();
+    }
+    depth += '([{'.includes(c) ? 1 : ')]}'.includes(c) ? -1 : 0;
+    depth = Math.max(0, depth);
+    if (depth === 0 || '([{'.includes(c)) {
+      left += c;
+    }
+  }
+  return null;
+}
+
+// Why a code span's text is a formula, or null when it reads as code.
+export function codeSpanFormula(code) {
+  for (const [sign, pattern] of MATHS_SIGNS) {
+    if (pattern.test(code)) {
+      return sign;
+    }
+  }
+  const left = equationLeft(code);
+  return left && NOT_ASSIGNABLE.test(left) ? 'an equation whose left side is not assignable' : null;
+}
+
+function inlineFormulas(children, baseLine, codeSpans) {
   const formulas = [];
   const runs = [];
   let run = null;
@@ -180,12 +225,12 @@ function inlineFormulas(children, baseLine) {
   // $`...`$: a run ending in `$`, the code span, and a text starting with `$`.
   const codeForm = (token, next) => {
     if (!run || !run.text.endsWith('$') || !next || next.type !== 'text' || !next.content.startsWith('$')) {
-      return;
+      return false;
     }
     const at = run.text.length - 1;
     const before = at > 0 ? run.text[at - 1] : '';
     if (before && !OPENER_PRECEDER.test(before)) {
-      return;
+      return false;
     }
     formulas.push({
       line: baseLine + run.line + lineOf(run.text, at),
@@ -195,6 +240,7 @@ function inlineFormulas(children, baseLine) {
     });
     run.text = run.text.slice(0, at);
     next.content = next.content.slice(1);
+    return true;
   };
 
   const visit = (token, next) => {
@@ -209,8 +255,8 @@ function inlineFormulas(children, baseLine) {
       run = run || { text: '', line: lineInBlock };
       run.text += token.type === 'text' ? token.content : '\n';
       return;
-    } else if (skipDepth === 0 && token.type === 'code_inline') {
-      codeForm(token, next);
+    } else if (token.type === 'code_inline' && !(skipDepth === 0 && codeForm(token, next))) {
+      codeSpans.push({ line: baseLine + lineInBlock, content: token.content });
     }
     endRun();
   };
@@ -313,7 +359,7 @@ function closes(fence, lines, quoteDepth) {
 // headings and table rows Markdown parses, as 1-based inclusive line ranges; `opaque` are
 // the lines of code and HTML blocks. `unclosedFences` are the code fences with no closing
 // fence, [{ line, markup }], which run to the end of their container and, at the top level,
-// swallow the rest of the page.
+// swallow the rest of the page. `codeSpans` are the inline code spans, [{ line, content }].
 export function extractFormulas(text) {
   const tokens = markdownParser().parse(text, {});
   const lines = text.split(LINE_BREAK);
@@ -322,6 +368,7 @@ export function extractFormulas(text) {
   const opaque = [];
   const nestedFences = [];
   const unclosedFences = [];
+  const codeSpans = [];
   let line = 0;
   let footnote = false;
   let listDepth = 0;
@@ -358,12 +405,12 @@ export function extractFormulas(text) {
       // GitHub renders footnote text after it has looked for maths.
       footnote = footnote || FOOTNOTE_DEFINITION.test(token.content);
       if (!footnote) {
-        formulas.push(...inlineFormulas(token.children || [], line));
+        formulas.push(...inlineFormulas(token.children || [], line, codeSpans));
       }
     }
   }
   formulas.sort((a, b) => a.line - b.line);
-  return { formulas, blocks: [...blocks.values()], opaque, nestedFences, unclosedFences };
+  return { formulas, blocks: [...blocks.values()], opaque, nestedFences, unclosedFences, codeSpans };
 }
 
 // The formulas as written in some Markdown source, before Markdown touches it, by
@@ -400,6 +447,9 @@ const USE_CODE_FORM = 'Write it as $`...`$, which Markdown leaves alone.';
 const USE_FENCE = 'Write display maths as a ```math fence and inline maths as $`...`$.';
 const NESTED_FENCE =
   'GitHub shows a ```math fence that is indented or in a list item as code. Move it to column 0, outside the list.';
+const CODE_SPAN_FORMULA =
+  'GitHub shows a code span as code, not maths. Write the formula in TeX as $`...`$ ' +
+  '(\\pi, \\times, x^{2}, \\sum); see docs/tools/Math-Formulas.md.';
 const UNCLOSED_FENCE =
   'This code fence never closes, so GitHub shows everything after it as code, formulas included. Close it.';
 
@@ -548,12 +598,19 @@ export function renderError(formula, pageBraces = 0) {
 
 // Every problem in one Markdown document: [{ line, delimiter, source, message }].
 export function checkDocument(text) {
-  const { formulas, blocks, opaque, nestedFences, unclosedFences } = extractFormulas(text);
+  const { formulas, blocks, opaque, nestedFences, unclosedFences, codeSpans } = extractFormulas(text);
   const lines = text.split(LINE_BREAK);
   const problems = [
     ...nestedFences.map((line) => ({ line, delimiter: '```math', message: NESTED_FENCE })),
     ...unclosedFences.map(({ line, markup }) => ({ line, delimiter: markup, message: UNCLOSED_FENCE })),
   ].map((problem) => ({ ...problem, source: lines[problem.line - 1].trim() }));
+  for (const span of codeSpans) {
+    const sign = codeSpanFormula(span.content);
+    if (sign) {
+      const message = `${sign} in code. ${CODE_SPAN_FORMULA}`;
+      problems.push({ line: span.line, delimiter: '`', source: `\`${span.content}\``, message });
+    }
+  }
   let pageBraces = 0;
   for (const formula of formulas) {
     const message = renderError(formula, pageBraces);
