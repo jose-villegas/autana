@@ -143,13 +143,12 @@ The cost a policy holds is the part that scales: the draw and the compose each s
 
 - Calibration uses the render context's compose decision, including expansion into the half picture.
 - The present and whatever an app draws over the scene are not in it.
-- The predictor culls once with the picture's unfitted lens before it chooses a size, then draws from the scratch block's census list with a fitted lens.
+- Every draw culls with the view's own lens, at the view's size, and draws with the lens fitted to the size chosen ([one entry](Culling.md#one-entry)): the predictor culls before it chooses a size and draws from the scratch block's census list.
 - The list's offset is independent of render size, so the context reserves only the finest step's raster block.
-- Fixed and stepped draws share one fitted lens per instance between culling and drawing.
 
 ## Where a frame's time goes at each size
 
-The raster brackets its stages for [frame cost](../../tools/Frame-Cost.md): `r3d.cull` (through the predictor, the census, `r3d.census`), `r3d.transform`, `r3d.draw` and `r3d.upscale`.
+The raster brackets its stages for [frame cost](../../tools/Frame-Cost.md): `r3d.cull`, `r3d.transform`, `r3d.draw` and `r3d.upscale`.
 
 The suite draws the test scene's path at every size on both cores, then again on one core with the span rasterizer stopped after each stage.
 

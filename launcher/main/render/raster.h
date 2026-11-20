@@ -141,10 +141,13 @@ const uint32_t* raster_lod_dithering(const raster_t* raster, const r3d_instance_
 /* Draws every instance through the picture basis and fit in `view`. */
 raster_stats_t raster_draw(const raster_t* raster, const render_view_t* view);
 
-/* The census list lets a caller price sizes before drawing. It stays valid
- * in the same scratch block for unchanged view and instances.
- * Upscaled rasters may change render size with a fixed destination; other
- * rasters must keep the census size. */
+/* raster_draw() is raster_census(), which culls through the view at its own
+ * size into the scratch block's census list, then raster_draw_culled(),
+ * which draws that list at the raster's size, so a caller can price sizes
+ * before drawing. The list holds for the same instances whatever camera
+ * draws it, at the census's depth scale, so with the same lens. Upscaled
+ * rasters may change render size with a fixed destination; other rasters
+ * must keep the census size. */
 size_t raster_culled_length(const raster_t* raster);
 /* How many the last census drew from: each instance where it was handed
  * over, in order, then each copy of each batch its spheres kept, as an
