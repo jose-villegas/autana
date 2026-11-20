@@ -358,56 +358,61 @@ def normal_signs(tris, vertex_point):
     """Per triangle, how its normal counts in its vertices' normals. A two-sided
     sheet built from pairs of triangles on the same welded corners in opposite
     winding would sum to zero there: one member of each pair counts, turned so
-    its winding agrees with its neighbours, the one-sided triangles first (the
-    consistent winding of a surface, spread across shared edges). A sheet with
-    no one-sided neighbour takes its first pair's winding. Where a pair cannot
-    agree with every neighbour (a non-orientable sheet, three sheets on an edge)
-    it keeps the first and counts as unsettled."""
-    from collections import defaultdict, deque
+    its winding agrees with its neighbours across edge_neighbours' shared edges,
+    the one-sided triangles first (the consistent winding of a surface). A sheet
+    with no one-sided neighbour takes its first pair's winding. A pair that
+    cannot agree with every neighbour (a non-orientable sheet) keeps the first
+    and counts as unsettled. Triangles with a repeated corner count 0."""
+    from collections import deque
 
     welded = np.asarray(vertex_point)[np.asarray(tris)]
     key = turned(welded)
-    whole = (key[:, 0] != key[:, 1]) & (key[:, 1] != key[:, 2])
+    whole = (key[:, 0] != key[:, 1]) & (key[:, 1] != key[:, 2]) & (key[:, 0] != key[:, 2])
     winding = key[:, 1] < key[:, 2]
     corner_sets, pair = np.unique(np.sort(welded, axis=1), axis=0, return_inverse=True)
     pair = pair.reshape(-1)
     both = np.zeros((len(corner_sets), 2), dtype=bool)
     both[pair[whole], winding[whole].astype(int)] = True
     sheet = whole & both[pair].all(axis=1)
-    first = np.full(len(both), len(tris))
+    first = np.full(len(corner_sets), len(tris))
     np.minimum.at(first, pair[sheet], np.flatnonzero(sheet))
     kept = sheet & (first[pair] == np.arange(len(tris)))
-    sign = np.where(sheet, 0, 1).astype(np.int64)
-    edges = defaultdict(list)
-    for face in np.flatnonzero(sign != 0).tolist() + np.flatnonzero(kept).tolist():
-        for k in range(3):
-            a, b = int(welded[face, k]), int(welded[face, (k + 1) % 3])
-            edges[min(a, b), max(a, b)].append((face, 1 if a < b else -1))
-    settled = sign != 0
-    unsettled = np.zeros(len(tris), dtype=bool)
-    queue = deque(np.flatnonzero(settled).tolist())
-    order = iter(np.flatnonzero(kept).tolist())
+    counted = np.flatnonzero((whole & ~sheet) | kept)
+    local = welded[counted]
+    neighbours = edge_neighbours(local)
+    # Each edge's direction against its sorted corners, and which edge of the neighbour it is.
+    start_corner, end_corner = local, np.roll(local, -1, axis=1)
+    direction = np.where(start_corner < end_corner, 1, -1)
+    lo, hi = np.minimum(start_corner, end_corner), np.maximum(start_corner, end_corner)
+    other = neighbours.clip(min=0)
+    same = (lo[other] == lo[:, :, None]) & (hi[other] == hi[:, :, None])
+    across = np.where(neighbours >= 0, -direction * (direction[other] * same).sum(-1), 0)
+    free = kept[counted]
+    sign = np.where(free, 0, 1).astype(np.int64)
+    unsettled = np.zeros(len(counted), dtype=bool)
+    queue = deque(np.flatnonzero(~free).tolist())
+    seeds = iter(np.flatnonzero(free).tolist())
     while True:
         while queue:
             face = queue.popleft()
             for k in range(3):
-                a, b = int(welded[face, k]), int(welded[face, (k + 1) % 3])
-                way = sign[face] * (1 if a < b else -1)
-                for other, direction in edges[min(a, b), max(a, b)]:
-                    if other == face or not kept[other]:
-                        continue
-                    agrees = -way * direction
-                    if not settled[other]:
-                        sign[other], settled[other] = agrees, True
-                        queue.append(other)
-                    elif sign[other] != agrees:
-                        unsettled[other] = True
-        seed = next((face for face in order if not settled[face]), None)
+                neighbour = neighbours[face, k]
+                if neighbour < 0 or not free[neighbour]:
+                    continue
+                agrees = sign[face] * across[face, k]
+                if sign[neighbour] == 0:
+                    sign[neighbour] = agrees
+                    queue.append(neighbour)
+                elif sign[neighbour] != agrees:
+                    unsettled[neighbour] = True
+        seed = next((face for face in seeds if sign[face] == 0), None)
         if seed is None:
             break
-        sign[seed], settled[seed] = 1, True
+        sign[seed] = 1
         queue.append(seed)
-    return NormalSigns(sign, int(kept.sum()), int(unsettled.sum()))
+    signs = np.zeros(len(tris), dtype=np.int64)
+    signs[counted] = sign
+    return NormalSigns(signs, int(kept.sum()), int(unsettled.sum()))
 
 
 def normal_sums(points, tris, vertex_point, sign=None):
