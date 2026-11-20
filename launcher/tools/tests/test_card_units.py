@@ -14,7 +14,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from asset.asset_pack import PackError
 from r3d import lcol_asset, mesh_asset, mesh_bundle, mesh_source, ray_query, reference_render
 from r3d.cards import (CARD_COVERED_MIN, CARD_MAX_SIDE, CARD_MASK_TEXELS, CARD_MIP_LEVELS,
-                       CARD_SEE_THROUGH_MIN, decide, emit)
+                       CARD_SEE_THROUGH_MIN, PROBE_WEIGHT_FLOOR, decide, emit)
 from r3d.cards.choose import card_from, probe_weights, split_cards, VISIBILITY_MARGIN
 from r3d.cards.pages import pack_pages, PAGE_SIDE
 from r3d.fit.copies import hidden_materials
@@ -67,16 +67,17 @@ class SharedOwnerTests(unittest.TestCase):
 
     def test_make_shape_reuses_samples_and_view_lens(self):
         source = self.source
-        sampled = (np.eye(3), np.eye(3), np.ones(3))
+        drawn = (np.eye(3), np.eye(3), np.ones(3), np.ones(3, bool))
+        rng = np.random.default_rng(0)
         views = ProbeViews([], [], {'spacing': 40.}, face_lens=2.)
-        with patch.object(emit, 'samples', return_value=sampled) as sample, \
+        with patch.object(emit, 'material_samples', return_value=(source, rng, drawn)) as sample, \
                 patch.object(emit, 'choose_cards', return_value=[]) as choose, patch.object(emit, 'RayQuery'),                 patch.object(emit, 'probe_weights', return_value=np.ones(3)) as weigh:
             emit.make_shape(source, 0, NS(epsilon=1., area_cost=0.), 0, .5, views=views, query=None)
         sample.assert_called_once()
-        self.assertIs(choose.call_args.args[0], sampled)
-        self.assertIs(choose.call_args.args[1], sample.call_args.args[1])
+        for chosen, sampled in zip(choose.call_args.args[0], drawn):
+            np.testing.assert_array_equal(chosen, sampled)
+        self.assertIs(choose.call_args.args[1], rng, "the fit draws on from the samples' generator")
         self.assertEqual(weigh.call_args.args[3], views.face_lens)
-        from r3d.cards import PROBE_WEIGHT_FLOOR
         self.assertEqual(weigh.call_args.kwargs['near_floor'], PROBE_WEIGHT_FLOOR * views.record['spacing'])
         self.assertIs(choose.call_args.kwargs['weights'], weigh.return_value)
 
