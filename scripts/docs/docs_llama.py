@@ -21,7 +21,6 @@ import json
 import os
 import platform
 import re
-import shutil
 import signal
 import subprocess
 import sys
@@ -35,6 +34,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import autana_config  # noqa: E402
+from fetch import fetch_verified, file_sha256  # noqa: E402
 
 RELEASE = "b11188"
 RELEASE_URL = "https://github.com/ggml-org/llama.cpp/releases/download/" + RELEASE + "/"
@@ -96,27 +96,14 @@ def installed(kind):
     return server_binary() is not None and model_path(kind).is_file()
 
 
-def sha256(file):
-    digest = hashlib.sha256()
-    with open(file, "rb") as stream:
-        for block in iter(lambda: stream.read(1 << 20), b""):
-            digest.update(block)
-    return digest.hexdigest()
-
-
 def download(source, target, expected):
-    if target.is_file() and sha256(target) == expected:
+    if target.is_file() and file_sha256(target) == expected:
         return
-    target.parent.mkdir(parents=True, exist_ok=True)
-    partial = target.with_suffix(target.suffix + ".part")
     print(f"downloading {source}", file=sys.stderr)
-    with urllib.request.urlopen(source) as response, open(partial, "wb") as out:
-        shutil.copyfileobj(response, out, 1 << 20)
-    actual = sha256(partial)
-    if actual != expected:
-        partial.unlink()
-        sys.exit(f"docs_llama: {target.name} has SHA-256 {actual}, expected {expected}")
-    partial.replace(target)
+    try:
+        fetch_verified(source, target, expected)
+    except ValueError as error:
+        sys.exit(f"docs_llama: {error}")
 
 
 def setup(chat=False):
