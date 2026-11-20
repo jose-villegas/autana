@@ -62,6 +62,10 @@ HOLE_DE = 10.0
 CUBLAS_WORKSPACE_ENV = "CUBLAS_WORKSPACE_CONFIG"
 CUBLAS_WORKSPACE = ":4096:8"
 RASTER_EPSILON = 1.0 / 16.0
+# A normal shorter than this fraction of its scale has no direction, and is divided by the floor instead of its
+# length, which bounds its gradient: a vertex normal's scale is the mesh's mean triangle cross product (twice its
+# mean area), a pixel normal's is 1, an interpolation of unit normals.
+NORMAL_FLOOR = 1.0e-3
 # A triangle counts as stretched when its longest fitted edge exceeds this many times its longest start edge.
 STRETCH_RATIO = 2.0
 # A triangle counts as grown when its fitted area exceeds this many times its start area.
@@ -345,13 +349,38 @@ def delta_e76(a, b):
 
 def vertex_normals(points, tris, vertex_point):
     """Per vertex, the unit area-weighted normal of the triangles around its
-    welded position, in torch, differentiable in `points`."""
+    welded position, in torch, differentiable in `points`. A two-sided sheet
+    built from triangle pairs, each on the same welded corners in opposite
+    winding, would sum to zero: each pair counts once, and at each vertex it
+    is turned to agree with the sheet's highest-numbered pair there, so
+    neighbouring pairs add up whichever winding each kept. A vertex whose
+    faces still sum to less than NORMAL_FLOOR of the mean is divided by that
+    floor, so its gradient stays bounded."""
     import torch
 
-    corners = points[vertex_point][tris]
-    face = torch.cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0], dim=1)
-    around = torch.zeros_like(points).index_add_(0, vertex_point[tris].reshape(-1), face.repeat_interleave(3, dim=0))
-    return torch.nn.functional.normalize(around, dim=1)[vertex_point]
+    welded = vertex_point[tris]
+    sorted_corners, order = welded.sort(dim=1)
+    even = (order[:, 1] - order[:, 0]) % 3 == 1
+    _, pair = torch.unique(sorted_corners, dim=0, return_inverse=True)
+    evens = torch.zeros(len(tris), dtype=torch.long, device=tris.device).index_add_(0, pair, even.long())
+    odds = torch.zeros_like(evens).index_add_(0, pair, (~even).long())
+    sheet = (evens[pair] > 0) & (odds[pair] > 0)
+    counted = even | (evens[pair] == 0)
+    corners = points[welded]
+    face = torch.cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0], dim=1) * counted[:, None]
+    corner_face = torch.arange(len(tris), device=tris.device).repeat_interleave(3)
+    corner_point = welded.reshape(-1)
+    on_sheet = sheet & counted
+    sheet_corner = on_sheet[corner_face]
+    agree = torch.full((len(points),), -1, dtype=torch.long, device=tris.device).scatter_reduce(
+        0, corner_point[sheet_corner], corner_face[sheet_corner], "amax")
+    contribution = face[corner_face]
+    reference = face.detach()[agree[corner_point].clamp_min(0)]
+    turned = sheet_corner & ((contribution.detach() * reference).sum(-1) < 0)
+    contribution = torch.where(turned[:, None], -contribution, contribution)
+    around = torch.zeros_like(points).index_add_(0, corner_point, contribution)
+    floor = NORMAL_FLOOR * face[counted].norm(dim=1).mean().detach()
+    return (around / torch.maximum(around.norm(dim=1, keepdim=True), floor))[vertex_point]
 
 
 class Renderer:
@@ -526,7 +555,7 @@ class Renderer:
         if values is None:
             vertex = vertex_normals(points, self.tris.long(), self.vertex_point)
             values = self.interpolate(torch.cat([vertex, points[self.vertex_point]], dim=1), clip, rast, keep)
-        normal = torch.nn.functional.normalize(values[..., :3], dim=-1)
+        normal = torch.nn.functional.normalize(values[..., :3], dim=-1, eps=NORMAL_FLOOR)
         towards = torch.as_tensor(eye, dtype=normal.dtype, device=normal.device) - values[..., 3:]
         normal = torch.where((normal * towards).sum(-1, keepdim=True) < 0, -normal, normal)
         return normal.flip(0), (rast[0, ..., 3] > 0).flip(0)
