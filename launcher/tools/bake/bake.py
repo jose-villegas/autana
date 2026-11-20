@@ -32,8 +32,8 @@ only locked bytes, so it makes the same bytes on any GPU in the pinned environme
 A renderer with `textures` adds a CPU texture bake (`<entry>.texture.pack`, r3d/texture/) whose key
 names its packed mesh's locked bytes; its entries join that mesh's pack.
 
-`list` prints every bake with its key, or with `--missing` those LOCK lacks. `bake` makes each bake LOCK has no
-row for into the cache (produce.py), and with `--out` also copies each one there as it is made, the folder a CI
+`list` prints every bake with its key, or with `--missing` those a run must make: LOCK has no row for it, or a
+seeded one. `bake` makes each of them into the cache (produce.py), and with `--out` also copies each one there as it is made, the folder a CI
 run uploads, so a run cut short still uploads what it finished; `--from-run N` first takes run N's uploads made on a
 host like this one into the cache, so a rerun makes only what is left; `--only` limits it to the named outputs and
 `--again` re-makes them even when locked, a fit from fresh references, to compare a new make with the lock
@@ -1376,7 +1376,7 @@ def main(argv=None):
                         help="lock: add the rows CI run N made; bake: reuse those made on a host like this; repeatable")
     parser.add_argument("--kind", choices=KINDS, help="list, bake: only this kind")
     parser.add_argument("--blender", help="bake: the Blender to export with; `blender` on PATH when omitted")
-    parser.add_argument("--missing", action="store_true", help="list: only the bakes LOCK has no row for")
+    parser.add_argument("--missing", action="store_true", help="list: only the bakes LOCK has no row for, or only a seeded one")
     parser.add_argument("--out", help="bake: also copy what was made here, for a CI run to upload")
     parser.add_argument("--only", action="append", metavar="OUTPUT", help="bake: only this output; repeatable")
     parser.add_argument("--again", action="store_true", help="bake: make them even when locked, and compare")
@@ -1399,6 +1399,8 @@ def main(argv=None):
         paths = args.paths or [DEFAULT_SEARCH]
         tables = read_lock_tables()
         lock, held = tables["bake"], tables["poses"]
+        # The keys a run made: a seeded row's bytes were carried over, so a run makes its key again.
+        made_keys = {key for key, row in lock.items() if not row.get("seeded")}
         made = runs_made(args.from_run, cache) if args.command == "lock" and args.from_run else {}
         starts = locked_starts(lock, made)
         poses = Poses(held, resample=args.command == "lock")
@@ -1409,11 +1411,11 @@ def main(argv=None):
 
             rays = [produce.reference_rays(bake, pathlib.Path(args.out) / bake.output) if args.out
                     else produce.reference_rays(bake)
-                    for bake in found if bake.kind == "reference" and bake.key not in lock]
+                    for bake in found if bake.kind == "reference" and bake.key not in made_keys]
             print(json.dumps(list(range(reference_shards(sum(rays)))) if rays else []))
         elif args.command == "list":
             for bake in found:
-                if (args.missing and bake.key in lock) or args.kind not in (None, bake.kind):
+                if (args.missing and bake.key in made_keys) or args.kind not in (None, bake.kind):
                     continue
                 print(f"{bake.output}\t{bake.kind}\t{bake.key or WAITS.get(bake.kind, 'waits for its start and reference set')}\t{relative(bake.source)}")
         elif args.command == "bake":
@@ -1433,7 +1435,7 @@ def main(argv=None):
                 parser.error(f"--only: {', '.join(other)} not of --kind {args.kind}")
 
             def to_make(bake, kind):
-                return (bake.kind == kind and args.kind in (None, kind) and (args.again or bake.key not in lock)
+                return (bake.kind == kind and args.kind in (None, kind) and (args.again or bake.key not in made_keys)
                         and not (args.only and bake.output not in args.only))
 
             # Joined shards are traced already, where the shards ran: packing them traces nothing here.

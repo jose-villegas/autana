@@ -1662,6 +1662,15 @@ class LockTests(unittest.TestCase):
         self.assertEqual(written[0], [{"output": "one.bundle", "source": "a.scene.toml", "key": "k" * 64,
                                        "sha256": stale["sha256"], "size": len(refit), "seeded": True}])
 
+    def test_a_seeded_row_is_missing_so_a_run_makes_its_key_again(self):
+        found = [bake_of("k" * 64, self.tree), bake_of("j" * 64, self.root / "two.bundle")]
+        lock = {"k" * 64: {**self.row, "seeded": True}, "j" * 64: {**self.row, "key": "j" * 64, "run": 4}}
+        with mock.patch.object(bake, "bakes", return_value=found), \
+                mock.patch.object(bake, "read_lock_tables", return_value={"bake": lock, "poses": {}}), \
+                contextlib.redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(bake.main(["list", "--missing"]), 0)
+        self.assertEqual([line.split("\t")[2] for line in out.getvalue().splitlines()], ["k" * 64])
+
     def test_check_says_which_rows_are_seeded(self):
         found = [bake_of("k" * 64, self.tree)]
         with mock.patch.object(bake, "bakes", return_value=found), \
