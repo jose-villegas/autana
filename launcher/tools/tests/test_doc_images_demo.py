@@ -413,6 +413,7 @@ class PhysicalSceneTests(unittest.TestCase):
 
     def test_a_copy_in_another_folder_still_reaches_the_camera_animation(self):
         from r3d.import_settings import load_scene
+        from r3d.poses import flight_camera
         scene = DEMO_SCENE
         text = self.module.physical_scene(scene.read_text(encoding="utf-8"), scene.parent)
         with tempfile.TemporaryDirectory() as directory:
@@ -421,7 +422,7 @@ class PhysicalSceneTests(unittest.TestCase):
             copy.write_text(text, encoding="utf-8")
             (copy.parent / DEMO_IMPORT.name).write_text(
                 DEMO_IMPORT.read_text(encoding="utf-8"), encoding="utf-8")
-            path = load_scene(copy).camera.component.path
+            path = flight_camera(load_scene(copy)).path
             self.assertIsNotNone(path)
 
 

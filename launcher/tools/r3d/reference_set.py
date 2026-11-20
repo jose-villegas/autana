@@ -148,12 +148,12 @@ def probe_poses(inputs, work, path):
     query = None
     if settings.alpha_keep is not None:
         query = RayQuery(source.p, source.tri_v, hit_filter=AlphaTest(source, settings.alpha_keep))
-    training, held_out, record = probes.select(source.p, source.tri_v, camera.region, camera.near_z,
-                                               inputs.probes.spacing, PROBE_SEED, path, query=query)
-    for (poses, _), faces in ((PROBE_TRAINING, training), (PROBE_HELD_OUT, held_out)):
-        (work / poses).write_text(poses_text(face, face, probes.FACE_LENS, camera.near_z, faces))
-    (work / PROBE_RECORD).write_text(json.dumps(record) + "\n")
-    return len(training)
+    views = probes.select(source.p, source.tri_v, camera.region, camera.near_z, inputs.probes.spacing, PROBE_SEED,
+                          path, query=query)
+    for (poses, _), faces in ((PROBE_TRAINING, views.training), (PROBE_HELD_OUT, views.held_out)):
+        (work / poses).write_text(poses_text(face, face, views.face_lens, camera.near_z, faces))
+    (work / PROBE_RECORD).write_text(json.dumps(views.record) + "\n")
+    return len(views.training)
 
 
 def pack_references(work, sets):
