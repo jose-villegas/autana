@@ -60,8 +60,11 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
         command += ["--poses", str(inputs / poses), "--reference", str(inputs / reference)]
     for poses in sets.coverage:
         command += ["--coverage-poses", str(inputs / poses)]
-    for poses, reference in sets.held_out if shaping.probes is not None else ():
+    # Every fit logs its held-out dE76; a probe fit also gates the surface it loses there.
+    for poses, reference in sets.held_out:
         command += ["--held-out-poses", str(inputs / poses), "--held-out-reference", str(inputs / reference)]
+    if shaping.probes is not None:
+        command += ["--closure"]
     if budget is not None:
         command += ["--budget", str(budget)]
     command += ["--out", str(out),

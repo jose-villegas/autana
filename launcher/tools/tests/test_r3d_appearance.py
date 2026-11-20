@@ -1198,6 +1198,18 @@ class AppearanceFitTests(unittest.TestCase):
         np.testing.assert_allclose(points[0.0][:, 2], 0.5, err_msg="the colour term alone leaves the rest off the surface")
         self.assertLess(np.abs(points[10.0][:, 2]).max(), 0.05)
 
+    def test_held_out_de_is_zero_against_the_meshs_own_render_and_grows_with_a_colour_shift(self):
+        from r3d.appearance_simplify import Renderer, delta_e_total
+
+        card, size = self.card(0.0, half=1.0, rgb=0.4), (48, 40)
+        matrix = projection([0.0, 0.0, 3.0], [0.0, 0.0, -1.0], 24, 20, 0.62, 0.5)
+        target = draw(Renderer(card.tris, card.double, card.vertex_point, size, "cuda"), card.points, card.rgb, matrix)
+        total, pixels = delta_e_total(card, [(matrix, target)], size, (0.0, 0.0, 0.0))
+        self.assertEqual(pixels, size[0] * size[1])
+        self.assertLess(total / pixels, 0.01)
+        shifted, _ = delta_e_total(card._replace(rgb=card.rgb + 0.2), [(matrix, target)], size, (0.0, 0.0, 0.0))
+        self.assertGreater(shifted / pixels, 1.0)
+
     def test_geometry_views_push_the_rest_behind_the_copy_beside_the_surface_term(self):
         import torch
 
