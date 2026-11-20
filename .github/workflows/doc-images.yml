@@ -99,6 +99,16 @@ jobs:
           sudo sh scripts/ci/apt_install.sh -y --no-install-recommends ffmpeg llvm
           ffmpeg -version | head -1
 
+      # figures_runner.py skips a producer whose inputs (toolchain included) match the record of its last run
+      # that made the committed images. The key names this job: no other job reads or writes it. A branch
+      # restores main's newest record and saves its own.
+      - name: Restore the figure record
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: launcher/tools/results/doc_images/fingerprints.json
+          key: figure-record-cpu-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: figure-record-cpu-
+
       # Exit 1 means an image or table changed, or an image is an orphan; an orphan or any exit
       # above 1 fails the job.
       - name: Render and compare
@@ -114,6 +124,15 @@ jobs:
           fi
           grep '^changed ' "$RUNNER_TEMP/report.txt" > "$RUNNER_TEMP/changed.txt" || true
           echo "count=$(wc -l < "$RUNNER_TEMP/changed.txt")" >> "$GITHUB_OUTPUT"
+
+      # A render that fails after figures_runner.py keeps the record it wrote; a cancelled one saves nothing.
+      # The attempt is in the key, so a re-run saves its own.
+      - name: Save the figure record
+        if: ${{ !cancelled() && hashFiles('launcher/tools/results/doc_images/fingerprints.json') != '' }}
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: launcher/tools/results/doc_images/fingerprints.json
+          key: figure-record-cpu-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Package rendered output
         run: |
