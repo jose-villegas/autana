@@ -2063,10 +2063,10 @@ def capture_stream(args, store, board, tag, on_data, lines=None, log=None, openi
             while not stop.is_set():
                 try:
                     events = packets.feed(connection.read(STREAM_READ_BYTES))
-                except console_packets.PacketError:
+                except console_packets.PacketError as error:
                     if on_packet_error is None:
                         raise
-                    on_packet_error()
+                    on_packet_error(getattr(error, "packet", None))
                     continue
                 for kind, data in events:
                     if kind == "data":

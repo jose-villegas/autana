@@ -177,9 +177,20 @@ class Recording:
             self.process = video_encode.open_encoder(self.binary, size, OUTPUT_FPS, self.path, live=True)
         self.process.stdin.write(frame)
 
-    def corrupt(self):
-        """Discard the current assembly after a packet CRC failure."""
-        if self.parts.seq is None:
+    def corrupt(self, packet=None):
+        """Discard one present after a packet CRC failure, retaining its sequence."""
+        if packet is not None and len(packet) >= PART.size:
+            seq, _, _ = PART.unpack_from(packet)
+            if seq == self.parts.rejected:
+                return
+            if self.parts.seq is not None and self.parts.seq != seq:
+                self.parts.abandon()
+            if self.parts.seq == seq:
+                self.parts.abandon()
+            else:
+                self.parts.dropped += 1
+                self.parts.rejected = seq
+        elif self.parts.seq is None:
             self.parts.dropped += 1
         else:
             self.parts.abandon()

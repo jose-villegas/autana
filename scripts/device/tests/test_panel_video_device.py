@@ -14,16 +14,26 @@ import panel_video
 
 
 class PanelVideoDeviceTests(unittest.TestCase):
-    def capture(self, timed, corrupt=False):
-        stream = struct.pack("<IQHHHHHHI", 1, 0, 1, 0, 0, 0, 1, 1, 3) + b"\0\xf8\0"
-        packet = struct.pack("<IHB", 1, 0, 1) + stream
+    def capture(self, timed, corrupt=False, lost_first=False):
+        good_seq = 2 if corrupt else 1
+        stream = struct.pack("<IQHHHHHHI", good_seq, 0, 1, 0, 0, 0, 1, 1, 3) + b"\0\xf8\0"
+        packet = struct.pack("<IHB", good_seq, 0, 1) + stream
         wire = b"PANEL_BIN %d %08x\n" % (len(packet), zlib.crc32(packet)) + packet
+
+        if lost_first:
+            first = struct.pack("<IHB", 1, 0, 0) + b"broken"
+            tail = struct.pack("<IHB", 1, 1, 1) + b"tail"
+            bad = b"PANEL_BIN %d %08x\n" % (len(first), zlib.crc32(first) ^ 1) + first
+            damaged = bad + b"PANEL_BIN %d %08x\n" % (len(tail), zlib.crc32(tail)) + tail
+        else:
+            bad_packet = struct.pack("<IHB", 1, 0, 1) + struct.pack("<I", 1) + stream[4:]
+            damaged = b"PANEL_BIN %d %08x\n" % (len(bad_packet), zlib.crc32(bad_packet)) + bad_packet[:-1] + b"\xff"
 
         class Board(RecordingBoard):
             def write(self, data):
                 super().write(data)
                 if data == b"PANELCAP STOP\n":
-                    self.chunks.extend(([wire[:-1] + b"\xff"] if corrupt else [])
+                    self.chunks.extend(([damaged] if corrupt else [])
                                        + [wire, b"PANELCAP_END presents=1 dropped=0 bytes=31\n"])
 
         board = Board([b"PANELCAP_BEGIN fps=15 ring=1331232\n", b"DRAG_OK\n"])
@@ -52,7 +62,9 @@ class PanelVideoDeviceTests(unittest.TestCase):
             self.assertIn("video: presents=1", log.getvalue())
             self.assertIn(f"host_dropped={int(corrupt)}", log.getvalue())
             with out.with_suffix(".frames.csv").open() as source:
-                self.assertEqual(len(list(csv.reader(source))), 2)
+                rows = list(csv.reader(source))
+                self.assertEqual(len(rows), 2)
+                self.assertEqual(rows[1][0], str(good_seq))
 
     def test_scripted_stdin_replies_and_recorded_packet_to_encoder(self):
         self.capture(False)
@@ -62,3 +74,6 @@ class PanelVideoDeviceTests(unittest.TestCase):
 
     def test_bad_packet_drops_one_present_and_capture_continues(self):
         self.capture(False, corrupt=True)
+
+    def test_first_part_crc_failure_counts_one_dropped_present(self):
+        self.capture(False, corrupt=True, lost_first=True)

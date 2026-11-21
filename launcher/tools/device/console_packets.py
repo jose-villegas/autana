@@ -57,8 +57,10 @@ class Packets:
             self.partial.extend(self.pending[:start])
             del self.pending[:end + 1 + count]
             if zlib.crc32(data) != crc:
-                raise PacketError(f"a {count}-byte packet arrived damaged: crc32 {zlib.crc32(data):08x}, "
-                                  f"the board sent {crc:08x}")
+                error = PacketError(f"a {count}-byte packet arrived damaged: crc32 {zlib.crc32(data):08x}, "
+                                    f"the board sent {crc:08x}")
+                error.packet = data
+                raise error
             out.append((self.prefixes[self.prefix] if self.multiple else "data", data))
 
     def parse_head(self, start, end):
