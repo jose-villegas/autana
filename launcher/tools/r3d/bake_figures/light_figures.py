@@ -1,7 +1,7 @@
 """The point and spot light figure of docs/render/scene/Scene-Files.md and docs/render/Lighting.md: a small scene
 baked by the importer and drawn by the host renderer.
 
-A floor with a box and a pillar, lit by a warm point light and a cool spot and nothing else but a faint ambient.
+A floor with a box and a pillar, lit by a warm point light and a cool spot, one bounce of their light and a faint ambient.
 The scene is written to a scratch folder outside the repository, so the importer writes its baked mesh beside it and
 the pack takes that mesh instead of a locked bake (build_pack.py). The frame is the host renderer's, quarter 0.
 
@@ -21,6 +21,10 @@ import tempfile
 from PIL import Image
 
 ROOT = pathlib.Path(__file__).resolve().parents[4]
+sys.path.insert(0, str(ROOT / "launcher/tools"))
+from r3d.bake_fidelity import build_host  # noqa: E402
+from r3d.obj import write_obj as write_obj_file  # noqa: E402
+
 FIGURE_NAME = "light-point-spot.png"
 SCENE_ID = "lights"
 OBJECT = "room"
@@ -28,7 +32,7 @@ OBJECT = "room"
 # needs vertices across it.
 FLOOR_QUADS, BLOCK_QUADS = 64, 8
 FLOOR_HALF = 6.0
-# (name, linear-ish Kd, centre, size) of each block standing on the floor.
+# (name, albedo as an MTL Kd, centre, size) of each block standing on the floor.
 BLOCKS = (("box", (0.80, 0.78, 0.74), (-2.2, 0.75, 0.2), (1.5, 1.5, 1.5)),
           ("pillar", (0.75, 0.75, 0.78), (2.2, 1.6, -1.0), (0.6, 3.2, 0.6)))
 FLOOR_KD = (0.70, 0.70, 0.70)
@@ -96,12 +100,12 @@ name = "{SCENE_ID}"
 
 
 def grid(corner, u, v, quads):
-    """The vertices and quads of a parallelogram from `corner` along u and v, split quads by quads."""
+    """The vertices and triangles of a parallelogram from `corner` along u and v, split quads by quads."""
     points = [[corner[k] + u[k] * i / quads + v[k] * j / quads for k in range(3)]
               for i in range(quads + 1) for j in range(quads + 1)]
-    faces = [(i * (quads + 1) + j, (i + 1) * (quads + 1) + j, (i + 1) * (quads + 1) + j + 1, i * (quads + 1) + j + 1)
-             for i in range(quads) for j in range(quads)]
-    return points, faces
+    corners = [(i * (quads + 1) + j, (i + 1) * (quads + 1) + j, (i + 1) * (quads + 1) + j + 1, i * (quads + 1) + j + 1)
+               for i in range(quads) for j in range(quads)]
+    return points, [tri for a, b, c, d in corners for tri in ((a, b, c), (a, c, d))]
 
 
 def write_obj(folder):
@@ -109,10 +113,10 @@ def write_obj(folder):
     vertices, groups = [], []
 
     def add(material, corner, u, v, quads):
-        points, faces = grid(corner, u, v, quads)
-        base = len(vertices) + 1
+        points, tris = grid(corner, u, v, quads)
+        base = len(vertices)
         vertices.extend(points)
-        groups.append((material, [[base + index for index in face] for face in faces]))
+        groups.append((None, material, [[base + index for index in tri] for tri in tris]))
 
     add("floor", (-FLOOR_HALF, 0.0, FLOOR_HALF), (2 * FLOOR_HALF, 0, 0), (0, 0, -2 * FLOOR_HALF), FLOOR_QUADS)
     for name, _, centre, size in BLOCKS:
@@ -126,12 +130,8 @@ def write_obj(folder):
                              ((x1, y0, z1), (0, 0, -sz), (0, sy, 0))):  # right, +x
             add(name, corner, u, v, BLOCK_QUADS)
     # The export to Mitsuba for bounced light reads texture coordinates; untextured, any will do.
-    lines = ([f"mtllib {SCENE_ID}.mtl"] + [f"v {x:.6f} {y:.6f} {z:.6f}" for x, y, z in vertices]
-             + [f"vt {x:.6f} {z:.6f}" for x, _, z in vertices])
-    for material, faces in groups:
-        lines.append(f"usemtl {material}")
-        lines.extend("f " + " ".join(f"{index}/{index}" for index in face) for face in faces)
-    (folder / f"{SCENE_ID}.obj").write_text("\n".join(lines) + "\n")
+    write_obj_file(folder / f"{SCENE_ID}.obj", f"{SCENE_ID}.mtl", vertices, groups,
+                   uvs=[(x, z) for x, _, z in vertices], position_decimals=6)
     materials = [("floor", FLOOR_KD)] + [(name, kd) for name, kd, _, _ in BLOCKS]
     (folder / f"{SCENE_ID}.mtl").write_text("".join(f"newmtl {name}\nKd {r} {g} {b}\n\n" for name, (r, g, b) in materials))
 
@@ -157,10 +157,7 @@ def main(argv=None):
         scene = folder / f"{SCENE_ID}.scene.toml"
         scene.write_text(SCENE)
         run([sys.executable, ROOT / "launcher/tools/r3d/mesh_import.py", scene], folder / "bake.log")
-        built = subprocess.run(["sh", "launcher/tools/render/scene_viewer.sh", scene.as_posix(), "--build-only",
-                                "-o", (folder / "host").as_posix()], check=True, cwd=ROOT, capture_output=True,
-                               text=True).stdout.strip().splitlines()[-1]
-        host = pathlib.Path(built.removeprefix("built "))
+        host = build_host(ROOT / "launcher/tools/render/scene_viewer.sh", folder / "host", scene)
         frame = folder / "frame.bmp"
         run([host, "--quarter", "0", "--scene", SCENE_ID, "--frames", "1", "-o", frame], folder / "render.log",
             env={**os.environ, "AUTANA_ASSET_DIR": str(host.parent / "assets")})

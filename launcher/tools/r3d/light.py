@@ -13,7 +13,7 @@ import numpy as np
 
 from . import log
 from .geometry import distinct_corners, hit_barycentrics, nearest_triangles, triangle_areas, triangle_search
-from .import_settings import LIGHT_FIELDS, LIGHT_MODE_BAKED, LOCAL_LIGHTS
+from .import_settings import LIGHT_FIELDS, LIGHT_MODE_BAKED, LOCAL_LIGHTS, PUNCTUAL_LIGHTS
 from .obj import alpha_tested
 
 
@@ -287,15 +287,22 @@ def facing(normals, toward):
     return normals @ toward if toward.ndim == 1 else np.einsum("ij,ij->i", normals, toward)
 
 
+def light_visible(intersector, origin, toward, reach, traced):
+    """Which origins see the light: the `traced` ones (indices) whose shadow ray toward it, no farther than `reach`,
+    is clear. Every other origin is unlit and traces no ray."""
+    rays = np.ascontiguousarray(np.broadcast_to(toward, origin.shape)[traced])
+    seen = np.zeros(len(origin), dtype=bool)
+    seen[traced] = ~intersector.blocked(origin[traced], rays, None if reach is None else reach[traced])
+    return seen
+
+
 def bake_punctual(light, ctx):
     """A light from one point, the sun included: one shadow ray toward it, no farther than the light, and the cosine of
     the angle to the normal times the light's falloff. Points the light cannot reach trace no ray."""
     toward, reach, falloff = light_rays(light, ctx.origin, ctx.ray_offset)
     cosine = np.maximum(facing(ctx.normals, toward), 0.0)
     traced = np.flatnonzero((cosine > 0) & (np.asarray(falloff) > 0))
-    rays = np.ascontiguousarray(np.broadcast_to(toward, ctx.origin.shape)[traced])
-    lit = np.zeros(len(ctx.origin))
-    lit[traced] = ~ctx.intersector.blocked(ctx.origin[traced], rays, None if reach is None else reach[traced])
+    lit = light_visible(ctx.intersector, ctx.origin, toward, reach, traced)
     return (cosine * lit * falloff)[:, None] * np.array(light["color"]) * light["intensity"]
 
 
@@ -315,8 +322,7 @@ def bake_ambient(light, ctx):
 
 # The one table of what a scene light is: its fields, declared in
 # import_settings.py, and what it adds to a point's radiance.
-BAKERS = {"directional": bake_punctual, "point": bake_punctual, "spot": bake_punctual, "sky": bake_sky,
-          "ambient": bake_ambient}
+BAKERS = {**dict.fromkeys(PUNCTUAL_LIGHTS, bake_punctual), "sky": bake_sky, "ambient": bake_ambient}
 LIGHTS = {kind: (LIGHT_FIELDS[kind], bake) for kind, bake in BAKERS.items()}
 assert set(LIGHTS) == set(LIGHT_FIELDS)
 
@@ -377,9 +383,9 @@ def light(points, normals, double_sided, intersector, lights, ray_offset, bounce
           bounce_intensity=1.0):
     """Radiance from the scene lights at each point, in the unit of irradiance over pi.
 
-    The sun, point, spot and sky lights come from shadow rays against `intersector`, the sun's and sky's the same
-    fixed directions at every point so equal
-    surroundings give equal light. `bounce` is a PathLight whose bounced light is added; `bounce_groups` gives
+    The sun, point, spot and sky lights come from shadow rays against `intersector`; the sun and sky use the same
+    fixed directions at every point, so equal surroundings give equal light. `bounce` is a PathLight whose bounced
+    light is added; `bounce_groups` gives
     points that share one position the same bounce, gathered once on their mean normal, since bounced light changes
     slowly where direct light does not. `ao` is the scene's local occlusion setting: it scales the ambient light,
     and the bounced light when `ao.indirect`. A double-sided point has no side it is meant to be seen from: it is lit

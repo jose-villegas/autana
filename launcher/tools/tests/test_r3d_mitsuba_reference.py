@@ -292,7 +292,7 @@ class MitsubaEmitterTest(unittest.TestCase):
     def test_the_bake_and_the_path_tracer_light_a_plane_alike_from_a_point_and_a_spot(self):
         # Inside the range window's flat part and the cone's full part, where the two backends' lights are the same.
         point = lamp([0.0, 0.0, 1.0], 100.0, intensity=0.5)
-        spot = dict(lamp([0.0, 0.0, 1.0], 100.0, cone=(55.0, 65.0), intensity=0.5), axis=[0.0, 0.0, -1.0])
+        spot = lamp([0.0, 0.0, 1.0], 100.0, cone=(55.0, 65.0), rotation=(90, 0, 0), intensity=0.5)  # shines down -z
         for light_ in (point, spot):
             with self.subTest(light_["type"]):
                 view = dict(width=8, height=8, lens=0.3)

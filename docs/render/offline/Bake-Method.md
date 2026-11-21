@@ -49,9 +49,9 @@ smooth cone edge<sup>[[134]](../../Citations.md#khr-lights-punctual)</sup>:
 S = \mathrm{clamp}\!\left(\frac{-\hat a\cdot\hat l - \cos\theta_o}{\cos\theta_i - \cos\theta_o}\right)^{2}
 ```
 
-$E$ is in the sun's unit: inside the window and the cone, a point light of
-intensity $I$ at distance $d$ lights like a sun of intensity $I/d^2$. A point
-past the range, outside the cone or facing away traces no ray.
+$E$ is in the sun's unit: leaving out the window, the cone and $\varepsilon$, a
+point light of intensity $I$ at distance $d$ lights like a sun of intensity
+$I/d^2$. A point past the range, outside the cone or facing away traces no ray.
 
 ## Local-occlusion implementation
 
@@ -85,8 +85,8 @@ so frame cost and mesh size do not change; only the bake takes longer.
 The bake exports the full-detail source mesh, its textures at full resolution,
 and the scene's baked sun, point, spot and sky lights to Mitsuba<sup>[[15]](../../Citations.md#mitsuba3)</sup> once.
 A point or spot light becomes Mitsuba's own point or spot emitter of the same
-intensity. Those differ from the direct term in two places, which reach the
-bounced light only:
+intensity. Mitsuba's lights differ from the direct term in two places; only
+the bounced light uses them:
 
 | Where | Direct light | Mitsuba's light |
 |---|---|---|

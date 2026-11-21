@@ -83,10 +83,10 @@ L(x) = a(x)\Bigl( c_s I_s \max(0,\, n \cdot \omega_s)\, V(x, \omega_s)
      + f_b(x)\, E_{\mathrm{ind}}(x) \Bigr)
 ```
 
-$V$ is 1 when a ray from $x$ escapes, $`V_j`$ when one reaches point or spot
-light $j$ in direction $`\hat l_j`$, $`W_j`$ that light's falloff, $f$ the local-occlusion factor, and
+$V$ is 1 when a ray from $x$ escapes, $f$ the local-occlusion factor, and
 $`E_{\mathrm{ind}}`$ the bounced light. $`f_b`$ is $f$ when `ao.indirect` is
-set, else 1.
+set, else 1. For point or spot light $j$ in direction $`\hat l_j`$, $`V_j`$ is
+1 when its shadow ray reaches it and $`W_j`$ is its falloff.
 
 | Term | Function in [`light.py`](../../launcher/tools/r3d/light.py) | Shadow it gives | Detail |
 |---|---|---|---|
