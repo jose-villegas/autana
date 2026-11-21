@@ -13,6 +13,7 @@ import sys
 from layout_measure import (REPO, autana_command, booted_build_id,
                             capture_metadata, captured_runs, make_table, parse_markdown, timing_samples,
                             run_stamped, split_filters, filter_limits, status_snapshot)
+from device_report import read_capture_text
 from layout_measure import flash_needs_hot_tunables, TUNE_VALUE_MIN, TUNE_VALUE_MAX, TUNE_NAME_MAX
 import device_lock
 
@@ -126,7 +127,7 @@ def plan(args):
 
 def metrics(capture, table):
     """Pool capture metrics and generated table rows, retaining their units."""
-    text = Path(capture).read_text(encoding="utf-8", errors="replace")
+    text = read_capture_text(capture)
     values = {}
     units = {}
 
@@ -136,7 +137,7 @@ def metrics(capture, table):
 
     for name, value in timing_samples(text, identity_fields=("cores", "paused", "joints"), percentiles=True):
         add(name, value)
-    for name, value in parse_markdown(Path(table).read_text(encoding="utf-8", errors="replace")).items():
+    for name, value in parse_markdown(read_capture_text(table)).items():
         if name not in values:
             add(name, value)
     # Stages from the suite's own line only: the shell's periodic frame_cost
