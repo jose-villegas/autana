@@ -147,6 +147,19 @@ class SelectTests(unittest.TestCase):
         self.assertEqual(cut.record["train"]["shown_after"], np.count_nonzero(facing & self.targets),
                          "the kept faces should show the box's +x side and count nothing else")
 
+    def test_placed_training_places_every_probe_and_its_kept_faces_are_the_training_views(self):
+        query = self.query(cut=True)
+        views = self.select(query=query, targets=self.targets)
+        from r3d.views.probe_figures import placed_training
+
+        placed = placed_training(self.source.p, self.source.tri_v, self.NEAR, self.SEED, views, query)
+        self.assertEqual(len(placed), views.record["train"]["probes"])
+        for fate in ("inside", "near"):
+            self.assertEqual(sum(probe["fate"] == fate for probe in placed), views.record["train"][fate], fate)
+        faces = [np.concatenate([probe["at"], probes.FACES[face]]) for probe in placed for face in probe["faces"]]
+        self.assertGreater(len(faces), 0)
+        np.testing.assert_allclose(sorted(map(tuple, faces)), sorted(map(tuple, views.training)))
+
     def test_every_triangle_as_a_target_is_the_same_as_no_targets(self):
         query = self.query(cut=False)
         plain = self.select(query=query)

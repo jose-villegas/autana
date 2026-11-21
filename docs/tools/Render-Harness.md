@@ -37,7 +37,8 @@ Meshes must already be baked.
 
 Repeat `--object NAME` to enable only those mesh renderers; omit it to draw
 all authored renderers. An unknown renderer reports the available names.
-`--camera NAME` selects a camera; omission activates the scene's default.
+`--camera NAME` selects a camera; omitted, the first camera on a path flies,
+the one the references are traced along, else the first camera.
 Stderr names the camera's path duration in ms, and `--poses FILE` writes one
 CSV row per frame of where it stands: `frame,ms`, its world position and
 rotation quaternion.
@@ -420,7 +421,7 @@ part of it) for comparisons and viewers.
 | Owner | Carried state |
 |---|---|
 | Host loop | Frame index, elapsed time, input, drawn box and output pixels |
-| Scene | Animation playheads and poses, transforms, world caches, cameras, skin output and lights |
+| Scene | Animation playheads and poses, transforms, world caches, cameras, skin output, lights and each copy's level of detail |
 | Render context | Raster scratch and upscale maps, split feedback, frame-generation pictures and costs, resolution controller and debug views |
 | Graphics | Presentation flags, dirty regions, framebuffers, half picture and seams, indexed image and palettes |
 | Tunables | Values and owner generations |

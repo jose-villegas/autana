@@ -1269,7 +1269,7 @@ print(json.dumps(seen))
                 mock.patch("builtins.print") as printed:
             code = autana.hand(["--until-back", "10", "download mode"])
         self.assertEqual(code, autana.EXIT_INTERRUPTED)
-        printed.assert_called_once_with("human reservation wait interrupted")
+        printed.assert_called_once_with("human reservation wait interrupted", file=sys.stderr)
 
     def test_hand_rejects_until_back_without_seconds(self):
         with self.assertRaises(SystemExit):

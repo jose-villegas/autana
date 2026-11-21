@@ -25,6 +25,9 @@
 #include "testkit/cleanup.h"
 #include "ui_probe.h"
 
+/* A scene that generates frames, so the menu draws its FRAME GEN row too. */
+static const lab_scene_t generating = {.name = "Generating", .generates_frames = true};
+
 /* Landscape (448x368 logical) - this app's shipping orientation. */
 static void
 fixture(void) {
@@ -58,7 +61,7 @@ test_menu_screen_command_list_fits_budget(void) {
 
     const char* const families[] = {"Sponza", "Capybara"};
     const lab_menu_screen_state_t state = {
-        .families = families, .family_count = 2, .settings = render_lab_settings_draw};
+        .families = families, .family_count = 2, .settings = render_lab_settings_draw, .showing = &generating};
 
     const input_t input = {0};
     ui_begin(&input);
@@ -87,10 +90,12 @@ budget_controls(int width) {
     lab_clips_draw(width, &menu_budget->choice);
 }
 
+static const lab_scene_t budget_scene = {.name = "Budget", .controls = budget_controls, .generates_frames = true};
+
 static void
 budget_menu_frame(const input_t* input) {
     ui_begin(input);
-    const lab_menu_screen_state_t state = {.controls = budget_controls, .settings = render_lab_settings_draw};
+    const lab_menu_screen_state_t state = {.settings = render_lab_settings_draw, .showing = &budget_scene};
     (void)lab_menu_screen_draw(&state);
     ui_probe_budget_assert("animated menu with clip list");
 }

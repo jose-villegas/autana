@@ -16,6 +16,8 @@ void ui_probe_end_frame(void);
 /* Where a line of text `s` was drawn in the last built frame, in canvas
  * coordinates: its first glyph's corner and its measured size. */
 bool ui_probe_text(const char* s, recti_t* out);
+/* How many text commands this frame draw exactly `s`. */
+int ui_probe_text_count(const char* s);
 
 /* The clip rectangle in force when text `s` was drawn. */
 bool ui_probe_text_clip(const char* s, recti_t* out);

@@ -542,19 +542,18 @@ scene_stress_path(void) {
 
 /* A still preset can have frames generated: only the camera moves. */
 #define STRESS_SCENE_ROW(id_, key_, surface_, ...)                                                                     \
-    [STRESS_##                                                                                                         \
-        id_] = {.name = "Stress " key_,                                                                                \
-                .key = STRESS_SCENE "-" key_,                                                                          \
-                .family = "Stress",                                                                                    \
-                .variant = key_,                                                                                       \
-                .data = &stress_presets[STRESS_##id_],                                                                 \
-                .enter = scene_stress_enter,                                                                           \
-                .frame = scene_stress_frame,                                                                           \
-                .exit = scene_stress_exit,                                                                             \
-                .update = scene_stress_update,                                                                         \
-                .status = LAB_SCENE_DEV(scene_stress_status),                                                          \
-                .controls = STRESS_SURFACE_IS_PER_FRAME(STRESS_SURFACE_##surface_) ? NULL : scene_baked_controls,      \
-                .generates_frames = STRESS_SURFACE_GENERATES_FRAMES(STRESS_SURFACE_##surface_),                        \
-                .path = scene_stress_path},
+    [STRESS_##id_] = {.name = "Stress " key_,                                                                          \
+                      .key = STRESS_SCENE "-" key_,                                                                    \
+                      .family = "Stress",                                                                              \
+                      .variant = key_,                                                                                 \
+                      .data = &stress_presets[STRESS_##id_],                                                           \
+                      .enter = scene_stress_enter,                                                                     \
+                      .frame = scene_stress_frame,                                                                     \
+                      .exit = scene_stress_exit,                                                                       \
+                      .update = scene_stress_update,                                                                   \
+                      .status = LAB_SCENE_DEV(scene_stress_status),                                                    \
+                                                                                                                       \
+                      .generates_frames = STRESS_SURFACE_GENERATES_FRAMES(STRESS_SURFACE_##surface_),                  \
+                      .path = scene_stress_path},
 
 const lab_scene_t scene_stress[STRESS_PRESET_COUNT] = {STRESS_PRESETS(STRESS_SCENE_ROW)};

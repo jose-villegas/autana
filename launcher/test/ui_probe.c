@@ -18,6 +18,16 @@ text_command(const char* s) {
     return NULL;
 }
 
+int
+ui_probe_text_count(const char* s) {
+    int count = 0;
+    mu_Command* cmd = NULL;
+    while (mu_next_command(ui_context(), &cmd)) {
+        count += cmd->type == MU_COMMAND_TEXT && strcmp(cmd->text.str, s) == 0;
+    }
+    return count;
+}
+
 void
 ui_probe_end_frame(void) {
     ui_end_commands();
