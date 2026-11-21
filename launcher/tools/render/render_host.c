@@ -29,9 +29,7 @@
 
 #include "render/context/render_context.h"
 #include "render/record/frame_record.h"
-#include "scene/camera/camera.h"
 #include "scene/scene_shell.h"
-#include "scene/transform/transform.h"
 
 #if defined(_WIN32)
 #include <fcntl.h>
@@ -254,6 +252,26 @@ render_host_apply_settings(const render_settings_t* settings) {
 __attribute__((weak)) void
 scene_unload_all(void) {}
 
+/* The camera pose where a provider did not link the scene: none, so --poses
+ * writes no rows. render_host_settings.c's own definition replaces this. */
+__attribute__((weak)) bool
+render_host_camera_pose(float position[3], float rotation[4]) {
+    (void)position;
+    (void)rotation;
+    return false;
+}
+
+FILE*
+render_rows_open(const char* path, const char* header, const char* tool) {
+    FILE* rows = fopen(path, "w");
+    if (rows == NULL) {
+        fprintf(stderr, "%s: cannot write %s\n", tool, path);
+        return NULL;
+    }
+    fprintf(rows, "%s\n", header);
+    return rows;
+}
+
 /* The declared steps turned into one frame's input_t. `down` holds from
  * the step that set it, so edges come out of the change rather than out of
  * a second declaration of the same tap. */
@@ -293,8 +311,8 @@ refuse(int* exit_code, const char* argv0) {
 }
 
 /* --poses rows, one per drawn frame: the frame, its ms, the active camera's
- * world position and rotation quaternion. Without --poses, a --video writes
- * them to VIDEO.poses.csv. */
+ * world position and rotation quaternion. A --video writes them to
+ * VIDEO.poses.csv, and refuses --poses. */
 #define POSES_HEADER "frame,ms,px,py,pz,qx,qy,qz,qw"
 #define POSES_SUFFIX ".poses.csv"
 
@@ -513,6 +531,11 @@ render_host_open(const frame_provider_t* provider, int argc, char** argv, int* e
     output_size(host.frame.quarter, host.panel, &host.out_w, &host.out_h);
 
     if (host.video_path != NULL) {
+        if (host.poses_path != NULL) {
+            fprintf(stderr, "%s: --video writes its poses beside it, to VIDEO" POSES_SUFFIX "; drop --poses\n",
+                    host.provider->name);
+            return false;
+        }
         if (host.frame.dt_ms == 0) {
             fprintf(stderr, "%s: --video needs a nonzero --dt\n", host.provider->name);
             return false;
@@ -591,17 +614,19 @@ render_host_open(const frame_provider_t* provider, int argc, char** argv, int* e
 
     /* A video's frames are scored against references traced at known poses
      * (render_compare.py), so a video always leaves its poses beside it. */
-    if (host.poses_path == NULL && host.video_path != NULL) {
+    if (host.video_path != NULL) {
         host.video_poses_path = malloc(strlen(host.video_path) + sizeof POSES_SUFFIX);
         if (host.video_poses_path != NULL) {
             sprintf(host.video_poses_path, "%s" POSES_SUFFIX, host.video_path);
+        } else {
+            fprintf(stderr, "out of memory\n");
         }
         host.poses_path = host.video_poses_path;
     }
-    if (host.poses_path != NULL) {
-        host.poses = fopen(host.poses_path, "w");
-        if (host.poses == NULL || fputs(POSES_HEADER "\n", host.poses) < 0) {
-            fprintf(stderr, "%s: cannot write %s\n", host.provider->name, host.poses_path);
+    if (host.video_path != NULL || host.poses_path != NULL) {
+        host.poses =
+            host.poses_path != NULL ? render_rows_open(host.poses_path, POSES_HEADER, host.provider->name) : NULL;
+        if (host.poses == NULL) {
             drop_poses();
             if (host.video_path != NULL) {
                 (void)render_video_close(&host.video);
@@ -653,14 +678,12 @@ render_host_frame(void) {
  * with no active camera has no pose, so it writes no row. */
 static void
 write_pose(void) {
-    const entity_t camera = camera_active();
-    if (host.poses == NULL || handle_is_none(camera)) {
+    float p[3], q[4];
+    if (host.poses == NULL || !render_host_camera_pose(p, q)) {
         return;
     }
-    const transformf_t world = transform_world(camera);
     fprintf(host.poses, "%d,%u,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g\n", host.frame.index, (unsigned)host.frame.elapsed_ms,
-            (double)world.position.x, (double)world.position.y, (double)world.position.z, (double)world.rotation.x,
-            (double)world.rotation.y, (double)world.rotation.z, (double)world.rotation.w);
+            (double)p[0], (double)p[1], (double)p[2], (double)q[0], (double)q[1], (double)q[2], (double)q[3]);
 }
 
 void
@@ -725,18 +748,15 @@ render_host_close(void) {
         fprintf(stderr, "%s: writing %s failed\n", host.provider->name, host.poses_path);
     }
     free(host.video_poses_path);
-    if (!posed) {
-        free(host.frame_buf);
-        return false;
-    }
-
     if (host.video_path != NULL) {
         host.video_ok = render_video_close(&host.video) && host.video_ok;
         if (!host.video_ok) {
             fprintf(stderr, "%s: writing %s failed\n", host.provider->name, host.video_path);
-            free(host.frame_buf);
-            return false;
         }
+    }
+    if (!posed || (host.video_path != NULL && !host.video_ok)) {
+        free(host.frame_buf);
+        return false;
     }
 
     FILE* out = stdout;

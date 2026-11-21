@@ -791,9 +791,9 @@ def reference_video(path, reference_dir, scale=None, heatmaps=None, keep=None, s
     with the (render, reference) pairs of those frames; `sink(fps, index,
     render, reference)` is called for every frame. The first `first` video
     frames are skipped, for references that cover only a later segment. A
-    reference set that records its poses refuses a video drawn elsewhere
-    (reference_poses.check)."""
-    reference_poses.check(path, reference_dir, first)
+    reference set that records its poses refuses a frame drawn elsewhere
+    (reference_poses.checker)."""
+    stands = reference_poses.checker(path, reference_dir)
     fps, frames = read_video(path)
     references = sorted(pathlib.Path(reference_dir).glob("*.png"))
     values = []
@@ -803,6 +803,8 @@ def reference_video(path, reference_dir, scale=None, heatmaps=None, keep=None, s
             continue
         if index >= len(references):
             raise ValueError("more video frames than reference images")
+        if stands is not None:
+            stands(position, index)
         render = Image.fromarray(raw)
         reference = Image.open(references[index])
         if scale is None:

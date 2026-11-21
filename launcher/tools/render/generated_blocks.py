@@ -16,6 +16,8 @@ import re
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3] / "scripts/gates"))
 from tracked import tracked_files
 from check_doc_index import SCHEME
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from doc_tables import LOOK_COLUMNS, SCORE_COLUMNS, table_rows
 
 MARKER = re.compile(r"^<!-- (/?generated): ([a-z0-9][a-z0-9-]*)"
                     r"(?: sha256=([0-9a-f]{64})| check: (\S.*?))? -->$", re.M)
@@ -24,12 +26,13 @@ TOKEN = re.compile(r"^<!--\s*/?generated:", re.M)
 # written as from docs/<folder>/page.md and re-based to the real owner.
 TABLE_BASE = "docs/page"
 LINK = re.compile(r"(\]\()([^)\s#][^)\s]*)(\))")
-# A refreshed table's mean dE76 against a reference may not pass both of these
-# over its published value: a render drawn at the wrong pose scores five or more
-# times worse (#1597: 5.5 -> 34.6), while a re-bake moves it by a few tenths.
+# A refreshed table's mean dE76 against a reference (the MEAN_DE columns) may
+# not pass both of these over its published value: a render drawn at the wrong
+# pose scores five or more times worse (#1597: 5.5 -> 34.6), while a re-bake
+# moves it by a few tenths.
 DE_JUMP_RATIO = 2.0
 DE_JUMP_MIN = 5.0
-MEAN_DE = re.compile(r"mean de76\b", re.I)
+MEAN_DE = (SCORE_COLUMNS[0], *LOOK_COLUMNS[:2])
 
 
 def digest(body):
@@ -132,35 +135,30 @@ def rebase_links(body, page):
     return LINK.sub(move, body)
 
 
-def table_cells(body):
-    """{(first cell, header): cell} for each Markdown table row of `body`."""
-    cells, header = {}, None
-    for line in body.replace("\r\n", "\n").split("\n"):
-        if not line.startswith("|"):
-            header = None
-            continue
-        row = [cell.strip() for cell in line.strip().strip("|").split("|")]
-        if header is None:
-            header = row
-        elif not all(set(cell) <= set(":-") for cell in row):
-            cells.update({(row[0], name): cell for name, cell in zip(header, row)})
+def mean_de_cells(body):
+    """{(table, first cell, column): cell} of each MEAN_DE column of each
+    table row of `body`; `table` counts the tables, so ranks in one do not
+    meet another's."""
+    cells, table, previous = {}, -1, None
+    for _line, headers, row in table_rows(body):
+        if headers is not previous:
+            table, previous = table + 1, headers
+        cells.update({(table, row[0], name): cell for name, cell in zip(headers, row) if name in MEAN_DE})
     return cells
 
 
 def reference_jumps(published, refreshed):
-    """The rows of `refreshed` whose mean dE76 against a reference passed
+    """The rows of `refreshed` whose MEAN_DE against a reference passed
     DE_JUMP_RATIO times and DE_JUMP_MIN above the value `published` holds."""
-    before, after = table_cells(published), table_cells(refreshed)
+    before, after = mean_de_cells(published), mean_de_cells(refreshed)
     jumps = []
-    for (row, column), cell in after.items():
-        if not MEAN_DE.match(column) or (row, column) not in before:
-            continue
+    for key, cell in after.items():
         try:
-            old, new = float(before[row, column]), float(cell)
-        except ValueError:
+            old, new = float(before[key]), float(cell)
+        except (KeyError, ValueError):
             continue
         if new > old * DE_JUMP_RATIO and new - old > DE_JUMP_MIN:
-            jumps.append(f"{row}: {column} {before[row, column]} -> {cell}")
+            jumps.append(f"{key[1]}: {key[2]} {before[key]} -> {cell}")
     return jumps
 
 
@@ -211,7 +209,7 @@ def main():
     parser.add_argument("--body", type=pathlib.Path)
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--accept-reference-jump", action="store_true",
-                        help="with --tables, write a mean dE76 that passes DE_JUMP_RATIO and DE_JUMP_MIN over its block")
+                        help="with --tables, write a Mean dE76 that passes DE_JUMP_RATIO and DE_JUMP_MIN over its block")
     args = parser.parse_args()
     try:
         if args.tables:
