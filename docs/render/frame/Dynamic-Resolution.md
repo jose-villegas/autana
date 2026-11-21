@@ -146,16 +146,16 @@ The caller hands the whole frame's target; the cost a policy holds is the part t
 | Piece | Rule |
 |---|---|
 | A frame's sample | its period, from one draw to the next, less its draw and compose and less what it waited for the panel (`gfx_present_waited_us()`), between 0 and the target |
-| Which frames teach | frames a policy drew and timed; not generated, held or fixed ones |
-| The average | exponential, weight 1/8 (`RESOLUTION_UNSCALED_WEIGHT_SHIFT`), the smoothed round-trip gain of TCP<sup>[[134]](../../Citations.md#rfc6298)</sup>, starting from the first sample |
-| The floor | the scaled part keeps at least 25% of the target (`RESOLUTION_SCALED_MIN_PERCENT`) |
+| Which frames teach | frames a policy drew and timed; not generated, held or fixed ones, nor a pause (`render_context_skip()`) |
+| The average | exponential, with the weight TCP gives its smoothed round-trip time<sup>[[134]](../../Citations.md#rfc6298)</sup> (`RESOLUTION_UNSCALED_WEIGHT_SHIFT`), seeded by the first sample |
+| The floor | the scaled part keeps at least `RESOLUTION_SCALED_MIN_PERCENT` of the target |
 
 - Smoothing a measured frame time with the present's wait left out follows Binks<sup>[[135]](../../Citations.md#binks-2011)</sup>, which averages ten frames.
-- No published system was found that budgets the scaled part as the target less a learned unscaled cost, or with this floor.
+- The split, target less a learned unscaled cost, and its floor are this engine's own rules.
 - A frame that finishes early and waits for the panel teaches the same cost as one that does not wait. The pass's yield is paid every frame, so it counts as cost.
 - A new opt-in starts with nothing learned: its first frames are budgeted the whole target.
 
-The scaled part's cost:
+### What the scaled part covers
 
 - Calibration uses the render context's compose decision, including expansion into the half picture.
 - The present and whatever an app draws over the scene are not in it.
@@ -260,7 +260,7 @@ Mean whole frame in milliseconds; compose is the upscale into the panel's pictur
 
 The heights between the half size and the floor compose into the half picture through the row map, at about the half size's compose cost, so they keep their draw saving.
 
-Below, the predictor flown over the same frames against the fixed half scale: it starts at the half size and holds the 33 ms frame target.
+Below, the predictor flown over the same frames against the fixed half scale: it starts at the half size and holds the frame target. The captured frames include their present's wait, which the live context leaves out, so the replay learns a higher unscaled cost than the board does.
 
 <!-- generated: dynres-flight sha256=891eaf6b7fef2016b7e236ed07a1c5dff1f4d0435d70423e780b78311c4f5f2d -->
 | Scenario | Fixed mean | p95 | Dynamic mean | p95 | max | Switches |

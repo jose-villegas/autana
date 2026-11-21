@@ -12,6 +12,7 @@
 #include "core/timing.h"
 #include "gfx/present/gfx_present.h"
 #include "profile/frame_cost.h"
+#include "render/context/render_context_internal.h"
 #include "render/record/frame_record.h"
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
@@ -140,6 +141,11 @@ render_context_forget(render_context_t* c) {
 }
 
 void
+render_context_skip(render_context_t* c) {
+    c->priced = false;
+}
+
+void
 render_context_set_frame_generation(render_context_t* c, bool on) {
     /* A caller may set it every frame: only a change forgets the generated cost. */
     if (on == c->generating) {
@@ -189,11 +195,10 @@ render_context_set_dynamic_resolution(render_context_t* c, const resolution_conf
         return;
     }
     c->ladder = *config;
-    c->target_us = config->budget_us;
+    c->budget = resolution_budget(config->budget_us);
     c->frame.unscaled_us = 0;
     c->shown_at_us = 0;
     c->priced = false;
-    c->unscaled = (resolution_unscaled_t){0};
     c->chose_at_us = 0;
     c->policy = model == NULL ? RENDER_STEPPED : RENDER_PREDICTED;
     if (c->policy == RENDER_STEPPED) {
@@ -201,16 +206,6 @@ render_context_set_dynamic_resolution(render_context_t* c, const resolution_conf
     } else {
         resolution_predict_init(&c->predict, &c->ladder, model, first_step);
     }
-}
-
-void
-render_context_learn_unscaled(render_context_t* c, int32_t period_us, int32_t waited_us) {
-    /* What the frame paid, not what it waited: a frame that finished early
-     * and waited for the panel costs no more than one that did not. */
-    resolution_unscaled_learn(&c->unscaled, period_us - waited_us - c->frame.draw_us - c->frame.upscale_us,
-                              c->target_us);
-    c->frame.unscaled_us = c->unscaled.us;
-    c->ladder.budget_us = resolution_scaled_budget_us(&c->unscaled, c->target_us);
 }
 
 void
@@ -591,15 +586,16 @@ keep_frame(render_context_t* c, const render_view_t* view) {
     render_partial_kept(&c->partial, &c->raster, view);
 }
 
-/* The frame before, shown since its draw began, teaches the scaled budget
- * when a policy drew and timed it. Not inlined: off the draw's deep chain. */
-static __attribute__((noinline)) void
-time_shown_frame(render_context_t* c) {
-    const int64_t now_us = timing_now_us();
-    const int64_t waited_us = gfx_present_waited_us();
+/* Not inlined: off the draw's deep chain. */
+__attribute__((noinline)) void
+render_context_shown(render_context_t* c, int64_t now_us, int64_t waited_us) {
     const int64_t period_us = now_us - c->shown_at_us;
     if (c->priced && c->shown_at_us != 0 && period_us <= INT32_MAX) {
-        render_context_learn_unscaled(c, (int32_t)period_us, (int32_t)(waited_us - c->waited_at_us));
+        /* What the frame paid, not what it waited: a frame that finished
+         * early and waited for the panel costs no more than one that did not. */
+        const int64_t paid_us = period_us - (waited_us - c->waited_at_us) - c->frame.draw_us - c->frame.upscale_us;
+        c->ladder.budget_us = resolution_budget_learn(&c->budget, (int32_t)(paid_us < 0 ? 0 : paid_us));
+        c->frame.unscaled_us = c->budget.unscaled_us;
     }
     c->shown_at_us = now_us;
     c->waited_at_us = waited_us;
@@ -609,7 +605,7 @@ time_shown_frame(render_context_t* c) {
 bool
 render_context_draw(render_context_t* c, const r3d_instance_t* instances, int count, const render_view_t* view,
                     uint16_t clear) {
-    time_shown_frame(c);
+    render_context_shown(c, timing_now_us(), gfx_present_waited_us());
     if (!c->batches_set) {
         c->raster.batches = NULL; /* none set for this draw */
         c->raster.batch_count = 0;

@@ -4,6 +4,8 @@
 #include <math.h>
 #include <string.h>
 
+#include "math/scalar/mathi.h"
+
 /* Tuned on the board: one step's cost ratio reaches 1.34, and a finer step
  * must still fit once taken, so the up threshold sits under 1 / 1.34. */
 #define DEFAULT_WINDOW            8
@@ -360,18 +362,20 @@ resolution_predict_measured(resolution_predict_t* p, const resolution_config_t* 
     }
 }
 
-void
-resolution_unscaled_learn(resolution_unscaled_t* unscaled, int32_t sample_us, int32_t target_us) {
-    sample_us = sample_us < 0 ? 0 : sample_us > target_us ? target_us : sample_us;
-    unscaled->us = unscaled->learned
-                       ? unscaled->us + (sample_us - unscaled->us) / (1 << RESOLUTION_UNSCALED_WEIGHT_SHIFT)
-                       : sample_us;
-    unscaled->learned = true;
+resolution_budget_t
+resolution_budget(int32_t target_us) {
+    return (resolution_budget_t){.target_us = target_us};
 }
 
 int32_t
-resolution_scaled_budget_us(const resolution_unscaled_t* unscaled, int32_t target_us) {
+resolution_budget_learn(resolution_budget_t* budget, int32_t sample_us) {
+    const int32_t target_us = budget->target_us;
+    sample_us = mathi_clamp(sample_us, 0, target_us);
+    budget->unscaled_us =
+        budget->learned
+            ? budget->unscaled_us + (sample_us - budget->unscaled_us) / (1 << RESOLUTION_UNSCALED_WEIGHT_SHIFT)
+            : sample_us;
+    budget->learned = true;
     const int32_t floor_us = (int32_t)((int64_t)target_us * RESOLUTION_SCALED_MIN_PERCENT / 100);
-    const int32_t left_us = target_us - unscaled->us;
-    return left_us > floor_us ? left_us : floor_us;
+    return mathi_max(target_us - budget->unscaled_us, floor_us);
 }

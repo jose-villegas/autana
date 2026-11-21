@@ -9,25 +9,32 @@
 #include "unity.h"
 
 #include "render/context/render_context.h"
+#include "render/context/render_context_internal.h"
 #include "render/raster.h"
 #include "render/resolution/resolution.h"
 
 static const resolution_step_t steps[] = {{96, 64}, {48, 32}};
-#define STEP_COUNT  ((int)(sizeof steps / sizeof steps[0]))
-#define TARGET_US   33000
-#define DRAW_US     10000
-#define UPSCALE_US  1000
-#define UNSCALED_US 5000
+#define STEP_COUNT        ((int)(sizeof steps / sizeof steps[0]))
+#define TARGET_US         33000
+#define DRAW_US           10000
+#define UPSCALE_US        1000
+#define UNSCALED_US       5000
 /* Frames enough for the learned cost to settle within the average's rounding. */
-#define SETTLE      64
+#define SETTLE            64
 /* What the integer average may stop short of the sample by: under one step
  * of its weight. */
-#define SETTLED_US  (1 << RESOLUTION_UNSCALED_WEIGHT_SHIFT)
+#define SETTLED_US        (1 << RESOLUTION_UNSCALED_WEIGHT_SHIFT)
+/* Where the clocks stand when a context opens: the wait counter has run
+ * since boot, so only its change over a frame may count. */
+#define OPENED_AT_US      1000000
+#define WAITED_AT_OPEN_US 600000
 
 static render_context_t context;
+static int64_t now_us;
+static int64_t waited_us;
 
-/* A context under the stepped controller at the frame target, its last frame
- * a drawn one that cost DRAW_US and UPSCALE_US. */
+/* A context under the stepped controller at the frame target, its clock
+ * started and its frames drawn by the policy at DRAW_US and UPSCALE_US. */
 static render_context_t*
 open_context(void) {
     context = RENDER_CONTEXT_DEFAULT;
@@ -35,15 +42,28 @@ open_context(void) {
     render_context_set_dynamic_resolution(&context, &config, NULL, 0);
     context.frame.draw_us = DRAW_US;
     context.frame.upscale_us = UPSCALE_US;
+    now_us = OPENED_AT_US;
+    waited_us = WAITED_AT_OPEN_US;
+    render_context_shown(&context, now_us, waited_us);
     return &context;
 }
 
-/* `frames` shown frames, each `period_us` long with `waited_us` of it spent
+/* The next draw begins `period_us` after the last, `waited` of it spent
  * waiting for the panel. */
 static void
-show(render_context_t* c, int frames, int32_t period_us, int32_t waited_us) {
+next_draw(render_context_t* c, int32_t period_us, int32_t waited) {
+    now_us += period_us;
+    waited_us += waited;
+    render_context_shown(c, now_us, waited_us);
+}
+
+/* `frames` frames the policy drew, each `period_us` long with `waited` of it
+ * spent waiting for the panel. */
+static void
+show(render_context_t* c, int frames, int32_t period_us, int32_t waited) {
     for (int i = 0; i < frames; i++) {
-        render_context_learn_unscaled(c, period_us, waited_us);
+        c->priced = true; /* as a policy's draw leaves it */
+        next_draw(c, period_us, waited);
     }
 }
 
@@ -105,6 +125,59 @@ test_a_new_opt_in_forgets_the_learned_cost(void) {
     TEST_ASSERT_EQUAL_INT32(0, render_context_frame(c).unscaled_us);
 }
 
+/* A frame whose draw, upscale and waits came to more than its period, as a
+ * mis-timed one, teaches no cost: the scaled part never gets more than the target. */
+static void
+test_an_overspent_frame_teaches_no_cost(void) {
+    render_context_t* c = open_context();
+    show(c, 1, DRAW_US + UPSCALE_US, TARGET_US);
+    TEST_ASSERT_EQUAL_INT32(0, render_context_frame(c).unscaled_us);
+    TEST_ASSERT_EQUAL_INT32(TARGET_US, c->ladder.budget_us);
+}
+
+/* Only the waits since the frame's own draw are taken out, not all since boot. */
+static void
+test_only_the_frames_own_waits_are_taken_out(void) {
+    render_context_t* c = open_context();
+    show(c, 1, DRAW_US + UPSCALE_US + UNSCALED_US, 0);
+    TEST_ASSERT_EQUAL_INT32(UNSCALED_US, render_context_frame(c).unscaled_us);
+}
+
+/* A frame no policy priced (held, generated or fixed) teaches nothing, nor
+ * does the first draw after an opt-in, which has no frame before it. */
+static void
+test_an_unpriced_frame_teaches_nothing(void) {
+    render_context_t* c = open_context();
+    next_draw(c, DRAW_US + UPSCALE_US + UNSCALED_US, 0);
+    TEST_ASSERT_FALSE(c->budget.learned);
+    const resolution_config_t config = resolution_config(steps, STEP_COUNT, STEP_COUNT, TARGET_US);
+    c->priced = true;
+    render_context_set_dynamic_resolution(c, &config, NULL, 0);
+    next_draw(c, DRAW_US + UPSCALE_US + UNSCALED_US, 0);
+    TEST_ASSERT_FALSE(c->budget.learned);
+    TEST_ASSERT_EQUAL_INT32(TARGET_US, c->ladder.budget_us);
+}
+
+/* A pause between two draws is not a frame: its time teaches nothing. */
+static void
+test_a_pause_teaches_nothing(void) {
+    render_context_t* c = open_context();
+    show(c, 1, DRAW_US + UPSCALE_US + UNSCALED_US, 0);
+    c->priced = true;
+    render_context_skip(c);
+    next_draw(c, TARGET_US * SETTLE, 0);
+    TEST_ASSERT_EQUAL_INT32(TARGET_US - UNSCALED_US, c->ladder.budget_us);
+}
+
+/* A gap longer than a period can hold is not a frame either. */
+static void
+test_an_overlong_period_teaches_nothing(void) {
+    render_context_t* c = open_context();
+    c->priced = true;
+    render_context_shown(c, now_us + (int64_t)INT32_MAX + 1, waited_us);
+    TEST_ASSERT_FALSE(c->budget.learned);
+}
+
 /* Draws `frames` frames of the rig through `c`, each one's changes unknown. */
 static void
 draw_frames(render_context_t* c, raster_rig_t* r, int frames) {
@@ -132,9 +205,9 @@ test_a_policy_frame_teaches_the_next_draw(void) {
     render_context_t* c = open_context();
     suite_set_test_cleanup(release_context);
     draw_frames(c, r, 1);
-    TEST_ASSERT_FALSE(c->unscaled.learned);
+    TEST_ASSERT_FALSE(c->budget.learned);
     draw_frames(c, r, 1);
-    TEST_ASSERT_TRUE(c->unscaled.learned);
+    TEST_ASSERT_TRUE(c->budget.learned);
 }
 
 /* A frame at the fixed scale teaches nothing: no policy priced it. */
@@ -146,7 +219,8 @@ test_a_fixed_frame_teaches_nothing(void) {
     suite_set_test_cleanup(release_context);
     render_context_set_dynamic_resolution(c, NULL, NULL, 0);
     draw_frames(c, r, SETTLE);
-    TEST_ASSERT_FALSE(c->unscaled.learned);
+    TEST_ASSERT_FALSE(c->budget.learned);
+    TEST_ASSERT_EQUAL_INT32(TARGET_US, c->ladder.budget_us);
 }
 
 void
@@ -156,6 +230,11 @@ run_dynres_budget_suite(void) {
     RUN_TEST(test_one_slow_frame_moves_the_budget_by_the_weight);
     RUN_TEST(test_the_scaled_budget_keeps_its_floor);
     RUN_TEST(test_a_new_opt_in_forgets_the_learned_cost);
+    RUN_TEST(test_an_overspent_frame_teaches_no_cost);
+    RUN_TEST(test_only_the_frames_own_waits_are_taken_out);
+    RUN_TEST(test_an_unpriced_frame_teaches_nothing);
+    RUN_TEST(test_a_pause_teaches_nothing);
+    RUN_TEST(test_an_overlong_period_teaches_nothing);
     RUN_TEST(test_a_policy_frame_teaches_the_next_draw);
     RUN_TEST(test_a_fixed_frame_teaches_nothing);
 }

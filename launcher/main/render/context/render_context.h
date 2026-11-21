@@ -95,13 +95,13 @@ typedef struct {
     resolution_config_t ladder; /* the steps and thresholds both policies read */
     resolution_control_t control;
     resolution_predict_t predict;
-    int64_t chose_at_us;            /* when the predictor last chose; 0 before its first choice */
-    int32_t target_us;              /* the whole frame's, from the config; ladder.budget_us is the scaled part's */
-    int64_t shown_at_us;            /* when the last frame's draw began; 0 before one */
-    int64_t waited_at_us;           /* gfx_present_waited_us() then */
-    bool priced;                    /* the last frame was drawn and timed by a policy: its period teaches the cost */
-    resolution_unscaled_t unscaled; /* what shown frames paid outside draw and upscale, waits taken out */
-    int debug_view;                 /* zero is shaded; table rows start at one */
+    int64_t chose_at_us;        /* when the predictor last chose; 0 before its first choice */
+    resolution_budget_t budget; /* the config's whole-frame target, and what shown frames paid outside draw and
+                                   upscale, waits taken out; ladder.budget_us is the scaled part's */
+    int64_t shown_at_us;        /* when the last frame's draw began; 0 before one */
+    int64_t waited_at_us;       /* gfx_present_waited_us() then */
+    bool priced;                /* the last frame was drawn and timed by a policy: its period teaches the cost */
+    int debug_view;             /* zero is shaded; table rows start at one */
     void* debug_view_state;
     raster_attachment_t debug_view_attachment;
     const raster_attachment_t* debug_view_attached[1];
@@ -175,6 +175,10 @@ void render_context_drop_scratch(render_context_t* context);
 /* Drops feedback after a camera cut. */
 void render_context_forget(render_context_t* context);
 
+/* Frames go by undrawn, as under a pause: the gap until the next draw is not
+ * a frame, so dynamic resolution does not learn its cost. */
+void render_context_skip(render_context_t* context);
+
 /* The share of the destination's size each axis draws at, upscaled on the
  * way out; it holds while dynamic resolution is off. */
 void render_context_set_scale(render_context_t* context, int percent);
@@ -202,16 +206,10 @@ void render_context_set_changed(render_context_t* context, const box3f_t* boxes,
  * none set draws none. */
 void render_context_set_batches(render_context_t* context, const r3d_batch_draw_t* batches, int count);
 
-/* One shown frame's lesson for the scaled budget: it lasted `period_us`, of
- * which `waited_us` waited for the panel, and the last frame's draw and
- * upscale are the scaled part. render_context_draw() calls it with the frame
- * before; a test hands it the numbers. */
-void render_context_learn_unscaled(render_context_t* c, int32_t period_us, int32_t waited_us);
-
 /* Opts in: each frame draws at a step of `config` to hold its budget, chosen
  * by the stepped controller, or by the predictor when `model` is not NULL.
  * `config`'s budget is the whole frame's target; the scaled part's is
- * learned from the frames (resolution_scaled_budget_us()), afresh each call.
+ * learned from the frames (resolution_budget_learn()), afresh each call.
  * NULL `config` returns to the fixed scale. */
 void render_context_set_dynamic_resolution(render_context_t* context, const resolution_config_t* config,
                                            const resolution_model_t* model, int first_step);
