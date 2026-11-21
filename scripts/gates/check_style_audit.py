@@ -1280,5 +1280,15 @@ def main(argv):
     return 1 if (errors or (strict and warnings)) else 0
 
 
+
+
+@c_line_rule("PANEL-SEND-OWNER")
+def panel_send_owner(root, path, text):
+    if relpath(root, path) == "launcher/main/gfx/present/gfx_panel.c":
+        return
+    for match in re.finditer(r"\besp_lcd_panel_draw_bitmap\s*\(", blank_comments(text)):
+        yield text.count("\n", 0, match.start()) + 1, "panel sends belong to gfx/present/gfx_panel.c"
+
+
 if __name__ == "__main__":
     sys.exit(main(sys.argv[1:]))
