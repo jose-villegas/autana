@@ -57,6 +57,41 @@ class ProbeTests(unittest.TestCase):
         got = asset.decode(data)[4][0]
         np.testing.assert_allclose(got, expected, atol=0.02)
 
+    def test_sky_transport_through_checker_cutout(self):
+        from types import SimpleNamespace
+        from tests.test_r3d_alpha_reference import checker_source
+        from tests.test_r3d_alpha_cutout import KEEP_ALPHA, CARD_Z
+        from r3d.light import AlphaTest
+        from r3d.ray_query import RayQuery
+
+        with tempfile.TemporaryDirectory() as directory:
+            source = checker_source(directory)
+            source.tri_v, source.tri_t, source.tri_m = source.tri_v[:2], source.tri_t[:2], source.tri_m[:2]
+            source.materials['card']['Kd'] = (0., 0., 0.)
+            points = np.array([[0., 0., CARD_Z / 2]])
+            settings = SimpleNamespace(seed=0, alpha_keep=KEEP_ALPHA, double_sided={'card'})
+            requested = SimpleNamespace(spacing=None, directions=DIRECTIONS, spp=1)
+            job = SimpleNamespace(settings=settings, bake=SimpleNamespace(indirect=SimpleNamespace(bounces=2, rays=1)))
+            colour = np.array([0.4, 0.6, 1.0])
+            scene = SimpleNamespace(path=None,
+                                    lights=[dict(type='sky', mode=LIGHT_MODE_BAKED, color=colour.tolist(), intensity=1.0)],
+                                    camera=SimpleNamespace(component=SimpleNamespace(near_z=0.001)),
+                                    indirect=SimpleNamespace(albedo_boost=1.0))
+            directions = sphere_directions(DIRECTIONS)
+            origins = np.broadcast_to(points, directions.shape).copy()
+            opaque = RayQuery(source.p, source.tri_v).blocked(origins, directions)
+            query = RayQuery(source.p, source.tri_v, hit_filter=AlphaTest(source, KEEP_ALPHA))
+            visible = ~query.blocked(origins, directions)
+            self.assertTrue(np.any(opaque & visible))
+            self.assertTrue(np.any(~visible))
+            lattice = (points, 1.0, points[0], np.ones(3), np.ones(3, dtype=int))
+            with mock.patch.object(sh, 'load', return_value=requested), \
+                    mock.patch.object(sh, 'load_source', return_value=source), \
+                    mock.patch.object(sh, 'grid', return_value=lattice):
+                data = sh.bake(job, scene)
+            np.testing.assert_allclose(asset.decode(data)[4][0],
+                                       sh.project(directions, visible[:, None] * colour), atol=0.02)
+
     def test_grid_wire_order(self):
         from types import SimpleNamespace
         from tests.soup import corridor
@@ -205,6 +240,9 @@ class ProbeTests(unittest.TestCase):
         fixture = pathlib.Path(__file__).parent / 'data/sh_probes.shpr'
         golden = fixture.read_bytes()
         self.assertEqual(golden, golden_record())
+        self.assertEqual(len(golden), 89)
+        self.assertEqual(asset.HEADER.pack(*asset.HEADER.unpack_from(golden))
+                         + golden[asset.HEADER.size:], golden)
         self.assertEqual(golden[:4], struct.pack('<HH', asset.VERSION, asset.SH_PROBES_FLAG_INSIDE_MASK))
         _, _, dims, scale, decoded, inside = asset.decode(golden)
         self.assertEqual(tuple(dims), (2, 1, 1))
