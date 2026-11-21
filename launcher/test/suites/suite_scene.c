@@ -726,12 +726,12 @@ make_pack(uint8_t* bytes, const skin_fixture_options_t* options, bool probes) {
     for (int grid = 0; probes && grid < probe_count; grid++) {
         uint8_t* entry =
             test_pack_add(&pack, probe_names[grid], SH_PROBES_ASSET, SH_PROBES_HEADER_SIZE + SH_PROBES_RECORD_SIZE);
-        test_pack_put16(entry + SH_PROBES_VERSION_OFFSET, SH_PROBES_VERSION);
+        test_pack_put16(entry + SH_PROBES_AT_VERSION, SH_PROBES_VERSION);
         const float spacing[] = {1, 1, 1};
-        test_pack_put_floats(entry + SH_PROBES_SPACING_OFFSET, spacing, MAT3F_AXES);
-        test_pack_put_floats(entry + SH_PROBES_SCALE_OFFSET, spacing, 1);
+        test_pack_put_floats(entry + SH_PROBES_AT_SPACING, spacing, MAT3F_AXES);
+        test_pack_put_floats(entry + SH_PROBES_AT_SCALE, spacing, 1);
         for (int axis = 0; axis < MAT3F_AXES; axis++) {
-            test_pack_put16(entry + SH_PROBES_DIMS_OFFSET + axis * sizeof(uint16_t), 1);
+            test_pack_put16(entry + SH_PROBES_AT_DIMS + axis * sizeof(uint16_t), 1);
         }
         test_pack_put16(entry + SH_PROBES_HEADER_SIZE, grid + 1);
     }
