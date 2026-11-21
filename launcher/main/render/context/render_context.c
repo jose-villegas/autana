@@ -371,9 +371,10 @@ generation_pays(const render_context_t* c) {
 }
 
 /* Whether this frame can be warped from the kept one: generation on, a drawn
- * frame kept, no debug view, and the same viewport; and it pays
- * (the last verdict, kept in `paying`), has not been measured, or is due to
- * be measured again. */
+ * frame kept, no debug view, the same viewport, and a view partial redraw
+ * does not hold (a warp to it shows nothing new); and it pays (the last
+ * verdict, kept in `paying`), has not been measured, or is due to be
+ * measured again. */
 static bool
 can_generate(render_context_t* c, const render_view_t* view) {
     const raster_t* r = &c->raster;
@@ -385,7 +386,7 @@ can_generate(render_context_t* c, const render_view_t* view) {
         || a.quarter != b.quarter) {
         return false;
     }
-    return true;
+    return !render_partial_still(&c->partial, r, view);
 }
 
 /* The kept frame warped to `view` into the framegen target, which compose shows. */
@@ -510,7 +511,7 @@ aim_raster(render_context_t* c, const r3d_instance_t* instances, int count, cons
 static bool
 aim_still(render_context_t* c, const render_view_t* view) {
     raster_t* r = &c->raster;
-    if (c->policy == RENDER_FIXED || c->generating || !render_partial_still(&c->partial, r, view)) {
+    if (c->policy == RENDER_FIXED || !render_partial_still(&c->partial, r, view)) {
         c->still_over = false;
         return false;
     }
@@ -600,7 +601,9 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     c->frame.height = r->height;
     r->first_row = 0;
     r->end_row = 0;
-    c->fixed_drawn = (c->policy == RENDER_FIXED && !c->generating) || still;
+    /* Generation times its drawn frames, but a held view is not generated. */
+    const bool fixed = c->policy == RENDER_FIXED && (!c->generating || render_partial_still(&c->partial, r, view));
+    c->fixed_drawn = fixed || still;
     if (c->fixed_drawn) {
         const int64_t began_us = timing_now_us();
         const bool drawn = draw_fixed(c, view);

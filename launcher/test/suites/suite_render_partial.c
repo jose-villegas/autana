@@ -341,6 +341,66 @@ test_dynres_hold_does_not_count_toward_a_finer_step(void) {
     TEST_ASSERT_EQUAL_INT(W / 2, dynres_frame(r, &view, NULL, -1).width); /* the policy's, where it was */
 }
 
+/* Frames a held camera draws with frame generation on, past a generation's
+ * retry so a warp due again would show. */
+#define GENERATING_HELD_FRAMES (FRAMEGEN_RETRY_DRAWN + 2)
+
+/* The card slides `frames` times under the held `view`; each frame is drawn,
+ * not warped, and after the first it redraws only the card's rows, the picture
+ * and destination a whole redraw gives (`frame()` checks against context [1]). */
+static void
+assert_held_frames_partial(raster_rig_t* r, const render_view_t* view, int frames) {
+    for (int i = 1; i <= frames; i++) {
+        const box3f_t changed = slide_card(r, (float)(i % 2 + 1) * 6.0F); /* back and forth */
+        const render_context_frame_t f = frame(r, view, &changed, 1);
+        TEST_ASSERT_FALSE(f.generated);
+        TEST_ASSERT_LESS_THAN_INT(H, rows(f));
+    }
+}
+
+/* Frame generation does not warp a held camera: the object moving in it is
+ * drawn as partial redraw draws it, at the fixed scale. A camera that moves
+ * is generated again. */
+static void
+test_generation_draws_a_held_view_partially(void) {
+    raster_rig_t* r = open_pair(true);
+    render_context_set_frame_generation(&pair->context[0], true);
+    const render_view_t view = render_view_fixture_at(&raster_rig_camera, (viewport_t){W, H, 0});
+    place_card(r, card_path[0]);
+    TEST_ASSERT_EQUAL_INT(H, rows(frame(r, &view, NULL, -1)));
+    assert_held_frames_partial(r, &view, GENERATING_HELD_FRAMES);
+    fixture_camera_t moved = raster_rig_camera;
+    moved.eye.x += 1.0F;
+    const render_view_t next = render_view_fixture_at(&moved, (viewport_t){W, H, 0});
+    render_context_set_changed(&pair->context[0], NULL, -1);
+    TEST_ASSERT_TRUE(render_context_draw(&pair->context[0], r->instance, RASTER_RIG_QUADS, &next, 0));
+    TEST_ASSERT_TRUE(render_context_frame(&pair->context[0]).generated);
+}
+
+/* Under dynamic resolution too, a held camera with generation on draws as
+ * partial redraw does at the top step, unwarped. */
+static void
+test_generation_under_dynres_draws_a_held_view_partially_at_the_top(void) {
+    raster_rig_t* r = open_dynres(DYNRES_ROOMY);
+    render_context_set_frame_generation(&pair->context[0], true);
+    const render_view_t view = render_view_fixture_at(&raster_rig_camera, (viewport_t){W, H, 0});
+    place_card(r, card_path[0]);
+    (void)dynres_frame(r, &view, NULL, -1);
+    box3f_t changed = slide_card(r, 12.0F);
+    const render_context_frame_t top = dynres_frame(r, &view, &changed, 1);
+    TEST_ASSERT_FALSE(top.generated);
+    TEST_ASSERT_EQUAL_INT(W, top.width); /* to the top: every row */
+    assert_full_redraw(r, &view);
+    for (int i = 1; i <= GENERATING_HELD_FRAMES; i++) {
+        changed = slide_card(r, (float)(i % 2 + 1) * 6.0F);
+        const render_context_frame_t f = dynres_frame(r, &view, &changed, 1);
+        TEST_ASSERT_FALSE(f.generated);
+        TEST_ASSERT_EQUAL_INT(W, f.width);
+        TEST_ASSERT_LESS_THAN_INT(H, rows(f));
+        assert_full_redraw(r, &view);
+    }
+}
+
 void
 run_render_partial_suite(void) {
     RUN_TEST(test_a_moving_card_redraws_only_its_rows_and_matches_a_full_redraw);
@@ -351,6 +411,8 @@ run_render_partial_suite(void) {
     RUN_TEST(test_dynres_still_view_redraws_only_changed_rows_at_the_top);
     RUN_TEST(test_dynres_still_view_over_budget_returns_to_the_controller);
     RUN_TEST(test_dynres_hold_does_not_count_toward_a_finer_step);
+    RUN_TEST(test_generation_draws_a_held_view_partially);
+    RUN_TEST(test_generation_under_dynres_draws_a_held_view_partially_at_the_top);
 }
 
 SUITE_REGISTER(run_render_partial_suite);
