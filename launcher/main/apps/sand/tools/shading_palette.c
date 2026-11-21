@@ -39,6 +39,8 @@
 #include "draw_palette_gen.h"
 #include "gfx/gfx.h"
 #include "hash/crc32.h"
+#include "image/colour/oklab.h"
+#include "image/colour/srgb.h"
 #include "image/palette/palette.h"
 #include "image/pixel/bayer.h"
 #include "image/pixel/rgb565.h"
@@ -764,26 +766,13 @@ paint_frame(const uint8_t* grid, gfx_color_t* fb, uint8_t* grp, uint32_t time_ms
 
 /* 2. OKLab and the quantiser */
 
-static double
-linear_to_srgb(double c) {
-    c = c < 0.0 ? 0.0 : (c > 1.0 ? 1.0 : c);
-    return c <= 0.0031308 ? c * 12.92 : (1.055 * pow(c, 1.0 / 2.4)) - 0.055;
-}
-
 static uint16_t
 lab_to_key(gfx_lab_t p) {
-    const double L = p.l / 100.0;
-    const double A = p.a / 100.0;
-    const double B = p.b / 100.0;
-    double l = L + (0.3963377774 * A) + (0.2158037573 * B);
-    double m = L - (0.1055613458 * A) - (0.0638541728 * B);
-    double s = L - (0.0894841775 * A) - (1.2914855480 * B);
-    l = l * l * l;
-    m = m * m * m;
-    s = s * s * s;
-    const double r = linear_to_srgb((4.0767416621 * l) - (3.3077115913 * m) + (0.2309699292 * s));
-    const double g = linear_to_srgb((-1.2684380046 * l) + (2.6097574011 * m) - (0.3413193965 * s));
-    const double b = linear_to_srgb((-0.0041960863 * l) - (0.7034186147 * m) + (1.7076147010 * s));
+    const vec3f_t linear =
+        oklabf_to_linear((oklabf_t){(float)(p.l / 100.0), (float)(p.a / 100.0), (float)(p.b / 100.0)});
+    const double r = srgbf_encode(linear.x);
+    const double g = srgbf_encode(linear.y);
+    const double b = srgbf_encode(linear.z);
     const unsigned r5 = (unsigned)lround(r * 31.0);
     const unsigned g6 = (unsigned)lround(g * 63.0);
     const unsigned b5 = (unsigned)lround(b * 31.0);
