@@ -290,8 +290,10 @@ set -- "$@" --build-dir "$BUILD_DIR"
 # One run at a time in a build dir: two runs there share its binary and its
 # logs, so one run's results land in the other's (a test name reported twice).
 # The second waits for the first, the plain and --sanitize builds included.
-# HOST_TESTS_HOLD names the dir this run holds; Git Bash hands it on through
-# the native Python as C:/..., so it is compared as a folder, not as text.
+# HOST_TESTS_HOLD names the dir this run holds, so its own children (the
+# re-entered run, its inner run) go ahead; any other run in the dir waits.
+# Git Bash hands it on through the native Python as C:/..., so it is
+# compared as a folder, not as text.
 HELD_DIR=""
 if [ -n "${HOST_TESTS_HOLD:-}" ]; then
     HELD_DIR=$(CDPATH= cd -- "$HOST_TESTS_HOLD" 2>/dev/null && pwd) || HELD_DIR=""
