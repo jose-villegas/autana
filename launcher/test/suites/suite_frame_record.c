@@ -120,7 +120,8 @@ static void
 draw_frame(void) {
     const render_view_t view = render_view_fixture_at(&raster_rig_camera, (viewport_t){W, H, 0});
     TEST_ASSERT_TRUE(render_context_draw(context, rig->instance, RASTER_RIG_QUADS, &view, 0));
-    frame_record_frame(context, &context->raster, DT_MS);
+    const frame_record_context_t recorded = render_context_recorded(context);
+    frame_record_frame(&recorded, &context->raster, DT_MS);
 }
 
 /* Every record in what the sink took, in order. */
@@ -417,11 +418,11 @@ test_a_posed_mesh_names_its_bind_and_its_palette_rides_each_keyframe_and_each_ne
 static const vec3f_t triangle_positions[3] = {{0, 0, 0}, {1, 0, 0}, {0, 1, 0}};
 static const uint8_t triangle_colours[3][3] = {{1, 2, 3}, {4, 5, 6}, {7, 8, 9}};
 static const uint16_t triangle_indices[1][3] = {{0, 1, 2}};
-static const r3d_dynamic_source_t triangle = {triangle_positions, triangle_colours, 3, triangle_indices, 1, true, NULL};
+static const r3d_mesh_source_t triangle = {triangle_positions, triangle_colours, 3, triangle_indices, 1, true, NULL};
 /* The same triangle textured: its UVs in LUVS's form. */
 static const int16_t triangle_uvs[3][2] = {{0, 0}, {256, 0}, {0, 256}};
-static const r3d_dynamic_source_t textured_triangle = {
-    triangle_positions, triangle_colours, 3, triangle_indices, 1, false, triangle_uvs};
+static const r3d_mesh_source_t textured_triangle = {triangle_positions, triangle_colours, 3, triangle_indices, 1, false,
+                                                    triangle_uvs};
 
 static void
 test_a_built_mesh_carries_its_source_whole_each_keyframe_and_each_build(void) {
@@ -472,7 +473,8 @@ test_a_textured_built_mesh_carries_its_uvs_after_its_triangles(void) {
 static void
 generate_frame(void) {
     context->frame.generated = true;
-    frame_record_frame(context, &context->raster, DT_MS);
+    const frame_record_context_t recorded = render_context_recorded(context);
+    frame_record_frame(&recorded, &context->raster, DT_MS);
     context->frame.generated = false;
 }
 
@@ -610,7 +612,8 @@ test_a_keyframe_without_a_snapshot_drops_instead_of_reusing_lod_state(void) {
         draw_frame();
     }
     const size_t before = sink->size;
-    frame_record_frame(context, &context->raster, DT_MS);
+    const frame_record_context_t recorded = render_context_recorded(context);
+    frame_record_frame(&recorded, &context->raster, DT_MS);
     TEST_ASSERT_EQUAL_UINT32(before, sink->size);
     TEST_ASSERT_EQUAL_UINT32(1, frame_record_counts().dropped);
     draw_frame();

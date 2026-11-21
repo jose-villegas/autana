@@ -182,7 +182,7 @@ typedef struct {
  * the unit shape coloured as its surface says, and for a per-frame preset
  * pushed out along its normal by the wave. False when the shape cannot be
  * made. Equal arguments give equal bytes. */
-bool stress_source(const stress_params_t* p, uint32_t t_ms, const stress_buffers_t* b, r3d_dynamic_source_t* out);
+bool stress_source(const stress_params_t* p, uint32_t t_ms, const stress_buffers_t* b, r3d_mesh_source_t* out);
 
 /* Where perf pose `pose` sits along a camera clip of `duration_ms`: pose i of
  * perf_poses is i / perf_poses of the way, the poses the perf suite replays. */

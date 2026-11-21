@@ -361,6 +361,48 @@ void f(void) {
                 })
                 self.assertEqual(len(findings), expected)
 
+    def test_a_root_and_its_subfolder_including_each_other_is_a_folder_cycle(self):
+        findings = self.audit("FOLDER-CYCLE", {
+            "launcher/main/render/raster.h": "#pragma once\n",
+            "launcher/main/render/raster.c": '#include "render/lod/lod.h"\n',
+            "launcher/main/render/lod/lod.h": "#pragma once\n",
+            "launcher/main/render/lod/lod.c": '#include "render/raster.h"\n',
+            "launcher/main/render/path/path.h": "#pragma once\n",
+            "launcher/main/render/span.c": '#include "render/path/path.h"\n',
+        })
+        self.assertEqual([(hit.path, hit.line, hit.severity) for hit in findings],
+                         [("launcher/main/render/lod/lod.c", 1, check_style_audit.WARN),
+                          ("launcher/main/render/raster.c", 1, check_style_audit.WARN)])
+        self.assertIn("render/lod/", findings[1].message)
+
+    def test_a_cycle_through_a_third_folder_marks_every_edge_on_it(self):
+        findings = self.audit("FOLDER-CYCLE", {
+            "launcher/main/scene/a/a.h": '#include "scene/b/b.h"\n',
+            "launcher/main/scene/b/b.h": '#include "scene/c/c.h"\n',
+            "launcher/main/scene/c/c.c": '#include "scene/a/a.h"\n',
+            "launcher/main/scene/c/c.h": "#pragma once\n",
+        })
+        self.assertEqual(sorted(hit.path for hit in findings),
+                         ["launcher/main/scene/a/a.h", "launcher/main/scene/b/b.h", "launcher/main/scene/c/c.c"])
+
+    def test_an_include_in_a_comment_draws_no_edge(self):
+        findings = self.audit("FOLDER-CYCLE", {
+            "launcher/main/apps/sand/sand.h": '#include "apps/sand/ui/brush.h"\n',
+            "launcher/main/apps/sand/ui/brush.h": '/*\n#include "apps/sand/sand.h"\n*/\n',
+        })
+        self.assertEqual(findings, [])
+
+    def test_headers_including_each_other_are_a_header_cycle(self):
+        findings = self.audit("HEADER-CYCLE", {
+            "launcher/main/ui/ui_internal.h": '#include "ui/controls/ui_widgets.h"\n',
+            "launcher/main/ui/controls/ui_widgets.h": '#include "ui/ui_internal.h"\n',
+            "launcher/main/ui/ui.h": "#pragma once\n",
+            "launcher/main/ui/ui.c": '#include "ui/controls/ui_widgets.h"\n#include "ui/ui.h"\n',
+        })
+        self.assertEqual([(hit.path, hit.severity) for hit in findings],
+                         [("launcher/main/ui/controls/ui_widgets.h", check_style_audit.ERROR),
+                          ("launcher/main/ui/ui_internal.h", check_style_audit.ERROR)])
+
     def test_apps_own_sources_are_never_a_source_for_include_direction(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)

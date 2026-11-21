@@ -281,12 +281,12 @@ test_tuned_settings_keep_the_callers_small_fill(void) {
 }
 
 /* Each texture knob changes its own field of what a draw uses and no other; 0 is a value, not
- * unset; the bend knob counts R3D_SPAN_BEND_STEPS to the texel; a reset gives the caller's back. */
+ * unset; the bend knob counts RENDER_TEXTURE_BEND_STEPS to the texel; a reset gives the caller's back. */
 #define CALLER_DIVIDE_PX 7
 #define CALLER_BEND      3.0F
 #define CALLER_LEVEL     2
 #define CALLER_FAR_LEVEL 3
-#define KNOB_BEND_STEPS  (3 * R3D_SPAN_BEND_STEPS / 2)
+#define KNOB_BEND_STEPS  (3 * RENDER_TEXTURE_BEND_STEPS / 2)
 
 /* A level knob at 0 sets its field, `level` in `expected`, to 0 and no other; its reset gives the caller's back. */
 static void
@@ -310,7 +310,7 @@ test_each_texture_knob_overrides_only_its_own_field(void) {
     render_settings_t used = render_settings_tuned(&set);
     assert_settings(&expected, &used);
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, texture_bend_steps), KNOB_BEND_STEPS));
-    expected.texture.affine_bend = (float)KNOB_BEND_STEPS / R3D_SPAN_BEND_STEPS;
+    expected.texture.affine_bend = (float)KNOB_BEND_STEPS / RENDER_TEXTURE_BEND_STEPS;
     used = render_settings_tuned(&set);
     assert_settings(&expected, &used);
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, texture_bend_steps), 0));

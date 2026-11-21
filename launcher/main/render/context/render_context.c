@@ -10,7 +10,6 @@
 #include "core/memory.h"
 #include "core/timing.h"
 #include "profile/frame_cost.h"
-#include "render/record/frame_record.h"
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 #include "render/view/raster_boxes.h"
@@ -588,7 +587,8 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     c->observed = false;
     c->frame_view = *view;
 #endif
-    frame_record_before_draw(c, instances, count);
+    const frame_record_context_t recorded = render_context_recorded(c);
+    frame_record_before_draw(&recorded, &c->raster, instances, count);
     begin_draw(c);
     aim_raster(c, instances, count, view, clear);
     const bool still = aim_still(c, view);

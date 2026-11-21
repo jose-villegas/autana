@@ -4,7 +4,7 @@
 #include <string.h>
 
 #include "core/memory.h"
-#include "ui/ui_internal.h"
+#include "ui/controls/ui_widgets.h"
 #include "unity.h"
 
 static const mu_TextCommand*

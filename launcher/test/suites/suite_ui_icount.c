@@ -5,7 +5,7 @@
 #include "draw/draw_image_format.h"
 #include "suites.h"
 #include "testkit/bench.h"
-#include "ui/ui_internal.h"
+#include "ui/controls/ui_widgets.h"
 #include "unity.h"
 
 #define UI_ICOUNT_REPS        4096
