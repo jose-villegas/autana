@@ -106,7 +106,7 @@ from build.c_header import read_define  # noqa: E402
 from bake import code_units  # noqa: E402
 from c_lexer import c_code  # noqa: E402
 from r3d.mesh_bundle import SUFFIX as BUNDLE_SUFFIX
-from r3d.import_settings import BLEND_SUFFIX, SettingsError, content_checksum, source_digest  # noqa: E402
+from r3d.import_settings import BLEND_SUFFIX, SettingsError, content_checksum, flight_camera, source_digest  # noqa: E402
 
 LOCK = REPO / "launcher" / "bakes.lock"
 RELEASE_TAG = "bakes"
@@ -678,8 +678,6 @@ def mesh_recipe(job, scene, tools, poses=None, unavailable=None):
         simplify = job.settings.simplify
         if simplify and simplify.seal_seams and scene.camera is not None:
             # The seal step's views are bake inputs: the camera, and the flight's poses with seal_views.
-            from r3d.poses import flight_camera
-
             camera = recipe.setdefault("camera", camera_inputs(scene))
             views = job.renderer.seal_views
             if views is not None:
