@@ -143,10 +143,13 @@ def default_owner():
 
 def bound_owner(owner, pid):
     """Name the process an until-released hold is bound to."""
+    return f"{person_of(owner)}:{pid}"
+
+
+def person_of(owner):
+    """The "<user>@<host>" an owner names, without the process."""
     label, separator, suffix = owner.rpartition(":")
-    if separator and suffix.isdecimal():
-        owner = label
-    return f"{owner}:{pid}"
+    return label if separator and suffix.isdecimal() else owner
 
 
 def caller_pid(explicit=None):
@@ -790,6 +793,10 @@ class LockStore:
         with self.guard(board):
             lock = self.read_json(self.lock_path(board))
             if lock and lock.get("kind") == "human" and not self.reclaim_reason(lock, DEFAULT_STALE_SECONDS):
+                # Only its own person renews a reservation: anyone else's
+                # call would take it over.
+                if person_of(lock["owner"]) != person_of(owner):
+                    return None, True
                 lock.update(owner=owner, purpose=note, heartbeat_at=self.resource_now(board),
                             expires_at=self.resource_now(board) + HUMAN_RESERVATION_SECONDS)
                 write_json(self.lock_path(board), lock)

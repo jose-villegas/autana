@@ -69,11 +69,12 @@ void suites_run_all(void);
 #define SUITE_FILTER_LEN 32
 
 typedef struct {
-    char name[SUITE_NAME_MAX + 1];
-    bool found;    /* a suite of that exact name is registered */
-    bool refused;  /* a pattern was too long, empty, or one too many */
-    int selected;  /* tests that ran */
-    int unmatched; /* patterns that matched no test */
+    const char* name; /* the suite asked for, borrowed from the request */
+    int name_length;  /* its characters; the request may go on with patterns */
+    bool found;       /* a suite of that exact name is registered */
+    bool refused;     /* a pattern was too long, empty, or one too many */
+    int selected;     /* tests that ran */
+    int unmatched;    /* patterns that matched no test */
 } suite_run_t;
 
 void suites_run_request(const char* request, suite_run_t* run);

@@ -8,7 +8,7 @@
 #include "ui/ui.h"
 
 void
-render_lab_settings_draw(int width) {
+render_lab_settings_draw(const lab_scene_t* showing, int width) {
     int count = 0;
     const char* const* names = render_lab_small_fill_names(&count);
     int fill = render_lab_small_fill_selected();
@@ -23,6 +23,13 @@ render_lab_settings_draw(int width) {
     ui_row_centre(width, UI_ROW_HEIGHT);
     if (ui_dropdown(ui_next(), RENDER_LAB_UPSCALE_LABEL, &upscale, upscales, count)) {
         (void)render_lab_upscale_select(upscale);
+    }
+    if (showing->generates_frames) {
+        bool generating = render_lab_framegen_on();
+        ui_row_centre(width, UI_ROW_HEIGHT);
+        if (ui_toggle(ui_next(), RENDER_LAB_FRAME_GEN_LABEL, &generating)) {
+            (void)render_lab_framegen_set_on(generating);
+        }
     }
     bool dynamic = render_lab_dynres_on();
     ui_row_centre(width, UI_ROW_HEIGHT);

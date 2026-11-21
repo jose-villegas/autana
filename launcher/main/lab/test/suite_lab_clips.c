@@ -6,6 +6,7 @@
 #include "core/memory.h"
 #include "gfx/gfx.h"
 #include "lab/lab_clips.h"
+#include "lab/lab_scene.h"
 #include "lab/ui/lab_menu_screen.h"
 #include "scene/scene_internal.h"
 #include "suites.h"
@@ -271,12 +272,14 @@ controls(int width) {
     ui_text(ui_next(), "TEST CONTROL");
 }
 
+static const lab_scene_t controlled = {.name = "Controlled", .controls = controls};
+
 static void
 test_menu_calls_optional_controls(void) {
     ui_init();
     controls_drawn = 0;
     ui_begin(NULL);
-    const lab_menu_screen_state_t state = {.controls = controls};
+    const lab_menu_screen_state_t state = {.showing = &controlled};
     (void)lab_menu_screen_draw(&state);
     ui_end(UI_NO_BACKGROUND);
     TEST_ASSERT_EQUAL_INT(1, controls_drawn);
@@ -301,10 +304,12 @@ clip_controls(int width) {
     lab_clips_draw(width, &shown->choice);
 }
 
+static const lab_scene_t clip_scene = {.name = "Clips", .controls = clip_controls};
+
 static void
 menu_frame(const input_t* input) {
     ui_begin(input);
-    const lab_menu_screen_state_t state = {.controls = clip_controls};
+    const lab_menu_screen_state_t state = {.showing = &clip_scene};
     (void)lab_menu_screen_draw(&state);
     ui_end(UI_NO_BACKGROUND);
     TEST_ASSERT_TRUE(ui_probe_widget("CLIP", &clip_rect));

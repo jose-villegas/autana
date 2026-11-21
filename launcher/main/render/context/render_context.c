@@ -180,6 +180,8 @@ void
 render_context_set_dynamic_resolution(render_context_t* c, const resolution_config_t* config,
                                       const resolution_model_t* model, int first_step) {
     c->raster_size = (resolution_step_t){0};
+    render_partial_forget(&c->partial); /* the next frame is the new policy's, drawn whole */
+    c->still_over = false;
     if (config == NULL) {
         c->policy = RENDER_FIXED;
         return;
@@ -473,6 +475,7 @@ begin_draw(render_context_t* c) {
         c->drawn_in_row++;
     }
     c->frame.predicted_us = 0;
+    c->still_judged = false;
 }
 
 /* Aims the raster at this frame's instances, size and destination. */
@@ -500,6 +503,27 @@ aim_raster(render_context_t* c, const r3d_instance_t* instances, int count, cons
     r->upscaled = true; /* render_context_compose() names the picture */
     r->destination_width = view->viewport.width;
     r->destination_height = view->viewport.height;
+}
+
+/* Under dynamic resolution a held camera draws as partial redraw does, at
+ * the top step, until one such frame costs more than the budget; then the
+ * policy draws until the view changes. True when this frame takes that path. */
+static bool
+aim_still(render_context_t* c, const render_view_t* view) {
+    raster_t* r = &c->raster;
+    if (c->policy == RENDER_FIXED || c->generating || !render_partial_still(&c->partial, r, view)) {
+        c->still_over = false;
+        return false;
+    }
+    if (c->still_over) {
+        return false;
+    }
+    const resolution_step_t top = c->ladder.steps[c->ladder.top];
+    r->width = top.width;
+    r->height = raster_present_size(top, r->present).height;
+    c->still_judged = r->width == c->partial.width && r->height == c->partial.height;
+    c->chose_at_us = 0; /* the hold is not time the predictor's choice settled in */
+    return true;
 }
 
 /* Off: the plain draw, nothing timed or chosen, unless frame generation needs the drawn cost.
@@ -568,6 +592,7 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     frame_record_before_draw(c, instances, count);
     begin_draw(c);
     aim_raster(c, instances, count, view, clear);
+    const bool still = aim_still(c, view);
     if (!fit_scratch(c)) {
         return false;
     }
@@ -576,15 +601,19 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     c->frame.height = r->height;
     r->first_row = 0;
     r->end_row = 0;
-    if (c->policy == RENDER_FIXED && !c->generating) {
-        if (!draw_fixed(c, view)) {
+    c->fixed_drawn = (c->policy == RENDER_FIXED && !c->generating) || still;
+    if (c->fixed_drawn) {
+        const int64_t began_us = timing_now_us();
+        const bool drawn = draw_fixed(c, view);
+        c->frame.draw_us = (int32_t)(timing_now_us() - began_us);
+        if (!drawn) {
             return true;
         }
     } else {
         draw_timed(c, view);
     }
     r->pick_round++;
-    c->frame.step = current_step(c);
+    c->frame.step = still ? c->ladder.top : current_step(c);
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
     if (r->attachment_count != 0) {
         draw_second_view(c);
@@ -632,6 +661,21 @@ compose_rows(render_context_t* c, int height) {
     c->frame.rows_end = end * per;
 }
 
+/* A fixed-path frame's compose: only the rows it drew. A judged held frame
+ * over the budget hands the held camera back to the policy. */
+static void
+compose_fixed(render_context_t* c, uint16_t* destination, uint8_t* seams, resolution_step_t size) {
+    compose_rows(c, size.height);
+    const int64_t began_us = timing_now_us();
+    if (!c->frame.unchanged) {
+        raster_upscale_picture(&c->raster, NULL, destination, seams, size.width, size.height);
+    }
+    c->frame.upscale_us = (int32_t)(timing_now_us() - began_us);
+    if (c->still_judged) {
+        c->still_over = c->frame.draw_us + c->frame.upscale_us > c->ladder.budget_us;
+    }
+}
+
 bool
 render_context_compose(render_context_t* c, uint16_t* destination, uint16_t* half, uint8_t* half_seams) {
     const raster_t* r = &c->raster;
@@ -650,14 +694,13 @@ render_context_compose(render_context_t* c, uint16_t* destination, uint16_t* hal
         c->raster.end_row = 0;
     }
     /* Replay warps with generation disabled, so the recorded frame also selects the compose path. */
-    if (c->policy == RENDER_FIXED && !c->generating && !c->frame.generated) {
-        compose_rows(c, size.height);
-        if (!c->frame.unchanged) {
-            raster_upscale_picture(&c->raster, NULL, destination, seams, size.width, size.height);
-        }
+    if (c->fixed_drawn && !c->frame.generated) {
+        compose_fixed(c, destination, seams, size);
         return expanded;
     }
-    render_partial_forget(&c->partial); /* a generated or resized picture is not the one kept */
+    if (c->frame.generated) {
+        render_partial_forget(&c->partial); /* a generated picture is not the one kept */
+    }
     c->frame.rows_first = 0;
     c->frame.rows_end = r->destination_height;
     const int64_t began_us = timing_now_us();
