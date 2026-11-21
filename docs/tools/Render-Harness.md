@@ -420,7 +420,7 @@ part of it) for comparisons and viewers.
 | Owner | Carried state |
 |---|---|
 | Host loop | Frame index, elapsed time, input, drawn box and output pixels |
-| Scene | Animation playheads and poses, transforms, world caches, cameras, skin output and lights |
+| Scene | Animation playheads and poses, transforms, world caches, cameras, skin output, lights and each copy's level of detail |
 | Render context | Raster scratch and upscale maps, split feedback, frame-generation pictures and costs, resolution controller and debug views |
 | Graphics | Presentation flags, dirty regions, framebuffers, half picture and seams, indexed image and palettes |
 | Tunables | Values and owner generations |

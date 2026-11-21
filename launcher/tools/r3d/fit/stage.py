@@ -9,12 +9,12 @@ import pathlib
 from types import SimpleNamespace
 
 from r3d import mesh_bundle, mesh_asset, log
-from r3d.reference_set import fit_sets, shapes_fit
+from r3d.reference_set import fit_sets
+from r3d.fit.copies import drawn_copies, hidden_materials
 
-# A carved start's rest is fitted with the reference G-buffer terms (fit/gbuffer.py) at these weights: the front
-# term pushes it behind the copies, the depth term holds it to the source's surface. Picked on street_fitted: front
-# 1e4 cuts the hidden copy pixels about tenfold; depth 30 then lowers held-out dE, heavier depth raised it.
-FRONT_WEIGHT = 1.0e4
+# The G-buffer front term pushes the rest behind copies; depth holds it to the source surface. Probe fits also
+# use independent close geometry views: colour training views alone can miss rest movement over a nearby copy.
+FRONT_WEIGHT = 3.0e4
 DEPTH_WEIGHT = 30.0
 
 
@@ -23,13 +23,16 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
     """Fit `start` (the variant's start in `inputs` when None) to the reference set in `inputs` (`work` when
     None) and write the renderer's mesh to `target`. A carved start bundle fits its rest with its copies drawn,
     and passes the copy-coverage gate over the held-out poses; its copies are written back unchanged. The
-    variant's ceiling caps the fitted bundle, not the start: the rest is pruned to the ceiling less the copy
-    prototypes, or to the recipe's budget when the variant has no ceiling; `budget` overrides both."""
+    variant's ceiling caps the fitted bundle. A probe fit's start is its budget, so it prunes only what no view
+    shows; any other fit prunes its rest to the ceiling less the copy prototypes, or to the recipe's budget when
+    the variant has no ceiling; `budget` overrides both."""
     from r3d.appearance_simplify import main as fit_main
     from r3d.objects.budget import bundle_count, ceiling_split, rest_target
     from r3d.import_settings import SettingsError
     from r3d.simplify import check_ceiling
 
+    if budget is not None and job.settings.fit.probes is not None:
+        raise ValueError("sweep budget is refused with geometry.probes; the variant's triangles is the budget")
     renderer = job.renderer
     variant, recipe = renderer.variant, renderer.fit
     inputs = pathlib.Path(work) if inputs is None else pathlib.Path(inputs)
@@ -41,32 +44,35 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
     shapes = [row["mesh"] for row in copies]
     ceiling = getattr(variant, "ceiling", None)
     copied = bundle_count(bundle_entries, shapes)
-    if budget is None:
+    if budget is None and job.settings.fit.probes is None:
         budget = rest_target(ceiling_split(renderer), copied)
-    if budget < 1:
+    if budget is not None and budget < 1:
         raise SettingsError(f"copies total {copied} leave the fitted rest no triangle under ceiling {ceiling}")
     start = pathlib.Path(work) / f"{job.asset_name}{mesh_bundle.SUFFIX}"
     start.write_bytes(mesh_bundle.encode([(job.asset_name, mesh_asset.TYPE, rest)], []))
     out = work / "fitted"
     steps = min(recipe.steps, 8) if smoke else recipe.steps
     shaping = job.settings.fit
-    command = ["--scene", str(scene_path), "--start", str(start)]
-    sets = fit_sets(scene.camera.component.path is not None, shaping.probes is not None, shapes_fit(shaping))
+    command = ["--scene", str(scene_path), "--start", str(start),
+               "--hidden-materials", *sorted(hidden_materials(bundle_entries, copies))]
+    sets = fit_sets(scene.camera.component.path is not None, shaping.probes is not None)
     for poses, reference in sets.training:
         command += ["--poses", str(inputs / poses), "--reference", str(inputs / reference)]
     for poses in sets.coverage:
         command += ["--coverage-poses", str(inputs / poses)]
-    # A fit shaped by the import counts its holes over the held-out views; settle picks its budget by them.
-    for poses, reference in sets.scored:
+    # Every fit logs its held-out dE76; a probe fit also gates the surface it loses there.
+    for poses, reference in sets.held_out:
         command += ["--held-out-poses", str(inputs / poses), "--held-out-reference", str(inputs / reference)]
-    if shaping.budget is not None:
-        command += ["--settle", str(shaping.budget.step), str(shaping.budget.settle)]
-    command += ["--out", str(out), "--budget", str(budget),
+    if shaping.probes is not None:
+        command += ["--closure"]
+    if budget is not None:
+        command += ["--budget", str(budget)]
+    command += ["--out", str(out),
                 "--steps", str(steps), "--batch", str(recipe.batch),
                 "--laplacian", str(recipe.laplacian), "--normal-weight", str(recipe.normal_weight),
                 "--object", job.object.name, "--surface-weight", str(recipe.surface_weight),
                 "--surface-margin", str(recipe.surface_margin)]
-    if copies:
+    if drawn_copies(bundle_entries, copies):
         # The copy gate checks the path's held-out views, or the probes' when the camera has no path.
         command += ["--copies", str(bundle), "--copy-poses", str(inputs / sets.held_out[0][0]),
                     "--front-weight", str(FRONT_WEIGHT), "--depth-weight", str(DEPTH_WEIGHT)]

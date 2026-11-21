@@ -101,6 +101,13 @@ class Texture:
             level = 0.25 * (level[0::2, 0::2] + level[1::2, 0::2] + level[0::2, 1::2] + level[1::2, 1::2])
             self.levels.append(level)
 
+    @classmethod
+    def from_levels(cls, levels):
+        """A texture from an existing linear RGBA mip chain."""
+        texture = cls.__new__(cls)
+        texture.levels = list(levels)
+        return texture
+
     @property
     def size(self):
         return self.levels[0].shape[1], self.levels[0].shape[0]
@@ -141,6 +148,13 @@ def load_textures(root, materials, names, dtype=None):
     return textures
 
 
+def alpha_tested(textures):
+    """Per material of `load_textures`: does its texture cut texels away (leaves, chains, glass panes)?"""
+    import numpy as np
+
+    return np.array([tex is not None and tex.levels[0][..., 3].min() <= ALPHA_OPAQUE for tex in textures], dtype=bool)
+
+
 def write_obj(path, mtllib, positions, groups, uvs=None, banner=(), position_decimals=3, uv_decimals=5):
     """Writes `positions` (and a `vt` per uv, sharing its index) under `mtllib`, then each (object,
     material, triangles) group: an `o` line when the object name changes (None writes none), `usemtl`,
@@ -159,10 +173,3 @@ def write_obj(path, mtllib, positions, groups, uvs=None, banner=(), position_dec
         lines.append(f"usemtl {material}")
         lines += [face.format(a + 1, b + 1, c + 1) for a, b, c in triangles]
     pathlib.Path(path).write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
-
-
-def alpha_tested(textures):
-    """Per material of `load_textures`: does its texture cut texels away (leaves, chains, glass panes)?"""
-    import numpy as np
-
-    return np.array([tex is not None and tex.levels[0][..., 3].min() <= ALPHA_OPAQUE for tex in textures], dtype=bool)

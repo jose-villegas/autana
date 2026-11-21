@@ -1,5 +1,7 @@
-"""The reference G-buffer of the fit and the two losses on it: depth and "a copy shows here", per training view,
-rasterised from the full-detail source the references were traced from, so they need no re-trace.
+"""The reference G-buffer of the fit and the two losses on it: depth and "a copy shows here", per colour or geometry-only view,
+from the full-detail source as camera rays see it (reference_render.lit_source): masked or hidden sources are
+traced per hit, opaque sources rasterised. Independent close geometry probes constrain front and depth
+where colour training views cannot see rest movement over a copy.
 
 The front loss is the copy-coverage gate's measure made soft: wherever the source shows a copy and the fitted
 rest is drawn in front of it, it pushes the rest back behind. The depth loss holds the rest to the source's own
@@ -9,6 +11,9 @@ surface where the source shows the rest, against sheets dragged across grazing v
 from typing import NamedTuple
 
 import numpy as np
+
+from r3d.mesh_source import camera_filter
+from r3d.ray_query import RayQuery
 
 # A fitted pixel stands in front of the source when it is nearer than the source by more than this fraction of
 # the source's depth.
@@ -33,6 +38,26 @@ class ReferenceBuffers(NamedTuple):
     copy: list  # per view, [height, width] bool: the source shows a carved triangle
 
 
+def traced_buffer(query, matrix, size):
+    """Depth and source triangle per pixel in raster row order, through alpha-tested hits, clipped to the view."""
+    width, height = size
+    x, y = np.meshgrid((2 * np.arange(width) + 1) / width - 1, (2 * np.arange(height) + 1) / height - 1)
+    pixels = np.column_stack([x.ravel(), y.ravel(), np.full(x.size, -1.0), np.ones(x.size)])
+    inverse = np.linalg.inv(matrix)
+    near = pixels @ inverse.T
+    pixels[:, 2] = 0.0
+    ahead = pixels @ inverse.T
+    origin = near[:, :3] / near[:, 3:]
+    direction = ahead[:, :3] / ahead[:, 3:] - origin
+    direction /= np.linalg.norm(direction, axis=1, keepdims=True)
+    where, rays, faces = query.first_hit(origin, direction)
+    clip = np.column_stack([where, np.ones(len(where))]) @ matrix.T
+    valid = (clip[:, 2] >= -clip[:, 3]) & (clip[:, 2] <= clip[:, 3])
+    depth, shown = np.full(x.size, np.inf), np.full(x.size, -1, dtype=np.int64)
+    depth[rays[valid]], shown[rays[valid]] = clip[valid, 3], faces[valid]
+    return depth.reshape(height, width), shown.reshape(height, width)
+
+
 def reference_buffers(source, carved, matrices, sizes, device="cuda"):
     """The source's buffers at each view: `carved` flags each source triangle drawn as a copy, `matrices` are the
     views' clip matrices and `sizes` their (width, height)."""
@@ -40,15 +65,22 @@ def reference_buffers(source, carved, matrices, sizes, device="cuda"):
 
     from r3d.appearance_simplify import Renderer
 
+    keep = camera_filter(source)
+    query = None if keep is None else RayQuery(source.p, source.tri_v, hit_filter=keep)
     points = torch.as_tensor(source.p, dtype=torch.float32, device=device)
     carved = torch.as_tensor(carved, device=device)
     renders, depth, copy = {}, [], []
     with torch.no_grad():
         for matrix, size in zip(matrices, sizes):
-            if size not in renders:
-                renders[size] = Renderer(source.tri_v, np.ones(len(source.tri_v), dtype=np.int64),
-                                         np.arange(len(source.p)), size, device)
-            reference, shown = distance(renders[size], points, matrix)
+            if query is not None:
+                reference, shown = traced_buffer(query, matrix.detach().cpu().numpy(), size)
+                reference = torch.as_tensor(reference, dtype=points.dtype, device=device)
+                shown = torch.as_tensor(shown, device=device)
+            else:
+                if size not in renders:
+                    renders[size] = Renderer(source.tri_v, np.ones(len(source.tri_v), dtype=np.int64),
+                                             np.arange(len(source.p)), size, device)
+                reference, shown = distance(renders[size], points, matrix)
             depth.append(reference)
             copy.append((shown >= 0) & carved[shown.clamp_min(0)])
     return ReferenceBuffers(depth, copy)

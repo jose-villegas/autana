@@ -7,10 +7,11 @@ from r3d.lit_mesh import finest_count, read_bundle_mesh
 
 
 def ceiling_split(renderer):
-    """(start ceiling, copies' room, rest floor); a fitted start has no ceiling."""
+    """(start ceiling, copies' room, rest floor); a fitted start has no ceiling. A probe fit (no prune budget)
+    keeps its start's triangles, so its floor is the variant's."""
     ceiling = getattr(renderer.variant, 'ceiling', None)
     fit = getattr(renderer, 'fit', None)
-    floor = renderer.variant.triangles if fit is None else fit.budget
+    floor = renderer.variant.triangles if fit is None or fit.budget is None else fit.budget
     return (ceiling if fit is None else None, None if ceiling is None else ceiling - floor, floor)
 
 
