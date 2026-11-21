@@ -2,7 +2,7 @@
 
 Strided image views, RGB565 pixel arithmetic, ordered dithering, palette lookup,
 the sRGB transfer function and OKLab ([colour reference](../../../docs/image/Colour.md)).
-This header-only package uses math for rectangles; its tests run with testkit.
+This header-only package uses math for rectangles and `vec3f_t`; its tests run with testkit.
 
 `image_t` borrows pixels with a format and byte pitch.
 `IMAGE_U16` and `IMAGE_U32` describe raw maps whose meaning belongs to their caller.
