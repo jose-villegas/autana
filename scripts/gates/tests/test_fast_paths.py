@@ -504,7 +504,7 @@ class FastPathTests(unittest.TestCase):
         assert_contains(self, details, (
             "Symbols: nonzero input `a`; reciprocal seed `y`.",
             "`sinf` in output LSBs",
-            "`[MATHX_RSQRT_MIN, 2^32)`",
+            "[`MATHX_RSQRT_MIN`, $`2^{32}`$)",
         ))
         self.assertEqual(details.count("| Original | Fast path |"), len({item.key for item in items}))
         self.assertNotIn("![Error across", details)

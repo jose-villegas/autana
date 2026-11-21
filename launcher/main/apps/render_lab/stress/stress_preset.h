@@ -21,18 +21,20 @@ typedef enum {
 } stress_shape_t;
 
 typedef enum {
-    STRESS_SURFACE_BANDED,           /* still colour bands up the copy, each triangle's corners close */
-    STRESS_SURFACE_WAVE,             /* the bands run up it, pushing it out: the mesh made again every frame */
-    STRESS_SURFACE_NOISY,            /* neighbouring vertices at opposite colours: every triangle's corners far apart */
-    STRESS_SURFACE_MIXED,            /* alternating uniform and stepped triangle colours */
-    STRESS_SURFACE_CARD,             /* procedural texture sampled at each corner */
-    STRESS_SURFACE_UNIFORM,          /* one colour at every corner: zero colour steps, filled uniform */
-    STRESS_SURFACE_STATIC,           /* the pack's own static mesh asset per copy, nothing generated */
-    STRESS_SURFACE_TWO_SIDED,        /* banded, and drawn from both sides: nothing faces away */
-    STRESS_SURFACE_TEXTURED,         /* banded light under a generated INDEX4 brick texture (render/texture) */
+    STRESS_SURFACE_BANDED,    /* still colour bands up the copy, each triangle's corners close */
+    STRESS_SURFACE_WAVE,      /* the bands run up it, pushing it out: the mesh made again every frame */
+    STRESS_SURFACE_NOISY,     /* neighbouring vertices at opposite colours: every triangle's corners far apart */
+    STRESS_SURFACE_MIXED,     /* alternating uniform and stepped triangle colours */
+    STRESS_SURFACE_CARD,      /* procedural texture sampled at each corner */
+    STRESS_SURFACE_UNIFORM,   /* one colour at every corner: zero colour steps, filled uniform */
+    STRESS_SURFACE_STATIC,    /* the pack's own static mesh asset per copy, nothing generated */
+    STRESS_SURFACE_TWO_SIDED, /* banded, and drawn from both sides: nothing faces away */
+    STRESS_SURFACE_CARVED,    /* the pack's carved prop, baked with its levels of detail, each copy picking its own */
+    STRESS_SURFACE_TEXTURED,  /* banded light under a generated INDEX4 brick texture (render/texture) */
     STRESS_SURFACE_CONTACT_BLOBS,    /* static floor pads with contact discs */
     STRESS_SURFACE_SKINNED_SH_BLOBS, /* animated pack skins with sampled irradiance and contact discs */
     STRESS_SURFACE_MASKED,           /* banded light, each foliage card cut by a generated MASK1 texture */
+    STRESS_SURFACE_HINGED,           /* the butterfly pack's body and two wings per copy, hinges turned every frame */
 } stress_surface_t;
 
 typedef enum {
@@ -40,16 +42,32 @@ typedef enum {
     STRESS_LAYOUT_STACK, /* one behind another, each the arrangement's size: depth complexity = copies */
 } stress_layout_t;
 
-#define STRESS_SKINNED_COPIES      6
-#define STRESS_CONTACT_BLOB_COPIES 24
+/* Pack key for the hinged presets. */
+#define STRESS_BUTTERFLY_SCENE      "butterfly"
+/* Copies in the full hinged wall. */
+#define STRESS_BUTTERFLY_COPIES     32
+/* Copies in the sparse hinged wall. */
+#define STRESS_FEW_BUTTERFLY_COPIES 4
+#define STRESS_SKINNED_COPIES       6
+#define STRESS_CONTACT_BLOB_COPIES  24
 
-#define STRESS_SCENE               "stress"
-#define STRESS_CAMERA              "camera"
-#define STRESS_ORBIT_CLIP          "orbit"
-#define STRESS_CAMERA_CULLED       "culled"
-#define STRESS_CAMERA_NEAR         "near"
-#define STRESS_CAMERA_SWEEP        "sweep"
-#define STRESS_RING_SCENE          "stress_ring"
+#define STRESS_SCENE                "stress"
+#define STRESS_CAMERA               "camera"
+#define STRESS_ORBIT_CLIP           "orbit"
+#define STRESS_CAMERA_CULLED        "culled"
+#define STRESS_CAMERA_NEAR          "near"
+#define STRESS_CAMERA_SWEEP         "sweep"
+#define STRESS_RING_SCENE           "stress_ring"
+
+/* A tunable a preset draws under, by the name SET gives it (core/tune.h),
+ * for a path only a setting selects. */
+typedef struct {
+    const char* name;
+    int32_t value;
+} stress_setting_t;
+
+/* The most settings one preset sets; a NULL name ends a shorter list. */
+#define STRESS_SETTINGS_MAX 3
 
 typedef struct {
     stress_shape_t shape;
@@ -62,6 +80,8 @@ typedef struct {
     int perf_poses;    /* poses the stress perf suite replays along the swing */
     bool record;       /* the stress perf suite runs the frame recorder over it: its stage too */
     const char* scene; /* the pack shown: NULL is STRESS_SCENE's copy pool, another its own meshes as placed */
+    bool skip_hidden;  /* its camera skips clusters behind drawn depth, as a baked family's may */
+    stress_setting_t settings[STRESS_SETTINGS_MAX]; /* set on entering, put back on leaving */
 } stress_params_t;
 
 /* X(ID, key, surface): each preset, its key the scene key's suffix and its
@@ -84,16 +104,26 @@ typedef struct {
     X(CULLED, "culled", BANDED)                                                                                        \
     X(NEAR, "near", BANDED)                                                                                            \
     X(FEW_COPIES, "few-copies", BANDED)                                                                                \
+    X(CARVED_NEAR, "carved-near", CARVED)                                                                              \
+    X(CARVED_FAR, "carved-far", CARVED)                                                                                \
     X(TEXTURED, "textured", TEXTURED)                                                                                  \
+    X(TEXTURED_FAR, "textured-far", TEXTURED)                                                                          \
     X(FOLIAGE_NEAR, "foliage-near", MASKED)                                                                            \
     X(FOLIAGE_NEAR_OPAQUE, "foliage-near-opaque", TEXTURED)                                                            \
     X(FOLIAGE_FAR, "foliage-far", MASKED)                                                                              \
     X(FOLIAGE_FAR_OPAQUE, "foliage-far-opaque", TEXTURED)                                                              \
     X(SKINNED_SH_BLOBS, "skinned-sh-blobs", SKINNED_SH_BLOBS)                                                          \
     X(CONTACT_BLOBS, "contact-blobs", CONTACT_BLOBS)                                                                   \
+    X(BUTTERFLIES, "butterflies", HINGED)                                                                              \
+    X(FEW_BUTTERFLIES, "few-butterflies", HINGED)                                                                      \
     X(RECORD, "record", WAVE)                                                                                          \
     X(CULL_SETUP, "cull-setup", BANDED)                                                                                \
-    X(BAKED_TREE, "baked-tree", STATIC)
+    X(BAKED_TREE, "baked-tree", STATIC)                                                                                \
+    X(SMALL_GRAIN, "small-grain", BANDED)                                                                              \
+    X(SMALL_DITHER, "small-dither", NOISY)                                                                             \
+    X(SMALL_OFF, "small-off", BANDED)                                                                                  \
+    X(STACK_SKIP, "stack-skip", BANDED)                                                                                \
+    X(CARVED_BLEND, "carved-blend", CARVED)
 
 #define STRESS_PRESET_ID(id_, ...) STRESS_##id_,
 
@@ -109,10 +139,19 @@ stress_skinned(const stress_params_t* p) {
 /* Whether a surface's mesh is made again every frame: a constant
  * expression, so a static table can read it. */
 #define STRESS_SURFACE_IS_PER_FRAME(surface_) ((surface_) == STRESS_SURFACE_WAVE)
+#define STRESS_SURFACE_GENERATES_FRAMES(surface_)                                                                      \
+    (!STRESS_SURFACE_IS_PER_FRAME(surface_) && (surface_) != STRESS_SURFACE_HINGED)
 
 static inline bool
 stress_per_frame(const stress_params_t* p) {
     return STRESS_SURFACE_IS_PER_FRAME(p->surface);
+}
+
+/* Whether a preset shows a mesh baked into the pack rather than one it generates. */
+static inline bool
+stress_baked(const stress_params_t* p) {
+    return p->surface == STRESS_SURFACE_STATIC || p->surface == STRESS_SURFACE_CARVED
+           || p->surface == STRESS_SURFACE_HINGED;
 }
 
 /* A copy's mesh: the shape's vertex and triangle counts. */
@@ -144,6 +183,10 @@ typedef struct {
  * pushed out along its normal by the wave. False when the shape cannot be
  * made. Equal arguments give equal bytes. */
 bool stress_source(const stress_params_t* p, uint32_t t_ms, const stress_buffers_t* b, r3d_dynamic_source_t* out);
+
+/* Where perf pose `pose` sits along a camera clip of `duration_ms`: pose i of
+ * perf_poses is i / perf_poses of the way, the poses the perf suite replays. */
+uint32_t stress_pose_ms(const stress_params_t* p, uint32_t duration_ms, int pose);
 
 /* Where the arrangement is seen from: the camera's distance from the
  * origin, which it looks at, and its lens's half field of view across the

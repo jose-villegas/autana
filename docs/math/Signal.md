@@ -87,10 +87,10 @@ f=f_r 2^{s/O}, \qquad s=O\log_2(f/f_r)
 
 Exact exponential steps use nonnegative `dt` and positive `tau` or
 `half_life`, in matching time units. For a fixed half-life,
-`smooth_decay(a) * smooth_decay(b) = smooth_decay(a + b)`.
+`smooth_decay` composes, $`d(a)\,d(b) = d(a + b)`$.
 
-For a fixed time constant, the shares left compose likewise:
-`(1 - smooth_alpha(a)) * (1 - smooth_alpha(b)) = 1 - smooth_alpha(a + b)`.
+For a fixed time constant, the shares `smooth_alpha` leaves compose likewise,
+$`(1 - \alpha(a))(1 - \alpha(b)) = 1 - \alpha(a + b)`$.
 
 | Function | Result |
 |---|---|
