@@ -979,26 +979,25 @@ draw_post(const raster_t* raster, const render_view_t* view, const draw_work_t* 
 }
 
 /* Culls every instance into the census list before any is drawn, so they
- * share one depth scale; notes whether the scale or a cut changed. */
+ * share one depth scale; notes whether the scale or a cut changed. `work`
+ * is the raster's scratch_draw(), carved once by each entry. */
 static inline __attribute__((always_inline)) void
-census(const raster_t* raster, const render_view_t* view, raster_stats_t* stats) {
+census(const raster_t* raster, const render_view_t* view, raster_stats_t* stats, draw_work_t* work) {
     assert(raster->instance_count + raster->batch_count > 0);
     assert_view_size(raster, view);
     FRAME_COST_BEGIN(culled_from);
-    draw_work_t* work = scratch_draw(raster);
     const float kept_near = *work->buffers.depth_near;
     *work->buffers.depth_near = cull_instances(raster, view, stats, work);
     work->census_changed |= *work->buffers.depth_near != kept_near;
     FRAME_COST_END(culled_from, R3D_STAGE_CULL_NAME);
 }
 
-/* Draws the census list. Inlining keeps the draw chain to one entry's stack
- * frame. */
+/* Draws the census list from `work`, as census() takes it. Inlining keeps
+ * the draw chain to one entry's stack frame. */
 static inline __attribute__((always_inline)) void
-draw_instances(const raster_t* raster, const render_view_t* view) {
+draw_instances(const raster_t* raster, const render_view_t* view, draw_work_t* work) {
     assert(raster->instance_count + raster->batch_count > 0);
     assert_view_size(raster, view);
-    draw_work_t* work = scratch_draw(raster);
     /* Kept rows hold depth at the last draw's scale and the cuts it drew: a
      * census that changed either redraws them all. */
     const bool some_rows = raster->first_row < raster->end_row && !work->census_changed;
@@ -1040,8 +1039,9 @@ draw_instances(const raster_t* raster, const render_view_t* view) {
 raster_stats_t
 raster_draw(const raster_t* raster, const render_view_t* view) {
     raster_stats_t stats = {0};
-    census(raster, view, &stats);
-    draw_instances(raster, view);
+    draw_work_t* work = scratch_draw(raster);
+    census(raster, view, &stats, work);
+    draw_instances(raster, view, work);
     return stats;
 }
 
@@ -1092,13 +1092,13 @@ raster_drawn_place(const raster_t* raster, int i, r3d_lens_t* lens) {
 raster_stats_t
 raster_census(const raster_t* raster, const render_view_t* view) {
     raster_stats_t stats = {0};
-    census(raster, view, &stats);
+    census(raster, view, &stats, scratch_draw(raster));
     return stats;
 }
 
 void
 raster_draw_culled(const raster_t* raster, const render_view_t* view) {
-    draw_instances(raster, view);
+    draw_instances(raster, view, scratch_draw(raster));
 }
 
 resolution_step_t
