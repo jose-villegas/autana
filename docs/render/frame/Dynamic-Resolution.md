@@ -147,7 +147,7 @@ The caller hands the whole frame's target; the cost a policy holds is the part t
 |---|---|
 | A frame's sample | its period, from one draw to the next, less its draw and compose and less what it waited for the panel (`gfx_present_waited_us()`), between 0 and the target |
 | Which frames teach | frames a policy drew and timed; not generated, held or fixed ones, nor a pause (`render_context_skip()`) |
-| The average | exponential, with the weight TCP gives its smoothed round-trip time<sup>[[134]](../../Citations.md#rfc6298)</sup> (`RESOLUTION_UNSCALED_WEIGHT_SHIFT`), seeded by the first sample |
+| The average | exponential, with the weight TCP gives its smoothed round-trip time<sup>[[134]](../../Citations.md#rfc6298)</sup> (`RESOLUTION_UNSCALED_WEIGHT_DIVISOR`), seeded by the first sample |
 | The floor | the scaled part keeps at least `RESOLUTION_SCALED_MIN_PERCENT` of the target |
 
 - Smoothing a measured frame time with the present's wait left out follows Binks<sup>[[135]](../../Citations.md#binks-2011)</sup>, which averages ten frames.

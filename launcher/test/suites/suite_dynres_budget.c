@@ -2,6 +2,7 @@
  * shown frame paid outside its draw and upscale, waits for the panel taken
  * out, is learned, and the scaled part gets the target less that. */
 #include <stdint.h>
+#include <stdlib.h>
 
 #include "raster_rig.h"
 #include "render_view_fixture.h"
@@ -23,29 +24,41 @@ static const resolution_step_t steps[] = {{96, 64}, {48, 32}};
 #define SETTLE            64
 /* What the integer average may stop short of the sample by: under one step
  * of its weight. */
-#define SETTLED_US        (1 << RESOLUTION_UNSCALED_WEIGHT_SHIFT)
+#define SETTLED_US        RESOLUTION_UNSCALED_WEIGHT_DIVISOR
 /* Where the clocks stand when a context opens: the wait counter has run
  * since boot, so only its change over a frame may count. */
 #define OPENED_AT_US      1000000
 #define WAITED_AT_OPEN_US 600000
 
-static render_context_t context;
+static render_context_t* context;
 static int64_t now_us;
 static int64_t waited_us;
+
+/* The test's context, and the rig if it opened one. */
+static void
+release_context(void) {
+    render_context_release(context);
+    free(context);
+    context = NULL;
+    raster_rig_release();
+}
 
 /* A context under the stepped controller at the frame target, its clock
  * started and its frames drawn by the policy at DRAW_US and UPSCALE_US. */
 static render_context_t*
 open_context(void) {
-    context = RENDER_CONTEXT_DEFAULT;
+    context = malloc(sizeof(*context));
+    TEST_ASSERT_NOT_NULL(context);
+    *context = RENDER_CONTEXT_DEFAULT;
+    suite_set_test_cleanup(release_context);
     const resolution_config_t config = resolution_config(steps, STEP_COUNT, STEP_COUNT, TARGET_US);
-    render_context_set_dynamic_resolution(&context, &config, NULL, 0);
-    context.frame.draw_us = DRAW_US;
-    context.frame.upscale_us = UPSCALE_US;
+    render_context_set_dynamic_resolution(context, &config, NULL, 0);
+    context->frame.draw_us = DRAW_US;
+    context->frame.upscale_us = UPSCALE_US;
     now_us = OPENED_AT_US;
     waited_us = WAITED_AT_OPEN_US;
-    render_context_shown(&context, now_us, waited_us);
-    return &context;
+    render_context_shown(context, now_us, waited_us);
+    return context;
 }
 
 /* The next draw begins `period_us` after the last, `waited` of it spent
@@ -101,7 +114,7 @@ test_one_slow_frame_moves_the_budget_by_the_weight(void) {
     show(c, 1, DRAW_US + UPSCALE_US + UNSCALED_US, 0);
     show(c, 1, DRAW_US + UPSCALE_US + UNSCALED_US + TARGET_US, 0);
     const int32_t sample_us = TARGET_US; /* a sample is capped at the target */
-    const int32_t moved_us = (sample_us - UNSCALED_US) >> RESOLUTION_UNSCALED_WEIGHT_SHIFT;
+    const int32_t moved_us = (sample_us - UNSCALED_US) / RESOLUTION_UNSCALED_WEIGHT_DIVISOR;
     TEST_ASSERT_EQUAL_INT32(TARGET_US - UNSCALED_US - moved_us, c->ladder.budget_us);
 }
 
@@ -190,12 +203,6 @@ draw_frames(render_context_t* c, raster_rig_t* r, int frames) {
     }
 }
 
-static void
-release_context(void) {
-    render_context_release(&context);
-    raster_rig_release();
-}
-
 /* A frame a policy drew teaches the budget when the next draw begins: its
  * period is known only then. */
 static void
@@ -203,7 +210,6 @@ test_a_policy_frame_teaches_the_next_draw(void) {
     raster_rig_t* r =
         raster_rig_open(raster_rig_wall_and_card, RASTER_RIG_QUADS, 0, steps[0].width, steps[0].height, 0);
     render_context_t* c = open_context();
-    suite_set_test_cleanup(release_context);
     draw_frames(c, r, 1);
     TEST_ASSERT_FALSE(c->budget.learned);
     draw_frames(c, r, 1);
@@ -216,7 +222,6 @@ test_a_fixed_frame_teaches_nothing(void) {
     raster_rig_t* r =
         raster_rig_open(raster_rig_wall_and_card, RASTER_RIG_QUADS, 0, steps[0].width, steps[0].height, 0);
     render_context_t* c = open_context();
-    suite_set_test_cleanup(release_context);
     render_context_set_dynamic_resolution(c, NULL, NULL, 0);
     draw_frames(c, r, SETTLE);
     TEST_ASSERT_FALSE(c->budget.learned);
