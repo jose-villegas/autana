@@ -22,7 +22,6 @@ static const char* textured_name; /* the renderer drawn with its textures, or NU
 static bool generating;
 static recti_t size_rect;
 static camera_present_t present;
-static small_fill_t small_fill = SMALL_FILL_SMOOTH;
 static int view = RENDER_DEBUG_VIEW_SHADED;
 static const char* counts_path;
 static FILE* counts;
@@ -42,7 +41,6 @@ reset_options(void) {
     textured_name = NULL;
     size_rect = recti_empty();
     present = CAMERA_PRESENT_NEAREST;
-    small_fill = SMALL_FILL_SMOOTH;
     view = RENDER_DEBUG_VIEW_SHADED;
     counts_path = NULL;
     poses_path = NULL;
@@ -73,16 +71,6 @@ options(int argc, char** argv) {
                 fprintf(stderr, "scene_viewer: --size is WxH within %dx%d, not %s\n", GFX_WIDTH, GFX_HEIGHT, value);
                 return false;
             }
-        } else if (strcmp(flag, "--small-fill") == 0) {
-            unsigned ceiling, gate, style;
-            char trailing;
-            if (sscanf(value, "%u,%u,%u%c", &ceiling, &gate, &style, &trailing) != 3 || ceiling > SMALL_FILL_CEILING_MAX
-                || gate > UINT8_MAX || style >= SMALL_FILL_STYLE_COUNT) {
-                fprintf(stderr, "scene_viewer: --small-fill is CEILING,GATE,STYLE within 0..%u,0..%u,0..%u\n",
-                        SMALL_FILL_CEILING_MAX, UINT8_MAX, SMALL_FILL_STYLE_COUNT - 1);
-                return false;
-            }
-            small_fill = (small_fill_t){(uint8_t)ceiling, (uint8_t)gate, (small_fill_style_t)style};
         } else if (strcmp(flag, "--present") == 0) {
             if (strcmp(value, "nearest") == 0) {
                 present = CAMERA_PRESENT_NEAREST;
@@ -178,10 +166,10 @@ texture_object(entity_t scene) {
     return false;
 }
 
-/* The camera entity to activate: the named one, or the scene's first. */
+/* The camera entity to activate: the named one, else the scene's flight. */
 static entity_t
 chosen_camera(entity_t scene) {
-    return camera_name != NULL ? entity_find(scene, name_hash(camera_name)) : camera_first(scene);
+    return camera_name != NULL ? entity_find(scene, name_hash(camera_name)) : camera_flight(scene);
 }
 
 static bool
@@ -219,10 +207,9 @@ setup(int quarter) {
     }
     for (entity_t e = entity_next(scene, ENTITY_NONE); !handle_is_none(e); e = entity_next(scene, e)) {
         (void)camera_set_present(e, present);
-        (void)camera_set_small_fill(e, small_fill);
     }
     shown = scene;
-    camera = chosen_camera(scene);
+    camera = camera_active(); /* the one chosen_camera() found above */
     /* What a caller sampling the path along its length reads. */
     fprintf(stderr, "scene_viewer: camera path %u ms\n", (unsigned)animator_clip_duration_ms(camera, 0));
     render_context_t* context = render_context_main();

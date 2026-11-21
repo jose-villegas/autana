@@ -28,10 +28,10 @@ false for a non-camera entity or an invalid value.
 | | `animator_play()`, `_set_speed()`, `_set_paused()`, `_seek()` | control its playback slots |
 | | `animator_clip_count()`, `_clip_name()`, `_clip_duration_ms()`, `_current_clip()`, `_paused()` | query them |
 | `scene/animator/gait.h` | `gait_pick()`, `gait_apply()` | the clip and playback rate for a ground speed, so a walker's feet keep pace; a still clip only up to `stop_mps` |
-| `scene/camera/camera.h` | `camera_first(within)`, `camera_lens()` | the first camera below `within`; a camera's lens |
+| `scene/camera/camera.h` | `camera_first(within)`, `camera_flight(within)`, `camera_lens()` | the first camera below `within`; its first on a path, else its first; a camera's lens |
 | | `camera_activate()`, `camera_deactivate()`, `camera_active()` | the one active camera engine-wide |
 | | `camera_cut()` | after a jump of the active camera, the renderer drops what it carried from earlier frames |
-| | `camera_set_present()`, `_set_small_fill()`, `_set_skip_hidden()` | per-camera settings; small fill defaults to `SMALL_FILL_SMOOTH` ([Small fill](../frame/Coverage.md#small-fill)) |
+| | `camera_set_present()`, `_set_skip_hidden()` | per-camera settings |
 | | `camera_set_shift()` | an off-axis view along the camera's right and up, in picture short sides ([Camera](Camera.md#lens-shift)) |
 | `scene/light/light.h` | `light_set_color()` / `_set_intensity()` | attach or update one directional light: color finite linear RGB in [0,1], intensity finite and nonnegative; a full light array or a skin without vertex colors fails without mutation |
 | | `light_color()` / `_intensity()` | read it; zero when none |

@@ -171,10 +171,15 @@ class InputContractTests(unittest.TestCase):
             files[f'host launcher/tools/render/{name}'] = stages.content_checksum(path).decode()
         return files
 
+    def cmake_rule(self, root):
+        """The rule the --deps listing ends with: the CMake files the configure read."""
+        return (f'host: {root}/launcher/tools/render/CMakeLists.txt '
+                f'{root}/launcher/tools/render/scene/CMakeLists.txt' + chr(10))
+
     def test_host_link_configuration_bytes_move_fingerprint(self):
         self.host_cmake_inputs(self.root)
         with mock.patch.object(stages, 'ROOT', self.root), mock.patch.object(
-                stages.subprocess, 'run', return_value=NS(stdout='flags -O1\n')):
+                stages.subprocess, 'run', return_value=NS(stdout='flags -O1\n' + self.cmake_rule(self.root))):
             baseline = bake.digest(stages.host_inputs(self.root / 'scene'))
             for name in ('CMakeLists.txt', 'scene/CMakeLists.txt'):
                 path = self.root / 'launcher/tools/render' / name
@@ -223,7 +228,7 @@ class InputContractTests(unittest.TestCase):
         header = self.root / 'my dir/host.h'
         header.parent.mkdir()
         header.write_text('#define VALUE 1\n')
-        listing = 'flags -O1\nhost.o: my\\ dir/host.h\n'
+        listing = 'flags -O1\nhost.o: my\\ dir/host.h\n' + self.cmake_rule(self.root)
         with mock.patch.object(stages, 'ROOT', self.root), mock.patch.object(
                 stages.subprocess, 'run', return_value=NS(stdout=listing)):
             self.assertEqual(stages.host_inputs(self.root / 'scene'),
@@ -417,8 +422,8 @@ class RecordedInputsTests(unittest.TestCase):
         self.assertEqual(steps[gate]['env']['FINGERPRINT'], '${{ needs.fingerprint.outputs.fingerprint }}')
         self.assertEqual(workflow['jobs']['fingerprint']['outputs']['current'], '${{ steps.inputs.outputs.current }}')
         refresh = workflow['jobs']['refresh']
-        self.assertEqual(refresh['needs'], ['fingerprint', 'marker', 'wait'])
-        # A push only marks images pending; the render waits for NIGHT_START.
+        self.assertEqual(refresh['needs'], 'fingerprint')
+        # A push only marks images pending; the render waits for the board night to end.
         self.assertEqual(refresh['if'], "github.event_name != 'push' && needs.fingerprint.outputs.current != 'true'")
         self.assertEqual(refresh['concurrency'], {'group': 'doc-images-gpu', 'cancel-in-progress': 'false', 'queue': 'max'})
         self.assertEqual(workflow['env']['FORCE'], '${{ inputs.force }}')
@@ -452,30 +457,6 @@ class RecordedInputsTests(unittest.TestCase):
             with self.assertRaises(KeyError):
                 records.main(['X', '--defer-in-flight'], request=request)
             request.assert_not_called()
-
-    def test_trigger_sha_is_required_without_stdout_verdict(self):
-        with mock.patch.dict(os.environ), contextlib.redirect_stdout(io.StringIO()) as output:
-            os.environ.pop('GITHUB_SHA', None)
-            request = mock.Mock(side_effect=[{'object': {'sha': 'X'}}, {'artifacts': []}])
-            with self.assertRaisesRegex(KeyError, 'GITHUB_SHA'):
-                records.main(['X', '--skip-obsolete'], request=request)
-        self.assertEqual(output.getvalue(), '')
-        request.assert_called_once_with('GET', '/git/ref/heads/main')
-
-    def test_delayed_push_gate_skips_after_completed_revert(self):
-        record = dict(name=records.RENDERED_PREFIX + 'X', created_at='2026',
-                      expired=False, workflow_run={'head_branch': 'main'})
-        with mock.patch.dict(os.environ, FORCE='', GITHUB_SHA='X'), \
-                contextlib.redirect_stdout(io.StringIO()) as output:
-            request = mock.Mock(side_effect=[{'object': {'sha': 'X'}}, {'artifacts': [record]}])
-            records.main(['X', '--skip-obsolete'], request=request)
-        self.assertEqual(output.getvalue(), 'true\n')
-        with mock.patch.dict(os.environ, FORCE='true', GITHUB_SHA='B'), \
-                contextlib.redirect_stdout(io.StringIO()) as output:
-            request = mock.Mock(return_value={'object': {'sha': 'X'}})
-            records.main(['B', '--skip-obsolete'], request=request)
-        self.assertEqual(output.getvalue(), 'obsolete: main moved to X; dispatch again on main to force\n')
-        request.assert_called_once_with('GET', '/git/ref/heads/main')
 
     def test_in_flight_middle_run_on_each_page(self):
         from github_api import PER_PAGE

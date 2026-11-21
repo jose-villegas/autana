@@ -24,7 +24,10 @@ The CPU Bakes workflow produces these rows; `bake.py lock --from-run RUN`
 locks its artifacts. The key names the source bytes, requested sampling,
 seed, alpha threshold, two-sided materials, camera region and near plane,
 scene lights, bounce depth, albedo boost and the reached tool code and pins.
-The payload is a bake artifact; pack loading is a separate consumer.
+
+The baker caches source coordinates. At pack time, `asset/engine_frame.py`
+mirrors the origin, cell lattice and L1 coefficients along each reflected axis,
+matching the mesh frame.
 
 ```mermaid
 flowchart LR
@@ -38,13 +41,21 @@ ProbeViews supplies the jittered cell grid, classification and relocation.
 The record addresses regular cell centres; tracing uses relocated positions.
 Inside cells receive synchronous six-neighbour dilation from outside cells.
 
-Paths include direct sky and bounced sunlight at the surface bake's bounce depth.
+Paths include direct sky and baked sunlight bounced at the surface bake's depth.
+Realtime lights contribute neither paths nor analytic sun terms.
 Ambient, artistic indirect intensity, tone mapping and AO do not alter transport.
 
-For each RGB channel, projection is
-`c_lm = (4*pi/N) sum L(w) Y_lm(w)`. A directional sun contributes
-`pi * color * intensity * visibility * Y_lm(sun_direction)` separately,
-using one shadow ray per outside probe and sun.
+For each RGB channel, $N$ path directions $\omega$ project as
+
+```math
+c_{lm} = \frac{4\pi}{N} \sum_{\omega} L(\omega)\, Y_{lm}(\omega)
+```
+
+A directional sun contributes separately, with one shadow ray per outside probe and sun:
+
+```math
+c_{lm}^{\text{sun}} = \pi \cdot \text{colour} \cdot \text{intensity} \cdot \text{visibility} \cdot Y_{lm}(\omega_{\text{sun}})
+```
 
 The SH basis follows Sloan 2008<sup>[[129]](../../Citations.md#sloan-2008)</sup>;
 the separation of lighting coefficients and diffuse convolution follows
@@ -52,6 +63,6 @@ Ramamoorthi and Hanrahan 2001<sup>[[128]](../../Citations.md#ramamoorthi-hanraha
 These are radiance coefficients; a diffuse consumer applies the cosine kernel.
 
 The bake log reports cells, inside cells, wall time, bytes, primary paths
-(`outside * directions * spp`) and sun shadow rays. Classification rays and
+($`n_{\text{outside}} \cdot n_{\text{directions}} \cdot n_{\text{spp}}`$) and sun shadow rays. Classification rays and
 secondary bounces are excluded from the primary-path count, as with reference
 bake planning.

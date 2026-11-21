@@ -1,0 +1,636 @@
+# The stress wall uses the same framing as the procedural stress pool.
+[[objects]]
+name = "camera"
+position = [0.0, 1.0, 10.0]
+[objects.camera]
+half_fov_short_tan = 0.5
+near_z = 0.5
+background = 0x9CC0E6
+path = { animation = "swing.anim.toml", node = "camera" }
+
+[[objects]]
+name = "still"
+position = [0.0, 1.0, 10.0]
+rotation = [-5.710593, 0.0, 0.0]
+[objects.camera]
+half_fov_short_tan = 0.5
+near_z = 0.5
+background = 0x9CC0E6
+
+# The first copy seen from above, in front and to one side.
+[[objects]]
+name = "detail"
+position = [-0.122394, 0.685770, 1.900000]
+rotation = [-45.186645, 44.812131, 0.0]
+[objects.camera]
+half_fov_short_tan = 0.5
+near_z = 0.1
+background = 0x9CC0E6
+
+[[objects]]
+name = "slot_00"
+[objects.mesh_renderer]
+mesh = "butterfly_body.import.toml"
+
+[[objects]]
+name = "slot_00_wing_l"
+parent = "slot_00"
+rotation = [0.0, 0.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_00_wing_r"
+parent = "slot_00"
+rotation = [0.0, 180.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_01"
+[objects.mesh_renderer]
+mesh = "butterfly_body.import.toml"
+
+[[objects]]
+name = "slot_01_wing_l"
+parent = "slot_01"
+rotation = [0.0, 0.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_01_wing_r"
+parent = "slot_01"
+rotation = [0.0, 180.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_02"
+[objects.mesh_renderer]
+mesh = "butterfly_body.import.toml"
+
+[[objects]]
+name = "slot_02_wing_l"
+parent = "slot_02"
+rotation = [0.0, 0.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_02_wing_r"
+parent = "slot_02"
+rotation = [0.0, 180.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_03"
+[objects.mesh_renderer]
+mesh = "butterfly_body.import.toml"
+
+[[objects]]
+name = "slot_03_wing_l"
+parent = "slot_03"
+rotation = [0.0, 0.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_03_wing_r"
+parent = "slot_03"
+rotation = [0.0, 180.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_04"
+[objects.mesh_renderer]
+mesh = "butterfly_body.import.toml"
+
+[[objects]]
+name = "slot_04_wing_l"
+parent = "slot_04"
+rotation = [0.0, 0.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_04_wing_r"
+parent = "slot_04"
+rotation = [0.0, 180.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_05"
+[objects.mesh_renderer]
+mesh = "butterfly_body.import.toml"
+
+[[objects]]
+name = "slot_05_wing_l"
+parent = "slot_05"
+rotation = [0.0, 0.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_05_wing_r"
+parent = "slot_05"
+rotation = [0.0, 180.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_06"
+[objects.mesh_renderer]
+mesh = "butterfly_body.import.toml"
+
+[[objects]]
+name = "slot_06_wing_l"
+parent = "slot_06"
+rotation = [0.0, 0.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_06_wing_r"
+parent = "slot_06"
+rotation = [0.0, 180.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_07"
+[objects.mesh_renderer]
+mesh = "butterfly_body.import.toml"
+
+[[objects]]
+name = "slot_07_wing_l"
+parent = "slot_07"
+rotation = [0.0, 0.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_07_wing_r"
+parent = "slot_07"
+rotation = [0.0, 180.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_08"
+[objects.mesh_renderer]
+mesh = "butterfly_body.import.toml"
+
+[[objects]]
+name = "slot_08_wing_l"
+parent = "slot_08"
+rotation = [0.0, 0.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_08_wing_r"
+parent = "slot_08"
+rotation = [0.0, 180.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_09"
+[objects.mesh_renderer]
+mesh = "butterfly_body.import.toml"
+
+[[objects]]
+name = "slot_09_wing_l"
+parent = "slot_09"
+rotation = [0.0, 0.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_09_wing_r"
+parent = "slot_09"
+rotation = [0.0, 180.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_10"
+[objects.mesh_renderer]
+mesh = "butterfly_body.import.toml"
+
+[[objects]]
+name = "slot_10_wing_l"
+parent = "slot_10"
+rotation = [0.0, 0.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_10_wing_r"
+parent = "slot_10"
+rotation = [0.0, 180.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_11"
+[objects.mesh_renderer]
+mesh = "butterfly_body.import.toml"
+
+[[objects]]
+name = "slot_11_wing_l"
+parent = "slot_11"
+rotation = [0.0, 0.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_11_wing_r"
+parent = "slot_11"
+rotation = [0.0, 180.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_12"
+[objects.mesh_renderer]
+mesh = "butterfly_body.import.toml"
+
+[[objects]]
+name = "slot_12_wing_l"
+parent = "slot_12"
+rotation = [0.0, 0.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_12_wing_r"
+parent = "slot_12"
+rotation = [0.0, 180.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_13"
+[objects.mesh_renderer]
+mesh = "butterfly_body.import.toml"
+
+[[objects]]
+name = "slot_13_wing_l"
+parent = "slot_13"
+rotation = [0.0, 0.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_13_wing_r"
+parent = "slot_13"
+rotation = [0.0, 180.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_14"
+[objects.mesh_renderer]
+mesh = "butterfly_body.import.toml"
+
+[[objects]]
+name = "slot_14_wing_l"
+parent = "slot_14"
+rotation = [0.0, 0.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_14_wing_r"
+parent = "slot_14"
+rotation = [0.0, 180.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_15"
+[objects.mesh_renderer]
+mesh = "butterfly_body.import.toml"
+
+[[objects]]
+name = "slot_15_wing_l"
+parent = "slot_15"
+rotation = [0.0, 0.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_15_wing_r"
+parent = "slot_15"
+rotation = [0.0, 180.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_16"
+[objects.mesh_renderer]
+mesh = "butterfly_body.import.toml"
+
+[[objects]]
+name = "slot_16_wing_l"
+parent = "slot_16"
+rotation = [0.0, 0.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_16_wing_r"
+parent = "slot_16"
+rotation = [0.0, 180.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_17"
+[objects.mesh_renderer]
+mesh = "butterfly_body.import.toml"
+
+[[objects]]
+name = "slot_17_wing_l"
+parent = "slot_17"
+rotation = [0.0, 0.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_17_wing_r"
+parent = "slot_17"
+rotation = [0.0, 180.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_18"
+[objects.mesh_renderer]
+mesh = "butterfly_body.import.toml"
+
+[[objects]]
+name = "slot_18_wing_l"
+parent = "slot_18"
+rotation = [0.0, 0.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_18_wing_r"
+parent = "slot_18"
+rotation = [0.0, 180.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_19"
+[objects.mesh_renderer]
+mesh = "butterfly_body.import.toml"
+
+[[objects]]
+name = "slot_19_wing_l"
+parent = "slot_19"
+rotation = [0.0, 0.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_19_wing_r"
+parent = "slot_19"
+rotation = [0.0, 180.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_20"
+[objects.mesh_renderer]
+mesh = "butterfly_body.import.toml"
+
+[[objects]]
+name = "slot_20_wing_l"
+parent = "slot_20"
+rotation = [0.0, 0.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_20_wing_r"
+parent = "slot_20"
+rotation = [0.0, 180.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_21"
+[objects.mesh_renderer]
+mesh = "butterfly_body.import.toml"
+
+[[objects]]
+name = "slot_21_wing_l"
+parent = "slot_21"
+rotation = [0.0, 0.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_21_wing_r"
+parent = "slot_21"
+rotation = [0.0, 180.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_22"
+[objects.mesh_renderer]
+mesh = "butterfly_body.import.toml"
+
+[[objects]]
+name = "slot_22_wing_l"
+parent = "slot_22"
+rotation = [0.0, 0.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_22_wing_r"
+parent = "slot_22"
+rotation = [0.0, 180.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_23"
+[objects.mesh_renderer]
+mesh = "butterfly_body.import.toml"
+
+[[objects]]
+name = "slot_23_wing_l"
+parent = "slot_23"
+rotation = [0.0, 0.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_23_wing_r"
+parent = "slot_23"
+rotation = [0.0, 180.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_24"
+[objects.mesh_renderer]
+mesh = "butterfly_body.import.toml"
+
+[[objects]]
+name = "slot_24_wing_l"
+parent = "slot_24"
+rotation = [0.0, 0.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_24_wing_r"
+parent = "slot_24"
+rotation = [0.0, 180.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_25"
+[objects.mesh_renderer]
+mesh = "butterfly_body.import.toml"
+
+[[objects]]
+name = "slot_25_wing_l"
+parent = "slot_25"
+rotation = [0.0, 0.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_25_wing_r"
+parent = "slot_25"
+rotation = [0.0, 180.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_26"
+[objects.mesh_renderer]
+mesh = "butterfly_body.import.toml"
+
+[[objects]]
+name = "slot_26_wing_l"
+parent = "slot_26"
+rotation = [0.0, 0.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_26_wing_r"
+parent = "slot_26"
+rotation = [0.0, 180.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_27"
+[objects.mesh_renderer]
+mesh = "butterfly_body.import.toml"
+
+[[objects]]
+name = "slot_27_wing_l"
+parent = "slot_27"
+rotation = [0.0, 0.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_27_wing_r"
+parent = "slot_27"
+rotation = [0.0, 180.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_28"
+[objects.mesh_renderer]
+mesh = "butterfly_body.import.toml"
+
+[[objects]]
+name = "slot_28_wing_l"
+parent = "slot_28"
+rotation = [0.0, 0.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_28_wing_r"
+parent = "slot_28"
+rotation = [0.0, 180.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_29"
+[objects.mesh_renderer]
+mesh = "butterfly_body.import.toml"
+
+[[objects]]
+name = "slot_29_wing_l"
+parent = "slot_29"
+rotation = [0.0, 0.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_29_wing_r"
+parent = "slot_29"
+rotation = [0.0, 180.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_30"
+[objects.mesh_renderer]
+mesh = "butterfly_body.import.toml"
+
+[[objects]]
+name = "slot_30_wing_l"
+parent = "slot_30"
+rotation = [0.0, 0.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_30_wing_r"
+parent = "slot_30"
+rotation = [0.0, 180.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_31"
+[objects.mesh_renderer]
+mesh = "butterfly_body.import.toml"
+
+[[objects]]
+name = "slot_31_wing_l"
+parent = "slot_31"
+rotation = [0.0, 0.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"
+
+[[objects]]
+name = "slot_31_wing_r"
+parent = "slot_31"
+rotation = [0.0, 180.0, 0.0]
+[objects.mesh_renderer]
+mesh = "butterfly_wing.import.toml"

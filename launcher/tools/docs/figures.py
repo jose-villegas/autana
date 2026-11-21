@@ -25,8 +25,9 @@ from docs.probe_standard import PROBE_STANDARD  # noqa: E402
 from docs.producer import DEPENDS_FOLDER  # noqa: E402
 from render.check_avi import read_video  # noqa: E402
 
-# Every probe prints its numbers through the library's own text formatting.
-PROBE_SUPPORT = (ROOT / "launcher/packages/math/src/text/math_text.c",)
+# Every probe links the packages whole, as a library: a package function an engine source starts
+# calling never leaves a probe with an undefined reference.
+PROBE_SUPPORT = tuple(sorted((ROOT / "launcher/packages").glob("*/src/**/*.c")))
 
 
 def build_probe(cc, sources, directory, extra_flags=()):
@@ -34,7 +35,7 @@ def build_probe(cc, sources, directory, extra_flags=()):
     returns the program."""
     binary = pathlib.Path(directory) / "probe"
     flags = [f"-std={PROBE_STANDARD}", *(flag for root in include_roots() for flag in ("-I", str(root))), *extra_flags]
-    sources = [str(source) for source in (*sources, *PROBE_SUPPORT)]
+    sources = list(dict.fromkeys(str(pathlib.Path(source).resolve()) for source in (*sources, *PROBE_SUPPORT)))
     if os.environ.get(DEPENDS_FOLDER):
         for source in sources:
             listing = tempfile.NamedTemporaryFile(suffix=".d", dir=os.environ[DEPENDS_FOLDER], delete=False).name
