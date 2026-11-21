@@ -13,6 +13,7 @@ import numpy as np
 
 from . import isa
 from .poses import camera_basis
+from .import_settings import LOCAL_LIGHTS
 from .obj import alpha_tested
 
 DEFAULT_SPP = 256
@@ -156,6 +157,8 @@ def emitters(mi, lights, sky=None):
     `sky` (turbidity, albedo) replaces the lights by the Hosek-Wilkie sun and sky, the sun taking its direction from
     the first directional light."""
     if sky is not None:
+        if any(light["type"] in LOCAL_LIGHTS for light in lights):
+            raise ValueError("a physical sky replaces the scene's lights: it cannot keep its point and spot lights")
         sun = next((light for light in lights if light["type"] == "directional"), None)
         if sun is None:
             raise ValueError("a physical sky needs the scene's directional light for the sun direction")

@@ -38,8 +38,10 @@ LIGHT_MODES = ("realtime", "baked")
 LIGHT_MODE_REALTIME, LIGHT_MODE_BAKED = LIGHT_MODES
 
 # A point or spot light is placed at its object and fades by distance; a spot shines along the object's
-# -SCENE_LIGHT_AXIS. Both are bake-only until Mixed mode lights movers with them at runtime.
+# -SCENE_LIGHT_AXIS. Both are bake-only: only directional lights light movers at runtime.
 LOCAL_LIGHTS = ("point", "spot")
+# The lights from one point, the sun included: one shadow ray each, and placed by an object.
+PUNCTUAL_LIGHTS = ("directional", *LOCAL_LIGHTS)
 # A spot's cone half-angles, in degrees as object rotations are: a cone is at most a hemisphere (KHR_lights_punctual).
 SPOT_MAX_ANGLE = 90.0
 
@@ -599,7 +601,7 @@ def load_light(component, rotation, where, position=(0.0, 0.0, 0.0), parented=Fa
     """A light placed by its object: a directional light shines from the object's +Y axis turned by its rotation;
     a point light sits at the object's position; a spot sits there and shines along -Y turned by the rotation."""
     kind = component.get("type") if isinstance(component, dict) else None
-    if kind not in ("directional", *LOCAL_LIGHTS):
+    if kind not in PUNCTUAL_LIGHTS:
         raise SettingsError(f"{where}.type must be directional, point or spot: sky and ambient are scene settings")
     fields = {name: reader for name, reader in LIGHT_FIELDS[kind].items() if name not in PLACED_LIGHT_FIELDS}
     check_keys(component, ("type", *fields), where, optional=("mode",))

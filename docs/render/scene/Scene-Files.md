@@ -396,8 +396,8 @@ refuse clips that break this rule.
 #### light
 
 `mode` is `"realtime"` by default or `"baked"`. Realtime lights stay out of
-surface and probe bakes. A baked light contributes at runtime only when the
-scene has no probes.
+surface and probe bakes. A baked directional light contributes at runtime
+only when the scene has no probes.
 
 | `type` | Placed by | Keys besides `color`, `intensity` | Modes |
 |---|---|---|---|
@@ -433,7 +433,7 @@ glTF's punctual lights<sup>[[134]](../../Citations.md#khr-lights-punctual)</sup>
 | `range` > 0 | zero or negative |
 | 0 ≤ `inner_angle` < `outer_angle` ≤ 90 | any other pair |
 | a point or spot light has no `parent` | a parent: the bake places a light by its own transform |
-| a scene with a point or spot light has a baked renderer | none: nothing else reads it |
+| a point or spot light is read by a baked renderer | a scene with no baked renderer: nothing reads the light |
 
 Point and spot lights stay out of the scene's runtime lights. Their light is in
 the baked colours, and skinned renderers see it through the scene's probes; a

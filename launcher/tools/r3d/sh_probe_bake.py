@@ -6,8 +6,8 @@ import time
 import numpy as np
 
 from r3d.geometry import face_normals
-from r3d.import_settings import LOCAL_LIGHTS
-from r3d.light import AlphaTest, baked_lights, light_rays
+from r3d.import_settings import PUNCTUAL_LIGHTS
+from r3d.light import AlphaTest, baked_lights, light_rays, light_visible
 from r3d.mesh_source import load_source
 from r3d.mitsuba_reference import integrator
 from r3d.path_bake import PathLight, BATCH, SEED
@@ -36,13 +36,11 @@ def direct_term(query, points, lights, floor):
     coefficients and the rays traced."""
     out, traced = np.zeros((len(points), COEFFICIENTS, CHANNELS)), 0
     for light in baked_lights(lights):
-        if light['type'] not in ('directional', *LOCAL_LIGHTS):
+        if light['type'] not in PUNCTUAL_LIGHTS:
             continue
         toward, reach, falloff = light_rays(light, points, floor)
-        rays = np.ascontiguousarray(np.broadcast_to(toward, points.shape))
         reached = np.flatnonzero(np.broadcast_to(np.asarray(falloff) > 0, len(points)))
-        visible = np.zeros(len(points), dtype=bool)
-        visible[reached] = ~query.blocked(points[reached], rays[reached], None if reach is None else reach[reached])
+        visible = light_visible(query, points, toward, reach, reached)
         traced += len(reached)
         colour = np.asarray(light['color']) * light['intensity']
         weights = basis(toward[None] if toward.ndim == 1 else toward).reshape(-1, COEFFICIENTS, 1)
