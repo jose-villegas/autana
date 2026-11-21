@@ -37,3 +37,8 @@ def read_define(header, name):
         return ast.literal_eval(value)
     except (ValueError, SyntaxError) as error:
         raise RuntimeError(f"{header}: {name} is not a literal") from error
+
+
+def read_defines(header, prefix, names):
+    """Read prefixed constants from their owning header in the requested order."""
+    return [read_define(header, prefix + name) for name in names]

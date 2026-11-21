@@ -27,8 +27,20 @@ rotation = [25.0, -47.5, 0.0]   # toward (-0.344, 1.0, 0.315)
 
 [objects.light]
 type = "directional"
+mode = "baked"
 color = [1.0, 0.92, 0.78]
 intensity = 3.0
+
+# The scene camera: anywhere in the atrium, on no path. The fits train on
+# probes spread through its region (geometry.probes), so no flight shapes them.
+[[objects]]
+name = "visitor"
+
+[objects.camera]
+half_fov_short_tan = 0.62
+near_z = 6.0
+background = 0x9CC0E6
+region = { min = [-1400.0, 20.0, -620.0], max = [1270.0, 1250.0, 550.0] }
 
 [[objects]]
 name = "camera"
@@ -37,7 +49,6 @@ name = "camera"
 half_fov_short_tan = 0.62
 near_z = 6.0
 background = 0x9CC0E6
-region = { min = [-1400.0, 20.0, -620.0], max = [1270.0, 1250.0, 550.0] }
 path = { animation = "flythrough.anim.toml", node = "camera" }
 
 [[objects]]
@@ -68,7 +79,6 @@ bake = true
 visibility = { source = "camera_region", rounds = 160 }
 
 [objects.mesh_renderer.fit.prune]
-budget = 13313
 coverage_every_ms = 20
 
 [objects.mesh_renderer.fit.poses]
@@ -94,7 +104,6 @@ bake = true
 visibility = { source = "camera_region", rounds = 160 }
 
 [objects.mesh_renderer.fit.prune]
-budget = 6761
 coverage_every_ms = 20
 
 [objects.mesh_renderer.fit.poses]
@@ -121,7 +130,6 @@ shading = { flat = { auto = { min = 1, max = 16, area = "median" } } }
 visibility = { source = "camera_region", rounds = 160 }
 
 [objects.mesh_renderer.fit.prune]
-budget = 13313
 coverage_every_ms = 20
 
 [objects.mesh_renderer.fit.poses]
