@@ -258,10 +258,10 @@ typedef struct {
 static const framegen_goal_t goals[] = {
     {"capybara-sponza", "plain", {36610, 52570}},
     {"capybara-sponza", "framegen", {32240, 52480}},
-    {"capybara-sponza", "dynres", {33990, 42080}},
-    {"capybara-sponza", "framegen-dynres", {29300, 41880}},
-    {"capybara-sponza", "framegen-dynres-3q", {25510, 41860}},
-    {"capybara-sponza", "framegen-dynres-half", {25080, 41880}},
+    {"capybara-sponza", "dynres", {37670, 47450}},
+    {"capybara-sponza", "framegen-dynres", {31760, 47710}},
+    {"capybara-sponza", "framegen-dynres-3q", {28320, 44720}},
+    {"capybara-sponza", "framegen-dynres-half", {25980, 44680}},
 };
 
 /* The current scenario's goals in the current mode; zero when unpegged. */
