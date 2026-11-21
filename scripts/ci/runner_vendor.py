@@ -1,7 +1,7 @@
 """Hosted runners mix CPU vendors, and a traced bake is byte-identical only on the lock's (bake/bake.py's
 mesh_cpu_vendor). GitHub offers no way to ask for a vendor, so every Bakes job that traces starts as
 candidates (.github/actions/vendor-candidate), and a finished run whose only failures carry WRONG_VENDOR is
-run again, up to VENDOR_TRIES attempts.
+run again, up to VENDOR_TRIES attempts, while its commit is still its branch's head.
 
 A re-run waits for the run's slowest job, so a job with traced work starts on CANDIDATES runners at once; a
 job with none starts on one. Each candidate marks its vendor with an artifact and waits until it sees its own
@@ -28,6 +28,8 @@ import os
 import re
 import sys
 import time
+import urllib.error
+import urllib.parse
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -168,13 +170,33 @@ def to_rerun(attempt, failed):
 
 
 def failed_jobs(run, attempt, request=github_api.call):
-    jobs = github_api.pages(f"/actions/runs/{run}/attempts/{attempt}/jobs", "jobs", request=request)
+    """Each failed job's annotation titles, leaving out a matrix's one-name stand-in: it fails whenever its
+    candidates did, and re-running the failed jobs re-runs it too."""
+    jobs = list(github_api.pages(f"/actions/runs/{run}/attempts/{attempt}/jobs", "jobs", request=request))
+    names = [job["name"] for job in jobs if job.get("conclusion") == "failure"]
     return {job["name"]: {note.get("title") for note in request("GET", f"/check-runs/{job['id']}/annotations")}
-            for job in jobs if job.get("conclusion") == "failure"}
+            for job in jobs if job["name"] in names
+            and not any(other.startswith(f"{job['name']} (candidate ") for other in names)}
+
+
+def branch_head(branch, request=github_api.call):
+    """The branch's head commit in this repository, or None once it is deleted; a fork's branch is looked up
+    here too, so a fork's run is not re-run."""
+    try:
+        return request("GET", f"/branches/{urllib.parse.quote(branch, safe='')}").get("commit", {}).get("sha")
+    except urllib.error.HTTPError as error:
+        if error.code == 404:
+            return None
+        raise
 
 
 def rerun(run, request=github_api.call):
-    attempt = request("GET", f"/actions/runs/{run}")["run_attempt"]
+    record = request("GET", f"/actions/runs/{run}")
+    attempt = record["run_attempt"]
+    if branch_head(record["head_branch"], request) != record["head_sha"]:
+        # A re-run would hold the branch's concurrency slot and keep the newer head's run waiting.
+        print(f"run {run} attempt {attempt}: not re-run, its branch has moved past {record['head_sha'][:9]}")
+        return 0
     failed = failed_jobs(run, attempt, request)
     if not to_rerun(attempt, failed):
         print(f"run {run} attempt {attempt}: not re-run ({len(failed)} failed jobs: {', '.join(failed) or 'none'})")
