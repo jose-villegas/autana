@@ -207,32 +207,23 @@ unmatched_patterns(void) {
     return unmatched;
 }
 
-/* The suite named by the first `length` characters of `name`, or NULL. Kept
- * out of suites_run_request() so its frame, under every suite's, stays small. */
-static __attribute__((noinline)) const suite_entry_t*
-find_suite(const char* name, size_t length) {
-    for (size_t i = 0; i < suites_count(); i++) {
-        const suite_entry_t* suite = suites_at(i);
-        if (strlen(suite->name) == length && strncmp(suite->name, name, length) == 0) {
-            return suite;
-        }
-    }
-    return NULL;
-}
-
 void
 suites_run_request(const char* request, suite_run_t* run) {
     *run = (suite_run_t){0};
     const char* space = strchr(request, ' ');
+    const size_t name_length = space != NULL ? (size_t)(space - request) : strlen(request);
+    const char* list = space != NULL ? space + 1 : "";
     run->name = request;
-    run->name_length = (int)(space != NULL ? (size_t)(space - request) : strlen(request));
-    const suite_entry_t* suite = find_suite(request, (size_t)run->name_length);
+    run->name_length = (int)name_length;
 
     filtering = false;
     selected_count = 0;
     memset(pattern_hits, 0, sizeof pattern_hits);
-    if (suite != NULL) {
-        const char* list = space != NULL ? space + 1 : "";
+    for (size_t i = 0; i < suites_count(); i++) {
+        const suite_entry_t* suite = suites_at(i);
+        if (strlen(suite->name) != name_length || strncmp(suite->name, request, name_length) != 0) {
+            continue;
+        }
         run->found = true;
         filtering = list[0] != '\0';
         if (filtering && !parse_patterns(list)) {
@@ -245,6 +236,7 @@ suites_run_request(const char* request, suite_run_t* run) {
         current = NULL;
         run->selected = selected_count;
         run->unmatched = filtering ? unmatched_patterns() : 0;
+        break;
     }
     filtering = false;
     pattern_count = 0;
