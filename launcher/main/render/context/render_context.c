@@ -475,7 +475,7 @@ begin_draw(render_context_t* c) {
         c->drawn_in_row++;
     }
     c->frame.predicted_us = 0;
-    c->still_drawn = false;
+    c->still_judged = false;
 }
 
 /* Aims the raster at this frame's instances, size and destination. */
@@ -522,18 +522,8 @@ aim_still(render_context_t* c, const render_view_t* view) {
     r->width = top.width;
     r->height = raster_present_size(top, r->present).height;
     c->still_judged = r->width == c->partial.width && r->height == c->partial.height;
+    c->chose_at_us = 0; /* the hold is not time the predictor's choice settled in */
     return true;
-}
-
-/* The still camera's draw: partial, timed so compose can judge it, not priced.
- * False when nothing changed. */
-static bool
-draw_still(render_context_t* c, const render_view_t* view) {
-    c->still_drawn = true;
-    const int64_t began_us = timing_now_us();
-    const bool drawn = draw_partial(c, view);
-    c->frame.draw_us = (int32_t)(timing_now_us() - began_us);
-    return drawn;
 }
 
 /* Off: the plain draw, nothing timed or chosen, unless frame generation needs the drawn cost.
@@ -611,12 +601,12 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     c->frame.height = r->height;
     r->first_row = 0;
     r->end_row = 0;
-    if (c->policy == RENDER_FIXED && !c->generating) {
-        if (!draw_fixed(c, view)) {
-            return true;
-        }
-    } else if (still) {
-        if (!draw_still(c, view)) {
+    c->fixed_drawn = (c->policy == RENDER_FIXED && !c->generating) || still;
+    if (c->fixed_drawn) {
+        const int64_t began_us = timing_now_us();
+        const bool drawn = draw_fixed(c, view);
+        c->frame.draw_us = (int32_t)(timing_now_us() - began_us);
+        if (!drawn) {
             return true;
         }
     } else {
@@ -689,15 +679,15 @@ render_context_compose(render_context_t* c, uint16_t* destination, uint16_t* hal
         c->raster.end_row = 0;
     }
     /* Replay warps with generation disabled, so the recorded frame also selects the compose path. */
-    if ((c->policy == RENDER_FIXED && !c->generating && !c->frame.generated) || c->still_drawn) {
+    if (c->fixed_drawn && !c->frame.generated) {
         compose_rows(c, size.height);
         const int64_t began_us = timing_now_us();
         if (!c->frame.unchanged) {
             raster_upscale_picture(&c->raster, NULL, destination, seams, size.width, size.height);
         }
-        if (c->still_drawn) {
-            c->frame.upscale_us = (int32_t)(timing_now_us() - began_us);
-            c->still_over = c->still_judged && c->frame.draw_us + c->frame.upscale_us > c->ladder.budget_us;
+        c->frame.upscale_us = (int32_t)(timing_now_us() - began_us);
+        if (c->still_judged) {
+            c->still_over = c->frame.draw_us + c->frame.upscale_us > c->ladder.budget_us;
         }
         return expanded;
     }

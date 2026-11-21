@@ -223,11 +223,15 @@ test_a_new_small_fill_redraws_every_row(void) {
 
 /* Dynamic resolution's ladder in these tests: the top, then half of it. */
 static const resolution_step_t dynres_steps[] = {{W, H}, {W / 2, H / 2}};
-#define DYNRES_STEPS ((int)(sizeof dynres_steps / sizeof dynres_steps[0]))
-#define DYNRES_FLOOR (DYNRES_STEPS - 1)
+#define DYNRES_STEPS       ((int)(sizeof dynres_steps / sizeof dynres_steps[0]))
+#define DYNRES_FLOOR       (DYNRES_STEPS - 1)
 /* A budget no host frame reaches, and one every host frame passes. */
-#define DYNRES_ROOMY 1000000000
-#define DYNRES_TIGHT 1
+#define DYNRES_ROOMY       1000000000
+#define DYNRES_TIGHT       1
+/* Held frames past a full controller window, so a priced one would show. */
+#define DYNRES_HELD_FRAMES (RESOLUTION_WINDOW_MAX + 2)
+/* Frames after a held one over budget, each still the policy's. */
+#define DYNRES_HANDED_BACK 3
 
 /* Context [0] with partial redraw on under the stepped controller at
  * `budget_us`, starting at the floor. */
@@ -249,6 +253,17 @@ dynres_frame(raster_rig_t* r, const render_view_t* view, const box3f_t* changed,
     return render_context_frame(c);
 }
 
+/* Context [1], partial redraw off at the fixed scale, draws the frame whole:
+ * the picture and destination context [0] drew at the top step must be it. */
+static void
+assert_full_redraw(raster_rig_t* r, const render_view_t* view) {
+    TEST_ASSERT_TRUE(render_context_draw(&pair->context[1], r->instance, RASTER_RIG_QUADS, view, 0));
+    (void)render_context_compose(&pair->context[1], pair->destination[1], NULL, NULL);
+    TEST_ASSERT_EQUAL_MEMORY(raster_color(&pair->context[1].raster), raster_color(&pair->context[0].raster),
+                             sizeof(uint16_t) * W * H);
+    TEST_ASSERT_EQUAL_MEMORY(pair->destination[1], pair->destination[0], sizeof pair->destination[0]);
+}
+
 /* The card slid one step along x, its old and new place the changed box. */
 static box3f_t
 slide_card(raster_rig_t* r, float x) {
@@ -258,8 +273,8 @@ slide_card(raster_rig_t* r, float x) {
 }
 
 /* A still camera under dynamic resolution draws as partial redraw does: one
- * frame at the top size, then only the rows the moving card covers, and the
- * controller is not moved by those frames. */
+ * frame at the top size, then only the rows the moving card covers, each the
+ * picture a whole redraw gives, and the controller is not moved by them. */
 static void
 test_dynres_still_view_redraws_only_changed_rows_at_the_top(void) {
     raster_rig_t* r = open_dynres(DYNRES_ROOMY);
@@ -267,14 +282,17 @@ test_dynres_still_view_redraws_only_changed_rows_at_the_top(void) {
     place_card(r, card_path[0]);
     TEST_ASSERT_EQUAL_INT(W / 2, dynres_frame(r, &view, NULL, -1).width);
     const resolution_control_t before = pair->context[0].control;
-    box3f_t changed = slide_card(r, 6.0F);
-    render_context_frame_t f = dynres_frame(r, &view, &changed, 1);
-    TEST_ASSERT_EQUAL_INT(W, f.width);
-    TEST_ASSERT_EQUAL_INT(H, rows(f));
-    changed = slide_card(r, 12.0F);
-    f = dynres_frame(r, &view, &changed, 1);
-    TEST_ASSERT_EQUAL_INT(W, f.width);
-    TEST_ASSERT_LESS_THAN_INT(H, rows(f));
+    for (int i = 1; i <= DYNRES_HELD_FRAMES; i++) {
+        const box3f_t changed = slide_card(r, (float)(i % 2 + 1) * 6.0F); /* back and forth */
+        const render_context_frame_t f = dynres_frame(r, &view, &changed, 1);
+        TEST_ASSERT_EQUAL_INT(W, f.width);
+        if (i == 1) {
+            TEST_ASSERT_EQUAL_INT(H, rows(f)); /* to the top: every row */
+        } else {
+            TEST_ASSERT_LESS_THAN_INT(H, rows(f));
+        }
+        assert_full_redraw(r, &view);
+    }
     TEST_ASSERT_EQUAL_MEMORY(&before, &pair->context[0].control, sizeof before);
 }
 
@@ -294,6 +312,33 @@ test_dynres_still_view_over_budget_returns_to_the_controller(void) {
     const render_context_frame_t f = dynres_frame(r, &view, &changed, 1);
     TEST_ASSERT_EQUAL_INT(W / 2, f.width);
     TEST_ASSERT_EQUAL_INT(H, rows(f));
+    for (int i = 0; i < DYNRES_HANDED_BACK; i++) {
+        changed = slide_card(r, (float)(i % 2 + 1) * 6.0F);
+        TEST_ASSERT_EQUAL_INT(W / 2, dynres_frame(r, &view, &changed, 1).width); /* held, still the policy's */
+    }
+    fixture_camera_t moved = raster_rig_camera;
+    moved.eye.x += 1.0F;
+    const render_view_t next = render_view_fixture_at(&moved, (viewport_t){W, H, 0});
+    TEST_ASSERT_EQUAL_INT(W / 2, dynres_frame(r, &next, NULL, -1).width); /* a new view: the policy's */
+    changed = slide_card(r, 6.0F);
+    TEST_ASSERT_EQUAL_INT(W, dynres_frame(r, &next, &changed, 1).width); /* held again: the top */
+}
+
+/* A hold is not time the predictor's choice settled in: the first frame the
+ * policy draws after a held camera stays at the step it held before. */
+static void
+test_dynres_hold_does_not_count_toward_a_finer_step(void) {
+    static const resolution_model_t free_model = {0}; /* every step fits */
+    raster_rig_t* r = open_pair(true);
+    resolution_config_t config = resolution_config(dynres_steps, DYNRES_STEPS, DYNRES_STEPS, DYNRES_ROOMY);
+    config.up_hold_us = 1; /* any settled time steps finer */
+    render_context_set_dynamic_resolution(&pair->context[0], &config, &free_model, DYNRES_FLOOR);
+    const render_view_t view = render_view_fixture_at(&raster_rig_camera, (viewport_t){W, H, 0});
+    place_card(r, card_path[0]);
+    TEST_ASSERT_EQUAL_INT(W / 2, dynres_frame(r, &view, NULL, -1).width); /* nothing settled yet */
+    const box3f_t changed = slide_card(r, 6.0F);
+    TEST_ASSERT_EQUAL_INT(W, dynres_frame(r, &view, &changed, 1).width);  /* held: the top */
+    TEST_ASSERT_EQUAL_INT(W / 2, dynres_frame(r, &view, NULL, -1).width); /* the policy's, where it was */
 }
 
 void
@@ -305,6 +350,7 @@ run_render_partial_suite(void) {
     RUN_TEST(test_a_new_small_fill_redraws_every_row);
     RUN_TEST(test_dynres_still_view_redraws_only_changed_rows_at_the_top);
     RUN_TEST(test_dynres_still_view_over_budget_returns_to_the_controller);
+    RUN_TEST(test_dynres_hold_does_not_count_toward_a_finer_step);
 }
 
 SUITE_REGISTER(run_render_partial_suite);
