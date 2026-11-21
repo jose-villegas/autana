@@ -43,7 +43,7 @@ TOKEN_ENV = autana_config.TOKEN_ENV
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools" / "build"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools" / "device"))
 from espressif import espressif_tools_root, idf_path, idf_python  # noqa: E402  (path must be set up first)
-from build_lock import BUILD_LOCK, POLL_SECONDS as BUILD_LOCK_POLL_SECONDS, try_lock_file, waiting_line  # noqa: E402
+import build_lock  # noqa: E402
 
 
 COMMAND_ENV = autana_config.COMMAND_ENV
@@ -1219,12 +1219,7 @@ def build_directory_lock(build_dir):
     if (build_dir.parent / "tools/build/build_paths.py").is_file():
         from build_paths import prepare
         build_dir = prepared = prepare(build_dir.parent, build_dir.name)
-    build_dir.mkdir(parents=True, exist_ok=True)
-    with open(build_dir / BUILD_LOCK, "a+b") as handle:
-        if not try_lock_file(handle):
-            print(waiting_line(build_dir), file=sys.stderr)
-            while not try_lock_file(handle):
-                time.sleep(BUILD_LOCK_POLL_SECONDS)
+    with build_lock.hold(build_dir):
         yield prepared
 
 
