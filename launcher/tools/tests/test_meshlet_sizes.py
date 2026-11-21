@@ -123,7 +123,7 @@ class MeshletReportTests(unittest.TestCase):
             root = pathlib.Path(directory)
             path = self.capture_rows(root)
             path.write_text(path.read_text().replace("pose_every_ms=5000", "pose_every_ms=2500"))
-            scene = NS(camera=NS(component=None), renderers=[NS(object=NS(name="atrium", identity=True))])
+            scene = NS(camera=NS(component=None), objects=[], renderers=[NS(object=NS(name="atrium", identity=True))])
             with mock.patch.object(meshlet_sizes, "load_scene", return_value=scene), \
                     mock.patch.object(meshlet_sizes, "default_size", return_value=(184, 224)), \
                     self.assertRaisesRegex(ValueError, "pose interval"):
