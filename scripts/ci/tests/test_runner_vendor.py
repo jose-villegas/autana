@@ -7,6 +7,7 @@ import re
 import sys
 import tempfile
 import unittest
+import urllib.error
 from pathlib import Path
 from unittest import mock
 
@@ -36,6 +37,8 @@ def fake_api(attempt, jobs, branch_sha=RUN_SHA):
             return {"jobs": [{"id": index, "name": name, "conclusion": conclusion}
                              for index, (name, conclusion, _) in table.items()]}
         if path.startswith("/branches/"):
+            if branch_sha is None:
+                raise urllib.error.HTTPError(path, 404, "Not Found", {}, None)
             return {"commit": {"sha": branch_sha}} if path == "/branches/feature%2Fx" else {}
         return {"run_attempt": attempt, "head_sha": RUN_SHA, "head_branch": "feature/x"}
     return request, posts
@@ -67,6 +70,13 @@ class RunnerVendorTests(unittest.TestCase):
         # A re-run holds the branch's Bakes concurrency slot, so the newer head's run would wait on it.
         jobs = {"shard 2": ("failure", [runner_vendor.WRONG_VENDOR])}
         self.assertEqual(self.rerun(1, jobs, branch_sha=NEWER_SHA), [])
+        self.assertEqual(self.rerun(1, jobs, branch_sha=None), [])  # the branch was deleted
+
+    def test_a_matrix_stand_in_failing_with_its_candidates_is_re_run(self):
+        # The required check's one-name job fails whenever every candidate lost to the vendor check.
+        jobs = {"Bake (candidate 1)": ("failure", [runner_vendor.WRONG_VENDOR]), "Bake": ("failure", [None])}
+        self.assertEqual(self.rerun(1, jobs), ["/actions/runs/7/rerun-failed-jobs"])
+        self.assertEqual(self.rerun(1, {"Bake": ("failure", [None])}), [])
 
 
 
@@ -319,11 +329,13 @@ class BakesWorkflowTests(unittest.TestCase):
         self.assertNotEqual(bare, jobs["cpu"]["name"])
         summary = [job for job in jobs.values() if job.get("name") == bare]
         self.assertEqual(len(summary), 1)
-        self.assertEqual(summary[0]["needs"], "cpu")
+        self.assertEqual(summary[0]["needs"], ["inputs", "cpu"])
         self.assertIn("always()", summary[0]["if"])
         run = "".join(step.get("run", "") for step in summary[0]["steps"])
         self.assertIn("success", run)
         self.assertIn("skipped", run)
+        # A skipped matrix passes only when the inputs job found no cpu work, not when the run was cancelled.
+        self.assertIn("needs.inputs.outputs.cpu", str(summary[0]["steps"]))
 
     def test_every_job_that_traces_starts_as_vendor_candidates(self):
         jobs = self.jobs()

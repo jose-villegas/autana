@@ -28,6 +28,7 @@ import os
 import re
 import sys
 import time
+import urllib.error
 import urllib.parse
 from pathlib import Path
 
@@ -169,16 +170,30 @@ def to_rerun(attempt, failed):
 
 
 def failed_jobs(run, attempt, request=github_api.call):
-    jobs = github_api.pages(f"/actions/runs/{run}/attempts/{attempt}/jobs", "jobs", request=request)
+    """Each failed job's annotation titles, leaving out a matrix's one-name stand-in: it fails whenever its
+    candidates did, and re-running the failed jobs re-runs it too."""
+    jobs = list(github_api.pages(f"/actions/runs/{run}/attempts/{attempt}/jobs", "jobs", request=request))
+    names = [job["name"] for job in jobs if job.get("conclusion") == "failure"]
     return {job["name"]: {note.get("title") for note in request("GET", f"/check-runs/{job['id']}/annotations")}
-            for job in jobs if job.get("conclusion") == "failure"}
+            for job in jobs if job["name"] in names
+            and not any(other.startswith(f"{job['name']} (candidate ") for other in names)}
+
+
+def branch_head(branch, request=github_api.call):
+    """The branch's head commit in this repository, or None once it is deleted; a fork's branch is looked up
+    here too, so a fork's run is not re-run."""
+    try:
+        return request("GET", f"/branches/{urllib.parse.quote(branch, safe='')}").get("commit", {}).get("sha")
+    except urllib.error.HTTPError as error:
+        if error.code == 404:
+            return None
+        raise
 
 
 def rerun(run, request=github_api.call):
     record = request("GET", f"/actions/runs/{run}")
     attempt = record["run_attempt"]
-    head = request("GET", f"/branches/{urllib.parse.quote(record['head_branch'], safe='')}").get("commit", {})
-    if head.get("sha") != record["head_sha"]:
+    if branch_head(record["head_branch"], request) != record["head_sha"]:
         # A re-run would hold the branch's concurrency slot and keep the newer head's run waiting.
         print(f"run {run} attempt {attempt}: not re-run, its branch has moved past {record['head_sha'][:9]}")
         return 0

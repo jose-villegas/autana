@@ -185,9 +185,9 @@ jobs:
 
   cpu-result:
     # The required check: a matrix reports under its candidates' names, so this one name stands for them all.
-    # A skipped matrix (nothing to bake) passes; any other result than success fails.
+    # It passes on success, or on a skip only when the inputs job found no cpu work (not a cancelled run).
     name: Bake missing exports and meshes
-    needs: cpu
+    needs: [inputs, cpu]
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -195,9 +195,11 @@ jobs:
       - name: The candidates passed or had nothing to bake
         env:
           RESULT: ${{ needs.cpu.result }}
+          INPUTS: ${{ needs.inputs.result }}
+          WORK: ${{ needs.inputs.outputs.cpu }}
         run: |
-          echo "cpu matrix: $RESULT"
-          [ "$RESULT" = success ] || [ "$RESULT" = skipped ]
+          echo "cpu matrix: $RESULT; inputs: $INPUTS, cpu work: $WORK"
+          [ "$RESULT" = success ] || { [ "$RESULT" = skipped ] && [ "$INPUTS" = success ] && [ "$WORK" != true ]; }
 
   reference-plan:
     needs: inputs
