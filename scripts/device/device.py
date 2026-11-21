@@ -2292,18 +2292,18 @@ def wait_for_human_release(store, board, reservation_id, seconds):
             if human is None:
                 expired = status.get("expired_human")
                 print("human reservation expired" if expired and expired.get("id") == reservation_id
-                      else "human reservation released")
+                      else "human reservation released", file=sys.stderr)
                 return 0
             if human.get("id") != reservation_id:
-                print("human reservation replaced")
+                print("human reservation replaced", file=sys.stderr)
                 return device_lock.EXIT_BUSY
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                print("human reservation wait timed out; the reservation stands")
+                print("human reservation wait timed out; the reservation stands", file=sys.stderr)
                 return device_lock.EXIT_BUSY
             time.sleep(min(1.0, remaining))
     except KeyboardInterrupt:
-        print("human reservation wait interrupted")
+        print("human reservation wait interrupted", file=sys.stderr)
         return EXIT_INTERRUPTED
 
 
@@ -2642,6 +2642,12 @@ def main(argv=None):
                 time.sleep(device_lock.WAIT_POLL_SECONDS if deadline is None else
                            min(device_lock.WAIT_POLL_SECONDS, max(0, deadline - time.monotonic())))
         if args.command == "release":
+            held = store.live_lock(board, args.token)
+            if held and held.get("kind") == "human":
+                # Its own end, so the human-cleared event fires.
+                print("this token is a person's reservation: end it with `autana lock take-back`", file=sys.stderr)
+                result = 1
+                return result
             result = 0 if store.release(board, args.token) else 1
             return result
         if args.command == "check-token":
@@ -2653,10 +2659,13 @@ def main(argv=None):
                                                           wait=args.wait, on_wait=lambda ticket: wait_notice(store, board, notice_state, ticket))
             if reservation_id is None:
                 raise LockBusy("device lock was not acquired: " + device_lock.busy_text(store.status(board), store.resource_now(board)))
+            # As `take` does: the token on stdout, so the person's own
+            # commands can run inside the reservation with --lock-token.
+            print(reservation_id)
             if args.until_back is None:
                 lasts = device_lock.duration_text(device_lock.HUMAN_RESERVATION_SECONDS)
                 print(f"human reservation {'renewed' if renewed else 'recorded'}; it expires "
-                      f"in {lasts} unless renewed with `autana lock hand`")
+                      f"in {lasts} unless renewed with `autana lock hand`", file=sys.stderr)
                 result = 0
                 return result
             result = wait_for_human_release(store, board, reservation_id, args.until_back)

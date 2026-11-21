@@ -1,9 +1,11 @@
-"""Fit views from probes spread through a region, beside the camera path's (geometry.probes in an import).
+"""Views from probes spread through a region, beside the camera path's. The fit uses them (`geometry.probes` in an
+import).
 
 `select` puts one jittered probe in every `spacing`-sized cell of the scene camera's region (the source's bounds
 without one), moves probes out of geometry and drops those still inside, gives each probe six 90 degree cube
-faces, and keeps faces greedily by the source triangles they show that neither the path nor a kept face shows
-yet. Shown sets are traced on the source alone, so the probes, like the rest of a reference set, never depend on
+faces, and keeps faces greedily by the target triangles (every triangle without `targets`) they show that neither
+the path nor a kept face shows yet. Every triangle occludes; a `query` with a hit filter lets rays through cut-out
+texels. Shown sets are traced on the source alone, so the probes, like the rest of a reference set, never depend on
 the start. Probes reach surface seen from somewhere off the path, never surface seen from nowhere.
 
 Inside geometry is DDGI's probe classification and relocation (Majercik et al. 2021): a probe whose rays hit back
@@ -12,11 +14,13 @@ most RELOCATE of a cell first. The pick is lazy greedy maximum coverage (Minoux 
 """
 
 import heapq
+from typing import NamedTuple
 
 import numpy as np
 
 from r3d.geometry import face_normals
 from r3d.poses import camera_rays
+from r3d.ray_query import RayQuery
 
 # Rays each probe casts to classify itself.
 RAYS = 32
@@ -31,6 +35,8 @@ MIN_FRONT_NEARS = 2.0
 # Probe spacing without geometry.probes.spacing, in near planes: while imports keep their source's units, the
 # camera's near plane is the one length every scene states; a world-unit constant once imports share one unit.
 PROBE_SPACING_NEAR_PLANES = 32.0
+# Near plane for a source without a scene camera, as a share of its bounds diagonal.
+PROBE_NEAR_SHARE = 1e-3
 # Most probes a region gets; a finer spacing widens to stay under it.
 PROBE_COUNT_MAX = 1024
 # Cube face field: tan of 45 degrees.
@@ -147,32 +153,47 @@ def greedy_faces(sets, seen, plateau=PLATEAU, limit=None):
     return picked, gains
 
 
-def select(positions, tris, region, near, spacing, seed, path=None):
-    """(training poses, held-out poses, record): the kept cube faces of probes in `region` (lo, hi), or the
-    source's bounds when None, beside what the `path` views ((width, height, lens, poses), or None) show. The
-    held-out faces come from a second seed and start from nothing shown."""
-    from r3d.ray_query import RayQuery
+class ProbeViews(NamedTuple):
+    training: list  # (eye, forward) per kept cube face
+    held_out: list
+    record: dict
+    face_lens: float = FACE_LENS
 
+
+def select(positions, tris, region, near, spacing, seed, path=None, *, query=None, targets=None,
+           select_size=SELECT_SIZE, face_lens=FACE_LENS, held_out_faces=HELD_OUT_FACES):
+    """ProbeViews: the kept cube faces of probes in `region` (lo, hi), or the source's bounds when None, beside what
+    the `path` views ((width, height, lens, poses), or None) show. `query` is a RayQuery over positions and tris
+    (built plain without one); `targets`, a bool per triangle, limits what a face gains to those triangles. Faces
+    are traced at `select_size` pixels and `face_lens`. The held-out faces, at most `held_out_faces`, come from a
+    second seed and start from nothing shown."""
     positions, tris = np.asarray(positions, dtype=float), np.asarray(tris)
     lo, hi = region if region is not None else (positions.min(axis=0), positions.max(axis=0))
+    near = float(np.linalg.norm(np.ptp(positions, axis=0))) * PROBE_NEAR_SHARE if near is None else near
+    if near <= 0:
+        raise ValueError("probe source bounds have no extent")
     spacing = spacing_for(lo, hi, spacing, near)
-    query, normals = RayQuery(positions, tris), face_normals(positions, tris)[0]
-    seen = np.zeros(len(tris), bool)
+    query = RayQuery(positions, tris) if query is None else query
+    normals = face_normals(positions, tris)[0]
+    unseen = np.zeros(len(tris), bool) if targets is None else ~np.asarray(targets, dtype=bool)
+    seen = unseen.copy()
     if path is not None:
         for triangles in shown(query, len(tris), path[3], *path[:3]):
             seen[triangles] = True
     record = {"spacing": spacing, "region": [list(map(float, lo)), list(map(float, hi))],
-              "triangles": len(tris), "path_shown": int(np.count_nonzero(seen))}
+              "triangles": len(tris), "path_shown": int(np.count_nonzero(seen & ~unseen))}
+    if targets is not None:
+        record["targets"] = int(np.count_nonzero(~unseen))
     kept = {}
     for role, role_seed, start, limit in (("train", seed, seen, None),
-                                          ("held_out", seed + 1, np.zeros_like(seen), HELD_OUT_FACES)):
+                                          ("held_out", seed + 1, unseen, held_out_faces)):
         points, cell = probe_points(lo, hi, spacing, role_seed)
         moved, state = classify(query, normals, points, cell, near)
         poses = cube_poses(moved[state == "kept"])
-        picked, gains = greedy_faces(shown(query, len(tris), poses, SELECT_SIZE, SELECT_SIZE, FACE_LENS), start,
+        picked, gains = greedy_faces(shown(query, len(tris), poses, select_size, select_size, face_lens), start,
                                      limit=limit)
         kept[role] = [poses[i] for i in picked]
         record[role] = {"probes": len(points), "inside": int(np.count_nonzero(state == "inside")),
                         "near": int(np.count_nonzero(state == "near")), "faces": len(poses), "kept": len(picked),
-                        "shown_after": int(np.count_nonzero(start)) + int(sum(gains))}
-    return kept["train"], kept["held_out"], record
+                        "shown_after": int(np.count_nonzero(start & ~unseen)) + int(sum(gains))}
+    return ProbeViews(kept["train"], kept["held_out"], record, face_lens)
