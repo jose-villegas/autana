@@ -13,7 +13,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "render"))
 
 try:
     import numpy as np
-    from tests.soup import sun
+    from tests.soup import lamp, sun
     from tests import soup
     from PIL import Image
 
@@ -288,6 +288,17 @@ class MitsubaEmitterTest(unittest.TestCase):
         found = mitsuba_reference.emitters(mi, [dict(sun([0.0, 0.0, 1.0]), intensity=2.0)])["light_0"]
         self.assertEqual(found["direction"], [-0.0, -0.0, -1.0])
         self.assertAlmostEqual(found["irradiance"]["value"][0], 2.0 * np.pi)
+
+    def test_the_bake_and_the_path_tracer_light_a_plane_alike_from_a_point_and_a_spot(self):
+        # Inside the range window's flat part and the cone's full part, where the two backends' lights are the same.
+        point = lamp([0.0, 0.0, 1.0], 100.0, intensity=0.5)
+        spot = lamp([0.0, 0.0, 1.0], 100.0, cone=(55.0, 65.0), rotation=(90, 0, 0), intensity=0.5)  # shines down -z
+        for light_ in (point, spot):
+            with self.subTest(light_["type"]):
+                view = dict(width=8, height=8, lens=0.3)
+                a = bake_render(make_source([quad(0.0, 8.0)]), [light_], **view)
+                b = mitsuba(make_source([quad(0.0, 8.0)]), [light_], spp=256, **view)[0]
+                np.testing.assert_allclose(b, a, rtol=0.05)
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
