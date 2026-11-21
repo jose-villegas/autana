@@ -4742,6 +4742,52 @@ test_mesh_open_resolves_optional_levels(void) {
     }
 }
 
+/* Each copy's level is kept from frame to frame, so a checkpoint holds it: a
+ * restore puts back the bits frames after it changed, and the frames drawn
+ * next pick from the restored levels, as they did the first time. */
+static void
+test_a_checkpoint_holds_each_copys_level(void) {
+    fixture();
+    fx.lent = memory_alloc(LENT_BYTES, MEMORY_APP);
+    TEST_ASSERT_NOT_NULL(fx.lent);
+    (void)scene_set_take(lend);
+    const asset_view_t levels = levelled_quads();
+    test_pack_t pack = test_pack_begin(fx.bytes, PACK_MAX, 4);
+    uint8_t* mesh = test_pack_add(&pack, "red", R3D_LIT_MESH_ASSET, RIG_MESH_BYTES);
+    memcpy(mesh, levelled_mesh, RIG_MESH_BYTES);
+    test_pack_put32(mesh + MESH_COLOURS_WORD * sizeof(uint32_t), 0);
+    memcpy(test_pack_add(&pack, "red" LLOD_NAME_SUFFIX, LLOD_ASSET, levels.size), levels.data, levels.size);
+    /* A batch's copies take their colours from the sets, one set a copy. */
+    uint8_t* colours = test_pack_add(&pack, "red.colors", LCOL_ASSET,
+                                     LCOL_HEADER_SIZE + (LCOL_TEST_SETS * RIG_VERTICES * LCOL_RGB888_BYTES));
+    test_pack_put16(colours + LCOL_AT_VERSION, LCOL_VERSION);
+    test_pack_put16(colours + LCOL_AT_ENCODING, LCOL_ENCODING_RGB888);
+    test_pack_put32(colours + LCOL_AT_SET_COUNT, LCOL_TEST_SETS);
+    test_pack_put32(colours + LCOL_AT_COUNT, RIG_VERTICES);
+    const batch_case_t spec = {.id = "levelled", .at = SIZE_MAX, .turns = BATCH_COPIES};
+    make_batch_entry(&pack, &spec);
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_open(&fx.pack, fx.bytes, test_pack_finish(&pack)));
+    scene_t* scene = (scene_t*)resolved(load("test_batch"));
+    const scene_renderer_t* r = &scene->renderers[0];
+    TEST_ASSERT_NOT_NULL(r->batch);
+    TEST_ASSERT_EQUAL_INT(LEVEL_GROUPS, r->mesh.lod_group_count);
+    TEST_ASSERT_NOT_NULL(scene->lod_bits);
+    const size_t bytes = r->lod_words * sizeof(uint32_t);
+    uint32_t kept[R3D_LOD_STATE_WORDS(LEVEL_GROUPS) * BATCH_COPIES];
+    TEST_ASSERT_EQUAL_size_t(sizeof kept, bytes);
+    for (size_t w = 0; w < bytes / sizeof(uint32_t); w++) {
+        scene->lod_bits[w] = (uint32_t)w + 1U;
+    }
+    memcpy(kept, scene->lod_bits, sizeof kept);
+    checkpoint_t saved = {0};
+    scene_checkpoint_capture(&saved, scene);
+    TEST_ASSERT_FALSE(saved.failed);
+    memset(scene->lod_bits, 0, sizeof kept);
+    TEST_ASSERT_TRUE(checkpoint_restore(&saved));
+    TEST_ASSERT_EQUAL_MEMORY(kept, scene->lod_bits, sizeof kept);
+    checkpoint_clear(&saved);
+}
+
 static void
 test_clip_bind_failure_names_the_first_rejected_clip(void) {
     fixture();
@@ -8321,6 +8367,7 @@ run_scene_suite(void) {
     RUN_TEST(test_mesh_reader_accepts_only_positive_int_scales);
     RUN_TEST(test_mesh_reader_refuses_levels_out_of_order);
     RUN_TEST(test_mesh_open_resolves_optional_levels);
+    RUN_TEST(test_a_checkpoint_holds_each_copys_level);
     RUN_TEST(test_morph_reader_attaches_a_well_formed_entry);
     RUN_TEST(test_morph_reader_refuses_malformed_entries_and_leaves_no_pointers);
     RUN_TEST(test_morph_reader_exposes_each_vertexs_landing_triangle_and_weights);

@@ -200,16 +200,23 @@ drawn_copies(const scene_renderer_t* r) {
     return r->batch != NULL ? r->batch->copy_count : 1U;
 }
 
-/* One block of coarse bits for the meshes with levels, each renderer's
- * words its own and each copy's its own, all clear: every mesh starts at its
- * finest. */
-static scene_failure_t
-open_lod_bits(scene_t* scene) {
+/* The words of `scene`'s coarse bits: each renderer's, a copy's each. */
+static size_t
+lod_bit_words(const scene_t* scene) {
     size_t words = 0;
     for (int i = 0; i < scene->renderer_count; i++) {
         const scene_renderer_t* r = &scene->renderers[i];
         words += R3D_LOD_STATE_WORDS(r->mesh.lod_group_count) * (size_t)drawn_copies(r);
     }
+    return words;
+}
+
+/* One block of coarse bits for the meshes with levels, each renderer's
+ * words its own and each copy's its own, all clear: every mesh starts at its
+ * finest. */
+static scene_failure_t
+open_lod_bits(scene_t* scene) {
+    const size_t words = lod_bit_words(scene);
     if (words == 0) {
         return scene_failure_make(SCENE_OK, ASSET_OK, scene->root->id);
     }
@@ -771,6 +778,8 @@ scene_checkpoint_capture(checkpoint_t* saved, scene_t* scene) {
     checkpoint_capture_at(saved, &scene->worlds, (size_t)scene->world_count * sizeof(*scene->worlds));
     checkpoint_capture_at(saved, &scene->light_transfer, sizeof(*scene->light_transfer));
     checkpoint_capture_at(saved, &scene->light_table, sizeof(*scene->light_table));
+    /* Each copy's level carries from frame to frame. */
+    checkpoint_capture_at(saved, &scene->lod_bits, lod_bit_words(scene) * sizeof(*scene->lod_bits));
     scene_animation_checkpoint_capture(saved, scene);
 }
 #endif
