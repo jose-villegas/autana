@@ -426,25 +426,27 @@ class NativeTests(unittest.TestCase):
         self.assertEqual(found, {"a.c", "near.h", "inc/sub/far.h", "inc/sub/deep.h"})
 
     def test_define_values_are_keyed_without_compiling_their_include_graph(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = pathlib.Path(directory)
-            header = root / "owner.h"
-            included = root / "runtime.h"
-            included.write_text("#define UNUSED 1\n")
-            header.write_text('#include "runtime.h"\n#define GAMMA 2.2F\n')
-            module = root / "entry.py"
-            module.write_text('from pathlib import Path\nfrom build.c_header import read_define\n'
-                              'OWNER = Path(__file__).with_name("owner.h")\n'
-                              'GAMMA = read_define(OWNER, "GAMMA")\n')
-            try:
-                before = bake.native_inputs([module])
-                self.assertEqual(set(before), {bake.relative(header)})
-                included.write_text("#define UNUSED 2\n")
-                self.assertEqual(bake.native_inputs([module]), before)
-                header.write_text('#include "runtime.h"\n#define GAMMA 2.4F\n')
-                self.assertNotEqual(bake.native_inputs([module]), before)
-            finally:
-                bake.module_facts.cache_clear()
+        for reader, expression in (("read_define", 'read_define(OWNER, "GAMMA")'),
+                                   ("read_defines", 'read_defines(OWNER, "", ("GAMMA",))')):
+            with self.subTest(reader=reader), tempfile.TemporaryDirectory() as directory:
+                root = pathlib.Path(directory)
+                header = root / "owner.h"
+                included = root / "runtime.h"
+                included.write_text("#define UNUSED 1\n")
+                header.write_text('#include "runtime.h"\n#define GAMMA 2.2F\n')
+                module = root / "entry.py"
+                module.write_text(f'from pathlib import Path\nfrom build.c_header import {reader}\n'
+                                  'OWNER = Path(__file__).with_name("owner.h")\n'
+                                  f'GAMMA = {expression}\n')
+                try:
+                    before = bake.native_inputs([module])
+                    self.assertEqual(set(before), {bake.relative(header)})
+                    included.write_text("#define UNUSED 2\n")
+                    self.assertEqual(bake.native_inputs([module]), before)
+                    header.write_text('#include "runtime.h"\n#define GAMMA 2.4F\n')
+                    self.assertNotEqual(bake.native_inputs([module]), before)
+                finally:
+                    bake.module_facts.cache_clear()
 
     def test_all_literal_defines_key_even_comprehension_reads(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -460,12 +462,14 @@ class NativeTests(unittest.TestCase):
                 header.write_text(text)
                 self.assertNotEqual(before, bake.native_inputs([module]))
 
-    def test_unresolvable_read_define_header_is_loud(self):
+    def test_variable_headers_are_ignored_and_missing_paths_are_loud(self):
         with tempfile.TemporaryDirectory() as directory:
             module = pathlib.Path(directory) / "entry.py"
-            module.write_text('VALUE = read_define(unknown_header, "MODE")\n')
-            with self.assertRaisesRegex(bake.SettingsError, r'entry.py:1: cannot resolve read_define header'):
-                bake.native_inputs([module])
+            module.write_text('VALUE = read_define(unknown_header, "MODE")\n'
+                              'def read_values(header):\n'
+                              '    return read_defines(header, "ITEM_", ("COUNT",))\n')
+            self.assertEqual(bake.native_inputs([module]), {})
+            self.assertEqual(bake.native_inputs([TOOLS / "build/c_header.py"]), {})
             missing = pathlib.Path(directory) / "missing.py"
             missing.write_text('from pathlib import Path\nOWNER = Path(__file__).with_name("missing.h")\n'
                                'VALUE = read_define(OWNER, "MODE")\n')
@@ -541,6 +545,17 @@ class StageTests(unittest.TestCase):
         # The reference stage's entry is named by the fit's key through the reference key, so the fit stops there.
         self.assertNotIn("r3d/fitted_variant.py", self.names("fit"))
 
+    def test_cards_code_keys_mesh_and_reference_stages(self):
+        expected = {"r3d/cards/choose.py": "probe_weights", "r3d/cards/bake.py": "bake_pixels",
+                    "r3d/cards/emit.py": "make_shape", "r3d/cards/decide.py": "carded",
+                    "r3d/cards/pages.py": "pack_pages"}
+        for stage in ("mesh", "reference"):
+            self.assertTrue(set(expected) <= self.names(stage), stage)
+            units, _ = bake.stage_units(stage)
+            reached = {(unit.path.relative_to(TOOLS).as_posix(), name) for unit in units for name in unit.names}
+            for path, name in expected.items():
+                self.assertIn((path, name), reached, stage)
+
     def test_modules_reached_through_sys_path_are_in_the_stages_that_import_them(self):
         for stage in ("mesh", "reference", "fit"):
             self.assertIn("device/gfx_color.py", self.names(stage), stage)
@@ -609,8 +624,8 @@ class StageTests(unittest.TestCase):
         inputs = reference_inputs(job, scene)
         fields = {field.name for field in dataclasses.fields(ReferenceInputs)}
         unprobed = bake.reference_recipe(inputs, TOOL_KEYS, bake.Poses({}))
-        self.assertEqual(set(unprobed) - {"sources"}, fields - {"probes", "shaped"}, "an unshaped fit changed the key")
-        inputs = dataclasses.replace(inputs, probes=types.SimpleNamespace(spacing=None, face=8), shaped=True)
+        self.assertEqual(set(unprobed) - {"sources"}, fields - {"probes"}, "an import without probes changed the key")
+        inputs = dataclasses.replace(inputs, probes=types.SimpleNamespace(spacing=None, face=8))
         recipe = bake.reference_recipe(inputs, TOOL_KEYS, bake.Poses({}))
         self.assertEqual(set(recipe) - {"sources"}, fields)
         brighter = dataclasses.replace(inputs, tonemap_white=inputs.tonemap_white * 2)
@@ -758,7 +773,7 @@ class FittedBakeTests(FittedBakeCase):
         source.mkdir()
         expected = write_reference_tree(source)
         reference = self.root / self.reference.output
-        reference.write_bytes(reference_set.pack_references(source, reference_set.fit_sets(True, False, False)))
+        reference.write_bytes(reference_set.pack_references(source, reference_set.fit_sets(True, False)))
         start = self.root / self.start.output
         start.write_bytes(b"locked start bundle")
         lock = {item.key: produce.record(item, path, self.cache)
@@ -806,6 +821,33 @@ class FittedBakeTests(FittedBakeCase):
         self.assertEqual(list(done.rows), [self.start.output])
         self.assertEqual(done.code, 1)
         self.assertIn(self.fit(MADE_SHA256).output, done.err)
+
+    def test_a_partial_lock_writes_the_rows_it_has_and_names_the_rest_without_failing(self):
+        made = {self.start.key: row_of(self.start, MADE_SHA256, run=RUN)}
+        done = self.command(["lock", "--from-run", str(RUN), "--partial"], {}, made)
+        self.assertEqual(done.code, 0, done.err)
+        self.assertEqual(list(done.rows), [self.start.output])
+        self.assertIn("still to lock", done.out)
+        self.assertIn(self.fit(MADE_SHA256).output, done.out)
+
+    def test_kinds_repeat_and_levels_key_on_the_fit_the_same_command_made(self):
+        done = self.command(["bake", "--kind", "fit", "--kind", "levels"], self.locked(LOCKED_SHA256, run=RUN))
+        self.assertEqual(done.code, 0, done.err)
+        self.assertEqual([item.key for item in done.produced], [self.fit(LOCKED_SHA256).key, self.level(LOCKED_SHA256).key])
+
+    def test_a_texture_keys_on_the_levels_the_same_command_made_and_waits_without_them(self):
+        """A texture's key names its packed mesh's bytes: levels made just before it in one command give them."""
+        fit = self.fit(LOCKED_SHA256)
+        lock = {**self.locked(LOCKED_SHA256, run=RUN), fit.key: row_of(fit, FIT_SHA256, run=RUN)}
+        with mock.patch("r3d.texture.texture_settings.renderer_textures", return_value={"size": 1}):
+            alone = self.command(["bake", "--kind", "texture"], lock)
+            chained = self.command(["bake", "--kind", "levels", "--kind", "texture"], lock)
+        self.assertEqual(alone.code, 0, alone.err)
+        self.assertEqual(alone.produced, [])
+        self.assertIn("skipped", alone.out)
+        self.assertEqual(chained.code, 0, chained.err)
+        self.assertEqual([item.kind for item in chained.produced], ["levels", "texture"])
+        self.assertEqual(chained.produced[1].stages["start_sha256"], FIT_SHA256)
 
     def test_a_start_made_by_the_mesh_pass_keys_its_fit_in_the_fit_pass(self):
         done = self.bake_keys_fit_on(["bake"], {}, MADE_SHA256)
@@ -874,11 +916,12 @@ class FittedBakeTests(FittedBakeCase):
     def test_shards_sizes_the_matrix_from_the_missing_sets_rays_and_skips_locked_ones(self):
         rays = 3 * bake.CALIBRATION_RAYS
         with mock.patch.object(produce, "reference_rays", return_value=rays) as counted:
-            missing = self.command(["shards"], {})
+            missing = self.command(["shards", "--out", str(self.root / "plan")], {})
             locked = self.command(["shards"], self.locked(LOCKED_SHA256, run=RUN))
         self.assertEqual(json.loads(missing.out), list(range(bake.reference_shards(rays))))
         self.assertEqual(json.loads(locked.out), [])
-        self.assertEqual([call.args[0] for call in counted.call_args_list], [self.reference])
+        self.assertEqual([call.args for call in counted.call_args_list],
+                         [(self.reference, self.root / "plan" / self.reference.output)])
 
     def test_a_set_past_a_job_matrix_is_refused(self):
         too_many = (bake.MATRIX_JOBS + 1) * bake.REFERENCE_SHARD_SECONDS * bake.CALIBRATION_RAYS // bake.CALIBRATION_SECONDS
@@ -1668,6 +1711,15 @@ class LockTests(unittest.TestCase):
         self.assertEqual(written[0], [{"output": "one.bundle", "source": "a.scene.toml", "key": "k" * 64,
                                        "sha256": stale["sha256"], "size": len(refit), "seeded": True}])
 
+    def test_a_seeded_row_is_missing_so_a_run_makes_its_key_again(self):
+        found = [bake_of("k" * 64, self.tree), bake_of("j" * 64, self.root / "two.bundle")]
+        lock = {"k" * 64: {**self.row, "seeded": True}, "j" * 64: {**self.row, "key": "j" * 64, "run": 4}}
+        with mock.patch.object(bake, "bakes", return_value=found), \
+                mock.patch.object(bake, "read_lock_tables", return_value={"bake": lock, "poses": {}}), \
+                contextlib.redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(bake.main(["list", "--missing"]), 0)
+        self.assertEqual([line.split("\t")[2] for line in out.getvalue().splitlines()], ["k" * 64])
+
     def test_check_says_which_rows_are_seeded(self):
         found = [bake_of("k" * 64, self.tree)]
         with mock.patch.object(bake, "bakes", return_value=found), \
@@ -1893,8 +1945,8 @@ class ProduceTests(unittest.TestCase):
         from r3d import reference_render
         from r3d.reference_set import fit_sets
 
-        # A camera path, probes and a shaped fit: every set a reference bake can hold.
-        self.inputs = types.SimpleNamespace(sets=lambda: fit_sets(True, True, True))
+        # A camera path and probes: every set a reference bake can hold.
+        self.inputs = types.SimpleNamespace(sets=lambda: fit_sets(True, True))
 
         def render_sets(inputs, sets, samples=4):
             for poses_path, out in sets:
@@ -1916,6 +1968,7 @@ class ProduceTests(unittest.TestCase):
             for name in sets.coverage:
                 if not (work / name).exists():
                     (work / name).write_text("size 4 2\nlens 1.0 0.1\npose 9 9 9 9 9 9\n")
+            (work / "probes.json").write_bytes(b'{"train": "selection"}\n')
             reference_render.render_sets(inputs, [(work / name, work / folder)
                                                   for name, folder in sets.training + sets.held_out])
 
@@ -1925,9 +1978,11 @@ class ProduceTests(unittest.TestCase):
             yield prepare
 
     def shards(self, bake, count):
+        plan = self.root / "plan"
+        produce.reference_rays(bake, plan / bake.output)
         for shard in range(count):
             produce.reference_shard(bake, self.root / "shards" / f"attempt-{shard}" / f"{bake.output}.shard-{shard}",
-                                    shard, count)
+                                    shard, count, plan)
         return sorted((self.root / "shards").glob(f"*/{bake.output}.shard-*"))
 
     def test_sharded_reference_set_packs_to_the_bytes_of_one_render(self):
@@ -1944,6 +1999,53 @@ class ProduceTests(unittest.TestCase):
                 sets = self.inputs.sets()
                 self.assertEqual(hashlib.sha256(pack_references(joined, sets)).hexdigest(),
                                  hashlib.sha256(pack_references(whole, sets)).hexdigest())
+
+    def test_planned_shards_render_one_selection_and_join_its_bytes(self):
+        from r3d.reference_set import pack_references
+
+        reference = types.SimpleNamespace(output="x.reference.tar.xz", key="k" * 64, job="job", scene=None)
+        plan = self.root / "plan"
+        whole = self.root / "whole"
+        with self.references() as prepare:
+            prepare(self.inputs, whole)
+            produce.reference_rays(reference, plan / reference.output)
+        parts = []
+        for shard, different_count in enumerate((3, 5)):
+            out = self.root / f"part-{shard}"
+            with self.references(poses=different_count), \
+                 mock.patch("r3d.reference_set.prepare_references", side_effect=AssertionError("shard selected poses")):
+                produce.reference_shard(reference, out, shard, 2, plan)
+            for path in whole.iterdir():
+                if path.is_file():
+                    self.assertEqual((out / path.name).read_bytes(), path.read_bytes())
+            parts.append(out)
+        joined = produce.join_reference_shards(reference, self.cache, parts)
+        self.assertEqual(pack_references(joined, self.inputs.sets()), pack_references(whole, self.inputs.sets()))
+        for path in whole.rglob("*"):
+            if path.is_file():
+                self.assertEqual((joined / path.relative_to(whole)).read_bytes(), path.read_bytes())
+
+    def test_poses_only_plan_writes_all_pre_render_files_without_rendering(self):
+        from r3d import reference_render
+
+        reference = types.SimpleNamespace(output="x.reference.tar.xz", key="k" * 64, job="job", scene=None)
+        plan = self.root / "plan"
+        whole = self.root / "whole"
+        with self.references() as prepare:
+            prepare(self.inputs, whole)
+            expected = {path.name: path.read_bytes() for path in whole.iterdir() if path.is_file()}
+            reference_render.render_sets.reset_mock()
+            rays = produce.reference_rays(reference, plan)
+            reference_render.render_sets.assert_not_called()
+        self.assertGreater(rays, 0)
+        self.assertEqual({path.name: path.read_bytes() for path in plan.iterdir()
+                          if path.name != produce.PLAN_MANIFEST}, expected)
+        self.assertFalse(any(path.is_dir() for path in plan.iterdir()))
+
+    def test_shard_refuses_a_plan_missing_its_set(self):
+        reference = types.SimpleNamespace(output="missing.reference.tar.xz", key="k" * 64, job="job", scene=None)
+        with self.assertRaisesRegex(bake.BakeMissing, reference.output):
+            produce.reference_shard(reference, self.root / "part", 0, 2, self.root / "empty-plan")
 
     def test_a_joined_set_is_recorded_as_traced_where_its_shards_ran(self):
         reference = types.SimpleNamespace(output="x.reference.tar.xz", key="k" * 64, job="job", scene=None,

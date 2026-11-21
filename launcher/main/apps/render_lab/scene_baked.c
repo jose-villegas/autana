@@ -117,8 +117,7 @@ scene_baked_enter(const lab_scene_t* self) {
     if (shown->textured && !handle_is_none(bake) && !renderer_set_textured(bake, true, &why)) {
         record_failure(&why);
     }
-    (void)camera_activate(render_lab.start_camera == NULL ? camera_first(loaded)
-                                                          : entity_find(loaded, name_hash(render_lab.start_camera)));
+    (void)camera_activate(camera_entity());
     (void)camera_set_skip_hidden(camera_entity(), family->skip_hidden);
     apply_settings();
 }

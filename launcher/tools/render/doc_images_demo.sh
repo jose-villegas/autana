@@ -40,10 +40,10 @@ SHOWCASE=$(run "$PYTHON" launcher/tools/render/showcase.py "$SCENE")
 
 small_fill_images() {
     cat > "$W/small-fill-looks.tsv" <<EOF
-smooth|SMOOTH (4/0 FLAT)|${SHOWCASE}|--small-fill 4,0,0|${ID}-small-fill-smooth|
-fast|FAST (12/16 FLAT)|${SHOWCASE}|--small-fill 12,16,0|${ID}-small-fill-fast|${ID}-small-fill-fast-diff
-grain|12/16 GRAIN|${SHOWCASE}|--small-fill 12,16,1|${ID}-small-fill-grain|${ID}-small-fill-grain-diff
-dither|12/16 DITHER|${SHOWCASE}|--small-fill 12,16,2|${ID}-small-fill-dither|${ID}-small-fill-dither-diff
+smooth|SMOOTH (4/0 FLAT)|${SHOWCASE}|--set render.small_fill.ceiling=4 --set render.small_fill.gate=0 --set render.small_fill.style=0|${ID}-small-fill-smooth|
+fast|FAST (12/16 FLAT)|${SHOWCASE}|--set render.small_fill.ceiling=12 --set render.small_fill.gate=16 --set render.small_fill.style=0|${ID}-small-fill-fast|${ID}-small-fill-fast-diff
+grain|12/16 GRAIN|${SHOWCASE}|--set render.small_fill.ceiling=12 --set render.small_fill.gate=16 --set render.small_fill.style=1|${ID}-small-fill-grain|${ID}-small-fill-grain-diff
+dither|12/16 DITHER|${SHOWCASE}|--set render.small_fill.ceiling=12 --set render.small_fill.gate=16 --set render.small_fill.style=2|${ID}-small-fill-dither|${ID}-small-fill-dither-diff
 EOF
     small_fill_first=1
     small_fill_end=56
@@ -60,7 +60,7 @@ EOF
             --first "$small_fill_first" --end "$small_fill_end" --fps "$small_fill_fps"
     done 3< "$W/small-fill-looks.tsv"
     if cmp -s "$W/small-fill-smooth.bmp" "$W/small-fill-fast.bmp"; then
-        echo "small-fill: --small-fill did not change the render" >&2
+        echo "small-fill: render.small_fill did not change the render" >&2
         exit 1
     fi
     while IFS='|' read -r look label object settings gif diff <&3; do

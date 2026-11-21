@@ -12,6 +12,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+from copy import copy
 
 import numpy as np
 from PIL import Image, ImageDraw
@@ -24,6 +25,7 @@ from docs.plot_style import INK, SLOTS  # noqa: E402
 from board import PANEL_HEIGHT, PANEL_WIDTH  # noqa: E402
 from r3d.appearance_simplify import projection  # noqa: E402
 from r3d.cost_model import clusters_in_view  # noqa: E402
+from r3d.light import AlphaTest  # noqa: E402
 from r3d.import_settings import load_scene  # noqa: E402
 from r3d.objects.instances import bounds_diagonal, match_instances, placed_corners  # noqa: E402
 from r3d.objects.objects_report import masked_objects  # noqa: E402
@@ -195,7 +197,11 @@ def generate(scene, job, cameras, host, out, every_ms, host_render=render_host):
     shapes = match_instances(objects)
     boxes, owners = placed_boxes(shapes, job)
     positions = src.p @ np.asarray(job.object.matrix).T + job.object.position
-    query = RayQuery(positions, triangles)
+    occluder = copy(src)
+    occluder.p = positions
+    mask = getattr(src, "alpha_test", None)
+    alpha = None if mask is None else AlphaTest(occluder, mask.keep_alpha)
+    query = RayQuery(positions, triangles, hit_filter=alpha)
     best, chosen = (-1, -1, -1, -1), None
     for camera in cameras:
         component = camera.component

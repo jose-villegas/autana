@@ -13,9 +13,11 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "render"))
 
 try:
     import numpy as np
+    from tests.soup import sun
     from tests import soup
     from PIL import Image
 
+    from r3d.import_settings import LIGHT_MODE_BAKED
     from r3d import mitsuba_reference
     from r3d.geometry import corner_normals
     from r3d.light import coincident_faces
@@ -61,12 +63,9 @@ def make_source(quads, kd=(1.0, 1.0, 1.0), texture=None, materials=None, uv_scal
     return source
 
 
-def sun(direction):
-    return {"type": "directional", "direction": direction, "color": [1.0, 1.0, 1.0], "intensity": 1.0}
-
 
 def sky(intensity=1.0):
-    return {"type": "sky", "color": [1.0, 1.0, 1.0], "intensity": intensity, "rays": 16}
+    return {"type": "sky", "mode": LIGHT_MODE_BAKED, "color": [1.0, 1.0, 1.0], "intensity": intensity, "rays": 16}
 
 
 def bake_trace(source, lights, pose=LOOK_DOWN, width=16, height=16, lens=0.5, double=()):

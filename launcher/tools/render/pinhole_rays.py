@@ -31,7 +31,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from anim import track_host
 from r3d.import_settings import load_scene
 from r3d.lit_mesh import finest_triangles, read_lit_mesh
-from r3d.poses import camera_basis, camera_rays, either_way, read_poses, sample_camera_rows
+from r3d.poses import camera_basis, camera_rays, either_way, flight_camera, read_poses, sample_camera_rows
 from r3d.ray_query import MAX_HITS, STEP, STEP_RELATIVE, RayQuery
 from render.check_avi import read_video
 from render.render_compare import expand_565
@@ -144,7 +144,7 @@ def diagnose_frame(frame, sky, pose, lens, near, drawn, against, frame_index):
 
 
 def rays(args, scene):
-    camera = scene.camera.component
+    camera = flight_camera(scene)
     rgb = camera.background
     sky = expand_565((rgb >> 16, (rgb >> 8) & 0xff, rgb & 0xff))
     drawn = mesh_query(args.mesh, SCALAR_VARIANT)
@@ -205,7 +205,7 @@ def shown(args, scene):
     if len(jobs) != 1:
         raise ValueError('--object must select exactly one fitted mesh renderer')
     fit = jobs[0].renderer.fit
-    camera = scene.camera.component
+    camera = flight_camera(scene)
     coverage = either_way(*sample_camera_rows(camera.path.animation, camera.path.node, fit.coverage_every_ms,
                                               *fit.size, camera.half_fov_short_tan, camera.near_z))
     grid = (fit.size[1] * FIT_RENDER_SCALE, fit.size[0] * FIT_RENDER_SCALE)

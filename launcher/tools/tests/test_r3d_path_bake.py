@@ -17,6 +17,7 @@ try:
     from r3d.light import bounced_light, light
     from r3d.mitsuba_reference import ALBEDO_CEILING, boosted_albedo
     from r3d.path_bake import PathLight
+    from r3d.import_settings import LIGHT_MODES, LIGHT_MODE_BAKED
     from tests import soup
     from tests.soup import SUN, corridor, path_light
 except ImportError:
@@ -35,7 +36,7 @@ def have_llvm():
 
 needs_llvm = unittest.skipIf(not have_llvm(), "the LLVM variant needs libLLVM")
 
-SKY = {"type": "sky", "color": [1.0, 1.0, 1.0], "intensity": 1.5, "rays": 16}
+SKY = {"type": "sky", "mode": LIGHT_MODE_BAKED, "color": [1.0, 1.0, 1.0], "intensity": 1.5, "rays": 16}
 
 
 def floor_only():
@@ -61,6 +62,13 @@ class BounceTests(unittest.TestCase):
         # sun's irradiance over pi: intensity * cos(angle to the wall normal) = 2 * 0.6 / |(0.6, 1, 0)|.
         cos_wall = 0.6 / np.linalg.norm([0.6, 1.0, 0.0])
         np.testing.assert_allclose(bounce_at_the_wall_foot(), [0.5 * 0.5 * 2.0 * cos_wall] * 3, rtol=0.08)
+
+    def test_surface_bounce_omits_realtime_and_preserves_baked_bytes(self):
+        baseline = bounce_at_the_wall_foot()
+        for mode in LIGHT_MODES:
+            got = bounce_at_the_wall_foot(lights=[dict(SUN, mode=mode)])
+            expected = baseline if mode == LIGHT_MODE_BAKED else np.zeros_like(baseline)
+            self.assertEqual(got.tobytes(), expected.tobytes())
 
     def test_a_plane_alone_bounces_nothing(self):
         np.testing.assert_array_equal(bounce_at_the_wall_foot(source=floor_only()), [0.0, 0.0, 0.0])
@@ -109,7 +117,7 @@ class BounceTests(unittest.TestCase):
         self.assertEqual(bounce_at_the_wall_foot(bounces=2).tobytes(), bounce_at_the_wall_foot(bounces=2).tobytes())
 
     def test_ambient_is_left_to_the_bake(self):
-        ambient = {"type": "ambient", "color": [1.0, 1.0, 1.0], "intensity": 1.0}
+        ambient = {"type": "ambient", "mode": LIGHT_MODE_BAKED, "color": [1.0, 1.0, 1.0], "intensity": 1.0}
         np.testing.assert_array_equal(bounce_at_the_wall_foot(lights=[ambient]), [0.0, 0.0, 0.0])
 
     def test_points_split_over_many_chunks_each_get_their_own_answer(self):
@@ -158,7 +166,7 @@ class SideBounce:
         return np.where(normals[:, 1:2] > 0, self.up, self.down)
 
 
-SUN_UP = {"type": "directional", "direction": [0.0, 1.0, 0.0], "color": [1.0, 1.0, 1.0], "intensity": 1.0}
+SUN_UP = soup.sun([0.0, 1.0, 0.0], [1.0, 1.0, 1.0], 1.0)
 
 
 def lit(points, normals, double, intersector, lights, **kwargs):

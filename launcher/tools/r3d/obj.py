@@ -4,6 +4,8 @@ import os
 import pathlib
 
 TEXTURE_KEYS = ("map_Kd", "map_d")
+# A texture whose every texel's alpha is above this is opaque: nothing of it is cut away.
+ALPHA_OPAQUE = 0.99
 
 
 def load_mtl(path):
@@ -99,6 +101,13 @@ class Texture:
             level = 0.25 * (level[0::2, 0::2] + level[1::2, 0::2] + level[0::2, 1::2] + level[1::2, 1::2])
             self.levels.append(level)
 
+    @classmethod
+    def from_levels(cls, levels):
+        """A texture from an existing linear RGBA mip chain."""
+        texture = cls.__new__(cls)
+        texture.levels = list(levels)
+        return texture
+
     @property
     def size(self):
         return self.levels[0].shape[1], self.levels[0].shape[0]
@@ -137,6 +146,13 @@ def load_textures(root, materials, names, dtype=None):
         else:
             textures.append(None)
     return textures
+
+
+def alpha_tested(textures):
+    """Per material of `load_textures`: does its texture cut texels away (leaves, chains, glass panes)?"""
+    import numpy as np
+
+    return np.array([tex is not None and tex.levels[0][..., 3].min() <= ALPHA_OPAQUE for tex in textures], dtype=bool)
 
 
 def write_obj(path, mtllib, positions, groups, uvs=None, banner=(), position_decimals=3, uv_decimals=5):

@@ -12,6 +12,7 @@ try:
     import numpy as np
     from tests import soup
 
+    from r3d.import_settings import LIGHT_MODE_BAKED
     from r3d.geometry import corner_normals
     from r3d.light import coincident_faces
     from r3d.reference_render import device_picture, primary_hits, render_linear, trace
@@ -23,12 +24,15 @@ from tests.r3d_env import needs_mitsuba  # noqa: E402
 from tests.test_r3d_path_bake import needs_llvm  # noqa: E402
 
 
-def write_reference_tree(work):
+def write_reference_tree(work, sets=None):
+    """A reference set of `sets` (reference_set.fit_sets; a camera path's by default) in `work`: what a fit packs,
+    returned by name, beside files it leaves out."""
     from r3d import reference_set
 
+    sets = reference_set.fit_sets(True, False) if sets is None else sets
     expected = {name: name.encode() for name in
-                [poses for poses, _ in reference_set.TRAINING] + [reference_set.COVERAGE, reference_set.HELD_OUT[0]]}
-    for _, folder in reference_set.TRAINING:
+                [poses for poses, _ in sets.training + sets.held_out] + list(sets.coverage)}
+    for _, folder in sets.training:
         for suffix in (".png", ".normal.npy"):
             name = f"{folder}/frame{suffix}"
             expected[name] = name.encode()
@@ -36,11 +40,12 @@ def write_reference_tree(work):
         path = work / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
-    for _, folder in reference_set.TRAINING + (reference_set.HELD_OUT,):
+    for _, folder in sets.training + sets.held_out:
         path = work / folder
         path.mkdir(exist_ok=True)
         (path / "frame.linear.npy").write_bytes(b"linear light")
-    (work / reference_set.HELD_OUT[1] / "frame.png").write_bytes(b"held out picture")
+    for _, folder in sets.held_out:
+        (work / folder / "frame.png").write_bytes(b"held out picture")
     return expected
 
 
@@ -55,7 +60,7 @@ class PackedReferencesTests(unittest.TestCase):
             work, unpacked = root / "source", root / "unpacked"
             work.mkdir()
             expected = write_reference_tree(work)
-            sets = reference_set.fit_sets(True, False, False)
+            sets = reference_set.fit_sets(True, False)
             packed = reference_set.pack_references(work, sets)
             self.assertEqual(reference_set.pack_references(work, sets), packed)
             for path in work.rglob("*"):
@@ -65,7 +70,7 @@ class PackedReferencesTests(unittest.TestCase):
             self.assertEqual({path.relative_to(unpacked).as_posix(): path.read_bytes()
                               for path in unpacked.rglob("*") if path.is_file()}, expected)
 
-    def packed_names(self, path, probed, shaped):
+    def packed_names(self, path, probed):
         import io
         import tarfile
         import tempfile
@@ -80,27 +85,21 @@ class PackedReferencesTests(unittest.TestCase):
                 for suffix in reference_set.PACKED_SUFFIXES + (".linear.npy",):
                     (work / folder / f"face{suffix}").write_bytes(b"probe face")
             (work / reference_set.HELD_OUT[1] / "frame.normal.npy").write_bytes(b"held out normals")
-            packed = reference_set.pack_references(work, reference_set.fit_sets(path, probed, shaped))
+            packed = reference_set.pack_references(work, reference_set.fit_sets(path, probed))
         with tarfile.open(fileobj=io.BytesIO(packed), mode="r:xz") as tar:
             return tar.getnames()
 
     def test_a_fit_the_import_does_not_shape_packs_the_path_s_poses_and_training_references_alone(self):
-        # The pack of every import without geometry.probes or geometry.budget, so its bytes and key stay as they were.
-        self.assertEqual(self.packed_names(True, False, False),
+        self.assertEqual(self.packed_names(True, False),
                          ["coverage.txt", "held_out.txt", "train.txt", "train_landscape.txt",
                           "reference/frame.normal.npy", "reference/frame.png",
                           "reference_landscape/frame.normal.npy", "reference_landscape/frame.png"])
 
-    def test_a_shaped_fit_packs_the_held_out_references_its_settle_counts_holes_over(self):
-        held_out = ["reference_held_out/frame.normal.npy", "reference_held_out/frame.png"]
-        self.assertEqual(self.packed_names(True, False, True),
-                         ["coverage.txt", "held_out.txt", "train.txt", "train_landscape.txt",
-                          "reference/frame.normal.npy", "reference/frame.png", *held_out,
-                          "reference_landscape/frame.normal.npy", "reference_landscape/frame.png"])
+    def test_a_probe_fit_packs_the_held_out_references_for_closure(self):
         probes = ["probes.txt", "probes_held_out.txt"]
         faces = [f"{folder}/face{suffix}" for folder in ("reference_probes", "reference_probes_held_out")
                  for suffix in (".normal.npy", ".png")]
-        self.assertEqual(self.packed_names(False, True, True), probes + faces)
+        self.assertEqual(self.packed_names(False, True), probes + faces)
 
 
 def square(z=0.0, up=True):
@@ -129,7 +128,7 @@ def plane_source(*quads):
 def sun_scene(direction):
     settings = SimpleNamespace(double_sided=set(), seed=1)
     job = SimpleNamespace(settings=settings, bake=SimpleNamespace(ray_offset=0.01, ao=None))
-    scene = SimpleNamespace(lights=[{"type": "directional", "direction": direction, "color": [1.0, 1.0, 1.0], "intensity": 1.0}])
+    scene = SimpleNamespace(lights=[soup.sun(direction, [1.0, 1.0, 1.0], 1.0)])
     return job, scene
 
 
@@ -252,7 +251,7 @@ class PooledReferenceTests(unittest.TestCase):
         source.intersector = soup.rays(mesh)
         job, scene = sun_scene([0., 0., -1.])
         job.bake.ao = SimpleNamespace(distance=3., strength=.8, rays=8, indirect=True)
-        scene.lights.append({"type": "ambient", "color": [1., 1., 1.], "intensity": .5})
+        scene.lights.append({"type": "ambient", "mode": LIGHT_MODE_BAKED, "color": [1., 1., 1.], "intensity": .5})
         scene.tonemap_white = 2.
         scene.camera = SimpleNamespace(component=SimpleNamespace(background=0x123456))
         poses = [LOOK_DOWN + np.array([i * .1, 0., 0., 0., 0., 0.]) for i in range(6)]
@@ -426,8 +425,7 @@ class RepeatTests(unittest.TestCase):
         self.assertGreater(renders[0].mean(), 0.0, "the poses see lit surfaces")
         self.assertEqual(renders[0].tobytes(), renders[1].tobytes())
 
-    def test_a_set_traces_on_the_bake_variant_and_never_asks_for_the_gpu(self):
-        from unittest.mock import patch
+    def test_a_set_traces_on_the_bake_variant(self):
         from r3d import ray_query
         from tests.test_r3d_path_bake import corridor
 
@@ -436,10 +434,8 @@ class RepeatTests(unittest.TestCase):
             given = kwargs.get("variant", args[at] if len(args) > at else None)
             return given or ray_query.VARIANT
 
-        job = SimpleNamespace(settings=SimpleNamespace(alpha_keep=None))
-        gpu = patch.object(ray_query, "trace_variant", side_effect=AssertionError("asked for the GPU"))
-        with gpu:
-            mocks = render_one_set(job, load_source={"return_value": corridor()}, RayQuery={}, path_light_for={})
+        job = SimpleNamespace(settings=SimpleNamespace(alpha_keep=None, cards=None))
+        mocks = render_one_set(job, load_source={"return_value": corridor()}, RayQuery={}, path_light_for={})
         self.assertEqual(variant_of(mocks["RayQuery"].call_args, 2), ray_query.VARIANT)
         self.assertEqual(variant_of(mocks["path_light_for"].call_args, 3), ray_query.VARIANT)
 
@@ -457,48 +453,6 @@ class RepeatTests(unittest.TestCase):
             self.assertEqual(mesh_source.PATH_LIGHTS, {}, failure)
 
 
-@unittest.skipIf(np is None, "needs NumPy")
-class DeviceProbeTests(unittest.TestCase):
-    """ray_query's CUDA probe and release, which no bake calls."""
-
-    def test_the_probe_names_cuda_when_it_loads_and_the_bake_variant_otherwise(self):
-        from unittest.mock import patch
-        from r3d import ray_query
-        for found, want in (("llvm_ad_rgb", ray_query.VARIANT), ("scalar_rgb", ray_query.VARIANT),
-                            (ray_query.GPU_VARIANT, ray_query.GPU_VARIANT)):
-            mi = SimpleNamespace(now="scalar_rgb", variant=lambda: mi.now)
-            mi.set_variant = lambda name: setattr(mi, "now", name)
-
-            def probe(mi):
-                mi.set_variant(found)
-                return found
-
-            with patch.object(ray_query, "import_mitsuba", return_value=mi),                     patch.object(ray_query, "default_variant", side_effect=probe):
-                self.assertEqual(ray_query.trace_variant(), want, found)
-            self.assertEqual(mi.now, "scalar_rgb", "the probe leaves Mitsuba on the variant it was on")
-
-    def test_the_device_probe_answers_in_a_fresh_process_and_without_mitsuba(self):
-        from unittest.mock import patch
-        from r3d import ray_query
-
-        with patch.object(ray_query, "import_mitsuba", return_value=None):
-            self.assertEqual(ray_query.trace_variant(), ray_query.VARIANT)
-        mi = SimpleNamespace(now=None, variant=lambda: mi.now)
-
-        def set_variant(name):
-            if name is None:
-                raise TypeError("no variant to set")
-            mi.now = name
-        mi.set_variant = set_variant
-        with patch.object(ray_query, "import_mitsuba", return_value=mi),                 patch.object(ray_query, "default_variant", return_value=ray_query.GPU_VARIANT):
-            self.assertEqual(ray_query.trace_variant(), ray_query.GPU_VARIANT)
-
-    @needs_mitsuba
-    def test_releasing_the_device_runs_on_a_host_without_one(self):
-        from r3d import ray_query
-        ray_query.release_gpu()
-
-
 @needs_mitsuba
 @unittest.skipIf(np is None, "needs NumPy")
 class SkyStreamingTests(unittest.TestCase):
@@ -507,7 +461,7 @@ class SkyStreamingTests(unittest.TestCase):
         from r3d import light as lighting
         source = plane_source(square())
         original = lighting.unshadowed_count
-        sky = {"type": "sky", "rays": 7, "color": [.5, .7, .9], "intensity": .8}
+        sky = {"type": "sky", "mode": LIGHT_MODE_BAKED, "rays": 7, "color": [.5, .7, .9], "intensity": .8}
         points = np.array([[0., 0., .5], [.2, .3, .1]])
         normals = np.array([[0., 0., -1.], [0., 0., 1.]])
 

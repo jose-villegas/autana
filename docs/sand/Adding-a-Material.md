@@ -171,7 +171,7 @@ specified as reaching exactly one conductor cell is unbuildable through
 the real brush: a hand drag is never one cell thick
 (`SAND_POUR_RADIUS_PX`/`SAND_ERASE_RADIUS_PX` in `sand_controls.h`, 10/16 px, ~5 cells
 radius at the finest 2 px/cell zoom). The fix that generalises: an
-*attenuating* walk (crossing `d` cells succeeds at `(conducts/256)^d`)
+*attenuating* walk (crossing `d` cells succeeds at $`(\mathrm{conducts}/256)^d`$)
 instead of a hard "exactly N", so thickness costs time rather than being
 a wall. A walk like that still needs a cost cap
 (`CONDUCT_REACH`, 32 cells, `sand_reactions.c`), which is a statement

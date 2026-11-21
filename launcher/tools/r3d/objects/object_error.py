@@ -352,7 +352,6 @@ def held_out_error(scene_path, scene, job, bundle, inputs, work):
     """Score `bundle` as `job` over `inputs`' held-out poses and split its error by source object part: rows_for's
     rows, mean dE76 and unseen drawn share. Fails when the parts' mean does not round to the held-out score's."""
     from r3d import fitted_variant as fv
-    from r3d import mesh_bundle
     from r3d.appearance_simplify import start_mesh
     from r3d.bake_fidelity import build_host
     from r3d.fit.copies import joined, placed_copies
@@ -368,7 +367,7 @@ def held_out_error(scene_path, scene, job, bundle, inputs, work):
     count = int(labels.max()) + 1
     names, owner, parts_of_object = part_names(labels, tri_o, source.object_names)
     shapes = match_instances(source_objects(p, tri_v, tri_m, labels, names))
-    source.intersector = RayQuery(p, tri_v)
+    source.intersector = RayQuery(p, tri_v, hit_filter=source.alpha_test)
     _, _, lens, _, poses = read_poses(inputs / "held_out.txt")
 
     def ids_for(index, width, height):
@@ -377,10 +376,7 @@ def held_out_error(scene_path, scene, job, bundle, inputs, work):
         ids[rays] = labels[faces]
         return ids
 
-    entries, _rows = mesh_bundle.decode(bundle.read_bytes())
-    path = work / f"{job.asset_name}.mesh"
-    path.write_bytes(next(data for name, _kind, data in entries if name == job.asset_name))
-    rest = start_mesh(path)
+    rest = start_mesh(bundle)
     fitted = joined(rest, placed_copies(bundle, rest.flat))
     drawn = fitted.points[fitted.vertex_point], fitted.tris
     near = nearest_source(p, tri_v, *drawn)

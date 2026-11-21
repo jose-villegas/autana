@@ -5,7 +5,9 @@ shared across branches that does not cancel in progress queues every pending
 run (`queue: max`): GitHub otherwise keeps one pending run per group, so a new
 run silently cancels the one another branch queued. A step installs Debian
 packages through APT_INSTALL, which retries and falls back to another mirror,
-never with apt-get itself: one mirror outage would fail every job."""
+never with apt-get itself: one mirror outage would fail every job. A step that
+pushes a refresh branch or calls refresh_pr.py does it as the refresh App, after
+REFRESH_TOKEN in its job: a push or PR made with GITHUB_TOKEN starts no checks."""
 from pathlib import Path
 import re
 import sys
@@ -23,7 +25,26 @@ PER_REF_KEYS = ("github.ref", "github.head_ref", "github.sha", "github.run_id", 
 
 
 APT_INSTALL = "scripts/ci/apt_install.sh"
+REFRESH_TOKEN = "./.github/actions/refresh-token"
+REFRESH_SCRIPTS = ("refresh_branch.py", "refresh_pr.py")
+APP_TOKEN = "${{ steps.app.outputs.token }}"
 RAW_APT = re.compile(r"\bapt(?:-get)?\s+(?:-\S+\s+)*(?:update|install)\b")
+
+
+def refresh_without_app(steps):
+    """The names of steps that run a refresh script before the App token step (id app), or call
+    refresh_pr.py with another GH_TOKEN."""
+    minted, found = False, []
+    for step in steps:
+        if not isinstance(step, dict):
+            continue
+        minted = minted or (step.get("uses") == REFRESH_TOKEN and step.get("id") == "app")
+        run = step.get("run", "")
+        token = (step.get("env") or {}).get("GH_TOKEN")
+        if any(script in run for script in REFRESH_SCRIPTS) and (
+                not minted or ("refresh_pr.py" in run and token != APP_TOKEN)):
+            found.append(step.get("name", "?"))
+    return found
 
 
 def shared_group_drops_pending(concurrency):
@@ -58,6 +79,8 @@ def check(root="."):
             for step in job.get("steps", []) or []:
                 if isinstance(step, dict) and RAW_APT.search(step.get("run", "")):
                     violations.append(f"{path}: job {name} step {step.get('name', '?')!r} runs apt-get; use {APT_INSTALL}")
+            for step in refresh_without_app(job.get("steps", []) or []):
+                violations.append(f"{path}: job {name} step {step!r} refreshes without the App token from {REFRESH_TOKEN}")
             runner = job.get("runs-on", [])
             labels = [runner] if isinstance(runner, str) else runner
             if "self-hosted" in labels and blocked:

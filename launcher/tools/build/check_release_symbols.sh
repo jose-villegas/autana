@@ -50,7 +50,7 @@ for app_dir in $(app_directories "$ESPRESSIF_SCRIPT_DIR/../.."); do
 done
 
 symbols=$(awk '{print $NF}' "$symbols_file" |
-    grep -E "^(${development_only_apps}"'unity$|suite_|run_.*_suite$|console_(start$|emit_line$|reply_stdio$|take_unclaimed_line$|verb_)|selftest_)' || true)
+    grep -E "^(${development_only_apps}"'unity$|suite_|run_.*_suite$|console_(start$|emit_line$|reply_stdio$|take_unclaimed_line$|verb_)|selftest_|r3d_path_)' || true)
 if [ -n "$symbols" ]; then
     echo "release image contains development or test symbols:" >&2
     echo "$symbols" >&2

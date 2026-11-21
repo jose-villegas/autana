@@ -112,6 +112,29 @@ class SeamHoldTests(unittest.TestCase):
         return FitMesh(points, np.ones_like(points), np.array([[0, 1, 2], [3, 4, 5]]),
                        np.zeros(2), 1, np.arange(len(points)))
 
+    def two_planes(self):
+        """Two stacked triangles 0.1 apart, each point within tolerance of the other plane."""
+        plane = np.array([[0, 0, 0], [2, 0, 0], [0, 2, 0]], dtype=float)
+        points = np.vstack([plane + [0, 0, 0.1], plane])
+        return self.mesh()._replace(points=points), np.full(len(points), 0.25)
+
+    def three_planes(self):
+        """Three stacked triangles: the bottom one holds the middle one, so the top one, within tolerance of the
+        middle, is refused its hold (its target has held corners)."""
+        mesh = self.mesh()
+        plane = mesh.points[3:]
+        points = np.vstack([plane + [0, 0, 0.1], plane, plane + [0, 0, 0.25]])
+        mesh = mesh._replace(points=points, tris=np.vstack([mesh.tris, [6, 7, 8]]), vertex_point=np.arange(len(points)))
+        return mesh, np.repeat([0.5, 0, 0.25], 3)
+
+    @staticmethod
+    def held_after_moving(mesh, holds):
+        """hold_seams over every point of `mesh` moved off its start: (start, moved, result)."""
+        from r3d.appearance_simplify import hold_seams
+
+        moved = mesh.points + [0.3, -0.2, 0.4]
+        return mesh.points, moved, hold_seams(torch.tensor(moved), holds, torch.tensor(mesh.points)).numpy()
+
     def test_border_point_held_at_start_barycentrics(self):
         from r3d.appearance_simplify import seam_holds
 
@@ -158,16 +181,16 @@ class SeamHoldTests(unittest.TestCase):
     def test_greedy_holds_have_no_chains(self):
         from r3d.appearance_simplify import seam_holds
 
-        mesh = self.mesh()
-        plane = np.array([[0, 0, 0], [2, 0, 0], [0, 2, 0]], dtype=float)
-        mesh = mesh._replace(points=np.vstack([plane + [0, 0, 0.1], plane]))
-        holds = seam_holds(mesh, np.full(len(mesh.points), 0.25))
+        mesh, tolerance = self.two_planes()
+        holds = seam_holds(mesh, tolerance)
         np.testing.assert_array_equal(holds.points, [0, 1, 2])
         self.assertFalse(set(holds.points) & set(holds.corners.ravel()))
-        repeated = seam_holds(mesh, np.full(len(mesh.points), 0.25))
+        # The lower plane's points are within tolerance of the upper one but are its targets: pinned, not free.
+        np.testing.assert_array_equal(holds.pinned, [3, 4, 5])
+        repeated = seam_holds(mesh, tolerance)
         for first, second in zip(holds, repeated):
             np.testing.assert_array_equal(first, second)
-        tolerance = np.full(len(mesh.points), 0.25)
+        tolerance = tolerance.copy()
         tolerance[3:] *= 2
         reverse = seam_holds(mesh, tolerance)
         np.testing.assert_array_equal(reverse.points, [3, 4, 5])
@@ -175,15 +198,36 @@ class SeamHoldTests(unittest.TestCase):
     def test_target_with_a_held_corner_is_skipped(self):
         from r3d.appearance_simplify import seam_holds
 
-        mesh = self.mesh()
-        plane = mesh.points[3:]
-        points = np.vstack([plane + [0, 0, 0.1], plane, plane + [0, 0, 0.25]])
-        mesh = mesh._replace(points=points, tris=np.vstack([mesh.tris, [6, 7, 8]]),
-                             vertex_point=np.arange(len(points)))
-        tolerance = np.repeat([0.5, 0, 0.25], 3)
-        holds = seam_holds(mesh, tolerance)
+        holds = seam_holds(*self.three_planes())
         np.testing.assert_array_equal(holds.points, [0, 1, 2])
         self.assertFalse(set(holds.points) & set(holds.corners.ravel()))
+        np.testing.assert_array_equal(holds.pinned, [6, 7, 8])
+        self.assertEqual(holds.line(), "seam holds: 6 border points within tolerance, 3 held, 3 pinned")
+
+    @unittest.skipIf(torch is None, "needs PyTorch")
+    def test_a_point_exclusivity_refuses_a_hold_stays_at_its_start(self):
+        from r3d.appearance_simplify import seam_holds
+
+        # Every point moves; the top plane's, refused their hold, must not.
+        mesh, tolerance = self.three_planes()
+        holds = seam_holds(mesh, tolerance)
+        start, moved, result = self.held_after_moving(mesh, holds)
+        np.testing.assert_array_equal(result[holds.pinned], start[holds.pinned])
+        free = sorted(set(range(len(start))) - set(holds.points) - set(holds.pinned))
+        np.testing.assert_array_equal(result[free], moved[free])
+
+    @unittest.skipIf(torch is None, "needs PyTorch")
+    def test_a_held_point_lies_on_its_pinned_target_where_it_starts(self):
+        from r3d.appearance_simplify import seam_holds
+
+        # The upper plane is held to the lower, whose points are pinned as its targets. With every point moved,
+        # the held ones must land on the target at its start: pinning comes before holding.
+        mesh, tolerance = self.two_planes()
+        holds = seam_holds(mesh, tolerance)
+        self.assertTrue(set(holds.corners.ravel()) <= set(holds.pinned))
+        start, _, result = self.held_after_moving(mesh, holds)
+        np.testing.assert_allclose(result[holds.points],
+                                   (start[holds.corners] * holds.barycentric[..., None]).sum(axis=1))
 
     def test_welded_interior_point_is_not_a_border(self):
         from r3d.appearance_simplify import seam_holds
@@ -205,7 +249,7 @@ class SeamHoldTests(unittest.TestCase):
         mesh = self.mesh()
         holds = seam_holds(mesh, np.array([0.25, 0, 0, 0, 0, 0]))
         points = torch.tensor(mesh.points, requires_grad=True)
-        result = hold_seams(points, holds)
+        result = hold_seams(points, holds, points.detach().clone())
         np.testing.assert_array_equal(result.detach()[0], [0.5, 0.5, 0])
         np.testing.assert_array_equal(points.detach(), mesh.points)
         result[0].sum().backward()
@@ -694,7 +738,7 @@ class PruneAndCostTests(unittest.TestCase):
                                      "--reference", "reference", "--out", "out", *flags])
                 scene.assert_not_called()
 
-    def test_main_without_a_budget_optimises_and_writes_without_pruning(self):
+    def test_main_without_a_budget_optimises_and_keeps_every_triangle(self):
         from r3d import appearance_simplify as appearance
 
         source = SimpleNamespace()
@@ -711,6 +755,8 @@ class PruneAndCostTests(unittest.TestCase):
                     write_mesh=mock.DEFAULT) as calls, mock.patch.dict(sys.modules, {
                         "r3d.reference_render": SimpleNamespace(source_for=source_for)}):
                 calls["optimise"].return_value = (points, rgb, [1.0])
+                calls["coverage"].return_value = np.ones(len(mesh.tris))
+                calls["prune"].side_effect = prune
                 calls["write_mesh"].return_value = len(mesh.tris)
                 appearance.main(["--scene", "scene.toml", "--start", "start.bundle", "--poses", "poses.txt",
                                  "--reference", "reference", "--out", directory,
@@ -718,13 +764,13 @@ class PruneAndCostTests(unittest.TestCase):
                                  "--seam-margin", "0.25"])
             calls["optimise"].assert_called_once()
             self.assertEqual(source_for.call_args.args[1], "card")
-            self.assertEqual(source_for.call_args.kwargs, {"lit": False})
+            self.assertEqual(source_for.call_args.kwargs, {"lit": False, "hide_cards": True, "hidden_materials": set()})
             options = calls["optimise"].call_args.kwargs
             self.assertIs(options["source"], source)
             self.assertEqual(options["seam_margin"], 0.25)
             self.assertEqual((options["surface_weight"], options["surface_margin"]), (10, 0.25))
-            calls["coverage"].assert_not_called()
-            calls["prune"].assert_not_called()
+            calls["coverage"].assert_called_once()
+            self.assertIsNone(calls["prune"].call_args.args[2], "an unbudgeted fit prunes nothing")
             written = calls["write_mesh"].call_args.args
             self.assertEqual(len(written), 3)
             np.testing.assert_array_equal(written[2].points, points)
@@ -741,6 +787,13 @@ class PruneAndCostTests(unittest.TestCase):
         for index in (4, 1, 5):
             self.assertIn(tuple(mesh[2][index]), kept)
         self.assertEqual(len(prune(mesh, shown, 6)[0].tris), 4, "a triangle no view shows was kept")
+
+    def test_an_unbudgeted_fit_keeps_the_triangles_no_view_shows(self):
+        # A probe fit's coverage views miss some faces a camera can see; dropping them opens cracks.
+        mesh = FitMesh(np.zeros((9, 3)), np.zeros((9, 3)), np.arange(18).reshape(6, 3) % 9, np.zeros(6), 8, np.arange(9))
+        pruned, kept = prune(mesh, np.array([0, 50, 3, 0, 900, 7]), None)
+        np.testing.assert_array_equal(pruned.tris, mesh.tris)
+        np.testing.assert_array_equal(kept, np.arange(6))
 
     def test_a_flat_mesh_keeps_each_colour_with_its_triangle(self):
         colours = np.arange(18, dtype=float).reshape(6, 3) / 17.0
@@ -1195,6 +1248,36 @@ class AppearanceFitTests(unittest.TestCase):
         points = {weight: self.gbuffer_fit(rest, rest, source, carved, depth_weight=weight) for weight in (0.0, 10.0)}
         np.testing.assert_allclose(points[0.0][:, 2], 0.5, err_msg="the colour term alone leaves the rest off the surface")
         self.assertLess(np.abs(points[10.0][:, 2]).max(), 0.05)
+
+    def test_held_out_de_is_zero_against_the_meshs_own_render_and_grows_with_a_colour_shift(self):
+        from r3d.appearance_simplify import Renderer, delta_e_total
+
+        card, size = self.card(0.0, half=1.0, rgb=0.4), (48, 40)
+        matrix = projection([0.0, 0.0, 3.0], [0.0, 0.0, -1.0], 24, 20, 0.62, 0.5)
+        target = draw(Renderer(card.tris, card.double, card.vertex_point, size, "cuda"), card.points, card.rgb, matrix)
+        total, pixels = delta_e_total(card, [(matrix, target)], size, (0.0, 0.0, 0.0))
+        self.assertEqual(pixels, size[0] * size[1])
+        self.assertLess(total / pixels, 0.01)
+        shifted, _ = delta_e_total(card._replace(rgb=card.rgb + 0.2), [(matrix, target)], size, (0.0, 0.0, 0.0))
+        self.assertGreater(shifted / pixels, 1.0)
+
+    def test_geometry_views_push_the_rest_behind_the_copy_beside_the_surface_term(self):
+        import torch
+
+        from r3d.fit.gbuffer import reference_buffers
+        from r3d.fit.geometry_views import GeometryViews
+
+        copy = self.card(0.0, half=1.0, rgb=0.2)
+        source = SimpleNamespace(p=copy.points, tri_v=copy.tris)
+        carved = np.ones(len(copy.tris), dtype=bool)
+        size = (48, 40)
+        matrices = [torch.as_tensor(projection([0.0, 0.0, 3.0], [0.0, 0.0, -1.0], 24, 20, 0.62, 0.5),
+                                    dtype=torch.float32, device="cuda")]
+        views = GeometryViews([None], matrices, reference_buffers(source, carved, matrices, [size], "cuda"), size)
+        # The surface term reads its own source reference every step the geometry views add their front loss.
+        points = self.gbuffer_fit(self.card(0.5, half=0.5, rgb=0.2), copy, source, carved, copies=copy,
+                                  front_weight=10.0, geometry_views=views, surface_weight=1e-3, surface_margin=0.25)
+        self.assertLess(points[:, 2].max(), 0.3)
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,8 +1,9 @@
-"""Checks the fit's probe views (r3d/fit/probes.py), the path-first prune and the settle rule that picks a budget
-(r3d/appearance_simplify.py): placement, the inside test on a closed box, the greedy pick, and the ranking."""
+"""Checks probe placement, face selection and the fit's held-out closure gate."""
 
 import contextlib
 import io
+import itertools
+import json
 import pathlib
 import sys
 import tempfile
@@ -16,8 +17,8 @@ try:
     import numpy as np
 
     from r3d import appearance_simplify, reference_set
-    from r3d.appearance_simplify import FitMesh, prune, settle, settled
-    from r3d.fit import probes
+    from r3d.appearance_simplify import FitMesh
+    from r3d.views import probes
     from r3d.geometry import face_normals
 except ImportError:
     np = None
@@ -25,169 +26,142 @@ except ImportError:
 from tests.r3d_env import needs_mitsuba  # noqa: E402
 
 
-def closed_box(half):
-    """A cube of side 2 `half` at the origin, its faces wound outward."""
-    corners = np.array([[x, y, z] for x in (-half, half) for y in (-half, half) for z in (-half, half)], dtype=float)
-    quads = ((0, 1, 3, 2), (4, 6, 7, 5), (0, 4, 5, 1), (2, 3, 7, 6), (0, 2, 6, 4), (1, 5, 7, 3))
-    tris = np.array([tri for a, b, c, d in quads for tri in ((a, b, c), (a, c, d))])
-    return corners, tris
-
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
-class ProbePlacementTests(unittest.TestCase):
-    def test_one_probe_per_cell_stays_inside_its_cell(self):
-        lo, hi, spacing = np.zeros(3), np.array([4.0, 2.0, 1.0]), 1.0
-        points, cell = probes.probe_points(lo, hi, spacing, seed=3)
-        self.assertEqual(len(points), 4 * 2 * 1)
-        self.assertEqual(cell, 1.0)
-        cells = np.floor(points / spacing)
-        self.assertEqual(len({tuple(c) for c in cells}), len(points), "two probes share a cell")
-        offset = points - (cells + 0.5) * spacing
-        self.assertTrue(np.all(np.abs(offset) <= probes.JITTER * spacing))
-        np.testing.assert_array_equal(probes.probe_points(lo, hi, spacing, seed=3)[0], points)
+class ClosureTests(unittest.TestCase):
+    SIZE = (100, 100)
+    PIXELS = SIZE[0] * SIZE[1]
+    START_HOLES = 100
 
-    def test_the_spacing_defaults_to_near_planes_and_widens_under_the_count_cap(self):
-        near = 0.5
-        lo, hi = np.zeros(3), np.full(3, probes.PROBE_SPACING_NEAR_PLANES * near * 2)
-        self.assertEqual(probes.spacing_for(lo, hi, None, near), probes.PROBE_SPACING_NEAR_PLANES * near)
-        self.assertEqual(probes.spacing_for(lo, hi, 7.0, near), 7.0)
-        spacing = probes.spacing_for(lo, hi, 1e-3, near)
-        cells = np.prod(np.maximum(np.ceil((hi - lo) / spacing), 1))
-        self.assertLessEqual(cells, probes.PROBE_COUNT_MAX)
-        self.assertGreater(cells, probes.PROBE_COUNT_MAX / 2, "the spacing widened past what the cap needs")
+    def test_closure_allows_the_limit_and_refuses_one_pixel_more(self):
+        growth = int(appearance_simplify.CLOSURE_GROWTH * self.PIXELS)
+        check = appearance_simplify.check_closure
+        self.assertIn("hole pixels", check(self.START_HOLES, self.START_HOLES + growth, self.PIXELS))
+        check(self.START_HOLES, 0, self.PIXELS)
+        with self.assertRaisesRegex(ValueError, "closure"):
+            check(self.START_HOLES, self.START_HOLES + growth + 1, self.PIXELS)
 
-    def test_greedy_faces_pick_the_largest_gain_first_and_stop_at_the_plateau(self):
-        sets = [np.array([0, 1]), np.arange(10), np.array([9, 10, 11]), np.array([12])]
-        picked, gains = probes.greedy_faces(sets, np.zeros(13, bool), plateau=0.15)
-        self.assertEqual(picked, [1, 2])
-        self.assertEqual(gains, [10, 2], "a face's gain counted triangles an earlier pick shows")
-        seen = np.zeros(13, bool)
-        seen[:10] = True
-        self.assertEqual(probes.greedy_faces(sets, seen)[0], [2, 3], "what the path shows still counted")
-        self.assertEqual(probes.greedy_faces(sets, np.zeros(13, bool), limit=1)[0], [1])
+    @staticmethod
+    def two_triangles():
+        return FitMesh(np.zeros((6, 3)), np.zeros((6, 3)), np.arange(6).reshape(2, 3), np.zeros(2), 8, np.arange(6))
 
+    def stub_fit(self, stack, mesh, views):
+        """Stubs in `stack` what a fit of `mesh` over `views` reads, optimises and reports, each view 10 dE over 4
+        pixels; the tests stub its holes, coverage and output."""
+        for name, value in dict(load_scene=SimpleNamespace(camera=SimpleNamespace(
+                component=SimpleNamespace(background=0))), start_mesh=mesh,
+                load_views=(views, self.SIZE), pose_views=(views, self.SIZE),
+                optimise=(mesh.points, mesh.rgb, [1.0]), delta_e_total=(10.0, 4),
+                stretch_report={
+                    "small": dict(stretch=0, area_growth=0, moved=0),
+                    "rest": dict(stretch=0, area_growth=0, moved=0),
+                    "worst": dict(stretch=[], area_growth=[], moved=[])}).items():
+            stack.enter_context(mock.patch.object(appearance_simplify, name, return_value=value))
 
-@needs_mitsuba
-@unittest.skipIf(np is None, "the r3d environment is not installed")
-class ProbeInsideTests(unittest.TestCase):
-    def setUp(self):
-        from r3d import ray_query
-
-        self.variant = ray_query.VARIANT
-        ray_query.VARIANT = "scalar_rgb"
-        self.addCleanup(setattr, ray_query, "VARIANT", self.variant)
-
-    def test_a_probe_in_a_closed_box_is_dropped_and_one_near_a_wall_moves_off_it(self):
-        from r3d.ray_query import RayQuery
-
-        positions, tris = closed_box(1.0)
-        query, normals = RayQuery(positions, tris, "scalar_rgb"), face_normals(positions, tris)[0]
-        near = 0.1
-        points = np.array([[0.0, 0.0, 0.0], [1.0 + 0.05, 0.0, 0.0], [3.0, 0.0, 0.0]])
-        moved, state = probes.classify(query, normals, points, cell=1.0, near=near)
-        self.assertEqual(state.tolist(), ["inside", "kept", "kept"])
-        self.assertGreater(moved[1, 0], points[1, 0] + near, "the probe near the wall did not move off it")
-        np.testing.assert_array_equal(moved[2], points[2])
-
-    def test_a_cube_face_shows_the_wall_it_faces(self):
-        from r3d.ray_query import RayQuery
-
-        positions, tris = closed_box(1.0)
-        query = RayQuery(positions, tris, "scalar_rgb")
-        poses = probes.cube_poses(np.array([[3.0, 0.0, 0.0]]))
-        sets = probes.shown(query, len(tris), poses, 16, 16, probes.FACE_LENS)
-        facing = face_normals(positions, tris)[0] @ np.array([1.0, 0.0, 0.0]) > 0.5
-        self.assertEqual(set(sets[1].tolist()), set(np.flatnonzero(facing).tolist()), "the -x face missed the wall")
-        self.assertEqual(len(sets[0]), 0, "the +x face, looking away, showed the box")
+    def test_main_checks_the_pruned_fit_before_writing(self):
+        mesh = self.two_triangles()
+        views = [object()]
+        # Unbudgeted (the probe fit) keeps both triangles; a budget of one prunes the never-shown one before the check.
+        for (budget, tris), fitted_holes in itertools.product(((None, 2), ("1", 1)), (self.START_HOLES, self.PIXELS)):
+            with self.subTest(budget=budget, fitted_holes=fitted_holes), tempfile.TemporaryDirectory() as directory:
+                out = pathlib.Path(directory)
+                def write_mesh(*args):
+                    (out / "mesh.bundle").touch()
+                    return len(mesh.tris)
+                with contextlib.ExitStack() as stack:
+                    self.stub_fit(stack, mesh, views)
+                    holes = stack.enter_context(mock.patch.object(appearance_simplify, "hole_pixels",
+                                                                 side_effect=[self.START_HOLES, fitted_holes]))
+                    stack.enter_context(mock.patch.object(appearance_simplify, "coverage",
+                                                         side_effect=[np.array([0, 0]), np.array([1, 0])]))
+                    stack.enter_context(mock.patch.object(appearance_simplify, "write_mesh", write_mesh))
+                    args = [*FitArgumentTests.BASE[:-1], str(out), *FitArgumentTests.held(out), "--closure",
+                            "--coverage-poses", "path.txt", "--coverage-poses", "probes.txt",
+                            *(["--budget", budget] if budget else [])]
+                    if fitted_holes == self.PIXELS:
+                        with self.assertRaisesRegex(ValueError, "closure"):
+                            appearance_simplify.main(args)
+                        self.assertFalse((out / "mesh.bundle").exists())
+                    else:
+                        self.assertEqual(appearance_simplify.main(args), 0)
+                        self.assertTrue((out / "mesh.bundle").exists())
+                    self.assertEqual(holes.call_count, 2)
+                    self.assertIs(holes.call_args_list[0].args[0], mesh)
+                    self.assertEqual(len(holes.call_args_list[1].args[0].tris), tris)
 
 
-@unittest.skipIf(np is None, "the r3d environment is not installed")
-class PathFirstPruneTests(unittest.TestCase):
-    def mesh(self, count):
-        return FitMesh(np.zeros((3 * count, 3)), np.zeros((3 * count, 3)), np.arange(3 * count).reshape(count, 3),
-                       np.zeros(count), 8, np.arange(3 * count))
+    def logged_fit(self, out, *extra):
+        """The log lines of a stubbed fit into `out` with `extra` arguments, and its hole_pixels mock."""
+        mesh = self.two_triangles()
+        with contextlib.ExitStack() as stack:
+            self.stub_fit(stack, mesh, [object(), object()])
+            stack.enter_context(mock.patch.object(appearance_simplify, "write_mesh", return_value=len(mesh.tris)))
+            holes = stack.enter_context(mock.patch.object(appearance_simplify, "hole_pixels", return_value=0))
+            stack.enter_context(mock.patch.object(appearance_simplify, "coverage", return_value=np.array([1, 1])))
+            logged = stack.enter_context(mock.patch.object(appearance_simplify, "log"))
+            self.assertEqual(appearance_simplify.main([*FitArgumentTests.BASE[:-1], str(out), *extra]), 0)
+        return [call.args[0] for call in logged.call_args_list], holes
 
-    def test_one_row_keeps_the_most_shown_and_never_the_unshown(self):
-        shown = np.array([0, 50, 3, 0, 900, 7])
-        _, kept = prune(self.mesh(6), shown, 3)
-        self.assertEqual(kept.tolist(), [1, 4, 5])
-        _, ranked = prune(self.mesh(6), shown[None], 3)
-        self.assertEqual(ranked.tolist(), kept.tolist(), "one ranked row ordered unlike one row")
-        self.assertEqual(len(prune(self.mesh(6), shown, 6)[1]), 4)
+    def test_a_fit_with_held_out_pictures_logs_their_de_and_gates_closure_only_when_asked(self):
+        for closure in (False, True):
+            with self.subTest(closure=closure), tempfile.TemporaryDirectory() as directory:
+                out = pathlib.Path(directory)
+                lines, holes = self.logged_fit(out, *FitArgumentTests.held(out), *(["--closure"] if closure else []))
+                # One held-out set of two views, each (10.0 dE over 4 pixels): a mean of 2.5.
+                self.assertIn("held-out dE76 (fit rasteriser): 2.500 over 2 views", lines)
+                self.assertFalse([line for line in lines if "not measured" in line])
+                self.assertEqual(holes.call_count, 2 if closure else 0)
 
-    def test_what_the_path_shows_outranks_a_larger_probe_only_triangle(self):
-        path = np.array([5, 0, 1, 0])
-        probe = np.array([0, 900, 0, 40])
-        _, kept = prune(self.mesh(4), np.stack([path, probe]), 3)
-        self.assertEqual(kept.tolist(), [0, 1, 2], "a probe-only triangle outranked one the path shows")
-        _, kept = prune(self.mesh(4), np.stack([path, probe]), 4)
-        self.assertEqual(kept.tolist(), [0, 1, 2, 3])
+    def test_a_fit_with_held_out_poses_but_no_pictures_logs_its_de_as_not_measured(self):
+        # A path fit's packed set holds its held-out poses, not their pictures (reference_set.pack_references).
+        with tempfile.TemporaryDirectory() as directory:
+            out = pathlib.Path(directory)
+            lines, holes = self.logged_fit(out, *FitArgumentTests.HELD)
+            self.assertIn("held-out dE76 (fit rasteriser): not measured, no held-out pictures for h.txt", lines)
+            self.assertFalse([line for line in lines if line.startswith("held-out dE76") and "over" in line])
+            self.assertEqual(holes.call_count, 0)
 
+    def test_of_two_held_out_sets_only_the_pictured_one_is_scored_and_the_other_named_not_measured(self):
+        with tempfile.TemporaryDirectory() as directory:
+            out = pathlib.Path(directory)
+            lines, _ = self.logged_fit(out, *FitArgumentTests.held(out), *FitArgumentTests.HELD_UNPICTURED)
+            self.assertIn("held-out dE76 (fit rasteriser): 2.500 over 2 views", lines)
+            self.assertIn("held-out dE76 (fit rasteriser): not measured, no held-out pictures for g.txt", lines)
 
-@unittest.skipIf(np is None, "the r3d environment is not installed")
-class SettleTests(unittest.TestCase):
-    def test_the_budget_settles_where_holes_stop_falling(self):
-        self.assertEqual(settled([1000, 400, 390, 100], 0.05), 1, "settled past the knee")
-        self.assertEqual(settled([1000, 400, 0], 0.05), 2)
-        self.assertEqual(settled([0, 0], 0.05), 0, "a budget with no holes was passed over")
-        self.assertEqual(settled([1000, 500, 250], 0.05), 2, "stopped before the last budget while holes halved")
-        self.assertEqual(settled([7], 0.5), 0)
-        with self.assertRaises(ValueError):
-            settled([], 0.05)
+    def test_closure_without_held_out_pictures_is_refused_before_the_fit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            work = pathlib.Path(directory)
+            for held, named in ((FitArgumentTests.HELD, "h.txt"),
+                                ([*FitArgumentTests.held(work), *FitArgumentTests.HELD_UNPICTURED], "g.txt")):
+                with self.subTest(named=named):
+                    error = io.StringIO()
+                    with contextlib.redirect_stderr(error), self.assertRaises(SystemExit):
+                        appearance_simplify.main([*FitArgumentTests.BASE, *held, "--closure"])
+                    self.assertIn(f"--closure needs held-out pictures; none for {named}\n", error.getvalue())
 
-
-@unittest.skipIf(np is None, "the r3d environment is not installed")
-class SettleSearchTests(unittest.TestCase):
-    """settle() prunes the fit to the budget the held-out holes pick; the hole count is faked per triangle count."""
-
-    COUNT = 10
-
-    def run_settle(self, holes_at, budget, steps, held_out=(("views", "size"),)):
-        mesh = FitMesh(np.zeros((3 * self.COUNT, 3)), np.zeros((3 * self.COUNT, 3)),
-                       np.arange(3 * self.COUNT).reshape(self.COUNT, 3), np.zeros(self.COUNT), 8,
-                       np.arange(3 * self.COUNT))
-        evaluated = []
-
-        def holes(drawn, *_rest):
-            evaluated.append(len(drawn.tris))
-            return holes_at[len(drawn.tris)]
-        with mock.patch.object(appearance_simplify, "hole_pixels", holes):
-            result = settle(mesh, None, np.arange(1, self.COUNT + 1), budget, steps, list(held_out), (0, 0, 0))
-        return result, evaluated
-
-    def test_without_steps_it_prunes_once_to_the_budget_and_does_not_search(self):
-        (mesh, kept, record), evaluated = self.run_settle({7: 5}, 7, None)
-        self.assertEqual((len(mesh.tris), len(kept), evaluated), (7, 7, [7]))
-        self.assertEqual(record, {"budgets": [7], "holes": [5], "budget": 7})
-
-    def test_without_held_out_views_it_prunes_once_and_records_nothing(self):
-        (mesh, kept, record), evaluated = self.run_settle({}, 8, None, held_out=())
-        self.assertEqual((len(mesh.tris), len(kept), record, evaluated), (8, 8, {}, []))
-
-    def test_the_search_tries_each_step_then_the_budget_even_off_the_step(self):
-        holes = {3: 100, 6: 60, 9: 30, 10: 0}
-        (mesh, _kept, record), evaluated = self.run_settle(holes, 10, (3, 0.05))
-        self.assertEqual(evaluated, [3, 6, 9, 10])
-        self.assertEqual(record, {"budgets": [3, 6, 9, 10], "holes": [100, 60, 30, 0], "budget": 10})
-        self.assertEqual(len(mesh.tris), 10)
-
-    def test_it_stops_at_the_plateau_and_returns_the_settled_budget_not_the_last_tried(self):
-        holes = {2: 100, 4: 50, 6: 49, 8: 0, 10: 0}
-        (mesh, kept, record), evaluated = self.run_settle(holes, 10, (2, 0.1))
-        self.assertEqual(evaluated, [2, 4, 6], "went on past the plateau")
-        self.assertEqual(record, {"budgets": [2, 4, 6], "holes": [100, 50, 49], "budget": 4})
-        self.assertEqual((len(mesh.tris), len(kept)), (4, 4), "returned the last budget tried")
-
-    def test_it_stops_when_a_budget_has_no_holes(self):
-        holes = {2: 100, 4: 0, 6: 0, 8: 0, 10: 0}
-        (mesh, _kept, record), evaluated = self.run_settle(holes, 10, (2, 0.1))
-        self.assertEqual((evaluated, len(mesh.tris), record["budget"]), ([2, 4], 4, 4))
+    def test_a_held_out_folder_is_pictured_only_with_a_png_in_it(self):
+        with tempfile.TemporaryDirectory() as directory:
+            folder = pathlib.Path(directory)
+            self.assertFalse(appearance_simplify.pictured(folder / "missing"))
+            self.assertFalse(appearance_simplify.pictured(folder))
+            (folder / "poses.txt").touch()
+            self.assertFalse(appearance_simplify.pictured(folder))
+            (folder / "0000.png").touch()
+            self.assertTrue(appearance_simplify.pictured(folder))
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class FitArgumentTests(unittest.TestCase):
     BASE = ["--scene", "s.toml", "--start", "a.bundle", "--poses", "p.txt", "--reference", "r", "--out", "o"]
     HELD = ["--held-out-poses", "h.txt", "--held-out-reference", "h"]
+    HELD_UNPICTURED = ["--held-out-poses", "g.txt", "--held-out-reference", "g"]
+
+    @staticmethod
+    def held(work):
+        """HELD with its reference a folder in `work` holding a traced picture."""
+        (work / "h").mkdir()
+        (work / "h" / "0000.png").touch()
+        return ["--held-out-poses", "h.txt", "--held-out-reference", str(work / "h")]
 
     def refused(self, *extra):
         error = io.StringIO()
@@ -199,44 +173,46 @@ class FitArgumentTests(unittest.TestCase):
         self.assertIn("--held-out-reference", self.refused("--held-out-poses", "h.txt"))
         self.assertIn("--held-out-reference", self.refused("--held-out-reference", "h"))
 
-    def test_settle_needs_a_budget_held_out_poses_a_step_and_a_share_below_one(self):
-        for name, extra in (("no budget", [*self.HELD, "--settle", "5", "0.1"]),
-                            ("no held-out", ["--budget", "9", "--settle", "5", "0.1"]),
-                            ("step below 1", ["--budget", "9", *self.HELD, "--settle", "0.5", "0.1"]),
-                            ("share 1", ["--budget", "9", *self.HELD, "--settle", "5", "1"]),
-                            ("share negative", ["--budget", "9", *self.HELD, "--settle", "5", "-0.1"])):
-            with self.subTest(name):
-                self.assertIn("--settle needs", self.refused(*extra))
-
-    def test_a_share_of_zero_passes_the_settle_check(self):
-        error = io.StringIO()
-        with contextlib.redirect_stderr(error), self.assertRaises(Exception):
-            appearance_simplify.main([*self.BASE, "--budget", "9", *self.HELD, "--settle", "1", "0"])
-        self.assertNotIn("--settle needs", error.getvalue())
-
-
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class PrepareReferencesTests(unittest.TestCase):
     PROBES = SimpleNamespace(face=8, spacing=1.0)
 
-    def prepare(self, probes, path=None):
+    def prepare(self, settings, path=None, plan=False):
         camera = SimpleNamespace(path=path, region=None, near_z=0.1)
         inputs = SimpleNamespace(scene=lambda: SimpleNamespace(camera=SimpleNamespace(component=camera)),
                                  poses=dict(train_every_ms=1, held_out_every_ms=2, coverage_every_ms=1), size=(4, 4),
-                                 probes=probes, job=lambda: None,
-                                 sets=lambda: reference_set.fit_sets(path is not None, probes is not None, False))
+                                 probes=settings, job=lambda: SimpleNamespace(settings=SimpleNamespace(alpha_keep=None)),
+                                 sets=lambda: reference_set.fit_sets(path is not None, settings is not None))
         rendered = []
         with tempfile.TemporaryDirectory() as directory:
             work = pathlib.Path(directory) / "work"
             # Three path poses split into two training and one held out; three probe faces into one and two.
             path_poses = (4, 4, 1.0, 0.1, [[0.0] * 6] * 3)
-            with mock.patch("r3d.reference_render.render_sets", lambda _inputs, sets: rendered.append(sets)), \
-                 mock.patch("r3d.reference_render.lit_source", lambda *a, **k: SimpleNamespace(p=None, tri_v=None)), \
-                 mock.patch("r3d.fit.probes.select", lambda *a: ([[1.0] * 6], [[2.0] * 6] * 2, {})), \
+            with mock.patch("r3d.reference_render.render_sets", autospec=True,
+                            side_effect=lambda _inputs, sets: rendered.append(sets)), \
+                 mock.patch("r3d.mesh_source.load_source", lambda *a, **k: SimpleNamespace(p=None, tri_v=None)), \
+                 mock.patch("r3d.views.probes.select", lambda *a, **k: probes.ProbeViews([[1.0] * 6], [[2.0] * 6] * 2, {})), \
                  mock.patch("r3d.mesh_source.camera_path_poses", lambda *a, **k: path_poses):
-                count = reference_set.prepare_references(inputs, work)
+                if plan:
+                    from bake import produce
+
+                    with mock.patch("r3d.reference_set.reference_inputs", return_value=inputs):
+                        count = produce.reference_rays(SimpleNamespace(job=None, scene=None), work)
+                else:
+                    count = reference_set.prepare_references(inputs, work)
             written = sorted(p.name for p in work.iterdir())
         return count, written, [[(p.name, r.name) for p, r in sets] for sets in rendered]
+
+    def test_plan_keeps_the_real_preparation_files_and_does_not_render(self):
+        from bake import produce
+
+        for path in (None, object()):
+            with self.subTest(path=path):
+                _, written, _ = self.prepare(self.PROBES, path)
+                rays, planned, rendered = self.prepare(self.PROBES, path, plan=True)
+                self.assertEqual(planned, sorted([*written, produce.PLAN_MANIFEST]))
+                self.assertEqual(rendered, [])
+                self.assertGreater(rays, 0)
 
     def test_without_a_path_only_the_probe_files_are_written_and_rendered_and_counted(self):
         count, written, rendered = self.prepare(self.PROBES)
@@ -250,6 +226,91 @@ class PrepareReferencesTests(unittest.TestCase):
         self.assertEqual(count, 2 + 1)
         self.assertEqual([name for name, _ in rendered[0]],
                          ["train.txt", "train_landscape.txt", "probes.txt", "held_out.txt", "probes_held_out.txt"])
+
+    def test_the_probe_files_hold_the_faces_select_returns_at_its_face_lens(self):
+        camera = SimpleNamespace(region=None, near_z=0.1)
+        inputs = SimpleNamespace(scene=lambda: SimpleNamespace(camera=SimpleNamespace(component=camera)),
+                                 probes=self.PROBES,
+                                 job=lambda: SimpleNamespace(settings=SimpleNamespace(alpha_keep=None)))
+        views = probes.ProbeViews([[1.0] * 6], [[2.0] * 6] * 2, {"probes": 3}, probes.FACE_LENS / 2)
+        with tempfile.TemporaryDirectory() as directory, \
+             mock.patch("r3d.mesh_source.load_source", lambda *a, **k: SimpleNamespace(p=None, tri_v=None)), \
+             mock.patch("r3d.views.probes.select", lambda *a, **k: views):
+            work = pathlib.Path(directory)
+            count = reference_set.probe_poses(inputs, work, None)
+            for (poses, _), faces in ((reference_set.PROBE_TRAINING, views.training),
+                                      (reference_set.PROBE_HELD_OUT, views.held_out)):
+                self.assertEqual((work / poses).read_text(),
+                                 reference_set.poses_text(self.PROBES.face, self.PROBES.face, views.face_lens,
+                                                          camera.near_z, faces))
+            self.assertEqual(json.loads((work / reference_set.PROBE_RECORD).read_text()), views.record)
+        self.assertEqual(count, len(views.training))
+
+
+    def test_an_alpha_masked_import_traces_probes_through_cut_texels_of_the_unmasked_source(self):
+        from r3d.light import AlphaTest
+
+        source = SimpleNamespace(p="positions", tri_v="triangles", textures=[])
+        for keep_alpha in (None, 0.5):
+            camera = SimpleNamespace(region=None, near_z=0.1)
+            inputs = SimpleNamespace(scene=lambda: SimpleNamespace(camera=SimpleNamespace(component=camera)),
+                                     probes=self.PROBES,
+                                     job=lambda: SimpleNamespace(settings=SimpleNamespace(alpha_keep=keep_alpha)))
+            selected = {}
+
+            def select(*args, **kwargs):
+                selected.update(args=args, **kwargs)
+                return probes.ProbeViews([], [], {})
+
+            with self.subTest(keep_alpha=keep_alpha), tempfile.TemporaryDirectory() as directory, \
+                 mock.patch("r3d.mesh_source.load_source", return_value=source), \
+                 mock.patch("r3d.ray_query.RayQuery", lambda *a, **k: SimpleNamespace(args=a, **k)), \
+                 mock.patch("r3d.views.probes.select", select):
+                reference_set.probe_poses(inputs, pathlib.Path(directory), None)
+                self.assertEqual(selected["args"][:2], ("positions", "triangles"), "the source was masked first")
+                query = selected["query"]
+                if keep_alpha is None:
+                    self.assertIsNone(query, "an import without alpha_mask got a cut-out query")
+                    continue
+                self.assertEqual(query.args, ("positions", "triangles"))
+                self.assertIsInstance(query.hit_filter, AlphaTest)
+                self.assertEqual(query.hit_filter.keep_alpha, keep_alpha)
+
+
+@needs_mitsuba
+@unittest.skipIf(np is None, "the r3d environment is not installed")
+class ProbeSourceTests(unittest.TestCase):
+    def test_an_alpha_masked_obj_keeps_its_cut_card_for_the_probes_and_finds_its_cut_texture(self):
+        from PIL import Image
+        from r3d import ray_query
+
+        self.addCleanup(setattr, ray_query, "VARIANT", ray_query.VARIANT)
+        ray_query.VARIANT = "scalar_rgb"
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            pixels = np.full((4, 4, 4), 255, dtype=np.uint8)
+            pixels[..., 3] = 0
+            Image.fromarray(pixels).save(root / "leaf.png")
+            (root / "card.mtl").write_text("newmtl wall\nKd 1 1 1\nnewmtl leaf\nKd 1 1 1\nmap_Kd leaf.png\n")
+            (root / "card.obj").write_text("".join(f"v {x} {y} {z}\n" for z in (0, 1) for x, y in
+                                                   ((-1, -1), (1, -1), (1, 1), (-1, 1))) +
+                                           "vt 0 0\nvt 1 0\nvt 1 1\nvt 0 1\n"
+                                           "usemtl wall\nf 1/1 2/2 3/3 4/4\nusemtl leaf\nf 5/1 6/2 7/3 8/4\n")
+            camera = SimpleNamespace(region=None, near_z=0.1)
+            settings = SimpleNamespace(source={"path": root / "card.obj"}, alpha_keep=0.5)
+            inputs = SimpleNamespace(scene=lambda: SimpleNamespace(camera=SimpleNamespace(component=camera)),
+                                     probes=SimpleNamespace(face=8, spacing=1.0),
+                                     job=lambda: SimpleNamespace(settings=settings))
+            selected = {}
+
+            def select(positions, tris, *args, **kwargs):
+                selected.update(tris=tris, **kwargs)
+                return probes.ProbeViews([], [], {})
+
+            with mock.patch("r3d.views.probes.select", select):
+                reference_set.probe_poses(inputs, root, None)
+        self.assertEqual(len(selected["tris"]), 4, "the probes' source lost the masked card")
+        np.testing.assert_array_equal(selected["query"].hit_filter.tested, [False, True])
 
 
 if __name__ == "__main__":

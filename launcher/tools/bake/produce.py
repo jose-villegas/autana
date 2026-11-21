@@ -10,6 +10,7 @@ too, and packs what the fit reads. A run made `again` renders each set once more
 nothing has read for REFERENCE_KEEP_DAYS is deleted.
 """
 
+import contextlib
 import copy
 import importlib.metadata
 import inspect
@@ -32,6 +33,7 @@ POSE_LINE = "pose "
 # A reference shard's record: the CPU vendor that traced it, and each set it rendered a share of, by folder, with
 # its pose count. A joined set keeps it, so its row names the vendor that traced it, not the one that packed it.
 SHARD_MANIFEST = "shard.json"
+PLAN_MANIFEST = "plan.json"
 DONE = "done"
 PRUNED = ".pruned"
 REFERENCE_KEEP_DAYS = 14
@@ -255,48 +257,60 @@ def shard_renderer(render_sets, shard, count, rendered_sets):
     return render
 
 
-def reference_rays(bake):
+def reference_rays(bake, out=None):
     """The primary rays `bake`'s reference set traces: every pose's width x height x samples², read from the poses
-    files the reference stage writes, with its renderer swapped for one that counts and traces nothing."""
+    files the reference stage writes, with its renderer swapped for one that counts and traces nothing.
+    Given `out`, keeps those files and the render calls there as a plan for reference_shard."""
     from r3d import reference_render
     from r3d.poses import parse_pose_rows
     from r3d.reference_set import prepare_references, reference_inputs
 
-    rays = 0
+    rays, calls = 0, []
     # The samples render_sets traces at when prepare_references names none.
     default = inspect.signature(reference_render.render_sets).parameters["samples"].default
 
     def count(inputs, sets, samples=default):
         nonlocal rays
+        calls.append({"sets": [(pathlib.Path(poses).name, pathlib.Path(folder).name) for poses, folder in sets],
+                      "samples": samples})
         for poses, _ in sets:
             width, height, _lens, _near, posed = parse_pose_rows(pathlib.Path(poses).read_text())
             rays += len(posed) * width * height * samples * samples
 
     render_sets, reference_render.render_sets = reference_render.render_sets, count
     try:
-        with tempfile.TemporaryDirectory() as work:
-            prepare_references(reference_inputs(bake.job, bake.scene), pathlib.Path(work))
+        with contextlib.nullcontext(out) if out is not None else tempfile.TemporaryDirectory() as work:
+            work = pathlib.Path(work)
+            prepare_references(reference_inputs(bake.job, bake.scene), work)
+            if out is not None:
+                (work / PLAN_MANIFEST).write_text(json.dumps(calls, sort_keys=True))
     finally:
         reference_render.render_sets = render_sets
     return rays
 
 
-def reference_shard(bake, out, shard, count):
-    """Shard `shard` of `count` of `bake`'s reference set into the folder `out`: every poses file, and the
-    references of that shard's poses."""
+def reference_shard(bake, out, shard, count, plan):
+    """Shard `shard` of `count` of `bake`'s reference set into `out`, copying the plan's files byte for byte and
+    rendering only its poses. Selection runs only in the plan job."""
     from r3d import reference_render
-    from r3d.reference_set import prepare_references, reference_inputs
+    from r3d.reference_set import reference_inputs
 
-    # prepare_references reads render_sets from its module when called; the swap keeps the reference stage's code,
-    # and so its key, as it is.
-    render_sets, rendered_sets = reference_render.render_sets, {}
-    reference_render.render_sets = shard_renderer(render_sets, shard, count, rendered_sets)
-    try:
-        prepare_references(reference_inputs(bake.job, bake.scene), pathlib.Path(out))
-    finally:
-        reference_render.render_sets = render_sets
+    folder = pathlib.Path(plan) / bake.output
+    if not (folder / PLAN_MANIFEST).is_file():
+        raise keys.BakeMissing(f"{bake.output}: reference plan lacks this set: {folder}")
+    calls = json.loads((folder / PLAN_MANIFEST).read_text())
+    out = pathlib.Path(out)
+    out.mkdir(parents=True, exist_ok=True)
+    for path in folder.iterdir():
+        if path.is_file() and path.name != PLAN_MANIFEST:
+            shutil.copyfile(path, out / path.name)
+    rendered_sets = {}
+    render = shard_renderer(reference_render.render_sets, shard, count, rendered_sets)
+    inputs = reference_inputs(bake.job, bake.scene)
+    for call in calls:
+        render(inputs, [(out / poses, out / target) for poses, target in call["sets"]], call["samples"])
     manifest = {"cpu_vendor": keys.cpu_vendor(), "sets": rendered_sets}
-    (pathlib.Path(out) / SHARD_MANIFEST).write_text(json.dumps(manifest, sort_keys=True))
+    (out / SHARD_MANIFEST).write_text(json.dumps(manifest, sort_keys=True))
 
 
 def join_reference_shards(bake, cache, shards):
@@ -380,6 +394,16 @@ def produce(bake, cache, lock=None, blender=None, fresh_references=None):
     given `fresh_references`, a run's own folder, renders its set there (reference_set)."""
     if bake.kind == "blend":
         return produce_blend(bake, cache, blender)
+    if bake.kind == "sh_probes":
+        check_environment(("sh_probes",))
+        from r3d.sh_probe_bake import bake as bake_probes
+        job = bake.job
+        if keys.is_blend(job.settings):
+            job = with_source(job, export_file(job.settings, lock or {}, cache))
+        with tempfile.TemporaryDirectory() as work:
+            target = pathlib.Path(work) / bake.output
+            target.write_bytes(bake_probes(job, bake.scene))
+            return record(bake, target, cache)
     if bake.kind == "sound":
         check_environment(("sound",))
         return produce_sound(bake, cache)

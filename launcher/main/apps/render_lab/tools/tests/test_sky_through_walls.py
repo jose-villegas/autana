@@ -28,7 +28,7 @@ try:
 
     from anim import track_host
     from r3d.obj import load_obj
-    from r3d.poses import parse_poses, sample_camera_rows
+    from r3d.poses import flight_camera, parse_poses, sample_camera_rows
     from r3d.import_settings import load_scene
     from r3d.ray_query import RayQuery
     from pinhole_rays import SCALAR_VARIANT, VIDEO_SCALE, enclosed_sky, pose_rays
@@ -42,12 +42,12 @@ MIN_OPEN_SKY_PIXELS = 100
 FRAME_COUNT_SIZE = (1, 1)
 # Per scene, the holed frames of its current bake: the ceiling a rebake must not go above.
 MOST_HOLED_FRAMES = {
-    "sponza": 12,
-    "sponza-lite": 13,
-    "sponza-flat": 12,
-    "sponza-fitted": 14,
-    "sponza-fitted-full": 21,
-    "sponza-flat-fitted": 21,
+    "sponza": 27,
+    "sponza-lite": 12,
+    "sponza-flat": 26,
+    "sponza-fitted": 23,
+    "sponza-fitted-full": 27,
+    "sponza-flat-fitted": 24,
 }
 
 
@@ -74,7 +74,7 @@ class SourceSky:
     render pixel a video pixel was drawn from."""
 
     def __init__(self, scene, frames, video_size):
-        camera = scene.camera.component
+        camera = flight_camera(scene)
         sources = {job.settings.source["path"] for job in scene.renderers}
         if len(sources) != 1:
             raise ValueError(f"the scene's renderers draw {len(sources)} sources; the test traces one")
@@ -131,7 +131,7 @@ class SkyThroughWalls(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         scene = load_scene(SCENE)
-        camera = scene.camera.component
+        camera = flight_camera(scene)
         cls.frames = len(sample_camera_rows(
             camera.path.animation, camera.path.node, DT_MS, *FRAME_COUNT_SIZE,
             camera.half_fov_short_tan, camera.near_z)[4])

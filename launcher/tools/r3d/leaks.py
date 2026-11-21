@@ -2,7 +2,7 @@
 
 A source built from pieces that only overlap is not one surface: wherever a simplified piece moves off its source,
 at a border or across a curve, the piece behind may no longer cover the gap. `LeakProbes` looks at the source from
-probes spread through the camera's region (fit/probes.py's placement), each through six cube faces, and from
+probes spread through the camera's region (views/probes.py's placement), each through six cube faces, and from
 `path` views when given. In a view, the pixels where a simplified mesh shows sky form connected
 regions; a region with no pixel of the source's own sky is a hole. `pins` answers each hole with one source vertex
 to lock: the vertex of the source triangles seen through the hole that lies farthest from the simplified surface,
@@ -14,7 +14,7 @@ break the pass's budget.
 import numpy as np
 from scipy import ndimage
 
-from r3d.fit import probes
+from r3d.views import probes
 from r3d.geometry import face_normals, nearest_triangles, triangle_search
 from r3d.poses import camera_rays
 from r3d.ray_query import BATCH, RayQuery
@@ -29,7 +29,7 @@ ROUNDS = 24
 
 class LeakProbes:
     """Views of a source mesh: cube faces from probes in `region` ((lo, hi), or the source's bounds when None),
-    then the `path` views ((width, height, lens, poses) as fit/probes.py's select takes them, or None)."""
+    then the `path` views ((width, height, lens, poses) as views/probes.py's select takes them, or None)."""
 
     def __init__(self, positions, tris, region, near, path=None):
         self.positions, self.tris = np.asarray(positions, dtype=float), np.asarray(tris)

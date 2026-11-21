@@ -183,19 +183,19 @@ Bistro along its camera path:
 
 ![Bistro's counts along its path](../../images/render/cull-bistro-counts.png)
 
-<!-- generated: cull-bistro sha256=f4dd1d57ade09dfce7df5b5534545f565bd90fc504ddeec764dd2d92183e9e5e -->
+<!-- generated: cull-bistro sha256=d472e1a1e935dcf07ffba5db79e1dd6d9cec764b384b8d66a2115152af1896fb -->
 | Per frame, path mean | Bistro |
 |---|---|
-| Nodes visited / cut | 165 / 33 |
-| Clusters tested / kept | 467 / 350 |
-| Kept clusters: nothing set up / hidden / drawn | 38 / 138 / 173 |
-| Triangles submitted | 6988 |
-| Submitted triangles behind the near plane | 65 (1 %) |
-| Submitted triangles clipped | 59 (1 %) |
-| Submitted triangles miss every pixel centre | 1939 (28 %) |
-| Submitted triangles facing away | 1522 (22 %) |
-| Submitted triangles set up | 3403 (49 %) |
-| Submitted triangles covering pixels | 1584 (23 %) |
+| Nodes visited / cut | 238 / 43 |
+| Clusters tested / kept | 654 / 480 |
+| Kept clusters: nothing set up / hidden / drawn | 66 / 208 / 207 |
+| Triangles submitted | 9943 |
+| Submitted triangles behind the near plane | 70 (1 %) |
+| Submitted triangles clipped | 70 (1 %) |
+| Submitted triangles miss every pixel centre | 3096 (31 %) |
+| Submitted triangles facing away | 2254 (23 %) |
+| Submitted triangles set up | 4454 (45 %) |
+| Submitted triangles covering pixels | 1633 (16 %) |
 <!-- /generated: cull-bistro -->
 
 Sponza's fitted full bake along its flythrough:
@@ -206,19 +206,19 @@ Sponza's fitted full bake along its flythrough:
 
 ![Sponza's counts along its path](../../images/render/cull-sponza-counts.png)
 
-<!-- generated: cull-sponza sha256=6d75a42e58931861f686e9e348cd38c683eb5945f32467d5c29f127ab8bd1b98 -->
+<!-- generated: cull-sponza sha256=23873b7a524e8c7ea448ea1a410ce3e0fea961b5c3c728cfb804bc21da237bcf -->
 | Per frame, path mean | Sponza |
 |---|---|
-| Nodes visited / cut | 167 / 38 |
-| Clusters tested / kept | 371 / 293 |
-| Kept clusters: nothing set up / hidden / drawn | 19 / 50 / 224 |
-| Triangles submitted | 7328 |
-| Submitted triangles behind the near plane | 87 (1 %) |
-| Submitted triangles clipped | 67 (1 %) |
-| Submitted triangles miss every pixel centre | 1715 (23 %) |
-| Submitted triangles facing away | 754 (10 %) |
-| Submitted triangles set up | 4706 (64 %) |
-| Submitted triangles covering pixels | 2537 (35 %) |
+| Nodes visited / cut | 172 / 39 |
+| Clusters tested / kept | 446 / 348 |
+| Kept clusters: nothing set up / hidden / drawn | 24 / 61 / 263 |
+| Triangles submitted | 8782 |
+| Submitted triangles behind the near plane | 68 (1 %) |
+| Submitted triangles clipped | 65 (1 %) |
+| Submitted triangles miss every pixel centre | 2106 (24 %) |
+| Submitted triangles facing away | 1219 (14 %) |
+| Submitted triangles set up | 5324 (61 %) |
+| Submitted triangles covering pixels | 2858 (33 %) |
 <!-- /generated: cull-sponza -->
 
 ## What a cluster and a triangle cost

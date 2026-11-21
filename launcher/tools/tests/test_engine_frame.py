@@ -27,14 +27,14 @@ ORIGIN = (0.0, 0.0, 0.0)
 MIRROR = (1.0, 1.0, -1.0, 1.0)
 
 
-def mesh_entry(point=POINT, points=None):
+def mesh_entry(point=POINT, points=None, position_scale=1):
     points = [point] if points is None else points
     positions = b"".join(POSITION.pack(*p) for p in points)
     colors_at = mesh_asset.BLOB_HEADER.size + len(positions) + (-len(positions) % 4)
     colors = bytes([255] * len(points) * 3)
     cluster_at = colors_at + len(colors) + (-len(colors) % 4)
     node_at = cluster_at + len(points) * mesh_asset.CLUSTER.size
-    header = mesh_asset.BLOB_HEADER.pack(len(points), 0, len(points), len(points), 1, mesh_asset.BLOB_HEADER.size,
+    header = mesh_asset.BLOB_HEADER.pack(len(points), 0, len(points), len(points), position_scale, mesh_asset.BLOB_HEADER.size,
                                         colors_at, 0, cluster_at, node_at, 0)
     boxes = [(p[0] - 1, p[1] - 1, p[2], p[0] + 2, p[1] + 2, p[2] + 1) for p in points]
     cluster = b"".join(mesh_asset.CLUSTER.pack(i, 1, 0, 0, *box, 0) for i, box in enumerate(boxes))
