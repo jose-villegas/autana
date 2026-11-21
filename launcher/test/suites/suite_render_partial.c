@@ -75,6 +75,7 @@ open_pair(bool partial) {
     TEST_ASSERT_NOT_NULL(pair);
     for (int k = 0; k < 2; k++) {
         pair->settings[k] = RENDER_SETTINGS_DEFAULT;
+        pair->settings[k].settle.frame_us = 0; /* Compare live redraws without refinement. */
         pair->settings[k].partial_redraw = k == 0 && partial;
         pair->context[k] = RENDER_CONTEXT_DEFAULT;
         render_context_set_scale(&pair->context[k], 100);

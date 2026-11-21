@@ -148,7 +148,8 @@ test_the_default_is_every_setting_on_as_the_raster_drew_before(void) {
                                            .hysteresis_px = (RENDER_SETTINGS_DEFAULT.anim.hysteresis_px)},
                                   .texture = RENDER_SETTINGS_DEFAULT.texture,
                                   /* Small fill keeps the smooth picture exact, as the camera's default did. */
-                                  .small_fill = SMALL_FILL_SMOOTH};
+                                  .small_fill = SMALL_FILL_SMOOTH,
+                                  .settle = RENDER_SETTINGS_DEFAULT.settle};
     assert_settings(&on, &RENDER_SETTINGS_DEFAULT);
     const render_settings_t bare = raster_settings(&r->raster);
     assert_settings(&on, &bare);
@@ -395,7 +396,9 @@ test_a_packs_render_entry_reads_every_field(void) {
                                     RENDER_TEXTURE_LEVEL_MAX,
                                     SMALL_FILL_CEILING_MAX,
                                     SMALL_FILL_GATE_MAX,
-                                    SMALL_FILL_DITHER};
+                                    SMALL_FILL_DITHER,
+                                    RENDER_SETTINGS_DEFAULT.settle.frame_us,
+                                    RENDER_SETTLE_HOLD_MIN};
     render_settings_t read;
     TEST_ASSERT_EQUAL(ASSET_OK, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
     TEST_ASSERT_FALSE(read.cull);
@@ -416,17 +419,20 @@ test_a_packs_render_entry_reads_every_field(void) {
     TEST_ASSERT_EQUAL_INT(SMALL_FILL_CEILING_MAX, read.small_fill.ceiling);
     TEST_ASSERT_EQUAL_INT(SMALL_FILL_GATE_MAX, read.small_fill.gate);
     TEST_ASSERT_EQUAL_INT(SMALL_FILL_DITHER, read.small_fill.style);
+    TEST_ASSERT_EQUAL_INT(RENDER_SETTINGS_DEFAULT.settle.frame_us, read.settle.frame_us);
+    TEST_ASSERT_EQUAL_INT(RENDER_SETTLE_HOLD_MIN, read.settle.hold_frames);
 }
 
 /* Rows by place: the lod blend pair, then the anim fields (mid_px, far_px, mid_every, far_every, hysteresis_px),
  * the texture fields (divide_px, affine_bend, affine_level, far_level), then the small fill (ceiling, gate, style). */
 enum {
+    SETTLE_ROWS = 2,
     SMALL_FILL_ROWS = 3,
     TEXTURE_ROWS = 4,
     ANIM_ROWS = 5,
-    BLEND_ROW = FIELDS - SMALL_FILL_ROWS - TEXTURE_ROWS - ANIM_ROWS - 2,
+    BLEND_ROW = FIELDS - SETTLE_ROWS - SMALL_FILL_ROWS - TEXTURE_ROWS - ANIM_ROWS - 2,
     BLEND_PX_ROW,
-    MID_PX_ROW = FIELDS - SMALL_FILL_ROWS - TEXTURE_ROWS - ANIM_ROWS,
+    MID_PX_ROW = FIELDS - SETTLE_ROWS - SMALL_FILL_ROWS - TEXTURE_ROWS - ANIM_ROWS,
     FAR_PX_ROW,
     MID_EVERY_ROW,
     FAR_EVERY_ROW,
@@ -438,6 +444,8 @@ enum {
     CEILING_ROW,
     GATE_ROW,
     STYLE_ROW,
+    SETTLE_FRAME_ROW,
+    SETTLE_HOLD_ROW,
 };
 
 /* Rows of zeros but for the anim intervals, whose least is RENDER_ANIM_EVERY_MIN. */
@@ -446,6 +454,7 @@ zero_rows(int16_t values[FIELDS]) {
     memset(values, 0, sizeof(int16_t) * FIELDS);
     values[MID_EVERY_ROW] = RENDER_ANIM_EVERY_MIN;
     values[FAR_EVERY_ROW] = RENDER_ANIM_EVERY_MIN;
+    values[SETTLE_HOLD_ROW] = RENDER_SETTLE_HOLD_MIN;
 }
 
 static void
@@ -471,6 +480,7 @@ static void
 test_anim_pixel_ranges_refuse_negative_and_above_max(void) {
     int16_t values[FIELDS] = {0};
     values[MID_EVERY_ROW] = values[FAR_EVERY_ROW] = RENDER_ANIM_EVERY_MIN;
+    values[SETTLE_HOLD_ROW] = RENDER_SETTLE_HOLD_MIN;
     values[BLEND_PX_ROW] = STEP;
     const int rows[] = {MID_PX_ROW, FAR_PX_ROW, HYSTERESIS_PX_ROW};
     render_settings_t read;
@@ -600,7 +610,8 @@ test_an_app_starts_with_its_packs_settings_and_without_one_the_default(void) {
     int16_t values[FIELDS];
     zero_rows(values);
     values[BLEND_PX_ROW] = STEP;
-    const render_settings_t off = {.lod.blend_px = 1.0F,
+    const render_settings_t off = {.settle.hold_frames = RENDER_SETTLE_HOLD_MIN,
+                                   .lod.blend_px = 1.0F,
                                    .anim = {.mid_every = RENDER_ANIM_EVERY_MIN, .far_every = RENDER_ANIM_EVERY_MIN}};
     void* raw = NULL;
     asset_pack_t opened;

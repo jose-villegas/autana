@@ -21,6 +21,7 @@
 #include "apps/render_lab/tests/render_lab_test.h"
 #include "core/tune.h"
 #include "frame/test_frame.h"
+#include "frame_profile.h"
 #include "lab/test/lab_perf_quarters.h"
 #include "render/context/render_context.h"
 #include "render/record/frame_record.h"
@@ -146,6 +147,8 @@ static const stress_goal_t stress_goals[] = {
     {"stress-small-off", "landscape", "default", {0, 0, 0, 0, 0}, {0, 0}},
     {"stress-stack-skip", "portrait", "default", {0, 0, 0, 0, 0}, {0, 0}},
     {"stress-stack-skip", "landscape", "default", {0, 0, 0, 0, 0}, {0, 0}},
+    {"stress-settle", "portrait", "default", {0, 0, 0, 0, 0}, {0, 0}},
+    {"stress-settle", "landscape", "default", {0, 0, 0, 0, 0}, {0, 0}},
     {"stress-carved-blend", "portrait", "default", {0, 0, 0, 0, 0}, {0, 0}},
     {"stress-carved-blend", "landscape", "default", {0, 0, 0, 0, 0}, {0, 0}},
 };
@@ -249,10 +252,13 @@ test_stress_stages(void) {
     memcpy(sampled, stress_perf_stages, sizeof stress_perf_stages);
     sampled[STRESS_PERF_STAGES] = STRESS_FLAP_STAGE_NAME;
     int64_t sums[STRESS_PERF_SAMPLED_STAGES] = {0};
+    const int draws = params->hold_camera ? RENDER_SETTINGS_DEFAULT.settle.hold_frames + RENDER_SETTLE_BANDS
+                                          : FRAME_PROFILE_REPLAY_DRAWS;
     for (int i = 0; i < params->perf_poses; i++) {
         int64_t stage_us[STRESS_PERF_SAMPLED_STAGES];
         render_lab_test_replay_pose(TAG, camera, duration_ms, (int32_t)stress_pose_ms(params, duration_ms, i),
-                                    preset->key, quarter->name, sampled, STRESS_PERF_SAMPLED_STAGES, stage_us, dt_ms);
+                                    preset->key, quarter->name, sampled, STRESS_PERF_SAMPLED_STAGES, stage_us, dt_ms,
+                                    draws);
         for (int stage = 0; stage < STRESS_PERF_SAMPLED_STAGES; stage++) {
             sums[stage] += stage_us[stage];
         }

@@ -401,6 +401,9 @@ can_generate(render_context_t* c, const render_view_t* view) {
 /* The kept frame warped to `view` into the framegen target, which compose shows. */
 bool
 render_context_generate(render_context_t* c, const render_view_t* view) {
+    render_settle_forget(&c->settle);
+    c->frame.settle_us = 0;
+    c->frame.settled_rows = 0;
     if (!c->kept) {
         return false;
     }
@@ -479,6 +482,8 @@ static __attribute__((noinline)) void
 begin_draw(render_context_t* c) {
     c->frame.generated = false;
     c->frame.unchanged = false;
+    c->frame.settle_us = 0;
+    c->frame.settled_rows = 0;
     c->kept = false;
     if (c->drawn_in_row < FRAMEGEN_RETRY_DRAWN) {
         c->drawn_in_row++;
@@ -554,6 +559,7 @@ static void
 draw_timed(render_context_t* c, const render_view_t* view) {
     raster_t* r = &c->raster;
     render_partial_forget(&c->partial);
+    render_settle_forget(&c->settle);
     const int64_t began_us = timing_now_us();
     if (c->policy == RENDER_PREDICTED) {
         /* Culled once: the census prices the frame and the draw reuses its list. */
@@ -571,6 +577,44 @@ draw_timed(render_context_t* c, const render_view_t* view) {
         c->frame.stats = raster_draw(r, view);
     }
     c->frame.draw_us = (int32_t)(timing_now_us() - began_us);
+}
+
+static __attribute__((noinline)) bool
+settle(render_context_t* c, const render_view_t* view, bool held, render_rows_t live) {
+    raster_t* r = &c->raster;
+    if (!held || c->drawn_settings.settle.frame_us <= 0 || !render_settle_refines(&c->drawn_settings)) {
+        render_settle_forget(&c->settle);
+        return false;
+    }
+    render_settle_age(&c->settle, r->height, live);
+    render_rows_t rows = render_settle_next(&c->settle, r->height, c->drawn_settings.settle);
+    if (rows.first == rows.end) {
+        return false;
+    }
+    c->settle_settings = render_settle_quality(&c->drawn_settings);
+    const bool picks_levels = r->picks_levels;
+    r->settings = &c->settle_settings;
+    r->picks_levels = false;
+    r->first_row = rows.first;
+    r->end_row = rows.end;
+    const int64_t began_us = timing_now_us();
+    (void)raster_draw(r, view);
+    c->frame.settle_us = (int32_t)(timing_now_us() - began_us);
+    r->settings = &c->drawn_settings;
+    r->picks_levels = picks_levels;
+    if (raster_drew_every_row(r)) {
+        rows = (render_rows_t){0, r->height};
+    }
+    render_settle_done(&c->settle, r->height, rows, c->frame.settle_us);
+    c->frame.settled_rows = rows.end - rows.first;
+    if (live.first < live.end) {
+        rows.first = mathi_min(rows.first, live.first);
+        rows.end = mathi_max(rows.end, live.end);
+    }
+    r->first_row = rows.first;
+    r->end_row = rows.end;
+    c->frame.unchanged = false;
+    return true;
 }
 
 /* Records the drawn frame so the next one can reuse it. Not inlined: a leaf
@@ -617,7 +661,11 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
         const int64_t began_us = timing_now_us();
         const bool drawn = draw_fixed(c, view);
         c->frame.draw_us = (int32_t)(timing_now_us() - began_us);
-        if (!drawn) {
+        const render_rows_t live = !drawn                     ? (render_rows_t){0, 0}
+                                   : raster_drew_every_row(r) ? (render_rows_t){0, r->height}
+                                                              : (render_rows_t){r->first_row, r->end_row};
+        const bool settled = settle(c, view, held, live);
+        if (!drawn && !settled) {
             return true;
         }
     } else {

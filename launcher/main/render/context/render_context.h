@@ -29,6 +29,7 @@ typedef struct checkpoint checkpoint_t;
 #include "render/render_view.h"
 #include "render/resolution/resolution.h"
 #include "render/settings/render_settings.h"
+#include "render/settle/render_settle.h"
 
 /* The share of the destination a frame draws at until set. */
 #define RENDER_CONTEXT_DEFAULT_SCALE_PERCENT 50
@@ -51,6 +52,8 @@ typedef struct {
     int width, height;
     raster_stats_t stats;
     int32_t draw_us, upscale_us;
+    int32_t settle_us;
+    int settled_rows;
     int32_t predicted_us;
     bool generated; /* warped from the last drawn frame, not drawn */
     bool unchanged; /* partial redraw: nothing changed, nothing drawn or composed */
@@ -113,6 +116,8 @@ typedef struct {
     bool paying;          /* the last verdict: a generated frame costs less than a drawn one */
     render_view_t kept_view;
     framegen_target_t framegen;
+    render_settle_t settle;
+    render_settings_t settle_settings;
     render_partial_t partial; /* render/partial: rows redrawn on a still camera */
     bool fixed_drawn;         /* the last drawn frame took the fixed path: no policy, or a held camera's */
     bool still_judged;        /* this frame is a held camera's over a kept picture of its size: its cost is judged */

@@ -131,9 +131,11 @@ Off is only for measuring.
 ## partial_redraw
 
 While the camera holds still, a frame redraws only the rows the changed
-objects cover, and the picture is the one a full redraw gives
-([how](frame/Partial-Redraw.md)). It applies at the fixed scale with frame
-generation off, and costs nothing when it does not apply.
+objects cover ([Partial-Redraw.md](frame/Partial-Redraw.md)). Quiet rows can
+[settle](frame/Settle.md) at refined quality.
+
+A held view draws at the fixed scale or dynamic resolution's top step,
+and is never generated.
 
 ## lod
 
@@ -166,6 +168,12 @@ reports as its triangles.
 | Clusters and instances the cull drops | no |
 | Anything drawn that is not a lit-mesh cluster | no |
 | The import's [`[[variants]].triangles`](offline/Mesh-Import.md#variants-triangles) | no: a ceiling on the detail a mesh holds, not a frame's cost |
+
+## settle
+
+A held view refines quiet rows with the live texture shortcuts and small fill
+off ([Settle.md](frame/Settle.md)). `frame_us` budgets each refine pass;
+`hold_frames` delays a band until its rows have stayed quiet long enough.
 
 ## The render asset
 

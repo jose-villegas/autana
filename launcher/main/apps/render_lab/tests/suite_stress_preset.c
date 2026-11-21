@@ -24,6 +24,7 @@
 #include "asset/asset_store.h"
 #include "collections/bits.h"
 #include "core/memory.h"
+#include "core/tune.h"
 #include "gfx/gfx.h"
 #include "image/pixel/rgb565.h"
 #include "kinematics/hinge/hinge.h"
@@ -132,6 +133,25 @@ same_source(const r3d_dynamic_source_t* a, const r3d_dynamic_source_t* b) {
            && memcmp(a->positions, b->positions, sizeof(vec3f_t) * (size_t)a->vertex_count) == 0
            && memcmp(a->colors, b->colors, sizeof(uint8_t[3]) * (size_t)a->vertex_count) == 0
            && memcmp(a->triangles, b->triangles, sizeof(uint16_t[3]) * (size_t)a->triangle_count) == 0;
+}
+
+static void
+test_settle_holds_a_textured_small_triangle_scene_with_partial_redraw(void) {
+    const stress_params_t* p = &stress_presets[STRESS_SETTLE];
+    TEST_ASSERT_TRUE(p->hold_camera);
+    TEST_ASSERT_TRUE(stress_textured(p));
+    TEST_ASSERT_GREATER_THAN_INT(1, p->cuts);
+    TEST_ASSERT_FALSE(stress_per_frame(p));
+    bool partial = false;
+    for (int i = 0; i < STRESS_SETTINGS_MAX && p->settings[i].name != NULL; i++) {
+        if (strcmp(p->settings[i].name, TUNE_NAME(render, partial_redraw)) == 0) {
+            partial = p->settings[i].value == 1;
+        }
+    }
+    TEST_ASSERT_TRUE(partial);
+    for (int i = 0; i < p->perf_poses; i++) {
+        TEST_ASSERT_EQUAL_UINT32(0, stress_pose_ms(p, WAVE_LATER_MS, i));
+    }
 }
 
 /* stress_presets fills each ID STRESS_PRESETS names: a missed row would be all zeros.
@@ -987,6 +1007,7 @@ run_stress_preset_suite(void) {
     RUN_TEST(test_card_has_holes_colour_steps_and_scene_size_bins);
     RUN_TEST(test_uniform_presets_have_equal_corner_colours_and_large_coverage);
     RUN_TEST(test_mixed_copies_split_colour_modes);
+    RUN_TEST(test_settle_holds_a_textured_small_triangle_scene_with_partial_redraw);
     RUN_TEST(test_every_preset_has_its_row);
     RUN_TEST(test_every_preset_mesh_is_whole_and_repeats);
     RUN_TEST(test_every_preset_mesh_fits_a_dynamic_mesh);
