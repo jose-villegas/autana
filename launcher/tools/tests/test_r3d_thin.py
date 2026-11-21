@@ -135,7 +135,7 @@ class BakeTests(unittest.TestCase):
                               materials={}, colors=None)
         budget = len(tri_v) // 4
         steps = SimpleNamespace(dense_edge=100.0, props=set(), props_share=0, seal_seams=False, colour_deviation=1.0)
-        settings = SimpleNamespace(seed=3, position_scale=None, alpha_keep=None, thin=None, double_sided=set(),
+        settings = SimpleNamespace(seed=3, position_scale=None, alpha_keep=None, thin=None, cards=None, double_sided=set(),
                                    meshes=[], simplify=steps)
         job = SimpleNamespace(settings=settings, bake=None,
                               renderer=SimpleNamespace(visibility=None, variant=SimpleNamespace(triangles=budget)))

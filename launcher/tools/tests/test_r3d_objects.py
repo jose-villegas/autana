@@ -23,7 +23,7 @@ from r3d.import_settings import SettingsError, load_import_settings, load_scene
 from r3d.objects.instances import (MATCH_TOLERANCE, SourceObject, bounds_diagonal, match_instances, place, rigid_fit,
                                    source_objects)
 from r3d.objects.surface_match import FLOOR_CAP, SURFACE_TOLERANCE, limit, merge, nearest, surface
-from soup import subdivided
+from soup import Soup, subdivided
 from r3d.objects.object_error import (PLANAR_AREA_SHARE, PLANAR_DEGREES, SHEET_DEGREES, SHEET_GROWTH, SKY, Parts,
                                       cell, common_prefix, object_rows, part_labels, part_names, planar_parts, read,
                                       nearest_source, report_body, rows_for, shape_rows, sheet_triangles, write)
@@ -31,8 +31,9 @@ from r3d.objects.objects_report import main, masked_objects
 from r3d.mesh_import import load_source
 from test_r3d_import import camera, renderer, write_import, write_scene
 
-POINTS = np.array([[0., 0., 0.], [3., 0., 0.], [0., 2., 0.], [0., 0., 1.]])
-TRIANGLES = np.array([[0, 2, 1], [0, 1, 3], [0, 3, 2], [1, 2, 3]])
+SHAPE = Soup([[0., 0., 0.], [3., 0., 0.], [0., 2., 0.], [0., 0., 1.]],
+             [[0, 2, 1], [0, 1, 3], [0, 3, 2], [1, 2, 3]])
+POINTS, TRIANGLES = SHAPE.vertices, SHAPE.faces
 MATERIALS = np.array([0, 1, 0, 1])
 
 
@@ -240,22 +241,23 @@ class ObjectsTests(unittest.TestCase):
                                tri_o=np.repeat([0, 1], len(TRIANGLES)), object_names=['first', 'copy'],
                                textures=[Texture(path)])
 
-    def test_alpha_object_disappears(self):
+    def test_alpha_objects_keep_all_reference_triangles(self):
         with tempfile.TemporaryDirectory() as directory:
             src = self.alpha_source(directory)
             src.tri_t[len(TRIANGLES):] = 0
             objects, triangles = masked_objects(src, SimpleNamespace(alpha_keep=0.5))
-        self.assertEqual([obj.name for obj in objects], ['first'])
-        np.testing.assert_array_equal(triangles, src.tri_v[:len(TRIANGLES)])
+        self.assertEqual([obj.name for obj in objects], ['first', 'copy'])
+        np.testing.assert_array_equal(triangles, src.tri_v)
+        self.assertEqual(src.alpha_test.keep_alpha, 0.5)
 
-    def test_alpha_partial_copy_no_longer_matches(self):
+    def test_alpha_copy_matching_uses_full_reference_geometry(self):
         with tempfile.TemporaryDirectory() as directory:
             src = self.alpha_source(directory)
             src.tri_t[-1] = 0
             objects, triangles = masked_objects(src, SimpleNamespace(alpha_keep=0.5))
-        self.assertEqual([len(obj.triangles) for obj in objects], [4, 3])
-        np.testing.assert_array_equal(triangles, src.tri_v[:-1])
-        self.assertEqual(len(match_instances(objects)), 2)
+        self.assertEqual([len(obj.triangles) for obj in objects], [4, 4])
+        np.testing.assert_array_equal(triangles, src.tri_v)
+        self.assertEqual(len(match_instances(objects)), 1)
 
     def test_alpha_none_keeps_everything(self):
         with tempfile.TemporaryDirectory() as directory:
