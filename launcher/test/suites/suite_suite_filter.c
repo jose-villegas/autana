@@ -61,7 +61,7 @@ filter_fixture_suite(void) {
     RUN_TEST(test_water_fits);
 }
 
-static const char* const case_scenes[] = {"sponza-fitted", "sponza-fitted-full"};
+static const char* const case_scenes[] = {"bistro", "bistro-textured"};
 static const char* const case_quarters[] = {"portrait", "landscape"};
 
 static void

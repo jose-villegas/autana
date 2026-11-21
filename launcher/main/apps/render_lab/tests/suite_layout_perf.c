@@ -30,10 +30,7 @@
 
 static const char* TAG = "layout_perf";
 
-static const char* const scene_keys[] = {
-    "sponza-fitted-full", "sponza",   "sponza-lite",        "sponza-flat", "sponza-fitted",
-    "sponza-flat-fitted", "capybara", "bistro-fitted-full",
-};
+static const char* const scene_keys[] = {"sponza", "capybara", "bistro"};
 #define SCENE_KEY_COUNT ((int)(sizeof scene_keys / sizeof scene_keys[0]))
 
 static const char* const layout_names[LAB_LAYOUT_COUNT] = {PERF_LAYOUT_FULL_FB, PERF_LAYOUT_DOUBLE_FB,

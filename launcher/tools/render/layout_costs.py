@@ -2,7 +2,7 @@
 """The frame cost of each picture in each framebuffer layout, as a chart and
 the tables in docs/gfx/Targets-and-Modes.md's `gfx-layout-costs` block: one row per
 scene family and layout, then every picture in a dropdown. A picture's family is
-its scene name up to the first hyphen (sponza-fitted-full, portrait: sponza).
+its scene name up to the first hyphen (bistro-textured, portrait: bistro).
 launcher/tools/render/render_doc_images.sh runs it on the captures kept in
 docs/render/data/.
 

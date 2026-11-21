@@ -81,8 +81,8 @@ frame-to-frame change beyond the finest level's own; triangles are those submitt
 ```sh
 python launcher/tools/r3d/lod/coverage_table.py --script HOST_RENDER.sh \
     --morph sponza.atrium_fitted_full --morph bistro.street_fitted_full \
-    --render Sponza "--scene sponza-fitted-full --no-hud --frames 1101 --dt 33" \
-    --render Bistro "--scene bistro-fitted-full --no-hud --frames 900 --dt 33" --doc docs/render/frame/Levels-of-Detail.md
+    --render Sponza "--scene sponza --no-hud --frames 1101 --dt 33" \
+    --render Bistro "--scene bistro --no-hud --frames 900 --dt 33" --doc docs/render/frame/Levels-of-Detail.md
 ```
 
 **Gate:** at the levels a pose picks, no more hidden surface shows and the
@@ -199,6 +199,6 @@ every arm.
 ```sh
 python launcher/tools/r3d/lod/morph_table.py --script HOST_RENDER.sh \
     --morph sponza.atrium_fitted_full --morph bistro.street_fitted_full \
-    --render Sponza "--scene sponza-fitted-full --no-hud --frames 1101 --dt 33" \
-    --render Bistro "--scene bistro-fitted-full --no-hud --frames 900 --dt 33" --doc docs/render/frame/Levels-of-Detail.md
+    --render Sponza "--scene sponza --no-hud --frames 1101 --dt 33" \
+    --render Bistro "--scene bistro --no-hud --frames 900 --dt 33" --doc docs/render/frame/Levels-of-Detail.md
 ```

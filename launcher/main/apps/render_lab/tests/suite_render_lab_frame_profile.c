@@ -49,6 +49,7 @@ typedef struct {
     const char* pack;
     const char* entity;
     const capybara_take_t* take;
+    bool textured; /* a baked scene's TEXTURES setting on: its row and take read SCENE_BAKED_TEXTURES_COMMAND */
     perf_budget_t quarters[LAB_PERF_QUARTER_COUNT];
 } profile_scenario_t;
 
@@ -59,19 +60,17 @@ static const capybara_take_t capybara_close = {"capybara-close", CAPYBARA_VIEW_C
 static const capybara_take_t capybara_blend = {"capybara-blend", "blend", CAPYBARA_VIEW_HOME, CAPYBARA_CLIP_BLEND_MS};
 
 /* A capybara scenario: its take and budgets. */
-#define CAPYBARA_ROW(take, ...) {&scene_capybara, CAPYBARA_SCENE, CAPYBARA_SUBJECT, &(take), __VA_ARGS__}
+#define CAPYBARA_ROW(take, ...) {&scene_capybara, CAPYBARA_SCENE, CAPYBARA_SUBJECT, &(take), false, __VA_ARGS__}
 
 /* Worst of a perf-scoped 5-seed capture on A308, 20E8 and 2124, + 1%; per
  * quarter, portrait then landscape. The table's order is the docs' row order. */
 static const profile_scenario_t profile_scenarios[] = {
-    {.scene = &scene_sponza[SCENE_BAKED_FITTED_FULL], .quarters = {{48826, 60160}, {46066, 56159}}},
-    {.scene = &scene_sponza[SCENE_BAKED_FITTED], .quarters = {{40510, 48377}, {38679, 45264}}},
-    {.scene = &scene_sponza[SCENE_BAKED_FLAT_FITTED], .quarters = {{39384, 49012}, {37997, 46878}}},
+    {.scene = &scene_sponza, .quarters = {{48826, 60160}, {46066, 56159}}},
     CAPYBARA_ROW(capybara_home, {{20845, 21185}, {21592, 22018}}),
     CAPYBARA_ROW(capybara_close, {{22561, 23064}, {23551, 23948}}),
     CAPYBARA_ROW(capybara_blend, {{21149, 22049}, {21812, 22708}}),
-    {&scene_bistro[SCENE_BAKED_FITTED_FULL], BISTRO_SCENE, BISTRO_CAMERA, NULL, {{36375, 54681}, {38062, 51881}}},
-    {&scene_bistro_textured, BISTRO_SCENE, BISTRO_CAMERA, NULL, {{39282, 58474}, {41835, 54808}}},
+    {&scene_bistro, BISTRO_SCENE, BISTRO_CAMERA, NULL, false, {{36375, 54681}, {38062, 51881}}},
+    {&scene_bistro, BISTRO_SCENE, BISTRO_CAMERA, NULL, true, {{39282, 58474}, {41835, 54808}}},
 };
 
 static const char* TAG = "render_lab_profile";
@@ -90,27 +89,50 @@ static const char* TAG = "render_lab_profile";
 static lab_test_t saved;
 static frame_profile_trace_t played; /* the row playing now, freed with the fixture */
 
-static void
-release_fixture(void) {
-    frame_profile_trace_free(&played);
-    render_lab_test_show_view(RENDER_DEBUG_VIEW_SHADED);
-    lab_test_exit(&saved);
-}
-
 /* The scenario and quarter the next test plays: one test each, so a row over its
  * ceiling does not stop the rows after it. */
 static const profile_scenario_t* scenario;
 static size_t quarter_index;
 
+/* One console line, formatted, for the showing scene. */
+static void
+send(const char* format, ...) {
+    char command[ASSET_NAME_MAX];
+    va_list args;
+    va_start(args, format);
+    const int length = vsnprintf(command, sizeof command, format, args);
+    va_end(args);
+    TEST_ASSERT_TRUE(length > 0 && (size_t)length < sizeof command);
+    TEST_ASSERT_TRUE(app_render_lab.console->handle(command));
+}
+
+static void
+release_fixture(void) {
+    frame_profile_trace_free(&played);
+    render_lab_test_show_view(RENDER_DEBUG_VIEW_SHADED);
+    if (scenario->textured) {
+        send(SCENE_BAKED_TEXTURES_COMMAND " off");
+    }
+    lab_test_exit(&saved);
+}
+
 /* The row the scenario reports as. */
 static const char*
 scenario_row(void) {
-    return scenario->take == NULL ? scenario->scene->key : scenario->take->row;
+    static char textured_row[ASSET_NAME_MAX];
+    if (scenario->take != NULL) {
+        return scenario->take->row;
+    }
+    if (!scenario->textured) {
+        return scenario->scene->key;
+    }
+    (void)snprintf(textured_row, sizeof textured_row, "%s-%s", scenario->scene->key, SCENE_BAKED_TEXTURES_COMMAND);
+    return textured_row;
 }
 
 static const char*
 scenario_take(void) {
-    return scenario->take == NULL ? NULL : scenario->take->name;
+    return scenario->take != NULL ? scenario->take->name : scenario->textured ? SCENE_BAKED_TEXTURES_COMMAND : NULL;
 }
 
 /* The scenario's path as the render lab shows it, in the current quarter, its clip from the start. */
@@ -156,18 +178,6 @@ report_path(const scenario_path_t* path, const frame_profile_t* p) {
     release_report();
 }
 
-/* One console line, formatted, for the showing scene. */
-static void
-send(const char* format, ...) {
-    char command[ASSET_NAME_MAX];
-    va_list args;
-    va_start(args, format);
-    const int length = vsnprintf(command, sizeof command, format, args);
-    va_end(args);
-    TEST_ASSERT_TRUE(length > 0 && (size_t)length < sizeof command);
-    TEST_ASSERT_TRUE(app_render_lab.console->handle(command));
-}
-
 static scenario_path_t
 enter_scenario(void) {
     lab_test_enter(&saved, &render_lab, scenario->scene->key);
@@ -178,6 +188,9 @@ enter_scenario(void) {
     const entity_t entity =
         entity_find(scene, name_hash(scenario->entity == NULL ? sponza_cameras[0] : scenario->entity));
     TEST_ASSERT_FALSE(handle_is_none(entity));
+    if (scenario->textured) {
+        send(SCENE_BAKED_TEXTURES_COMMAND " on");
+    }
     const capybara_take_t* take = scenario->take;
     if (take != NULL) {
         send(CAPYBARA_VIEW_COMMAND, take->view);

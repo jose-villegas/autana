@@ -32,3 +32,7 @@ bool renderer_set_skin(entity_t entity, const char* skin_id, scene_failure_t* wh
  * opened, they do not fit its mesh, or a cut would draw plain: off, or on
  * a mesh with face colours. */
 bool renderer_set_textured(entity_t entity, bool on, scene_failure_t* why);
+
+/* Whether the entity's static renderer's pack mesh has textures for
+ * renderer_set_textured(), on or off; read from the pack, nothing opened. */
+bool renderer_has_textures(entity_t entity);

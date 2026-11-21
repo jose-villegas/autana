@@ -14,7 +14,7 @@ from docs.producer import Producer  # noqa: E402
 
 PRODUCER = Producer(area="render", needs=("host", "bakes"),
                     run=("--script", "launcher/main/apps/render_lab/tools/render_lab_render_host.sh",
-                         "--render", "--scene sponza-fitted-full --camera lion --no-hud --frames 303 --dt 33"
+                         "--render", "--scene sponza --camera lion --no-hud --frames 303 --dt 33"
                                      " --set render.lod.tolerance_px=16",
                          "--morph", "sponza.atrium_fitted_full", "--out", "{out}"),
                     outputs=("lod-blend-pop.gif", "lod-blend-pop.png"))

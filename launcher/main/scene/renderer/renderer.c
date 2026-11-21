@@ -262,6 +262,23 @@ renderer_set_textured(entity_t entity, bool on, scene_failure_t* why) {
     return scene_report(why, SCENE_OK, ASSET_OK, mesh_id);
 }
 
+bool
+renderer_has_textures(entity_t entity) {
+    scene_t* scene;
+    const int i = renderer_of(entity, &scene);
+    if (i < 0 || i >= scene->asset.renderer_count) {
+        return false;
+    }
+    if (scene->renderers[i].texturing != NULL) {
+        return true;
+    }
+    asset_view_t uvs;
+    return r3d_lit_mesh_open_sibling(scene->pack, scene->asset.renderers[i].mesh, R3D_TEXTURE_UVS_NAME_SUFFIX,
+                                     R3D_TEXTURE_UVS_ASSET, false, &uvs)
+               == ASSET_OK
+           && uvs.data != NULL;
+}
+
 /* Whether `r`'s opened textures cut. */
 static bool
 renderer_cuts(const scene_renderer_t* r) {

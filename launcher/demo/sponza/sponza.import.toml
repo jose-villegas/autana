@@ -19,8 +19,7 @@ simplify = { dense_edge = 45.0, props = [], props_share = 0.0, seal_seams = true
 probes = {}
 
 # The free-standing props: one mesh per repeated shape, each copy drawing
-# `triangles` times its
-# variant's objects_scale. No rule names the flagpoles: one that passes
+# `triangles` times the variant's objects_scale. No rule names the flagpoles: one that passes
 # through the wall stays in the rest, since a carved pole too thin to fill
 # its socket shows sky around it, and one that touches nothing is carved as
 # a free repeat (20 of the 46). Seams are free: a locked contact keeps every
@@ -61,28 +60,11 @@ match = { material = "chain" }
 triangles = 1
 seam = "free"
 
-# Each variant's triangles budget the rest, apart from its props and cards;
-# its ceiling caps the rest plus every stored copy prototype. Unpinned free
+# The variant's triangles budget the rest, apart from its props and cards, and
+# are its fit's budget, so a probe fit stays closed (Appearance-Fit.md); its
+# ceiling caps the rest plus every stored copy prototype. Unpinned free
 # repeats derive their detail from the camera's closest view within that
-# ceiling. The fitted variants' triangles are their fits' budgets, so a probe
-# fit stays closed (Appearance-Fit.md).
-[[variants]]
-name = "sponza"
-triangles = 12948
-ceiling = 17381
-
-[[variants]]
-name = "sponza_lite"
-triangles = 6436
-objects_scale = 0.5
-ceiling = 8672
-
-[[variants]]
-name = "sponza_fitted"
-triangles = 6761
-objects_scale = 0.43
-ceiling = 13500
-
+# ceiling.
 [[variants]]
 name = "sponza_fitted_full"
 triangles = 13313

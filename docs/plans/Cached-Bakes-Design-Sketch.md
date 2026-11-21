@@ -45,7 +45,7 @@ stage before it. A fit splits in two, so a fitter edit costs the fit
 # launcher/tools/bake/bake.py  (standard library only, like build_pack.py)
 @dataclass(frozen=True)
 class Bake:
-    output: str          # "sponza.atrium_fitted.mesh": what errors call it
+    output: str          # "sponza.atrium_fitted_full.mesh": what errors call it
     source: Path         # the file that asks for it: sponza.scene.toml, capybara.import.toml
     kind: str            # "mesh" | "reference" | "fit" | "blend" | "sound"
     key: str             # sha256 hex of the inputs in the table above
@@ -71,7 +71,7 @@ def publish(lock) -> None                       # main only: uploads each locked
 key = "3f2a…c9"                    # inputs
 sha256 = "9cd1…cc32"               # the bytes made for them
 size = 144164
-output = "sponza.atrium_fitted.mesh"
+output = "sponza.atrium_fitted_full.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
 run = 12345678901                  # the CI run whose artifact holds them, until main publishes
 ```
@@ -149,7 +149,7 @@ prints them and exits non-zero. No committed copy exists to fall back to.
 
 ```text
 build_pack.py: 1 bake is not available:
-  sponza.atrium_fitted.mesh  key 3f2a...c9  asked for by launcher/demo/sponza/sponza.scene.toml (atrium_fitted)
+  sponza.atrium_fitted_full.mesh  key 3f2a...c9  asked for by launcher/demo/sponza/sponza.scene.toml (atrium_fitted_full)
     bakes.lock has no row for this key: the recipe, a source or the fitter changed
     bake it: python launcher/tools/bake/bake.py bake launcher/demo/sponza   (needs a CUDA GPU)
     or run the Bakes workflow's GPU job on your branch, then: bake.py lock --from-run N

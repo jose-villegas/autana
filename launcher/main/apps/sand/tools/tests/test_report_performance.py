@@ -143,12 +143,12 @@ class SuiteTestLinesTest(unittest.TestCase):
         self.assertEqual(self.unselected("filter_fixture_suite fire"), {"test_gas_fits", "test_water_fits"})
 
     def test_case_names_are_read_whole(self):
-        self.assertEqual(self.unselected("case_fixture_suite sponza-fitted"), {
-            "test_case/sponza-fitted-full/portrait", "test_case/sponza-fitted-full/landscape",
+        self.assertEqual(self.unselected("case_fixture_suite bistro"), {
+            "test_case/bistro-textured/portrait", "test_case/bistro-textured/landscape",
             "test_case/capybara/front/portrait"})
         times = [m.group("name") for m in self.reporter.TEST_TIME_RE.finditer(
-            "TEST_TIME name=test_case/sponza-fitted/portrait elapsed_ms=3\n")]
-        self.assertEqual(times, ["test_case/sponza-fitted/portrait"])
+            "TEST_TIME name=test_case/bistro/portrait elapsed_ms=3\n")]
+        self.assertEqual(times, ["test_case/bistro/portrait"])
 
 
 if __name__ == "__main__":

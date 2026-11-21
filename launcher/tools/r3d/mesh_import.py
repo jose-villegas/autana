@@ -470,12 +470,16 @@ def write_shape(job, scene, out_dir, name, geometry, shape, recorder):
 
 
 def bake(job, scene, out_dir):
-    """Bakes one mesh into `out_dir`. `scene` is None for a bare import. A fitted variant is made by
-    fitted_variant.py on a CUDA GPU, which bake/bake.py runs."""
-    if job.renderer.fit:
-        log(f"{job.asset_name}: a fit, made by fitted_variant.py on a CUDA GPU (bake/bake.py bake --kind fit)")
-        return
+    """Bakes one mesh into `out_dir`. `scene` is None for a bare import. A fitted renderer's fit needs a CUDA
+    GPU (bake/bake.py bake --kind fit runs fitted_variant.py), so here it gets the CPU method: its start, the
+    import simplified to the fit's budget, with levels."""
     mesh = write_baked(job, scene, out_dir, job.asset_name)
+    if job.renderer.fit:
+        from r3d.lod.levels_stage import levels
+
+        path = pathlib.Path(out_dir) / f"{job.asset_name}{mesh_bundle.SUFFIX}"
+        path.write_bytes(levels(path.read_bytes(), job.asset_name, job.settings.lod, job.settings.meshlet_triangles))
+        log(f"{job.asset_name}: its CPU start with levels; the fit needs a CUDA GPU (bake/bake.py bake --kind fit)")
     log(f"emitted {len(mesh.pos)} vertices, {len(mesh.tris)} triangles, {len(mesh.clusters)} clusters, {len(mesh.nodes)} nodes")
 
 
