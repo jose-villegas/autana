@@ -259,6 +259,20 @@ class ProbeTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             sh.dilate(values, np.ones_like(inside))
 
+    def test_header_layout_follows_its_c_owner(self):
+        import re
+        from r3d.mesh_asset import checked_struct
+
+        text = asset.OWNER.read_text(encoding='utf-8')
+        self.assertEqual(checked_struct(asset.OWNER, 'SH_PROBES', asset.HEADER_FIELDS).format, asset.HEADER.format)
+        moved_text, moves = re.subn(r'(#define SH_PROBES_AT_SCALE\s+)\d+', r'\g<1>30', text)
+        self.assertEqual(moves, 1)
+        with tempfile.TemporaryDirectory() as directory:
+            moved = pathlib.Path(directory) / asset.OWNER.name
+            moved.write_text(moved_text, encoding='utf-8')
+            with self.assertRaises(ValueError):
+                checked_struct(moved, 'SH_PROBES', asset.HEADER_FIELDS)
+
     def test_record_round_trip_and_golden(self):
         coefficients = np.arange(24).reshape(2, sh.COEFFICIENTS, sh.CHANNELS) - 12
         data = asset.encode([1, 2, 3], [4, 5, 6], [2, 1, 1], coefficients)
