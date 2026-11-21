@@ -45,7 +45,9 @@ class DocStagesTests(unittest.TestCase):
         import numpy as np
         from r3d import mesh_import, lit_mesh, light, ray_query
         baked = NS(object=NS(name="hall"), renderer=NS(variant=NS(name="full")))
-        scene = NS(renderers=[baked])
+        flight = NS(path=NS(animation="tour.anim.toml", node="camera"))
+        scene = NS(renderers=[baked], objects=[NS(kind="camera", component=NS(path=None)),
+                                               NS(kind="camera", component=flight)])
         geometry = NS(positions=np.zeros((3, 3)), tris=np.array([[0, 1, 2]]),
                       tri_double=np.array([False]), rgb=np.zeros((3, 3)), scale={})
         poses = (224, 224, .5, 1, [[0, 0, 0, 0, 0, -1]])
@@ -58,6 +60,7 @@ class DocStagesTests(unittest.TestCase):
                 mock.patch.object(lit_mesh, "write_lit_mesh"):
             stages.bake_into(Path(directory), scene, "hall", True)
         settings = sample.call_args.args[1]
+        self.assertIs(sample.call_args.kwargs["camera"], flight)  # the scene camera has no path: the flight's
         self.assertEqual((settings.every_ms, settings.size, settings.samples, settings.margin),
                          (100, (184, 224), 3, 8))
         self.assertEqual(visible.call_args.args[4:], (poses[-1], *poses[:4], 3, 8))
@@ -68,7 +71,8 @@ class DocStagesTests(unittest.TestCase):
         fit = NS(size=(8, 6), held_out_every_ms=2000)
         job = NS(renderer=NS(fit=fit, visibility=NS(source="camera_region", rounds=2),
                              variant=NS(name="full")), asset_path=Path("start.bundle"), object=NS(name="hall"))
-        scene = NS(renderers=[job])
+        flight = NS(path=NS(animation="tour.anim.toml", node="camera"))
+        scene = NS(renderers=[job], objects=[NS(kind="camera", component=flight)])
         args = NS(build_commit=None, capture=[], scene=Path("room.scene.toml"), object="hall")
         poses = (8, 6, .5, 1, [[0, 0, 0, 0, 0, -1]])
         with tempfile.TemporaryDirectory() as directory:
@@ -86,12 +90,12 @@ class DocStagesTests(unittest.TestCase):
                     mock.patch.object(stages, "board_frames", side_effect=ValueError("stop before cost fitting")):
                 with self.assertRaisesRegex(ValueError, "stop before cost fitting"):
                     stages.board(args, root, root)
-            sample.assert_called_once_with(scene, fit, fit.held_out_every_ms, either_way_up=False)
+            sample.assert_called_once_with(scene, fit, fit.held_out_every_ms, either_way_up=False, camera=flight)
             with mock.patch.object(mesh_import, "camera_path_poses", return_value=poses) as sample, \
                     mock.patch.object(stages.shutil, "copyfile"), \
                     mock.patch.object(reference_render, "main") as render:
                 stages.smoke_prepare(args.scene, scene, job, root / "inputs")
-            sample.assert_called_once_with(scene, fit, 5000, either_way_up=False)
+            sample.assert_called_once_with(scene, fit, 5000, either_way_up=False, camera=flight)
             self.assertEqual(render.call_count, 3)
 
     def test_viewer_host_build_receives_the_scene(self):
@@ -138,7 +142,7 @@ class DocStagesTests(unittest.TestCase):
         scene_path = Path("gallery.scene.toml")
         job = NS(renderer=NS(fit=NS(held_out_every_ms=1000), visibility=object()),
                  asset_path=Path("painting_fitted_full.bundle"))
-        scene = NS(renderers=[])
+        scene = NS(renderers=[], objects=[])
         capture = self.tmp / "capture.txt"
         # The perf suite's rows: the bake, then other rows over the same bake, which the stage ignores.
         capture.write_text("abcdef123456-diag\nFRAME COST rendered 8x6\nCAPTURE pose_every_ms=1000\n"
@@ -472,7 +476,7 @@ class FullGpuSchedulingTests(unittest.TestCase):
         from r3d.process_budget import MEASURE_BYTES
         job = NS(renderer=NS(fit=NS(held_out_every_ms=1000, normal_weight=.3, budget=6000),
                              variant=NS(name="full", triangles=10000)))
-        scene = NS(renderers=[])
+        scene = NS(renderers=[], objects=[])
         consumed, measured, completed = [], {}, []
         step = dict(wall_s=1, triangles_in=4, triangles_out=3, peak_ram_bytes=None, peak_vram_bytes=None)
 
