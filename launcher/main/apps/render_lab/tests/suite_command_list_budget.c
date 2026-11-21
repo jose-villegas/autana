@@ -90,11 +90,12 @@ budget_controls(int width) {
     lab_clips_draw(width, &menu_budget->choice);
 }
 
+static const lab_scene_t budget_scene = {.name = "Budget", .controls = budget_controls, .generates_frames = true};
+
 static void
 budget_menu_frame(const input_t* input) {
     ui_begin(input);
-    const lab_menu_screen_state_t state = {
-        .controls = budget_controls, .settings = render_lab_settings_draw, .showing = &generating};
+    const lab_menu_screen_state_t state = {.settings = render_lab_settings_draw, .showing = &budget_scene};
     (void)lab_menu_screen_draw(&state);
     ui_probe_budget_assert("animated menu with clip list");
 }

@@ -12,9 +12,8 @@ struct lab_scene;
 typedef void (*lab_settings_fn)(const struct lab_scene* showing, int width);
 
 typedef struct {
-    lab_controls_fn controls;        /* the showing scene's rows, under the pickers */
-    lab_settings_fn settings;        /* the lab's own rows, under the scene's */
-    const struct lab_scene* showing; /* the scene `settings` draws for */
+    const struct lab_scene* showing; /* its controls are drawn under the pickers; none, no rows */
+    lab_settings_fn settings;        /* the lab's own rows for `showing`, under the scene's */
     const char* const* families;     /* the Scene dropdown's entries; none = no Scene row */
     int family_count;
     int family;                  /* index of the showing one */

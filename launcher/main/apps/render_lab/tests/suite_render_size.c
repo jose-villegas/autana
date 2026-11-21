@@ -10,6 +10,7 @@
 #include "math/scalar/units.h"
 #include "render/context/render_context.h"
 #include "suites.h"
+#include "testkit/cleanup.h"
 #include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
 #include "ui_probe.h"
@@ -23,6 +24,7 @@ fixture(void) {
                                         TUNE_NAME(render_lab, small_fill_gate),
                                         TUNE_NAME(render_lab, small_fill_style),
                                         TUNE_NAME(render_lab, budget),
+                                        TUNE_NAME(render_lab, framegen),
                                         TUNE_NAME(render_lab, upscale)};
     for (size_t i = 0; i < sizeof tuned / sizeof tuned[0]; i++) {
         TEST_ASSERT_TRUE(tune_reset(tune_shared(), tuned[i]));
@@ -192,6 +194,58 @@ test_apply_camera_settings_hands_the_picked_small_fill_to_the_context(void) {
 /* A scene that generates frames, so the menu draws its FRAME GEN row too. */
 static const lab_scene_t generating = {.name = "Generating", .generates_frames = true};
 
+static const lab_scene_t still = {.name = "Still"};
+
+/* One menu frame for `showing` under `input`; FRAME GEN's rectangle in `row`, false when it is not drawn. */
+static bool
+frame_gen_menu_frame(const lab_scene_t* showing, const input_t* input, recti_t* row) {
+    ui_begin(input);
+    const lab_menu_screen_state_t state = {.showing = showing, .settings = render_lab_settings_draw};
+    (void)lab_menu_screen_draw(&state);
+    ui_probe_end_frame();
+    return ui_probe_widget(RENDER_LAB_FRAME_GEN_LABEL, row);
+}
+
+/* A tap on the FRAME GEN row, as the board's touch reaches the menu. */
+static void
+tap_frame_gen(const affine2x_t* transform, recti_t row) {
+    const vec2i_t point = affine2x_map_pixel(transform, (vec2i_t){row.x + (row.w / 2), row.y + (row.h / 2)});
+    input_t touch = {.down = true, .pressed = true, .point = point};
+    recti_t drawn;
+    (void)frame_gen_menu_frame(&generating, &touch, &drawn);
+    touch.pressed = false;
+    (void)frame_gen_menu_frame(&generating, &touch, &drawn);
+    touch.down = false;
+    touch.released = true;
+    (void)frame_gen_menu_frame(&generating, &touch, &drawn);
+}
+
+/* FRAME GEN shows for a scene that generates frames and not for one that
+ * does not; a tap turns render_lab.framegen on, and the next tap off. */
+static void
+test_frame_gen_row_shows_and_toggles_for_a_generating_scene(void) {
+    fixture();
+    ui_probe_widgets_start();
+    suite_set_test_cleanup(ui_probe_widgets_stop);
+    ui_init();
+    const affine2x_t transform = ui_transform_quarter_turn(DISPLAY_LANDSCAPE, GFX_WIDTH, GFX_HEIGHT);
+    ui_set_transform(transform);
+    const input_t idle = {0};
+    recti_t row;
+    TEST_ASSERT_FALSE(frame_gen_menu_frame(&still, &idle, &row));
+    TEST_ASSERT_EQUAL_INT(0, ui_probe_text_count(RENDER_LAB_FRAME_GEN_LABEL));
+    TEST_ASSERT_TRUE(frame_gen_menu_frame(&generating, &idle, &row));
+    TEST_ASSERT_EQUAL_INT(1, ui_probe_text_count(RENDER_LAB_FRAME_GEN_LABEL));
+    TEST_ASSERT_FALSE(render_lab_framegen_on());
+    tap_frame_gen(&transform, row);
+    TEST_ASSERT_TRUE(render_lab_framegen_on());
+    tap_frame_gen(&transform, row);
+    TEST_ASSERT_FALSE(render_lab_framegen_on());
+    ui_probe_widgets_stop();
+    suite_clear_test_cleanup();
+    fixture();
+}
+
 /* Every preset label, shown as the chosen one, fits the SMALL FILL
  * dropdown's label room in both orientations. */
 static void
@@ -236,12 +290,10 @@ test_frame_gen_row_shows_for_every_scene_that_generates_frames(void) {
         const lab_scene_t* scene = render_lab.scenes[i];
         const input_t input = {0};
         ui_begin(&input);
-        const lab_menu_screen_state_t state = {
-            .controls = scene->controls, .settings = render_lab.hooks.settings, .showing = scene};
+        const lab_menu_screen_state_t state = {.showing = scene, .settings = render_lab.hooks.settings};
         (void)lab_menu_screen_draw(&state);
         ui_probe_end_frame();
-        recti_t drawn;
-        TEST_ASSERT_EQUAL_INT_MESSAGE(scene->generates_frames, ui_probe_text(RENDER_LAB_FRAME_GEN_LABEL, &drawn),
+        TEST_ASSERT_EQUAL_INT_MESSAGE(scene->generates_frames, ui_probe_text_count(RENDER_LAB_FRAME_GEN_LABEL),
                                       scene->key);
     }
     fixture();
@@ -259,6 +311,7 @@ run_render_size_suite(void) {
     RUN_TEST(test_apply_camera_settings_hands_the_picked_small_fill_to_the_context);
 #ifndef ESP_PLATFORM
     RUN_TEST(test_small_fill_labels_fit_their_dropdown);
+    RUN_TEST(test_frame_gen_row_shows_and_toggles_for_a_generating_scene);
 #endif
     RUN_TEST(test_small_fill_ceiling_range);
     RUN_TEST(test_render_size_and_percent_follow_and_clamp);

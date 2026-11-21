@@ -244,7 +244,6 @@ draw_menu(lab_t* lab, const input_t* input) {
         .variants = variants,
         .variant_count = variant_count,
         .variant = variant,
-        .controls = lab_current(lab)->controls,
         .settings = lab->hooks.settings,
         .showing = lab_current(lab),
     };
