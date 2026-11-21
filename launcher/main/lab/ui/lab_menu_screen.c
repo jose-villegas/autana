@@ -1,5 +1,6 @@
 #include "lab/ui/lab_menu_screen.h"
 
+#include "lab/lab_scene.h"
 #include "ui/ui.h"
 
 #define MENU_BTN_W    300
@@ -55,11 +56,12 @@ lab_menu_screen_draw(const lab_menu_screen_state_t* state) {
         }
     }
 
-    if (state->controls != NULL) {
-        state->controls(MENU_BTN_W);
+    const lab_scene_t* showing = state->showing;
+    if (showing != NULL && showing->controls != NULL) {
+        showing->controls(MENU_BTN_W);
     }
-    if (state->settings != NULL) {
-        state->settings(MENU_BTN_W);
+    if (showing != NULL && state->settings != NULL) {
+        state->settings(showing, MENU_BTN_W);
     }
     draw_hint();
 

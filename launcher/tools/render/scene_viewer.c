@@ -166,10 +166,10 @@ texture_object(entity_t scene) {
     return false;
 }
 
-/* The camera entity to activate: the named one, or the scene's first. */
+/* The camera entity to activate: the named one, else the scene's flight. */
 static entity_t
 chosen_camera(entity_t scene) {
-    return camera_name != NULL ? entity_find(scene, name_hash(camera_name)) : camera_first(scene);
+    return camera_name != NULL ? entity_find(scene, name_hash(camera_name)) : camera_flight(scene);
 }
 
 static bool
@@ -209,7 +209,7 @@ setup(int quarter) {
         (void)camera_set_present(e, present);
     }
     shown = scene;
-    camera = chosen_camera(scene);
+    camera = camera_active(); /* the one chosen_camera() found above */
     /* What a caller sampling the path along its length reads. */
     fprintf(stderr, "scene_viewer: camera path %u ms\n", (unsigned)animator_clip_duration_ms(camera, 0));
     render_context_t* context = render_context_main();
