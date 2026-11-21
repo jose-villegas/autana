@@ -528,13 +528,13 @@ build_mesh(stream_mesh_t* m) {
     memcpy(c, source + positions, colours);
     memcpy(t, source + positions + colours, triangles);
     memcpy(u, source + positions + colours + triangles, uvs);
-    const r3d_dynamic_source_t src = {.positions = p,
-                                      .colors = c,
-                                      .triangles = t,
-                                      .vertex_count = (int)row.vertices,
-                                      .triangle_count = (int)row.triangles,
-                                      .double_sided = row.double_sided != 0,
-                                      .uvs = row.textured ? u : NULL};
+    const r3d_mesh_source_t src = {.positions = p,
+                                   .colors = c,
+                                   .triangles = t,
+                                   .vertex_count = (int)row.vertices,
+                                   .triangle_count = (int)row.triangles,
+                                   .double_sided = row.double_sided != 0,
+                                   .uvs = row.textured ? u : NULL};
     const bool fitted = r3d_dynamic_mesh_build(&built, &src);
     m->mesh = built.mesh;
     return fitted == (row.fitted != 0) || refuse("dynamic build fit differs");

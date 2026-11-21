@@ -43,18 +43,18 @@ fixture_end(void) {
     block = NULL;
 }
 
-static r3d_dynamic_source_t
+static r3d_mesh_source_t
 sheet(int quads) {
-    return (r3d_dynamic_source_t){.positions = positions,
-                                  .colors = (const uint8_t (*)[3])colors,
-                                  .vertex_count = CORNERS,
-                                  .triangles = (const uint16_t (*)[3])triangles,
-                                  .triangle_count = 2 * quads};
+    return (r3d_mesh_source_t){.positions = positions,
+                               .colors = (const uint8_t (*)[3])colors,
+                               .vertex_count = CORNERS,
+                               .triangles = (const uint16_t (*)[3])triangles,
+                               .triangle_count = 2 * quads};
 }
 
 static bool
 build(int quads) {
-    const r3d_dynamic_source_t source = sheet(quads);
+    const r3d_mesh_source_t source = sheet(quads);
     return r3d_dynamic_mesh_build(&mesh, &source);
 }
 
@@ -104,7 +104,7 @@ static const r3d_dynamic_capacity_t ROOMY = {2 * 2 * QUADS, 2 * QUADS, CORNERS, 
 static const r3d_dynamic_capacity_t ROOMY_TEXTURED = {2 * 2 * QUADS, 2 * QUADS, CORNERS, true};
 
 /* The whole sheet with a UV on every corner, each unlike the others. */
-static r3d_dynamic_source_t
+static r3d_mesh_source_t
 textured_sheet(void) {
     uvs = malloc(sizeof(int16_t[2]) * CORNERS);
     TEST_ASSERT_NOT_NULL(uvs);
@@ -112,7 +112,7 @@ textured_sheet(void) {
         uvs[i][0] = (int16_t)i;
         uvs[i][1] = (int16_t)(-1 - i);
     }
-    r3d_dynamic_source_t source = sheet(QUADS);
+    r3d_mesh_source_t source = sheet(QUADS);
     source.uvs = (const int16_t (*)[2])uvs;
     return source;
 }
@@ -156,7 +156,7 @@ test_a_sheet_builds_into_a_mesh_the_pipeline_can_walk(void) {
 static void
 test_a_textured_sheet_carries_each_vertexs_uv_into_its_copies(void) {
     fixture_begin(ROOMY_TEXTURED);
-    const r3d_dynamic_source_t source = textured_sheet();
+    const r3d_mesh_source_t source = textured_sheet();
     TEST_ASSERT_TRUE(r3d_dynamic_mesh_build(&mesh, &source));
     expect_valid();
     expect_copies();
@@ -173,7 +173,7 @@ test_a_textured_sheet_carries_each_vertexs_uv_into_its_copies(void) {
 static void
 test_a_textured_sheet_does_not_build_into_an_untextured_capacity(void) {
     fixture_begin(ROOMY);
-    const r3d_dynamic_source_t source = textured_sheet();
+    const r3d_mesh_source_t source = textured_sheet();
     TEST_ASSERT_FALSE(r3d_dynamic_mesh_build(&mesh, &source));
     TEST_ASSERT_EQUAL_INT(0, mesh.built_clusters);
     TEST_ASSERT_NULL(mesh.uvs);

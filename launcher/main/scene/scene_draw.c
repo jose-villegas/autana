@@ -398,7 +398,8 @@ draw_active(uint32_t dt_ms, int quarter, int width, int height) {
         render_context_set_batches(render_context_main(), drawn.batch_draws, batches);
         rendered = render_context_draw(render_context_main(), drawn.instances, count, &drawn_view, camera->clear);
         if (rendered) {
-            frame_record_frame(render_context_main(), &render_context_main()->raster, dt_ms);
+            const frame_record_context_t recorded = render_context_recorded(render_context_main());
+            frame_record_frame(&recorded, raster, dt_ms);
         }
     }
     if (!rendered && !refused) {

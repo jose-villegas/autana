@@ -26,6 +26,8 @@ typedef enum {
 /* The longest lod.blend_px a pack may set: past it a group would blend
  * across most of the band where it stays coarse. */
 #define RENDER_LOD_BLEND_PX_MAX 4.0F
+/* The most frames lod.pick_every may spread the pick over. */
+#define RENDER_LOD_PICK_EVERY_MAX 8
 
 typedef struct {
     float tolerance_px;  /* basic: the projected error a group may have and still draw coarse; more saves, pops more */
@@ -54,6 +56,8 @@ typedef struct {
 #define RENDER_TEXTURE_DIVIDE_PX_MAX 32
 /* The largest texture.affine_bend a pack may set, in texels. */
 #define RENDER_TEXTURE_BEND_MAX      15.0F
+/* Steps per texel in which texture.affine_bend is tuned and held, rounded. */
+#define RENDER_TEXTURE_BEND_STEPS    16
 /* The last mip level a texture has: the largest level setting a pack may name. */
 #define RENDER_TEXTURE_LEVEL_MAX     7
 

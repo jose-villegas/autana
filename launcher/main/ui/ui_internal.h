@@ -198,5 +198,3 @@ bool ui_face_settle(void);
  * without painting calls it alone. */
 void ui_end_commands(void);
 bool ui_slider_int_id(mu_Context* ctx, mu_Id id, int* value, int lo, int hi, int step, bool enabled);
-
-#include "ui/controls/ui_widgets.h"

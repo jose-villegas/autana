@@ -153,7 +153,7 @@ r3d_dynamic_mesh_init(r3d_dynamic_mesh_t* m, void* block, size_t bytes, r3d_dyna
 
 typedef struct {
     r3d_dynamic_mesh_t* m;
-    const r3d_dynamic_source_t* src;
+    const r3d_mesh_source_t* src;
     r3d_lit_cluster_t* open;
     int sources[CLUSTER_VERTICES]; /* the open cluster's vertices, as source indices */
     float scale;
@@ -264,7 +264,7 @@ pad(r3d_dynamic_mesh_t* m) {
 }
 
 bool
-r3d_dynamic_mesh_build(r3d_dynamic_mesh_t* m, const r3d_dynamic_source_t* src) {
+r3d_dynamic_mesh_build(r3d_dynamic_mesh_t* m, const r3d_mesh_source_t* src) {
     m->mesh.vertex_count = 0;
     m->mesh.triangle_count = 0;
     m->mesh.cluster_count = 0;

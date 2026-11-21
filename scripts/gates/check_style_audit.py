@@ -524,6 +524,98 @@ def rule_include_direction(root, path, text):
                        "INCLUDE_DIRECTION_EXCEPTIONS entry citing the doc section that draws it")
 
 
+# RULE: under launcher/main/, folders include each other one way, and so
+# do headers. Every folder is a node wherever it sits, and an include from a
+# file in one folder of a file in another is an edge; an edge on a cycle
+# (in a strongly connected component of more than one folder) is reported
+# at its include line. FOLDER-CYCLE warns until the tree has none, then
+# fails; a cycle between headers fails now. No folder is named: a module's
+# layers are the levels of the graph the includes draw, so there is no
+# table to keep in step. An include inside a comment is no include.
+
+
+def _components(graph):
+    """Each node's strongly connected component in `graph`, {node: [node]},
+    by Tarjan's algorithm, iterative so a deep graph needs no deep stack."""
+    index, low, component, stack, on_stack = {}, {}, {}, [], set()
+
+    def enter(node):
+        index[node] = low[node] = len(index)
+        stack.append(node)
+        on_stack.add(node)
+        return node, iter(graph.get(node, ()))
+
+    for start in graph:
+        if start in index:
+            continue
+        work = [enter(start)]
+        while work:
+            node, children = work[-1]
+            for child in children:
+                if child not in index:
+                    work.append(enter(child))
+                    break
+                if child in on_stack:
+                    low[node] = min(low[node], index[child])
+            else:
+                work.pop()
+                if work:
+                    low[work[-1][0]] = min(low[work[-1][0]], low[node])
+                if low[node] == index[node]:
+                    while True:
+                        member = stack.pop()
+                        on_stack.discard(member)
+                        component[member] = node
+                        if member == node:
+                            break
+    return component
+
+
+@functools.lru_cache(maxsize=None)
+def _main_include_cycles(root):
+    """{source file: [(line, include, target file)]} for each include between
+    two files of launcher/main/, and the folder and header components."""
+    root_path = pathlib.Path(root)
+    main_dir = (root_path / "launcher/main").resolve()
+    by_source, folders, headers = {}, {}, {}
+    for rel in tracked_files(root, ("launcher/main",)):
+        if not rel.endswith(SOURCE_EXTENSIONS) or rel.startswith(excluded()):
+            continue
+        path = (root_path / rel).resolve()
+        text = blank_comments(path.read_text(encoding="utf-8", errors="replace"), cpp=is_cpp(path))
+        for number, line in enumerate(text.splitlines(), 1):
+            m = ANY_INCLUDE.match(line)
+            resolved = resolve_include(root, path, m.group(1)) if m else None
+            if resolved is None or not resolved.resolve().is_relative_to(main_dir):
+                continue
+            target = resolved.resolve()
+            by_source.setdefault(path, []).append((number, m.group(1), target))
+            folders.setdefault(path.parent, set()).add(target.parent)
+            if path.suffix == target.suffix == ".h":
+                headers.setdefault(path, set()).add(target)
+    return by_source, _components(folders), _components(headers)
+
+
+@c_line_rule("FOLDER-CYCLE", severity=WARN)
+def rule_folder_cycle(root, path, text):
+    by_source, folders, _headers = _main_include_cycles(str(root))
+    source = path.resolve()
+    for number, inc, target in by_source.get(source, ()):
+        if source.parent != target.parent and folders.get(source.parent) == folders.get(target.parent):
+            yield number, (f'"{inc}" reaches from {relpath(root, source.parent)}/ into '
+                           f"{relpath(root, target.parent)}/, which reaches back - move what both need "
+                           "into a folder below them")
+
+
+@c_line_rule("HEADER-CYCLE")
+def rule_header_cycle(root, path, text):
+    by_source, _folders, headers = _main_include_cycles(str(root))
+    source = path.resolve()
+    for number, inc, target in by_source.get(source, ()):
+        if source.suffix == target.suffix == ".h" and source != target and headers.get(source) == headers.get(target):
+            yield number, f'"{inc}" is a header that includes {relpath(root, source)} back, directly or not'
+
+
 # RULE: an app (a folder of the top row, launcher/main/apps/) uses the engine, the platform, the lab shell and the app
 # contract, and never the rest of the system band: docs/plans/Engine-Layer-Design-Sketch.md's tier
 # rule. The lab shell and the app contract are the system band's lowest two
@@ -1153,6 +1245,7 @@ def run_audit(root, rule_filter=None, file_filter=None, files=None):
     returning (findings, files_scanned)."""
     _BACKEND_REACH.clear()
     _backend_headers.cache_clear()
+    _main_include_cycles.cache_clear()
     active = [r for r in RULES if not rule_filter or r.id == rule_filter]
     findings = []
     scanned = set()

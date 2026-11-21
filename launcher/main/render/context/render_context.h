@@ -26,6 +26,7 @@ typedef struct checkpoint checkpoint_t;
 #include "render/partial/render_partial.h"
 #include "render/r3d_instance.h"
 #include "render/raster.h"
+#include "render/record/frame_record.h"
 #include "render/render_view.h"
 #include "render/resolution/resolution.h"
 #include "render/settings/render_settings.h"
@@ -153,6 +154,25 @@ bool render_context_observer_pose(const render_context_t* context, transformf_t*
 
 /* The engine's own context, the one the scene manager draws through. */
 render_context_t* render_context_main(void);
+
+/* The last frame's choices, as frame_record reads them; a release build
+ * records nothing and keeps no frame view. */
+static inline frame_record_context_t
+render_context_recorded(const render_context_t* context) {
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+    const render_view_t* view = &context->frame_view;
+#else
+    const render_view_t* view = NULL;
+#endif
+    return (frame_record_context_t){view,
+                                    &context->settings,
+                                    &context->steer,
+                                    context->frame.step,
+                                    context->frame.width,
+                                    context->frame.height,
+                                    context->scale_percent,
+                                    context->frame.generated};
+}
 
 /* Drops the scratch block and returns every setting but `take` to its default. */
 void render_context_release(render_context_t* context);
