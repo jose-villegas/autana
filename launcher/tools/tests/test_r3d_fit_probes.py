@@ -66,8 +66,9 @@ class ClosureTests(unittest.TestCase):
                                                          side_effect=[np.array([0, 0]), np.array([1, 0])]))
                     stack.enter_context(mock.patch.object(appearance_simplify, "write_mesh", write_mesh))
                     stack.enter_context(mock.patch.object(appearance_simplify, "delta_e_total", return_value=(10.0, 4)))
+                    # A budget of one: the closure check must see the fit as pruned, not as optimised.
                     args = [*FitArgumentTests.BASE[:-1], str(out), *FitArgumentTests.held(out), "--closure",
-                            "--coverage-poses", "path.txt", "--coverage-poses", "probes.txt"]
+                            "--coverage-poses", "path.txt", "--coverage-poses", "probes.txt", "--budget", "1"]
                     if fitted_holes == self.PIXELS:
                         with self.assertRaisesRegex(ValueError, "closure"):
                             appearance_simplify.main(args)

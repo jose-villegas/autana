@@ -164,6 +164,8 @@ class SeamHoldTests(unittest.TestCase):
         holds = seam_holds(mesh, np.full(len(mesh.points), 0.25))
         np.testing.assert_array_equal(holds.points, [0, 1, 2])
         self.assertFalse(set(holds.points) & set(holds.corners.ravel()))
+        # The lower plane's points are within tolerance of the upper one but are its targets: pinned, not free.
+        np.testing.assert_array_equal(holds.pinned, [3, 4, 5])
         repeated = seam_holds(mesh, np.full(len(mesh.points), 0.25))
         for first, second in zip(holds, repeated):
             np.testing.assert_array_equal(first, second)
@@ -184,6 +186,25 @@ class SeamHoldTests(unittest.TestCase):
         holds = seam_holds(mesh, tolerance)
         np.testing.assert_array_equal(holds.points, [0, 1, 2])
         self.assertFalse(set(holds.points) & set(holds.corners.ravel()))
+        np.testing.assert_array_equal(holds.pinned, [6, 7, 8])
+        self.assertEqual(holds.line(), "seam holds: 6 border points within tolerance, 3 held, 3 pinned")
+
+    @unittest.skipIf(torch is None, "needs PyTorch")
+    def test_a_point_exclusivity_refuses_a_hold_stays_at_its_start(self):
+        from r3d.appearance_simplify import hold_seams, seam_holds
+
+        # Three stacked triangles: the bottom one ties the middle one to it, so the top one, within tolerance of
+        # the middle, is refused its hold (its target has held corners). Every point moves; the refused ones must not.
+        mesh = self.mesh()
+        plane = mesh.points[3:]
+        start = np.vstack([plane + [0, 0, 0.1], plane, plane + [0, 0, 0.25]])
+        mesh = mesh._replace(points=start, tris=np.vstack([mesh.tris, [6, 7, 8]]), vertex_point=np.arange(len(start)))
+        holds = seam_holds(mesh, np.repeat([0.5, 0, 0.25], 3))
+        moved = torch.tensor(start + [0.3, -0.2, 0.4])
+        result = hold_seams(moved, holds, torch.tensor(start)).numpy()
+        np.testing.assert_array_equal(result[holds.pinned], start[holds.pinned])
+        free = sorted(set(range(len(start))) - set(holds.points) - set(holds.pinned))
+        np.testing.assert_array_equal(result[free], moved.numpy()[free])
 
     def test_welded_interior_point_is_not_a_border(self):
         from r3d.appearance_simplify import seam_holds
@@ -205,7 +226,7 @@ class SeamHoldTests(unittest.TestCase):
         mesh = self.mesh()
         holds = seam_holds(mesh, np.array([0.25, 0, 0, 0, 0, 0]))
         points = torch.tensor(mesh.points, requires_grad=True)
-        result = hold_seams(points, holds)
+        result = hold_seams(points, holds, points.detach().clone())
         np.testing.assert_array_equal(result.detach()[0], [0.5, 0.5, 0])
         np.testing.assert_array_equal(points.detach(), mesh.points)
         result[0].sum().backward()
@@ -694,7 +715,7 @@ class PruneAndCostTests(unittest.TestCase):
                                      "--reference", "reference", "--out", "out", *flags])
                 scene.assert_not_called()
 
-    def test_main_without_a_budget_optimises_and_keeps_shown_triangles(self):
+    def test_main_without_a_budget_optimises_and_keeps_every_triangle(self):
         from r3d import appearance_simplify as appearance
 
         source = SimpleNamespace()
@@ -726,7 +747,7 @@ class PruneAndCostTests(unittest.TestCase):
             self.assertEqual(options["seam_margin"], 0.25)
             self.assertEqual((options["surface_weight"], options["surface_margin"]), (10, 0.25))
             calls["coverage"].assert_called_once()
-            self.assertEqual(calls["prune"].call_args.args[2], len(mesh.tris))
+            self.assertIsNone(calls["prune"].call_args.args[2], "an unbudgeted fit prunes nothing")
             written = calls["write_mesh"].call_args.args
             self.assertEqual(len(written), 3)
             np.testing.assert_array_equal(written[2].points, points)
@@ -743,6 +764,13 @@ class PruneAndCostTests(unittest.TestCase):
         for index in (4, 1, 5):
             self.assertIn(tuple(mesh[2][index]), kept)
         self.assertEqual(len(prune(mesh, shown, 6)[0].tris), 4, "a triangle no view shows was kept")
+
+    def test_an_unbudgeted_fit_keeps_the_triangles_no_view_shows(self):
+        # A probe fit's coverage views miss some faces a camera can see; dropping them opens cracks.
+        mesh = FitMesh(np.zeros((9, 3)), np.zeros((9, 3)), np.arange(18).reshape(6, 3) % 9, np.zeros(6), 8, np.arange(9))
+        pruned, kept = prune(mesh, np.array([0, 50, 3, 0, 900, 7]), None)
+        np.testing.assert_array_equal(pruned.tris, mesh.tris)
+        np.testing.assert_array_equal(kept, np.arange(6))
 
     def test_a_flat_mesh_keeps_each_colour_with_its_triangle(self):
         colours = np.arange(18, dtype=float).reshape(6, 3) / 17.0
