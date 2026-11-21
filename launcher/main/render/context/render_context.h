@@ -26,7 +26,7 @@ typedef struct checkpoint checkpoint_t;
 #include "render/partial/render_partial.h"
 #include "render/r3d_instance.h"
 #include "render/raster.h"
-#include "render/record/frame_record.h"
+#include "render/render_context_frame.h"
 #include "render/render_view.h"
 #include "render/resolution/resolution.h"
 #include "render/settings/render_settings.h"
@@ -42,23 +42,6 @@ typedef struct checkpoint checkpoint_t;
 /* Drawn frames in a row after which a frame is generated anyway, to measure
  * its cost again: the view or the drawn size may have changed. */
 #define FRAMEGEN_RETRY_DRAWN                 30
-
-/* The last frame: its step (-1 at the fixed scale), the size it drew at,
- * what culling kept and what its draw (with any census) and upscale cost.
- * A generated frame keeps the drawn one's size, step and stats; its
- * draw_us is the warp's. */
-typedef struct {
-    int step;
-    int width, height;
-    raster_stats_t stats;
-    int32_t draw_us, upscale_us;
-    int32_t predicted_us;
-    bool generated; /* warped from the last drawn frame, not drawn */
-    bool unchanged; /* partial redraw: nothing changed, nothing drawn or composed */
-    /* The destination rows [rows_first, rows_end) the last compose rewrote,
-     * at the view's destination size. */
-    int rows_first, rows_end;
-} render_context_frame_t;
 
 typedef struct {
     const char* name;
@@ -155,24 +138,9 @@ bool render_context_observer_pose(const render_context_t* context, transformf_t*
 /* The engine's own context, the one the scene manager draws through. */
 render_context_t* render_context_main(void);
 
-/* The last frame's choices, as frame_record reads them; a release build
- * records nothing and keeps no frame view. */
-static inline frame_record_context_t
-render_context_recorded(const render_context_t* context) {
-#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-    const render_view_t* view = &context->frame_view;
-#else
-    const render_view_t* view = NULL;
-#endif
-    return (frame_record_context_t){view,
-                                    &context->settings,
-                                    &context->steer,
-                                    context->frame.step,
-                                    context->frame.width,
-                                    context->frame.height,
-                                    context->scale_percent,
-                                    context->frame.generated};
-}
+/* Hands the frame just drawn or generated to frame_record, `dt_ms` after the
+ * last; a release build records nothing. */
+void render_context_record_frame(const render_context_t* context, uint32_t dt_ms);
 
 /* Drops the scratch block and returns every setting but `take` to its default. */
 void render_context_release(render_context_t* context);

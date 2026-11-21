@@ -497,7 +497,7 @@ frame_record_counts(void) {
 /* The frame's own records: FRAME, VIEW, CHOICE, a pending CHECK, the tunables. */
 static void
 record_frame_head(const frame_record_context_t* context, const raster_t* raster, uint32_t dt_ms, bool keyframe) {
-    const bool generated = context->generated;
+    const bool generated = context->frame->generated;
     const frame_record_frame_t frame = {
         .index = rec->index,
         .dt_ms = dt_ms,
@@ -508,9 +508,9 @@ record_frame_head(const frame_record_context_t* context, const raster_t* raster,
     };
     record(FRAME_RECORD_FRAME, &frame, sizeof frame);
     record(FRAME_RECORD_VIEW, context->view, sizeof *context->view);
-    const frame_record_choice_t choice = {(int16_t)context->step,          generated,
+    const frame_record_choice_t choice = {(int16_t)context->frame->step,   generated,
                                           (uint8_t)context->scale_percent, raster->clear,
-                                          (uint16_t)context->width,        (uint16_t)context->height};
+                                          (uint16_t)context->frame->width, (uint16_t)context->frame->height};
     record(FRAME_RECORD_CHOICE, &choice, sizeof choice);
     if (rec->checked) {
         record(FRAME_RECORD_CHECK, &rec->check, sizeof rec->check);
@@ -628,13 +628,13 @@ frame_record_frame(const frame_record_context_t* context, const raster_t* raster
     if (rec == NULL) {
         return;
     }
-    if (context->generated && (rec->after_drop || rec->counts.frames == 0)) {
+    if (context->frame->generated && (rec->after_drop || rec->counts.frames == 0)) {
         rec->index++;
         settle(false, true, false);
         return;
     }
     FRAME_COST_BEGIN(recorded_from);
-    const bool generated = context->generated;
+    const bool generated = context->frame->generated;
     const bool due = keyframe_due();
     /* A generated frame draws no meshes, so it cannot be a keyframe: the next drawn frame is. */
     const bool keyframe = due && !generated;
