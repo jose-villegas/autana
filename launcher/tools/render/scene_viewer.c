@@ -166,10 +166,10 @@ texture_object(entity_t scene) {
     return false;
 }
 
-/* The camera entity to activate: the named one, or the scene's first. */
+/* The camera entity to activate: the named one, else the scene's flight. */
 static entity_t
 chosen_camera(entity_t scene) {
-    return camera_name != NULL ? entity_find(scene, name_hash(camera_name)) : camera_first(scene);
+    return camera_name != NULL ? entity_find(scene, name_hash(camera_name)) : camera_flight(scene);
 }
 
 static bool
