@@ -2523,12 +2523,7 @@ def main(argv=None):
                                help="stop after this long; stdin is then not read")
     video_parser = subparsers.add_parser("video", help="record panel windows to H.264 MP4")
     video_parser.add_argument("-o", "--out", required=True)
-    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher/tools"))
-    from build.c_header import read_define
-    panelcap_header = Path(__file__).resolve().parents[2] / "launcher/main/gfx/present/capture/panelcap.h"
-    fps_default = read_define(panelcap_header, "PANELCAP_FPS_DEFAULT")
-    fps_max = read_define(panelcap_header, "PANELCAP_FPS_MAX")
-    video_parser.add_argument("--fps", type=int, choices=range(1, fps_max + 1), default=fps_default, metavar="N")
+    video_parser.add_argument("--fps", type=int, metavar="N")
     video_parser.add_argument("--seconds", type=float)
     screenshot_parser = subparsers.add_parser(
         "screenshot", help="capture what the panel shows right now, as a .png plus a .json state snapshot")
@@ -2584,6 +2579,17 @@ def main(argv=None):
     report_parser.add_argument("capture", help="an existing capture file (.log or .log.gz)")
     report_parser.add_argument("--index", help="override index.jsonl (default: records/device)")
     args = parser.parse_args(argv)
+    if args.command == "video":
+        sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher/tools"))
+        from build.c_header import read_define
+        panelcap_header = Path(__file__).resolve().parents[2] / "launcher/main/gfx/present/capture/panelcap.h"
+        fps_default = read_define(panelcap_header, "PANELCAP_FPS_DEFAULT")
+        fps_max = read_define(panelcap_header, "PANELCAP_FPS_MAX")
+        if args.fps is None:
+            args.fps = fps_default
+        if not 1 <= args.fps <= fps_max:
+            parser.error(f"--fps must be between 1 and {fps_max}")
+
     args.purpose = command_label(args.command)
     os.environ[autana_config.WAIT_ENV] = str(args.wait)
 

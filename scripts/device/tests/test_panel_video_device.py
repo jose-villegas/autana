@@ -77,3 +77,21 @@ class PanelVideoDeviceTests(unittest.TestCase):
 
     def test_first_part_crc_failure_counts_one_dropped_present(self):
         self.capture(False, corrupt=True, lost_first=True)
+
+
+    def test_release_without_console_uses_records_bounded_end_wait(self):
+        for command in ("record", "video"):
+            with self.subTest(command=command), tempfile.TemporaryDirectory() as folder:
+                args = Namespace(owner="agent", wait=0, out=str(Path(folder) / "run.mp4"), seconds=None, fps=15)
+                board = RecordingBoard([], after_stop=[])
+                store = mock_store()
+                with mock.patch.object(device, "open_when_free", return_value=board), \
+                        mock.patch.object(device, "RECORD_END_SECONDS", 0.05), \
+                        mock.patch.object(device, "STREAM_CHECK_SECONDS", 0.01), \
+                        mock.patch.object(panel_video.video_encode, "resolve", return_value="fake-ffmpeg"):
+                    with self.assertRaisesRegex(RuntimeError, "no " + ("FRAMEREC" if command == "record" else "PANELCAP") + "_END"):
+                        if command == "record":
+                            device.record_frames(args, store, BOARD, lines=[], log=io.StringIO())
+                        else:
+                            device.video(args, store, BOARD, lines=[], log=io.StringIO())
+                store.release.assert_called_once_with(BOARD, "token")
