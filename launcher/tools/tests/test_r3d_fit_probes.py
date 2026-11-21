@@ -41,10 +41,25 @@ class ClosureTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "closure"):
             check(self.START_HOLES, self.START_HOLES + growth + 1, self.PIXELS)
 
+    @staticmethod
+    def two_triangles():
+        return FitMesh(np.zeros((6, 3)), np.zeros((6, 3)), np.arange(6).reshape(2, 3), np.zeros(2), 8, np.arange(6))
+
+    def stub_fit(self, stack, mesh, views):
+        """Stubs in `stack` what a fit of `mesh` over `views` reads, optimises and reports, each view 10 dE over 4
+        pixels; the tests stub its holes, coverage and output."""
+        for name, value in dict(load_scene=SimpleNamespace(camera=SimpleNamespace(
+                component=SimpleNamespace(background=0))), start_mesh=mesh,
+                load_views=(views, self.SIZE), pose_views=(views, self.SIZE),
+                optimise=(mesh.points, mesh.rgb, [1.0]), delta_e_total=(10.0, 4),
+                stretch_report={
+                    "small": dict(stretch=0, area_growth=0, moved=0),
+                    "rest": dict(stretch=0, area_growth=0, moved=0),
+                    "worst": dict(stretch=[], area_growth=[], moved=[])}).items():
+            stack.enter_context(mock.patch.object(appearance_simplify, name, return_value=value))
+
     def test_main_checks_the_pruned_fit_before_writing(self):
-        mesh = FitMesh(np.zeros((6, 3)), np.zeros((6, 3)), np.arange(6).reshape(2, 3),
-                       np.zeros(2), 8, np.arange(6))
-        size = self.SIZE
+        mesh = self.two_triangles()
         views = [object()]
         # Unbudgeted (the probe fit) keeps both triangles; a budget of one prunes the never-shown one before the check.
         for (budget, tris), fitted_holes in itertools.product(((None, 2), ("1", 1)), (self.START_HOLES, self.PIXELS)):
@@ -54,20 +69,12 @@ class ClosureTests(unittest.TestCase):
                     (out / "mesh.bundle").touch()
                     return len(mesh.tris)
                 with contextlib.ExitStack() as stack:
-                    for name, value in dict(load_scene=SimpleNamespace(camera=SimpleNamespace(
-                            component=SimpleNamespace(background=0))), start_mesh=mesh,
-                            load_views=(views, size), pose_views=(views, size), optimise=(mesh.points, mesh.rgb, [1.0]),
-                            stretch_report={
-                                "small": dict(stretch=0, area_growth=0, moved=0),
-                                "rest": dict(stretch=0, area_growth=0, moved=0),
-                                "worst": dict(stretch=[], area_growth=[], moved=[])}).items():
-                        stack.enter_context(mock.patch.object(appearance_simplify, name, return_value=value))
+                    self.stub_fit(stack, mesh, views)
                     holes = stack.enter_context(mock.patch.object(appearance_simplify, "hole_pixels",
                                                                  side_effect=[self.START_HOLES, fitted_holes]))
                     stack.enter_context(mock.patch.object(appearance_simplify, "coverage",
                                                          side_effect=[np.array([0, 0]), np.array([1, 0])]))
                     stack.enter_context(mock.patch.object(appearance_simplify, "write_mesh", write_mesh))
-                    stack.enter_context(mock.patch.object(appearance_simplify, "delta_e_total", return_value=(10.0, 4)))
                     args = [*FitArgumentTests.BASE[:-1], str(out), *FitArgumentTests.held(out), "--closure",
                             "--coverage-poses", "path.txt", "--coverage-poses", "probes.txt",
                             *(["--budget", budget] if budget else [])]
@@ -85,19 +92,10 @@ class ClosureTests(unittest.TestCase):
 
     def logged_fit(self, out, *extra):
         """The log lines of a stubbed fit into `out` with `extra` arguments, and its hole_pixels mock."""
-        mesh = FitMesh(np.zeros((6, 3)), np.zeros((6, 3)), np.arange(6).reshape(2, 3),
-                       np.zeros(2), 8, np.arange(6))
-        views, size = [object(), object()], self.SIZE
+        mesh = self.two_triangles()
         with contextlib.ExitStack() as stack:
-            for name, value in dict(load_scene=SimpleNamespace(camera=SimpleNamespace(
-                    component=SimpleNamespace(background=0))), start_mesh=mesh,
-                    load_views=(views, size), pose_views=(views, size), optimise=(mesh.points, mesh.rgb, [1.0]),
-                    write_mesh=len(mesh.tris), delta_e_total=(10.0, 4),
-                    stretch_report={
-                        "small": dict(stretch=0, area_growth=0, moved=0),
-                        "rest": dict(stretch=0, area_growth=0, moved=0),
-                        "worst": dict(stretch=[], area_growth=[], moved=[])}).items():
-                stack.enter_context(mock.patch.object(appearance_simplify, name, return_value=value))
+            self.stub_fit(stack, mesh, [object(), object()])
+            stack.enter_context(mock.patch.object(appearance_simplify, "write_mesh", return_value=len(mesh.tris)))
             holes = stack.enter_context(mock.patch.object(appearance_simplify, "hole_pixels", return_value=0))
             stack.enter_context(mock.patch.object(appearance_simplify, "coverage", return_value=np.array([1, 1])))
             logged = stack.enter_context(mock.patch.object(appearance_simplify, "log"))
