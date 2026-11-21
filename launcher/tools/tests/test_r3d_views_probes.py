@@ -63,18 +63,6 @@ class ProbePlacementTests(unittest.TestCase):
         self.assertEqual(probes.greedy_faces(sets, np.zeros(13, bool), limit=1)[0], [1])
 
 
-    def test_placed_gives_each_probe_its_fate_and_the_faces_picked_from_it(self):
-        moved = np.arange(15.0).reshape(5, 3)
-        state = np.array(["kept", "inside", "kept", "kept", "near"])
-        # Picks index the live probes' cube faces in order: face 5 and face 0 of the third live probe, face 2 of the
-        # first; the second live probe keeps none.
-        faces = len(probes.FACES)
-        placed = probes.placed(moved, state, [2 * faces + 5, 2, 2 * faces])
-        self.assertEqual([probe["fate"] for probe in placed], ["kept", "inside", "greedy", "kept", "near"])
-        self.assertEqual([probe["faces"] for probe in placed], [[2], [], [], [0, 5], []])
-        self.assertEqual([probe["at"] for probe in placed], moved.tolist())
-
-
 @needs_mitsuba
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class ProbeInsideTests(unittest.TestCase):
@@ -159,9 +147,12 @@ class SelectTests(unittest.TestCase):
         self.assertEqual(cut.record["train"]["shown_after"], np.count_nonzero(facing & self.targets),
                          "the kept faces should show the box's +x side and count nothing else")
 
-    def test_the_record_places_every_probe_and_its_kept_faces_are_the_training_views(self):
-        views = self.select(query=self.query(cut=True), targets=self.targets)
-        placed = views.record["train"]["placed"]
+    def test_placed_training_places_every_probe_and_its_kept_faces_are_the_training_views(self):
+        query = self.query(cut=True)
+        views = self.select(query=query, targets=self.targets)
+        from r3d.views.probe_figures import placed_training
+
+        placed = placed_training(self.source.p, self.source.tri_v, self.REGION, self.NEAR, self.SEED, views, query)
         self.assertEqual(len(placed), views.record["train"]["probes"])
         faces = [np.concatenate([probe["at"], probes.FACES[face]]) for probe in placed for face in probe["faces"]]
         self.assertGreater(len(faces), 0)

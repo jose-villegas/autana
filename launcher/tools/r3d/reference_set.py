@@ -109,9 +109,10 @@ def prepare_references(inputs, work):
     from r3d.reference_render import render_sets
 
     scene, spacing = inputs.scene(), SimpleNamespace(**inputs.poses)
+    camera = scene.camera.component
     work.mkdir(parents=True, exist_ok=True)
-    coverage, count = coverage_path(inputs), 0
-    if coverage is not None:
+    path, count = None, 0
+    if camera.path is not None:
         visibility = SimpleNamespace(size=inputs.size, every_ms=None)
         w, h, lens, near, poses = camera_path_poses(scene, visibility, spacing.train_every_ms, either_way_up=False)
         training, held_out = split_poses(spacing, poses)
@@ -119,30 +120,19 @@ def prepare_references(inputs, work):
         (work / portrait).write_text(poses_text(w, h, lens, near, training))
         (work / landscape).write_text(poses_text(h, w, lens, near, training))
         (work / HELD_OUT[0]).write_text(poses_text(w, h, lens, near, held_out))
+        coverage = camera_path_poses(scene, visibility, spacing.coverage_every_ms)
         (work / COVERAGE).write_text(poses_text(*coverage))
-        count = len(training)
+        path, count = (coverage[0], coverage[1], coverage[2], coverage[4]), len(training)
     if inputs.probes is not None:
-        count += probe_poses(inputs, work, coverage)
+        count += probe_poses(inputs, work, path)
     sets = inputs.sets()
     render_sets(inputs, [(work / poses, work / reference) for poses, reference in sets.training + sets.held_out])
     return count
 
 
-def coverage_path(inputs):
-    """The camera path's pruning poses (the coverage set) as read_poses returns them, or None without a path."""
-    from r3d.mesh_source import camera_path_poses
-
-    scene = inputs.scene()
-    if scene.camera.component.path is None:
-        return None
-    visibility = SimpleNamespace(size=inputs.size, every_ms=None)
-    return camera_path_poses(scene, visibility, inputs.poses["coverage_every_ms"])
-
-
-def probe_poses(inputs, work, coverage):
-    """Writes the probes' training and held-out faces (r3d/views/probes.py) and their record, beside what the
-    `coverage` poses (coverage_path) show; returns the training faces. An alpha-masked import keeps its masked
-    triangles and lets rays through their cut texels."""
+def probe_poses(inputs, work, path):
+    """Writes the probes' training and held-out faces (r3d/views/probes.py) and their record; returns the
+    training faces. An alpha-masked import keeps its masked triangles and lets rays through their cut texels."""
     import json
 
     import numpy as np
@@ -158,7 +148,6 @@ def probe_poses(inputs, work, coverage):
     query = None
     if settings.alpha_keep is not None:
         query = RayQuery(source.p, source.tri_v, hit_filter=AlphaTest(source, settings.alpha_keep))
-    path = None if coverage is None else (*coverage[:3], coverage[4])
     views = probes.select(source.p, source.tri_v, camera.region, camera.near_z, inputs.probes.spacing, PROBE_SEED,
                           path, query=query)
     for (poses, _), faces in ((PROBE_TRAINING, views.training), (PROBE_HELD_OUT, views.held_out)):

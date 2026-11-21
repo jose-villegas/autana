@@ -8,16 +8,16 @@ probes on top, each probe in its fate's colour (FATES); a kept probe also shows 
 Per scene object: DIR/SCENE-OBJECT-probes-orbit.gif, ORBIT_FRAMES views circling the probe region uncut, and
 DIR/SCENE-OBJECT-probes-1.png .. -4.png from above its four top corners, each cut through the region's centre with
 only the probes behind the cut drawn. Then DIR/probe-fates.png, one legend for them all: each fate's count per
-scene object. The reference set's probe_poses picks the probes, as a fit's reference set does: at the import's
-geometry.probes or, for an import that sets none, at their defaults.
+scene object. probes.select picks the probes as a fit's reference set does (reference_set.probe_poses): beside
+the camera path's coverage poses, at the import's geometry.probes or, for an import that sets none, at their
+defaults.
 """
 
 import argparse
 import dataclasses
-import json
 import pathlib
 import sys
-import tempfile
+from types import SimpleNamespace
 from typing import NamedTuple
 
 import numpy as np
@@ -30,14 +30,14 @@ from docs.figures import rgb, save_gif, save_png  # noqa: E402
 from docs.plot_style import DPI, LABEL_SIZE, MUTED, SLOTS, figure, save  # noqa: E402
 from docs.producer import Producer  # noqa: E402
 from r3d.fitted_variant import placed_variant  # noqa: E402
-from r3d.geometry import hit_barycentrics  # noqa: E402
+from r3d.geometry import face_normals, hit_barycentrics  # noqa: E402
 from r3d.import_settings import load_probes, load_scene  # noqa: E402
 from r3d.light import AlphaTest, encode_srgb8  # noqa: E402
-from r3d.mesh_source import load_source  # noqa: E402
+from r3d.mesh_source import camera_path_poses, load_source  # noqa: E402
 from r3d.poses import camera_basis, camera_rays  # noqa: E402
 from r3d.ray_query import RayQuery  # noqa: E402
 from r3d.reference_render import hit_albedo  # noqa: E402
-from r3d.reference_set import PROBE_RECORD, coverage_path, probe_poses, reference_inputs  # noqa: E402
+from r3d.reference_set import PROBE_SEED, reference_inputs  # noqa: E402
 from r3d.scene_name import scene_id  # noqa: E402
 from r3d.views import probes  # noqa: E402
 
@@ -100,7 +100,7 @@ class Fate:
     cross: bool  # dropped for where it sits (a cross), not for what it shows (a disc)
 
 
-# What became of a probe, in legend order: one row per fate select records (probes.placed).
+# What became of a probe, in legend order: one row per fate placed gives.
 FATES = {
     "kept": Fate(SLOTS[2], "kept (arrows: its kept faces)", False),
     "greedy": Fate(MUTED, "dropped by the greedy pick: shows nothing new", False),
@@ -253,12 +253,35 @@ def legend(probe_sets, out):
     save(fig, out)
 
 
+def placed(moved, state, picked):
+    """Each probe as {"at": its moved position, "fate", "faces": its kept face indices into probes.FACES}: fate "kept" with
+    a kept face, "greedy" for a probe outside geometry with none, else its classify state."""
+    live = np.flatnonzero(state == "kept")
+    faces = [[] for _ in moved]
+    for index in sorted(picked):
+        faces[live[index // len(probes.FACES)]].append(index % len(probes.FACES))
+    return [{"at": [float(value) for value in at], "faces": shown,
+             "fate": "kept" if shown else "greedy" if fate == "kept" else str(fate)}
+            for at, fate, shown in zip(moved, state, faces)]
+
+
+def placed_training(positions, tris, region, near, seed, views, query):
+    """placed for the training probes of `views`, which probes.select made from these arguments: the probes are drawn and
+    classified again, and each kept face is found among their cube poses."""
+    positions, tris = np.asarray(positions, dtype=float), np.asarray(tris)
+    lo, hi = region if region is not None else (positions.min(axis=0), positions.max(axis=0))
+    points, cell = probes.probe_points(lo, hi, views.record["spacing"], seed)
+    moved, state = probes.classify(query, face_normals(positions, tris)[0], points, cell, near)
+    index = {pose.tobytes(): i for i, pose in enumerate(probes.cube_poses(moved[state == "kept"]))}
+    return placed(moved, state, [index[np.asarray(pose, dtype=float).tobytes()] for pose in views.training])
+
+
 class Probed(NamedTuple):
     """A scene object's probes as its reference set picks them, and its source to draw them over."""
     name: str  # SCENE-OBJECT, which its files are named after
     scene: str  # the scene's name in the legend
     record: dict  # probes.select's record
-    found: list  # the training probes, as probes.placed gives them
+    found: list  # the training probes, as placed_training gives them
     path: list  # the camera path's coverage poses, or None without a path
     source: object
     query: RayQuery
@@ -271,20 +294,23 @@ def probed(scene_path, object_name):
     inputs = reference_inputs(job, scene)
     if inputs.probes is None:
         inputs = dataclasses.replace(inputs, probes=load_probes({}))
-    coverage = coverage_path(inputs)
-    with tempfile.TemporaryDirectory() as work:
-        work = pathlib.Path(work)
-        probe_poses(inputs, work, coverage)
-        record = json.loads((work / PROBE_RECORD).read_text())
-    found = record["train"]["placed"]
-    unknown = {probe["fate"] for probe in found} - set(FATES)
-    if unknown:
-        raise ValueError(f"the probes have fates FATES has no row for: {sorted(unknown)}")
+    camera = scene.camera.component
+    coverage = None
+    if camera.path is not None:
+        visibility = SimpleNamespace(size=inputs.size, every_ms=None)
+        coverage = camera_path_poses(scene, visibility, inputs.poses["coverage_every_ms"])
     source = load_source(job.settings, np.float32)
     keep_alpha = job.settings.alpha_keep
     query = RayQuery(source.p, source.tri_v, hit_filter=None if keep_alpha is None else AlphaTest(source, keep_alpha))
-    return Probed(f"{scene_id(scene_path)}-{object_name}", scene_id(scene_path).capitalize(), record, found,
-                  None if coverage is None else coverage[4], source, query, scene.camera.component.half_fov_short_tan)
+    path = None if coverage is None else (*coverage[:3], coverage[4])
+    views = probes.select(source.p, source.tri_v, camera.region, camera.near_z, inputs.probes.spacing, PROBE_SEED,
+                          path, query=query)
+    found = placed_training(source.p, source.tri_v, camera.region, camera.near_z, PROBE_SEED, views, query)
+    unknown = {probe["fate"] for probe in found} - set(FATES)
+    if unknown:
+        raise ValueError(f"the probes have fates FATES has no row for: {sorted(unknown)}")
+    return Probed(f"{scene_id(scene_path)}-{object_name}", scene_id(scene_path).capitalize(), views.record, found,
+                  None if coverage is None else coverage[4], source, query, camera.half_fov_short_tan)
 
 
 def picture(probe_set, eye, forward, cut=None, size=VIEW_SIZE):

@@ -1,5 +1,5 @@
-"""Checks the probe figure (r3d/views/probe_figures.py): its views frame the box behind each cut, and its projection
-is camera_rays' inverse."""
+"""Checks the probe figure (r3d/views/probe_figures.py): each probe gets its fate and kept faces, its views frame the
+box behind each cut, and its projection is camera_rays' inverse."""
 
 import pathlib
 import sys
@@ -21,6 +21,17 @@ LENS = 0.62
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class ProbeFigureViewTests(unittest.TestCase):
+    def test_placed_gives_each_probe_its_fate_and_the_faces_picked_from_it(self):
+        moved = np.arange(15.0).reshape(5, 3)
+        state = np.array(["kept", "inside", "kept", "kept", "near"])
+        # Picks index the live probes' cube faces in order: face 5 and face 0 of the third live probe, face 2 of the
+        # first; the second live probe keeps none.
+        faces = len(probe_figures.probes.FACES)
+        placed = probe_figures.placed(moved, state, [2 * faces + 5, 2, 2 * faces])
+        self.assertEqual([probe["fate"] for probe in placed], ["kept", "inside", "greedy", "kept", "near"])
+        self.assertEqual([probe["faces"] for probe in placed], [[2], [], [], [0, 5], []])
+        self.assertEqual([probe["at"] for probe in placed], moved.tolist())
+
     def test_each_view_stands_above_its_own_corner_and_frames_the_box_behind_its_cut(self):
         lo, hi = np.array([-4.0, 0.0, -2.0]), np.array([4.0, 3.0, 2.0])
         centre, views = probe_figures.views(lo, hi, LENS)
