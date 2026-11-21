@@ -162,17 +162,25 @@ def start_parts(mesh) -> np.ndarray:
 
 
 class SeamHolds(NamedTuple):
-    """Border points tied to another start part's triangle at fixed barycentrics."""
+    """Border points tied to another start part's triangle at fixed barycentrics, and those pinned at their start
+    position: within tolerance of another part, but refused a tie so that no hold depends on another."""
     points: np.ndarray
     corners: np.ndarray
     barycentric: np.ndarray
+    pinned: np.ndarray = np.zeros(0, dtype=np.int64)
+
+    def line(self):
+        """The fit log's account of the border points within tolerance: each is held or pinned, none left free."""
+        within = len(self.points) + len(self.pinned)
+        return f"seam holds: {within} border points within tolerance, {len(self.points)} held, {len(self.pinned)} pinned"
 
 
 def seam_holds(mesh: FitMesh, tolerance: np.ndarray) -> SeamHolds:
     """Hold each border point that starts within `tolerance` (a per-point distance) of
     another part's triangle on that triangle's closest point. Nearest contacts win,
     and a point already held, or a corner of a held point's target, is never used
-    again, so no hold depends on another."""
+    again, so no hold depends on another; a point refused that way is pinned at its
+    start instead, so none within tolerance moves free to open a crack."""
     from scipy.spatial import cKDTree
 
     border = np.unique(_border_edges(mesh.vertex_point, mesh.tris))
@@ -198,25 +206,30 @@ def seam_holds(mesh: FitMesh, tolerance: np.ndarray) -> SeamHolds:
             if distance[nearest] <= tolerance[point]:
                 ratio = distance[nearest] / tolerance[point] if tolerance[point] > 0 else 0.0
                 candidates.append((ratio, int(point), int(nearby[nearest]), barycentric[nearest]))
-    held, targets, weights = [], [], []
+    held, targets, weights, pinned = [], [], [], []
     held_points, target_points = set(), set()
     for _ratio, point, triangle, barycentric in sorted(candidates, key=lambda item: item[:2]):
         target = corners[triangle]
         if point in target_points or any(int(corner) in held_points for corner in target):
+            pinned.append(point)
             continue
         held.append(point)
         targets.append(target)
         weights.append(barycentric)
         held_points.add(point)
         target_points.update(map(int, target))
+    assert len(held) + len(pinned) == len(candidates), "a border point within tolerance was left free"
     return SeamHolds(np.asarray(held, dtype=np.int64), np.asarray(targets, dtype=np.int64).reshape(-1, 3),
-                     np.asarray(weights, dtype=float).reshape(-1, 3))
+                     np.asarray(weights, dtype=float).reshape(-1, 3), np.asarray(sorted(pinned), dtype=np.int64))
 
 
-def hold_seams(points: "torch.Tensor", holds: SeamHolds) -> "torch.Tensor":
-    """Apply independent seam holds out of place, with gradients into target corners."""
+def hold_seams(points: "torch.Tensor", holds: SeamHolds, start: "torch.Tensor") -> "torch.Tensor":
+    """Apply independent seam holds out of place, with gradients into target corners; pinned points take their
+    `start` positions, so a held point whose target has a pinned corner follows it there."""
     import torch
 
+    pinned = torch.as_tensor(holds.pinned, device=points.device)
+    points = points.index_put((pinned,), start[pinned])
     held = torch.as_tensor(holds.points, device=points.device)
     corners = torch.as_tensor(holds.corners, device=points.device)
     barycentric = torch.as_tensor(holds.barycentric, dtype=points.dtype, device=points.device)
@@ -567,8 +580,11 @@ def coverage(mesh, views, size, device="cuda"):
 
 
 def prune(mesh, shown, budget):
-    """Keep the most-shown triangles up to `budget`, dropping every never-shown triangle.
+    """Keep the most-shown triangles up to `budget`, dropping every never-shown triangle; with no budget, keep every
+    triangle: one the coverage views never show may still face a camera they miss, and dropping it opens a crack.
     `shown` holds pixels per triangle. Return the pruned mesh and kept start indices."""
+    if budget is None:
+        return mesh, np.arange(len(mesh.tris))
     shown = np.asarray(shown)
     keep = np.sort(np.argsort(-shown, kind="stable")[:min(budget, np.count_nonzero(shown))])
     pruned = mesh._replace(rgb=mesh.rgb[keep] if mesh.flat else mesh.rgb, tris=mesh.tris[keep],
@@ -829,12 +845,12 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
     holds = None
     if seam_margin > 0:
         holds = seam_holds(mesh, seam_margin * point_scale.detach().cpu().numpy()[:, 0])
-        log(f"seam holds: {len(holds.points)} points")
+        log(holds.line())
     step_scale = point_scale / point_scale.max()
 
     def held_positions():
         points = start + step_scale * delta
-        return hold_seams(points, holds) if holds is not None else points
+        return hold_seams(points, holds, start) if holds is not None else points
 
     copy_points, copy_colours = (None, None) if copies is None else (
         torch.as_tensor(values, dtype=torch.float32, device=device) for values in (copies.points, copies.rgb))
@@ -1103,7 +1119,7 @@ def main(argv=None):
                 for poses in args.coverage_poses] if args.coverage_poses else [coverage(drawn, views, size)[:len(fitted.tris)]]
         shown = np.sum(rows, axis=0)
         held_out = [load_views([pair], args.scale) for pair in held_pairs if pictured(pair[1])]
-        pruned, kept = prune(fitted, shown, len(fitted.tris) if args.budget is None else args.budget)
+        pruned, kept = prune(fitted, shown, args.budget)
         if held_out and args.closure:
             pixels = sum(len(held_views) * held_size[0] * held_size[1] for held_views, held_size in held_out)
             start_holes, fitted_holes = (sum(hole_pixels(joined(candidate, copies), held_views, held_size, clear)
