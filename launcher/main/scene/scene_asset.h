@@ -5,6 +5,12 @@
 #include "hash/name_hash.h"
 #include "math/linear/mat3f.h"
 #include "render/batch/r3d_batch.h"
+#include "render/probe/sh_probes.h"
+
+#define SH_PROBES_ASSET ASSET_TYPE('S', 'H', 'P', 'R')
+
+/* The entry bytes must outlive the grid. Failure clears the output. */
+asset_status_t sh_probes_read(asset_view_t entry, sh_probes_t* out);
 
 typedef struct {
     mat3f_t linear;
@@ -43,7 +49,7 @@ typedef struct {
 
 typedef struct {
     uint16_t entity;
-    uint8_t kind, pad;
+    uint8_t kind, mode;
     vec3f_t color;
     float intensity;
 } scene_asset_light_t;

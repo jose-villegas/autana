@@ -15,6 +15,7 @@
 #include <math.h>
 #include <stdbool.h>
 #include <string.h>
+#include "esp_log.h"
 
 #include "apps/render_lab/baked_families.h"
 #include "apps/render_lab/capybara_content.h"
@@ -275,6 +276,7 @@ scene_capybara_sponza_enter(const lab_scene_t* self) {
     if (!load_sponza() || !load_capybara()) {
         return;
     }
+    scene_set_probes(capybara, scene_probes(sponza));
     path_ms = 0;
     held = false;
     applied = (gait_pick_t){-1, 1.0F};

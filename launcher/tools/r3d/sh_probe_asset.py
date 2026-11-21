@@ -2,20 +2,22 @@
 
 import math
 import pathlib
-import struct
 
 from build.c_header import read_define
+from r3d.mesh_asset import checked_struct
 
 OWNER = pathlib.Path(__file__).resolve().parents[2] / 'main/render/probe/sh_probes.h'
 TYPE = b'SHPR'
 SUFFIX = read_define(OWNER, 'SH_PROBES_NAME_SUFFIX')
-VERSION = 1
+VERSION = read_define(OWNER, 'SH_PROBES_VERSION')
 SH_PROBES_FLAG_INSIDE_MASK = read_define(OWNER, 'SH_PROBES_FLAG_INSIDE_MASK')
 MASK_BITS_PER_BYTE = read_define(OWNER, 'SH_PROBES_MASK_BITS_PER_BYTE')
-CHANNELS = 3
-COEFFICIENTS = 4
+SH1_OWNER = OWNER.parents[3] / 'packages/math/include/math/sh/sh1.h'
+CHANNELS = read_define(SH1_OWNER, 'SH1_CHANNEL_COUNT')
+COEFFICIENTS = read_define(SH1_OWNER, 'SH1_COEFFICIENT_COUNT')
 L1_AXES = (1, 2, 0)
-HEADER = struct.Struct('<HH3f3ff3H2x')
+HEADER_FIELDS = (('VERSION', 'H'), ('FLAGS', 'H'), ('ORIGIN', '3f'), ('SPACING', '3f'), ('SCALE', 'f'), ('DIMS', '3H'), ('PADDING', '2x'))
+HEADER = checked_struct(OWNER, 'SH_PROBES', HEADER_FIELDS)
 U16_BITS = 16
 DIM_MAX = (1 << U16_BITS) - 1
 QUANT_MAX = DIM_MAX >> 1
