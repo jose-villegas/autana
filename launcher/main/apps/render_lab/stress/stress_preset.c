@@ -507,7 +507,10 @@ stress_cut_px(const stress_params_t* p, int short_px) {
 #define STRESS_BRICK_TALL       8
 #define STRESS_BRICK_SEED       0xB21C7U
 #define STRESS_MORTAR           0
-#define STRESS_BRICK_COLOURS    (R3D_TEXTURE_COLOURS - 1)
+#define STRESS_BRICK_COLOURS    (R3D_TEXTURE_COLOURS - 2)
+/* The palette's last colour: the brick's mean, R3D_TEXTURE_ONE grey under
+ * its grey tint. Levels from STRESS_BRICK_FLAT_FROM hold only it. */
+#define STRESS_BRICK_MEAN       (R3D_TEXTURE_COLOURS - 1)
 #define STRESS_BRICK_TINT       128
 #define STRESS_MORTAR_LEVEL     176
 #define STRESS_BRICK_LOW        72
@@ -612,12 +615,17 @@ write_mask(uint8_t* palette, uint8_t* texels) {
 }
 
 /* Mortar is pale; bricks run a warm ramp. A level's texel is its 2x2
- * block's top-left in the level above, sampled from level 0. */
+ * block's top-left in the level above, sampled from level 0, up to
+ * STRESS_BRICK_FLAT_FROM; from there every texel is the mean. */
 static void
 write_brick(uint8_t* palette, uint8_t* texels) {
     for (int i = 0; i < R3D_TEXTURE_COLOURS; i++) {
-        const int level = i == STRESS_MORTAR ? STRESS_MORTAR_LEVEL : STRESS_BRICK_LOW + (STRESS_BRICK_STEP * i);
         uint8_t* entry = palette + (i * R3D_TEXTURE_PALETTE_STRIDE);
+        if (i == STRESS_BRICK_MEAN) {
+            memset(entry, R3D_TEXTURE_ONE, R3D_TEXTURE_TINT_RGB);
+            continue;
+        }
+        const int level = i == STRESS_MORTAR ? STRESS_MORTAR_LEVEL : STRESS_BRICK_LOW + (STRESS_BRICK_STEP * i);
         entry[0] = (uint8_t)mathi_min(level + (level / 4), UINT8_MAX);
         entry[1] = (uint8_t)level;
         entry[2] = (uint8_t)(level - (level / 4));
@@ -627,7 +635,8 @@ write_brick(uint8_t* palette, uint8_t* texels) {
         for (int y = 0; y < side; y++) {
             for (int x = 0; x < side; x++) {
                 const int o = (y * side) + x;
-                texels[o >> 1] |= (uint8_t)(brick_index(x << l, y << l) << ((o & 1) * 4));
+                const int index = l >= STRESS_BRICK_FLAT_FROM ? STRESS_BRICK_MEAN : brick_index(x << l, y << l);
+                texels[o >> 1] |= (uint8_t)(index << ((o & 1) * 4));
             }
         }
         texels += r3d_texture_level_bytes(R3D_TEXTURE_INDEX4, STRESS_TEXTURE_SIZE_LOG2 - l);

@@ -61,6 +61,7 @@ typedef struct {
     uint8_t format;                                /* R3D_TEXTURE_INDEX4 or R3D_TEXTURE_MASK1 */
     uint8_t size_log2;                             /* level 0's side */
     uint8_t levels;                                /* level 0 and its mips, each half the last */
+    uint8_t flat_level; /* INDEX4: the first level drawn flat, found at open from its colours; levels: none */
     /* Panel RGB565 of each colour's albedo at each light level: a span
      * reads one a pixel. A streamer may point `texels` elsewhere: the span
      * fill reads them only through this struct, at a triangle's set-up. */
@@ -107,12 +108,12 @@ r3d_texture_level_bytes(unsigned format, int side_log2) {
  * is chosen once per triangle from the texels a pixel steps. A MASK1 texel 0
  * leaves its pixel. The target's writers follow each span it drew. Returns
  * false, drawing nothing, for an INDEX4 level from
- * target->texture_far_level on (0: none), which
- * r3d_span_textured_triangle() draws untextured. */
+ * texture->flat_level on, which r3d_span_textured_triangle() draws
+ * untextured. */
 bool r3d_span_textured_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                             const r3d_span_vertex_t* c, const vec2f_t uv[3], const r3d_texture_t* texture);
 
-/* r3d_span_textured_fill(), and a far level it leaves to
+/* r3d_span_textured_fill(), and a flat level it leaves to
  * r3d_span_triangle_mean(). Inline, so the textured fill's frame is gone
  * before the solid fill's stacks up. */
 static inline __attribute__((always_inline)) void
