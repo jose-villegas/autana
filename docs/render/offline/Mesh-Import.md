@@ -150,8 +150,9 @@ uncut; each corner view is cut through the centre and shows only the probes
 behind the cut.
 
 The source is drawn see-through, as the [cull view](../frame/View-Modes.md)
-draws a culled cluster. The camera path and the probes sit on top, each probe in
-its fate's colour; a kept probe's arrows are its kept faces.
+draws a culled cluster. The probes sit on top, each in its fate's colour; a kept
+probe's arrows are its kept faces. Bistro's row also draws its camera path;
+Sponza's scene camera has none.
 
 | Orbit | +x +z | -x +z | -x -z | +x -z |
 |---|---|---|---|---|
