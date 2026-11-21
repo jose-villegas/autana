@@ -141,11 +141,17 @@ def source_meshes(mi, source, double_sided, keep_textures=False, boost=1.0):
     return meshes
 
 
+# A spot whose axis is this close to vertical (the cosine) is aimed with +X as its up, not +Y.
+SPOT_UP_LIMIT = 0.99
+
+
 def emitters(mi, lights, sky=None):
     """The scene lights as Mitsuba emitters, in the units `light()` returns: its value is E/pi times albedo, so a
     directional light's irradiance is pi * colour * intensity and a flat sky is a constant radiance of colour *
-    intensity. A directional light is a point source, as in the bake. Ambient is a
-    non-physical constant with no transport meaning and is rejected unless it is zero.
+    intensity. A directional light is a point source, as in the bake. A point or spot light's radiant intensity is
+    pi * colour * intensity, so it lights like the bake inside its range and cone; Mitsuba's own lights have no range
+    window and fade a spot's edge linearly in angle, so their light past the range and at the edge differs from the
+    bake's. Ambient is a non-physical constant with no transport meaning and is rejected unless it is zero.
 
     `sky` (turbidity, albedo) replaces the lights by the Hosek-Wilkie sun and sky, the sun taking its direction from
     the first directional light."""
@@ -163,6 +169,16 @@ def emitters(mi, lights, sky=None):
             direction = np.array(light["direction"], dtype=np.float64)
             found[f"light_{index}"] = {"type": "directional", "direction": (-direction / np.linalg.norm(direction)).tolist(),
                                        "irradiance": {"type": "rgb", "value": [math.pi * c for c in colour]}}
+        elif light["type"] == "point":
+            found[f"light_{index}"] = {"type": "point", "position": list(light["position"]),
+                                       "intensity": {"type": "rgb", "value": [math.pi * c for c in colour]}}
+        elif light["type"] == "spot":
+            position, axis = np.array(light["position"], dtype=np.float64), np.array(light["axis"], dtype=np.float64)
+            up = [1, 0, 0] if abs(axis[1]) > SPOT_UP_LIMIT * np.linalg.norm(axis) else [0, 1, 0]
+            found[f"light_{index}"] = {
+                "type": "spot", "intensity": {"type": "rgb", "value": [math.pi * c for c in colour]},
+                "cutoff_angle": float(light["outer_angle"]), "beam_width": float(light["inner_angle"]),
+                "to_world": mi.ScalarTransform4f.look_at(origin=position.tolist(), target=(position + axis).tolist(), up=up)}
         elif light["type"] == "sky":
             found[f"light_{index}"] = {"type": "constant", "radiance": {"type": "rgb", "value": colour}}
         elif light["type"] == "ambient" and any(colour):

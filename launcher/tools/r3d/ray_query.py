@@ -107,17 +107,22 @@ class RayQuery:
         ray = np.flatnonzero(hit)
         return origins[ray] + directions[ray] * distance[ray, None], ray, tri[ray]
 
-    def blocked(self, origins, directions):
-        """True for each ray that hits a solid part of the mesh (every hit without a `hit_filter`)."""
+    def blocked(self, origins, directions, reach=None):
+        """True for each ray that hits a solid part of the mesh (every hit without a `hit_filter`); with `reach`, one
+        distance per ray along unit directions, only a hit nearer than it blocks."""
         if self.scalar or self.hit_filter is not None:
-            return self.first_hits(np.asarray(origins), np.asarray(directions))[0]
+            hit, distance, _ = self.first_hits(np.asarray(origins), np.asarray(directions))
+            return hit if reach is None else hit & (distance < reach)
         self._check_variant()
         import drjit as dr
 
         blocked = np.zeros(len(origins), bool)
         for start in range(0, len(origins), BATCH):
             chunk = slice(start, start + BATCH)
-            mask = self.scene.ray_test(self._rays(np.asarray(origins)[chunk], np.asarray(directions)[chunk]))
+            rays = self._rays(np.asarray(origins)[chunk], np.asarray(directions)[chunk])
+            if reach is not None:
+                rays.maxt = self.mi.Float(np.asarray(reach, np.float32)[chunk])
+            mask = self.scene.ray_test(rays)
             dr.eval(mask)
             blocked[chunk] = np.array(mask, bool)
         return blocked

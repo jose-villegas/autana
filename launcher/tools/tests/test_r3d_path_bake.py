@@ -146,12 +146,12 @@ class BounceTests(unittest.TestCase):
 class RoofOverhead:
     """Ray queries without a mesh: a roof over the points blocks every ray that heads up."""
 
-    def blocked(self, origins, directions):
+    def blocked(self, origins, directions, reach=None):
         return directions[:, 1] > 0
 
 
 class Open:
-    def blocked(self, origins, directions):
+    def blocked(self, origins, directions, reach=None):
         return np.zeros(len(origins), bool)
 
 

@@ -1,4 +1,4 @@
-"""Baked light: the sun and sky cast against the full-detail mesh by shadow rays, the light that bounces (PathLight), the scene ambient, and albedo sampled from textures and region visibility culling."""
+"""Baked light: the sun, point, spot and sky lights cast against the full-detail mesh by shadow rays, the light that bounces (PathLight), the scene ambient, and albedo sampled from textures and region visibility culling."""
 
 import math
 from types import SimpleNamespace
@@ -13,7 +13,7 @@ import numpy as np
 
 from . import log
 from .geometry import distinct_corners, hit_barycentrics, nearest_triangles, triangle_areas, triangle_search
-from .import_settings import LIGHT_FIELDS, LIGHT_MODE_BAKED
+from .import_settings import LIGHT_FIELDS, LIGHT_MODE_BAKED, LOCAL_LIGHTS
 from .obj import alpha_tested
 
 
@@ -258,12 +258,45 @@ def sky_directions(count):
     return np.stack([r * np.cos(a), r * np.sin(a), np.sqrt(1 - r1)], axis=1)
 
 
-def bake_directional(light, ctx):
-    """The sun is a point source: one shadow ray, and the cosine of the angle to the normal."""
-    sun = np.array(light["direction"], dtype=np.float64)
-    sun /= np.linalg.norm(sun)
-    lit = unshadowed_count(ctx.intersector, ctx.origin, [sun])
-    return (np.maximum(ctx.normals @ sun, 0.0) * lit)[:, None] * np.array(light["color"]) * light["intensity"]
+def light_rays(light, origin, floor):
+    """The light from one point toward each origin: the unit direction toward it (one for a directional light, else one
+    per origin), the distance a blocker must be nearer than (None: any), and the falloff before the cosine.
+
+    A directional light is a point source at infinity and does not fall off. A point or spot light falls off by
+    inverse square, windowed to zero at its range (Karis 2013), with the distance floored at `floor` so a surface
+    touching the light stays finite; a spot is also cut to its cone, with the smooth edge of KHR_lights_punctual."""
+    if light["type"] == "directional":
+        toward = np.array(light["direction"], dtype=np.float64)
+        toward /= np.linalg.norm(toward)
+        return toward, None, 1.0
+    offset = np.asarray(light["position"], dtype=np.float64) - origin
+    distance = np.linalg.norm(offset, axis=1)
+    toward = offset / np.maximum(distance, np.finfo(np.float64).tiny)[:, None]
+    window = np.clip(1.0 - (distance / light["range"]) ** 4, 0.0, 1.0) ** 2
+    falloff = window / np.maximum(distance, floor) ** 2
+    if light["type"] == "spot":
+        axis = np.asarray(light["axis"], dtype=np.float64)
+        axis /= np.linalg.norm(axis)
+        inner, outer = (math.cos(math.radians(light[name])) for name in ("inner_angle", "outer_angle"))
+        falloff = falloff * np.clip((-(toward @ axis) - outer) / (inner - outer), 0.0, 1.0) ** 2
+    return toward, distance, falloff
+
+
+def facing(normals, toward):
+    """The cosine between each unit normal and the direction toward a light: one direction for all, or one each."""
+    return normals @ toward if toward.ndim == 1 else np.einsum("ij,ij->i", normals, toward)
+
+
+def bake_punctual(light, ctx):
+    """A light from one point, the sun included: one shadow ray toward it, no farther than the light, and the cosine of
+    the angle to the normal times the light's falloff. Points the light cannot reach trace no ray."""
+    toward, reach, falloff = light_rays(light, ctx.origin, ctx.ray_offset)
+    cosine = np.maximum(facing(ctx.normals, toward), 0.0)
+    traced = np.flatnonzero((cosine > 0) & (np.asarray(falloff) > 0))
+    rays = np.ascontiguousarray(np.broadcast_to(toward, ctx.origin.shape)[traced])
+    lit = np.zeros(len(ctx.origin))
+    lit[traced] = ~ctx.intersector.blocked(ctx.origin[traced], rays, None if reach is None else reach[traced])
+    return (cosine * lit * falloff)[:, None] * np.array(light["color"]) * light["intensity"]
 
 
 def bake_sky(light, ctx):
@@ -282,7 +315,8 @@ def bake_ambient(light, ctx):
 
 # The one table of what a scene light is: its fields, declared in
 # import_settings.py, and what it adds to a point's radiance.
-BAKERS = {"directional": bake_directional, "sky": bake_sky, "ambient": bake_ambient}
+BAKERS = {"directional": bake_punctual, "point": bake_punctual, "spot": bake_punctual, "sky": bake_sky,
+          "ambient": bake_ambient}
 LIGHTS = {kind: (LIGHT_FIELDS[kind], bake) for kind, bake in BAKERS.items()}
 assert set(LIGHTS) == set(LIGHT_FIELDS)
 
@@ -320,16 +354,22 @@ def baked_lights(lights):
     return [light for light in lights if light["mode"] == LIGHT_MODE_BAKED]
 
 
-def face_towards_light(normals, double_sided, lights):
-    """The orientation a double-sided surface is first lit on: the side the directional lights, summed, shine on. One
-    orientation for every light, so their order cannot matter. It also keeps the copies of a vertex at one position
-    facing alike when their bounce is gathered together; `light` then tries the other side too."""
+def face_towards_light(points, normals, double_sided, lights, floor):
+    """The orientation a double-sided surface is first lit on: the side the lights, summed, shine on, each weighted by
+    its intensity and falloff there. One orientation for every light, so their order cannot matter. It also keeps the
+    copies of a vertex at one position facing alike when their bounce is gathered together; `light` then tries the
+    other side too."""
     toward = np.zeros(3)
     for light in lights:
         if light["type"] == "directional":
             direction = np.array(light["direction"], dtype=np.float64)
             toward += light["intensity"] * direction / np.linalg.norm(direction)
-    flip = double_sided & (normals @ toward < 0)
+    lean = normals @ toward
+    for light in lights:
+        if light["type"] in LOCAL_LIGHTS:
+            direction, _, falloff = light_rays(light, points, floor)
+            lean = lean + light["intensity"] * falloff * facing(normals, direction)
+    flip = double_sided & (lean < 0)
     return np.where(flip[:, None], -normals, normals)
 
 
@@ -337,16 +377,17 @@ def light(points, normals, double_sided, intersector, lights, ray_offset, bounce
           bounce_intensity=1.0):
     """Radiance from the scene lights at each point, in the unit of irradiance over pi.
 
-    The sun and sky come from shadow rays against `intersector`, the same fixed directions at every point so equal
+    The sun, point, spot and sky lights come from shadow rays against `intersector`, the sun's and sky's the same
+    fixed directions at every point so equal
     surroundings give equal light. `bounce` is a PathLight whose bounced light is added; `bounce_groups` gives
     points that share one position the same bounce, gathered once on their mean normal, since bounced light changes
     slowly where direct light does not. `ao` is the scene's local occlusion setting: it scales the ambient light,
     and the bounced light when `ao.indirect`. A double-sided point has no side it is meant to be seen from: it is lit
     on both sides and keeps the brighter, so a card in the sun takes its sunlit side and a curtain in shade takes
-    its open side, not the back that faces the wall. Point and spot lights are reserved and not baked yet.
+    its open side, not the back that faces the wall.
     """
     lights = baked_lights(lights)
-    n = face_towards_light(normals, double_sided, lights)
+    n = face_towards_light(points, normals, double_sided, lights, ray_offset)
     occlusion = None if ao is None else open_side_occlusion(points, normals, double_sided, intersector, ao, ray_offset)
     radiance = lit_side(points, n, intersector, lights, ray_offset, occlusion, bounce, bounce_groups, ao, bounce_intensity)
     both = np.nonzero(double_sided)[0]
@@ -361,7 +402,8 @@ def light(points, normals, double_sided, intersector, lights, ray_offset, bounce
 
 def lit_side(points, n, intersector, lights, ray_offset, occlusion, bounce, bounce_groups, ao, bounce_intensity):
     """The light at each point on the side its unit normal `n` faces."""
-    ctx = SimpleNamespace(normals=n, origin=points + n * ray_offset, intersector=intersector, occlusion=occlusion)
+    ctx = SimpleNamespace(normals=n, origin=points + n * ray_offset, intersector=intersector, occlusion=occlusion,
+                          ray_offset=ray_offset)
     radiance = np.zeros((len(points), 3))
     for scene_light in lights:
         radiance += LIGHTS[scene_light["type"]][1](scene_light, ctx)
