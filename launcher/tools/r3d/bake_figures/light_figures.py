@@ -71,10 +71,10 @@ rotation = [-41.6, 0.0, 3.8]
 type = "spot"
 mode = "baked"
 color = [0.55, 0.75, 1.0]
-intensity = 14.0
-range = 9.0
-inner_angle = 18.0
-outer_angle = 30.0
+intensity = 36.0
+range = 10.0
+inner_angle = 14.0
+outer_angle = 24.0
 
 [[objects]]
 name = "camera"
