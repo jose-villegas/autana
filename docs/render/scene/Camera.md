@@ -22,7 +22,7 @@ flowchart LR
 `lens_view(camera, pose, viewport)`
 ([`lens.c:6`](../../../launcher/main/scene/camera/lens.c#L6)) builds the frame's `render_view_t`
 from the pose, field of view and near distance, then copies the lens's `present`,
-`skip_hidden` and `shift` onto it. `camera_lens(entity)` reads a camera's lens; `camera_first(root)` finds a scene's first camera.
+`skip_hidden` and `shift` onto it. `camera_lens(entity)` reads a camera's lens; `camera_first(root)` finds a scene's first camera, and `camera_flight(root)` its first camera on a path, else its first.
 
 The field of view is stored as the tangent of half the *shorter* picture side
 (`half_fov_short_tan`). `render_view_refit()` reprojects a retained pose through a new
