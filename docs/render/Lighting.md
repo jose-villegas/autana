@@ -117,31 +117,21 @@ baked shadow at the grid's resolution.
 
 ## Shadows
 
-| Kind | Cast by, onto | Made | Frame cost | Status |
-|---|---|---|---|---|
-| Sun shadow | static onto static | bake, one ray per point | none | on main |
-| Sky occlusion | static onto static | bake, $R$ rays per point | none | on main |
-| Local occlusion (`ao`) | static onto static | bake, $R$ short rays | none | on main |
-| Probe shade | static onto a mover | probe bake; sampled per mover | one grid sample per mover | on main |
-| Contact blob | a mover onto the ground | board, after the geometry | about 0.3 ms of `r3d.draw` | on main |
-| Contact FEET | a mover onto the ground | board, after the geometry | about 1.3 ms of `r3d.draw` | in [#1587](https://github.com/jose-villegas/autana/pull/1587) |
-| Contact SILHOUETTE | a mover onto the ground | board, after the geometry | about 1.6 ms of `r3d.draw`, 0.4 ms of animation | in [#1587](https://github.com/jose-villegas/autana/pull/1587) |
+| Kind | Cast by, onto | Made | Frame cost |
+|---|---|---|---|
+| Sun shadow | static onto static | bake, one ray per point | none |
+| Sky occlusion | static onto static | bake, $R$ rays per point | none |
+| Local occlusion (`ao`) | static onto static | bake, $R$ short rays | none |
+| Probe shade | static onto a mover | probe bake; sampled per mover | one grid sample per mover |
+| Contact blob | a mover onto the ground | board, after the geometry | inside `r3d.draw`, not timed apart |
 
 ### Contact shadows
 
 A mover casts no baked shadow and the probes do not see it, so a dithered
-dark shape on the ground stands in. Costs above are over no contact shadow,
-for one skinned mover in a baked atrium, from the board captures in
-[#1587](https://github.com/jose-villegas/autana/pull/1587).
+dark disc on the ground under it stands in. Placing and drawing it:
+[Skinned-Meshes.md](animation/Skinned-Meshes.md#contact-discs).
 
 ![A skinned mover with its contact blob on the floor of a baked atrium](../images/render/contact-blob-atrium.png)
-
-| Shape | Footprint | Status |
-|---|---|---|
-| Blob | a disc under the renderer's world bounds | on main: [Skinned-Meshes.md](animation/Skinned-Meshes.md#contact-discs) |
-| FEET | one disc under each contact joint | in [#1587](https://github.com/jose-villegas/autana/pull/1587) |
-| SILHOUETTE | a ground mask of posed joint ellipses | in [#1587](https://github.com/jose-villegas/autana/pull/1587) |
-| warp (option) | the footprint shifted and stretched away from the light | in [#1587](https://github.com/jose-villegas/autana/pull/1587) |
 
 ## Not supported yet
 
@@ -154,7 +144,7 @@ for one skinned mover in a baked atrium, from the board captures in
 | Realtime light on static meshes | static meshes draw their baked colours only |
 | More than four realtime lights | `R3D_SKIN_LIGHT_MAX` |
 | One baked object shadowing another | each mesh's rays see only its own source |
-| A contact shadow shaped like the mover | blob only on main (FEET and SILHOUETTE in [#1587](https://github.com/jose-villegas/autana/pull/1587)) |
+| A contact shadow shaped like the mover | a round disc whatever the mover's shape |
 | A projected planar contact shadow | none |
 | A static mesh that moves and keeps correct light | it keeps the light of where it was baked |
 | Time of day | one baked light state |
