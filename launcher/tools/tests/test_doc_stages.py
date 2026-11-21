@@ -45,24 +45,23 @@ class DocStagesTests(unittest.TestCase):
         import numpy as np
         from r3d import mesh_import, lit_mesh, light, ray_query
         baked = NS(object=NS(name="hall"), renderer=NS(variant=NS(name="full")))
-        flight = NS(path=NS(animation="tour.anim.toml", node="camera"))
-        scene = NS(renderers=[baked], objects=[NS(kind="camera", component=NS(path=None)),
-                                               NS(kind="camera", component=flight)])
+        # The scene camera, first, has no path (its fits train on probes); the cull flies the flight.
+        flight = NS(path=NS(animation="tour.anim.toml", node="camera"), half_fov_short_tan=.5, near_z=1)
+        visitor = NS(kind="camera", component=NS(path=None))
+        scene = NS(renderers=[baked], camera=visitor, objects=[visitor, NS(kind="camera", component=flight)])
         geometry = NS(positions=np.zeros((3, 3)), tris=np.array([[0, 1, 2]]),
                       tri_double=np.array([False]), rgb=np.zeros((3, 3)), scale={})
         poses = (224, 224, .5, 1, [[0, 0, 0, 0, 0, -1]])
         with tempfile.TemporaryDirectory() as directory, \
                 mock.patch.object(mesh_import, "bake_geometry", return_value=geometry), \
                 mock.patch.object(mesh_import, "write_baked"), \
-                mock.patch.object(mesh_import, "camera_path_poses", return_value=poses) as sample, \
+                mock.patch.object(stages, "sample_camera_path", create=True, return_value=(184, 224, .5, 1, [[0] * 6])) as sample, \
+                mock.patch.object(stages, "either_way", create=True, return_value=poses), \
                 mock.patch.object(ray_query, "RayQuery"), \
                 mock.patch.object(light, "visible_from_path", return_value=np.array([True])) as visible, \
                 mock.patch.object(lit_mesh, "write_lit_mesh"):
             stages.bake_into(Path(directory), scene, "hall", True)
-        settings = sample.call_args.args[1]
-        self.assertIs(sample.call_args.kwargs["camera"], flight)  # the scene camera has no path: the flight's
-        self.assertEqual((settings.every_ms, settings.size, settings.samples, settings.margin),
-                         (100, (184, 224), 3, 8))
+        sample.assert_called_once_with("tour.anim.toml", "camera", 100, 184, 224, .5, 1)
         self.assertEqual(visible.call_args.args[4:], (poses[-1], *poses[:4], 3, 8))
 
     def test_board_and_smoke_sample_the_fit_with_region_visibility(self):
@@ -71,8 +70,9 @@ class DocStagesTests(unittest.TestCase):
         fit = NS(size=(8, 6), held_out_every_ms=2000)
         job = NS(renderer=NS(fit=fit, visibility=NS(source="camera_region", rounds=2),
                              variant=NS(name="full")), asset_path=Path("start.bundle"), object=NS(name="hall"))
-        flight = NS(path=NS(animation="tour.anim.toml", node="camera"))
-        scene = NS(renderers=[job], objects=[NS(kind="camera", component=flight)])
+        flight = NS(path=NS(animation="tour.anim.toml", node="camera"), half_fov_short_tan=.5, near_z=1)
+        visitor = NS(kind="camera", component=NS(path=None))
+        scene = NS(renderers=[job], camera=visitor, objects=[visitor, NS(kind="camera", component=flight)])
         args = NS(build_commit=None, capture=[], scene=Path("room.scene.toml"), object="hall")
         poses = (8, 6, .5, 1, [[0, 0, 0, 0, 0, -1]])
         with tempfile.TemporaryDirectory() as directory:
@@ -83,19 +83,19 @@ class DocStagesTests(unittest.TestCase):
             args.capture = [capture]
             with mock.patch.object(import_settings, "load_scene", return_value=scene), \
                     mock.patch.object(fitted_variant, "placed_variant", return_value=job), \
-                    mock.patch.object(mesh_import, "camera_path_poses", return_value=poses) as sample, \
+                    mock.patch.object(stages, "sample_camera_path", create=True, return_value=poses) as sample, \
                     mock.patch.object(stages.subprocess, "check_output", return_value=b"commit"), \
                     mock.patch.object(stages.subprocess, "run", return_value=NS(returncode=0)), \
                     mock.patch.object(stages, "board_mean", return_value=1), \
                     mock.patch.object(stages, "board_frames", side_effect=ValueError("stop before cost fitting")):
                 with self.assertRaisesRegex(ValueError, "stop before cost fitting"):
                     stages.board(args, root, root)
-            sample.assert_called_once_with(scene, fit, fit.held_out_every_ms, either_way_up=False, camera=flight)
-            with mock.patch.object(mesh_import, "camera_path_poses", return_value=poses) as sample, \
+            sample.assert_called_once_with("tour.anim.toml", "camera", fit.held_out_every_ms, 8, 6, .5, 1)
+            with mock.patch.object(stages, "sample_camera_path", create=True, return_value=poses) as sample, \
                     mock.patch.object(stages.shutil, "copyfile"), \
                     mock.patch.object(reference_render, "main") as render:
                 stages.smoke_prepare(args.scene, scene, job, root / "inputs")
-            sample.assert_called_once_with(scene, fit, 5000, either_way_up=False, camera=flight)
+            sample.assert_called_once_with("tour.anim.toml", "camera", 5000, 8, 6, .5, 1)
             self.assertEqual(render.call_count, 3)
 
     def test_viewer_host_build_receives_the_scene(self):
@@ -159,7 +159,7 @@ class DocStagesTests(unittest.TestCase):
                 mock.patch.object(stages.subprocess, "run", return_value=NS(returncode=0)), \
                 mock.patch.object(import_settings, "load_scene", return_value=scene), \
                 mock.patch.object(fitted_variant, "placed_variant", return_value=job) as placed, \
-                mock.patch.object(mesh_import, "camera_path_poses", return_value=(8, 6, .62, 6, [[0]*7])), \
+                mock.patch.object(stages, "flight_poses", return_value=(8, 6, .62, 6, [[0]*7])), \
                 mock.patch.object(fitted_variant, "poses_text", return_value="poses"), \
                 mock.patch.object(cost_model, "mesh_rows", return_value=features) as rows, \
                 mock.patch.object(cost_model, "fit", return_value=np.ones(len(cost_model.FEATURES))) as fit, \
