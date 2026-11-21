@@ -14,6 +14,7 @@
 #include "freertos/task.h"
 #include "gfx/present/capture/gfx_panel_capture.h"
 #include "gfx/present/capture/panelcap.h"
+#include "gfx/present/gfx_internal.h"
 #include "gfx/present/gfx_present.h"
 
 #define PANELCAP_TASK_PRIORITY 1U
@@ -24,7 +25,7 @@
 #define PANELCAP_TAG           "PANEL"
 
 bool gfx_panel_capture_on;
-static panelcap_ring_t ring;
+static panelcap_t capture;
 static atomic_bool running;
 static atomic_bool stopping;
 static uint8_t* packet;
@@ -34,20 +35,20 @@ static uint64_t packed_sent;
 void
 gfx_panel_capture_begin(void) {
     if (gfx_panel_capture_on) {
-        (void)panelcap_begin(&ring, esp_timer_get_time());
+        (void)panelcap_begin(&capture, esp_timer_get_time());
     }
 }
 
 void
 gfx_panel_capture_commit(void) {
     if (gfx_panel_capture_on) {
-        panelcap_commit(&ring);
+        panelcap_commit(&capture);
     }
 }
 
 void
 gfx_panel_capture_window(int x0, int y0, int x1, int y1, const gfx_color_t* pixels) {
-    panelcap_window(&ring, x0, y0, x1, y1, pixels);
+    panelcap_window(&capture, x0, y0, x1, y1, pixels);
 }
 
 static void
@@ -61,22 +62,22 @@ static void
 sender(void* arg) {
     (void)arg;
     for (;;) {
-        const uint8_t* bytes = panelcap_peek(&ring);
+        const uint8_t* bytes = panelcap_peek(&capture);
         if (bytes != NULL) {
-            panelcap_send(bytes, packet, CONSOLE_PACKET_BYTES_MAX, send_packet, NULL);
-            panelcap_release(&ring);
+            panelcap_send(&capture, packet, CONSOLE_PACKET_BYTES_MAX, send_packet, NULL);
+            panelcap_release(&capture);
         } else if (atomic_load_explicit(&stopping, memory_order_acquire)) {
             break;
         } else {
             vTaskDelay(pdMS_TO_TICKS(PANELCAP_IDLE_MS));
         }
     }
-    memory_free(ring.storage);
+    memory_free(capture.storage);
     memory_free(packet);
     memory_free(scratch);
     char line[PANELCAP_LINE_BYTES];
-    (void)snprintf(line, sizeof line, "PANELCAP_END presents=%lu dropped=%lu bytes=%llu", (unsigned long)ring.presents,
-                   (unsigned long)ring.dropped, (unsigned long long)packed_sent);
+    (void)snprintf(line, sizeof line, "PANELCAP_END presents=%lu dropped=%lu bytes=%llu",
+                   (unsigned long)capture.presents, (unsigned long)capture.dropped, (unsigned long long)packed_sent);
     console_emit_line(line, "");
     atomic_store_explicit(&running, false, memory_order_release);
     vTaskDelete(NULL);
@@ -99,17 +100,17 @@ answer(const void* payload) {
         console_emit_line("PANELCAP_REFUSED: already on", "");
         return;
     }
-    uint8_t* storage = memory_alloc(PANELCAP_RING_BYTES, MEMORY_PSRAM);
+    uint8_t* storage = memory_alloc(PANELCAP_IMAGE_BYTES, MEMORY_PSRAM);
     packet = memory_alloc(CONSOLE_PACKET_BYTES_MAX, MEMORY_PSRAM);
     scratch = memory_alloc(CONSOLE_PACKET_MAX, MEMORY_PSRAM);
     if (storage == NULL || packet == NULL || scratch == NULL) {
         memory_free(storage);
         memory_free(packet);
         memory_free(scratch);
-        console_emit_line("PANELCAP_REFUSED: no PSRAM for panel ring", "");
+        console_emit_line("PANELCAP_REFUSED: no PSRAM for panel image", "");
         return;
     }
-    panelcap_ring_init(&ring, storage, fps);
+    panelcap_init(&capture, storage, fps);
     packed_sent = 0;
     atomic_store(&stopping, false);
     atomic_store(&running, true);
@@ -124,7 +125,7 @@ answer(const void* payload) {
     gfx_panel_capture_on = true;
     gfx_request_full_redraw();
     char line[PANELCAP_LINE_BYTES];
-    (void)snprintf(line, sizeof line, "PANELCAP_BEGIN fps=%u ring=%u", fps, (unsigned)PANELCAP_RING_BYTES);
+    (void)snprintf(line, sizeof line, "PANELCAP_BEGIN fps=%u image=%u", fps, (unsigned)PANELCAP_IMAGE_BYTES);
     console_emit_line(line, "");
 }
 

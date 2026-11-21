@@ -5,23 +5,28 @@
 #include "suites.h"
 #include "unity.h"
 
-#define TEST_PACKET_BYTES 31U
-#define TEST_CASES        4U
+#define TEST_PACKET_BYTES   31U
+#define TEST_CASES          4U
+#define TEST_WINDOW_SPACING 2U
 
-static panelcap_ring_t ring;
+static panelcap_t* capture;
 static uint8_t* storage;
 
 static void
 fixture(void) {
-    storage = memory_alloc(PANELCAP_RING_BYTES, MEMORY_APP);
+    capture = memory_alloc(sizeof *capture, MEMORY_APP);
+    TEST_ASSERT_NOT_NULL(capture);
+    storage = memory_alloc(PANELCAP_IMAGE_BYTES, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(storage);
-    panelcap_ring_init(&ring, storage, PANELCAP_FPS_DEFAULT);
+    panelcap_init(capture, storage, PANELCAP_FPS_DEFAULT);
 }
 
 static void
 release(void) {
     memory_free(storage);
     storage = NULL;
+    memory_free(capture);
+    capture = NULL;
 }
 
 typedef struct {
@@ -82,46 +87,61 @@ test_packbits_roundtrips_and_bound(void) {
 }
 
 static void
-test_admission_full_and_fps(void) {
+test_busy_sender_drops_whole_present(void) {
     fixture();
-    TEST_ASSERT_TRUE(panelcap_begin(&ring, 0));
-    panelcap_commit(&ring);
-    TEST_ASSERT_FALSE(panelcap_begin(&ring, 1));
-    TEST_ASSERT_TRUE(panelcap_begin(&ring, PANELCAP_US_PER_SECOND));
-    panelcap_commit(&ring);
-    TEST_ASSERT_FALSE(panelcap_begin(&ring, 2 * PANELCAP_US_PER_SECOND));
-    TEST_ASSERT_EQUAL(2, ring.dropped);
-    TEST_ASSERT_EQUAL(1, bytes_read_u32(panelcap_peek(&ring)));
-    panelcap_release(&ring);
-    TEST_ASSERT_TRUE(panelcap_begin(&ring, 3 * PANELCAP_US_PER_SECOND));
-    panelcap_commit(&ring);
-    panelcap_release(&ring);
-    const uint8_t* head = panelcap_peek(&ring);
-    TEST_ASSERT_EQUAL(5, bytes_read_u32(head));
-    TEST_ASSERT_EQUAL(1, bytes_read_u16(head + PANELCAP_HEAD_BYTES - sizeof(uint16_t)));
+    const uint8_t pixel[] = {0x12, 0x34};
+    TEST_ASSERT_TRUE(panelcap_begin(capture, 0));
+    panelcap_window(capture, 0, 0, 1, 1, pixel);
+    panelcap_commit(capture);
+    TEST_ASSERT_FALSE(panelcap_begin(capture, PANELCAP_US_PER_SECOND));
+    const uint8_t refused[] = {0xab, 0xcd};
+    panelcap_window(capture, 0, 0, 1, 1, refused);
+    panelcap_commit(capture);
+    TEST_ASSERT_EQUAL_MEMORY(pixel, capture->storage, sizeof pixel);
+    TEST_ASSERT_EQUAL(1, bytes_read_u32(panelcap_peek(capture)));
+    TEST_ASSERT_EQUAL(1, capture->presents);
+    TEST_ASSERT_EQUAL(1, capture->dropped);
+    panelcap_release(capture);
+    TEST_ASSERT_TRUE(panelcap_begin(capture, 2 * PANELCAP_US_PER_SECOND));
+    panelcap_commit(capture);
+    TEST_ASSERT_EQUAL(1, bytes_read_u16(panelcap_peek(capture) + PANELCAP_HEAD_BYTES - sizeof(uint16_t)));
     release();
 }
 
 static void
-test_overrun_abandons_whole_present(void) {
+test_fps_gate_counts_dropped_presents(void) {
     fixture();
-    uint8_t* pixels = memory_alloc(PANELCAP_WIDTH * PANELCAP_HEIGHT * PANELCAP_PIXEL_BYTES, MEMORY_APP);
-    TEST_ASSERT_NOT_NULL(pixels);
-    memset(pixels, 0, PANELCAP_WIDTH * PANELCAP_HEIGHT * PANELCAP_PIXEL_BYTES);
-    TEST_ASSERT_TRUE(panelcap_begin(&ring, 0));
-    panelcap_window(&ring, 0, 0, PANELCAP_WIDTH, PANELCAP_HEIGHT, pixels);
-    panelcap_window(&ring, 0, 0, PANELCAP_WIDTH, PANELCAP_HEIGHT, pixels);
-    TEST_ASSERT_TRUE(ring.admitted);
-    panelcap_window(&ring, 0, 0, PANELCAP_WIDTH, PANELCAP_HEIGHT, pixels);
-    panelcap_commit(&ring);
-    TEST_ASSERT_NULL(panelcap_peek(&ring));
-    TEST_ASSERT_EQUAL(0, ring.used);
-    TEST_ASSERT_EQUAL(1, ring.dropped);
-    TEST_ASSERT_TRUE(panelcap_begin(&ring, PANELCAP_US_PER_SECOND));
-    panelcap_window(&ring, 0, 0, 1, 1, pixels);
-    panelcap_commit(&ring);
-    TEST_ASSERT_EQUAL(1, bytes_read_u16(panelcap_peek(&ring) + sizeof(uint32_t) + sizeof(uint64_t)));
-    memory_free(pixels);
+    TEST_ASSERT_TRUE(panelcap_begin(capture, 0));
+    panelcap_commit(capture);
+    panelcap_release(capture);
+    TEST_ASSERT_FALSE(panelcap_begin(capture, 1));
+    panelcap_commit(capture);
+    TEST_ASSERT_NULL(panelcap_peek(capture));
+    TEST_ASSERT_TRUE(panelcap_begin(capture, PANELCAP_US_PER_SECOND / PANELCAP_FPS_DEFAULT));
+    panelcap_commit(capture);
+    TEST_ASSERT_EQUAL(1, bytes_read_u16(panelcap_peek(capture) + PANELCAP_HEAD_BYTES - sizeof(uint16_t)));
+    release();
+}
+
+static void
+test_window_overflow_collapses_to_bounding_box(void) {
+    fixture();
+    const uint8_t pixel[] = {0x12, 0x34};
+    TEST_ASSERT_TRUE(panelcap_begin(capture, 0));
+    for (unsigned i = 0; i <= PANELCAP_WINDOWS_MAX; i++) {
+        unsigned x = (i * TEST_WINDOW_SPACING) % PANELCAP_WIDTH;
+        unsigned y = (i * TEST_WINDOW_SPACING) / PANELCAP_WIDTH;
+        panelcap_window(capture, x, y, x + 1, y + 1, pixel);
+    }
+    TEST_ASSERT_TRUE(capture->admitted);
+    TEST_ASSERT_EQUAL(1, capture->windows);
+    TEST_ASSERT_EQUAL(0, capture->dirty[0].x);
+    TEST_ASSERT_EQUAL(0, capture->dirty[0].y);
+    TEST_ASSERT_EQUAL(PANELCAP_WINDOWS_MAX * TEST_WINDOW_SPACING + 1, capture->dirty[0].w);
+    TEST_ASSERT_EQUAL(1, capture->dirty[0].h);
+    panelcap_commit(capture);
+    TEST_ASSERT_NOT_NULL(panelcap_peek(capture));
+    TEST_ASSERT_EQUAL(0, capture->dropped);
     release();
 }
 
@@ -146,13 +166,13 @@ static void
 test_continuation_rejoins_encoded_present(void) {
     fixture();
     const uint8_t pixels[] = {0x12, 0x34};
-    TEST_ASSERT_TRUE(panelcap_begin(&ring, 0));
-    panelcap_window(&ring, 0, 0, 1, 1, pixels);
-    panelcap_commit(&ring);
+    TEST_ASSERT_TRUE(panelcap_begin(capture, 0));
+    panelcap_window(capture, 0, 0, 1, 1, pixels);
+    panelcap_commit(capture);
     uint8_t packet[TEST_PACKET_BYTES];
     uint8_t result[PANELCAP_HEAD_BYTES + PANELCAP_WINDOW_BYTES + 1 + sizeof pixels];
     join_t joined = {.sink = {.bytes = result}};
-    panelcap_send(panelcap_peek(&ring), packet, sizeof packet, join, &joined);
+    panelcap_send(capture, packet, sizeof packet, join, &joined);
     TEST_ASSERT_TRUE(joined.last);
     TEST_ASSERT_EQUAL(2, joined.part);
     TEST_ASSERT_EQUAL(sizeof result, joined.sink.used);
@@ -163,24 +183,66 @@ test_continuation_rejoins_encoded_present(void) {
 }
 
 static void
+test_overlapping_windows_keep_last_pixel(void) {
+    fixture();
+    const uint8_t first[] = {0x12, 0x34};
+    const uint8_t last[] = {0x56, 0x78};
+    TEST_ASSERT_TRUE(panelcap_begin(capture, 0));
+    panelcap_window(capture, 0, 0, 1, 1, first);
+    panelcap_window(capture, 0, 0, 1, 1, last);
+    panelcap_commit(capture);
+    uint8_t packet[TEST_PACKET_BYTES];
+    uint8_t result[PANELCAP_HEAD_BYTES + 2 * (PANELCAP_WINDOW_BYTES + 1 + sizeof first)];
+    join_t joined = {.sink = {.bytes = result}};
+    panelcap_send(capture, packet, sizeof packet, join, &joined);
+    TEST_ASSERT_EQUAL(1, bytes_read_u16(result + sizeof(uint32_t) + sizeof(uint64_t)));
+    TEST_ASSERT_EQUAL_MEMORY(last, result + PANELCAP_HEAD_BYTES + PANELCAP_WINDOW_BYTES + 1, sizeof last);
+    release();
+}
+
+static void
+test_image_rows_and_refusal_are_whole_present(void) {
+    fixture();
+    const uint8_t rows[] = {0x12, 0x34, 0x56, 0x78};
+    TEST_ASSERT_TRUE(panelcap_begin(capture, 0));
+    panelcap_window(capture, 1, 1, 2, 3, rows);
+    TEST_ASSERT_EQUAL_MEMORY(rows, capture->storage + (PANELCAP_WIDTH + 1) * PANELCAP_PIXEL_BYTES,
+                             PANELCAP_PIXEL_BYTES);
+    TEST_ASSERT_EQUAL_MEMORY(rows + PANELCAP_PIXEL_BYTES,
+                             capture->storage + (2 * PANELCAP_WIDTH + 1) * PANELCAP_PIXEL_BYTES, PANELCAP_PIXEL_BYTES);
+    panelcap_window(capture, 0, 0, PANELCAP_WIDTH + 1, 1, rows);
+    panelcap_window(capture, 0, 0, 1, 1, rows);
+    panelcap_commit(capture);
+    TEST_ASSERT_NULL(panelcap_peek(capture));
+    TEST_ASSERT_EQUAL(1, capture->dropped);
+    TEST_ASSERT_TRUE(panelcap_begin(capture, PANELCAP_US_PER_SECOND));
+    panelcap_commit(capture);
+    TEST_ASSERT_EQUAL(1, bytes_read_u16(panelcap_peek(capture) + PANELCAP_HEAD_BYTES - sizeof(uint16_t)));
+    release();
+}
+
+static void
 test_wire_fields_are_little_endian(void) {
     fixture();
     const uint64_t device_us = UINT64_C(0x0102030405060708);
     const uint32_t previous_seq = UINT32_C(0x44332210);
     const uint8_t expected[] = {0x11, 0x22, 0x33, 0x44, 8, 7, 6, 5, 4, 3, 2, 1, 0, 0, 0, 0};
-    ring.seq = previous_seq;
-    TEST_ASSERT_TRUE(panelcap_begin(&ring, device_us));
-    panelcap_commit(&ring);
-    TEST_ASSERT_EQUAL_MEMORY(expected, panelcap_peek(&ring), sizeof expected);
+    capture->seq = previous_seq;
+    TEST_ASSERT_TRUE(panelcap_begin(capture, device_us));
+    panelcap_commit(capture);
+    TEST_ASSERT_EQUAL_MEMORY(expected, panelcap_peek(capture), sizeof expected);
     release();
 }
 
 void
 suite_panelcap(void) {
     RUN_TEST(test_packbits_roundtrips_and_bound);
-    RUN_TEST(test_admission_full_and_fps);
-    RUN_TEST(test_overrun_abandons_whole_present);
+    RUN_TEST(test_busy_sender_drops_whole_present);
+    RUN_TEST(test_fps_gate_counts_dropped_presents);
+    RUN_TEST(test_window_overflow_collapses_to_bounding_box);
     RUN_TEST(test_continuation_rejoins_encoded_present);
+    RUN_TEST(test_overlapping_windows_keep_last_pixel);
+    RUN_TEST(test_image_rows_and_refusal_are_whole_present);
     RUN_TEST(test_wire_fields_are_little_endian);
 }
 
@@ -190,6 +252,7 @@ SUITE_REGISTER(suite_panelcap);
 #include "draw/draw.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_debug.h"
+#include "gfx/present/gfx_internal.h"
 #include "gfx/present/gfx_present.h"
 #include "image/pixel/rgb565.h"
 

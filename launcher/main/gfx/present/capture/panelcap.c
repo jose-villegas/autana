@@ -45,90 +45,101 @@ panelcap_pack(const uint8_t* pixels, size_t count, panelcap_emit_fn emit, void* 
 }
 
 void
-panelcap_ring_init(panelcap_ring_t* ring, uint8_t* storage, unsigned fps) {
-    *ring = (panelcap_ring_t){.storage = storage, .fps = fps};
-    for (unsigned i = 0; i < PANELCAP_SLOTS; i++) {
-        atomic_init(&ring->ready[i], 0);
-    }
+panelcap_init(panelcap_t* capture, uint8_t* storage, unsigned fps) {
+    *capture = (panelcap_t){.storage = storage, .fps = fps};
+    atomic_init(&capture->ready, 0);
+    memset(storage, 0, PANELCAP_IMAGE_BYTES);
 }
 
 static void
-drop(panelcap_ring_t* ring) {
-    ring->dropped++;
-    if (ring->dropped_before < UINT16_MAX) {
-        ring->dropped_before++;
+drop(panelcap_t* capture) {
+    capture->dropped++;
+    if (capture->dropped_before < UINT16_MAX) {
+        capture->dropped_before++;
     }
-    ring->admitted = false;
-    ring->used = 0;
+    capture->admitted = false;
 }
 
 bool
-panelcap_begin(panelcap_ring_t* ring, uint64_t us) {
-    ring->seq++;
-    ring->admitted = false;
-    if (us < ring->next_us || atomic_load_explicit(&ring->ready[ring->write_slot], memory_order_acquire)) {
-        drop(ring);
+panelcap_begin(panelcap_t* capture, uint64_t us) {
+    capture->seq++;
+    capture->admitted = false;
+    if (capture->fps == 0 || us < capture->next_us || atomic_load_explicit(&capture->ready, memory_order_acquire)) {
+        drop(capture);
         return false;
     }
-    ring->next_us = us + PANELCAP_US_PER_SECOND / ring->fps;
-    ring->used = PANELCAP_HEAD_BYTES;
-    ring->windows = 0;
-    ring->admitted = true;
-    uint8_t* head = ring->storage + ring->write_slot * PANELCAP_SLOT_BYTES;
-    bytes_write_u32(head, ring->seq);
-    bytes_write_u64(head + sizeof(uint32_t), us);
+    capture->next_us = us + PANELCAP_US_PER_SECOND / capture->fps;
+    capture->windows = 0;
+    capture->collapsed = false;
+    capture->admitted = true;
+    bytes_write_u32(capture->head, capture->seq);
+    bytes_write_u64(capture->head + sizeof(uint32_t), us);
     return true;
 }
 
 void
-panelcap_window(panelcap_ring_t* ring, unsigned x0, unsigned y0, unsigned x1, unsigned y1, const void* pixels) {
-    if (!ring->admitted) {
+panelcap_window(panelcap_t* capture, unsigned x0, unsigned y0, unsigned x1, unsigned y1, const void* pixels) {
+    if (!capture->admitted) {
         return;
     }
-    size_t bytes = (size_t)(x1 - x0) * (y1 - y0) * PANELCAP_PIXEL_BYTES;
-    if (x1 <= x0 || y1 <= y0 || x1 > PANELCAP_WIDTH || y1 > PANELCAP_HEIGHT || ring->windows == PANELCAP_WINDOWS_MAX
-        || ring->used > PANELCAP_SLOT_BYTES - PANELCAP_WINDOW_BYTES
-        || bytes > PANELCAP_SLOT_BYTES - ring->used - PANELCAP_WINDOW_BYTES) {
-        drop(ring);
+    if (pixels == NULL || x1 <= x0 || y1 <= y0 || x1 > PANELCAP_WIDTH || y1 > PANELCAP_HEIGHT) {
+        drop(capture);
         return;
     }
-    uint8_t* out = ring->storage + ring->write_slot * PANELCAP_SLOT_BYTES + ring->used;
-    const unsigned edges[] = {x0, y0, x1, y1};
-    for (unsigned i = 0; i < sizeof edges / sizeof edges[0]; i++) {
-        bytes_write_u16(out + i * sizeof(uint16_t), edges[i]);
+    const uint8_t* source = pixels;
+    size_t row_bytes = (x1 - x0) * PANELCAP_PIXEL_BYTES;
+    for (unsigned y = y0; y < y1; y++) {
+        memcpy(capture->storage + ((size_t)y * PANELCAP_WIDTH + x0) * PANELCAP_PIXEL_BYTES, source, row_bytes);
+        source += row_bytes;
     }
-    bytes_write_u32(out + PANELCAP_COORDS * sizeof(uint16_t), bytes);
-    memcpy(out + PANELCAP_WINDOW_BYTES, pixels, bytes);
-    ring->used += PANELCAP_WINDOW_BYTES + bytes;
-    ring->windows++;
+    recti_t box = recti_from_edges(x0, y0, x1, y1);
+    if (capture->collapsed) {
+        capture->dirty[0] = recti_union(capture->dirty[0], box);
+        return;
+    }
+    for (unsigned i = 0; i < capture->windows;) {
+        recti_t old = capture->dirty[i];
+        recti_t joined = recti_union(old, box);
+        if (!recti_is_empty(recti_intersect(old, box)) || recti_area(joined) == recti_area(old) + recti_area(box)) {
+            box = joined;
+            capture->dirty[i] = capture->dirty[--capture->windows];
+            i = 0;
+        } else {
+            i++;
+        }
+    }
+    if (capture->windows == PANELCAP_WINDOWS_MAX) {
+        /* A bounding box bounds metadata without encoding untouched panel margins. */
+        for (unsigned i = 0; i < capture->windows; i++) {
+            box = recti_union(box, capture->dirty[i]);
+        }
+        capture->windows = 0;
+        capture->collapsed = true;
+    }
+    capture->dirty[capture->windows++] = box;
 }
 
 void
-panelcap_commit(panelcap_ring_t* ring) {
-    if (!ring->admitted) {
+panelcap_commit(panelcap_t* capture) {
+    if (!capture->admitted) {
         return;
     }
-    uint8_t* head = ring->storage + ring->write_slot * PANELCAP_SLOT_BYTES;
-    bytes_write_u16(head + sizeof(uint32_t) + sizeof(uint64_t), ring->windows);
-    bytes_write_u16(head + PANELCAP_HEAD_BYTES - sizeof(uint16_t), ring->dropped_before);
-    ring->dropped_before = 0;
-    ring->presents++;
-    atomic_store_explicit(&ring->ready[ring->write_slot], 1, memory_order_release);
-    ring->write_slot = (ring->write_slot + 1) % PANELCAP_SLOTS;
-    ring->admitted = false;
+    bytes_write_u16(capture->head + sizeof(uint32_t) + sizeof(uint64_t), capture->windows);
+    bytes_write_u16(capture->head + PANELCAP_HEAD_BYTES - sizeof(uint16_t), capture->dropped_before);
+    capture->dropped_before = 0;
+    capture->presents++;
+    atomic_store_explicit(&capture->ready, 1, memory_order_release);
+    capture->admitted = false;
 }
 
 const uint8_t*
-panelcap_peek(panelcap_ring_t* ring) {
-    return atomic_load_explicit(&ring->ready[ring->read_slot], memory_order_acquire)
-               ? ring->storage + ring->read_slot * PANELCAP_SLOT_BYTES
-               : NULL;
+panelcap_peek(panelcap_t* capture) {
+    return atomic_load_explicit(&capture->ready, memory_order_acquire) ? capture->head : NULL;
 }
 
 void
-panelcap_release(panelcap_ring_t* ring) {
-    atomic_store_explicit(&ring->ready[ring->read_slot], 0, memory_order_release);
-    ring->read_slot = (ring->read_slot + 1) % PANELCAP_SLOTS;
+panelcap_release(panelcap_t* capture) {
+    atomic_store_explicit(&capture->ready, 0, memory_order_release);
 }
 
 typedef struct {
@@ -167,26 +178,32 @@ slice(void* arg, const uint8_t* bytes, size_t count) {
 }
 
 void
-panelcap_send(const uint8_t* present, uint8_t* packet, size_t capacity, panelcap_emit_fn emit, void* arg) {
+panelcap_send(const panelcap_t* capture, uint8_t* packet, size_t capacity, panelcap_emit_fn emit, void* arg) {
     if (capacity <= PANELCAP_PART_HEAD_BYTES) {
         return;
     }
     parts_t parts = {
         .packet = packet, .used = PANELCAP_PART_HEAD_BYTES, .capacity = capacity, .emit = emit, .arg = arg};
-    memcpy(packet, present, sizeof(uint32_t));
-    slice(&parts, present, PANELCAP_HEAD_BYTES);
-    unsigned windows = (unsigned)bytes_read_u16(present + sizeof(uint32_t) + sizeof(uint64_t));
-    const uint8_t* bytes = present + PANELCAP_HEAD_BYTES;
-    for (unsigned i = 0; i < windows; i++) {
+    memcpy(packet, capture->head, sizeof(uint32_t));
+    slice(&parts, capture->head, PANELCAP_HEAD_BYTES);
+    for (unsigned i = 0; i < capture->windows; i++) {
+        recti_t box = capture->dirty[i];
         uint8_t head[PANELCAP_WINDOW_BYTES];
-        memcpy(head, bytes, sizeof head);
-        size_t pixels = bytes_read_u32(head + PANELCAP_COORDS * sizeof(uint16_t)) / PANELCAP_PIXEL_BYTES;
-        bytes += PANELCAP_WINDOW_BYTES;
-        size_t packed = panelcap_pack(bytes, pixels, NULL, NULL);
+        const unsigned edges[] = {box.x, box.y, recti_right(box), recti_bottom(box)};
+        for (unsigned edge = 0; edge < PANELCAP_COORDS; edge++) {
+            bytes_write_u16(head + edge * sizeof(uint16_t), edges[edge]);
+        }
+        size_t packed = 0;
+        for (int y = box.y; y < recti_bottom(box); y++) {
+            const uint8_t* row = capture->storage + ((size_t)y * PANELCAP_WIDTH + box.x) * PANELCAP_PIXEL_BYTES;
+            packed += panelcap_pack(row, box.w, NULL, NULL);
+        }
         bytes_write_u32(head + PANELCAP_COORDS * sizeof(uint16_t), packed);
         slice(&parts, head, sizeof head);
-        (void)panelcap_pack(bytes, pixels, slice, &parts);
-        bytes += pixels * PANELCAP_PIXEL_BYTES;
+        for (int y = box.y; y < recti_bottom(box); y++) {
+            const uint8_t* row = capture->storage + ((size_t)y * PANELCAP_WIDTH + box.x) * PANELCAP_PIXEL_BYTES;
+            (void)panelcap_pack(row, box.w, slice, &parts);
+        }
     }
     flush(&parts, true);
 }

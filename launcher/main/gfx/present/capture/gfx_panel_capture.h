@@ -4,6 +4,12 @@
 #include "build/build_variant.h"
 #include "gfx/target/gfx_color.h"
 
+#if CONFIG_LAUNCHER_DEVELOPMENT
+#include "console/console.h"
+#include "gfx/present/capture/panelcap.h"
+#define GFX_PANEL_CAPTURE_RESERVE_BYTES (PANELCAP_IMAGE_BYTES + CONSOLE_PACKET_BYTES_MAX + CONSOLE_PACKET_MAX)
+#endif
+
 #if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT
 extern bool gfx_panel_capture_on;
 void gfx_panel_capture_begin(void);

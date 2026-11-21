@@ -19,7 +19,7 @@ def test_panelcap_known_pattern(console):
     console.exchange("FREEZE", r"FREEZE_STATE frozen=1 steps=0")
     started = False
     try:
-        console.exchange("PANELCAP START 60", r"PANELCAP_BEGIN fps=60 ring=\d+")
+        console.exchange("PANELCAP START 60", r"PANELCAP_BEGIN fps=60 image=\d+")
         started = True
         dut.write("RUNSUITE suite_panelcap_pattern")
         parts = panel_video.Parts()

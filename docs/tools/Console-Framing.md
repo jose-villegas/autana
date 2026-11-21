@@ -98,7 +98,7 @@ sequenceDiagram
     participant H as autana video
     participant D as device
     H->>D: PANELCAP START 15
-    D-->>H: PANELCAP_BEGIN fps=N ring=B
+    D-->>H: PANELCAP_BEGIN fps=N image=B
     loop admitted presents
         D-->>H: PANEL_BIN n crc32 + n bytes
     end
@@ -160,7 +160,7 @@ title Present header, 16 bytes, one cell a byte
 | Device time at present start | 4 | u64, microseconds |
 | Window count | 12 | u16 |
 | Dropped presents before this one | 14 | u16, saturates at its maximum |
-| Windows | 16 | records below, in panel-send order |
+| Windows | 16 | merged dirty rectangles below |
 
 ```mermaid
 ---
@@ -188,12 +188,14 @@ title Window header, 12 bytes, one cell a byte
 | Rule | Detail |
 |---|---|
 | Pixel codec | Apple PackBits over 16-bit pixels: signed header 0..127 copies n+1 pixels; -127..-1 repeats one pixel 1-n times; -128 is a no-op |
-| Admission | Once per present: the fps gate and a free worst-case slot must both allow it |
-| Storage | `PANELCAP_RING_BYTES` holds `PANELCAP_SLOTS` slots; each allows two full-panel passes plus bounded window metadata |
-| Overrun | Abandons the provisional slot, counts a drop, publishes no windows |
-| Sender | Priority one, sends only committed slots, never blocks presentation |
-| STOP | Stops admission, drains committed slots, frees PSRAM, then sends END |
-| Totals | END counts committed presents, all admission/overrun drops, and serialized packed-stream bytes excluding continuation headers |
+| Admission | Once per present: the fps gate must allow it and the sender must have finished the previous present |
+| Storage | One `PANELCAP_IMAGE_BYTES` PSRAM image, derived from `GFX_FRAMEBUFFER_BYTES`, plus a `PANELCAP_WINDOWS_MAX` rectangle list |
+| Windows | Each admitted send writes its rectangle into the image, last write wins. Overlapping and rectangular adjacent regions merge |
+| List overflow | Collapse to the bounding box, keeping metadata bounded without encoding the panel's outer margins |
+| Dropped before | Every present not sent since the previous sent present: fps gate, sender busy, or invalid window. Saturates at u16 maximum |
+| Sender | Priority one, encodes only the committed image, never blocks presentation |
+| STOP | Stops admission, drains the committed image, frees image and packet scratch, then sends END |
+| Totals | END counts committed presents, all admission/refusal drops, and serialized packed-stream bytes excluding continuation headers |
 | Refusal | Already on, not recording, bad fps, invalid syntax, unavailable PSRAM, or no memory for the sender task |
 
 START requests a full redraw so the next drawn present initializes the canvas.
