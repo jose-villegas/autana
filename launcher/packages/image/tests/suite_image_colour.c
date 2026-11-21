@@ -1,8 +1,8 @@
 #include <math.h>
 #include <stdint.h>
 
-#include "math/colour/oklab.h"
-#include "math/colour/srgb.h"
+#include "image/colour/oklab.h"
+#include "image/colour/srgb.h"
 #include "testkit/suite.h"
 #include "unity.h"
 
@@ -143,7 +143,7 @@ test_oklab_round_trips(void) {
 }
 
 void
-suite_colour(void) {
+suite_image_colour(void) {
     RUN_TEST(test_curve_ends_and_reference_points);
     RUN_TEST(test_linear_segment_meets_the_power_segment);
     RUN_TEST(test_encode_clamps_before_the_curve);
@@ -160,4 +160,4 @@ suite_colour(void) {
     RUN_TEST(test_greys_have_no_chroma_and_out_of_gamut_is_not_clamped);
     RUN_TEST(test_oklab_round_trips);
 }
-SUITE_REGISTER(suite_colour)
+SUITE_REGISTER(suite_image_colour)

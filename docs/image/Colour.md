@@ -1,9 +1,9 @@
 # Colour: srgb.h and oklab.h
 
 The sRGB transfer function and the OKLab colour space, header-only, in float.
-[Math index](README.md).
+[Image package](../../launcher/packages/image/README.md).
 
-[`srgb.h`](../../launcher/packages/math/include/math/colour/srgb.h) is the piecewise curve of IEC 61966-2-1,<sup>[[10]](../Citations.md#iec-61966-2-1)</sup>
+[`srgb.h`](../../launcher/packages/image/include/image/colour/srgb.h) is the piecewise curve of IEC 61966-2-1,<sup>[[10]](../Citations.md#iec-61966-2-1)</sup>
 between linear light $`c`$ and an encoded value $`e`$, both in $`[0, 1]`$:
 
 ```math
@@ -19,7 +19,7 @@ e = \begin{cases} 12.92\,c & c \le 0.0031308 \\ 1.055\,c^{1/2.4} - 0.055 & \text
 | `srgbf_decode_byte` | An 8-bit encoded channel to linear light |
 | `srgbf_encode_byte` | Linear light to the nearest 8-bit encoded channel; every byte round-trips |
 
-[`oklab.h`](../../launcher/packages/math/include/math/colour/oklab.h) converts between linear-light sRGB and OKLab with Ottosson's
+[`oklab.h`](../../launcher/packages/image/include/image/colour/oklab.h) converts between linear-light sRGB and OKLab with Ottosson's
 matrices.<sup>[[35]](../Citations.md#ottosson-2020)</sup> `oklabf_t` holds
 lightness `l` and the opponent axes `a` and `b`, unscaled: white is
 $`(1, 0, 0)`$.
@@ -31,11 +31,11 @@ $`(1, 0, 0)`$.
 
 ## Example
 
-<!-- generated: math-colour-example check: python launcher/tools/gen/examples_doc.py --check -->
+<!-- generated: image-colour-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
 /* Lighten a 24-bit sRGB colour in OKLab, where a lightness step looks even. */
-#include "math/colour/oklab.h"
-#include "math/colour/srgb.h"
+#include "image/colour/oklab.h"
+#include "image/colour/srgb.h"
 
 uint32_t
 colour_example_lighten(uint32_t rgb, float step) {
@@ -48,4 +48,4 @@ colour_example_lighten(uint32_t rgb, float step) {
            | srgbf_encode_byte(out.z);
 }
 ```
-<!-- /generated: math-colour-example -->
+<!-- /generated: image-colour-example -->

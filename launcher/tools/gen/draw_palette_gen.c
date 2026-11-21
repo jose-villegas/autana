@@ -4,11 +4,11 @@
 #include <stdbool.h>
 
 #include "gfx/present/modes/indexed/gfx_indexed.h"
+#include "image/colour/oklab.h"
+#include "image/colour/srgb.h"
 #include "image/palette/palette.h"
 #include "image/pixel/bayer.h"
 #include "image/pixel/rgb565.h"
-#include "math/colour/oklab.h"
-#include "math/colour/srgb.h"
 
 gfx_lin_t
 gfx_rgb_to_lin(uint32_t rgb888) {

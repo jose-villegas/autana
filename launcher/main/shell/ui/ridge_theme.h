@@ -5,9 +5,9 @@
 #include <stdint.h>
 
 #include "gfx/target/gfx_color.h"
+#include "image/colour/oklab.h"
+#include "image/colour/srgb.h"
 #include "image/pixel/rgb565.h"
-#include "math/colour/oklab.h"
-#include "math/colour/srgb.h"
 
 typedef struct {
     float l;

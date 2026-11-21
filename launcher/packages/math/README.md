@@ -12,7 +12,6 @@ carry functions nothing calls yet.
 | `include/math/linear/` | Vectors, quaternions, 4x4 matrices and transforms, each one template instantiated per number type; [linear reference](../../../docs/math/Linear.md) describes the families |
 | `include/math/geometry/` | Shapes and their queries: half-open rectangles (`rectf`, `recti`, `rects`, `rectx`) and oriented planes (`planef`, `planex`), instantiated from geometry templates |
 | `include/math/stats/` | Order statistics of sample arrays: percentile and median; [stats reference](../../../docs/math/Stats.md) |
-| `include/math/colour/` | The sRGB transfer function (IEC 61966-2-1) and OKLab; [colour reference](../../../docs/math/Colour.md) |
 | `include/math/signal/` | Signal processing: Goertzel single-bin detection, pitch conversion and exponential smoothing; [signal reference](../../../docs/math/Signal.md) |
 | `include/math/text/` | Canonical format and parse pairs; [text reference](../../../docs/math/Text.md) |
 | `src/` | The few functions that are not inline |
@@ -52,8 +51,6 @@ header's opening comment; `--check` verifies it.
 <!-- generated: package-math-headers check: python launcher/tools/gen/package_headers.py --check -->
 | Header | Purpose |
 |---|---|
-| [include/math/colour/oklab.h](include/math/colour/oklab.h) | oklab: the OKLab perceptual colour space (Ottosson 2020) from and to linear-light sRGB. |
-| [include/math/colour/srgb.h](include/math/colour/srgb.h) | srgb: the sRGB transfer function of IEC 61966-2-1, between linear light and encoded [0, 1]. |
 | [include/math/geometry/ball_template.h](include/math/geometry/ball_template.h) | ball_template: closed balls in any dimension for one number type; see docs/math/Conventions.md#templates for macro arguments. |
 | [include/math/geometry/box3_template.h](include/math/geometry/box3_template.h) | box3_template: closed axis-aligned boxes for one number type; see docs/math/Conventions.md#templates for macro arguments. |
 | [include/math/geometry/box3f.h](include/math/geometry/box3f.h) | box3f: a closed axis-aligned box of a float. |

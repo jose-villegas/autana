@@ -1,6 +1,6 @@
 /* Lighten a 24-bit sRGB colour in OKLab, where a lightness step looks even. */
-#include "math/colour/oklab.h"
-#include "math/colour/srgb.h"
+#include "image/colour/oklab.h"
+#include "image/colour/srgb.h"
 
 uint32_t
 colour_example_lighten(uint32_t rgb, float step) {
