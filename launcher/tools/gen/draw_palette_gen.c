@@ -4,34 +4,22 @@
 #include <stdbool.h>
 
 #include "gfx/present/modes/indexed/gfx_indexed.h"
+#include "image/colour/oklab.h"
+#include "image/colour/srgb.h"
 #include "image/palette/palette.h"
 #include "image/pixel/bayer.h"
 #include "image/pixel/rgb565.h"
 
-static double
-srgb_to_linear(double c) {
-    return c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4);
-}
-
 gfx_lin_t
 gfx_rgb_to_lin(uint32_t rgb888) {
-    return (gfx_lin_t){
-        srgb_to_linear(((rgb888 >> 16) & 0xFFu) / 255.0),
-        srgb_to_linear(((rgb888 >> 8) & 0xFFu) / 255.0),
-        srgb_to_linear((rgb888 & 0xFFu) / 255.0),
-    };
+    return (gfx_lin_t){srgbf_decode_byte((uint8_t)(rgb888 >> 16)), srgbf_decode_byte((uint8_t)(rgb888 >> 8)),
+                       srgbf_decode_byte((uint8_t)rgb888)};
 }
 
 gfx_lab_t
 gfx_lin_to_lab(gfx_lin_t c) {
-    const double l = cbrt(0.4122214708 * c.r + 0.5363325602 * c.g + 0.0514459929 * c.b);
-    const double m = cbrt(0.2119034982 * c.r + 0.6806995451 * c.g + 0.1073969566 * c.b);
-    const double s = cbrt(0.0883024619 * c.r + 0.2817188376 * c.g + 0.6299787005 * c.b);
-    return (gfx_lab_t){
-        100.0 * (0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s),
-        100.0 * (1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s),
-        100.0 * (0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s),
-    };
+    const oklabf_t lab = oklabf_from_linear((vec3f_t){(float)c.r, (float)c.g, (float)c.b});
+    return (gfx_lab_t){100.0 * lab.l, 100.0 * lab.a, 100.0 * lab.b};
 }
 
 static gfx_lab_t
