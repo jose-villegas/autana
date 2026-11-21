@@ -14,3 +14,6 @@ gradient matrix. Irradiance is `constant + gradient * normal`.
 | `sh1_rgb_add_direction` | Accumulate a direction's radiance times its integration weight. |
 | `sh1_rgb_irradiance` | Convolve with the cosine kernel, using `SH1_A0` and `SH1_A1`. |
 | `sh1_irradiance_eval` | Evaluate irradiance at a normal. |
+
+[Light Probes](../render/frame/Light-Probes.md) uses them to light
+skinned meshes from a baked probe grid.

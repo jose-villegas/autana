@@ -9,12 +9,13 @@ skinned normal receives, then tone mapped and gamma encoded like the bake.
 | Term | What it adds |
 |---|---|
 | Albedo | the vertex colour from the import, unlit |
-| Ambient | a constant light from every direction |
+| Ambient | a constant light from every direction, or the light a [probe grid](../frame/Light-Probes.md) holds at the mover |
 | Directional light | its colour times intensity times `max(0, N.L)`: full facing the light, nothing facing away |
 | Lit | albedo times the sum, then tone map and gamma |
 
-There is no shadow, sky visibility, ambient occlusion or bounced light at run
-time.
+There is no shadow, sky visibility or ambient occlusion at run time; bounced
+light comes only from a [probe grid](../frame/Light-Probes.md), and a
+[contact disc](../frame/Contact-Shadows.md) stands in for the shadow on the ground.
 
 ## What runs when
 
