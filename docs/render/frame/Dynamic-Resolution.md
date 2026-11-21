@@ -147,6 +147,12 @@ The cost a policy holds is the part that scales: the draw and the compose each s
 - The list's offset is independent of render size, so the context reserves only the finest step's raster block.
 - Fixed and stepped draws share one fitted lens per instance between culling and drawing.
 
+### A held camera
+
+While the camera holds still, frames are drawn as [partial redraw](Partial-Redraw.md) draws them, at the top step and without being priced: the first redraws every row, later ones only the rows that changed. A held frame that costs more than the budget hands size selection back to the policy until the view changes.
+
+So each stop pays one whole frame at the top step, which is not judged: it says what a full redraw costs, not a held frame.
+
 ## Where a frame's time goes at each size
 
 The raster brackets its stages for [frame cost](../../tools/Frame-Cost.md): `r3d.cull` (through the predictor, the census, `r3d.census`), `r3d.transform`, `r3d.draw` and `r3d.upscale`.
