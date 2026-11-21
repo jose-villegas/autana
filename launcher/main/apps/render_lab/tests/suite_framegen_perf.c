@@ -54,10 +54,11 @@ static const char* TAG = "framegen";
 #define FRAMEGEN_WORST_PERCENT 5
 
 /* A modes line: one scenario's path played in real time in one mode, with the
- * `partial_redraw` setting in force (lab_test_enter() turns it off). */
+ * `partial_redraw` setting in force (lab_test_enter() turns it off) and, under
+ * dynamic resolution, the unscaled cost the context learned by its end. */
 #define FRAMEGEN_MODES_LINE                                                                                            \
     "framegen_modes: %s framegen=%d budget_ms=%d partial_redraw=%d frames=%d drawn=%d mean_us=%d p95_us=%d "           \
-    "mean_height=%d"
+    "mean_height=%d unscaled_us=%d"
 /* A profile line: per pose, the target's clear alone, the warp with every
  * splat off screen (clear, reads and maths), to the drawn view itself
  * (in-order writes) and to the next view (the real scatter). */
@@ -460,7 +461,8 @@ test_mode(void) {
     TEST_ASSERT_EQUAL_INT(p.frames, played.count);
     ESP_LOGI(TAG, FRAMEGEN_MODES_LINE, scenario->scene->key, mode->generating, mode->budget_ms,
              raster_settings(&render_context_main()->raster).partial_redraw, p.frames, played.drawn,
-             (int)p.frame_us.avg, (int)p.frame_us.p95, (int)(played.height_sum / played.drawn));
+             (int)p.frame_us.avg, (int)p.frame_us.p95, (int)(played.height_sum / played.drawn),
+             (int)render_context_frame(render_context_main()).unscaled_us);
     log_worst_frames(&played);
     char row[LAB_PERF_ROW_NAME_SIZE];
     const int length = snprintf(row, sizeof row, "framegen %s %s", scenario->scene->key, mode->name);
