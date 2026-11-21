@@ -3,10 +3,13 @@
  * out, is learned, and the scaled part gets the target less that. */
 #include <stdint.h>
 
+#include "raster_rig.h"
+#include "render_view_fixture.h"
 #include "suites.h"
 #include "unity.h"
 
 #include "render/context/render_context.h"
+#include "render/raster.h"
 #include "render/resolution/resolution.h"
 
 static const resolution_step_t steps[] = {{96, 64}, {48, 32}};
@@ -102,6 +105,50 @@ test_a_new_opt_in_forgets_the_learned_cost(void) {
     TEST_ASSERT_EQUAL_INT32(0, render_context_frame(c).unscaled_us);
 }
 
+/* Draws `frames` frames of the rig through `c`, each one's changes unknown. */
+static void
+draw_frames(render_context_t* c, raster_rig_t* r, int frames) {
+    const render_view_t view =
+        render_view_fixture_at(&raster_rig_camera, (viewport_t){steps[0].width, steps[0].height, 0});
+    for (int i = 0; i < frames; i++) {
+        render_context_set_changed(c, NULL, -1);
+        TEST_ASSERT_TRUE(render_context_draw(c, r->instance, RASTER_RIG_QUADS, &view, 0));
+        (void)render_context_compose(c, NULL, NULL, NULL);
+    }
+}
+
+static void
+release_context(void) {
+    render_context_release(&context);
+    raster_rig_release();
+}
+
+/* A frame a policy drew teaches the budget when the next draw begins: its
+ * period is known only then. */
+static void
+test_a_policy_frame_teaches_the_next_draw(void) {
+    raster_rig_t* r =
+        raster_rig_open(raster_rig_wall_and_card, RASTER_RIG_QUADS, 0, steps[0].width, steps[0].height, 0);
+    render_context_t* c = open_context();
+    suite_set_test_cleanup(release_context);
+    draw_frames(c, r, 1);
+    TEST_ASSERT_FALSE(c->unscaled.learned);
+    draw_frames(c, r, 1);
+    TEST_ASSERT_TRUE(c->unscaled.learned);
+}
+
+/* A frame at the fixed scale teaches nothing: no policy priced it. */
+static void
+test_a_fixed_frame_teaches_nothing(void) {
+    raster_rig_t* r =
+        raster_rig_open(raster_rig_wall_and_card, RASTER_RIG_QUADS, 0, steps[0].width, steps[0].height, 0);
+    render_context_t* c = open_context();
+    suite_set_test_cleanup(release_context);
+    render_context_set_dynamic_resolution(c, NULL, NULL, 0);
+    draw_frames(c, r, SETTLE);
+    TEST_ASSERT_FALSE(c->unscaled.learned);
+}
+
 void
 run_dynres_budget_suite(void) {
     RUN_TEST(test_an_early_finished_frame_does_not_grow_the_unscaled_cost);
@@ -109,6 +156,8 @@ run_dynres_budget_suite(void) {
     RUN_TEST(test_one_slow_frame_moves_the_budget_by_the_weight);
     RUN_TEST(test_the_scaled_budget_keeps_its_floor);
     RUN_TEST(test_a_new_opt_in_forgets_the_learned_cost);
+    RUN_TEST(test_a_policy_frame_teaches_the_next_draw);
+    RUN_TEST(test_a_fixed_frame_teaches_nothing);
 }
 
 SUITE_REGISTER(run_dynres_budget_suite);
