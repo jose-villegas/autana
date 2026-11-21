@@ -32,7 +32,7 @@ shadows it. With $`\hat l = (p - o)/d`$, colour $c$, intensity $I$ and range $r$
 
 ```math
 E = c\,I\,\max(0,\ \hat n\cdot\hat l)\,V\,
-\frac{\operatorname{clamp}\bigl(1-(d/r)^4\bigr)^2}{\max(d,\ \varepsilon)^2}\,S
+\frac{\mathrm{clamp}\bigl(1-(d/r)^4\bigr)^2}{\max(d,\ \varepsilon)^2}\,S
 ```
 
 | Term | Meaning |
@@ -46,7 +46,7 @@ A spot with axis $`\hat a`$ and half-angles $`\theta_i < \theta_o`$ takes glTF's
 smooth cone edge<sup>[[134]](../../Citations.md#khr-lights-punctual)</sup>:
 
 ```math
-S = \operatorname{clamp}\!\left(\frac{-\hat a\cdot\hat l - \cos\theta_o}{\cos\theta_i - \cos\theta_o}\right)^{2}
+S = \mathrm{clamp}\!\left(\frac{-\hat a\cdot\hat l - \cos\theta_o}{\cos\theta_i - \cos\theta_o}\right)^{2}
 ```
 
 $E$ is in the sun's unit: inside the window and the cone, a point light of
