@@ -33,6 +33,9 @@ test_still_board_reads_zero(void) {
     TEST_ASSERT_EQUAL_FLOAT(0, out.rms_mg);
     TEST_ASSERT_EQUAL_FLOAT(0, out.peak_mg);
     TEST_ASSERT_EQUAL_INT(3, out.samples);
+    TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE_MG, mg(TEST_TILT_COUNTS), out.gx_mg);
+    TEST_ASSERT_EQUAL_FLOAT(0, out.gy_mg);
+    TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE_MG, IMU_VIBRATION_MG_PER_G, out.gz_mg);
 }
 
 /* Gravity and tilt sit in the mean; a swing on two axes reads as its vector size. */
@@ -48,6 +51,9 @@ test_swing_over_gravity(void) {
     const float expected = mg(sqrtf(2.0F) * TEST_SWING_COUNTS);
     TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE_MG, expected, out.rms_mg);
     TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE_MG, expected, out.peak_mg);
+    TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE_MG, mg(TEST_TILT_COUNTS), out.gx_mg);
+    TEST_ASSERT_EQUAL_FLOAT(0, out.gy_mg);
+    TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE_MG, IMU_VIBRATION_MG_PER_G, out.gz_mg);
 }
 
 /* One knock among still samples: the peak finds it, the RMS spreads it. */
@@ -57,6 +63,9 @@ test_peak_and_rms_differ(void) {
     imu_vibration_t out;
     TEST_ASSERT_TRUE(imu_vibration_measure(knock, 4, &out));
     /* Mean TEST_SWING_COUNTS: three samples sit one swing below it, the knock three above. */
+    TEST_ASSERT_EQUAL_FLOAT(0, out.gx_mg);
+    TEST_ASSERT_EQUAL_FLOAT(0, out.gy_mg);
+    TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE_MG, mg(TEST_SWING_COUNTS), out.gz_mg);
     TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE_MG, mg(3.0F * TEST_SWING_COUNTS), out.peak_mg);
     TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE_MG, mg(sqrtf(3.0F) * TEST_SWING_COUNTS), out.rms_mg);
 }

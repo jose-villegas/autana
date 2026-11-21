@@ -27,6 +27,21 @@ shake over both windows.
 The microphone's own low-frequency roll-off is not corrected, so the
 audible level of the lowest tones reads low. The hand check below covers it.
 
+For pulse lengths crossed with volumes at selected frequencies, run inside
+one board lock:
+
+```sh
+autana --wait 3600 lock run -- python launcher/tools/audio/audio_buzz_sweep.py --board <id> --hz 202 --volumes 30,60 --pulse 30,60,100,200 --ms 400 --loud 0 --peaks 0 --out pulse-capture.txt
+```
+
+Each command retains its full JSON reply, including the silence-window mean
+(`gx_mg`, `gy_mg`, `gz_mg`) for orientation. Pulses obey the window,
+`MAX_MS`, and low-frequency volume limits.
+
+Pulse shake uses the buzz ODR and the IMU task's push times to estimate
+onset-to-end samples. Capture collects delayed batches after the pulse span;
+only samples placed inside it contribute. Microphone levels include silence after playback ends.
+
 ## Safety
 
 The sweep holds tones for at most 500 ms, with a rest between them.

@@ -1,6 +1,7 @@
 #include <stdlib.h>
 
 #include "input/motion/imu_queue.h"
+#include "input/motion/qmi8658/qmi8658_fifo.h"
 #include "suites.h"
 #include "unity.h"
 
@@ -233,8 +234,35 @@ test_queued_rate_decides_who_takes(void) {
     free(f);
 }
 
+static void
+test_restart_gap_is_taken_before_next_drain(void) {
+    fixture_t* f = fixture();
+    const imu_sample_t stale = {.ax = IMU_COUNTS_PER_G};
+    const imu_sample_t fresh = {.ay = IMU_COUNTS_PER_G};
+    for (unsigned before_drain = 0; before_drain <= 1; before_drain++) {
+        qmi8658_fifo_t fifo = {.gap = true, .pending_lost = 1};
+        imu_queue_push(&f->queue, &stale, 1, fifo.pending_lost, false);
+        imu_queue_push(&f->queue, NULL, 0, 0, true);
+        qmi8658_fifo_reset(&fifo, IMU_ODR_CODE);
+        TEST_ASSERT_EQUAL_INT(0, fifo.pending_lost);
+        if (before_drain) {
+            TEST_ASSERT_EQUAL_INT(0, imu_queue_take(&f->queue, f->samples, f->lost, &f->gap));
+            TEST_ASSERT_TRUE(f->gap);
+        }
+        imu_queue_push_drain(&f->queue, &fresh, 1, fifo.pending_lost, fifo.gap);
+        TEST_ASSERT_EQUAL_INT(1, imu_queue_take(&f->queue, f->samples, f->lost, &f->gap));
+        TEST_ASSERT_EQUAL_INT(fresh.ay, f->samples[0].ay);
+        TEST_ASSERT_EQUAL_UINT8(0, f->lost[0]);
+        TEST_ASSERT_EQUAL_INT(!before_drain, f->gap);
+        TEST_ASSERT_EQUAL_INT(0, imu_queue_take(&f->queue, f->samples, f->lost, &f->gap));
+        TEST_ASSERT_FALSE(f->gap);
+    }
+    free(f);
+}
+
 void
 run_imu_queue_suite(void) {
+    RUN_TEST(test_restart_gap_is_taken_before_next_drain);
     RUN_TEST(test_loss_stays_at_each_drain_boundary);
     RUN_TEST(test_empty_drain_carries_loss_across_take);
     RUN_TEST(test_loss_saturation_marks_gap_and_clears_carry);
