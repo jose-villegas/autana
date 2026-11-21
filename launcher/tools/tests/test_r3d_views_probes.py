@@ -152,8 +152,10 @@ class SelectTests(unittest.TestCase):
         views = self.select(query=query, targets=self.targets)
         from r3d.views.probe_figures import placed_training
 
-        placed = placed_training(self.source.p, self.source.tri_v, self.REGION, self.NEAR, self.SEED, views, query)
+        placed = placed_training(self.source.p, self.source.tri_v, self.NEAR, self.SEED, views, query)
         self.assertEqual(len(placed), views.record["train"]["probes"])
+        for fate in ("inside", "near"):
+            self.assertEqual(sum(probe["fate"] == fate for probe in placed), views.record["train"][fate], fate)
         faces = [np.concatenate([probe["at"], probes.FACES[face]]) for probe in placed for face in probe["faces"]]
         self.assertGreater(len(faces), 0)
         np.testing.assert_allclose(sorted(map(tuple, faces)), sorted(map(tuple, views.training)))

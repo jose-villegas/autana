@@ -103,7 +103,7 @@ class Fate:
 # What became of a probe, in legend order: one row per fate placed gives.
 FATES = {
     "kept": Fate(SLOTS[2], "kept (arrows: its kept faces)", False),
-    "greedy": Fate(MUTED, "dropped by the greedy pick: shows nothing new", False),
+    "greedy": Fate(MUTED, "dropped by the greedy pick: adds too little", False),
     "inside": Fate(SLOTS[7], "dropped: inside geometry", True),
     "near": Fate(SLOTS[3], "dropped: a surface too near", True),
 }
@@ -265,12 +265,11 @@ def placed(moved, state, picked):
             for at, fate, shown in zip(moved, state, faces)]
 
 
-def placed_training(positions, tris, region, near, seed, views, query):
-    """placed for the training probes of `views`, which probes.select made from these arguments: the probes are drawn and
-    classified again, and each kept face is found among their cube poses."""
+def placed_training(positions, tris, near, seed, views, query):
+    """placed for the training probes of `views`, which probes.select made from these arguments (`near` resolved, not
+    None): the probes are drawn and classified again, and each kept face is found among their cube poses."""
     positions, tris = np.asarray(positions, dtype=float), np.asarray(tris)
-    lo, hi = region if region is not None else (positions.min(axis=0), positions.max(axis=0))
-    points, cell = probes.probe_points(lo, hi, views.record["spacing"], seed)
+    points, cell = probes.probe_points(*views.record["region"], views.record["spacing"], seed)
     moved, state = probes.classify(query, face_normals(positions, tris)[0], points, cell, near)
     index = {pose.tobytes(): i for i, pose in enumerate(probes.cube_poses(moved[state == "kept"]))}
     return placed(moved, state, [index[np.asarray(pose, dtype=float).tobytes()] for pose in views.training])
@@ -305,7 +304,7 @@ def probed(scene_path, object_name):
     path = None if coverage is None else (*coverage[:3], coverage[4])
     views = probes.select(source.p, source.tri_v, camera.region, camera.near_z, inputs.probes.spacing, PROBE_SEED,
                           path, query=query)
-    found = placed_training(source.p, source.tri_v, camera.region, camera.near_z, PROBE_SEED, views, query)
+    found = placed_training(source.p, source.tri_v, camera.near_z, PROBE_SEED, views, query)
     unknown = {probe["fate"] for probe in found} - set(FATES)
     if unknown:
         raise ValueError(f"the probes have fates FATES has no row for: {sorted(unknown)}")

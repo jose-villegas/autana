@@ -139,8 +139,8 @@ Every probe ends in one of four fates:
 
 | Fate | Why |
 |---|---|
-| kept | At least one of its faces shows triangles nothing kept before it shows. |
-| dropped by the greedy pick | Its faces show nothing new. |
+| kept | At least one of its faces shows triangles the path and nothing kept before it show. |
+| dropped by the greedy pick | Its best face adds less than `PLATEAU` of the first pick's gain. |
 | dropped: inside geometry | More than `BACKFACE` of its rays still hit back faces after the move. |
 | dropped: a surface too near | A front face is still nearer than `MIN_FRONT_NEARS` near planes. |
 
