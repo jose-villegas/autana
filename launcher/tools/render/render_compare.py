@@ -13,6 +13,9 @@
     render_compare.py --out sheet.png --reference-stills TITLE REFERENCE A B
         --label-a TEXT --label-b TEXT [--crops N]
 
+    render_compare.py --material-ids SCENE OBJECT POSES IDS_DIR --out sheet.png
+        [--reference DIR] [--views N] [--crops N]
+
     render_compare.py --out angles.png --angle-column LABEL DIR [--angle-column ...]
 
 --reference-stills writes the reference sheet of one frame from three PNGs:
@@ -59,6 +62,8 @@ Needs Pillow and numpy, and ffmpeg for --video.
 """
 
 import argparse
+import csv
+import json
 import pathlib
 import shutil
 import subprocess
@@ -905,6 +910,109 @@ class ReferenceVideoWriter:
             self.video.close()
 
 
+MATERIAL_PANEL_MIN = 180
+MATERIAL_VIEWS = 4
+MATERIAL_EMPTY = (24, 24, 24)
+MATERIAL_CLASS_COLOURS = ((24, 24, 24), (60, 190, 110), (130, 150, 160),
+                          (255, 180, 20), (230, 45, 80), (100, 120, 255))
+
+
+def material_id_inputs(scene_path, object_name, poses_path, ids_dir):
+    """Verified reference and captured material maps for a scene renderer."""
+    from bake import bake
+    from r3d.import_settings import load_scene
+    from r3d.material_ids import source_ids, drawn_ids
+    from r3d.mesh_source import camera_filter
+    from r3d.ray_query import RayQuery
+    from r3d.reference_render import source_for
+    from r3d.texture.texture_settings import renderer_textures
+
+    scene = load_scene(scene_path)
+    source, job = source_for(scene, object_name, lit=False)
+    source.material_placement = job.object
+    root = pathlib.Path(ids_dir)
+    metadata = json.loads((root / 'entries.json').read_text())
+    size = metadata['width'], metadata['height']
+    logged = reference_poses.render_poses(root / 'capture')
+    if logged is None:
+        raise ValueError('id capture has no capture.poses.csv')
+    check = reference_poses.checker(root / 'capture', pathlib.Path(poses_path).parent, poses_path)
+    if check is None:
+        raise ValueError('reference poses are missing')
+    for frame in range(len(logged)):
+        check(frame, frame)
+    tables = bake.read_lock_tables()
+    found = bake.bakes([scene_path], bake.locked_starts(tables['bake']), bake.Poses(tables['poses']))
+    bundle = pathlib.Path(job.asset_path)
+    if not bundle.is_file():
+        bundle = bake.fetch(next(item for item in found if item.tree == job.asset_path))
+    if renderer_textures(scene_path, object_name) is not None:
+        texture = next(item for item in found if item.kind == 'texture' and item.holder == object_name)
+        source.texture_pack = str(texture.tree if texture.tree.is_file() else bake.fetch(texture))
+    references = source_ids(source, RayQuery(source.p, source.tri_v, hit_filter=camera_filter(source)),
+                            root / 'capture.poses.csv', size)
+    drawn, textured = drawn_ids(root, bundle, source)
+    if len(references) != len(drawn):
+        raise ValueError('captured poses and id frames differ in count')
+    return references, drawn, textured, source.names, [texture is not None for texture in source.textures]
+
+
+def material_id_sheet(references, drawn, textured, names, has_texture, out, reference=None,
+                      views=MATERIAL_VIEWS, crops=0):
+    """Worst material disagreements, their shared material palette and per-material CSV totals."""
+    from r3d import material_ids
+    from r3d.skin.skin_sheet import joint_colour
+
+    if not references or len(references) != len(drawn) or len(drawn) != len(textured) or views < 1:
+        raise ValueError('material comparison needs matching frames and positive --views')
+    classes = [material_ids.diff_classes(ref, own, pattern, has_texture)
+               for ref, own, pattern in zip(references, drawn, textured)]
+    ranked = sorted(range(len(classes)), key=lambda i: -int(np.count_nonzero(
+        (classes[i] == material_ids.MISS) | (classes[i] == material_ids.WRONG_MATERIAL))))[:views]
+    palette = np.array([MATERIAL_EMPTY] + [joint_colour(i) for i in range(len(names))], dtype=np.uint8)
+    class_palette = np.asarray(MATERIAL_CLASS_COLOURS, dtype=np.uint8)
+    rows, crop_entries, shown = [], [], set()
+    labels = ['reference materials', 'drawn materials', 'diff classes']
+    if reference:
+        labels.insert(0, 'reference shaded')
+    for frame in ranked:
+        ref, own, diff = references[frame], drawn[frame], classes[frame]
+        shown.update(int(i) for i in np.unique(np.concatenate([ref.ravel(), own.ravel()])) if i >= 0)
+        pictures = [Image.fromarray(palette[ref + 1]), Image.fromarray(palette[own + 1]),
+                    Image.fromarray(class_palette[diff])]
+        if reference:
+            path = pathlib.Path(reference) / f'{frame:04d}.png'
+            shade = Image.open(path).convert('RGB').resize(pictures[0].size) if path.is_file() else Image.new(
+                'RGB', pictures[0].size, MATERIAL_EMPTY)
+            pictures.insert(0, shade)
+        width = max(MATERIAL_PANEL_MIN, pictures[0].width)
+        rows.append([(f'{frame}: {label}', captioned(picture, '', width))
+                     for label, picture in zip(labels, pictures)])
+        if crops:
+            error = np.isin(diff, [material_ids.MISS, material_ids.WRONG_MATERIAL])
+            mask = Image.fromarray(np.repeat((error.astype(np.uint8) * 255)[..., None], 3, axis=2))
+            clusters = find_clusters(Image.new('RGB', mask.size), mask, None, count=crops)
+            crop_entries.append((f'frame {frame}', pictures, clusters))
+    canvas = still_sheet(rows)
+    legend = [(names[i], tuple(palette[i + 1])) for i in sorted(shown)]
+    legend += list(zip(material_ids.CLASS_NAMES, MATERIAL_CLASS_COLOURS))
+    result = Image.new('RGB', (canvas.width, canvas.height + len(legend) * LABEL_BAR), 'white')
+    result.paste(canvas, (0, 0))
+    painter = ImageDraw.Draw(result)
+    for row, (name, colour) in enumerate(legend):
+        y = canvas.height + row * LABEL_BAR
+        painter.rectangle((0, y, LABEL_BAR, y + LABEL_BAR - 1), fill=colour)
+        painter.text((LABEL_BAR + 4, y), name, fill='black', font=_font())
+    out = pathlib.Path(out)
+    result.save(out)
+    with out.with_suffix('.csv').open('w', newline='') as handle:
+        writer = csv.DictWriter(handle, fieldnames=['material', 'name', *material_ids.CLASS_NAMES])
+        writer.writeheader()
+        writer.writerows(material_ids.material_table(references, classes, names))
+    if crops and any(clusters for _title, _pictures, clusters in crop_entries):
+        crop_sheet(crop_entries, labels).save(crops_path(str(out)))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--out", required=True)
@@ -937,7 +1045,15 @@ def main():
     parser.add_argument("--label-a", help="what A shows; required with --row, --video and the reference sheet or mp4")
     parser.add_argument("--label-b", help="what B shows; required with --row and --video")
     parser.add_argument("--crops", type=int, default=0)
+    parser.add_argument('--material-ids', nargs=4, metavar=('SCENE', 'OBJECT', 'POSES', 'IDS_DIR'))
+    parser.add_argument('--reference', metavar='DIR')
+    parser.add_argument('--views', type=int, default=MATERIAL_VIEWS)
     args = parser.parse_args()
+    if args.material_ids:
+        material_id_sheet(*material_id_inputs(*args.material_ids), args.out,
+                          reference=args.reference, views=args.views, crops=args.crops)
+        return
+
 
     if (args.row or args.video or args.reference_crops or args.reference_stills) and not (args.label_a and args.label_b):
         parser.error("--label-a and --label-b are required: every panel is labelled")

@@ -29,6 +29,7 @@
 #include "render/view/raster_meshlets.h"
 #include "render/view/raster_overdraw.h"
 #include "render/view/raster_show.h"
+#include "render/view/raster_triangles.h"
 #ifdef HOST_HEAP_ARENA
 #include "heap_arena.h"
 #endif
@@ -367,6 +368,45 @@ test_cluster_values_and_constant_writers(void) {
     TEST_ASSERT_EQUAL_UINT32(17, writers[1].value);
     free(buffers);
     free(clusters);
+}
+
+static void
+test_triangle_ids_are_contiguous_per_instance(void) {
+    const int index = render_context_debug_view_named("triangles");
+    TEST_ASSERT_TRUE(index > RENDER_DEBUG_VIEW_SHADED);
+    const render_debug_view_t* row = render_context_debug_view(index);
+    void* state = calloc(1, row->state_bytes);
+    TEST_ASSERT_NOT_NULL(state);
+    const raster_attachment_t view = row->attachment(state);
+    TEST_ASSERT_EQUAL_INT(IMAGE_U32, view.format);
+    const raster_attachment_t* one[] = {&view};
+    raster_rig_t* r = rig_open(one, 1);
+    for (int frame = 0; frame < 2; frame++) {
+        draw(r);
+        const uint32_t* ids = raster_rig_attachment(r, 0);
+        int seen[5] = {0};
+        for (int p = 0; p < W * H; p++) {
+            TEST_ASSERT_TRUE(ids[p] >= 1 && ids[p] <= 4);
+            seen[ids[p]]++;
+        }
+        for (int id = 1; id <= 4; id++) {
+            TEST_ASSERT_TRUE(seen[id] > 0);
+        }
+    }
+    r->raster.instance_count = 1;
+    r->raster.instances = &r->instance[1];
+    draw(r);
+    const uint32_t* ids = raster_rig_attachment(r, 0);
+    TEST_ASSERT_EQUAL_UINT32(0, ids[0]);
+    raster_show(&r->raster);
+    TEST_ASSERT_EQUAL_UINT16(r->raster.clear, raster_color(&r->raster)[0]);
+    raster_triangles_t* triangles = state;
+    triangles->next = UINT16_MAX;
+    r3d_span_writer_t writer = {0};
+    TEST_ASSERT_TRUE(view.writer(&view, 0, &writer));
+    TEST_ASSERT_EQUAL_UINT32(UINT16_MAX, writer.value);
+    TEST_ASSERT_EQUAL_UINT32((uint32_t)UINT16_MAX + r->instance[1].mesh->triangle_count, triangles->next);
+    free(state);
 }
 
 static void
@@ -711,7 +751,8 @@ test_view_table_and_context_ownership(void) {
     heap_arena_snapshot(&before_blocks, &before_bytes);
     const size_t app_before = app_heap_blocks();
 #endif
-    static const char* const names[] = {"depth", "tiles", "meshlets", "cull", "boxes", "overdraw", "copies"};
+    static const char* const names[] = {"depth", "tiles",    "meshlets", "cull",
+                                        "boxes", "overdraw", "copies",   "triangles"};
     TEST_ASSERT_EQUAL_INT(sizeof names / sizeof names[0], RENDER_DEBUG_VIEW_COUNT);
     TEST_ASSERT_EQUAL_INT(RENDER_DEBUG_VIEW_SHADED, render_context_debug_view_named("shaded"));
     TEST_ASSERT_EQUAL_INT(RENDER_DEBUG_VIEW_UNKNOWN, render_context_debug_view_named("unknown"));
@@ -778,7 +819,7 @@ test_printed_views_match_the_declared_names(void) {
     char names[128] = {0};
     const size_t bytes = fread(names, 1, sizeof names - 1, out);
     fclose(out);
-    TEST_ASSERT_EQUAL_STRING("shaded, depth, tiles, meshlets, cull, boxes, overdraw, copies", names);
+    TEST_ASSERT_EQUAL_STRING("shaded, depth, tiles, meshlets, cull, boxes, overdraw, copies, triangles", names);
     int count = 1;
     for (size_t i = 0; i < bytes; i++) {
         count += names[i] == ',';
@@ -1094,6 +1135,7 @@ test_context_owns_and_forgets_split(void) {
 
 void
 run_raster_attachment_suite(void) {
+    RUN_TEST(test_triangle_ids_are_contiguous_per_instance);
     RUN_TEST(test_context_owns_and_forgets_split);
 #ifndef DEVICE_BUILD
     RUN_TEST(test_draw_retains_only_the_drawn_instance_and_bounds_state);

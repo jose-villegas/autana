@@ -10,6 +10,7 @@ from the wrong camera (#1597) fails rather than publishing its error as the
 bake's.
 """
 import csv
+import json
 import pathlib
 import sys
 
@@ -49,11 +50,25 @@ def render_poses(video):
             for row in rows}
 
 
-def checker(video, reference_dir):
+def capture_poses(path, size=None):
+    """An id capture's logged source-frame poses and its recorded raster lens and size."""
+    path = pathlib.Path(path)
+    if not str(path).endswith(VIDEO_POSES_SUFFIX):
+        raise ValueError(f'{path}: expected a {VIDEO_POSES_SUFFIX} pose log')
+    video = str(path).removesuffix(VIDEO_POSES_SUFFIX)
+    drawn = render_poses(video)
+    if drawn is None or sorted(drawn) != list(range(len(drawn))):
+        raise ValueError(f'{path}: poses must cover every frame in order')
+    metadata = json.loads((path.parent / 'entries.json').read_text())
+    width, height = size or (metadata['width'], metadata['height'])
+    return width, height, metadata['lens'], metadata['near'], [np.concatenate(drawn[i]) for i in range(len(drawn))]
+
+
+def checker(video, reference_dir, poses_path=None):
     """A check(frame, index) that raises ValueError unless frame `frame` of
     `video` stands at the pose frame `index` of `reference_dir` was traced at,
     or None when the reference set records no poses."""
-    recorded = pathlib.Path(reference_dir) / REFERENCE_POSES
+    recorded = pathlib.Path(poses_path) if poses_path is not None else pathlib.Path(reference_dir) / REFERENCE_POSES
     if not recorded.is_file():
         return None
     drawn = render_poses(video)
