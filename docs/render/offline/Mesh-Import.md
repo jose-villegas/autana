@@ -102,11 +102,11 @@ cost and error of each mode on the board.
 
 | Option | Keys | What it does | Default | Cost (bake / frame) | Option link |
 |---|---|---|---|---|---|
-| `[process]` | ; `seed` | Seeds thin's random choice. | `0`; only with thin. | None / none. | [process](#process) |
+| `[process]` | ; `seed` | Seeds thin's random choice. | `0`. | None / none. | [process](#process) |
 
 #### process
 
-`[process].seed` makes `thin` choose the same triangles on every import.
+`[process].seed` makes `thin` choose the same pieces on every import.
 
 ### Geometry
 
@@ -115,7 +115,7 @@ Every Geometry table opts its step in; without it the step does not run.
 | Option | Keys | What it does | Default | Cost (bake / frame) | Option link |
 |---|---|---|---|---|---|
 | `geometry.alpha_mask` | `keep_alpha` | Drops alpha-tested triangles that are mostly transparent. | Off. | Seconds / fewer triangles. | [alpha_mask](#alpha_mask) |
-| `geometry.thin` | `material`, `keep` | Keeps a share of one material's triangles. | Off. | None / fewer triangles. | [thin](#thin) |
+| `geometry.thin` | `material`, `keep` | Keeps a share of one material's pieces, enlarged to cover the rest. | Cut-out foliage only, with simplify. | None / fewer triangles. | [thin](#thin) |
 | `geometry.simplify` | `dense_edge`, `seal_seams`, `colour_deviation` | Splits long edges and simplifies each variant to its budget, colour steering the collapses; can seal seams. | Off. | Seconds / set by the budget. | [simplify](#simplify) |
 | `geometry.probes` | `spacing`, `face` | Adds fit views from probes spread through the camera's region, for surface the path never shows. | Off. | Minutes / more triangles kept. | [probes](#probes) |
 | `geometry.budget` | `step`, `settle` | Lets each fitted renderer settle on a prune budget below its own by held-out holes. | The renderer's `fit.prune.budget`. | A prune per step / fewer triangles. | [budget](#budget) |
@@ -157,9 +157,14 @@ what the simplifier keeps elsewhere, so not every difference is a card.
 
 #### thin
 
-`geometry.thin` retains a selected share of one material's triangles. It is
-for material whose geometry occupies more of the budget than it shows. The
-share is random, so `process.seed` makes it repeatable.
+`geometry.thin` keeps a random share `keep` of one material's pieces, each a set of triangles joined at their corners.
+Each kept piece grows by √(1/`keep`) about its centre, so the kept pieces cover the area all of them did<sup>[[133]](../../Citations.md#cook-2007)</sup>.
+It is for material whose geometry occupies more of the budget than it shows; `process.seed` makes the share repeatable.
+
+With `simplify` on, thin also runs without a rule on foliage: any object holding at least
+`AGGREGATE_PIECES_MIN` pieces of one alpha-tested material. Its share is the budget over the triangles seen.
+Simplify's collapse would otherwise remove every small piece first, so it leaves thinned pieces whole and the rest
+of the mesh pays the budget. Carved meshes keep their own per-shape thinning.
 
 ![thin off against on](../images/import-thin.png)
 
