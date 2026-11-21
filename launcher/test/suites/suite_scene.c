@@ -306,6 +306,16 @@ static const scene_spec_t SCENES[] = {
      {{0, CLEAR_RGB, ""}, {1, CLEAR_RGB, ""}},
      false,
      false},
+    /* a still camera first, then one flying the clip "flight", and a red quad */
+    {"test_still_then_flight",
+     3,
+     1,
+     2,
+     {{"visitor", CAMERA_AT(0)}, {"camera", IDENTITY}, {"red", IDENTITY}},
+     {{2, "red"}},
+     {{0, CLEAR_RGB, ""}, {1, CLEAR_RGB, "flight"}},
+     false,
+     false},
     {.id = "test_aliases",
      .entity_count = 2,
      .camera_count = 2,
@@ -3671,6 +3681,18 @@ test_a_scene_with_two_cameras_is_seen_from_the_one_activated_by_name(void) {
     TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(0.0F));
     TEST_ASSERT_TRUE(camera_activate(camera_first(twin))); /* the first */
     TEST_ASSERT_FALSE(camera_activate(entity_find(twin, name_hash("red"))));
+}
+
+static void
+test_the_flight_camera_is_the_first_on_a_path_else_the_first(void) {
+    fixture();
+    entity_t still_then_flight = load("test_still_then_flight");
+    TEST_ASSERT_EQUAL_UINT32(entity_find(still_then_flight, name_hash("visitor")).id,
+                             camera_first(still_then_flight).id);
+    TEST_ASSERT_EQUAL_UINT32(entity_find(still_then_flight, name_hash("camera")).id,
+                             camera_flight(still_then_flight).id);
+    entity_t twin = load("test_twin");
+    TEST_ASSERT_EQUAL_UINT32(camera_first(twin).id, camera_flight(twin).id);
 }
 
 static void
@@ -8484,6 +8506,7 @@ run_scene_suite(void) {
     RUN_TEST(test_a_compose_with_no_framebuffer_writes_nothing);
     RUN_TEST(test_leaving_an_app_while_paused_lifts_the_pause);
     RUN_TEST(test_a_scene_with_two_cameras_is_seen_from_the_one_activated_by_name);
+    RUN_TEST(test_the_flight_camera_is_the_first_on_a_path_else_the_first);
     RUN_TEST(test_a_camera_without_a_path_follows_its_entitys_transform);
     RUN_TEST(test_the_render_scale_changes_the_picture_and_a_larger_one_grows_the_scratch);
     RUN_TEST(test_unloading_the_first_of_two_scenes_leaves_the_second_with_its_own_time);

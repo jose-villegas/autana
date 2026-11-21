@@ -37,7 +37,8 @@ Meshes must already be baked.
 
 Repeat `--object NAME` to enable only those mesh renderers; omit it to draw
 all authored renderers. An unknown renderer reports the available names.
-`--camera NAME` selects a camera; omission activates the scene's default.
+`--camera NAME` selects a camera; omitted, the first camera on a path flies,
+the one the references are traced along, else the first camera.
 Stderr names the camera's path duration in ms, and `--poses FILE` writes one
 CSV row per frame of where it stands: `frame,ms`, its world position and
 rotation quaternion.
