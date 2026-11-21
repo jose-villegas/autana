@@ -27,7 +27,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from c_includes import resolve_include as resolve_quoted_include  # noqa: E402
-from c_comments import SOURCE_EXTENSIONS, SOURCE_GLOBS, excluded, blank_comments, is_cpp, scan  # noqa: E402
+from c_comments import HEADER_EXTENSIONS, SOURCE_EXTENSIONS, SOURCE_GLOBS, excluded, blank_comments, is_cpp, scan  # noqa: E402
 from c_constants import DEFINE  # noqa: E402
 from check_doc_citations import documentation  # noqa: E402
 from check_doc_constants import ESCAPE as DOC_CONSTANTS_ESCAPE  # noqa: E402
@@ -343,6 +343,7 @@ INCLUDE = re.compile(r'^\s*#include\s+"([^"]+)"')
 ANY_INCLUDE = re.compile(r'^\s*#\s*include\s+[<"]([^>"]+)[>"]')
 
 
+@functools.lru_cache(maxsize=None)
 def include_roots(root):
     launcher = pathlib.Path(root) / "launcher"
     try:
@@ -491,8 +492,9 @@ def _main_includes(root, path, text):
     for number, line in enumerate(blank_comments(text, cpp=is_cpp(path)).splitlines(), 1):
         m = ANY_INCLUDE.match(line)
         resolved = resolve_include(root, path, m.group(1)) if m else None
-        if resolved is not None and resolved.resolve().is_relative_to(main_dir):
-            yield number, m.group(1), resolved.resolve()
+        target = resolved.resolve() if resolved is not None else None
+        if target is not None and target.is_relative_to(main_dir):
+            yield number, m.group(1), target
 
 
 def _main_include_layers(root, path, text):
@@ -539,7 +541,7 @@ def rule_include_direction(root, path, text):
 
 
 def _components(graph):
-    """Each node's strongly connected component in `graph`, {node: [node]},
+    """Each node's strongly connected component in `graph`, {node: its root},
     by Tarjan's algorithm, iterative so a deep graph needs no deep stack."""
     index, low, component, stack, on_stack = {}, {}, {}, [], set()
 
@@ -588,7 +590,7 @@ def _main_include_cycles(root):
         for number, inc, target in _main_includes(root, path, path.read_text(encoding="utf-8", errors="replace")):
             by_source.setdefault(path, []).append((number, inc, target))
             folders.setdefault(path.parent, set()).add(target.parent)
-            if path.suffix == target.suffix == ".h":
+            if path.suffix in HEADER_EXTENSIONS and target.suffix in HEADER_EXTENSIONS:
                 headers.setdefault(path, set()).add(target)
     return by_source, _components(folders), _components(headers)
 
@@ -609,7 +611,7 @@ def rule_header_cycle(root, path, text):
     by_source, _folders, headers = _main_include_cycles(str(root))
     source = path.resolve()
     for number, inc, target in by_source.get(source, ()):
-        if source.suffix == target.suffix == ".h" and source != target and headers.get(source) == headers.get(target):
+        if source in headers and source != target and headers.get(source) == headers.get(target):
             yield number, f'"{inc}" is a header that includes {relpath(root, source)} back, directly or not'
 
 
@@ -1243,6 +1245,7 @@ def run_audit(root, rule_filter=None, file_filter=None, files=None):
     _BACKEND_REACH.clear()
     _backend_headers.cache_clear()
     _main_include_cycles.cache_clear()
+    include_roots.cache_clear()
     active = [r for r in RULES if not rule_filter or r.id == rule_filter]
     findings = []
     scanned = set()

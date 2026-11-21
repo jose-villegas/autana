@@ -10,6 +10,7 @@
 #include "core/memory.h"
 #include "core/timing.h"
 #include "profile/frame_cost.h"
+#include "render/record/frame_record.h"
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 #include "render/view/raster_boxes.h"
@@ -84,6 +85,23 @@ static render_context_t main_context = RENDER_CONTEXT_DEFAULT;
 render_context_t*
 render_context_main(void) {
     return &main_context;
+}
+
+/* The last frame's choices, as frame_record reads them. */
+static frame_record_context_t
+recorded(const render_context_t* c) {
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+    const render_view_t* view = &c->frame_view;
+#else
+    const render_view_t* view = NULL;
+#endif
+    return (frame_record_context_t){view, &c->settings, &c->steer, &c->frame, c->scale_percent};
+}
+
+void
+render_context_record_frame(const render_context_t* context, uint32_t dt_ms) {
+    const frame_record_context_t recorded_context = recorded(context);
+    frame_record_frame(&recorded_context, &context->raster, dt_ms);
 }
 
 void
@@ -587,8 +605,8 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     c->observed = false;
     c->frame_view = *view;
 #endif
-    const frame_record_context_t recorded = render_context_recorded(c);
-    frame_record_before_draw(&recorded, &c->raster, instances, count);
+    const frame_record_context_t context = recorded(c);
+    frame_record_before_draw(&context, &c->raster, instances, count);
     begin_draw(c);
     aim_raster(c, instances, count, view, clear);
     const bool still = aim_still(c, view);

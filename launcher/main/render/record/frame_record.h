@@ -29,6 +29,7 @@
 #include "render/r3d_mesh_source.h"
 #include "render/r3d_skin.h"
 #include "render/raster.h"
+#include "render/render_context_frame.h"
 #include "render/render_view.h"
 #include "render/settings/render_settings.h"
 
@@ -50,15 +51,14 @@ typedef struct {
 #define FRAME_RECORD_NOTED_SKINS_MAX 64
 #define FRAME_RECORD_NOTED_BUILT_MAX 4
 
-/* The frame's choices the records carry, filled by the context that drew it:
- * render_context_recorded() (render/context). */
+/* The frame's choices the records carry, filled by the context that drew it
+ * (render/context). */
 typedef struct {
     const render_view_t* view;         /* what the frame was asked to show */
     const render_settings_t* settings; /* the caller's own, before the overrides */
     const r3d_lod_steer_t* steer;      /* the pick's state before the draw */
-    int step, width, height;           /* the step (-1 at the fixed scale) and the size it drew at */
+    const render_context_frame_t* frame;
     int scale_percent;
-    bool generated; /* warped from the last drawn frame, not drawn */
 } frame_record_context_t;
 
 typedef struct {
