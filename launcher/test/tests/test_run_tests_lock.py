@@ -51,7 +51,7 @@ class BuildDirLockTest(unittest.TestCase):
 
     def stop(self, process):
         stop_process_tree(process)
-        process.communicate()
+        return process.communicate()
 
     def wait_for_waiting(self, process):
         """Fails unless the process's first stderr line says it waits."""
@@ -85,6 +85,25 @@ class BuildDirLockTest(unittest.TestCase):
         process = self.start([device.git_bash(), str(TEST_DIR / "run_tests.sh"), "--build-only",
                               "--build-dir", str(self.build)])
         self.assert_waits_and_touches_nothing(process)
+
+    def test_a_run_alone_in_its_build_dir_never_waits_on_itself(self):
+        """The run re-enters itself under the lock, and so does the inner run
+        it starts; neither may wait for the lock its own parent holds."""
+        self.held.close()
+        process = self.start([device.git_bash(), str(TEST_DIR / "run_tests.sh"), "--build-only",
+                              "--build-dir", str(self.build)])
+        log = self.build / "run_tests.log"
+        deadline = time.monotonic() + SETTLE_SECONDS
+        # The inner run's own lines follow the label quiet_run writes for it.
+        while time.monotonic() < deadline and process.poll() is None:
+            text = log.read_text(errors="replace") if log.exists() else ""
+            if text.partition("== host-tests ==\n")[2].strip():
+                break
+            time.sleep(0.5)
+        _, err = self.stop(process)
+        text = log.read_text(errors="replace") if log.exists() else ""
+        self.assertTrue(text.partition("== host-tests ==\n")[2].strip(), "the inner run never started")
+        self.assertNotIn(build_lock.waiting_line(""), text + err)
 
     def test_the_inner_entry_the_tool_tests_use_waits_too(self):
         process = self.start([device.git_bash(), str(TEST_DIR / "run_tests.sh"), "--build-only",
