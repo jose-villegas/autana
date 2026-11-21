@@ -38,7 +38,9 @@ and where it is now. A negative count means anything may have changed.
 | A mesh of another size took an instance's place | the raster's scratch now holds its picture elsewhere |
 | Any render setting changed | settings may change pixels anywhere |
 | A debug view | it painted its own colours over the picture |
-| Dynamic resolution or frame generation on, or on last frame | each frame may draw at another size or be warped |
+| Frame generation on, or on last frame | each frame may be warped |
+| The first held frame under dynamic resolution, at a step below the top | it is drawn at the top step ([Dynamic-Resolution.md](Dynamic-Resolution.md#how-a-size-is-chosen)) |
+| Dynamic resolution, once a held frame cost more than its budget, until the view changes | the policy chooses each frame's size again |
 | More than `RENDER_PARTIAL_CHANGES_MAX` boxes, or a negative count | the changes are not known |
 | A box corner at or behind the near plane | its rows cannot be bounded |
 | The draw refitted its depth scale | kept rows hold depth at the old scale |

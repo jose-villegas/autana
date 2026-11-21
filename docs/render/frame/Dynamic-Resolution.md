@@ -126,6 +126,8 @@ An app opts in with `render_context_set_dynamic_resolution()` ([Mesh-Rendering.m
 With [frame generation](Frame-Generation.md#with-dynamic-resolution) on, a
 drawn frame is priced at the shown-frame budget, as without it.
 
+While the camera holds still, a frame draws as [partial redraw](Partial-Redraw.md) does, unpriced, at the top step: the first every row, the next only changed rows. One over the budget hands the size back to the policy until the view changes.
+
 | Policy | Chooses | From | Guards against flapping |
 |---|---|---|---|
 | Stepped controller | one step at a time, after the cost, never above the top | the mean of a window of measured frames against an up and a down threshold | a cooldown after each step that doubles when a step reverses the last one; a panic drop for one frame far over budget |
