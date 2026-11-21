@@ -53,32 +53,32 @@ bake = true
 
 [[objects]]
 name = "lamp"
-position = [-0.6, 2.4, 1.6]
+position = [-0.9, 2.0, -1.4]
 
 [objects.light]
 type = "point"
 mode = "baked"
 color = [1.0, 0.72, 0.42]
-intensity = 3.0
+intensity = 4.0
 range = 7.0
 
 [[objects]]
 name = "spot"
-position = [2.8, 4.5, 1.4]
-rotation = [-12.0, 0.0, 10.0]
+position = [3.6, 4.5, 1.2]
+rotation = [26.0, 0.0, -15.7]
 
 [objects.light]
 type = "spot"
 mode = "baked"
 color = [0.55, 0.75, 1.0]
-intensity = 9.0
+intensity = 14.0
 range = 9.0
 inner_angle = 18.0
 outer_angle = 30.0
 
 [[objects]]
 name = "camera"
-position = [0.0, 6.5, 10.5]
+position = [0.3, 5.0, 7.5]
 rotation = [-30.0, 0.0, 0.0]
 
 [objects.camera]
