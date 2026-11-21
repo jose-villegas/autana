@@ -372,7 +372,7 @@ resolution_budget_learn(resolution_budget_t* budget, int32_t sample_us) {
     const int32_t target_us = budget->target_us;
     sample_us = mathi_clamp(sample_us, 0, target_us);
     budget->unscaled_us =
-        budget->learned ? budget->unscaled_us + (sample_us - budget->unscaled_us) / RESOLUTION_UNSCALED_WEIGHT_DIVISOR
+        budget->learned ? budget->unscaled_us + ((sample_us - budget->unscaled_us) / RESOLUTION_UNSCALED_WEIGHT_DIVISOR)
                         : sample_us;
     budget->learned = true;
     const int32_t floor_us = (int32_t)((int64_t)target_us * RESOLUTION_SCALED_MIN_PERCENT / 100);
