@@ -151,7 +151,8 @@ The image script rewrites blocks by default; --check reports
 changed doc-path#block-name and exits 1. The refresh PR includes changed tables
 and images together.
 The writer refuses a table whose mean dE76 against a reference (the
-`MEAN_DE` columns) on a row of the same table it already holds passes both `DE_JUMP_RATIO` times and `DE_JUMP_MIN` over the published value
+`MEAN_DE` columns) on a row of the same table it already holds passes both
+`DE_JUMP_RATIO` times and `DE_JUMP_MIN` over the published value
 (`generated_blocks.py`): a figure drawn at the wrong pose scores several times
 worse, and the refresh fails instead of publishing it. A change meant to raise
 it regenerates the table itself, with
