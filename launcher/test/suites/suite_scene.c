@@ -307,7 +307,7 @@ static const scene_spec_t SCENES[] = {
      false,
      false},
     /* a still camera first, then one flying the clip "flight", and a red quad */
-    {"test_visitor",
+    {"test_still_then_flight",
      3,
      1,
      2,
@@ -3686,9 +3686,11 @@ test_a_scene_with_two_cameras_is_seen_from_the_one_activated_by_name(void) {
 static void
 test_the_flight_camera_is_the_first_on_a_path_else_the_first(void) {
     fixture();
-    entity_t visitor = load("test_visitor");
-    TEST_ASSERT_EQUAL_UINT32(entity_find(visitor, name_hash("visitor")).id, camera_first(visitor).id);
-    TEST_ASSERT_EQUAL_UINT32(entity_find(visitor, name_hash("camera")).id, camera_flight(visitor).id);
+    entity_t still_then_flight = load("test_still_then_flight");
+    TEST_ASSERT_EQUAL_UINT32(entity_find(still_then_flight, name_hash("visitor")).id,
+                             camera_first(still_then_flight).id);
+    TEST_ASSERT_EQUAL_UINT32(entity_find(still_then_flight, name_hash("camera")).id,
+                             camera_flight(still_then_flight).id);
     entity_t twin = load("test_twin");
     TEST_ASSERT_EQUAL_UINT32(camera_first(twin).id, camera_flight(twin).id);
 }
