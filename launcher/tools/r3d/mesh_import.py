@@ -110,24 +110,23 @@ def fidelity_poses(scene, object_name, frames, dt):
                             number_format=".9g")
 
 
-def visible_triangles(visibility, scene, p, tri_v, double, intersector, rng, settings=None):
-    """Which source triangles the camera can see, by visibility's source. `probes` keeps what the import
-    `settings`' training probe faces show, the same faces its fit trains on, and what the camera path shows when
-    the scene camera has one: probes are the base, a known path adds to them."""
+def visible_triangles(visibility, scene, p, tri_v, double, intersector, rng, job=None):
+    """Which source triangles the camera can see, by visibility's source. `probes` keeps what the fitted
+    renderer `job`'s training probe faces show (reference_set.fit_probe_views, the faces its fit trains on), and
+    what the camera path shows when the scene camera has one: probes are the base, a known path adds to them."""
     if visibility.source == "camera_region":
         return visible_from_region(p, tri_v, double, intersector, visibility.rounds, rng, *scene.region)
-    from r3d.reference_set import probe_face, probe_views
+    from r3d.reference_set import fit_probe_views, probe_face
 
     camera = scene.camera.component
-    on_path, path = None, None
-    if visibility.source == "camera_path" or camera.path is not None:
+    on_path = None
+    if camera.path is not None:
         width, height, lens, near, poses = camera_path_poses(scene, visibility)
         on_path = visible_from_path(p, tri_v, double, intersector, poses, width, height, lens, near, visibility.samples,
                                     visibility.margin)
-        if visibility.source == "camera_path":
-            return on_path
-        path = (width, height, lens, poses)
-    views, face = probe_views(settings, camera, path), probe_face(settings)
+    if visibility.source == "camera_path":
+        return on_path
+    views, face = fit_probe_views(job, scene), probe_face(job.settings)
     seen = visible_from_path(p, tri_v, double, intersector, views.training, face, face, views.face_lens,
                              camera.near_z, visibility.samples, visibility.margin)
     return seen if on_path is None else seen | on_path
@@ -230,7 +229,7 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
         seen = np.ones(len(tri_v), dtype=bool)
         if visibility:
             double = np.array([src.names[material] in double_names for material in tri_m])
-            seen = visible_triangles(visibility, scene, src.p, tri_v, double, intersector, rng, settings)
+            seen = visible_triangles(visibility, scene, src.p, tri_v, double, intersector, rng, job)
         step["triangles_out"] = int(seen.sum())
     with recorder.step("thin", int(seen.sum())) as step:
         if settings.thin:
