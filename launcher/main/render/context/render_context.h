@@ -115,6 +115,14 @@ typedef struct {
     render_view_t kept_view;
     framegen_target_t framegen;
     render_partial_t partial; /* render/partial: rows redrawn on a still camera */
+    /* Dynamic resolution on a still camera: this frame was drawn as partial
+     * redraw is, at the top step and unpriced; `still_judged` when it drew
+     * over a kept picture of its own size, so its cost says what a still
+     * frame costs; `still_over` once such a frame cost more than the budget,
+     * which hands the held camera back to the policy until the view changes. */
+    bool still_drawn;
+    bool still_judged;
+    bool still_over;
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
     /* Whether the last frame's debug view drew a second view, and from where. */
     bool observed;

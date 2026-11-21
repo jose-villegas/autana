@@ -53,6 +53,10 @@ void render_partial_set_changed(render_partial_t* partial, const box3f_t* boxes,
  * unless the kept picture can be drawn over. */
 render_rows_t render_partial_rows(render_partial_t* partial, const raster_t* raster, const render_view_t* view);
 
+/* Whether the kept picture shows `view` with this frame's settings and
+ * instances, whatever size it was drawn at: the camera held still. */
+bool render_partial_still(const render_partial_t* partial, const raster_t* raster, const render_view_t* view);
+
 /* Whether level picks spread over `pick_every` frames are owed: a frame
  * with rows to redraw came fewer than that many frames ago, so a still
  * instance may not yet have picked under this view. */
