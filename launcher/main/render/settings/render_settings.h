@@ -56,7 +56,8 @@ typedef struct {
 #define RENDER_TEXTURE_DIVIDE_PX_MAX 32
 /* The largest texture.affine_bend a pack may set, in texels. */
 #define RENDER_TEXTURE_BEND_MAX      15.0F
-/* Steps per texel in which texture.affine_bend is tuned and held, rounded. */
+/* Steps per texel in which the span target and the tune override hold
+ * texture.affine_bend, rounded. */
 #define RENDER_TEXTURE_BEND_STEPS    16
 /* The last mip level a texture has: the largest level setting a pack may name. */
 #define RENDER_TEXTURE_LEVEL_MAX     7

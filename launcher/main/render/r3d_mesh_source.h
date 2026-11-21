@@ -1,8 +1,8 @@
 /*
  * r3d_mesh_source: a plain indexed mesh with one colour per vertex, and for
- * a textured mesh one UV per vertex, as the app makes it at run time. A
- * dynamic build (render/dynamic) turns it into a lit mesh; a frame record
- * (render/record) carries it so a host can build the same mesh again.
+ * a textured mesh one UV per vertex, as its caller makes it at run time:
+ * read by render/dynamic's build and carried by a frame record
+ * (render/record), so a host can build the same mesh again.
  */
 #pragma once
 

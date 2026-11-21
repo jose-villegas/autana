@@ -484,18 +484,22 @@ def _layer_dirs_match(root):
             "docs/firmware/Layers.md) before this rule can trust its own order.")
 
 
-def _main_include_layers(root, path, text):
-    """(line, include, target layer) for each include of `text` that resolves
-    to a folder of launcher/main/, quoted or angled."""
+def _main_includes(root, path, text):
+    """(line, include, target file) for each include of `text`, quoted or
+    angled and outside comments, that resolves to a file of launcher/main/."""
     main_dir = (pathlib.Path(root) / "launcher/main").resolve()
-    for number, line in enumerate(text.splitlines(), 1):
+    for number, line in enumerate(blank_comments(text, cpp=is_cpp(path)).splitlines(), 1):
         m = ANY_INCLUDE.match(line)
-        if not m:
-            continue
-        resolved = resolve_include(root, path, m.group(1))
-        if resolved is None or not resolved.resolve().is_relative_to(main_dir):
-            continue
-        yield number, m.group(1), layer_of(resolved.resolve().relative_to(main_dir).parts)
+        resolved = resolve_include(root, path, m.group(1)) if m else None
+        if resolved is not None and resolved.resolve().is_relative_to(main_dir):
+            yield number, m.group(1), resolved.resolve()
+
+
+def _main_include_layers(root, path, text):
+    """(line, include, target layer) for each of _main_includes()."""
+    main_dir = (pathlib.Path(root) / "launcher/main").resolve()
+    for number, inc, target in _main_includes(root, path, text):
+        yield number, inc, layer_of(target.relative_to(main_dir).parts)
 
 
 @c_line_rule("INCLUDE-DIRECTION")
@@ -529,7 +533,7 @@ def rule_include_direction(root, path, text):
 # file in one folder of a file in another is an edge; an edge on a cycle
 # (in a strongly connected component of more than one folder) is reported
 # at its include line. FOLDER-CYCLE warns until the tree has none, then
-# fails; a cycle between headers fails now. No folder is named: a module's
+# fails; a cycle between headers fails. No folder is named: a module's
 # layers are the levels of the graph the includes draw, so there is no
 # table to keep in step. An include inside a comment is no include.
 
@@ -576,20 +580,13 @@ def _main_include_cycles(root):
     """{source file: [(line, include, target file)]} for each include between
     two files of launcher/main/, and the folder and header components."""
     root_path = pathlib.Path(root)
-    main_dir = (root_path / "launcher/main").resolve()
     by_source, folders, headers = {}, {}, {}
     for rel in tracked_files(root, ("launcher/main",)):
         if not rel.endswith(SOURCE_EXTENSIONS) or rel.startswith(excluded()):
             continue
         path = (root_path / rel).resolve()
-        text = blank_comments(path.read_text(encoding="utf-8", errors="replace"), cpp=is_cpp(path))
-        for number, line in enumerate(text.splitlines(), 1):
-            m = ANY_INCLUDE.match(line)
-            resolved = resolve_include(root, path, m.group(1)) if m else None
-            if resolved is None or not resolved.resolve().is_relative_to(main_dir):
-                continue
-            target = resolved.resolve()
-            by_source.setdefault(path, []).append((number, m.group(1), target))
+        for number, inc, target in _main_includes(root, path, path.read_text(encoding="utf-8", errors="replace")):
+            by_source.setdefault(path, []).append((number, inc, target))
             folders.setdefault(path.parent, set()).add(target.parent)
             if path.suffix == target.suffix == ".h":
                 headers.setdefault(path, set()).add(target)
