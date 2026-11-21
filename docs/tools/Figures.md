@@ -15,10 +15,10 @@ is stale, so rerun it after changing an image or the pages that show one.
 | [input](#input) | 11 | 0 | 0 |
 | [kinematics](#kinematics) | 7 | 3 | 0 |
 | [math](#math) | 25 | 25 | 0 |
-| [overview](#overview) | 45 | 0 | 0 |
+| [overview](#overview) | 46 | 0 | 0 |
 | [physics](#physics) | 2 | 0 | 0 |
 | [power](#power) | 2 | 0 | 0 |
-| [render](#render) | 143 | 19 | 0 |
+| [render](#render) | 145 | 21 | 0 |
 | [ui](#ui) | 62 | 0 | 0 |
 
 ## anim
@@ -175,6 +175,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/overview/render-lab-stress-stack-skip.png"><img src="../images/overview/render-lab-stress-stack-skip.png" width="160" alt=""></a> | Stress stack skip: planes one behind another, hidden clusters skipped | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-stack.png"><img src="../images/overview/render-lab-stress-stack.png" width="160" alt=""></a> | Stress stack: planes one behind another | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-static-copies.png"><img src="../images/overview/render-lab-stress-static-copies.png" width="160" alt=""></a> | Static triangle copies | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
+| <a href="../images/overview/render-lab-stress-textured-far.png"><img src="../images/overview/render-lab-stress-textured-far.png" width="160" alt=""></a> | Stress textured far: a wall of small brick planes | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-textured.png"><img src="../images/overview/render-lab-stress-textured.png" width="160" alt=""></a> | Stress textured: big triangles under a brick texture | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-tiny-copies.png"><img src="../images/overview/render-lab-stress-tiny-copies.png" width="160" alt=""></a> | Stress tiny copies: many small spheres | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-two-sided.png"><img src="../images/overview/render-lab-stress-two-sided.png" width="160" alt=""></a> | Stress two-sided: a wall of cubes drawn from both sides | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
@@ -216,6 +217,8 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/render/baked-mesh-ranges.png"><img src="../images/render/baked-mesh-ranges.png" width="160" alt=""></a> | The first leaves' clusters as runs of the triangle and vertex arrays | [render/offline/Baked-Mesh](../render/offline/Baked-Mesh.md) | not declared yet |
 | <a href="../images/render/baked-mesh-tree.gif"><img src="figure-thumbnails/render/baked-mesh-tree.gif" width="160" alt=""></a> | A baked mesh's clusters, then the tree level by level with one root-to-leaf path bold | [render/offline/Baked-Mesh](../render/offline/Baked-Mesh.md) | not declared yet |
 | <a href="../images/render/bistro-street-divide.png"><img src="../images/render/bistro-street-divide.png" width="160" alt=""></a> | The near floor's squares where affine differs most from a divide every pixel, with each column's CIE76 colour distance from that divide | [render/frame/Texture-Mapping](../render/frame/Texture-Mapping.md) | [bistro_figures.py](../../launcher/demo/bistro/bistro_figures.py) |
+| <a href="../images/render/bistro-street-far-levels.crops.png"><img src="../images/render/bistro-street-far-levels.crops.png" width="160" alt=""></a> | The places the far levels change most, the source above every level's texels and the far levels untextured | [render/frame/Texture-Mapping](../render/frame/Texture-Mapping.md) | [bistro_figures.py](../../launcher/demo/bistro/bistro_figures.py) |
+| <a href="../images/render/bistro-street-far-levels.png"><img src="../images/render/bistro-street-far-levels.png" width="160" alt=""></a> | Bistro's street from above: the source, the street with every level's texels, with its far levels untextured, and each one's CIE76 against the source | [render/frame/Texture-Mapping](../render/frame/Texture-Mapping.md) | [bistro_figures.py](../../launcher/demo/bistro/bistro_figures.py) |
 | <a href="../images/render/bistro-street-fitted-full-object-error.png"><img src="../images/render/bistro-street-fitted-full-object-error.png" width="160" alt=""></a> | Bistro error share against pixel share for parts, objects and shapes | [render/offline/Mesh-Import](../render/offline/Mesh-Import.md) | not declared yet |
 | <a href="../images/render/bistro-street-textured.crops.png"><img src="../images/render/bistro-street-textured.crops.png" width="160" alt=""></a> | The same frame's squares that differ most, zoomed: source, vertex colours and textured | [assets/formats/LTEX](../assets/formats/LTEX.md) | [bistro_figures.py](../../launcher/demo/bistro/bistro_figures.py) |
 | <a href="../images/render/bistro-street-textured.png"><img src="../images/render/bistro-street-textured.png" width="160" alt=""></a> | Bistro's street on host: the source render, the vertex colours alone, and the cobblestones and beige brick textured, with each one's CIE76 error against the source | [assets/formats/LTEX](../assets/formats/LTEX.md) | [bistro_figures.py](../../launcher/demo/bistro/bistro_figures.py) |

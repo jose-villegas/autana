@@ -107,6 +107,7 @@ typedef struct {
     X(CARVED_NEAR, "carved-near", CARVED)                                                                              \
     X(CARVED_FAR, "carved-far", CARVED)                                                                                \
     X(TEXTURED, "textured", TEXTURED)                                                                                  \
+    X(TEXTURED_FAR, "textured-far", TEXTURED)                                                                          \
     X(FOLIAGE_NEAR, "foliage-near", MASKED)                                                                            \
     X(FOLIAGE_NEAR_OPAQUE, "foliage-near-opaque", TEXTURED)                                                            \
     X(FOLIAGE_FAR, "foliage-far", MASKED)                                                                              \

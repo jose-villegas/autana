@@ -227,8 +227,7 @@ class SelectTests(unittest.TestCase):
         self.assertTrue(all(call.args[0] is query for call in traced.call_args_list))
         self.assertEqual({call.args[3:] for call in traced.call_args_list}, {(8, 8, 0.5)})
         self.assertLessEqual(len(views.held_out), 1)
-        training, held_out, record = views
-        self.assertEqual((training, held_out, record), (views.training, views.held_out, views.record))
+        self.assertEqual(views.face_lens, 0.5, "the views do not carry the lens their faces were traced with")
 
 
 if __name__ == "__main__":

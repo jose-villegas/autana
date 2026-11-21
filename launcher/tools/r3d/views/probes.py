@@ -20,6 +20,7 @@ import numpy as np
 
 from r3d.geometry import face_normals
 from r3d.poses import camera_rays
+from r3d.ray_query import RayQuery
 
 # Rays each probe casts to classify itself.
 RAYS = 32
@@ -34,6 +35,8 @@ MIN_FRONT_NEARS = 2.0
 # Probe spacing without geometry.probes.spacing, in near planes: while imports keep their source's units, the
 # camera's near plane is the one length every scene states; a world-unit constant once imports share one unit.
 PROBE_SPACING_NEAR_PLANES = 32.0
+# Near plane for a source without a scene camera, as a share of its bounds diagonal.
+PROBE_NEAR_SHARE = 1e-3
 # Most probes a region gets; a finer spacing widens to stay under it.
 PROBE_COUNT_MAX = 1024
 # Cube face field: tan of 45 degrees.
@@ -166,6 +169,7 @@ class ProbeViews(NamedTuple):
     training: list  # (eye, forward) per kept cube face
     held_out: list
     record: dict
+    face_lens: float = FACE_LENS
 
 
 def select(positions, tris, region, near, spacing, seed, path=None, *, query=None, targets=None,
@@ -175,10 +179,11 @@ def select(positions, tris, region, near, spacing, seed, path=None, *, query=Non
     (built plain without one); `targets`, a bool per triangle, limits what a face gains to those triangles. Faces
     are traced at `select_size` pixels and `face_lens`. The held-out faces, at most `held_out_faces`, come from a
     second seed and start from nothing shown."""
-    from r3d.ray_query import RayQuery
-
     positions, tris = np.asarray(positions, dtype=float), np.asarray(tris)
     lo, hi = region if region is not None else (positions.min(axis=0), positions.max(axis=0))
+    near = float(np.linalg.norm(np.ptp(positions, axis=0))) * PROBE_NEAR_SHARE if near is None else near
+    if near <= 0:
+        raise ValueError("probe source bounds have no extent")
     spacing = spacing_for(lo, hi, spacing, near)
     query = RayQuery(positions, tris) if query is None else query
     normals = face_normals(positions, tris)[0]
@@ -204,4 +209,4 @@ def select(positions, tris, region, near, spacing, seed, path=None, *, query=Non
                         "near": int(np.count_nonzero(state == "near")), "faces": len(poses), "kept": len(picked),
                         "shown_after": int(np.count_nonzero(start & ~unseen)) + int(sum(gains)),
                         "placed": placed(moved, state, picked)}
-    return ProbeViews(kept["train"], kept["held_out"], record)
+    return ProbeViews(kept["train"], kept["held_out"], record, face_lens)
