@@ -27,7 +27,7 @@ NORMAL_SCALE = read_define(SKIN_OWNER, "R3D_SKIN_NORMAL_SCALE")
 
 
 class OpenPatch:
-    def blocked(self, origins, directions):
+    def blocked(self, origins, directions, reach=None):
         return np.zeros(len(origins), dtype=bool)
 
 
