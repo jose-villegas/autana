@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "audio/audio_adpcm.h"
+#include "audio/audio_out_device.h"
 #include "fixtures/sound_mixer_oracle.h"
 #include "math/scalar/rng.h"
 #include "sound/sound_engine.h"
@@ -12,11 +13,13 @@
 #include "testkit/cleanup.h"
 #include "unity.h"
 
-#define TEST_FRAMES     12
-#define TEST_SAMPLE     16000
-#define TEST_STARTUP_MS 250
-#define TEST_HALF_GAIN  (SOUND_GAIN_MAX_PCT / 2)
-#define TEST_TONE_HZ    1000
+#define TEST_FRAMES         12
+#define TEST_SAMPLE         16000
+#define TEST_STARTUP_MS     AUDIO_OUT_AMP_STARTUP_MS
+#define TEST_IDLE_PERIOD_MS 2000u
+#define TEST_LONG_IDLE_MS   (TEST_IDLE_PERIOD_MS * TEST_IDLE_PERIOD_MS)
+#define TEST_HALF_GAIN      (SOUND_GAIN_MAX_PCT / 2)
+#define TEST_TONE_HZ        1000
 
 typedef struct {
     sound_control_t control;
@@ -73,6 +76,22 @@ render(fixture_t* f, uint64_t now_ms, size_t frames) {
 }
 
 static void
+test_sound_amp_starts_without_voice_and_stays_on(void) {
+    fixture_t* f = fixture();
+    TEST_ASSERT_EQUAL_INT(SOUND_AMP_WARMING, f->mixer.amp);
+    render(f, 0, TEST_FRAMES);
+    render(f, TEST_STARTUP_MS, TEST_FRAMES);
+    TEST_ASSERT_EQUAL_INT(SOUND_AMP_ON, f->mixer.amp);
+    render(f, TEST_LONG_IDLE_MS, TEST_FRAMES);
+    TEST_ASSERT_EQUAL_INT(SOUND_AMP_ON, f->mixer.amp);
+    (void)play(f, NULL);
+    render(f, TEST_LONG_IDLE_MS, TEST_FRAMES);
+    TEST_ASSERT_EQUAL_INT16(TEST_SAMPLE, f->out[0]);
+    render(f, TEST_LONG_IDLE_MS * 2, TEST_FRAMES);
+    TEST_ASSERT_EQUAL_INT(SOUND_AMP_ON, f->mixer.amp);
+}
+
+static void
 test_sound_warmup_holds_positions_and_writes_silence(void) {
     fixture_t* f = fixture();
     const sound_voice_t voice = play(f, NULL);
@@ -87,10 +106,6 @@ test_sound_warmup_holds_positions_and_writes_silence(void) {
     render(f, TEST_STARTUP_MS, TEST_FRAMES);
     TEST_ASSERT_EQUAL_INT16(TEST_SAMPLE, f->out[0]);
     TEST_ASSERT_FALSE(sound_control_is_playing(&f->control, voice));
-    render(f, TEST_STARTUP_MS + SOUND_AMP_IDLE_MS - 1, TEST_FRAMES);
-    TEST_ASSERT_EQUAL_INT(SOUND_AMP_ON, f->mixer.amp);
-    render(f, TEST_STARTUP_MS + SOUND_AMP_IDLE_MS, TEST_FRAMES);
-    TEST_ASSERT_EQUAL_INT(SOUND_AMP_OFF, f->mixer.amp);
 }
 
 static void
@@ -332,7 +347,7 @@ test_sound_timed_tone_ends_on_time(void) {
         }
         TEST_ASSERT_FALSE(sound_control_is_playing(&f->control, voice));
         TEST_ASSERT_FALSE(sound_control_is_audible(&f->control, voice));
-        f->mixer.amp = SOUND_AMP_OFF;
+        f->mixer.amp = SOUND_AMP_WARMING;
     }
 }
 
@@ -546,32 +561,6 @@ test_sound_exit_never_reads_retired_source_and_preserves_engine(void) {
 }
 
 static void
-test_sound_amp_rewarms_and_idle_window_refreshes(void) {
-    fixture_t* f = fixture();
-    (void)play(f, NULL);
-    render(f, 0, TEST_FRAMES);
-    render(f, TEST_STARTUP_MS, TEST_FRAMES);
-    (void)play(f, NULL);
-    const uint64_t inside = TEST_STARTUP_MS + SOUND_AMP_IDLE_MS - 1;
-    render(f, inside, TEST_FRAMES);
-    TEST_ASSERT_EQUAL_INT16(TEST_SAMPLE, f->out[0]);
-    render(f, inside + SOUND_AMP_IDLE_MS - 1, TEST_FRAMES);
-    TEST_ASSERT_EQUAL_INT(SOUND_AMP_ON, f->mixer.amp);
-    const uint64_t late = inside + SOUND_AMP_IDLE_MS * SOUND_AMP_IDLE_MS;
-    render(f, late, TEST_FRAMES);
-    TEST_ASSERT_EQUAL_INT(SOUND_AMP_OFF, f->mixer.amp);
-    (void)play(f, NULL);
-    render(f, late + 1, TEST_FRAMES);
-    TEST_ASSERT_EQUAL_INT(SOUND_AMP_WARMING, f->mixer.amp);
-    TEST_ASSERT_EQUAL_INT16(0, f->out[0]);
-    TEST_ASSERT_EQUAL_UINT32(0, f->mixer.voices[0].source.cursor.position);
-    render(f, late + TEST_STARTUP_MS, TEST_FRAMES);
-    TEST_ASSERT_EQUAL_UINT32(0, f->mixer.voices[0].source.cursor.position);
-    render(f, late + TEST_STARTUP_MS + 1, TEST_FRAMES);
-    TEST_ASSERT_EQUAL_INT16(TEST_SAMPLE, f->out[0]);
-}
-
-static void
 test_sound_free_slot_precedes_steal_and_handles_wrap(void) {
     fixture_t* f = fixture();
     const sound_voice_t first = play(f, NULL);
@@ -714,7 +703,7 @@ static void
 test_sound_exit_resets_app_gains_and_preserves_system_gain(void) {
     fixture_t* f = fixture();
     sound_command_t command;
-    const sound_bus_t buses[] = {SOUND_BUS_SYSTEM, SOUND_BUS_SFX, SOUND_BUS_MUSIC, SOUND_BUS_MASTER};
+    const sound_bus_t buses[] = {SOUND_BUS_SYSTEM, SOUND_BUS_SFX, SOUND_BUS_MUSIC, SOUND_BUS_HAPTIC, SOUND_BUS_MASTER};
     for (size_t i = 0; i < sizeof buses / sizeof buses[0]; i++) {
         TEST_ASSERT_TRUE(
             sound_control_bus_command(&f->control, buses[i], SOUND_COMMAND_BUS_GAIN, TEST_HALF_GAIN, &command));
@@ -727,6 +716,7 @@ test_sound_exit_resets_app_gains_and_preserves_system_gain(void) {
     TEST_ASSERT_EQUAL_UINT8(TEST_HALF_GAIN, f->mixer.bus_gain[SOUND_BUS_SYSTEM.id]);
     TEST_ASSERT_EQUAL_UINT8(SOUND_GAIN_MAX_PCT, f->mixer.bus_gain[SOUND_BUS_SFX.id]);
     TEST_ASSERT_EQUAL_UINT8(SOUND_GAIN_MAX_PCT, f->mixer.bus_gain[SOUND_BUS_MUSIC.id]);
+    TEST_ASSERT_EQUAL_UINT8(SOUND_GAIN_MAX_PCT, f->mixer.bus_gain[SOUND_BUS_HAPTIC.id]);
     TEST_ASSERT_EQUAL_UINT8(SOUND_GAIN_MAX_PCT, f->mixer.master_gain);
     f->control.reset_gains = false;
     TEST_ASSERT_FALSE(sound_control_bus_command(&f->control, SOUND_BUS_SFX, SOUND_COMMAND_BUS_GAIN, 0, &command));
@@ -868,22 +858,6 @@ test_sound_exit_preserves_engine_owners_and_retires_only_app_owners(void) {
     TEST_ASSERT_TRUE(f->control.buses[engine_bus.id].used);
     TEST_ASSERT_FALSE(sound_control_is_playing(&f->control, app));
     TEST_ASSERT_FALSE(f->control.buses[app_bus.id].used);
-}
-
-static void
-test_sound_stopped_warming_amp_turns_off_and_rewarms(void) {
-    fixture_t* f = fixture();
-    const sound_voice_t voice = play(f, NULL);
-    render(f, 0, 1);
-    TEST_ASSERT_EQUAL_INT(SOUND_AMP_WARMING, f->mixer.amp);
-    sound_command_t command;
-    TEST_ASSERT_TRUE(sound_control_voice_command(&f->control, voice, SOUND_COMMAND_STOP, 0, &command));
-    render(f, SOUND_AMP_IDLE_MS, 1);
-    TEST_ASSERT_EQUAL_INT(SOUND_AMP_OFF, f->mixer.amp);
-    (void)play(f, NULL);
-    render(f, SOUND_AMP_IDLE_MS + 1, 1);
-    TEST_ASSERT_EQUAL_INT(SOUND_AMP_WARMING, f->mixer.amp);
-    TEST_ASSERT_EQUAL_UINT32(0, f->mixer.voices[0].source.cursor.position);
 }
 
 static void
@@ -1072,7 +1046,7 @@ test_sound_timed_tone_declick_at_cut(void) {
         }
         TEST_ASSERT_EQUAL_INT32(0, f->mixer.residual);
         TEST_ASSERT_EQUAL_INT16(0, f->out[0]);
-        f->mixer.amp = SOUND_AMP_OFF;
+        f->mixer.amp = SOUND_AMP_WARMING;
     }
 }
 
@@ -1162,23 +1136,6 @@ test_sound_declick_zero_signal_and_authored_loop_seam(void) {
     const unsigned seam = f->sound.loop_end;
     TEST_ASSERT_EQUAL_INT16(-TEST_SAMPLE, f->out[seam - 1]);
     TEST_ASSERT_EQUAL_INT16(TEST_SAMPLE, f->out[seam]);
-    TEST_ASSERT_EQUAL_INT32(0, f->mixer.residual);
-}
-
-static void
-test_sound_declick_amp_off_discards_tail(void) {
-    fixture_t* f = fixture();
-    f->mixer.declick_frames = SOUND_GAIN_ONE;
-    const sound_play_opts_t opts = {.bus = SOUND_BUS_SFX, .gain_pct = SOUND_GAIN_MAX_PCT, .loop = true};
-    const sound_voice_t voice = play(f, &opts);
-    render(f, 0, TEST_FRAMES);
-    render(f, TEST_STARTUP_MS, TEST_FRAMES);
-    sound_command_t command;
-    TEST_ASSERT_TRUE(sound_control_voice_command(&f->control, voice, SOUND_COMMAND_STOP, 0, &command));
-    sound_mixer_apply(&f->mixer, &command, f->control.app_generation);
-    TEST_ASSERT_NOT_EQUAL(0, f->mixer.residual);
-    render(f, TEST_STARTUP_MS + SOUND_AMP_IDLE_MS, TEST_FRAMES);
-    TEST_ASSERT_EQUAL_INT(SOUND_AMP_OFF, f->mixer.amp);
     TEST_ASSERT_EQUAL_INT32(0, f->mixer.residual);
 }
 
@@ -1348,7 +1305,6 @@ run_sound_mixer_suite(void) {
     RUN_TEST(test_render_one_voice_matches_oracle);
     RUN_TEST(test_render_two_voices_matches_oracle);
     RUN_TEST(test_render_all_voices_matches_oracle);
-    RUN_TEST(test_sound_declick_amp_off_discards_tail);
     RUN_TEST(test_sound_declick_cuts_preserve_continuity);
     RUN_TEST(test_sound_declick_zero_signal_and_authored_loop_seam);
     RUN_TEST(test_sound_declick_start_stop_and_tail);
@@ -1370,7 +1326,6 @@ run_sound_mixer_suite(void) {
     RUN_TEST(test_sound_sync_stops_an_unreplaced_renderer_handle);
     RUN_TEST(test_sound_none_generation_never_has_a_pending_read);
     RUN_TEST(test_sound_exit_preserves_engine_owners_and_retires_only_app_owners);
-    RUN_TEST(test_sound_stopped_warming_amp_turns_off_and_rewarms);
     RUN_TEST(test_sound_exact_public_boundaries_and_app_generation_wrap);
 
     RUN_TEST(test_sound_exit_resets_app_gains_and_preserves_system_gain);
@@ -1378,7 +1333,6 @@ run_sound_mixer_suite(void) {
     RUN_TEST(test_sound_bus_reuse_resets_render_gain);
     RUN_TEST(test_sound_delayed_controls_ignore_reused_slot);
     RUN_TEST(test_sound_exit_never_reads_retired_source_and_preserves_engine);
-    RUN_TEST(test_sound_amp_rewarms_and_idle_window_refreshes);
     RUN_TEST(test_sound_free_slot_precedes_steal_and_handles_wrap);
     RUN_TEST(test_sound_invalid_arguments_leave_control_and_command_unchanged);
     RUN_TEST(test_sound_authored_loop_crosses_blocks_and_empty_read_stops);
@@ -1388,6 +1342,7 @@ run_sound_mixer_suite(void) {
     RUN_TEST(test_sound_exit_waits_only_for_the_retired_read_epoch);
     RUN_TEST(test_sound_borrows_view_and_retires_a_stopped_queued_steal);
     RUN_TEST(test_sound_tone_source_holds_phase_until_warm);
+    RUN_TEST(test_sound_amp_starts_without_voice_and_stays_on);
     RUN_TEST(test_sound_warmup_holds_positions_and_writes_silence);
     RUN_TEST(test_sound_saturates_both_rails);
     RUN_TEST(test_sound_voice_bus_and_master_gain);

@@ -90,7 +90,7 @@ the capture); its 10% runs (3.2-3.6 mg) were not felt.
 |---|---|
 | Shake ridge (autana-9zf2y) | a 60% pulse at 202 Hz is 9 mg RMS, 16 mg worst peak: below the ridge's ~94 mg threshold today and the 500 mg shake reader it moves to (#1140). Tilt readers see it as noise against 1 g. No gate needed |
 | Amplifier latency | the amp is off after 2 s idle and warms for ~250 ms, so a pulse after a quiet spell lands ~250 ms late, too late for a tap. Recommended: `haptics` asks the mixer to warm the amp on touch-down (one new call on `sound_engine.h`), so the commit's pulse is on time. Milestone 2 measures the cold delay and the amp's idle current first |
-| Power | per pulse: tens of ms of speaker drive, negligible; the cost is amp on-time (warm-up + 2 s idle tail), shared with any UI sound |
+| Power | the amplifier stays on while the screen is on; pulses add speaker drive |
 | Call sites (UI orchestrator decides) | button and toggle confirm, long-press threshold, slider detents, home-edge swipe commit (`shell_home_edge`), list end stop, a refused action |
 
 ## 6. Milestones

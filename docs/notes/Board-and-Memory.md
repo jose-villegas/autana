@@ -89,7 +89,7 @@ levels are in the [audio docs](../audio/README.md).
 | Constraint | Owner |
 |---|---|
 | The amplifier on GPIO 46 has one owner, `board_audio_amp_enable()`. The codec PA pin is unused. | `launcher/main/board/waveshare/esp32_s3_touch_amoled_1_8/board.c`, `launcher/main/audio/audio_codec.c` |
-| `audio_out_amp_enable()` returns immediately. The mixer holds voice positions and writes silence during `AUDIO_OUT_AMP_STARTUP_MS`. | `launcher/main/audio/audio_out_device.h`, `launcher/main/sound/sound_mixer.c` |
+| The sound task enables the amplifier once and keeps it on. The mixer holds voice positions and writes silence during `AUDIO_OUT_AMP_STARTUP_MS`. | `launcher/main/audio/audio_out_device.h`, `launcher/main/sound/sound_mixer.c` |
 | The microphone gain rationale is in the comment at `AUDIO_IN_GAIN_DB`. | `launcher/main/audio/audio_in.c` |
 
 ### Revisions
