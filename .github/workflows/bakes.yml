@@ -145,9 +145,25 @@ jobs:
           if-no-files-found: ignore
 
       # A fit's levels are its renderable output: the flythrough checks them here, before anyone locks them. The
-      # lock this writes from the run's own uploads stays on the runner; what it cannot lock yet is no failure
-      # here, since a bake the flythrough needs and the lock lacks fails its build anyway.
-      - name: Lock this run's bakes on the runner
+      # lock written from the run's own uploads stays on the runner; what it cannot lock yet is no failure here,
+      # since a bake the flythrough needs and the lock lacks fails its build anyway. A texture's key names its
+      # levels' locked bytes, so the textures waiting for them are made once they are locked here.
+      - name: Lock this run's bakes on the runner and make the textures that waited for them
+        if: steps.missing.outputs.levels != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python launcher/tools/bake/bake.py lock --from-run "$GITHUB_RUN_ID" || true
+          python launcher/tools/bake/bake.py bake --kind texture --out "$RUNNER_TEMP/textures"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: ${{ always() && steps.missing.outputs.levels != '0' }}
+        with:
+          name: bakes-textures-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/textures
+          if-no-files-found: ignore
+
+      - name: Lock the textures on the runner
         if: steps.missing.outputs.levels != '0'
         env:
           GH_TOKEN: ${{ github.token }}
