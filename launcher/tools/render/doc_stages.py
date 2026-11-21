@@ -30,7 +30,8 @@ from doc_tables import markdown
 from layout_measure import parse_timings, MEAN_RE
 from r3d.process_budget import WSL_MEMORY_REQUIRED_BYTES, WINDOWS_MEMORY_REQUIRED_BYTES
 from r3d.import_settings import content_checksum, load_import_settings, source_files
-from r3d.poses import either_way, flight_camera, sample_camera_path
+from r3d.import_settings import SettingsError
+from r3d.poses import flight_camera, path_poses
 from r3d.scene_name import scene_id
 
 HOST_SCRIPT = ROOT / "launcher/tools/render/scene_viewer.sh"
@@ -254,13 +255,12 @@ time: statistics.median(row) for time, row in values.items()
 }
 
 def flight_poses(scene, visibility, every_ms=None, either_way_up=True):
-    """mesh_source.camera_path_poses along the scene's flight camera: the scene camera may have no path, its fits
-    trained on probes, and the board flies the flight."""
+    """The poses the board flies: the scene's flight camera sampled at `visibility`'s size, every `every_ms`
+    (its own step when None). The scene camera may have no path, its fits trained on probes."""
     camera = flight_camera(scene)
-    width, height = visibility.size
-    poses = sample_camera_path(camera.path.animation, camera.path.node, every_ms or visibility.every_ms, width, height,
-                               camera.half_fov_short_tan, camera.near_z)
-    return either_way(*poses) if either_way_up else poses
+    if camera is None:
+        raise SettingsError(f"{scene.path}: no camera on a path for the doc stage to fly")
+    return path_poses(camera, visibility.size, every_ms or visibility.every_ms, either_way_up)
 
 
 def capture_viewport(path, expected):

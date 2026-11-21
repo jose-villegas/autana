@@ -43,7 +43,7 @@ class DocStagesTests(unittest.TestCase):
     def test_path_cull_has_its_own_sampling_for_region_visibility(self):
         from types import SimpleNamespace as NS
         import numpy as np
-        from r3d import mesh_import, lit_mesh, light, ray_query
+        from r3d import mesh_import, lit_mesh, light, ray_query, poses as poses_module
         baked = NS(object=NS(name="hall"), renderer=NS(variant=NS(name="full")))
         # The scene camera, first, has no path (its fits train on probes); the cull flies the flight.
         flight = NS(path=NS(animation="tour.anim.toml", node="camera"), half_fov_short_tan=.5, near_z=1)
@@ -55,8 +55,7 @@ class DocStagesTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, \
                 mock.patch.object(mesh_import, "bake_geometry", return_value=geometry), \
                 mock.patch.object(mesh_import, "write_baked"), \
-                mock.patch.object(stages, "sample_camera_path", create=True, return_value=(184, 224, .5, 1, [[0] * 6])) as sample, \
-                mock.patch.object(stages, "either_way", create=True, return_value=poses), \
+                mock.patch.object(poses_module, "sample_camera_path", return_value=poses) as sample, \
                 mock.patch.object(ray_query, "RayQuery"), \
                 mock.patch.object(light, "visible_from_path", return_value=np.array([True])) as visible, \
                 mock.patch.object(lit_mesh, "write_lit_mesh"):
@@ -64,9 +63,16 @@ class DocStagesTests(unittest.TestCase):
         sample.assert_called_once_with("tour.anim.toml", "camera", 100, 184, 224, .5, 1)
         self.assertEqual(visible.call_args.args[4:], (poses[-1], *poses[:4], 3, 8))
 
+    def test_a_scene_with_no_camera_on_a_path_is_named(self):
+        from types import SimpleNamespace as NS
+        from r3d.import_settings import SettingsError
+        scene = NS(path=Path("room.scene.toml"), objects=[NS(kind="camera", component=NS(path=None))])
+        with self.assertRaisesRegex(SettingsError, "room.scene.toml: no camera on a path"):
+            stages.flight_poses(scene, NS(size=(8, 6), every_ms=100))
+
     def test_board_and_smoke_sample_the_fit_with_region_visibility(self):
         from types import SimpleNamespace as NS
-        from r3d import import_settings, fitted_variant, mesh_import, reference_render
+        from r3d import import_settings, fitted_variant, mesh_import, reference_render, poses as poses_module
         fit = NS(size=(8, 6), held_out_every_ms=2000)
         job = NS(renderer=NS(fit=fit, visibility=NS(source="camera_region", rounds=2),
                              variant=NS(name="full")), asset_path=Path("start.bundle"), object=NS(name="hall"))
@@ -83,7 +89,7 @@ class DocStagesTests(unittest.TestCase):
             args.capture = [capture]
             with mock.patch.object(import_settings, "load_scene", return_value=scene), \
                     mock.patch.object(fitted_variant, "placed_variant", return_value=job), \
-                    mock.patch.object(stages, "sample_camera_path", create=True, return_value=poses) as sample, \
+                    mock.patch.object(poses_module, "sample_camera_path", return_value=poses) as sample, \
                     mock.patch.object(stages.subprocess, "check_output", return_value=b"commit"), \
                     mock.patch.object(stages.subprocess, "run", return_value=NS(returncode=0)), \
                     mock.patch.object(stages, "board_mean", return_value=1), \
@@ -91,7 +97,7 @@ class DocStagesTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "stop before cost fitting"):
                     stages.board(args, root, root)
             sample.assert_called_once_with("tour.anim.toml", "camera", fit.held_out_every_ms, 8, 6, .5, 1)
-            with mock.patch.object(stages, "sample_camera_path", create=True, return_value=poses) as sample, \
+            with mock.patch.object(poses_module, "sample_camera_path", return_value=poses) as sample, \
                     mock.patch.object(stages.shutil, "copyfile"), \
                     mock.patch.object(reference_render, "main") as render:
                 stages.smoke_prepare(args.scene, scene, job, root / "inputs")
