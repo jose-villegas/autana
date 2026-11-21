@@ -48,9 +48,9 @@ The animation step brackets are `anim.pose` (clips and poses),
 `anim.light` (normal palettes and world lights), `anim.skin` and
 `anim.refit` (skinned bounds).
 
-The raster brackets are `r3d.census`, `r3d.cull`, `r3d.transform`,
+The raster brackets are `r3d.cull`, `r3d.transform`,
 `r3d.draw`, `r3d.show` and `r3d.upscale`. Clip and span fill are inside
-`r3d.draw`. Laps split the cull, under `r3d.cull` or `r3d.census`:
+`r3d.draw`. Laps split the cull, under `r3d.cull`:
 
 | Lap | What it times |
 |---|---|
