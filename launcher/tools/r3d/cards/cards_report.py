@@ -17,7 +17,7 @@ from r3d.mesh_import import bake_geometry, load_source  # noqa: E402
 from r3d.scene_name import scene_id  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[4]
-FIELDS = ('material', 'see_through', 'covered', 'accepted', 'replaced', 'cards',
+FIELDS = ('material', 'see_through', 'covered', 'covered_area', 'accepted', 'replaced', 'cards',
           'pages', 'texture_bytes', 'triangles', 'ceiling', 'budget', 'scene_total')
 
 
@@ -33,7 +33,7 @@ def rows_for(job, scene):
     rows = []
     for name, report in geometry.mesh_report.get('cards', {}).items():
         rows.append(dict(material=name, see_through='always' if report['forced'] else report['see_through'],
-                         covered=report['covered'], accepted=report['accepted'],
+                         covered=report['covered'], covered_area=report['covered_area'], accepted=report['accepted'],
                          replaced=int(np.count_nonzero(materials == src.names.index(name))),
                          cards=report['triangles'] if report['accepted'] else 0,
                          pages=report['pages'] if report['accepted'] else 0,
@@ -59,13 +59,13 @@ def table(data):
         if tuple(reader.fieldnames or ()) != FIELDS:
             raise ValueError(f'{data}: expected fields {FIELDS}')
         rows = list(reader)
-    lines = ['| Material | See-through | Covered | Carded | Triangles without cards | Card triangles | Pages | Texture bytes |',
-             '|---|---:|---:|---|---:|---:|---:|---:|']
+    lines = ['| Material | See-through | Covered (seen) | Covered (all area) | Carded | Triangles without cards | Card triangles | Pages | Texture bytes |',
+             '|---|---:|---:|---:|---|---:|---:|---:|---:|']
     for row in rows[:-1]:
         name = row['material'].replace('|', '\\|').replace('\n', ' ')
         share = row['see_through']
         see_through = share if share == 'always' else f'{float(share):.1%}'
-        lines.append(f"| {name} | {see_through} | {float(row['covered']):.1%} | "
+        lines.append(f"| {name} | {see_through} | {float(row['covered']):.1%} | {float(row['covered_area']):.1%} | "
                      f"{'yes' if row['accepted'] == str(True) else 'no'} | {row['replaced']} | {row['cards']} | {row['pages']} | {row['texture_bytes']} |")
     scene = rows[-1]
     lines += ['', f"requested {scene['triangles']}, ceiling {scene['ceiling'] or 'none'}, "

@@ -48,7 +48,7 @@ class CardsReportTests(unittest.TestCase):
                     assert cards_report.main([str(scene), '--object', job.object.name, '--docs']) == 0
                 with (data / 'leaves-fitted-full-cards.csv').open(newline='') as stream:
                     reader = csv.DictReader(stream)
-                    assert reader.fieldnames == ['material', 'see_through', 'covered', 'accepted', 'replaced', 'cards',
+                    assert reader.fieldnames == ['material', 'see_through', 'covered', 'covered_area', 'accepted', 'replaced', 'cards',
                                                  'pages', 'texture_bytes', 'triangles', 'ceiling', 'budget', 'scene_total']
                     leaf, total = list(reader)
                 assert leaf['material'] == 'leaf'
@@ -71,8 +71,8 @@ class CardsReportTests(unittest.TestCase):
             assert cards_report.main([str(data), '--table', str(output)]) == 0
             text = output.read_text()
             leaf, total = rows
-            assert '| Material | See-through | Covered | Carded | Triangles without cards | Card triangles | Pages | Texture bytes |' in text
-            assert (f"| leaf\\|branch | always | {leaf['covered']:.1%} | yes | {leaf['replaced']} | {leaf['cards']} | {leaf['pages']} | {leaf['texture_bytes']} |") in text
+            assert '| Material | See-through | Covered (seen) | Covered (all area) | Carded | Triangles without cards | Card triangles | Pages | Texture bytes |' in text
+            assert (f"| leaf\\|branch | always | {leaf['covered']:.1%} | {leaf['covered_area']:.1%} | yes | {leaf['replaced']} | {leaf['cards']} | {leaf['pages']} | {leaf['texture_bytes']} |") in text
             assert (f"requested {total['triangles']}, ceiling {total['ceiling']}, "
                     f"rest budget {total['budget']}, emitted by the unlit import {total['scene_total']}") in text
 
