@@ -135,7 +135,8 @@ def metrics(capture, table):
         values.setdefault(name, []).append(value)
         units[name] = unit
 
-    for name, value in timing_samples(text, identity_fields=("cores", "paused", "joints"), percentiles=True):
+    for name, value in timing_samples(text, identity_fields=("cores", "paused", "joints"),
+                                      percentiles=True, include_targets=True):
         add(name, value)
     for name, value in parse_markdown(read_capture_text(table)).items():
         if name not in values:
