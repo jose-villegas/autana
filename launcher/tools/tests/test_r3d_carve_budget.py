@@ -89,6 +89,25 @@ class DerivedDetailTests(unittest.TestCase):
             self.assertEqual(len(carved.shapes), 1)
             self.assertEqual(len(carved.shapes[0]['copies']), 2)
 
+    def test_the_ceiling_pays_a_prototype_once_however_many_copies_draw_it(self):
+        from r3d.import_settings import load_import_settings, albedo_jobs
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            (root / 'copies.obj').write_text(
+                'mtllib copies.mtl\nusemtl stone\no a\nv 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n'
+                'o b\nv 10 0 0\nv 11 0 0\nv 10 1 0\nf 4 5 6\n')
+            (root / 'copies.mtl').write_text('newmtl stone\nKd 1 1 1\n')
+            path = root / 'copies.import.toml'
+            path.write_text('[source]\npath="copies.obj"\ncredit="test"\n[output]\nposition_scale=4\n'
+                            '[geometry]\nsimplify={dense_edge=100.0, colour_deviation=1.0, props=[], props_share=0.0, seal_seams=false}\n'
+                            '[[variants]]\nname="copies"\ntriangles=1\nceiling=1\n')
+            job = albedo_jobs(load_import_settings(path))[0]
+            camera = NS(component=NS(path=None, half_fov_short_tan=1, near_z=NEAR))
+            carved = mesh_import.bake_geometry(job, NS(camera=camera), carve=True)
+        self.assertEqual(len(carved.shapes[0]['copies']), 2)
+        self.assertEqual(carved.mesh_report['scene_total'], 2, "two copies draw the one stored triangle")
+        self.assertEqual(carved.mesh_report['stored_total'], 1)
+
     def test_prototype_accounting_matches_the_writer_for_handedness_and_sidedness(self):
         from r3d.objects.budget import bundle_count, stored_count
         with tempfile.TemporaryDirectory() as directory:
