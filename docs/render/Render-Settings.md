@@ -59,6 +59,8 @@ that field's table in the asset.
 | `small_fill.ceiling` | `4` | `[0, SMALL_FILL_CEILING_MAX]` | basic | largest bounding-box side in pixel centres filled in one colour; 0 is off; more saves, blurs small detail |
 | `small_fill.gate` | `0` | `[0, SMALL_FILL_GATE_MAX]` | advanced | RGB565 per-channel spread, in packed channel units, a box at the ceiling may span and still fill; 0 lets any |
 | `small_fill.style` | `0` | `[0, SMALL_FILL_STYLE_COUNT)` | advanced | 0 flat, 1 grain, 2 dither (a small_fill_style_t): how a filled box above the always-flat side is coloured |
+| `settle.frame_us` | `4000` | `[0, RENDER_SETTLE_FRAME_US_MAX]` | basic | microseconds a held frame may spend redrawing quiet rows at full quality, at least one band once due; 0 never refines |
+| `settle.hold_frames` | `6` | `[RENDER_SETTLE_HOLD_MIN, RENDER_SETTLE_HOLD_MAX]` | advanced | frames a band's rows stay unchanged before they refine; fewer refines sooner, redraws rows that move again |
 <!-- /generated: render-settings -->
 
 ## cull
