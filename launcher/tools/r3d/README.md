@@ -10,7 +10,8 @@ mesh. Nothing here runs on the board.
 | [geometry.py](geometry.py) | Welding, compaction, corner normals, closest point on a triangle. |
 | [tessellate.py](tessellate.py) | Conforming edge splits, used by the `seal_seams` join. |
 | [repair.py](repair.py) | The join step of the `seal_seams` import option: border vertices within a tolerance are welded and border edges are split at another piece's vertices, so a shared edge is one edge and the simplifier cannot open a crack along it. Positions only; vertices are never merged. |
-| [simplify.py](simplify.py) | Appearance-preserving simplification: split evenly, one colour-aware pass per part with reserved budget shares for small props, colour weighted so a colour step buys the same surface deviation in every part. `[objects] overrides` reserve fixed counts per welded group. `seal_seams=True` joins touching pieces first, regularizes lightly and merges near colours. |
+| [leaks.py](leaks.py) | The probe step of `seal_seams`: views of the source from probes in the camera's region and from the camera path, the holes a simplified mesh shows in them (sky enclosed by wall), and one source vertex to lock per hole; see [seal_seams](../../../docs/render/offline/Mesh-Import.md#seal_seams). |
+| [simplify.py](simplify.py) | Appearance-preserving simplification: split evenly, one colour-aware pass per part with reserved budget shares for small props, colour weighted so a colour step buys the same surface deviation in every part. `[objects] overrides` reserve fixed counts per welded group. `seal_seams=True` joins touching pieces first, regularizes lightly, locks a vertex per hole a view finds and merges near colours. |
 | [meshopt.py](meshopt.py) | [meshoptimizer](https://github.com/zeux/meshoptimizer)'s simplifier and meshlet clusterizer through ctypes, built once from the pinned `third_party/upstream/meshoptimizer` submodule into `.cache/`. |
 | [light.py](light.py) | Baked light from a scene's typed lights (`LIGHTS`): a point sun by shadow rays, sky visibility and ambient, distance-limited local occlusion (`[bake].ao`), albedo from textures, and culling of what no point in a region can see. |
 | [cluster_tree.py](cluster_tree.py) | Groups weighted boxes, here meshlets, into a tree by the surface area heuristic<sup>[[130]](../../../docs/Citations.md#macdonald-1990)</sup>, its leaves runs of them. |
@@ -78,8 +79,8 @@ colour sets stay intact. Re-import for source, simplification or light changes.
 Run `build_pack.py` after either command.
 
 **The `seal_seams` import option.** `simplify(seal_seams=True)`, off by default,
-is another way to import the same mesh, with fewer empty pixel-sized spots at
-the price of frame time; what it does and costs is in
+joins touching pieces and then locks a source vertex wherever a view shows sky
+through a wall; what it does and costs is in
 [Mesh-Import.md](../../../docs/render/offline/Mesh-Import.md#seal_seams). An import turns it on with `seal_seams = true` in `[geometry.simplify]`.
 
 `mesh_import.py` is the shared full-import command. Each import file, the
