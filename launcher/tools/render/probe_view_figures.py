@@ -42,7 +42,7 @@ def main():
         render_scene(args.scene, "--object", args.object, "--view", "probes",
                      "--camera", getattr(args, f"{view}_camera"),
                      "--frames", getattr(args, f"{view}_frame"), "--dt", getattr(args, f"{view}_dt"),
-                     "--quarter", 1, "--size", f"{height}x{width}", "--framegen", 0, "-o", picture,
+                     "--quarter", 1, "--size", f"{width}x{height}", "--framegen", 0, "-o", picture,
                      log=picture.with_suffix(".log"))
         save_png(picture, args.out / f"{args.stem}{suffix}.png")
 
