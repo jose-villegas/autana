@@ -88,6 +88,9 @@ scene keeps in PSRAM, and the render context's scratch, are taken from it:
   the app rewinds past it, so scenes still release in any order.
 - Releasing the last scene drops the scratch, so an app that marks before
   `scene_load()` may rewind after `scene_release()`.
+- A scratch that must grow takes a new block and leaves the old to the arena.
+  When the arena refuses, the context keeps the old block: that frame is not
+  drawn, and a later one the block fits is.
 - `scene_load()` mounts the scene's pack; `scene_load_from()` takes a pack, so
   a test can load from one it builds.
 - The pack outlives the scene, which reads its entry and every skin, skeleton

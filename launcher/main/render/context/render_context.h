@@ -43,9 +43,8 @@ typedef struct checkpoint checkpoint_t;
 #define FRAMEGEN_RETRY_DRAWN                 30
 
 /* The last frame: its step (-1 at the fixed scale), the size it drew at,
- * what culling kept and, under dynamic resolution or frame generation only,
- * what its draw (with any census) and upscale cost: otherwise nothing is
- * timed. A generated frame keeps the drawn one's size, step and stats; its
+ * what culling kept and what its draw (with any census) and upscale cost.
+ * A generated frame keeps the drawn one's size, step and stats; its
  * draw_us is the warp's. */
 typedef struct {
     int step;
@@ -115,6 +114,9 @@ typedef struct {
     render_view_t kept_view;
     framegen_target_t framegen;
     render_partial_t partial; /* render/partial: rows redrawn on a still camera */
+    bool fixed_drawn;         /* the last drawn frame took the fixed path: no policy, or a held camera's */
+    bool still_judged;        /* this frame is a held camera's over a kept picture of its size: its cost is judged */
+    bool still_over;          /* a judged frame cost more than the budget: the policy draws until the view changes */
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
     /* Whether the last frame's debug view drew a second view, and from where. */
     bool observed;
@@ -202,6 +204,9 @@ void render_context_set_dynamic_resolution(render_context_t* context, const reso
 
 /* Development views, or RENDER_DEBUG_VIEW_SHADED to detach the debug view. */
 void render_context_set_debug_view(render_context_t* context, int view);
+/* The pixel format of the debug view with the largest pixels, which the
+ * scratch always has room for; 0 in a release build. */
+image_format_t render_context_debug_view_widest(void);
 /* The declared row, or NULL for shaded, an unknown index or a release build. */
 const render_debug_view_t* render_context_debug_view(int view);
 

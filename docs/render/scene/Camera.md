@@ -7,12 +7,12 @@ lives and how a frame gets its view.
 | Part | Holds | Lives in |
 |---|---|---|
 | Pose | position and rotation, roll included; scale is ignored | the camera entity's transform (`scene->locals[entity]`) |
-| Lens | `half_fov_short_tan`, `near_z`, `present`, `small_fill`, `shift` | `scene->cameras[c].lens`, beside the entity index it belongs to |
+| Lens | `half_fov_short_tan`, `near_z`, `present`, `skip_hidden`, `shift` | `scene->cameras[c].lens`, beside the entity index it belongs to |
 
 ```mermaid
 flowchart LR
     E["camera entity<br/>transform"] -->|"pose"| V["lens_view()"]
-    L["lens_t lens"] -->|"fov, near, present, small fill, shift"| V
+    L["lens_t lens"] -->|"fov, near, present, skip hidden, shift"| V
     P["viewport"] --> V
     V --> R["render_view_t"]
 ```
@@ -21,8 +21,8 @@ flowchart LR
 
 `lens_view(camera, pose, viewport)`
 ([`lens.c:6`](../../../launcher/main/scene/camera/lens.c#L6)) builds the frame's `render_view_t`
-from the pose, field of view and near distance, then copies the lens's `present` and
-`small_fill` onto it. `camera_lens(entity)` reads a camera's lens; `camera_first(root)` finds a scene's first camera.
+from the pose, field of view and near distance, then copies the lens's `present`,
+`skip_hidden` and `shift` onto it. `camera_lens(entity)` reads a camera's lens; `camera_first(root)` finds a scene's first camera, and `camera_flight(root)` its first camera on a path, else its first.
 
 The field of view is stored as the tangent of half the *shorter* picture side
 (`half_fov_short_tan`). `render_view_refit()` reprojects a retained pose through a new
@@ -49,7 +49,7 @@ Two fields are exposed to animation, listed in `LENS_FIELDS`
 | `half_fov_short_tan` | float | the field of view, as above |
 | `near_z` | float | distance of the near plane |
 
-`present` and `small_fill` are per-camera settings and are not animated.
+`present` and `skip_hidden` are per-camera settings and are not animated.
 
 ## How the animation binder finds them
 

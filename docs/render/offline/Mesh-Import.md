@@ -106,19 +106,20 @@ cost and error of each mode on the board.
 
 #### process
 
-`[process].seed` makes `thin` choose the same triangles on every import.
+`[process].seed` makes thinning and card sampling repeatable.
 
 ### Geometry
 
-Every Geometry table opts its step in; without it the step does not run.
+Geometry tables control the import steps. `alpha_mask` also enables automatic
+card selection, with `geometry.cards` tuning its decisions.
 
 | Option | Keys | What it does | Default | Cost (bake / frame) | Option link |
 |---|---|---|---|---|---|
+| `geometry.cards` | `never`, `always`, `epsilon`, `area_cost` | Selects cut-out materials for billboard clouds. | Automatic with `alpha_mask`. | Probe selection and mask tracing / cut-out quads. | [cards](#cards) |
 | `geometry.alpha_mask` | `keep_alpha` | Drops alpha-tested triangles that are mostly transparent. | Off. | Seconds / fewer triangles. | [alpha_mask](#alpha_mask) |
 | `geometry.thin` | `material`, `keep` | Keeps a share of one material's triangles. | Off. | None / fewer triangles. | [thin](#thin) |
 | `geometry.simplify` | `dense_edge`, `seal_seams`, `colour_deviation` | Splits long edges and simplifies each variant to its budget, colour steering the collapses; can seal seams. | Off. | Seconds / set by the budget. | [simplify](#simplify) |
 | `geometry.probes` | `spacing`, `face` | Adds fit views from probes spread through the camera's region, for surface the path never shows. | Off. | Minutes / more triangles kept. | [probes](#probes) |
-| `geometry.budget` | `step`, `settle` | Lets each fitted renderer settle on a prune budget below its own by held-out holes. | The renderer's `fit.prune.budget`. | A prune per step / fewer triangles. | [budget](#budget) |
 
 #### probes
 
@@ -134,26 +135,116 @@ that the path and the faces kept before it do not<sup>[[120]](../../Citations.md
 | `spacing` | World units between probes. | `PROBE_SPACING_NEAR_PLANES` near planes of the scene camera, widened to at most `PROBE_COUNT_MAX` probes. |
 | `face` | A kept face's square size in pixels. | `PROBE_FACE`. |
 
-A camera without a path fits on probes alone. Probes reach surface seen from
-somewhere off the path, never surface seen from nowhere. The fit's prune keeps
-what the path shows before what only a probe shows; see
-[Appearance Fit](Appearance-Fit.md#probes-and-the-settle-budget).
+Every probe ends in one of four fates:
 
-#### budget
+| Fate | Why |
+|---|---|
+| kept | At least one of its faces shows triangles the path and nothing kept before it show. |
+| dropped by the greedy pick | Its best face adds less than `PLATEAU` of the first pick's gain. |
+| dropped: inside geometry | More than `BACKFACE` of its rays still hit back faces after the move. |
+| dropped: a surface too near | A front face is still nearer than `MIN_FRONT_NEARS` near planes. |
 
-`geometry.budget` lets each fitted renderer prune to less than its
-`fit.prune.budget`, which it keeps without one. The fit tries `step`, 2 `step`,
-and so on up to that budget, counting hole pixels over the held-out views. It
-keeps the first budget whose holes fall by less than the `settle` share of its
-own to the next, or that has none.
+The figure places probes by each import's settings: Sponza's atrium fit in the
+first row, Bistro's street fit in the second. The orbit circles the probe region
+uncut; each corner view is cut through the centre and shows only the probes
+behind the cut.
+
+The source is drawn see-through, as the [cull view](../frame/View-Modes.md)
+draws a culled cluster. The probes sit on top, each in its fate's colour; a kept
+probe's arrows are its kept faces. Bistro's row also draws its camera path;
+Sponza's scene camera has none.
+
+| Orbit | +x +z | -x +z | -x -z | +x -z |
+|---|---|---|---|---|
+| ![Sponza probes, circling](../../images/render/sponza-atrium_fitted_full-probes-orbit.gif) | ![Sponza probes from above the +x +z corner](../../images/render/sponza-atrium_fitted_full-probes-1.png) | ![Sponza probes from above the -x +z corner](../../images/render/sponza-atrium_fitted_full-probes-2.png) | ![Sponza probes from above the -x -z corner](../../images/render/sponza-atrium_fitted_full-probes-3.png) | ![Sponza probes from above the +x -z corner](../../images/render/sponza-atrium_fitted_full-probes-4.png) |
+| ![Bistro probes, circling](../../images/render/bistro-street_fitted_full-probes-orbit.gif) | ![Bistro probes from above the +x +z corner](../../images/render/bistro-street_fitted_full-probes-1.png) | ![Bistro probes from above the -x +z corner](../../images/render/bistro-street_fitted_full-probes-2.png) | ![Bistro probes from above the -x -z corner](../../images/render/bistro-street_fitted_full-probes-3.png) | ![Bistro probes from above the +x -z corner](../../images/render/bistro-street_fitted_full-probes-4.png) |
+
+![Probe fates and their counts per scene](../../images/render/probe-fates.png)
+
+A camera without a path fits on probes alone.
+
+A probe fit has no `fit.prune.budget`: its variant's `triangles` is the budget.
+The import spends it through [simplify](#simplify) with quadric edge collapse<sup>[[12]](../../Citations.md#garland-1997)</sup>
+and appearance attributes<sup>[[13]](../../Citations.md#hoppe-1999)</sup>.
+
+It keeps every triangle: one no coverage view shows may still face a camera they miss.
+A border point within the seam tolerance that the hold rule refuses stays at its start.
+
+A hole pixel shows no fitted surface where the reference differs from the clear
+colour by more than `HOLE_DE`. The closure gate rejects held-out hole growth of
+more than `CLOSURE_GROWTH` of the held-out pixels beyond the start's holes.
 
 #### alpha_mask
 
-`geometry.alpha_mask` removes mostly transparent cut-out cards because the
-rasterizer does not alpha-test them. Off is above on; this step also changes
-what the simplifier keeps elsewhere, so not every difference is a card.
+`geometry.alpha_mask` drops mostly transparent triangles from ordinary geometry.
+References use [per-hit alpha testing](Bake-Method.md#fidelity-against-a-reference).
+
+The image compares triangle removal with it disabled.
 
 ![alpha_mask off against on](../images/import-alpha-mask.png)
+
+#### cards
+
+`geometry.alpha_mask` enables automatic billboard clouds. Each accepted
+material becomes a double-sided shape with vertex colours,
+[LUVS](../../assets/formats/LUVS.md) and [MASK1 LTEX](../../assets/formats/LTEX.md) pages.
+
+| Decision | Rule |
+|---|---|
+| Candidate | A cut-out texture with at least `CARD_SEE_THROUGH_MIN` of its triangles below `keep_alpha` in mean alpha. Carved and thinned materials are excluded. |
+| Accepted | Cards cover at least `CARD_COVERED_MIN` of the opaque surface's area-weighted samples, within their slabs, rectangles and kept texels. |
+| Ordinary geometry | Non-candidates and rejected candidates remain geometry. |
+| Overrides | `never` excludes a material; `always` bypasses the thresholds. Forcing a carved or thinned material, unknown names, or overlapping overrides is an error. |
+
+The greedy plane score follows Décoret et al.<sup>[[133]](../../Citations.md#decoret-2003)</sup>:
+projected sample area earns coverage; an area cost and a per-card floor stop
+selection when another plane would not pay for itself.
+
+Training probe faces weight samples by visible projected size. The grid
+covers the scene camera's region, else the source bounds. Its default
+spacing is `PROBE_SPACING_NEAR_PLANES` near planes (`views/probes.py`).
+
+The near plane comes from the scene camera, else `PROBE_NEAR_SHARE` of the
+source diagonal. `geometry.probes.spacing` overrides spacing. Selection
+uses the seed in `reference_set.py` and does not read a camera path.
+
+Seen weights average one; unseen samples weigh zero. Rays use
+[per-hit alpha testing](Bake-Method.md#fidelity-against-a-reference).
+
+| Key | Meaning | Default |
+|---|---|---|
+| `never` | Material names kept as geometry. | `[]` |
+| `always` | Material names forced into cards. | `[]` |
+| `epsilon` | Slab half-depth in source units. | `CARD_EPSILON` in `cards/__init__.py` |
+| `area_cost` | Penalty per unit of card area. | `CARD_AREA_COST` in `cards/__init__.py` |
+
+| Sampling | Rule |
+|---|---|
+| Texel size | The median parent long side divided by `CARD_MASK_TEXELS`, shared by the set. Splitting at `CARD_MAX_SIDE` and trimming preserve it. |
+| Slab hits | Only hits within ±`epsilon` of the plane set texels. |
+| Corner albedo | Mask quadrants supply corner albedos, which receive bake light. |
+| Padding | Trimmed masks pack with one coarsest-mip texel of empty padding per side, on that mip's grid. |
+| Mip coverage | A parent texel is kept when at least `R3D_TEXTURE_MASK1_MIP_KEPT` of its four children are kept. |
+
+Cards keep their own `<shape_id>.uvs` and `<shape_id>.t<k>` bundle entries.
+Each cluster uses one page on chart zero; every triangle draws with that
+chart. No `textures.toml` entry is needed.
+
+| Budget | Rule |
+|---|---|
+| Ceiling | Card triangles are paid first; the rest gets `min(triangles, ceiling - card triangles)`. |
+| Fit | Accepted materials leave camera references and the fit; they remain in the light bake as occluders and bounce sources. |
+| Levels | Cards bypass simplification and carry no coarser levels. |
+
+The candidate and budget tables are generated from each scene's import
+record. Generate the CSV with `cards_report.py SCENE --object NAME --docs`;
+`render_doc_images.sh` renders it to a Markdown table.
+
+<!-- generated: sponza-atrium-fitted-full-cards sha256=01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b -->
+<!-- /generated: sponza-atrium-fitted-full-cards -->
+
+<!-- generated: bistro-street-fitted-full-cards sha256=01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b -->
+<!-- /generated: bistro-street-fitted-full-cards -->
 
 #### thin
 
@@ -186,19 +277,40 @@ Each `[[objects.meshes]]` rule carves out matching source objects:
 | Key | Meaning |
 |---|---|
 | `match` | Exactly `{ object = "glob" }` or `{ material = "glob" }`; must match. |
-| `triangles` | Mesh budget per copy, separate from the variant's rest budget. |
+| `triangles` | Optional pin on the shape budget, separate from the variant's rest budget; otherwise derived from the camera. |
 | `variants` | Optional `{ variant = triangles }`: a variant's own per-copy budget. |
-| `min_triangles` | Optional floor on the scaled budget, at most `triangles`. Default 1. |
+| `min_triangles` | Optional floor on the shape budget; at most `triangles` when pinned. Default 1. |
 | `seam` | Optional policy; touching defaults to `lock`, otherwise `free`. |
 | `shape` | Optional: `exact` (the default) matches copies by their vertices and triangles; `surface` also joins copies whose surfaces match within `SURFACE_TOLERANCE`, whatever their triangles and materials ([by surface](#objects-and-instances)). |
 
-A variant draws each copy with its entry in `variants`, or else
-round(`triangles` x its `objects_scale`), never below `min_triangles`;
-`import_settings.variant_meshes()` owns this rule. The variant's `triangles`
-budgets the rest, retaining `props` shares and the global pass. Its optional `ceiling` caps emitted
-triangles, including copies, and is at least `triangles`. Carved meshes are paid first, at what they emit;
-the rest shares what is left. `simplify.check_ceiling` raises when the copies alone leave no room.
+A pinned rule uses its entry in `variants`, or round(`triangles` ×
+`objects_scale`), never below `min_triangles`.
+`import_settings.variant_meshes()` owns this scaling.
+
+The ceiling counts stored triangles: the rest and every copy prototype.
+Mirroring or a different per-face sidedness mask emits another prototype.
+`objects/budget.py` owns the split. The ceiling is hard; the rest floor is soft.
+
+| Renderer | The ceiling caps | Copies' room | Rest floor | Rest target |
+|---|---|---|---|---|
+| no `fit` | the baked mesh | `ceiling` − `triangles` | `triangles` | at most `triangles`, within the ceiling |
+| with `fit` | the fitted bundle; the start is uncapped | `ceiling` − `fit.prune.budget` | `fit.prune.budget` | `ceiling` − stored copies |
+
 Overlapping rules are rejected.
+
+### Free repeats and derived detail
+
+A carved bake automatically carves rigid repeats whose copies touch nothing.
+They need no rule. An uncarved geometry bake stores each placed copy and
+uses neither free repeats nor camera-derived budgets.
+
+| Step | Result |
+|---|---|
+| Near level | At the closest camera view of any copy, measured surface movement stays within `lod.tolerance_px`. With camera-path visibility, only views looking at a copy count. The shape is welded first, so source seams do not hold it back. A scene camera is required. |
+| Balance | Measured stand-ins pay for every emitted prototype. The shape whose next rung removes most triangles per pixel steps down first. |
+| Ceiling | After the last rungs, the rest may shrink below its floor. Copies that leave the rest no triangle fail with the room, total and ceiling. |
+| Authoring | `objects_report.py SCENE --object NAME --out DIR --authoring` writes the derived rows and an authoring table: the split, the rest's shortfall below its floor, the coarsest shapes and the shapes above the near-view tolerance. |
+| Carved | `objects_report.py SCENE --object NAME --out DIR --carved BUNDLE` lists each carved shape of a start or fit: copies, source, baked and drawn triangles, alpha-tested share and nearest eye, any and in view. A sheet sets source beside baked. |
 
 Objects touch when a vertex lies within `repair.seal_tolerance` of the other's
 surface. `objects/contact.py` owns the graph and both sides' border vertices.
@@ -323,7 +435,7 @@ off above on: a pixel-sized hole that shows the sky is sealed.
 |---|---|---|---|---|---|
 | `[[variants]]` | `name`; `triangles` | Names a geometry budget. | Required with `geometry.simplify`; otherwise optional (one mesh named by `output.name`). | Seconds each / set by the budget. | [variants](#variants) |
 | `[[variants]].triangles` | — | Sets a simplified mesh's triangle budget. | Required with `geometry.simplify`. | Seconds / set by the budget. | [variants triangles](#variants-triangles) |
-| `[[variants]].objects_scale` | — | Scales each `[[objects.meshes]]` copy budget. | 1. | — / set by the budgets. | [variants objects_scale](#variants-objects_scale) |
+| `[[variants]].objects_scale` | — | Scales each pinned `[[objects.meshes]]` shape budget. | 1. | — / set by the budgets. | [variants objects_scale](#variants-objects_scale) |
 
 #### variants
 
@@ -337,9 +449,9 @@ a `fit` budget may not exceed it.
 
 #### variants objects_scale
 
-`[[variants]].objects_scale` multiplies each `[[objects.meshes]]` copy budget
-for this variant, so one set of rules serves every tier; a rule's `variants`
-entry or `min_triangles` overrides or floors the result.
+`[[variants]].objects_scale` multiplies each pinned shape budget for this
+variant; a rule's `variants` entry or `min_triangles` overrides or floors the
+result. Derived budgets follow the camera and LOD tolerance instead.
 
 ## Objects and instances
 

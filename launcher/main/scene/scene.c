@@ -136,10 +136,9 @@ instantiate(const scene_asset_t* asset) {
     memset(scene->flags, SCENE_FLAG_ENABLED | SCENE_FLAG_ACTIVE | SCENE_FLAG_CHANGED, asset->entity_count);
     for (int i = 0; i < asset->camera_count; i++) {
         const scene_asset_camera_t* c = &asset->cameras[i];
-        scene->cameras[i] = (scene_camera_t){
-            .lens = {.half_fov_short_tan = c->half_fov_short_tan, .near_z = c->near_z, .small_fill = SMALL_FILL_SMOOTH},
-            .entity = c->entity,
-            .clear = RGB565BE(c->clear_rgb)};
+        scene->cameras[i] = (scene_camera_t){.lens = {.half_fov_short_tan = c->half_fov_short_tan, .near_z = c->near_z},
+                                             .entity = c->entity,
+                                             .clear = RGB565BE(c->clear_rgb)};
     }
     for (int i = 0; i < asset->renderer_count; i++) {
         scene->renderers[i].entity = asset->renderers[i].entity;
@@ -218,6 +217,7 @@ open_lod_bits(scene_t* scene) {
     if (scene->lod_bits == NULL) {
         return scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, scene->root->id);
     }
+    scene->lod_bit_words = words;
     memset(scene->lod_bits, 0, words * sizeof(uint32_t));
     uint32_t* next = scene->lod_bits;
     for (int i = 0; i < scene->renderer_count; i++) {
@@ -772,6 +772,9 @@ scene_checkpoint_capture(checkpoint_t* saved, scene_t* scene) {
     checkpoint_capture_at(saved, &scene->worlds, (size_t)scene->world_count * sizeof(*scene->worlds));
     checkpoint_capture_at(saved, &scene->light_transfer, sizeof(*scene->light_transfer));
     checkpoint_capture_at(saved, &scene->light_table, sizeof(*scene->light_table));
+    /* Each copy's level carries from frame to frame. Sized as allocated: a
+     * renderer given a mesh with fewer levels keeps its words. */
+    checkpoint_capture_at(saved, &scene->lod_bits, scene->lod_bit_words * sizeof(*scene->lod_bits));
     scene_animation_checkpoint_capture(saved, scene);
 }
 #endif

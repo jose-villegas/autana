@@ -166,12 +166,16 @@ at once.
 [`rate_figures.py`](../../../launcher/tools/anim/playback/rate_figures.py) measures the lag above from
 the glTF clips and the default settings.
 
-### Light probes and contact discs
+### Ambient irradiance
 
 Ambient is flat, or sampled from a baked probe grid given by
-`scene_set_probes()` at each skinned renderer's bounds centre
-([Light Probes](../frame/Light-Probes.md)). `scene_set_contact_blob()` puts a
-dithered disc on the ground under a renderer ([Contact Shadows](../frame/Contact-Shadows.md)).
+`scene_set_probes()` at each skinned renderer's bounds centre; the technique,
+from the bake to the per-vertex shading, is [Light Probes](../frame/Light-Probes.md).
+
+### Contact discs
+
+`scene_set_contact_blob()` puts a dithered disc on the ground under a
+renderer; [Contact Shadows](../frame/Contact-Shadows.md) breaks it down.
 
 ## 6. Current limits
 

@@ -13,7 +13,7 @@ import numpy as np
 
 from . import log
 from .geometry import distinct_corners, hit_barycentrics, nearest_triangles, triangle_areas, triangle_search
-from .import_settings import LIGHT_FIELDS
+from .import_settings import LIGHT_FIELDS, LIGHT_MODE_BAKED
 from .obj import alpha_tested
 
 
@@ -49,25 +49,36 @@ def drop_masked(p, uv, tri_v, tri_t, tri_m, textures, keep_alpha=0.5):
 
 class AlphaTest:
     """A `RayQuery` hit filter: a hit is solid where the source's level-zero texture alpha at its interpolated UV is
-    at least `keep_alpha`. Hits on materials `alpha_tested` finds opaque are solid without a sample."""
+    at least `keep_alpha`. The same RGBA samples supply card albedo."""
 
     def __init__(self, source, keep_alpha):
         self.source, self.keep_alpha = source, keep_alpha
         self.tested = alpha_tested(source.textures)
 
-    def __call__(self, hits, locations):
+    def sample_material(self, material, hits, locations):
+        """Level-zero RGBA for hits of one textured material."""
         source = self.source
+        bary = hit_barycentrics(source.p, source.tri_v, hits, locations)
+        uv = (source.uv[source.tri_t[hits]] * bary[:, :, None]).sum(axis=1)
+        return source.textures[material].sample(uv, np.zeros(len(hits)))
+
+    def rgba(self, hits, locations):
+        """Level-zero linear RGBA at source hits; untextured materials return white."""
+        rgba = np.ones((len(hits), 4))
+        materials = self.source.tri_m[hits]
+        for material in np.unique(materials):
+            if self.source.textures[material] is not None:
+                chosen = np.flatnonzero(materials == material)
+                rgba[chosen] = self.sample_material(material, hits[chosen], locations[chosen])
+        return rgba
+
+    def __call__(self, hits, locations):
         solid = np.ones(len(hits), dtype=bool)
-        materials = source.tri_m[hits]
-        selected = np.flatnonzero(self.tested[materials])
-        if not len(selected):
-            return solid
-        bary = hit_barycentrics(source.p, source.tri_v, hits[selected], locations[selected])
-        uv = (source.uv[source.tri_t[hits[selected]]] * bary[:, :, None]).sum(axis=1)
-        for material in np.unique(materials[selected]):
-            chosen = materials[selected] == material
-            alpha = source.textures[material].sample(uv[chosen], np.zeros(np.count_nonzero(chosen)))[:, 3]
-            solid[selected[chosen]] = alpha >= self.keep_alpha
+        materials = self.source.tri_m[hits]
+        for material in np.unique(materials):
+            if self.tested[material]:
+                chosen = np.flatnonzero(materials == material)
+                solid[chosen] = self.sample_material(material, hits[chosen], locations[chosen])[:, 3] >= self.keep_alpha
         return solid
 
 
@@ -304,6 +315,11 @@ def open_side_occlusion(points, normals, double_sided, intersector, ao, ray_offs
     return factor
 
 
+def baked_lights(lights):
+    """The surface and probe bakes share the baked rig; sky and ambient are bake settings."""
+    return [light for light in lights if light["mode"] == LIGHT_MODE_BAKED]
+
+
 def face_towards_light(normals, double_sided, lights):
     """The orientation a double-sided surface is first lit on: the side the directional lights, summed, shine on. One
     orientation for every light, so their order cannot matter. It also keeps the copies of a vertex at one position
@@ -329,6 +345,7 @@ def light(points, normals, double_sided, intersector, lights, ray_offset, bounce
     on both sides and keeps the brighter, so a card in the sun takes its sunlit side and a curtain in shade takes
     its open side, not the back that faces the wall. Point and spot lights are reserved and not baked yet.
     """
+    lights = baked_lights(lights)
     n = face_towards_light(normals, double_sided, lights)
     occlusion = None if ao is None else open_side_occlusion(points, normals, double_sided, intersector, ao, ray_offset)
     radiance = lit_side(points, n, intersector, lights, ray_offset, occlusion, bounce, bounce_groups, ao, bounce_intensity)
