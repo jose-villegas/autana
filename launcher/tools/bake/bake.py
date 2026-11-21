@@ -673,8 +673,10 @@ def mesh_recipe(job, scene, tools, poses=None, unavailable=None):
         if job.renderer.visibility is not None:
             visibility = job.renderer.visibility
             camera = recipe["camera"] = camera_inputs(scene)
-            if visibility.source == "camera_path":
+            if getattr(visibility, "every_ms", None) is not None:
                 camera["poses"] = poses.digest(scene.camera.component, visibility.every_ms, visibility.size, tools, unavailable)
+            if visibility.source == "probes":
+                camera["probes"] = canonical(job.settings.fit.probes)
     return recipe
 
 

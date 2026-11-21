@@ -190,6 +190,30 @@ class ImportWiringTests(unittest.TestCase):
         by_path.assert_called_once_with("p", "t", "d", "i", ["pose"], 224, 224, 0.62 * 224 / 184, 6.0, 3, 8)
         by_region.assert_called_once_with("p", "t", "d", "i", 4, "rng", [0, 0, 0], [1, 1, 1])
 
+    def test_probe_visibility_adds_the_path_to_the_fit_s_probe_faces(self):
+        from r3d import reference_set
+        from r3d.views.probes import ProbeViews
+
+        settings = SimpleNamespace(fit=SimpleNamespace(probes=SimpleNamespace(spacing=None, face=64)))
+        views = ProbeViews(["face"], ["held"], {}, 1.0)
+        probes = SimpleNamespace(source="probes", every_ms=100, size=(184, 224), samples=2, margin=1)
+        traced = {"pose": np.array([True, False, False]), "face": np.array([False, True, False])}
+        poses = (184, 224, 0.62, 6.0, ["pose"])
+        for path in (SimpleNamespace(animation=pathlib.Path("fly.anim.toml"), clip="fly", node="camera"), None):
+            with self.subTest(path=path is not None):
+                camera = SimpleNamespace(half_fov_short_tan=0.62, near_z=6.0, region=None, path=path)
+                scene_ = SimpleNamespace(camera=SimpleNamespace(component=camera))
+                with mock.patch.object(mesh_source, "sample_camera_path", return_value=poses), \
+                        mock.patch.object(reference_set, "probe_views", return_value=views) as selected, \
+                        mock.patch.object(mesh_import, "visible_from_path",
+                                          side_effect=lambda p, t, d, i, rows, *rest: traced[rows[0]]) as by_path:
+                    seen = mesh_import.visible_triangles(probes, scene_, "p", "t", "d", "i", "rng", settings)
+                self.assertEqual(seen.tolist(), [path is not None, True, False])
+                # The faces are the fit's: chosen beside the path the start sees, traced at the face size.
+                selected.assert_called_once_with(
+                    settings, camera, (224, 224, 0.62 * 224 / 184, ["pose"]) if path is not None else None)
+                by_path.assert_called_with("p", "t", "d", "i", ["face"], 64, 64, 1.0, 6.0, 2, 1)
+
     @unittest.skipUnless(has_compiler(), "needs sh and a C compiler")
     def test_the_camera_path_is_the_scene_clip_sampled_at_the_step_s_size_and_lens(self):
         with tempfile.TemporaryDirectory() as directory:

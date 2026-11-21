@@ -130,11 +130,11 @@ def prepare_references(inputs, work):
     return count
 
 
-def probe_poses(inputs, work, path):
-    """Writes the probes' training and held-out faces (r3d/views/probes.py) and their record; returns the
-    training faces. An alpha-masked import keeps its masked triangles and lets rays through their cut texels."""
-    import json
-
+def probe_views(settings, camera, path):
+    """The probes' training and held-out faces (r3d/views/probes.py) of the import `settings` under the scene
+    `camera`, beside the `path` views ((width, height, lens, poses), or None). An alpha-masked import keeps its
+    masked triangles and lets rays through their cut texels. The reference set and the `probes` visibility source
+    both call this, so a start keeps what the faces its fit trains on show."""
     import numpy as np
 
     from r3d.light import AlphaTest
@@ -142,14 +142,30 @@ def probe_poses(inputs, work, path):
     from r3d.ray_query import RayQuery
     from r3d.views import probes
 
-    settings, camera = inputs.job().settings, inputs.scene().camera.component
-    face = probes.PROBE_FACE if inputs.probes.face is None else inputs.probes.face
     source = load_source(settings, np.float32)
     query = None
     if settings.alpha_keep is not None:
         query = RayQuery(source.p, source.tri_v, hit_filter=AlphaTest(source, settings.alpha_keep))
-    views = probes.select(source.p, source.tri_v, camera.region, camera.near_z, inputs.probes.spacing, PROBE_SEED,
-                          path, query=query)
+    return probes.select(source.p, source.tri_v, camera.region, camera.near_z, settings.fit.probes.spacing,
+                         PROBE_SEED, path, query=query)
+
+
+def probe_face(settings):
+    """A probe face's square size in pixels: geometry.probes.face, or the probes' default."""
+    from r3d.views import probes
+
+    face = settings.fit.probes.face
+    return probes.PROBE_FACE if face is None else face
+
+
+def probe_poses(inputs, work, path):
+    """Writes the probes' training and held-out faces (probe_views) and their record; returns the training
+    faces."""
+    import json
+
+    settings, camera = inputs.job().settings, inputs.scene().camera.component
+    face = probe_face(settings)
+    views = probe_views(settings, camera, path)
     for (poses, _), faces in ((PROBE_TRAINING, views.training), (PROBE_HELD_OUT, views.held_out)):
         (work / poses).write_text(poses_text(face, face, views.face_lens, camera.near_z, faces))
     (work / PROBE_RECORD).write_text(json.dumps(views.record) + "\n")
