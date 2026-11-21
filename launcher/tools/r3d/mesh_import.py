@@ -129,9 +129,9 @@ def seal_camera(scene, renderer):
     views = getattr(renderer, "seal_views", None)
     if views is None:
         return camera
-    from r3d.poses import flight_camera
+    from r3d.poses import flight_camera, path_poses
 
-    width, height, lens, _, poses = camera_path_poses(scene, views, camera=flight_camera(scene))
+    width, height, lens, _, poses = path_poses(flight_camera(scene), views.size, views.every_ms)
     return (*camera, (width, height, lens, poses))
 
 
