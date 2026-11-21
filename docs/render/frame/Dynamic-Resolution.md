@@ -126,8 +126,6 @@ An app opts in with `render_context_set_dynamic_resolution()` ([Mesh-Rendering.m
 With [frame generation](Frame-Generation.md#with-dynamic-resolution) on, a
 drawn frame is priced at the shown-frame budget, as without it.
 
-While the camera holds still, a frame draws as [partial redraw](Partial-Redraw.md) does, unpriced, at the top step: the first every row, the next only changed rows. One over the budget hands the size back to the policy until the view changes.
-
 | Policy | Chooses | From | Guards against flapping |
 |---|---|---|---|
 | Stepped controller | one step at a time, after the cost, never above the top | the mean of a window of measured frames against an up and a down threshold | a cooldown after each step that doubles when a step reverses the last one; a panic drop for one frame far over budget |
@@ -148,6 +146,10 @@ The cost a policy holds is the part that scales: the draw and the compose each s
 - The predictor culls once with the picture's unfitted lens before it chooses a size, then draws from the scratch block's census list with a fitted lens.
 - The list's offset is independent of render size, so the context reserves only the finest step's raster block.
 - Fixed and stepped draws share one fitted lens per instance between culling and drawing.
+
+### A held camera
+
+While the camera holds still, frames are drawn as [partial redraw](Partial-Redraw.md) draws them, at the top step and without being priced: the first redraws every row, later ones only the rows that changed. A held frame that costs more than the budget hands size selection back to the policy until the view changes.
 
 ## Where a frame's time goes at each size
 

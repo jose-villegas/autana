@@ -53,8 +53,8 @@ static const char* TAG = "framegen";
     "warp=%d fill=%d cull=%d transform=%d draw=%d upscale=%d anim=%d other=%d"
 #define FRAMEGEN_WORST_PERCENT 5
 
-/* A modes line: one scenario's path played in real time in one mode, partial_redraw the
- * raster's setting it played under (lab_test_enter() turns it off). */
+/* A modes line: one scenario's path played in real time in one mode, with the
+ * `partial_redraw` setting in force (lab_test_enter() turns it off). */
 #define FRAMEGEN_MODES_LINE                                                                                            \
     "framegen_modes: %s framegen=%d budget_ms=%d partial_redraw=%d frames=%d drawn=%d mean_us=%d p95_us=%d "           \
     "mean_height=%d"

@@ -506,8 +506,8 @@ aim_raster(render_context_t* c, const r3d_instance_t* instances, int count, cons
 }
 
 /* Under dynamic resolution a held camera draws as partial redraw does, at
- * the top step, until one such frame costs more than the budget: then the
- * policy draws it until the view changes. Aims the raster at the top. */
+ * the top step, until one such frame costs more than the budget; then the
+ * policy draws until the view changes. True when this frame takes that path. */
 static bool
 aim_still(render_context_t* c, const render_view_t* view) {
     raster_t* r = &c->raster;

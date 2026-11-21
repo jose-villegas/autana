@@ -6,7 +6,8 @@ picture stays as the last frame left it, and the result is the same picture a
 full redraw gives.
 
 It is on by default, with the `partial_redraw` render setting
-([Render-Settings.md](../Render-Settings.md#partial_redraw)).
+([Render-Settings.md](../Render-Settings.md#partial_redraw)). Under
+[dynamic resolution](Dynamic-Resolution.md#a-held-camera) a held camera draws at the top step.
 
 ```mermaid
 flowchart LR
@@ -39,8 +40,8 @@ and where it is now. A negative count means anything may have changed.
 | Any render setting changed | settings may change pixels anywhere |
 | A debug view | it painted its own colours over the picture |
 | Frame generation on, or on last frame | each frame may be warped |
-| The first held frame under dynamic resolution, at a step below the top | it is drawn at the top step ([Dynamic-Resolution.md](Dynamic-Resolution.md#how-a-size-is-chosen)) |
-| Dynamic resolution, once a held frame cost more than its budget, until the view changes | the policy chooses each frame's size again |
+| The first held frame under dynamic resolution, at a step below the top | it is drawn at the top step ([Dynamic-Resolution.md](Dynamic-Resolution.md#a-held-camera)) |
+| Dynamic resolution after a held frame over budget, until the view changes | the policy chooses each frame's size again |
 | More than `RENDER_PARTIAL_CHANGES_MAX` boxes, or a negative count | the changes are not known |
 | A box corner at or behind the near plane | its rows cannot be bounded |
 | The draw refitted its depth scale | kept rows hold depth at the old scale |
