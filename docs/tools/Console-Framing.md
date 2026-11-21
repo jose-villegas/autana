@@ -93,6 +93,10 @@ The default admission rate is `PANELCAP_FPS_DEFAULT` in
 [`panelcap.h`](../../launcher/main/gfx/present/capture/panelcap.h).
 Release images have no console listener or capture code.
 
+`autana video` shares `autana record`'s host capture path. A release image
+cannot answer START or STOP; once input ends, the shared END deadline
+fails the capture and releases the lock.
+
 ```mermaid
 sequenceDiagram
     participant H as autana video
