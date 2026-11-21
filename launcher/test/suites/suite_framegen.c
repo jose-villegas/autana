@@ -247,6 +247,7 @@ test_a_generated_frame_composes_from_its_own_picture(void) {
     const uint16_t overwritten = (uint16_t)~destination[0];
     TEST_ASSERT_TRUE(render_context_draw(c, r->instance, RASTER_RIG_QUADS, &now, 0));
     TEST_ASSERT_TRUE(framegen_example_generated(c));
+    TEST_ASSERT_FALSE(c->priced); /* a generated frame does not teach the budget */
     uint16_t* kept = raster_color(&c->raster);
     for (int i = 0; i < c->raster.width * c->raster.height; i++) {
         kept[i] = overwritten;
@@ -288,8 +289,9 @@ test_a_frame_drawn_after_generation_is_turned_off_recomposes_every_row(void) {
 }
 
 /* While generation pays, however little the generated frame cost, the ladder
- * both policies price a drawn frame against keeps the caller's budget per
- * shown frame: a drawn frame gets no more than a frame without generation. */
+ * both policies price a drawn frame against keeps at most the caller's
+ * target per shown frame (less what the frames learned outside the scaled
+ * part): a drawn frame gets no more than a frame without generation. */
 static void
 test_dynamic_resolution_prices_a_drawn_frame_at_one_shown_frame(void) {
     raster_rig_t* r = open_rig();
@@ -302,7 +304,7 @@ test_dynamic_resolution_prices_a_drawn_frame_at_one_shown_frame(void) {
         render_context_set_frame_generation(c, true); /* as an app re-applying its settings each frame */
         TEST_ASSERT_FALSE(show_panned(c, r, drawn_us));
         TEST_ASSERT_TRUE(c->paying);
-        TEST_ASSERT_EQUAL_INT32(BUDGET_US, c->ladder.budget_us);
+        TEST_ASSERT_LESS_OR_EQUAL_INT32(BUDGET_US, c->ladder.budget_us);
     }
     release_target();
 }
