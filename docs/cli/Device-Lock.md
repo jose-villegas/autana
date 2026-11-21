@@ -140,8 +140,9 @@ A person's reservation stops every new command, the person's own too.
 `lock hand` prints its token alone on stdout, as `take` does; its messages go
 to stderr. Pass the token with `--lock-token` to each command run inside the
 reservation. Renew with `lock hand` outside it (not with the token exported),
-which prints the same token. `lock release` refuses the token: the
-reservation ends with `take-back` or when its hour runs out.
+which prints the same token. Only the reservation's own user on its host
+renews it; anyone else's `lock hand` is refused. `lock release` refuses the
+token: the reservation ends with `take-back` or when its hour runs out.
 
 `take`, `hand` and `wait` inside a hold fail immediately. `run --keep-on-failure`
 inside another hold is a usage error.

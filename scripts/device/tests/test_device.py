@@ -980,6 +980,14 @@ class DeviceTests(unittest.TestCase):
         self.assertTrue(line.startswith("human reservation: maintainer: panel (since "))
         self.assertIn("65s ago", line)
 
+    def test_only_its_own_person_renews_a_reservation(self):
+        with tempfile.TemporaryDirectory() as root:
+            store = device_lock.LockStore(root)
+            token, _ = store.reserve_human(BOARD, "sam@bench:41", "panel")
+            self.assertEqual(store.reserve_human(BOARD, "sam@bench:42", "panel again"), (token, True))
+            self.assertEqual(store.reserve_human(BOARD, "kim@bench:43", "record"), (None, True))
+            self.assertEqual(store.status(BOARD)["human"]["owner"], "sam@bench:42")
+
     def test_take_back_clears_human_reservation_and_prints_status(self):
         with tempfile.TemporaryDirectory() as root:
             store = device_lock.LockStore(root)
