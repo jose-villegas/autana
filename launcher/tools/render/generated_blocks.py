@@ -16,6 +16,8 @@ import re
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3] / "scripts/gates"))
 from tracked import tracked_files
 from check_doc_index import SCHEME
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from doc_tables import LOOK_COLUMNS, SCORE_COLUMNS, table_rows
 
 MARKER = re.compile(r"^<!-- (/?generated): ([a-z0-9][a-z0-9-]*)"
                     r"(?: sha256=([0-9a-f]{64})| check: (\S.*?))? -->$", re.M)
@@ -24,6 +26,13 @@ TOKEN = re.compile(r"^<!--\s*/?generated:", re.M)
 # written as from docs/<folder>/page.md and re-based to the real owner.
 TABLE_BASE = "docs/page"
 LINK = re.compile(r"(\]\()([^)\s#][^)\s]*)(\))")
+# A refreshed table's mean dE76 against a reference (the MEAN_DE columns) may
+# not pass both of these over its published value: a render drawn at the wrong
+# pose scores five or more times worse (#1597: 5.5 -> 34.6), while a re-bake
+# moves it by a few tenths.
+DE_JUMP_RATIO = 2.0
+DE_JUMP_MIN = 5.0
+MEAN_DE = (SCORE_COLUMNS[0], *LOOK_COLUMNS[:2])
 
 
 def digest(body):
@@ -126,7 +135,36 @@ def rebase_links(body, page):
     return LINK.sub(move, body)
 
 
-def apply_tables(root, tables, check=False):
+def mean_de_cells(body):
+    """{(table, first cell, column): cell} of each MEAN_DE column of each
+    table row of `body`; `table` counts the tables, so ranks in one do not
+    meet another's."""
+    cells, table, previous = {}, -1, None
+    for _line, headers, row in table_rows(body):
+        if headers is not previous:
+            table, previous = table + 1, headers
+        cells.update({(table, row[0], name): cell for name, cell in zip(headers, row) if name in MEAN_DE})
+    return cells
+
+
+def reference_jumps(published, refreshed):
+    """The rows of `refreshed` whose MEAN_DE against a reference passed
+    DE_JUMP_RATIO times and DE_JUMP_MIN above the value `published` holds."""
+    before, after = mean_de_cells(published), mean_de_cells(refreshed)
+    jumps = []
+    for key, cell in after.items():
+        try:
+            old, new = float(before[key]), float(cell)
+        except (KeyError, ValueError):
+            continue
+        if new > old * DE_JUMP_RATIO and new - old > DE_JUMP_MIN:
+            jumps.append(f"{key[1]}: {key[2]} {before[key]} -> {cell}")
+    return jumps
+
+
+def apply_tables(root, tables, check=False, accept_jumps=False):
+    """Write each table of `tables` into the block its name owns; True when one
+    changes. A jump reference_jumps finds is refused unless `accept_jumps`."""
     owners = block_owners(root)
     changed = False
     for table in sorted(tables.glob("*.md")):
@@ -135,6 +173,12 @@ def apply_tables(root, tables, check=False):
             raise ValueError(f"no document owns generated table {name}")
         doc = owners[name]
         body = rebase_links(table.read_text(encoding="utf-8"), doc)
+        jumps = [] if accept_jumps else reference_jumps(blocks((root / doc).read_text(encoding="utf-8"))[name][2], body)
+        if jumps:
+            raise ValueError("".join(f"{doc}#{name} {jump}\n" for jump in jumps)
+                             + "a figure scored against its reference far worse than published: a render at the wrong "
+                               "pose, or a meant change. If meant, regenerate in the change that causes it and run "
+                               "generated_blocks.py --tables DIR --accept-reference-jump")
         different = replace_block(root / doc, name, body, check)
         print(f"{'changed' if different else 'same'} {doc}#{name}")
         changed |= different
@@ -164,10 +208,12 @@ def main():
     parser.add_argument("--name")
     parser.add_argument("--body", type=pathlib.Path)
     parser.add_argument("--check", action="store_true")
+    parser.add_argument("--accept-reference-jump", action="store_true",
+                        help="with --tables, write a Mean dE76 that passes DE_JUMP_RATIO and DE_JUMP_MIN over its block")
     args = parser.parse_args()
     try:
         if args.tables:
-            changed = apply_tables(args.root, args.tables, args.check)
+            changed = apply_tables(args.root, args.tables, args.check, args.accept_reference_jump)
         else:
             changed = replace_block(args.doc, args.name, args.body.read_text(encoding="utf-8"), args.check)
         return int(args.check and changed)
