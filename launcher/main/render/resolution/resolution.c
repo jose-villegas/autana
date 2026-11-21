@@ -371,7 +371,7 @@ resolution_unscaled_learn(resolution_unscaled_t* unscaled, int32_t sample_us, in
 
 int32_t
 resolution_scaled_budget_us(const resolution_unscaled_t* unscaled, int32_t target_us) {
-    const int32_t floor_us = target_us * RESOLUTION_SCALED_MIN_PERCENT / 100;
+    const int32_t floor_us = (int32_t)((int64_t)target_us * RESOLUTION_SCALED_MIN_PERCENT / 100);
     const int32_t left_us = target_us - unscaled->us;
     return left_us > floor_us ? left_us : floor_us;
 }
