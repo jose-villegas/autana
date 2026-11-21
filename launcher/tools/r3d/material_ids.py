@@ -14,8 +14,8 @@ from r3d.objects.instances import place
 from r3d.texture import uv_transfer
 
 EMPTY = -1
-BOTH_EMPTY, AGREE_TEXTURED, AGREE_PLAIN, MISS, WRONG_MATERIAL, ONE_EMPTY = range(6)
-CLASS_NAMES = ('both_empty', 'agree_textured', 'agree_plain', 'miss', 'wrong_material', 'one_empty')
+BOTH_EMPTY, AGREE_TEXTURED, AGREE_PLAIN, MISS, WRONG_MATERIAL, REFERENCE_ONLY, DRAWN_ONLY = range(7)
+CLASS_NAMES = ('both_empty', 'agree_textured', 'agree_plain', 'miss', 'wrong_material', 'reference_only', 'drawn_only')
 
 
 def source_ids(source, query, poses_path, size=None):
@@ -27,15 +27,15 @@ def source_ids(source, query, poses_path, size=None):
         render = pathlib.Path(__file__).resolve().parents[1] / 'render'
         if str(render) not in sys.path:
             sys.path.insert(0, str(render))
-        from reference_poses import capture_poses
-        width, height, lens, near, poses = capture_poses(poses_path, size)
+        from reference_poses import capture_views
+        views = capture_views(poses_path, size)
     else:
         width, height, lens, near, poses = read_poses(poses_path)
-    if size is not None:
-        width, height = size
+        if size is not None:
+            width, height = size
+        views = [(projection(pose[:3], pose[3:], width, height, lens, near), (width, height)) for pose in poses]
     result = []
-    for pose in poses:
-        matrix = projection(pose[:3], pose[3:], width, height, lens, near)
+    for matrix, (width, height) in views:
         placement = getattr(source, 'material_placement', None)
         if placement is not None:
             axes = len(AXIS_SIGNS)
@@ -126,17 +126,32 @@ def diff_classes(ref, drawn, textured, has_texture):
     wants[ref != EMPTY] = has_texture[ref[ref != EMPTY]]
     result[agree & ~textured & wants] = MISS
     result[occupied & ~agree] = WRONG_MATERIAL
-    result[(ref == EMPTY) != (drawn == EMPTY)] = ONE_EMPTY
+    result[(ref != EMPTY) & (drawn == EMPTY)] = REFERENCE_ONLY
+    result[(ref == EMPTY) & (drawn != EMPTY)] = DRAWN_ONLY
     return result
 
 
-def material_table(references, classes, names):
-    """CSV dictionaries by reference material; empty reference pixels have their own row."""
+def material_table(references, drawn, classes, names):
+    """CSV counts by reference material, with drawn-only pixels under their drawn material."""
+    owners = [np.where(ref != EMPTY, ref, own) for ref, own in zip(references, drawn)]
     rows = []
     for material in range(EMPTY, len(names)):
         row = dict(material=material, name=names[material] if material != EMPTY else '(empty)')
         for code, name in enumerate(CLASS_NAMES):
             row[name] = sum(int(np.count_nonzero((ref == material) & (diff == code)))
-                            for ref, diff in zip(references, classes))
+                            for ref, diff in zip(owners, classes))
         rows.append(row)
     return rows
+
+
+def material_confusions(references, drawn, classes):
+    """Wrong-material counts by source material pair, sorted by decreasing pixel count."""
+    from collections import Counter
+
+    counts = Counter()
+    for ref, own, diff in zip(references, drawn, classes):
+        wrong = diff == WRONG_MATERIAL
+        pairs, pixels = np.unique(np.column_stack([ref[wrong], own[wrong]]), axis=0, return_counts=True)
+        counts.update({tuple(pair): int(count) for pair, count in zip(pairs, pixels)})
+    return [dict(reference_material=int(pair[0]), drawn_material=int(pair[1]), pixels=count)
+            for pair, count in sorted(counts.items(), key=lambda row: (-row[1], row[0]))]

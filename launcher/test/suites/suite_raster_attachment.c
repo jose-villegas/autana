@@ -29,7 +29,6 @@
 #include "render/view/raster_meshlets.h"
 #include "render/view/raster_overdraw.h"
 #include "render/view/raster_show.h"
-#include "render/view/raster_triangles.h"
 #ifdef HOST_HEAP_ARENA
 #include "heap_arena.h"
 #endif
@@ -370,6 +369,37 @@ test_cluster_values_and_constant_writers(void) {
     free(clusters);
 }
 
+static uint32_t
+map_id(const void* pixels, image_format_t format, int pixel) {
+    return format == IMAGE_U32 ? ((const uint32_t*)pixels)[pixel] : ((const uint16_t*)pixels)[pixel];
+}
+
+static void
+check_id_range(raster_rig_t* r, image_format_t format, int count) {
+    const void* ids = raster_rig_attachment(r, 0);
+    int* seen = calloc((size_t)count + 1, sizeof(*seen));
+    TEST_ASSERT_NOT_NULL(seen);
+    for (int p = 0; p < W * H; p++) {
+        const uint32_t id = map_id(ids, format, p);
+        TEST_ASSERT_TRUE(id >= 1 && id <= (uint32_t)count);
+        seen[id]++;
+    }
+    for (int id = 1; id <= count; id++) {
+        TEST_ASSERT_TRUE(seen[id] > 0);
+    }
+    free(seen);
+}
+
+static void
+check_empty_id(raster_rig_t* r, image_format_t format) {
+    r->raster.instance_count = 1;
+    r->raster.instances = &r->instance[1];
+    draw(r);
+    TEST_ASSERT_EQUAL_UINT32(0, map_id(raster_rig_attachment(r, 0), format, 0));
+    raster_show(&r->raster);
+    TEST_ASSERT_EQUAL_UINT16(r->raster.clear, raster_color(&r->raster)[0]);
+}
+
 static void
 test_triangle_ids_are_contiguous_per_instance(void) {
     const int index = render_context_debug_view_named("triangles");
@@ -383,24 +413,10 @@ test_triangle_ids_are_contiguous_per_instance(void) {
     raster_rig_t* r = rig_open(one, 1);
     for (int frame = 0; frame < 2; frame++) {
         draw(r);
-        const uint32_t* ids = raster_rig_attachment(r, 0);
-        int seen[5] = {0};
-        for (int p = 0; p < W * H; p++) {
-            TEST_ASSERT_TRUE(ids[p] >= 1 && ids[p] <= 4);
-            seen[ids[p]]++;
-        }
-        for (int id = 1; id <= 4; id++) {
-            TEST_ASSERT_TRUE(seen[id] > 0);
-        }
+        check_id_range(r, view.format, 4);
     }
-    r->raster.instance_count = 1;
-    r->raster.instances = &r->instance[1];
-    draw(r);
-    const uint32_t* ids = raster_rig_attachment(r, 0);
-    TEST_ASSERT_EQUAL_UINT32(0, ids[0]);
-    raster_show(&r->raster);
-    TEST_ASSERT_EQUAL_UINT16(r->raster.clear, raster_color(&r->raster)[0]);
-    raster_triangles_t* triangles = state;
+    check_empty_id(r, view.format);
+    raster_meshlets_t* triangles = state;
     triangles->next = UINT16_MAX;
     r3d_span_writer_t writer = {0};
     TEST_ASSERT_TRUE(view.writer(&view, 0, &writer));
@@ -421,12 +437,7 @@ test_meshlet_ranges_restart_each_draw_and_show_empty_as_clear(void) {
     for (int frame = 0; frame < 2; frame++) {
         draw(r);
         const uint16_t* ids = raster_rig_attachment(r, 0);
-        int seen[4] = {0};
-        for (int p = 0; p < W * H; p++) {
-            TEST_ASSERT_TRUE(ids[p] >= 1 && ids[p] <= 3);
-            seen[ids[p]]++;
-        }
-        TEST_ASSERT_TRUE(seen[1] > 0 && seen[2] > 0 && seen[3] > 0);
+        check_id_range(r, view.format, 3);
         TEST_ASSERT_EQUAL_UINT32(4, state.next);
         raster_show(&r->raster);
         const uint16_t* colors = raster_color(&r->raster);
@@ -439,13 +450,7 @@ test_meshlet_ranges_restart_each_draw_and_show_empty_as_clear(void) {
         }
         TEST_ASSERT_TRUE(palette[1] != palette[2] && palette[2] != palette[3] && palette[1] != palette[3]);
     }
-    r->raster.instance_count = 1;
-    r->raster.instances = &r->instance[1];
-    draw(r);
-    const uint16_t* ids = raster_rig_attachment(r, 0);
-    TEST_ASSERT_EQUAL_UINT16(0, ids[0]);
-    raster_show(&r->raster);
-    TEST_ASSERT_EQUAL_UINT16(r->raster.clear, raster_color(&r->raster)[0]);
+    check_empty_id(r, view.format);
 }
 
 /* The card copy's offset from the card, in world units: still in the picture. */

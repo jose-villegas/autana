@@ -36,15 +36,21 @@ def rotate(quaternion, vector):
     return vector + 2.0 * np.cross(axis, np.cross(axis, vector) + w * vector)
 
 
-def render_poses(video):
-    """{frame: (position, forward)} of each frame the harness saved to
-    `video`, in the source's axes, or None when it left no poses."""
+def _pose_rows(video):
     path = pathlib.Path(str(video) + VIDEO_POSES_SUFFIX)
     if not path.is_file():
         return None
-    signs = np.asarray(AXIS_SIGNS, dtype=float)
     with open(path, newline="") as handle:
-        rows = list(csv.DictReader(handle))
+        return list(csv.DictReader(handle))
+
+
+def render_poses(video):
+    """{frame: (position, forward)} of each frame the harness saved to
+    `video`, in the source's axes, or None when it left no poses."""
+    rows = _pose_rows(video)
+    if rows is None:
+        return None
+    signs = np.asarray(AXIS_SIGNS, dtype=float)
     return {int(row["frame"]): (np.array([float(row[axis]) for axis in ("px", "py", "pz")]) * signs,
                                 rotate([float(row[axis]) for axis in ("qx", "qy", "qz", "qw")], ENGINE_FORWARD) * signs)
             for row in rows}
@@ -62,6 +68,28 @@ def capture_poses(path, size=None):
     metadata = json.loads((path.parent / 'entries.json').read_text())
     width, height = size or (metadata['width'], metadata['height'])
     return width, height, metadata['lens'], metadata['near'], [np.concatenate(drawn[i]) for i in range(len(drawn))]
+
+
+def capture_views(path, size=None):
+    """Clip matrices and upright sizes of captured frames, including the logged camera roll."""
+    from r3d.appearance_simplify import projection
+
+    width, height, lens, near, poses = capture_poses(path, size)
+    rows = _pose_rows(str(path).removesuffix(VIDEO_POSES_SUFFIX))
+    by_frame = {int(row['frame']): row for row in rows}
+    signs = np.asarray(AXIS_SIGNS, dtype=float)
+    axes = len(signs)
+    canonical = projection(np.zeros(axes), ENGINE_FORWARD * signs, width, height, lens, near)
+    result = []
+    for frame, pose in enumerate(poses):
+        quaternion = [float(by_frame[frame][axis]) for axis in ('qx', 'qy', 'qz', 'qw')]
+        right = rotate(quaternion, np.eye(axes)[0]) * signs
+        up = rotate(quaternion, np.eye(axes)[1]) * signs
+        camera = np.eye(axes + 1)
+        camera[:axes, :axes] = np.stack([right, up, -pose[axes:]])
+        camera[:axes, axes] = -camera[:axes, :axes] @ pose[:axes]
+        result.append((canonical @ camera, (width, height)))
+    return result
 
 
 def checker(video, reference_dir, poses_path=None):

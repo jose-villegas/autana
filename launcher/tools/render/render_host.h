@@ -12,6 +12,7 @@
 #include "app/app.h"
 #include "build/build_variant.h"
 #include "math/geometry/recti.h"
+#include "math/linear/affine2x.h"
 #include "render/context/render_context.h"
 
 /* What one frame of a provider is handed. `input` is synthesised from the
@@ -114,8 +115,14 @@ bool render_host_apply_settings(const render_settings_t* settings);
  * provider links no scene. */
 bool render_host_camera_pose(float position[3], float rotation[4]);
 
+/* Places the active camera from a source-frame reference pose without advancing its path. */
+bool render_host_camera_input(const float eye[3], const float forward[3], float lens, float near_z);
+
 /* Writes the active id attachment and entry metadata; false without an id view. */
-bool render_host_write_ids(const char* directory, FILE* entries, int frame);
+bool render_host_write_ids(const char* directory, FILE* entries, int frame, int quarter, bool panel);
+
+/* The panel-to-picture transform and upright size shared by colour and id captures. */
+affine2x_t render_host_picture_transform(int quarter, bool panel, int width, int height, int* out_w, int* out_h);
 
 /* Opens `path` and writes `header` as its first line; NULL, saying why
  * under `tool`'s name, when it cannot. Any per-frame CSV a harness writes. */

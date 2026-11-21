@@ -19,7 +19,6 @@
 #include "render/view/raster_meshlets.h"
 #include "render/view/raster_overdraw.h"
 #include "render/view/raster_show.h"
-#include "render/view/raster_triangles.h"
 
 static const render_debug_view_t views[] = {
     {.name = "depth", .attachment = raster_depth_view},
@@ -36,7 +35,7 @@ static const render_debug_view_t views[] = {
      .overlay = raster_boxes_overlay},
     {.name = "overdraw", .state_bytes = sizeof(raster_overdraw_t), .attachment = raster_overdraw_view},
     {.name = "copies", .state_bytes = sizeof(raster_copies_t), .attachment = raster_copies_view},
-    {.name = "triangles", .state_bytes = sizeof(raster_triangles_t), .attachment = raster_triangles_view},
+    {.name = "triangles", .state_bytes = sizeof(raster_meshlets_t), .attachment = raster_triangles_view},
 };
 _Static_assert(RENDER_DEBUG_VIEW_COUNT == sizeof views / sizeof views[0], "view table length");
 #endif
