@@ -42,7 +42,7 @@ intensity = 0.03
 [bake]
 ray_offset = 0.01
 colour_merge_step = 6
-indirect = {{ bounces = 1, rays = 32 }}
+indirect = {{ bounces = 1, rays = 256 }}
 
 [[objects]]
 name = "{OBJECT}"
@@ -64,8 +64,8 @@ range = 7.0
 
 [[objects]]
 name = "spot"
-position = [3.6, 4.5, 1.2]
-rotation = [26.0, 0.0, -15.7]
+position = [2.0, 4.5, -3.5]
+rotation = [-41.6, 0.0, 3.8]
 
 [objects.light]
 type = "spot"
