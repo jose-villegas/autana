@@ -42,7 +42,7 @@ typedef struct {
     int step_count;
     int recovery_from; /* the first recovery-only step; step_count when none */
     int top;           /* the finest step drawn, the caller's chosen size: never exceeded */
-    int32_t budget_us; /* the frame cost a policy steps down over */
+    int32_t budget_us; /* the scaled part's cost a policy steps down over */
     int window;        /* frames averaged before a step */
     int cooldown;      /* frames after a step before the next; doubles after a reversal */
     int up_percent;    /* finer when the window's mean is under this share of the budget */
@@ -128,22 +128,26 @@ int resolution_predict_choose(resolution_predict_t* predict, const resolution_co
 void resolution_predict_measured(resolution_predict_t* predict, const resolution_config_t* config, int triangles,
                                  int32_t frame_us);
 
-/* A config's budget is the whole frame's target: the policies hold the
- * scaled part (draw and upscale) to the target less what frames pay outside
- * it. That cost is an exponential average of weight 1/2^RESOLUTION_UNSCALED_WEIGHT_SHIFT, TCP's smoothed
- * round-trip gain (RFC 6298 section 2.3), starting from its first sample; the
- * scaled part keeps at least RESOLUTION_SCALED_MIN_PERCENT of the target. */
+/* The whole frame's budget split: the policies hold the scaled part (draw
+ * and upscale) to the target less what frames pay outside it. That cost is
+ * an exponential average with weight 1/2^RESOLUTION_UNSCALED_WEIGHT_SHIFT,
+ * the gain of TCP's smoothed round-trip time (docs/Citations.md#rfc6298,
+ * RFC 6298 section 2.3), seeded by its first sample. The scaled part keeps
+ * at least RESOLUTION_SCALED_MIN_PERCENT of the target. */
 #define RESOLUTION_UNSCALED_WEIGHT_SHIFT 3
 #define RESOLUTION_SCALED_MIN_PERCENT    25
 
 typedef struct {
-    int32_t us;   /* the learned cost outside the scaled part */
-    bool learned; /* `us` holds a sample */
-} resolution_unscaled_t;
+    int32_t target_us;   /* the whole frame's */
+    int32_t unscaled_us; /* the learned cost outside the scaled part */
+    bool learned;        /* `unscaled_us` holds a sample */
+} resolution_budget_t;
+
+/* Nothing learned: the scaled part's budget is the whole target. */
+resolution_budget_t resolution_budget(int32_t target_us);
 
 /* Folds one frame's cost outside the scaled part in, taken between 0 and
- * the target: a stalled frame moves the average by its weight of the target at most. */
-void resolution_unscaled_learn(resolution_unscaled_t* unscaled, int32_t sample_us, int32_t target_us);
-
-/* The scaled part's budget: the target less the learned cost, at least the floor share. */
-int32_t resolution_scaled_budget_us(const resolution_unscaled_t* unscaled, int32_t target_us);
+ * the target, so a stalled frame moves the average by its weight of the
+ * target at most. Returns the scaled part's budget: the target less the
+ * learned cost, at least the floor share. */
+int32_t resolution_budget_learn(resolution_budget_t* budget, int32_t sample_us);

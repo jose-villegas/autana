@@ -88,9 +88,8 @@ fit(void) {
 
 static int
 replay(char** argv) {
-    const int32_t target_us = atoi(argv[0]);
-    resolution_config_t config = read_ladder(target_us);
-    resolution_unscaled_t unscaled = {0};
+    resolution_config_t config = read_ladder(atoi(argv[0]));
+    resolution_budget_t budget = resolution_budget(config.budget_us);
     config.up_margin_percent = atoi(argv[1]);
     config.up_hold_us = atoi(argv[2]);
     config.top = atoi(argv[3]);
@@ -129,7 +128,6 @@ replay(char** argv) {
         }
         /* The census before the choice counts what culling keeps, the same
          * at every step: the step drawn last frame supplies it. */
-        config.budget_us = resolution_scaled_budget_us(&unscaled, target_us);
         const int step = resolution_predict_choose(&predict, &config, triangles[predict.step], elapsed_us);
         priced_us[f] = (int32_t)predict.chosen_us;
         /* The price the up margin guards: the next finer step's, corrected. */
@@ -140,7 +138,7 @@ replay(char** argv) {
                              * resolution_model_predict_us(&predict.model, &config, step - 1, triangles[step]))
                             + predict.offset_us);
         resolution_predict_measured(&predict, &config, triangles[step], cost_us[step]);
-        resolution_unscaled_learn(&unscaled, whole_us[step] - cost_us[step], target_us);
+        config.budget_us = resolution_budget_learn(&budget, whole_us[step] - cost_us[step]);
         elapsed_us = whole_us[step];
         printf("%s%d", f == 0 ? "" : ", ", step);
     }

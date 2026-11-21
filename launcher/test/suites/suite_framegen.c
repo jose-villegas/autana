@@ -227,6 +227,7 @@ test_a_generated_frame_composes_from_its_own_picture(void) {
     const uint16_t overwritten = (uint16_t)~destination[0];
     TEST_ASSERT_TRUE(render_context_draw(c, r->instance, RASTER_RIG_QUADS, &now, 0));
     TEST_ASSERT_TRUE(framegen_example_generated(c));
+    TEST_ASSERT_FALSE(c->priced); /* a generated frame does not teach the budget */
     uint16_t* kept = raster_color(&c->raster);
     for (int i = 0; i < c->raster.width * c->raster.height; i++) {
         kept[i] = overwritten;
