@@ -62,7 +62,7 @@ A payload without the flag has no inside probes.
 ```mermaid
 ---
 config:
-  themeCSS: "g:nth-of-type(2) rect { fill: #8fb3ee !important; } .packetLabel { fill: #1b1b1b !important; }"
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(4) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(5) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(6) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(7) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(8) { fill: #e3e3e3 !important; } .packetLabel { fill: #1b1b1b !important; }"
   packet:
     bitsPerRow: 8
     bitWidth: 100
@@ -82,7 +82,7 @@ title Inside mask byte, one cell a bit, least significant first
 V1 includes direct lighting in the incident-radiance coefficients.
 
 The coefficient order is constant, +y, +z, +x, each with consecutive RGB.
-`Y00 = 0.5 sqrt(1/pi)` and `Y1 = 0.5 sqrt(3/pi)` follow
+$`Y_{00} = \tfrac12\sqrt{1/\pi}`$ and $`Y_1 = \tfrac12\sqrt{3/\pi}`$ follow
 Sloan 2008<sup>[[129]](../../Citations.md#sloan-2008)</sup>.
 Scale covers the largest absolute coefficient without clipping; an all-zero
 grid uses scale 1.

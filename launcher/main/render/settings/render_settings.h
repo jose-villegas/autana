@@ -61,12 +61,14 @@ typedef struct {
     int divide_px; /* basic [0, RENDER_TEXTURE_DIVIDE_PX_MAX]: fewest pixels between divides by depth, fewer cost more; 0 is affine, near surfaces bend */
     float affine_bend; /* advanced [0.0, RENDER_TEXTURE_BEND_MAX]: texels a triangle may bend and still step affine; larger is faster, bends more */
     int affine_level; /* advanced [0, RENDER_TEXTURE_LEVEL_MAX]: first mip level that steps affine, its pattern shifting rather than bending; 0 lets every level divide */
+    int far_level; /* basic [0, RENDER_TEXTURE_LEVEL_MAX]: first mip level drawn untextured, one colour a triangle; lower is faster; 0 textures every level */
 } render_texture_settings_t;
 
 /* small_fill.style: the colour kernel above the always-flat side. */
 typedef enum { SMALL_FILL_FLAT, SMALL_FILL_GRAIN, SMALL_FILL_DITHER, SMALL_FILL_STYLE_COUNT } small_fill_style_t;
 
 #define SMALL_FILL_CEILING_MAX    16
+#define SMALL_FILL_CEILING_OFF    0 /* the ceiling with no small fill */
 #define SMALL_FILL_GATE_MAX       255 /* an RGB565 channel's spread fits a byte */
 #define SMALL_FILL_CEILING_SMOOTH 4
 #define SMALL_FILL_GATE_SMOOTH    0

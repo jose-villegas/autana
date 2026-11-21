@@ -5,7 +5,8 @@ name: Bakes
 # plan job selects each missing reference set's poses once; shard jobs render that plan,
 # and the reference job joins and packs their files
 # (as many as bake.py reference_shards sizes from their rays); both upload the files; the lock job then fails until the author runs
-# `bake.py lock --from-run N` with that run and commits the lock. A mesh's and a
+# `bake.py lock --from-run N` with that run and commits the lock. A run that makes levels runs the sky-through-walls
+# flythrough on them in the CPU job, so a fit that opens holes fails before it is locked. A mesh's and a
 # reference set's bytes differ by CPU vendor, so on a runner of another vendor than the lock's
 # `mesh_cpu_vendor` the bake fails before making one; the plan checks its runner first, and each shard
 # starts on several runners and the first of the lock's vendor traces it (scripts/ci/runner_vendor.py),
@@ -82,6 +83,9 @@ jobs:
           echo "traced=$(cat "$RUNNER_TEMP/mesh.txt" "$RUNNER_TEMP/sh_probes.txt" | wc -l)" >> "$GITHUB_OUTPUT"
           echo "sound=$(wc -l < "$RUNNER_TEMP/sound.txt")" >> "$GITHUB_OUTPUT"
           echo "blend=$(wc -l < "$RUNNER_TEMP/blend.txt")" >> "$GITHUB_OUTPUT"
+          # The levels this run makes (their fit is locked, so they have a key) and those still waiting for a fit.
+          echo "levels=$(awk -F'\t' '$2 == "levels" && $3 ~ /^[0-9a-f]+$/' "$RUNNER_TEMP/levels.txt" | wc -l)" >> "$GITHUB_OUTPUT"
+          echo "waiting=$(awk -F'\t' '$2 == "levels" && $3 !~ /^[0-9a-f]+$/' "$RUNNER_TEMP/levels.txt" | wc -l)" >> "$GITHUB_OUTPUT"
           echo "count=$(cat "$RUNNER_TEMP/blend.txt" "$RUNNER_TEMP/mesh.txt" "$RUNNER_TEMP/levels.txt" "$RUNNER_TEMP/sound.txt" "$RUNNER_TEMP/sh_probes.txt" | wc -l)" >> "$GITHUB_OUTPUT"
 
       # Before any install: a runner of another CPU vendor than the lock's fails in seconds.
@@ -129,9 +133,8 @@ jobs:
           if [ "$GITHUB_RUN_ATTEMPT" -gt 1 ]; then earlier=(--from-run "$GITHUB_RUN_ID"); fi
           python launcher/tools/bake/bake.py bake --kind blend --out "$RUNNER_TEMP/bakes" "${earlier[@]}"
           python launcher/tools/bake/bake.py bake --kind sh_probes --out "$RUNNER_TEMP/bakes"
-          python launcher/tools/bake/bake.py bake --kind mesh --out "$RUNNER_TEMP/bakes"
-          python launcher/tools/bake/bake.py bake --kind levels --out "$RUNNER_TEMP/bakes"
-          python launcher/tools/bake/bake.py bake --kind texture --out "$RUNNER_TEMP/bakes"
+          # One command: a texture's key names the bytes of the mesh or levels it draws on, made just before it.
+          python launcher/tools/bake/bake.py bake --kind mesh --kind levels --kind texture --out "$RUNNER_TEMP/bakes"
           python launcher/tools/bake/bake.py bake --kind sound --out "$RUNNER_TEMP/bakes"
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -140,6 +143,18 @@ jobs:
           name: bakes-cpu-${{ github.run_attempt }}
           path: ${{ runner.temp }}/bakes
           if-no-files-found: ignore
+
+      # A fit's levels are its renderable output: once every one is made, the flythrough checks them here, before
+      # anyone locks them. The lock written from the run's own uploads stays on the runner.
+      - name: Lock this run's bakes on the runner
+        if: steps.missing.outputs.levels != '0' && steps.missing.outputs.waiting == '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python launcher/tools/bake/bake.py lock --from-run "$GITHUB_RUN_ID" --partial
+
+      - name: Check the full camera flythrough of this run's levels for enclosed sky
+        if: steps.missing.outputs.levels != '0' && steps.missing.outputs.waiting == '0'
+        run: python -m unittest discover -s launcher/main/apps/render_lab/tools/tests -p test_sky_through_walls.py
 
       - uses: ./.github/actions/job-inputs
         if: ${{ !cancelled() }}

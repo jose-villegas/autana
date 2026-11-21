@@ -112,9 +112,10 @@ class AlphaConsumerTests(unittest.TestCase):
             seen.append(ids)
             return None
         with ExitStack() as stack:
+            started = stack.enter_context(patch.object(appearance_simplify, 'start_mesh', return_value=mesh))
             for target, value in ((reference_render, ('load_source', source)),
                                   (mesh_bundle, ('decode', ([('mesh', b'LMSH', b'')], []))),
-                                  (appearance_simplify, ('start_mesh', mesh)), (copies, ('placed_copies', None)),
+                                  (copies, ('placed_copies', None)),
                                   (bake_fidelity, ('build_host', 'host')), (fitted_variant, ('held_out_score', (0., 0.))),
                                   (error, ('rows_for', ([], 0., 0.)))):
                 stack.enter_context(patch.object(target, value[0], return_value=value[1]))
@@ -123,3 +124,5 @@ class AlphaConsumerTests(unittest.TestCase):
             stack.enter_context(patch.object(error, 'accumulate', side_effect=accumulate))
             error.held_out_error(pathlib.Path('fixture.scene.toml'), NS(), job, bundle, self.root, self.root)
         self.assertEqual(len(seen), 1)
+        # start_mesh decodes a whole bundle, the rest beside its copies: never one entry's bytes.
+        started.assert_called_once_with(bundle)

@@ -60,8 +60,9 @@ the mesh to a larger budget, and fits it again.
 ## Alpha and cards
 
 References use [per-hit alpha testing](Bake-Method.md#fidelity-against-a-reference).
-The depth and copy G-buffers trace the same source, preserving source
-triangle and carved flags.
+The depth and copy G-buffers preserve source triangle and carved flags.
+Probe fits add independent, finer-spaced geometry views to front and depth
+losses, so close copies constrain rest movement without colour references.
 
 Materials accepted by the card baker are hidden from camera references and
 the fit, while remaining in the light bake. MASK1 card copies are excluded
@@ -107,7 +108,8 @@ A probe fit has no `fit.prune.budget`: its variant's `triangles` is the budget.
 The import spends it through simplify with quadric edge collapse<sup>[[12]](../../Citations.md#garland-1997)</sup>
 and appearance attributes<sup>[[13]](../../Citations.md#hoppe-1999)</sup>.
 
-The prune drops only triangles no coverage view shows.
+It keeps every triangle: one no coverage view shows may still face a camera they miss.
+A border point within the seam tolerance that the hold rule refuses stays at its start.
 
 A hole pixel shows no fitted surface where the reference differs from the clear
 colour by more than `HOLE_DE`. The closure gate rejects held-out hole growth of

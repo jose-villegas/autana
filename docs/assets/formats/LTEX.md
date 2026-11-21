@@ -52,7 +52,7 @@ title Header, 20 bytes at 0, one cell a byte
 | Tint | 6 | 3 × u8, r, g, b: the hue the colormap lights the pattern with, the mean vertex colour it is drawn on |
 | Reserved | 9 | 3 bytes, zero |
 | Palette | `palette_off` | INDEX4: 16, MASK1: 2 × {u8 r, g, b, 0}, 128 = the pattern's mean |
-| Texels | `texels_off` | each level's `side² / 2` (INDEX4) or `side² / 8` (MASK1) bytes, level 0 first |
+| Texels | `texels_off` | each level's `side * side / 2` (INDEX4) or `side * side / 8` (MASK1) bytes, level 0 first |
 
 | Rule | Detail |
 |---|---|
