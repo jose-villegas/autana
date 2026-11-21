@@ -12,7 +12,7 @@ flowchart LR
     EXP --> SEND
     SUB --> SEND
     SEND --> LCD["esp_lcd_panel_draw_bitmap"]
-    SEND -->|"development capture on"| CAP["admitted present<br/>PSRAM slot"]
+    SEND -->|"development capture on"| CAP["admitted present<br/>one PSRAM image"]
     CAP --> TX["priority-one sender"]
 ```
 
@@ -21,9 +21,11 @@ send and byte count. The framebuffer audit stays before overlays at its
 framebuffer send sites. The capture tap copies the final window pixels.
 
 Capture begin/commit surround `run_present()` and `gfx_band_run()`.
-A slot is visible to the sender only after commit. Release builds omit the
-capture hooks and sender. The `PANEL-SEND-OWNER` source rule rejects another
-direct panel caller.
+Commit publishes the image and dirty windows; admission drops a present
+while the sender owns the image.
+
+Release builds omit capture hooks and sender. The `PANEL-SEND-OWNER`
+source rule rejects another direct panel caller.
 
 ## Present: what gets sent
 
