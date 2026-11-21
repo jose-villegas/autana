@@ -148,7 +148,7 @@ The cost a policy holds is the part that scales: the draw and the compose each s
 
 ### A held camera
 
-While the camera holds still, frames are drawn as [partial redraw](Partial-Redraw.md) draws them, at the top step and without being priced: the first redraws every row, later ones only the rows that changed. A held frame that costs more than the budget hands size selection back to the policy until the view changes.
+While the camera holds still, with frame generation on or off, frames are drawn as [partial redraw](Partial-Redraw.md) draws them, at the top step and without being priced: the first redraws every row, later ones only the rows that changed. A held frame that costs more than the budget hands size selection back to the policy until the view changes.
 
 So each stop pays one whole frame at the top step, which is not judged: it says what a full redraw costs, not a held frame.
 

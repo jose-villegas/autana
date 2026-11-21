@@ -202,6 +202,10 @@ on, so the render context times both and decides each frame:
 | It saved less | Drawn |
 | `FRAMEGEN_RETRY_DRAWN` drawn frames in a row | Generated, to measure it again |
 
+A view [partial redraw](Partial-Redraw.md) holds (the camera still, the
+same settings) is never generated: a warp to the same camera shows nothing
+new, and objects moving in it are drawn as partial redraw draws them.
+
 The margin keeps a generated frame, which shows the scene less exactly than
 a drawn one, from being shown for a saving too small to see.
 
