@@ -2,7 +2,7 @@
  * over board frames, so dynres_replay.py holds no copy of either.
  *
  *   probe fit < samples      the model fitted to every sample, then each sample's price
- *   probe replay budget_us margin_percent up_hold_us top first < frames
+ *   probe replay target_us margin_percent up_hold_us top first < frames
  *                            the step the predictor draws each frame at, its corrected
  *                            price there and at the next finer step (0 at the top),
  *                            and its switches
@@ -11,7 +11,9 @@
  * samples then holds "m" and m "step triangles draw_us upscale_us". frames
  * holds the model's four weights and one upscale per step, then "f", then f
  * rows of n "whole_us triangles draw_us upscale_us", one per step. The
- * time between two choices is the whole frame drawn between them. Output is JSON. */
+ * time between two choices is the whole frame drawn between them. The budget
+ * is the frame target less the cost each whole frame paid outside its draw
+ * and upscale, learned as the render context learns it. Output is JSON. */
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -87,6 +89,7 @@ fit(void) {
 static int
 replay(char** argv) {
     resolution_config_t config = read_ladder(atoi(argv[0]));
+    resolution_budget_t budget = resolution_budget(config.budget_us);
     config.up_margin_percent = atoi(argv[1]);
     config.up_hold_us = atoi(argv[2]);
     config.top = atoi(argv[3]);
@@ -135,6 +138,7 @@ replay(char** argv) {
                              * resolution_model_predict_us(&predict.model, &config, step - 1, triangles[step]))
                             + predict.offset_us);
         resolution_predict_measured(&predict, &config, triangles[step], cost_us[step]);
+        config.budget_us = resolution_budget_learn(&budget, whole_us[step] - cost_us[step]);
         elapsed_us = whole_us[step];
         printf("%s%d", f == 0 ? "" : ", ", step);
     }
@@ -159,6 +163,6 @@ main(int argc, char** argv) {
     if (argc == 7 && argv[1][0] == 'r') {
         return replay(argv + 2);
     }
-    fprintf(stderr, "usage: dynres_replay_probe fit | replay budget_us margin_percent up_hold_us top first\n");
+    fprintf(stderr, "usage: dynres_replay_probe fit | replay target_us margin_percent up_hold_us top first\n");
     return 2;
 }

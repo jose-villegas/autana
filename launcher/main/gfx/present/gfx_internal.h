@@ -54,7 +54,8 @@ void gfx_swap_framebuffers(void);
 extern bool fb_filled;
 extern gfx_color_t fb_fill_colour;
 
-/* Waits for the send task before changing its source or reading back. */
+/* Waits for the send task before changing its source or reading back; how
+ * long it waited, added to gfx_present_waited_us(). */
 int32_t gfx_present_drain(void);
 /* Whether the last send filled present_fb after sending it (gfx_set_clear_on_send()). */
 bool gfx_present_sent_frame_filled(void);
