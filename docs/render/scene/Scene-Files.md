@@ -420,6 +420,8 @@ inner_angle = 20.0   # degrees from the axis: full light inside
 outer_angle = 35.0   # degrees: no light outside
 ```
 
+![A floor, a box and a pillar baked under a warm point light and a cool spot: each casts a hard shadow, the spot inside its cone](../../images/render/light-point-spot.png)
+
 A point or spot light falls off by inverse square to zero at `range`; a spot
 fades from `inner_angle` to `outer_angle`. The formula is in
 [Bake-Method.md](../offline/Bake-Method.md#point-and-spot-lights). The keys follow
