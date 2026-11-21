@@ -2032,15 +2032,28 @@ def record_frames(args, store, board, lines=None, out=None, log=None):
     RESUME). When stdin ends, or after args.seconds, FRAMEREC STOP and the
     board's FRAMEREC_END. Exits 1 when the board refused or a packet arrived
     damaged."""
-    import framerec
+    with contextlib.ExitStack() as files:
+        sink = files.enter_context(open(args.out, "wb")) if args.out else (out or sys.stdout.buffer)
 
+        def consume(data):
+            sink.write(data)
+            sink.flush()
+
+        answer = capture_stream(args, store, board, "FRAMEREC", consume, lines, log)
+    return int(answer.startswith("FRAMEREC_REFUSED"))
+
+
+def capture_stream(args, store, board, tag, on_data, lines=None, log=None, opening=None, packet_tag=None,
+                   on_packet_error=None):
+    """Steer a console capture, forwarding stdin and draining through its END reply."""
     log = sys.stderr if log is None else log
     timed = args.seconds is not None
     if lines is None:
         lines = [] if timed else sys.stdin
     if timed:
         lines = until_seconds(lines, args.seconds)
-    packets = framerec.packets()
+    import console_packets
+    packets = console_packets.Packets(packet_tag or tag)
     ended = threading.Event()
     answer = []
     began = threading.Event()
@@ -2048,17 +2061,23 @@ def record_frames(args, store, board, lines=None, out=None, log=None):
     def read(connection, stop, failed):
         try:
             while not stop.is_set():
-                for kind, data in packets.feed(connection.read(STREAM_READ_BYTES)):
+                try:
+                    events = packets.feed(connection.read(STREAM_READ_BYTES))
+                except console_packets.PacketError:
+                    if on_packet_error is None:
+                        raise
+                    on_packet_error()
+                    continue
+                for kind, data in events:
                     if kind == "data":
-                        sink.write(data)
-                        sink.flush()
+                        on_data(data)
                         continue
                     text = data.decode("utf-8", errors="replace")
                     print(text, file=log, flush=True)
-                    if text.startswith("FRAMEREC_BEGIN"):
+                    if text.startswith(f"{tag}_BEGIN"):
                         began.set()
                     # A refusal ends the record only as START's answer: after BEGIN it answers a typed line.
-                    if text.startswith("FRAMEREC_END") or (text.startswith("FRAMEREC_REFUSED") and not began.is_set()):
+                    if text.startswith(f"{tag}_END") or (text.startswith(f"{tag}_REFUSED") and not began.is_set()):
                         answer.append(text)
                         ended.set()
         except Exception as error:  # noqa: BLE001  (any read failure ends the record, raised by its owner)
@@ -2068,20 +2087,30 @@ def record_frames(args, store, board, lines=None, out=None, log=None):
     def closing(connection, failed):
         # Unless the board ended it: a failed read leaves the board recording.
         if not answer:
-            connection.write(b"FRAMEREC STOP\n")
+            connection.write(f"{tag} STOP\n".encode("ascii"))
         if failed:
             raise RuntimeError(f"reading the board failed: {failed[0]}") from failed[0]
         deadline = time.monotonic() + RECORD_END_SECONDS
         while not ended.wait(STREAM_CHECK_SECONDS):
             require_unlost()
             if time.monotonic() > deadline:
-                raise RuntimeError(f"no FRAMEREC_END within {RECORD_END_SECONDS} s of FRAMEREC STOP")
+                raise RuntimeError(f"no {tag}_END within {RECORD_END_SECONDS} s of {tag} STOP")
 
-    with contextlib.ExitStack() as files:
-        sink = files.enter_context(open(args.out, "wb")) if args.out else (out or sys.stdout.buffer)
-        steer(args, store, board, "record", read, lines, opening=["FRAMEREC START"], closing=closing, done=ended,
-              interrupt_ends=True)
-    return 1 if answer and answer[0].startswith("FRAMEREC_REFUSED") else 0
+    steer(args, store, board, tag.lower(), read, lines, opening=[opening or f"{tag} START"],
+          closing=closing, done=ended, interrupt_ends=True)
+    return answer[0] if answer else ""
+
+
+def video(args, store, board, lines=None, log=None):
+    """Record the panel stream with the same stdin and port lifecycle as record."""
+    import panel_video
+
+    with panel_video.Recording(args.out, log=log) as recording:
+        answer = capture_stream(args, store, board, "PANELCAP", recording.packet, lines, log,
+                                opening=f"PANELCAP START {args.fps}", packet_tag="PANEL",
+                                on_packet_error=recording.corrupt)
+        recording.finish(answer)
+    return int(answer.startswith("PANELCAP_REFUSED"))
 
 
 def until_seconds(lines, seconds):
@@ -2492,6 +2521,15 @@ def main(argv=None):
     record_parser.add_argument("--out", help="write the stream here instead of stdout")
     record_parser.add_argument("--seconds", type=float,
                                help="stop after this long; stdin is then not read")
+    video_parser = subparsers.add_parser("video", help="record panel windows to H.264 MP4")
+    video_parser.add_argument("-o", "--out", required=True)
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher/tools"))
+    from build.c_header import read_define
+    panelcap_header = Path(__file__).resolve().parents[2] / "launcher/main/gfx/present/capture/panelcap.h"
+    fps_default = read_define(panelcap_header, "PANELCAP_FPS_DEFAULT")
+    fps_max = read_define(panelcap_header, "PANELCAP_FPS_MAX")
+    video_parser.add_argument("--fps", type=int, choices=range(1, fps_max + 1), default=fps_default, metavar="N")
+    video_parser.add_argument("--seconds", type=float)
     screenshot_parser = subparsers.add_parser(
         "screenshot", help="capture what the panel shows right now, as a .png plus a .json state snapshot")
     screenshot_parser.add_argument("--out",
@@ -2711,7 +2749,7 @@ def main(argv=None):
             # Looked up per call, so a test's patch of one of them is the one run.
             board_commands = {"run-suite": run_suite, "selftest": selftest, "coredump": coredump,
                               "reset": reset_device, "batch": batch, "screenshot": screenshot, "mic-record": mic_record,
-                              "stream": stream, "record": record_frames}
+                              "stream": stream, "record": record_frames, "video": video}
             result = board_commands.get(args.command, listen)(args, store, board)
             return result
         result = 0

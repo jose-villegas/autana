@@ -6,6 +6,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "collections/bytes.h"
+#include "collections/bytes_write.h"
 
 #define PANELCAP_WIDTH           368U
 #define PANELCAP_HEIGHT          448U

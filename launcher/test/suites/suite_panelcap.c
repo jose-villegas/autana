@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <string.h>
+#include "core/memory.h"
 #include "gfx/present/capture/panelcap.h"
 #include "suites.h"
 #include "unity.h"
@@ -12,14 +13,14 @@ static uint8_t* storage;
 
 static void
 fixture(void) {
-    storage = malloc(PANELCAP_RING_BYTES);
+    storage = memory_alloc(PANELCAP_RING_BYTES, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(storage);
     panelcap_ring_init(&ring, storage, PANELCAP_FPS_DEFAULT);
 }
 
 static void
 release(void) {
-    free(storage);
+    memory_free(storage);
     storage = NULL;
 }
 
@@ -40,9 +41,9 @@ test_packbits_roundtrips_and_bound(void) {
     const size_t counts[] = {1, PANELCAP_PACK_RUN_MAX, PANELCAP_PACK_RUN_MAX + 1, PANELCAP_WIDTH * PANELCAP_HEIGHT};
     for (unsigned c = 0; c < sizeof counts / sizeof counts[0]; c++) {
         size_t count = counts[c];
-        uint8_t* raw = malloc(count * PANELCAP_PIXEL_BYTES);
-        uint8_t* packed = malloc(panelcap_pack_bound(count));
-        uint8_t* decoded = malloc(count * PANELCAP_PIXEL_BYTES);
+        uint8_t* raw = memory_alloc(count * PANELCAP_PIXEL_BYTES, MEMORY_APP);
+        uint8_t* packed = memory_alloc(panelcap_pack_bound(count), MEMORY_APP);
+        uint8_t* decoded = memory_alloc(count * PANELCAP_PIXEL_BYTES, MEMORY_APP);
         TEST_ASSERT_NOT_NULL(raw);
         TEST_ASSERT_NOT_NULL(packed);
         TEST_ASSERT_NOT_NULL(decoded);
@@ -74,9 +75,9 @@ test_packbits_roundtrips_and_bound(void) {
             TEST_ASSERT_EQUAL(count, out);
             TEST_ASSERT_EQUAL_MEMORY(raw, decoded, count * PANELCAP_PIXEL_BYTES);
         }
-        free(raw);
-        free(packed);
-        free(decoded);
+        memory_free(raw);
+        memory_free(packed);
+        memory_free(decoded);
     }
 }
 
@@ -104,8 +105,9 @@ test_admission_full_and_fps(void) {
 static void
 test_overrun_abandons_whole_present(void) {
     fixture();
-    uint8_t* pixels = calloc(PANELCAP_WIDTH * PANELCAP_HEIGHT, PANELCAP_PIXEL_BYTES);
+    uint8_t* pixels = memory_alloc(PANELCAP_WIDTH * PANELCAP_HEIGHT * PANELCAP_PIXEL_BYTES, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(pixels);
+    memset(pixels, 0, PANELCAP_WIDTH * PANELCAP_HEIGHT * PANELCAP_PIXEL_BYTES);
     TEST_ASSERT_TRUE(panelcap_begin(&ring, 0));
     panelcap_window(&ring, 0, 0, PANELCAP_WIDTH, PANELCAP_HEIGHT, pixels);
     panelcap_window(&ring, 0, 0, PANELCAP_WIDTH, PANELCAP_HEIGHT, pixels);
@@ -119,7 +121,7 @@ test_overrun_abandons_whole_present(void) {
     panelcap_window(&ring, 0, 0, 1, 1, pixels);
     panelcap_commit(&ring);
     TEST_ASSERT_EQUAL(1, bytes_read_u16(panelcap_peek(&ring) + sizeof(uint32_t) + sizeof(uint64_t)));
-    free(pixels);
+    memory_free(pixels);
     release();
 }
 
@@ -174,7 +176,7 @@ test_wire_fields_are_little_endian(void) {
 }
 
 void
-run_panelcap_suite(void) {
+suite_panelcap(void) {
     RUN_TEST(test_packbits_roundtrips_and_bound);
     RUN_TEST(test_admission_full_and_fps);
     RUN_TEST(test_overrun_abandons_whole_present);
@@ -182,7 +184,7 @@ run_panelcap_suite(void) {
     RUN_TEST(test_wire_fields_are_little_endian);
 }
 
-SUITE_REGISTER(run_panelcap_suite);
+SUITE_REGISTER(suite_panelcap);
 
 #ifdef DEVICE_BUILD
 #include "draw/draw.h"
@@ -206,9 +208,9 @@ test_panelcap_known_pattern_present(void) {
 }
 
 void
-run_panelcap_pattern_suite(void) {
+suite_panelcap_pattern(void) {
     RUN_TEST(test_panelcap_known_pattern_present);
 }
 
-SUITE_REGISTER_ON_REQUEST(run_panelcap_pattern_suite);
+SUITE_REGISTER_ON_REQUEST(suite_panelcap_pattern);
 #endif

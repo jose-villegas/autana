@@ -1261,6 +1261,24 @@ def record(args):
     return call_device(command)
 
 
+def video(args):
+    """Capture live panel presents under the device lock."""
+    import argparse
+    parser = argparse.ArgumentParser(prog="autana video")
+    parser.add_argument("-o", "--out", required=True)
+    parser.add_argument("--fps", type=int)
+    parser.add_argument("--seconds", type=float)
+    parsed = parser.parse_args(args)
+    if refused_as_busy():
+        return EXIT_BUSY
+    command = device_command("video") + ["--out", parsed.out]
+    if parsed.fps is not None:
+        command += ["--fps", str(parsed.fps)]
+    if parsed.seconds is not None:
+        command += ["--seconds", str(parsed.seconds)]
+    return call_device(command)
+
+
 def mic(args):
     import argparse
     parser = argparse.ArgumentParser(prog="autana mic")
@@ -1863,6 +1881,8 @@ COMMAND_GROUPS = (
         Command("screenshot", screenshot, (
             ("screenshot [--as-shown|--framebuffer] [-o PATH]", "PATH.png plus a PATH.json state snapshot; landscape by default"),
             ("screenshot --frames N -o PATH", "N frames as PATH-00 on: the loop is frozen and stepped a frame between captures, then resumed"),)),
+        one("video", video, "video -o PATH [--fps N] [--seconds S]",
+            "live panel windows to H.264 MP4 plus frames.csv; console lines from stdin go to the board and replies to stderr; stops when stdin ends or on Ctrl+C; --seconds reads no stdin; development builds"),
         one("record", record, "record [-o PATH] [--seconds S]",
             "each frame's render input as records (FRAMEREC), to PATH or stdout; console lines from stdin go to the board, so FREEZE, STEP and RESUME pause and step it, and it stops when stdin ends; with --seconds it reads no stdin and stops after S seconds; development builds"),
         Command("battery", battery, (

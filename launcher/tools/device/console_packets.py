@@ -22,10 +22,14 @@ class Packets:
     `tag`_BIN packets carry. feed() takes any chunk as it was read and
     returns ("line", bytes) and ("data", bytes) in arrival order; a line is
     returned once its newline has arrived, a packet once all its bytes have.
-    A packet whose bytes do not match its crc32 raises PacketError."""
+    A string tag keeps the "data" event contract; an iterable of tags returns
+    the matching tag as the event kind. A CRC mismatch raises PacketError."""
 
     def __init__(self, tag):
-        self.prefix = tag.encode("ascii") + b"_BIN "
+        self.multiple = not isinstance(tag, str)
+        self.prefixes = {name.encode("ascii") + b"_BIN ": name
+                         for name in (tag if self.multiple else (tag,))}
+        self.prefix = next(iter(self.prefixes))
         self.pending = bytearray()
         self.partial = bytearray()  # a line's text before a packet that cut into it
 
@@ -36,7 +40,9 @@ class Packets:
             end = self.pending.find(b"\n")
             if end < 0:
                 return out
-            start = self.pending.find(self.prefix, 0, end)
+            matches = [(self.pending.find(prefix, 0, end), prefix) for prefix in self.prefixes]
+            matches = [(at, prefix) for at, prefix in matches if at >= 0]
+            start, self.prefix = min(matches) if matches else (-1, self.prefix)
             head = self.parse_head(start, end)
             if head is None:
                 line = bytes(self.partial + self.pending[:end]).rstrip(b"\r")
@@ -53,7 +59,7 @@ class Packets:
             if zlib.crc32(data) != crc:
                 raise PacketError(f"a {count}-byte packet arrived damaged: crc32 {zlib.crc32(data):08x}, "
                                   f"the board sent {crc:08x}")
-            out.append(("data", data))
+            out.append((self.prefixes[self.prefix] if self.multiple else "data", data))
 
     def parse_head(self, start, end):
         """(bytes, crc32) of the packet head at `start` in the line ending at

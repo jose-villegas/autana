@@ -122,6 +122,7 @@ answer(const void* payload) {
         return;
     }
     gfx_panel_capture_on = true;
+    gfx_request_full_redraw();
     char line[PANELCAP_LINE_BYTES];
     (void)snprintf(line, sizeof line, "PANELCAP_BEGIN fps=%u ring=%u", fps, (unsigned)PANELCAP_RING_BYTES);
     console_emit_line(line, "");

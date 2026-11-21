@@ -86,6 +86,122 @@ packet landed inside, and refuses a packet whose crc32 differs.
 `autana record` holds the port and writes the joined stream to a file or
 stdout ([Watch](../cli/Watch.md)).
 
+## Binary packets: panel video
+
+`PANELCAP START [fps]` records panel windows until `PANELCAP STOP`.
+The default admission rate is `PANELCAP_FPS_DEFAULT` in
+[`panelcap.h`](../../launcher/main/gfx/present/capture/panelcap.h).
+Release images have no console listener or capture code.
+
+```mermaid
+sequenceDiagram
+    participant H as autana video
+    participant D as device
+    H->>D: PANELCAP START 15
+    D-->>H: PANELCAP_BEGIN fps=N ring=B
+    loop admitted presents
+        D-->>H: PANEL_BIN n crc32 + n bytes
+    end
+    H->>D: PANELCAP STOP
+    D-->>H: remaining PANEL_BIN packets
+    D-->>H: PANELCAP_END presents=P dropped=D bytes=B
+    Note over H,D: START can answer PANELCAP_REFUSED: reason
+```
+
+Each `PANEL_BIN n crc32` line ends with a newline followed by `n` raw
+bytes. The CRC covers those bytes. A payload fits
+`CONSOLE_PACKET_BYTES_MAX`, including its continuation header.
+All integers below are little-endian; pixels remain RGB565 high-byte first.
+
+```mermaid
+---
+config:
+  packet:
+    bitsPerRow: 8
+    bitWidth: 100
+---
+packet-beta
+title Packet payload, one cell a byte
+0-3: "present_seq"
+4-5: "part"
+6: "last"
+7: "slice..."
+```
+
+| Part | At | Size |
+|---|---|---|
+| Present sequence | 0 | u32 |
+| Part index | 4 | u16, starts at zero |
+| Last flag | 6 | u8, zero or one |
+| Stream slice | 7 | remaining packet bytes |
+
+The `last` flag allows streaming without an encoded-present scratch buffer.
+A missing, repeated or out-of-order part discards the entire present.
+The next sequence starts a fresh assembly at part zero.
+
+```mermaid
+---
+config:
+  packet:
+    bitsPerRow: 8
+    bitWidth: 100
+---
+packet-beta
+title Present header, 16 bytes, one cell a byte
+0-3: "present_seq"
+4-11: "device_us"
+12-13: "windows"
+14-15: "dropped_before"
+```
+
+| Part | At | Size |
+|---|---|---|
+| Present sequence | 0 | u32 |
+| Device time at present start | 4 | u64, microseconds |
+| Window count | 12 | u16 |
+| Dropped presents before this one | 14 | u16, saturates at its maximum |
+| Windows | 16 | records below, in panel-send order |
+
+```mermaid
+---
+config:
+  packet:
+    bitsPerRow: 8
+    bitWidth: 100
+---
+packet-beta
+title Window header, 12 bytes, one cell a byte
+0-1: "x0"
+2-3: "y0"
+4-5: "x1"
+6-7: "y1"
+8-11: "packed_len"
+12-15: "PackBits pixels..."
+```
+
+| Part | At | Size |
+|---|---|---|
+| Rectangle | 0 | four u16 edges, exclusive x1 and y1 |
+| Encoded byte count | 8 | u32 |
+| Pixels | 12 | `packed_len` bytes |
+
+| Rule | Detail |
+|---|---|
+| Pixel codec | Apple PackBits over 16-bit pixels: signed header 0..127 copies n+1 pixels; -127..-1 repeats one pixel 1-n times; -128 is a no-op |
+| Admission | Once per present: the fps gate and a free worst-case slot must both allow it |
+| Storage | `PANELCAP_RING_BYTES` holds `PANELCAP_SLOTS` slots; each allows two full-panel passes plus bounded window metadata |
+| Overrun | Abandons the provisional slot, counts a drop, publishes no windows |
+| Sender | Priority one, sends only committed slots, never blocks presentation |
+| STOP | Stops admission, drains committed slots, frees PSRAM, then sends END |
+| Totals | END counts committed presents, all admission/overrun drops, and serialized packed-stream bytes excluding continuation headers |
+| Refusal | Already on, not recording, bad fps, invalid syntax, unavailable PSRAM, or no memory for the sender task |
+
+START requests a full redraw so the next drawn present initializes the canvas.
+The host applies windows in order to a persistent panel canvas, then uses
+the screenshot turn. Its MP4 samples the latest device present at each
+30 Hz timestamp. Capture drops leave the previous canvas content in place.
+See [the command contract](../cli/Watch.md#panel-video).
+
 ## Other verbs
 
 Multi-line replies end with their own marker: `PERFMON_END` after the `PERFMON_NAME` and

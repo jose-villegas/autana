@@ -1,0 +1,12 @@
+{
+  "windows": {
+    "version": "9.1",
+    "url": "https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-9.1-essentials_build.zip",
+    "sha256": "b9bbbb3acece000cbeec994f856649354e52c773807841e78908374b24d658fd"
+  },
+  "linux": {
+    "version": "6.1.1",
+    "package": "ffmpeg",
+    "runner": "ubuntu-24.04"
+  }
+}

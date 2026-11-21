@@ -683,12 +683,10 @@ def video_summary(all_stats, dt_ms):
 
 
 def _ffmpeg_command(ffmpeg, size, fps, out):
-    return (
-        [ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24"]
-        + ["-s", "%dx%d" % size, "-r", "%g" % fps, "-i", "-"]
-        + ["-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2", "-c:v", "libx264", "-crf", "16", "-preset", "medium"]
-        + ["-pix_fmt", "yuv420p", "-movflags", "+faststart", out]
-    )
+    import sys
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+    from device.video_encode import command
+    return command(ffmpeg, size, fps, out)
 
 
 def worst_frames(all_stats, count):
