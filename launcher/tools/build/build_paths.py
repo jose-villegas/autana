@@ -11,12 +11,12 @@ import sys
 REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO / 'scripts/lib'))
 import autana_config
+from build_lock import BUILD_LOCK
 from espressif import idf_commit, idf_path
 
 HASH_LENGTH = 8
 OWNER_FILE = 'owner.txt'
 IDF_STAMP = '.autana-idf.json'
-BUILD_LOCK = 'autana-build.lock'
 PRESERVED = {'build.log', BUILD_LOCK}
 
 

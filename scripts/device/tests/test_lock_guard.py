@@ -1577,7 +1577,7 @@ class FlashImageScriptTests(unittest.TestCase):
         (self.tree / "launcher").mkdir()
         for relative in ("scripts/device/flash_image.sh", "launcher/tools/build/idf.sh",
                          "launcher/tools/build/idf_shim.bat", "launcher/tools/build/espressif.py",
-                         "launcher/tools/build/build_paths.py",
+                         "launcher/tools/build/build_paths.py", "launcher/tools/build/build_lock.py",
                          "scripts/lib/python.sh", "scripts/lib/python-min-version",
                          "scripts/device/device.py", "scripts/device/device_lock.py",
                          "scripts/device/device_hook.py", "scripts/device/device_report.py",

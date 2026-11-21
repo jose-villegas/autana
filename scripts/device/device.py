@@ -43,7 +43,7 @@ TOKEN_ENV = autana_config.TOKEN_ENV
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools" / "build"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools" / "device"))
 from espressif import espressif_tools_root, idf_path, idf_python  # noqa: E402  (path must be set up first)
-from build_paths import BUILD_LOCK  # noqa: E402
+from build_lock import BUILD_LOCK, POLL_SECONDS as BUILD_LOCK_POLL_SECONDS, try_lock_file, waiting_line  # noqa: E402
 
 
 COMMAND_ENV = autana_config.COMMAND_ENV
@@ -1182,7 +1182,6 @@ FLASH_SCRIPT = Path("scripts") / "device" / "flash_image.sh"
 VARIANT_FLAGS = {"release": [], "dev": ["--dev"], "diag": ["--diag"]}
 VARIANT_CONSOLE = {"release": False, "dev": True, "diag": True}
 BUILD_DIRS = {"release": "build", "dev": "build.dev", "diag": "build.diag"}
-BUILD_LOCK_POLL_SECONDS = 0.2
 FLASH_ARGS_FILE = re.compile(r"^0x[0-9a-fA-F]+\s+(\S+)\s*$")
 
 
@@ -1211,20 +1210,6 @@ def build_directory(worktree, variant):
     return Path(worktree) / "launcher" / BUILD_DIRS[variant]
 
 
-def try_lock_file(handle):
-    try:
-        if os.name == "nt":
-            import msvcrt
-            handle.seek(0)
-            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
-        else:
-            import fcntl
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        return True
-    except OSError:
-        return False
-
-
 @contextlib.contextmanager
 def build_directory_lock(build_dir):
     """Lock one build directory through its snapshot; yield its prepared path,
@@ -1237,7 +1222,7 @@ def build_directory_lock(build_dir):
     build_dir.mkdir(parents=True, exist_ok=True)
     with open(build_dir / BUILD_LOCK, "a+b") as handle:
         if not try_lock_file(handle):
-            print("waiting for another build in " + str(build_dir), file=sys.stderr)
+            print(waiting_line(build_dir), file=sys.stderr)
             while not try_lock_file(handle):
                 time.sleep(BUILD_LOCK_POLL_SECONDS)
         yield prepared
