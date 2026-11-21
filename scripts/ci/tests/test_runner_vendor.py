@@ -311,6 +311,20 @@ class BakesWorkflowTests(unittest.TestCase):
         return any(re.search(r"bake\.py (bake|shards)\b", line) and "--shards " not in line
                    for step in job["steps"] for line in step.get("run", "").splitlines())
 
+    def test_the_cpu_matrix_reports_one_check_name(self):
+        # Branch protection requires the cpu bake by its bare name, but a matrix reports as "<name> (candidate N)":
+        # one job of the bare name stands for it, runs whatever the matrix did, and passes on success or skipped.
+        jobs = self.jobs()
+        bare = jobs["cpu"]["name"].split(" (")[0]
+        self.assertNotEqual(bare, jobs["cpu"]["name"])
+        summary = [job for job in jobs.values() if job.get("name") == bare]
+        self.assertEqual(len(summary), 1)
+        self.assertEqual(summary[0]["needs"], "cpu")
+        self.assertIn("always()", summary[0]["if"])
+        run = "".join(step.get("run", "") for step in summary[0]["steps"])
+        self.assertIn("success", run)
+        self.assertIn("skipped", run)
+
     def test_every_job_that_traces_starts_as_vendor_candidates(self):
         jobs = self.jobs()
         tracing = [name for name, job in jobs.items() if self.traces(job)]

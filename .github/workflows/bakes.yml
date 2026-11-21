@@ -183,6 +183,22 @@ jobs:
         if: ${{ !cancelled() && steps.candidate.outputs.work == 'true' }}
         with: {step: record}
 
+  cpu-result:
+    # The required check: a matrix reports under its candidates' names, so this one name stands for them all.
+    # A skipped matrix (nothing to bake) passes; any other result than success fails.
+    name: Bake missing exports and meshes
+    needs: cpu
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: The candidates passed or had nothing to bake
+        env:
+          RESULT: ${{ needs.cpu.result }}
+        run: |
+          echo "cpu matrix: $RESULT"
+          [ "$RESULT" = success ] || [ "$RESULT" = skipped ]
+
   reference-plan:
     needs: inputs
     if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.cpu == 'true') }}
