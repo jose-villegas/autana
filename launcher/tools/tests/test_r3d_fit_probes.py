@@ -2,6 +2,7 @@
 
 import contextlib
 import io
+import itertools
 import json
 import pathlib
 import sys
@@ -45,8 +46,9 @@ class ClosureTests(unittest.TestCase):
                        np.zeros(2), 8, np.arange(6))
         size = self.SIZE
         views = [object()]
-        for fitted_holes in (self.START_HOLES, self.PIXELS):
-            with self.subTest(fitted_holes=fitted_holes), tempfile.TemporaryDirectory() as directory:
+        # Unbudgeted (the probe fit) keeps both triangles; a budget of one prunes the never-shown one before the check.
+        for (budget, tris), fitted_holes in itertools.product(((None, 2), ("1", 1)), (self.START_HOLES, self.PIXELS)):
+            with self.subTest(budget=budget, fitted_holes=fitted_holes), tempfile.TemporaryDirectory() as directory:
                 out = pathlib.Path(directory)
                 def write_mesh(*args):
                     (out / "mesh.bundle").touch()
@@ -66,9 +68,9 @@ class ClosureTests(unittest.TestCase):
                                                          side_effect=[np.array([0, 0]), np.array([1, 0])]))
                     stack.enter_context(mock.patch.object(appearance_simplify, "write_mesh", write_mesh))
                     stack.enter_context(mock.patch.object(appearance_simplify, "delta_e_total", return_value=(10.0, 4)))
-                    # A budget of one: the closure check must see the fit as pruned, not as optimised.
                     args = [*FitArgumentTests.BASE[:-1], str(out), *FitArgumentTests.held(out), "--closure",
-                            "--coverage-poses", "path.txt", "--coverage-poses", "probes.txt", "--budget", "1"]
+                            "--coverage-poses", "path.txt", "--coverage-poses", "probes.txt",
+                            *(["--budget", budget] if budget else [])]
                     if fitted_holes == self.PIXELS:
                         with self.assertRaisesRegex(ValueError, "closure"):
                             appearance_simplify.main(args)
@@ -78,7 +80,7 @@ class ClosureTests(unittest.TestCase):
                         self.assertTrue((out / "mesh.bundle").exists())
                     self.assertEqual(holes.call_count, 2)
                     self.assertIs(holes.call_args_list[0].args[0], mesh)
-                    self.assertEqual(len(holes.call_args_list[1].args[0].tris), 1)
+                    self.assertEqual(len(holes.call_args_list[1].args[0].tris), tris)
 
 
     def logged_fit(self, out, *extra):
@@ -121,17 +123,40 @@ class ClosureTests(unittest.TestCase):
             self.assertFalse([line for line in lines if line.startswith("held-out dE76") and "over" in line])
             self.assertEqual(holes.call_count, 0)
 
+    def test_of_two_held_out_sets_only_the_pictured_one_is_scored_and_the_other_named_not_measured(self):
+        with tempfile.TemporaryDirectory() as directory:
+            out = pathlib.Path(directory)
+            lines, _ = self.logged_fit(out, *FitArgumentTests.held(out), *FitArgumentTests.HELD_UNPICTURED)
+            self.assertIn("held-out dE76 (fit rasteriser): 2.500 over 2 views", lines)
+            self.assertIn("held-out dE76 (fit rasteriser): not measured, no held-out pictures for g.txt", lines)
+
     def test_closure_without_held_out_pictures_is_refused_before_the_fit(self):
-        error = io.StringIO()
-        with contextlib.redirect_stderr(error), self.assertRaises(SystemExit):
-            appearance_simplify.main([*FitArgumentTests.BASE, *FitArgumentTests.HELD, "--closure"])
-        self.assertIn("--closure needs held-out pictures; none for h.txt", error.getvalue())
+        with tempfile.TemporaryDirectory() as directory:
+            work = pathlib.Path(directory)
+            for held, named in ((FitArgumentTests.HELD, "h.txt"),
+                                ([*FitArgumentTests.held(work), *FitArgumentTests.HELD_UNPICTURED], "g.txt")):
+                with self.subTest(named=named):
+                    error = io.StringIO()
+                    with contextlib.redirect_stderr(error), self.assertRaises(SystemExit):
+                        appearance_simplify.main([*FitArgumentTests.BASE, *held, "--closure"])
+                    self.assertIn(f"--closure needs held-out pictures; none for {named}\n", error.getvalue())
+
+    def test_a_held_out_folder_is_pictured_only_with_a_png_in_it(self):
+        with tempfile.TemporaryDirectory() as directory:
+            folder = pathlib.Path(directory)
+            self.assertFalse(appearance_simplify.pictured(folder / "missing"))
+            self.assertFalse(appearance_simplify.pictured(folder))
+            (folder / "poses.txt").touch()
+            self.assertFalse(appearance_simplify.pictured(folder))
+            (folder / "0000.png").touch()
+            self.assertTrue(appearance_simplify.pictured(folder))
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class FitArgumentTests(unittest.TestCase):
     BASE = ["--scene", "s.toml", "--start", "a.bundle", "--poses", "p.txt", "--reference", "r", "--out", "o"]
     HELD = ["--held-out-poses", "h.txt", "--held-out-reference", "h"]
+    HELD_UNPICTURED = ["--held-out-poses", "g.txt", "--held-out-reference", "g"]
 
     @staticmethod
     def held(work):

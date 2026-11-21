@@ -206,6 +206,22 @@ class SeamHoldTests(unittest.TestCase):
         free = sorted(set(range(len(start))) - set(holds.points) - set(holds.pinned))
         np.testing.assert_array_equal(result[free], moved.numpy()[free])
 
+    @unittest.skipIf(torch is None, "needs PyTorch")
+    def test_a_held_point_lies_on_its_pinned_target_where_it_starts(self):
+        from r3d.appearance_simplify import hold_seams, seam_holds
+
+        # Two stacked planes: the upper one is held to the lower, whose points are pinned as its targets. With
+        # every point moved, the held ones must land on the target at its start: pinning comes before holding.
+        mesh = self.mesh()
+        plane = np.array([[0, 0, 0], [2, 0, 0], [0, 2, 0]], dtype=float)
+        start = np.vstack([plane + [0, 0, 0.1], plane])
+        holds = seam_holds(mesh._replace(points=start), np.full(len(start), 0.25))
+        self.assertTrue(set(holds.corners.ravel()) <= set(holds.pinned))
+        moved = torch.tensor(start + [0.3, -0.2, 0.4])
+        result = hold_seams(moved, holds, torch.tensor(start)).numpy()
+        np.testing.assert_allclose(result[holds.points],
+                                   (start[holds.corners] * holds.barycentric[..., None]).sum(axis=1))
+
     def test_welded_interior_point_is_not_a_border(self):
         from r3d.appearance_simplify import seam_holds
 
