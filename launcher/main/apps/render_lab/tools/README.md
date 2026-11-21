@@ -627,9 +627,7 @@ PYTHON=python sh launcher/main/apps/render_lab/tools/doc_images.sh /path/to/out 
 ```
 
 `tests/test_sky_through_walls.py`
-checks the app flythrough against its sky-through-wall ceilings. Enclosed sky
-counts unless the source mesh (`source/sponza.obj`, pulled from Git LFS)
-shows sky at that pixel too.
+checks the app flythrough against its sky-through-wall ceilings.
 
 ## Sponza poses
 
