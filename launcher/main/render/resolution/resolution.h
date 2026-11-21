@@ -127,3 +127,23 @@ int resolution_predict_choose(resolution_predict_t* predict, const resolution_co
 /* Total draw and upscale cost adjusts the fit's scale and offset. */
 void resolution_predict_measured(resolution_predict_t* predict, const resolution_config_t* config, int triangles,
                                  int32_t frame_us);
+
+/* A config's budget is the whole frame's target: the policies hold the
+ * scaled part (draw and upscale) to the target less what frames pay outside
+ * it. That cost is an exponential average of weight 1/2^RESOLUTION_UNSCALED_WEIGHT_SHIFT, TCP's smoothed
+ * round-trip gain (RFC 6298 section 2.3), starting from its first sample; the
+ * scaled part keeps at least RESOLUTION_SCALED_MIN_PERCENT of the target. */
+#define RESOLUTION_UNSCALED_WEIGHT_SHIFT 3
+#define RESOLUTION_SCALED_MIN_PERCENT    25
+
+typedef struct {
+    int32_t us;   /* the learned cost outside the scaled part */
+    bool learned; /* `us` holds a sample */
+} resolution_unscaled_t;
+
+/* Folds one frame's cost outside the scaled part in, taken between 0 and
+ * the target: a stalled frame moves the average by its weight of the target at most. */
+void resolution_unscaled_learn(resolution_unscaled_t* unscaled, int32_t sample_us, int32_t target_us);
+
+/* The scaled part's budget: the target less the learned cost, at least the floor share. */
+int32_t resolution_scaled_budget_us(const resolution_unscaled_t* unscaled, int32_t target_us);

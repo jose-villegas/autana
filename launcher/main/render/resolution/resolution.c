@@ -359,3 +359,19 @@ resolution_predict_measured(resolution_predict_t* p, const resolution_config_t* 
         reset_refit(p);
     }
 }
+
+void
+resolution_unscaled_learn(resolution_unscaled_t* unscaled, int32_t sample_us, int32_t target_us) {
+    sample_us = sample_us < 0 ? 0 : sample_us > target_us ? target_us : sample_us;
+    unscaled->us = unscaled->learned
+                       ? unscaled->us + (sample_us - unscaled->us) / (1 << RESOLUTION_UNSCALED_WEIGHT_SHIFT)
+                       : sample_us;
+    unscaled->learned = true;
+}
+
+int32_t
+resolution_scaled_budget_us(const resolution_unscaled_t* unscaled, int32_t target_us) {
+    const int32_t floor_us = target_us * RESOLUTION_SCALED_MIN_PERCENT / 100;
+    const int32_t left_us = target_us - unscaled->us;
+    return left_us > floor_us ? left_us : floor_us;
+}
