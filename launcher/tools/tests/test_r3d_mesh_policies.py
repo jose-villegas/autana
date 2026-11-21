@@ -266,7 +266,7 @@ class MeshPolicyTests(unittest.TestCase):
                               bake=SimpleNamespace(indirect=None, ray_offset=0.01, ao=None, colour_merge_step=6))
         scene = SimpleNamespace(lights=[{'type': 'directional', 'mode': LIGHT_MODE_BAKED, 'direction': [1, 0, 0], 'color': [1, 1, 1], 'intensity': 1}],
                                 tonemap_white=1, indirect=SimpleNamespace(intensity=1))
-        query = SimpleNamespace(blocked=lambda origin, direction: np.zeros(len(origin), dtype=bool))
+        query = SimpleNamespace(blocked=lambda origin, direction, reach=None: np.zeros(len(origin), dtype=bool))
         with patch.object(mesh_import, 'load_source', return_value=src), \
              patch.object(mesh_import, 'RayQuery', return_value=query) as rays, \
              watched_simplify() as run, \
