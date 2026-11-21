@@ -5,8 +5,21 @@
 
 #include "asset/asset_bytes.h"
 #include "asset/asset_entry.h"
+#include "core/tune.h"
+#include "image/colour/oklab.h"
+#include "image/colour/srgb.h"
 #include "math/scalar/mathi.h"
 #include "render/r3d_span_internal.h"
+
+TUNE_OWNER(texture);
+/* 0 opens every texture with no flat level, so every level reads its texels:
+ * a figure or a stress row sets the flat fill against them. Read when a
+ * texture opens. */
+TUNE(texture, flat, 1, 0, 1);
+
+/* The OKLab distance under which a colour is not told from another: the
+ * just noticeable difference, 0.02 (CSS Color 4). */
+#define FLAT_JND 0.02F
 
 static int
 luma(int r, int g, int b) {
@@ -32,6 +45,63 @@ build_colormap(r3d_texture_t* t, const uint8_t* palette, const uint8_t tint[3]) 
             t->colormap[l][i] = r3d_span_pack(channel[0], channel[1], channel[2]);
         }
     }
+}
+
+/* The sRGB byte colour `rgb` in OKLab. */
+static oklabf_t
+oklab_of(const int rgb[3]) {
+    return oklabf_from_linear((vec3f_t){srgbf_decode_byte((uint8_t)rgb[0]), srgbf_decode_byte((uint8_t)rgb[1]),
+                                        srgbf_decode_byte((uint8_t)rgb[2])});
+}
+
+/* A bit per palette colour that, lit at the tint, is within FLAT_JND of the
+ * tint: the colour the flat fill draws, as the pattern averages
+ * R3D_TEXTURE_ONE. */
+static uint32_t
+colours_like_the_tint(const uint8_t* palette, const uint8_t tint[3]) {
+    const int tint_rgb[3] = {tint[0], tint[1], tint[2]};
+    const oklabf_t flat = oklab_of(tint_rgb);
+    uint32_t like = 0;
+    for (int i = 0; i < R3D_TEXTURE_COLOURS; i++) {
+        int lit[3];
+        for (int k = 0; k < 3; k++) {
+            lit[k] = mathi_min((tint[k] * palette[(i * R3D_TEXTURE_PALETTE_STRIDE) + k]) / R3D_TEXTURE_ONE, UINT8_MAX);
+        }
+        const oklabf_t c = oklab_of(lit);
+        const float dl = c.l - flat.l, da = c.a - flat.a, db = c.b - flat.b;
+        if ((dl * dl) + (da * da) + (db * db) <= FLAT_JND * FLAT_JND) {
+            like |= 1U << i;
+        }
+    }
+    return like;
+}
+
+/* A bit per palette colour INDEX4 level `level` of `t` uses. */
+static uint32_t
+colours_used(const r3d_texture_t* t, int level) {
+    const uint32_t all = (1U << R3D_TEXTURE_COLOURS) - 1U;
+    const uint32_t bytes = r3d_texture_level_bytes(R3D_TEXTURE_INDEX4, t->size_log2 - level);
+    uint32_t used = 0;
+    for (uint32_t i = 0; i < bytes && used != all; i++) {
+        used |= (1U << (t->texels[level][i] & 0x0FU)) | (1U << (t->texels[level][i] >> 4)); /* magic: two nibbles */
+    }
+    return used;
+}
+
+/* The first level of `t` from which every level draws flat unseen: each
+ * colour it uses, lit at the tint, like the tint. `levels` when none does,
+ * for MASK1, or with texture.flat at 0. */
+static uint8_t
+flat_level_of(const r3d_texture_t* t, const uint8_t* palette, const uint8_t tint[3]) {
+    int level = t->levels;
+    if (t->format != R3D_TEXTURE_INDEX4 || flat == 0) {
+        return (uint8_t)level;
+    }
+    const uint32_t like = colours_like_the_tint(palette, tint);
+    while (level > 0 && (colours_used(t, level - 1) & ~like) == 0) {
+        level--;
+    }
+    return (uint8_t)level;
 }
 
 asset_status_t
@@ -72,6 +142,7 @@ r3d_texture_from_asset(const asset_view_t* asset, r3d_texture_t* texture) {
     texture->format = (uint8_t)format;
     texture->size_log2 = (uint8_t)size_log2;
     texture->levels = (uint8_t)levels;
+    texture->flat_level = flat_level_of(texture, data + palette_off, data + R3D_TEXTURE_AT_TINT);
     build_colormap(texture, data + palette_off, data + R3D_TEXTURE_AT_TINT);
     return ASSET_OK;
 }

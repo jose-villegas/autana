@@ -303,7 +303,6 @@ class RenderSettingsPackTests(unittest.TestCase):
                                                     "anim.hysteresis_px": [64],
                                                     "texture.divide_px": [16], "texture.affine_bend": [16],
                                                     "texture.affine_level": [1],
-                                                    "texture.far_level": [3],
                                                     "small_fill.ceiling": [4], "small_fill.gate": [0],
                                                     "small_fill.style": [0]}, 4))
 

@@ -33,10 +33,7 @@ typedef struct r3d_span_writer r3d_span_writer_t;
 
 /* A fill's face colour by value, in the target's format, or this for the
  * vertex colours: never a pointer, so no caller's frame holds it in memory. */
-#define R3D_SPAN_FACE_NONE  UINT32_MAX
-
-/* Bits of a level setting in r3d_span_target_t: levels 0..15. */
-#define R3D_SPAN_LEVEL_BITS 4
+#define R3D_SPAN_FACE_NONE UINT32_MAX
 
 /* Where a triangle is filled: a render target whose colour is the panel's
  * own format, RGB565 with its two bytes swapped, so a framebuffer can be its
@@ -47,12 +44,10 @@ typedef struct r3d_span_target {
     int writer_count;
     bool skip_hidden; /* render_view_t.skip_hidden: fills cap their depth, and writers follow */
     /* The draw's render_texture_settings_t: divide_px, affine_bend in
-     * 1/R3D_SPAN_BEND_STEPS texel, affine_level and far_level, the two levels
-     * sharing a byte so the target keeps its size. */
+     * 1/R3D_SPAN_BEND_STEPS texel and affine_level. */
     uint8_t texture_divide_px;
     uint8_t texture_bend_steps;
-    uint8_t texture_affine_level : R3D_SPAN_LEVEL_BITS;
-    uint8_t texture_far_level    : R3D_SPAN_LEVEL_BITS;
+    uint8_t texture_affine_level;
     const r3d_span_small_fill_t* small_fill;
 
     union {
@@ -70,8 +65,7 @@ typedef struct r3d_span_target {
 #define R3D_SPAN_BEND_STEPS 16
 _Static_assert(RENDER_TEXTURE_DIVIDE_PX_MAX <= UINT8_MAX, "texture.divide_px fits its byte");
 _Static_assert(RENDER_TEXTURE_BEND_MAX* R3D_SPAN_BEND_STEPS <= UINT8_MAX, "texture.affine_bend fits its byte");
-_Static_assert(RENDER_TEXTURE_LEVEL_MAX < (1 << R3D_SPAN_LEVEL_BITS),
-               "texture.affine_level and far_level fit their bits");
+_Static_assert(RENDER_TEXTURE_LEVEL_MAX <= UINT8_MAX, "texture.affine_level fits its byte");
 
 /* Sets `target`'s textured fill to `texture`. */
 static inline void
@@ -79,7 +73,6 @@ r3d_span_set_texture(r3d_span_target_t* target, const render_texture_settings_t*
     target->texture_divide_px = (uint8_t)texture->divide_px;
     target->texture_bend_steps = (uint8_t)((texture->affine_bend * (float)R3D_SPAN_BEND_STEPS) + 0.5F);
     target->texture_affine_level = (uint8_t)texture->affine_level;
-    target->texture_far_level = (uint8_t)texture->far_level;
 }
 
 /* Colour and depth alone, rows [row0, row1) `width` wide, each buffer

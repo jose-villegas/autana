@@ -8,6 +8,7 @@
 #include "asset/asset_pack.h"
 #include "collections/bits.h"
 #include "core/memory.h"
+#include "core/tune.h"
 #include "image/pixel/bayer.h"
 #include "image/pixel/rgb565.h"
 #include "math/scalar/mathi.h"
@@ -141,12 +142,12 @@ vertex(float x, float y, float z, float grey) {
 }
 
 /* The triangle over the target's top-left half, every corner `grey`, drawn
- * into target `which` with the corners' `uv`, levels from `far_level` on
- * drawn untextured (0: none). */
+ * into target `which` with the corners' `uv`, the texture's levels from
+ * `flat_level` on drawn untextured (TEX_LEVELS: none). */
 static void
-draw_corner_far(int which, float grey, const vec2f_t uv[3], int far_level) {
+draw_corner_flat(int which, float grey, const vec2f_t uv[3], int flat_level) {
     r3d_span_target_t target = target_at(which);
-    target.texture_far_level = (uint8_t)far_level;
+    texture->flat_level = (uint8_t)flat_level;
     const r3d_span_vertex_t a = vertex(0, 0, 0.5F, grey), b = vertex(SIDE, 0, 0.5F, grey),
                             c = vertex(0, SIDE, 0.5F, grey);
     r3d_span_textured_triangle(&target, &a, &b, &c, uv, texture);
@@ -154,7 +155,7 @@ draw_corner_far(int which, float grey, const vec2f_t uv[3], int far_level) {
 
 static void
 draw_corner(int which, float grey, const vec2f_t uv[3]) {
-    draw_corner_far(which, grey, uv, 0);
+    draw_corner_flat(which, grey, uv, TEX_LEVELS);
 }
 
 static void
@@ -277,11 +278,11 @@ static const vec2f_t minified[3] = {{0, 0}, {4 * SIDE, 0}, {0, 4 * SIDE}};
 #define FAR_GREY_B 120.0F
 #define FAR_GREY_C 240.0F
 
-/* A level from far_level on draws one colour, its corners' mean, over the
+/* A level from the texture's flat level on draws one colour, its corners' mean, over the
  * pixels the solid fill covers, and reads no texel: its texels are made dark
  * first. */
 static void
-test_a_far_level_draws_flat_in_its_corners_mean(void) {
+test_a_flat_level_draws_in_its_corners_mean(void) {
     fixture();
     clear();
     const r3d_span_vertex_t a = vertex(0, 0, 0.5F, FAR_GREY_A), b = vertex(SIDE, 0, 0.5F, FAR_GREY_B),
@@ -290,9 +291,9 @@ test_a_far_level_draws_flat_in_its_corners_mean(void) {
     r3d_span_target_t solid = target_at(1);
     r3d_span_triangle_solid(&solid, &a, &b, &c, r3d_span_pack_rgb(mean, mean, mean));
     memset(ltex + LEVEL_2_OFF, (DARK_INDEX << 4) | DARK_INDEX, LEVEL_2_BYTES); /* magic: two INDEX4 texels a byte */
-    r3d_span_target_t far = target_at(0);
-    far.texture_far_level = LEVEL_2;
-    r3d_span_textured_triangle(&far, &a, &b, &c, minified, texture);
+    r3d_span_target_t flat = target_at(0);
+    texture->flat_level = LEVEL_2;
+    r3d_span_textured_triangle(&flat, &a, &b, &c, minified, texture);
     TEST_ASSERT_EQUAL_UINT16_ARRAY(buffers + (2 * PIXELS), buffers, 2 * PIXELS);
 }
 
@@ -304,10 +305,10 @@ test_a_far_level_draws_flat_in_its_corners_mean(void) {
 #define FAR_SLIVER_FAR_Z  0.125F
 #define FAR_SLIVER_RIGHT  (22.0F + (1.0F / R3D_SUBPIXEL))
 
-/* With skip_hidden, a far triangle is the capped solid fill: over depth one
+/* With skip_hidden, a flat triangle is the capped solid fill: over depth one
  * above its limit everywhere it changes no pixel, as a skipped cluster. */
 static void
-test_a_far_level_under_skip_hidden_is_capped(void) {
+test_a_flat_level_under_skip_hidden_is_capped(void) {
     fixture();
     const int pixels = FAR_SLIVER_COLS * FAR_SLIVER_ROWS;
     uint16_t* color = calloc((size_t)pixels, sizeof *color);
@@ -320,7 +321,7 @@ test_a_far_level_under_skip_hidden_is_capped(void) {
     }
     r3d_span_target_t target = r3d_span_target(color, depth, FAR_SLIVER_COLS, 0, FAR_SLIVER_ROWS);
     target.skip_hidden = true;
-    target.texture_far_level = LEVEL_2;
+    texture->flat_level = LEVEL_2;
     const float bottom = (float)(FAR_SLIVER_ROWS - 1);
     const r3d_span_vertex_t a = vertex(20.0F, 0.0F, FAR_SLIVER_FAR_Z, FAR_GREY),
                             b = vertex(22.0F, bottom, FAR_SLIVER_NEAR_Z, FAR_GREY),
@@ -333,21 +334,22 @@ test_a_far_level_under_skip_hidden_is_capped(void) {
     }
     free(color);
     free(depth);
-    TEST_ASSERT_FALSE_MESSAGE(changed, "a capped far sliver changed a pixel");
+    TEST_ASSERT_FALSE_MESSAGE(changed, "a capped flat sliver changed a pixel");
 }
 
-/* far_level 0, or one past the triangle's level, reads its texels: the same
- * pixels either way, unlike far_level at its level, which draws untextured. */
+/* No flat level, or one past the triangle's level, reads its texels: the
+ * same pixels either way, unlike a flat level at its level, which draws
+ * untextured. */
 static void
-test_a_level_before_far_level_reads_its_texels(void) {
+test_a_level_before_the_flat_level_reads_its_texels(void) {
     fixture();
     clear();
-    draw_corner_far(0, FAR_GREY, minified, 0);
-    draw_corner_far(1, FAR_GREY, minified, LEVEL_2 + 1);
+    draw_corner_flat(0, FAR_GREY, minified, TEX_LEVELS);
+    draw_corner_flat(1, FAR_GREY, minified, LEVEL_2 + 1);
     TEST_ASSERT_EQUAL_UINT16_ARRAY(buffers, buffers + (2 * PIXELS), 2 * PIXELS);
-    draw_corner_far(2, FAR_GREY, minified, LEVEL_2);
+    draw_corner_flat(2, FAR_GREY, minified, LEVEL_2);
     TEST_ASSERT_FALSE_MESSAGE(memcmp(buffers, buffers + (4 * PIXELS), PIXELS * sizeof *buffers) == 0,
-                              "the far level drew its texels");
+                              "the flat level drew its texels");
 }
 
 /* Moved texels draw what the entry's did, and the entry is no longer read:
@@ -410,8 +412,87 @@ test_entry_rejects_bad_headers(void) {
     const asset_view_t short_view = {ltex, TEX_BYTES - 1};
     TEST_ASSERT_EQUAL(ASSET_ERR_BOUNDS, r3d_texture_from_asset(&short_view, t));
     TEST_ASSERT_NULL(t->texels[0]);
-    ltex[R3D_TEXTURE_AT_VERSION] = 2;
+    ltex[R3D_TEXTURE_AT_VERSION] = R3D_TEXTURE_VERSION + 1;
     TEST_ASSERT_EQUAL(ASSET_ERR_VERSION, r3d_texture_from_asset(&view, t));
+}
+
+#define LEVEL_1_OFF   (TEXELS_OFF + 32)
+#define LEVEL_1_BYTES 8
+#define NEAR_INDEX    9 /* given a palette colour one step off the mean */
+
+/* The level at `offset`, `bytes` long, all index `index`. */
+static void
+fill_level(int offset, int bytes, int index) {
+    memset(ltex + offset, (index << 4) | index, (size_t)bytes); /* magic: two INDEX4 texels a byte */
+}
+
+/* Opens ltex into the fixture's texture. */
+static void
+reopen(void) {
+    const asset_view_t view = {ltex, TEX_BYTES};
+    TEST_ASSERT_EQUAL(ASSET_OK, r3d_texture_from_asset(&view, texture));
+}
+
+/* A last level whose colours, lit at the tint, all look like the tint opens
+ * flat from there, and the fill draws it as the corners' mean solid fill.
+ * One colour a step off the mean still looks like it: the test is a
+ * distance, not equality. */
+static void
+test_a_last_level_like_the_tint_opens_flat_and_draws_its_corners_mean(void) {
+    fixture();
+    clear();
+    ltex[PALETTE_OFF + (NEAR_INDEX * R3D_TEXTURE_PALETTE_STRIDE)] = R3D_TEXTURE_ONE + 1;
+    memset(ltex + PALETTE_OFF + (NEAR_INDEX * R3D_TEXTURE_PALETTE_STRIDE) + 1, R3D_TEXTURE_ONE, 2);
+    ltex[LEVEL_2_OFF] = (uint8_t)((NEAR_INDEX << 4) | MEAN_INDEX); /* magic: two INDEX4 texels a byte */
+    ltex[LEVEL_2_OFF + 1] = (uint8_t)((MEAN_INDEX << 4) | MEAN_INDEX);
+    reopen();
+    TEST_ASSERT_EQUAL_UINT8(LEVEL_2, texture->flat_level);
+    const r3d_span_vertex_t a = vertex(0, 0, 0.5F, FAR_GREY), b = vertex(SIDE, 0, 0.5F, FAR_GREY),
+                            c = vertex(0, SIDE, 0.5F, FAR_GREY);
+    r3d_span_target_t solid = target_at(1);
+    r3d_span_triangle_solid(&solid, &a, &b, &c, r3d_span_pack_rgb(FAR_GREY, FAR_GREY, FAR_GREY));
+    r3d_span_target_t flat = target_at(0);
+    r3d_span_textured_triangle(&flat, &a, &b, &c, minified, texture);
+    TEST_ASSERT_EQUAL_UINT16_ARRAY(buffers + (2 * PIXELS), buffers, 2 * PIXELS);
+}
+
+/* One texel a noticeable colour away keeps its level textured; a level like
+ * the tint above a coarser one that is not stays textured too, as every
+ * level from the flat one on draws flat. */
+static void
+test_a_level_with_a_colour_unlike_the_tint_or_above_one_stays_textured(void) {
+    fixture();
+    fill_level(LEVEL_2_OFF, LEVEL_2_BYTES, MEAN_INDEX);
+    ltex[LEVEL_2_OFF] = (uint8_t)((DARK_INDEX << 4) | MEAN_INDEX); /* magic: two INDEX4 texels a byte */
+    reopen();
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(TEX_LEVELS, texture->flat_level, "one dark texel");
+    fill_level(LEVEL_1_OFF, LEVEL_1_BYTES, MEAN_INDEX);
+    reopen();
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(TEX_LEVELS, texture->flat_level, "a flat-looking level over a textured one");
+    fill_level(LEVEL_2_OFF, LEVEL_2_BYTES, MEAN_INDEX);
+    reopen();
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(1, texture->flat_level, "levels 1 and 2 both like the tint");
+}
+
+static void
+reset_flat_tunable(void) {
+    (void)tune_reset(tune_shared(), TUNE_NAME(texture, flat));
+    cleanup();
+}
+
+/* texture.flat 0 opens every texture with no flat level, whatever its
+ * texels; reset, the texels' level holds again. */
+static void
+test_the_flat_tunable_at_0_opens_no_flat_level(void) {
+    fixture();
+    suite_set_test_cleanup(reset_flat_tunable);
+    fill_level(LEVEL_2_OFF, LEVEL_2_BYTES, MEAN_INDEX);
+    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(texture, flat), 0));
+    reopen();
+    TEST_ASSERT_EQUAL_UINT8(TEX_LEVELS, texture->flat_level);
+    TEST_ASSERT_TRUE(tune_reset(tune_shared(), TUNE_NAME(texture, flat)));
+    reopen();
+    TEST_ASSERT_EQUAL_UINT8(LEVEL_2, texture->flat_level);
 }
 
 #define MASK_LOG2          4
@@ -477,6 +558,7 @@ test_mask1_entry_opens_with_its_format_levels_and_texels(void) {
     TEST_ASSERT_EQUAL_UINT8(R3D_TEXTURE_MASK1, mask_texture->format);
     TEST_ASSERT_EQUAL_UINT8(MASK_BIG_LOG2, mask_texture->size_log2);
     TEST_ASSERT_EQUAL_UINT8(2, mask_texture->levels);
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(2, mask_texture->flat_level, "MASK1 has no flat level");
     TEST_ASSERT_EQUAL_PTR(mask_ltex + R3D_TEXTURE_HEADER_SIZE + MASK_PALETTE_BYTES, mask_texture->texels[0]);
     TEST_ASSERT_EQUAL_PTR(mask_texture->texels[0] + first, mask_texture->texels[1]);
     TEST_ASSERT_EQUAL_UINT32(first + second, (uint32_t)r3d_texture_texel_bytes(mask_texture));
@@ -1662,7 +1744,7 @@ test_near_clipped_textured_triangle_keeps_its_coverage_and_its_pattern(void) {
 static render_texture_settings_t
 settings_of(int divide_px, float bend) {
     /* every level reads its texels */
-    return (render_texture_settings_t){divide_px, bend, RENDER_SETTINGS_DEFAULT.texture.affine_level, 0};
+    return (render_texture_settings_t){divide_px, bend, RENDER_SETTINGS_DEFAULT.texture.affine_level};
 }
 
 #define FLOOR_SPAN 44 /* the floor's width and height in pixels */
@@ -1971,21 +2053,20 @@ mask_two_levels_open(void) {
     TEST_ASSERT_EQUAL(ASSET_OK, mask_open(size));
 }
 
-/* A MASK1 triangle whose level is at far_level is cut as at far_level 0: the
+/* A MASK1 triangle whose level is at its flat level is cut as with none: the
  * holes keep their pixel's colour and depth, not the plain fill's. */
 static void
-test_a_mask1_triangle_at_the_far_level_keeps_its_holes(void) {
+test_a_mask1_triangle_at_its_flat_level_keeps_its_holes(void) {
     fixture();
     mask_two_levels_open();
     background(0);
     background(1);
     background(2);
-    r3d_span_target_t off = target_at(0);
-    r3d_span_target_t far = target_at(1);
-    off.texture_far_level = 0;
-    far.texture_far_level = 1;
+    const r3d_span_target_t off = target_at(0);
+    const r3d_span_target_t flat = target_at(1);
     draw_masked_stepping(&off, MASK_LEVEL_1_STEP);
-    draw_masked_stepping(&far, MASK_LEVEL_1_STEP);
+    mask_texture->flat_level = 1;
+    draw_masked_stepping(&flat, MASK_LEVEL_1_STEP);
     plain_corner(2);
     int drawn = 0;
     int covered = 0;
@@ -2027,7 +2108,7 @@ test_writers_mark_exactly_the_pixels_a_far_fill_drew(void) {
     r3d_span_target_t target = target_at(0);
     r3d_span_writer_t writer;
     with_marking_writer(&target, &writer);
-    target.texture_far_level = LEVEL_2;
+    texture->flat_level = LEVEL_2;
     const r3d_span_vertex_t a = vertex(0, 0, 0.5F, BRIGHTEST), b = vertex(SIDE, 0, 0.5F, BRIGHTEST),
                             c = vertex(0, SIDE, 0.5F, BRIGHTEST);
     r3d_span_textured_triangle(&target, &a, &b, &c, minified, texture);
@@ -2382,36 +2463,20 @@ test_the_rasters_texture_settings_reach_the_fill(void) {
                                      "the raster's divide_px does not reach the textured fill");
 }
 
-/* The floor's UVs this many times longer: it minifies past level 1, so
- * part of it picks RIG_FAR_LEVEL, a far level whatever the default is. */
-#define RIG_FAR_SCALE 8
-#define RIG_FAR_LEVEL 2
-
-static void
-test_the_rasters_far_level_reaches_the_fill(void) {
-    render_texture_settings_t far = settings_of(0, RENDER_SETTINGS_DEFAULT.texture.affine_bend);
-    far.far_level = RIG_FAR_LEVEL;
-    TEST_ASSERT_GREATER_THAN_MESSAGE(
-        0, rig_pixels_differing(RIG_FAR_SCALE, settings_of(0, RENDER_SETTINGS_DEFAULT.texture.affine_bend), far),
-        "the raster's far_level does not reach the textured fill");
-}
-
 /* r3d_span_set_texture() keeps the settings' exact values in its bytes. */
 static void
 test_set_texture_keeps_divide_px_and_the_bend_in_steps_and_rounds_a_fine_bend_up(void) {
     r3d_span_target_t t = {0};
     r3d_span_set_texture(&t, &(render_texture_settings_t){RENDER_TEXTURE_DIVIDE_PX_MAX, RENDER_TEXTURE_BEND_MAX,
-                                                          RENDER_TEXTURE_LEVEL_MAX, 0});
+                                                          RENDER_TEXTURE_LEVEL_MAX});
     TEST_ASSERT_EQUAL_UINT8(RENDER_TEXTURE_DIVIDE_PX_MAX, t.texture_divide_px);
     TEST_ASSERT_EQUAL_UINT8(RENDER_TEXTURE_LEVEL_MAX, t.texture_affine_level);
     TEST_ASSERT_EQUAL_UINT8((int)(RENDER_TEXTURE_BEND_MAX * R3D_SPAN_BEND_STEPS), t.texture_bend_steps);
-    r3d_span_set_texture(&t, &(render_texture_settings_t){1, 1.0F / (2.0F * R3D_SPAN_BEND_STEPS), 0, 0});
+    r3d_span_set_texture(&t, &(render_texture_settings_t){1, 1.0F / (2.0F * R3D_SPAN_BEND_STEPS), 0});
     TEST_ASSERT_EQUAL_UINT8(1, t.texture_bend_steps);
-    r3d_span_set_texture(&t, &(render_texture_settings_t){0, 1.0F / (4.0F * R3D_SPAN_BEND_STEPS), 0, 0});
+    r3d_span_set_texture(&t, &(render_texture_settings_t){0, 1.0F / (4.0F * R3D_SPAN_BEND_STEPS), 0});
     TEST_ASSERT_EQUAL_UINT8(0, t.texture_bend_steps);
     TEST_ASSERT_EQUAL_UINT8(0, t.texture_divide_px);
-    r3d_span_set_texture(&t, &(render_texture_settings_t){.far_level = RENDER_TEXTURE_LEVEL_MAX});
-    TEST_ASSERT_EQUAL_UINT8(RENDER_TEXTURE_LEVEL_MAX, t.texture_far_level);
 }
 
 /* Both triangles on chart 0, a MASK1 texture, the target with a writer: the
@@ -2705,10 +2770,13 @@ run_r3d_texture_suite(void) {
     RUN_TEST(test_shared_edge_neither_cracks_nor_overlaps);
     RUN_TEST(test_affine_samples_the_texel_under_each_centre);
     RUN_TEST(test_minified_triangle_takes_the_matching_level);
-    RUN_TEST(test_a_far_level_draws_flat_in_its_corners_mean);
-    RUN_TEST(test_a_far_level_under_skip_hidden_is_capped);
-    RUN_TEST(test_a_level_before_far_level_reads_its_texels);
-    RUN_TEST(test_a_mask1_triangle_at_the_far_level_keeps_its_holes);
+    RUN_TEST(test_a_last_level_like_the_tint_opens_flat_and_draws_its_corners_mean);
+    RUN_TEST(test_a_level_with_a_colour_unlike_the_tint_or_above_one_stays_textured);
+    RUN_TEST(test_the_flat_tunable_at_0_opens_no_flat_level);
+    RUN_TEST(test_a_flat_level_draws_in_its_corners_mean);
+    RUN_TEST(test_a_flat_level_under_skip_hidden_is_capped);
+    RUN_TEST(test_a_level_before_the_flat_level_reads_its_texels);
+    RUN_TEST(test_a_mask1_triangle_at_its_flat_level_keeps_its_holes);
     RUN_TEST(test_writers_mark_exactly_the_pixels_a_far_fill_drew);
     RUN_TEST(test_moved_texels_draw_without_the_entry);
     RUN_TEST(test_texel_at_the_mean_draws_the_vertex_colour);
@@ -2777,7 +2845,6 @@ run_r3d_texture_suite(void) {
     RUN_TEST(test_a_triangle_whole_tiles_away_draws_the_same_pixels);
     RUN_TEST(test_a_bent_mask1_triangle_draws_the_same_at_any_divide_px);
     RUN_TEST(test_the_rasters_texture_settings_reach_the_fill);
-    RUN_TEST(test_the_rasters_far_level_reaches_the_fill);
     RUN_TEST(test_set_texture_keeps_divide_px_and_the_bend_in_steps_and_rounds_a_fine_bend_up);
     RUN_TEST(test_a_mask1_chart_draws_textured_under_a_writer_marking_only_kept_pixels);
     RUN_TEST(test_an_index4_chart_under_a_writer_draws_exactly_as_plain);
