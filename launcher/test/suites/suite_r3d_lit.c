@@ -2467,12 +2467,20 @@ census_raster(const r3d_instance_t* instances, int count) {
     return raster;
 }
 
-static void
-test_cull_off_keeps_every_cluster(void) {
+/* census_raster() of `instance`, set to the wall and stack alone. */
+static raster_t
+wall_and_stack_raster(r3d_instance_t* instance) {
     parts_t* const p = parts_buffer(&shared_parts);
     build_wall_and_stack(p);
-    const r3d_instance_t instance = {.mesh = &p->mesh};
-    raster_t raster = census_raster(&instance, 1);
+    *instance = (r3d_instance_t){.mesh = &p->mesh};
+    return census_raster(instance, 1);
+}
+
+static void
+test_cull_off_keeps_every_cluster(void) {
+    r3d_instance_t instance;
+    raster_t raster = wall_and_stack_raster(&instance);
+    const r3d_lit_mesh_t* const mesh = instance.mesh;
     const fixture_camera_t camera = camera_down_plus_z(10000.0f, -400, 1.0f);
     const render_view_t view = render_view_fixture(&camera, &raster, 0);
     const raster_stats_t on = raster_draw(&raster, &view);
@@ -2480,11 +2488,11 @@ test_cull_off_keeps_every_cluster(void) {
     cull_off.cull = false;
     raster.settings = &cull_off;
     const raster_stats_t off = raster_draw(&raster, &view);
-    TEST_ASSERT_LESS_THAN_INT(p->mesh.cluster_count, on.clusters);
-    TEST_ASSERT_EQUAL_INT(p->mesh.cluster_count, off.clusters);
+    TEST_ASSERT_LESS_THAN_INT(mesh->cluster_count, on.clusters);
+    TEST_ASSERT_EQUAL_INT(mesh->cluster_count, off.clusters);
     int triangles = 0;
-    for (int i = 0; i < p->mesh.cluster_count; i++) {
-        triangles += p->mesh.clusters[i].triangle_count;
+    for (int i = 0; i < mesh->cluster_count; i++) {
+        triangles += mesh->clusters[i].triangle_count;
     }
     TEST_ASSERT_EQUAL_INT(triangles, off.triangles);
 }
@@ -2582,10 +2590,8 @@ test_a_census_list_draws_what_raster_draw_draws_at_any_size(void) {
  * depth at the old scale. */
 static void
 test_a_census_that_moves_the_depth_scale_redraws_every_row(void) {
-    parts_t* const p = parts_buffer(&shared_parts);
-    build_wall_and_stack(p);
-    const r3d_instance_t instance = {.mesh = &p->mesh};
-    raster_t raster = census_raster(&instance, 1);
+    r3d_instance_t instance;
+    raster_t raster = wall_and_stack_raster(&instance);
     const fixture_camera_t far = camera_down_plus_z(150.0f, -400, 1.0f);
     const render_view_t far_view = render_view_fixture(&far, &raster, 0);
     (void)raster_draw(&raster, &far_view);
