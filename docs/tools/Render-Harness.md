@@ -413,7 +413,8 @@ stateDiagram-v2
     Close --> [*]: give back the scene, pack and framebuffer
 ```
 
-If `render_host_open()` returns false, no run opened and `exit_code` carries the command's result.
+If [`render_host_open()`](../../launcher/tools/render/render_host.c) returns false,
+`exit_code` carries the command's result.
 
 `render_host_save()`, `render_host_restore()` and `render_host_checkpoint_free()`
 retain frame history in host and development builds. Saving can return NULL
