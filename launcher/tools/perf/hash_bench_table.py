@@ -5,6 +5,7 @@ from pathlib import Path
 import sys
 
 import bench_capture as bench
+from capture import read_capture_text
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools/render"))
@@ -40,7 +41,7 @@ def main(argv=None):
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args(argv)
     try:
-        body = render((ROOT / CAPTURE).read_text())
+        body = render(read_capture_text(ROOT / CAPTURE))
         changed = replace_block(ROOT / "docs/packages/Hash-Benchmark.md", "hash-benchmark", body,
                                 check=args.check, command=COMMAND)
         if args.check and changed:

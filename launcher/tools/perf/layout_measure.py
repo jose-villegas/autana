@@ -11,7 +11,7 @@ from pathlib import Path
 from statistics import mean, stdev
 
 from capture import capture_board, require_same_board, quarter_row, require_complete_capture
-from device_report import read_capture_text
+from device_report import parse_perf_targets, parse_unpegged_targets, read_capture_text
 from seed_statistics import t_quantile
 
 REPO = Path(__file__).resolve().parents[3]
@@ -71,7 +71,7 @@ def parse_markdown(text):
     for _, headings, cells in table_rows(text):
         headers = [cell(part) for part in headings]
         lowered = [header.lower() for header in headers]
-        if not any(name in lowered[0] for name in ("test", "name", "scenario", "run", "mesh")):
+        if not any(name in lowered[0] for name in ("test", "name", "scenario", "run", "mesh", "target")):
             continue
         value_index = next((i for i, name in enumerate(lowered)
                             if "measured" in name or "mean" in name), None)
@@ -101,6 +101,9 @@ def timing_samples(text, *, identity_fields=("cores", "paused"), percentiles=Fal
                 yield quarter_row(fields["stage"] + ".p95" + identity, line), int(fields["p95_us"])
         elif match := re.search(r"scale_split: (\d+x\d+).*frame mean/p50/max us (\d+)/", line):
             yield quarter_row("scale_split " + match[1], line), int(match[2])
+        else:
+            for target in parse_perf_targets(line)[0] + parse_unpegged_targets(line):
+                yield target["name"], int(target["measured"])
 
 
 def parse_timings(text):
