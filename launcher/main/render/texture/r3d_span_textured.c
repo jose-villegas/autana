@@ -5,7 +5,7 @@
  * texture.divide_px pixels or more (render settings) and steps affine
  * between; 0 steps affine across the span. A pixel is one colormap load: the
  * texel's colour at the vertex light's dithered level. An INDEX4 level from
- * the texture's baked flat level on draws untextured in one colour, its
+ * the texture's flat level (found when it opens) on draws untextured in one colour, its
  * corners' mean: the surface's mean lit colour. A MASK1 texture's span steps affine, skips the
  * pixels whose texel is 0 and draws the rest in its one colour.
  */

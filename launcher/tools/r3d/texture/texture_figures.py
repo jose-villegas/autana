@@ -13,9 +13,9 @@ one of the fit's training poses, the only ones the bake holds.
 --divides draws the textured frame at each texture.divide_px value, the first the truth (1, with affine_bend 0, so
 every triangle divides). --divide-image writes the squares of the frame's lowest third where the second value differs
 most from it: a row per square, a column per value, each headed with its CIE76 dE against the truth over that third.
-Its draws read every level's texels (texture.flat 0), so they differ by the divide alone.
+Its draws read every level's texels (texture.flat_levels 0), so they differ by the divide alone.
 
---far-image writes path frame --far-frame textured with every level's texels and with each texture's baked flat level,
+--far-image writes path frame --far-frame textured with every level's texels and with each texture's flat level, found when it opens,
 from which its levels draw untextured, one colour a triangle, beside the source, as the first sheet, with its crops.
 """
 import argparse
@@ -55,8 +55,8 @@ AFFINE_TUNABLE = "render.texture_bend_steps"
 LEVEL_TUNABLE = "render.texture_affine_level"
 TRUTH = 1
 # The tunable that, at 0, opens every texture with no flat level, so every level reads its texels; at its default
-# each texture draws flat from its baked level.
-FLAT_TUNABLE = "texture.flat"
+# each texture draws flat from the level found when it opens.
+FLAT_TUNABLE = "texture.flat_levels"
 EVERY_LEVEL = 0
 # Squares the divide sheet zooms on.
 DIVIDE_CROPS = 4
@@ -156,7 +156,7 @@ def divide_sheet(args, work):
 
 
 def far_sheet(args, fit, work):
-    """Path frame args.far_frame textured with every level's texels and with each texture's baked flat level, beside
+    """Path frame args.far_frame textured with every level's texels and with each texture's flat level, found when it opens, beside
     the source."""
     name = reference_member(fit, args.far_frame, args.dt)
     every = draw(args, True, work, "far_every", args.far_frame, ((FLAT_TUNABLE, EVERY_LEVEL),))

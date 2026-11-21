@@ -15,7 +15,7 @@ TUNE_OWNER(texture);
 /* 0 opens every texture with no flat level, so every level reads its texels:
  * a figure or a stress row sets the flat fill against them. Read when a
  * texture opens. */
-TUNE(texture, flat, 1, 0, 1);
+TUNE(texture, flat_levels, 1, 0, 1);
 
 /* The OKLab distance under which a colour is not told from another: the
  * just noticeable difference, 0.02 (CSS Color 4). */
@@ -92,11 +92,11 @@ colours_used(const r3d_texture_t* t, int level) {
 
 /* The first level of `t` from which every level draws flat unseen: each
  * colour it uses, lit at the tint, like the tint. `levels` when none does,
- * for MASK1, or with texture.flat at 0. */
+ * for MASK1, or with texture.flat_levels at 0. */
 static uint8_t
 flat_level_of(const r3d_texture_t* t, const uint8_t* palette, const uint8_t tint[3]) {
     int level = t->levels;
-    if (t->format != R3D_TEXTURE_INDEX4 || flat == 0) {
+    if (t->format != R3D_TEXTURE_INDEX4 || flat_levels == 0) {
         return (uint8_t)level;
     }
     const uint32_t like = colours_like_the_tint(palette, tint);

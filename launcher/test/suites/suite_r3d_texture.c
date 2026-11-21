@@ -25,22 +25,25 @@
 #include "test_pack.h"
 #include "unity.h"
 
-#define SIDE         48
-#define PIXELS       (SIDE * SIDE)
-#define TARGETS      3 /* each a colour and a depth buffer */
-#define TEX_LOG2     3
-#define TEX_SIDE     (1 << TEX_LOG2)
-#define TEX_LEVELS   3
-#define PALETTE_OFF  R3D_TEXTURE_HEADER_SIZE
-#define TEXELS_OFF   (PALETTE_OFF + (R3D_TEXTURE_COLOURS * R3D_TEXTURE_PALETTE_STRIDE))
-#define TEX_BYTES    (TEXELS_OFF + 32 + 8 + 2)
-#define RANDOM_SEED  4111U
-#define RANDOM_TRIS  300
-#define WHITE_INDEX  15
-#define MEAN_INDEX   8 /* i * 16 == R3D_TEXTURE_ONE */
-#define TINT_GREY    128
-#define NEAR_DEPTH   0.5F
-#define DEPTH_SPREAD 64
+/* An INDEX4 byte: two texels, `high` in its upper nibble. */
+#define TEXEL_PAIR(high, low) ((uint8_t)(((high) << 4) | (low))) /* magic: two INDEX4 texels a byte */
+
+#define SIDE                  48
+#define PIXELS                (SIDE * SIDE)
+#define TARGETS               3 /* each a colour and a depth buffer */
+#define TEX_LOG2              3
+#define TEX_SIDE              (1 << TEX_LOG2)
+#define TEX_LEVELS            3
+#define PALETTE_OFF           R3D_TEXTURE_HEADER_SIZE
+#define TEXELS_OFF            (PALETTE_OFF + (R3D_TEXTURE_COLOURS * R3D_TEXTURE_PALETTE_STRIDE))
+#define TEX_BYTES             (TEXELS_OFF + 32 + 8 + 2)
+#define RANDOM_SEED           4111U
+#define RANDOM_TRIS           300
+#define WHITE_INDEX           15
+#define MEAN_INDEX            8 /* i * 16 == R3D_TEXTURE_ONE */
+#define TINT_GREY             128
+#define NEAR_DEPTH            0.5F
+#define DEPTH_SPREAD          64
 
 static uint16_t* buffers; /* colour then depth, twice */
 static uint8_t* ltex;
@@ -290,7 +293,7 @@ test_a_flat_level_draws_in_its_corners_mean(void) {
     const float mean = (FAR_GREY_A + FAR_GREY_B + FAR_GREY_C) / 3.0F; /* magic: three corners */
     r3d_span_target_t solid = target_at(1);
     r3d_span_triangle_solid(&solid, &a, &b, &c, r3d_span_pack_rgb(mean, mean, mean));
-    memset(ltex + LEVEL_2_OFF, (DARK_INDEX << 4) | DARK_INDEX, LEVEL_2_BYTES); /* magic: two INDEX4 texels a byte */
+    memset(ltex + LEVEL_2_OFF, TEXEL_PAIR(DARK_INDEX, DARK_INDEX), LEVEL_2_BYTES);
     r3d_span_target_t flat = target_at(0);
     texture->flat_level = LEVEL_2;
     r3d_span_textured_triangle(&flat, &a, &b, &c, minified, texture);
@@ -423,7 +426,7 @@ test_entry_rejects_bad_headers(void) {
 /* The level at `offset`, `bytes` long, all index `index`. */
 static void
 fill_level(int offset, int bytes, int index) {
-    memset(ltex + offset, (index << 4) | index, (size_t)bytes); /* magic: two INDEX4 texels a byte */
+    memset(ltex + offset, TEXEL_PAIR(index, index), (size_t)bytes);
 }
 
 /* Opens ltex into the fixture's texture. */
@@ -443,8 +446,8 @@ test_a_last_level_like_the_tint_opens_flat_and_draws_its_corners_mean(void) {
     clear();
     ltex[PALETTE_OFF + (NEAR_INDEX * R3D_TEXTURE_PALETTE_STRIDE)] = R3D_TEXTURE_ONE + 1;
     memset(ltex + PALETTE_OFF + (NEAR_INDEX * R3D_TEXTURE_PALETTE_STRIDE) + 1, R3D_TEXTURE_ONE, 2);
-    ltex[LEVEL_2_OFF] = (uint8_t)((NEAR_INDEX << 4) | MEAN_INDEX); /* magic: two INDEX4 texels a byte */
-    ltex[LEVEL_2_OFF + 1] = (uint8_t)((MEAN_INDEX << 4) | MEAN_INDEX);
+    ltex[LEVEL_2_OFF] = TEXEL_PAIR(NEAR_INDEX, MEAN_INDEX);
+    ltex[LEVEL_2_OFF + 1] = TEXEL_PAIR(MEAN_INDEX, MEAN_INDEX);
     reopen();
     TEST_ASSERT_EQUAL_UINT8(LEVEL_2, texture->flat_level);
     const r3d_span_vertex_t a = vertex(0, 0, 0.5F, FAR_GREY), b = vertex(SIDE, 0, 0.5F, FAR_GREY),
@@ -463,7 +466,7 @@ static void
 test_a_level_with_a_colour_unlike_the_tint_or_above_one_stays_textured(void) {
     fixture();
     fill_level(LEVEL_2_OFF, LEVEL_2_BYTES, MEAN_INDEX);
-    ltex[LEVEL_2_OFF] = (uint8_t)((DARK_INDEX << 4) | MEAN_INDEX); /* magic: two INDEX4 texels a byte */
+    ltex[LEVEL_2_OFF] = TEXEL_PAIR(DARK_INDEX, MEAN_INDEX);
     reopen();
     TEST_ASSERT_EQUAL_UINT8_MESSAGE(TEX_LEVELS, texture->flat_level, "one dark texel");
     fill_level(LEVEL_1_OFF, LEVEL_1_BYTES, MEAN_INDEX);
@@ -476,21 +479,21 @@ test_a_level_with_a_colour_unlike_the_tint_or_above_one_stays_textured(void) {
 
 static void
 reset_flat_tunable(void) {
-    (void)tune_reset(tune_shared(), TUNE_NAME(texture, flat));
+    (void)tune_reset(tune_shared(), TUNE_NAME(texture, flat_levels));
     cleanup();
 }
 
-/* texture.flat 0 opens every texture with no flat level, whatever its
+/* texture.flat_levels 0 opens every texture with no flat level, whatever its
  * texels; reset, the texels' level holds again. */
 static void
 test_the_flat_tunable_at_0_opens_no_flat_level(void) {
     fixture();
     suite_set_test_cleanup(reset_flat_tunable);
     fill_level(LEVEL_2_OFF, LEVEL_2_BYTES, MEAN_INDEX);
-    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(texture, flat), 0));
+    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(texture, flat_levels), 0));
     reopen();
     TEST_ASSERT_EQUAL_UINT8(TEX_LEVELS, texture->flat_level);
-    TEST_ASSERT_TRUE(tune_reset(tune_shared(), TUNE_NAME(texture, flat)));
+    TEST_ASSERT_TRUE(tune_reset(tune_shared(), TUNE_NAME(texture, flat_levels)));
     reopen();
     TEST_ASSERT_EQUAL_UINT8(LEVEL_2, texture->flat_level);
 }
