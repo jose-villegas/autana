@@ -28,7 +28,6 @@ sys.path.insert(0, str(ROOT / "launcher/tools"))
 from build.c_header import read_define  # noqa: E402
 from docs.figures import rgb, save_gif, save_png  # noqa: E402
 from docs.plot_style import DPI, LABEL_SIZE, MUTED, SLOTS, figure, save  # noqa: E402
-from docs.producer import Producer  # noqa: E402
 from r3d.fitted_variant import placed_variant  # noqa: E402
 from r3d.geometry import face_normals, hit_barycentrics  # noqa: E402
 from r3d.import_settings import load_probes, load_scene  # noqa: E402
@@ -41,23 +40,6 @@ from r3d.reference_set import PROBE_SEED, reference_inputs  # noqa: E402
 from r3d.scene_name import scene_id  # noqa: E402
 from r3d.views import probes  # noqa: E402
 
-PRODUCER = Producer(area="render", needs=("host",),
-                    run=("--scene", "launcher/demo/sponza/sponza.scene.toml", "atrium_fitted_full",
-                         "--scene", "launcher/demo/bistro/bistro.scene.toml", "street_fitted_full", "--out", "{out}"),
-                    reads=("launcher/demo/sponza/sponza.scene.toml", "launcher/demo/sponza/sponza.import.toml",
-                           "launcher/demo/sponza/source/*.obj", "launcher/demo/sponza/source/*.mtl",
-                           "launcher/demo/sponza/source/textures/*.png",
-                           "launcher/demo/sponza/flythrough.anim.toml", "launcher/demo/sponza/flythrough.glb",
-                           "launcher/demo/bistro/bistro.scene.toml", "launcher/demo/bistro/bistro.import.toml",
-                           "launcher/demo/bistro/source/*.obj", "launcher/demo/bistro/source/*.mtl",
-                           "launcher/demo/bistro/source/textures/*.png",
-                           "launcher/demo/bistro/street.anim.toml", "launcher/demo/bistro/street.keys.toml"),
-                    outputs=("sponza-atrium_fitted_full-probes-orbit.gif", "sponza-atrium_fitted_full-probes-1.png",
-                             "sponza-atrium_fitted_full-probes-2.png", "sponza-atrium_fitted_full-probes-3.png",
-                             "sponza-atrium_fitted_full-probes-4.png", "bistro-street_fitted_full-probes-orbit.gif",
-                             "bistro-street_fitted_full-probes-1.png", "bistro-street_fitted_full-probes-2.png",
-                             "bistro-street_fitted_full-probes-3.png", "bistro-street_fitted_full-probes-4.png",
-                             "probe-fates.png"))
 
 CULL_VIEW = ROOT / "launcher/main/render/view/raster_cull_view.c"
 DOOR = read_define(CULL_VIEW, "CULLED_DOOR")
