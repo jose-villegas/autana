@@ -661,6 +661,21 @@ compose_rows(render_context_t* c, int height) {
     c->frame.rows_end = end * per;
 }
 
+/* A fixed-path frame's compose: only the rows it drew. A judged held frame
+ * over the budget hands the held camera back to the policy. */
+static void
+compose_fixed(render_context_t* c, uint16_t* destination, uint8_t* seams, resolution_step_t size) {
+    compose_rows(c, size.height);
+    const int64_t began_us = timing_now_us();
+    if (!c->frame.unchanged) {
+        raster_upscale_picture(&c->raster, NULL, destination, seams, size.width, size.height);
+    }
+    c->frame.upscale_us = (int32_t)(timing_now_us() - began_us);
+    if (c->still_judged) {
+        c->still_over = c->frame.draw_us + c->frame.upscale_us > c->ladder.budget_us;
+    }
+}
+
 bool
 render_context_compose(render_context_t* c, uint16_t* destination, uint16_t* half, uint8_t* half_seams) {
     const raster_t* r = &c->raster;
@@ -680,15 +695,7 @@ render_context_compose(render_context_t* c, uint16_t* destination, uint16_t* hal
     }
     /* Replay warps with generation disabled, so the recorded frame also selects the compose path. */
     if (c->fixed_drawn && !c->frame.generated) {
-        compose_rows(c, size.height);
-        const int64_t began_us = timing_now_us();
-        if (!c->frame.unchanged) {
-            raster_upscale_picture(&c->raster, NULL, destination, seams, size.width, size.height);
-        }
-        c->frame.upscale_us = (int32_t)(timing_now_us() - began_us);
-        if (c->still_judged) {
-            c->still_over = c->frame.draw_us + c->frame.upscale_us > c->ladder.budget_us;
-        }
+        compose_fixed(c, destination, seams, size);
         return expanded;
     }
     if (c->frame.generated) {
