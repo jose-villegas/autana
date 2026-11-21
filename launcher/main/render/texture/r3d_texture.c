@@ -68,7 +68,9 @@ colours_like_the_tint(const uint8_t* palette, const uint8_t tint[3]) {
             lit[k] = mathi_min((tint[k] * palette[(i * R3D_TEXTURE_PALETTE_STRIDE) + k]) / R3D_TEXTURE_ONE, UINT8_MAX);
         }
         const oklabf_t c = oklab_of(lit);
-        const float dl = c.l - flat.l, da = c.a - flat.a, db = c.b - flat.b;
+        const float dl = c.l - flat.l;
+        const float da = c.a - flat.a;
+        const float db = c.b - flat.b;
         if ((dl * dl) + (da * da) + (db * db) <= FLAT_JND * FLAT_JND) {
             like |= 1U << i;
         }
