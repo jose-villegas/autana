@@ -12,10 +12,8 @@ from r3d import mesh_bundle, mesh_asset, log
 from r3d.reference_set import fit_sets
 from r3d.fit.copies import drawn_copies, hidden_materials
 
-# A carved start's rest is fitted with the reference G-buffer terms (fit/gbuffer.py) at these weights: the front
-# term pushes it behind the copies, the depth term holds it to the source's surface. Front 1e4 cut street_fitted's
-# hidden copy pixels about tenfold; atrium_fitted's probe fit still hid a held-out close-up's copies at 1e4 and not
-# at 3e4, at equal held-out dE (1e5 raised it). Depth 30 lowers held-out dE; heavier depth raised it.
+# The G-buffer front term pushes the rest behind copies; depth holds it to the source surface. Probe fits also
+# use independent close geometry views: colour training views alone can miss rest movement over a nearby copy.
 FRONT_WEIGHT = 3.0e4
 DEPTH_WEIGHT = 30.0
 
@@ -62,8 +60,11 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
         command += ["--poses", str(inputs / poses), "--reference", str(inputs / reference)]
     for poses in sets.coverage:
         command += ["--coverage-poses", str(inputs / poses)]
-    for poses, reference in sets.held_out if shaping.probes is not None else ():
+    # Every fit logs its held-out dE76; a probe fit also gates the surface it loses there.
+    for poses, reference in sets.held_out:
         command += ["--held-out-poses", str(inputs / poses), "--held-out-reference", str(inputs / reference)]
+    if shaping.probes is not None:
+        command += ["--closure"]
     if budget is not None:
         command += ["--budget", str(budget)]
     command += ["--out", str(out),

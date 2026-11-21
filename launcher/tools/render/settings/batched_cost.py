@@ -16,8 +16,9 @@ import statistics
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[4]
-for folder in ("launcher/tools", "launcher/tools/render", "launcher/tools/perf"):
-    sys.path.insert(0, str(ROOT / folder))
+sys.path.insert(0, str(ROOT / "launcher/tools"))
+sys.path.insert(0, str(ROOT / "launcher/tools/render"))
+sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
 from doc_tables import markdown  # noqa: E402
 from frame_profile import PROFILE_RE  # noqa: E402
 from generated_blocks import block_main  # noqa: E402

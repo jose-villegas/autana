@@ -822,6 +822,33 @@ class FittedBakeTests(FittedBakeCase):
         self.assertEqual(done.code, 1)
         self.assertIn(self.fit(MADE_SHA256).output, done.err)
 
+    def test_a_partial_lock_writes_the_rows_it_has_and_names_the_rest_without_failing(self):
+        made = {self.start.key: row_of(self.start, MADE_SHA256, run=RUN)}
+        done = self.command(["lock", "--from-run", str(RUN), "--partial"], {}, made)
+        self.assertEqual(done.code, 0, done.err)
+        self.assertEqual(list(done.rows), [self.start.output])
+        self.assertIn("still to lock", done.out)
+        self.assertIn(self.fit(MADE_SHA256).output, done.out)
+
+    def test_kinds_repeat_and_levels_key_on_the_fit_the_same_command_made(self):
+        done = self.command(["bake", "--kind", "fit", "--kind", "levels"], self.locked(LOCKED_SHA256, run=RUN))
+        self.assertEqual(done.code, 0, done.err)
+        self.assertEqual([item.key for item in done.produced], [self.fit(LOCKED_SHA256).key, self.level(LOCKED_SHA256).key])
+
+    def test_a_texture_keys_on_the_levels_the_same_command_made_and_waits_without_them(self):
+        """A texture's key names its packed mesh's bytes: levels made just before it in one command give them."""
+        fit = self.fit(LOCKED_SHA256)
+        lock = {**self.locked(LOCKED_SHA256, run=RUN), fit.key: row_of(fit, FIT_SHA256, run=RUN)}
+        with mock.patch("r3d.texture.texture_settings.renderer_textures", return_value={"size": 1}):
+            alone = self.command(["bake", "--kind", "texture"], lock)
+            chained = self.command(["bake", "--kind", "levels", "--kind", "texture"], lock)
+        self.assertEqual(alone.code, 0, alone.err)
+        self.assertEqual(alone.produced, [])
+        self.assertIn("skipped", alone.out)
+        self.assertEqual(chained.code, 0, chained.err)
+        self.assertEqual([item.kind for item in chained.produced], ["levels", "texture"])
+        self.assertEqual(chained.produced[1].stages["start_sha256"], FIT_SHA256)
+
     def test_a_start_made_by_the_mesh_pass_keys_its_fit_in_the_fit_pass(self):
         done = self.bake_keys_fit_on(["bake"], {}, MADE_SHA256)
         fitted = next(item for item in done.produced if item.kind == "fit")
@@ -1661,6 +1688,15 @@ class LockTests(unittest.TestCase):
         network.assert_not_called()
         self.assertEqual(written[0], [{"output": "one.bundle", "source": "a.scene.toml", "key": "k" * 64,
                                        "sha256": stale["sha256"], "size": len(refit), "seeded": True}])
+
+    def test_a_seeded_row_is_missing_so_a_run_makes_its_key_again(self):
+        found = [bake_of("k" * 64, self.tree), bake_of("j" * 64, self.root / "two.bundle")]
+        lock = {"k" * 64: {**self.row, "seeded": True}, "j" * 64: {**self.row, "key": "j" * 64, "run": 4}}
+        with mock.patch.object(bake, "bakes", return_value=found), \
+                mock.patch.object(bake, "read_lock_tables", return_value={"bake": lock, "poses": {}}), \
+                contextlib.redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(bake.main(["list", "--missing"]), 0)
+        self.assertEqual([line.split("\t")[2] for line in out.getvalue().splitlines()], ["k" * 64])
 
     def test_check_says_which_rows_are_seeded(self):
         found = [bake_of("k" * 64, self.tree)]

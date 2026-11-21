@@ -1,11 +1,8 @@
 #!/usr/bin/env python3
 """Plot one scripted flight's path and speed for docs/kinematics/Fly.md; --cc CC --out DIR."""
 import pathlib
-import sys
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "math"))
-from math_figures import PANEL_SIZE, ROOT, VIEW_AZIMUTH, VIEW_ELEVATION
+from kinematics_figures import PANEL_SIZE, ROOT, VIEW_AZIMUTH, VIEW_ELEVATION
 from docs.figures import probe_into_folder
 from docs.producer import Producer
 from docs.plot_style import FAINT, INK, LABEL_SIZE, SLOTS, TITLE_SIZE, figure, save

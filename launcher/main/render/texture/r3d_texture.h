@@ -102,15 +102,29 @@ r3d_texture_level_bytes(unsigned format, int side_log2) {
     return (1U << (2 * side_log2)) / r3d_texture_texels_per_byte(format);
 }
 
-/* r3d_span_triangle() with a texture: the same coverage, the same depth
- * test, capped as r3d_span_capped_triangle() when target->skip_hidden. The
- * level is chosen once per triangle from the texels a pixel steps. A MASK1
- * texel 0 leaves its pixel as it was. The target's writers follow each span
- * over the pixels it drew, as after r3d_span_triangle_write(). */
-void r3d_span_textured_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
-                                const r3d_span_vertex_t* c, const vec2f_t uv[3], const r3d_texture_t* texture);
+/* r3d_span_triangle() with a texture: the same coverage and depth test,
+ * capped as r3d_span_capped_triangle() when target->skip_hidden. The level
+ * is chosen once per triangle from the texels a pixel steps. A MASK1 texel 0
+ * leaves its pixel. The target's writers follow each span it drew. Returns
+ * false, drawing nothing, for an INDEX4 level from
+ * target->texture_far_level on (0: none), which
+ * r3d_span_textured_triangle() draws untextured. */
+bool r3d_span_textured_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
+                            const r3d_span_vertex_t* c, const vec2f_t uv[3], const r3d_texture_t* texture);
 
-/* The pixels between u and v's divides by depth that r3d_span_textured_triangle()
+/* r3d_span_textured_fill(), and a far level it leaves to
+ * r3d_span_triangle_mean(). Inline, so the textured fill's frame is gone
+ * before the solid fill's stacks up. */
+static inline __attribute__((always_inline)) void
+r3d_span_textured_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
+                           const r3d_span_vertex_t* c, const vec2f_t uv[3], const r3d_texture_t* texture) {
+    if (r3d_span_textured_fill(target, a, b, c, uv, texture)) {
+        return;
+    }
+    r3d_span_triangle_mean(target, a, b, c);
+}
+
+/* The pixels between u and v's divides by depth that r3d_span_textured_fill()
  * uses for a triangle `side` pixels across its longest side, `extent` texels
  * across it, inverse depth z_far..z_near: 0 to step affine, when divide_px is 0
  * or the bend stays under affine_bend texels; else divide_px, doubled up to

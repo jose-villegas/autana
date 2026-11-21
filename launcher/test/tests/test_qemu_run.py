@@ -7,8 +7,10 @@ import base64
 import json
 import os
 import struct
+import subprocess
 import sys
 import tempfile
+import time
 import unittest
 import unittest.mock
 from pathlib import Path
@@ -150,6 +152,9 @@ if mode == "sentinel":
     conn.sendall(b"SELFTEST_COMPLETE failures=0 elapsed_ms=1\\n")
 elif mode == "exit":
     sys.exit(3)
+elif mode == "unread":
+    time.sleep(0.5)
+    sys.exit(3)
 elif mode == "close":
     conn.close()
 time.sleep(60)
@@ -173,6 +178,16 @@ class QemuStopTest(unittest.TestCase):
         return qemu_run.run_qemu([sys.executable, str(self.script), str(port), mode], port,
                                  str(self.log), str(self.output), timeout, [])
 
+    def start_fake(self, mode):
+        """The fake QEMU in `mode` and our console on it, both closed after the test."""
+        port = qemu_run.free_port()
+        proc = subprocess.Popen([sys.executable, str(self.script), str(port), mode],
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.addCleanup(proc.wait)
+        console = qemu_run.Console(proc, port, str(self.log), time.monotonic() + 30)
+        self.addCleanup(console.close)
+        return proc, console
+
     def test_a_finished_run_reports_no_stop(self):
         self.assertEqual((True, None), self.run_fake("sentinel"))
 
@@ -190,6 +205,21 @@ class QemuStopTest(unittest.TestCase):
         self.assertIn("could not open disk image", self.output.read_text(encoding="utf-8"))
         with unittest.mock.patch("builtins.print"):
             self.assertEqual(1, qemu_run.verdict(str(self.log), False, [], "x", str(self.output)))
+
+    def test_what_qemu_sent_before_it_exited_is_still_read(self):
+        # The console is read only after the fake has exited, so its last line waits in the socket.
+        proc, console = self.start_fake("exit")
+        proc.wait(timeout=30)
+        self.assertEqual(["/src/suite_gfx.c:40:test_fill:PASS"], list(console.lines()))
+        self.assertEqual(qemu_run.QEMU_EXITED, console.ended)
+
+    def test_qemu_exiting_with_a_line_of_ours_unread_ends_the_console_as_an_exit(self):
+        # Closing a socket with unread bytes resets it: the reader must take that as QEMU's end.
+        proc, console = self.start_fake("unread")
+        console.send("BUILD_ID_REQUEST")
+        proc.wait(timeout=30)
+        list(console.lines())
+        self.assertEqual(qemu_run.QEMU_EXITED, console.ended)
 
     def test_a_console_closed_while_qemu_runs_says_so(self):
         with unittest.mock.patch.object(qemu_run, "QEMU_EXIT_GRACE_SECONDS", 0.3):
