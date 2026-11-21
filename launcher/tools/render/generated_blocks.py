@@ -24,6 +24,12 @@ TOKEN = re.compile(r"^<!--\s*/?generated:", re.M)
 # written as from docs/<folder>/page.md and re-based to the real owner.
 TABLE_BASE = "docs/page"
 LINK = re.compile(r"(\]\()([^)\s#][^)\s]*)(\))")
+# A refreshed table's mean dE76 against a reference may not pass both of these
+# over its published value: a render drawn at the wrong pose scores five or more
+# times worse (#1597: 5.5 -> 34.6), while a re-bake moves it by a few tenths.
+DE_JUMP_RATIO = 2.0
+DE_JUMP_MIN = 5.0
+MEAN_DE = re.compile(r"mean de76\b", re.I)
 
 
 def digest(body):
@@ -126,7 +132,41 @@ def rebase_links(body, page):
     return LINK.sub(move, body)
 
 
-def apply_tables(root, tables, check=False):
+def table_cells(body):
+    """{(first cell, header): cell} for each Markdown table row of `body`."""
+    cells, header = {}, None
+    for line in body.replace("\r\n", "\n").split("\n"):
+        if not line.startswith("|"):
+            header = None
+            continue
+        row = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if header is None:
+            header = row
+        elif not all(set(cell) <= set(":-") for cell in row):
+            cells.update({(row[0], name): cell for name, cell in zip(header, row)})
+    return cells
+
+
+def reference_jumps(published, refreshed):
+    """The rows of `refreshed` whose mean dE76 against a reference passed
+    DE_JUMP_RATIO times and DE_JUMP_MIN above the value `published` holds."""
+    before, after = table_cells(published), table_cells(refreshed)
+    jumps = []
+    for (row, column), cell in after.items():
+        if not MEAN_DE.match(column) or (row, column) not in before:
+            continue
+        try:
+            old, new = float(before[row, column]), float(cell)
+        except ValueError:
+            continue
+        if new > old * DE_JUMP_RATIO and new - old > DE_JUMP_MIN:
+            jumps.append(f"{row}: {column} {before[row, column]} -> {cell}")
+    return jumps
+
+
+def apply_tables(root, tables, check=False, accept_jumps=False):
+    """Write each table of `tables` into the block its name owns; True when one
+    changes. A jump reference_jumps finds is refused unless `accept_jumps`."""
     owners = block_owners(root)
     changed = False
     for table in sorted(tables.glob("*.md")):
@@ -135,6 +175,12 @@ def apply_tables(root, tables, check=False):
             raise ValueError(f"no document owns generated table {name}")
         doc = owners[name]
         body = rebase_links(table.read_text(encoding="utf-8"), doc)
+        jumps = [] if accept_jumps else reference_jumps(blocks((root / doc).read_text(encoding="utf-8"))[name][2], body)
+        if jumps:
+            raise ValueError("".join(f"{doc}#{name} {jump}\n" for jump in jumps)
+                             + "a figure scored against its reference far worse than published: a render at the wrong "
+                               "pose, or a meant change. If meant, regenerate in the change that causes it and run "
+                               "generated_blocks.py --tables DIR --accept-reference-jump")
         different = replace_block(root / doc, name, body, check)
         print(f"{'changed' if different else 'same'} {doc}#{name}")
         changed |= different
@@ -164,10 +210,12 @@ def main():
     parser.add_argument("--name")
     parser.add_argument("--body", type=pathlib.Path)
     parser.add_argument("--check", action="store_true")
+    parser.add_argument("--accept-reference-jump", action="store_true",
+                        help="with --tables, write a mean dE76 that passes DE_JUMP_RATIO and DE_JUMP_MIN over its block")
     args = parser.parse_args()
     try:
         if args.tables:
-            changed = apply_tables(args.root, args.tables, args.check)
+            changed = apply_tables(args.root, args.tables, args.check, args.accept_reference_jump)
         else:
             changed = replace_block(args.doc, args.name, args.body.read_text(encoding="utf-8"), args.check)
         return int(args.check and changed)

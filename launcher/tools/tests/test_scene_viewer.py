@@ -266,6 +266,9 @@ path = { animation = "fly.anim.toml", node = "camera" }
         video = self.root / "clip.avi"
         self.pixels("--object", "card", "--video", str(video))
         self.assertEqual(video.read_bytes()[:4], b"RIFF")
+        with open(str(video) + ".poses.csv") as handle:
+            poses = list(csv.DictReader(handle))
+        self.assertEqual([pose["frame"] for pose in poses], ["0", "1"])  # the video's two frames, where they stood
 
     def test_wrapper_build_only_uses_the_requested_directory_and_never_renders(self):
         out = self.root / "build only"

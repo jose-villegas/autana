@@ -38,9 +38,7 @@ Meshes must already be baked.
 Repeat `--object NAME` to enable only those mesh renderers; omit it to draw
 all authored renderers. An unknown renderer reports the available names.
 `--camera NAME` selects a camera; omission activates the scene's default.
-Stderr names the camera's path duration in ms, and `--poses FILE` writes one
-CSV row per frame of where it stands: `frame,ms`, its world position and
-rotation quaternion.
+Stderr names the camera's path duration in ms.
 The camera follows its own path at `--frames N` times `--dt MS` (defaults:
 30 frames, 16 ms). `--view NAME` selects the render context's view, with
 shaded as the default; an unknown name lists them. The names are the
@@ -151,7 +149,13 @@ Change a measurement's source or generator and regenerate its block; a hash
 verifies recorded content, while the render check detects stale measurements.
 The image script rewrites blocks by default; --check reports
 changed doc-path#block-name and exits 1. The refresh PR includes changed tables
-and images together. `render_doc_images.sh --stage gpu` rebuilds fitted comparisons and sweeps in
+and images together.
+The writer refuses a table whose `Mean dE76` on a row it already holds passes
+both `DE_JUMP_RATIO` times and `DE_JUMP_MIN` over the published value
+(`generated_blocks.py`): a figure drawn at the wrong pose scores several times
+worse, and the refresh fails instead of publishing it. A change meant to raise
+it regenerates the table itself, with
+`generated_blocks.py --tables DIR --accept-reference-jump`. `render_doc_images.sh --stage gpu` rebuilds fitted comparisons and sweeps in
 the WSL CUDA environment; the board stage consumes a board capture. Both use
 this writer.
 
@@ -551,6 +555,11 @@ the same reason the rest of this harness exists. The frame rate is
 `1000 / --dt`, exact as a rational, not rounded. `-o` keeps working
 unchanged alongside `--video`, or on its own.
 
+`--poses FILE` writes one CSV row per saved frame of where the active camera
+stands: `frame,ms`, its world position and rotation quaternion. A `--video`
+run without `--poses` writes them to `PATH.poses.csv`, so every video can be
+held to the poses of the reference it is scored against.
+
 ```sh
 ./launcher/tools/render/scenes/boot_anim_render_host.sh --video   # every scene's script takes this,
                                                      # writing <label>.avi beside <label>.bmp
@@ -679,7 +688,9 @@ The renderer arguments are split on spaces and never expanded as patterns.
 a whole camera path against the scene's source model instead of a second
 revision: `reference_render.py` draws the poses, `FILE` sampled at the renderer's
 `--dt` by `tools/anim/track_host.py --every`, once per scene, poses and
-`--samples`, and the render's frames are scored against them. It writes
+`--samples`, and the render's frames are scored against them. The traced
+set keeps its poses in `poses.txt`, and a video whose `.poses.csv` stands
+anywhere else is refused rather than scored (`reference_poses.py`). It writes
 `<label>.mp4` (reference, render, error heatmap) at `--fps`
 30, 40, 60 or 80, and one reference line per frame in `summary.txt`. The
 header of `render_compare.sh` has the details.

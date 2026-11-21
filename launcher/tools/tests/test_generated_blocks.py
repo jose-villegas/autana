@@ -92,6 +92,32 @@ class GeneratedBlocksTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 apply_tables(root, tables)
 
+    def test_a_refreshed_mean_de_jump_is_refused_unless_accepted(self):
+        # #1597 drew every Sponza figure from a still camera: each mean dE76 rose from 5-13 to 31-38.
+        header = "| Variant | Mean dE76 | p95 dE76 |\n|---|---:|---:|\n"
+        published = header + "| fitted | 5.468 | 15.642 |\n| flat | 13.149 | 46.465 |\n"
+        cases = {"doubled and over +5": ("| fitted | 34.604 | 65.969 |\n| flat | 13.0 | 46.0 |\n", True),
+                 "a new row": ("| fitted | 5.468 | 15.642 |\n| flat | 13.149 | 46.465 |\n| new | 90 | 99 |\n", False),
+                 "doubled, under +5": ("| fitted | 9.9 | 15.642 |\n| flat | 13.149 | 46.465 |\n", False),
+                 "over +5, not doubled": ("| fitted | 10.5 | 15.642 |\n| flat | 19.0 | 46.465 |\n", False)}
+        for case, (rows, refused) in cases.items():
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as directory:
+                root = pathlib.Path(directory)
+                subprocess.run(["git", "init", "-q", directory], check=True)
+                doc = root / "Fidelity.md"
+                doc.write_text(f"<!-- generated: scores -->\n{published}<!-- /generated: scores -->\n",
+                               encoding="utf-8")
+                subprocess.run(["git", "add", doc.name], cwd=root, check=True)
+                tables = root / "out/tables"
+                tables.mkdir(parents=True)
+                (tables / "scores.md").write_text(header + rows, encoding="utf-8")
+                if refused:
+                    with self.assertRaisesRegex(ValueError, r"Fidelity\.md#scores fitted: Mean dE76 5\.468 -> 34\.604"):
+                        apply_tables(root, tables, check=True)
+                    self.assertTrue(apply_tables(root, tables, accept_jumps=True))
+                else:
+                    self.assertTrue(apply_tables(root, tables, check=True))
+
     def test_a_table_links_from_its_owning_pages_folder(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
