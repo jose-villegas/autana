@@ -19,8 +19,12 @@ are all among --needs (host,bakes: what one machine without a GPU or board
 can run), or the named scripts. A producer with an `each` runs once per item.
 With --changed, a run whose inputs are those recorded at its last good run
 is skipped: its arguments and item, its code (import closure, the C and
-requirements it counts, and the tracked files that code names), the C its
-probes compiled, its `reads` files and its bake's lock row.
+requirements it counts, and the tracked files that code names), what its
+probes and renderer builds read (the dependency lists docs.figures.build_probe,
+render_scene.sh and build_pack.py write; Python in them with its imports),
+its `reads` files, its bake's lock row (every row for a producer that needs
+bakes without an `each`), the toolchain (Python, the installed modules and
+pinned packages, the C compiler, CMake) and the committed images it claims.
 
 Before running any, they check what the runs need: Pillow, numpy and
 matplotlib, a C compiler when a `run` uses {cc}, a file for each `reads`
@@ -29,16 +33,18 @@ bake cache; every problem is printed at once and nothing runs. The runs then
 go in parallel, those needing a GPU or a board one at a time, each into its
 own folder with its own log under launcher/tools/results/doc_images/work/figures/.
 A run that fails, leaves out a declared image or writes one it does not
-declare stops the command.
+declare, or that uses {cc} or a shell script and lists nothing it read, stops
+the command.
 
-build copies the images into docs/images/, or into DIR with --into. check
-compares each with the committed image by decoded pixels (compare_images.py)
+build copies the images into docs/images/, or into DIR with --into, where a
+skipped run's committed images are copied too. check compares each with the committed image by decoded pixels (compare_images.py)
 and prints "same IMAGE", "changed IMAGE: how" or "changed IMAGE: new image",
 or "orphan IMAGE: SCRIPT no longer makes it" for a committed image one of a
 producer's globs claims but no run made or skipped. Both record each run's
 inputs in launcher/tools/results/doc_images/fingerprints.json (--fingerprints
-names another file): build every run's when it writes docs/images/, check
-those whose images were all same and that claim no orphan. A command that
+names another file): build every run's when it writes docs/images/; check,
+and build into another folder, those whose images were all same and that
+claim no orphan. A command that
 fails records nothing. The order is drawn in docs/tools/Doc-Figures.md.
 
 index writes docs/tools/Figures.md, every image under docs/images/ with its
@@ -52,6 +58,7 @@ change, an orphan or a missing picture, 2 the images could not be made or compar
 import argparse
 import concurrent.futures
 import fnmatch
+import functools
 import glob
 import hashlib
 import importlib.util
@@ -166,9 +173,40 @@ def preflight(runs, problems=()):
     return {"cc": cc}
 
 
-def fingerprint(run, probe, code):
+def tool_version(command):
+    """The first line `command --version` prints, or "missing"."""
+    try:
+        out = subprocess.run([command, "--version"], capture_output=True, text=True, stdin=subprocess.DEVNULL).stdout
+    except OSError:
+        return "missing"
+    return (out.splitlines() or ["missing"])[0]
+
+
+@functools.cache
+def toolchain():
+    """The identity of what draws on this machine: Python, the host modules' versions, the C compiler and CMake.
+    A record made under another toolchain never matches one made under this."""
+    from importlib import metadata
+    distributions = metadata.packages_distributions()
+    return {"python": sys.version,
+            **{f"module {module}": installed(distribution) for module in HOST_MODULES
+               for distribution in distributions.get(module, [module])},
+            "cc": tool_version(host_cc() or "cc"), "cmake": tool_version("cmake")}
+
+
+@functools.cache
+def installed(distribution):
+    from importlib import metadata
+    try:
+        return metadata.version(distribution)
+    except metadata.PackageNotFoundError:
+        return "missing"
+
+
+def fingerprint(run, probe, code, committed):
     """The digest of a run's inputs. `probe`: the C files its probes compiled, by repository path; `code`: the
-    code inputs by script, shared by a producer's runs and filled as needed."""
+    code inputs by script, shared by a producer's runs and filled as needed; `committed`: the images under
+    docs/images/ now, so a record vouches for the bytes it was made against."""
     from bake import bake
     from docs.inputs import bake_inputs, code_inputs
     from r3d.import_settings import content_checksum
@@ -178,27 +216,48 @@ def fingerprint(run, probe, code):
 
     if run.found.name not in code:
         code[run.found.name] = code_inputs([run.found.script], ROOT)
-    return bake.digest({"run": [run.item, *run.found.producer.run], **code[run.found.name],
+    # Python a build listed (build_pack.py) counts with its own imports.
+    listed = sorted(name for name in probe if name.endswith(".py"))
+    ran = code_inputs([ROOT / name for name in listed], ROOT) if listed else {}
+    pins = {f"installed {line}": installed(re.match(r"[\w.-]+", line)[0])
+            for name, line in code[run.found.name].items() if name.startswith("requirement ")}
+    if run.bake is not None:
+        bakes = bake_inputs([run.bake], bake.read_lock())
+    else:
+        # Without an each="bakes:", which bakes a run draws is the code's choice: every lock row counts.
+        bakes = {"lock": bake.digest(bake.read_lock())} if "bakes" in run.found.producer.needs else {}
+    return bake.digest({"run": [run.item, *run.found.producer.run], **code[run.found.name], **ran, **toolchain(),
+                        **pins,
                         **{f"probe {name}": checksum(name) for name in probe},
                         **{f"reads {path.relative_to(ROOT).as_posix()}": checksum(path.relative_to(ROOT))
                            for pattern in run.found.producer.reads for path in sorted(ROOT.glob(pattern))},
-                        **(bake_inputs([run.bake], bake.read_lock()) if run.bake is not None else {})})
+                        **{f"committed {name}": content_checksum(IMAGES / name).decode()
+                           for name in sorted(committed) if claims(run.images, name)},
+                        **bakes})
 
 
 def read_records(path):
+    """The records, or none when the file is missing or unreadable (a cut write): then every run runs."""
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
         return {}
+    except (OSError, ValueError) as error:
+        print(f"warning: unreadable record {path}, running every producer: {error}", file=sys.stderr)
+        return {}
 
 
 def write_records(path, records):
+    """Whole or not at all: written beside the record, then moved over it."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(records, indent=1, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
+    partial = path.with_name(path.name + ".partial")
+    partial.write_text(json.dumps(records, indent=1, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
+    os.replace(partial, path)
 
 
 def probe_sources(depends):
-    """The repository C files the .d lists in `depends` name; outside files (system headers) are not counted."""
+    """The repository files the .d lists in `depends` name: what a run's probes and builds read. Outside files
+    (system headers) and ignored ones (a build's own output) are not counted."""
     from build.compile_db import parse_dependencies
     names = set()
     for listing in sorted(depends.glob("*.d")):
@@ -206,7 +265,9 @@ def probe_sources(depends):
             path = pathlib.Path(token).resolve()
             if path.is_relative_to(ROOT):
                 names.add(path.relative_to(ROOT).as_posix())
-    return sorted(names)
+    ignored = subprocess.run(["git", "-C", str(ROOT), "check-ignore", "--stdin"], input=chr(10).join(sorted(names)),
+                             capture_output=True, text=True).stdout.splitlines()
+    return sorted(names - set(ignored))
 
 
 def claims(images, name):
@@ -243,9 +304,10 @@ def run_one(run, values):
         raise Failed("\n".join([f"{run.name} did not make what it declares:",
                                 *(f"  missing {name}" for name in missing),
                                 *(f"  undeclared {name}" for name in undeclared)]))
-    if any("{cc}" in argument for argument in run.found.producer.run) and not any(depends.iterdir()):
-        raise Failed(f"{run.name} compiled C the runner could not see: build it with docs.figures.build_probe, "
-                     "which lists what it compiled")
+    if any("{cc}" in argument or argument.endswith(".sh") for argument in run.found.producer.run) \
+            and not any(depends.iterdir()):
+        raise Failed(f"{run.name} compiled C the runner could not see: build it with docs.figures.build_probe or "
+                     "render_scene.sh, which list what they read")
     return out, sorted(made), probe_sources(depends)
 
 
@@ -347,9 +409,9 @@ def make(args, found):
     """build or check; returns the exit status."""
     chosen = select(found, args.area, args.needs, args.scripts)
     runs, problems = expand(chosen)
-    records, code = read_records(args.fingerprints), {}
+    records, code, committed = read_records(args.fingerprints), {}, made_files(IMAGES)
     # Before any run, so code the fingerprint cannot follow fails in seconds.
-    before = {run.name: fingerprint(run, records.get(run.name, {}).get("probe", ()), code) for run in runs}
+    before = {run.name: fingerprint(run, records.get(run.name, {}).get("probe", ()), code, committed) for run in runs}
     skipped = []
     if args.changed:
         skipped = [run for run in runs if records.get(run.name, {}).get("fingerprint") == before[run.name]]
@@ -357,18 +419,27 @@ def make(args, found):
             print(f"unchanged {run.name}")
         runs = [run for run in runs if run not in skipped]
     results = run_all(runs, preflight(runs, problems), args.jobs)
-    if args.command == "build":
+    if args.command == "build" and args.into.resolve() == IMAGES.resolve():
         deliver(results, args.into)
-        # A record says docs/images/ holds what the inputs make; images put elsewhere do not.
-        recorded = {run.name for run in runs} if args.into.resolve() == IMAGES.resolve() else set()
+        recorded, status = {run.name for run in runs}, 0
+    elif args.command == "build":
+        # Elsewhere, a skipped run's images are the committed ones, and a run is recorded when its images are
+        # what docs/images/ holds: a record says docs/images/ holds what the inputs make.
+        deliver(results, args.into)
+        for name in sorted(committed):
+            if any(claims(run.images, name) for run in skipped):
+                (args.into / name).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(IMAGES / name, args.into / name)
+        recorded, _ = check(chosen, runs, skipped, results)
         status = 0
     else:
         recorded, changed = check(chosen, runs, skipped, results)
         status = int(changed)
+    committed = made_files(IMAGES)
     for run in runs:
         if run.name in recorded:
             probe = results[run.name][2]
-            records[run.name] = {"fingerprint": fingerprint(run, probe, code), "probe": probe}
+            records[run.name] = {"fingerprint": fingerprint(run, probe, code, committed), "probe": probe}
     write_records(args.fingerprints, records)
     return status
 

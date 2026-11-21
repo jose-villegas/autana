@@ -1,6 +1,7 @@
-"""The reference G-buffer of the fit and the two losses on it: depth and "a copy shows here", per training view,
+"""The reference G-buffer of the fit and the two losses on it: depth and "a copy shows here", per colour or geometry-only view,
 from the full-detail source as camera rays see it (reference_render.lit_source): masked or hidden sources are
-traced per hit, opaque sources rasterised.
+traced per hit, opaque sources rasterised. Independent close geometry probes constrain front and depth
+where colour training views cannot see rest movement over a copy.
 
 The front loss is the copy-coverage gate's measure made soft: wherever the source shows a copy and the fitted
 rest is drawn in front of it, it pushes the rest back behind. The depth loss holds the rest to the source's own

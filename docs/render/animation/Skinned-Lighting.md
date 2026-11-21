@@ -150,7 +150,7 @@ Per channel, with intensity unscaled as in `light.py:bake_directional`:
 
 | Step | Formula |
 |---|---|
-| Albedo decode | `(a / 255)^2.2` for albedo byte `a` |
+| Albedo decode | $`(a/255)^{2.2}`$ for albedo byte `a` |
 | Light | `ambient_color * ambient_intensity + sum(light_color * intensity * max(0, N.L))` |
 | Radiance | `albedo * light` |
 | Tone map, Reinhard<sup>[[7]](../../Citations.md#reinhard-2002)</sup> | `radiance / (1 + radiance * tonemap_white)`; white 0 (`SCENE_TONEMAP_WHITE_NONE`) is identity |

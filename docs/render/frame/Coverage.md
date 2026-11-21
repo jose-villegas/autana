@@ -108,13 +108,13 @@ Clips show the same full renderer frames and camera window, one look per GIF.
 The [temporal method](../../tools/Render-Harness.md#temporal-video-columns)
 measures triangle-scale pops; the difference clips also show spatial noise.
 
-<!-- generated: small-fill-temporal sha256=0983d41d867fce3d1a34a1f7241f4eda1f5f0a3a1964813989971b9ab17719e7 -->
+<!-- generated: small-fill-temporal sha256=556861b42482efd47f917df767a801a212f3fa3386fddcebc6e738639e607e97 -->
 | Look vs SMOOTH | Extra frame-to-frame change (levels of 255) | Blocks popping (>8/255) |
 |---|---|---|
 | SMOOTH (4/0 FLAT) | 0.000 | 0.0000% |
-| FAST (12/16 FLAT) | 0.902 | 2.0499% |
-| 12/16 GRAIN | 1.010 | 2.2769% |
-| 12/16 DITHER | 1.153 | 3.3965% |
+| FAST (12/16 FLAT) | 0.934 | 2.1798% |
+| 12/16 GRAIN | 1.044 | 2.3992% |
+| 12/16 DITHER | 1.182 | 3.4961% |
 <!-- /generated: small-fill-temporal -->
 
 ### Board frame-cost gains when opted in

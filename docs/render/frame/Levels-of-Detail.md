@@ -54,7 +54,7 @@ flowchart TB
 | Rule | Effect |
 |---|---|
 | A cluster draws when its error ≤ tolerance < its group's error, each projected at the group's sphere | neighbours in a group switch together: no crack |
-| Coarse below `tolerance − hysteresis_px`, fine above `tolerance + hysteresis_px` | a still camera never flickers |
+| Coarse below `tolerance - hysteresis_px`, fine above `tolerance + hysteresis_px` | a still camera never flickers |
 | A group whose radius spans more than `coverage_permille` of the height stays fine | no large coarse patch shimmering under drift |
 | A coarse group's finer groups are coarse too; a closing pass fixes float rounding | the cut stays crack-free |
 | Each instance every `lod.pick_every` frames, all on a scene's first | the cull walk only reads the bits |

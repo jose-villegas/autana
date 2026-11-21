@@ -55,6 +55,7 @@ that field's table in the asset.
 | `texture.divide_px` | `16` | `[0, RENDER_TEXTURE_DIVIDE_PX_MAX]` | basic | fewest pixels between divides by depth, fewer cost more; 0 is affine, near surfaces bend |
 | `texture.affine_bend` | `1.0` | `[0.0, RENDER_TEXTURE_BEND_MAX]` | advanced | texels a triangle may bend and still step affine; larger is faster, bends more |
 | `texture.affine_level` | `1` | `[0, RENDER_TEXTURE_LEVEL_MAX]` | advanced | first mip level that steps affine, its pattern shifting rather than bending; 0 lets every level divide |
+| `texture.far_level` | `3` | `[0, RENDER_TEXTURE_LEVEL_MAX]` | basic | first mip level drawn untextured, one colour a triangle; lower is faster; 0 textures every level |
 | `small_fill.ceiling` | `4` | `[0, SMALL_FILL_CEILING_MAX]` | basic | largest bounding-box side in pixel centres filled in one colour; 0 is off; more saves, blurs small detail |
 | `small_fill.gate` | `0` | `[0, SMALL_FILL_GATE_MAX]` | advanced | RGB565 per-channel spread, in packed channel units, a box at the ceiling may span and still fill; 0 lets any |
 | `small_fill.style` | `0` | `[0, SMALL_FILL_STYLE_COUNT)` | advanced | 0 flat, 1 grain, 2 dither (a small_fill_style_t): how a filled box above the always-flat side is coloured |
