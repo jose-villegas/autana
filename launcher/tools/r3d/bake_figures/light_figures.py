@@ -125,10 +125,12 @@ def write_obj(folder):
                              ((x0, y0, z0), (0, 0, sz), (0, sy, 0)),    # left, -x
                              ((x1, y0, z1), (0, 0, -sz), (0, sy, 0))):  # right, +x
             add(name, corner, u, v, BLOCK_QUADS)
-    lines = [f"mtllib {SCENE_ID}.mtl"] + [f"v {x:.6f} {y:.6f} {z:.6f}" for x, y, z in vertices]
+    # The export to Mitsuba for bounced light reads texture coordinates; untextured, any will do.
+    lines = ([f"mtllib {SCENE_ID}.mtl"] + [f"v {x:.6f} {y:.6f} {z:.6f}" for x, y, z in vertices]
+             + [f"vt {x:.6f} {z:.6f}" for x, _, z in vertices])
     for material, faces in groups:
         lines.append(f"usemtl {material}")
-        lines.extend("f " + " ".join(str(index) for index in face) for face in faces)
+        lines.extend("f " + " ".join(f"{index}/{index}" for index in face) for face in faces)
     (folder / f"{SCENE_ID}.obj").write_text("\n".join(lines) + "\n")
     materials = [("floor", FLOOR_KD)] + [(name, kd) for name, kd, _, _ in BLOCKS]
     (folder / f"{SCENE_ID}.mtl").write_text("".join(f"newmtl {name}\nKd {r} {g} {b}\n\n" for name, (r, g, b) in materials))
