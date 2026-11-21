@@ -82,6 +82,21 @@ class MeshBundleTests(unittest.TestCase):
         self.assertEqual([(row['step'], row['triangles_in'], row['triangles_out']) for row in recorder.rows],
                          [('meshlets', len(meshes) * rest, len(meshes) * rest), ('write', rest, rest)])
 
+    def test_a_bundle_without_textures_decodes_without_numpy(self):
+        """The firmware build packs bundles with the ESP-IDF Python, which has no numpy."""
+        import subprocess
+        with tempfile.TemporaryDirectory() as directory:
+            path = pathlib.Path(directory) / "start.bundle"
+            data = bundle_fixture(directory)[0]
+            path.write_bytes(data)
+            script = ("import sys; sys.modules['numpy'] = None; sys.path.insert(0, sys.argv[1]); "
+                      "from r3d import mesh_bundle; import pathlib; "
+                      "print(len(mesh_bundle.decode(pathlib.Path(sys.argv[2]).read_bytes())[1]))")
+            result = subprocess.run([sys.executable, "-c", script, str(pathlib.Path(__file__).parents[1]), str(path)],
+                                    capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(int(result.stdout), len(mesh_bundle.decode(data)[1]))
+
     def test_manifest_has_plain_names_without_hashes(self):
         with tempfile.TemporaryDirectory() as directory:
             data = bundle_fixture(directory)[0]
@@ -327,18 +342,15 @@ class FitCommandTests(unittest.TestCase):
         self.assertEqual(self.values(args, '--poses'), ['train.txt', 'train_landscape.txt'])
         self.assertEqual(self.values(args, '--coverage-poses'), ['coverage.txt'])
 
-    def test_held_out_sets_pass_only_when_the_import_sets_probes_and_pair_up(self):
+    def test_every_fit_scores_its_held_out_sets_and_only_a_probe_fit_gates_closure_on_them(self):
         for name, shaping in (('none', {}), ('probes', dict(probes=SimpleNamespace()))):
             with self.subTest(shaping=name):
                 args = self.command(**shaping)
                 held_out = ['held_out.txt'] + (['probes_held_out.txt'] if name == 'probes' else [])
                 references = ['reference_held_out'] + (['reference_probes_held_out'] if name == 'probes' else [])
-                if name == 'none':
-                    self.assertNotIn('--held-out-poses', args)
-                    self.assertNotIn('--held-out-reference', args)
-                else:
-                    self.assertEqual(self.values(args, '--held-out-poses'), held_out)
-                    self.assertEqual(self.values(args, '--held-out-reference'), references)
+                self.assertEqual(self.values(args, '--held-out-poses'), held_out)
+                self.assertEqual(self.values(args, '--held-out-reference'), references)
+                self.assertEqual('--closure' in args, name == 'probes')
 
     def test_the_copy_gate_checks_the_path_held_out_set_unless_the_camera_has_no_path(self):
         for path, probes, expected in ((True, SimpleNamespace(), 'held_out.txt'), (True, None, 'held_out.txt'),
