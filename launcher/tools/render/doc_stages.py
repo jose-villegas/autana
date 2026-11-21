@@ -30,6 +30,8 @@ from doc_tables import markdown
 from layout_measure import parse_timings, MEAN_RE
 from r3d.process_budget import WSL_MEMORY_REQUIRED_BYTES, WINDOWS_MEMORY_REQUIRED_BYTES
 from r3d.import_settings import content_checksum, load_import_settings, source_files
+from r3d.import_settings import SettingsError
+from r3d.poses import flight_camera, path_poses
 from r3d.scene_name import scene_id
 
 HOST_SCRIPT = ROOT / "launcher/tools/render/scene_viewer.sh"
@@ -288,6 +290,15 @@ def board_frames(captures, expected, id, object_name, every_ms):
 key: statistics.median(row) for key, row in values.items()
 }
 
+def flight_poses(scene, visibility, every_ms=None, either_way_up=True):
+    """The poses the board flies: the scene's flight camera sampled at `visibility`'s size, every `every_ms`
+    (its own step when None). The scene camera may have no path, its fits trained on probes."""
+    camera = flight_camera(scene)
+    if camera is None:
+        raise SettingsError(f"{scene.path}: no camera on a path for the doc stage to fly")
+    return path_poses(camera, visibility.size, every_ms or visibility.every_ms, either_way_up)
+
+
 def capture_viewport(path, expected):
     import re
     sizes = re.findall(r"FRAME COST .*?rendered (\d+)x(\d+)", path.read_text(encoding="utf-8", errors="replace"))
@@ -298,7 +309,6 @@ def capture_viewport(path, expected):
 def board(args, out, work):
     from r3d.cost_model import FEATURES, fit, mesh_rows
     from r3d.import_settings import load_scene
-    from r3d.mesh_import import camera_path_poses
     from r3d.fitted_variant import placed_variant, poses_text
     import re
     import numpy as np
@@ -316,7 +326,7 @@ def board(args, out, work):
     scene = load_scene(scene_path)
     job = placed_variant(scene, args.object + "_fitted")
     every_ms = capture_pose_every_ms(args.capture)
-    poses = camera_path_poses(scene, job.renderer.fit, every_ms, either_way_up=False)
+    poses = flight_poses(scene, job.renderer.fit, every_ms, either_way_up=False)
     for capture in args.capture:
         capture_viewport(capture, poses[:2])
     frame_values = board_frames(args.capture, [(name, index * every_ms) for name in (id, "lite")
@@ -423,7 +433,7 @@ def fit_into(directory, point, point_dir, scene_path, scene, job, inputs, record
 
 
 def bake_into(directory, scene, baked_name, path_cull, recorder=None):
-    from r3d.mesh_import import bake_geometry, camera_path_poses, write_baked
+    from r3d.mesh_import import bake_geometry, write_baked
     from r3d.lit_mesh import write_lit_mesh
     baked = copy.deepcopy(next(item for item in scene.renderers if item.object.name == baked_name))
     geometry = bake_geometry(baked, scene, recorder)
@@ -432,7 +442,7 @@ def bake_into(directory, scene, baked_name, path_cull, recorder=None):
         from r3d.light import visible_from_path
         from r3d.ray_query import RayQuery
         visibility = PATH_CULL_SAMPLING
-        width, height, lens, near, poses = camera_path_poses(scene, visibility)
+        width, height, lens, near, poses = flight_poses(scene, visibility)
         seen = visible_from_path(geometry.positions, geometry.tris, geometry.tri_double,
             RayQuery(geometry.positions, geometry.tris),
             poses, width, height, lens, near, visibility.samples, visibility.margin)
@@ -537,7 +547,6 @@ class Keeper:
         baked = next(item for item in scene.renderers if item.object.name == baked_name)
         cull = None
         if path_cull:
-            from r3d.poses import flight_camera
             poses = self.poses.digest(flight_camera(scene), PATH_CULL_SAMPLING.every_ms, PATH_CULL_SAMPLING.size,
                                       self.tools, set())
             if poses is None:
@@ -548,12 +557,11 @@ class Keeper:
                          priority=True)
 
 def smoke_prepare(scene_path, scene, job, inputs):
-    from r3d.mesh_import import camera_path_poses
     from r3d.fitted_variant import poses_text
     from r3d.reference_render import main as reference_main
     inputs.mkdir(exist_ok=True)
     shutil.copyfile(job.asset_path, inputs / f"{job.renderer.variant.name}.bundle")
-    width, height, lens, near, poses = camera_path_poses(scene, job.renderer.fit, 5000, either_way_up=False)
+    width, height, lens, near, poses = flight_poses(scene, job.renderer.fit, 5000, either_way_up=False)
     for name in ("train", "train_landscape", "held_out", "coverage"):
         (inputs / f"{name}.txt").write_text(poses_text(32, 40, lens, near, poses[:2]))
     for name in ("reference", "reference_landscape", "reference_held_out"):
