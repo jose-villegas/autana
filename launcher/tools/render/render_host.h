@@ -109,6 +109,15 @@ bool render_host_set_tunable_text(const char* assignment);
  * provider's setup; false when the provider links no renderer. */
 bool render_host_apply_settings(const render_settings_t* settings);
 
+/* The active scene camera's world position and rotation quaternion (x, y, z,
+ * w), as --poses logs them; false when there is no active camera or the
+ * provider links no scene. */
+bool render_host_camera_pose(float position[3], float rotation[4]);
+
+/* Opens `path` and writes `header` as its first line; NULL, saying why
+ * under `tool`'s name, when it cannot. Any per-frame CSV a harness writes. */
+FILE* render_rows_open(const char* path, const char* header, const char* tool);
+
 /* Parse options and prepare the provider, graphics and outputs for a run.
  * False means no run opened; exit_code is 0 for a successful query, nonzero
  * for an error. */

@@ -3,6 +3,7 @@
 
 #include "../scene_viewer.c"
 #include "scene/scene_shell.h"
+#include "scene/transform/transform.h"
 
 #define FIXTURE_STEP_MS 100
 #define FIXTURE_STEPS   3

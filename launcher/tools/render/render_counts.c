@@ -7,17 +7,6 @@
 #include "render/view/raster_cull_view.h"
 
 FILE*
-render_rows_open(const char* path, const char* header, const char* tool) {
-    FILE* rows = fopen(path, "w");
-    if (rows == NULL) {
-        fprintf(stderr, "%s: cannot write %s\n", tool, path);
-        return NULL;
-    }
-    fprintf(rows, "%s\n", header);
-    return rows;
-}
-
-FILE*
 render_counts_open(const char* path, const char* tool) {
 #define COUNT_NAME(name, member) "," #name
     return render_rows_open(path, "frame,ms" RASTER_CULL_FRAME_FIELDS(COUNT_NAME), tool);

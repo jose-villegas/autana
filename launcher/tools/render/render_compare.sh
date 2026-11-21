@@ -235,6 +235,12 @@ print(digest.hexdigest()[:16])' "$(to_native "$reference")" "$(to_native "$poses
         --poses "$(to_native "$poses")" --skip 1 --out "$(to_native "$cache")" --samples "$samples" >&2 || exit 1
         : > "$cache/done"
     fi
+    # The poses the frames stand at, frame i at pose i past the skipped one,
+    # which render_compare.py holds a scored video to (reference_poses.py).
+    if [ ! -f "$cache/poses.txt" ]; then
+        awk '/^pose / && !skipped { skipped = 1; next } { print }' "$poses" > "$cache/poses.txt.part" \
+            && mv "$cache/poses.txt.part" "$cache/poses.txt" || exit 1
+    fi
     echo "$cache"
 }
 

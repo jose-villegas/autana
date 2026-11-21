@@ -67,6 +67,7 @@ from dataclasses import dataclass
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
+import reference_poses
 from check_avi import read_video
 from colour_maths import GAMMA, expand_565, lab
 
@@ -789,7 +790,10 @@ def reference_video(path, reference_dir, scale=None, heatmaps=None, keep=None, s
     first frame when None. `keep`, a dict of frame index to None, is filled
     with the (render, reference) pairs of those frames; `sink(fps, index,
     render, reference)` is called for every frame. The first `first` video
-    frames are skipped, for references that cover only a later segment."""
+    frames are skipped, for references that cover only a later segment. A
+    reference set that records its poses refuses a frame drawn elsewhere
+    (reference_poses.checker)."""
+    stands = reference_poses.checker(path, reference_dir)
     fps, frames = read_video(path)
     references = sorted(pathlib.Path(reference_dir).glob("*.png"))
     values = []
@@ -799,6 +803,8 @@ def reference_video(path, reference_dir, scale=None, heatmaps=None, keep=None, s
             continue
         if index >= len(references):
             raise ValueError("more video frames than reference images")
+        if stands is not None:
+            stands(position, index)
         render = Image.fromarray(raw)
         reference = Image.open(references[index])
         if scale is None:

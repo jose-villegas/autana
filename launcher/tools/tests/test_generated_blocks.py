@@ -6,7 +6,24 @@ import unittest
 import subprocess
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "render"))
-from generated_blocks import apply_tables, blocks, check_commands, digest, replace_block, verify
+from generated_blocks import apply_tables, blocks, check_commands, digest, reference_jumps, replace_block, verify
+
+GENERATOR = pathlib.Path(__file__).resolve().parents[1] / "render/generated_blocks.py"
+
+
+def scores_tree(directory, published, refreshed):
+    """A git tree in `directory` whose Fidelity.md block `scores` holds
+    `published`, and a tables folder whose scores.md holds `refreshed`: (root,
+    doc, tables)."""
+    root = pathlib.Path(directory)
+    subprocess.run(["git", "init", "-q", directory], check=True)
+    doc = root / "Fidelity.md"
+    doc.write_text(f"<!-- generated: scores -->\n{published}<!-- /generated: scores -->\n", encoding="utf-8")
+    subprocess.run(["git", "add", doc.name], cwd=root, check=True)
+    tables = root / "out/tables"
+    tables.mkdir(parents=True)
+    (tables / "scores.md").write_text(refreshed, encoding="utf-8")
+    return root, doc, tables
 
 
 class GeneratedBlocksTests(unittest.TestCase):
@@ -91,6 +108,53 @@ class GeneratedBlocksTests(unittest.TestCase):
             (tables / "unknown.md").write_text("table\n", encoding="utf-8")
             with self.assertRaises(ValueError):
                 apply_tables(root, tables)
+
+    def test_a_refreshed_mean_de_jump_is_refused_unless_accepted(self):
+        # #1597 drew every Sponza figure from a still camera: each mean dE76 rose from 5-13 to 31-38.
+        header = "| Variant | Mean dE76 | p95 dE76 |\n|---|---:|---:|\n"
+        published = header + "| fitted | 5.468 | 15.642 |\n| flat | 13.149 | 46.465 |\n"
+        cases = {"doubled and over +5": ("| fitted | 34.604 | 65.969 |\n| flat | 13.0 | 46.0 |\n", True),
+                 "a new row": ("| fitted | 5.468 | 15.642 |\n| flat | 13.149 | 46.465 |\n| new | 90 | 99 |\n", False),
+                 "doubled, under +5": ("| fitted | 9.9 | 15.642 |\n| flat | 13.149 | 46.465 |\n", False),
+                 "over +5, not doubled": ("| fitted | 10.5 | 15.642 |\n| flat | 19.0 | 46.465 |\n", False),
+                 "exactly doubled and +5": ("| fitted | 5.468 | 15.642 |\n| flat | 13.149 | 46.465 |\n"
+                                            .replace("5.468", "10.936"), False),
+                 "only p95 jumps": ("| fitted | 5.468 | 99.0 |\n| flat | 13.149 | 46.465 |\n", False)}
+        for case, (rows, refused) in cases.items():
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as directory:
+                root, _doc, tables = scores_tree(directory, published, header + rows)
+                if refused:
+                    with self.assertRaisesRegex(ValueError, r"Fidelity\.md#scores fitted: Mean dE76 5\.468 -> 34\.604"):
+                        apply_tables(root, tables, check=True)
+                    self.assertTrue(apply_tables(root, tables, accept_jumps=True))
+                else:
+                    self.assertTrue(apply_tables(root, tables, check=True))
+
+    def test_a_rank_shared_by_two_tables_is_compared_within_its_own(self):
+        # Object-error blocks restart their ranks in each table; a jump in the
+        # first table must not hide behind the second's same rank.
+        header = "| Rank | Object part | Mean dE76 |\n|---|---|---:|\n"
+        published = f"{header}| 1 | a | 6.7 |\n\n{header}| 1 | b | 4.0 |\n"
+        refreshed = f"{header}| 1 | a | 999 |\n\n{header}| 1 | b | 4.0 |\n"
+        self.assertEqual(reference_jumps(published, refreshed), ["1: Mean dE76 6.7 -> 999"])
+
+    def test_the_indirect_look_columns_are_reference_scores_too(self):
+        header = "| Look | Mean dE76, physical | Mean dE76, own |\n|---|---:|---:|\n"
+        self.assertEqual(reference_jumps(header + "| baked | 4.0 | 3.0 |\n", header + "| baked | 30.0 | 3.0 |\n"),
+                         ["baked: Mean dE76, physical 4.0 -> 30.0"])
+
+    def test_the_command_line_refuses_a_jump_until_accepted(self):
+        header = "| Variant | Mean dE76 |\n|---|---:|\n"
+        with tempfile.TemporaryDirectory() as directory:
+            _root, doc, tables = scores_tree(directory, header + "| fitted | 5.5 |\n", header + "| fitted | 34.6 |\n")
+            command = [sys.executable, str(GENERATOR), "--root", directory, "--tables", str(tables)]
+            refused = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(refused.returncode, 2)
+            self.assertIn("--accept-reference-jump", refused.stderr)
+            self.assertNotIn("34.6", doc.read_text(encoding="utf-8"))
+            accepted = subprocess.run(command + ["--accept-reference-jump"], capture_output=True, text=True)
+            self.assertEqual(accepted.returncode, 0, accepted.stderr)
+            self.assertIn("34.6", doc.read_text(encoding="utf-8"))
 
     def test_a_table_links_from_its_owning_pages_folder(self):
         with tempfile.TemporaryDirectory() as directory:
