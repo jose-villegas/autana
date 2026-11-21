@@ -47,9 +47,9 @@ A bake that traces rays differs by CPU vendor too (an AMD and an Intel host
 trace a few rays an ulp apart), so the lock's `mesh_cpu_vendor` line names the
 vendor its meshes and reference sets were made on. A run records its host's
 vendor; `lock --from-run` refuses a run that made one on another vendor, naming
-both, and the CPU job fails before baking when the hosted runner it got is
-another vendor's. Either way, re-run the failed job until it lands on the
-lock's vendor.
+both. A hosted runner's vendor cannot be asked for, so each Bakes job that
+traces starts on several runners when it has traced work, and the first on the
+lock's vendor does it; when none is, the run is re-run by itself.
 
 A fit's reference set is traced on the CPU, as a mesh is, since the GPU's ray
 tracing may build a different tree each time
@@ -58,7 +58,6 @@ It is a bake of its own, locked like the start; its bytes differ between CPU mod
 
 The Bakes plan job selects each missing set's poses once and uploads their files for that attempt.
 Every reference shard renders that plan and copies its pose files byte for byte; the join job packs their union.
-The plan and shard jobs check the lock's CPU vendor before tracing.
 
 A fit reads only locked bytes, so it repeats exactly on any GPU model. Its row
 names the `gpu` that made it. The Bakes GPU run's `runner` input picks the

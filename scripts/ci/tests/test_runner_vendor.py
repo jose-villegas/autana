@@ -1,7 +1,9 @@
-"""runner_vendor fails a wrong-vendor runner first, and re-runs a run only for that failure."""
+"""runner_vendor picks a candidate runner of the lock's vendor, and re-runs a run only when none was."""
 import contextlib
 import io
+import json
 import os
+import re
 import sys
 import tempfile
 import unittest
@@ -33,21 +35,6 @@ def fake_api(attempt, jobs):
 
 
 class RunnerVendorTests(unittest.TestCase):
-    def check(self, lock, host):
-        out = io.StringIO()
-        with contextlib.redirect_stdout(out):
-            code = runner_vendor.check(lock, host)
-        return code, out.getvalue()
-
-    def test_a_runner_of_the_locks_vendor_traces(self):
-        self.assertEqual(self.check(AMD, AMD)[0], 0)
-        self.assertEqual(self.check(None, INTEL)[0], 0)
-
-    def test_a_runner_of_another_vendor_fails_with_the_rerun_title(self):
-        code, out = self.check(AMD, INTEL)
-        self.assertEqual(code, 1)
-        self.assertIn(f"::error title={runner_vendor.WRONG_VENDOR}::", out)
-
     def rerun(self, attempt, jobs):
         request, posts = fake_api(attempt, jobs)
         with contextlib.redirect_stdout(io.StringIO()):
@@ -71,18 +58,26 @@ class RunnerVendorTests(unittest.TestCase):
 
 
 
+def unit(shard):
+    return f"Trace reference shard {shard}"
+
+
 def marker(shard, candidate, attempt, ok, created):
-    return runner_vendor.marker_name(shard, candidate, attempt, ok), created
+    return runner_vendor.marker_name(unit(shard), candidate, attempt, ok), created
 
 
-class ShardCandidateTests(unittest.TestCase):
-    """Of a shard's candidates, one of the lock's vendor traces, and the shard fails only when none can."""
+def shard_artifact(shard, candidate, attempt):
+    return f"reference-shard-{shard}-{attempt}-{candidate}"
+
+
+class CandidateTests(unittest.TestCase):
+    """Of a job's candidates, one of the lock's vendor does it, and the job fails only when none can."""
 
     def decides(self, artifacts, running, verdicts, attempt=1):
         """`verdicts` maps (candidate, on the lock's vendor) to what `decide` must say for shard 4."""
         for (candidate, ok), verdict in verdicts.items():
             with self.subTest(candidate=candidate, ok=ok):
-                self.assertEqual(runner_vendor.decide(artifacts, running, 4, candidate, attempt, ok), verdict)
+                self.assertEqual(runner_vendor.decide(artifacts, running, unit(4), candidate, attempt, ok), verdict)
 
     def test_the_earliest_marked_on_the_locks_vendor_traces(self):
         artifacts = [marker(4, 2, 1, True, "10:00:01"), marker(4, 0, 1, True, "10:00:05")]
@@ -120,18 +115,24 @@ class ShardCandidateTests(unittest.TestCase):
         self.decides(artifacts, {1, 2}, {(1, True): runner_vendor.TRACE, (2, True): runner_vendor.OTHER})
 
     def test_a_shard_an_earlier_attempt_traced_is_done(self):
-        traced = runner_vendor.shard_artifact_name(4, 2, 1)
-        artifacts = [(runner_vendor.shard_artifact_name(14, 0, 1), "10:00:00"), marker(4, 0, 1, True, "10:00:00")]
-        self.assertFalse(runner_vendor.shard_done(artifacts, 4))
-        self.assertTrue(runner_vendor.shard_done(artifacts + [(traced, "11:00:00")], 4))
+        artifacts = [(shard_artifact(14, 0, 1), "10:00:00"), marker(4, 0, 1, True, "10:00:00")]
+        self.assertFalse(runner_vendor.done(artifacts, "reference-shard-4-*"))
+        self.assertTrue(runner_vendor.done(artifacts + [(shard_artifact(4, 2, 1), "11:00:00")], "reference-shard-4-*"))
+        self.assertFalse(runner_vendor.done(artifacts, ""))
+
+    def test_a_marker_names_its_job_whatever_the_jobs_name_holds(self):
+        name = runner_vendor.marker_name("Plan the reference shards", 3, 2, False)
+        fields = runner_vendor.MARKER.fullmatch(name)
+        self.assertEqual(tuple(fields.groups()), ("plan-the-reference-shards", "3", "2", "wrong"))
+        self.assertNotEqual(runner_vendor.slug(unit(1)), runner_vendor.slug(unit(14)))
 
     def test_the_candidates_keep_the_matrix_under_its_cap(self):
         from bake import bake
-        full = list(range(runner_vendor.SHARD_CANDIDATES))
+        full = list(range(runner_vendor.CANDIDATES))
         self.assertEqual(runner_vendor.candidates(1), full)
-        most = bake.MATRIX_JOBS // runner_vendor.SHARD_CANDIDATES
+        most = bake.MATRIX_JOBS // runner_vendor.CANDIDATES
         self.assertEqual(runner_vendor.candidates(most), full)
-        self.assertEqual(len(runner_vendor.candidates(most + 1)), runner_vendor.SHARD_CANDIDATES - 1)
+        self.assertEqual(len(runner_vendor.candidates(most + 1)), runner_vendor.CANDIDATES - 1)
         self.assertEqual(runner_vendor.candidates(bake.MATRIX_JOBS), [0])
         for count in (1, 18, most, most + 1, bake.MATRIX_JOBS // 2 + 1, bake.MATRIX_JOBS):
             with self.subTest(count=count):
@@ -142,31 +143,49 @@ class ShardCandidateTests(unittest.TestCase):
         out_path.write_text("")
         return out_path, {"GITHUB_RUN_ID": "7", "GITHUB_RUN_ATTEMPT": attempt, "GITHUB_OUTPUT": str(out_path)}
 
-    def mark(self, artifacts, lock, host, attempt="2"):
+    def mark(self, artifacts, lock, host, attempt="2", candidate=3, traces=True):
+        reads = []
+
         def request(method, path, body=None):
+            reads.append(path)
             return {"artifacts": [{"name": name, "created_at": created} for name, created in artifacts]}
         with tempfile.TemporaryDirectory() as folder:
             out_path, env = self.env(folder, attempt)
             target = Path(folder) / "new" / "vendor"
             with mock.patch.dict(os.environ, env), contextlib.redirect_stdout(io.StringIO()):
-                runner_vendor.mark(4, 3, target, lock, host, request=request)
+                runner_vendor.mark(unit(4), candidate, target, lock, host, traces, "reference-shard-4-*", request=request)
+            self.reads = reads
             files = sorted(path.name for path in target.iterdir()) if target.exists() else []
             return files, dict(line.split("=", 1) for line in out_path.read_text().splitlines())
 
-    def test_mark_names_this_candidates_vendor_attempt_and_shard_artifact(self):
+    def test_mark_names_this_candidates_job_vendor_and_attempt(self):
         for host, ok in ((AMD, True), (INTEL, False)):
             with self.subTest(host=host):
                 files, outputs = self.mark([], AMD, host)
-                self.assertEqual(files, [runner_vendor.marker_name(4, 3, 2, ok)])
-                self.assertEqual(outputs, {"marker": files[0],
-                                           "shard_artifact": runner_vendor.shard_artifact_name(4, 3, 2)})
+                self.assertEqual(files, [runner_vendor.marker_name(unit(4), 3, 2, ok)])
+                self.assertEqual(outputs, {"marker": files[0]})
                 fields = runner_vendor.MARKER.fullmatch(files[0])
-                self.assertEqual((fields[1], fields[2], fields[3], fields[4]), ("4", "3", "2", "ok" if ok else "wrong"))
-                self.assertTrue(runner_vendor.SHARD_ARTIFACT.fullmatch(outputs["shard_artifact"]))
+                self.assertEqual(tuple(fields.groups()), ("trace-reference-shard-4", "3", "2", "ok" if ok else "wrong"))
 
     def test_mark_skips_a_shard_an_earlier_attempt_traced(self):
-        files, outputs = self.mark([(runner_vendor.shard_artifact_name(4, 0, 1), "10:00:00")], AMD, AMD)
-        self.assertEqual((files, outputs), ([], {"marker": ""}))
+        files, outputs = self.mark([(shard_artifact(4, 0, 1), "10:00:00")], AMD, AMD)
+        self.assertEqual((files, outputs), ([], {"marker": "", "work": "false"}))
+
+    def test_a_job_that_traces_nothing_is_candidate_0s_on_any_vendor(self):
+        for candidate, work in ((0, "true"), (1, "false")):
+            with self.subTest(candidate=candidate):
+                files, outputs = self.mark([], AMD, INTEL, candidate=candidate, traces=False)
+                self.assertEqual((files, outputs), ([], {"marker": "", "work": work}))
+                self.assertEqual(self.reads, [])
+
+    def test_start_sizes_each_job_by_its_traced_work(self):
+        with tempfile.TemporaryDirectory() as folder:
+            out_path, env = self.env(folder)
+            with mock.patch.dict(os.environ, env):
+                runner_vendor.start({"cpu": 3, "reference-plan": 0})
+            self.assertEqual(out_path.read_text().splitlines(),
+                             [f"cpu-candidates={list(range(runner_vendor.CANDIDATES))}",
+                              "reference-plan-candidates=[0]"])
 
     def claim(self, artifacts, jobs, marker_name, candidate=0, unlisted_reads=0, attempt="1"):
         calls = []
@@ -182,7 +201,7 @@ class ShardCandidateTests(unittest.TestCase):
             out_path, env = self.env(folder, attempt)
             out = io.StringIO()
             with mock.patch.dict(os.environ, env), contextlib.redirect_stdout(out):
-                code = runner_vendor.claim(4, candidate, marker_name, request=request,
+                code = runner_vendor.claim(unit(4), candidate, marker_name, request=request,
                                            sleep=lambda seconds: calls.append(("sleep", seconds)))
             self.calls = calls
             return code, out.getvalue(), out_path.read_text()
@@ -192,7 +211,7 @@ class ShardCandidateTests(unittest.TestCase):
         mine, created = marker(4, 1, 1, True, "10:00:00")
         code, _, outputs = self.claim([(mine, created), marker(4, 2, 1, True, "10:00:03")], [], mine, candidate=1,
                                       unlisted_reads=2)
-        self.assertEqual((code, outputs), (0, "trace=true\n"))
+        self.assertEqual((code, outputs), (0, "work=true\n"))
         reads = [call for call in self.calls if call == "/actions/runs/7/artifacts"]
         self.assertEqual(len(reads), 3)
         self.assertEqual(self.calls[0], ("sleep", runner_vendor.MARKER_POLL_SECONDS))
@@ -200,7 +219,7 @@ class ShardCandidateTests(unittest.TestCase):
     def test_claim_reads_its_vendor_from_its_marker_name(self):
         wrong, created = marker(4, 1, 1, False, "10:00:00")
         code, _, outputs = self.claim([(wrong, created)], [], wrong, candidate=1)
-        self.assertEqual((code, outputs), (1, "trace=false\n"))
+        self.assertEqual((code, outputs), (1, "work=false\n"))
 
     def test_running_candidates_counts_every_unfinished_job_of_the_shard(self):
         jobs = [{"name": f"Trace reference shard 4 (candidate {index})", "status": status}
@@ -212,7 +231,7 @@ class ShardCandidateTests(unittest.TestCase):
         def request(method, path, body=None):
             return {"jobs": pages[int(path.rsplit("page=", 1)[1]) - 1]}
         with mock.patch.dict(os.environ, {"GITHUB_RUN_ID": "7", "GITHUB_RUN_ATTEMPT": "1"}):
-            self.assertEqual(runner_vendor.running_candidates(4, request=request), {0, 1, 2})
+            self.assertEqual(runner_vendor.running_candidates(unit(4), request=request), {0, 1, 2})
 
     def test_a_lost_shard_fails_with_the_title_the_rerun_takes(self):
         name, created = marker(4, 0, 1, False, "10:00:00")
@@ -222,7 +241,7 @@ class ShardCandidateTests(unittest.TestCase):
         code, out, outputs = self.claim([(name, created)], jobs, name)
         self.assertEqual(code, 1)
         self.assertIn(f"::error title={runner_vendor.WRONG_VENDOR}::", out)
-        self.assertEqual(outputs, "trace=false\n")
+        self.assertEqual(outputs, "work=false\n")
         # The run's other candidates finished green, so the lost one is its only failure and is re-run.
         run = {"Trace reference shard 4 (candidate 0)": ("failure", [runner_vendor.WRONG_VENDOR]),
                "Trace reference shard 4 (candidate 1)": ("success", []),
@@ -237,12 +256,12 @@ class ShardCandidateTests(unittest.TestCase):
         jobs = [{"name": "Trace reference shard 4 (candidate 0)", "status": "in_progress"},
                 {"name": "Trace reference shard 4 (candidate 2)", "status": "queued"}]
         code, _, outputs = self.claim([(name, created)], jobs, name)
-        self.assertEqual((code, outputs), (0, "trace=false\n"))
+        self.assertEqual((code, outputs), (0, "work=false\n"))
 
     def test_the_tracing_candidate_says_so(self):
         name, created = marker(4, 1, 1, True, "10:00:00")
         code, _, outputs = self.claim([(name, created)], [], name, candidate=1)
-        self.assertEqual((code, outputs), (0, "trace=true\n"))
+        self.assertEqual((code, outputs), (0, "work=true\n"))
 
 
 class BakesWorkflowTests(unittest.TestCase):
@@ -263,38 +282,77 @@ class BakesWorkflowTests(unittest.TestCase):
                     self.assertIn(before, needs)
                     self.assertIn(f"needs.{before}.result != 'failure'", job["if"])
 
-    def test_a_shard_candidate_job_is_named_as_claim_reads_it(self):
-        job = self.shard_job()
-        name = job["name"].replace("${{ matrix.shard }}", "4").replace("${{ matrix.candidate }}", "2")
-        match = runner_vendor.CANDIDATE_JOB.fullmatch(name)
-        self.assertIsNotNone(match, job["name"])
-        self.assertEqual((match[1], match[2]), ("4", "2"))
-
-    def shard_job(self):
+    @staticmethod
+    def jobs():
         import yaml
-        return yaml.safe_load((runner_vendor.ROOT / ".github/workflows/bakes.yml").read_text())["jobs"]["reference-shard"]
+        return yaml.safe_load((runner_vendor.ROOT / ".github/workflows/bakes.yml").read_text())["jobs"]
 
-    def test_the_shard_job_is_wired_to_mark_and_claim(self):
-        job = self.shard_job()
-        steps = {step.get("id") or step.get("name") or step["uses"]: step for step in job["steps"]}
-        order = [step.get("id") or step.get("name") or step["uses"] for step in job["steps"]]
-        self.assertEqual(job["permissions"]["actions"], "read")
-        upload = next(step for step in job["steps"] if step.get("with", {}).get("name") == "${{ steps.vendor.outputs.marker }}")
-        self.assertEqual(upload["if"], "steps.vendor.outputs.marker != ''")
-        self.assertLess(order.index("vendor"), job["steps"].index(upload))
-        self.assertLess(job["steps"].index(upload), order.index("claim"))
-        self.assertEqual(steps["claim"]["env"]["VENDOR_MARKER"], "${{ steps.vendor.outputs.marker }}")
-        trace = steps["Trace this shard"]["run"]
-        self.assertIn("/${{ needs.reference-plan.outputs.count }}", trace)
-        self.assertNotIn("job-total", trace)
-        uploads = [step["with"]["name"] for step in job["steps"] if "upload-artifact" in step.get("uses", "")]
-        self.assertIn("${{ steps.vendor.outputs.shard_artifact }}", uploads)
+    @staticmethod
+    def traces(job):
+        """Whether `job` runs a bake that traces: `bake.py bake` or `bake.py shards`, but not the join of
+        traced shards (`--shards`), which packs them."""
+        return any(re.search(r"bake\.py (bake|shards)\b", line) and "--shards " not in line
+                   for step in job["steps"] for line in step.get("run", "").splitlines())
 
-    def test_the_cli_passes_shard_and_candidate_in_order(self):
+    def test_every_job_that_traces_starts_as_vendor_candidates(self):
+        jobs = self.jobs()
+        tracing = [name for name, job in jobs.items() if self.traces(job)]
+        self.assertTrue(tracing)
+        for name in tracing:
+            job = jobs[name]
+            with self.subTest(job=name):
+                steps = [step.get("id") or step.get("name") or step.get("uses") for step in job["steps"]]
+                self.assertIn("candidate", steps)
+                start = job["steps"][steps.index("candidate")]
+                self.assertEqual(start["uses"], "./.github/actions/vendor-candidate")
+                self.assertEqual(start["with"]["candidate"], "${{ matrix.candidate }}")
+                # claim finds a candidate's siblings by this name.
+                self.assertEqual(job["name"], f"{start['with']['unit']} (candidate ${{{{ matrix.candidate }}}})")
+                match = runner_vendor.CANDIDATE_JOB.fullmatch(job["name"].replace("${{ matrix.candidate }}", "2"))
+                self.assertEqual(match[2], "2")
+                self.assertEqual(job["permissions"]["actions"], "read")
+                self.assertFalse(job["strategy"]["fail-fast"])
+                for step in job["steps"][steps.index("candidate") + 1:]:
+                    self.assertIn("steps.candidate.outputs.work == 'true'", step.get("if", ""), step)
+
+    def test_a_job_starts_one_runner_when_it_traces_nothing(self):
+        """Each tracing job's candidate matrix comes from a runner_vendor step of a job it needs, which sizes it
+        by the job's traced work; when that job did not run, the matrix is every candidate."""
+        jobs = self.jobs()
+        for name in [name for name, job in jobs.items() if self.traces(job)]:
+            job = jobs[name]
+            with self.subTest(job=name):
+                match = re.fullmatch(r"\$\{\{ fromJSON\(needs\.([\w-]+)\.outputs\.([\w-]+)(?: \|\| '(.*)')?\) \}\}",
+                                     job["strategy"]["matrix"]["candidate"])
+                self.assertIsNotNone(match, job["strategy"]["matrix"]["candidate"])
+                source, key, fallback = match.groups()
+                needs = [job["needs"]] if isinstance(job["needs"], str) else job["needs"]
+                self.assertIn(source, needs)
+                step_id = re.fullmatch(r"\$\{\{ steps\.([\w-]+)\.outputs\.([\w-]+) \}\}", jobs[source]["outputs"][key])
+                self.assertEqual(step_id[2], key)
+                run = next(step for step in jobs[source]["steps"] if step.get("id") == step_id[1])["run"]
+                if key == "candidates":
+                    self.assertIn("runner_vendor.py plan", run)
+                else:
+                    self.assertEqual(key, f"{name}-candidates")
+                    self.assertIn(f" {name}=", run[run.index("runner_vendor.py start"):])
+                    self.assertEqual(json.loads(fallback), list(range(runner_vendor.CANDIDATES)))
+
+    def test_every_tracing_job_is_sized_on_every_event(self):
+        """The job that sizes the matrices runs on every event; only its pull request check is gated."""
+        inputs = self.jobs()["inputs"]
+        self.assertNotIn("if", inputs)
+        start = next(step for step in inputs["steps"] if step.get("id") == "start")
+        self.assertIn("github.event_name != 'pull_request'", start["if"])
+
+    def test_the_cli_passes_its_arguments_in_order(self):
         with mock.patch.object(runner_vendor, "claim", return_value=0) as claim, \
                 mock.patch.dict(os.environ, {"VENDOR_MARKER": "m"}):
-            runner_vendor.main(["claim", "4", "2"])
-        claim.assert_called_once_with(4, 2, "m")
+            runner_vendor.main(["claim", unit(4), "2"])
+        claim.assert_called_once_with(unit(4), 2, "m")
+        with mock.patch.object(runner_vendor, "start", return_value=0) as start:
+            runner_vendor.main(["start", "cpu=3", "reference-plan=0"])
+        start.assert_called_once_with({"cpu": 3, "reference-plan": 0})
         with mock.patch.object(runner_vendor, "plan", return_value=0) as plan:
             runner_vendor.main(["plan", "[0, 1]"])
         plan.assert_called_once_with("[0, 1]")
@@ -308,15 +366,7 @@ class BakesWorkflowTests(unittest.TestCase):
             with mock.patch.dict(os.environ, {"GITHUB_OUTPUT": str(out_path)}):
                 runner_vendor.plan("[0, 1, 2]")
             self.assertEqual(out_path.read_text().splitlines(),
-                             ["count=3", f"candidates={list(range(runner_vendor.SHARD_CANDIDATES))}"])
-
-    def test_only_the_claiming_candidate_traces_and_uploads(self):
-        steps = self.shard_job()["steps"]
-        names = [step.get("name") or step.get("uses") for step in steps]
-        after = names.index("Whether this candidate traces the shard") + 1
-        for step in steps[after:]:
-            with self.subTest(step=step.get("name") or step.get("uses")):
-                self.assertEqual(step.get("if"), "steps.claim.outputs.trace == 'true'")
+                             ["count=3", f"candidates={list(range(runner_vendor.CANDIDATES))}"])
 
 
 if __name__ == "__main__":
