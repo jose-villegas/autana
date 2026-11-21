@@ -327,10 +327,10 @@ host = "Linux x86_64"
 [[bake]]
 output = "sponza.shpr"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "83a907fa4ccffb39babad869a17ee9b3e1ddf52d71d1b885f88a16f0cb2fc545"
-sha256 = "c110c8a47a7be2b80c4449944f8dc16e422cce95ec1835aff1d9fefafb56936c"
+key = "4e1cbd53b5cf7ec95f384bd712a2b5d405a6c163e638fa93fadb4bb12b8c4e71"
+sha256 = "edfc212a80499616dd5b51d41bf2f3ac3fda1dd780a079ffd4ef197bb35aaf5e"
 size = 16590
-run = 44655444990
+run = 44880204697
 host = "Linux x86_64"
 
 [[bake]]
