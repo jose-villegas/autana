@@ -358,23 +358,33 @@ assert_held_frames_partial(raster_rig_t* r, const render_view_t* view, int frame
     }
 }
 
-/* Frame generation does not warp a held camera: the object moving in it is
- * drawn as partial redraw draws it, at the fixed scale. A camera that moves
- * is generated again. */
+/* Frame generation does not warp a held camera, even turned on mid-hold:
+ * the object moving in it is drawn as partial redraw draws it, at the fixed
+ * scale. A camera that moves is generated; the frame after that one is drawn
+ * whole and timed, as generation prices it, and the next held frame is
+ * partial again. */
 static void
 test_generation_draws_a_held_view_partially(void) {
     raster_rig_t* r = open_pair(true);
-    render_context_set_frame_generation(&pair->context[0], true);
+    render_context_t* c = &pair->context[0];
     const render_view_t view = render_view_fixture_at(&raster_rig_camera, (viewport_t){W, H, 0});
     place_card(r, card_path[0]);
     TEST_ASSERT_EQUAL_INT(H, rows(frame(r, &view, NULL, -1)));
+    assert_held_frames_partial(r, &view, 1);
+    render_context_set_frame_generation(c, true);
     assert_held_frames_partial(r, &view, GENERATING_HELD_FRAMES);
     fixture_camera_t moved = raster_rig_camera;
     moved.eye.x += 1.0F;
     const render_view_t next = render_view_fixture_at(&moved, (viewport_t){W, H, 0});
-    render_context_set_changed(&pair->context[0], NULL, -1);
-    TEST_ASSERT_TRUE(render_context_draw(&pair->context[0], r->instance, RASTER_RIG_QUADS, &next, 0));
-    TEST_ASSERT_TRUE(render_context_frame(&pair->context[0]).generated);
+    render_context_set_changed(c, NULL, -1);
+    TEST_ASSERT_TRUE(render_context_draw(c, r->instance, RASTER_RIG_QUADS, &next, 0));
+    TEST_ASSERT_TRUE(render_context_frame(c).generated);
+    (void)render_context_compose(c, pair->destination[0], NULL, NULL);
+    const render_context_frame_t drawn = frame(r, &next, NULL, -1);
+    TEST_ASSERT_FALSE(drawn.generated);
+    TEST_ASSERT_FALSE(c->fixed_drawn); /* timed: its cost prices generation */
+    TEST_ASSERT_EQUAL_INT(H, rows(drawn));
+    assert_held_frames_partial(r, &next, 1);
 }
 
 /* Under dynamic resolution too, a held camera with generation on draws as
@@ -390,6 +400,7 @@ test_generation_under_dynres_draws_a_held_view_partially_at_the_top(void) {
     const render_context_frame_t top = dynres_frame(r, &view, &changed, 1);
     TEST_ASSERT_FALSE(top.generated);
     TEST_ASSERT_EQUAL_INT(W, top.width); /* to the top: every row */
+    TEST_ASSERT_EQUAL_INT(H, rows(top));
     assert_full_redraw(r, &view);
     for (int i = 1; i <= GENERATING_HELD_FRAMES; i++) {
         changed = slide_card(r, (float)(i % 2 + 1) * 6.0F);
@@ -399,6 +410,34 @@ test_generation_under_dynres_draws_a_held_view_partially_at_the_top(void) {
         TEST_ASSERT_LESS_THAN_INT(H, rows(f));
         assert_full_redraw(r, &view);
     }
+}
+
+/* A held view over budget is handed back to the policy with generation on
+ * as without it: its frames are generated again, and the drawn ones are the
+ * policy's, every row at its step, until the view changes; a generated
+ * frame, which forgets the kept picture, does not end the hand-back. */
+static void
+test_generation_resumes_on_a_held_view_handed_back(void) {
+    raster_rig_t* r = open_dynres(DYNRES_TIGHT);
+    render_context_set_frame_generation(&pair->context[0], true);
+    const render_view_t view = render_view_fixture_at(&raster_rig_camera, (viewport_t){W, H, 0});
+    place_card(r, card_path[0]);
+    (void)dynres_frame(r, &view, NULL, -1);
+    box3f_t changed = slide_card(r, 6.0F);
+    TEST_ASSERT_EQUAL_INT(W, dynres_frame(r, &view, &changed, 1).width); /* to the top: not judged */
+    changed = slide_card(r, 12.0F);
+    TEST_ASSERT_LESS_THAN_INT(H, rows(dynres_frame(r, &view, &changed, 1))); /* partial, over budget */
+    int generated = 0;
+    for (int i = 0; i < GENERATING_HELD_FRAMES; i++) {
+        changed = slide_card(r, (float)(i % 2 + 1) * 6.0F);
+        const render_context_frame_t f = dynres_frame(r, &view, &changed, 1);
+        generated += f.generated;
+        if (!f.generated) { /* a generated frame reports the drawn one's size */
+            TEST_ASSERT_EQUAL_INT(W / 2, f.width);
+            TEST_ASSERT_EQUAL_INT(H, rows(f));
+        }
+    }
+    TEST_ASSERT_GREATER_THAN_INT(0, generated);
 }
 
 void
@@ -413,6 +452,7 @@ run_render_partial_suite(void) {
     RUN_TEST(test_dynres_hold_does_not_count_toward_a_finer_step);
     RUN_TEST(test_generation_draws_a_held_view_partially);
     RUN_TEST(test_generation_under_dynres_draws_a_held_view_partially_at_the_top);
+    RUN_TEST(test_generation_resumes_on_a_held_view_handed_back);
 }
 
 SUITE_REGISTER(run_render_partial_suite);
