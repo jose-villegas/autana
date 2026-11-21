@@ -2,7 +2,7 @@
  * over board frames, so dynres_replay.py holds no copy of either.
  *
  *   probe fit < samples      the model fitted to every sample, then each sample's price
- *   probe replay budget_us margin_percent up_hold_us top first < frames
+ *   probe replay target_us margin_percent up_hold_us top first < frames
  *                            the step the predictor draws each frame at, its corrected
  *                            price there and at the next finer step (0 at the top),
  *                            and its switches
@@ -11,7 +11,9 @@
  * samples then holds "m" and m "step triangles draw_us upscale_us". frames
  * holds the model's four weights and one upscale per step, then "f", then f
  * rows of n "whole_us triangles draw_us upscale_us", one per step. The
- * time between two choices is the whole frame drawn between them. Output is JSON. */
+ * time between two choices is the whole frame drawn between them. The budget
+ * is the frame target less the cost each whole frame paid outside its draw
+ * and upscale, learned as the render context learns it. Output is JSON. */
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -86,7 +88,9 @@ fit(void) {
 
 static int
 replay(char** argv) {
-    resolution_config_t config = read_ladder(atoi(argv[0]));
+    const int32_t target_us = atoi(argv[0]);
+    resolution_config_t config = read_ladder(target_us);
+    resolution_unscaled_t unscaled = {0};
     config.up_margin_percent = atoi(argv[1]);
     config.up_hold_us = atoi(argv[2]);
     config.top = atoi(argv[3]);
@@ -125,6 +129,7 @@ replay(char** argv) {
         }
         /* The census before the choice counts what culling keeps, the same
          * at every step: the step drawn last frame supplies it. */
+        config.budget_us = resolution_scaled_budget_us(&unscaled, target_us);
         const int step = resolution_predict_choose(&predict, &config, triangles[predict.step], elapsed_us);
         priced_us[f] = (int32_t)predict.chosen_us;
         /* The price the up margin guards: the next finer step's, corrected. */
@@ -135,6 +140,7 @@ replay(char** argv) {
                              * resolution_model_predict_us(&predict.model, &config, step - 1, triangles[step]))
                             + predict.offset_us);
         resolution_predict_measured(&predict, &config, triangles[step], cost_us[step]);
+        resolution_unscaled_learn(&unscaled, whole_us[step] - cost_us[step], target_us);
         elapsed_us = whole_us[step];
         printf("%s%d", f == 0 ? "" : ", ", step);
     }
@@ -159,6 +165,6 @@ main(int argc, char** argv) {
     if (argc == 7 && argv[1][0] == 'r') {
         return replay(argv + 2);
     }
-    fprintf(stderr, "usage: dynres_replay_probe fit | replay budget_us margin_percent up_hold_us top first\n");
+    fprintf(stderr, "usage: dynres_replay_probe fit | replay target_us margin_percent up_hold_us top first\n");
     return 2;
 }

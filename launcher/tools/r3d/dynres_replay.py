@@ -124,8 +124,8 @@ def whole_stats(values):
 
 
 def flight(scenario, replayed, target_ms):
-    """Whole-frame figures of a replay, the share of frames whose scaled part
-    ran over the target, and the live miss once the refit has corrected the
+    """Whole-frame figures of a replay, the share of whole frames over the
+    target, and the live miss once the refit has corrected the
     price, the miss the up margin must cover."""
     steps = replayed["steps"]
     whole = [scenario[s][i][0] for i, s in enumerate(steps)]
@@ -134,7 +134,7 @@ def flight(scenario, replayed, target_ms):
     finer = [abs(scenario[s - 1][i][1] + scenario[s - 1][i][2] - p) / p
              for i, (s, p) in enumerate(zip(steps, replayed["finer"])) if p > 0]
     share = {s: steps.count(s) / len(steps) for s in sorted(set(steps))}
-    over = sum(v > target_ms * US_PER_MS for v in scaled) / len(scaled)
+    over = sum(v > target_ms * US_PER_MS for v in whole) / len(whole)
     return {**whole_stats(whole), "share": share, "over": over, "live_miss": percentile(live, MARGIN_SHARE),
             "finer_miss": percentile(finer, MARGIN_SHARE) if finer else 0.0}
 
@@ -178,8 +178,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("capture")
     parser.add_argument("--cc", required=True)
-    target = read_define(DYNRES, "RENDER_LAB_FRAME_TARGET_MS") - read_define(DYNRES, "RENDER_LAB_FRAME_OVERHEAD_MS")
-    parser.add_argument("--targets", default=str(target), help="budgets for the scaled part in ms")
+    target = read_define(DYNRES, "RENDER_LAB_FRAME_TARGET_MS")
+    parser.add_argument("--targets", default=str(target), help="whole-frame targets in ms")
     parser.add_argument("--margins", default=str(read_define(RESOLUTION, "DEFAULT_UP_MARGIN_PERCENT")))
     parser.add_argument("--holds", default=str(read_define(RESOLUTION, "DEFAULT_UP_HOLD_US") // US_PER_MS),
                         help="step-up holds in ms")

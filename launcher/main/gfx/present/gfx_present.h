@@ -138,6 +138,10 @@ void gfx_present(void);
 void gfx_present_begin(void);
 void gfx_present_wait(void);
 
+/* Microseconds spent since boot waiting for a send to finish, in every
+ * build: the change over a frame tells its work from its waits. */
+int64_t gfx_present_waited_us(void);
+
 void gfx_set_present_async(bool on);
 bool gfx_present_async_enabled(void);
 

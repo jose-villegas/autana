@@ -236,10 +236,10 @@ typedef struct {
 static const framegen_mode_t modes[] = {
     {"plain", false, 0},
     {"framegen", true, 0},
-    {"dynres", false, RENDER_LAB_TARGET_MS},
-    {"framegen-dynres", true, RENDER_LAB_TARGET_MS},
-    {"framegen-dynres-3q", true, RENDER_LAB_TARGET_MS * 3 / 4},
-    {"framegen-dynres-half", true, RENDER_LAB_TARGET_MS / 2},
+    {"dynres", false, RENDER_LAB_FRAME_TARGET_MS},
+    {"framegen-dynres", true, RENDER_LAB_FRAME_TARGET_MS},
+    {"framegen-dynres-3q", true, RENDER_LAB_FRAME_TARGET_MS * 3 / 4},
+    {"framegen-dynres-half", true, RENDER_LAB_FRAME_TARGET_MS / 2},
 };
 
 static const framegen_mode_t* mode;
