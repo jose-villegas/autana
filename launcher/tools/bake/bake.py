@@ -2,10 +2,10 @@
 """Cached bakes: the content a pack needs, named by a digest of what makes them.
 
     python launcher/tools/bake/bake.py list [PATH ...] [--missing] [--kind mesh|reference|fit|levels|texture|sound]
-    python launcher/tools/bake/bake.py bake [PATH ...] [--kind KIND] [--only OUTPUT ...] [--again] [--out DIR]
+    python launcher/tools/bake/bake.py bake [PATH ...] [--kind KIND ...] [--only OUTPUT ...] [--again] [--out DIR]
                                             [--from-run N ...] [--shard K/N --plan DIR | --shards DIR]
     python launcher/tools/bake/bake.py shards [PATH ...] [--out DIR]
-    python launcher/tools/bake/bake.py lock [PATH ...] [--from-run N ... | --seed] [--cache DIR]
+    python launcher/tools/bake/bake.py lock [PATH ...] [--from-run N ... [--partial] | --seed] [--cache DIR]
     python launcher/tools/bake/bake.py check [PATH ...]
     python launcher/tools/bake/bake.py fetch [PATH ...] [--cache DIR] [--offline]
     python launcher/tools/bake/bake.py path OUTPUT [--cache DIR] [--offline]
@@ -30,7 +30,8 @@ bytes; only the final bundle enters a pack. The reference set is keyed on what i
 (reference_set.ReferenceInputs), not on the start, so fits that share those inputs share it. A fit reads
 only locked bytes, so it makes the same bytes on any GPU in the pinned environment.
 A renderer with `textures` adds a CPU texture bake (`<entry>.texture.pack`, r3d/texture/) whose key
-names its packed mesh's locked bytes; its entries join that mesh's pack.
+names its packed mesh's locked bytes, or those `bake` made of it in the same command; its entries join that
+mesh's pack.
 
 `list` prints every bake with its key, or with `--missing` those a run must make: LOCK has no row for it, or a
 seeded one. `bake` makes each of them into the cache (produce.py), and with `--out` also copies each one there as it is made, the folder a CI
@@ -38,7 +39,7 @@ run uploads, so a run cut short still uploads what it finished; `--from-run N` f
 host like this one into the cache, so a rerun makes only what is left; `--only` limits it to the named outputs and
 `--again` re-makes them even when locked, a fit from fresh references, to compare a new make with the lock
 (the lock keeps its row). `lock` drops the rows nothing needs, writes the rows it has and then fails naming the bakes still
-without one;
+without one, or with `--partial` only names them;
 `--from-run N` adds the rows CI run N made, from its uploads, and is the only
 way a new bake row is written. Sound bakes use the CPU Bakes run. It repeats, so the meshes of a Bakes run
 and the fits of a Bakes GPU run lock together, so every locked file can be published; `--seed`
@@ -1375,7 +1376,8 @@ def main(argv=None):
     parser.add_argument("--seed", action="store_true", help="lock: lock the tree's own files")
     parser.add_argument("--from-run", type=int, action="append", metavar="N",
                         help="lock: add the rows CI run N made; bake: reuse those made on a host like this; repeatable")
-    parser.add_argument("--kind", choices=KINDS, help="list, bake: only this kind")
+    parser.add_argument("--kind", choices=KINDS, action="append", help="list, bake: only this kind; repeatable")
+    parser.add_argument("--partial", action="store_true", help="lock: name the bakes still to lock without failing")
     parser.add_argument("--blender", help="bake: the Blender to export with; `blender` on PATH when omitted")
     parser.add_argument("--missing", action="store_true", help="list: only the bakes LOCK has no row for, or only a seeded one")
     parser.add_argument("--out", help="bake: also copy what was made here, for a CI run to upload")
@@ -1390,6 +1392,9 @@ def main(argv=None):
     from process_tree import progressed
 
     cache = pathlib.Path(args.cache) if args.cache else default_cache()
+
+    def of_kind(kind):
+        return not args.kind or kind in args.kind
     try:
         if args.command == "tool":
             for stage in args.paths:
@@ -1416,7 +1421,7 @@ def main(argv=None):
             print(json.dumps(list(range(reference_shards(sum(rays)))) if rays else []))
         elif args.command == "list":
             for bake in found:
-                if (args.missing and bake.key in made_keys) or args.kind not in (None, bake.kind):
+                if (args.missing and bake.key in made_keys) or not of_kind(bake.kind):
                     continue
                 print(f"{bake.output}\t{bake.kind}\t{bake.key or WAITS.get(bake.kind, 'waits for its start and reference set')}\t{relative(bake.source)}")
         elif args.command == "bake":
@@ -1431,12 +1436,12 @@ def main(argv=None):
                 parser.error(f"--only: no bake makes {', '.join(unknown)}")
             # A named output of another kind would make a run that bakes nothing and still passes.
             other = sorted(bake.output for bake in found
-                           if bake.output in (args.only or ()) and args.kind not in (None, bake.kind))
+                           if bake.output in (args.only or ()) and not of_kind(bake.kind))
             if other:
-                parser.error(f"--only: {', '.join(other)} not of --kind {args.kind}")
+                parser.error(f"--only: {', '.join(other)} not of --kind {', '.join(args.kind)}")
 
             def to_make(bake, kind):
-                return (bake.kind == kind and args.kind in (None, kind) and (args.again or bake.key not in made_keys)
+                return (bake.kind == kind and of_kind(kind) and (args.again or bake.key not in made_keys)
                         and not (args.only and bake.output not in args.only))
 
             # Joined shards are traced already, where the shards ran: packing them traces nothing here.
@@ -1459,7 +1464,7 @@ def main(argv=None):
                     raise BakeMissing(refusal)
             if args.shard:
                 shard, count = (int(part) for part in args.shard.split("/"))
-                if args.kind != "reference" or not args.out or not args.plan or not 0 <= shard < count:
+                if args.kind != ["reference"] or not args.out or not args.plan or not 0 <= shard < count:
                     parser.error("--shard K/N takes --kind reference, --out DIR, --plan DIR and 0 <= K < N")
                 for bake in found:
                     if to_make(bake, "reference"):
@@ -1483,7 +1488,7 @@ def main(argv=None):
 
             rows, made_starts = [], {}
             for kind in KINDS:
-                if args.kind not in (None, kind):
+                if not of_kind(kind):
                     continue
                 if kind in ("fit", *FOLLOWING_KINDS) and made_starts:
                     # A fit's key names its start's bytes: the lock's, else those this run just made, which
@@ -1492,7 +1497,7 @@ def main(argv=None):
                 selected = [bake for bake in found if to_make(bake, kind)]
                 if kind == "mesh":
                     made_rows = _mesh_rows(selected, cache, lock, args.blender, args.again, keep)
-                    made_starts.update({bake.key: row for bake, row in zip(selected, made_rows) if not bake.packed})
+                    made_starts.update({bake.key: row for bake, row in zip(selected, made_rows)})
                     rows.extend(made_rows)
                 else:
                     for bake in selected:
@@ -1506,8 +1511,7 @@ def main(argv=None):
                             bake, cache, lock, args.blender,
                             fresh_references and fresh_references.name))
                         rows.append(row)
-                        if not bake.packed:
-                            made_starts[bake.key] = row
+                        made_starts[bake.key] = row
             differ = []
             for row in rows:
                 locked = lock.get(row["key"])
@@ -1530,7 +1534,9 @@ def main(argv=None):
             write_lock(rows, path=LOCK, poses=poses.used.values(), mesh_cpu_vendor=mesh_cpu_vendor)
             print(f"locked {len(rows)} bakes in {relative(LOCK)}")
             if not args.seed and missing:
-                raise BakeMissing("still to lock:\n" + "\n".join(missing))
+                if not args.partial:
+                    raise BakeMissing("still to lock:\n" + "\n".join(missing))
+                print("still to lock:\n" + "\n".join(missing))
         elif args.command == "check":
             problems = check(found, lock) + check_poses(found, held)
             if problems:
