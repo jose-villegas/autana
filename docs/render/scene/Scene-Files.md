@@ -234,7 +234,7 @@ normal_weight = 1.0
 | `colour_set` | nonnegative integer | Selects an external LCOL set on a colourless mesh. | Mesh-owned colours. | [colour_set](#colour_set) |
 | `visibility: camera_region` | `source = "camera_region"`, `rounds` | Keeps triangles visible from any point in the camera's region. | Off. | [visibility: camera_region](#visibility-camera_region) |
 | `visibility: camera_path` | `source = "camera_path"`, `every_ms`, `size`; `samples`, `margin` | Keeps triangles first seen from sampled camera-path views. | Off. | [visibility: camera_path](#visibility-camera_path) |
-| `visibility: probes` | `source = "probes"`; `every_ms`, `size` with a camera path; `samples`, `margin` | Keeps triangles first seen from the fit's probe faces, and from the camera path when there is one. | Off. | [visibility: probes](#visibility-probes) |
+| `visibility: probes` | `source = "probes"`; `every_ms`, `size` with a camera path; `samples`, `margin` | Keeps triangles first seen from its fit's probe faces, and from the camera path when there is one. | Off. | [visibility: probes](#visibility-probes) |
 | `shading: smooth` | `"smooth"` | Stores baked colour at vertices. | `"smooth"`. | [shading: smooth](#shading-smooth) |
 | `shading: flat` | `flat = { fixed = N }` / `flat = { auto = { min, max, area } }` | Stores one averaged RGB565 colour per face. | Off. | [shading: flat](#shading-flat) |
 | `fit.prune` | `budget`, `coverage_every_ms` | Prunes the fitted mesh to the triangle budget. | Required in `fit`; the cost weight is `fitted_variant.py sweep --cost-weights`, not a scene key. | [fit.prune](#fitprune) |
@@ -302,13 +302,13 @@ enters between samples.
 
 #### visibility: probes
 
-The probe source keeps what the import's probe faces draw
-([probes](../offline/Mesh-Import.md#probes)), by the camera path's rule above.
-They are the same faces the renderer's fit trains on. The import must set
-`geometry.probes`. Probes are the base and a known path adds to them: when the
-scene camera has a path, `every_ms` and `size` sample it as for
-`camera_path`. The probe faces are then chosen beside what the path shows, and
-the path's triangles are kept too. Without a path, both keys are refused.
+The probe source keeps what the renderer's fit trains on from its probes
+([probes](../offline/Mesh-Import.md#probes)): the same training faces, picked
+beside the fit's coverage poses, drawn by the camera path's rule above. It
+needs a `fit` and `geometry.probes` on the import. Probes are the base, and a
+known path adds to them. When the scene camera has a path, `every_ms` and
+`size` sample it as for `camera_path`, and those triangles are kept too.
+Without a path, both keys are refused.
 
 #### shading: smooth
 

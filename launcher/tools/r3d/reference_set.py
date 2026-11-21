@@ -100,6 +100,28 @@ def reference_inputs(job, scene):
                            probes=job.settings.fit.probes)
 
 
+def coverage_poses(scene, size, every_ms):
+    """The camera path's coverage poses at a fit's pose `size`, every `every_ms`, through the square view held
+    either way up: what the fit prunes over, and what its probe faces are chosen beside."""
+    from r3d.mesh_source import camera_path_poses
+
+    return camera_path_poses(scene, SimpleNamespace(size=size, every_ms=None), every_ms)
+
+
+def probe_path(coverage):
+    """The `path` probes.select takes from coverage_poses' (width, height, lens, near, poses)."""
+    width, height, lens, _, poses = coverage
+    return width, height, lens, poses
+
+
+def fit_probe_views(job, scene):
+    """The probe faces the fitted renderer `job` trains on, chosen beside its coverage poses when the scene camera
+    has a path: the start's `probes` visibility keeps what these show."""
+    fit, camera = job.renderer.fit, scene.camera.component
+    path = None if camera.path is None else probe_path(coverage_poses(scene, tuple(fit.size), fit.coverage_every_ms))
+    return probe_views(job.settings, camera, path)
+
+
 def prepare_references(inputs, work):
     """The reference set of `inputs` into `work`: the training, held-out and pruning poses sampled from the
     camera path, the probes' training and held-out faces when the import sets probes (a camera without a path
@@ -120,9 +142,9 @@ def prepare_references(inputs, work):
         (work / portrait).write_text(poses_text(w, h, lens, near, training))
         (work / landscape).write_text(poses_text(h, w, lens, near, training))
         (work / HELD_OUT[0]).write_text(poses_text(w, h, lens, near, held_out))
-        coverage = camera_path_poses(scene, visibility, spacing.coverage_every_ms)
+        coverage = coverage_poses(scene, inputs.size, spacing.coverage_every_ms)
         (work / COVERAGE).write_text(poses_text(*coverage))
-        path, count = (coverage[0], coverage[1], coverage[2], coverage[4]), len(training)
+        path, count = probe_path(coverage), len(training)
     if inputs.probes is not None:
         count += probe_poses(inputs, work, path)
     sets = inputs.sets()
@@ -133,8 +155,7 @@ def prepare_references(inputs, work):
 def probe_views(settings, camera, path):
     """The probes' training and held-out faces (r3d/views/probes.py) of the import `settings` under the scene
     `camera`, beside the `path` views ((width, height, lens, poses), or None). An alpha-masked import keeps its
-    masked triangles and lets rays through their cut texels. The reference set and the `probes` visibility source
-    both call this, so a start keeps what the faces its fit trains on show."""
+    masked triangles and lets rays through their cut texels."""
     import numpy as np
 
     from r3d.light import AlphaTest

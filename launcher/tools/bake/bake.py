@@ -676,7 +676,12 @@ def mesh_recipe(job, scene, tools, poses=None, unavailable=None):
             if getattr(visibility, "every_ms", None) is not None:
                 camera["poses"] = poses.digest(scene.camera.component, visibility.every_ms, visibility.size, tools, unavailable)
             if visibility.source == "probes":
+                # The faces are the fit's: chosen beside its coverage poses (reference_set.fit_probe_views).
                 camera["probes"] = canonical(job.settings.fit.probes)
+                if scene.camera.component.path is not None:
+                    fit = job.renderer.fit
+                    camera["probe_path"] = poses.digest(scene.camera.component, fit.coverage_every_ms, fit.size, tools,
+                                                        unavailable)
     return recipe
 
 

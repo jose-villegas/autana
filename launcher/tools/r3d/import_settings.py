@@ -891,7 +891,8 @@ def load_scene(path):
         if needed and not present:
             raise SettingsError(f"scene {name} is required: a placed mesh has a step that reads it")
         # Probes spread through the region when there is one, the source's bounds without.
-        read = needed or (name == "camera region" and any(item.settings.fit.probes for item in jobs))
+        read = needed or (name == "camera region" and any(item.renderer.fit and item.settings.fit.probes
+                                                              for item in jobs))
         if present and not read:
             raise SettingsError(f"scene {name} is read by no placed mesh")
     if "camera_path" in sources and camera_path is None:
@@ -901,8 +902,9 @@ def load_scene(path):
         if visibility is None or visibility.source != "probes":
             continue
         where = f"scene.objects {item.object.name!r} mesh_renderer.visibility"
-        if item.settings.fit.probes is None:
-            raise SettingsError(f"{where}.source probes needs its import's geometry.probes")
+        if item.renderer.fit is None or item.settings.fit.probes is None:
+            raise SettingsError(f"{where}.source probes keeps what its fit's probe faces show: it needs mesh_renderer.fit "
+                                "and its import's geometry.probes")
         if (visibility.every_ms is None) != (camera_path is None):
             raise SettingsError(f"{where}.every_ms and size are " + (
                 "required: the probes add the scene camera path's poses" if camera_path is not None else
