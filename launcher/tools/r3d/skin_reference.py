@@ -9,6 +9,7 @@ import numpy as np
 from PIL import Image
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+from asset.engine_frame import AFFINE_SIGNS
 from r3d import mitsuba_reference as mr
 from r3d.gltf_skin import SkinnedAsset, load_asset, mat_from_trs, transform_point
 from r3d.import_settings import load_scene
@@ -65,20 +66,26 @@ def pose_frame(frames, index=None, entity=None):
     camera = frame["camera"]
     if camera is None:
         raise ValueError("pose JSON has no active camera")
-    return skin, camera
+    return ({**skin, "world": source_frame(skin["world"])},
+            {**camera, "world": source_frame(camera["world"])})
+
+
+def source_frame(world):
+    """An engine-frame transform from the pose JSON mirrored back into the source frame the scene is traced in."""
+    signs = np.diag(AFFINE_SIGNS).astype(float)
+    return (signs @ np.asarray(world, dtype=float) @ signs).tolist()
 
 
 def trace_camera(mi, scene, camera, size, spp, max_depth=mr.DEFAULT_DEPTH):
-    """Trace the exported camera, including roll; reject unsupported off-axis projection."""
+    """Trace a source-frame camera, which looks down its local -z, including roll; reject off-axis projection."""
     if any(camera.get("shift", (0, 0))):
         raise ValueError("skin reference does not support lens shift")
     world = np.asarray(camera["world"], float)
-    eye, forward, up = world[:3, 3], world[:3, 2], world[:3, 1]
+    eye, forward, up = world[:3, 3], -world[:3, 2], world[:3, 1]
     sensor = mr.sensor(mi, np.r_[eye, forward], *size, camera["lens"], camera["near"])
     parameters = mi.traverse(sensor)
-    # Mitsuba's sensor x points left; the engine camera's x points right.
-    parameters["to_world"] = (mi.ScalarTransform4f.look_at(origin=eye.tolist(), target=(eye + forward).tolist(),
-                                                         up=up.tolist()) @ mi.ScalarTransform4f.scale([-1, 1, 1]))
+    parameters["to_world"] = mi.ScalarTransform4f.look_at(origin=eye.tolist(), target=(eye + forward).tolist(),
+                                                          up=up.tolist())
     parameters.update()
     integrator = mi.load_dict(mr.integrator(max_depth))
     width, height = size
@@ -111,10 +118,10 @@ def render(args):
     full.update(mr.emitters(mi, [light for light in scene.lights if light["type"] != "ambient"]))
     if camera is None:
         eye, forward = np.asarray(args.eye), np.asarray(args.fwd)
-        right = np.cross((0, 1, 0), forward)
+        right = np.cross(forward, (0, 1, 0))
         right /= np.linalg.norm(right)
         matrix = np.eye(4)
-        matrix[:3, 0], matrix[:3, 1], matrix[:3, 2], matrix[:3, 3] = right, np.cross(forward, right), forward, eye
+        matrix[:3, 0], matrix[:3, 1], matrix[:3, 2], matrix[:3, 3] = right, np.cross(right, forward), -forward, eye
         camera = {"world": matrix.tolist(), "lens": args.lens, "near": args.near}
     linear, covered = trace_camera(mi, mi.load_dict(full), camera, args.size, args.spp)
     args.out.mkdir(parents=True, exist_ok=True)

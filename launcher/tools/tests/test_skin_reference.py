@@ -24,6 +24,19 @@ class SkinReferenceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "blend"):
             pose_frame([frame], 3, "subject")
 
+    def test_pose_frame_mirrors_engine_frame_into_source_frame(self):
+        camera_world, skin_world = np.eye(4), np.eye(4)
+        camera_world[:3, 3], skin_world[:3, 3] = (1, 2, 3), (4, 5, 6)
+        frame = {"frame": 0, "camera": {"world": camera_world.tolist(), "lens": 0.7, "near": 0.1},
+                 "skins": [{"name": "subject", "clip": "move", "time": 0, "world": skin_world.tolist(), "blend": 1}]}
+        skin, camera = pose_frame([frame], 0, "subject")
+        camera_source, skin_source = np.asarray(camera["world"]), np.asarray(skin["world"])
+        np.testing.assert_allclose(camera_source[:3, 3], (1, 2, -3))
+        np.testing.assert_allclose(skin_source[:3, 3], (4, 5, -6))
+        # The engine camera looks down its +z; mirrored, it looks down the source frame's -z, its local -z.
+        np.testing.assert_allclose(-camera_source[:3, 2], (0, 0, -1))
+        np.testing.assert_allclose(camera_source[:3, 1], (0, 1, 0))
+
     def test_triangle_placement(self):
         asset = SkinnedAsset(*rig())
         world, colors, triangles = posed_skin(asset, "move", 0, (10, 20, 30), 90, 2)
