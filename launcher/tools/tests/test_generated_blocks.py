@@ -11,6 +11,21 @@ from generated_blocks import apply_tables, blocks, check_commands, digest, refer
 GENERATOR = pathlib.Path(__file__).resolve().parents[1] / "render/generated_blocks.py"
 
 
+def scores_tree(directory, published, refreshed):
+    """A git tree in `directory` whose Fidelity.md block `scores` holds
+    `published`, and a tables folder whose scores.md holds `refreshed`: (root,
+    doc, tables)."""
+    root = pathlib.Path(directory)
+    subprocess.run(["git", "init", "-q", directory], check=True)
+    doc = root / "Fidelity.md"
+    doc.write_text(f"<!-- generated: scores -->\n{published}<!-- /generated: scores -->\n", encoding="utf-8")
+    subprocess.run(["git", "add", doc.name], cwd=root, check=True)
+    tables = root / "out/tables"
+    tables.mkdir(parents=True)
+    (tables / "scores.md").write_text(refreshed, encoding="utf-8")
+    return root, doc, tables
+
+
 class GeneratedBlocksTests(unittest.TestCase):
     def test_writer_preserves_crlf_and_reports_changes(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -107,15 +122,7 @@ class GeneratedBlocksTests(unittest.TestCase):
                  "only p95 jumps": ("| fitted | 5.468 | 99.0 |\n| flat | 13.149 | 46.465 |\n", False)}
         for case, (rows, refused) in cases.items():
             with self.subTest(case=case), tempfile.TemporaryDirectory() as directory:
-                root = pathlib.Path(directory)
-                subprocess.run(["git", "init", "-q", directory], check=True)
-                doc = root / "Fidelity.md"
-                doc.write_text(f"<!-- generated: scores -->\n{published}<!-- /generated: scores -->\n",
-                               encoding="utf-8")
-                subprocess.run(["git", "add", doc.name], cwd=root, check=True)
-                tables = root / "out/tables"
-                tables.mkdir(parents=True)
-                (tables / "scores.md").write_text(header + rows, encoding="utf-8")
+                root, _doc, tables = scores_tree(directory, published, header + rows)
                 if refused:
                     with self.assertRaisesRegex(ValueError, r"Fidelity\.md#scores fitted: Mean dE76 5\.468 -> 34\.604"):
                         apply_tables(root, tables, check=True)
@@ -139,15 +146,7 @@ class GeneratedBlocksTests(unittest.TestCase):
     def test_the_command_line_refuses_a_jump_until_accepted(self):
         header = "| Variant | Mean dE76 |\n|---|---:|\n"
         with tempfile.TemporaryDirectory() as directory:
-            root = pathlib.Path(directory)
-            subprocess.run(["git", "init", "-q", directory], check=True)
-            doc = root / "Fidelity.md"
-            doc.write_text(f"<!-- generated: scores -->\n{header}| fitted | 5.5 |\n<!-- /generated: scores -->\n",
-                           encoding="utf-8")
-            subprocess.run(["git", "add", doc.name], cwd=root, check=True)
-            tables = root / "tables"
-            tables.mkdir()
-            (tables / "scores.md").write_text(f"{header}| fitted | 34.6 |\n", encoding="utf-8")
+            _root, doc, tables = scores_tree(directory, header + "| fitted | 5.5 |\n", header + "| fitted | 34.6 |\n")
             command = [sys.executable, str(GENERATOR), "--root", directory, "--tables", str(tables)]
             refused = subprocess.run(command, capture_output=True, text=True)
             self.assertEqual(refused.returncode, 2)
