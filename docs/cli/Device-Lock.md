@@ -135,11 +135,13 @@ released or lapsed hold, or a wrong token, fails with exit 1 immediately.
 Borrowed commands reap their own descendants when they end. Commands sharing
 a token may run in parallel; only one of them can have the serial port
 open at a time.
+
 A person's reservation stops every new command, the person's own too.
-`lock hand` prints its token alone on stdout, as `take` does, and run again
-it renews the reservation and prints the same token. Pass it with
-`--lock-token` to run a command inside the reservation; the reservation stays
-until `take-back` or its hour runs out.
+`lock hand` prints its token alone on stdout, as `take` does; its messages go
+to stderr. Pass the token with `--lock-token` to each command run inside the
+reservation. Renew with `lock hand` outside it (not with the token exported),
+which prints the same token. `lock release` refuses the token: the
+reservation ends with `take-back` or when its hour runs out.
 
 `take`, `hand` and `wait` inside a hold fail immediately. `run --keep-on-failure`
 inside another hold is a usage error.

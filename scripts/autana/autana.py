@@ -943,7 +943,7 @@ def hand(args):
             return process.wait()
     except KeyboardInterrupt:
         if process is None or process.returncode != EXIT_INTERRUPTED:
-            print("human reservation wait interrupted")
+            print("human reservation wait interrupted", file=sys.stderr)
         return EXIT_INTERRUPTED
 
 
