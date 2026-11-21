@@ -30,7 +30,7 @@ flowchart LR
 | directional, `mode = "baked"` | in its vertex colours, with shadows | through the probes; direct only when the scene has no probes |
 | directional, `mode = "realtime"` | no | $n \cdot l$ per vertex, no shadow |
 | `[sky]` | in its vertex colours, occluded | through the probes |
-| `[ambient]` | in its vertex colours, times the occlusion factor | flat, or replaced by the probes |
+| `[ambient]` | in its vertex colours, times the occlusion factor when `ao` is set | flat, or replaced by the probes |
 | bounced light (`[bake].indirect`) | in its vertex colours | through the probes |
 
 ## The light component
@@ -51,8 +51,8 @@ Scene settings that act like lights: `[sky]` (hemisphere light, bakes only),
 Their keys are in [Scene-Files.md](scene/Scene-Files.md#scene-settings).
 
 At run time `light_set_color()` and `light_set_intensity()`
-(`scene/light/light.h`) change a light, and rotating its entity turns it. A
-scene holds at most `R3D_SKIN_LIGHT_MAX` (4) lights. The API is in
+([`scene/light/light.h`](../../launcher/main/scene/light/light.h)) change a
+light, and rotating its entity turns it; see
 [Scene-Components.md](scene/Scene-Components.md).
 
 ## Baked meshes
@@ -70,11 +70,12 @@ For a point $x$ with normal $n$ and albedo $a(x)$, the bake sums the lights
 L(x) = a(x)\Bigl( c_s I_s \max(0,\, n \cdot \omega_s)\, V(x, \omega_s)
      + c_k I_k \tfrac{1}{R} \textstyle\sum_{i=1}^{R} V(x, \omega_i)
      + f(x)\, c_a I_a
-     + E_{\mathrm{ind}}(x) \Bigr)
+     + f_b(x)\, E_{\mathrm{ind}}(x) \Bigr)
 ```
 
 $V$ is 1 when a ray from $x$ escapes, $f$ the local-occlusion factor, and
-$`E_{\mathrm{ind}}`$ the bounced light.
+$`E_{\mathrm{ind}}`$ the bounced light. $`f_b`$ is $f$ when `ao.indirect` is
+set, else 1.
 
 | Term | Function in [`light.py`](../../launcher/tools/r3d/light.py) | Shadow it gives | Detail |
 |---|---|---|---|
@@ -112,7 +113,7 @@ baked shadow at the grid's resolution.
 | Lighting modes: direct, renormalised, table | import `[skin].lighting`, `skin_set_light_mode()` | [Skinned-Lighting.md](animation/Skinned-Lighting.md#lighting-modes) |
 | Probe bake | `bake.py --kind sh_probes`, a sibling `<scene>.probes.toml` | [SH-Probes.md](offline/SH-Probes.md) |
 | Probe sampling | `scene_set_probes()` | [Skinned-Meshes.md](animation/Skinned-Meshes.md#ambient-irradiance) |
-| Per-vertex cost | about 23 cycles per light, direct mode | [Skinned-Lighting.md](animation/Skinned-Lighting.md#board-measurement) |
+| Per-vertex cost | about 23 cycles per light, direct mode | [Skinned-Lighting.md](animation/Skinned-Lighting.md#lighting-modes) |
 
 ## Shadows
 
@@ -122,36 +123,25 @@ baked shadow at the grid's resolution.
 | Sky occlusion | static onto static | bake, $R$ rays per point | none | on main |
 | Local occlusion (`ao`) | static onto static | bake, $R$ short rays | none | on main |
 | Probe shade | static onto a mover | probe bake; sampled per mover | one grid sample per mover | on main |
-| Contact blob | a mover onto the ground | board, after the geometry | measured below | on main |
-| Contact FEET, SILHOUETTE | a mover onto the ground | board, after the geometry | measured below | in [#1587](https://github.com/jose-villegas/autana/pull/1587) |
+| Contact blob | a mover onto the ground | board, after the geometry | about 0.3 ms of `r3d.draw` | on main |
+| Contact FEET | a mover onto the ground | board, after the geometry | about 1.3 ms of `r3d.draw` | in [#1587](https://github.com/jose-villegas/autana/pull/1587) |
+| Contact SILHOUETTE | a mover onto the ground | board, after the geometry | about 1.6 ms of `r3d.draw`, 0.4 ms of animation | in [#1587](https://github.com/jose-villegas/autana/pull/1587) |
 
 ### Contact shadows
 
-A mover casts no baked shadow and the probes do not see it. A contact shadow
-stands in: a dithered dark shape on a ground plane, drawn after the geometry
-and against its depth, where covered pixels halve their RGB565 channels.
+A mover casts no baked shadow and the probes do not see it, so a dithered
+dark shape on the ground stands in. Costs above are over no contact shadow,
+for one skinned mover in a baked atrium, from the board captures in
+[#1587](https://github.com/jose-villegas/autana/pull/1587).
 
 ![A skinned mover with its contact blob on the floor of a baked atrium](../images/render/contact-blob-atrium.png)
 
-| Shape | Footprint | Call | Status |
-|---|---|---|---|
-| Blob | a disc under the renderer's world bounds, coverage $s(1 - d^2)^2$ | `scene_set_contact_blob(renderer, ground_y, strength)` | on main |
-| FEET | one disc under each contact joint | `scene_set_contact(renderer, &contact)` | in [#1587](https://github.com/jose-villegas/autana/pull/1587) |
-| SILHOUETTE | a 32×32 ground mask of posed joint ellipses | `scene_set_contact(renderer, &contact)` | in [#1587](https://github.com/jose-villegas/autana/pull/1587) |
-| warp (option) | the footprint shifted and stretched away from the light | `scene_contact_t.warp` | in [#1587](https://github.com/jose-villegas/autana/pull/1587) |
-
-The pictures of FEET and SILHOUETTE are in #1587. The blob's placement and
-drawing are in [Skinned-Meshes.md](animation/Skinned-Meshes.md#contact-discs).
-
-One skinned mover running through a baked atrium, board A308, µs per frame,
-from the captures in #1587:
-
-| Contact | `r3d.draw` | Animation | Frame |
-|---|---:|---:|---:|
-| none | 18958–18964 | 2070–2071 | 36230–36232 |
-| blob | 19288–19304 | 2063–2067 | 36588–36682 |
-| FEET | 20224–20242 | 2064–2067 | 37553–37563 |
-| SILHOUETTE | 20559–20564 | 2510–2511 | 38287–38290 |
+| Shape | Footprint | Status |
+|---|---|---|
+| Blob | a disc under the renderer's world bounds | on main: [Skinned-Meshes.md](animation/Skinned-Meshes.md#contact-discs) |
+| FEET | one disc under each contact joint | in [#1587](https://github.com/jose-villegas/autana/pull/1587) |
+| SILHOUETTE | a ground mask of posed joint ellipses | in [#1587](https://github.com/jose-villegas/autana/pull/1587) |
+| warp (option) | the footprint shifted and stretched away from the light | in [#1587](https://github.com/jose-villegas/autana/pull/1587) |
 
 ## Not supported yet
 
@@ -164,7 +154,7 @@ from the captures in #1587:
 | Realtime light on static meshes | static meshes draw their baked colours only |
 | More than four realtime lights | `R3D_SKIN_LIGHT_MAX` |
 | One baked object shadowing another | each mesh's rays see only its own source |
-| A projected planar contact shadow | blob, FEET and SILHOUETTE only |
-| SILHOUETTE masks baked per clip frame | the mask is rebuilt per pose |
+| A contact shadow shaped like the mover | blob only on main (FEET and SILHOUETTE in [#1587](https://github.com/jose-villegas/autana/pull/1587)) |
+| A projected planar contact shadow | none |
 | A static mesh that moves and keeps correct light | it keeps the light of where it was baked |
 | Time of day | one baked light state |
