@@ -1166,13 +1166,17 @@ class HumanWaitTests(unittest.TestCase):
                                 "--note", "download mode", *flags])
         return code, output
 
+    def assert_last_said(self, output, line):
+        """The wait's last line was `line`, on stderr."""
+        self.assertEqual(output.call_args_list[-1].args[0], line)
+        self.assertIs(output.call_args_list[-1].kwargs.get("file"), sys.stderr)
+
     def test_release_before_deadline_succeeds(self):
         self.on_sleep = lambda: self.store.end_human(BOARD)
         with mock.patch.object(device_hook, "emit") as emit:
             code, output = self.hand("--until-back", "3")
         self.assertEqual(code, 0)
-        self.assertEqual(output.call_args_list[-1].args[0], "human reservation released")
-        self.assertIs(output.call_args_list[-1].kwargs.get("file"), sys.stderr)
+        self.assert_last_said(output, "human reservation released")
         self.assertEqual(emit.call_args_list, [
             mock.call("human-reserved", BOARD, "agent", note="download mode"),
             mock.call("human-cleared", BOARD, "agent", note="download mode"),
@@ -1181,8 +1185,7 @@ class HumanWaitTests(unittest.TestCase):
     def test_timeout_keeps_reservation(self):
         code, output = self.hand("--until-back", "2")
         self.assertEqual(code, device_lock.EXIT_BUSY)
-        self.assertEqual(output.call_args_list[-1].args[0], "human reservation wait timed out; the reservation stands")
-        self.assertIs(output.call_args_list[-1].kwargs.get("file"), sys.stderr)
+        self.assert_last_said(output, "human reservation wait timed out; the reservation stands")
         self.assertEqual(self.store.status(BOARD)["human"]["note"], "download mode")
 
     def test_interrupt_keeps_reservation(self):
@@ -1192,8 +1195,7 @@ class HumanWaitTests(unittest.TestCase):
         self.on_sleep = interrupt
         code, output = self.hand("--until-back", "3")
         self.assertEqual(code, device.EXIT_INTERRUPTED)
-        self.assertEqual(output.call_args_list[-1].args[0], "human reservation wait interrupted")
-        self.assertIs(output.call_args_list[-1].kwargs.get("file"), sys.stderr)
+        self.assert_last_said(output, "human reservation wait interrupted")
         self.assertIsNotNone(self.store.status(BOARD)["human"])
 
     def test_replaced_reservation_is_reported(self):
@@ -1204,16 +1206,14 @@ class HumanWaitTests(unittest.TestCase):
         self.on_sleep = replace
         code, output = self.hand("--until-back", "3")
         self.assertEqual(code, device_lock.EXIT_BUSY)
-        self.assertEqual(output.call_args_list[-1].args[0], "human reservation replaced")
-        self.assertIs(output.call_args_list[-1].kwargs.get("file"), sys.stderr)
+        self.assert_last_said(output, "human reservation replaced")
         self.assertEqual(self.store.status(BOARD)["human"]["note"], "download mode")
 
     def test_a_wait_past_the_reservation_lifetime_ends_as_expired(self):
         self.store.now = lambda: 1000 + self.clock[0]
         code, output = self.hand("--until-back", "7200")
         self.assertEqual(code, 0)
-        self.assertEqual(output.call_args_list[-1].args[0], "human reservation expired")
-        self.assertIs(output.call_args_list[-1].kwargs.get("file"), sys.stderr)
+        self.assert_last_said(output, "human reservation expired")
         self.assertGreaterEqual(self.clock[0], device_lock.HUMAN_RESERVATION_SECONDS)
 
     def test_a_renewal_does_not_end_the_wait(self):
@@ -1223,8 +1223,7 @@ class HumanWaitTests(unittest.TestCase):
         self.on_sleep = renew
         code, output = self.hand("--until-back", "3")
         self.assertEqual(code, device_lock.EXIT_BUSY)
-        self.assertEqual(output.call_args_list[-1].args[0], "human reservation wait timed out; the reservation stands")
-        self.assertIs(output.call_args_list[-1].kwargs.get("file"), sys.stderr)
+        self.assert_last_said(output, "human reservation wait timed out; the reservation stands")
 
 
 class SlugTests(unittest.TestCase):
