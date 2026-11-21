@@ -135,6 +135,32 @@ that the path and the faces kept before it do not<sup>[[120]](../../Citations.md
 | `spacing` | World units between probes. | `PROBE_SPACING_NEAR_PLANES` near planes of the scene camera, widened to at most `PROBE_COUNT_MAX` probes. |
 | `face` | A kept face's square size in pixels. | `PROBE_FACE`. |
 
+Every probe ends in one of four fates:
+
+| Fate | Why |
+|---|---|
+| kept | At least one of its faces shows triangles the path and nothing kept before it show. |
+| dropped by the greedy pick | Its best face adds less than `PLATEAU` of the first pick's gain. |
+| dropped: inside geometry | More than `BACKFACE` of its rays still hit back faces after the move. |
+| dropped: a surface too near | A front face is still nearer than `MIN_FRONT_NEARS` near planes. |
+
+The figure places probes by each import's settings: Sponza's atrium fit in the
+first row, Bistro's street fit in the second. The orbit circles the probe region
+uncut; each corner view is cut through the centre and shows only the probes
+behind the cut.
+
+The source is drawn see-through, as the [cull view](../frame/View-Modes.md)
+draws a culled cluster. The probes sit on top, each in its fate's colour; a kept
+probe's arrows are its kept faces. Bistro's row also draws its camera path;
+Sponza's scene camera has none.
+
+| Orbit | +x +z | -x +z | -x -z | +x -z |
+|---|---|---|---|---|
+| ![Sponza probes, circling](../../images/render/sponza-atrium_fitted_full-probes-orbit.gif) | ![Sponza probes from above the +x +z corner](../../images/render/sponza-atrium_fitted_full-probes-1.png) | ![Sponza probes from above the -x +z corner](../../images/render/sponza-atrium_fitted_full-probes-2.png) | ![Sponza probes from above the -x -z corner](../../images/render/sponza-atrium_fitted_full-probes-3.png) | ![Sponza probes from above the +x -z corner](../../images/render/sponza-atrium_fitted_full-probes-4.png) |
+| ![Bistro probes, circling](../../images/render/bistro-street_fitted_full-probes-orbit.gif) | ![Bistro probes from above the +x +z corner](../../images/render/bistro-street_fitted_full-probes-1.png) | ![Bistro probes from above the -x +z corner](../../images/render/bistro-street_fitted_full-probes-2.png) | ![Bistro probes from above the -x -z corner](../../images/render/bistro-street_fitted_full-probes-3.png) | ![Bistro probes from above the +x -z corner](../../images/render/bistro-street_fitted_full-probes-4.png) |
+
+![Probe fates and their counts per scene](../../images/render/probe-fates.png)
+
 A camera without a path fits on probes alone.
 
 A probe fit has no `fit.prune.budget`: its variant's `triangles` is the budget.
