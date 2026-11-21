@@ -38,6 +38,13 @@ raster_attachment_ids(void (*begin)(const raster_attachment_t*, const raster_t*,
                       bool (*writer)(const raster_attachment_t*, int, r3d_span_writer_t*),
                       void (*show)(const raster_attachment_t*, const raster_t*, const gfx_target_t*, int), void* state);
 
+/* A 32-bit id map, with the same hooks and empty value as the 16-bit map. */
+raster_attachment_t
+raster_attachment_ids_u32(void (*begin)(const raster_attachment_t*, const raster_t*, const render_view_t*),
+                          bool (*writer)(const raster_attachment_t*, int, r3d_span_writer_t*),
+                          void (*show)(const raster_attachment_t*, const raster_t*, const gfx_target_t*, int),
+                          void* state);
+
 /* A span writer for a 16- or 32-bit attachment: the pixels this triangle
  * won, those whose depth is the one it filled with, take `writer->value`. */
 void raster_attachment_tag(const r3d_span_writer_t* writer, const gfx_target_t* rows, int y, int x_first, int x_last,

@@ -1,5 +1,6 @@
 """The scene-file viewer through the shared harness, using temporary authored assets."""
 import csv
+import json
 import os
 import pathlib
 import shutil
@@ -90,6 +91,25 @@ path = { animation = "fly.anim.toml", node = "camera" }
         self.assertEqual(run.returncode, 0, run.stderr)
         with Image.open(out) as image:
             return image.copy()
+
+    def test_id_capture_frames_match_entry_ranges(self):
+        for view in ("triangles", "meshlets", "copies"):
+            root = self.root / f"ids-{view}"
+            run, _out = self.render("--view", view, "--ids", str(root))
+            self.assertEqual(run.returncode, 0, run.stderr)
+            metadata = json.loads((root / "entries.json").read_text())
+            for frame in range(2):
+                ids = np.fromfile(root / f"{frame:04d}.ids", "<u4")
+                self.assertEqual(ids.size, metadata["width"] * metadata["height"])
+                covered = ids == 0
+                for row in metadata["entries"]:
+                    if row["frame"] == frame:
+                        covered |= (ids >= row["first_id"]) & (ids < row["first_id"] + row["id_count"])
+                self.assertTrue(covered.all())
+                self.assertTrue((ids != 0).any())
+        refused, _out = self.render("--ids", str(self.root / "no-id-view"))
+        self.assertNotEqual(refused.returncode, 0)
+        self.assertIn("id attachment", refused.stderr)
 
     def test_triangle_sizes_source_poses_match_the_runtime_engine_clip_pixels(self):
         clip = write_camera_clip(self.root, name="asymmetric", reach=2.0, degrees=30.0)

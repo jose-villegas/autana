@@ -237,6 +237,24 @@ raster_attachment_ids(void (*begin)(const raster_attachment_t*, const raster_t*,
                                  .state = state};
 }
 
+static void
+clear_u32(const raster_attachment_t* self, const raster_t* raster, void* pixels, size_t count) {
+    (void)self;
+    (void)raster;
+    memset(pixels, 0, count * sizeof(uint32_t));
+}
+
+raster_attachment_t
+raster_attachment_ids_u32(void (*begin)(const raster_attachment_t*, const raster_t*, const render_view_t*),
+                          bool (*writer)(const raster_attachment_t*, int, r3d_span_writer_t*),
+                          void (*show)(const raster_attachment_t*, const raster_t*, const gfx_target_t*, int),
+                          void* state) {
+    raster_attachment_t result = raster_attachment_ids(begin, writer, show, state);
+    result.format = IMAGE_U32;
+    result.clear = clear_u32;
+    return result;
+}
+
 static const raster_attachment_t color_attachment = {.format = GFX_PIXEL_FORMAT, .clear = clear_color};
 static const raster_attachment_t depth_attachment = {.format = IMAGE_U16, .clear = raster_attachment_clear_u16};
 _Static_assert(R3D_DEPTH_EMPTY == 0, "depth is cleared with memset");

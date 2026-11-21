@@ -114,6 +114,9 @@ bool render_host_apply_settings(const render_settings_t* settings);
  * provider links no scene. */
 bool render_host_camera_pose(float position[3], float rotation[4]);
 
+/* Writes the active id attachment and entry metadata; false without an id view. */
+bool render_host_write_ids(const char* directory, FILE* entries, int frame);
+
 /* Opens `path` and writes `header` as its first line; NULL, saying why
  * under `tool`'s name, when it cannot. Any per-frame CSV a harness writes. */
 FILE* render_rows_open(const char* path, const char* header, const char* tool);

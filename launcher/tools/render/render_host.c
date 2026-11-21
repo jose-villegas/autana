@@ -9,10 +9,12 @@
 #include "core/checkpoint.h"
 #include "render_host.h"
 
+#include <errno.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 #include "console/console_tune.h"
 #include "core/tune.h"
@@ -37,7 +39,8 @@
 #include "image/pixel/rgb565.h"
 #endif
 
-#define DEFAULT_DT_MS 16
+#define DEFAULT_DT_MS         16
+#define OUTPUT_DIRECTORY_MODE 0777
 
 static void
 tune_reply(const char* line) {
@@ -310,6 +313,14 @@ refuse(int* exit_code, const char* argv0) {
     return false;
 }
 
+__attribute__((weak)) bool
+render_host_write_ids(const char* directory, FILE* entries, int frame) {
+    (void)directory;
+    (void)entries;
+    (void)frame;
+    return false;
+}
+
 /* --poses rows, one per drawn frame: the frame, its ms, the active camera's
  * world position and rotation quaternion. A --video writes them to
  * VIDEO.poses.csv, and refuses --poses. */
@@ -320,9 +331,9 @@ refuse(int* exit_code, const char* argv0) {
 static struct {
     const frame_provider_t* provider;
     bool panel, crop, video_ok, failed;
-    const char *out_path, *video_path, *record_path, *poses_path;
+    const char *out_path, *video_path, *record_path, *poses_path, *ids_path;
     char* video_poses_path;
-    FILE *record, *poses;
+    FILE *record, *poses, *ids, *ids_poses;
     uint32_t record_keyframe_every;
     int out_w, out_h;
     affine2x_t t;
@@ -499,6 +510,8 @@ render_host_open(const frame_provider_t* provider, int argc, char** argv, int* e
             host.out_path = argv[++i];
         } else if (strcmp(a, "--video") == 0 && has_value) {
             host.video_path = argv[++i];
+        } else if (strcmp(a, "--ids") == 0 && has_value) {
+            host.ids_path = argv[++i];
         } else if (strcmp(a, "--poses") == 0 && has_value) {
             host.poses_path = argv[++i];
         } else if (strcmp(a, "--record-keyframe-every") == 0 && has_value) {
@@ -679,11 +692,17 @@ render_host_frame(void) {
 static void
 write_pose(void) {
     float p[3], q[4];
-    if (host.poses == NULL || !render_host_camera_pose(p, q)) {
+    if (!render_host_camera_pose(p, q)) {
         return;
     }
-    fprintf(host.poses, "%d,%u,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g\n", host.frame.index, (unsigned)host.frame.elapsed_ms,
-            (double)p[0], (double)p[1], (double)p[2], (double)q[0], (double)q[1], (double)q[2], (double)q[3]);
+    FILE* logs[] = {host.poses, host.ids_poses};
+    for (size_t i = 0; i < sizeof logs / sizeof logs[0]; i++) {
+        if (logs[i] != NULL) {
+            fprintf(logs[i], "%d,%u,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g\n", host.frame.index,
+                    (unsigned)host.frame.elapsed_ms, (double)p[0], (double)p[1], (double)p[2], (double)q[0],
+                    (double)q[1], (double)q[2], (double)q[3]);
+        }
+    }
 }
 
 void
@@ -710,6 +729,33 @@ render_host_step(uint32_t dt_ms, const input_t* input) {
             host.video_ok = false;
         } else {
             host.video_ok = render_video_write_frame(&host.video, host.frame_buf, host.stride * host.out_h);
+        }
+    }
+    if (host.ids_path != NULL && !host.failed) {
+        if (host.ids == NULL) {
+#if defined(_WIN32)
+            const int made = mkdir(host.ids_path);
+#else
+            const int made = mkdir(host.ids_path, OUTPUT_DIRECTORY_MODE);
+#endif
+            if (made != 0 && errno != EEXIST) {
+                host.failed = true;
+            } else {
+                const size_t bytes = strlen(host.ids_path) + sizeof "/capture.poses.csv";
+                char* path = malloc(bytes);
+                if (path != NULL) {
+                    (void)snprintf(path, bytes, "%s/entries.json", host.ids_path);
+                    host.ids = fopen(path, "w");
+                    (void)snprintf(path, bytes, "%s/capture.poses.csv", host.ids_path);
+                    host.ids_poses = render_rows_open(path, POSES_HEADER, host.provider->name);
+                    free(path);
+                }
+                host.failed = host.ids == NULL || host.ids_poses == NULL;
+            }
+        }
+        if (!host.failed && !render_host_write_ids(host.ids_path, host.ids, host.frame.index)) {
+            fprintf(stderr, "%s: --ids requires an id attachment and writable output\n", host.provider->name);
+            host.failed = true;
         }
     }
     write_pose();
@@ -743,6 +789,15 @@ render_host_close(void) {
 
     const frame_watch_verdict_t verdict = render_watch_finish();
     free(host.console_path);
+    if (host.ids != NULL) {
+        const bool written = fputs("]}\n", host.ids) >= 0;
+        host.failed |= fclose(host.ids) != 0 || !written;
+        host.ids = NULL;
+    }
+    if (host.ids_poses != NULL) {
+        host.failed |= fclose(host.ids_poses) != 0;
+        host.ids_poses = NULL;
+    }
     const bool posed = host.poses == NULL || fclose(host.poses) == 0;
     if (!posed) {
         fprintf(stderr, "%s: writing %s failed\n", host.provider->name, host.poses_path);

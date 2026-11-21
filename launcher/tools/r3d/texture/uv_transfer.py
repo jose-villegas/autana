@@ -79,6 +79,18 @@ def plane_uv(points, corners, uv):
     return uv[0] + st[0][:, None] * (uv[1] - uv[0]) + st[1][:, None] * (uv[2] - uv[0])
 
 
+def nearest_materials(points, tris, source):
+    """Nearest source triangle, its material, and normal agreement for every baked triangle."""
+    points, tris = np.asarray(points, dtype=np.float64), np.asarray(tris)
+    source_corners = np.asarray(source.p, dtype=np.float64)[np.asarray(source.tri_v)]
+    near, _bary, _distance = nearest_triangles(points[tris].mean(axis=1), triangle_search(source_corners))
+    baked_normal, _area = face_normals(points, tris)
+    source_normal, _ = face_normals(np.asarray(source.p, dtype=np.float64), np.asarray(source.tri_v))
+    agree = np.cos(np.radians(NORMAL_DEGREES))
+    facing = (baked_normal * source_normal[near]).sum(axis=1) >= agree
+    return near, np.asarray(source.tri_m)[near], facing
+
+
 def cluster_uvs(mesh, source, material_ids, sizes):
     """The Luvs of `mesh` (lit_mesh.read_lit_mesh's) over `source` (mesh_source.load_source's, in the bake's frame)
     for source materials `material_ids`, each `sizes[k]` texels a side."""
@@ -87,14 +99,13 @@ def cluster_uvs(mesh, source, material_ids, sizes):
     points = np.asarray(mesh.pos, dtype=np.float64) / float(mesh.position_scale)
     tris = np.asarray(mesh.tris)
     source_corners = np.asarray(source.p, dtype=np.float64)[np.asarray(source.tri_v)]
-    near, _bary, _distance = nearest_triangles(points[tris].mean(axis=1), triangle_search(source_corners))
+    near, source_material, facing = nearest_materials(points, tris, source)
     baked_normal, area = face_normals(points, tris)
     source_normal, _ = face_normals(np.asarray(source.p, dtype=np.float64), np.asarray(source.tri_v))
     agree = np.cos(np.radians(NORMAL_DEGREES))
-    facing = (baked_normal * source_normal[near]).sum(axis=1) >= agree
     slot = np.full(len(source.names), NONE)
     slot[list(material_ids)] = np.arange(len(material_ids))
-    material = np.where(facing, slot[np.asarray(source.tri_m)[near]], NONE)
+    material = np.where(facing, slot[source_material], NONE)
     uvs = [np.zeros((len(points), 2), dtype=np.int16)]
     uv_count = len(points)
     shifts = np.zeros(len(mesh.clusters), dtype=np.int32)
