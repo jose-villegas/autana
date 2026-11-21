@@ -4,7 +4,8 @@
  * update and exit in the slot it was called through, and the console word
  * comes back in capitals as the reply tag. A path with its own seek
  * (lab_path_t.seek) gives the lab its length, takes a seek wrapped to it, and
- * gets "pose <ms>" and "pose play" instead of an animator.
+ * gets "pose <ms>" and "pose play" instead of an animator. The BOOT menu
+ * hands the lab's settings rows the scene showing.
  */
 
 #include "suites.h"
@@ -29,6 +30,8 @@ typedef struct {
     int seeks;
     uint32_t seek_ms;
     int plays;
+    int settings;
+    const lab_scene_t* settings_showing;
 } calls_t;
 
 static calls_t calls;
@@ -76,6 +79,7 @@ probe_path(void) {
 
 static const lab_scene_t probe_scene = {
     .key = "probe",
+    .family = "Probe",
     .name = "Probe",
     .enter = probe_enter,
     .frame = probe_frame,
@@ -86,12 +90,20 @@ static const lab_scene_t probe_scene = {
 
 static const lab_scene_t* const probe_scenes[] = {&probe_scene};
 
+static void
+probe_settings(const lab_scene_t* showing, int width) {
+    (void)width;
+    calls.settings++;
+    calls.settings_showing = showing;
+}
+
 LAB_VIEW(probe_view, "lab_register_probe");
 static lab_t probe_lab = {
     .view = &probe_view,
     .console_word = "probe",
     .scenes = probe_scenes,
     .scene_count = 1,
+    .hooks = {.settings = probe_settings},
 };
 LAB_REGISTER(probe_lab);
 static const app_t probe_app = {.name = "Probe Lab", LAB_APP_CALLBACKS(probe_lab)};
@@ -150,6 +162,24 @@ test_pose_and_play_reach_the_scene(void) {
     TEST_ASSERT_EQUAL_INT(1, calls.plays);
 }
 
+/* The open menu draws the lab's settings rows for the scene showing; a
+ * closed one draws none. */
+static void
+test_menu_hands_settings_the_showing_scene(void) {
+    const input_t idle = {0};
+    const input_t boot = {.boot = {.pressed = true}};
+    probe_app.enter();
+    calls = (calls_t){0};
+    probe_app.frame(FRAME_DT_MS, &idle);
+    TEST_ASSERT_EQUAL_INT(0, calls.settings);
+    probe_app.frame(FRAME_DT_MS, &boot);
+    TEST_ASSERT_EQUAL_INT(1, calls.settings);
+    TEST_ASSERT_EQUAL_PTR(&probe_scene, calls.settings_showing);
+    probe_app.frame(FRAME_DT_MS, &boot);
+    TEST_ASSERT_EQUAL_INT(1, calls.settings);
+    probe_app.exit();
+}
+
 void
 run_lab_register_suite(void) {
     RUN_TEST(test_registration_sets_the_reply_tag);
@@ -157,6 +187,7 @@ run_lab_register_suite(void) {
     RUN_TEST(test_a_seek_path_has_its_own_length);
     RUN_TEST(test_a_seek_wraps_to_the_path_and_reaches_the_scene);
     RUN_TEST(test_pose_and_play_reach_the_scene);
+    RUN_TEST(test_menu_hands_settings_the_showing_scene);
 }
 
 SUITE_REGISTER(run_lab_register_suite);

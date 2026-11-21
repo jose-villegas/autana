@@ -53,9 +53,11 @@ static const char* TAG = "framegen";
     "warp=%d fill=%d cull=%d transform=%d draw=%d upscale=%d anim=%d other=%d"
 #define FRAMEGEN_WORST_PERCENT 5
 
-/* A modes line: one scenario's path played in real time in one mode. */
+/* A modes line: one scenario's path played in real time in one mode, with the
+ * `partial_redraw` setting in force (lab_test_enter() turns it off). */
 #define FRAMEGEN_MODES_LINE                                                                                            \
-    "framegen_modes: %s framegen=%d budget_ms=%d frames=%d drawn=%d mean_us=%d p95_us=%d mean_height=%d"
+    "framegen_modes: %s framegen=%d budget_ms=%d partial_redraw=%d frames=%d drawn=%d mean_us=%d p95_us=%d "           \
+    "mean_height=%d"
 /* A profile line: per pose, the target's clear alone, the warp with every
  * splat off screen (clear, reads and maths), to the drawn view itself
  * (in-order writes) and to the next view (the real scatter). */
@@ -456,7 +458,8 @@ test_mode(void) {
     const frame_profile_t p = frame_profile_play(&playback, shown_frame, &played, NULL);
     TEST_ASSERT_GREATER_THAN_INT(0, played.drawn);
     TEST_ASSERT_EQUAL_INT(p.frames, played.count);
-    ESP_LOGI(TAG, FRAMEGEN_MODES_LINE, scenario->scene->key, mode->generating, mode->budget_ms, p.frames, played.drawn,
+    ESP_LOGI(TAG, FRAMEGEN_MODES_LINE, scenario->scene->key, mode->generating, mode->budget_ms,
+             raster_settings(&render_context_main()->raster).partial_redraw, p.frames, played.drawn,
              (int)p.frame_us.avg, (int)p.frame_us.p95, (int)(played.height_sum / played.drawn));
     log_worst_frames(&played);
     char row[LAB_PERF_ROW_NAME_SIZE];

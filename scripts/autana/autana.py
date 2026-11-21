@@ -943,7 +943,7 @@ def hand(args):
             return process.wait()
     except KeyboardInterrupt:
         if process is None or process.returncode != EXIT_INTERRUPTED:
-            print("human reservation wait interrupted")
+            print("human reservation wait interrupted", file=sys.stderr)
         return EXIT_INTERRUPTED
 
 
@@ -1807,7 +1807,7 @@ LOCK_USAGES = (
     ("lock wait", "wait until the board is free without taking it; --wait caps the wait"),
     ("lock release [<token>]", "release a hold early; the token is optional inside a hold"),
     ("lock hand [--until-back <seconds>] <note...>",
-     "reserve the board for a person for an hour; run again to renew"),
+     "reserve the board for a person for an hour and print its token; run again to renew"),
     ("lock take-back", "clear that reservation"),
 )
 

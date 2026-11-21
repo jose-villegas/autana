@@ -802,6 +802,12 @@ def load_demo_assets(path) -> list[str]:
         raise SettingsError(f"{path}: {error}") from error
 
 
+def flight_camera(scene):
+    """The lens of the scene's first camera with a path: the flythrough a path tool samples. The scene camera
+    (the first) may have none, its fits trained on probes over its region."""
+    return next((obj.component for obj in scene.objects if obj.kind == "camera" and obj.component.path), None)
+
+
 def load_scene(path):
     """A scenario: objects (each a transform and one component), the sky and
     ambient settings, and the tone map the lit meshes use."""
