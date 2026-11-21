@@ -86,7 +86,7 @@ def parse_markdown(text):
     return collected
 
 
-def timing_samples(text, *, identity_fields=("cores", "paused"), percentiles=False):
+def timing_samples(text, *, identity_fields=("cores", "paused"), percentiles=False, include_targets=False):
     """Yield each observation; rendered quarters and selected setup fields identify it."""
     for line in text.splitlines():
         if match := PROFILE_RE.search(line):
@@ -101,14 +101,14 @@ def timing_samples(text, *, identity_fields=("cores", "paused"), percentiles=Fal
                 yield quarter_row(fields["stage"] + ".p95" + identity, line), int(fields["p95_us"])
         elif match := re.search(r"scale_split: (\d+x\d+).*frame mean/p50/max us (\d+)/", line):
             yield quarter_row("scale_split " + match[1], line), int(match[2])
-        else:
+        elif include_targets:
             for target in parse_perf_targets(line)[0] + parse_unpegged_targets(line):
                 yield target["name"], int(target["measured"])
 
 
 def parse_timings(text):
     """Return the last observation of each named timing row."""
-    return dict(timing_samples(text))
+    return dict(timing_samples(text, include_targets=True))
 
 
 def parse_report(path):
