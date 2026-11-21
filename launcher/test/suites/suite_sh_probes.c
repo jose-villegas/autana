@@ -113,9 +113,9 @@ test_python_probe_grid(void) {
     bytes[GOLDEN_BYTES - sizeof(uint8_t)] |= 1U << GOLDEN_PROBES;
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, sh_probes_read(entry, &grid));
     memcpy(bytes, golden, sizeof bytes);
-    bytes[SH_PROBES_FLAGS_OFFSET] = SH_PROBES_FLAG_INSIDE_MASK << 1;
+    bytes[SH_PROBES_AT_FLAGS] = SH_PROBES_FLAG_INSIDE_MASK << 1;
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, sh_probes_read(entry, &grid));
-    bytes[SH_PROBES_FLAGS_OFFSET] = 0;
+    bytes[SH_PROBES_AT_FLAGS] = 0;
     const asset_view_t unmasked = {entry.data, entry.size - sizeof(uint8_t)};
     TEST_ASSERT_EQUAL_INT(ASSET_OK, sh_probes_read(unmasked, &grid));
     TEST_ASSERT_NULL(grid.inside);
@@ -124,10 +124,10 @@ test_python_probe_grid(void) {
     }
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_SIZE, sh_probes_read(entry, &grid));
     memcpy(bytes, golden, sizeof bytes);
-    ((uint8_t*)bytes)[SH_PROBES_VERSION_OFFSET] = 0;
+    ((uint8_t*)bytes)[SH_PROBES_AT_VERSION] = 0;
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_VERSION, sh_probes_read(entry, &grid));
-    ((uint8_t*)bytes)[SH_PROBES_VERSION_OFFSET] = SH_PROBES_VERSION;
-    memset((uint8_t*)bytes + SH_PROBES_DIMS_OFFSET, 0, sizeof(uint16_t));
+    ((uint8_t*)bytes)[SH_PROBES_AT_VERSION] = SH_PROBES_VERSION;
+    memset((uint8_t*)bytes + SH_PROBES_AT_DIMS, 0, sizeof(uint16_t));
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, sh_probes_read(entry, &grid));
 }
 
@@ -135,13 +135,13 @@ static void
 test_probe_reader_bounds(void) {
     uint16_t bytes[(SH_PROBES_HEADER_SIZE + SH_PROBES_RECORD_SIZE) / sizeof(uint16_t)] = {0};
     uint8_t* data = (uint8_t*)bytes;
-    data[SH_PROBES_VERSION_OFFSET] = SH_PROBES_VERSION;
+    data[SH_PROBES_AT_VERSION] = SH_PROBES_VERSION;
     const uint16_t dims[MAT3F_AXES] = {1, 1, 1};
     const vec3f_t spacing = vec3f_one();
     const float scale = 1;
-    memcpy(data + SH_PROBES_DIMS_OFFSET, dims, sizeof dims);
-    memcpy(data + SH_PROBES_SPACING_OFFSET, &spacing, sizeof spacing);
-    memcpy(data + SH_PROBES_SCALE_OFFSET, &scale, sizeof scale);
+    memcpy(data + SH_PROBES_AT_DIMS, dims, sizeof dims);
+    memcpy(data + SH_PROBES_AT_SPACING, &spacing, sizeof spacing);
+    memcpy(data + SH_PROBES_AT_SCALE, &scale, sizeof scale);
     const asset_view_t entry = {data, sizeof bytes};
     sh_probes_t grid;
     TEST_ASSERT_EQUAL_INT(ASSET_OK, sh_probes_read(entry, &grid));
@@ -149,22 +149,22 @@ test_probe_reader_bounds(void) {
     TEST_ASSERT_NULL(grid.coefficients);
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_BOUNDS, sh_probes_read((asset_view_t){data, SH_PROBES_HEADER_SIZE - 1}, &grid));
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_BOUNDS, sh_probes_read((asset_view_t){data + 1, entry.size - 1}, &grid));
-    data[SH_PROBES_VERSION_OFFSET + 1] = 1;
+    data[SH_PROBES_AT_VERSION + 1] = 1;
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_VERSION, sh_probes_read(entry, &grid));
-    data[SH_PROBES_VERSION_OFFSET + 1] = 0;
-    data[SH_PROBES_FLAGS_OFFSET] = SH_PROBES_FLAG_INSIDE_MASK << 1;
+    data[SH_PROBES_AT_VERSION + 1] = 0;
+    data[SH_PROBES_AT_FLAGS] = SH_PROBES_FLAG_INSIDE_MASK << 1;
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, sh_probes_read(entry, &grid));
-    data[SH_PROBES_FLAGS_OFFSET] = 0;
-    data[SH_PROBES_PADDING_OFFSET] = 1;
+    data[SH_PROBES_AT_FLAGS] = 0;
+    data[SH_PROBES_AT_PADDING] = 1;
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, sh_probes_read(entry, &grid));
-    data[SH_PROBES_PADDING_OFFSET] = 0;
+    data[SH_PROBES_AT_PADDING] = 0;
     const uint16_t huge_dims[MAT3F_AXES] = {UINT16_MAX, UINT16_MAX, UINT16_MAX};
-    memcpy(data + SH_PROBES_DIMS_OFFSET, huge_dims, sizeof huge_dims);
+    memcpy(data + SH_PROBES_AT_DIMS, huge_dims, sizeof huge_dims);
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_SIZE, sh_probes_read(entry, &grid));
-    memcpy(data + SH_PROBES_DIMS_OFFSET, dims, sizeof dims);
+    memcpy(data + SH_PROBES_AT_DIMS, dims, sizeof dims);
     const float invalid[] = {0, -1, INFINITY, NAN};
     for (size_t i = 0; i < sizeof invalid / sizeof invalid[0]; i++) {
-        memcpy(data + SH_PROBES_SCALE_OFFSET, &invalid[i], sizeof invalid[i]);
+        memcpy(data + SH_PROBES_AT_SCALE, &invalid[i], sizeof invalid[i]);
         TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, sh_probes_read(entry, &grid));
         TEST_ASSERT_NULL(grid.coefficients);
     }
