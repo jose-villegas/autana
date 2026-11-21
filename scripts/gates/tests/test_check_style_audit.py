@@ -504,9 +504,13 @@ void f(void) {
             "launcher/main/scene/a/a.h": '#include "scene/b/b.h"\n',
             "launcher/main/scene/b/b.h": '// #include "scene/a/a.h"\n',
         }
+        # A line comment ends at the first newline no backslash escapes: the include below is still in it.
+        continued = dict(files)
+        continued["launcher/main/scene/b/b.h"] = '// a note that goes on \\\n#include "scene/a/a.h"\n'
         for rule in ("FOLDER-CYCLE", "HEADER-CYCLE"):
-            with self.subTest(rule=rule):
-                self.assertEqual(self.audit(rule, files), [])
+            for name, tree in (("plain", files), ("continued", continued)):
+                with self.subTest(rule=rule, comment=name):
+                    self.assertEqual(self.audit(rule, tree), [])
 
     def test_a_cycle_removed_between_two_runs_on_one_root_is_gone_from_the_second(self):
         with tempfile.TemporaryDirectory() as temp:
