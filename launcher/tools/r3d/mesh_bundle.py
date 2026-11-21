@@ -122,7 +122,6 @@ def encode(entries, copies):
 
 
 def decode(data):
-    from r3d.texture import uv_transfer  # numpy; bake.py reads SUFFIX without it
     entries = parse_pack(data)
     if MANIFEST not in entries:
         raise PackError("mesh bundle has no manifest")
@@ -140,7 +139,8 @@ def decode(data):
             if mesh is None or mesh[0] != mesh_asset.TYPE or not name.endswith(lod_asset.NAME_SUFFIX):
                 raise PackError("LLOD sibling has no LMSH")
             lod_asset.validate_mesh(blob, mesh[1])
-        if kind == uv_transfer.TYPE:
+        if kind == texture_asset.UVS_TYPE:
+            from r3d.texture import uv_transfer  # numpy: only a textured mesh's bundle needs it, not the firmware build
             stem = name.removesuffix(uv_transfer.NAME_SUFFIX)
             mesh = entries.get(stem)
             if mesh is None or mesh[0] != mesh_asset.TYPE or stem == name:

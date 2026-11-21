@@ -4,10 +4,13 @@
 #include <string.h>
 
 #include "collections/bits.h"
+#include "core/tune.h"
 #include "math/geometry/primitive_mesh.h"
 #include "math/scalar/math_const.h"
 #include "math/scalar/mathi.h"
 #include "math/scalar/rng.h"
+#include "render/render_view.h"
+#include "render/settings/render_settings.h"
 
 /* Each preset's surface, as STRESS_PRESETS names it. */
 #define STRESS_PRESET_SURFACE(id_, key_, surface_) STRESS_##id_##_SURFACE = STRESS_SURFACE_##surface_,
@@ -54,6 +57,10 @@ const stress_params_t stress_presets[STRESS_PRESET_COUNT] = {
                            STRESS_CAMERA, 6},
     [STRESS_TEXTURED] = {STRESS_SHAPE_PLANE, 2, 1, STRESS_LAYOUT_WALL, 100, STRESS_SURFACE_OF(TEXTURED), STRESS_CAMERA,
                          6},
+    /* stress-textured's plane, small and many, as carved-far is to carved-near:
+     * its brick a few texels a pixel, so most of it picks far mip levels. */
+    [STRESS_TEXTURED_FAR] = {STRESS_SHAPE_PLANE, 2, 64, STRESS_LAYOUT_WALL, 50, STRESS_SURFACE_OF(TEXTURED_FAR),
+                             STRESS_CAMERA, 6},
     /* Foliage cards near, a few bushes over the whole view, and far, many small
      * ones; each cut by a MASK1 texture beside its twin, whose cards draw the
      * INDEX4 brick whole: the same cards, under a cut against a whole fill. */
@@ -76,6 +83,29 @@ const stress_params_t stress_presets[STRESS_PRESET_COUNT] = {
     /* No copies: its own pack's baked ring, culled through the tree the bake tools built. */
     [STRESS_BAKED_TREE] = {STRESS_SHAPE_PLANE, 1, 0, STRESS_LAYOUT_WALL, 100, STRESS_SURFACE_OF(BAKED_TREE),
                            STRESS_CAMERA_SWEEP, 8, .scene = STRESS_RING_SCENE},
+    /* A wall of coarse planes, each triangle a few pixels past flat's side,
+     * under each small-fill style the SMALL FILL menu offers past flat, at its
+     * largest ceiling with no colour gate; dither's corners far apart, as one
+     * colour draws flat. Then tiny copies with the small fill off, so the row
+     * walk's flat fill takes the smallest. */
+    [STRESS_SMALL_GRAIN] = {STRESS_SHAPE_PLANE, 3, 16, STRESS_LAYOUT_WALL, 60, STRESS_SURFACE_OF(SMALL_GRAIN),
+                            STRESS_CAMERA, 6,
+                            .settings = {{TUNE_NAME(render_lab, small_fill_ceiling), SMALL_FILL_CEILING_MAX},
+                                         {TUNE_NAME(render_lab, small_fill_style), SMALL_FILL_GRAIN}}},
+    [STRESS_SMALL_DITHER] = {STRESS_SHAPE_PLANE, 3, 16, STRESS_LAYOUT_WALL, 60, STRESS_SURFACE_OF(SMALL_DITHER),
+                             STRESS_CAMERA, 6,
+                             .settings = {{TUNE_NAME(render_lab, small_fill_ceiling), SMALL_FILL_CEILING_MAX},
+                                          {TUNE_NAME(render_lab, small_fill_style), SMALL_FILL_DITHER}}},
+    [STRESS_SMALL_OFF] = {STRESS_SHAPE_SPHERE, 4, 64, STRESS_LAYOUT_WALL, 40, STRESS_SURFACE_OF(SMALL_OFF),
+                          STRESS_CAMERA, 6,
+                          .settings = {{TUNE_NAME(render_lab, small_fill_ceiling), SMALL_FILL_CEILING_OFF}}},
+    /* The stack, its camera skipping clusters behind drawn depth: each fill's depth capped. */
+    [STRESS_STACK_SKIP] = {STRESS_SHAPE_PLANE, 8, 8, STRESS_LAYOUT_STACK, 90, STRESS_SURFACE_OF(STACK_SKIP),
+                           STRESS_CAMERA, 6, .skip_hidden = true},
+    /* The near carved props blending between levels through complementary
+     * dither masks; the far ones sit at their coarsest and never blend. */
+    [STRESS_CARVED_BLEND] = {STRESS_SHAPE_PLANE, 1, 9, STRESS_LAYOUT_WALL, 160, STRESS_SURFACE_OF(CARVED_BLEND),
+                             STRESS_CAMERA_NEAR, 6, .settings = {{TUNE_NAME(render, lod_blend), RENDER_LOD_BLEND_ON}}},
 };
 
 stress_params_t
@@ -377,6 +407,11 @@ colour_and_wave(const stress_params_t* p, uint32_t t_ms, int vertex_count, const
 }
 
 static void texture_uvs(const stress_params_t* p, int vertex_count, const stress_buffers_t* b);
+
+uint32_t
+stress_pose_ms(const stress_params_t* p, uint32_t duration_ms, int pose) {
+    return (uint32_t)((uint64_t)duration_ms * (uint64_t)pose / (uint64_t)p->perf_poses);
+}
 
 bool
 stress_source(const stress_params_t* p, uint32_t t_ms, const stress_buffers_t* b, r3d_dynamic_source_t* out) {

@@ -13,7 +13,8 @@ trap 'rm -f "$RUNNER"' EXIT HUP INT TERM
 git show "$REVISION:launcher/main/render/r3d_span.h" > "$SCRATCH/oracle-base.h"
 git show "$REVISION:launcher/main/render/r3d_span_internal.h" |
     sed 's@"render/r3d_span.h"@"oracle-base.h"@' > "$SCRATCH/oracle-internal.h"
-git show "$REVISION:launcher/main/render/r3d_span.c" |
+# The copy keeps r3d_span.c's name, so its r3d paths join the tree's as copies.
+{ echo '#line 1 "r3d_span.c"'; git show "$REVISION:launcher/main/render/r3d_span.c"; } |
     sed -e 's@"render/r3d_span.h"@"oracle-base.h"@' \
         -e 's@"render/r3d_span_internal.h"@"oracle-internal.h"@' > "$SCRATCH/oracle-base.c"
 git show "$REVISION:launcher/test/suites/suite_r3d_small.c" |

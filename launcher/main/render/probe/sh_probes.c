@@ -10,7 +10,7 @@ sh_probes_inside(const sh_probes_t* probes, int x, int y, int z) {
     assert(x >= 0 && x < probes->dims[0]);
     assert(y >= 0 && y < probes->dims[1]);
     assert(z >= 0 && z < probes->dims[2]);
-    const size_t index = ((size_t)z * probes->dims[1] + (size_t)y) * probes->dims[0] + (size_t)x;
+    const size_t index = ((((size_t)z * probes->dims[1]) + (size_t)y) * probes->dims[0]) + (size_t)x;
     return probes->inside != NULL
            && (probes->inside[index / SH_PROBES_MASK_BITS_PER_BYTE] & (1U << (index % SH_PROBES_MASK_BITS_PER_BYTE)))
                   != 0;
