@@ -202,9 +202,11 @@ on, so the render context times both and decides each frame:
 | It saved less | Drawn |
 | `FRAMEGEN_RETRY_DRAWN` drawn frames in a row | Generated, to measure it again |
 
-A view [partial redraw](Partial-Redraw.md) holds (the camera still, the
-same settings) is never generated: a warp to the same camera shows nothing
-new, and objects moving in it are drawn as partial redraw draws them.
+A frame drawn as a held one is never generated: a warp to the same camera
+shows nothing new, so its moving objects are drawn as
+[partial redraw](Partial-Redraw.md#when-every-row-is-drawn) draws them. A
+held view under [dynamic resolution](Dynamic-Resolution.md#a-held-camera)
+that was handed back to the policy is generated as a moving one is.
 
 The margin keeps a generated frame, which shows the scene less exactly than
 a drawn one, from being shown for a saving too small to see.
