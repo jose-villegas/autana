@@ -45,6 +45,8 @@ rules: [Scene-Files.md](scene/Scene-Files.md#light).
 | `point` | the object's position | inverse square, to 0 at `range` | baked |
 | `spot` | the position, shining along −Y turned by the rotation | as a point, inside a cone from `inner_angle` to `outer_angle` | baked |
 
+![A floor, a box and a pillar baked under a warm point light and a cool spot: each casts a hard shadow, the spot inside its cone](../images/render/light-point-spot.png)
+
 | Key | Meaning |
 |---|---|
 | `type` | `"directional"`, `"point"` or `"spot"` |

@@ -18,7 +18,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | [overview](#overview) | 46 | 0 | 0 |
 | [physics](#physics) | 2 | 0 | 0 |
 | [power](#power) | 2 | 0 | 0 |
-| [render](#render) | 135 | 10 | 0 |
+| [render](#render) | 136 | 10 | 0 |
 | [ui](#ui) | 62 | 0 | 0 |
 
 ## anim
@@ -283,6 +283,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/render/import-face-samples.png"><img src="../images/render/import-face-samples.png" width="160" alt=""></a> | One fixed face sample against adaptive, then adaptive against the flat fit | [render/scene/Scene-Files](../render/scene/Scene-Files.md) | not declared yet |
 | <a href="../images/render/import-light.png"><img src="../images/render/import-light.png" width="160" alt=""></a> | Albedo against the fitted bake | [render/scene/Scene-Files](../render/scene/Scene-Files.md) | not declared yet |
 | <a href="../images/render/import-mesh-contact.png"><img src="../images/render/import-mesh-contact.png" width="160" alt=""></a> | A pillar's contact with the floor under weld, lock and free | [render/offline/Mesh-Import](../render/offline/Mesh-Import.md) | not declared yet |
+| <a href="../images/render/light-point-spot.png"><img src="../images/render/light-point-spot.png" width="160" alt=""></a> | A floor, a box and a pillar baked under a warm point light and a cool spot: each casts a hard shadow, the spot inside its cone | [render/Lighting](../render/Lighting.md), [render/scene/Scene-Files](../render/scene/Scene-Files.md) | not declared yet |
 | <a href="../images/render/lod-blend-dither.png"><img src="../images/render/lod-blend-dither.png" width="160" alt=""></a> | The 4x4 screen door at five points of the ramp past leave: coarse and fine pixels | [render/frame/Levels-of-Detail](../render/frame/Levels-of-Detail.md) | [blend_figures.py](../../launcher/tools/r3d/lod/blend_figures.py) |
 | <a href="../images/render/lod-blend-pop.gif"><img src="figure-thumbnails/render/lod-blend-pop.gif" width="160" alt=""></a> | A camera closing in on a carved relief in the fitted Sponza atrium: finest, switch, dither and morph side by side | [render/frame/Levels-of-Detail](../render/frame/Levels-of-Detail.md) | [lod_blend_pop.py](../../launcher/main/apps/render_lab/tools/lod_blend_pop.py) |
 | <a href="../images/render/lod-blend-pop.png"><img src="../images/render/lod-blend-pop.png" width="160" alt=""></a> | The square where a switch pops most on that approach, before and at the pop, switched, dithered and morphed, each beside its difference from the finest level | [render/frame/Levels-of-Detail](../render/frame/Levels-of-Detail.md) | [lod_blend_pop.py](../../launcher/main/apps/render_lab/tools/lod_blend_pop.py) |
