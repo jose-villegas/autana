@@ -86,7 +86,7 @@ set, else 1.
 | bounce $`E_{\mathrm{ind}}`$ | `bounced_light()`: Mitsuba<sup>[[15]](../Citations.md#mitsuba3)</sup> paths<sup>[[16]](../Citations.md#kajiya-1986)</sup>, up to $K$ bounces | light from lit surfaces into shade | [Bake-Method.md](offline/Bake-Method.md#bounced-light-implementation) |
 
 `baked_lights()` keeps only the lights with `mode = "baked"`. A mesh's rays
-hit only its own source, so one baked object does not shadow another yet.
+hit only its own source, so one baked object does not shadow another.
 How close a bake comes to a per-pixel reference is
 [Bake-Quality.md](offline/Bake-Quality.md).
 
@@ -133,7 +133,7 @@ dark disc on the ground under it stands in. Placing and drawing it:
 
 ![A skinned mover with its contact blob on the floor of a baked atrium](../images/render/contact-blob-atrium.png)
 
-## Not supported yet
+## Not supported
 
 | Missing | Today |
 |---|---|
