@@ -81,10 +81,10 @@ class CandidateTests(unittest.TestCase):
 
     def test_the_earliest_marked_on_the_locks_vendor_traces(self):
         artifacts = [marker(4, 2, 1, True, "10:00:01"), marker(4, 0, 1, True, "10:00:05")]
-        self.decides(artifacts, {0, 1, 2}, {(2, True): runner_vendor.TRACE, (0, True): runner_vendor.OTHER})
+        self.decides(artifacts, {0, 1, 2}, {(2, True): runner_vendor.WORK, (0, True): runner_vendor.OTHER})
 
     def test_a_right_candidate_that_cannot_see_its_marker_yet_traces_alone(self):
-        self.decides([], {0, 1, 2}, {(1, True): runner_vendor.TRACE})
+        self.decides([], {0, 1, 2}, {(1, True): runner_vendor.WORK})
 
     def test_a_wrong_candidate_finishes_green_while_a_sibling_can_still_trace(self):
         wrong = [marker(4, 0, 1, False, "10:00:00")]
@@ -101,18 +101,23 @@ class CandidateTests(unittest.TestCase):
 
     def test_markers_of_another_shard_or_attempt_do_not_count(self):
         others = [marker(5, 1, 1, True, "10:00:00"), marker(4, 1, 1, True, "10:00:00")]
-        self.decides(others, {0}, {(0, False): runner_vendor.LOST, (0, True): runner_vendor.TRACE}, attempt=2)
+        self.decides(others, {0}, {(0, False): runner_vendor.LOST, (0, True): runner_vendor.WORK}, attempt=2)
+
+    def test_markers_of_another_job_of_the_attempt_do_not_count(self):
+        others = [marker(14, 1, 1, True, "10:00:00"),
+                  (runner_vendor.marker_name("Plan the reference shards", 0, 1, True), "10:00:00")]
+        self.decides(others, {0}, {(0, False): runner_vendor.LOST, (0, True): runner_vendor.WORK})
 
     def test_the_earliest_marked_traces_whatever_order_the_markers_list_in(self):
         # Every candidate on the lock's vendor reads after its own marker is listed; whichever siblings each
         # sees, the earliest-created one traces.
         early, late = marker(4, 3, 1, True, "10:00:01"), marker(4, 0, 1, True, "10:00:04")
-        self.decides([early], {0, 3}, {(3, True): runner_vendor.TRACE})
-        self.decides([late, early], {0, 3}, {(3, True): runner_vendor.TRACE, (0, True): runner_vendor.OTHER})
+        self.decides([early], {0, 3}, {(3, True): runner_vendor.WORK})
+        self.decides([late, early], {0, 3}, {(3, True): runner_vendor.WORK, (0, True): runner_vendor.OTHER})
 
     def test_equal_marker_times_break_on_the_lower_candidate(self):
         artifacts = [marker(4, 2, 1, True, "10:00:00"), marker(4, 1, 1, True, "10:00:00")]
-        self.decides(artifacts, {1, 2}, {(1, True): runner_vendor.TRACE, (2, True): runner_vendor.OTHER})
+        self.decides(artifacts, {1, 2}, {(1, True): runner_vendor.WORK, (2, True): runner_vendor.OTHER})
 
     def test_a_shard_an_earlier_attempt_traced_is_done(self):
         artifacts = [(shard_artifact(14, 0, 1), "10:00:00"), marker(4, 0, 1, True, "10:00:00")]
@@ -313,7 +318,107 @@ class BakesWorkflowTests(unittest.TestCase):
                 self.assertEqual(job["permissions"]["actions"], "read")
                 self.assertFalse(job["strategy"]["fail-fast"])
                 for step in job["steps"][steps.index("candidate") + 1:]:
-                    self.assertIn("steps.candidate.outputs.work == 'true'", step.get("if", ""), step)
+                    gate = step.get("if", "")
+                    self.assertIn("steps.candidate.outputs.work == 'true'", gate, step)
+                    self.assertNotIn("||", gate, step)
+                # Nothing that bakes or uploads runs before the start.
+                for step in job["steps"][:steps.index("candidate")]:
+                    self.assertNotIn("upload-artifact", step.get("uses", ""), step)
+                    self.assertFalse(self.traces({"steps": [step]}), step)
+
+    def candidate_jobs(self):
+        jobs = self.jobs()
+        return {name: job for name, job in jobs.items()
+                if any(step.get("uses") == "./.github/actions/vendor-candidate" for step in job["steps"])}
+
+    def test_two_candidates_that_both_work_upload_under_their_own_names(self):
+        """A marker that lists late lets two candidates work; upload-artifact fails on a name taken already."""
+        for name, job in self.candidate_jobs().items():
+            ids = {step.get("id"): step for step in job["steps"]}
+            for step in job["steps"]:
+                if "upload-artifact" not in step.get("uses", ""):
+                    continue
+                artifact = step["with"]["name"]
+                source = re.fullmatch(r"\$\{\{ steps\.([\w-]+)\.outputs\.[\w-]+ \}\}", artifact)
+                if source:  # named by a step's output: the step's environment builds it
+                    artifact = " ".join(ids[source[1]].get("env", {}).values())
+                with self.subTest(job=name, artifact=artifact):
+                    self.assertIn("${{ matrix.candidate }}", artifact)
+                    self.assertIn("${{ github.run_attempt }}", artifact)
+            # A local action that uploads under a name of its own replaces the other worker's copy.
+            import yaml
+            for step in job["steps"]:
+                local = step.get("uses", "")
+                if not local.startswith("./") or local.endswith("vendor-candidate"):
+                    continue
+                action = yaml.safe_load((runner_vendor.ROOT / local / "action.yml").read_text())
+                for inner in action["runs"].get("steps", []):
+                    if "upload-artifact" in inner.get("uses", ""):
+                        with self.subTest(job=name, action=local):
+                            self.assertTrue(inner["with"].get("overwrite"), inner)
+
+    def test_a_shard_an_earlier_attempt_traced_is_not_traced_again(self):
+        job = self.jobs()["reference-shard"]
+        start = next(step for step in job["steps"] if step.get("id") == "candidate")
+        upload = next(step for step in job["steps"] if "upload-artifact" in step.get("uses", ""))
+        for shard, other in ((1, 14), (14, 1)):
+            with self.subTest(shard=shard):
+                def at(text, value):
+                    return (text.replace("${{ matrix.shard }}", str(value)).replace("${{ github.run_attempt }}", "1")
+                            .replace("${{ matrix.candidate }}", "2"))
+                pattern = at(start["with"]["done"], shard)
+                self.assertTrue(runner_vendor.done([(at(upload["with"]["name"], shard), "")], pattern))
+                self.assertFalse(runner_vendor.done([(at(upload["with"]["name"], other), "")], pattern))
+
+    @staticmethod
+    def kinds_of(run, files):
+        """The bake kinds the `bake.py list --missing` lines of `run` list into each of `files` (the
+        $RUNNER_TEMP/<file>.txt or $(...) a value is counted from)."""
+        listed = {}
+        for line in run.splitlines():
+            kinds = re.findall(r"--kind (\w+)", line)
+            if "list --missing" in line:
+                for target in re.findall(r'tee (?:-a )?"\$RUNNER_TEMP/(\w+)\.txt"', line) or [line]:
+                    listed.setdefault(target, set()).update(kinds)
+        return set().union(*(listed[name] for name in files))
+
+    def test_each_job_is_sized_by_the_traced_work_its_own_start_sees(self):
+        """`traces` in a job and the count `start` sizes its matrix by cover the same bake kinds, and every
+        traced kind is counted for some job."""
+        jobs = self.jobs()
+        start_run = next(step for step in jobs["inputs"]["steps"] if step.get("id") == "start")["run"]
+        sized = dict(re.findall(r'([\w-]+)="\$(\w+)"', start_run.splitlines()[-1]))
+        counted = {}
+        for line in start_run.splitlines()[:-1]:
+            name, command = line.split("=", 1)
+            counted[name.strip()] = self.kinds_of(command, [command])
+        from bake import bake
+        self.assertEqual(set().union(*counted.values()), set(bake.TRACED_KINDS))
+        for name, job in self.candidate_jobs().items():
+            traces = next(step for step in job["steps"] if step.get("id") == "candidate")["with"].get("traces")
+            if name not in sized:
+                self.assertIsNone(traces, name)  # always traces: the action's default
+                continue
+            with self.subTest(job=name):
+                step_id, key = re.fullmatch(r"\$\{\{ steps\.([\w-]+)\.outputs\.(\w+) != '0' \}\}", traces).groups()
+                run = next(step for step in job["steps"] if step.get("id") == step_id)["run"]
+                value = next(line for line in run.splitlines() if f'"{key}=' in line)
+                files = re.findall(r'\$RUNNER_TEMP/(\w+)\.txt', value)
+                self.assertEqual(self.kinds_of(run, files), counted[sized[name]])
+
+    def test_the_action_works_once_it_knows_and_claims_only_with_a_marker(self):
+        import yaml
+        action = yaml.safe_load((runner_vendor.ROOT / ".github/actions/vendor-candidate/action.yml").read_text())
+        self.assertEqual(action["inputs"]["traces"]["default"], "true")
+        self.assertEqual(action["outputs"]["work"]["value"], "${{ steps.claim.outputs.work || steps.mark.outputs.work }}")
+        mark, upload, claim = action["runs"]["steps"]
+        self.assertEqual((mark["id"], claim["id"]), ("mark", "claim"))
+        self.assertIn("upload-artifact", upload["uses"])
+        self.assertEqual(upload["with"]["name"], "${{ steps.mark.outputs.marker }}")
+        self.assertEqual(upload["with"]["retention-days"], 1)
+        for step in (upload, claim):
+            self.assertEqual(step["if"], "steps.mark.outputs.marker != ''")
+        self.assertEqual(claim["env"]["VENDOR_MARKER"], "${{ steps.mark.outputs.marker }}")
 
     def test_a_job_starts_one_runner_when_it_traces_nothing(self):
         """Each tracing job's candidate matrix comes from a runner_vendor step of a job it needs, which sizes it
@@ -356,8 +461,20 @@ class BakesWorkflowTests(unittest.TestCase):
         with mock.patch.object(runner_vendor, "plan", return_value=0) as plan:
             runner_vendor.main(["plan", "[0, 1]"])
         plan.assert_called_once_with("[0, 1]")
-        with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
-            runner_vendor.main(["claim", "4"])
+        with mock.patch.object(runner_vendor, "mark", return_value=0) as mark, \
+                mock.patch("bake.bake.read_lock_tables", return_value={"mesh_cpu_vendor": AMD}), \
+                mock.patch("bake.bake.cpu_vendor", return_value=INTEL):
+            runner_vendor.main(["mark", unit(4), "2", "dir"])
+            runner_vendor.main(["mark", unit(4), "2", "dir", "false"])
+            runner_vendor.main(["mark", unit(4), "2", "dir", "true", "reference-shard-4-*"])
+        self.assertEqual(mark.call_args_list, [
+            mock.call(unit(4), 2, "dir", AMD, INTEL, True, ""),
+            mock.call(unit(4), 2, "dir", AMD, INTEL, False, ""),
+            mock.call(unit(4), 2, "dir", AMD, INTEL, True, "reference-shard-4-*")])
+        for bad in (["claim", "4"], ["mark", unit(4), "2"], ["mark", unit(4), "2", "d", "true", "p", "x"],
+                    ["start"], ["start", "cpu"], ["start", "cpu=x"], ["start", "cpu=-1"]):
+            with self.subTest(argv=bad), self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+                runner_vendor.main(bad)
 
     def test_plan_outputs_the_count_and_candidates(self):
         with tempfile.TemporaryDirectory() as folder:

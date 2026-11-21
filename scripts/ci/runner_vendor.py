@@ -7,8 +7,9 @@ A re-run waits for the run's slowest job, so a job with traced work starts on CA
 job with none starts on one. Each candidate marks its vendor with an artifact and waits until it sees its own
 marker listed; then the earliest marked on the lock's vendor does the job, the rest finish green, and a
 wrong-vendor one fails only when no candidate of the attempt is the lock's vendor and none is still to mark.
-Two may do one job when a marker lists late; each uploads under its own name. A job's unit is its name
-without " (candidate N)".
+Two may do one job when a marker lists late: each uploads under a name holding its candidate, the join keeps
+one copy of a shard once they match, and a lock keeps one row per key. A job's unit is its name without
+" (candidate N)".
 
     python scripts/ci/runner_vendor.py start JOB=COUNT ...   # each job's candidate matrix, as JOB-candidates
     python scripts/ci/runner_vendor.py plan SHARDS           # the shard count and candidate matrix, as outputs
@@ -45,8 +46,8 @@ MARKER_POLLS = 24
 # A candidate's vendor marker (unit slug, candidate, attempt, vendor) and its job's name (unit, candidate).
 MARKER = re.compile(r"vendor-(.+)-(\d+)-(\d+)-(ok|wrong)")
 CANDIDATE_JOB = re.compile(r"(.+) \(candidate (\d+)\)")
-# What `claim` decides for a candidate.
-TRACE, OTHER, LOST = "trace", "other", "lost"
+# What `claim` decides for a candidate: it does the job, another one does, or none can.
+WORK, OTHER, LOST = "work", "other", "lost"
 
 
 def slug(unit):
@@ -64,7 +65,7 @@ def done(artifacts, pattern):
 
 
 def decide(artifacts, running, unit, candidate, attempt, ok):
-    """TRACE, OTHER or LOST for a candidate of `unit` whose runner is (`ok`) or is not the lock's vendor.
+    """WORK, OTHER or LOST for a candidate of `unit` whose runner is (`ok`) or is not the lock's vendor.
 
     `artifacts` hold this candidate's own marker. Of this attempt's candidates on the lock's vendor, the
     earliest marked does the job, so one always does. A wrong-vendor one is LOST
@@ -74,7 +75,7 @@ def decide(artifacts, running, unit, candidate, attempt, ok):
                if (m := MARKER.fullmatch(name)) and m[1] == slug(unit) and int(m[3]) == attempt]
     claims = sorted((created, index) for index, good, created in markers if good)
     if ok:
-        return TRACE if not claims or claims[0][1] == candidate else OTHER
+        return WORK if not claims or claims[0][1] == candidate else OTHER
     if claims:
         return OTHER
     marked = {index for index, _, _ in markers}
@@ -89,14 +90,16 @@ def running_candidates(unit, request=github_api.call):
 
 
 def candidates(count):
-    """The candidate numbers for `count` shards: CANDIDATES, or fewer when the matrix would pass its cap."""
+    """The candidate numbers for each of `count` reference shards: CANDIDATES, or fewer when the shard matrix
+    would pass its cap."""
     from bake import bake
     return list(range(max(1, min(CANDIDATES, bake.MATRIX_JOBS // count))))
 
 
 def start(counts):
-    """Outputs JOB-candidates for each JOB `counts` maps to its number of traced bakes: CANDIDATES runners
-    when it has any, else one, since a job that traces nothing may run on any vendor."""
+    """Outputs JOB-candidates, the candidate numbers of each JOB that `counts` maps to its number of missing
+    traced bakes: CANDIDATES runners when it has any, else one, since a job that traces nothing may run on
+    any vendor."""
     output(**{f"{job}-candidates": json.dumps(list(range(CANDIDATES if count else 1))) for job, count in counts.items()})
     return 0
 
@@ -150,12 +153,12 @@ def claim(unit, candidate, marker, request=github_api.call, sleep=time.sleep):
         print(f"{marker} is not listed after {MARKER_POLLS} reads; deciding without it")
     attempt, ok = int(os.environ["GITHUB_RUN_ATTEMPT"]), marker.endswith("-ok")
     verdict = decide(artifacts, running_candidates(unit, request), unit, candidate, attempt, ok)
-    output(work="true" if verdict == TRACE else "false")
+    output(work="true" if verdict == WORK else "false")
     if verdict == LOST:
         print(f"::error title={WRONG_VENDOR}::every candidate for {unit} ran on another CPU vendor than "
               f"the lock's; {Path(__file__).name} re-runs it")
         return 1
-    print({TRACE: f"candidate {candidate} does {unit}", OTHER: f"another candidate does {unit}"}[verdict])
+    print({WORK: f"candidate {candidate} does {unit}", OTHER: f"another candidate does {unit}"}[verdict])
     return 0
 
 
@@ -197,7 +200,7 @@ def main(argv=None):
     if args.command == "mark":
         if not 3 <= len(args.args) <= 5:
             parser.error("mark takes UNIT CANDIDATE DIR [TRACES [DONE]]")
-        unit, candidate, folder, traces, done_pattern = (args.args + ["true", ""])[:5]
+        unit, candidate, folder, traces, done_pattern = args.args + ["true", ""][len(args.args) - 3:]
         from bake import bake
         return mark(unit, int(candidate), folder, bake.read_lock_tables().get("mesh_cpu_vendor"), bake.cpu_vendor(),
                     traces == "true", done_pattern)

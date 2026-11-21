@@ -14,7 +14,7 @@ inputs:
     description: '"true" when the job has traced work.'
     default: "true"
   done:
-    description: An artifact name pattern an earlier attempt uploaded once it did the job; empty for none.
+    description: A glob of the artifact names an earlier attempt uploaded once it did the job; empty for none.
     default: ""
 outputs:
   work:

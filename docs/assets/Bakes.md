@@ -47,9 +47,10 @@ A bake that traces rays differs by CPU vendor too (an AMD and an Intel host
 trace a few rays an ulp apart), so the lock's `mesh_cpu_vendor` line names the
 vendor its meshes and reference sets were made on. A run records its host's
 vendor; `lock --from-run` refuses a run that made one on another vendor, naming
-both. A hosted runner's vendor cannot be asked for, so each Bakes job that
-traces starts on several runners when it has traced work, and the first on the
-lock's vendor does it; when none is, the run is re-run by itself.
+both. A hosted runner's vendor cannot be asked for, so a Bakes job with traced
+work starts on several runners and the first on the lock's vendor does it
+([`runner_vendor.py`](../../scripts/ci/runner_vendor.py)). When none is,
+[`bakes-vendor-rerun.yml`](../../.github/workflows/bakes-vendor-rerun.yml) re-runs the job.
 
 A fit's reference set is traced on the CPU, as a mesh is, since the GPU's ray
 tracing may build a different tree each time
