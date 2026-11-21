@@ -33,7 +33,7 @@ typedef struct {
     float tolerance_px;  /* basic: the projected error a group may have and still draw coarse; more saves, pops more */
     float hysteresis_px; /* advanced: how far past the tolerance a coarse group's error goes before it turns fine */
     int coverage_permille; /* basic: the thousandths of the picture's height a coarse group may span; smaller pops less */
-    int pick_every; /* advanced: the frames the pick is spread over, a scene's first frame picking all; more saves, switches later */
+    int pick_every; /* advanced [1, RENDER_LOD_PICK_EVERY_MAX]: the frames the pick is spread over, a scene's first frame picking all; more saves, switches later */
     int triangle_budget; /* basic: the triangles a frame aims to draw, the tolerance rising past tolerance_px to keep within; 0 never rises */
     int blend; /* basic [0, RENDER_LOD_BLEND_COUNT): 0 switches at once; 1 blends each switch, by morph where a mesh was imported with geometry.morph, else by dither */
     float blend_px; /* advanced (0.0, RENDER_LOD_BLEND_PX_MAX]: the error past a switch over which a blend fades out; longer is softer, moves more */

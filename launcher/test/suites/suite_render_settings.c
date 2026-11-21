@@ -424,6 +424,7 @@ enum {
     SMALL_FILL_ROWS = 3,
     TEXTURE_ROWS = 4,
     ANIM_ROWS = 5,
+    PICK_EVERY_ROW = FIELDS - SMALL_FILL_ROWS - TEXTURE_ROWS - ANIM_ROWS - 4,
     BLEND_ROW = FIELDS - SMALL_FILL_ROWS - TEXTURE_ROWS - ANIM_ROWS - 2,
     BLEND_PX_ROW,
     MID_PX_ROW = FIELDS - SMALL_FILL_ROWS - TEXTURE_ROWS - ANIM_ROWS,
@@ -440,10 +441,12 @@ enum {
     STYLE_ROW,
 };
 
-/* Rows of zeros but for the anim intervals, whose least is RENDER_ANIM_EVERY_MIN. */
+/* Rows of zeros but for the intervals whose least is one: lod.pick_every and
+ * the anim intervals (RENDER_ANIM_EVERY_MIN). */
 static void
 zero_rows(int16_t values[FIELDS]) {
     memset(values, 0, sizeof(int16_t) * FIELDS);
+    values[PICK_EVERY_ROW] = 1;
     values[MID_EVERY_ROW] = RENDER_ANIM_EVERY_MIN;
     values[FAR_EVERY_ROW] = RENDER_ANIM_EVERY_MIN;
 }
@@ -466,11 +469,27 @@ test_a_blend_outside_its_values_or_range_is_refused_unread(void) {
     TEST_ASSERT_EQUAL(ASSET_ERR_FORMAT, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
 }
 
+/* A pick spread over no frames, or past RENDER_LOD_PICK_EVERY_MAX, is refused. */
+static void
+test_a_pick_every_outside_its_range_is_refused_unread(void) {
+    int16_t values[FIELDS];
+    zero_rows(values);
+    values[BLEND_PX_ROW] = STEP;
+    render_settings_t read;
+    values[PICK_EVERY_ROW] = RENDER_LOD_PICK_EVERY_MAX;
+    TEST_ASSERT_EQUAL(ASSET_OK, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
+    TEST_ASSERT_EQUAL_INT(RENDER_LOD_PICK_EVERY_MAX, read.lod.pick_every);
+    values[PICK_EVERY_ROW] = RENDER_LOD_PICK_EVERY_MAX + 1;
+    TEST_ASSERT_EQUAL(ASSET_ERR_FORMAT, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
+    values[PICK_EVERY_ROW] = 0;
+    TEST_ASSERT_EQUAL(ASSET_ERR_FORMAT, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
+}
+
 /* Pixel limits apply to every animation threshold, including the hysteresis band. */
 static void
 test_anim_pixel_ranges_refuse_negative_and_above_max(void) {
-    int16_t values[FIELDS] = {0};
-    values[MID_EVERY_ROW] = values[FAR_EVERY_ROW] = RENDER_ANIM_EVERY_MIN;
+    int16_t values[FIELDS];
+    zero_rows(values);
     values[BLEND_PX_ROW] = STEP;
     const int rows[] = {MID_PX_ROW, FAR_PX_ROW, HYSTERESIS_PX_ROW};
     render_settings_t read;
@@ -600,7 +619,7 @@ test_an_app_starts_with_its_packs_settings_and_without_one_the_default(void) {
     int16_t values[FIELDS];
     zero_rows(values);
     values[BLEND_PX_ROW] = STEP;
-    const render_settings_t off = {.lod.blend_px = 1.0F,
+    const render_settings_t off = {.lod = {.pick_every = 1, .blend_px = 1.0F},
                                    .anim = {.mid_every = RENDER_ANIM_EVERY_MIN, .far_every = RENDER_ANIM_EVERY_MIN}};
     void* raw = NULL;
     asset_pack_t opened;
@@ -627,6 +646,7 @@ suite_render_settings(void) {
     RUN_TEST(test_a_release_build_carries_no_override);
     RUN_TEST(test_a_packs_render_entry_reads_every_field);
     RUN_TEST(test_a_blend_outside_its_values_or_range_is_refused_unread);
+    RUN_TEST(test_a_pick_every_outside_its_range_is_refused_unread);
     RUN_TEST(test_an_anim_interval_outside_its_range_is_refused_unread);
     RUN_TEST(test_a_texture_setting_outside_its_range_is_refused_unread);
     RUN_TEST(test_a_small_fill_setting_outside_its_range_is_refused_unread);
