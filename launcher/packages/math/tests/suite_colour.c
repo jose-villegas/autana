@@ -16,12 +16,13 @@
 #define BYTE_128_LINEAR      0.21586050F
 #define HALF_LINEAR_BYTE     188
 
-#define LINEAR_SEGMENT_INPUT 0.001F
 #define SEGMENT_STEP         1.0E-4F
 #define OUT_OF_GAMUT_CHROMA  0.4F
 
 /* Double references stay on the host: the device build keeps soft double out. */
 #ifndef ESP_PLATFORM
+#define LINEAR_SEGMENT_INPUT 0.001F
+
 static double
 reference_encode(double linear) {
     return linear <= 0.0031308 ? linear * 12.92 : (1.055 * pow(linear, 1.0 / 2.4)) - 0.055;
@@ -40,6 +41,7 @@ test_curve_ends_and_reference_points(void) {
     TEST_ASSERT_FLOAT_WITHIN(CURVE_TOLERANCE, 1.0F, srgbf_encode(1.0F));
     TEST_ASSERT_FLOAT_WITHIN(CURVE_TOLERANCE, HALF_ENCODED_LINEAR, srgbf_decode(0.5F));
     TEST_ASSERT_FLOAT_WITHIN(CURVE_TOLERANCE, MID_GREY_ENCODED, srgbf_encode(MID_GREY_LINEAR));
+    TEST_ASSERT_FLOAT_WITHIN(CURVE_TOLERANCE, BYTE_128_LINEAR, srgbf_decode_byte(128));
 }
 
 static void
@@ -81,7 +83,6 @@ test_encode_byte_rounds_and_clamps(void) {
 #ifndef ESP_PLATFORM
 static void
 test_every_byte_decodes_to_the_curve(void) {
-    TEST_ASSERT_FLOAT_WITHIN(CURVE_TOLERANCE, BYTE_128_LINEAR, srgbf_decode_byte(128));
     for (int i = 0; i <= BYTE_MAX; i++) {
         const float expected = (float)reference_decode((double)i / BYTE_MAX);
         TEST_ASSERT_EQUAL_FLOAT(expected, srgbf_decode_byte((uint8_t)i));
