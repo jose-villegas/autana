@@ -18,6 +18,10 @@
 
     render_compare.py --out angles.png --angle-column LABEL DIR [--angle-column ...]
 
+--material-ids checks capture poses against POSES and shows the worst material
+disagreements. <out>.csv counts pixels by material; <out>.confusions.csv counts
+wrong-material pairs, largest first.
+
 --reference-stills writes the reference sheet of one frame from three PNGs:
 the reference, A and B, then A's and B's dE heatmaps; with --crops N,
 <out>.crops.png holds the N places A and B differ most, the reference above.
@@ -914,7 +918,7 @@ MATERIAL_PANEL_MIN = 180
 MATERIAL_VIEWS = 4
 MATERIAL_EMPTY = (24, 24, 24)
 MATERIAL_CLASS_COLOURS = ((24, 24, 24), (60, 190, 110), (130, 150, 160),
-                          (255, 180, 20), (230, 45, 80), (100, 120, 255))
+                          (255, 180, 20), (230, 45, 80), (100, 120, 255), (190, 90, 220))
 
 
 def material_id_inputs(scene_path, object_name, poses_path, ids_dir):
@@ -990,8 +994,14 @@ def material_id_sheet(references, drawn, textured, names, has_texture, out, refe
                      for label, picture in zip(labels, pictures)])
         if crops:
             error = np.isin(diff, [material_ids.MISS, material_ids.WRONG_MATERIAL])
-            mask = Image.fromarray(np.repeat((error.astype(np.uint8) * 255)[..., None], 3, axis=2))
-            clusters = find_clusters(Image.new('RGB', mask.size), mask, None, count=crops)
+            reference_mask = np.empty((*ref.shape, len(MATERIAL_EMPTY)), dtype=np.uint8)
+            reference_mask[:] = MATERIAL_CLASS_COLOURS[material_ids.AGREE_PLAIN]
+            drawn_mask = reference_mask.copy()
+            reference_mask[ref == material_ids.EMPTY] = MATERIAL_EMPTY
+            drawn_mask[own == material_ids.EMPTY] = MATERIAL_EMPTY
+            drawn_mask[error] = HOLE_RED
+            clusters = find_clusters(Image.fromarray(reference_mask), Image.fromarray(drawn_mask),
+                                     MATERIAL_EMPTY, count=crops)
             crop_entries.append((f'frame {frame}', pictures, clusters))
     canvas = still_sheet(rows)
     legend = [(names[i], tuple(palette[i + 1])) for i in sorted(shown)]
@@ -1008,7 +1018,11 @@ def material_id_sheet(references, drawn, textured, names, has_texture, out, refe
     with out.with_suffix('.csv').open('w', newline='') as handle:
         writer = csv.DictWriter(handle, fieldnames=['material', 'name', *material_ids.CLASS_NAMES])
         writer.writeheader()
-        writer.writerows(material_ids.material_table(references, classes, names))
+        writer.writerows(material_ids.material_table(references, drawn, classes, names))
+    with out.with_suffix('.confusions.csv').open('w', newline='') as handle:
+        writer = csv.DictWriter(handle, fieldnames=['reference_material', 'drawn_material', 'pixels'])
+        writer.writeheader()
+        writer.writerows(material_ids.material_confusions(references, drawn, classes))
     if crops and any(clusters for _title, _pictures, clusters in crop_entries):
         crop_sheet(crop_entries, labels).save(crops_path(str(out)))
 

@@ -217,6 +217,12 @@ clear_color(const raster_attachment_t* self, const raster_t* raster, void* pixel
     }
 }
 
+static void
+clear_ids(const raster_attachment_t* self, const raster_t* raster, void* pixels, size_t count) {
+    (void)raster;
+    memset(pixels, 0, count * IMAGE_PITCH(self->format, 1));
+}
+
 void
 raster_attachment_clear_u16(const raster_attachment_t* self, const raster_t* raster, void* pixels, size_t count) {
     (void)self;
@@ -229,19 +235,8 @@ raster_attachment_ids(void (*begin)(const raster_attachment_t*, const raster_t*,
                       bool (*writer)(const raster_attachment_t*, int, r3d_span_writer_t*),
                       void (*show)(const raster_attachment_t*, const raster_t*, const gfx_target_t*, int),
                       void* state) {
-    return (raster_attachment_t){.format = IMAGE_U16,
-                                 .clear = raster_attachment_clear_u16,
-                                 .begin = begin,
-                                 .writer = writer,
-                                 .show = show,
-                                 .state = state};
-}
-
-static void
-clear_u32(const raster_attachment_t* self, const raster_t* raster, void* pixels, size_t count) {
-    (void)self;
-    (void)raster;
-    memset(pixels, 0, count * sizeof(uint32_t));
+    return (raster_attachment_t){
+        .format = IMAGE_U16, .clear = clear_ids, .begin = begin, .writer = writer, .show = show, .state = state};
 }
 
 raster_attachment_t
@@ -251,7 +246,6 @@ raster_attachment_ids_u32(void (*begin)(const raster_attachment_t*, const raster
                           void* state) {
     raster_attachment_t result = raster_attachment_ids(begin, writer, show, state);
     result.format = IMAGE_U32;
-    result.clear = clear_u32;
     return result;
 }
 

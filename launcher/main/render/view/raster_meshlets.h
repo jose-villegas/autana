@@ -1,4 +1,4 @@
-/* raster_meshlets: disjoint per-instance cluster IDs painted as flat hues. */
+/* raster_meshlets: cluster and triangle IDs painted as disjoint per-instance flat hues. */
 #pragma once
 
 #include <stdint.h>
@@ -12,6 +12,7 @@ typedef struct {
 } raster_meshlets_t;
 
 raster_attachment_t raster_meshlets_view(void* state);
+raster_attachment_t raster_triangles_view(void* state);
 
 /* The flat hue the view paints `id` in; ids from 1. */
 gfx_color_t raster_meshlets_color(uint32_t id);

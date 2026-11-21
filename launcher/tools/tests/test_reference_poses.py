@@ -1,5 +1,8 @@
 """A video scored against traced reference frames must stand at their poses."""
 import pathlib
+import json
+
+import numpy as np
 import sys
 import tempfile
 import unittest
@@ -40,6 +43,17 @@ class ReferencePoses(unittest.TestCase):
         stands = reference_poses.checker(self.video, self.reference)
         for frame in range(first, frames):
             stands(frame, frame - first)
+
+    def test_capture_views_preserve_camera_roll(self):
+        directory = self.root / 'capture'
+        directory.mkdir()
+        (directory / 'entries.json').write_text(json.dumps(dict(width=4, height=2, lens=0.5, near=1.0)))
+        (directory / 'capture.poses.csv').write_text(
+            HEADER + '0,0,0,0,0,0,0,0.70710678,0.70710678\n')
+        [(matrix, size)] = reference_poses.capture_views(directory / 'capture.poses.csv')
+        self.assertEqual(size, (4, 2))
+        np.testing.assert_allclose(matrix[0, :3], [0, 1, 0], atol=reference_poses.POSE_TOLERANCE)
+        np.testing.assert_allclose(matrix[1, :3], [-2, 0, 0], atol=reference_poses.POSE_TOLERANCE)
 
     def test_a_video_at_its_references_poses_passes(self):
         self.traced()
