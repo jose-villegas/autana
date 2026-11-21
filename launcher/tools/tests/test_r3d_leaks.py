@@ -261,8 +261,11 @@ class LeakProbeTests(unittest.TestCase):
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class SealCameraTests(unittest.TestCase):
     def scene(self, camera=True):
-        component = SimpleNamespace(near_z=2.0)
-        return SimpleNamespace(region="the region", camera=SimpleNamespace(component=component) if camera else None)
+        # The scene camera stands anywhere, on no path; the flight is a second camera.
+        component = SimpleNamespace(near_z=2.0, path=None)
+        flight = SimpleNamespace(kind="camera", component=SimpleNamespace(near_z=2.0, path="the flight"))
+        return SimpleNamespace(region="the region", camera=SimpleNamespace(component=component) if camera else None,
+                               objects=[SimpleNamespace(kind="camera", component=component), flight])
 
     def test_no_scene_or_no_camera_gives_none(self):
         renderer = SimpleNamespace(seal_views=None)
@@ -279,6 +282,18 @@ class SealCameraTests(unittest.TestCase):
             camera = mesh_import.seal_camera(self.scene(), SimpleNamespace(seal_views=views))
         self.assertEqual(camera, ("the region", 2.0, (8, 8, 0.8, ["a pose"])))
         self.assertIs(sampled.call_args.args[1], views)
+        self.assertEqual(sampled.call_args.kwargs["camera"].path, "the flight")
+
+    def test_a_path_is_read_from_the_scene_camera_of_a_scene_that_lists_no_objects(self):
+        """The reference set's planner samples the path with a scene that carries its camera alone."""
+        from r3d import mesh_source
+
+        component = SimpleNamespace(path=SimpleNamespace(animation="a clip", node="camera"), half_fov_short_tan=0.5, near_z=2.0)
+        scene = SimpleNamespace(camera=SimpleNamespace(component=component))
+        with mock.patch.object(mesh_source, "sample_camera_path", return_value=(8, 6, 0.5, 2.0, ["a pose"])) as sampled:
+            poses = mesh_source.camera_path_poses(scene, SimpleNamespace(every_ms=33, size=(8, 6)), either_way_up=False)
+        self.assertEqual(poses, (8, 6, 0.5, 2.0, ["a pose"]))
+        self.assertEqual(sampled.call_args.args[:2], ("a clip", "camera"))
 
 
 if __name__ == "__main__":
