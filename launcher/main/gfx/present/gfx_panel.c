@@ -6,6 +6,8 @@
 #include "gfx/present/gfx_debug.h"
 #include "gfx/present/gfx_internal.h"
 
+/* Avoids instruction-cache misses on every panel window.
+ * IRAM budget: release 32 B, dev 109 B, diag 109 B */
 esp_err_t IRAM_ATTR
 gfx_panel_send(int x0, int y0, int x1, int y1, const gfx_color_t* rgb565be) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
