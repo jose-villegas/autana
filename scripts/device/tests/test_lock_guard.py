@@ -2268,7 +2268,8 @@ class BoardChoiceTests(Store):
             self.assertEqual(device.board_for_lock(self.store, remembered=True), (BOARD_A, None))
             code, errors = self.main("--owner", "agent", "hand-to-human",
                                      "--note", "power cycle it")
-        self.assertEqual((code, errors), (0, ""))
+        self.assertEqual(code, 0)
+        self.assertTrue(errors.startswith("human reservation recorded;"), errors)
         self.assertEqual(self.store.status(BOARD_A)["human"]["note"], "power cycle it")
         with plugged():
             self.assertEqual(self.main("take-back")[0], 0)
