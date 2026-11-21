@@ -4743,8 +4743,8 @@ test_mesh_open_resolves_optional_levels(void) {
 }
 
 /* Each copy's level is kept from frame to frame, so a checkpoint holds it: a
- * restore puts back the bits frames after it changed, and the frames drawn
- * next pick from the restored levels, as they did the first time. */
+ * restore puts back the bits changed after it. The bits are held as
+ * allocated, even after the renderer is given a mesh with fewer levels. */
 static void
 test_a_checkpoint_holds_each_copys_level(void) {
     fixture();
@@ -4779,6 +4779,7 @@ test_a_checkpoint_holds_each_copys_level(void) {
         scene->lod_bits[w] = (uint32_t)w + 1U;
     }
     memcpy(kept, scene->lod_bits, sizeof kept);
+    ((scene_renderer_t*)r)->mesh.lod_group_count = 0;
     checkpoint_t saved = {0};
     scene_checkpoint_capture(&saved, scene);
     TEST_ASSERT_FALSE(saved.failed);
