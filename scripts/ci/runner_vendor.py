@@ -1,7 +1,7 @@
 """Hosted runners mix CPU vendors, and a traced bake is byte-identical only on the lock's (bake/bake.py's
 mesh_cpu_vendor). GitHub offers no way to ask for a vendor, so every Bakes job that traces starts as
 candidates (.github/actions/vendor-candidate), and a finished run whose only failures carry WRONG_VENDOR is
-run again, up to VENDOR_TRIES attempts.
+run again, up to VENDOR_TRIES attempts, while its commit is still its branch's head.
 
 A re-run waits for the run's slowest job, so a job with traced work starts on CANDIDATES runners at once; a
 job with none starts on one. Each candidate marks its vendor with an artifact and waits until it sees its own
@@ -28,6 +28,7 @@ import os
 import re
 import sys
 import time
+import urllib.parse
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -174,7 +175,13 @@ def failed_jobs(run, attempt, request=github_api.call):
 
 
 def rerun(run, request=github_api.call):
-    attempt = request("GET", f"/actions/runs/{run}")["run_attempt"]
+    record = request("GET", f"/actions/runs/{run}")
+    attempt = record["run_attempt"]
+    head = request("GET", f"/branches/{urllib.parse.quote(record['head_branch'], safe='')}").get("commit", {})
+    if head.get("sha") != record["head_sha"]:
+        # A re-run would hold the branch's concurrency slot and keep the newer head's run waiting.
+        print(f"run {run} attempt {attempt}: not re-run, its branch has moved past {record['head_sha'][:9]}")
+        return 0
     failed = failed_jobs(run, attempt, request)
     if not to_rerun(attempt, failed):
         print(f"run {run} attempt {attempt}: not re-run ({len(failed)} failed jobs: {', '.join(failed) or 'none'})")

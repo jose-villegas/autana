@@ -16,8 +16,13 @@ import runner_vendor  # noqa: E402
 AMD, INTEL = "AuthenticAMD", "GenuineIntel"
 
 
-def fake_api(attempt, jobs):
-    """A request stand-in: `jobs` maps a name to (conclusion, annotation titles); POSTs are recorded."""
+RUN_SHA, NEWER_SHA = "a" * 40, "b" * 40
+
+
+def fake_api(attempt, jobs, branch_sha=RUN_SHA):
+    """A request stand-in: `jobs` maps a name to (conclusion, annotation titles); POSTs are recorded.
+
+    The run was made from RUN_SHA on feature/x, whose head is now `branch_sha`."""
     posts = []
     table = {index: (name, *entry) for index, (name, entry) in enumerate(jobs.items())}
 
@@ -30,13 +35,15 @@ def fake_api(attempt, jobs):
         if "/jobs" in path:
             return {"jobs": [{"id": index, "name": name, "conclusion": conclusion}
                              for index, (name, conclusion, _) in table.items()]}
-        return {"run_attempt": attempt}
+        if path.startswith("/branches/"):
+            return {"commit": {"sha": branch_sha}} if path == "/branches/feature%2Fx" else {}
+        return {"run_attempt": attempt, "head_sha": RUN_SHA, "head_branch": "feature/x"}
     return request, posts
 
 
 class RunnerVendorTests(unittest.TestCase):
-    def rerun(self, attempt, jobs):
-        request, posts = fake_api(attempt, jobs)
+    def rerun(self, attempt, jobs, branch_sha=RUN_SHA):
+        request, posts = fake_api(attempt, jobs, branch_sha)
         with contextlib.redirect_stdout(io.StringIO()):
             runner_vendor.rerun(7, request=request)
         return posts
@@ -55,6 +62,11 @@ class RunnerVendorTests(unittest.TestCase):
         jobs = {"shard 2": ("failure", [runner_vendor.WRONG_VENDOR])}
         self.assertEqual(self.rerun(runner_vendor.VENDOR_TRIES - 1, jobs), ["/actions/runs/7/rerun-failed-jobs"])
         self.assertEqual(self.rerun(runner_vendor.VENDOR_TRIES, jobs), [])
+
+    def test_a_run_its_branch_has_moved_past_is_left(self):
+        # A re-run holds the branch's Bakes concurrency slot, so the newer head's run would wait on it.
+        jobs = {"shard 2": ("failure", [runner_vendor.WRONG_VENDOR])}
+        self.assertEqual(self.rerun(1, jobs, branch_sha=NEWER_SHA), [])
 
 
 
