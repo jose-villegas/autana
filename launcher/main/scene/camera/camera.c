@@ -3,6 +3,7 @@
 
 #include <math.h>
 
+#include "scene/animator/animator.h"
 #include "scene/scene_internal.h"
 
 int
@@ -38,6 +39,16 @@ camera_first(entity_t within) {
         }
     }
     return ENTITY_NONE;
+}
+
+entity_t
+camera_flight(entity_t within) {
+    for (entity_t e = entity_next(within, ENTITY_NONE); !handle_is_none(e); e = entity_next(within, e)) {
+        if (camera_of(e) != NULL && animator_clip_count(e) > 0) {
+            return e;
+        }
+    }
+    return camera_first(within);
 }
 
 const lens_t*

@@ -12,9 +12,6 @@ import host_render
 ROOT = pathlib.Path(__file__).resolve().parents[6]
 VIEWER = ROOT / "launcher/tools/render/scenes/scene_viewer_render_host.sh"
 SCENE = ROOT / "launcher/demo/sponza/sponza.scene.toml"
-# The camera the app draws Sponza through (SPONZA_CAMERA, sponza_content.h): the scene's first camera is not
-# its flight, so the viewer is told which one to look through.
-CAMERA = "camera"
 
 
 class SceneViewerEquivalence(unittest.TestCase):
@@ -31,8 +28,7 @@ class SceneViewerEquivalence(unittest.TestCase):
                 with self.subTest(frames=frames, dt=dt, quarter=quarter, view=view):
                     common = ["--frames", str(frames), "--dt", str(dt), "--quarter", str(quarter), "--view", view]
                     for binary, options, target in ((app, ["--scene", "sponza", "--no-hud"], "app.bmp"),
-                                                    (viewer, ["--scene", "sponza", "--object", "atrium",
-                                                              "--camera", CAMERA], "viewer.bmp")):
+                                                    (viewer, ["--scene", "sponza", "--object", "atrium"], "viewer.bmp")):
                         rendered = subprocess.run([str(binary), *options, *common, "-o", str(out / target)],
                                                   capture_output=True, text=True, timeout=120)
                         self.assertEqual(rendered.returncode, 0, rendered.stderr[-3000:])

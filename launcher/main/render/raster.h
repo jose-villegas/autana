@@ -115,8 +115,9 @@ uint16_t* raster_depth(const raster_t* raster);
  * near_z, so far surfaces keep their depth steps (r3d_lens_set_depth_near()). */
 float raster_depth_near(const raster_t* raster);
 
-/* Whether a level pick in the last cull (draw or census) changed an instance's cut. */
-bool raster_levels_changed(const raster_t* raster);
+/* Whether a census since the last draw changed an instance's cut or the
+ * depth scale, so the next draw redraws every row. */
+bool raster_census_changed(const raster_t* raster);
 /* Whether the last draw redrew every row, asked to or not (first_row). */
 bool raster_drew_every_row(const raster_t* raster);
 
@@ -138,13 +139,12 @@ void raster_lod_morph(const raster_t* raster, const render_view_t* view, const r
  * or NULL where it draws one level. */
 const uint32_t* raster_lod_dithering(const raster_t* raster, const r3d_instance_t* instance);
 
-/* Draws every instance through the picture basis and fit in `view`. */
+/* Draws every instance through the picture basis and fit in `view`:
+ * raster_census(), then raster_draw_culled(). */
 raster_stats_t raster_draw(const raster_t* raster, const render_view_t* view);
 
-/* The census list lets a caller price sizes before drawing. It stays valid
- * in the same scratch block for unchanged view and instances.
- * Upscaled rasters may change render size with a fixed destination; other
- * rasters must keep the census size. */
+/* The census list's length: for each instance and each batch copy, its kept
+ * count, then a slot for each of its mesh's clusters. */
 size_t raster_culled_length(const raster_t* raster);
 /* How many the last census drew from: each instance where it was handed
  * over, in order, then each copy of each batch its spheres kept, as an
@@ -157,7 +157,14 @@ const r3d_batch_draw_t* raster_drawn_copy(const raster_t* raster, int i);
 /* r3d_lens_place() for where entry `i` sits: its model, and a kept copy's
  * own placement after it. */
 void raster_drawn_place(const raster_t* raster, int i, struct r3d_lens* lens);
+/* raster_draw()'s cull alone, through the view at its own size, into the
+ * scratch block's census list, so a caller can price sizes before drawing.
+ * The list holds for the same instances whatever camera draws it, at the
+ * census's depth scale, so with the same lens. */
 raster_stats_t raster_census(const raster_t* raster, const render_view_t* view);
+/* raster_draw()'s draw alone: that list at the raster's size, through the
+ * lens fitted to it. An upscaled raster may change render size with a fixed
+ * destination; any other keeps the census size. */
 void raster_draw_culled(const raster_t* raster, const render_view_t* view);
 
 /* The half picture can hold the width and every drawn row, the row map

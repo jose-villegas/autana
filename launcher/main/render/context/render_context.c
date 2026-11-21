@@ -444,9 +444,8 @@ census_changed(render_context_t* c, const render_view_t* view) {
     if (!steering && !render_partial_picks_owed(&c->partial, lod.pick_every)) {
         return false;
     }
-    const float kept_near = raster_depth_near(r);
     c->frame.stats = raster_census(r, view);
-    if (!raster_levels_changed(r) && raster_depth_near(r) == kept_near) {
+    if (!raster_census_changed(r)) {
         r->pick_round++; /* the census took this frame's share */
         return false;
     }

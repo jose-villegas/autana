@@ -26,7 +26,7 @@ flowchart LR
 |---|---|---|---|---|
 | Scene and camera | 0 | the scene's pack → this frame's instances and view | part of `frame.rest` | [Scene-Frame.md](../scene/Scene-Frame.md#each-frame), [Camera.md](../scene/Camera.md) |
 | Render size | 0 | recent frames' cost, or the census → render width and height | part of `frame.rest` | [Dynamic-Resolution.md](Dynamic-Resolution.md) |
-| Cull | 0 | node and cluster bounds, the camera → kept clusters | `r3d.cull`, or `r3d.census` when the size is predicted | [Culling.md](Culling.md) |
+| Cull | 0 | node and cluster bounds, the camera → kept clusters | `r3d.cull` | [Culling.md](Culling.md) |
 | Transform | both, by cluster share | kept clusters, the lens → screen vertices, each cluster's rows | `r3d.transform` | [Mesh-Rendering.md](../Mesh-Rendering.md#on-both-cores) |
 | Clip and span fill | both, by row share | triangles → colour, depth, each attachment's pixels | `r3d.draw` | [Coverage.md](Coverage.md), [Culling.md](Culling.md#per-triangle) |
 | View modes | both | depth, an attachment → colour; development builds | `r3d.show` | [View-Modes.md](View-Modes.md) |

@@ -9,6 +9,11 @@
 /* The first camera within `within`, in load order, or ENTITY_NONE. */
 entity_t camera_first(entity_t within);
 
+/* The first camera within `within` that flies a path, else camera_first(): the
+ * camera a flythrough is drawn from, the one r3d.poses.flight_camera samples
+ * when tools trace references and fit meshes along the path. */
+entity_t camera_flight(entity_t within);
+
 /* The camera's lens, or NULL when the entity has no camera. */
 const lens_t* camera_lens(entity_t camera);
 
