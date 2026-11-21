@@ -118,18 +118,10 @@ bytes. The CRC covers those bytes. A payload fits
 All integers below are little-endian; pixels remain RGB565 high-byte first.
 
 ```mermaid
----
-config:
-  packet:
-    bitsPerRow: 8
-    bitWidth: 100
----
-packet-beta
-title Packet payload, one cell a byte
-0-3: "present_seq"
-4-5: "part"
-6: "last"
-7: "slice..."
+flowchart LR
+    SEQ["present_seq<br/>u32"] --- PART["part<br/>u16"]
+    PART --- LAST["last<br/>u8"]
+    LAST --- SLICE["stream slice<br/>remaining bytes"]
 ```
 
 | Part | At | Size |
@@ -144,18 +136,10 @@ A missing, repeated or out-of-order part discards the entire present.
 The next sequence starts a fresh assembly at part zero.
 
 ```mermaid
----
-config:
-  packet:
-    bitsPerRow: 8
-    bitWidth: 100
----
-packet-beta
-title Present header, 16 bytes, one cell a byte
-0-3: "present_seq"
-4-11: "device_us"
-12-13: "windows"
-14-15: "dropped_before"
+flowchart LR
+    SEQ["present_seq<br/>u32"] --- TIME["device_us<br/>u64"]
+    TIME --- WINDOWS["windows<br/>u16"]
+    WINDOWS --- DROPPED["dropped_before<br/>u16"]
 ```
 
 | Part | At | Size |
@@ -167,20 +151,9 @@ title Present header, 16 bytes, one cell a byte
 | Windows | 16 | merged dirty rectangles below |
 
 ```mermaid
----
-config:
-  packet:
-    bitsPerRow: 8
-    bitWidth: 100
----
-packet-beta
-title Window header, 12 bytes, one cell a byte
-0-1: "x0"
-2-3: "y0"
-4-5: "x1"
-6-7: "y1"
-8-11: "packed_len"
-12-15: "PackBits pixels..."
+flowchart LR
+    RECT["x0, y0, x1, y1<br/>u16 each"] --- LENGTH["packed_len<br/>u32"]
+    LENGTH --- PIXELS["PackBits pixels<br/>packed_len bytes"]
 ```
 
 | Part | At | Size |
