@@ -5,8 +5,9 @@
 Builds the host renderer once and samples the scene camera clip with sample_camera_rows
 at DT_MS intervals to determine the frame count. ANY clear-colour pixel not
 connected to the top row makes a frame holed, including four-pixel pinholes,
-unless a ray through that pixel misses the source mesh too: sky the source
-shows, as the roof opening closed in by a beam, is no hole of the bake.
+unless its patch of enclosed sky holds a pixel whose ray misses the source
+mesh too: sky the source shows, as the roof opening closed in by a beam, is
+no hole of the bake, and neither is that opening's rim a pixel off the source's.
 Needs the r3d environment (launcher/tools/r3d/requirements.txt).
 """
 import pathlib
@@ -25,11 +26,13 @@ import host_render  # noqa: E402
 
 try:
     import numpy as np
+    from scipy import ndimage
 
     from anim import track_host
     from r3d.obj import load_obj
     from r3d.poses import flight_camera, parse_poses, sample_camera_rows
     from r3d.import_settings import load_scene
+    from r3d.leaks import CONNECTED
     from r3d.ray_query import RayQuery
     from pinhole_rays import SCALAR_VARIANT, VIDEO_SCALE, enclosed_sky, pose_rays
     from check_avi import read_video
@@ -42,12 +45,12 @@ MIN_OPEN_SKY_PIXELS = 100
 FRAME_COUNT_SIZE = (1, 1)
 # Per scene, the holed frames of its current bake: the ceiling a rebake must not go above.
 MOST_HOLED_FRAMES = {
-    "sponza": 27,
-    "sponza-lite": 12,
-    "sponza-flat": 26,
-    "sponza-fitted": 23,
-    "sponza-fitted-full": 27,
-    "sponza-flat-fitted": 24,
+    "sponza": 0,
+    "sponza-lite": 0,
+    "sponza-flat": 0,
+    "sponza-fitted": 5,
+    "sponza-fitted-full": 4,
+    "sponza-flat-fitted": 3,
 }
 
 
@@ -60,12 +63,17 @@ def clear_colour():
 def sky_pixels(frame, sky, source_sky=None):
     """(holes, open): the pixels of colour `sky` in an (h, w, 3) RGB frame not connected to its top row, and
     those that are. With `source_sky`, which answers for the (ys, xs) it is given whether the source shows sky
-    there, an enclosed pixel the source shows as sky is not a hole."""
+    there, a patch of enclosed pixels, joined by side or corner, is no hole when the source shows sky in any of
+    them: the rule r3d/leaks.py seals by."""
     mask, enclosed = enclosed_sky(frame, sky)
     open_ = int(mask.sum() - enclosed.sum())
     ys, xs = np.nonzero(enclosed)
     if source_sky is not None and len(ys):
-        return int((~source_sky(ys, xs)).sum()), open_
+        patches, count = ndimage.label(enclosed, CONNECTED)
+        patch = patches[ys, xs]
+        shown = np.zeros(count + 1, dtype=bool)
+        shown[patch[source_sky(ys, xs)]] = True
+        return int((~shown[patch]).sum()), open_
     return len(ys), open_
 
 
@@ -124,6 +132,15 @@ class SkyCount(unittest.TestCase):
         frame[6, 3] = 0
         self.assertEqual(sky_pixels(frame, sky, lambda ys, xs: ys < 4), (0, 8))
         self.assertEqual(sky_pixels(frame, sky), (8, 8))
+
+    def test_an_opening_wider_than_the_source_shows_it_is_not_a_hole(self):
+        sky = (156, 195, 231)
+        frame = np.zeros((8, 8, 3), dtype=np.uint8)
+        frame[:1] = sky
+        frame[2:5, 2:6] = sky  # the roof opening with its rim a pixel past the source's on every side
+        frame[6, 7] = sky  # a pinhole touching no sky of the source
+        source = lambda ys, xs: (ys == 3) & (xs > 2) & (xs < 5)
+        self.assertEqual(sky_pixels(frame, sky, source), (1, 8))
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
