@@ -318,22 +318,22 @@ scene_asset_batch(const scene_asset_t* asset, int row, const r3d_lit_mesh_t* mes
 asset_status_t
 sh_probes_read(asset_view_t entry, sh_probes_t* out) {
     *out = (sh_probes_t){0};
-    const asset_status_t status = asset_entry_validate(entry, SH_PROBES_VERSION, SH_PROBES_VERSION_OFFSET,
-                                                       SH_PROBES_HEADER_SIZE, _Alignof(int16_t));
+    const asset_status_t status =
+        asset_entry_validate(entry, SH_PROBES_VERSION, SH_PROBES_AT_VERSION, SH_PROBES_HEADER_SIZE, _Alignof(int16_t));
     if (status != ASSET_OK) {
         return status;
     }
     uint16_t flags;
-    memcpy(&flags, entry.data + SH_PROBES_FLAGS_OFFSET, sizeof flags);
+    memcpy(&flags, entry.data + SH_PROBES_AT_FLAGS, sizeof flags);
     if ((flags & ~SH_PROBES_FLAG_INSIDE_MASK) != 0
-        || !asset_entry_zero(entry, SH_PROBES_PADDING_OFFSET, SH_PROBES_HEADER_SIZE)) {
+        || !asset_entry_zero(entry, SH_PROBES_AT_PADDING, SH_PROBES_HEADER_SIZE)) {
         return ASSET_ERR_FORMAT;
     }
     sh_probes_t grid = {0};
-    memcpy(&grid.origin, entry.data + SH_PROBES_ORIGIN_OFFSET, sizeof grid.origin);
-    memcpy(&grid.spacing, entry.data + SH_PROBES_SPACING_OFFSET, sizeof grid.spacing);
-    memcpy(grid.dims, entry.data + SH_PROBES_DIMS_OFFSET, sizeof grid.dims);
-    memcpy(&grid.scale, entry.data + SH_PROBES_SCALE_OFFSET, sizeof grid.scale);
+    memcpy(&grid.origin, entry.data + SH_PROBES_AT_ORIGIN, sizeof grid.origin);
+    memcpy(&grid.spacing, entry.data + SH_PROBES_AT_SPACING, sizeof grid.spacing);
+    memcpy(grid.dims, entry.data + SH_PROBES_AT_DIMS, sizeof grid.dims);
+    memcpy(&grid.scale, entry.data + SH_PROBES_AT_SCALE, sizeof grid.scale);
     const float origin[] = {grid.origin.x, grid.origin.y, grid.origin.z};
     const float spacing[] = {grid.spacing.x, grid.spacing.y, grid.spacing.z};
     const size_t payload = entry.size - SH_PROBES_HEADER_SIZE;

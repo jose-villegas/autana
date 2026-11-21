@@ -194,6 +194,9 @@ jobs:
       - name: Simulation skip facts are read through the forced-work gate
         run: python3 scripts/gates/check_skip_facts.py
 
+      - name: Each render setting has one owner and every settings file sets only declared keys
+        run: python3 scripts/gates/check_render_settings.py
+
       - name: Each vendored copy is taken from its submodule's pinned commit
         run: python3 scripts/deps/vendored.py check
 

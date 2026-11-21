@@ -24,12 +24,15 @@ from tests.r3d_env import needs_mitsuba  # noqa: E402
 from tests.test_r3d_path_bake import needs_llvm  # noqa: E402
 
 
-def write_reference_tree(work):
+def write_reference_tree(work, sets=None):
+    """A reference set of `sets` (reference_set.fit_sets; a camera path's by default) in `work`: what a fit packs,
+    returned by name, beside files it leaves out."""
     from r3d import reference_set
 
+    sets = reference_set.fit_sets(True, False) if sets is None else sets
     expected = {name: name.encode() for name in
-                [poses for poses, _ in reference_set.TRAINING] + [reference_set.COVERAGE, reference_set.HELD_OUT[0]]}
-    for _, folder in reference_set.TRAINING:
+                [poses for poses, _ in sets.training + sets.held_out] + list(sets.coverage)}
+    for _, folder in sets.training:
         for suffix in (".png", ".normal.npy"):
             name = f"{folder}/frame{suffix}"
             expected[name] = name.encode()
@@ -37,11 +40,12 @@ def write_reference_tree(work):
         path = work / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
-    for _, folder in reference_set.TRAINING + (reference_set.HELD_OUT,):
+    for _, folder in sets.training + sets.held_out:
         path = work / folder
         path.mkdir(exist_ok=True)
         (path / "frame.linear.npy").write_bytes(b"linear light")
-    (work / reference_set.HELD_OUT[1] / "frame.png").write_bytes(b"held out picture")
+    for _, folder in sets.held_out:
+        (work / folder / "frame.png").write_bytes(b"held out picture")
     return expected
 
 
@@ -430,7 +434,7 @@ class RepeatTests(unittest.TestCase):
             given = kwargs.get("variant", args[at] if len(args) > at else None)
             return given or ray_query.VARIANT
 
-        job = SimpleNamespace(settings=SimpleNamespace(alpha_keep=None))
+        job = SimpleNamespace(settings=SimpleNamespace(alpha_keep=None, cards=None))
         mocks = render_one_set(job, load_source={"return_value": corridor()}, RayQuery={}, path_light_for={})
         self.assertEqual(variant_of(mocks["RayQuery"].call_args, 2), ray_query.VARIANT)
         self.assertEqual(variant_of(mocks["path_light_for"].call_args, 3), ray_query.VARIANT)

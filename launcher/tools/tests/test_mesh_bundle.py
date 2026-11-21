@@ -60,6 +60,15 @@ def bundle_fixture(directory, flat=False, lod=False, fit=None, positions=None, t
 
 
 class MeshBundleTests(unittest.TestCase):
+    def test_a_long_material_stem_shortens_to_leave_room_for_colours(self):
+        from asset.asset_pack import NAME_BYTES
+        long = "x" * NAME_BYTES + ".DoubleSided"
+        first, second = (mesh_bundle.shape_id(long, {"material": long}, index) for index in range(2))
+        for name in (first, second):
+            self.assertLess(len((name + lcol_asset.NAME_SUFFIX).encode("ascii")), NAME_BYTES)
+            self.assertTrue(name.startswith("x"))
+        self.assertNotEqual(first, second)
+
     def test_a_start_with_two_shapes_sums_meshlets_over_every_mesh_and_writes_one_file(self):
         recorder = StepRecorder(probe=lambda gpu: (100, None), interval=None)
         with tempfile.TemporaryDirectory() as directory:
@@ -72,6 +81,21 @@ class MeshBundleTests(unittest.TestCase):
         rest = len(geometry.tris)
         self.assertEqual([(row['step'], row['triangles_in'], row['triangles_out']) for row in recorder.rows],
                          [('meshlets', len(meshes) * rest, len(meshes) * rest), ('write', rest, rest)])
+
+    def test_a_bundle_without_textures_decodes_without_numpy(self):
+        """The firmware build packs bundles with the ESP-IDF Python, which has no numpy."""
+        import subprocess
+        with tempfile.TemporaryDirectory() as directory:
+            path = pathlib.Path(directory) / "start.bundle"
+            data = bundle_fixture(directory)[0]
+            path.write_bytes(data)
+            script = ("import sys; sys.modules['numpy'] = None; sys.path.insert(0, sys.argv[1]); "
+                      "from r3d import mesh_bundle; import pathlib; "
+                      "print(len(mesh_bundle.decode(pathlib.Path(sys.argv[2]).read_bytes())[1]))")
+            result = subprocess.run([sys.executable, "-c", script, str(pathlib.Path(__file__).parents[1]), str(path)],
+                                    capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(int(result.stdout), len(mesh_bundle.decode(data)[1]))
 
     def test_manifest_has_plain_names_without_hashes(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -318,18 +342,15 @@ class FitCommandTests(unittest.TestCase):
         self.assertEqual(self.values(args, '--poses'), ['train.txt', 'train_landscape.txt'])
         self.assertEqual(self.values(args, '--coverage-poses'), ['coverage.txt'])
 
-    def test_held_out_sets_pass_only_when_the_import_sets_probes_and_pair_up(self):
+    def test_every_fit_scores_its_held_out_sets_and_only_a_probe_fit_gates_closure_on_them(self):
         for name, shaping in (('none', {}), ('probes', dict(probes=SimpleNamespace()))):
             with self.subTest(shaping=name):
                 args = self.command(**shaping)
                 held_out = ['held_out.txt'] + (['probes_held_out.txt'] if name == 'probes' else [])
                 references = ['reference_held_out'] + (['reference_probes_held_out'] if name == 'probes' else [])
-                if name == 'none':
-                    self.assertNotIn('--held-out-poses', args)
-                    self.assertNotIn('--held-out-reference', args)
-                else:
-                    self.assertEqual(self.values(args, '--held-out-poses'), held_out)
-                    self.assertEqual(self.values(args, '--held-out-reference'), references)
+                self.assertEqual(self.values(args, '--held-out-poses'), held_out)
+                self.assertEqual(self.values(args, '--held-out-reference'), references)
+                self.assertEqual('--closure' in args, name == 'probes')
 
     def test_the_copy_gate_checks_the_path_held_out_set_unless_the_camera_has_no_path(self):
         for path, probes, expected in ((True, SimpleNamespace(), 'held_out.txt'), (True, None, 'held_out.txt'),
@@ -391,6 +412,22 @@ class FitCopiesTests(unittest.TestCase):
         # The finest clusters' own vertices and triangles, in the bundle's order: nothing welded by value.
         np.testing.assert_array_equal(vertices[placed.tris], faces)
         self.assertEqual(len(placed.vertex_point), len(vertices))
+
+    def test_the_fit_leaves_masked_copies_out(self):
+        from r3d.texture import texture_asset, uv_transfer
+        from r3d.fit.copies import drawn_copies
+        entries = [(name, mesh_asset.TYPE, b"") for name in ("shape.a", "cards.b")]
+        mesh = SimpleNamespace(pos=np.zeros((4, 3)), tris=np.zeros((2, 3), int), clusters=[(0, 4, 0, 2)])
+        luvs = uv_transfer.card_luvs(mesh, np.zeros((4, 2)), [0])
+        texture = texture_asset.mask_texture(np.ones((4, 4), bool), 1)
+        entries += [(uv_transfer.name_for_mesh("cards.b"), uv_transfer.TYPE, uv_transfer.pack_luvs(luvs)),
+                    (uv_transfer.texture_name("cards.b", 0), texture_asset.TYPE, texture_asset.pack_ltex(texture))]
+        rows = [{"mesh": "shape.a"}, {"mesh": "cards.b"}, {"mesh": "shape.a"}]
+        self.assertEqual(drawn_copies(entries, rows), [rows[0], rows[2]])
+        luvs.materials[:] = uv_transfer.NONE
+        luvs.codes[:] = uv_transfer.PLAIN
+        entries[-2] = (uv_transfer.name_for_mesh("cards.b"), uv_transfer.TYPE, uv_transfer.pack_luvs(luvs))
+        self.assertEqual(drawn_copies(entries, rows), [rows[0], rows[2]])
 
     def test_copies_must_be_shaded_as_their_rest_is(self):
         from r3d.fit.copies import placed_copies

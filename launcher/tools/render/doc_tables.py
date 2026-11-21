@@ -10,7 +10,7 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-VIEW_HEADER = pathlib.Path(__file__).resolve().parents[2] / "main/render/render_view.h"
+SETTINGS_HEADER = pathlib.Path(__file__).resolve().parents[2] / "main/render/settings/render_settings.h"
 SWEEP_GATE_OFF = 64
 # A fidelity table's score columns after Variant, as r3d/bake_fidelity.py's table() writes them too; the doc
 # charts read them back by these names.
@@ -25,7 +25,7 @@ SCORE = re.compile(r"^(.+): mean DeltaE76 ([\d.]+), p95 DeltaE76 ([\d.]+), luma 
 
 def small_fill_styles():
     return re.findall(r"SMALL_FILL_([A-Z]+)(?=\s*[,}])", re.search(
-        r"typedef enum(?: __attribute__\(\(\w+\)\))? \{([^}]+)\} small_fill_style_t;", VIEW_HEADER.read_text()).group(1) + "}")
+        r"typedef enum \{([^}]+)\} small_fill_style_t;", SETTINGS_HEADER.read_text()).group(1) + "}")
 
 
 def markdown(headers, rows):
@@ -151,28 +151,8 @@ def small_fill_board(data, scene_id, object_name):
 
 
 def write_small_fill(work, out, scene_id, object_name, data):
-    """Camera axes from render_view.h, temporal CSVs and recorded board sweeps."""
+    """Temporal CSVs and recorded board sweeps."""
     out.mkdir(parents=True, exist_ok=True)
-    from ctypes import c_uint8
-    styles = small_fill_styles()
-    header = VIEW_HEADER.read_text()
-    defaults = dict(re.findall(r"#define SMALL_FILL_(CEILING|GATE)_SMOOTH\s+(\d+)", header))
-    style = re.search(r"#define SMALL_FILL_SMOOTH[\s\\]*\(\(small_fill_t\)\{[^}]+SMALL_FILL_(\w+)\}\)", header).group(1)
-    maxima = dict(re.findall(r"#define SMALL_FILL_(CEILING|GATE)_MAX\s+(\d+)", header))
-    catalog = {name.lower(): (int(default), 0, int(maxima.get(name, c_uint8(-1).value)))
-               for name, default in defaults.items()}
-    catalog["style"] = (styles.index(style), 0, len(styles) - 1)
-    effects = {
-        "ceiling": "Largest bounding-box side in pixel centres; 0 disables small fill",
-        "gate": "Vertex RGB565 spread limit at the ceiling; 0 disables the colour gate",
-        "style": ", ".join(f"{name} ({index})" for index, name in enumerate(styles)),
-    }
-    if set(catalog) != set(effects):
-        raise ValueError("small fill needs the camera's three axes")
-    levers = [(f"`{name}`", f"{catalog[name][1]}..{catalog[name][2]}", catalog[name][0], effect)
-              for name, effect in effects.items()]
-    (out / "small-fill-levers.md").write_text(markdown(
-        ["Camera field", "Range", "Default", "Effect"], levers), encoding="utf-8")
     temporal = []
     for line in (work / "small-fill-looks.tsv").read_text().splitlines():
         name, label = line.split("|")[:2]

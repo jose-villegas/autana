@@ -139,7 +139,7 @@ Worst bin: mantissa 2.41-2.44 at 5.9e-5; every other bin <= 6e-5.
 |---|---|
 | $`y = 2^{46}/\sqrt{m}`$ | $`y = round(2^{46}/sqrt(m))`$ |
 
-Symbols: integer mantissa `m` in `[MATHX_RSQRT_MIN, 2^32)`; reciprocal root `y`.
+Symbols: integer mantissa `m` in [`MATHX_RSQRT_MIN`, $`2^{32}`$); reciprocal root `y`.
 
 Proof: mantissa segment strides and exact midpoint brackets.
 

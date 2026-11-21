@@ -3,6 +3,7 @@
 #define r3d_span_small_fill_default    constant_default
 #define r3d_span_triangle              constant_r3d_span_triangle
 #define r3d_span_triangle_solid        constant_r3d_span_triangle_solid
+#define r3d_span_triangle_mean         constant_r3d_span_triangle_mean
 #define r3d_span_triangle_write        constant_r3d_span_triangle_write
 #define r3d_span_capped_triangle       constant_r3d_span_capped_triangle
 #define r3d_span_hidden                constant_r3d_span_hidden
@@ -55,7 +56,7 @@ counted_triangle_solid(const r3d_span_target_t* target, const r3d_span_vertex_t*
 
 static void
 counted_capped_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
-                        const r3d_span_vertex_t* c, const uint16_t* face) {
+                        const r3d_span_vertex_t* c, uint32_t face) {
     fills.capped++;
     constant_r3d_span_capped_triangle(target, a, b, c, face);
 }
@@ -166,11 +167,11 @@ test_styles_match_pipeline_colours(void) {
     const r3d_pipeline_vertex_t* vertices[3] = {transformed, transformed + 1, transformed + 2};
     for (small_fill_style_t style = SMALL_FILL_FLAT; style < SMALL_FILL_STYLE_COUNT; style++) {
         r3d_span_small_fill_t resolved;
-        r3d_span_small_fill_resolve(&resolved, (small_fill_t){TEST_SIDE, 0, style});
+        r3d_span_small_fill_resolve(&resolved, (render_small_fill_settings_t){TEST_SIDE, 0, style});
         expected.small_fill = actual.small_fill = &resolved;
         memset(pixels, 0, TEST_PIXELS * 4 * sizeof(*pixels));
         r3d_span_triangle(&expected, reference, reference + 1, reference + 2);
-        draw_in_front(&mesh, vertices, triangle, NULL, true, &actual, 0U, 0, 0);
+        draw_in_front(&mesh, vertices, triangle, R3D_SPAN_FACE_NONE, true, &actual, 0U, 0, 0);
         TEST_ASSERT_EQUAL_MEMORY(pixels, pixels + TEST_PIXELS * 2, TEST_PIXELS * 2 * sizeof(*pixels));
         int coloured = 0;
         for (int i = 0; i < TEST_PIXELS; i++) {
@@ -215,7 +216,7 @@ test_clipped_and_mixed_clusters_keep_the_target_style(void) {
     uint32_t checksums[SMALL_FILL_STYLE_COUNT];
     for (small_fill_style_t style = SMALL_FILL_FLAT; style < SMALL_FILL_STYLE_COUNT; style++) {
         r3d_span_small_fill_t* resolved = &clipped->resolved;
-        r3d_span_small_fill_resolve(resolved, (small_fill_t){SMALL_FILL_CEILING_FAST, 0, style});
+        r3d_span_small_fill_resolve(resolved, (render_small_fill_settings_t){SMALL_FILL_CEILING_FAST, 0, style});
         expected->small_fill = actual->small_fill = resolved;
         for (int mixed = 0; mixed < 2; mixed++) {
             memset(pixels, 0, TEST_PIXELS * 4 * sizeof(*pixels));

@@ -133,6 +133,36 @@ class ImportTests(unittest.TestCase):
         self.assertEqual((settings.seed, settings.alpha_keep, settings.thin.keep, settings.variants[0].triangles), (3, 0.5, 0.5, 10))
         self.assertFalse(hasattr(settings, "light"))
 
+    def test_cards_defaults_and_absent_key(self):
+        from r3d.cards import CARD_EPSILON, CARD_AREA_COST
+        with tempfile.TemporaryDirectory() as directory:
+            plain = load_import_settings(write_import(directory))
+            settings = load_import_settings(write_import(directory, body=
+                '[process]\nseed = 3\n[geometry]\nalpha_mask = { keep_alpha = 0.5 }\n'))
+        self.assertIsNone(plain.cards)
+        self.assertEqual(vars(settings.cards), dict(never=[], always=[],
+                         epsilon=CARD_EPSILON, area_cost=CARD_AREA_COST))
+        self.assertEqual(settings.seed, 3)
+
+    def test_cards_overlapping_overrides_are_an_error(self):
+        self.rejects("both never and always", '[geometry]\nalpha_mask = { keep_alpha = 0.5 }\n'
+                     'cards = { never = ["m"], always = ["m"] }\n')
+
+    def test_cards_reject_invalid_settings(self):
+        prefix = '[geometry]\nalpha_mask = { keep_alpha = 0.5 }\n'
+        cases = (
+            ('cards = { choice = "path" }', "geometry.cards.choice"),
+            ('cards = { path = "fly.anim.toml" }', "geometry.cards.path"),
+            ('cards = { choice = "other" }', "geometry.cards.choice"),
+            ('cards = { epsilon = 0 }', "geometry.cards.epsilon"),
+            ('cards = { area_cost = -1 }', "geometry.cards.area_cost"),
+            ('cards = { typo = 1 }', "geometry.cards.typo"),
+        )
+        for body, message in cases:
+            with self.subTest(body=body):
+                self.rejects(message, prefix + body + '\n')
+        self.rejects("cards needs geometry.alpha_mask", '[geometry]\ncards = {}\n')
+
     def test_old_scene_owned_keys_name_each_new_home(self):
         cases = (
             ('[visibility]\nrounds = 2\n', r"\[visibility\] moved to objects\.mesh_renderer\.visibility"),
@@ -833,7 +863,7 @@ def triangle_source(p):
 class BakeStepTests(unittest.TestCase):
     def test_the_bake_culls_with_the_renderers_visibility_only(self):
         own = SimpleNamespace(source="camera_path")
-        settings = SimpleNamespace(seed=1, position_scale=None, alpha_keep=None, thin=None, simplify=None, double_sided=set(), meshes=[])
+        settings = SimpleNamespace(cards=None, seed=1, position_scale=None, alpha_keep=None, thin=None, simplify=None, double_sided=set(), meshes=[])
         source = triangle_source(np.zeros((3, 3)))
         seen = []
         with mock.patch.object(mesh_import, "load_source", return_value=source), \
@@ -848,7 +878,7 @@ class BakeStepTests(unittest.TestCase):
 
     def test_the_simplifier_gets_the_imports_colour_deviation(self):
         steps = SimpleNamespace(dense_edge=10.0, props=set(), props_share=0.3, seal_seams=True, colour_deviation=2.5)
-        settings = SimpleNamespace(seed=1, position_scale=None, alpha_keep=None, thin=None, simplify=steps, double_sided=set(), meshes=[])
+        settings = SimpleNamespace(cards=None, seed=1, position_scale=None, alpha_keep=None, thin=None, simplify=steps, double_sided=set(), meshes=[])
         p = np.array([[0.0, 0, 0], [1, 0, 0], [0, 1, 0]])
         source = triangle_source(p)
         given = {}

@@ -7,12 +7,14 @@ with --view cull --counts, then holds each to what it is the loss case of:
 open hides and culls nothing, stack hides most of what it keeps, tiny copies
 are all in view and all drawn, big tris draws every triangle it submits,
 two-sided cubes skip nothing facing away, noisy tiny cylinders are all in
-view with every copy drawn, and
-before a still camera only the per-frame preset's frames differ. The sizes the
-triangles are drawn at, and the small-fill gate failing noisy-tiny's slivers,
-are suite_stress_preset.c's to hold.
+view with every copy drawn, and hinged butterflies keep every part in view
+and submit every triangle. Before a still camera, wave and hinged presets
+change frames. Triangle sizes and noisy-tiny's sliver gate are held by
+suite_stress_preset.c. The baked ring keeps and cuts clusters throughout
+its camera turn; cull-setup draws one small cube.
 """
 import csv
+import math
 import pathlib
 import re
 import shutil
@@ -26,6 +28,11 @@ sys.path.insert(0, str(HERE))
 import host_render  # noqa: E402
 sys.path.insert(0, str(HERE.parents[5] / "launcher/tools"))
 
+from build.c_header import read_define  # noqa: E402
+from build.find_cc import host_cc  # noqa: E402
+from geometry.vectors import qrot  # noqa: E402
+from r3d.framegen.warp import R3D_DEPTH_EMPTY, read_dump  # noqa: E402
+
 PRESETS = HERE.parents[1] / "stress" / "stress_preset.h"
 TABLE = HERE.parents[1] / "stress" / "stress_preset.c"
 FRAMES = 2
@@ -33,7 +40,11 @@ SWEEP_FRAMES = 8
 WATER_UNIFORM_PIXELS = 41700
 EXISTING_UNIFORM_PIXELS = 5300
 DENSE_FACTOR = 8  # a few-copies copy holds this many times a tiny-copies copy's clusters and triangles
-STATIC_COPY =HERE.parents[5] / "launcher/demo/stress/slot.obj"
+STATIC_COPY = HERE.parents[5] / "launcher/demo/stress/slot.obj"
+BUTTERFLY_DIR = HERE.parents[5] / "launcher/demo/butterfly"
+BUTTERFLY_PARTS = ("butterfly_body.obj", "butterfly_wing.obj", "butterfly_wing.obj")
+BUTTERFLY_TRIANGLES = sum(sum(line.startswith("f ") for line in (BUTTERFLY_DIR / part).read_text().splitlines())
+                          for part in BUTTERFLY_PARTS)
 STATIC_VERTICES = sum(line.startswith("v ") for line in STATIC_COPY.read_text().splitlines())
 
 
@@ -42,7 +53,14 @@ def preset_copies():
     constants = dict(re.findall(r"^#define\s+(\w+)\s+(\d+)$", PRESETS.read_text(), re.MULTILINE))
     keys = re.findall(r'^\s*X\((\w+), "([^"]+)"', PRESETS.read_text(), re.MULTILINE)
     rows = dict(re.findall(r'^\s*\[STRESS_(\w+)\] = \{\w+, \d+, (\w+),', TABLE.read_text(), re.MULTILINE))
-    return {key: int(constants.get(rows[name], rows[name])) for name, key in keys}
+    return {key: int(rows[name]) if rows[name].isdigit() else read_define(PRESETS, rows[name])
+            for name, key in keys}
+
+
+BUTTERFLY_CLUSTERS_DRAWN = {"butterflies": 86, "few-butterflies": 12}
+MOTION_DT = 20
+MOTION_FRAMES = 30
+MOTION_TOLERANCE = 2e-6
 
 
 class StressCorners(unittest.TestCase):
@@ -52,6 +70,18 @@ class StressCorners(unittest.TestCase):
         run, cls.binary = host_render.run(cls.out, "--build-only")
         cls.build_output = run.stdout + run.stderr
         cls.built = run.returncode == 0
+        probe = cls.out / "flap_constants.c"
+        probe.write_text('#include <stdio.h>\n#include "apps/render_lab/stress/scene_stress.h"\n#include "math/scalar/units.h"\n'
+                         'int main(void) { printf("%.9g %.9g %.9g %.9g %.9g\\n", (double)STRESS_FLAP_AMPLITUDE, '
+                         '(double)STRESS_FLAP_BIAS, (double)STRESS_FLAP_HZ, (double)STRESS_FLAP_PHASE_STEP, '
+                         '(double)MATH_MS_PER_S); }\n')
+        root = HERE.parents[5]
+        includes = [root / "launcher/main"] + list((root / "launcher/packages").glob("*/include"))
+        binary = cls.out / "flap_constants"
+        subprocess.run([host_cc(), str(probe), "-o", str(binary),
+                        *["-I" + str(path) for path in includes]], check=True, capture_output=True)
+        cls.amplitude, cls.bias, cls.hz, cls.phase_step, cls.ticks_per_second = map(
+            float, subprocess.check_output([str(binary)], text=True).split())
 
     @classmethod
     def tearDownClass(cls):
@@ -60,15 +90,22 @@ class StressCorners(unittest.TestCase):
     def setUp(self):
         self.assertTrue(self.built, self.build_output[-2000:])
 
-    def frames(self, key):
-        """Preset `key`'s last two frames as the still camera sees them, as raw raster bytes."""
-        dump = self.out / ("still-" + key)
+    def frames(self, key, tag=None, dt=None, frames=FRAMES + 1, transforms=False, console=()):
+        """Raster frames before a still camera, optionally with each update's local transforms."""
+        dump = self.out / (tag or "still-" + key)
         dump.mkdir()
-        run = subprocess.run([str(self.binary), "--quarter", "1", "--no-hud", "--frames", str(FRAMES + 1), "--scene",
-                              "stress-" + key, "--camera", "still", "--dump", str(dump), "-o",
+        poses = dump / "transforms.csv"
+        options = (["--dt", str(dt)] if dt is not None else []) + (["--transforms", str(poses)] if transforms else [])
+        options += [option for command in console for option in ("--console", command)]
+        run = subprocess.run([str(self.binary), "--quarter", "1", "--no-hud", "--frames", str(frames), "--scene",
+                              "stress-" + key, "--camera", "still", "--dump", str(dump), *options, "-o",
                               str(dump / "last.bmp")], capture_output=True, text=True, timeout=120)
         self.assertEqual(0, run.returncode, run.stderr[-2000:])
-        return [(dump / ("%04d.raw" % i)).read_bytes() for i in (FRAMES - 1, FRAMES)]
+        if transforms:
+            with poses.open(newline="") as stream:
+                rows = {(int(row["frame"]), row["name"]): row for row in csv.DictReader(stream)}
+            return rows, [(dump / ("%04d.raw" % i)).read_bytes() for i in range(frames)]
+        return [(dump / ("%04d.raw" % i)).read_bytes() for i in (frames - 2, frames - 1)]
 
     def counts(self, key, *options, frames=FRAMES):
         """Every frame's counts of preset `key`, by name, the last frame last."""
@@ -84,12 +121,78 @@ class StressCorners(unittest.TestCase):
         """The last frame's counts of preset `key`, by name."""
         return self.counts(key, *options)[-1]
 
+    def test_path_replay_moves_wings_holds_and_repeats(self):
+        rows, _ = self.frames("few-butterflies", tag="path-replay", dt=MOTION_DT, frames=7, transforms=True,
+                                   console=("0:pose 0", f"1:pose {MOTION_DT}", "3:pose play", f"5:pose {MOTION_DT}"))
+        wing = "slot_00_wing_l"
+        rotations = [tuple(rows[i, wing][key] for key in ("qx", "qy", "qz", "qw")) for i in range(7)]
+        self.assertNotEqual(rotations[0], rotations[1])
+        self.assertEqual(rotations[1], rotations[2])
+        self.assertNotEqual(rotations[2], rotations[3])
+        self.assertEqual(rotations[1], rotations[5])
+        # Empty-depth colour is scratch; the upscaler supplies the background.
+        frames = []
+        for index in range(7):
+            colour, depth = read_dump(self.out / "path-replay" / ("%04d.raw" % index))
+            frames.append((depth.tobytes(), colour[depth != R3D_DEPTH_EMPTY].tobytes()))
+        # The host composes before its provider runs the console command.
+        self.assertNotEqual(frames[1], frames[2])
+        self.assertEqual(frames[2], frames[3])
+        self.assertEqual(frames[2], frames[6])
+
+    def test_shipped_update_raises_mirrored_wings_with_limits_and_copy_phases(self):
+        rows, _ = self.frames("few-butterflies", tag="wing-tips", dt=MOTION_DT, frames=MOTION_FRAMES, transforms=True)
+        vertices = [[float(value) for value in line.split()[1:]]
+                    for line in (BUTTERFLY_DIR / "butterfly_wing.obj").read_text().splitlines()
+                    if line.startswith("v ")]
+        authored = max(vertices, key=lambda v: abs(v[0]))
+        # The OBJ importer changes handedness on z.
+        tip = [authored[0], authored[1], -authored[2]]
+        for frame in range(MOTION_FRAMES):
+            tips = []
+            for copy in range(preset_copies()["few-butterflies"]):
+                angle = self.amplitude * math.sin(2 * math.pi * self.hz * (frame + 1) * MOTION_DT / self.ticks_per_second
+                                                   + self.phase_step * copy) + self.bias
+                left = qrot(tuple(float(rows[frame, f"slot_{copy:02d}_wing_l"][k])
+                                  for k in ("qx", "qy", "qz", "qw")), tip)
+                right = qrot(tuple(float(rows[frame, f"slot_{copy:02d}_wing_r"][k])
+                                   for k in ("qx", "qy", "qz", "qw")), tip)
+                self.assertAlmostEqual(-left[0], right[0], delta=MOTION_TOLERANCE)
+                self.assertAlmostEqual(left[1], right[1], delta=MOTION_TOLERANCE)
+                self.assertAlmostEqual(left[2], right[2], delta=MOTION_TOLERANCE)
+                self.assertAlmostEqual(-tip[0] * math.sin(angle), left[2], delta=MOTION_TOLERANCE)
+                self.assertLessEqual(abs(math.atan2(left[2], -left[0])), (self.amplitude + self.bias) + MOTION_TOLERANCE)
+                if angle > 0:
+                    self.assertGreater(left[2], 0)
+                tips.append(left[2])
+            self.assertGreater(max(tips) - min(tips), MOTION_TOLERANCE)
+
+    def test_update_time_is_accumulated_dt_and_same_steps_repeat_frames(self):
+        rows, frames = self.frames("few-butterflies", tag="clock-first", dt=MOTION_DT, frames=4, transforms=True)
+        again_rows, again_frames = self.frames("few-butterflies", tag="clock-again", dt=MOTION_DT, frames=4, transforms=True)
+        self.assertEqual(rows, again_rows)
+        self.assertEqual(frames, again_frames)
+        later_rows, later_frames = self.frames("few-butterflies", tag="clock-later", dt=MOTION_DT * 2, frames=4, transforms=True)
+        self.assertNotEqual(frames[-1], later_frames[-1])
+        # Splitting the same elapsed time into twice as many updates keeps the pose.
+        split_rows, _ = self.frames("few-butterflies", tag="clock-split", dt=MOTION_DT // 2, frames=8, transforms=True)
+        for name in ("slot_00_wing_l", "slot_00_wing_r"):
+            for component in ("qx", "qy", "qz", "qw"):
+                self.assertAlmostEqual(float(rows[3, name][component]), float(split_rows[7, name][component]),
+                                       delta=MOTION_TOLERANCE)
+        # Zero elapsed time stays at the prescribed bias, independent of draw count.
+        zero, _ = self.frames("few-butterflies", tag="clock-zero", dt=0, frames=3, transforms=True)
+        row = zero[2, "slot_00_wing_l"]
+        self.assertAlmostEqual(math.sin(self.bias / 2), float(row["qy"]), delta=MOTION_TOLERANCE)
+        self.assertNotEqual(rows[3, "slot_00_wing_l"], later_rows[3, "slot_00_wing_l"])
+
     def test_every_preset_is_held_here(self):
         self.assertEqual({"open", "stack", "tiny-copies", "big-tris", "per-frame", "two-sided", "noisy-tiny", "mix",
                           "static-copies", "uniform-mid", "uniform-full", "card", "culled", "near",
-                          "few-copies", "carved-near", "carved-far", "textured", "record", "foliage-near",
+                          "few-copies", "carved-near", "carved-far", "textured", "textured-far", "record", "foliage-near",
                           "foliage-near-opaque", "foliage-far", "foliage-far-opaque", "skinned-sh-blobs", "contact-blobs",
-                          "cull-setup", "baked-tree"}, set(preset_copies()))
+                          "butterflies", "few-butterflies", "cull-setup", "baked-tree", "small-grain", "small-dither",
+                          "small-off", "stack-skip", "carved-blend"}, set(preset_copies()))
 
     def test_the_baked_ring_is_culled_through_its_tree(self):
         """The ring alone, one mesh and no copy, culled through its tree at every pose of the turn."""
@@ -217,9 +320,24 @@ class StressCorners(unittest.TestCase):
     def test_per_frame_draws_the_whole_wave(self):
         self.assert_draws_every_triangle("per-frame")
 
-    def test_only_per_frame_moves_before_a_still_camera(self):
-        before, after = self.frames("per-frame")
-        self.assertNotEqual(before, after)
+    def test_butterflies_keep_every_part_in_view_and_submit_every_triangle(self):
+        parts = len(BUTTERFLY_PARTS)
+        for key, drawn in BUTTERFLY_CLUSTERS_DRAWN.items():
+            with self.subTest(key=key):
+                copies = preset_copies()[key]
+                c = self.last_counts(key)
+                self.assert_all_in_view(c)
+                self.assertEqual(copies * parts, c["transform_batches"])
+                self.assertEqual(drawn, c["clusters_drawn"])
+                self.assertEqual(copies * BUTTERFLY_TRIANGLES, c["triangles_submitted"])
+                self.assertEqual(0, c["triangles_behind"])
+                self.assertEqual(0, c["triangles_clipped"])
+
+    def test_wave_and_hinges_move_before_a_still_camera(self):
+        for key in ("per-frame", "butterflies", "few-butterflies"):
+            with self.subTest(key=key):
+                before, after = self.frames(key)
+                self.assertNotEqual(before, after)
         before, after = self.frames("stack")
         self.assertEqual(before, after)
 

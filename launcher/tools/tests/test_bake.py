@@ -426,25 +426,27 @@ class NativeTests(unittest.TestCase):
         self.assertEqual(found, {"a.c", "near.h", "inc/sub/far.h", "inc/sub/deep.h"})
 
     def test_define_values_are_keyed_without_compiling_their_include_graph(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = pathlib.Path(directory)
-            header = root / "owner.h"
-            included = root / "runtime.h"
-            included.write_text("#define UNUSED 1\n")
-            header.write_text('#include "runtime.h"\n#define GAMMA 2.2F\n')
-            module = root / "entry.py"
-            module.write_text('from pathlib import Path\nfrom build.c_header import read_define\n'
-                              'OWNER = Path(__file__).with_name("owner.h")\n'
-                              'GAMMA = read_define(OWNER, "GAMMA")\n')
-            try:
-                before = bake.native_inputs([module])
-                self.assertEqual(set(before), {bake.relative(header)})
-                included.write_text("#define UNUSED 2\n")
-                self.assertEqual(bake.native_inputs([module]), before)
-                header.write_text('#include "runtime.h"\n#define GAMMA 2.4F\n')
-                self.assertNotEqual(bake.native_inputs([module]), before)
-            finally:
-                bake.module_facts.cache_clear()
+        for reader, expression in (("read_define", 'read_define(OWNER, "GAMMA")'),
+                                   ("read_defines", 'read_defines(OWNER, "", ("GAMMA",))')):
+            with self.subTest(reader=reader), tempfile.TemporaryDirectory() as directory:
+                root = pathlib.Path(directory)
+                header = root / "owner.h"
+                included = root / "runtime.h"
+                included.write_text("#define UNUSED 1\n")
+                header.write_text('#include "runtime.h"\n#define GAMMA 2.2F\n')
+                module = root / "entry.py"
+                module.write_text(f'from pathlib import Path\nfrom build.c_header import {reader}\n'
+                                  'OWNER = Path(__file__).with_name("owner.h")\n'
+                                  f'GAMMA = {expression}\n')
+                try:
+                    before = bake.native_inputs([module])
+                    self.assertEqual(set(before), {bake.relative(header)})
+                    included.write_text("#define UNUSED 2\n")
+                    self.assertEqual(bake.native_inputs([module]), before)
+                    header.write_text('#include "runtime.h"\n#define GAMMA 2.4F\n')
+                    self.assertNotEqual(bake.native_inputs([module]), before)
+                finally:
+                    bake.module_facts.cache_clear()
 
     def test_all_literal_defines_key_even_comprehension_reads(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -460,12 +462,14 @@ class NativeTests(unittest.TestCase):
                 header.write_text(text)
                 self.assertNotEqual(before, bake.native_inputs([module]))
 
-    def test_unresolvable_read_define_header_is_loud(self):
+    def test_variable_headers_are_ignored_and_missing_paths_are_loud(self):
         with tempfile.TemporaryDirectory() as directory:
             module = pathlib.Path(directory) / "entry.py"
-            module.write_text('VALUE = read_define(unknown_header, "MODE")\n')
-            with self.assertRaisesRegex(bake.SettingsError, r'entry.py:1: cannot resolve read_define header'):
-                bake.native_inputs([module])
+            module.write_text('VALUE = read_define(unknown_header, "MODE")\n'
+                              'def read_values(header):\n'
+                              '    return read_defines(header, "ITEM_", ("COUNT",))\n')
+            self.assertEqual(bake.native_inputs([module]), {})
+            self.assertEqual(bake.native_inputs([TOOLS / "build/c_header.py"]), {})
             missing = pathlib.Path(directory) / "missing.py"
             missing.write_text('from pathlib import Path\nOWNER = Path(__file__).with_name("missing.h")\n'
                                'VALUE = read_define(OWNER, "MODE")\n')
@@ -540,6 +544,17 @@ class StageTests(unittest.TestCase):
         self.assertTrue({"r3d/appearance_simplify.py", "r3d/fit/stage.py", "r3d/fit/copies.py"} <= self.names("fit"))
         # The reference stage's entry is named by the fit's key through the reference key, so the fit stops there.
         self.assertNotIn("r3d/fitted_variant.py", self.names("fit"))
+
+    def test_cards_code_keys_mesh_and_reference_stages(self):
+        expected = {"r3d/cards/choose.py": "probe_weights", "r3d/cards/bake.py": "bake_pixels",
+                    "r3d/cards/emit.py": "make_shape", "r3d/cards/decide.py": "carded",
+                    "r3d/cards/pages.py": "pack_pages"}
+        for stage in ("mesh", "reference"):
+            self.assertTrue(set(expected) <= self.names(stage), stage)
+            units, _ = bake.stage_units(stage)
+            reached = {(unit.path.relative_to(TOOLS).as_posix(), name) for unit in units for name in unit.names}
+            for path, name in expected.items():
+                self.assertIn((path, name), reached, stage)
 
     def test_modules_reached_through_sys_path_are_in_the_stages_that_import_them(self):
         for stage in ("mesh", "reference", "fit"):
@@ -806,6 +821,33 @@ class FittedBakeTests(FittedBakeCase):
         self.assertEqual(list(done.rows), [self.start.output])
         self.assertEqual(done.code, 1)
         self.assertIn(self.fit(MADE_SHA256).output, done.err)
+
+    def test_a_partial_lock_writes_the_rows_it_has_and_names_the_rest_without_failing(self):
+        made = {self.start.key: row_of(self.start, MADE_SHA256, run=RUN)}
+        done = self.command(["lock", "--from-run", str(RUN), "--partial"], {}, made)
+        self.assertEqual(done.code, 0, done.err)
+        self.assertEqual(list(done.rows), [self.start.output])
+        self.assertIn("still to lock", done.out)
+        self.assertIn(self.fit(MADE_SHA256).output, done.out)
+
+    def test_kinds_repeat_and_levels_key_on_the_fit_the_same_command_made(self):
+        done = self.command(["bake", "--kind", "fit", "--kind", "levels"], self.locked(LOCKED_SHA256, run=RUN))
+        self.assertEqual(done.code, 0, done.err)
+        self.assertEqual([item.key for item in done.produced], [self.fit(LOCKED_SHA256).key, self.level(LOCKED_SHA256).key])
+
+    def test_a_texture_keys_on_the_levels_the_same_command_made_and_waits_without_them(self):
+        """A texture's key names its packed mesh's bytes: levels made just before it in one command give them."""
+        fit = self.fit(LOCKED_SHA256)
+        lock = {**self.locked(LOCKED_SHA256, run=RUN), fit.key: row_of(fit, FIT_SHA256, run=RUN)}
+        with mock.patch("r3d.texture.texture_settings.renderer_textures", return_value={"size": 1}):
+            alone = self.command(["bake", "--kind", "texture"], lock)
+            chained = self.command(["bake", "--kind", "levels", "--kind", "texture"], lock)
+        self.assertEqual(alone.code, 0, alone.err)
+        self.assertEqual(alone.produced, [])
+        self.assertIn("skipped", alone.out)
+        self.assertEqual(chained.code, 0, chained.err)
+        self.assertEqual([item.kind for item in chained.produced], ["levels", "texture"])
+        self.assertEqual(chained.produced[1].stages["start_sha256"], FIT_SHA256)
 
     def test_a_start_made_by_the_mesh_pass_keys_its_fit_in_the_fit_pass(self):
         done = self.bake_keys_fit_on(["bake"], {}, MADE_SHA256)
@@ -1646,6 +1688,15 @@ class LockTests(unittest.TestCase):
         network.assert_not_called()
         self.assertEqual(written[0], [{"output": "one.bundle", "source": "a.scene.toml", "key": "k" * 64,
                                        "sha256": stale["sha256"], "size": len(refit), "seeded": True}])
+
+    def test_a_seeded_row_is_missing_so_a_run_makes_its_key_again(self):
+        found = [bake_of("k" * 64, self.tree), bake_of("j" * 64, self.root / "two.bundle")]
+        lock = {"k" * 64: {**self.row, "seeded": True}, "j" * 64: {**self.row, "key": "j" * 64, "run": 4}}
+        with mock.patch.object(bake, "bakes", return_value=found), \
+                mock.patch.object(bake, "read_lock_tables", return_value={"bake": lock, "poses": {}}), \
+                contextlib.redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(bake.main(["list", "--missing"]), 0)
+        self.assertEqual([line.split("\t")[2] for line in out.getvalue().splitlines()], ["k" * 64])
 
     def test_check_says_which_rows_are_seeded(self):
         found = [bake_of("k" * 64, self.tree)]

@@ -3,7 +3,11 @@
 #include "math/linear/mat3f.h"
 #include "math/scalar/math_const.h"
 
-enum { SH1_COEFFICIENTS = 4, SH1_CHANNELS = 3 };
+#define SH1_COEFFICIENT_COUNT 4
+#define SH1_CHANNEL_COUNT     3
+
+/* GCC 16.1 and Xtensa GCC 14.2 reject macros in GCC unroll pragmas. */
+enum { SH1_COEFFICIENTS = SH1_COEFFICIENT_COUNT, SH1_CHANNELS = SH1_CHANNEL_COUNT };
 
 #define SH1_Y00 0.282094791774F
 #define SH1_Y1  0.488602511903F
