@@ -6,7 +6,7 @@
 #define SH1_COEFFICIENT_COUNT 4
 #define SH1_CHANNEL_COUNT     3
 
-/* GCC unroll pragmas resolve enum names without expanding macros. */
+/* GCC 16.1 and Xtensa GCC 14.2 reject macros in GCC unroll pragmas. */
 enum { SH1_COEFFICIENTS = SH1_COEFFICIENT_COUNT, SH1_CHANNELS = SH1_CHANNEL_COUNT };
 
 #define SH1_Y00 0.282094791774F
