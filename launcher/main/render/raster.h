@@ -115,8 +115,8 @@ uint16_t* raster_depth(const raster_t* raster);
  * near_z, so far surfaces keep their depth steps (r3d_lens_set_depth_near()). */
 float raster_depth_near(const raster_t* raster);
 
-/* Whether the last census changed an instance's cut or the depth scale, so
- * a draw from it redraws every row. */
+/* Whether a census since the last draw changed an instance's cut or the
+ * depth scale, so the next draw redraws every row. */
 bool raster_census_changed(const raster_t* raster);
 /* Whether the last draw redrew every row, asked to or not (first_row). */
 bool raster_drew_every_row(const raster_t* raster);

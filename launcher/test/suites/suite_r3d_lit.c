@@ -2585,9 +2585,9 @@ test_a_census_list_draws_what_raster_draw_draws_at_any_size(void) {
     free(moved);
 }
 
-/* A census that moves the depth scale makes the draw from its list redraw
- * every row, even with rows kept from a partial draw: the kept rows hold
- * depth at the old scale. */
+/* A census that moves the depth scale makes the next draw redraw every row,
+ * even with rows kept from a partial draw and a second census that kept the
+ * new scale: the kept rows hold depth at the old one. */
 static void
 test_a_census_that_moves_the_depth_scale_redraws_every_row(void) {
     r3d_instance_t instance;
@@ -2602,6 +2602,7 @@ test_a_census_that_moves_the_depth_scale_redraws_every_row(void) {
     const render_view_t near_view = render_view_fixture(&near, &raster, 0);
     (void)raster_census(&raster, &near_view);
     TEST_ASSERT_NOT_EQUAL_FLOAT(far_near, raster_depth_near(&raster));
+    (void)raster_census(&raster, &near_view);
     raster_draw_culled(&raster, &near_view);
     TEST_ASSERT_TRUE(raster_drew_every_row(&raster));
 }

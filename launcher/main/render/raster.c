@@ -147,8 +147,10 @@ typedef struct {
     r3d_span_small_fill_t small_fill;
     bool skip_hidden; /* the view's */
     render_texture_settings_t texture;
-    int first_row, end_row;   /* the rows this draw redraws */
-    bool census_changed;      /* the last census changed a cut or the depth scale: its draw redraws every row */
+    int first_row, end_row; /* the rows this draw redraws */
+    /* A census since the last draw changed a cut or the depth scale. Not a
+     * bool: a new scratch holds any byte, and a nonzero one only redraws. */
+    uint8_t census_changed;
     bool blends;              /* lod.blend is on: each instance's blend is set up */
     raster_buffers_t buffers; /* last: its picture storage's size varies */
 } draw_work_t;
@@ -298,7 +300,7 @@ raster_depth(const raster_t* raster) {
 bool
 raster_census_changed(const raster_t* raster) {
     const draw_work_t* work = raster_carve(raster).draw;
-    return work->census_changed;
+    return work->census_changed != 0;
 }
 
 float
@@ -774,8 +776,9 @@ cull_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
     (void)job_run_range_in(share, cull_slice, &work->cull, work->cull.drawn_count, work->cull.ranges);
     FRAME_LAP_SINCE("r3d.cull.wait");
     FRAME_LAP("r3d.cull.split");
-    work->census_changed = false; /* a draw on this census reads it */
-    const float depth_near = cull_end(&work->cull, stats, &work->census_changed, view->lens.near_z);
+    bool levels_changed = false;
+    const float depth_near = cull_end(&work->cull, stats, &levels_changed, view->lens.near_z);
+    work->census_changed |= levels_changed;
     if (work->cull.pick.steer != NULL) {
         steer_end(&work->cull.pick, stats->triangles);
     }
@@ -1001,6 +1004,7 @@ draw_instances(const raster_t* raster, const render_view_t* view, draw_work_t* w
     /* Kept rows hold depth at the last draw's scale and the cuts it drew: a
      * census that changed either redraws them all. */
     const bool some_rows = raster->first_row < raster->end_row && !work->census_changed;
+    work->census_changed = false; /* this draw brings every kept row up to date */
     work->first_row = some_rows ? mathi_max(raster->first_row, 0) : 0;
     work->end_row = some_rows ? mathi_min(raster->end_row, raster->height) : raster->height;
     for (int i = 0; i < raster->attachment_count; i++) {
