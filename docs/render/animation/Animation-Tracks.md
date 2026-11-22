@@ -179,6 +179,11 @@ Translation is a smooth Catmull-Rom curve<sup>[[20]](../../Citations.md#catmull-
 short-way quaternions with +Y up; repeat the first key at the end to close
 the loop.
 
+A program edits a keys file without touching its comments:
+[`scene_edit.py`](../../../launcher/tools/scene/scene_edit.py) `read-keys`
+prints the keys as JSON, and `set-keys` writes a whole new list. Its `read`
+names each scene camera's keys file, and whether a bake reads that path.
+
 1. Animate in Blender and export glTF binary (`.glb`) with animation on. Name
    the action: the bake finds it by name. Blender exports keys as
    `LINEAR`, `STEP` or `CUBICSPLINE` per curve; a camera's field of view needs the

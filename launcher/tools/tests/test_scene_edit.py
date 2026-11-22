@@ -13,7 +13,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from scene import scene_edit  # noqa: E402
-from test_r3d_import import HEAD, NO_LEVELS, camera, renderer, sun_object, write_import, write_scene  # noqa: E402
+from test_r3d_import import HEAD, NO_LEVELS, PATH, camera, renderer, sun_object, write_import, write_scene  # noqa: E402
 
 SUN_LINE = "rotation = [40.0, 30.0, 0.0]   # toward the front: above and to the right\n"
 BOX_POSITION = "position = [1.0, 2.0, 3.0]  # on the table\n"
@@ -201,6 +201,173 @@ class SceneEditTests(unittest.TestCase):
         code, out, err = run("read", self.scene)
         self.assertEqual((code, out), (1, ""))
         self.assertIn("names must be unique", err)
+
+
+WALK_KEYS = """# A walk round the box.
+node = "camera"
+animation = "walk"
+
+[[keys]]
+t = 0
+eye = [0, 1, 5]
+look_at = [0, 1, 0]
+
+# Round the corner.
+[[keys]]
+t = 2.50
+eye = [5, 1, 0]   # beside the box
+look_at = [0, 1, 0]
+
+[[keys]]
+t = 5
+eye = [0, 1, -5]
+look_at = [0, 1, 0]
+"""
+WALK_ANIM = 'source = "walk.keys.toml"\nanimation = "walk"\n'
+# The walk's keys as set-keys spells them, unchanged.
+WALK = ("0:0:0,1,5:0,1,0", "1:2.5:5,1,0:0,1,0", "2:5:0,1,-5:0,1,0")
+
+
+def camera_object(name, path=None):
+    """A camera named `name`, flying the clip `path` names (a .anim.toml beside the scene) when given."""
+    track = f'path = {{ animation = "{path}", node = "camera" }}\n' if path else ""
+    return f'[[objects]]\nname = "{name}"\n[objects.camera]\nhalf_fov_short_tan = 0.6\nnear_z = 1.0\n{track}'
+
+
+class KeysEditTests(unittest.TestCase):
+    """A scene whose first camera walks a keys path that a baked renderer's visibility keeps, a second camera on a
+    .glb clip, and a third on none."""
+
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.folder = pathlib.Path(directory.name)
+        write_import(self.folder)
+        self.keys = self.folder / "walk.keys.toml"
+        self.keys.write_text(WALK_KEYS, newline="\n")
+        (self.folder / "walk.anim.toml").write_text(WALK_ANIM)
+        objects = (renderer(extra="bake = true\n" + PATH) + sun_object() + camera_object("walker", "walk.anim.toml")
+                   + camera_object("flyer", "fly.anim.toml") + camera_object("still"))
+        self.scene = write_scene(self.folder, objects, HEAD)
+        self.before = self.keys.read_bytes()
+
+    def set_keys(self, *keys):
+        return run("set-keys", self.keys, *(part for key in keys for part in ("--key", key)))
+
+    def assert_refused(self, *keys, why):
+        """`set-keys` with `keys` exits 1 naming `why`, and leaves the folder as it was."""
+        listing = sorted(self.folder.iterdir())
+        code, _, err = self.set_keys(*keys)
+        self.assertEqual(code, 1)
+        self.assertRegex(err, why)
+        self.assertEqual(self.keys.read_bytes(), self.before)
+        self.assertEqual(sorted(self.folder.iterdir()), listing)
+
+    def read_objects(self):
+        code, out, err = run("read", self.scene)
+        self.assertEqual(code, 0, err)
+        return {item["name"]: item for item in json.loads(out)["objects"]}
+
+    def test_read_gives_each_camera_its_path_and_whether_bakes_read_it(self):
+        objects = self.read_objects()
+        walker, flyer = objects["walker"]["path"], objects["flyer"]["path"]
+        self.assertEqual(pathlib.Path(walker["keys"]), self.keys.resolve())
+        self.assertEqual(pathlib.Path(walker["anim"]), (self.folder / "walk.anim.toml").resolve())
+        self.assertTrue(walker["feeds_bakes"])
+        self.assertEqual((flyer["keys"], flyer["feeds_bakes"]), (None, False))
+        self.assertIsNone(objects["still"]["path"])
+        self.assertNotIn("path", objects["mesh"])
+
+    def test_a_first_camera_path_no_bake_reads_feeds_none(self):
+        self.scene.write_text(self.scene.read_text().replace(PATH, ""))
+        self.assertFalse(self.read_objects()["walker"]["path"]["feeds_bakes"])
+
+    def test_read_keys_lists_the_keys_as_authored(self):
+        code, out, _ = run("read-keys", self.keys)
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(out), dict(node="camera", animation="walk", keys=[
+            dict(t=0, eye=[0, 1, 5], look_at=[0, 1, 0]), dict(t=2.5, eye=[5, 1, 0], look_at=[0, 1, 0]),
+            dict(t=5, eye=[0, 1, -5], look_at=[0, 1, 0])]))
+
+    def test_read_keys_writes_its_json_to_a_file_when_asked(self):
+        out = self.folder / "keys.json"
+        self.assertEqual(run("read-keys", self.keys, "-o", out)[:2], (0, ""))
+        self.assertEqual(json.loads(out.read_text())["animation"], "walk")
+
+    def test_the_same_keys_leave_every_byte(self):
+        self.assertEqual(self.set_keys(*WALK)[0], 0)
+        self.assertEqual(self.keys.read_bytes(), self.before)
+
+    def test_a_moved_eye_changes_only_its_number(self):
+        code, _, err = self.set_keys(WALK[0], "1:2.5:6,1,0:0,1,0", WALK[2])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(self.keys.read_text(), WALK_KEYS.replace("eye = [5, 1, 0]", "eye = [6, 1, 0]"))
+
+    def test_a_fractional_value_is_written_in_its_fewest_digits(self):
+        self.assertEqual(self.set_keys(WALK[0], "1:2.25:5,1,0.5:0,1,0", WALK[2])[0], 0)
+        text = self.keys.read_text()
+        self.assertIn("t = 2.25\n", text)
+        self.assertIn("eye = [5, 1, 0.5]   # beside the box\n", text)
+
+    def test_an_added_key_is_a_table_of_its_own_in_place(self):
+        self.assertEqual(self.set_keys(WALK[0], "new:1:3,1,3:0,1,0", WALK[1], WALK[2])[0], 0)
+        added = "[[keys]]\nt = 1\neye = [3, 1, 3]\nlook_at = [0, 1, 0]\n\n"
+        self.assertEqual(self.keys.read_text(), WALK_KEYS.replace("# Round the corner.", added + "# Round the corner."))
+
+    def test_a_key_added_last_follows_the_last(self):
+        self.assertEqual(self.set_keys(*WALK, "new:7.5:-5,1,0:0,1,0")[0], 0)
+        self.assertEqual(self.keys.read_text(),
+                         WALK_KEYS + "\n[[keys]]\nt = 7.5\neye = [-5, 1, 0]\nlook_at = [0, 1, 0]\n")
+
+    def test_a_deleted_last_key_takes_only_its_own_table(self):
+        self.assertEqual(self.set_keys(WALK[0], WALK[1])[0], 0)
+        self.assertEqual(self.keys.read_text(), WALK_KEYS.split("\n[[keys]]\nt = 5\n")[0])
+
+    def test_deleting_a_key_keeps_the_comment_above_the_next(self):
+        self.assertEqual(self.set_keys("1:0:5,1,0:0,1,0", WALK[2])[0], 0)
+        self.assertEqual(self.keys.read_text(), WALK_KEYS.replace(
+            "[[keys]]\nt = 0\neye = [0, 1, 5]\nlook_at = [0, 1, 0]\n\n", "").replace("t = 2.50", "t = 0"))
+
+    def test_windows_line_ends_stay(self):
+        self.keys.write_bytes(self.before.replace(b"\n", b"\r\n"))
+        self.assertEqual(self.set_keys(WALK[0], "new:1:3,1,3:0,1,0", "1:2.5:6,1,0:0,1,0", WALK[2])[0], 0)
+        text = self.keys.read_bytes()
+        self.assertEqual(text.count(b"\n"), text.count(b"\r\n"))
+        self.assertIn(b"eye = [3, 1, 3]\r\n", text)
+        self.assertIn(b"eye = [6, 1, 0]   # beside the box\r\n", text)
+
+    def test_keys_camera_keys_refuses_are_not_written(self):
+        self.assert_refused("0:1:0,1,5:0,1,0", WALK[1], why="times must start at zero")
+        self.assert_refused(WALK[0], "1:0:5,1,0:0,1,0", why="increase strictly")
+        self.assert_refused(WALK[0], why="at least two keys")
+        self.assert_refused("0:0:0,1,5:0,1,5", WALK[1], why="look_at must differ from eye")
+
+    def test_malformed_keys_are_refused(self):
+        self.assert_refused("0:0:0,1,5", WALK[1], why="expected FROM:T:EX,EY,EZ:LX,LY,LZ")
+        self.assert_refused("0:0:0,1:0,1,0", WALK[1], why="3 numbers")
+        self.assert_refused("0:x:0,1,5:0,1,0", WALK[1], why="could not convert")
+        self.assert_refused(WALK[0], "9:2.5:5,1,0:0,1,0", why="no key 9")
+        self.assert_refused(WALK[0], "0:2.5:5,1,0:0,1,0", why="key 0 is named twice")
+        self.assert_refused(WALK[0], "one:2.5:5,1,0:0,1,0", why="FROM is a key's index in the file, or new")
+        self.assert_refused("0:0:0,1,inf:0,1,0", WALK[1], why="finite")
+
+    def test_only_a_keys_file_is_written(self):
+        anim = self.folder / "walk.anim.toml"
+        code, _, err = run("set-keys", anim, "--key", WALK[0], "--key", WALK[1])
+        self.assertEqual((code, anim.read_text()), (1, WALK_ANIM))
+        self.assertIn("only a .keys.toml is written", err)
+        self.assertEqual(run("read-keys", anim)[0], 1)
+
+    def test_a_missing_or_invalid_keys_file_is_refused_without_a_traceback(self):
+        absent = self.folder / "absent.keys.toml"
+        for command in (["read-keys", absent], ["set-keys", absent, "--key", WALK[0], "--key", WALK[1]]):
+            code, out, err = run(*command)
+            self.assertEqual((code, out), (1, ""))
+            self.assertIn("absent.keys.toml", err)
+        self.keys.write_text(WALK_KEYS.replace("t = 2.50", "t = 0"), newline="\n")
+        code, out, err = run("read-keys", self.keys)
+        self.assertEqual((code, out), (1, ""))
+        self.assertIn("increase strictly", err)
 
 
 if __name__ == "__main__":

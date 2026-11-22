@@ -67,7 +67,8 @@ every object's placement as JSON, with why it may not move when it may not
 (`read`), and rewrites only the values it is
 given (`set`, with `--set NAME.FIELD=X,Y,Z` and FIELD one of position, rotation
 or scale), keeping the comments and layout. It refuses baked renderers, lights and cameras, and any
-result the scene rules reject:
+result the scene rules reject. A camera's path is edited in its keys file instead
+([Authoring](animation/Animation-Tracks.md#authoring)):
 
 ```sh
 python launcher/tools/scene/scene_edit.py set capybara.scene.toml --set capybara.position=0.5,0,-0.25
