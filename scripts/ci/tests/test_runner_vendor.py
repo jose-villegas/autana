@@ -418,6 +418,8 @@ class BakesWorkflowTests(unittest.TestCase):
         start = next(step for step in jobs["reference-shard"]["steps"] if step.get("id") == "candidate")
         upload = next(step for step in jobs["reference-shard"]["steps"] if "upload-artifact" in step.get("uses", ""))
         fetch = next(step for step in jobs["reference"]["steps"] if "download-artifact" in step.get("uses", ""))
+        # Without the plan among its needs, the join's pattern names no plan and matches nothing.
+        self.assertIn("reference-plan", jobs["reference"]["needs"])
         traced = self.at(upload["with"]["name"], 1, plan="reference-plan-4-3")
         self.assertTrue(runner_vendor.done([(traced, "")], self.at(start["with"]["done"], 1, plan="reference-plan-4-3")))
         self.assertFalse(runner_vendor.done([(traced, "")], self.at(start["with"]["done"], 1, plan="reference-plan-6-2")))
