@@ -426,6 +426,33 @@ test_triangle_ids_are_contiguous_per_instance(void) {
 }
 
 static void
+begin_wide_triangle_ids(const raster_attachment_t* self, const raster_t* raster, const render_view_t* view) {
+    (void)view;
+    raster_meshlets_t* state = self->state;
+    state->next = (uint32_t)UINT16_MAX + 1;
+    state->raster = raster;
+}
+
+static void
+test_triangle_attachment_stores_and_shows_ids_wider_than_uint16(void) {
+    raster_meshlets_t state = {0};
+    raster_attachment_t view = raster_triangles_view(&state);
+    view.begin = begin_wide_triangle_ids;
+    const raster_attachment_t* const one[] = {&view};
+    raster_rig_t* r = rig_open(one, 1);
+    draw(r);
+    raster_show(&r->raster);
+
+    const uint32_t first = (uint32_t)UINT16_MAX + 1;
+    const uint32_t* ids = raster_rig_attachment(r, 0);
+    const gfx_color_t* colours = raster_color(&r->raster);
+    for (int p = 0; p < W * H; p++) {
+        TEST_ASSERT_TRUE(ids[p] >= first && ids[p] < state.next);
+        TEST_ASSERT_EQUAL_UINT16(raster_meshlets_color(ids[p]), colours[p]);
+    }
+}
+
+static void
 test_meshlet_ranges_restart_each_draw_and_show_empty_as_clear(void) {
     raster_meshlets_t state = {0};
     const raster_attachment_t view = raster_meshlets_view(&state);
@@ -1149,6 +1176,7 @@ test_context_owns_and_forgets_split(void) {
 void
 run_raster_attachment_suite(void) {
     RUN_TEST(test_triangle_ids_are_contiguous_per_instance);
+    RUN_TEST(test_triangle_attachment_stores_and_shows_ids_wider_than_uint16);
     RUN_TEST(test_context_owns_and_forgets_split);
 #ifndef DEVICE_BUILD
     RUN_TEST(test_draw_retains_only_the_drawn_instance_and_bounds_state);

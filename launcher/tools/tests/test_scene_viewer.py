@@ -78,11 +78,12 @@ path = { animation = "fly.anim.toml", node = "camera" }
     def tearDownClass(cls):
         cls.temp.cleanup()
 
-    def render(self, *args):
+    def render(self, *args, frames=2):
         out = self.root / "probe.bmp"
         out.unlink(missing_ok=True)
         env = dict(os.environ, AUTANA_ASSET_DIR=str(self.out / "assets"))
-        run = subprocess.run([str(self.binary), "--scene", "room", "--frames", "2", "--dt", "100",
+        count = [] if frames is None else ["--frames", str(frames)]
+        run = subprocess.run([str(self.binary), "--scene", "room", *count, "--dt", "100",
                               *args, "-o", str(out)], capture_output=True, text=True, timeout=120, env=env)
         return run, out
 
@@ -95,7 +96,7 @@ path = { animation = "fly.anim.toml", node = "camera" }
     def test_id_capture_uses_saved_picture_orientation(self):
         full = self.pixels('--quarter', '0').size
         squares = []
-        for quarter in (0, 1):
+        for quarter in range(4):
             root = self.root / f'orientation-{quarter}'
             run, path = self.render('--frames', '1', '--quarter', str(quarter), '--view', 'triangles',
                                     '--ids', str(root), '--size', f'{full[0]}x{full[1]}')
@@ -109,8 +110,16 @@ path = { animation = "fly.anim.toml", node = "camera" }
             np.testing.assert_array_equal(ids == 0, np.all(pixels == pixels[0, 0], axis=-1))
             side = min(size)
             x, y = (size[0] - side) // 2, (size[1] - side) // 2
-            squares.append(ids[y:y + side, x:x + side])
-        np.testing.assert_array_equal(*squares)
+            square = ids[y:y + side, x:x + side]
+            self.assertEqual(set(np.unique(square)), {0, 1, 2})
+            for changed in (square[::-1], square[:, ::-1], square.T):
+                self.assertFalse(np.array_equal(square, changed))
+            for tag in (0, 1, 2):
+                colours = np.unique(pixels[ids == tag], axis=0)
+                self.assertEqual(len(colours), 1)
+            squares.append(square)
+        for square in squares[1:]:
+            np.testing.assert_array_equal(squares[0], square)
 
     def test_camera_pose_input_matches_logged_poses(self):
         sys.path.insert(0, str(TOOLS / "render"))
@@ -142,6 +151,25 @@ path = { animation = "fly.anim.toml", node = "camera" }
                                 '--quarter', '0', '--size', '9x10')
         self.assertNotEqual(run.returncode, 0)
         self.assertIn('pose size 8x10 differs from render size 9x10', run.stderr)
+
+    def test_camera_pose_count_defaults_to_the_log_and_refuses_an_explicit_mismatch(self):
+        poses = self.root / 'pose-count.txt'
+        pose = 'pose 0 0 0 0 0 -1\n'
+        poses.write_text('size 8 10\nlens 0.7 0.25\n' + pose * 3)
+        ids = self.root / 'pose-count-ids'
+        args = ('--camera-poses', str(poses), '--quarter', '0', '--size', '8x10',
+                '--view', 'triangles', '--ids', str(ids))
+        run, _out = self.render(*args, frames=None)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertEqual(len(list(ids.glob('*.ids'))), 3)
+        for count in (2, 4):
+            with self.subTest(count=count):
+                run, _out = self.render(*args, frames=count)
+                self.assertNotEqual(run.returncode, 0)
+                self.assertIn('--frames differs from pose count', run.stderr)
+        run, _out = self.render(*args, '--poses', str(self.root / 'duplicate.csv'), frames=None)
+        self.assertNotEqual(run.returncode, 0)
+        self.assertIn('drop --poses', run.stderr)
 
     def test_id_capture_frames_match_entry_ranges(self):
         for view in ("triangles", "meshlets", "copies"):

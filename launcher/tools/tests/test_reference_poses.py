@@ -55,6 +55,20 @@ class ReferencePoses(unittest.TestCase):
         np.testing.assert_allclose(matrix[0, :3], [0, 1, 0], atol=reference_poses.POSE_TOLERANCE)
         np.testing.assert_allclose(matrix[1, :3], [-2, 0, 0], atol=reference_poses.POSE_TOLERANCE)
 
+    def test_capture_poses_requires_the_suffix_and_no_frame_gaps_and_takes_size_override(self):
+        path = self.root / 'capture.poses.csv'
+        (self.root / 'entries.json').write_text(json.dumps(dict(width=4, height=2, lens=0.5, near=1.0)))
+        path.write_text(DRAWN)
+        with self.assertRaisesRegex(ValueError, 'expected a .*pose log'):
+            reference_poses.capture_poses(self.root / 'capture.csv')
+        for override, expected in ((None, (4, 2)), ((7, 3), (7, 3))):
+            width, height, lens, near, poses = reference_poses.capture_poses(path, override)
+            self.assertEqual((width, height), expected)
+            self.assertEqual((lens, near, len(poses)), (0.5, 1.0, 2))
+        path.write_text(HEADER + FIRST + SECOND.replace('1,100,', '2,100,', 1))
+        with self.assertRaisesRegex(ValueError, 'poses must cover every frame'):
+            reference_poses.capture_poses(path)
+
     def test_a_video_at_its_references_poses_passes(self):
         self.traced()
         self.drawn(DRAWN)
