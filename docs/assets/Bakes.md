@@ -109,7 +109,9 @@ that make one (meshes, exports, sounds, levels, the reference plan and shards)
 and the Bakes GPU fits. It is one instance, so a CPU bake and a fit queue behind
 each other. A fit runs in its fit environment, `~/gpu/env`
 ([r3d README](../../launcher/tools/r3d/README.md)); a CPU job makes a venv of
-its own over it, so what a branch installs never changes the fit environment.
+its own over it, so what it installs stays in the venv; only a Bakes GPU run
+installs into the fit environment. Both run on that environment's Python, the
+release the r3d README creates it with, not the `.python-version` one.
 Neither needs root: the machine holds LLVM, Git LFS, a C compiler and the X
 libraries Blender loads.
 Tracing runs as a stage of [`local_schedule.py`](../../scripts/lib/local_schedule.py),
