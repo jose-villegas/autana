@@ -425,7 +425,7 @@ void f(void) {
              "launcher/main/scene/b/b.h": '// #include "scene/a/a.h"\n'},
             # A line comment ends at the first newline no backslash escapes: the include below is still in it.
             {"launcher/main/scene/a/a.h": '#include "scene/b/b.h"\n',
-             "launcher/main/scene/b/b.h": '// a note that goes on \\n#include "scene/a/a.h"\n'},
+             "launcher/main/scene/b/b.h": '// a note that goes on \\\n#include "scene/a/a.h"\n'},
             {"launcher/main/render/a.h": '#include "../../test/suites/t.h"\n',
              "launcher/test/suites/t.h": '#include "../../main/render/a.h"\n'},
             {"launcher/main/scene/a/a.c": '#include "scene/b/b.h"\n',
