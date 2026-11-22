@@ -454,8 +454,8 @@ class AppearanceMeshTests(unittest.TestCase):
         recipe = dict(prune=dict(budget=1, coverage_every_ms=1),
                       poses=dict(size=[2, 2], train_every_ms=1, held_out_every_ms=2),
                       optimise=dict(steps=1, batch=1, laplacian=1, normal_weight=0,
-                                    surface_weight=10.0, surface_margin=0.25))
-        for key in ("surface_weight", "surface_margin"):
+                                    surface_weight=10.0, surface_margin=0.25, plane_weight=100.0))
+        for key in ("surface_weight", "surface_margin", "plane_weight"):
             for value in (None, -1, float("nan"), float("inf"), "bad", True):
                 with self.subTest(key=key, value=value):
                     options = {group: dict(table) for group, table in recipe.items()}
@@ -466,7 +466,7 @@ class AppearanceMeshTests(unittest.TestCase):
                     with self.assertRaises(SettingsError):
                         load_fit(options, SimpleNamespace(triangles=1), "fit")
         fit = load_fit(recipe, SimpleNamespace(triangles=1), "fit")
-        self.assertEqual((fit.surface_weight, fit.surface_margin), (10.0, 0.25))
+        self.assertEqual((fit.surface_weight, fit.surface_margin, fit.plane_weight), (10.0, 0.25, 100.0))
 
     @unittest.skipIf(torch is None, "needs PyTorch")
     def test_surface_optimise_pulls_to_plane_refreshes_and_repeats(self):
@@ -500,6 +500,48 @@ class AppearanceMeshTests(unittest.TestCase):
         for query in queries:
             self.assertEqual(query.call_count, 2)
             self.assertEqual(query.call_args.args[0].shape, (len(tris) * appearance.SURFACE_SAMPLES_PER_TRIANGLE, 3))
+
+    @unittest.skipIf(torch is None, "needs PyTorch")
+    def test_the_plane_term_turns_a_pull_off_the_wall_into_a_slide_along_it(self):
+        from r3d import appearance_simplify as appearance
+
+        points, rgb, tris = grid(1)
+        mesh = FitMesh(points, rgb / 255, tris, np.ones(len(tris)), 64, np.arange(len(points)))
+        views = [(np.eye(4), np.zeros((1, 1, 3), dtype=np.float32))]
+        options = dict(steps=60, batch=1, lr_position=0.01, lr_colour=0, laplacian=0, report=0, device="cpu",
+                       source=SimpleNamespace(p=points, tri_v=tris), seam_margin=0)
+        # The image darkens as the points move along x or off the wall along z.
+        render = mock.Mock(side_effect=lambda points, colours, *args: (
+            colours.mean(0) + points[:, 0].mean() + points[:, 2].mean()).reshape(1, 1, 3))
+        with mock.patch.object(appearance, "Renderer", return_value=render):
+            free = appearance.optimise(mesh, views, (1, 1), **options)[0] - points
+            held = appearance.optimise(mesh, views, (1, 1), plane_weight=1e4, **options)[0] - points
+        self.assertGreater(np.abs(free[:, 2]).max(), 0.01)
+        self.assertLess(np.abs(held[:, 2]).max(), np.abs(free[:, 2]).max() / 20)
+        self.assertGreater(np.abs(held[:, 0]).max(), 0.01)
+
+    @unittest.skipIf(torch is None, "needs PyTorch")
+    def test_no_vertex_leaves_its_start_by_more_than_the_move_reach(self):
+        from r3d import appearance_simplify as appearance
+
+        points, rgb, tris = grid(1)
+        mesh = FitMesh(points, rgb / 255, tris, np.ones(len(tris)), 64, np.arange(len(points)))
+        views = [(np.eye(4), np.zeros((1, 1, 3), dtype=np.float32))]
+        options = dict(steps=200, batch=1, lr_position=0.05, lr_colour=0, laplacian=0, report=0, device="cpu",
+                       seam_margin=0)
+        # A steady pull along x: nothing in the loss stops the points.
+        render = mock.Mock(side_effect=lambda points, colours, *args: (colours.mean(0) + points[:, 0].mean()).reshape(1, 1, 3))
+        start = torch.as_tensor(points, dtype=torch.float32)
+        scale = appearance.vertex_scale(start, torch.as_tensor(point_edges(tris, mesh.vertex_point))).numpy()[:, 0]
+        reach = 0.1
+        with mock.patch.object(appearance, "Renderer", return_value=render):
+            with mock.patch.object(appearance, "MOVE_REACH", np.inf):
+                free = np.linalg.norm(appearance.optimise(mesh, views, (1, 1), **options)[0] - points, axis=1)
+            with mock.patch.object(appearance, "MOVE_REACH", reach):
+                held = np.linalg.norm(appearance.optimise(mesh, views, (1, 1), **options)[0] - points, axis=1)
+        self.assertGreater(free.min(), 2 * reach * scale.max())
+        np.testing.assert_array_less(held, reach * scale * (1 + 1e-4))
+        self.assertGreater(held.min(), 0.9 * reach * scale.min())
 
     @unittest.skipIf(torch is None, "needs PyTorch")
     def test_local_scale_holds_tiny_edges_against_image_pull(self):
@@ -731,6 +773,7 @@ class PruneAndCostTests(unittest.TestCase):
 
         for flags in (["--object", "card", "--surface-weight", "-1"], ["--object", "card", "--surface-weight", "nan"],
                       ["--object", "card", "--surface-margin", "-1"], ["--surface-weight", "1"],
+                      ["--object", "card", "--plane-weight", "-1"], ["--plane-weight", "1"],
                       *(["--seam-margin", value] for value in ("-1", "nan", "inf"))):
             with self.subTest(flags=flags), mock.patch.object(appearance, "load_scene") as scene:
                 with self.assertRaises(SystemExit), mock.patch("sys.stderr"):
@@ -761,14 +804,15 @@ class PruneAndCostTests(unittest.TestCase):
                 appearance.main(["--scene", "scene.toml", "--start", "start.bundle", "--poses", "poses.txt",
                                  "--reference", "reference", "--out", directory,
                                  "--object", "card", "--surface-weight", "10", "--surface-margin", "0.25",
-                                 "--seam-margin", "0.25"])
+                                 "--plane-weight", "100", "--seam-margin", "0.25"])
             calls["optimise"].assert_called_once()
             self.assertEqual(source_for.call_args.args[1], "card")
             self.assertEqual(source_for.call_args.kwargs, {"lit": False, "hide_cards": True, "hidden_materials": set()})
             options = calls["optimise"].call_args.kwargs
             self.assertIs(options["source"], source)
             self.assertEqual(options["seam_margin"], 0.25)
-            self.assertEqual((options["surface_weight"], options["surface_margin"]), (10, 0.25))
+            self.assertEqual((options["surface_weight"], options["surface_margin"], options["plane_weight"]),
+                             (10, 0.25, 100))
             calls["coverage"].assert_called_once()
             self.assertIsNone(calls["prune"].call_args.args[2], "an unbudgeted fit prunes nothing")
             written = calls["write_mesh"].call_args.args
@@ -1243,10 +1287,11 @@ class AppearanceFitTests(unittest.TestCase):
         surface = self.card(0.0, half=1.0)
         source = SimpleNamespace(p=surface.points, tri_v=surface.tris)
         carved = np.zeros(len(surface.tris), dtype=bool)
-        # A rest the clear colour shows nowhere, so the colour term alone has no reason to move it.
-        rest = self.card(0.5, half=0.5, rgb=0.0)
+        # A rest the clear colour shows nowhere, so the colour term alone has no reason to move it; half an edge
+        # off the surface, within the fit's MOVE_REACH.
+        rest = self.card(0.25, half=0.5, rgb=0.0)
         points = {weight: self.gbuffer_fit(rest, rest, source, carved, depth_weight=weight) for weight in (0.0, 10.0)}
-        np.testing.assert_allclose(points[0.0][:, 2], 0.5, err_msg="the colour term alone leaves the rest off the surface")
+        np.testing.assert_allclose(points[0.0][:, 2], 0.25, err_msg="the colour term alone leaves the rest off the surface")
         self.assertLess(np.abs(points[10.0][:, 2]).max(), 0.05)
 
     def test_held_out_de_is_zero_against_the_meshs_own_render_and_grows_with_a_colour_shift(self):

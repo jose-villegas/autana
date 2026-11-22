@@ -303,7 +303,7 @@ def run_fit(directory, fit_main, lod=None, path=True, shaping=None):
     start_path(work, job).write_bytes(data)
     job.renderer.variant = SimpleNamespace(name='fixture')
     job.renderer.fit = SimpleNamespace(steps=1, batch=1, laplacian=0, normal_weight=0,
-                                       surface_weight=0, surface_margin=0, budget=1)
+                                       surface_weight=0, surface_margin=0, plane_weight=0, budget=1)
     target = work / (job.asset_name + mesh_bundle.SUFFIX)
     with mock.patch.dict(sys.modules, {'r3d.appearance_simplify': SimpleNamespace(main=fit_main)}):
         stage.fit(work / 'scene.scene.toml', scene, job, work, start=start_path(work, job), target=target)

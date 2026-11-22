@@ -62,6 +62,7 @@ laplacian = 10.0
 normal_weight = 1.0
 surface_weight = 10.0
 surface_margin = 0.25
+plane_weight = 100.0
 
 [[objects]]
 name = "statue"
@@ -78,7 +79,7 @@ visibility = { source = "camera_region", rounds = 160 }
 [objects.mesh_renderer.fit]
 prune = { budget = 4000, coverage_every_ms = 20 }
 poses = { size = [184, 224], train_every_ms = 1000, held_out_every_ms = 5000 }
-optimise = { steps = 2000, batch = 8, laplacian = 10.0, normal_weight = 1.0, surface_weight = 10.0, surface_margin = 0.25 }
+optimise = { steps = 2000, batch = 8, laplacian = 10.0, normal_weight = 1.0, surface_weight = 10.0, surface_margin = 0.25, plane_weight = 100.0 }
 ```
 
 ## Objects
@@ -224,6 +225,7 @@ batch = 8
 laplacian = 10.0
 surface_weight = 10.0
 surface_margin = 0.25
+plane_weight = 100.0
 normal_weight = 1.0
 ```
 
@@ -238,7 +240,7 @@ normal_weight = 1.0
 | `shading: flat` | `flat = { fixed = N }` / `flat = { auto = { min, max, area } }` | Stores one averaged RGB565 colour per face. | Off. | [shading: flat](#shading-flat) |
 | `fit.prune` | `budget`, `coverage_every_ms` | Prunes the fitted mesh to the triangle budget. | Required in `fit`; the cost weight is `fitted_variant.py sweep --cost-weights`, not a scene key. | [fit.prune](#fitprune) |
 | `fit.poses` | `size`, `train_every_ms`, `held_out_every_ms` | Selects training and held-out camera-path poses. | Required in `fit`. | [fit.poses](#fitposes) |
-| `fit.optimise` | `steps`, `batch`, `laplacian`, `normal_weight`, `surface_weight`, `surface_margin` | Sets optimiser steps, batch size and loss weights. | Required in `fit`. | [fit.optimise](#fitoptimise) |
+| `fit.optimise` | `steps`, `batch`, `laplacian`, `normal_weight`, `surface_weight`, `surface_margin`, `plane_weight` | Sets optimiser steps, batch size and loss weights. | Required in `fit`. | [fit.optimise](#fitoptimise) |
 | `indirect: off` | `indirect = false` | Bakes this renderer without bounce light. | Bounce light on when the scene recipe is present. | [indirect: off](#indirect-off) |
 
 #### bake renderer
@@ -340,7 +342,8 @@ training poses along the camera path, and poses at multiples of
 `laplacian` keeps each vertex's offset from its neighbours' average close to
 the start's, so local detail stays put; `normal_weight` makes
 normals agree with the source's, and `surface_weight` keeps the mesh near the source surface, beyond
-`surface_margin` local edge lengths from it. Each weighs a term of
+`surface_margin` local edge lengths from it; `plane_weight` holds each vertex on the source planes it
+starts on ([Planes](../offline/Appearance-Fit.md#planes)). Each weighs a term of
 [the loss](../offline/Appearance-Fit.md#the-loss); with `shading = { flat = ... }` the fit
 is [flat](../offline/Appearance-Fit.md#a-flat-fit).
 

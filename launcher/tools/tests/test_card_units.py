@@ -315,7 +315,7 @@ class CardFormatTests(unittest.TestCase):
                 self.assertEqual(fitted.hidden_materials, frozenset({'leaf'}))
                 from r3d.fit import stage
                 recipe = NS(steps=1, budget=1, batch=1, laplacian=0., normal_weight=0.,
-                            surface_weight=1., surface_margin=0.)
+                            surface_weight=1., surface_margin=0., plane_weight=0.)
                 job = NS(asset_name='rest', object=NS(name='rest'),
                          settings=NS(fit=NS(probes=None, budget=None)),
                          renderer=NS(variant=NS(name='rest'), fit=recipe))

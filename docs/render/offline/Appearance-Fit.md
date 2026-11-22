@@ -32,6 +32,7 @@ Measured results are in
 | `fit.optimise.normal_weight` | $`\lambda_n`$ | how strongly fitted normals must match the source's where both cover a pixel, so geometry agrees from every view |
 | `fit.optimise.surface_weight` | $`w`$ | how strongly the fit stays on the source surface |
 | `fit.optimise.surface_margin` | $`\epsilon`$ | how far from the source face's plane, in local edge lengths, a sample may sit before the surface penalty starts |
+| `fit.optimise.plane_weight` | $`w_p`$ | how strongly each vertex stays on the source planes it starts on, free to slide within them |
 
 ## Stages
 
@@ -166,8 +167,9 @@ cost weight, set by `fitted_variant.py sweep --cost-weights`.
 ```
 
 Adam<sup>[[3]](../../Citations.md#kingma-2015)</sup> takes the steps, both learning rates decay as
-$`\eta_k = \eta_0 \cdot 0.1^{k/K}`$ over $K$ steps, and colours are clamped to
-$[0, 1]$ after each. Where nothing is drawn the renderer shows the scene's
+$`\eta_k = \eta_0 \cdot 0.1^{k/K}`$ over $K$ steps. After each, colours are
+clamped to $[0, 1]$ and every point is held within `MOVE_REACH` local start
+scales of its start: the fit refines the start in place. Where nothing is drawn the renderer shows the scene's
 clear colour, as the device and reference do.
 
 The fitted colours are a bake in their own right, so the fitted mesh enters the
@@ -191,6 +193,26 @@ $`w\,\mathrm{mean}(\max(0,|n\cdot d|-\epsilon)^2+t\lVert d\rVert^2)`$,
 where $`w`$ is `surface_weight`, $`\epsilon`$ is `surface_margin`, and $`t`$
 is `SURFACE_TANGENTIAL_WEIGHT`. Both distances are measured in $`e_x`$.
 The plane envelope is zero inside the margin; the small pull remains active there.
+
+### Planes
+
+The surface term lets a vertex slide anywhere on the source, onto another face or
+past an edge, and lets large triangles drift a margin off their wall. Seen from
+afar that costs nothing in colour; seen close up it is a spike or a sliver. The
+plane term holds each start vertex to the source planes it starts on, taken once
+before the fit (`fit/planes.py`):
+
+| Vertex starts on | Planes | Free to |
+|---|---:|---|
+| the inside of a wall | 1 | slide in the wall |
+| an edge | 2 | slide along the edge |
+| a corner | 3 | stay |
+
+A plane is a source face within the vertex's nearest face distance plus
+`PLANE_REACH` local edge lengths; faces within `PLANE_MERGE_DEG` of a kept normal,
+on either side, are one plane. For vertex $`i`$ with start $`x_i^0`$ and plane
+normal $`n`$, the term is $`w_p\,\mathrm{mean}((n\cdot(x_i-x_i^0)/e_i)^2)`$ over
+every (vertex, plane) row, where $`w_p`$ is `plane_weight`.
 
 ### Seams
 
@@ -263,14 +285,16 @@ and a learning rate decaying geometrically. It changes the rest:
 | Fitted | positions, textures, normal maps, material parameters | welded positions and vertex or face colours, which are the lighting bake |
 | Forward model | deferred physically based shading | the device's Gouraud or flat colours, no shading |
 | Image term | L1 on log-tonemapped sRGB | mean CIE 1976 $`\Delta E^*_{ab}`$<sup>[[4]](../../Citations.md#iso-11664-4)</sup> |
-| Position step | plain Adam on positions<sup>[[3]](../../Citations.md#kingma-2015)</sup> | Adam on an offset scaled per vertex by its capped local start scale, so small parts step in proportion to their size |
+| Position step | plain Adam on positions<sup>[[3]](../../Citations.md#kingma-2015)</sup> | Adam on an offset scaled per vertex by its capped local start scale, so small parts step in proportion to their size, within `MOVE_REACH` of that scale from the start |
 | Laplacian weight | decays during the fit | constant $`\lambda`$; each vertex's drift uses its own mean start edge length, capped at the start's mean edge length |
-| Further terms | none | a point-to-plane band, of half-width `surface_margin`, from the fit to the source surface and a small tangential pull, both in the mean of that capped scale over each sample's triangle; $`\mathcal{E}_n`$ against reference normals; $`\mathcal{E}_c`$, predicted frame time<sup>[[6]](../../Citations.md#lawson-1974)</sup> |
+| Further terms | none | a point-to-plane band, of half-width `surface_margin`, from the fit to the source surface and a small tangential pull, both in the mean of that capped scale over each sample's triangle; each vertex held to its start source planes; $`\mathcal{E}_n`$ against reference normals; $`\mathcal{E}_c`$, predicted frame time<sup>[[6]](../../Citations.md#lawson-1974)</sup> |
 | Triangle budget | set by the start | the fitted mesh's, pruned to `budget` by coverage after fitting; a refined fitted mesh can be the start |
 
 A global unit gives small parts a fraction of the hold, so the image term
 stretches them; local edge scales keep the hold even<sup>[[78]](../../Citations.md#desbrun-1999)</sup>.
 Adam's step length does not depend on gradient size, so the position offset is scaled by the same local scale.
+The same holds for a point the colour views rarely see: each sporadic gradient moves it a full step, and the
+weak terms that hold it barely pull back, so without the reach it can drift many edge lengths off the source.
 
 Section 5.3 of the paper has no distance-to-reference term<sup>[[1]](../../Citations.md#hasselgren-2021)</sup>.
 Here the start is already a decimation of the reference surface, so the fit can

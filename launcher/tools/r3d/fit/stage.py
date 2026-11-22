@@ -71,7 +71,7 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
                 "--steps", str(steps), "--batch", str(recipe.batch),
                 "--laplacian", str(recipe.laplacian), "--normal-weight", str(recipe.normal_weight),
                 "--object", job.object.name, "--surface-weight", str(recipe.surface_weight),
-                "--surface-margin", str(recipe.surface_margin)]
+                "--surface-margin", str(recipe.surface_margin), "--plane-weight", str(recipe.plane_weight)]
     if drawn_copies(bundle_entries, copies):
         # The copy gate checks the path's held-out views, or the probes' when the camera has no path.
         command += ["--copies", str(bundle), "--copy-poses", str(inputs / sets.held_out[0][0]),

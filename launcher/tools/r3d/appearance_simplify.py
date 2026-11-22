@@ -6,7 +6,7 @@ vertex, a flat one a colour per triangle.
 
     python launcher/tools/r3d/appearance_simplify.py --scene SCENE.scene.toml --start NAME.bundle \\
         --poses POSES.txt --reference DIR [--poses ... --reference ...] --out DIR [--per-shot] \\
-        [--object NAME --surface-weight W --surface-margin E --seam-margin E] [--coverage-poses POSES.txt]
+        [--object NAME --surface-weight W --surface-margin E --plane-weight W --seam-margin E] [--coverage-poses POSES.txt]
 
 --start is a baked smooth or flat mesh, usually the simplifier's output at the
 triangle budget. Each --poses file (tools/anim/track_host.py) pairs with
@@ -50,6 +50,9 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "render"))
 from colour_maths import lab  # noqa: E402
 
 FAR = 1.0e5
+# The fit refines a shape in place: no point leaves its start by more than this many local edge lengths
+# (vertex_scale), however rarely the colour views see it.
+MOVE_REACH = 1.0
 SURFACE_QUERY_EVERY = 25
 SURFACE_SAMPLES_PER_TRIANGLE = 6
 SURFACE_REFERENCE_SAMPLES = 4_000_000
@@ -807,10 +810,10 @@ def surface_loss(samples, centres, normals, scale, margin):
 def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian, seed=1, device="cuda", report=100,
              clear=(0.0, 0.0, 0.0), cost=None, cost_weight=0.0, scale=1, normal_weight=0.0, surface_weight=0.0,
              surface_margin=0.0, source=None, seam_margin=SEAM_MARGIN, copies=None, carved=None, front_weight=0.0,
-             depth_weight=0.0, geometry_views=None):
+             depth_weight=0.0, geometry_views=None, plane_weight=0.0):
     """Fit fixed triangles; return positions, colours and colour-only error history.
     Position steps use bounding diagonals and each vertex's capped local start scale.
-    Laplacian drift and the source envelope use capped local start edge scales,
+    Laplacian drift, the plane term (fit/planes.py) and the source envelope use capped local start edge scales,
     averaged per triangle for the envelope; normals and predicted cost add their
     weighted penalties.
     Both learning rates decay tenfold over the run.
@@ -876,6 +879,16 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
         if geometry_views.size not in renderers:
             renderers[geometry_views.size] = Renderer(drawn.tris, drawn.double, drawn.vertex_point,
                                                       geometry_views.size, device, clear, flat)
+    planes = None
+    if plane_weight:
+        from r3d.fit.planes import start_planes
+
+        if source is None:
+            raise ValueError("a plane term needs the alpha-masked source")
+        rows, plane_normals = start_planes(points0, point_scale[:, 0].detach().cpu().numpy(), source)
+        planes = (torch.as_tensor(rows, device=device), torch.as_tensor(plane_normals, dtype=start.dtype, device=device))
+        counts = np.bincount(rows, minlength=len(points0))
+        log(f"plane term: points on 0/1/2/3 source planes {[int((counts == k).sum()) for k in range(4)]}")
     if normal_weight and any(normal is None for normal in normals):
         raise ValueError("a normal term needs the reference's normal buffers: reference_render.py --normals")
     if surface_weight:
@@ -904,7 +917,7 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
         adam.zero_grad()
         points = held_positions()
         draw, draw_colours = with_copies(points, colours)
-        error, predicted, colour_error, surface, front, depth = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+        error, predicted, colour_error, surface, front, depth, plane = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
         if normal_weight:
             render = renderer_for(chosen[0])
             vertex = vertex_normals(draw, render.tris.long(), render.vertex_point)
@@ -953,12 +966,21 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
                 nearest = torch.as_tensor(tree.query(samples.detach().cpu().numpy())[1], device=device)
             surface = surface_weight * surface_loss(samples, reference[nearest], face_normals[nearest],
                                                      sample_scale, surface_margin)
-        loss = error + laplacian * drift + cost_weight * predicted + surface + front_weight * front + depth_weight * depth
+        if planes is not None:
+            from r3d.fit.planes import plane_loss
+
+            plane = plane_loss(points, start, *planes, point_scale[:, 0])
+        loss = (error + laplacian * drift + cost_weight * predicted + surface + plane_weight * plane
+                + front_weight * front + depth_weight * depth)
         loss.backward()
         adam.step()
         schedule.step()
         with torch.no_grad():
             colours.clamp_(0.0, 1.0)
+            # A point moves step_scale * delta, so a cap of MOVE_REACH local scales is one bound on every row of delta.
+            reach = MOVE_REACH * point_scale.max()
+            length = delta.norm(dim=1, keepdim=True)
+            delta.mul_(torch.where(length > reach, reach / length.clamp_min(torch.finfo(length.dtype).tiny), 1.0))
         history[step] = colour_error.detach()
         finite &= torch.isfinite(loss.detach())
         if (report and step % report == 0) or step == steps - 1:
@@ -966,7 +988,7 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
                 raise ValueError("fit requires finite loss and parameters")
         if report and (step % report == 0 or step == steps - 1):
             log(f"step {step}: mean dE76 {float(history[step]):.3f}, predicted {float(predicted):.2f} ms, drift {float(drift):.3e}, "
-                f"surface {float(surface):.6f}, front {float(front):.3e}, depth {float(depth):.3e}, "
+                f"surface {float(surface):.6f}, plane {float(plane):.3e}, front {float(front):.3e}, depth {float(depth):.3e}, "
                 f"{time.time() - started:.1f} s")
     points = held_positions()
     return points.detach().cpu().numpy().astype(np.float64), colours.detach().cpu().numpy().astype(np.float64), history.cpu().tolist()
@@ -1026,6 +1048,8 @@ def main(argv=None):
     parser.add_argument("--object", help="the scene object whose source anchors the fit")
     parser.add_argument("--surface-weight", type=float, default=0.0, help="weight of the source-surface envelope")
     parser.add_argument("--surface-margin", type=float, default=0.0, help="source envelope margin in local start edge scales")
+    parser.add_argument("--plane-weight", type=float, default=0.0,
+                        help="weight of the plane term: each start point held to the source planes it starts on")
     parser.add_argument("--seam-margin", type=float, default=SEAM_MARGIN, help="seam hold margin in local start edge scales (0 holds nothing)")
     parser.add_argument("--hidden-materials", nargs="*",
                         help="source materials hidden by cards in the full bundle; defaults to the start's cards")
@@ -1048,10 +1072,11 @@ def main(argv=None):
     unpictured = [poses for poses, reference in held_pairs if not pictured(reference)]
     if args.closure and unpictured:
         parser.error(f"--closure needs held-out pictures; none for {', '.join(unpictured)}")
-    if any(not np.isfinite(value) or value < 0 for value in (args.surface_weight, args.surface_margin, args.seam_margin)):
-        parser.error("surface weight, surface margin and seam margin must be finite and nonnegative")
-    if args.surface_weight and not args.score and not args.object:
-        parser.error("a surface term needs --object, the scene object whose source anchors the fit")
+    if any(not np.isfinite(value) or value < 0
+           for value in (args.surface_weight, args.surface_margin, args.plane_weight, args.seam_margin)):
+        parser.error("surface weight, surface margin, plane weight and seam margin must be finite and nonnegative")
+    if (args.surface_weight or args.plane_weight) and not args.score and not args.object:
+        parser.error("a surface or plane term needs --object, the scene object whose source anchors the fit")
     if bool(args.copies) != bool(args.copy_poses) or (args.copies and not args.object):
         parser.error("--copies needs --copy-poses and --object, the scene object whose source shows the copies")
     if any(not np.isfinite(value) or value < 0 for value in (args.front_weight, args.depth_weight)):
@@ -1086,7 +1111,7 @@ def main(argv=None):
             fitted = refine(mesh, triangle_error(mesh, views, size, clear), args.refine_to)
             log(f"refined {len(mesh.tris)} -> {len(fitted.tris)} triangles")
         source = None
-        if args.surface_weight or copies is not None:
+        if args.surface_weight or args.plane_weight or copies is not None:
             from r3d.reference_render import source_for
 
             source, job = source_for(scene, args.object, lit=False, hide_cards=True,
@@ -1111,8 +1136,9 @@ def main(argv=None):
                                         args.laplacian, clear=clear, cost=cost, cost_weight=args.cost_weight,
                                         scale=args.scale, normal_weight=args.normal_weight, source=source,
                                         surface_weight=args.surface_weight, surface_margin=args.surface_margin,
-                                        seam_margin=args.seam_margin, copies=copies, carved=carved,
-                                        front_weight=args.front_weight, depth_weight=args.depth_weight, **geometry)
+                                        plane_weight=args.plane_weight, seam_margin=args.seam_margin, copies=copies,
+                                        carved=carved, front_weight=args.front_weight, depth_weight=args.depth_weight,
+                                        **geometry)
         fitted = fitted._replace(points=points, rgb=rgb)
         drawn = joined(fitted, copies)
         rows = [coverage(drawn, *pose_views(poses, args.scale))[:len(fitted.tris)]

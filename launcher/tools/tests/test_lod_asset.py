@@ -91,7 +91,7 @@ class LodAssetTests(unittest.TestCase):
             job.settings.lod = True
             job.renderer.variant = SimpleNamespace(name="fixture")
             job.renderer.fit = SimpleNamespace(steps=1, batch=1, laplacian=0, normal_weight=0,
-                                               surface_weight=0, surface_margin=0, budget=1)
+                                               surface_weight=0, surface_margin=0, plane_weight=0, budget=1)
             target = work / (job.asset_name + ".fit" + mesh_bundle.SUFFIX)
             def fit_main(args):
                 self.assertNotIn("--lod", args)

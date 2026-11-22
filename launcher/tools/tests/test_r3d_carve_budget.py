@@ -176,7 +176,7 @@ class FitCeilingTests(unittest.TestCase):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         work = pathlib.Path(directory.name)
-        recipe = NS(budget=2, steps=1, batch=1, laplacian=0, normal_weight=0, surface_weight=0, surface_margin=0)
+        recipe = NS(budget=2, steps=1, batch=1, laplacian=0, normal_weight=0, surface_weight=0, surface_margin=0, plane_weight=0)
         blob, copies, geometry, job, scene = bundle_fixture(work, fit=recipe)
         job.renderer.variant = NS(name='start', triangles=2, ceiling=ceiling)
         (work / 'start.bundle').write_bytes(blob)
@@ -206,7 +206,7 @@ class FitCeilingTests(unittest.TestCase):
         recipe = dict(prune=dict(budget=3, coverage_every_ms=1),
                       poses=dict(size=[2, 2], train_every_ms=1, held_out_every_ms=2),
                       optimise=dict(steps=1, batch=1, laplacian=1, normal_weight=0,
-                                    surface_weight=10.0, surface_margin=0.25))
+                                    surface_weight=10.0, surface_margin=0.25, plane_weight=100.0))
         with self.assertRaisesRegex(SettingsError, 'prune.budget.*ceiling'):
             load_fit(recipe, NS(triangles=4, ceiling=2), 'fit')
 

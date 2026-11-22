@@ -298,8 +298,8 @@ samples the camera's path every
 with their normals in portrait and landscape so the fit holds the panel either
 way up at `fit.poses.size`. `fit` fits with
 `fit.optimise.steps`, `fit.optimise.batch`, `fit.optimise.laplacian`,
-`fit.optimise.normal_weight`, `fit.optimise.surface_weight` and
-`fit.optimise.surface_margin`.
+`fit.optimise.normal_weight`, `fit.optimise.surface_weight`,
+`fit.optimise.surface_margin` and `fit.optimise.plane_weight`.
 
 The fit holds borders that start near another part on that part
 (`SEAM_MARGIN` in `appearance_simplify.py`).

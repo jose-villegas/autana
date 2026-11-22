@@ -194,6 +194,24 @@ def nearest_chunk(points, search):
     return tri, bary, best
 
 
+def triangles_within(points, search, reach):
+    """(query, triangle) for every triangle of `search` within `reach` (one per point) of each point."""
+    points = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+    reach = np.broadcast_to(np.asarray(reach, dtype=np.float64), len(points))
+    corners, queries, triangles = search.corners, [np.zeros(0, int)], [np.zeros(0, int)]
+    for tree, owner, radius in search.groups:
+        balls = tree.query_ball_point(points, reach + radius.max(), return_sorted=False)
+        query = np.repeat(np.arange(len(points)), [len(ball) for ball in balls])
+        found = np.concatenate([[], *balls]).astype(int)
+        keep = np.linalg.norm(points[query] - tree.data[found], axis=1) - radius[found] <= reach[query]
+        query, found = query[keep], owner[found[keep]]
+        _here, distance = closest_point_on_triangles(points[query], *(corners[found, k] for k in range(3)))
+        near = distance <= reach[query]
+        queries.append(query[near])
+        triangles.append(found[near])
+    return np.concatenate(queries), np.concatenate(triangles)
+
+
 def majority(parts, values, count):
     """Per part 0..count-1, the value most of its entries hold (0 for a part with none)."""
     pairs, hits = np.unique(np.column_stack([parts, values]), axis=0, return_counts=True)

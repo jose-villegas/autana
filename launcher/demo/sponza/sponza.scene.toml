@@ -92,6 +92,7 @@ batch = 8
 laplacian = 10.0
 surface_weight = 10.0
 surface_margin = 0.25
+plane_weight = 100.0
 normal_weight = 1.0
 
 [[objects]]
@@ -117,6 +118,7 @@ batch = 8
 laplacian = 10.0
 surface_weight = 10.0
 surface_margin = 0.25
+plane_weight = 100.0
 normal_weight = 1.0
 
 [[objects]]
@@ -143,6 +145,7 @@ batch = 8
 laplacian = 10.0
 surface_weight = 10.0
 surface_margin = 0.25
+plane_weight = 100.0
 normal_weight = 1.0
 
 [[objects]]
