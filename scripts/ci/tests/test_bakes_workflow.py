@@ -1,6 +1,6 @@
 """The Bakes workflow keeps one run per branch, its pull request's and its dispatches' in one group: a push cancels
 the run of the head before it, and main's runs are never cancelled and all queue. Every job that makes a bake runs on
-the one self-hosted bakes runner, never for a fork's pull request, as a guarded stage."""
+the one self-hosted runner that makes the fits, never for a fork's pull request, as a guarded stage."""
 import re
 import sys
 import unittest
@@ -49,7 +49,7 @@ class OneRunPerBranch(unittest.TestCase):
                                  and evaluate(self.concurrency["cancel-in-progress"], ref))
 
 
-RUNNER = ["self-hosted", "linux", "bakes-cpu"]
+RUNNER = ["self-hosted", "linux", "gpu-legion"]
 OWN_HEADS = "(github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)"
 # A bake.py command that makes bakes or plans them, and the join, which packs traced shards and traces nothing.
 MAKES = re.compile(r"bake\.py (bake|shards)\b")

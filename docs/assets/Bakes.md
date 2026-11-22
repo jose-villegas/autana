@@ -46,8 +46,8 @@ names its `host`, the system and machine that made the bytes, since a bake
 repeats byte for byte only on one kind of host (a Linux and a Windows Blender
 export of the same `.blend` differ in the last bit of some animation keys).
 A bake that traces rays differs between CPU models too (an AMD and an Intel host
-trace a few rays an ulp apart), so every Bakes job that makes a bake runs on one
-self-hosted runner, `bakes-cpu` (see [The bakes runners](#the-bakes-runners)).
+trace a few rays an ulp apart), so every Bakes job that makes a bake runs on the
+self-hosted runner that makes the fits (see [The bakes runner](#the-bakes-runner)).
 A row records the CPU vendor it was made on, and a rerun adopts an earlier attempt's bake only from a matching one.
 
 A fit's reference set is traced on the CPU, as a mesh is, since the GPU's ray
@@ -60,7 +60,7 @@ Every reference shard renders that plan and copies its pose files byte for byte;
 
 A fit reads only locked bytes, so it repeats exactly on any GPU model. Its row
 names the `gpu` that made it. The Bakes GPU run's `runner` input picks the
-self-hosted runner by its label (default `bakes-gpu`); with `again`, the run fails
+self-hosted runner by its label (default `gpu-legion`); with `again`, the run fails
 when a fit makes other bytes than its lock row, which checks a fit on a GPU
 other than the one that made it.
 
@@ -102,35 +102,16 @@ scene's sibling `<scene>.probes.toml`. They produce one `.shpr` payload per scen
 keyed independently of mesh and reference bakes. See
 [SH probe baking](../render/offline/SH-Probes.md) for sampling and commands.
 
-## The bakes runners
+## The bakes runner
 
-Two self-hosted runners on one Linux machine make every bake:
-
-| Label | Runs | Python |
-|---|---|---|
-| `bakes-cpu` | the Bakes jobs that make a bake: meshes, exports, sounds, levels, the reference plan and shards | `~/bakes/env`, the `.python-version` release |
-| `bakes-gpu` | the Bakes GPU fits | `~/gpu/env` ([r3d README](../../launcher/tools/r3d/README.md)) |
-
-A job there needs no root: the machine holds LLVM, Git LFS, a C compiler and
-the X libraries Blender loads. Its tracing runs as a stage of
-[`local_schedule.py`](../../scripts/lib/local_schedule.py), on the half of the
-CPUs board work leaves, under the stage's hang guard. Only the repository's own
-branches reach it: a fork's pull request skips those jobs and its CPU check fails.
-While the machine is off, its jobs wait in GitHub's queue, which fails a job
-after a day; nothing falls back to a hosted runner, whose bytes would differ.
-
-On that machine, once, beside the existing GPU runner (`~/actions-runner`):
-
-```sh
-curl -fsSL https://micro.mamba.pm/api/micromamba/linux-64/latest | tar -xj -C ~ bin/micromamba
-~/bin/micromamba create -y -p ~/bakes/env -c conda-forge "python=$(cat .python-version)"
-mkdir ~/actions-runner-bakes && cd ~/actions-runner-bakes
-version=$(~/actions-runner/bin/Runner.Listener --version)
-curl -fsSL "https://github.com/actions/runner/releases/download/v$version/actions-runner-linux-x64-$version.tar.gz" | tar -xz
-./config.sh --url https://github.com/OWNER/REPO --token TOKEN --name "$(hostname)-bakes-cpu" --labels bakes-cpu --unattended
-sudo ./svc.sh install && sudo ./svc.sh start
-```
-
-`TOKEN` is a registration token
-(`gh api -X POST repos/OWNER/REPO/actions/runners/registration-token --jq .token`), and the GPU runner takes
-the `bakes-gpu` label with `gh api -X POST repos/OWNER/REPO/actions/runners/ID/labels -f "labels[]=bakes-gpu"`.
+One self-hosted runner, labelled `gpu-legion`, makes every bake: the Bakes jobs
+that make one (meshes, exports, sounds, levels, the reference plan and shards)
+and the Bakes GPU fits. It is one instance, so a CPU bake and a fit queue behind
+each other. Both run in its fit environment, `~/gpu/env`
+([r3d README](../../launcher/tools/r3d/README.md)), and need no root: the
+machine holds LLVM, Git LFS, a C compiler and the X libraries Blender loads.
+Tracing runs as a stage of [`local_schedule.py`](../../scripts/lib/local_schedule.py),
+on the half of the CPUs board work leaves, under the stage's hang guard. Only the
+repository's own branches reach it: a fork's pull request skips those jobs and
+its CPU check fails. While the machine is off, its jobs wait in GitHub's queue,
+which fails a job after a day; nothing falls back to a hosted runner, whose bytes would differ.

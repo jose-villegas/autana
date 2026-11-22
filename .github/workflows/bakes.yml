@@ -7,11 +7,11 @@ name: Bakes
 # (as many as bake.py reference_shards sizes from their rays); both upload the files; the lock job then fails until the author runs
 # `bake.py lock --from-run N` with that run and commits the lock. A run that makes levels runs the sky-through-walls
 # flythrough on them in the CPU job, so a fit that opens holes fails before it is locked. A mesh's and a
-# reference set's bytes differ between CPU models, so every job that traces runs on one self-hosted runner,
-# labelled bakes-cpu, on the machine whose bakes-gpu runner makes the fits (docs/assets/Bakes.md), and only for the
-# repository's own branches: a fork's pull request runs no code there, and its CPU check fails when it has bakes.
-# The runner holds its Python environment in ~/bakes/env, and its tracing steps run on the share of the
-# machine's CPUs scripts/lib/local_schedule.py leaves board work.
+# reference set's bytes differ between CPU models, so every job that makes a bake runs on the one self-hosted
+# runner that makes the fits, gpu-legion (docs/assets/Bakes.md), and only for the repository's own branches: a
+# fork's pull request runs no code there, and its CPU check fails when it has bakes. One runner, so these jobs and
+# the fits queue behind each other. They run on its fit environment, ~/gpu/env, and its tracing steps on the share
+# of the machine's CPUs scripts/lib/local_schedule.py leaves board work.
 # A fit needs
 # the CUDA GPU, so the Bakes GPU workflow (bakes-gpu.yml) makes it from the locked
 # start and reference set, started by hand on the branch; no pull request reaches that runner. On main, publish uploads each locked file the `bakes` release lacks,
@@ -63,7 +63,7 @@ jobs:
     needs: inputs
     if: ${{ !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.cpu == 'true') }}
     name: Bake missing exports and meshes (self-hosted)
-    runs-on: [self-hosted, linux, bakes-cpu]
+    runs-on: [self-hosted, linux, gpu-legion]
     timeout-minutes: 600
     # actions: read lets a rerun take what its earlier attempts uploaded.
     permissions:
@@ -78,10 +78,10 @@ jobs:
       - uses: ./.github/actions/job-inputs
         with: {step: arm}
 
-      # The runner's own environment (docs/assets/Bakes.md), first on PATH for every later step.
-      - name: Use the runner's bakes environment
+      # The runner's fit environment (docs/assets/Bakes.md), first on PATH for every later step.
+      - name: Use the runner's environment
         run: |
-          echo "$HOME/bakes/env/bin" >> "$GITHUB_PATH"
+          echo "$HOME/gpu/env/bin" >> "$GITHUB_PATH"
           echo "GPU_WORKFLOW=bakes.yml" >> "$GITHUB_ENV"
 
       - name: List the CPU bakes the lock has no row for
@@ -191,7 +191,7 @@ jobs:
     needs: inputs
     if: ${{ !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.cpu == 'true') }}
     name: Plan the reference shards
-    runs-on: [self-hosted, linux, bakes-cpu]
+    runs-on: [self-hosted, linux, gpu-legion]
     timeout-minutes: 600
     permissions:
       contents: read
@@ -206,9 +206,9 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - name: Use the runner's bakes environment
+      - name: Use the runner's environment
         run: |
-          echo "$HOME/bakes/env/bin" >> "$GITHUB_PATH"
+          echo "$HOME/gpu/env/bin" >> "$GITHUB_PATH"
           echo "GPU_WORKFLOW=bakes.yml" >> "$GITHUB_ENV"
 
       - name: Whether a reference set is missing
@@ -253,7 +253,7 @@ jobs:
     needs: reference-plan
     if: ${{ !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && needs.reference-plan.outputs.shards != '' && needs.reference-plan.outputs.shards != '[]' }}
     name: Trace reference shard ${{ matrix.shard }}
-    runs-on: [self-hosted, linux, bakes-cpu]
+    runs-on: [self-hosted, linux, gpu-legion]
     timeout-minutes: 600
     permissions:
       contents: read
@@ -268,9 +268,9 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - name: Use the runner's bakes environment
+      - name: Use the runner's environment
         run: |
-          echo "$HOME/bakes/env/bin" >> "$GITHUB_PATH"
+          echo "$HOME/gpu/env/bin" >> "$GITHUB_PATH"
           echo "GPU_WORKFLOW=bakes.yml" >> "$GITHUB_ENV"
 
       - name: Fetch source files
