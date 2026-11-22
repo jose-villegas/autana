@@ -1,4 +1,5 @@
 """Attribute reference and baked pixels to their source and count material differences and exclusions."""
+import argparse
 from collections import Counter, defaultdict
 import hashlib
 import json
@@ -9,31 +10,42 @@ import shlex
 import numpy as np
 
 from asset.asset_pack import parse_pack
-from render import reference_poses
 from asset.engine_frame import AXIS_COUNT, mirror_matrix, mirror_point
 from r3d import mesh_asset, mesh_bundle
-from r3d.fit import gbuffer
-from r3d.geometry import bounds_diagonal, grouped_indices, triangle_areas
-from r3d.lit_mesh import read_bundle_mesh
-from r3d.obj import alpha_tested
-from r3d.objects.instances import place
-from r3d.texture import uv_transfer
+from render import reference_poses
 
 EMPTY = -1
 CLASS_NAMES = ('both_empty', 'agree_textured', 'agree_plain', 'miss', 'wrong_material', 'reference_only',
                'drawn_only', 'excluded')
 BOTH_EMPTY, AGREE_TEXTURED, AGREE_PLAIN, MISS, WRONG_MATERIAL, REFERENCE_ONLY, DRAWN_ONLY, EXCLUDED = range(
     len(CLASS_NAMES))
+DISAGREEMENTS = (MISS, WRONG_MATERIAL, REFERENCE_ONLY, DRAWN_ONLY)
 EXCLUDE_MATERIAL = '--exclude-material'
 EXCLUDE_OBJECT = '--exclude-object'
 EXCLUDE = '--exclude'
 ALPHA_TESTED = 'alpha-tested'
 NOT_DRAWN = 'not-drawn'
 THIN = 'thin='
+SELECTOR_HELP = f'choose {ALPHA_TESTED}, {NOT_DRAWN} or {THIN}T (finite, nonnegative)'
+
+
+def selector(value):
+    if value in (ALPHA_TESTED, NOT_DRAWN):
+        return value
+    if value.startswith(THIN):
+        try:
+            limit = float(value.removeprefix(THIN))
+        except ValueError:
+            raise argparse.ArgumentTypeError(SELECTOR_HELP) from None
+        if math.isfinite(limit) and limit >= 0:
+            return value
+    raise argparse.ArgumentTypeError(SELECTOR_HELP)
 
 
 def source_ids(source, query, views, placement=None):
     """Top-first source material and object maps traced through the caller's alpha-tested query."""
+    from r3d.fit import gbuffer
+
     materials, objects = [], []
     owners = np.stack((source.tri_m, source.tri_o))
     for matrix, (width, height) in views:
@@ -53,18 +65,17 @@ def source_ids(source, query, views, placement=None):
     return materials, objects
 
 
-def source_points(points, placement):
-    """World points returned to the renderer's source frame through its authored placement."""
-    inverse = np.linalg.inv(np.asarray(placement.matrix))
-    return place(np.asarray(points) - placement.position, inverse, np.zeros(AXIS_COUNT))
-
-
 def entry_points(mesh, row, placement=None):
-    """Bundle vertices placed by the engine's drawn transform, in source axes."""
+    """Bundle vertices in source axes and relative to the renderer's placement, if given."""
+    from r3d.objects.instances import place
+
     matrix = mirror_matrix(np.asarray(row['matrix']))
     position = mirror_point(row['position'])
     points = place(np.asarray(mesh.pos, dtype=np.float64) / float(mesh.position_scale), matrix, position)
-    return points if placement is None else source_points(points, placement)
+    if placement is None:
+        return points
+    inverse = np.linalg.inv(np.asarray(placement.matrix))
+    return place(points - placement.position, inverse, np.zeros(AXIS_COUNT))
 
 
 def bundle_placements(entries, copies, placement):
@@ -82,6 +93,9 @@ def bundle_placements(entries, copies, placement):
 
 def drawn_ids(ids_dir, bundle_path, source, placement=None, texture_pack=None, *, drawn_objects=None):
     """Captured material and texture maps, optionally collecting all source objects mapped by the bundle."""
+    from r3d.lit_mesh import read_bundle_mesh
+    from r3d.texture import uv_transfer
+
     root = pathlib.Path(ids_dir)
     metadata = json.loads((root / 'entries.json').read_text())
     bundle = pathlib.Path(bundle_path).read_bytes()
@@ -108,6 +122,7 @@ def drawn_ids(ids_dir, bundle_path, source, placement=None, texture_pack=None, *
         raise ValueError('id capture has no entries identifying the drawn bundle')
 
     entries, copies = mesh_bundle.decode(bundle)
+    embedded = {name: (kind, blob) for name, kind, blob in entries}
     textures = parse_pack(pack) if pack is not None else {}
     meshes, mappings = {}, {}
     search = uv_transfer.material_search(source)
@@ -116,7 +131,8 @@ def drawn_ids(ids_dir, bundle_path, source, placement=None, texture_pack=None, *
         name = row['entry']
         if name not in meshes:
             mesh = read_bundle_mesh(entries, name)
-            uv = textures.get(uv_transfer.name_for_mesh(name))
+            sibling = uv_transfer.name_for_mesh(name)
+            uv = textures.get(sibling, embedded.get(sibling))
             codes = None
             if uv is not None:
                 if uv[0] != uv_transfer.TYPE:
@@ -139,7 +155,6 @@ def drawn_ids(ids_dir, bundle_path, source, placement=None, texture_pack=None, *
         ids = np.fromfile(path, '<u4').reshape(metadata['height'], metadata['width'])
         material = np.full(ids.shape, EMPTY, dtype=np.int32)
         pattern = np.zeros(ids.shape, dtype=bool)
-        covered = ids == 0
         next_id = 1
         for row in frames.get(frame, ()):
             if row['step'] != 'triangle':
@@ -158,8 +173,7 @@ def drawn_ids(ids_dir, bundle_path, source, placement=None, texture_pack=None, *
             material[own] = source_material[local]
             if codes is not None:
                 pattern[own] = codes[local] != uv_transfer.PLAIN
-            covered |= own
-        if not covered.all():
+        if np.any(ids >= next_id):
             raise ValueError(f'{path}: id outside captured entry ranges')
         materials.append(material)
         textured.append(pattern)
@@ -173,6 +187,10 @@ def drawn_ids(ids_dir, bundle_path, source, placement=None, texture_pack=None, *
 
 def exclusion_ids(source, references, objects, selectors, drawn_objects=()):
     """First matching selector index per reference pixel, or EMPTY."""
+    from r3d.geometry import bounds_diagonal, grouped_indices, triangle_areas
+    from r3d.obj import alpha_tested
+    from r3d.texture import uv_transfer
+
     result = [np.full(ref.shape, EMPTY, dtype=np.int32) for ref in references]
     thickness = None
     for index, (option, value) in enumerate(selectors):
@@ -185,10 +203,8 @@ def exclusion_ids(source, references, objects, selectors, drawn_objects=()):
             maps, matches = references, np.flatnonzero(alpha_tested(source.textures))
         elif value == NOT_DRAWN:
             matches = sorted(set(range(len(source.object_names))) - set(drawn_objects))
-        elif value.startswith(THIN):
+        else:
             limit = float(value.removeprefix(THIN))
-            if not math.isfinite(limit) or limit < 0:
-                raise ValueError('thin requires a finite nonnegative threshold')
             if thickness is None:
                 thickness = {}
                 areas = triangle_areas(source.p, source.tri_v)
@@ -196,8 +212,6 @@ def exclusion_ids(source, references, objects, selectors, drawn_objects=()):
                     size = bounds_diagonal(source.p[np.unique(source.tri_v[faces])])
                     thickness[obj] = areas[faces].sum() / size if size else 0
             matches = [obj for obj, width in thickness.items() if width < limit]
-        else:
-            raise ValueError(f'unknown exclusion {value!r}; expected alpha-tested, thin=T or not-drawn')
         for ref, labels, first in zip(references, maps, result):
             first[(ref != EMPTY) & (first == EMPTY) & np.isin(labels, matches)] = index
     return result
@@ -225,11 +239,8 @@ def diff_classes(ref, drawn, textured, has_texture, exclusions=None):
     occupied = (ref != EMPTY) & (drawn != EMPTY)
     agree = occupied & (ref == drawn)
     result[agree & textured] = AGREE_TEXTURED
-    result[agree & ~textured] = AGREE_PLAIN
-    has_texture = np.asarray(has_texture, dtype=bool)
-    wants = np.zeros(ref.shape, dtype=bool)
-    wants[ref != EMPTY] = has_texture[ref[ref != EMPTY]]
-    result[agree & ~textured & wants] = MISS
+    plain = agree & ~textured
+    result[plain] = np.where(np.asarray(has_texture, dtype=bool)[ref[plain]], MISS, AGREE_PLAIN)
     result[occupied & ~agree] = WRONG_MATERIAL
     result[(ref != EMPTY) & (drawn == EMPTY)] = REFERENCE_ONLY
     result[(ref == EMPTY) & (drawn != EMPTY)] = DRAWN_ONLY
@@ -240,15 +251,13 @@ def diff_classes(ref, drawn, textured, has_texture, exclusions=None):
 
 def material_table(references, drawn, classes, names):
     """CSV counts by reference material, with drawn-only pixels under their drawn material."""
-    owners = [np.where(ref != EMPTY, ref, own) for ref, own in zip(references, drawn)]
-    rows = []
-    for material in range(EMPTY, len(names)):
-        row = dict(material=material, name=names[material] if material != EMPTY else '(empty)')
-        for code, name in enumerate(CLASS_NAMES):
-            row[name] = sum(int(np.count_nonzero((ref == material) & (diff == code)))
-                            for ref, diff in zip(owners, classes))
-        rows.append(row)
-    return rows
+    counts = np.zeros((len(names) + 1, len(CLASS_NAMES)), dtype=np.int64)
+    for ref, own, diff in zip(references, drawn, classes):
+        owner = np.where(ref != EMPTY, ref, own)
+        keys = (owner - EMPTY) * len(CLASS_NAMES) + diff
+        counts.flat[:] += np.bincount(keys.ravel(), minlength=counts.size)
+    return [dict(material=material, name=name, **dict(zip(CLASS_NAMES, totals)))
+            for material, (name, totals) in enumerate(zip(['(empty)', *names], counts.tolist()), start=EMPTY)]
 
 
 def material_confusions(references, drawn, classes):
