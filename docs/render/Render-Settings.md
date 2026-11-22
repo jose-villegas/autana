@@ -43,7 +43,7 @@ that field's table in the asset.
 | `lod.tolerance_px` | `2.0` | `any` | basic | the projected error a group may have and still draw coarse; more saves, pops more |
 | `lod.hysteresis_px` | `0.5` | `any` | advanced | how far past the tolerance a coarse group's error goes before it turns fine |
 | `lod.coverage_permille` | `250` | `any` | basic | the thousandths of the picture's height a coarse group may span; smaller pops less |
-| `lod.pick_every` | `4` | `any` | advanced | the frames the pick is spread over, a scene's first frame picking all; more saves, switches later |
+| `lod.pick_every` | `4` | `[1, RENDER_LOD_PICK_EVERY_MAX]` | advanced | the frames the pick is spread over, a scene's first frame picking all; more saves, switches later |
 | `lod.triangle_budget` | `0` | `any` | basic | the triangles a frame aims to draw, the tolerance rising past tolerance_px to keep within; 0 never rises |
 | `lod.blend` | `0` | `[0, RENDER_LOD_BLEND_COUNT)` | basic | 0 switches at once; 1 blends each switch, by morph where a mesh was imported with geometry.morph, else by dither |
 | `lod.blend_px` | `0.25` | `(0.0, RENDER_LOD_BLEND_PX_MAX]` | advanced | the error past a switch over which a blend fades out; longer is softer, moves more |
