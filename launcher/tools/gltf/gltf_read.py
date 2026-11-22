@@ -1,8 +1,9 @@
 """Read a binary glTF 2.0 file: accessors, animations and their samplers.
 
-Asset tests and bakers share this reader. FBX conversion and in-memory
-keys-file builds run on demand. The standard-library sampler follows the glTF 2.0 spec (LINEAR, STEP, CUBICSPLINE; quaternions
-slerp), and is the reference the C runtime in main/anim/ is held to.
+The reader and sampler use the standard library. The sampler follows the
+glTF 2.0 interpolation rules and serves as the reference for main/anim/.
+Keys-file builds load the keys tool on demand. FBX loads use the separate
+converter, which uses NumPy and the native ufbx reader.
 """
 
 import json
@@ -93,7 +94,7 @@ def load_asset(path):
     keys file. An FBX is converted once to a .glb
     (tools/fbx/fbx_to_glb.py), cached by content; keys are built in memory."""
     if pathlib.Path(path).name.lower().endswith(KEYS_SUFFIX):
-        from anim.camera_keys import load_glb_bytes
+        from anim.keys_file import load_glb_bytes
         return parse_glb(load_glb_bytes(path))
     if pathlib.Path(path).suffix.lower() == FBX_SUFFIX:
         from fbx.fbx_to_glb import cached_glb

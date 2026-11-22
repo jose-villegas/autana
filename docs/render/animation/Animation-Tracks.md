@@ -55,8 +55,8 @@ The `yfov` pointer binds to the one node holding that camera. The bake uses
 `gltf_read.camera_half_fov_short_tan()` for values and
 `gltf_read.camera_half_fov_short_tan_derivative()` for cubic tangents.
 The camera's static perspective aspect ratio defaults to 1 when absent.
-Scene-field pointer values are already in the target field’s units.
-The bake accepts the pointer targets shown above.
+Scene-field pointer values are already in the target field's units.
+Any other pointer target is refused.
 A channel that never changes is baked as one key; a cubic channel counts as
 unchanging only when every tangent is zero.
 
@@ -175,38 +175,47 @@ a vector by a sampled rotation, such as a camera's look direction.
 
 ### Keys files
 
-Set a `NAME.keys.toml` as the source in a `NAME.anim.toml`. The bake
-builds the keys into glTF in memory. Track form uses `animation` and
-`[[tracks]]` to key any declared field by scene object name.
+Set a `NAME.keys.toml` as the source in a `NAME.anim.toml`.
+[`keys_file.py`](../../../launcher/tools/anim/keys_file.py) builds it into glTF
+in memory. Track form uses `animation` and `[[tracks]]` to key fields by scene
+object name.
 
+<!-- generated: anim-path-keys-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```toml
-animation = "demo"
+animation = "path"
 
 [[tracks]]
-object = "butterfly_blue"
+object = "prop"
 field = "position"
 interp = "cubic"
-offset = { position = [0, 40, 0], rotation = [0, 0, 0, 1] }
-keys = [{ t = 0.0, v = [0, 900, 0] }, { t = 4.0, v = [120, 140, -30] }]
+offset = { position = [0, 2, 0] }
+keys = [{ t = 0, v = [0, 0, 0] }, { t = 1, v = [3, 0, 0] }, { t = 3, v = [6, 0, 0] }]
+
+[[tracks]]
+object = "prop"
+field = "scale"
+interp = "step"
+keys = [{ t = 0, v = [1, 1, 1] }, { t = 2, v = [2, 3, 4] }]
 
 [[tracks]]
 object = "camera"
 field = "half_fov_short_tan"
 interp = "linear"
-keys = [{ t = 0.0, v = 0.62 }, { t = 4.0, v = 0.55 }]
+keys = [{ t = 0, v = 0.25 }, { t = 3, v = 0.75 }]
 ```
+<!-- /generated: anim-path-keys-example -->
 
 | Entry | Rule |
 |---|---|
-| `object`, `field` | One channel per object and field. The tool reads `ANIM_FIELD` arrays and their `anim_component_fields_t` wrappers in C for the field's component and value type. A field name must identify one component. |
+| `object`, `field` | One channel per object, component and field. Use a bare field name when it identifies one component. When multiple components declare it, use `field = "CCCC.field"` with the component's four-character tag. |
 | `t`, `v` | Seconds start at zero and increase strictly per track. Values are finite and match the declared type. Rotations are unit xyzw quaternions aligned to the preceding key's sign. |
 | `interp` | `step`, `linear` or `cubic`. For cubic, supply both `in` and `out` tangents in units per second on every key, or let the tool derive time-scaled Catmull-Rom tangents. |
 | `offset` on `position` | Rotate values and tangents by the offset rotation, then add the offset position to values. |
 | `offset` on `rotation` | Left-multiply values and tangents by the offset rotation. |
 
-An omitted offset member uses zero position or identity rotation. Each
-track applies its own offset. Applying it before sampling gives the same
-curve as applying it to the samples, up to float rounding.
+[`scene_fields.py`](../../../launcher/tools/anim/scene_fields.py) reads the
+component tags and `ANIM_FIELD` tables from C. Each track applies its own
+offset, with zero position or identity rotation for an omitted member.
 
 Camera shorthand uses `node`, `animation` and `[[keys]]` with `t`,
 `eye` and `look_at`. Translation uses Catmull-Rom<sup>[[20]](../../Citations.md#catmull-1974)</sup>.
@@ -218,7 +227,9 @@ first key at the end to close the loop.
 1. Animate in Blender and export glTF binary (`.glb`) with animation on. Name
    the action: the bake finds it by name. Blender exports keys as
    `LINEAR`, `STEP` or `CUBICSPLINE` per curve; a camera's field of view needs the
-   exporter's animation-pointer option.
+   exporter's animation-pointer option. The bake accepts the camera
+   `yfov` and `AUTANA_scene_fields` pointers. It refuses any other pointer
+   target.
 2. Keep the file beside the code that plays it, as an asset, and write a
    `NAME.anim.toml` beside it naming the animation, as in
    [The pack entry](#the-pack-entry).

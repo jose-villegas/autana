@@ -102,7 +102,7 @@ from autana_config import user_cache_dir
 from http_get import get
 
 from build import packages  # noqa: E402
-from build.c_header import read_define  # noqa: E402
+from build.c_header import read_define, read_enum  # noqa: E402
 from bake import code_units  # noqa: E402
 from c_lexer import c_code  # noqa: E402
 from r3d.mesh_bundle import SUFFIX as BUNDLE_SUFFIX
@@ -482,17 +482,29 @@ def native_inputs(files):
     def holder(item):
         return next((root for root in pinned if item == root or item.is_relative_to(root)), None)
 
-    defines = {}
+    defines, enums = {}, {}
     for path in files:
+        if path == TOOLS / "anim/scene_fields.py":
+            from anim import scene_fields
+
+            keyed[relative(path)] = digest(sorted(scene_fields.fields().items()))
         tree, constants, _ = module_facts(path)
         headers = set()
         for node in ast.walk(tree):
             if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-                    and node.func.id in ("read_define", "read_defines", "checked_struct")):
+                    and node.func.id in ("read_define", "read_defines", "read_enum", "checked_struct")):
                 try:
                     header = pathlib.Path(eval(compile(ast.Expression(node.args[0]), str(path), "eval"),
                                                {"__builtins__": {}}, constants)).resolve()
                 except (NameError, TypeError, ValueError, IndexError):
+                    continue
+                headers.add(header)
+                if node.func.id == "read_enum":
+                    name = (node.args[1].value if len(node.args) > 1 and isinstance(node.args[1], ast.Constant)
+                            else None)
+                    by_name = enums.setdefault(header, {})
+                    if name not in by_name:
+                        by_name[name] = read_enum(header, name)
                     continue
                 try:
                     header_text = header.read_text(encoding="utf-8")
@@ -506,16 +518,18 @@ def native_inputs(files):
                         except RuntimeError:
                             pass
                     defines[header] = values
-                headers.add(header)
         for value in constants.values():
             for item in path_constants(value):
                 if holder(item) is not None:
                     keyed[relative(holder(item))] = pinned[holder(item)]
                 elif item not in headers and item.suffix in C_SUFFIXES and item.is_file():
                     sources.append(item)
-    # Literal defines are data inputs; their include chains are not compiled by the stage.
+    # Literal defines and enums are data inputs; their include chains are not compiled by the stage.
     for header, values in defines.items():
         keyed[relative(header)] = digest(sorted(values.items()))
+    for header, values in enums.items():
+        key = relative(header)
+        keyed[key] = digest([keyed.get(key), sorted((name or "", members) for name, members in values.items())])
     for item in c_includes(sources, packages.include_roots()):
         if holder(item) is not None:
             keyed[relative(holder(item))] = pinned[holder(item)]

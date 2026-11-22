@@ -27,10 +27,11 @@ from gltf import gltf_read  # noqa: E402
 from r3d import gltf_skin  # noqa: E402
 from anim.clip_name import SUFFIX, clip_id  # noqa: E402
 from anim import scene_fields  # noqa: E402
-from anim.scene_fields import VALUE_FLOAT, VALUE_VEC2, VALUE_VEC3, VALUE_QUAT, VALUE_COLOUR, WIDTHS  # noqa: E402
+from anim.scene_fields import (CAMERA, TRANSFORM, VALUE_FLOAT, VALUE_VEC2, VALUE_VEC3, VALUE_QUAT, VALUE_COLOUR,
+                               WIDTHS)  # noqa: E402
 
-TYPE = b"TRCK"
 OWNER = pathlib.Path(__file__).resolve().parents[2] / "main/anim/anim_tracks_format.h"
+TYPE = read_define(OWNER, "ANIM_TRACKS_ASSET").to_bytes(4, "little")
 VERSION = read_define(OWNER, "ANIM_TRACKS_VERSION")
 HEADER = struct.Struct("<HHIIIBxH")
 ROW = struct.Struct("<HHIIIIIHBB")
@@ -51,9 +52,7 @@ STRINGS_MAX, COUNT_MAX, DURATION_MAX, GROUND_MAX = 65535, 65535, 0xFFFFFFFF, 655
 GROUND_SAMPLES_PER_S = 120
 ROOT_SCENE, ROOT_SKELETON = [read_define(OWNER, "ANIM_ROOT_" + name) for name in ("SCENE", "SKELETON")]
 YFOV_FIELD = "half_fov_short_tan"
-CAMERA, _ = scene_fields.FIELDS[YFOV_FIELD]
-TRANSFORM, _ = scene_fields.FIELDS["position"]
-FIELDS = {path: (field, scene_fields.FIELDS[field][1]) for field, path in scene_fields.TRANSFORM_PATHS.items()}
+FIELDS = {path: (field, value_type) for field, (path, value_type) in scene_fields.TRANSFORM_FIELDS.items()}
 SCENE_FIELD_POINTER = re.compile(r"/nodes/([0-9]+)/extensions/" + scene_fields.SCENE_FIELDS_EXTENSION + r"/([^/]{4})/([^/]+)")
 assert AT_PAD + HEADER_PAD_SIZE == AT_GROUND and HEADER.size == HEADER_SIZE == AT_GROUND + struct.calcsize("<H")
 assert ROW.size == ROW_SIZE == ROW_INTERP + struct.calcsize("<B")
@@ -80,10 +79,11 @@ def channel_binding(document, channel, joint_paths=None):
         scene_field = SCENE_FIELD_POINTER.fullmatch(pointer)
         if scene_field:
             node, tag, field = scene_field.groups()
-            binding = scene_fields.FIELDS.get(field)
-            if binding is None or binding[0].to_bytes(4, "little").decode("ascii") != tag:
+            component = int.from_bytes(tag.encode("utf-8"), "little")
+            binding = scene_fields.fields().get((component, field))
+            if binding is None:
                 raise TracksError("channel %s: unknown scene component or field" % pointer)
-            component, value_type = binding
+            value_type, _ = binding
             return object_name(document, "nodes", int(node)), component, field, value_type, None
         match = re.fullmatch(r"/cameras/(\d+)/perspective/yfov", pointer)
         if not match:
@@ -129,7 +129,7 @@ def check_curve(name, channel):
 
 def check(name, channel):
     check_curve(name, channel)
-    if gltf_read.is_rotation(channel) and len(channel["values"][0]) != 4:
+    if channel["path"] == "rotation" and len(channel["values"][0]) != WIDTHS[VALUE_QUAT]:
         raise TracksError("%s: a rotation is a quaternion" % name)
 
 
@@ -275,7 +275,7 @@ def encode(tracks, duration_ms, root=ROOT_SCENE, ground=0):
     rows, data = [], bytearray()
     for track, track_hashes in zip(tracks, binding_hashes):
         check_curve(track["name"], track)
-        if track["component"] not in scene_fields.COMPONENTS or track["type"] not in range(len(WIDTHS)):
+        if not track["component"] or track["type"] not in range(len(WIDTHS)):
             raise TracksError("%s: unknown component or type" % track["name"])
         if any(len(v) != WIDTHS[track["type"]] for v in track["values"]):
             raise TracksError("%s: values do not match binding type" % track["name"])

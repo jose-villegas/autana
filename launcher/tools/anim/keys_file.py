@@ -40,25 +40,23 @@ def camera_glb(values):
     keys = values["keys"]
     if not isinstance(keys, list) or len(keys) < 2:
         raise ValueError("at least two keys are required")
-    times, eyes, rotations = [], [], []
+    eyes, rotations = [], []
     for key in keys:
         if not isinstance(key, dict) or set(key) != {"t", "eye", "look_at"}:
             raise ValueError("each key needs t, eye and look_at")
-        numbers = [key["t"]]
+        numbers = []
         for name in ("eye", "look_at"):
             if not isinstance(key[name], list) or len(key[name]) != 3:
                 raise ValueError(f"{name} must have three coordinates")
             numbers.extend(key[name])
         if any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) for v in numbers):
             raise ValueError("key coordinates and times must be finite numbers")
-        if (not times and key["t"] != 0) or (times and key["t"] <= times[-1]):
-            raise ValueError("times must start at zero and increase strictly")
         q = rotation(key["eye"], key["look_at"])
         if rotations and opposite_sign(q, rotations[-1]):
             q = [-v for v in q]
-        times.append(key["t"])
         eyes.append(key["eye"])
         rotations.append(q)
+    times = key_times(keys, "camera")
     loop = eyes[-1] == eyes[0] and keys[-1]["look_at"] == keys[0]["look_at"]
     translations = catmull_rom(times, eyes, loop)
     channels = [dict(node=0, path="translation", interpolation="CUBICSPLINE", times=times, values=translations),
@@ -73,6 +71,7 @@ def opposite_sign(a, b):
 
 
 def catmull_rom(times, values, loop=False):
+    # Catmull and Rom, 1974, A Class of Local Interpolating Splines.
     if len(times) == 1:
         return [[0] * len(values[0]), values[0], [0] * len(values[0])]
     rows = []
@@ -97,6 +96,21 @@ def float32(value, where, name):
     if not math.isfinite(rounded):
         raise ValueError(f"{where}: {name} must contain finite numbers")
     return rounded
+
+
+def key_times(keys, where):
+    """Validate the timeline at stored precision and return the authored times."""
+    times = []
+    previous = None
+    for i, key in enumerate(keys):
+        time = key["t"]
+        label = f"{where} key {i}"
+        rounded = float32(time, label, "t")
+        if (time != 0 if previous is None else rounded <= previous):
+            raise ValueError(f"{label}: times must start at zero and increase strictly in float32")
+        times.append(time)
+        previous = rounded
+    return times
 
 
 def vector(value, width, where, name, quaternion=False):
@@ -126,26 +140,21 @@ def offset_rows(field, offset, rows, cubic, where):
     return rotated
 
 
-def track_curve(track, label, value_type, interp):
+def track_curve(track, label, value_type, interp, transform_field):
     keys = track["keys"]
     if not isinstance(keys, list) or not keys:
         raise ValueError(f"{label} key 0: keys must be a nonempty list")
-    times, values, rows = [], [], []
+    for i, key in enumerate(keys):
+        if not isinstance(key, dict) or not {"t", "v"} <= key.keys() or key.keys() - {"t", "v", "in", "out"}:
+            raise ValueError(f"{label} key {i}: each key needs t and v, with optional in and out")
+    times = key_times(keys, label)
+    values, rows = [], []
     width = scene_fields.WIDTHS[value_type]
     cubic = interp == INTERPOLATIONS["cubic"]
     quaternion = value_type == scene_fields.VALUE_QUAT
     explicit = None
-    previous_time = None
     for i, key in enumerate(keys):
         where = f"{label} key {i}"
-        if not isinstance(key, dict) or not {"t", "v"} <= key.keys() or key.keys() - {"t", "v", "in", "out"}:
-            raise ValueError(f"{where}: each key needs t and v, with optional in and out")
-        time = key["t"]
-        rounded_time = float32(time, where, "t")
-        if (i == 0 and time != 0) or (i > 0 and rounded_time <= previous_time):
-            raise ValueError(f"{where}: times must start at zero and increase strictly in float32")
-        times.append(time)
-        previous_time = rounded_time
         value = vector(key["v"], width, where, "v", quaternion=quaternion)
         has_tangents = "in" in key
         if has_tangents != ("out" in key):
@@ -155,7 +164,7 @@ def track_curve(track, label, value_type, interp):
         if explicit is not None and has_tangents != explicit:
             raise ValueError(f"{where}: supply tangents for every key or for none")
         explicit = has_tangents
-        flip = quaternion and values and opposite_sign(value, values[-1])
+        flip = quaternion and i > 0 and opposite_sign(value, values[-1])
         if flip:
             value = tuple(-x for x in value)
         values.append(value)
@@ -168,12 +177,33 @@ def track_curve(track, label, value_type, interp):
     if not explicit:
         rows = catmull_rom(times, values) if cubic else values
     if "offset" in track:
-        rows = offset_rows(track["field"], track["offset"], rows, cubic, f"{label} key 0")
+        rows = offset_rows(transform_field, track["offset"], rows, cubic, f"{label} key 0")
     for i, row in enumerate(rows):
         where = f"{label} key {i // CUBIC_ROWS if cubic else i}"
         for number in row:
             float32(number, where, "baked value or tangent")
     return times, rows
+
+
+def resolve_field(name, fields, where):
+    """Resolve the authored field name to its component and member."""
+    if not isinstance(name, str):
+        raise ValueError(f"{where}: unknown field")
+    tag, dot, member = name.partition(".")
+    if dot:
+        if len(tag) == 4 and tag.isascii():
+            binding = (int.from_bytes(tag.encode("ascii"), "little"), member)
+            if binding in fields:
+                return binding
+        raise ValueError(f"{where}: unknown field")
+    matches = [(component, field) for component, field in fields if field == name]
+    if not matches:
+        raise ValueError(f"{where}: unknown field")
+    if len(matches) > 1:
+        options = [f'field = "{tag}.{field}"' for tag, field in
+                   sorted((component.to_bytes(4, "little").decode("ascii"), field) for component, field in matches)]
+        raise ValueError(f"{where}: ambiguous field; use " + " or ".join(options))
+    return matches[0]
 
 
 def tracks_glb(values):
@@ -188,6 +218,7 @@ def tracks_glb(values):
     nodes, indices, channels, seen = [], {}, [], set()
     required = {"object", "field", "interp", "keys"}
     extension = scene_fields.SCENE_FIELDS_EXTENSION
+    fields = scene_fields.fields()
     for i, track in enumerate(tracks):
         if not isinstance(track, dict):
             raise ValueError(f"track {i} key 0: expected a table")
@@ -198,24 +229,25 @@ def tracks_glb(values):
             raise ValueError(f"{where}: missing or unexpected track entries")
         if not isinstance(obj, str) or not obj or "\0" in obj:
             raise ValueError(f"{where}: object must be a nonempty name without NUL")
-        if not isinstance(field, str) or field not in scene_fields.FIELDS:
-            raise ValueError(f"{where}: unknown field")
+        component, field = resolve_field(field, fields, where)
         interp = track["interp"]
         if not isinstance(interp, str) or interp not in INTERPOLATIONS:
             raise ValueError(f"{where}: interp must be step, linear or cubic")
-        if (obj, field) in seen:
+        binding = (obj, component, field)
+        if binding in seen:
             raise ValueError(f"{where}: duplicate track")
-        seen.add((obj, field))
-        component, value_type = scene_fields.FIELDS[field]
+        seen.add(binding)
+        value_type, _ = fields[component, field]
+        transform = scene_fields.TRANSFORM_FIELDS.get(field) if component == scene_fields.TRANSFORM else None
         interp = INTERPOLATIONS[interp]
-        times, rows = track_curve(track, label, value_type, interp)
+        times, rows = track_curve(track, label, value_type, interp, field if transform else None)
         if obj not in indices:
             indices[obj] = len(nodes)
             nodes.append(dict(name=obj))
         node = indices[obj]
         channel = dict(interpolation=interp, times=times, values=rows)
-        if field in scene_fields.TRANSFORM_PATHS:
-            channel.update(node=node, path=scene_fields.TRANSFORM_PATHS[field])
+        if transform:
+            channel.update(node=node, path=transform[0])
         else:
             tag = component.to_bytes(4, "little").decode("ascii")
             channel.update(path="pointer", pointer=f"/nodes/{node}/extensions/{extension}/{tag}/{field}")

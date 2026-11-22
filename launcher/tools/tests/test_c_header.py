@@ -10,6 +10,22 @@ from build.c_header import read_define  # noqa: E402
 
 
 class CHeaderTests(unittest.TestCase):
+    def test_asset_type_define_reads_little_endian_tag(self):
+        with tempfile.TemporaryDirectory() as temp:
+            header = pathlib.Path(temp) / "values.h"
+            header.write_text("#define ITEM_ASSET ASSET_TYPE('T', 'E', 'S', 'T')\n")
+            self.assertEqual(read_define(header, "ITEM_ASSET"), int.from_bytes(b"TEST", "little"))
+
+    def test_enum_counts_on_from_explicit_values(self):
+        from build.c_header import read_enum
+
+        with tempfile.TemporaryDirectory() as temp:
+            header = pathlib.Path(temp) / "values.h"
+            header.write_text("typedef enum { OTHER } other_t;\n"
+                              "typedef enum __attribute__((packed)) { A = 4, /* a, b */\n"
+                              "    B, // c,\n    C_COUNT\n} c_t;\n")
+            self.assertEqual(read_enum(header, "c_t"), {"A": 4, "B": 5, "C_COUNT": 6})
+
     def test_named_math_call_matches_literal(self):
         with tempfile.TemporaryDirectory(dir=ROOT / "launcher") as temp:
             header = pathlib.Path(temp) / "values.h"

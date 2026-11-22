@@ -5,6 +5,7 @@ raster_cull_view.c, and the series every counts chart draws."""
 import pathlib
 import re
 
+from build.c_header import read_enum
 from docs.plot_style import INK, MUTED, SLOTS, style_axes
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
@@ -14,16 +15,9 @@ LINE_WIDTH = 1.4
 SIZE_PREFIX = "sized_"
 
 
-def enum_value(enum, prefix, name, source=CULL_HEADER):
-    """A named value's place in its owning header's enum."""
-    text = pathlib.Path(source).read_text(encoding="utf-8")
-    body = re.search(r"typedef enum(?: __attribute__\(\(\w+\)\))? \{(.*?)\} " + enum + ";", text, re.S)[1]
-    return re.findall(prefix + r"(\w+)", body).index(name)
-
-
 UPSCALE_HEADER = ROOT / "launcher/main/render/upscale.h"
-UPSCALE_PATHS = {enum_value("upscale_path_t", "UPSCALE_", name, UPSCALE_HEADER): name.lower()
-                 for name in ("MAPPED", "KEPT", "DOUBLED", "BLOCKS")}
+UPSCALE_PATHS = {value: name.removeprefix("UPSCALE_").lower()
+                 for name, value in read_enum(UPSCALE_HEADER, "upscale_path_t").items()}
 
 
 def upscale_counts(counts):
