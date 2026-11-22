@@ -1,4 +1,15 @@
-/* scene_capybara_sponza: two capybaras gallop in parallel lanes through Sponza, with a camera following the hero. */
+/*
+ * scene_capybara_sponza: two capybaras' run down Sponza's atrium. Sponza (its
+ * fitted full bake) and the capybaras load as scenes, all drawn through
+ * Sponza's camera. Each runner idles between the first pair of columns at the
+ * lion end, gallops down its own lane near the sunlit +z columns and comes to
+ * rest between the last pair (a motion profile scaled by its size), its clip
+ * and rate from its ground speed (gait). A third-person camera on the hero's
+ * -z side, looking toward the sunlit columns, sees it from a front
+ * three-quarter while it idles, turns slowly round toward its back as it
+ * runs, never all the way, and back as it comes to rest. Everything is a
+ * function of the path's time, so a frame profile seeks it.
+ */
 #include "apps/render_lab/capybara_sponza/scene_capybara_sponza.h"
 
 #include <math.h>
@@ -30,7 +41,8 @@
 static const char* TAG = "capybara_sponza";
 
 #define RUN_KEY             "capybara-sponza"
-/* The lanes run inside the +z columns, on the atrium floor. */
+/* Sponza is in centimetres, the capybara in metres. The lanes run inside the
+ * sunlit strip of floor along the +z columns, on the atrium floor (y). */
 #define RUN_HERO_LANE_Z     155.0F
 #define RUN_SMALL_LANE_Z    80.0F
 #define RUN_FLOOR_Y         0.0F

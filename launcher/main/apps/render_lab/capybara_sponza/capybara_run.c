@@ -5,6 +5,9 @@
 #include "apps/render_lab/capybara_content.h"
 #include "scene/animator/animator.h"
 
+/* The x of Sponza's first and last pairs of columns from the lion's west wall
+ * (its source mesh); still for 3 s at each end, 2.5 s easing to full gallop and
+ * as long back. */
 #define RUN_START_X (-616.0F)
 #define RUN_END_X   487.0F
 #define RUN_REST_S  3.0F

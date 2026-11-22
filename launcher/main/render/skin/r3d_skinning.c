@@ -58,16 +58,12 @@ r3d_skin_output_init(const r3d_lit_mesh_t* bind, void* block, size_t bytes, r3d_
 bool
 r3d_skin_normal_palette(const mat4f_t* palette, int joints, mat4f_t world, mat3f_t* normals) {
     const mat3f_t linear = mat3f_from_mat4(world);
-    const vec3f_t x = {linear.m[0][0], linear.m[0][1], linear.m[0][2]};
-    const vec3f_t y = {linear.m[1][0], linear.m[1][1], linear.m[1][2]};
-    const vec3f_t z = {linear.m[2][0], linear.m[2][1], linear.m[2][2]};
     /* One factor for the instance keeps differently scaled joints in proportion when blended. */
-    const float world_scale = cbrtf(fabsf(vec3f_dot(x, vec3f_cross(y, z))));
+    const float world_scale = cbrtf(fabsf(mat3f_det(linear)));
     for (int joint = 0; joint < joints; joint++) {
         const mat3f_t matrix = mat3f_mul(linear, mat3f_from_mat4(palette[joint]));
         const mat3f_t cofactor = mat3f_cofactor(matrix);
-        const float det = (matrix.m[0][0] * cofactor.m[0][0]) + (matrix.m[0][1] * cofactor.m[0][1])
-                          + (matrix.m[0][2] * cofactor.m[0][2]);
+        const float det = mat3f_det(matrix);
         if (det == 0.0F || !isfinite(det)) {
             return false;
         }
