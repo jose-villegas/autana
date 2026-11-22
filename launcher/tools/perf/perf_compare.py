@@ -17,7 +17,7 @@ from layout_measure import flash_needs_hot_tunables
 from device_capture import test_matches
 from capture import require_same_board
 from seed_statistics import compare, minimum_seeds, permutation_samples
-from layout_pad import LAYOUT_SEED_MAX  # layout_measure puts tools/build on the path
+from build.layout_pad import LAYOUT_SEED_MAX
 
 DEFAULT_THRESHOLD = 1.0
 DEFAULT_ALPHA = 0.05

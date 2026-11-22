@@ -17,35 +17,12 @@ from seed_statistics import t_quantile
 REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO / "scripts/lib"))
 sys.path.insert(0, str(REPO / "launcher/tools/render"))
-sys.path.insert(0, str(REPO / "launcher/tools/build"))
 from doc_tables import table_rows  # noqa: E402
 from process_tree import run_process_tree, terminate_unwinds  # noqa: E402
 from device_capture import RESULT_RE, BUILD_ID_RE as BUILD_LINE  # noqa: E402
 
-from c_header import read_define
-from console_protocol import TUNE_SET, reply_prefix
+from console_protocol import TUNE_SET, parse_tunable, reply_prefix
 from frame_profile import PROFILE_RE
-
-TUNE_VALUE_MIN = -(2**31)
-TUNE_VALUE_MAX = 2**31 - 1
-TUNE_NAME_MAX = read_define(REPO / "launcher/main/core/tune.h", "TUNE_NAME_MAX")
-
-
-def parse_tunable(name: str, text: str) -> int:
-    assignment = f"{name}={text}"
-    if len(name) > TUNE_NAME_MAX or not re.fullmatch(r"[a-zA-Z0-9_.]+", name):
-        raise ValueError(f"{assignment!r}: expected a console name of at most {TUNE_NAME_MAX} characters")
-    match = re.fullmatch(r"[+-]?(?:0[xX][0-9a-fA-F]+|(?P<octal>0[0-7]*)|[1-9][0-9]*)", text)
-    if not match:
-        raise ValueError(f"{assignment!r}: expected a decimal, octal or hexadecimal integer")
-    try:
-        value = int(text, 8 if match["octal"] else 0)
-    except ValueError as error:
-        raise ValueError(f"{assignment!r}: value must fit int32") from error
-    if not TUNE_VALUE_MIN <= value <= TUNE_VALUE_MAX:
-        raise ValueError(f"{assignment!r}: value must fit int32")
-    return value
-
 
 def flash_needs_hot_tunables(lines=()):
     """Validate setup assignments and select live loads for seeded images."""
