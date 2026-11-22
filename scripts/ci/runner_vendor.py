@@ -5,8 +5,9 @@ run again, up to VENDOR_TRIES attempts, while its commit is still its branch's h
 
 A re-run waits for the run's slowest job, so a job with traced work starts on CANDIDATES runners at once; a
 job with none starts on one. Each candidate marks its vendor with an artifact and waits until it sees its own
-marker listed; then the earliest marked on the lock's vendor does the job, the rest finish green, and a
-wrong-vendor one fails only when no candidate of the attempt is the lock's vendor and none is still to mark.
+marker listed; then the earliest marked on the lock's vendor does the job and the rest finish green. A
+wrong-vendor one waits for its siblings to mark, so when none of the attempt is the lock's vendor they all
+fail together and the re-run draws every one of their runners again.
 Two may do one job when a marker lists late: each uploads under a name holding its candidate, the join keeps
 one copy of a shard once they match, and a lock keeps one row per key. A job's unit is its name without
 " (candidate N)".
@@ -45,11 +46,13 @@ CANDIDATES = 4
 # How often, and how many times, a candidate reads the run's artifacts for its own marker before it decides.
 MARKER_POLL_SECONDS = 5
 MARKER_POLLS = 24
+# How many more reads a wrong-vendor candidate waits for its unmarked siblings, at MARKER_POLL_SECONDS each.
+SIBLING_POLLS = 120
 # A candidate's vendor marker (unit slug, candidate, attempt, vendor) and its job's name (unit, candidate).
 MARKER = re.compile(r"vendor-(.+)-(\d+)-(\d+)-(ok|wrong)")
 CANDIDATE_JOB = re.compile(r"(.+) \(candidate (\d+)\)")
-# What `claim` decides for a candidate: it does the job, another one does, or none can.
-WORK, OTHER, LOST = "work", "other", "lost"
+# What `claim` decides for a candidate: it does the job, another one does, none can, or a sibling is to mark.
+WORK, OTHER, LOST, WAIT = "work", "other", "lost", "wait"
 
 
 def slug(unit):
@@ -67,12 +70,12 @@ def done(artifacts, pattern):
 
 
 def decide(artifacts, running, unit, candidate, attempt, ok):
-    """WORK, OTHER or LOST for a candidate of `unit` whose runner is (`ok`) or is not the lock's vendor.
+    """WORK, OTHER, LOST or WAIT for a candidate of `unit` whose runner is (`ok`) or is not the lock's vendor.
 
     `artifacts` hold this candidate's own marker. Of this attempt's candidates on the lock's vendor, the
-    earliest marked does the job, so one always does. A wrong-vendor one is LOST
-    when none of the attempt is the lock's and none still to mark is `running` (the candidates whose jobs of
-    this attempt have not completed)."""
+    earliest marked does the job, so one always does. A wrong-vendor one is LOST when none of the attempt is
+    the lock's, and WAITs while a sibling still to mark is `running` (the candidates whose jobs of this
+    attempt have not completed)."""
     markers = [(int(m[2]), m[4] == "ok", created) for name, created in artifacts
                if (m := MARKER.fullmatch(name)) and m[1] == slug(unit) and int(m[3]) == attempt]
     claims = sorted((created, index) for index, good, created in markers if good)
@@ -81,7 +84,7 @@ def decide(artifacts, running, unit, candidate, attempt, ok):
     if claims:
         return OTHER
     marked = {index for index, _, _ in markers}
-    return OTHER if set(running) - marked - {candidate} else LOST
+    return WAIT if set(running) - marked - {candidate} else LOST
 
 
 def running_candidates(unit, request=github_api.call):
@@ -155,6 +158,15 @@ def claim(unit, candidate, marker, request=github_api.call, sleep=time.sleep):
         print(f"{marker} is not listed after {MARKER_POLLS} reads; deciding without it")
     attempt, ok = int(os.environ["GITHUB_RUN_ATTEMPT"]), marker.endswith("-ok")
     verdict = decide(artifacts, running_candidates(unit, request), unit, candidate, attempt, ok)
+    for _ in range(SIBLING_POLLS if verdict == WAIT else 0):
+        sleep(MARKER_POLL_SECONDS)
+        verdict = decide(run_artifacts(request), running_candidates(unit, request), unit, candidate, attempt, ok)
+        if verdict != WAIT:
+            break
+    if verdict == WAIT:
+        # A sibling still queued may yet be the lock's vendor; failing now would fail the run it can finish.
+        print(f"a sibling of {unit} has not marked after {SIBLING_POLLS} reads; leaving the job to it")
+        verdict = OTHER
     output(work="true" if verdict == WORK else "false")
     if verdict == LOST:
         print(f"::error title={WRONG_VENDOR}::every candidate for {unit} ran on another CPU vendor than "
