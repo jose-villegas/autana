@@ -59,7 +59,7 @@ that field's table in the asset.
 | `small_fill.ceiling` | `4` | `[0, SMALL_FILL_CEILING_MAX]` | basic | largest bounding-box side in pixel centres filled in one colour; 0 is off; more saves, blurs small detail |
 | `small_fill.gate` | `0` | `[0, SMALL_FILL_GATE_MAX]` | advanced | RGB565 per-channel spread, in packed channel units, a box at the ceiling may span and still fill; 0 lets any |
 | `small_fill.style` | `0` | `[0, SMALL_FILL_STYLE_COUNT)` | advanced | 0 flat, 1 grain, 2 dither (a small_fill_style_t): how a filled box above the always-flat side is coloured |
-| `settle.frame_us` | `4000` | `[0, RENDER_SETTLE_FRAME_US_MAX]` | basic | microseconds a held frame may spend redrawing quiet rows with the texture shortcuts and small fill off, at least one band once due; 0 never refines |
+| `settle.frame_us` | `4000` | `[0, RENDER_SETTLE_FRAME_US_MAX]` | basic | microseconds a held frame may spend redrawing quiet rows at the finest quality, at least one band once due; 0 never refines |
 | `settle.hold_frames` | `6` | `[RENDER_SETTLE_HOLD_MIN, RENDER_SETTLE_HOLD_MAX]` | advanced | frames a band's rows stay unchanged before they refine; fewer refines sooner, redraws rows that move again |
 <!-- /generated: render-settings -->
 
@@ -172,9 +172,9 @@ reports as its triangles.
 
 ## settle
 
-A held view refines quiet rows with the live texture shortcuts and small fill
-off ([Settle.md](frame/Settle.md)). `frame_us` budgets each refine pass;
-`hold_frames` delays a band until its rows have stayed quiet long enough.
+A held view draws quiet rows at the finest LOD without blends, texture
+shortcuts or small fill ([Settle.md](frame/Settle.md)). `frame_us` budgets
+each pass. `hold_frames` sets when a quiet band is due.
 
 ## The render asset
 

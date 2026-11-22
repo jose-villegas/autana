@@ -50,6 +50,7 @@ struct raster {
      * whatever size the picture is drawn at. A second view of the frame
      * leaves it off and draws the levels the frame picked. */
     bool picks_levels;
+    bool finest_levels; /* a settle band reads the fixed finest cut */
     int destination_width, destination_height;
     camera_present_t present;
     upscale_t upscale;     /* maps retained in `scratch`, rebuilt when size changes */

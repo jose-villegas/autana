@@ -1,7 +1,5 @@
 /*
- * render_settle: quiet bands of a held picture refine with live texture
- * shortcuts and small fill off. Live rows reset the bands they touch;
- * middle-out runs spend a budget learned from measured row costs.
+ * render_settle: quiet bands refine to finest detail with texture shortcuts and small fill off.
  */
 #pragma once
 
