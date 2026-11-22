@@ -6,7 +6,8 @@
 
 void
 render_settle_forget(render_settle_t* s) {
-    memset(s, 0, sizeof(*s));
+    memset(s->quiet, 0, sizeof s->quiet);
+    memset(s->refined, 0, sizeof s->refined);
 }
 
 static int
@@ -33,6 +34,15 @@ due(const render_settle_t* s, int band, int hold) {
     return band >= 0 && band < RENDER_SETTLE_BANDS && !s->refined[band] && s->quiet[band] >= hold;
 }
 
+/* A previously refined band can connect two due bands in one raster run. */
+static int
+unrefined_band(const render_settle_t* s, int band, int direction) {
+    while (band >= 0 && band < RENDER_SETTLE_BANDS && s->refined[band]) {
+        band += direction;
+    }
+    return band;
+}
+
 render_rows_t
 render_settle_next(const render_settle_t* s, int height, render_settle_settings_t settings) {
     if (height <= 0 || settings.frame_us <= 0) {
@@ -50,18 +60,22 @@ render_settle_next(const render_settle_t* s, int height, render_settle_settings_
         return (render_rows_t){0, 0};
     }
     int end = first + 1;
-    const int32_t row_us = mathi_max(s->row_us, 1);
+    if (s->row_us == 0) {
+        return (render_rows_t){band_row(first, height), band_row(end, height)};
+    }
+    const int64_t budget_rows = ((int64_t)settings.frame_us << RENDER_SETTLE_COST_FRAC_BITS) / s->row_us;
     bool grew;
     do {
         grew = false;
-        if (due(s, first - 1, settings.hold_frames)
-            && (int64_t)(band_row(end, height) - band_row(first - 1, height)) * row_us <= settings.frame_us) {
-            first--;
+        const int before = unrefined_band(s, first - 1, -1);
+        if (due(s, before, settings.hold_frames) && band_row(end, height) - band_row(before, height) <= budget_rows) {
+            first = before;
             grew = true;
         }
-        if (due(s, end, settings.hold_frames)
-            && (int64_t)(band_row(end + 1, height) - band_row(first, height)) * row_us <= settings.frame_us) {
-            end++;
+        const int after = unrefined_band(s, end, 1);
+        if (due(s, after, settings.hold_frames)
+            && band_row(after + 1, height) - band_row(first, height) <= budget_rows) {
+            end = after + 1;
             grew = true;
         }
     } while (grew);
@@ -78,21 +92,32 @@ render_settle_done(render_settle_t* s, int height, render_rows_t rows, int32_t c
             s->refined[b] = true;
         }
     }
-    const int32_t sample = mathi_max(cost_us / (rows.end - rows.first), 1);
+    const int64_t one_us = INT64_C(1) << RENDER_SETTLE_COST_FRAC_BITS;
+    const int64_t measured = (int64_t)mathi_max(cost_us, 0) * one_us / (rows.end - rows.first);
+    const int64_t sample = measured < one_us ? one_us : measured;
     s->row_us = s->row_us == 0 ? sample : s->row_us + (sample - s->row_us) / RENDER_SETTLE_COST_WEIGHT_DIVISOR;
 }
+
+#define SETTLE_QUALITY_FIELDS(X)                                                                                       \
+    X(texture.divide_px, RENDER_SETTLE_DIVIDE_PX)                                                                      \
+    X(texture.affine_bend, 0.0F)                                                                                       \
+    X(texture.affine_level, 0)                                                                                         \
+    X(texture.far_level, 0)                                                                                            \
+    X(small_fill.ceiling, SMALL_FILL_CEILING_OFF)
+
+#define SETTLE_SET_FIELD(field, value) quality.field = (value);
 
 render_settings_t
 render_settle_quality(const render_settings_t* live) {
     render_settings_t quality = *live;
-    quality.texture = (render_texture_settings_t){.divide_px = RENDER_SETTLE_DIVIDE_PX};
-    quality.small_fill.ceiling = SMALL_FILL_CEILING_OFF;
+    SETTLE_QUALITY_FIELDS(SETTLE_SET_FIELD)
     return quality;
 }
 
+#define SETTLE_DIFFERS(field, value) || live->field != quality.field
+
 bool
 render_settle_refines(const render_settings_t* live) {
-    return live->texture.divide_px != RENDER_SETTLE_DIVIDE_PX || live->texture.affine_bend != 0.0F
-           || live->texture.affine_level != 0 || live->texture.far_level != 0
-           || live->small_fill.ceiling != SMALL_FILL_CEILING_OFF;
+    const render_settings_t quality = render_settle_quality(live);
+    return false SETTLE_QUALITY_FIELDS(SETTLE_DIFFERS);
 }

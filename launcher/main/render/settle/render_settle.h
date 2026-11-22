@@ -9,12 +9,14 @@
 
 #define RENDER_SETTLE_BANDS               32
 #define RENDER_SETTLE_COST_WEIGHT_DIVISOR 8
+#define RENDER_SETTLE_COST_FRAC_BITS      3
 #define RENDER_SETTLE_DIVIDE_PX           1
 
 typedef struct {
-    uint8_t quiet[RENDER_SETTLE_BANDS];
+    uint8_t quiet[RENDER_SETTLE_BANDS]; /* consecutive held frames whose live rows missed this band */
     bool refined[RENDER_SETTLE_BANDS];
-    int32_t row_us;
+    int64_t
+        row_us; /* microseconds per refined row with RENDER_SETTLE_COST_FRAC_BITS fractional bits, 0 until measured */
 } render_settle_t;
 
 void render_settle_forget(render_settle_t* settle);

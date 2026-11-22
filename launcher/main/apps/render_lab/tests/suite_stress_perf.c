@@ -252,8 +252,9 @@ test_stress_stages(void) {
     memcpy(sampled, stress_perf_stages, sizeof stress_perf_stages);
     sampled[STRESS_PERF_STAGES] = STRESS_FLAP_STAGE_NAME;
     int64_t sums[STRESS_PERF_SAMPLED_STAGES] = {0};
-    const int draws = params->hold_camera ? RENDER_SETTINGS_DEFAULT.settle.hold_frames + RENDER_SETTLE_BANDS
-                                          : FRAME_PROFILE_REPLAY_DRAWS;
+    const render_settings_t* settings = render_context_settings(render_context_main());
+    const int draws =
+        params->hold_camera ? settings->settle.hold_frames + RENDER_SETTLE_BANDS : FRAME_PROFILE_REPLAY_DRAWS;
     for (int i = 0; i < params->perf_poses; i++) {
         int64_t stage_us[STRESS_PERF_SAMPLED_STAGES];
         render_lab_test_replay_pose(TAG, camera, duration_ms, (int32_t)stress_pose_ms(params, duration_ms, i),

@@ -1,8 +1,14 @@
 # Settle
 
-`render/settle/render_settle.h`: quiet rows of a held picture refine after
+[`render/settle/render_settle.h`](../../../launcher/main/render/settle/render_settle.h): quiet rows of a held picture refine after
 [partial redraw](Partial-Redraw.md) draws the live changes. A held view is
 never [generated](Frame-Generation.md).
+
+Look for the brick detail and the finer shading on the small triangles after the view settles.
+
+![Live and settled views of the textured wall](../../images/render/settle.png)
+
+![Close-ups of live and settled texture and shading](../../images/render/settle.crops.png)
 
 | Live choice | Refined value |
 |---|---|
@@ -12,13 +18,27 @@ never [generated](Frame-Generation.md).
 | `texture.far_level` | 0: keep texturing |
 | `small_fill.ceiling` | `SMALL_FILL_CEILING_OFF` |
 
-The raster height is split into `RENDER_SETTLE_BANDS` bands. Band `b` covers
-`[b * height / BANDS, (b + 1) * height / BANDS)`. Each held frame draws one
-contiguous run of quiet bands that have not yet refined.
+The raster is split into `RENDER_SETTLE_BANDS` horizontal bands. Band `b`
+covers rows `[b * height / BANDS, (b + 1) * height / BANDS)`.
 
-The first due band is picked middle out: middle, above, below, then outward.
-The run grows around it while the budget buys more rows. At least one band
-is drawn once due, even when its cost exceeds the budget.
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> Quiet
+    Quiet --> Quiet: Untouched increments, live rows reset
+    Quiet --> Due: Count reaches hold_frames
+    Due --> Refined: Selected for a refine draw
+    Due --> Quiet: Live rows reset count
+    Refined --> Quiet: Live rows reset count
+```
+
+A non-held, timed or generated frame forgets every band, as does a zero
+budget or live settings that already match refined quality.
+
+The first due band is picked middle out. With no cost estimate it draws
+alone. A later run can cross a refined band to reach another due band,
+charging the budget for every row it draws. A due band always draws even
+if it exceeds the budget.
 
 | Setting | Meaning |
 |---|---|
@@ -26,16 +46,9 @@ is drawn once due, even when its cost exceeds the budget.
 | `settle.hold_frames` | Quiet frames before a band is due |
 
 Defaults and pack ranges are in [Render-Settings.md](../Render-Settings.md).
-A refined row's measured cost moves the estimate by
-`1 / RENDER_SETTLE_COST_WEIGHT_DIVISOR` per sample.
+The fixed-point cost estimate moves by `1 / RENDER_SETTLE_COST_WEIGHT_DIVISOR`
+of the difference to each sample and survives when the bands are forgotten.
 
-| Event | State |
-|---|---|
-| Live rows touch a band | Quiet count and refined flag reset |
-| Held frame leaves a band alone | Quiet count rises, saturating at `RENDER_SETTLE_HOLD_MAX` |
-| View is not held, budget is zero, or live quality already matches refined | Every band and the cost estimate are forgotten |
-| Timed or generated frame | Every band and the cost estimate are forgotten |
-
-Refinement restores the live settings before keeping the picture. Its time
-is recorded separately from live draw time, so dynamic resolution judges
-held-frame live work alone.
+Refine time goes in `frame.settle_us`, not `frame.draw_us`, so the held-frame
+judgement in [Dynamic-Resolution.md](Dynamic-Resolution.md#a-held-camera)
+sees live work only.

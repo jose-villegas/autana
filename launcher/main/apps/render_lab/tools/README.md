@@ -150,7 +150,10 @@ Source: `water-stages-board.log`
 
 The Stress family draws generated or baked meshes before a moving or held
 camera. Each preset isolates a renderer cost and owns its perf goals.
-Scene runs also cover bake and fit changes.
+
+The presets are the per-PR perf check for r3d work. Scenes run nightly,
+on request, and for bake and fit changes. A scene regression with no
+preset moving becomes a new preset.
 
 Repeated geometry exercises hierarchical visibility<sup>[[112]](../../../../../docs/Citations.md#greene-1993)</sup>;
 the presets vary the copies' geometry, layout and colour modes.
@@ -191,7 +194,7 @@ the presets vary the copies' geometry, layout and colour modes.
 | `stress-small-dither` | ![Stress small dither: a wall of coarse noisy planes, dithered](../../../../../docs/images/overview/render-lab-stress-small-dither.png) | the same wall, its corners far apart in colour, under the dither style | the small fill's dither kernel, which only that setting selects |
 | `stress-small-off` | ![Stress small off: many small spheres, the small fill off](../../../../../docs/images/overview/render-lab-stress-small-off.png) | `stress-tiny-copies` with the small fill off | the row walk's flat fill, which the small fill otherwise takes first |
 | `stress-stack-skip` | ![Stress stack skip: planes one behind another, hidden clusters skipped](../../../../../docs/images/overview/render-lab-stress-stack-skip.png) | `stress-stack`, its camera skipping clusters behind drawn depth as Bistro's does | the capped row walk, every fill's depth held under its cluster's |
-| `stress-settle` | [Live and settled comparison](../../../../../docs/images/render/settle.png) | a held wall of tessellated textured planes | quiet-band refinement, with partial redraw enabled by the preset |
+| `stress-settle` | ![Live and settled comparison](../../../../../docs/images/render/settle.png) | a held wall of tessellated textured planes | quiet-band refinement, with partial redraw enabled by the preset |
 | `stress-carved-blend` | ![Stress carved blend: bumpy balls close up, changing level through dither masks](../../../../../docs/images/overview/render-lab-stress-carved-blend.png) | `stress-carved-near` with `lod.blend` on | the dithered blend's masked fill as a group moves between levels |
 
 ![Butterfly wing motion](../../../../../docs/images/overview/render-lab-butterflies.gif)
@@ -290,7 +293,7 @@ The comparison shows its first live frame and its held picture after refinement.
 ```sh
 launcher/main/apps/render_lab/tools/render_lab_render_host.sh --build-only -o /tmp/settle
 /tmp/settle/render_lab_render --quarter 1 --no-hud --scene stress-settle --frames 1 -o /tmp/settle/live.ppm
-/tmp/settle/render_lab_render --quarter 1 --no-hud --scene stress-settle --frames 40 -o /tmp/settle/settled.ppm
+/tmp/settle/render_lab_render --quarter 1 --no-hud --scene stress-settle --frames 38 -o /tmp/settle/settled.ppm
 python launcher/tools/render/render_compare.py --out /tmp/settle/compare.png \
     --row 'Held textured view' /tmp/settle/live.ppm /tmp/settle/settled.ppm \
     --label-a Live --label-b Settled --crops 2

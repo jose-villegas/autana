@@ -22,7 +22,8 @@ enum { STRESS_PRESETS(STRESS_PRESET_SURFACE) };
 /* Shape, cuts, copies, layout, coverage percent, surface, camera, replay poses and recording. */
 const stress_params_t stress_presets[STRESS_PRESET_COUNT] = {
     [STRESS_SETTLE] = {STRESS_SHAPE_PLANE, 8, 16, STRESS_LAYOUT_WALL, 60, STRESS_SURFACE_OF(SETTLE), STRESS_CAMERA, 6,
-                       .hold_camera = true, .settings = {{TUNE_NAME(render, partial_redraw), 1}}},
+                       .hold_camera = true,
+                       .settings = {{TUNE_NAME(render, partial_redraw), 1}, {TUNE_NAME(render, settle_frame_us), 1}}},
     [STRESS_SKINNED_SH_BLOBS] = {STRESS_SHAPE_PLANE, 1, STRESS_SKINNED_COPIES, STRESS_LAYOUT_WALL, 80,
                                  STRESS_SURFACE_OF(SKINNED_SH_BLOBS), STRESS_CAMERA, 6},
     [STRESS_CONTACT_BLOBS] = {STRESS_SHAPE_PLANE, 1, STRESS_CONTACT_BLOB_COPIES, STRESS_LAYOUT_WALL, 120,

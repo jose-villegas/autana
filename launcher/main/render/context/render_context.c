@@ -591,6 +591,7 @@ draw_timed(render_context_t* c, const render_view_t* view) {
     c->frame.draw_us = (int32_t)(timing_now_us() - began_us);
 }
 
+/* Draws only bands left quiet by the live pass, keeping their cost out of dynres. */
 static __attribute__((noinline)) bool
 settle(render_context_t* c, const render_view_t* view, bool held, render_rows_t live) {
     raster_t* r = &c->raster;
@@ -627,6 +628,19 @@ settle(render_context_t* c, const render_view_t* view, bool held, render_rows_t 
     r->end_row = rows.end;
     c->frame.unchanged = false;
     return true;
+}
+
+static __attribute__((noinline)) bool
+draw_fixed_and_settle(render_context_t* c, const render_view_t* view, bool held) {
+    raster_t* r = &c->raster;
+    const int64_t began_us = timing_now_us();
+    const bool drawn = draw_fixed(c, view);
+    c->frame.draw_us = (int32_t)(timing_now_us() - began_us);
+    const render_rows_t live = !drawn                     ? (render_rows_t){0, 0}
+                               : raster_drew_every_row(r) ? (render_rows_t){0, r->height}
+                                                          : (render_rows_t){r->first_row, r->end_row};
+    const bool settled = settle(c, view, held, live);
+    return drawn || settled;
 }
 
 /* Records the drawn frame so the next one can reuse it. Not inlined: a leaf
@@ -687,14 +701,7 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     const bool fixed = c->policy == RENDER_FIXED && (!c->generating || held);
     c->fixed_drawn = fixed || still;
     if (c->fixed_drawn) {
-        const int64_t began_us = timing_now_us();
-        const bool drawn = draw_fixed(c, view);
-        c->frame.draw_us = (int32_t)(timing_now_us() - began_us);
-        const render_rows_t live = !drawn                     ? (render_rows_t){0, 0}
-                                   : raster_drew_every_row(r) ? (render_rows_t){0, r->height}
-                                                              : (render_rows_t){r->first_row, r->end_row};
-        const bool settled = settle(c, view, held, live);
-        if (!drawn && !settled) {
+        if (!draw_fixed_and_settle(c, view, held)) {
             return true;
         }
     } else {

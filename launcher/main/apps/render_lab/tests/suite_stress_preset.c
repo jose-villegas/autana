@@ -143,12 +143,17 @@ test_settle_holds_a_textured_small_triangle_scene_with_partial_redraw(void) {
     TEST_ASSERT_GREATER_THAN_INT(1, p->cuts);
     TEST_ASSERT_FALSE(stress_per_frame(p));
     bool partial = false;
+    bool one_band = false;
     for (int i = 0; i < STRESS_SETTINGS_MAX && p->settings[i].name != NULL; i++) {
         if (strcmp(p->settings[i].name, TUNE_NAME(render, partial_redraw)) == 0) {
             partial = p->settings[i].value == 1;
         }
+        if (strcmp(p->settings[i].name, TUNE_NAME(render, settle_frame_us)) == 0) {
+            one_band = p->settings[i].value == 1;
+        }
     }
     TEST_ASSERT_TRUE(partial);
+    TEST_ASSERT_TRUE(one_band);
     for (int i = 0; i < p->perf_poses; i++) {
         TEST_ASSERT_EQUAL_UINT32(0, stress_pose_ms(p, WAVE_LATER_MS, i));
     }
