@@ -168,49 +168,20 @@ the glTF clips and the default settings.
 
 ### Ambient irradiance
 
-Ambient is irradiance over pi, like the direct lights.
-
-Ambient is either flat or sampled from a world-space L1 SH grid at each
-skinned renderer's last resolved bounds centre. The grid is borrowed through
-`scene_set_probes()`; `NULL` restores the scene's flat ambient.
-
-Cosine convolution gives `E(n) = constant + gradient * n`, with
-`A0 = π` and `A1 = 2π/3`.<sup>[[128]](../../Citations.md#ramamoorthi-hanrahan-2001)</sup>
-Four RGB radiance coefficients become one constant and a channel-row matrix.
-
-`sh1_rgb_t` uses the real basis order Y00, Y1−1 (+y), Y10 (+z), Y11 (+x),
-with normalisation `SH1_Y00` and `SH1_Y1`.<sup>[[129]](../../Citations.md#sloan-2008)</sup>
-
-| Input | Per mover | Per vertex |
-|---|---|---|
-| Flat ambient | Scene colour × intensity; zero gradient | Direct modes add the constant; table mode bakes it. |
-| Probe grid | Clamp and trilinearly sample packed coefficients, then convolve. | Add sampled ambient; table mode corrects its baked constant. |
-
-The shared table includes the scene's flat ambient. Probe overrides correct
-that constant per renderer, so moving through probes needs no table rebuild.
-
-Table-mode probe shading normalises nonzero normals for the gradient.
-A zero normal uses the ambient constant. Probe ambient lives on the skin
-job's stack; scenes keep no per-entity SH cache.
+Ambient is flat, or sampled from a baked probe grid given by
+`scene_set_probes()` at each skinned renderer's bounds centre; the technique,
+from the bake to the per-vertex shading, is [Light Probes](../frame/Light-Probes.md).
 
 ### Contact discs
 
-Contact discs run after geometry and before composition, sharing its lens
-and depth scale. Bayer coverage falls with squared radius; covered pixels
-halve their RGB565 channels.
-
-Rows are bounded by the near-clipped footprint; off-screen or behind-camera discs visit nothing.
-Bayer coverage uses a homogeneous squared-distance compare with no per-pixel divide.
-
-`scene_set_contact_blob(renderer, ground_y, strength)` uses the renderer's
-world bounds for the disc's centre and radius. Partial redraw covers the
-previous and current renderer and disc bounds. Zero strength disables it.
+`scene_set_contact_blob()` puts a dithered disc on the ground under a
+renderer; [Contact Shadows](../frame/Contact-Shadows.md) breaks it down.
 
 ## 6. Current limits
 
 - Loop or clamp is set per animator in the scene file, not per clip.
 - A skin whose colours are per face (no vertex colours) cannot be lit.
-- Indirect lighting requires a supplied probe grid; the runtime does not generate grids.
+- Indirect lighting requires a probe grid, baked only for a scene whose import asks for one ([limits](../frame/Light-Probes.md#8-limits)).
 - Influences per vertex are set per pack build, not per rig.
 
 The frame perf harness holds the display quarter, so gravity cannot change

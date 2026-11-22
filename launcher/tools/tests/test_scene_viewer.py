@@ -18,7 +18,9 @@ from anim_probe import has_compiler, write_camera_clip  # noqa: E402
 from anim import track_host
 from build.c_header import read_define
 from r3d import build_pack
+from r3d.import_settings import load_scene  # noqa: E402
 from r3d.lit_mesh import write_lit_mesh  # noqa: E402
+from r3d.poses import flight_camera  # noqa: E402
 
 SCRIPT = TOOLS / "render/scenes/scene_viewer_render_host.sh"
 
@@ -50,6 +52,12 @@ name = "offset"
 position = [2.0, 0.0, -1.0]
 [objects.mesh_renderer]
 mesh = "card.import.toml"
+[[objects]]
+name = "visitor"
+[objects.camera]
+half_fov_short_tan = 0.6
+near_z = 1.0
+background = 0x204080
 [[objects]]
 name = "camera"
 [objects.camera]
@@ -241,16 +249,16 @@ path = { animation = "fly.anim.toml", node = "camera" }
         self.assertNotEqual(first.tobytes(), small.tobytes())
 
     def test_small_fill_ceiling_range(self):
-        maximum = read_define(TOOLS.parent / "main/render/render_view.h", "SMALL_FILL_CEILING_MAX")
+        maximum = read_define(TOOLS.parent / "main/render/settings/render_settings.h", "SMALL_FILL_CEILING_MAX")
         for ceiling in (0, maximum):
             with self.subTest(ceiling=ceiling):
-                run, _ = self.render("--small-fill", f"{ceiling},16,0")
+                run, _ = self.render("--set", f"render.small_fill.ceiling={ceiling}")
                 self.assertEqual(run.returncode, 0, run.stderr)
         for ceiling in (maximum + 1, 255, -1):
             with self.subTest(ceiling=ceiling):
-                run, _ = self.render("--small-fill", f"{ceiling},16,0")
+                run, _ = self.render("--set", f"render.small_fill.ceiling={ceiling}")
                 self.assertNotEqual(run.returncode, 0)
-                self.assertIn("--small-fill", run.stderr)
+                self.assertIn("render.small_fill.ceiling", run.stderr)
 
     def test_unknown_camera_and_invalid_options_fail(self):
         for args, word in ((["--camera", "absent"], "absent"), (["--view", "invalid"], "invalid"),
@@ -266,6 +274,17 @@ path = { animation = "fly.anim.toml", node = "camera" }
         video = self.root / "clip.avi"
         self.pixels("--object", "card", "--video", str(video))
         self.assertEqual(video.read_bytes()[:4], b"RIFF")
+        with open(str(video) + ".poses.csv") as handle:
+            poses = list(csv.DictReader(handle))
+        # The video's two frames, where they stood: the rows --poses writes for the same run.
+        logged = self.root / "logged.csv"
+        self.pixels("--object", "card", "--poses", str(logged))
+        with open(logged) as handle:
+            self.assertEqual(poses, list(csv.DictReader(handle)))
+        self.assertEqual([pose["frame"] for pose in poses], ["0", "1"])
+        run, _ = self.render("--video", str(video), "--poses", str(logged))
+        self.assertNotEqual(run.returncode, 0)
+        self.assertIn("drop --poses", run.stderr)
 
     def test_wrapper_build_only_uses_the_requested_directory_and_never_renders(self):
         out = self.root / "build only"
@@ -304,6 +323,20 @@ path = { animation = "fly.anim.toml", node = "camera" }
         for pose in poses:
             self.assertAlmostEqual(float(np.linalg.norm([float(pose[q]) for q in ("qx", "qy", "qz", "qw")])), 1.0,
                                    places=5)
+
+    def test_default_camera_is_the_first_on_a_path_as_the_tools_sample(self):
+        # The fixture's first camera, "visitor", stands still; the flight is the second, as in a scene whose fits
+        # train over a region. A flythrough render and the poses the tools sample must agree on the camera.
+        def poses(*args):
+            rows = self.root / "default-poses.csv"
+            run, _ = self.render("--poses", str(rows), "--frames", "3", *args)
+            self.assertEqual(run.returncode, 0, run.stderr)
+            with open(rows) as handle:
+                return list(csv.DictReader(handle))
+        scene = load_scene(self.scene)
+        flight = flight_camera(scene)
+        named = next(obj.name for obj in scene.objects if obj.component is flight)
+        self.assertEqual(poses(), poses("--camera", named))
 
     def test_packer_replaces_a_scratch_mesh_for_one_render_only(self):
         scratch = self.root / "scratch mesh"

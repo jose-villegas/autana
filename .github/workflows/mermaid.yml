@@ -78,8 +78,16 @@ jobs:
           node scripts/gates/check-mermaid.mjs --github-version --write
           npm install --package-lock-only --ignore-scripts --prefix scripts/gates/mermaid
 
+      - name: Refresh App token
+        id: app
+        uses: ./.github/actions/refresh-token
+        with:
+          client-id: ${{ secrets.DOC_REFRESH_APP_ID }}
+          private-key: ${{ secrets.DOC_REFRESH_APP_PRIVATE_KEY }}
+
       - name: Open or update the bump PR, or close a stale one
         env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
           TITLE: "build: pin check-mermaid to GitHub's mermaid"
         run: |
           set +e
@@ -93,8 +101,6 @@ jobs:
           [ "$code" -eq 0 ] || exit "$code"
           {
             echo "GitHub renders with mermaid $(node -p "require('./scripts/gates/mermaid/package.json').overrides.mermaid"); this moves the pin and lockfile to it, made by \`.github/workflows/mermaid.yml\` on ${GITHUB_SHA::7}."
-            echo
-            echo "Checks do not start on a PR opened by the workflow: close and reopen it to render every diagram with the new version."
             echo
             echo "Ticket: 4bg6"
           } > "$RUNNER_TEMP/body.md"

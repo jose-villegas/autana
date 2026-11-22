@@ -50,41 +50,31 @@ rule, and a mesh of mixed sizes to one fill per pixel.
 ## Small fill
 
 Eligible triangles skip plane setup and use one depth, with colour from the
-camera's style.
+chosen style.
 
-The camera owns the bounding-box ceiling, colour gate and
-style; `render_view_t.small_fill` carries them to the frame's row workers.
+The bounding-box ceiling, colour gate and style are render settings,
+`small_fill` in [Render-Settings.md](../Render-Settings.md#the-settings), so an
+app picks them for every scene it draws. The frame resolves them once for its
+row workers.
 
 | Preset | Ceiling/gate, style | Use |
 |---|---|---|
-| `SMALL_FILL_SMOOTH` | 4/0 FLAT | Cameras start with it; it preserves the smooth rendering checksum |
+| `SMALL_FILL_SMOOTH` | 4/0 FLAT | The default; it preserves the smooth rendering checksum |
 | `SMALL_FILL_FAST` | 12/16 FLAT | Apps opt in for the measured frame-cost gains |
 | `SMALL_FILL_FAST_DITHER` | 12/16 DITHER | FAST's ceiling and gate with the DITHER style |
 | `SMALL_FILL_FAST_GRAIN` | 12/16 GRAIN | FAST's ceiling and gate with the GRAIN style |
 
-<!-- generated: small-fill-levers sha256=46ed813c7858d86cdd5da15850ac97079edbfa75daf563de4d3405d5a429d84d -->
-| Camera field | Range | Default | Effect |
-|---|---|---|---|
-| `ceiling` | 0..16 | 4 | Largest bounding-box side in pixel centres; 0 disables small fill |
-| `gate` | 0..255 | 0 | Vertex RGB565 spread limit at the ceiling; 0 disables the colour gate |
-| `style` | 0..2 | 0 | FLAT (0), GRAIN (1), DITHER (2) |
-<!-- /generated: small-fill-levers -->
+The presets are defined in
+[`render_settings.h`](../../../launcher/main/render/settings/render_settings.h). An app sets one in its
+[`.render.toml`](../Render-Settings.md#the-render-asset):
 
-The presets are defined in `render_view.h`. Opt in with the
-[scene camera API](../scene/Scene-Components.md#what-an-app-calls), or pass custom `small_fill_t` values:
-
-<!-- generated: scene-small-fill-example check: python launcher/tools/gen/examples_doc.py --check -->
-```c
-/* Small fill: choose the fast policy for a scene camera. */
-#include "scene/camera/camera.h"
-#include "scene/scene.h"
-
-static bool
-small_fill_example(entity_t camera) {
-    return camera_set_small_fill(camera, SMALL_FILL_FAST);
-}
+```toml
+# SMALL_FILL_FAST_DITHER
+[small_fill]
+ceiling = 12
+gate = 16
+style = 2
 ```
-<!-- /generated: scene-small-fill-example -->
 
 The gate:
 
@@ -118,13 +108,13 @@ Clips show the same full renderer frames and camera window, one look per GIF.
 The [temporal method](../../tools/Render-Harness.md#temporal-video-columns)
 measures triangle-scale pops; the difference clips also show spatial noise.
 
-<!-- generated: small-fill-temporal sha256=0983d41d867fce3d1a34a1f7241f4eda1f5f0a3a1964813989971b9ab17719e7 -->
+<!-- generated: small-fill-temporal sha256=a1ee658c3f2266c9ab1e8572505aa71ccb3c3b6bff0e5326b7bd4762d4b939c2 -->
 | Look vs SMOOTH | Extra frame-to-frame change (levels of 255) | Blocks popping (>8/255) |
 |---|---|---|
 | SMOOTH (4/0 FLAT) | 0.000 | 0.0000% |
-| FAST (12/16 FLAT) | 0.902 | 2.0499% |
-| 12/16 GRAIN | 1.010 | 2.2769% |
-| 12/16 DITHER | 1.153 | 3.3965% |
+| FAST (12/16 FLAT) | 0.727 | 1.9213% |
+| 12/16 GRAIN | 0.796 | 2.0168% |
+| 12/16 DITHER | 0.910 | 2.8468% |
 <!-- /generated: small-fill-temporal -->
 
 ### Board frame-cost gains when opted in

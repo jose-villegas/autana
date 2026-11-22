@@ -76,6 +76,9 @@ $K$ where the next bounce is negligible beside the direct light.
 
 The paths' noise falls as $1/\sqrt{R}$.
 
+Only static meshes are baked. A skinned mesh takes its sky and bounce light
+at run time from baked probes ([Light Probes](../frame/Light-Probes.md)).
+
 ![The light each of three bounces adds along the floor, and the relative error against the ray count](../../images/render/bake-bounce-sweep.png)
 
 | Rule | Why |
@@ -94,6 +97,10 @@ it reaches. Where bounce light changes the picture is measured in
 [Bake-Quality.md](Bake-Quality.md#indirect-light).
 
 ## Fidelity against a reference
+
+With `geometry.alpha_mask`, the reference keeps the full source and alpha-tests
+each hit at its interpolated UV. Primary, shadow and bounce rays pass through
+alpha below `keep_alpha`; the importer's triangle drop applies to drawn geometry.
 
 How close is a bake to the ground truth, and where is it off? The reference
 renderer lights the full source mesh per pixel, with the scene's own lights,

@@ -129,13 +129,13 @@ class CoincidentFaceTests(unittest.TestCase):
         positions, tris, intersector = scene(*(card([0, 0, -z], half=100) for z in range(layers)))
         origin, direction = camera_rays(16, 12, 0.62, EYE[:3], EYE[3:], 2, 0)
         counted = []
-        first_hits = intersector.first_hits
+        first_hits = intersector._first_hits
 
         def counting(origins, directions):
             counted.append(len(origins))
             return first_hits(origins, directions)
 
-        with mock.patch.object(intersector, "first_hits", side_effect=counting):
+        with mock.patch.object(intersector, "_first_hits", side_effect=counting):
             all_hits(intersector, origin, direction)
             all_rays = sum(counted)
             counted.clear()

@@ -175,7 +175,7 @@ class QueryChecks(SoupFixture):
         origins[2, 0] = 10.0
         active = np.ones(len(origins), bool)
         query = RayQuery(positions, tris, variant=self.VARIANT)
-        with mock.patch.object(query, "first_hits", wraps=query.first_hits) as traced:
+        with mock.patch.object(query, "_first_hits", wraps=query._first_hits) as traced:
             rounds = query.hit_rounds(origins, directions, active)
             first = next(rounds)
             self.assertEqual(first[0].tolist(), [0, 0])

@@ -2,10 +2,10 @@
 """Cached bakes: the content a pack needs, named by a digest of what makes them.
 
     python launcher/tools/bake/bake.py list [PATH ...] [--missing] [--kind mesh|reference|fit|levels|texture|sound]
-    python launcher/tools/bake/bake.py bake [PATH ...] [--kind KIND] [--only OUTPUT ...] [--again] [--out DIR]
-                                            [--from-run N ...] [--shard K/N | --shards DIR]
-    python launcher/tools/bake/bake.py shards [PATH ...]
-    python launcher/tools/bake/bake.py lock [PATH ...] [--from-run N ... | --seed] [--cache DIR]
+    python launcher/tools/bake/bake.py bake [PATH ...] [--kind KIND ...] [--only OUTPUT ...] [--again] [--out DIR]
+                                            [--from-run N ...] [--shard K/N --plan DIR | --shards DIR]
+    python launcher/tools/bake/bake.py shards [PATH ...] [--out DIR]
+    python launcher/tools/bake/bake.py lock [PATH ...] [--from-run N ... [--partial] | --seed] [--cache DIR]
     python launcher/tools/bake/bake.py check [PATH ...]
     python launcher/tools/bake/bake.py fetch [PATH ...] [--cache DIR] [--offline]
     python launcher/tools/bake/bake.py path OUTPUT [--cache DIR] [--offline]
@@ -30,17 +30,18 @@ bytes; only the final bundle enters a pack. The reference set is keyed on what i
 (reference_set.ReferenceInputs), not on the start, so fits that share those inputs share it. A fit reads
 only locked bytes, so it makes the same bytes on any GPU in the pinned environment.
 A renderer with `textures` adds a CPU texture bake (`<entry>.texture.pack`, r3d/texture/) whose key
-names its packed mesh's locked bytes; its entries join that mesh's pack.
+names its packed mesh's locked bytes, or those `bake` made of it in the same command; its entries join that
+mesh's pack.
 
-`list` prints every bake with its key, or with `--missing` those LOCK lacks. `bake` makes each bake LOCK has no
-row for into the cache (produce.py), and with `--out` also copies each one there as it is made, the folder a CI
+`list` prints every bake with its key, or with `--missing` those a run must make: LOCK has no row for it, or a
+seeded one. `bake` makes each of them into the cache (produce.py), and with `--out` also copies each one there as it is made, the folder a CI
 run uploads, so a run cut short still uploads what it finished; `--from-run N` first takes run N's uploads made on a
 host like this one into the cache, so a rerun makes only what is left; `--only` limits it to the named outputs and
 `--again` re-makes them even when locked, a fit from fresh references, to compare a new make with the lock
 (the lock keeps its row). `lock` drops the rows nothing needs, writes the rows it has and then fails naming the bakes still
-without one;
-`--from-run N` adds the rows CI run N made, from its uploads, and is the only
-way a new bake row is written. Sound bakes use the CPU Bakes run. It repeats, so the meshes of a Bakes run
+without one, or with `--partial` only names them;
+`--from-run N` adds the rows CI run N made, from its uploads; a run still going is refused unless `lock` runs
+in it. It is the only way a new bake row is written. Sound bakes use the CPU Bakes run. It repeats, so the meshes of a Bakes run
 and the fits of a Bakes GPU run lock together, so every locked file can be published; `--seed`
 locks the keys LOCK lacks, keeping every row it has: a new key takes the bytes
 of the stale row for the same output when there is one, else the tree's file,
@@ -52,6 +53,10 @@ missing, unneeded or different, exactly.
 LOCK's `[[poses]]` rows hold the digest and count of each camera-path sampling, keyed on its clip bytes,
 sampling arguments and sampler code. `lock` samples and writes them. A key computed from a held row needs
 no host C compiler.
+
+`shards --out DIR` chooses each missing reference set's poses once, writes them and its render calls to DIR,
+and prints the shard matrix. Every `bake --kind reference --shard K/N --plan DIR` renders that plan's poses
+and copies its pose files byte for byte; shards never select poses. A local unsharded bake selects its own.
 
 `fetch` puts every
 locked file in the cache, from the release when it is not there; `--offline`
@@ -141,18 +146,19 @@ STAGES = {
     "blend": ("gltf/blend_skin_to_glb.py",),
     "sound": ("audio/sound_import.py",),
     "texture": ("r3d/texture/texture_stage.py:texture",),
+    "sh_probes": ("r3d/sh_probe_bake.py:bake",),
 }
 BLEND_EXPORT = "gltf/blend_skin_to_glb.py"
 GLB_SUFFIX = ".glb"
 # The order kinds are made in: a mesh reads the export of its .blend, a fit its start and reference set.
-KINDS = ("blend", "mesh", "reference", "fit", "levels", "texture", "sound")
+KINDS = ("blend", "mesh", "reference", "fit", "levels", "texture", "sound", "sh_probes")
 # The kinds whose key names the locked bytes of a packed bake before them, so a run makes them after it.
 FOLLOWING_KINDS = ("levels", "texture")
 # A textured renderer's texture bake: its materials' LTEX entries and its mesh's LUVS (r3d/texture/), as a pack.
 TEXTURE_SUFFIX = ".texture.pack"
 WAITS = {"levels": "waits for its fit", "texture": "waits for its mesh"}
 # The kinds that trace rays on the CPU, whose bytes differ between CPU vendors (LOCK's mesh_cpu_vendor).
-TRACED_KINDS = ("mesh", "reference")
+TRACED_KINDS = ("mesh", "reference", "sh_probes")
 # A run traces its missing reference sets in shards that each take a share of every set's poses, as many as keep a
 # shard near REFERENCE_SHARD_SECONDS on a hosted 4-CPU runner: a quarter of the 6 h cap, room for a scene whose rays
 # cost more than the calibration's. The rate is bistro.street_fitted's primary rays over its hosted trace time.
@@ -352,7 +358,8 @@ def closure(entries, stop=(), consumers=False, roots=()):
                    if name in tracked_modules() and module_file(name, "", 0, roots) is None})
     if lost:
         raise SettingsError("imports of tracked modules bake.py cannot place, so their code would be left "
-                            "out of the key: " + ", ".join(f"{name} in {path}" for path, name in lost))
+                            "out of the key (only top-level sys.path calls are read): "
+                            + ", ".join(f"{name} in {path}" for path, name in lost))
     return sorted(found)
 
 
@@ -480,12 +487,16 @@ def native_inputs(files):
         tree, constants, _ = module_facts(path)
         headers = set()
         for node in ast.walk(tree):
-            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in ("read_define", "checked_struct"):
+            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                    and node.func.id in ("read_define", "read_defines", "checked_struct")):
                 try:
                     header = pathlib.Path(eval(compile(ast.Expression(node.args[0]), str(path), "eval"),
                                                {"__builtins__": {}}, constants)).resolve()
+                except (NameError, TypeError, ValueError, IndexError):
+                    continue
+                try:
                     header_text = header.read_text(encoding="utf-8")
-                except (NameError, TypeError, ValueError, IndexError, OSError) as error:
+                except OSError as error:
                     raise SettingsError(f"{path}:{node.lineno}: cannot resolve read_define header: {error}") from error
                 if header not in defines:
                     values = {}
@@ -667,19 +678,15 @@ def mesh_recipe(job, scene, tools, poses=None, unavailable=None):
     return recipe
 
 
-def fit_recipe(fit, settle=None):
-    """The renderer's fit and the import's `settle` (geometry.budget), left out when unset so a mesh without it
-    keeps its key; geometry.probes reaches the fit through the reference key."""
-    recipe = dict(vars(fit))
-    if settle is not None:
-        recipe["settle"] = canonical(settle)
-    return recipe
+def fit_recipe(fit):
+    """The renderer's fit settings; probes reach the fit through the reference key."""
+    return dict(vars(fit))
 
 
 def reference_recipe(inputs, tools, poses=None, unavailable=None):
     """A fit's reference set by every field of its reference_set.ReferenceInputs: the import as a mesh counts
     it, the camera by its lens and sampled poses (a camera without a path has none: its views are all probes),
-    probes and shaped only when set, the rest as parsed."""
+    probes only when set, the rest as parsed."""
     recipe = {}
     for field in dataclasses.fields(inputs):
         value = getattr(inputs, field.name)
@@ -695,7 +702,7 @@ def reference_recipe(inputs, tools, poses=None, unavailable=None):
                                for name, field in (("train", "train_every_ms"),
                                                    ("coverage", "coverage_every_ms"))}
             recipe["camera"] = camera
-        elif field.name in ("probes", "shaped"):
+        elif field.name == "probes":
             if value:
                 recipe[field.name] = canonical(value)
         else:
@@ -720,7 +727,7 @@ def stage_keys(job, scene, tools, starts=None, poses=None):
         start_sha256 = None if starts is None else starts.get(start)
         reference_sha256 = None if starts is None or reference is None else starts.get(reference)
         fit = None if start_sha256 is None or reference_sha256 is None else digest(
-            ["fit", reference_sha256, start_sha256, fit_recipe(job.renderer.fit, job.settings.fit.budget),
+            ["fit", reference_sha256, start_sha256, fit_recipe(job.renderer.fit),
              tools["fit"]])
         fit_sha256 = None if starts is None or fit is None else starts.get(fit)
         levels = None if fit_sha256 is None else digest(
@@ -788,7 +795,7 @@ def bakes_in(packs, jobs, starts=None, poses=None):
         starts = locked_starts(held) if starts is None else starts
         poses = Poses(rows) if poses is None else poses
     tools = {stage: tool_digest(stage) for stage in STAGES}
-    found, exports, fit_starts, references = [], {}, {}, {}
+    found, exports, fit_starts, references, probes = [], {}, {}, {}, {}
     for name, entries in sorted(packs.items()):
         for entry, source in sorted(entries.items()):
             if source.name.endswith(sound_asset.SUFFIX):
@@ -807,6 +814,20 @@ def bakes_in(packs, jobs, starts=None, poses=None):
             if is_blend(job.settings):
                 export = blend_export(job.settings, tools)
                 exports.setdefault(export.key, export)
+            from r3d.sh_probe_settings import load as load_sh_probes, recipe, SUFFIX
+
+            if scene is not None and load_sh_probes(scene.path) is not None:
+                from r3d.scene_name import scene_id
+
+                probe_recipe = recipe(job, scene, import_recipe(job.settings, tools)[1])
+                probe_key = digest(["sh_probes", probe_recipe, tools["sh_probes"]])
+                probe_output = scene_id(scene.path) + SUFFIX
+                if scene.path in probes and probes[scene.path].key != probe_key:
+                    raise SettingsError(f"{scene.path}: scene has conflicting SH probe requests")
+                probes.setdefault(scene.path, Bake(
+                    output=probe_output, source=asker, holder=job.settings.path.stem, kind="sh_probes",
+                    key=probe_key, suffix=SUFFIX, tree=scene.path.with_name(probe_output),
+                    job=job, scene=scene, packed=False))
             keys = stage_keys(job, scene, tools, starts, poses)
             kind = "fit" if "fit" in keys else "mesh"
             holder = job.object.name if job.object is not None else job.renderer.variant.name
@@ -836,7 +857,7 @@ def bakes_in(packs, jobs, starts=None, poses=None):
             textures = renderer_textures(asker, holder) if job.object is not None else None
             if textures is not None:
                 found.append(texture_bake(found[-1], entry, textures, starts, tools))
-    return list(exports.values()) + list(fit_starts.values()) + list(references.values()) + found
+    return list(exports.values()) + list(fit_starts.values()) + list(references.values()) + list(probes.values()) + found
 
 
 def relative(path):
@@ -1148,9 +1169,7 @@ def github_get(url, token):
 def run_files(run, folder):
     """Downloads what CI run `run` uploaded (its bakes-* artifacts) into `folder`, with the standard
     library and GitHub's API, so a runner without gh can too; artifacts need a token even when public."""
-    token = github_token()
-    if token is None:
-        raise BakeMissing(f"reading run {run}'s uploads needs a GitHub token: GH_TOKEN, or gh signed in")
+    token = run_token(run)
     listing = json.loads(github_get(f"{API_URL}/actions/runs/{run}/artifacts?per_page=100", token))
     for artifact in listing["artifacts"]:
         if fnmatch.fnmatch(artifact["name"], RUN_ARTIFACTS) and not artifact["expired"]:
@@ -1217,6 +1236,30 @@ def runs_mesh_cpu_vendor(found, lock, made, mesh_cpu_vendor):
         raise BakeMissing("cannot lock meshes made on another CPU vendor:\n" + "\n".join(wrong) + "\n"
                           + rerun_on(mesh_cpu_vendor) + ", then lock from that run")
     return mesh_cpu_vendor
+
+
+def run_token(run):
+    """The GitHub token reading CI run `run` needs; raises naming the run without one."""
+    token = github_token()
+    if token is None:
+        raise BakeMissing(f"reading run {run} needs a GitHub token: GH_TOKEN, or gh signed in")
+    return token
+
+
+def run_status(run):
+    """CI run `run`'s status as GitHub's API gives it: `completed` once finished, else queued, in_progress, waiting ..."""
+    return json.loads(github_get(f"{API_URL}/actions/runs/{run}", run_token(run)))["status"]
+
+
+def refuse_unfinished(runs):
+    """Raises naming each run in `runs` that has not finished. The run this process runs in (GITHUB_RUN_ID) is
+    exempt: its CPU job locks its own bakes on its runner and never pushes that lock. Pushing a lock taken from any
+    other run still going would cancel that run (a branch keeps one Bakes run) before it uploads the rest."""
+    current = os.environ.get("GITHUB_RUN_ID")
+    going = [f"run {run} is {status}" for run in runs
+             if str(run) != current and (status := run_status(run)) != "completed"]
+    if going:
+        raise BakeMissing("; ".join(going) + ": lock from a run once it has finished")
 
 
 def runs_made(runs, cache):
@@ -1354,14 +1397,16 @@ def main(argv=None):
     parser.add_argument("--cache", help="the cache directory; the user cache when omitted")
     parser.add_argument("--seed", action="store_true", help="lock: lock the tree's own files")
     parser.add_argument("--from-run", type=int, action="append", metavar="N",
-                        help="lock: add the rows CI run N made; bake: reuse those made on a host like this; repeatable")
-    parser.add_argument("--kind", choices=KINDS, help="list, bake: only this kind")
+                        help="lock: add the rows finished CI run N made; bake: reuse those made on a host like this; repeatable")
+    parser.add_argument("--kind", choices=KINDS, action="append", help="list, bake: only this kind; repeatable")
+    parser.add_argument("--partial", action="store_true", help="lock: name the bakes still to lock without failing")
     parser.add_argument("--blender", help="bake: the Blender to export with; `blender` on PATH when omitted")
-    parser.add_argument("--missing", action="store_true", help="list: only the bakes LOCK has no row for")
+    parser.add_argument("--missing", action="store_true", help="list: only the bakes LOCK has no row for, or only a seeded one")
     parser.add_argument("--out", help="bake: also copy what was made here, for a CI run to upload")
     parser.add_argument("--only", action="append", metavar="OUTPUT", help="bake: only this output; repeatable")
     parser.add_argument("--again", action="store_true", help="bake: make them even when locked, and compare")
     parser.add_argument("--shard", metavar="K/N", help="bake --kind reference: trace shard K of N of each set into --out")
+    parser.add_argument("--plan", metavar="DIR", help="bake --shard: render the poses from shards --out DIR")
     parser.add_argument("--shards", metavar="DIR", help="bake --kind reference: join the shards in DIR, then pack")
     parser.add_argument("--offline", action="store_true", help="fetch: never download")
     args = parser.parse_intermixed_args(argv)  # paths may follow options, as a shell user types them
@@ -1369,6 +1414,9 @@ def main(argv=None):
     from process_tree import progressed
 
     cache = pathlib.Path(args.cache) if args.cache else default_cache()
+
+    def of_kind(kind):
+        return not args.kind or kind in args.kind
     try:
         if args.command == "tool":
             for stage in args.paths:
@@ -1379,6 +1427,10 @@ def main(argv=None):
         paths = args.paths or [DEFAULT_SEARCH]
         tables = read_lock_tables()
         lock, held = tables["bake"], tables["poses"]
+        # The keys a run made: a seeded row's bytes were carried over, so a run makes its key again.
+        made_keys = {key for key, row in lock.items() if not row.get("seeded")}
+        if args.command == "lock" and args.from_run:
+            refuse_unfinished(args.from_run)
         made = runs_made(args.from_run, cache) if args.command == "lock" and args.from_run else {}
         starts = locked_starts(lock, made)
         poses = Poses(held, resample=args.command == "lock")
@@ -1387,11 +1439,13 @@ def main(argv=None):
             # The shard numbers a run traces its missing reference sets in, as a JSON list for a job matrix.
             from bake import produce
 
-            rays = [produce.reference_rays(bake) for bake in found if bake.kind == "reference" and bake.key not in lock]
+            rays = [produce.reference_rays(bake, pathlib.Path(args.out) / bake.output) if args.out
+                    else produce.reference_rays(bake)
+                    for bake in found if bake.kind == "reference" and bake.key not in made_keys]
             print(json.dumps(list(range(reference_shards(sum(rays)))) if rays else []))
         elif args.command == "list":
             for bake in found:
-                if (args.missing and bake.key in lock) or args.kind not in (None, bake.kind):
+                if (args.missing and bake.key in made_keys) or not of_kind(bake.kind):
                     continue
                 print(f"{bake.output}\t{bake.kind}\t{bake.key or WAITS.get(bake.kind, 'waits for its start and reference set')}\t{relative(bake.source)}")
         elif args.command == "bake":
@@ -1406,12 +1460,12 @@ def main(argv=None):
                 parser.error(f"--only: no bake makes {', '.join(unknown)}")
             # A named output of another kind would make a run that bakes nothing and still passes.
             other = sorted(bake.output for bake in found
-                           if bake.output in (args.only or ()) and args.kind not in (None, bake.kind))
+                           if bake.output in (args.only or ()) and not of_kind(bake.kind))
             if other:
-                parser.error(f"--only: {', '.join(other)} not of --kind {args.kind}")
+                parser.error(f"--only: {', '.join(other)} not of --kind {', '.join(args.kind)}")
 
             def to_make(bake, kind):
-                return (bake.kind == kind and args.kind in (None, kind) and (args.again or bake.key not in lock)
+                return (bake.kind == kind and of_kind(kind) and (args.again or bake.key not in made_keys)
                         and not (args.only and bake.output not in args.only))
 
             # Joined shards are traced already, where the shards ran: packing them traces nothing here.
@@ -1434,11 +1488,12 @@ def main(argv=None):
                     raise BakeMissing(refusal)
             if args.shard:
                 shard, count = (int(part) for part in args.shard.split("/"))
-                if args.kind != "reference" or not args.out or not 0 <= shard < count:
-                    parser.error("--shard K/N takes --kind reference, --out DIR and 0 <= K < N")
+                if args.kind != ["reference"] or not args.out or not args.plan or not 0 <= shard < count:
+                    parser.error("--shard K/N takes --kind reference, --out DIR, --plan DIR and 0 <= K < N")
                 for bake in found:
                     if to_make(bake, "reference"):
-                        produce.reference_shard(bake, pathlib.Path(args.out) / f"{bake.output}.shard-{shard}", shard, count)
+                        produce.reference_shard(bake, pathlib.Path(args.out) / f"{bake.output}.shard-{shard}",
+                                                shard, count, args.plan)
                         print(f"traced shard {shard}/{count} of {bake.output}", flush=True)
                 return 0
             for run in args.from_run or ():
@@ -1457,7 +1512,7 @@ def main(argv=None):
 
             rows, made_starts = [], {}
             for kind in KINDS:
-                if args.kind not in (None, kind):
+                if not of_kind(kind):
                     continue
                 if kind in ("fit", *FOLLOWING_KINDS) and made_starts:
                     # A fit's key names its start's bytes: the lock's, else those this run just made, which
@@ -1466,7 +1521,7 @@ def main(argv=None):
                 selected = [bake for bake in found if to_make(bake, kind)]
                 if kind == "mesh":
                     made_rows = _mesh_rows(selected, cache, lock, args.blender, args.again, keep)
-                    made_starts.update({bake.key: row for bake, row in zip(selected, made_rows) if not bake.packed})
+                    made_starts.update({bake.key: row for bake, row in zip(selected, made_rows)})
                     rows.extend(made_rows)
                 else:
                     for bake in selected:
@@ -1480,8 +1535,7 @@ def main(argv=None):
                             bake, cache, lock, args.blender,
                             fresh_references and fresh_references.name))
                         rows.append(row)
-                        if not bake.packed:
-                            made_starts[bake.key] = row
+                        made_starts[bake.key] = row
             differ = []
             for row in rows:
                 locked = lock.get(row["key"])
@@ -1504,7 +1558,9 @@ def main(argv=None):
             write_lock(rows, path=LOCK, poses=poses.used.values(), mesh_cpu_vendor=mesh_cpu_vendor)
             print(f"locked {len(rows)} bakes in {relative(LOCK)}")
             if not args.seed and missing:
-                raise BakeMissing("still to lock:\n" + "\n".join(missing))
+                if not args.partial:
+                    raise BakeMissing("still to lock:\n" + "\n".join(missing))
+                print("still to lock:\n" + "\n".join(missing))
         elif args.command == "check":
             problems = check(found, lock) + check_poses(found, held)
             if problems:

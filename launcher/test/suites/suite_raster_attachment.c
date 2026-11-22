@@ -821,7 +821,7 @@ small_fill_fixture(bool at_gate) {
 }
 
 static __attribute__((noinline)) void
-small_fill_reference(raster_rig_t* r, small_fill_t fill) {
+small_fill_reference(raster_rig_t* r, render_small_fill_settings_t fill) {
     uint16_t* color = (uint16_t*)r->own;
     uint16_t* depth = color + W * H;
     for (int i = 0; i < W * H; i++) {
@@ -850,44 +850,55 @@ small_fill_reference(raster_rig_t* r, small_fill_t fill) {
     }
 }
 
+/* The raster draws with `settings`, whose small fill is `fill`. */
 static void
-assert_small_fill_sequence(raster_rig_t* r, small_fill_t fill) {
-    render_view_t a = r->view;
-    a.small_fill = fill;
+set_small_fill(raster_rig_t* r, render_settings_t* settings, render_small_fill_settings_t fill) {
+    settings->small_fill = fill;
+    r->raster.settings = settings;
+}
+
+static void
+assert_small_fill_sequence(raster_rig_t* r, render_small_fill_settings_t fill) {
+    render_settings_t settings = RENDER_SETTINGS_DEFAULT;
     small_fill_reference(r, fill);
     const size_t bytes = W * H * sizeof(uint16_t);
     uint16_t* expected = (uint16_t*)r->own + 2 * W * H;
     memcpy(expected, r->own, bytes);
-    raster_draw(&r->raster, &a);
+    set_small_fill(r, &settings, fill);
+    raster_draw(&r->raster, &r->view);
     TEST_ASSERT_EQUAL_MEMORY(expected, raster_color(&r->raster), bytes);
     for (int axis = 0; axis < 2; axis++) {
-        render_view_t b = a;
+        render_small_fill_settings_t other = fill;
         if (axis == 0) {
-            b.small_fill.gate = fill.gate == 0 ? UINT8_MAX : 0;
+            other.gate = fill.gate == 0 ? SMALL_FILL_GATE_MAX : 0;
         } else {
-            b.small_fill.style = (fill.style + 1) % SMALL_FILL_STYLE_COUNT;
+            other.style = (fill.style + 1) % SMALL_FILL_STYLE_COUNT;
         }
-        small_fill_reference(r, b.small_fill);
-        raster_draw(&r->raster, &b);
+        small_fill_reference(r, other);
+        set_small_fill(r, &settings, other);
+        raster_draw(&r->raster, &r->view);
         TEST_ASSERT_EQUAL_MEMORY(r->own, raster_color(&r->raster), bytes);
-        raster_census(&r->raster, &a);
-        raster_draw_culled(&r->raster, &a);
+        set_small_fill(r, &settings, fill);
+        raster_census(&r->raster, &r->view);
+        raster_draw_culled(&r->raster, &r->view);
         TEST_ASSERT_EQUAL_MEMORY(expected, raster_color(&r->raster), bytes);
-        raster_draw(&r->raster, &a);
+        raster_draw(&r->raster, &r->view);
         TEST_ASSERT_EQUAL_MEMORY(expected, raster_color(&r->raster), bytes);
     }
+    r->raster.settings = NULL;
 }
 
 static void
-test_view_small_fill_styles_and_frame_isolation(void) {
+test_settings_small_fill_styles_and_frame_isolation(void) {
     raster_rig_t* r = small_fill_fixture(false);
-    TEST_ASSERT_EQUAL_INT(SMALL_FILL_SMOOTH.ceiling, r->view.small_fill.ceiling);
-    TEST_ASSERT_EQUAL_INT(SMALL_FILL_SMOOTH.gate, r->view.small_fill.gate);
-    TEST_ASSERT_EQUAL_INT(SMALL_FILL_FLAT, r->view.small_fill.style);
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_SMOOTH.ceiling, raster_settings(&r->raster).small_fill.ceiling);
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_SMOOTH.gate, raster_settings(&r->raster).small_fill.gate);
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_FLAT, raster_settings(&r->raster).small_fill.style);
+    render_settings_t settings = RENDER_SETTINGS_DEFAULT;
     uint16_t* frames = (uint16_t*)r->own;
     const size_t bytes = W * H * sizeof(*frames);
     for (small_fill_style_t style = SMALL_FILL_FLAT; style < SMALL_FILL_STYLE_COUNT; style++) {
-        r->view.small_fill = (small_fill_t){SMALL_FILL_CEILING_FAST, 0, style};
+        set_small_fill(r, &settings, (render_small_fill_settings_t){SMALL_FILL_CEILING_FAST, 0, style});
         raster_draw(&r->raster, &r->view);
         memcpy(frames + style * W * H, raster_color(&r->raster), bytes);
         for (int previous = SMALL_FILL_FLAT; previous < (int)style; previous++) {
@@ -895,22 +906,23 @@ test_view_small_fill_styles_and_frame_isolation(void) {
         }
     }
     for (small_fill_style_t style = SMALL_FILL_FLAT; style < SMALL_FILL_STYLE_COUNT; style++) {
-        r->view.small_fill = (small_fill_t){SMALL_FILL_CEILING_FAST, 0, style};
+        set_small_fill(r, &settings, (render_small_fill_settings_t){SMALL_FILL_CEILING_FAST, 0, style});
         raster_census(&r->raster, &r->view);
         raster_draw_culled(&r->raster, &r->view);
         TEST_ASSERT_EQUAL_MEMORY(frames + style * W * H, raster_color(&r->raster), bytes);
     }
+    r->raster.settings = NULL;
 }
 
 static void
-test_view_small_fill_frame_transition_limits(void) {
+test_settings_small_fill_frame_transition_limits(void) {
     raster_rig_t* r = small_fill_fixture(true);
-    static const uint8_t ceilings[] = {0, R3D_SPAN_SMALL_MAX_SIDE, R3D_SPAN_SMALL_MAX_SIDE + 1, UINT8_MAX};
-    static const uint8_t gates[] = {0, SMALL_FILL_GATE_FAST, UINT8_MAX};
+    static const int ceilings[] = {0, R3D_SPAN_SMALL_MAX_SIDE, R3D_SPAN_SMALL_MAX_SIDE + 1, UINT8_MAX};
+    static const int gates[] = {0, SMALL_FILL_GATE_FAST, SMALL_FILL_GATE_MAX};
     for (size_t ceiling = 0; ceiling < sizeof ceilings / sizeof ceilings[0]; ceiling++) {
         for (size_t gate = 0; gate < sizeof gates / sizeof gates[0]; gate++) {
             for (small_fill_style_t style = SMALL_FILL_FLAT; style < SMALL_FILL_STYLE_COUNT; style++) {
-                assert_small_fill_sequence(r, (small_fill_t){ceilings[ceiling], gates[gate], style});
+                assert_small_fill_sequence(r, (render_small_fill_settings_t){ceilings[ceiling], gates[gate], style});
             }
         }
     }
@@ -1088,8 +1100,8 @@ run_raster_attachment_suite(void) {
 #endif
     RUN_TEST(test_split_state_forgets_every_share);
     RUN_TEST(test_split_feedback_preserves_pixels_and_null_uses_even_rows);
-    RUN_TEST(test_view_small_fill_styles_and_frame_isolation);
-    RUN_TEST(test_view_small_fill_frame_transition_limits);
+    RUN_TEST(test_settings_small_fill_styles_and_frame_isolation);
+    RUN_TEST(test_settings_small_fill_frame_transition_limits);
 #ifndef DEVICE_BUILD
     RUN_TEST(test_printed_views_match_the_declared_names);
 #endif

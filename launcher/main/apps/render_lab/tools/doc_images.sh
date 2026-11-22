@@ -5,7 +5,7 @@
 #
 #   doc_images.sh <out-tree> <work-dir>
 #
-# <out-tree> holds the app's images in overview/.
+# <out-tree> holds the app's images in overview/, and the figures render pages show in render/.
 #
 # Run from the repository root with $PYTHON set to a Python that has Pillow and numpy.
 # Renderer output goes to logs under <work-dir>.
@@ -15,10 +15,19 @@ set -eu
 . scripts/lib/run.sh
 
 OUT=$1/overview
+RENDER_OUT=$1/render
 W=$2
-run mkdir -p "$W" "$OUT"
+run mkdir -p "$W" "$OUT" "$RENDER_OUT"
 
 run sh launcher/main/apps/render_lab/tools/render_lab_render_host.sh -o "$W" > "$W/scenes.log"
+
+BUTTERFLY_FRAMES=50
+BUTTERFLY_DT=20
+run "$W/render_lab_render" --quarter 1 --no-hud --scene stress-few-butterflies --camera detail \
+    --frames "$BUTTERFLY_FRAMES" --dt "$BUTTERFLY_DT" -o "$W/butterflies-motion.bmp" \
+    --video "$W/butterflies-motion.avi" 2> "$W/butterflies.log"
+run "$PYTHON" launcher/tools/docs/figures.py gif "$W/butterflies-motion.avi" \
+    "$OUT/render-lab-butterflies.gif" --fps "1000/$BUTTERFLY_DT"
 
 # The start of the flythrough, on the fitted full mesh.
 run "$W/render_lab_render" --quarter 1 --no-hud --scene sponza-fitted-full --frames 90 --dt 100 \
@@ -109,3 +118,10 @@ run "$W/render_lab_render" --quarter 1 --no-hud --scene capybara-sponza --frames
     2> "$W/capybara-sponza.log"
 run "$PYTHON" launcher/tools/docs/figures.py gif "$W/capybara-sponza-motion.avi" "$OUT/render-lab-capybara-sponza.gif" \
     --fps "1000/$CAPYBARA_SPONZA_DT"
+
+# One still of the same run, early enough that the capybara is close and its
+# contact blob shows on the floor.
+CAPYBARA_SPONZA_BLOB_FRAMES=30
+run "$W/render_lab_render" --quarter 1 --no-hud --scene capybara-sponza --frames "$CAPYBARA_SPONZA_BLOB_FRAMES" \
+    -o "$W/capybara-sponza-blob.bmp" 2> "$W/capybara-sponza-blob.log"
+run "$PYTHON" launcher/tools/docs/figures.py png "$W/capybara-sponza-blob.bmp" "$RENDER_OUT/contact-blob-atrium.png"

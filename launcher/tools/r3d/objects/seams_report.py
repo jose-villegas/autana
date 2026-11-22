@@ -131,15 +131,9 @@ def main(argv=None):
     if job.renderer.variant is None:
         parser.error('--settings must include the selected renderer variant')
     src = load_source(job.settings)
-    objects, triangles = masked_objects(src, job.settings)
-    indices = {name: i for i, name in enumerate(src.object_names)}
-    if job.settings.alpha_keep is None:
-        owners, materials = src.tri_o, src.tri_m
-    else:
-        owners = np.concatenate([np.full(len(obj.triangles), indices[obj.name]) for obj in objects])
-        materials = np.concatenate([obj.materials for obj in objects])
+    _, triangles = masked_objects(src, job.settings)
     src = copy(src)
-    src.tri_v, src.tri_o, src.tri_m = triangles, np.asarray(owners), np.asarray(materials)
+    src.tri_v = triangles
     selected = match_meshes(src.tri_o, src.tri_m, src.object_names, src.names, job.settings.meshes)
     scale = job.settings.position_scale or POSITION_SCALE
     edges = contact_graph(src.p, triangles, src.tri_o, scale)

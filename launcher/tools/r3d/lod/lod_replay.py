@@ -37,7 +37,7 @@ from r3d.lit_mesh import read_lit_mesh  # noqa: E402
 from r3d.lod import pick  # noqa: E402
 from r3d.geometry import weld_keeping  # noqa: E402
 from r3d.lod.levels import build_levels  # noqa: E402
-from r3d.poses import focal_px, sample_camera_path  # noqa: E402
+from r3d.poses import flight_camera, focal_px, path_poses  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parents[4]
 # Tolerances the summary reports without a budget, in pixels.
@@ -175,12 +175,11 @@ def main(argv=None):
     job = next((j for j in scene.renderers if j.object.name == args.object), None)
     if job is None or job.renderer.fit is None:
         parser.error("--object must name a fitted mesh renderer")
-    if scene.camera is None or scene.camera.component.path is None:
+    camera = flight_camera(scene)
+    if camera is None:
         parser.error("scene needs a camera path")
-    camera = scene.camera.component
-    width, height, lens, near, poses = sample_camera_path(camera.path.animation, camera.path.node, args.every_ms,
-                                                          *(args.size or job.renderer.fit.size),
-                                                          camera.half_fov_short_tan, camera.near_z)
+    width, height, lens, near, poses = path_poses(camera, args.size or job.renderer.fit.size, args.every_ms,
+                                                  either_way_up=False)
     if args.bundle is None:
         from bake import bake
 

@@ -10,10 +10,14 @@ its texture type is
 
 ```mermaid
 flowchart LR
-    Tri["triangle<br/>with u, v"] --> Setup["set-up: light plane,<br/>mip level, u, v planes"]
-    Setup --> Format{format}
-    Format -- MASK1 --> Cut["cut walk,<br/>affine"]
-    Format -- INDEX4 --> Tests{"divide<br/>tests"}
+    Tri["triangle<br/>with u, v"] --> Mip["mip level<br/>from u, v"]
+    Mip --> Format{format}
+    Format -- MASK1 --> Setup["set-up: light,<br/>u, v planes"]
+    Setup -- MASK1 --> Cut["cut walk,<br/>affine"]
+    Format -- INDEX4 --> Far{"level from<br/>far_level on?"}
+    Far -- yes --> Plain["solid fill:<br/>corners' mean,<br/>no u, v or texel"]
+    Far -- no --> Setup
+    Setup -- INDEX4 --> Tests{"divide<br/>tests"}
     Tests -- "any fails" --> Affine["affine walk"]
     Tests -- "all hold" --> Divided["divided walk:<br/>u, v by depth<br/>every segment"]
     Cut --> Pixel["pixel: colormap<br/>at the dithered<br/>light level"]
@@ -30,7 +34,7 @@ its tint, from black at level 0 up to `R3D_TEXTURE_LIGHT_LEVELS - 1`.
 | | INDEX4 | MASK1 |
 |---|---|---|
 | Texel | 4 bits: a palette colour | 1 bit: kept or not |
-| Pixel | the colormap at the texel's colour | texel 0 leaves the pixel; texel 1 draws palette colour 1 |
+| Pixel | the colormap at the texel's colour; a far level, the corners' mean | texel 0 leaves the pixel; texel 1 draws palette colour 1 |
 | Steps | affine, or dividing by depth | affine |
 
 The light level is the vertex light's luminance, stepped across the triangle
@@ -53,6 +57,24 @@ finer level than they need and alias.
 
 The red pixels are the far part of each triangle. A per-span pick would
 remove them.
+
+## Far levels
+
+A level from `texture.far_level` on reads no texel: the triangle goes to
+the solid fill, `r3d_span_triangle_mean()`, in one colour, its corners'
+mean, which is the surface's mean lit colour. It steps no u, v or light,
+and never divides. 0 textures every level.
+
+The default, level 3, starts where a pixel steps eight texels or more, so
+the texels it would read average out towards that colour. The pattern is
+gone there, the colour is the same:
+
+![Bistro's street from above: the source, the street with every level's texels, with its far levels untextured, and each one's CIE76 against the source](../../images/render/bistro-street-far-levels.png)
+
+The crops are where the two differ most: a far triangle meeting a nearer one
+at a hard edge.
+
+![The places the far levels change most, the source above every level's texels and the far levels untextured](../../images/render/bistro-street-far-levels.crops.png)
 
 ## Perspective
 
@@ -85,4 +107,4 @@ CIE76 is the distance between two colours in CIELAB.
   palette, and a textured frame against its source
 - [Mesh-Rendering.md](../Mesh-Rendering.md): the raster this fill is part of
 - [Render-Settings.md](../Render-Settings.md): `texture.divide_px`,
-  `texture.affine_bend` and `texture.affine_level`
+  `texture.affine_bend`, `texture.affine_level` and `texture.far_level`

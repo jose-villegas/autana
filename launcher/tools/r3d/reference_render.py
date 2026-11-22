@@ -27,26 +27,17 @@ from PIL import Image
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from r3d import mesh_source, mitsuba_reference
-from r3d.geometry import corner_normals
+from r3d.cards import emit as card_emit
+from r3d.geometry import corner_normals, hit_barycentrics
 from r3d.import_settings import load_scene
-from r3d.light import albedo_from_uv, coincident_faces, drop_masked, light, open_side_occlusion, to_srgb8
-from r3d.mesh_source import load_source, path_light_for
+from r3d.light import AlphaTest, albedo_from_uv, coincident_faces, light, open_side_occlusion, to_srgb8
+from r3d.mesh_source import load_source, path_light_for, camera_filter
 from r3d.poses import camera_rays, read_poses
 from r3d.ray_query import RayQuery
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "render"))
 
 from colour_maths import expand_565  # noqa: E402
-
-
-def hit_barycentrics(source, hits, locations):
-    """Barycentric weights of ray hits on their source triangles."""
-    faces = source.tri_v[hits]
-    a, b, c = source.p[faces[:, 0]], source.p[faces[:, 1]], source.p[faces[:, 2]]
-    total = np.abs(np.cross(b - a, c - a)).sum(axis=1)
-    wa = np.abs(np.cross(b - locations, c - locations)).sum(axis=1) / total
-    wb = np.abs(np.cross(c - locations, a - locations)).sum(axis=1) / total
-    return np.stack([wa, wb, 1.0 - wa - wb], axis=1)
 
 
 def hit_normals(source, hits, bary):
@@ -81,6 +72,7 @@ def drawn_hits(source, double_materials, origin, direction):
     unless its twin wound the other way lies on it. Where a reduced source's two shells cross, the inner shell's back
     would otherwise show through the outer one."""
     active = np.ones(len(origin), bool)
+    keep = camera_filter(source, alpha=False)
     # The first round yields even when every ray misses, so each list holds at least one array.
     found_at, found_ray, found_tri = [], [], []
     for tri, alive, where in source.intersector.hit_rounds(origin, direction, active):
@@ -88,6 +80,8 @@ def drawn_hits(source, double_materials, origin, direction):
         front = (np.cross(b - a, c - a) * direction[alive]).sum(axis=1) < 0
         shown = np.where(front | np.isin(source.tri_m[tri], double_materials), tri, source.twin[tri])
         drawn = shown >= 0
+        if keep is not None:
+            drawn &= keep(tri, where)
         found_at.append(where[drawn])
         found_ray.append(alive[drawn])
         found_tri.append(shown[drawn])
@@ -103,7 +97,7 @@ def primary_hits(source, job, pose, width, height, lens, samples):
     origin, direction = camera_rays(width, height, lens, pose[:3], pose[3:], samples)
     double_materials = [source.names.index(name) for name in job.settings.double_sided]
     locations, rays, faces = drawn_hits(source, double_materials, origin, direction)
-    bary = hit_barycentrics(source, faces, locations) if len(rays) else np.zeros((0, 3))
+    bary = hit_barycentrics(source.p, source.tri_v, faces, locations) if len(rays) else np.zeros((0, 3))
     normal = hit_normals(source, faces, bary) if len(rays) else np.zeros((0, 3))
     double = np.isin(source.tri_m[faces], double_materials)
     return origin, direction, locations, rays, faces, normal, bary, double
@@ -160,33 +154,42 @@ def device_picture(linear, covered, tonemap_white, background):
     return expand_565(np.round(lit).astype(np.uint8))
 
 
-def source_for(scene, name=None, lit=True):
+def source_for(scene, name=None, lit=True, hide_cards=False, hidden_materials=None):
     """The full-detail source of the scene object `name` (the first mesh renderer
-    when None), alpha-masked and lit as that renderer is baked; returns it with
-    the object's job. `lit=False` skips the ray queries and the
-    bounced-light tracer, which only the bake backend uses, and loads float32 textures."""
+    when None), alpha-tested per hit with that renderer's bake lighting; returns it with
+    the object's job. `lit=False` skips lighting queries and the bounced-light tracer,
+    which only the bake backend uses. Textures are float32 unless selecting cards, whose masks still need rays.
+    `hide_cards` hides the materials accepted by `geometry.cards` from camera rays only (see lit_source)."""
     named = [item for item in scene.renderers if name in (None, item.object.name)]
     if not named:
         raise ValueError(f"the scene places no mesh renderer named {name!r}")
-    return lit_source(named[0], scene, lit), named[0]
+    return lit_source(named[0], scene, lit, hide_cards=hide_cards, hidden_materials=hidden_materials), named[0]
 
 
-def lit_source(job, scene, lit=True):
-    """The full-detail source of `job`, alpha-masked and lit as it is baked, traced on `ray_query.VARIANT`; see
-    source_for."""
+def lit_source(job, scene, lit=True, hide_cards=False, hidden_materials=None):
+    """Full-detail alpha-tested source with bake lighting. `hide_cards` passes accepted materials on camera rays;
+    they still shadow and bounce light onto the surfaces behind them."""
     settings = job.settings
-    source = load_source(settings, np.float64 if lit else np.float32)
-    if settings.alpha_keep is not None:
-        source.tri_v, source.tri_t, source.tri_m, keep = drop_masked(source.p, source.uv, source.tri_v, source.tri_t,
-                                                                 source.tri_m, source.textures, settings.alpha_keep)
-        source.tri_o = source.tri_o[keep]
+    selecting_cards = hide_cards and hidden_materials is None and settings.cards is not None
+    source = load_source(settings, np.float64 if lit or selecting_cards else np.float32)
+    source.camera_hidden = (camera_hidden(source, settings, scene, hidden_materials)
+                            if hide_cards else np.zeros(len(source.tri_v), bool))
+    source.alpha_test = AlphaTest(source, settings.alpha_keep) if settings.alpha_keep is not None else None
     source.corner_normals = corner_normals(source.p, source.tri_v)
     source.twin = coincident_faces(source.p, source.tri_v)[0]
     if not lit:
         return source
-    source.intersector = RayQuery(source.p, source.tri_v)
+    source.intersector = RayQuery(source.p, source.tri_v, hit_filter=source.alpha_test)
     source.bounce = path_light_for(source, job, scene)
     return source
+
+
+def camera_hidden(source, settings, scene=None, hidden_materials=None):
+    """Per source triangle, whether an accepted card material hides it on camera rays."""
+    if hidden_materials is None:
+        accepted, _ = card_emit.carded(source, settings, scene)
+        hidden_materials = [source.names[material] for material, _, _ in accepted]
+    return np.isin(source.tri_m, [source.names.index(name) for name in hidden_materials])
 
 
 def render_sets(inputs, sets, samples=4):
@@ -195,7 +198,7 @@ def render_sets(inputs, sets, samples=4):
     CPU variant (ray_query.py), so the set repeats byte for byte. The bounced-light tracer, which holds the source's
     textures a second time, is dropped before it returns, for the fit that follows in the process."""
     job, scene = inputs.job(), inputs.scene()
-    source = lit_source(job, scene)
+    source = lit_source(job, scene, hide_cards=True)
     try:
         for poses_path, out in sets:
             width, height, lens, _near, poses = read_poses(poses_path)
@@ -306,6 +309,9 @@ def main(argv=None):
     parser.add_argument("--occlusion", action="store_true",
                         help="also write each pose's local occlusion factor as NNNN.occlusion.png (white is open) and "
                              ".npy; the scene must set [bake].ao")
+    parser.add_argument("--hide-cards", action="store_true",
+                        help="camera rays pass materials accepted by geometry.cards, which still shadow and bounce light, "
+                             "as in the fit's references")
     parser.add_argument("--backend", choices=("bake", "mitsuba"), default="bake",
                         help="bake: the scene's bake lighting (default); mitsuba: a path-traced reference")
     parser.add_argument("--spp", type=int, default=mitsuba_reference.DEFAULT_SPP, help="mitsuba: paths per pixel")
@@ -322,6 +328,8 @@ def main(argv=None):
         parser.error("--normals is a bake backend output")
     if args.occlusion and args.backend != "bake":
         parser.error("--occlusion is a bake backend output")
+    if args.hide_cards and args.backend != "bake":
+        parser.error("--hide-cards is a bake backend option")
     if args.backend == "bake" and args.sky:
         parser.error("--sky needs --backend mitsuba")
     scene = load_scene(args.scene)
@@ -334,7 +342,7 @@ def main(argv=None):
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     try:
-        source, job = source_for(scene, args.object, lit=args.backend == "bake")
+        source, job = source_for(scene, args.object, lit=args.backend == "bake", hide_cards=args.hide_cards)
     except ValueError as error:
         parser.error(str(error))
     path = None

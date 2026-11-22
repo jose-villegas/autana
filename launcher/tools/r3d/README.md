@@ -18,7 +18,9 @@ mesh. Nothing here runs on the board.
 | [scene_asset.py](scene_asset.py) | The scene entry (`SCNE`): bakes a scene file's entities, renderers and camera, and reads the entry back as `scene_asset_open()` does. Standard library only. |
 | [mesh_asset.py](mesh_asset.py) | The lit mesh entry's type and byte layout, shared by the baker and the pack builder. Standard library only. |
 | [lit_mesh.py](lit_mesh.py) | `write_lit_mesh()`: cuts a lit mesh into meshlets under a cluster tree, quantizes it, checks it against `r3d_lit_mesh.h`'s invariants and writes it as a `<name>.bundle` pack entry; a flat import carries one RGB565 colour per face and welds positions without colour seams. The size defaults live here and nowhere else. `read_lit_mesh()` reads an entry back. |
+| [sh_probe_bake.py](sh_probe_bake.py) | Incident-radiance L1 probe grids: shared ProbeViews placement, visible sky, path bounces and analytic sun. See [SH probe baking](../../../docs/render/offline/SH-Probes.md) and [SHPR](../../../docs/assets/formats/SHPR.md). |
 | [import_settings.py](import_settings.py) | Reads and validates an import file and a scene file; standard library only, every table closed. |
+| [cards/](cards/) | Selects cut-out materials with probe-weighted billboard clouds, bakes MASK1 pages and LUVS, and reports their coverage and budget. |
 | [mesh_import.py](mesh_import.py) | Bakes an import file, or the meshes a scene file places: loads the local source, runs the steps the import opts into, lights with the scene's lights, then writes each `.bundle` entry into `--out DIR`, or beside a file outside the repository; inside it, bake/bake.py makes a mesh into the bake cache. |
 | [rebake.py](rebake.py) | Rewrites a baked `.bundle`'s clusters from its own triangles and colours, with no relighting. |
 | [gltf_skin.py](gltf_skin.py) | Reads a binary glTF 2.0 and poses its skinned mesh on the CPU: accessors, node tree, one skin, animation sampling (LINEAR, STEP, CUBICSPLINE), linear-blend skinning; reads through [`tools/gltf/`](../gltf/gltf_read.py), the reader and reference sampler [`tools/anim/`](../anim/README.md) shares. Standard library only. |
@@ -88,8 +90,9 @@ what ships.
 ## Fidelity reference
 
 `reference_render.py` takes a scene and the pose file its camera path emits.
-It uses the source mesh after alpha masking, before simplification, and the
-same lights, albedo sampling, tone map and RGB565 quantisation as the bake.
+It keeps the full source before simplification and alpha-tests masked
+materials per hit, including shadow and bounce rays. It shares the bake's
+lights, albedo sampler, tone map and RGB565 quantisation.
 A camera ray passes a single-sided face seen from behind, as the device culls
 it, so where a reduced source's two shells cross the outer one shows.
 The .npy output retains the linear, box-filtered image; the PNG is the form a
@@ -318,7 +321,8 @@ triangles<sup>[[116]](../../../docs/Citations.md#nvidia-optix-bvh-repeat)</sup>.
 hits or misses by the build, now and then a pixel, and the fit makes that pixel a different mesh. The CPU is slower
 than the GPU, paid once per reference key: the fits that read a set share it.
 
-Since a set differs between CPU models, the bake locks it: the CPU Bakes job renders it and packs what the fit reads
+Since a set differs between CPU models, the bake locks it: the Bakes plan job chooses its poses once,
+its shards render those poses, and the join job packs what the fit reads
 (`pack_references`: the training pictures and normals and the pose files) into `<entry>.reference.tar.xz`, and a
 fit's key names those bytes, as it names its start's ([Bakes](../../../docs/assets/Bakes.md)). Every GPU host fits
 from the same set.

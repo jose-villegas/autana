@@ -981,6 +981,14 @@ class DeviceTests(unittest.TestCase):
         self.assertTrue(line.startswith("human reservation: maintainer: panel (since "))
         self.assertIn("65s ago", line)
 
+    def test_only_its_own_person_renews_a_reservation(self):
+        with tempfile.TemporaryDirectory() as root:
+            store = device_lock.LockStore(root)
+            token, _ = store.reserve_human(BOARD, "sam@bench:41", "panel")
+            self.assertEqual(store.reserve_human(BOARD, "sam@bench:42", "panel again"), (token, True))
+            self.assertEqual(store.reserve_human(BOARD, "kim@bench:43", "record"), (None, True))
+            self.assertEqual(store.status(BOARD)["human"]["owner"], "sam@bench:42")
+
     def test_take_back_clears_human_reservation_and_prints_status(self):
         with tempfile.TemporaryDirectory() as root:
             store = device_lock.LockStore(root)
@@ -996,10 +1004,36 @@ class DeviceTests(unittest.TestCase):
         store = mock.Mock()
         store.status.return_value = {"human": None, "lock": None, "queue": []}
         store.reserve_human.return_value = ("id", False)
-        with mock.patch.object(device.device_lock, "LockStore", return_value=store):
+        with mock.patch.object(device.device_lock, "LockStore", return_value=store), \
+                contextlib.redirect_stdout(io.StringIO()) as output:
             self.assertEqual(device.main(["--board", BOARD, "--owner", "agent",
                                           "hand-to-human", "--note", "check cable"]), 0)
         store.reserve_human.assert_called_once_with(BOARD, "agent", "check cable", wait=600, on_wait=mock.ANY)
+        self.assertEqual(output.getvalue(), "id\n", "stdout is the token alone, as `take` prints it")
+
+    def test_the_reservations_token_runs_a_command_inside_it(self):
+        """A reservation stops every new command, the person's own too; its
+        token, printed by hand-to-human, lets them borrow it instead."""
+        with tempfile.TemporaryDirectory() as root:
+            store = device_lock.LockStore(root)
+            with mock.patch.object(device.device_lock, "LockStore", return_value=store), \
+                    contextlib.redirect_stdout(io.StringIO()) as output, \
+                    contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(device.main(["--board", BOARD, "--owner", "sam",
+                                              "hand-to-human", "--note", "checking the panel"]), 0)
+            token = output.getvalue().strip()
+            self.assertIsNone(store.acquire(BOARD, "agent", "record", wait=0), "a new command waits")
+            with mock.patch.dict(os.environ, {device.TOKEN_ENV: token}):
+                held = device.HeldLock(store, BOARD, "sam", "record", 0)
+            self.assertTrue(held.borrowed)
+            self.assertEqual(held.held["kind"], "human", "the command runs inside the reservation")
+            # Releasing a hold's token is not how a reservation ends: take-back
+            # ends it, so its human-cleared event fires.
+            with mock.patch.object(device.device_lock, "LockStore", return_value=store), \
+                    contextlib.redirect_stderr(io.StringIO()) as errors:
+                self.assertEqual(device.main(["--board", BOARD, "release", "--token", token]), 1)
+            self.assertIn("take-back", errors.getvalue())
+            self.assertIsNotNone(store.status(BOARD)["human"], "the reservation stands")
 
     def test_an_unnamed_owner_is_user_at_host_colon_pid_not_unknown(self):
         store = mock.Mock()
@@ -1133,12 +1167,17 @@ class HumanWaitTests(unittest.TestCase):
                                 "--note", "download mode", *flags])
         return code, output
 
+    def assert_last_said(self, output, line):
+        """The wait's last line was `line`, on stderr."""
+        self.assertEqual(output.call_args_list[-1].args[0], line)
+        self.assertIs(output.call_args_list[-1].kwargs.get("file"), sys.stderr)
+
     def test_release_before_deadline_succeeds(self):
         self.on_sleep = lambda: self.store.end_human(BOARD)
         with mock.patch.object(device_hook, "emit") as emit:
             code, output = self.hand("--until-back", "3")
         self.assertEqual(code, 0)
-        self.assertEqual(output.call_args_list[-1].args[0], "human reservation released")
+        self.assert_last_said(output, "human reservation released")
         self.assertEqual(emit.call_args_list, [
             mock.call("human-reserved", BOARD, "agent", note="download mode"),
             mock.call("human-cleared", BOARD, "agent", note="download mode"),
@@ -1147,7 +1186,7 @@ class HumanWaitTests(unittest.TestCase):
     def test_timeout_keeps_reservation(self):
         code, output = self.hand("--until-back", "2")
         self.assertEqual(code, device_lock.EXIT_BUSY)
-        self.assertEqual(output.call_args_list[-1].args[0], "human reservation wait timed out; the reservation stands")
+        self.assert_last_said(output, "human reservation wait timed out; the reservation stands")
         self.assertEqual(self.store.status(BOARD)["human"]["note"], "download mode")
 
     def test_interrupt_keeps_reservation(self):
@@ -1157,7 +1196,7 @@ class HumanWaitTests(unittest.TestCase):
         self.on_sleep = interrupt
         code, output = self.hand("--until-back", "3")
         self.assertEqual(code, device.EXIT_INTERRUPTED)
-        self.assertEqual(output.call_args_list[-1].args[0], "human reservation wait interrupted")
+        self.assert_last_said(output, "human reservation wait interrupted")
         self.assertIsNotNone(self.store.status(BOARD)["human"])
 
     def test_replaced_reservation_is_reported(self):
@@ -1168,14 +1207,14 @@ class HumanWaitTests(unittest.TestCase):
         self.on_sleep = replace
         code, output = self.hand("--until-back", "3")
         self.assertEqual(code, device_lock.EXIT_BUSY)
-        self.assertEqual(output.call_args_list[-1].args[0], "human reservation replaced")
+        self.assert_last_said(output, "human reservation replaced")
         self.assertEqual(self.store.status(BOARD)["human"]["note"], "download mode")
 
     def test_a_wait_past_the_reservation_lifetime_ends_as_expired(self):
         self.store.now = lambda: 1000 + self.clock[0]
         code, output = self.hand("--until-back", "7200")
         self.assertEqual(code, 0)
-        self.assertEqual(output.call_args_list[-1].args[0], "human reservation expired")
+        self.assert_last_said(output, "human reservation expired")
         self.assertGreaterEqual(self.clock[0], device_lock.HUMAN_RESERVATION_SECONDS)
 
     def test_a_renewal_does_not_end_the_wait(self):
@@ -1185,7 +1224,7 @@ class HumanWaitTests(unittest.TestCase):
         self.on_sleep = renew
         code, output = self.hand("--until-back", "3")
         self.assertEqual(code, device_lock.EXIT_BUSY)
-        self.assertEqual(output.call_args_list[-1].args[0], "human reservation wait timed out; the reservation stands")
+        self.assert_last_said(output, "human reservation wait timed out; the reservation stands")
 
 
 class SlugTests(unittest.TestCase):

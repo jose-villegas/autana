@@ -1,8 +1,8 @@
 #!/bin/sh
 #
-# Validates the STAGED content of every staged Markdown file that has a `$`
-# or a code fence, so neither a formula GitHub cannot render nor a fence that
-# never closes reaches a commit.
+# Validates the STAGED content of every staged Markdown file, so no formula
+# GitHub cannot render, formula written as code, or fence that never closes
+# reaches a commit.
 #
 #   scripts/gates/check-math-staged.sh
 #
@@ -23,19 +23,6 @@ cd "$(git rev-parse --show-toplevel)"
 staged=$(git diff --cached --name-only --diff-filter=ACMR -- '*.md')
 [ -n "$staged" ] || exit 0
 
-files=""
-IFS='
-'
-for file in $staged; do
-    if git show ":$file" | grep -q -e '\$' -e '```' -e '~~~'; then
-        files="$files
-$file"
-    fi
-done
-unset IFS
-
-[ -n "$files" ] || exit 0
-
 if ! node --version >/dev/null 2>&1; then
     echo "pre-commit: math validation skipped, node not found on PATH" >&2
     exit 0
@@ -49,7 +36,7 @@ fi
 status=0
 IFS='
 '
-for file in $files; do
+for file in $staged; do
     [ -n "$file" ] || continue
     if ! git show ":$file" | node "$GATE_DIR/check-math.mjs" --stdin "$file"; then
         status=1

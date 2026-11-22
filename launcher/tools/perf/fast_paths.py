@@ -366,8 +366,20 @@ def _size_cell(row, sizes):
     return " + ".join(parts) or "-"
 
 
+def _interval_bound(bound):
+    """An interval bound as code, or as maths when it is a power, which code cannot spell."""
+    if "^" not in bound:
+        return f"`{bound}`"
+    return "$`" + re.sub(r"\^(\w+)", r"^{\1}", bound) + "`$"
+
+
 def _inline_expressions(text):
-    return re.sub(r"\[[^]\n]+[)\]]|\b(?:[a-z]|len|sinf|MATH\w+)\b", lambda match: f"`{match[0]}`", text)
+    def wrap(match):
+        if not match[0].startswith("[") or "^" not in match[0]:
+            return f"`{match[0]}`"
+        bounds = ", ".join(_interval_bound(bound.strip()) for bound in match[0][1:-1].split(","))
+        return match[0][0] + bounds + match[0][-1]
+    return re.sub(r"\[[^]\n]+[)\]]|\b(?:[a-z]|len|sinf|MATH\w+)\b", wrap, text)
 
 
 def plain_expression(item, root):

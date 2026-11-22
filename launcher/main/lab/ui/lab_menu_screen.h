@@ -7,10 +7,14 @@
  * ui_row_centre(width, h), then a widget at ui_next(). */
 typedef void (*lab_controls_fn)(int width);
 
+struct lab_scene;
+/* Draws the lab's own rows likewise, for the scene showing. */
+typedef void (*lab_settings_fn)(const struct lab_scene* showing, int width);
+
 typedef struct {
-    lab_controls_fn controls;    /* the showing scene's rows, under the pickers */
-    lab_controls_fn settings;    /* the lab's own rows, under the scene's */
-    const char* const* families; /* the Scene dropdown's entries; none = no Scene row */
+    const struct lab_scene* showing; /* its controls are drawn under the pickers; none, no rows */
+    lab_settings_fn settings;        /* the lab's own rows for `showing`, under the scene's */
+    const char* const* families;     /* the Scene dropdown's entries; none = no Scene row */
     int family_count;
     int family;                  /* index of the showing one */
     const char* const* variants; /* the showing family's scenes, drawn when it has more than one */

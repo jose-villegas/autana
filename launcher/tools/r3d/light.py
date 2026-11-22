@@ -12,29 +12,74 @@ LIGHT_GAMMA = read_define(LIGHT_OWNER,
 import numpy as np
 
 from . import log
-from .geometry import distinct_corners, nearest_triangles, triangle_areas, triangle_search
-from .import_settings import LIGHT_FIELDS
+from .geometry import distinct_corners, hit_barycentrics, nearest_triangles, triangle_areas, triangle_search
+from .import_settings import LIGHT_FIELDS, LIGHT_MODE_BAKED
 from .obj import alpha_tested
+
+
+# Where a triangle's alpha is sampled: its centre and three points towards its corners, as barycentric weights.
+ALPHA_POINTS = np.array([[1 / 3, 1 / 3, 1 / 3], [0.6, 0.2, 0.2], [0.2, 0.6, 0.2], [0.2, 0.2, 0.6]])
+# Mip level a triangle's alpha is sampled at, so one texel's hole does not decide a whole triangle.
+TRIANGLE_ALPHA_LOD = 2.0
+
+
+def triangle_alpha(uv, tri_t, texture):
+    """Each triangle's mean texture alpha over ALPHA_POINTS."""
+    alpha = np.zeros(len(tri_t))
+    for b in ALPHA_POINTS:
+        tuv = (uv[tri_t] * b[None, :, None]).sum(axis=1)
+        alpha += texture.sample(tuv, np.full(len(tri_t), TRIANGLE_ALPHA_LOD))[:, 3]
+    return alpha / len(ALPHA_POINTS)
 
 
 def drop_masked(p, uv, tri_v, tri_t, tri_m, textures, keep_alpha=0.5):
     """Alpha-tested cards (leaves, chains) keep only triangles mostly opaque."""
     keep = np.ones(len(tri_v), dtype=bool)
-    bary = np.array([[1 / 3, 1 / 3, 1 / 3], [0.6, 0.2, 0.2], [0.2, 0.6, 0.2], [0.2, 0.2, 0.6]])
     tested = alpha_tested(textures)
     for m, tex in enumerate(textures):
         sel = np.nonzero(tri_m == m)[0]
         if not tested[m] or len(sel) == 0:
             continue
-        alpha = np.zeros(len(sel))
-        for b in bary:
-            tuv = (uv[tri_t[sel]] * b[None, :, None]).sum(axis=1)
-            alpha += tex.sample(tuv, np.full(len(sel), 2.0))[:, 3]
-        keep[sel] = alpha / len(bary) >= keep_alpha
+        keep[sel] = triangle_alpha(uv, tri_t[sel], tex) >= keep_alpha
     keep &= triangle_areas(p, tri_v) > 1e-6
     log(f"masked/degenerate triangles dropped: {np.count_nonzero(~keep)}")
     result = (tri_v[keep], tri_t[keep], tri_m[keep])
     return (*result, keep)
+
+
+class AlphaTest:
+    """A `RayQuery` hit filter: a hit is solid where the source's level-zero texture alpha at its interpolated UV is
+    at least `keep_alpha`. The same RGBA samples supply card albedo."""
+
+    def __init__(self, source, keep_alpha):
+        self.source, self.keep_alpha = source, keep_alpha
+        self.tested = alpha_tested(source.textures)
+
+    def sample_material(self, material, hits, locations):
+        """Level-zero RGBA for hits of one textured material."""
+        source = self.source
+        bary = hit_barycentrics(source.p, source.tri_v, hits, locations)
+        uv = (source.uv[source.tri_t[hits]] * bary[:, :, None]).sum(axis=1)
+        return source.textures[material].sample(uv, np.zeros(len(hits)))
+
+    def rgba(self, hits, locations):
+        """Level-zero linear RGBA at source hits; untextured materials return white."""
+        rgba = np.ones((len(hits), 4))
+        materials = self.source.tri_m[hits]
+        for material in np.unique(materials):
+            if self.source.textures[material] is not None:
+                chosen = np.flatnonzero(materials == material)
+                rgba[chosen] = self.sample_material(material, hits[chosen], locations[chosen])
+        return rgba
+
+    def __call__(self, hits, locations):
+        solid = np.ones(len(hits), dtype=bool)
+        materials = self.source.tri_m[hits]
+        for material in np.unique(materials):
+            if self.tested[material]:
+                chosen = np.flatnonzero(materials == material)
+                solid[chosen] = self.sample_material(material, hits[chosen], locations[chosen])[:, 3] >= self.keep_alpha
+        return solid
 
 
 def visible_from_region(p, tri_v, double, intersector, rounds, rng, lo, hi):
@@ -270,6 +315,11 @@ def open_side_occlusion(points, normals, double_sided, intersector, ao, ray_offs
     return factor
 
 
+def baked_lights(lights):
+    """The surface and probe bakes share the baked rig; sky and ambient are bake settings."""
+    return [light for light in lights if light["mode"] == LIGHT_MODE_BAKED]
+
+
 def face_towards_light(normals, double_sided, lights):
     """The orientation a double-sided surface is first lit on: the side the directional lights, summed, shine on. One
     orientation for every light, so their order cannot matter. It also keeps the copies of a vertex at one position
@@ -295,6 +345,7 @@ def light(points, normals, double_sided, intersector, lights, ray_offset, bounce
     on both sides and keeps the brighter, so a card in the sun takes its sunlit side and a curtain in shade takes
     its open side, not the back that faces the wall. Point and spot lights are reserved and not baked yet.
     """
+    lights = baked_lights(lights)
     n = face_towards_light(normals, double_sided, lights)
     occlusion = None if ao is None else open_side_occlusion(points, normals, double_sided, intersector, ao, ray_offset)
     radiance = lit_side(points, n, intersector, lights, ray_offset, occlusion, bounce, bounce_groups, ao, bounce_intensity)

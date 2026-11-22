@@ -15,8 +15,11 @@
 #include "draw/draw.h"
 #include "esp_log.h"
 #include "image/pixel/rgb565.h"
+#include "kinematics/hinge/hinge.h"
 #include "math/scalar/math_const.h"
 #include "math/scalar/mathi.h"
+#include "math/scalar/units.h"
+#include "profile/frame_cost.h"
 #include "render/context/render_context.h"
 #include "render/probe/sh_probes.h"
 #include "scene/animator/animator.h"
@@ -30,6 +33,7 @@ static const char* TAG = "stress";
 
 /* Copies are named consecutively from zero: the generated presets' slots, the carved presets' props. */
 #define STRESS_SLOT_FORMAT "slot_%02d"
+#define STRESS_WING_FORMAT STRESS_SLOT_FORMAT "_wing_%c"
 #define STRESS_PROP_FORMAT "prop_%02d"
 
 static const stress_params_t* shown;
@@ -38,9 +42,14 @@ static entity_t camera; /* the swing the copies are placed for */
 static entity_t viewer; /* the camera shown: the one the start named, else the swing */
 static entity_t* slots; /* the pool's copies, in name order */
 static int pool;
+#define STRESS_WING_SIDES 2
+static const char wing_suffix[STRESS_WING_SIDES] = {'l', 'r'};
+static entity_t* wings;
+static hinge_t* wing_hinges;
 static stress_buffers_t buffers[STRESS_MIX_LEVELS];
 static r3d_dynamic_mesh_t mesh[STRESS_MIX_LEVELS];
 static uint32_t wave_ms;
+static bool held;
 #define STRESS_PROBE_SIDE         2
 #define STRESS_PROBE_COUNT        (STRESS_PROBE_SIDE * STRESS_PROBE_SIDE * STRESS_PROBE_SIDE)
 #define STRESS_PROBE_SCALE        (1.0F / 1024.0F)
@@ -55,6 +64,10 @@ static sh_probes_t probes;
 static int skinned_count;
 static entity_t* grounds;
 
+/* What the preset's settings replaced, in its order, and how many it set. */
+static int32_t settings_before[STRESS_SETTINGS_MAX];
+static int settings_set;
+
 /* A textured preset's texture and its texturing of the one mesh. */
 static r3d_texture_t* texture;
 static r3d_mesh_texturing_t texturing;
@@ -65,6 +78,26 @@ static char failure[LAB_STATUS_LEN];
 static void
 fail(const char* what) {
     lab_scene_fail(TAG, failure, sizeof failure, what);
+}
+
+static bool
+find_wings(int copy) {
+    for (int side = 0; side < STRESS_WING_SIDES; side++) {
+        char name[ASSET_NAME_MAX];
+        if (snprintf(name, sizeof name, STRESS_WING_FORMAT, copy, wing_suffix[side]) < 0) {
+            return false;
+        }
+        const int at = (copy * STRESS_WING_SIDES) + side;
+        wings[at] = entity_find(loaded, name_hash(name));
+        if (handle_is_none(wings[at]) || !handle_equal(entity_parent(wings[at]), slots[copy])) {
+            return false;
+        }
+        wing_hinges[at] = (hinge_t){.rest = transform_local(wings[at]),
+                                    .axis = side == 0 ? vec3f_up() : vec3f_down(),
+                                    .min = -STRESS_FLAP_LIMIT,
+                                    .max = STRESS_FLAP_LIMIT};
+    }
+    return true;
 }
 
 /* The pool is every copy of the preset's kind the pack names, from 0 up to
@@ -78,7 +111,26 @@ find_pool(void) {
         entity_set_enabled(hidden[i], false);
     }
     slots = lab_scene_copies(loaded, carved ? STRESS_PROP_FORMAT : STRESS_SLOT_FORMAT, &pool);
-    return hidden != NULL && slots != NULL;
+    if (slots == NULL || shown->surface != STRESS_SURFACE_HINGED) {
+        const bool found = slots != NULL && hidden != NULL;
+        if (!found) {
+            fail("no stress copies");
+        }
+        return found;
+    }
+    wings = lab_scene_take(sizeof *wings * (size_t)pool * STRESS_WING_SIDES);
+    wing_hinges = lab_scene_take(sizeof *wing_hinges * (size_t)pool * STRESS_WING_SIDES);
+    if (wings == NULL || wing_hinges == NULL) {
+        fail("no stress copies");
+        return false;
+    }
+    for (int i = 0; i < pool; i++) {
+        if (!find_wings(i)) {
+            fail("missing or misparented stress wing");
+            return false;
+        }
+    }
+    return true;
 }
 
 static bool
@@ -199,7 +251,7 @@ static bool
 build(void) {
     for (int i = 0; i < mesh_count(); i++) {
         const stress_params_t p = stress_copy_params(shown, i);
-        r3d_dynamic_source_t source;
+        r3d_mesh_source_t source;
         if (!stress_source(&p, wave_ms, &buffers[i], &source) || !r3d_dynamic_mesh_build(&mesh[i], &source)) {
             return false;
         }
@@ -220,7 +272,15 @@ static_shape(void) {
                                  ? entity_find(slots[0], name_hash(CAPYBARA_SUBJECT))
                                  : slots[0];
     const r3d_lit_mesh_t* asset = renderer_mesh(subject);
-    const box3f_t box = r3d_lit_mesh_world_bounds(asset, NULL);
+    box3f_t box = r3d_lit_mesh_world_bounds(asset, NULL);
+    for (entity_t e = entity_next(loaded, ENTITY_NONE); !handle_is_none(e); e = entity_next(loaded, e)) {
+        const r3d_lit_mesh_t* part = renderer_mesh(e);
+        if (shown->surface == STRESS_SURFACE_HINGED && part != NULL && handle_equal(entity_parent(e), slots[0])) {
+            transformf_t local = transform_local(e);
+            const mat4f_t model = transformf_matrix(&local);
+            box = box3f_union(box, r3d_lit_mesh_world_bounds(part, &model));
+        }
+    }
     const vec3f_t span = vec3f_sub(box.hi, box.lo);
     const float width = fmaxf(span.x, fmaxf(span.y, span.z));
     transformf_t shape = transformf_identity();
@@ -297,6 +357,38 @@ apply_settings(void) {
 #endif
 }
 
+/* The preset's settings, each through the registry SET writes, keeping the
+ * value it replaces. False, naming the setting, when one is unknown or out of
+ * its range, or when the image has no registry to set it through. */
+static bool
+set_preset_settings(void) {
+    for (int i = 0; i < STRESS_SETTINGS_MAX && shown->settings[i].name != NULL; i++) {
+#if TUNE_ENABLED
+        const tune_entry_t* entry = tune_find(tune_shared(), shown->settings[i].name);
+        if (entry != NULL) {
+            settings_before[i] = *entry->value;
+        }
+        if (entry != NULL && tune_set(tune_shared(), shown->settings[i].name, shown->settings[i].value)) {
+            settings_set = i + 1;
+            continue;
+        }
+#endif
+        fail(shown->settings[i].name);
+        return false;
+    }
+    return true;
+}
+
+static void
+put_back_settings(void) {
+#if TUNE_ENABLED
+    for (int i = settings_set - 1; i >= 0; i--) {
+        (void)tune_set(tune_shared(), shown->settings[i].name, settings_before[i]);
+    }
+#endif
+    settings_set = 0;
+}
+
 static bool
 load(void) {
     loaded = lab_scene_load(TAG, failure, sizeof failure, shown->scene != NULL ? shown->scene : STRESS_SCENE, "stress");
@@ -310,7 +402,6 @@ load(void) {
     }
     viewer = render_lab.start_camera == NULL ? camera : entity_find(loaded, name_hash(render_lab.start_camera));
     if (!find_pool()) {
-        fail("no stress copies");
         return false;
     }
     if (stress_skinned(shown)) {
@@ -341,10 +432,12 @@ scene_stress_enter(const lab_scene_t* self) {
     draw_clear(RGB565BE(UI_BACKGROUND));
     failure[0] = '\0';
     wave_ms = 0;
+    held = false;
     skinned_count = 0;
-    if (!load()) {
+    if (!set_preset_settings() || !load()) {
         return;
     }
+    (void)camera_set_skip_hidden(viewer, shown->skip_hidden);
     (void)camera_activate(
         entity_find(loaded, name_hash(render_lab.start_camera == NULL ? shown->camera : render_lab.start_camera)));
     place_copies();
@@ -356,6 +449,7 @@ scene_stress_enter(const lab_scene_t* self) {
 
 static void
 scene_stress_exit(void) {
+    put_back_settings();
     for (int i = 0; i < skinned_count; i++) {
         scene_release(slots[i]);
     }
@@ -364,18 +458,61 @@ scene_stress_exit(void) {
     loaded = ENTITY_NONE;
     slots = NULL;
     pool = 0;
+    wings = NULL;
+    wing_hinges = NULL;
 }
 
-/* A per-frame preset's wave moves on by the frame's time, so a replay at the same steps draws the same frames. */
+static void
+flap(void) {
+    FRAME_COST_BEGIN(flap_from);
+    const float seconds = (float)wave_ms / (float)MATH_MS_PER_S;
+    /* A fixed sine, phase-stepped per copy, so the wings move out of step
+     * and a replay at the same time gives the same frame. */
+    for (int i = 0; i < shown->copies; i++) {
+        const float phase = STRESS_FLAP_PHASE_STEP * (float)i;
+        const float angle =
+            (STRESS_FLAP_AMPLITUDE * sinf((MATH_TAU * STRESS_FLAP_HZ * seconds) + phase)) + STRESS_FLAP_BIAS;
+        for (int side = 0; side < STRESS_WING_SIDES; side++) {
+            const int at = (i * STRESS_WING_SIDES) + side;
+            transform_set_local(wings[at], hinge_pose(&wing_hinges[at], angle));
+        }
+    }
+    FRAME_COST_END(flap_from, STRESS_FLAP_STAGE_NAME);
+}
+
+/* A per-frame preset's wave and a hinged preset's flap move on by the frame's time,
+ * so a replay at the same steps draws the same frames. */
 static void
 scene_stress_update(uint32_t dt_ms) {
-    if (handle_is_none(loaded) || failure[0] != '\0' || !stress_per_frame(shown)) {
+    if (handle_is_none(loaded) || failure[0] != '\0') {
         return;
     }
-    wave_ms += dt_ms;
-    if (!build()) {
+    if (!held) {
+        wave_ms += dt_ms;
+    }
+    if (shown->surface == STRESS_SURFACE_HINGED) {
+        flap();
+    } else if (stress_per_frame(shown) && !build()) {
         ESP_LOGW(TAG, "the mesh did not fit");
     }
+}
+
+static bool
+seek_flap(uint32_t time_ms) {
+    if (handle_is_none(loaded) || failure[0] != '\0' || !animator_seek(camera, ANIMATOR_CURRENT, time_ms)) {
+        return false;
+    }
+    (void)animator_set_paused(camera, ANIMATOR_CURRENT, true);
+    wave_ms = time_ms;
+    held = true;
+    flap();
+    return true;
+}
+
+static void
+play_flap(void) {
+    held = false;
+    (void)animator_set_paused(camera, ANIMATOR_CURRENT, false);
 }
 
 /* The shell has already drawn the scene into the framebuffer. */
@@ -394,24 +531,29 @@ scene_stress_status(void) {
 /* The camera shown: swinging, unless the start named a still one. */
 static lab_path_t
 scene_stress_path(void) {
-    return (lab_path_t){.scene = loaded, .entity = handle_is_none(loaded) ? ENTITY_NONE : viewer};
+    lab_path_t path = {.scene = loaded, .entity = handle_is_none(loaded) ? ENTITY_NONE : viewer};
+    if (!handle_is_none(loaded) && shown->surface == STRESS_SURFACE_HINGED) {
+        path.seek = seek_flap;
+        path.play = play_flap;
+        path.duration_ms = animator_clip_duration_ms(camera, animator_current_clip(camera));
+    }
+    return path;
 }
 
 /* A still preset can have frames generated: only the camera moves. */
 #define STRESS_SCENE_ROW(id_, key_, surface_, ...)                                                                     \
-    [STRESS_##                                                                                                         \
-        id_] = {.name = "Stress " key_,                                                                                \
-                .key = STRESS_SCENE "-" key_,                                                                          \
-                .family = "Stress",                                                                                    \
-                .variant = key_,                                                                                       \
-                .data = &stress_presets[STRESS_##id_],                                                                 \
-                .enter = scene_stress_enter,                                                                           \
-                .frame = scene_stress_frame,                                                                           \
-                .exit = scene_stress_exit,                                                                             \
-                .update = scene_stress_update,                                                                         \
-                .status = LAB_SCENE_DEV(scene_stress_status),                                                          \
-                .controls = STRESS_SURFACE_IS_PER_FRAME(STRESS_SURFACE_##surface_) ? NULL : scene_baked_controls,      \
-                .generates_frames = !STRESS_SURFACE_IS_PER_FRAME(STRESS_SURFACE_##surface_),                           \
-                .path = scene_stress_path},
+    [STRESS_##id_] = {.name = "Stress " key_,                                                                          \
+                      .key = STRESS_SCENE "-" key_,                                                                    \
+                      .family = "Stress",                                                                              \
+                      .variant = key_,                                                                                 \
+                      .data = &stress_presets[STRESS_##id_],                                                           \
+                      .enter = scene_stress_enter,                                                                     \
+                      .frame = scene_stress_frame,                                                                     \
+                      .exit = scene_stress_exit,                                                                       \
+                      .update = scene_stress_update,                                                                   \
+                      .status = LAB_SCENE_DEV(scene_stress_status),                                                    \
+                                                                                                                       \
+                      .generates_frames = STRESS_SURFACE_GENERATES_FRAMES(STRESS_SURFACE_##surface_),                  \
+                      .path = scene_stress_path},
 
 const lab_scene_t scene_stress[STRESS_PRESET_COUNT] = {STRESS_PRESETS(STRESS_SCENE_ROW)};
