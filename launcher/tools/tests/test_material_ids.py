@@ -18,6 +18,7 @@ from r3d.appearance_simplify import projection
 from r3d.lit_mesh import bundle_entries, build_lit_mesh, read_bundle_mesh
 from r3d.ray_query import RayQuery
 from r3d.reference_render import primary_hits
+from tests.r3d_env import needs_llvm
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / 'render'))
 import render_compare
@@ -104,6 +105,7 @@ class MaterialIdsTests(unittest.TestCase):
         self.assertFalse(facing.any())
         np.testing.assert_array_equal(near, np.arange(len(source.tri_v)))
 
+    @needs_llvm
     def test_source_ids_trace_distinct_materials_on_both_axes(self):
         source = surfaces()
         top = source.p / [1, 2, 1] + [0, 0.5, 0]
@@ -128,6 +130,7 @@ class MaterialIdsTests(unittest.TestCase):
         self.assertEqual(rows[0]['both_empty'], 2)
         self.assertEqual(sum(sum(row[name] for name in module.CLASS_NAMES) for row in rows), ref.size)
 
+    @needs_llvm
     def test_placed_entry_and_reference_agree_through_an_asymmetric_rotation(self):
         root, bundle, source, mesh, metadata = self.capture()
         rotation = np.array([[0., 0., 1.], [0., 1., 0.], [-1., 0., 0.]])
@@ -213,6 +216,7 @@ class MaterialIdsTests(unittest.TestCase):
                      bundle_sha256=hashlib.sha256(bundle.read_bytes()).hexdigest(), texture_sha256=None)])))
         return scene, poses, root
 
+    @needs_llvm
     def test_material_comparison_loads_real_inputs_and_culls_the_back_face(self):
         scene, poses, root = self.comparison_files()
         out = root / 'sheet.png'
@@ -232,6 +236,7 @@ class MaterialIdsTests(unittest.TestCase):
         with out.with_suffix('.confusions.csv').open(newline='') as handle:
             self.assertEqual(list(csv.DictReader(handle)), [])
 
+    @needs_llvm
     def test_material_comparison_uses_the_parent_placement(self):
         scene, poses, root = self.comparison_files(parented=True)
         # Move the camera behind the local back face but in front of the world back face.
