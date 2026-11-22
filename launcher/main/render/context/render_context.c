@@ -3,13 +3,16 @@
 
 #include <assert.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "build/build_variant.h"
 #include "core/memory.h"
 #include "core/timing.h"
+#include "gfx/present/gfx_present.h"
 #include "profile/frame_cost.h"
+#include "render/context/render_context_internal.h"
 #include "render/record/frame_record.h"
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
@@ -155,6 +158,11 @@ render_context_forget(render_context_t* c) {
 }
 
 void
+render_context_skip(render_context_t* c) {
+    c->priced = false;
+}
+
+void
 render_context_set_frame_generation(render_context_t* c, bool on) {
     /* A caller may set it every frame: only a change forgets the generated cost. */
     if (on == c->generating) {
@@ -204,6 +212,10 @@ render_context_set_dynamic_resolution(render_context_t* c, const resolution_conf
         return;
     }
     c->ladder = *config;
+    c->budget = resolution_budget(config->budget_us);
+    c->frame.unscaled_us = 0;
+    c->shown_at_us = 0;
+    c->priced = false;
     c->chose_at_us = 0;
     c->policy = model == NULL ? RENDER_STEPPED : RENDER_PREDICTED;
     if (c->policy == RENDER_STEPPED) {
@@ -387,10 +399,20 @@ generation_pays(const render_context_t* c) {
     return c->generating && c->generated_us != 0 && (int64_t)c->generated_us * 100 < (int64_t)c->drawn_us * share;
 }
 
+/* Whether this frame is drawn as a held one: a view partial redraw holds
+ * (render_partial_still()) and, under dynamic resolution, not handed back to
+ * the policy (still_over). Such a frame is never generated. Before
+ * aim_raster() it reads the raster as the last frame left it; a stale match
+ * only draws a frame that could have been warped. */
+static bool
+drawn_held(const render_context_t* c, const render_view_t* view) {
+    return render_partial_still(&c->partial, &c->raster, view) && (c->policy == RENDER_FIXED || !c->still_over);
+}
+
 /* Whether this frame can be warped from the kept one: generation on, a drawn
- * frame kept, no debug view, and the same viewport; and it pays
- * (the last verdict, kept in `paying`), has not been measured, or is due to
- * be measured again. */
+ * frame kept, no debug view, the same viewport, and not drawn held (a warp
+ * to a held view shows nothing new); and it pays (the last verdict, kept in
+ * `paying`), has not been measured, or is due to be measured again. */
 static bool
 can_generate(render_context_t* c, const render_view_t* view) {
     const raster_t* r = &c->raster;
@@ -402,7 +424,7 @@ can_generate(render_context_t* c, const render_view_t* view) {
         || a.quarter != b.quarter) {
         return false;
     }
-    return true;
+    return !drawn_held(c, view);
 }
 
 /* The kept frame warped to `view` into the framegen target, which compose shows. */
@@ -525,13 +547,12 @@ aim_raster(render_context_t* c, const r3d_instance_t* instances, int count, cons
  * the top step, until one such frame costs more than the budget; then the
  * policy draws until the view changes. True when this frame takes that path. */
 static bool
-aim_still(render_context_t* c, const render_view_t* view) {
+aim_still(render_context_t* c, const render_view_t* view, bool held) {
     raster_t* r = &c->raster;
-    if (c->policy == RENDER_FIXED || c->generating || !render_partial_still(&c->partial, r, view)) {
+    if (!render_partial_same_view(&c->partial, view)) {
         c->still_over = false;
-        return false;
     }
-    if (c->still_over) {
+    if (c->policy == RENDER_FIXED || !held) {
         return false;
     }
     const resolution_step_t top = c->ladder.steps[c->ladder.top];
@@ -590,9 +611,26 @@ keep_frame(render_context_t* c, const render_view_t* view) {
     render_partial_kept(&c->partial, &c->raster, view);
 }
 
+/* Not inlined: off the draw's deep chain. */
+__attribute__((noinline)) void
+render_context_shown(render_context_t* c, int64_t now_us, int64_t waited_us) {
+    const int64_t period_us = now_us - c->shown_at_us;
+    if (c->priced && c->shown_at_us != 0 && period_us <= INT32_MAX) {
+        /* What the frame paid, not what it waited: a frame that finished
+         * early and waited for the panel costs no more than one that did not. */
+        const int64_t paid_us = period_us - (waited_us - c->waited_at_us) - c->frame.draw_us - c->frame.upscale_us;
+        c->ladder.budget_us = resolution_budget_learn(&c->budget, (int32_t)(paid_us < 0 ? 0 : paid_us));
+        c->frame.unscaled_us = c->budget.unscaled_us;
+    }
+    c->shown_at_us = now_us;
+    c->waited_at_us = waited_us;
+    c->priced = false;
+}
+
 bool
 render_context_draw(render_context_t* c, const r3d_instance_t* instances, int count, const render_view_t* view,
                     uint16_t clear) {
+    render_context_shown(c, timing_now_us(), gfx_present_waited_us());
     if (!c->batches_set) {
         c->raster.batches = NULL; /* none set for this draw */
         c->raster.batch_count = 0;
@@ -609,7 +647,8 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     frame_record_before_draw(&context, &c->raster, instances, count);
     begin_draw(c);
     aim_raster(c, instances, count, view, clear);
-    const bool still = aim_still(c, view);
+    const bool held = drawn_held(c, view);
+    const bool still = aim_still(c, view, held);
     if (!fit_scratch(c)) {
         return false;
     }
@@ -618,7 +657,9 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     c->frame.height = r->height;
     r->first_row = 0;
     r->end_row = 0;
-    c->fixed_drawn = (c->policy == RENDER_FIXED && !c->generating) || still;
+    /* Generation times its drawn frames, but a held view is not generated. */
+    const bool fixed = c->policy == RENDER_FIXED && (!c->generating || held);
+    c->fixed_drawn = fixed || still;
     if (c->fixed_drawn) {
         const int64_t began_us = timing_now_us();
         const bool drawn = draw_fixed(c, view);
@@ -628,6 +669,7 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
         }
     } else {
         draw_timed(c, view);
+        c->priced = c->policy != RENDER_FIXED;
     }
     r->pick_round++;
     c->frame.step = still ? c->ladder.top : current_step(c);
