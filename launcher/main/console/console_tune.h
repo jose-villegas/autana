@@ -11,7 +11,13 @@
 #include "console/console_words.h"
 #include "core/tune.h"
 
+#define CONSOLE_TUNE_SET   "SET"
+#define CONSOLE_TUNE_GET   "GET"
 #define CONSOLE_TUNE_RESET "RESET"
+#define CONSOLE_TUNE_LIST  "TUNE"
+#define CONSOLE_TUNE_OK    "TUNE_OK"
+#define CONSOLE_TUNE_ERR   "TUNE_ERR"
+#define CONSOLE_TUNE_END   "TUNE_END"
 
 /* True if `line` was one of these, whatever came of it. Replies, one call
  * each:

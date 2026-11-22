@@ -6,15 +6,13 @@ import itertools
 import json
 from pathlib import Path
 import random
-import re
 from statistics import mean
 import sys
 
 from layout_measure import (REPO, autana_command, booted_build_id,
                             capture_metadata, captured_runs, make_table, parse_markdown, timing_samples,
-                            run_stamped, split_filters, filter_limits, status_snapshot)
+                            run_stamped, split_filters, filter_limits, status_snapshot, parse_tunable)
 from device_report import read_capture_text
-from layout_measure import flash_needs_hot_tunables, TUNE_VALUE_MIN, TUNE_VALUE_MAX, TUNE_NAME_MAX
 import device_lock
 
 write_json = partial(device_lock.write_json, indent=2)
@@ -78,13 +76,10 @@ def parse_args(argv=None):
         if len({name for name, _ in args.knob}) != len(args.knob):
             parser.error("knob names must be unique")
         try:
-            args.knob = [(name, list(dict.fromkeys(int(value, 0) for value in values.split(","))))
+            args.knob = [(name, list(dict.fromkeys(parse_tunable(name, value) for value in values.split(","))))
                          for name, values in args.knob]
-        except ValueError:
-            parser.error("knob values must be integers")
-        if any(not re.fullmatch(r"[a-zA-Z0-9_.]+", name) or len(name) > TUNE_NAME_MAX or
-               any(not TUNE_VALUE_MIN <= value <= TUNE_VALUE_MAX for value in values) for name, values in args.knob):
-            parser.error("knobs need console names and int32 values")
+        except ValueError as error:
+            parser.error(f"--knob: {error}")
         args.build = args.build or [("here", str(REPO))]
         if len({label for label, _ in args.build}) != len(args.build):
             parser.error("build labels must be unique")
@@ -99,7 +94,7 @@ def plan(args):
               for values in itertools.product(*(values for _, values in args.knob))]
     builds = [dict(label=label, project=str(Path(project).resolve()), build_ids={})
               for label, project in args.build]
-    hot_tunables = flash_needs_hot_tunables(knobs=args.knob)
+    hot_tunables = bool(args.knob)
     flashes = []
     for build, entry in enumerate(builds):
         suites = split_filters(args.suite, filter_limits(entry["project"]))

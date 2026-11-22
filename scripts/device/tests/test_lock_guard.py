@@ -32,6 +32,7 @@ from fake_serial import FakeConnection, Replies
 import fake_esp_idf  # noqa: E402
 import fake_flash  # noqa: E402
 from autana_config import BOARD_ENV  # noqa: E402
+from console_protocol import TUNE_END, TUNE_ERR
 
 BOARD_A = "90:70:69:FE:A3:08"
 BOARD_B = "90:70:69:FE:B1:22"
@@ -1045,7 +1046,7 @@ class LostLockTests(Store):
                 return b""
 
         args = Namespace(owner="a", purpose="send", wait=0, line="TUNE", reply="TUNE",
-                         until=["TUNE_END"], seconds=30, optional=False)
+                         until=[TUNE_END], seconds=30, optional=False)
         with mock.patch.object(device, "open_when_free",
                                side_effect=lambda: Silent(device.ACTIVE_LOCK.held)):
             started = time.monotonic()
@@ -1783,7 +1784,7 @@ class DurationTests(Store):
                 return b"TUNE_ERR unknown\n"
 
         args = Namespace(owner="a", purpose="send", wait=0, line="SET x 1", reply="TUNE",
-                         until=["TUNE_ERR"], seconds=5, optional=False)
+                         until=[TUNE_ERR], seconds=5, optional=False)
         with mock.patch.object(device, "open_when_free", return_value=Answers()), \
                 contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(device.send(args, self.store, BOARD_A), 1)

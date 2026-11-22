@@ -11,6 +11,7 @@ from shell_job import ShellJobTests
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import perf_sweep as tool
+from layout_measure import TUNE_NAME_MAX, flash_needs_hot_tunables
 
 FIXTURE = Path(__file__).parent / "fixtures/sweep_capture.log"
 
@@ -63,6 +64,31 @@ def arguments(root, seeds=(1,)):
                            "--knob", "r3d_span.flat_max_rows=1,2", "--runs", "2",
                            "--seeds", *map(str, seeds), "--rng-seed", "42",
                            "--suite", "suite", "counters", "-"])
+
+
+class TunableInputTests(unittest.TestCase):
+    def test_setup_and_sweep_accept_console_integers(self):
+        for value, expected in (("010", 8), ("0x10", 16), ("-8", -8), ("+010", 8)):
+            with self.subTest(value=value):
+                self.assertTrue(flash_needs_hot_tunables([f"SET render.knob {value}"]))
+                args = tool.parse_args(["run", "--out", "out", "--suite", "suite", "-", "-",
+                                        "--knob", f"render.knob={value}"])
+                self.assertEqual(args.knob, [("render.knob", [expected])])
+
+    def test_setup_and_sweep_reject_invalid_tunables(self):
+        for name, value in (("render.knob", str(2**31)), ("x" * (TUNE_NAME_MAX + 1), "1"),
+                            ("render.knob", "08"), ("render-knob", "1")):
+            with self.subTest(name=name, value=value):
+                line = f"SET {name} {value}"
+                with self.assertRaises(ValueError) as error:
+                    flash_needs_hot_tunables([line])
+                self.assertIn(line, str(error.exception))
+                with contextlib.redirect_stderr(io.StringIO()) as stderr:
+                    with self.assertRaises(SystemExit) as error:
+                        tool.parse_args(["run", "--out", "out", "--suite", "suite", "-", "-",
+                                         "--knob", f"{name}={value}"])
+                self.assertEqual(error.exception.code, 2)
+                self.assertIn(f"{name}={value}", stderr.getvalue())
 
 
 class SweepTests(ShellJobTests, unittest.TestCase):
