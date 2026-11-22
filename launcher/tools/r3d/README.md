@@ -185,6 +185,32 @@ and `place=stratified|centroid`. Without `--variant` the
 mesh is baked as its import file declares it, byte for byte the tracked bake.
 It prints a table sorted by mean ΔE.
 
+### Material ID differences
+
+From `launcher/`, compare a triangle ID capture against the full source.
+Use the capture's ID directory and the matching reference pose file.
+
+```sh
+$PY tools/render/render_compare.py --material-ids SCENE.scene.toml OBJECT POSES IDS_DIR --out sheet.png
+```
+
+Add any combination of these options. Each can be repeated, and the first
+match in argument order owns the pixel.
+
+| Option | Excluded reference pixels |
+| --- | --- |
+| `--exclude-material GLOB` | Source material name matches the glob. |
+| `--exclude-object GLOB` | Source object name matches the glob. |
+| `--exclude alpha-tested` | Source material has an alpha mask. |
+| `--exclude thin=T` | Source object's total triangle area divided by its bounding-box diagonal is below `T` in source units. |
+| `--exclude not-drawn` | No triangle in a rest mesh, placed copy or card maps to the source object by nearest source triangle. |
+
+The sheet colours excluded pixels separately. `sheet.csv` counts them by
+reference material, and `sheet.excluded.csv` lists their first selector,
+source object ID and name, material name and pixel count, largest first.
+`sheet.confusions.csv` counts wrong-material pairs. Each CSV begins with
+a comment listing the selectors, as shown in the sheet header.
+
 ## Appearance fit
 
 `appearance_simplify.py` takes a smooth mesh the simplifier baked at a

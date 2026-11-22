@@ -40,6 +40,7 @@ def surfaces():
     tris = np.array([[0, 1, 2], [0, 2, 3], [4, 5, 6], [4, 6, 7]])
     return SimpleNamespace(p=points, tri_v=tris, tri_m=np.array([0, 0, 1, 1]),
                            names=['pattern', 'plain'], textures=[object(), None], alpha_test=None,
+                           tri_o=np.array([0, 1, 2, 2]), object_names=['wall', 'trim1', 'frame'],
                            camera_hidden=np.zeros(len(tris), bool))
 
 
@@ -113,10 +114,12 @@ class MaterialIdsTests(unittest.TestCase):
         source.p = np.concatenate([top, top - [0, 1, 0]])
         source.tri_v = np.concatenate([source.tri_v, source.tri_v + len(top)])
         source.tri_m = np.repeat(np.arange(4), 2)
+        source.tri_o = np.tile([0, 0, 1, 1], 2)
         matrix = projection([0, 0, 2], [0, 0, -1], 4, 2, 0.5, 0.1)
-        actual = material_ids.source_ids(source, RayQuery(source.p, source.tri_v), [(matrix, (4, 2))])[0]
-        np.testing.assert_array_equal(actual, [[0, 0, 1, 1], [2, 2, 3, 3]])
-        self.assertEqual(actual.dtype, np.int32)
+        materials, objects = material_ids.source_ids(source, RayQuery(source.p, source.tri_v), [(matrix, (4, 2))])
+        np.testing.assert_array_equal(materials[0], [[0, 0, 1, 1], [2, 2, 3, 3]])
+        np.testing.assert_array_equal(objects[0], [[0, 0, 1, 1], [0, 0, 1, 1]])
+        self.assertEqual(materials[0].dtype, np.int32)
 
     def test_diff_classes_and_csv_cover_every_pixel(self):
         module = material_ids
@@ -148,11 +151,12 @@ class MaterialIdsTests(unittest.TestCase):
         size = (3, 1)
         local_clip = projection([2.5, 0.2, 1], [0, 0, -1], *size, 1.0, 0.1)
         views = [(local_clip @ np.linalg.inv(world), size)]
-        ref = material_ids.source_ids(source, RayQuery(source.p, source.tri_v), views, placement)[0]
+        source.tri_o = np.arange(len(source.tri_v))
+        ref, _objects = material_ids.source_ids(source, RayQuery(source.p, source.tri_v), views, placement)
         # The first pixel hits the left copy, the second the right copy and the third misses.
         drawn = material_ids.drawn_ids(root, bundle, source, placement)[0][0]
         np.testing.assert_array_equal(drawn, [[0, 1, -1]])
-        np.testing.assert_array_equal(ref, drawn)
+        np.testing.assert_array_equal(ref[0], drawn)
 
     def test_copy_entry_points_match_each_placed_copy_in_order(self):
         root, bundle, source, _mesh, metadata = self.capture(('copy', 'copy'))
@@ -167,6 +171,137 @@ class MaterialIdsTests(unittest.TestCase):
         drawn, _textured = material_ids.drawn_ids(root, bundle, source)
         np.testing.assert_array_equal(drawn[0], [[0, 1, -1]])
         np.testing.assert_array_equal(drawn[1], [[-1, 1, 0]])
+
+    def test_exclusion_selectors_match_reference_pixels(self):
+        source = surfaces()
+        source.p[3] = source.p[0] + [0, 0.1, 0]
+        source.textures = [SimpleNamespace(levels=[np.zeros((1, 1, 4))]), None]
+        materials = [np.array([[0, 1, 0, 1, -1]])]
+        objects = [np.array([[0, 0, 1, 2, -1]])]
+        cases = (
+            (('--exclude-material', 'patt*'), [0, -1, 0, -1, -1]),
+            (('--exclude-object', 'trim?'), [-1, -1, 0, -1, -1]),
+            (('--exclude', 'alpha-tested'), [0, -1, 0, -1, -1]),
+            (('--exclude', 'thin=0.25'), [-1, -1, 0, -1, -1]),
+            (('--exclude', 'not-drawn'), [-1, -1, -1, 0, -1]),
+        )
+        for selector, expected in cases:
+            with self.subTest(selector=selector):
+                actual = material_ids.exclusion_ids(source, materials, objects, [selector], {0, 1})
+                np.testing.assert_array_equal(actual[0], [expected])
+
+    def test_not_drawn_excludes_the_dropped_objects_wrong_material_pixels(self):
+        root, bundle, source, _mesh, metadata = self.capture()
+        source.tri_o = np.array([0, 1])
+        source.object_names = ['kept', 'dropped']
+        entries, _copies = mesh_bundle.decode(bundle.read_bytes())
+        bundle.write_bytes(mesh_bundle.encode([entry for entry in entries if entry[0] == 'painted'], []))
+        metadata['entries'] = [dict(row, bundle_sha256=hashlib.sha256(bundle.read_bytes()).hexdigest())
+                               for row in metadata['entries'] if row['entry'] == 'painted']
+        (root / 'entries.json').write_text(json.dumps(metadata))
+        for frame in range(2):
+            np.array([1, 1, 0], '<u4').tofile(root / f'{frame:04d}.ids')
+        owners = set()
+        drawn, pattern = material_ids.drawn_ids(root, bundle, source, drawn_objects=owners)
+        ref = np.array([[0, 1, -1]])
+        before = material_ids.diff_classes(ref, drawn[0], pattern[0], [False, False])
+        self.assertEqual(np.count_nonzero(before == material_ids.WRONG_MATERIAL), 1)
+        exclusions = material_ids.exclusion_ids(source, [ref], [ref], [('--exclude', 'not-drawn')], owners)
+        after = material_ids.diff_classes(ref, drawn[0], pattern[0], [False, False], exclusions[0])
+        np.testing.assert_array_equal(after, [[material_ids.AGREE_PLAIN, material_ids.EXCLUDED,
+                                              material_ids.BOTH_EMPTY]])
+        self.assertEqual(material_ids.material_confusions([ref], drawn[:1], [after]), [])
+
+    def test_bundle_coverage_counts_uncaptured_rest_copies_and_cards(self):
+        from r3d import lcol_asset
+        from r3d.texture import texture_asset
+        from test_texture_asset import fake_scene, SIZE
+
+        root, bundle, source, mesh, metadata = self.capture(('rest', 'rest'))
+        source.p = np.concatenate([source.p, source.p + [4, 0, 0]])
+        source.tri_v = np.concatenate([source.tri_v, source.tri_v + len(source.p) // 2])
+        source.tri_m = np.array([0, 1, 0, 1])
+        source.tri_o = np.arange(4)
+        source.object_names = ['rest', 'copy', 'card', 'dropped']
+        entries, _copies = mesh_bundle.decode(bundle.read_bytes())
+        copies = []
+        for name, x in [('copy', 2), ('card', 4)]:
+            copy_mesh = build_lit_mesh(source.p, np.full(source.p.shape, 128), source.tri_v[:1],
+                                       np.array([True]), colourless=True)
+            entries.extend(bundle_entries(name, copy_mesh))
+            entries.append((lcol_asset.name_for_mesh(name), lcol_asset.TYPE,
+                            lcol_asset.encode(lcol_asset.RGB888, len(copy_mesh.pos), [bytes(copy_mesh.pos.size)])))
+            copies.append(dict(name=name + '.place', mesh=name, colour_set=0, owner='fixture',
+                               source='dropped', first='fixture', match={}, matrix=np.eye(3).tolist(),
+                               position=[x, 0, 0]))
+        _, texture_source = fake_scene()
+        luvs = uv_transfer.cluster_uvs(mesh, texture_source, [0], [SIZE])
+        texture = texture_asset.mask_texture(np.ones((SIZE, SIZE), dtype=bool), 1)
+        entries.extend([(uv_transfer.name_for_mesh('card'), uv_transfer.TYPE, uv_transfer.pack_luvs(luvs)),
+                        (uv_transfer.texture_name('card', 0), texture_asset.TYPE, texture_asset.pack_ltex(texture))])
+        bundle.write_bytes(mesh_bundle.encode(entries, copies))
+        metadata['entries'] = [dict(row, entry='copy', position=[2, 0, 0],
+                                    bundle_sha256=hashlib.sha256(bundle.read_bytes()).hexdigest())
+                               for row in metadata['entries'] if row['first_id'] == 1]
+        (root / 'entries.json').write_text(json.dumps(metadata))
+        for frame in range(2):
+            np.zeros(3, dtype='<u4').tofile(root / f'{frame:04d}.ids')
+        owners = set()
+        with mock.patch.object(uv_transfer, 'material_search', wraps=uv_transfer.material_search) as search, \
+                mock.patch.object(uv_transfer, 'nearest_materials', wraps=uv_transfer.nearest_materials) as mapping:
+            material_ids.drawn_ids(root, bundle, source, drawn_objects=owners)
+        self.assertEqual((search.call_count, mapping.call_count), (1, 3))
+        self.assertEqual(owners, {0, 1, 2})
+
+    def test_excluding_material_preserves_classes_on_other_pixels(self):
+        module = material_ids
+        source = surfaces()
+        ref = np.array([[0, 1, 1, 1, 1, 1, -1, -1]])
+        drawn = np.array([[1, 1, 1, 0, -1, 1, 0, -1]])
+        pattern = np.array([[False, False, True, False, False, False, False, False]])
+        before = module.diff_classes(ref, drawn, pattern, [False, True])
+        excluded = module.exclusion_ids(source, [ref], [ref], [('--exclude-material', 'pattern')])[0]
+        after = module.diff_classes(ref, drawn, pattern, [False, True], excluded)
+        np.testing.assert_array_equal(after[:, 1:], before[:, 1:])
+        self.assertEqual(after[0, 0], module.EXCLUDED)
+
+    def test_no_selectors_preserve_classes_and_counts(self):
+        module = material_ids
+        frame = np.array([[-1, 0, 0, 0, 1, 1, -1]])
+        drawn = np.array([[-1, 0, 0, -1, 0, 1, 1]])
+        pattern = np.array([[False, True, False, False, False, False, False]])
+        selector_ids = module.exclusion_ids(surfaces(), [frame], [frame], [])[0]
+        actual = module.diff_classes(frame, drawn, pattern, [True, False], selector_ids)
+        expected = [module.BOTH_EMPTY, module.AGREE_TEXTURED, module.MISS, module.REFERENCE_ONLY,
+                    module.WRONG_MATERIAL, module.AGREE_PLAIN, module.DRAWN_ONLY]
+        np.testing.assert_array_equal(actual, [expected])
+        totals = module.material_table([frame], [drawn], [actual], ['pattern', 'plain'])
+        self.assertEqual([sum(row[name] for row in totals) for name in module.CLASS_NAMES], [1] * 7 + [0])
+
+    @needs_llvm
+    def test_sheet_and_csvs_record_ordered_selectors_and_first_match(self):
+        scene, poses, root = self.comparison_files()
+        out = root / 'selectors.png'
+        selectors = ['--exclude-object', '*', '--exclude-material', 'front',
+                     '--exclude', 'thin=5e-1', '--exclude-object', 'missing']
+        argv = ['render_compare.py', '--material-ids', str(scene), 'painted', str(poses), str(root),
+                '--out', str(out), *selectors]
+        import shlex
+        header = 'Exclusions: ' + shlex.join(selectors)
+        with (mock.patch.object(sys, 'argv', argv),
+              mock.patch.object(render_compare, 'captioned', wraps=render_compare.captioned) as caption):
+            render_compare.main()
+        self.assertIn(header, [call.args[1] for call in caption.call_args_list])
+        reports = {}
+        for suffix in ('.csv', '.confusions.csv', '.excluded.csv'):
+            with out.with_suffix(suffix).open(newline='') as handle:
+                self.assertEqual(handle.readline().rstrip(), '# ' + header)
+                reports[suffix] = list(csv.DictReader(handle))
+        self.assertEqual(reports['.confusions.csv'], [])
+        front = next(row for row in reports['.csv'] if row['name'] == 'front')
+        self.assertEqual((front['excluded'], front['agree_plain']), ('1', '0'))
+        self.assertEqual(reports['.excluded.csv'], [
+            dict(selector="--exclude-object '*'", object='0', name='painted', material='front', pixels='1')])
 
     def test_confusions_count_only_wrong_material_pairs(self):
         module = material_ids
@@ -232,9 +367,11 @@ class MaterialIdsTests(unittest.TestCase):
             render_compare.main()
         self.assertTrue(out.is_file())
         with out.with_suffix('.csv').open(newline='') as handle:
+            self.assertEqual(handle.readline().rstrip(), '# Exclusions: (none)')
             totals = {row['name']: row for row in csv.DictReader(handle)}
         self.assertEqual(int(totals['front']['agree_plain']), 1)
         with out.with_suffix('.confusions.csv').open(newline='') as handle:
+            self.assertEqual(handle.readline().rstrip(), '# Exclusions: (none)')
             self.assertEqual(list(csv.DictReader(handle)), [])
 
     @needs_llvm
@@ -243,7 +380,7 @@ class MaterialIdsTests(unittest.TestCase):
         # Move the camera behind the local back face but in front of the world back face.
         poses.write_text('size 1 1\nlens 0.5 0.1\npose 0 0 -2 0 0 -1\n')
         write_pose_log(root, 1, eye_z=-2)
-        ref, drawn, _pattern, names, _has_texture = render_compare.material_id_inputs(scene, 'painted', poses, root)
+        ref, drawn, _pattern, names, _has_texture, _excluded = render_compare.material_id_inputs(scene, 'painted', poses, root)
         np.testing.assert_array_equal(ref[0], [[names.index('front')]])
         np.testing.assert_array_equal(ref[0], drawn[0])
 
@@ -305,7 +442,7 @@ class MaterialIdsTests(unittest.TestCase):
         out = root / 'sheet.png'
         frame = np.zeros((1, 1), dtype=np.int32)
         pattern = np.zeros_like(frame, bool)
-        inputs = ([frame, frame], [frame, frame], [pattern, pattern], ['plain'], [False])
+        inputs = ([frame, frame], [frame, frame], [pattern, pattern], ['plain'], [False], (None, []))
         argv = ['render_compare.py', '--material-ids', 'scene', 'object', 'poses', 'ids',
                 '--out', str(out), '--reference', str(reference), '--views', '2', '--crops', '1']
         with (mock.patch.object(sys, 'argv', argv),
