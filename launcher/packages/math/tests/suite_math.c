@@ -895,6 +895,16 @@ test_quatf_from_to_near_antiparallel(void) {
 }
 
 static void
+test_quatf_from_to_uses_least_aligned_axis_near_opposition(void) {
+    const vec3f_t a = {0.25F, 0.5F, 1.0F};
+    vec3f_t b = vec3f_scale(a, -1.0F);
+    b.z = nextafterf(b.z, 0.0F);
+    const vec3f_t axis = vec3f_normalize(vec3f_cross(vec3f_unit_x(), a));
+    const quatf_t turn = quatf_from_to(a, b);
+    assert_vec3(axis, quatf_rotate(turn, axis));
+}
+
+static void
 test_quatf_looking_keeps_roll_across_both_poles(void) {
     const float poles[] = {-1.0F, 1.0F};
     const float sides[] = {-1.0F, 1.0F};
@@ -937,6 +947,7 @@ test_transformf_aims_with_quatf_pole_roll(void) {
 void
 suite_math(void) {
     RUN_TEST(test_quatf_from_to_near_antiparallel);
+    RUN_TEST(test_quatf_from_to_uses_least_aligned_axis_near_opposition);
     RUN_TEST(test_quatf_looking_keeps_roll_across_both_poles);
     RUN_TEST(test_transformf_aims_with_quatf_pole_roll);
     RUN_TEST(test_quatf_from_to_rotates_directions_at_any_scale);

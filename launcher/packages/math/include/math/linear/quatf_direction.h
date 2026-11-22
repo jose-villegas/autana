@@ -7,6 +7,6 @@
  * or parallel up, use +Z or -Z according to forward.z, then +Y if needed. */
 quatf_t quatf_looking(vec3f_t forward, vec3f_t up);
 
-/* Shortest turn from a to b. Missing directions give identity. At opposition
- * turn halfway about Z cross a (Y cross a when a is on the Z axis). */
+/* Shortest turn from a to b. Missing directions give identity. Near opposition,
+ * turn halfway about the least-aligned basis axis crossed with a. */
 quatf_t quatf_from_to(vec3f_t a, vec3f_t b);

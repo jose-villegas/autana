@@ -1,35 +1,35 @@
 /* quatf: float rotations constructed from directions. */
 #include "math/linear/quatf_direction.h"
 
-/* Prescale directions before squaring to avoid overflow and underflow.
- * A zero or nonfinite direction gives zero. */
+#include <float.h>
+
+#define QUATF_OPPOSITION_SINE_TOLERANCE (8.0F * FLT_EPSILON)
+
+/* Power-of-two scaling keeps the direction ratios through cross cancellation. */
 static vec3f_t
 rescale_direction(vec3f_t v) {
     if (!isfinite(v.x) || !isfinite(v.y) || !isfinite(v.z)) {
         return vec3f_zero();
     }
     const float largest = fmaxf(fabsf(v.x), fmaxf(fabsf(v.y), fabsf(v.z)));
-    return largest > 0.0F ? (vec3f_t){v.x / largest, v.y / largest, v.z / largest} : vec3f_zero();
-}
-
-static double
-dot_wide(vec3f_t a, vec3f_t b) {
-    return (double)a.x * b.x + (double)a.y * b.y + (double)a.z * b.z;
-}
-
-/* Float inputs have exact products in double and their cross length fits
- * even at the extremes. Rounding the products in float can erase the axis. */
-static double
-cross_direction(vec3f_t a, vec3f_t b, vec3f_t* axis) {
-    const double x = (double)a.y * b.z - (double)a.z * b.y;
-    const double y = (double)a.z * b.x - (double)a.x * b.z;
-    const double z = (double)a.x * b.y - (double)a.y * b.x;
-    const double length = sqrt(x * x + y * y + z * z);
-    *axis = vec3f_zero();
-    if (isfinite(length) && length > 0.0) {
-        *axis = (vec3f_t){(float)(x / length), (float)(y / length), (float)(z / length)};
+    if (largest == 0.0F) {
+        return vec3f_zero();
     }
-    return length;
+    int exponent;
+    frexpf(largest, &exponent);
+    return (vec3f_t){scalbnf(v.x, -exponent), scalbnf(v.y, -exponent), scalbnf(v.z, -exponent)};
+}
+
+static vec3f_t
+opposition_axis(vec3f_t a) {
+    const float x = fabsf(a.x);
+    const float y = fabsf(a.y);
+    const float z = fabsf(a.z);
+    if (z <= x && z <= y) {
+        return vec3f_normalize(vec3f_cross(vec3f_unit_z(), a));
+    }
+    const vec3f_t basis = y <= x ? vec3f_unit_y() : vec3f_unit_x();
+    return vec3f_normalize(vec3f_cross(basis, a));
 }
 
 quatf_t
@@ -38,12 +38,12 @@ quatf_looking(vec3f_t forward, vec3f_t up) {
     if (vec3f_equal(scaled, vec3f_zero())) {
         return quatf_identity();
     }
-    vec3f_t right;
-    const double cross_length = cross_direction(up, forward, &right);
-    if (!isfinite(cross_length) || cross_length == 0.0) {
+    vec3f_t right = rescale_direction(vec3f_cross(rescale_direction(up), scaled));
+    if (vec3f_equal(right, vec3f_zero())) {
         const vec3f_t substitute = forward.z > 0.0F ? vec3f_back() : vec3f_forward();
-        if (cross_direction(substitute, forward, &right) == 0.0) {
-            cross_direction(vec3f_up(), forward, &right);
+        right = rescale_direction(vec3f_cross(substitute, scaled));
+        if (vec3f_equal(right, vec3f_zero())) {
+            right = vec3f_cross(vec3f_up(), scaled);
         }
     }
     const vec3f_t front = vec3f_normalize(scaled);
@@ -53,24 +53,27 @@ quatf_looking(vec3f_t forward, vec3f_t up) {
 
 quatf_t
 quatf_from_to(vec3f_t a, vec3f_t b) {
-    const double lengths = sqrt(dot_wide(a, a) * dot_wide(b, b));
-    if (!isfinite(lengths) || lengths == 0.0) {
+    a = rescale_direction(a);
+    b = rescale_direction(b);
+    if (vec3f_equal(a, vec3f_zero()) || vec3f_equal(b, vec3f_zero())) {
         return quatf_identity();
     }
-    const double cosine = dot_wide(a, b) / lengths;
-    vec3f_t axis;
-    const double cross_length = cross_direction(a, b, &axis);
-    const float sine = (float)(cross_length / lengths);
-    if (cosine >= 0.0) {
-        const vec3f_t imaginary = vec3f_scale(axis, sine);
-        return quatf_normalize((quatf_t){imaginary.x, imaginary.y, imaginary.z, (float)(1.0 + cosine)});
+    const float a_squared = vec3f_dot(a, a);
+    const float lengths = sqrtf(a_squared * vec3f_dot(b, b));
+    const float dot = vec3f_dot(a, b);
+    const vec3f_t cross = vec3f_cross(a, b);
+    if (dot >= 0.0F) {
+        return quatf_normalize((quatf_t){cross.x, cross.y, cross.z, lengths + dot});
     }
-    if (cross_length == 0.0) {
-        const vec3f_t reference = a.x == 0.0F && a.y == 0.0F ? vec3f_up() : vec3f_forward();
-        cross_direction(reference, a, &axis);
+    const float cross_length = vec3f_length(cross);
+    if (cross_length <= QUATF_OPPOSITION_SINE_TOLERANCE * lengths) {
+        const vec3f_t axis = opposition_axis(a);
         return (quatf_t){axis.x, axis.y, axis.z, 0.0F};
     }
+    /* Cancellation can tilt the computed axis toward a near opposition. */
+    const vec3f_t orthogonal = vec3f_sub(cross, vec3f_scale(a, vec3f_dot(cross, a) / a_squared));
+    const vec3f_t axis = vec3f_normalize(orthogonal);
     /* The complementary half-angle avoids cancellation as the turn approaches pi. */
-    const vec3f_t imaginary = vec3f_scale(axis, (float)(1.0 - cosine));
-    return quatf_normalize((quatf_t){imaginary.x, imaginary.y, imaginary.z, sine});
+    const vec3f_t imaginary = vec3f_scale(axis, lengths - dot);
+    return quatf_normalize((quatf_t){imaginary.x, imaginary.y, imaginary.z, cross_length});
 }

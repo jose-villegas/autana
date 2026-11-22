@@ -31,7 +31,7 @@ from target up to world up after the target rotation (uppify).
 
 At an inverted target the leveled heading is undefined and can flip 180°
 across that orientation. [`quatf_from_to`](../math/Linear.md#quat-from-to) picks
-a deterministic half-turn at exact inversion.
+a deterministic half-turn near inversion.
 
 Target scale has no effect.
 
