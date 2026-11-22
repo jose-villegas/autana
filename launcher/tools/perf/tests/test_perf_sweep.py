@@ -11,7 +11,8 @@ from shell_job import ShellJobTests
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import perf_sweep as tool
-from layout_measure import TUNE_NAME_MAX, flash_needs_hot_tunables
+from console_protocol import TUNE_NAME_MAX, TUNE_VALUE_MAX
+from layout_measure import flash_needs_hot_tunables
 
 FIXTURE = Path(__file__).parent / "fixtures/sweep_capture.log"
 
@@ -76,7 +77,7 @@ class TunableInputTests(unittest.TestCase):
                 self.assertEqual(args.knob, [("render.knob", [expected])])
 
     def test_setup_and_sweep_reject_invalid_tunables(self):
-        for name, value in (("render.knob", str(2**31)), ("x" * (TUNE_NAME_MAX + 1), "1"),
+        for name, value in (("render.knob", str(TUNE_VALUE_MAX + 1)), ("x" * (TUNE_NAME_MAX + 1), "1"),
                             ("render.knob", "08"), ("render-knob", "1")):
             with self.subTest(name=name, value=value):
                 line = f"SET {name} {value}"

@@ -11,6 +11,7 @@
 #include "console/console_words.h"
 #include "core/tune.h"
 
+/* The verb registrations check their identifiers against these request words. */
 #define CONSOLE_TUNE_SET   "SET"
 #define CONSOLE_TUNE_GET   "GET"
 #define CONSOLE_TUNE_RESET "RESET"

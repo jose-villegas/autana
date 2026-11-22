@@ -11,7 +11,8 @@ import sys
 
 from layout_measure import (REPO, autana_command, booted_build_id,
                             capture_metadata, captured_runs, make_table, parse_markdown, timing_samples,
-                            run_stamped, split_filters, filter_limits, status_snapshot, parse_tunable)
+                            run_stamped, split_filters, filter_limits, status_snapshot)
+from console_protocol import TUNE_SET, parse_tunable
 from device_report import read_capture_text
 import device_lock
 
@@ -31,7 +32,7 @@ DEFAULT_RUNS = 5
 MAX_CONSECUTIVE_FAILURES = 2
 
 # What device.py prints for a --set the board refused (its TuneRefused).
-SET_REFUSED = "device: SET "
+SET_REFUSED = f"device: {TUNE_SET} "
 
 
 class SweepStop(RuntimeError):

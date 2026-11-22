@@ -29,7 +29,7 @@ from unittest import mock
 DEVICE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(DEVICE))
 import device
-from console_protocol import TUNE_REPLY_ENDS
+from console_protocol import TUNE_REPLY_ENDS, TUNE_VALUE_MAX
 from fake_serial import FakeConnection, FakeUsbBoard
 import fake_flash  # noqa: E402
 import device_lock
@@ -1699,6 +1699,33 @@ class TuneSetTests(unittest.TestCase):
 
     def test_hex_is_compared_as_the_board_prints_it(self):
         self.apply("a.rgb=0x10", b"log line\nI (5) console: TUNE_OK a.rgb=16\n")
+
+    def test_cli_accepts_the_decimal_echo_of_an_octal_setting(self):
+        connection = FakeConnection([b"TUNE_OK x=8\n", b"RUNSUITE_COMPLETE name=sand found=1\n"])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with mock.patch.object(device.device_lock, "LockStore", return_value=mock_store()), \
+                 mock.patch.object(device, "board_for_lock", return_value=(BOARD, None)), \
+                 mock.patch.object(device, "open_when_free", return_value=connection), \
+                 mock.patch.object(device, "records_root", return_value=root / "records"), \
+                 mock.patch("builtins.print"):
+                result = device.main(["--owner", "agent", "run-suite", "sand",
+                                      "--out", str(root / "capture.log"), "--set", "x=010"])
+        self.assertEqual(result, 0)
+        self.assertEqual(b"".join(connection.writes), b"\nSET x 010\n\nRUNSUITE sand\n")
+
+    def test_cli_rejects_invalid_settings_before_locking(self):
+        commands = (["run-suite", "sand"], ["batch", "--worktree", ".", "--suite", "sand"])
+        for command in commands:
+            for setting, message in (("bad name=1", "expected a console name"),
+                                     (f"x={TUNE_VALUE_MAX + 1}", "value must fit int32")):
+                with self.subTest(command=command[0], setting=setting):
+                    with mock.patch.object(device.device_lock, "LockStore",
+                                           side_effect=AssertionError("lock opened")), \
+                         contextlib.redirect_stderr(io.StringIO()) as errors, self.assertRaises(SystemExit) as stop:
+                        device.main([*command, "--set", setting])
+                    self.assertEqual(stop.exception.code, 2)
+                    self.assertIn(f"argument --set: {setting!r}: {message}", errors.getvalue())
 
     def test_a_dropped_line_is_asked_again(self):
         class AnswersSecondAsk(FakeConnection):

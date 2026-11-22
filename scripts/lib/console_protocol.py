@@ -6,7 +6,8 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher/tools"))
 from build.c_header import read_define
 
-TUNE_HEADER = Path(__file__).resolve().parents[2] / "launcher/main/console/console_tune.h"
+REPO = Path(__file__).resolve().parents[2]
+TUNE_HEADER = REPO / "launcher/main/console/console_tune.h"
 TUNE_SET = read_define(TUNE_HEADER, "CONSOLE_TUNE_SET")
 TUNE_GET = read_define(TUNE_HEADER, "CONSOLE_TUNE_GET")
 TUNE_RESET = read_define(TUNE_HEADER, "CONSOLE_TUNE_RESET")
@@ -14,6 +15,9 @@ TUNE_LIST = read_define(TUNE_HEADER, "CONSOLE_TUNE_LIST")
 TUNE_OK = read_define(TUNE_HEADER, "CONSOLE_TUNE_OK")
 TUNE_ERR = read_define(TUNE_HEADER, "CONSOLE_TUNE_ERR")
 TUNE_END = read_define(TUNE_HEADER, "CONSOLE_TUNE_END")
+TUNE_NAME_MAX = read_define(REPO / "launcher/main/core/tune.h", "TUNE_NAME_MAX")
+TUNE_VALUE_MIN = -(2**31)
+TUNE_VALUE_MAX = 2**31 - 1
 
 # Both success and refusal terminate a framed reply, so callers must stop on either.
 FRAMED_ENDINGS = ("_END", "_ERR")
@@ -22,6 +26,23 @@ TUNE_REPLY_ENDS = (TUNE_OK, TUNE_ERR, TUNE_END)
 LOG_PREFIX = re.compile(r"^[IWEVD] \(\d+\) [^:]+:\s*")
 
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def parse_tunable(name: str, text: str) -> int:
+    """Parse a console tunable assignment using the firmware's base-zero syntax."""
+    assignment = f"{name}={text}"
+    if len(name) > TUNE_NAME_MAX or not re.fullmatch(r"[a-zA-Z0-9_.]+", name):
+        raise ValueError(f"{assignment!r}: expected a console name of at most {TUNE_NAME_MAX} characters")
+    match = re.fullmatch(r"[+-]?(?:0[xX][0-9a-fA-F]+|(?P<octal>0[0-7]*)|[1-9][0-9]*)", text)
+    if not match:
+        raise ValueError(f"{assignment!r}: expected a decimal, octal or hexadecimal integer")
+    try:
+        value = int(text, 8 if match["octal"] else 0)
+    except ValueError as error:
+        raise ValueError(f"{assignment!r}: value must fit int32") from error
+    if not TUNE_VALUE_MIN <= value <= TUNE_VALUE_MAX:
+        raise ValueError(f"{assignment!r}: value must fit int32")
+    return value
 
 
 def reply_prefix(line):
