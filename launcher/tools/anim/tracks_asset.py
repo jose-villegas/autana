@@ -2,7 +2,7 @@
 NAME.anim.toml beside its source, and read back. The one writer of the entry,
 and its reader on the host; main/anim/anim_tracks.c is the firmware's.
 
-A NAME.anim.toml names its source, a .glb, .fbx or camera .keys.toml in its
+A NAME.anim.toml names its source, a .glb, .fbx or .keys.toml in its
 own folder, and the animation in it; the pack id is NAME. The keys are in
 docs/render/animation/Animation-Tracks.md, the entry's layout in docs/assets/formats/TRCK.md.
 
@@ -26,6 +26,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from gltf import gltf_read  # noqa: E402
 from r3d import gltf_skin  # noqa: E402
 from anim.clip_name import SUFFIX, clip_id  # noqa: E402
+from anim import scene_fields  # noqa: E402
+from anim.scene_fields import VALUE_FLOAT, VALUE_VEC2, VALUE_VEC3, VALUE_QUAT, VALUE_COLOUR, WIDTHS  # noqa: E402
 
 TYPE = b"TRCK"
 OWNER = pathlib.Path(__file__).resolve().parents[2] / "main/anim/anim_tracks_format.h"
@@ -48,11 +50,11 @@ STRINGS_MAX, COUNT_MAX, DURATION_MAX, GROUND_MAX = 65535, 65535, 0xFFFFFFFF, 655
 # slide reads as a straight line between samples.
 GROUND_SAMPLES_PER_S = 120
 ROOT_SCENE, ROOT_SKELETON = [read_define(OWNER, "ANIM_ROOT_" + name) for name in ("SCENE", "SKELETON")]
-VALUE_FLOAT, VALUE_VEC2, VALUE_VEC3, VALUE_QUAT, VALUE_COLOUR = range(5)
-WIDTHS = (1, 2, 3, 4, 3)
-TRANSFORM, CAMERA = (int.from_bytes(tag, "little") for tag in (b"TRNS", b"CAMR"))
-FIELDS = {"translation": ("position", VALUE_VEC3), "rotation": ("rotation", VALUE_QUAT),
-          "scale": ("scale", VALUE_VEC3)}
+YFOV_FIELD = "half_fov_short_tan"
+CAMERA, _ = scene_fields.FIELDS[YFOV_FIELD]
+TRANSFORM, _ = scene_fields.FIELDS["position"]
+FIELDS = {path: (field, scene_fields.FIELDS[field][1]) for field, path in scene_fields.TRANSFORM_PATHS.items()}
+SCENE_FIELD_POINTER = re.compile(r"/nodes/([0-9]+)/extensions/" + scene_fields.SCENE_FIELDS_EXTENSION + r"/([^/]{4})/([^/]+)")
 assert AT_PAD + HEADER_PAD_SIZE == AT_GROUND and HEADER.size == HEADER_SIZE == AT_GROUND + struct.calcsize("<H")
 assert ROW.size == ROW_SIZE == ROW_INTERP + struct.calcsize("<B")
 # glTF's interpolation names, in anim_interp_t's order.
@@ -75,6 +77,14 @@ def object_name(document, collection, index):
 def channel_binding(document, channel, joint_paths=None):
     pointer = channel["pointer"]
     if pointer:
+        scene_field = SCENE_FIELD_POINTER.fullmatch(pointer)
+        if scene_field:
+            node, tag, field = scene_field.groups()
+            binding = scene_fields.FIELDS.get(field)
+            if binding is None or binding[0].to_bytes(4, "little").decode("ascii") != tag:
+                raise TracksError("channel %s: unknown scene component or field" % pointer)
+            component, value_type = binding
+            return object_name(document, "nodes", int(node)), component, field, value_type, None
         match = re.fullmatch(r"/cameras/(\d+)/perspective/yfov", pointer)
         if not match:
             raise TracksError("channel %s: unsupported animation pointer" % pointer)
@@ -82,7 +92,7 @@ def channel_binding(document, channel, joint_paths=None):
         holders = [i for i, node in enumerate(document.get("nodes", [])) if node.get("camera") == camera]
         if camera >= len(document.get("cameras", [])) or len(holders) != 1:
             raise TracksError("channel %s: needs one node holding the camera" % pointer)
-        return object_name(document, "nodes", holders[0]), CAMERA, "half_fov_short_tan", VALUE_FLOAT, camera
+        return object_name(document, "nodes", holders[0]), CAMERA, YFOV_FIELD, VALUE_FLOAT, camera
     node, path = channel["node"], channel["path"]
     if path not in FIELDS or node is None:
         raise TracksError("channel node %s/%s: unsupported target" % (node, path))
@@ -200,7 +210,7 @@ def clip_tracks(document, binary, animation):
             check(name, channel)
             if len(channel["values"][0]) != WIDTHS[value_type]:
                 raise TracksError("%s: values do not match binding type" % name)
-            if component == CAMERA:
+            if camera is not None:
                 aspect = document["cameras"][camera]["perspective"].get("aspectRatio", 1.0)
                 channel = dict(channel, values=gltf_read.camera_half_fov_short_tan_curve(
                     channel["values"], channel["interpolation"], aspect))
@@ -265,7 +275,7 @@ def encode(tracks, duration_ms, root=ROOT_SCENE, ground=0):
     rows, data = [], bytearray()
     for track, track_hashes in zip(tracks, binding_hashes):
         check_curve(track["name"], track)
-        if track["component"] not in (TRANSFORM, CAMERA) or track["type"] not in range(len(WIDTHS)):
+        if track["component"] not in scene_fields.COMPONENTS or track["type"] not in range(len(WIDTHS)):
             raise TracksError("%s: unknown component or type" % track["name"])
         if any(len(v) != WIDTHS[track["type"]] for v in track["values"]):
             raise TracksError("%s: values do not match binding type" % track["name"])

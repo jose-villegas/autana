@@ -1,9 +1,7 @@
 """Read a binary glTF 2.0 file: accessors, animations and their samplers.
 
-Standard library only (an FBX source is converted by tools/fbx and a camera
-keys file built by tools/anim/camera_keys.py, on demand), so asset tests and
-bakers share one reader. The
-sampler follows the glTF 2.0 spec (LINEAR, STEP, CUBICSPLINE; quaternions
+Asset tests and bakers share this reader. FBX conversion and in-memory
+keys-file builds run on demand. The standard-library sampler follows the glTF 2.0 spec (LINEAR, STEP, CUBICSPLINE; quaternions
 slerp), and is the reference the C runtime in main/anim/ is held to.
 """
 
@@ -20,7 +18,7 @@ GLB_SUFFIX = ".glb"
 FBX_SUFFIX = ".fbx"
 # The files a tool reads as a scene: a glTF binary, or an FBX converted to one.
 ASSET_SUFFIXES = (GLB_SUFFIX, FBX_SUFFIX)
-# A camera path authored as keys; it holds an animation and no mesh.
+# A camera or scene animation authored as keys.
 KEYS_SUFFIX = ".keys.toml"
 
 COMPONENT_FORMATS = {
@@ -92,7 +90,7 @@ def load_glb(path):
 
 def load_asset(path):
     """Return (document, binary chunk) of a scene file, .glb or .fbx, or of a
-    camera keys file. An FBX is converted once to a .glb
+    keys file. An FBX is converted once to a .glb
     (tools/fbx/fbx_to_glb.py), cached by content; keys are built in memory."""
     if pathlib.Path(path).name.lower().endswith(KEYS_SUFFIX):
         from anim.camera_keys import load_glb_bytes

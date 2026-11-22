@@ -49,12 +49,14 @@ onto engine fields:
 | node `rotation` | `TRNS` | `rotation` | `QUAT` |
 | node `scale` | `TRNS` | `scale` | `VEC3` |
 | `/cameras/N/perspective/yfov` pointer (`KHR_animation_pointer`<sup>[[18]](../../Citations.md#khronos-khr-animation-pointer)</sup>) | `CAMR` | `half_fov_short_tan` | `FLOAT` |
+| `/nodes/N/extensions/AUTANA_scene_fields/CCCC/field` pointer | `CCCC` | C field name | Declared `ANIM_VALUE_*` |
 
-The camera pointer binds to the one node holding that camera. The bake uses
+The `yfov` pointer binds to the one node holding that camera. The bake uses
 `gltf_read.camera_half_fov_short_tan()` for values and
 `gltf_read.camera_half_fov_short_tan_derivative()` for cubic tangents.
 The camera's static perspective aspect ratio defaults to 1 when absent.
-Other pointer targets and morph weights are refused.
+Scene-field pointer values are already in the target field’s units.
+The bake accepts the pointer targets shown above.
 A channel that never changes is baked as one key; a cubic channel counts as
 unchanging only when every tangent is zero.
 
@@ -73,7 +75,7 @@ times stay in step, and the clip's duration is the last key of any of them.
 ## The pack entry
 
 A `NAME.anim.toml` beside its source names one animation in it: a `.glb`, an
-`.fbx` (converted to glTF once) or a camera `.keys.toml` (built into glTF in
+`.fbx` (converted to glTF once) or a `.keys.toml` (built into glTF in
 memory at every bake). `build_pack.py` finds every such file by searching,
 so no list is kept. A
 clip no scene names is a [pack](../../assets/Building-Packs.md#packs) of its own, named
@@ -171,18 +173,52 @@ a vector by a sampled rotation, such as a camera's look direction.
 
 ## Authoring
 
-For a camera path without Blender, write a `NAME.keys.toml` and name it as
-the source of a `NAME.anim.toml`; `tools/anim/camera_keys.py` builds it into
-glTF when the clip is baked, so no `.glb` is kept. The keys file sets `node`,
-`animation` and `[[keys]]` with seconds `t`, `eye` and `look_at` vectors.
-Translation is a smooth Catmull-Rom curve<sup>[[20]](../../Citations.md#catmull-1974)</sup> and rotation interpolates
-short-way quaternions with +Y up; repeat the first key at the end to close
-the loop.
+### Keys files
+
+Set a `NAME.keys.toml` as the source in a `NAME.anim.toml`. The bake
+builds the keys into glTF in memory. Track form uses `animation` and
+`[[tracks]]` to key any declared field by scene object name.
+
+```toml
+animation = "demo"
+
+[[tracks]]
+object = "butterfly_blue"
+field = "position"
+interp = "cubic"
+offset = { position = [0, 40, 0], rotation = [0, 0, 0, 1] }
+keys = [{ t = 0.0, v = [0, 900, 0] }, { t = 4.0, v = [120, 140, -30] }]
+
+[[tracks]]
+object = "camera"
+field = "half_fov_short_tan"
+interp = "linear"
+keys = [{ t = 0.0, v = 0.62 }, { t = 4.0, v = 0.55 }]
+```
+
+| Entry | Rule |
+|---|---|
+| `object`, `field` | One channel per object and field. The tool reads `ANIM_FIELD` arrays and their `anim_component_fields_t` wrappers in C for the field's component and value type. A field name must identify one component. |
+| `t`, `v` | Seconds start at zero and increase strictly per track. Values are finite and match the declared type. Rotations are unit xyzw quaternions aligned to the preceding key's sign. |
+| `interp` | `step`, `linear` or `cubic`. For cubic, supply both `in` and `out` tangents in units per second on every key, or let the tool derive time-scaled Catmull-Rom tangents. |
+| `offset` on `position` | Rotate values and tangents by the offset rotation, then add the offset position to values. |
+| `offset` on `rotation` | Left-multiply values and tangents by the offset rotation. |
+
+An omitted offset member uses zero position or identity rotation. Each
+track applies its own offset. Applying it before sampling gives the same
+curve as applying it to the samples, up to float rounding.
+
+Camera shorthand uses `node`, `animation` and `[[keys]]` with `t`,
+`eye` and `look_at`. Translation uses Catmull-Rom<sup>[[20]](../../Citations.md#catmull-1974)</sup>.
+Rotation uses short-way quaternion interpolation with +Y up. Repeat the
+first key at the end to close the loop.
+
+### Exported animations
 
 1. Animate in Blender and export glTF binary (`.glb`) with animation on. Name
    the action: the bake finds it by name. Blender exports keys as
    `LINEAR`, `STEP` or `CUBICSPLINE` per curve; a camera's field of view needs the
-   exporter's animation-pointer option; the bake refuses any other pointer.
+   exporter's animation-pointer option.
 2. Keep the file beside the code that plays it, as an asset, and write a
    `NAME.anim.toml` beside it naming the animation, as in
    [The pack entry](#the-pack-entry).
