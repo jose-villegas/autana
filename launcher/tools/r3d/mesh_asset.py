@@ -38,14 +38,17 @@ def read_mesh_header(mesh):
     vertices, triangles, _, _, _, _, colors_at, _, _, _, face_at, *_ = BLOB_HEADER.unpack_from(mesh)
     return MeshHeader(vertices, triangles, colors_at, face_at)
 
-def checked_struct(owner, prefix, fields, define=read_define):
-    """A little-endian header whose field offsets and size match its C defines."""
-    header = struct.Struct("<" + "".join(layout for _, layout in fields))
-    offset = 0
+def checked_struct(owner, prefix, fields, define=read_define, *, size_suffix="HEADER_SIZE"):
+    """A little-endian struct with offsets and size from its C owner."""
+    offset, formats = 0, ["<"]
     for field, layout in fields:
-        if offset != define(owner, prefix + "_AT_" + field):
-            raise ValueError(prefix + " header field offset disagrees with its C owner")
-        offset += struct.calcsize("<" + layout)
-    if header.size != define(owner, prefix + "_HEADER_SIZE") or offset != header.size:
-        raise ValueError(prefix + " header size disagrees with its C owner")
-    return header
+        start = define(owner, prefix + "_AT_" + field)
+        if start < offset:
+            raise ValueError(f"{prefix}.{field} overlaps the preceding field in {owner}")
+        formats.extend((f"{start - offset}x", layout))
+        offset = start + struct.calcsize("<" + layout)
+    size = define(owner, prefix + "_" + size_suffix)
+    if size < offset:
+        raise ValueError(f"{prefix} size {size} does not hold its fields in {owner}")
+    formats.append(f"{size - offset}x")
+    return struct.Struct("".join(formats))

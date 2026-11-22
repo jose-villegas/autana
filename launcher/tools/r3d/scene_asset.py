@@ -13,6 +13,7 @@ from build.c_header import read_define
 from build.name_hash import NONE as HASH_NONE, name_hash
 from r3d.import_settings import ANIM_WRAPS, SettingsError, color_fits, load_scene
 from r3d import skin_pack
+from r3d.mesh_asset import checked_struct
 from r3d.batch import copy_batches
 from r3d.scene_rows import (CLIP, COLOUR_SET_OWN, NAME, RENDERER, TRANSFORM, TRANSFORM_AXES, U16_MAX,
                             SceneError, decode_transform, field, text_at)
@@ -47,28 +48,17 @@ BINDS = {name: read_define(OWNER, "SCENE_ASSET_BIND_" + name.upper())
 HINGE_AXIS_TOLERANCE = read_define(OWNER, "SCENE_ASSET_HINGE_AXIS_TOLERANCE")
 
 
-def mapped_row(name, **fields):
-    """Build a row from the C offsets, keeping explicit pad fields available for validation."""
-    prefix = "SCENE_ASSET_" + name.upper()
-    size = read_define(OWNER, prefix + "_SIZE")
-    at, formats = 0, ["<"]
-    for field, fmt in fields.items():
-        offset = read_define(OWNER, prefix + "_AT_" + field.upper())
-        if offset < at:
-            raise SceneError(f"{name}.{field} overlaps the preceding field in {OWNER}")
-        formats.extend((f"{offset - at}x", fmt))
-        at = offset + struct.calcsize("<" + fmt)
-    if at != size:
-        raise SceneError(f"{name} fields end at {at}, expected {size} in {OWNER}")
-    return struct.Struct("".join(formats))
-
-
 VECTOR = f"{TRANSFORM_AXES}f"
-TIMELINE = mapped_row("timeline", clip=f"{NAME_BYTES}s", wrap="B",
-                      pad=f"{read_define(OWNER, 'SCENE_ASSET_TIMELINE_SIZE') - read_define(OWNER, 'SCENE_ASSET_TIMELINE_AT_PAD')}s")
-CONSTRAINT = mapped_row("constraint", entity="H", bind="B", pad="B", follow="I", look_at="I",
-                        offset=VECTOR, look_offset=VECTOR, lag_ms="f", handoff_ms="f", weight="f")
-HINGE = mapped_row("hinge", entity="H", pad="H", axis=VECTOR, min="f", max="f", angle="f")
+TIMELINE = checked_struct(OWNER, "SCENE_ASSET_TIMELINE", (("CLIP", f"{NAME_BYTES}s"), ("WRAP", "B")),
+                          size_suffix="SIZE")
+CONSTRAINT = checked_struct(OWNER, "SCENE_ASSET_CONSTRAINT",
+                            (("ENTITY", "H"), ("BIND", "B"), ("PAD", "B"), ("FOLLOW", "I"), ("LOOK_AT", "I"),
+                             ("OFFSET", VECTOR), ("LOOK_OFFSET", VECTOR), ("LAG_MS", "f"), ("HANDOFF_MS", "f"),
+                             ("WEIGHT", "f")), size_suffix="SIZE")
+HINGE = checked_struct(OWNER, "SCENE_ASSET_HINGE",
+                       (("ENTITY", "H"), ("PAD", "H"), ("AXIS", VECTOR), ("MIN", "f"), ("MAX", "f"), ("ANGLE", "f")),
+                       size_suffix="SIZE")
+TIMELINE_AT_PAD = read_define(OWNER, "SCENE_ASSET_TIMELINE_AT_PAD")
 
 ROWS = (NAME, TRANSFORM, RENDERER, CAMERA, LIGHT, SKINNED_RENDERER, ANIMATOR, CLIP, SETTINGS, PARENT,
         copy_batches.BATCH, copy_batches.CHUNK, copy_batches.PLACE, copy_batches.TURN, TIMELINE, CONSTRAINT, HINGE)
@@ -96,7 +86,7 @@ def encode(scene, cache=None, offline=False):
     rows["names"] = name_rows(objects)
     timeline = getattr(scene, "timeline", None)
     if timeline:
-        rows["timeline"].append((field(timeline.clip, "timeline clip"), WRAPS[timeline.wrap], b""))
+        rows["timeline"].append((field(timeline.clip, "timeline clip"), WRAPS[timeline.wrap]))
     rows["parents"] = [(parent_index(obj, index),) for obj in objects]
     drawn = {item.object.name for item in scene.renderers}
     placements = fold_parent_scales(objects, [parent for (parent,) in rows["parents"]], drawn)
@@ -279,7 +269,7 @@ def bake(path, cache=None, offline=False):
 
 
 def section(entry, offset, count, row, table_end, what):
-    if offset % 4 or offset < table_end or offset + count * row.size > len(entry):
+    if offset % ALIGN or offset < table_end or offset + count * row.size > len(entry):
         raise SceneError(f"the {what} leave the entry or are misaligned")
     return [row.unpack_from(entry, offset + i * row.size) for i in range(count)]
 
@@ -302,6 +292,16 @@ def decode(entry):
         raise SceneError("transforms and parents must match names and settings must have exactly one row")
     rows = {part: section(entry, at, count, row, HEADER.size, part)
             for part, at, count, row in zip(PARTS, offsets, counts, ROWS)}
+    ranges = sorted((at, at + count * row.size + (-(count * row.size) % ALIGN), part)
+                    for part, at, count, row in zip(PARTS, offsets, counts, ROWS) if count)
+    for (_, end, left), (start, _, right) in zip(ranges, ranges[1:]):
+        if end > start:
+            raise SceneError(f"{left} and {right}: sections overlap")
+    timeline = PARTS.index("timeline")
+    if counts[timeline] > 1:
+        raise SceneError("timeline: at most one row")
+    if counts[timeline] and any(entry[offsets[timeline] + TIMELINE_AT_PAD:offsets[timeline] + TIMELINE.size]):
+        raise SceneError("timeline: invalid padding")
     parents_end = offsets[parents] + counts[parents] * PARENT.size
     if any(entry[parents_end:parents_end + (-parents_end % ALIGN)]):
         raise SceneError("the padding after the parents is not zero")
@@ -363,11 +363,9 @@ def decode(entry):
 
 
 def decode_motion_rows(rows, out):
-    if len(rows["timeline"]) > 1:
-        raise SceneError("timeline: at most one row")
-    for clip, wrap, pad in rows["timeline"]:
-        if any(pad) or wrap not in WRAPS.values():
-            raise SceneError("timeline: invalid wrap or padding")
+    for clip, wrap in rows["timeline"]:
+        if wrap not in WRAPS.values():
+            raise SceneError("timeline: invalid wrap")
         out["timeline"].append(dict(clip=text_at(clip, "timeline clip"), wrap=wrap))
     entities = out["entities"]
     targets = {HASH_NONE, *(row["name_hash"] for row in entities)}
@@ -399,7 +397,10 @@ def decode_hinge(row):
     pad, *values = row
     axis = values[:TRANSFORM_AXES]
     low, high, angle = values[TRANSFORM_AXES:]
-    if pad or not abs(sum(value * value for value in axis) - 1) <= HINGE_AXIS_TOLERANCE:
+    f32 = copy_batches.f32
+    x, y, z = (f32(value * value) for value in axis)
+    length_sq = f32(f32(x + y) + z)
+    if pad or not abs(f32(length_sq - 1)) <= f32(HINGE_AXIS_TOLERANCE):
         raise SceneError("hinge: invalid unit axis or padding")
     if not all(map(math.isfinite, (low, high, angle))) or low > high:
         raise SceneError("hinge: invalid min, max or angle")

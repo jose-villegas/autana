@@ -80,19 +80,53 @@ class SceneTimelineTests(SceneFiles):
     def test_timeline_constraint_and_hinge_round_trip(self):
         head = '[timeline]\nclip = "clips/fly.anim.toml"\nwrap = "loop"\n'
         camera = lens() + ('[objects.constraint]\nfollow = "camera"\nlook_at = "camera"\n'
-                           'offset = [0, 60, 180]\nlook_offset = [0, 30, 0]\nbind = "target_yaw"\n'
+                           'offset = [0, 60, 180]\nlook_offset = [0, 30, 10]\nbind = "target_yaw"\n'
                            'lag_ms = 400\nhandoff_ms = 600\nweight = 0.5\n'
                            '[objects.hinge]\naxis = [1, 0, 0]\nmin = -1.25\nmax = 1.25\nangle = 0.25\n')
         entry = self.entry(renderer("a.import.toml") + camera, head)
         decoded = scene_asset.decode(entry)
         self.assertEqual(decoded["timeline"], [dict(clip="fly", wrap=scene_asset.WRAPS["loop"])])
         self.assertEqual(decoded["constraints"], [dict(entity=1, follow=name_hash("camera"),
-            look_at=name_hash("camera"), offset=(0, 60, 180), look_offset=(0, 30, 0),
+            look_at=name_hash("camera"), offset=(0, 60, 180), look_offset=(0, 30, 10),
             bind=scene_asset.BINDS["target_yaw"], lag_ms=400, handoff_ms=600, weight=0.5)])
         self.assertEqual(decoded["hinges"], [dict(entity=1, axis=(1, 0, 0), min=-1.25, max=1.25, angle=0.25)])
         packed = scene_asset.decode(to_engine(scene_asset.TYPE, entry))
         self.assertEqual(packed["constraints"][0]["offset"], (0, 60, -180))
+        self.assertEqual(packed["constraints"][0]["look_offset"], (0, 30, -10))
         self.assertEqual(packed["hinges"], [decoded["hinges"][0] | {"axis": (-1, 0, 0)}])
+
+    def test_decoder_refuses_bad_motion_rows(self):
+        head = '[timeline]\nclip = "clips/fly.anim.toml"\n'
+        camera = lens() + '[objects.constraint]\n[objects.hinge]\naxis = [0, 1, 0]\nmin = 0\nmax = 0\n'
+        entry = self.entry(renderer("a.import.toml") + camera, head)
+        timeline, constraint, hinge = (scene_asset.PARTS.index(part) for part in
+                                       ("timeline", "constraints", "hinges"))
+        offsets = 1 + len(scene_asset.PARTS)
+        header = HEADER.unpack_from(entry)
+        timeline_start = header[offsets + timeline]
+        hinge_start = header[offsets + hinge]
+        for at, value, message in ((timeline_start + scene_asset.TIMELINE_AT_PAD, 1, "padding"),
+                                   (timeline_start + NAME_BYTES, 255, "wrap")):
+            with self.subTest(message=message), self.assertRaisesRegex(SceneError, message):
+                broken = bytearray(entry)
+                broken[at] = value
+                scene_asset.decode(broken)
+        for part in (timeline, constraint, hinge):
+            with self.subTest(part=part), self.assertRaisesRegex(SceneError, "at most one|duplicate"):
+                start = header[offsets + part]
+                stride = scene_asset.ROWS[part].size
+                updated = list(header)
+                updated[1 + part] = 2
+                updated[offsets + part] = len(entry)
+                broken = bytearray(entry + entry[start:start + stride] * 2)
+                HEADER.pack_into(broken, 0, *updated)
+                scene_asset.decode(broken)
+        with self.assertRaisesRegex(SceneError, "unit axis"):
+            broken = bytearray(entry)
+            scene_asset.HINGE.pack_into(broken, hinge_start, 1, 0, 0, 0, 0, 0, 0, 0)
+            scene_asset.decode(broken)
+        with self.assertRaisesRegex(SceneError, "shorter than a header"):
+            scene_asset.decode(entry[:HEADER.size - 1])
 
     def test_invalid_timeline_settings(self):
         for body, message in (("", "timeline.clip"), ('clip = 3', "timeline.clip"),
@@ -368,6 +402,23 @@ def authored_entry():
 
 
 class SceneEntryRefusalTests(unittest.TestCase):
+    def test_overlapping_sections_are_refused(self):
+        entry = authored_entry()
+        count = len(scene_asset.PARTS)
+        offsets = 1 + count
+        settings = scene_asset.PARTS.index("settings")
+        transforms = scene_asset.PARTS.index("transforms")
+        header = list(HEADER.unpack_from(entry))
+        header[offsets + settings] = header[offsets + transforms]
+        HEADER.pack_into(entry, 0, *header)
+        with self.assertRaisesRegex(SceneError, "overlap"):
+            scene_asset.decode(entry)
+
+    def test_hinge_axis_matches_float32_tolerance(self):
+        axis = (0.9999856352806091, 0.011344963684678078, 0)
+        with self.assertRaisesRegex(SceneError, "unit axis"):
+            scene_asset.decode_hinge((0, *axis, 0, 0, 0))
+
     def test_authored_rows_round_trip(self):
         decoded = scene_asset.decode(authored_entry())
         self.assertEqual(decoded["clips"], ["idle", "walk"])
