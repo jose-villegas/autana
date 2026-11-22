@@ -55,38 +55,45 @@ stream_send(console_stream_t* stream, uint8_t* bytes, size_t count) {
     return sent;
 }
 
+/* One packet's bytes: a pull source fills its own buffer, a ring stream
+ * takes what its writers queued. Returns the byte count, 0 when idle. */
+static size_t
+stream_next(console_stream_t* stream, uint8_t** bytes, uint32_t write_us, bool previous_sent) {
+    size_t count = 0;
+    if (stream->fill != NULL) {
+        *bytes = stream->storage;
+        return stream->fill(stream->source_arg, *bytes, CONSOLE_PACKET_BYTES_MAX, write_us, previous_sent);
+    }
+    *bytes = xRingbufferReceiveUpTo(stream->ring, &count, pdMS_TO_TICKS(STREAM_IDLE_WAIT_MS), CONSOLE_PACKET_BYTES_MAX);
+    return count;
+}
+
 static void
 stream_task(void* arg) {
     console_stream_t* stream = arg;
+    const bool source = stream->fill != NULL;
     uint64_t sent = 0;
     uint64_t packets = 0;
     uint32_t write_us = 0;
     bool previous_sent = false;
     for (;;) {
-        const bool source = stream->fill != NULL;
         const bool closed = __atomic_load_n(&stream->closed, __ATOMIC_ACQUIRE);
-        size_t count = 0;
-        uint8_t* bytes;
-        if (source) {
-            bytes = stream->storage;
-            count = stream->fill(stream->source_arg, bytes, CONSOLE_PACKET_BYTES_MAX, write_us, previous_sent);
-        } else {
-            bytes = xRingbufferReceiveUpTo(stream->ring, &count, pdMS_TO_TICKS(STREAM_IDLE_WAIT_MS),
-                                           CONSOLE_PACKET_BYTES_MAX);
-        }
-        if (count != 0) {
-            const int64_t started = source ? timing_now_us() : 0;
-            previous_sent = stream_send(stream, bytes, count);
-            write_us = source ? (uint32_t)(timing_now_us() - started) : 0;
-            if (previous_sent) {
-                sent += count;
-                packets++;
+        uint8_t* bytes = NULL;
+        const size_t count = stream_next(stream, &bytes, write_us, previous_sent);
+        if (count == 0) {
+            if (closed) {
+                break;
             }
-        } else if (closed) {
-            break;
-        } else if (source) {
-            (void)ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(STREAM_IDLE_WAIT_MS));
+            if (source) {
+                (void)ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(STREAM_IDLE_WAIT_MS));
+            }
+            continue;
         }
+        const int64_t started = timing_now_us();
+        previous_sent = stream_send(stream, bytes, count);
+        write_us = (uint32_t)(timing_now_us() - started);
+        sent += previous_sent ? count : 0;
+        packets += previous_sent ? 1 : 0;
     }
     if (stream->ended != NULL) {
         stream->ended(sent, packets, stream->arg);
