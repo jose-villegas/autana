@@ -5,8 +5,10 @@ run again, up to VENDOR_TRIES attempts, while its commit is still its branch's h
 
 A re-run waits for the run's slowest job, so a job with traced work starts on CANDIDATES runners at once; a
 job with none starts on one. Each candidate marks its vendor with an artifact and waits until it sees its own
-marker listed; then the earliest marked on the lock's vendor does the job, the rest finish green, and a
-wrong-vendor one fails only when no candidate of the attempt is the lock's vendor and none is still to mark.
+marker listed; then the earliest marked on the lock's vendor does the job and the rest finish green. A
+wrong-vendor one waits for its started siblings to mark, so when none of the attempt is the lock's vendor
+they all fail together and the re-run draws every one of their runners again; a sibling not started yet
+leaves it green, so a full queue never holds a runner that sibling needs.
 Two may do one job when a marker lists late: each uploads under a name holding its candidate, the join keeps
 one copy of a shard once they match, and a lock keeps one row per key. A job's unit is its name without
 " (candidate N)".
@@ -48,8 +50,8 @@ MARKER_POLLS = 24
 # A candidate's vendor marker (unit slug, candidate, attempt, vendor) and its job's name (unit, candidate).
 MARKER = re.compile(r"vendor-(.+)-(\d+)-(\d+)-(ok|wrong)")
 CANDIDATE_JOB = re.compile(r"(.+) \(candidate (\d+)\)")
-# What `claim` decides for a candidate: it does the job, another one does, or none can.
-WORK, OTHER, LOST = "work", "other", "lost"
+# What `claim` decides for a candidate: it does the job, another one does, none can, or a sibling is to mark.
+WORK, OTHER, LOST, WAIT = "work", "other", "lost", "wait"
 
 
 def slug(unit):
@@ -66,13 +68,14 @@ def done(artifacts, pattern):
     return bool(pattern) and any(fnmatch.fnmatchcase(name, pattern) for name, _ in artifacts)
 
 
-def decide(artifacts, running, unit, candidate, attempt, ok):
-    """WORK, OTHER or LOST for a candidate of `unit` whose runner is (`ok`) or is not the lock's vendor.
+def decide(artifacts, running, unit, candidate, attempt, ok, queued=frozenset()):
+    """WORK, OTHER, LOST or WAIT for a candidate of `unit` whose runner is (`ok`) or is not the lock's vendor.
 
     `artifacts` hold this candidate's own marker. Of this attempt's candidates on the lock's vendor, the
-    earliest marked does the job, so one always does. A wrong-vendor one is LOST
-    when none of the attempt is the lock's and none still to mark is `running` (the candidates whose jobs of
-    this attempt have not completed)."""
+    earliest marked does the job, so one always does. A wrong-vendor one is LOST when none of the attempt is
+    the lock's, WAITs while a sibling still to mark is `running` (started, not completed, in this attempt),
+    and is OTHER while one is only `queued`, since a started sibling marks before any install and a queued
+    one may wait for this candidate's runner."""
     markers = [(int(m[2]), m[4] == "ok", created) for name, created in artifacts
                if (m := MARKER.fullmatch(name)) and m[1] == slug(unit) and int(m[3]) == attempt]
     claims = sorted((created, index) for index, good, created in markers if good)
@@ -81,14 +84,19 @@ def decide(artifacts, running, unit, candidate, attempt, ok):
     if claims:
         return OTHER
     marked = {index for index, _, _ in markers}
-    return OTHER if set(running) - marked - {candidate} else LOST
+    if set(running) - marked - {candidate}:
+        return WAIT
+    return OTHER if set(queued) - marked - {candidate} else LOST
 
 
 def running_candidates(unit, request=github_api.call):
-    """The candidates of `unit` whose jobs of this attempt have not completed."""
+    """The candidates of `unit` whose jobs of this attempt have started and not completed, and those not
+    started yet."""
     path = f"/actions/runs/{os.environ['GITHUB_RUN_ID']}/attempts/{os.environ['GITHUB_RUN_ATTEMPT']}/jobs"
-    return {int(m[2]) for job in github_api.pages(path, "jobs", request=request)
-            if job.get("status") != "completed" and (m := CANDIDATE_JOB.fullmatch(job["name"])) and m[1] == unit}
+    jobs = [(int(m[2]), job.get("status")) for job in github_api.pages(path, "jobs", request=request)
+            if (m := CANDIDATE_JOB.fullmatch(job["name"])) and m[1] == unit and job.get("status") != "completed"]
+    return ({index for index, status in jobs if status == "in_progress"},
+            {index for index, status in jobs if status != "in_progress"})
 
 
 def candidates(count):
@@ -154,7 +162,18 @@ def claim(unit, candidate, marker, request=github_api.call, sleep=time.sleep):
     else:
         print(f"{marker} is not listed after {MARKER_POLLS} reads; deciding without it")
     attempt, ok = int(os.environ["GITHUB_RUN_ATTEMPT"]), marker.endswith("-ok")
-    verdict = decide(artifacts, running_candidates(unit, request), unit, candidate, attempt, ok)
+    for read in range(MARKER_POLLS + 1):
+        if read:
+            sleep(MARKER_POLL_SECONDS)
+        # Jobs first: a sibling whose job completes after this read uploaded its marker before then.
+        started, queued = running_candidates(unit, request)
+        verdict = decide(run_artifacts(request), started, unit, candidate, attempt, ok, queued)
+        if verdict != WAIT:
+            break
+    else:
+        # A started sibling that never lists its marker may yet be the lock's vendor; failing would fail its run.
+        print(f"a sibling of {unit} has not marked after {MARKER_POLLS} reads; leaving the job to it")
+        verdict = OTHER
     output(work="true" if verdict == WORK else "false")
     if verdict == LOST:
         print(f"::error title={WRONG_VENDOR}::every candidate for {unit} ran on another CPU vendor than "

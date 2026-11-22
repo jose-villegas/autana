@@ -288,13 +288,14 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      # Before any install: whether this runner traces the shard, unless an earlier attempt traced it.
+      # Before any install: whether this runner traces the shard, unless an earlier attempt traced it from the
+      # same plan. Two runners of the lock's vendor may choose different probe faces, so a new plan traces anew.
       - id: candidate
         uses: ./.github/actions/vendor-candidate
         with:
           unit: Trace reference shard ${{ matrix.shard }}
           candidate: ${{ matrix.candidate }}
-          done: reference-shard-${{ matrix.shard }}-*
+          done: reference-shard-${{ matrix.shard }}-*-of-${{ needs.reference-plan.outputs.artifact }}
 
       - uses: ./.github/actions/host-tools
         if: steps.candidate.outputs.work == 'true'
@@ -328,7 +329,7 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: steps.candidate.outputs.work == 'true'
         with:
-          name: reference-shard-${{ matrix.shard }}-${{ github.run_attempt }}-${{ matrix.candidate }}
+          name: reference-shard-${{ matrix.shard }}-${{ github.run_attempt }}-${{ matrix.candidate }}-of-${{ needs.reference-plan.outputs.artifact }}
           path: ${{ runner.temp }}/shard
 
   reference:
@@ -346,7 +347,7 @@ jobs:
 
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          pattern: reference-shard-*
+          pattern: reference-shard-*-of-${{ needs.reference-plan.outputs.artifact }}
           path: ${{ runner.temp }}/shards
 
       - name: Join the shards and pack each set
