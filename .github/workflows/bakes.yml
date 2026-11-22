@@ -24,9 +24,14 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# One run per branch, pull request and dispatch alike: a push cancels the run of the head before it, queued or
+# running, whose bakes the new head makes again if it still needs them (bake.py lock --from-run takes only a finished
+# run). The head's repository is in the group, so a fork's branch never shares main's. Main's runs are never cancelled
+# and all queue; GitHub refuses `queue: max` with cancel-in-progress, so a branch keeps the single pending slot.
 concurrency:
-  group: bakes-${{ github.ref }}
-  cancel-in-progress: false
+  group: bakes-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  queue: ${{ github.ref == 'refs/heads/main' && 'max' || 'single' }}
 
 # Read-only by default: the bake and lock jobs run the pull request's own code.
 permissions:

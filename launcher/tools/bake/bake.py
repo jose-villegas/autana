@@ -40,8 +40,8 @@ host like this one into the cache, so a rerun makes only what is left; `--only` 
 `--again` re-makes them even when locked, a fit from fresh references, to compare a new make with the lock
 (the lock keeps its row). `lock` drops the rows nothing needs, writes the rows it has and then fails naming the bakes still
 without one, or with `--partial` only names them;
-`--from-run N` adds the rows CI run N made, from its uploads, and is the only
-way a new bake row is written. Sound bakes use the CPU Bakes run. It repeats, so the meshes of a Bakes run
+`--from-run N` adds the rows CI run N made, from its uploads; a run still going is refused unless `lock` runs
+in it. It is the only way a new bake row is written. Sound bakes use the CPU Bakes run. It repeats, so the meshes of a Bakes run
 and the fits of a Bakes GPU run lock together, so every locked file can be published; `--seed`
 locks the keys LOCK lacks, keeping every row it has: a new key takes the bytes
 of the stale row for the same output when there is one, else the tree's file,
@@ -1169,9 +1169,7 @@ def github_get(url, token):
 def run_files(run, folder):
     """Downloads what CI run `run` uploaded (its bakes-* artifacts) into `folder`, with the standard
     library and GitHub's API, so a runner without gh can too; artifacts need a token even when public."""
-    token = github_token()
-    if token is None:
-        raise BakeMissing(f"reading run {run}'s uploads needs a GitHub token: GH_TOKEN, or gh signed in")
+    token = run_token(run)
     listing = json.loads(github_get(f"{API_URL}/actions/runs/{run}/artifacts?per_page=100", token))
     for artifact in listing["artifacts"]:
         if fnmatch.fnmatch(artifact["name"], RUN_ARTIFACTS) and not artifact["expired"]:
@@ -1238,6 +1236,30 @@ def runs_mesh_cpu_vendor(found, lock, made, mesh_cpu_vendor):
         raise BakeMissing("cannot lock meshes made on another CPU vendor:\n" + "\n".join(wrong) + "\n"
                           + rerun_on(mesh_cpu_vendor) + ", then lock from that run")
     return mesh_cpu_vendor
+
+
+def run_token(run):
+    """The GitHub token reading CI run `run` needs; raises naming the run without one."""
+    token = github_token()
+    if token is None:
+        raise BakeMissing(f"reading run {run} needs a GitHub token: GH_TOKEN, or gh signed in")
+    return token
+
+
+def run_status(run):
+    """CI run `run`'s status as GitHub's API gives it: `completed` once finished, else queued, in_progress, waiting ..."""
+    return json.loads(github_get(f"{API_URL}/actions/runs/{run}", run_token(run)))["status"]
+
+
+def refuse_unfinished(runs):
+    """Raises naming each run in `runs` that has not finished. The run this process runs in (GITHUB_RUN_ID) is
+    exempt: its CPU job locks its own bakes on its runner and never pushes that lock. Pushing a lock taken from any
+    other run still going would cancel that run (a branch keeps one Bakes run) before it uploads the rest."""
+    current = os.environ.get("GITHUB_RUN_ID")
+    going = [f"run {run} is {status}" for run in runs
+             if str(run) != current and (status := run_status(run)) != "completed"]
+    if going:
+        raise BakeMissing("; ".join(going) + ": lock from a run once it has finished")
 
 
 def runs_made(runs, cache):
@@ -1375,7 +1397,7 @@ def main(argv=None):
     parser.add_argument("--cache", help="the cache directory; the user cache when omitted")
     parser.add_argument("--seed", action="store_true", help="lock: lock the tree's own files")
     parser.add_argument("--from-run", type=int, action="append", metavar="N",
-                        help="lock: add the rows CI run N made; bake: reuse those made on a host like this; repeatable")
+                        help="lock: add the rows finished CI run N made; bake: reuse those made on a host like this; repeatable")
     parser.add_argument("--kind", choices=KINDS, action="append", help="list, bake: only this kind; repeatable")
     parser.add_argument("--partial", action="store_true", help="lock: name the bakes still to lock without failing")
     parser.add_argument("--blender", help="bake: the Blender to export with; `blender` on PATH when omitted")
@@ -1407,6 +1429,8 @@ def main(argv=None):
         lock, held = tables["bake"], tables["poses"]
         # The keys a run made: a seeded row's bytes were carried over, so a run makes its key again.
         made_keys = {key for key, row in lock.items() if not row.get("seeded")}
+        if args.command == "lock" and args.from_run:
+            refuse_unfinished(args.from_run)
         made = runs_made(args.from_run, cache) if args.command == "lock" and args.from_run else {}
         starts = locked_starts(lock, made)
         poses = Poses(held, resample=args.command == "lock")

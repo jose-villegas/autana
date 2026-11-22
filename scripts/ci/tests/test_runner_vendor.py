@@ -67,7 +67,7 @@ class RunnerVendorTests(unittest.TestCase):
         self.assertEqual(self.rerun(runner_vendor.VENDOR_TRIES, jobs), [])
 
     def test_a_run_its_branch_has_moved_past_is_left(self):
-        # A re-run holds the branch's Bakes concurrency slot, so the newer head's run would wait on it.
+        # A re-run takes the branch's one Bakes slot, so it would cancel the newer head's run.
         jobs = {"shard 2": ("failure", [runner_vendor.WRONG_VENDOR])}
         self.assertEqual(self.rerun(1, jobs, branch_sha=NEWER_SHA), [])
         self.assertEqual(self.rerun(1, jobs, branch_sha=None), [])  # the branch was deleted
