@@ -783,8 +783,7 @@ render_host_step(uint32_t dt_ms, const input_t* input) {
         return;
     }
     render_watch_frame_begin();
-    if (posed
-        && !scene_render_with_setup(dt_ms, display_quarter_now(), GFX_WIDTH, GFX_HEIGHT, apply_frame_camera_pose)) {
+    if (posed && !scene_render_with_setup(dt_ms, host.frame.quarter, GFX_WIDTH, GFX_HEIGHT, apply_frame_camera_pose)) {
         render_watch_frame_end();
         fprintf(stderr, "%s: --camera-poses requires an active scene camera\n", host.provider->name);
         host.failed = true;
