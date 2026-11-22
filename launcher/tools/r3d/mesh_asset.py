@@ -48,7 +48,6 @@ def checked_struct(owner, prefix, fields, define=read_define, *, size_suffix="HE
         formats.extend((f"{start - offset}x", layout))
         offset = start + struct.calcsize("<" + layout)
     size = define(owner, prefix + "_" + size_suffix)
-    if size < offset:
-        raise ValueError(f"{prefix} size {size} does not hold its fields in {owner}")
-    formats.append(f"{size - offset}x")
+    if size != offset:
+        raise ValueError(f"{prefix} size {size} differs from its fields in {owner}")
     return struct.Struct("".join(formats))

@@ -19,7 +19,7 @@ class LodAssetTests(unittest.TestCase):
             owner = pathlib.Path(folder) / "format.h"
             import re
             owner.write_text(re.sub(r"(LLOD_HEADER_SIZE\s+)\d+U",
-                                    lambda match: match[1] + str(lod_asset.HEADER.size - 1) + "U",
+                                    lambda match: match[1] + str(lod_asset.HEADER.size + 1) + "U",
                                     lod_asset.OWNER.read_text()))
             with self.assertRaisesRegex(ValueError, "size"):
                 mesh_asset.checked_struct(owner, "LLOD", lod_asset.HEADER_FIELDS)

@@ -105,7 +105,8 @@ class SceneTimelineTests(SceneFiles):
         header = HEADER.unpack_from(entry)
         timeline_start = header[offsets + timeline]
         hinge_start = header[offsets + hinge]
-        for at, value, message in ((timeline_start + scene_asset.TIMELINE_AT_PAD, 1, "padding"),
+        timeline_pad = timeline_start + scene_asset.TIMELINE.size - scene_asset.TIMELINE_PAD_BYTES
+        for at, value, message in ((timeline_pad, 1, "padding"),
                                    (timeline_start + NAME_BYTES, 255, "wrap")):
             with self.subTest(message=message), self.assertRaisesRegex(SceneError, message):
                 broken = bytearray(entry)

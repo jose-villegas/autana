@@ -13,6 +13,7 @@ from build.c_header import read_define
 from build.name_hash import NONE as HASH_NONE, name_hash
 from r3d.import_settings import ANIM_WRAPS, SettingsError, color_fits, load_scene
 from r3d import skin_pack
+from r3d.float32 import f32
 from r3d.mesh_asset import checked_struct
 from r3d.batch import copy_batches
 from r3d.scene_rows import (CLIP, COLOUR_SET_OWN, NAME, RENDERER, TRANSFORM, TRANSFORM_AXES, U16_MAX,
@@ -49,7 +50,9 @@ HINGE_AXIS_TOLERANCE = read_define(OWNER, "SCENE_ASSET_HINGE_AXIS_TOLERANCE")
 
 
 VECTOR = f"{TRANSFORM_AXES}f"
-TIMELINE = checked_struct(OWNER, "SCENE_ASSET_TIMELINE", (("CLIP", f"{NAME_BYTES}s"), ("WRAP", "B")),
+TIMELINE_PAD_BYTES = read_define(OWNER, "SCENE_ASSET_TIMELINE_PAD_BYTES")
+TIMELINE = checked_struct(OWNER, "SCENE_ASSET_TIMELINE",
+                          (("CLIP", f"{NAME_BYTES}s"), ("WRAP", "B"), ("PAD", f"{TIMELINE_PAD_BYTES}s")),
                           size_suffix="SIZE")
 CONSTRAINT = checked_struct(OWNER, "SCENE_ASSET_CONSTRAINT",
                             (("ENTITY", "H"), ("BIND", "B"), ("PAD", "B"), ("FOLLOW", "I"), ("LOOK_AT", "I"),
@@ -58,7 +61,6 @@ CONSTRAINT = checked_struct(OWNER, "SCENE_ASSET_CONSTRAINT",
 HINGE = checked_struct(OWNER, "SCENE_ASSET_HINGE",
                        (("ENTITY", "H"), ("PAD", "H"), ("AXIS", VECTOR), ("MIN", "f"), ("MAX", "f"), ("ANGLE", "f")),
                        size_suffix="SIZE")
-TIMELINE_AT_PAD = read_define(OWNER, "SCENE_ASSET_TIMELINE_AT_PAD")
 
 ROWS = (NAME, TRANSFORM, RENDERER, CAMERA, LIGHT, SKINNED_RENDERER, ANIMATOR, CLIP, SETTINGS, PARENT,
         copy_batches.BATCH, copy_batches.CHUNK, copy_batches.PLACE, copy_batches.TURN, TIMELINE, CONSTRAINT, HINGE)
@@ -86,7 +88,7 @@ def encode(scene, cache=None, offline=False):
     rows["names"] = name_rows(objects)
     timeline = getattr(scene, "timeline", None)
     if timeline:
-        rows["timeline"].append((field(timeline.clip, "timeline clip"), WRAPS[timeline.wrap]))
+        rows["timeline"].append((field(timeline.clip, "timeline clip"), WRAPS[timeline.wrap], b""))
     rows["parents"] = [(parent_index(obj, index),) for obj in objects]
     drawn = {item.object.name for item in scene.renderers}
     placements = fold_parent_scales(objects, [parent for (parent,) in rows["parents"]], drawn)
@@ -300,8 +302,6 @@ def decode(entry):
     timeline = PARTS.index("timeline")
     if counts[timeline] > 1:
         raise SceneError("timeline: at most one row")
-    if counts[timeline] and any(entry[offsets[timeline] + TIMELINE_AT_PAD:offsets[timeline] + TIMELINE.size]):
-        raise SceneError("timeline: invalid padding")
     parents_end = offsets[parents] + counts[parents] * PARENT.size
     if any(entry[parents_end:parents_end + (-parents_end % ALIGN)]):
         raise SceneError("the padding after the parents is not zero")
@@ -363,7 +363,9 @@ def decode(entry):
 
 
 def decode_motion_rows(rows, out):
-    for clip, wrap in rows["timeline"]:
+    for clip, wrap, pad in rows["timeline"]:
+        if any(pad):
+            raise SceneError("timeline: invalid padding")
         if wrap not in WRAPS.values():
             raise SceneError("timeline: invalid wrap")
         out["timeline"].append(dict(clip=text_at(clip, "timeline clip"), wrap=wrap))
@@ -397,7 +399,6 @@ def decode_hinge(row):
     pad, *values = row
     axis = values[:TRANSFORM_AXES]
     low, high, angle = values[TRANSFORM_AXES:]
-    f32 = copy_batches.f32
     x, y, z = (f32(value * value) for value in axis)
     length_sq = f32(f32(x + y) + z)
     if pad or not abs(f32(length_sq - 1)) <= f32(HINGE_AXIS_TOLERANCE):
