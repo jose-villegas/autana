@@ -437,7 +437,7 @@ reopen(void) {
     TEST_ASSERT_EQUAL(ASSET_OK, r3d_texture_from_asset(&view, texture));
 }
 
-/* A last level whose colours, lit at the tint, all look like the tint opens
+/* A last level whose colours all draw like the pattern's mean opens
  * flat from there, and the fill draws it as the corners' mean solid fill.
  * One colour a step off the mean still looks like it: the test is a
  * distance, not equality. */
@@ -475,7 +475,7 @@ test_a_level_with_a_colour_unlike_the_tint_or_above_one_stays_textured(void) {
     TEST_ASSERT_EQUAL_UINT8_MESSAGE(TEX_LEVELS, texture->flat_level, "a flat-looking level over a textured one");
     fill_level(LEVEL_2_OFF, LEVEL_2_BYTES, MEAN_INDEX);
     reopen();
-    TEST_ASSERT_EQUAL_UINT8_MESSAGE(1, texture->flat_level, "levels 1 and 2 both like the tint");
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(1, texture->flat_level, "levels 1 and 2 both like the mean");
 }
 
 #define LEVEL_0_BYTES 32
@@ -490,7 +490,7 @@ set_colour(int index, uint8_t r, uint8_t g, uint8_t b) {
     at[2] = b;
 }
 
-/* Every level like the tint opens flat from level 0. */
+/* Every level like the mean opens flat from level 0. */
 static void
 test_a_texture_like_the_tint_at_every_level_opens_flat_from_0(void) {
     fixture();
@@ -513,11 +513,12 @@ test_an_unlike_low_nibble_in_a_levels_last_byte_keeps_it_textured(void) {
     TEST_ASSERT_EQUAL_UINT8(LEVEL_2, texture->flat_level);
 }
 
-/* A colour is judged lit at the tint, not as stored: under a coloured tint
- * the pattern's mean, a grey, lights to the tint and draws flat, while a
- * stored copy of the tint's bytes lights to another colour and does not. */
+/* A colour is judged as the colormap draws it, not as stored: under a
+ * coloured tint the stored copy of the tint's bytes draws another colour
+ * than the mean; under a tint of 1 a bright pattern and the mean store the
+ * same lit byte, yet the colormap's light scales them apart. */
 static void
-test_a_colour_is_judged_lit_at_the_tint(void) {
+test_a_colour_is_judged_as_the_colormap_draws_it(void) {
     enum { TINT_R = 200, TINT_G = 100, TINT_B = 50 };
 
     fixture();
@@ -531,25 +532,46 @@ test_a_colour_is_judged_lit_at_the_tint(void) {
     fill_level(LEVEL_2_OFF, LEVEL_2_BYTES, TINT_INDEX);
     reopen();
     TEST_ASSERT_EQUAL_UINT8_MESSAGE(TEX_LEVELS, texture->flat_level, "the tint's bytes light to another colour");
+    memset(ltex + R3D_TEXTURE_AT_TINT, 1, 3);
+    set_colour(TINT_INDEX, UINT8_MAX, UINT8_MAX, UINT8_MAX);
+    ltex[LEVEL_2_OFF] = TEXEL_PAIR(TINT_INDEX, MEAN_INDEX);
+    ltex[LEVEL_2_OFF + 1] = TEXEL_PAIR(MEAN_INDEX, MEAN_INDEX);
+    reopen();
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(TEX_LEVELS, texture->flat_level, "a dark tint's light shows the pattern");
 }
 
-/* Under the grey tint a colour lights to itself. The reddest grey within
- * R3D_TEXTURE_FLAT_JND of the tint draws flat; one byte redder does not. */
+/* The largest OKLab distance, squared, over the light levels, between what
+ * pattern (red, ONE, ONE) and the mean draw under the grey tint. */
+static float
+drawn_distance_sq(int red) {
+    const uint8_t grey[3] = {TINT_GREY, TINT_GREY, TINT_GREY};
+    const int luma = r3d_texture_tint_luma(grey);
+    float widest = 0.0F;
+    for (int l = 1; l < R3D_TEXTURE_LIGHT_LEVELS; l++) {
+        const int mean = r3d_texture_light_channel(TINT_GREY * R3D_TEXTURE_ONE, l, luma);
+        const int r = r3d_texture_light_channel(TINT_GREY * red, l, luma);
+        const float d = oklabf_distance_sq(oklabf_from_srgb_bytes((uint8_t)r, (uint8_t)mean, (uint8_t)mean),
+                                           oklabf_from_srgb_bytes((uint8_t)mean, (uint8_t)mean, (uint8_t)mean));
+        widest = d > widest ? d : widest;
+    }
+    return widest;
+}
+
+/* The reddest pattern drawing within R3D_TEXTURE_FLAT_JND of the mean at
+ * every light level draws flat; one byte redder does not. */
 static void
 test_the_flat_distance_is_the_jnd(void) {
-    const oklabf_t tint = oklabf_from_srgb_bytes(TINT_GREY, TINT_GREY, TINT_GREY);
-    int inside = TINT_GREY;
-    while (oklabf_distance_sq(oklabf_from_srgb_bytes((uint8_t)(inside + 1), TINT_GREY, TINT_GREY), tint)
-           <= R3D_TEXTURE_FLAT_JND * R3D_TEXTURE_FLAT_JND) {
+    int inside = R3D_TEXTURE_ONE;
+    while (drawn_distance_sq(inside + 1) <= R3D_TEXTURE_FLAT_JND * R3D_TEXTURE_FLAT_JND) {
         inside++;
     }
-    TEST_ASSERT_TRUE_MESSAGE(inside > TINT_GREY && inside < UINT8_MAX, "the JND lies inside a byte's reach");
+    TEST_ASSERT_TRUE_MESSAGE(inside > R3D_TEXTURE_ONE && inside < UINT8_MAX, "the JND lies inside a byte's reach");
     fixture();
     fill_level(LEVEL_2_OFF, LEVEL_2_BYTES, TINT_INDEX);
-    set_colour(TINT_INDEX, (uint8_t)inside, TINT_GREY, TINT_GREY);
+    set_colour(TINT_INDEX, (uint8_t)inside, R3D_TEXTURE_ONE, R3D_TEXTURE_ONE);
     reopen();
     TEST_ASSERT_EQUAL_UINT8_MESSAGE(LEVEL_2, texture->flat_level, "just inside the JND");
-    set_colour(TINT_INDEX, (uint8_t)(inside + 1), TINT_GREY, TINT_GREY);
+    set_colour(TINT_INDEX, (uint8_t)(inside + 1), R3D_TEXTURE_ONE, R3D_TEXTURE_ONE);
     reopen();
     TEST_ASSERT_EQUAL_UINT8_MESSAGE(TEX_LEVELS, texture->flat_level, "just outside the JND");
 }
@@ -2854,7 +2876,7 @@ run_r3d_texture_suite(void) {
     RUN_TEST(test_a_level_with_a_colour_unlike_the_tint_or_above_one_stays_textured);
     RUN_TEST(test_a_texture_like_the_tint_at_every_level_opens_flat_from_0);
     RUN_TEST(test_an_unlike_low_nibble_in_a_levels_last_byte_keeps_it_textured);
-    RUN_TEST(test_a_colour_is_judged_lit_at_the_tint);
+    RUN_TEST(test_a_colour_is_judged_as_the_colormap_draws_it);
     RUN_TEST(test_the_flat_distance_is_the_jnd);
     RUN_TEST(test_the_flat_tunable_at_0_opens_no_flat_level);
     RUN_TEST(test_a_flat_level_draws_in_its_corners_mean);

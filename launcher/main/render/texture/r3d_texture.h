@@ -58,8 +58,8 @@
  * vertex light whose luminance is 255. */
 #define R3D_TEXTURE_LIGHT_LEVELS        32
 /* The OKLab distance under which a colour is not told from another, the
- * just noticeable difference (CSS Color 4): a level whose colours, lit at
- * the tint, all lie this near the tint draws flat. */
+ * just noticeable difference (CSS Color 4): a level whose colours all draw
+ * this near the pattern's mean, at every light level, draws flat. */
 #define R3D_TEXTURE_FLAT_JND            0.02F
 
 typedef struct {
@@ -91,6 +91,14 @@ size_t r3d_texture_texel_bytes(const r3d_texture_t* texture);
  * chose rather than wherever the entry was read. Returns the byte after
  * the copy. */
 uint8_t* r3d_texture_move_texels(r3d_texture_t* texture, uint8_t* to);
+
+/* The luminance the colormap divides out of `tint`: never 0. */
+int r3d_texture_tint_luma(const uint8_t tint[3]);
+
+/* A colormap channel, 0..255: the albedo `albedo_x_one` (the tint channel
+ * times the pattern's, R3D_TEXTURE_ONE a pattern of 1.0) at light level
+ * `level` of a tint of luminance `tint_luma`. */
+int r3d_texture_light_channel(int albedo_x_one, int level, int tint_luma);
 
 /* Texels a byte of `format`. */
 static inline uint32_t
