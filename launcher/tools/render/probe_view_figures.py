@@ -6,6 +6,7 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 GFX_HEADER = ROOT / "launcher/main/gfx/gfx.h"
+PROBES_HEADER = ROOT / "launcher/main/render/view/raster_probes.h"
 sys.path.insert(0, str(ROOT / "launcher/tools"))
 from build.c_header import read_define
 from docs.figures import render_scene, save_png
@@ -16,8 +17,8 @@ PRODUCER = Producer(
     needs=("host", "bakes"),
     outputs=("sponza-view-probes.png", "sponza-view-probes-close.png"),
     run=("--scene", "launcher/demo/sponza/sponza.scene.toml", "--object", "atrium",
-         "--wide-camera", "tour", "--wide-frame", "21", "--wide-dt", "1000",
-         "--close-camera", "tour", "--close-frame", "1", "--close-dt", "16",
+         "--wide-camera", "camera", "--wide-frame", "20", "--wide-dt", "500",
+         "--close-camera", "tour", "--close-frame", "36", "--close-dt", "1000", "--probe-size", "15",
          "--stem", "sponza-view-probes", "--out", "{out}"),
     reads=("launcher/demo/sponza/*",),
 )
@@ -31,6 +32,8 @@ def main():
         parser.add_argument(f"--{view}-camera", required=True)
         parser.add_argument(f"--{view}-frame", required=True, type=int)
         parser.add_argument(f"--{view}-dt", required=True, type=int)
+    parser.add_argument("--probe-size", type=int, default=read_define(PROBES_HEADER, "RASTER_PROBES_SIZE_DEFAULT"),
+                        help="probe radius in hundredths of the grid spacing (probeview.size)")
     parser.add_argument("--stem", required=True)
     parser.add_argument("--out", required=True, type=pathlib.Path)
     parser.add_argument("--work", type=pathlib.Path, default=ROOT / "launcher/tools/results/render/probe_view")
@@ -42,7 +45,8 @@ def main():
         render_scene(args.scene, "--object", args.object, "--view", "probes",
                      "--camera", getattr(args, f"{view}_camera"),
                      "--frames", getattr(args, f"{view}_frame"), "--dt", getattr(args, f"{view}_dt"),
-                     "--quarter", 1, "--size", f"{width}x{height}", "--framegen", 0, "-o", picture,
+                     "--quarter", 1, "--size", f"{width}x{height}", "--framegen", 0,
+                     "--set", f"probeview.size={args.probe_size}", "-o", picture,
                      log=picture.with_suffix(".log"))
         save_png(picture, args.out / f"{args.stem}{suffix}.png")
 
