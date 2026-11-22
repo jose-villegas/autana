@@ -55,6 +55,15 @@ class ReferencePoses(unittest.TestCase):
         np.testing.assert_allclose(matrix[0, :3], [0, 1, 0], atol=reference_poses.POSE_TOLERANCE)
         np.testing.assert_allclose(matrix[1, :3], [-2, 0, 0], atol=reference_poses.POSE_TOLERANCE)
 
+    def test_capture_projection_uses_display_aspect(self):
+        path = self.root / 'capture.poses.csv'
+        path.write_text(STILL)
+        (self.root / 'entries.json').write_text(json.dumps(dict(
+            width=8, height=8, viewport_width=12, viewport_height=8, lens=0.5, near=1.0)))
+        matrix, size = reference_poses.capture_views(path)[0]
+        self.assertEqual(size, (8, 8))
+        np.testing.assert_allclose(np.diag(matrix)[:2], [4 / 3, 2])
+
     def test_capture_poses_requires_the_suffix_and_no_frame_gaps_and_takes_size_override(self):
         path = self.root / 'capture.poses.csv'
         (self.root / 'entries.json').write_text(json.dumps(dict(width=4, height=2, lens=0.5, near=1.0)))

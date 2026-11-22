@@ -67,7 +67,6 @@ Needs Pillow and numpy, and ffmpeg for --video.
 
 import argparse
 import csv
-import json
 import pathlib
 import shutil
 import subprocess
@@ -923,19 +922,20 @@ MATERIAL_CLASS_COLOURS = ((24, 24, 24), (60, 190, 110), (130, 150, 160),
 
 def material_id_inputs(scene_path, object_name, poses_path, ids_dir):
     """Verified reference and captured material maps for a scene renderer."""
+    from functools import partial
+    from types import SimpleNamespace
+
     from bake import bake
     from r3d.import_settings import load_scene
     from r3d.material_ids import source_ids, drawn_ids
-    from r3d.mesh_source import camera_filter
     from r3d.ray_query import RayQuery
-    from r3d.reference_render import source_for
+    from r3d.reference_render import drawn_hits, source_for
+    from r3d.scene_asset import world_placement
     from r3d.texture.texture_settings import renderer_textures
 
     scene = load_scene(scene_path)
     source, job = source_for(scene, object_name, lit=False)
     root = pathlib.Path(ids_dir)
-    metadata = json.loads((root / 'entries.json').read_text())
-    size = metadata['width'], metadata['height']
     logged = reference_poses.render_poses(root / 'capture')
     if logged is None:
         raise ValueError('id capture has no capture.poses.csv')
@@ -944,16 +944,20 @@ def material_id_inputs(scene_path, object_name, poses_path, ids_dir):
         raise ValueError('reference poses are missing')
     for frame in range(len(logged)):
         check(frame, frame)
-    bundle = bake.fetch(bake.locked_bake(scene_path, object_name, 'fit'))
+    bundle = job.asset_path
     texture_pack = None
-    if renderer_textures(scene_path, object_name) is not None:
-        texture_pack = bake.fetch(bake.locked_bake(scene_path, object_name, 'texture'))
-    views = reference_poses.capture_views(root / 'capture.poses.csv', size)
-    query = RayQuery(source.p, source.tri_v, hit_filter=camera_filter(source))
-    references = source_ids(source, query, views, job.object)
-    drawn, textured = drawn_ids(root, bundle, source, job.object, texture_pack)
-    if len(references) != len(drawn):
-        raise ValueError('captured poses and id frames differ in count')
+    if job.asset_path.resolve().is_relative_to(bake.REPO):
+        kind = 'levels' if job.renderer.fit else 'mesh'
+        bundle = bake.fetch(bake.locked_bake(scene_path, object_name, kind))
+        if renderer_textures(scene_path, object_name) is not None:
+            texture_pack = bake.fetch(bake.locked_bake(scene_path, object_name, 'texture'))
+    placement = world_placement(scene, job.object)
+    drawn, textured = drawn_ids(root, bundle, source, placement, texture_pack)
+    views = reference_poses.capture_views(root / 'capture.poses.csv')
+    source.intersector = RayQuery(source.p, source.tri_v, hit_filter=source.alpha_test)
+    double_materials = [source.names.index(name) for name in job.settings.double_sided]
+    query = SimpleNamespace(first_hit=partial(drawn_hits, source, double_materials))
+    references = source_ids(source, query, views, placement)
     return references, drawn, textured, source.names, [texture is not None for texture in source.textures]
 
 

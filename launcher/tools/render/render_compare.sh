@@ -60,7 +60,7 @@
 #   render_host --scene ID --object OBJECT --view triangles --ids DIR -o frame.bmp
 #   python launcher/tools/render/render_compare.py --material-ids SCENE OBJECT POSES DIR --out sheet.png
 # DIR/NNNN.ids is top-first little-endian u32 at attachment resolution,
-# oriented like the saved picture; entries.json holds its size and entry ranges.
+# always upright. entries.json records its size, viewport, entry ranges and bake digests.
 # The capture also writes DIR/capture.poses.csv. POSES is the reference set's
 # pose file; every captured frame must match its corresponding reference pose.
 # For probes, add --camera-poses POSES to the capture: each pose is one frame,

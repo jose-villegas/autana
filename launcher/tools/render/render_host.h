@@ -120,7 +120,11 @@ bool render_host_camera_pose(float position[3], float rotation[4]);
 bool render_host_camera_input(const camera_pose_t* pose, float lens, float near_z);
 
 /* Writes the active id attachment and entry metadata; false without an id view. */
-bool render_host_write_ids(const char* directory, FILE* entries, int frame, int quarter, bool panel);
+#define RENDER_HOST_BAKE_PROVENANCE_NAME "bake-provenance"
+#define RENDER_HOST_BAKE_PROVENANCE_TYPE "BSHA"
+#define RENDER_HOST_BAKE_DIGEST_BYTES    32
+
+bool render_host_write_ids(const char* directory, FILE* entries, int frame, int quarter);
 
 /* The panel-to-picture transform and upright size shared by colour and id captures. */
 affine2x_t render_host_picture_transform(int quarter, bool panel, int width, int height, int* out_w, int* out_h);

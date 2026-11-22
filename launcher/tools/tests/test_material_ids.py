@@ -17,6 +17,17 @@ from r3d import material_ids, mesh_bundle
 from r3d.appearance_simplify import projection
 from r3d.lit_mesh import bundle_entries, build_lit_mesh, read_bundle_mesh
 from r3d.ray_query import RayQuery
+from r3d.reference_render import primary_hits
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / 'render'))
+import render_compare
+
+POSE_HEADER = 'frame,ms,px,py,pz,qx,qy,qz,qw\n'
+
+
+def write_pose_log(root, count, eye_z=0):
+    (root / 'capture.poses.csv').write_text(
+        POSE_HEADER + ''.join(f'{i},0,0,0,{-eye_z},0,0,0,1\n' for i in range(count)))
 from asset.asset_pack import build_pack
 from asset.engine_frame import mirror_matrix, mirror_point
 
@@ -31,12 +42,15 @@ def surfaces():
 
 
 class MaterialIdsTests(unittest.TestCase):
+    def temporary_root(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        return pathlib.Path(temporary.name)
+
     def capture(self, names=('painted', 'plain')):
         """A real two-entry bundle, each entry drawing one copy of the same triangle."""
         from test_texture_asset import fake_scene
-        temporary = tempfile.TemporaryDirectory()
-        self.addCleanup(temporary.cleanup)
-        root = pathlib.Path(temporary.name)
+        root = self.temporary_root()
         mesh, source = fake_scene(materials=(0, 1))
         mesh = build_lit_mesh(source.p, mesh.rgb, mesh.tris[:1], np.array([True]))
         entries = [entry for name in dict.fromkeys(names) for entry in bundle_entries(name, mesh)]
@@ -47,13 +61,15 @@ class MaterialIdsTests(unittest.TestCase):
         source.tri_v = np.stack([source.tri_v[0], source.tri_v[0] + len(source.p) // 2])
         rows = [
             dict(frame=frame, entry=name, first_id=copy + 1, triangle_count=1, id_count=1,
-                 step='triangle', matrix=np.eye(3).tolist(), position=[2 * copy, 0, 0])
+                 step='triangle', matrix=np.eye(3).tolist(), position=[2 * copy, 0, 0],
+                 bundle_sha256=hashlib.sha256(bundle.read_bytes()).hexdigest(), texture_sha256=None)
             for frame in range(2) for copy, name in enumerate(names)
         ]
         metadata = dict(width=3, height=1, entries=rows)
         (root / 'entries.json').write_text(json.dumps(metadata))
         np.array([1, 2, 0], '<u4').tofile(root / '0000.ids')
         np.array([0, 2, 1], '<u4').tofile(root / '0001.ids')
+        write_pose_log(root, 2)
         return root, bundle, source, mesh, metadata
 
     def test_cluster_uvs_preserves_fixture_bytes(self):
@@ -157,51 +173,116 @@ class MaterialIdsTests(unittest.TestCase):
         self.assertEqual(rows, [dict(reference_material=0, drawn_material=1, pixels=4),
                                 dict(reference_material=1, drawn_material=0, pixels=4)])
 
-    def test_material_comparison_writes_sheet_csv_and_crops(self):
-        sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / 'render'))
-        import render_compare
-        ref = np.array([[-1, 0, 1, 0], [0, 0, -1, -1]], dtype=np.int32)
-        own = np.array([[-1, 0, 1, -1], [0, 1, 1, -1]], dtype=np.int32)
-        pattern = np.array([[False, True, False, False], [False, False, False, False]])
-        inputs = ([ref, ref[::-1]], [own, own[::-1]], [pattern, pattern[::-1]], ['pattern', 'plain'], [True, False])
-        with self.assertRaisesRegex(ValueError, 'differ in size'):
-            material_ids.diff_classes(ref, own[:, :-1], pattern, [True, False])
-        with tempfile.TemporaryDirectory() as directory:
-            root = pathlib.Path(directory)
-            out = root / 'sheet.png'
-            argv = ['render_compare.py', '--material-ids', 'scene', 'object', 'poses', 'ids',
-                    '--out', str(out), '--views', '1', '--crops', '1']
-            with mock.patch.object(render_compare, 'material_id_inputs', return_value=inputs), \
-                    mock.patch.object(sys, 'argv', argv), \
-                    mock.patch.object(render_compare, 'still_sheet', wraps=render_compare.still_sheet) as layout:
-                render_compare.main()
-            rows = layout.call_args.args[0]
-            self.assertEqual(len(rows), 1)
-            self.assertEqual([title for title, _image in rows[0]],
-                             ['0: reference materials', '0: drawn materials', '0: diff classes'])
-            from PIL import Image
-            with Image.open(out) as image:
-                self.assertEqual(image.width, 3 * max(ref.shape[1], render_compare.MATERIAL_PANEL_MIN))
-            with out.with_suffix('.csv').open(newline='') as handle:
-                totals = list(csv.DictReader(handle))
-            from r3d.material_ids import CLASS_NAMES
-            columns = {name: sum(int(row[name]) for row in totals) for name in CLASS_NAMES}
-            self.assertEqual(columns, dict(both_empty=4, agree_textured=2, agree_plain=2, miss=2,
-                                           wrong_material=2, reference_only=2, drawn_only=2))
-            self.assertEqual(sum(columns.values()), 2 * ref.size)
-            self.assertEqual(int(totals[1]['reference_only']), 2)
-            self.assertEqual(int(totals[1]['miss']), 2)
-            self.assertEqual(int(totals[2]['miss']), 0)
-            self.assertEqual(int(totals[2]['drawn_only']), 2)
-            self.assertEqual(int(totals[0]['drawn_only']), 0)
-            self.assertTrue(out.with_suffix('.crops.png').is_file())
-            with out.with_suffix('.confusions.csv').open(newline='') as handle:
-                confused = list(csv.DictReader(handle))
-            self.assertEqual(confused, [dict(reference_material='0', drawn_material='1', pixels='2')])
+    def comparison_files(self, parented=False):
+        root = self.temporary_root()
+        scene = root / 'room.scene.toml'
+        (root / 'painted.import.toml').write_text(
+            '[source]\npath = "painted.obj"\ncredit = "fixture"\n[output]\nname = "painted"\n')
+        (root / 'painted.obj').write_text(
+            'v -2 -2 0.5\nv 2 -2 0.5\nv 0 2 0.5\n'
+            'v -2 -2 0\nv 2 -2 0\nv 0 2 0\n'
+            'usemtl back\nf 1 3 2\nusemtl front\nf 4 5 6\n')
+        (root / 'painted.mtl').write_text('newmtl back\nKd 1 0 0\nnewmtl front\nKd 0 1 0\n')
+        from r3d.mesh_source import load_source
+        from r3d.import_settings import load_import_settings
+        source = load_source(load_import_settings(root / 'painted.import.toml'))
+        mesh = build_lit_mesh(source.p, np.full(source.p.shape, 128, dtype=np.uint8),
+                              source.tri_v[1:], np.array([False]))
+        bundle = root / 'painted.bundle'
+        bundle.write_bytes(mesh_bundle.encode(bundle_entries('painted', mesh), []))
+        objects = ''
+        placement = np.eye(3)
+        position = np.zeros(3)
+        if parented:
+            objects = ('[[objects]]\nname = "parent"\nposition = [4.5, 0, -4]\nrotation = [0, 0, 90]\n'
+                       'scale = [2, 3, 4]\n[objects.camera]\nhalf_fov_short_tan = 0.5\nnear_z = 0.1\n'
+                       'background = 0\n')
+            placement = np.array([[0, -9, 0], [4, 0, 0], [0, 0, 16]])
+            position = np.array([0, 0, -4])
+        scene.write_text(objects + '[[objects]]\nname = "painted"\n' +
+                         ('parent = "parent"\nposition = [0, 1.5, 0]\nscale = [2, 3, 4]\n' if parented else '') +
+                         '[objects.mesh_renderer]\nmesh = "painted.import.toml"\n')
+        poses = root / 'poses.txt'
+        poses.write_text('size 1 1\nlens 0.5 0.1\npose 0 0 2 0 0 -1\n')
+        write_pose_log(root, 1, eye_z=2)
+        np.array([1], '<u4').tofile(root / '0000.ids')
+        (root / 'entries.json').write_text(json.dumps(dict(
+            width=1, height=1, viewport_width=1, viewport_height=1, lens=0.5, near=0.1, entries=[
+                dict(frame=0, entry='painted', first_id=1, id_count=1, triangle_count=1, step='triangle',
+                     matrix=mirror_matrix(placement).tolist(), position=list(mirror_point(position.astype(float))),
+                     bundle_sha256=hashlib.sha256(bundle.read_bytes()).hexdigest(), texture_sha256=None)])))
+        return scene, poses, root
+
+    def test_material_comparison_loads_real_inputs_and_culls_the_back_face(self):
+        scene, poses, root = self.comparison_files()
+        out = root / 'sheet.png'
+        argv = ['render_compare.py', '--material-ids', str(scene), 'painted', str(poses), str(root),
+                '--out', str(out), '--views', '1']
+        from r3d.import_settings import load_scene
+        from r3d.reference_render import source_for
+        source, job = source_for(load_scene(scene), 'painted')
+        hits = primary_hits(source, job, [0, 0, 2, 0, 0, -1], 1, 1, 0.5, 1)[4]
+        np.testing.assert_array_equal(source.tri_m[hits], [1])
+        with mock.patch.object(sys, 'argv', argv):
+            render_compare.main()
+        self.assertTrue(out.is_file())
+        with out.with_suffix('.csv').open(newline='') as handle:
+            totals = {row['name']: row for row in csv.DictReader(handle)}
+        self.assertEqual(int(totals['front']['agree_plain']), 1)
+        with out.with_suffix('.confusions.csv').open(newline='') as handle:
+            self.assertEqual(list(csv.DictReader(handle)), [])
+
+    def test_material_comparison_uses_the_parent_placement(self):
+        scene, poses, root = self.comparison_files(parented=True)
+        # Move the camera behind the local back face but in front of the world back face.
+        poses.write_text('size 1 1\nlens 0.5 0.1\npose 0 0 -2 0 0 -1\n')
+        write_pose_log(root, 1, eye_z=-2)
+        ref, drawn, _pattern, names, _has_texture = render_compare.material_id_inputs(scene, 'painted', poses, root)
+        np.testing.assert_array_equal(ref[0], [[names.index('front')]])
+        np.testing.assert_array_equal(ref[0], drawn[0])
+
+    def test_drawn_ids_refuse_same_count_bundle_and_texture_mismatches(self):
+        root, bundle, source, mesh, _metadata = self.capture()
+        different = root / 'different.bundle'
+        mesh.pos = mesh.pos.copy()
+        mesh.pos[:, 0] += 1
+        different.write_bytes(mesh_bundle.encode(
+            [entry for name in ('painted', 'plain') for entry in bundle_entries(name, mesh)], []))
+        with self.assertRaisesRegex(ValueError, 'bundle SHA-256'):
+            material_ids.drawn_ids(root, different, source)
+        texture = root / 'other.pack'
+        texture.write_bytes(build_pack([]))
+        with self.assertRaisesRegex(ValueError, 'texture pack SHA-256'):
+            material_ids.drawn_ids(root, bundle, source, texture_pack=texture)
+
+    def test_drawn_ids_sort_numeric_frames(self):
+        root, bundle, source, _mesh, _metadata = self.capture()
+        count = 10001
+        write_pose_log(root, count)
+        frame = np.zeros(3, dtype='<u4').tobytes()
+        for i in range(2, count):
+            (root / f'{i:04d}.ids').write_bytes(frame)
+        drawn, _pattern = material_ids.drawn_ids(root, bundle, source)
+        self.assertEqual(len(drawn), count)
+
+    def test_drawn_ids_refuse_files_left_by_a_longer_capture(self):
+        root, bundle, source, _mesh, metadata = self.capture()
+        write_pose_log(root, 1)
+        metadata['entries'] = [row for row in metadata['entries'] if row['frame'] == 0]
+        (root / 'entries.json').write_text(json.dumps(metadata))
+        np.zeros(3, dtype='<u4').tofile(root / '0001.ids')
+        with self.assertRaisesRegex(ValueError, 'pose log'):
+            material_ids.drawn_ids(root, bundle, source)
+
+    def test_drawn_ids_reuse_mesh_placements_and_source_search(self):
+        root, bundle, source, _mesh, _metadata = self.capture(('copy', 'copy'))
+        with mock.patch.object(uv_transfer, 'triangle_search', wraps=uv_transfer.triangle_search) as search, \
+                mock.patch.object(uv_transfer, 'nearest_materials', wraps=uv_transfer.nearest_materials) as mapping, \
+                mock.patch.object(material_ids, 'read_bundle_mesh', wraps=read_bundle_mesh) as read_mesh:
+            material_ids.drawn_ids(root, bundle, source)
+        self.assertEqual((search.call_count, mapping.call_count, read_mesh.call_count), (1, 2, 1))
 
     def test_material_crops_include_reference_only_pixels(self):
-        sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / 'render'))
-        import render_compare
         ref = np.zeros((2, 4), dtype=np.int32)
         own = np.full_like(ref, material_ids.EMPTY)
         with tempfile.TemporaryDirectory() as directory:
@@ -234,18 +315,21 @@ class MaterialIdsTests(unittest.TestCase):
             material_ids.drawn_ids(root, bundle, source)
         np.array([1, 2, 0], '<u4').tofile(root / '0000.ids')
         (root / '0001.ids').rename(root / '0002.ids')
-        with self.assertRaisesRegex(ValueError, 'without gaps'):
+        with self.assertRaisesRegex(ValueError, 'pose log'):
             material_ids.drawn_ids(root, bundle, source)
 
     def test_drawn_ids_decode_a_real_luvs_sibling_and_refuse_a_wrong_type(self):
         from test_texture_asset import fake_scene, SIZE
-        root, bundle, source, mesh, _metadata = self.capture()
+        root, bundle, source, mesh, metadata = self.capture()
         _mesh, texture_source = fake_scene()
         luvs = uv_transfer.cluster_uvs(mesh, texture_source, [0], [SIZE])
         sibling = uv_transfer.name_for_mesh('painted')
         texture_pack = root / 'texture.pack'
         for kind in (uv_transfer.TYPE, b'LMSH'):
             texture_pack.write_bytes(build_pack([(sibling, kind, uv_transfer.pack_luvs(luvs))]))
+            for row in metadata['entries']:
+                row['texture_sha256'] = hashlib.sha256(texture_pack.read_bytes()).hexdigest()
+            (root / 'entries.json').write_text(json.dumps(metadata))
             if kind == uv_transfer.TYPE:
                 drawn, textured = material_ids.drawn_ids(root, bundle, source, texture_pack=texture_pack)
                 np.testing.assert_array_equal(drawn[0], [[0, 1, -1]])

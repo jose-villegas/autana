@@ -121,6 +121,29 @@ path = { animation = "fly.anim.toml", node = "camera" }
         for square in squares[1:]:
             np.testing.assert_array_equal(squares[0], square)
 
+    def test_id_capture_stays_upright_with_panel_output(self):
+        images = []
+        for panel in ((), ('--panel',)):
+            root = self.root / f'panel-ids-{len(panel)}'
+            run, _out = self.render('--quarter', '1', '--size', '80x120', '--view', 'triangles',
+                                    '--ids', str(root), *panel, frames=1)
+            self.assertEqual(run.returncode, 0, run.stderr)
+            metadata = json.loads((root / 'entries.json').read_text())
+            self.assertEqual((metadata['width'], metadata['height']), (120, 80))
+            images.append((root / '0000.ids').read_bytes())
+        self.assertEqual(*images)
+
+    def test_id_capture_records_the_drawn_bundle_digest(self):
+        import hashlib
+        root = self.root / 'digest-ids'
+        run, _out = self.render('--view', 'triangles', '--ids', str(root), frames=1)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        metadata = json.loads((root / 'entries.json').read_text())
+        expected = hashlib.sha256((self.root / 'card.bundle').read_bytes()).hexdigest()
+        self.assertTrue(metadata['entries'])
+        for row in metadata['entries']:
+            self.assertEqual((row.get('bundle_sha256'), row.get('texture_sha256')), (expected, None))
+
     def test_camera_pose_input_matches_logged_poses(self):
         sys.path.insert(0, str(TOOLS / "render"))
         import reference_poses

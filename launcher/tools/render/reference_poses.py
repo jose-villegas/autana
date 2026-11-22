@@ -74,12 +74,16 @@ def capture_views(path, size=None):
     """Clip matrices and upright sizes of captured frames, including the logged camera roll."""
     from r3d.appearance_simplify import projection
 
+    path = pathlib.Path(path)
+
     width, height, lens, near, poses = capture_poses(path, size)
     rows = _pose_rows(str(path).removesuffix(VIDEO_POSES_SUFFIX))
     by_frame = {int(row['frame']): row for row in rows}
     signs = np.asarray(AXIS_SIGNS, dtype=float)
     axes = len(signs)
-    canonical = projection(np.zeros(axes), ENGINE_FORWARD * signs, width, height, lens, near)
+    metadata = json.loads((path.parent / 'entries.json').read_text())
+    viewport = metadata.get('viewport_width', width), metadata.get('viewport_height', height)
+    canonical = projection(np.zeros(axes), ENGINE_FORWARD * signs, *viewport, lens, near)
     result = []
     for frame, pose in enumerate(poses):
         quaternion = [float(by_frame[frame][axis]) for axis in ('qx', 'qy', 'qz', 'qw')]
