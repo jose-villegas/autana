@@ -1,10 +1,13 @@
 """Attribute visible reference and baked triangles to source materials and count their differences."""
+from collections import defaultdict
+import hashlib
 import json
 import pathlib
 
 import numpy as np
 
 from asset.asset_pack import parse_pack
+from render import reference_poses
 from asset.engine_frame import AXIS_COUNT, mirror_matrix, mirror_point
 from r3d import mesh_bundle
 from r3d.fit import gbuffer
@@ -52,26 +55,61 @@ def drawn_ids(ids_dir, bundle_path, source, placement=None, texture_pack=None):
     """Source material and textured maps for every captured triangle-id frame."""
     root = pathlib.Path(ids_dir)
     metadata = json.loads((root / 'entries.json').read_text())
-    entries, _copies = mesh_bundle.decode(pathlib.Path(bundle_path).read_bytes())
-    textures = parse_pack(pathlib.Path(texture_pack).read_bytes()) if texture_pack else {}
+    bundle = pathlib.Path(bundle_path).read_bytes()
+    pack = pathlib.Path(texture_pack).read_bytes() if texture_pack else None
+    expected_bundle = hashlib.sha256(bundle).hexdigest()
+    expected_texture = hashlib.sha256(pack).hexdigest() if pack is not None else None
+    paths = sorted((int(path.stem), path) for path in root.glob('*.ids'))
+    poses = reference_poses.render_poses(root / 'capture')
+    if poses is None or [frame for frame, _ in paths] != sorted(poses):
+        raise ValueError('id files must match the frames in the capture pose log')
+    if sorted(poses) != list(range(len(poses))):
+        raise ValueError('captured frames must start at zero without gaps')
+
+    frames = defaultdict(list)
+    for row in metadata['entries']:
+        if row['frame'] not in poses:
+            raise ValueError('captured entry is outside the capture pose log')
+        if row.get('bundle_sha256') != expected_bundle:
+            raise ValueError(f"{row['entry']}: capture bundle SHA-256 differs from the reference bundle")
+        if 'texture_sha256' not in row or row['texture_sha256'] != expected_texture:
+            raise ValueError(f"{row['entry']}: capture texture pack SHA-256 differs from the reference pack")
+        frames[row['frame']].append(row)
+    if not frames:
+        raise ValueError('id capture has no entries identifying the drawn bundle')
+
+    entries, _copies = mesh_bundle.decode(bundle)
+    textures = parse_pack(pack) if pack is not None else {}
+    meshes, mappings = {}, {}
+    search = uv_transfer.material_search(source)
     materials, textured = [], []
-    for expected, path in enumerate(sorted(root.glob('*.ids'))):
-        frame = int(path.stem)
-        if frame != expected:
-            raise ValueError('captured frames must start at zero without gaps')
+    for frame, path in paths:
         ids = np.fromfile(path, '<u4').reshape(metadata['height'], metadata['width'])
         material = np.full(ids.shape, EMPTY, dtype=np.int32)
         pattern = np.zeros(ids.shape, dtype=bool)
         covered = ids == 0
         next_id = 1
-        for row in metadata['entries']:
-            if row['frame'] != frame:
-                continue
+        for row in frames.get(frame, ()):
             if row['step'] != 'triangle':
                 raise ValueError('material attribution requires --view triangles')
-            mesh = read_bundle_mesh(entries, row['entry'])
-            points = entry_points(mesh, row, placement)
-            _near, source_material, _facing, *_geometry = uv_transfer.nearest_materials(points, mesh.tris, source)
+            name = row['entry']
+            if name not in meshes:
+                mesh = read_bundle_mesh(entries, name)
+                uv = textures.get(uv_transfer.name_for_mesh(name))
+                codes = None
+                if uv is not None:
+                    if uv[0] != uv_transfer.TYPE:
+                        raise ValueError('texture sibling is not LUVS')
+                    codes = uv_transfer.decode(uv[1]).codes
+                    if len(codes) != len(mesh.tris):
+                        raise ValueError('texture codes differ from bundle triangles')
+                meshes[name] = mesh, codes
+            mesh, codes = meshes[name]
+            key = (name, tuple(map(tuple, row['matrix'])), tuple(row['position']))
+            if key not in mappings:
+                points = entry_points(mesh, row, placement)
+                mappings[key] = uv_transfer.nearest_materials(points, mesh.tris, source, search)[1]
+            source_material = mappings[key]
             if row['triangle_count'] != len(source_material) or row['id_count'] != len(source_material):
                 raise ValueError('captured triangle count differs from bundle')
             first_id = row['first_id']
@@ -81,15 +119,9 @@ def drawn_ids(ids_dir, bundle_path, source, placement=None, texture_pack=None):
                 raise ValueError('captured id ranges have a gap')
             next_id += row['id_count']
             own = (ids >= first_id) & (ids < next_id)
-            local = ids[own].astype(np.int64) - row['first_id']
+            local = ids[own].astype(np.int64) - first_id
             material[own] = source_material[local]
-            uv = textures.get(uv_transfer.name_for_mesh(row['entry']))
-            if uv is not None:
-                if uv[0] != uv_transfer.TYPE:
-                    raise ValueError('texture sibling is not LUVS')
-                codes = uv_transfer.decode(uv[1]).codes
-                if len(codes) != len(source_material):
-                    raise ValueError('texture codes differ from bundle triangles')
+            if codes is not None:
                 pattern[own] = codes[local] != uv_transfer.PLAIN
             covered |= own
         if not covered.all():

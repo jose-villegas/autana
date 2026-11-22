@@ -321,12 +321,11 @@ refuse(int* exit_code, const char* argv0) {
 }
 
 __attribute__((weak)) bool
-render_host_write_ids(const char* directory, FILE* entries, int frame, int quarter, bool panel) {
+render_host_write_ids(const char* directory, FILE* entries, int frame, int quarter) {
     (void)directory;
     (void)entries;
     (void)frame;
     (void)quarter;
-    (void)panel;
     return false;
 }
 
@@ -816,8 +815,7 @@ render_host_step(uint32_t dt_ms, const input_t* input) {
                 free(path);
             }
         }
-        if (host.ids == NULL
-            || !render_host_write_ids(host.ids_path, host.ids, host.frame.index, host.frame.quarter, host.panel)) {
+        if (host.ids == NULL || !render_host_write_ids(host.ids_path, host.ids, host.frame.index, host.frame.quarter)) {
             fprintf(stderr, "%s: --ids requires an id attachment and writable output\n", host.provider->name);
             host.failed = true;
         }

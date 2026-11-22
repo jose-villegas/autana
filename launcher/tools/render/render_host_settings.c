@@ -114,6 +114,46 @@ write_json_name(FILE* file, const char* name) {
     (void)fputc('"', file);
 }
 
+static void
+write_bake_digest(FILE* file, const uint8_t* digest) {
+    static const uint8_t missing[RENDER_HOST_BAKE_DIGEST_BYTES];
+    if (digest == NULL || memcmp(digest, missing, sizeof missing) == 0) {
+        (void)fputs("null", file);
+        return;
+    }
+    (void)fputc('"', file);
+    for (size_t i = 0; i < sizeof missing; i++) {
+        (void)fprintf(file, "%02x", (unsigned)digest[i]);
+    }
+    (void)fputc('"', file);
+}
+
+/* The host pack records each mesh's source bundle and texture pack before unpacking them. */
+static void
+write_id_provenance(FILE* file, const asset_pack_t* pack, const char* name) {
+    const char* type = RENDER_HOST_BAKE_PROVENANCE_TYPE;
+    asset_view_t view;
+    const uint8_t* bundle = NULL;
+    const uint8_t* texture = NULL;
+    const size_t row_bytes = ASSET_NAME_MAX + 2 * RENDER_HOST_BAKE_DIGEST_BYTES;
+    if (asset_pack_find(pack, RENDER_HOST_BAKE_PROVENANCE_NAME, ASSET_TYPE(type[0], type[1], type[2], type[3]), &view)
+            == ASSET_OK
+        && view.size % row_bytes == 0) {
+        for (size_t offset = 0; offset < view.size; offset += row_bytes) {
+            const uint8_t* row = view.data + offset;
+            if (strncmp((const char*)row, name, ASSET_NAME_MAX) == 0) {
+                bundle = row + ASSET_NAME_MAX;
+                texture = bundle + RENDER_HOST_BAKE_DIGEST_BYTES;
+                break;
+            }
+        }
+    }
+    (void)fputs(",\"bundle_sha256\":", file);
+    write_bake_digest(file, bundle);
+    (void)fputs(",\"texture_sha256\":", file);
+    write_bake_digest(file, texture);
+}
+
 static bool
 write_id_entry(FILE* file, const raster_t* raster, int entry, const r3d_span_writer_t* writer, int frame) {
     const r3d_instance_t* instance = raster_drawn_at(raster, entry);
@@ -136,6 +176,7 @@ write_id_entry(FILE* file, const raster_t* raster, int entry, const r3d_span_wri
                                                                : "none";
     (void)fprintf(file, "%s{\"frame\":%d,\"entry\":", id_entries_written ? "," : "", frame);
     write_json_name(file, asset.name);
+    write_id_provenance(file, pack, asset.name);
     (void)fprintf(file, ",\"first_id\":%u,\"id_count\":%d,\"triangle_count\":%d,\"step\":\"%s\",\"matrix\":[",
                   (unsigned)writer->value, count, instance->mesh->triangle_count, step);
     asset_store_release(load);
@@ -160,7 +201,7 @@ write_id_entry(FILE* file, const raster_t* raster, int entry, const r3d_span_wri
 }
 
 bool
-render_host_write_ids(const char* directory, FILE* entries, int frame, int quarter, bool panel) {
+render_host_write_ids(const char* directory, FILE* entries, int frame, int quarter) {
     render_context_t* context = render_context_main();
     const raster_t* raster = &context->raster;
     if (raster->attachment_count != 1 || raster->scratch == NULL) {
@@ -175,7 +216,7 @@ render_host_write_ids(const char* directory, FILE* entries, int frame, int quart
     }
     int width, height;
     const affine2x_t panel_to_picture =
-        render_host_picture_transform(quarter, panel, raster->width, raster->height, &width, &height);
+        render_host_picture_transform(quarter, false, raster->width, raster->height, &width, &height);
     affine2x_t picture_to_panel;
     if (!affine2x_invert(panel_to_picture, &picture_to_panel)) {
         return false;
@@ -183,8 +224,14 @@ render_host_write_ids(const char* directory, FILE* entries, int frame, int quart
     if (frame == 0) {
         const render_view_t* view = &context->frame_view;
         id_entries_written = false;
-        (void)fprintf(entries, "{\"width\":%d,\"height\":%d,\"lens\":%.9g,\"near\":%.9g,\"entries\":[", width, height,
-                      (double)render_view_half_fov_short_tan(view), (double)view->lens.near_z);
+        int viewport_width, viewport_height;
+        (void)render_host_picture_transform(view->viewport.quarter, false, view->viewport.width, view->viewport.height,
+                                            &viewport_width, &viewport_height);
+        (void)fprintf(entries,
+                      "{\"width\":%d,\"height\":%d,\"viewport_width\":%d,\"viewport_height\":%d,"
+                      "\"lens\":%.9g,\"near\":%.9g,\"entries\":[",
+                      width, height, viewport_width, viewport_height, (double)render_view_half_fov_short_tan(view),
+                      (double)view->lens.near_z);
     }
     for (int e = 0; e < raster_drawn_count(raster); e++) {
         r3d_span_writer_t writer = {0};
