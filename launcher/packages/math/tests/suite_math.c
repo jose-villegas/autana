@@ -836,8 +836,49 @@ test_mat3_product_applies_right_operand_first(void) {
     }
 }
 
+static void
+test_quatf_from_to_rotates_directions_at_any_scale(void) {
+    const vec3f_t a = {1.0F, -2.0F, 3.0F};
+    const vec3f_t b = {2.0F, 1.0F, -4.0F};
+    const quatf_t turn = quatf_from_to(vec3f_scale(a, 1.0E-30F), vec3f_scale(b, 1.0E30F));
+    assert_vec3(vec3f_normalize(b), quatf_rotate(turn, vec3f_normalize(a)));
+    const quatf_t identity = quatf_identity();
+    const quatf_t absent = quatf_from_to(a, vec3f_zero());
+    TEST_ASSERT_EQUAL_MEMORY(&identity, &absent, sizeof absent);
+}
+
+static void
+test_quatf_from_to_handles_half_turns(void) {
+    const vec3f_t down = vec3f_scale(vec3f_up(), -1.0F);
+    const quatf_t turn = quatf_from_to(down, vec3f_up());
+    assert_vec3(vec3f_up(), quatf_rotate(turn, down));
+    assert_vec3(vec3f_back(), quatf_rotate(turn, vec3f_forward()));
+    const quatf_t axial = quatf_from_to(vec3f_forward(), vec3f_back());
+    assert_vec3(vec3f_back(), quatf_rotate(axial, vec3f_forward()));
+
+    const float lean = 1.0E-5F;
+    const vec3f_t almost_down = {lean, -1.0F, 0};
+    const quatf_t near = quatf_from_to(almost_down, vec3f_up());
+    const vec3f_t raised = quatf_rotate(near, almost_down);
+    TEST_ASSERT_FLOAT_WITHIN(FLT_EPSILON, 0.0F, raised.x);
+    assert_vec3(vec3f_back(), quatf_rotate(near, vec3f_back()));
+}
+
+static void
+test_quatf_looking_with_missing_up_and_nonfinite_forward(void) {
+    const quatf_t look = quatf_looking(vec3f_forward(), vec3f_zero());
+    assert_vec3(vec3f_forward(), quatf_rotate(look, vec3f_forward()));
+    assert_vec3(vec3f_up(), quatf_rotate(look, vec3f_up()));
+    const quatf_t identity = quatf_identity();
+    const quatf_t bad = quatf_looking((vec3f_t){INFINITY, 1, 0}, vec3f_up());
+    TEST_ASSERT_EQUAL_MEMORY(&identity, &bad, sizeof bad);
+}
+
 void
 suite_math(void) {
+    RUN_TEST(test_quatf_from_to_rotates_directions_at_any_scale);
+    RUN_TEST(test_quatf_from_to_handles_half_turns);
+    RUN_TEST(test_quatf_looking_with_missing_up_and_nonfinite_forward);
     RUN_TEST(test_vector_float_ranges_with_decimal_lengths);
     RUN_TEST(test_vector_float_repeat_preserves_decimal_remainders);
     RUN_TEST(test_vector_ratio_lerp_uses_its_denominator);

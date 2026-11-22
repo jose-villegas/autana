@@ -107,8 +107,33 @@ test_the_smooth_ease_is_gentle_at_both_ends_and_half_way_at_half_time(void) {
     }
 }
 
+static void
+test_smooth_milliseconds_boundaries_and_monotonicity(void) {
+    const uint32_t duration = 1000;
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, ease_smooth(0, duration));
+    TEST_ASSERT_EQUAL_FLOAT(0.15625F, ease_smooth(duration / 4, duration));
+    TEST_ASSERT_EQUAL_FLOAT(0.5F, ease_smooth(duration / 2, duration));
+    TEST_ASSERT_LESS_THAN_FLOAT(1.0F, ease_smooth(duration - 1, duration));
+    TEST_ASSERT_EQUAL_FLOAT(1.0F, ease_smooth(duration, duration));
+    TEST_ASSERT_EQUAL_FLOAT(1.0F, ease_smooth(duration + 1, duration));
+    TEST_ASSERT_EQUAL_FLOAT(1.0F, ease_smooth(0, 0));
+    TEST_ASSERT_EQUAL_FLOAT(1.0F, ease_smooth(duration, 0));
+
+    for (uint32_t ms = 1; ms <= duration; ms++) {
+        TEST_ASSERT_TRUE(ease_smooth(ms, duration) >= ease_smooth(ms - 1, duration));
+    }
+    const uint32_t near_end = UINT32_MAX - duration * duration;
+    for (uint32_t ms = near_end; ms < UINT32_MAX - duration; ms += duration) {
+        const float weight = ease_smooth(ms, UINT32_MAX);
+        TEST_ASSERT_TRUE(weight >= 0.0F && weight <= 1.0F);
+        TEST_ASSERT_TRUE(weight >= ease_smooth(ms - duration, UINT32_MAX));
+    }
+    TEST_ASSERT_EQUAL_FLOAT(1.0F, ease_smooth(UINT32_MAX, UINT32_MAX));
+}
+
 void
 suite_tween(void) {
+    RUN_TEST(test_smooth_milliseconds_boundaries_and_monotonicity);
     RUN_TEST(test_a_ramp_is_flat_before_and_after);
     RUN_TEST(test_a_ramp_never_goes_backwards);
     RUN_TEST(test_a_zero_duration_ramp_jumps_straight_to_the_end);

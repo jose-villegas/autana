@@ -98,24 +98,41 @@ test_relative_undoes_compose_under_an_even_parent(void) {
 
 static void
 test_blend_clamps_and_interpolates_trs(void) {
-    transformf_t a = transformf_identity(), b = transformf_identity();
-    transformf_set_position(&b, (vec3f_t){4.0F, -6.0F, 8.0F});
-    transformf_set_scale(&b, (vec3f_t){3.0F, 5.0F, 7.0F});
-    transformf_set_rotation(&b, quatf_from_axis_angle(vec3f_up(), MATH_PI / 2.0F));
-    const float weights[] = {-1.0F, 0.0F, 0.5F, 1.0F, 2.0F};
-    const float clamped[] = {0.0F, 0.0F, 0.5F, 1.0F, 1.0F};
-    for (size_t i = 0; i < sizeof weights / sizeof weights[0]; i++) {
-        const float t = clamped[i];
-        const transformf_t got = transformf_blend(a, b, weights[i]);
-        const vec3f_t position = {4.0F * t, 0.0F - 6.0F * t, 8.0F * t};
-        const vec3f_t scale = {1.0F + 2.0F * t, 1.0F + 4.0F * t, 1.0F + 6.0F * t};
-        const quatf_t rotation = quatf_nlerp(a.rotation, b.rotation, t);
-        TEST_ASSERT_EQUAL_MEMORY(&position, &got.position, sizeof position);
-        TEST_ASSERT_EQUAL_MEMORY(&scale, &got.scale, sizeof scale);
+    transformf_t a = {.position = {-3.7F, 0.3F, -4.9F},
+                      .rotation = quatf_normalize((quatf_t){1, -2, 3, 4}),
+                      .scale = {1.3F, -0.9F, 7.2F}};
+    const transformf_t b = {.position = {-0.2F, -16.7F, 0.3F},
+                            .rotation = quatf_normalize((quatf_t){-4, 3, -2, -1}),
+                            .scale = {-9.1F, 0.3F, 0.2F}};
+    (void)transformf_matrix(&a);
+
+    static const struct {
+        float weight;
+        vec3f_t position, scale;
+    } cases[] = {
+        {0.3F, {-0x1.533332p+1F, -0x1.333334p+2F, -0x1.ab8520p+1F}, {-0x1.d1eb8ap+0F, -0x1.147ae0p-1F, 0x1.466666p+2F}},
+        {1.0F / 3.0F,
+         {-0x1.444442p+1F, -0x1.57777ap+2F, -0x1.955556p+1F},
+         {-0x1.155558p+1F, -0x1.fffffcp-2F, 0x1.377776p+2F}},
+        {0.999F, {-0x1.a0c496p-3F, -0x1.0aed94p+4F, 0x1.2de012p-2F}, {-0x1.22de02p+3F, 0x1.31f8a2p-2F, 0x1.a7ef92p-3F}},
+    };
+
+    for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+        const transformf_t got = transformf_blend(&a, &b, cases[i].weight);
+        const quatf_t rotation = quatf_nlerp(a.rotation, b.rotation, cases[i].weight);
+        TEST_ASSERT_EQUAL_MEMORY(&cases[i].position, &got.position, sizeof got.position);
+        TEST_ASSERT_EQUAL_MEMORY(&cases[i].scale, &got.scale, sizeof got.scale);
         TEST_ASSERT_EQUAL_MEMORY(&rotation, &got.rotation, sizeof rotation);
+        TEST_ASSERT_FALSE(got.cached);
     }
-    const transformf_t blended = transformf_blend(a, b, 0.5F);
-    TEST_ASSERT_FALSE(blended.cached);
+    const transformf_t before = transformf_blend(&a, &b, -1.0F);
+    const transformf_t after = transformf_blend(&a, &b, 2.0F);
+    TEST_ASSERT_EQUAL_MEMORY(&a.position, &before.position, sizeof a.position);
+    TEST_ASSERT_EQUAL_MEMORY(&a.scale, &before.scale, sizeof a.scale);
+    TEST_ASSERT_EQUAL_MEMORY(&b.position, &after.position, sizeof b.position);
+    TEST_ASSERT_EQUAL_MEMORY(&b.scale, &after.scale, sizeof b.scale);
+    TEST_ASSERT_FALSE(before.cached);
+    TEST_ASSERT_FALSE(after.cached);
 }
 
 void

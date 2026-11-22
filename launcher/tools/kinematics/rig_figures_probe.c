@@ -3,6 +3,7 @@
 #include <stdio.h>
 
 #include "kinematics/rig/rig.h"
+#include "math/scalar/ease.h"
 #include "math/scalar/math_const.h"
 #include "math/text/math_text.h"
 
@@ -16,7 +17,7 @@
 #define HANDOFF_STEP_MS 25U
 #define HANDOFF_END_MS  (BLEND_MS + BLEND_MS / 4U)
 
-static const vec3f_t offset = {1.0F, 1.5F, 2.5F};
+static const vec3f_t offset = {1.0F, 1.5F, -2.5F};
 static const rig_bind_t binds[] = {RIG_BIND_WORLD, RIG_BIND_TARGET, RIG_BIND_TARGET_YAW};
 
 static transformf_t
@@ -24,8 +25,8 @@ flight_pose(float progress) {
     const float phase = MATH_PI * progress;
     const vec3f_t position = {TRAVEL * progress, RISE * progress + CLIMB * sinf(phase), TURN * (1.0F - cosf(phase))};
     const vec3f_t tangent = {TRAVEL, RISE + CLIMB * MATH_PI * cosf(phase), TURN * MATH_PI * sinf(phase)};
-    transformf_t pose = transformf_looking(position, vec3f_scale(tangent, -1.0F), vec3f_up());
-    transformf_rotate(&pose, quatf_from_axis_angle(vec3f_back(), BANK * sinf(phase)));
+    transformf_t pose = transformf_looking(position, tangent, vec3f_up());
+    transformf_rotate(&pose, quatf_from_axis_angle(vec3f_forward(), BANK * sinf(phase)));
     return pose;
 }
 
@@ -41,9 +42,9 @@ main(void) {
         }
         printf("]");
     }
-    printf("],\"blend_ms\":%u,\"handoff\":[", BLEND_MS);
+    printf("],\"over_ms\":%u,\"handoff\":[", BLEND_MS);
     for (uint32_t ms = 0; ms <= HANDOFF_END_MS; ms += HANDOFF_STEP_MS) {
-        printf("%s[%u,%.6f]", ms ? "," : "", (unsigned)ms, rig_handoff(ms, BLEND_MS));
+        printf("%s[%u,%.6f]", ms ? "," : "", (unsigned)ms, ease_smooth(ms, BLEND_MS));
     }
     puts("]}");
     return 0;

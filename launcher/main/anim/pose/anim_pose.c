@@ -26,10 +26,7 @@ void
 anim_pose_blend(const anim_pose_t* a, const anim_pose_t* b, float weight, anim_pose_t* out) {
     assert(a->joint_count == b->joint_count && a->joint_count == out->joint_count);
     for (int j = 0; j < out->joint_count; j++) {
-        const transformf_t blended = transformf_blend(a->local[j], b->local[j], weight);
-        transformf_set_position(&out->local[j], blended.position);
-        transformf_set_scale(&out->local[j], blended.scale);
-        transformf_set_rotation(&out->local[j], blended.rotation);
+        out->local[j] = transformf_blend(&a->local[j], &b->local[j], weight);
     }
 }
 

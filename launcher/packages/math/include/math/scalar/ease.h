@@ -68,3 +68,15 @@ ease_smoothstep(float edge0, float edge1, float x) {
     const float u = mathf_clamp((x - edge0) / (edge1 - edge0), 0.0F, 1.0F);
     return u * u * (3.0F - (2.0F * u));
 }
+
+/* Mirroring the lower half keeps the float ramp monotonic near the end. */
+static inline float
+ease_smooth(uint32_t elapsed_ms, uint32_t over_ms) {
+    if (over_ms == 0 || elapsed_ms >= over_ms) {
+        return 1.0F;
+    }
+    if (elapsed_ms > over_ms / 2) {
+        return 1.0F - ease_smoothstep(0.0F, (float)over_ms, (float)(over_ms - elapsed_ms));
+    }
+    return ease_smoothstep(0.0F, (float)over_ms, (float)elapsed_ms);
+}
