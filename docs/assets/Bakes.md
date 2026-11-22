@@ -30,7 +30,8 @@ other stages count everything their entry scripts import.
 A pull request that changes what a mesh is made from gets its bake from the
 Bakes workflow: its CPU job bakes the meshes the lock lacks and uploads them,
 and the lock check fails until the author runs `bake.py lock --from-run N`
-with that run and commits the lock. A fit needs the CUDA GPU, so the Bakes GPU
+with that run and commits the lock. A branch keeps one Bakes run: a push cancels
+the run of the head before it, so `lock --from-run` takes only a finished run. A fit needs the CUDA GPU, so the Bakes GPU
 workflow makes it, started by hand on the branch; no pull request reaches that
 runner. `--from-run` repeats, so the two runs lock together
 (`--from-run CPU --from-run GPU`); two runs that made one key with different
