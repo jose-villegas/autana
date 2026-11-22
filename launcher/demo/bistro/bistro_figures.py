@@ -1,5 +1,5 @@
 """LTEX.md's sheets of Bistro's street with and without its textures, Texture-Mapping.md's of its near floor at each
-perspective divide spacing and of its high view with and without its far levels drawn untextured
+perspective divide spacing and of its high view with and without its flat levels drawn untextured
 (r3d/texture/texture_figures.py), and its cobblestone's mip chain over the span fill's level picks
 (r3d/texture/mip_figures.py).
 

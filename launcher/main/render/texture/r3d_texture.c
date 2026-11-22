@@ -7,19 +7,20 @@
 #include "asset/asset_entry.h"
 #include "core/tune.h"
 #include "image/colour/oklab.h"
-#include "image/colour/srgb.h"
 #include "math/scalar/mathi.h"
 #include "render/r3d_span_internal.h"
 
 TUNE_OWNER(texture);
 /* 0 opens every texture with no flat level, so every level reads its texels:
- * a figure or a stress row sets the flat fill against them. Read when a
- * texture opens. */
+ * a figure compares the flat fill against them. Read when a texture opens. */
 TUNE(texture, flat_levels, 1, 0, 1);
 
-/* The OKLab distance under which a colour is not told from another: the
- * just noticeable difference, 0.02 (CSS Color 4). */
-#define FLAT_JND 0.02F
+/* Channel k of palette colour i lit at the tint, times R3D_TEXTURE_ONE: the
+ * tint (0..255) times the pattern. */
+static int
+albedo_x_one(const uint8_t* palette, const uint8_t tint[3], int i, int k) {
+    return tint[k] * palette[(i * R3D_TEXTURE_PALETTE_STRIDE) + k];
+}
 
 static int
 luma(int r, int g, int b) {
@@ -36,10 +37,9 @@ build_colormap(r3d_texture_t* t, const uint8_t* palette, const uint8_t tint[3]) 
         for (int i = 0; i < r3d_texture_colours(t->format); i++) {
             int32_t channel[3];
             for (int k = 0; k < 3; k++) {
-                /* tint (0..255) * pattern * l * 255 / (LEVELS - 1) / tint_luma */
-                const int64_t albedo = (int64_t)tint[k] * palette[(i * R3D_TEXTURE_PALETTE_STRIDE) + k];
-                const int64_t lit =
-                    (albedo * l * UINT8_MAX) / ((int64_t)R3D_TEXTURE_ONE * (R3D_TEXTURE_LIGHT_LEVELS - 1) * tint_luma);
+                /* albedo * l * 255 / (LEVELS - 1) / tint_luma */
+                const int64_t lit = ((int64_t)albedo_x_one(palette, tint, i, k) * l * UINT8_MAX)
+                                    / ((int64_t)R3D_TEXTURE_ONE * (R3D_TEXTURE_LIGHT_LEVELS - 1) * tint_luma);
                 channel[k] = (int32_t)mathi_min((int)lit, UINT8_MAX) << R3D_SPAN_COLOR_FRAC_BITS;
             }
             t->colormap[l][i] = r3d_span_pack(channel[0], channel[1], channel[2]);
@@ -47,31 +47,20 @@ build_colormap(r3d_texture_t* t, const uint8_t* palette, const uint8_t tint[3]) 
     }
 }
 
-/* The sRGB byte colour `rgb` in OKLab. */
-static oklabf_t
-oklab_of(const int rgb[3]) {
-    return oklabf_from_linear((vec3f_t){srgbf_decode_byte((uint8_t)rgb[0]), srgbf_decode_byte((uint8_t)rgb[1]),
-                                        srgbf_decode_byte((uint8_t)rgb[2])});
-}
-
-/* A bit per palette colour that, lit at the tint, is within FLAT_JND of the
- * tint: the colour the flat fill draws, as the pattern averages
- * R3D_TEXTURE_ONE. */
+/* A bit per palette colour that, lit at the tint, is within
+ * R3D_TEXTURE_FLAT_JND of the tint. The flat fill draws the tint, since a
+ * pattern lit at R3D_TEXTURE_ONE averages to it. */
 static uint32_t
 colours_like_the_tint(const uint8_t* palette, const uint8_t tint[3]) {
-    const int tint_rgb[3] = {tint[0], tint[1], tint[2]};
-    const oklabf_t flat = oklab_of(tint_rgb);
+    const oklabf_t flat = oklabf_from_srgb_bytes(tint[0], tint[1], tint[2]);
     uint32_t like = 0;
     for (int i = 0; i < R3D_TEXTURE_COLOURS; i++) {
-        int lit[3];
+        uint8_t lit[3];
         for (int k = 0; k < 3; k++) {
-            lit[k] = mathi_min((tint[k] * palette[(i * R3D_TEXTURE_PALETTE_STRIDE) + k]) / R3D_TEXTURE_ONE, UINT8_MAX);
+            lit[k] = (uint8_t)mathi_min(albedo_x_one(palette, tint, i, k) / R3D_TEXTURE_ONE, UINT8_MAX);
         }
-        const oklabf_t c = oklab_of(lit);
-        const float dl = c.l - flat.l;
-        const float da = c.a - flat.a;
-        const float db = c.b - flat.b;
-        if ((dl * dl) + (da * da) + (db * db) <= FLAT_JND * FLAT_JND) {
+        const oklabf_t c = oklabf_from_srgb_bytes(lit[0], lit[1], lit[2]);
+        if (oklabf_distance_sq(c, flat) <= R3D_TEXTURE_FLAT_JND * R3D_TEXTURE_FLAT_JND) {
             like |= 1U << i;
         }
     }
@@ -85,7 +74,8 @@ colours_used(const r3d_texture_t* t, int level) {
     const uint32_t bytes = r3d_texture_level_bytes(R3D_TEXTURE_INDEX4, t->size_log2 - level);
     uint32_t used = 0;
     for (uint32_t i = 0; i < bytes && used != all; i++) {
-        used |= (1U << (t->texels[level][i] & 0x0FU)) | (1U << (t->texels[level][i] >> 4)); /* magic: two nibbles */
+        const uint8_t pair = t->texels[level][i];
+        used |= (1U << (pair & R3D_TEXTURE_INDEX4_MASK)) | (1U << (pair >> R3D_TEXTURE_INDEX4_BITS));
     }
     return used;
 }

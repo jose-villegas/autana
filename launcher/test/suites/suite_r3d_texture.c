@@ -9,6 +9,7 @@
 #include "collections/bits.h"
 #include "core/memory.h"
 #include "core/tune.h"
+#include "image/colour/oklab.h"
 #include "image/pixel/bayer.h"
 #include "image/pixel/rgb565.h"
 #include "math/scalar/mathi.h"
@@ -26,7 +27,7 @@
 #include "unity.h"
 
 /* An INDEX4 byte: two texels, `high` in its upper nibble. */
-#define TEXEL_PAIR(high, low) ((uint8_t)(((high) << 4) | (low))) /* magic: two INDEX4 texels a byte */
+#define TEXEL_PAIR(high, low) ((uint8_t)(((high) << R3D_TEXTURE_INDEX4_BITS) | (low)))
 
 #define SIDE                  48
 #define PIXELS                (SIDE * SIDE)
@@ -107,7 +108,7 @@ write_ltex(uint8_t* b) {
             for (int x = 0; x < side; x++) {
                 const int o = (y * side) + x;
                 const int index = l == 0 ? (x + y) & 15 : l;
-                at[o >> 1] |= (uint8_t)(index << ((o & 1) * 4));
+                at[o >> 1] |= (uint8_t)(index << ((o & 1) * R3D_TEXTURE_INDEX4_BITS));
             }
         }
         at += (side * side) / 2;
@@ -475,6 +476,82 @@ test_a_level_with_a_colour_unlike_the_tint_or_above_one_stays_textured(void) {
     fill_level(LEVEL_2_OFF, LEVEL_2_BYTES, MEAN_INDEX);
     reopen();
     TEST_ASSERT_EQUAL_UINT8_MESSAGE(1, texture->flat_level, "levels 1 and 2 both like the tint");
+}
+
+#define LEVEL_0_BYTES 32
+#define TINT_INDEX    2 /* given a palette colour equal to the tint's bytes */
+
+/* Palette colour `index` set to (r, g, b). */
+static void
+set_colour(int index, uint8_t r, uint8_t g, uint8_t b) {
+    uint8_t* at = ltex + PALETTE_OFF + (index * R3D_TEXTURE_PALETTE_STRIDE);
+    at[0] = r;
+    at[1] = g;
+    at[2] = b;
+}
+
+/* Every level like the tint opens flat from level 0. */
+static void
+test_a_texture_like_the_tint_at_every_level_opens_flat_from_0(void) {
+    fixture();
+    fill_level(TEXELS_OFF, LEVEL_0_BYTES, MEAN_INDEX);
+    fill_level(LEVEL_1_OFF, LEVEL_1_BYTES, MEAN_INDEX);
+    fill_level(LEVEL_2_OFF, LEVEL_2_BYTES, MEAN_INDEX);
+    reopen();
+    TEST_ASSERT_EQUAL_UINT8(0, texture->flat_level);
+}
+
+/* Both texels of a byte count, to a level's last byte: one unlike colour in
+ * the low nibble of level 1's last byte keeps level 1 textured. */
+static void
+test_an_unlike_low_nibble_in_a_levels_last_byte_keeps_it_textured(void) {
+    fixture();
+    fill_level(LEVEL_1_OFF, LEVEL_1_BYTES, MEAN_INDEX);
+    fill_level(LEVEL_2_OFF, LEVEL_2_BYTES, MEAN_INDEX);
+    ltex[LEVEL_1_OFF + LEVEL_1_BYTES - 1] = TEXEL_PAIR(MEAN_INDEX, DARK_INDEX);
+    reopen();
+    TEST_ASSERT_EQUAL_UINT8(LEVEL_2, texture->flat_level);
+}
+
+/* A colour is judged lit at the tint, not as stored: under a coloured tint
+ * the pattern's mean, a grey, lights to the tint and draws flat, while a
+ * stored copy of the tint's bytes lights to another colour and does not. */
+static void
+test_a_colour_is_judged_lit_at_the_tint(void) {
+    enum { TINT_R = 200, TINT_G = 100, TINT_B = 50 };
+
+    fixture();
+    ltex[R3D_TEXTURE_AT_TINT] = TINT_R;
+    ltex[R3D_TEXTURE_AT_TINT + 1] = TINT_G;
+    ltex[R3D_TEXTURE_AT_TINT + 2] = TINT_B;
+    set_colour(TINT_INDEX, TINT_R, TINT_G, TINT_B);
+    fill_level(LEVEL_2_OFF, LEVEL_2_BYTES, MEAN_INDEX);
+    reopen();
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(LEVEL_2, texture->flat_level, "the grey mean lights to the tint");
+    fill_level(LEVEL_2_OFF, LEVEL_2_BYTES, TINT_INDEX);
+    reopen();
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(TEX_LEVELS, texture->flat_level, "the tint's bytes light to another colour");
+}
+
+/* Under the grey tint a colour lights to itself. The reddest grey within
+ * R3D_TEXTURE_FLAT_JND of the tint draws flat; one byte redder does not. */
+static void
+test_the_flat_distance_is_the_jnd(void) {
+    const oklabf_t tint = oklabf_from_srgb_bytes(TINT_GREY, TINT_GREY, TINT_GREY);
+    int inside = TINT_GREY;
+    while (oklabf_distance_sq(oklabf_from_srgb_bytes((uint8_t)(inside + 1), TINT_GREY, TINT_GREY), tint)
+           <= R3D_TEXTURE_FLAT_JND * R3D_TEXTURE_FLAT_JND) {
+        inside++;
+    }
+    TEST_ASSERT_TRUE_MESSAGE(inside > TINT_GREY && inside < UINT8_MAX, "the JND lies inside a byte's reach");
+    fixture();
+    fill_level(LEVEL_2_OFF, LEVEL_2_BYTES, TINT_INDEX);
+    set_colour(TINT_INDEX, (uint8_t)inside, TINT_GREY, TINT_GREY);
+    reopen();
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(LEVEL_2, texture->flat_level, "just inside the JND");
+    set_colour(TINT_INDEX, (uint8_t)(inside + 1), TINT_GREY, TINT_GREY);
+    reopen();
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(TEX_LEVELS, texture->flat_level, "just outside the JND");
 }
 
 static void
@@ -2775,6 +2852,10 @@ run_r3d_texture_suite(void) {
     RUN_TEST(test_minified_triangle_takes_the_matching_level);
     RUN_TEST(test_a_last_level_like_the_tint_opens_flat_and_draws_its_corners_mean);
     RUN_TEST(test_a_level_with_a_colour_unlike_the_tint_or_above_one_stays_textured);
+    RUN_TEST(test_a_texture_like_the_tint_at_every_level_opens_flat_from_0);
+    RUN_TEST(test_an_unlike_low_nibble_in_a_levels_last_byte_keeps_it_textured);
+    RUN_TEST(test_a_colour_is_judged_lit_at_the_tint);
+    RUN_TEST(test_the_flat_distance_is_the_jnd);
     RUN_TEST(test_the_flat_tunable_at_0_opens_no_flat_level);
     RUN_TEST(test_a_flat_level_draws_in_its_corners_mean);
     RUN_TEST(test_a_flat_level_under_skip_hidden_is_capped);

@@ -2,7 +2,9 @@
 #pragma once
 
 #include <math.h>
+#include <stdint.h>
 
+#include "image/colour/srgb.h"
 #include "math/linear/vec3f.h"
 
 typedef struct {
@@ -33,4 +35,20 @@ oklabf_to_linear(oklabf_t lab) {
     return (vec3f_t){(4.0767416621F * l3) - (3.3077115913F * m3) + (0.2309699292F * s3),
                      (-1.2684380046F * l3) + (2.6097574011F * m3) - (0.3413193965F * s3),
                      (-0.0041960863F * l3) - (0.7034186147F * m3) + (1.7076147010F * s3)};
+}
+
+/* The sRGB-encoded byte colour (r, g, b) in OKLab. */
+static inline oklabf_t
+oklabf_from_srgb_bytes(uint8_t r, uint8_t g, uint8_t b) {
+    return oklabf_from_linear((vec3f_t){srgbf_decode_byte(r), srgbf_decode_byte(g), srgbf_decode_byte(b)});
+}
+
+/* The squared Euclidean distance between two OKLab colours: OKLab's colour
+ * difference, squared so a caller compares it to a squared bound. */
+static inline float
+oklabf_distance_sq(oklabf_t p, oklabf_t q) {
+    const float dl = p.l - q.l;
+    const float da = p.a - q.a;
+    const float db = p.b - q.b;
+    return (dl * dl) + (da * da) + (db * db);
 }

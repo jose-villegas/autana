@@ -67,13 +67,13 @@ and never divides.
 
 Each texture finds its flat level when it opens, from its own texels: the
 first level from which every level's colours, lit at the tint, are within
-an OKLab distance of 0.02 of the tint, one just noticeable
-difference<sup>[[136]](../../Citations.md#w3c-css-color-4)</sup>. The tint is
-the colour the flat fill draws, as the pattern averages to it. There is no
+one just noticeable difference<sup>[[136]](../../Citations.md#w3c-css-color-4)</sup>
+of the tint, as OKLab measures it (`R3D_TEXTURE_FLAT_JND`). The tint is the
+colour the flat fill draws, as the pattern averages to it. There is no
 setting: a texture whose coarse levels still show their pattern keeps
 them textured, and MASK1 has no flat level.
 
-The pattern is gone there, the colour is the same:
+From its flat level on the pattern is gone and the colour is the same:
 
 ![Bistro's street from above: the source, the street with every level's texels, with each texture's flat levels untextured, and each one's CIE76 against the source](../../images/render/bistro-street-far-levels.png)
 

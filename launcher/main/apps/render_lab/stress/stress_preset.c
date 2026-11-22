@@ -636,7 +636,7 @@ write_brick(uint8_t* palette, uint8_t* texels) {
             for (int x = 0; x < side; x++) {
                 const int o = (y * side) + x;
                 const int index = l >= STRESS_BRICK_FLAT_FROM ? STRESS_BRICK_MEAN : brick_index(x << l, y << l);
-                texels[o >> 1] |= (uint8_t)(index << ((o & 1) * 4));
+                texels[o >> 1] |= (uint8_t)(index << ((o & 1) * R3D_TEXTURE_INDEX4_BITS));
             }
         }
         texels += r3d_texture_level_bytes(R3D_TEXTURE_INDEX4, STRESS_TEXTURE_SIZE_LOG2 - l);

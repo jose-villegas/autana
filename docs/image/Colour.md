@@ -28,6 +28,8 @@ $`(1, 0, 0)`$.
 |---|---|
 | `oklabf_from_linear` | Linear sRGB to OKLab |
 | `oklabf_to_linear` | OKLab to linear sRGB; out-of-gamut colours fall outside $`[0, 1]`$ for the caller to clamp or reject |
+| `oklabf_from_srgb_bytes` | An 8-bit encoded sRGB colour to OKLab |
+| `oklabf_distance_sq` | The squared distance between two OKLab colours, OKLab's colour difference |
 
 ## Example
 
@@ -39,9 +41,7 @@ $`(1, 0, 0)`$.
 
 uint32_t
 colour_example_lighten(uint32_t rgb, float step) {
-    const vec3f_t linear = {srgbf_decode_byte((uint8_t)(rgb >> 16)), srgbf_decode_byte((uint8_t)(rgb >> 8)),
-                            srgbf_decode_byte((uint8_t)rgb)};
-    oklabf_t lab = oklabf_from_linear(linear);
+    oklabf_t lab = oklabf_from_srgb_bytes((uint8_t)(rgb >> 16), (uint8_t)(rgb >> 8), (uint8_t)rgb);
     lab.l += step;
     const vec3f_t out = oklabf_to_linear(lab); /* may leave [0, 1]; encode clamps */
     return ((uint32_t)srgbf_encode_byte(out.x) << 16) | ((uint32_t)srgbf_encode_byte(out.y) << 8)

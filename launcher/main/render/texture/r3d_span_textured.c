@@ -33,8 +33,6 @@
 #define UV_LOW_MASK  0xFFFFU
 #define U_INT_SHIFT  (UV_HALF_BITS + UV_FRAC)
 #define V_INT_SHIFT  UV_FRAC
-#define NIBBLE_BITS  4
-#define NIBBLE_MASK  0xFU
 #define MASK1_KEPT   1 /* the colour a kept MASK1 texel draws */
 /* The light level walks as 8.8. */
 #define LIGHT_FRAC   8
@@ -101,7 +99,7 @@ texel_offset(const sampler_t* s, uint32_t uv) {
 static inline __attribute__((always_inline)) uint32_t
 texel(const sampler_t* s, uint32_t uv) {
     const uint32_t o = texel_offset(s, uv);
-    return (uint32_t)(s->texels[o >> 1] >> ((o & 1U) * NIBBLE_BITS)) & NIBBLE_MASK;
+    return (uint32_t)(s->texels[o >> 1] >> ((o & 1U) * R3D_TEXTURE_INDEX4_BITS)) & R3D_TEXTURE_INDEX4_MASK;
 }
 
 static inline __attribute__((always_inline)) bool

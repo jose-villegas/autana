@@ -43,8 +43,10 @@
 #define R3D_TEXTURE_MASK1_SIZE_LOG2_MIN 2   /* MASK1's smallest level's side, 4: a level is whole bytes */
 #define R3D_TEXTURE_MASK1_MIP_KEPT      2   /* a MASK1 mip texel is kept when this many of the 2x2 above are */
 #define R3D_TEXTURE_INDEX4_PER_BYTE     2U  /* INDEX4 texels a byte */
-#define R3D_TEXTURE_MASK1_PER_BYTE      8U  /* MASK1 texels a byte */
-#define R3D_TEXTURE_SIZE_LOG2_MAX       8   /* 256 texels a side: a span wraps u and v at 8 bits */
+#define R3D_TEXTURE_INDEX4_BITS         4U  /* an INDEX4 texel's bits: the even column the low nibble */
+#define R3D_TEXTURE_INDEX4_MASK         0xFU
+#define R3D_TEXTURE_MASK1_PER_BYTE      8U /* MASK1 texels a byte */
+#define R3D_TEXTURE_SIZE_LOG2_MAX       8  /* 256 texels a side: a span wraps u and v at 8 bits */
 #define R3D_TEXTURE_LEVELS_MAX          R3D_TEXTURE_SIZE_LOG2_MAX
 /* A vertex colour's luminance as the light level reads it: BT.601 weights
  * in 1/256. */
@@ -55,13 +57,18 @@
 /* Light levels of the colormap light: level 0 is black, the last the
  * vertex light whose luminance is 255. */
 #define R3D_TEXTURE_LIGHT_LEVELS        32
+/* The OKLab distance under which a colour is not told from another, the
+ * just noticeable difference (CSS Color 4): a level whose colours, lit at
+ * the tint, all lie this near the tint draws flat. */
+#define R3D_TEXTURE_FLAT_JND            0.02F
 
 typedef struct {
     const uint8_t* texels[R3D_TEXTURE_LEVELS_MAX]; /* each level, row-major, r3d_texture_level_bytes() long */
     uint8_t format;                                /* R3D_TEXTURE_INDEX4 or R3D_TEXTURE_MASK1 */
     uint8_t size_log2;                             /* level 0's side */
     uint8_t levels;                                /* level 0 and its mips, each half the last */
-    uint8_t flat_level; /* INDEX4: the first level drawn flat, found at open from its colours; levels: none */
+    uint8_t flat_level; /* INDEX4: the first level drawn flat, found at open from its colours; levels: none.
+                         * 0, as a zeroed struct holds, draws every level flat */
     /* Panel RGB565 of each colour's albedo at each light level: a span
      * reads one a pixel. A streamer may point `texels` elsewhere: the span
      * fill reads them only through this struct, at a triangle's set-up. */
@@ -107,9 +114,8 @@ r3d_texture_level_bytes(unsigned format, int side_log2) {
  * capped as r3d_span_capped_triangle() when target->skip_hidden. The level
  * is chosen once per triangle from the texels a pixel steps. A MASK1 texel 0
  * leaves its pixel. The target's writers follow each span it drew. Returns
- * false, drawing nothing, for an INDEX4 level from
- * texture->flat_level on, which r3d_span_textured_triangle() draws
- * untextured. */
+ * false, drawing nothing, for an INDEX4 level from texture->flat_level on,
+ * which r3d_span_textured_triangle() draws untextured. */
 bool r3d_span_textured_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                             const r3d_span_vertex_t* c, const vec2f_t uv[3], const r3d_texture_t* texture);
 
