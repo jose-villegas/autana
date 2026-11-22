@@ -13,7 +13,7 @@ from statistics import mean
 from types import SimpleNamespace
 
 from layout_measure import analyse, autana_command, required_seeds, run_flash, filter_limits, validate_filters, split_filters, FilterOverlap
-from layout_measure import flash_needs_hot_tunables
+from console_protocol import TUNE_SET, parse_assignment
 from device_capture import test_matches
 from capture import require_same_board
 from seed_statistics import compare, minimum_seeds, permutation_samples
@@ -154,8 +154,6 @@ def look_seconds(records, seeds, runs):
 
 def measure(args, runner=None, clock=time.monotonic):
     """Acquire seeded observations and save decisions even after capture failure."""
-    args.hot_tunables = flash_needs_hot_tunables(
-        (getattr(args, "send_a", None) or []) + (getattr(args, "send_b", None) or []))
     started = clock()
     budget = 60 * args.max_minutes
     budget_stop = None
@@ -169,6 +167,7 @@ def measure(args, runner=None, clock=time.monotonic):
     rng = random.Random(args.rng_seed)
     used, plan = set(), []
     records = {"a": [], "b": []}
+    hot_tunables = getattr(args, "hot_tunables", dict.fromkeys(records, False))
     decisions, active = {}, None
     failures, skip_until, previous_target = 0, 0, 0
     stop_error = None
@@ -176,7 +175,7 @@ def measure(args, runner=None, clock=time.monotonic):
     destination.mkdir(parents=True, exist_ok=True)
 
     def save_plan():
-        payload = dict(rng_seed=args.rng_seed, hot_tunables=args.hot_tunables, plan=plan)
+        payload = dict(rng_seed=args.rng_seed, hot_tunables=hot_tunables, plan=plan)
         (destination / "plan.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
     for look, target in enumerate(sizes):
@@ -210,13 +209,14 @@ def measure(args, runner=None, clock=time.monotonic):
                                for record in records[side])
                 actual_runs = CALIBRATION_RUNS if look == 0 and repeated < CALIBRATION_SEEDS else runs
                 console_lines = getattr(args, "send_" + side, None) or []
+                settings = getattr(args, "set_" + side, [])
                 item = dict(side=side, seed=seed, runs=actual_runs, suites=suites, look=look + 1,
-                            console_send=console_lines)
+                            console_send=console_lines, tune_set=settings)
                 plan.append(item)
                 save_plan()
                 flash_args = SimpleNamespace(out=destination / side,
                     project=getattr(args, "project_" + side), runs=actual_runs, suite=suites,
-                    send=console_lines, hot_tunables=args.hot_tunables,
+                    send=console_lines, tune_set=settings, hot_tunables=hot_tunables[side],
                     timeout=args.timeout, wait=args.wait, autana=getattr(args, "autana", None))
                 try:
                     flash_started = clock()
@@ -334,8 +334,10 @@ def write_summary(path, args, records, rows, estimates, sizes, plan, incomplete=
              f"Intervals are {100 * (1 - args.alpha / len(sizes) / 2):g}% two-sided Welch intervals on log seed means. "
              "Holm corrects difference and equivalence tests separately over all rows. "
              "Inconclusive rows alone receive more seeds at the planned looks.", ""]
-    if getattr(args, "hot_tunables", False):
-        lines += ["knobs live: built with --hot-tunables (both sides)", ""]
+    for side, enabled in getattr(args, "hot_tunables", {}).items():
+        if enabled:
+            settings = ", ".join(f"`{setting}`" for setting in getattr(args, "set_" + side))
+            lines += [f"{side.upper()} tunables: {settings} (built with `--hot-tunables`).", ""]
     if getattr(args, "send_a", None) or getattr(args, "send_b", None):
         for side in ("a", "b"):
             setup = getattr(args, "send_" + side, None) or []
@@ -398,6 +400,10 @@ def main(argv=None):
                         help="A setup before every capture; repeatable, sequence should be idempotent")
     parser.add_argument("--send-b", action="append", metavar="LINE",
                         help="B setup before every capture; repeatable, sequence should be idempotent")
+    parser.add_argument("--set-a", action="append", default=[], metavar="NAME=VALUE",
+                        help="A tunable before every capture; repeatable, requires a matching echo")
+    parser.add_argument("--set-b", action="append", default=[], metavar="NAME=VALUE",
+                        help="B tunable before every capture; repeatable, requires a matching echo")
     parser.add_argument("--label-a", default="A")
     parser.add_argument("--label-b", default="B")
     parser.add_argument("--suite", nargs=3, action="append", metavar=("NAME", "TESTS", "TABLE"))
@@ -418,10 +424,19 @@ def main(argv=None):
                                              "--project", str(args.restore_project), override=args.autana))
     if not 0 < args.threshold < 100 or not 0 < args.alpha < 1 or min(args.timeout, args.wait) <= 0 or not args.max_minutes > 0:
         parser.error("threshold, alpha and time limits must be positive and in range")
-    try:
-        args.hot_tunables = flash_needs_hot_tunables((args.send_a or []) + (args.send_b or []))
-    except ValueError as error:
-        parser.error(str(error))
+    for side in ("a", "b"):
+        for line in getattr(args, "send_" + side) or []:
+            words = line.split(maxsplit=1)
+            if not words or "\n" in line or "\r" in line:
+                parser.error(f"argument --send-{side}: {line!r}: expected one console line")
+            if words[0].upper() == TUNE_SET:
+                parser.error(f"argument --send-{side}: {line!r}: use --set-{side} NAME=VALUE for {TUNE_SET}")
+        for setting in getattr(args, "set_" + side):
+            try:
+                parse_assignment(setting)
+            except ValueError as error:
+                parser.error(f"argument --set-{side}: {error}")
+    args.hot_tunables = {"a": bool(args.set_a), "b": bool(args.set_b)}
     if args.validate_plan or args.estimate_plan:
         if not args.suite:
             parser.error("--suite is required")

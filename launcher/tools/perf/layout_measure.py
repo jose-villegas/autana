@@ -21,29 +21,8 @@ from doc_tables import table_rows  # noqa: E402
 from process_tree import run_process_tree, terminate_unwinds  # noqa: E402
 from device_capture import RESULT_RE, BUILD_ID_RE as BUILD_LINE  # noqa: E402
 
-from console_protocol import TUNE_SET, parse_tunable, reply_prefix
 from frame_profile import PROFILE_RE
 
-def flash_needs_hot_tunables(lines=()):
-    """Validate setup assignments and select live loads for seeded images."""
-    needed = False
-    for line in lines:
-        try:
-            reply_prefix(line)
-            if "\n" in line or "\r" in line:
-                raise ValueError("expected one console line")
-            words = line.split()
-            if words[0].upper() != TUNE_SET:
-                continue
-            if len(words) != 3:
-                raise ValueError("expected SET <console name> <int32 value>")
-            if line != " ".join(words):
-                raise ValueError("SET needs single spaces and no surrounding whitespace")
-            parse_tunable(words[1], words[2])
-            needed = True
-        except ValueError as error:
-            raise ValueError(f"setup line {line!r}: {error}") from error
-    return needed
 
 MEAN_RE = re.compile(r"\b(?P<name>\S+) (?:(?:both cores|one core): )?mean\s+(?P<value>\d+)us\b")
 NUMBER_RE = re.compile(r"^[+-]?\d+$")
@@ -316,7 +295,6 @@ def booted_build_id(project, lines):
 
 def run_flash(args, seed, runner=None):
     """Capture repeated suites on one seeded image with status and identity checks."""
-    hot_tunables = flash_needs_hot_tunables(getattr(args, "send", None) or []) or getattr(args, "hot_tunables", False)
     runner = runner or run_stamped
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -340,11 +318,13 @@ def run_flash(args, seed, runner=None):
                                          override=override)
                 for line in getattr(args, "send", None) or []:
                     command += ["--send", line]
+                for setting in getattr(args, "tune_set", None) or []:
+                    command += ["--set", setting]
                 if tests != "-":
                     command += ["--test", tests]
                 if index == 0:
                     command += ["--flash", "--perf-scope", "--layout-seed", str(seed)]
-                    if hot_tunables:
+                    if getattr(args, "hot_tunables", False):
                         command.append("--hot-tunables")
                 if index > 0:
                     command += ["--expect-build-id", record["build_id"]]

@@ -12,7 +12,6 @@ from shell_job import ShellJobTests
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import perf_sweep as tool
 from console_protocol import TUNE_NAME_MAX, TUNE_VALUE_MAX
-from layout_measure import flash_needs_hot_tunables
 
 FIXTURE = Path(__file__).parent / "fixtures/sweep_capture.log"
 
@@ -68,22 +67,17 @@ def arguments(root, seeds=(1,)):
 
 
 class TunableInputTests(unittest.TestCase):
-    def test_setup_and_sweep_accept_console_integers(self):
+    def test_sweep_accepts_console_integers(self):
         for value, expected in (("010", 8), ("0x10", 16), ("-8", -8), ("+010", 8)):
             with self.subTest(value=value):
-                self.assertTrue(flash_needs_hot_tunables([f"SET render.knob {value}"]))
                 args = tool.parse_args(["run", "--out", "out", "--suite", "suite", "-", "-",
                                         "--knob", f"render.knob={value}"])
                 self.assertEqual(args.knob, [("render.knob", [expected])])
 
-    def test_setup_and_sweep_reject_invalid_tunables(self):
+    def test_sweep_rejects_invalid_tunables(self):
         for name, value in (("render.knob", str(TUNE_VALUE_MAX + 1)), ("x" * (TUNE_NAME_MAX + 1), "1"),
                             ("render.knob", "08"), ("render-knob", "1")):
             with self.subTest(name=name, value=value):
-                line = f"SET {name} {value}"
-                with self.assertRaises(ValueError) as error:
-                    flash_needs_hot_tunables([line])
-                self.assertIn(line, str(error.exception))
                 with contextlib.redirect_stderr(io.StringIO()) as stderr:
                     with self.assertRaises(SystemExit) as error:
                         tool.parse_args(["run", "--out", "out", "--suite", "suite", "-", "-",

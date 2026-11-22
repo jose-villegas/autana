@@ -36,13 +36,18 @@ def parse_tunable(name: str, text: str) -> int:
     match = re.fullmatch(r"[+-]?(?:0[xX][0-9a-fA-F]+|(?P<octal>0[0-7]*)|[1-9][0-9]*)", text)
     if not match:
         raise ValueError(f"{assignment!r}: expected a decimal, octal or hexadecimal integer")
-    try:
-        value = int(text, 8 if match["octal"] else 0)
-    except ValueError as error:
-        raise ValueError(f"{assignment!r}: value must fit int32") from error
+    value = int(text, 8 if match["octal"] else 0)
     if not TUNE_VALUE_MIN <= value <= TUNE_VALUE_MAX:
         raise ValueError(f"{assignment!r}: value must fit int32")
     return value
+
+
+def parse_assignment(text: str) -> tuple[str, int]:
+    """Read a NAME=VALUE assignment using the console's integer syntax."""
+    name, separator, value = text.partition("=")
+    if not separator:
+        raise ValueError(f"{text!r}: expected NAME=VALUE")
+    return name, parse_tunable(name, value)
 
 
 def reply_prefix(line):

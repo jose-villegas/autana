@@ -9,7 +9,7 @@ import re
 import sys
 
 import math_bench_table as bench
-from capture import read_capture_text
+from device_report import read_capture_text
 from generated_blocks import replace_block
 
 ROOT = bench.ROOT

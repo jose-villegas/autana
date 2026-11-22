@@ -32,7 +32,7 @@ import autana_config  # noqa: E402
 from native_path import git_bash  # noqa: E402,F401  (callers and tests reach it as device.git_bash)
 import board_serial
 from console_protocol import (FRAMED_ENDINGS, TUNE_LIST, TUNE_OK, TUNE_REPLY_ENDS, TUNE_SET,
-                              parse_tunable, replies_to, require_development, reply_prefix)
+                              parse_assignment, replies_to, require_development, reply_prefix)
 from device_capture import (BOOTS_FROM_RESET, BOOTS_ON_RUNNING, BUILD_ID_BYTES_RE as BUILD_ID,
                             CAPTURE_COMPLETE, ERROR_LINE_RE, TEST_NAME, capture_ended_line, crash_signs,
                             suite_failure_signs, test_matches)
@@ -1846,30 +1846,19 @@ def exchange_retrying(connection, requests):
     return line, found, False
 
 
-def tunable_assignment(setting):
-    name, separator, value = setting.partition("=")
-    if not separator:
-        raise argparse.ArgumentTypeError(f"{setting!r}: expected NAME=VALUE")
-    try:
-        parse_tunable(name, value)
-    except ValueError as error:
-        raise argparse.ArgumentTypeError(str(error)) from error
-    return setting
-
-
 def apply_tunables(connection, settings):
     """SET each NAME=VALUE on the port the caller holds, so a capture runs at
     those values whoever held the board before it; refused unless the board
     echoes each value back."""
     for setting in settings:
-        name, _, value = setting.partition("=")
-        line = f"{TUNE_SET} {name} {value}"
+        name, value = parse_assignment(setting)
+        line = f"{TUNE_SET} {setting.replace('=', ' ', 1)}"
         _, found, complete = exchange_retrying(connection, [(line, TUNE_LIST, TUNE_REPLY_ENDS)])
         if not complete or not found or not found[-1].startswith(f"{TUNE_OK} {name}="):
             raise TuneRefused(f"{line}: {found[-1] if found else 'no reply'}")
         echo = found[-1].split("=", 1)[1]
         try:
-            mismatch = int(echo) != parse_tunable(name, value)
+            mismatch = int(echo) != value
         except ValueError as error:
             raise TuneRefused(f"{line}: invalid echo {found[-1]}") from error
         if mismatch:
@@ -2428,7 +2417,7 @@ def main(argv=None):
     suite.add_argument("--verbose", action="store_true")
     suite.add_argument("--send", dest="console_send", action="append", metavar="LINE",
                        help="send before every capture; repeatable, sequence should be idempotent")
-    suite.add_argument("--set", dest="tune_set", action="append", type=tunable_assignment, metavar="NAME=VALUE",
+    suite.add_argument("--set", dest="tune_set", action="append", metavar="NAME=VALUE",
                        help="SET a tunable under the capture's lock first; repeatable")
     listen_parser = subparsers.add_parser("listen")
     listen_duration = listen_parser.add_mutually_exclusive_group(required=True)
@@ -2526,7 +2515,7 @@ def main(argv=None):
     batch_parser.add_argument("--max-seconds", type=float, default=1800)
     batch_parser.add_argument("--send", dest="console_send", action="append", metavar="LINE",
                               help="send before every capture; repeatable, sequence should be idempotent")
-    batch_parser.add_argument("--set", dest="tune_set", action="append", type=tunable_assignment,
+    batch_parser.add_argument("--set", dest="tune_set", action="append",
                               metavar="NAME=VALUE",
                               help="SET a tunable under each capture's lock first; repeatable")
     batch_parser.add_argument("--test", dest="test_filter", action="append", metavar="PATTERN",
@@ -2543,6 +2532,11 @@ def main(argv=None):
     report_parser.add_argument("capture", help="an existing capture file (.log or .log.gz)")
     report_parser.add_argument("--index", help="override index.jsonl (default: records/device)")
     args = parser.parse_args(argv)
+    for setting in getattr(args, "tune_set", None) or []:
+        try:
+            parse_assignment(setting)
+        except ValueError as error:
+            parser.error(f"argument --set: {error}")
     args.purpose = command_label(args.command)
     os.environ[autana_config.WAIT_ENV] = str(args.wait)
 
@@ -2701,8 +2695,7 @@ def main(argv=None):
                     connection.close()
         elif args.command == "send":
             if not args.until:
-                args.until = TUNE_REPLY_ENDS if args.reply == TUNE_LIST else (
-                    args.reply + "_OK", args.reply + "_ERR", args.reply + "_END")
+                args.until = (args.reply + "_OK", args.reply + "_ERR", args.reply + "_END")
             result = send(args, store, board)
             return result
         else:
