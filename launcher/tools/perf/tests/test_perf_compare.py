@@ -270,35 +270,66 @@ class AcquisitionTest(ShellJobTests, unittest.TestCase):
             self.assertEqual(job_estimate(2, 3, 900, restore=False),
                              2 * DEFAULT_FLASH_SECONDS + 3 * 900)
 
-    def test_setup_set_builds_both_arms_with_live_knobs(self):
+    def test_side_b_settings_enable_hot_tunables_only_for_b(self):
         from shell_job import replay
-        for setup in ((), ('--send-b', 'SET render.cull 0')):
+        for setup in ((), ('--set-b', 'render.cull=0', '--set-b', 'render.scale=1')):
             with self.subTest(setup=setup):
                 result, calls = replay(self, 'compare', extra=setup)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 flashes = [call['words'] for call in calls if '--flash' in call['words']]
                 self.assertTrue(flashes)
-                self.assertTrue(all(('--hot-tunables' in call) == bool(setup) for call in flashes))
+                for words in flashes:
+                    side = pathlib.Path(words[words.index('--project') + 1]).name
+                    self.assertEqual('--hot-tunables' in words, bool(setup) and side == 'b')
+                    settings = [words[i + 1] for i, word in enumerate(words) if word == '--set']
+                    self.assertEqual(settings, list(setup[1::2]) if side == 'b' else [])
                 if setup:
-                    self.assertIn('knobs live: built with --hot-tunables (both sides)', result.stdout)
+                    self.assertIn('B tunables: `render.cull=0`, `render.scale=1` (built with `--hot-tunables`).',
+                                  result.stdout)
 
         with tempfile.TemporaryDirectory() as root:
             args = arguments(root, cap=4)
-            args.send_b = ['SET render.cull 0']
+            args.set_b = ['render.cull=0']
+            args.hot_tunables = {'a': False, 'b': True}
             with contextlib.redirect_stdout(io.StringIO()):
                 tool.measure(args, FakeAutana(root))
             import json
-            self.assertTrue(json.loads((args.out / 'plan.json').read_text())['hot_tunables'])
+            plan = json.loads((args.out / 'plan.json').read_text())
+            self.assertEqual(plan['hot_tunables'], args.hot_tunables)
+            for item in plan['plan']:
+                self.assertEqual(item['tune_set'], args.set_b if item['side'] == 'b' else [])
+
+    def test_octal_set_reaches_only_side_a_with_hot_tunables(self):
+        from shell_job import replay
+        result, calls = replay(self, 'compare', extra=('--set-a', 'x=010'))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        captures = [call['words'] for call in calls if 'suite' in call['words']]
+        for side in ('a', 'b'):
+            commands = [words for words in captures
+                        if pathlib.Path(words[words.index('--project') + 1]).name == side]
+            self.assertTrue(commands)
+            for words in commands:
+                settings = [words[i + 1] for i, word in enumerate(words) if word == '--set']
+                self.assertEqual(settings, ['x=010'] if side == 'a' else [])
+                self.assertEqual('--hot-tunables' in words, side == 'a' and '--flash' in words)
 
     def test_impossible_setup_is_refused_before_any_flash(self):
         from shell_job import replay
-        for line in ('SET render.cull', 'SET render.cull nope', 'SET render.cull 2147483648',
-                     'SET render.cull 0b1', 'SET render.cull 1_000', 'SET  render.cull 1'):
-            for options in ((), ('--validate-plan',)):
-                with self.subTest(line=line, options=options):
-                    result, calls = replay(self, 'compare', extra=(*options, '--send-b', line))
-                    self.assertNotEqual(result.returncode, 0)
-                    self.assertIn(line, result.stderr)
+        for option, value, diagnostic in (
+            ('--send-a', 'SET render.cull 1', 'use --set-a NAME=VALUE'),
+            ('--send-b', ' Set  render.cull 1', 'use --set-b NAME=VALUE'),
+            ('--set-b', 'render.cull', 'expected NAME=VALUE'),
+            ('--set-b', 'render.cull=nope', 'expected a decimal, octal or hexadecimal integer'),
+            ('--set-b', 'render.cull=2147483648', 'value must fit int32'),
+            ('--set-b', 'render.cull=0b1', 'expected a decimal, octal or hexadecimal integer'),
+            ('--set-b', 'render.cull=1_000', 'expected a decimal, octal or hexadecimal integer'),
+        ):
+            for mode in ((), ('--validate-plan',)):
+                with self.subTest(value=value, mode=mode):
+                    result, calls = replay(self, 'compare', extra=(*mode, option, value))
+                    self.assertEqual(result.returncode, 2)
+                    self.assertIn(value, result.stderr)
+                    self.assertIn(diagnostic, result.stderr)
                     self.assertEqual(calls, [])
 
     def test_shell_validation_takes_no_hold(self):

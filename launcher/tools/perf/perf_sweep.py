@@ -12,7 +12,7 @@ import sys
 from layout_measure import (REPO, autana_command, booted_build_id,
                             capture_metadata, captured_runs, make_table, parse_markdown, timing_samples,
                             run_stamped, split_filters, filter_limits, status_snapshot)
-from console_protocol import TUNE_SET, parse_tunable
+from console_protocol import TUNE_SET, parse_assignment
 from device_report import read_capture_text
 import device_lock
 
@@ -40,6 +40,13 @@ class SweepStop(RuntimeError):
 
 
 def assignment(text):
+    first, *rest = text.split(",")
+    name, value = parse_assignment(first)
+    values = [value, *(parse_assignment(f"{name}={item}")[1] for item in rest)]
+    return name, list(dict.fromkeys(values))
+
+
+def build_assignment(text):
     name, separator, value = text.partition("=")
     if not separator or not name or not value:
         raise argparse.ArgumentTypeError("expected NAME=VALUE")
@@ -55,8 +62,8 @@ def parse_args(argv=None):
     run_parser.add_argument("--out", "-o", type=Path, required=True)
     run_parser.add_argument("--suite", nargs=3, action="append", required=True,
                             metavar=("NAME", "TESTS", "TABLE"))
-    run_parser.add_argument("--knob", type=assignment, action="append", required=True)
-    run_parser.add_argument("--build", type=assignment, action="append")
+    run_parser.add_argument("--knob", action="append", required=True)
+    run_parser.add_argument("--build", type=build_assignment, action="append")
     run_parser.add_argument("--seeds", nargs="+", type=int, default=[1])
     run_parser.add_argument("--runs", type=int, default=DEFAULT_RUNS)
     run_parser.add_argument("--timeout", type=int, default=1800)
@@ -74,13 +81,12 @@ def parse_args(argv=None):
             parser.error("threshold, alpha, runs and time limits must be positive and in range")
         if len(set(args.seeds)) != len(args.seeds) or any(seed < 0 or seed > LAYOUT_SEED_MAX for seed in args.seeds):
             parser.error(f"layout seeds must be distinct, from 0 to {LAYOUT_SEED_MAX}")
-        if len({name for name, _ in args.knob}) != len(args.knob):
-            parser.error("knob names must be unique")
         try:
-            args.knob = [(name, list(dict.fromkeys(parse_tunable(name, value) for value in values.split(","))))
-                         for name, values in args.knob]
+            args.knob = [assignment(knob) for knob in args.knob]
         except ValueError as error:
             parser.error(f"--knob: {error}")
+        if len({name for name, _ in args.knob}) != len(args.knob):
+            parser.error("knob names must be unique")
         args.build = args.build or [("here", str(REPO))]
         if len({label for label, _ in args.build}) != len(args.build):
             parser.error("build labels must be unique")

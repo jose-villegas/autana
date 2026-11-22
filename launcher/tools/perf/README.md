@@ -77,13 +77,15 @@ launcher/tools/perf/perf_compare.sh A A -o calibration \
 ```
 
 `--send-a LINE` and `--send-b LINE` send console setup before every capture.
-Each side's sequence should be idempotent: stop voices before starting a loop.
+Use an idempotent sequence, such as stopping voices before starting a loop.
 
-A `SET <name> <value>` on either side builds both sides with `--hot-tunables`
-for the same image kind; `plan.json` and the summary record this choice.
+`--set-a NAME=VALUE` and `--set-b NAME=VALUE` set tunables before each capture
+and require the board to echo each value. Repeat the option for multiple
+tunables. Each side with assignments builds with `--hot-tunables`.
 
-Malformed assignments are refused by `--validate-plan` and before any flash.
-Tunable names and ranges must exist in the selected revision's registered inventory.
+`plan.json` and the summary record which sides use hot tunables.
+Validation rejects malformed assignments and raw `SET` setup lines before any
+flash. The selected revision's tunable registry supplies the valid ranges.
 
 Use the same revision on both sides to measure runtime setup alone:
 

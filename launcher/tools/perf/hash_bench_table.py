@@ -5,7 +5,7 @@ from pathlib import Path
 import sys
 
 import bench_capture as bench
-from capture import read_capture_text
+from device_report import read_capture_text
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools/render"))
