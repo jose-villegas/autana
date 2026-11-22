@@ -37,7 +37,7 @@ main(void) {
         const transformf_t target = flight_pose((float)i / PATH_STEPS);
         printf("%s[[%s]", i ? "," : "", vec3f_text(target.position).chars);
         for (size_t j = 0; j < sizeof binds / sizeof binds[0]; j++) {
-            const vec3f_t follower = rig_follow_position(target, offset, binds[j]);
+            const vec3f_t follower = rig_follow_position(&target, offset, binds[j]);
             printf(",[%s]", vec3f_text(follower).chars);
         }
         printf("]");

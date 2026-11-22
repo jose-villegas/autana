@@ -27,8 +27,11 @@ p_{\mathrm{follow}} = p + Ro
 ```
 
 The world bind uses the identity for $R$. The yaw bind applies the shortest turn
-from target up to world up after the target rotation (uppify). See
-[`quatf_from_to`](../math/Linear.md#quat-from-to) for the inverted case.
+from target up to world up after the target rotation (uppify).
+
+At an inverted target the leveled heading is undefined and can flip 180°
+across that orientation. [`quatf_from_to`](../math/Linear.md#quat-from-to) picks
+a deterministic half-turn at exact inversion.
 
 Target scale has no effect.
 
@@ -64,7 +67,7 @@ transformf_t
 rig_example(const transformf_t* outgoing, transformf_t target, uint32_t elapsed_ms, uint32_t over_ms) {
     const vec3f_t offset = {0.0F, 2.0F, -5.0F};
     transformf_t camera = transformf_identity();
-    transformf_set_position(&camera, rig_follow_position(target, offset, RIG_BIND_TARGET_YAW));
+    transformf_set_position(&camera, rig_follow_position(&target, offset, RIG_BIND_TARGET_YAW));
     transformf_set_rotation(&camera, rig_look_rotation(camera.position, target.position, vec3f_up()));
     const float weight = ease_smooth(elapsed_ms, over_ms);
     return transformf_blend(outgoing, &camera, weight);

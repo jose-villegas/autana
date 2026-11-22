@@ -7,78 +7,16 @@
 #pragma once
 
 #include "math/linear/mat4f.h"
-#include "math/linear/quatf.h"
+#include "math/linear/quatf_direction.h"
 #include "math/linear/transform_template.h"
 #include "math/linear/vec3f.h"
 #include "math/scalar/mathf.h"
 
-/* Prescale directions before squaring to avoid overflow and underflow.
- * A zero or nonfinite direction gives zero. */
-static inline vec3f_t
-quatf_rescale_direction(vec3f_t v) {
-    if (!isfinite(v.x) || !isfinite(v.y) || !isfinite(v.z)) {
-        return vec3f_zero();
-    }
-    const float largest = fmaxf(fabsf(v.x), fmaxf(fabsf(v.y), fabsf(v.z)));
-    return largest > 0.0F ? (vec3f_t){v.x / largest, v.y / largest, v.z / largest} : vec3f_zero();
-}
-
-/* Aim local +Z. At a pole use +Z as up, or -Z when forward points toward +Z.
- * If that axis is also parallel, use +Y. Zero or nonfinite forward gives identity. */
-static inline quatf_t
-quatf_looking(vec3f_t forward, vec3f_t up) {
-    const float pole_epsilon = 1.0E-6F;
-    const float pole_epsilon_sq = pole_epsilon * pole_epsilon;
-    forward = quatf_rescale_direction(forward);
-    up = quatf_rescale_direction(up);
-    const float forward_sq = vec3f_dot(forward, forward);
-    if (forward_sq == 0.0F) {
-        return quatf_identity();
-    }
-    vec3f_t right = vec3f_cross(up, forward);
-    if (vec3f_dot(right, right) <= pole_epsilon_sq * forward_sq * vec3f_dot(up, up)) {
-        up = forward.z > 0.0F ? vec3f_back() : vec3f_forward();
-        right = vec3f_cross(up, forward);
-        if (vec3f_dot(right, right) <= pole_epsilon_sq * forward_sq) {
-            right = vec3f_cross(vec3f_up(), forward);
-        }
-    }
-    const vec3f_t front = vec3f_normalize(forward);
-    const vec3f_t above = vec3f_normalize(vec3f_cross(front, right));
-    return quatf_normalize(quatf_from_basis(vec3f_cross(above, front), above, front));
-}
-
-/* Shortest turn from a to b. Missing directions give identity. At opposition
- * turn halfway about Z cross a (Y cross a when a is on the Z axis). */
-static inline quatf_t
-quatf_from_to(vec3f_t a, vec3f_t b) {
-    a = quatf_rescale_direction(a);
-    b = quatf_rescale_direction(b);
-    const float lengths = sqrtf(vec3f_dot(a, a) * vec3f_dot(b, b));
-    if (lengths == 0.0F) {
-        return quatf_identity();
-    }
-    const float dot = vec3f_dot(a, b);
-    const vec3f_t cross = vec3f_cross(a, b);
-    if (dot >= 0.0F) {
-        return quatf_normalize((quatf_t){cross.x, cross.y, cross.z, lengths + dot});
-    }
-    const vec3f_t axis = quatf_rescale_direction(cross);
-    if (vec3f_equal(axis, vec3f_zero())) {
-        const vec3f_t reference = a.x == 0.0F && a.y == 0.0F ? vec3f_up() : vec3f_forward();
-        const vec3f_t half = vec3f_normalize(quatf_rescale_direction(vec3f_cross(reference, a)));
-        return (quatf_t){half.x, half.y, half.z, 0.0F};
-    }
-    /* The complementary half-angle avoids cancellation as the turn approaches pi. */
-    const vec3f_t unit = vec3f_normalize(axis);
-    const vec3f_t imaginary = vec3f_scale(unit, lengths - dot);
-    return quatf_normalize((quatf_t){imaginary.x, imaginary.y, imaginary.z, vec3f_dot(unit, cross)});
-}
-
-MATH_DEFINE_TRANSFORM(transformf, vec3f, quatf, mat4f, mathf)
+MATH_DEFINE_TRANSFORM(transformf, vec3f, quatf, mat4f, quatf_looking)
 
 /* The (1-w)a + w*b form keeps pose-blend bits and gives exact position and
- * scale at w = 1. Weight is clamped and the derived matrix is rebuilt on use. */
+ * scale at w = 1. The clamp passes NaN through, giving NaN position, rotation
+ * and scale components. The derived matrix is rebuilt on use. */
 static inline transformf_t
 transformf_blend(const transformf_t* a, const transformf_t* b, float weight) {
     const float to = mathf_clamp(weight, 0.0F, 1.0F);

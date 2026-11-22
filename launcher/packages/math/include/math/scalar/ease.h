@@ -4,6 +4,7 @@
  * for float maths. Inline: some run once per drawn point. */
 #pragma once
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "math/scalar/mathf.h"
@@ -69,14 +70,14 @@ ease_smoothstep(float edge0, float edge1, float x) {
     return u * u * (3.0F - (2.0F * u));
 }
 
-/* Mirroring the lower half keeps the float ramp monotonic near the end. */
+/* Mirroring the lower half and rounding once keep consecutive milliseconds monotonic. */
 static inline float
 ease_smooth(uint32_t elapsed_ms, uint32_t over_ms) {
     if (over_ms == 0 || elapsed_ms >= over_ms) {
         return 1.0F;
     }
-    if (elapsed_ms > over_ms / 2) {
-        return 1.0F - ease_smoothstep(0.0F, (float)over_ms, (float)(over_ms - elapsed_ms));
-    }
-    return ease_smoothstep(0.0F, (float)over_ms, (float)elapsed_ms);
+    const bool mirror = elapsed_ms > over_ms / 2;
+    const double u = (double)(mirror ? over_ms - elapsed_ms : elapsed_ms) / over_ms;
+    const double lower = u * u * (3.0 - 2.0 * u);
+    return (float)(mirror ? 1.0 - lower : lower);
 }

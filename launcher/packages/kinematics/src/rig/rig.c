@@ -1,18 +1,15 @@
 #include "kinematics/rig/rig.h"
 
 vec3f_t
-rig_follow_position(transformf_t target, vec3f_t offset, rig_bind_t bind) {
-    if (vec3f_equal(offset, vec3f_zero())) {
-        return target.position;
-    }
+rig_follow_position(const transformf_t* target, vec3f_t offset, rig_bind_t bind) {
     if (bind == RIG_BIND_TARGET) {
-        offset = quatf_rotate(target.rotation, offset);
+        offset = quatf_rotate(target->rotation, offset);
     } else if (bind == RIG_BIND_TARGET_YAW) {
-        const vec3f_t up = quatf_rotate(target.rotation, vec3f_up());
+        const vec3f_t up = quatf_rotate(target->rotation, vec3f_up());
         const quatf_t level = quatf_from_to(up, vec3f_up());
-        offset = quatf_rotate(quatf_normalize(quatf_mul(level, target.rotation)), offset);
+        offset = quatf_rotate(quatf_normalize(quatf_mul(level, target->rotation)), offset);
     }
-    return vec3f_add(target.position, offset);
+    return vec3f_add(target->position, offset);
 }
 
 quatf_t
