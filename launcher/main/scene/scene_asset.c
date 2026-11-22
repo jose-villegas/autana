@@ -7,6 +7,7 @@
 
 #include "asset/asset_bytes.h"
 #include "asset/asset_entry.h"
+#include "collections/bits.h"
 #include "core/memory.h"
 #include "scene/scene_asset.h"
 #include "scene/scene_internal.h"
@@ -85,8 +86,8 @@ parents_pad_zero(asset_view_t entry, const scene_asset_t* scene) {
 }
 
 static bool
-roots(const scene_asset_t* scene, uint16_t entity) {
-    return scene->parents[entity] == SCENE_ASSET_PARENT_ROOT;
+root_row_fits(const scene_asset_t* scene, uint16_t entity, uint16_t pad) {
+    return pad == 0 && entity < scene->entity_count && scene->parents[entity] == SCENE_ASSET_PARENT_ROOT;
 }
 
 /* A parent comes before its child, so one forward pass sees every parent first. */
@@ -105,23 +106,22 @@ renderer_fits(const scene_asset_t* scene, const void* row) {
 static bool
 camera_fits(const scene_asset_t* scene, const void* row) {
     const scene_asset_camera_t* c = row;
-    return c->entity < scene->entity_count && roots(scene, c->entity) && c->pad == 0
-           && lens_value_fits(c->half_fov_short_tan) && lens_value_fits(c->near_z) && c->clear_rgb <= 0xFFFFFFU;
+    return root_row_fits(scene, c->entity, c->pad) && lens_value_fits(c->half_fov_short_tan)
+           && lens_value_fits(c->near_z) && c->clear_rgb <= 0xFFFFFFU;
 }
 
 static bool
 light_fits(const scene_asset_t* scene, const void* row) {
     const scene_asset_light_t* light = row;
-    return light->entity < scene->entity_count && roots(scene, light->entity) && light->pad == 0
-           && light->kind == SCENE_LIGHT_KIND_DIRECTIONAL && scene_light_color_fits(light->color)
-           && nonnegative(light->intensity);
+    return root_row_fits(scene, light->entity, light->pad) && light->kind == SCENE_LIGHT_KIND_DIRECTIONAL
+           && scene_light_color_fits(light->color) && nonnegative(light->intensity);
 }
 
 static bool
 skin_fits(const scene_asset_t* scene, const void* row) {
     const scene_asset_skinned_renderer_t* skin = row;
-    return skin->entity < scene->entity_count && roots(scene, skin->entity) && skin->pad == 0 && text_fits(skin->mesh)
-           && text_fits(skin->skin) && text_fits(skin->skeleton);
+    return root_row_fits(scene, skin->entity, skin->pad) && text_fits(skin->mesh) && text_fits(skin->skin)
+           && text_fits(skin->skeleton);
 }
 
 static bool
@@ -267,15 +267,13 @@ row_fits(const scene_asset_t* scene, int part, const void* row) {
 /* Row validation has already bounded each index. */
 static asset_status_t
 indices_unique(const uint8_t* rows, size_t stride, int count, uint16_t limit) {
-    enum { BITS_PER_BYTE = 8 };
-
     if (count < 2) {
         return ASSET_OK;
     }
     if (count > limit) {
         return ASSET_ERR_FORMAT;
     }
-    const size_t bytes = ((size_t)limit + BITS_PER_BYTE - 1U) / BITS_PER_BYTE;
+    const size_t bytes = BITS8_BYTES(limit);
     uint8_t* seen = memory_alloc(bytes, MEMORY_APP);
     if (seen == NULL) {
         return ASSET_ERR_FULL;
@@ -284,13 +282,11 @@ indices_unique(const uint8_t* rows, size_t stride, int count, uint16_t limit) {
     asset_status_t status = ASSET_OK;
     for (int i = 0; i < count; i++) {
         const uint16_t index = asset_read_u16(rows + (i * stride));
-        const uint8_t bit = 1U << (index % BITS_PER_BYTE);
-        uint8_t* byte = &seen[index / BITS_PER_BYTE];
-        if (*byte & bit) {
+        if (bits8_get(seen, index)) {
             status = ASSET_ERR_FORMAT;
             break;
         }
-        *byte |= bit;
+        bits8_set(seen, index);
     }
     memory_free(seen);
     return status;

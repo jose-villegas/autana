@@ -62,7 +62,7 @@ test_resolution_errors_report_first_index(void) {
     anim_target_t target = {.name = name_hash("object"), .components = components, .component_count = 1};
     anim_bound_t bound[BINDINGS];
     int failed;
-    TEST_ASSERT_EQUAL_INT(ANIM_BIND_OK, anim_bind(&f.clip, &target, 1, bound, BINDINGS, &failed));
+    TEST_ASSERT_EQUAL_INT(ANIM_BIND_OK, anim_bind(&f.clip, &target, 1, 0, bound, BINDINGS, &failed));
     TEST_ASSERT_EQUAL_INT(-1, failed);
     anim_binding_t binding;
     TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_binding_at(&f.clip, 0, &binding));
@@ -72,28 +72,28 @@ test_resolution_errors_report_first_index(void) {
     binding.component = ASSET_TYPE('T', 'E', 'S', 'T');
     TEST_ASSERT_EQUAL_INT(ANIM_BIND_ERR_COMPONENT, anim_bind_field(&binding, components, 1, NULL, 0, &field));
     f.clip.root = ANIM_ROOT_SKELETON;
-    TEST_ASSERT_EQUAL_INT(ANIM_BIND_ERR_ROOT, anim_bind(&f.clip, &target, 1, bound, BINDINGS, &failed));
+    TEST_ASSERT_EQUAL_INT(ANIM_BIND_ERR_ROOT, anim_bind(&f.clip, &target, 1, 0, bound, BINDINGS, &failed));
     TEST_ASSERT_EQUAL_INT(-1, failed);
     f.clip.root = ANIM_ROOT_SCENE;
-    TEST_ASSERT_EQUAL_INT(ANIM_BIND_ERR_SPACE, anim_bind(&f.clip, &target, 1, bound, BINDINGS - 1, &failed));
+    TEST_ASSERT_EQUAL_INT(ANIM_BIND_ERR_SPACE, anim_bind(&f.clip, &target, 1, 0, bound, BINDINGS - 1, &failed));
     TEST_ASSERT_EQUAL_INT(-1, failed);
     target.name = name_hash("other");
-    TEST_ASSERT_EQUAL_INT(ANIM_BIND_ERR_PATH, anim_bind(&f.clip, &target, 1, bound, BINDINGS, &failed));
+    TEST_ASSERT_EQUAL_INT(ANIM_BIND_ERR_PATH, anim_bind(&f.clip, &target, 1, 0, bound, BINDINGS, &failed));
     target.name = name_hash("object");
     target.component_count = 0;
-    TEST_ASSERT_EQUAL_INT(ANIM_BIND_ERR_COMPONENT, anim_bind(&f.clip, &target, 1, bound, BINDINGS, &failed));
+    TEST_ASSERT_EQUAL_INT(ANIM_BIND_ERR_COMPONENT, anim_bind(&f.clip, &target, 1, 0, bound, BINDINGS, &failed));
     target.component_count = 1;
     anim_component_fields_t incomplete = TRANSFORM;
     incomplete.field_count = 1;
     components[0].fields = &incomplete;
-    TEST_ASSERT_EQUAL_INT(ANIM_BIND_ERR_FIELD, anim_bind(&f.clip, &target, 1, bound, BINDINGS, &failed));
+    TEST_ASSERT_EQUAL_INT(ANIM_BIND_ERR_FIELD, anim_bind(&f.clip, &target, 1, 0, bound, BINDINGS, &failed));
     TEST_ASSERT_EQUAL_INT(1, failed);
     anim_field_t fields[BINDINGS];
     memcpy(fields, TRANSFORM_FIELDS, sizeof fields);
     fields[1].type = ANIM_VALUE_VEC3;
     incomplete.fields = fields;
     incomplete.field_count = BINDINGS;
-    TEST_ASSERT_EQUAL_INT(ANIM_BIND_ERR_TYPE, anim_bind(&f.clip, &target, 1, bound, BINDINGS, &failed));
+    TEST_ASSERT_EQUAL_INT(ANIM_BIND_ERR_TYPE, anim_bind(&f.clip, &target, 1, 0, bound, BINDINGS, &failed));
     TEST_ASSERT_EQUAL_INT(1, failed);
     free(f.entry);
 }
@@ -111,7 +111,7 @@ test_apply_split_writes_sampled_values_and_marks_dirty(void) {
                             .dirty_bit = DIRTY_BIT};
     anim_bound_t bound[BINDINGS];
     int failed;
-    TEST_ASSERT_EQUAL_INT(ANIM_BIND_OK, anim_bind(&f.clip, &target, 1, bound, BINDINGS, &failed));
+    TEST_ASSERT_EQUAL_INT(ANIM_BIND_OK, anim_bind(&f.clip, &target, 1, 0, bound, BINDINGS, &failed));
     float sampled[ANIM_WIDTH_MAX];
     anim_track_sample(&bound[1].curve, 0, sampled);
     anim_apply(bound, BINDINGS, 0);
@@ -124,7 +124,7 @@ test_apply_split_writes_sampled_values_and_marks_dirty(void) {
     TEST_ASSERT_FLOAT_WITHIN(0.00001F, 1.0F, norm);
     components[0].base = &split;
     target.dirty = NULL;
-    TEST_ASSERT_EQUAL_INT(ANIM_BIND_OK, anim_bind(&f.clip, &target, 1, bound, BINDINGS, NULL));
+    TEST_ASSERT_EQUAL_INT(ANIM_BIND_OK, anim_bind(&f.clip, &target, 1, 0, bound, BINDINGS, NULL));
     anim_apply(bound, 1, 0);
     anim_apply(bound + 1, BINDINGS - 1, 0);
     TEST_ASSERT_EQUAL_FLOAT_ARRAY((float*)&full, (float*)&split, sizeof full / sizeof(float));
@@ -176,7 +176,7 @@ test_self_sentinel_distinguishes_hash_collisions(void) {
         }
         TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_open((asset_view_t){f.entry, BYTES}, &f.clip));
         anim_bound_t bound[BINDINGS];
-        TEST_ASSERT_EQUAL_INT(ANIM_BIND_OK, anim_bind(&f.clip, targets, 2, bound, BINDINGS, NULL));
+        TEST_ASSERT_EQUAL_INT(ANIM_BIND_OK, anim_bind(&f.clip, targets, 2, 0, bound, BINDINGS, NULL));
         TEST_ASSERT_EQUAL_PTR(p == 0 ? self.position : other.position, bound[0].target);
     }
     free(f.entry);

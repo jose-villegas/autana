@@ -14,6 +14,11 @@ typedef struct {
 } lens_t;
 
 #define ANIM_COMPONENT_CAMERA ASSET_TYPE('C', 'A', 'M', 'R')
+#define LENS_ANIM_FIELDS                                                                                               \
+    ANIM_FIELD(lens_t, half_fov_short_tan, ANIM_VALUE_FLOAT), ANIM_FIELD(lens_t, near_z, ANIM_VALUE_FLOAT)
+
+enum { LENS_FIELD_COUNT = sizeof((const anim_field_t[]){LENS_ANIM_FIELDS}) / sizeof(anim_field_t) };
+
 extern const anim_component_fields_t LENS_FIELDS;
 
 /* The view through `lens` from `pose` (its rotation, roll included; scale ignored), framed for `viewport`. */

@@ -54,11 +54,20 @@ typedef enum {
     ANIM_BIND_ERR_SPACE,
 } anim_bind_status_t;
 
+typedef struct {
+    int target, component, field;
+} anim_binding_location_t;
+
+enum { ANIM_BIND_NO_SELF = -1 };
+
+/* self is the index of the target for ANIM_TARGET_SELF, or ANIM_BIND_NO_SELF. */
+anim_bind_status_t anim_bind_locate(const anim_binding_t* binding, const anim_target_t* targets, int target_count,
+                                    int self, anim_binding_location_t* out);
 /* Finds the component and field among components and checks the type. */
 anim_bind_status_t anim_bind_field(const anim_binding_t* binding, const anim_component_ref_t* components,
                                    int component_count, uint8_t* dirty, uint8_t dirty_bit, anim_bound_t* out);
 /* failed is a failed binding's index, or -1 on success and root or space errors. */
-anim_bind_status_t anim_bind(const anim_tracks_t* clip, const anim_target_t* targets, int target_count,
+anim_bind_status_t anim_bind(const anim_tracks_t* clip, const anim_target_t* targets, int target_count, int self,
                              anim_bound_t* out, int out_count, int* failed);
 void anim_apply(const anim_bound_t* bound, int count, float seconds);
 /* Returns the snprintf length of path:CCCC.field. */

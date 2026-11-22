@@ -140,16 +140,12 @@ typedef struct {
     int count;
 } scene_anim_targets_t;
 
-typedef enum {
-    SCENE_FIELD_POSITION = 1U << 0,
-    SCENE_FIELD_ROTATION = 1U << 1,
-    SCENE_FIELD_SCALE = 1U << 2,
-    SCENE_FIELD_HALF_FOV_SHORT_TAN = 1U << 3,
-    SCENE_FIELD_NEAR_Z = 1U << 4,
-    SCENE_FIELD_ANIMATOR_CLIP = 1U << 5,
-    SCENE_FIELD_ANIMATOR_SPEED = 1U << 6,
-    SCENE_FIELD_ENABLED = 1U << 7,
-} scene_field_bit_t;
+typedef uint16_t scene_field_mask_t;
+
+typedef struct {
+    const scene_asset_t* asset;
+    scene_field_mask_t* writes;
+} scene_claims_t;
 
 enum { SCENE_ANIM_TIER_NEAR, SCENE_ANIM_TIER_MID, SCENE_ANIM_TIER_FAR };
 
@@ -245,7 +241,7 @@ struct scene {
     const sh_probes_t* probes;
     bool skins_pending; /* a bound skin may be ACTIVE without its buffers */
     int starved_count;  /* skins and renderers whose memory did not fit; root->failure says which */
-    uint16_t* writes;
+    scene_field_mask_t* writes;
     uint8_t* flags; /* one per entity: SCENE_FLAG_* */
     scene_renderer_t* renderers;
     scene_camera_t* cameras;
@@ -361,12 +357,16 @@ void scene_checkpoint_capture(checkpoint_t* saved, scene_t* scene);
 void scene_animation_checkpoint_capture(checkpoint_t* saved, scene_t* scene);
 #endif
 void scene_animation_release(scene_t* scene);
-scene_anim_targets_t scene_anim_targets(scene_t* scene, scene_row_t owner);
-bool scene_field_claim(scene_t* scene, scene_row_t entity, scene_field_bit_t field);
-scene_failure_t scene_animation_claim_clip(scene_t* scene, const anim_tracks_t* tracks, const char* clip,
-                                           scene_row_t owner, uint16_t* owned);
-void scene_playhead_seek(anim_playhead_t* playhead, uint32_t t_ms);
-void scene_animation_apply_fields(scene_t* scene, const anim_bound_t* fields, int count, float seconds);
+scene_anim_targets_t scene_anim_targets(const scene_asset_t* asset, const scene_t* scene);
+bool scene_field_claim(scene_claims_t* claims, scene_row_t entity, scene_field_mask_t field);
+scene_failure_t scene_animation_claim_clip(scene_claims_t* claims, const scene_anim_targets_t* targets,
+                                           const anim_tracks_t* tracks, const char* clip, int self,
+                                           scene_field_mask_t* owned);
+void scene_animation_apply_fields(scene_t* scene, const anim_bound_t* fields, int count,
+                                  const anim_playhead_t* playhead, const anim_clip_t* clip);
+asset_status_t scene_animator_read_clip(const asset_pack_t* pack, const char* id, uint8_t root, anim_tracks_t* out);
+bool scene_animator_set_clips(scene_t* scene, scene_row_t row, const char* skeleton_id, const char* const* ids,
+                              int count, bool replace, scene_failure_t* why);
 scene_failure_t scene_timeline_bind(scene_t* scene);
 void scene_timeline_step(scene_t* scene, uint32_t dt_ms);
 /* An animator or light now exists on `entity`: adds it to `staged` once. A

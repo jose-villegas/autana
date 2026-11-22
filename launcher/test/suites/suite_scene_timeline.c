@@ -596,6 +596,56 @@ test_clamp_samples_fractional_final_step_key(void) {
 }
 
 static void
+test_property_clamp_samples_fractional_final_step_key(void) {
+    enum { CLAMP_MS = 100 };
+
+    test_pack_t writer;
+    fixture(&writer, 0, 0, 0, true, CAMERA_NAME, POSITION, CLAMP_MS);
+    uint8_t* clip = writer.bytes + writer.end - test_pack_aligned(CLIP_BYTES);
+    const float times[] = {0.0F, 0.1004F};
+    test_pack_put_floats(clip + TIMES, times, KEYS);
+    clip[TEST_TRACKS_HEADER_SIZE + ANIM_TRACKS_ROW_INTERP] = ANIM_STEP;
+    asset_pack_t pack;
+    open_pack(&writer, &pack);
+    scene_t* scene = columns(load(&pack));
+    const entity_t camera = scene_row_entity(scene, CAMERA);
+    const char* clips[] = {CLIP};
+    TEST_ASSERT_TRUE(animator_set_clips(camera, NULL, clips, 1, NULL));
+    scene->animators[CAMERA].wrap = ANIM_CLAMP;
+    TEST_ASSERT_TRUE(animator_play(camera, 0, 0));
+    TEST_ASSERT_TRUE(animator_seek(camera, ANIMATOR_CURRENT, CLAMP_MS - 1));
+    TEST_ASSERT_EQUAL_FLOAT(3.0F, scene->locals[CAMERA].position.x);
+    scene_animation_step(scene, 1);
+    TEST_ASSERT_EQUAL_FLOAT(6.0F, scene->locals[CAMERA].position.x);
+}
+
+static void
+test_timeline_and_disabled_animator_seek_to_the_same_boundary(void) {
+    const anim_wrap_t wraps[] = {ANIM_CLAMP, ANIM_LOOP};
+    for (size_t mode = 0; mode < sizeof wraps / sizeof *wraps; mode++) {
+        test_pack_t writer;
+        uint8_t* entry = fixture(&writer, 1, 0, 0, true, "red", POSITION, DURATION);
+        part_row(entry, SCENE_ASSET_TIMELINE)[SCENE_ASSET_TIMELINE_AT_WRAP] = wraps[mode];
+        part_row(entry, SCENE_ASSET_ANIMATORS)[offsetof(scene_asset_animator_t, wrap)] = wraps[mode];
+        uint8_t* clip = writer.bytes + writer.end - test_pack_aligned(CLIP_BYTES);
+        test_pack_put16(clip + ANIM_TRACKS_AT_COUNT, 1);
+        asset_pack_t pack;
+        open_pack(&writer, &pack);
+        const entity_t root = load(&pack);
+        scene_t* scene = columns(root);
+        const entity_t camera = scene_row_entity(scene, CAMERA);
+        entity_set_enabled(camera, false);
+        const uint32_t target = DURATION + DURATION / 2;
+        timeline_seek(root, target);
+        TEST_ASSERT_TRUE(animator_seek(camera, ANIMATOR_CURRENT, target));
+        const uint32_t expected = wraps[mode] == ANIM_LOOP ? DURATION / 2 : DURATION;
+        TEST_ASSERT_EQUAL_UINT32(expected, timeline_time_ms(root));
+        TEST_ASSERT_EQUAL_UINT32(expected, scene->animators[CAMERA].layer.current.playhead.t_ms);
+        release_fixture();
+    }
+}
+
+static void
 test_animator_and_timeline_can_write_different_camera_fields(void) {
     test_pack_t writer;
     fixture(&writer, 1, 0, 0, true, CAMERA_NAME, POSITION, DURATION);
@@ -844,6 +894,8 @@ run_scene_timeline_suite(void) {
     RUN_TEST(test_scene_writers_refuse_bad_lens_keys);
     RUN_TEST(test_unsupported_rows_without_timeline);
     RUN_TEST(test_clamp_samples_fractional_final_step_key);
+    RUN_TEST(test_property_clamp_samples_fractional_final_step_key);
+    RUN_TEST(test_timeline_and_disabled_animator_seek_to_the_same_boundary);
     RUN_TEST(test_timeline_leaves_resting_transforms_clean);
     RUN_TEST(test_runtime_animator_cannot_take_timeline_field);
     RUN_TEST(test_camera_cut_on_loop_wrap);

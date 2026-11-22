@@ -70,7 +70,7 @@ typedef struct {
 
 typedef struct {
     char clip[ASSET_NAME_MAX];
-    uint8_t wrap, pad[3];
+    uint8_t wrap, pad[SCENE_ASSET_TIMELINE_PAD_BYTES];
 } scene_asset_timeline_t;
 
 _Static_assert(sizeof(scene_asset_timeline_t) == SCENE_ASSET_TIMELINE_SIZE
