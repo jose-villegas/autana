@@ -80,12 +80,15 @@ launcher/tools/perf/perf_compare.sh A A -o calibration \
 Use an idempotent sequence, such as stopping voices before starting a loop.
 
 `--set-a NAME=VALUE` and `--set-b NAME=VALUE` set tunables before each capture
-and require the board to echo each value. Repeat the option for multiple
-tunables. Each side with assignments builds with `--hot-tunables`.
+on the chosen side. Repeat for multiple tunables. Both sides build with
+`--hot-tunables` when either side has assignments.
 
-`plan.json` and the summary record which sides use hot tunables.
-Validation rejects malformed assignments and raw `SET` setup lines before any
-flash. The selected revision's tunable registry supplies the valid ranges.
+`plan.json` records the shared build flag, and the summary lists both sides'
+assignments. The board must echo each value. The comparison stops at the first
+refusal.
+
+Setup accepts one line per `--send-a` or `--send-b`, and rejects tunable commands
+before flashing. Each revision's tunable registry supplies the valid ranges.
 
 Use the same revision on both sides to measure runtime setup alone:
 

@@ -5,10 +5,18 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import console_protocol
 from console_protocol import replies_to, require_development, reply_prefix
 
 
 class ReplyTests(unittest.TestCase):
+    def test_reply_endings_are_shared_with_tunables(self):
+        self.assertEqual(console_protocol.reply_endings("EXAMPLE"),
+                         ("EXAMPLE_OK", "EXAMPLE_ERR", "EXAMPLE_END"))
+        self.assertEqual(console_protocol.reply_endings(console_protocol.TUNE_LIST),
+                         console_protocol.TUNE_REPLY_ENDS)
+        self.assertEqual(reply_prefix("sound stats"), ("SOUND", ("SOUND_END", "SOUND_ERR")))
+
     def test_tunable_verbs_use_tune_reply_contract(self):
         for line in ('SET render.cull 0', 'get render.cull', 'RESET render.cull', 'TUNE'):
             with self.subTest(line=line):

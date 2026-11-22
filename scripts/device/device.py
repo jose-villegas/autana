@@ -31,8 +31,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import autana_config  # noqa: E402
 from native_path import git_bash  # noqa: E402,F401  (callers and tests reach it as device.git_bash)
 import board_serial
-from console_protocol import (FRAMED_ENDINGS, TUNE_LIST, TUNE_OK, TUNE_REPLY_ENDS, TUNE_SET,
-                              parse_assignment, replies_to, require_development, reply_prefix)
+from console_protocol import (ERR_SUFFIX, FRAMED_ENDINGS, TUNE_LIST, TUNE_OK, TUNE_REPLY_ENDS, TUNE_SET,
+                              parse_assignment, replies_to, reply_endings, reply_prefix,
+                              require_development, require_setup_line)
 from device_capture import (BOOTS_FROM_RESET, BOOTS_ON_RUNNING, BUILD_ID_BYTES_RE as BUILD_ID,
                             CAPTURE_COMPLETE, ERROR_LINE_RE, TEST_NAME, capture_ended_line, crash_signs,
                             suite_failure_signs, test_matches)
@@ -1901,7 +1902,7 @@ def send(args, store, board):
             found, complete, cut_off = exchange(connection, args.line, args.reply, args.until, args.seconds)
             if complete:
                 print("\n".join(found))
-                if found[-1].startswith(args.reply + "_ERR"):
+                if found[-1].startswith(args.reply + ERR_SUFFIX):
                     held.error = found[-1]
                     return 1
                 return 0
@@ -2415,7 +2416,7 @@ def main(argv=None):
     suite.add_argument("--idle-seconds", type=float, default=300)
     suite.add_argument("--expect-build-id")
     suite.add_argument("--verbose", action="store_true")
-    suite.add_argument("--send", dest="console_send", action="append", metavar="LINE",
+    suite.add_argument("--send", dest="console_send", action="append", type=require_setup_line, metavar="LINE",
                        help="send before every capture; repeatable, sequence should be idempotent")
     suite.add_argument("--set", dest="tune_set", action="append", metavar="NAME=VALUE",
                        help="SET a tunable under the capture's lock first; repeatable")
@@ -2513,7 +2514,7 @@ def main(argv=None):
     batch_parser.add_argument("--layout-seed", type=int, default=0,
                               help="pad the layout by this seed; needs --perf-scope and --flash, the default")
     batch_parser.add_argument("--max-seconds", type=float, default=1800)
-    batch_parser.add_argument("--send", dest="console_send", action="append", metavar="LINE",
+    batch_parser.add_argument("--send", dest="console_send", action="append", type=require_setup_line, metavar="LINE",
                               help="send before every capture; repeatable, sequence should be idempotent")
     batch_parser.add_argument("--set", dest="tune_set", action="append",
                               metavar="NAME=VALUE",
@@ -2695,7 +2696,7 @@ def main(argv=None):
                     connection.close()
         elif args.command == "send":
             if not args.until:
-                args.until = (args.reply + "_OK", args.reply + "_ERR", args.reply + "_END")
+                args.until = reply_endings(args.reply)
             result = send(args, store, board)
             return result
         else:
