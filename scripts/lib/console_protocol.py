@@ -1,12 +1,13 @@
 """Console stream framing and reply contracts shared by board and emulator."""
+from argparse import ArgumentTypeError
 import re
 from pathlib import Path
 import sys
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher/tools"))
+REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO / "launcher/tools"))
 from build.c_header import read_define
 
-REPO = Path(__file__).resolve().parents[2]
 TUNE_HEADER = REPO / "launcher/main/console/console_tune.h"
 TUNE_SET = read_define(TUNE_HEADER, "CONSOLE_TUNE_SET")
 TUNE_GET = read_define(TUNE_HEADER, "CONSOLE_TUNE_GET")
@@ -19,9 +20,17 @@ TUNE_NAME_MAX = read_define(REPO / "launcher/main/core/tune.h", "TUNE_NAME_MAX")
 TUNE_VALUE_MIN = -(2**31)
 TUNE_VALUE_MAX = 2**31 - 1
 
+OK_SUFFIX, ERR_SUFFIX, END_SUFFIX = (ending.removeprefix(TUNE_LIST) for ending in (TUNE_OK, TUNE_ERR, TUNE_END))
+
+
+def reply_endings(prefix):
+    """Return the possible endings for a single console request."""
+    return prefix + OK_SUFFIX, prefix + ERR_SUFFIX, prefix + END_SUFFIX
+
+
 # Both success and refusal terminate a framed reply, so callers must stop on either.
-FRAMED_ENDINGS = ("_END", "_ERR")
-TUNE_REPLY_ENDS = (TUNE_OK, TUNE_ERR, TUNE_END)
+FRAMED_ENDINGS = (END_SUFFIX, ERR_SUFFIX)
+TUNE_REPLY_ENDS = reply_endings(TUNE_LIST)
 # Firmware logging can wrap replies; only its leading decoration may be discarded.
 LOG_PREFIX = re.compile(r"^[IWEVD] \(\d+\) [^:]+:\s*")
 
@@ -59,6 +68,19 @@ def reply_prefix(line):
     if prefix in (TUNE_SET, TUNE_GET, TUNE_RESET, TUNE_LIST):
         return TUNE_LIST, TUNE_REPLY_ENDS
     return prefix, tuple(prefix + ending for ending in FRAMED_ENDINGS)
+
+
+def require_setup_line(line):
+    """Accept one console line for capture setup."""
+    if "\r" in line or "\n" in line:
+        raise ArgumentTypeError(f"{line!r}: expected one console line")
+    try:
+        prefix, _ = reply_prefix(line)
+    except ValueError as error:
+        raise ArgumentTypeError(f"{line!r}: {error}") from error
+    if prefix == TUNE_LIST:
+        raise ArgumentTypeError(f"{line!r}: tunable commands cannot be used as setup lines")
+    return line
 
 
 def replies_to(data, reply, until):

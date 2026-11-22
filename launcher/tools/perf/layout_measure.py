@@ -20,6 +20,7 @@ sys.path.insert(0, str(REPO / "launcher/tools/render"))
 from doc_tables import table_rows  # noqa: E402
 from process_tree import run_process_tree, terminate_unwinds  # noqa: E402
 from device_capture import RESULT_RE, BUILD_ID_RE as BUILD_LINE  # noqa: E402
+from console_protocol import TUNE_SET  # noqa: E402
 
 from frame_profile import PROFILE_RE
 
@@ -114,6 +115,21 @@ def run_stamped(command, log, timeout=1800):
     except subprocess.TimeoutExpired:
         raise RuntimeError(f"capture timed out after {timeout}s") from None
     return done.returncode, lines, time.monotonic() - started
+
+
+# The device tool emits this from TuneRefused before a suite capture can run.
+SET_REFUSED = f"device: {TUNE_SET} "
+
+
+class TuneSetupRefused(RuntimeError):
+    """A tunable assignment was refused during capture setup."""
+
+
+def require_tune_setup(lines):
+    """Stop measurement if the board refused a capture's assignment."""
+    for _, line in lines:
+        if line.startswith(SET_REFUSED):
+            raise TuneSetupRefused(line)
 
 
 def captured_runs(lines, suite_name, runs):
@@ -329,6 +345,7 @@ def run_flash(args, seed, runner=None):
                 if index > 0:
                     command += ["--expect-build-id", record["build_id"]]
                 code, lines, wall = runner(command, log, getattr(args, "timeout", 1800) * args.runs + getattr(args, "wait", 3600))
+                require_tune_setup(lines)
                 if code not in (0, 1):
                     refusal = capture_refusal(lines)
                     raise RuntimeError(refusal or f"{name} exited {code}; see {log.name}")

@@ -1795,14 +1795,19 @@ class TuneSetTests(unittest.TestCase):
 
 
 class ConsoleSetupTests(unittest.TestCase):
-    def test_set_setup_uses_tune_reply_before_runsuite(self):
-        self.run_setup([b"TUNE_OK render.cull=0\n", b"RUNSUITE_COMPLETE name=sand found=1\n"],
-                       ["SET render.cull 0"])
-        self.assertEqual(self.writes[0], b"\nSET render.cull 0\n")
-        self.assertIn(b"RUNSUITE", self.writes[1])
-        with self.assertRaisesRegex(device.ConsoleRefused, "TUNE_ERR range"):
-            self.run_setup([b"TUNE_ERR range render.cull\n"], ["SET render.cull 2"])
-        self.assertEqual(self.writes, [b"\nSET render.cull 2\n"])
+    def test_send_parsing_refuses_tunable_commands_and_line_breaks(self):
+        for command in (["run-suite", "sand"], ["batch", "--worktree", ".", "--suite", "sand"]):
+            for line in ("SET render.cull 0", "reset render.cull", "GET render.cull", "tune",
+                         "sound stop all\nversion", "sound stop all\r", "  "):
+                with self.subTest(command=command, line=line), \
+                     mock.patch.object(device, "plugged_boards", return_value=[]) as discover, \
+                     contextlib.redirect_stderr(io.StringIO()) as stderr:
+                    with self.assertRaises(SystemExit) as error:
+                        device.main([*command, "--send", line])
+                    self.assertEqual(error.exception.code, 2)
+                    self.assertIn("argument --send", stderr.getvalue())
+                    self.assertIn(repr(line), stderr.getvalue())
+                    discover.assert_not_called()
 
     def run_setup(self, replies, lines):
         connection = FakeConnection(replies)

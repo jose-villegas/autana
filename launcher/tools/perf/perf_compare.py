@@ -12,8 +12,9 @@ from pathlib import Path
 from statistics import mean
 from types import SimpleNamespace
 
-from layout_measure import analyse, autana_command, required_seeds, run_flash, filter_limits, validate_filters, split_filters, FilterOverlap
-from console_protocol import TUNE_SET, parse_assignment
+from layout_measure import (analyse, autana_command, required_seeds, run_flash, filter_limits,
+                            validate_filters, split_filters, FilterOverlap, TuneSetupRefused)
+from console_protocol import parse_assignment, require_setup_line
 from device_capture import test_matches
 from capture import require_same_board
 from seed_statistics import compare, minimum_seeds, permutation_samples
@@ -167,7 +168,7 @@ def measure(args, runner=None, clock=time.monotonic):
     rng = random.Random(args.rng_seed)
     used, plan = set(), []
     records = {"a": [], "b": []}
-    hot_tunables = getattr(args, "hot_tunables", dict.fromkeys(records, False))
+    hot_tunables = getattr(args, "hot_tunables", False)
     decisions, active = {}, None
     failures, skip_until, previous_target = 0, 0, 0
     stop_error = None
@@ -216,7 +217,7 @@ def measure(args, runner=None, clock=time.monotonic):
                 save_plan()
                 flash_args = SimpleNamespace(out=destination / side,
                     project=getattr(args, "project_" + side), runs=actual_runs, suite=suites,
-                    send=console_lines, tune_set=settings, hot_tunables=hot_tunables[side],
+                    send=console_lines, tune_set=settings, hot_tunables=hot_tunables,
                     timeout=args.timeout, wait=args.wait, autana=getattr(args, "autana", None))
                 try:
                     flash_started = clock()
@@ -226,7 +227,7 @@ def measure(args, runner=None, clock=time.monotonic):
                     failures += 1
                     item["error"] = str(error)
                     save_plan()
-                    if isinstance(error, FilterOverlap):
+                    if isinstance(error, (FilterOverlap, TuneSetupRefused)):
                         stop_error = error
                         break
                     if failures >= 2:
@@ -334,10 +335,10 @@ def write_summary(path, args, records, rows, estimates, sizes, plan, incomplete=
              f"Intervals are {100 * (1 - args.alpha / len(sizes) / 2):g}% two-sided Welch intervals on log seed means. "
              "Holm corrects difference and equivalence tests separately over all rows. "
              "Inconclusive rows alone receive more seeds at the planned looks.", ""]
-    for side, enabled in getattr(args, "hot_tunables", {}).items():
-        if enabled:
-            settings = ", ".join(f"`{setting}`" for setting in getattr(args, "set_" + side))
-            lines += [f"{side.upper()} tunables: {settings} (built with `--hot-tunables`).", ""]
+    if getattr(args, "hot_tunables", False):
+        settings = [", ".join(f"`{setting}`" for setting in getattr(args, "set_" + side)) or "none"
+                    for side in ("a", "b")]
+        lines += [f"Tunables (both built with `--hot-tunables`): A = {settings[0]}, B = {settings[1]}.", ""]
     if getattr(args, "send_a", None) or getattr(args, "send_b", None):
         for side in ("a", "b"):
             setup = getattr(args, "send_" + side, None) or []
@@ -396,9 +397,9 @@ def main(argv=None):
     parser.add_argument("--out", "-o", type=Path)
     parser.add_argument("--project-a", type=Path)
     parser.add_argument("--project-b", type=Path)
-    parser.add_argument("--send-a", action="append", metavar="LINE",
+    parser.add_argument("--send-a", action="append", type=require_setup_line, metavar="LINE",
                         help="A setup before every capture; repeatable, sequence should be idempotent")
-    parser.add_argument("--send-b", action="append", metavar="LINE",
+    parser.add_argument("--send-b", action="append", type=require_setup_line, metavar="LINE",
                         help="B setup before every capture; repeatable, sequence should be idempotent")
     parser.add_argument("--set-a", action="append", default=[], metavar="NAME=VALUE",
                         help="A tunable before every capture; repeatable, requires a matching echo")
@@ -425,18 +426,12 @@ def main(argv=None):
     if not 0 < args.threshold < 100 or not 0 < args.alpha < 1 or min(args.timeout, args.wait) <= 0 or not args.max_minutes > 0:
         parser.error("threshold, alpha and time limits must be positive and in range")
     for side in ("a", "b"):
-        for line in getattr(args, "send_" + side) or []:
-            words = line.split(maxsplit=1)
-            if not words or "\n" in line or "\r" in line:
-                parser.error(f"argument --send-{side}: {line!r}: expected one console line")
-            if words[0].upper() == TUNE_SET:
-                parser.error(f"argument --send-{side}: {line!r}: use --set-{side} NAME=VALUE for {TUNE_SET}")
         for setting in getattr(args, "set_" + side):
             try:
                 parse_assignment(setting)
             except ValueError as error:
                 parser.error(f"argument --set-{side}: {error}")
-    args.hot_tunables = {"a": bool(args.set_a), "b": bool(args.set_b)}
+    args.hot_tunables = bool(args.set_a or args.set_b)
     if args.validate_plan or args.estimate_plan:
         if not args.suite:
             parser.error("--suite is required")

@@ -11,8 +11,9 @@ import sys
 
 from layout_measure import (REPO, autana_command, booted_build_id,
                             capture_metadata, captured_runs, make_table, parse_markdown, timing_samples,
-                            run_stamped, split_filters, filter_limits, status_snapshot)
-from console_protocol import TUNE_SET, parse_assignment
+                            run_stamped, split_filters, filter_limits, status_snapshot,
+                            require_tune_setup, TuneSetupRefused)
+from console_protocol import parse_assignment
 from device_report import read_capture_text
 import device_lock
 
@@ -30,14 +31,6 @@ from dynres_report import SPANS, SPAN_FIELDS, STAGE
 
 DEFAULT_RUNS = 5
 MAX_CONSECUTIVE_FAILURES = 2
-
-# What device.py prints for a --set the board refused (its TuneRefused).
-SET_REFUSED = f"device: {TUNE_SET} "
-
-
-class SweepStop(RuntimeError):
-    """The board refused a knob: every later capture would meet the same."""
-
 
 def assignment(text):
     first, *rest = text.split(",")
@@ -239,9 +232,7 @@ def run(args, runner=None):
                                 if tests != "-":
                                     words += ["--test", tests]
                                 code, lines, wall = command(words, capture_stem)
-                                refused = [line for _, line in lines if SET_REFUSED in line]
-                                if refused:
-                                    raise SweepStop(refused[-1])
+                                require_tune_setup(lines)
                                 captures, _, seconds = captured_runs(lines, suite, 1)
                                 capture = captures[0]
                                 item.update(capture=str(capture), seconds=seconds[0], wall_seconds=wall)
@@ -256,7 +247,7 @@ def run(args, runner=None):
                                 owners, instructions = capture_metadata(capture, rows)
                                 item.update(metrics=rows, units=units, owners=owners, instructions=instructions)
                                 failures = 0
-                            except SweepStop as error:
+                            except TuneSetupRefused as error:
                                 item["error"] = str(error)
                                 raise
                             except (RuntimeError, OSError, ValueError) as error:
