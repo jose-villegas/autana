@@ -17,11 +17,12 @@ ROOT = pathlib.Path(__file__).resolve().parents[6]
 TOOLS = ROOT / "launcher/tools"
 sys.path.insert(0, str(TOOLS))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from r3d.skin_reference import posed_skin, pose_frame, SKIN_COVERAGE
+from r3d.skin_reference import posed_skin, source_frame, SKIN_COVERAGE
 from r3d.skin.skin_frame import EngineSkin
 from r3d import scene_asset
 from anim import tracks_asset
 from asset.asset_pack import build_pack
+from asset.engine_frame import AFFINE_SIGNS, to_engine
 from build.find_cc import host_cc
 from build.c_header import read_define
 from tests.skin_probe import POSITION_SCALE, rig_glb
@@ -50,7 +51,8 @@ class IrradiancePipelineTests(unittest.TestCase):
                                       matrix=np.eye(3).tolist())
             expected = np.diag([POSE_SCALE] * 3 + [1.])
             expected[:3, 3] = POSE_AT
-            reference_world, _, _ = posed_skin(engine.asset, "move", POSE_TIME, (0, 0, 0), 0, 1, world=expected)
+            reference_world, _, _ = posed_skin(engine.asset, "move", POSE_TIME, (0, 0, 0), 0, 1,
+                                               world=source_frame(expected))
             centre = reference_world.mean(axis=0)
             normal = np.cross(reference_world[1] - reference_world[0], reference_world[2] - reference_world[0])
             forward = -normal / np.linalg.norm(normal)
@@ -58,9 +60,13 @@ class IrradiancePipelineTests(unittest.TestCase):
             right /= np.linalg.norm(right)
             up = np.cross(forward, right)
             # A rolled camera facing the triangle avoids an edge-on rasterization comparison.
-            matrix = np.column_stack((up, -right, forward))
-            eye = centre - forward * 4
-            camera = SimpleNamespace(name="camera", kind="camera", position=eye.tolist(), matrix=matrix.tolist(),
+            source_camera = np.eye(4)
+            source_camera[:3, :3] = np.column_stack((up, right, -forward))
+            source_camera[:3, 3] = centre - forward * 4
+            mirror = np.diag(AFFINE_SIGNS)
+            engine_camera = mirror @ source_camera @ mirror
+            camera = SimpleNamespace(name="camera", kind="camera", position=source_camera[:3, 3].tolist(),
+                                     matrix=source_camera[:3, :3].tolist(),
                                      component=SimpleNamespace(half_fov_short_tan=0.5, near_z=0.05,
                                                                background=0, path=None))
             scene = SimpleNamespace(objects=[subject, camera], renderers=[SimpleNamespace(
@@ -70,14 +76,17 @@ class IrradiancePipelineTests(unittest.TestCase):
             clip = tracks_asset.encode(*tracks_asset.clip_tracks(engine.document, engine.binary,
                                                                   engine.asset.animations["move"]))
             pack = work / "triangle.pack"
-            pack.write_bytes(build_pack([("mesh", b"LMSH", engine.mesh_bytes), ("skin", b"SKIN", skin),
-                (engine.skeleton_name, b"SKEL", skeleton), ("move", b"TRCK", clip),
-                ("scene", b"SCNE", scene_asset.encode(scene))]))
+            entries = [("mesh", b"LMSH", engine.mesh_bytes), ("skin", b"SKIN", skin),
+                       (engine.skeleton_name, b"SKEL", skeleton), ("move", b"TRCK", clip),
+                       ("scene", b"SCNE", scene_asset.encode(scene))]
+            pack.write_bytes(build_pack([(key, kind, to_engine(kind, data)) for key, kind, data in entries]))
             launcher = TOOLS.parent
-            ui_list = (TOOLS / "build/ui_sources.sh").read_text().split('UI_SOURCES="')[1].split('"')[0].split()
-            sources = [FIXTURE,
-                       launcher / "main/apps/render_lab/tools/render_lab_render_host.c",
-                       *(launcher / item for item in ui_list)]
+            host_script = FIXTURE.parents[1] / "render_lab_render_host.sh"
+            source_list = subprocess.run(["sh", str(host_script), "--sources"],
+                                         check=True, capture_output=True, text=True).stdout.splitlines()
+            app_source = "main/apps/render_lab/app_render_lab.c"
+            self.assertIn(app_source, source_list)
+            sources = [FIXTURE if item == app_source else launcher / item for item in source_list]
             build = work / "build"
             subprocess.run(["cmake", "-S", str(TOOLS / "render/scene"), "-B", str(build),
                 "-G", "Ninja" if shutil.which("ninja") else "MinGW Makefiles" if os.name == "nt" else "Unix Makefiles",
@@ -98,13 +107,13 @@ class IrradiancePipelineTests(unittest.TestCase):
             exported_frames = json.loads(exported.read_text())
             self.assertEqual(len(exported_frames), 2)
             self.assertNotEqual(exported_frames[0]["skins"][0]["time"], POSE_TIME)
-            skin_pose, camera_pose = pose_frame(exported_frames)
+            skin_pose, = exported_frames[-1]["skins"]
+            camera_pose = exported_frames[-1]["camera"]
             self.assertEqual(skin_pose["clip"], "move")
             self.assertAlmostEqual(skin_pose["time"], POSE_TIME, places=6)
             np.testing.assert_allclose(skin_pose["world"], expected)
             self.assertEqual(camera_pose["lens"], 0.5)
-            np.testing.assert_allclose(np.array(camera_pose["world"])[:3, 3], eye, atol=1e-6)
-            np.testing.assert_allclose(np.array(camera_pose["world"])[:3, :3], matrix, atol=1e-6)
+            np.testing.assert_allclose(camera_pose["world"], engine_camera, atol=1e-6)
             (work / "background.obj").write_text(
                 "mtllib background.mtl\nv 100 0 0\nv 101 0 0\nv 100 1 0\nvt 0 0\nvt 1 0\nvt 0 1\nusemtl plain\nf 1/1 2/2 3/3\n")
             (work / "background.mtl").write_text("newmtl plain\nKd 1 1 1\n")
@@ -128,6 +137,7 @@ class IrradiancePipelineTests(unittest.TestCase):
                 host_mask = np.any(np.asarray(picture) > 0, axis=2)
             reference_mask = coverage > 0.5
             overlap = (host_mask & reference_mask).sum() / (host_mask | reference_mask).sum()
+            print(f"Host/reference mask overlap: {overlap:.6f}")
             self.assertGreater(overlap, 0.6)
             stats = compose([work], work / "sheet.png")[work.name]
             self.assertGreater(stats["pixels"], 0)

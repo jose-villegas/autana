@@ -62,19 +62,11 @@ render_lab_console(const char* words) {
 static void
 frame(uint32_t dt_ms, const input_t* input) {}
 
-const app_t*
-app_list(void) {
-    static const app_t app = {.name = "pose fixture", .enter = enter, .frame = frame, .update = frame};
-    return &app;
-}
+app_t app_render_lab = {.name = "pose fixture", .enter = enter, .frame = frame, .update = frame};
 
-const char* const*
-render_lab_small_fill_names(int* count) {
-    *count = 0;
-    return NULL;
-}
+APP_REGISTER(app_render_lab);
 
-bool
-render_lab_small_fill_select(int index) {
-    return false;
+const char*
+render_lab_copies_status(const char* failure, int copies) {
+    return failure;
 }
