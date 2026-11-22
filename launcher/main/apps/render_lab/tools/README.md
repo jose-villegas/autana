@@ -284,8 +284,7 @@ measure the default settle hold plus `RENDER_SETTLE_BANDS` frames.
 
 The settle preset pauses its camera and samples the same pose throughout.
 Its `render.partial_redraw` setting enables kept rows even in the perf suite.
-The comparison pairs the live and settled pictures for the textured wall and
-for a held Sponza view with LOD groups.
+Both columns capture frame 38, with settle disabled in the Live column.
 
 ![Live and settled Sponza and textured planes, with amplified difference](../../../../../docs/images/render/settle.png)
 
@@ -293,10 +292,11 @@ for a held Sponza view with LOD groups.
 
 ```sh
 launcher/main/apps/render_lab/tools/render_lab_render_host.sh --build-only -o /tmp/settle
-/tmp/settle/render_lab_render --quarter 1 --no-hud --scene stress-settle --frames 1 -o /tmp/settle/live.ppm
+/tmp/settle/render_lab_render --quarter 1 --no-hud --scene stress-settle --frames 38 \
+    --live-tune render.settle_frame_us=0 -o /tmp/settle/live.ppm
 /tmp/settle/render_lab_render --quarter 1 --no-hud --scene stress-settle --frames 38 -o /tmp/settle/settled.ppm
 /tmp/settle/render_lab_render --quarter 1 --no-hud --scene sponza-fitted-full --console '0:pose 0' \
-    --tune render.partial_redraw=1 --tune render.settle_frame_us=1 --frames 1 -o /tmp/settle/sponza-live.ppm
+    --tune render.partial_redraw=1 --tune render.settle_frame_us=0 --frames 38 -o /tmp/settle/sponza-live.ppm
 /tmp/settle/render_lab_render --quarter 1 --no-hud --scene sponza-fitted-full --console '0:pose 0' \
     --tune render.partial_redraw=1 --tune render.settle_frame_us=1 --frames 38 -o /tmp/settle/sponza-settled.ppm
 python launcher/tools/render/render_compare.py --out docs/images/render/settle.png \

@@ -528,6 +528,30 @@ slide(raster_rig_t* r, int i) {
 }
 
 static void
+assert_partial_redraw_bands(bool levels) {
+    const raster_t* raster = &f->c[LIVE].raster;
+    bool partial_band = false;
+    int live_bands = 0;
+    int refined_bands = 0;
+    for (int b = 0; b < RENDER_SETTLE_BANDS; b++) {
+        const int first = b * H / RENDER_SETTLE_BANDS;
+        const int end = (b + 1) * H / RENDER_SETTLE_BANDS;
+        const bool draws_live = first < raster->end_row && end > raster->first_row;
+        partial_band |= draws_live && (raster->first_row > first || raster->end_row < end);
+        live_bands += draws_live;
+        refined_bands += !draws_live;
+        TEST_ASSERT_EQUAL(!draws_live, f->c[0].settle.refined[b]);
+        TEST_ASSERT_EQUAL_MEMORY(&f->picture[draws_live ? LIVE : 1][first * W], &f->picture[0][first * W],
+                                 (end - first) * W * sizeof(uint16_t));
+    }
+    if (levels) {
+        TEST_ASSERT_TRUE(partial_band);
+    }
+    TEST_ASSERT_GREATER_THAN_INT(0, live_bands);
+    TEST_ASSERT_GREATER_THAN_INT(0, refined_bands);
+}
+
+static void
 test_changed_rows_stay_live_and_partial_redraw_survives_settling(void) {
     for (int levels = 0; levels <= 1; levels++) {
         raster_rig_t* r = settle_held(RENDER_SETTLE_FRAME_US_MAX, levels != 0, false);
@@ -546,25 +570,7 @@ test_changed_rows_stay_live_and_partial_redraw_survives_settling(void) {
                 assert_picture(LIVE);
                 TEST_ASSERT_EQUAL_MEMORY(raster_depth(raster), raster_depth(&f->c[0].raster), sizeof f->picture[0]);
             }
-            bool partial_band = false;
-            int live_bands = 0;
-            int refined_bands = 0;
-            for (int b = 0; b < RENDER_SETTLE_BANDS; b++) {
-                const int first = b * H / RENDER_SETTLE_BANDS;
-                const int end = (b + 1) * H / RENDER_SETTLE_BANDS;
-                const bool draws_live = first < raster->end_row && end > raster->first_row;
-                partial_band |= draws_live && (raster->first_row > first || raster->end_row < end);
-                live_bands += draws_live;
-                refined_bands += !draws_live;
-                TEST_ASSERT_EQUAL(!draws_live, f->c[0].settle.refined[b]);
-                TEST_ASSERT_EQUAL_MEMORY(&f->picture[draws_live ? LIVE : 1][first * W], &f->picture[0][first * W],
-                                         (end - first) * W * sizeof(uint16_t));
-            }
-            if (levels) {
-                TEST_ASSERT_TRUE(partial_band);
-            }
-            TEST_ASSERT_GREATER_THAN_INT(0, live_bands);
-            TEST_ASSERT_GREATER_THAN_INT(0, refined_bands);
+            assert_partial_redraw_bands(levels != 0);
         }
         cleanup();
     }
