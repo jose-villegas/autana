@@ -39,7 +39,7 @@ GPU_NOT_ON_HOST = "GPU runner not on this host"
 RECENT_RUNS_WINDOW = timedelta(days=2)
 BAKES_WORKFLOW = "bakes-gpu.yml"
 DOC_IMAGES_WORKFLOW = "doc-images-gpu.yml"
-# The CPU bakes' tracing steps run as stages too, on the runner beside the fits'.
+# The CPU bakes' tracing steps run as stages too, on the runner that makes the fits.
 CPU_BAKES_WORKFLOW = "bakes.yml"
 GPU_WORKFLOWS = (BAKES_WORKFLOW, DOC_IMAGES_WORKFLOW)
 # A GPU stage is hung once no task or bake has finished for this long: above the slowest single task (a
