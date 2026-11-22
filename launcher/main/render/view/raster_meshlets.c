@@ -23,7 +23,7 @@ writer(const raster_attachment_t* self, int entry, r3d_span_writer_t* out) {
     const r3d_span_step_t step = state->step;
     const r3d_lit_mesh_t* mesh = raster_drawn_at(state->raster, entry)->mesh;
     const uint32_t count = (uint32_t)(step == R3D_SPAN_STEP_TRIANGLE ? mesh->triangle_count : mesh->cluster_count);
-    const uint64_t limit = 1ull << (CHAR_BIT * IMAGE_PITCH(self->format, 1));
+    const uint64_t limit = 1ULL << (CHAR_BIT * IMAGE_PITCH(self->format, 1));
     assert(state->next > 0 && (uint64_t)state->next + count <= limit);
     *out = (r3d_span_writer_t){.span = raster_attachment_tag, .step = step, .value = (uint32_t)state->next};
     state->next += count;
