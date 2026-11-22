@@ -139,7 +139,23 @@ The predictor's model is fitted on the board on every mesh scene at every step (
 
 The scene's second path, which the fit never sees, measures how well the refit tracks a view the fit did not cover.
 
-The cost a policy holds is the part that scales: the draw and the compose each step pays.
+### The budget
+
+The caller hands the whole frame's target; the cost a policy holds is the part that scales, the draw and the compose each step pays. That part's budget is the target less what shown frames paid outside it, learned:
+
+| Piece | Rule |
+|---|---|
+| A frame's sample | its period, from one draw to the next, less its draw and compose and less what it waited for the panel (`gfx_present_waited_us()`), between 0 and the target |
+| Which frames teach | frames a policy drew and timed; not generated, held or fixed ones, nor a pause (`render_context_skip()`) |
+| The average | exponential, with the weight TCP gives its smoothed round-trip time<sup>[[134]](../../Citations.md#rfc6298)</sup> (`RESOLUTION_UNSCALED_WEIGHT_DIVISOR`), seeded by the first sample |
+| The floor | the scaled part keeps at least `RESOLUTION_SCALED_MIN_PERCENT` of the target |
+
+- Smoothing a measured frame time with the present's wait left out follows Binks<sup>[[135]](../../Citations.md#binks-2011)</sup>, which averages ten frames.
+- The split, target less a learned unscaled cost, and its floor are this engine's own rules.
+- A frame that finishes early and waits for the panel teaches the same cost as one that does not wait. The pass's yield is paid every frame, so it counts as cost.
+- A new opt-in starts with nothing learned: its first frames are budgeted the whole target.
+
+### What the scaled part covers
 
 - Calibration uses the render context's compose decision, including expansion into the half picture.
 - The present and whatever an app draws over the scene are not in it.
@@ -148,7 +164,7 @@ The cost a policy holds is the part that scales: the draw and the compose each s
 
 ### A held camera
 
-While the camera holds still, frames are drawn as [partial redraw](Partial-Redraw.md) draws them, at the top step and without being priced: the first redraws every row, later ones only the rows that changed. A held frame that costs more than the budget hands size selection back to the policy until the view changes.
+While the camera holds still, with frame generation on or off, frames are drawn as [partial redraw](Partial-Redraw.md) draws them, at the top step and without being priced: the first redraws every row, later ones only the rows that changed. A held frame that costs more than the budget hands size selection back to the policy until the view changes.
 
 So each stop pays one whole frame at the top step, which is not judged: it says what a full redraw costs, not a held frame.
 
@@ -223,7 +239,7 @@ The split times a full upscale at every size. A live frame half as wide and at m
 
 Each scene's camera path is drawn once per step of a height-first ladder, holding the step and advancing the clock a fixed amount per frame, so frame i shows the same pose at every step. The model is fitted on all of these frames.
 
-Every scene also pays about 10 ms per frame outside the draw and the compose, so a 33 ms frame target leaves a 23 ms budget for the part that scales.
+On these frames every scene pays about 10 ms outside the draw and the compose, which the replay learns as the context does ([the budget](#the-budget)).
 
 <!-- generated: dynres-steps sha256=909696f662928a495763d13f4ca67148a6c0b2d8cdf0f69662b24c105bf67e67 -->
 | Scenario | 368x448 | 368x358 | 368x298 | 368x224 | 184x224 | 184x179 | 184x149 | 184x112 |
@@ -243,17 +259,17 @@ Mean whole frame in milliseconds; compose is the upscale into the panel's pictur
 
 The heights between the half size and the floor compose into the half picture through the row map, at about the half size's compose cost, so they keep their draw saving.
 
-Below, the predictor flown over the same frames against the fixed half scale: it starts at the half size and holds the 23 ms budget.
+Below, the predictor flown over the same frames against the fixed half scale: it starts at the half size and holds the frame target. The captured frames include their present's wait, which the live context leaves out, so the replay learns a higher unscaled cost than the board does.
 
-<!-- generated: dynres-flight sha256=ee6e06ecbad98ec2538b542975605c1fd86e2191ab0df3e3b5642b6c0eec366e -->
+<!-- generated: dynres-flight sha256=891eaf6b7fef2016b7e236ed07a1c5dff1f4d0435d70423e780b78311c4f5f2d -->
 | Scenario | Fixed mean | p95 | Dynamic mean | p95 | max | Switches |
 |---|---|---|---|---|---|---|
 | bistro-fitted-full | 41.3 | 60.3 | 34.6 | 47.8 | 49.6 | 17 |
 | sponza | 49.2 | 58.6 | 38.2 | 45.8 | 46.7 | 3 |
-| sponza-lite | 41.9 | 47.5 | 32.7 | 36.4 | 37.6 | 9 |
+| sponza-lite | 41.9 | 47.5 | 32.7 | 36.4 | 48.0 | 9 |
 | sponza-flat | 41.6 | 49.8 | 34.0 | 40.1 | 40.8 | 9 |
-| sponza-fitted | 40.5 | 47.2 | 32.0 | 36.1 | 37.2 | 11 |
-| sponza-fitted-full | 49.3 | 60.1 | 38.4 | 46.4 | 47.7 | 5 |
+| sponza-fitted | 40.5 | 47.2 | 32.0 | 36.1 | 48.2 | 11 |
+| sponza-fitted-full | 49.3 | 60.1 | 38.4 | 46.4 | 47.7 | 3 |
 | sponza-flat-fitted | 40.7 | 50.0 | 33.7 | 40.4 | 41.3 | 11 |
 | capybara | 20.9 | 21.5 | 20.9 | 21.5 | 21.5 | 0 |
 

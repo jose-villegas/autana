@@ -20,8 +20,9 @@ typedef struct {
     raster_stats_t stats;
     int32_t draw_us, upscale_us;
     int32_t predicted_us;
-    bool generated; /* warped from the last drawn frame, not drawn */
-    bool unchanged; /* partial redraw: nothing changed, nothing drawn or composed */
+    int32_t unscaled_us; /* under dynamic resolution, the learned cost outside draw and upscale */
+    bool generated;      /* warped from the last drawn frame, not drawn */
+    bool unchanged;      /* partial redraw: nothing changed, nothing drawn or composed */
     /* The destination rows [rows_first, rows_end) the last compose rewrote,
      * at the view's destination size. */
     int rows_first, rows_end;
