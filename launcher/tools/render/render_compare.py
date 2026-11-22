@@ -60,8 +60,7 @@ Needs Pillow and numpy, and ffmpeg for --video.
 
 import argparse
 import pathlib
-import shutil
-import subprocess
+import sys
 from dataclasses import dataclass
 
 import numpy as np
@@ -70,6 +69,9 @@ from PIL import Image, ImageDraw, ImageFont
 import reference_poses
 from check_avi import read_video
 from colour_maths import GAMMA, expand_565, lab
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "device"))
+from video_encode import VideoWriter
 
 HOLE_RED = (255, 0, 0)
 LABEL_BAR = 22
@@ -682,13 +684,6 @@ def video_summary(all_stats, dt_ms):
     )
 
 
-def _ffmpeg_command(ffmpeg, size, fps, out):
-    import sys
-    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-    from device.video_encode import command
-    return command(ffmpeg, size, fps, out)
-
-
 def worst_frames(all_stats, count):
     """Indices of the count frames that differ most: holes first, then changed pixels."""
     order = sorted(range(len(all_stats)), key=lambda i: (all_stats[i].holes_a + all_stats[i].holes_b, all_stats[i].changed), reverse=True)
@@ -729,11 +724,9 @@ def compare_videos(path_a, path_b, out, csv_path, clear, gain, label_a, label_b,
     fps_b, frames_b = read_video(path_b)
     if fps_a != fps_b:
         raise ValueError("frame rate %g vs %g: render both with the same --dt" % (fps_a, fps_b))
-    ffmpeg = shutil.which("ffmpeg")
-    if ffmpeg is None:
-        raise RuntimeError("ffmpeg not found; --video needs it to pack the frames")
     dt_ms = 1000.0 / fps_a
-    process, lines, all_stats = None, [CSV_HEADER], []
+    writer = VideoWriter(out, fps or fps_a)
+    lines, all_stats = [CSV_HEADER], []
     try:
         for index, (raw_a, raw_b) in enumerate(zip(frames_a, frames_b)):
             a, b = Image.fromarray(raw_a), Image.fromarray(raw_b)
@@ -741,15 +734,9 @@ def compare_videos(path_a, path_b, out, csv_path, clear, gain, label_a, label_b,
             all_stats.append(stats)
             lines.append(frame_line(index, dt_ms, stats))
             picture = compose_frame(a, b, clear, gain, label_a, label_b, frame_note(index, dt_ms, stats))
-            if process is None:
-                command = _ffmpeg_command(ffmpeg, picture.size, fps or fps_a, out)
-                process = subprocess.Popen(command, stdin=subprocess.PIPE)
-            process.stdin.write(picture.tobytes())
+            writer.add(picture)
     finally:
-        if process is not None:
-            process.stdin.close()
-            if process.wait() != 0:
-                raise RuntimeError("ffmpeg failed writing %s" % out)
+        writer.close()
     if not all_stats:
         raise ValueError("no frames to compare")
     if csv_path:
@@ -863,27 +850,6 @@ def write_reference_bake_sheet(reference_dir, bakes, scale, frame_indices, out, 
             entries.append((title, [reference] + [render for _label, render, _own in renders], clusters))
         write_crops(entries, crops_path(out), ["reference"] + [label for label, _path in bakes], ZOOM)
     return lines
-
-
-class VideoWriter:
-    """Packs RGB pictures of one size into an H.264 mp4 through ffmpeg."""
-
-    def __init__(self, out, fps):
-        self.out, self.fps, self.process = out, fps, None
-
-    def add(self, picture):
-        if self.process is None:
-            ffmpeg = shutil.which("ffmpeg")
-            if ffmpeg is None:
-                raise RuntimeError("ffmpeg not found; writing %s needs it to pack the frames" % self.out)
-            self.process = subprocess.Popen(_ffmpeg_command(ffmpeg, picture.size, self.fps, self.out), stdin=subprocess.PIPE)
-        self.process.stdin.write(picture.convert("RGB").tobytes())
-
-    def close(self):
-        if self.process is not None:
-            self.process.stdin.close()
-            if self.process.wait() != 0:
-                raise RuntimeError("ffmpeg failed writing %s" % self.out)
 
 
 class ReferenceVideoWriter:

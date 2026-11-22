@@ -12,17 +12,30 @@ flowchart LR
     EXP --> SEND
     SUB --> SEND
     SEND --> LCD["esp_lcd_panel_draw_bitmap"]
-    SEND -->|"development capture on"| CAP["admitted present<br/>one PSRAM image"]
-    CAP --> TX["priority-one sender"]
+    SEND -->|"capture on, send OK"| CAP["gfx_panel_capture_window<br/>one PSRAM image"]
+    CAP --> TX["console_stream"]
 ```
 
 [`gfx_panel.c`](../../launcher/main/gfx/present/gfx_panel.c) owns every panel
 send and byte count. The framebuffer audit stays before overlays at its
 framebuffer send sites. The capture tap copies the final window pixels.
 
-Capture begin/commit surround `run_present()` and `gfx_band_run()`.
-Commit publishes the image and dirty windows; admission drops a present
-while the sender owns the image.
+`gfx_panel_capture_begin()` and `gfx_panel_capture_commit()` delimit each `run_present()` or `gfx_band_run()` present.
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> Idle: START and redraw
+    Idle --> Capturing: Begin
+    Capturing --> Idle: Commit holds
+    Capturing --> Ready: Commit publishes
+    Ready --> Sending: First part
+    Sending --> Sending: Busy window sets owed
+    Sending --> Idle: Release after last part
+    Idle --> Capturing: Owed queues redraw
+    Idle --> [*]: STOP
+    Sending --> [*]: STOP drains
+```
 
 Release builds omit capture hooks and sender. The `PANEL-SEND-OWNER`
 source rule rejects another direct panel caller.

@@ -202,10 +202,6 @@ esac
 . "$(dirname "$0")/../../../scripts/lib/python.sh"
 PYTHON=$(find_python PIL numpy matplotlib) || exit 2
 export PYTHON
-if [ "$AUDIO_ONLY" = 0 ] && ! command -v ffmpeg > /dev/null 2>&1; then
-    echo "ffmpeg not found." >&2
-    exit 2
-fi
 
 run rm -rf "$WORK" "$OUT"
 run mkdir -p "$WORK" "$OUT/overview" "$OUT/ui"

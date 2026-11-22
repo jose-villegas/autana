@@ -9,37 +9,50 @@ from pathlib import Path
 import gfx_color
 import screenshot
 import video_encode
+from build.c_header import read_define, read_defines
 
+HEADER = Path(__file__).resolve().parents[2] / "main/gfx/present/capture/panelcap.h"
 PART = struct.Struct("<IHB")
 PRESENT = struct.Struct("<IQHH")
-WINDOW = struct.Struct("<HHHHI")
-PIXEL_BYTES = 2
+WINDOW = struct.Struct("<HHHH")
+assert (PART.size, PRESENT.size, WINDOW.size) == tuple(read_defines(
+    HEADER, "PANELCAP_", ("PART_HEAD_BYTES", "HEAD_BYTES", "WINDOW_BYTES")))
+assert read_defines(HEADER, "PANELCAP_PART_AT_", ("SEQ", "INDEX", "LAST")) == [0, 4, 6]
+assert read_defines(HEADER, "PANELCAP_HEAD_AT_", ("SEQ", "US", "WINDOWS", "DROPPED")) == [0, 4, 12, 14]
+assert read_defines(HEADER, "PANELCAP_WINDOW_AT_", ("X0", "Y0", "X1", "Y1")) == [0, 2, 4, 6]
+PIXEL_BYTES = read_define(HEADER, "PANELCAP_PIXEL_BYTES")
 RGB_BYTES = 3
 OUTPUT_FPS = 30
 US_PER_SECOND = 1_000_000
-WINDOWS_MAX = 512
-STREAM_BYTES_MAX = 2 * screenshot.PANEL_WIDTH * screenshot.PANEL_HEIGHT * (PIXEL_BYTES + 1) + WINDOWS_MAX * WINDOW.size + PRESENT.size
+WINDOWS_MAX = read_define(HEADER, "PANELCAP_WINDOWS_MAX")
+PACK_NOOP = read_define(HEADER, "PANELCAP_PACK_RUN_MAX")
+PACK_LITERAL_MAX = PACK_NOOP - 1
+PACK_CONTROL_BYTES = 1
+# Merged rectangles are disjoint, so each panel pixel needs at most one PackBits header.
+STREAM_BYTES_MAX = (screenshot.PANEL_WIDTH * screenshot.PANEL_HEIGHT * (PIXEL_BYTES + PACK_CONTROL_BYTES)
+                    + WINDOWS_MAX * WINDOW.size + PRESENT.size)
 CSV_FIELDS = ("present_seq", "device_us", "host_ns", "windows", "packed_bytes", "dropped_before")
 
 
-def unpack(data, pixels):
-    """Decode Apple PackBits over two-byte pixels, enforcing the expected length."""
+def unpack(data, at, pixels):
+    """Decode one PackBits window and return its pixels and the next byte offset."""
     out = bytearray()
-    at = 0
-    while at < len(data):
+    size_out = pixels * PIXEL_BYTES
+    while len(out) < size_out and at < len(data):
         head = data[at]
         at += 1
-        if head == 128:
+        if head == PACK_NOOP:
             continue
-        count = head + 1 if head < 128 else 257 - head
-        size = count * PIXEL_BYTES if head < 128 else PIXEL_BYTES
-        if at + size > len(data) or len(out) + count * PIXEL_BYTES > pixels * PIXEL_BYTES:
+        literal = head <= PACK_LITERAL_MAX
+        count = head + 1 if literal else 2 * PACK_NOOP + 1 - head
+        size = count * PIXEL_BYTES if literal else PIXEL_BYTES
+        if at + size > len(data) or len(out) + count * PIXEL_BYTES > size_out:
             raise ValueError("invalid panel PackBits length")
-        out.extend(data[at:at + size] if head < 128 else data[at:at + size] * count)
+        out.extend(data[at:at + size] if literal else data[at:at + size] * count)
         at += size
-    if len(out) != pixels * PIXEL_BYTES:
+    if len(out) != size_out:
         raise ValueError("short panel PackBits window")
-    return bytes(out)
+    return bytes(out), at
 
 
 class Parts:
@@ -59,9 +72,27 @@ class Parts:
         self.seq = None
         self.data.clear()
 
+    def corrupt(self, packet):
+        """Discard one present after a packet CRC failure, retaining its sequence."""
+        if packet is not None and len(packet) >= PART.size:
+            seq, _, _ = PART.unpack_from(packet)
+            if seq == self.rejected:
+                return
+            if self.seq is not None and self.seq != seq:
+                self.abandon()
+            if self.seq == seq:
+                self.abandon()
+            else:
+                self.dropped += 1
+                self.rejected = seq
+        elif self.seq is None:
+            self.dropped += 1
+        else:
+            self.abandon()
+
     def feed(self, packet):
         if len(packet) < PART.size:
-            self.abandon()
+            self.corrupt(packet)
             return None
         seq, part, last = PART.unpack_from(packet)
         if seq == self.rejected:
@@ -84,6 +115,7 @@ class Parts:
         self.seq = None
         self.data.clear()
         if len(data) < PRESENT.size or PRESENT.unpack_from(data)[0] != seq:
+            self.rejected = seq
             self.dropped += 1
             return None
         return data
@@ -94,19 +126,19 @@ class Canvas:
         self.width, self.height = width, height
         self.rows = [bytearray(width * RGB_BYTES) for _ in range(height)]
 
-    def apply(self, stream):
+    def apply(self, stream, before_update=None):
         seq, us, windows, dropped = PRESENT.unpack_from(stream)
         if windows > WINDOWS_MAX:
             raise ValueError("too many panel windows")
         at, packed, updates = PRESENT.size, 0, []
         for _ in range(windows):
-            x0, y0, x1, y1, size = WINDOW.unpack_from(stream, at)
+            x0, y0, x1, y1 = WINDOW.unpack_from(stream, at)
             at += WINDOW.size
-            if not (0 <= x0 < x1 <= self.width and 0 <= y0 < y1 <= self.height) or at + size > len(stream):
+            if not (0 <= x0 < x1 <= self.width and 0 <= y0 < y1 <= self.height):
                 raise ValueError("invalid panel window")
-            pixels = unpack(stream[at:at + size], (x1 - x0) * (y1 - y0))
-            at += size
-            packed += size
+            pixels, end = unpack(stream, at, (x1 - x0) * (y1 - y0))
+            packed += end - at
+            at = end
             rgb = bytearray()
             for code, in struct.iter_unpack(">H", pixels):
                 rgb.extend(gfx_color.expand(code >> 11, (code >> 5) & 63, code & 31))
@@ -114,6 +146,8 @@ class Canvas:
         if at != len(stream):
             raise ValueError("trailing panel bytes")
         # Validate every window before changing the persistent canvas.
+        if before_update is not None:
+            before_update(seq, us)
         for x0, y0, x1, y1, rgb in updates:
             stride = (x1 - x0) * RGB_BYTES
             for row in range(y1 - y0):
@@ -127,43 +161,43 @@ class Canvas:
 class Resample:
     """Emit the latest present at each rational 30 Hz device timestamp."""
 
-    def __init__(self, emit):
-        self.emit = emit
-        self.first = None
-        self.last = None
-        self.frame = None
+    def __init__(self, snapshot, emit):
+        self.snapshot, self.emit = snapshot, emit
+        self.first = self.last = self.seq = None
         self.k = 0
 
-    def before(self, us):
-        if self.first is not None:
-            while self.k * US_PER_SECOND < (us - self.first) * OUTPUT_FPS:
-                self.emit(self.frame)
+    def emit_until(self, end):
+        if self.k * US_PER_SECOND < end:
+            frame = self.snapshot()
+            while self.k * US_PER_SECOND < end:
+                self.emit(frame)
                 self.k += 1
 
-    def present(self, us, frame):
+    def present(self, seq, us):
         if self.last is not None and us < self.last:
             raise ValueError("panel device time went backwards")
-        self.before(us)
+        if self.seq is not None and seq <= self.seq:
+            raise ValueError("panel present sequence did not advance")
         if self.first is None:
             self.first = us
-        self.last, self.frame = us, frame
+        self.emit_until((us - self.first) * OUTPUT_FPS)
+        self.seq, self.last = seq, us
 
-    def finish(self, us=None):
-        if self.first is not None:
-            self.before(max(self.last + 1, us or self.last + 1))
+    def finish(self):
+        if self.last is not None:
+            self.emit_until((self.last - self.first) * OUTPUT_FPS + 1)
 
 
 class Recording:
-    def __init__(self, path, log=None, binary=None):
+    def __init__(self, path, log=None):
         self.log = sys.stderr if log is None else log
-        self.binary = binary or video_encode.resolve(self.log)
         self.path = Path(path)
         self.parts = Parts()
         self.canvas = Canvas()
-        self.resample = Resample(self.write)
-        self.process = None
+        self.writer = video_encode.VideoWriter(self.path, OUTPUT_FPS, live=True)
+        self.resample = Resample(self.canvas.frame, self.write)
         self.received = self.packed = 0
-        self.started = self.last_host = None
+        self.started = None
 
     def __enter__(self):
         self.file = self.path.with_suffix(".frames.csv").open("w", newline="")
@@ -172,28 +206,7 @@ class Recording:
         return self
 
     def write(self, frame):
-        if self.process is None:
-            size = (self.canvas.height, self.canvas.width)
-            self.process = video_encode.open_encoder(self.binary, size, OUTPUT_FPS, self.path, live=True)
-        self.process.stdin.write(frame)
-
-    def corrupt(self, packet=None):
-        """Discard one present after a packet CRC failure, retaining its sequence."""
-        if packet is not None and len(packet) >= PART.size:
-            seq, _, _ = PART.unpack_from(packet)
-            if seq == self.parts.rejected:
-                return
-            if self.parts.seq is not None and self.parts.seq != seq:
-                self.parts.abandon()
-            if self.parts.seq == seq:
-                self.parts.abandon()
-            else:
-                self.parts.dropped += 1
-                self.parts.rejected = seq
-        elif self.parts.seq is None:
-            self.parts.dropped += 1
-        else:
-            self.parts.abandon()
+        self.writer.write((self.canvas.height, self.canvas.width), frame)
 
     def packet(self, data):
         stream = self.parts.feed(data)
@@ -201,8 +214,7 @@ class Recording:
             return
         host_ns, now = time.time_ns(), time.monotonic()
         try:
-            seq, us, windows, packed, dropped = self.canvas.apply(stream)
-            self.resample.present(us, self.canvas.frame())
+            seq, us, windows, packed, dropped = self.canvas.apply(stream, self.resample.present)
         except (ValueError, struct.error):
             self.parts.dropped += 1
             return
@@ -211,15 +223,13 @@ class Recording:
         self.received += 1
         self.packed += packed
         self.started = now if self.started is None else self.started
-        self.last_host = now
 
     def finish(self, answer):
         self.parts.abandon()
         if self.received == 0 and not answer.startswith("PANELCAP_REFUSED"):
             raise RuntimeError("no complete PANEL presents received")
         now = time.monotonic()
-        if self.last_host is not None:
-            self.resample.finish(self.resample.last + int((now - self.last_host) * US_PER_SECOND))
+        self.resample.finish()
         elapsed = max(now - (self.started or now), 1 / OUTPUT_FPS)
         match = re.search(r"dropped=(\d+)", answer)
         dropped = match[1] if match else "unknown"
@@ -228,8 +238,7 @@ class Recording:
               file=self.log)
 
     def __exit__(self, kind, value, trace):
-        self.file.close()
-        if self.process is not None:
-            self.process.stdin.close()
-            if self.process.wait() and kind is None:
-                raise RuntimeError("ffmpeg failed writing panel video")
+        try:
+            self.writer.close()
+        finally:
+            self.file.close()

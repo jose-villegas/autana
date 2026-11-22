@@ -22,13 +22,9 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import console_packets
-
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from build.c_header import read_define  # noqa: E402
 
-# The packets' tag, as the verb sends them.
-TAG = read_define(Path(__file__).resolve().parents[2] / "main/shell/console/console_framerec.c", "FRAMEREC_TAG")
 # The stream version this reader reads; a HEADER of another is refused.
 VERSION = read_define(Path(__file__).resolve().parents[2] / "main/render/record/frame_record_format.h",
                       "FRAME_RECORD_VERSION")
@@ -67,11 +63,6 @@ FIXED = {"HEADER": HEADER, "PACK": PACK, "FRAME": FRAME, "CHOICE": CHOICE, "MESH
 
 class StreamError(ValueError):
     """Bytes that are not a frame record stream."""
-
-
-def packets():
-    """A reader of the FRAMEREC packets in what a board writes."""
-    return console_packets.Packets(TAG)
 
 
 @dataclass

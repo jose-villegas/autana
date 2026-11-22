@@ -1,8 +1,8 @@
 /*
  * console_stream: bytes written from one task go out from another as
  * console_emit_packet() packets, so the writer never waits on the link.
- * A ring in external RAM sits between them; a task below the frame loop
- * empties it. docs/tools/Console-Framing.md.
+ * A task fills packets from a ring in external RAM or a pull source.
+ * docs/tools/Console-Framing.md.
  */
 #pragma once
 
@@ -21,10 +21,14 @@ typedef void (*console_stream_ended_fn)(uint64_t sent, void* arg);
  * must outlive the stream. */
 console_stream_t* console_stream_open(const char* tag, size_t ring_bytes);
 
+/* Fills one packet. Zero leaves the source idle, or ends it after close. */
+typedef size_t (*console_stream_fill_fn)(void* arg, uint8_t* packet, size_t capacity);
+console_stream_t* console_stream_open_source(const char* tag, console_stream_fill_fn fill, void* arg);
+
 /* Queues `count` bytes whole, waiting up to `wait_ms` for ring room; false
  * leaves none of them queued. From one writer at a time. */
 bool console_stream_write(console_stream_t* stream, const uint8_t* bytes, size_t count, unsigned wait_ms);
 
-/* No more writes: the task sends what the ring holds, calls `ended`
- * (unless NULL) and frees the stream. */
+/* Stop producing bytes before closing. The task drains the stream, calls
+ * `ended` (unless NULL) and frees the stream. */
 void console_stream_close(console_stream_t* stream, console_stream_ended_fn ended, void* arg);

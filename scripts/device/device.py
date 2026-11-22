@@ -2020,7 +2020,7 @@ def stream(args, store, board, lines=None, out=None):
     return 0
 
 
-# How long FRAMEREC STOP may take to drain the board's ring and answer.
+# How long a capture STOP may take to drain the board and answer.
 RECORD_END_SECONDS = 30
 
 
@@ -2055,60 +2055,82 @@ def capture_stream(args, store, board, tag, on_data, lines=None, log=None, openi
     import console_packets
     packets = console_packets.Packets(packet_tag or tag)
     ended = threading.Event()
+    done = threading.Event()
     answer = []
     began = threading.Event()
+    consumer_failed = []
+
+    def deliver(events):
+        for kind, data in events:
+            if kind == "data":
+                if not consumer_failed:
+                    try:
+                        on_data(data)
+                    except Exception as error:  # The reader keeps draining after the sink fails.
+                        consumer_failed.append(error)
+                        done.set()
+                continue
+            text = data.decode("utf-8", errors="replace")
+            print(text, file=log, flush=True)
+            if text.startswith(f"{tag}_BEGIN"):
+                began.set()
+            # A refusal ends the record only as START's answer: after BEGIN it answers a typed line.
+            if text.startswith(f"{tag}_END") or (text.startswith(f"{tag}_REFUSED") and not began.is_set()):
+                answer.append(text)
+                ended.set()
+                done.set()
 
     def read(connection, stop, failed):
         try:
-            while not stop.is_set():
-                try:
-                    events = packets.feed(connection.read(STREAM_READ_BYTES))
-                except console_packets.PacketError as error:
-                    if on_packet_error is None:
-                        raise
-                    on_packet_error(getattr(error, "packet", None))
-                    continue
-                for kind, data in events:
-                    if kind == "data":
-                        on_data(data)
-                        continue
-                    text = data.decode("utf-8", errors="replace")
-                    print(text, file=log, flush=True)
-                    if text.startswith(f"{tag}_BEGIN"):
-                        began.set()
-                    # A refusal ends the record only as START's answer: after BEGIN it answers a typed line.
-                    if text.startswith(f"{tag}_END") or (text.startswith(f"{tag}_REFUSED") and not began.is_set()):
-                        answer.append(text)
-                        ended.set()
+            while not stop.is_set() and not ended.is_set():
+                chunk = connection.read(STREAM_READ_BYTES)
+                while True:
+                    try:
+                        deliver(packets.feed(chunk))
+                        break
+                    except console_packets.PacketError as error:
+                        deliver(error.events)
+                        if on_packet_error is None:
+                            raise
+                        if not consumer_failed:
+                            on_packet_error(getattr(error, "packet", None))
+                        chunk = b""
         except Exception as error:  # noqa: BLE001  (any read failure ends the record, raised by its owner)
             failed.append(error)
             ended.set()
+            done.set()
 
     def closing(connection, failed):
-        # Unless the board ended it: a failed read leaves the board recording.
         if not answer:
             connection.write(f"{tag} STOP\n".encode("ascii"))
-        if failed:
-            raise RuntimeError(f"reading the board failed: {failed[0]}") from failed[0]
         deadline = time.monotonic() + RECORD_END_SECONDS
         while not ended.wait(STREAM_CHECK_SECONDS):
             require_unlost()
             if time.monotonic() > deadline:
                 raise RuntimeError(f"no {tag}_END within {RECORD_END_SECONDS} s of {tag} STOP")
+        if failed:
+            raise RuntimeError(f"reading the board failed: {failed[0]}") from failed[0]
+        if consumer_failed:
+            raise consumer_failed[0]
 
     steer(args, store, board, tag.lower(), read, lines, opening=[opening or f"{tag} START"],
-          closing=closing, done=ended, interrupt_ends=True)
+          closing=closing, done=done, interrupt_ends=True)
     return answer[0] if answer else ""
 
 
 def video(args, store, board, lines=None, log=None):
     """Record the panel stream with the same stdin and port lifecycle as record."""
     import panel_video
+    from build.c_header import read_defines
 
+    default, maximum = read_defines(panel_video.HEADER, "PANELCAP_FPS_", ("DEFAULT", "MAX"))
+    fps = default if args.fps is None else args.fps
+    if not 1 <= fps <= maximum:
+        raise RuntimeError(f"--fps must be between 1 and {maximum}")
     with panel_video.Recording(args.out, log=log) as recording:
         answer = capture_stream(args, store, board, "PANELCAP", recording.packet, lines, log,
-                                opening=f"PANELCAP START {args.fps}", packet_tag="PANEL",
-                                on_packet_error=recording.corrupt)
+                                opening=f"PANELCAP START {fps}", packet_tag="PANEL",
+                                on_packet_error=recording.parts.corrupt)
         recording.finish(answer)
     return int(answer.startswith("PANELCAP_REFUSED"))
 
@@ -2579,17 +2601,6 @@ def main(argv=None):
     report_parser.add_argument("capture", help="an existing capture file (.log or .log.gz)")
     report_parser.add_argument("--index", help="override index.jsonl (default: records/device)")
     args = parser.parse_args(argv)
-    if args.command == "video":
-        sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher/tools"))
-        from build.c_header import read_define
-        panelcap_header = Path(__file__).resolve().parents[2] / "launcher/main/gfx/present/capture/panelcap.h"
-        fps_default = read_define(panelcap_header, "PANELCAP_FPS_DEFAULT")
-        fps_max = read_define(panelcap_header, "PANELCAP_FPS_MAX")
-        if args.fps is None:
-            args.fps = fps_default
-        if not 1 <= args.fps <= fps_max:
-            parser.error(f"--fps must be between 1 and {fps_max}")
-
     args.purpose = command_label(args.command)
     os.environ[autana_config.WAIT_ENV] = str(args.wait)
 

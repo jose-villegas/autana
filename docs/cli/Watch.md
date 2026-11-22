@@ -14,7 +14,7 @@ watch` lists the same commands.
 | `autana codec <reg> [value]` | development builds: read, or write then read back, one codec register (hex or decimal) |
 | `autana screenshot [--as-shown\|--framebuffer] [-o PATH]` | PATH.png plus a PATH.json state snapshot; landscape by default |
 | `autana screenshot --frames N -o PATH` | N frames as PATH-00 on: the loop is frozen and stepped a frame between captures, then resumed |
-| `autana video -o PATH [--fps N] [--seconds S]` | live panel windows to H.264 MP4 plus frames.csv; console lines from stdin go to the board and replies to stderr; stops when stdin ends or on Ctrl+C; --seconds reads no stdin; development builds |
+| `autana video -o PATH [--fps N] [--seconds S]` | live panel windows to an H.264 MP4 plus frames.csv; stdin lines go to the board; development builds |
 | `autana record [-o PATH] [--seconds S]` | each frame's render input as records (FRAMEREC), to PATH or stdout; console lines from stdin go to the board, so FREEZE, STEP and RESUME pause and step it, and it stops when stdin ends; with --seconds it reads no stdin and stops after S seconds; development builds |
 | `autana battery [--json]` | fresh voltage, percentage, USB, charge phase and flow, plus raw PMU status bytes; development builds |
 | `autana battery --log [--json]` | persistent battery records oldest first (JSON is an array); reasons: periodic, transition, boot, shutdown-warning; development builds |
@@ -36,24 +36,35 @@ and `perf` in [Frame-Cost.md](../tools/Frame-Cost.md#hardware-counters).
 ## Panel video
 
 ```sh
-autana video -o run.mp4 --seconds 10
-autana video -o run.mp4 --fps 15
-printf 'DRAG 20 40 200 240 500\n' | autana video -o drag.mp4
+autana video -o run.mp4 --fps 5 --seconds 10
+autana video -o run.mp4 --fps 5
+printf 'DRAG 20 40 200 240 500\n' | autana video -o drag.mp4 --fps 5
 ```
 
-The command holds the device lock and port through `PANELCAP_END`.
-Console lines from stdin go to the board; board text goes to stderr.
-Recording ends when stdin ends or on Ctrl+C. With `--seconds`, stdin is
-not read and recording ends after that interval.
+The command holds the device lock and port through `PANELCAP_END`. Board
+text goes to stderr. EOF or Ctrl+C stops capture. With `--seconds` the
+command stops on its timer and leaves stdin unread.
 
-`--fps` controls device admission, with a default in `panelcap.h`.
-The landscape H.264 MP4 runs at constant 30 fps: idle intervals repeat the
-last picture and bursts keep the latest present at each output timestamp.
-Pixels update only where the panel receives windows; missed windows retain
-the previous canvas content.
+`--fps` limits device publication. The landscape H.264 MP4 samples the
+latest present at each 30 Hz device timestamp. Gaps repeat the last
+picture, and bursts contribute the latest eligible picture.
 
-Beside `run.mp4`, `run.frames.csv` records
-`present_seq,device_us,host_ns,windows,packed_bytes,dropped_before`.
-The summary reports received presents, reached fps, device and host drops,
-and packed MB/s. See [console framing](../tools/Console-Framing.md#binary-packets-panel-video)
-and [ffmpeg versions](../tools/Framework-Versions.md).
+`run.frames.csv` records each complete present beside the MP4.
+
+| Column | Meaning |
+|---|---|
+| `present_seq` | Device sequence, including presents that merged or were lost. |
+| `device_us` | Device time at present start, in microseconds. |
+| `host_ns` | Host wall-clock time at reassembly, in nanoseconds. |
+| `windows` | Dirty rectangles in the present. |
+| `packed_bytes` | Bytes of PackBits pixel data. |
+| `dropped_before` | Presents merged or lost while busy since the previous publication, saturating at 65535. |
+
+The summary reports
+
+- `presents` and `fps` for complete presents received and their attained rate.
+- `device_dropped` for the whole run's count of merged or busy presents.
+- `host_dropped` for presents rejected after missing, repeated, out-of-order or damaged parts or invalid data.
+- `MB/s` for packed pixel throughput.
+
+See [panel video framing](../tools/Panel-Video.md) and the [FFmpeg pin](../tools/Framework-Versions.md#ffmpeg).

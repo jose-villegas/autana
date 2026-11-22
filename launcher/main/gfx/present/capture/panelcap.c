@@ -1,54 +1,45 @@
 #include "gfx/present/capture/panelcap.h"
 #include <limits.h>
 #include <string.h>
-
-size_t
-panelcap_pack_bound(size_t pixels) {
-    return pixels * PANELCAP_PIXEL_BYTES + (pixels + PANELCAP_PACK_RUN_MAX - 1) / PANELCAP_PACK_RUN_MAX;
-}
+#include "math/scalar/units.h"
 
 static bool
 same(const uint8_t* p, size_t a, size_t b) {
     return memcmp(p + a * PANELCAP_PIXEL_BYTES, p + b * PANELCAP_PIXEL_BYTES, PANELCAP_PIXEL_BYTES) == 0;
 }
 
-size_t
-panelcap_pack(const uint8_t* pixels, size_t count, panelcap_emit_fn emit, void* arg) {
-    size_t total = 0;
-    for (size_t at = 0; at < count;) {
-        size_t run = 1;
-        while (at + run < count && run < PANELCAP_PACK_RUN_MAX && same(pixels, at, at + run)) {
+static size_t
+pack_block(uint8_t* block, const uint8_t* pixels, size_t count, size_t* consumed) {
+    size_t run = 1;
+    while (run < count && run < PANELCAP_PACK_RUN_MAX && same(pixels, 0, run)) {
+        run++;
+    }
+    bool repeat = run > 1;
+    if (!repeat) {
+        while (run < count && run < PANELCAP_PACK_RUN_MAX) {
+            /* Keep pairs inside a literal so their headers cannot increase its size. */
+            if (run + 2 < count && same(pixels, run, run + 1) && same(pixels, run, run + 2)) {
+                break;
+            }
             run++;
         }
-        bool repeat = run > 1;
-        if (!repeat) {
-            while (at + run < count && run < PANELCAP_PACK_RUN_MAX) {
-                /* A two-pixel run costs as much as literals at a boundary;
-                 * keeping it literal preserves the literal-size bound. */
-                if (at + run + 2 < count && same(pixels, at + run, at + run + 1)
-                    && same(pixels, at + run, at + run + 2)) {
-                    break;
-                }
-                run++;
-            }
-        }
-        uint8_t head = repeat ? (uint8_t)(1 - (int)run) : (uint8_t)(run - 1);
-        size_t bytes = (repeat ? 1 : run) * PANELCAP_PIXEL_BYTES;
-        if (emit != NULL) {
-            emit(arg, &head, 1);
-            emit(arg, pixels + at * PANELCAP_PIXEL_BYTES, bytes);
-        }
-        total += 1 + bytes;
-        at += run;
     }
-    return total;
+    block[0] = repeat ? (uint8_t)(1 - (int)run) : (uint8_t)(run - 1);
+    size_t bytes = (repeat ? 1 : run) * PANELCAP_PIXEL_BYTES;
+    memcpy(block + 1, pixels, bytes);
+    *consumed = run;
+    return 1 + bytes;
 }
 
-void
+bool
 panelcap_init(panelcap_t* capture, uint8_t* storage, unsigned fps) {
+    if (fps == 0 || fps > PANELCAP_FPS_MAX) {
+        return false;
+    }
     *capture = (panelcap_t){.storage = storage, .fps = fps};
     atomic_init(&capture->ready, 0);
     memset(storage, 0, PANELCAP_IMAGE_BYTES);
+    return true;
 }
 
 static void
@@ -57,34 +48,51 @@ drop(panelcap_t* capture) {
     if (capture->dropped_before < UINT16_MAX) {
         capture->dropped_before++;
     }
-    capture->admitted = false;
+}
+
+static bool
+take_image(panelcap_t* capture) {
+    if (atomic_load_explicit(&capture->ready, memory_order_acquire)) {
+        return false;
+    }
+    if (capture->published) {
+        capture->published = false;
+        capture->windows = 0;
+        capture->collapsed = false;
+    }
+    return true;
 }
 
 bool
 panelcap_begin(panelcap_t* capture, uint64_t us) {
     capture->seq++;
-    capture->admitted = false;
-    if (capture->fps == 0 || us < capture->next_us || atomic_load_explicit(&capture->ready, memory_order_acquire)) {
-        drop(capture);
+    capture->present_us = us;
+    capture->in_present = true;
+    capture->writable = take_image(capture);
+    if (!capture->writable || !capture->owed) {
         return false;
     }
-    capture->next_us = us + PANELCAP_US_PER_SECOND / capture->fps;
-    capture->windows = 0;
-    capture->collapsed = false;
-    capture->admitted = true;
-    bytes_write_u32(capture->head, capture->seq);
-    bytes_write_u64(capture->head + sizeof(uint32_t), us);
+    capture->owed = false;
+    capture->redraw_pending = true;
     return true;
 }
 
 void
+panelcap_redraw_requested(panelcap_t* capture) {
+    capture->redraw_pending = false;
+}
+
+void
 panelcap_window(panelcap_t* capture, unsigned x0, unsigned y0, unsigned x1, unsigned y1, const void* pixels) {
-    if (!capture->admitted) {
+    if (!capture->in_present || pixels == NULL || x1 <= x0 || y1 <= y0 || x1 > PANELCAP_WIDTH || y1 > PANELCAP_HEIGHT) {
         return;
     }
-    if (pixels == NULL || x1 <= x0 || y1 <= y0 || x1 > PANELCAP_WIDTH || y1 > PANELCAP_HEIGHT) {
-        drop(capture);
-        return;
+    if (!capture->writable) {
+        capture->writable = take_image(capture);
+        if (!capture->writable) {
+            capture->owed = true;
+            return;
+        }
     }
     const uint8_t* source = pixels;
     size_t row_bytes = (x1 - x0) * PANELCAP_PIXEL_BYTES;
@@ -121,15 +129,23 @@ panelcap_window(panelcap_t* capture, unsigned x0, unsigned y0, unsigned x1, unsi
 
 void
 panelcap_commit(panelcap_t* capture) {
-    if (!capture->admitted) {
+    if (!capture->in_present) {
         return;
     }
-    bytes_write_u16(capture->head + sizeof(uint32_t) + sizeof(uint64_t), capture->windows);
-    bytes_write_u16(capture->head + PANELCAP_HEAD_BYTES - sizeof(uint16_t), capture->dropped_before);
+    capture->in_present = false;
+    if (!capture->writable || capture->owed || capture->redraw_pending || capture->present_us < capture->next_us) {
+        drop(capture);
+        return;
+    }
+    capture->next_us = capture->present_us + MATH_US_PER_S / capture->fps;
+    bytes_write_u32(capture->head + PANELCAP_HEAD_AT_SEQ, capture->seq);
+    bytes_write_u64(capture->head + PANELCAP_HEAD_AT_US, capture->present_us);
+    bytes_write_u16(capture->head + PANELCAP_HEAD_AT_WINDOWS, capture->windows);
+    bytes_write_u16(capture->head + PANELCAP_HEAD_AT_DROPPED, capture->dropped_before);
     capture->dropped_before = 0;
     capture->presents++;
+    capture->published = true;
     atomic_store_explicit(&capture->ready, 1, memory_order_release);
-    capture->admitted = false;
 }
 
 const uint8_t*
@@ -142,68 +158,65 @@ panelcap_release(panelcap_t* capture) {
     atomic_store_explicit(&capture->ready, 0, memory_order_release);
 }
 
-typedef struct {
-    uint8_t* packet;
-    size_t used;
-    size_t capacity;
-    uint16_t part;
-    panelcap_emit_fn emit;
-    void* arg;
-} parts_t;
-
 static void
-flush(parts_t* parts, bool last) {
-    bytes_write_u16(parts->packet + sizeof(uint32_t), parts->part++);
-    parts->packet[PANELCAP_PART_HEAD_BYTES - 1] = last;
-    parts->emit(parts->arg, parts->packet, parts->used);
-    parts->used = PANELCAP_PART_HEAD_BYTES;
-}
-
-static void
-slice(void* arg, const uint8_t* bytes, size_t count) {
-    parts_t* parts = arg;
-    while (count != 0) {
-        if (parts->used == parts->capacity) {
-            flush(parts, false);
-        }
-        size_t take = parts->capacity - parts->used;
-        if (take > count) {
-            take = count;
-        }
-        memcpy(parts->packet + parts->used, bytes, take);
-        parts->used += take;
-        bytes += take;
-        count -= take;
-    }
-}
-
-void
-panelcap_send(const panelcap_t* capture, uint8_t* packet, size_t capacity, panelcap_emit_fn emit, void* arg) {
-    if (capacity <= PANELCAP_PART_HEAD_BYTES) {
+encode_block(const panelcap_t* capture, panelcap_encoder_t* encoder) {
+    recti_t box = capture->dirty[encoder->window];
+    if (!encoder->window_started) {
+        bytes_write_u16(encoder->block + PANELCAP_WINDOW_AT_X0, box.x);
+        bytes_write_u16(encoder->block + PANELCAP_WINDOW_AT_Y0, box.y);
+        bytes_write_u16(encoder->block + PANELCAP_WINDOW_AT_X1, recti_right(box));
+        bytes_write_u16(encoder->block + PANELCAP_WINDOW_AT_Y1, recti_bottom(box));
+        encoder->used = PANELCAP_WINDOW_BYTES;
+        encoder->window_started = true;
+        encoder->x = box.x;
+        encoder->y = box.y;
         return;
     }
-    parts_t parts = {
-        .packet = packet, .used = PANELCAP_PART_HEAD_BYTES, .capacity = capacity, .emit = emit, .arg = arg};
-    memcpy(packet, capture->head, sizeof(uint32_t));
-    slice(&parts, capture->head, PANELCAP_HEAD_BYTES);
-    for (unsigned i = 0; i < capture->windows; i++) {
-        recti_t box = capture->dirty[i];
-        uint8_t head[PANELCAP_WINDOW_BYTES];
-        const unsigned edges[] = {box.x, box.y, recti_right(box), recti_bottom(box)};
-        for (unsigned edge = 0; edge < PANELCAP_COORDS; edge++) {
-            bytes_write_u16(head + edge * sizeof(uint16_t), edges[edge]);
-        }
-        size_t packed = 0;
-        for (int y = box.y; y < recti_bottom(box); y++) {
-            const uint8_t* row = capture->storage + ((size_t)y * PANELCAP_WIDTH + box.x) * PANELCAP_PIXEL_BYTES;
-            packed += panelcap_pack(row, box.w, NULL, NULL);
-        }
-        bytes_write_u32(head + PANELCAP_COORDS * sizeof(uint16_t), packed);
-        slice(&parts, head, sizeof head);
-        for (int y = box.y; y < recti_bottom(box); y++) {
-            const uint8_t* row = capture->storage + ((size_t)y * PANELCAP_WIDTH + box.x) * PANELCAP_PIXEL_BYTES;
-            (void)panelcap_pack(row, box.w, slice, &parts);
+    const uint8_t* pixels =
+        capture->storage + ((size_t)encoder->y * PANELCAP_WIDTH + encoder->x) * PANELCAP_PIXEL_BYTES;
+    size_t consumed;
+    encoder->used = pack_block(encoder->block, pixels, recti_right(box) - encoder->x, &consumed);
+    encoder->x += (int)consumed;
+    if (encoder->x == recti_right(box)) {
+        encoder->x = box.x;
+        if (++encoder->y == recti_bottom(box)) {
+            encoder->window++;
+            encoder->window_started = false;
         }
     }
-    flush(&parts, true);
+}
+
+size_t
+panelcap_fill(const panelcap_t* capture, panelcap_encoder_t* encoder, uint8_t* packet, size_t capacity) {
+    if (capacity <= PANELCAP_PART_HEAD_BYTES) {
+        return 0;
+    }
+    if (encoder->part == 0) {
+        memcpy(encoder->block, capture->head, PANELCAP_HEAD_BYTES);
+        encoder->used = PANELCAP_HEAD_BYTES;
+    }
+    size_t at = PANELCAP_PART_HEAD_BYTES;
+    while (at < capacity) {
+        if (encoder->offset == encoder->used) {
+            if (encoder->window == capture->windows) {
+                break;
+            }
+            encode_block(capture, encoder);
+            encoder->offset = 0;
+        }
+        size_t take = capacity - at;
+        if (take > encoder->used - encoder->offset) {
+            take = encoder->used - encoder->offset;
+        }
+        memcpy(packet + at, encoder->block + encoder->offset, take);
+        at += take;
+        encoder->offset += take;
+    }
+    if (at == PANELCAP_PART_HEAD_BYTES) {
+        return 0;
+    }
+    bytes_write_u32(packet + PANELCAP_PART_AT_SEQ, bytes_read_u32(capture->head + PANELCAP_HEAD_AT_SEQ));
+    bytes_write_u16(packet + PANELCAP_PART_AT_INDEX, encoder->part++);
+    packet[PANELCAP_PART_AT_LAST] = encoder->window == capture->windows && encoder->offset == encoder->used;
+    return at;
 }

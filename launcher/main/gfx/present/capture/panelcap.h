@@ -13,19 +13,24 @@
 #define PANELCAP_HEIGHT          GFX_HEIGHT
 #define PANELCAP_PIXEL_BYTES     2U
 #define PANELCAP_HEAD_BYTES      16U
-#define PANELCAP_COORDS          4U
-#define PANELCAP_WINDOW_BYTES    12U
+#define PANELCAP_HEAD_AT_SEQ     0U
+#define PANELCAP_HEAD_AT_US      4U
+#define PANELCAP_HEAD_AT_WINDOWS 12U
+#define PANELCAP_HEAD_AT_DROPPED 14U
+#define PANELCAP_WINDOW_BYTES    8U
+#define PANELCAP_WINDOW_AT_X0    0U
+#define PANELCAP_WINDOW_AT_Y0    2U
+#define PANELCAP_WINDOW_AT_X1    4U
+#define PANELCAP_WINDOW_AT_Y1    6U
 #define PANELCAP_WINDOWS_MAX     32U
 #define PANELCAP_FPS_DEFAULT     15U
 #define PANELCAP_FPS_MAX         60U
-#define PANELCAP_US_PER_SECOND   1000000U
 #define PANELCAP_PACK_RUN_MAX    128U
 #define PANELCAP_PART_HEAD_BYTES 7U
+#define PANELCAP_PART_AT_SEQ     0U
+#define PANELCAP_PART_AT_INDEX   4U
+#define PANELCAP_PART_AT_LAST    6U
 #define PANELCAP_IMAGE_BYTES     GFX_FRAMEBUFFER_BYTES
-
-typedef void (*panelcap_emit_fn)(void* arg, const uint8_t* data, size_t size);
-size_t panelcap_pack_bound(size_t pixels);
-size_t panelcap_pack(const uint8_t* pixels, size_t count, panelcap_emit_fn emit, void* arg);
 
 typedef struct {
     uint8_t* storage;
@@ -40,14 +45,34 @@ typedef struct {
     uint16_t dropped_before;
     uint64_t next_us;
     unsigned fps;
-    bool admitted;
+    uint64_t present_us;
+    bool in_present;
+    bool writable;
+    bool owed;
+    bool redraw_pending;
+    bool published;
 } panelcap_t;
 
-void panelcap_init(panelcap_t* capture, uint8_t* storage, unsigned fps);
+bool panelcap_init(panelcap_t* capture, uint8_t* storage, unsigned fps);
+/* Returns true when the frame owner must request a full redraw. */
 bool panelcap_begin(panelcap_t* capture, uint64_t us);
+/* Call after draining the in-flight present and requesting the redraw. */
+void panelcap_redraw_requested(panelcap_t* capture);
 void panelcap_window(panelcap_t* capture, unsigned x0, unsigned y0, unsigned x1, unsigned y1, const void* pixels);
 void panelcap_commit(panelcap_t* capture);
 const uint8_t* panelcap_peek(panelcap_t* capture);
 void panelcap_release(panelcap_t* capture);
 
-void panelcap_send(const panelcap_t* capture, uint8_t* packet, size_t capacity, panelcap_emit_fn emit, void* arg);
+typedef struct {
+    uint16_t part;
+    unsigned window;
+    bool window_started;
+    int x;
+    int y;
+    uint8_t block[1 + PANELCAP_PACK_RUN_MAX * PANELCAP_PIXEL_BYTES];
+    size_t used;
+    size_t offset;
+} panelcap_encoder_t;
+
+/* Starts with a zeroed cursor. After the last packet, fill returns zero. */
+size_t panelcap_fill(const panelcap_t* capture, panelcap_encoder_t* encoder, uint8_t* packet, size_t capacity);

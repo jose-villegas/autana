@@ -43,6 +43,13 @@ because the device keeps logging while it streams. It converts the BMP to PNG in
 the standard library only; opening the port is the caller's job, under the
 [device lock](../cli/Device-Lock.md).
 
+## Binary packet tags
+
+| Tag | Stream |
+|---|---|
+| `FRAMEREC` | [Render input](#binary-packets-framerec) |
+| `PANEL` | [Panel video](Panel-Video.md) |
+
 ## Binary packets: FRAMEREC
 
 `FRAMEREC START` streams each drawn frame's render input, in the
@@ -85,128 +92,6 @@ packet landed inside, and refuses a packet whose crc32 differs.
 [`framerec.py`](../../launcher/tools/device/framerec.py) reads the records.
 `autana record` holds the port and writes the joined stream to a file or
 stdout ([Watch](../cli/Watch.md)).
-
-## Binary packets: panel video
-
-`PANELCAP START [fps]` records panel windows until `PANELCAP STOP`.
-The default admission rate is `PANELCAP_FPS_DEFAULT` in
-[`panelcap.h`](../../launcher/main/gfx/present/capture/panelcap.h).
-Release images have no console listener or capture code.
-
-`autana video` shares `autana record`'s host capture path. A release image
-cannot answer START or STOP; once input ends, the shared END deadline
-fails the capture and releases the lock.
-
-```mermaid
-sequenceDiagram
-    participant H as autana video
-    participant D as device
-    H->>D: PANELCAP START 15
-    D-->>H: PANELCAP_BEGIN fps=N image=B
-    loop admitted presents
-        D-->>H: PANEL_BIN n crc32 + n bytes
-    end
-    H->>D: PANELCAP STOP
-    D-->>H: remaining PANEL_BIN packets
-    D-->>H: PANELCAP_END presents=P dropped=D bytes=B
-    Note over H,D: START can answer PANELCAP_REFUSED: reason
-```
-
-Each `PANEL_BIN n crc32` line ends with a newline followed by `n` raw
-bytes. The CRC covers those bytes. A payload fits
-`CONSOLE_PACKET_BYTES_MAX`, including its continuation header.
-All integers below are little-endian; pixels remain RGB565 high-byte first.
-
-```mermaid
----
-config:
-  packet:
-    bitsPerRow: 8
-    bitWidth: 100
----
-packet-beta
-title Packet payload, one cell a byte
-0-3: "present_seq"
-4-5: "part"
-6: "last"
-7: "slice..."
-```
-
-| Part | At | Size |
-|---|---|---|
-| Present sequence | 0 | u32 |
-| Part index | 4 | u16, starts at zero |
-| Last flag | 6 | u8, zero or one |
-| Stream slice | 7 | remaining packet bytes |
-
-The `last` flag allows streaming without an encoded-present scratch buffer.
-A missing, repeated or out-of-order part discards the entire present.
-The next sequence starts a fresh assembly at part zero.
-
-```mermaid
----
-config:
-  packet:
-    bitsPerRow: 8
-    bitWidth: 100
----
-packet-beta
-title Present header, 16 bytes, one cell a byte
-0-3: "present_seq"
-4-11: "device_us"
-12-13: "windows"
-14-15: "dropped_before"
-```
-
-| Part | At | Size |
-|---|---|---|
-| Present sequence | 0 | u32 |
-| Device time at present start | 4 | u64, microseconds |
-| Window count | 12 | u16 |
-| Dropped presents before this one | 14 | u16, saturates at its maximum |
-| Windows | 16 | merged dirty rectangles below |
-
-```mermaid
----
-config:
-  packet:
-    bitsPerRow: 8
-    bitWidth: 100
----
-packet-beta
-title Window header, 12 bytes, one cell a byte
-0-1: "x0"
-2-3: "y0"
-4-5: "x1"
-6-7: "y1"
-8-11: "packed_len"
-12-15: "PackBits pixels..."
-```
-
-| Part | At | Size |
-|---|---|---|
-| Rectangle | 0 | four u16 edges, exclusive x1 and y1 |
-| Encoded byte count | 8 | u32 |
-| Pixels | 12 | `packed_len` bytes |
-
-| Rule | Detail |
-|---|---|
-| Pixel codec | Apple PackBits over 16-bit pixels: signed header 0..127 copies n+1 pixels; -127..-1 repeats one pixel 1-n times; -128 is a no-op |
-| Admission | Once per present: the fps gate must allow it and the sender must have finished the previous present |
-| Storage | One `PANELCAP_IMAGE_BYTES` PSRAM image, derived from `GFX_FRAMEBUFFER_BYTES`, plus a `PANELCAP_WINDOWS_MAX` rectangle list |
-| Windows | Each admitted send writes its rectangle into the image, last write wins. Overlapping and rectangular adjacent regions merge |
-| List overflow | Collapse to the bounding box, keeping metadata bounded without encoding the panel's outer margins |
-| Dropped before | Every present not sent since the previous sent present: fps gate, sender busy, or invalid window. Saturates at u16 maximum |
-| Sender | Priority one, encodes only the committed image, never blocks presentation |
-| STOP | Stops admission, drains the committed image, frees image and packet scratch, then sends END |
-| Totals | END counts committed presents, all admission/refusal drops, and serialized packed-stream bytes excluding continuation headers |
-| Refusal | Already on, not recording, bad fps, invalid syntax, unavailable PSRAM, or no memory for the sender task |
-
-START requests a full redraw so the next drawn present initializes the canvas.
-The host applies windows in order to a persistent panel canvas, then uses
-the screenshot turn. Its MP4 samples the latest device present at each
-30 Hz timestamp. Capture drops leave the previous canvas content in place.
-See [the command contract](../cli/Watch.md#panel-video).
 
 ## Other verbs
 

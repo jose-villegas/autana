@@ -64,7 +64,7 @@ def resolved_version(tool):
 def rows(root=ROOT):
     """(framework, pinned, here) for each pin."""
     from device import video_encode
-    binary = shutil.which("ffmpeg")
+    binary = video_encode.find()
     yield "ffmpeg", video_encode.pinned()["version"], video_encode.version(binary) if binary else MISSING
     pin = idf_pin()
     yield "ESP-IDF commit", pin["commit"], idf_commit(idf_path()) or MISSING

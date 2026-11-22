@@ -1115,6 +1115,14 @@ def _function_body_comments(path, text, comments):
     return {c for c in comments if inside.get(id(c))}
 
 
+@c_line_rule("PANEL-SEND-OWNER")
+def panel_send_owner(root, path, text):
+    if relpath(root, path) == "launcher/main/gfx/present/gfx_panel.c":
+        return
+    for match in re.finditer(r"\besp_lcd_panel_draw_bitmap\s*\(", blank_comments(text)):
+        yield text.count("\n", 0, match.start()) + 1, "panel sends belong to gfx/present/gfx_panel.c"
+
+
 @c_line_rule("UNDEF-PLACEMENT")
 def rule_undef_placement(root, path, text):
     if not relpath(root, path).startswith(packages.FIRST_PARTY):
@@ -1278,16 +1286,6 @@ def main(argv):
     warnings = [f for f in findings if f.severity == WARN]
     print(f"{scanned} file(s) scanned, {len(errors)} error(s), {len(warnings)} warning(s)")
     return 1 if (errors or (strict and warnings)) else 0
-
-
-
-
-@c_line_rule("PANEL-SEND-OWNER")
-def panel_send_owner(root, path, text):
-    if relpath(root, path) == "launcher/main/gfx/present/gfx_panel.c":
-        return
-    for match in re.finditer(r"\besp_lcd_panel_draw_bitmap\s*\(", blank_comments(text)):
-        yield text.count("\n", 0, match.start()) + 1, "panel sends belong to gfx/present/gfx_panel.c"
 
 
 if __name__ == "__main__":

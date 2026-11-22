@@ -1882,7 +1882,7 @@ COMMAND_GROUPS = (
             ("screenshot [--as-shown|--framebuffer] [-o PATH]", "PATH.png plus a PATH.json state snapshot; landscape by default"),
             ("screenshot --frames N -o PATH", "N frames as PATH-00 on: the loop is frozen and stepped a frame between captures, then resumed"),)),
         one("video", video, "video -o PATH [--fps N] [--seconds S]",
-            "live panel windows to H.264 MP4 plus frames.csv; console lines from stdin go to the board and replies to stderr; stops when stdin ends or on Ctrl+C; --seconds reads no stdin; development builds"),
+            "live panel windows to an H.264 MP4 plus frames.csv; stdin lines go to the board; development builds"),
         one("record", record, "record [-o PATH] [--seconds S]",
             "each frame's render input as records (FRAMEREC), to PATH or stdout; console lines from stdin go to the board, so FREEZE, STEP and RESUME pause and step it, and it stops when stdin ends; with --seconds it reads no stdin and stops after S seconds; development builds"),
         Command("battery", battery, (

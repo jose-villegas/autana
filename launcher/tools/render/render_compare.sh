@@ -148,10 +148,6 @@ elif [ -n "$reference" ]; then
 else
     [ -n "$script" ] && [ -n "$rev_b" ] || usage
 fi
-if [ "$video" = 1 ] && ! command -v ffmpeg > /dev/null 2>&1; then
-    echo "--video needs ffmpeg on PATH." >&2
-    exit 1
-fi
 [ -n "$out" ] || out=$(mktemp -d)
 mkdir -p "$out"
 
