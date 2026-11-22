@@ -9,6 +9,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from anim import scene_fields
 from build.c_enum import ASSET_TAG_WIDTH, tag_text, tag_value
+from build.name_hash import NONE, name_hash
 from geometry.vectors import qmul, qrot, unit
 from gltf.gltf_write import build_glb
 
@@ -19,6 +20,8 @@ ZERO_TRANSLATION = (0, 0, 0)
 F32 = struct.Struct("<f")
 CUBIC_ROWS = 3
 CUBIC_VALUE = 1
+CLIP_FIELD, SPEED_FIELD, BLEND_FIELD = "clip", "speed", "blend_ms"
+ANIMATOR_LIMITS = {SPEED_FIELD: (1 << 16) - 1, BLEND_FIELD: (1 << 32) - 1}
 
 
 def rotation(eye, target):
@@ -100,7 +103,7 @@ def float32(value, where, name):
     return rounded
 
 
-def key_times(keys, where):
+def key_times(keys, where, start_at_zero=True):
     """Validate the timeline at stored precision and return the authored times."""
     times = []
     previous = None
@@ -108,8 +111,12 @@ def key_times(keys, where):
         time = key["t"]
         label = f"{where} key {i}"
         rounded = float32(time, label, "t")
-        if (time != 0 if previous is None else rounded <= previous):
-            raise ValueError(f"{label}: times must start at zero and increase strictly in float32")
+        if previous is None:
+            if time < 0 or (start_at_zero and time != 0):
+                rule = "start at zero" if start_at_zero else "be nonnegative"
+                raise ValueError(f"{label}: times must {rule}")
+        elif rounded <= previous:
+            raise ValueError(f"{label}: times must increase strictly in float32")
         times.append(time)
         previous = rounded
     return times
@@ -142,13 +149,20 @@ def offset_rows(field, offset, rows, cubic, where):
     return rotated
 
 
-def track_curve(track, label, value_type, interp, transform_field):
+def curve_keys(track, label):
+    """Validate key tables before reading or merging them."""
+
     keys = track["keys"]
     if not isinstance(keys, list) or not keys:
         raise ValueError(f"{label} key 0: keys must be a nonempty list")
     for i, key in enumerate(keys):
         if not isinstance(key, dict) or not {"t", "v"} <= key.keys() or key.keys() - {"t", "v", "in", "out"}:
             raise ValueError(f"{label} key {i}: each key needs t and v, with optional in and out")
+    return keys
+
+
+def track_curve(track, label, value_type, interp, transform_field):
+    keys = curve_keys(track, label)
     times = key_times(keys, label)
     values, rows = [], []
     width = scene_fields.WIDTHS[value_type]
@@ -157,7 +171,15 @@ def track_curve(track, label, value_type, interp, transform_field):
     explicit = None
     for i, key in enumerate(keys):
         where = f"{label} key {i}"
-        value = vector(key["v"], width, where, "v", quaternion=quaternion)
+        authored = key["v"]
+        if value_type == scene_fields.VALUE_NAME:
+            if not isinstance(authored, str) or not authored or "\0" in authored:
+                raise ValueError(f"{where}: v must be a nonempty name without NUL")
+            hashed = name_hash(authored)
+            if hashed == NONE:
+                raise ValueError(f"{where}: name hashes to NONE")
+            authored = scene_fields.encode_name(hashed)
+        value = vector(authored, width, where, "v", quaternion=quaternion)
         has_tangents = "in" in key
         if has_tangents != ("out" in key):
             raise ValueError(f"{where}: supply both in and out tangents")
@@ -208,6 +230,35 @@ def resolve_field(name, fields, where):
     return matches[0]
 
 
+def block_tracks(track, label):
+    """Expand a clip block table into aligned step curves."""
+    blocks = track["blocks"]
+    if not isinstance(blocks, list) or not blocks:
+        raise ValueError(f"{label} key 0: blocks must be a nonempty list")
+    columns = {CLIP_FIELD: [], SPEED_FIELD: [], BLEND_FIELD: []}
+    for i, block in enumerate(blocks):
+        if not isinstance(block, dict) or not {"t", "clip"} <= block.keys() or block.keys() - {
+            "t", "clip", "speed", "blend"
+        }:
+            raise ValueError(f"{label} key {i}: block needs t and clip, with optional speed and blend")
+        for field, value in zip(columns, (block["clip"], block.get("speed", 1), block.get("blend", 0))):
+            columns[field].append(dict(t=block["t"], v=value))
+    key_times(blocks, label)
+    return {field: dict(interp="step", keys=keys) for field, keys in columns.items()}
+
+
+def merge_speed(blocks, extra, label):
+    """Combine two strictly ordered lists, rejecting coincident stored times."""
+    keys = curve_keys(extra, label)
+    key_times(keys, label, start_at_zero=False)
+    merged = sorted([*blocks["keys"], *keys], key=lambda key: key["t"])
+    times = [float32(key["t"], label, "t") for key in merged]
+    for i, (a, b) in enumerate(zip(times, times[1:]), start=1):
+        if a == b:
+            raise ValueError(f"{label} key {i}: duplicate speed key time")
+    return dict(extra, keys=merged)
+
+
 def tracks_glb(values):
     if set(values) != {"animation", "tracks"}:
         raise ValueError("expected animation and tracks")
@@ -217,7 +268,8 @@ def tracks_glb(values):
     if not isinstance(tracks, list) or not tracks:
         raise ValueError("tracks must be a nonempty list")
 
-    nodes, indices, channels, seen = [], {}, [], set()
+    nodes, indices, channels = [], {}, []
+    authored, expanded = {}, {}
     required = {"object", "field", "interp", "keys"}
     extension = scene_fields.SCENE_FIELDS_EXTENSION
     fields = scene_fields.fields()
@@ -227,23 +279,48 @@ def tracks_glb(values):
         obj, field = track.get("object", "<object>"), track.get("field", "<field>")
         label = f"{obj}.{field}"
         where = f"{label} key 0"
-        if not required <= track.keys() or track.keys() - (required | {"offset"}):
+        blocks = "blocks" in track
+        if (blocks and track.keys() != {"object", "field", "blocks"}
+                or not blocks and (not required <= track.keys() or track.keys() - (required | {"offset"}))):
             raise ValueError(f"{where}: missing or unexpected track entries")
         if not isinstance(obj, str) or not obj or "\0" in obj:
             raise ValueError(f"{where}: object must be a nonempty name without NUL")
         component, field = resolve_field(field, fields, where)
+        binding = (obj, component, field)
+        if blocks:
+            if (component, field) != (scene_fields.ANIMATOR, CLIP_FIELD):
+                raise ValueError(f"{where}: blocks require the animator clip field")
+            if binding in expanded:
+                raise ValueError(f"{where}: duplicate track")
+            for member, curve in block_tracks(track, label).items():
+                expanded[obj, component, member] = curve
+        else:
+            if binding in authored:
+                raise ValueError(f"{where}: duplicate track")
+            authored[binding] = track
+
+    for binding in dict.fromkeys([*expanded, *authored]):
+        obj, component, field = binding
+        track = authored.get(binding, expanded.get(binding))
+        label = f"{obj}.{track.get('field', field)}"
+        where = f"{label} key 0"
         interp = track["interp"]
         if not isinstance(interp, str) or interp not in INTERPOLATIONS:
             raise ValueError(f"{where}: interp must be step, linear or cubic")
-        binding = (obj, component, field)
-        if binding in seen:
-            raise ValueError(f"{where}: duplicate track")
-        seen.add(binding)
-        # The keys tool enforces step-only fields once C declares them with ANIM_FIELD_STEP.
-        value_type, _ = fields[component, field]
+        value_type, step_only = fields[component, field]
+        if step_only and interp != "step":
+            raise ValueError(f"{where}: field requires step interpolation")
+        if binding in expanded and binding in authored:
+            if field != SPEED_FIELD:
+                raise ValueError(f"{where}: duplicate track")
+            track = merge_speed(expanded[binding], track, label)
         transform = scene_fields.TRANSFORM_FIELDS.get(field) if component == scene_fields.TRANSFORM else None
         interp = INTERPOLATIONS[interp]
         times, rows = track_curve(track, label, value_type, interp, field if transform else None)
+        if component == scene_fields.ANIMATOR and field in ANIMATOR_LIMITS:
+            for i, (value,) in enumerate(rows):
+                if not 0 <= value <= ANIMATOR_LIMITS[field] or float32(value, where, field) > ANIMATOR_LIMITS[field]:
+                    raise ValueError(f"{label} key {i}: {field} is out of range")
         if obj not in indices:
             indices[obj] = len(nodes)
             nodes.append(dict(name=obj))

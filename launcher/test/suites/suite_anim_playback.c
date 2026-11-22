@@ -117,8 +117,50 @@ test_speed_accepts_uint16_max_and_refuses_larger_or_infinite(void) {
     release(&l);
 }
 
+static void
+test_clip_blocks_integrate_with_no_transition_history(void) {
+    const float starts[] = {0.0F, 0.4F, 0.6F};
+    const float speed_times[] = {0.0F, 0.2F, 0.5F, 0.55F};
+    const float speeds[] = {1.0F, 2.0F, 0.5F, 1.25F};
+    const float blends[] = {0, 300, 200};
+    const name_hash_t names[] = {1, 2, 3};
+    const uint8_t slots[] = {0, 1, 2};
+    const anim_clip_t clips[] = {{.duration_ms = 550}, {.duration_ms = 300}, {.duration_ms = 100}};
+    float values[3 * ANIM_NAME_WIDTH];
+    for (size_t i = 0; i < sizeof names / sizeof *names; i++) {
+        anim_name_encode(names[i], values + i * ANIM_NAME_WIDTH);
+    }
+    const anim_track_t clip = {starts, values, 3, ANIM_NAME_WIDTH, ANIM_STEP, 0};
+    const anim_track_t speed = {speed_times, speeds, 4, 1, ANIM_STEP, 0};
+    const anim_track_t blend = {starts, blends, 3, 1, ANIM_STEP, 0};
+    const anim_blocks_t blocks = {&clip, &speed, &blend, slots};
+    anim_block_sample_t sample = anim_blocks_sample(&blocks, clips, ANIM_CLAMP, 550, 0.55F);
+    TEST_ASSERT_EQUAL_UINT32(names[1], sample.current_name);
+    TEST_ASSERT_EQUAL_UINT32(names[0], sample.previous_name);
+    TEST_ASSERT_EQUAL_UINT32(200 + 25, sample.current.playhead.t_ms);
+    TEST_ASSERT_EQUAL_UINT32(550, sample.previous.playhead.t_ms);
+    TEST_ASSERT_EQUAL_UINT32(150, sample.blended_ms);
+    TEST_ASSERT_EQUAL_UINT32(300, sample.blend_ms);
+
+    sample = anim_blocks_sample(&blocks, clips, ANIM_LOOP, 650, 0.65F);
+    TEST_ASSERT_EQUAL_UINT32(names[2], sample.current_name);
+    TEST_ASSERT_EQUAL_UINT32(names[1], sample.previous_name);
+    TEST_ASSERT_EQUAL_UINT32(62, sample.current.playhead.t_ms);
+    TEST_ASSERT_EQUAL_UINT32((200 + 25 + 125) % clips[1].duration_ms, sample.previous.playhead.t_ms);
+    TEST_ASSERT_EQUAL_UINT16(ANIM_PLAYHEAD_SPEED_ONE / 2, sample.current.playhead.fraction);
+    TEST_ASSERT_EQUAL_UINT32(50, sample.blended_ms);
+    TEST_ASSERT_EQUAL_UINT32(200, sample.blend_ms);
+
+    const anim_blocks_t defaults = {&clip, NULL, NULL, slots};
+    sample = anim_blocks_sample(&defaults, clips, ANIM_LOOP, 750, 0.75F);
+    TEST_ASSERT_EQUAL_UINT32(50, sample.current.playhead.t_ms);
+    TEST_ASSERT_EQUAL_UINT8(ANIM_LAYER_CLIP_NONE, sample.previous.clip);
+    TEST_ASSERT_EQUAL_UINT32(0, sample.blend_ms);
+}
+
 void
 suite_anim_playback(void) {
+    RUN_TEST(test_clip_blocks_integrate_with_no_transition_history);
     RUN_TEST(test_speed_accepts_uint16_max_and_refuses_larger_or_infinite);
     RUN_TEST(test_playhead_long_loop_clamp_pause_and_fractional_speed);
     RUN_TEST(test_transition_blend_weights_and_both_slot_times);

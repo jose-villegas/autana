@@ -27,7 +27,7 @@ from gltf import gltf_read  # noqa: E402
 from r3d import gltf_skin  # noqa: E402
 from anim.clip_name import SUFFIX, clip_id  # noqa: E402
 from anim import scene_fields  # noqa: E402
-from anim.scene_fields import (CAMERA, TRANSFORM, VALUE_FLOAT, VALUE_VEC2, VALUE_VEC3, VALUE_QUAT, VALUE_COLOUR,
+from anim.scene_fields import (CAMERA, TRANSFORM, VALUE_FLOAT, VALUE_VEC2, VALUE_VEC3, VALUE_QUAT, VALUE_COLOUR, VALUE_NAME,
                                WIDTHS)  # noqa: E402
 
 OWNER = pathlib.Path(__file__).resolve().parents[2] / "main/anim/anim_tracks_format.h"
@@ -143,6 +143,14 @@ def check(name, channel):
         raise TracksError("%s: a rotation is a quaternion" % name)
 
 
+def check_name_values(name, values, interpolation):
+    """Check the encoded rows of a NAME curve."""
+    if interpolation != "STEP":
+        raise TracksError(f"{name}: name values require step interpolation")
+    for row in values:
+        scene_fields.decode_name(row)
+
+
 def collapse_constant(channel):
     """One key for a channel that never changes (cubic: with no slope)."""
     values = channel["values"]
@@ -224,7 +232,12 @@ def clip_tracks(document, binary, animation):
                 aspect = document["cameras"][camera]["perspective"].get("aspectRatio", 1.0)
                 channel = dict(channel, values=gltf_read.camera_half_fov_short_tan_curve(
                     channel["values"], channel["interpolation"], aspect))
-            channel = collapse_constant(channel)
+            if scene_fields.fields()[component, field][1] and channel["interpolation"] != "STEP":
+                raise TracksError(f"{name}: field requires step interpolation")
+            if value_type == VALUE_NAME:
+                check_name_values(name, channel["values"], channel["interpolation"])
+            if component != scene_fields.ANIMATOR and value_type != VALUE_NAME:
+                channel = collapse_constant(channel)
             tracks.append({"path": path, "component": component, "field": field, "type": value_type,
                            "name": name, "times": list(channel["times"]), "values": list(channel["values"]),
                            "interpolation": channel["interpolation"], "quaternion": value_type == VALUE_QUAT})
@@ -291,6 +304,8 @@ def encode(tracks, duration_ms, root=ROOT_SCENE, ground=0):
             raise TracksError("%s: unknown value type" % track["name"])
         if any(len(v) != WIDTHS[track["type"]] for v in track["values"]):
             raise TracksError("%s: values do not match binding type" % track["name"])
+        if track["type"] == VALUE_NAME:
+            check_name_values(track["name"], track["values"], track["interpolation"])
         times = struct.pack("<%df" % len(track["times"]), *track["times"])
         flat = [x for row in track["values"] for x in row]
         values = struct.pack("<%df" % len(flat), *flat)
@@ -349,9 +364,12 @@ def decode(entry):
         values = floats_at(entry, values_at, per_key * keys * width, strings_end)
         if not all(math.isfinite(x) for x in times + values) or any(b <= a for a, b in zip(times, times[1:])):
             raise TracksError("binding %d: non-finite keys or times not increasing" % index)
+        rows = [tuple(values[i:i + width]) for i in range(0, len(values), width)]
+        if value_type == VALUE_NAME:
+            check_name_values(binding_name(path, component, field), rows, INTERPOLATIONS[interp])
         tracks.append({"path": path, "field": field, "component": component, "type": value_type, "root": root,
                        "name": binding_name(path, component, field),
-                       "times": times, "values": [tuple(values[i:i + width]) for i in range(0, len(values), width)],
+                       "times": times, "values": rows,
                        "interpolation": INTERPOLATIONS[interp], "quaternion": value_type == VALUE_QUAT})
     return tracks, duration_ms
 

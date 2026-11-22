@@ -8,7 +8,7 @@ locate_field(const anim_binding_t* binding, const anim_component_ref_t* componen
              anim_binding_location_t* out) {
     for (int c = 0; c < component_count; c++) {
         const anim_component_fields_t* component = components[c].fields;
-        if (component->component != binding->component) {
+        if (component == NULL || component->component != binding->component) {
             continue;
         }
         for (int f = 0; f < component->field_count; f++) {
@@ -18,6 +18,9 @@ locate_field(const anim_binding_t* binding, const anim_component_ref_t* componen
             }
             if (field->type != binding->type) {
                 return ANIM_BIND_ERR_TYPE;
+            }
+            if ((field->step_only || field->type == ANIM_VALUE_NAME) && binding->curve.interp != ANIM_STEP) {
+                return ANIM_BIND_ERR_INTERP;
             }
             out->component = c;
             out->field = f;
@@ -33,7 +36,9 @@ bind_field(const anim_binding_t* binding, const anim_component_ref_t* component,
            uint8_t dirty_bit) {
     return (anim_bound_t){
         .curve = binding->curve,
-        .target = (float*)(void*)((uint8_t*)component->base + component->fields->fields[field].offset),
+        .target = component->base == NULL
+                      ? NULL
+                      : (float*)(void*)((uint8_t*)component->base + component->fields->fields[field].offset),
         .dirty = dirty,
         .dirty_bit = dirty_bit,
     };

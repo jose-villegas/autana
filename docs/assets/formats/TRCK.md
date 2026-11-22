@@ -59,7 +59,8 @@ title Binding registry, one 28-byte row a binding from byte 20
 | Strings | `strings_off` a multiple of 4, at or after the registry's end; a path or field is nonempty, at most `ANIM_BINDING_STRING_MAX` bytes, with no NUL, and ends inside the table, which fits a 16-bit offset |
 | Hashes | FNV-1a 32 of each string's bytes via `name_hash`; stored equals computed and is nonzero, else `ASSET_ERR_FORMAT`. The bake refuses collisions among a clip's paths or among its fields. |
 | Component | `u32` code, nonzero; written as `ASSET_TYPE` tags such as `ANIM_COMPONENT_TRANSFORM` (`TRNS`); the writer allows one binding per path, component and field |
-| Type | an `anim_value_t` code (float, vec2, vec3, quaternion, colour) with width 1, 2, 3, 4 and 3 |
+| Type | An `anim_value_t` code. `ANIM_VALUE_WIDTHS` in `anim_track.h` gives the stored width. |
+| Name values | `ANIM_VALUE_NAME` stores a `name_hash_t` as two float32 integers, high 16 bits first. Name keys require step interpolation. |
 | Interp | an `anim_interp_t` code: step, linear or cubic |
 | Keys | at least 1, at most 65535; times finite and strictly increasing, values finite, in seconds and the field's units |
 | Arrays | 4-aligned, after the strings, inside the entry |
@@ -73,5 +74,6 @@ A row's `component` and `field` name what it drives. The components a scene bind
 |---|---|---|
 | `TRNS` | `ANIM_COMPONENT_TRANSFORM`, `anim/anim_tracks_format.h` | `position` vec3, `rotation` quaternion, `scale` vec3 (`anim/pose/anim_pose.c`) |
 | `CAMR` | `ANIM_COMPONENT_CAMERA`, `scene/camera/lens.h` | `half_fov_short_tan` float, `near_z` float (`LENS_FIELDS` in `scene/camera/lens.c`); the glTF bake writes only `half_fov_short_tan` |
+| `ANMR` | `ANIM_COMPONENT_ANIMATOR`, `scene/animator/animator.h` | `clip` name, `speed` float, `blend_ms` float. All require step interpolation. |
 
 [Binding any field](../../render/animation/Animation-Tracks.md#binding-any-field) adds a component.

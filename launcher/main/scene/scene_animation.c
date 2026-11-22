@@ -15,14 +15,15 @@
 #include "scene/scene_anim_stages.h"
 #include "scene/scene_internal.h"
 
-enum { SCENE_COMPONENT_TRANSFORM, SCENE_COMPONENT_LENS, SCENE_COMPONENT_COUNT };
+enum { SCENE_COMPONENT_TRANSFORM, SCENE_COMPONENT_LENS, SCENE_COMPONENT_ANIMATOR, SCENE_COMPONENT_COUNT };
 
 static const anim_component_fields_t* const SCENE_COMPONENTS[SCENE_COMPONENT_COUNT] = {
     [SCENE_COMPONENT_TRANSFORM] = &ANIM_POSE_TRANSFORM_FIELDS,
     [SCENE_COMPONENT_LENS] = &LENS_FIELDS,
+    [SCENE_COMPONENT_ANIMATOR] = &ANIMATOR_FIELDS,
 };
 
-_Static_assert(ANIM_POSE_TRANSFORM_FIELD_COUNT + LENS_FIELD_COUNT <= sizeof(scene_field_mask_t) * CHAR_BIT,
+_Static_assert(SCENE_ANIMATOR_FIRST_FIELD + ANIMATOR_FIELD_COUNT <= sizeof(scene_field_mask_t) * CHAR_BIT,
                "scene animation fields fit in the claim mask");
 
 scene_anim_targets_t
@@ -39,6 +40,7 @@ scene_anim_targets(const scene_asset_t* asset, const scene_t* scene) {
     }
     out.targets = (anim_target_t*)(void*)(block + targets);
     anim_component_ref_t* refs = (anim_component_ref_t*)(void*)(block + components);
+    memset(refs, 0, sizeof *refs * (size_t)entities * SCENE_COMPONENT_COUNT);
     for (int e = 0; e < entities; e++) {
         anim_component_ref_t* fields = refs + (e * SCENE_COMPONENT_COUNT);
         fields[SCENE_COMPONENT_TRANSFORM] =
@@ -51,6 +53,12 @@ scene_anim_targets(const scene_asset_t* asset, const scene_t* scene) {
         refs[e * SCENE_COMPONENT_COUNT + SCENE_COMPONENT_LENS] =
             (anim_component_ref_t){SCENE_COMPONENTS[SCENE_COMPONENT_LENS], scene ? &scene->cameras[c].lens : NULL};
         out.targets[e].component_count = SCENE_COMPONENT_LENS + 1;
+    }
+    for (int s = 0; s < asset->skinned_renderer_count; s++) {
+        const int e = asset->skinned_renderers[s].entity;
+        refs[e * SCENE_COMPONENT_COUNT + SCENE_COMPONENT_ANIMATOR] =
+            (anim_component_ref_t){SCENE_COMPONENTS[SCENE_COMPONENT_ANIMATOR], NULL};
+        out.targets[e].component_count = SCENE_COMPONENT_ANIMATOR + 1;
     }
     return out;
 }
@@ -107,10 +115,13 @@ advance_animator(scene_animator_t* a, uint32_t dt_ms) {
     const uint32_t current = a->layer.current.playhead.t_ms;
     const uint32_t previous = a->layer.previous.playhead.t_ms;
     const uint32_t blended = a->layer.blended_ms;
-    anim_layer_advance(&a->layer, dt_ms);
-    const bool changed = a->dirty || current != a->layer.current.playhead.t_ms
+    if (a->timeline_driver == 0) {
+        anim_layer_advance(&a->layer, dt_ms);
+    }
+    const bool changed = a->dirty || a->timeline_pose_pending || current != a->layer.current.playhead.t_ms
                          || previous != a->layer.previous.playhead.t_ms || blended != a->layer.blended_ms;
     a->dirty = false;
+    a->timeline_pose_pending = false;
     return changed;
 }
 
@@ -118,7 +129,8 @@ advance_animator(scene_animator_t* a, uint32_t dt_ms) {
 static bool
 paced(const scene_t* scene, scene_row_t e) {
     const scene_animator_t* a = &scene->animators[e];
-    return a->storage != NULL && a->root == ANIM_ROOT_SKELETON && a->layer.current.clip != ANIM_LAYER_CLIP_NONE
+    return a->storage != NULL && a->root == ANIM_ROOT_SKELETON
+           && (a->timeline_driver != 0 || a->layer.current.clip != ANIM_LAYER_CLIP_NONE)
            && (scene->flags[e] & SCENE_FLAG_ACTIVE);
 }
 
@@ -148,7 +160,9 @@ scene_animate_range(scene_t* scene, int first, int count, uint32_t dt_ms, const 
         const bool due = pose_due(scene, e, settings);
         /* A zero-time repose belongs to its dirty copy; others keep their debt. */
         if (!force && (dt_ms == 0 || !due)) {
-            a->owed_ms += dt_ms;
+            if (a->timeline_driver == 0) {
+                a->owed_ms += dt_ms;
+            }
             continue;
         }
         const bool advanced = advance_animator(a, dt_ms + a->owed_ms);
@@ -157,7 +171,12 @@ scene_animate_range(scene_t* scene, int first, int count, uint32_t dt_ms, const 
         if (!advanced) {
             continue;
         }
-        const anim_pose_t* pose = anim_layer_pose(&a->layer, &a->skeleton, a->joint_tables, a->counts);
+        const anim_pose_t* pose = &a->layer.shown;
+        if (a->layer.current.clip == ANIM_LAYER_CLIP_NONE) {
+            anim_pose_rest(&a->skeleton, &a->layer.shown);
+        } else {
+            pose = anim_layer_pose(&a->layer, &a->skeleton, a->joint_tables, a->counts);
+        }
         scene_skinned_renderer_t* skin = &scene->skinned_renderers[e];
         if (skin->storage != NULL) {
             anim_pose_model(&a->skeleton, pose, skin->model);
@@ -204,7 +223,8 @@ scene_animation_claim_clip(scene_claims_t* claims, const scene_anim_targets_t* t
         }
         const scene_field_mask_t bit = 1U << field;
         const scene_row_t entity = location.target;
-        if ((binding.component == ANIM_COMPONENT_CAMERA && !lens_keys_fit(&binding.curve))
+        if ((binding.component == ANIM_COMPONENT_ANIMATOR && owned != NULL)
+            || (binding.component == ANIM_COMPONENT_CAMERA && !lens_keys_fit(&binding.curve))
             || ((owned == NULL || !(owned[entity] & bit)) && !scene_field_claim(claims, entity, bit))) {
             scene_failure_t failure = {SCENE_ERR_ASSET, ASSET_ERR_FORMAT, ""};
             (void)snprintf(failure.what, sizeof failure.what, "%s.%s", claims->asset->names[entity].name,

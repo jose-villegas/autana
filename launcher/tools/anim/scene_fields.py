@@ -10,6 +10,7 @@ MAIN = pathlib.Path(__file__).resolve().parents[2] / "main"
 TRACK_HEADER = MAIN / "anim/anim_track.h"
 TRACK_FORMAT_HEADER = MAIN / "anim/anim_tracks_format.h"
 LENS_HEADER = MAIN / "scene/camera/lens.h"
+ANIMATOR_HEADER = MAIN / "scene/animator/animator.h"
 SCENE_FIELDS_EXTENSION = "AUTANA_scene_fields"
 VALUE_TYPES = read_enum(TRACK_HEADER, "anim_value_t")
 VALUE_FLOAT = VALUE_TYPES["ANIM_VALUE_FLOAT"]
@@ -17,6 +18,10 @@ VALUE_VEC2 = VALUE_TYPES["ANIM_VALUE_VEC2"]
 VALUE_VEC3 = VALUE_TYPES["ANIM_VALUE_VEC3"]
 VALUE_QUAT = VALUE_TYPES["ANIM_VALUE_QUAT"]
 VALUE_COLOUR = VALUE_TYPES["ANIM_VALUE_COLOUR"]
+VALUE_NAME = VALUE_TYPES["ANIM_VALUE_NAME"]
+NAME_HALF_BITS = read_define(TRACK_HEADER, "ANIM_NAME_HALF_BITS")
+NAME_HALF_MASK = (1 << NAME_HALF_BITS) - 1
+ANIMATOR = read_define(ANIMATOR_HEADER, "ANIM_COMPONENT_ANIMATOR")
 WIDTHS = read_define(TRACK_HEADER, "ANIM_VALUE_WIDTHS")
 CAMERA = read_define(LENS_HEADER, "ANIM_COMPONENT_CAMERA")
 TRANSFORM = read_define(TRACK_FORMAT_HEADER, "ANIM_COMPONENT_TRANSFORM")
@@ -32,14 +37,17 @@ TRANSFORM_FIELDS = {"position": "translation", "rotation": "rotation", "scale": 
 
 def discover(root=MAIN):
     """Map (component tag, field name) to (value type, step only) from C."""
-    tags, sources = {}, {}
+    tags, sources, field_lists = {}, {}, {}
     for path in sorted(root.rglob("*.[ch]")):
         source = path.read_text(encoding="utf-8")
         if "ASSET_TYPE" in source or "anim_component_fields_t" in source or "ANIM_FIELD" in source:
-            sources[path] = blank_comments(source)
+            sources[path] = blank_comments(source).replace("\\\n", " ")
     for path, source in sources.items():
         for definition in INTEGER_DEFINE.finditer(source):
             name, value = definition.groups()
+            if re.search(FIELD_CALL, value):
+                if field_lists.setdefault(name, value) != value:
+                    raise ValueError(f"{path}: conflicting field lists named {name}")
             if re.match(r"ASSET_TYPE\s*\(", value):
                 tag = read_define(path, name)
                 if tags.setdefault(name, tag) != tag:
@@ -57,17 +65,19 @@ def discover(root=MAIN):
             if define not in tags or table not in tables:
                 raise ValueError(f"{path}: cannot resolve animation component {define} with field table {table}")
             tag = tags[define]
-            declarations = FIELD_DECL.findall(tables[table])
-            if len(declarations) != len(re.findall(FIELD_CALL, tables[table])):
+            initializer = tables[table].strip()
+            body = field_lists.get(initializer, initializer)
+            declarations = FIELD_DECL.findall(body)
+            if not declarations or len(declarations) != len(re.findall(FIELD_CALL, body)):
                 raise ValueError(f"{path}: unsupported animation field declaration in {table}")
-            matched[table] = len(declarations)
+            matched[table] = len(re.findall(FIELD_CALL, initializer))
             for macro, field, value_type in declarations:
                 if value_type not in VALUE_TYPES:
                     raise ValueError(f"{path}: {field} has unknown animation value type {value_type}")
                 if (tag, field) in fields:
                     code = tag_text(tag)
                     raise ValueError(f"{path}: duplicate animation field {code}.{field}")
-                fields[tag, field] = (VALUE_TYPES[value_type], FIELD_MACROS[macro])
+                fields[tag, field] = (VALUE_TYPES[value_type], FIELD_MACROS[macro] or value_type == "ANIM_VALUE_NAME")
         if sum(matched.values()) != len(re.findall(FIELD_CALL, source)):
             raise ValueError(f"{path}: animation field declaration outside a resolved component table")
     return fields
@@ -82,3 +92,16 @@ def fields():
 def bake_inputs():
     """The component tags and field declarations used by baked track bindings."""
     return CAMERA, TRANSFORM, sorted(fields().items())
+
+
+def encode_name(value):
+    """Store a 32-bit hash as two exact float components."""
+    return float(value >> NAME_HALF_BITS), float(value & NAME_HALF_MASK)
+
+
+def decode_name(parts):
+    """Read the high and low halves of a name hash."""
+    hi, lo = parts
+    if any(not 0 <= part <= NAME_HALF_MASK or int(part) != part for part in parts):
+        raise ValueError("name values need two unsigned 16-bit halves")
+    return (int(hi) << NAME_HALF_BITS) | int(lo)

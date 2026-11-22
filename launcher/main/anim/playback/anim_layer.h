@@ -18,6 +18,22 @@ typedef struct {
     bool frozen_previous;
 } anim_layer_t;
 
+typedef struct {
+    const anim_track_t *clip, *speed, *blend;
+    const uint8_t* slots;
+} anim_blocks_t;
+
+typedef struct {
+    anim_slot_t current, previous;
+    name_hash_t current_name, previous_name;
+    uint32_t blend_ms, blended_ms;
+} anim_block_sample_t;
+
+/* seconds is the timeline sample time for t_ms, including its clamped endpoint. */
+anim_block_sample_t anim_blocks_sample(const anim_blocks_t* blocks, const anim_clip_t* clips, anim_wrap_t wrap,
+                                       uint32_t t_ms, float seconds);
+void anim_layer_set(anim_layer_t* layer, const anim_block_sample_t* sample);
+
 /* frozen.local must not alias shown.local; both poses have the skeleton's joint count. Zero joints need no storage. */
 void anim_layer_init(anim_layer_t* layer, const anim_clip_t* clips, int count, anim_pose_t shown, anim_pose_t frozen);
 /* An interrupted transition blend freezes the last displayed pose; a first play starts immediately. */

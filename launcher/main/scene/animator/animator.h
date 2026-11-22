@@ -7,20 +7,25 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "asset/asset_pack.h"
 #include "scene/scene.h"
+
+#define ANIM_COMPONENT_ANIMATOR ASSET_TYPE('A', 'N', 'M', 'R')
 
 typedef enum { ANIMATOR_CURRENT, ANIMATOR_PREVIOUS } animator_slot_t;
 
-/* skeleton_id NULL binds property clips to scene components. Asset ids are resolved once. */
+/* skeleton_id NULL binds property clips to scene components. A timeline-driven animator keeps its clip table. */
 bool animator_set_clips(entity_t entity, const char* skeleton_id, const char* const* clips, int count,
                         scene_failure_t* why);
-/* Property clips require blend_ms == 0. Skeleton clips support a transition blend. */
+/* Property clips require blend_ms == 0. Returns false when the timeline owns clip. */
 bool animator_play(entity_t entity, int clip, uint32_t blend_ms);
+/* Returns false when the timeline owns clip. */
 bool animator_set_speed(entity_t entity, animator_slot_t slot, float speed);
+/* Returns false when the timeline owns clip. */
 bool animator_set_paused(entity_t entity, animator_slot_t slot, bool paused);
 /* Whether the slot's playhead is paused; false when the entity has no clip in that slot. */
 bool animator_paused(entity_t entity, animator_slot_t slot);
-/* Samples the scene systems at once, without drawing. */
+/* Samples the scene systems at once, without drawing. Returns false when the timeline owns clip. */
 bool animator_seek(entity_t entity, animator_slot_t slot, uint32_t t_ms);
 
 int animator_clip_count(entity_t entity);

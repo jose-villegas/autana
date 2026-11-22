@@ -11,10 +11,14 @@
  */
 #pragma once
 
+#include <stdbool.h>
 #include <stdint.h>
+#include "hash/name_hash.h"
 
-#define ANIM_WIDTH_MAX    4
-#define ANIM_VALUE_WIDTHS {1, 2, 3, 4, 3}
+#define ANIM_WIDTH_MAX      4
+#define ANIM_NAME_WIDTH     2
+#define ANIM_NAME_HALF_BITS 16
+#define ANIM_VALUE_WIDTHS   {1, 2, 3, 4, 3, 2}
 
 /* The TRCK type byte indexes ANIM_VALUE_WIDTHS. */
 typedef enum {
@@ -23,6 +27,7 @@ typedef enum {
     ANIM_VALUE_VEC3,
     ANIM_VALUE_QUAT,
     ANIM_VALUE_COLOUR,
+    ANIM_VALUE_NAME,
 } anim_value_t;
 
 typedef enum {
@@ -63,6 +68,11 @@ typedef struct {
     uint32_t duration_ms; /* the last key of any track */
     uint16_t ground_mm_s; /* how fast a skeleton clip's planted foot slides back under it at playback 1; 0 for none */
 } anim_clip_t;
+
+/* Last key at or before seconds, or -1 if none. */
+int anim_track_key_at(const anim_track_t* track, float seconds);
+void anim_name_encode(name_hash_t name, float parts[ANIM_NAME_WIDTH]);
+bool anim_name_decode(const float parts[ANIM_NAME_WIDTH], name_hash_t* out);
 
 /* Writes `width` floats. Before the first key and after the last, the end
  * value, as glTF defines. */

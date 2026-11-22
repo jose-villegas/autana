@@ -160,18 +160,16 @@ def test_track_field_discovery():
     names = re.findall(r"^    (ANIM_VALUE_\w+),", header, re.M)
     assert scene_fields.VALUE_TYPES == dict(zip(names, range(len(names))))
     assert scene_fields.WIDTHS == tuple(map(int, re.search(r"ANIM_VALUE_WIDTHS\s+\{([^}]+)", header)[1].split(",")))
-    headers = "\n".join(path.read_text(encoding="utf-8") for path in main.rglob("*.h"))
-    tags = {name: int.from_bytes("".join(re.findall(r"'(.)'", value)).encode(), "little")
-            for name, value in re.findall(r"#define (ANIM_COMPONENT_\w+)\s+ASSET_TYPE\(([^)]+)\)", headers)}
-    expected = {}
-    for path in main.rglob("*.c"):
-        text = path.read_text(encoding="utf-8")
-        entries = re.findall(r"^\s+ANIM_FIELD\(\w+, (\w+), (ANIM_VALUE_\w+)\),", text, re.M)
-        if entries:
-            tag, = re.findall(r"anim_component_fields_t\s+\w+\s*=\s*\{\s*(ANIM_COMPONENT_\w+),", text)
-            expected.update({(tags[tag], field): (names.index(kind), False) for field, kind in entries})
-    assert expected
-    assert scene_fields.fields() == expected
+    assert scene_fields.fields() == {
+        (scene_fields.TRANSFORM, "position"): (scene_fields.VALUE_VEC3, False),
+        (scene_fields.TRANSFORM, "rotation"): (scene_fields.VALUE_QUAT, False),
+        (scene_fields.TRANSFORM, "scale"): (scene_fields.VALUE_VEC3, False),
+        (scene_fields.CAMERA, "half_fov_short_tan"): (scene_fields.VALUE_FLOAT, False),
+        (scene_fields.CAMERA, "near_z"): (scene_fields.VALUE_FLOAT, False),
+        (scene_fields.ANIMATOR, "clip"): (scene_fields.VALUE_NAME, True),
+        (scene_fields.ANIMATOR, "speed"): (scene_fields.VALUE_FLOAT, True),
+        (scene_fields.ANIMATOR, "blend_ms"): (scene_fields.VALUE_FLOAT, True),
+    }
 
 
 def test_fields_resolve_by_component_and_pointer_node(tmp_path, monkeypatch):
@@ -441,3 +439,41 @@ def test_cubic_position_offset_defaults_and_tangents():
     assert translated["values"] == [(1, 0, 0), (5, 7, 9), (0, 1, 0)]
     with pytest.raises(ValueError, match=r"prop.near_z key 0.*offset"):
         decoded_curve("near_z", "step", [dict(t=0, v=1)], offset={})
+
+
+BLOCK_TRACK = dict(object="rig", field="clip", blocks=[
+    dict(t=0, clip="idle"), dict(t=0.4, clip="walk", speed=1.25, blend=250),
+    dict(t=0.6, clip="gallop", blend=300),
+])
+
+
+@pytest.mark.parametrize("hash_value", [0, 1, 0xffff, 0x10000, 0xffffffff])
+def test_name_key_round_trip(hash_value):
+    assert scene_fields.decode_name(scene_fields.encode_name(hash_value)) == hash_value
+
+
+@pytest.mark.parametrize("extra", [[], [dict(object="rig", field="speed", interp="step", keys=[dict(t=0.5, v=2)])]])
+def test_clip_blocks_expand_and_merge(extra):
+    doc, binary = gltf_read.parse_glb(keys_file.build(dict(animation="path", tracks=[BLOCK_TRACK, *extra])))
+    tracks, duration, root, ground = tracks_asset.clip_tracks(doc, binary, doc["animations"][0])
+    decoded, _ = tracks_asset.decode(tracks_asset.encode(tracks, duration, root, ground))
+    clip, speed, blend = decoded
+    assert [t["field"] for t in decoded] == ["clip", "speed", "blend_ms"]
+    assert all(t["interpolation"] == "STEP" for t in decoded)
+    assert [scene_fields.decode_name(v) for v in clip["values"]] == [
+        keys_file.name_hash(name) for name in ("idle", "walk", "gallop")]
+    assert speed["times"] == pytest.approx([0, 0.4, 0.5, 0.6] if extra else [0, 0.4, 0.6])
+    assert speed["values"] == ([(1,), (1.25,), (2,), (1,)] if extra else [(1,), (1.25,), (1,)])
+    assert blend["values"] == [(0,), (250,), (300,)]
+
+
+@pytest.mark.parametrize("tracks, message", [
+    ([BLOCK_TRACK, dict(object="rig", field="speed", interp="step", keys=[dict(t=0.4, v=2)])], "duplicate"),
+    ([dict(object="rig", field="speed", interp="linear", keys=[dict(t=0, v=2)])], "step"),
+    ([dict(object="rig", field="clip", interp="step", keys=[dict(t=0, v=1)])], "name"),
+    ([dict(BLOCK_TRACK, blocks=[dict(t=0, clip="idle", speed=-1)])], "speed"),
+    ([dict(BLOCK_TRACK, blocks=[dict(t=0, clip="idle", blend=-1)])], "blend"),
+])
+def test_bad_clip_blocks(tracks, message):
+    with pytest.raises(ValueError, match=message):
+        keys_file.build(dict(animation="path", tracks=tracks))

@@ -78,11 +78,10 @@ blend(const anim_track_t* track, int lo, float seconds, float* out) {
     }
 }
 
-/* The last key at or before `seconds`, given seconds is inside the track. */
-static int
-segment_at(const anim_track_t* track, float seconds) {
-    int lo = 0;
-    int hi = track->count - 1;
+int
+anim_track_key_at(const anim_track_t* track, float seconds) {
+    int lo = -1;
+    int hi = track->count;
     while (hi - lo > 1) {
         const int mid = (lo + hi) / 2;
         if (track->times[mid] <= seconds) {
@@ -101,7 +100,8 @@ anim_track_sample(const anim_track_t* track, float seconds, float out[ANIM_WIDTH
     } else if (seconds >= track->times[track->count - 1]) {
         copy_key(track, track->count - 1, out);
     } else {
-        blend(track, segment_at(track, seconds), seconds, out);
+        const int key = anim_track_key_at(track, seconds);
+        blend(track, key < 0 ? 0 : key, seconds, out);
     }
 }
 
@@ -111,4 +111,21 @@ anim_quat_rotate(const float q[4], const float v[3], float out[3]) {
     out[0] = r.x;
     out[1] = r.y;
     out[2] = r.z;
+}
+
+void
+anim_name_encode(name_hash_t name, float parts[ANIM_NAME_WIDTH]) {
+    parts[0] = (float)(name >> ANIM_NAME_HALF_BITS);
+    parts[1] = (float)(name & UINT16_MAX);
+}
+
+bool
+anim_name_decode(const float parts[ANIM_NAME_WIDTH], name_hash_t* out) {
+    for (int i = 0; i < ANIM_NAME_WIDTH; i++) {
+        if (!(parts[i] >= 0.0F && parts[i] <= (float)UINT16_MAX) || parts[i] != (float)(uint16_t)parts[i]) {
+            return false;
+        }
+    }
+    *out = ((name_hash_t)parts[0] << ANIM_NAME_HALF_BITS) | (name_hash_t)parts[1];
+    return true;
 }

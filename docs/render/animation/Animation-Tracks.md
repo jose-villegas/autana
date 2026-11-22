@@ -214,13 +214,48 @@ keys = [{ t = 0, v = 0.25 }, { t = 3, v = 0.75 }]
 | `offset` on `rotation` | Left-multiply values and tangents by the offset rotation. |
 
 [`scene_fields.py`](../../../launcher/tools/anim/scene_fields.py) reads the
-component tags and `ANIM_FIELD` tables from C. An omitted offset member
-defaults to zero position or identity rotation.
+component tags and field tables from C. A field declared with
+`ANIM_FIELD_STEP` requires `interp = "step"`. Name values are authored
+as strings and use step interpolation.
+
+An omitted offset member defaults to zero position or identity rotation.
 
 Camera shorthand uses `node`, `animation` and `[[keys]]` with `t`,
 `eye` and `look_at`. Translation uses Catmull-Rom<sup>[[20]](../../Citations.md#catmull-1974)</sup>.
 Rotation uses short-way quaternion interpolation with +Y up. Repeat the
 first key at the end to close the loop.
+
+#### Clip blocks
+
+A timeline's `clip` track can use `blocks` for a skinned object's animator.
+Each block starts at `t` seconds and names an entry in the animator's
+`clips` list.
+
+```toml
+animation = "performance"
+
+[[tracks]]
+object = "subject"
+field = "clip"
+blocks = [
+    { t = 0, clip = "idle" },
+    { t = 6.5, clip = "glance", speed = 1, blend = 250 },
+    { t = 8, clip = "walk", speed = 1.15, blend = 300 },
+]
+
+[[tracks]]
+object = "subject"
+field = "speed"
+interp = "step"
+keys = [{ t = 9, v = 1.25 }]
+```
+
+Each block adds a step key to `ANMR.clip`, `ANMR.speed` and
+`ANMR.blend_ms`. The defaults are speed 1 and a blend of 0 ms. An extra
+step speed track can key between block starts. Duplicate speed times fail.
+
+See the [scene animator](../scene/Scene-Files.md#animator) for how block time
+and blends are sampled.
 
 ### Exported animations
 
@@ -259,7 +294,7 @@ pieces make that work:
    field, and the value types must match. `anim_bind_field()` does those last
    two steps for a caller that finds the object some other way. Resolution is
    the only place names are compared; the result is a pointer to the field.
-3. **Failure.** An unknown path, component or field, or a type mismatch,
+3. **Failure.** An unknown path, component or field, a type mismatch or an interpolation mismatch
    returns its own `anim_bind_status_t` with the binding's index, and the
    caller fails the load, naming the binding with `anim_binding_describe()`.
    Nothing is skipped.

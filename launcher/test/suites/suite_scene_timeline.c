@@ -30,15 +30,23 @@ enum {
     SUBJECT = 0,
     KEYS = 2,
     TRACKS = 6,
+    BLOCK_KEYS = 3,
+    SPEED_KEYS = 4,
+    TRACK_CAPACITY = TRACKS + BLOCK_KEYS,
     RANDOM_SEED = 0x7351U,
-    TIMES = TEST_TRACKS_HEADER_SIZE + TRACKS * (TEST_TRACK_ROW_SIZE + TEST_TRACK_STRING_SLOT),
+    TIMES = TEST_TRACKS_HEADER_SIZE + TRACK_CAPACITY * (TEST_TRACK_ROW_SIZE + TEST_TRACK_STRING_SLOT),
     CAMERA_VALUES = TIMES + KEYS * sizeof(float),
     SUBJECT_VALUES = CAMERA_VALUES + KEYS * 3 * sizeof(float),
     FOV_VALUES = SUBJECT_VALUES + KEYS * 3 * sizeof(float),
     NEAR_VALUES = FOV_VALUES + KEYS * sizeof(float),
     ROTATION_VALUES = NEAR_VALUES + KEYS * sizeof(float),
     SCALE_VALUES = ROTATION_VALUES + KEYS * 4 * sizeof(float),
-    CLIP_BYTES = SCALE_VALUES + KEYS * 3 * sizeof(float)
+    BLOCK_TIMES = SCALE_VALUES + KEYS * 3 * sizeof(float),
+    BLOCK_NAMES = BLOCK_TIMES + BLOCK_KEYS * sizeof(float),
+    BLOCK_BLENDS = BLOCK_NAMES + BLOCK_KEYS * ANIM_NAME_WIDTH * sizeof(float),
+    SPEED_TIMES = BLOCK_BLENDS + BLOCK_KEYS * sizeof(float),
+    SPEED_VALUES = SPEED_TIMES + SPEED_KEYS * sizeof(float),
+    CLIP_BYTES = SPEED_VALUES + SPEED_KEYS * sizeof(float)
 };
 
 static const char CLIP[] = "timeline.clip";
@@ -155,6 +163,49 @@ open_pack(test_pack_t* writer, asset_pack_t* pack) {
 }
 
 static void
+put_blocks(test_pack_t* writer, const char* last_clip) {
+    uint8_t* clip = writer->bytes + writer->end - test_pack_aligned(CLIP_BYTES);
+    const test_track_t tracks[] = {
+        {"red", "clip", ANIM_COMPONENT_ANIMATOR, ANIM_VALUE_NAME, BLOCK_TIMES, BLOCK_NAMES, BLOCK_KEYS, ANIM_STEP},
+        {"red", "speed", ANIM_COMPONENT_ANIMATOR, ANIM_VALUE_FLOAT, SPEED_TIMES, SPEED_VALUES, SPEED_KEYS, ANIM_STEP},
+        {"red", "blend_ms", ANIM_COMPONENT_ANIMATOR, ANIM_VALUE_FLOAT, BLOCK_TIMES, BLOCK_BLENDS, BLOCK_KEYS,
+         ANIM_STEP},
+    };
+    const size_t strings = TEST_TRACKS_HEADER_SIZE + TRACK_CAPACITY * TEST_TRACK_ROW_SIZE;
+    const size_t old_strings = TEST_TRACKS_HEADER_SIZE + TRACKS * TEST_TRACK_ROW_SIZE;
+    memmove(clip + strings, clip + old_strings, TRACKS * TEST_TRACK_STRING_SLOT);
+    test_tracks_header(clip, TRACK_CAPACITY, DURATION);
+    const char* const names[] = {"idle", "walk", last_clip};
+    const float times[] = {0.0F, 0.25F, 0.625F};
+    const float speed_times[] = {0.0F, 0.25F, 0.5F, 0.625F};
+    const float speeds[] = {1.0F, 2.0F, 0.5F, 1.25F};
+    const float blends[] = {0, 500, 250};
+    float values[BLOCK_KEYS * ANIM_NAME_WIDTH];
+    for (int i = 0; i < BLOCK_KEYS; i++) {
+        anim_name_encode(name_hash(names[i]), values + i * ANIM_NAME_WIDTH);
+        test_track_row(clip, TRACKS + i, &tracks[i]);
+    }
+    test_pack_put_floats(clip + BLOCK_TIMES, times, BLOCK_KEYS);
+    test_pack_put_floats(clip + BLOCK_NAMES, values, BLOCK_KEYS * ANIM_NAME_WIDTH);
+    test_pack_put_floats(clip + BLOCK_BLENDS, blends, BLOCK_KEYS);
+    test_pack_put_floats(clip + SPEED_TIMES, speed_times, SPEED_KEYS);
+    test_pack_put_floats(clip + SPEED_VALUES, speeds, SPEED_KEYS);
+}
+
+static void
+test_missing_block_clip_fails_load(void) {
+    test_pack_t writer;
+    fixture(&writer, 1, 0, 0, false, CAMERA_NAME, POSITION, DURATION);
+    put_blocks(&writer, "missing");
+    asset_pack_t pack;
+    open_pack(&writer, &pack);
+    scene_failure_t failure;
+    TEST_ASSERT_TRUE(scene_failure(load(&pack), &failure));
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, failure.asset);
+    TEST_ASSERT_NOT_NULL(strstr(failure.what, "red"));
+}
+
+static void
 test_seek_matches_play_at_the_same_millisecond(void) {
     rng_t random;
     rng_seed(&random, RANDOM_SEED);
@@ -163,6 +214,7 @@ test_seek_matches_play_at_the_same_millisecond(void) {
         test_pack_t writer;
         uint8_t* entry = fixture(&writer, 1, 0, 0, false, CAMERA_NAME, POSITION, DURATION);
         part_row(entry, SCENE_ASSET_TIMELINE)[offsetof(scene_asset_timeline_t, wrap)] = wraps[mode];
+        put_blocks(&writer, "gallop");
         asset_pack_t pack;
         open_pack(&writer, &pack);
         for (int i = 0; i < SAMPLES; i++) {
@@ -180,7 +232,11 @@ test_seek_matches_play_at_the_same_millisecond(void) {
             }
             scene_skins_settle(b);
             b->animators[SUBJECT].drawn_radius_px = INFINITY;
-            TEST_ASSERT_TRUE(animator_seek(scene_row_entity(b, SUBJECT), ANIMATOR_CURRENT, target));
+            const entity_t subject = scene_row_entity(b, SUBJECT);
+            TEST_ASSERT_FALSE(animator_play(subject, 1, 0));
+            TEST_ASSERT_FALSE(animator_set_speed(subject, ANIMATOR_CURRENT, 0.5F));
+            TEST_ASSERT_FALSE(animator_set_paused(subject, ANIMATOR_CURRENT, true));
+            TEST_ASSERT_FALSE(animator_seek(subject, ANIMATOR_CURRENT, target));
             timeline_seek(sought, target);
             const uint32_t expected =
                 wraps[mode] == ANIM_LOOP ? target % DURATION : (target < DURATION ? target : DURATION);
@@ -192,8 +248,18 @@ test_seek_matches_play_at_the_same_millisecond(void) {
                 TEST_ASSERT_EQUAL_MEMORY(&a->locals[e].scale, &b->locals[e].scale, sizeof(vec3f_t));
             }
             TEST_ASSERT_EQUAL_MEMORY(&a->cameras[0].lens, &b->cameras[0].lens, sizeof a->cameras[0].lens);
+            const anim_layer_t* layer_a = &a->animators[SUBJECT].layer;
+            const anim_layer_t* layer_b = &b->animators[SUBJECT].layer;
+            TEST_ASSERT_EQUAL_MEMORY(&layer_a->current, &layer_b->current, sizeof layer_a->current);
+            TEST_ASSERT_EQUAL_MEMORY(&layer_a->previous, &layer_b->previous, sizeof layer_a->previous);
+            TEST_ASSERT_EQUAL_UINT32(layer_a->blend_ms, layer_b->blend_ms);
+            TEST_ASSERT_EQUAL_UINT32(layer_a->blended_ms, layer_b->blended_ms);
+            TEST_ASSERT_FALSE(layer_b->frozen_previous);
             const scene_skinned_renderer_t* x = &a->skinned_renderers[SUBJECT];
             const scene_skinned_renderer_t* y = &b->skinned_renderers[SUBJECT];
+            const uint32_t second_start = 250, third_start = 625;
+            const int active = expected < second_start ? 0 : expected < third_start ? 1 : 2;
+            TEST_ASSERT_EQUAL_INT(active, layer_b->current.clip);
             TEST_ASSERT_NOT_NULL(x->palette);
             TEST_ASSERT_NOT_NULL(y->palette);
             TEST_ASSERT_EQUAL_MEMORY(x->palette, y->palette, x->skin.joint_count * sizeof(*x->palette));
@@ -901,6 +967,7 @@ run_scene_timeline_suite(void) {
     RUN_TEST(test_camera_cut_on_loop_wrap);
     RUN_TEST(test_timeline_seek_clears_fraction);
     RUN_TEST(test_scene_rejects_overlapping_tables);
+    RUN_TEST(test_missing_block_clip_fails_load);
     RUN_TEST(test_seek_matches_play_at_the_same_millisecond);
     RUN_TEST(test_clock_and_immediate_seek);
     RUN_TEST(test_zero_duration_loop_holds_zero);

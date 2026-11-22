@@ -124,11 +124,37 @@ typedef struct {
     anim_bound_t* fields;
 } scene_animator_clip_t;
 
+enum {
+    ANIMATOR_FIELD_CLIP,
+    ANIMATOR_FIELD_SPEED,
+    ANIMATOR_FIELD_BLEND_MS,
+    ANIMATOR_FIELD_COUNT,
+    SCENE_ANIMATOR_FIRST_FIELD = ANIM_POSE_TRANSFORM_FIELD_COUNT + LENS_FIELD_COUNT,
+    SCENE_ANIMATOR_CLIP_BIT = 1U << (SCENE_ANIMATOR_FIRST_FIELD + ANIMATOR_FIELD_CLIP),
+};
+
+extern const anim_component_fields_t ANIMATOR_FIELDS;
+
+typedef struct {
+    anim_track_t curves[ANIMATOR_FIELD_COUNT];
+    const uint8_t* slots;
+    scene_row_t entity;
+} scene_timeline_driver_t;
+
+typedef struct {
+    int drivers;
+    size_t keys;
+    uint8_t* slots;
+} scene_timeline_blocks_t;
+
 /* Separate from property animators so the scene root has one shared clock. */
 typedef struct {
     anim_tracks_t tracks;
     anim_playhead_t clock;
     uint32_t applied_ms;
+    int field_count, driver_count;
+    scene_timeline_driver_t* drivers;
+    const uint8_t* slots;
     bool dirty;
     anim_bound_t fields[];
 } scene_timeline_t;
@@ -158,12 +184,13 @@ typedef struct {
     int* counts;
     uint8_t root;
     anim_wrap_t wrap;
-    float drawn_radius_px; /* last draw's size when due; cleared each step so undrawn scenes use the far tier */
-    uint32_t owed_ms;      /* skipped time is charged at the next pose, before playback controls change */
-    uint32_t phase;        /* stable slot spreads copies' poses across frames */
-    int interval;          /* zero selects the first tier without a hysteresis history */
-    int tier;              /* retained inside the boundary band to avoid rate flicker */
-    bool dirty, posed;
+    float drawn_radius_px;    /* last draw's size when due; cleared each step so undrawn scenes use the far tier */
+    uint32_t owed_ms;         /* skipped time is charged at the next pose, before playback controls change */
+    uint32_t phase;           /* stable slot spreads copies' poses across frames */
+    int interval;             /* zero selects the first tier without a hysteresis history */
+    int tier;                 /* retained inside the boundary band to avoid rate flicker */
+    uint16_t timeline_driver; /* One-based index in the scene timeline. */
+    bool dirty, posed, timeline_pose_pending;
 } scene_animator_t;
 
 typedef struct {
@@ -367,6 +394,9 @@ void scene_animation_apply_fields(scene_t* scene, const anim_bound_t* fields, in
 asset_status_t scene_animator_read_clip(const asset_pack_t* pack, const char* id, uint8_t root, anim_tracks_t* out);
 bool scene_animator_set_clips(scene_t* scene, scene_row_t row, const char* skeleton_id, const char* const* ids,
                               int count, bool replace, scene_failure_t* why);
+scene_failure_t scene_timeline_resolve(const scene_asset_t* asset, const scene_anim_targets_t* targets,
+                                       const scene_field_mask_t* writes, const anim_tracks_t* timeline,
+                                       scene_timeline_blocks_t* blocks);
 scene_failure_t scene_timeline_bind(scene_t* scene);
 void scene_timeline_step(scene_t* scene, uint32_t dt_ms);
 /* An animator or light now exists on `entity`: adds it to `staged` once. A

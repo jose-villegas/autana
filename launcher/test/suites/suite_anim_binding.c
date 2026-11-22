@@ -18,7 +18,7 @@ typedef struct {
 static const anim_field_t TRANSFORM_FIELDS[] = {
     ANIM_FIELD(transform_t, position, ANIM_VALUE_VEC3),
     ANIM_FIELD(transform_t, rotation, ANIM_VALUE_QUAT),
-    ANIM_FIELD(transform_t, scale, ANIM_VALUE_VEC3),
+    ANIM_FIELD_STEP(transform_t, scale, ANIM_VALUE_VEC3),
 };
 static const anim_component_fields_t TRANSFORM = {
     ANIM_COMPONENT_TRANSFORM,
@@ -69,6 +69,10 @@ test_resolution_errors_report_first_index(void) {
     anim_bound_t field;
     TEST_ASSERT_EQUAL_INT(ANIM_BIND_OK, anim_bind_field(&binding, components, 1, NULL, 0, &field));
     TEST_ASSERT_EQUAL_PTR(transform.position, field.target);
+    anim_binding_t step;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_binding_at(&f.clip, 2, &step));
+    step.curve.interp = ANIM_LINEAR;
+    TEST_ASSERT_EQUAL_INT(ANIM_BIND_ERR_INTERP, anim_bind_field(&step, components, 1, NULL, 0, &field));
     binding.component = ASSET_TYPE('T', 'E', 'S', 'T');
     TEST_ASSERT_EQUAL_INT(ANIM_BIND_ERR_COMPONENT, anim_bind_field(&binding, components, 1, NULL, 0, &field));
     f.clip.root = ANIM_ROOT_SKELETON;
@@ -138,8 +142,8 @@ test_field_binding_distinguishes_hash_collisions(void) {
     const char* first = "costarring";
     const char* second = "liquid";
     TEST_ASSERT_EQUAL_UINT32(name_hash(first), name_hash(second));
-    const anim_field_t fields[] = {{first, ANIM_VALUE_VEC3, offsetof(transform_t, position)},
-                                   {second, ANIM_VALUE_VEC3, offsetof(transform_t, scale)}};
+    const anim_field_t fields[] = {{first, ANIM_VALUE_VEC3, offsetof(transform_t, position), false},
+                                   {second, ANIM_VALUE_VEC3, offsetof(transform_t, scale), false}};
     const anim_component_fields_t component = {ANIM_COMPONENT_TRANSFORM, fields, 2};
     const anim_component_ref_t reference = {&component, &transform};
     anim_binding_t binding;

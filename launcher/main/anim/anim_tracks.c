@@ -41,7 +41,7 @@ row_fields_valid(const anim_tracks_t* tracks, const uint8_t* row) {
         || !string_fits(tracks, asset_read_u16(row + ANIM_TRACKS_ROW_FIELD))) {
         return false;
     }
-    if (asset_read_u16(row + ANIM_TRACKS_ROW_KEYS) == 0 || row[ANIM_TRACKS_ROW_TYPE] > ANIM_VALUE_COLOUR
+    if (asset_read_u16(row + ANIM_TRACKS_ROW_KEYS) == 0 || row[ANIM_TRACKS_ROW_TYPE] > ANIM_VALUE_NAME
         || row[ANIM_TRACKS_ROW_INTERP] > ANIM_CUBIC || asset_read_u32(row + ANIM_TRACKS_ROW_COMPONENT) == 0) {
         return false;
     }
@@ -89,7 +89,21 @@ check_row(const anim_tracks_t* tracks, const uint8_t* row) {
     }
     const float* times = (const float*)(const void*)(tracks->base + asset_read_u32(row + ANIM_TRACKS_ROW_TIMES));
     const float* values = (const float*)(const void*)(tracks->base + asset_read_u32(row + ANIM_TRACKS_ROW_VALUES));
-    return times_valid(times, keys) && values_finite(values, values_count) ? ASSET_OK : ASSET_ERR_FORMAT;
+    if (!times_valid(times, keys) || !values_finite(values, values_count)) {
+        return ASSET_ERR_FORMAT;
+    }
+    if (type == ANIM_VALUE_NAME) {
+        if (interp != ANIM_STEP) {
+            return ASSET_ERR_FORMAT;
+        }
+        for (uint32_t i = 0; i < keys; i++) {
+            name_hash_t name;
+            if (!anim_name_decode(values + i * ANIM_NAME_WIDTH, &name)) {
+                return ASSET_ERR_FORMAT;
+            }
+        }
+    }
+    return ASSET_OK;
 }
 
 asset_status_t
