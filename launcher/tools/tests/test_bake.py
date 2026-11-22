@@ -709,7 +709,7 @@ class FittedBakeCase(unittest.TestCase):
                                return_value={"bake": lock, "poses": {}, "mesh_cpu_vendor": mesh_cpu_vendor}), \
                 mock.patch.object(bake, "write_lock", side_effect=lambda rows, **kwargs: written.append((rows, kwargs))), \
                 mock.patch.object(bake, "runs_made", return_value=made or {}), \
-                mock.patch.object(bake, "run_status", return_value=status), \
+                mock.patch.object(bake, "run_status", return_value=status) as asked, \
                 mock.patch.object(bake, "cpu_vendor", return_value=cpu), \
                 mock.patch.object(produce, "produce", side_effect=stub), \
                 contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
@@ -717,7 +717,7 @@ class FittedBakeCase(unittest.TestCase):
         rows, kwargs = written[0] if written else ([], {})
         return types.SimpleNamespace(code=code, out=out.getvalue(), err=err.getvalue(), produced=produced, fresh=fresh,
                                      rows={row["output"]: row for row in rows}, written=bool(written),
-                                     mesh_cpu_vendor=kwargs.get("mesh_cpu_vendor"))
+                                     mesh_cpu_vendor=kwargs.get("mesh_cpu_vendor"), status_asked=asked.call_count)
 
     def locked(self, sha256, **fields):
         """The lock holding each start with the bytes `sha256` and each reference set with REFERENCE_SHA256."""
@@ -842,6 +842,7 @@ class FittedBakeTests(FittedBakeCase):
     def test_a_lock_without_a_run_asks_no_status(self):
         done = self.command(["lock", "--partial"], self.locked(LOCKED_SHA256, run=RUN), status="in_progress")
         self.assertEqual(done.code, 0, done.err)
+        self.assertEqual(done.status_asked, 0)
 
     def test_kinds_repeat_and_levels_key_on_the_fit_the_same_command_made(self):
         done = self.command(["bake", "--kind", "fit", "--kind", "levels"], self.locked(LOCKED_SHA256, run=RUN))
