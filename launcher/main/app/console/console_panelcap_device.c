@@ -23,11 +23,25 @@
 bool console_panelcap_on;
 static panelcap_t capture;
 static atomic_bool sender_done;
-static uint64_t bytes_sent;
 static bool launcher_visit;
 static bool redraw_full;
 static console_stream_t* stream;
 static panelcap_encoder_t* encoder;
+
+static struct {
+    uint64_t bytes;
+    uint64_t encode_us;
+    uint64_t write_us;
+    uint32_t sent;
+    uint32_t failed;
+    bool last_part;
+} sender;
+
+static struct {
+    uint64_t window_us;
+    uint64_t redraw_pixels;
+    uint32_t redraws;
+} present;
 
 static void
 redraw(const void* payload) {
@@ -39,10 +53,13 @@ redraw(const void* payload) {
             return;
         }
         if (redraw_full || !gfx_mode_has_framebuffer(gfx_mode_current())) {
+            present.redraw_pixels += PANELCAP_WIDTH * PANELCAP_HEIGHT;
             gfx_request_full_redraw();
         } else {
+            present.redraw_pixels += recti_area(box);
             gfx_mark_dirty(box.x, box.y, box.w, box.h);
         }
+        present.redraws++;
         redraw_full = false;
     }
 }
@@ -59,38 +76,54 @@ console_panelcap_begin_active(void) {
 void
 console_panelcap_commit_active(void) {
     redraw_full |= !recti_is_empty(capture.owed) && gfx_frame_expanded();
+    const uint32_t previous = capture.presents;
     panelcap_commit(&capture);
+    if (capture.presents != previous) {
+        console_stream_wake(stream);
+    }
 }
 
 void
 console_panelcap_window(int x0, int y0, int x1, int y1, const gfx_color_t* pixels) {
+    const int64_t started = timing_now_us();
     panelcap_window(&capture, x0, y0, x1, y1, pixels);
+    present.window_us += (uint64_t)(timing_now_us() - started);
 }
 
 static size_t
-fill(void* arg, uint8_t* packet, size_t capacity) {
+fill(void* arg, uint8_t* packet, size_t capacity, uint32_t write_us, bool sent) {
     panelcap_t* source = arg;
+    if (encoder->part != 0) {
+        sender.write_us += write_us;
+        if (sender.last_part || !sent) {
+            sender.sent += sent;
+            sender.failed += !sent;
+            *encoder = (panelcap_encoder_t){0};
+            panelcap_release(source);
+            return 0;
+        }
+    }
     if (panelcap_peek(source) == NULL) {
         return 0;
     }
-    size_t count = panelcap_fill(source, encoder, packet, capacity);
-    if (count == 0) {
-        *encoder = (panelcap_encoder_t){0};
-        panelcap_release(source);
-    }
+    const int64_t started = timing_now_us();
+    const size_t count = panelcap_fill(source, encoder, packet, capacity);
+    sender.encode_us += (uint64_t)(timing_now_us() - started);
+    sender.last_part = packet[PANELCAP_PART_AT_LAST] != 0;
     return count;
 }
 
 static void
 ended(uint64_t sent, uint64_t packets, void* arg) {
     (void)arg;
-    bytes_sent = sent - (packets * PANELCAP_PART_HEAD_BYTES);
+    sender.bytes = sent - (packets * PANELCAP_PART_HEAD_BYTES);
     atomic_store_explicit(&sender_done, true, memory_order_release);
 }
 
 static void
 stop(void) {
     gfx_present_drain();
+    const int64_t stop_us = timing_now_us();
     console_panelcap_on = false;
     console_stream_close(stream, ended, NULL);
     /* The frame owner frees the app block after the sender's last read. */
@@ -100,8 +133,21 @@ stop(void) {
     memory_free(encoder);
     encoder = NULL;
     char line[PANELCAP_LINE_BYTES];
-    (void)snprintf(line, sizeof line, "PANELCAP_END presents=%lu dropped=%lu bytes=%llu",
-                   (unsigned long)capture.presents, (unsigned long)capture.dropped, (unsigned long long)bytes_sent);
+    (void)snprintf(line, sizeof line, "PANELCAP_STATS encode_us=%llu write_us=%llu link_failed=%lu",
+                   (unsigned long long)sender.encode_us, (unsigned long long)sender.write_us,
+                   (unsigned long)sender.failed);
+    console_emit_line_bounded(line);
+    (void)snprintf(line, sizeof line, "PANELCAP_STATS fps_gate=%lu image_busy=%lu redraw_wait=%lu",
+                   (unsigned long)capture.dropped_fps, (unsigned long)capture.dropped_busy,
+                   (unsigned long)capture.dropped_redraw);
+    console_emit_line_bounded(line);
+    (void)snprintf(line, sizeof line, "PANELCAP_STATS window_us=%llu copy_bytes=%llu redraws=%lu redraw_pixels=%llu",
+                   (unsigned long long)present.window_us, (unsigned long long)capture.copied_bytes,
+                   (unsigned long)present.redraws, (unsigned long long)present.redraw_pixels);
+    console_emit_line_bounded(line);
+    (void)snprintf(line, sizeof line, "PANELCAP_END presents=%lu dropped=%lu bytes=%llu stop_us=%lld",
+                   (unsigned long)sender.sent, (unsigned long)capture.dropped, (unsigned long long)sender.bytes,
+                   (long long)stop_us);
     console_emit_line_bounded(line);
 }
 
@@ -158,6 +204,8 @@ console_panelcap_start(unsigned fps, console_reply_fn reply) {
     uint8_t* scratch = packet + CONSOLE_PACKET_BYTES_MAX;
     (void)panelcap_init(&capture, image, fps);
     redraw_full = false;
+    memset(&sender, 0, sizeof sender);
+    memset(&present, 0, sizeof present);
     *encoder = (panelcap_encoder_t){0};
     atomic_store_explicit(&sender_done, false, memory_order_relaxed);
     stream = console_stream_open_source(PANELCAP_PACKET_TAG, fill, &capture, packet, scratch);

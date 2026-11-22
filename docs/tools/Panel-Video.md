@@ -40,7 +40,7 @@ title Packet payload, one cell a byte
 
 | Meaning |
 |---|
-| Each present attempt advances the device sequence. |
+| Each present with a successful panel write advances the device sequence. |
 | Parts of a published present start at zero and advance by one. |
 | A one marks the final part. Other parts carry zero. |
 | The slices join to form one present. |
@@ -93,18 +93,29 @@ title Window header, one cell a byte
 | Storage | One `PANELCAP_IMAGE_BYTES` image, allocated at START from the app heap together with the encoder and packet buffers. |
 | Copies | Capture copies successful panel writes into PSRAM while the image is free. |
 | Window merge | The latest write wins. Overlapping and rectangular adjacent regions merge. Overflow collapses the list to its bounding box. |
-| Publication | The FPS gate controls when a commit hands the image to the sender. Windows from intervening presents accumulate. |
+| Publication | The FPS gate controls when a commit hands accumulated windows to the sender. Empty commits consume no FPS slot. |
 | Redraw | START requests a full redraw. After a lost window, publication waits for the frame owner to mark the lost bounds dirty. Bands, expanded pictures, and indexed mode request a full redraw. |
-| Sender | The shared console stream task packs the published image once and releases it after the last packet goes out. |
+| Sender | A low-priority console stream task packs the published image and releases it after the last packet or a write failure. |
 | App memory | Recording uses `PANELCAP_CAPTURE_BYTES` of app heap. From the launcher, START takes the app heap for the visit. Starting an app from there ends the recording with `PANELCAP STOP app switch`. |
 | Short on memory | START refuses with `PANELCAP ERR no memory: need N, largest free M` in bytes. The host exits non-zero. |
 | App switch | Stops recording with `PANELCAP STOP app switch`. The usual drain and END follow. |
 | STOP | Drains the published image, frees its app memory, and sends END. A stalled USB write ends the drain. |
-| Totals | END counts published presents, unpublished presents, and stream bytes excluding continuation headers. |
+| Totals | END counts presents fully queued for USB, dropped presents with panel writes, and queued stream bytes excluding continuation headers. |
 | Refusal | `PANELCAP_REFUSED: <reason>` for bad syntax or FPS, START while on, STOP while off, or no memory for the sender. A missing image gets `PANELCAP ERR no memory: need N, largest free M`. |
 | Release | A release image cannot answer START or STOP. The host releases the lock on its END deadline. |
 | Reassembly | A missing, repeated or out-of-order part discards the present. The next sequence starts at part zero. |
+| Host drain | The serial reader queues packets for a separate video worker. A full queue stops the capture with an error while the reader drains through END. |
 | Canvas | The host applies complete presents in window order and uses the screenshot turn when emitting a frame. Missing updates leave previous pixels in place. |
-| Output | The MP4 samples the latest present at each 30 Hz device timestamp through the final timestamp. See [the command contract](../cli/Watch.md#panel-video). |
+| Output | The MP4 samples the latest present at 30 Hz until the device's STOP timestamp. See [the command contract](../cli/Watch.md#panel-video). |
 
 Recording adds redraw work and a PSRAM copy. Both can change frame timing.
+
+`PANELCAP_STATS` reports the capture cost just before END.
+
+| Fields | Measurement |
+|---|---|
+| `encode_us`, `write_us` | Elapsed time in PackBits and in packet framing and USB queue writes. |
+| `link_failed` | Presents abandoned after a USB queue write timed out. |
+| `fps_gate`, `image_busy`, `redraw_wait` | Dropped updates by first blocking reason. A present contributes at most one drop. |
+| `window_us`, `copy_bytes` | Elapsed time in the present-path capture hook and bytes copied to the capture image. |
+| `redraws`, `redraw_pixels` | Capture-driven redraw requests and the area they mark dirty. |

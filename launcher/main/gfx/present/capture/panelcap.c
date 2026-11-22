@@ -65,9 +65,10 @@ take_image(panelcap_t* capture) {
 
 bool
 panelcap_begin(panelcap_t* capture, uint64_t us) {
-    capture->seq++;
     capture->present_us = us;
     capture->in_present = true;
+    capture->had_window = false;
+    capture->skipped_window = false;
     capture->writable = take_image(capture);
     if (!capture->writable || capture->redraw_pending || recti_is_empty(capture->owed)) {
         return false;
@@ -90,15 +91,18 @@ panelcap_window(panelcap_t* capture, unsigned x0, unsigned y0, unsigned x1, unsi
         return;
     }
     recti_t box = recti_from_edges((int)x0, (int)y0, (int)x1, (int)y1);
+    capture->had_window = true;
     if (!capture->writable) {
         capture->writable = take_image(capture);
         if (!capture->writable) {
+            capture->skipped_window = true;
             capture->owed = recti_union(capture->owed, box);
             return;
         }
     }
     const uint8_t* source = pixels;
     size_t row_bytes = (x1 - x0) * PANELCAP_PIXEL_BYTES;
+    capture->copied_bytes += row_bytes * (y1 - y0);
     for (unsigned y = y0; y < y1; y++) {
         memcpy(capture->storage + ((((size_t)y * PANELCAP_WIDTH) + x0) * PANELCAP_PIXEL_BYTES), source, row_bytes);
         source += row_bytes;
@@ -135,8 +139,29 @@ panelcap_commit(panelcap_t* capture) {
         return;
     }
     capture->in_present = false;
-    if (!capture->writable || !recti_is_empty(capture->owed) || capture->present_us < capture->next_us) {
+    if (capture->had_window) {
+        capture->seq++;
+    }
+    if (capture->skipped_window) {
+        capture->dropped_busy++;
         drop(capture);
+        return;
+    }
+    if (!capture->writable || capture->windows == 0) {
+        return;
+    }
+    if (!recti_is_empty(capture->owed)) {
+        if (capture->had_window) {
+            capture->dropped_redraw++;
+            drop(capture);
+        }
+        return;
+    }
+    if (capture->present_us < capture->next_us) {
+        if (capture->had_window) {
+            capture->dropped_fps++;
+            drop(capture);
+        }
         return;
     }
     capture->next_us = capture->present_us + (MATH_US_PER_S / capture->fps);

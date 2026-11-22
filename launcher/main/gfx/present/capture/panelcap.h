@@ -42,11 +42,17 @@ typedef struct {
     uint32_t seq;
     uint32_t presents;
     uint32_t dropped;
+    uint32_t dropped_fps;
+    uint32_t dropped_busy;
+    uint32_t dropped_redraw;
+    uint64_t copied_bytes;
     uint16_t dropped_before;
     uint64_t next_us;
     unsigned fps;
     uint64_t present_us;
     bool in_present;
+    bool had_window;
+    bool skipped_window;
     bool writable;
     recti_t owed;
     bool redraw_pending;

@@ -118,6 +118,15 @@ class PanelVideoTests(unittest.TestCase):
         self.assertEqual(frames, [b"a"] * 3 + [b"b", b"d", b"d", b"e"])
         self.assertEqual(snapshot.call_count, 4)
 
+    def test_recording_extends_last_panel_update_to_stop_time(self):
+        writer = mock.Mock()
+        with tempfile.TemporaryDirectory() as directory, \
+                mock.patch.object(video_encode, "VideoWriter", return_value=writer):
+            with video.Recording(Path(directory) / "run.mp4", log=io.StringIO()) as recording:
+                recording.packet(video.PART.pack(1, 0, 1) + present(1, 100_000))
+                recording.finish("PANELCAP_END presents=1 dropped=0 bytes=27 stop_us=300000")
+        self.assertEqual(writer.write.call_count, 6)
+
     def test_csv_device_time_and_encoder_options(self):
         with tempfile.TemporaryDirectory() as directory:
             out = Path(directory) / "run.mp4"

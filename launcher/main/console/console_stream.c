@@ -2,6 +2,7 @@
 #include "console/console_stream.h"
 
 #include "console/console.h"
+#include "core/job.h"
 #include "core/memory.h"
 #include "core/timing.h"
 
@@ -10,10 +11,11 @@
 #include "freertos/task.h"
 
 /* Below the console task (4), above the frame loop (1). */
-#define STREAM_TASK_PRIORITY 2
-#define STREAM_TASK_STACK    3072
+#define STREAM_TASK_PRIORITY        2
+#define STREAM_SOURCE_TASK_PRIORITY 1
+#define STREAM_TASK_STACK           3072
 /* How often an idle task looks whether the stream was closed. */
-#define STREAM_IDLE_WAIT_MS  20
+#define STREAM_IDLE_WAIT_MS         20
 
 /* The task owns a stream from open until it frees it. The ring's own state
  * stays on chip, while a pull source lends its external buffers. */
@@ -22,6 +24,7 @@ struct console_stream {
     RingbufHandle_t ring;
     uint8_t* storage;
     uint8_t* packet;
+    TaskHandle_t task;
     const char* tag;
     console_stream_fill_fn fill;
     void* source_arg;
@@ -57,6 +60,8 @@ stream_task(void* arg) {
     console_stream_t* stream = arg;
     uint64_t sent = 0;
     uint64_t packets = 0;
+    uint32_t write_us = 0;
+    bool previous_sent = false;
     for (;;) {
         const bool source = stream->fill != NULL;
         const bool closed = __atomic_load_n(&stream->closed, __ATOMIC_ACQUIRE);
@@ -64,22 +69,23 @@ stream_task(void* arg) {
         uint8_t* bytes;
         if (source) {
             bytes = stream->storage;
-            count = stream->fill(stream->source_arg, bytes, CONSOLE_PACKET_BYTES_MAX);
+            count = stream->fill(stream->source_arg, bytes, CONSOLE_PACKET_BYTES_MAX, write_us, previous_sent);
         } else {
             bytes = xRingbufferReceiveUpTo(stream->ring, &count, pdMS_TO_TICKS(STREAM_IDLE_WAIT_MS),
                                            CONSOLE_PACKET_BYTES_MAX);
         }
         if (count != 0) {
-            if (stream_send(stream, bytes, count)) {
+            const int64_t started = source ? timing_now_us() : 0;
+            previous_sent = stream_send(stream, bytes, count);
+            write_us = source ? (uint32_t)(timing_now_us() - started) : 0;
+            if (previous_sent) {
                 sent += count;
                 packets++;
-            } else if (source && closed) {
-                break;
             }
         } else if (closed) {
             break;
         } else if (source) {
-            timing_sleep_ms(STREAM_IDLE_WAIT_MS);
+            (void)ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(STREAM_IDLE_WAIT_MS));
         }
     }
     if (stream->ended != NULL) {
@@ -102,8 +108,12 @@ open_stream(const char* tag, size_t bytes, console_stream_fill_fn fill, void* ar
     if (fill == NULL && stream->storage != NULL) {
         stream->ring = xRingbufferCreateStatic(bytes, RINGBUF_TYPE_BYTEBUF, stream->storage, &stream->ring_state);
     }
+    const UBaseType_t priority = fill == NULL ? STREAM_TASK_PRIORITY : STREAM_SOURCE_TASK_PRIORITY;
+    /* The pull source runs below the present and compute tasks on their core. */
+    const BaseType_t core = fill != NULL && configNUMBER_OF_CORES > JOB_CORE1 ? JOB_CORE1 : tskNO_AFFINITY;
     if (stream->storage == NULL || stream->packet == NULL || (fill == NULL && stream->ring == NULL)
-        || xTaskCreate(stream_task, tag, STREAM_TASK_STACK, stream, STREAM_TASK_PRIORITY, NULL) != pdPASS) {
+        || xTaskCreatePinnedToCore(stream_task, tag, STREAM_TASK_STACK, stream, priority, &stream->task, core)
+               != pdPASS) {
         stream_free(stream);
         return NULL;
     }
@@ -118,6 +128,11 @@ console_stream_open(const char* tag, size_t ring_bytes) {
 console_stream_t*
 console_stream_open_source(const char* tag, console_stream_fill_fn fill, void* arg, uint8_t* storage, uint8_t* packet) {
     return open_stream(tag, 0, fill, arg, storage, packet, true);
+}
+
+void
+console_stream_wake(console_stream_t* stream) {
+    xTaskNotifyGive(stream->task);
 }
 
 bool

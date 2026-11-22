@@ -186,9 +186,12 @@ class Resample:
         self.emit_until((us - self.first) * OUTPUT_FPS)
         self.seq, self.last = seq, us
 
-    def finish(self):
+    def finish(self, stop_us=None):
         if self.last is not None:
-            self.emit_until((self.last - self.first) * OUTPUT_FPS + 1)
+            end = (self.last - self.first) * OUTPUT_FPS + 1
+            if stop_us is not None:
+                end = max(end, (stop_us - self.first) * OUTPUT_FPS)
+            self.emit_until(end)
 
 
 class Recording:
@@ -234,8 +237,12 @@ class Recording:
         if self.received == 0:
             raise RuntimeError("no complete PANEL presents received")
         now = time.monotonic()
-        self.resample.finish()
-        elapsed = max(now - (self.started or now), 1 / OUTPUT_FPS)
+        stop = re.search(r"\bstop_us=(\d+)", answer)
+        stop_us = int(stop[1]) if stop else None
+        self.resample.finish(stop_us)
+        seconds = ((stop_us - self.resample.first) / US_PER_SECOND if stop
+                   else now - (self.started or now))
+        elapsed = max(seconds, 1 / OUTPUT_FPS)
         match = re.search(r"dropped=(\d+)", answer)
         dropped = match[1] if match else "unknown"
         print(f"video: presents={self.received} fps={self.received / elapsed:.2f} "

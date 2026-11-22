@@ -3,6 +3,7 @@ import csv
 import io
 import struct
 import tempfile
+import threading
 from argparse import Namespace
 from pathlib import Path
 from unittest import mock
@@ -22,6 +23,37 @@ class PanelBoard(RecordingBoard):
 
 
 class PanelVideoDeviceTests(unittest.TestCase):
+    def test_video_drains_serial_while_encoder_write_waits(self):
+        def wire(seq, us):
+            packet = panel_video.PART.pack(seq, 0, 1) + panel_video.PRESENT.pack(seq, us, 0, 0)
+            return b"PANEL_BIN %d %08x\n" % (len(packet), zlib.crc32(packet)) + packet
+
+        drained = threading.Event()
+        end = b"PANELCAP_END presents=2 dropped=0 bytes=32\n"
+
+        class SlowEncoderBoard(PanelBoard):
+            def read(self, size):
+                data = super().read(size)
+                if data == end:
+                    drained.set()
+                return data
+
+        board = SlowEncoderBoard([b"PANELCAP_BEGIN fps=15 image=329728\n"],
+                                 after_stop=[wire(1, 0) + wire(2, 100_000), end])
+        process = mock.Mock()
+        process.wait.return_value = 0
+
+        def wait_for_reader(_):
+            self.assertTrue(drained.wait(0.5), "encoder blocked the serial reader")
+
+        process.stdin.write.side_effect = wait_for_reader
+        with tempfile.TemporaryDirectory() as folder:
+            args = Namespace(owner="agent", wait=0, out=Path(folder) / "run.mp4", fps=15, seconds=None)
+            with mock.patch.object(device, "open_when_free", return_value=board), \
+                    mock.patch.object(panel_video.video_encode, "resolve", return_value="fake-ffmpeg"), \
+                    mock.patch.object(panel_video.video_encode, "open_encoder", return_value=process):
+                self.assertEqual(device.video(args, mock_store(), BOARD, lines=[], log=io.StringIO()), 0)
+
     def test_encoder_finishes_before_lock_reaps_children(self):
         packet = panel_video.PART.pack(1, 0, 1) + panel_video.PRESENT.pack(1, 0, 0, 0)
         wire = b"PANEL_BIN %d %08x\n" % (len(packet), zlib.crc32(packet)) + packet

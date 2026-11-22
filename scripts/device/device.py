@@ -2021,6 +2021,9 @@ def stream(args, store, board, lines=None, out=None):
 
 # How long a capture STOP may take to drain the board and answer.
 RECORD_END_SECONDS = 30
+# Keep decoding and encoder backpressure off the serial reader. A stalled
+# consumer gets a bounded packet backlog before the capture stops.
+VIDEO_PACKET_BACKLOG = 512
 
 
 def record_frames(args, store, board, lines=None, out=None, log=None):
@@ -2060,18 +2063,36 @@ def capture_stream(args, store, board, tag, on_data, lines=None, log=None, openi
     answer = []
     began = threading.Event()
     consumer_failed = []
+    backlog = queue.Queue(maxsize=VIDEO_PACKET_BACKLOG) if recording is not None else None
 
     refusals = (f"{tag}_REFUSED",) if error_prefix is None else (f"{tag}_REFUSED", error_prefix)
+
+    def consume(handler, data):
+        if not consumer_failed:
+            try:
+                handler(data)
+            except Exception as error:
+                consumer_failed.append(error)
+                done.set()
+
+    def submit(handler, data):
+        if backlog is None:
+            consume(handler, data)
+        elif not consumer_failed:
+            try:
+                backlog.put_nowait((handler, data))
+            except queue.Full:
+                consumer_failed.append(RuntimeError("video decoder fell behind the serial stream"))
+                done.set()
+
+    def decode():
+        while (item := backlog.get()) is not None:
+            consume(*item)
 
     def deliver(events):
         for kind, data in events:
             if kind == "data":
-                if not consumer_failed:
-                    try:
-                        on_data(data)
-                    except Exception as error:  # The reader keeps draining after the sink fails.
-                        consumer_failed.append(error)
-                        done.set()
+                submit(on_data, data)
                 continue
             text = data.decode("utf-8", errors="replace")
             print(text, file=log, flush=True)
@@ -2095,8 +2116,7 @@ def capture_stream(args, store, board, tag, on_data, lines=None, log=None, openi
                         deliver(error.events)
                         if on_packet_error is None:
                             raise
-                        if not consumer_failed:
-                            on_packet_error(getattr(error, "packet", None))
+                        submit(on_packet_error, getattr(error, "packet", None))
                         chunk = b""
         except Exception as error:  # noqa: BLE001  (any read failure ends the record, raised by its owner)
             failed.append(error)
@@ -2118,7 +2138,17 @@ def capture_stream(args, store, board, tag, on_data, lines=None, log=None, openi
 
     output = contextlib.nullcontext() if recording is None else recording
     with HeldLock(store, board, args.owner, tag.lower(), args.wait), output:
-        steer(read, lines, opening=[opening or f"{tag} START"], closing=closing, done=done, interrupt_ends=True)
+        worker = threading.Thread(target=decode) if backlog is not None else None
+        if worker is not None:
+            worker.start()
+        try:
+            steer(read, lines, opening=[opening or f"{tag} START"], closing=closing, done=done, interrupt_ends=True)
+        finally:
+            if worker is not None:
+                backlog.put(None)
+                worker.join()
+        if consumer_failed:
+            raise consumer_failed[0]
         reply = answer[0] if answer else ""
         if recording is not None:
             recording.finish(reply)

@@ -65,11 +65,13 @@ test_busy_sender_drops_whole_present(void) {
     TEST_ASSERT_FALSE(panelcap_begin(capture, MATH_US_PER_S));
     const uint8_t refused[] = {0xab, 0xcd};
     panelcap_window(capture, 5, 7, 6, 8, refused);
+    panelcap_window(capture, 5, 7, 6, 8, refused);
     panelcap_commit(capture);
     TEST_ASSERT_EQUAL_MEMORY(pixel, capture->storage, sizeof pixel);
     TEST_ASSERT_EQUAL(1, bytes_read_u32(panelcap_peek(capture)));
     TEST_ASSERT_EQUAL(1, capture->presents);
     TEST_ASSERT_EQUAL(1, capture->dropped);
+    TEST_ASSERT_EQUAL(1, capture->dropped_busy);
     panelcap_release(capture);
     TEST_ASSERT_TRUE(panelcap_begin(capture, 2 * MATH_US_PER_S));
     panelcap_commit(capture);
@@ -86,7 +88,7 @@ test_busy_sender_drops_whole_present(void) {
     panelcap_window(capture, 0, 0, 1, 1, refused);
     panelcap_commit(capture);
     TEST_ASSERT_EQUAL_MEMORY(refused, capture->storage, sizeof refused);
-    TEST_ASSERT_EQUAL(3, bytes_read_u16(panelcap_peek(capture) + PANELCAP_HEAD_AT_DROPPED));
+    TEST_ASSERT_EQUAL(1, bytes_read_u16(panelcap_peek(capture) + PANELCAP_HEAD_AT_DROPPED));
 }
 
 static void
@@ -110,17 +112,39 @@ test_window_after_sender_release_joins_current_present(void) {
 }
 
 static void
+test_idle_present_does_not_consume_fps_slot(void) {
+    fixture();
+    const uint8_t pixel[] = {0x12, 0x34};
+    panelcap_begin(capture, 0);
+    panelcap_commit(capture);
+    TEST_ASSERT_NULL(panelcap_peek(capture));
+    TEST_ASSERT_EQUAL(0, capture->presents);
+    TEST_ASSERT_EQUAL(0, capture->dropped);
+    panelcap_begin(capture, 1);
+    panelcap_window(capture, 0, 0, 1, 1, pixel);
+    panelcap_commit(capture);
+    TEST_ASSERT_NOT_NULL(panelcap_peek(capture));
+    panelcap_begin(capture, 2);
+    panelcap_commit(capture);
+    TEST_ASSERT_EQUAL(0, capture->dropped);
+}
+
+static void
 test_fps_gate_counts_dropped_presents(void) {
     fixture();
+    const uint8_t pixel[] = {0x12, 0x34};
     TEST_ASSERT_FALSE(panelcap_begin(capture, 0));
+    panelcap_window(capture, 0, 0, 1, 1, pixel);
     panelcap_commit(capture);
     panelcap_release(capture);
     TEST_ASSERT_FALSE(panelcap_begin(capture, 1));
+    panelcap_window(capture, 0, 0, 1, 1, pixel);
     panelcap_commit(capture);
     TEST_ASSERT_NULL(panelcap_peek(capture));
     TEST_ASSERT_FALSE(panelcap_begin(capture, MATH_US_PER_S / PANELCAP_FPS_DEFAULT));
     panelcap_commit(capture);
     TEST_ASSERT_EQUAL(1, bytes_read_u16(panelcap_peek(capture) + PANELCAP_HEAD_AT_DROPPED));
+    TEST_ASSERT_EQUAL(1, capture->dropped_fps);
 }
 
 static void
@@ -248,11 +272,13 @@ test_image_rows_and_invalid_window_ignored(void) {
 static void
 test_wire_fields_are_little_endian(void) {
     fixture();
+    const uint8_t pixel[] = {0x12, 0x34};
     const uint64_t device_us = UINT64_C(0x0102030405060708);
     const uint32_t previous_seq = UINT32_C(0x44332210);
-    const uint8_t expected[] = {0x11, 0x22, 0x33, 0x44, 8, 7, 6, 5, 4, 3, 2, 1, 0, 0, 0, 0};
+    const uint8_t expected[] = {0x11, 0x22, 0x33, 0x44, 8, 7, 6, 5, 4, 3, 2, 1, 1, 0, 0, 0};
     capture->seq = previous_seq;
     TEST_ASSERT_FALSE(panelcap_begin(capture, device_us));
+    panelcap_window(capture, 0, 0, 1, 1, pixel);
     panelcap_commit(capture);
     TEST_ASSERT_EQUAL_MEMORY(expected, panelcap_peek(capture), sizeof expected);
 }
@@ -282,13 +308,16 @@ test_throttled_cursor_leaves_no_ghost(void) {
 static void
 test_drop_saturation_and_reset(void) {
     fixture();
+    const uint8_t pixel[] = {0x12, 0x34};
     TEST_ASSERT_FALSE(panelcap_init(capture, storage, 0));
     const unsigned period = MATH_US_PER_S / PANELCAP_FPS_DEFAULT;
     panelcap_begin(capture, 0);
+    panelcap_window(capture, 0, 0, 1, 1, pixel);
     panelcap_commit(capture);
     panelcap_release(capture);
     for (unsigned i = 0; i <= UINT16_MAX; i++) {
         panelcap_begin(capture, 1);
+        panelcap_window(capture, 0, 0, 1, 1, pixel);
         panelcap_commit(capture);
     }
     panelcap_begin(capture, period);
@@ -297,6 +326,7 @@ test_drop_saturation_and_reset(void) {
     TEST_ASSERT_EQUAL((unsigned)UINT16_MAX + 1, capture->dropped);
     panelcap_release(capture);
     panelcap_begin(capture, period + 1);
+    panelcap_window(capture, 0, 0, 1, 1, pixel);
     panelcap_commit(capture);
     panelcap_begin(capture, period * 2);
     panelcap_commit(capture);
@@ -370,6 +400,7 @@ suite_panelcap(void) {
     RUN_TEST(test_drop_saturation_and_reset);
     RUN_TEST(test_busy_sender_drops_whole_present);
     RUN_TEST(test_window_after_sender_release_joins_current_present);
+    RUN_TEST(test_idle_present_does_not_consume_fps_slot);
     RUN_TEST(test_fps_gate_counts_dropped_presents);
     RUN_TEST(test_window_overflow_collapses_to_bounding_box);
     RUN_TEST(test_continuation_rejoins_encoded_present);

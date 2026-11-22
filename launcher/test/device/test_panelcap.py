@@ -49,7 +49,7 @@ class Capture:
         return seq, panel_video.WINDOW.unpack_from(stream, panel_video.PRESENT.size)
 
     def end(self, line):
-        counts = re.fullmatch(rb"PANELCAP_END presents=(\d+) dropped=(\d+) bytes=(\d+)", line)
+        counts = re.fullmatch(rb"PANELCAP_END presents=(\d+) dropped=(\d+) bytes=(\d+) stop_us=\d+", line)
         assert counts, line
         assert list(map(int, counts.groups())) == self.totals
 

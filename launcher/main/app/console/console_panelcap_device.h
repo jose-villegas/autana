@@ -4,7 +4,7 @@
 #include "console/console.h"
 #include "gfx/present/capture/panelcap.h"
 
-#define PANELCAP_LINE_BYTES 128U
+#define PANELCAP_LINE_BYTES 144U
 #define PANELCAP_CAPTURE_BYTES                                                                                         \
     (PANELCAP_IMAGE_BYTES + sizeof(panelcap_encoder_t) + CONSOLE_PACKET_BYTES_MAX + CONSOLE_PACKET_MAX)
 #define PANELCAP_PACKET_TAG   "PANEL"
