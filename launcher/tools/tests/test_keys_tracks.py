@@ -247,21 +247,26 @@ def test_colour_rotation_field_round_trips_and_samples_linearly(tmp_path, monkey
     component(tmp_path, "TEST", "ANIM_FIELD(test_t, rotation, ANIM_VALUE_COLOUR)")
     fields = scene_fields.fields() | scene_fields.discover(tmp_path)
     monkeypatch.setattr(scene_fields, "fields", lambda: fields)
-    track = dict(object="prop", field="TEST.rotation", interp="linear",
-                 keys=[dict(t=0, v=[0, 0.5, 1]), dict(t=2, v=[0.5, 1, 0])])
-    doc, binary = gltf_read.parse_glb(keys_file.build(dict(animation="path", tracks=[track])))
-    animation = doc["animations"][0]
-    channel, = gltf_read.read_animation(doc, binary, animation)
-    entry = tracks_asset.encode(*tracks_asset.clip_tracks(doc, binary, animation))
-    rows, _ = tracks_asset.decode(entry)
+    keys = '''
+animation = "path"
+[[tracks]]
+object = "prop"
+field = "TEST.rotation"
+interp = "linear"
+keys = [{t = 0, v = [0, 0.5, 1]}, {t = 2, v = [0.5, 1, 0]}]
+'''
+    clip = clip_of(tmp_path, keys)
+    doc, binary = gltf_read.load_asset(tmp_path / "path.keys.toml")
+    channel, = gltf_read.read_animation(doc, binary, doc["animations"][0])
+    rows, _ = tracks_asset.decode(tracks_asset.bake(clip))
     assert rows[0]["type"] == scene_fields.VALUE_COLOUR
     assert rows[0]["values"] == [(0, 0.5, 1), (0.5, 1, 0)]
     with pytest.raises(ValueError, match="needs its binding type"):
         gltf_read.is_rotation(channel)
     assert tracks_asset.sample(rows[0], 1) == (0.25, 0.75, 0.5)
-    track["keys"][1]["v"].pop()
-    with pytest.raises(ValueError, match=r"prop.TEST.rotation key 1.*3 components"):
-        keys_file.build(dict(animation="path", tracks=[track]))
+    clip_of(tmp_path, keys.replace("[0.5, 1, 0]", "[0.5, 1]"))
+    with pytest.raises(tracks_asset.TracksError, match=r"prop.TEST.rotation key 1.*3 components"):
+        tracks_asset.bake(clip)
 
 
 @pytest.mark.parametrize("before, after, message", [
