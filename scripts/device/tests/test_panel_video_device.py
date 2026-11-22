@@ -135,6 +135,20 @@ class PanelVideoDeviceTests(unittest.TestCase):
             process.wait.assert_called_once()
         store.release.assert_called_once_with(BOARD, "token")
 
+    def test_short_app_memory_prints_refusal_and_exits_nonzero(self):
+        line = panel_video.ERROR_PREFIX + "no memory: need 334064, largest free 210000"
+        board = RecordingBoard([line.encode() + b"\n"], after_stop=[])
+        with tempfile.TemporaryDirectory() as folder:
+            args = Namespace(owner="agent", wait=0, out=Path(folder) / "run.mp4", fps=5, seconds=1)
+            log = io.StringIO()
+            with mock.patch.object(device, "open_when_free", return_value=board), \
+                    mock.patch.object(device, "RECORD_END_SECONDS", 0.05), \
+                    mock.patch.object(device, "STREAM_CHECK_SECONDS", 0.01), \
+                    mock.patch.object(panel_video.video_encode, "resolve", return_value="fake-ffmpeg"):
+                self.assertEqual(device.video(args, mock_store(), BOARD, lines=[], log=log), 1)
+            self.assertEqual(board.writes, [b"PANELCAP START 5\n"])
+            self.assertEqual(log.getvalue(), line + "\n")
+
     def test_release_without_console_uses_records_bounded_end_wait(self):
         for command in ("record", "video"):
             with self.subTest(command=command), tempfile.TemporaryDirectory() as folder:

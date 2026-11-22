@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "../fixtures/panelcap_fixture.h"
@@ -376,12 +377,119 @@ suite_panelcap(void) {
 SUITE_REGISTER(suite_panelcap);
 
 #ifdef DEVICE_BUILD
+#include "app/app_arena.h"
+#include "app/console/console_panelcap_device.h"
 #include "draw/draw.h"
 #include "gfx/gfx.h"
+#include "gfx/present/capture/gfx_panel_capture.h"
 #include "gfx/present/gfx_debug.h"
 #include "gfx/present/gfx_internal.h"
 #include "gfx/present/gfx_present.h"
 #include "image/pixel/rgb565.h"
+#include "shell/shell_apps.h"
+
+static char* capture_reply;
+static void* app_block;
+static bool capture_at_app_exit;
+
+static void
+save_capture_reply(const char* line) {
+    if (capture_reply != NULL) {
+        (void)snprintf(capture_reply, PANELCAP_LINE_BYTES, "%s", line);
+    }
+}
+
+static void
+release_capture(void) {
+    if (gfx_panel_capture_on) {
+        gfx_panel_capture_stop();
+    }
+    memory_free(app_block);
+    app_block = NULL;
+}
+
+static void
+test_start_stop_restores_app_memory(void) {
+    suite_set_test_cleanup(release_capture);
+    const size_t largest = memory_largest_block(MEMORY_APP);
+    const size_t free = memory_free_bytes(MEMORY_APP);
+    const size_t mark = app_arena_mark();
+    gfx_panel_capture_start(PANELCAP_FPS_DEFAULT, save_capture_reply);
+    TEST_ASSERT_TRUE(gfx_panel_capture_on);
+    TEST_ASSERT_GREATER_OR_EQUAL_size_t(PANELCAP_CAPTURE_BYTES, free - memory_free_bytes(MEMORY_APP));
+    TEST_ASSERT_LESS_THAN_size_t(largest, memory_largest_block(MEMORY_APP));
+    TEST_ASSERT_EQUAL_size_t(mark, app_arena_mark());
+    gfx_panel_capture_stop();
+    TEST_ASSERT_FALSE(gfx_panel_capture_on);
+    TEST_ASSERT_EQUAL_size_t(largest, memory_largest_block(MEMORY_APP));
+    TEST_ASSERT_EQUAL_size_t(free, memory_free_bytes(MEMORY_APP));
+}
+
+static void
+test_start_refuses_when_app_memory_is_short(void) {
+    suite_set_test_cleanup(release_capture);
+    const size_t largest = memory_largest_block(MEMORY_APP);
+    app_block = memory_alloc(largest, MEMORY_APP);
+    TEST_ASSERT_NOT_NULL(app_block);
+    const size_t remaining = memory_largest_block(MEMORY_APP);
+    TEST_ASSERT_LESS_THAN_size_t(PANELCAP_CAPTURE_BYTES, remaining);
+    const size_t free = memory_free_bytes(MEMORY_APP);
+
+    char actual[PANELCAP_LINE_BYTES] = {0};
+    capture_reply = actual;
+    gfx_panel_capture_start(PANELCAP_FPS_DEFAULT, save_capture_reply);
+    capture_reply = NULL;
+    TEST_ASSERT_FALSE(gfx_panel_capture_on);
+    char expected[PANELCAP_LINE_BYTES];
+    (void)snprintf(expected, sizeof expected, PANELCAP_NO_MEMORY, PANELCAP_CAPTURE_BYTES, remaining);
+    TEST_ASSERT_EQUAL_STRING(expected, actual);
+    TEST_ASSERT_EQUAL_size_t(free, memory_free_bytes(MEMORY_APP));
+}
+
+static void
+capture_app_enter(void) {}
+
+static void
+capture_app_exit(void) {
+    capture_at_app_exit = gfx_panel_capture_on;
+    if (capture_at_app_exit) {
+        gfx_panel_capture_stop();
+    }
+}
+
+static void
+test_app_switch_stops_capture(void) {
+    static const app_t app = {.name = "Panel capture test", .enter = capture_app_enter, .exit = capture_app_exit};
+    const app_t* current = NULL;
+    TEST_ASSERT_EQUAL_size_t(0, app_heap_blocks());
+    app_arena_exit();
+    shell_start_app(&current, &app);
+    gfx_panel_capture_start(PANELCAP_FPS_DEFAULT, save_capture_reply);
+    const bool started = gfx_panel_capture_on;
+    shell_exit_app(&current);
+
+    gfx_panel_capture_start(PANELCAP_FPS_DEFAULT, save_capture_reply);
+    const bool started_from_launcher = gfx_panel_capture_on;
+    shell_start_app(&current, &app);
+    const bool captured_after_enter = gfx_panel_capture_on;
+    const bool captured_at_exit = capture_at_app_exit;
+    shell_exit_app(&current);
+    app_arena_enter();
+
+    TEST_ASSERT_TRUE(started);
+    TEST_ASSERT_FALSE(captured_at_exit);
+    TEST_ASSERT_TRUE(started_from_launcher);
+    TEST_ASSERT_FALSE(captured_after_enter);
+}
+
+void
+suite_panelcap_lifecycle(void) {
+    RUN_TEST(test_start_stop_restores_app_memory);
+    RUN_TEST(test_start_refuses_when_app_memory_is_short);
+    RUN_TEST(test_app_switch_stops_capture);
+}
+
+SUITE_REGISTER_ON_REQUEST(suite_panelcap_lifecycle);
 
 #define PANELCAP_TEST_RED   0xf80000
 #define PANELCAP_TEST_GREEN 0x00fc00

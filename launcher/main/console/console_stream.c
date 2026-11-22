@@ -3,6 +3,7 @@
 
 #include "console/console.h"
 #include "core/memory.h"
+#include "core/timing.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/ringbuf.h"
@@ -15,7 +16,7 @@
 #define STREAM_IDLE_WAIT_MS  20
 
 /* The task owns a stream from open until it frees it. The ring's own state
- * stays on chip, its storage and the packet buffer go to external RAM. */
+ * stays on chip, while a pull source lends its external buffers. */
 struct console_stream {
     StaticRingbuffer_t ring_state;
     RingbufHandle_t ring;
@@ -34,8 +35,10 @@ stream_free(console_stream_t* stream) {
     if (stream->ring != NULL) {
         vRingbufferDelete(stream->ring);
     }
-    memory_free(stream->storage);
-    memory_free(stream->packet);
+    if (stream->fill == NULL) {
+        memory_free(stream->storage);
+        memory_free(stream->packet);
+    }
     memory_free(stream);
 }
 
@@ -43,11 +46,13 @@ static void
 stream_task(void* arg) {
     console_stream_t* stream = arg;
     uint64_t sent = 0;
+    uint64_t packets = 0;
     for (;;) {
+        const bool source = stream->fill != NULL;
         const bool closed = __atomic_load_n(&stream->closed, __ATOMIC_ACQUIRE);
         size_t count = 0;
         uint8_t* bytes;
-        if (stream->fill != NULL) {
+        if (source) {
             bytes = stream->storage;
             count = stream->fill(stream->source_arg, bytes, CONSOLE_PACKET_BYTES_MAX);
         } else {
@@ -55,33 +60,37 @@ stream_task(void* arg) {
                                            CONSOLE_PACKET_BYTES_MAX);
         }
         if (count != 0) {
-            console_emit_packet(stream->tag, bytes, count, stream->packet);
-            sent += count;
+            if (console_emit_packet(stream->tag, bytes, count, stream->packet, source)) {
+                sent += count;
+                packets++;
+            } else if (source && closed) {
+                break;
+            }
             if (stream->ring != NULL) {
                 vRingbufferReturnItem(stream->ring, bytes);
             }
         } else if (closed) {
             break;
-        } else if (stream->fill != NULL) {
-            vTaskDelay(pdMS_TO_TICKS(STREAM_IDLE_WAIT_MS));
+        } else if (source) {
+            timing_sleep_ms(STREAM_IDLE_WAIT_MS);
         }
     }
     if (stream->ended != NULL) {
-        stream->ended(sent, stream->arg);
+        stream->ended(sent, packets, stream->arg);
     }
     stream_free(stream);
     vTaskDelete(NULL);
 }
 
 static console_stream_t*
-open_stream(const char* tag, size_t bytes, console_stream_fill_fn fill, void* arg) {
+open_stream(const char* tag, size_t bytes, console_stream_fill_fn fill, void* arg, uint8_t* storage, uint8_t* packet) {
     console_stream_t* stream = memory_alloc(sizeof *stream, MEMORY_INTERNAL);
     if (stream == NULL) {
         return NULL;
     }
     *stream = (console_stream_t){.tag = tag, .fill = fill, .source_arg = arg};
-    stream->storage = memory_alloc(bytes, MEMORY_PSRAM);
-    stream->packet = memory_alloc(CONSOLE_PACKET_MAX, MEMORY_PSRAM);
+    stream->storage = fill == NULL ? memory_alloc(bytes, MEMORY_PSRAM) : storage;
+    stream->packet = fill == NULL ? memory_alloc(CONSOLE_PACKET_MAX, MEMORY_PSRAM) : packet;
     if (fill == NULL && stream->storage != NULL) {
         stream->ring = xRingbufferCreateStatic(bytes, RINGBUF_TYPE_BYTEBUF, stream->storage, &stream->ring_state);
     }
@@ -95,12 +104,12 @@ open_stream(const char* tag, size_t bytes, console_stream_fill_fn fill, void* ar
 
 console_stream_t*
 console_stream_open(const char* tag, size_t ring_bytes) {
-    return open_stream(tag, ring_bytes, NULL, NULL);
+    return open_stream(tag, ring_bytes, NULL, NULL, NULL, NULL);
 }
 
 console_stream_t*
-console_stream_open_source(const char* tag, console_stream_fill_fn fill, void* arg) {
-    return open_stream(tag, CONSOLE_PACKET_BYTES_MAX, fill, arg);
+console_stream_open_source(const char* tag, console_stream_fill_fn fill, void* arg, uint8_t* storage, uint8_t* packet) {
+    return open_stream(tag, 0, fill, arg, storage, packet);
 }
 
 bool

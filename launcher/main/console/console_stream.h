@@ -13,8 +13,8 @@
 typedef struct console_stream console_stream_t;
 
 /* Called from the stream's task once a closed stream has sent everything,
- * with the bytes it sent in all; the stream is freed right after. */
-typedef void (*console_stream_ended_fn)(uint64_t sent, void* arg);
+ * with its sent byte and packet counts. The stream is freed after it. */
+typedef void (*console_stream_ended_fn)(uint64_t sent, uint64_t packets, void* arg);
 
 /* A stream sending "<tag>_BIN" packets through a ring of `ring_bytes`, or
  * NULL when its ring, its packet buffer or its task does not fit. `tag`
@@ -23,7 +23,11 @@ console_stream_t* console_stream_open(const char* tag, size_t ring_bytes);
 
 /* Fills one packet. Zero leaves the source idle, or ends it after close. */
 typedef size_t (*console_stream_fill_fn)(void* arg, uint8_t* packet, size_t capacity);
-console_stream_t* console_stream_open_source(const char* tag, console_stream_fill_fn fill, void* arg);
+/* The caller lends CONSOLE_PACKET_BYTES_MAX bytes for fill and
+ * CONSOLE_PACKET_MAX for framing through the end callback. A stalled USB
+ * write ends a closing stream so the caller can reclaim the buffers. */
+console_stream_t* console_stream_open_source(const char* tag, console_stream_fill_fn fill, void* arg, uint8_t* storage,
+                                             uint8_t* packet);
 
 /* Queues `count` bytes whole, waiting up to `wait_ms` for ring room; false
  * leaves none of them queued. From one writer at a time. */

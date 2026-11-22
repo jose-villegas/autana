@@ -72,8 +72,8 @@ class Packets:
         try:
             count, crc = bytes(self.pending[start + len(self.prefix):end]).split()
             count, crc = int(count), int(crc, 16)
-            if count <= 0:
-                raise ValueError("packet size must be positive")
+            if count < 0:
+                raise ValueError("packet size must be nonnegative")
             return count, crc
         except ValueError as error:
             if start > 0 or self.partial:

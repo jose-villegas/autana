@@ -25,30 +25,21 @@
 #include <stddef.h>
 
 #include "gfx/gfx.h"
-#include "gfx/present/capture/gfx_panel_capture.h"
 
 /* PSRAM the system holds besides its framebuffers, in the build variant that
  * holds most: a self-test build adds about 21 KB to a development build's
  * 41 KB. With room for the heap's own fragments. */
-#define APP_ARENA_SYSTEM_OTHER_BYTES (80u * 1024u)
+#define APP_ARENA_SYSTEM_OTHER_BYTES   (80u * 1024u)
 
 /* Leaves the system its framebuffer, a second buffer, and heap headroom.
  * The second buffer serves boot animation, back-buffer, audit, snapshot or
- * scene expansion; an audit over a half picture can be refused. Development
- * also reserves the capture image and packet scratch. Capture allocates on
- * START and frees after STOP drains, leaving idle PSRAM to system users. */
-#if CONFIG_LAUNCHER_DEVELOPMENT
-#define APP_ARENA_PANEL_CAPTURE_BYTES GFX_PANEL_CAPTURE_RESERVE_BYTES
-#else
-#define APP_ARENA_PANEL_CAPTURE_BYTES 0u
-#endif
-#define APP_ARENA_SYSTEM_RESERVE_BYTES                                                                                 \
-    ((2u * GFX_FRAMEBUFFER_BYTES) + APP_ARENA_SYSTEM_OTHER_BYTES + APP_ARENA_PANEL_CAPTURE_BYTES)
+ * scene expansion; an audit over a half picture can be refused. */
+#define APP_ARENA_SYSTEM_RESERVE_BYTES ((2u * GFX_FRAMEBUFFER_BYTES) + APP_ARENA_SYSTEM_OTHER_BYTES)
 
 /* The smallest chunk the arena takes from the app heap: small takes share one
  * heap block and its header, and an emptied tail is at most this much. A take
  * larger than it gets a chunk of its own size. */
-#define APP_ARENA_CHUNK_BYTES (16u * 1024u)
+#define APP_ARENA_CHUNK_BYTES          (16u * 1024u)
 
 /* Takes the region from the PSRAM heap. Boot calls it once, before any other
  * PSRAM allocation can split the heap. False when the heap cannot give it;

@@ -45,6 +45,12 @@ The command holds the device lock and port through `PANELCAP_END`. Board
 text goes to stderr. EOF or Ctrl+C stops capture. With `--seconds` the
 command stops on its timer and leaves stdin unread.
 
+| Recording rule | Effect |
+|---|---|
+| App memory | Recording uses `PANELCAP_CAPTURE_BYTES` (about 334 KB) of free app memory. A scene that needs those bytes cannot be recorded. |
+| Short on memory | START prints `PANELCAP ERR no memory: need N, largest free M` in bytes and exits non-zero. |
+| App switch | Capture reports `PANELCAP STOP app switch`, drains its last published present, and ends. |
+
 `--fps` limits device publication. The landscape H.264 MP4 samples the
 latest present at each 30 Hz device timestamp. Gaps repeat the last
 picture, and bursts contribute the latest eligible picture.

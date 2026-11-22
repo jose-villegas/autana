@@ -96,7 +96,10 @@ title Window header, one cell a byte
 | Publication | The FPS gate controls when a commit hands the image to the sender. Windows from intervening presents accumulate. |
 | Redraw | START requests a full redraw. If a window is lost while sending, the first writable present queues a redraw request. Publication waits for the frame owner to request it. |
 | Sender | The shared console stream task packs the published image once and releases it after the last packet goes out. |
-| STOP | Turns off capture, drains the published image, then sends END and frees the stream. |
+| App memory | Recording holds `PANELCAP_CAPTURE_BYTES` (about 334 KB) from the current app heap. A scene that needs those bytes cannot be recorded. |
+| Short on memory | START refuses with `PANELCAP ERR no memory: need N, largest free M` in bytes. The host exits non-zero. |
+| App switch | Stops recording with `PANELCAP STOP app switch`. The usual drain and END follow. |
+| STOP | Drains the published image, frees its app memory, and sends END. A stalled USB write ends the drain. |
 | Totals | END counts published presents, merged or busy presents, and stream bytes excluding continuation headers. |
 | Refusal | Invalid syntax or FPS, START while already on, STOP while off, or unavailable memory. |
 | Release | A release image cannot answer START or STOP. The host releases the lock on its END deadline. |

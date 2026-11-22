@@ -2044,7 +2044,7 @@ def record_frames(args, store, board, lines=None, out=None, log=None):
 
 
 def capture_stream(args, store, board, tag, on_data, lines=None, log=None, opening=None, packet_tag=None,
-                   on_packet_error=None):
+                   on_packet_error=None, error_prefix=None):
     """Steer a console capture, forwarding stdin and draining through its END reply."""
     log = sys.stderr if log is None else log
     timed = args.seconds is not None
@@ -2059,6 +2059,8 @@ def capture_stream(args, store, board, tag, on_data, lines=None, log=None, openi
     answer = []
     began = threading.Event()
     consumer_failed = []
+
+    refusals = (f"{tag}_REFUSED",) if error_prefix is None else (f"{tag}_REFUSED", error_prefix)
 
     def deliver(events):
         for kind, data in events:
@@ -2075,7 +2077,7 @@ def capture_stream(args, store, board, tag, on_data, lines=None, log=None, openi
             if text.startswith(f"{tag}_BEGIN"):
                 began.set()
             # A refusal ends the record only as START's answer: after BEGIN it answers a typed line.
-            if text.startswith(f"{tag}_END") or (text.startswith(f"{tag}_REFUSED") and not began.is_set()):
+            if text.startswith(f"{tag}_END") or (text.startswith(refusals) and not began.is_set()):
                 answer.append(text)
                 ended.set()
                 done.set()
@@ -2130,9 +2132,9 @@ def video(args, store, board, lines=None, log=None):
     with panel_video.Recording(args.out, log=log) as recording:
         answer = capture_stream(args, store, board, "PANELCAP", recording.packet, lines, log,
                                 opening=f"PANELCAP START {fps}", packet_tag="PANEL",
-                                on_packet_error=recording.parts.corrupt)
+                                on_packet_error=recording.parts.corrupt, error_prefix=panel_video.ERROR_PREFIX)
         recording.finish(answer)
-    return int(answer.startswith("PANELCAP_REFUSED"))
+    return int(not answer.startswith("PANELCAP_END"))
 
 
 def until_seconds(lines, seconds):

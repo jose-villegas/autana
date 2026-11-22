@@ -12,6 +12,8 @@ import video_encode
 from build.c_header import read_define, read_defines
 
 HEADER = Path(__file__).resolve().parents[2] / "main/gfx/present/capture/panelcap.h"
+CONSOLE_HEADER = Path(__file__).resolve().parents[2] / "main/app/console/console_panelcap_device.h"
+ERROR_PREFIX = read_define(CONSOLE_HEADER, "PANELCAP_ERROR_PREFIX")
 PART = struct.Struct("<IHB")
 PRESENT = struct.Struct("<IQHH")
 WINDOW = struct.Struct("<HHHH")
@@ -226,7 +228,9 @@ class Recording:
 
     def finish(self, answer):
         self.parts.abandon()
-        if self.received == 0 and not answer.startswith("PANELCAP_REFUSED"):
+        if answer.startswith(("PANELCAP_REFUSED", ERROR_PREFIX)):
+            return
+        if self.received == 0:
             raise RuntimeError("no complete PANEL presents received")
         now = time.monotonic()
         self.resample.finish()
