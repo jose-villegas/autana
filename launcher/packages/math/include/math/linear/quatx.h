@@ -34,11 +34,3 @@ static inline quatx_t
 quatx_from_basis(vec3x_t r, vec3x_t u, vec3x_t f) {
     return quatx_unit_from_basis(r, u, f);
 }
-
-/* Direction must be nonzero and up must not be parallel to it. */
-static inline quatx_t
-quatx_looking(vec3x_t direction, vec3x_t up) {
-    const vec3x_t forward = vec3x_normalize(direction);
-    const vec3x_t right = vec3x_normalize(vec3x_cross(up, forward));
-    return quatx_from_basis(right, vec3x_cross(forward, right), forward);
-}
