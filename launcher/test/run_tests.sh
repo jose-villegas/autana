@@ -61,11 +61,9 @@ MAIN_DIR=$(CDPATH= cd -- "$TEST_DIR/../main" && pwd)
 # shellcheck disable=SC1007
 LAUNCHER_DIR=$(CDPATH= cd -- "$TEST_DIR/.." && pwd)
 TLSF_DIR="$LAUNCHER_DIR/../third_party/tlsf"
-# --build-dir keeps two runs from clobbering each other: the build dir holds
-# one host_tests binary, so concurrent runs (two terminals, a sweep script
-# running beside a manual run) otherwise race to compile and execute the
-# same file, and a result can end up attributed to a source state that never
-# existed.
+# A build dir holds one host_tests binary and its logs, so runs in one dir
+# take turns (build_lock.py, below); --build-dir lets two runs (two terminals,
+# a sweep script beside a manual run) go at once.
 BUILD_DIR="${BUILD_DIR:-$TEST_DIR/build}"
 
 # --- find a compiler -------------------------------------------------------
@@ -281,16 +279,35 @@ mkdir -p "$BUILD_DIR"
 # Absolute from here on: the host binary runs from a folder of this run's own
 # (RUN_DIR below), so no path handed to it may lean on the caller's.
 BUILD_DIR=$(CDPATH= cd -- "$BUILD_DIR" && pwd)
+# shellcheck source=../../scripts/lib/python.sh
+. "$TEST_DIR/../../scripts/lib/python.sh"
+PYTHON=$(find_python) || exit 1
+[ "$VERBOSE" = 1 ] && set -- "$@" --verbose
+[ "$SANITIZE" = 1 ] && set -- "$@" --sanitize
+[ "$BUILD_ONLY" = 1 ] && set -- "$@" --build-only
+[ -n "$JOBS" ] && set -- "$@" --jobs "$JOBS"
+set -- "$@" --build-dir "$BUILD_DIR"
+# One run at a time in a build dir: two runs there share its binary and its
+# logs, so one run's results land in the other's (a test name reported twice).
+# The second waits for the first, the plain and --sanitize builds included.
+# HOST_TESTS_HOLD names the dir this run holds, so its own children (the
+# re-entered run, its inner run) go ahead; any other run in the dir waits.
+# Git Bash hands it on through the native Python as C:/..., so it is
+# compared as a folder, not as text.
+HELD_DIR=""
+if [ -n "${HOST_TESTS_HOLD:-}" ]; then
+    HELD_DIR=$(CDPATH= cd -- "$HOST_TESTS_HOLD" 2>/dev/null && pwd) || HELD_DIR=""
+fi
+if [ "$HELD_DIR" != "$BUILD_DIR" ]; then
+    exec "$PYTHON" "$TEST_DIR/../tools/build/build_lock.py" "$BUILD_DIR" \
+        env HOST_TESTS_HOLD="$BUILD_DIR" sh "$0" "$@"
+fi
 QUIET_LOG="$BUILD_DIR/run_tests.log"
 if [ -z "${QUIET_INNER:-}" ]; then
     # shellcheck source=../../scripts/quiet.sh
     . "$TEST_DIR/../../scripts/quiet.sh"
     quiet_begin "$QUIET_LOG"
-    [ "$VERBOSE" = 1 ] && set -- "$@" --verbose
-    [ "$SANITIZE" = 1 ] && set -- "$@" --sanitize
-    [ "$BUILD_ONLY" = 1 ] && set -- "$@" --build-only
-    [ -n "$JOBS" ] && set -- "$@" --jobs "$JOBS"
-    quiet_run host-tests env QUIET_INNER=1 sh "$0" "$@" --build-dir "$BUILD_DIR" || true
+    quiet_run host-tests env QUIET_INNER=1 sh "$0" "$@" || true
     QUIET_SUMMARY=$(grep -aE '^[0-9]+ Tests [0-9]+ Failures [0-9]+ Ignored' "$QUIET_LOG" | tail -n 1)
     grep -a '^waiting on lock:' "$QUIET_LOG" || true
     export QUIET_SUMMARY
@@ -504,9 +521,6 @@ if [ -z "$(find "$SU_DIR" -maxdepth 1 -name '*.su' -print -quit)" ]; then
     exit 1
 fi
 
-# shellcheck source=../../scripts/lib/python.sh
-. "$TEST_DIR/../../scripts/lib/python.sh"
-PYTHON=$(find_python) || exit 1
 "$PYTHON" "$TEST_DIR/check_stack_usage.py" "$SU_DIR"
 
 [ "$BUILD_ONLY" != 1 ] || exit 0
