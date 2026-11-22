@@ -132,6 +132,7 @@ test_short_and_uneven_heights_cover_each_row(void) {
 typedef struct {
     render_context_t c[CONTEXTS];
     render_settings_t settings;
+    render_view_t view;
     uint16_t picture[CONTEXTS][W * H];
     r3d_texture_t texture;
     uint8_t texels[TEX_BYTES];
@@ -140,6 +141,15 @@ typedef struct {
 
 static fixture_t* f;
 static const box3f_t change_at_eye = {{0, 0, FAR_EYE_Z}, {0, 0, FAR_EYE_Z}};
+
+/* Keep view construction off the stack while frame() draws. */
+static __attribute__((noinline)) void
+set_view(float eye_x) {
+    fixture_camera_t camera = raster_rig_camera;
+    camera.eye.z = FAR_EYE_Z;
+    camera.eye.x = eye_x;
+    f->view = render_view_fixture_at(&camera, (viewport_t){W, H, 0});
+}
 
 static void
 cleanup(void) {
@@ -166,6 +176,7 @@ fixture(int budget) {
 #endif
     f = calloc(1, sizeof(*f));
     TEST_ASSERT_NOT_NULL(f);
+    set_view(raster_rig_camera.eye.x);
     static const int16_t uvs[4][2] = {{0, 0}, {TEX_UV_SPAN, 0}, {TEX_UV_SPAN, TEX_UV_SPAN}, {0, TEX_UV_SPAN}};
     static const uint8_t material[1][R3D_TEXTURE_CHARTS] = {{0, R3D_TEXTURE_NONE}};
     static const int32_t shift[1] = {0};
@@ -204,19 +215,12 @@ fixture(int budget) {
     return r;
 }
 
-static render_view_t
-view(void) {
-    fixture_camera_t camera = raster_rig_camera;
-    camera.eye.z = FAR_EYE_Z;
-    return render_view_fixture_at(&camera, (viewport_t){W, H, 0});
-}
-
 static render_context_frame_t
-frame(raster_rig_t* r, const render_view_t* v, const box3f_t* changed, int count) {
+frame(raster_rig_t* r, const box3f_t* changed, int count) {
     render_context_set_changed(&f->c[0], changed, count);
     render_context_set_changed(&f->c[LIVE], changed, count);
     for (int k = 0; k < CONTEXTS; k++) {
-        TEST_ASSERT_TRUE(render_context_draw(&f->c[k], r->instance, RASTER_RIG_QUADS, v, 0));
+        TEST_ASSERT_TRUE(render_context_draw(&f->c[k], r->instance, RASTER_RIG_QUADS, &f->view, 0));
         (void)render_context_compose(&f->c[k], f->picture[k], NULL, NULL);
     }
     return render_context_frame(&f->c[0]);
@@ -230,16 +234,15 @@ assert_picture(int oracle) {
 static raster_rig_t*
 settle_held(int budget) {
     raster_rig_t* r = fixture(budget);
-    const render_view_t v = view();
-    (void)frame(r, &v, NULL, -1);
+    (void)frame(r, NULL, -1);
     TEST_ASSERT_NOT_EQUAL(0, memcmp(f->picture[1], f->picture[LIVE], sizeof f->picture[0]));
     for (int i = 1; i < HOLD; i++) {
-        TEST_ASSERT_EQUAL_INT(0, frame(r, &v, NULL, 0).settled_rows);
+        TEST_ASSERT_EQUAL_INT(0, frame(r, NULL, 0).settled_rows);
         assert_picture(LIVE);
     }
     const int rounds = budget == 1 ? RENDER_SETTLE_BANDS : 2;
     for (int i = 0; i < rounds; i++) {
-        const render_context_frame_t out = frame(r, &v, NULL, 0);
+        const render_context_frame_t out = frame(r, NULL, 0);
         TEST_ASSERT_FALSE(out.unchanged);
         const int band = RENDER_SETTLE_BANDS / 2 + (i % 2 == 0 ? i / 2 : -(i + 1) / 2);
         const int first = band * H / RENDER_SETTLE_BANDS;
@@ -252,7 +255,7 @@ settle_held(int budget) {
         TEST_ASSERT_EQUAL_MEMORY(&f->c[0].drawn_settings, &f->c[0].partial.settings, sizeof f->settings);
     }
     assert_picture(1);
-    const render_context_frame_t after = frame(r, &v, NULL, 0);
+    const render_context_frame_t after = frame(r, NULL, 0);
     TEST_ASSERT_TRUE(after.unchanged);
     TEST_ASSERT_EQUAL_INT(0, after.settled_rows);
     assert_picture(1);
@@ -281,10 +284,9 @@ slide(raster_rig_t* r, int i) {
 static void
 test_changed_rows_stay_live_and_partial_redraw_survives_settling(void) {
     raster_rig_t* r = settle_held(RENDER_SETTLE_FRAME_US_MAX);
-    const render_view_t v = view();
     for (int i = 0; i < HOLD + RENDER_SETTLE_BANDS; i++) {
         const box3f_t changed = slide(r, i);
-        const render_context_frame_t out = frame(r, &v, &changed, 1);
+        const render_context_frame_t out = frame(r, &changed, 1);
         const render_context_frame_t live = render_context_frame(&f->c[LIVE]);
         TEST_ASSERT_LESS_THAN_INT(H, live.rows_end - live.rows_first);
         TEST_ASSERT_EQUAL_INT(live.rows_first, out.rows_first);
@@ -310,13 +312,12 @@ test_changed_rows_stay_live_and_partial_redraw_survives_settling(void) {
 static void
 test_full_live_redraw_refines_no_band(void) {
     raster_rig_t* r = fixture(1);
-    const render_view_t v = view();
-    (void)frame(r, &v, NULL, -1);
+    (void)frame(r, NULL, -1);
     for (int i = 1; i < HOLD; i++) {
-        TEST_ASSERT_EQUAL_INT(0, frame(r, &v, NULL, 0).settled_rows);
+        TEST_ASSERT_EQUAL_INT(0, frame(r, NULL, 0).settled_rows);
     }
-    TEST_ASSERT_EQUAL_INT(BAND_HEIGHT, frame(r, &v, NULL, 0).settled_rows);
-    const render_context_frame_t out = frame(r, &v, &change_at_eye, 1);
+    TEST_ASSERT_EQUAL_INT(BAND_HEIGHT, frame(r, NULL, 0).settled_rows);
+    const render_context_frame_t out = frame(r, &change_at_eye, 1);
     TEST_ASSERT_EQUAL_INT(0, out.rows_first);
     TEST_ASSERT_EQUAL_INT(H, out.rows_end);
     TEST_ASSERT_EQUAL_INT(0, out.settled_rows);
@@ -326,49 +327,44 @@ test_full_live_redraw_refines_no_band(void) {
 static void
 test_a_moved_camera_cancels_and_restarts_the_hold(void) {
     raster_rig_t* r = fixture(RENDER_SETTLE_FRAME_US_MAX);
-    render_view_t v = view();
-    (void)frame(r, &v, NULL, -1);
+    (void)frame(r, NULL, -1);
     for (int i = 0; i < HOLD + 1; i++) {
-        (void)frame(r, &v, NULL, 0);
+        (void)frame(r, NULL, 0);
     }
-    fixture_camera_t camera = raster_rig_camera;
-    camera.eye.z = FAR_EYE_Z;
-    camera.eye.x = SLIDE;
-    v = render_view_fixture_at(&camera, (viewport_t){W, H, 0});
+    set_view(SLIDE);
     for (int i = 0; i < HOLD; i++) {
-        TEST_ASSERT_EQUAL_INT(0, frame(r, &v, NULL, 0).settled_rows);
+        TEST_ASSERT_EQUAL_INT(0, frame(r, NULL, 0).settled_rows);
         assert_picture(LIVE);
     }
-    TEST_ASSERT_EQUAL_INT(H, frame(r, &v, NULL, 0).settled_rows);
+    TEST_ASSERT_EQUAL_INT(H, frame(r, NULL, 0).settled_rows);
     assert_picture(1);
 }
 
 static void
 test_disabled_and_already_refined_settings_never_settle(void) {
     raster_rig_t* r = fixture(RENDER_SETTLE_FRAME_US_MAX);
-    const render_view_t v = view();
-    (void)frame(r, &v, NULL, -1);
+    (void)frame(r, NULL, -1);
     for (int i = 0; i < HOLD + 1; i++) {
-        (void)frame(r, &v, NULL, 0);
+        (void)frame(r, NULL, 0);
     }
     assert_picture(1);
     f->settings.settle.frame_us = 0;
     render_context_set_settings(&f->c[0], &f->settings);
     for (int i = 0; i < HOLD + RENDER_SETTLE_BANDS; i++) {
-        TEST_ASSERT_EQUAL_INT(0, frame(r, &v, NULL, 0).settled_rows);
+        TEST_ASSERT_EQUAL_INT(0, frame(r, NULL, 0).settled_rows);
     }
     assert_picture(LIVE);
     f->settings.settle.frame_us = RENDER_SETTLE_FRAME_US_MAX;
     render_context_set_settings(&f->c[0], &f->settings);
     for (int i = 0; i < HOLD; i++) {
-        TEST_ASSERT_EQUAL_INT(0, frame(r, &v, NULL, 0).settled_rows);
+        TEST_ASSERT_EQUAL_INT(0, frame(r, NULL, 0).settled_rows);
     }
-    TEST_ASSERT_EQUAL_INT(H, frame(r, &v, NULL, 0).settled_rows);
+    TEST_ASSERT_EQUAL_INT(H, frame(r, NULL, 0).settled_rows);
     assert_picture(1);
     f->settings = render_settle_quality(&f->settings);
     render_context_set_settings(&f->c[0], &f->settings);
     for (int i = 0; i < HOLD + RENDER_SETTLE_BANDS; i++) {
-        TEST_ASSERT_EQUAL_INT(0, frame(r, &v, NULL, 0).settled_rows);
+        TEST_ASSERT_EQUAL_INT(0, frame(r, NULL, 0).settled_rows);
     }
     assert_picture(1);
 }
@@ -378,19 +374,18 @@ static void
 test_dynamic_resolution_settles_at_the_top_without_pricing_refinement(void) {
     static const resolution_step_t steps[] = {{W, H}, {W / 2, H / 2}};
     raster_rig_t* r = fixture(RENDER_SETTLE_FRAME_US_MAX);
-    const render_view_t v = view();
     const resolution_config_t config = resolution_config(steps, 2, 2, RENDER_SETTLE_FRAME_US_MAX);
     render_context_t* c = &f->c[0];
     render_context_set_dynamic_resolution(c, &config, NULL, 1);
     for (int i = 0; i < HOLD + 1; i++) {
-        (void)frame(r, &v, NULL, 0);
+        (void)frame(r, NULL, 0);
     }
     const int32_t live_us = 1;
     const int32_t over_us = config.budget_us + 1;
     /* Presentation, live draw, settle draw, then compose. */
     const int64_t settle_only[] = {0, 0, live_us, live_us, live_us + over_us, live_us + over_us, live_us + over_us};
     clock_fake_script(settle_only, sizeof settle_only / sizeof settle_only[0]);
-    const render_context_frame_t refined = frame(r, &v, NULL, 0);
+    const render_context_frame_t refined = frame(r, NULL, 0);
     TEST_ASSERT_TRUE(c->still_judged);
     TEST_ASSERT_EQUAL_INT(0, refined.step);
     TEST_ASSERT_GREATER_THAN_INT(0, refined.settled_rows);
@@ -400,7 +395,7 @@ test_dynamic_resolution_settles_at_the_top_without_pricing_refinement(void) {
 
     const int64_t live_only[] = {0, 0, over_us, over_us, over_us};
     clock_fake_script(live_only, sizeof live_only / sizeof live_only[0]);
-    const render_context_frame_t over = frame(r, &v, &change_at_eye, 1);
+    const render_context_frame_t over = frame(r, &change_at_eye, 1);
     TEST_ASSERT_TRUE(c->still_judged);
     TEST_ASSERT_EQUAL_INT(over_us, over.draw_us);
     TEST_ASSERT_EQUAL_INT(0, over.settle_us);

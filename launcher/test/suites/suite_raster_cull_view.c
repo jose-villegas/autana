@@ -556,6 +556,7 @@ static const int TRIANGLES_PER_QUAD = 2;
 typedef struct {
     r3d_quad_t quad[SCENE_QUADS];
     r3d_instance_t instance[SCENE_QUADS];
+    render_view_t view;
     render_context_t context;
     render_context_t straight; /* a second context, for a run the observer never touches */
 } scene_t;
@@ -605,6 +606,7 @@ scene_open(void) {
     TEST_ASSERT_NOT_NULL(s);
     scene_now = s;
     suite_set_test_cleanup(scene_release);
+    s->view = render_view_fixture_at(&scene_camera, (viewport_t){W, H, 0});
     /* Flat fates, so a culled cluster's pixels carry its colour to count. */
     const tune_entry_t* paint = tune_find(tune_shared(), TUNE_NAME(cullview, paint));
     TEST_ASSERT_NOT_NULL(paint);
@@ -625,8 +627,7 @@ scene_open(void) {
 
 static void
 context_draw(scene_t* s, render_context_t* context) {
-    const render_view_t view = render_view_fixture_at(&scene_camera, (viewport_t){W, H, 0});
-    TEST_ASSERT_TRUE(render_context_draw(context, s->instance, SCENE_QUADS, &view, 0));
+    TEST_ASSERT_TRUE(render_context_draw(context, s->instance, SCENE_QUADS, &s->view, 0));
 }
 
 static void
