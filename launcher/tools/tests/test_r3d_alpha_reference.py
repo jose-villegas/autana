@@ -19,7 +19,7 @@ except ImportError:
     np = None
 
 from tests.r3d_env import needs_mitsuba
-from tests.test_r3d_ray_query import have_llvm
+from tests.r3d_env import have_llvm
 
 VARIANT = 'scalar_rgb'
 
