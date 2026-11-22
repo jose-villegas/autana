@@ -11,7 +11,8 @@ Nothing here runs on the board.
 
 A `NAME.anim.toml` can name a `NAME.keys.toml` as its source.
 `keys_file.py` builds it into glTF in memory and derives Catmull-Rom<sup>[[20]](../../../docs/Citations.md#catmull-1974)</sup>
-tangents when requested. See [Keys files](../../../docs/render/animation/Animation-Tracks.md#keys-files).
+tangents when a cubic track gives none, and for camera shorthand translation.
+See [Keys files](../../../docs/render/animation/Animation-Tracks.md#keys-files).
 The field table comes from the C component declarations.
 
 | File | What it does |

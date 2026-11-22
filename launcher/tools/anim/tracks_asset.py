@@ -16,8 +16,7 @@ import pathlib
 import re
 import statistics
 import struct
-from build.c_enum import ASSET_TAG_WIDTH, read_asset_type
-from build.c_header import read_define
+from build.c_header import ASSET_TAG_WIDTH, read_define, tag_text, tag_value
 from build.name_hash import name_hash, NONE
 import sys
 import tomllib
@@ -32,7 +31,7 @@ from anim.scene_fields import (CAMERA, TRANSFORM, VALUE_FLOAT, VALUE_VEC2, VALUE
                                WIDTHS)  # noqa: E402
 
 OWNER = pathlib.Path(__file__).resolve().parents[2] / "main/anim/anim_tracks_format.h"
-TYPE = read_asset_type(OWNER, "ANIM_TRACKS_ASSET").to_bytes(ASSET_TAG_WIDTH, "little")
+TYPE = tag_text(read_define(OWNER, "ANIM_TRACKS_ASSET")).encode("ascii")
 VERSION = read_define(OWNER, "ANIM_TRACKS_VERSION")
 HEADER = struct.Struct("<HHIIIBxH")
 ROW = struct.Struct("<HHIIIIIHBB")
@@ -53,8 +52,9 @@ STRINGS_MAX, COUNT_MAX, DURATION_MAX, GROUND_MAX = 65535, 65535, 0xFFFFFFFF, 655
 GROUND_SAMPLES_PER_S = 120
 ROOT_SCENE, ROOT_SKELETON = [read_define(OWNER, "ANIM_ROOT_" + name) for name in ("SCENE", "SKELETON")]
 YFOV_FIELD = "half_fov_short_tan"
-FIELDS = {path: (field, value_type) for field, (path, value_type) in scene_fields.TRANSFORM_FIELDS.items()}
-SCENE_FIELD_POINTER = re.compile(r"/nodes/([0-9]+)/extensions/" + scene_fields.SCENE_FIELDS_EXTENSION + r"/([^/]{4})/([^/]+)")
+FIELDS = {path: field for field, path in scene_fields.TRANSFORM_FIELDS.items()}
+SCENE_FIELD_POINTER = re.compile(r"/nodes/([0-9]+)/extensions/" + scene_fields.SCENE_FIELDS_EXTENSION
+                                 + rf"/([^/]{{{ASSET_TAG_WIDTH}}})/([^/]+)")
 assert AT_PAD + HEADER_PAD_SIZE == AT_GROUND and HEADER.size == HEADER_SIZE == AT_GROUND + struct.calcsize("<H")
 assert ROW.size == ROW_SIZE == ROW_INTERP + struct.calcsize("<B")
 # glTF's interpolation names, in anim_interp_t's order.
@@ -78,9 +78,9 @@ def channel_binding(document, channel, joint_paths=None):
     pointer = channel["pointer"]
     if pointer:
         scene_field = SCENE_FIELD_POINTER.fullmatch(pointer)
-        if scene_field:
+        if scene_field and scene_field[2].isascii():
             node, tag, field = scene_field.groups()
-            component = int.from_bytes(tag.encode("utf-8"), "little")
+            component = tag_value(tag)
             binding = scene_fields.fields().get((component, field))
             if binding is None:
                 raise TracksError("channel %s: unknown scene component or field" % pointer)
@@ -93,11 +93,15 @@ def channel_binding(document, channel, joint_paths=None):
         holders = [i for i, node in enumerate(document.get("nodes", [])) if node.get("camera") == camera]
         if camera >= len(document.get("cameras", [])) or len(holders) != 1:
             raise TracksError("channel %s: needs one node holding the camera" % pointer)
-        return object_name(document, "nodes", holders[0]), CAMERA, YFOV_FIELD, VALUE_FLOAT, camera
+        binding = scene_fields.fields().get((CAMERA, YFOV_FIELD))
+        if binding is None or binding[0] != VALUE_FLOAT:
+            raise TracksError(f"channel {pointer}: requires scalar camera field {YFOV_FIELD}")
+        return object_name(document, "nodes", holders[0]), CAMERA, YFOV_FIELD, binding[0], camera
     node, path = channel["node"], channel["path"]
     if path not in FIELDS or node is None:
         raise TracksError("channel node %s/%s: unsupported target" % (node, path))
-    field, value_type = FIELDS[path]
+    field = FIELDS[path]
+    value_type, _ = scene_fields.fields()[TRANSFORM, field]
     return (joint_paths[node] if joint_paths else object_name(document, "nodes", node)), TRANSFORM, field, value_type, None
 
 
@@ -107,7 +111,7 @@ def channel_name(document, channel):
 
 
 def binding_name(path, component, field):
-    return "%s:%s.%s" % (path, component.to_bytes(4, "little").decode("latin1"), field)
+    return "%s:%s.%s" % (path, tag_text(component), field)
 
 
 def check_curve(name, channel):
@@ -276,8 +280,10 @@ def encode(tracks, duration_ms, root=ROOT_SCENE, ground=0):
     rows, data = [], bytearray()
     for track, track_hashes in zip(tracks, binding_hashes):
         check_curve(track["name"], track)
-        if not track["component"] or track["type"] not in range(len(WIDTHS)):
-            raise TracksError("%s: unknown component or type" % track["name"])
+        if (track["component"], track["field"]) not in scene_fields.fields():
+            raise TracksError("%s: unknown component or field" % track["name"])
+        if track["type"] not in range(len(WIDTHS)):
+            raise TracksError("%s: unknown value type" % track["name"])
         if any(len(v) != WIDTHS[track["type"]] for v in track["values"]):
             raise TracksError("%s: values do not match binding type" % track["name"])
         times = struct.pack("<%df" % len(track["times"]), *track["times"])

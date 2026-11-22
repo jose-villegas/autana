@@ -8,7 +8,7 @@ import tomllib
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from anim import scene_fields
-from build.c_enum import ASSET_TAG_WIDTH
+from build.c_header import ASSET_TAG_WIDTH, tag_text, tag_value
 from geometry.vectors import qmul, qrot, unit
 from gltf.gltf_write import build_glb
 
@@ -72,7 +72,8 @@ def opposite_sign(a, b):
 
 
 def catmull_rom(times, values, loop=False):
-    # Catmull and Rom, 1974, A Class of Local Interpolating Splines.
+    # Catmull-Rom (Catmull and Rom 1974) with time-scaled finite differences
+    # and wrapped neighbors for a closed loop.
     if len(times) == 1:
         return [[0] * len(values[0]), values[0], [0] * len(values[0])]
     rows = []
@@ -193,7 +194,7 @@ def resolve_field(name, fields, where):
     tag, dot, member = name.partition(".")
     if dot:
         if len(tag) == ASSET_TAG_WIDTH and tag.isascii():
-            binding = (int.from_bytes(tag.encode("ascii"), "little"), member)
+            binding = (tag_value(tag), member)
             if binding in fields:
                 return binding
         raise ValueError(f"{where}: unknown field")
@@ -202,8 +203,7 @@ def resolve_field(name, fields, where):
         raise ValueError(f"{where}: unknown field")
     if len(matches) > 1:
         options = [f'field = "{tag}.{field}"' for tag, field in
-                   sorted((component.to_bytes(ASSET_TAG_WIDTH, "little").decode("ascii"), field)
-                          for component, field in matches)]
+                   sorted((tag_text(component), field) for component, field in matches)]
         raise ValueError(f"{where}: ambiguous field; use " + " or ".join(options))
     return matches[0]
 
@@ -239,6 +239,7 @@ def tracks_glb(values):
         if binding in seen:
             raise ValueError(f"{where}: duplicate track")
         seen.add(binding)
+        # The keys tool enforces step-only fields once C declares them with ANIM_FIELD_STEP.
         value_type, _ = fields[component, field]
         transform = scene_fields.TRANSFORM_FIELDS.get(field) if component == scene_fields.TRANSFORM else None
         interp = INTERPOLATIONS[interp]
@@ -249,9 +250,9 @@ def tracks_glb(values):
         node = indices[obj]
         channel = dict(interpolation=interp, times=times, values=rows)
         if transform:
-            channel.update(node=node, path=transform[0])
+            channel.update(node=node, path=transform)
         else:
-            tag = component.to_bytes(ASSET_TAG_WIDTH, "little").decode("ascii")
+            tag = tag_text(component)
             channel.update(path="pointer", pointer=f"/nodes/{node}/extensions/{extension}/{tag}/{field}")
             first = rows[CUBIC_VALUE if interp == INTERPOLATIONS["cubic"] else 0]
             properties = nodes[node].setdefault("extensions", {}).setdefault(extension, {}).setdefault(tag, {})

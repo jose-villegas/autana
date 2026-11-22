@@ -227,6 +227,43 @@ keys = [{t = 0, v = 8}]
             tracks_asset.channel_binding(doc, dict(channels[1], pointer="/nodes/0/extensions/AUTANA_scene_fields/" + bad))
 
 
+def test_encode_refuses_a_field_on_the_wrong_component():
+    track = decoded_curve("position", "linear", [dict(t=0, v=[1, 2, 3])])
+    track["component"] = scene_fields.CAMERA
+    with pytest.raises(tracks_asset.TracksError, match="unknown component or field"):
+        tracks_asset.encode([track], 0)
+
+
+def test_yfov_requires_its_camera_field(tmp_path, monkeypatch):
+    doc = {"nodes": [{"name": "camera", "camera": 0}], "cameras": [{}]}
+    channel = {"pointer": "/cameras/0/perspective/yfov"}
+    component(tmp_path, "CAMR", "ANIM_FIELD(test_t, renamed_fov, ANIM_VALUE_FLOAT)")
+    monkeypatch.setattr(scene_fields, "fields", lambda: scene_fields.discover(tmp_path))
+    with pytest.raises(tracks_asset.TracksError, match=tracks_asset.YFOV_FIELD):
+        tracks_asset.channel_binding(doc, channel)
+
+
+def test_colour_rotation_field_round_trips_and_samples_linearly(tmp_path, monkeypatch):
+    component(tmp_path, "TEST", "ANIM_FIELD(test_t, rotation, ANIM_VALUE_COLOUR)")
+    fields = scene_fields.fields() | scene_fields.discover(tmp_path)
+    monkeypatch.setattr(scene_fields, "fields", lambda: fields)
+    track = dict(object="prop", field="TEST.rotation", interp="linear",
+                 keys=[dict(t=0, v=[0, 0.5, 1]), dict(t=2, v=[0.5, 1, 0])])
+    doc, binary = gltf_read.parse_glb(keys_file.build(dict(animation="path", tracks=[track])))
+    animation = doc["animations"][0]
+    channel, = gltf_read.read_animation(doc, binary, animation)
+    entry = tracks_asset.encode(*tracks_asset.clip_tracks(doc, binary, animation))
+    rows, _ = tracks_asset.decode(entry)
+    assert rows[0]["type"] == scene_fields.VALUE_COLOUR
+    assert rows[0]["values"] == [(0, 0.5, 1), (0.5, 1, 0)]
+    with pytest.raises(ValueError, match="needs its binding type"):
+        gltf_read.is_rotation(channel)
+    assert tracks_asset.sample(rows[0], 1) == (0.25, 0.75, 0.5)
+    track["keys"][1]["v"].pop()
+    with pytest.raises(ValueError, match=r"prop.TEST.rotation key 1.*3 components"):
+        keys_file.build(dict(animation="path", tracks=[track]))
+
+
 @pytest.mark.parametrize("before, after, message", [
     ("ANIM_VALUE_VEC2", "ANIM_VALUE_BAD", "unknown animation value type"),
     ("{ COMPONENT_TEST,", "{ MISSING_TAG,", "cannot resolve.*MISSING_TAG"),
@@ -305,7 +342,7 @@ def decoded_curve(field, interp, keys, **extra):
 @pytest.mark.parametrize("interp, explicit", [("step", False), ("linear", False), ("cubic", False), ("cubic", True)])
 def test_baked_rotation_sign_alignment(interp, explicit):
     h = math.sqrt(0.5)
-    raw = [(0, 0, 0, 1), (-h, 0, 0, -h), (1, 0, 0, 0), (0, 1, 0, 0)]
+    raw = [(0, 0, 0, 1), (-h, 0, 0, -h), (-1, 0, 0, 0), (0, 1, 0, 0)]
     times = [0, 1, 3, 4]
     keys = [dict(t=t, v=q) for t, q in zip(times, raw)]
     incoming, outgoing = (1, 2, 3, 4), (5, 6, 7, 8)
@@ -314,14 +351,14 @@ def test_baked_rotation_sign_alignment(interp, explicit):
             key.update({"in": incoming, "out": outgoing})
     rows = decoded_curve("rotation", interp, keys)["values"]
     values = rows[1::3] if interp == "cubic" else rows
-    expected = [raw[0], (h, 0, 0, h), raw[2], raw[3]]
+    expected = [raw[0], (h, 0, 0, h), (1, 0, 0, 0), raw[3]]
     for got, want in zip(values, expected, strict=True):
         assert got == pytest.approx(want)
     dots = [sum(x * y for x, y in zip(a, b)) for a, b in zip(values, values[1:])]
     assert dots[:2] == pytest.approx([h, h])
     assert dots[-1] == 0
     if explicit:
-        signs = (1, -1, 1, 1)
+        signs = (1, -1, -1, 1)
         assert rows[::3] == [tuple(s * x for x in incoming) for s in signs]
         assert rows[2::3] == [tuple(s * x for x in outgoing) for s in signs]
     elif interp == "cubic":

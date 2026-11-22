@@ -3,8 +3,8 @@ import functools
 import pathlib
 import re
 
-from build.c_enum import ASSET_TAG_WIDTH, read_asset_type, read_enum
-from build.c_header import read_define
+from build.c_enum import read_enum
+from build.c_header import read_define, tag_text
 from build.math_constants import INTEGER_DEFINE, blank_comments
 
 MAIN = pathlib.Path(__file__).resolve().parents[2] / "main"
@@ -19,8 +19,8 @@ VALUE_VEC3 = VALUE_TYPES["ANIM_VALUE_VEC3"]
 VALUE_QUAT = VALUE_TYPES["ANIM_VALUE_QUAT"]
 VALUE_COLOUR = VALUE_TYPES["ANIM_VALUE_COLOUR"]
 WIDTHS = read_define(TRACK_HEADER, "ANIM_VALUE_WIDTHS")
-CAMERA = read_asset_type(LENS_HEADER, "ANIM_COMPONENT_CAMERA")
-TRANSFORM = read_asset_type(TRACK_FORMAT_HEADER, "ANIM_COMPONENT_TRANSFORM")
+CAMERA = read_define(LENS_HEADER, "ANIM_COMPONENT_CAMERA")
+TRANSFORM = read_define(TRACK_FORMAT_HEADER, "ANIM_COMPONENT_TRANSFORM")
 
 COMPONENT_DEFINITION = r"\banim_component_fields_t\s+\w+\s*="
 COMPONENT_TABLE = re.compile(COMPONENT_DEFINITION + r"\s*\{\s*(\w+)\s*,\s*(\w+)\s*,")
@@ -28,8 +28,7 @@ FIELD_TABLE = re.compile(r"\banim_field_t\s+(\w+)\s*\[\s*\]\s*=\s*\{(.*?)\}", re
 FIELD_MACROS = {"ANIM_FIELD": False, "ANIM_FIELD_STEP": True}
 FIELD_CALL = r"\b(" + "|".join(FIELD_MACROS) + r")\s*\("
 FIELD_DECL = re.compile(FIELD_CALL + r"\s*\w+\s*,\s*(\w+)\s*,\s*(\w+)\s*\)")
-TRANSFORM_FIELDS = {"position": ("translation", VALUE_VEC3), "rotation": ("rotation", VALUE_QUAT),
-                    "scale": ("scale", VALUE_VEC3)}
+TRANSFORM_FIELDS = {"position": "translation", "rotation": "rotation", "scale": "scale"}
 
 
 def discover(root=MAIN):
@@ -43,7 +42,7 @@ def discover(root=MAIN):
         for definition in INTEGER_DEFINE.finditer(source):
             name, value = definition.groups()
             if re.match(r"ASSET_TYPE\s*\(", value):
-                tag = read_asset_type(path, name, value=value)
+                tag = read_define(path, name)
                 if tags.setdefault(name, tag) != tag:
                     raise ValueError(f"{path}: conflicting definitions of {name}")
     fields = {}
@@ -67,7 +66,7 @@ def discover(root=MAIN):
                 if value_type not in VALUE_TYPES:
                     raise ValueError(f"{path}: {field} has unknown animation value type {value_type}")
                 if (tag, field) in fields:
-                    code = tag.to_bytes(ASSET_TAG_WIDTH, "little").decode("ascii")
+                    code = tag_text(tag)
                     raise ValueError(f"{path}: duplicate animation field {code}.{field}")
                 fields[tag, field] = (VALUE_TYPES[value_type], FIELD_MACROS[macro])
         if sum(matched.values()) != len(re.findall(FIELD_CALL, source)):
@@ -79,3 +78,8 @@ def discover(root=MAIN):
 def fields():
     """The scene field table for this invocation of the tool."""
     return discover(MAIN)
+
+
+def bake_inputs():
+    """The field declarations that affect the baked track bindings."""
+    return sorted(fields().items())

@@ -9,6 +9,7 @@ converter, which uses NumPy and the native ufbx reader.
 import json
 import math
 import pathlib
+import re
 import struct
 
 GLB_MAGIC = 0x46546C67
@@ -216,10 +217,11 @@ def read_animation(document, binary, animation):
 
 
 def is_rotation(channel):
-    """A channel whose value is a quaternion: a node's rotation path, or a
-    KHR_animation_pointer at any object's rotation."""
+    """Identify a glTF node rotation. Extension fields need their binding type."""
     pointer = channel.get("pointer") or ""
-    return channel["path"] == "rotation" or pointer.endswith("/rotation")
+    if re.match(r"/nodes/[0-9]+/extensions/", pointer):
+        raise ValueError(f"{pointer}: an extension field needs its binding type")
+    return channel["path"] == "rotation" or re.fullmatch(r"/nodes/[0-9]+/rotation", pointer) is not None
 
 
 def animation_duration(channels):

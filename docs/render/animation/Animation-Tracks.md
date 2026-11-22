@@ -214,8 +214,8 @@ keys = [{ t = 0, v = 0.25 }, { t = 3, v = 0.75 }]
 | `offset` on `rotation` | Left-multiply values and tangents by the offset rotation. |
 
 [`scene_fields.py`](../../../launcher/tools/anim/scene_fields.py) reads the
-component tags and `ANIM_FIELD` tables from C. Each track applies its own
-offset, with zero position or identity rotation for an omitted member.
+component tags and `ANIM_FIELD` tables from C. An omitted offset member
+defaults to zero position or identity rotation.
 
 Camera shorthand uses `node`, `animation` and `[[keys]]` with `t`,
 `eye` and `look_at`. Translation uses Catmull-Rom<sup>[[20]](../../Citations.md#catmull-1974)</sup>.

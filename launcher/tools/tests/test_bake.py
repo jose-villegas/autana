@@ -979,7 +979,8 @@ class PosesTests(FittedBakeCase):
         return bake.stage_keys(self.job, self.scene, tools, AnyStart(), poses)
 
     def test_sampler_closure_is_outside_consumers(self):
-        excluded = {"anim/track_host.py", "anim/tracks_asset.py", "build/packages.py"}
+        excluded = {"anim/keys_file.py", "anim/scene_fields.py", "anim/track_host.py", "anim/tracks_asset.py",
+                    "build/packages.py"}
         for stage in ("mesh", "reference", "fit"):
             files = bake.stage_files(stage)
             self.assertFalse(excluded & {path.relative_to(TOOLS).as_posix() for path in files})
@@ -987,6 +988,19 @@ class PosesTests(FittedBakeCase):
             self.assertFalse(any(path.startswith(("launcher/main/anim/", "launcher/main/asset/",
                                                  "launcher/packages/math/"))
                                  or path == "launcher/tools/anim/track_host.c" for path in native))
+
+    def test_second_module_declares_bake_inputs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = pathlib.Path(directory) / "other_binding.py"
+            data = path.with_suffix(".txt")
+            data.write_text("first", encoding="utf-8")
+            path.write_text("from pathlib import Path\n"
+                            "def bake_inputs():\n"
+                            "    return Path(__file__).with_suffix('.txt').read_text(encoding='utf-8')\n",
+                            encoding="utf-8")
+            self.assertEqual(bake.native_inputs([path])[bake.relative(path)], bake.digest("first"))
+            data.write_text("second", encoding="utf-8")
+            self.assertEqual(bake.native_inputs([path])[bake.relative(path)], bake.digest("second"))
 
     def test_scene_writer_is_outside_consumers(self):
         for stage in ("mesh", "reference", "fit"):

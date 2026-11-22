@@ -74,6 +74,7 @@ import dataclasses
 import fnmatch
 import functools
 import hashlib
+from importlib import import_module, util
 import io
 import json
 import math
@@ -102,7 +103,7 @@ from autana_config import user_cache_dir
 from http_get import get
 
 from build import packages  # noqa: E402
-from build.c_enum import read_asset_type, read_enum  # noqa: E402
+from build.c_enum import read_enum  # noqa: E402
 from build.c_header import read_define  # noqa: E402
 from bake import code_units  # noqa: E402
 from c_lexer import c_code  # noqa: E402
@@ -137,7 +138,7 @@ GPU_QUERY_TIMEOUT_S = 10
 # submodules its files compile, and the requirements beside them. An entry named `file.py:function` keys only
 # the code that function and the closure's import-time statements reach (see stage_units).
 STAGES = {
-    "poses": ("anim/track_host.py",),
+    "poses": ("anim/track_host.py", "anim/keys_file.py"),
     "mesh": ("r3d/mesh_import.py:write_baked",),
     "reference": ("r3d/reference_set.py:prepare_references", "r3d/reference_set.py:pack_references",
                   "r3d/reference_set.py:reference_inputs", "r3d/reference_set.py:canonical",
@@ -474,8 +475,21 @@ def path_constants(value):
     return []
 
 
+def input_module(path):
+    """Load a module that declares a data input hook."""
+    if path.is_relative_to(TOOLS):
+        name = path.relative_to(TOOLS).with_suffix("").parts
+        return import_module(".".join(name[:-1] if name[-1] == "__init__" else name))
+    spec = util.spec_from_file_location(path.stem, path)
+    module = util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def native_inputs(files):
-    """What a stage's files compile: each module-level path constant naming a C file counts with the
+    """Data inputs declared by bake_inputs() and what a stage's files compile.
+
+    Each module-level path constant naming a C file counts with the
     quoted headers it reaches, and one inside a submodule counts as that submodule's pinned commit, so
     a clone that never checked the submodule out keys it the same."""
     pinned, sources, keyed = submodules(), [], {}
@@ -485,15 +499,13 @@ def native_inputs(files):
 
     defines, enums = {}, {}
     for path in files:
-        if path == TOOLS / "anim/scene_fields.py":
-            from anim import scene_fields
-
-            keyed[relative(path)] = digest(sorted(scene_fields.fields().items()))
         tree, constants, _ = module_facts(path)
+        if any(isinstance(node, ast.FunctionDef) and node.name == "bake_inputs" for node in tree.body):
+            keyed[relative(path)] = digest(input_module(path).bake_inputs())
         headers = set()
         for node in ast.walk(tree):
             if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-                    and node.func.id in ("read_define", "read_defines", "read_asset_type", "read_enum", "checked_struct")):
+                    and node.func.id in ("read_define", "read_defines", "read_enum", "checked_struct")):
                 try:
                     header = pathlib.Path(eval(compile(ast.Expression(node.args[0]), str(path), "eval"),
                                                {"__builtins__": {}}, constants)).resolve()
@@ -519,9 +531,6 @@ def native_inputs(files):
                         except RuntimeError:
                             pass
                     defines[header] = values
-                if node.func.id == "read_asset_type":
-                    name = ast.literal_eval(node.args[1])
-                    defines[header][name] = read_asset_type(header, name)
         for value in constants.values():
             for item in path_constants(value):
                 if holder(item) is not None:
