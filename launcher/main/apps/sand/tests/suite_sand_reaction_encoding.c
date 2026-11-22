@@ -735,10 +735,10 @@ test_the_dilution_split_favours_neither_side(void) {
 #define SEPARATED_W 4000
 #define SEPARATED_H 2
 
-/* cells is HEAP, not static file scope, see acid_water_dilute_fixture's
- * own comment above for why. */
-static void
-acid_water_separated_fixture(uint8_t* cells) {
+static uint8_t*
+acid_water_separated_fixture(void) {
+    uint8_t* cells = malloc((size_t)SEPARATED_W * SEPARATED_H);
+    TEST_ASSERT_NOT_NULL_MESSAGE(cells, "acid/water separated grid must fit in what the framebuffer leaves");
     sand_init(&fx.separated_dilute_sim, cells, SEPARATED_W, SEPARATED_H, 7U);
     sand_set_evaporates(&fx.separated_dilute_sim, 0);
     for (int x = 0; x < SEPARATED_W; x++) {
@@ -750,14 +750,13 @@ acid_water_separated_fixture(uint8_t* cells) {
             sand_set(&fx.separated_dilute_sim, x, 1, GLASS);
         }
     }
+    sand_step(&fx.separated_dilute_sim, 0, 1000, 0);
+    return cells;
 }
 
 static void
 test_water_winning_the_dilution_boils_the_water_cell_to_steam(void) {
-    uint8_t* cells = malloc((size_t)SEPARATED_W * SEPARATED_H);
-    TEST_ASSERT_NOT_NULL_MESSAGE(cells, "acid/water separated grid must fit in what the framebuffer leaves");
-    acid_water_separated_fixture(cells);
-    sand_step(&fx.separated_dilute_sim, 0, 1000, 0);
+    uint8_t* cells = acid_water_separated_fixture();
 
     int water_wins = 0;
     int water_wins_with_steam = 0;
@@ -784,10 +783,7 @@ test_water_winning_the_dilution_boils_the_water_cell_to_steam(void) {
 
 static void
 test_acid_winning_the_dilution_boils_the_acid_cell_to_gas(void) {
-    uint8_t* cells = malloc((size_t)SEPARATED_W * SEPARATED_H);
-    TEST_ASSERT_NOT_NULL_MESSAGE(cells, "acid/water separated grid must fit in what the framebuffer leaves");
-    acid_water_separated_fixture(cells);
-    sand_step(&fx.separated_dilute_sim, 0, 1000, 0);
+    uint8_t* cells = acid_water_separated_fixture();
 
     int acid_wins = 0;
     int acid_wins_with_gas = 0;

@@ -58,13 +58,13 @@ best(int64_t a, int64_t b) {
 }
 
 typedef struct {
-    raster_buffers_t buffers;
     raster_t drawn;
     r3d_instance_t instance;
     stage_us_t us;
     r3d_pipeline_counts_t counts;
     r3d_pipeline_count_walk_t walk;
     int visible;
+    raster_buffers_t buffers;
 } cull_sample_t;
 
 static __attribute__((noinline)) void

@@ -964,23 +964,9 @@ test_two_core_step_matches_serial_fall_distance_at_a_seam(void) {
 
     for (size_t g = 0; g < sizeof gxs / sizeof gxs[0]; g++) {
         for (int offset = 0; offset <= SAND_BLOCK_H / 2; offset += SAND_BLOCK_H / 2) {
-            uint8_t* serial_cells = malloc((size_t)TC_W * (size_t)TC_H);
-            uint8_t* two_core_cells = malloc((size_t)TC_W * (size_t)TC_H);
-            uint8_t* serial_blocks = malloc(sand_sleep_block_bytes(TC_W, TC_H));
-            uint8_t* two_core_blocks = malloc(sand_sleep_block_bytes(TC_W, TC_H));
-            TEST_ASSERT_NOT_NULL(serial_cells);
-            TEST_ASSERT_NOT_NULL(two_core_cells);
-            TEST_ASSERT_NOT_NULL(serial_blocks);
-            TEST_ASSERT_NOT_NULL(two_core_blocks);
-
-            sand_t* const serial_s = malloc(sizeof *serial_s);
-            TEST_ASSERT_NOT_NULL(serial_s);
-            sand_t* const two_core_s = malloc(sizeof *two_core_s);
-            TEST_ASSERT_NOT_NULL(two_core_s);
-            sand_init(serial_s, serial_cells, TC_W, TC_H, 1U);
-            sand_init(two_core_s, two_core_cells, TC_W, TC_H, 1U);
-            sand_enable_sleeping(serial_s, serial_blocks);
-            sand_enable_sleeping(two_core_s, two_core_blocks);
+            uint8_t *serial_cells, *two_core_cells, *serial_blocks, *two_core_blocks;
+            sand_t* const serial_s = sand_test_grid_open(&serial_cells, &serial_blocks, TC_W, TC_H, 1U);
+            sand_t* const two_core_s = sand_test_grid_open(&two_core_cells, &two_core_blocks, TC_W, TC_H, 1U);
             void* scratch = lane_scratch_open(two_core_s);
             sand_set_scatter(serial_s, 0);
             sand_set_scatter(two_core_s, 0);
@@ -1578,23 +1564,9 @@ tc_water_column_mass(const sand_t* s, int x) {
 
 static void
 test_landscape_water_column_has_no_line_mass_lag(void) {
-    uint8_t* serial_cells = malloc((size_t)TC_W * (size_t)TC_H);
-    uint8_t* split_cells = malloc((size_t)TC_W * (size_t)TC_H);
-    uint8_t* serial_blocks = malloc(sand_sleep_block_bytes(TC_W, TC_H));
-    uint8_t* split_blocks = malloc(sand_sleep_block_bytes(TC_W, TC_H));
-    TEST_ASSERT_NOT_NULL(serial_cells);
-    TEST_ASSERT_NOT_NULL(split_cells);
-    TEST_ASSERT_NOT_NULL(serial_blocks);
-    TEST_ASSERT_NOT_NULL(split_blocks);
-
-    sand_t* const serial = malloc(sizeof *serial);
-    TEST_ASSERT_NOT_NULL(serial);
-    sand_t* const split = malloc(sizeof *split);
-    TEST_ASSERT_NOT_NULL(split);
-    sand_init(serial, serial_cells, TC_W, TC_H, 7U);
-    sand_init(split, split_cells, TC_W, TC_H, 7U);
-    sand_enable_sleeping(serial, serial_blocks);
-    sand_enable_sleeping(split, split_blocks);
+    uint8_t *serial_cells, *split_cells, *serial_blocks, *split_blocks;
+    sand_t* const serial = sand_test_grid_open(&serial_cells, &serial_blocks, TC_W, TC_H, 7U);
+    sand_t* const split = sand_test_grid_open(&split_cells, &split_blocks, TC_W, TC_H, 7U);
     void* scratch = lane_scratch_open(split);
     for (int y = 0; y < TC_H / 2; y++) {
         for (int x = (TC_W / 2) - 6; x < (TC_W / 2) + 6; x++) {

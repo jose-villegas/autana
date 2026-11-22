@@ -1391,8 +1391,7 @@ static void
 draw_screen_mesh(const r3d_lit_mesh_t* mesh, int split) {
     struct {
         r3d_lens_t lens;
-        r3d_span_target_t top;
-        r3d_span_target_t bottom;
+        r3d_span_target_t target;
     }* const work = malloc(sizeof *work);
 
     TEST_ASSERT_NOT_NULL(work);
@@ -1402,10 +1401,10 @@ draw_screen_mesh(const r3d_lit_mesh_t* mesh, int split) {
     r3d_pipeline_rows_t rows[1];
     r3d_pipeline_transform(mesh, &work->lens, visible, 1, cs, rows, false);
     (void)fixture();
-    work->top = fixture_rows(0, split);
-    work->bottom = fixture_rows(split, H);
-    r3d_pipeline_draw(mesh, &work->lens, visible, 1, cs, rows, &work->top, pipeline_work());
-    r3d_pipeline_draw(mesh, &work->lens, visible, 1, cs, rows, &work->bottom, pipeline_work());
+    work->target = fixture_rows(0, split);
+    r3d_pipeline_draw(mesh, &work->lens, visible, 1, cs, rows, &work->target, pipeline_work());
+    work->target = fixture_rows(split, H);
+    r3d_pipeline_draw(mesh, &work->lens, visible, 1, cs, rows, &work->target, pipeline_work());
     free(work);
 }
 
