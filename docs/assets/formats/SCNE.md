@@ -7,7 +7,7 @@ One scene: its entities, their transforms and parents, the components on them, a
 ```mermaid
 ---
 config:
-  themeCSS: "g:nth-of-type(2) rect:first-of-type { fill: #8fb3ee !important; } g:nth-of-type(2) rect:not(:first-of-type), g:nth-of-type(3) rect, g:nth-of-type(4) rect:nth-of-type(-n+2) { fill: #93d6b0 !important; } g:nth-of-type(4) rect:nth-of-type(n+3), g:nth-of-type(n+5) rect { fill: #f4a885 !important; } .packetLabel { fill: #1b1b1b !important; }"
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #8fb3ee !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(4) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(5) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(6) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(7) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(8) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(1) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(2) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(3) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(4) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(5) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(6) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(7) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(8) { fill: #93d6b0 !important; } g:nth-of-type(4) rect:nth-of-type(1) { fill: #93d6b0 !important; } g:nth-of-type(4) rect:nth-of-type(2) { fill: #93d6b0 !important; } g:nth-of-type(4) rect:nth-of-type(3) { fill: #f4a885 !important; } g:nth-of-type(4) rect:nth-of-type(4) { fill: #f4a885 !important; } g:nth-of-type(4) rect:nth-of-type(5) { fill: #f4a885 !important; } g:nth-of-type(5) rect:nth-of-type(1) { fill: #f4a885 !important; } g:nth-of-type(5) rect:nth-of-type(2) { fill: #f4a885 !important; } g:nth-of-type(5) rect:nth-of-type(3) { fill: #f4a885 !important; } g:nth-of-type(5) rect:nth-of-type(4) { fill: #f4a885 !important; } g:nth-of-type(6) rect:nth-of-type(1) { fill: #f4a885 !important; } g:nth-of-type(6) rect:nth-of-type(2) { fill: #f4a885 !important; } g:nth-of-type(6) rect:nth-of-type(3) { fill: #f4a885 !important; } g:nth-of-type(6) rect:nth-of-type(4) { fill: #f4a885 !important; } g:nth-of-type(7) rect:nth-of-type(1) { fill: #f4a885 !important; } g:nth-of-type(7) rect:nth-of-type(2) { fill: #f4a885 !important; } g:nth-of-type(7) rect:nth-of-type(3) { fill: #f4a885 !important; } g:nth-of-type(7) rect:nth-of-type(4) { fill: #f4a885 !important; } g:nth-of-type(8) rect:nth-of-type(1) { fill: #f4a885 !important; } g:nth-of-type(8) rect:nth-of-type(2) { fill: #f4a885 !important; } .packetLabel { fill: #1b1b1b !important; }"
   packet:
     bitsPerRow: 16
     bitWidth: 64
@@ -29,7 +29,7 @@ title Header, 104 bytes at 0, one cell a byte
 24-25: "chunks"
 26-27: "places"
 28-29: "turns"
-30-31: "timeline"
+30-31: "timeline count"
 32-33: "constraints"
 34-35: "hinges"
 36-39: "names_off"
@@ -304,6 +304,7 @@ title Content: turn, 8 bytes a copy from turns_off
 ```mermaid
 ---
 config:
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(3) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(4) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(4) rect:nth-of-type(2) { fill: #ffffff !important; stroke-dasharray: 4 3 !important; } .packetLabel { fill: #1b1b1b !important; }"
   packet:
     bitsPerRow: 16
     bitWidth: 54
@@ -318,6 +319,7 @@ title Timeline, 36 bytes from timeline_off
 ```mermaid
 ---
 config:
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #c7aaee !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #ffffff !important; stroke-dasharray: 4 3 !important; } g:nth-of-type(2) rect:nth-of-type(4) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(5) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(6) { fill: #e3e3e3 !important; } g:nth-of-type(3) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(3) rect:nth-of-type(2) { fill: #e3e3e3 !important; } g:nth-of-type(4) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(4) rect:nth-of-type(2) { fill: #e3e3e3 !important; } g:nth-of-type(4) rect:nth-of-type(3) { fill: #e3e3e3 !important; } g:nth-of-type(4) rect:nth-of-type(4) { fill: #e3e3e3 !important; } .packetLabel { fill: #1b1b1b !important; }"
   packet:
     bitsPerRow: 16
     bitWidth: 54
@@ -339,6 +341,7 @@ title Constraint, 48 bytes from constraints_off
 ```mermaid
 ---
 config:
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #ffffff !important; stroke-dasharray: 4 3 !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #e3e3e3 !important; } g:nth-of-type(3) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(3) rect:nth-of-type(2) { fill: #e3e3e3 !important; } g:nth-of-type(3) rect:nth-of-type(3) { fill: #e3e3e3 !important; } .packetLabel { fill: #1b1b1b !important; }"
   packet:
     bitsPerRow: 16
     bitWidth: 54
