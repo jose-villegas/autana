@@ -40,7 +40,7 @@ host like this one into the cache, so a rerun makes only what is left; `--only` 
 `--again` re-makes them even when locked, a fit from fresh references, to compare a new make with the lock
 (the lock keeps its row). `lock` drops the rows nothing needs, writes the rows it has and then fails naming the bakes still
 without one, or with `--partial` only names them;
-`--from-run N` adds the rows CI run N made, from its uploads, and is the only
+`--from-run N` adds the rows CI run N made, from its uploads, once it has finished, and is the only
 way a new bake row is written. Sound bakes use the CPU Bakes run. It repeats, so the meshes of a Bakes run
 and the fits of a Bakes GPU run lock together, so every locked file can be published; `--seed`
 locks the keys LOCK lacks, keeping every row it has: a new key takes the bytes
@@ -1240,6 +1240,23 @@ def runs_mesh_cpu_vendor(found, lock, made, mesh_cpu_vendor):
     return mesh_cpu_vendor
 
 
+def run_status(run):
+    """CI run `run`'s status as GitHub's API gives it: queued, in_progress, completed."""
+    token = github_token()
+    if token is None:
+        raise BakeMissing(f"reading run {run} needs a GitHub token: GH_TOKEN, or gh signed in")
+    return json.loads(github_get(f"{API_URL}/actions/runs/{run}", token))["status"]
+
+
+def refuse_unfinished(runs):
+    """Raises naming each run in `runs` that has not finished: a branch keeps one Bakes run, so the push of a lock
+    cancels the run it was taken from while it still works."""
+    going = [f"run {run} is {status}" for run in runs if (status := run_status(run)) != "completed"]
+    if going:
+        raise BakeMissing("; ".join(going) + ": lock from a run once it has finished, since pushing the lock "
+                          "cancels a run still going on its branch")
+
+
 def runs_made(runs, cache):
     """{key: row} of what each CI run in `runs` uploaded, its files put in the cache. A key two runs made with the
     same bytes keeps the first run's row; with different bytes it fails, naming both, so the author lists one run."""
@@ -1407,6 +1424,8 @@ def main(argv=None):
         lock, held = tables["bake"], tables["poses"]
         # The keys a run made: a seeded row's bytes were carried over, so a run makes its key again.
         made_keys = {key for key, row in lock.items() if not row.get("seeded")}
+        if args.command == "lock" and args.from_run:
+            refuse_unfinished(args.from_run)
         made = runs_made(args.from_run, cache) if args.command == "lock" and args.from_run else {}
         starts = locked_starts(lock, made)
         poses = Poses(held, resample=args.command == "lock")

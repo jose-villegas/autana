@@ -213,7 +213,7 @@ def rerun(run, request=github_api.call):
     record = request("GET", f"/actions/runs/{run}")
     attempt = record["run_attempt"]
     if branch_head(record["head_branch"], request) != record["head_sha"]:
-        # A re-run would hold the branch's concurrency slot and keep the newer head's run waiting.
+        # A re-run would take the branch's one Bakes slot and cancel the newer head's run.
         print(f"run {run} attempt {attempt}: not re-run, its branch has moved past {record['head_sha'][:9]}")
         return 0
     failed = failed_jobs(run, attempt, request)
