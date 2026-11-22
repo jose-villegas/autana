@@ -45,14 +45,10 @@ levels bake whose fit it has not locked yet; the CPU run makes it afterwards. A 
 names its `host`, the system and machine that made the bytes, since a bake
 repeats byte for byte only on one kind of host (a Linux and a Windows Blender
 export of the same `.blend` differ in the last bit of some animation keys).
-A bake that traces rays differs by CPU vendor too (an AMD and an Intel host
-trace a few rays an ulp apart), so the lock's `mesh_cpu_vendor` line names the
-vendor its meshes and reference sets were made on. A run records its host's
-vendor; `lock --from-run` refuses a run that made one on another vendor, naming
-both. A hosted runner's vendor cannot be asked for, so a Bakes job with traced
-work starts on several runners and the first on the lock's vendor does it
-([`runner_vendor.py`](../../scripts/ci/runner_vendor.py)). When none is,
-[`bakes-vendor-rerun.yml`](../../.github/workflows/bakes-vendor-rerun.yml) re-runs the job.
+A bake that traces rays differs between CPU models too (an AMD and an Intel host
+trace a few rays an ulp apart), so every Bakes job that makes a bake runs on one
+self-hosted runner, `bakes-cpu` (see [The bakes runners](#the-bakes-runners)).
+A row records the CPU vendor it was made on, and a rerun adopts an earlier attempt's bake only from a matching one.
 
 A fit's reference set is traced on the CPU, as a mesh is, since the GPU's ray
 tracing may build a different tree each time
@@ -64,7 +60,7 @@ Every reference shard renders that plan and copies its pose files byte for byte;
 
 A fit reads only locked bytes, so it repeats exactly on any GPU model. Its row
 names the `gpu` that made it. The Bakes GPU run's `runner` input picks the
-self-hosted runner by its label (default `gpu`); with `again`, the run fails
+self-hosted runner by its label (default `bakes-gpu`); with `again`, the run fails
 when a fit makes other bytes than its lock row, which checks a fit on a GPU
 other than the one that made it.
 
@@ -105,3 +101,36 @@ SH incident-radiance grids are a CPU bake kind, `sh_probes`, requested by a
 scene's sibling `<scene>.probes.toml`. They produce one `.shpr` payload per scene,
 keyed independently of mesh and reference bakes. See
 [SH probe baking](../render/offline/SH-Probes.md) for sampling and commands.
+
+## The bakes runners
+
+Two self-hosted runners on one Linux machine make every bake:
+
+| Label | Runs | Python |
+|---|---|---|
+| `bakes-cpu` | the Bakes jobs that make a bake: meshes, exports, sounds, levels, the reference plan and shards | `~/bakes/env`, the `.python-version` release |
+| `bakes-gpu` | the Bakes GPU fits | `~/gpu/env` ([r3d README](../../launcher/tools/r3d/README.md)) |
+
+A job there needs no root: the machine holds LLVM, Git LFS, a C compiler and
+the X libraries Blender loads. Its tracing runs as a stage of
+[`local_schedule.py`](../../scripts/lib/local_schedule.py), on the half of the
+CPUs board work leaves, under the stage's hang guard. Only the repository's own
+branches reach it: a fork's pull request skips those jobs and its CPU check fails.
+While the machine is off, its jobs wait in GitHub's queue, which fails a job
+after a day; nothing falls back to a hosted runner, whose bytes would differ.
+
+On that machine, once, beside the existing GPU runner (`~/actions-runner`):
+
+```sh
+curl -fsSL https://micro.mamba.pm/api/micromamba/linux-64/latest | tar -xj -C ~ bin/micromamba
+~/bin/micromamba create -y -p ~/bakes/env -c conda-forge "python=$(cat .python-version)"
+mkdir ~/actions-runner-bakes && cd ~/actions-runner-bakes
+version=$(~/actions-runner/bin/Runner.Listener --version)
+curl -fsSL "https://github.com/actions/runner/releases/download/v$version/actions-runner-linux-x64-$version.tar.gz" | tar -xz
+./config.sh --url https://github.com/OWNER/REPO --token TOKEN --name "$(hostname)-bakes-cpu" --labels bakes-cpu --unattended
+sudo ./svc.sh install && sudo ./svc.sh start
+```
+
+`TOKEN` is a registration token
+(`gh api -X POST repos/OWNER/REPO/actions/runners/registration-token --jq .token`), and the GPU runner takes
+the `bakes-gpu` label with `gh api -X POST repos/OWNER/REPO/actions/runners/ID/labels -f "labels[]=bakes-gpu"`.

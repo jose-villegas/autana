@@ -39,15 +39,17 @@ GPU_NOT_ON_HOST = "GPU runner not on this host"
 RECENT_RUNS_WINDOW = timedelta(days=2)
 BAKES_WORKFLOW = "bakes-gpu.yml"
 DOC_IMAGES_WORKFLOW = "doc-images-gpu.yml"
+# The CPU bakes' tracing steps run as stages too, on the runner beside the fits'.
+CPU_BAKES_WORKFLOW = "bakes.yml"
 GPU_WORKFLOWS = (BAKES_WORKFLOW, DOC_IMAGES_WORKFLOW)
 # A GPU stage is hung once no task or bake has finished for this long: above the slowest single task (a
 # cold CPU reference set, about 2.5 h), so a slow stage that still progresses is never stopped.
 GPU_STAGE_PROGRESS_SECONDS = 4 * 60 * 60
 # Each stage's backstop, far above GPU_STAGE_PROGRESS_SECONDS so only a stage that never ends meets it, and
-# under its job's timeout-minutes (doc images 1380, bakes 600) so the guard, not GitHub, stops it.
-GPU_STAGE_HANG_SECONDS = {DOC_IMAGES_WORKFLOW: 14 * 60 * 60, BAKES_WORKFLOW: 9 * 60 * 60}
+# under its job's timeout-minutes (doc images 1380, bakes and CPU bakes 600) so the guard, not GitHub, stops it.
+GPU_STAGE_HANG_SECONDS = {DOC_IMAGES_WORKFLOW: 14 * 60 * 60, BAKES_WORKFLOW: 9 * 60 * 60, CPU_BAKES_WORKFLOW: 9 * 60 * 60}
 # Doc images reserve WSL_MEMORY_REQUIRED_BYTES and render for hours: they wait for the boards and hold heavy.
-# A fit is one GPU-bound process: it runs beside builds and board jobs, on its CPU share.
+# A fit is one GPU-bound process: it runs beside builds and board jobs, on its CPU share, as a CPU bake does.
 QUIET_HOST_WORKFLOWS = (DOC_IMAGES_WORKFLOW,)
 # A stage beside board work runs on the top 1/SHARED_CPU_DIVISOR of the host's CPUs; builds and board
 # tooling keep the rest.

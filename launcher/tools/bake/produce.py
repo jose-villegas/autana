@@ -68,7 +68,7 @@ def maker(kind):
     """Where a bake of `kind` is made, as its row names it: the host, and what its bytes differ by."""
     fields = {"host": f"{platform.system()} {platform.machine()}"}
     if keys.cpu_vendor() is not None:
-        fields["cpu_vendor"] = keys.cpu_vendor()  # a mesh's bytes differ between CPU vendors (bake.runs_mesh_cpu_vendor)
+        fields["cpu_vendor"] = keys.cpu_vendor()  # a rerun adopts a mesh only from a matching CPU vendor
     if kind == "fit" and (gpu := keys.gpu_name()) is not None:
         fields["gpu"] = gpu  # a fit's bytes differ between GPU models: its lock row names the one
     return fields
