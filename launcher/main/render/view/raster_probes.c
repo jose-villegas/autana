@@ -44,8 +44,8 @@ cross(const r3d_lens_t* lens, const raster_lines_depth_t* depth, vec3f_t centre)
 }
 
 static void
-disc(const raster_probes_t* s, const render_view_t* seen, const raster_lines_depth_t* depth, vec3f_t centre, vec2f_t at,
-     float radius, const sh1_rgb_t* radiance) {
+disc(const r3d_skin_light_transfer_t* transfer, const render_view_t* seen, const raster_lines_depth_t* depth,
+     vec3f_t centre, vec2f_t at, float radius, const sh1_rgb_t* radiance) {
     const float pixels = seen->lens.fx * radius / centre.z;
     const int left = (int)fmaxf(ceilf(at.x - pixels), 0.0F);
     const int right = (int)fminf(floorf(at.x + pixels), (float)(depth->width - 1));
@@ -68,15 +68,14 @@ disc(const raster_probes_t* s, const render_view_t* seen, const raster_lines_dep
             const vec3f_t normal =
                 vec3f_sub(vec3f_add(vec3f_scale(seen->screen_x, nx), vec3f_scale(seen->screen_y, ny)),
                           vec3f_scale(seen->forward, nz));
-            draw_pixel(x, y, shade(&ambient, normal, s->raster->light_transfer));
+            draw_pixel(x, y, shade(&ambient, normal, transfer));
         }
     }
 }
 
 static void
-probe(const raster_probes_t* s, const render_view_t* seen, const r3d_lens_t* lens, const raster_lines_depth_t* depth,
-      float radius, int x, int y, int z) {
-    const sh_probes_t* probes = s->probes;
+probe(const sh_probes_t* probes, const r3d_skin_light_transfer_t* transfer, const render_view_t* seen,
+      const r3d_lens_t* lens, const raster_lines_depth_t* depth, float radius, int x, int y, int z) {
     const vec3f_t world =
         vec3f_add(probes->origin,
                   (vec3f_t){(float)x * probes->spacing.x, (float)y * probes->spacing.y, (float)z * probes->spacing.z});
@@ -92,14 +91,14 @@ probe(const raster_probes_t* s, const render_view_t* seen, const r3d_lens_t* len
         cross(lens, depth, centre);
     } else {
         const sh1_rgb_t radiance = sh_probes_sample(probes, world);
-        disc(s, seen, depth, centre, at, radius, &radiance);
+        disc(transfer, seen, depth, centre, at, radius, &radiance);
     }
 }
 
 void
 raster_probes_overlay(void* state, int width, int height) {
-    const raster_probes_t* s = state;
-    if (s->raster == NULL || s->probes == NULL || s->raster->light_transfer == NULL) {
+    raster_probes_t* s = state;
+    if (s->raster == NULL || s->probes == NULL) {
         return;
     }
     const sh_probes_t* probes = s->probes;
@@ -107,6 +106,16 @@ raster_probes_overlay(void* state, int width, int height) {
     const float radius = spacing * (float)size / RASTER_PROBES_SIZE_UNIT;
     if (!(radius > 0.0F)) {
         return;
+    }
+    const r3d_skin_light_transfer_t* transfer = s->raster->light_transfer;
+    if (transfer == NULL) {
+        const float white = s->raster->tonemap_white;
+        if (!s->fallback_ready || s->fallback_white != white) {
+            r3d_skin_light_transfer_build(white, &s->fallback_transfer);
+            s->fallback_white = white;
+            s->fallback_ready = true;
+        }
+        transfer = &s->fallback_transfer;
     }
     render_view_t seen = s->camera;
     render_view_refit(&seen, (viewport_t){width, height, seen.viewport.quarter});
@@ -117,7 +126,7 @@ raster_probes_overlay(void* state, int width, int height) {
     for (int z = 0; z < probes->dims[2]; z++) {
         for (int y = 0; y < probes->dims[1]; y++) {
             for (int x = 0; x < probes->dims[0]; x++) {
-                probe(s, &seen, &lens, &depth, radius, x, y, z);
+                probe(probes, transfer, &seen, &lens, &depth, radius, x, y, z);
             }
         }
     }

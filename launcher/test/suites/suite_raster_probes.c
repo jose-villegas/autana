@@ -96,6 +96,25 @@ test_probe_centre_and_rim_use_skin_irradiance(void) {
 }
 
 static void
+test_probe_draws_without_lit_skin(void) {
+    raster_rig_t* r = fixture();
+    fixture_t* f = (fixture_t*)r->own;
+    r->raster.light_transfer = NULL;
+    r->raster.tonemap_white = TONEMAP_WHITE;
+    draw(r);
+    const vec3f_t normal = vec3f_scale(r->view.forward, -1.0F);
+    const gfx_color_t tonemapped = pixel(W / 2, H / 2);
+    TEST_ASSERT_NOT_EQUAL(BACKGROUND, tonemapped);
+    TEST_ASSERT_EQUAL_HEX16(irradiance(r, normal), tonemapped);
+
+    r->raster.tonemap_white = 0.0F;
+    r3d_skin_light_transfer_build(r->raster.tonemap_white, &f->transfer);
+    draw(r);
+    TEST_ASSERT_NOT_EQUAL(tonemapped, pixel(W / 2, H / 2));
+    TEST_ASSERT_EQUAL_HEX16(irradiance(r, normal), pixel(W / 2, H / 2));
+}
+
+static void
 assert_background(void) {
     for (int y = 0; y < H; y++) {
         for (int x = 0; x < W; x++) {
@@ -159,6 +178,7 @@ void
 run_raster_probes_suite(void) {
 #ifndef DEVICE_BUILD
     RUN_TEST(test_probe_centre_and_rim_use_skin_irradiance);
+    RUN_TEST(test_probe_draws_without_lit_skin);
     RUN_TEST(test_probe_behind_geometry_leaves_picture_unchanged);
     RUN_TEST(test_no_grid_leaves_shaded_frame_byte_identical);
     RUN_TEST(test_probes_debug_view_name_round_trips);

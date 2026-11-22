@@ -78,6 +78,7 @@ struct raster {
     /* Borrowed scene lighting for development overlays, valid through composition. */
     const struct sh_probes* probes;
     const r3d_skin_light_transfer_t* light_transfer;
+    float tonemap_white;
 };
 
 /* What a draw uses: the raster's settings. */

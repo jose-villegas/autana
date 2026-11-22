@@ -397,6 +397,7 @@ draw_active(uint32_t dt_ms, int quarter, int width, int height) {
         raster->post = contact_blobs ? &CONTACT_POST : NULL;
         raster->probes = scene_probes(scene->root->root);
         raster->light_transfer = scene->light_transfer;
+        raster->tonemap_white = scene->tonemap_white;
         render_context_set_batches(render_context_main(), drawn.batch_draws, batches);
         rendered = render_context_draw(render_context_main(), drawn.instances, count, &drawn_view, camera->clear);
         if (rendered) {

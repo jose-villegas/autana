@@ -15,6 +15,9 @@ typedef struct {
     const raster_t* raster;
     render_view_t camera;
     const sh_probes_t* probes;
+    r3d_skin_light_transfer_t fallback_transfer;
+    float fallback_white;
+    bool fallback_ready;
 } raster_probes_t;
 
 raster_attachment_t raster_probes_view(void* state);
