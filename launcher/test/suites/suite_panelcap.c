@@ -12,7 +12,7 @@
 #define TEST_WINDOW_SPACING 2U
 
 #ifndef DEVICE_BUILD
-bool gfx_panel_capture_on;
+bool console_panelcap_on;
 static int panel_result;
 #endif
 
@@ -26,7 +26,7 @@ release(void) {
     memory_free(capture);
     capture = NULL;
 #ifndef DEVICE_BUILD
-    gfx_panel_capture_on = false;
+    console_panelcap_on = false;
     panel_result = 0;
 #endif
 }
@@ -64,7 +64,7 @@ test_busy_sender_drops_whole_present(void) {
     panelcap_commit(capture);
     TEST_ASSERT_FALSE(panelcap_begin(capture, MATH_US_PER_S));
     const uint8_t refused[] = {0xab, 0xcd};
-    panelcap_window(capture, 0, 0, 1, 1, refused);
+    panelcap_window(capture, 5, 7, 6, 8, refused);
     panelcap_commit(capture);
     TEST_ASSERT_EQUAL_MEMORY(pixel, capture->storage, sizeof pixel);
     TEST_ASSERT_EQUAL(1, bytes_read_u32(panelcap_peek(capture)));
@@ -77,7 +77,11 @@ test_busy_sender_drops_whole_present(void) {
     TEST_ASSERT_FALSE(panelcap_begin(capture, 2 * MATH_US_PER_S + 1));
     panelcap_commit(capture);
     TEST_ASSERT_NULL(panelcap_peek(capture));
-    panelcap_redraw_requested(capture);
+    const recti_t redraw = panelcap_redraw_requested(capture);
+    TEST_ASSERT_EQUAL_INT(5, redraw.x);
+    TEST_ASSERT_EQUAL_INT(7, redraw.y);
+    TEST_ASSERT_EQUAL_INT(1, redraw.w);
+    TEST_ASSERT_EQUAL_INT(1, redraw.h);
     TEST_ASSERT_FALSE(panelcap_begin(capture, 2 * MATH_US_PER_S + 2));
     panelcap_window(capture, 0, 0, 1, 1, refused);
     panelcap_commit(capture);
@@ -310,17 +314,17 @@ gfx_panel_host_draw(int x0, int y0, int x1, int y1, const gfx_color_t* pixels) {
 }
 
 void
-gfx_panel_capture_begin_active(void) {
+console_panelcap_begin_active(void) {
     panelcap_begin(capture, 0);
 }
 
 void
-gfx_panel_capture_commit_active(void) {
+console_panelcap_commit_active(void) {
     panelcap_commit(capture);
 }
 
 void
-gfx_panel_capture_window(int x0, int y0, int x1, int y1, const gfx_color_t* pixels) {
+console_panelcap_window(int x0, int y0, int x1, int y1, const gfx_color_t* pixels) {
     panelcap_window(capture, x0, y0, x1, y1, pixels);
 }
 
@@ -329,7 +333,7 @@ test_dispatch_only_captures_successful_windows_inside_one_present(void) {
     fixture();
     const gfx_color_t pixel = UINT16_MAX;
     const int64_t initial = gfx_get_bytes_sent();
-    gfx_panel_capture_on = false;
+    console_panelcap_on = false;
     gfx_panel_capture_begin();
     gfx_panel_send(0, 0, 1, 1, &pixel);
     gfx_panel_capture_commit();
@@ -337,7 +341,7 @@ test_dispatch_only_captures_successful_windows_inside_one_present(void) {
     TEST_ASSERT_EQUAL(0, bytes_read_u16(storage));
     TEST_ASSERT_NULL(panelcap_peek(capture));
 
-    gfx_panel_capture_on = true;
+    console_panelcap_on = true;
     gfx_panel_send(0, 0, 1, 1, &pixel);
     gfx_panel_capture_begin();
     gfx_panel_send(1, 0, 2, 1, &pixel);
@@ -347,7 +351,7 @@ test_dispatch_only_captures_successful_windows_inside_one_present(void) {
     panel_result = 0;
     TEST_ASSERT_NULL(panelcap_peek(capture));
     gfx_panel_capture_commit();
-    gfx_panel_capture_on = false;
+    console_panelcap_on = false;
     TEST_ASSERT_NOT_NULL(panelcap_peek(capture));
     TEST_ASSERT_EQUAL(1, capture->presents);
     TEST_ASSERT_EQUAL(1, capture->windows);
@@ -391,6 +395,9 @@ SUITE_REGISTER(suite_panelcap);
 static char* capture_reply;
 static void* app_block;
 static bool capture_at_app_exit;
+static size_t free_at_app_exit;
+static size_t largest_at_app_exit;
+static void** internal_blocks;
 
 static void
 save_capture_reply(const char* line) {
@@ -401,11 +408,19 @@ save_capture_reply(const char* line) {
 
 static void
 release_capture(void) {
-    if (gfx_panel_capture_on) {
-        gfx_panel_capture_stop();
+    if (console_panelcap_on) {
+        console_panelcap_stop();
     }
     memory_free(app_block);
     app_block = NULL;
+    while (internal_blocks != NULL) {
+        void** block = internal_blocks;
+        internal_blocks = *block;
+        memory_free(block);
+    }
+    if (!app_heap_active()) {
+        app_arena_enter();
+    }
 }
 
 static void
@@ -414,13 +429,13 @@ test_start_stop_restores_app_memory(void) {
     const size_t largest = memory_largest_block(MEMORY_APP);
     const size_t free = memory_free_bytes(MEMORY_APP);
     const size_t mark = app_arena_mark();
-    gfx_panel_capture_start(PANELCAP_FPS_DEFAULT, save_capture_reply);
-    TEST_ASSERT_TRUE(gfx_panel_capture_on);
+    console_panelcap_start(PANELCAP_FPS_DEFAULT, save_capture_reply);
+    TEST_ASSERT_TRUE(console_panelcap_on);
     TEST_ASSERT_GREATER_OR_EQUAL_size_t(PANELCAP_CAPTURE_BYTES, free - memory_free_bytes(MEMORY_APP));
     TEST_ASSERT_LESS_THAN_size_t(largest, memory_largest_block(MEMORY_APP));
     TEST_ASSERT_EQUAL_size_t(mark, app_arena_mark());
-    gfx_panel_capture_stop();
-    TEST_ASSERT_FALSE(gfx_panel_capture_on);
+    console_panelcap_stop();
+    TEST_ASSERT_FALSE(console_panelcap_on);
     TEST_ASSERT_EQUAL_size_t(largest, memory_largest_block(MEMORY_APP));
     TEST_ASSERT_EQUAL_size_t(free, memory_free_bytes(MEMORY_APP));
 }
@@ -437,9 +452,9 @@ test_start_refuses_when_app_memory_is_short(void) {
 
     char actual[PANELCAP_LINE_BYTES] = {0};
     capture_reply = actual;
-    gfx_panel_capture_start(PANELCAP_FPS_DEFAULT, save_capture_reply);
+    console_panelcap_start(PANELCAP_FPS_DEFAULT, save_capture_reply);
     capture_reply = NULL;
-    TEST_ASSERT_FALSE(gfx_panel_capture_on);
+    TEST_ASSERT_FALSE(console_panelcap_on);
     char expected[PANELCAP_LINE_BYTES];
     (void)snprintf(expected, sizeof expected, PANELCAP_NO_MEMORY, PANELCAP_CAPTURE_BYTES, remaining);
     TEST_ASSERT_EQUAL_STRING(expected, actual);
@@ -447,13 +462,55 @@ test_start_refuses_when_app_memory_is_short(void) {
 }
 
 static void
+test_launcher_stop_restores_arena(void) {
+    suite_set_test_cleanup(release_capture);
+    TEST_ASSERT_EQUAL_size_t(0, app_heap_blocks());
+    app_arena_exit();
+    const bool active = app_heap_active();
+    const size_t bytes = app_arena_bytes();
+    console_panelcap_start(PANELCAP_FPS_DEFAULT, save_capture_reply);
+    TEST_ASSERT_TRUE(console_panelcap_on);
+    TEST_ASSERT_TRUE(app_heap_active());
+    console_panelcap_stop();
+    TEST_ASSERT_EQUAL(active, app_heap_active());
+    TEST_ASSERT_EQUAL_size_t(bytes, app_arena_bytes());
+}
+
+static void
+test_launcher_sender_refusal_restores_arena(void) {
+    suite_set_test_cleanup(release_capture);
+    TEST_ASSERT_EQUAL_size_t(0, app_heap_blocks());
+    app_arena_exit();
+    const bool active = app_heap_active();
+    const size_t bytes = app_arena_bytes();
+    size_t largest;
+    while ((largest = memory_largest_block(MEMORY_INTERNAL)) >= PANELCAP_LINE_BYTES) {
+        void** block = memory_alloc(largest, MEMORY_INTERNAL);
+        TEST_ASSERT_NOT_NULL(block);
+        *block = internal_blocks;
+        internal_blocks = block;
+    }
+
+    char actual[PANELCAP_LINE_BYTES] = {0};
+    capture_reply = actual;
+    console_panelcap_start(PANELCAP_FPS_DEFAULT, save_capture_reply);
+    capture_reply = NULL;
+    TEST_ASSERT_FALSE(console_panelcap_on);
+    TEST_ASSERT_EQUAL_STRING(PANELCAP_NO_SENDER, actual);
+    TEST_ASSERT_EQUAL(active, app_heap_active());
+    TEST_ASSERT_EQUAL_size_t(bytes, app_arena_bytes());
+}
+
+static void
 capture_app_enter(void) {}
 
 static void
 capture_app_exit(void) {
-    capture_at_app_exit = gfx_panel_capture_on;
+    capture_at_app_exit = console_panelcap_on;
+    free_at_app_exit = memory_free_bytes(MEMORY_APP);
+    largest_at_app_exit = memory_largest_block(MEMORY_APP);
     if (capture_at_app_exit) {
-        gfx_panel_capture_stop();
+        console_panelcap_stop();
     }
 }
 
@@ -464,28 +521,40 @@ test_app_switch_stops_capture(void) {
     TEST_ASSERT_EQUAL_size_t(0, app_heap_blocks());
     app_arena_exit();
     shell_start_app(&current, &app);
-    gfx_panel_capture_start(PANELCAP_FPS_DEFAULT, save_capture_reply);
-    const bool started = gfx_panel_capture_on;
+    const size_t free = memory_free_bytes(MEMORY_APP);
+    const size_t largest = memory_largest_block(MEMORY_APP);
+    console_panelcap_start(PANELCAP_FPS_DEFAULT, save_capture_reply);
+    const bool started = console_panelcap_on;
     shell_exit_app(&current);
-
-    gfx_panel_capture_start(PANELCAP_FPS_DEFAULT, save_capture_reply);
-    const bool started_from_launcher = gfx_panel_capture_on;
-    shell_start_app(&current, &app);
-    const bool captured_after_enter = gfx_panel_capture_on;
     const bool captured_at_exit = capture_at_app_exit;
+    const size_t exited_free = free_at_app_exit;
+    const size_t exited_largest = largest_at_app_exit;
+
+    console_panelcap_start(PANELCAP_FPS_DEFAULT, save_capture_reply);
+    const bool started_from_launcher = console_panelcap_on;
+    shell_start_app(&current, &app);
+    const bool captured_after_enter = console_panelcap_on;
+    const size_t entered_free = memory_free_bytes(MEMORY_APP);
+    const size_t entered_largest = memory_largest_block(MEMORY_APP);
     shell_exit_app(&current);
     app_arena_enter();
 
     TEST_ASSERT_TRUE(started);
     TEST_ASSERT_FALSE(captured_at_exit);
+    TEST_ASSERT_EQUAL_size_t(free, exited_free);
+    TEST_ASSERT_EQUAL_size_t(largest, exited_largest);
     TEST_ASSERT_TRUE(started_from_launcher);
     TEST_ASSERT_FALSE(captured_after_enter);
+    TEST_ASSERT_EQUAL_size_t(free, entered_free);
+    TEST_ASSERT_EQUAL_size_t(largest, entered_largest);
 }
 
 void
 suite_panelcap_lifecycle(void) {
     RUN_TEST(test_start_stop_restores_app_memory);
     RUN_TEST(test_start_refuses_when_app_memory_is_short);
+    RUN_TEST(test_launcher_stop_restores_arena);
+    RUN_TEST(test_launcher_sender_refusal_restores_arena);
     RUN_TEST(test_app_switch_stops_capture);
 }
 

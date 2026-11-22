@@ -33,7 +33,7 @@
 
 /* Leaves the system its framebuffer, a second buffer, and heap headroom.
  * The second buffer serves boot animation, back-buffer, audit, snapshot or
- * scene expansion; an audit over a half picture can be refused. */
+ * scene expansion. An audit that does not fit is refused with a log line. */
 #define APP_ARENA_SYSTEM_RESERVE_BYTES ((2u * GFX_FRAMEBUFFER_BYTES) + APP_ARENA_SYSTEM_OTHER_BYTES)
 
 /* The smallest chunk the arena takes from the app heap: small takes share one

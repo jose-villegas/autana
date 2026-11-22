@@ -115,7 +115,6 @@ HOST_HEAP_ARENA_PSRAM_BYTES=$(device_profile_require DP_PSRAM_BYTES) || exit 1
 HOST_HEAP_ARENA_ALWAYSINTERNAL_BYTES=$(device_profile_require DP_SPIRAM_ALWAYSINTERNAL_BYTES) || exit 1
 # One list for the test binary and --print-flags, so the complexity gate parses
 # heap_arena.c with every define the real compile has.
-HOST_TEST_DEFINES="-DPANEL_CAPTURE_HOST_TEST"
 HEAP_ARENA_DEFINES="-DHOST_HEAP_ARENA -DHOST_HEAP_ARENA_BYTES=$HOST_HEAP_ARENA_BYTES -DHOST_HEAP_ARENA_PSRAM_BYTES=$HOST_HEAP_ARENA_PSRAM_BYTES -DHOST_HEAP_ARENA_ALWAYSINTERNAL_BYTES=$HOST_HEAP_ARENA_ALWAYSINTERNAL_BYTES"
 
 SOURCES="
@@ -433,7 +432,7 @@ EXPECT_SU="$BUILD_DIR/expected_su.txt"
     printf 'CC := %s\n' "$CC_MK"
     printf 'CFLAGS := %s\n' "$CFLAGS"
     printf 'BASE_CFLAGS := %s\n' "$BASE_CFLAGS"
-    printf 'TEST_FLAGS := %s %s %s -include %s/timing.h\n' "$HOST_TEST_DEFINES" "$HEAP_ARENA_DEFINES" "$TEST_INC" "$TEST_N"
+    printf 'TEST_FLAGS := %s %s -include %s/timing.h\n' "$HEAP_ARENA_DEFINES" "$TEST_INC" "$TEST_N"
     printf 'OBJ := %s\nSU := su\n' "$OBJ_DIR"
     printf 'UNITY_OBJ := $(OBJ)/%s.o\n' "$UNITY_OBJECT"
     printf 'OBJS :='
@@ -468,10 +467,10 @@ write_stamp() { # file, content
 CC_ID="$("$CC_BIN" --version 2>&1 | sed -n 1p) $CC_MK"
 write_stamp "$BUILD_DIR/$OBJ_DIR/flags.stamp" "$CC_ID
 $CFLAGS
-$HOST_TEST_DEFINES $HEAP_ARENA_DEFINES $TEST_INC $LDFLAGS"
+$HEAP_ARENA_DEFINES $TEST_INC $LDFLAGS"
 write_stamp "$SU_DIR/flags.stamp" "$CC_ID
 $BASE_CFLAGS
-$HOST_TEST_DEFINES $HEAP_ARENA_DEFINES $TEST_INC"
+$HEAP_ARENA_DEFINES $TEST_INC"
 
 # Drop objects, depfiles and .su files whose source is gone, so a deleted
 # suite cannot leave a stale .su for the stack gate to read.

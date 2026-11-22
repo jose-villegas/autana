@@ -178,7 +178,7 @@ static handle_t app_pack = HANDLE_NONE;
 void
 shell_exit_app(const app_t** current) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
-    gfx_panel_capture_end_visit();
+    console_panelcap_end_visit();
 #endif
     ESP_LOGI(TAG, "Leaving %s", (*current)->name);
     sound_stop_app_voices();
@@ -232,7 +232,7 @@ shell_leave_app(const app_t** current, input_t* input, gesture_edge_t exit_edge,
 void
 shell_start_app(const app_t** current, const app_t* next) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
-    gfx_panel_capture_leave_launcher();
+    console_panelcap_leave_launcher();
 #endif
     *current = next;
     ESP_LOGI(TAG, "Starting %s", (*current)->name);

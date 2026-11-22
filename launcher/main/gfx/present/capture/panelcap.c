@@ -69,17 +69,19 @@ panelcap_begin(panelcap_t* capture, uint64_t us) {
     capture->present_us = us;
     capture->in_present = true;
     capture->writable = take_image(capture);
-    if (!capture->writable || !capture->owed) {
+    if (!capture->writable || capture->redraw_pending || recti_is_empty(capture->owed)) {
         return false;
     }
-    capture->owed = false;
     capture->redraw_pending = true;
     return true;
 }
 
-void
+recti_t
 panelcap_redraw_requested(panelcap_t* capture) {
+    const recti_t box = capture->owed;
+    capture->owed = recti_empty();
     capture->redraw_pending = false;
+    return box;
 }
 
 void
@@ -87,10 +89,11 @@ panelcap_window(panelcap_t* capture, unsigned x0, unsigned y0, unsigned x1, unsi
     if (!capture->in_present || pixels == NULL || x1 <= x0 || y1 <= y0 || x1 > PANELCAP_WIDTH || y1 > PANELCAP_HEIGHT) {
         return;
     }
+    recti_t box = recti_from_edges((int)x0, (int)y0, (int)x1, (int)y1);
     if (!capture->writable) {
         capture->writable = take_image(capture);
         if (!capture->writable) {
-            capture->owed = true;
+            capture->owed = recti_union(capture->owed, box);
             return;
         }
     }
@@ -100,7 +103,6 @@ panelcap_window(panelcap_t* capture, unsigned x0, unsigned y0, unsigned x1, unsi
         memcpy(capture->storage + ((((size_t)y * PANELCAP_WIDTH) + x0) * PANELCAP_PIXEL_BYTES), source, row_bytes);
         source += row_bytes;
     }
-    recti_t box = recti_from_edges((int)x0, (int)y0, (int)x1, (int)y1);
     if (capture->collapsed) {
         capture->dirty[0] = recti_union(capture->dirty[0], box);
         return;
@@ -133,7 +135,7 @@ panelcap_commit(panelcap_t* capture) {
         return;
     }
     capture->in_present = false;
-    if (!capture->writable || capture->owed || capture->redraw_pending || capture->present_us < capture->next_us) {
+    if (!capture->writable || !recti_is_empty(capture->owed) || capture->present_us < capture->next_us) {
         drop(capture);
         return;
     }

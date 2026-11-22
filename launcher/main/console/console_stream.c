@@ -27,6 +27,7 @@ struct console_stream {
     void* source_arg;
     console_stream_ended_fn ended; /* set with `closed`, before it */
     void* arg;
+    bool bounded;
     bool closed;
 };
 
@@ -44,7 +45,7 @@ stream_free(console_stream_t* stream) {
 
 static bool
 stream_send(console_stream_t* stream, uint8_t* bytes, size_t count) {
-    const bool sent = console_emit_packet(stream->tag, bytes, count, stream->packet, stream->fill != NULL);
+    const bool sent = console_emit_packet(stream->tag, bytes, count, stream->packet, stream->bounded);
     if (stream->ring != NULL) {
         vRingbufferReturnItem(stream->ring, bytes);
     }
@@ -89,12 +90,13 @@ stream_task(void* arg) {
 }
 
 static console_stream_t*
-open_stream(const char* tag, size_t bytes, console_stream_fill_fn fill, void* arg, uint8_t* storage, uint8_t* packet) {
+open_stream(const char* tag, size_t bytes, console_stream_fill_fn fill, void* arg, uint8_t* storage, uint8_t* packet,
+            bool bounded) {
     console_stream_t* stream = memory_alloc(sizeof *stream, MEMORY_INTERNAL);
     if (stream == NULL) {
         return NULL;
     }
-    *stream = (console_stream_t){.tag = tag, .fill = fill, .source_arg = arg};
+    *stream = (console_stream_t){.tag = tag, .fill = fill, .source_arg = arg, .bounded = bounded};
     stream->storage = fill == NULL ? memory_alloc(bytes, MEMORY_PSRAM) : storage;
     stream->packet = fill == NULL ? memory_alloc(CONSOLE_PACKET_MAX, MEMORY_PSRAM) : packet;
     if (fill == NULL && stream->storage != NULL) {
@@ -110,12 +112,12 @@ open_stream(const char* tag, size_t bytes, console_stream_fill_fn fill, void* ar
 
 console_stream_t*
 console_stream_open(const char* tag, size_t ring_bytes) {
-    return open_stream(tag, ring_bytes, NULL, NULL, NULL, NULL);
+    return open_stream(tag, ring_bytes, NULL, NULL, NULL, NULL, false);
 }
 
 console_stream_t*
 console_stream_open_source(const char* tag, console_stream_fill_fn fill, void* arg, uint8_t* storage, uint8_t* packet) {
-    return open_stream(tag, 0, fill, arg, storage, packet);
+    return open_stream(tag, 0, fill, arg, storage, packet, true);
 }
 
 bool

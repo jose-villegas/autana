@@ -16,7 +16,7 @@ sequenceDiagram
     H->>D: PANELCAP STOP
     D-->>H: remaining PANEL_BIN packets
     D-->>H: PANELCAP_END presents=P dropped=D bytes=B
-    Note over H,D: START can answer PANELCAP_REFUSED: reason
+    Note over H,D: PANELCAP_REFUSED: reason<br/>PANELCAP ERR no memory: need N, largest free M
 ```
 
 Each `PANEL_BIN n crc32` line ends with a newline followed by `n` raw bytes.
@@ -65,7 +65,7 @@ title Present header, one cell a byte
 | The sequence matches the continuation headers. |
 | Device time in microseconds at the start of the present. |
 | The count of dirty rectangles and their pixels that follow. |
-| Presents merged or lost while busy since the last publication, capped at 65535. |
+| Presents since the previous publication that were unpublished due to the FPS gate, an image still being sent, or a redraw owed. Their windows merge into the next published present. Capped at 65535. |
 
 ```mermaid
 ---
@@ -89,20 +89,22 @@ title Window header, one cell a byte
 
 | Rule | Detail |
 |---|---|
-| PackBits | A signed header from 0 to 127 copies n+1 pixels. A header from -127 to -1 repeats one pixel 1-n times. -128 is a no-op. |
-| Storage | One `PANELCAP_IMAGE_BYTES` PSRAM image, one resumable encoder, and up to `PANELCAP_WINDOWS_MAX` dirty rectangles. |
-| Copies | Development capture copies every successful present's windows into PSRAM while the image is free. Failed panel sends leave it untouched. |
+| PackBits | A signed header from 0 to 127 copies n+1 pixels. A header from -127 to -1 repeats one pixel 1–n times. -128 is a no-op. |
+| Storage | One `PANELCAP_IMAGE_BYTES` image, allocated at START from the app heap together with the encoder and packet buffers. |
+| Copies | Capture copies successful panel writes into PSRAM while the image is free. |
 | Window merge | The latest write wins. Overlapping and rectangular adjacent regions merge. Overflow collapses the list to its bounding box. |
 | Publication | The FPS gate controls when a commit hands the image to the sender. Windows from intervening presents accumulate. |
-| Redraw | START requests a full redraw. If a window is lost while sending, the first writable present queues a redraw request. Publication waits for the frame owner to request it. |
+| Redraw | START requests a full redraw. After a lost window, publication waits for the frame owner to mark the lost bounds dirty. Bands, expanded pictures, and indexed mode request a full redraw. |
 | Sender | The shared console stream task packs the published image once and releases it after the last packet goes out. |
-| App memory | Recording holds `PANELCAP_CAPTURE_BYTES` (about 334 KB) from the current app heap. A scene that needs those bytes cannot be recorded. |
+| App memory | Recording uses `PANELCAP_CAPTURE_BYTES` of app heap. From the launcher, START takes the app heap for the visit. Starting an app from there ends the recording with `PANELCAP STOP app switch`. |
 | Short on memory | START refuses with `PANELCAP ERR no memory: need N, largest free M` in bytes. The host exits non-zero. |
 | App switch | Stops recording with `PANELCAP STOP app switch`. The usual drain and END follow. |
 | STOP | Drains the published image, frees its app memory, and sends END. A stalled USB write ends the drain. |
-| Totals | END counts published presents, merged or busy presents, and stream bytes excluding continuation headers. |
-| Refusal | Invalid syntax or FPS, START while already on, STOP while off, or unavailable memory. |
+| Totals | END counts published presents, unpublished presents, and stream bytes excluding continuation headers. |
+| Refusal | `PANELCAP_REFUSED: <reason>` for bad syntax or FPS, START while on, STOP while off, or no memory for the sender. A missing image gets `PANELCAP ERR no memory: need N, largest free M`. |
 | Release | A release image cannot answer START or STOP. The host releases the lock on its END deadline. |
 | Reassembly | A missing, repeated or out-of-order part discards the present. The next sequence starts at part zero. |
 | Canvas | The host applies complete presents in window order and uses the screenshot turn when emitting a frame. Missing updates leave previous pixels in place. |
 | Output | The MP4 samples the latest present at each 30 Hz device timestamp through the final timestamp. See [the command contract](../cli/Watch.md#panel-video). |
+
+Recording adds redraw work and a PSRAM copy. Both can change frame timing.

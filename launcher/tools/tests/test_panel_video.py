@@ -10,7 +10,7 @@ import tarfile
 import tempfile
 import unittest
 import zipfile
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from pathlib import Path
 from unittest import mock
 
@@ -18,7 +18,6 @@ DEVICE = Path(__file__).resolve().parents[1] / "device"
 sys.path.insert(0, str(DEVICE))
 import panel_video as video
 import video_encode
-from http_get import transient
 from build.c_header import read_define
 
 FIXTURE = DEVICE.parents[1] / "test/fixtures/panelcap_fixture.h"
@@ -163,12 +162,10 @@ class PanelVideoTests(unittest.TestCase):
             out = Path(directory) / "run.mp4"
             try:
                 writer = video_encode.VideoWriter(out, 30, live=True)
-            except URLError as error:
-                if not transient(error):
-                    raise
-                self.skipTest(f"pinned ffmpeg download unavailable: {error}")
-            except TimeoutError as error:
-                self.skipTest(f"pinned ffmpeg download timed out: {error}")
+            except HTTPError:
+                raise
+            except (URLError, ConnectionError, TimeoutError) as error:
+                self.skipTest(f"pinned ffmpeg network unavailable: {error}")
             self.assertEqual(Path(writer.binary), video_encode.install_dir() / video_encode.binary_name("ffmpeg"))
             self.assertEqual(video_encode.version(writer.binary), video_encode.pinned()["version"])
             for pixel in (RED_RGB, BLUE_RGB, BLACK_RGB):

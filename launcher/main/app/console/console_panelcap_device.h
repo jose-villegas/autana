@@ -11,8 +11,9 @@
 #define PANELCAP_ERROR_PREFIX "PANELCAP ERR "
 #define PANELCAP_APP_SWITCH   "PANELCAP STOP app switch"
 #define PANELCAP_NO_MEMORY    PANELCAP_ERROR_PREFIX "no memory: need %zu, largest free %zu"
+#define PANELCAP_NO_SENDER    "PANELCAP_REFUSED: no memory for sender"
 
-void gfx_panel_capture_start(unsigned fps, console_reply_fn reply);
-void gfx_panel_capture_stop(void);
-void gfx_panel_capture_end_visit(void);
-void gfx_panel_capture_leave_launcher(void);
+void console_panelcap_start(unsigned fps, console_reply_fn reply);
+void console_panelcap_stop(void);
+void console_panelcap_end_visit(void);
+void console_panelcap_leave_launcher(void);

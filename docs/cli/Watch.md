@@ -47,7 +47,7 @@ command stops on its timer and leaves stdin unread.
 
 | Recording rule | Effect |
 |---|---|
-| App memory | Recording uses `PANELCAP_CAPTURE_BYTES` (about 334 KB) of free app memory. A scene that needs those bytes cannot be recorded. |
+| App memory | Recording uses `PANELCAP_CAPTURE_BYTES` of app heap. From the launcher, START takes the app heap for the visit. Starting an app from there ends the recording with `PANELCAP STOP app switch`. |
 | Short on memory | START prints `PANELCAP ERR no memory: need N, largest free M` in bytes and exits non-zero. |
 | App switch | Capture reports `PANELCAP STOP app switch`, drains its last published present, and ends. |
 
@@ -64,12 +64,12 @@ picture, and bursts contribute the latest eligible picture.
 | `host_ns` | Host wall-clock time at reassembly, in nanoseconds. |
 | `windows` | Dirty rectangles in the present. |
 | `packed_bytes` | Bytes of PackBits pixel data. |
-| `dropped_before` | Presents merged or lost while busy since the previous publication, saturating at 65535. |
+| `dropped_before` | Presents since the previous publication that were unpublished due to the FPS gate, an image still being sent, or a redraw owed. Their windows merge into the next published present. Capped at 65535. |
 
 The summary reports
 
 - `presents` and `fps` for complete presents received and their attained rate.
-- `device_dropped` for the whole run's count of merged or busy presents.
+- `device_dropped` for the whole run’s count of presents the device did not publish.
 - `host_dropped` for presents rejected after missing, repeated, out-of-order or damaged parts or invalid data.
 - `MB/s` for packed pixel throughput.
 

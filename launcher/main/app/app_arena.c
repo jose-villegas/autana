@@ -5,9 +5,6 @@
 #include <stdint.h>
 
 #include "core/memory.h"
-#if CONFIG_LAUNCHER_DEVELOPMENT && defined(ESP_PLATFORM)
-#include "app/console/console_panelcap_device.h"
-#endif
 
 typedef struct arena_chunk {
     struct arena_chunk* previous;
@@ -64,9 +61,6 @@ app_arena_enter(void) {
 
 void
 app_arena_exit(void) {
-#if CONFIG_LAUNCHER_DEVELOPMENT && defined(ESP_PLATFORM)
-    gfx_panel_capture_end_visit();
-#endif
     app_arena_rewind(0);
     app_heap_exit();
 }

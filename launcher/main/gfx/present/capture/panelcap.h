@@ -48,16 +48,16 @@ typedef struct {
     uint64_t present_us;
     bool in_present;
     bool writable;
-    bool owed;
+    recti_t owed;
     bool redraw_pending;
     bool published;
 } panelcap_t;
 
 bool panelcap_init(panelcap_t* capture, uint8_t* storage, unsigned fps);
-/* Returns true when the frame owner must request a full redraw. */
+/* Returns true when the frame owner must request a redraw. */
 bool panelcap_begin(panelcap_t* capture, uint64_t us);
-/* Call after draining the in-flight present and requesting the redraw. */
-void panelcap_redraw_requested(panelcap_t* capture);
+/* Takes the lost windows' bounds after the frame owner drains the in-flight present. */
+recti_t panelcap_redraw_requested(panelcap_t* capture);
 void panelcap_window(panelcap_t* capture, unsigned x0, unsigned y0, unsigned x1, unsigned y1, const void* pixels);
 void panelcap_commit(panelcap_t* capture);
 const uint8_t* panelcap_peek(panelcap_t* capture);

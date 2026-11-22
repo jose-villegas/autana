@@ -20,40 +20,50 @@
 #define PANELCAP_ARGS_MAX     32U
 #define PANELCAP_STOP_WAIT_MS 10U
 
-bool gfx_panel_capture_on;
+bool console_panelcap_on;
 static panelcap_t capture;
 static atomic_bool sender_done;
 static uint64_t bytes_sent;
 static bool launcher_visit;
+static bool redraw_full;
 static console_stream_t* stream;
 static panelcap_encoder_t* encoder;
 
 static void
 redraw(const void* payload) {
     (void)payload;
-    if (gfx_panel_capture_on) {
+    if (console_panelcap_on) {
         gfx_present_drain();
-        gfx_request_full_redraw();
-        panelcap_redraw_requested(&capture);
+        const recti_t box = panelcap_redraw_requested(&capture);
+        if (recti_is_empty(box)) {
+            return;
+        }
+        if (redraw_full || !gfx_mode_has_framebuffer(gfx_mode_current())) {
+            gfx_request_full_redraw();
+        } else {
+            gfx_mark_dirty(box.x, box.y, box.w, box.h);
+        }
+        redraw_full = false;
     }
 }
 
 CONSOLE_FRAME_SIGNAL(console_panelcap_redraw_slot, redraw)
 
 void
-gfx_panel_capture_begin_active(void) {
+console_panelcap_begin_active(void) {
     if (panelcap_begin(&capture, timing_now_us())) {
         (void)console_frame_post(console_frame_slots(), &console_panelcap_redraw_slot, NULL);
     }
 }
 
 void
-gfx_panel_capture_commit_active(void) {
+console_panelcap_commit_active(void) {
+    redraw_full |= !recti_is_empty(capture.owed) && gfx_frame_expanded();
     panelcap_commit(&capture);
 }
 
 void
-gfx_panel_capture_window(int x0, int y0, int x1, int y1, const gfx_color_t* pixels) {
+console_panelcap_window(int x0, int y0, int x1, int y1, const gfx_color_t* pixels) {
     panelcap_window(&capture, x0, y0, x1, y1, pixels);
 }
 
@@ -81,13 +91,14 @@ ended(uint64_t sent, uint64_t packets, void* arg) {
 static void
 stop(void) {
     gfx_present_drain();
-    gfx_panel_capture_on = false;
+    console_panelcap_on = false;
     console_stream_close(stream, ended, NULL);
     /* The frame owner frees the app block after the sender's last read. */
     while (!atomic_load_explicit(&sender_done, memory_order_acquire)) {
         timing_sleep_ms(PANELCAP_STOP_WAIT_MS);
     }
     memory_free(encoder);
+    encoder = NULL;
     char line[PANELCAP_LINE_BYTES];
     (void)snprintf(line, sizeof line, "PANELCAP_END presents=%lu dropped=%lu bytes=%llu",
                    (unsigned long)capture.presents, (unsigned long)capture.dropped, (unsigned long long)bytes_sent);
@@ -95,18 +106,18 @@ stop(void) {
 }
 
 void
-gfx_panel_capture_stop(void) {
-    if (!gfx_panel_capture_on) {
+console_panelcap_stop(void) {
+    if (!console_panelcap_on) {
         console_emit_line_bounded("PANELCAP_REFUSED: not recording");
         return;
     }
     stop();
-    gfx_panel_capture_leave_launcher();
+    console_panelcap_leave_launcher();
 }
 
 void
-gfx_panel_capture_end_visit(void) {
-    if (gfx_panel_capture_on) {
+console_panelcap_end_visit(void) {
+    if (console_panelcap_on) {
         console_emit_line_bounded(PANELCAP_APP_SWITCH);
         stop();
     }
@@ -114,15 +125,16 @@ gfx_panel_capture_end_visit(void) {
 }
 
 void
-gfx_panel_capture_leave_launcher(void) {
+console_panelcap_leave_launcher(void) {
     if (launcher_visit) {
+        console_panelcap_end_visit();
         app_arena_exit();
     }
 }
 
 void
-gfx_panel_capture_start(unsigned fps, console_reply_fn reply) {
-    if (gfx_panel_capture_on) {
+console_panelcap_start(unsigned fps, console_reply_fn reply) {
+    if (console_panelcap_on) {
         reply("PANELCAP_REFUSED: already on");
         return;
     }
@@ -137,7 +149,7 @@ gfx_panel_capture_start(unsigned fps, console_reply_fn reply) {
     if (encoder == NULL) {
         const size_t largest = heap_ready ? memory_largest_block(MEMORY_APP) : 0;
         (void)snprintf(line, sizeof line, PANELCAP_NO_MEMORY, PANELCAP_CAPTURE_BYTES, largest);
-        gfx_panel_capture_leave_launcher();
+        console_panelcap_leave_launcher();
         reply(line);
         return;
     }
@@ -145,16 +157,18 @@ gfx_panel_capture_start(unsigned fps, console_reply_fn reply) {
     uint8_t* packet = image + PANELCAP_IMAGE_BYTES;
     uint8_t* scratch = packet + CONSOLE_PACKET_BYTES_MAX;
     (void)panelcap_init(&capture, image, fps);
+    redraw_full = false;
     *encoder = (panelcap_encoder_t){0};
     atomic_store_explicit(&sender_done, false, memory_order_relaxed);
     stream = console_stream_open_source(PANELCAP_PACKET_TAG, fill, &capture, packet, scratch);
     if (stream == NULL) {
         memory_free(encoder);
-        gfx_panel_capture_leave_launcher();
-        reply("PANELCAP_REFUSED: no memory for sender");
+        encoder = NULL;
+        console_panelcap_leave_launcher();
+        reply(PANELCAP_NO_SENDER);
         return;
     }
-    gfx_panel_capture_on = true;
+    console_panelcap_on = true;
     gfx_request_full_redraw();
     (void)snprintf(line, sizeof line, "PANELCAP_BEGIN fps=%u image=%u", fps, (unsigned)PANELCAP_IMAGE_BYTES);
     reply(line);
@@ -164,9 +178,9 @@ static void
 answer(const void* payload) {
     const unsigned fps = *(const unsigned*)payload;
     if (fps == 0) {
-        gfx_panel_capture_stop();
+        console_panelcap_stop();
     } else {
-        gfx_panel_capture_start(fps, console_emit_line_bounded);
+        console_panelcap_start(fps, console_emit_line_bounded);
     }
 }
 

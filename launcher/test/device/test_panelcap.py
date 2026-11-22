@@ -125,24 +125,39 @@ def test_panelcap_verbs_and_stop_drains(console):
         console.exchange("PANELCAP STOP", "PANELCAP_REFUSED: not recording")
         for invalid in (0, maximum + 1):
             console.exchange(f"PANELCAP START {invalid}", "PANELCAP_REFUSED: bad fps")
-        console.exchange("PANELCAP START", rf"PANELCAP_BEGIN fps={default} image={IMAGE_BYTES}")
-        console.exchange("PANELCAP START", "PANELCAP_REFUSED: already on")
-        capture = Capture(dut)
-        dut.write(f"RUNSUITE {SUITE} full_pattern")
-        stopping = False
-        for kind, payload in capture.events():
-            if kind == "data":
-                if not stopping:
-                    assert panel_video.PART.unpack_from(payload)[1:] == (0, 0)
-                    dut.write("PANELCAP STOP")
-                    stopping = True
-                capture.frame(payload)
-            elif b":FAIL" in payload:
-                raise AssertionError(payload)
-            elif payload.startswith(b"PANELCAP_END"):
-                assert stopping and capture.totals[0] == 1
-                capture.end(payload)
-                break
+        for _ in range(2):
+            console.exchange("PANELCAP START", rf"PANELCAP_BEGIN fps={default} image={IMAGE_BYTES}")
+            console.exchange("PANELCAP START", "PANELCAP_REFUSED: already on")
+            capture = Capture(dut)
+            dut.write(f"RUNSUITE {SUITE} full_pattern")
+            stopping = False
+            for kind, payload in capture.events():
+                if kind == "data":
+                    if not stopping:
+                        assert panel_video.PART.unpack_from(payload)[1:] == (0, 0)
+                        dut.write("PANELCAP STOP")
+                        stopping = True
+                    frame = capture.frame(payload)
+                    if frame is not None:
+                        assert frame[0] == 1 and capture.totals[1] == 0
+                elif b":FAIL" in payload:
+                    raise AssertionError(payload)
+                elif payload.startswith(b"PANELCAP_END"):
+                    assert stopping and capture.totals[0] == 1
+                    capture.end(payload)
+                    break
         console.exchange("PANELCAP STOP", "PANELCAP_REFUSED: not recording")
     finally:
         console.exchange("RESUME", r"FREEZE_STATE frozen=0 steps=0")
+
+
+def test_panelcap_app_switch_drains(console):
+    console.exchange("HOME", r"HOME_OK[^\r\n]*")
+    dut = console.dut
+    suite = "suite_panelcap_lifecycle"
+    dut.write(f"RUNSUITE {suite} app_switch_stops_capture")
+    for _ in range(2):
+        dut.expect_exact(panel_video.read_define(panel_video.CONSOLE_HEADER, "PANELCAP_APP_SWITCH").encode())
+        dut.expect(rb"PANELCAP_END presents=0 dropped=0 bytes=0")
+    dut.expect(rb"test_app_switch_stops_capture:PASS")
+    dut.expect(rb"RUNSUITE_COMPLETE name=suite_panelcap_lifecycle found=1[^\r\n]*")
