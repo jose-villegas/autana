@@ -14,6 +14,7 @@ most RELOCATE of a cell first. The pick is lazy greedy maximum coverage (Minoux 
 """
 
 import heapq
+import math
 from typing import NamedTuple
 
 import numpy as np
@@ -77,11 +78,15 @@ def probe_points(lo, hi, spacing, seed):
 
 
 def sphere_directions(count):
-    """`count` near-even unit directions (Fibonacci sphere)."""
-    i = np.arange(count) + 0.5
-    polar = np.arccos(1 - 2 * i / count)
-    azimuth = np.pi * (1 + 5 ** 0.5) * i
-    return np.stack([np.cos(azimuth) * np.sin(polar), np.cos(polar), np.sin(azimuth) * np.sin(polar)], axis=1)
+    """`count` near-even unit directions (Fibonacci sphere). The trigonometry is the C library's, one value at a
+    time: NumPy's float64 sin and cos take AVX-512 kernels where the host has them, an ulp off the AVX2 ones, and
+    an ulp in a direction moves a probe across a threshold, so two runners would plan different faces."""
+    rows = []
+    for index in range(count):
+        height = 1 - 2 * (index + 0.5) / count
+        ring, azimuth = math.sqrt(1 - height * height), math.pi * (1 + math.sqrt(5)) * (index + 0.5)
+        rows.append((math.cos(azimuth) * ring, height, math.sin(azimuth) * ring))
+    return np.array(rows)
 
 
 def probe_hits(query, normals, points):

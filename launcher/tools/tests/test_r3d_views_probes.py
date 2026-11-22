@@ -52,6 +52,19 @@ class ProbePlacementTests(unittest.TestCase):
         self.assertLessEqual(cells, probes.PROBE_COUNT_MAX)
         self.assertGreater(cells, probes.PROBE_COUNT_MAX / 2, "the spacing widened past what the cap needs")
 
+    def test_the_ray_directions_take_no_simd_dispatched_numpy_function(self):
+        # NumPy computes float64 sin, cos and arccos with AVX-512 kernels where the host has them, an ulp off the
+        # AVX2 ones: two runners of one vendor then classified different probes and planned different faces.
+        def dispatched(*args, **kwargs):
+            raise AssertionError("a SIMD-dispatched NumPy function made a probe direction")
+        names = ("sin", "cos", "tan", "arcsin", "arccos", "arctan", "arctan2", "exp", "log", "power")
+        with mock.patch.multiple(probes.np, **{name: dispatched for name in names}):
+            directions = probes.sphere_directions(probes.RAYS)
+        self.assertEqual(directions.shape, (probes.RAYS, 3))
+        np.testing.assert_allclose(np.linalg.norm(directions, axis=1), 1.0, atol=1e-12)
+        # Fibonacci heights step evenly from pole to pole.
+        np.testing.assert_allclose(directions[:, 1], 1 - 2 * (np.arange(probes.RAYS) + 0.5) / probes.RAYS)
+
     def test_greedy_faces_pick_the_largest_gain_first_and_stop_at_the_plateau(self):
         sets = [np.array([0, 1]), np.arange(10), np.array([9, 10, 11]), np.array([12])]
         picked, gains = probes.greedy_faces(sets, np.zeros(13, bool), plateau=0.15)
