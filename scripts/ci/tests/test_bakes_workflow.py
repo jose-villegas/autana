@@ -86,6 +86,14 @@ class OneRunnerMakesTheBakes(unittest.TestCase):
                     self.assertNotIn('gpu/env/bin" >> "$GITHUB_PATH"', runs(job))
                     self.assertNotIn("gpu/env/bin/python\" -m pip", runs(job))
 
+    def test_the_lock_check_runs_after_a_failed_bake(self):
+        # A skipped required check passes, so the lock check must never skip for another job's failure.
+        condition = self.jobs["lock"]["if"]
+        for name in self.jobs["lock"]["needs"]:
+            if name != "inputs":
+                with self.subTest(job=name):
+                    self.assertNotIn(f"needs.{name}.result", condition)
+
     def test_the_bakes_runner_installs_nothing_as_root(self):
         for name, job in self.jobs.items():
             if job["runs-on"] == RUNNER:
