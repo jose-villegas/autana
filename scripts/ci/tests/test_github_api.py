@@ -204,7 +204,7 @@ class GithubApiTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[3]
         with mock.patch.dict(os.environ, REFRESH_BRANCH='refresh'):
             for name in ('refresh_pr', 'inputs_recorded'):
-                result = subprocess.run([sys.executable, f'scripts/ci/{name}.py'], cwd=root,
+                result = subprocess.run([sys.executable, f'scripts/ci/{name}.py'], cwd=root, stdin=subprocess.DEVNULL,
                                         capture_output=True, text=True)
                 self.assertEqual(result.returncode, 2, result.stderr)
                 self.assertIn('usage:', result.stderr)
