@@ -1,10 +1,13 @@
 /* scene_asset: mapped SCNE rows and batch views shared by scenes and tools. */
 #pragma once
 
+#include <stddef.h>
+
 #include "asset/asset_entry.h"
 #include "hash/name_hash.h"
 #include "math/linear/mat3f.h"
 #include "render/batch/r3d_batch.h"
+#include "scene/scene_format.h"
 
 typedef struct {
     mat3f_t linear;
@@ -60,11 +63,54 @@ typedef struct {
     uint8_t wrap, pad;
 } scene_asset_animator_t;
 
+#define SCNE_FIELD_AT(row, field, offset) (offsetof(row, field) == SCENE_ASSET_##offset)
+#define SCNE_CONSTRAINT_AT(field, offset) SCNE_FIELD_AT(scene_asset_constraint_t, field, CONSTRAINT_AT_##offset)
+#define SCNE_HINGE_AT(field, offset)      SCNE_FIELD_AT(scene_asset_hinge_t, field, HINGE_AT_##offset)
+
+typedef struct {
+    char clip[ASSET_NAME_MAX];
+    uint8_t wrap, pad[3];
+} scene_asset_timeline_t;
+
+_Static_assert(sizeof(scene_asset_timeline_t) == SCENE_ASSET_TIMELINE_SIZE
+                   && SCNE_FIELD_AT(scene_asset_timeline_t, clip, TIMELINE_AT_CLIP)
+                   && SCNE_FIELD_AT(scene_asset_timeline_t, wrap, TIMELINE_AT_WRAP)
+                   && SCNE_FIELD_AT(scene_asset_timeline_t, pad, TIMELINE_AT_PAD),
+               "SCNE timeline row layout");
+
+typedef struct {
+    uint16_t entity;
+    uint8_t bind, pad;
+    name_hash_t follow, look_at;
+    vec3f_t offset, look_offset;
+    float lag_ms, handoff_ms, weight;
+} scene_asset_constraint_t;
+
+_Static_assert(sizeof(scene_asset_constraint_t) == SCENE_ASSET_CONSTRAINT_SIZE && SCNE_CONSTRAINT_AT(entity, ENTITY)
+                   && SCNE_CONSTRAINT_AT(bind, BIND) && SCNE_CONSTRAINT_AT(pad, PAD)
+                   && SCNE_CONSTRAINT_AT(follow, FOLLOW) && SCNE_CONSTRAINT_AT(look_at, LOOK_AT)
+                   && SCNE_CONSTRAINT_AT(offset, OFFSET) && SCNE_CONSTRAINT_AT(look_offset, LOOK_OFFSET)
+                   && SCNE_CONSTRAINT_AT(lag_ms, LAG_MS) && SCNE_CONSTRAINT_AT(handoff_ms, HANDOFF_MS)
+                   && SCNE_CONSTRAINT_AT(weight, WEIGHT),
+               "SCNE constraint row layout");
+
+typedef struct {
+    uint16_t entity, pad;
+    vec3f_t axis;
+    float min, max, angle;
+} scene_asset_hinge_t;
+
+_Static_assert(sizeof(scene_asset_hinge_t) == SCENE_ASSET_HINGE_SIZE && SCNE_HINGE_AT(entity, ENTITY)
+                   && SCNE_HINGE_AT(pad, PAD) && SCNE_HINGE_AT(axis, AXIS) && SCNE_HINGE_AT(min, MIN)
+                   && SCNE_HINGE_AT(max, MAX) && SCNE_HINGE_AT(angle, ANGLE),
+               "SCNE hinge row layout");
+
 /* An opened entry. Holds no copy: the pack must outlive it. */
 typedef struct {
     uint16_t entity_count, renderer_count, camera_count;
     uint16_t light_count, skinned_renderer_count, animator_count, clip_count;
     uint16_t batch_count, chunk_count, copy_count;
+    uint16_t timeline_count, constraint_count, hinge_count;
     const scene_asset_name_t* names;
     const scene_asset_transform_t* transforms;
     const scene_asset_renderer_t* renderers;
@@ -79,6 +125,9 @@ typedef struct {
     const r3d_copy_chunk_t* chunks;
     const r3d_copy_place_t* places; /* copy_count */
     const r3d_copy_turn_t* turns;   /* copy_count */
+    const scene_asset_timeline_t* timeline;
+    const scene_asset_constraint_t* constraints;
+    const scene_asset_hinge_t* hinges;
 } scene_asset_t;
 
 /* Checks every row once and returns the first failure: ASSET_ERR_VERSION,

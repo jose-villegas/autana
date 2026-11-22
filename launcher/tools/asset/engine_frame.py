@@ -52,15 +52,19 @@ def _mirror_turn(rotation, largest):
     return tuple(value * sign for value, sign in zip(rotation, kept))
 
 
-def _mirror_batches(entry, out, header):
-    """Each copy's chunk centre, place offset and turn row in the engine frame."""
+def _mirror_scene_rows(entry, out, header):
+    """Copy placements and motion vectors in the engine frame."""
     parts = scene_asset.PARTS
     count = dict(zip(parts, header[1:1 + len(parts)]))
     offset = dict(zip(parts, header[1 + len(parts):]))
     for part, mirror in (("chunks", lambda centre_x, centre_y, centre_z, reach:
                           (*_mirror_point(centre_x, centre_y, centre_z), reach)),
                          ("places", lambda x, y, z, colour_set: (*_mirror_position((x, y, z)), colour_set)),
-                         ("turns", lambda x, y, z, largest: (*_mirror_turn((x, y, z), largest), largest))):
+                         ("turns", lambda x, y, z, largest: (*_mirror_turn((x, y, z), largest), largest)),
+                         ("constraints", lambda e, bind, pad, follow, look, ox, oy, oz, lx, ly, lz, *scalars:
+                          (e, bind, pad, follow, look, *_mirror_point(ox, oy, oz), *_mirror_point(lx, ly, lz), *scalars)),
+                         ("hinges", lambda e, pad, x, y, z, *angles:
+                          (e, pad, *(value * sign for value, sign in zip((x, y, z), ROTATION_SIGNS)), *angles))):
         row = scene_asset.ROWS[parts.index(part)]
         for index in range(count[part]):
             at = offset[part] + index * row.size
@@ -128,7 +132,7 @@ def to_engine(kind, entry):
             matrix = _mirror_matrix(values[:matrix_width], AXIS_SIGNS)
             position = [value * sign for value, sign in zip(values[matrix_width:], AXIS_SIGNS)]
             scene_asset.TRANSFORM.pack_into(out, at, *matrix, *position)
-        _mirror_batches(entry, out, header)
+        _mirror_scene_rows(entry, out, header)
     elif kind == skeleton_asset.TYPE:
         joints = skeleton_asset.decode(entry)
         *_, rest_at = skeleton_asset.HEADER.unpack_from(entry)

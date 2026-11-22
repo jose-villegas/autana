@@ -1,4 +1,4 @@
-"""SCNE v6 entities, parents, settings, lights, renderers, animators and copy batches, validated against the mapped C reader."""
+"""Write and validate scene entries against the mapped SCNE reader."""
 
 import math
 import pathlib
@@ -33,7 +33,7 @@ SCALE_TOLERANCE = read_define(OWNER.parents[2] / "packages/math/include/math/lin
                               "TRANSFORMF_MATRIX_TOLERANCE")
 WRAPS = {name: read_define(ANIM_OWNER, "ANIM_WRAP_" + name.upper()) for name in ANIM_WRAPS}
 PARTS = ("names", "transforms", "renderers", "cameras", "lights", "skinned_renderers", "animators", "clips", "settings",
-         "parents", "batches", "chunks", "places", "turns")
+         "parents", "batches", "chunks", "places", "turns", "timeline", "constraints", "hinges")
 ALIGN = 4
 HEADER = struct.Struct(f"<{1 + len(PARTS)}H{-2 * (1 + len(PARTS)) % ALIGN}x{len(PARTS)}I")
 CAMERA = struct.Struct("<HHffI")
@@ -42,8 +42,36 @@ SKINNED_RENDERER = struct.Struct(f"<HH{NAME_BYTES}s{NAME_BYTES}s{NAME_BYTES}s")
 ANIMATOR = struct.Struct("<HHIHBB")
 SETTINGS = struct.Struct("<5f")
 PARENT = struct.Struct("<H")
+BINDS = {name: read_define(OWNER, "SCENE_ASSET_BIND_" + name.upper())
+         for name in ("world", "target", "target_yaw")}
+HINGE_AXIS_TOLERANCE = read_define(OWNER, "SCENE_ASSET_HINGE_AXIS_TOLERANCE")
+
+
+def mapped_row(name, **fields):
+    """Build a row from the C offsets, keeping explicit pad fields available for validation."""
+    prefix = "SCENE_ASSET_" + name.upper()
+    size = read_define(OWNER, prefix + "_SIZE")
+    at, formats = 0, ["<"]
+    for field, fmt in fields.items():
+        offset = read_define(OWNER, prefix + "_AT_" + field.upper())
+        if offset < at:
+            raise SceneError(f"{name}.{field} overlaps the preceding field in {OWNER}")
+        formats.extend((f"{offset - at}x", fmt))
+        at = offset + struct.calcsize("<" + fmt)
+    if at != size:
+        raise SceneError(f"{name} fields end at {at}, expected {size} in {OWNER}")
+    return struct.Struct("".join(formats))
+
+
+VECTOR = f"{TRANSFORM_AXES}f"
+TIMELINE = mapped_row("timeline", clip=f"{NAME_BYTES}s", wrap="B",
+                      pad=f"{read_define(OWNER, 'SCENE_ASSET_TIMELINE_SIZE') - read_define(OWNER, 'SCENE_ASSET_TIMELINE_AT_PAD')}s")
+CONSTRAINT = mapped_row("constraint", entity="H", bind="B", pad="B", follow="I", look_at="I",
+                        offset=VECTOR, look_offset=VECTOR, lag_ms="f", handoff_ms="f", weight="f")
+HINGE = mapped_row("hinge", entity="H", pad="H", axis=VECTOR, min="f", max="f", angle="f")
+
 ROWS = (NAME, TRANSFORM, RENDERER, CAMERA, LIGHT, SKINNED_RENDERER, ANIMATOR, CLIP, SETTINGS, PARENT,
-        copy_batches.BATCH, copy_batches.CHUNK, copy_batches.PLACE, copy_batches.TURN)
+        copy_batches.BATCH, copy_batches.CHUNK, copy_batches.PLACE, copy_batches.TURN, TIMELINE, CONSTRAINT, HINGE)
 # A batch's renderer row opens its mesh at this colour set; each copy names its own.
 BATCH_COLOUR_SET = 0
 
@@ -66,6 +94,9 @@ def encode(scene, cache=None, offline=False):
     index = {obj.name: i for i, obj in enumerate(objects)}
     rows = {part: [] for part in PARTS}
     rows["names"] = name_rows(objects)
+    timeline = getattr(scene, "timeline", None)
+    if timeline:
+        rows["timeline"].append((field(timeline.clip, "timeline clip"), WRAPS[timeline.wrap], b""))
     rows["parents"] = [(parent_index(obj, index),) for obj in objects]
     drawn = {item.object.name for item in scene.renderers}
     placements = fold_parent_scales(objects, [parent for (parent,) in rows["parents"]], drawn)
@@ -90,6 +121,12 @@ def encode(scene, cache=None, offline=False):
     for obj in objects:
         entity = index[obj.name]
         animator = getattr(obj, "animator", None)
+        constraint = getattr(obj, "constraint", None)
+        if constraint is not None:
+            rows["constraints"].append(constraint_row(obj.name, entity, constraint, index))
+        hinge = getattr(obj, "hinge", None)
+        if hinge is not None:
+            rows["hinges"].append((entity, 0, *hinge.axis, hinge.min, hinge.max, hinge.angle))
         if obj.kind == "light":
             light = obj.component
             if light["type"] not in LIGHT_KINDS:
@@ -112,7 +149,12 @@ def encode(scene, cache=None, offline=False):
     counts = [len(rows[part]) for part in PARTS]
     if any(count > U16_MAX for count in counts) or len(objects) >= PARENT_ROOT:
         raise SceneError(f"a scene holds at most {U16_MAX} rows per part and {PARENT_ROOT - 1} entities")
-    parts = [b"".join(row.pack(*values) for values in rows[part]) for part, row in zip(PARTS, ROWS)]
+    parts = []
+    for part, row in zip(PARTS, ROWS):
+        try:
+            parts.append(b"".join(row.pack(*values) for values in rows[part]))
+        except (OverflowError, struct.error) as error:
+            raise SceneError(f"{part}: value does not fit its field") from error
     parts = [part + bytes(-len(part) % ALIGN) for part in parts]
     offsets, at = [], HEADER.size
     for part in parts:
@@ -121,6 +163,19 @@ def encode(scene, cache=None, offline=False):
     entry = HEADER.pack(VERSION, *counts, *offsets) + b"".join(parts)
     decode(entry)
     return entry
+
+
+def constraint_row(name, entity, constraint, index):
+    targets = []
+    for key in ("follow", "look_at"):
+        value = getattr(constraint, key)
+        if value is not None and value not in index:
+            raise SceneError(f"{name}.constraint.{key}: unknown object {value!r}")
+        targets.append(HASH_NONE if value is None else name_hash(value))
+    if constraint.bind not in BINDS:
+        raise SceneError(f"{name}.constraint.bind must be world, target or target_yaw")
+    return (entity, BINDS[constraint.bind], 0, *targets, *constraint.offset, *constraint.look_offset,
+            constraint.lag_ms, constraint.handoff_ms, constraint.weight)
 
 
 def name_rows(objects):
@@ -164,22 +219,24 @@ def check_clip_scales(scene, clips):
     entities = scene["entities"]
     parents = {row["parent"] for row in entities if row["parent"] is not None}
     parent_hashes = {entities[index]["name_hash"] for index in parents}
+    owners = [(row["clip"], None) for row in scene.get("timeline", ())]
     for animator in scene["animators"]:
         first = animator["first_clip"]
-        for clip in scene["clips"][first:first + animator["clip_count"]]:
-            for track in clips.get(clip, []):
-                if (track["root"] != tracks_asset.ROOT_SCENE or track["component"] != tracks_asset.TRANSFORM
-                        or track["field"] != "scale"):
-                    continue
-                target = (entities[animator["entity"]]["name"]
-                          if track["path"] == tracks_asset.TARGET_SELF else track["path"])
-                if name_hash(target) not in parent_hashes:
-                    continue
-                runs = tracks_asset.CUBIC_RUNS if track["interpolation"] == "CUBICSPLINE" else 1
-                for index, value in enumerate(track["values"]):
-                    if not scale_is_even(value):
-                        time = track["times"][index // runs]
-                        raise SceneError(f"clip {clip}: entity {target}: scale is not even at {time:g}s")
+        owners.extend((clip, entities[animator["entity"]]["name"])
+                      for clip in scene["clips"][first:first + animator["clip_count"]])
+    for clip, owner in owners:
+        for track in clips.get(clip, []):
+            if (track["root"] != tracks_asset.ROOT_SCENE or track["component"] != tracks_asset.TRANSFORM
+                    or track["field"] != "scale"):
+                continue
+            target = owner if track["path"] == tracks_asset.TARGET_SELF else track["path"]
+            if target is None or name_hash(target) not in parent_hashes:
+                continue
+            runs = tracks_asset.CUBIC_RUNS if track["interpolation"] == "CUBICSPLINE" else 1
+            for index, value in enumerate(track["values"]):
+                if not scale_is_even(value):
+                    time = track["times"][index // runs]
+                    raise SceneError(f"clip {clip}: entity {target}: scale is not even at {time:g}s")
 
 
 def fold_parent_scales(objects, parents, drawn):
@@ -293,6 +350,7 @@ def decode(entry):
                 out[part].append(dict(entity=entity, **{key: text_at(raw, key + " id") for key, raw in zip(names, row[2:])}))
                 if part == "renderers":
                     out[part][-1]["colour_set"] = row[1]
+    decode_motion_rows(rows, out)
     out["batches"] = decode_batches(rows, out["renderers"])
     for part in ("chunks", "places", "turns"):
         del out[part]
@@ -302,6 +360,50 @@ def decode(entry):
         raise SceneError("settings: invalid ambient or tonemap_white")
     out["settings"] = dict(ambient_color=list(color), ambient_intensity=intensity, tonemap_white=white)
     return out
+
+
+def decode_motion_rows(rows, out):
+    if len(rows["timeline"]) > 1:
+        raise SceneError("timeline: at most one row")
+    for clip, wrap, pad in rows["timeline"]:
+        if any(pad) or wrap not in WRAPS.values():
+            raise SceneError("timeline: invalid wrap or padding")
+        out["timeline"].append(dict(clip=text_at(clip, "timeline clip"), wrap=wrap))
+    entities = out["entities"]
+    targets = {HASH_NONE, *(row["name_hash"] for row in entities)}
+    for part in ("constraints", "hinges"):
+        seen = set()
+        for entity, *row in rows[part]:
+            if entity >= len(entities) or entity in seen:
+                raise SceneError(f"{part}: entity out of range or duplicate")
+            seen.add(entity)
+            decoded = decode_constraint(row, targets) if part == "constraints" else decode_hinge(row)
+            out[part].append(dict(entity=entity, **decoded))
+
+
+def decode_constraint(row, targets):
+    bind, pad, follow, look_at, *values = row
+    offset, look_offset = values[:TRANSFORM_AXES], values[TRANSFORM_AXES:2 * TRANSFORM_AXES]
+    lag_ms, handoff_ms, weight = values[2 * TRANSFORM_AXES:]
+    if pad or bind not in BINDS.values() or follow not in targets or look_at not in targets:
+        raise SceneError("constraint: invalid bind, follow, look_at or padding")
+    if not all(map(math.isfinite, (*offset, *look_offset))):
+        raise SceneError("constraint: offset and look_offset must be finite")
+    if not nonnegative(lag_ms) or not nonnegative(handoff_ms) or not 0 <= weight <= 1:
+        raise SceneError("constraint: invalid lag_ms, handoff_ms or weight")
+    return dict(bind=bind, follow=follow, look_at=look_at, offset=tuple(offset), look_offset=tuple(look_offset),
+                lag_ms=lag_ms, handoff_ms=handoff_ms, weight=weight)
+
+
+def decode_hinge(row):
+    pad, *values = row
+    axis = values[:TRANSFORM_AXES]
+    low, high, angle = values[TRANSFORM_AXES:]
+    if pad or not abs(sum(value * value for value in axis) - 1) <= HINGE_AXIS_TOLERANCE:
+        raise SceneError("hinge: invalid unit axis or padding")
+    if not all(map(math.isfinite, (low, high, angle))) or low > high:
+        raise SceneError("hinge: invalid min, max or angle")
+    return dict(axis=tuple(axis), min=low, max=high, angle=angle)
 
 
 def decode_batches(rows, renderers):

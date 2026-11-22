@@ -68,6 +68,66 @@ class SceneFiles(unittest.TestCase):
         return scene_asset.bake(self.scene(objects, head))
 
 
+class SceneTimelineTests(SceneFiles):
+    def test_timeline_clip_travels_in_the_scene_pack(self):
+        head = '[timeline]\nclip = "clips/fly.anim.toml"\n'
+        path = self.scene(renderer("a.import.toml") + lens(), head)
+        pack = parse_pack(build_pack.pack_bytes([path])["hall"])
+        self.assertEqual(pack["fly"][0], tracks_asset.TYPE)
+        self.assertEqual(scene_asset.decode(pack["hall"][1])["timeline"],
+                         [dict(clip="fly", wrap=scene_asset.WRAPS["clamp"])])
+
+    def test_timeline_constraint_and_hinge_round_trip(self):
+        head = '[timeline]\nclip = "clips/fly.anim.toml"\nwrap = "loop"\n'
+        camera = lens() + ('[objects.constraint]\nfollow = "camera"\nlook_at = "camera"\n'
+                           'offset = [0, 60, 180]\nlook_offset = [0, 30, 0]\nbind = "target_yaw"\n'
+                           'lag_ms = 400\nhandoff_ms = 600\nweight = 0.5\n'
+                           '[objects.hinge]\naxis = [1, 0, 0]\nmin = -1.25\nmax = 1.25\nangle = 0.25\n')
+        entry = self.entry(renderer("a.import.toml") + camera, head)
+        decoded = scene_asset.decode(entry)
+        self.assertEqual(decoded["timeline"], [dict(clip="fly", wrap=scene_asset.WRAPS["loop"])])
+        self.assertEqual(decoded["constraints"], [dict(entity=1, follow=name_hash("camera"),
+            look_at=name_hash("camera"), offset=(0, 60, 180), look_offset=(0, 30, 0),
+            bind=scene_asset.BINDS["target_yaw"], lag_ms=400, handoff_ms=600, weight=0.5)])
+        self.assertEqual(decoded["hinges"], [dict(entity=1, axis=(1, 0, 0), min=-1.25, max=1.25, angle=0.25)])
+        packed = scene_asset.decode(to_engine(scene_asset.TYPE, entry))
+        self.assertEqual(packed["constraints"][0]["offset"], (0, 60, -180))
+        self.assertEqual(packed["hinges"], [decoded["hinges"][0] | {"axis": (-1, 0, 0)}])
+
+    def test_invalid_timeline_settings(self):
+        for body, message in (("", "timeline.clip"), ('clip = 3', "timeline.clip"),
+                              ('clip = "fly.glb"', "timeline.clip"),
+                              ('clip = "absent.anim.toml"', "absent.anim.toml"),
+                              ('clip = "clips/fly.anim.toml"\nwrap = "restart"', "timeline.wrap")):
+            with self.subTest(body=body), self.assertRaisesRegex(SceneError, message):
+                self.entry(renderer("a.import.toml") + lens(), "[timeline]\n" + body + "\n")
+
+    def test_invalid_object_settings(self):
+        settings = {
+            "constraint": {
+                'follow = "missing"': "follow",
+                'look_at = "missing"': "look_at",
+                'bind = "surface"': "bind",
+                'offset = [0, nan, 0]': "offset",
+                'look_offset = [0, 0]': "look_offset",
+                'lag_ms = -1': "lag_ms",
+                'handoff_ms = -1': "handoff_ms",
+                'weight = -0.5': "weight",
+                'weight = 1.5': "weight",
+            },
+            "hinge": {
+                'axis = [0, 0, 2]\nmin = 0\nmax = 1': "axis",
+                'axis = [0, 0, 1]\nmin = 2\nmax = 1': "min",
+                'axis = [0, 0, 1]\nmin = 0\nmax = 1\nangle = inf': "angle",
+                'axis = [0, 0, 1]\nmin = 0': "max",
+            },
+        }
+        for table, cases in settings.items():
+            for body, message in cases.items():
+                with self.subTest(table=table, body=body), self.assertRaisesRegex(SceneError, message):
+                    self.entry(renderer("a.import.toml") + lens() + f"[objects.{table}]\n{body}\n")
+
+
 class SceneEntryTests(SceneFiles):
     def test_header_size_mismatch_raises_scene_error(self):
         owner_size = HEADER.size + 1
@@ -382,10 +442,6 @@ class SceneEntryRefusalTests(unittest.TestCase):
             struct.pack_into("<H", entry, parents + row * scene_asset.PARENT.size, parent)
             with self.subTest(row=row, parent=parent), self.assertRaisesRegex(SceneError, message):
                 scene_asset.decode(entry)
-        entry = bytearray(original)
-        entry[2 * (1 + len(scene_asset.PARTS))] = 1
-        with self.assertRaisesRegex(SceneError, "header's padding"):
-            scene_asset.decode(entry)
         skin = HEADER.unpack_from(original)[1 + len(scene_asset.PARTS) + scene_asset.PARTS.index("skinned_renderers")]
         for field, name in enumerate(("mesh", "skin", "skeleton")):
             for raw in (b"x" * NAME_BYTES, bytes(NAME_BYTES)):

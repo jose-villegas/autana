@@ -53,7 +53,7 @@ static const struct {
  * points them into `scene`'s block; a NULL scene only measures. Returns the
  * block's size. */
 static size_t
-place(const scene_asset_t* asset, scene_t* scene) {
+place(const scene_asset_t* asset, size_t timeline_fields, scene_t* scene) {
     const size_t counts[PER_COUNT] = {[PER_RENDERER] = (size_t)asset->renderer_count + asset->skinned_renderer_count,
                                       [PER_CAMERA] = asset->camera_count,
                                       [PER_ENTITY] = asset->entity_count,
@@ -64,6 +64,13 @@ place(const scene_asset_t* asset, scene_t* scene) {
         if (scene != NULL) {
             void* array = (uint8_t*)scene + at;
             memcpy((uint8_t*)scene + PARTS[i].member, &array, sizeof array);
+        }
+    }
+    if (asset->timeline_count != 0) {
+        const size_t at = mem_carve(&end, sizeof(scene_timeline_t) + timeline_fields * sizeof(anim_bound_t),
+                                    alignof(scene_timeline_t));
+        if (scene != NULL) {
+            scene->timeline = (scene_timeline_t*)(void*)((uint8_t*)scene + at);
         }
     }
     return end;
@@ -118,8 +125,8 @@ scene_set_take(memory_take_fn take) {
 }
 
 static scene_t*
-instantiate(const scene_asset_t* asset) {
-    const size_t total = place(asset, NULL);
+instantiate(const scene_asset_t* asset, const anim_tracks_t* timeline) {
+    const size_t total = place(asset, timeline->count, NULL);
     uint8_t* block = scene_allocate_kept(total);
     if (block == NULL) {
         return NULL;
@@ -128,7 +135,12 @@ instantiate(const scene_asset_t* asset) {
     scene_t* scene = (scene_t*)(void*)block;
     scene->asset = *asset;
     scene->renderer_count = asset->renderer_count + asset->skinned_renderer_count;
-    (void)place(asset, scene);
+    (void)place(asset, timeline->count, scene);
+    if (scene->timeline != NULL) {
+        scene->timeline->tracks = *timeline;
+        anim_playhead_init(&scene->timeline->clock, (anim_wrap_t)asset->timeline->wrap);
+        scene->timeline->clock.paused = true;
+    }
     scene->active_renderers_stale = true;
     scene->ambient_color = asset->settings->ambient_color;
     scene->ambient_intensity = asset->settings->ambient_intensity;
@@ -432,6 +444,10 @@ open_asset(const asset_pack_t* pack, const char* id, scene_asset_t* asset) {
     if (status == ASSET_OK) {
         status = scene_asset_open(entry, asset);
     }
+    if (status == ASSET_OK && (asset->constraint_count != 0 || asset->hinge_count != 0)) {
+        return scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_FORMAT,
+                                  asset->constraint_count != 0 ? "constraint" : "hinge");
+    }
     return scene_failure_make(status == ASSET_OK ? SCENE_OK : SCENE_ERR_ASSET, status, id);
 }
 
@@ -458,10 +474,18 @@ open_columns(scene_root_t* record, const asset_pack_t* pack, scene_t** opened) {
     if (read.status != SCENE_OK) {
         return read;
     }
+    anim_tracks_t timeline = {0};
+    if (asset.timeline_count != 0) {
+        const char* clip = asset.timeline->clip;
+        const asset_status_t status = anim_tracks_from_pack(pack, clip, &timeline);
+        if (status != ASSET_OK || timeline.root != ANIM_ROOT_SCENE) {
+            return scene_failure_make(SCENE_ERR_ASSET, status == ASSET_OK ? ASSET_ERR_FORMAT : status, clip);
+        }
+    }
     if (!scene_world_issue_rows(record, asset.entity_count)) {
         return scene_failure_make(SCENE_ERR_FULL, ASSET_OK, record->id);
     }
-    *opened = instantiate(&asset);
+    *opened = instantiate(&asset, &timeline);
     return scene_failure_make(*opened == NULL ? SCENE_ERR_MEMORY : SCENE_OK, ASSET_OK, record->id);
 }
 
@@ -493,6 +517,9 @@ open_scene(scene_root_t* record, const asset_pack_t* pack) {
     }
     if (done.status == SCENE_OK) {
         done = open_skins(scene);
+    }
+    if (done.status == SCENE_OK && scene->timeline != NULL) {
+        done = scene_timeline_bind(scene);
     }
     if (done.status != SCENE_OK) {
         record->scene = NULL;
@@ -768,7 +795,8 @@ scene_transform_is_identity(const mat4f_t* transform) {
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 void
 scene_checkpoint_capture(checkpoint_t* saved, scene_t* scene) {
-    checkpoint_capture(saved, scene, place(&scene->asset, NULL));
+    checkpoint_capture(saved, scene,
+                       place(&scene->asset, scene->timeline == NULL ? 0 : scene->timeline->tracks.count, NULL));
     checkpoint_capture_at(saved, &scene->worlds, (size_t)scene->world_count * sizeof(*scene->worlds));
     checkpoint_capture_at(saved, &scene->light_transfer, sizeof(*scene->light_transfer));
     checkpoint_capture_at(saved, &scene->light_table, sizeof(*scene->light_table));

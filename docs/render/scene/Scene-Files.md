@@ -387,6 +387,52 @@ stay equal (within the scale tolerance) at every key and every cubic tangent.
 Child worlds compose as exact TRS only under an even parent scale; pack builds
 refuse clips that break this rule.
 
+### Timeline
+
+The scene root owns one clip on one clock. Set `clip` to an `.anim.toml`
+path relative to the scene file. The clip travels in the scene's pack and
+addresses transforms and camera lenses by object name.
+
+```toml
+[timeline]
+clip = "demo.anim.toml"
+wrap = "loop"
+```
+
+The default wrap is `"clamp"`, which holds the clip's final frame.
+`"loop"` wraps to the first frame at the duration. A property animator
+and the timeline must write separate fields.
+
+### Constraint and hinge
+
+Add these tables to an object. Scene load fails if either table contains
+a row until the runtime supports it.
+
+```toml
+[objects.constraint]
+follow = "butterfly_blue"
+look_at = "capybara"
+offset = [0, 60, 180]
+look_offset = [0, 30, 0]
+bind = "target_yaw"
+lag_ms = 400
+handoff_ms = 600
+weight = 1.0
+
+[objects.hinge]
+axis = [0, 0, 1]
+min = -1.2
+max = 1.2
+angle = 0.0
+```
+
+Omit either target to leave it unset. A named target must match an object.
+Offsets and times default to zero, weight defaults to one, and bind
+defaults to `"world"`. The other bind values are `"target"` and `"target_yaw"`.
+
+A hinge takes a unit axis and ordered bounds in radians.
+Its starting angle defaults to zero.
+
 ### Light options
 
 | Option | Keys | What it does | Default | Option link |

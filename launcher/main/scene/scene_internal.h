@@ -124,6 +124,18 @@ typedef struct {
     anim_bound_t* fields;
 } scene_animator_clip_t;
 
+typedef struct {
+    anim_tracks_t tracks;
+    anim_playhead_t clock;
+    anim_bound_t fields[];
+} scene_timeline_t;
+
+typedef struct {
+    anim_target_t* targets;
+    void* block;
+    int count;
+} scene_anim_targets_t;
+
 enum { SCENE_ANIM_TIER_NEAR, SCENE_ANIM_TIER_MID, SCENE_ANIM_TIER_FAR };
 
 typedef struct {
@@ -224,6 +236,7 @@ struct scene {
     const asset_pack_t* pack;
     transformf_t* locals;
     scene_animator_t* animators;
+    scene_timeline_t* timeline;
     scene_skinned_renderer_t* skinned_renderers;
     r3d_batch_t* batches;     /* one per SCNE batch, its renderer's */
     r3d_copy_chunk_t* chunks; /* every batch's chunks, internal RAM: what the cull reads first */
@@ -331,6 +344,11 @@ void scene_checkpoint_capture(checkpoint_t* saved, scene_t* scene);
 void scene_animation_checkpoint_capture(checkpoint_t* saved, scene_t* scene);
 #endif
 void scene_animation_release(scene_t* scene);
+scene_anim_targets_t scene_anim_targets(scene_t* scene, scene_row_t owner);
+bool scene_animation_field_has_writer(const scene_t* scene, const anim_bound_t* field);
+void scene_animation_apply_fields(scene_t* scene, const anim_bound_t* fields, int count, const anim_playhead_t* clock);
+scene_failure_t scene_timeline_bind(scene_t* scene);
+void scene_timeline_step(scene_t* scene, uint32_t dt_ms);
 /* An animator or light now exists on `entity`: adds it to `staged` once. A
  * skin needs its entity's skeleton animator, so its entity is staged already. */
 void scene_stage_add(scene_t* scene, scene_row_t entity);

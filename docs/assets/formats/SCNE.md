@@ -1,20 +1,20 @@
-# SCNE v6 scene
+# SCNE v7 scene
 
-One scene: its entities, their transforms and parents, the components on them, and the copies a renderer draws from one table ([Batches](#batches)) ([Scene-Files.md](../../render/scene/Scene-Files.md) is the authored file, [Scene-Manager.md](../../render/scene/Scene-Manager.md) the runtime). Layout defines: [`scene/scene_format.h`](../../../launcher/main/scene/scene_format.h); row structs in [`scene/scene_internal.h`](../../../launcher/main/scene/scene_internal.h).
+One scene: its entities, their transforms and parents, the components on them, and the copies a renderer draws from one table ([Batches](#batches)) ([Scene-Files.md](../../render/scene/Scene-Files.md) is the authored file, [Scene-Manager.md](../../render/scene/Scene-Manager.md) the runtime). Layout defines: [`scene/scene_format.h`](../../../launcher/main/scene/scene_format.h); row structs in [`scene/scene_asset.h`](../../../launcher/main/scene/scene_asset.h).
 
 `build_pack.py` bakes `NAME.scene.toml` into entry `NAME` of its own pack `NAME`, beside every mesh, skin, skeleton and clip it names; a scene and its clip cannot share a stem ([Building-Packs.md](../Building-Packs.md#packs)). `scene_load()` opens it and each entry it names, and fails naming whichever is missing or malformed.
 
 ```mermaid
 ---
 config:
-  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #8fb3ee !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(4) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(5) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(6) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(7) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(8) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(1) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(2) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(3) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(4) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(5) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(6) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(7) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(8) { fill: #ffffff !important; stroke-dasharray: 4 3 !important; } g:nth-of-type(4) rect:nth-of-type(1) { fill: #f4a885 !important; } g:nth-of-type(4) rect:nth-of-type(2) { fill: #f4a885 !important; } g:nth-of-type(4) rect:nth-of-type(3) { fill: #f4a885 !important; } g:nth-of-type(4) rect:nth-of-type(4) { fill: #f4a885 !important; } g:nth-of-type(5) rect:nth-of-type(1) { fill: #f4a885 !important; } g:nth-of-type(5) rect:nth-of-type(2) { fill: #f4a885 !important; } g:nth-of-type(5) rect:nth-of-type(3) { fill: #f4a885 !important; } g:nth-of-type(5) rect:nth-of-type(4) { fill: #f4a885 !important; } g:nth-of-type(6) rect:nth-of-type(1) { fill: #f4a885 !important; } g:nth-of-type(6) rect:nth-of-type(2) { fill: #f4a885 !important; } g:nth-of-type(6) rect:nth-of-type(3) { fill: #f4a885 !important; } g:nth-of-type(6) rect:nth-of-type(4) { fill: #f4a885 !important; } g:nth-of-type(7) rect:nth-of-type(1) { fill: #f4a885 !important; } g:nth-of-type(7) rect:nth-of-type(2) { fill: #f4a885 !important; } .packetLabel { fill: #1b1b1b !important; }"
+  themeCSS: "g:nth-of-type(2) rect:first-of-type { fill: #8fb3ee !important; } g:nth-of-type(2) rect:not(:first-of-type), g:nth-of-type(3) rect, g:nth-of-type(4) rect:nth-of-type(-n+2) { fill: #93d6b0 !important; } g:nth-of-type(4) rect:nth-of-type(n+3), g:nth-of-type(n+5) rect { fill: #f4a885 !important; } .packetLabel { fill: #1b1b1b !important; }"
   packet:
     bitsPerRow: 16
     bitWidth: 64
 ---
 packet-beta
-title Header, 88 bytes at 0, one cell a byte
-0-1: "version = 6"
+title Header, 104 bytes at 0, one cell a byte
+0-1: "version = 7"
 2-3: "names"
 4-5: "transforms"
 6-7: "renderers"
@@ -29,21 +29,26 @@ title Header, 88 bytes at 0, one cell a byte
 24-25: "chunks"
 26-27: "places"
 28-29: "turns"
-30-31: "0"
-32-35: "names_off"
-36-39: "transforms_off"
-40-43: "renderers_off"
-44-47: "cameras_off"
-48-51: "lights_off"
-52-55: "skins_off"
-56-59: "animators_off"
-60-63: "clips_off"
-64-67: "settings_off"
-68-71: "parents_off"
-72-75: "batches_off"
-76-79: "chunks_off"
-80-83: "places_off"
-84-87: "turns_off"
+30-31: "timeline"
+32-33: "constraints"
+34-35: "hinges"
+36-39: "names_off"
+40-43: "transforms_off"
+44-47: "renderers_off"
+48-51: "cameras_off"
+52-55: "lights_off"
+56-59: "skins_off"
+60-63: "animators_off"
+64-67: "clips_off"
+68-71: "settings_off"
+72-75: "parents_off"
+76-79: "batches_off"
+80-83: "chunks_off"
+84-87: "places_off"
+88-91: "turns_off"
+92-95: "timeline_off"
+96-99: "constraints_off"
+100-103: "hinges_off"
 ```
 
 ```mermaid
@@ -292,7 +297,69 @@ title Content: turn, 8 bytes a copy from turns_off
 | Settings | ambient colour in 0..1; `ambient_intensity` and `tonemap_white` finite and at least 0; absent ambient has zero intensity. Applied before lights attach; `tonemap_white` 0 is `SCENE_TONEMAP_WHITE_NONE`, the identity tone map |
 | Batches | see [Batches](#batches) |
 | Order | header, then parts in header order; every `0` above and every gap is zero |
-| Errors | `ASSET_ERR_VERSION` for another version, v1 included, reported before its bounds; `ASSET_ERR_BOUNDS` for a part off its alignment or outside the entry; `ASSET_ERR_FORMAT` for the rest |
+| Errors | `ASSET_ERR_VERSION` for any other version, reported before its bounds; `ASSET_ERR_BOUNDS` for a part off its alignment or outside the entry; `ASSET_ERR_FORMAT` for the rest |
+
+## Scene motion
+
+```mermaid
+---
+config:
+  packet:
+    bitsPerRow: 16
+    bitWidth: 54
+---
+packet-beta
+title Timeline, 36 bytes from timeline_off
+0-31: "char clip[32], NUL padded"
+32: "wrap"
+33-35: "0"
+```
+
+```mermaid
+---
+config:
+  packet:
+    bitsPerRow: 16
+    bitWidth: 54
+---
+packet-beta
+title Constraint, 48 bytes from constraints_off
+0-1: "entity"
+2: "bind"
+3: "0"
+4-7: "u32 follow"
+8-11: "u32 look_at"
+12-23: "f32 offset[3]"
+24-35: "f32 look_offset[3]"
+36-39: "f32 lag_ms"
+40-43: "f32 handoff_ms"
+44-47: "f32 weight"
+```
+
+```mermaid
+---
+config:
+  packet:
+    bitsPerRow: 16
+    bitWidth: 54
+---
+packet-beta
+title Hinge, 28 bytes from hinges_off
+0-1: "entity"
+2-3: "0"
+4-15: "f32 axis[3]"
+16-19: "f32 min"
+20-23: "f32 max"
+24-27: "f32 angle"
+```
+
+| Part | Rules |
+|---|---|
+| Timeline | At most one row. The clip names a TRCK in the same pack with root `ANIM_ROOT_SCENE`. Wrap is `ANIM_CLAMP` or `ANIM_LOOP`. |
+| Constraints | One per entity at most. `bind` is world (0), target (1) or target yaw (2). Target hashes name scene entities or use `NAME_HASH_NONE`. All floats are finite, both times are nonnegative, and weight is in 0..1. |
+| Hinges | One per entity at most. Floats are finite and angles are in radians with `min <= max`. The axis has unit length within the squared-length tolerance `SCENE_ASSET_HINGE_AXIS_TOLERANCE`. |
+
+Scene load fails if the entry contains a constraint or hinge row until the runtime supports it.
 
 ## Batches
 

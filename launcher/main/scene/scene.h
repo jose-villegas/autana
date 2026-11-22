@@ -26,11 +26,11 @@ typedef enum {
 } scene_status_t;
 
 /* Why a load failed: its status, the pack's status when an entry failed,
- * and the id of the scene, mesh or clip, or the entity name, it was about. */
+ * and the id, table, entity or entity field it was about. */
 typedef struct {
     scene_status_t status;
     asset_status_t asset;
-    char what[ASSET_NAME_MAX];
+    char what[2 * ASSET_NAME_MAX];
 } scene_failure_t;
 
 /* Loads the scene `id` from the asset pack it names, or for scene_load_from()

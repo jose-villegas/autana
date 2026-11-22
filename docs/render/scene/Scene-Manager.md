@@ -85,13 +85,23 @@ lit block transactionally; attachment failure preserves the scene.
 | names | entity | the scene entry's, read in the pack with each name's hash; looked up only by `entity_find()` |
 
 Array lengths come from the scene's `SCNE` entry
-([SCNE.md](../../assets/formats/SCNE.md)). SCNE v5 carries entity name hashes, parents, authored lights, lighting settings, skins, animators and renderer colour-set selections.
+([SCNE.md](../../assets/formats/SCNE.md)).
 Authored lights attach at load, and `light_set_*()` attaches or changes
 them at run time; only skinned renderers are lit at run time, baked renderers
 keep their pack colors. Names and immutable mesh and track views point into
 the asset pack. Animator rows create animators; a camera path is an animator
 on the camera's entity whose tracks bind to that entity through
 `ANIM_TARGET_SELF`. Binding resolves every clip before playback.
+
+## Timeline
+
+An authored timeline loads stopped with time zero applied. Each animation
+step advances its clock if playing, applies its bound fields, and then
+re-poses the scene. Timeline tracks can move a skinned entity's transform.
+
+`timeline_seek(root, t_ms)` samples the same integer millisecond as playback
+and re-poses immediately, including while paused. It marks a cut when the
+timeline drives the active camera. Free-running animators keep independent clocks.
 
 ## Hierarchy
 

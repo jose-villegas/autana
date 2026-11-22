@@ -11,45 +11,8 @@
 #include "scene/scene_internal.h"
 
 typedef struct {
-    anim_target_t* targets;
-    anim_component_ref_t* components;
-    void* block;
-    int count;
-} targets_t;
-
-typedef struct {
     size_t clips, times, counts, tables, names, joints, fields, shown, frozen, total;
 } animator_layout_t;
-
-static targets_t
-targets_for(scene_t* scene, scene_row_t owner) {
-    const int entities = scene->asset.entity_count;
-    size_t end = 0;
-    const size_t targets = mem_carve(&end, sizeof(anim_target_t) * (size_t)entities, alignof(anim_target_t));
-    const size_t components =
-        mem_carve(&end, sizeof(anim_component_ref_t) * (size_t)entities * 2, alignof(anim_component_ref_t));
-    uint8_t* block = memory_alloc(end, MEMORY_APP);
-    targets_t out = {.block = block, .count = entities};
-    if (block == NULL) {
-        return out;
-    }
-    out.targets = (anim_target_t*)(void*)(block + targets);
-    out.components = (anim_component_ref_t*)(void*)(block + components);
-    for (int e = 0; e < entities; e++) {
-        anim_component_ref_t* fields = out.components + (e * 2);
-        fields[0] = (anim_component_ref_t){&ANIM_POSE_TRANSFORM_FIELDS, &scene->locals[e]};
-        out.targets[e] = (anim_target_t){scene->asset.names[e].hash, fields, 1, &scene->flags[e], SCENE_FLAG_CHANGED};
-    }
-    for (int c = 0; c < scene->asset.camera_count; c++) {
-        const int e = scene->cameras[c].entity;
-        out.components[(e * 2) + 1] = (anim_component_ref_t){&LENS_FIELDS, &scene->cameras[c].lens};
-        out.targets[e].component_count = 2;
-    }
-    const anim_target_t first = out.targets[0];
-    out.targets[0] = out.targets[owner];
-    out.targets[owner] = first;
-    return out;
-}
 
 static animator_layout_t
 layout_for(int clips, int curves, int joints) {
@@ -92,9 +55,9 @@ bind_clips(scene_t* scene, scene_animator_t* a, const char* const* ids, int curv
            const char** failed) {
     const animator_layout_t l = layout_for(a->layer.clip_count, curves, a->skeleton.joint_count);
     uint8_t* block = a->storage;
-    targets_t targets = {0};
+    scene_anim_targets_t targets = {0};
     if (a->root == ANIM_ROOT_SCENE) {
-        targets = targets_for(scene, owner);
+        targets = scene_anim_targets(scene, owner);
         if (targets.block == NULL) {
             return ASSET_ERR_FULL;
         }

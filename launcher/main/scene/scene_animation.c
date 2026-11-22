@@ -13,6 +13,38 @@
 #include "scene/scene_anim_stages.h"
 #include "scene/scene_internal.h"
 
+scene_anim_targets_t
+scene_anim_targets(scene_t* scene, scene_row_t owner) {
+    const int entities = scene->asset.entity_count;
+    size_t end = 0;
+    const size_t targets = mem_carve(&end, sizeof(anim_target_t) * (size_t)entities, alignof(anim_target_t));
+    const size_t components =
+        mem_carve(&end, sizeof(anim_component_ref_t) * (size_t)entities * 2, alignof(anim_component_ref_t));
+    uint8_t* block = memory_alloc(end, MEMORY_APP);
+    scene_anim_targets_t out = {.block = block, .count = entities};
+    if (block == NULL) {
+        return out;
+    }
+    out.targets = (anim_target_t*)(void*)(block + targets);
+    anim_component_ref_t* refs = (anim_component_ref_t*)(void*)(block + components);
+    for (int e = 0; e < entities; e++) {
+        anim_component_ref_t* fields = refs + (e * 2);
+        fields[0] = (anim_component_ref_t){&ANIM_POSE_TRANSFORM_FIELDS, &scene->locals[e]};
+        out.targets[e] = (anim_target_t){scene->asset.names[e].hash, fields, 1, &scene->flags[e], SCENE_FLAG_CHANGED};
+    }
+    for (int c = 0; c < scene->asset.camera_count; c++) {
+        const int e = scene->cameras[c].entity;
+        refs[(e * 2) + 1] = (anim_component_ref_t){&LENS_FIELDS, &scene->cameras[c].lens};
+        out.targets[e].component_count = 2;
+    }
+    if (owner != SCENE_ROW_NONE) {
+        const anim_target_t first = out.targets[0];
+        out.targets[0] = out.targets[owner];
+        out.targets[owner] = first;
+    }
+    return out;
+}
+
 /* The pose interval of tier `tier` under `s`. */
 static int
 tier_every(int tier, const render_anim_settings_t* s) {
@@ -124,6 +156,42 @@ scene_animate_range(scene_t* scene, int first, int count, uint32_t dt_ms, const 
     }
 }
 
+bool
+scene_animation_field_has_writer(const scene_t* scene, const anim_bound_t* field) {
+    const scene_timeline_t* timeline = scene->timeline;
+    if (timeline != NULL) {
+        for (int i = 0; i < timeline->tracks.count; i++) {
+            if (&timeline->fields[i] != field && timeline->fields[i].target == field->target) {
+                return true;
+            }
+        }
+    }
+    for (int i = 0; i < scene->staged_count; i++) {
+        const scene_animator_t* a = &scene->animators[scene->staged[i]];
+        if (a->storage == NULL || a->root != ANIM_ROOT_SCENE) {
+            continue;
+        }
+        for (int c = 0; c < a->layer.clip_count; c++) {
+            const scene_animator_clip_t* clip = &a->clips[c];
+            for (int f = 0; f < clip->tracks.count; f++) {
+                if (clip->fields[f].target == field->target) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+void
+scene_animation_apply_fields(scene_t* scene, const anim_bound_t* fields, int count, const anim_playhead_t* clock) {
+    anim_apply(fields, count, anim_playhead_seconds(clock));
+    for (int i = 0; i < count; i++) {
+        const ptrdiff_t entity = fields[i].dirty - scene->flags;
+        scene->locals[entity].cached = false;
+    }
+}
+
 static void
 apply_property(scene_t* scene, scene_animator_t* a, uint32_t dt_ms) {
     if (!advance_animator(a, dt_ms)) {
@@ -131,11 +199,7 @@ apply_property(scene_t* scene, scene_animator_t* a, uint32_t dt_ms) {
     }
     const anim_slot_t* slot = &a->layer.current;
     const scene_animator_clip_t* clip = &a->clips[slot->clip];
-    anim_apply(clip->fields, clip->tracks.count, anim_playhead_seconds(&slot->playhead));
-    for (int i = 0; i < clip->tracks.count; i++) {
-        const ptrdiff_t entity = clip->fields[i].dirty - scene->flags;
-        scene->locals[entity].cached = false;
-    }
+    scene_animation_apply_fields(scene, clip->fields, clip->tracks.count, &slot->playhead);
 }
 
 static const r3d_skin_light_kernel_t LIGHT_KERNELS[] = {
@@ -300,6 +364,7 @@ scene_animation_repose(scene_t* scene, uint32_t dt_ms) {
 void
 scene_animation_step(scene_t* scene, uint32_t dt_ms) {
     scene_skins_settle(scene);
+    scene_timeline_step(scene, dt_ms);
     scene_animation_repose(scene, dt_ms);
     scene->animation_frame++;
     /* Only a draw between steps can supply the next step's visible size. */

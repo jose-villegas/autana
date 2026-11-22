@@ -619,14 +619,45 @@ def load_camera_path(path, base, where):
     """The clip a camera flies, named as a .anim.toml relative to the scene
     file (its id is the stem), and the node in it that is the camera."""
     check_keys(path, ("animation", "node"), where)
-    animation = (base / text(path["animation"], f"{where}.animation")).resolve()
+    clip = load_scene_clip(path["animation"], base, f"{where}.animation")
+    clip.node = identifier(path["node"], f"{where}.node")
+    return clip
+
+
+def load_scene_clip(value, base, where):
+    animation = (base / text(value, where)).resolve()
     if not animation.name.endswith(clip_name.SUFFIX) or not animation.is_file():
-        raise SettingsError(f"{where}.animation {path['animation']!r} is not an {clip_name.SUFFIX} file")
-    node = identifier(path["node"], f"{where}.node")
+        raise SettingsError(f"{where} {value!r} is not an {clip_name.SUFFIX} file")
     clip = clip_name.clip_id(animation)
     if len(clip.encode("utf-8")) >= NAME_BYTES:
-        raise SettingsError(f"{where}.animation: clip id {clip!r} exceeds the pack's {NAME_BYTES - 1}-byte limit")
-    return SimpleNamespace(animation=animation, clip=clip, node=node)
+        raise SettingsError(f"{where}: clip id {clip!r} exceeds the pack's {NAME_BYTES - 1}-byte limit")
+    return SimpleNamespace(animation=animation, clip=clip)
+
+
+def load_timeline(table, base):
+    where = "scene.timeline"
+    check_keys(table, ("clip",), where, optional=("wrap",))
+    clip = load_scene_clip(table["clip"], base, f"{where}.clip")
+    clip.wrap = table.get("wrap", "clamp")
+    if clip.wrap not in ANIM_WRAPS:
+        raise SettingsError(f"{where}.wrap must be clamp or loop")
+    return clip
+
+
+def load_constraint(table, where):
+    defaults = dict(follow=None, look_at=None, offset=(0.0, 0.0, 0.0), look_offset=(0.0, 0.0, 0.0),
+                    bind="world", lag_ms=0.0, handoff_ms=0.0, weight=1.0)
+    check_keys(table, (), where, optional=defaults)
+    readers = dict(follow=identifier, look_at=identifier, offset=vector, look_offset=vector,
+                   bind=text, lag_ms=number, handoff_ms=number, weight=number)
+    return SimpleNamespace(**(defaults | {key: readers[key](value, f"{where}.{key}") for key, value in table.items()}))
+
+
+def load_hinge(table, where):
+    check_keys(table, ("axis", "min", "max"), where, optional=("angle",))
+    values = {key: number(table[key], f"{where}.{key}") for key in ("min", "max")}
+    return SimpleNamespace(axis=vector(table["axis"], f"{where}.axis"), **values,
+                           angle=number(table.get("angle", 0.0), f"{where}.angle"))
 
 
 def load_renderer(component, base, where):
@@ -696,7 +727,8 @@ COMPONENTS = ("mesh_renderer", "skinned_renderer", "light", "camera")
 
 
 def load_object(value, base, where):
-    check_keys(value, ("name",), where, optional=("parent", "position", "rotation", "scale", "animator", *COMPONENTS))
+    check_keys(value, ("name",), where, optional=("parent", "position", "rotation", "scale", "animator",
+                                                       "constraint", "hinge", *COMPONENTS))
     present = [name for name in COMPONENTS if name in value]
     if len(present) != 1:
         raise SettingsError(f"{where} must have exactly one component: {', '.join(COMPONENTS)}")
@@ -724,6 +756,8 @@ def load_object(value, base, where):
         obj.component = load_light(value[kind], obj.rotation, spot)
     else:
         obj.component = load_camera(value[kind], base, spot)
+    obj.constraint = load_constraint(value["constraint"], f"{where}.constraint") if "constraint" in value else None
+    obj.hinge = load_hinge(value["hinge"], f"{where}.hinge") if "hinge" in value else None
     obj.animator = None
     if "animator" in value:
         if kind != "skinned_renderer":
@@ -798,7 +832,7 @@ def load_scene(path):
     path = pathlib.Path(path).resolve()
     with open(path, "rb") as source:
         values = tomllib.load(source)
-    check_keys(values, ("objects",), "scene", optional=("tonemap_white", "sky", "ambient", "indirect", "bake"))
+    check_keys(values, ("objects",), "scene", optional=("tonemap_white", "sky", "ambient", "indirect", "bake", "timeline"))
     objects = values["objects"]
     if not isinstance(objects, list) or not objects:
         raise SettingsError("scene.objects must be a non-empty array of tables")
@@ -845,6 +879,7 @@ def load_scene(path):
         jobs.append(make_job(component.settings, component, item, asset_name, asset_path, effective))
     scene = SimpleNamespace(
         path=path, objects=objects, renderers=jobs, bake=bake,
+        timeline=load_timeline(values["timeline"], path.parent) if "timeline" in values else None,
         camera=cameras[0] if cameras else None, region=region, lights=lights,
         tonemap_white=number(values["tonemap_white"], "scene.tonemap_white") if "tonemap_white" in values else None,
         indirect=load_indirect_look(values.get("indirect", {})))
