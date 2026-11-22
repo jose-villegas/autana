@@ -148,14 +148,27 @@ class PanelVideoTests(unittest.TestCase):
                                     ["2", "100000", "999000000000", "1", "3", "2"]])
 
     def test_closing_broken_stdin_waits_and_reports_status(self):
+        stderr = b"old error\n" + b"x" * 8192 + b"\n" + b"earlier line\n" * 20 + b"muxer refused output\n"
+        process = mock.Mock()
+        process.stdin.close.side_effect = BrokenPipeError
+        process.wait.return_value = 7
+
+        def start(*args, **kwargs):
+            if "stderr" in kwargs:
+                kwargs["stderr"].write(stderr)
+            return process
+
         with mock.patch.object(video_encode, "resolve", return_value="fake-ffmpeg"):
             writer = video_encode.VideoWriter("test.mp4", 30)
-        writer.process = mock.Mock()
-        writer.process.stdin.close.side_effect = BrokenPipeError
-        writer.process.wait.return_value = 7
-        with self.assertRaisesRegex(RuntimeError, "ffmpeg exited with status 7"):
+        with mock.patch.object(video_encode, "open_encoder", side_effect=start):
+            writer.write((2, 2), BLACK_RGB * 4)
+        with self.assertRaisesRegex(RuntimeError, "ffmpeg exited with status 7") as error:
             writer.close()
-        writer.process.wait.assert_called_once()
+        message = str(error.exception)
+        self.assertTrue(message.endswith("muxer refused output"))
+        self.assertNotIn("old error", message)
+        self.assertLess(message.count("earlier line"), 20)
+        process.wait.assert_called_once()
 
     def test_real_three_frame_encode(self):
         with tempfile.TemporaryDirectory() as directory:

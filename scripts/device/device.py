@@ -1963,49 +1963,48 @@ def feed_lines(lines, inbox):
     inbox.put(None)
 
 
-def steer(args, store, board, purpose, read, lines, opening=(), closing=None, done=None, interrupt_ends=False):
-    """Console lines from `lines` to the board as each arrives, under one lock
+def steer(read, lines, opening=(), closing=None, done=None, interrupt_ends=False):
+    """Console lines from `lines` to the board as each arrives, under the caller's lock
     and one open port, while `read(connection, stop, failed)` takes what the
     board writes on its own thread. `opening` lines go first; `closing(connection,
     failed)` runs after `lines` end, before the port closes; a set `done` ends
     the lines early, and so does Ctrl+C with `interrupt_ends`. A lost lock or a failed read ends it with an error, even
     while `lines` is quiet."""
-    with HeldLock(store, board, args.owner, purpose, args.wait):
-        with open_when_free() as connection:
-            stop = threading.Event()
-            failed = []
-            reader = threading.Thread(target=read, args=(connection, stop, failed), daemon=True)
-            reader.start()
-            # The lines are read on their own thread, so a quiet stdin never stops the checks below.
-            inbox = queue.Queue()
-            threading.Thread(target=feed_lines, args=(lines, inbox), daemon=True).start()
-            try:
-                for line in opening:
-                    connection.write(line.encode("ascii") + b"\n")
-                while done is None or not done.is_set():
-                    if failed:
-                        raise RuntimeError(f"reading the board failed: {failed[0]}") from failed[0]
-                    require_unlost()
-                    try:
-                        line = inbox.get(timeout=STREAM_CHECK_SECONDS)
-                    except queue.Empty:
-                        continue
-                    except KeyboardInterrupt:
-                        if not interrupt_ends:
-                            raise
-                        break
-                    if line is None:
-                        break
-                    try:
-                        data = (line.rstrip("\r\n") + "\n").encode("ascii")
-                    except UnicodeEncodeError as error:
-                        raise RuntimeError(f"console lines are ASCII: {line.rstrip()!r}") from error
-                    connection.write(data)
-                if closing is not None:
-                    closing(connection, failed)
-            finally:
-                stop.set()
-                reader.join()
+    with open_when_free() as connection:
+        stop = threading.Event()
+        failed = []
+        reader = threading.Thread(target=read, args=(connection, stop, failed), daemon=True)
+        reader.start()
+        # The lines are read on their own thread, so a quiet stdin never stops the checks below.
+        inbox = queue.Queue()
+        threading.Thread(target=feed_lines, args=(lines, inbox), daemon=True).start()
+        try:
+            for line in opening:
+                connection.write(line.encode("ascii") + b"\n")
+            while done is None or not done.is_set():
+                if failed:
+                    raise RuntimeError(f"reading the board failed: {failed[0]}") from failed[0]
+                require_unlost()
+                try:
+                    line = inbox.get(timeout=STREAM_CHECK_SECONDS)
+                except queue.Empty:
+                    continue
+                except KeyboardInterrupt:
+                    if not interrupt_ends:
+                        raise
+                    break
+                if line is None:
+                    break
+                try:
+                    data = (line.rstrip("\r\n") + "\n").encode("ascii")
+                except UnicodeEncodeError as error:
+                    raise RuntimeError(f"console lines are ASCII: {line.rstrip()!r}") from error
+                connection.write(data)
+            if closing is not None:
+                closing(connection, failed)
+        finally:
+            stop.set()
+            reader.join()
 
 
 def stream(args, store, board, lines=None, out=None):
@@ -2015,8 +2014,8 @@ def stream(args, store, board, lines=None, out=None):
     (a process, a lock and an open each) is far too slow."""
     lines = sys.stdin if lines is None else lines
     out = sys.stdout if out is None else out
-    steer(args, store, board, "stream", lambda connection, stop, failed: echo_board(connection, stop, out, failed),
-          lines)
+    with HeldLock(store, board, args.owner, "stream", args.wait):
+        steer(lambda connection, stop, failed: echo_board(connection, stop, out, failed), lines)
     return 0
 
 
@@ -2046,7 +2045,7 @@ def record_frames(args, store, board, lines=None, out=None, log=None):
 
 
 def capture_stream(args, store, board, tag, on_data, lines=None, log=None, opening=None, packet_tag=None,
-                   on_packet_error=None, error_prefix=None):
+                   on_packet_error=None, error_prefix=None, recording=None):
     """Steer a console capture, forwarding stdin and draining through its END reply."""
     log = sys.stderr if log is None else log
     timed = args.seconds is not None
@@ -2055,7 +2054,7 @@ def capture_stream(args, store, board, tag, on_data, lines=None, log=None, openi
     if timed:
         lines = until_seconds(lines, args.seconds)
     import console_packets
-    packets = console_packets.Packets(packet_tag or tag)
+    packets = console_packets.Packets(packet_tag or tag, recovery_end=f"{tag}_END " if on_packet_error else None)
     ended = threading.Event()
     done = threading.Event()
     answer = []
@@ -2117,9 +2116,13 @@ def capture_stream(args, store, board, tag, on_data, lines=None, log=None, openi
         if consumer_failed:
             raise consumer_failed[0]
 
-    steer(args, store, board, tag.lower(), read, lines, opening=[opening or f"{tag} START"],
-          closing=closing, done=done, interrupt_ends=True)
-    return answer[0] if answer else ""
+    output = contextlib.nullcontext() if recording is None else recording
+    with HeldLock(store, board, args.owner, tag.lower(), args.wait), output:
+        steer(read, lines, opening=[opening or f"{tag} START"], closing=closing, done=done, interrupt_ends=True)
+        reply = answer[0] if answer else ""
+        if recording is not None:
+            recording.finish(reply)
+    return reply
 
 
 def video(args, store, board, lines=None, log=None):
@@ -2131,11 +2134,11 @@ def video(args, store, board, lines=None, log=None):
     fps = default if args.fps is None else args.fps
     if not 1 <= fps <= maximum:
         raise RuntimeError(f"--fps must be between 1 and {maximum}")
-    with panel_video.Recording(args.out, log=log) as recording:
-        answer = capture_stream(args, store, board, "PANELCAP", recording.packet, lines, log,
-                                opening=f"PANELCAP START {fps}", packet_tag=panel_video.PACKET_TAG,
-                                on_packet_error=recording.parts.corrupt, error_prefix=panel_video.ERROR_PREFIX)
-        recording.finish(answer)
+    recording = panel_video.Recording(args.out, log=log)
+    answer = capture_stream(args, store, board, "PANELCAP", recording.packet, lines, log,
+                            opening=f"PANELCAP START {fps}", packet_tag=panel_video.PACKET_TAG,
+                            on_packet_error=recording.parts.corrupt, error_prefix=panel_video.ERROR_PREFIX,
+                            recording=recording)
     return int(not answer.startswith("PANELCAP_END"))
 
 

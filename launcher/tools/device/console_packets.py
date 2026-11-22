@@ -22,10 +22,13 @@ class Packets:
     `tag`_BIN packets carry. feed() takes any chunk as it was read and
     returns ("line", bytes) and ("data", bytes) in arrival order; a line is
     returned once its newline has arrived, a packet once all its bytes have.
-    A damaged packet raises PacketError with any events already split."""
+    A damaged packet raises PacketError with any events already split.
+    With recovery_end, resume at the next packet head or end reply."""
 
-    def __init__(self, tag):
+    def __init__(self, tag, recovery_end=None):
         self.prefix = tag.encode("ascii") + b"_BIN "
+        self.recovery_end = recovery_end.encode("ascii") if recovery_end is not None else None
+        self.seeking = False
         self.pending = bytearray()
         self.partial = bytearray()  # a line's text before a packet that cut into it
 
@@ -36,13 +39,26 @@ class Packets:
             end = self.pending.find(b"\n")
             if end < 0:
                 return out
-            start = self.pending.find(self.prefix, 0, end)
+            start = self.pending.rfind(self.prefix, 0, end)
             try:
                 head = self.parse_head(start, end)
             except PacketError as error:
+                if self.seeking:
+                    del self.pending[:end + 1]
+                    continue
                 del self.pending[:end + 1]
+                self.seeking = self.recovery_end is not None
                 error.events = out
                 raise
+            if self.seeking:
+                # A truncated payload can make its declared size overlap the next header.
+                boundary = start if head is not None else self.pending.find(self.recovery_end, 0, end)
+                if boundary < 0:
+                    del self.pending[:end + 1]
+                    continue
+                del self.pending[:boundary]
+                self.seeking = False
+                continue
             if head is None:
                 line = bytes(self.partial + self.pending[:end]).rstrip(b"\r")
                 del self.pending[:end + 1]
@@ -54,13 +70,15 @@ class Packets:
                 return out
             data = bytes(self.pending[end + 1:end + 1 + count])
             self.partial.extend(self.pending[:start])
-            del self.pending[:end + 1 + count]
             if zlib.crc32(data) != crc:
+                self.seeking = self.recovery_end is not None
+                del self.pending[:end + 1 if self.seeking else end + 1 + count]
                 error = PacketError(f"a {count}-byte packet arrived damaged: crc32 {zlib.crc32(data):08x}, "
                                     f"the board sent {crc:08x}")
                 error.events = out
                 error.packet = data
                 raise error
+            del self.pending[:end + 1 + count]
             out.append(("data", data))
 
     def parse_head(self, start, end):

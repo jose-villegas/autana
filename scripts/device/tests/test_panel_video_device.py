@@ -22,6 +22,60 @@ class PanelBoard(RecordingBoard):
 
 
 class PanelVideoDeviceTests(unittest.TestCase):
+    def test_encoder_finishes_before_lock_reaps_children(self):
+        packet = panel_video.PART.pack(1, 0, 1) + panel_video.PRESENT.pack(1, 0, 0, 0)
+        wire = b"PANEL_BIN %d %08x\n" % (len(packet), zlib.crc32(packet)) + packet
+        board = PanelBoard([b"PANELCAP_BEGIN fps=5 image=329728\n"],
+                           after_stop=[wire, b"PANELCAP_END presents=1 dropped=0 bytes=16\n"])
+        process = mock.Mock()
+        process.wait.return_value = 0
+
+        @device.contextlib.contextmanager
+        def reaping_lock(*args):
+            try:
+                yield
+            finally:
+                if not process.wait.called:
+                    process.kill()
+                    process.wait.return_value = 1
+
+        with tempfile.TemporaryDirectory() as folder:
+            args = Namespace(owner="agent", wait=0, out=Path(folder) / "run.mp4", fps=5, seconds=None)
+            with mock.patch.object(device, "HeldLock", reaping_lock), \
+                    mock.patch.object(device, "open_when_free", return_value=board), \
+                    mock.patch.object(panel_video.video_encode, "resolve", return_value="fake-ffmpeg"), \
+                    mock.patch.object(panel_video.video_encode, "open_encoder", return_value=process):
+                self.assertEqual(device.video(args, mock_store(), BOARD, lines=[], log=io.StringIO()), 0)
+        process.stdin.close.assert_called_once()
+        process.wait.assert_called_once()
+        process.kill.assert_not_called()
+
+    def test_split_header_after_truncated_part_keeps_binary_off_log(self):
+        damaged = panel_video.PART.pack(1, 0, 0) + b"\x00\xff\x88\n"
+        tail = panel_video.PART.pack(1, 1, 1) + b"\xff\xe1\n\xa2\n"
+        good = panel_video.PART.pack(2, 0, 1) + panel_video.PRESENT.pack(2, 0, 0, 0)
+        bad_wire = b"PANEL_BIN %d %08x\n" % (len(damaged), zlib.crc32(damaged)) + damaged[:-2]
+        tail_head = b"PANEL_BIN %d %08x\n" % (len(tail), zlib.crc32(tail))
+        good_wire = b"PANEL_BIN %d %08x\n" % (len(good), zlib.crc32(good)) + good
+        begin = b"PANELCAP_BEGIN fps=5 image=329728\n"
+        end = b"PANELCAP_END presents=2 dropped=0 bytes=16\n"
+        board = PanelBoard([begin], after_stop=[bad_wire + tail_head[:1], tail_head[1:6],
+                                               tail_head[6:] + tail + good_wire + end])
+        process = mock.Mock()
+        process.wait.return_value = 0
+        log = io.StringIO()
+        with tempfile.TemporaryDirectory() as folder:
+            out = Path(folder) / "run.mp4"
+            args = Namespace(owner="agent", wait=0, out=out, fps=5, seconds=None)
+            with mock.patch.object(device, "open_when_free", return_value=board), \
+                    mock.patch.object(panel_video.video_encode, "resolve", return_value="fake-ffmpeg"), \
+                    mock.patch.object(panel_video.video_encode, "open_encoder", return_value=process):
+                self.assertEqual(device.video(args, mock_store(), BOARD, lines=[], log=log), 0)
+            with out.with_suffix(".frames.csv").open() as source:
+                self.assertEqual([row["present_seq"] for row in csv.DictReader(source)], ["2"])
+        self.assertEqual(log.getvalue().splitlines()[:-1], [begin.decode().strip(), end.decode().strip()])
+        self.assertIn("host_dropped=1", log.getvalue())
+
     def capture(self, timed, corrupt=False, lost_first=False):
         good_seq = 2 if corrupt else 1
         stream = struct.pack("<IQHHHHHH", good_seq, 0, 1, 0, 0, 0, 1, 1) + b"\0\xf8\0"

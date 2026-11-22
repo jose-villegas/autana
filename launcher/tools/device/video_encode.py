@@ -1,5 +1,6 @@
 """Shared raw RGB to H.264 command construction and platform ffmpeg pins."""
 import argparse
+import contextlib
 import hashlib
 import io
 import json
@@ -18,6 +19,8 @@ from espressif import pinned_tools_root
 from http_get import get
 
 FETCH_TIMEOUT_SECONDS = 120
+STDERR_TAIL_BYTES = 4096
+STDERR_TAIL_LINES = 8
 PIN = Path(__file__).with_name("ffmpeg-pin.json")
 
 
@@ -96,11 +99,11 @@ def command(binary, size, fps, out, live=False):
             + ["-pix_fmt", "yuv420p", "-movflags", "+faststart", str(out)])
 
 
-def open_encoder(binary, size, fps, out, live=False):
+def open_encoder(binary, size, fps, out, live=False, *, stderr=None):
     """Start an encoder accepting raw RGB frames on stdin."""
     group = ({"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if sys.platform == "win32"
              else {"start_new_session": True})
-    return subprocess.Popen(command(binary, size, fps, out, live), stdin=subprocess.PIPE, **group)
+    return subprocess.Popen(command(binary, size, fps, out, live), stdin=subprocess.PIPE, stderr=stderr, **group)
 
 
 class VideoWriter:
@@ -110,10 +113,15 @@ class VideoWriter:
         self.out, self.fps, self.live = out, fps, live
         self.binary = resolve()
         self.process = None
+        self.stderr = None
 
     def write(self, size, rgb):
         if self.process is None:
-            self.process = open_encoder(self.binary, size, self.fps, self.out, self.live)
+            with contextlib.ExitStack() as cleanup:
+                stderr = cleanup.enter_context(tempfile.TemporaryFile())
+                self.process = open_encoder(self.binary, size, self.fps, self.out, self.live, stderr=stderr)
+                cleanup.pop_all()
+            self.stderr = stderr
         self.process.stdin.write(rgb)
 
     def add(self, picture):
@@ -122,13 +130,18 @@ class VideoWriter:
     def close(self):
         if self.process is None:
             return
-        try:
-            self.process.stdin.close()
-        except BrokenPipeError:
-            pass
-        status = self.process.wait()
-        if status:
-            raise RuntimeError(f"ffmpeg exited with status {status} writing {self.out}")
+        with self.stderr as stderr:
+            try:
+                self.process.stdin.close()
+            except BrokenPipeError:
+                pass
+            status = self.process.wait()
+            if status:
+                end = stderr.seek(0, io.SEEK_END)
+                stderr.seek(max(0, end - STDERR_TAIL_BYTES))
+                tail = stderr.read().decode("utf-8", errors="replace").splitlines()[-STDERR_TAIL_LINES:]
+                message = f"ffmpeg exited with status {status} writing {self.out}"
+                raise RuntimeError("\n".join([message, *tail]))
 
 
 if __name__ == "__main__":
