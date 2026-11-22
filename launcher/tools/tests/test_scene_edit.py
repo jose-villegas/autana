@@ -36,6 +36,11 @@ def scene_text():
             + "\n" + camera(region=False) + "\n" + box + "\n" + lid + "\n" + shelf + "\n" + pet)
 
 
+
+def keys_json(*keys):
+    """read-keys' JSON for `keys`, each (t, eye, look_at)."""
+    return [dict(t=t, eye=eye, look_at=look_at) for t, eye, look_at in keys]
+
 def run(*argv):
     """scene_edit's exit code, stdout and stderr for `argv`."""
     out, err = io.StringIO(), io.StringIO()
@@ -288,9 +293,8 @@ class KeysEditTests(unittest.TestCase):
     def test_read_keys_lists_the_keys_as_authored(self):
         code, out, _ = run("read-keys", self.keys)
         self.assertEqual(code, 0)
-        self.assertEqual(json.loads(out), dict(node="camera", animation="walk", keys=[
-            dict(t=0, eye=[0, 1, 5], look_at=[0, 1, 0]), dict(t=2.5, eye=[5, 1, 0], look_at=[0, 1, 0]),
-            dict(t=5, eye=[0, 1, -5], look_at=[0, 1, 0])]))
+        self.assertEqual(json.loads(out), dict(node="camera", animation="walk", keys=keys_json(
+            (0, [0, 1, 5], [0, 1, 0]), (2.5, [5, 1, 0], [0, 1, 0]), (5, [0, 1, -5], [0, 1, 0]))))
 
     def test_read_keys_writes_its_json_to_a_file_when_asked(self):
         out = self.folder / "keys.json"
@@ -417,9 +421,8 @@ class KeysEditTests(unittest.TestCase):
 
     def test_one_call_adds_deletes_and_edits(self):
         self.assertEqual(self.set_keys("0:0:0,2,5:0,1,0", "new:1:3,1,3:0,1,0", "2:5:0,1,-5:1,1,0")[0], 0)
-        self.assertEqual(json.loads(run("read-keys", self.keys)[1])["keys"], [
-            dict(t=0, eye=[0, 2, 5], look_at=[0, 1, 0]), dict(t=1, eye=[3, 1, 3], look_at=[0, 1, 0]),
-            dict(t=5, eye=[0, 1, -5], look_at=[1, 1, 0])])
+        self.assertEqual(json.loads(run("read-keys", self.keys)[1])["keys"], keys_json(
+            (0, [0, 2, 5], [0, 1, 0]), (1, [3, 1, 3], [0, 1, 0]), (5, [0, 1, -5], [1, 1, 0])))
         self.assertNotIn("Round the corner", self.keys.read_text())
 
     def test_a_changed_time_keeps_its_line_comment(self):

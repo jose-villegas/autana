@@ -345,18 +345,21 @@ def emit(text, out):
         print(text)
 
 
+def add_reader(commands, name, file, help_text):
+    """A command that prints what `file` holds as JSON, or writes it to -o."""
+    reader = commands.add_parser(name, help=help_text)
+    reader.add_argument(file)
+    reader.add_argument("-o", dest="out", metavar="OUT.json", help="write the JSON here instead of printing it")
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     commands = parser.add_subparsers(dest="command", required=True)
-    read = commands.add_parser("read", help="print the objects' placements as JSON")
-    read.add_argument("scene")
-    read.add_argument("-o", dest="out", metavar="OUT.json", help="write the JSON here instead of printing it")
+    add_reader(commands, "read", "scene", "print the objects' placements as JSON")
     write = commands.add_parser("set", help="change objects' placements in the file")
     write.add_argument("scene")
     write.add_argument("--set", dest="assignments", action="append", required=True, metavar="NAME.FIELD=X,Y,Z")
-    read_keys_command = commands.add_parser("read-keys", help="print a camera keys file's keys as JSON")
-    read_keys_command.add_argument("keys")
-    read_keys_command.add_argument("-o", dest="out", metavar="OUT.json", help="write the JSON here instead of printing it")
+    add_reader(commands, "read-keys", "keys", "print a camera keys file's keys as JSON")
     set_keys = commands.add_parser("set-keys", help="write a camera keys file's whole list of keys")
     set_keys.add_argument("keys")
     set_keys.add_argument("--key", dest="keys_given", action="append", required=True,
