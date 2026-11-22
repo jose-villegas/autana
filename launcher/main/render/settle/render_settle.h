@@ -1,5 +1,7 @@
 /*
- * render_settle: quiet bands refine to finest detail with texture shortcuts and small fill off.
+ * render_settle: quiet bands of a held picture redraw at the finest LOD cut, with no blend,
+ * texture shortcuts or small fill. Live rows reset the bands they touch. Middle-out runs
+ * spend a budget learned from measured row costs.
  */
 #pragma once
 

@@ -349,6 +349,13 @@ draw_second_view(render_context_t* c) {
     /* Its own views and clusters: none may steer the frame's core split, and
      * the hook reads the settings the frame drew with; only its own draw has
      * cull off, set in place, as a copy would cost the draw chain's stack. */
+    if (c->frame.settled_rows != 0) {
+        c->raster.split = NULL;
+        c->raster.picks_levels = false;
+        (void)raster_census(&c->raster, &c->frame_view);
+        c->raster.picks_levels = true;
+        c->raster.split = &c->split;
+    }
     const transformf_t* observer = c->observing ? &c->observer : NULL;
     render_view_t* second = &c->second;
     bool listed = false;

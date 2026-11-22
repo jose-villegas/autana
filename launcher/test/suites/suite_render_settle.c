@@ -5,6 +5,7 @@
 #include "raster_rig.h"
 #include "render/context/render_context.h"
 #include "render/lod/r3d_lod.h"
+#include "render/r3d_span.h"
 #include "render/settle/render_settle.h"
 #include "render/texture/r3d_texture.h"
 #include "suites.h"
@@ -37,7 +38,14 @@
 #define CARD_COARSE_TRIANGLES 1
 #define CARD_GROUP_RADIUS     57
 #define CARD_Z                -100
-#define CARD_FINE_BOUND_NEAR  -240
+#define CARD_FINE_Z           -300
+#define CARD_CORNERS          4
+#define CARD_FINE_CORNER      3
+#define SPREAD_PICKS          2
+#define FOLLOWUP_FRAMES       3
+#define CLOSE_EYE_Z           -350.0F
+#define MOVE_TOLERANCE        0.2F
+#define CHANGE_ABOVE_CARD     17.0F
 #define CARD_ERROR            1
 
 static void
@@ -144,6 +152,7 @@ typedef struct {
     r3d_texture_t texture;
     uint8_t texels[TEX_BYTES];
     r3d_mesh_texturing_t texturing;
+    int16_t positions[CARD_CORNERS][3];
     r3d_lit_cluster_t clusters[2];
     r3d_lit_node_t nodes[3];
     r3d_instance_t instances[CONTEXTS][RASTER_RIG_QUADS];
@@ -169,7 +178,7 @@ cleanup(void) {
 }
 
 static void
-level_card(r3d_quad_t* card) {
+level_card(r3d_quad_t* card, bool coarse_near) {
     static const uint16_t triangles[][3] = {{0, 1, 2}, {0, 2, 3}, {0, 1, 2}};
     static const r3d_lit_cluster_lod_t levels[] = {{R3D_LOD_NONE, 0}, {0, R3D_LOD_NONE}};
     static const r3d_lit_lod_group_t groups[] = {
@@ -180,11 +189,19 @@ level_card(r3d_quad_t* card) {
     f->clusters[1].triangle_first = CARD_FINE_TRIANGLES;
     f->clusters[1].triangle_count = CARD_COARSE_TRIANGLES;
     f->nodes[0] = (r3d_lit_node_t){card->node.bounds, 1, 2, false};
-    f->clusters[0].bounds.lo.z = CARD_FINE_BOUND_NEAR;
-    f->nodes[0].bounds.lo.z = CARD_FINE_BOUND_NEAR;
     f->nodes[1] = card->node;
-    f->nodes[1].bounds.lo.z = CARD_FINE_BOUND_NEAR;
     f->nodes[2] = (r3d_lit_node_t){card->node.bounds, 1, 1, true};
+    memcpy(f->positions, card->mesh.positions, sizeof f->positions);
+    if (coarse_near) {
+        f->clusters[1].bounds.lo.z = CARD_FINE_Z;
+        f->nodes[2].bounds.lo.z = CARD_FINE_Z;
+    } else {
+        f->positions[CARD_FINE_CORNER][2] = CARD_FINE_Z;
+        f->clusters[0].bounds.lo.z = CARD_FINE_Z;
+        f->nodes[1].bounds.lo.z = CARD_FINE_Z;
+    }
+    f->nodes[0].bounds.lo.z = CARD_FINE_Z;
+    card->mesh.positions = (const int16_t (*)[3])f->positions;
     card->mesh.triangles = triangles;
     card->mesh.triangle_count = CARD_FINE_TRIANGLES + CARD_COARSE_TRIANGLES;
     card->mesh.clusters = f->clusters;
@@ -221,7 +238,7 @@ texture_wall(r3d_lit_mesh_t* mesh) {
 }
 
 static raster_rig_t*
-fixture(int budget, bool levels) {
+fixture(int budget, bool levels, bool coarse_near) {
     static const uint8_t gradient[4][3] = {{32, 80, 96}, {128, 112, 48}, {224, 160, 144}, {48, 96, 80}};
     raster_rig_t* r = raster_rig_open(raster_rig_wall_and_card, RASTER_RIG_QUADS, 1U << CARD, W, H, 0);
     suite_set_test_cleanup(cleanup);
@@ -238,7 +255,10 @@ fixture(int budget, bool levels) {
     f->settings.small_fill = SMALL_FILL_FAST_DITHER;
     f->settings.texture.far_level = 1;
     if (levels) {
-        level_card(&r->quad[CARD]);
+        level_card(&r->quad[CARD], coarse_near);
+        const render_settings_t quality = render_settle_quality(&f->settings);
+        f->settings.texture = quality.texture;
+        f->settings.small_fill = quality.small_fill;
         f->settings.lod.blend = RENDER_LOD_BLEND_ON;
         f->settings.lod.triangle_budget = r->quad[0].mesh.triangle_count + CARD_FINE_TRIANGLES;
     } else {
@@ -287,9 +307,25 @@ assert_picture(int oracle) {
     TEST_ASSERT_EQUAL_MEMORY(f->picture[oracle], f->picture[0], sizeof f->picture[0]);
 }
 
+static bool
+assert_band_depth(const render_view_t* view, int first, int end, float live_near) {
+    raster_t* oracle = &f->c[1].raster;
+    *raster_carve(oracle).depth_near = live_near;
+    raster_draw_culled(oracle, view);
+    const uint16_t* expected = raster_depth(oracle);
+    const int offset = first * W;
+    const size_t pixels = (size_t)(end - first) * W;
+    TEST_ASSERT_EQUAL_MEMORY(expected + offset, raster_depth(&f->c[0].raster) + offset, pixels * sizeof(*expected));
+    bool clamped = false;
+    for (int j = offset; j < end * W; j++) {
+        clamped |= expected[j] == R3D_DEPTH_NEAREST;
+    }
+    return clamped;
+}
+
 static raster_rig_t*
-settle_held(int budget, bool levels) {
-    raster_rig_t* r = fixture(budget, levels);
+settle_held(int budget, bool levels, bool coarse_near) {
+    raster_rig_t* r = fixture(budget, levels, coarse_near);
     const render_view_t v = view();
     (void)frame(&v, NULL, -1);
     TEST_ASSERT_NOT_EQUAL(0, memcmp(f->picture[1], f->picture[LIVE], sizeof f->picture[0]));
@@ -297,9 +333,13 @@ settle_held(int budget, bool levels) {
         TEST_ASSERT_EQUAL_INT(0, frame(&v, NULL, 0).settled_rows);
         assert_picture(LIVE);
     }
+    const float live_near = raster_depth_near(&f->c[LIVE].raster);
+    int card_bands = 0;
+    bool clamped = false;
     if (levels) {
         TEST_ASSERT_TRUE(r3d_lod_any(f->lod[LIVE], CARD_GROUPS));
-        TEST_ASSERT_NOT_EQUAL(raster_depth_near(&f->c[LIVE].raster), raster_depth_near(&f->c[1].raster));
+        const float finest_near = raster_depth_near(&f->c[1].raster);
+        TEST_ASSERT_TRUE(coarse_near ? finest_near > live_near : finest_near < live_near);
     }
     const int rounds = budget == 1 ? RENDER_SETTLE_BANDS : 2;
     for (int i = 0; i < rounds; i++) {
@@ -317,7 +357,18 @@ settle_held(int budget, bool levels) {
             TEST_ASSERT_EQUAL_MEMORY(&f->picture[1][first * W], &f->picture[0][first * W],
                                      (end - first) * W * sizeof(uint16_t));
         }
+        TEST_ASSERT_EQUAL_FLOAT(live_near, raster_depth_near(&f->c[0].raster));
+        if (levels && budget == 1) {
+            const size_t bytes = (end - first) * W * sizeof(uint16_t);
+            const int offset = first * W;
+            card_bands += memcmp(f->picture[1] + offset, f->picture[LIVE] + offset, bytes) != 0;
+            clamped |= assert_band_depth(&v, first, end, live_near);
+        }
         TEST_ASSERT_EQUAL_MEMORY(&f->c[0].drawn_settings, &f->c[0].partial.settings, sizeof f->settings);
+    }
+    if (levels && budget == 1) {
+        TEST_ASSERT_GREATER_THAN_INT(1, card_bands);
+        TEST_ASSERT_EQUAL(!coarse_near, clamped);
     }
     assert_picture(1);
     const render_context_frame_t after = frame(&v, NULL, 0);
@@ -329,22 +380,27 @@ settle_held(int budget, bool levels) {
 
 static void
 test_a_held_picture_samples_one_band_before_spending_a_large_budget(void) {
-    settle_held(RENDER_SETTLE_FRAME_US_MAX, false);
+    settle_held(RENDER_SETTLE_FRAME_US_MAX, false, false);
 }
 
 static void
 test_a_tiny_budget_refines_one_band_each_frame(void) {
-    settle_held(1, false);
+    settle_held(1, false, false);
 }
 
 static void
 test_held_lod_refines_to_the_full_finest_picture(void) {
-    settle_held(RENDER_SETTLE_FRAME_US_MAX, true);
+    settle_held(RENDER_SETTLE_FRAME_US_MAX, true, false);
 }
 
 static void
 test_each_lod_band_matches_the_same_finest_picture(void) {
-    settle_held(1, true);
+    settle_held(1, true, false);
+}
+
+static void
+test_lod_bands_keep_the_nearer_live_fit(void) {
+    settle_held(1, true, true);
 }
 
 static void
@@ -354,12 +410,25 @@ assert_live_lod(void) {
     TEST_ASSERT_EQUAL_FLOAT(raster_depth_near(&f->c[LIVE].raster), raster_depth_near(&f->c[0].raster));
     TEST_ASSERT_EQUAL_INT(f->c[LIVE].frame.stats.triangles, f->c[0].frame.stats.triangles);
     TEST_ASSERT_EQUAL_INT(f->c[LIVE].frame.stats.clusters, f->c[0].frame.stats.clusters);
-    TEST_ASSERT_EQUAL_MEMORY(&f->c[LIVE].steer, &f->c[0].steer, sizeof f->c[0].steer);
+    const r3d_lod_steer_t* live = &f->c[LIVE].steer;
+    const r3d_lod_steer_t* settled = &f->c[0].steer;
+    TEST_ASSERT_EQUAL_FLOAT(live->tolerance_px, settled->tolerance_px);
+    TEST_ASSERT_EQUAL_FLOAT(live->picked_tolerance_px, settled->picked_tolerance_px);
+    TEST_ASSERT_EQUAL_INT(live->picked_coverage_permille, settled->picked_coverage_permille);
+    TEST_ASSERT_EQUAL_INT(live->bin, settled->bin);
+    for (size_t i = 0; i < sizeof live->halves / sizeof live->halves[0]; i++) {
+        TEST_ASSERT_EQUAL_INT32_ARRAY(live->halves[i].saves, settled->halves[i].saves, R3D_LOD_BINS);
+        TEST_ASSERT_EQUAL_INT32(live->halves[i].finest, settled->halves[i].finest);
+        TEST_ASSERT_EQUAL_FLOAT(live->halves[i].unit, settled->halves[i].unit);
+    }
+    TEST_ASSERT_EQUAL_INT64(live->drawn, settled->drawn);
+    TEST_ASSERT_EQUAL_INT(live->frames, settled->frames);
+    TEST_ASSERT_EQUAL(live->settled, settled->settled);
 }
 
 static void
 test_lod_settle_leaves_live_picks_and_steering_untouched(void) {
-    fixture(1, true);
+    fixture(1, true, false);
     render_view_t v = view();
     (void)frame(&v, NULL, -1);
     TEST_ASSERT_TRUE(r3d_lod_any(f->lod[0], CARD_GROUPS));
@@ -377,14 +446,73 @@ test_lod_settle_leaves_live_picks_and_steering_untouched(void) {
 }
 
 static void
+test_live_pick_round_advances_only_when_picks_run(void) {
+    const int budgets[] = {0, 1};
+    const render_view_t v = view();
+    for (size_t b = 0; b < sizeof budgets / sizeof budgets[0]; b++) {
+        for (int partial = 0; partial <= 1; partial++) {
+            fixture(budgets[b], false, false);
+            render_settings_t settings = f->c[0].settings;
+            settings.partial_redraw = partial != 0;
+            render_context_set_settings(&f->c[0], &settings);
+            for (int i = 0; i <= HOLD; i++) {
+                const uint32_t before = f->c[0].raster.pick_round;
+                const render_context_frame_t out = frame(&v, NULL, i == 0 ? -1 : 0);
+                const bool settle = partial && budgets[b] > 0 && i == HOLD;
+                TEST_ASSERT_EQUAL_UINT32(before + (i == 0 || !partial), f->c[0].raster.pick_round);
+                TEST_ASSERT_EQUAL_INT(settle ? BAND_HEIGHT : 0, out.settled_rows);
+                TEST_ASSERT_EQUAL(partial && i > 0 && !settle, out.unchanged);
+            }
+            cleanup();
+        }
+    }
+}
+
+static void
+test_moving_after_settle_takes_the_next_spread_pick(void) {
+    fixture(1, true, false);
+    for (int i = 0; i < CONTEXTS; i += LIVE) {
+        render_settings_t settings = f->c[i].settings;
+        settings.lod.tolerance_px = MOVE_TOLERANCE;
+        settings.lod.hysteresis_px = 0.0F;
+        settings.lod.blend = RENDER_LOD_BLEND_SWITCH;
+        settings.lod.triangle_budget = 0;
+        settings.lod.pick_every = SPREAD_PICKS;
+        render_context_set_settings(&f->c[i], &settings);
+    }
+    for (int i = 0; i < CONTEXTS; i++) {
+        const r3d_instance_t wall = f->instances[i][0];
+        f->instances[i][0] = f->instances[i][CARD];
+        f->instances[i][CARD] = wall;
+    }
+    render_view_t v = view();
+    (void)frame(&v, NULL, -1);
+    const uint32_t held_cut = f->lod[0][0];
+    TEST_ASSERT_TRUE(r3d_lod_any(f->lod[0], CARD_GROUPS));
+    for (int i = 0; i < HOLD + RENDER_SETTLE_BANDS; i++) {
+        (void)frame(&v, NULL, 0);
+    }
+    assert_picture(1);
+    fixture_camera_t camera = raster_rig_camera;
+    camera.eye.z = CLOSE_EYE_Z;
+    for (int i = 0; i < FOLLOWUP_FRAMES; i++) {
+        camera.eye.x += SLIDE;
+        v = render_view_fixture_at(&camera, (viewport_t){W, H, 0});
+        TEST_ASSERT_EQUAL_INT(0, frame(&v, NULL, 0).settled_rows);
+        TEST_ASSERT_NOT_EQUAL(held_cut, f->lod[0][0]);
+        assert_live_lod();
+        assert_picture(LIVE);
+    }
+}
+
+static void
 test_refines_coarse_or_blended_settings_with_refined_textures(void) {
     const render_settings_t defaults = RENDER_SETTINGS_DEFAULT;
     render_settings_t settings = render_settle_quality(&defaults);
-    settings.lod = RENDER_SETTINGS_DEFAULT.lod;
+    TEST_ASSERT_FALSE(render_settle_refines(&settings));
+    settings.lod.tolerance_px = defaults.lod.tolerance_px;
     TEST_ASSERT_TRUE(render_settle_refines(&settings));
     settings.lod.tolerance_px = 0.0F;
-    settings.lod.triangle_budget = 0;
-    TEST_ASSERT_FALSE(render_settle_refines(&settings));
     settings.lod.blend = RENDER_LOD_BLEND_ON;
     TEST_ASSERT_TRUE(render_settle_refines(&settings));
     settings.lod.blend = RENDER_LOD_BLEND_SWITCH;
@@ -403,28 +531,34 @@ slide(raster_rig_t* r, int i) {
 
 static void
 test_changed_rows_stay_live_and_partial_redraw_survives_settling(void) {
-    raster_rig_t* r = settle_held(RENDER_SETTLE_FRAME_US_MAX, true);
+    raster_rig_t* r = settle_held(RENDER_SETTLE_FRAME_US_MAX, true, false);
     const render_view_t v = view();
     for (int i = 0; i < HOLD + RENDER_SETTLE_BANDS; i++) {
-        const box3f_t changed = slide(r, i);
+        box3f_t changed = slide(r, i);
+        changed.hi.y += CHANGE_ABOVE_CARD;
         const render_context_frame_t out = frame(&v, &changed, 1);
         const render_context_frame_t live = render_context_frame(&f->c[LIVE]);
         TEST_ASSERT_LESS_THAN_INT(H, live.rows_end - live.rows_first);
         TEST_ASSERT_EQUAL_INT(live.rows_first, out.rows_first);
         TEST_ASSERT_EQUAL_INT(live.rows_end, out.rows_end);
         const raster_t* raster = &f->c[LIVE].raster;
+        assert_picture(LIVE);
+        TEST_ASSERT_EQUAL_MEMORY(raster_depth(raster), raster_depth(&f->c[0].raster), sizeof f->picture[0]);
+        bool partial_band = false;
         int live_bands = 0;
         int refined_bands = 0;
         for (int b = 0; b < RENDER_SETTLE_BANDS; b++) {
             const int first = b * H / RENDER_SETTLE_BANDS;
             const int end = (b + 1) * H / RENDER_SETTLE_BANDS;
             const bool draws_live = first < raster->end_row && end > raster->first_row;
+            partial_band |= draws_live && (raster->first_row > first || raster->end_row < end);
             live_bands += draws_live;
             refined_bands += !draws_live;
             TEST_ASSERT_EQUAL(!draws_live, f->c[0].settle.refined[b]);
             TEST_ASSERT_EQUAL_MEMORY(&f->picture[draws_live ? LIVE : 1][first * W], &f->picture[0][first * W],
                                      (end - first) * W * sizeof(uint16_t));
         }
+        TEST_ASSERT_TRUE(partial_band);
         TEST_ASSERT_GREATER_THAN_INT(0, live_bands);
         TEST_ASSERT_GREATER_THAN_INT(0, refined_bands);
     }
@@ -432,7 +566,7 @@ test_changed_rows_stay_live_and_partial_redraw_survives_settling(void) {
 
 static void
 test_full_live_redraw_refines_no_band(void) {
-    fixture(1, false);
+    fixture(1, false, false);
     const render_view_t v = view();
     (void)frame(&v, NULL, -1);
     for (int i = 1; i < HOLD; i++) {
@@ -448,12 +582,16 @@ test_full_live_redraw_refines_no_band(void) {
 
 static void
 test_a_moved_camera_cancels_and_restarts_the_hold(void) {
-    fixture(RENDER_SETTLE_FRAME_US_MAX, false);
+    fixture(RENDER_SETTLE_FRAME_US_MAX, false, false);
     render_view_t v = view();
     (void)frame(&v, NULL, -1);
-    for (int i = 0; i < HOLD + 1; i++) {
-        (void)frame(&v, NULL, 0);
+    for (int i = 1; i < HOLD; i++) {
+        TEST_ASSERT_EQUAL_INT(0, frame(&v, NULL, 0).settled_rows);
+        assert_picture(LIVE);
     }
+    TEST_ASSERT_EQUAL_INT(BAND_HEIGHT, frame(&v, NULL, 0).settled_rows);
+    TEST_ASSERT_TRUE(f->c[0].settle.refined[RENDER_SETTLE_BANDS / 2]);
+    TEST_ASSERT_FALSE(f->c[0].settle.refined[0]);
     fixture_camera_t camera = raster_rig_camera;
     camera.eye.z = FAR_EYE_Z;
     camera.eye.x = SLIDE;
@@ -468,7 +606,7 @@ test_a_moved_camera_cancels_and_restarts_the_hold(void) {
 
 static void
 test_disabled_and_already_refined_settings_never_settle(void) {
-    fixture(RENDER_SETTLE_FRAME_US_MAX, false);
+    fixture(RENDER_SETTLE_FRAME_US_MAX, false, false);
     const render_view_t v = view();
     (void)frame(&v, NULL, -1);
     for (int i = 0; i < HOLD + 1; i++) {
@@ -500,12 +638,15 @@ test_disabled_and_already_refined_settings_never_settle(void) {
 static void
 test_dynamic_resolution_settles_at_the_top_without_pricing_refinement(void) {
     static const resolution_step_t steps[] = {{W, H}, {W / 2, H / 2}};
-    fixture(RENDER_SETTLE_FRAME_US_MAX, false);
+    fixture(RENDER_SETTLE_FRAME_US_MAX, false, false);
     const render_view_t v = view();
     const resolution_config_t config = resolution_config(steps, 2, 2, RENDER_SETTLE_FRAME_US_MAX);
     render_context_t* c = &f->c[0];
     render_context_set_dynamic_resolution(c, &config, NULL, 1);
-    for (int i = 0; i < HOLD + 1; i++) {
+    TEST_ASSERT_EQUAL_UINT32(0, c->raster.pick_round);
+    (void)frame(&v, NULL, 0);
+    TEST_ASSERT_EQUAL_UINT32(1, c->raster.pick_round);
+    for (int i = 1; i < HOLD + 1; i++) {
         (void)frame(&v, NULL, 0);
     }
     const int32_t live_us = 1;
@@ -523,7 +664,9 @@ test_dynamic_resolution_settles_at_the_top_without_pricing_refinement(void) {
 
     const int64_t live_only[] = {0, 0, over_us, over_us, over_us};
     clock_fake_script(live_only, sizeof live_only / sizeof live_only[0]);
+    const uint32_t before = c->raster.pick_round;
     const render_context_frame_t over = frame(&v, &change_at_eye, 1);
+    TEST_ASSERT_EQUAL_UINT32(before + 1, c->raster.pick_round);
     TEST_ASSERT_TRUE(c->still_judged);
     TEST_ASSERT_EQUAL_INT(over_us, over.draw_us);
     TEST_ASSERT_EQUAL_INT(0, over.settle_us);
@@ -542,8 +685,11 @@ run_render_settle_suite(void) {
     RUN_TEST(test_a_tiny_budget_refines_one_band_each_frame);
     RUN_TEST(test_held_lod_refines_to_the_full_finest_picture);
     RUN_TEST(test_each_lod_band_matches_the_same_finest_picture);
+    RUN_TEST(test_lod_bands_keep_the_nearer_live_fit);
     RUN_TEST(test_lod_settle_leaves_live_picks_and_steering_untouched);
     RUN_TEST(test_refines_coarse_or_blended_settings_with_refined_textures);
+    RUN_TEST(test_live_pick_round_advances_only_when_picks_run);
+    RUN_TEST(test_moving_after_settle_takes_the_next_spread_pick);
     RUN_TEST(test_changed_rows_stay_live_and_partial_redraw_survives_settling);
     RUN_TEST(test_full_live_redraw_refines_no_band);
     RUN_TEST(test_a_moved_camera_cancels_and_restarts_the_hold);

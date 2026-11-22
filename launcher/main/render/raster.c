@@ -148,7 +148,6 @@ typedef struct {
     bool skip_hidden; /* the view's */
     render_texture_settings_t texture;
     int first_row, end_row; /* the rows this draw redraws */
-    float kept_near;
     /* A census since the last draw changed a cut or the depth scale. Not a
      * bool: a new scratch holds any byte, and a nonzero one only redraws. */
     uint8_t census_changed;
@@ -684,7 +683,7 @@ cull_slice(void* ctx, int from, int to) {
     const int half = from == 0 ? 0 : 1;
     cull_half_t* mine = &job->halves[half];
     r3d_pipeline_work_t* block = job->buffers->work[half];
-    r3d_depth_fit_t* fit = job->settings.depth_fit ? &mine->fit : NULL;
+    r3d_depth_fit_t* fit = job->settings.depth_fit && !raster->finest_levels ? &mine->fit : NULL;
     r3d_lod_histogram_t* histogram = job->pick.steer != NULL ? &job->pick.steer->halves[half] : NULL;
     uint16_t* culled = job->buffers->culled;
     for (int i = 0; i < mathi_min(from, raster->instance_count); i++) {
@@ -779,7 +778,9 @@ cull_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
     FRAME_LAP("r3d.cull.split");
     bool levels_changed = false;
     const float depth_near = cull_end(&work->cull, stats, &levels_changed, view->lens.near_z);
-    work->census_changed |= levels_changed;
+    if (!raster->finest_levels) {
+        work->census_changed |= levels_changed;
+    }
     if (work->cull.pick.steer != NULL) {
         steer_end(&work->cull.pick, stats->triangles);
     }
@@ -990,9 +991,12 @@ census(const raster_t* raster, const render_view_t* view, raster_stats_t* stats,
     assert(raster->instance_count + raster->batch_count > 0);
     assert_view_size(raster, view);
     FRAME_COST_BEGIN(culled_from);
-    work->kept_near = *work->buffers.depth_near;
-    *work->buffers.depth_near = cull_instances(raster, view, stats, work);
-    work->census_changed |= !raster->finest_levels && *work->buffers.depth_near != work->kept_near;
+    const float depth_near = cull_instances(raster, view, stats, work);
+    /* Kept rows and the band share the live depth encoding. */
+    if (!raster->finest_levels) {
+        work->census_changed |= *work->buffers.depth_near != depth_near;
+        *work->buffers.depth_near = depth_near;
+    }
     FRAME_COST_END(culled_from, R3D_STAGE_CULL_NAME);
 }
 
@@ -1041,32 +1045,12 @@ draw_instances(const raster_t* raster, const render_view_t* view, draw_work_t* w
     draw_post(raster, view, work);
 }
 
-/* The finest geometry can be nearer than the live depth fit. Once its
- * occlusion is resolved, store the new rows in the kept picture's encoding. */
-static __attribute__((noinline)) void
-keep_live_depth(draw_work_t* work, int width) {
-    const float refined_near = *work->buffers.depth_near;
-    const float scale = work->kept_near / refined_near;
-    *work->buffers.depth_near = work->kept_near;
-    for (int y = work->first_row; y < work->end_row; y++) {
-        uint16_t* depth = gfx_target_depth(&work->buffers.picture, y);
-        for (int x = 0; x < width; x++) {
-            if (depth[x] != R3D_DEPTH_EMPTY) {
-                depth[x] = (uint16_t)mathf_clamp(depth[x] * scale, R3D_DEPTH_EMPTY + 1, R3D_DEPTH_NEAREST);
-            }
-        }
-    }
-}
-
 raster_stats_t
 raster_draw(const raster_t* raster, const render_view_t* view) {
     raster_stats_t stats = {0};
     draw_work_t* work = scratch_draw(raster);
     census(raster, view, &stats, work);
     draw_instances(raster, view, work);
-    if (raster->finest_levels && *work->buffers.depth_near != work->kept_near) {
-        keep_live_depth(work, raster->width);
-    }
     return stats;
 }
 
