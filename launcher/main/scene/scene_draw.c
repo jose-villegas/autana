@@ -15,7 +15,6 @@
 #include "render/context/render_context.h"
 #include "render/lod/r3d_lod.h"
 #include "render/r3d_pipeline.h"
-#include "render/record/frame_record.h"
 #include "scene/camera/camera.h"
 #include "scene/scene_internal.h"
 
@@ -399,7 +398,7 @@ draw_active(uint32_t dt_ms, int quarter, int width, int height) {
         render_context_set_batches(render_context_main(), drawn.batch_draws, batches);
         rendered = render_context_draw(render_context_main(), drawn.instances, count, &drawn_view, camera->clear);
         if (rendered) {
-            frame_record_frame(render_context_main(), &render_context_main()->raster, dt_ms);
+            render_context_record_frame(render_context_main(), dt_ms);
         }
     }
     if (!rendered && !refused) {
