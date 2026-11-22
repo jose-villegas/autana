@@ -18,7 +18,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | [overview](#overview) | 46 | 0 | 0 |
 | [physics](#physics) | 2 | 0 | 0 |
 | [power](#power) | 2 | 0 | 0 |
-| [render](#render) | 146 | 21 | 0 |
+| [render](#render) | 147 | 21 | 0 |
 | [ui](#ui) | 62 | 0 | 0 |
 
 ## anim
