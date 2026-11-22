@@ -27,6 +27,7 @@ DEVICE = Path(__file__).resolve().parents[1]
 ENGINE = DEVICE.parents[1]
 sys.path.insert(0, str(DEVICE))
 import device  # noqa: E402
+import build_lock  # noqa: E402  (on the path device sets up)
 import device_lock  # noqa: E402
 from fake_serial import FakeConnection, Replies
 import fake_esp_idf  # noqa: E402
@@ -1412,7 +1413,7 @@ class BuildDirectoryLockTests(Store):
         self.first_started = threading.Event()
         self.release_first = threading.Event()
         self.tries = collections.Counter()
-        real = device.try_lock_file
+        real = build_lock.try_lock_file
 
         def counted(handle):
             taken = real(handle)
@@ -1420,10 +1421,10 @@ class BuildDirectoryLockTests(Store):
                 self.tries[threading.current_thread().name] += 1
             return taken
 
-        patcher = mock.patch.object(device, "try_lock_file", side_effect=counted)
+        patcher = mock.patch.object(build_lock, "try_lock_file", side_effect=counted)
         patcher.start()
         self.addCleanup(patcher.stop)
-        interval = mock.patch.object(device, "BUILD_LOCK_POLL_SECONDS", 0.01)
+        interval = mock.patch.object(build_lock, "POLL_SECONDS", 0.01)
         interval.start()
         self.addCleanup(interval.stop)
         policy = mock.patch.object(device, "build_policy", return_value=contextlib.nullcontext({}))
@@ -1500,8 +1501,8 @@ class BuildDirectoryLockTests(Store):
         real = device.snapshot_image
 
         def snapshot(build_dir, image_dir):
-            with open(Path(build_dir) / device.BUILD_LOCK, "a+b") as probe:
-                held_at_snapshot.append(not device.try_lock_file(probe))
+            with open(Path(build_dir) / build_lock.BUILD_LOCK, "a+b") as probe:
+                held_at_snapshot.append(not build_lock.try_lock_file(probe))
             return real(build_dir, image_dir)
 
         with mock.patch.object(device, "snapshot_image", side_effect=snapshot):
@@ -1577,7 +1578,7 @@ class FlashImageScriptTests(unittest.TestCase):
         (self.tree / "launcher").mkdir()
         for relative in ("scripts/device/flash_image.sh", "launcher/tools/build/idf.sh",
                          "launcher/tools/build/idf_shim.bat", "launcher/tools/build/espressif.py",
-                         "launcher/tools/build/build_paths.py",
+                         "launcher/tools/build/build_paths.py", "launcher/tools/build/build_lock.py",
                          "scripts/lib/python.sh", "scripts/lib/python-min-version",
                          "scripts/device/device.py", "scripts/device/device_lock.py",
                          "scripts/device/device_hook.py", "scripts/device/device_report.py",

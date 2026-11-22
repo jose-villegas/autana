@@ -4,7 +4,7 @@ name: Bakes vendor rerun
 # byte-identical only on the lock's. When a Bakes run finishes with every failed job a candidate of a job
 # no candidate could do (scripts/ci/runner_vendor.py), this re-runs those jobs, up to its VENDOR_TRIES attempts.
 # A job is re-run only once its run has finished, so this waits for the run's slowest job, and never once the
-# branch has a newer commit: a re-run holds the branch's Bakes slot, keeping the newer run waiting.
+# branch has a newer commit: a re-run takes the branch's one Bakes slot, cancelling the newer run.
 
 on:
   workflow_run:
