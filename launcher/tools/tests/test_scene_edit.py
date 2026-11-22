@@ -6,6 +6,7 @@ import json
 import pathlib
 import sys
 import tempfile
+import tomlkit
 import unittest
 from unittest import mock
 
@@ -13,7 +14,9 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from scene import scene_edit  # noqa: E402
-from test_r3d_import import HEAD, NO_LEVELS, PATH, camera, renderer, sun_object, write_import, write_scene  # noqa: E402
+from test_r3d_import import (  # noqa: E402
+    FIT, HEAD, NO_LEVELS, PATH, SIMPLIFY, VARIANT, VARIANT_OUTPUT, camera, renderer, sun_object, tree_scenes,
+    write_import, write_scene)
 
 SUN_LINE = "rotation = [40.0, 30.0, 0.0]   # toward the front: above and to the right\n"
 BOX_POSITION = "position = [1.0, 2.0, 3.0]  # on the table\n"
@@ -228,10 +231,9 @@ WALK_ANIM = 'source = "walk.keys.toml"\nanimation = "walk"\n'
 WALK = ("0:0:0,1,5:0,1,0", "1:2.5:5,1,0:0,1,0", "2:5:0,1,-5:0,1,0")
 
 
-def camera_object(name, path=None):
-    """A camera named `name`, flying the clip `path` names (a .anim.toml beside the scene) when given."""
-    track = f'path = {{ animation = "{path}", node = "camera" }}\n' if path else ""
-    return f'[[objects]]\nname = "{name}"\n[objects.camera]\nhalf_fov_short_tan = 0.6\nnear_z = 1.0\n{track}'
+def camera_object(name, clip=None):
+    """A camera named `name` with no region, flying `clip` when given."""
+    return camera(path=clip is not None, region=False, name=name, clip=clip)
 
 
 class KeysEditTests(unittest.TestCase):
@@ -278,7 +280,7 @@ class KeysEditTests(unittest.TestCase):
         self.assertIsNone(objects["still"]["path"])
         self.assertNotIn("path", objects["mesh"])
 
-    def test_a_first_camera_path_no_bake_reads_feeds_none(self):
+    def test_a_camera_path_no_bake_reads_feeds_no_bakes(self):
         self.scene.write_text(self.scene.read_text().replace(PATH, ""))
         self.assertFalse(self.read_objects()["walker"]["path"]["feeds_bakes"])
 
@@ -369,6 +371,117 @@ class KeysEditTests(unittest.TestCase):
         self.assertEqual((code, out), (1, ""))
         self.assertIn("increase strictly", err)
 
+
+    def test_a_fit_posed_along_the_path_feeds_bakes_unless_probes_pose_it(self):
+        for body, fit, feeds in ((SIMPLIFY + VARIANT, FIT, True),
+                                 (SIMPLIFY + "probes = { face = 64 }\n" + VARIANT, FIT.replace("budget = 8\n", ""), False)):
+            with self.subTest(feeds=feeds):
+                write_import(self.folder, output=VARIANT_OUTPUT, body=body)
+                fitted = renderer(extra='bake = true\nvariant = "mesh"\n' + fit)
+                self.scene.write_text(HEAD + fitted + sun_object() + camera_object("walker", "walk.anim.toml"))
+                self.assertEqual(self.read_objects()["walker"]["path"]["feeds_bakes"], feeds)
+
+    def test_only_the_scene_camera_path_feeds_bakes(self):
+        self.scene.write_text(self.scene.read_text().replace('"fly.anim.toml"', '"walk.anim.toml"'))
+        objects = self.read_objects()
+        self.assertEqual(objects["flyer"]["path"]["keys"], objects["walker"]["path"]["keys"])
+        self.assertEqual((objects["walker"]["path"]["feeds_bakes"], objects["flyer"]["path"]["feeds_bakes"]),
+                         (True, False))
+
+    def test_a_clip_file_that_does_not_read_is_refused_without_a_traceback(self):
+        (self.folder / "walk.anim.toml").write_text('source = "walk.keys.toml"\n')
+        code, out, err = run("read", self.scene)
+        self.assertEqual((code, out), (1, ""))
+        self.assertIn("walk.anim.toml", err)
+
+    def test_a_deleted_middle_key_takes_the_comment_above_it(self):
+        self.assertEqual(self.set_keys(WALK[0], "2:5:0,1,-5:0,1,0")[0], 0)
+        self.assertEqual(self.keys.read_text(), WALK_KEYS.replace(
+            "# Round the corner.\n[[keys]]\nt = 2.50\neye = [5, 1, 0]   # beside the box\nlook_at = [0, 1, 0]\n\n", ""))
+
+    def test_comments_after_the_last_key_and_on_a_header_stay(self):
+        text = WALK_KEYS.replace("[[keys]]\nt = 5", "[[keys]]  # the far side\nt = 5") + "\n# The end.\n"
+        self.keys.write_text(text, newline="\n")
+        self.assertEqual(self.set_keys(WALK[0], WALK[1], "2:5:0,1,-6:0,1,0", "new:6:1,1,1:0,1,0")[0], 0)
+        self.assertEqual(self.keys.read_text(), text.replace("eye = [0, 1, -5]", "eye = [0, 1, -6]").replace(
+            "\n# The end.\n", "\n[[keys]]\nt = 6\neye = [1, 1, 1]\nlook_at = [0, 1, 0]\n\n# The end.\n"))
+
+    def test_kept_keys_out_of_the_files_order_carry_their_own_tables(self):
+        self.assert_refused(WALK[0], "2:5:0,1,-5:0,1,0", "1:2.5:5,1,0:0,1,0", why="increase strictly")
+        self.assertEqual(self.set_keys(WALK[0], "2:2.5:0,1,-5:0,1,0", "1:5:5,1,0:0,1,0")[0], 0)
+        self.assertEqual(self.keys.read_text(), WALK_KEYS.split("\n# Round the corner.\n")[0]
+                         + "\n[[keys]]\nt = 2.5\neye = [0, 1, -5]\nlook_at = [0, 1, 0]\n"
+                         + "\n# Round the corner.\n[[keys]]\nt = 5\neye = [5, 1, 0]   # beside the box\nlook_at = [0, 1, 0]\n")
+
+    def test_one_call_adds_deletes_and_edits(self):
+        self.assertEqual(self.set_keys("0:0:0,2,5:0,1,0", "new:1:3,1,3:0,1,0", "2:5:0,1,-5:1,1,0")[0], 0)
+        self.assertEqual(json.loads(run("read-keys", self.keys)[1])["keys"], [
+            dict(t=0, eye=[0, 2, 5], look_at=[0, 1, 0]), dict(t=1, eye=[3, 1, 3], look_at=[0, 1, 0]),
+            dict(t=5, eye=[0, 1, -5], look_at=[1, 1, 0])])
+        self.assertNotIn("Round the corner", self.keys.read_text())
+
+    def test_a_changed_time_keeps_its_line_comment(self):
+        self.keys.write_text(WALK_KEYS.replace("t = 2.50", "t = 2.50  # halfway"), newline="\n")
+        self.assertEqual(self.set_keys(WALK[0], "1:3:5,1,0:0,1,-1", WALK[2])[0], 0)
+        text = self.keys.read_text()
+        self.assertIn("t = 3  # halfway\n", text)
+        self.assertIn("look_at = [0, 1, -1]\n", text)
+
+    def test_a_time_spelled_otherwise_but_equal_is_not_rewritten(self):
+        self.assertEqual(self.set_keys(WALK[0], "1:2.500:5,1,0:0,1,0", WALK[2])[0], 0)
+        self.assertEqual(self.keys.read_bytes(), self.before)
+
+    def test_a_key_added_last_to_a_file_with_no_final_line_end(self):
+        self.keys.write_text(WALK_KEYS.rstrip("\n"), newline="\n")
+        self.assertEqual(self.set_keys(*WALK, "new:7.5:-5,1,0:0,1,0")[0], 0)
+        self.assertEqual(self.keys.read_text(),
+                         WALK_KEYS + "\n[[keys]]\nt = 7.5\neye = [-5, 1, 0]\nlook_at = [0, 1, 0]\n")
+
+    def test_keys_written_as_an_inline_array_are_refused(self):
+        self.keys.write_text('node = "camera"\nanimation = "walk"\nkeys = [\n'
+                             '    { t = 0, eye = [0, 1, 5], look_at = [0, 1, 0] },\n'
+                             '    { t = 5, eye = [0, 1, -5], look_at = [0, 1, 0] },\n]\n', newline="\n")
+        self.before = self.keys.read_bytes()
+        self.assert_refused("0:0:0,1,4:0,1,0", "1:5:0,1,-5:0,1,0", why=r"\[\[keys\]\] tables")
+
+    def test_odd_numbers_and_froms_are_refused(self):
+        for key, why in (("0:0:0,1,nan:0,1,0", "finite"), ("0:0:0,,5:0,1,0", "could not convert"),
+                         ("²:0:0,1,5:0,1,0", "FROM is"), ("-1:0:0,1,5:0,1,0", "FROM is"), ("", "expected")):
+            with self.subTest(key=key):
+                self.assert_refused(key, WALK[1], why=why)
+
+    def test_a_spaced_keys_header_is_a_table_too(self):
+        self.keys.write_text(WALK_KEYS.replace("[[keys]]\nt = 5", "[[ keys ]]\nt = 5"), newline="\n")
+        self.assertEqual(self.set_keys(WALK[0], WALK[1], "2:5:0,1,-6:0,1,0")[0], 0)
+        self.assertIn("[[ keys ]]\nt = 5\neye = [0, 1, -6]\n", self.keys.read_text())
+
+
+class FeedsBakesTreeTests(unittest.TestCase):
+    def test_feeds_bakes_is_true_exactly_where_the_scene_rules_need_the_path(self):
+        """On every scene in the tree, the scene camera's path feeds bakes exactly when import_settings refuses the
+        scene without that path: the rule read takes from load_scene stays load_scene's."""
+        checked = 0
+        for scene in tree_scenes():
+            objects = {item["name"]: item for item in scene_edit.placements(scene)}
+            document = tomlkit.parse(scene.read_text(encoding="utf-8"))
+            first = next((table for table in document["objects"] if "camera" in table), None)
+            if first is None or "path" not in first["camera"]:
+                continue
+            with self.subTest(scene=scene.name):
+                del first["camera"]["path"]
+                with tempfile.NamedTemporaryFile("w", dir=scene.parent, suffix=".scene.toml", delete=False,
+                                                 encoding="utf-8") as copy:
+                    copy.write(tomlkit.dumps(document))
+                try:
+                    scene_edit.import_settings.load_scene(copy.name)
+                    needed = False
+                except scene_edit.import_settings.SettingsError:
+                    needed = True
+                finally:
+                    pathlib.Path(copy.name).unlink()
+                self.assertEqual(objects[str(first["name"])]["path"]["feeds_bakes"], needed)
+                checked += needed
+        self.assertGreater(checked, 0, "no scene in the tree has a path a bake reads")
 
 if __name__ == "__main__":
     unittest.main()

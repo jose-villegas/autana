@@ -96,10 +96,11 @@ def sun_object(rotation="[0.0, 0.0, 0.0]", *, mode=None):
             + 'color = [1.0, 1.0, 1.0]\nintensity = 1.0\n')
 
 
-def camera(path=False, region=True):
-    track = 'path = { animation = "fly.anim.toml", node = "camera" }\n' if path else ''
+def camera(path=False, region=True, name="camera", clip="fly.anim.toml"):
+    """A camera object named `name`; with `path`, flying the clip `clip` (a .anim.toml beside the scene)."""
+    track = f'path = {{ animation = "{clip}", node = "camera" }}\n' if path else ''
     bounds = 'region = { min = [0.0, 0.0, 0.0], max = [1.0, 1.0, 1.0] }\n' if region else ''
-    return ('[[objects]]\nname = "camera"\n[objects.camera]\nhalf_fov_short_tan = 0.6\nnear_z = 1.0\n'
+    return (f'[[objects]]\nname = "{name}"\n[objects.camera]\nhalf_fov_short_tan = 0.6\nnear_z = 1.0\n'
             + bounds + track)
 
 

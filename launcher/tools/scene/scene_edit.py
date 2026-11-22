@@ -15,19 +15,23 @@ the lighting every bake traces. It never adds, removes or reorders objects, so t
 result stays only when import_settings.load_scene accepts it; otherwise the file's bytes are put back, and it exits 1
 and says why on stderr.
 
-A camera's entry in `read` also has its `path`: null on no path, else the .anim.toml it flies, the .keys.toml that
-clip is built from (null for a .glb clip, which `set-keys` cannot write), and `feeds_bakes`: true when a bake reads
-the path (the scene camera's, kept by a camera_path visibility or posing a fit), so changing it re-keys those bakes.
+A camera's entry in `read` also has its `path`: null on no path, else
+  - `anim`: the .anim.toml the camera flies;
+  - `keys`: the .keys.toml that clip is built from, or null for a .glb clip, which `set-keys` cannot write;
+  - `feeds_bakes`: true when a bake reads the path (a renderer keeps what it sees along it, or a fit is posed along
+    it), so changing it re-keys those bakes.
+
 `read-keys` prints a .keys.toml's node, animation and keys. `set-keys` takes the whole new list of keys in order, each
 FROM the index of the key it was in the file, or `new`. A kept key keeps its table, the comment lines above it and its
 layout, with only its changed numbers written; a key no FROM names goes, with the comment lines above it. Nothing is
-written unless the result builds as anim/camera_keys.py builds a path.
+written unless the result builds as tools/anim/camera_keys.py builds a path.
 """
 
 import argparse
 import json
 import math
 import pathlib
+import re
 import sys
 import tomllib
 
@@ -36,11 +40,12 @@ import tomlkit
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from anim import camera_keys, tracks_asset  # noqa: E402
 from bake import bake  # noqa: E402
+from gltf.gltf_read import KEYS_SUFFIX  # noqa: E402
 from r3d import import_settings  # noqa: E402
 
 SCENE_SUFFIX = ".scene.toml"
-KEYS_SUFFIX = ".keys.toml"
 KEYS_HEADER = "[[keys]]"
+KEYS_HEADER_LINE = re.compile(r"\s*\[\[\s*keys\s*\]\]\s*(#.*)?")
 KEY_FIELDS = ("t", "eye", "look_at")
 NEW_KEY = "new"
 FIELDS = ("position", "rotation", "scale")
@@ -85,7 +90,8 @@ def placements(path):
 
 def camera_path(item, scene):
     """The camera `item`'s clip, the .keys.toml it is built from (None for another source), and whether a bake
-    reads it; None on no path."""
+    reads it; None on no path. A clip file that does not read refuses the scene, though load_scene reads only its
+    name."""
     path = item.component.path
     if path is None:
         return None
@@ -93,14 +99,15 @@ def camera_path(item, scene):
         source, _ = tracks_asset.load_source(path.animation)
     except tracks_asset.TracksError as error:
         raise Refused(str(error)) from error
-    keys = source.resolve() if source.name.endswith(KEYS_SUFFIX) else None
+    keys = source.resolve() if source.name.lower().endswith(KEYS_SUFFIX) else None
     return dict(anim=str(path.animation), keys=None if keys is None else str(keys),
                 feeds_bakes=item is scene.camera and path_baked(scene))
 
 
 def path_baked(scene):
-    """Whether a bake reads the scene camera's path: a renderer keeps what it sees, or a fit is posed along it
-    (the two uses import_settings.load_scene requires the path for)."""
+    """Whether a bake reads the scene camera's path: a renderer keeps what it sees along it, or a fit is posed
+    along it. import_settings.load_scene requires the path for the same two (tests pin them together on every
+    scene in the tree)."""
     return any((job.renderer.visibility is not None and job.renderer.visibility.source == "camera_path")
                or (job.renderer.fit and job.settings.fit.probes is None) for job in scene.renderers)
 
@@ -113,13 +120,28 @@ def parse_assignment(text):
         raise Refused(f"--set {text!r}: expected NAME.FIELD=X,Y,Z")
     if field not in FIELDS:
         raise Refused(f"--set {text!r}: FIELD is one of {', '.join(FIELDS)}")
+    return name, field, numbers(values, AXES, f"--set {text!r}")
+
+
+def numbers(text, count, where):
+    """`text`'s `count` comma-separated finite numbers, refused naming `where` otherwise."""
     try:
-        vector = [float(value) for value in values.split(",")]
+        values = [float(value) for value in text.split(",")]
     except ValueError as error:
-        raise Refused(f"--set {text!r}: {error}") from error
-    if len(vector) != AXES:
-        raise Refused(f"--set {text!r}: {AXES} numbers, comma-separated")
-    return name, field, vector
+        raise Refused(f"{where}: {error}") from error
+    if len(values) != count:
+        raise Refused(f"{where}: {count} numbers, comma-separated")
+    if not all(math.isfinite(value) for value in values):
+        raise Refused(f"{where}: every number must be finite")
+    return values
+
+
+def write_changed(array, values):
+    """`values` into the TOML array `array`, element by element and only where they differ, so its comments, its
+    layout and the spelling of every unchanged number stay."""
+    for index, value in enumerate(values):
+        if array[index] != value:
+            array[index] = value
 
 
 def lock_reason(item):
@@ -143,9 +165,7 @@ def set_value(table, field, vector):
     stay; when it is not, as a line of its own in the scene format's order (name, parent, position, rotation,
     scale), ended as the line before it is."""
     if field in table:
-        array = table[field]
-        for index, value in enumerate(vector):
-            array[index] = value
+        write_changed(table[field], vector)
         return
     order = ("name", "parent", *FIELDS)
     before = [key for key in order[:order.index(field)] if key in table][-1]
@@ -158,8 +178,7 @@ def set_value(table, field, vector):
 def apply(path, assignments):
     """Writes `assignments` ((name, field, vector) each) into the scene at `path`, all of them or none."""
     objects = {item.name: item for item in load(path).objects}
-    with open(path, encoding="utf-8", newline="") as source:
-        document = tomlkit.parse(source.read())
+    document = tomlkit.parse(read_text(path))
     tables = {str(table["name"]): table for table in document["objects"]}
     for name, field, vector in assignments:
         if name not in objects:
@@ -221,25 +240,21 @@ def parse_key(text):
     if len(parts) != 4:
         raise Refused(f"--key {text!r}: expected FROM:T:EX,EY,EZ:LX,LY,LZ")
     origin, *values = parts
-    if origin != NEW_KEY and not origin.isdigit():
+    if origin != NEW_KEY and not (origin.isascii() and origin.isdigit()):
         raise Refused(f"--key {text!r}: FROM is a key's index in the file, or {NEW_KEY}")
-    try:
-        numbers = [[float(value) for value in part.split(",")] for part in values]
-    except ValueError as error:
-        raise Refused(f"--key {text!r}: {error}") from error
-    if [len(part) for part in numbers] != [1, AXES, AXES]:
-        raise Refused(f"--key {text!r}: one time, then {AXES} numbers, comma-separated, for eye and for look_at")
-    if not all(math.isfinite(value) for part in numbers for value in part):
-        raise Refused(f"--key {text!r}: every number must be finite")
-    t, eye, look_at = ([plain(value) for value in part] for part in numbers)
+    where = f"--key {text!r}"
+    t, eye, look_at = ([plain(value) for value in numbers(part, count, where)]
+                       for part, count in zip(values, (1, AXES, AXES)))
     return (None if origin == NEW_KEY else int(origin)), dict(t=t[0], eye=eye, look_at=look_at)
 
 
 def key_tables(text):
-    """`text` cut at its key tables: the text before them, each table as (the blank and comment lines above it,
-    the table), and the blank and comment lines after the last. A comment above a table is that table's."""
+    """(the text before the first key's comments, [(the blank and comment lines above a key, its table)], the
+    trailing text). A comment above a table belongs to that table. None when the keys are not [[keys]] tables."""
     lines = text.splitlines(keepends=True)
-    headers = [index for index, line in enumerate(lines) if line.split("#")[0].strip() == KEYS_HEADER]
+    headers = [index for index, line in enumerate(lines) if KEYS_HEADER_LINE.fullmatch(line.rstrip("\r\n"))]
+    if not headers:
+        return None
 
     def above(end, start):
         """Where the run of blank and comment lines ending before line `end` starts, no earlier than `start`."""
@@ -260,14 +275,9 @@ def edited_table(table, key):
     document = tomlkit.parse(table)
     values = document["keys"][0]
     if values["t"] != key["t"]:
-        old = values["t"].trivia
-        item = tomlkit.item(key["t"])
-        item.trivia.comment_ws, item.trivia.comment, item.trivia.trail = old.comment_ws, old.comment, old.trail
-        values["t"] = item
+        values["t"] = key["t"]  # tomlkit keeps the line's comment
     for name in ("eye", "look_at"):
-        for index, value in enumerate(key[name]):
-            if values[name][index] != value:
-                values[name][index] = value
+        write_changed(values[name], key[name])
     return tomlkit.dumps(document)
 
 
@@ -289,16 +299,24 @@ def apply_keys(path, keys):
             raise Refused(f"{path}: no key {origin}; the file has {len(held)}")
         if origins.count(origin) > 1:
             raise Refused(f"{path}: key {origin} is named twice")
+    cut = key_tables(text)
+    if cut is None:
+        raise Refused(f"{path}: keys are written only as {KEYS_HEADER} tables, one per key")
+    before, tables, after = cut
+    if len(tables) != len(held):
+        raise Refused(f"{path}: {len(held)} keys but {len(tables)} {KEYS_HEADER} tables; keys are written only as "
+                      "tables, one per key")
     newline = "\r\n" if "\r\n" in text else "\n"
-    before, tables, after = key_tables(text)
-    out = [before]
+    written = before
     for origin, key in keys:
+        if written and not written.endswith("\n"):
+            written += newline  # a last table the file ended without a line end
         if origin is None:
-            out.append(newline + new_table(key, newline))
+            written += newline + new_table(key, newline)
         else:
             lead, table = tables[origin]
-            out.append(lead + edited_table(table, key))
-    written = "".join(out) + after
+            written += lead + edited_table(table, key)
+    written += after
     if checked_keys(path, written)["keys"] != [key for _, key in keys]:
         raise Refused(f"{path}: the written file would not read back as the keys given")
     replace(path, written.encode("utf-8"))
