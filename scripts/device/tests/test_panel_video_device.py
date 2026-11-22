@@ -10,6 +10,7 @@ import unittest
 import zlib
 
 from test_device import device, RecordingBoard, mock_store, BOARD
+import framerec
 import panel_video
 
 
@@ -159,7 +160,7 @@ class PanelVideoDeviceTests(unittest.TestCase):
                         mock.patch.object(device, "RECORD_END_SECONDS", 0.05), \
                         mock.patch.object(device, "STREAM_CHECK_SECONDS", 0.01), \
                         mock.patch.object(panel_video.video_encode, "resolve", return_value="fake-ffmpeg"):
-                    with self.assertRaisesRegex(RuntimeError, "no " + ("FRAMEREC" if command == "record" else "PANELCAP") + "_END"):
+                    with self.assertRaisesRegex(RuntimeError, "no " + (framerec.TAG if command == "record" else "PANELCAP") + "_END"):
                         if command == "record":
                             device.record_frames(args, store, BOARD, lines=[], log=io.StringIO())
                         else:

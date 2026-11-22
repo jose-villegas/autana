@@ -21,7 +21,7 @@ RED, GREEN, BLUE =b"\xff\x00\x00", b"\x00\xff\x00", b"\x00\x00\xff"
 class Capture:
     def __init__(self, dut):
         self.dut = dut
-        self.packets = console_packets.Packets("PANEL")
+        self.packets = console_packets.Packets(panel_video.PACKET_TAG)
         self.parts = panel_video.Parts()
         self.canvas = panel_video.Canvas()
         self.totals = [0, 0, 0]

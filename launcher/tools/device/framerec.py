@@ -29,6 +29,8 @@ from build.c_header import read_define  # noqa: E402
 VERSION = read_define(Path(__file__).resolve().parents[2] / "main/render/record/frame_record_format.h",
                       "FRAME_RECORD_VERSION")
 
+TAG = read_define(Path(__file__).resolve().parents[2] / "main/shell/console/console_framerec.c", "FRAMEREC_TAG")
+
 # frame_record_type_t
 RECORD_TYPES = {
     "HEADER": 1, "PACK": 2, "FRAME": 3, "VIEW": 4, "CHOICE": 5,

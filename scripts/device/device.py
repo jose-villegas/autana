@@ -2032,6 +2032,8 @@ def record_frames(args, store, board, lines=None, out=None, log=None):
     RESUME). When stdin ends, or after args.seconds, FRAMEREC STOP and the
     board's FRAMEREC_END. Exits 1 when the board refused or a packet arrived
     damaged."""
+    import framerec
+
     with contextlib.ExitStack() as files:
         sink = files.enter_context(open(args.out, "wb")) if args.out else (out or sys.stdout.buffer)
 
@@ -2039,8 +2041,8 @@ def record_frames(args, store, board, lines=None, out=None, log=None):
             sink.write(data)
             sink.flush()
 
-        answer = capture_stream(args, store, board, "FRAMEREC", consume, lines, log)
-    return int(answer.startswith("FRAMEREC_REFUSED"))
+        answer = capture_stream(args, store, board, framerec.TAG, consume, lines, log)
+    return int(answer.startswith(f"{framerec.TAG}_REFUSED"))
 
 
 def capture_stream(args, store, board, tag, on_data, lines=None, log=None, opening=None, packet_tag=None,
@@ -2131,7 +2133,7 @@ def video(args, store, board, lines=None, log=None):
         raise RuntimeError(f"--fps must be between 1 and {maximum}")
     with panel_video.Recording(args.out, log=log) as recording:
         answer = capture_stream(args, store, board, "PANELCAP", recording.packet, lines, log,
-                                opening=f"PANELCAP START {fps}", packet_tag="PANEL",
+                                opening=f"PANELCAP START {fps}", packet_tag=panel_video.PACKET_TAG,
                                 on_packet_error=recording.parts.corrupt, error_prefix=panel_video.ERROR_PREFIX)
         recording.finish(answer)
     return int(not answer.startswith("PANELCAP_END"))

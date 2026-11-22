@@ -18,7 +18,6 @@
 #include "gfx/present/gfx_present.h"
 
 #define PANELCAP_ARGS_MAX     32U
-#define PANELCAP_TAG          "PANEL"
 #define PANELCAP_STOP_WAIT_MS 10U
 
 bool gfx_panel_capture_on;
@@ -128,14 +127,16 @@ gfx_panel_capture_start(unsigned fps, console_reply_fn reply) {
         return;
     }
     gfx_present_drain();
-    launcher_visit = !app_heap_active();
+    launcher_visit = !app_heap_active() && app_arena_bytes() != 0;
     if (launcher_visit) {
         app_arena_enter();
     }
     char line[PANELCAP_LINE_BYTES];
-    encoder = memory_alloc(PANELCAP_CAPTURE_BYTES, MEMORY_APP);
+    const bool heap_ready = app_heap_active();
+    encoder = heap_ready ? memory_alloc(PANELCAP_CAPTURE_BYTES, MEMORY_APP) : NULL;
     if (encoder == NULL) {
-        (void)snprintf(line, sizeof line, PANELCAP_NO_MEMORY, PANELCAP_CAPTURE_BYTES, memory_largest_block(MEMORY_APP));
+        const size_t largest = heap_ready ? memory_largest_block(MEMORY_APP) : 0;
+        (void)snprintf(line, sizeof line, PANELCAP_NO_MEMORY, PANELCAP_CAPTURE_BYTES, largest);
         gfx_panel_capture_leave_launcher();
         reply(line);
         return;
@@ -146,7 +147,7 @@ gfx_panel_capture_start(unsigned fps, console_reply_fn reply) {
     (void)panelcap_init(&capture, image, fps);
     *encoder = (panelcap_encoder_t){0};
     atomic_store_explicit(&sender_done, false, memory_order_relaxed);
-    stream = console_stream_open_source(PANELCAP_TAG, fill, &capture, packet, scratch);
+    stream = console_stream_open_source(PANELCAP_PACKET_TAG, fill, &capture, packet, scratch);
     if (stream == NULL) {
         memory_free(encoder);
         gfx_panel_capture_leave_launcher();

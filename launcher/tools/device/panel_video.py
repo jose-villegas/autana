@@ -13,6 +13,7 @@ from build.c_header import read_define, read_defines
 
 HEADER = Path(__file__).resolve().parents[2] / "main/gfx/present/capture/panelcap.h"
 CONSOLE_HEADER = Path(__file__).resolve().parents[2] / "main/app/console/console_panelcap_device.h"
+PACKET_TAG = read_define(CONSOLE_HEADER, "PANELCAP_PACKET_TAG")
 ERROR_PREFIX = read_define(CONSOLE_HEADER, "PANELCAP_ERROR_PREFIX")
 PART = struct.Struct("<IHB")
 PRESENT = struct.Struct("<IQHH")
