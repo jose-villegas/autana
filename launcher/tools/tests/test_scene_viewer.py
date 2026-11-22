@@ -167,6 +167,20 @@ path = { animation = "fly.anim.toml", node = "camera" }
         with self.assertRaisesRegex(ValueError, 'not at the same pose'):
             reference_poses.checker(root / 'capture', self.root, shifted)(0, 0)
 
+    def test_camera_pose_input_overrides_the_default_path_camera(self):
+        sys.path.insert(0, str(TOOLS / "render"))
+        import reference_poses
+        poses = self.root / 'off-path.txt'
+        poses.write_text('size 8 10\nlens 0.7 0.25\npose 0 1 0 0.2 0 -1\n'
+                         'pose 0.3 -1 0 -0.2 0.1 -1\npose -0.4 0.5 0.2 0 -0.1 -1\n')
+        root = self.root / 'off-path-ids'
+        run, _out = self.render('--camera-poses', str(poses), '--quarter', '0', '--size', '8x10',
+                                '--ids', str(root), '--view', 'triangles', frames=None)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        check = reference_poses.checker(root / 'capture', self.root, poses)
+        for frame in range(3):
+            check(frame, frame)
+
     def test_camera_pose_input_rejects_a_different_raster_size(self):
         poses = self.root / 'wrong-size.txt'
         poses.write_text('size 8 10\nlens 0.7 0.25\npose 0 0 0 0 0 -1\n')

@@ -18,6 +18,7 @@
 
 #include "console/console_tune.h"
 #include "core/tune.h"
+#include "display/display.h"
 #include "draw/draw.h"
 #include "gfx/capture/screenshot.h"
 #include "gfx/gfx.h"
@@ -239,6 +240,16 @@ crop_box(recti_t box, int margin, int out_w, int out_h) {
 __attribute__((weak)) void
 scene_shell_compose(uint32_t dt_ms) {
     (void)dt_ms;
+}
+
+__attribute__((weak)) bool
+scene_render_with_setup(uint32_t dt_ms, int quarter, int width, int height, bool (*before_draw)(void)) {
+    (void)dt_ms;
+    (void)quarter;
+    (void)width;
+    (void)height;
+    (void)before_draw;
+    return false;
 }
 
 /* Render settings where a provider did not link the renderer: none to set.
@@ -756,28 +767,34 @@ write_pose(void) {
     }
 }
 
+static bool
+apply_frame_camera_pose(void) {
+    const camera_pose_t* pose = &host.camera_poses.poses[host.frame.index];
+    return render_host_camera_input(pose, host.camera_poses.lens, host.camera_poses.near_z);
+}
+
 void
 render_host_step(uint32_t dt_ms, const input_t* input) {
     host.frame.dt_ms = dt_ms;
     host.frame.input = *input;
-    if (host.camera_poses.count > 0) {
-        if (host.frame.index >= host.camera_poses.count) {
-            host.failed = true;
-            return;
-        }
-        const camera_pose_t* pose = &host.camera_poses.poses[host.frame.index];
-        if (!render_host_camera_input(pose, host.camera_poses.lens, host.camera_poses.near_z)) {
-            fprintf(stderr, "%s: --camera-poses requires an active scene camera\n", host.provider->name);
-            host.failed = true;
-            return;
-        }
+    const bool posed = host.camera_poses.count > 0;
+    if (posed && host.frame.index >= host.camera_poses.count) {
+        host.failed = true;
+        return;
     }
     render_watch_frame_begin();
+    if (posed
+        && !scene_render_with_setup(dt_ms, display_quarter_now(), GFX_WIDTH, GFX_HEIGHT, apply_frame_camera_pose)) {
+        render_watch_frame_end();
+        fprintf(stderr, "%s: --camera-poses requires an active scene camera\n", host.provider->name);
+        host.failed = true;
+        return;
+    }
     scene_shell_compose(host.frame.dt_ms); /* what the shell does before an app's frame() */
     host.provider->draw(&host.frame);
     render_watch_frame_end();
 
-    if (host.camera_poses.count > 0 && host.provider->render_context != NULL) {
+    if (posed && host.provider->render_context != NULL) {
         const raster_t* raster = &host.provider->render_context()->raster;
         const bool sideways = host.frame.quarter % 2 != 0;
         const int width = sideways ? raster->height : raster->width;
