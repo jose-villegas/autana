@@ -101,6 +101,13 @@ recorded(const render_context_t* c) {
     return (frame_record_context_t){view, &c->settings, &c->steer, &c->frame, c->scale_percent};
 }
 
+/* Out of line, so the draw's own stack frame does not hold the record context. */
+static __attribute__((noinline)) void
+record_before_draw(const render_context_t* c, const r3d_instance_t* instances, int count) {
+    const frame_record_context_t context = recorded(c);
+    frame_record_before_draw(&context, &c->raster, instances, count);
+}
+
 void
 render_context_record_frame(const render_context_t* context, uint32_t dt_ms) {
     const frame_record_context_t recorded_context = recorded(context);
@@ -643,8 +650,7 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     c->observed = false;
     c->frame_view = *view;
 #endif
-    const frame_record_context_t context = recorded(c);
-    frame_record_before_draw(&context, &c->raster, instances, count);
+    record_before_draw(c, instances, count);
     begin_draw(c);
     aim_raster(c, instances, count, view, clear);
     const bool held = drawn_held(c, view);
