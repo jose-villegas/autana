@@ -269,7 +269,7 @@ class LocalScheduleTests(unittest.TestCase):
     def test_a_stage_that_keeps_progressing_outlives_progress_limits_until_its_backstop(self):
         # A Bakes refit finishes a fit every hour or two for many hours; only a stage that never ends meets the
         # backstop.
-        for workflow in schedule.GPU_WORKFLOWS:
+        for workflow in schedule.GPU_STAGE_HANG_SECONDS:
             with self.subTest(workflow=workflow), tempfile.TemporaryDirectory() as root:
                 clock = Clock(1, tzinfo=timezone.utc)
                 stalled, touch, _ = self.stalled(root, clock, workflow)
