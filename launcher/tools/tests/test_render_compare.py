@@ -560,6 +560,29 @@ class VideoTest(unittest.TestCase):
             values, total = render_compare.reference_video(video, tmp, first=2)
         self.assertEqual((len(values), total.mean_delta_e), (1, 0.0))
 
+    def test_a_posed_reference_scores_only_frames_drawn_at_its_poses(self):
+        # The reference traced frame i at pose i; the video's frame 2 is its
+        # frame 0, and the harness logs the engine pose (z flipped) per frame.
+        near, far = Image.new("RGB", (2, 2), DRAWN), Image.new("RGB", (2, 2), CLEAR)
+        header = "frame,ms,px,py,pz,qx,qy,qz,qw\n"
+        on_path = "2,500,1,2,-3,0,1,0,0\n"
+        with tempfile.TemporaryDirectory() as tmp:
+            video = self.write_avi(tmp, "a.avi", [far, far, near], 250)
+            near.save(Path(tmp) / "000.png")
+            Path(tmp, "poses.txt").write_text("size 2 2\nlens 0.6 1\npose 1 2 3 0 0 1\n")
+            poses = Path(video + ".poses.csv")
+            for rows, refusal in ((header + on_path, None),
+                                  (header + "2,500,0,0,0,0,0,0,1\n", "frame 2 stands at"),
+                                  (header + "0,0,1,2,-3,0,1,0,0\n", "frame 2 has no row")):
+                with self.subTest(rows=rows):
+                    poses.write_text(rows)
+                    if refusal is None:
+                        values, total = render_compare.reference_video(video, tmp, first=2)
+                        self.assertEqual((len(values), total.mean_delta_e), (1, 0.0))
+                    else:
+                        with self.assertRaisesRegex(ValueError, refusal):
+                            render_compare.reference_video(video, tmp, first=2)
+
     def test_read_video_gives_top_down_rgb_frames_and_the_rate(self):
         frame = with_pixels(blank(5, 4), [(1, 0)], DRAWN)
         with tempfile.TemporaryDirectory() as tmp:
