@@ -66,6 +66,7 @@ scene_has_active_camera(void) {
 void
 scene_set_paused(bool pause) {
     paused = pause;
+    render_context_skip(render_context_main()); /* the paused time is not a frame */
     rendered = false;
     stepped = false;
 }

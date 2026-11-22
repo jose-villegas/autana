@@ -255,7 +255,7 @@ record. Generate the CSV with `cards_report.py SCENE --object NAME --docs`;
 #### thin
 
 `geometry.thin` keeps a random share `keep` of one material's pieces, each a set of triangles joined at their corners.
-Each kept piece grows by √(1/`keep`) about its centre, so the kept pieces cover the area all of them did<sup>[[134]](../../Citations.md#cook-2007)</sup>.
+Each kept piece grows by √(1/`keep`) about its centre, so the kept pieces cover the area all of them did<sup>[[136]](../../Citations.md#cook-2007)</sup>.
 It is for material whose geometry occupies more of the budget than it shows; `process.seed` makes the share repeatable.
 
 With `simplify` on, thin also runs without a rule on foliage: any object holding at least

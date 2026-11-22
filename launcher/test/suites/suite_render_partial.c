@@ -286,6 +286,7 @@ test_dynres_still_view_redraws_only_changed_rows_at_the_top(void) {
         const box3f_t changed = slide_card(r, (float)(i % 2 + 1) * 6.0F); /* back and forth */
         const render_context_frame_t f = dynres_frame(r, &view, &changed, 1);
         TEST_ASSERT_EQUAL_INT(W, f.width);
+        TEST_ASSERT_FALSE(pair->context[0].priced); /* nor does it teach the budget */
         if (i == 1) {
             TEST_ASSERT_EQUAL_INT(H, rows(f)); /* to the top: every row */
         } else {
