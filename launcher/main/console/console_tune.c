@@ -11,14 +11,14 @@
 static void
 reply_value(console_reply_fn reply, const tune_entry_t* entry) {
     char line[REPLY_MAX];
-    (void)snprintf(line, sizeof line, "TUNE_OK %s=%ld", entry->name, (long)*entry->value);
+    (void)snprintf(line, sizeof line, CONSOLE_TUNE_OK " %s=%ld", entry->name, (long)*entry->value);
     reply(line);
 }
 
 static void
 reply_error(console_reply_fn reply, const char* reason, const char* about) {
     char line[REPLY_MAX];
-    (void)snprintf(line, sizeof line, "TUNE_ERR %s %s", reason, about);
+    (void)snprintf(line, sizeof line, CONSOLE_TUNE_ERR " %s %s", reason, about);
     reply(line);
 }
 
@@ -26,14 +26,14 @@ static void
 list_all(const tune_registry_t* registry, console_reply_fn reply) {
     char line[REPLY_MAX];
     for (const tune_entry_t* entry = registry->first; entry != NULL; entry = entry->next) {
-        (void)snprintf(line, sizeof line, "TUNE %s=%ld min=%ld max=%ld default=%ld", entry->name, (long)*entry->value,
-                       (long)entry->low, (long)entry->high, (long)entry->initial);
+        (void)snprintf(line, sizeof line, CONSOLE_TUNE_LIST " %s=%ld min=%ld max=%ld default=%ld", entry->name,
+                       (long)*entry->value, (long)entry->low, (long)entry->high, (long)entry->initial);
         reply(line);
     }
     for (const tune_entry_t* entry = registry->clashed; entry != NULL; entry = entry->next) {
         reply_error(reply, "clash", entry->name);
     }
-    (void)snprintf(line, sizeof line, "TUNE_END count=%d", tune_count(registry));
+    (void)snprintf(line, sizeof line, CONSOLE_TUNE_END " count=%d", tune_count(registry));
     reply(line);
 }
 
@@ -43,7 +43,7 @@ set_from(tune_registry_t* registry, const char* rest, console_reply_fn reply) {
     char name[TUNE_NAME_MAX + 1];
     const char* space = strchr(rest, ' ');
     if (space == NULL || space == rest || (size_t)(space - rest) > TUNE_NAME_MAX) {
-        reply_error(reply, "usage", "SET <name> <value>");
+        reply_error(reply, "usage", CONSOLE_TUNE_SET " <name> <value>");
         return;
     }
     memcpy(name, rest, (size_t)(space - rest));
@@ -80,12 +80,12 @@ named(const tune_registry_t* registry, const char* name, console_reply_fn reply)
 
 bool
 console_tune_line(tune_registry_t* registry, const char* line, console_reply_fn reply) {
-    if (strcmp(line, "TUNE") == 0) {
+    if (strcmp(line, CONSOLE_TUNE_LIST) == 0) {
         list_all(registry, reply);
         return true;
     }
-    if (strncmp(line, "GET ", 4) == 0) {
-        const tune_entry_t* entry = named(registry, line + 4, reply);
+    if (strncmp(line, CONSOLE_TUNE_GET " ", sizeof(CONSOLE_TUNE_GET)) == 0) {
+        const tune_entry_t* entry = named(registry, line + sizeof(CONSOLE_TUNE_GET), reply);
         if (entry != NULL) {
             reply_value(reply, entry);
         }
@@ -99,8 +99,8 @@ console_tune_line(tune_registry_t* registry, const char* line, console_reply_fn 
         }
         return true;
     }
-    if (strncmp(line, "SET ", 4) == 0) {
-        set_from(registry, line + 4, reply);
+    if (strncmp(line, CONSOLE_TUNE_SET " ", sizeof(CONSOLE_TUNE_SET)) == 0) {
+        set_from(registry, line + sizeof(CONSOLE_TUNE_SET), reply);
         return true;
     }
     return false;

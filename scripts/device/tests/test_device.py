@@ -29,6 +29,7 @@ from unittest import mock
 DEVICE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(DEVICE))
 import device
+from console_protocol import TUNE_REPLY_ENDS
 from fake_serial import FakeConnection, FakeUsbBoard
 import fake_flash  # noqa: E402
 import device_lock
@@ -799,7 +800,7 @@ class DeviceTests(unittest.TestCase):
                 b"I (813) screenshot: TUNE launcher.glow_radius=13 min=1 max=31\r\n"
                 b"TUNE_END count=2\n"
                 b"TUNE_OK later=1\n")
-        found, complete = device.replies_to(data, "TUNE", ["TUNE_OK", "TUNE_ERR", "TUNE_END"])
+        found, complete = device.replies_to(data, "TUNE", list(TUNE_REPLY_ENDS))
         self.assertTrue(complete)
         self.assertEqual(found, ["TUNE launcher.ridge_trail=226 min=0 max=255",
                                  "TUNE launcher.glow_radius=13 min=1 max=31",
@@ -807,7 +808,7 @@ class DeviceTests(unittest.TestCase):
 
     def test_replies_are_incomplete_until_the_terminator_arrives(self):
         found, complete = device.replies_to(b"TUNE a=1 min=0 max=2\nTUNE_EN", "TUNE",
-                                            ["TUNE_OK", "TUNE_ERR", "TUNE_END"])
+                                            list(TUNE_REPLY_ENDS))
         self.assertFalse(complete)
         self.assertEqual(found, ["TUNE a=1 min=0 max=2"])
 
@@ -821,7 +822,7 @@ class DeviceTests(unittest.TestCase):
 
     def send_args(self, line, reply="TUNE", until=None, seconds=1, optional=False):
         return Namespace(owner="agent", purpose="send", wait=0, line=line, reply=reply,
-                         until=["TUNE_OK", "TUNE_ERR", "TUNE_END"] if until is None else until,
+                         until=list(TUNE_REPLY_ENDS) if until is None else until,
                          seconds=seconds, optional=optional)
 
     def test_send_writes_the_line_and_prints_the_reply(self):

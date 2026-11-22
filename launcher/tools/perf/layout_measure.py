@@ -23,7 +23,7 @@ from process_tree import run_process_tree, terminate_unwinds  # noqa: E402
 from device_capture import RESULT_RE, BUILD_ID_RE as BUILD_LINE  # noqa: E402
 
 from c_header import read_define
-from console_protocol import reply_prefix
+from console_protocol import TUNE_SET, reply_prefix
 from frame_profile import PROFILE_RE
 
 TUNE_VALUE_MIN = -(2**31)
@@ -31,28 +31,38 @@ TUNE_VALUE_MAX = 2**31 - 1
 TUNE_NAME_MAX = read_define(REPO / "launcher/main/core/tune.h", "TUNE_NAME_MAX")
 
 
-def flash_needs_hot_tunables(lines=(), knobs=()):
+def parse_tunable(name: str, text: str) -> int:
+    assignment = f"{name}={text}"
+    if len(name) > TUNE_NAME_MAX or not re.fullmatch(r"[a-zA-Z0-9_.]+", name):
+        raise ValueError(f"{assignment!r}: expected a console name of at most {TUNE_NAME_MAX} characters")
+    match = re.fullmatch(r"[+-]?(?:0[xX][0-9a-fA-F]+|(?P<octal>0[0-7]*)|[1-9][0-9]*)", text)
+    if not match:
+        raise ValueError(f"{assignment!r}: expected a decimal, octal or hexadecimal integer")
+    try:
+        value = int(text, 8 if match["octal"] else 0)
+    except ValueError as error:
+        raise ValueError(f"{assignment!r}: value must fit int32") from error
+    if not TUNE_VALUE_MIN <= value <= TUNE_VALUE_MAX:
+        raise ValueError(f"{assignment!r}: value must fit int32")
+    return value
+
+
+def flash_needs_hot_tunables(lines=()):
     """Validate setup assignments and select live loads for seeded images."""
-    needed = bool(knobs)
+    needed = False
     for line in lines:
         try:
             reply_prefix(line)
             if "\n" in line or "\r" in line:
                 raise ValueError("expected one console line")
             words = line.split()
-            if words[0].upper() != "SET":
+            if words[0].upper() != TUNE_SET:
                 continue
-            if len(words) != 3 or not re.fullmatch(r"[a-zA-Z0-9_.]+", words[1]) or len(words[1]) > TUNE_NAME_MAX:
+            if len(words) != 3:
                 raise ValueError("expected SET <console name> <int32 value>")
             if line != " ".join(words):
                 raise ValueError("SET needs single spaces and no surrounding whitespace")
-            text = words[2]
-            if not re.fullmatch(r"[+-]?(?:0[xX][0-9a-fA-F]+|0[0-7]*|[1-9][0-9]*)", text):
-                raise ValueError("SET value must be a decimal, octal or hexadecimal integer")
-            base = 8 if re.fullmatch(r"[+-]?0[0-7]+", text) else 0
-            value = int(text, base)
-            if not TUNE_VALUE_MIN <= value <= TUNE_VALUE_MAX:
-                raise ValueError("SET value must fit int32")
+            parse_tunable(words[1], words[2])
             needed = True
         except ValueError as error:
             raise ValueError(f"setup line {line!r}: {error}") from error

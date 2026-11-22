@@ -6,12 +6,18 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher/tools"))
 from build.c_header import read_define
 
-TUNE_RESET = read_define(Path(__file__).resolve().parents[2] / "launcher/main/console/console_tune.h",
-                         "CONSOLE_TUNE_RESET")
+TUNE_HEADER = Path(__file__).resolve().parents[2] / "launcher/main/console/console_tune.h"
+TUNE_SET = read_define(TUNE_HEADER, "CONSOLE_TUNE_SET")
+TUNE_GET = read_define(TUNE_HEADER, "CONSOLE_TUNE_GET")
+TUNE_RESET = read_define(TUNE_HEADER, "CONSOLE_TUNE_RESET")
+TUNE_LIST = read_define(TUNE_HEADER, "CONSOLE_TUNE_LIST")
+TUNE_OK = read_define(TUNE_HEADER, "CONSOLE_TUNE_OK")
+TUNE_ERR = read_define(TUNE_HEADER, "CONSOLE_TUNE_ERR")
+TUNE_END = read_define(TUNE_HEADER, "CONSOLE_TUNE_END")
 
 # Both success and refusal terminate a framed reply, so callers must stop on either.
 FRAMED_ENDINGS = ("_END", "_ERR")
-TUNE_REPLY_ENDS = ("TUNE_OK", "TUNE_ERR", "TUNE_END")
+TUNE_REPLY_ENDS = (TUNE_OK, TUNE_ERR, TUNE_END)
 # Firmware logging can wrap replies; only its leading decoration may be discarded.
 LOG_PREFIX = re.compile(r"^[IWEVD] \(\d+\) [^:]+:\s*")
 
@@ -24,8 +30,8 @@ def reply_prefix(line):
     if not words:
         raise ValueError("empty console line")
     prefix = words[0].upper()
-    if prefix in ("SET", "GET", TUNE_RESET, "TUNE"):
-        return "TUNE", TUNE_REPLY_ENDS
+    if prefix in (TUNE_SET, TUNE_GET, TUNE_RESET, TUNE_LIST):
+        return TUNE_LIST, TUNE_REPLY_ENDS
     return prefix, tuple(prefix + ending for ending in FRAMED_ENDINGS)
 
 
