@@ -1,6 +1,6 @@
-"""The Bakes workflow keeps one run per branch, its pull request's and its dispatches' in one group: a push cancels
-the run of the head before it, and main's runs are never cancelled and all queue. Every job that makes a bake runs on
-the one self-hosted runner that makes the fits, never for a fork's pull request, as a guarded stage."""
+"""The Bakes workflow keeps one run per branch, its pushes' and its dispatches' in one group: a push cancels the run of
+the head before it, and main's runs are never cancelled and all queue. Every job that makes a bake runs on the one
+self-hosted runner that makes the fits, which no pull request starts, as a guarded stage in a venv of its own."""
 import re
 import sys
 import unittest
@@ -11,6 +11,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 from scripts.lib import local_schedule  # noqa: E402
+from scripts.gates import check_workflows  # noqa: E402
 
 MAIN = "refs/heads/main"
 BRANCH = "refs/heads/feature/x"
@@ -30,9 +31,8 @@ class OneRunPerBranch(unittest.TestCase):
     def setUp(self):
         self.concurrency = yaml.safe_load((ROOT / ".github/workflows/bakes.yml").read_text())["concurrency"]
 
-    def test_the_group_is_the_heads_repository_and_branch(self):
-        self.assertEqual(self.concurrency["group"], "bakes-${{ github.event.pull_request.head.repo.full_name || "
-                                                    "github.repository }}-${{ github.head_ref || github.ref_name }}")
+    def test_the_group_is_the_branch(self):
+        self.assertEqual(self.concurrency["group"], "bakes-${{ github.ref_name }}")
 
     def test_a_push_cancels_its_branchs_older_run_but_never_mains(self):
         self.assertTrue(evaluate(self.concurrency["cancel-in-progress"], BRANCH))
@@ -50,7 +50,7 @@ class OneRunPerBranch(unittest.TestCase):
 
 
 RUNNER = ["self-hosted", "linux", "gpu-legion"]
-OWN_HEADS = "(github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)"
+VENV = '-m venv --system-site-packages "$RUNNER_TEMP/venv"'
 # A bake.py command that makes bakes or plans them, and the join, which packs traced shards and traces nothing.
 MAKES = re.compile(r"bake\.py (bake|shards)\b")
 JOINS = re.compile(r"bake\.py bake --kind reference --shards ")
@@ -72,12 +72,19 @@ class OneRunnerMakesTheBakes(unittest.TestCase):
             with self.subTest(job=name):
                 self.assertEqual(job["runs-on"], RUNNER)
 
-    def test_no_fork_pull_request_reaches_the_bakes_runner(self):
+    def test_no_pull_request_starts_the_workflow_and_the_gate_passes_it(self):
+        workflow = yaml.load((ROOT / ".github/workflows/bakes.yml").read_text(), Loader=yaml.BaseLoader)
+        self.assertEqual(set(workflow["on"]), {"push", "workflow_dispatch"})
+        self.assertEqual([line for line in check_workflows.check(ROOT) if "bakes" in line], [])
+
+    def test_a_runner_job_installs_into_its_own_venv_never_the_fit_environment(self):
         for name, job in self.jobs.items():
-            if job["runs-on"] != RUNNER:
-                continue
-            with self.subTest(job=name):
-                self.assertIn(OWN_HEADS, job["if"])
+            if job["runs-on"] == RUNNER:
+                with self.subTest(job=name):
+                    self.assertIn(VENV, runs(job))
+                    self.assertIn('echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"', runs(job))
+                    self.assertNotIn('gpu/env/bin" >> "$GITHUB_PATH"', runs(job))
+                    self.assertNotIn("gpu/env/bin/python\" -m pip", runs(job))
 
     def test_the_bakes_runner_installs_nothing_as_root(self):
         for name, job in self.jobs.items():

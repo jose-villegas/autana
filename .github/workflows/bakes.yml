@@ -1,40 +1,40 @@
 name: Bakes
 
-# The expensive bakes (launcher/tools/bake/bake.py). On a pull request the CPU
-# job bakes every mesh, fit's levels and sound launcher/bakes.lock has no row for, and the reference
-# plan job selects each missing reference set's poses once; shard jobs render that plan,
-# and the reference job joins and packs their files
-# (as many as bake.py reference_shards sizes from their rays); both upload the files; the lock job then fails until the author runs
-# `bake.py lock --from-run N` with that run and commits the lock. A run that makes levels runs the sky-through-walls
-# flythrough on them in the CPU job, so a fit that opens holes fails before it is locked. A mesh's and a
-# reference set's bytes differ between CPU models, so every job that makes a bake runs on the one self-hosted
-# runner that makes the fits, gpu-legion (docs/assets/Bakes.md), and only for the repository's own branches: a
-# fork's pull request runs no code there, and its CPU check fails when it has bakes. One runner, so these jobs and
-# the fits queue behind each other. They run on its fit environment, ~/gpu/env, and its tracing steps on the share
-# of the machine's CPUs scripts/lib/local_schedule.py leaves board work.
-# A fit needs
-# the CUDA GPU, so the Bakes GPU workflow (bakes-gpu.yml) makes it from the locked
-# start and reference set, started by hand on the branch; no pull request reaches that runner. On main, publish uploads each locked file the `bakes` release lacks,
-# taking it from the run that made it. No branch writes the release.
+# The expensive bakes (launcher/tools/bake/bake.py), run for every push to a branch of this repository and by hand.
+# On a branch, the CPU job bakes every mesh, fit's levels and sound launcher/bakes.lock has no row for, and the
+# reference plan job selects each missing reference set's poses once; shard jobs render that plan, and the reference
+# job joins and packs their files (as many as bake.py reference_shards sizes from their rays); both upload the files;
+# the lock job then fails until the author runs `bake.py lock --from-run N` with that run and commits the lock. A run
+# that makes levels runs the sky-through-walls flythrough on them in the CPU job, so a fit that opens holes fails
+# before it is locked. A mesh's and a reference set's bytes differ between CPU models, so every job that makes a bake
+# runs on the one self-hosted runner that makes the fits, gpu-legion (docs/assets/Bakes.md). One runner, so these jobs
+# and the fits queue behind each other. No pull request starts this workflow: a self-hosted runner never takes a pull
+# request's code (scripts/gates/check_workflows.py), and only a branch of this repository is pushed here. The checks
+# a pull request needs are this push run's, on its head commit; a fork's pull request gets them only once its branch
+# is pushed here, and bakes-fork.yml fails it when it changes a bake. Each runner job installs into a venv of its own
+# over the fit environment ~/gpu/env, so a branch never changes it, and its tracing steps run on the share of the
+# machine's CPUs scripts/lib/local_schedule.py leaves board work.
+# A fit needs the CUDA GPU, so the Bakes GPU workflow (bakes-gpu.yml) makes it from the locked start and reference
+# set, started by hand on the branch. On main, publish uploads each locked file the `bakes` release lacks, taking it
+# from the run that made it. No branch writes the release.
 # Each bake is uploaded whatever fails after it; a rerun's attempt uploads under
 # its own name and first takes what its run's earlier attempts made.
 
 on:
-  pull_request:
   push:
-    branches: [main]
+    branches: ['**']
   workflow_dispatch:
 
-# One run per branch, pull request and dispatch alike: a push cancels the run of the head before it, queued or
-# running, whose bakes the new head makes again if it still needs them (bake.py lock --from-run takes only a finished
-# run). The head's repository is in the group, so a fork's branch never shares main's. Main's runs are never cancelled
-# and all queue; GitHub refuses `queue: max` with cancel-in-progress, so a branch keeps the single pending slot.
+# One run per branch, push and dispatch alike: a push cancels the run of the head before it, queued or running, whose
+# bakes the new head makes again if it still needs them (bake.py lock --from-run takes only a finished run). Main's
+# runs are never cancelled and all queue; GitHub refuses `queue: max` with cancel-in-progress, so a branch keeps the
+# single pending slot.
 concurrency:
-  group: bakes-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.head_ref || github.ref_name }}
+  group: bakes-${{ github.ref_name }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
   queue: ${{ github.ref == 'refs/heads/main' && 'max' || 'single' }}
 
-# Read-only by default: the bake and lock jobs run the pull request's own code.
+# Read-only by default: the bake and lock jobs run the pushed branch's own code.
 permissions:
   contents: read
 
@@ -45,15 +45,19 @@ jobs:
     permissions:
       contents: read
       actions: read
-      pull-requests: read
     outputs:
       cpu: ${{ steps.affected.outputs.cpu }}
       lock: ${{ steps.affected.outputs.lock }}
       sky-through-walls: ${{ steps.affected.outputs.sky-through-walls }}
     steps:
+      # The whole history, without file contents: a branch's changes are its diff from its merge base with main.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          filter: blob:none
+      # Main and a dispatch bake everything; an empty output runs the job.
       - id: affected
-        if: ${{ github.event_name == 'pull_request' }}
+        if: ${{ github.event_name == 'push' && github.ref != 'refs/heads/main' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: python3 scripts/ci/job_inputs.py affected --job cpu --job lock --job sky-through-walls
@@ -61,8 +65,8 @@ jobs:
 
   cpu:
     needs: inputs
-    if: ${{ !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.cpu == 'true') }}
-    name: Bake missing exports and meshes (self-hosted)
+    if: ${{ !cancelled() && (needs.inputs.result != 'success' || needs.inputs.outputs.cpu != 'false') }}
+    name: Bake missing exports and meshes
     runs-on: [self-hosted, linux, gpu-legion]
     timeout-minutes: 600
     # actions: read lets a rerun take what its earlier attempts uploaded.
@@ -78,10 +82,12 @@ jobs:
       - uses: ./.github/actions/job-inputs
         with: {step: arm}
 
-      # The runner's fit environment (docs/assets/Bakes.md), first on PATH for every later step.
-      - name: Use the runner's environment
+      # A venv of the job's own over the runner's fit environment (docs/assets/Bakes.md), first on PATH for every
+      # later step: what the branch installs goes there, never into the fit environment.
+      - name: Use a venv over the runner's environment
         run: |
-          echo "$HOME/gpu/env/bin" >> "$GITHUB_PATH"
+          "$HOME/gpu/env/bin/python" -m venv --system-site-packages "$RUNNER_TEMP/venv"
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
           echo "GPU_WORKFLOW=bakes.yml" >> "$GITHUB_ENV"
 
       - name: List the CPU bakes the lock has no row for
@@ -168,28 +174,9 @@ jobs:
         if: ${{ !cancelled() }}
         with: {step: record}
 
-  cpu-result:
-    # The required check, kept apart from the self-hosted job so a fork's pull request still reports one. It passes
-    # on success, or on a skip only when the inputs job found no cpu work (not a cancelled run, not a fork's).
-    name: Bake missing exports and meshes
-    needs: [inputs, cpu]
-    if: ${{ always() }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    steps:
-      - name: The bakes passed or there was nothing to bake
-        env:
-          RESULT: ${{ needs.cpu.result }}
-          INPUTS: ${{ needs.inputs.result }}
-          WORK: ${{ needs.inputs.outputs.cpu }}
-        run: |
-          echo "cpu: $RESULT; inputs: $INPUTS, cpu work: $WORK"
-          if [ "$RESULT" = skipped ] && [ "$WORK" = true ]; then echo "a fork's pull request bakes nothing; a maintainer's branch does"; fi
-          [ "$RESULT" = success ] || { [ "$RESULT" = skipped ] && [ "$INPUTS" = success ] && [ "$WORK" != true ]; }
-
   reference-plan:
     needs: inputs
-    if: ${{ !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.cpu == 'true') }}
+    if: ${{ !cancelled() && (needs.inputs.result != 'success' || needs.inputs.outputs.cpu != 'false') }}
     name: Plan the reference shards
     runs-on: [self-hosted, linux, gpu-legion]
     timeout-minutes: 600
@@ -206,9 +193,10 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - name: Use the runner's environment
+      - name: Use a venv over the runner's environment
         run: |
-          echo "$HOME/gpu/env/bin" >> "$GITHUB_PATH"
+          "$HOME/gpu/env/bin/python" -m venv --system-site-packages "$RUNNER_TEMP/venv"
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
           echo "GPU_WORKFLOW=bakes.yml" >> "$GITHUB_ENV"
 
       - name: Whether a reference set is missing
@@ -251,7 +239,7 @@ jobs:
   # Each shard traces a share of every missing set's poses; the shards queue on the one runner, one after another.
   reference-shard:
     needs: reference-plan
-    if: ${{ !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && needs.reference-plan.outputs.shards != '' && needs.reference-plan.outputs.shards != '[]' }}
+    if: ${{ !cancelled() && needs.reference-plan.outputs.shards != '' && needs.reference-plan.outputs.shards != '[]' }}
     name: Trace reference shard ${{ matrix.shard }}
     runs-on: [self-hosted, linux, gpu-legion]
     timeout-minutes: 600
@@ -268,9 +256,10 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - name: Use the runner's environment
+      - name: Use a venv over the runner's environment
         run: |
-          echo "$HOME/gpu/env/bin" >> "$GITHUB_PATH"
+          "$HOME/gpu/env/bin/python" -m venv --system-site-packages "$RUNNER_TEMP/venv"
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
           echo "GPU_WORKFLOW=bakes.yml" >> "$GITHUB_ENV"
 
       - name: Fetch source files
@@ -289,7 +278,7 @@ jobs:
 
       - name: Trace this shard
         run: |
-          python scripts/lib/local_schedule.py start -- python launcher/tools/bake/bake.py bake --kind reference               --shard "${{ matrix.shard }}/${{ needs.reference-plan.outputs.count }}" --plan "$RUNNER_TEMP/reference-plan" --out "$RUNNER_TEMP/shard"
+          python scripts/lib/local_schedule.py start -- python launcher/tools/bake/bake.py bake --kind reference --shard "${{ matrix.shard }}/${{ needs.reference-plan.outputs.count }}" --plan "$RUNNER_TEMP/reference-plan" --out "$RUNNER_TEMP/shard"
 
       # Not a bakes-* name: a shard is no bake, so a lock never reads it.
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -328,7 +317,7 @@ jobs:
   lock:
     name: Lock is current
     # Not after a failed plan or shard: the reference row would be missing anyway.
-    if: ${{ !cancelled() && needs.cpu.result != 'failure' && needs.reference-plan.result != 'failure' && needs.reference-shard.result != 'failure' && needs.reference.result != 'failure' && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.lock == 'true') }}
+    if: ${{ !cancelled() && needs.cpu.result != 'failure' && needs.reference-plan.result != 'failure' && needs.reference-shard.result != 'failure' && needs.reference.result != 'failure' && (needs.inputs.result != 'success' || needs.inputs.outputs.lock != 'false') }}
     needs: [inputs, cpu, reference-plan, reference-shard, reference]
     runs-on: ubuntu-24.04
     steps:
@@ -350,7 +339,7 @@ jobs:
     name: Sky through walls
     # Not after a failed bake either: a skipped lock is no failure, and the bakes this run did not make cannot
     # be fetched, so this would only fail beside the job that failed.
-    if: ${{ !cancelled() && needs.cpu.result != 'failure' && needs.reference-plan.result != 'failure' && needs.reference-shard.result != 'failure' && needs.reference.result != 'failure' && needs.lock.result != 'failure' && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.sky-through-walls == 'true') }}
+    if: ${{ !cancelled() && needs.cpu.result != 'failure' && needs.reference-plan.result != 'failure' && needs.reference-shard.result != 'failure' && needs.reference.result != 'failure' && needs.lock.result != 'failure' && (needs.inputs.result != 'success' || needs.inputs.outputs.sky-through-walls != 'false') }}
     needs: [inputs, cpu, reference-plan, reference-shard, reference, lock]
     runs-on: ubuntu-24.04
     steps:

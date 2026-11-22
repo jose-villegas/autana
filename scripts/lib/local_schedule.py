@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 import os
 import re
 import sys
+import tempfile
 from pathlib import Path
 import time
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -241,10 +242,15 @@ def main():
         os.sched_setaffinity(0, share)
         print(f"beside board work on CPUs {','.join(map(str, sorted(share)))}", flush=True)
     started, code = clock.now(), EXIT_HUNG
-    marker = os.environ.get("MARKER") or started.isoformat()
-    steps = heavy_root() / "night-steps" / datetime.fromisoformat(marker).strftime(MARKER_KEY_FORMAT)
+    # Only a night's stage leaves a record, under its marker's key, for the night's timeline; any other keeps its
+    # progress file in a folder of its own that goes with it.
+    marker = os.environ.get("MARKER")
+    if marker:
+        steps = heavy_root() / "night-steps" / datetime.fromisoformat(marker).strftime(MARKER_KEY_FORMAT)
+        steps.mkdir(parents=True, exist_ok=True)
+    else:
+        steps = Path(tempfile.mkdtemp(prefix="stage-"))
     progress = steps / (workflow + ".progress")
-    progress.parent.mkdir(parents=True, exist_ok=True)
     progress.touch()
     os.environ[STAGE_PROGRESS_ENV] = str(progress)
     try:
@@ -255,9 +261,12 @@ def main():
         return EXIT_HUNG
     finally:
         progress.unlink(missing_ok=True)
-        write_json(steps / (workflow + ".json"),
-                   dict(workflow=workflow, run=os.environ.get("GITHUB_RUN_ID"), marker=marker,
-                        started=started.isoformat(), ended=clock.now().isoformat(), exit=code))
+        if marker:
+            write_json(steps / (workflow + ".json"),
+                       dict(workflow=workflow, run=os.environ.get("GITHUB_RUN_ID"), marker=marker,
+                            started=started.isoformat(), ended=clock.now().isoformat(), exit=code))
+        else:
+            steps.rmdir()
 
 
 if __name__ == "__main__":

@@ -169,18 +169,23 @@ class LocalScheduleTests(unittest.TestCase):
                 self.assertEqual(schedule.main(), 0)
             self.assertEqual(sum(clock.sleeps), max(0, min(remaining, schedule.HOSTED_WAIT_SECONDS)))
 
-    def test_bakes_without_marker_records_stage_start(self):
-        with tempfile.TemporaryDirectory() as root:
-            clock = Clock(3, tzinfo=timezone.utc)
-            with patch.dict(os.environ, GPU_WORKFLOW=schedule.BAKES_WORKFLOW, MARKER='',
-                            GITHUB_OUTPUT='', _AUTANA_HEAVY_LOCK_ROOT=root), \
-                    patch.object(schedule, 'Clock', return_value=clock), \
-                    patch.object(sys, 'argv', ['schedule', 'start', '--', 'bake']), \
-                    patch.object(schedule, 'run_process_tree', return_value=Mock(returncode=0)):
-                self.assertEqual(schedule.main(), 0)
-            key = clock.now().strftime(schedule.MARKER_KEY_FORMAT)
-            record = json.loads((Path(root) / 'night-steps' / key / (schedule.BAKES_WORKFLOW + '.json')).read_text())
-            self.assertEqual(record['marker'], clock.now().isoformat())
+    def test_a_stage_outside_a_night_leaves_nothing_behind(self):
+        def run(*args, **kwargs):
+            self.assertTrue(Path(os.environ[schedule.STAGE_PROGRESS_ENV]).exists())
+            return Mock(returncode=0)
+
+        for workflow in (schedule.BAKES_WORKFLOW, schedule.CPU_BAKES_WORKFLOW):
+            with self.subTest(workflow=workflow), tempfile.TemporaryDirectory() as root, \
+                    tempfile.TemporaryDirectory() as temporary:
+                with patch.dict(os.environ, GPU_WORKFLOW=workflow, MARKER='',
+                                GITHUB_OUTPUT='', _AUTANA_HEAVY_LOCK_ROOT=root), \
+                        patch.object(schedule.tempfile, 'tempdir', temporary), \
+                        patch.object(schedule, 'Clock', return_value=Clock(3, tzinfo=timezone.utc)), \
+                        patch.object(sys, 'argv', ['schedule', 'start', '--', 'bake']), \
+                        patch.object(schedule, 'run_process_tree', side_effect=run):
+                    self.assertEqual(schedule.main(), 0)
+                self.assertEqual(list(Path(root).rglob('*')), [])
+                self.assertEqual(list(Path(temporary).iterdir()), [])
 
     def test_a_stage_runs_where_os_has_no_cpu_affinity(self):
         class WindowsOs:
