@@ -60,10 +60,13 @@ class Packets:
                 self.seeking = False
                 continue
             if head is None:
-                line = bytes(self.partial + self.pending[:end]).rstrip(b"\r")
+                line = self.pending[:end]
+                # A lost console fragment must not hide an intact end reply.
+                if self.recovery_end is None or not line.startswith(self.recovery_end):
+                    line = self.partial + line
                 del self.pending[:end + 1]
                 self.partial.clear()
-                out.append(("line", line))
+                out.append(("line", bytes(line).rstrip(b"\r")))
                 continue
             count, crc = head
             if len(self.pending) < end + 1 + count:

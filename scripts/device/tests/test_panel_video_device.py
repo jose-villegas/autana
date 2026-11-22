@@ -51,16 +51,17 @@ class PanelVideoDeviceTests(unittest.TestCase):
         process.kill.assert_not_called()
 
     def test_split_header_after_truncated_part_keeps_binary_off_log(self):
-        damaged = panel_video.PART.pack(1, 0, 0) + b"\x00\xff\x88\n"
-        tail = panel_video.PART.pack(1, 1, 1) + b"\xff\xe1\n\xa2\n"
-        good = panel_video.PART.pack(2, 0, 1) + panel_video.PRESENT.pack(2, 0, 0, 0)
-        bad_wire = b"PANEL_BIN %d %08x\n" % (len(damaged), zlib.crc32(damaged)) + damaged[:-2]
-        tail_head = b"PANEL_BIN %d %08x\n" % (len(tail), zlib.crc32(tail))
+        wire = (Path(__file__).with_name("fixtures") / "panel_usb_gap.bin").read_bytes()
+        prefix = panel_video.PACKET_TAG.encode("ascii") + b"_BIN "
+        split = wire.index(prefix, len(prefix))
+        damaged_seq, _, _ = panel_video.PART.unpack_from(wire, wire.index(b"\n") + 1)
+        seq = damaged_seq + 1
+        good = panel_video.PART.pack(seq, 0, 1) + panel_video.PRESENT.pack(seq, 0, 0, 0)
         good_wire = b"PANEL_BIN %d %08x\n" % (len(good), zlib.crc32(good)) + good
         begin = b"PANELCAP_BEGIN fps=5 image=329728\n"
         end = b"PANELCAP_END presents=2 dropped=0 bytes=16\n"
-        board = PanelBoard([begin], after_stop=[bad_wire + tail_head[:1], tail_head[1:6],
-                                               tail_head[6:] + tail + good_wire + end])
+        board = PanelBoard([begin], after_stop=[wire[:split + 1], wire[split + 1:split + len(prefix)],
+                                               wire[split + len(prefix):] + b"I" + good_wire + end])
         process = mock.Mock()
         process.wait.return_value = 0
         log = io.StringIO()
@@ -68,11 +69,13 @@ class PanelVideoDeviceTests(unittest.TestCase):
             out = Path(folder) / "run.mp4"
             args = Namespace(owner="agent", wait=0, out=out, fps=5, seconds=None)
             with mock.patch.object(device, "open_when_free", return_value=board), \
+                    mock.patch.object(device, "RECORD_END_SECONDS", 0.2), \
+                    mock.patch.object(device, "STREAM_CHECK_SECONDS", 0.01), \
                     mock.patch.object(panel_video.video_encode, "resolve", return_value="fake-ffmpeg"), \
                     mock.patch.object(panel_video.video_encode, "open_encoder", return_value=process):
                 self.assertEqual(device.video(args, mock_store(), BOARD, lines=[], log=log), 0)
             with out.with_suffix(".frames.csv").open() as source:
-                self.assertEqual([row["present_seq"] for row in csv.DictReader(source)], ["2"])
+                self.assertEqual([row["present_seq"] for row in csv.DictReader(source)], [str(seq)])
         self.assertEqual(log.getvalue().splitlines()[:-1], [begin.decode().strip(), end.decode().strip()])
         self.assertIn("host_dropped=1", log.getvalue())
 
