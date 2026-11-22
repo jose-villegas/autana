@@ -5,7 +5,7 @@
 
 static bool
 same(const uint8_t* p, size_t a, size_t b) {
-    return memcmp(p + a * PANELCAP_PIXEL_BYTES, p + b * PANELCAP_PIXEL_BYTES, PANELCAP_PIXEL_BYTES) == 0;
+    return memcmp(p + (a * PANELCAP_PIXEL_BYTES), p + (b * PANELCAP_PIXEL_BYTES), PANELCAP_PIXEL_BYTES) == 0;
 }
 
 static size_t
@@ -97,10 +97,10 @@ panelcap_window(panelcap_t* capture, unsigned x0, unsigned y0, unsigned x1, unsi
     const uint8_t* source = pixels;
     size_t row_bytes = (x1 - x0) * PANELCAP_PIXEL_BYTES;
     for (unsigned y = y0; y < y1; y++) {
-        memcpy(capture->storage + ((size_t)y * PANELCAP_WIDTH + x0) * PANELCAP_PIXEL_BYTES, source, row_bytes);
+        memcpy(capture->storage + ((((size_t)y * PANELCAP_WIDTH) + x0) * PANELCAP_PIXEL_BYTES), source, row_bytes);
         source += row_bytes;
     }
-    recti_t box = recti_from_edges(x0, y0, x1, y1);
+    recti_t box = recti_from_edges((int)x0, (int)y0, (int)x1, (int)y1);
     if (capture->collapsed) {
         capture->dirty[0] = recti_union(capture->dirty[0], box);
         return;
@@ -137,7 +137,7 @@ panelcap_commit(panelcap_t* capture) {
         drop(capture);
         return;
     }
-    capture->next_us = capture->present_us + MATH_US_PER_S / capture->fps;
+    capture->next_us = capture->present_us + (MATH_US_PER_S / capture->fps);
     bytes_write_u32(capture->head + PANELCAP_HEAD_AT_SEQ, capture->seq);
     bytes_write_u64(capture->head + PANELCAP_HEAD_AT_US, capture->present_us);
     bytes_write_u16(capture->head + PANELCAP_HEAD_AT_WINDOWS, capture->windows);
@@ -173,7 +173,7 @@ encode_block(const panelcap_t* capture, panelcap_encoder_t* encoder) {
         return;
     }
     const uint8_t* pixels =
-        capture->storage + ((size_t)encoder->y * PANELCAP_WIDTH + encoder->x) * PANELCAP_PIXEL_BYTES;
+        capture->storage + ((((size_t)encoder->y * PANELCAP_WIDTH) + encoder->x) * PANELCAP_PIXEL_BYTES);
     size_t consumed;
     encoder->used = pack_block(encoder->block, pixels, recti_right(box) - encoder->x, &consumed);
     encoder->x += (int)consumed;

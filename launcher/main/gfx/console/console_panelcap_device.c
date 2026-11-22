@@ -79,7 +79,7 @@ ended(uint64_t sent, void* arg) {
     char line[PANELCAP_LINE_BYTES];
     (void)snprintf(line, sizeof line, "PANELCAP_END presents=%lu dropped=%lu bytes=%llu",
                    (unsigned long)source->presents, (unsigned long)source->dropped,
-                   (unsigned long long)(sent - parts_sent * PANELCAP_PART_HEAD_BYTES));
+                   (unsigned long long)(sent - (parts_sent * PANELCAP_PART_HEAD_BYTES)));
     console_emit_line(line, "");
     atomic_store_explicit(&running, false, memory_order_release);
 }
