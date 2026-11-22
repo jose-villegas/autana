@@ -5119,6 +5119,45 @@ test_probes_sample_last_resolved_bounds_without_allocating(void) {
 }
 
 static void
+test_probes_sample_the_half_scale_skin_centre(void) {
+    enum { ORIGIN_LIGHT = 1, CENTRE_LIGHT = 4, UNSCALED_LIGHT = 8 };
+
+    static const int16_t coefficients[][SH_PROBES_COMPONENTS] = {{ORIGIN_LIGHT}, {CENTRE_LIGHT}, {UNSCALED_LIGHT}};
+    static const sh_probes_t grid = {
+        .dims = {3, 1, 1}, .spacing = {RIG_TRAVEL / 4.0F, 1, 1}, .scale = 0.125F, .coefficients = coefficients};
+    const entity_t root = rig_fixture("rig.skin2", NULL);
+    const entity_t entity = entity_find(root, name_hash("red"));
+    scene_t* scene = columns(root);
+    const scene_skinned_renderer_t* skin = skin_of(entity);
+    const float scale = 0.5F;
+    transformf_t pose = transform_local(root);
+    transformf_set_scale(&pose, vec3f_scale(vec3f_one(), scale));
+    transform_set_local(root, pose);
+    TEST_ASSERT_TRUE(animator_seek(entity, ANIMATOR_CURRENT, RIG_DURATION_MS / 2));
+    TEST_ASSERT_TRUE(animator_set_paused(entity, ANIMATOR_CURRENT, true));
+    frame(0);
+    const scene_renderer_t* renderer = &scene->renderers[scene_renderer_index(scene, row_of(entity))];
+    TEST_ASSERT_EQUAL_FLOAT(RIG_TRAVEL * scale / 2, box3f_centre(renderer->world_bounds).x);
+
+    scene_set_probes(root, &grid);
+    scene_animation_step(scene, 0);
+    uint8_t sampled[RIG_VERTICES][R3D_SKIN_LIGHT_CHANNELS];
+    memcpy(sampled, skin->colors, sizeof sampled);
+    sh_probes_t uniform = {.dims = {1, 1, 1}, .scale = grid.scale};
+    for (size_t i = 0; i < sizeof coefficients / sizeof coefficients[0]; i++) {
+        uniform.coefficients = &coefficients[i];
+        scene_set_probes(root, &uniform);
+        scene_animation_step(scene, 0);
+        if (i == 1) {
+            TEST_ASSERT_EQUAL_MEMORY(sampled, skin->colors, sizeof sampled);
+        } else {
+            TEST_ASSERT_NOT_EQUAL(0, memcmp(sampled, skin->colors, sizeof sampled));
+        }
+    }
+    scene_set_probes(root, NULL);
+}
+
+static void
 test_light_modes_with_and_without_probes(void) {
     static const int16_t coefficients[1][SH_PROBES_COMPONENTS] = {{1}};
     static const sh_probes_t probes = {.dims = {1, 1, 1}, .scale = 1, .coefficients = coefficients};
@@ -5190,6 +5229,10 @@ test_contact_footprint_and_partial_redraw(void) {
     node.bounds = (box3s_t){{-BODY_HALF_X, -1, -BODY_HALF_Z}, {BODY_HALF_X, 1, BODY_HALF_Z}};
     mesh.nodes = &node;
     TEST_ASSERT_TRUE(renderer_set_mesh(mover, &mesh));
+    const float scale = 0.5F;
+    transformf_t pose = transform_local(mover);
+    transformf_set_scale(&pose, vec3f_scale(vec3f_one(), scale));
+    transform_set_local(mover, pose);
     scene_set_contact_blob(mover, GROUND_Y, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT);
     settle_the_picture();
     for (int step = 1; step <= MOVER_STEPS; step++) {
@@ -5198,7 +5241,7 @@ test_contact_footprint_and_partial_redraw(void) {
         TEST_ASSERT_GREATER_THAN_INT(0, rows_the_last_frame_drew());
         TEST_ASSERT_LESS_THAN_INT(SIZE, rows_the_last_frame_drew());
         const render_partial_t* partial = &render_context_main()->partial;
-        TEST_ASSERT_EQUAL_FLOAT(GROUND_Y - BODY_HALF_Z, partial->changed[0].lo.y);
+        TEST_ASSERT_EQUAL_FLOAT(GROUND_Y - BODY_HALF_Z * scale, partial->changed[0].lo.y);
         assert_the_picture_is_the_whole_draw();
     }
 }
@@ -8382,6 +8425,7 @@ run_scene_suite(void) {
     RUN_TEST(test_scene_light_rotation_shades_only_skin_and_matches_kernel);
     RUN_TEST(test_scene_adopts_its_pack_probe_grid);
     RUN_TEST(test_probes_sample_last_resolved_bounds_without_allocating);
+    RUN_TEST(test_probes_sample_the_half_scale_skin_centre);
     RUN_TEST(test_light_modes_with_and_without_probes);
     RUN_TEST(test_old_light_pack_defaults_to_realtime);
     RUN_TEST(test_forgetting_another_scene_keeps_the_contact_draw_hook);

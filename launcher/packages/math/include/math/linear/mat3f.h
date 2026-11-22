@@ -57,6 +57,14 @@ mat3f_cofactor(mat3f_t matrix) {
     return out;
 }
 
+/* The determinant, expanded along row 0 against the cofactors. */
+static inline float
+mat3f_det(mat3f_t matrix) {
+    const mat3f_t cofactor = mat3f_cofactor(matrix);
+    return (matrix.m[0][0] * cofactor.m[0][0]) + (matrix.m[0][1] * cofactor.m[0][1])
+           + (matrix.m[0][2] * cofactor.m[0][2]);
+}
+
 static inline mat3f_t
 mat3f_scale(mat3f_t matrix, float scale) {
     for (int row = 0; row < MAT3F_AXES; row++) {
