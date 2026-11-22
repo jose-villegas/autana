@@ -951,7 +951,10 @@ test_two_seeks_and_flap_renders_at_same_time_match_bytes(void) {
     TEST_ASSERT_TRUE(camera_activate(camera));
     const entity_t wings[] = {entity_find(root, name_hash("slot_00_wing_l")),
                               entity_find(root, name_hash("slot_00_wing_r"))};
-    const transformf_t rests[] = {transform_local(wings[0]), transform_local(wings[1])};
+    transformf_t* const rests = malloc(sizeof wings / sizeof wings[0] * sizeof *rests);
+    TEST_ASSERT_NOT_NULL(rests);
+    rests[0] = transform_local(wings[0]);
+    rests[1] = transform_local(wings[1]);
     transformf_t body = transformf_identity();
     transformf_set_scale(&body, (vec3f_t){TEST_BODY_SCALE, TEST_BODY_SCALE, TEST_BODY_SCALE});
     transformf_set_rotation(&body, quatf_from_axis_angle(vec3f_unit_y(), MATH_PI));
@@ -979,6 +982,7 @@ test_two_seeks_and_flap_renders_at_same_time_match_bytes(void) {
         visible = visible || pixels[i] != pixels[0];
     }
     TEST_ASSERT_TRUE_MESSAGE(visible, "the deterministic frame must contain the butterfly");
+    free(rests);
     release();
 }
 

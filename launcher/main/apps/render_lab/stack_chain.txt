@@ -30,6 +30,22 @@ indirect lab_clips.c:reply_line : console_reply_stdio suite_lab_clips.c:capture_
 
 indirect render_context_draw : app_arena_take
 
-indirect frame_profile_play : lab_test_profile_frame
+indirect suite_render_lab_frame_profile.c:test_real_time_frame_profile>frame_profile_play : lab_test_profile_frame
+indirect suite_framegen_perf.c:test_mode>frame_profile_play : suite_framegen_perf.c:shown_frame
 indirect suite_render_lab_frame_profile.c:send : render_lab_console
 indirect render_lab_test.c:replay_path_seeks_itself : scene_baked_path capybara_path scene_herd.c:scene_herd_path scene_stress.c:scene_stress_path
+
+indirect suite_capybara_perf.c:report_stage : suite_capybara_perf.c:skin_slice suite_capybara_perf.c:animate_slice suite_capybara_perf.c:step
+indirect suite_capybara_perf.c:test_animation_and_frame_cost suite_capybara_perf.c:test_console_gallop_blends_and_skins suite_scene_switch.c:show_scene suite_scene_switch.c:test_dynamic_resolution_toggle_follows_the_showing_scene suite_water_perf.c:test_water_tour_stages : render_lab_console
+indirect suite_render_lab_fly.c:console : render_lab_console
+indirect suite_layout_perf.c:pass : app_render_lab.c:render_lab_update app_render_lab.c:render_lab_frame
+indirect suite_partial_perf.c:play : suite_partial_perf.c:start_gallop suite_partial_perf.c:start_water suite_partial_perf.c:start_flythrough
+indirect scene_water.c:water_split>job_run_steered scene_water.c:rebuild_surface>job_run_steered : scene_water.c:job_range_run
+indirect suite_partial_perf.c:start_gallop : render_lab_console
+
+indirect suite_framegen_perf.c:enter_path : scene_baked_path scene_capybara_sponza_path seek_run play_run
+indirect suite_herd_perf.c:test_a_sought_herd_holds_until_play : scene_herd_path scene_herd.c:seek_walk scene_herd.c:play_walk
+indirect suite_herd_perf.c:test_herd_fixed_animation_rates suite_herd_perf.c:turn_scene : scene_herd_path
+indirect suite_stress_perf.c:stress_camera : scene_stress_path
+
+indirect scene_water.c:water_split scene_water.c:job_range_run : flip3.c:splat_range flip3.c:relax_colour_range flip3.c:gather_range flip3.c:field_range scene_water.c:shade_range scene_water.c:nets_range

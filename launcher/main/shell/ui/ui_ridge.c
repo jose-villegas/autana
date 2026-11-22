@@ -159,6 +159,7 @@ typedef struct {
     float shake;
     int last_pluck_x, strips, down_sign;
     bool by_column, axis_on_screen, ambient, painted, scanline_dither;
+    gfx_color_t row_scratch[GFX_WIDTH];
 } ridge_t;
 
 #define RIDGE_ENTRY        "ridge"
@@ -708,7 +709,7 @@ commit_row(const gfx_color_t* from, int y, int lo, int hi) {
 
 static void
 repaint_row_strip(int y, int lo, int hi) {
-    gfx_color_t scratch[GFX_WIDTH];
+    gfx_color_t* const scratch = ridge->row_scratch;
     if (ridge->scanline_dither) {
         paint_row_into(scratch, y, lo, hi);
     } else {

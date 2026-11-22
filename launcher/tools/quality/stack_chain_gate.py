@@ -4,6 +4,7 @@
 Derive test roots from registered suites in the diagnostics compile database.
 Discover launcher/**/stack_chain.txt: root FUNCTION frame|system|boot and
 indirect CALLER... : CALLEE... (private names: file.c:function).
+Use PARENT>CALLER when a direct caller binds the dispatcher's target.
 The diagnostics build writes each object's graph (.ci) and frames (.su) beside
 it; source pointer calls are closed here, context and budgets are derived.
 Uncompiled libraries are not counted: the C library's printf family,
@@ -74,7 +75,7 @@ def read_spec(path):
 
 def source_name(title):
     """The function a graph title names, without its file or clone suffix."""
-    return title.rsplit(":", 1)[-1].split("$", 1)[0].split(".", 1)[0]
+    return title.rsplit(">", 1)[-1].rsplit(":", 1)[-1].split("$", 1)[0].split(".", 1)[0]
 
 
 def parse_graph(ci_paths):
@@ -157,6 +158,51 @@ def harness_path(entries, endpoints, suites, frame, calls, reverse_calls):
     return max(paths, default=(-1, []))
 
 
+def dispatch_paths(names, titles_by_name, calls):
+    """Compiled direct paths matching the names in a scoped declaration."""
+    paths = [()]
+    for name in names:
+        titles = resolve(name, titles_by_name[name.rsplit(":", 1)[-1]])
+        paths = [(*path, title) for path in paths for title in titles
+                 if not path or title in calls.get(path[-1], ())]
+    return paths
+
+
+def bind_dispatchers(declared, titles_by_name, frame, calls, pointer_callers, bad):
+    """Copy compiled frames along each path that fixes a dispatcher's target."""
+    scoped, ordinary, problems = defaultdict(set), [], []
+    for caller, target in declared:
+        names = caller.split(">")
+        if len(names) == 1:
+            ordinary.append((caller, target))
+            continue
+        targets = resolve(target, titles_by_name[target.rsplit(":", 1)[-1]])
+        bindings = [path for path in dispatch_paths(names, titles_by_name, calls)
+                    if path[-1] in pointer_callers]
+        if not targets or not bindings:
+            problems.append(f"declared edge {caller} > {target} has no measured dispatch")
+        for binding in bindings:
+            for length in range(2, len(binding)):
+                scoped[binding[:length]]
+            scoped[binding].update(targets)
+    covered = set()
+    for path in sorted(scoped, key=len):
+        dispatcher = path[-1]
+        parent = ">".join(path[:-1])
+        bound = ">".join(path)
+        frame[bound] = frame[dispatcher]
+        if dispatcher in bad:
+            bad.add(bound)
+        if dispatcher in pointer_callers:
+            pointer_callers.add(bound)
+        if scoped[path]:
+            covered.add(bound)
+        calls[bound] = calls.get(dispatcher, set()) | scoped[path]
+        calls[parent].remove(dispatcher)
+        calls[parent].add(bound)
+    return ordinary, covered, problems
+
+
 def check_app(name, spec_path, ci_paths, stack_bytes, reserve, context=0, runner_edges=(),
               graph=None, declared=None, test_roots=None):
     roots, own_edges = read_spec(spec_path)
@@ -164,17 +210,21 @@ def check_app(name, spec_path, ci_paths, stack_bytes, reserve, context=0, runner
     roots.extend((test, "test") for test in test_roots)
     declared = own_edges if declared is None else declared
     frame, calls, pointer_callers, bad = graph or parse_graph(ci_paths)
-    problems = []
+    frame = frame.copy()
+    bad = set(bad)
+    pointer_callers = set(pointer_callers)
+    calls = {caller: set(callees) for caller, callees in calls.items()}
 
     titles_by_name = defaultdict(list)
     for title in frame:
         titles_by_name[source_name(title)].append(title)
 
-    covered = set()
+    declared, covered, problems = bind_dispatchers(
+        declared, titles_by_name, frame, calls, pointer_callers, bad)
     for caller, callee in declared + list(runner_edges):
         callers = resolve(caller, titles_by_name[caller.rsplit(":", 1)[-1]])
         callees = resolve(callee, titles_by_name[callee.rsplit(":", 1)[-1]])
-        if not callers or not callees:
+        if not callers or (callee != "-" and not callees):
             problems.append("declared edge %s > %s names a function that is "
                             "not in the graph" % (caller, callee))
         for c in callers:
@@ -236,7 +286,7 @@ def check_app(name, spec_path, ci_paths, stack_bytes, reserve, context=0, runner
     return problems
 
 
-def app_jobs(db_path, app_dir=None, functions=()):
+def app_jobs(db_path, app_dir=None, functions=(), source_files=()):
     with open(db_path, "r", encoding="utf-8") as fh:
         entries = json.load(fh)
     marker = (app_dir or MAIN_DIR).replace("\\", "/").rstrip("/") + "/"
@@ -245,9 +295,12 @@ def app_jobs(db_path, app_dir=None, functions=()):
                             "|".join(re.escape(f) for f in functions)) if functions else None
     for entry in entries:
         source = entry["file"].replace("\\", "/")
-        if not source.endswith(".c") or (app_dir is None and "/apps/" in source):
+        if source_files:
+            if not any(source.endswith("/" + name) for name in source_files):
+                continue
+        elif not source.endswith(".c") or (app_dir is None and "/apps/" in source):
             continue
-        if definition is not None:
+        elif definition is not None:
             with open(source, "r", encoding="utf-8", errors="replace") as fh:
                 if not definition.search(fh.read()):
                     continue
@@ -337,7 +390,11 @@ def main(argv):
     context = int(size.group(1)) + ((tls["_thread_local_bss_end"] -
                                    tls["_thread_local_data_start"] + 15) & ~15)
     app_sources = [job for job in app_jobs(db, MAIN_DIR) if "/apps/" in job[2]]
+    declared = [edge for spec in specs for edge in read_spec(spec)[1]]
+    target_files = {target.rsplit(":", 1)[0] for _, target in declared if ":" in target}
     all_jobs = shared_jobs + app_sources
+    present = {job[2] for job in all_jobs}
+    all_jobs.extend(job for job in app_jobs(db, source_files=target_files) if job[2] not in present)
     ci_paths = [job[3] for job in all_jobs]
     missing = [job[2] for job in all_jobs if not os.path.isfile(job[3])]
     if missing:
@@ -345,7 +402,6 @@ def main(argv):
               "diagnostics image, which writes one beside each object" % (len(missing), missing[0]),
               file=sys.stderr)
         return 1
-    declared = [edge for spec in specs for edge in read_spec(spec)[1]]
     graph = parse_graph(ci_paths)
     test_roots, runner_edges = runner_registrations(all_jobs)
     if not test_roots:

@@ -146,6 +146,8 @@ Rules:
 
 - Every spec feeds one graph. Declare each indirect edge once, beside the caller; engine edges go in the engine spec.
 - An undeclared pointer caller reachable below a root fails. Private names may be written `file.c:function`.
+- Use a direct path such as `PARENT>CALLER` when it determines the dispatch targets.
+- Use `-` for a dispatch with no possible target in the diagnostics image.
 - Suite registrations and Unity's wrapper supply the runner's pointer edges themselves.
 - Runner overhead uses the deepest measured path from the main-task entry to the root's runner. Test paths pass through the suite that registers the test.
 - The runner endpoints are `call_protected`, `shell_step_app`, `scene_shell_render` and `app_boot_init`. The boot root is `boot_anim_run`.

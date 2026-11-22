@@ -1571,14 +1571,15 @@ test_a_water_pour_freezes_a_lava_pool_below_its_crust(void) {
     TEST_ASSERT_NOT_NULL_MESSAGE(cells, "lava shaft grid must fit in what "
                                         "the framebuffer leaves");
 
-    sand_t p;
-    build_lava_shaft(&p, cells);
-    sand_set_lava_cooloff(&p, 255);
+    sand_t* const p = malloc(sizeof *p);
+    TEST_ASSERT_NOT_NULL(p);
+    build_lava_shaft(p, cells);
+    sand_set_lava_cooloff(p, 255);
     for (int i = 0; i < 5; i++) {
-        sand_set(&p, LAVA_SHAFT_X, LAVA_SHAFT_TOP - 1, WATER);
-        sand_step(&p, 0, 1000, 0);
+        sand_set(p, LAVA_SHAFT_X, LAVA_SHAFT_TOP - 1, WATER);
+        sand_step(p, 0, 1000, 0);
     }
-    const int poured_depth = lava_shaft_crust_depth(&p);
+    const int poured_depth = lava_shaft_crust_depth(p);
     free(cells);
 
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(1, poured_depth,
@@ -1591,14 +1592,15 @@ test_a_water_pour_freezes_a_lava_pool_below_its_crust(void) {
     TEST_ASSERT_NOT_NULL_MESSAGE(cells_off, "lava shaft grid must fit in "
                                             "what the framebuffer leaves");
 
-    sand_t p_off;
-    build_lava_shaft(&p_off, cells_off);
-    sand_set_lava_cooloff(&p_off, 0);
+    sand_t* const p_off = malloc(sizeof *p_off);
+    TEST_ASSERT_NOT_NULL(p_off);
+    build_lava_shaft(p_off, cells_off);
+    sand_set_lava_cooloff(p_off, 0);
     for (int i = 0; i < 5; i++) {
-        sand_set(&p_off, LAVA_SHAFT_X, LAVA_SHAFT_TOP - 1, WATER);
-        sand_step(&p_off, 0, 1000, 0);
+        sand_set(p_off, LAVA_SHAFT_X, LAVA_SHAFT_TOP - 1, WATER);
+        sand_step(p_off, 0, 1000, 0);
     }
-    const int off_depth = lava_shaft_crust_depth(&p_off);
+    const int off_depth = lava_shaft_crust_depth(p_off);
     free(cells_off);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(1, off_depth,
@@ -1606,6 +1608,8 @@ test_a_water_pour_freezes_a_lava_pool_below_its_crust(void) {
                                   "still freeze the one cell water actually touches, and no "
                                   "further - the baseline quench neither of these two variants "
                                   "ever disabled");
+    free(p_off);
+    free(p);
 }
 
 static void

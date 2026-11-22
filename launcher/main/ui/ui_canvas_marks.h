@@ -23,7 +23,7 @@ void ui_canvas_marks_reset(ui_canvas_marks_t* marks);
 
 void ui_canvas_marks_painted(ui_canvas_marks_t* marks, int slot, mu_Rect physical);
 
-/* Every slot painted before but not `present` this frame: its rect into
- * `out`, and the slot forgotten. Returns how many were written. */
+/* Clears each paint mark for a slot absent this frame. Copies its rectangle
+ * if `out` is non-NULL and returns the count, up to `max`. */
 int ui_canvas_marks_take_vanished(ui_canvas_marks_t* marks, const bool present[MU_CONTAINERPOOL_SIZE], mu_Rect* out,
                                   int max);

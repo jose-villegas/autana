@@ -134,6 +134,7 @@ extern ui_canvas_marks_t ui_canvas_marks;
  * ui_set_transform() (ui_build.c). Both draw_command() and
  * canvas_physical_rect()/command_rect() (ui.c) map through it. */
 affine2x_t ui_effective_transform(void);
+const affine2x_t* ui_effective_transform_ref(void);
 
 /* A point on the panel as the logical canvas sees it: what a raw input_t
  * touch needs before it means anything to a screen. */

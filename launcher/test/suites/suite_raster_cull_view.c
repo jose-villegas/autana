@@ -725,21 +725,28 @@ assert_vertices_of_kept_clusters_only(const raster_cull_frame_t* frame) {
 
 static void
 test_cull_view_frame_counts_the_vertices_of_kept_clusters_only(void) {
+    struct {
+        raster_cull_frame_t camera_only;
+        raster_cull_frame_t from_top;
+    }* const work = malloc(sizeof *work);
+
+    TEST_ASSERT_NOT_NULL(work);
     scene_t* s = scene_open();
     int16_t positions[SCENE_QUADS][PADDED_VERTICES_MAX][3];
     pad_scene_vertices(s, positions);
     scene_draw(s);
-    raster_cull_frame_t camera_only;
-    raster_cull_frame(scene_state(s), &camera_only);
+
+    raster_cull_frame(scene_state(s), &work->camera_only);
     TEST_ASSERT_EQUAL_UINT8(RASTER_FATE_CULLED, scene_state(s)->fate[SCENE_SIDE]);
-    assert_vertices_of_kept_clusters_only(&camera_only);
+    assert_vertices_of_kept_clusters_only(&work->camera_only);
 
     /* From the top the culled cluster is drawn too, yet the count is the camera's. */
     set_cull_from(RASTER_CULL_FROM_TOP);
     scene_draw(s);
-    raster_cull_frame_t from_top;
-    raster_cull_frame(scene_state(s), &from_top);
-    assert_vertices_of_kept_clusters_only(&from_top);
+
+    raster_cull_frame(scene_state(s), &work->from_top);
+    assert_vertices_of_kept_clusters_only(&work->from_top);
+    free(work);
 }
 
 static void

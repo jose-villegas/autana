@@ -115,21 +115,27 @@ static totals_t sum;
 static __attribute__((noinline)) void
 time_warp(entity_t scene, entity_t camera, const lens_t* lens, uint32_t t_ms) {
     raster_t* raster = &render_context_main()->raster;
-    const render_view_t now = view_at(scene, camera, lens, t_ms);
-    const render_view_t next = view_at(scene, camera, lens, t_ms + FRAMEGEN_AHEAD_MS);
+
+    struct {
+        render_view_t now, next, away;
+    }* const views = memory_alloc(sizeof *views, MEMORY_APP);
+
+    TEST_ASSERT_NOT_NULL(views);
+    views->now = view_at(scene, camera, lens, t_ms);
+    views->next = view_at(scene, camera, lens, t_ms + FRAMEGEN_AHEAD_MS);
     const int64_t cleared = timing_now_us();
     memset(target.depth, 0, (size_t)target.width * (size_t)target.height * sizeof(uint16_t));
     sum.clear += timing_now_us() - cleared;
-    render_view_t away = next;
-    render_view_set_shift(&away, (vec2f_t){FRAMEGEN_OFFSCREEN_SHIFT, 0.0F});
+    views->away = views->next;
+    render_view_set_shift(&views->away, (vec2f_t){FRAMEGEN_OFFSCREEN_SHIFT, 0.0F});
     const int64_t offscreen = timing_now_us();
-    framegen_warp(raster, &now, &away, &target);
+    framegen_warp(raster, &views->now, &views->away, &target);
     sum.offscreen += timing_now_us() - offscreen;
     const int64_t same = timing_now_us();
-    framegen_warp(raster, &now, &now, &target);
+    framegen_warp(raster, &views->now, &views->now, &target);
     sum.same_view += timing_now_us() - same;
     const int64_t start = timing_now_us();
-    framegen_warp(raster, &now, &next, &target);
+    framegen_warp(raster, &views->now, &views->next, &target);
     const int64_t warped = timing_now_us();
     sum.holes += framegen_fill(raster, &target);
     const int64_t filled = timing_now_us();
@@ -145,6 +151,7 @@ time_warp(entity_t scene, entity_t camera, const lens_t* lens, uint32_t t_ms) {
     sum.warp += warped - start;
     sum.warp_max = warped - start > sum.warp_max ? warped - start : sum.warp_max;
     sum.pixels += (int64_t)raster->width * raster->height;
+    memory_free(views);
 }
 
 /* The scenario's path as Render Lab shows it, portrait, its clip from the start. */
@@ -448,6 +455,22 @@ shown_frame(void* ctx, int64_t dt_us) {
 }
 
 /* The path played once in real time in the current mode, as a viewer sees it. */
+static __attribute__((noinline)) void
+report_mode(const frame_profile_t* p) {
+    TEST_ASSERT_GREATER_THAN_INT(0, played.drawn);
+    TEST_ASSERT_EQUAL_INT(p->frames, played.count);
+    ESP_LOGI(TAG, FRAMEGEN_MODES_LINE, scenario->scene->key, mode->generating, mode->budget_ms,
+             raster_settings(&render_context_main()->raster).partial_redraw, p->frames, played.drawn,
+             (int)p->frame_us.avg, (int)p->frame_us.p95, (int)(played.height_sum / played.drawn),
+             (int)render_context_frame(render_context_main()).unscaled_us);
+    log_worst_frames(&played);
+    char row[LAB_PERF_ROW_NAME_SIZE];
+    const int length = snprintf(row, sizeof row, "framegen %s %s", scenario->scene->key, mode->name);
+    TEST_ASSERT_TRUE(length > 0 && (size_t)length < sizeof row);
+    const perf_budget_t goal = mode_goal();
+    lab_perf_named_budget(row, p->frame_us.avg, p->frame_us.p95, &goal, true);
+}
+
 static void
 test_mode(void) {
     const scenario_path_t path = enter_path();
@@ -456,19 +479,11 @@ test_mode(void) {
     (void)lab_test_frame_dt(0, false, NULL); /* warm-up, not counted */
     const frame_profile_scenario_t playback = {scenario->scene->key, (int64_t)path.duration_ms * MATH_US_PER_MS};
     frame_cost_take_clear(); /* each frame's stages, from this path alone */
-    const frame_profile_t p = frame_profile_play(&playback, shown_frame, &played, NULL);
-    TEST_ASSERT_GREATER_THAN_INT(0, played.drawn);
-    TEST_ASSERT_EQUAL_INT(p.frames, played.count);
-    ESP_LOGI(TAG, FRAMEGEN_MODES_LINE, scenario->scene->key, mode->generating, mode->budget_ms,
-             raster_settings(&render_context_main()->raster).partial_redraw, p.frames, played.drawn,
-             (int)p.frame_us.avg, (int)p.frame_us.p95, (int)(played.height_sum / played.drawn),
-             (int)render_context_frame(render_context_main()).unscaled_us);
-    log_worst_frames(&played);
-    char row[LAB_PERF_ROW_NAME_SIZE];
-    const int length = snprintf(row, sizeof row, "framegen %s %s", scenario->scene->key, mode->name);
-    TEST_ASSERT_TRUE(length > 0 && (size_t)length < sizeof row);
-    const perf_budget_t goal = mode_goal();
-    lab_perf_named_budget(row, p.frame_us.avg, p.frame_us.p95, &goal, true);
+    frame_profile_t* const profile = memory_alloc(sizeof *profile, MEMORY_APP);
+    TEST_ASSERT_NOT_NULL(profile);
+    *profile = frame_profile_play(&playback, shown_frame, &played, NULL);
+    report_mode(profile);
+    memory_free(profile);
     TEST_ASSERT_TRUE(render_lab_framegen_set_on(false));
     TEST_ASSERT_TRUE(render_lab_budget_set_ms(0));
     release_fixture();

@@ -1409,28 +1409,28 @@ test_a_camera_keeps_its_fixed_scale_unless_dynamic_resolution_is_asked_for(void)
     entity_t scene = show("test_sky");
     render_context_set_scale(render_context_main(), 50);
     frame(0);
-    TEST_ASSERT_EQUAL_INT(-1, render_context_frame(render_context_main()).step);
-    TEST_ASSERT_EQUAL_INT(SIZE / 2, render_context_frame(render_context_main()).width);
+    TEST_ASSERT_EQUAL_INT(-1, render_context_main()->frame.step);
+    TEST_ASSERT_EQUAL_INT(SIZE / 2, render_context_main()->frame.width);
 
     const resolution_step_t quarter = {SIZE / 4, SIZE / 4};
     const resolution_config_t one = resolution_config(&quarter, 1, 1, INT32_MAX);
     render_context_set_dynamic_resolution(render_context_main(), &one, NULL, 0);
     frame(0);
-    TEST_ASSERT_EQUAL_INT(0, render_context_frame(render_context_main()).step);
-    TEST_ASSERT_EQUAL_INT(SIZE / 4, render_context_frame(render_context_main()).width);
+    TEST_ASSERT_EQUAL_INT(0, render_context_main()->frame.step);
+    TEST_ASSERT_EQUAL_INT(SIZE / 4, render_context_main()->frame.width);
 
     render_context_set_dynamic_resolution(render_context_main(), NULL, NULL, 0);
     frame(0);
-    TEST_ASSERT_EQUAL_INT(-1, render_context_frame(render_context_main()).step);
-    TEST_ASSERT_EQUAL_INT(SIZE / 2, render_context_frame(render_context_main()).width);
+    TEST_ASSERT_EQUAL_INT(-1, render_context_main()->frame.step);
+    TEST_ASSERT_EQUAL_INT(SIZE / 2, render_context_main()->frame.width);
 
     render_context_set_dynamic_resolution(render_context_main(), &one, NULL, 0);
     (void)scene;
     scene_unload_all();
     scene = show("test_sky");
     frame(0);
-    TEST_ASSERT_EQUAL_INT(-1, render_context_frame(render_context_main()).step);
-    TEST_ASSERT_EQUAL_INT(SIZE, render_context_frame(render_context_main()).width);
+    TEST_ASSERT_EQUAL_INT(-1, render_context_main()->frame.step);
+    TEST_ASSERT_EQUAL_INT(SIZE, render_context_main()->frame.width);
 }
 
 static void
@@ -1914,6 +1914,15 @@ drawn_renderer(const scene_t* scene, int instance) {
 /* Renderers of test_family. */
 #define FAMILY_RENDERERS_MAX 4
 
+static __attribute__((noinline)) void
+copy_poses(entity_t root, entity_t fresh_root, int count) {
+    for (int e = 0; e < count; e++) {
+        const entity_t from = entity_at(root, e), to = entity_at(fresh_root, e);
+        transform_set_local(to, transform_local(from));
+        entity_set_enabled(to, entity_enabled(from));
+    }
+}
+
 /* `scene`'s last frame and instances equal a fresh load put in the same state,
  * drawn with `root` hidden: every renderer CHANGED, so the reference walks
  * them all. */
@@ -1922,17 +1931,14 @@ assert_draws_as_fresh(entity_t root, int drawn) {
     memcpy(fx.held, fx.pixels, sizeof(*fx.pixels) * SIZE * SIZE);
     const scene_t* scene = columns(root);
     TEST_ASSERT_TRUE(drawn <= FAMILY_RENDERERS_MAX);
-    int held[FAMILY_RENDERERS_MAX];
+    int* const held = malloc(FAMILY_RENDERERS_MAX * sizeof *held);
+    TEST_ASSERT_NOT_NULL(held);
     for (int i = 0; i < drawn; i++) {
         held[i] = drawn_renderer(scene, i);
     }
     const entity_t fresh_root = show("test_family");
     const scene_t* fresh = columns(fresh_root);
-    for (int e = 0; e < scene->asset.entity_count; e++) {
-        const entity_t from = entity_at(root, e), to = entity_at(fresh_root, e);
-        transform_set_local(to, transform_local(from));
-        entity_set_enabled(to, entity_enabled(from));
-    }
+    copy_poses(root, fresh_root, scene->asset.entity_count);
     entity_set_enabled(root, false);
     frame(0);
     TEST_ASSERT_EQUAL_HEX16_ARRAY(fx.pixels, fx.held, SIZE * SIZE);
@@ -1950,6 +1956,7 @@ assert_draws_as_fresh(entity_t root, int drawn) {
     scene_release(fresh_root);
     entity_set_enabled(root, true);
     TEST_ASSERT_TRUE(camera_activate(camera_first(root)));
+    free(held);
 }
 
 /* Disabling, moving and re-enabling a parent with a drawn child, and an
@@ -6637,6 +6644,62 @@ test_light_attachment_defaults_refusals_and_capacity(void) {
     test_free_aligned(raw);
 }
 
+static __attribute__((noinline)) void
+check_scene_light_rotation(entity_t scene, vec3f_t sun_angles) {
+    const entity_t entity = entity_find(scene, name_hash("red"));
+    const entity_t light = entity_find(scene, name_hash("camera"));
+    const entity_t baked = entity_find(scene, name_hash("green"));
+    scene_skinned_renderer_t* skin = skin_of(entity);
+    const r3d_lit_mesh_t* mesh = renderer_mesh(entity);
+    const r3d_lit_mesh_t* static_mesh = renderer_mesh(baked);
+    uint8_t baked_colors[QUAD_VERTICES][3];
+    memcpy(baked_colors, static_mesh->colors, sizeof baked_colors);
+    TEST_ASSERT_EQUAL_PTR(skin->bind.colors, mesh->colors);
+    TEST_ASSERT_EQUAL_FLOAT(SCENE_TONEMAP_WHITE_NONE, columns(scene)->tonemap_white);
+    TEST_ASSERT_TRUE(light_set_intensity(light, 1));
+    transformf_t pose = transform_local(light);
+    pose.rotation = quatf_from_euler(sun_angles);
+    transform_set_local(light, pose);
+    scene_animation_step(columns(scene), 0);
+    TEST_ASSERT_FLOAT_WITHIN(0.01F, quatf_rotate(pose.rotation, SCENE_LIGHT_AXIS).x,
+                             columns(scene)->world_lights.direction[0].x);
+    TEST_ASSERT_FLOAT_WITHIN(0.01F, quatf_rotate(pose.rotation, SCENE_LIGHT_AXIS).y,
+                             columns(scene)->world_lights.direction[0].y);
+    TEST_ASSERT_FLOAT_WITHIN(0.01F, quatf_rotate(pose.rotation, SCENE_LIGHT_AXIS).z,
+                             columns(scene)->world_lights.direction[0].z);
+    TEST_ASSERT_EQUAL_PTR(skin->colors, mesh->colors);
+    TEST_ASSERT_EQUAL_MEMORY(baked_colors, static_mesh->colors, sizeof baked_colors);
+    uint8_t lit_colors[RIG_VERTICES][3];
+    memcpy(lit_colors, mesh->colors, sizeof lit_colors);
+    const size_t bytes = r3d_skin_output_bytes(&skin->bind);
+    void* block = malloc(bytes);
+    TEST_ASSERT_NOT_NULL(block);
+    r3d_skin_output_t output;
+    TEST_ASSERT_TRUE(r3d_skin_output_init(&skin->bind, block, bytes, &output));
+    uint8_t expected[RIG_VERTICES][3];
+    r3d_skin_clusters_lit(&skin->skin, &skin->bind, skin->palette, 0, skin->bind.cluster_count, &output,
+                          skin->normal_palette, &columns(scene)->world_lights, expected);
+    TEST_ASSERT_EQUAL_MEMORY(expected, mesh->colors, sizeof expected);
+    free(block);
+    TEST_ASSERT_TRUE(animator_set_paused(entity, ANIMATOR_CURRENT, true));
+    pose.rotation = quatf_from_euler((vec3f_t){MATH_PI, 0, 0});
+    transform_set_local(light, pose);
+    scene_animation_step(columns(scene), 0);
+    TEST_ASSERT_NOT_EQUAL(0, memcmp(lit_colors, mesh->colors, sizeof lit_colors));
+    pose.rotation = quatf_identity();
+    transform_set_local(light, pose);
+    scene_animation_step(columns(scene), 0);
+    memcpy(lit_colors, mesh->colors, sizeof lit_colors);
+    const quatf_t turn = quatf_from_euler(sun_angles);
+    pose.rotation = turn;
+    transform_set_local(light, pose);
+    transformf_t renderer = transform_local(entity);
+    renderer.rotation = turn;
+    transform_set_local(entity, renderer);
+    scene_animation_step(columns(scene), 0);
+    TEST_ASSERT_EQUAL_MEMORY(lit_colors, mesh->colors, sizeof lit_colors);
+}
+
 static void
 test_scene_light_rotation_shades_only_skin_and_matches_kernel(void) {
     static const char* const skins[] = {"rig.skin2", "rig.skin4"};
@@ -6646,58 +6709,7 @@ test_scene_light_rotation_shades_only_skin_and_matches_kernel(void) {
     const vec3f_t sun_angles = {40.0F * MATH_PI / DEGREES_HALF_TURN, 30.0F * MATH_PI / DEGREES_HALF_TURN, 0};
     for (size_t i = 0; i < sizeof skins / sizeof skins[0]; i++) {
         entity_t scene = rig_fixture(skins[i], NULL);
-        const entity_t entity = entity_find(scene, name_hash("red"));
-        const entity_t light = entity_find(scene, name_hash("camera"));
-        const entity_t baked = entity_find(scene, name_hash("green"));
-        scene_skinned_renderer_t* skin = skin_of(entity);
-        const r3d_lit_mesh_t* mesh = renderer_mesh(entity);
-        const r3d_lit_mesh_t* static_mesh = renderer_mesh(baked);
-        uint8_t baked_colors[QUAD_VERTICES][3];
-        memcpy(baked_colors, static_mesh->colors, sizeof baked_colors);
-        TEST_ASSERT_EQUAL_PTR(skin->bind.colors, mesh->colors);
-        TEST_ASSERT_EQUAL_FLOAT(SCENE_TONEMAP_WHITE_NONE, columns(scene)->tonemap_white);
-        TEST_ASSERT_TRUE(light_set_intensity(light, 1));
-        transformf_t pose = transform_local(light);
-        pose.rotation = quatf_from_euler(sun_angles);
-        transform_set_local(light, pose);
-        scene_animation_step(columns(scene), 0);
-        TEST_ASSERT_FLOAT_WITHIN(0.01F, quatf_rotate(pose.rotation, SCENE_LIGHT_AXIS).x,
-                                 columns(scene)->world_lights.direction[0].x);
-        TEST_ASSERT_FLOAT_WITHIN(0.01F, quatf_rotate(pose.rotation, SCENE_LIGHT_AXIS).y,
-                                 columns(scene)->world_lights.direction[0].y);
-        TEST_ASSERT_FLOAT_WITHIN(0.01F, quatf_rotate(pose.rotation, SCENE_LIGHT_AXIS).z,
-                                 columns(scene)->world_lights.direction[0].z);
-        TEST_ASSERT_EQUAL_PTR(skin->colors, mesh->colors);
-        TEST_ASSERT_EQUAL_MEMORY(baked_colors, static_mesh->colors, sizeof baked_colors);
-        uint8_t lit_colors[RIG_VERTICES][3];
-        memcpy(lit_colors, mesh->colors, sizeof lit_colors);
-        const size_t bytes = r3d_skin_output_bytes(&skin->bind);
-        void* block = malloc(bytes);
-        TEST_ASSERT_NOT_NULL(block);
-        r3d_skin_output_t output;
-        TEST_ASSERT_TRUE(r3d_skin_output_init(&skin->bind, block, bytes, &output));
-        uint8_t expected[RIG_VERTICES][3];
-        r3d_skin_clusters_lit(&skin->skin, &skin->bind, skin->palette, 0, skin->bind.cluster_count, &output,
-                              skin->normal_palette, &columns(scene)->world_lights, expected);
-        TEST_ASSERT_EQUAL_MEMORY(expected, mesh->colors, sizeof expected);
-        free(block);
-        TEST_ASSERT_TRUE(animator_set_paused(entity, ANIMATOR_CURRENT, true));
-        pose.rotation = quatf_from_euler((vec3f_t){MATH_PI, 0, 0});
-        transform_set_local(light, pose);
-        scene_animation_step(columns(scene), 0);
-        TEST_ASSERT_NOT_EQUAL(0, memcmp(lit_colors, mesh->colors, sizeof lit_colors));
-        pose.rotation = quatf_identity();
-        transform_set_local(light, pose);
-        scene_animation_step(columns(scene), 0);
-        memcpy(lit_colors, mesh->colors, sizeof lit_colors);
-        const quatf_t turn = quatf_from_euler(sun_angles);
-        pose.rotation = turn;
-        transform_set_local(light, pose);
-        transformf_t renderer = transform_local(entity);
-        renderer.rotation = turn;
-        transform_set_local(entity, renderer);
-        scene_animation_step(columns(scene), 0);
-        TEST_ASSERT_EQUAL_MEMORY(lit_colors, mesh->colors, sizeof lit_colors);
+        check_scene_light_rotation(scene, sun_angles);
         release_fixture();
     }
 }

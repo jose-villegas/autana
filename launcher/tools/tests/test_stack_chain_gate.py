@@ -50,6 +50,37 @@ class StackChainTests(unittest.TestCase):
                                           test_roots={"test_frame": ("run_example",)})
             self.assertTrue(any("3152 bytes" in p for p in problems))
 
+    def test_dispatch_target_is_bound_to_its_caller(self):
+        with tempfile.TemporaryDirectory() as directory:
+            spec = pathlib.Path(directory) / "stack_chain.txt"
+            spec.write_text(
+                "root light frame\n"
+                "indirect light>bridge>dispatch : small\n"
+                "indirect heavy>dispatch : large\n"
+            )
+            graph = ({"light": 32, "bridge": 32, "heavy": 32, "dispatch": 64, "small": 128, "large": 4096,
+                      "main_task": 32, "shell_step_app": 32},
+                     {"main_task": {"shell_step_app"}, "light": {"bridge"}, "bridge": {"dispatch"}, "heavy": {"dispatch"}},
+                     {"dispatch"}, [])
+            self.assertEqual([], gate.check_app("app", str(spec), [], 3584, 512, graph=graph))
+            spec.write_text("root heavy frame\nindirect light>bridge>dispatch : small\n")
+            problems = gate.check_app("app", str(spec), [], 3584, 512, graph=graph)
+            self.assertTrue(any("dispatch makes a call through a pointer" in problem for problem in problems))
+            spec.write_text("root heavy frame\nindirect heavy>dispatch : large\n")
+            problems = gate.check_app("app", str(spec), [], 3584, 512, graph=graph)
+            self.assertTrue(any("4256 bytes" in problem for problem in problems))
+
+    def test_dispatch_with_no_targets_requires_an_explicit_declaration(self):
+        with tempfile.TemporaryDirectory() as directory:
+            spec = pathlib.Path(directory) / "stack_chain.txt"
+            graph = ({"root": 64, "dispatch": 32, "main_task": 32, "shell_step_app": 32},
+                     {"main_task": {"shell_step_app"}, "root": {"dispatch"}}, {"dispatch"}, [])
+            spec.write_text("root root frame\n")
+            problems = gate.check_app("app", str(spec), [], 3584, 512, graph=graph)
+            self.assertTrue(any("dispatch makes a call through a pointer" in problem for problem in problems))
+            spec.write_text("root root frame\nindirect dispatch : -\n")
+            self.assertEqual([], gate.check_app("app", str(spec), [], 3584, 512, graph=graph))
+
     def test_an_unreachable_harness_fails(self):
         with tempfile.TemporaryDirectory() as directory:
             spec = pathlib.Path(directory) / "stack_chain.txt"
