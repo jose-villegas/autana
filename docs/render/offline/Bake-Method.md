@@ -76,6 +76,9 @@ $K$ where the next bounce is negligible beside the direct light.
 
 The paths' noise falls as $1/\sqrt{R}$.
 
+Only static meshes are baked. A skinned mesh takes its sky and bounce light
+at run time from baked probes ([Light Probes](../frame/Light-Probes.md)).
+
 ![The light each of three bounces adds along the floor, and the relative error against the ray count](../../images/render/bake-bounce-sweep.png)
 
 | Rule | Why |

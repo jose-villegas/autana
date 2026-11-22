@@ -2404,10 +2404,10 @@ test_set_texture_keeps_divide_px_and_the_bend_in_steps_and_rounds_a_fine_bend_up
                                                           RENDER_TEXTURE_LEVEL_MAX, 0});
     TEST_ASSERT_EQUAL_UINT8(RENDER_TEXTURE_DIVIDE_PX_MAX, t.texture_divide_px);
     TEST_ASSERT_EQUAL_UINT8(RENDER_TEXTURE_LEVEL_MAX, t.texture_affine_level);
-    TEST_ASSERT_EQUAL_UINT8((int)(RENDER_TEXTURE_BEND_MAX * R3D_SPAN_BEND_STEPS), t.texture_bend_steps);
-    r3d_span_set_texture(&t, &(render_texture_settings_t){1, 1.0F / (2.0F * R3D_SPAN_BEND_STEPS), 0, 0});
+    TEST_ASSERT_EQUAL_UINT8((int)(RENDER_TEXTURE_BEND_MAX * RENDER_TEXTURE_BEND_STEPS), t.texture_bend_steps);
+    r3d_span_set_texture(&t, &(render_texture_settings_t){1, 1.0F / (2.0F * RENDER_TEXTURE_BEND_STEPS), 0, 0});
     TEST_ASSERT_EQUAL_UINT8(1, t.texture_bend_steps);
-    r3d_span_set_texture(&t, &(render_texture_settings_t){0, 1.0F / (4.0F * R3D_SPAN_BEND_STEPS), 0, 0});
+    r3d_span_set_texture(&t, &(render_texture_settings_t){0, 1.0F / (4.0F * RENDER_TEXTURE_BEND_STEPS), 0, 0});
     TEST_ASSERT_EQUAL_UINT8(0, t.texture_bend_steps);
     TEST_ASSERT_EQUAL_UINT8(0, t.texture_divide_px);
     r3d_span_set_texture(&t, &(render_texture_settings_t){.far_level = RENDER_TEXTURE_LEVEL_MAX});

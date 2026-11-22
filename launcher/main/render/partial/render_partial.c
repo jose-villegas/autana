@@ -44,6 +44,11 @@ same_settings(render_settings_t a, render_settings_t b) {
 }
 
 bool
+render_partial_same_view(const render_partial_t* p, const render_view_t* view) {
+    return same_view(view, &p->view);
+}
+
+bool
 render_partial_still(const render_partial_t* p, const raster_t* raster, const render_view_t* view) {
     return raster_settings(raster).partial_redraw && p->kept && p->composed && p->changed_count >= 0
            && raster->attachment_count == 0 && raster->instance_count == p->instance_count && raster->clear == p->clear
