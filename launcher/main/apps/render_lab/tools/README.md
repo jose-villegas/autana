@@ -20,6 +20,19 @@ The capybara uses the packed grid when `sponza.shpr` is present. Without it,
 the scene uses its sun and ambient lighting. Successful loading logs
 `SH probes:` and the record size.
 
+To compare sun, bounce and total probe lighting on white skins:
+
+```sh
+python launcher/main/apps/render_lab/tools/irradiance_figures.py \
+  --scene capybara-sponza --duration-ms 18500 --stem capybara-sponza-irradiance \
+  --reference-scene launcher/demo/sponza/sponza.scene.toml --glb-bake capybara.glb \
+  --entity capybara --times-ms 3000 6200 12000 --out "$OUT" --work "$WORK"
+```
+
+The sheet shows matched crops and the total path-traced reference. The work
+folder's `measurements.json` reports mean linear luminance over the eroded
+reference skin masks, the bounce share and pixel differences for each still.
+
 ## Host renders
 
 ```sh
