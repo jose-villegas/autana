@@ -112,29 +112,36 @@ path = { animation = "fly.anim.toml", node = "camera" }
             squares.append(ids[y:y + side, x:x + side])
         np.testing.assert_array_equal(*squares)
 
-    def test_camera_pose_input_matches_logged_poses_and_preserves_render_size(self):
+    def test_camera_pose_input_matches_logged_poses(self):
         sys.path.insert(0, str(TOOLS / "render"))
         import reference_poses
         poses = self.root / 'probes.txt'
         poses.write_text('size 8 10\nlens 0.7 0.25\npose 0 0 0 0 0 -1\n'
                          'pose 0.1 0.2 0 0.2 0.1 -1\npose 0.2 -0.1 0 -0.1 0.2 -1\n')
-        log = self.root / 'probe.poses.csv'
         root = self.root / 'probe-ids'
         run, _out = self.render('--frames', '3', '--camera', 'visitor', '--camera-poses', str(poses),
-                                '--poses', str(log), '--ids', str(root), '--view', 'triangles')
+                                '--quarter', '0', '--size', '8x10', '--ids', str(root), '--view', 'triangles')
         self.assertEqual(run.returncode, 0, run.stderr)
-        check = reference_poses.checker(self.root / 'probe', self.root, poses)
+        check = reference_poses.checker(root / 'capture', self.root, poses)
         for frame in range(3):
             check(frame, frame)
         metadata = json.loads((root / 'entries.json').read_text())
-        self.assertNotEqual((metadata['width'], metadata['height']), (8, 10))
+        self.assertEqual((metadata['width'], metadata['height']), (8, 10))
         self.assertAlmostEqual(metadata['lens'], 0.7)
         self.assertAlmostEqual(metadata['near'], 0.25)
         shifted = self.root / 'shifted.txt'
         lines = poses.read_text().splitlines()
         shifted.write_text('\n'.join(lines[:2] + lines[3:] + lines[2:3]) + '\n')
         with self.assertRaisesRegex(ValueError, 'not at the same pose'):
-            reference_poses.checker(self.root / 'probe', self.root, shifted)(0, 0)
+            reference_poses.checker(root / 'capture', self.root, shifted)(0, 0)
+
+    def test_camera_pose_input_rejects_a_different_raster_size(self):
+        poses = self.root / 'wrong-size.txt'
+        poses.write_text('size 8 10\nlens 0.7 0.25\npose 0 0 0 0 0 -1\n')
+        run, _out = self.render('--frames', '1', '--camera-poses', str(poses),
+                                '--quarter', '0', '--size', '9x10')
+        self.assertNotEqual(run.returncode, 0)
+        self.assertIn('pose size 8x10 differs from render size 9x10', run.stderr)
 
     def test_id_capture_frames_match_entry_ranges(self):
         for view in ("triangles", "meshlets", "copies"):

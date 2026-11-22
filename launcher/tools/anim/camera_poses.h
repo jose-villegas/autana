@@ -2,6 +2,8 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stddef.h>
+
 #include "math/linear/vec3f.h"
 
 typedef struct {
@@ -14,5 +16,6 @@ typedef struct {
     camera_pose_t* poses;
 } camera_poses_t;
 
-bool camera_poses_load(const char* path, camera_poses_t* poses);
+/* Reads source poses into the engine frame. A dash reads standard input. */
+bool camera_poses_load(const char* path, camera_poses_t* poses, char* problem, size_t problem_size);
 void camera_poses_free(camera_poses_t* poses);

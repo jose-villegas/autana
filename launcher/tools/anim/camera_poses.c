@@ -23,7 +23,7 @@ read_line(char* line, camera_poses_t* poses) {
     while (isspace((unsigned char)*tag)) {
         tag++;
     }
-    if (*tag == '\0') {
+    if (*tag == '\0' || *tag == '#') {
         return true;
     }
     char* values = tag;
@@ -58,27 +58,46 @@ read_line(char* line, camera_poses_t* poses) {
         return false;
     }
     poses->poses = grown;
+    /* Source poses cross the same frame boundary as asset/engine_frame.py. */
+    pose.eye.z = -pose.eye.z;
+    pose.forward.z = -pose.forward.z;
     poses->poses[poses->count++] = pose;
     return true;
 }
 
 bool
-camera_poses_load(const char* path, camera_poses_t* poses) {
+camera_poses_load(const char* path, camera_poses_t* poses, char* problem, size_t problem_size) {
     *poses = (camera_poses_t){0};
-    FILE* file = fopen(path, "r");
+    const bool piped = strcmp(path, "-") == 0;
+    FILE* file = piped ? stdin : fopen(path, "r");
     if (file == NULL) {
+        (void)snprintf(problem, problem_size, "cannot open pose file");
         return false;
     }
     char line[CAMERA_POSES_LINE_BYTES];
-    bool ok = true;
-    while (ok && fgets(line, sizeof line, file) != NULL) {
-        ok = (strchr(line, '\n') != NULL || feof(file)) && read_line(line, poses);
+    const char* wrong = NULL;
+    size_t number = 0;
+    while (fgets(line, sizeof line, file) != NULL) {
+        number++;
+        if ((strchr(line, '\n') == NULL && !feof(file)) || !read_line(line, poses)) {
+            wrong = "invalid size, lens or pose";
+            break;
+        }
     }
-    ok = ok && !ferror(file) && poses->width > 0 && poses->height > 0 && poses->lens > 0.0F && poses->near_z > 0.0F
-         && poses->count > 0;
-    ok = fclose(file) == 0 && ok;
-    if (!ok) {
-        camera_poses_free(poses);
+    if (ferror(file)) {
+        wrong = "cannot read pose file";
     }
-    return ok;
+    if (!piped && fclose(file) != 0) {
+        wrong = "cannot close pose file";
+    }
+    if (wrong != NULL) {
+        (void)snprintf(problem, problem_size, "line %zu: %s", number, wrong);
+    } else if (poses->width > 0 && poses->height > 0 && poses->lens > 0.0F && poses->near_z > 0.0F
+               && poses->count > 0) {
+        return true;
+    } else {
+        (void)snprintf(problem, problem_size, "a poses file needs a size, a lens and at least one pose");
+    }
+    camera_poses_free(poses);
+    return false;
 }

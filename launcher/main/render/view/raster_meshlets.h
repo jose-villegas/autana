@@ -4,10 +4,12 @@
 #include <stdint.h>
 
 #include "gfx/target/gfx_color.h"
+#include "render/r3d_span.h"
 #include "render/raster_attachment.h"
 
 typedef struct {
-    uint32_t next;
+    r3d_span_step_t step;
+    uint64_t next;
     const raster_t* raster;
 } raster_meshlets_t;
 
