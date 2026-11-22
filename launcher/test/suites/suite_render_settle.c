@@ -148,6 +148,7 @@ test_short_and_uneven_heights_cover_each_row(void) {
 typedef struct {
     render_context_t c[CONTEXTS];
     render_settings_t settings;
+    render_view_t view;
     uint16_t picture[CONTEXTS][W * H];
     r3d_texture_t texture;
     uint8_t texels[TEX_BYTES];
@@ -161,6 +162,15 @@ typedef struct {
 
 static fixture_t* f;
 static const box3f_t change_at_eye = {{0, 0, FAR_EYE_Z}, {0, 0, FAR_EYE_Z}};
+
+/* Keep view construction off the stack while frame() draws. */
+static __attribute__((noinline)) void
+set_view(float eye_x, float eye_z) {
+    fixture_camera_t camera = raster_rig_camera;
+    camera.eye.z = eye_z;
+    camera.eye.x = eye_x;
+    f->view = render_view_fixture_at(&camera, (viewport_t){W, H, 0});
+}
 
 static void
 cleanup(void) {
@@ -247,6 +257,7 @@ fixture(int budget, bool levels, bool coarse_near) {
 #endif
     f = calloc(1, sizeof(*f));
     TEST_ASSERT_NOT_NULL(f);
+    set_view(raster_rig_camera.eye.x, FAR_EYE_Z);
     texture_wall(&r->quad[0].mesh);
     r->quad[CARD].mesh.colors = gradient;
     r->model[CARD] = mat4f_identity();
@@ -268,13 +279,15 @@ fixture(int budget, bool levels, bool coarse_near) {
         f->c[k] = RENDER_CONTEXT_DEFAULT;
         render_context_set_scale(&f->c[k], 100);
         render_settings_t settings = k == 1 ? render_settle_quality(&f->settings) : f->settings;
-        if (k == 1) {
+        if (levels && k == 1) {
             settings.lod.tolerance_px = 0.0F;
             settings.lod.triangle_budget = 0;
             settings.lod.blend = RENDER_LOD_BLEND_SWITCH;
         }
-        memcpy(f->instances[k], r->instance, sizeof r->instance);
-        f->instances[k][CARD].lod_coarse = levels ? f->lod[k] : NULL;
+        if (levels) {
+            memcpy(f->instances[k], r->instance, sizeof r->instance);
+            f->instances[k][CARD].lod_coarse = f->lod[k];
+        }
         if (k > 0) {
             settings.partial_redraw = k == LIVE;
             settings.settle.frame_us = 0;
@@ -284,19 +297,13 @@ fixture(int budget, bool levels, bool coarse_near) {
     return r;
 }
 
-static render_view_t
-view(void) {
-    fixture_camera_t camera = raster_rig_camera;
-    camera.eye.z = FAR_EYE_Z;
-    return render_view_fixture_at(&camera, (viewport_t){W, H, 0});
-}
-
 static render_context_frame_t
-frame(const render_view_t* v, const box3f_t* changed, int count) {
+frame(raster_rig_t* r, const box3f_t* changed, int count) {
     render_context_set_changed(&f->c[0], changed, count);
     render_context_set_changed(&f->c[LIVE], changed, count);
     for (int k = 0; k < CONTEXTS; k++) {
-        TEST_ASSERT_TRUE(render_context_draw(&f->c[k], f->instances[k], RASTER_RIG_QUADS, v, 0));
+        const r3d_instance_t* instances = r->quad[CARD].mesh.lod_group_count > 0 ? f->instances[k] : r->instance;
+        TEST_ASSERT_TRUE(render_context_draw(&f->c[k], instances, RASTER_RIG_QUADS, &f->view, 0));
         (void)render_context_compose(&f->c[k], f->picture[k], NULL, NULL);
     }
     return render_context_frame(&f->c[0]);
@@ -308,10 +315,10 @@ assert_picture(int oracle) {
 }
 
 static bool
-assert_band_depth(const render_view_t* view, int first, int end, float live_near) {
+assert_band_depth(int first, int end, float live_near) {
     raster_t* oracle = &f->c[1].raster;
     *raster_carve(oracle).depth_near = live_near;
-    raster_draw_culled(oracle, view);
+    raster_draw_culled(oracle, &f->view);
     const uint16_t* expected = raster_depth(oracle);
     const int offset = first * W;
     const size_t pixels = (size_t)(end - first) * W;
@@ -326,11 +333,10 @@ assert_band_depth(const render_view_t* view, int first, int end, float live_near
 static raster_rig_t*
 settle_held(int budget, bool levels, bool coarse_near) {
     raster_rig_t* r = fixture(budget, levels, coarse_near);
-    const render_view_t v = view();
-    (void)frame(&v, NULL, -1);
+    (void)frame(r, NULL, -1);
     TEST_ASSERT_NOT_EQUAL(0, memcmp(f->picture[1], f->picture[LIVE], sizeof f->picture[0]));
     for (int i = 1; i < HOLD; i++) {
-        TEST_ASSERT_EQUAL_INT(0, frame(&v, NULL, 0).settled_rows);
+        TEST_ASSERT_EQUAL_INT(0, frame(r, NULL, 0).settled_rows);
         assert_picture(LIVE);
     }
     const float live_near = raster_depth_near(&f->c[LIVE].raster);
@@ -343,7 +349,7 @@ settle_held(int budget, bool levels, bool coarse_near) {
     }
     const int rounds = budget == 1 ? RENDER_SETTLE_BANDS : 2;
     for (int i = 0; i < rounds; i++) {
-        const render_context_frame_t out = frame(&v, NULL, 0);
+        const render_context_frame_t out = frame(r, NULL, 0);
         TEST_ASSERT_FALSE(out.unchanged);
         const int band = RENDER_SETTLE_BANDS / 2 + (i % 2 == 0 ? i / 2 : -(i + 1) / 2);
         const int first = band * H / RENDER_SETTLE_BANDS;
@@ -362,7 +368,7 @@ settle_held(int budget, bool levels, bool coarse_near) {
             const size_t bytes = (end - first) * W * sizeof(uint16_t);
             const int offset = first * W;
             card_bands += memcmp(f->picture[1] + offset, f->picture[LIVE] + offset, bytes) != 0;
-            clamped |= assert_band_depth(&v, first, end, live_near);
+            clamped |= assert_band_depth(first, end, live_near);
         }
         TEST_ASSERT_EQUAL_MEMORY(&f->c[0].drawn_settings, &f->c[0].partial.settings, sizeof f->settings);
     }
@@ -371,7 +377,7 @@ settle_held(int budget, bool levels, bool coarse_near) {
         TEST_ASSERT_EQUAL(!coarse_near, clamped);
     }
     assert_picture(1);
-    const render_context_frame_t after = frame(&v, NULL, 0);
+    const render_context_frame_t after = frame(r, NULL, 0);
     TEST_ASSERT_TRUE(after.unchanged);
     TEST_ASSERT_EQUAL_INT(0, after.settled_rows);
     assert_picture(1);
@@ -428,19 +434,16 @@ assert_live_lod(void) {
 
 static void
 test_lod_settle_leaves_live_picks_and_steering_untouched(void) {
-    fixture(1, true, false);
-    render_view_t v = view();
-    (void)frame(&v, NULL, -1);
+    raster_rig_t* r = fixture(1, true, false);
+    (void)frame(r, NULL, -1);
     TEST_ASSERT_TRUE(r3d_lod_any(f->lod[0], CARD_GROUPS));
     for (int i = 0; i < HOLD + RENDER_SETTLE_BANDS; i++) {
         assert_live_lod();
-        (void)frame(&v, NULL, 0);
+        (void)frame(r, NULL, 0);
     }
     assert_live_lod();
-    fixture_camera_t camera = raster_rig_camera;
-    camera.eye.x = SLIDE;
-    v = render_view_fixture_at(&camera, (viewport_t){W, H, 0});
-    (void)frame(&v, NULL, 0);
+    set_view(SLIDE, raster_rig_camera.eye.z);
+    (void)frame(r, NULL, 0);
     assert_live_lod();
     assert_picture(LIVE);
 }
@@ -448,16 +451,15 @@ test_lod_settle_leaves_live_picks_and_steering_untouched(void) {
 static void
 test_live_pick_round_advances_only_when_picks_run(void) {
     const int budgets[] = {0, 1};
-    const render_view_t v = view();
     for (size_t b = 0; b < sizeof budgets / sizeof budgets[0]; b++) {
         for (int partial = 0; partial <= 1; partial++) {
-            fixture(budgets[b], false, false);
+            raster_rig_t* r = fixture(budgets[b], false, false);
             render_settings_t settings = f->c[0].settings;
             settings.partial_redraw = partial != 0;
             render_context_set_settings(&f->c[0], &settings);
             for (int i = 0; i <= HOLD; i++) {
                 const uint32_t before = f->c[0].raster.pick_round;
-                const render_context_frame_t out = frame(&v, NULL, i == 0 ? -1 : 0);
+                const render_context_frame_t out = frame(r, NULL, i == 0 ? -1 : 0);
                 const bool settle = partial && budgets[b] > 0 && i == HOLD;
                 TEST_ASSERT_EQUAL_UINT32(before + (i == 0 || !partial), f->c[0].raster.pick_round);
                 TEST_ASSERT_EQUAL_INT(settle ? BAND_HEIGHT : 0, out.settled_rows);
@@ -470,7 +472,7 @@ test_live_pick_round_advances_only_when_picks_run(void) {
 
 static void
 test_moving_after_settle_takes_the_next_spread_pick(void) {
-    fixture(1, true, false);
+    raster_rig_t* r = fixture(1, true, false);
     for (int i = 0; i < CONTEXTS; i += LIVE) {
         render_settings_t settings = f->c[i].settings;
         settings.lod.tolerance_px = MOVE_TOLERANCE;
@@ -485,20 +487,16 @@ test_moving_after_settle_takes_the_next_spread_pick(void) {
         f->instances[i][0] = f->instances[i][CARD];
         f->instances[i][CARD] = wall;
     }
-    render_view_t v = view();
-    (void)frame(&v, NULL, -1);
+    (void)frame(r, NULL, -1);
     const uint32_t held_cut = f->lod[0][0];
     TEST_ASSERT_TRUE(r3d_lod_any(f->lod[0], CARD_GROUPS));
     for (int i = 0; i < HOLD + RENDER_SETTLE_BANDS; i++) {
-        (void)frame(&v, NULL, 0);
+        (void)frame(r, NULL, 0);
     }
     assert_picture(1);
-    fixture_camera_t camera = raster_rig_camera;
-    camera.eye.z = CLOSE_EYE_Z;
     for (int i = 0; i < FOLLOWUP_FRAMES; i++) {
-        camera.eye.x += SLIDE;
-        v = render_view_fixture_at(&camera, (viewport_t){W, H, 0});
-        TEST_ASSERT_EQUAL_INT(0, frame(&v, NULL, 0).settled_rows);
+        set_view(raster_rig_camera.eye.x + (i + 1) * SLIDE, CLOSE_EYE_Z);
+        TEST_ASSERT_EQUAL_INT(0, frame(r, NULL, 0).settled_rows);
         TEST_ASSERT_NOT_EQUAL(held_cut, f->lod[0][0]);
         assert_live_lod();
         assert_picture(LIVE);
@@ -531,49 +529,56 @@ slide(raster_rig_t* r, int i) {
 
 static void
 test_changed_rows_stay_live_and_partial_redraw_survives_settling(void) {
-    raster_rig_t* r = settle_held(RENDER_SETTLE_FRAME_US_MAX, true, false);
-    const render_view_t v = view();
-    for (int i = 0; i < HOLD + RENDER_SETTLE_BANDS; i++) {
-        box3f_t changed = slide(r, i);
-        changed.hi.y += CHANGE_ABOVE_CARD;
-        const render_context_frame_t out = frame(&v, &changed, 1);
-        const render_context_frame_t live = render_context_frame(&f->c[LIVE]);
-        TEST_ASSERT_LESS_THAN_INT(H, live.rows_end - live.rows_first);
-        TEST_ASSERT_EQUAL_INT(live.rows_first, out.rows_first);
-        TEST_ASSERT_EQUAL_INT(live.rows_end, out.rows_end);
-        const raster_t* raster = &f->c[LIVE].raster;
-        assert_picture(LIVE);
-        TEST_ASSERT_EQUAL_MEMORY(raster_depth(raster), raster_depth(&f->c[0].raster), sizeof f->picture[0]);
-        bool partial_band = false;
-        int live_bands = 0;
-        int refined_bands = 0;
-        for (int b = 0; b < RENDER_SETTLE_BANDS; b++) {
-            const int first = b * H / RENDER_SETTLE_BANDS;
-            const int end = (b + 1) * H / RENDER_SETTLE_BANDS;
-            const bool draws_live = first < raster->end_row && end > raster->first_row;
-            partial_band |= draws_live && (raster->first_row > first || raster->end_row < end);
-            live_bands += draws_live;
-            refined_bands += !draws_live;
-            TEST_ASSERT_EQUAL(!draws_live, f->c[0].settle.refined[b]);
-            TEST_ASSERT_EQUAL_MEMORY(&f->picture[draws_live ? LIVE : 1][first * W], &f->picture[0][first * W],
-                                     (end - first) * W * sizeof(uint16_t));
+    for (int levels = 0; levels <= 1; levels++) {
+        raster_rig_t* r = settle_held(RENDER_SETTLE_FRAME_US_MAX, levels != 0, false);
+        for (int i = 0; i < HOLD + RENDER_SETTLE_BANDS; i++) {
+            box3f_t changed = slide(r, i);
+            if (levels) {
+                changed.hi.y += CHANGE_ABOVE_CARD;
+            }
+            const render_context_frame_t out = frame(r, &changed, 1);
+            const render_context_frame_t live = render_context_frame(&f->c[LIVE]);
+            TEST_ASSERT_LESS_THAN_INT(H, live.rows_end - live.rows_first);
+            TEST_ASSERT_EQUAL_INT(live.rows_first, out.rows_first);
+            TEST_ASSERT_EQUAL_INT(live.rows_end, out.rows_end);
+            const raster_t* raster = &f->c[LIVE].raster;
+            if (levels) {
+                assert_picture(LIVE);
+                TEST_ASSERT_EQUAL_MEMORY(raster_depth(raster), raster_depth(&f->c[0].raster), sizeof f->picture[0]);
+            }
+            bool partial_band = false;
+            int live_bands = 0;
+            int refined_bands = 0;
+            for (int b = 0; b < RENDER_SETTLE_BANDS; b++) {
+                const int first = b * H / RENDER_SETTLE_BANDS;
+                const int end = (b + 1) * H / RENDER_SETTLE_BANDS;
+                const bool draws_live = first < raster->end_row && end > raster->first_row;
+                partial_band |= draws_live && (raster->first_row > first || raster->end_row < end);
+                live_bands += draws_live;
+                refined_bands += !draws_live;
+                TEST_ASSERT_EQUAL(!draws_live, f->c[0].settle.refined[b]);
+                TEST_ASSERT_EQUAL_MEMORY(&f->picture[draws_live ? LIVE : 1][first * W], &f->picture[0][first * W],
+                                         (end - first) * W * sizeof(uint16_t));
+            }
+            if (levels) {
+                TEST_ASSERT_TRUE(partial_band);
+            }
+            TEST_ASSERT_GREATER_THAN_INT(0, live_bands);
+            TEST_ASSERT_GREATER_THAN_INT(0, refined_bands);
         }
-        TEST_ASSERT_TRUE(partial_band);
-        TEST_ASSERT_GREATER_THAN_INT(0, live_bands);
-        TEST_ASSERT_GREATER_THAN_INT(0, refined_bands);
+        cleanup();
     }
 }
 
 static void
 test_full_live_redraw_refines_no_band(void) {
-    fixture(1, false, false);
-    const render_view_t v = view();
-    (void)frame(&v, NULL, -1);
+    raster_rig_t* r = fixture(1, false, false);
+    (void)frame(r, NULL, -1);
     for (int i = 1; i < HOLD; i++) {
-        TEST_ASSERT_EQUAL_INT(0, frame(&v, NULL, 0).settled_rows);
+        TEST_ASSERT_EQUAL_INT(0, frame(r, NULL, 0).settled_rows);
     }
-    TEST_ASSERT_EQUAL_INT(BAND_HEIGHT, frame(&v, NULL, 0).settled_rows);
-    const render_context_frame_t out = frame(&v, &change_at_eye, 1);
+    TEST_ASSERT_EQUAL_INT(BAND_HEIGHT, frame(r, NULL, 0).settled_rows);
+    const render_context_frame_t out = frame(r, &change_at_eye, 1);
     TEST_ASSERT_EQUAL_INT(0, out.rows_first);
     TEST_ASSERT_EQUAL_INT(H, out.rows_end);
     TEST_ASSERT_EQUAL_INT(0, out.settled_rows);
@@ -582,54 +587,56 @@ test_full_live_redraw_refines_no_band(void) {
 
 static void
 test_a_moved_camera_cancels_and_restarts_the_hold(void) {
-    fixture(RENDER_SETTLE_FRAME_US_MAX, false, false);
-    render_view_t v = view();
-    (void)frame(&v, NULL, -1);
-    for (int i = 1; i < HOLD; i++) {
-        TEST_ASSERT_EQUAL_INT(0, frame(&v, NULL, 0).settled_rows);
-        assert_picture(LIVE);
+    for (int fully_settled = 0; fully_settled <= 1; fully_settled++) {
+        raster_rig_t* r = fixture(RENDER_SETTLE_FRAME_US_MAX, false, false);
+        (void)frame(r, NULL, -1);
+        for (int i = 1; i < HOLD; i++) {
+            TEST_ASSERT_EQUAL_INT(0, frame(r, NULL, 0).settled_rows);
+            assert_picture(LIVE);
+        }
+        TEST_ASSERT_EQUAL_INT(BAND_HEIGHT, frame(r, NULL, 0).settled_rows);
+        TEST_ASSERT_TRUE(f->c[0].settle.refined[RENDER_SETTLE_BANDS / 2]);
+        TEST_ASSERT_FALSE(f->c[0].settle.refined[0]);
+        if (fully_settled) {
+            TEST_ASSERT_EQUAL_INT(H, frame(r, NULL, 0).settled_rows);
+            assert_picture(1);
+        }
+        set_view(SLIDE, FAR_EYE_Z);
+        for (int i = 0; i < HOLD; i++) {
+            TEST_ASSERT_EQUAL_INT(0, frame(r, NULL, 0).settled_rows);
+            assert_picture(LIVE);
+        }
+        TEST_ASSERT_EQUAL_INT(H, frame(r, NULL, 0).settled_rows);
+        assert_picture(1);
+        cleanup();
     }
-    TEST_ASSERT_EQUAL_INT(BAND_HEIGHT, frame(&v, NULL, 0).settled_rows);
-    TEST_ASSERT_TRUE(f->c[0].settle.refined[RENDER_SETTLE_BANDS / 2]);
-    TEST_ASSERT_FALSE(f->c[0].settle.refined[0]);
-    fixture_camera_t camera = raster_rig_camera;
-    camera.eye.z = FAR_EYE_Z;
-    camera.eye.x = SLIDE;
-    v = render_view_fixture_at(&camera, (viewport_t){W, H, 0});
-    for (int i = 0; i < HOLD; i++) {
-        TEST_ASSERT_EQUAL_INT(0, frame(&v, NULL, 0).settled_rows);
-        assert_picture(LIVE);
-    }
-    TEST_ASSERT_EQUAL_INT(H, frame(&v, NULL, 0).settled_rows);
-    assert_picture(1);
 }
 
 static void
 test_disabled_and_already_refined_settings_never_settle(void) {
-    fixture(RENDER_SETTLE_FRAME_US_MAX, false, false);
-    const render_view_t v = view();
-    (void)frame(&v, NULL, -1);
+    raster_rig_t* r = fixture(RENDER_SETTLE_FRAME_US_MAX, false, false);
+    (void)frame(r, NULL, -1);
     for (int i = 0; i < HOLD + 1; i++) {
-        (void)frame(&v, NULL, 0);
+        (void)frame(r, NULL, 0);
     }
     assert_picture(1);
     f->settings.settle.frame_us = 0;
     render_context_set_settings(&f->c[0], &f->settings);
     for (int i = 0; i < HOLD + RENDER_SETTLE_BANDS; i++) {
-        TEST_ASSERT_EQUAL_INT(0, frame(&v, NULL, 0).settled_rows);
+        TEST_ASSERT_EQUAL_INT(0, frame(r, NULL, 0).settled_rows);
     }
     assert_picture(LIVE);
     f->settings.settle.frame_us = RENDER_SETTLE_FRAME_US_MAX;
     render_context_set_settings(&f->c[0], &f->settings);
     for (int i = 0; i < HOLD; i++) {
-        TEST_ASSERT_EQUAL_INT(0, frame(&v, NULL, 0).settled_rows);
+        TEST_ASSERT_EQUAL_INT(0, frame(r, NULL, 0).settled_rows);
     }
-    TEST_ASSERT_EQUAL_INT(H, frame(&v, NULL, 0).settled_rows);
+    TEST_ASSERT_EQUAL_INT(H, frame(r, NULL, 0).settled_rows);
     assert_picture(1);
     f->settings = render_settle_quality(&f->settings);
     render_context_set_settings(&f->c[0], &f->settings);
     for (int i = 0; i < HOLD + RENDER_SETTLE_BANDS; i++) {
-        TEST_ASSERT_EQUAL_INT(0, frame(&v, NULL, 0).settled_rows);
+        TEST_ASSERT_EQUAL_INT(0, frame(r, NULL, 0).settled_rows);
     }
     assert_picture(1);
 }
@@ -638,23 +645,22 @@ test_disabled_and_already_refined_settings_never_settle(void) {
 static void
 test_dynamic_resolution_settles_at_the_top_without_pricing_refinement(void) {
     static const resolution_step_t steps[] = {{W, H}, {W / 2, H / 2}};
-    fixture(RENDER_SETTLE_FRAME_US_MAX, false, false);
-    const render_view_t v = view();
+    raster_rig_t* r = fixture(RENDER_SETTLE_FRAME_US_MAX, false, false);
     const resolution_config_t config = resolution_config(steps, 2, 2, RENDER_SETTLE_FRAME_US_MAX);
     render_context_t* c = &f->c[0];
     render_context_set_dynamic_resolution(c, &config, NULL, 1);
     TEST_ASSERT_EQUAL_UINT32(0, c->raster.pick_round);
-    (void)frame(&v, NULL, 0);
+    (void)frame(r, NULL, 0);
     TEST_ASSERT_EQUAL_UINT32(1, c->raster.pick_round);
     for (int i = 1; i < HOLD + 1; i++) {
-        (void)frame(&v, NULL, 0);
+        (void)frame(r, NULL, 0);
     }
     const int32_t live_us = 1;
     const int32_t over_us = config.budget_us + 1;
     /* Presentation, live draw, settle draw, then compose. */
     const int64_t settle_only[] = {0, 0, live_us, live_us, live_us + over_us, live_us + over_us, live_us + over_us};
     clock_fake_script(settle_only, sizeof settle_only / sizeof settle_only[0]);
-    const render_context_frame_t refined = frame(&v, NULL, 0);
+    const render_context_frame_t refined = frame(r, NULL, 0);
     TEST_ASSERT_TRUE(c->still_judged);
     TEST_ASSERT_EQUAL_INT(0, refined.step);
     TEST_ASSERT_GREATER_THAN_INT(0, refined.settled_rows);
@@ -665,7 +671,7 @@ test_dynamic_resolution_settles_at_the_top_without_pricing_refinement(void) {
     const int64_t live_only[] = {0, 0, over_us, over_us, over_us};
     clock_fake_script(live_only, sizeof live_only / sizeof live_only[0]);
     const uint32_t before = c->raster.pick_round;
-    const render_context_frame_t over = frame(&v, &change_at_eye, 1);
+    const render_context_frame_t over = frame(r, &change_at_eye, 1);
     TEST_ASSERT_EQUAL_UINT32(before + 1, c->raster.pick_round);
     TEST_ASSERT_TRUE(c->still_judged);
     TEST_ASSERT_EQUAL_INT(over_us, over.draw_us);

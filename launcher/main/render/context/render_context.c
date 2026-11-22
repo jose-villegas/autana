@@ -909,46 +909,55 @@ render_context_checkpoint_capture(checkpoint_t* saved, render_context_t* context
 }
 
 static uint16_t*
-checkpoint_map(const render_context_t* source, const render_context_t* destination, const uint16_t* map) {
-    return map == NULL ? NULL
-                       : (uint16_t*)((uint8_t*)destination->scratch + ((uintptr_t)map - (uintptr_t)source->scratch));
+checkpoint_map(const void* source, void* destination, const uint16_t* map) {
+    return map == NULL ? NULL : (uint16_t*)((uint8_t*)destination + ((uintptr_t)map - (uintptr_t)source));
 }
 
 bool
 render_context_checkpoint_prepare(checkpoint_t* saved, render_context_t* context) {
     checkpoint_block_t* block = checkpoint_find(saved, context);
-    void* data = block == NULL ? NULL : block->data;
-    if (data == NULL) {
+    if (block == NULL || block->bytes != CARRIED_BYTES) {
         return false;
     }
-    render_context_t source = *context;
-    memcpy(&source, data, CARRIED_BYTES);
-    if (source.take != context->take) {
+    unsigned char* data = block->data;
+    memory_take_fn take;
+    size_t scratch_bytes;
+    memcpy(&take, data + offsetof(render_context_t, take), sizeof take);
+    memcpy(&scratch_bytes, data + offsetof(render_context_t, scratch_bytes), sizeof scratch_bytes);
+    if (take != context->take) {
         return false;
     }
-    if (source.scratch_bytes != 0 && (context->scratch == NULL || context->scratch_bytes < source.scratch_bytes)) {
+    if (scratch_bytes != 0 && (context->scratch == NULL || context->scratch_bytes < scratch_bytes)) {
         if (context->take != NULL) {
             return false;
         }
-        void* scratch = memory_alloc(source.scratch_bytes, MEMORY_APP);
+        void* scratch = memory_alloc(scratch_bytes, MEMORY_APP);
         if (scratch == NULL) {
             return false;
         }
         memory_free(context->scratch);
         context->scratch = scratch;
-        context->scratch_bytes = source.scratch_bytes;
+        context->scratch_bytes = scratch_bytes;
     }
-    if (source.debug_view == RENDER_DEBUG_VIEW_SHADED) {
+    int debug_view;
+    memcpy(&debug_view, data + offsetof(render_context_t, debug_view), sizeof debug_view);
+    if (debug_view == RENDER_DEBUG_VIEW_SHADED) {
         free_view_state(context);
     }
-    source.raster.upscale.columns = checkpoint_map(&source, context, source.raster.upscale.columns);
-    source.raster.upscale.rows = checkpoint_map(&source, context, source.raster.upscale.rows);
-    source.raster.upscale.blends = checkpoint_map(&source, context, source.raster.upscale.blends);
-    (void)checkpoint_retarget(saved, source.scratch, context->scratch);
-    source.scratch = context->scratch;
-    source.scratch_bytes = context->scratch_bytes;
-    source.raster.scratch = context->scratch;
-    memcpy(data, &source, CARRIED_BYTES);
+    /* The checkpoint is byte storage. Only the fields that refer to the
+     * scratch block need rewriting when its destination changes. */
+    void* source_scratch;
+    upscale_t upscale;
+    memcpy(&source_scratch, data + offsetof(render_context_t, scratch), sizeof source_scratch);
+    memcpy(&upscale, data + offsetof(render_context_t, raster.upscale), sizeof upscale);
+    upscale.columns = checkpoint_map(source_scratch, context->scratch, upscale.columns);
+    upscale.rows = checkpoint_map(source_scratch, context->scratch, upscale.rows);
+    upscale.blends = checkpoint_map(source_scratch, context->scratch, upscale.blends);
+    (void)checkpoint_retarget(saved, source_scratch, context->scratch);
+    memcpy(data + offsetof(render_context_t, raster.upscale), &upscale, sizeof upscale);
+    memcpy(data + offsetof(render_context_t, scratch), &context->scratch, sizeof context->scratch);
+    memcpy(data + offsetof(render_context_t, scratch_bytes), &context->scratch_bytes, sizeof context->scratch_bytes);
+    memcpy(data + offsetof(render_context_t, raster.scratch), &context->scratch, sizeof context->scratch);
     return true;
 }
 #endif
