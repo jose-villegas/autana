@@ -986,8 +986,10 @@ def material_id_sheet(references, drawn, textured, names, has_texture, out, refe
                     Image.fromarray(class_palette[diff])]
         if reference:
             path = pathlib.Path(reference) / f'{frame:04d}.png'
-            shade = Image.open(path).convert('RGB').resize(pictures[0].size) if path.is_file() else Image.new(
-                'RGB', pictures[0].size, MATERIAL_EMPTY)
+            if not path.is_file():
+                raise ValueError(f'missing reference image for frame {frame}: {path}')
+            with Image.open(path) as image:
+                shade = image.convert('RGB').resize(pictures[0].size)
             pictures.insert(0, shade)
         width = max(MATERIAL_PANEL_MIN, pictures[0].width)
         rows.append([(f'{frame}: {label}', captioned(picture, '', width))

@@ -10,6 +10,7 @@ from types import SimpleNamespace
 from unittest import mock
 
 import numpy as np
+from PIL import Image
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from r3d.texture import uv_transfer
@@ -295,6 +296,25 @@ class MaterialIdsTests(unittest.TestCase):
             render_compare.material_id_sheet([ref], [own], [np.zeros_like(ref, bool)], ['plain'], [False],
                                               out, crops=1)
             self.assertTrue(out.with_suffix('.crops.png').is_file())
+
+    def test_material_comparison_rejects_missing_shown_reference(self):
+        root = self.temporary_root()
+        reference = root / 'reference'
+        reference.mkdir()
+        Image.new('RGB', (1, 1)).save(reference / '0000.png')
+        out = root / 'sheet.png'
+        frame = np.zeros((1, 1), dtype=np.int32)
+        pattern = np.zeros_like(frame, bool)
+        inputs = ([frame, frame], [frame, frame], [pattern, pattern], ['plain'], [False])
+        argv = ['render_compare.py', '--material-ids', 'scene', 'object', 'poses', 'ids',
+                '--out', str(out), '--reference', str(reference), '--views', '2', '--crops', '1']
+        with (mock.patch.object(sys, 'argv', argv),
+              mock.patch.object(render_compare, 'material_id_inputs', return_value=inputs),
+              self.assertRaises(ValueError) as raised):
+            render_compare.main()
+        self.assertIn('frame 1', str(raised.exception))
+        self.assertIn(str(reference / '0001.png'), str(raised.exception))
+        self.assertEqual(list(root.iterdir()), [reference])
 
     def test_drawn_ids_refuse_invalid_ranges_and_frames(self):
         root, bundle, source, _mesh, metadata = self.capture()
