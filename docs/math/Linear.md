@@ -122,10 +122,14 @@ Always an explicit call named for destination and source, both `vec2` and `vec3`
 | `P_rotate(q, v)` | rotates the vec3 `v` by unit `q` | $`v + 2 q_w\,(u \times v) + 2\,u \times (u \times v)`$<br> with $`u = (q_x, q_y, q_z)`$ |
 | `P_normalize(q)` | unit length; `q` must not be zero | $`\frac{q}{\sqrt{q_x^2 + q_y^2 + q_z^2 + q_w^2}}`$ |
 | `P_from_basis(r, u, f)` | the rotation whose right, up and forward axes are `r`, `u`, `f`; when the trace is not positive, `s` comes from the largest diagonal entry instead<sup>[[53]](../Citations.md#shepperd-1978)</sup> | $`s = 2\sqrt{1 + r_x + u_y + f_z}`$<br> $`\left(\frac{u_z - f_y}{s},\ \frac{f_x - r_z}{s},\ \frac{r_y - u_x}{s},\ \frac{s}{4}\right)`$ |
-| <a id="quat-looking"></a>`quatf_looking(forward, up)` | aims local +Z along `forward`; zero or nonfinite forward gives identity. At a pole use +Z as up, or -Z when forward points toward +Z, with +Y if that is also parallel | for unit directions, $`r = \mathrm{normalize}(up \times f)`$, $`u = f \times r`$, then $`\mathrm{from\_basis}(r,u,f)`$ |
+| <a id="quat-looking"></a>`P_looking(forward, up)` | aims local +Z along `forward`. `quatf_looking` returns identity for zero or nonfinite forward. At a pole it uses +Z as up, or -Z when forward points toward +Z, with +Y if that is also parallel. `quatx_looking` requires nonzero forward and nonparallel up | for unit directions, $`r = \mathrm{normalize}(up \times f)`$, $`u = f \times r`$, then $`\mathrm{from\_basis}(r,u,f)`$ |
 | <a id="quat-from-to"></a>`quatf_from_to(a, b)` | shortest turn from direction `a` to `b`; identity if either is zero | antiparallel inputs use a half-turn about $`\mathrm{normalize}(Z \times a)`$, with +Y in place of +Z if needed |
 | `P_nlerp(a, b, t)` | unit-length shortest arc; negate `b` when the 4D dot is negative | $`\mathrm{normalize}(a(1-t)+bt)`$ |
 | `quatf_slerp(a, b, t)` | shortest-arc interpolation<sup>[[19]](../Citations.md#shoemake-1985)</sup>, `t` in 0..1; `f` only; `b` is negated first when $`a \cdot b < 0`$ | $`\frac{\sin((1 - t)\,\Omega)}{\sin\Omega}\,a + \frac{\sin(t\,\Omega)}{\sin\Omega}\,b`$<br> with $`\cos\Omega = a \cdot b`$: nearly parallel inputs take `P_nlerp`, the rest evaluated by Eberly's series in cos - 1, halving the arc past a 120-degree rotation ($`a \cdot b < \frac{1}{2}`$) and summing until its terms fall below float precision, with no last-term correction<sup>[[71]](../Citations.md#eberly-2011)</sup> |
+
+`quatf_looking` and `quatf_from_to` use `quatf_rescale_direction` to divide
+finite inputs by their largest absolute component before squaring. The
+helper returns zero for zero or nonfinite inputs.
 
 `quatf_normalize` and `quatf_nlerp` use `mathf_rsqrt` for the reciprocal length.
 A device sweep measures nlerp component error over quaternion pairs and
