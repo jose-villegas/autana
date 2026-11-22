@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Guard task stack frames measured from the diagnostics build's call graphs.
 
-Discover launcher/**/stack_chain.txt: root FUNCTION test|frame|system|boot and
+Derive test roots from registered suites in the diagnostics compile database.
+Discover launcher/**/stack_chain.txt: root FUNCTION frame|system|boot and
 indirect CALLER... : CALLEE... (private names: file.c:function).
 The diagnostics build writes each object's graph (.ci) and frames (.su) beside
 it; source pointer calls are closed here, context and budgets are derived.
@@ -17,6 +18,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+from collections import defaultdict
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 LAUNCHER = os.path.normpath(os.path.join(HERE, "..", ".."))
@@ -55,7 +57,7 @@ def read_spec(path):
             words = raw.split("#", 1)[0].split()
             if not words:
                 continue
-            if words[0] == "root" and len(words) == 3 and words[2] in KINDS:
+            if words[0] == "root" and len(words) == 3 and words[2] in KINDS and words[2] != "test":
                 roots.append((words[1], words[2]))
             elif words[0] == "indirect" and words.count(":") == 1:
                 split = words.index(":")
@@ -67,8 +69,6 @@ def read_spec(path):
             else:
                 raise SpecError("%s:%d: expected root F KIND or indirect A... : B..."
                                 % (path, no))
-    if not roots:
-        raise SpecError("%s: no root" % path)
     return roots, indirect
 
 
@@ -110,7 +110,7 @@ def resolve(name, frame):
                   and (not qualifier or qualifier in t.replace("\\", "/")))
 
 
-def deepest(root, frame, calls, stop=None):
+def deepest(root, frame, calls, stop=None, allowed=None):
     memo = {}
 
     def walk(node, path):
@@ -118,7 +118,7 @@ def deepest(root, frame, calls, stop=None):
             return memo[node]
         best = (0, []) if stop is None or node == stop else (-1, [])
         for callee in sorted(calls.get(node, ())):
-            if node != stop and callee not in path:
+            if node != stop and callee not in path and (allowed is None or callee in allowed):
                 cand = walk(callee, path | {node})
                 if cand[0] > best[0]:
                     best = cand
@@ -139,16 +139,41 @@ def reachable(roots, calls):
     return seen
 
 
+def harness_path(entries, endpoints, suites, frame, calls, reverse_calls):
+    endpoint_ancestors = {end: reachable([end], reverse_calls) for end in endpoints}
+    paths = []
+    if not suites:
+        paths = [deepest(entry, frame, calls, end, allowed) for entry in entries
+                 for end, allowed in endpoint_ancestors.items()]
+    for title in suites:
+        suite_ancestors = reachable([title], reverse_calls)
+        before, ancestors = max((deepest(entry, frame, calls, title, suite_ancestors) for entry in entries),
+                                default=(-1, []))
+        after, descendants = max((deepest(title, frame, calls, end, allowed)
+                                  for end, allowed in endpoint_ancestors.items()),
+                                 default=(-1, []))
+        if before >= 0 and after >= 0:
+            paths.append((before + after - frame[title], ancestors + descendants[1:]))
+    return max(paths, default=(-1, []))
+
+
 def check_app(name, spec_path, ci_paths, stack_bytes, reserve, context=0, runner_edges=(),
-              graph=None, declared=None):
+              graph=None, declared=None, test_roots=None):
     roots, own_edges = read_spec(spec_path)
+    test_roots = test_roots or {}
+    roots.extend((test, "test") for test in test_roots)
     declared = own_edges if declared is None else declared
     frame, calls, pointer_callers, bad = graph or parse_graph(ci_paths)
     problems = []
 
+    titles_by_name = defaultdict(list)
+    for title in frame:
+        titles_by_name[source_name(title)].append(title)
+
     covered = set()
     for caller, callee in declared + list(runner_edges):
-        callers, callees = resolve(caller, frame), resolve(callee, frame)
+        callers = resolve(caller, titles_by_name[caller.rsplit(":", 1)[-1]])
+        callees = resolve(callee, titles_by_name[callee.rsplit(":", 1)[-1]])
         if not callers or not callees:
             problems.append("declared edge %s > %s names a function that is "
                             "not in the graph" % (caller, callee))
@@ -159,26 +184,38 @@ def check_app(name, spec_path, ci_paths, stack_bytes, reserve, context=0, runner
     for wrapper in resolve("vPortTaskWrapper", frame):
         calls.setdefault(wrapper, set()).update(resolve("main_task", frame))
 
-    root_titles = []
+    root_titles = {}
     for root, _kind in roots:
-        found = resolve(root, frame)
+        function = root.rsplit(":", 1)[-1]
+        candidates = titles_by_name[function]
+        found = resolve(root, candidates)
+        if not found and root in test_roots:
+            found = [title for title in candidates if ":" not in title]
         if not found:
             problems.append("root %s is not in the graph" % root)
-        root_titles.extend(found)
-    for title in sorted(reachable(root_titles, calls)):
+        root_titles[root] = found
+    for title in sorted(reachable((t for titles in root_titles.values() for t in titles), calls)):
         if title in bad:
             problems.append("%s has a frame that is not a fixed size" % title)
         if title in pointer_callers and title not in covered:
             problems.append("%s makes a call through a pointer that no "
                             "'indirect' line declares" % title)
 
+    entries = resolve("vPortTaskWrapper", frame) or resolve("main_task", frame)
+    reverse_calls = defaultdict(set)
+    for caller, callees in calls.items():
+        for callee in callees:
+            reverse_calls[callee].add(caller)
+    harnesses_by_kind = {}
     for root, kind in roots:
-        titles = resolve(root, frame)
-        entries = resolve("vPortTaskWrapper", frame) or resolve("main_task", frame)
-        endpoints = resolve(KINDS[kind], frame)
-        harnesses = [deepest(entry, frame, calls, endpoint)
-                     for entry in entries for endpoint in endpoints]
-        overhead, ancestors = max(harnesses, default=(-1, []))
+        titles = root_titles[root]
+        suites = test_roots.get(root, ())
+        key = (kind, suites)
+        if key not in harnesses_by_kind:
+            endpoints = titles_by_name[KINDS[kind]]
+            suite_titles = [title for suite in suites for title in titles_by_name[suite]]
+            harnesses_by_kind[key] = harness_path(entries, endpoints, suite_titles, frame, calls, reverse_calls)
+        overhead, ancestors = harnesses_by_kind[key]
         if overhead < 0 or any(frame.get(t, 0) == 0 or t in bad for t in ancestors):
             problems.append("%s: no measured main_task path to %s" % (root, KINDS[kind]))
             continue
@@ -216,8 +253,7 @@ def app_jobs(db_path, app_dir=None, functions=()):
                     continue
         elif marker not in source:
             continue
-        argv = compile_flags(entry)
-        jobs.append((argv, entry["directory"], source, graph_file(entry)))
+        jobs.append((entry, entry["directory"], source, graph_file(entry)))
     return jobs
 
 
@@ -226,21 +262,37 @@ def graph_file(entry):
     return os.path.splitext(os.path.join(entry["directory"], entry["output"]))[0] + ".ci"
 
 
-def runner_edges(jobs, spec):
-    roots, _declared = read_spec(spec)
-    root_names = {name.rsplit(":", 1)[-1] for name, kind in roots if kind == "test"}
+def runner_registrations(jobs):
+    """Expand the device's registrations using each suite's own compiler flags."""
+    roots = {}
     edges = []
-    for _cmd, _cwd, source, _graph in jobs:
+    for entry, cwd, source, _graph in jobs:
         with open(source, encoding="utf-8", errors="replace") as fh:
             text = fh.read()
-        suites = re.findall(r"SUITE_REGISTER(?:_ON_REQUEST)?\(\s*(\w+)\s*\)", text)
-        if any(re.search(r"RUN_TEST(?:_CASE)?\(\s*" + re.escape(root) + r"\s*[,)]", text)
-               for root in root_names):
-            edges.extend(("suites_run_request", suite) for suite in suites)
         edges.extend(("UnityDefaultTestRun", target) for target in
                      re.findall(r"UnityDefaultTestRun\(\s*(\w+)\s*,", text)
                      if target != "func")
-    return edges
+        suites = re.findall(r"(?m)^\s*SUITE_REGISTER(_ON_REQUEST)?\s*\(\s*(\w+)\s*\)", text)
+        if not suites:
+            continue
+        expanded = subprocess.run([*compile_flags(entry), "-E", "-P", source], cwd=cwd,
+                                  capture_output=True, text=True)
+        if expanded.returncode:
+            raise SpecError(f"{source}: cannot expand suite registrations: {expanded.stderr}")
+        suites = [(on_request, suite) for on_request, suite in suites
+                  if re.search(rf"\bsuite_link\s*\(\s*&{re.escape(suite)}_entry\s*\)", expanded.stdout)]
+        if not suites:
+            continue
+        for on_request, suite in suites:
+            edges.append(("suites_run_request", suite))
+            if not on_request:
+                edges.append(("suites_run_all", suite))
+        tests = set(re.findall(r"\bsuite_run_test_timed\s*\(\s*(\w+)\s*,", expanded.stdout))
+        path = Path(source)
+        qualifier = path.relative_to(LAUNCHER).as_posix() if path.is_relative_to(LAUNCHER) else path.name
+        for test in sorted(tests):
+            roots[f"{qualifier}:{test}"] = tuple(suite for _, suite in suites)
+    return roots, edges
 
 
 def main(argv):
@@ -267,7 +319,8 @@ def main(argv):
     selected = {job[2] for job in shared_jobs}
     shared_jobs += [job for job in app_jobs(db, functions={"main_task", "UnityDefaultTestRun", "vPortTaskWrapper"})
                     if job[2] not in selected]
-    cmd, cwd = shared_jobs[0][:2]
+    entry, cwd = shared_jobs[0][:2]
+    cmd = compile_flags(entry)
     probe = subprocess.run(cmd + ["-S", "-x", "c", "-", "-o", "-"], cwd=cwd,
                            input='#include "xtensa_context.h"\nchar stack_chain_context[XT_STK_FRMSZ + ((XT_CP_SIZE + 15) & ~15)];\n',
                            capture_output=True, text=True)
@@ -283,14 +336,8 @@ def main(argv):
         raise SpecError("ELF does not define the TLS stack area")
     context = int(size.group(1)) + ((tls["_thread_local_bss_end"] -
                                    tls["_thread_local_data_start"] + 15) & ~15)
-    all_jobs = list(shared_jobs)
-    app_groups = []
-    for spec in specs:
-        app_dir = os.path.dirname(spec)
-        jobs = app_jobs(db, app_dir) if "/apps/" in app_dir.replace("\\", "/") else []
-        if jobs:
-            all_jobs.extend(jobs)
-            app_groups.append(jobs)
+    app_sources = [job for job in app_jobs(db, MAIN_DIR) if "/apps/" in job[2]]
+    all_jobs = shared_jobs + app_sources
     ci_paths = [job[3] for job in all_jobs]
     missing = [job[2] for job in all_jobs if not os.path.isfile(job[3])]
     if missing:
@@ -300,20 +347,27 @@ def main(argv):
         return 1
     declared = [edge for spec in specs for edge in read_spec(spec)[1]]
     graph = parse_graph(ci_paths)
+    test_roots, runner_edges = runner_registrations(all_jobs)
+    if not test_roots:
+        raise SpecError("no registered tests in the diagnostics build")
     status = 0
     for spec in specs:
         name = os.path.basename(os.path.dirname(spec))
         try:
             problems = check_app(name, spec, ci_paths, stack_bytes,
-                                  stack_reserve(), context, runner_edges(all_jobs, spec),
-                                  graph, declared)
+                                 stack_reserve(), context, runner_edges, graph, declared,
+                                 test_roots if Path(spec).parent == Path(TIMING).parent else ())
         except SpecError as exc:
             problems = [str(exc)]
         for problem in problems:
             print("stack_chain_gate: %s: %s" % (name, problem))
         if problems:
             status = 1
-    for jobs in app_groups:
+    for spec in specs:
+        app_dir = os.path.dirname(spec).replace("\\", "/")
+        jobs = [job for job in app_sources if job[2].startswith(app_dir + "/")]
+        if not jobs:
+            continue
         objects = os.path.commonpath([os.path.dirname(job[3]) for job in jobs])
         if subprocess.run([sys.executable, CHECKER, objects]).returncode != 0:
             status = 1

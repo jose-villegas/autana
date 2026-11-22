@@ -8,27 +8,57 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from quality import stack_chain_gate as gate
+from build.find_cc import host_cc
 
 
 class StackChainTests(unittest.TestCase):
+    def test_a_compiled_suite_adds_test_roots_without_spec_lines(self):
+        cc = host_cc()
+        if cc is None:
+            self.skipTest("a C preprocessor is required")
+        with tempfile.TemporaryDirectory() as directory:
+            source = pathlib.Path(directory) / "suite_example.c"
+            source.write_text(
+                "#define SUITE_REGISTER(fn) void fn##_register(void) { suite_link(&fn##_entry); }\n"
+                "#define RUN_TEST(fn) suite_run_test_timed(fn, #fn, __LINE__)\n"
+                "#define RUN_TEST_CASE(fn, ...) suite_run_test_timed(fn, __VA_ARGS__, __LINE__)\n"
+                "void run_example(void) {\n"
+                "    RUN_TEST(test_frame);\n"
+                '    RUN_TEST_CASE(test_frame, "case");\n'
+                "#ifdef HOST_ONLY\n"
+                "    RUN_TEST(test_host_only);\n"
+                "#endif\n"
+                "}\n"
+                "SUITE_REGISTER(run_example)\n"
+            )
+            entry = {"arguments": [cc], "file": str(source), "directory": directory}
+            roots, edges = gate.runner_registrations([(entry, directory, str(source), "")])
+            self.assertEqual({f"{source.name}:test_frame": ("run_example",)}, roots)
+            self.assertIn(("suites_run_request", "run_example"), edges)
+
     def test_derived_harness_and_interrupt_cannot_overbook_the_main_task(self):
         with tempfile.TemporaryDirectory() as directory:
             spec = pathlib.Path(directory) / "stack_chain.txt"
-            spec.write_text("root test_frame test\n")
-            graph = ({"test_frame": 2400, "main_task": 400,
-                      "call_protected": 80}, {"main_task": {"call_protected"}}, set(), [])
+            spec.write_text("")
+            graph = ({"test_frame": 2400, "main_task": 400, "run_example": 48,
+                      "other_suite": 4096, "call_protected": 80},
+                     {"main_task": {"run_example", "other_suite"},
+                      "run_example": {"call_protected"}, "other_suite": {"call_protected"}},
+                     set(), [])
             with patch.object(gate, "parse_graph", return_value=graph):
-                problems = gate.check_app("app", str(spec), [], 3584, 512, 224)
-            self.assertTrue(any("3104 bytes" in p for p in problems))
+                problems = gate.check_app("app", str(spec), [], 3584, 512, 224,
+                                          test_roots={"test_frame": ("run_example",)})
+            self.assertTrue(any("3152 bytes" in p for p in problems))
 
     def test_an_unreachable_harness_fails(self):
         with tempfile.TemporaryDirectory() as directory:
             spec = pathlib.Path(directory) / "stack_chain.txt"
-            spec.write_text("root test_frame test\n")
+            spec.write_text("")
             graph = ({"test_frame": 32, "main_task": 32,
                       "call_protected": 48}, {}, set(), [])
             with patch.object(gate, "parse_graph", return_value=graph):
-                problems = gate.check_app("app", str(spec), [], 3584, 512, 224)
+                problems = gate.check_app("app", str(spec), [], 3584, 512, 224,
+                                          test_roots={"test_frame": ()})
             self.assertTrue(any("no measured main_task path" in p for p in problems))
 
     def test_harness_follows_the_deepest_live_path_only(self):

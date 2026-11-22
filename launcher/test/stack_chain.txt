@@ -1,16 +1,9 @@
 root boot_anim_run boot
 indirect boot_anim_draw_frame : shell_paint_home_under_boot
 root scene_render system
-root test_options_band_frame_cost test
-root test_menu_band_frame_cost test
 indirect gfx_band_run : paint_menu_band paint_options_band
 indirect ui_draw_icon : measure_text_width measure_text_height
 indirect text_in_clip ui_icon_button_id : measure_text_width
-root test_the_two_core_frame_matches_one_full_draw test
-root test_a_triangle_cut_by_the_near_plane_draws_the_whole_quad_left_in_front test
-root test_a_triangle_over_any_side_of_the_screen_is_drawn test
-root test_a_census_list_draws_what_raster_draw_draws_at_any_size test
-root test_a_checkpoint_neither_holds_nor_restores_the_observer test
 indirect writer_rows r3d_span_triangle_write r3d_span_screen_triangle r3d_span_textured.c:r3d_span_write : raster_attachment_tag raster_overdraw.c:count_span
 indirect shell_systems_update : scene_shell_render
 indirect instance_writers : raster_meshlets.c:writer raster_cull_view.c:writer raster_overdraw.c:writer raster_copies.c:writer
@@ -31,7 +24,7 @@ indirect ui_transform_icon_emit : ui.c:icon_fill_emit
 indirect scene_skin_range : r3d_skin_clusters_lit r3d_skin_clusters_renormalised r3d_skin_clusters_table
 
 indirect ui_draw_icon : measure_text_width measure_text_height
-indirect render_context_draw : app_arena_take
+indirect render_context_draw : app_arena_take raster_cull_second_view
 
 # A recording's sink: the board's stream, the stress suite's and this suite's.
 indirect frame_record_frame : console_framerec.c:sink_write suite_stress_perf.c:discard_frame suite_frame_record.c:take

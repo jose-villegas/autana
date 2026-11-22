@@ -125,16 +125,21 @@ a laptop instead of a capture cycle.
 
 ### The stack chain gate
 
-`launcher/tools/quality/stack_chain_gate.py` follows call chains from named
-roots and checks the deepest path against the stack budget. It runs in
-self-test CI and in `autana build diag --check`, without flashing.
+`launcher/tools/quality/stack_chain_gate.py` checks call chains against the
+stack budget. It runs in self-test CI and in `autana build diag --check`,
+without flashing.
+
+Test roots come from calls to the test runner in registered suites. The gate
+expands suite sources with the self-test image's compiler flags, so it sees
+`RUN_TEST`, `RUN_TEST_CASE` and direct calls to the runner.
 
 It discovers `stack_chain.txt` files under `launcher/` (build directories
-excluded). Apps put roots in their own spec, the engine in the test spec.
+excluded). Apps put frame roots in their own spec and the engine puts its
+boot and system roots in the test spec.
 
 | Line | Meaning |
 |---|---|
-| `root FUNCTION KIND` | an entry point; `KIND` is `test`, `frame`, `system` or `boot` |
+| `root FUNCTION KIND` | a `frame`, `system` or `boot` entry point |
 | `indirect CALLER... : CALLEE...` | the targets of a function pointer |
 
 Rules:
@@ -142,7 +147,8 @@ Rules:
 - Every spec feeds one graph. Declare each indirect edge once, beside the caller; engine edges go in the engine spec.
 - An undeclared pointer caller reachable below a root fails. Private names may be written `file.c:function`.
 - Suite registrations and Unity's wrapper supply the runner's pointer edges themselves.
-- Runner overhead is the deepest measured path from the main-task entry to the kind's endpoint: `call_protected`, `shell_step_app`, `scene_shell_render` or `app_boot_init`. The boot root is `boot_anim_run`.
+- Runner overhead uses the deepest measured path from the main-task entry to the root's runner. Test paths pass through the suite that registers the test.
+- The runner endpoints are `call_protected`, `shell_step_app`, `scene_shell_render` and `app_boot_init`. The boot root is `boot_anim_run`.
 - Missing paths and non-static frames fail.
 
 Every root has the budget `DP_MAIN_TASK_STACK_BYTES` minus `timing.c`'s

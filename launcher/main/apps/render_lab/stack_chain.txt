@@ -1,9 +1,3 @@
-root test_sponza_frame_cost_placed test
-root test_sponza_frame_cost_along_the_flythrough test
-root test_sponza_draw_stage_breakdown test
-root test_raster_stage_split_by_size test
-root test_the_flythrough_sees_mostly_building test
-root test_dynamic_resolution_policies_along_the_path test
 root app_render_lab.c:render_lab_frame frame
 
 indirect lab_frame : scene_baked_frame
@@ -24,22 +18,18 @@ indirect ui_toggle_id : measure_text_height
 indirect lab_test_enter : app_render_lab.c:render_lab_enter
 indirect lab_test_frame_dt : app_render_lab.c:render_lab_update app_render_lab.c:render_lab_frame render_lab_apply_raster_settings
 indirect check_camera_paths : check_the_flythrough_keeps_clear_of_every_triangle check_the_flythrough_sees_mostly_building
+indirect suite_sponza_perf.c:run_with_sponza : suite_sponza_perf.c:perf_tests suite_sponza_perf.c:bake_tests
 
-root test_console_scene_requests_survive_expanded_frames test
 indirect test_console_scene_requests_survive_expanded_frames : app_render_lab.c:render_lab_enter render_lab_console app_render_lab.c:render_lab_exit
 
-root test_scene_console_dispatch_and_repeated_exit_release_heap test
-root test_cleanup_finishes_present_without_tripping_guard test
 indirect test_scene_console_dispatch_and_repeated_exit_release_heap : render_lab_console
 indirect lab_test_exit : app_render_lab.c:render_lab_exit
 indirect lab_clips_reply : console_reply_stdio suite_lab_clips.c:capture_reply
 indirect scene_capybara_console : console_reply_stdio suite_lab_clips.c:capture_reply
 indirect lab_clips.c:reply_line : console_reply_stdio suite_lab_clips.c:capture_reply
 
-root test_boot_menu_draws_controls_only_for_animated_scene test
 indirect render_context_draw : app_arena_take
 
-root test_real_time_frame_profile test
 indirect frame_profile_play : lab_test_profile_frame
 indirect suite_render_lab_frame_profile.c:send : render_lab_console
 indirect render_lab_test.c:replay_path_seeks_itself : scene_baked_path capybara_path scene_herd.c:scene_herd_path scene_stress.c:scene_stress_path
