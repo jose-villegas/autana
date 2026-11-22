@@ -1,4 +1,5 @@
 #include "render/texture/r3d_texture.h"
+#include "render/texture/r3d_texture_internal.h"
 
 #include <stdio.h>
 #include <string.h>

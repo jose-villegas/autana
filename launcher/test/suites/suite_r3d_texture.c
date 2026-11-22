@@ -21,6 +21,7 @@
 #include "render/r3d_span.h"
 #include "render/r3d_span_internal.h"
 #include "render/texture/r3d_texture.h"
+#include "render/texture/r3d_texture_internal.h"
 #include "suites.h"
 #include "test_alloc.h"
 #include "test_pack.h"
