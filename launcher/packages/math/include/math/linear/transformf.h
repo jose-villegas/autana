@@ -14,6 +14,19 @@
 
 MATH_DEFINE_TRANSFORM(transformf, vec3f, quatf, mat4f, mathf)
 
+/* Blends position and scale linearly and rotation with nlerp, clamping weight to [0, 1]. */
+static inline transformf_t
+transformf_blend(transformf_t a, transformf_t b, float weight) {
+    const float to = mathf_clamp(weight, 0.0F, 1.0F);
+    const float from = 1.0F - to;
+    return (transformf_t){
+        .position = vec3f_add(vec3f_scale(a.position, from), vec3f_scale(b.position, to)),
+        .rotation = quatf_nlerp(a.rotation, b.rotation, to),
+        .scale = vec3f_add(vec3f_scale(a.scale, from), vec3f_scale(b.scale, to)),
+        .cached = false,
+    };
+}
+
 /* Only for static-storage initializers, where C11 cannot call transformf_identity(). */
 #define TRANSFORMF_IDENTITY                                                                                            \
     {.position = {0.0F, 0.0F, 0.0F},                                                                                   \

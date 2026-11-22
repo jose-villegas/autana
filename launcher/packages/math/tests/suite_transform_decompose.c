@@ -96,8 +96,31 @@ test_relative_undoes_compose_under_an_even_parent(void) {
     TEST_ASSERT_FALSE(transformf_scale_is_even(&parent));
 }
 
+static void
+test_blend_clamps_and_interpolates_trs(void) {
+    transformf_t a = transformf_identity(), b = transformf_identity();
+    transformf_set_position(&b, (vec3f_t){4.0F, -6.0F, 8.0F});
+    transformf_set_scale(&b, (vec3f_t){3.0F, 5.0F, 7.0F});
+    transformf_set_rotation(&b, quatf_from_axis_angle(vec3f_up(), MATH_PI / 2.0F));
+    const float weights[] = {-1.0F, 0.0F, 0.5F, 1.0F, 2.0F};
+    const float clamped[] = {0.0F, 0.0F, 0.5F, 1.0F, 1.0F};
+    for (size_t i = 0; i < sizeof weights / sizeof weights[0]; i++) {
+        const float t = clamped[i];
+        const transformf_t got = transformf_blend(a, b, weights[i]);
+        const vec3f_t position = {4.0F * t, 0.0F - 6.0F * t, 8.0F * t};
+        const vec3f_t scale = {1.0F + 2.0F * t, 1.0F + 4.0F * t, 1.0F + 6.0F * t};
+        const quatf_t rotation = quatf_nlerp(a.rotation, b.rotation, t);
+        TEST_ASSERT_EQUAL_MEMORY(&position, &got.position, sizeof position);
+        TEST_ASSERT_EQUAL_MEMORY(&scale, &got.scale, sizeof scale);
+        TEST_ASSERT_EQUAL_MEMORY(&rotation, &got.rotation, sizeof rotation);
+    }
+    const transformf_t blended = transformf_blend(a, b, 0.5F);
+    TEST_ASSERT_FALSE(blended.cached);
+}
+
 void
 suite_transform_decompose(void) {
+    RUN_TEST(test_blend_clamps_and_interpolates_trs);
     RUN_TEST(test_relative_undoes_compose_under_an_even_parent);
     RUN_TEST(test_trs_matrix_decomposition_and_refusals);
     RUN_TEST(test_compose_under_an_evenly_scaled_parent_is_the_matrix_product);
