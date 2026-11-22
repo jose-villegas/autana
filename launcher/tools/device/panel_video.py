@@ -1,8 +1,10 @@
 """Panel capture reassembly, RGB canvas, constant-rate video and timing CSV."""
 import csv
+from contextlib import ExitStack
 import re
 import struct
 import sys
+import tempfile
 import time
 from array import array
 from functools import cache
@@ -37,6 +39,7 @@ PACK_CONTROL_BYTES = 1
 STREAM_BYTES_MAX = (screenshot.PANEL_WIDTH * screenshot.PANEL_HEIGHT * (PIXEL_BYTES + PACK_CONTROL_BYTES)
                     + WINDOWS_MAX * WINDOW.size + PRESENT.size)
 CSV_FIELDS = ("present_seq", "device_us", "host_ns", "windows", "packed_bytes", "dropped_before")
+SPOOL_EVENT = struct.Struct("<QdI?")
 
 
 @cache
@@ -215,19 +218,38 @@ class Recording:
         self.started = None
 
     def __enter__(self):
-        self.file = self.path.with_suffix(".frames.csv").open("w", newline="")
-        self.csv = csv.writer(self.file)
-        self.csv.writerow(CSV_FIELDS)
+        with ExitStack() as files:
+            self.spool = files.enter_context(tempfile.TemporaryFile())
+            self.file = files.enter_context(self.path.with_suffix(".frames.csv").open("w", newline=""))
+            self.csv = csv.writer(self.file)
+            self.csv.writerow(CSV_FIELDS)
+            self.files = files.pop_all()
         return self
 
     def write(self, frame):
         self.writer.write((self.canvas.height, self.canvas.width), frame)
 
-    def packet(self, data):
+    def stage(self, data, damaged=False):
+        """Keep serial events and their receipt times for decoding after STOP."""
+        data = data or b""
+        self.spool.write(SPOOL_EVENT.pack(time.time_ns(), time.monotonic(), len(data), damaged))
+        self.spool.write(data)
+
+    def replay(self):
+        self.spool.seek(0)
+        while header := self.spool.read(SPOOL_EVENT.size):
+            host_ns, now, size, damaged = SPOOL_EVENT.unpack(header)
+            data = self.spool.read(size)
+            if damaged:
+                self.parts.corrupt(data or None)
+            else:
+                self.packet(data, (host_ns, now))
+
+    def packet(self, data, received_at=None):
         stream = self.parts.feed(data)
         if stream is None:
             return
-        host_ns, now = time.time_ns(), time.monotonic()
+        host_ns, now = (time.time_ns(), time.monotonic()) if received_at is None else received_at
         try:
             seq, us, windows, packed, dropped = self.canvas.apply(stream, self.resample.present)
         except (ValueError, struct.error):
@@ -240,12 +262,13 @@ class Recording:
         self.started = now if self.started is None else self.started
 
     def finish(self, answer):
-        self.parts.abandon()
+        now = time.monotonic()
         if answer.startswith(("PANELCAP_REFUSED", ERROR_PREFIX)):
             return
+        self.replay()
+        self.parts.abandon()
         if self.received == 0:
             raise RuntimeError("no complete PANEL presents received")
-        now = time.monotonic()
         stop = re.search(r"\bstop_us=(\d+)", answer)
         stop_us = int(stop[1]) if stop else None
         self.resample.finish(stop_us)
@@ -262,4 +285,4 @@ class Recording:
         try:
             self.writer.close()
         finally:
-            self.file.close()
+            self.files.close()

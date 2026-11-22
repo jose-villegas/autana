@@ -61,7 +61,7 @@ picture, and bursts contribute the latest eligible picture.
 |---|---|
 | `present_seq` | Device sequence, including presents that merged or were lost. |
 | `device_us` | Device time at present start, in microseconds. |
-| `host_ns` | Host wall-clock time at reassembly, in nanoseconds. |
+| `host_ns` | Host wall-clock time when the final part arrived, in nanoseconds. |
 | `windows` | Dirty rectangles in the present. |
 | `packed_bytes` | Bytes of PackBits pixel data. |
 | `dropped_before` | Presents since the previous publication that were unpublished due to the FPS gate, an image still being sent, or a redraw owed. Their windows merge into the next published present. Capped at 65535. |

@@ -28,14 +28,16 @@ class PanelVideoDeviceTests(unittest.TestCase):
         packet = panel_video.PART.pack(seq, 0, 1) + panel_video.PRESENT.pack(seq, us, 0, 0)
         return b"PANEL_BIN %d %08x\n" % (len(packet), zlib.crc32(packet)) + packet
 
-    def test_video_drains_serial_while_encoder_write_waits(self):
+    def test_video_waits_for_serial_end_before_encoding(self):
         drained = threading.Event()
+        encoding = threading.Event()
         end = b"PANELCAP_END presents=2 dropped=0 bytes=32\n"
 
         class SlowEncoderBoard(PanelBoard):
             def read(self, size):
                 data = super().read(size)
                 if data == end:
+                    encoding.wait(0.2)
                     drained.set()
                 return data
 
@@ -45,7 +47,9 @@ class PanelVideoDeviceTests(unittest.TestCase):
         process.wait.return_value = 0
 
         def wait_for_reader(_):
-            self.assertTrue(drained.wait(0.5), "encoder blocked the serial reader")
+            if not drained.is_set():
+                encoding.set()
+                self.fail("encoder ran during serial capture")
 
         process.stdin.write.side_effect = wait_for_reader
         with tempfile.TemporaryDirectory() as folder:

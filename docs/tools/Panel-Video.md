@@ -104,7 +104,7 @@ title Window header, one cell a byte
 | Refusal | `PANELCAP_REFUSED: <reason>` for bad syntax or FPS, START while on, STOP while off, or no memory for the sender. A missing image gets `PANELCAP ERR no memory: need N, largest free M`. |
 | Release | A release image cannot answer START or STOP. The host releases the lock on its END deadline. |
 | Reassembly | A missing, repeated or out-of-order part discards the present. The next sequence starts at part zero. |
-| Host drain | The serial reader queues packets for a separate video worker. A full queue stops the capture with an error while the reader drains through END. |
+| Host drain | The serial reader spools packets and receipt times to a temporary file. Decoding and MP4 encoding start after END. |
 | Canvas | The host applies complete presents in window order and uses the screenshot turn when emitting a frame. Missing updates leave previous pixels in place. |
 | Output | The MP4 samples the latest present at 30 Hz until the device's STOP timestamp. See [the command contract](../cli/Watch.md#panel-video). |
 

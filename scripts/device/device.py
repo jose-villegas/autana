@@ -2021,9 +2021,6 @@ def stream(args, store, board, lines=None, out=None):
 
 # How long a capture STOP may take to drain the board and answer.
 RECORD_END_SECONDS = 30
-# Keep decoding and encoder backpressure off the serial reader. A stalled
-# consumer gets a bounded packet backlog before the capture stops.
-VIDEO_PACKET_BACKLOG = 4096
 VIDEO_RX_BUFFER_BYTES = 256 * 1024
 
 
@@ -2064,7 +2061,6 @@ def capture_stream(args, store, board, tag, on_data, lines=None, log=None, openi
     answer = []
     began = threading.Event()
     consumer_failed = []
-    backlog = queue.Queue(maxsize=VIDEO_PACKET_BACKLOG) if recording is not None else None
 
     refusals = (f"{tag}_REFUSED",) if error_prefix is None else (f"{tag}_REFUSED", error_prefix)
 
@@ -2076,24 +2072,10 @@ def capture_stream(args, store, board, tag, on_data, lines=None, log=None, openi
                 consumer_failed.append(error)
                 done.set()
 
-    def submit(handler, data):
-        if backlog is None:
-            consume(handler, data)
-        elif not consumer_failed:
-            try:
-                backlog.put_nowait((handler, data))
-            except queue.Full:
-                consumer_failed.append(RuntimeError("video decoder fell behind the serial stream"))
-                done.set()
-
-    def decode():
-        while (item := backlog.get()) is not None:
-            consume(*item)
-
     def deliver(events):
         for kind, data in events:
             if kind == "data":
-                submit(on_data, data)
+                consume(on_data, data)
                 continue
             text = data.decode("utf-8", errors="replace")
             print(text, file=log, flush=True)
@@ -2107,7 +2089,7 @@ def capture_stream(args, store, board, tag, on_data, lines=None, log=None, openi
 
     def read(connection, stop, failed):
         try:
-            if backlog is not None and hasattr(connection, "set_buffer_size"):
+            if recording is not None and hasattr(connection, "set_buffer_size"):
                 connection.set_buffer_size(rx_size=VIDEO_RX_BUFFER_BYTES)
             while not stop.is_set() and not ended.is_set():
                 chunk = connection.read(STREAM_READ_BYTES)
@@ -2119,7 +2101,7 @@ def capture_stream(args, store, board, tag, on_data, lines=None, log=None, openi
                         deliver(error.events)
                         if on_packet_error is None:
                             raise
-                        submit(on_packet_error, getattr(error, "packet", None))
+                        consume(on_packet_error, getattr(error, "packet", None))
                         chunk = b""
         except Exception as error:  # noqa: BLE001  (any read failure ends the record, raised by its owner)
             failed.append(error)
@@ -2141,17 +2123,7 @@ def capture_stream(args, store, board, tag, on_data, lines=None, log=None, openi
 
     output = contextlib.nullcontext() if recording is None else recording
     with HeldLock(store, board, args.owner, tag.lower(), args.wait), output:
-        worker = threading.Thread(target=decode) if backlog is not None else None
-        if worker is not None:
-            worker.start()
-        try:
-            steer(read, lines, opening=[opening or f"{tag} START"], closing=closing, done=done, interrupt_ends=True)
-        finally:
-            if worker is not None:
-                backlog.put(None)
-                worker.join()
-        if consumer_failed:
-            raise consumer_failed[0]
+        steer(read, lines, opening=[opening or f"{tag} START"], closing=closing, done=done, interrupt_ends=True)
         reply = answer[0] if answer else ""
         if recording is not None:
             recording.finish(reply)
@@ -2168,9 +2140,9 @@ def video(args, store, board, lines=None, log=None):
     if not 1 <= fps <= maximum:
         raise RuntimeError(f"--fps must be between 1 and {maximum}")
     recording = panel_video.Recording(args.out, log=log)
-    answer = capture_stream(args, store, board, "PANELCAP", recording.packet, lines, log,
+    answer = capture_stream(args, store, board, "PANELCAP", recording.stage, lines, log,
                             opening=f"PANELCAP START {fps}", packet_tag=panel_video.PACKET_TAG,
-                            on_packet_error=recording.parts.corrupt, error_prefix=panel_video.ERROR_PREFIX,
+                            on_packet_error=partial(recording.stage, damaged=True), error_prefix=panel_video.ERROR_PREFIX,
                             recording=recording)
     return int(not answer.startswith("PANELCAP_END"))
 
