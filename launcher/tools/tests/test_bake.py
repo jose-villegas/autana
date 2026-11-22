@@ -1002,6 +1002,12 @@ class PosesTests(FittedBakeCase):
             data.write_text("second", encoding="utf-8")
             self.assertEqual(bake.native_inputs([path])[bake.relative(path)], bake.digest("second"))
 
+    def test_bake_inputs_with_required_arguments_is_not_a_hook(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = pathlib.Path(directory) / "other_binding.py"
+            path.write_text("def bake_inputs(found, lock):\n    return found, lock\n", encoding="utf-8")
+            self.assertNotIn(bake.relative(path), bake.native_inputs([path]))
+
     def test_scene_writer_is_outside_consumers(self):
         for stage in ("mesh", "reference", "fit"):
             with self.subTest(stage=stage):

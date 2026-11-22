@@ -487,7 +487,7 @@ def input_module(path):
 
 
 def native_inputs(files):
-    """Data inputs declared by bake_inputs() and what a stage's files compile.
+    """Data inputs from hooks callable as bake_inputs() and what the stage compiles.
 
     Each module-level path constant naming a C file counts with the
     quoted headers it reaches, and one inside a submodule counts as that submodule's pinned commit, so
@@ -500,8 +500,12 @@ def native_inputs(files):
     defines, enums = {}, {}
     for path in files:
         tree, constants, _ = module_facts(path)
-        if any(isinstance(node, ast.FunctionDef) and node.name == "bake_inputs" for node in tree.body):
-            keyed[relative(path)] = digest(input_module(path).bake_inputs())
+        hook = next((node for node in tree.body
+                     if isinstance(node, ast.FunctionDef) and node.name == "bake_inputs"), None)
+        if hook is not None:
+            args = hook.args
+            if len(args.posonlyargs) + len(args.args) == len(args.defaults) and None not in args.kw_defaults:
+                keyed[relative(path)] = digest(input_module(path).bake_inputs())
         headers = set()
         for node in ast.walk(tree):
             if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
