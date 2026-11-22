@@ -361,6 +361,101 @@ void f(void) {
                 })
                 self.assertEqual(len(findings), expected)
 
+    def include_hits(self, rule, includes):
+        """Audits a tree whose files under launcher/main include the paths listed for them."""
+        files = {"launcher/main/" + path: "".join('#include "%s"\n' % target for target in targets) or "#pragma once\n"
+                 for path, targets in includes.items()}
+        return [(hit.path.removeprefix("launcher/main/"), hit.line) for hit in self.audit(rule, files)]
+
+    def test_a_root_and_its_subfolder_including_each_other_is_a_folder_cycle(self):
+        findings = self.audit("FOLDER-CYCLE", {
+            "launcher/main/render/raster.h": "#pragma once\n",
+            "launcher/main/render/raster.c": '#include "render/lod/lod.h"\n',
+            "launcher/main/render/lod/lod.h": "#pragma once\n",
+            "launcher/main/render/lod/lod.c": '#include "render/raster.h"\n',
+            "launcher/main/render/path/path.h": "#pragma once\n",
+            "launcher/main/render/span.c": '#include "render/path/path.h"\n',
+        })
+        self.assertEqual([(hit.path, hit.line, hit.severity) for hit in findings],
+                         [("launcher/main/render/lod/lod.c", 1, check_style_audit.WARN),
+                          ("launcher/main/render/raster.c", 1, check_style_audit.WARN)])
+        self.assertIn("render/lod/", findings[1].message)
+
+    def test_headers_including_each_other_are_a_header_cycle(self):
+        findings = self.audit("HEADER-CYCLE", {
+            "launcher/main/ui/ui_internal.h": '#include "ui/controls/ui_widgets.h"\n',
+            "launcher/main/ui/controls/ui_widgets.h": '#include "ui/ui_internal.h"\n',
+            "launcher/main/ui/ui.c": '#include "ui/controls/ui_widgets.h"\n',
+        })
+        self.assertEqual([(hit.path, hit.severity) for hit in findings],
+                         [("launcher/main/ui/controls/ui_widgets.h", check_style_audit.ERROR),
+                          ("launcher/main/ui/ui_internal.h", check_style_audit.ERROR)])
+
+    def test_each_edge_inside_a_cycle_is_flagged_and_no_other(self):
+        # (rule, files and what each includes, the edges flagged)
+        cases = [
+            ("FOLDER-CYCLE", {"scene/a/a.h": ["scene/b/b.h"], "scene/b/b.h": ["scene/c/c.h"],
+                              "scene/c/c.c": ["scene/a/a.h"], "scene/c/c.h": []},
+             [("scene/a/a.h", 1), ("scene/b/b.h", 1), ("scene/c/c.c", 1)]),
+            ("FOLDER-CYCLE", {"scene/a/a.h": [], "scene/a/a.c": ["scene/a/a2.h", "scene/b/b.h"],
+                              "scene/a/a2.h": ["scene/a/a.h"], "scene/b/b.h": [],
+                              "scene/b/b.c": ["scene/b/b.h", "scene/a/a.h"]},
+             [("scene/a/a.c", 2), ("scene/b/b.c", 2)]),
+            ("HEADER-CYCLE", {"ui/a.h": ["ui/b.h"], "ui/b.h": ["ui/a.h"], "ui/outsider.h": ["ui/a.h"]},
+             [("ui/a.h", 1), ("ui/b.h", 1)]),
+            ("HEADER-CYCLE", {"ui/a.h": ["ui/b.h"], "ui/b.h": ["ui/c.h"], "ui/c.h": ["ui/a.h"]},
+             [("ui/a.h", 1), ("ui/b.h", 1), ("ui/c.h", 1)]),
+            ("HEADER-CYCLE", {"ui/top.h": ["ui/mid.h"], "ui/mid.h": []}, []),
+            ("HEADER-CYCLE", {"ui/a.c": ["ui/b.c"], "ui/b.c": ["ui/a.c"]}, []),
+        ]
+        # A one-way edge between two cycles is outside both, for either rule.
+        for rule, folder in (("FOLDER-CYCLE", "scene/%s/"), ("HEADER-CYCLE", "ui/")):
+            a, b, c, d = (folder.replace("%s", name) + name + ".h" for name in "abcd")
+            cases.append((rule, {a: [b], b: [a, c], c: [d], d: [c]}, [(a, 1), (b, 1), (c, 1), (d, 1)]))
+        for rule, includes, expected in cases:
+            with self.subTest(rule=rule, files=sorted(includes)):
+                self.assertEqual(self.include_hits(rule, includes), expected)
+
+    def test_an_include_that_is_no_source_edge_draws_none(self):
+        # Each tree would be a cycle if the marked include counted.
+        trees = [
+            {"launcher/main/apps/sand/sand.h": '#include "apps/sand/ui/brush.h"\n',
+             "launcher/main/apps/sand/ui/brush.h": '/*\n#include "apps/sand/sand.h"\n*/\n'},
+            {"launcher/main/scene/a/a.h": '#include "scene/b/b.h"\n',
+             "launcher/main/scene/b/b.h": '// #include "scene/a/a.h"\n'},
+            # A line comment ends at the first newline no backslash escapes: the include below is still in it.
+            {"launcher/main/scene/a/a.h": '#include "scene/b/b.h"\n',
+             "launcher/main/scene/b/b.h": '// a note that goes on \\\n#include "scene/a/a.h"\n'},
+            {"launcher/main/render/a.h": '#include "../../test/suites/t.h"\n',
+             "launcher/test/suites/t.h": '#include "../../main/render/a.h"\n'},
+            {"launcher/main/scene/a/a.c": '#include "scene/b/b.h"\n',
+             "launcher/main/scene/b/b.h": "#pragma once\n",
+             "launcher/main/scene/b/notes.txt": '#include "scene/a/a.c"\n'},
+        ]
+        for rule in ("FOLDER-CYCLE", "HEADER-CYCLE"):
+            for index, tree in enumerate(trees):
+                with self.subTest(rule=rule, tree=index):
+                    self.assertEqual(self.audit(rule, tree), [])
+
+    def test_components_of_a_chain_longer_than_the_recursion_limit(self):
+        length = sys.getrecursionlimit() * 2
+        chain = {n: [n + 1] for n in range(length)}
+        self.assertEqual(len(set(check_style_audit._components(chain).values())), length + 1)
+        ring = dict(chain)
+        ring[length] = [0]
+        self.assertEqual(len(set(check_style_audit._components(ring).values())), 1)
+
+    def test_a_cycle_removed_between_two_runs_on_one_root_is_gone_from_the_second(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            gate_tree.write(root, "launcher/main/ui/a.h", '#include "ui/b.h"\n')
+            gate_tree.write(root, "launcher/main/ui/b.h", '#include "ui/a.h"\n')
+            gate_tree.commit(root, "launcher")
+            self.assertEqual(len(self.rule_hits(root, "HEADER-CYCLE")), 2)
+            gate_tree.write(root, "launcher/main/ui/b.h", "#pragma once\n")
+            gate_tree.commit(root, "launcher")
+            self.assertEqual(self.rule_hits(root, "HEADER-CYCLE"), [])
+
     def test_apps_own_sources_are_never_a_source_for_include_direction(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)

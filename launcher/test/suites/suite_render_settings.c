@@ -281,12 +281,12 @@ test_tuned_settings_keep_the_callers_small_fill(void) {
 }
 
 /* Each texture knob changes its own field of what a draw uses and no other; 0 is a value, not
- * unset; the bend knob counts R3D_SPAN_BEND_STEPS to the texel; a reset gives the caller's back. */
+ * unset; the bend knob counts RENDER_TEXTURE_BEND_STEPS to the texel; a reset gives the caller's back. */
 #define CALLER_DIVIDE_PX 7
 #define CALLER_BEND      3.0F
 #define CALLER_LEVEL     2
 #define CALLER_FAR_LEVEL 3
-#define KNOB_BEND_STEPS  (3 * R3D_SPAN_BEND_STEPS / 2)
+#define KNOB_BEND_STEPS  (3 * RENDER_TEXTURE_BEND_STEPS / 2)
 
 /* A level knob at 0 sets its field, `level` in `expected`, to 0 and no other; its reset gives the caller's back. */
 static void
@@ -310,7 +310,7 @@ test_each_texture_knob_overrides_only_its_own_field(void) {
     render_settings_t used = render_settings_tuned(&set);
     assert_settings(&expected, &used);
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, texture_bend_steps), KNOB_BEND_STEPS));
-    expected.texture.affine_bend = (float)KNOB_BEND_STEPS / R3D_SPAN_BEND_STEPS;
+    expected.texture.affine_bend = (float)KNOB_BEND_STEPS / RENDER_TEXTURE_BEND_STEPS;
     used = render_settings_tuned(&set);
     assert_settings(&expected, &used);
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, texture_bend_steps), 0));
@@ -424,6 +424,7 @@ enum {
     SMALL_FILL_ROWS = 3,
     TEXTURE_ROWS = 4,
     ANIM_ROWS = 5,
+    PICK_EVERY_ROW = FIELDS - SMALL_FILL_ROWS - TEXTURE_ROWS - ANIM_ROWS - 4,
     BLEND_ROW = FIELDS - SMALL_FILL_ROWS - TEXTURE_ROWS - ANIM_ROWS - 2,
     BLEND_PX_ROW,
     MID_PX_ROW = FIELDS - SMALL_FILL_ROWS - TEXTURE_ROWS - ANIM_ROWS,
@@ -440,10 +441,12 @@ enum {
     STYLE_ROW,
 };
 
-/* Rows of zeros but for the anim intervals, whose least is RENDER_ANIM_EVERY_MIN. */
+/* Rows of zeros but for the intervals whose least is one: lod.pick_every and
+ * the anim intervals (RENDER_ANIM_EVERY_MIN). */
 static void
 zero_rows(int16_t values[FIELDS]) {
     memset(values, 0, sizeof(int16_t) * FIELDS);
+    values[PICK_EVERY_ROW] = 1;
     values[MID_EVERY_ROW] = RENDER_ANIM_EVERY_MIN;
     values[FAR_EVERY_ROW] = RENDER_ANIM_EVERY_MIN;
 }
@@ -466,11 +469,27 @@ test_a_blend_outside_its_values_or_range_is_refused_unread(void) {
     TEST_ASSERT_EQUAL(ASSET_ERR_FORMAT, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
 }
 
+/* A pick spread over no frames, or past RENDER_LOD_PICK_EVERY_MAX, is refused. */
+static void
+test_a_pick_every_outside_its_range_is_refused_unread(void) {
+    int16_t values[FIELDS];
+    zero_rows(values);
+    values[BLEND_PX_ROW] = STEP;
+    render_settings_t read;
+    values[PICK_EVERY_ROW] = RENDER_LOD_PICK_EVERY_MAX;
+    TEST_ASSERT_EQUAL(ASSET_OK, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
+    TEST_ASSERT_EQUAL_INT(RENDER_LOD_PICK_EVERY_MAX, read.lod.pick_every);
+    values[PICK_EVERY_ROW] = RENDER_LOD_PICK_EVERY_MAX + 1;
+    TEST_ASSERT_EQUAL(ASSET_ERR_FORMAT, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
+    values[PICK_EVERY_ROW] = 0;
+    TEST_ASSERT_EQUAL(ASSET_ERR_FORMAT, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
+}
+
 /* Pixel limits apply to every animation threshold, including the hysteresis band. */
 static void
 test_anim_pixel_ranges_refuse_negative_and_above_max(void) {
-    int16_t values[FIELDS] = {0};
-    values[MID_EVERY_ROW] = values[FAR_EVERY_ROW] = RENDER_ANIM_EVERY_MIN;
+    int16_t values[FIELDS];
+    zero_rows(values);
     values[BLEND_PX_ROW] = STEP;
     const int rows[] = {MID_PX_ROW, FAR_PX_ROW, HYSTERESIS_PX_ROW};
     render_settings_t read;
@@ -600,7 +619,7 @@ test_an_app_starts_with_its_packs_settings_and_without_one_the_default(void) {
     int16_t values[FIELDS];
     zero_rows(values);
     values[BLEND_PX_ROW] = STEP;
-    const render_settings_t off = {.lod.blend_px = 1.0F,
+    const render_settings_t off = {.lod = {.pick_every = 1, .blend_px = 1.0F},
                                    .anim = {.mid_every = RENDER_ANIM_EVERY_MIN, .far_every = RENDER_ANIM_EVERY_MIN}};
     void* raw = NULL;
     asset_pack_t opened;
@@ -627,6 +646,7 @@ suite_render_settings(void) {
     RUN_TEST(test_a_release_build_carries_no_override);
     RUN_TEST(test_a_packs_render_entry_reads_every_field);
     RUN_TEST(test_a_blend_outside_its_values_or_range_is_refused_unread);
+    RUN_TEST(test_a_pick_every_outside_its_range_is_refused_unread);
     RUN_TEST(test_an_anim_interval_outside_its_range_is_refused_unread);
     RUN_TEST(test_a_texture_setting_outside_its_range_is_refused_unread);
     RUN_TEST(test_a_small_fill_setting_outside_its_range_is_refused_unread);
