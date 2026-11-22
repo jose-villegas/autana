@@ -45,7 +45,9 @@ from r3d import import_settings  # noqa: E402
 
 SCENE_SUFFIX = ".scene.toml"
 KEYS_HEADER = "[[keys]]"
-KEYS_HEADER_LINE = re.compile(r"\s*\[\[\s*keys\s*\]\]\s*(#.*)?")
+# A [[keys]] header line, its key bare or quoted. A line inside a multi-line string can look like one: the
+# headers found must then match the parsed keys, or the write is refused.
+KEYS_HEADER_LINE = re.compile(r"""\s*\[\[\s*(keys|"keys"|'keys')\s*\]\]\s*(#.*)?""")
 KEY_FIELDS = ("t", "eye", "look_at")
 NEW_KEY = "new"
 FIELDS = ("position", "rotation", "scale")
@@ -99,17 +101,17 @@ def camera_path(item, scene):
         source, _ = tracks_asset.load_source(path.animation)
     except tracks_asset.TracksError as error:
         raise Refused(str(error)) from error
-    keys = source.resolve() if source.name.lower().endswith(KEYS_SUFFIX) else None
+    keys = source.resolve() if is_keys_file(source) else None
     return dict(anim=str(path.animation), keys=None if keys is None else str(keys),
                 feeds_bakes=item is scene.camera and path_baked(scene))
 
 
 def path_baked(scene):
-    """Whether a bake reads the scene camera's path: a renderer keeps what it sees along it, or a fit is posed
-    along it. import_settings.load_scene requires the path for the same two (tests pin them together on every
-    scene in the tree)."""
+    """Whether a bake reads the scene camera's path: a renderer keeps what it sees along it, or a fit takes its
+    reference views from it, probes or not (bake.reference_recipe samples a path whenever there is one). Tests
+    pin this to the poses bake.stage_keys asks for on every scene in the tree."""
     return any((job.renderer.visibility is not None and job.renderer.visibility.source == "camera_path")
-               or (job.renderer.fit and job.settings.fit.probes is None) for job in scene.renderers)
+               or job.renderer.fit is not None for job in scene.renderers)
 
 
 def parse_assignment(text):
@@ -195,10 +197,15 @@ def apply(path, assignments):
         raise Refused(f"{path}: {error}") from error
 
 
+def is_keys_file(path):
+    """Whether `path` names a camera keys file, its suffix in any case, as gltf_read finds one."""
+    return path.name.lower().endswith(KEYS_SUFFIX)
+
+
 def keys_path(text):
     """`text` as a path, refused unless it names a .keys.toml."""
     path = pathlib.Path(text)
-    if not path.name.endswith(KEYS_SUFFIX):
+    if not is_keys_file(path):
         raise Refused(f"{path}: only a {KEYS_SUFFIX} is written, never its clip's other files")
     return path
 

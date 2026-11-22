@@ -1,5 +1,6 @@
 """scene_edit: placements read from a scene, and changed ones written back with nothing else in the file touched."""
 
+import collections
 import contextlib
 import io
 import json
@@ -372,14 +373,15 @@ class KeysEditTests(unittest.TestCase):
         self.assertIn("increase strictly", err)
 
 
-    def test_a_fit_posed_along_the_path_feeds_bakes_unless_probes_pose_it(self):
-        for body, fit, feeds in ((SIMPLIFY + VARIANT, FIT, True),
-                                 (SIMPLIFY + "probes = { face = 64 }\n" + VARIANT, FIT.replace("budget = 8\n", ""), False)):
-            with self.subTest(feeds=feeds):
+    def test_a_fit_feeds_bakes_with_probes_or_without(self):
+        """A fit takes reference views along the path whenever there is one, probes or not."""
+        for body, fit in ((SIMPLIFY + VARIANT, FIT),
+                          (SIMPLIFY + "probes = { face = 64 }\n" + VARIANT, FIT.replace("budget = 8\n", ""))):
+            with self.subTest(probes="probes" in body):
                 write_import(self.folder, output=VARIANT_OUTPUT, body=body)
                 fitted = renderer(extra='bake = true\nvariant = "mesh"\n' + fit)
                 self.scene.write_text(HEAD + fitted + sun_object() + camera_object("walker", "walk.anim.toml"))
-                self.assertEqual(self.read_objects()["walker"]["path"]["feeds_bakes"], feeds)
+                self.assertTrue(self.read_objects()["walker"]["path"]["feeds_bakes"])
 
     def test_only_the_scene_camera_path_feeds_bakes(self):
         self.scene.write_text(self.scene.read_text().replace('"fly.anim.toml"', '"walk.anim.toml"'))
@@ -450,38 +452,67 @@ class KeysEditTests(unittest.TestCase):
             with self.subTest(key=key):
                 self.assert_refused(key, WALK[1], why=why)
 
+    def test_a_keys_file_named_in_capitals_is_read_and_written(self):
+        capitals = self.keys.rename(self.folder / "walk.KEYS.TOML")
+        self.assertEqual(run("read-keys", capitals)[0], 0)
+        code, _, err = run("set-keys", capitals, "--key", WALK[0], "--key", "1:2.5:6,1,0:0,1,0", "--key", WALK[2])
+        self.assertEqual(code, 0, err)
+        self.assertIn("eye = [6, 1, 0]", capitals.read_text())
+
+    def test_a_quoted_keys_header_is_a_table_too(self):
+        for quote in ('"', "'"):
+            with self.subTest(quote=quote):
+                self.keys.write_text(WALK_KEYS.replace("[[keys]]\nt = 5", f"[[{quote}keys{quote}]]\nt = 5"),
+                                     newline="\n")
+                self.assertEqual(self.set_keys(WALK[0], WALK[1], "2:5:0,1,-6:0,1,0")[0], 0)
+                self.assertIn(f"[[{quote}keys{quote}]]\nt = 5\neye = [0, 1, -6]\n", self.keys.read_text())
+
+    def test_a_header_inside_a_multi_line_string_is_refused(self):
+        self.keys.write_text(WALK_KEYS.replace('animation = "walk"', 'animation = """walk\n[[keys]]\n"""'),
+                             newline="\n")
+        self.before = self.keys.read_bytes()
+        self.assert_refused("0:0:0,1,4:0,1,0", WALK[1], WALK[2], why=r"\[\[keys\]\] tables")
+
     def test_a_spaced_keys_header_is_a_table_too(self):
         self.keys.write_text(WALK_KEYS.replace("[[keys]]\nt = 5", "[[ keys ]]\nt = 5"), newline="\n")
         self.assertEqual(self.set_keys(WALK[0], WALK[1], "2:5:0,1,-6:0,1,0")[0], 0)
         self.assertIn("[[ keys ]]\nt = 5\neye = [0, 1, -6]\n", self.keys.read_text())
 
 
+class RecordedPoses:
+    """bake.Poses as stage_keys asks it, recording which cameras' paths a bake samples."""
+
+    def __init__(self):
+        self.cameras = []
+
+    def digest(self, camera, every_ms, size, tools, unavailable=None):
+        self.cameras.append(camera)
+        return "poses"
+
+    def reason(self, unavailable):
+        return ""
+
+
 class FeedsBakesTreeTests(unittest.TestCase):
-    def test_feeds_bakes_is_true_exactly_where_the_scene_rules_need_the_path(self):
-        """On every scene in the tree, the scene camera's path feeds bakes exactly when import_settings refuses the
-        scene without that path: the rule read takes from load_scene stays load_scene's."""
+    def test_feeds_bakes_is_true_exactly_where_a_bake_samples_the_path(self):
+        """On every scene in the tree whose camera has a path, read's feeds_bakes says whether any of its bakes'
+        keys samples that path (bake.stage_keys asking Poses for it): the rule stays the bake's."""
+        from bake import bake
+
         checked = 0
-        for scene in tree_scenes():
-            objects = {item["name"]: item for item in scene_edit.placements(scene)}
-            document = tomlkit.parse(scene.read_text(encoding="utf-8"))
-            first = next((table for table in document["objects"] if "camera" in table), None)
-            if first is None or "path" not in first["camera"]:
+        for path in tree_scenes():
+            scene = scene_edit.import_settings.load_scene(path)
+            if scene.camera is None or scene.camera.component.path is None:
                 continue
-            with self.subTest(scene=scene.name):
-                del first["camera"]["path"]
-                with tempfile.NamedTemporaryFile("w", dir=scene.parent, suffix=".scene.toml", delete=False,
-                                                 encoding="utf-8") as copy:
-                    copy.write(tomlkit.dumps(document))
-                try:
-                    scene_edit.import_settings.load_scene(copy.name)
-                    needed = False
-                except scene_edit.import_settings.SettingsError:
-                    needed = True
-                finally:
-                    pathlib.Path(copy.name).unlink()
-                self.assertEqual(objects[str(first["name"])]["path"]["feeds_bakes"], needed)
-                checked += needed
+            with self.subTest(scene=path.name):
+                poses = RecordedPoses()
+                for job in scene.renderers:
+                    bake.stage_keys(job, scene, collections.defaultdict(str), None, poses)
+                sampled = any(camera is scene.camera.component for camera in poses.cameras)
+                self.assertEqual(scene_edit.path_baked(scene), sampled)
+                checked += sampled
         self.assertGreater(checked, 0, "no scene in the tree has a path a bake reads")
+
 
 if __name__ == "__main__":
     unittest.main()
