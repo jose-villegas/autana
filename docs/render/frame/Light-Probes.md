@@ -6,11 +6,11 @@ object cannot be baked, so it samples baked light probes: a grid of points
 that each store the light arriving from every direction, as first-order
 spherical harmonics (SH).
 
-This is the established light-probe technique: Unity's Light Probes<sup>[[135]](../../Citations.md#unity-light-probes)</sup>
-and Unreal's Volumetric Lightmaps<sup>[[136]](../../Citations.md#epic-volumetric-lightmaps)</sup>
+This is the established light-probe technique: Unity's Light Probes<sup>[[137]](../../Citations.md#unity-light-probes)</sup>
+and Unreal's Volumetric Lightmaps<sup>[[138]](../../Citations.md#epic-volumetric-lightmaps)</sup>
 (which replaced its Indirect Lighting Cache) both light moving objects from
 a precomputed probe volume; here each mover takes one sample, with no
-per-pixel probe lookup. The grid is the irradiance volume<sup>[[134]](../../Citations.md#greger-1998)</sup>;
+per-pixel probe lookup. The grid is the irradiance volume<sup>[[136]](../../Citations.md#greger-1998)</sup>;
 its convolution is Ramamoorthi and Hanrahan's<sup>[[128]](../../Citations.md#ramamoorthi-hanrahan-2001)</sup>.
 
 ```mermaid
@@ -179,7 +179,7 @@ baked colours.
 ### Baked and realtime lights
 
 A light is realtime or baked, as in Unity's light
-modes<sup>[[137]](../../Citations.md#unity-light-modes)</sup>. A baked
+modes<sup>[[139]](../../Citations.md#unity-light-modes)</sup>. A baked
 light goes into the probe bake, direct and bounced, and a probe-lit
 renderer skips it, so a mover takes it only through the probes. A realtime
 light is not baked and lights the mover per vertex. Sponza's sun is baked.
