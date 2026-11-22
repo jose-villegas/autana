@@ -839,6 +839,10 @@ class FittedBakeTests(FittedBakeCase):
             self.assertIn(f"run {RUN} is {status}", done.err)
             self.assertFalse(done.written)
 
+    def test_a_lock_without_a_run_asks_no_status(self):
+        done = self.command(["lock", "--partial"], self.locked(LOCKED_SHA256, run=RUN), status="in_progress")
+        self.assertEqual(done.code, 0, done.err)
+
     def test_kinds_repeat_and_levels_key_on_the_fit_the_same_command_made(self):
         done = self.command(["bake", "--kind", "fit", "--kind", "levels"], self.locked(LOCKED_SHA256, run=RUN))
         self.assertEqual(done.code, 0, done.err)
@@ -1666,6 +1670,30 @@ class LockTests(unittest.TestCase):
                 mock.patch.object(bake, "github_get", return_value=json.dumps({"status": "queued"}).encode()) as get:
             self.assertEqual(bake.run_status(7), "queued")
         self.assertEqual(get.call_args.args, (f"{bake.API_URL}/actions/runs/7", "t"))
+
+    def test_each_unfinished_run_is_named_and_a_finished_one_is_not(self):
+        statuses = {41: "completed", 42: "in_progress", 43: "waiting"}
+        with mock.patch.object(bake, "run_status", side_effect=statuses.get):
+            with self.assertRaises(bake.BakeMissing) as refused:
+                bake.refuse_unfinished([41, 42, 43])
+            bake.refuse_unfinished([41])
+        self.assertIn("run 42 is in_progress", str(refused.exception))
+        self.assertIn("run 43 is waiting", str(refused.exception))
+        self.assertNotIn("run 41", str(refused.exception))
+
+    def test_the_run_a_ci_job_runs_in_locks_its_own_bakes_while_it_goes(self):
+        # The Bakes CPU job locks from its own run on the runner, never pushing that lock.
+        with mock.patch.dict("os.environ", {"GITHUB_RUN_ID": "42"}), \
+                mock.patch.object(bake, "run_status", return_value="in_progress") as status:
+            bake.refuse_unfinished([42])
+            with self.assertRaisesRegex(bake.BakeMissing, "run 43 is in_progress"):
+                bake.refuse_unfinished([42, 43])
+        self.assertEqual([call.args for call in status.call_args_list], [(43,)])
+
+    def test_a_status_read_without_a_token_fails_naming_the_run(self):
+        with mock.patch.object(bake, "github_token", return_value=None), \
+                self.assertRaisesRegex(bake.BakeMissing, "run 7"):
+            bake.run_status(7)
 
     def test_a_refused_rename_onto_the_same_bytes_is_done_and_leaves_no_scratch(self):
         target = self.cache / "a.bundle"

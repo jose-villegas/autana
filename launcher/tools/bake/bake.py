@@ -1169,9 +1169,7 @@ def github_get(url, token):
 def run_files(run, folder):
     """Downloads what CI run `run` uploaded (its bakes-* artifacts) into `folder`, with the standard
     library and GitHub's API, so a runner without gh can too; artifacts need a token even when public."""
-    token = github_token()
-    if token is None:
-        raise BakeMissing(f"reading run {run}'s uploads needs a GitHub token: GH_TOKEN, or gh signed in")
+    token = run_token(run)
     listing = json.loads(github_get(f"{API_URL}/actions/runs/{run}/artifacts?per_page=100", token))
     for artifact in listing["artifacts"]:
         if fnmatch.fnmatch(artifact["name"], RUN_ARTIFACTS) and not artifact["expired"]:
@@ -1240,21 +1238,28 @@ def runs_mesh_cpu_vendor(found, lock, made, mesh_cpu_vendor):
     return mesh_cpu_vendor
 
 
-def run_status(run):
-    """CI run `run`'s status as GitHub's API gives it: queued, in_progress, completed."""
+def run_token(run):
+    """The GitHub token reading CI run `run` needs; raises naming the run without one."""
     token = github_token()
     if token is None:
         raise BakeMissing(f"reading run {run} needs a GitHub token: GH_TOKEN, or gh signed in")
-    return json.loads(github_get(f"{API_URL}/actions/runs/{run}", token))["status"]
+    return token
+
+
+def run_status(run):
+    """CI run `run`'s status as GitHub's API gives it: queued, in_progress, completed."""
+    return json.loads(github_get(f"{API_URL}/actions/runs/{run}", run_token(run)))["status"]
 
 
 def refuse_unfinished(runs):
-    """Raises naming each run in `runs` that has not finished: a branch keeps one Bakes run, so the push of a lock
-    cancels the run it was taken from while it still works."""
-    going = [f"run {run} is {status}" for run in runs if (status := run_status(run)) != "completed"]
+    """Raises naming each run in `runs` that has not finished, but the run this process runs in (GITHUB_RUN_ID),
+    which locks its own bakes on its runner: a branch keeps one Bakes run, so pushing a lock taken from a run still
+    going would cancel it before it uploads the rest."""
+    current = os.environ.get("GITHUB_RUN_ID")
+    going = [f"run {run} is {status}" for run in runs
+             if str(run) != current and (status := run_status(run)) != "completed"]
     if going:
-        raise BakeMissing("; ".join(going) + ": lock from a run once it has finished, since pushing the lock "
-                          "cancels a run still going on its branch")
+        raise BakeMissing("; ".join(going) + ": lock from a run once it has finished")
 
 
 def runs_made(runs, cache):
