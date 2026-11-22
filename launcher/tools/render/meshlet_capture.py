@@ -54,7 +54,7 @@ def install_row(work, metadata, size):
         path = work / "bakes" / str(size) / row["output"]
         row.update(sha256=bake.file_sha256(path), size=path.stat().st_size)
         bake.store(path, row, bake.BUNDLE_SUFFIX, bake.default_cache())
-    bake.write_lock(tables["bake"].values(), lock, tables["poses"].values(), tables["mesh_cpu_vendor"])
+    bake.write_lock(tables["bake"].values(), lock, tables["poses"].values())
     quote = lambda path: shlex.quote(pathlib.Path(path).as_posix())
     capture = ROOT / f"docs/render/data/meshlets-{size}-board.log"
     print(f"autana --wait 3600 --project {quote(work / 'tree')} suite {shlex.quote(metadata['suite'])} "

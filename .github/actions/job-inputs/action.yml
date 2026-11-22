@@ -24,5 +24,3 @@ runs:
         path: ${{ steps.inputs.outputs.path }}
         retention-days: 90
         if-no-files-found: error
-        # Two candidates of one job may both work (.github/actions/vendor-candidate); they read the same inputs.
-        overwrite: true
