@@ -480,7 +480,6 @@ spectator_view(const raster_cull_t* s, const raster_t* raster, const transformf_
     }
     render_view_t view = render_view_make(pose, tan_half, near_z, camera->viewport);
     view.present = camera->present;
-    view.small_fill = camera->small_fill;
     return view;
 }
 

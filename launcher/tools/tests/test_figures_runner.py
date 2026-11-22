@@ -38,6 +38,11 @@ PROBE = f'''
 (pathlib.Path(os.environ["{figures_runner.DEPENDS_FOLDER}"]) / "probe.d").write_text("probe.o: data/probe.c\\n")
 '''
 
+# A prologue that lists tools/pack.py as a build would (render_scene.sh, build_pack.py) under the runner.
+BUILT = f'''
+(pathlib.Path(os.environ["{figures_runner.DEPENDS_FOLDER}"]) / "built.d").write_text("built: tools/pack.py\\n")
+'''
+
 
 class Tree:
     """A checkout outside git: producers under launcher/, committed images under docs/images/."""
@@ -352,6 +357,15 @@ class RunnerTests(TreeTest):
         with mock.patch.object(producer, "find", more_arguments):
             self.assertNotIn("unchanged launcher/a/one.py", self.changed())
 
+    def test_an_unreadable_record_runs_everything_and_is_rewritten_whole(self):
+        self.probed()
+        self.tree.root.joinpath("fingerprints.json").write_text('{"launcher/a/one.py": {"fing')
+        code, out, err = self.tree.run("build", "--changed")
+        self.assertEqual(code, 0, err)
+        self.assertIn("unreadable record", err)
+        self.assertNotIn("unchanged launcher/a/one.py", out.splitlines())
+        self.assertIn("unchanged launcher/a/one.py", self.changed())
+
     def test_a_skipped_run_keeps_its_record(self):
         self.probed()
         self.assertIn("unchanged launcher/a/one.py", self.changed())
@@ -368,12 +382,53 @@ class RunnerTests(TreeTest):
     def test_a_new_item_of_an_each_glob_runs_while_its_siblings_are_skipped(self):
         self.tree.each_csv("x", "y")
         self.assertEqual(self.tree.run("build")[0], 0)
-        (self.tree.images / "fig/y.png").unlink()
         self.tree.write("data/z.csv", "3")
         lines = self.changed()
-        self.assertEqual(lines[:2], ["unchanged launcher/a/one.py[x]", "unchanged launcher/a/one.py[y]"])
-        self.assertEqual(len(lines), 3, lines)
-        self.assertEqual(self.tree.figures(), ["x.png", "z.png"])
+        self.assertEqual(lines, ["unchanged launcher/a/one.py[x]", "unchanged launcher/a/one.py[y]",
+                                 "wrote 1 images to " + str(self.tree.images)])
+        self.assertEqual(self.tree.figures(), ["x.png", "y.png", "z.png"])
+
+    def test_changed_reruns_when_its_committed_image_is_edited_or_removed(self):
+        self.probed()
+        self.tree.commit("fig/one.png", "blue")
+        self.assertNotIn("unchanged launcher/a/one.py", self.changed())
+        (self.tree.images / "fig/one.png").unlink()
+        self.assertNotIn("unchanged launcher/a/one.py", self.changed())
+        self.assertEqual(self.tree.figures(), ["one.png"])
+
+    def test_changed_reruns_when_the_toolchain_changes(self):
+        with mock.patch.object(figures_runner, "toolchain", return_value={"cc": "gcc 13.2"}):
+            self.probed()
+            self.assertIn("unchanged launcher/a/one.py", self.changed())
+        with mock.patch.object(figures_runner, "toolchain", return_value={"cc": "gcc 14.1"}):
+            self.assertNotIn("unchanged launcher/a/one.py", self.changed())
+
+    def test_changed_reruns_when_an_installed_package_the_code_pins_changes(self):
+        self.tree.write("launcher/a/requirements.txt", "numpy==2.0" + chr(10))
+        with mock.patch.object(figures_runner, "installed", return_value="2.0"):
+            self.probed()
+            self.assertIn("unchanged launcher/a/one.py", self.changed())
+        with mock.patch.object(figures_runner, "installed", return_value="2.1"):
+            self.assertNotIn("unchanged launcher/a/one.py", self.changed())
+
+    def test_python_a_build_listed_counts_with_its_imports(self):
+        # As build_pack.py lists itself under render_scene.sh: the runner follows what that script imports.
+        self.tree.write("tools/pack.py", "import helper" + chr(10))
+        self.tree.write("tools/helper.py", "VALUE = 1" + chr(10))
+        self.tree.producer("a/one.py", ["fig/one.png"], ["one.png"], prologue=BUILT)
+        self.assertEqual(self.tree.run("build")[0], 0)
+        self.assertIn("unchanged launcher/a/one.py", self.changed())
+        self.tree.write("tools/helper.py", "VALUE = 2" + chr(10))
+        self.assertNotIn("unchanged launcher/a/one.py", self.changed())
+
+    def test_a_run_needing_bakes_without_an_each_reruns_when_any_lock_row_changes(self):
+        lock = {"k1": {"sha256": "a"}}
+        self.tree.producer("a/one.py", ["fig/one.png"], ["one.png"], needs=("host", "bakes"))
+        self.enterContext(baking(drawn("hall.fit.bundle"), lock))
+        self.assertEqual(self.tree.run("build")[0], 0)
+        self.assertIn("unchanged launcher/a/one.py", self.changed())
+        lock["k1"] = {"sha256": "b"}
+        self.assertNotIn("unchanged launcher/a/one.py", self.changed())
 
     def test_check_records_only_runs_whose_images_were_same(self):
         self.tree.producer("a/one.py", ["fig/one.png"], ["one.png"])
@@ -531,13 +586,25 @@ class RecordTests(TreeTest):
             self.assertEqual(code, 1, out)
             self.assertIn("orphan fig/gone.png: launcher/a/one.py no longer makes it", out.splitlines())
 
-    def test_a_build_into_another_folder_records_nothing(self):
+    def test_a_build_into_another_folder_records_only_runs_whose_images_are_the_committed_ones(self):
         self.tree.producer("a/one.py", ["fig/one.png"], ["one.png"])
+        self.tree.producer("b/two.py", ["fig/two.png"], ["two.png"])
         self.tree.commit("fig/one.png", "blue")
+        self.tree.commit("fig/two.png", "red")
         self.assertEqual(self.tree.run("build", "--into", str(self.tree.root / "elsewhere"))[0], 0)
         code, out, _ = self.tree.run("check", "--changed")
         self.assertEqual(code, 1, out)
         self.assertNotIn("unchanged launcher/a/one.py", out.splitlines())
+        self.assertIn("unchanged launcher/b/two.py", out.splitlines())
+
+    def test_a_skipped_run_built_into_another_folder_leaves_the_committed_images_there(self):
+        self.tree.producer("a/one.py", ["fig/*.png"], ["one.png", "two.png"])
+        self.assertEqual(self.tree.run("build")[0], 0)
+        elsewhere = self.tree.root / "elsewhere"
+        code, out, _ = self.tree.run("build", "--changed", "--into", str(elsewhere))
+        self.assertEqual((code, out.splitlines()[0]), (0, "unchanged launcher/a/one.py"))
+        self.assertEqual(sorted(path.name for path in (elsewhere / "fig").iterdir()), ["one.png", "two.png"])
+        self.assertEqual((elsewhere / "fig/one.png").read_bytes(), (self.tree.images / "fig/one.png").read_bytes())
 
     def test_items_that_read_alike_once_cleaned_run_in_their_own_folders(self):
         self.tree.each_csv("a+b", "a b")
@@ -553,6 +620,24 @@ class RecordTests(TreeTest):
         self.assertEqual(code, 2)
         self.assertIn("launcher/a/one.py compiled C the runner could not see", err)
 
+    def test_a_run_given_a_shell_script_that_lists_nothing_it_read_fails(self):
+        self.tree.write("launcher/render.sh", "")
+        real = producer.find
+
+        def shell_run(root):
+            return {name: item._replace(producer=item.producer._replace(run=("launcher/render.sh", *item.producer.run)))
+                    for name, item in real(root).items()}
+        # The fixture writes each argument after --out as an image, so the script goes first and is dropped.
+        self.tree.producer("a/one.py", ["fig/one.png"], ["one.png"], prologue='sys.argv.remove("launcher/render.sh")')
+        with mock.patch.object(producer, "find", shell_run):
+            code, _, err = self.tree.run("build")
+        self.assertEqual(code, 2)
+        self.assertIn("launcher/a/one.py compiled C the runner could not see", err)
+
+    def test_the_renderer_build_reads_the_depends_folder_by_the_name_the_runner_sets(self):
+        script = (pathlib.Path(figures_runner.ROOT) / "launcher/tools/render/render_scene.sh").read_text()
+        self.assertIn(f"${{{producer.DEPENDS_FOLDER}:-}}", script)
+
     def test_a_docs_file_the_code_names_is_an_input(self):
         self.tree.write("docs/math/order.txt", "a b")
         self.tree.producer("a/one.py", ["fig/one.png"], ["one.png"], prologue='ORDER = "docs/math/order.txt"')
@@ -560,6 +645,16 @@ class RecordTests(TreeTest):
         self.tree.write("docs/math/order.txt", "b a")
         out = self.tree.run("build", "--changed")[1]
         self.assertNotIn("unchanged launcher/a/one.py", out.splitlines())
+
+
+class DeclaredProducerTests(unittest.TestCase):
+    def test_the_code_of_every_declared_producer_can_be_keyed(self):
+        # --changed keys each run by its import closure; a producer whose imports the walk cannot place
+        # stops every build, so a new one fails here rather than in the Doc Images job.
+        from docs.inputs import code_inputs
+        for name, found in producer.find().items():
+            with self.subTest(producer=name):
+                self.assertTrue(code_inputs([found.script]))
 
 
 if __name__ == "__main__":

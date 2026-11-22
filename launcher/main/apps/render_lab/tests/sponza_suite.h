@@ -35,7 +35,7 @@ sponza_suite_load(void) {
         s.scene = ENTITY_NONE;
     } else {
         s.load = asset_store_load(SPONZA_SCENE);
-        s.lens = camera_lens(camera_first(s.scene));
+        s.lens = camera_lens(entity_find(s.scene, name_hash(SPONZA_CAMERA)));
     }
     return s;
 }

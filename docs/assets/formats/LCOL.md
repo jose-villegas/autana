@@ -37,7 +37,7 @@ title Header, 12 bytes at 0, one cell a byte
 | Encoding | 2 | u16 |
 | Set count | 4 | u32 |
 | Element count | 8 | u32 |
-| Sets | 12 | `set_count × count × stride` bytes |
+| Sets | 12 | `set_count * count * stride` bytes |
 
 | Rule | Detail |
 |---|---|
@@ -46,7 +46,7 @@ title Header, 12 bytes at 0, one cell a byte
 | Counts | At least one set; `count` equals the prototype's vertex or triangle count for the encoding |
 | Ownership | Both LMSH colour arrays are absent; LCOL holds all baked lighting for the prototype |
 | Selection | SCNE `colour_set` is below `set_count`; `SCENE_ASSET_COLOUR_SET_OWN` requires LMSH colours; own colours require no LCOL, checked at pack time |
-| Layout | Little-endian, header then contiguous sets; set k starts at `12 + k × count × stride`; no trailing bytes |
+| Layout | Little-endian, header then contiguous sets; set k starts at `12 + k * count * stride`; no trailing bytes |
 | Refusals | Versions other than 1 return `ASSET_ERR_VERSION`; invalid counts, selection or ownership return `ASSET_ERR_FORMAT`; an incomplete or oversized payload returns `ASSET_ERR_BOUNDS`; a missing LCOL returns `ASSET_ERR_NOT_FOUND` |
 
 `lit_mesh.write_lit_mesh(colourless=True)` writes a prototype with neither colour array.

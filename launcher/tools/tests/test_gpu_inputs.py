@@ -171,10 +171,15 @@ class InputContractTests(unittest.TestCase):
             files[f'host launcher/tools/render/{name}'] = stages.content_checksum(path).decode()
         return files
 
+    def cmake_rule(self, root):
+        """The rule the --deps listing ends with: the CMake files the configure read."""
+        return (f'host: {root}/launcher/tools/render/CMakeLists.txt '
+                f'{root}/launcher/tools/render/scene/CMakeLists.txt' + chr(10))
+
     def test_host_link_configuration_bytes_move_fingerprint(self):
         self.host_cmake_inputs(self.root)
         with mock.patch.object(stages, 'ROOT', self.root), mock.patch.object(
-                stages.subprocess, 'run', return_value=NS(stdout='flags -O1\n')):
+                stages.subprocess, 'run', return_value=NS(stdout='flags -O1\n' + self.cmake_rule(self.root))):
             baseline = bake.digest(stages.host_inputs(self.root / 'scene'))
             for name in ('CMakeLists.txt', 'scene/CMakeLists.txt'):
                 path = self.root / 'launcher/tools/render' / name
@@ -223,7 +228,7 @@ class InputContractTests(unittest.TestCase):
         header = self.root / 'my dir/host.h'
         header.parent.mkdir()
         header.write_text('#define VALUE 1\n')
-        listing = 'flags -O1\nhost.o: my\\ dir/host.h\n'
+        listing = 'flags -O1\nhost.o: my\\ dir/host.h\n' + self.cmake_rule(self.root)
         with mock.patch.object(stages, 'ROOT', self.root), mock.patch.object(
                 stages.subprocess, 'run', return_value=NS(stdout=listing)):
             self.assertEqual(stages.host_inputs(self.root / 'scene'),

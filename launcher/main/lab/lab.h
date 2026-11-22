@@ -44,8 +44,8 @@ typedef struct {
     /* Suites only: just before a test frame renders, so a setting a test
      * changed reaches that frame (lab_test.h). */
     void (*test_render)(void);
-    /* The lab's own menu rows, under the scene's. */
-    lab_controls_fn settings;
+    /* The lab's own menu rows, under the scene's, for the scene showing. */
+    lab_settings_fn settings;
 } lab_hooks_t;
 
 /* The lab's running state: its own, never set by the app. */

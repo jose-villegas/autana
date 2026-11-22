@@ -16,6 +16,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 try:
     import numpy as np
 
+    from soup import Soup
     from r3d import cost_model
     from r3d.appearance_simplify import projection
     from r3d.cost_model import FEATURES, clusters_in_view, load, predict, triangle_terms, variable_ms
@@ -180,8 +181,10 @@ class DifferentiablePieceTests(unittest.TestCase):
     def test_vertex_normals_follow_the_surface_and_share_a_welded_position(self):
         from r3d.appearance_simplify import vertex_normals
 
-        points = torch.tensor([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 1.0], [1.0, 1.0, 1.0]])
-        tris = torch.tensor([[0, 1, 2], [1, 3, 2], [4, 1, 2]])
+        mesh = Soup([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 1.0], [1.0, 1.0, 1.0]],
+                    [[0, 1, 2], [1, 3, 2], [4, 1, 2]])
+        points = torch.tensor(mesh.vertices, dtype=torch.get_default_dtype())
+        tris = torch.tensor(mesh.faces)
         vertex_point = torch.tensor([0, 1, 2, 3, 0])
         normals = vertex_normals(points, tris, vertex_point)
         expected = torch.tensor([0.0, -1.0, 1.0]) / 2**0.5

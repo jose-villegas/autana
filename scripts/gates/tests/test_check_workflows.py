@@ -86,6 +86,20 @@ class SelfHostedWorkflowTests(unittest.TestCase):
                 self.assertTrue(self.check(steps + f"          {raw}\n"))
         self.assertEqual(self.check(steps + f"          sudo sh {gate.APT_INSTALL} -y llvm\n"), [])
 
+    def refresh(self, *steps):
+        lines = "".join(f"      - {step}\n" for step in steps)
+        return f"on: push\njobs:\n  run:\n    runs-on: ubuntu-latest\n    steps:\n{lines}"
+
+    def test_a_refresh_step_runs_after_the_app_token_and_takes_it(self):
+        mint = f"{{id: app, uses: {gate.REFRESH_TOKEN}}}"
+        good = "{run: python scripts/ci/refresh_pr.py close x, env: {GH_TOKEN: '${{ steps.app.outputs.token }}'}}"
+        self.assertEqual(self.check(self.refresh(mint, good, "{run: python scripts/ci/refresh_branch.py b m}")), [])
+        for steps in ((good, mint), ("{run: python scripts/ci/refresh_branch.py b m}",),
+                      (mint, "{run: python scripts/ci/refresh_pr.py close x, env: {GH_TOKEN: '${{ github.token }}'}}"),
+                      (f"{{uses: {gate.REFRESH_TOKEN}}}", good)):
+            with self.subTest(steps=steps):
+                self.assertTrue(self.check(self.refresh(*steps)))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -238,7 +238,7 @@ Still gyro noise sigma is about 1 dps per axis. Flat face up settles on q3 in
 99.8% and 100.0% of still samples across held quarters: the +x offset supplies
 about 0.1 g in-plane at bearing 16-17 degrees.
 
-Rotation sense agrees with `dg/dt = -(omega x g)` across both captures:
+Rotation sense agrees with $`dg/dt = -(\omega \times g)`$ across both captures:
 fitted gain -0.4 at 10 Hz, sign agreement about 2:1 over roughly 550
 tipping samples.
 

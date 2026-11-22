@@ -32,9 +32,8 @@ static bool
 same_view(const render_view_t* a, const render_view_t* b) {
     return SAME_BYTES(position) && SAME_BYTES(screen_x) && SAME_BYTES(screen_y) && SAME_BYTES(forward)
            && SAME_BYTES(lens) && a->viewport.width == b->viewport.width && a->viewport.height == b->viewport.height
-           && a->viewport.quarter == b->viewport.quarter && a->present == b->present
-           && a->small_fill.ceiling == b->small_fill.ceiling && a->small_fill.gate == b->small_fill.gate
-           && a->small_fill.style == b->small_fill.style && a->skip_hidden == b->skip_hidden && SAME_BYTES(shift);
+           && a->viewport.quarter == b->viewport.quarter && a->present == b->present && a->skip_hidden == b->skip_hidden
+           && SAME_BYTES(shift);
 }
 
 #define SAME_FIELD(field, type, valid) &&a.field == b.field
@@ -44,14 +43,24 @@ same_settings(render_settings_t a, render_settings_t b) {
     return true RENDER_SETTINGS_FIELDS(SAME_FIELD);
 }
 
+bool
+render_partial_same_view(const render_partial_t* p, const render_view_t* view) {
+    return same_view(view, &p->view);
+}
+
+bool
+render_partial_still(const render_partial_t* p, const raster_t* raster, const render_view_t* view) {
+    return raster_settings(raster).partial_redraw && p->kept && p->composed && p->changed_count >= 0
+           && raster->attachment_count == 0 && raster->instance_count == p->instance_count && raster->clear == p->clear
+           && raster->upscale.filter == p->filter && same_settings(raster_settings(raster), p->settings)
+           && same_view(view, &p->view);
+}
+
 /* Whether the kept picture is this one's but for the changed boxes. */
 static bool
 can_draw_over(const render_partial_t* p, const raster_t* raster, const render_view_t* view) {
-    return raster_settings(raster).partial_redraw && p->kept && p->composed && p->changed_count >= 0
-           && raster->attachment_count == 0 && raster->width == p->width && raster->height == p->height
-           && raster->instance_count == p->instance_count && raster->clear == p->clear
-           && raster->upscale.filter == p->filter && same_settings(raster_settings(raster), p->settings)
-           && same_view(view, &p->view) && raster_color(raster) == p->picture;
+    return render_partial_still(p, raster, view) && raster->width == p->width && raster->height == p->height
+           && raster_color(raster) == p->picture;
 }
 
 /* Rows [first, end) `box` covers in the raster, or false when a corner is

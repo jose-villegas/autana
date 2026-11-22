@@ -14,12 +14,13 @@ from unittest import mock
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-from r3d.import_settings import LIGHT_FIELDS, SettingsError, albedo_jobs, load_import_settings, load_scene
+from r3d.import_settings import LIGHT_MODE_BAKED, LIGHT_FIELDS, SettingsError, albedo_jobs, load_import_settings, load_scene
 from r3d import build_pack
 from anim_probe import write_camera_clip  # noqa: E402
 
 try:
     import numpy as np
+    from tests.soup import sun
     from tests import soup  # noqa: F401  (traces the bake's rays on the scalar variant)
 
     from r3d import mesh_import, mesh_source, ray_query
@@ -89,9 +90,10 @@ def renderer(mesh="mesh.import.toml", extra="", transform="", name=None):
     return f'[[objects]]\nname = "{name}"\n{transform}[objects.mesh_renderer]\nmesh = "{mesh}"\n{extra}'
 
 
-def sun_object(rotation="[0.0, 0.0, 0.0]"):
+def sun_object(rotation="[0.0, 0.0, 0.0]", *, mode=None):
     return (f'[[objects]]\nname = "sun"\nrotation = {rotation}\n[objects.light]\ntype = "directional"\n'
-            'color = [1.0, 1.0, 1.0]\nintensity = 1.0\n')
+            + (f'mode = "{mode}"\n' if mode is not None else '')
+            + 'color = [1.0, 1.0, 1.0]\nintensity = 1.0\n')
 
 
 def camera(path=False, region=True):
@@ -131,6 +133,36 @@ class ImportTests(unittest.TestCase):
         self.assertEqual((settings.seed, settings.alpha_keep, settings.thin.keep, settings.variants[0].triangles), (3, 0.5, 0.5, 10))
         self.assertFalse(hasattr(settings, "light"))
 
+    def test_cards_defaults_and_absent_key(self):
+        from r3d.cards import CARD_EPSILON, CARD_AREA_COST
+        with tempfile.TemporaryDirectory() as directory:
+            plain = load_import_settings(write_import(directory))
+            settings = load_import_settings(write_import(directory, body=
+                '[process]\nseed = 3\n[geometry]\nalpha_mask = { keep_alpha = 0.5 }\n'))
+        self.assertIsNone(plain.cards)
+        self.assertEqual(vars(settings.cards), dict(never=[], always=[],
+                         epsilon=CARD_EPSILON, area_cost=CARD_AREA_COST))
+        self.assertEqual(settings.seed, 3)
+
+    def test_cards_overlapping_overrides_are_an_error(self):
+        self.rejects("both never and always", '[geometry]\nalpha_mask = { keep_alpha = 0.5 }\n'
+                     'cards = { never = ["m"], always = ["m"] }\n')
+
+    def test_cards_reject_invalid_settings(self):
+        prefix = '[geometry]\nalpha_mask = { keep_alpha = 0.5 }\n'
+        cases = (
+            ('cards = { choice = "path" }', "geometry.cards.choice"),
+            ('cards = { path = "fly.anim.toml" }', "geometry.cards.path"),
+            ('cards = { choice = "other" }', "geometry.cards.choice"),
+            ('cards = { epsilon = 0 }', "geometry.cards.epsilon"),
+            ('cards = { area_cost = -1 }', "geometry.cards.area_cost"),
+            ('cards = { typo = 1 }', "geometry.cards.typo"),
+        )
+        for body, message in cases:
+            with self.subTest(body=body):
+                self.rejects(message, prefix + body + '\n')
+        self.rejects("cards needs geometry.alpha_mask", '[geometry]\ncards = {}\n')
+
     def test_old_scene_owned_keys_name_each_new_home(self):
         cases = (
             ('[visibility]\nrounds = 2\n', r"\[visibility\] moved to objects\.mesh_renderer\.visibility"),
@@ -147,23 +179,18 @@ class ImportTests(unittest.TestCase):
         rule = '[[objects.meshes]]\nmatch = { material = "m" }\ntriangles = 4\nvariants = { other = 2 }\n'
         self.rejects(r"objects\.meshes\[0\]\.variants\.other names no variant", SIMPLIFY + rule + VARIANT)
 
-    def test_probes_and_a_budget_read_closed_and_need_a_fitted_import(self):
+    def test_probes_read_closed_and_need_a_fitted_import(self):
         geometry = SIMPLIFY.removeprefix("[geometry]\n")
         with tempfile.TemporaryDirectory() as directory:
-            body = ('[geometry]\nprobes = { face = 64 }\nbudget = { step = 2, settle = 0.05 }\n'
+            body = ('[geometry]\nprobes = { face = 64 }\n'
                     + geometry + VARIANT)
             settings = load_import_settings(write_import(directory, output='[output]\n', body=body))
             self.assertEqual(vars(settings.fit.probes), {"spacing": None, "face": 64})
-            self.assertEqual(vars(settings.fit.budget), {"step": 2, "settle": 0.05})
         with tempfile.TemporaryDirectory() as directory:
             settings = load_import_settings(write_import(directory, output='[output]\n', body=SIMPLIFY + VARIANT))
-            self.assertEqual(vars(settings.fit), {"probes": None, "budget": None})
+            self.assertEqual(vars(settings.fit), {"probes": None})
         for pattern, shaping in (("geometry.probes.spacing must be positive", "probes = { spacing = 0.0 }"),
-                                 ("geometry.probes.typo", "probes = { typo = 1 }"),
-                                 ("geometry.budget.policy", 'budget = { policy = "settle", step = 2, settle = 0.1 }'),
-                                 ("geometry.budget.step is required", 'budget = { settle = 0.1 }'),
-                                 ("settle must be at least 0 and below 1",
-                                  'budget = { step = 2, settle = 1.0 }')):
+                                 ("geometry.probes.typo", "probes = { typo = 1 }")):
             with self.subTest(shaping=shaping):
                 self.rejects(pattern, f"[geometry]\n{shaping}\n" + geometry + VARIANT)
         self.rejects("needs geometry.simplify", '[geometry]\nprobes = { spacing = 2.0 }\n')
@@ -382,10 +409,22 @@ class SceneTests(unittest.TestCase):
                 self.lit_rejects(r"mesh.*fit.*camera path", 'variant = "mesh"\n' + REGION + FIT,
                                  body=SIMPLIFY + VARIANT, output=VARIANT_OUTPUT, objects=objects)
 
+    def test_probe_fit_uses_only_the_variant_budget(self):
+        options = dict(body=SIMPLIFY + 'probes = { face = 64 }\n' + VARIANT,
+                       output=VARIANT_OUTPUT, objects=camera(path=True, region=False))
+        extra = 'variant = "mesh"\n' + FIT
+        with self.subTest(budget="explicit"):
+            self.lit_rejects(r"fit.prune.budget.*geometry.probes", extra.replace("budget = 8", "budget = 10"), **options)
+        with self.subTest(budget="absent"):
+            scene = load_scene(self.lit(extra.replace("budget = 8\n", ""), **options))
+            self.assertIsNone(scene.renderers[0].renderer.fit.budget)
+
     def test_a_fit_recipe_reads_and_needs_a_bake_and_room_to_prune(self):
         extra = 'variant = "mesh"\n' + FIT
         scene = load_scene(self.lit(extra, body=SIMPLIFY + VARIANT, output=VARIANT_OUTPUT,
                                          objects=camera(path=True, region=False)))
+        self.lit_rejects(r"fit.prune.budget.*required", extra.replace("budget = 8\n", ""),
+                         body=SIMPLIFY + VARIANT, output=VARIANT_OUTPUT, objects=camera(path=True, region=False))
         fit = scene.renderers[0].renderer.fit
         self.assertEqual((fit.budget, fit.normal_weight), (8, 1.0))
         self.assertEqual(fit.size, (184, 224))
@@ -758,9 +797,6 @@ class ClearIntersector:
         return np.zeros(len(origins), dtype=bool)
 
 
-def sun(direction, color, intensity):
-    return {"type": "directional", "direction": direction, "color": color, "intensity": intensity}
-
 
 def radiance(lights, normal, double_sided):
     return light(np.array([[0.0, 0.0, 0.0]]), np.array([normal]), np.array([double_sided]), ClearIntersector(),
@@ -771,8 +807,8 @@ def radiance(lights, normal, double_sided):
 class LightListTests(unittest.TestCase):
     def test_directional_lights_add_their_radiance_and_order_does_not_matter(self):
         lights = [
-            {"type": "directional", "direction": [0, 1, 0], "color": [1, 0, 0], "intensity": 2},
-            {"type": "directional", "direction": [0, 1, 0], "color": [0, 1, 0], "intensity": 3},
+            sun([0, 1, 0], [1, 0, 0], 2),
+            sun([0, 1, 0], [0, 1, 0], 3),
         ]
         args = (np.array([[0.0, 0.0, 0.0]]), np.array([[0.0, 1.0, 0.0]]), np.array([False]), ClearIntersector())
         first = light(*args, lights, 0.5)
@@ -785,8 +821,8 @@ class LightListTests(unittest.TestCase):
 
     def test_the_order_of_every_light_type_does_not_change_the_radiance(self):
         lights = [sun([0, 1, 0], [1, 0, 0], 2), sun([1, 0.1, 0], [0, 1, 0], 1),
-                  {"type": "sky", "color": [0, 0, 1], "intensity": 1, "rays": 1},
-                  {"type": "ambient", "color": [1, 1, 1], "intensity": 0.1}]
+                  {"type": "sky", "mode": LIGHT_MODE_BAKED, "color": [0, 0, 1], "intensity": 1, "rays": 1},
+                  {"type": "ambient", "mode": LIGHT_MODE_BAKED, "color": [1, 1, 1], "intensity": 0.1}]
         for normal in ([0.0, -1.0, 0.0], [-1.0, 0.0, 0.0], [0.0, 1.0, 0.0]):
             for double_sided in (False, True):
                 forward = radiance(lights, normal, double_sided)
@@ -827,7 +863,7 @@ def triangle_source(p):
 class BakeStepTests(unittest.TestCase):
     def test_the_bake_culls_with_the_renderers_visibility_only(self):
         own = SimpleNamespace(source="camera_path")
-        settings = SimpleNamespace(seed=1, position_scale=None, alpha_keep=None, thin=None, simplify=None, double_sided=set(), meshes=[])
+        settings = SimpleNamespace(cards=None, seed=1, position_scale=None, alpha_keep=None, thin=None, simplify=None, double_sided=set(), meshes=[])
         source = triangle_source(np.zeros((3, 3)))
         seen = []
         with mock.patch.object(mesh_import, "load_source", return_value=source), \
@@ -842,7 +878,7 @@ class BakeStepTests(unittest.TestCase):
 
     def test_the_simplifier_gets_the_imports_colour_deviation(self):
         steps = SimpleNamespace(dense_edge=10.0, props=set(), props_share=0.3, seal_seams=True, colour_deviation=2.5)
-        settings = SimpleNamespace(seed=1, position_scale=None, alpha_keep=None, thin=None, simplify=steps, double_sided=set(), meshes=[])
+        settings = SimpleNamespace(cards=None, seed=1, position_scale=None, alpha_keep=None, thin=None, simplify=steps, double_sided=set(), meshes=[])
         p = np.array([[0.0, 0, 0], [1, 0, 0], [0, 1, 0]])
         source = triangle_source(p)
         given = {}
@@ -917,15 +953,16 @@ class PathLightForTests(unittest.TestCase):
         self.assertEqual(built.call_count, 1)
 
     def test_a_scene_is_kept_per_variant_and_the_default_is_the_bake_variant(self):
+        other_variant = "llvm_ad_rgb" if ray_query.VARIANT == "scalar_rgb" else "scalar_rgb"
         indirect = SimpleNamespace(bounces=1, rays=8)
         scene = SimpleNamespace(lights=[], indirect=SimpleNamespace(albedo_boost=1.0, intensity=1.0))
         with mock.patch.object(mesh_source, "PathLight", side_effect=lambda *args: object()) as built:
             bake = mesh_import.path_light_for(None, self.job(indirect), scene)
             self.assertIs(mesh_import.path_light_for(None, self.job(indirect), scene, ray_query.VARIANT), bake,
                           "no variant is the bake's variant")
-            gpu = mesh_import.path_light_for(None, self.job(indirect), scene, ray_query.GPU_VARIANT)
-        self.assertIsNot(gpu, bake, "a scene traced on one variant is not reused on another")
-        self.assertEqual([call.args[-1] for call in built.call_args_list], [ray_query.VARIANT, ray_query.GPU_VARIANT])
+            other = mesh_import.path_light_for(None, self.job(indirect), scene, other_variant)
+        self.assertIsNot(other, bake, "a scene traced on one variant is not reused on another")
+        self.assertEqual([call.args[-1] for call in built.call_args_list], [ray_query.VARIANT, other_variant])
 
 
 class JobTests(unittest.TestCase):
@@ -1054,7 +1091,7 @@ class LocalSourceTests(unittest.TestCase):
             job.renderer.fit.size = (92, 112)
             self.assertNotEqual(reference_digest(job, scene), first)
 
-    def test_geometry_probes_and_budget_move_only_the_keys_they_shape(self):
+    def test_geometry_probes_move_only_the_keys_they_shape(self):
         from bake import bake
         from r3d.fitted_variant import reference_digest
 
@@ -1062,26 +1099,19 @@ class LocalSourceTests(unittest.TestCase):
             with tempfile.TemporaryDirectory() as directory:
                 root = pathlib.Path(directory)
                 write_import(root, output=VARIANT_OUTPUT, body=SIMPLIFY + shaping + VARIANT)
-                objects = renderer(extra='variant = "mesh"\nbake = true\n' + PATH + FIT)
+                objects = renderer(extra='variant = "mesh"\nbake = true\n' + PATH + (FIT.replace('budget = 8\n', '') if shaping else FIT))
                 scene = load_scene(write_scene(root, objects + sun_object() + camera(path=True, region=False), HEAD))
                 job = scene.renderers[0]
                 start = bake.stage_keys(job, scene, {stage: stage for stage in bake.STAGES})["start"]
                 return start, reference_digest(job, scene), fit_key(job, scene), job
 
         start, reference, fit, job = keys("")
-        self.assertEqual(bake.fit_recipe(job.renderer.fit, job.settings.fit.budget), dict(vars(job.renderer.fit)))
+        self.assertEqual(bake.fit_recipe(job.renderer.fit), dict(vars(job.renderer.fit)))
         probed = keys("probes = { spacing = 2.0 }\n")
         self.assertEqual(probed[0], start, "probes moved the start's key")
         self.assertNotEqual(probed[1], reference, "probes left the reference key alone")
         self.assertNotEqual(probed[2], fit)
         self.assertNotEqual(keys("probes = { spacing = 3.0 }\n")[1], probed[1], "the spacing is not in the key")
-        # A budget packs the held-out references its settle reads: the reference key moves once, not by value.
-        settling = keys('budget = { step = 2, settle = 0.1 }\n')
-        self.assertEqual(settling[0], start, "a budget moved the start's key")
-        self.assertNotEqual(settling[1], reference, "the scored references are not in the reference key")
-        self.assertEqual(keys('budget = { step = 3, settle = 0.2 }\n')[1], settling[1],
-                         "the budget's value moved the reference key")
-        self.assertNotEqual(settling[2], fit)
 
     def test_the_camera_clip_s_keys_and_nothing_else_of_its_file_stamp_recipe_and_reference(self):
         from r3d.fitted_variant import reference_digest

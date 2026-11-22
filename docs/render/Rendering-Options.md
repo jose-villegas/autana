@@ -71,7 +71,7 @@ draw time; view modes give up frame time to show a diagnostic picture.
 | [Render scale](#render-scale-and-the-half-picture) | pixels drawn for sharpness | scratch at the drawn size | 50% | `render_context_set_scale()` | [Mesh-Rendering.md](Mesh-Rendering.md#the-render-context) |
 | [Dynamic resolution](#dynamic-resolution) | sharpness for a held frame budget | scratch at the finest step | off | `render_context_set_dynamic_resolution()` | [Dynamic-Resolution.md](frame/Dynamic-Resolution.md) |
 | [Camera presentation](#camera-presentation) | half the rows drawn for a scanline or doubled look | none | `CAMERA_PRESENT_NEAREST` | `camera_set_present()` | [Camera presentation](frame/Dynamic-Resolution.md#camera-presentation) |
-| [Small fill](#small-fill) | gradients on tiny triangles for draw time | none | `SMALL_FILL_SMOOTH` | `camera_set_small_fill()` | [Small fill](frame/Coverage.md#small-fill) |
+| [Small fill](#small-fill) | gradients on tiny triangles for draw time | none | `SMALL_FILL_SMOOTH` | render settings `small_fill` | [Small fill](frame/Coverage.md#small-fill) |
 | [Render settings](Render-Settings.md) | culling, depth fit and batching, each off only to compare | none | `RENDER_SETTINGS_DEFAULT`, all on | `render_context_set_settings()`, or a [`.render.toml`](Render-Settings.md#the-render-asset) in the app's pack | [Render-Settings.md](Render-Settings.md) |
 | [View modes](#view-modes) | frame time for a diagnostic picture | PSRAM per view | shaded | `render_context_set_debug_view()` | [View modes](frame/View-Modes.md) |
 
@@ -260,7 +260,8 @@ the present fill the rest. `CAMERA_PRESENT_SCANLINE` dims every second row;
 
 ### Small fill
 
-`camera_set_small_fill(camera, SMALL_FILL_FAST)` fills
+Setting the render settings' `small_fill` to a fast preset from
+[Coverage.md](frame/Coverage.md#small-fill) fills
 triangles a few pixels across with one depth and one colour instead of
 walking their planes. `SMALL_FILL_SMOOTH`, the default, keeps the smooth
 picture exact.

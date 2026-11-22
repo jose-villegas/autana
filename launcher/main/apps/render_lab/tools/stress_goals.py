@@ -21,7 +21,8 @@ GOAL_MARGIN = Fraction("1.01")
 CEILING_MARGIN = Fraction("1.15")
 GOAL_QUANTUM_US = 10
 DEFAULT_SIZE = read_define(SUITE, "STRESS_PERF_DEFAULT_SIZE")
-TABLE_ROW = re.compile(r'\{"(stress-[^"]+)",\s*"([^"]+)",\s*"([^"]+)",\s*\{([^}]+)\},\s*\{[^}]+\}\}')
+FLAP_STAGE = read_define(SUITE.parent.parent / "stress/scene_stress.h", "STRESS_FLAP_STAGE_NAME")
+TABLE_ROW = re.compile(r'\{"(stress-[^"]+)",\s*"([^"]+)",\s*"([^"]+)",\s*\{([^}]+)\},\s*\{([^}]+)\}\}')
 
 
 def stage_names():
@@ -43,10 +44,14 @@ ANIMATION_HEADER = MAIN / "scene/scene_anim_stages.h"
 STATIC_STAGES = STAGES.index(read_define(ANIMATION_HEADER, "SCENE_ANIM_STAGE_POSE_NAME"))
 
 
+def goal_table():
+    """The text of the suite's stress_goals[] initialiser."""
+    return SUITE.read_text(encoding="utf-8").split("static const stress_goal_t stress_goals[] = {", 1)[1].split("};", 1)[0]
+
+
 def stages_for(row):
     """The stage prefix a row stores: raster only or raster plus animation."""
-    table = SUITE.read_text(encoding="utf-8").split("static const stress_goal_t stress_goals[] = {", 1)[1].split("};", 1)[0]
-    for key, quarter, size, stages in TABLE_ROW.findall(table):
+    for key, quarter, size, stages, _ in TABLE_ROW.findall(goal_table()):
         if (key, quarter, size) == row:
             return STAGES[:len(stages.split(","))]
     raise ValueError(f"{SUITE}: no goal row {row}")
@@ -54,9 +59,8 @@ def stages_for(row):
 
 def table_rows():
     """The suite owns the row order and the exact preset, quarter and size keys."""
-    table = SUITE.read_text(encoding="utf-8").split("static const stress_goal_t stress_goals[] = {", 1)[1].split("};", 1)[0]
     rows = []
-    for key, quarter, size, stages in TABLE_ROW.findall(table):
+    for key, quarter, size, stages, _ in TABLE_ROW.findall(goal_table()):
         if len(stages.split(",")) not in (STATIC_STAGES, len(STAGES)):
             raise ValueError(f"{SUITE}: {key} {quarter} {size} holds {len(stages.split(','))} stage goals, "
                              f"the stages are {len(STAGES)}")
@@ -64,6 +68,16 @@ def table_rows():
     if not rows or len(set(rows)) != len(rows):
         raise ValueError(f"{SUITE}: empty or duplicate goal rows")
     return rows
+
+
+def goal_values():
+    """{(preset, quarter, size): (stage goals by stage name, sum goal, sum ceiling)}, as the suite holds them."""
+    values = {}
+    for key, quarter, size, stages, budget in TABLE_ROW.findall(goal_table()):
+        goals = [int(value) for value in stages.split(",")]
+        goal, ceiling = (int(value) for value in budget.split(","))
+        values[(key, quarter, size)] = (dict(zip(STAGES, goals)), goal, ceiling)
+    return values
 
 
 def row_name(row):
@@ -79,6 +93,8 @@ def capture_targets(path, expected):
     for target in parse_perf_targets(text)[0] + parse_unpegged_targets(text):
         name, measured = target["name"], int(target["measured"])
         if name.startswith("stress-"):
+            if name.endswith(" " + FLAP_STAGE) and name.removesuffix(" " + FLAP_STAGE) in expected:
+                continue
             if name not in expected:
                 raise ValueError(f"{path}: target {name} has no goal row")
             found[name] = max(found.get(name, 0), measured)

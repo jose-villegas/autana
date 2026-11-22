@@ -28,6 +28,7 @@ rotation = [18.4, -48.7, 0.0]    # pitch, yaw, roll in degrees
 
 [objects.light]
 type = "directional"
+mode = "baked"
 color = [1.0, 0.92, 0.78]
 intensity = 3.0
 
@@ -99,7 +100,7 @@ or skinned renderer.
 | `mesh_renderer` | `mesh`, `variant`, `bake`, `shading`, `visibility`, `fit`, `indirect` | Draws a mesh asset. `mesh` names an import file beside the scene; `variant` chooses its geometry variant. |
 | `skinned_renderer` | `mesh`, `variant` | Draws imported albedo with its skin and skeleton, lit at runtime. Takes no `bake`. |
 | `animator` | `clips`, `default_clip`, `wrap` | Selects a skinned renderer's clips and playback. |
-| `light` | `type`, `color`, `intensity` | A directional light; see [light](#light). |
+| `light` | `type`, `color`, `intensity`; `mode` | A directional light; see [light](#light). |
 | `camera` | `half_fov_short_tan`, `near_z`, `region`, `path`, `background` | The view; see [camera](#camera). Only the active camera renders. |
 
 ## What the scene must carry
@@ -390,14 +391,18 @@ refuse clips that break this rule.
 
 | Option | Keys | What it does | Default | Option link |
 |---|---|---|---|---|
-| `light` | `type`, `color`, `intensity` | A directional light: baked into baked renderers, applied at runtime to skinned renderers. | Required for an object with this component. | [light](#light) |
+| `light` | `type`, `color`, `intensity`; `mode` | A directional light with realtime or baked mode. | Required for an object with this component. | [light](#light) |
 
 #### light
+
+`mode` is `"realtime"` by default or `"baked"`. Realtime lights stay out of
+surface and probe bakes. A baked light contributes at runtime only when the
+scene has no probes.
 
 Only directional lights are scene objects; `point` and `spot` are reserved.
 Its direction toward the light is the object's +Y axis turned by its rotation.
 Position and scale do not matter. The lights a bake sees are the directional
-objects in file order, then `[sky]`, then `[ambient]`. The sun is a point
+objects with `mode = "baked"` in file order, then `[sky]`, then `[ambient]`. The sun is a point
 source, so its shadows are hard. A double-sided face is lit on both sides and
 keeps the brighter.
 

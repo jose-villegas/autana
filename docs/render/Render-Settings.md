@@ -34,27 +34,31 @@ workings to judge. A member of a struct field is named `field.member`, and its k
 that field's table in the asset.
 
 <!-- generated: render-settings check: python launcher/tools/render/settings/settings_table.py --check -->
-| Field | Default | Tier | What it trades |
-|---|---|---|---|
-| `cull` | `true` | basic | skips clusters and world boxes outside the picture |
-| `depth_fit` | `true` | advanced | depth steps go where the kept scene is, not to near_z; needs cull |
-| `batched` | `true` | advanced | one transform and one draw fork/join a batch, not an instance |
-| `partial_redraw` | `true` | basic | a still camera redraws only the rows that moved; the picture is the same |
-| `lod.tolerance_px` | `2.0` | basic | the projected error a group may have and still draw coarse; more saves, pops more |
-| `lod.hysteresis_px` | `0.5` | advanced | how far past the tolerance a coarse group's error goes before it turns fine |
-| `lod.coverage_permille` | `250` | basic | the thousandths of the picture's height a coarse group may span; smaller pops less |
-| `lod.pick_every` | `4` | advanced | the frames the pick is spread over, a scene's first frame picking all; more saves, switches later |
-| `lod.triangle_budget` | `0` | basic | the triangles a frame aims to draw, the tolerance rising past tolerance_px to keep within; 0 never rises |
-| `lod.blend` | `0` | basic | 0 switches at once; 1 blends each switch, by morph where a mesh was imported with geometry.morph, else by dither |
-| `lod.blend_px` | `0.25` | advanced | the error past a switch over which a blend fades out; longer is softer, moves more |
-| `anim.mid_px` | `48.0` | basic | projected radius in pixels below which a copy is posed every mid_every frames |
-| `anim.far_px` | `20.0` | basic | projected radius in pixels below which a copy is posed every far_every frames |
-| `anim.mid_every` | `2` | basic | frames between mid-sized poses; 1 poses every frame |
-| `anim.far_every` | `4` | basic | frames between far poses; 1 poses every frame |
-| `anim.hysteresis_px` | `4.0` | advanced | pixels past a tier boundary before switching |
-| `texture.divide_px` | `16` | basic | fewest pixels between divides by depth, fewer cost more; 0 is affine, near surfaces bend |
-| `texture.affine_bend` | `1.0` | advanced | texels a triangle may bend and still step affine; larger is faster, bends more |
-| `texture.affine_level` | `1` | advanced | first mip level that steps affine, its pattern shifting rather than bending; 0 lets every level divide |
+| Field | Default | Range | Tier | What it trades |
+|---|---|---|---|---|
+| `cull` | `true` | `any` | basic | skips clusters and world boxes outside the picture |
+| `depth_fit` | `true` | `any` | advanced | depth steps go where the kept scene is, not to near_z; needs cull |
+| `batched` | `true` | `any` | advanced | one transform and one draw fork/join a batch, not an instance |
+| `partial_redraw` | `true` | `any` | basic | a still camera redraws only the rows that moved; the picture is the same |
+| `lod.tolerance_px` | `2.0` | `any` | basic | the projected error a group may have and still draw coarse; more saves, pops more |
+| `lod.hysteresis_px` | `0.5` | `any` | advanced | how far past the tolerance a coarse group's error goes before it turns fine |
+| `lod.coverage_permille` | `250` | `any` | basic | the thousandths of the picture's height a coarse group may span; smaller pops less |
+| `lod.pick_every` | `4` | `[1, RENDER_LOD_PICK_EVERY_MAX]` | advanced | the frames the pick is spread over, a scene's first frame picking all; more saves, switches later |
+| `lod.triangle_budget` | `0` | `any` | basic | the triangles a frame aims to draw, the tolerance rising past tolerance_px to keep within; 0 never rises |
+| `lod.blend` | `0` | `[0, RENDER_LOD_BLEND_COUNT)` | basic | 0 switches at once; 1 blends each switch, by morph where a mesh was imported with geometry.morph, else by dither |
+| `lod.blend_px` | `0.25` | `(0.0, RENDER_LOD_BLEND_PX_MAX]` | advanced | the error past a switch over which a blend fades out; longer is softer, moves more |
+| `anim.mid_px` | `48.0` | `[0.0, RENDER_ANIM_PIXELS_MAX]` | basic | projected radius in pixels below which a copy is posed every mid_every frames |
+| `anim.far_px` | `20.0` | `[0.0, RENDER_ANIM_PIXELS_MAX]` | basic | projected radius in pixels below which a copy is posed every far_every frames |
+| `anim.mid_every` | `2` | `[RENDER_ANIM_EVERY_MIN, RENDER_ANIM_EVERY_MAX]` | basic | frames between mid-sized poses; 1 poses every frame |
+| `anim.far_every` | `4` | `[RENDER_ANIM_EVERY_MIN, RENDER_ANIM_EVERY_MAX]` | basic | frames between far poses; 1 poses every frame |
+| `anim.hysteresis_px` | `4.0` | `[0.0, RENDER_ANIM_PIXELS_MAX]` | advanced | pixels past a tier boundary before switching |
+| `texture.divide_px` | `16` | `[0, RENDER_TEXTURE_DIVIDE_PX_MAX]` | basic | fewest pixels between divides by depth, fewer cost more; 0 is affine, near surfaces bend |
+| `texture.affine_bend` | `1.0` | `[0.0, RENDER_TEXTURE_BEND_MAX]` | advanced | texels a triangle may bend and still step affine; larger is faster, bends more |
+| `texture.affine_level` | `1` | `[0, RENDER_TEXTURE_LEVEL_MAX]` | advanced | first mip level that steps affine, its pattern shifting rather than bending; 0 lets every level divide |
+| `texture.far_level` | `3` | `[0, RENDER_TEXTURE_LEVEL_MAX]` | basic | first mip level drawn untextured, one colour a triangle; lower is faster; 0 textures every level |
+| `small_fill.ceiling` | `4` | `[0, SMALL_FILL_CEILING_MAX]` | basic | largest bounding-box side in pixel centres filled in one colour; 0 is off; more saves, blurs small detail |
+| `small_fill.gate` | `0` | `[0, SMALL_FILL_GATE_MAX]` | advanced | RGB565 per-channel spread, in packed channel units, a box at the ceiling may span and still fill; 0 lets any |
+| `small_fill.style` | `0` | `[0, SMALL_FILL_STYLE_COUNT)` | advanced | 0 flat, 1 grain, 2 dither (a small_fill_style_t): how a filled box above the always-flat side is coloured |
 <!-- /generated: render-settings -->
 
 ## cull
@@ -169,6 +173,10 @@ and `RENDER_SETTINGS_DEFAULT` is generated from it
 ([`render_asset.py`](../../launcher/tools/render/settings/render_asset.py)).
 Any other file lists only the values it changes; the rest come from the
 default. A key that is no field, or a value of another type, fails the build.
+A field's comment in
+[`render_settings.h`](../../launcher/main/render/settings/render_settings.h) may give the interval it takes, as
+`/* basic [0, SMALL_FILL_CEILING_MAX]: ... */`; the generated reader refuses a
+pack whose value falls outside it.
 
 ```toml
 # fast.render.toml: the default, but drawn one instance at a time and a coarser LOD

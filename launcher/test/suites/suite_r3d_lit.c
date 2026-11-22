@@ -239,8 +239,8 @@ uniform_triangle_matches_solid(float left, float r, float g, float b, bool cappe
     const r3d_span_target_t want = r3d_span_target(want_color, want_depth, W, 0, H);
     const uint16_t face = r3d_span_pack_rgb(r, g, b);
     if (capped) {
-        r3d_span_capped_triangle(&actual, &a, &b0, &c, NULL);
-        r3d_span_capped_triangle(&want, &a, &b0, &c, &face);
+        r3d_span_capped_triangle(&actual, &a, &b0, &c, R3D_SPAN_FACE_NONE);
+        r3d_span_capped_triangle(&want, &a, &b0, &c, face);
     } else {
         r3d_span_triangle(&actual, &a, &b0, &c);
         r3d_span_triangle_solid(&want, &a, &b0, &c, face);
@@ -363,14 +363,14 @@ draw_door_entry(door_entry_t entry, const r3d_span_target_t* target, const r3d_s
         r3d_span_target_t capped = *target;
         capped.skip_hidden = entry == DOOR_ENTRY_CAPPED || entry == DOOR_ENTRY_CAPPED_SOLID;
         const bool solid = entry == DOOR_ENTRY_SOLID || entry == DOOR_ENTRY_CAPPED_SOLID;
-        r3d_span_screen_triangle(&capped, &v[0], &v[1], &v[2], solid ? &face : NULL, door, false);
+        r3d_span_screen_triangle(&capped, &v[0], &v[1], &v[2], solid ? face : R3D_SPAN_FACE_NONE, door, false);
         return;
     }
     switch (entry) {
         case DOOR_ENTRY_TRIANGLE: r3d_span_triangle(target, &v[0], &v[1], &v[2]); break;
         case DOOR_ENTRY_SOLID: r3d_span_triangle_solid(target, &v[0], &v[1], &v[2], face); break;
-        case DOOR_ENTRY_CAPPED: r3d_span_capped_triangle(target, &v[0], &v[1], &v[2], NULL); break;
-        case DOOR_ENTRY_CAPPED_SOLID: r3d_span_capped_triangle(target, &v[0], &v[1], &v[2], &face); break;
+        case DOOR_ENTRY_CAPPED: r3d_span_capped_triangle(target, &v[0], &v[1], &v[2], R3D_SPAN_FACE_NONE); break;
+        case DOOR_ENTRY_CAPPED_SOLID: r3d_span_capped_triangle(target, &v[0], &v[1], &v[2], face); break;
         case DOOR_ENTRIES: break;
     }
 }
@@ -556,7 +556,7 @@ test_writers_run_only_over_the_pixels_a_door_leaves_open(void) {
         writer_hits = plain_hits;
         r3d_span_triangle_write(&plain, &v[0], &v[1], &v[2], solid != 0);
         writer_hits = door_hits;
-        r3d_span_screen_triangle(&through, &v[0], &v[1], &v[2], NULL, DOORS[0], true);
+        r3d_span_screen_triangle(&through, &v[0], &v[1], &v[2], R3D_SPAN_FACE_NONE, DOORS[0], true);
         int written = 0;
         int skipped = 0;
         for (int y = 0; y < H; y++) {
@@ -1620,7 +1620,7 @@ test_a_sliver_over_depth_above_its_limit_draws_nothing(void) {
                                     sv(22.0F, (float)SLIVER_BOTTOM_ROW, SLIVER_NEAR_Z, 9, 9, 9),
                                     sv(SLIVER_RIGHT_X, (float)SLIVER_BOTTOM_ROW, SLIVER_FAR_Z, 9, 9, 9)};
     const r3d_span_target_t target = r3d_span_target(tall_color, tall_depth, W, 0, rows);
-    r3d_span_capped_triangle(&target, &v[0], &v[1], &v[2], NULL);
+    r3d_span_capped_triangle(&target, &v[0], &v[1], &v[2], R3D_SPAN_FACE_NONE);
     TEST_ASSERT_EQUAL_HEX16_MESSAGE(above, tall_depth[(SLIVER_WITNESS_Y * W) + SLIVER_WITNESS_X],
                                     "the sliver wrote depth past its limit");
     TEST_ASSERT_EACH_EQUAL_HEX16_MESSAGE(above, tall_depth, W * rows, "the sliver changed a depth");
@@ -1760,8 +1760,8 @@ test_large_steep_triangles_write_no_depth_past_their_limit(void) {
         const int row0 = random_within(&state, 0, H / 2);
         (void)fixture();
         const r3d_span_target_t window = fixture_rows(row0, row0 + (H / 2));
-        r3d_span_capped_triangle(&window, &v[0], &v[1], &v[2], NULL);
-        r3d_span_capped_triangle(&window, &v[0], &v[2], &v[1], NULL);
+        r3d_span_capped_triangle(&window, &v[0], &v[1], &v[2], R3D_SPAN_FACE_NONE);
+        r3d_span_capped_triangle(&window, &v[0], &v[2], &v[1], R3D_SPAN_FACE_NONE);
         for (int i = 0; i < W * H; i++) {
             TEST_ASSERT_LESS_OR_EQUAL_UINT16_MESSAGE(limit, depth[i], "a fill wrote depth past its limit");
             written += depth[i] != R3D_DEPTH_EMPTY;
@@ -2467,12 +2467,20 @@ census_raster(const r3d_instance_t* instances, int count) {
     return raster;
 }
 
-static void
-test_cull_off_keeps_every_cluster(void) {
+/* census_raster() of `instance`, set to the wall and stack alone. */
+static raster_t
+wall_and_stack_raster(r3d_instance_t* instance) {
     parts_t* const p = parts_buffer(&shared_parts);
     build_wall_and_stack(p);
-    const r3d_instance_t instance = {.mesh = &p->mesh};
-    raster_t raster = census_raster(&instance, 1);
+    *instance = (r3d_instance_t){.mesh = &p->mesh};
+    return census_raster(instance, 1);
+}
+
+static void
+test_cull_off_keeps_every_cluster(void) {
+    r3d_instance_t instance;
+    raster_t raster = wall_and_stack_raster(&instance);
+    const r3d_lit_mesh_t* const mesh = instance.mesh;
     const fixture_camera_t camera = camera_down_plus_z(10000.0f, -400, 1.0f);
     const render_view_t view = render_view_fixture(&camera, &raster, 0);
     const raster_stats_t on = raster_draw(&raster, &view);
@@ -2480,11 +2488,11 @@ test_cull_off_keeps_every_cluster(void) {
     cull_off.cull = false;
     raster.settings = &cull_off;
     const raster_stats_t off = raster_draw(&raster, &view);
-    TEST_ASSERT_LESS_THAN_INT(p->mesh.cluster_count, on.clusters);
-    TEST_ASSERT_EQUAL_INT(p->mesh.cluster_count, off.clusters);
+    TEST_ASSERT_LESS_THAN_INT(mesh->cluster_count, on.clusters);
+    TEST_ASSERT_EQUAL_INT(mesh->cluster_count, off.clusters);
     int triangles = 0;
-    for (int i = 0; i < p->mesh.cluster_count; i++) {
-        triangles += p->mesh.clusters[i].triangle_count;
+    for (int i = 0; i < mesh->cluster_count; i++) {
+        triangles += mesh->clusters[i].triangle_count;
     }
     TEST_ASSERT_EQUAL_INT(triangles, off.triangles);
 }
@@ -2575,6 +2583,28 @@ test_a_census_list_draws_what_raster_draw_draws_at_any_size(void) {
     raster_t raster = census_raster(instances, 2);
     expect_census_draws_match_at_any_size(&raster);
     free(moved);
+}
+
+/* A census that moves the depth scale makes the next draw redraw every row,
+ * even with rows kept from a partial draw and a second census that kept the
+ * new scale: the kept rows hold depth at the old one. */
+static void
+test_a_census_that_moves_the_depth_scale_redraws_every_row(void) {
+    r3d_instance_t instance;
+    raster_t raster = wall_and_stack_raster(&instance);
+    const fixture_camera_t far = camera_down_plus_z(150.0f, -400, 1.0f);
+    const render_view_t far_view = render_view_fixture(&far, &raster, 0);
+    (void)raster_draw(&raster, &far_view);
+    const float far_near = raster_depth_near(&raster);
+    raster.first_row = H / 4;
+    raster.end_row = H / 2;
+    const fixture_camera_t near = camera_down_plus_z(150.0f, -40, 1.0f);
+    const render_view_t near_view = render_view_fixture(&near, &raster, 0);
+    (void)raster_census(&raster, &near_view);
+    TEST_ASSERT_NOT_EQUAL_FLOAT(far_near, raster_depth_near(&raster));
+    (void)raster_census(&raster, &near_view);
+    raster_draw_culled(&raster, &near_view);
+    TEST_ASSERT_TRUE(raster_drew_every_row(&raster));
 }
 
 /* Each instance's list is as long as its own mesh's clusters: three
@@ -3277,6 +3307,7 @@ run_r3d_lit_suite(void) {
     RUN_TEST(test_cull_off_keeps_every_cluster);
     RUN_TEST(test_a_census_list_draws_what_raster_draw_draws_at_any_size);
     RUN_TEST(test_a_census_list_steps_by_each_instances_own_mesh);
+    RUN_TEST(test_a_census_that_moves_the_depth_scale_redraws_every_row);
     RUN_TEST(test_batched_copies_draw_what_one_instance_at_a_time_draws);
     RUN_TEST(test_batch_count_keeps_empty_batches_and_the_clearing_draw);
     RUN_TEST(test_a_destination_of_the_same_size_is_a_copy);

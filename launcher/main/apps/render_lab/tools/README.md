@@ -6,6 +6,16 @@ itself is [`docs/tools/Render-Harness.md`](../../../../../docs/tools/Render-Harn
 Before a source bake or reference render, pull the
 [mesh source files](../../../../tools/r3d/README.md).
 
+## SH probes
+
+Sponza's scene requests an incident-radiance grid. Its sampling settings live
+in `launcher/demo/sponza/sponza.probes.toml`; the bake logs cost and cell counts.
+See [SH probe baking](../../../../../docs/render/offline/SH-Probes.md).
+
+```sh
+python launcher/tools/bake/bake.py bake launcher/demo/sponza --kind sh_probes
+```
+
 ## Host renders
 
 ```sh
@@ -170,13 +180,27 @@ the presets vary the copies' geometry, layout and colour modes.
 | `stress-carved-near` | ![Stress carved near: a few bumpy balls close up](../../../../../docs/images/overview/render-lab-stress-carved-near.png) | a few copies of a banded bumpy ball, baked with levels of detail, close to the camera | the carve's finest levels: each copy draws near its full shape |
 | `stress-carved-far` | ![Stress carved far: a wall of bumpy balls in the distance](../../../../../docs/images/overview/render-lab-stress-carved-far.png) | many copies of the same ball, small in the distance | per-copy level picks: far copies draw their coarse levels |
 | `stress-textured` | ![Stress textured: big triangles under a brick texture](../../../../../docs/images/overview/render-lab-stress-textured.png) | the big-tris layout, its banded light multiplied by a generated 4-bit brick texture ([LTEX](../../../../../docs/assets/formats/LTEX.md)) | the textured span fill against the same pixels drawn plain in `stress-big-tris` |
+| `stress-textured-far` | ![Stress textured far: a wall of small brick planes](../../../../../docs/images/overview/render-lab-stress-textured-far.png) | `stress-textured`'s plane, 64 small copies on a wall, so its brick picks far mip levels | the far mip levels: every textured pixel takes `texture.far_level`'s flat fill, against `stress-textured`, whose levels all read texels |
 | `stress-foliage-near` | ![Stress foliage near: three bushes of masked cards over the view](../../../../../docs/images/overview/render-lab-stress-foliage-near.png) | three bushes one behind another over the whole view, each 24 small cards turned and overlapping several deep, cut by a generated MASK1 texture ([LTEX](../../../../../docs/assets/formats/LTEX.md)) keeping about 0.7 | the masked textured fill at its largest: foliage cards' overdraw near the camera |
 | `stress-foliage-near-opaque` | ![Stress foliage near opaque: the same cards under the brick](../../../../../docs/images/overview/render-lab-stress-foliage-near-opaque.png) | `stress-foliage-near`'s cards under the INDEX4 brick, whole | the twin: against it, the near cards' mask costs alone |
 | `stress-foliage-far` | ![Stress foliage far: a wall of small bushes of masked cards](../../../../../docs/images/overview/render-lab-stress-foliage-far.png) | 36 small bushes side by side, their cards a few pixels across | the masked textured fill on small triangles, as distant foliage draws |
 | `stress-foliage-far-opaque` | ![Stress foliage far opaque: the same cards under the brick](../../../../../docs/images/overview/render-lab-stress-foliage-far-opaque.png) | `stress-foliage-far`'s cards under the INDEX4 brick, whole | the twin: against it, the far cards' mask costs alone |
+| `stress-butterflies` | ![Butterfly wall](../../../../../docs/images/overview/render-lab-stress-butterflies.png) | a wall of butterfly bodies with two hinged wings each | static mesh batches, hierarchy propagation and flap transforms |
+| `stress-few-butterflies` | ![Four butterflies](../../../../../docs/images/overview/render-lab-stress-few-butterflies.png) | a smaller wall with the same coverage | larger wing triangles with fewer transform batches |
 | `stress-record` | ![Stress record: four planes with a wave running over them](../../../../../docs/images/overview/render-lab-stress-record.png) | four planes made again every frame, a wave running over them, while the frame recorder runs | the recorder: each frame's four built meshes written whole, a keyframe's meshes every 30 frames |
 | `stress-cull-setup` | ![Stress cull setup: one small cube](../../../../../docs/images/overview/render-lab-stress-cull-setup.png) | one small cube of a few triangles | the cull's setup before it walks anything: the lens, frustum, settings and pick setup every cull pays once |
 | `stress-baked-tree` | ![Stress baked tree: the inside of a ring](../../../../../docs/images/overview/render-lab-stress-baked-tree.png) | a ring baked by the bake tools in its own pack, the camera at its centre turning half a turn; [`torus_obj.py`](torus_obj.py) writes the ring into [`ring.obj`](../../../../demo/stress_ring/ring.obj) | the baked cluster tree the cull walks, which no generated copy has |
+| `stress-small-grain` | ![Stress small grain: a wall of coarse planes drawn in grain](../../../../../docs/images/overview/render-lab-stress-small-grain.png) | a wall of banded planes, each triangle a few pixels past the always-flat side, under the SMALL FILL menu's largest ceiling and the grain style, no colour gate | the small fill's grain kernel, which only that setting selects |
+| `stress-small-dither` | ![Stress small dither: a wall of coarse noisy planes, dithered](../../../../../docs/images/overview/render-lab-stress-small-dither.png) | the same wall, its corners far apart in colour, under the dither style | the small fill's dither kernel, which only that setting selects |
+| `stress-small-off` | ![Stress small off: many small spheres, the small fill off](../../../../../docs/images/overview/render-lab-stress-small-off.png) | `stress-tiny-copies` with the small fill off | the row walk's flat fill, which the small fill otherwise takes first |
+| `stress-stack-skip` | ![Stress stack skip: planes one behind another, hidden clusters skipped](../../../../../docs/images/overview/render-lab-stress-stack-skip.png) | `stress-stack`, its camera skipping clusters behind drawn depth as Bistro's does | the capped row walk, every fill's depth held under its cluster's |
+| `stress-carved-blend` | ![Stress carved blend: bumpy balls close up, changing level through dither masks](../../../../../docs/images/overview/render-lab-stress-carved-blend.png) | `stress-carved-near` with `lod.blend` on | the dithered blend's masked fill as a group moves between levels |
+
+![Butterfly wing motion](../../../../../docs/images/overview/render-lab-butterflies.gif)
+
+The butterfly pack uses unbaked vertex colour. Its wing outline traces
+miziziziz's CC0 texture<sup>[[132]](../../../../../docs/Citations.md#miziziziz-butterfly-2019)</sup>.
+`scene_stress.c` feeds a fixed sine flap, one phase per copy, to `hinge_pose`.
 
 A change is judged by each preset's own readout, stage by stage. The sum over
 presets is a summary line only. A draw change can win on two-sided and static
@@ -299,6 +323,12 @@ python launcher/main/apps/render_lab/tools/stress_predict.py \
 `R3D_SIZES_FIELDS`: face, uniform and shaded modes, each split by covered
 pixel centres. Their sum is `triangles_set_up`; clipped triangles stay separate.
 
+`--perf-poses` draws a stress scene at the poses the stress perf suite
+replays, one frame each. `--path-hits FILE` writes each r3d fill path's hits
+after the last frame. `--stress-runs` prints every stress preset and quarter,
+one `key quarter` line each. `stress_path_hits.sh --check` uses all three and
+fails naming any path no preset reaches; Host Tests runs it.
+
 `--camera still` holds the camera, so a frame differs from the last only
 where the mesh moved. Mixed copies share meshes by tessellation;
 `STRESS_MIX_UNIFORM_PERIOD` owns their equal-colour share.
@@ -361,7 +391,8 @@ contact blob under it darkens the floor, sized from its footprint.
 ### Small fill
 
 `render_lab.small_fill_ceiling`, `render_lab.small_fill_gate` and
-`render_lab.small_fill_style` apply to the scene camera each frame.
+`render_lab.small_fill_style` set the main render context's `small_fill`
+render settings every frame, so in the lab the picker owns small fill.
 The BOOT menu has a SMALL FILL dropdown with every `SMALL_FILL_` preset;
 picking one sets the three tunables. Every menu option is in a release
 image too.
@@ -378,14 +409,15 @@ depth edges sharp
 ([Dynamic-Resolution.md](../../../../../docs/render/frame/Dynamic-Resolution.md#upscaling-within-a-surface)).
 It sets `render_lab.upscale`.
 
-The generic scene viewer accepts `--small-fill CEILING,GATE,STYLE`; its defaults
-come from `SMALL_FILL_SMOOTH`. Styles use the `small_fill_style_t` values.
+The generic scene viewer sets small fill like any render setting, with
+`--set render.small_fill.FIELD=VALUE`; a value outside the field's range fails the run.
 The [engine feature](../../../../../docs/render/frame/Coverage.md#small-fill)
 defines the axes and defaults.
 
 ```sh
 sh launcher/tools/render/scene_viewer.sh launcher/demo/sponza/sponza.scene.toml \
-    --object atrium_fitted_full --small-fill 12,16,1 -o grain.bmp
+    --object atrium_fitted_full --set render.small_fill.ceiling=12 \
+    --set render.small_fill.gate=16 --set render.small_fill.style=1 -o grain.bmp
 ```
 
 The app host accepts `--tune` before entry or `--live-tune` after entry.
@@ -475,6 +507,9 @@ selects a scene camera; omitted, it draws the first camera.
 `--dump DIR` writes each frame's raster colour and depth, before the
 upscale, to `DIR/NNNN.raw` for the frame generation experiment
 ([Frame-Generation.md](../../../../../docs/render/frame/Frame-Generation.md)).
+
+`--transforms PATH` writes each entity's local position and quaternion after
+every update to a CSV, keyed by frame and entity name.
 
 `dynres_quality.sh [--scene-file F --scene KEY] [--args "ARGS"] WORK OUT.csv CAMERA WxH [WxH ...]`
 scores each size against the reference along that camera's clip, at

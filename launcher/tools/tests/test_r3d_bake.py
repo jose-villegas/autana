@@ -23,6 +23,7 @@ try:
     from tests import soup
 
     from r3d import geometry
+    from r3d.import_settings import LIGHT_MODE_BAKED
     from r3d.geometry import closest_point_on_triangles, nearest_triangles, triangle_areas, triangle_search, weld
     from r3d.light import adaptive_sample_counts, face_colours, light, merge_matching_colours, to_srgb8
     from r3d import lit_mesh, rebake
@@ -832,10 +833,9 @@ def lighting_lights(**changes):
                   sky_intensity=0.9, ambient=0.06)
     values.update(changes)
     return [
-        {"type": "directional", "direction": values["sun"], "color": [1.0, 0.92, 0.78],
-         "intensity": values["sun_intensity"]},
-        {"type": "sky", "color": [0.55, 0.68, 0.9], "intensity": values["sky_intensity"], "rays": values["sky_rays"]},
-        {"type": "ambient", "color": [1.0, 1.0, 1.0], "intensity": values["ambient"]},
+        soup.sun(values["sun"], [1.0, 0.92, 0.78], values["sun_intensity"]),
+        {"type": "sky", "mode": LIGHT_MODE_BAKED, "color": [0.55, 0.68, 0.9], "intensity": values["sky_intensity"], "rays": values["sky_rays"]},
+        {"type": "ambient", "mode": LIGHT_MODE_BAKED, "color": [1.0, 1.0, 1.0], "intensity": values["ambient"]},
     ]
 
 

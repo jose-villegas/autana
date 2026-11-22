@@ -100,8 +100,7 @@ render_scene_run() {
 
 # The packs of scene_assets' roots, and what the build needs to read them.
 render_scene_packs() {
-    # shellcheck source=../../../scripts/lib/python.sh
-    . "$_rs_launcher/../scripts/lib/python.sh"
+    render_scene_source "$_rs_launcher/../scripts/lib/python.sh"
     _rs_python=$(find_python) || return 1
     _rs_assets="$scene_out_dir/assets"
     set --
@@ -125,6 +124,7 @@ render_scene_packs() {
 # read, the binary compiled to $_rs_bin. Also what a harness self-check calls
 # to build a fixture scene it then runs by hand.
 render_scene_build() {
+    _rs_sourced=
     for _rs_required in scene_name scene_sources scene_renders; do
         eval "_rs_value=\${$_rs_required+set}"
         if [ -z "${_rs_value:-}" ]; then
@@ -154,7 +154,7 @@ render_scene_build() {
     fi
     _rs_tools="$_rs_launcher/tools"
     if [ "${scene_ui:-0}" = 1 ]; then
-        . "$_rs_tools/build/ui_sources.sh"
+        render_scene_source "$_rs_tools/build/ui_sources.sh"
         scene_sources="$scene_sources $UI_SOURCES"
     fi
 
@@ -189,7 +189,7 @@ render_scene_build() {
     : "${scene_baseline:=$_rs_here/${scene_name}_render_baseline.txt}"
 
     # shellcheck source=../build/find_cc.sh
-    . "$_rs_tools/build/find_cc.sh"
+    render_scene_source "$_rs_tools/build/find_cc.sh"
     if ! _rs_cc=$(find_cc); then
         echo "No C compiler found." >&2
         echo "  Windows: winget install BrechtSanders.WinLibs.POSIX.UCRT" >&2
@@ -210,7 +210,7 @@ render_scene_build() {
         _rs_bin="$_rs_bin.exe"
     fi
 
-    . "$_rs_launcher/../scripts/lib/native_path.sh"
+    render_scene_source "$_rs_launcher/../scripts/lib/native_path.sh"
     _rs_assets=
     if [ "$_rs_deps" = 0 ] && { [ -n "$scene_assets" ] || [ -n "$scene_asset_file" ]; }; then
         render_scene_packs || return 1
@@ -239,6 +239,15 @@ render_scene_build() {
     fi
     _rs_configure_log="$_rs_build/cmake.log"
     mkdir -p "$_rs_build"
+    # The build lists what it read (scene/dependencies.py), CMake files included: CMake's file API answers this
+    # query at configure. Under figures_runner.py the lists go into the folder AUTANA_FIGURES_DEPENDS names
+    # (launcher/tools/docs/producer.py owns the name); --deps prints them.
+    mkdir -p "$_rs_build/.cmake/api/v1/query"
+    : > "$_rs_build/.cmake/api/v1/query/cmakeFiles-v1"
+    _rs_depends=
+    if [ "$_rs_deps" = 0 ] && [ -n "${AUTANA_FIGURES_DEPENDS:-}" ]; then
+        _rs_depends=$AUTANA_FIGURES_DEPENDS
+    fi
     if ! cmake -S "$(to_native "$_rs_tools/render/scene")" -B "$(to_native "$_rs_build")" \
         "$@" "-DCMAKE_C_COMPILER=$(to_native "$(command -v "$_rs_cc")")" \
         -DCMAKE_BUILD_TYPE= "-DSCENE_NAME=$scene_name" \
@@ -251,10 +260,8 @@ render_scene_build() {
         return 1
     fi
     if [ "$_rs_deps" = 1 ]; then
-        . "$_rs_launcher/../scripts/lib/python.sh"
-        _rs_python=$(find_python) || { rm -rf "$_rs_build"; return 1; }
         _rs_status=0
-        "$_rs_python" "$(to_native "$_rs_tools/render/scene/dependencies.py")" "$(to_native "$_rs_build")" || _rs_status=$?
+        render_scene_dependencies || _rs_status=$?
         rm -rf "$_rs_build"
         return "$_rs_status"
     fi
@@ -262,7 +269,34 @@ render_scene_build() {
     _rs_status=0
     cmake --build "$(to_native "$_rs_build")" --target render_scene --parallel > "$_rs_build_log" 2>&1 || _rs_status=$?
     awk '!/^\[[[:space:][:digit:]%/]+\]/ && !/^-- / && !/^Consolidate compiler generated dependencies of target / && !/^ninja: / && !/^[[:alnum:]_-]*make(\[[0-9]+\])?:/' "$_rs_build_log" >&2
+    if [ "$_rs_status" = 0 ] && [ -n "$_rs_depends" ]; then
+        render_scene_dependencies --into "$_rs_depends" || return 1
+    fi
     return "$_rs_status"
+}
+
+# Source a script the build reads, and remember it for the build's list of what it read.
+render_scene_source() {
+    . "$1"
+    _rs_sourced="$_rs_sourced
+$1"
+}
+
+# What the configured build read (scene/dependencies.py), with the scripts it sourced: printed, or with
+# --into DIR written there as dependency lists.
+render_scene_dependencies() {
+    render_scene_source "$_rs_launcher/../scripts/lib/python.sh"
+    _rs_python=$(find_python) || return 1
+    _rs_scripts=$(printf '%s\n' "$0" "$_rs_tools/render/render_scene.sh" "$_rs_sourced" | LC_ALL=C sort -u)
+    set -- "$@"
+    _rs_ifs=$IFS
+    IFS='
+'
+    for _rs_read in $_rs_scripts; do
+        set -- "$@" "$(to_native "$_rs_read")"
+    done
+    IFS=$_rs_ifs
+    "$_rs_python" "$(to_native "$_rs_tools/render/scene/dependencies.py")" "$(to_native "$_rs_build")" "$@"
 }
 
 render_scene_render() {

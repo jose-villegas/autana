@@ -3,7 +3,8 @@
 `light.py` and the importer ask three questions of a mesh: the first hit along each ray, whether a ray is blocked, and
 hit rounds a caller can retire rays from. `RayQuery` answers them as `first_hit`, `blocked` and `hit_rounds`;
 `first_hits` gives the raw arrays behind the first. Triangle ids are the row numbers of the `tris` given,
-and every triangle is hit from both sides.
+and every triangle is hit from both sides. An optional `hit_filter(triangles, locations)` returns which hits are
+solid; every query method steps past the rest, so a cut-out texel hides nothing behind it.
 
 Every bake traces on the LLVM variant `VARIANT`, reference sets included: Embree builds one tree per mesh, so a bake
 repeats byte for byte, while OptiX promises no such thing (README, "Reference on the CPU"). A mesh bake is NumPy-bound
@@ -15,7 +16,7 @@ import sys
 
 import numpy as np
 
-from r3d.mitsuba_reference import default_variant, import_mitsuba
+from r3d.mitsuba_reference import import_mitsuba
 
 VARIANT = "llvm_ad_rgb"
 # Rays per Mitsuba call: bounds the arrays a large query allocates.
@@ -25,38 +26,11 @@ BATCH = 1 << 22
 STEP = 1e-4
 STEP_RELATIVE = 1e-6
 MAX_HITS = 100
-GPU_VARIANT = "cuda_ad_rgb"
-
-
-def trace_variant():
-    """`GPU_VARIANT` when it loads a scene here, else `VARIANT`. No bake calls it or `release_gpu`: they stay because
-    this file is in every mesh bake's key, and go with the next change that re-keys meshes. A variant Mitsuba was
-    already on is restored. The probe may open CUDA in this process even when it falls back, so the caller must not
-    fork workers after it."""
-    mi = import_mitsuba()
-    if mi is None:
-        return VARIANT
-    before = mi.variant()
-    found = default_variant(mi)
-    if before is not None:
-        mi.set_variant(before)
-    return GPU_VARIANT if found == GPU_VARIANT else VARIANT
-
-
-def release_gpu():
-    """Returns Dr.Jit's cached device memory once the GPU variant's scenes are dropped, so a CUDA user that follows
-    in the process (the fit's torch) gets it back."""
-    import gc
-
-    import drjit as dr
-
-    gc.collect()
-    dr.sync_thread()
-    dr.flush_malloc_cache()
 
 
 class RayQuery:
-    def __init__(self, positions, tris, variant=None):
+    def __init__(self, positions, tris, variant=None, hit_filter=None):
+        self.hit_filter = hit_filter
         variant = variant or VARIANT
         mi = import_mitsuba()
         if mi is None:
@@ -90,6 +64,18 @@ class RayQuery:
     def first_hits(self, origins, directions):
         """(hit mask, distance along the direction, triangle) for every ray; distance and triangle mean nothing where
         the mask is false."""
+        if self.hit_filter is None:
+            return self._first_hits(origins, directions)
+        origins, directions = np.asarray(origins, np.float64), np.asarray(directions, np.float64)
+        hit, distance, tri = np.zeros(len(origins), bool), np.zeros(len(origins)), np.zeros(len(origins), np.int64)
+        active = np.ones(len(origins), bool)
+        for faces, rays, where in self.hit_rounds(origins, directions, active):
+            hit[rays], tri[rays], active[rays] = True, faces, False
+            distance[rays] = np.einsum("ij,ij->i", where - origins[rays], directions[rays]) / np.einsum(
+                "ij,ij->i", directions[rays], directions[rays])
+        return hit, distance, tri
+
+    def _first_hits(self, origins, directions):
         self._check_variant()
         count = len(origins)
         hit, distance, tri = np.zeros(count, bool), np.zeros(count), np.zeros(count, np.int64)
@@ -122,8 +108,8 @@ class RayQuery:
         return origins[ray] + directions[ray] * distance[ray, None], ray, tri[ray]
 
     def blocked(self, origins, directions):
-        """True for each ray that hits the mesh."""
-        if self.scalar:
+        """True for each ray that hits a solid part of the mesh (every hit without a `hit_filter`)."""
+        if self.scalar or self.hit_filter is not None:
             return self.first_hits(np.asarray(origins), np.asarray(directions))[0]
         self._check_variant()
         import drjit as dr
@@ -137,9 +123,9 @@ class RayQuery:
         return blocked
 
     def hit_rounds(self, origins, directions, active=None):
-        """Yield (triangle, ray index, location) in nearest-first rounds, stepping past each hit by the larger of
-        `STEP` and its coordinate-scaled `STEP_RELATIVE`. The caller may clear entries in the per-ray `active` mask
-        between rounds to retire rays. Rays still active after `MAX_HITS` are cut off and reported on stderr."""
+        """Yield (triangle, ray index, location) of solid hits in nearest-first rounds, stepping past each hit by the
+        larger of `STEP` and its coordinate-scaled `STEP_RELATIVE`. The caller may clear entries in the per-ray `active`
+        mask between rounds to retire rays. Rays still active after `MAX_HITS` are cut off and reported on stderr."""
         origins, directions = np.asarray(origins, np.float64), np.asarray(directions, np.float64)
         active = np.ones(len(origins), bool) if active is None else active
         alive = np.flatnonzero(active)
@@ -147,10 +133,14 @@ class RayQuery:
         for _ in range(MAX_HITS):
             if not len(alive):
                 break
-            hit, distance, tri = self.first_hits(start[alive], directions[alive])
+            hit, distance, tri = self._first_hits(start[alive], directions[alive])
             alive, distance, tri = alive[hit], distance[hit], tri[hit]
             where = start[alive] + directions[alive] * distance[:, None]
-            yield tri, alive, where
+            if self.hit_filter is None:
+                yield tri, alive, where
+            else:
+                solid = self.hit_filter(tri, where)
+                yield tri[solid], alive[solid], where[solid]
             keep = active[alive]
             alive, where = alive[keep], where[keep]
             step = np.maximum(STEP, STEP_RELATIVE * np.abs(where).max(axis=1, initial=0.0))

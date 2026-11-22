@@ -213,17 +213,15 @@ suites_run_request(const char* request, suite_run_t* run) {
     const char* space = strchr(request, ' ');
     const size_t name_length = space != NULL ? (size_t)(space - request) : strlen(request);
     const char* list = space != NULL ? space + 1 : "";
-    if (name_length > SUITE_NAME_MAX) {
-        return;
-    }
-    memcpy(run->name, request, name_length);
+    run->name = request;
+    run->name_length = (int)name_length;
 
     filtering = false;
     selected_count = 0;
     memset(pattern_hits, 0, sizeof pattern_hits);
     for (size_t i = 0; i < suites_count(); i++) {
         const suite_entry_t* suite = suites_at(i);
-        if (strcmp(suite->name, run->name) != 0) {
+        if (strlen(suite->name) != name_length || strncmp(suite->name, request, name_length) != 0) {
             continue;
         }
         run->found = true;
@@ -246,6 +244,6 @@ suites_run_request(const char* request, suite_run_t* run) {
 
 void
 suites_print_run(const suite_run_t* run) {
-    printf("\nRUNSUITE_COMPLETE name=%s found=%d selected=%d unmatched=%d\n", run->name, run->found ? 1 : 0,
-           run->selected, run->unmatched);
+    printf("\nRUNSUITE_COMPLETE name=%.*s found=%d selected=%d unmatched=%d\n", run->name_length, run->name,
+           run->found ? 1 : 0, run->selected, run->unmatched);
 }

@@ -1,0 +1,13 @@
+[source]
+path = "butterfly_wing.obj"
+credit = "Wing outline traced from miziziziz's 'Butterfly mesh and texture' (CC0), OpenGameArt."
+
+[output]
+name = "butterfly_wing"
+position_scale = 524288
+
+[geometry]
+lod = false
+
+[materials]
+double_sided = ["wing"]

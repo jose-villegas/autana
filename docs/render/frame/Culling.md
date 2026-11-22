@@ -16,14 +16,17 @@ flowchart LR
     subgraph Offline["offline, at the bake"]
         Vis["visibility<br/><i>triangles no camera<br/>pose sees</i>"]
     end
-    subgraph Census["the cull, both cores"]
+    subgraph Census["the cull, raster_census(), both cores"]
         direction TB
-        Inst["instance<br/><i>its world box, then<br/>its root box under its model</i>"] --> Node["node<br/><i>box against the planes<br/>its parent crossed</i>"]
+        Batch["batch<br/><i>chunk sphere, then<br/>each copy's sphere</i>"] --> Inst["instance<br/><i>its world box, then<br/>its root box under its model</i>"]
+        Inst --> Pick["level pick<br/><i>each group coarse or fine</i>"]
+        Pick --> Node["node<br/><i>box against the planes<br/>its parent crossed</i>"]
         Node --> Cluster["cluster<br/><i>box against<br/>the leaf's planes</i>"]
     end
-    subgraph Draw["the draw, both cores"]
+    subgraph Draw["the draw, raster_draw_culled(), both cores"]
         direction TB
-        Rows["rows<br/><i>a cluster outside<br/>this core's rows</i>"] --> Tri["triangle<br/><i>behind, misses every centre,<br/>facing away</i>"]
+        Rows["rows<br/><i>a cluster outside<br/>this core's rows</i>"] --> Hidden["hidden cluster<br/><i>behind drawn depth,<br/>when the camera skips</i>"]
+        Hidden --> Tri["triangle<br/><i>behind, misses every centre,<br/>facing away</i>"]
         Tri --> Depth["depth test<br/><i>per pixel</i>"]
     end
     Offline --> Census --> Draw
@@ -32,16 +35,32 @@ flowchart LR
 | Stage | Test | Unit | Where | Saves |
 |---|---|---|---|---|
 | Visibility | no ray from the camera region or path reaches it | triangle | the importer, offline ([visibility](../scene/Scene-Files.md#visibility-camera_region)) | flash and every stage below |
-| Instance | its world box, then its root node's box, is outside a frustum plane | instance, each copy under its own model | `cull_instances()` in [raster.c](../../../launcher/main/render/raster.c), then `r3d_pipeline_cull()` from the root | the whole mesh; with the world box, its lens, its level pick and its walk too |
+| Batch | a chunk's sphere, then each copy's, is outside a frustum plane | chunk of copies, then copy | `expand_batch()` in [raster.c](../../../launcher/main/render/raster.c) | the copy's slot in the census list and every stage below |
+| Instance | its world box, then its root node's box, is outside a frustum plane | instance, each copy under its own model | `cull_slice()` in [raster.c](../../../launcher/main/render/raster.c), then `r3d_pipeline_cull()` from the root | the whole mesh; with the world box, its lens, its level pick and its walk too |
+| Level pick | each group's projected error against the tolerance, and its radius against the coverage cap ([the pick](Levels-of-Detail.md#the-pick)) | group of clusters | `r3d_lod_pick()` | the finer level's clusters |
 | Node | its box is outside a plane its parent's box crossed | node of the cluster tree | `r3d_pipeline_cull()` | its subtree |
 | Cluster | its box is outside a plane its leaf's box crossed | cluster | `r3d_pipeline_cull()` | its vertices' transform and its triangles |
 | Rows | its transformed vertices span no row of this core's half | cluster, per core | `r3d_pipeline_draw()` | its triangles on that core |
+| Hidden cluster | every pixel under its box already holds nearer depth; only a camera with `skip_hidden` ([Rendering-Options.md](../Rendering-Options.md)) | cluster, per core | `r3d_pipeline_cluster_hidden()` | its triangles' set-up and fill |
 | Triangle | behind the near plane, misses every pixel centre, or faces away ([per triangle](#per-triangle)) | triangle | `r3d_pipeline_draw()` | its set-up and fill |
 | Depth | a nearer depth is already drawn | pixel | `r3d_span` | the pixel's write |
 
 What each stage costs on the board is
 [measured below](#what-a-cluster-and-a-triangle-cost); what each keeps along
 two camera paths is in [the cull, seen](#the-cull-seen).
+
+## One entry
+
+`raster_census()` is the whole cull: it writes the census list, the kept
+clusters of every instance and kept copy, and returns what it kept.
+`raster_draw_culled()` draws that list, and `raster_draw()` is the two in turn.
+
+| Property | Why |
+|---|---|
+| The cull's lens is the view's, at the view's size, not fitted to the raster's | the list, its counts and its level picks are the same at every render size, so a caller can price sizes before choosing one ([Dynamic-Resolution.md](Dynamic-Resolution.md)) |
+| The draw's lens is fitted to the raster | pixels land on the size drawn |
+| The list holds for the same instances, whatever camera draws it | a spectator draws the camera's list ([the cull, seen](#the-cull-seen)); with the same lens, as the draw keeps the census's [depth scale](Attachments.md#depth) |
+| Every cull is timed under `r3d.cull` | one bracket, whichever entry ran it ([Frame-Cost.md](../../tools/Frame-Cost.md)) |
 
 ## The tree walk
 
@@ -65,10 +84,18 @@ lens is built once per position scale and each copy only adds its placement.
 
 An instance may carry a world box: its root box through its model, in RAM
 (`r3d_lit_mesh_world_bounds()`), kept current by the caller as its meshes
-move or refit. It is tested first against the picture's planes, grown by a
-slack past float rounding, so it only drops instances the root test would
-drop. Those then build no lens and read no tree. Kept clusters and pixels are
-the same either way.
+move or refit. It is tested first against the picture's planes, grown on
+every side by a slack past float rounding, so it only drops instances the
+root test would drop:
+
+```math
+s = k\,\max\left(\lVert \mathbf{e} \rVert_\infty,\ \max_i \lvert b_i \rvert\right)
+```
+
+where $`k`$ is `WORLD_SLACK` in [raster.c](../../../launcher/main/render/raster.c),
+$`\mathbf{e}`$ the eye's position and $`b_i`$ the box's six coordinates.
+Those then build no lens and read no tree. Kept clusters and pixels are the
+same either way.
 
 An instance that kept no cluster gets no slot in the draw's batch; its
 attachment writers still see it. `cull` off in the context's settings
@@ -183,19 +210,19 @@ Bistro along its camera path:
 
 ![Bistro's counts along its path](../../images/render/cull-bistro-counts.png)
 
-<!-- generated: cull-bistro sha256=f4dd1d57ade09dfce7df5b5534545f565bd90fc504ddeec764dd2d92183e9e5e -->
+<!-- generated: cull-bistro sha256=faff881ccdf0dcd0a091560108a42a22554857ea0a66b5ca6b2c39eeca3fca4c -->
 | Per frame, path mean | Bistro |
 |---|---|
-| Nodes visited / cut | 165 / 33 |
-| Clusters tested / kept | 467 / 350 |
-| Kept clusters: nothing set up / hidden / drawn | 38 / 138 / 173 |
-| Triangles submitted | 6988 |
-| Submitted triangles behind the near plane | 65 (1 %) |
-| Submitted triangles clipped | 59 (1 %) |
-| Submitted triangles miss every pixel centre | 1939 (28 %) |
-| Submitted triangles facing away | 1522 (22 %) |
-| Submitted triangles set up | 3403 (49 %) |
-| Submitted triangles covering pixels | 1584 (23 %) |
+| Nodes visited / cut | 235 / 43 |
+| Clusters tested / kept | 670 / 497 |
+| Kept clusters: nothing set up / hidden / drawn | 70 / 211 / 216 |
+| Triangles submitted | 10289 |
+| Submitted triangles behind the near plane | 76 (1 %) |
+| Submitted triangles clipped | 74 (1 %) |
+| Submitted triangles miss every pixel centre | 3410 (33 %) |
+| Submitted triangles facing away | 2294 (22 %) |
+| Submitted triangles set up | 4435 (43 %) |
+| Submitted triangles covering pixels | 1638 (16 %) |
 <!-- /generated: cull-bistro -->
 
 Sponza's fitted full bake along its flythrough:
@@ -206,19 +233,19 @@ Sponza's fitted full bake along its flythrough:
 
 ![Sponza's counts along its path](../../images/render/cull-sponza-counts.png)
 
-<!-- generated: cull-sponza sha256=6d75a42e58931861f686e9e348cd38c683eb5945f32467d5c29f127ab8bd1b98 -->
+<!-- generated: cull-sponza sha256=3d9cd3f923b88fe2c341fd35126784932285445ae0785c294827b3a43abcb384 -->
 | Per frame, path mean | Sponza |
 |---|---|
-| Nodes visited / cut | 167 / 38 |
-| Clusters tested / kept | 371 / 293 |
-| Kept clusters: nothing set up / hidden / drawn | 19 / 50 / 224 |
-| Triangles submitted | 7328 |
-| Submitted triangles behind the near plane | 87 (1 %) |
-| Submitted triangles clipped | 67 (1 %) |
-| Submitted triangles miss every pixel centre | 1715 (23 %) |
-| Submitted triangles facing away | 754 (10 %) |
-| Submitted triangles set up | 4706 (64 %) |
-| Submitted triangles covering pixels | 2537 (35 %) |
+| Nodes visited / cut | 190 / 37 |
+| Clusters tested / kept | 481 / 356 |
+| Kept clusters: nothing set up / hidden / drawn | 32 / 92 / 232 |
+| Triangles submitted | 9508 |
+| Submitted triangles behind the near plane | 172 (2 %) |
+| Submitted triangles clipped | 194 (2 %) |
+| Submitted triangles miss every pixel centre | 2414 (25 %) |
+| Submitted triangles facing away | 2016 (21 %) |
+| Submitted triangles set up | 4711 (50 %) |
+| Submitted triangles covering pixels | 2060 (22 %) |
 <!-- /generated: cull-sponza -->
 
 ## What a cluster and a triangle cost
@@ -235,9 +262,13 @@ Each pose is drawn three ways, so the counts move apart:
 [cull_cost.py](../../../launcher/tools/render/cull_cost.py) fits each stage by
 non-negative least squares:
 
-- cull = a + b × nodes visited + c × clusters tested
-- transform = a + b × clusters kept + c × vertices transformed
-- set-up = a + b × clusters kept + c × triangles submitted + d × triangles set up
+```math
+\begin{aligned}
+t_{\mathrm{cull}} &= a + b\,n_{\mathrm{nodes\ visited}} + c\,n_{\mathrm{clusters\ tested}} \\
+t_{\mathrm{transform}} &= a + b\,n_{\mathrm{clusters\ kept}} + c\,n_{\mathrm{vertices\ transformed}} \\
+t_{\mathrm{set\text{-}up}} &= a + b\,n_{\mathrm{clusters\ kept}} + c\,n_{\mathrm{triangles\ submitted}} + d\,n_{\mathrm{triangles\ set\ up}}
+\end{aligned}
+```
 
 ![Each stage's fit against what the board measured](../../images/render/cull-cost.png)
 
