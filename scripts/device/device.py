@@ -2023,7 +2023,8 @@ def stream(args, store, board, lines=None, out=None):
 RECORD_END_SECONDS = 30
 # Keep decoding and encoder backpressure off the serial reader. A stalled
 # consumer gets a bounded packet backlog before the capture stops.
-VIDEO_PACKET_BACKLOG = 512
+VIDEO_PACKET_BACKLOG = 4096
+VIDEO_RX_BUFFER_BYTES = 256 * 1024
 
 
 def record_frames(args, store, board, lines=None, out=None, log=None):
@@ -2106,6 +2107,8 @@ def capture_stream(args, store, board, tag, on_data, lines=None, log=None, openi
 
     def read(connection, stop, failed):
         try:
+            if backlog is not None and hasattr(connection, "set_buffer_size"):
+                connection.set_buffer_size(rx_size=VIDEO_RX_BUFFER_BYTES)
             while not stop.is_set() and not ended.is_set():
                 chunk = connection.read(STREAM_READ_BYTES)
                 while True:

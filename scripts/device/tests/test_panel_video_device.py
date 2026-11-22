@@ -23,11 +23,12 @@ class PanelBoard(RecordingBoard):
 
 
 class PanelVideoDeviceTests(unittest.TestCase):
-    def test_video_drains_serial_while_encoder_write_waits(self):
-        def wire(seq, us):
-            packet = panel_video.PART.pack(seq, 0, 1) + panel_video.PRESENT.pack(seq, us, 0, 0)
-            return b"PANEL_BIN %d %08x\n" % (len(packet), zlib.crc32(packet)) + packet
+    @staticmethod
+    def wire(seq, us):
+        packet = panel_video.PART.pack(seq, 0, 1) + panel_video.PRESENT.pack(seq, us, 0, 0)
+        return b"PANEL_BIN %d %08x\n" % (len(packet), zlib.crc32(packet)) + packet
 
+    def test_video_drains_serial_while_encoder_write_waits(self):
         drained = threading.Event()
         end = b"PANELCAP_END presents=2 dropped=0 bytes=32\n"
 
@@ -39,7 +40,7 @@ class PanelVideoDeviceTests(unittest.TestCase):
                 return data
 
         board = SlowEncoderBoard([b"PANELCAP_BEGIN fps=15 image=329728\n"],
-                                 after_stop=[wire(1, 0) + wire(2, 100_000), end])
+                                 after_stop=[self.wire(1, 0) + self.wire(2, 100_000), end])
         process = mock.Mock()
         process.wait.return_value = 0
 
@@ -49,10 +50,13 @@ class PanelVideoDeviceTests(unittest.TestCase):
         process.stdin.write.side_effect = wait_for_reader
         with tempfile.TemporaryDirectory() as folder:
             args = Namespace(owner="agent", wait=0, out=Path(folder) / "run.mp4", fps=15, seconds=None)
-            with mock.patch.object(device, "open_when_free", return_value=board), \
-                    mock.patch.object(panel_video.video_encode, "resolve", return_value="fake-ffmpeg"), \
-                    mock.patch.object(panel_video.video_encode, "open_encoder", return_value=process):
-                self.assertEqual(device.video(args, mock_store(), BOARD, lines=[], log=io.StringIO()), 0)
+            self.assertEqual(self.capture_with_encoder(args, board, process), 0)
+
+    def capture_with_encoder(self, args, board, process):
+        with mock.patch.object(device, "open_when_free", return_value=board), \
+                mock.patch.object(panel_video.video_encode, "resolve", return_value="fake-ffmpeg"), \
+                mock.patch.object(panel_video.video_encode, "open_encoder", return_value=process):
+            return device.video(args, mock_store(), BOARD, lines=[], log=io.StringIO())
 
     def test_encoder_finishes_before_lock_reaps_children(self):
         packet = panel_video.PART.pack(1, 0, 1) + panel_video.PRESENT.pack(1, 0, 0, 0)
@@ -73,11 +77,8 @@ class PanelVideoDeviceTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as folder:
             args = Namespace(owner="agent", wait=0, out=Path(folder) / "run.mp4", fps=5, seconds=None)
-            with mock.patch.object(device, "HeldLock", reaping_lock), \
-                    mock.patch.object(device, "open_when_free", return_value=board), \
-                    mock.patch.object(panel_video.video_encode, "resolve", return_value="fake-ffmpeg"), \
-                    mock.patch.object(panel_video.video_encode, "open_encoder", return_value=process):
-                self.assertEqual(device.video(args, mock_store(), BOARD, lines=[], log=io.StringIO()), 0)
+            with mock.patch.object(device, "HeldLock", reaping_lock):
+                self.assertEqual(self.capture_with_encoder(args, board, process), 0)
         process.stdin.close.assert_called_once()
         process.wait.assert_called_once()
         process.kill.assert_not_called()
@@ -201,13 +202,9 @@ class PanelVideoDeviceTests(unittest.TestCase):
         store.release.assert_called_once_with(BOARD, "token")
 
     def test_sink_failure_sends_stop_and_drains_to_end(self):
-        def wire(seq, us):
-            packet = panel_video.PART.pack(seq, 0, 1) + panel_video.PRESENT.pack(seq, us, 0, 0)
-            return b"PANEL_BIN %d %08x\n" % (len(packet), zlib.crc32(packet)) + packet
-
         end = b"PANELCAP_END presents=3 dropped=0 bytes=48\n"
-        board = PanelBoard([b"PANELCAP_BEGIN fps=5 image=329728\n", wire(1, 0) + wire(2, 100_000)],
-                               after_stop=[wire(3, 200_000), end])
+        board = PanelBoard([b"PANELCAP_BEGIN fps=5 image=329728\n", self.wire(1, 0) + self.wire(2, 100_000)],
+                           after_stop=[self.wire(3, 200_000), end])
         store = mock_store()
         with tempfile.TemporaryDirectory() as folder:
             args = Namespace(owner="agent", wait=0, out=Path(folder) / "run.mp4", fps=5, seconds=10)

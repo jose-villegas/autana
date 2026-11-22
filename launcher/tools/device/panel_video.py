@@ -4,6 +4,8 @@ import re
 import struct
 import sys
 import time
+from array import array
+from functools import cache
 from pathlib import Path
 
 import gfx_color
@@ -35,6 +37,12 @@ PACK_CONTROL_BYTES = 1
 STREAM_BYTES_MAX = (screenshot.PANEL_WIDTH * screenshot.PANEL_HEIGHT * (PIXEL_BYTES + PACK_CONTROL_BYTES)
                     + WINDOWS_MAX * WINDOW.size + PRESENT.size)
 CSV_FIELDS = ("present_seq", "device_us", "host_ns", "windows", "packed_bytes", "dropped_before")
+
+
+@cache
+def _rgb565_expansions():
+    red, green, blue = (range(256 // step) for step in gfx_color.STEP)
+    return tuple(bytes(gfx_color.expand(r, g, b)) for r in red for g in green for b in blue)
 
 
 def unpack(data, at, pixels):
@@ -142,9 +150,10 @@ class Canvas:
             pixels, end = unpack(stream, at, (x1 - x0) * (y1 - y0))
             packed += end - at
             at = end
-            rgb = bytearray()
-            for code, in struct.iter_unpack(">H", pixels):
-                rgb.extend(gfx_color.expand(code >> 11, (code >> 5) & 63, code & 31))
+            codes = array("H", pixels)
+            if sys.byteorder == "little":
+                codes.byteswap()
+            rgb = b"".join(map(_rgb565_expansions().__getitem__, codes))
             updates.append((x0, y0, x1, y1, rgb))
         if at != len(stream):
             raise ValueError("trailing panel bytes")
