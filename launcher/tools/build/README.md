@@ -7,6 +7,7 @@
 | [idf.sh](idf.sh) | Runs ESP-IDF commands from POSIX shells. |
 | [idf_shim.bat](idf_shim.bat) | Starts ESP-IDF commands from Git Bash on Windows. |
 | [ccache_watch.py](ccache_watch.py) | Runs `idf.py` for `idf.sh` and stops a build whose ccache lock stays held, naming the lock. |
+| [build_lock.py](build_lock.py) | Holds a build directory's lock while a command runs, so the firmware build and the host tests run one at a time per directory. |
 | [build_paths.py](build_paths.py) | Prepares variant build links and resets incompatible ESP-IDF configuration. |
 | [idf_variant.sh](idf_variant.sh) | Selects ESP-IDF configuration for a build variant. |
 | [layout_pad.py](layout_pad.py), [layout_pad.h](layout_pad.h) | The seeded padding behind `--layout-seed`: the seed-to-size mapping, the never-run pad it places ahead of each source's code and rodata, and the post-link check that it landed there. |
