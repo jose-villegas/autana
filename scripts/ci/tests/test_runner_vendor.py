@@ -95,11 +95,13 @@ def shard_artifact(shard, candidate, attempt):
 class CandidateTests(unittest.TestCase):
     """Of a job's candidates, one of the lock's vendor does it, and the job fails only when none can."""
 
-    def decides(self, artifacts, running, verdicts, attempt=1):
-        """`verdicts` maps (candidate, on the lock's vendor) to what `decide` must say for shard 4."""
+    def decides(self, artifacts, running, verdicts, attempt=1, queued=frozenset()):
+        """`verdicts` maps (candidate, on the lock's vendor) to what `decide` must say for shard 4; `running`
+        are the started candidates, `queued` the ones not started."""
         for (candidate, ok), verdict in verdicts.items():
             with self.subTest(candidate=candidate, ok=ok):
-                self.assertEqual(runner_vendor.decide(artifacts, running, unit(4), candidate, attempt, ok), verdict)
+                self.assertEqual(runner_vendor.decide(artifacts, running, unit(4), candidate, attempt, ok, queued),
+                                 verdict)
 
     def test_the_earliest_marked_on_the_locks_vendor_traces(self):
         artifacts = [marker(4, 2, 1, True, "10:00:01"), marker(4, 0, 1, True, "10:00:05")]
@@ -108,18 +110,25 @@ class CandidateTests(unittest.TestCase):
     def test_a_right_candidate_that_cannot_see_its_marker_yet_traces_alone(self):
         self.decides([], {0, 1, 2}, {(1, True): runner_vendor.WORK})
 
-    def test_a_wrong_candidate_finishes_green_while_a_sibling_can_still_trace(self):
+    def test_a_wrong_candidate_finishes_green_once_a_sibling_can_trace(self):
         wrong = [marker(4, 0, 1, False, "10:00:00")]
         self.decides(wrong + [marker(4, 1, 1, True, "10:00:02")], {0}, {(0, False): runner_vendor.OTHER})
-        # Candidate 2's job has not marked yet: it may be the lock's vendor.
-        self.decides(wrong, {0, 2}, {(0, False): runner_vendor.OTHER})
+
+    def test_a_wrong_candidate_waits_while_a_started_sibling_has_not_marked(self):
+        # Candidate 2 has started and marks before any install: it may be the lock's vendor, or fail with 0.
+        self.decides([marker(4, 0, 1, False, "10:00:00")], {0, 2}, {(0, False): runner_vendor.WAIT})
+
+    def test_a_queued_sibling_leaves_a_wrong_candidate_green_at_once(self):
+        # Waiting on a runner that has not started would hold this one's slot, which it may need.
+        self.decides([marker(4, 0, 1, False, "10:00:00")], {0}, {(0, False): runner_vendor.OTHER}, queued={2})
 
     def test_a_shard_is_lost_when_no_candidate_left_can_trace_it(self):
         wrong = [marker(4, 0, 1, False, "10:00:00"), marker(4, 1, 1, False, "10:00:03")]
-        # Candidate 1 is still deciding and candidate 2 finished green before candidate 1 marked.
-        self.decides(wrong, {0, 1}, {(0, False): runner_vendor.LOST})
-        # A re-run attempt runs only the failed candidate.
-        self.decides([marker(4, 1, 2, False, "11:00:00")], {1}, {(1, False): runner_vendor.LOST}, attempt=2)
+        # Both are still deciding, so both fail and a re-run draws both runners again.
+        self.decides(wrong, {0, 1}, {(0, False): runner_vendor.LOST, (1, False): runner_vendor.LOST})
+        # A re-run attempt runs every failed candidate.
+        again = [marker(4, 0, 2, False, "11:00:00"), marker(4, 1, 2, False, "11:00:01")]
+        self.decides(again, {0, 1}, {(0, False): runner_vendor.LOST, (1, False): runner_vendor.LOST}, attempt=2)
 
     def test_markers_of_another_shard_or_attempt_do_not_count(self):
         others = [marker(5, 1, 1, True, "10:00:00"), marker(4, 1, 1, True, "10:00:00")]
@@ -214,16 +223,21 @@ class CandidateTests(unittest.TestCase):
                              [f"cpu-candidates={list(range(runner_vendor.CANDIDATES))}",
                               "reference-plan-candidates=[0]"])
 
-    def claim(self, artifacts, jobs, marker_name, candidate=0, unlisted_reads=0, attempt="1"):
+    def claim(self, artifacts, jobs, marker_name, candidate=0, unlisted_reads=0, attempt="1", later=(),
+              jobs_later=()):
+        """`later` lists (reads, artifact): artifacts listed only once the artifacts were read that often;
+        `jobs_later` lists (reads, jobs): the jobs listed in place of `jobs` once the jobs were read that often."""
         calls = []
 
         def request(method, path, body=None):
             calls.append(path.split("?")[0])
             if "/artifacts" in path:
-                listed = [item for item in artifacts if item[0] != marker_name or
-                          calls.count(path.split("?")[0]) > unlisted_reads]
+                reads = calls.count(path.split("?")[0])
+                listed = [item for item in artifacts if item[0] != marker_name or reads > unlisted_reads]
+                listed += [item for after, item in later if reads > after]
                 return {"artifacts": [{"name": name, "created_at": created} for name, created in listed]}
-            return {"jobs": jobs}
+            reads = sum(1 for call in calls if isinstance(call, str) and call.endswith("/jobs"))
+            return {"jobs": next((listed for after, listed in reversed(jobs_later) if reads > after), jobs)}
         with tempfile.TemporaryDirectory() as folder:
             out_path, env = self.env(folder, attempt)
             out = io.StringIO()
@@ -240,7 +254,8 @@ class CandidateTests(unittest.TestCase):
                                       unlisted_reads=2)
         self.assertEqual((code, outputs), (0, "work=true\n"))
         reads = [call for call in self.calls if call == "/actions/runs/7/artifacts"]
-        self.assertEqual(len(reads), 3)
+        # Three until its marker lists, then one after the jobs for the decision.
+        self.assertEqual(len(reads), 4)
         self.assertEqual(self.calls[0], ("sleep", runner_vendor.MARKER_POLL_SECONDS))
 
     def test_claim_reads_its_vendor_from_its_marker_name(self):
@@ -258,7 +273,7 @@ class CandidateTests(unittest.TestCase):
         def request(method, path, body=None):
             return {"jobs": pages[int(path.rsplit("page=", 1)[1]) - 1]}
         with mock.patch.dict(os.environ, {"GITHUB_RUN_ID": "7", "GITHUB_RUN_ATTEMPT": "1"}):
-            self.assertEqual(runner_vendor.running_candidates(unit(4), request=request), {0, 1, 2})
+            self.assertEqual(runner_vendor.running_candidates(unit(4), request=request), ({1}, {0, 2}))
 
     def test_a_lost_shard_fails_with_the_title_the_rerun_takes(self):
         name, created = marker(4, 0, 1, False, "10:00:00")
@@ -269,21 +284,54 @@ class CandidateTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn(f"::error title={runner_vendor.WRONG_VENDOR}::", out)
         self.assertEqual(outputs, "work=false\n")
-        # The run's other candidates finished green, so the lost one is its only failure and is re-run.
+        # Every wrong candidate failed with it, so the re-run draws all of their runners again.
         run = {"Trace reference shard 4 (candidate 0)": ("failure", [runner_vendor.WRONG_VENDOR]),
-               "Trace reference shard 4 (candidate 1)": ("success", []),
+               "Trace reference shard 4 (candidate 1)": ("failure", [runner_vendor.WRONG_VENDOR]),
                "Join and pack the reference sets": ("skipped", [])}
         request, posts = fake_api(1, run)
         with contextlib.redirect_stdout(io.StringIO()):
             runner_vendor.rerun(7, request=request)
         self.assertEqual(posts, ["/actions/runs/7/rerun-failed-jobs"])
 
-    def test_a_queued_sibling_keeps_a_wrong_candidate_green(self):
+    def sibling_jobs(self, status="in_progress"):
+        return [{"name": "Trace reference shard 4 (candidate 0)", "status": "in_progress"},
+                {"name": "Trace reference shard 4 (candidate 2)", "status": status}]
+
+    def test_a_wrong_candidate_fails_with_a_wrong_sibling_that_marks_late(self):
         name, created = marker(4, 0, 1, False, "10:00:00")
-        jobs = [{"name": "Trace reference shard 4 (candidate 0)", "status": "in_progress"},
-                {"name": "Trace reference shard 4 (candidate 2)", "status": "queued"}]
-        code, _, outputs = self.claim([(name, created)], jobs, name)
+        code, out, outputs = self.claim([(name, created)], self.sibling_jobs(), name,
+                                        later=[(3, marker(4, 2, 1, False, "10:01:00"))])
+        self.assertEqual((code, outputs), (1, "work=false\n"))
+        self.assertIn(f"::error title={runner_vendor.WRONG_VENDOR}::", out)
+
+    def test_a_wrong_candidate_finishes_green_when_a_late_sibling_can_trace(self):
+        name, created = marker(4, 0, 1, False, "10:00:00")
+        code, _, outputs = self.claim([(name, created)], self.sibling_jobs(), name,
+                                      later=[(3, marker(4, 2, 1, True, "10:01:00"))])
         self.assertEqual((code, outputs), (0, "work=false\n"))
+
+    def test_a_sibling_that_finishes_without_marking_ends_the_wait(self):
+        # Candidate 2 found its shard done by an earlier attempt: it marks nothing and completes.
+        name, created = marker(4, 0, 1, False, "10:00:00")
+        code, _, outputs = self.claim([(name, created)], self.sibling_jobs(), name,
+                                      jobs_later=[(2, self.sibling_jobs("completed"))])
+        self.assertEqual((code, outputs), (1, "work=false\n"))
+
+    def test_a_started_sibling_that_never_marks_leaves_a_wrong_candidate_green(self):
+        # It may yet be the lock's vendor; failing now would fail the run it can finish.
+        name, created = marker(4, 0, 1, False, "10:00:00")
+        code, _, outputs = self.claim([(name, created)], self.sibling_jobs(), name)
+        self.assertEqual((code, outputs), (0, "work=false\n"))
+        sleeps = [call for call in self.calls if isinstance(call, tuple)]
+        self.assertEqual(len(sleeps), 1 + runner_vendor.MARKER_POLLS)
+        # After the read that lists its marker, each decision reads the jobs, then the artifacts.
+        self.assertEqual(len(self.calls) - len(sleeps), 1 + 2 * (1 + runner_vendor.MARKER_POLLS))
+
+    def test_a_queued_sibling_keeps_a_wrong_candidate_green_without_waiting(self):
+        name, created = marker(4, 0, 1, False, "10:00:00")
+        code, _, outputs = self.claim([(name, created)], self.sibling_jobs("queued"), name)
+        self.assertEqual((code, outputs), (0, "work=false\n"))
+        self.assertEqual(len([call for call in self.calls if isinstance(call, tuple)]), 1)
 
     def test_the_tracing_candidate_says_so(self):
         name, created = marker(4, 1, 1, True, "10:00:00")
