@@ -15,12 +15,13 @@
 
     render_compare.py --material-ids SCENE OBJECT POSES IDS_DIR --out sheet.png
         [--reference DIR] [--views N] [--crops N]
+        [--exclude-material GLOB] [--exclude-object GLOB] [--exclude SELECTOR]
 
     render_compare.py --out angles.png --angle-column LABEL DIR [--angle-column ...]
 
 --material-ids checks capture poses against POSES and shows the worst material
-disagreements. <out>.csv counts pixels by material; <out>.confusions.csv counts
-wrong-material pairs, largest first.
+disagreements. Repeat exclusion options to select reference pixels. The first
+match gets credit in <out>.excluded.csv. The sheet and each CSV list the options.
 
 --reference-stills writes the reference sheet of one frame from three PNGs:
 the reference, A and B, then A's and B's dE heatmaps; with --crops N,
@@ -68,8 +69,10 @@ Needs Pillow and numpy, and ffmpeg for --video.
 import argparse
 import csv
 import pathlib
+import shlex
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass
 
 import numpy as np
@@ -917,17 +920,17 @@ MATERIAL_PANEL_MIN = 180
 MATERIAL_VIEWS = 4
 MATERIAL_EMPTY = (24, 24, 24)
 MATERIAL_CLASS_COLOURS = ((24, 24, 24), (60, 190, 110), (130, 150, 160),
-                          (255, 180, 20), (230, 45, 80), (100, 120, 255), (190, 90, 220))
+                          (255, 180, 20), (230, 45, 80), (100, 120, 255), (190, 90, 220), (40, 205, 230))
 
 
-def material_id_inputs(scene_path, object_name, poses_path, ids_dir):
+def material_id_inputs(scene_path, object_name, poses_path, ids_dir, selectors=()):
     """Verified reference and captured material maps for a scene renderer."""
     from functools import partial
     from types import SimpleNamespace
 
     from bake import bake
     from r3d.import_settings import load_scene
-    from r3d.material_ids import source_ids, drawn_ids
+    from r3d import material_ids
     from r3d.ray_query import RayQuery
     from r3d.reference_render import drawn_hits, source_for
     from r3d.scene_asset import world_placement
@@ -952,25 +955,39 @@ def material_id_inputs(scene_path, object_name, poses_path, ids_dir):
         if renderer_textures(scene_path, object_name) is not None:
             texture_pack = bake.fetch(bake.locked_bake(scene_path, object_name, 'texture'))
     placement = world_placement(scene, job.object)
-    drawn, textured = drawn_ids(root, bundle, source, placement, texture_pack)
+    drawn_objects = set() if (material_ids.EXCLUDE, material_ids.NOT_DRAWN) in selectors else None
+    drawn, textured = material_ids.drawn_ids(root, bundle, source, placement, texture_pack,
+                                             drawn_objects=drawn_objects)
     views = reference_poses.capture_views(root / 'capture.poses.csv')
     source.intersector = RayQuery(source.p, source.tri_v, hit_filter=source.alpha_test)
     double_materials = [source.names.index(name) for name in job.settings.double_sided]
     query = SimpleNamespace(first_hit=partial(drawn_hits, source, double_materials))
-    references = source_ids(source, query, views, placement)
-    return references, drawn, textured, source.names, [texture is not None for texture in source.textures]
+    references, objects = material_ids.source_ids(source, query, views, placement)
+    excluded, totals = None, []
+    if selectors:
+        excluded = material_ids.exclusion_ids(source, references, objects, selectors, drawn_objects or ())
+        totals = material_ids.material_exclusions(references, objects, excluded, selectors, source)
+    has_texture = [texture is not None for texture in source.textures]
+    return references, drawn, textured, source.names, has_texture, (excluded, totals)
 
 
 def material_id_sheet(references, drawn, textured, names, has_texture, out, reference=None,
-                      views=MATERIAL_VIEWS, crops=0):
+                      views=MATERIAL_VIEWS, crops=0, *, selectors=(), exclusions=(None, ())):
     """Worst material disagreements, their shared material palette and per-material CSV totals."""
     from r3d import material_ids
     from docs.figures import index_hue
 
     if not references or len(references) != len(drawn) or len(drawn) != len(textured) or views < 1:
         raise ValueError('material comparison needs matching frames and positive --views')
-    classes = [material_ids.diff_classes(ref, own, pattern, has_texture)
-               for ref, own, pattern in zip(references, drawn, textured)]
+    excluded, excluded_rows = exclusions
+    if excluded is None:
+        excluded = [None] * len(references)
+    classes = [material_ids.diff_classes(ref, own, pattern, has_texture, skip)
+               for ref, own, pattern, skip in zip(references, drawn, textured, excluded)]
+    arguments = shlex.join([arg for selector in selectors for arg in selector])
+    header = 'Exclusions: ' + (arguments or '(none)')
+    header = header.replace('\r', r'\r').replace('\n', r'\n')
+    header_width = _font().getbbox(header)[2] + LABEL_BAR
     ranked = sorted(range(len(classes)), key=lambda i: -int(np.count_nonzero(
         (classes[i] == material_ids.MISS) | (classes[i] == material_ids.WRONG_MATERIAL))))[:views]
     palette = np.array([MATERIAL_EMPTY] + [index_hue(i, byte=True) for i in range(len(names))], dtype=np.uint8)
@@ -1001,11 +1018,12 @@ def material_id_sheet(references, drawn, textured, names, has_texture, out, refe
             drawn_mask = reference_mask.copy()
             reference_mask[ref == material_ids.EMPTY] = MATERIAL_EMPTY
             drawn_mask[own == material_ids.EMPTY] = MATERIAL_EMPTY
+            drawn_mask[diff == material_ids.EXCLUDED] = reference_mask[diff == material_ids.EXCLUDED]
             drawn_mask[error] = HOLE_RED
             clusters = find_clusters(Image.fromarray(reference_mask), Image.fromarray(drawn_mask),
                                      MATERIAL_EMPTY, count=crops)
             crop_entries.append((f'frame {frame}', pictures, clusters))
-    canvas = still_sheet(rows)
+    canvas = captioned(still_sheet(rows), header, header_width)
     legend = [(names[i], tuple(palette[i + 1])) for i in sorted(shown)]
     legend += list(zip(material_ids.CLASS_NAMES, MATERIAL_CLASS_COLOURS))
     result = Image.new('RGB', (canvas.width, canvas.height + len(legend) * LABEL_BAR), 'white')
@@ -1017,16 +1035,21 @@ def material_id_sheet(references, drawn, textured, names, has_texture, out, refe
         painter.text((LABEL_BAR + 4, y), name, fill='black', font=_font())
     out = pathlib.Path(out)
     result.save(out)
-    with out.with_suffix('.csv').open('w', newline='') as handle:
-        writer = csv.DictWriter(handle, fieldnames=['material', 'name', *material_ids.CLASS_NAMES])
-        writer.writeheader()
-        writer.writerows(material_ids.material_table(references, drawn, classes, names))
-    with out.with_suffix('.confusions.csv').open('w', newline='') as handle:
-        writer = csv.DictWriter(handle, fieldnames=['reference_material', 'drawn_material', 'pixels'])
-        writer.writeheader()
-        writer.writerows(material_ids.material_confusions(references, drawn, classes))
+    reports = (
+        ('.csv', ['material', 'name', *material_ids.CLASS_NAMES],
+         material_ids.material_table(references, drawn, classes, names)),
+        ('.confusions.csv', ['reference_material', 'drawn_material', 'pixels'],
+         material_ids.material_confusions(references, drawn, classes)),
+        ('.excluded.csv', ['selector', 'object', 'name', 'material', 'pixels'], excluded_rows),
+    )
+    for suffix, fields, totals in reports:
+        with out.with_suffix(suffix).open('w', newline='', encoding='utf-8') as handle:
+            handle.write(f'# {header}\n')
+            writer = csv.DictWriter(handle, fieldnames=fields)
+            writer.writeheader()
+            writer.writerows(totals)
     if crops and any(clusters for _title, _pictures, clusters in crop_entries):
-        crop_sheet(crop_entries, labels).save(crops_path(str(out)))
+        captioned(crop_sheet(crop_entries, labels), header, header_width).save(crops_path(str(out)))
 
 
 def main():
@@ -1062,14 +1085,25 @@ def main():
     parser.add_argument("--label-b", help="what B shows; required with --row and --video")
     parser.add_argument("--crops", type=int, default=0)
     parser.add_argument('--material-ids', nargs=4, metavar=('SCENE', 'OBJECT', 'POSES', 'IDS_DIR'))
+    for option, metavar, help_text in (
+        ('--exclude-material', 'GLOB', 'exclude matching source materials'),
+        ('--exclude-object', 'GLOB', 'exclude matching source objects'),
+        ('--exclude', 'SELECTOR', 'exclude alpha-tested, thin=T or not-drawn source pixels'),
+    ):
+        parser.add_argument(option, metavar=metavar, dest='selectors', action='append', default=[],
+                            type=lambda value, option=option: (option, value), help=help_text)
     parser.add_argument('--reference', metavar='DIR')
     parser.add_argument('--views', type=int, default=MATERIAL_VIEWS)
     args = parser.parse_args()
     if args.material_ids:
-        material_id_sheet(*material_id_inputs(*args.material_ids), args.out,
-                          reference=args.reference, views=args.views, crops=args.crops)
+        sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+        *inputs, exclusions = material_id_inputs(*args.material_ids, selectors=args.selectors)
+        material_id_sheet(*inputs, args.out, reference=args.reference, views=args.views, crops=args.crops,
+                          selectors=args.selectors, exclusions=exclusions)
         return
 
+    if args.selectors:
+        parser.error('exclusion options require --material-ids')
 
     if (args.row or args.video or args.reference_crops or args.reference_stills) and not (args.label_a and args.label_b):
         parser.error("--label-a and --label-b are required: every panel is labelled")
