@@ -68,7 +68,7 @@ and never divides.
 Each texture finds its flat level when it opens, from its own texels: the
 first level from which every level's colours, lit at the tint, are within
 an OKLab distance of 0.02 of the tint, one just noticeable
-difference<sup>[[134]](../../Citations.md#w3c-css-color-4)</sup>. The tint is
+difference<sup>[[136]](../../Citations.md#w3c-css-color-4)</sup>. The tint is
 the colour the flat fill draws, as the pattern averages to it. There is no
 setting: a texture whose coarse levels still show their pattern keeps
 them textured, and MASK1 has no flat level.
