@@ -108,18 +108,21 @@ class CandidateTests(unittest.TestCase):
     def test_a_right_candidate_that_cannot_see_its_marker_yet_traces_alone(self):
         self.decides([], {0, 1, 2}, {(1, True): runner_vendor.WORK})
 
-    def test_a_wrong_candidate_finishes_green_while_a_sibling_can_still_trace(self):
+    def test_a_wrong_candidate_finishes_green_once_a_sibling_can_trace(self):
         wrong = [marker(4, 0, 1, False, "10:00:00")]
         self.decides(wrong + [marker(4, 1, 1, True, "10:00:02")], {0}, {(0, False): runner_vendor.OTHER})
-        # Candidate 2's job has not marked yet: it may be the lock's vendor.
-        self.decides(wrong, {0, 2}, {(0, False): runner_vendor.OTHER})
+
+    def test_a_wrong_candidate_waits_while_a_sibling_has_not_marked(self):
+        # Candidate 2's job has not marked yet: it may be the lock's vendor, or fail with candidate 0.
+        self.decides([marker(4, 0, 1, False, "10:00:00")], {0, 2}, {(0, False): runner_vendor.WAIT})
 
     def test_a_shard_is_lost_when_no_candidate_left_can_trace_it(self):
         wrong = [marker(4, 0, 1, False, "10:00:00"), marker(4, 1, 1, False, "10:00:03")]
-        # Candidate 1 is still deciding and candidate 2 finished green before candidate 1 marked.
-        self.decides(wrong, {0, 1}, {(0, False): runner_vendor.LOST})
-        # A re-run attempt runs only the failed candidate.
-        self.decides([marker(4, 1, 2, False, "11:00:00")], {1}, {(1, False): runner_vendor.LOST}, attempt=2)
+        # Both are still deciding, so both fail and a re-run draws both runners again.
+        self.decides(wrong, {0, 1}, {(0, False): runner_vendor.LOST, (1, False): runner_vendor.LOST})
+        # A re-run attempt runs every failed candidate.
+        again = [marker(4, 0, 2, False, "11:00:00"), marker(4, 1, 2, False, "11:00:01")]
+        self.decides(again, {0, 1}, {(0, False): runner_vendor.LOST, (1, False): runner_vendor.LOST}, attempt=2)
 
     def test_markers_of_another_shard_or_attempt_do_not_count(self):
         others = [marker(5, 1, 1, True, "10:00:00"), marker(4, 1, 1, True, "10:00:00")]
@@ -214,14 +217,16 @@ class CandidateTests(unittest.TestCase):
                              [f"cpu-candidates={list(range(runner_vendor.CANDIDATES))}",
                               "reference-plan-candidates=[0]"])
 
-    def claim(self, artifacts, jobs, marker_name, candidate=0, unlisted_reads=0, attempt="1"):
+    def claim(self, artifacts, jobs, marker_name, candidate=0, unlisted_reads=0, attempt="1", later=()):
+        """`later` lists (reads, artifact): artifacts listed only once the artifacts were read that often."""
         calls = []
 
         def request(method, path, body=None):
             calls.append(path.split("?")[0])
             if "/artifacts" in path:
-                listed = [item for item in artifacts if item[0] != marker_name or
-                          calls.count(path.split("?")[0]) > unlisted_reads]
+                reads = calls.count(path.split("?")[0])
+                listed = [item for item in artifacts if item[0] != marker_name or reads > unlisted_reads]
+                listed += [item for after, item in later if reads > after]
                 return {"artifacts": [{"name": name, "created_at": created} for name, created in listed]}
             return {"jobs": jobs}
         with tempfile.TemporaryDirectory() as folder:
@@ -269,21 +274,40 @@ class CandidateTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn(f"::error title={runner_vendor.WRONG_VENDOR}::", out)
         self.assertEqual(outputs, "work=false\n")
-        # The run's other candidates finished green, so the lost one is its only failure and is re-run.
+        # Every wrong candidate failed with it, so the re-run draws all of their runners again.
         run = {"Trace reference shard 4 (candidate 0)": ("failure", [runner_vendor.WRONG_VENDOR]),
-               "Trace reference shard 4 (candidate 1)": ("success", []),
+               "Trace reference shard 4 (candidate 1)": ("failure", [runner_vendor.WRONG_VENDOR]),
                "Join and pack the reference sets": ("skipped", [])}
         request, posts = fake_api(1, run)
         with contextlib.redirect_stdout(io.StringIO()):
             runner_vendor.rerun(7, request=request)
         self.assertEqual(posts, ["/actions/runs/7/rerun-failed-jobs"])
 
-    def test_a_queued_sibling_keeps_a_wrong_candidate_green(self):
-        name, created = marker(4, 0, 1, False, "10:00:00")
-        jobs = [{"name": "Trace reference shard 4 (candidate 0)", "status": "in_progress"},
+    def sibling_jobs(self):
+        return [{"name": "Trace reference shard 4 (candidate 0)", "status": "in_progress"},
                 {"name": "Trace reference shard 4 (candidate 2)", "status": "queued"}]
-        code, _, outputs = self.claim([(name, created)], jobs, name)
+
+    def test_a_wrong_candidate_fails_with_a_wrong_sibling_that_marks_late(self):
+        name, created = marker(4, 0, 1, False, "10:00:00")
+        code, out, outputs = self.claim([(name, created)], self.sibling_jobs(), name,
+                                        later=[(3, marker(4, 2, 1, False, "10:01:00"))])
+        self.assertEqual((code, outputs), (1, "work=false\n"))
+        self.assertIn(f"::error title={runner_vendor.WRONG_VENDOR}::", out)
+
+    def test_a_wrong_candidate_finishes_green_when_a_late_sibling_can_trace(self):
+        name, created = marker(4, 0, 1, False, "10:00:00")
+        code, _, outputs = self.claim([(name, created)], self.sibling_jobs(), name,
+                                      later=[(3, marker(4, 2, 1, True, "10:01:00"))])
         self.assertEqual((code, outputs), (0, "work=false\n"))
+
+    def test_a_sibling_that_never_marks_leaves_a_wrong_candidate_green(self):
+        # A sibling still queued after the wait may yet be the lock's vendor; failing now would fail its run.
+        name, created = marker(4, 0, 1, False, "10:00:00")
+        code, _, outputs = self.claim([(name, created)], self.sibling_jobs(), name)
+        self.assertEqual((code, outputs), (0, "work=false\n"))
+        sleeps = [call for call in self.calls if isinstance(call, tuple)]
+        self.assertEqual(sum(seconds for _, seconds in sleeps),
+                         runner_vendor.MARKER_POLL_SECONDS * (1 + runner_vendor.SIBLING_POLLS))
 
     def test_the_tracing_candidate_says_so(self):
         name, created = marker(4, 1, 1, True, "10:00:00")
