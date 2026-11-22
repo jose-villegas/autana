@@ -27,8 +27,8 @@ other stages count everything their entry scripts import.
 | A reached line edited, renamed or moved | that stage, and the fit when it is the reference set (the fit names its key) |
 | A start's or fit's code, with the same bytes out | only that bake: the fit and levels keys name the bytes they read |
 
-A pull request that changes what a mesh is made from gets its bake from the
-Bakes workflow: its CPU job bakes the meshes the lock lacks and uploads them,
+A branch that changes what a mesh is made from gets its bake from the
+Bakes workflow, which every push to a branch of this repository starts: its CPU job bakes the meshes the lock lacks and uploads them,
 and the lock check fails until the author runs `bake.py lock --from-run N`
 with that run and commits the lock. A branch keeps one Bakes run: a push cancels
 the run of the head before it, so wait for the run to finish before `lock --from-run`,
@@ -107,11 +107,18 @@ keyed independently of mesh and reference bakes. See
 One self-hosted runner, labelled `gpu-legion`, makes every bake: the Bakes jobs
 that make one (meshes, exports, sounds, levels, the reference plan and shards)
 and the Bakes GPU fits. It is one instance, so a CPU bake and a fit queue behind
-each other. Both run in its fit environment, `~/gpu/env`
-([r3d README](../../launcher/tools/r3d/README.md)), and need no root: the
-machine holds LLVM, Git LFS, a C compiler and the X libraries Blender loads.
+each other. A fit runs in its fit environment, `~/gpu/env`
+([r3d README](../../launcher/tools/r3d/README.md)); a CPU job makes a venv of
+its own over it, so what a branch installs never changes the fit environment.
+Neither needs root: the machine holds LLVM, Git LFS, a C compiler and the X
+libraries Blender loads.
 Tracing runs as a stage of [`local_schedule.py`](../../scripts/lib/local_schedule.py),
-on the half of the CPUs board work leaves, under the stage's hang guard. Only the
-repository's own branches reach it: a fork's pull request skips those jobs and
-its CPU check fails. While the machine is off, its jobs wait in GitHub's queue,
+on the half of the CPUs board work leaves, under the stage's hang guard.
+
+No pull request starts the Bakes workflow, since a self-hosted runner never
+takes a pull request's code ([`check_workflows.py`](../../scripts/gates/check_workflows.py)).
+A pull request's bake checks are those of the push run on its head commit. A
+fork's pull request has none until a maintainer pushes its branch here; until
+then the hosted [`bakes-fork.yml`](../../.github/workflows/bakes-fork.yml)
+fails it when it needs a bake. While the machine is off, its jobs wait in GitHub's queue,
 which fails a job after a day; nothing falls back to a hosted runner, whose bytes would differ.
