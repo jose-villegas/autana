@@ -185,30 +185,35 @@ def nearest_chunk(points, search):
     seeds = search.tree.query(points, k=k)[1].reshape(len(points), k)
     for column in seeds.T:
         consider(np.arange(len(points)), column)
-    for tree, owner, radius in search.groups:
-        balls = tree.query_ball_point(points, best + radius.max(), return_sorted=False)
-        query = np.repeat(np.arange(len(points)), [len(ball) for ball in balls])
-        found = np.concatenate([[], *balls]).astype(int)
-        keep = np.linalg.norm(points[query] - tree.data[found], axis=1) - radius[found] <= best[query]
-        consider(query[keep], owner[found[keep]])
+    for query, found in group_candidates(points, search, best):
+        consider(query, found)
     return tri, bary, best
 
 
+def group_candidates(points, search, bound):
+    """Per size group of `search`, (query, triangle) for every triangle whose centroid ball can come within each
+    point's `bound`. `bound` is read as each group is reached, so a caller may tighten it in place between groups."""
+    for tree, owner, radius in search.groups:
+        balls = tree.query_ball_point(points, bound + radius.max(), return_sorted=False)
+        query = np.repeat(np.arange(len(points)), [len(ball) for ball in balls])
+        found = np.concatenate([[], *balls]).astype(int)
+        keep = np.linalg.norm(points[query] - tree.data[found], axis=1) - radius[found] <= bound[query]
+        yield query[keep], owner[found[keep]]
+
+
 def triangles_within(points, search, reach):
-    """(query, triangle) for every triangle of `search` within `reach` (one per point) of each point."""
+    """(query, triangle) for every triangle of `search` within `reach` (one per point) of each point, in chunks of
+    QUERY_CHUNK points as nearest_triangles."""
     points = np.asarray(points, dtype=np.float64).reshape(-1, 3)
     reach = np.broadcast_to(np.asarray(reach, dtype=np.float64), len(points))
     corners, queries, triangles = search.corners, [np.zeros(0, int)], [np.zeros(0, int)]
-    for tree, owner, radius in search.groups:
-        balls = tree.query_ball_point(points, reach + radius.max(), return_sorted=False)
-        query = np.repeat(np.arange(len(points)), [len(ball) for ball in balls])
-        found = np.concatenate([[], *balls]).astype(int)
-        keep = np.linalg.norm(points[query] - tree.data[found], axis=1) - radius[found] <= reach[query]
-        query, found = query[keep], owner[found[keep]]
-        _here, distance = closest_point_on_triangles(points[query], *(corners[found, k] for k in range(3)))
-        near = distance <= reach[query]
-        queries.append(query[near])
-        triangles.append(found[near])
+    for start in range(0, len(points), QUERY_CHUNK):
+        chunk, bound = points[start:start + QUERY_CHUNK], reach[start:start + QUERY_CHUNK]
+        for query, found in group_candidates(chunk, search, bound):
+            _here, distance = closest_point_on_triangles(chunk[query], *(corners[found, k] for k in range(3)))
+            near = distance <= bound[query]
+            queries.append(start + query[near])
+            triangles.append(found[near])
     return np.concatenate(queries), np.concatenate(triangles)
 
 

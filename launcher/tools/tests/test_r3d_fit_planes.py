@@ -1,9 +1,11 @@
 import unittest
 from types import SimpleNamespace
+from unittest import mock
 
 import numpy as np
 
 from r3d.fit.planes import MAX_PLANES, PLANE_MERGE_DEG, PLANE_REACH, plane_loss, start_planes
+from r3d import geometry
 from r3d.geometry import closest_point_on_triangles, triangle_search, triangles_within
 
 
@@ -44,7 +46,12 @@ class TrianglesWithinTests(unittest.TestCase):
         corners[:5] *= 4  # a few large triangles in their own size group
         points = rng.uniform(0, 10, (40, 3))
         reach = rng.uniform(0.2, 1.5, 40)
-        query, found = triangles_within(points, triangle_search(corners), reach)
+        search = triangle_search(corners)
+        query, found = triangles_within(points, search, reach)
+        # Chunks smaller than the query keep every point's own reach and index.
+        with mock.patch.object(geometry, "QUERY_CHUNK", 7):
+            chunked = triangles_within(points, search, reach)
+        self.assertEqual(set(zip(*(part.tolist() for part in chunked))), set(zip(query.tolist(), found.tolist())))
         _here, distance = closest_point_on_triangles(np.repeat(points, len(corners), 0),
                                                      *(np.tile(corners[:, k], (len(points), 1)) for k in range(3)))
         distance = distance.reshape(len(points), len(corners))

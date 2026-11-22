@@ -50,8 +50,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "render"))
 from colour_maths import lab  # noqa: E402
 
 FAR = 1.0e5
-# The fit refines a shape in place: no point leaves its start by more than this many local edge lengths
-# (vertex_scale), however rarely the colour views see it.
+# The fit refines a shape in place: no free point leaves its start by more than this many local edge lengths
+# (vertex_scale), however rarely the colour views see it; a seam-held point follows its target (hold_seams).
 MOVE_REACH = 1.0
 SURFACE_QUERY_EVERY = 25
 SURFACE_SAMPLES_PER_TRIANGLE = 6

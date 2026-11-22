@@ -4,7 +4,7 @@ moves vertices to wherever colour fits, and in views that see a surface from afa
 nothing there; close up it shows as spikes and slivers."""
 import numpy as np
 
-from r3d.geometry import nearest_triangles, triangle_search, triangles_within
+from r3d.geometry import face_normals, nearest_triangles, triangle_search, triangles_within
 
 # A source face holds a start point when it is within the point's nearest face distance plus this many capped
 # local start edge scales.
@@ -19,14 +19,12 @@ def start_planes(points, scale, source):
     """(rows, normals): one row per start point and source plane it lies on, `scale` the points' local scales.
     A point's planes are its reachable faces' normals, largest face first, each merged into a kept one within
     PLANE_MERGE_DEG."""
-    corners = np.asarray(source.p, np.float64)[np.asarray(source.tri_v)]
+    p, tris = np.asarray(source.p, np.float64), np.asarray(source.tri_v)
     points = np.asarray(points, np.float64)
-    search = triangle_search(corners)
+    search = triangle_search(p[tris])
     best = nearest_triangles(points, search)[2]
     query, found = triangles_within(points, search, best + PLANE_REACH * np.asarray(scale, np.float64))
-    cross = np.cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0])
-    area = np.linalg.norm(cross, axis=1)
-    normal = cross / np.maximum(area, np.finfo(float).tiny)[:, None]
+    normal, area = face_normals(p, tris)
     keep = area[found] > 0
     query, found = query[keep], found[keep]
     order = np.lexsort((-area[found], query))

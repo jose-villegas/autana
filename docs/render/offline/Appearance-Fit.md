@@ -128,9 +128,10 @@ $`\hat t_v`$ the predicted frame time for pose $`v`$. It minimises:
 + \lambda_n\,\mathcal{E}_n(P)
 + \kappa\,\mathcal{E}_c(P)
 + w\,\mathcal{E}_s(P)
++ w_p\,\mathcal{E}_p(P)
 ```
 
-$`\lambda`$, $`\lambda_n`$ and $`w`$ are the scene keys above; $`\kappa`$ is the
+$`\lambda`$, $`\lambda_n`$, $`w`$ and $`w_p`$ are the scene keys above; $`\kappa`$ is the
 cost weight, set by `fitted_variant.py sweep --cost-weights`.
 
 | Term | Measures |
@@ -140,6 +141,7 @@ cost weight, set by `fitted_variant.py sweep --cost-weights`.
 | $`\mathcal{E}_n`$ | mean L1 normal difference over jointly covered pixels $`\Omega_v^{\cap}`$ |
 | $`\mathcal{E}_c`$ | mean predicted frame time $`\hat t_v(P)`$ over $`B`$ |
 | $`\mathcal{E}_s`$ | distance from the source surface beyond a margin ([Surface](#surface)) |
+| $`\mathcal{E}_p`$ | each vertex's move off the source planes it starts on ([Planes](#planes)) |
 
 ```math
 \mathcal{L}(P)_i = P_i - \frac{1}{|N(i)|}\sum_{j \in N(i)} P_j
@@ -168,8 +170,9 @@ cost weight, set by `fitted_variant.py sweep --cost-weights`.
 
 Adam<sup>[[3]](../../Citations.md#kingma-2015)</sup> takes the steps, both learning rates decay as
 $`\eta_k = \eta_0 \cdot 0.1^{k/K}`$ over $K$ steps. After each, colours are
-clamped to $[0, 1]$ and every point is held within `MOVE_REACH` local start
-scales of its start: the fit refines the start in place. Where nothing is drawn the renderer shows the scene's
+clamped to $[0, 1]$ and every free point is held within `MOVE_REACH` local
+start scales of its start (a seam-held point follows its target): the fit
+refines the start in place. Where nothing is drawn the renderer shows the scene's
 clear colour, as the device and reference do.
 
 The fitted colours are a bake in their own right, so the fitted mesh enters the
