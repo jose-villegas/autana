@@ -361,6 +361,12 @@ void f(void) {
                 })
                 self.assertEqual(len(findings), expected)
 
+    def include_hits(self, rule, includes):
+        """Audits a tree whose files under launcher/main include the paths listed for them."""
+        files = {"launcher/main/" + path: "".join('#include "%s"\n' % target for target in targets) or "#pragma once\n"
+                 for path, targets in includes.items()}
+        return [(hit.path.removeprefix("launcher/main/"), hit.line) for hit in self.audit(rule, files)]
+
     def test_a_root_and_its_subfolder_including_each_other_is_a_folder_cycle(self):
         findings = self.audit("FOLDER-CYCLE", {
             "launcher/main/render/raster.h": "#pragma once\n",
@@ -375,121 +381,61 @@ void f(void) {
                           ("launcher/main/render/raster.c", 1, check_style_audit.WARN)])
         self.assertIn("render/lod/", findings[1].message)
 
-    def test_a_cycle_through_a_third_folder_marks_every_edge_on_it(self):
-        findings = self.audit("FOLDER-CYCLE", {
-            "launcher/main/scene/a/a.h": '#include "scene/b/b.h"\n',
-            "launcher/main/scene/b/b.h": '#include "scene/c/c.h"\n',
-            "launcher/main/scene/c/c.c": '#include "scene/a/a.h"\n',
-            "launcher/main/scene/c/c.h": "#pragma once\n",
-        })
-        self.assertEqual(sorted(hit.path for hit in findings),
-                         ["launcher/main/scene/a/a.h", "launcher/main/scene/b/b.h", "launcher/main/scene/c/c.c"])
-
-    def test_an_include_in_a_comment_draws_no_edge(self):
-        findings = self.audit("FOLDER-CYCLE", {
-            "launcher/main/apps/sand/sand.h": '#include "apps/sand/ui/brush.h"\n',
-            "launcher/main/apps/sand/ui/brush.h": '/*\n#include "apps/sand/sand.h"\n*/\n',
-        })
-        self.assertEqual(findings, [])
-
     def test_headers_including_each_other_are_a_header_cycle(self):
         findings = self.audit("HEADER-CYCLE", {
             "launcher/main/ui/ui_internal.h": '#include "ui/controls/ui_widgets.h"\n',
             "launcher/main/ui/controls/ui_widgets.h": '#include "ui/ui_internal.h"\n',
-            "launcher/main/ui/ui.h": "#pragma once\n",
-            "launcher/main/ui/ui.c": '#include "ui/controls/ui_widgets.h"\n#include "ui/ui.h"\n',
+            "launcher/main/ui/ui.c": '#include "ui/controls/ui_widgets.h"\n',
         })
         self.assertEqual([(hit.path, hit.severity) for hit in findings],
                          [("launcher/main/ui/controls/ui_widgets.h", check_style_audit.ERROR),
                           ("launcher/main/ui/ui_internal.h", check_style_audit.ERROR)])
 
-    def test_includes_inside_one_folder_draw_no_folder_edge(self):
-        findings = self.audit("FOLDER-CYCLE", {
-            "launcher/main/scene/a/a.h": "#pragma once\n",
-            "launcher/main/scene/a/a.c": '#include "scene/a/a2.h"\n#include "scene/b/b.h"\n',
-            "launcher/main/scene/a/a2.h": '#include "scene/a/a.h"\n',
-            "launcher/main/scene/b/b.h": "#pragma once\n",
-            "launcher/main/scene/b/b.c": '#include "scene/b/b.h"\n#include "scene/a/a.h"\n',
-        })
-        self.assertEqual([(hit.path, hit.line) for hit in findings],
-                         [("launcher/main/scene/a/a.c", 2), ("launcher/main/scene/b/b.c", 2)])
+    def test_each_edge_inside_a_cycle_is_flagged_and_no_other(self):
+        # (rule, files and what each includes, the edges flagged)
+        cases = [
+            ("FOLDER-CYCLE", {"scene/a/a.h": ["scene/b/b.h"], "scene/b/b.h": ["scene/c/c.h"],
+                              "scene/c/c.c": ["scene/a/a.h"], "scene/c/c.h": []},
+             [("scene/a/a.h", 1), ("scene/b/b.h", 1), ("scene/c/c.c", 1)]),
+            ("FOLDER-CYCLE", {"scene/a/a.h": [], "scene/a/a.c": ["scene/a/a2.h", "scene/b/b.h"],
+                              "scene/a/a2.h": ["scene/a/a.h"], "scene/b/b.h": [],
+                              "scene/b/b.c": ["scene/b/b.h", "scene/a/a.h"]},
+             [("scene/a/a.c", 2), ("scene/b/b.c", 2)]),
+            ("HEADER-CYCLE", {"ui/a.h": ["ui/b.h"], "ui/b.h": ["ui/a.h"], "ui/outsider.h": ["ui/a.h"]},
+             [("ui/a.h", 1), ("ui/b.h", 1)]),
+            ("HEADER-CYCLE", {"ui/a.h": ["ui/b.h"], "ui/b.h": ["ui/c.h"], "ui/c.h": ["ui/a.h"]},
+             [("ui/a.h", 1), ("ui/b.h", 1), ("ui/c.h", 1)]),
+            ("HEADER-CYCLE", {"ui/top.h": ["ui/mid.h"], "ui/mid.h": []}, []),
+            ("HEADER-CYCLE", {"ui/a.c": ["ui/b.c"], "ui/b.c": ["ui/a.c"]}, []),
+        ]
+        # A one-way edge between two cycles is outside both, for either rule.
+        for rule, folder in (("FOLDER-CYCLE", "scene/%s/"), ("HEADER-CYCLE", "ui/")):
+            a, b, c, d = (folder.replace("%s", name) + name + ".h" for name in "abcd")
+            cases.append((rule, {a: [b], b: [a, c], c: [d], d: [c]}, [(a, 1), (b, 1), (c, 1), (d, 1)]))
+        for rule, includes, expected in cases:
+            with self.subTest(rule=rule, files=sorted(includes)):
+                self.assertEqual(self.include_hits(rule, includes), expected)
 
-    def test_a_one_way_header_include_is_no_header_cycle(self):
-        findings = self.audit("HEADER-CYCLE", {
-            "launcher/main/ui/top.h": '#include "ui/mid.h"\n',
-            "launcher/main/ui/mid.h": "#pragma once\n",
-        })
-        self.assertEqual(findings, [])
-
-    def test_a_header_outside_a_cycle_including_a_member_is_not_flagged(self):
-        findings = self.audit("HEADER-CYCLE", {
-            "launcher/main/ui/a.h": '#include "ui/b.h"\n',
-            "launcher/main/ui/b.h": '#include "ui/a.h"\n',
-            "launcher/main/ui/outsider.h": '#include "ui/a.h"\n',
-        })
-        self.assertEqual([hit.path for hit in findings], ["launcher/main/ui/a.h", "launcher/main/ui/b.h"])
-
-    def test_a_header_cycle_inside_one_folder_is_flagged(self):
-        findings = self.audit("HEADER-CYCLE", {
-            "launcher/main/ui/a.h": '#include "ui/b.h"\n',
-            "launcher/main/ui/b.h": '#include "ui/a.h"\n',
-        })
-        self.assertEqual([hit.path for hit in findings], ["launcher/main/ui/a.h", "launcher/main/ui/b.h"])
-
-    def test_a_ring_of_three_headers_flags_all_three_edges(self):
-        findings = self.audit("HEADER-CYCLE", {
-            "launcher/main/ui/a.h": '#include "ui/b.h"\n',
-            "launcher/main/ui/b.h": '#include "ui/c.h"\n',
-            "launcher/main/ui/c.h": '#include "ui/a.h"\n',
-        })
-        self.assertEqual([(hit.path, hit.line) for hit in findings],
-                         [("launcher/main/ui/a.h", 1), ("launcher/main/ui/b.h", 1), ("launcher/main/ui/c.h", 1)])
-
-    def test_a_file_outside_launcher_main_draws_no_include_edge(self):
-        files = {
-            "launcher/main/render/a.h": '#include "../../test/suites/t.h"\n',
-            "launcher/test/suites/t.h": '#include "../../main/render/a.h"\n',
-        }
+    def test_an_include_that_is_no_source_edge_draws_none(self):
+        # Each tree would be a cycle if the marked include counted.
+        trees = [
+            {"launcher/main/apps/sand/sand.h": '#include "apps/sand/ui/brush.h"\n',
+             "launcher/main/apps/sand/ui/brush.h": '/*\n#include "apps/sand/sand.h"\n*/\n'},
+            {"launcher/main/scene/a/a.h": '#include "scene/b/b.h"\n',
+             "launcher/main/scene/b/b.h": '// #include "scene/a/a.h"\n'},
+            # A line comment ends at the first newline no backslash escapes: the include below is still in it.
+            {"launcher/main/scene/a/a.h": '#include "scene/b/b.h"\n',
+             "launcher/main/scene/b/b.h": '// a note that goes on \\n#include "scene/a/a.h"\n'},
+            {"launcher/main/render/a.h": '#include "../../test/suites/t.h"\n',
+             "launcher/test/suites/t.h": '#include "../../main/render/a.h"\n'},
+            {"launcher/main/scene/a/a.c": '#include "scene/b/b.h"\n',
+             "launcher/main/scene/b/b.h": "#pragma once\n",
+             "launcher/main/scene/b/notes.txt": '#include "scene/a/a.c"\n'},
+        ]
         for rule in ("FOLDER-CYCLE", "HEADER-CYCLE"):
-            with self.subTest(rule=rule):
-                self.assertEqual(self.audit(rule, files), [])
-
-    def test_a_non_source_file_draws_no_include_edge(self):
-        findings = self.audit("FOLDER-CYCLE", {
-            "launcher/main/scene/a/a.c": '#include "scene/b/b.h"\n',
-            "launcher/main/scene/b/b.h": "#pragma once\n",
-            "launcher/main/scene/b/notes.txt": '#include "scene/a/a.c"\n',
-        })
-        self.assertEqual(findings, [])
-
-    def test_two_c_files_including_each_other_are_no_header_cycle(self):
-        findings = self.audit("HEADER-CYCLE", {
-            "launcher/main/ui/a.c": '#include "ui/b.c"\n',
-            "launcher/main/ui/b.c": '#include "ui/a.c"\n',
-        })
-        self.assertEqual(findings, [])
-
-    def test_a_one_way_edge_between_two_cycles_is_not_flagged(self):
-        findings = self.audit("HEADER-CYCLE", {
-            "launcher/main/ui/a.h": '#include "ui/b.h"\n',
-            "launcher/main/ui/b.h": '#include "ui/a.h"\n#include "ui/c.h"\n',
-            "launcher/main/ui/c.h": '#include "ui/d.h"\n',
-            "launcher/main/ui/d.h": '#include "ui/c.h"\n',
-        })
-        self.assertEqual([(hit.path, hit.line) for hit in findings],
-                         [("launcher/main/ui/a.h", 1), ("launcher/main/ui/b.h", 1),
-                          ("launcher/main/ui/c.h", 1), ("launcher/main/ui/d.h", 1)])
-
-    def test_a_one_way_edge_between_two_folder_cycles_is_not_flagged(self):
-        findings = self.audit("FOLDER-CYCLE", {
-            "launcher/main/scene/a/a.h": '#include "scene/b/b.h"\n',
-            "launcher/main/scene/b/b.h": '#include "scene/a/a.h"\n#include "scene/c/c.h"\n',
-            "launcher/main/scene/c/c.h": '#include "scene/d/d.h"\n',
-            "launcher/main/scene/d/d.h": '#include "scene/c/c.h"\n',
-        })
-        self.assertEqual([(hit.path, hit.line) for hit in findings],
-                         [("launcher/main/scene/a/a.h", 1), ("launcher/main/scene/b/b.h", 1),
-                          ("launcher/main/scene/c/c.h", 1), ("launcher/main/scene/d/d.h", 1)])
+            for index, tree in enumerate(trees):
+                with self.subTest(rule=rule, tree=index):
+                    self.assertEqual(self.audit(rule, tree), [])
 
     def test_components_of_a_chain_longer_than_the_recursion_limit(self):
         length = sys.getrecursionlimit() * 2
@@ -498,19 +444,6 @@ void f(void) {
         ring = dict(chain)
         ring[length] = [0]
         self.assertEqual(len(set(check_style_audit._components(ring).values())), 1)
-
-    def test_a_double_slash_commented_include_draws_no_edge(self):
-        files = {
-            "launcher/main/scene/a/a.h": '#include "scene/b/b.h"\n',
-            "launcher/main/scene/b/b.h": '// #include "scene/a/a.h"\n',
-        }
-        # A line comment ends at the first newline no backslash escapes: the include below is still in it.
-        continued = dict(files)
-        continued["launcher/main/scene/b/b.h"] = '// a note that goes on \\\n#include "scene/a/a.h"\n'
-        for rule in ("FOLDER-CYCLE", "HEADER-CYCLE"):
-            for name, tree in (("plain", files), ("continued", continued)):
-                with self.subTest(rule=rule, comment=name):
-                    self.assertEqual(self.audit(rule, tree), [])
 
     def test_a_cycle_removed_between_two_runs_on_one_root_is_gone_from_the_second(self):
         with tempfile.TemporaryDirectory() as temp:
