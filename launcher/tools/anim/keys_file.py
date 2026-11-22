@@ -8,6 +8,7 @@ import tomllib
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from anim import scene_fields
+from build.c_enum import ASSET_TAG_WIDTH
 from geometry.vectors import qmul, qrot, unit
 from gltf.gltf_write import build_glb
 
@@ -191,7 +192,7 @@ def resolve_field(name, fields, where):
         raise ValueError(f"{where}: unknown field")
     tag, dot, member = name.partition(".")
     if dot:
-        if len(tag) == 4 and tag.isascii():
+        if len(tag) == ASSET_TAG_WIDTH and tag.isascii():
             binding = (int.from_bytes(tag.encode("ascii"), "little"), member)
             if binding in fields:
                 return binding
@@ -201,7 +202,8 @@ def resolve_field(name, fields, where):
         raise ValueError(f"{where}: unknown field")
     if len(matches) > 1:
         options = [f'field = "{tag}.{field}"' for tag, field in
-                   sorted((component.to_bytes(4, "little").decode("ascii"), field) for component, field in matches)]
+                   sorted((component.to_bytes(ASSET_TAG_WIDTH, "little").decode("ascii"), field)
+                          for component, field in matches)]
         raise ValueError(f"{where}: ambiguous field; use " + " or ".join(options))
     return matches[0]
 
@@ -249,7 +251,7 @@ def tracks_glb(values):
         if transform:
             channel.update(node=node, path=transform[0])
         else:
-            tag = component.to_bytes(4, "little").decode("ascii")
+            tag = component.to_bytes(ASSET_TAG_WIDTH, "little").decode("ascii")
             channel.update(path="pointer", pointer=f"/nodes/{node}/extensions/{extension}/{tag}/{field}")
             first = rows[CUBIC_VALUE if interp == INTERPOLATIONS["cubic"] else 0]
             properties = nodes[node].setdefault("extensions", {}).setdefault(extension, {}).setdefault(tag, {})

@@ -24,7 +24,8 @@ import tomllib
 TOOLS = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(TOOLS))
 from asset import table_asset  # noqa: E402
-from build.c_header import read_define, read_enum  # noqa: E402
+from build.c_enum import read_enum  # noqa: E402
+from build.c_header import read_define  # noqa: E402
 from render.settings import settings_toml  # noqa: E402
 from render.settings.settings_toml import flatten  # noqa: E402, F401
 

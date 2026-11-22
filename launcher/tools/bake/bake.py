@@ -102,7 +102,8 @@ from autana_config import user_cache_dir
 from http_get import get
 
 from build import packages  # noqa: E402
-from build.c_header import read_define, read_enum  # noqa: E402
+from build.c_enum import read_asset_type, read_enum  # noqa: E402
+from build.c_header import read_define  # noqa: E402
 from bake import code_units  # noqa: E402
 from c_lexer import c_code  # noqa: E402
 from r3d.mesh_bundle import SUFFIX as BUNDLE_SUFFIX
@@ -492,7 +493,7 @@ def native_inputs(files):
         headers = set()
         for node in ast.walk(tree):
             if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-                    and node.func.id in ("read_define", "read_defines", "read_enum", "checked_struct")):
+                    and node.func.id in ("read_define", "read_defines", "read_asset_type", "read_enum", "checked_struct")):
                 try:
                     header = pathlib.Path(eval(compile(ast.Expression(node.args[0]), str(path), "eval"),
                                                {"__builtins__": {}}, constants)).resolve()
@@ -518,6 +519,9 @@ def native_inputs(files):
                         except RuntimeError:
                             pass
                     defines[header] = values
+                if node.func.id == "read_asset_type":
+                    name = ast.literal_eval(node.args[1])
+                    defines[header][name] = read_asset_type(header, name)
         for value in constants.values():
             for item in path_constants(value):
                 if holder(item) is not None:

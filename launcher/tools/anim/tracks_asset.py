@@ -16,6 +16,7 @@ import pathlib
 import re
 import statistics
 import struct
+from build.c_enum import ASSET_TAG_WIDTH, read_asset_type
 from build.c_header import read_define
 from build.name_hash import name_hash, NONE
 import sys
@@ -31,7 +32,7 @@ from anim.scene_fields import (CAMERA, TRANSFORM, VALUE_FLOAT, VALUE_VEC2, VALUE
                                WIDTHS)  # noqa: E402
 
 OWNER = pathlib.Path(__file__).resolve().parents[2] / "main/anim/anim_tracks_format.h"
-TYPE = read_define(OWNER, "ANIM_TRACKS_ASSET").to_bytes(4, "little")
+TYPE = read_asset_type(OWNER, "ANIM_TRACKS_ASSET").to_bytes(ASSET_TAG_WIDTH, "little")
 VERSION = read_define(OWNER, "ANIM_TRACKS_VERSION")
 HEADER = struct.Struct("<HHIIIBxH")
 ROW = struct.Struct("<HHIIIIIHBB")

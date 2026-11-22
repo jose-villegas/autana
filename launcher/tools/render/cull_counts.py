@@ -5,7 +5,7 @@ raster_cull_view.c, and the series every counts chart draws."""
 import pathlib
 import re
 
-from build.c_header import read_enum
+from build.c_enum import read_enum
 from docs.plot_style import INK, MUTED, SLOTS, style_axes
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]

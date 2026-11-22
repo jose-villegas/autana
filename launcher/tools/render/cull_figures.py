@@ -28,7 +28,8 @@ from PIL import Image
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools"))
 sys.path.insert(0, str(ROOT / "launcher/tools/render"))
-from build.c_header import read_define, read_enum
+from build.c_enum import read_enum
+from build.c_header import read_define
 from cull_counts import CULL_HEADER, plot_counts
 from check_avi import read_video
 from docs.figures import render_scene, save_png

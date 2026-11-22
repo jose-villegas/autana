@@ -3,7 +3,8 @@ import functools
 import pathlib
 import re
 
-from build.c_header import read_define, read_enum
+from build.c_enum import ASSET_TAG_WIDTH, read_asset_type, read_enum
+from build.c_header import read_define
 from build.math_constants import INTEGER_DEFINE, blank_comments
 
 MAIN = pathlib.Path(__file__).resolve().parents[2] / "main"
@@ -18,8 +19,8 @@ VALUE_VEC3 = VALUE_TYPES["ANIM_VALUE_VEC3"]
 VALUE_QUAT = VALUE_TYPES["ANIM_VALUE_QUAT"]
 VALUE_COLOUR = VALUE_TYPES["ANIM_VALUE_COLOUR"]
 WIDTHS = read_define(TRACK_HEADER, "ANIM_VALUE_WIDTHS")
-CAMERA = read_define(LENS_HEADER, "ANIM_COMPONENT_CAMERA")
-TRANSFORM = read_define(TRACK_FORMAT_HEADER, "ANIM_COMPONENT_TRANSFORM")
+CAMERA = read_asset_type(LENS_HEADER, "ANIM_COMPONENT_CAMERA")
+TRANSFORM = read_asset_type(TRACK_FORMAT_HEADER, "ANIM_COMPONENT_TRANSFORM")
 
 COMPONENT_DEFINITION = r"\banim_component_fields_t\s+\w+\s*="
 COMPONENT_TABLE = re.compile(COMPONENT_DEFINITION + r"\s*\{\s*(\w+)\s*,\s*(\w+)\s*,")
@@ -42,7 +43,7 @@ def discover(root=MAIN):
         for definition in INTEGER_DEFINE.finditer(source):
             name, value = definition.groups()
             if re.match(r"ASSET_TYPE\s*\(", value):
-                tag = read_define(path, name, text=definition[0])
+                tag = read_asset_type(path, name, value=value)
                 if tags.setdefault(name, tag) != tag:
                     raise ValueError(f"{path}: conflicting definitions of {name}")
     fields = {}
@@ -66,7 +67,7 @@ def discover(root=MAIN):
                 if value_type not in VALUE_TYPES:
                     raise ValueError(f"{path}: {field} has unknown animation value type {value_type}")
                 if (tag, field) in fields:
-                    code = tag.to_bytes(4, "little").decode("ascii")
+                    code = tag.to_bytes(ASSET_TAG_WIDTH, "little").decode("ascii")
                     raise ValueError(f"{path}: duplicate animation field {code}.{field}")
                 fields[tag, field] = (VALUE_TYPES[value_type], FIELD_MACROS[macro])
         if sum(matched.values()) != len(re.findall(FIELD_CALL, source)):
