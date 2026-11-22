@@ -48,6 +48,9 @@ OUT_OF_SCOPE = (
      str(item.get('if', '')) + str(item.get('env', {}))),
     # Its values exist only once another job has run; locally the job that joins its parts does the whole.
     ('computed matrix', lambda item: 'fromJSON(needs.' in str(item.get('strategy', {}).get('matrix', ''))),
+    # A job that reports other jobs' results has none to read locally, where each of them runs itself.
+    ('reports other jobs', lambda item: 'steps' in item and any('run' in step for step in item['steps']) and all(
+        'needs.' in str(step.get('env', {})) for step in item['steps'] if 'run' in step)),
     ('CI wiring', lambda item: bool(item.get('outputs')) and all(
         'GITHUB_OUTPUT' in step['run'] or 'job_inputs.py affected' in step['run']
         for step in item.get('steps', []) if 'run' in step)),
