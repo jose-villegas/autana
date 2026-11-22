@@ -933,7 +933,6 @@ def material_id_inputs(scene_path, object_name, poses_path, ids_dir):
 
     scene = load_scene(scene_path)
     source, job = source_for(scene, object_name, lit=False)
-    source.material_placement = job.object
     root = pathlib.Path(ids_dir)
     metadata = json.loads((root / 'entries.json').read_text())
     size = metadata['width'], metadata['height']
@@ -945,17 +944,14 @@ def material_id_inputs(scene_path, object_name, poses_path, ids_dir):
         raise ValueError('reference poses are missing')
     for frame in range(len(logged)):
         check(frame, frame)
-    tables = bake.read_lock_tables()
-    found = bake.bakes([scene_path], bake.locked_starts(tables['bake']), bake.Poses(tables['poses']))
-    bundle = pathlib.Path(job.asset_path)
-    if not bundle.is_file():
-        bundle = bake.fetch(next(item for item in found if item.tree == job.asset_path))
+    bundle = bake.fetch(bake.locked_bake(scene_path, object_name, 'fit'))
+    texture_pack = None
     if renderer_textures(scene_path, object_name) is not None:
-        texture = next(item for item in found if item.kind == 'texture' and item.holder == object_name)
-        source.texture_pack = str(texture.tree if texture.tree.is_file() else bake.fetch(texture))
-    references = source_ids(source, RayQuery(source.p, source.tri_v, hit_filter=camera_filter(source)),
-                            root / 'capture.poses.csv', size)
-    drawn, textured = drawn_ids(root, bundle, source)
+        texture_pack = bake.fetch(bake.locked_bake(scene_path, object_name, 'texture'))
+    views = reference_poses.capture_views(root / 'capture.poses.csv', size)
+    query = RayQuery(source.p, source.tri_v, hit_filter=camera_filter(source))
+    references = source_ids(source, query, views, job.object)
+    drawn, textured = drawn_ids(root, bundle, source, job.object, texture_pack)
     if len(references) != len(drawn):
         raise ValueError('captured poses and id frames differ in count')
     return references, drawn, textured, source.names, [texture is not None for texture in source.textures]
@@ -965,7 +961,7 @@ def material_id_sheet(references, drawn, textured, names, has_texture, out, refe
                       views=MATERIAL_VIEWS, crops=0):
     """Worst material disagreements, their shared material palette and per-material CSV totals."""
     from r3d import material_ids
-    from r3d.skin.skin_sheet import joint_colour
+    from docs.figures import index_hue
 
     if not references or len(references) != len(drawn) or len(drawn) != len(textured) or views < 1:
         raise ValueError('material comparison needs matching frames and positive --views')
@@ -973,7 +969,7 @@ def material_id_sheet(references, drawn, textured, names, has_texture, out, refe
                for ref, own, pattern in zip(references, drawn, textured)]
     ranked = sorted(range(len(classes)), key=lambda i: -int(np.count_nonzero(
         (classes[i] == material_ids.MISS) | (classes[i] == material_ids.WRONG_MATERIAL))))[:views]
-    palette = np.array([MATERIAL_EMPTY] + [joint_colour(i) for i in range(len(names))], dtype=np.uint8)
+    palette = np.array([MATERIAL_EMPTY] + [index_hue(i, byte=True) for i in range(len(names))], dtype=np.uint8)
     class_palette = np.asarray(MATERIAL_CLASS_COLOURS, dtype=np.uint8)
     rows, crop_entries, shown = [], [], set()
     labels = ['reference materials', 'drawn materials', 'diff classes']

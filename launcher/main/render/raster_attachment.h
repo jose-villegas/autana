@@ -29,21 +29,8 @@ struct raster_attachment {
     void* state; /* the attachment's own */
 };
 
-/* A clear hook zeroing a 16-bit attachment, as depth starts empty. */
-void raster_attachment_clear_u16(const raster_attachment_t* self, const raster_t* raster, void* pixels, size_t count);
-
-/* A 16-bit id map: cleared to 0, `writer`'s ids tagged on each pixel won. */
-raster_attachment_t
-raster_attachment_ids(void (*begin)(const raster_attachment_t*, const raster_t*, const render_view_t*),
-                      bool (*writer)(const raster_attachment_t*, int, r3d_span_writer_t*),
-                      void (*show)(const raster_attachment_t*, const raster_t*, const gfx_target_t*, int), void* state);
-
-/* A 32-bit id map, with the same hooks and empty value as the 16-bit map. */
-raster_attachment_t
-raster_attachment_ids_u32(void (*begin)(const raster_attachment_t*, const raster_t*, const render_view_t*),
-                          bool (*writer)(const raster_attachment_t*, int, r3d_span_writer_t*),
-                          void (*show)(const raster_attachment_t*, const raster_t*, const gfx_target_t*, int),
-                          void* state);
+/* A clear hook zeroing every byte of the attachment's pixels. */
+void raster_attachment_clear_zero(const raster_attachment_t* self, const raster_t* raster, void* pixels, size_t count);
 
 /* A span writer for a 16- or 32-bit attachment: the pixels this triangle
  * won, those whose depth is the one it filled with, take `writer->value`. */

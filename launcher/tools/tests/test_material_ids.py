@@ -14,6 +14,8 @@ import numpy as np
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from r3d.texture import uv_transfer
 from r3d import material_ids
+from r3d.appearance_simplify import projection
+from asset.engine_frame import mirror_matrix, mirror_point
 
 
 def surfaces():
@@ -40,7 +42,7 @@ class MaterialIdsTests(unittest.TestCase):
 
     def test_nearest_materials_keeps_backfacing_material(self):
         source = surfaces()
-        near, material, facing = uv_transfer.nearest_materials(source.p, source.tri_v[:, ::-1], source)
+        near, material, facing, *_geometry = uv_transfer.nearest_materials(source.p, source.tri_v[:, ::-1], source)
         np.testing.assert_array_equal(material, source.tri_m)
         self.assertFalse(facing.any())
         np.testing.assert_array_equal(near, np.arange(len(source.tri_v)))
@@ -49,10 +51,8 @@ class MaterialIdsTests(unittest.TestCase):
         module = material_ids
         from r3d.ray_query import RayQuery
         source = surfaces()
-        with tempfile.TemporaryDirectory() as directory:
-            poses = pathlib.Path(directory) / 'poses.txt'
-            poses.write_text('size 4 2\nlens 0.5 0.1\npose 0 0 2 0 0 -1\n')
-            actual = module.source_ids(source, RayQuery(source.p, source.tri_v), poses)[0]
+        matrix = projection([0, 0, 2], [0, 0, -1], 4, 2, 0.5, 0.1)
+        actual = module.source_ids(source, RayQuery(source.p, source.tri_v), [(matrix, (4, 2))])[0]
         np.testing.assert_array_equal(actual, [[0, 0, 1, 1], [0, 0, 1, 1]])
         self.assertEqual(actual.dtype, np.int32)
 
@@ -71,30 +71,23 @@ class MaterialIdsTests(unittest.TestCase):
 
     def test_placed_entry_returns_to_source_frame(self):
         module = material_ids
-        from asset.engine_frame import AXIS_SIGNS
         source = surfaces()
         placement = SimpleNamespace(matrix=np.diag([2., 3., 4.]), position=np.array([5., 6., 7.]))
-        signs = np.asarray(AXIS_SIGNS)
-        row = dict(matrix=(placement.matrix * signs[:, None] * signs[None, :]).tolist(),
-                   position=(placement.position * signs).tolist())
+        row = dict(matrix=mirror_matrix(placement.matrix).tolist(),
+                   position=list(mirror_point(placement.position)))
         mesh = SimpleNamespace(pos=source.p, position_scale=1)
         np.testing.assert_allclose(module.entry_points(mesh, row, placement), source.p)
-        source.material_placement = placement
-        with tempfile.TemporaryDirectory() as directory:
-            poses = pathlib.Path(directory) / 'poses.txt'
-            poses.write_text('size 4 2\nlens 0.5 0.1\npose 5 6 11 0 0 -1\n')
-            from r3d.ray_query import RayQuery
-            ref = module.source_ids(source, RayQuery(source.p, source.tri_v), poses)[0]
+        from r3d.ray_query import RayQuery
+        matrix = projection([5, 6, 11], [0, 0, -1], 4, 2, 0.5, 0.1)
+        ref = module.source_ids(source, RayQuery(source.p, source.tri_v), [(matrix, (4, 2))], placement)[0]
         np.testing.assert_array_equal(ref, [[0, 0, 1, 1], [0, 0, 1, 1]])
 
     def test_copy_entry_points_match_placed_copies(self):
         module = material_ids
-        from asset.engine_frame import AXIS_SIGNS
         from r3d import mesh_bundle
         from r3d.fit.copies import placed_copies
         from r3d.lit_mesh import read_bundle_mesh
         from test_mesh_bundle import bundle_fixture
-        signs = np.asarray(AXIS_SIGNS)
         with tempfile.TemporaryDirectory() as directory:
             data = bundle_fixture(directory)[0]
             path = pathlib.Path(directory) / 'copy.bundle'
@@ -103,8 +96,8 @@ class MaterialIdsTests(unittest.TestCase):
             expected = placed_copies(path, False).points
             actual = []
             for row in copies:
-                engine = dict(matrix=(np.asarray(row['matrix']) * signs[:, None] * signs[None, :]).tolist(),
-                              position=(np.asarray(row['position']) * signs).tolist())
+                engine = dict(matrix=mirror_matrix(np.asarray(row['matrix'])).tolist(),
+                              position=list(mirror_point(row['position'])))
                 actual.append(module.entry_points(read_bundle_mesh(entries, row['mesh']), engine))
         np.testing.assert_allclose(np.unique(np.concatenate(actual), axis=0), np.unique(expected, axis=0))
 
@@ -167,7 +160,7 @@ class MaterialIdsTests(unittest.TestCase):
             root = pathlib.Path(directory)
             (root / 'entries.json').write_text(json.dumps(dict(width=3, height=1, entries=[
                 dict(frame=0, entry='mesh', first_id=1, triangle_count=4, id_count=4, step='triangle',
-                     matrix=np.eye(3).tolist(), position=[0, 0, 0])], texture_pack='texture.pack')))
+                     matrix=np.eye(3).tolist(), position=[0, 0, 0])])))
             np.array([1, 3, 0], dtype='<u4').tofile(root / '0000.ids')
             codes = np.array([uv_transfer.PLAIN, 1, 1, uv_transfer.PLAIN])
             with mock.patch('r3d.material_ids.mesh_bundle.decode', return_value=([('mesh', b'LMSH', b'')], [])), \
@@ -177,7 +170,7 @@ class MaterialIdsTests(unittest.TestCase):
                     mock.patch('r3d.material_ids.uv_transfer.decode', return_value=SimpleNamespace(codes=codes)):
                 (root / 'bundle').write_bytes(b'')
                 (root / 'texture.pack').write_bytes(b'')
-                drawn, textured = module.drawn_ids(root, root / 'bundle', source)
+                drawn, textured = module.drawn_ids(root, root / 'bundle', source, texture_pack=root / 'texture.pack')
             np.testing.assert_array_equal(drawn[0], [[0, 1, -1]])
             np.testing.assert_array_equal(textured[0], [[False, True, False]])
 

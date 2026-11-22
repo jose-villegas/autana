@@ -42,7 +42,7 @@ render_host_camera_pose(float position[3], float rotation[4]) {
 }
 
 bool
-render_host_camera_input(const float eye[3], const float forward[3], float lens, float near_z) {
+render_host_camera_input(const camera_pose_t* input, float lens, float near_z) {
     const entity_t camera = camera_active();
     if (handle_is_none(camera)) {
         return false;
@@ -53,8 +53,8 @@ render_host_camera_input(const float eye[3], const float forward[3], float lens,
         return false;
     }
     transformf_t pose = transform_world(camera);
-    transformf_set_position(&pose, (vec3f_t){eye[0], eye[1], -eye[2]});
-    transformf_look_along(&pose, (vec3f_t){forward[0], forward[1], -forward[2]}, vec3f_unit_y());
+    transformf_set_position(&pose, input->eye);
+    transformf_look_along(&pose, input->forward, vec3f_unit_y());
     transform_set_world(camera, pose);
     camera_cut(camera);
     return true;

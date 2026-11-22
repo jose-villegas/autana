@@ -57,7 +57,7 @@
 # cache and prints its directory, for a caller that scores the frames itself.
 #
 # Source material attribution is a capture followed by a sheet:
-#   render_host --scene ID --object OBJECT --view triangles --ids DIR --poses DIR.poses.csv -o frame.bmp
+#   render_host --scene ID --object OBJECT --view triangles --ids DIR -o frame.bmp
 #   python launcher/tools/render/render_compare.py --material-ids SCENE OBJECT POSES DIR --out sheet.png
 # DIR/NNNN.ids is top-first little-endian u32 at attachment resolution,
 # oriented like the saved picture; entries.json holds its size and entry ranges.

@@ -563,6 +563,14 @@ stands: `frame,ms`, its world position and rotation quaternion. A `--video`
 run writes them to `PATH.poses.csv` and refuses `--poses`, so every video can
 be held to the poses of the reference it is scored against.
 
+`--ids DIR` saves each frame's ID map and `entries.json` from an ID view such
+as `--view triangles`. It writes the pose log to `DIR/capture.poses.csv`, also
+when recording video, and refuses an explicit `--poses`.
+
+`--camera-poses FILE` drives the active camera from a source-frame poses file.
+Its size must match the upright raster size. Each pose supplies one frame.
+When provided, `--frames` must equal the pose count.
+
 ```sh
 ./launcher/tools/render/scenes/boot_anim_render_host.sh --video   # every scene's script takes this,
                                                      # writing <label>.avi beside <label>.bmp

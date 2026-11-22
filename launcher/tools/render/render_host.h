@@ -9,6 +9,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "../anim/camera_poses.h"
 #include "app/app.h"
 #include "build/build_variant.h"
 #include "math/geometry/recti.h"
@@ -115,8 +116,8 @@ bool render_host_apply_settings(const render_settings_t* settings);
  * provider links no scene. */
 bool render_host_camera_pose(float position[3], float rotation[4]);
 
-/* Places the active camera from a source-frame reference pose without advancing its path. */
-bool render_host_camera_input(const float eye[3], const float forward[3], float lens, float near_z);
+/* Places the active camera from an engine-frame reference pose without advancing its path. */
+bool render_host_camera_input(const camera_pose_t* pose, float lens, float near_z);
 
 /* Writes the active id attachment and entry metadata; false without an id view. */
 bool render_host_write_ids(const char* directory, FILE* entries, int frame, int quarter, bool panel);

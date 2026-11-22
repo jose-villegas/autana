@@ -5,11 +5,10 @@ import pathlib
 import numpy as np
 
 from asset.asset_pack import parse_pack
-from asset.engine_frame import AXIS_SIGNS
+from asset.engine_frame import AXIS_COUNT, mirror_matrix, mirror_point
 from r3d import mesh_bundle
 from r3d.fit import gbuffer
 from r3d.lit_mesh import read_bundle_mesh
-from r3d.poses import read_poses
 from r3d.objects.instances import place
 from r3d.texture import uv_transfer
 
@@ -18,27 +17,12 @@ BOTH_EMPTY, AGREE_TEXTURED, AGREE_PLAIN, MISS, WRONG_MATERIAL, REFERENCE_ONLY, D
 CLASS_NAMES = ('both_empty', 'agree_textured', 'agree_plain', 'miss', 'wrong_material', 'reference_only', 'drawn_only')
 
 
-def source_ids(source, query, poses_path, size=None):
+def source_ids(source, query, views, placement=None):
     """Top-first int32 source material maps traced through the caller's alpha-tested query."""
-    from r3d.appearance_simplify import projection
-
-    if str(poses_path).endswith('.csv'):
-        import sys
-        render = pathlib.Path(__file__).resolve().parents[1] / 'render'
-        if str(render) not in sys.path:
-            sys.path.insert(0, str(render))
-        from reference_poses import capture_views
-        views = capture_views(poses_path, size)
-    else:
-        width, height, lens, near, poses = read_poses(poses_path)
-        if size is not None:
-            width, height = size
-        views = [(projection(pose[:3], pose[3:], width, height, lens, near), (width, height)) for pose in poses]
     result = []
     for matrix, (width, height) in views:
-        placement = getattr(source, 'material_placement', None)
         if placement is not None:
-            axes = len(AXIS_SIGNS)
+            axes = AXIS_COUNT
             world = np.eye(axes + 1)
             world[:axes, :axes], world[:axes, axes] = placement.matrix, placement.position
             matrix = matrix @ world
@@ -53,25 +37,23 @@ def source_ids(source, query, poses_path, size=None):
 def source_points(points, placement):
     """World points returned to the renderer's source frame through its authored placement."""
     inverse = np.linalg.inv(np.asarray(placement.matrix))
-    return place(np.asarray(points) - placement.position, inverse, np.zeros(len(AXIS_SIGNS)))
+    return place(np.asarray(points) - placement.position, inverse, np.zeros(AXIS_COUNT))
 
 
 def entry_points(mesh, row, placement=None):
     """Bundle vertices placed by the engine's drawn transform, in source axes."""
-    signs = np.asarray(AXIS_SIGNS)
-    matrix = np.asarray(row['matrix']) * signs[:, None] * signs[None, :]
-    position = np.asarray(row['position']) * signs
+    matrix = mirror_matrix(np.asarray(row['matrix']))
+    position = mirror_point(row['position'])
     points = place(np.asarray(mesh.pos, dtype=np.float64) / float(mesh.position_scale), matrix, position)
     return points if placement is None else source_points(points, placement)
 
 
-def drawn_ids(ids_dir, bundle_path, source):
+def drawn_ids(ids_dir, bundle_path, source, placement=None, texture_pack=None):
     """Source material and textured maps for every captured triangle-id frame."""
     root = pathlib.Path(ids_dir)
     metadata = json.loads((root / 'entries.json').read_text())
     entries, _copies = mesh_bundle.decode(pathlib.Path(bundle_path).read_bytes())
-    texture_path = getattr(source, 'texture_pack', None) or metadata.get('texture_pack')
-    textures = parse_pack((root / texture_path).read_bytes()) if texture_path else {}
+    textures = parse_pack(pathlib.Path(texture_pack).read_bytes()) if texture_pack else {}
     materials, textured = [], []
     for expected, path in enumerate(sorted(root.glob('*.ids'))):
         frame = int(path.stem)
@@ -87,7 +69,8 @@ def drawn_ids(ids_dir, bundle_path, source):
             if row['step'] != 'triangle':
                 raise ValueError('material attribution requires --view triangles')
             mesh = read_bundle_mesh(entries, row['entry'])
-            _near, source_material, _facing = uv_transfer.nearest_materials(entry_points(mesh, row, getattr(source, 'material_placement', None)), mesh.tris, source)
+            points = entry_points(mesh, row, placement)
+            _near, source_material, _facing, *_geometry = uv_transfer.nearest_materials(points, mesh.tris, source)
             if row['triangle_count'] != len(source_material) or row['id_count'] != len(source_material):
                 raise ValueError('captured triangle count differs from bundle')
             own = (ids >= row['first_id']) & (ids < row['first_id'] + row['id_count'])

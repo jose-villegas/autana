@@ -80,15 +80,15 @@ def plane_uv(points, corners, uv):
 
 
 def nearest_materials(points, tris, source):
-    """Nearest source triangle, its material, and normal agreement for every baked triangle."""
+    """Nearest source triangle, its material, normal agreement, baked area and face normals for every baked triangle."""
     points, tris = np.asarray(points, dtype=np.float64), np.asarray(tris)
     source_corners = np.asarray(source.p, dtype=np.float64)[np.asarray(source.tri_v)]
     near, _bary, _distance = nearest_triangles(points[tris].mean(axis=1), triangle_search(source_corners))
-    baked_normal, _area = face_normals(points, tris)
+    baked_normal, area = face_normals(points, tris)
     source_normal, _ = face_normals(np.asarray(source.p, dtype=np.float64), np.asarray(source.tri_v))
     agree = np.cos(np.radians(NORMAL_DEGREES))
     facing = (baked_normal * source_normal[near]).sum(axis=1) >= agree
-    return near, np.asarray(source.tri_m)[near], facing
+    return near, np.asarray(source.tri_m)[near], facing, area, baked_normal, source_normal, agree
 
 
 def cluster_uvs(mesh, source, material_ids, sizes):
@@ -99,10 +99,7 @@ def cluster_uvs(mesh, source, material_ids, sizes):
     points = np.asarray(mesh.pos, dtype=np.float64) / float(mesh.position_scale)
     tris = np.asarray(mesh.tris)
     source_corners = np.asarray(source.p, dtype=np.float64)[np.asarray(source.tri_v)]
-    near, source_material, facing = nearest_materials(points, tris, source)
-    baked_normal, area = face_normals(points, tris)
-    source_normal, _ = face_normals(np.asarray(source.p, dtype=np.float64), np.asarray(source.tri_v))
-    agree = np.cos(np.radians(NORMAL_DEGREES))
+    near, source_material, facing, area, baked_normal, source_normal, agree = nearest_materials(points, tris, source)
     slot = np.full(len(source.names), NONE)
     slot[list(material_ids)] = np.arange(len(material_ids))
     material = np.where(facing, slot[source_material], NONE)

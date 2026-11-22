@@ -43,7 +43,8 @@ writer(const raster_attachment_t* self, int entry, r3d_span_writer_t* out) {
 
 /* A copy in its boxes-view hue, so a shape matches its boxes there. */
 static gfx_color_t
-pixel_color(const void* pixel, uint16_t clear_color) {
+pixel_color(const void* pixel, size_t width, uint16_t clear_color) {
+    (void)width;
     const uint16_t id = *(const uint16_t*)pixel;
     return id == 0 ? clear_color : id == RASTER_COPIES_UNIQUE ? RASTER_COPIES_GREY : raster_meshlets_color(id);
 }
@@ -56,5 +57,5 @@ show(const raster_attachment_t* self, const raster_t* raster, const gfx_target_t
 
 raster_attachment_t
 raster_copies_view(void* state) {
-    return raster_attachment_ids(begin, writer, show, state);
+    return raster_attachment_ids(IMAGE_U16, begin, writer, show, state);
 }
