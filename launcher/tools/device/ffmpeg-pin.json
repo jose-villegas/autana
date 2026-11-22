@@ -1,11 +1,11 @@
 {
-  "version": "8.1.3-39-g660b5aa7db",
+  "version": "9.0.2-61-gd59078794d",
   "linux": {
-    "url": "https://github.com/FFmpeg-Builds/FFmpeg-Builds/releases/download/autobuild-2026-11-21-12-37/ffmpeg-n8.1.3-39-g660b5aa7db-linux64-gpl-8.1.tar.xz",
-    "sha256": "85d6d2c617fa4e2bee9ea105b5532c66ac866ada0a9a650a088e6fb096c7eeff"
+    "url": "https://github.com/FFmpeg-Builds/FFmpeg-Builds/releases/download/autobuild-2026-11-21-12-37/ffmpeg-n9.0.2-61-gd59078794d-linux64-gpl-9.0.tar.xz",
+    "sha256": "010499a8a9855e477b1a0ebfa9602832526ec80eb306b58213a2b6cda7149607"
   },
   "windows": {
-    "url": "https://github.com/FFmpeg-Builds/FFmpeg-Builds/releases/download/autobuild-2026-11-21-12-37/ffmpeg-n8.1.3-39-g660b5aa7db-win64-gpl-8.1.zip",
-    "sha256": "bac21c7550d0daee47ab58f19e93d285fdb040c95252e63d18c36978a131f1ca"
+    "url": "https://github.com/FFmpeg-Builds/FFmpeg-Builds/releases/download/autobuild-2026-11-21-12-37/ffmpeg-n9.0.2-61-gd59078794d-win64-gpl-9.0.zip",
+    "sha256": "af402c660610929e7bb795013372aef22da756f10b3c0c785aa62fabd328e237"
   }
 }

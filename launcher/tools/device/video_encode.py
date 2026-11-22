@@ -70,7 +70,7 @@ def install():
 
 def find():
     installed = install_dir() / binary_name("ffmpeg")
-    return str(installed) if installed.is_file() else shutil.which("ffmpeg")
+    return str(installed) if installed.is_file() else None
 
 
 def version(binary):
@@ -81,16 +81,10 @@ def version(binary):
     return match[1]
 
 
-def resolve(log=sys.stderr):
+def resolve():
     binary = find()
     if binary is None:
-        raise RuntimeError(f"ffmpeg is missing; install pinned ffmpeg {pinned()['version']} (Framework-Versions.md)")
-    found, expected = version(binary), pinned()["version"]
-    if found != expected:
-        message = f"ffmpeg found {found}; pinned {expected}"
-        if found.split(".")[0] != expected.split(".")[0]:
-            raise RuntimeError(message + "; different major refused")
-        print("note: " + message, file=log)
+        binary = str(install() / binary_name("ffmpeg"))
     return binary
 
 

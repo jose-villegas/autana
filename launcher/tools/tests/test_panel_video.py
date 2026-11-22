@@ -1,12 +1,16 @@
 """Panel video decoding, device-time resampling and encoding."""
 import csv
+import hashlib
 import io
 import re
 import struct
 import subprocess
 import sys
+import tarfile
 import tempfile
 import unittest
+import zipfile
+from urllib.error import URLError
 from pathlib import Path
 from unittest import mock
 
@@ -14,6 +18,7 @@ DEVICE = Path(__file__).resolve().parents[1] / "device"
 sys.path.insert(0, str(DEVICE))
 import panel_video as video
 import video_encode
+from http_get import transient
 from build.c_header import read_define
 
 FIXTURE = DEVICE.parents[1] / "test/fixtures/panelcap_fixture.h"
@@ -154,11 +159,18 @@ class PanelVideoTests(unittest.TestCase):
         writer.process.wait.assert_called_once()
 
     def test_real_three_frame_encode(self):
-        if video_encode.find() is None:
-            self.skipTest("ffmpeg is absent")
         with tempfile.TemporaryDirectory() as directory:
             out = Path(directory) / "run.mp4"
-            writer = video_encode.VideoWriter(out, 30, live=True)
+            try:
+                writer = video_encode.VideoWriter(out, 30, live=True)
+            except URLError as error:
+                if not transient(error):
+                    raise
+                self.skipTest(f"pinned ffmpeg download unavailable: {error}")
+            except TimeoutError as error:
+                self.skipTest(f"pinned ffmpeg download timed out: {error}")
+            self.assertEqual(Path(writer.binary), video_encode.install_dir() / video_encode.binary_name("ffmpeg"))
+            self.assertEqual(video_encode.version(writer.binary), video_encode.pinned()["version"])
             for pixel in (RED_RGB, BLUE_RGB, BLACK_RGB):
                 writer.write((2, 2), pixel * 4)
             writer.close()
@@ -166,19 +178,35 @@ class PanelVideoTests(unittest.TestCase):
                                            "-pix_fmt", "rgb24", "-"])
             self.assertEqual(len(rgb), 3 * 2 * 2 * video.RGB_BYTES)
 
-    def test_ffmpeg_pin_missing_patch_note_and_major_refusal(self):
-        with mock.patch.object(video_encode, "find", return_value=None):
-            with self.assertRaisesRegex(RuntimeError, "ffmpeg is missing"):
-                video_encode.resolve(io.StringIO())
-        with mock.patch.object(video_encode, "pinned", return_value={"version": "6.1.1"}), \
-                mock.patch.object(video_encode, "find", return_value="ffmpeg"):
-            with mock.patch.object(video_encode, "version", return_value="6.1.2"):
-                log = io.StringIO()
-                self.assertEqual(video_encode.resolve(log), "ffmpeg")
-                self.assertIn("6.1.2; pinned 6.1.1", log.getvalue())
-            with mock.patch.object(video_encode, "version", return_value="7.0"):
-                with self.assertRaisesRegex(RuntimeError, "7.0; pinned 6.1.1"):
-                    video_encode.resolve(io.StringIO())
+    def test_missing_pinned_ffmpeg_installs_without_path_lookup(self):
+        archive_data = io.BytesIO()
+        contents = b"pinned executable"
+        names = [video_encode.binary_name(tool) for tool in ("ffmpeg", "ffprobe")]
+        if sys.platform == "win32":
+            with zipfile.ZipFile(archive_data, "w") as archive:
+                for name in names:
+                    archive.writestr("release/bin/" + name, contents)
+        else:
+            with tarfile.open(fileobj=archive_data, mode="w:xz") as archive:
+                for name in names:
+                    entry = tarfile.TarInfo("release/bin/" + name)
+                    entry.size = len(contents)
+                    archive.addfile(entry, io.BytesIO(contents))
+        data = archive_data.getvalue()
+        pin = {**video_encode.pinned(), "sha256": hashlib.sha256(data).hexdigest()}
+        with tempfile.TemporaryDirectory() as directory, \
+                mock.patch.object(video_encode, "pinned_tools_root", return_value=Path(directory)), \
+                mock.patch.object(video_encode, "pinned", return_value=pin), \
+                mock.patch.object(video_encode, "get", return_value=data) as fetch, \
+                mock.patch.object(video_encode.shutil, "which", return_value="unrelated-ffmpeg") as path_lookup:
+            self.assertIsNone(video_encode.find())
+            binary = video_encode.resolve()
+            self.assertEqual(Path(binary), video_encode.install_dir() / names[0])
+            for name in names:
+                self.assertEqual((video_encode.install_dir() / name).read_bytes(), contents)
+            self.assertEqual(video_encode.resolve(), binary)
+            fetch.assert_called_once_with(pin["url"], timeout=video_encode.FETCH_TIMEOUT_SECONDS)
+            path_lookup.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -21,7 +21,7 @@ each pin to the newest release, so the pins do not fall behind.
 | microui, Waveshare BSP | the submodule commit (they tag no releases, so the newest commit is the latest), and the commit each vendored copy was taken from in [`third_party/vendored.json`](../../third_party/vendored.json) | Renovate, monthly | `scripts/deps/vendored.py check` fails until `vendored.py update` merges the upstream change into the copy; after a conflict, finish the merge and run `vendored.py resolved` |
 | meshoptimizer, ufbx | the submodule commit, at the release tag `.gitmodules` names | Renovate, monthly | the commit is in every mesh bake key: the Bakes workflow bakes, then `bake.py lock --from-run N` |
 | Blender for the skinned-mesh export | `BLENDER_VERSION` in [`blend_skin_to_glb.py`](../../launcher/tools/gltf/blend_skin_to_glb.py) | Renovate, from the dashboard | every skinned mesh re-exports: the Bakes workflow bakes, then `bake.py lock --from-run N` |
-| <a id="ffmpeg"></a>FFmpeg | [`ffmpeg-pin.json`](../../launcher/tools/device/ffmpeg-pin.json) pins 8.1.3-39-g660b5aa7db for Linux x64 and Windows x64 with a SHA-256 for each FFmpeg-Builds archive | manual pin update | Video writers refuse another major and print a note for other version drift |
+| <a id="ffmpeg"></a>FFmpeg | [`ffmpeg-pin.json`](../../launcher/tools/device/ffmpeg-pin.json) pins the Linux x64 and Windows x64 FFmpeg-Builds archives by SHA-256 | manual pin update | Video writers install and use the pinned binary |
 | GitHub Actions | the commit SHA in each `uses:` line | Renovate | CI proves it |
 | CI runner image | `runs-on: ubuntu-24.04` | Renovate | CI proves it |
 
