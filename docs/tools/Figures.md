@@ -18,7 +18,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | [overview](#overview) | 46 | 0 | 0 |
 | [physics](#physics) | 2 | 0 | 0 |
 | [power](#power) | 2 | 0 | 0 |
-| [render](#render) | 149 | 21 | 0 |
+| [render](#render) | 150 | 21 | 0 |
 | [ui](#ui) | 62 | 0 | 0 |
 
 ## anim
@@ -243,6 +243,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/render/compare-full-lite.png"><img src="../images/render/compare-full-lite.png" width="160" alt=""></a> | full against lite | [render/offline/Bake-Quality](../render/offline/Bake-Quality.md) | not declared yet |
 | <a href="../images/render/compare-lite-fitted.crops.png"><img src="../images/render/compare-lite-fitted.crops.png" width="160" alt=""></a> | lite against fitted, the places they differ most | [render/offline/Bake-Quality](../render/offline/Bake-Quality.md) | not declared yet |
 | <a href="../images/render/compare-lite-fitted.png"><img src="../images/render/compare-lite-fitted.png" width="160" alt=""></a> | lite against fitted | [render/offline/Bake-Quality](../render/offline/Bake-Quality.md) | not declared yet |
+| <a href="../images/render/contact-blob-atrium.png"><img src="../images/render/contact-blob-atrium.png" width="160" alt=""></a> | A skinned mover with its contact blob on the floor of a baked atrium | [render/Lighting](../render/Lighting.md) | not declared yet |
 | <a href="../images/render/cull-bistro-chase.gif"><img src="figure-thumbnails/render/cull-bistro-chase.gif" width="160" alt=""></a> | Bistro's fates from behind the camera | [render/Render-Settings](../render/Render-Settings.md), [render/frame/Culling](../render/frame/Culling.md) | not declared yet |
 | <a href="../images/render/cull-bistro-counts.png"><img src="../images/render/cull-bistro-counts.png" width="160" alt=""></a> | Bistro's counts along its path | [render/frame/Culling](../render/frame/Culling.md) | not declared yet |
 | <a href="../images/render/cull-bistro-sheet.png"><img src="../images/render/cull-bistro-sheet.png" width="160" alt=""></a> | Bistro's cull along its path | [render/frame/Culling](../render/frame/Culling.md) | not declared yet |
@@ -347,7 +348,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/render/sponza-view-depth.png"><img src="../images/render/sponza-view-depth.png" width="160" alt=""></a> | The depth view | [render/frame/View-Modes](../render/frame/View-Modes.md) | not declared yet |
 | <a href="../images/render/sponza-view-meshlets.png"><img src="../images/render/sponza-view-meshlets.png" width="160" alt=""></a> | The meshlets view | [render/frame/View-Modes](../render/frame/View-Modes.md) | not declared yet |
 | <a href="../images/render/sponza-view-overdraw.png"><img src="../images/render/sponza-view-overdraw.png" width="160" alt=""></a> | The overdraw view | [render/frame/View-Modes](../render/frame/View-Modes.md) | not declared yet |
-| <a href="../images/render/sponza-view-shaded.png"><img src="../images/render/sponza-view-shaded.png" width="160" alt=""></a> | The shaded view | [render/frame/View-Modes](../render/frame/View-Modes.md) | not declared yet |
+| <a href="../images/render/sponza-view-shaded.png"><img src="../images/render/sponza-view-shaded.png" width="160" alt=""></a> | A baked atrium: the sun's hard shadow on the right, sky and bounce in the shade | [render/Lighting](../render/Lighting.md), [render/frame/View-Modes](../render/frame/View-Modes.md) | not declared yet |
 | <a href="../images/render/sponza-view-tiles.png"><img src="../images/render/sponza-view-tiles.png" width="160" alt=""></a> | The tiles view | [render/frame/View-Modes](../render/frame/View-Modes.md) | not declared yet |
 | <a href="../images/render/texture-mip-levels.png"><img src="../images/render/texture-mip-levels.png" width="160" alt=""></a> | A Bistro cobblestone's mip chain at true size; below, a receding floor with each triangle tinted by the level it picked, and the pixels that read a finer level than their own step | [render/frame/Texture-Mapping](../render/frame/Texture-Mapping.md) | [bistro_figures.py](../../launcher/demo/bistro/bistro_figures.py) |
 | <a href="../images/render/upscale-surface.crops.png"><img src="../images/render/upscale-surface.crops.png" width="160" alt=""></a> | Edge crops: reference, nearest, surface | [render/frame/Dynamic-Resolution](../render/frame/Dynamic-Resolution.md) | not declared yet |
