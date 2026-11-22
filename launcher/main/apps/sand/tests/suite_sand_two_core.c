@@ -964,7 +964,10 @@ test_two_core_step_matches_serial_fall_distance_at_a_seam(void) {
 
     for (size_t g = 0; g < sizeof gxs / sizeof gxs[0]; g++) {
         for (int offset = 0; offset <= SAND_BLOCK_H / 2; offset += SAND_BLOCK_H / 2) {
-            uint8_t *serial_cells, *two_core_cells, *serial_blocks, *two_core_blocks;
+            uint8_t* serial_cells;
+            uint8_t* two_core_cells;
+            uint8_t* serial_blocks;
+            uint8_t* two_core_blocks;
             sand_t* const serial_s = sand_test_grid_open(&serial_cells, &serial_blocks, TC_W, TC_H, 1U);
             sand_t* const two_core_s = sand_test_grid_open(&two_core_cells, &two_core_blocks, TC_W, TC_H, 1U);
             void* scratch = lane_scratch_open(two_core_s);
@@ -1564,7 +1567,10 @@ tc_water_column_mass(const sand_t* s, int x) {
 
 static void
 test_landscape_water_column_has_no_line_mass_lag(void) {
-    uint8_t *serial_cells, *split_cells, *serial_blocks, *split_blocks;
+    uint8_t* serial_cells;
+    uint8_t* split_cells;
+    uint8_t* serial_blocks;
+    uint8_t* split_blocks;
     sand_t* const serial = sand_test_grid_open(&serial_cells, &serial_blocks, TC_W, TC_H, 7U);
     sand_t* const split = sand_test_grid_open(&split_cells, &split_blocks, TC_W, TC_H, 7U);
     void* scratch = lane_scratch_open(split);
