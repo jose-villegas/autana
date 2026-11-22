@@ -92,8 +92,8 @@ timeline_seek(entity_t root, uint32_t t_ms) {
     scene_timeline_step(scene, 0);
     scene_skins_settle(scene);
     scene_animation_repose(scene, 0);
-    scene_row_t camera;
-    if (scene_entity_row(camera_active(), &camera) == scene) {
+    for (int c = 0; c < scene->asset.camera_count; c++) {
+        const scene_row_t camera = scene->cameras[c].entity;
         for (int i = 0; i < timeline->tracks.count; i++) {
             if (timeline->fields[i].dirty == &scene->flags[camera]) {
                 scene_draw_camera_cut(scene, camera);
