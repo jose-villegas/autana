@@ -298,18 +298,34 @@ test_dynres_still_view_redraws_only_changed_rows_at_the_top(void) {
     TEST_ASSERT_EQUAL_MEMORY(&before, &pair->context[0].control, sizeof before);
 }
 
+/* The rig's camera with the card placed and its first frame drawn, the
+ * policy's: the view the dynres tests then hold. */
+static render_view_t
+held_dynres_view(raster_rig_t* r) {
+    const render_view_t view = render_view_fixture_at(&raster_rig_camera, (viewport_t){W, H, 0});
+    place_card(r, card_path[0]);
+    (void)dynres_frame(r, &view, NULL, -1);
+    return view;
+}
+
+/* Holds `view` to the top step, then draws one partial frame over a tight
+ * budget, which hands the held camera back; returns the last change. */
+static box3f_t
+hold_over_budget(raster_rig_t* r, const render_view_t* view) {
+    box3f_t changed = slide_card(r, 6.0F);
+    TEST_ASSERT_EQUAL_INT(W, dynres_frame(r, view, &changed, 1).width); /* to the top: not judged */
+    changed = slide_card(r, 12.0F);
+    TEST_ASSERT_LESS_THAN_INT(H, rows(dynres_frame(r, view, &changed, 1))); /* partial, over budget */
+    return changed;
+}
+
 /* A partial frame at the top that costs more than the budget hands the still
  * camera back to dynamic resolution: the next frame is the controller's. */
 static void
 test_dynres_still_view_over_budget_returns_to_the_controller(void) {
     raster_rig_t* r = open_dynres(DYNRES_TIGHT);
-    const render_view_t view = render_view_fixture_at(&raster_rig_camera, (viewport_t){W, H, 0});
-    place_card(r, card_path[0]);
-    (void)dynres_frame(r, &view, NULL, -1);
-    box3f_t changed = slide_card(r, 6.0F);
-    TEST_ASSERT_EQUAL_INT(W, dynres_frame(r, &view, &changed, 1).width); /* to the top: not judged */
-    changed = slide_card(r, 12.0F);
-    TEST_ASSERT_LESS_THAN_INT(H, rows(dynres_frame(r, &view, &changed, 1))); /* partial, over budget */
+    const render_view_t view = held_dynres_view(r);
+    box3f_t changed = hold_over_budget(r, &view);
     changed = slide_card(r, 18.0F);
     const render_context_frame_t f = dynres_frame(r, &view, &changed, 1);
     TEST_ASSERT_EQUAL_INT(W / 2, f.width);
@@ -395,9 +411,7 @@ static void
 test_generation_under_dynres_draws_a_held_view_partially_at_the_top(void) {
     raster_rig_t* r = open_dynres(DYNRES_ROOMY);
     render_context_set_frame_generation(&pair->context[0], true);
-    const render_view_t view = render_view_fixture_at(&raster_rig_camera, (viewport_t){W, H, 0});
-    place_card(r, card_path[0]);
-    (void)dynres_frame(r, &view, NULL, -1);
+    const render_view_t view = held_dynres_view(r);
     box3f_t changed = slide_card(r, 12.0F);
     const render_context_frame_t top = dynres_frame(r, &view, &changed, 1);
     TEST_ASSERT_FALSE(top.generated);
@@ -422,13 +436,8 @@ static void
 test_generation_resumes_on_a_held_view_handed_back(void) {
     raster_rig_t* r = open_dynres(DYNRES_TIGHT);
     render_context_set_frame_generation(&pair->context[0], true);
-    const render_view_t view = render_view_fixture_at(&raster_rig_camera, (viewport_t){W, H, 0});
-    place_card(r, card_path[0]);
-    (void)dynres_frame(r, &view, NULL, -1);
-    box3f_t changed = slide_card(r, 6.0F);
-    TEST_ASSERT_EQUAL_INT(W, dynres_frame(r, &view, &changed, 1).width); /* to the top: not judged */
-    changed = slide_card(r, 12.0F);
-    TEST_ASSERT_LESS_THAN_INT(H, rows(dynres_frame(r, &view, &changed, 1))); /* partial, over budget */
+    const render_view_t view = held_dynres_view(r);
+    box3f_t changed = hold_over_budget(r, &view);
     int generated = 0;
     for (int i = 0; i < GENERATING_HELD_FRAMES; i++) {
         changed = slide_card(r, (float)(i % 2 + 1) * 6.0F);
